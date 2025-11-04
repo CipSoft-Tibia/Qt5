@@ -38,6 +38,7 @@
 #include "src/tint/lang/wgsl/writer/ir_to_program/ir_to_program.h"
 #include "src/tint/lang/wgsl/writer/raise/raise.h"
 #include "src/tint/lang/wgsl/writer/writer.h"
+#include "src/tint/utils/text/styled_text.h"
 
 namespace tint::core::ir::transform {
 namespace {
@@ -67,37 +68,37 @@ class DirectVariableAccessTest : public TransformTestBase<testing::Test> {
         Source::File file{"test", in};
         auto program_in = wgsl::reader::Parse(&file, parser_options);
         if (!program_in.IsValid()) {
-            return "wgsl::reader::Parse() failed: \n" + program_in.Diagnostics().str();
+            return "wgsl::reader::Parse() failed: \n" + program_in.Diagnostics().Str();
         }
 
         auto module = wgsl::reader::ProgramToIR(program_in);
         if (module != Success) {
-            return "ProgramToIR() failed:\n" + module.Failure().reason.str();
+            return "ProgramToIR() failed:\n" + module.Failure().reason.Str();
         }
 
         auto res = DirectVariableAccess(module.Get(), transform_options);
         if (res != Success) {
-            return "DirectVariableAccess failed:\n" + res.Failure().reason.str();
+            return "DirectVariableAccess failed:\n" + res.Failure().reason.Str();
         }
 
-        auto pre_raise = ir::Disassemble(module.Get());
+        auto pre_raise = ir::Disassembler(module.Get()).Plain();
 
         if (auto raise = wgsl::writer::Raise(module.Get()); raise != Success) {
-            return "wgsl::writer::Raise failed:\n" + res.Failure().reason.str();
+            return "wgsl::writer::Raise failed:\n" + res.Failure().reason.Str();
         }
 
         auto program_out = wgsl::writer::IRToProgram(module.Get(), program_options);
         if (!program_out.IsValid()) {
-            return "wgsl::writer::IRToProgram() failed: \n" + program_out.Diagnostics().str() +
-                   "\n\nIR (pre):\n" + pre_raise +                       //
-                   "\n\nIR (post):\n" + ir::Disassemble(module.Get()) +  //
+            return "wgsl::writer::IRToProgram() failed: \n" + program_out.Diagnostics().Str() +
+                   "\n\nIR (pre):\n" + pre_raise +                                //
+                   "\n\nIR (post):\n" + ir::Disassembler(module.Get()).Plain() +  //
                    "\n\nAST:\n" + Program::printer(program_out);
         }
 
         auto output = wgsl::writer::Generate(program_out, wgsl::writer::Options{});
         if (output != Success) {
-            return "wgsl::writer::IRToProgram() failed: \n" + output.Failure().reason.str() +
-                   "\n\nIR:\n" + ir::Disassemble(module.Get());
+            return "wgsl::writer::IRToProgram() failed: \n" + output.Failure().reason.Str() +
+                   "\n\nIR:\n" + ir::Disassembler(module.Get()).Plain();
         }
 
         return "\n" + output->wgsl;
@@ -277,7 +278,7 @@ fn d() {
 
     auto* expect =
         R"(
-@group(0) @binding(0) var<uniform> U : array<array<array<vec4<i32>, 8u>, 8u>, 8u>;
+@group(0u) @binding(0u) var<uniform> U : array<array<array<vec4<i32>, 8u>, 8u>, 8u>;
 
 fn a(pre : i32, p_indices : array<u32, 3u>, post : i32) -> vec4<i32> {
   return U[p_indices[0u]][p_indices[1u]][p_indices[2u]];
@@ -343,7 +344,7 @@ fn d() {
 )";
 
     auto* expect = R"(
-@group(0) @binding(0) var<uniform> U : array<array<array<vec4<i32>, 8u>, 8u>, 8u>;
+@group(0u) @binding(0u) var<uniform> U : array<array<array<vec4<i32>, 8u>, 8u>, 8u>;
 
 var<private> i : i32;
 
@@ -424,7 +425,7 @@ fn d() {
 )";
 
     auto* expect = R"(
-@group(0) @binding(0) var<uniform> U : array<array<vec4<i32>, 8u>, 8u>;
+@group(0u) @binding(0u) var<uniform> U : array<array<vec4<i32>, 8u>, 8u>;
 
 var<private> i : i32;
 
@@ -502,7 +503,7 @@ fn d() {
 )";
 
     auto* expect = R"(
-@group(0) @binding(0) var<uniform> U : array<array<vec4<i32>, 8u>, 8u>;
+@group(0u) @binding(0u) var<uniform> U : array<array<vec4<i32>, 8u>, 8u>;
 
 var<private> i : i32;
 
@@ -584,7 +585,7 @@ fn d() {
 )";
 
     auto* expect = R"(
-@group(0) @binding(0) var<uniform> U : array<array<vec4<i32>, 8u>, 8u>;
+@group(0u) @binding(0u) var<uniform> U : array<array<vec4<i32>, 8u>, 8u>;
 
 var<private> i : i32;
 
@@ -666,7 +667,7 @@ fn d() {
 )";
 
     auto* expect = R"(
-@group(0) @binding(0) var<uniform> U : array<array<vec4<i32>, 8u>, 8u>;
+@group(0u) @binding(0u) var<uniform> U : array<array<vec4<i32>, 8u>, 8u>;
 
 var<private> i : i32;
 
@@ -732,7 +733,7 @@ fn b() {
 )";
 
     auto* expect = R"(
-@group(0) @binding(0) var<uniform> U : i32;
+@group(0u) @binding(0u) var<uniform> U : i32;
 
 fn a(pre : i32, post : i32) -> i32 {
   return U;
@@ -763,7 +764,7 @@ fn b() {
 )";
 
     auto* expect = R"(
-@group(0) @binding(0) var<uniform> U : array<vec4<i32>, 8u>;
+@group(0u) @binding(0u) var<uniform> U : array<vec4<i32>, 8u>;
 
 fn a(pre : i32, p_indices : array<u32, 1u>, post : i32) -> vec4<i32> {
   return U[p_indices[0u]];
@@ -851,7 +852,7 @@ struct Outer {
   mat : mat3x4<f32>,
 }
 
-@group(0) @binding(0) var<uniform> U : Outer;
+@group(0u) @binding(0u) var<uniform> U : Outer;
 
 fn f0(p_indices : array<u32, 1u>) -> f32 {
   return U.mat[p_indices[0u]].x;
@@ -941,7 +942,7 @@ struct str {
   i : i32,
 }
 
-@group(0) @binding(0) var<storage, read> S : str;
+@group(0u) @binding(0u) var<storage, read> S : str;
 
 fn a(pre : i32, post : i32) -> i32 {
   return S.i;
@@ -979,7 +980,7 @@ struct str {
   arr : array<i32, 4u>,
 }
 
-@group(0) @binding(0) var<storage, read_write> S : str;
+@group(0u) @binding(0u) var<storage, read_write> S : str;
 
 fn a(pre : i32, post : i32) {
   S.arr = array<i32, 4u>();
@@ -1010,7 +1011,7 @@ fn b() {
 )";
 
     auto* expect = R"(
-@group(0) @binding(0) var<storage, read_write> S : array<vec4<i32>, 8u>;
+@group(0u) @binding(0u) var<storage, read_write> S : array<vec4<i32>, 8u>;
 
 fn a(pre : i32, p_indices : array<u32, 1u>, post : i32) {
   S[p_indices[0u]] = vec4<i32>();
@@ -1098,7 +1099,7 @@ struct Outer {
   mat : mat3x4<f32>,
 }
 
-@group(0) @binding(0) var<storage, read> S : Outer;
+@group(0u) @binding(0u) var<storage, read> S : Outer;
 
 fn f0(p_indices : array<u32, 1u>) -> f32 {
   return S.mat[p_indices[0u]].x;
@@ -2116,7 +2117,7 @@ fn f() {
 )";
 
     auto* expect = R"(
-@group(0) @binding(0) var<storage, read> S : array<f32>;
+@group(0u) @binding(0u) var<storage, read> S : array<f32>;
 
 fn len() -> u32 {
   return arrayLength(&(S));
@@ -2241,25 +2242,25 @@ fn b() {
 )";
 
     auto* expect = R"(
-@group(0) @binding(0) var<uniform> U : vec4<i32>;
+@group(0u) @binding(0u) var<uniform> U : vec4<i32>;
 
 struct str {
   i : vec4<i32>,
 }
 
-@group(0) @binding(1) var<uniform> U_str : str;
+@group(0u) @binding(1u) var<uniform> U_str : str;
 
-@group(0) @binding(2) var<uniform> U_arr : array<vec4<i32>, 8u>;
+@group(0u) @binding(2u) var<uniform> U_arr : array<vec4<i32>, 8u>;
 
-@group(0) @binding(3) var<uniform> U_arr_arr : array<array<vec4<i32>, 8u>, 4u>;
+@group(0u) @binding(3u) var<uniform> U_arr_arr : array<array<vec4<i32>, 8u>, 4u>;
 
-@group(1) @binding(0) var<storage, read> S : vec4<i32>;
+@group(1u) @binding(0u) var<storage, read> S : vec4<i32>;
 
-@group(1) @binding(1) var<storage, read> S_str : str;
+@group(1u) @binding(1u) var<storage, read> S_str : str;
 
-@group(1) @binding(2) var<storage, read> S_arr : array<vec4<i32>, 8u>;
+@group(1u) @binding(2u) var<storage, read> S_arr : array<vec4<i32>, 8u>;
 
-@group(1) @binding(3) var<storage, read> S_arr_arr : array<array<vec4<i32>, 8u>, 4u>;
+@group(1u) @binding(3u) var<storage, read> S_arr_arr : array<array<vec4<i32>, 8u>, 4u>;
 
 var<workgroup> W : vec4<i32>;
 
@@ -2373,15 +2374,15 @@ fn c() {
 )";
 
     auto* expect = R"(
-@group(0) @binding(0) var<storage, read> S : array<array<array<array<i32, 9u>, 9u>, 9u>, 50u>;
+@group(0u) @binding(0u) var<storage, read> S : array<array<array<array<i32, 9u>, 9u>, 9u>, 50u>;
 
 fn a(i : i32) -> i32 {
   return i;
 }
 
 fn b(p_indices : array<u32, 1u>) -> i32 {
-  let v = &(S[p_indices[0u]]);
-  return (*(v))[a((*(v))[0i][1i][2i])][a((*(v))[a(3i)][4i][5i])][a((*(v))[6i][a(7i)][8i])];
+  let v_1 = &(S[p_indices[0u]]);
+  return (*(v_1))[a((*(v_1))[0i][1i][2i])][a((*(v_1))[a(3i)][4i][5i])][a((*(v_1))[6i][a(7i)][8i])];
 }
 
 fn c() {
@@ -2414,17 +2415,17 @@ fn c() {
 )";
 
     auto* expect = R"(
-@group(0) @binding(0) var<storage, read> S : array<array<array<array<i32, 9u>, 9u>, 9u>, 50u>;
+@group(0u) @binding(0u) var<storage, read> S : array<array<array<array<i32, 9u>, 9u>, 9u>, 50u>;
 
 fn a(pre : i32, i_indices : array<u32, 4u>, post : i32) -> i32 {
   return S[i_indices[0u]][i_indices[1u]][i_indices[2u]][i_indices[3u]];
 }
 
 fn b(p_indices : array<u32, 1u>) -> i32 {
-  let v = p_indices[0u];
-  let v_1 = a(20i, array<u32, 4u>(v, u32(0i), u32(1i), u32(2i)), 30i);
-  let v_2 = a(40i, array<u32, 4u>(v, u32(3i), u32(4i), u32(5i)), 50i);
-  return a(10i, array<u32, 4u>(v, u32(v_1), u32(v_2), u32(a(60i, array<u32, 4u>(v, u32(6i), u32(7i), u32(8i)), 70i))), 80i);
+  let v_1 = p_indices[0u];
+  let v_2 = a(20i, array<u32, 4u>(v_1, u32(0i), u32(1i), u32(2i)), 30i);
+  let v_3 = a(40i, array<u32, 4u>(v_1, u32(3i), u32(4i), u32(5i)), 50i);
+  return a(10i, array<u32, 4u>(v_1, u32(v_2), u32(v_3), u32(a(60i, array<u32, 4u>(v_1, u32(6i), u32(7i), u32(8i)), 70i))), 80i);
 }
 
 fn c() {
@@ -2456,17 +2457,17 @@ fn c() {
 )";
 
     auto* expect = R"(
-@group(0) @binding(0) var<storage, read> S : array<array<array<i32, 9u>, 9u>, 50u>;
+@group(0u) @binding(0u) var<storage, read> S : array<array<array<i32, 9u>, 9u>, 50u>;
 
-@group(0) @binding(0) var<uniform> U : array<array<array<vec4<i32>, 9u>, 9u>, 50u>;
+@group(0u) @binding(0u) var<uniform> U : array<array<array<vec4<i32>, 9u>, 9u>, 50u>;
 
 fn a(i : i32) -> i32 {
   return i;
 }
 
 fn b(s_indices : array<u32, 1u>, u_indices : array<u32, 1u>) -> i32 {
-  let v = &(U[u_indices[0u]]);
-  return S[s_indices[0u]][a((*(v))[0i][1i].x)][a((*(v))[a(3i)][4i].y)];
+  let v_1 = &(U[u_indices[0u]]);
+  return S[s_indices[0u]][a((*(v_1))[0i][1i].x)][a((*(v_1))[a(3i)][4i].y)];
 }
 
 fn c() {

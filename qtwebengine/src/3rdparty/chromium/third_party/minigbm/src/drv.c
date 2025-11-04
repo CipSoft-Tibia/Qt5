@@ -14,10 +14,10 @@
 #include <sys/types.h>
 #include <unistd.h>
 #include <xf86drm.h>
+#include <libgen.h>
 
 #ifdef __ANDROID__
 #include <cutils/log.h>
-#include <libgen.h>
 #endif
 
 #include "drv_helpers.h"

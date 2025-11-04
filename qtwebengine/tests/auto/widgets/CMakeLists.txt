@@ -4,6 +4,7 @@
 add_subdirectory(defaultsurfaceformat)
 add_subdirectory(qwebenginepage)
 add_subdirectory(qwebengineprofile)
+add_subdirectory(qwebengineprofilebuilder)
 add_subdirectory(qwebengineview)
 add_subdirectory(favicon)
 add_subdirectory(loadsignals)

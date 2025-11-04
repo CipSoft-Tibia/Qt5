@@ -12,7 +12,7 @@
 QT_BEGIN_NAMESPACE
 
 QQuickColorValueType::QQuickColorValueType(const QString &string)
-    : v(QColor::fromString(string))
+    : QColor(QColor::fromString(string))
 {
 }
 
@@ -23,144 +23,161 @@ QVariant QQuickColorValueType::create(const QJSValue &params)
 
 QString QQuickColorValueType::toString() const
 {
-    return v.name(v.alpha() != 255 ? QColor::HexArgb : QColor::HexRgb);
+    return QColor::name(QColor::alpha() != 255 ? QColor::HexArgb : QColor::HexRgb);
 }
 
-QVariant QQuickColorValueType::lighter(qreal factor) const
+QColor QQuickColorValueType::lighter(qreal factor) const
 {
-    return QQml_colorProvider()->lighter(this->v, factor);
+    return QColor::lighter(int(qRound(factor*100.)));
 }
 
-QVariant QQuickColorValueType::darker(qreal factor) const
+QColor QQuickColorValueType::darker(qreal factor) const
 {
-    return QQml_colorProvider()->darker(this->v, factor);
+    return QColor::darker(int(qRound(factor*100.)));
 }
 
-QVariant QQuickColorValueType::alpha(qreal value) const
+QColor QQuickColorValueType::alpha(qreal value) const
 {
-    return QQml_colorProvider()->alpha(this->v, value);
+    QColor color = *this;
+    color.setAlphaF(value);
+    return color;
 }
 
-QVariant QQuickColorValueType::tint(QVariant tintColor) const
+QColor QQuickColorValueType::tint(const QColor &tintColor) const
 {
-    return QQml_colorProvider()->tint(this->v, tintColor);
+    int tintAlpha = tintColor.alpha();
+    if (tintAlpha == 0xFF)
+        return tintColor;
+    else if (tintAlpha == 0x00)
+        return *this;
+
+    // tint the base color and return the final color
+    const QColor baseColor = QColor::toRgb();
+    const qreal a = tintColor.alphaF();
+    const qreal inv_a = 1.0 - a;
+
+    const qreal r = tintColor.redF() * a + baseColor.redF() * inv_a;
+    const qreal g = tintColor.greenF() * a + baseColor.greenF() * inv_a;
+    const qreal b = tintColor.blueF() * a + baseColor.blueF() * inv_a;
+
+    return QColor::fromRgbF(r, g, b, a + inv_a * baseColor.alphaF());
 }
 
 qreal QQuickColorValueType::r() const
 {
-    return v.redF();
+    return QColor::redF();
 }
 
 qreal QQuickColorValueType::g() const
 {
-    return v.greenF();
+    return QColor::greenF();
 }
 
 qreal QQuickColorValueType::b() const
 {
-    return v.blueF();
+    return QColor::blueF();
 }
 
 qreal QQuickColorValueType::a() const
 {
-    return v.alphaF();
+    return QColor::alphaF();
 }
 
 qreal QQuickColorValueType::hsvHue() const
 {
-    return v.hsvHueF();
+    return QColor::hsvHueF();
 }
 
 qreal QQuickColorValueType::hsvSaturation() const
 {
-    return v.hsvSaturationF();
+    return QColor::hsvSaturationF();
 }
 
 qreal QQuickColorValueType::hsvValue() const
 {
-    return v.valueF();
+    return QColor::valueF();
 }
 
 qreal QQuickColorValueType::hslHue() const
 {
-    return v.hslHueF();
+    return QColor::hslHueF();
 }
 
 qreal QQuickColorValueType::hslSaturation() const
 {
-    return v.hslSaturationF();
+    return QColor::hslSaturationF();
 }
 
 qreal QQuickColorValueType::hslLightness() const
 {
-    return v.lightnessF();
+    return QColor::lightnessF();
 }
 
 bool QQuickColorValueType::isValid() const
 {
-    return v.isValid();
+    return QColor::isValid();
 }
 
 void QQuickColorValueType::setR(qreal r)
 {
-    v.setRedF(r);
+    QColor::setRedF(r);
 }
 
 void QQuickColorValueType::setG(qreal g)
 {
-    v.setGreenF(g);
+    QColor::setGreenF(g);
 }
 
 void QQuickColorValueType::setB(qreal b)
 {
-    v.setBlueF(b);
+    QColor::setBlueF(b);
 }
 
 void QQuickColorValueType::setA(qreal a)
 {
-    v.setAlphaF(a);
+    QColor::setAlphaF(a);
 }
 
 void QQuickColorValueType::setHsvHue(qreal hsvHue)
 {
     float hue, saturation, value, alpha;
-    v.getHsvF(&hue, &saturation, &value, &alpha);
-    v.setHsvF(hsvHue, saturation, value, alpha);
+    QColor::getHsvF(&hue, &saturation, &value, &alpha);
+    QColor::setHsvF(hsvHue, saturation, value, alpha);
 }
 
 void QQuickColorValueType::setHsvSaturation(qreal hsvSaturation)
 {
     float hue, saturation, value, alpha;
-    v.getHsvF(&hue, &saturation, &value, &alpha);
-    v.setHsvF(hue, hsvSaturation, value, alpha);
+    QColor::getHsvF(&hue, &saturation, &value, &alpha);
+    QColor::setHsvF(hue, hsvSaturation, value, alpha);
 }
 
 void QQuickColorValueType::setHsvValue(qreal hsvValue)
 {
     float hue, saturation, value, alpha;
-    v.getHsvF(&hue, &saturation, &value, &alpha);
-    v.setHsvF(hue, saturation, hsvValue, alpha);
+    QColor::getHsvF(&hue, &saturation, &value, &alpha);
+    QColor::setHsvF(hue, saturation, hsvValue, alpha);
 }
 
 void QQuickColorValueType::setHslHue(qreal hslHue)
 {
     float hue, saturation, lightness, alpha;
-    v.getHslF(&hue, &saturation, &lightness, &alpha);
-    v.setHslF(hslHue, saturation, lightness, alpha);
+    QColor::getHslF(&hue, &saturation, &lightness, &alpha);
+    QColor::setHslF(hslHue, saturation, lightness, alpha);
 }
 
 void QQuickColorValueType::setHslSaturation(qreal hslSaturation)
 {
     float hue, saturation, lightness, alpha;
-    v.getHslF(&hue, &saturation, &lightness, &alpha);
-    v.setHslF(hue, hslSaturation, lightness, alpha);
+    QColor::getHslF(&hue, &saturation, &lightness, &alpha);
+    QColor::setHslF(hue, hslSaturation, lightness, alpha);
 }
 
 void QQuickColorValueType::setHslLightness(qreal hslLightness)
 {
     float hue, saturation, lightness, alpha;
-    v.getHslF(&hue, &saturation, &lightness, &alpha);
-    v.setHslF(hue, saturation, hslLightness, alpha);
+    QColor::getHslF(&hue, &saturation, &lightness, &alpha);
+    QColor::setHslF(hue, saturation, hslLightness, alpha);
 }
 
 QVariant QQuickVector2DValueType::create(const QJSValue &params)
@@ -174,87 +191,87 @@ QVariant QQuickVector2DValueType::create(const QJSValue &params)
 
 QString QQuickVector2DValueType::toString() const
 {
-    return QString(QLatin1String("QVector2D(%1, %2)")).arg(v.x()).arg(v.y());
+    return QString::fromLatin1("QVector2D(%1, %2)").arg(QVector2D::x()).arg(QVector2D::y());
 }
 
 qreal QQuickVector2DValueType::x() const
 {
-    return v.x();
+    return QVector2D::x();
 }
 
 qreal QQuickVector2DValueType::y() const
 {
-    return v.y();
+    return QVector2D::y();
 }
 
 void QQuickVector2DValueType::setX(qreal x)
 {
-    v.setX(x);
+    QVector2D::setX(x);
 }
 
 void QQuickVector2DValueType::setY(qreal y)
 {
-    v.setY(y);
+    QVector2D::setY(y);
 }
 
 qreal QQuickVector2DValueType::dotProduct(const QVector2D &vec) const
 {
-    return QVector2D::dotProduct(v, vec);
+    return QVector2D::dotProduct(*this, vec);
 }
 
 QVector2D QQuickVector2DValueType::times(const QVector2D &vec) const
 {
-    return v * vec;
+    return *this * vec;
 }
 
 QVector2D QQuickVector2DValueType::times(qreal scalar) const
 {
-    return v * scalar;
+    return *this * scalar;
 }
 
 QVector2D QQuickVector2DValueType::plus(const QVector2D &vec) const
 {
-    return v + vec;
+    return *this + vec;
 }
 
 QVector2D QQuickVector2DValueType::minus(const QVector2D &vec) const
 {
-    return v - vec;
+    return *this - vec;
 }
 
 QVector2D QQuickVector2DValueType::normalized() const
 {
-    return v.normalized();
+    return QVector2D::normalized();
 }
 
 qreal QQuickVector2DValueType::length() const
 {
-    return v.length();
+    return QVector2D::length();
 }
 
 QVector3D QQuickVector2DValueType::toVector3d() const
 {
-    return v.toVector3D();
+    return QVector2D::toVector3D();
 }
 
 QVector4D QQuickVector2DValueType::toVector4d() const
 {
-    return v.toVector4D();
+    return QVector2D::toVector4D();
 }
 
 bool QQuickVector2DValueType::fuzzyEquals(const QVector2D &vec, qreal epsilon) const
 {
     qreal absEps = qAbs(epsilon);
-    if (qAbs(v.x() - vec.x()) > absEps)
+    if (qAbs(QVector2D::x() - vec.x()) > absEps)
         return false;
-    if (qAbs(v.y() - vec.y()) > absEps)
+    if (qAbs(QVector2D::y() - vec.y()) > absEps)
         return false;
     return true;
 }
 
 bool QQuickVector2DValueType::fuzzyEquals(const QVector2D &vec) const
 {
-    return qFuzzyCompare(v, vec);
+    return qFuzzyCompare(*this, vec);
 }
 
 QVariant QQuickVector3DValueType::create(const QJSValue &params)
@@ -273,109 +290,110 @@ QVariant QQuickVector3DValueType::create(const QJSValue &params)
 
 QString QQuickVector3DValueType::toString() const
 {
-    return QString(QLatin1String("QVector3D(%1, %2, %3)")).arg(v.x()).arg(v.y()).arg(v.z());
+    return QString::fromLatin1("QVector3D(%1, %2, %3)")
+            .arg(QVector3D::x()).arg(QVector3D::y()).arg(QVector3D::z());
 }
 
 qreal QQuickVector3DValueType::x() const
 {
-    return v.x();
+    return QVector3D::x();
 }
 
 qreal QQuickVector3DValueType::y() const
 {
-    return v.y();
+    return QVector3D::y();
 }
 
 qreal QQuickVector3DValueType::z() const
 {
-    return v.z();
+    return QVector3D::z();
 }
 
 void QQuickVector3DValueType::setX(qreal x)
 {
-    v.setX(x);
+    QVector3D::setX(x);
 }
 
 void QQuickVector3DValueType::setY(qreal y)
 {
-    v.setY(y);
+    QVector3D::setY(y);
 }
 
 void QQuickVector3DValueType::setZ(qreal z)
 {
-    v.setZ(z);
+    QVector3D::setZ(z);
 }
 
 QVector3D QQuickVector3DValueType::crossProduct(const QVector3D &vec) const
 {
-    return QVector3D::crossProduct(v, vec);
+    return QVector3D::crossProduct(*this, vec);
 }
 
 qreal QQuickVector3DValueType::dotProduct(const QVector3D &vec) const
 {
-    return QVector3D::dotProduct(v, vec);
+    return QVector3D::dotProduct(*this, vec);
 }
 
 QVector3D QQuickVector3DValueType::times(const QMatrix4x4 &m) const
 {
-    return (QVector4D(v, 1) * m).toVector3DAffine();
+    return (QVector4D(*this, 1) * m).toVector3DAffine();
 }
 
 QVector3D QQuickVector3DValueType::times(const QVector3D &vec) const
 {
-    return v * vec;
+    return *this * vec;
 }
 
 QVector3D QQuickVector3DValueType::times(qreal scalar) const
 {
-    return v * scalar;
+    return *this * scalar;
 }
 
 QVector3D QQuickVector3DValueType::plus(const QVector3D &vec) const
 {
-    return v + vec;
+    return *this + vec;
 }
 
 QVector3D QQuickVector3DValueType::minus(const QVector3D &vec) const
 {
-    return v - vec;
+    return *this - vec;
 }
 
 QVector3D QQuickVector3DValueType::normalized() const
 {
-    return v.normalized();
+    return QVector3D::normalized();
 }
 
 qreal QQuickVector3DValueType::length() const
 {
-    return v.length();
+    return QVector3D::length();
 }
 
 QVector2D QQuickVector3DValueType::toVector2d() const
 {
-    return v.toVector2D();
+    return QVector3D::toVector2D();
 }
 
 QVector4D QQuickVector3DValueType::toVector4d() const
 {
-    return v.toVector4D();
+    return QVector3D::toVector4D();
 }
 
 bool QQuickVector3DValueType::fuzzyEquals(const QVector3D &vec, qreal epsilon) const
 {
     qreal absEps = qAbs(epsilon);
-    if (qAbs(v.x() - vec.x()) > absEps)
+    if (qAbs(QVector3D::x() - vec.x()) > absEps)
         return false;
-    if (qAbs(v.y() - vec.y()) > absEps)
+    if (qAbs(QVector3D::y() - vec.y()) > absEps)
         return false;
-    if (qAbs(v.z() - vec.z()) > absEps)
+    if (qAbs(QVector3D::z() - vec.z()) > absEps)
         return false;
     return true;
 }
 
 bool QQuickVector3DValueType::fuzzyEquals(const QVector3D &vec) const
 {
-    return qFuzzyCompare(v, vec);
+    return qFuzzyCompare(*this, vec);
 }
 
 QVariant QQuickVector4DValueType::create(const QJSValue &params)
@@ -395,116 +413,117 @@ QVariant QQuickVector4DValueType::create(const QJSValue &params)
 
 QString QQuickVector4DValueType::toString() const
 {
-    return QString(QLatin1String("QVector4D(%1, %2, %3, %4)")).arg(v.x()).arg(v.y()).arg(v.z()).arg(v.w());
+    return QString::fromLatin1("QVector4D(%1, %2, %3, %4)")
+            .arg(QVector4D::x()).arg(QVector4D::y()).arg(QVector4D::z()).arg(QVector4D::w());
 }
 
 qreal QQuickVector4DValueType::x() const
 {
-    return v.x();
+    return QVector4D::x();
 }
 
 qreal QQuickVector4DValueType::y() const
 {
-    return v.y();
+    return QVector4D::y();
 }
 
 qreal QQuickVector4DValueType::z() const
 {
-    return v.z();
+    return QVector4D::z();
 }
 
 qreal QQuickVector4DValueType::w() const
 {
-    return v.w();
+    return QVector4D::w();
 }
 
 void QQuickVector4DValueType::setX(qreal x)
 {
-    v.setX(x);
+    QVector4D::setX(x);
 }
 
 void QQuickVector4DValueType::setY(qreal y)
 {
-    v.setY(y);
+    QVector4D::setY(y);
 }
 
 void QQuickVector4DValueType::setZ(qreal z)
 {
-    v.setZ(z);
+    QVector4D::setZ(z);
 }
 
 void QQuickVector4DValueType::setW(qreal w)
 {
-    v.setW(w);
+    QVector4D::setW(w);
 }
 
 qreal QQuickVector4DValueType::dotProduct(const QVector4D &vec) const
 {
-    return QVector4D::dotProduct(v, vec);
+    return QVector4D::dotProduct(*this, vec);
 }
 
 QVector4D QQuickVector4DValueType::times(const QVector4D &vec) const
 {
-    return v * vec;
+    return *this * vec;
 }
 
 QVector4D QQuickVector4DValueType::times(const QMatrix4x4 &m) const
 {
-    return v * m;
+    return *this * m;
 }
 
 QVector4D QQuickVector4DValueType::times(qreal scalar) const
 {
-    return v * scalar;
+    return *this * scalar;
 }
 
 QVector4D QQuickVector4DValueType::plus(const QVector4D &vec) const
 {
-    return v + vec;
+    return *this + vec;
 }
 
 QVector4D QQuickVector4DValueType::minus(const QVector4D &vec) const
 {
-    return v - vec;
+    return *this - vec;
 }
 
 QVector4D QQuickVector4DValueType::normalized() const
 {
-    return v.normalized();
+    return QVector4D::normalized();
 }
 
 qreal QQuickVector4DValueType::length() const
 {
-    return v.length();
+    return QVector4D::length();
 }
 
 QVector2D QQuickVector4DValueType::toVector2d() const
 {
-    return v.toVector2D();
+    return QVector4D::toVector2D();
 }
 
 QVector3D QQuickVector4DValueType::toVector3d() const
 {
-    return v.toVector3D();
+    return QVector4D::toVector3D();
 }
 
 bool QQuickVector4DValueType::fuzzyEquals(const QVector4D &vec, qreal epsilon) const
 {
     qreal absEps = qAbs(epsilon);
-    if (qAbs(v.x() - vec.x()) > absEps)
+    if (qAbs(QVector4D::x() - vec.x()) > absEps)
         return false;
-    if (qAbs(v.y() - vec.y()) > absEps)
+    if (qAbs(QVector4D::y() - vec.y()) > absEps)
         return false;
-    if (qAbs(v.z() - vec.z()) > absEps)
+    if (qAbs(QVector4D::z() - vec.z()) > absEps)
         return false;
-    if (qAbs(v.w() - vec.w()) > absEps)
+    if (qAbs(QVector4D::w() - vec.w()) > absEps)
         return false;
     return true;
 }
 
 bool QQuickVector4DValueType::fuzzyEquals(const QVector4D &vec) const
 {
-    return qFuzzyCompare(v, vec);
+    return qFuzzyCompare(*this, vec);
 }
 
 QVariant QQuickQuaternionValueType::create(const QJSValue &params)
@@ -524,126 +543,130 @@ QVariant QQuickQuaternionValueType::create(const QJSValue &params)
 
 QString QQuickQuaternionValueType::toString() const
 {
-    return QString(QLatin1String("QQuaternion(%1, %2, %3, %4)")).arg(v.scalar()).arg(v.x()).arg(v.y()).arg(v.z());
+    return QString::fromLatin1("QQuaternion(%1, %2, %3, %4)")
+            .arg(QQuaternion::scalar())
+            .arg(QQuaternion::x())
+            .arg(QQuaternion::y())
+            .arg(QQuaternion::z());
 }
 
 qreal QQuickQuaternionValueType::scalar() const
 {
-    return v.scalar();
+    return QQuaternion::scalar();
 }
 
 qreal QQuickQuaternionValueType::x() const
 {
-    return v.x();
+    return QQuaternion::x();
 }
 
 qreal QQuickQuaternionValueType::y() const
 {
-    return v.y();
+    return QQuaternion::y();
 }
 
 qreal QQuickQuaternionValueType::z() const
 {
-    return v.z();
+    return QQuaternion::z();
 }
 
 void QQuickQuaternionValueType::setScalar(qreal scalar)
 {
-    v.setScalar(scalar);
+    QQuaternion::setScalar(scalar);
 }
 
 void QQuickQuaternionValueType::setX(qreal x)
 {
-    v.setX(x);
+    QQuaternion::setX(x);
 }
 
 void QQuickQuaternionValueType::setY(qreal y)
 {
-    v.setY(y);
+    QQuaternion::setY(y);
 }
 
 void QQuickQuaternionValueType::setZ(qreal z)
 {
-    v.setZ(z);
+    QQuaternion::setZ(z);
 }
 
 qreal QQuickQuaternionValueType::dotProduct(const QQuaternion &q) const
 {
-    return QQuaternion::dotProduct(v, q);
+    return QQuaternion::dotProduct(*this, q);
 }
 
 QQuaternion QQuickQuaternionValueType::times(const QQuaternion &q) const
 {
-    return v * q;
+    return *this * q;
 }
 
 QVector3D QQuickQuaternionValueType::times(const QVector3D &vec) const
 {
-    return v * vec;
+    return *this * vec;
 }
 
 QQuaternion QQuickQuaternionValueType::times(qreal factor) const
 {
-    return v * factor;
+    return *this * factor;
 }
 
 QQuaternion QQuickQuaternionValueType::plus(const QQuaternion &q) const
 {
-    return v + q;
+    return *this + q;
 }
 
 QQuaternion QQuickQuaternionValueType::minus(const QQuaternion &q) const
 {
-    return v - q;
+    return *this - q;
 }
 
 QQuaternion QQuickQuaternionValueType::normalized() const
 {
-    return v.normalized();
+    return QQuaternion::normalized();
 }
 
 QQuaternion QQuickQuaternionValueType::inverted() const
 {
-    return v.inverted();
+    return QQuaternion::inverted();
 }
 
 QQuaternion QQuickQuaternionValueType::conjugated() const
 {
-    return v.conjugated();
+    return QQuaternion::conjugated();
 }
 
 qreal QQuickQuaternionValueType::length() const
 {
-    return v.length();
+    return QQuaternion::length();
 }
 
 QVector3D QQuickQuaternionValueType::toEulerAngles() const
 {
-    return v.toEulerAngles();
+    return QQuaternion::toEulerAngles();
 }
 
 QVector4D QQuickQuaternionValueType::toVector4d() const
 {
-    return v.toVector4D();
+    return QQuaternion::toVector4D();
 }
 
 bool QQuickQuaternionValueType::fuzzyEquals(const QQuaternion &q, qreal epsilon) const
 {
     qreal absEps = qAbs(epsilon);
-    if (qAbs(v.scalar() - q.scalar()) > absEps)
+    if (qAbs(QQuaternion::scalar() - q.scalar()) > absEps)
         return false;
-    if (qAbs(v.x() - q.x()) > absEps)
+    if (qAbs(QQuaternion::x() - q.x()) > absEps)
         return false;
-    if (qAbs(v.y() - q.y()) > absEps)
+    if (qAbs(QQuaternion::y() - q.y()) > absEps)
         return false;
-    if (qAbs(v.z() - q.z()) > absEps)
+    if (qAbs(QQuaternion::z() - q.z()) > absEps)
         return false;
     return true;
 }
 
 bool QQuickQuaternionValueType::fuzzyEquals(const QQuaternion &q) const
 {
-    return qFuzzyCompare(v, q);
+    return qFuzzyCompare(*this, q);
 }
 
 QVariant QQuickMatrix4x4ValueType::create(const QJSValue &params)
@@ -682,67 +705,67 @@ QVariant QQuickMatrix4x4ValueType::create(const QJSValue &params)
 
 QMatrix4x4 QQuickMatrix4x4ValueType::times(const QMatrix4x4 &m) const
 {
-    return v * m;
+    return *this * m;
 }
 
 QVector4D QQuickMatrix4x4ValueType::times(const QVector4D &vec) const
 {
-    return v * vec;
+    return *this * vec;
 }
 
 QVector3D QQuickMatrix4x4ValueType::times(const QVector3D &vec) const
 {
-    return v.map(vec);
+    return QMatrix4x4::map(vec);
 }
 
 QMatrix4x4 QQuickMatrix4x4ValueType::times(qreal factor) const
 {
-    return v * factor;
+    return *this * factor;
 }
 
 QMatrix4x4 QQuickMatrix4x4ValueType::plus(const QMatrix4x4 &m) const
 {
-    return v + m;
+    return *this + m;
 }
 
 QMatrix4x4 QQuickMatrix4x4ValueType::minus(const QMatrix4x4 &m) const
 {
-    return v - m;
+    return *this - m;
 }
 
 QVector4D QQuickMatrix4x4ValueType::row(int n) const
 {
-    return v.row(n);
+    return QMatrix4x4::row(n);
 }
 
 QVector4D QQuickMatrix4x4ValueType::column(int m) const
 {
-    return v.column(m);
+    return QMatrix4x4::column(m);
 }
 
 qreal QQuickMatrix4x4ValueType::determinant() const
 {
-    return v.determinant();
+    return QMatrix4x4::determinant();
 }
 
 QMatrix4x4 QQuickMatrix4x4ValueType::inverted() const
 {
-    return v.inverted();
+    return QMatrix4x4::inverted();
 }
 
 QMatrix4x4 QQuickMatrix4x4ValueType::transposed() const
 {
-    return v.transposed();
+    return QMatrix4x4::transposed();
 }
 
 QPointF QQuickMatrix4x4ValueType::map(const QPointF p) const
 {
-    return v.map(p);
+    return QMatrix4x4::map(p);
 }
 
 QRectF QQuickMatrix4x4ValueType::mapRect(const QRectF r) const
 {
-    return v.mapRect(r);
+    return QMatrix4x4::mapRect(r);
 }
 
 bool QQuickMatrix4x4ValueType::fuzzyEquals(const QMatrix4x4 &m, qreal epsilon) const
@@ -750,7 +773,7 @@ bool QQuickMatrix4x4ValueType::fuzzyEquals(const QMatrix4x4 &m, qreal epsilon) c
     qreal absEps = qAbs(epsilon);
     for (int i = 0; i < 4; ++i) {
         for (int j = 0; j < 4; ++j) {
-            if (qAbs(v(i,j) - m(i,j)) > absEps) {
+            if (qAbs((*this)(i,j) - m(i,j)) > absEps) {
                 return false;
             }
         }
@@ -760,7 +783,7 @@ bool QQuickMatrix4x4ValueType::fuzzyEquals(const QMatrix4x4 &m, qreal epsilon) c
 
 bool QQuickMatrix4x4ValueType::fuzzyEquals(const QMatrix4x4 &m) const
 {
-    return qFuzzyCompare(v, m);
+    return qFuzzyCompare(*this, m);
 }
 
 /*!
@@ -938,6 +961,7 @@ QVariant QQuickFontValueType::create(const QJSValue &params)
     setFontProperty(ret, &QFont::setPixelSize, QStringLiteral("pixelSize"), params, &ok);
     setFontProperty(ret, &QFont::setPointSize, QStringLiteral("pointSize"), params, &ok);
     setFontProperty(ret, &QFont::setStrikeOut, QStringLiteral("strikeout"), params, &ok);
+    setFontProperty(ret, &QFont::setStyleName, QStringLiteral("styleName"), params, &ok);
     setFontProperty(ret, &QFont::setUnderline, QStringLiteral("underline"), params, &ok);
     setFontProperty(ret, &QFont::setWeight, QStringLiteral("weight"), params, &ok);
     setFontProperty(ret, &QFont::setWordSpacing, QStringLiteral("wordSpacing"), params, &ok);
@@ -1044,192 +1068,195 @@ QVariant QQuickFontValueType::create(const QJSValue &params)
 
 QString QQuickFontValueType::toString() const
 {
-    return QString(QLatin1String("QFont(%1)")).arg(v.toString());
+    return QLatin1String("QFont(%1)").arg(QFont::toString());
 }
 
 QString QQuickFontValueType::family() const
 {
-    return v.family();
+    return QFont::family();
 }
 
 void QQuickFontValueType::setFamily(const QString &family)
 {
-    v.setFamily(family);
+    QFont::setFamily(family);
 }
 
 QString QQuickFontValueType::styleName() const
 {
-    return v.styleName();
+    return QFont::styleName();
 }
 
 void QQuickFontValueType::setStyleName(const QString &style)
 {
-    v.setStyleName(style);
+    QFont::setStyleName(style);
 }
 
 bool QQuickFontValueType::bold() const
 {
-    return v.bold();
+    return QFont::bold();
 }
 
 void QQuickFontValueType::setBold(bool b)
 {
-    v.setBold(b);
+    QFont::setBold(b);
 }
 
 int QQuickFontValueType::weight() const
 {
-    return v.weight();
+    return QFont::weight();
 }
 
 void QQuickFontValueType::setWeight(int w)
 {
-    v.setWeight(QFont::Weight(w));
+    QFont::setWeight(QFont::Weight(w));
 }
 
 bool QQuickFontValueType::italic() const
 {
-    return v.italic();
+    return QFont::italic();
 }
 
 void QQuickFontValueType::setItalic(bool b)
 {
-    v.setItalic(b);
+    QFont::setItalic(b);
 }
 
 bool QQuickFontValueType::underline() const
 {
-    return v.underline();
+    return QFont::underline();
 }
 
 void QQuickFontValueType::setUnderline(bool b)
 {
-    v.setUnderline(b);
+    QFont::setUnderline(b);
 }
 
 bool QQuickFontValueType::overline() const
 {
-    return v.overline();
+    return QFont::overline();
 }
 
 void QQuickFontValueType::setOverline(bool b)
 {
-    v.setOverline(b);
+    QFont::setOverline(b);
 }
 
 bool QQuickFontValueType::strikeout() const
 {
-    return v.strikeOut();
+    return QFont::strikeOut();
 }
 
 void QQuickFontValueType::setStrikeout(bool b)
 {
-    v.setStrikeOut(b);
+    QFont::setStrikeOut(b);
 }
 
 qreal QQuickFontValueType::pointSize() const
 {
-    if (v.pointSizeF() == -1) {
-        return v.pixelSize() * qreal(72.) / qreal(qt_defaultDpi());
+    if (QFont::pointSizeF() == -1) {
+        return QFont::pixelSize() * qreal(72.) / qreal(qt_defaultDpi());
     }
-    return v.pointSizeF();
+    return QFont::pointSizeF();
 }
 
 void QQuickFontValueType::setPointSize(qreal size)
 {
-    if ((v.resolveMask() & QFont::SizeResolved) && v.pixelSize() != -1) {
+    if ((QFont::resolveMask() & QFont::SizeResolved) && QFont::pixelSize() != -1) {
         qWarning() << "Both point size and pixel size set. Using pixel size.";
         return;
     }
 
     if (size >= 0.0) {
-        v.setPointSizeF(size);
+        QFont::setPointSizeF(size);
     }
 }
 
 int QQuickFontValueType::pixelSize() const
 {
-    if (v.pixelSize() == -1) {
-        return (v.pointSizeF() * qt_defaultDpi()) / qreal(72.);
+    if (QFont::pixelSize() == -1) {
+        return (QFont::pointSizeF() * qt_defaultDpi()) / qreal(72.);
     }
-    return v.pixelSize();
+    return QFont::pixelSize();
 }
 
 void QQuickFontValueType::setPixelSize(int size)
 {
     if (size >0) {
-        if ((v.resolveMask() & QFont::SizeResolved) && v.pointSizeF() != -1)
+        if ((QFont::resolveMask() & QFont::SizeResolved) && QFont::pointSizeF() != -1)
             qWarning() << "Both point size and pixel size set. Using pixel size.";
-        v.setPixelSize(size);
+        QFont::setPixelSize(size);
     }
 }
 
 QQuickFontEnums::Capitalization QQuickFontValueType::capitalization() const
 {
-    return (QQuickFontEnums::Capitalization)v.capitalization();
+    return (QQuickFontEnums::Capitalization)QFont::capitalization();
 }
 
 void QQuickFontValueType::setCapitalization(QQuickFontEnums::Capitalization c)
 {
-    v.setCapitalization((QFont::Capitalization)c);
+    QFont::setCapitalization((QFont::Capitalization)c);
 }
 
 qreal QQuickFontValueType::letterSpacing() const
 {
-    return v.letterSpacing();
+    return QFont::letterSpacing();
 }
 
 void QQuickFontValueType::setLetterSpacing(qreal size)
 {
-    v.setLetterSpacing(QFont::AbsoluteSpacing, size);
+    QFont::setLetterSpacing(QFont::AbsoluteSpacing, size);
 }
 
 qreal QQuickFontValueType::wordSpacing() const
 {
-    return v.wordSpacing();
+    return QFont::wordSpacing();
 }
 
 void QQuickFontValueType::setWordSpacing(qreal size)
 {
-    v.setWordSpacing(size);
+    QFont::setWordSpacing(size);
 }
 
 QQuickFontEnums::HintingPreference QQuickFontValueType::hintingPreference() const
 {
-    return QQuickFontEnums::HintingPreference(v.hintingPreference());
+    return QQuickFontEnums::HintingPreference(QFont::hintingPreference());
 }
 
 void QQuickFontValueType::setHintingPreference(QQuickFontEnums::HintingPreference hintingPreference)
 {
-    v.setHintingPreference(QFont::HintingPreference(hintingPreference));
+    QFont::setHintingPreference(QFont::HintingPreference(hintingPreference));
 }
 
 bool QQuickFontValueType::kerning() const
 {
-    return v.kerning();
+    return QFont::kerning();
 }
 
 void QQuickFontValueType::setKerning(bool b)
 {
-    v.setKerning(b);
+    QFont::setKerning(b);
 }
 
 bool QQuickFontValueType::preferShaping() const
 {
-    return (v.styleStrategy() & QFont::PreferNoShaping) == 0;
+    return (QFont::styleStrategy() & QFont::PreferNoShaping) == 0;
 }
 
 void QQuickFontValueType::setPreferShaping(bool enable)
 {
-    if (enable)
-        v.setStyleStrategy(static_cast<QFont::StyleStrategy>(v.styleStrategy() & ~QFont::PreferNoShaping));
-    else
-        v.setStyleStrategy(static_cast<QFont::StyleStrategy>(v.styleStrategy() | QFont::PreferNoShaping));
+    if (enable) {
+        QFont::setStyleStrategy(
+                static_cast<QFont::StyleStrategy>(QFont::styleStrategy() & ~QFont::PreferNoShaping));
+    } else {
+        QFont::setStyleStrategy(
+                static_cast<QFont::StyleStrategy>(QFont::styleStrategy() | QFont::PreferNoShaping));
+    }
 }
 
 void QQuickFontValueType::setVariableAxes(const QVariantMap &variableAxes)
 {
-    v.clearVariableAxes();
+    QFont::clearVariableAxes();
     for (auto [variableAxisName, variableAxisValue] : variableAxes.asKeyValueRange()) {
         const auto maybeTag = QFont::Tag::fromString(variableAxisName);
         if (!maybeTag) {
@@ -1240,26 +1267,27 @@ void QQuickFontValueType::setVariableAxes(const QVariantMap &variableAxes)
         bool ok;
         float value = variableAxisValue.toFloat(&ok);
         if (!ok) {
-            qWarning() << "Variable axis" << variableAxisName << "value" << variableAxisValue << "is not a floating point value.";
+            qWarning() << "Variable axis" << variableAxisName << "value" << variableAxisValue
+                       << "is not a floating point value.";
             continue;
         }
 
-        v.setVariableAxis(*maybeTag, value);
+        QFont::setVariableAxis(*maybeTag, value);
     }
 }
 
 QVariantMap QQuickFontValueType::variableAxes() const
 {
     QVariantMap ret;
-    for (const auto &tag : v.variableAxisTags())
-        ret.insert(QString::fromUtf8(tag.toString()), v.variableAxisValue(tag));
+    for (const auto &tag : QFont::variableAxisTags())
+        ret.insert(QString::fromUtf8(tag.toString()), QFont::variableAxisValue(tag));
 
     return ret;
 }
 
 void QQuickFontValueType::setFeatures(const QVariantMap &features)
 {
-    v.clearFeatures();
+    QFont::clearFeatures();
     for (auto [featureName, featureValue] : features.asKeyValueRange()) {
         const auto maybeTag = QFont::Tag::fromString(featureName);
         if (!maybeTag) {
@@ -1274,43 +1302,53 @@ void QQuickFontValueType::setFeatures(const QVariantMap &features)
             continue;
         }
 
-        v.setFeature(*maybeTag, value);
+        QFont::setFeature(*maybeTag, value);
     }
 }
 
 QVariantMap QQuickFontValueType::features() const
 {
     QVariantMap ret;
-    for (const auto &tag : v.featureTags())
-        ret.insert(QString::fromUtf8(tag.toString()), v.featureValue(tag));
+    for (const auto &tag : QFont::featureTags())
+        ret.insert(QString::fromUtf8(tag.toString()), QFont::featureValue(tag));
 
     return ret;
 }
 
 bool QQuickFontValueType::contextFontMerging() const
 {
-    return (v.styleStrategy() & QFont::ContextFontMerging) != 0;
+    return (QFont::styleStrategy() & QFont::ContextFontMerging) != 0;
 }
 
 void QQuickFontValueType::setContextFontMerging(bool enable)
 {
-    if (enable)
-        v.setStyleStrategy(static_cast<QFont::StyleStrategy>(v.styleStrategy() | QFont::ContextFontMerging));
-    else
-        v.setStyleStrategy(static_cast<QFont::StyleStrategy>(v.styleStrategy() & ~QFont::ContextFontMerging));
+    if (enable) {
+        QFont::setStyleStrategy(
+                static_cast<QFont::StyleStrategy>(
+                        QFont::styleStrategy() | QFont::ContextFontMerging));
+    } else {
+        QFont::setStyleStrategy(
+                static_cast<QFont::StyleStrategy>(
+                        QFont::styleStrategy() & ~QFont::ContextFontMerging));
+    }
 }
 
 bool QQuickFontValueType::preferTypoLineMetrics() const
 {
-    return (v.styleStrategy() & QFont::PreferTypoLineMetrics) != 0;
+    return (QFont::styleStrategy() & QFont::PreferTypoLineMetrics) != 0;
 }
 
 void QQuickFontValueType::setPreferTypoLineMetrics(bool enable)
 {
-    if (enable)
-        v.setStyleStrategy(static_cast<QFont::StyleStrategy>(v.styleStrategy() | QFont::PreferTypoLineMetrics));
-    else
-        v.setStyleStrategy(static_cast<QFont::StyleStrategy>(v.styleStrategy() & ~QFont::PreferTypoLineMetrics));
+    if (enable) {
+        QFont::setStyleStrategy(
+                static_cast<QFont::StyleStrategy>(
+                        QFont::styleStrategy() | QFont::PreferTypoLineMetrics));
+    } else {
+        QFont::setStyleStrategy(
+                static_cast<QFont::StyleStrategy>(
+                        QFont::styleStrategy() & ~QFont::PreferTypoLineMetrics));
+    }
 }
 
 QVariant QQuickColorSpaceValueType::create(const QJSValue &params)
@@ -1343,43 +1381,46 @@ QVariant QQuickColorSpaceValueType::create(const QJSValue &params)
 
 QQuickColorSpaceEnums::NamedColorSpace QQuickColorSpaceValueType::namedColorSpace() const noexcept
 {
-    if (const auto *p = QColorSpacePrivate::get(v))
+    if (const auto *p = QColorSpacePrivate::get(*this))
         return (QQuickColorSpaceEnums::NamedColorSpace)p->namedColorSpace;
     return QQuickColorSpaceEnums::Unknown;
 }
-void QQuickColorSpaceValueType::setNamedColorSpace(QQuickColorSpaceEnums::NamedColorSpace namedColorSpace)
+void QQuickColorSpaceValueType::setNamedColorSpace(
+        QQuickColorSpaceEnums::NamedColorSpace namedColorSpace)
 {
-    v = { (QColorSpace::NamedColorSpace)namedColorSpace };
+    *this = { (QColorSpace::NamedColorSpace)namedColorSpace };
 }
 
 QQuickColorSpaceEnums::Primaries QQuickColorSpaceValueType::primaries() const noexcept
 {
-    return (QQuickColorSpaceEnums::Primaries)v.primaries();
+    return (QQuickColorSpaceEnums::Primaries)QColorSpace::primaries();
 }
 
 void QQuickColorSpaceValueType::setPrimaries(QQuickColorSpaceEnums::Primaries primariesId)
 {
-    v.setPrimaries((QColorSpace::Primaries)primariesId);
+    QColorSpace::setPrimaries((QColorSpace::Primaries)primariesId);
 }
 
 QQuickColorSpaceEnums::TransferFunction QQuickColorSpaceValueType::transferFunction() const noexcept
 {
-    return (QQuickColorSpaceEnums::TransferFunction)v.transferFunction();
+    return (QQuickColorSpaceEnums::TransferFunction)QColorSpace::transferFunction();
 }
 
-void QQuickColorSpaceValueType::setTransferFunction(QQuickColorSpaceEnums::TransferFunction transferFunction)
+void QQuickColorSpaceValueType::setTransferFunction(
+        QQuickColorSpaceEnums::TransferFunction transferFunction)
 {
-    v.setTransferFunction((QColorSpace::TransferFunction)transferFunction, v.gamma());
+    QColorSpace::setTransferFunction(
+            (QColorSpace::TransferFunction)transferFunction, QColorSpace::gamma());
 }
 
 float QQuickColorSpaceValueType::gamma() const noexcept
 {
-    return v.gamma();
+    return QColorSpace::gamma();
 }
 
 void QQuickColorSpaceValueType::setGamma(float gamma)
 {
-    v.setTransferFunction(v.transferFunction(), gamma);
+    QColorSpace::setTransferFunction(QColorSpace::transferFunction(), gamma);
 }
 
 QT_END_NAMESPACE

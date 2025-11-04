@@ -1,14 +1,20 @@
 # Copyright (C) 2024 The Qt Company Ltd.
 # SPDX-License-Identifier: BSD-3-Clause
 
-set(CMAKE_CXX_STANDARD 20)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
+find_package(WrapProtoc)
+find_package(Protobuf)
+find_package(gRPC)
 
-find_package(WrapgRPCPlugin)
-find_package(WrapProtobuf)
-find_package(WrapgRPC)
+if(CMAKE_CROSSCOMPILING)
+    find_program(grpc_cpp_plugin grpc_cpp_plugin NO_CACHE)
+elseif(TARGET gRPC::grpc_cpp_plugin)
+    set(grpc_cpp_plugin $<TARGET_FILE:gRPC::grpc_cpp_plugin>)
+else()
+    set(grpc_cpp_plugin "")
+endif()
 
-if(NOT WrapgRPCPlugin_FOUND OR NOT WrapProtobuf_FOUND OR NOT WrapgRPC_FOUND)
+if(NOT grpc_cpp_plugin OR NOT TARGET WrapProtoc::WrapProtoc
+    OR NOT TARGET gRPC::grpc++)
     message(WARNING "Dependencies of QtGrpc benchmark-server not found. Skipping.")
     return()
 endif()
@@ -38,13 +44,13 @@ add_custom_command(
         --grpc_out "${proto_out_dir}"
         --cpp_out "${proto_out_dir}"
         -I "${proto_include}"
-        --plugin=protoc-gen-grpc=$<TARGET_FILE:WrapgRPC::WrapgRPCPlugin>
+        --plugin=protoc-gen-grpc=${grpc_cpp_plugin}
         "${proto_path}"
     WORKING_DIRECTORY "${proto_out_dir}"
     DEPENDS
         "${proto_path}"
         $<TARGET_FILE:WrapProtoc::WrapProtoc>
-        $<TARGET_FILE:WrapgRPC::WrapgRPCPlugin>
+        ${grpc_cpp_plugin}
     COMMENT "Generating gRPC ${target} sources..."
     COMMAND_EXPAND_LISTS
     VERBATIM
@@ -58,12 +64,12 @@ qt_internal_add_executable(
         asyncbenchserver.cpp
         "${generated_files}"
     LIBRARIES
-        WrapProtobuf::WrapLibProtobuf
-        WrapgRPC::WrapLibgRPC
+        protobuf::libprotobuf
+        gRPC::grpc++
+        Qt::Core
     INCLUDE_DIRECTORIES
         "${proto_out_include}"
         "${qrpcbench_common_include}"
     OUTPUT_DIRECTORY
         "${CMAKE_CURRENT_BINARY_DIR}"
 )
-

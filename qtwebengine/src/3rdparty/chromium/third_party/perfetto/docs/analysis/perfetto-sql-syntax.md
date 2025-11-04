@@ -125,13 +125,143 @@ CREATE PERFETTO TABLE foo(x INT, y STRING) AS
 SELECT 1 as x, 'test' as y
 ```
 
-## CREATE PERFETTO VIEW
+### Index
+
+`CREATE PERFETTO INDEX` lets you create indexes on Perfetto tables, similar to
+how you create indexes in SQLite databases. These indexes are built on specific
+columns, and Perfetto internally maintains these columns in a sorted order.
+This means operations benefiting from sorting on an indexed column (or group of
+columns) will be significantly faster, as if you were operating on a column
+that's already sorted.
+
+NOTE: Indexes have non-trivial memory cost, so it's important to only use them
+when there is a need for performance improvement.
+
+NOTE: Indexes will be used by views created on the indexed table, but they will
+not be inherited by any child tables, as shown in the below SQL.
+
+NOTE: If the query filters/joins on `id` column of the table (one that is a
+primary key of the table) there is no need to add a Perfetto index, as Perfetto
+tables already have special performance optimizations for operations that can
+benefit from sorting.
+
+Example of usage:
+```sql
+CREATE PERFETTO TABLE foo AS
+SELECT * FROM slice;
+
+-- Creates and stores an index `foo_track` on column `track_id` of table foo.
+CREATE PERFETTO INDEX foo_track ON foo(track_id);
+-- Creates or replaces an index created on two columns. It will be used for
+-- operations on `track_id` and can be used on operations on `name` only if
+-- there has been an equality constraint on `track_id` too.
+CREATE OR REPLACE PERFETTO INDEX foo_track_and_name ON foo(track_id, name);
+```
+
+The performance of those two queries should be very different now:
+```sql
+-- This doesn't have an index so it will have to linearily scan whole column.
+SELECT * FROM slice WHERE track_id = 10 AND name > "b";
+
+-- This has an index and can use binary search.
+SELECT * FROM foo WHERE track_id = 10 AND name > "b";
+
+-- The biggest difference should be noticeable on joins:
+-- This join:
+SELECT * FROM slice JOIN track WHERE slice.track_id = track.id;
+-- will be noticeably slower than this:
+SELECT * FROM foo JOIN track WHERE slice.track_id = track.id;
+```
+
+Indexes can be dropped:
+```sql
+DROP PERFETTO INDEX foo_track ON foo;
+```
+
+
+## Creating views with a schema
 
 Views can be created via `CREATE PERFETTO VIEW`, taking an optional schema.
 With the exception of the schema, they behave exactly the same as regular
 SQLite views.
 
+NOTE: the use of `CREATE PERFETTO VIEW` instead of `CREATE VIEW` is required in
+the standard library where each column must be documented.
+
 ```sql
 CREATE PERFETTO VIEW foo(x INT, y STRING) AS
 SELECT 1 as x, 'test' as y
+```
+
+## Defining macros
+`CREATE PEFETTO MACRO` allows macros to be defined in SQL. The design of macros
+is inspired by the macros in Rust.
+
+The following are recommended uses of macros:
+- Passing tables as arguments to a "function-like" snippet of SQL.
+
+Macros are powerful but also dangerous if used incorrectly, making debugging
+extremely difficult. For this reason, it's recommended that they are used
+sparingly when they are needed and only for the recommended uses described
+above. If only passing around scalar SQL values, use functions as discussed
+above.
+
+NOTE: Macros are expanded with a pre-processing step *before* any execution
+happens. Expansion is a purely syntatic operation involves replacing the macro
+invocation with the SQL tokens in the macro definition.
+
+As macros are syntactic, the types of arguments and return types in macros are
+different to the types used in functions and correspond to parts of the SQL
+parse tree. The following are the supported types:
+
+| Type name         | Description                                       |
+| ---------         | -----------                                       |
+| `Expr`            | Corresponds to any SQL scalar expression.         |
+| `TableOrSubquery` | Corresponds to either an SQL table or a subquery  |
+| `ColumnName`      | Corresponds to a column name of a table           |
+
+Example:
+```sql
+-- Create a macro taking no arguments. Note how the returned SQL fragment needs
+-- to be wrapped in brackets to make it a valid SQL expression.
+--
+-- Note: this is a strongly discouraged use of macros as a simple SQL
+-- function would also work here.
+CREATE PERFETTO MACRO constant_macro() RETURNS Expr AS (SELECT 1);
+
+-- Using the above macro. Macros are invoked by suffixing their names with !.
+-- This is similar to how macros are invoked in Rust.
+SELECT constant_macro!();
+
+-- This causes the following SQL to be actually executed:
+-- SELECT (SELECT 1);
+
+-- A variant of the above. Again, strongly discouraged.
+CREATE PERFETTO MACRO constant_macro_no_bracket() RETURNS Expr AS 2;
+
+-- Using the above macro.
+SELECT constant_macro_no_bracket!();
+
+-- This causes the following SQL to be actually executed:
+-- SELECT 2;
+
+-- Creating a macro taking a single scalar argument and returning a scalar.
+-- Note: again this is a strongly discouraged use of macros as functions can
+-- also do this.
+CREATE PERFETTO MACRO single_arg_macro(x Expr) RETURNS Expr AS (SELECT $x);
+SELECT constant_macro!() + single_arg_macro!(100);
+
+-- Creating a macro taking both a table and a scalar expression as an argument
+-- and returning a table. Note again how the returned SQL statement is wrapped
+-- in brackets to make it a subquery. This allows it to be used anywhere a
+-- table or subquery is allowed.
+--
+-- Note: if tables are reused multiple times, it's recommended that they be
+-- "cached" with a common-table expression (CTE) for performance reasons.
+CREATE PERFETTO MACRO multi_arg_macro(x TableOrSubquery, y Expr)
+RETURNS TableOrSubquery AS
+(
+  SELECT input_tab.input_col + $y
+  FROM $x AS input_tab;
+)
 ```

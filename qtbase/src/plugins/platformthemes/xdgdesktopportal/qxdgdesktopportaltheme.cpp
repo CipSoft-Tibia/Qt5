@@ -1,5 +1,6 @@
 // Copyright (C) 2017 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qxdgdesktopportaltheme.h"
 #include "qxdgdesktopportalfiledialog_p.h"
@@ -84,24 +85,19 @@ QXdgDesktopPortalTheme::QXdgDesktopPortalTheme()
 {
     Q_D(QXdgDesktopPortalTheme);
 
-    QStringList themeNames;
-    themeNames += QGuiApplicationPrivate::platform_integration->themeNames();
-    // 1) Look for a theme plugin.
-    for (const QString &themeName : std::as_const(themeNames)) {
+    const QStringList themeNames = QGuiApplicationPrivate::platform_integration->themeNames();
+    for (const QString &themeName : themeNames) {
+        if (QXdgDesktopPortalTheme::isXdgPlugin(themeName))
+            continue;
+        // 1) Look for a theme plugin.
         d->baseTheme = QPlatformThemeFactory::create(themeName, nullptr);
         if (d->baseTheme)
             break;
-    }
 
-    // 2) If no theme plugin was found ask the platform integration to
-    // create a theme
-    if (!d->baseTheme) {
-        for (const QString &themeName : std::as_const(themeNames)) {
-            d->baseTheme = QGuiApplicationPrivate::platform_integration->createPlatformTheme(themeName);
-            if (d->baseTheme)
-                break;
-        }
-        // No error message; not having a theme plugin is allowed.
+        // 2) If no theme plugin was found ask the platform integration to create a theme
+        d->baseTheme = QGuiApplicationPrivate::platform_integration->createPlatformTheme(themeName);
+        if (d->baseTheme)
+            break;
     }
 
     // 3) Fall back on the built-in "null" platform theme.
@@ -142,7 +138,7 @@ QXdgDesktopPortalTheme::QXdgDesktopPortalTheme()
     QDBusConnection::sessionBus().connect(
             "org.freedesktop.portal.Desktop"_L1, "/org/freedesktop/portal/desktop"_L1,
             "org.freedesktop.portal.Settings"_L1, "SettingChanged"_L1, d_ptr.get(),
-            SLOT(settingChanged(QString, QString, QDBusVariant)));
+            SLOT(settingChanged(QString,QString,QDBusVariant)));
 }
 
 QPlatformMenuItem* QXdgDesktopPortalTheme::createPlatformMenuItem() const
@@ -261,6 +257,13 @@ QString QXdgDesktopPortalTheme::standardButtonText(int button) const
 {
     Q_D(const QXdgDesktopPortalTheme);
     return d->baseTheme->standardButtonText(button);
+}
+
+bool QXdgDesktopPortalTheme::isXdgPlugin(const QString &key)
+{
+    return key.compare("xdgdesktopportal"_L1, Qt::CaseInsensitive) == 0 ||
+           key.compare("flatpak"_L1, Qt::CaseInsensitive) == 0 ||
+           key.compare("snap"_L1, Qt::CaseInsensitive) == 0;
 }
 
 QT_END_NAMESPACE

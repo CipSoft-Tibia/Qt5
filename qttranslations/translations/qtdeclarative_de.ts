@@ -633,6 +633,10 @@
         <translation>Zuweisung eines Objekts an eine schreibgeschützte Liste nicht zulässig</translation>
     </message>
     <message>
+        <source>Cannot construct value type from given object</source>
+        <translation>Vom gegebenen Objekt kann kein Werttyp erzeugt werden</translation>
+    </message>
+    <message>
         <source>Cannot assign primitives to lists</source>
         <translation>Zuweisung eines einfachen Werts (primitive) an eine Liste nicht zulässig</translation>
     </message>
@@ -1060,10 +1064,6 @@
         <translation>Der Eigenschaft &quot;%2&quot; kann kein Wert des Typs &quot;%1&quot; zugewiesen werden; es wird &quot;%3&quot; erwartet</translation>
     </message>
     <message>
-        <source>Cannot assign value of type &quot;%1&quot; to property &quot;%2&quot;, expecting an object</source>
-        <translation>Der Eigenschaft &quot;%2&quot; kann kein Wert des Typs &quot;%1&quot; zugewiesen werden; es wird ein Objekt erwartet</translation>
-    </message>
-    <message>
         <source>Cannot assign object of type &quot;%1&quot; to property of type &quot;%2&quot; as the former is neither the same as the latter nor a sub-class of it.</source>
         <translation>Das Objekt des Typs &quot;%1&quot; kann nicht einer Eigenschaft des Typs &quot;%2&quot; zugewiesen werden, da sein Typ weder dem Typ der Eigenschaft entspricht noch eine davon abgeleitete Klasse ist.</translation>
     </message>
@@ -1159,6 +1159,10 @@
     <message>
         <source>File is empty</source>
         <translation>Die Datei ist leer</translation>
+    </message>
+    <message>
+        <source>Cached QML Unit has no objects</source>
+        <translation>Die QML-Unit im Cache-Speicher hat keine Objekte</translation>
     </message>
     <message>
         <source>module &quot;%1&quot; is not installed</source>
@@ -1479,12 +1483,20 @@
         <translation>Unbekannte Zugriffssemantik &quot;%1&quot;.</translation>
     </message>
     <message>
+        <source>Expected only name, prototype, defaultProperty, attachedType, valueType, exports, interfaces, isSingleton, isCreatable, isStructured, isComposite, hasCustomParser, enforcesScopedEnums, aliases, exportMetaObjectRevisions, deferredNames, and immediateNames in script bindings, not &quot;%1&quot;.</source>
+        <translation>Es werden nur name, prototype, defaultProperty, attachedType, valueType, exports, interfaces, isSingleton, isCreatable, isStructured, isComposite, hasCustomParser, enforcesScopedEnums, aliases, exportMetaObjectRevisions, deferredNames und immediateNames in Script-Bindings erwartet, nicht jedoch &quot;%1&quot;.</translation>
+    </message>
+    <message>
         <source>Expected only script bindings and object definitions.</source>
         <translation>Es werden Script-Bindings oder Objektdefinitionen erwartet.</translation>
     </message>
     <message>
         <source>Component definition is missing a name binding.</source>
         <translation>Bei der Komponentendefinition fehlt ein name binding.</translation>
+    </message>
+    <message>
+        <source>Expected only name, type, revision, isPointer, isTypeConstant, isList, isCloned, isConstructor, isMethodConstant, and isJavaScriptFunction in script bindings.</source>
+        <translation>Es werden nur name, type, revision, isPointer, isTypeConstant, isList, isCloned, isConstructor, isMethodConstant und isJavaScriptFunction in Script-Bindings erwartet.</translation>
     </message>
     <message>
         <source>Method or signal is missing a name script binding.</source>
@@ -1495,28 +1507,20 @@
         <translation>Es werden nur Parameter in Objektdefinitionen erwartet.</translation>
     </message>
     <message>
-        <source>Expected only name, prototype, defaultProperty, attachedType, valueType, exports, interfaces, isSingleton, isCreatable, isStructured, isComposite, hasCustomParser, aliases, exportMetaObjectRevisions, deferredNames, and immediateNames in script bindings, not &quot;%1&quot;.</source>
-        <translation>Es werden nur name, prototype, defaultProperty, attachedType, valueType, exports, interfaces, isSingleton, isCreatable, isStructured, isComposite, hasCustomParser, aliases, exportMetaObjectRevisions, deferredNames und immediateNames in Script-Bindings erwartet, nicht jedoch &quot;%1&quot;.</translation>
-    </message>
-    <message>
-        <source>Expected only name, type, revision, isPointer, isConstant, isList, isCloned, isConstructor, and isJavaScriptFunction in script bindings.</source>
-        <translation>Es werden nur name, type, revision, isPointer, isConstant, isList, isCloned, isConstructor und isJavaScriptFunction in Script-Bindings erwartet.</translation>
-    </message>
-    <message>
         <source>Expected script binding.</source>
         <translation>Es wird script binding erwartet.</translation>
-    </message>
-    <message>
-        <source>Expected only type, name, revision, isPointer, isReadonly, isRequired, isFinal, isList, bindable, read, write, reset, notify, index, and privateClass and script bindings.</source>
-        <translation>Es werden nur type, name, revision, isPointer, isReadonly, isRequired, isFinal, isList, bindable, read, write, reset, notify, index, und  privateClass und Script-Bindings erwartet.</translation>
     </message>
     <message>
         <source>Expected only name, alias, isFlag, values, isScoped, or type.</source>
         <translation>Es werden nur name, alias, isFlag, values, isScoped oder type erwartet.</translation>
     </message>
     <message>
-        <source>Expected only name, type, isPointer, isConstant, isReadonly, or IsList script bindings.</source>
-        <translation>Es werden nur name, type, isPointer, isConstant, isReadonly oder IsList Script-Bindings erwartet.</translation>
+        <source>Expected only type, name, revision, isPointer, isTypeConstant, isReadonly, isRequired, isFinal, isList, bindable, read, write, isPropertyConstant, reset, notify, index, and privateClass and script bindings.</source>
+        <translation>Es werden nur type, name, revision, isPointer, isTypeConstant, isReadonly, isRequired, isFinal, isList, bindable, read, write, isPropertyConstant, reset, notify, index sowie privateClass und Script-Bindings erwartet.</translation>
+    </message>
+    <message>
+        <source>Expected only name, type, isPointer, isTypeConstant, isReadonly, or IsList script bindings.</source>
+        <translation>Es werden nur name, type, isPointer, isTypeConstant, isReadonly oder IsList Script-Bindings erwartet.</translation>
     </message>
     <message>
         <source>Expected string after colon.</source>
@@ -2121,6 +2125,14 @@ Soll sie überschrieben werden?</translation>
     <message>
         <source>Filter</source>
         <translation>Filter</translation>
+    </message>
+    <message>
+        <source>Add Favorite</source>
+        <translation>Favoriten hinzufügen</translation>
+    </message>
+    <message>
+        <source>Remove</source>
+        <translation>Löschen</translation>
     </message>
 </context>
 <context>

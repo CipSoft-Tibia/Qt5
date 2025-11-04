@@ -33,11 +33,12 @@
 #include <private/qv4qobjectwrapper_p.h>
 #include <private/qqmlcomponentattached_p.h>
 
-class MyQmlAttachedObject : public QObject
+class MyQmlAttachedObject : public QObject, public QQmlParserStatus
 {
     Q_OBJECT
     Q_PROPERTY(int value READ value CONSTANT)
     Q_PROPERTY(int value2 READ value2 WRITE setValue2 NOTIFY value2Changed)
+    Q_INTERFACES(QQmlParserStatus)
 public:
     MyQmlAttachedObject(QObject *parent) : QObject(parent), m_value2(0) {}
 
@@ -46,6 +47,19 @@ public:
     void setValue2(int v) { if (m_value2 == v) return; m_value2 = v; emit value2Changed(); }
 
     void emitMySignal() { emit mySignal(); }
+
+    void classBegin() override {
+        orderCorrect |= !componentCompleteCalled;
+        classBeginCalled = true;
+    }
+    void componentComplete() override {
+        orderCorrect |= classBeginCalled;
+        componentCompleteCalled = true;
+    }
+
+    bool classBeginCalled = false;
+    bool componentCompleteCalled = false;
+    bool orderCorrect = true;
 
 signals:
     void value2Changed();
@@ -2158,10 +2172,17 @@ public:
         QDynamicMetaObjectData::objectDestroyed(object);
     }
 
+#if QT_VERSION >= QT_VERSION_CHECK(7, 0, 0)
+    const QMetaObject *toDynamicMetaObject(QObject *) const override
+    {
+        return &MetaCallInterceptor::staticMetaObject;
+    }
+#else
     QMetaObject *toDynamicMetaObject(QObject *) override
     {
         return const_cast<QMetaObject *>(&MetaCallInterceptor::staticMetaObject);
     }
+#endif
 
     int metaCall(QObject *o, QMetaObject::Call call, int idx, void **argv) override
     {

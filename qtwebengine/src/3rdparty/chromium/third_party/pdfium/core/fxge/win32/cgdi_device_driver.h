@@ -9,9 +9,10 @@
 
 #include <windows.h>
 
+#include <optional>
+
 #include "core/fxcrt/retain_ptr.h"
 #include "core/fxge/renderdevicedriver_iface.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 
 class CFX_DIBBase;
 
@@ -37,22 +38,18 @@ class CGdiDeviceDriver : public RenderDeviceDriverIface {
                 const CFX_GraphStateData* pGraphState,
                 uint32_t fill_color,
                 uint32_t stroke_color,
-                const CFX_FillRenderOptions& fill_options,
-                BlendMode blend_type) override;
-  bool FillRectWithBlend(const FX_RECT& rect,
-                         uint32_t fill_color,
-                         BlendMode blend_type) override;
+                const CFX_FillRenderOptions& fill_options) override;
+  bool FillRect(const FX_RECT& rect, uint32_t fill_color) override;
   bool DrawCosmeticLine(const CFX_PointF& ptMoveTo,
                         const CFX_PointF& ptLineTo,
-                        uint32_t color,
-                        BlendMode blend_type) override;
-  bool GetClipBox(FX_RECT* pRect) override;
+                        uint32_t color) override;
+  FX_RECT GetClipBox() const override;
   bool MultiplyAlpha(float alpha) override;
-  bool MultiplyAlphaMask(const RetainPtr<const CFX_DIBBase>& mask) override;
+  bool MultiplyAlphaMask(RetainPtr<const CFX_DIBitmap> mask) override;
 
   void DrawLine(float x1, float y1, float x2, float y2);
 
-  bool GDI_SetDIBits(const RetainPtr<const CFX_DIBBase>& source,
+  bool GDI_SetDIBits(RetainPtr<const CFX_DIBBase> source,
                      const FX_RECT& src_rect,
                      int left,
                      int top);
@@ -76,7 +73,7 @@ class CGdiDeviceDriver : public RenderDeviceDriverIface {
   int m_nBitsPerPixel;
   const DeviceType m_DeviceType;
   int m_RenderCaps;
-  absl::optional<FX_RECT> m_BaseClipBox;
+  std::optional<FX_RECT> m_BaseClipBox;
 };
 
 #endif  // CORE_FXGE_WIN32_CGDI_DEVICE_DRIVER_H_

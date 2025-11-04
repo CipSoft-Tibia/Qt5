@@ -35,6 +35,11 @@ button.link:has(devtools-icon) {
   margin-top: 5px;
 }
 
+devtools-button.help-button {
+  top: 4px;
+  position: relative;
+}
+
 button.text-link {
   padding-left: 2px;
   height: 26px;
@@ -66,7 +71,6 @@ button.text-link {
 
 .inline-items {
   display: flex;
-  gap: 3px;
 }
 
 .span-cols {
@@ -84,8 +88,8 @@ button.text-link {
 }
 
 .link:not(button):has(devtools-icon) {
-  vertical-align: sub;
-  padding-left: 2px;
+  vertical-align: baseline;
+  margin-inline-start: 3px;
 }
 
 .inline-icon {

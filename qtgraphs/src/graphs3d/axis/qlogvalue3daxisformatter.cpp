@@ -336,7 +336,7 @@ void QLogValue3DAxisFormatterPrivate::recalculate()
             if (m_edgeLabelsVisible)
                 m_labelStrings << q->stringForValue(qreal(m_min), labelFormat);
             else
-                m_labelStrings << hiddenLabelTag;
+                m_labelStrings << QString(hiddenLabelTag);
             index++;
         }
         for (int i = 0; i < segmentCount; i++) {
@@ -347,14 +347,14 @@ void QLogValue3DAxisFormatterPrivate::recalculate()
                 m_labelStrings << q->stringForValue(qPow(m_base, minDiff + qreal(i) + logMin),
                                                     labelFormat);
             } else {
-                m_labelStrings << hiddenLabelTag;
+                m_labelStrings << QString(hiddenLabelTag);
             }
             index++;
         }
         // Ensure max value doesn't suffer from any rounding errors
         m_gridPositions[segmentCount] = 1.0f;
         m_labelPositions[segmentCount] = 1.0f;
-        QString finalLabel = hiddenLabelTag;
+        QString finalLabel = QString(hiddenLabelTag);
         if (m_edgeLabelsVisible || m_evenMaxSegment)
             finalLabel = q->stringForValue(qreal(m_max), labelFormat);
 

@@ -4,6 +4,8 @@
 
 #include "components/update_client/test_configurator.h"
 
+#include <memory>
+#include <optional>
 #include <string>
 #include <tuple>
 #include <utility>
@@ -30,7 +32,6 @@
 #include "components/update_client/unzip/unzip_impl.h"
 #include "components/update_client/unzipper.h"
 #include "services/network/public/cpp/weak_wrapper_shared_url_loader_factory.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "url/gurl.h"
 
 namespace update_client {
@@ -49,9 +50,6 @@ std::vector<GURL> MakeDefaultUrls() {
 TestConfigurator::TestConfigurator(PrefService* pref_service)
     : enabled_cup_signing_(false),
       pref_service_(pref_service),
-      persisted_data_(
-          CreatePersistedData(pref_service,
-                              std::make_unique<TestActivityDataService>())),
       unzip_factory_(base::MakeRefCounted<update_client::UnzipChromiumFactory>(
           base::BindRepeating(&unzip::LaunchInProcessUnzipper))),
       patch_factory_(base::MakeRefCounted<update_client::PatchChromiumFactory>(
@@ -67,6 +65,9 @@ TestConfigurator::TestConfigurator(PrefService* pref_service)
           [](bool /*is_machine*/) { return UpdaterStateAttributes(); })),
       is_network_connection_metered_(false) {
   std::ignore = crx_cache_root_temp_dir_.CreateUniqueTempDir();
+  auto activity = std::make_unique<TestActivityDataService>();
+  activity_data_service_ = activity.get();
+  persisted_data_ = CreatePersistedData(pref_service, std::move(activity));
 }
 
 TestConfigurator::~TestConfigurator() = default;
@@ -187,6 +188,11 @@ PrefService* TestConfigurator::GetPrefService() const {
   return pref_service_;
 }
 
+TestActivityDataService* TestConfigurator::GetActivityDataService() const {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+  return activity_data_service_;
+}
+
 PersistedData* TestConfigurator::GetPersistedData() const {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   return persisted_data_.get();
@@ -203,7 +209,7 @@ TestConfigurator::GetProtocolHandlerFactory() const {
   return std::make_unique<ProtocolHandlerFactoryJSON>();
 }
 
-absl::optional<bool> TestConfigurator::IsMachineExternallyManaged() const {
+std::optional<bool> TestConfigurator::IsMachineExternallyManaged() const {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   return is_machine_externally_managed_;
 }
@@ -213,12 +219,12 @@ UpdaterStateProvider TestConfigurator::GetUpdaterStateProvider() const {
   return updater_state_provider_;
 }
 
-absl::optional<base::FilePath> TestConfigurator::GetCrxCachePath() const {
+std::optional<base::FilePath> TestConfigurator::GetCrxCachePath() const {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   if (!crx_cache_root_temp_dir_.IsValid()) {
-    return absl::nullopt;
+    return std::nullopt;
   }
-  return absl::optional<base::FilePath>(
+  return std::optional<base::FilePath>(
       crx_cache_root_temp_dir_.GetPath().AppendASCII("crx_cache"));
 }
 
@@ -270,7 +276,7 @@ void TestConfigurator::SetCrxDownloaderFactory(
 }
 
 void TestConfigurator::SetIsMachineExternallyManaged(
-    absl::optional<bool> is_machine_externally_managed) {
+    std::optional<bool> is_machine_externally_managed) {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   is_machine_externally_managed_ = is_machine_externally_managed;
 }

@@ -58,7 +58,7 @@ void TestRecordBooleanMetric(base::RepeatingCallback<void(bool)> recording_cb,
 // histogram specific to the provider.
 void TestRouteResultCodeHistogramsWithProviders(
     base::RepeatingCallback<void(mojom::RouteRequestResultCode,
-                                 absl::optional<mojom::MediaRouteProviderId>)>
+                                 std::optional<mojom::MediaRouteProviderId>)>
         record_cb,
     mojom::MediaRouteProviderId provider1,
     const std::string& histogram_provider1,
@@ -95,7 +95,7 @@ void TestRouteResultCodeHistogramsWithProviders(
 
 void TestRouteResultCodeHistograms(
     base::RepeatingCallback<void(mojom::RouteRequestResultCode,
-                                 absl::optional<mojom::MediaRouteProviderId>)>
+                                 std::optional<mojom::MediaRouteProviderId>)>
         record_cb,
     const std::string& base_histogram_name) {
   TestRouteResultCodeHistogramsWithProviders(
@@ -134,8 +134,11 @@ TEST(MediaRouterMetricsTest, RecordMediaRouterDialogActivationLocation) {
 
 TEST(MediaRouterMetricsTest, RecordMediaRouterDialogLoaded) {
   TestRecordTimeDeltaMetric(
-      base::BindRepeating(&MediaRouterMetrics::RecordMediaRouterDialogLoaded),
-      MediaRouterMetrics::kHistogramUiDialogLoadedWithData);
+      base::BindRepeating(&MediaRouterMetrics::RecordCastDialogLoaded),
+      MediaRouterMetrics::kHistogramUiCastDialogLoadedWithData);
+  TestRecordTimeDeltaMetric(
+      base::BindRepeating(&MediaRouterMetrics::RecordGmcDialogLoaded),
+      MediaRouterMetrics::kHistogramUiGmcDialogLoadedWithData);
 }
 
 TEST(MediaRouterMetricsTest, RecordPresentationUrlType) {

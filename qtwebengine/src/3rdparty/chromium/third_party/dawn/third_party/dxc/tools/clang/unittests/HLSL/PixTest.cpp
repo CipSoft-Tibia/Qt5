@@ -45,6 +45,7 @@
 #include "dxc/Support/dxcapi.use.h"
 #include "dxc/Support/microcom.h"
 
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/Bitcode/ReaderWriter.h"
@@ -98,9 +99,18 @@ public:
 
   TEST_CLASS_SETUP(InitSupport);
 
+  TEST_METHOD(DebugUAV_CS_6_1)
+  TEST_METHOD(DebugUAV_CS_6_2)
+  TEST_METHOD(DebugUAV_lib_6_3_through_6_8)
+
   TEST_METHOD(CompileDebugDisasmPDB)
 
   TEST_METHOD(AddToASPayload)
+  TEST_METHOD(AddToASGroupSharedPayload)
+  TEST_METHOD(AddToASGroupSharedPayload_MeshletCullSample)
+  TEST_METHOD(SignatureModification_Empty)
+  TEST_METHOD(SignatureModification_VertexIdAlready)
+  TEST_METHOD(SignatureModification_SomethingElseFirst)
 
   TEST_METHOD(PixStructAnnotation_Lib_DualRaygen)
   TEST_METHOD(PixStructAnnotation_Lib_RaygenAllocaStructAlignment)
@@ -202,6 +212,8 @@ public:
     std::wstring debugArg =
         L"-hlsl-dxil-debug-instrumentation,UAVSize=" + std::to_wstring(UAVSize);
     Options.push_back(debugArg.c_str());
+    Options.push_back(L"-viewid-state");
+    Options.push_back(L"-hlsl-dxilemit");
 
     CComPtr<IDxcBlob> pOptimizedModule;
     CComPtr<IDxcBlobEncoding> pText;
@@ -343,21 +355,31 @@ public:
 
   public:
     ModuleAndHangersOn(IDxcBlob *pBlob) {
-      // Verify we have a valid dxil container.
+
+      // Assume we were given a dxil part first:
+      const DxilProgramHeader *pProgramHeader =
+          reinterpret_cast<const DxilProgramHeader *>(
+              pBlob->GetBufferPointer());
+      uint32_t partSize = static_cast<uint32_t>(pBlob->GetBufferSize());
+      // Check if we were given a valid dxil container instead:
       const DxilContainerHeader *pContainer = IsDxilContainerLike(
           pBlob->GetBufferPointer(), pBlob->GetBufferSize());
-      VERIFY_IS_NOT_NULL(pContainer);
-      VERIFY_IS_TRUE(IsValidDxilContainer(pContainer, pBlob->GetBufferSize()));
+      if (pContainer != nullptr) {
+        VERIFY_IS_TRUE(
+            IsValidDxilContainer(pContainer, pBlob->GetBufferSize()));
 
-      // Get Dxil part from container.
-      DxilPartIterator it =
-          std::find_if(begin(pContainer), end(pContainer),
-                       DxilPartIsType(DFCC_ShaderDebugInfoDXIL));
-      VERIFY_IS_FALSE(it == end(pContainer));
+        // Get Dxil part from container.
+        DxilPartIterator it =
+            std::find_if(begin(pContainer), end(pContainer),
+                         DxilPartIsType(DFCC_ShaderDebugInfoDXIL));
+        VERIFY_IS_FALSE(it == end(pContainer));
 
-      const DxilProgramHeader *pProgramHeader =
-          reinterpret_cast<const DxilProgramHeader *>(GetDxilPartData(*it));
-      VERIFY_IS_TRUE(IsValidDxilProgramHeader(pProgramHeader, (*it)->PartSize));
+        pProgramHeader =
+            reinterpret_cast<const DxilProgramHeader *>(GetDxilPartData(*it));
+        partSize = (*it)->PartSize;
+      }
+
+      VERIFY_IS_TRUE(IsValidDxilProgramHeader(pProgramHeader, partSize));
 
       // Get a pointer to the llvm bitcode.
       const char *pIL;
@@ -411,6 +433,8 @@ public:
   std::string RunDxilPIXAddTidToAmplificationShaderPayloadPass(IDxcBlob *blob);
   CComPtr<IDxcBlob> RunDxilPIXMeshShaderOutputPass(IDxcBlob *blob);
   CComPtr<IDxcBlob> RunDxilPIXDXRInvocationsLog(IDxcBlob *blob);
+  void TestPixUAVCase(char const *hlsl, wchar_t const *model,
+                      wchar_t const *entry);
 };
 
 bool PixTest::InitSupport() {
@@ -419,6 +443,101 @@ bool PixTest::InitSupport() {
     m_ver.Initialize(m_dllSupport);
   }
   return true;
+}
+
+void PixTest::TestPixUAVCase(char const *hlsl, wchar_t const *model,
+                             wchar_t const *entry) {
+  auto mod = Compile(m_dllSupport, hlsl, model, {}, entry);
+  CComPtr<IDxcBlob> dxilPart = FindModule(DFCC_ShaderDebugInfoDXIL, mod);
+  PassOutput passOutput = RunDebugPass(dxilPart);
+  CComPtr<IDxcBlob> modifiedDxilContainer;
+  ReplaceDxilBlobPart(mod->GetBufferPointer(), mod->GetBufferSize(),
+                      passOutput.blob, &modifiedDxilContainer);
+
+  ModuleAndHangersOn moduleEtc(modifiedDxilContainer);
+  auto &compilerGeneratedUAV = moduleEtc.GetDxilModule().GetUAV(0);
+  auto &pixDebugGeneratedUAV = moduleEtc.GetDxilModule().GetUAV(1);
+  VERIFY_ARE_EQUAL(compilerGeneratedUAV.GetClass(),
+                   pixDebugGeneratedUAV.GetClass());
+  VERIFY_ARE_EQUAL(compilerGeneratedUAV.GetKind(),
+                   pixDebugGeneratedUAV.GetKind());
+  VERIFY_ARE_EQUAL(compilerGeneratedUAV.GetHLSLType(),
+                   pixDebugGeneratedUAV.GetHLSLType());
+  VERIFY_ARE_EQUAL(compilerGeneratedUAV.GetSampleCount(),
+                   pixDebugGeneratedUAV.GetSampleCount());
+  VERIFY_ARE_EQUAL(compilerGeneratedUAV.GetElementStride(),
+                   pixDebugGeneratedUAV.GetElementStride());
+  VERIFY_ARE_EQUAL(compilerGeneratedUAV.GetBaseAlignLog2(),
+                   pixDebugGeneratedUAV.GetBaseAlignLog2());
+  VERIFY_ARE_EQUAL(compilerGeneratedUAV.GetCompType(),
+                   pixDebugGeneratedUAV.GetCompType());
+  VERIFY_ARE_EQUAL(compilerGeneratedUAV.GetSamplerFeedbackType(),
+                   pixDebugGeneratedUAV.GetSamplerFeedbackType());
+  VERIFY_ARE_EQUAL(compilerGeneratedUAV.IsGloballyCoherent(),
+                   pixDebugGeneratedUAV.IsGloballyCoherent());
+  VERIFY_ARE_EQUAL(compilerGeneratedUAV.HasCounter(),
+                   pixDebugGeneratedUAV.HasCounter());
+  VERIFY_ARE_EQUAL(compilerGeneratedUAV.HasAtomic64Use(),
+                   pixDebugGeneratedUAV.HasAtomic64Use());
+
+  VERIFY_ARE_EQUAL(compilerGeneratedUAV.GetGlobalSymbol()->getType(),
+                   pixDebugGeneratedUAV.GetGlobalSymbol()->getType());
+}
+
+TEST_F(PixTest, DebugUAV_CS_6_1) {
+  const char *hlsl = R"(
+RWByteAddressBuffer RawUAV : register(u0);
+[numthreads(1, 1, 1)]
+void CSMain()
+{
+    RawUAV.Store(0, RawUAV.Load(4));
+}
+)";
+  TestPixUAVCase(hlsl, L"cs_6_1", L"CSMain");
+}
+
+TEST_F(PixTest, DebugUAV_CS_6_2) {
+  const char *hlsl = R"(
+RWByteAddressBuffer RawUAV : register(u0);
+[numthreads(1, 1, 1)]
+void CSMain()
+{
+    RawUAV.Store(0, RawUAV.Load(4));
+}
+)";
+  // In 6.2, rawBufferLoad replaced bufferLoad for UAVs, but we don't
+  // expect this test to notice the difference. We just test 6.2
+  TestPixUAVCase(hlsl, L"cs_6_2", L"CSMain");
+}
+
+TEST_F(PixTest, DebugUAV_lib_6_3_through_6_8) {
+  const char *hlsl = R"(
+RWByteAddressBuffer RawUAV : register(u0);
+struct [raypayload] Payload
+{
+  double a : read(caller, closesthit, anyhit) : write(caller, miss, closesthit);
+};
+[shader("miss")]
+void Miss( inout Payload payload ) 
+{ 
+    RawUAV.Store(0, RawUAV.Load(4));
+    payload.a = 4.2;
+})";
+  TestPixUAVCase(hlsl, L"lib_6_3", L"");
+  TestPixUAVCase(hlsl, L"lib_6_4", L"");
+  TestPixUAVCase(hlsl, L"lib_6_5", L"");
+
+  if (m_ver.SkipDxilVersion(1, 6))
+    return;
+  TestPixUAVCase(hlsl, L"lib_6_6", L"");
+
+  if (m_ver.SkipDxilVersion(1, 7))
+    return;
+  TestPixUAVCase(hlsl, L"lib_6_7", L"");
+
+  if (m_ver.SkipDxilVersion(1, 8))
+    return;
+  TestPixUAVCase(hlsl, L"lib_6_8", L"");
 }
 
 TEST_F(PixTest, CompileDebugDisasmPDB) {
@@ -560,7 +679,7 @@ PixTest::RunDxilPIXAddTidToAmplificationShaderPayloadPass(IDxcBlob *blob) {
 
 TEST_F(PixTest, AddToASPayload) {
 
-  const char *dynamicResourceDecriptorHeapAccess = R"(
+  const char *hlsl = R"(
 struct MyPayload
 {
     float f1;
@@ -598,15 +717,162 @@ void MSMain(
 
   )";
 
-  auto as = Compile(m_dllSupport, dynamicResourceDecriptorHeapAccess, L"as_6_6",
-                    {}, L"ASMain");
+  auto as = Compile(m_dllSupport, hlsl, L"as_6_6", {}, L"ASMain");
   RunDxilPIXAddTidToAmplificationShaderPayloadPass(as);
 
-  auto ms = Compile(m_dllSupport, dynamicResourceDecriptorHeapAccess, L"ms_6_6",
-                    {}, L"MSMain");
+  auto ms = Compile(m_dllSupport, hlsl, L"ms_6_6", {}, L"MSMain");
   RunDxilPIXMeshShaderOutputPass(ms);
 }
+unsigned FindOrAddVSInSignatureElementForInstanceOrVertexID(
+    hlsl::DxilSignature &InputSignature, hlsl::DXIL::SemanticKind semanticKind);
 
+TEST_F(PixTest, SignatureModification_Empty) {
+
+  DxilSignature sig(DXIL::ShaderKind::Vertex, DXIL::SignatureKind::Input,
+                    false);
+
+  FindOrAddVSInSignatureElementForInstanceOrVertexID(
+      sig, DXIL::SemanticKind::InstanceID);
+  FindOrAddVSInSignatureElementForInstanceOrVertexID(
+      sig, DXIL::SemanticKind::VertexID);
+
+  VERIFY_ARE_EQUAL(2ull, sig.GetElements().size());
+  VERIFY_ARE_EQUAL(sig.GetElement(0).GetKind(), DXIL::SemanticKind::InstanceID);
+  VERIFY_ARE_EQUAL(sig.GetElement(0).GetCols(), 1u);
+  VERIFY_ARE_EQUAL(sig.GetElement(0).GetRows(), 1u);
+  VERIFY_ARE_EQUAL(sig.GetElement(0).GetStartCol(), 0);
+  VERIFY_ARE_EQUAL(sig.GetElement(0).GetStartRow(), 0);
+  VERIFY_ARE_EQUAL(sig.GetElement(1).GetKind(), DXIL::SemanticKind::VertexID);
+  VERIFY_ARE_EQUAL(sig.GetElement(1).GetCols(), 1u);
+  VERIFY_ARE_EQUAL(sig.GetElement(1).GetRows(), 1u);
+  VERIFY_ARE_EQUAL(sig.GetElement(1).GetStartCol(), 0);
+  VERIFY_ARE_EQUAL(sig.GetElement(1).GetStartRow(), 1);
+}
+
+TEST_F(PixTest, SignatureModification_VertexIdAlready) {
+
+  DxilSignature sig(DXIL::ShaderKind::Vertex, DXIL::SignatureKind::Input,
+                    false);
+
+  auto AddedElement =
+      llvm::make_unique<DxilSignatureElement>(DXIL::SigPointKind::VSIn);
+  AddedElement->Initialize(
+      Semantic::Get(DXIL::SemanticKind::VertexID)->GetName(),
+      hlsl::CompType::getU32(), DXIL::InterpolationMode::Constant, 1, 1, 0, 0,
+      0, {0});
+  AddedElement->SetKind(DXIL::SemanticKind::VertexID);
+  AddedElement->SetUsageMask(1);
+  sig.AppendElement(std::move(AddedElement));
+
+  FindOrAddVSInSignatureElementForInstanceOrVertexID(
+      sig, DXIL::SemanticKind::InstanceID);
+  FindOrAddVSInSignatureElementForInstanceOrVertexID(
+      sig, DXIL::SemanticKind::VertexID);
+
+  VERIFY_ARE_EQUAL(2ull, sig.GetElements().size());
+  VERIFY_ARE_EQUAL(sig.GetElement(0).GetKind(), DXIL::SemanticKind::VertexID);
+  VERIFY_ARE_EQUAL(sig.GetElement(0).GetCols(), 1u);
+  VERIFY_ARE_EQUAL(sig.GetElement(0).GetRows(), 1u);
+  VERIFY_ARE_EQUAL(sig.GetElement(0).GetStartCol(), 0);
+  VERIFY_ARE_EQUAL(sig.GetElement(0).GetStartRow(), 0);
+  VERIFY_ARE_EQUAL(sig.GetElement(1).GetKind(), DXIL::SemanticKind::InstanceID);
+  VERIFY_ARE_EQUAL(sig.GetElement(1).GetCols(), 1u);
+  VERIFY_ARE_EQUAL(sig.GetElement(1).GetRows(), 1u);
+  VERIFY_ARE_EQUAL(sig.GetElement(1).GetStartCol(), 0);
+  VERIFY_ARE_EQUAL(sig.GetElement(1).GetStartRow(), 1);
+}
+
+TEST_F(PixTest, SignatureModification_SomethingElseFirst) {
+
+  DxilSignature sig(DXIL::ShaderKind::Vertex, DXIL::SignatureKind::Input,
+                    false);
+
+  auto AddedElement =
+      llvm::make_unique<DxilSignatureElement>(DXIL::SigPointKind::VSIn);
+  AddedElement->Initialize("One", hlsl::CompType::getU32(),
+                           DXIL::InterpolationMode::Constant, 1, 6, 0, 0, 0,
+                           {0});
+  AddedElement->SetKind(DXIL::SemanticKind::Arbitrary);
+  AddedElement->SetUsageMask(1);
+  sig.AppendElement(std::move(AddedElement));
+
+  FindOrAddVSInSignatureElementForInstanceOrVertexID(
+      sig, DXIL::SemanticKind::InstanceID);
+  FindOrAddVSInSignatureElementForInstanceOrVertexID(
+      sig, DXIL::SemanticKind::VertexID);
+
+  VERIFY_ARE_EQUAL(3ull, sig.GetElements().size());
+  // Not gonna check the first one cuz that would just be grading our own
+  // homework
+  VERIFY_ARE_EQUAL(sig.GetElement(1).GetKind(), DXIL::SemanticKind::InstanceID);
+  VERIFY_ARE_EQUAL(sig.GetElement(1).GetCols(), 1u);
+  VERIFY_ARE_EQUAL(sig.GetElement(1).GetRows(), 1u);
+  VERIFY_ARE_EQUAL(sig.GetElement(1).GetStartCol(), 0);
+  VERIFY_ARE_EQUAL(sig.GetElement(1).GetStartRow(), 1);
+  VERIFY_ARE_EQUAL(sig.GetElement(2).GetKind(), DXIL::SemanticKind::VertexID);
+  VERIFY_ARE_EQUAL(sig.GetElement(2).GetCols(), 1u);
+  VERIFY_ARE_EQUAL(sig.GetElement(2).GetRows(), 1u);
+  VERIFY_ARE_EQUAL(sig.GetElement(2).GetStartCol(), 0);
+  VERIFY_ARE_EQUAL(sig.GetElement(2).GetStartRow(), 2);
+}
+
+TEST_F(PixTest, AddToASGroupSharedPayload) {
+
+  const char *hlsl = R"(
+struct Contained
+{
+    uint j;
+    float af[3];
+};
+
+struct Bigger
+{
+    half h;
+    void Init() { h = 1.f; }
+  Contained a[2];
+};
+
+struct MyPayload
+{
+    uint i;
+    Bigger big[3];
+};
+
+groupshared MyPayload payload;
+
+[numthreads(1, 1, 1)]
+void main(uint gid : SV_GroupID)
+{
+  DispatchMesh(1, 1, 1, payload);
+}
+
+  )";
+
+  auto as = Compile(m_dllSupport, hlsl, L"as_6_6", {L"-Od"}, L"main");
+  RunDxilPIXAddTidToAmplificationShaderPayloadPass(as);
+}
+
+TEST_F(PixTest, AddToASGroupSharedPayload_MeshletCullSample) {
+
+  const char *hlsl = R"(
+struct MyPayload
+{
+    uint i[32];
+};
+
+groupshared MyPayload payload;
+
+[numthreads(1, 1, 1)]
+void main(uint gid : SV_GroupID)
+{
+  DispatchMesh(1, 1, 1, payload);
+}
+
+  )";
+
+  auto as = Compile(m_dllSupport, hlsl, L"as_6_6", {L"-Od"}, L"main");
+  RunDxilPIXAddTidToAmplificationShaderPayloadPass(as);
+}
 static llvm::DIType *PeelTypedefs(llvm::DIType *diTy) {
   using namespace llvm;
   const llvm::DITypeIdentifierMap EmptyMap;
@@ -1033,7 +1299,7 @@ void RaygenCommon()
 {
     float3 rayDir;
     float3 origin;
-
+    
     // Generate a ray for a camera pixel corresponding to an index from the dispatched 2D grid.
     GenerateCameraRay(DispatchRaysIndex().xy, origin, rayDir);
 
@@ -1119,7 +1385,7 @@ void RaygenCommon()
 {
     float3 rayDir;
     float3 origin;
-
+    
     // Generate a ray for a camera pixel corresponding to an index from the dispatched 2D grid.
     GenerateCameraRay(DispatchRaysIndex().xy, origin, rayDir);
 
@@ -1797,7 +2063,7 @@ Texture2DArray<uint4> g_gbuffer : register(t0, space0);
 
 [numthreads(1, 1, 1)]
 void main()
-{
+{	
 	const Gbuffer gbuffer = loadGbuffer(int2(0,0), g_gbuffer);
     smallPayload p;
     p.i = gbuffer.materialParams1.x + gbuffer.materialParams1.y + gbuffer.materialParams1.z + gbuffer.materialParams1.w;
@@ -2161,7 +2427,7 @@ void RaygenCommon()
 {
     float3 rayDir;
     float3 origin;
-
+    
     // Generate a ray for a camera pixel corresponding to an index from the dispatched 2D grid.
     GenerateCameraRay(DispatchRaysIndex().xy, origin, rayDir);
 
@@ -2352,7 +2618,7 @@ static void VerifyOperationSucceeded(IDxcOperationResult *pResult) {
   if (FAILED(result)) {
     CComPtr<IDxcBlobEncoding> pErrors;
     VERIFY_SUCCEEDED(pResult->GetErrorBuffer(&pErrors));
-    CA2W errorsWide(BlobToUtf8(pErrors).c_str(), CP_UTF8);
+    CA2W errorsWide(BlobToUtf8(pErrors).c_str());
     WEX::Logging::Log::Comment(errorsWide);
   }
   VERIFY_SUCCEEDED(result);
@@ -2366,21 +2632,21 @@ GlobalRootSignature so_GlobalRootSignature =
 	"RootConstants(num32BitConstants=1, b8), "
 };
 
-StateObjectConfig so_StateObjectConfig =
-{
+StateObjectConfig so_StateObjectConfig = 
+{ 
     STATE_OBJECT_FLAGS_ALLOW_LOCAL_DEPENDENCIES_ON_EXTERNAL_DEFINITONS
 };
 
-LocalRootSignature so_LocalRootSignature1 =
+LocalRootSignature so_LocalRootSignature1 = 
 {
 	"RootConstants(num32BitConstants=3, b2), "
-	"UAV(u6),RootFlags(LOCAL_ROOT_SIGNATURE)"
+	"UAV(u6),RootFlags(LOCAL_ROOT_SIGNATURE)" 
 };
 
-LocalRootSignature so_LocalRootSignature2 =
+LocalRootSignature so_LocalRootSignature2 = 
 {
 	"RootConstants(num32BitConstants=3, b2), "
-	"UAV(u8, flags=DATA_STATIC), "
+	"UAV(u8, flags=DATA_STATIC), " 
 	"RootFlags(LOCAL_ROOT_SIGNATURE)"
 };
 
@@ -2404,13 +2670,13 @@ TriangleHitGroup MyHitGroup =
 SubobjectToExportsAssociation so_Association1 =
 {
 	"so_LocalRootSignature1", // subobject name
-	"MyRayGen"                // export association
+	"MyRayGen"                // export association 
 };
 
 SubobjectToExportsAssociation so_Association2 =
 {
 	"so_LocalRootSignature2", // subobject name
-	"MyAnyHit"                // export association
+	"MyAnyHit"                // export association 
 };
 
 struct MyPayload
@@ -2425,7 +2691,7 @@ void MyRayGen()
 
 [shader("closesthit")]
 void MyClosestHit(inout MyPayload payload, in BuiltInTriangleIntersectionAttributes attr)
-{
+{  
 }
 
 [shader("anyhit")]

@@ -93,6 +93,13 @@ Q_ENUM_NS(CameraPreset)
 enum class GridLineType { Shader, Geometry };
 Q_ENUM_NS(GridLineType)
 
+enum class TransparencyTechnique {
+    Default,
+    Approximate,
+    Accurate,
+};
+Q_ENUM_NS(TransparencyTechnique)
+
 } // namespace QtGraphs3D
 Q_DECLARE_OPERATORS_FOR_FLAGS(QtGraphs3D::SelectionFlags)
 

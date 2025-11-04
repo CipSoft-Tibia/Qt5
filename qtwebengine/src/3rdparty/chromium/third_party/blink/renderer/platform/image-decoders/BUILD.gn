@@ -2,7 +2,9 @@
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
+import("//build/config/sanitizers/sanitizers.gni")
 import("//media/media_options.gni")
+import("//testing/test.gni")
 import("//third_party/blink/renderer/platform/platform.gni")
 component("image_decoders") {
   visibility = [
@@ -16,8 +18,6 @@ component("image_decoders") {
     "bmp/bmp_image_decoder.h",
     "bmp/bmp_image_reader.cc",
     "bmp/bmp_image_reader.h",
-    "exif_reader.cc",
-    "exif_reader.h",
     "fast_shared_buffer_reader.cc",
     "fast_shared_buffer_reader.h",
     "gif/gif_image_decoder.cc",
@@ -41,6 +41,8 @@ component("image_decoders") {
     "segment_reader.h",
     "segment_stream.cc",
     "segment_stream.h",
+    "skia/skia_image_decoder_base.cc",
+    "skia/skia_image_decoder_base.h",
     "webp/webp_image_decoder.cc",
     "webp/webp_image_decoder.h",
   ]
@@ -75,11 +77,20 @@ component("image_decoders") {
       "avif/avif_image_decoder.cc",
       "avif/avif_image_decoder.h",
     ]
-
     deps += [
       "//third_party/libavif",
       "//third_party/libavifinfo",
     ]
+    if (!is_qtwebengine) {
+      sources += [
+        "avif/crabbyavif_image_decoder.cc",
+        "avif/crabbyavif_image_decoder.h",
+      ]
+      deps += [
+        "//third_party/crabbyavif",
+      ]
+    }
+
   }
 }
 
@@ -113,9 +124,14 @@ source_set("unit_tests") {
     "//third_party/blink/renderer/platform:test_support",
   ]
 
-  if (enable_av1_decoder) {
-    sources += [ "avif/avif_image_decoder_test.cc" ]
+  if (is_win || is_mac || (is_linux && !is_castos)) {
+    deps += [ "//ui/base:pixel_diff_test_support" ]
+  }
 
-    deps += [ "//third_party/libavif:libavif" ]
+  if (enable_av1_decoder) {
+    sources += [
+      "avif/avif_image_decoder_test.cc",
+      "avif/crabbyavif_image_decoder_test.cc",
+    ]
   }
 }

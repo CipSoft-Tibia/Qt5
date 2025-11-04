@@ -55,7 +55,6 @@ export class RuntimeModel extends SDKModel<EventTypes> {
   readonly agent: ProtocolProxyApi.RuntimeApi;
   readonly #executionContextById: Map<number, ExecutionContext>;
   #executionContextComparatorInternal: (arg0: ExecutionContext, arg1: ExecutionContext) => number;
-  #hasSideEffectSupportInternal: boolean|null;
   constructor(target: Target) {
     super(target);
 
@@ -64,14 +63,13 @@ export class RuntimeModel extends SDKModel<EventTypes> {
     void this.agent.invoke_enable();
     this.#executionContextById = new Map();
     this.#executionContextComparatorInternal = ExecutionContext.comparator;
-    this.#hasSideEffectSupportInternal = null;
 
-    if (Common.Settings.Settings.instance().moduleSetting('customFormatters').get()) {
+    if (Common.Settings.Settings.instance().moduleSetting('custom-formatters').get()) {
       void this.agent.invoke_setCustomObjectFormatterEnabled({enabled: true});
     }
 
     Common.Settings.Settings.instance()
-        .moduleSetting('customFormatters')
+        .moduleSetting('custom-formatters')
         .addChangeListener(this.customFormattersStateChanged.bind(this));
   }
 
@@ -210,10 +208,10 @@ export class RuntimeModel extends SDKModel<EventTypes> {
       expression: string, sourceURL: string, persistScript: boolean,
       executionContextId: Protocol.Runtime.ExecutionContextId): Promise<CompileScriptResult|null> {
     const response = await this.agent.invoke_compileScript({
-      expression: expression,
-      sourceURL: sourceURL,
-      persistScript: persistScript,
-      executionContextId: executionContextId,
+      expression,
+      sourceURL,
+      persistScript,
+      executionContextId,
     });
 
     if (response.getError()) {
@@ -241,7 +239,7 @@ export class RuntimeModel extends SDKModel<EventTypes> {
     const error = response.getError();
     if (error) {
       console.error(error);
-      return {error: error};
+      return {error};
     }
     return {object: this.createRemoteObject(response.result), exceptionDetails: response.exceptionDetails};
   }
@@ -255,7 +253,7 @@ export class RuntimeModel extends SDKModel<EventTypes> {
     const error = response.getError();
     if (error) {
       console.error(error);
-      return {error: error};
+      return {error};
     }
     return {objects: this.createRemoteObject(response.objects)};
   }
@@ -276,19 +274,19 @@ export class RuntimeModel extends SDKModel<EventTypes> {
     return result.getError() ? null : result;
   }
 
-  // TODO(crbug.com/1172300) Ignored during the jsdoc to ts migration
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  inspectRequested(payload: Protocol.Runtime.RemoteObject, hints?: any, executionContextId?: number): void {
+  inspectRequested(payload: Protocol.Runtime.RemoteObject, hints: unknown, executionContextId?: number): void {
     const object = this.createRemoteObject(payload);
 
-    if (hints && 'copyToClipboard' in hints && Boolean(hints.copyToClipboard)) {
-      this.copyRequested(object);
-      return;
-    }
+    if (hints !== null && typeof hints === 'object') {
+      if ('copyToClipboard' in hints && Boolean(hints.copyToClipboard)) {
+        this.copyRequested(object);
+        return;
+      }
 
-    if (hints && 'queryObjects' in hints && hints.queryObjects) {
-      void this.queryObjectsRequested(object, executionContextId);
-      return;
+      if ('queryObjects' in hints && hints.queryObjects) {
+        void this.queryObjectsRequested(object, executionContextId);
+        return;
+      }
     }
 
     if (object.isNode()) {
@@ -315,6 +313,10 @@ export class RuntimeModel extends SDKModel<EventTypes> {
     return await this.agent.invoke_addBinding(event);
   }
 
+  async removeBinding(request: Protocol.Runtime.RemoveBindingRequest): Promise<Protocol.ProtocolResponseWithError> {
+    return await this.agent.invoke_removeBinding(request);
+  }
+
   bindingCalled(event: Protocol.Runtime.BindingCalledEvent): void {
     this.dispatchEventToListeners(Events.BindingCalled, event);
   }
@@ -326,12 +328,12 @@ export class RuntimeModel extends SDKModel<EventTypes> {
       return;
     }
 
-    const indent = Common.Settings.Settings.instance().moduleSetting('textEditorIndent').get();
+    const indent = Common.Settings.Settings.instance().moduleSetting('text-editor-indent').get();
     void object
         .callFunctionJSON(toStringForClipboard, [{
                             value: {
                               subtype: object.subtype,
-                              indent: indent,
+                              indent,
                             },
                           }])
         .then(Host.InspectorFrontendHost.InspectorFrontendHostInstance.copyText.bind(
@@ -381,7 +383,7 @@ export class RuntimeModel extends SDKModel<EventTypes> {
   }
 
   exceptionThrown(timestamp: number, exceptionDetails: Protocol.Runtime.ExceptionDetails): void {
-    const exceptionWithTimestamp = {timestamp: timestamp, details: exceptionDetails};
+    const exceptionWithTimestamp = {timestamp, details: exceptionDetails};
     this.dispatchEventToListeners(Events.ExceptionThrown, exceptionWithTimestamp);
   }
 
@@ -393,12 +395,12 @@ export class RuntimeModel extends SDKModel<EventTypes> {
       type: Protocol.Runtime.ConsoleAPICalledEventType, args: Protocol.Runtime.RemoteObject[],
       executionContextId: number, timestamp: number, stackTrace?: Protocol.Runtime.StackTrace, context?: string): void {
     const consoleAPICall = {
-      type: type,
-      args: args,
-      executionContextId: executionContextId,
-      timestamp: timestamp,
-      stackTrace: stackTrace,
-      context: context,
+      type,
+      args,
+      executionContextId,
+      timestamp,
+      stackTrace,
+      context,
     };
     this.dispatchEventToListeners(Events.ConsoleAPICalled, consoleAPICall);
   }
@@ -419,28 +421,6 @@ export class RuntimeModel extends SDKModel<EventTypes> {
     return this.executionContextIdForScriptId(currentStackTrace.callFrames[0].scriptId);
   }
 
-  hasSideEffectSupport(): boolean|null {
-    return this.#hasSideEffectSupportInternal;
-  }
-
-  async checkSideEffectSupport(): Promise<boolean> {
-    const contexts = this.executionContexts();
-    const testContext = contexts[contexts.length - 1];
-    if (!testContext) {
-      return false;
-    }
-    // Check for a positive throwOnSideEffect response without triggering side effects.
-    const response = await this.agent.invoke_evaluate({
-      expression: _sideEffectTestExpression,
-      contextId: testContext.id,
-      throwOnSideEffect: true,
-    });
-
-    this.#hasSideEffectSupportInternal = response.getError() ? false : RuntimeModel.isSideEffectFailure(response);
-
-    return this.#hasSideEffectSupportInternal;
-  }
-
   terminateExecution(): Promise<Protocol.ProtocolResponseWithError> {
     return this.agent.invoke_terminateExecution();
   }
@@ -456,18 +436,8 @@ export class RuntimeModel extends SDKModel<EventTypes> {
   }
 }
 
-/**
- * This expression:
- * - IMPORTANT: must not actually cause user-visible or JS-visible side-effects.
- * - Must throw when evaluated with `throwOnSideEffect: true`.
- * - Must be valid when run from any ExecutionContext that supports `throwOnSideEffect`.
- * @const
- */
-// TODO(crbug.com/1172300) Ignored during the jsdoc to ts migration
-// eslint-disable-next-line @typescript-eslint/naming-convention
-const _sideEffectTestExpression: string = '(async function(){ await 1; })()';
-
 export enum Events {
+  /* eslint-disable @typescript-eslint/naming-convention -- Used by web_tests. */
   BindingCalled = 'BindingCalled',
   ExecutionContextCreated = 'ExecutionContextCreated',
   ExecutionContextDestroyed = 'ExecutionContextDestroyed',
@@ -477,6 +447,7 @@ export enum Events {
   ExceptionRevoked = 'ExceptionRevoked',
   ConsoleAPICalled = 'ConsoleAPICalled',
   QueryObjectRequested = 'QueryObjectRequested',
+  /* eslint-enable @typescript-eslint/naming-convention */
 }
 
 export interface ConsoleAPICall {
@@ -581,16 +552,16 @@ export class ExecutionContext {
 
   static comparator(a: ExecutionContext, b: ExecutionContext): number {
     function targetWeight(target: Target): number {
-      if (target.parentTarget()?.type() !== Type.Frame) {
+      if (target.parentTarget()?.type() !== Type.FRAME) {
         return 5;
       }
-      if (target.type() === Type.Frame) {
+      if (target.type() === Type.FRAME) {
         return 4;
       }
       if (target.type() === Type.ServiceWorker) {
         return 3;
       }
-      if (target.type() === Type.Worker || target.type() === Type.SharedWorker) {
+      if (target.type() === Type.Worker || target.type() === Type.SHARED_WORKER) {
         return 2;
       }
       return 1;
@@ -648,29 +619,17 @@ export class ExecutionContext {
     if (this.debuggerModel.selectedCallFrame()) {
       return this.debuggerModel.evaluateOnSelectedCallFrame(options);
     }
-    // Assume backends either support both throwOnSideEffect and timeout options or neither.
-    const needsTerminationOptions = Boolean(options.throwOnSideEffect) || options.timeout !== undefined;
-    if (!needsTerminationOptions || this.runtimeModel.hasSideEffectSupport()) {
-      return this.evaluateGlobal(options, userGesture, awaitPromise);
-    }
-
-    if (this.runtimeModel.hasSideEffectSupport() !== false) {
-      await this.runtimeModel.checkSideEffectSupport();
-      if (this.runtimeModel.hasSideEffectSupport()) {
-        return this.evaluateGlobal(options, userGesture, awaitPromise);
-      }
-    }
-    return {error: 'Side-effect checks not supported by backend.'};
+    return this.evaluateGlobal(options, userGesture, awaitPromise);
   }
 
   globalObject(objectGroup: string, generatePreview: boolean): Promise<EvaluationResult> {
     const evaluationOptions = {
       expression: 'this',
-      objectGroup: objectGroup,
+      objectGroup,
       includeCommandLineAPI: false,
       silent: true,
       returnByValue: false,
-      generatePreview: generatePreview,
+      generatePreview,
     };
     return this.evaluateGlobal((evaluationOptions as EvaluationOptions), false, false);
   }
@@ -689,8 +648,8 @@ export class ExecutionContext {
       silent: options.silent,
       returnByValue: options.returnByValue,
       generatePreview: options.generatePreview,
-      userGesture: userGesture,
-      awaitPromise: awaitPromise,
+      userGesture,
+      awaitPromise,
       throwOnSideEffect: options.throwOnSideEffect,
       timeout: options.timeout,
       disableBreaks: options.disableBreaks,
@@ -704,7 +663,7 @@ export class ExecutionContext {
     const error = response.getError();
     if (error) {
       console.error(error);
-      return {error: error};
+      return {error};
     }
     return {object: this.runtimeModel.createRemoteObject(response.result), exceptionDetails: response.exceptionDetails};
   }

@@ -9,10 +9,12 @@
 
 #include <map>
 #include <memory>
+#include <optional>
 #include <set>
 #include <string>
 
 #include "base/containers/circular_deque.h"
+#include "base/containers/heap_array.h"
 #include "base/memory/raw_ptr.h"
 #include "base/time/time.h"
 #include "media/base/audio_decoder_config.h"
@@ -22,7 +24,6 @@
 #include "media/base/stream_parser_buffer.h"
 #include "media/formats/webm/webm_parser.h"
 #include "media/formats/webm/webm_tracks_parser.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 
 namespace media {
 
@@ -258,18 +259,14 @@ class MEDIA_EXPORT WebMClusterParser : public WebMParserClient {
 
   // A |last_block_timecode_| value of -1 is not enough to indicate it is unset
   // now that negative block timecodes are allowed, so we explicitly use
-  // absl::optional to know if it is currently set.
-  absl::optional<int64_t> last_block_timecode_ = absl::nullopt;
+  // std::optional to know if it is currently set.
+  std::optional<int64_t> last_block_timecode_ = std::nullopt;
 
-  std::unique_ptr<uint8_t[]> block_data_;
-  int block_data_size_ = -1;
+  std::optional<base::HeapArray<uint8_t>> block_data_;
   int64_t block_duration_ = -1;
   int64_t block_add_id_ = -1;
 
-  std::unique_ptr<uint8_t[]> block_additional_data_;
-  // Must be 0 if |block_additional_data_| is null. Must be > 0 if
-  // |block_additional_data_| is NOT null.
-  int block_additional_data_size_ = 0;
+  std::optional<base::HeapArray<uint8_t>> block_additional_data_;
 
   int64_t discard_padding_ = -1;
   bool discard_padding_set_ = false;

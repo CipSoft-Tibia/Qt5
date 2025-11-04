@@ -31,8 +31,9 @@ export class HostOsTargetFactory implements TargetFactory {
 
   connectNewTarget(): Promise<RecordingTargetV2> {
     throw new RecordingError(
-        'Can not create a new Host OS target.' +
-        'The Host OS target is created at factory initialisation.');
+      'Can not create a new Host OS target.' +
+        'The Host OS target is created at factory initialisation.',
+    );
   }
 
   getName(): string {
@@ -59,7 +60,10 @@ export class HostOsTargetFactory implements TargetFactory {
       }
     }
     this.target = new HostOsTarget(
-        websocketUrl, this.maybeClearTarget.bind(this), this.onTargetChange);
+      websocketUrl,
+      this.maybeClearTarget.bind(this),
+      this.onTargetChange,
+    );
     this.onTargetChange();
   }
 
@@ -75,7 +79,7 @@ export class HostOsTargetFactory implements TargetFactory {
   }
 }
 
-// We instantiate the host target factory only on Mac and Linux.
+// We instantiate the host target factory only on Mac, Linux, and Windows.
 if (isMacOs(navigator.userAgent) || isLinux(navigator.userAgent)) {
   targetFactoryRegistry.register(new HostOsTargetFactory());
 }

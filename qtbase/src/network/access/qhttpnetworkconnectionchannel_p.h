@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QHTTPNETWORKCONNECTIONCHANNEL_H
 #define QHTTPNETWORKCONNECTIONCHANNEL_H
@@ -48,6 +49,7 @@
 #include <QtCore/qscopedpointer.h>
 
 #include <memory>
+#include <utility>
 
 QT_REQUIRE_CONFIG(http);
 
@@ -58,10 +60,10 @@ class QHttpNetworkReply;
 class QByteArray;
 
 #ifndef HttpMessagePair
-typedef QPair<QHttpNetworkRequest, QHttpNetworkReply*> HttpMessagePair;
+typedef std::pair<QHttpNetworkRequest, QHttpNetworkReply*> HttpMessagePair;
 #endif
 
-class QHttpNetworkConnectionChannel : public QObject {
+class QHttpNetworkConnectionChannel final : public QObject {
     Q_OBJECT
 public:
     // TODO: Refactor this to add an EncryptingState (and remove pendingEncrypt).
@@ -140,7 +142,7 @@ public:
     void close();
     void abort();
 
-    bool sendRequest();
+    void sendRequest();
     void sendRequestDelayed();
 
     bool ensureConnection();

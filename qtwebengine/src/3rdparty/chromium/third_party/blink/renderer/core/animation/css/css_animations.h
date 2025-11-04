@@ -85,6 +85,7 @@ class CORE_EXPORT CSSAnimations final {
   static bool IsAnimatingFontAffectingProperties(const ElementAnimations*);
   static bool IsAnimatingLineHeightProperty(const ElementAnimations*);
   static bool IsAnimatingRevert(const ElementAnimations*);
+  static bool IsAnimatingDisplayProperty(const ElementAnimations*);
   static void CalculateTimelineUpdate(CSSAnimationUpdate&,
                                       Element& animating_element,
                                       const ComputedStyleBuilder&);
@@ -165,10 +166,10 @@ class CORE_EXPORT CSSAnimations final {
     AnimationTimeline* Timeline() const {
       return animation->TimelineInternal();
     }
-    const absl::optional<TimelineOffset>& RangeStart() const {
+    const std::optional<TimelineOffset>& RangeStart() const {
       return animation->GetRangeStartInternal();
     }
-    const absl::optional<TimelineOffset>& RangeEnd() const {
+    const std::optional<TimelineOffset>& RangeEnd() const {
       return animation->GetRangeEndInternal();
     }
 
@@ -285,6 +286,8 @@ class CORE_EXPORT CSSAnimations final {
     const ComputedStyle& base_style;
     const ComputedStyle* before_change_style;
     const TransitionMap* active_transitions;
+    // If the performance of this HashSet shows up in profiles, we could
+    // convert any non-custom CSS properties in it to use CSSBitset instead.
     HashSet<PropertyHandle>* listed_properties;
     const CSSTransitionData* transition_data;
   };
@@ -413,7 +416,7 @@ class CORE_EXPORT CSSAnimations final {
         Element* animation_target,
         const AtomicString& name,
         Timing::Phase previous_phase = Timing::kPhaseNone,
-        absl::optional<double> previous_iteration = absl::nullopt)
+        std::optional<double> previous_iteration = std::nullopt)
         : animation_target_(animation_target),
           name_(name),
           previous_phase_(previous_phase),
@@ -423,7 +426,7 @@ class CORE_EXPORT CSSAnimations final {
 
     bool IsAnimationEventDelegate() const override { return true; }
     Timing::Phase getPreviousPhase() const { return previous_phase_; }
-    absl::optional<double> getPreviousIteration() const {
+    std::optional<double> getPreviousIteration() const {
       return previous_iteration_;
     }
 
@@ -440,7 +443,7 @@ class CORE_EXPORT CSSAnimations final {
     Member<Element> animation_target_;
     const AtomicString name_;
     Timing::Phase previous_phase_;
-    absl::optional<double> previous_iteration_;
+    std::optional<double> previous_iteration_;
   };
 
   class TransitionEventDelegate final : public AnimationEffect::EventDelegate {

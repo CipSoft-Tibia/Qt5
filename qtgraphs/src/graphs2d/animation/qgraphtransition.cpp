@@ -88,10 +88,12 @@ void QGraphTransition::onPointChanged(TransitionType type, int index, QPointF po
         childAnimation->animate();
     }
 
+#ifdef USE_SPLINEGRAPH
     auto spline = qobject_cast<QSplineSeries *>(series);
 
     if (spline && !contains(QGraphAnimation::GraphAnimationType::ControlPoint))
         spline->d_func()->calculateSplinePoints();
+#endif
 
     m_animationGroup.start();
 }
@@ -133,7 +135,7 @@ bool QGraphTransition::initialized()
 
 bool QGraphTransition::contains(QGraphAnimation::GraphAnimationType type)
 {
-    for (const auto anim : m_animations) {
+    for (const auto anim : std::as_const(m_animations)) {
         if (anim->animationType() == type)
             return true;
     }

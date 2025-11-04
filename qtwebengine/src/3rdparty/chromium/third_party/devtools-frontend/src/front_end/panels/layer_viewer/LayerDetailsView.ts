@@ -179,7 +179,7 @@ export class LayerDetailsView extends Common.ObjectWrapper.eventMixin<EventTypes
 
   constructor(layerViewHost: LayerViewHost) {
     super(true);
-    this.element.setAttribute('jslog', `${VisualLogging.pane().context('layers-details')}`);
+    this.element.setAttribute('jslog', `${VisualLogging.pane('layers-details')}`);
 
     this.layerViewHost = layerViewHost;
     this.layerViewHost.registerView(this);
@@ -224,9 +224,9 @@ export class LayerDetailsView extends Common.ObjectWrapper.eventMixin<EventTypes
       return;
     }
     const snapshotSelection =
-        this.selection.type() === Type.Snapshot ? this.selection : this.layerSnapshotMap.get(this.selection.layer());
+        this.selection.type() === Type.SNAPSHOT ? this.selection : this.layerSnapshotMap.get(this.selection.layer());
     if (snapshotSelection) {
-      this.dispatchEventToListeners(Events.PaintProfilerRequested, snapshotSelection);
+      this.dispatchEventToListeners(Events.PAINT_PROFILER_REQUESTED, snapshotSelection);
     }
   }
 
@@ -246,7 +246,7 @@ export class LayerDetailsView extends Common.ObjectWrapper.eventMixin<EventTypes
       PH5: scrollRect.rect.y,
     });
     element.addEventListener('click', this.onScrollRectClicked.bind(this, index), false);
-    element.setAttribute('jslog', `${VisualLogging.action().track({click: true}).context('layers.select-object')}`);
+    element.setAttribute('jslog', `${VisualLogging.action('layers.select-object').track({click: true})}`);
   }
 
   private formatStickyAncestorLayer(title: string, layer: SDK.LayerTreeBase.Layer|null): string {
@@ -321,7 +321,7 @@ export class LayerDetailsView extends Common.ObjectWrapper.eventMixin<EventTypes
     this.scrollRectsCell.removeChildren();
     layer.scrollRects().forEach(this.createScrollRectElement.bind(this));
     this.populateStickyPositionConstraintCell(layer.stickyPositionConstraint());
-    const snapshot = this.selection && this.selection.type() === Type.Snapshot ?
+    const snapshot = this.selection && this.selection.type() === Type.SNAPSHOT ?
         (this.selection as SnapshotSelection).snapshot() :
         null;
 
@@ -337,7 +337,8 @@ export class LayerDetailsView extends Common.ObjectWrapper.eventMixin<EventTypes
     this.paintCountCell = this.createRow(i18nString(UIStrings.paintCount));
     this.scrollRectsCell = this.createRow(i18nString(UIStrings.slowScrollRegions));
     this.stickyPositionConstraintCell = this.createRow(i18nString(UIStrings.stickyPositionConstraint));
-    this.paintProfilerLink = this.contentElement.createChild('span', 'hidden devtools-link link-margin') as HTMLElement;
+    this.paintProfilerLink = this.contentElement.createChild(
+                                 'button', 'hidden devtools-link link-margin text-button link-style') as HTMLElement;
     UI.ARIAUtils.markAsLink(this.paintProfilerLink);
     this.paintProfilerLink.textContent = i18nString(UIStrings.paintProfiler);
     this.paintProfilerLink.tabIndex = 0;
@@ -345,14 +346,8 @@ export class LayerDetailsView extends Common.ObjectWrapper.eventMixin<EventTypes
       e.consume(true);
       this.invokeProfilerLink();
     });
-    this.paintProfilerLink.addEventListener('keydown', event => {
-      if (event.key === 'Enter') {
-        event.consume();
-        this.invokeProfilerLink();
-      }
-    });
     this.paintProfilerLink.setAttribute(
-        'jslog', `${VisualLogging.action().track({click: true, keydown: 'Enter'}).context('layers.paint-profiler')}`);
+        'jslog', `${VisualLogging.action('layers.paint-profiler').track({click: true, keydown: 'Enter'})}`);
   }
 
   private createRow(title: string): HTMLElement {
@@ -376,20 +371,20 @@ export class LayerDetailsView extends Common.ObjectWrapper.eventMixin<EventTypes
 }
 
 export const enum Events {
-  PaintProfilerRequested = 'PaintProfilerRequested',
+  PAINT_PROFILER_REQUESTED = 'PaintProfilerRequested',
 }
 
 export type EventTypes = {
-  [Events.PaintProfilerRequested]: Selection,
+  [Events.PAINT_PROFILER_REQUESTED]: Selection,
 };
 
 export const slowScrollRectNames = new Map([
-  [SDK.LayerTreeBase.Layer.ScrollRectType.NonFastScrollable, i18nLazyString(UIStrings.nonFastScrollable)],
-  [SDK.LayerTreeBase.Layer.ScrollRectType.TouchEventHandler, i18nLazyString(UIStrings.touchEventHandler)],
-  [SDK.LayerTreeBase.Layer.ScrollRectType.WheelEventHandler, i18nLazyString(UIStrings.wheelEventHandler)],
-  [SDK.LayerTreeBase.Layer.ScrollRectType.RepaintsOnScroll, i18nLazyString(UIStrings.repaintsOnScroll)],
+  [SDK.LayerTreeBase.Layer.ScrollRectType.NON_FAST_SCROLLABLE, i18nLazyString(UIStrings.nonFastScrollable)],
+  [SDK.LayerTreeBase.Layer.ScrollRectType.TOUCH_EVENT_HANDLER, i18nLazyString(UIStrings.touchEventHandler)],
+  [SDK.LayerTreeBase.Layer.ScrollRectType.WHEEL_EVENT_HANDLER, i18nLazyString(UIStrings.wheelEventHandler)],
+  [SDK.LayerTreeBase.Layer.ScrollRectType.REPAINTS_ON_SCROLL, i18nLazyString(UIStrings.repaintsOnScroll)],
   [
-    SDK.LayerTreeBase.Layer.ScrollRectType.MainThreadScrollingReason,
+    SDK.LayerTreeBase.Layer.ScrollRectType.MAIN_THREAD_SCROLL_REASON,
     i18nLazyString(UIStrings.mainThreadScrollingReason),
   ],
 ]);

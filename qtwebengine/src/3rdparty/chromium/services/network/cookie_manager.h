@@ -21,6 +21,7 @@
 #include "net/cookies/cookie_deletion_info.h"
 #include "services/network/cookie_settings.h"
 #include "services/network/public/mojom/cookie_manager.mojom.h"
+#include "services/network/tpcd/metadata/manager.h"
 
 namespace net {
 class CookieStore;
@@ -32,6 +33,10 @@ class GURL;
 namespace network {
 class FirstPartySetsAccessDelegate;
 class SessionCleanupCookieStore;
+
+namespace tpcd::metadata {
+class Manager;
+}
 
 using SettingsChangeCallback = base::RepeatingClosure;
 
@@ -47,7 +52,8 @@ class COMPONENT_EXPORT(NETWORK_SERVICE) CookieManager
       net::URLRequestContext* url_request_context,
       FirstPartySetsAccessDelegate* const first_party_sets_access_delegate,
       scoped_refptr<SessionCleanupCookieStore> session_cleanup_cookie_store,
-      mojom::CookieManagerParamsPtr params);
+      mojom::CookieManagerParamsPtr params,
+      tpcd::metadata::Manager* tpcd_metadata_manager);
 
   CookieManager(const CookieManager&) = delete;
   CookieManager& operator=(const CookieManager&) = delete;
@@ -88,9 +94,11 @@ class COMPONENT_EXPORT(NETWORK_SERVICE) CookieManager
                      DeleteCookiesCallback callback) override;
   void DeleteSessionOnlyCookies(
       DeleteSessionOnlyCookiesCallback callback) override;
+  void DeleteStaleSessionOnlyCookies(
+      DeleteStaleSessionOnlyCookiesCallback callback) override;
   void AddCookieChangeListener(
       const GURL& url,
-      const absl::optional<std::string>& name,
+      const std::optional<std::string>& name,
       mojo::PendingRemote<mojom::CookieChangeListener> listener) override;
   void AddGlobalChangeListener(
       mojo::PendingRemote<mojom::CookieChangeListener> listener) override;
@@ -112,7 +120,6 @@ class COMPONENT_EXPORT(NETWORK_SERVICE) CookieManager
                               AllowFileSchemeCookiesCallback callback) override;
   void SetForceKeepSessionState() override;
   void BlockThirdPartyCookies(bool block) override;
-  void BlockTruncatedCookies(bool block) override;
   void SetMitigationsEnabledFor3pcd(bool enable) override;
   void SetTrackingProtectionEnabledFor3pcd(bool enable) override;
 

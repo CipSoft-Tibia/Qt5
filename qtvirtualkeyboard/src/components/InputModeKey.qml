@@ -56,6 +56,7 @@ Key {
         "กขค",  // InputEngine.InputMode.Thai
         "笔画",  // InputEngine.InputMode.Stroke
         "ABC",  // InputEngine.InputMode.Romaji
+        "FLK",  // InputEngine.InputMode.HiraganaFlick
     ]
 
     /*!

@@ -73,8 +73,6 @@ constexpr TimeDelta kQuickTestModeRunDuration = TimeDelta::Millis(100);
 // Field trials to enable Flex FEC advertising and receiving.
 constexpr char kFlexFecEnabledFieldTrials[] =
     "WebRTC-FlexFEC-03-Advertised/Enabled/WebRTC-FlexFEC-03/Enabled/";
-constexpr char kUseStandardsBytesStats[] =
-    "WebRTC-UseStandardBytesStats/Enabled/";
 
 class FixturePeerConnectionObserver : public MockPeerConnectionObserver {
  public:
@@ -182,7 +180,7 @@ PeerConnectionE2EQualityTest::PeerConnectionE2EQualityTest(
 void PeerConnectionE2EQualityTest::ExecuteAt(
     TimeDelta target_time_since_start,
     std::function<void(TimeDelta)> func) {
-  executor_->ScheduleActivity(target_time_since_start, absl::nullopt, func);
+  executor_->ScheduleActivity(target_time_since_start, std::nullopt, func);
 }
 
 void PeerConnectionE2EQualityTest::ExecuteEvery(
@@ -258,9 +256,9 @@ void PeerConnectionE2EQualityTest::Run(RunParams run_params) {
   // Audio streams are intercepted in AudioDeviceModule, so if it is required to
   // catch output of Alice's stream, Alice's output_dump_file_name should be
   // passed to Bob's TestPeer setup as audio output file name.
-  absl::optional<RemotePeerAudioConfig> alice_remote_audio_config =
+  std::optional<RemotePeerAudioConfig> alice_remote_audio_config =
       RemotePeerAudioConfig::Create(bob_configurer->params()->audio_config);
-  absl::optional<RemotePeerAudioConfig> bob_remote_audio_config =
+  std::optional<RemotePeerAudioConfig> bob_remote_audio_config =
       RemotePeerAudioConfig::Create(alice_configurer->params()->audio_config);
   // Copy Alice and Bob video configs, subscriptions and names to correctly pass
   // them into lambdas.
@@ -439,8 +437,7 @@ void PeerConnectionE2EQualityTest::Run(RunParams run_params) {
 
 std::string PeerConnectionE2EQualityTest::GetFieldTrials(
     const RunParams& run_params) {
-  std::vector<absl::string_view> default_field_trials = {
-      kUseStandardsBytesStats};
+  std::vector<absl::string_view> default_field_trials = {};
   if (run_params.enable_flex_fec_support) {
     default_field_trials.push_back(kFlexFecEnabledFieldTrials);
   }
@@ -570,14 +567,14 @@ void PeerConnectionE2EQualityTest::SetPeerCodecPreferences(TestPeer* peer) {
           peer->params().video_codecs, true, peer->params().use_ulp_fec,
           peer->params().use_flex_fec,
           peer->pc_factory()
-              ->GetRtpSenderCapabilities(cricket::MediaType::MEDIA_TYPE_VIDEO)
+              ->GetRtpReceiverCapabilities(cricket::MediaType::MEDIA_TYPE_VIDEO)
               .codecs);
   std::vector<RtpCodecCapability> without_rtx_video_capabilities =
       FilterVideoCodecCapabilities(
           peer->params().video_codecs, false, peer->params().use_ulp_fec,
           peer->params().use_flex_fec,
           peer->pc_factory()
-              ->GetRtpSenderCapabilities(cricket::MediaType::MEDIA_TYPE_VIDEO)
+              ->GetRtpReceiverCapabilities(cricket::MediaType::MEDIA_TYPE_VIDEO)
               .codecs);
 
   // Set codecs for transceivers

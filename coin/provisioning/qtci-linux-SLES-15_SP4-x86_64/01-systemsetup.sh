@@ -12,11 +12,8 @@ source "${BASH_SOURCE%/*}/../common/unix/check_and_set_proxy.sh"
 
 echo "Set timezone to UTC."
 sudo timedatectl set-timezone Etc/UTC
-echo "Timeout for blanking the screen (0 = never)"
-gsettings set org.gnome.desktop.session idle-delay 0
-echo "Prevents screen lock when screesaver goes active."
-gsettings set org.gnome.desktop.screensaver lock-enabled false
-gsettings set org.gnome.desktop.lockdown disable-lock-screen 'true'
+
+"$BASEDIR/../common/linux/configure-gnome-shell.sh"
 
 sudo sed -i 's|GRUB_TIMEOUT=8|GRUB_TIMEOUT=0|g' /etc/default/grub
 sudo grub2-mkconfig -o /boot/grub2/grub.cfg

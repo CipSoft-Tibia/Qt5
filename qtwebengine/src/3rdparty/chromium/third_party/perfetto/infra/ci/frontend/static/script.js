@@ -18,7 +18,7 @@
 
 // If you add or remove job types, do not forget to fix the colspans below.
 const JOB_TYPES = [
-  { id: 'linux-gcc7-x86_64-release', label: 'rel' },
+  { id: 'linux-gcc8-x86_64-release', label: 'rel' },
   { id: 'linux-clang-x86_64-debug', label: 'dbg' },
   { id: 'linux-clang-x86_64-tsan', label: 'tsan' },
   { id: 'linux-clang-x86_64-msan', label: 'msan' },
@@ -28,7 +28,6 @@ const JOB_TYPES = [
   { id: 'linux-clang-x86_64-bazel', label: 'bazel' },
   { id: 'ui-clang-x86_64-release', label: 'rel' },
   { id: 'android-clang-arm-release', label: 'rel' },
-  { id: 'android-clang-arm-asan', label: 'asan' },
 ];
 
 const STATS_LINK =
@@ -193,17 +192,17 @@ var CLsPageRenderer = {
                 m('td[rowspan=4]', 'Status'),
                 m('td[rowspan=4]', 'Owner'),
                 m('td[rowspan=4]', 'Updated'),
-                m('td[colspan=11]', 'Bots'),
+                m('td[colspan=10]', 'Bots'),
               ),
               m('tr',
                 m('td[colspan=9]', 'linux'),
                 m('td[colspan=2]', 'android'),
               ),
               m('tr',
-                m('td', 'gcc7'),
+                m('td', 'gcc8'),
                 m('td[colspan=7]', 'clang'),
                 m('td[colspan=1]', 'ui'),
-                m('td[colspan=2]', 'clang-arm'),
+                m('td[colspan=1]', 'clang-arm'),
               ),
               m('tr#cls_header',
                 JOB_TYPES.map(job => m(`td#${job.id}`, job.label))
@@ -232,7 +231,7 @@ function getLastUpdate(lastUpdate) {
     return lastUpdateMins + ' mins ago';
   if (lastUpdateMins < 60 * 24)
     return Math.ceil(lastUpdateMins / 60) + ' hours ago';
-  return lastUpdate.toLocaleDateString();
+  return lastUpdate.toISOString().substr(0, 10);
 }
 
 function renderCLRow(cl) {

@@ -16,25 +16,27 @@
 
 #include <algorithm>
 #include <cstddef>
+#include <sstream>
 #include <string>
 #include <string_view>
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "./centipede/binary_info.h"
 #include "./centipede/control_flow.h"
 #include "./centipede/corpus.h"
+#include "./centipede/corpus_io.h"
 #include "./centipede/coverage.h"
-#include "./centipede/defs.h"
 #include "./centipede/feature.h"
-#include "./centipede/logging.h"
 #include "./centipede/pc_info.h"
-#include "./centipede/remote_file.h"
-#include "./centipede/shard_reader.h"
 #include "./centipede/workdir.h"
+#include "./common/defs.h"
+#include "./common/logging.h"
+#include "./common/remote_file.h"
 
 namespace centipede {
 
@@ -46,9 +48,11 @@ std::vector<CorpusRecord> ReadCorpora(std::string_view binary_name,
   WorkDir workdir(std::string(workdir_path), std::string(binary_name),
                   std::string(binary_hash), /*my_shard_index=*/0);
   std::vector<std::string> corpus_paths;
-  RemoteGlobMatch(workdir.CorpusFiles().AllShardsGlob(), corpus_paths);
+  CHECK_OK(
+      RemoteGlobMatch(workdir.CorpusFiles().AllShardsGlob(), corpus_paths));
   std::vector<std::string> features_paths;
-  RemoteGlobMatch(workdir.FeaturesFiles().AllShardsGlob(), features_paths);
+  CHECK_OK(
+      RemoteGlobMatch(workdir.FeaturesFiles().AllShardsGlob(), features_paths));
 
   CHECK_EQ(corpus_paths.size(), features_paths.size());
   std::vector<CorpusRecord> corpus;
@@ -56,8 +60,8 @@ std::vector<CorpusRecord> ReadCorpora(std::string_view binary_name,
     LOG(INFO) << "Reading corpus at: " << corpus_paths[i];
     LOG(INFO) << "Reading features at: " << features_paths[i];
     ReadShard(corpus_paths[i], features_paths[i],
-              [&corpus](const ByteArray &input, FeatureVec &features) {
-                corpus.push_back({input, features});
+              [&corpus](ByteArray input, FeatureVec features) {
+                corpus.push_back({std::move(input), std::move(features)});
               });
   }
   return corpus;
@@ -78,11 +82,13 @@ AnalyzeCorporaResults AnalyzeCorpora(const BinaryInfo &binary_info,
                                      const std::vector<CorpusRecord> &b) {
   // `a_pcs` will contain all PCs covered by `a`.
   absl::flat_hash_set<size_t> a_pcs;
+  absl::flat_hash_map<size_t, CorpusRecord> a_pc_to_corpus;
   for (const auto &record : a) {
     for (const auto &feature : record.features) {
       if (!feature_domains::kPCs.Contains(feature)) continue;
       auto pc = ConvertPCFeatureToPcIndex(feature);
       a_pcs.insert(pc);
+      a_pc_to_corpus.insert({pc, std::move(record)});
     }
   }
 
@@ -91,6 +97,7 @@ AnalyzeCorporaResults AnalyzeCorpora(const BinaryInfo &binary_info,
   // `b_shared_indices` are indices of all other inputs from `b`.
   absl::flat_hash_set<size_t> b_only_pcs;
   absl::flat_hash_set<size_t> b_pcs;
+  absl::flat_hash_map<size_t, CorpusRecord> b_pc_to_corpus;
   std::vector<size_t> b_shared_indices, b_unique_indices;
   for (size_t i = 0; i < b.size(); ++i) {
     const auto &record = b[i];
@@ -99,6 +106,7 @@ AnalyzeCorporaResults AnalyzeCorpora(const BinaryInfo &binary_info,
       if (!feature_domains::kPCs.Contains(feature)) continue;
       auto pc = ConvertPCFeatureToPcIndex(feature);
       b_pcs.insert(pc);
+      b_pc_to_corpus.insert({pc, std::move(record)});
       if (a_pcs.contains(pc)) continue;
       b_only_pcs.insert(pc);
       has_b_only = true;
@@ -123,19 +131,73 @@ AnalyzeCorporaResults AnalyzeCorpora(const BinaryInfo &binary_info,
             << VV(b_shared_indices.size()) << VV(b_unique_indices.size());
 
   // Sort PCs to put them in the canonical order, as in pc_table.
-  AnalyzeCorporaResults ret;
-  ret.a_pcs = std::vector<size_t>{a_pcs.begin(), a_pcs.end()};
+  AnalyzeCorporaResults ret = {
+      .a_pcs = std::vector<size_t>{a_pcs.begin(), a_pcs.end()},
+      .b_pcs = std::vector<size_t>{b_pcs.begin(), b_pcs.end()},
+      .a_only_pcs = std::vector<size_t>{a_only_pcs.begin(), a_only_pcs.end()},
+      .b_only_pcs = std::vector<size_t>{b_only_pcs.begin(), b_only_pcs.end()},
+      .a_pc_to_corpus_record = std::move(a_pc_to_corpus),
+      .b_pc_to_corpus_record = std::move(b_pc_to_corpus),
+  };
   std::sort(ret.a_pcs.begin(), ret.a_pcs.end());
-  ret.b_pcs = std::vector<size_t>{b_pcs.begin(), b_pcs.end()};
   std::sort(ret.b_pcs.begin(), ret.b_pcs.end());
-  ret.a_only_pcs = std::vector<size_t>{a_only_pcs.begin(), a_only_pcs.end()};
   std::sort(ret.a_only_pcs.begin(), ret.a_only_pcs.end());
-  ret.b_only_pcs = std::vector<size_t>{b_only_pcs.begin(), b_only_pcs.end()};
   std::sort(ret.b_only_pcs.begin(), ret.b_only_pcs.end());
+
   return ret;
 }
 
 }  // namespace
+
+CoverageResults GetCoverage(const std::vector<CorpusRecord> &corpus_records,
+                            BinaryInfo binary_info) {
+  absl::flat_hash_set<size_t> pcs;
+  for (const auto &record : corpus_records) {
+    for (const auto &feature : record.features) {
+      if (!feature_domains::kPCs.Contains(feature)) continue;
+      auto pc = ConvertPCFeatureToPcIndex(feature);
+      pcs.insert(pc);
+    }
+  }
+  CoverageResults ret = {
+      .pcs = {pcs.begin(), pcs.end()},
+      .binary_info = std::move(binary_info),
+  };
+  // Sort PCs to put them in the canonical order, as in pc_table.
+  std::sort(ret.pcs.begin(), ret.pcs.end());
+  return ret;
+}
+
+CoverageResults GetCoverage(std::string_view binary_name,
+                            std::string_view binary_hash,
+                            std::string_view workdir) {
+  const std::vector<CorpusRecord> corpus_records =
+      ReadCorpora(binary_name, binary_hash, workdir);
+  BinaryInfo binary_info = ReadBinaryInfo(binary_name, binary_hash, workdir);
+  return GetCoverage(corpus_records, std::move(binary_info));
+}
+
+void DumpCoverageReport(const CoverageResults &coverage_results,
+                        std::string_view coverage_report_path) {
+  LOG(INFO) << "Dump coverage to file: " << coverage_report_path;
+
+  const centipede::PCTable &pc_table = coverage_results.binary_info.pc_table;
+  const centipede::SymbolTable &symbols = coverage_results.binary_info.symbols;
+
+  centipede::SymbolTable coverage_symbol_table;
+  for (const PCIndex pc : coverage_results.pcs) {
+    CHECK_LE(pc, symbols.size());
+    if (!pc_table[pc].has_flag(centipede::PCInfo::kFuncEntry)) continue;
+    const SymbolTable::Entry entry = symbols.entry(pc);
+    coverage_symbol_table.AddEntry(entry.func, entry.file_line_col());
+  }
+
+  std::ostringstream symbol_table_stream;
+  coverage_symbol_table.WriteToLLVMSymbolizer(symbol_table_stream);
+
+  CHECK_OK(
+      RemoteFileSetContents(coverage_report_path, symbol_table_stream.str()));
+}
 
 AnalyzeCorporaResults AnalyzeCorpora(std::string_view binary_name,
                                      std::string_view binary_hash,

@@ -7,12 +7,10 @@
     \examplecategory {Application Examples}
     \examplecategory {Positioning & Location}
     \meta tags {c++, qml, quick}
-
+    \ingroup qtpositioning-examples
     \brief The Satellite Info example shows the available satellites
     using Sky View, Table View, or RSSI View and the user's current position.
     It is implemented with \l{Qt Positioning} and \l{Qt Quick}.
-
-    \ingroup qtpositioning-examples
 
     This example demonstrates the usage of \l {Qt Positioning QML Types}
     {Qt Positioning QML API}:
@@ -25,24 +23,26 @@
     The example also shows how to use a custom \c {C++} model together with a
     custom proxy model from \c {QML}.
 
-    \section1 UI Overview
+    \include examples-run.qdocinc
+
+    \section1 UI walkthrough
 
     The example shows satellite information in three different tabs.
     The data is taken from the \l {SatelliteSource::satellitesInView} and
     \l {SatelliteSource::satellitesInUse} properties.
 
-    \image ../images/skyview_tableview.webp
+    \image ../images/skyview_tableview.webp {Satellite view and table UI}
 
     The \e {Sky View} tab shows the relative satellite positions using the
     \c {Azimuth} and \c {Elevation} \l {geoSatelliteInfo::attribute}
     {attributes}. Clicking on an individual satellite object opens a popup
     with the \l {geoSatelliteInfo::satelliteIdentifier} {satellite identifier},
-    its azimuth and elevation.
+    its azimuth, and elevation.
 
     The \e {Table View} tab shows the list of all detected satellites, and
     allows to apply sorting and filtering to the list.
 
-    \image ../images/rssiview_settings.webp
+    \image ../images/rssiview_settings.webp {RSSI view with satellite signal bars}
 
     The \e {RSSI View} tab shows the signal strength of satellites in view using
     the \l {geoSatelliteInfo::}{signalStrength} property. The numbers below the
@@ -56,8 +56,8 @@
     The \e {Status} block on top of the tabs shows the current mode or the last
     error.
 
-    The \e {Settings} menu allows to switch the application color mode and show
-    the help information.
+    The \e {Settings} menu allows you to switch the application color mode and
+    show the help information.
 
     The application operates in three different modes:
 
@@ -68,7 +68,7 @@
         \row
             \li Running
             \li The application continuously queries the system for satellite
-                and position updates. When new data is available it will be
+                and position updates. When new data is available, it will be
                 displayed.
         \row
             \li Stopped
@@ -89,8 +89,6 @@
     on \c macOS and \c iOS the satellite information will always be taken from
     pre-recorded data. These API limitations do not affect positioning
     information, so current position can be displayed correctly.
-
-    \include examples-run.qdocinc
 
     \section1 Retrieving Current Position
 
@@ -125,7 +123,7 @@
 
     \section1 Using Custom C++ Models
 
-    The example makes use of two custom models - \c {SatelliteModel} and
+    The example uses two custom models - \c {SatelliteModel} and
     \c {SortFilterModel}.
 
     \section2 Satellite Model
@@ -202,4 +200,9 @@
     \printuntil QML_IMPORT_MAJOR_VERSION = 1
     \skipto qml_resources.files
     \printuntil RESOURCES += icon_resources
+
+    \section1 Source files
+
+    \sa {All Qt Examples}, {Qt Positioning Examples},
+    {Qt Quick Examples and Tutorials}
 */

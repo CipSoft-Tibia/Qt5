@@ -1,8 +1,10 @@
 // Copyright (C) 2016 The Qt Company Ltd.
+// Copyright (C) 2024 Jie Liu <liujie01@kylinos.cn>
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qwaylanddisplay_p.h"
 
+#include "qwaylandappmenu_p.h"
 #include "qwaylandintegration_p.h"
 #include "qwaylandwindow_p.h"
 #include "qwaylandsurface_p.h"
@@ -12,6 +14,7 @@
 #include "qwaylandinputdevice_p.h"
 #if QT_CONFIG(clipboard)
 #include "qwaylandclipboard_p.h"
+#include "qwaylanddatacontrolv1_p.h"
 #endif
 #if QT_CONFIG(wayland_datadevice)
 #include "qwaylanddatadevicemanager_p.h"
@@ -34,7 +37,6 @@
 #include "qwaylandshellintegration_p.h"
 #include "qwaylandclientbufferintegration_p.h"
 
-#include "qwaylandextendedsurface_p.h"
 #include "qwaylandpointergestures_p.h"
 #include "qwaylandsubsurface_p.h"
 #include "qwaylandtouch_p.h"
@@ -51,7 +53,9 @@
 #include <QtWaylandClient/private/qwayland-fractional-scale-v1.h>
 #include <QtWaylandClient/private/qwayland-viewporter.h>
 #include <QtWaylandClient/private/qwayland-cursor-shape-v1.h>
+#include <QtWaylandClient/private/qwayland-xdg-system-bell-v1.h>
 #include <QtWaylandClient/private/qwayland-xdg-toplevel-drag-v1.h>
+#include <QtWaylandClient/private/qwayland-wlr-data-control-unstable-v1.h>
 
 #include <QtCore/private/qcore_unix_p.h>
 
@@ -102,13 +106,13 @@ public:
          * not only the one issued from event thread's waitForReading(), which means functions
          * called from dispatch_pending() can safely spin an event loop.
          */
-        if (m_quitting)
+        if (m_quitting.loadRelaxed())
             return;
 
         for (;;) {
             if (dispatchQueuePending() < 0) {
                 Q_EMIT waylandError();
-                m_quitting = true;
+                m_quitting.storeRelaxed(true);
                 return;
             }
 
@@ -135,11 +139,8 @@ public:
         if (m_pipefd[1] != -1 && write(m_pipefd[1], "\0", 1) == -1)
             qWarning("Failed to write to the pipe: %s.", strerror(errno));
 
-        {
-            QMutexLocker l(&m_mutex);
-            m_quitting = true;
-            m_cond.wakeOne();
-        }
+        m_quitting.storeRelaxed(true);
+        m_cond.wakeOne();
 
         wait();
     }
@@ -189,7 +190,7 @@ protected:
 
             if (fds[0].revents & POLLIN)
                 wl_display_read_events(m_wldisplay);
-                // The polll was succesfull and the event thread did the wl_display_read_events(). On the next iteration of the loop
+                // The poll was succesfull and the event thread did the wl_display_read_events(). On the next iteration of the loop
                 // the event sent to the main thread will cause it to dispatch the messages just read, unless the loop exits in which
                 // case we don't care anymore about them.
             else
@@ -212,11 +213,11 @@ private:
             QMutexLocker lock(&m_mutex);
             // m_reading might be set from our emit or some other invocation of
             // readAndDispatchEvents().
-            while (!m_reading.loadRelaxed() && !m_quitting)
+            while (!m_reading.loadRelaxed() && !m_quitting.loadRelaxed())
                 m_cond.wait(&m_mutex);
         }
 
-        return !m_quitting;
+        return !m_quitting.loadRelaxed();
     }
 
     int dispatchQueuePending()
@@ -251,7 +252,7 @@ private:
      */
 
     QAtomicInteger<bool> m_reading;
-    bool m_quitting;
+    QAtomicInteger<bool> m_quitting;
     QMutex m_mutex;
     QWaitCondition m_cond;
 };
@@ -328,6 +329,7 @@ QWaylandDisplay::QWaylandDisplay(QWaylandIntegration *waylandIntegration)
     }
 
     mWaylandTryReconnect = qEnvironmentVariableIsSet("QT_WAYLAND_RECONNECT");
+    mPreferWlrDataControl = qEnvironmentVariableIntValue("QT_WAYLAND_USE_DATA_CONTROL") > 0;
 }
 
 void QWaylandDisplay::setupConnection()
@@ -450,18 +452,21 @@ void QWaylandDisplay::reconnect()
     mActiveWindows.clear();
 
     const auto windows = QGuiApplication::allWindows();
+    QList<QWaylandWindow *> allPlatformWindows;
     for (auto window : windows) {
-        if (auto waylandWindow = static_cast<QWaylandWindow *>(window->handle()))
+        if (auto waylandWindow = static_cast<QWaylandWindow *>(window->handle())) {
             waylandWindow->closeChildPopups();
+            allPlatformWindows.push_back(waylandWindow);
+        }
     }
+
     // Remove windows that do not need to be recreated and now closed popups
     QList<QWaylandWindow *> recreateWindows;
-    for (auto window : std::as_const(windows)) {
-        auto waylandWindow = static_cast<QWaylandWindow*>(window->handle());
-        if (waylandWindow && waylandWindow->wlSurface()) {
-            waylandWindow->reset();
-            recreateWindows.push_back(waylandWindow);
+    for (auto window : std::as_const(allPlatformWindows)) {
+        if (window->subSurfaceWindow() || window->shellSurface()) {
+            recreateWindows.push_back(window);
         }
+        window->reset();
     }
 
     if (mSyncCallback) {
@@ -475,6 +480,15 @@ void QWaylandDisplay::reconnect()
     if (!mDisplay)
         _exit(1);
 
+    connect(
+            this, &QWaylandDisplay::connected, this,
+            [&allPlatformWindows] {
+                for (auto &window : std::as_const(allPlatformWindows)) {
+                    window->initializeWlSurface();
+                }
+            },
+            Qt::SingleShotConnection);
+
     setupConnection();
     initialize();
 
@@ -483,7 +497,8 @@ void QWaylandDisplay::reconnect()
     initEventThread();
 
     auto needsRecreate = [](QPlatformWindow *window) {
-        return window && !static_cast<QWaylandWindow *>(window)->wlSurface();
+        auto waylandWindow = static_cast<QWaylandWindow *>(window);
+        return waylandWindow && !waylandWindow->subSurfaceWindow() && !waylandWindow->shellSurface();
     };
     auto window = recreateWindows.begin();
     while (!recreateWindows.isEmpty()) {
@@ -503,6 +518,7 @@ void QWaylandDisplay::reconnect()
 void QWaylandDisplay::flushRequests()
 {
     m_eventThread->readAndDispatchEvents();
+    QWindowSystemInterface::flushWindowSystemEvents();
 }
 
 // We have to wait until we have an eventDispatcher before creating the eventThread,
@@ -538,18 +554,6 @@ void QWaylandDisplay::checkWaylandError()
         qWarning("The Wayland connection experienced a fatal error: %s", strerror(ecode));
     }
     _exit(-1);
-}
-
-void QWaylandDisplay::blockingReadEvents()
-{
-    if (wl_display_dispatch(mDisplay) < 0) {
-        int ecode = wl_display_get_error(mDisplay);
-        if ((ecode == EPIPE || ecode == ECONNRESET))
-            qWarning("The Wayland connection broke during blocking read event. Did the Wayland compositor die?");
-        else
-            qWarning("The Wayland connection experienced a fatal error during blocking read event: %s", strerror(ecode));
-        _exit(-1);
-    }
 }
 
 void QWaylandDisplay::checkTextInputProtocol()
@@ -644,10 +648,6 @@ void QWaylandDisplay::registry_global(uint32_t id, const QString &interface, uin
     } else if (interface == QLatin1String(QWaylandDataDeviceManager::interface()->name)) {
         mGlobals.dndSelectionHandler.reset(new QWaylandDataDeviceManager(this, version, id));
 #endif
-    } else if (interface == QLatin1String(QtWayland::qt_surface_extension::interface()->name)) {
-        mGlobals.surfaceExtension.reset(
-                new WithDestructor<QtWayland::qt_surface_extension, qt_surface_extension_destroy>(
-                        registry, id, 1));
     } else if (interface == QLatin1String(QtWayland::wl_subcompositor::interface()->name)) {
         mGlobals.subCompositor.reset(
                 new WithDestructor<QtWayland::wl_subcompositor, wl_subcompositor_destroy>(registry,
@@ -786,6 +786,18 @@ void QWaylandDisplay::registry_global(uint32_t id, const QString &interface, uin
     } else if (interface == QLatin1String(QtWayland::qt_windowmanager::interface()->name)) {
         mGlobals.windowManagerIntegration.reset(
                 new QWaylandWindowManagerIntegration(this, id, version));
+    } else if (interface == QLatin1String(QtWayland::xdg_system_bell_v1::interface()->name)) {
+        mGlobals.systemBell.reset(new WithDestructor<QtWayland::xdg_system_bell_v1, xdg_system_bell_v1_destroy>(registry, id, 1));
+    } else if (
+            interface == QLatin1String(QtWayland::org_kde_kwin_appmenu_manager::interface()->name)) {
+        mGlobals.appMenuManager.reset(new QWaylandAppMenuManager(registry, id, 1));
+#if QT_CONFIG(clipboard)
+    } else if (mPreferWlrDataControl && interface == QLatin1String(QWaylandDataControlManagerV1::interface()->name)) {
+        mGlobals.dataControlManager.reset(new QWaylandDataControlManagerV1(this, id, 2));
+        for (QWaylandInputDevice *inputDevice : std::as_const(mInputDevices)) {
+            inputDevice->setDataControlDevice(mGlobals.dataControlManager->createDevice(inputDevice));
+        }
+#endif
     }
 
     mRegistryGlobals.append(RegistryGlobal(id, interface, version, registry));
@@ -849,6 +861,13 @@ void QWaylandDisplay::registry_global_remove(uint32_t id)
                 mGlobals.primarySelectionManager.reset();
                 for (QWaylandInputDevice *inputDevice : std::as_const(mInputDevices))
                     inputDevice->setPrimarySelectionDevice(nullptr);
+            }
+#endif
+#if QT_CONFIG(clipboard)
+            if (global.interface == QLatin1String(QtWayland::zwlr_data_control_manager_v1::interface()->name)) {
+                mGlobals.dataControlManager.reset();
+                for (QWaylandInputDevice *inputDevice : std::as_const(mInputDevices))
+                    inputDevice->setDataControlDevice(nullptr);
             }
 #endif
             emit globalRemoved(mRegistryGlobals.takeAt(i));

@@ -9,7 +9,7 @@ import {type TraceEventHandlerName} from './types.js';
 
 // Each thread contains events. Events indicate the thread and process IDs, which are
 // used to store the event in the correct process thread entry below.
-const unpairedAsyncEvents: Types.TraceEvents.TraceEventNestableAsync[] = [];
+const unpairedAsyncEvents: Types.TraceEvents.TraceEventPipelineReporter[] = [];
 
 const snapshotEvents: Types.TraceEvents.TraceEventScreenshot[] = [];
 const syntheticScreenshotEvents: Types.TraceEvents.SyntheticScreenshot[] = [];
@@ -31,8 +31,7 @@ export function handleEvent(event: Types.TraceEvents.TraceEventData): void {
 }
 
 export async function finalize(): Promise<void> {
-  const pipelineReporterEvents = Helpers.Trace.createMatchedSortedSyntheticEvents(unpairedAsyncEvents) as
-      Types.TraceEvents.SyntheticPipelineReporter[];
+  const pipelineReporterEvents = Helpers.Trace.createMatchedSortedSyntheticEvents(unpairedAsyncEvents);
 
   frameSequenceToTs = Object.fromEntries(pipelineReporterEvents.map(evt => {
     const frameSequenceId = evt.args.data.beginEvent.args.chrome_frame_reporter.frame_sequence;
@@ -42,7 +41,9 @@ export async function finalize(): Promise<void> {
 
   for (const snapshotEvent of snapshotEvents) {
     const {cat, name, ph, pid, tid} = snapshotEvent;
-    const syntheticEvent: Types.TraceEvents.SyntheticScreenshot = {
+    const syntheticEvent = Helpers.SyntheticEvents.SyntheticEventsManager.registerSyntheticBasedEvent<
+        Types.TraceEvents.SyntheticScreenshot>({
+      rawSourceEvent: snapshotEvent,
       cat,
       name,
       ph,
@@ -53,7 +54,7 @@ export async function finalize(): Promise<void> {
       args: {
         dataUri: `data:image/jpg;base64,${snapshotEvent.args.snapshot}`,
       },
-    };
+    });
     syntheticScreenshotEvents.push(syntheticEvent);
   }
 }
@@ -82,8 +83,9 @@ function getPresentationTimestamp(screenshotEvent: Types.TraceEvents.TraceEventS
   return updatedTs ?? screenshotEvent.ts;
 }
 
+// TODO(crbug/41484172): should be readonly
 export function data(): Types.TraceEvents.SyntheticScreenshot[] {
-  return [...syntheticScreenshotEvents];
+  return syntheticScreenshotEvents;
 }
 
 export function deps(): TraceEventHandlerName[] {

@@ -869,11 +869,21 @@ const formatAsJSLiteral = (content) => {
  */
 class PuppeteerStringifyExtension extends StringifyExtension {
     #shouldAppendWaitForElementHelper = false;
+    #targetBrowser;
+    constructor(targetBrowser = 'chrome') {
+        super();
+        this.#targetBrowser = targetBrowser;
+    }
     async beforeAllSteps(out, flow) {
-        out.appendLine("const puppeteer = require('puppeteer'); // v20.7.4 or later");
+        out.appendLine("const puppeteer = require('puppeteer'); // v23.0.0 or later");
         out.appendLine('');
         out.appendLine('(async () => {').startBlock();
-        out.appendLine("const browser = await puppeteer.launch({headless: 'new'});");
+        if (this.#targetBrowser === 'firefox') {
+            out.appendLine(`const browser = await puppeteer.launch({browser: 'firefox'});`);
+        }
+        else {
+            out.appendLine('const browser = await puppeteer.launch();');
+        }
         out.appendLine('const page = await browser.newPage();');
         out.appendLine(`const timeout = ${flow.timeout || defaultTimeout};`);
         out.appendLine('page.setDefaultTimeout(timeout);');
@@ -900,7 +910,8 @@ class PuppeteerStringifyExtension extends StringifyExtension {
             out.appendLine(`const timeout = ${step.timeout};`);
         }
         this.#appendContext(out, step);
-        if (step.assertedEvents) {
+        const waitForEvents = step.assertedEvents && step.type !== exports.StepType.Navigate;
+        if (waitForEvents) {
             out.appendLine('const promises = [];');
             out.appendLine('const startWaitingForEvents = () => {').startBlock();
             for (const event of step.assertedEvents) {
@@ -916,7 +927,7 @@ class PuppeteerStringifyExtension extends StringifyExtension {
             out.endBlock().appendLine('}');
         }
         this.#appendStepType(out, step);
-        if (step.assertedEvents) {
+        if (waitForEvents) {
             out.appendLine('await Promise.all(promises);');
         }
         out.endBlock().appendLine('}');
@@ -1071,9 +1082,6 @@ class PuppeteerStringifyExtension extends StringifyExtension {
         }
     }
     #appendNavigationStep(out, step) {
-        if (step.assertedEvents?.length) {
-            out.appendLine(`startWaitingForEvents();`);
-        }
         out.appendLine(`await targetPage.goto(${formatJSONAsJS(step.url, out.getIndent())});`);
     }
     #appendWaitExpressionStep(out, step) {
@@ -1402,6 +1410,11 @@ const comparators = {
     '>=': (a, b) => a >= b,
     '<=': (a, b) => a <= b,
 };
+function waitForTimeout(timeout) {
+    return new Promise((resolve) => {
+        setTimeout(resolve, timeout);
+    });
+}
 class PuppeteerRunnerExtension extends RunnerExtension {
     browser;
     page;
@@ -1432,16 +1445,7 @@ class PuppeteerRunnerExtension extends RunnerExtension {
         const targetPage = await getTargetPageForStep(browser, page, step, timeout);
         let targetFrame = null;
         if (!targetPage && step.target) {
-            const frames = page.frames();
-            for (const f of frames) {
-                if (f.isOOPFrame() && f.url() === step.target) {
-                    targetFrame = f;
-                    break;
-                }
-            }
-            if (!targetFrame) {
-                targetFrame = await page.waitForFrame(step.target, { timeout });
-            }
+            targetFrame = await page.waitForFrame(step.target, { timeout });
         }
         const targetPageOrFrame = targetFrame || targetPage;
         if (!targetPageOrFrame) {
@@ -1510,14 +1514,14 @@ class PuppeteerRunnerExtension extends RunnerExtension {
                 {
                     startWaitingForEvents();
                     await mainPage.keyboard.down(step.key);
-                    await mainPage.waitForTimeout(100);
+                    await waitForTimeout(100);
                 }
                 break;
             case exports.StepType.KeyUp:
                 {
                     startWaitingForEvents();
                     await mainPage.keyboard.up(step.key);
-                    await mainPage.waitForTimeout(100);
+                    await waitForTimeout(100);
                 }
                 break;
             case exports.StepType.Close:
@@ -1839,9 +1843,7 @@ async function createRunner(flowOrExtension, maybeExtension) {
 }
 async function createPuppeteerRunnerOwningBrowserExtension() {
     const { default: puppeteer } = await import('puppeteer');
-    const browser = await puppeteer.launch({
-        headless: 'new',
-    });
+    const browser = await puppeteer.launch();
     const page = await browser.newPage();
     return new PuppeteerRunnerOwningBrowserExtension(browser, page);
 }

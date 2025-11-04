@@ -36,6 +36,29 @@
     </message>
 </context>
 <context>
+    <name>Ns1::Ns2::Ns3::Cl</name>
+    <message>
+        <location filename="main.cpp" line="196"/>
+        <source>message1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="main.cpp" line="200"/>
+        <source>message2</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="main.cpp" line="204"/>
+        <source>message3</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="main.cpp" line="208"/>
+        <source>message4</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
     <name>Outer::Class</name>
     <message>
         <location filename="main.cpp" line="106"/>
@@ -100,6 +123,14 @@
     <message>
         <location filename="main.cpp" line="135"/>
         <source>Bla</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>cl</name>
+    <message>
+        <location filename="main.cpp" line="218"/>
+        <source>text</source>
         <translation type="unfinished"></translation>
     </message>
 </context>

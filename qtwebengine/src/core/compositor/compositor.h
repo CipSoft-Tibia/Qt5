@@ -1,5 +1,6 @@
 // Copyright (C) 2020 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef COMPOSITOR_H
 #define COMPOSITOR_H
@@ -30,11 +31,7 @@ class Q_WEBENGINECORE_EXPORT Compositor
 
 public:
     // Identifies the implementation type.
-    enum class Type {
-        Software,
-        OpenGL, // TODO: Legacy, remove it with DisplaySkiaOutputDevice!
-        Native
-    };
+    enum class Type { Software, Native };
 
     // Identifies a compositor.
     //
@@ -105,8 +102,8 @@ public:
     void bind(Id id);
     void unbind();
 
-    // Observer if bound.
-    Handle<Observer> observer();
+    // Tell observer ready to swap
+    void readyToSwap();
 
     // Update to next frame if possible.
     virtual void swapFrame() = 0;
@@ -133,6 +130,9 @@ public:
 
     // Is the texture produced upside down?
     virtual bool textureIsFlipped();
+
+    // Are there resources to be released?
+    virtual bool hasResources() { return false; }
 
     // Release resources created in texture()
     virtual void releaseResources();

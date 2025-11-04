@@ -149,6 +149,11 @@ void QGeoSatelliteInfo::setSatelliteSystem(SatelliteSystem system)
 }
 
 /*!
+    \property QGeoSatelliteInfo::satelliteSystem
+    \brief the satellite system in use, such as GPS or GLONASS.
+*/
+
+/*!
     Returns the Satellite System (GPS, GLONASS, ...)
 
     \note This value can be used together with \l satelliteIdentifier()
@@ -182,7 +187,8 @@ void QGeoSatelliteInfo::setSatelliteIdentifier(int satId)
 }
 
 /*!
-    Returns the satellite identifier number.
+    \property QGeoSatelliteInfo::satelliteIdentifier
+    \brief the satellite identifier number.
 
     The satellite identifier number can be used to identify a satellite within
     the satellite system.
@@ -204,6 +210,10 @@ void QGeoSatelliteInfo::setSatelliteIdentifier(int satId)
     identifier ranges for different satellite systems may intersect. To uniquely
     identify a satellite, a combination of satelliteIndetifier() and
     \l satelliteSystem() must be used.
+*/
+
+/*!
+    Returns the satellite identifier number.
 
     \sa satelliteSystem()
 */
@@ -222,6 +232,11 @@ void QGeoSatelliteInfo::setSignalStrength(int signalStrength)
 }
 
 /*!
+    \property QGeoSatelliteInfo::signalStrength
+    \brief the signal strength.
+*/
+
+/*!
     Returns the signal strength, or -1 if the value has not been set.
 */
 int QGeoSatelliteInfo::signalStrength() const
@@ -235,7 +250,7 @@ int QGeoSatelliteInfo::signalStrength() const
 void QGeoSatelliteInfo::setAttribute(Attribute attribute, qreal value)
 {
     d.detach();
-    d->doubleAttribs[int(attribute)] = value;
+    d->doubleAttribs[attribute] = value;
 }
 
 /*!
@@ -247,9 +262,7 @@ void QGeoSatelliteInfo::setAttribute(Attribute attribute, qreal value)
 */
 qreal QGeoSatelliteInfo::attribute(Attribute attribute) const
 {
-    if (d->doubleAttribs.contains(int(attribute)))
-        return d->doubleAttribs[int(attribute)];
-    return -1;
+    return d->doubleAttribs.value(attribute, -1);
 }
 
 /*!
@@ -257,8 +270,11 @@ qreal QGeoSatelliteInfo::attribute(Attribute attribute) const
 */
 void QGeoSatelliteInfo::removeAttribute(Attribute attribute)
 {
-    d.detach();
-    d->doubleAttribs.remove(int(attribute));
+    const auto it = d->doubleAttribs.constFind(attribute);
+    if (it != d->doubleAttribs.cend()) {
+        d.detach();
+        d->doubleAttribs.erase(it);
+    }
 }
 
 /*!
@@ -266,7 +282,7 @@ void QGeoSatelliteInfo::removeAttribute(Attribute attribute)
 */
 bool QGeoSatelliteInfo::hasAttribute(Attribute attribute) const
 {
-    return d->doubleAttribs.contains(int(attribute));
+    return d->doubleAttribs.contains(attribute);
 }
 
 /*!
@@ -294,8 +310,8 @@ QDebug QGeoSatelliteInfo::debugStreaming(QDebug dbg, const QGeoSatelliteInfo &in
     dbg << ", signal-strength=" << info.d->signal;
 
 
-    QList<int> attribs = info.d->doubleAttribs.keys();
-    for (int i = 0; i < attribs.size(); ++i) {
+    const QList<QGeoSatelliteInfo::Attribute> attribs = info.d->doubleAttribs.keys();
+    for (qsizetype i = 0; i < attribs.size(); ++i) {
         dbg << ", ";
         switch (attribs[i]) {
             case QGeoSatelliteInfo::Elevation:

@@ -415,7 +415,7 @@ void MaybeCaptureMemoryAround(IOSIntermediateDumpWriter* writer,
 
   IOSIntermediateDumpWriter::ScopedArrayMap memory_region(writer);
   WriteProperty(
-      writer, IntermediateDumpKey::kThreadContextMemoryRegionAddress, &address);
+      writer, IntermediateDumpKey::kThreadContextMemoryRegionAddress, &target);
   // Don't use WritePropertyBytes, this one will fail regularly if |target|
   // cannot be read.
   writer->AddPropertyBytes(IntermediateDumpKey::kThreadContextMemoryRegionData,
@@ -923,12 +923,12 @@ void InProcessIntermediateDumpHandler::WriteModuleInfo(
 
   uint32_t image_count = image_infos->infoArrayCount;
   const dyld_image_info* image_array = image_infos->infoArray;
-  for (uint32_t image_index = 0; image_index < image_count; ++image_index) {
+  for (int32_t image_index = image_count - 1; image_index >= 0; --image_index) {
     IOSIntermediateDumpWriter::ScopedArrayMap modules(writer);
     ScopedVMRead<dyld_image_info> image;
     if (!image.Read(&image_array[image_index])) {
       CRASHPAD_RAW_LOG("Unable to dyld_image_info");
-      return;
+      continue;
     }
 
     if (image->imageFilePath) {
@@ -967,19 +967,19 @@ void InProcessIntermediateDumpHandler::WriteExceptionFromSignal(
   WriteProperty(writer, IntermediateDumpKey::kSignalNumber, &siginfo->si_signo);
   WriteProperty(writer, IntermediateDumpKey::kSignalCode, &siginfo->si_code);
   WriteProperty(writer, IntermediateDumpKey::kSignalAddress, &siginfo->si_addr);
+
 #if defined(ARCH_CPU_X86_64)
-  WriteProperty(
-      writer, IntermediateDumpKey::kThreadState, &context->uc_mcontext->__ss);
-  WriteProperty(
-      writer, IntermediateDumpKey::kFloatState, &context->uc_mcontext->__fs);
+  x86_thread_state64_t thread_state = context->uc_mcontext->__ss;
+  x86_float_state64_t float_state = context->uc_mcontext->__fs;
 #elif defined(ARCH_CPU_ARM64)
-  WriteProperty(
-      writer, IntermediateDumpKey::kThreadState, &context->uc_mcontext->__ss);
-  WriteProperty(
-      writer, IntermediateDumpKey::kFloatState, &context->uc_mcontext->__ns);
+  arm_thread_state64_t thread_state = context->uc_mcontext->__ss;
+  arm_neon_state64_t float_state = context->uc_mcontext->__ns;
 #else
 #error Port to your CPU architecture
 #endif
+  WriteProperty(writer, IntermediateDumpKey::kThreadState, &thread_state);
+  WriteProperty(writer, IntermediateDumpKey::kFloatState, &float_state);
+  CaptureMemoryPointedToByThreadState(writer, thread_state);
 
   // Thread ID.
   thread_identifier_info identifier_info;

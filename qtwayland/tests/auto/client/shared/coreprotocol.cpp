@@ -19,6 +19,7 @@ Surface::~Surface()
     qDeleteAll(m_commits);
     if (m_wlShellSurface)
         m_wlShellSurface->m_surface = nullptr;
+    delete m_role;
 }
 
 void Surface::sendFrameCallbacks()
@@ -50,6 +51,11 @@ void Surface::map()
     m_mapped = true;
 }
 
+void Surface::unmap()
+{
+    m_mapped = false;
+}
+
 void Surface::surface_destroy_resource(Resource *resource)
 {
     Q_UNUSED(resource);
@@ -73,8 +79,10 @@ void Surface::surface_attach(Resource *resource, wl_resource *buffer, int32_t x,
     Q_UNUSED(resource);
     if (m_wlshell) {
         m_buffer = buffer;
-        if (!buffer)
+        if (!buffer) {
             m_image = QImage();
+            unmap();
+        }
     } else {
         QPoint offset(x, y);
         if (resource->version() < 5)
@@ -155,8 +163,6 @@ void Surface::surface_offset(Resource *resource, int32_t x, int32_t y)
 bool WlCompositor::isClean() {
     for (auto *surface : std::as_const(m_surfaces)) {
         if (!CursorRole::fromSurface(surface)) {
-            if (m_compositor->m_type != CoreCompositor::CompositorType::Legacy)
-                return false;
             if (surface->isMapped())
                 return false;
         }
@@ -174,6 +180,25 @@ QString WlCompositor::dirtyMessage()
         messages << "Surface with role: " + role;
     }
     return "Dirty, surfaces left:\n\t" + messages.join("\n\t");
+}
+
+void SubCompositor::subcompositor_get_subsurface(Resource *resource, uint32_t id,
+                                                 ::wl_resource *surfaceResource,
+                                                 ::wl_resource *parent)
+{
+    QTRY_VERIFY(parent);
+    QTRY_VERIFY(surfaceResource);
+    auto surface = fromResource<Surface>(surfaceResource);
+    if (!surface->m_role) {
+        surface->m_role = new SubSurfaceRole;
+    } else if (!qobject_cast<SubSurfaceRole *>(surface->m_role)) {
+        QFAIL(QByteArrayLiteral("surface already has role") + surface->m_role->metaObject()->className());
+        return;
+    }
+
+    auto *subsurface = new Subsurface(this, resource->client(), id, resource->version());
+    m_subsurfaces.append(subsurface);
+    emit subsurfaceCreated(subsurface);
 }
 
 void Output::sendGeometry()
@@ -623,6 +648,13 @@ WlShell::WlShell(CoreCompositor *compositor, int version)
 void WlShell::shell_get_shell_surface(Resource *resource, uint32_t id, wl_resource *surface)
 {
     auto *s = fromResource<Surface>(surface);
+    if (!s->m_role) {
+        s->m_role = new WlShellSurfaceRole;
+    } else if (!qobject_cast<WlShellSurfaceRole *>(s->m_role)) {
+        QFAIL(QByteArrayLiteral("surface already has role") + s->m_role->metaObject()->className());
+        return;
+    }
+
     auto *wlShellSurface = new WlShellSurface(this, resource->client(), id, s);
     m_wlShellSurfaces << wlShellSurface;
     emit wlShellSurfaceCreated(wlShellSurface);
@@ -639,8 +671,10 @@ WlShellSurface::WlShellSurface(WlShell *wlShell, wl_client *client, int id, Surf
 
 WlShellSurface::~WlShellSurface()
 {
-    if (m_surface)
+    if (m_surface) {
+        m_surface->unmap();
         m_surface->m_wlShellSurface = nullptr;
+    }
 }
 
 void WlShellSurface::sendConfigure(uint32_t edges, int32_t width, int32_t height)

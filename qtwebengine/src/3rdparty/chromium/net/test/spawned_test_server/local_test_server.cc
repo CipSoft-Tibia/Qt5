@@ -49,7 +49,7 @@ bool AppendArgumentFromJSONValue(const std::string& key,
     case base::Value::Type::DICT:
     case base::Value::Type::BINARY:
     default:
-      NOTREACHED() << "improper json type";
+      NOTREACHED_IN_MIGRATION() << "improper json type";
       return false;
   }
   return true;
@@ -60,7 +60,7 @@ bool AppendArgumentFromJSONValue(const std::string& key,
 LocalTestServer::LocalTestServer(Type type, const base::FilePath& document_root)
     : BaseTestServer(type) {
   if (!Init(document_root))
-    NOTREACHED();
+    NOTREACHED_IN_MIGRATION();
 }
 
 LocalTestServer::LocalTestServer(Type type,
@@ -68,7 +68,7 @@ LocalTestServer::LocalTestServer(Type type,
                                  const base::FilePath& document_root)
     : BaseTestServer(type, ssl_options) {
   if (!Init(document_root))
-    NOTREACHED();
+    NOTREACHED_IN_MIGRATION();
 }
 
 LocalTestServer::~LocalTestServer() {
@@ -100,7 +100,7 @@ bool LocalTestServer::StartInBackground() {
     return false;
   }
 
-  absl::optional<std::vector<base::FilePath>> python_path = GetPythonPath();
+  std::optional<std::vector<base::FilePath>> python_path = GetPythonPath();
   if (!python_path) {
     LOG(ERROR) << "Could not get Python path.";
     return false;
@@ -166,12 +166,12 @@ bool LocalTestServer::Init(const base::FilePath& document_root) {
   return true;
 }
 
-absl::optional<std::vector<base::FilePath>> LocalTestServer::GetPythonPath()
+std::optional<std::vector<base::FilePath>> LocalTestServer::GetPythonPath()
     const {
   base::FilePath third_party_dir;
   if (!base::PathService::Get(base::DIR_SRC_TEST_DATA_ROOT, &third_party_dir)) {
     LOG(ERROR) << "Failed to get DIR_SRC_TEST_DATA_ROOT";
-    return absl::nullopt;
+    return std::nullopt;
   }
   third_party_dir = third_party_dir.AppendASCII("third_party");
 
@@ -184,7 +184,7 @@ absl::optional<std::vector<base::FilePath>> LocalTestServer::GetPythonPath()
 
 bool LocalTestServer::AddCommandLineArguments(
     base::CommandLine* command_line) const {
-  absl::optional<base::Value::Dict> arguments_dict = GenerateArguments();
+  std::optional<base::Value::Dict> arguments_dict = GenerateArguments();
   if (!arguments_dict)
     return false;
 
@@ -219,7 +219,7 @@ bool LocalTestServer::AddCommandLineArguments(
       command_line->AppendArg("--proxy");
       break;
     default:
-      NOTREACHED();
+      NOTREACHED_IN_MIGRATION();
       return false;
   }
 

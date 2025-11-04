@@ -12,6 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+import {AsyncLimiter} from '../../base/async_limiter';
+import {Monitor} from '../../base/monitor';
 import {isString} from '../../base/object_utils';
 import {
   AggregateData,
@@ -19,12 +21,12 @@ import {
   ColumnDef,
   ThreadStateExtra,
 } from '../../common/aggregation_data';
-import {Area, Sorting} from '../../common/state';
+import {Sorting} from '../../common/state';
+import {Area} from '../../public/selection';
 import {globals} from '../../frontend/globals';
 import {publishAggregateData} from '../../frontend/publish';
 import {Engine} from '../../trace_processor/engine';
 import {NUM} from '../../trace_processor/query_result';
-import {AreaSelectionHandler} from '../area_selection_handler';
 import {Controller} from '../controller';
 
 export interface AggregationControllerArgs {
@@ -38,14 +40,15 @@ function isStringColumn(column: Column): boolean {
 
 export abstract class AggregationController extends Controller<'main'> {
   readonly kind: string;
-  private areaSelectionHandler: AreaSelectionHandler;
-  private previousSorting?: Sorting;
-  private requestingData = false;
-  private queuedRequest = false;
+  private readonly monitor: Monitor;
+  private readonly limiter = new AsyncLimiter();
 
   abstract createAggregateView(engine: Engine, area: Area): Promise<boolean>;
 
-  abstract getExtra(engine: Engine, area: Area): Promise<ThreadStateExtra|void>;
+  abstract getExtra(
+    engine: Engine,
+    area: Area,
+  ): Promise<ThreadStateExtra | void>;
 
   abstract getTabName(): string;
   abstract getDefaultSorting(): Sorting;
@@ -54,51 +57,39 @@ export abstract class AggregationController extends Controller<'main'> {
   constructor(private args: AggregationControllerArgs) {
     super('main');
     this.kind = this.args.kind;
-    this.areaSelectionHandler = new AreaSelectionHandler();
+    this.monitor = new Monitor([
+      () => globals.selectionManager.selection,
+      () => globals.state.aggregatePreferences[this.args.kind],
+    ]);
   }
 
   run() {
-    const selection = globals.state.currentSelection;
-    if (selection === null || selection.kind !== 'AREA') {
-      publishAggregateData({
-        data: {
-          tabName: this.getTabName(),
-          columns: [],
-          strings: [],
-          columnSums: [],
-        },
-        kind: this.args.kind,
-      });
-      return;
-    }
-    const aggregatePreferences =
-        globals.state.aggregatePreferences[this.args.kind];
-
-    // eslint-disable-next-line @typescript-eslint/strict-boolean-expressions
-    const sortingChanged = aggregatePreferences &&
-        this.previousSorting !== aggregatePreferences.sorting;
-    const [hasAreaChanged, area] = this.areaSelectionHandler.getAreaChange();
-    if ((!hasAreaChanged && !sortingChanged) || !area) return;
-
-    if (this.requestingData) {
-      this.queuedRequest = true;
-    } else {
-      this.requestingData = true;
-      if (sortingChanged) this.previousSorting = aggregatePreferences.sorting;
-      this.getAggregateData(area, hasAreaChanged)
-          .then((data) => publishAggregateData({data, kind: this.args.kind}))
-          .finally(() => {
-            this.requestingData = false;
-            if (this.queuedRequest) {
-              this.queuedRequest = false;
-              this.run();
-            }
-          });
+    if (this.monitor.ifStateChanged()) {
+      const selection = globals.selectionManager.selection;
+      if (selection.kind !== 'area') {
+        publishAggregateData({
+          data: {
+            tabName: this.getTabName(),
+            columns: [],
+            strings: [],
+            columnSums: [],
+          },
+          kind: this.args.kind,
+        });
+        return;
+      } else {
+        this.limiter.schedule(async () => {
+          const data = await this.getAggregateData(selection, true);
+          publishAggregateData({data, kind: this.args.kind});
+        });
+      }
     }
   }
 
-  async getAggregateData(area: Area, areaChanged: boolean):
-      Promise<AggregateData> {
+  async getAggregateData(
+    area: Area,
+    areaChanged: boolean,
+  ): Promise<AggregateData> {
     if (areaChanged) {
       const viewExists = await this.createAggregateView(this.args.engine, area);
       if (!viewExists) {
@@ -115,7 +106,8 @@ export abstract class AggregationController extends Controller<'main'> {
     const colIds = defs.map((col) => col.columnId);
     const pref = globals.state.aggregatePreferences[this.kind];
     let sorting = `${this.getDefaultSorting().column} ${
-        this.getDefaultSorting().direction}`;
+      this.getDefaultSorting().direction
+    }`;
     // eslint-disable-next-line @typescript-eslint/strict-boolean-expressions
     if (pref && pref.sorting) {
       sorting = `${pref.sorting.column} ${pref.sorting.direction}`;
@@ -128,8 +120,13 @@ export abstract class AggregationController extends Controller<'main'> {
     const columnSums = await Promise.all(defs.map((def) => this.getSum(def)));
     const extraData = await this.getExtra(this.args.engine, area);
     const extra = extraData ? extraData : undefined;
-    const data: AggregateData =
-        {tabName: this.getTabName(), columns, columnSums, strings: [], extra};
+    const data: AggregateData = {
+      tabName: this.getTabName(),
+      columns,
+      columnSums,
+      strings: [],
+      extra,
+    };
 
     const stringIndexes = new Map<string, number>();
     function internString(str: string) {
@@ -171,7 +168,8 @@ export abstract class AggregationController extends Controller<'main'> {
   async getSum(def: ColumnDef): Promise<string> {
     if (!def.sum) return '';
     const result = await this.args.engine.query(
-        `select ifnull(sum(${def.columnId}), 0) as s from ${this.kind}`);
+      `select ifnull(sum(${def.columnId}), 0) as s from ${this.kind}`,
+    );
     let sum = result.firstRow({s: NUM}).s;
     if (def.kind === 'TIMESTAMP_NS') {
       sum = sum / 1e6;

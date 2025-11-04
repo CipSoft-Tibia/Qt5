@@ -76,8 +76,11 @@ class VIEWS_EXPORT SubmenuView : public View,
 
   // Positions and sizes the child views. This tiles the views vertically,
   // giving each child the available width.
-  void Layout() override;
-  gfx::Size CalculatePreferredSize() const override;
+  void Layout(PassKey) override;
+
+  // TODO(crbug.com/40232718): Respect `available_size`.
+  gfx::Size CalculatePreferredSize(
+      const SizeBounds& /*available_size*/) const override;
 
   // Override from View.
   void GetAccessibleNodeData(ui::AXNodeData* node_data) override;
@@ -105,8 +108,8 @@ class VIEWS_EXPORT SubmenuView : public View,
 
   // Overridden from PrefixDelegate.
   size_t GetRowCount() override;
-  absl::optional<size_t> GetSelectedRow() override;
-  void SetSelectedRow(absl::optional<size_t> row) override;
+  std::optional<size_t> GetSelectedRow() override;
+  void SetSelectedRow(std::optional<size_t> row) override;
   std::u16string GetTextForRow(size_t row) override;
 
   // Returns true if the menu is showing.
@@ -188,7 +191,7 @@ class VIEWS_EXPORT SubmenuView : public View,
   MenuHost* host() { return host_; }
   const MenuHost* host() const { return host_; }
 
-  void SetBorderColorId(absl::optional<ui::ColorId> color_id);
+  void SetBorderColorId(std::optional<ui::ColorId> color_id);
 
  protected:
   // View method. Overridden to schedule a paint. We do this so that when
@@ -269,7 +272,7 @@ class VIEWS_EXPORT SubmenuView : public View,
 
   PrefixSelector prefix_selector_{this, this};
 
-  absl::optional<ui::ColorId> border_color_id_;
+  std::optional<ui::ColorId> border_color_id_;
 };
 
 }  // namespace views

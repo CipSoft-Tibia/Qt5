@@ -43,11 +43,18 @@ constexpr T CheckAdd(T a, T b) {
   ABSL_HARDENING_ASSERT(!did_overflow);
   return result;
 }
-#else
+#elif defined(__x86_64__)
 constexpr size_t CheckAdd(size_t a, size_t b) {
   size_t result = 0;
   ABSL_HARDENING_ASSERT(
       !ABSL_PREDICT_FALSE(_addcarry_u64(0, a, b, &result)));
+  return result;
+}
+#else
+constexpr size_t CheckAdd(size_t a, size_t b) {
+  size_t result = a + b;
+  ABSL_HARDENING_ASSERT(
+      ABSL_PREDICT_TRUE(result >= a && result >= b));
   return result;
 }
 #endif
@@ -60,12 +67,19 @@ constexpr T CheckMul(T a, T b) {
   ABSL_HARDENING_ASSERT(!did_overflow);
   return result;
 }
-#else
+#elif defined(__x86_64__)
 inline size_t CheckMul(size_t a, size_t b) {
   size_t high_product = 0;
   size_t result = _umul128(a, b, &high_product);
   ABSL_HARDENING_ASSERT(
       !ABSL_PREDICT_FALSE(high_product != 0));
+  return result;
+}
+#else
+inline size_t CheckMul(size_t a, size_t b) {
+  size_t result = a * b;
+  ABSL_HARDENING_ASSERT(
+      ABSL_PREDICT_TRUE((result >= a && result >= b) || result == 0));
   return result;
 }
 #endif
@@ -79,10 +93,18 @@ T SaturatedAdd(T a, T b) {
   }
   return std::numeric_limits<T>::max();
 }
-#else
+#elif defined(__x86_64__)
 inline size_t SaturatedAdd(size_t a, size_t b) {
   size_t result;
   if (!_addcarry_u64(0, a, b, &result)) {
+    return result;
+  }
+  return std::numeric_limits<size_t>::max();
+}
+#else
+inline size_t SaturatedAdd(size_t a, size_t b) {
+  size_t result = a + b;
+  if (result >= a && result >= b) {
     return result;
   }
   return std::numeric_limits<size_t>::max();

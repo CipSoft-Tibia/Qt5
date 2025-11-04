@@ -5,16 +5,5 @@
 #include "ui/gl/gl_display_manager.h"
 
 namespace gl {
-#if defined(USE_EGL)
 template class EXPORT_TEMPLATE_DEFINE(GL_EXPORT) GLDisplayManager<GLDisplayEGL>;
-#endif
-
-#if defined(USE_GLX)
-template class EXPORT_TEMPLATE_DEFINE(GL_EXPORT) GLDisplayManager<GLDisplayX11>;
-#endif
-
-#if BUILDFLAG(IS_WIN)
-template class EXPORT_TEMPLATE_DEFINE(GL_EXPORT) GLDisplayManager<GLDisplayWGL>;
-#endif
-
 }  // namespace gl

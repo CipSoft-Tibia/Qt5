@@ -16,7 +16,7 @@
 
 QT_BEGIN_NAMESPACE
 
-Q_LOGGING_CATEGORY(lcTextDoc, "qt.quick.textdocument")
+Q_STATIC_LOGGING_CATEGORY(lcTextDoc, "qt.quick.textdocument")
 
 using namespace Qt::StringLiterals;
 
@@ -240,7 +240,7 @@ void QQuickTextDocument::setSource(const QUrl &url)
 
     if (isModified()) {
         qmlWarning(this) << "Existing document modified: you should save(),"
-                            "or call TextEdit.clear() before setting a different source";
+                            " or set modified=false before setting a different source";
         return;
     }
 

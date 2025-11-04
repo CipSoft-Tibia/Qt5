@@ -2,6 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#ifdef UNSAFE_BUFFERS_BUILD
+// TODO(crbug.com/351564777): Remove this and convert code to safer constructs.
+#pragma allow_unsafe_buffers
+#endif
+
 #include "third_party/blink/renderer/platform/fonts/shaping/shape_result_inline_headers.h"
 
 #include "base/containers/span.h"
@@ -11,11 +16,26 @@
 #include "third_party/blink/renderer/platform/fonts/font_test_utilities.h"
 #include "third_party/blink/renderer/platform/fonts/shaping/shape_result_spacing.h"
 #include "third_party/blink/renderer/platform/fonts/shaping/shape_result_test_info.h"
+#include "third_party/blink/renderer/platform/heap/garbage_collected.h"
+#include "third_party/blink/renderer/platform/heap/persistent.h"
 #include "third_party/blink/renderer/platform/testing/font_test_base.h"
 #include "third_party/blink/renderer/platform/testing/font_test_helpers.h"
 #include "third_party/blink/renderer/platform/testing/unit_test_helpers.h"
 
 namespace blink {
+
+namespace {
+class FontsHolder : public GarbageCollected<FontsHolder> {
+ public:
+  void Trace(Visitor* visitor) const {
+    for (const Font& font : fonts) {
+      font.Trace(visitor);
+    }
+  }
+
+  Font fonts[3];
+};
+}  // namespace
 
 class ShapeResultTest : public FontTestBase {
  public:
@@ -28,19 +48,20 @@ class ShapeResultTest : public FontTestBase {
  protected:
   void SetUp() override {
     FontDescription::VariantLigatures ligatures;
-    fonts[0] = blink::test::CreateTestFont(
+    fonts_holder = MakeGarbageCollected<FontsHolder>();
+    fonts_holder->fonts[0] = blink::test::CreateTestFont(
         AtomicString("Roboto"),
         blink::test::PlatformTestDataPath(
             "third_party/Roboto/roboto-regular.woff2"),
         12.0, &ligatures);
 
-    fonts[1] = blink::test::CreateTestFont(
+    fonts_holder->fonts[1] = blink::test::CreateTestFont(
         AtomicString("Noto"),
         blink::test::PlatformTestDataPath(
             "third_party/Noto/NotoNaskhArabic-regular.woff2"),
         12.0, &ligatures);
 
-    fonts[2] = blink::test::CreateTestFont(
+    fonts_holder->fonts[2] = blink::test::CreateTestFont(
         AtomicString("M PLUS 1p"),
         blink::test::BlinkWebTestsFontsTestDataPath("mplus-1p-regular.woff"),
         12.0, &ligatures);
@@ -59,28 +80,20 @@ class ShapeResultTest : public FontTestBase {
     return false;
   }
 
-  // Release the ShapeResults held inside an array of ShapeResult::ShapeRange
-  // instances.
-  static void ReleaseShapeRange(base::span<ShapeResult::ShapeRange> ranges) {
-    for (auto& range : ranges) {
-      range.target->Release();
-    }
-  }
-
   ShapeResult* CreateShapeResult(TextDirection direction) const {
-    return new ShapeResult(direction == TextDirection::kLtr
-                               ? GetFont(kLatinFont)
-                               : GetFont(kArabicFont),
-                           0, 0, direction);
+    return MakeGarbageCollected<ShapeResult>(direction == TextDirection::kLtr
+                                                 ? GetFont(kLatinFont)
+                                                 : GetFont(kArabicFont),
+                                             0, 0, direction);
   }
 
   const Font* GetFont(FontType type) const {
-    return fonts + static_cast<size_t>(type);
+    return fonts_holder->fonts + static_cast<size_t>(type);
   }
 
   FontCachePurgePreventer font_cache_purge_preventer;
   FontDescription font_description;
-  Font fonts[3];
+  Persistent<FontsHolder> fonts_holder;
 };
 
 void ShapeResultTest::TestCopyRangesLatin(const ShapeResult* result) const {
@@ -100,7 +113,7 @@ void ShapeResultTest::TestCopyRangesLatin(const ShapeResult* result) const {
   EXPECT_EQ(glyphs[2].size(), 10u);
   EXPECT_EQ(glyphs[3].size(), 8u);
 
-  scoped_refptr<ShapeResult> reference[num_ranges];
+  ShapeResult* reference[num_ranges];
   reference[0] = result->SubRange(0, 10);
   reference[1] = result->SubRange(10, 20);
   reference[2] = result->SubRange(20, 30);
@@ -117,7 +130,6 @@ void ShapeResultTest::TestCopyRangesLatin(const ShapeResult* result) const {
   EXPECT_TRUE(CompareResultGlyphs(glyphs[1], reference_glyphs[1], 0u, 10u));
   EXPECT_TRUE(CompareResultGlyphs(glyphs[2], reference_glyphs[2], 0u, 10u));
   EXPECT_TRUE(CompareResultGlyphs(glyphs[3], reference_glyphs[3], 0u, 8u));
-  ReleaseShapeRange(ranges);
 }
 
 void ShapeResultTest::TestCopyRangesArabic(const ShapeResult* result) const {
@@ -137,7 +149,7 @@ void ShapeResultTest::TestCopyRangesArabic(const ShapeResult* result) const {
   EXPECT_EQ(glyphs[2].size(), 3u);
   EXPECT_EQ(glyphs[3].size(), 5u);
 
-  scoped_refptr<ShapeResult> reference[num_ranges];
+  ShapeResult* reference[num_ranges];
   reference[0] = result->SubRange(0, 4);
   reference[1] = result->SubRange(4, 7);
   reference[2] = result->SubRange(7, 10);
@@ -154,7 +166,6 @@ void ShapeResultTest::TestCopyRangesArabic(const ShapeResult* result) const {
   EXPECT_TRUE(CompareResultGlyphs(glyphs[1], reference_glyphs[1], 0u, 3u));
   EXPECT_TRUE(CompareResultGlyphs(glyphs[2], reference_glyphs[2], 0u, 3u));
   EXPECT_TRUE(CompareResultGlyphs(glyphs[3], reference_glyphs[3], 0u, 5u));
-  ReleaseShapeRange(ranges);
 }
 
 TEST_F(ShapeResultTest, CopyRangeLatin) {
@@ -162,9 +173,8 @@ TEST_F(ShapeResultTest, CopyRangeLatin) {
   TextDirection direction = TextDirection::kLtr;
 
   HarfBuzzShaper shaper(string);
-  scoped_refptr<ShapeResult> result =
-      shaper.Shape(GetFont(kLatinFont), direction);
-  TestCopyRangesLatin(result.get());
+  const ShapeResult* result = shaper.Shape(GetFont(kLatinFont), direction);
+  TestCopyRangesLatin(result);
 }
 
 // Identical to CopyRangeLatin except the source range shape result is split
@@ -180,17 +190,13 @@ TEST_F(ShapeResultTest, CopyRangeLatinMultiRun) {
 
   // Combine four separate results into a single one to ensure we have a result
   // with multiple runs.
-  scoped_refptr<ShapeResult> result =
-      ShapeResult::Create(GetFont(kLatinFont), 0, 0, direction);
-  shaper_a.Shape(GetFont(kLatinFont), direction)
-      ->CopyRange(0u, 5u, result.get());
-  shaper_b.Shape(GetFont(kLatinFont), direction)
-      ->CopyRange(0u, 2u, result.get());
-  shaper_c.Shape(GetFont(kLatinFont), direction)
-      ->CopyRange(0u, 25u, result.get());
-  shaper_d.Shape(GetFont(kLatinFont), direction)
-      ->CopyRange(0u, 6u, result.get());
-  TestCopyRangesLatin(result.get());
+  ShapeResult* result =
+      MakeGarbageCollected<ShapeResult>(GetFont(kLatinFont), 0, 0, direction);
+  shaper_a.Shape(GetFont(kLatinFont), direction)->CopyRange(0u, 5u, result);
+  shaper_b.Shape(GetFont(kLatinFont), direction)->CopyRange(0u, 2u, result);
+  shaper_c.Shape(GetFont(kLatinFont), direction)->CopyRange(0u, 25u, result);
+  shaper_d.Shape(GetFont(kLatinFont), direction)->CopyRange(0u, 6u, result);
+  TestCopyRangesLatin(result);
 }
 
 TEST_F(ShapeResultTest, CopyRangeLatinMultiRunWithHoles) {
@@ -201,16 +207,12 @@ TEST_F(ShapeResultTest, CopyRangeLatinMultiRunWithHoles) {
   HarfBuzzShaper shaper_c(string.Substring(7, 32));
   HarfBuzzShaper shaper_d(string.Substring(32, 34));
 
-  scoped_refptr<ShapeResult> result =
-      ShapeResult::Create(GetFont(kLatinFont), 0, 0, direction);
-  shaper_a.Shape(GetFont(kLatinFont), direction)
-      ->CopyRange(0u, 5u, result.get());
-  shaper_b.Shape(GetFont(kLatinFont), direction)
-      ->CopyRange(0u, 2u, result.get());
-  shaper_c.Shape(GetFont(kLatinFont), direction)
-      ->CopyRange(0u, 25u, result.get());
-  shaper_d.Shape(GetFont(kLatinFont), direction)
-      ->CopyRange(0u, 2u, result.get());
+  ShapeResult* result =
+      MakeGarbageCollected<ShapeResult>(GetFont(kLatinFont), 0, 0, direction);
+  shaper_a.Shape(GetFont(kLatinFont), direction)->CopyRange(0u, 5u, result);
+  shaper_b.Shape(GetFont(kLatinFont), direction)->CopyRange(0u, 2u, result);
+  shaper_c.Shape(GetFont(kLatinFont), direction)->CopyRange(0u, 25u, result);
+  shaper_d.Shape(GetFont(kLatinFont), direction)->CopyRange(0u, 2u, result);
 
   ShapeResult::ShapeRange ranges[] = {
       {4, 17, CreateShapeResult(TextDirection::kLtr)},
@@ -225,7 +227,7 @@ TEST_F(ShapeResultTest, CopyRangeLatinMultiRunWithHoles) {
   EXPECT_EQ(glyphs[1].size(), 3u);
   EXPECT_EQ(glyphs[2].size(), 6u);
 
-  scoped_refptr<ShapeResult> reference[3];
+  ShapeResult* reference[3];
   reference[0] = result->SubRange(4, 17);
   reference[1] = result->SubRange(20, 23);
   reference[2] = result->SubRange(25, 31);
@@ -240,7 +242,6 @@ TEST_F(ShapeResultTest, CopyRangeLatinMultiRunWithHoles) {
   EXPECT_TRUE(CompareResultGlyphs(glyphs[0], reference_glyphs[0], 0u, 13u));
   EXPECT_TRUE(CompareResultGlyphs(glyphs[1], reference_glyphs[1], 0u, 3u));
   EXPECT_TRUE(CompareResultGlyphs(glyphs[2], reference_glyphs[2], 0u, 6u));
-  ReleaseShapeRange(ranges);
 }
 
 TEST_F(ShapeResultTest, CopyRangeArabic) {
@@ -251,9 +252,8 @@ TEST_F(ShapeResultTest, CopyRangeArabic) {
   TextDirection direction = TextDirection::kRtl;
 
   HarfBuzzShaper shaper(string);
-  scoped_refptr<ShapeResult> result =
-      shaper.Shape(GetFont(kArabicFont), direction);
-  TestCopyRangesArabic(result.get());
+  const ShapeResult* result = shaper.Shape(GetFont(kArabicFont), direction);
+  TestCopyRangesArabic(result);
 }
 
 // Identical to CopyRangeArabic except the source range shape result is split
@@ -272,16 +272,13 @@ TEST_F(ShapeResultTest, CopyRangeArabicMultiRun) {
 
   // Combine three separate results into a single one to ensure we have a result
   // with multiple runs.
-  scoped_refptr<ShapeResult> result =
-      ShapeResult::Create(GetFont(kArabicFont), 0, 0, direction);
-  shaper_a.Shape(GetFont(kArabicFont), direction)
-      ->CopyRange(0u, 2u, result.get());
-  shaper_b.Shape(GetFont(kArabicFont), direction)
-      ->CopyRange(0u, 7u, result.get());
-  shaper_c.Shape(GetFont(kArabicFont), direction)
-      ->CopyRange(0u, 8u, result.get());
+  ShapeResult* result =
+      MakeGarbageCollected<ShapeResult>(GetFont(kArabicFont), 0, 0, direction);
+  shaper_a.Shape(GetFont(kArabicFont), direction)->CopyRange(0u, 2u, result);
+  shaper_b.Shape(GetFont(kArabicFont), direction)->CopyRange(0u, 7u, result);
+  shaper_c.Shape(GetFont(kArabicFont), direction)->CopyRange(0u, 8u, result);
 
-  TestCopyRangesArabic(result.get());
+  TestCopyRangesArabic(result);
 }
 
 static struct IsStartSafeToBreakData {
@@ -319,8 +316,7 @@ TEST_P(IsStartSafeToBreakDataTest, IsStartSafeToBreakData) {
   const IsStartSafeToBreakData data = GetParam();
   String string(data.text);
   HarfBuzzShaper shaper(string);
-  scoped_refptr<ShapeResult> result =
-      shaper.Shape(GetFont(kLatinFont), data.direction);
+  const ShapeResult* result = shaper.Shape(GetFont(kLatinFont), data.direction);
   if (data.end_offset)
     result = result->SubRange(data.start_offset, data.end_offset);
   EXPECT_EQ(result->IsStartSafeToBreak(), data.expected);
@@ -328,36 +324,55 @@ TEST_P(IsStartSafeToBreakDataTest, IsStartSafeToBreakData) {
 
 TEST_F(ShapeResultTest, AddUnsafeToBreakLtr) {
   HarfBuzzShaper shaper(u"ABC\u3042DEFG");
-  scoped_refptr<ShapeResult> result =
-      shaper.Shape(GetFont(kLatinFont), TextDirection::kLtr);
+  ShapeResult* result = shaper.Shape(GetFont(kLatinFont), TextDirection::kLtr);
   Vector<unsigned> offsets{2, 5};
   for (const unsigned offset : offsets) {
     EXPECT_EQ(result->NextSafeToBreakOffset(offset), offset);
   }
   result->AddUnsafeToBreak(offsets);
+  result->EnsurePositionData();
   for (const unsigned offset : offsets) {
     EXPECT_NE(result->NextSafeToBreakOffset(offset), offset);
+    EXPECT_NE(result->CachedNextSafeToBreakOffset(offset), offset);
   }
 }
 
 TEST_F(ShapeResultTest, AddUnsafeToBreakRtl) {
   HarfBuzzShaper shaper(u"\u05d0\u05d1\u05d2\u05d3\u05d4\u05d5");
-  scoped_refptr<ShapeResult> result =
-      shaper.Shape(GetFont(kArabicFont), TextDirection::kRtl);
+  ShapeResult* result = shaper.Shape(GetFont(kArabicFont), TextDirection::kRtl);
   Vector<unsigned> offsets{2, 5};
   for (const unsigned offset : offsets) {
     EXPECT_EQ(result->NextSafeToBreakOffset(offset), offset);
   }
   result->AddUnsafeToBreak(offsets);
+  result->EnsurePositionData();
   for (const unsigned offset : offsets) {
     EXPECT_NE(result->NextSafeToBreakOffset(offset), offset);
+    EXPECT_NE(result->CachedNextSafeToBreakOffset(offset), offset);
+  }
+}
+
+TEST_F(ShapeResultTest, AddUnsafeToBreakRange) {
+  const String string{u"0ABC\u3042DEFG"};
+  HarfBuzzShaper shaper(string);
+  ShapeResult* result = shaper.Shape(GetFont(kLatinFont), TextDirection::kLtr,
+                                     1, string.length());
+  Vector<unsigned> offsets{2, 5, 7};
+  for (const unsigned offset : offsets) {
+    EXPECT_EQ(result->NextSafeToBreakOffset(offset), offset);
+  }
+  result->AddUnsafeToBreak(offsets);
+  result->EnsurePositionData();
+  for (const unsigned offset : offsets) {
+    EXPECT_NE(result->NextSafeToBreakOffset(offset), offset);
+    EXPECT_NE(result->CachedNextSafeToBreakOffset(offset), offset);
   }
 }
 
 TEST_F(ShapeResultTest, ComputeInkBoundsWithZeroOffset) {
   String string(u"abc");
   HarfBuzzShaper shaper(string);
-  auto result = shaper.Shape(GetFont(kLatinFont), TextDirection::kLtr);
+  const auto* result = shaper.Shape(GetFont(kLatinFont), TextDirection::kLtr);
   EXPECT_FALSE(HasNonZeroGlyphOffsets(*result));
   EXPECT_FALSE(result->ComputeInkBounds().IsEmpty());
 }
@@ -409,13 +424,12 @@ TEST_P(TextAutoSpaceResultText, AddAutoSpacingToIdeograph) {
   const auto& test_data = GetParam();
   String string(test_data.string);
   HarfBuzzShaper shaper(string);
-  scoped_refptr<ShapeResult> result =
-      shaper.Shape(GetFont(kLatinFont), TextDirection::kLtr);
+  ShapeResult* result = shaper.Shape(GetFont(kLatinFont), TextDirection::kLtr);
 
   // Record the position before applying text-autospace, and fill the spacing
   // widths with different values.
   Vector<float> before_adding_spacing =
-      RecordPositionBeforeApplyingSpacing(result.get(), string.length());
+      RecordPositionBeforeApplyingSpacing(result, string.length());
   Vector<OffsetWithSpacing, 16> offsets =
       RecordExpectedSpacing(test_data.offsets);
   result->ApplyTextAutoSpacing(offsets);
@@ -437,20 +451,20 @@ TEST_F(ShapeResultTest, DISABLED_ComputeInkBoundsWithNonZeroOffset) {
   // U+0A81 has non-zero glyph offset
   String string(u"xy\u0A81z");
   HarfBuzzShaper shaper(string);
-  auto result = shaper.Shape(GetFont(kLatinFont), TextDirection::kLtr);
+  const auto* result = shaper.Shape(GetFont(kLatinFont), TextDirection::kLtr);
   ASSERT_TRUE(HasNonZeroGlyphOffsets(*result));
   EXPECT_FALSE(result->ComputeInkBounds().IsEmpty());
 }
 
 // Tests for CaretPositionForOffset
-struct CaretPositionForOffsetTextData {
+struct CaretPositionForOffsetTestData {
   // The string that should be processed.
   const UChar* string;
   // Text direction to test
   TextDirection direction;
   // The offsets to test.
   std::vector<wtf_size_t> offsets;
-  // Expected positions. The width is 240.
+  // Expected positions.
   std::vector<float> positions;
   // The font to use
   ShapeResultTest::FontType font;
@@ -470,7 +484,7 @@ struct CaretPositionForOffsetTextData {
      AdjustMidCluster::kToStart},
 
     // 1
-    {u"012345678901234567890123456789",  // 1
+    {u"012345678901234567890123456789",
      TextDirection::kRtl,
      {0, 1, 4, 5, 12, 18, 30, 32},
 #if BUILDFLAG(IS_APPLE)
@@ -661,19 +675,19 @@ struct CaretPositionForOffsetTextData {
      ShapeResultTest::kCJKFont,
      AdjustMidCluster::kToEnd},
 };
-class CaretPositionForOffsetText
+class CaretPositionForOffsetTest
     : public ShapeResultTest,
-      public testing::WithParamInterface<CaretPositionForOffsetTextData> {};
+      public testing::WithParamInterface<CaretPositionForOffsetTestData> {};
 INSTANTIATE_TEST_SUITE_P(
-    ShapeResultTest,
-    CaretPositionForOffsetText,
+    ShapeResult,
+    CaretPositionForOffsetTest,
     testing::ValuesIn(caret_position_for_offset_test_data));
 
-TEST_P(CaretPositionForOffsetText, CaretPositionForOffsets) {
+TEST_P(CaretPositionForOffsetTest, CaretPositionForOffsets) {
   const auto& test_data = GetParam();
   String text_string(test_data.string);
   HarfBuzzShaper shaper(text_string);
-  scoped_refptr<ShapeResult> result =
+  const ShapeResult* result =
       shaper.Shape(GetFont(test_data.font), test_data.direction);
   StringView text_view(text_string);
 
@@ -682,6 +696,406 @@ TEST_P(CaretPositionForOffsetText, CaretPositionForOffsets) {
                 result->CaretPositionForOffset(test_data.offsets[i], text_view,
                                                test_data.adjust_mid_cluster),
                 0.01f);
+  }
+}
+
+// Tests for OffsetForPosition
+struct CaretOffsetForPositionTestData {
+  // The string that should be processed.
+  const UChar* string;
+  // Text direction to test
+  TextDirection direction;
+  // The positions to test.
+  std::vector<wtf_size_t> positions;
+  // The expected offsets.
+  std::vector<wtf_size_t> offsets;
+  // The font to use
+  ShapeResultTest::FontType font;
+  // IncludePartialGlyphsOption value
+  IncludePartialGlyphsOption partial_glyphs_option;
+  // BreakGlyphsOption value
+  BreakGlyphsOption break_glyphs_option;
+} caret_offset_for_position_test_data[] = {
+    // 0
+    {u"0123456789",
+     TextDirection::kLtr,
+#if BUILDFLAG(IS_APPLE)
+     {1,  6,  7,  13, 14, 20, 21, 26, 27, 33,
+      34, 40, 41, 47, 48, 53, 54, 60, 61, 67},
+     {0,  0,  1,  1,  2,  2,  3,  3,  4,  4,
+      5,  5,  6,  6,  7,  7,  8,  8,  9,  9},
+#else
+     {1,  6,  7,  13, 14, 20, 21, 27, 28, 34,
+      35, 41, 42, 48, 49, 55, 56, 62, 63, 69},
+     {0,  0,  1,  1,  2,  2,  3,  3,  4,  4,
+      5,  5,  6,  6,  7,  7,  8,  8,  9,  9},
+#endif
+     ShapeResultTest::kLatinFont,
+     kOnlyFullGlyphs,
+     BreakGlyphsOption(false)},
+
+    // 1
+    {u"0123456789",
+     TextDirection::kRtl,
+#if BUILDFLAG(IS_APPLE)
+     {1,  6,  7,  13, 14, 20, 21, 26, 27, 33,
+      34, 40, 41, 47, 48, 53, 54, 60, 61, 67},
+     {9,  9,  8,  8,  7,  7,  6,  6,  5,  5,
+      4,  4,  3,  3,  2,  2,  1,  1,  0,  0},
+#else
+     {1,  7,  8,  14, 15, 21, 22, 28, 29, 35,
+      36, 42, 43, 49, 50, 56, 57, 63, 64, 69},
+     {9,  9,  8,  8,  7,  7,  6,  6,  5,  5,
+      4,  4,  3,  3,  2,  2,  1,  1,  0,  0},
+#endif
+     ShapeResultTest::kLatinFont,
+     kOnlyFullGlyphs,
+     BreakGlyphsOption(false)},
+
+    // 2
+    {u"0ff1fff23ff",
+     TextDirection::kLtr,
+#if BUILDFLAG(IS_APPLE)
+     {1,  6,  7,  10, 11, 15, 16, 21, 22, 25, 26,
+      30, 31, 34, 35, 41, 42, 47, 48, 51, 52, 56},
+     {0,  0,  1,  1,  2,  2,  3,  3,  4,  4,  5,
+      5,  6,  6,  7,  7,  8,  8,  9,  9,  10, 10},
+#else
+     {1,  6,  7,  10, 11, 14, 15, 21, 22, 25, 26,
+      29, 30, 33, 34, 40, 41, 47, 48, 51, 52, 55},
+     {0,  0,  1,  1,  2,  2,  3,  3,  4,  4,  5,
+      5,  6,  6,  7,  7,  8,  8,  9,  9, 10, 10},
+#endif
+     ShapeResultTest::kLatinFont,
+     kOnlyFullGlyphs,
+     BreakGlyphsOption(false)},
+
+    // 3
+    {u"0ff1fff23ff",
+     TextDirection::kRtl,
+#if BUILDFLAG(IS_APPLE)
+     {1,  4,  5,  8,  9,  15, 16, 21, 22, 25, 26,
+      30, 31, 34, 35, 41, 42, 45, 46, 49, 50, 56},
+     {10, 10, 9,  9,  8,  8,  7,  7,  6,  6,  5,
+      5,  4,  4,  3,  3,  2,  2,  1,  1,  0,  0},
+#else
+     {1,  4,  5,  8,  9,  15, 16, 22, 23, 26, 27,
+      30, 31, 34, 35, 41, 42, 45, 46, 49, 50, 55},
+     {10, 10, 9,  9,  8,  8,  7,  7,  6,  6,  5,
+      5,  4,  4,  3,  3,  2,  2,  1,  1,  0,  0},
+#endif
+     ShapeResultTest::kLatinFont,
+     kOnlyFullGlyphs,
+     BreakGlyphsOption(false)},
+
+    // 4
+    {u"مَ1مَمَ2مَمَمَ3",
+     TextDirection::kLtr,
+#if BUILDFLAG(IS_APPLE)
+     {1, 5, 6, 12, 13, 19, 20, 24, 25, 31, 32, 37, 38, 42, 43, 48, 49, 55},
+     {0, 0, 2, 2,  3,  3,  5,  5,  7,  7,  8,  8,  10, 10, 12, 12, 14, 14},
+#elif BUILDFLAG(IS_WIN)
+     {1, 5, 6, 12, 13, 18, 19, 23, 24, 30, 31, 36, 37, 41, 42, 46, 47, 53},
+     {0, 0, 2, 2,  3,  3,  5,  5,  7,  7,  8,  8,  10, 10, 12, 12, 14, 14},
+#else
+     {1, 5, 6, 12, 13, 19, 20, 25, 26, 32, 33, 39, 40, 44, 45, 50, 51, 57},
+     {0, 0, 2, 2,  3,  3,  5,  5,  7,  7,  8,  8,  10, 10, 12, 12, 14, 14},
+#endif
+     ShapeResultTest::kArabicFont,
+     kOnlyFullGlyphs,
+     BreakGlyphsOption(false)},
+
+    // 5
+    {u"مَ1مَمَ2مَمَمَ3",
+     TextDirection::kLtr,
+#if BUILDFLAG(IS_APPLE)
+     {1,  2,  3,  9,  10, 15, 16, 21, 22, 27,
+      28, 34, 35, 40, 41, 45, 46, 51, 52, 55},
+     {0,  0,  2,  2,  3,  3,  5,  5,  7,  7,
+      8,  8,  10, 10, 12, 12, 14, 14, 15, 15},
+#elif BUILDFLAG(IS_WIN)
+     {1,  3,  4,  9,  10, 16, 17, 21, 22, 27,
+      28, 34, 35, 39, 40, 44, 45, 50, 51, 53},
+     {0,  0,  2,  2,  3,  3,  5,  5,  7,  7,
+      8,  8,  10, 10, 12, 12, 14, 14, 15, 15},
+#else
+     {1,  3,  4,  9,  10, 16, 17, 23, 24, 29,
+      30, 36, 37, 42, 43, 48, 49, 54, 55, 57},
+     {0,  0,  2,  2,  3,  3,  5,  5,  7,  7,
+      8,  8,  10, 10, 12, 12, 14, 14, 15, 15},
+#endif
+     ShapeResultTest::kArabicFont,
+     kIncludePartialGlyphs,
+     BreakGlyphsOption(false)},
+
+    // 6
+    {u"مَ1مَمَ2مَمَمَ3",
+     TextDirection::kLtr,
+#if BUILDFLAG(IS_APPLE)
+     {1,  2,  3,  9,  10, 15, 16, 21, 22, 27,
+      28, 34, 35, 40, 41, 45, 46, 51, 52, 55},
+     {0,  0,  2,  2,  3,  3,  5,  5,  7,  7,
+      8,  8,  10, 10, 12, 12, 14, 14, 15, 15},
+#elif BUILDFLAG(IS_WIN)
+     {1,  3,  4,  9,  10, 16, 17, 21, 22, 27,
+      28, 34, 35, 39, 40, 44, 45, 50, 51, 54},
+     {0,  0,  2,  2,  3,  3,  5,  5,  7,  7,
+      8,  8,  10, 10, 12, 12, 14, 14, 15, 15},
+#else
+     {1,  3,  4,  9,  10, 16, 17, 23, 24, 29,
+      30, 36, 37, 42, 43, 48, 49, 54, 55, 57},
+     {0,  0,  2,  2,  3,  3,  5,  5,  7,  7,
+      8,  8,  10, 10, 12, 12, 14, 14, 15, 15},
+#endif
+     ShapeResultTest::kArabicFont,
+     kIncludePartialGlyphs,
+     BreakGlyphsOption(true)},
+
+    // 7
+    {u"مَ1مَمَ2مَمَمَ3",
+     TextDirection::kRtl,
+#if BUILDFLAG(IS_APPLE)
+     {1,  6,  7,  13, 14, 18, 19, 23, 24, 30, 31, 36, 37, 42, 43, 49, 50, 55},
+     {14, 14, 12, 12, 10, 10, 8,  8,  7,  7,  5,  5,  3,  3,  2,  2,  0,  0},
+#elif BUILDFLAG(IS_WIN)
+     {1,  7,  8,  13, 14, 18, 19, 23, 24, 30, 31, 36, 37, 41, 42, 48, 49, 53},
+     {14, 14, 12, 12, 10, 10, 8,  8,  7,  7,  5,  5,  3,  3,  2,  2,  0,  0},
+#else
+     {1,  7,  8,  14, 15, 19, 20, 25, 26, 32, 33, 39, 40, 45, 46, 52, 53, 57},
+     {14, 14, 12, 12, 10, 10, 8,  8,  7,  7,  5,  5,  3,  3,  2,  2,  0,  0},
+#endif
+     ShapeResultTest::kArabicFont,
+     kOnlyFullGlyphs,
+     BreakGlyphsOption(false)},
+
+    // 8
+    {u"مَ1مَمَ2مَمَمَ3",
+     TextDirection::kRtl,
+#if BUILDFLAG(IS_APPLE)
+     {1,  3,  4,  10, 11, 15, 16, 20, 21, 27,
+      28, 33, 34, 39, 40, 45, 46, 52, 53, 55},
+     {15, 15, 14, 14, 12, 12, 10, 10, 8,  8,
+      7,  7,  5,  5,  3,  3,  2,  2,  0,  0},
+#elif BUILDFLAG(IS_WIN)
+     {1,  3,  4,  10, 11, 15, 16, 20, 21, 26,
+      27, 33, 34, 38, 39, 44, 45, 51, 52, 53},
+     {15, 15, 14, 14, 12, 12, 10, 10, 8,  8,
+      7,  7,  5,  5,  3,  3,  2,  2,  0,  0},
+#else
+     {1,  3,  4,  10, 11, 16, 17, 22, 23, 28,
+      29, 35, 36, 42, 43, 48, 49, 55, 56, 57},
+     {15, 15, 14, 14, 12, 12, 10, 10, 8,  8,
+      7,  7,  5,  5,  3,  3,  2,  2,  0, 0},
+#endif
+     ShapeResultTest::kArabicFont,
+     kIncludePartialGlyphs,
+     BreakGlyphsOption(true)},
+
+    // 9
+    {u"あ1あمَ2あمَあ",
+     TextDirection::kLtr,
+#if BUILDFLAG(IS_APPLE)
+     {0, 11, 12, 18, 19, 30, 31, 36, 37, 43, 44, 55, 56, 61, 62, 73},
+     {0, 0,  1,  1,  2,  2,  3,  3,  5,  5,  6,  6,  7,  7,  9,  9},
+#else
+     {1, 11, 12, 18, 19, 30, 31, 36, 37, 43, 44, 55, 56, 61, 62, 73},
+     {0, 0,  1,  1,  2,  2,  3,  3,  5,  5,  6,  6,  7,  7,  9,  9},
+#endif
+     ShapeResultTest::kArabicFont,
+     kOnlyFullGlyphs,
+     BreakGlyphsOption(false)},
+
+    // 10
+    {u"あ1あمَ2あمَあ",
+     TextDirection::kLtr,
+#if BUILDFLAG(IS_APPLE)
+     {1, 6, 7, 15, 16, 24, 25, 33, 34, 40, 41, 49, 50, 58, 59, 67, 68, 73},
+     {0, 0, 1, 1,  2,  2,  3,  3,  5,  5,  6,  6,  7,  7,  9,  9,  10, 10},
+#else
+     {1, 6, 7, 15, 16, 25, 26, 34, 35, 40, 41, 50, 51, 59, 60, 68, 69, 73},
+     {0, 0, 1, 1,  2,  2,  3,  3,  5,  5,  6,  6,  7,  7,  9,  9,  10, 10},
+#endif
+     ShapeResultTest::kArabicFont,
+     kIncludePartialGlyphs,
+     BreakGlyphsOption(false)},
+
+    // 11
+    {u"あ1あمَ2あمَあ",
+     TextDirection::kLtr,
+#if BUILDFLAG(IS_APPLE)
+     {1, 6, 7, 15, 16, 24, 25, 33, 34, 40, 41, 49, 50, 58, 59, 67, 68, 73},
+     {0, 0, 1, 1,  2,  2,  3,  3,  5,  5,  6,  6,  7,  7,  9,  9,  10, 10},
+#else
+     {1, 6, 7, 15, 16, 25, 26, 34, 35, 40, 41, 50, 51, 59, 60, 68, 69, 73},
+     {0, 0, 1, 1,  2,  2,  3,  3,  5,  5,  6,  6,  7,  7,  9,  9,  10, 10},
+#endif
+     ShapeResultTest::kArabicFont,
+     kIncludePartialGlyphs,
+     BreakGlyphsOption(true)},
+
+    // 12
+    {u"あ1あمَ2あمَあ",
+     TextDirection::kRtl,
+#if BUILDFLAG(IS_APPLE)
+     {1, 12, 13, 17, 18, 29, 30, 36, 37, 42, 43, 54, 55, 61, 62, 73},
+     {9, 9,  7,  7,  6,  6,  5,  5,  3,  3,  2,  2,  1,  1,  0,  0},
+#else
+     {1, 12, 13, 18, 19, 30, 31, 37, 38, 43, 44, 55, 56, 62, 63, 74},
+     {9, 9,  7,  7,  6,  6,  5,  5,  3,  3,  2,  2,  1,  1,  0,  0},
+#endif
+     ShapeResultTest::kArabicFont,
+     kOnlyFullGlyphs,
+     BreakGlyphsOption(false)},
+
+    // 13
+    {u"あ1あمَ2あمَあ",
+     TextDirection::kRtl,
+#if BUILDFLAG(IS_APPLE)
+     {1,  6,  7, 14, 15, 23, 24, 33, 34, 39, 40, 48, 49, 58, 59, 67, 68, 73},
+     {10, 10, 9, 9,  7,  7,  6,  6,  5,  5,  3,  3,  2,  2,  1,  1,  0,  0},
+#else
+     {1,  6,  7, 15, 16, 24, 25, 33, 34, 40, 41, 49, 50, 58, 59, 68, 69, 73},
+     {10, 10, 9, 9,  7,  7,  6,  6,  5,  5,  3,  3,  2,  2,  1,  1,  0,  0},
+#endif
+     ShapeResultTest::kArabicFont,
+     kIncludePartialGlyphs,
+     BreakGlyphsOption(true)},
+
+    // 14
+    {u"楽しいドライブ、0",
+     TextDirection::kLtr,
+#if BUILDFLAG(IS_APPLE)
+     {1, 11, 12, 23, 24, 35, 36, 47, 48, 59, 60, 71, 72, 83, 84, 95, 96, 103},
+     {0, 0,  1,  1,  2,  2,  3,  3,  4,  4,  5,  5,  6,  6,  7,  7,  8,  8},
+#else
+     {1, 11, 12, 23, 24, 35, 36, 47, 48, 59, 60, 71, 72, 83, 84, 95, 96, 102},
+     {0, 0,  1,  1,  2,  2,  3,  3,  4,  4,  5,  5,  6,  6,  7,  7,  8,  8},
+#endif
+     ShapeResultTest::kCJKFont,
+     kOnlyFullGlyphs,
+     BreakGlyphsOption(false)},
+
+    // 15
+    {u"楽しいドライブ、0",
+     TextDirection::kLtr,
+#if BUILDFLAG(IS_APPLE)
+     {1,  6,  7,  18, 19, 30, 31, 42, 43,  54,
+      55, 66, 67, 78, 79, 90, 91, 99, 100, 103},
+     {0,  0,  1,  1,  2,  2,  3,  3,  4,   4,
+      5,  5,  6,  6,  7,  7,  8,  8,  9,   9},
+#else
+     {1,  6,  7,  18, 19, 30, 31, 42, 43,  54,
+      55, 66, 67, 78, 79, 90, 91, 99, 100, 102},
+     {0,  0,  1,  1,  2,  2,  3,  3,  4,   4,
+      5,  5,  6,  6,  7,  7,  8,  8,  9,   9},
+#endif
+     ShapeResultTest::kCJKFont,
+     kIncludePartialGlyphs,
+     BreakGlyphsOption(true)},
+
+    // 16
+    {u"楽しいドライブ、0",
+     TextDirection::kLtr,
+#if BUILDFLAG(IS_APPLE)
+     {1,  6,  7,  18, 19, 30, 31, 42, 43,  54,
+      55, 66, 67, 78, 79, 90, 91, 99, 100, 103},
+     {0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9},
+#else
+     {1,  6,  7,  18, 19, 30, 31, 42, 43,  54,
+      55, 66, 67, 78, 79, 90, 91, 99, 100, 102},
+     {0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9},
+#endif
+     ShapeResultTest::kCJKFont,
+     kIncludePartialGlyphs,
+     BreakGlyphsOption(false)},
+
+    // 17
+    {u"楽しいドライブ、0",
+     TextDirection::kRtl,
+#if BUILDFLAG(IS_APPLE)
+     {1, 7, 8, 19, 20, 31, 32, 43, 44, 55, 56, 67, 68, 79, 80, 91, 92, 103},
+     {8, 8, 7, 7,  6,  6,  5,  5,  4,  4,  3,  3,  2,  2,  1,  1,  0,  0},
+#else
+     {1, 7, 8, 19, 20, 31, 32, 43, 44, 55, 56, 67, 68, 79, 80, 91, 92, 102},
+     {8, 8, 7, 7,  6,  6,  5,  5,  4,  4,  3,  3,  2,  2,  1,  1,  0,  0},
+#endif
+     ShapeResultTest::kCJKFont,
+     kOnlyFullGlyphs,
+     BreakGlyphsOption(false)},
+
+    // 18
+    {u"楽しいドライブ、0",
+     TextDirection::kRtl,
+#if BUILDFLAG(IS_APPLE)
+     {1,  3,  4,  13, 14, 25, 26, 37, 38, 49,
+      50, 61, 62, 73, 74, 85, 86, 97, 98, 103},
+     {9,  9,  8,  8,  7,  7,  6,  6,  5,  5,
+      4,  4,  3,  3,  2,  2,  1,  1,  0,  0},
+#else
+     {1,  3,  4,  13, 14, 25, 26, 37, 38, 49,
+      50, 61, 62, 73, 74, 85, 86, 97, 98, 102},
+     {9,  9,  8,  8,  7,  7,  6,  6,  5,  5,
+      4,  4,  3,  3,  2,  2,  1,  1,  0,  0},
+#endif
+     ShapeResultTest::kCJKFont,
+     kIncludePartialGlyphs,
+     BreakGlyphsOption(true)},
+};
+class CaretOffsetForPositionTest
+    : public ShapeResultTest,
+      public testing::WithParamInterface<CaretOffsetForPositionTestData> {};
+INSTANTIATE_TEST_SUITE_P(
+    ShapeResult,
+    CaretOffsetForPositionTest,
+    testing::ValuesIn(caret_offset_for_position_test_data));
+
+TEST_P(CaretOffsetForPositionTest, OffsetForPositions) {
+  const auto& test_data = GetParam();
+  String text_string(test_data.string);
+  HarfBuzzShaper shaper(text_string);
+  const ShapeResult* result =
+      shaper.Shape(GetFont(test_data.font), test_data.direction);
+  StringView text_view(text_string);
+
+  float text_width = result->Width();
+  if (IsLtr(test_data.direction)) {
+    EXPECT_EQ(0u, result->OffsetForPosition(-1, text_view,
+                                            test_data.partial_glyphs_option,
+                                            test_data.break_glyphs_option));
+    EXPECT_EQ(0u, result->OffsetForPosition(0, text_view,
+                                            test_data.partial_glyphs_option,
+                                            test_data.break_glyphs_option));
+    EXPECT_EQ(text_string.length(),
+              result->OffsetForPosition(text_width, text_view,
+                                        test_data.partial_glyphs_option,
+                                        test_data.break_glyphs_option));
+    EXPECT_EQ(text_string.length(),
+              result->OffsetForPosition(text_width + 10, text_view,
+                                        test_data.partial_glyphs_option,
+                                        test_data.break_glyphs_option));
+  } else {
+    EXPECT_EQ(0u, result->OffsetForPosition(text_width + 10, text_view,
+                                            test_data.partial_glyphs_option,
+                                            test_data.break_glyphs_option));
+    EXPECT_EQ(0u, result->OffsetForPosition(text_width, text_view,
+                                            test_data.partial_glyphs_option,
+                                            test_data.break_glyphs_option));
+    EXPECT_EQ(
+        text_string.length(),
+        result->OffsetForPosition(0, text_view, test_data.partial_glyphs_option,
+                                  test_data.break_glyphs_option));
+    EXPECT_EQ(text_string.length(),
+              result->OffsetForPosition(-1, text_view,
+                                        test_data.partial_glyphs_option,
+                                        test_data.break_glyphs_option));
+  }
+
+  for (wtf_size_t i = 0; i < test_data.positions.size(); i++) {
+    EXPECT_EQ(test_data.offsets[i],
+              result->OffsetForPosition(test_data.positions[i], text_view,
+                                        test_data.partial_glyphs_option,
+                                        test_data.break_glyphs_option))
+        << "index " << i;
   }
 }
 

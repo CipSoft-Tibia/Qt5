@@ -175,7 +175,17 @@ QList<QString> ChatEngine::findLocalIps()
     return out;
 }
 
-Q_INVOKABLE QString ChatEngine::getSchemeSymbol()
+QList<QString> ChatEngine::displayServerPorts()
+{
+    return {
+#if QT_CONFIG(ssl)
+        "65002 (https)",
+#endif
+        "65003 (http)",
+    };
+}
+
+QString ChatEngine::getSchemeSymbol()
 {
 #ifdef USE_EMOJI_FONT
     const auto s = m_hostUri.scheme();

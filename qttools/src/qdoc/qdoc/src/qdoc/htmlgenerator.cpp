@@ -149,6 +149,7 @@ void HtmlGenerator::initializeGenerator()
     tocDepth = config->get(formatDot + HTMLGENERATOR_TOCDEPTH).asInt();
 
     m_project = config->get(CONFIG_PROJECT).asString();
+    m_productName = config->get(CONFIG_PRODUCTNAME).asString();
     m_projectDescription = config->get(CONFIG_DESCRIPTION)
             .asString(m_project + QLatin1String(" Reference Documentation"));
 
@@ -309,7 +310,9 @@ qsizetype HtmlGenerator::generateAtom(const Atom *atom, const Node *relative, Co
             const Node *node = nullptr;
             QString link = getAutoLink(atom, relative, &node, genus);
             if (link.isEmpty()) {
-                if (autolinkErrors() && relative)
+                // Warn if warnings are enabled, linking occurs from a relative
+                // node and no target is found. Do not warn about self-linking.
+                if (autolinkErrors() && relative && relative != node)
                     relative->doc().location().warning(
                             QStringLiteral("Can't autolink to '%1'").arg(atom->string()));
             } else if (node && node->isDeprecated()) {
@@ -654,17 +657,11 @@ qsizetype HtmlGenerator::generateAtom(const Atom *atom, const Node *relative, Co
             // TODO: [uncentralized-output-directory-structure]
             out() << "<img src=\"" << "images/" + protectEnc(file_name) << '"';
 
-            // TODO: [same-result-branching]
-            // If text is empty protectEnc should return the empty
-            // string itself, such that the two branches would still
-            // result in the same output.
-            // Ensure that this is the case and then flatten the branch if so.
-            if (!text.isEmpty())
-                out() << " alt=\"" << protectEnc(text) << '"';
-            else
-                out() << " alt=\"\"";
-
-            out() << " />";
+            const QString altAndTitleText = protectEnc(text);
+            out() << " alt=\"" << altAndTitleText;
+            if (Config::instance().get(CONFIG_USEALTTEXTASTITLE).asBool())
+                out()  << "\" title=\"" << altAndTitleText;
+            out() << "\" />";
 
             // TODO: [uncentralized-output-directory-structure]
             m_helpProjectWriter->addExtraFile("images/" + file_name);
@@ -1074,52 +1071,42 @@ QString HtmlGenerator::groupReferenceText(PageNode* node) {
 void HtmlGenerator::generateCppReferencePage(Aggregate *aggregate, CodeMarker *marker)
 {
     QString title;
-    QString rawTitle;
     QString fullTitle;
     NamespaceNode *ns = nullptr;
     SectionVector *summarySections = nullptr;
     SectionVector *detailsSections = nullptr;
 
     Sections sections(aggregate);
-    QString word = aggregate->typeWord(true);
+    QString typeWord = aggregate->typeWord(true);
     auto templateDecl = aggregate->templateDecl();
     if (aggregate->isNamespace()) {
-        rawTitle = aggregate->plainName();
         fullTitle = aggregate->plainFullName();
-        title = rawTitle + " Namespace";
+        title = "%1 %2"_L1.arg(fullTitle, typeWord);
         ns = static_cast<NamespaceNode *>(aggregate);
         summarySections = &sections.stdSummarySections();
         detailsSections = &sections.stdDetailsSections();
     } else if (aggregate->isClassNode()) {
-        rawTitle = aggregate->plainName();
         fullTitle = aggregate->plainFullName();
-        title = rawTitle + QLatin1Char(' ') + word;
+        title = "%1 %2"_L1.arg(fullTitle, typeWord);
         summarySections = &sections.stdCppClassSummarySections();
         detailsSections = &sections.stdCppClassDetailsSections();
     } else if (aggregate->isHeader()) {
-        title = fullTitle = rawTitle = aggregate->fullTitle();
+        title = fullTitle = aggregate->fullTitle();
         summarySections = &sections.stdSummarySections();
         detailsSections = &sections.stdDetailsSections();
     }
 
     Text subtitleText;
-    if (rawTitle != fullTitle || templateDecl) {
-        if (aggregate->isClassNode()) {
-            if (templateDecl)
-                subtitleText << (*templateDecl).to_qstring() + QLatin1Char(' ');
-            subtitleText << aggregate->typeWord(false) + QLatin1Char(' ');
-            const QStringList ancestors = fullTitle.split(QLatin1String("::"));
-            for (const auto &a : ancestors) {
-                if (a == rawTitle) {
-                    subtitleText << a;
-                    break;
-                } else {
-                    subtitleText << Atom(Atom::AutoLink, a) << "::";
-                }
-            }
-        } else {
-            subtitleText << fullTitle;
-        }
+    // Generate a subtitle if there are parents to link to, or a template declaration
+    if (aggregate->parent()->isInAPI() || templateDecl) {
+        if (templateDecl)
+            subtitleText << "%1 "_L1.arg((*templateDecl).to_qstring());
+        subtitleText << aggregate->typeWord(false) << " "_L1;
+        auto ancestors = fullTitle.split("::"_L1);
+        ancestors.pop_back();
+        for (const auto &a : ancestors)
+            subtitleText << Atom(Atom::AutoLink, a) << "::"_L1;
+        subtitleText << aggregate->plainName();
     }
 
     generateHeader(title, aggregate, marker);
@@ -1390,7 +1377,6 @@ void HtmlGenerator::generateQmlTypePage(QmlTypeNode *qcn, CodeMarker *marker)
         htmlTitle.append(" QML Value Type");
     else
         htmlTitle.append(" QML Type");
-
 
     generateHeader(htmlTitle, qcn, marker);
     Sections sections(qcn);
@@ -1770,23 +1756,19 @@ void HtmlGenerator::generateHeader(const QString &title, const Node *node, CodeM
         // "title | hometitle version"
         if (title != m_hometitle)
             titleSuffix = m_hometitle;
-    } else if (!m_project.isEmpty()) {
-        // for projects outside of Qt or Qt 5: "title | project version"
-        if (title != m_project)
-            titleSuffix = m_project;
-    } else
-        // default: "title | Qt version"
-        titleSuffix = QLatin1String("Qt ");
-
+    } else {
+        // "title | productname version"
+        titleSuffix = m_productName.isEmpty() ? m_project : m_productName;
+    }
     if (title == titleSuffix)
         titleSuffix.clear();
 
-    QString divider;
-    if (!titleSuffix.isEmpty() && !title.isEmpty())
-        divider = QLatin1String(" | ");
-
-    // Generating page title
-    out() << "  <title>" << protectEnc(title) << divider << titleSuffix;
+    out() << "  <title>";
+    if (!titleSuffix.isEmpty() && !title.isEmpty()) {
+        out() << "%1 | %2"_L1.arg(protectEnc(title), titleSuffix);
+    } else {
+        out() << protectEnc(title);
+    }
 
     // append a full version to the suffix if neither suffix nor title
     // include (a prefix of) version information
@@ -1798,8 +1780,12 @@ void HtmlGenerator::generateHeader(const QString &title, const Node *node, CodeM
         auto match = re.match(versionedTitle);
         if (match.hasMatch())
             titleVersion = QVersionNumber::fromString(match.captured());
-        if (titleVersion.isNull() || !titleVersion.isPrefixOf(projectVersion))
-            out() << QLatin1Char(' ') << projectVersion.toString();
+        if (titleVersion.isNull() || !titleVersion.isPrefixOf(projectVersion)) {
+            // Prefix with product name if one exists
+            if (!m_productName.isEmpty() && titleSuffix != m_productName)
+                out() << " | %1"_L1.arg(m_productName);
+            out() << " %1"_L1.arg(projectVersion.toString());
+        }
     }
     out() << "</title>\n";
 
@@ -1922,8 +1908,8 @@ void HtmlGenerator::generateFooter(const Node *node)
 }
 
 /*!
-Lists the required imports and includes in a table.
-The number of rows is known.
+    Lists the required imports and includes in a table.
+    The number of rows is known.
 */
 void HtmlGenerator::generateRequisites(Aggregate *aggregate, CodeMarker *marker)
 {
@@ -2043,7 +2029,7 @@ void HtmlGenerator::addInheritsToMap(QMap<QString, Text> &requisites, Text *text
     \internal
     Add the QML/C++ native type information to the map.
  */
- void HtmlGenerator::addQmlNativeTypesToMap(QMap<QString, Text> &requisites, Text *text,
+void HtmlGenerator::addQmlNativeTypesToMap(QMap<QString, Text> &requisites, Text *text,
                                             const QString &nativeTypeText, ClassNode *classe) const
 {
     if (!text)
@@ -2075,20 +2061,19 @@ void HtmlGenerator::addCMakeInfoToMap(const Aggregate *aggregate, QMap<QString, 
     if (!aggregate->physicalModuleName().isEmpty() && text != nullptr) {
         const CollectionNode *cn =
                 m_qdb->getCollectionNode(aggregate->physicalModuleName(), Node::Module);
-        if (!cn || cn->qtCMakeComponent().isEmpty())
+
+        const auto result = cmakeRequisite(cn);
+
+        if (!result) {
             return;
+        }
 
         text->clear();
-        const QString qtComponent = "Qt" + QString::number(QT_VERSION_MAJOR);
-        const QString findPackageText = "find_package(" + qtComponent + " REQUIRED COMPONENTS "
-                + cn->qtCMakeComponent() + ")";
-        const QString targetText = cn->qtCMakeTargetItem().isEmpty() ? cn->qtCMakeComponent() : cn->qtCMakeTargetItem();
-        const QString targetLinkLibrariesText = "target_link_libraries(mytarget PRIVATE "
-                + qtComponent + "::" + targetText + ")";
+
         const Atom lineBreak = Atom(Atom::RawString, "<br/>\n");
 
-        *text << openCodeTag << findPackageText << closeCodeTag << lineBreak
-              << openCodeTag << targetLinkLibrariesText << closeCodeTag;
+        *text << openCodeTag << result->first << closeCodeTag << lineBreak
+              << openCodeTag << result->second << closeCodeTag;
 
         requisites.insert(CMakeInfo, *text);
     }
@@ -2177,13 +2162,14 @@ void HtmlGenerator::addIncludeFileToMap(const Aggregate *aggregate,
 }
 
 /*!
-Lists the required imports and includes in a table.
-The number of rows is known.
+    Lists the required imports and includes in a table.
+    The number of rows is known.
 */
 void HtmlGenerator::generateQmlRequisites(QmlTypeNode *qcn, CodeMarker *marker)
 {
     if (qcn == nullptr)
         return;
+
     QMap<QString, Text> requisites;
     Text text;
 
@@ -2416,7 +2402,7 @@ QString HtmlGenerator::generateAllMembersFile(const Section &section, CodeMarker
     const Aggregate *aggregate = section.aggregate();
     QString fileName = fileBase(aggregate) + "-members." + fileExtension();
     beginSubPage(aggregate, fileName);
-    QString title = "List of All Members for " + aggregate->name();
+    QString title = "List of All Members for " + aggregate->plainFullName();
     generateHeader(title, aggregate, marker);
     generateSidebar();
     generateTitle(title, Text(), SmallSubTitle, aggregate, marker);
@@ -2510,7 +2496,7 @@ QString HtmlGenerator::generateObsoleteMembersFile(const Sections &sections, Cod
         return QString();
 
     Aggregate *aggregate = sections.aggregate();
-    QString title = "Obsolete Members for " + aggregate->name();
+    QString title = "Obsolete Members for " + aggregate->plainFullName();
     QString fileName = fileBase(aggregate) + "-obsolete." + fileExtension();
 
     beginSubPage(aggregate, fileName);
@@ -3373,6 +3359,9 @@ QString HtmlGenerator::protectEnc(const QString &string)
 
 QString HtmlGenerator::protect(const QString &string)
 {
+    if (string.isEmpty())
+        return string;
+
 #define APPEND(x)                                                                                  \
     if (html.isEmpty()) {                                                                          \
         html = string;                                                                             \
@@ -3488,7 +3477,8 @@ void HtmlGenerator::generateDetailedMember(const Node *node, const PageNode *rel
 
     if (node->isProperty()) {
         const auto property = static_cast<const PropertyNode *>(node);
-        if (property->propertyType() == PropertyNode::PropertyType::StandardProperty) {
+        if (property->propertyType() == PropertyNode::PropertyType::StandardProperty ||
+            property->propertyType() == PropertyNode::PropertyType::BindableProperty) {
             Section section("", "", "", "", Section::Accessors);
 
             section.appendMembers(property->getters().toVector());

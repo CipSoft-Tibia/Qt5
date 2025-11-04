@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "messagemodel.h"
+#include "globals.h"
 #include "statistics.h"
 
 #include <QtCore/QCoreApplication>
@@ -16,6 +17,69 @@
 
 #include <limits.h>
 
+static QString resolveNcr(QStringView str)
+{
+    constexpr QStringView notation = u"&#";
+    constexpr QChar cx = QLatin1Char('x');
+    constexpr QChar ce = QLatin1Char(';');
+
+    QString result;
+    result.reserve(str.size());
+    qsizetype offset = str.indexOf(notation);
+    while (offset >= 0) {
+
+        qsizetype metaLen = 2;
+        if (str.size() <= offset + metaLen)
+            break;
+
+        int base = 10;
+        if (const QChar ch = str[offset + metaLen]; ch == cx) {
+            metaLen++;
+            base = 16;
+        }
+        offset += metaLen;
+
+        const qsizetype end = str.sliced(offset).indexOf(ce);
+        if (end > 0) {
+            bool valid;
+            if (const uint c = str.sliced(offset, end).toUInt(&valid, base);
+                valid && c <= QChar::LastValidCodePoint) {
+                if (QChar::requiresSurrogates(c))
+                    result += str.sliced(0, offset - metaLen) + QChar(QChar::highSurrogate(c))
+                            + QChar(QChar::lowSurrogate(c));
+                else
+                    result += str.sliced(0, offset - metaLen) + QChar(c);
+                str.slice(offset + end + 1);
+                offset = str.indexOf(notation);
+                continue;
+            }
+        }
+        result += str.sliced(0, offset);
+        str.slice(offset);
+        offset = str.indexOf(notation);
+    }
+    result += str;
+    return result;
+}
+
+static QString showNcr(const QString &str)
+{
+    QString result;
+    result.reserve(str.size());
+    for (const QChar ch : str) {
+        if (uint c = ch.unicode(); Q_UNLIKELY(!ch.isPrint() && c > 0x20))
+            result += QString(QLatin1String("&#x%1;")).arg(c, 0, 16);
+        else
+            result += ch;
+    }
+    return result;
+}
+
+static QString adjustNcrVisibility(const QString &str, bool ncrMode)
+{
+    return ncrMode ? showNcr(str) : resolveNcr(str);
+}
+
 QT_BEGIN_NAMESPACE
 
 /******************************************************************************
@@ -25,8 +89,7 @@ QT_BEGIN_NAMESPACE
  *****************************************************************************/
 
 MessageItem::MessageItem(const TranslatorMessage &message)
-  : m_message(message),
-    m_danger(false)
+    : m_message(message), m_danger(false), m_ncrMode(false)
 {
     if (m_message.translation().isEmpty())
         m_message.setTranslation(QString());
@@ -39,6 +102,45 @@ bool MessageItem::compare(const QString &findText, bool matchSubstring,
     return matchSubstring
         ? text().indexOf(findText, 0, cs) >= 0
         : text().compare(findText, cs) == 0;
+}
+
+void MessageItem::setTranslation(const QString &translation)
+{
+    m_message.setTranslation(resolveNcr(translation));
+}
+
+QString MessageItem::text() const
+{
+    return adjustNcrVisibility(m_message.sourceText(), m_ncrMode);
+}
+
+QString MessageItem::pluralText() const
+{
+    return adjustNcrVisibility(m_message.extra(QLatin1String("po-msgid_plural")), m_ncrMode);
+}
+
+QString MessageItem::translation() const
+{
+    return adjustNcrVisibility(m_message.translation(), m_ncrMode);
+}
+
+QStringList MessageItem::translations() const
+{
+    QStringList translations;
+    translations.reserve(m_message.translations().size());
+    for (QString &trans : m_message.translations())
+        translations.append(adjustNcrVisibility(trans, m_ncrMode));
+    return translations;
+}
+
+void MessageItem::setTranslations(const QStringList &translations)
+{
+    QStringList trans;
+    trans.reserve(translations.size());
+    for (const QString &t : translations)
+        trans.append(resolveNcr(t));
+
+    m_message.setTranslations(trans);
 }
 
 /******************************************************************************
@@ -101,7 +203,13 @@ DataModel::DataModel(QObject *parent)
 
 QStringList DataModel::normalizedTranslations(const MessageItem &m) const
 {
-    return Translator::normalizedTranslations(m.message(), m_numerusForms.size());
+    QStringList translations =
+            Translator::normalizedTranslations(m.message(), m_numerusForms.size());
+    QStringList ncrTranslations;
+    ncrTranslations.reserve(translations.size());
+    for (const QString &translate : translations)
+        ncrTranslations.append(adjustNcrVisibility(translate, m.ncrMode()));
+    return ncrTranslations;
 }
 
 ContextItem *DataModel::contextItem(int context) const
@@ -641,14 +749,24 @@ int MultiContextItem::findMessageById(const QString &id) const
  *
  *****************************************************************************/
 
-static const uchar paletteRGBs[7][3] = {
-    { 236, 244, 255 }, // blue
-    { 236, 255, 255 }, // cyan
-    { 236, 255, 232 }, // green
-    { 255, 255, 230 }, // yellow
-    { 255, 242, 222 }, // orange
-    { 255, 236, 236 }, // red
-    { 252, 236, 255 }  // purple
+static const QColor lightPaletteColors[7]{
+    QColor(210, 235, 250), // blue
+    QColor(210, 250, 220), // green
+    QColor(250, 240, 210), // yellow
+    QColor(210, 250, 250), // cyan
+    QColor(250, 230, 200), // orange
+    QColor(250, 210, 210), // red
+    QColor(235, 210, 250), // purple
+};
+
+static const QColor darkPaletteColors[7] = {
+    QColor(60, 80, 100), // blue
+    QColor(50, 90, 70), // green
+    QColor(100, 90, 50), // yellow
+    QColor(50, 90, 90), // cyan
+    QColor(100, 70, 50), // orange
+    QColor(90, 50, 50), // red
+    QColor(70, 50, 90), // purple
 };
 
 MultiDataModel::MultiDataModel(QObject *parent) :
@@ -658,8 +776,7 @@ MultiDataModel::MultiDataModel(QObject *parent) :
     m_numMessages(0),
     m_modified(false)
 {
-    for (int i = 0; i < 7; ++i)
-        m_colors[i] = QColor(paletteRGBs[i][0], paletteRGBs[i][1], paletteRGBs[i][2]);
+    updateColors();
 
     m_bitmap = QBitmap(8, 8);
     m_bitmap.clear();
@@ -681,6 +798,11 @@ QBrush MultiDataModel::brushForModel(int model) const
     if (!isModelWritable(model))
         brush.setTexture(m_bitmap);
     return brush;
+}
+
+void MultiDataModel::updateColors()
+{
+    m_colors = isDarkMode() ? darkPaletteColors : lightPaletteColors;
 }
 
 bool MultiDataModel::isWellMergeable(const DataModel *dm) const
@@ -977,7 +1099,8 @@ MultiContextItem *MultiDataModel::findContext(const QString &context) const
 
 MessageItem *MultiDataModel::messageItem(const MultiDataIndex &index, int model) const
 {
-    if (index.context() < contextCount() && model >= 0 && model < modelCount()) {
+    if (index.context() < contextCount() && index.context() >= 0 && model >= 0
+        && model < modelCount()) {
         MultiContextItem *mc = multiContextItem(index.context());
         if (index.message() < mc->messageCount())
             return mc->messageItem(model, index.message());
@@ -1257,18 +1380,26 @@ int MessageModel::columnCount(const QModelIndex &parent) const
 
 QVariant MessageModel::data(const QModelIndex &index, int role) const
 {
-    static QVariant pxOn  =
-        QVariant::fromValue(QPixmap(QLatin1String(":/images/s_check_on.png")));
-    static QVariant pxOff =
-        QVariant::fromValue(QPixmap(QLatin1String(":/images/s_check_off.png")));
-    static QVariant pxObsolete =
-        QVariant::fromValue(QPixmap(QLatin1String(":/images/s_check_obsolete.png")));
-    static QVariant pxDanger =
-        QVariant::fromValue(QPixmap(QLatin1String(":/images/s_check_danger.png")));
-    static QVariant pxWarning =
-        QVariant::fromValue(QPixmap(QLatin1String(":/images/s_check_warning.png")));
-    static QVariant pxEmpty =
-        QVariant::fromValue(QPixmap(QLatin1String(":/images/s_check_empty.png")));
+    static QVariant pxOn;
+    static QVariant pxOff;
+    static QVariant pxObsolete;
+    static QVariant pxDanger;
+    static QVariant pxWarning;
+    static QVariant pxEmpty;
+
+    static Qt::ColorScheme mode = Qt::ColorScheme::Unknown; // to prevent creating new QPixmaps
+                                                            // every time the method is called
+
+    if (bool dark = isDarkMode();
+        (dark && mode != Qt::ColorScheme::Dark) || (!dark && mode != Qt::ColorScheme::Light)) {
+        pxOn = MarkIcon::create(MarkIcon::onMark, dark);
+        pxOff = MarkIcon::create(MarkIcon::offMark, dark);
+        pxObsolete = MarkIcon::create(MarkIcon::obsoleteMark, dark);
+        pxDanger = MarkIcon::create(MarkIcon::dangerMark, dark);
+        pxWarning = MarkIcon::create(MarkIcon::warningMark, dark);
+        pxEmpty = MarkIcon::create(MarkIcon::emptyMark, dark);
+        mode = dark ? Qt::ColorScheme::Dark : Qt::ColorScheme::Light;
+    }
 
     int row = index.row();
     int column = index.column() - 1;

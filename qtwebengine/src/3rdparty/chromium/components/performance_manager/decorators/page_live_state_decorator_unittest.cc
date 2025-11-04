@@ -18,10 +18,12 @@
 #include "components/performance_manager/test_support/decorators_utils.h"
 #include "components/performance_manager/test_support/graph_test_harness.h"
 #include "components/performance_manager/test_support/performance_manager_test_harness.h"
+#include "components/performance_manager/test_support/run_in_graph.h"
 #include "content/public/browser/browser_task_traits.h"
 #include "content/public/browser/browser_thread.h"
 #include "content/public/browser/web_contents.h"
 #include "testing/gtest/include/gtest/gtest.h"
+#include "ui/accessibility/ax_mode.h"
 
 namespace performance_manager {
 
@@ -52,8 +54,8 @@ class TestPageLiveStateObserver : public PageLiveStateObserver {
     kOnWasDiscardedChanged,
     kOnIsActiveTabChanged,
     kOnIsPinnedTabChanged,
-    kOnContentSettingsChanged,
     kOnIsDevToolsOpenChanged,
+    kOnAccessibilityModeChanged,
   };
 
   void OnIsConnectedToUSBDeviceChanged(const PageNode* page_node) override {
@@ -103,32 +105,17 @@ class TestPageLiveStateObserver : public PageLiveStateObserver {
     latest_function_called_ = ObserverFunction::kOnIsPinnedTabChanged;
     page_node_passed_ = page_node;
   }
-  void OnContentSettingsChanged(const PageNode* page_node) override {
-    latest_function_called_ = ObserverFunction::kOnContentSettingsChanged;
-    page_node_passed_ = page_node;
-  }
   void OnIsDevToolsOpenChanged(const PageNode* page_node) override {
     latest_function_called_ = ObserverFunction::kOnIsDevToolsOpenChanged;
+    page_node_passed_ = page_node;
+  }
+  void OnAccessibilityModeChanged(const PageNode* page_node) override {
+    latest_function_called_ = ObserverFunction::kOnAccessibilityModeChanged;
     page_node_passed_ = page_node;
   }
 
   ObserverFunction latest_function_called_ = ObserverFunction::kNone;
   raw_ptr<const PageNode> page_node_passed_ = nullptr;
-};
-
-class MockPageLiveStateDelegate
-    : public performance_manager::PageLiveStateDecorator::Delegate {
- public:
-  MockPageLiveStateDelegate() = default;
-
- private:
-  std::map<ContentSettingsType, ContentSetting> GetContentSettingsForUrl(
-      content::WebContents* web_contents,
-      const GURL& url) override {
-    return {
-        {ContentSettingsType::NOTIFICATIONS, CONTENT_SETTING_ALLOW},
-    };
-  }
 };
 
 }  // namespace
@@ -215,9 +202,7 @@ class PageLiveStateDecoratorTest : public PerformanceManagerTestHarness {
   }
 
   void OnGraphCreated(GraphImpl* graph) override {
-    graph->PassToGraph(std::make_unique<PageLiveStateDecorator>(
-        base::SequenceBound<MockPageLiveStateDelegate>(
-            content::GetUIThreadTaskRunner({}))));
+    graph->PassToGraph(std::make_unique<PageLiveStateDecorator>());
   }
 
   scoped_refptr<base::SequencedTaskRunner> task_runner() {
@@ -334,135 +319,8 @@ TEST_F(PageLiveStateDecoratorTest, OnIsPinnedTabChanged) {
       TestPageLiveStateObserver::ObserverFunction::kOnIsPinnedTabChanged);
 }
 
-TEST_F(PageLiveStateDecoratorTest, OnContentSettingsChanged) {
-  base::WeakPtr<PageNode> node =
-      PerformanceManager::GetPrimaryPageNodeForWebContents(web_contents());
-
-  {
-    base::RunLoop run_loop;
-    PerformanceManager::CallOnGraph(
-        FROM_HERE, base::BindLambdaForTesting([&]() {
-          ASSERT_TRUE(node);
-          const PageLiveStateDecorator::Data* data =
-              PageLiveStateDecorator::Data::FromPageNode(node.get());
-          ASSERT_TRUE(data);
-          EXPECT_EQ(data->IsContentSettingTypeAllowed(
-                        ContentSettingsType::NOTIFICATIONS),
-                    false);
-          run_loop.Quit();
-        }));
-    run_loop.Run();
-  }
-
-  PageLiveStateDecorator::SetContentSettings(
-      web_contents(),
-      {
-          {ContentSettingsType::NOTIFICATIONS, CONTENT_SETTING_ALLOW},
-      });
-
-  {
-    base::RunLoop run_loop;
-    PerformanceManager::CallOnGraph(
-        FROM_HERE, base::BindLambdaForTesting([&]() {
-          ASSERT_TRUE(node);
-          const PageLiveStateDecorator::Data* data =
-              PageLiveStateDecorator::Data::FromPageNode(node.get());
-          ASSERT_TRUE(data);
-          EXPECT_EQ(data->IsContentSettingTypeAllowed(
-                        ContentSettingsType::NOTIFICATIONS),
-                    true);
-          run_loop.Quit();
-        }));
-    run_loop.Run();
-  }
-
-  VerifyObserverExpectationOnPMSequence(
-      TestPageLiveStateObserver::ObserverFunction::kOnContentSettingsChanged);
-
-  PageLiveStateDecorator::SetContentSettings(
-      web_contents(),
-      {
-          {ContentSettingsType::NOTIFICATIONS, CONTENT_SETTING_BLOCK},
-      });
-
-  {
-    base::RunLoop run_loop;
-    PerformanceManager::CallOnGraph(
-        FROM_HERE, base::BindLambdaForTesting([&]() {
-          ASSERT_TRUE(node);
-          const PageLiveStateDecorator::Data* data =
-              PageLiveStateDecorator::Data::FromPageNode(node.get());
-          ASSERT_TRUE(data);
-          EXPECT_EQ(data->IsContentSettingTypeAllowed(
-                        ContentSettingsType::NOTIFICATIONS),
-                    false);
-          run_loop.Quit();
-        }));
-    run_loop.Run();
-  }
-
-  VerifyObserverExpectationOnPMSequence(
-      TestPageLiveStateObserver::ObserverFunction::kOnContentSettingsChanged);
-}
-
-// Content settings aren't fetched on navigation on Android.
+// DevTools not supported on Android.
 #if !BUILDFLAG(IS_ANDROID)
-TEST_F(PageLiveStateDecoratorTest, GetContentSettingsOnNavigation) {
-  base::WeakPtr<PageNode> node =
-      PerformanceManager::GetPrimaryPageNodeForWebContents(web_contents());
-  {
-    base::RunLoop run_loop;
-    auto quit_closure = run_loop.QuitClosure();
-    PerformanceManager::CallOnGraph(
-        FROM_HERE, base::BindLambdaForTesting([&]() {
-          ASSERT_TRUE(node);
-          const PageLiveStateDecorator::Data* data =
-              PageLiveStateDecorator::Data::FromPageNode(node.get());
-          ASSERT_TRUE(data);
-          EXPECT_EQ(data->IsContentSettingTypeAllowed(
-                        ContentSettingsType::NOTIFICATIONS),
-                    false);
-          PageNodeImpl::FromNode(node.get())
-              ->OnMainFrameNavigationCommitted(
-                  /*same_document=*/false,
-                  /*navigation_committed_time=*/base::TimeTicks::Now(),
-                  /*navigation_id=*/1,
-                  /*url=*/GURL("http://www.example.com"),
-                  /*contents_mime_type=*/"text/html");
-
-          // Posting the quit_closure run on the same task runner as the content
-          // settings fetch ensures it's run after the settings are done being
-          // retrieved.
-          task_runner()->PostTask(FROM_HERE, base::BindLambdaForTesting([&]() {
-                                    std::move(quit_closure).Run();
-                                  }));
-        }));
-    run_loop.Run();
-  }
-
-  VerifyObserverExpectationOnPMSequence(
-      TestPageLiveStateObserver::ObserverFunction::kOnContentSettingsChanged);
-
-  {
-    base::RunLoop run_loop;
-    PerformanceManager::CallOnGraph(
-        FROM_HERE, base::BindLambdaForTesting([&]() {
-          ASSERT_TRUE(node);
-          const PageLiveStateDecorator::Data* data =
-              PageLiveStateDecorator::Data::FromPageNode(node.get());
-          ASSERT_TRUE(data);
-          EXPECT_EQ(data->IsContentSettingTypeAllowed(
-                        ContentSettingsType::NOTIFICATIONS),
-                    true);
-          run_loop.Quit();
-        }));
-    run_loop.Run();
-  }
-
-  VerifyObserverExpectationOnPMSequence(
-      TestPageLiveStateObserver::ObserverFunction::kOnContentSettingsChanged);
-}
-
 TEST_F(PageLiveStateDecoratorTest, OnIsDevToolsOpenChanged) {
   testing::EndToEndBooleanPropertyTest(
       web_contents(), &PageLiveStateDecorator::Data::GetOrCreateForPageNode,
@@ -474,6 +332,36 @@ TEST_F(PageLiveStateDecoratorTest, OnIsDevToolsOpenChanged) {
 }
 
 #endif  // !BUILDFLAG(IS_ANDROID)
+
+TEST_F(PageLiveStateDecoratorTest, OnAccessibilityModeChanged) {
+  base::WeakPtr<PageNode> node =
+      PerformanceManager::GetPrimaryPageNodeForWebContents(web_contents());
+  const auto expect_mode_on_graph = [&node](ui::AXMode accessibility_mode) {
+    RunInGraph([&node, accessibility_mode]() {
+      ASSERT_TRUE(node);
+      auto* data =
+          PageLiveStateDecorator::Data::GetOrCreateForPageNode(node.get());
+      ASSERT_TRUE(data);
+      EXPECT_EQ(data->GetAccessibilityMode(), accessibility_mode);
+    });
+  };
+
+  // All mode flags off by default.
+  ASSERT_NO_FATAL_FAILURE(expect_mode_on_graph(ui::AXMode()));
+
+  // Pretend that the property changed and make sure that the PageNode data gets
+  // updated.
+  PageLiveStateDecorator::SetAccessibilityMode(web_contents(),
+                                               ui::kAXModeComplete);
+  ASSERT_NO_FATAL_FAILURE(expect_mode_on_graph(ui::kAXModeComplete));
+
+  // Switch back to the default state.
+  PageLiveStateDecorator::SetAccessibilityMode(web_contents(), ui::AXMode());
+  ASSERT_NO_FATAL_FAILURE(expect_mode_on_graph(ui::AXMode()));
+
+  VerifyObserverExpectationOnPMSequence(
+      TestPageLiveStateObserver::ObserverFunction::kOnAccessibilityModeChanged);
+}
 
 TEST_F(PageLiveStateDecoratorTest, UpdateTitleInBackground) {
   base::WeakPtr<PageNode> node =

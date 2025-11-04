@@ -36,7 +36,7 @@ class QAlsaAudioSink : public QPlatformAudioSink
     friend class AlsaOutputPrivate;
     Q_OBJECT
 public:
-    QAlsaAudioSink(const QByteArray &device, QObject *parent);
+    QAlsaAudioSink(QAudioDevice device, const QAudioFormat &, QObject *parent);
     ~QAlsaAudioSink();
 
     qint64 write( const char *data, qint64 len );
@@ -51,16 +51,9 @@ public:
     void setBufferSize(qsizetype value) override;
     qsizetype bufferSize() const override;
     qint64 processedUSecs() const override;
-    QAudio::Error error() const override;
     QAudio::State state() const override;
-    void setFormat(const QAudioFormat& fmt);
-    QAudioFormat format() const override;
-    void setVolume(qreal) override;
-    qreal volume() const override;
-
 
     QIODevice* audioSource = nullptr;
-    QAudioFormat settings;
     QAudio::Error errorState = QAudio::NoError;
     QAudio::State deviceState = QAudio::StoppedState;
     QAudio::State suspendedInState = QAudio::SuspendedState;
@@ -90,14 +83,12 @@ private:
     void close();
 
     QTimer* timer = nullptr;
-    QByteArray m_device;
     int bytesAvailable = 0;
     qint64 elapsedTimeOffset = 0;
     char* audioBuffer = nullptr;
     snd_pcm_t* handle = nullptr;
     snd_pcm_access_t access = SND_PCM_ACCESS_RW_INTERLEAVED;
     snd_pcm_hw_params_t *hwparams = nullptr;
-    qreal m_volume = 1.0f;
 };
 
 class AlsaOutputPrivate : public QIODevice

@@ -33,7 +33,7 @@ parser.set_defaults(defines=list())
 
 
 def split_ukernel_name(name):
-  match = re.fullmatch(r"xnn_(f16|f32|qs16|qs8|qu8)(_(f16|f32|qs8|qu8))?_vcvt_ukernel__(.+)_u(\d+)", name)
+  match = re.fullmatch(r"xnn_(f16|f32|qs16|qs8|qu8)(_(f16|f32|qs8|qu8))?_vcvt_ukernel__(.+)_u(\d+)(v)?", name)
   if match is None:
     raise ValueError("Unexpected microkernel name: " + name)
 
@@ -384,11 +384,9 @@ def main(args):
 #include <limits>
 
 #include <gtest/gtest.h>
-
-#include <xnnpack/common.h>
-#include <xnnpack/isa-checks.h>
-
-#include <xnnpack/vcvt.h>
+#include "xnnpack/common.h"
+#include "xnnpack/isa-checks.h"
+#include "xnnpack/vcvt.h"
 #include "vcvt-microkernel-tester.h"
 """.format(specification=options.spec, generator=sys.argv[0])
 
@@ -406,12 +404,11 @@ def main(args):
 #include <benchmark/benchmark.h>
 #include "bench/utils.h"
 #include "bench/vcvt-benchmark.h"
-
-#include <xnnpack.h>
-#include <xnnpack/common.h>
-#include <xnnpack/microfnptr.h>
-#include <xnnpack/microparams-init.h>
-#include <xnnpack/vcvt.h>
+#include "xnnpack.h"
+#include "xnnpack/common.h"
+#include "xnnpack/microfnptr.h"
+#include "xnnpack/microparams-init.h"
+#include "xnnpack/vcvt.h"
 """.format(specification=options.spec, generator=sys.argv[0])
 
     isa_hierarchy = xnncommon._ISA_HIERARCHY_MAP

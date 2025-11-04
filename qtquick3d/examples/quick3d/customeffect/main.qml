@@ -136,28 +136,28 @@ Window {
             scale.x: 10
             scale.y: 10
             eulerRotation.x: -90
-            materials: [ DefaultMaterial { diffuseMap: checkers } ]
+            materials: [ PrincipledMaterial { baseColorMap: checkers } ]
         }
 
         Model {
             source: "#Cone"
             position: Qt.vector3d(100, 0, -200)
             scale.y: 3
-            materials: [ DefaultMaterial { diffuseColor: "green" } ]
+            materials: [ PrincipledMaterial { baseColor: "green" } ]
         }
 
         Model {
             id: sphere
             source: "#Sphere"
             position: Qt.vector3d(-100, 200, -200)
-            materials: [ DefaultMaterial { diffuseColor: "#808000" } ]
+            materials: [ PrincipledMaterial { baseColor: "#808000" } ]
         }
 
         Model {
             source: "#Cube"
             position.y: 50
             eulerRotation.y: 20
-            materials: [ DefaultMaterial { diffuseColor: "gray" } ]
+            materials: [ PrincipledMaterial { baseColor: "gray" } ]
         }
     }
 

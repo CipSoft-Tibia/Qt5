@@ -5,7 +5,8 @@
 #ifndef UI_VIEWS_CONTROLS_MENU_MENU_CONFIG_H_
 #define UI_VIEWS_CONTROLS_MENU_MENU_CONFIG_H_
 
-#include "third_party/abseil-cpp/absl/types/optional.h"
+#include <optional>
+
 #include "third_party/skia/include/core/SkColor.h"
 #include "ui/gfx/color_palette.h"
 #include "ui/gfx/font_list.h"
@@ -42,10 +43,6 @@ struct VIEWS_EXPORT MenuConfig {
   bool ShouldShowAcceleratorText(const MenuItemView* item_view,
                                  std::u16string* text) const;
 
-  // Initialize menu config for CR2023
-  void InitCR2023();
-  void InitPlatformCR2023();
-
   // Font lists used by menus.
   gfx::FontList font_list;
   gfx::FontList context_menu_font_list;
@@ -54,7 +51,7 @@ struct VIEWS_EXPORT MenuConfig {
   // `rounded_menu_vertical_border_size` if set and fall back to the corner
   // radius otherwise.
   int nonrounded_menu_vertical_border_size = 4;
-  absl::optional<int> rounded_menu_vertical_border_size;
+  std::optional<int> rounded_menu_vertical_border_size;
   int menu_horizontal_border_size = views::RoundRectPainter::kBorderWidth;
 
   // The horizontal overlap between the submenu and its parent menu item.
@@ -228,8 +225,13 @@ struct VIEWS_EXPORT MenuConfig {
   bool use_bubble_border = false;
 
  private:
-  // Configures a MenuConfig as appropriate for the current platform.
-  void Init();
+  // Set configuration as appropriate for the current platform. Called after
+  // InitCommon to make sure that fonts are correct or that other settings are
+  // overridden from their defaults.
+  void InitPlatform();
+
+  // Set default configuration that is shared by all platforms.
+  void InitCommon();
 };
 
 }  // namespace views

@@ -219,7 +219,8 @@ TEST_F(SSLErrorClassificationTest, GetClockState) {
       std::make_unique<base::DefaultClock>(),
       std::make_unique<base::DefaultTickClock>(), &pref_service,
       base::MakeRefCounted<network::WeakWrapperSharedURLLoaderFactory>(
-          &test_url_loader_factory_));
+          &test_url_loader_factory_),
+      std::nullopt);
 
   ssl_errors::SetBuildTimeForTesting(base::Time::Now());
   EXPECT_EQ(
@@ -267,11 +268,7 @@ TEST_F(SSLErrorClassificationTest, GetClockState) {
 
   // Now clear the network time.  The build time should reassert
   // itself.
-  network_time_tracker.UpdateNetworkTime(
-      base::Time(),
-      base::Seconds(1),         // resolution
-      base::Milliseconds(250),  // latency
-      base::TimeTicks::Now());  // posting time
+  network_time_tracker.ClearNetworkTimeForTesting();
   ssl_errors::SetBuildTimeForTesting(base::Time::Now() + base::Days(3));
   EXPECT_EQ(
       ssl_errors::ClockState::CLOCK_STATE_PAST,

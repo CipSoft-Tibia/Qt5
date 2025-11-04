@@ -155,10 +155,6 @@ void RecordDeliveryStatus(blink::mojom::PushEventStatus status) {
   UMA_HISTOGRAM_ENUMERATION("PushMessaging.DeliveryStatus", status);
 }
 
-void RecordPushSubcriptionChangeStatus(blink::mojom::PushEventStatus status) {
-  UMA_HISTOGRAM_ENUMERATION("PushMessaging.PushSubscriptionChangeStatus",
-                            status);
-}
 void RecordUnsubscribeReason(blink::mojom::PushUnregistrationReason reason) {
   UMA_HISTOGRAM_ENUMERATION("PushMessaging.UnregistrationReason", reason);
 }
@@ -203,7 +199,9 @@ PendingMessage::PendingMessage(std::string app_id, gcm::IncomingMessage message)
       received_time(base::Time::Now()) {}
 PendingMessage::PendingMessage(const PendingMessage& other) = default;
 PendingMessage::PendingMessage(PendingMessage&& other) = default;
+#if !BUILDFLAG(IS_QTWEBENGINE)
 PendingMessage& PendingMessage::operator=(PendingMessage&& other) = default;
+#endif
 PendingMessage::~PendingMessage() = default;
 
 }  // namespace
@@ -329,7 +327,7 @@ bool PushMessagingServiceImpl::CanHandle(const std::string& app_id) const {
 void PushMessagingServiceImpl::ShutdownHandler() {
   // Shutdown() should come before and it removes us from the list of app
   // handlers of gcm::GCMDriver so this shouldn't ever been called.
-  NOTREACHED();
+  NOTREACHED_IN_MIGRATION();
 }
 
 void PushMessagingServiceImpl::OnStoreReset() {
@@ -378,7 +376,7 @@ void PushMessagingServiceImpl::OnMessage(const std::string& app_id,
     std::optional<PushMessagingAppIdentifier> refresh_identifier =
         refresher_.FindActiveAppIdentifier(app_id);
     if (!refresh_identifier) {
-      DeliverMessageCallback(app_id, GURL::EmptyGURL(),
+      DeliverMessageCallback(app_id, GURL(),
                              /*service_worker_registration_id=*/-1, message,
                              /*did_enqueue_message=*/false,
                              blink::mojom::PushEventStatus::UNKNOWN_APP_ID);
@@ -485,7 +483,7 @@ void PushMessagingServiceImpl::OnCheckedOrigin(
         status = blink::mojom::PushEventStatus::PERMISSION_REVOKED_DISRUPTIVE;
         break;
       default:
-        NOTREACHED();
+        NOTREACHED_IN_MIGRATION();
     }
 
     // Drop message and unregister if origin has lost push permission.
@@ -680,7 +678,7 @@ void PushMessagingServiceImpl::DeliverMessageCallback(
         PushMessagingAppIdentifier::FindByAppId(profile_, app_id);
     UnsubscribeInternal(
         unsubscribe_reason,
-        app_identifier.is_null() ? GURL::EmptyGURL() : app_identifier.origin(),
+        app_identifier.is_null() ? GURL() : app_identifier.origin(),
         app_identifier.is_null()
             ? -1 /* kInvalidServiceWorkerRegistrationId */
             : app_identifier.service_worker_registration_id(),
@@ -784,13 +782,15 @@ void PushMessagingServiceImpl::OnMessagesDeleted(const std::string& app_id) {
 void PushMessagingServiceImpl::OnSendError(
     const std::string& app_id,
     const gcm::GCMClient::SendErrorDetails& send_error_details) {
-  NOTREACHED() << "The Push API shouldn't have sent messages upstream";
+  NOTREACHED_IN_MIGRATION()
+      << "The Push API shouldn't have sent messages upstream";
 }
 
 void PushMessagingServiceImpl::OnSendAcknowledged(
     const std::string& app_id,
     const std::string& message_id) {
-  NOTREACHED() << "The Push API shouldn't have sent messages upstream";
+  NOTREACHED_IN_MIGRATION()
+      << "The Push API shouldn't have sent messages upstream";
 }
 
 void PushMessagingServiceImpl::OnMessageDecryptionFailed(
@@ -983,16 +983,13 @@ void PushMessagingServiceImpl::RegisterPrefs(PrefRegistrySimple* registry) {
 static void
 JNI_PushMessagingServiceBridge_VerifyAndRevokeNotificationsPermission(
     JNIEnv* env,
-    const JavaParamRef<jstring>& java_origin,
-    const JavaParamRef<jstring>& java_profile_id,
+    std::string& origin,
+    std::string& profile_id,
     jboolean app_level_notifications_enabled) {
   if (!base::FeatureList::IsEnabled(
           features::kRevokeNotificationsPermissionIfDisabledOnAppLevel)) {
     return;
   }
-
-  GURL origin(ConvertJavaStringToUTF8(env, java_origin));
-  std::string profile_id = ConvertJavaStringToUTF8(env, java_profile_id);
 
   ProfileManager* profile_manager = g_browser_process->profile_manager();
   DCHECK(profile_manager);
@@ -1001,8 +998,7 @@ JNI_PushMessagingServiceBridge_VerifyAndRevokeNotificationsPermission(
       NotificationPlatformBridge::GetProfileBaseNameFromProfileId(profile_id),
       /*incognito=*/false,
       base::BindOnce(&PushMessagingServiceImpl::RevokePermissionIfPossible,
-                     GURL(ConvertJavaStringToUTF8(env, java_origin)),
-                     app_level_notifications_enabled,
+                     GURL(origin), app_level_notifications_enabled,
                      g_browser_process->local_state()));
 }
 
@@ -1129,8 +1125,7 @@ void PushMessagingServiceImpl::SubscribeEndWithError(
     RegisterCallback callback,
     blink::mojom::PushRegistrationStatus status) {
   SubscribeEnd(std::move(callback), std::string() /* subscription_id */,
-               GURL::EmptyGURL() /* endpoint */,
-               std::nullopt /* expiration_time */,
+               GURL() /* endpoint */, std::nullopt /* expiration_time */,
                std::vector<uint8_t>() /* p256dh */,
                std::vector<uint8_t>() /* auth */, status);
 }
@@ -1216,10 +1211,10 @@ void PushMessagingServiceImpl::GetSubscriptionInfo(
           profile_, origin, service_worker_registration_id);
 
   if (app_identifier.is_null()) {
-    std::move(callback).Run(
-        false /* is_valid */, GURL::EmptyGURL() /*endpoint*/,
-        std::nullopt /* expiration_time */, std::vector<uint8_t>() /* p256dh */,
-        std::vector<uint8_t>() /* auth */);
+    std::move(callback).Run(false /* is_valid */, GURL() /*endpoint*/,
+                            std::nullopt /* expiration_time */,
+                            std::vector<uint8_t>() /* p256dh */,
+                            std::vector<uint8_t>() /* auth */);
     return;
   }
 
@@ -1251,10 +1246,10 @@ void PushMessagingServiceImpl::DidValidateSubscription(
     SubscriptionInfoCallback callback,
     bool is_valid) {
   if (!is_valid) {
-    std::move(callback).Run(
-        false /* is_valid */, GURL::EmptyGURL() /* endpoint */,
-        std::nullopt /* expiration_time */, std::vector<uint8_t>() /* p256dh */,
-        std::vector<uint8_t>() /* auth */);
+    std::move(callback).Run(false /* is_valid */, GURL() /* endpoint */,
+                            std::nullopt /* expiration_time */,
+                            std::vector<uint8_t>() /* p256dh */,
+                            std::vector<uint8_t>() /* auth */);
     return;
   }
 
@@ -1634,8 +1629,6 @@ void PushMessagingServiceImpl::FirePushSubscriptionChange(
 void PushMessagingServiceImpl::FirePushSubscriptionChangeCallback(
     const PushMessagingAppIdentifier& app_identifier,
     blink::mojom::PushEventStatus status) {
-  // Log Data in UMA
-  RecordPushSubcriptionChangeStatus(status);
 }
 
 void PushMessagingServiceImpl::DidGetSenderIdUnexpectedUnsubscribe(
@@ -1784,7 +1777,7 @@ void PushMessagingServiceImpl::DidUpdateSubscription(
     const std::vector<uint8_t>& p256dh,
     const std::vector<uint8_t>& auth,
     blink::mojom::PushRegistrationStatus status) {
-  // TODO(crbug.com/1122545): Currently, if |status| is unsuccessful, the old
+  // TODO(crbug.com/40146635): Currently, if |status| is unsuccessful, the old
   // subscription remains in SW database and preferences and the refresh is
   // aborted. Instead, one should abort the refresh and retry to refresh
   // periodically.
@@ -1823,8 +1816,8 @@ void PushMessagingServiceImpl::OnOldSubscriptionExpired(
   // After unsubscribing, the refresher will get notified.
   UnsubscribeInternal(
       blink::mojom::PushUnregistrationReason::REFRESH_FINISHED,
-      GURL::EmptyGURL() /* origin */, -1 /* service_worker_registration_id */,
-      app_id, sender_id,
+      GURL() /* origin */, -1 /* service_worker_registration_id */, app_id,
+      sender_id,
       base::BindOnce(&UnregisterCallbackToClosure,
                      base::BindOnce(&PushMessagingRefresher::OnUnsubscribed,
                                     refresher_.GetWeakPtr(), app_id)));

@@ -32,7 +32,7 @@ Q_DECLARE_LOGGING_CATEGORY(lcHighDpi);
 
 class QScreen;
 class QPlatformScreen;
-typedef QPair<qreal, qreal> QDpi;
+typedef std::pair<qreal, qreal> QDpi;
 
 #ifndef QT_NO_HIGHDPISCALING
 class Q_GUI_EXPORT QHighDpiScaling {
@@ -344,6 +344,7 @@ public:
     static inline QPointF mapPositionToGlobal(const QPointF &pos, const QPoint &, const QWindow *) { return pos; }
     static inline QPointF mapPositionFromGlobal(const QPointF &pos, const QPoint &, const QWindow *) { return pos; }
     static inline QDpi logicalDpi(const QScreen *) { return QDpi(-1,-1); }
+    static inline qreal roundScaleFactor(qreal) { return 1.0; }
 };
 
 namespace QHighDpi {

@@ -44,8 +44,7 @@ class Splat : public Castable<Splat, Value> {
     /// Constructor
     /// @param t the splat type
     /// @param e the splat element
-    /// @param n the number of items in the splat
-    Splat(const core::type::Type* t, const Value* e, size_t n);
+    Splat(const core::type::Type* t, const Value* e);
     ~Splat() override;
 
     /// @returns the type of the splat
@@ -65,7 +64,7 @@ class Splat : public Castable<Splat, Value> {
     bool AnyZero() const override { return el->AnyZero(); }
 
     /// @returns the hash for the splat
-    size_t Hash() const override { return tint::Hash(type, el->Hash(), count); }
+    HashCode Hash() const override { return tint::Hash(type, el->Hash(), count); }
 
     /// Clones the constant into the provided context
     /// @param ctx the clone context

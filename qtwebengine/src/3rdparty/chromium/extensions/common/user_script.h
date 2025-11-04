@@ -11,6 +11,7 @@
 #include <vector>
 
 #include "base/files/file_path.h"
+#include "extensions/common/extension_id.h"
 #include "extensions/common/mojom/execution_world.mojom-shared.h"
 #include "extensions/common/mojom/host_id.mojom.h"
 #include "extensions/common/mojom/run_location.mojom-shared.h"
@@ -240,7 +241,7 @@ class UserScript {
   ContentList& css_scripts() { return css_scripts_; }
   const ContentList& css_scripts() const { return css_scripts_; }
 
-  const std::string& extension_id() const { return host_id_.id; }
+  const ExtensionId& extension_id() const { return host_id_.id; }
 
   const mojom::HostID& host_id() const { return host_id_; }
   void set_host_id(const mojom::HostID& host_id) { host_id_ = host_id; }
@@ -265,6 +266,11 @@ class UserScript {
   mojom::ExecutionWorld execution_world() const { return execution_world_; }
   void set_execution_world(mojom::ExecutionWorld world) {
     execution_world_ = world;
+  }
+
+  const std::optional<std::string>& world_id() const { return world_id_; }
+  void set_world_id(std::optional<std::string> world_id) {
+    world_id_ = std::move(world_id);
   }
 
   // Returns the script's ID without the appended prefix.
@@ -379,6 +385,10 @@ class UserScript {
   bool incognito_enabled_ = false;
 
   mojom::ExecutionWorld execution_world_ = mojom::ExecutionWorld::kIsolated;
+
+  // The ID of the unique world into which to inject, if any. If omitted, uses
+  // the default world for the given `execution_world_` type.
+  std::optional<std::string> world_id_;
 };
 
 using UserScriptList = std::vector<std::unique_ptr<UserScript>>;

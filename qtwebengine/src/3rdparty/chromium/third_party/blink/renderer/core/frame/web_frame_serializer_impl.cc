@@ -86,11 +86,14 @@
 #include "third_party/blink/renderer/core/frame/web_local_frame_impl.h"
 #include "third_party/blink/renderer/core/html/forms/html_form_element.h"
 #include "third_party/blink/renderer/core/html/html_all_collection.h"
+#include "third_party/blink/renderer/core/html/html_base_element.h"
 #include "third_party/blink/renderer/core/html/html_document.h"
 #include "third_party/blink/renderer/core/html/html_element.h"
 #include "third_party/blink/renderer/core/html/html_frame_element_base.h"
 #include "third_party/blink/renderer/core/html/html_frame_owner_element.h"
+#include "third_party/blink/renderer/core/html/html_head_element.h"
 #include "third_party/blink/renderer/core/html/html_html_element.h"
+#include "third_party/blink/renderer/core/html/html_iframe_element.h"
 #include "third_party/blink/renderer/core/html/html_meta_element.h"
 #include "third_party/blink/renderer/core/html_names.h"
 #include "third_party/blink/renderer/core/loader/document_loader.h"
@@ -472,7 +475,7 @@ void WebFrameSerializerImpl::BuildContentForNode(Node* node,
     case Node::kDocumentNode:
     case Node::kDocumentFragmentNode:
       // Should not exist.
-      NOTREACHED();
+      NOTREACHED_IN_MIGRATION();
       break;
     // Document type node can be in DOM?
     case Node::kDocumentTypeNode:

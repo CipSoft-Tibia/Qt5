@@ -9,6 +9,7 @@ import * as SDK from '../../core/sdk/sdk.js';
 import * as Protocol from '../../generated/protocol.js';
 import * as UI from '../../ui/legacy/legacy.js';
 import * as Breakpoints from '../breakpoints/breakpoints.js';
+import * as TextUtils from '../text_utils/text_utils.js';
 import * as Workspace from '../workspace/workspace.js';
 
 import {type FileSystem, FileSystemWorkspaceBinding} from './FileSystemWorkspaceBinding.js';
@@ -16,6 +17,8 @@ import {IsolatedFileSystemManager} from './IsolatedFileSystemManager.js';
 import {PersistenceBinding, PersistenceImpl} from './PersistenceImpl.js';
 
 let networkPersistenceManagerInstance: NetworkPersistenceManager|null;
+
+const forbiddenUrls = ['chromewebstore.google.com', 'chrome.google.com'];
 
 export class NetworkPersistenceManager extends Common.ObjectWrapper.ObjectWrapper<EventTypes> implements
     SDK.TargetManager.Observer {
@@ -47,7 +50,7 @@ export class NetworkPersistenceManager extends Common.ObjectWrapper.ObjectWrappe
     this.savingForOverrides = new WeakSet();
     this.savingSymbol = Symbol('SavingForOverrides');
 
-    this.enabledSetting = Common.Settings.Settings.instance().moduleSetting('persistenceNetworkOverridesEnabled');
+    this.enabledSetting = Common.Settings.Settings.instance().moduleSetting('persistence-network-overrides-enabled');
     this.enabledSetting.addChangeListener(this.enabledChanged, this);
 
     this.workspace = workspace;
@@ -153,7 +156,7 @@ export class NetworkPersistenceManager extends Common.ObjectWrapper.ObjectWrappe
       Common.EventTarget.removeEventListeners(this.eventDescriptors);
       await this.updateActiveProject();
     }
-    this.dispatchEventToListeners(Events.LocalOverridesProjectUpdated, this.enabled);
+    this.dispatchEventToListeners(Events.LOCAL_OVERRIDES_PROJECT_UPDATED, this.enabled);
   }
 
   private async uiSourceCodeRenamedListener(
@@ -318,7 +321,7 @@ export class NetworkPersistenceManager extends Common.ObjectWrapper.ObjectWrappe
       const mutex = this.#getOrCreateMutex(binding.network);
       await mutex.run(this.#innerUnbind.bind(this, binding));
     } else if (headerBinding) {
-      this.dispatchEventToListeners(Events.RequestsForHeaderOverridesFileChanged, uiSourceCode);
+      this.dispatchEventToListeners(Events.REQUEST_FOR_HEADER_OVERRIDES_FILE_CHANGED, uiSourceCode);
     }
   }
 
@@ -391,7 +394,8 @@ export class NetworkPersistenceManager extends Common.ObjectWrapper.ObjectWrappe
   }
 
   isUISourceCodeOverridable(uiSourceCode: Workspace.UISourceCode.UISourceCode): boolean {
-    return uiSourceCode.project().type() === Workspace.Workspace.projectTypes.Network;
+    return uiSourceCode.project().type() === Workspace.Workspace.projectTypes.Network &&
+        !NetworkPersistenceManager.isForbiddenNetworkUrl(uiSourceCode.url());
   }
 
   #isUISourceCodeAlreadyOverridden(uiSourceCode: Workspace.UISourceCode.UISourceCode): boolean {
@@ -426,7 +430,7 @@ export class NetworkPersistenceManager extends Common.ObjectWrapper.ObjectWrappe
     if (!this.enabledSetting.get()) {
       Host.userMetrics.actionTaken(Host.UserMetrics.Action.OverrideContentContextMenuActivateDisabled);
       this.enabledSetting.set(true);
-      await this.once(Events.LocalOverridesProjectUpdated);
+      await this.once(Events.LOCAL_OVERRIDES_PROJECT_UPDATED);
     }
 
     // Save new file
@@ -487,12 +491,19 @@ export class NetworkPersistenceManager extends Common.ObjectWrapper.ObjectWrappe
   // 'chrome://'-URLs and the Chrome Web Store are privileged URLs. We don't want users
   // to be able to override those. Ideally we'd have a similar check in the backend,
   // because the fix here has no effect on non-DevTools CDP clients.
-  private isForbiddenUrl(uiSourceCode: Workspace.UISourceCode.UISourceCode): boolean {
+  private isForbiddenFileUrl(uiSourceCode: Workspace.UISourceCode.UISourceCode): boolean {
     const relativePathParts = FileSystemWorkspaceBinding.relativePath(uiSourceCode);
     // Decode twice to handle paths generated on Windows OS.
     const host = this.decodeLocalPathToUrlPath(this.decodeLocalPathToUrlPath(relativePathParts[0] || ''));
-    const forbiddenUrls = ['chrome:', 'chromewebstore.google.com', 'chrome.google.com'];
-    return forbiddenUrls.includes(host);
+    return host === 'chrome:' || forbiddenUrls.includes(host);
+  }
+
+  static isForbiddenNetworkUrl(urlString: Platform.DevToolsPath.UrlString): boolean {
+    const url = Common.ParsedURL.ParsedURL.fromString(urlString);
+    if (!url) {
+      return false;
+    }
+    return url.scheme === 'chrome' || forbiddenUrls.includes(url.host);
   }
 
   private async onUISourceCodeAdded(uiSourceCode: Workspace.UISourceCode.UISourceCode): Promise<void> {
@@ -694,7 +705,7 @@ export class NetworkPersistenceManager extends Common.ObjectWrapper.ObjectWrappe
     }
     let patterns = new Set<string>();
     for (const uiSourceCode of this.projectInternal.uiSourceCodes()) {
-      if (this.isForbiddenUrl(uiSourceCode)) {
+      if (this.isForbiddenFileUrl(uiSourceCode)) {
         continue;
       }
       const pattern = this.patternForFileSystemUISourceCode(uiSourceCode);
@@ -773,7 +784,7 @@ export class NetworkPersistenceManager extends Common.ObjectWrapper.ObjectWrappe
 
   #dispatchRequestsForHeaderOverridesFileChanged(): Promise<void> {
     for (const headersFileUiSourceCode of this.#headerOverridesForEventDispatch) {
-      this.dispatchEventToListeners(Events.RequestsForHeaderOverridesFileChanged, headersFileUiSourceCode);
+      this.dispatchEventToListeners(Events.REQUEST_FOR_HEADER_OVERRIDES_FILE_CHANGED, headersFileUiSourceCode);
     }
     this.#headerOverridesForEventDispatch.clear();
     return Promise.resolve();
@@ -819,7 +830,7 @@ export class NetworkPersistenceManager extends Common.ObjectWrapper.ObjectWrappe
     }
 
     await this.updateActiveProject();
-    this.dispatchEventToListeners(Events.ProjectChanged, this.projectInternal);
+    this.dispatchEventToListeners(Events.PROJECT_CHANGED, this.projectInternal);
   }
 
   private async onProjectAdded(project: Workspace.Workspace.Project): Promise<void> {
@@ -944,7 +955,7 @@ export class NetworkPersistenceManager extends Common.ObjectWrapper.ObjectWrappe
     if (fileSystemUISourceCode) {
       this.originalResponseContentPromises.set(
           fileSystemUISourceCode, interceptedRequest.responseBody().then(response => {
-            if (SDK.ContentData.ContentData.isError(response) || !response.isTextContent) {
+            if (TextUtils.ContentData.ContentData.isError(response) || !response.isTextContent) {
               return null;
             }
             return response.text;
@@ -961,10 +972,10 @@ export class NetworkPersistenceManager extends Common.ObjectWrapper.ObjectWrappe
           new Blob([], {type: mimeType}), /* encoded */ true, responseHeaders, /* isBodyOverridden */ false);
     } else {
       const responseBody = await interceptedRequest.responseBody();
-      if (!SDK.ContentData.ContentData.isError(responseBody)) {
+      if (!TextUtils.ContentData.ContentData.isError(responseBody)) {
         const content = responseBody.isTextContent ? responseBody.text : responseBody.base64;
         void interceptedRequest.continueRequestWithContent(
-            new Blob([content], {type: mimeType}), /* encoded */ true, responseHeaders,
+            new Blob([content], {type: mimeType}), /* encoded */ !responseBody.isTextContent, responseHeaders,
             /* isBodyOverridden */ false);
       }
     }
@@ -979,15 +990,15 @@ const RESERVED_FILENAMES = new Set<string>([
 export const HEADERS_FILENAME = '.headers';
 
 export const enum Events {
-  ProjectChanged = 'ProjectChanged',
-  RequestsForHeaderOverridesFileChanged = 'RequestsForHeaderOverridesFileChanged',
-  LocalOverridesProjectUpdated = 'LocalOverridesProjectUpdated',
+  PROJECT_CHANGED = 'ProjectChanged',
+  REQUEST_FOR_HEADER_OVERRIDES_FILE_CHANGED = 'RequestsForHeaderOverridesFileChanged',
+  LOCAL_OVERRIDES_PROJECT_UPDATED = 'LocalOverridesProjectUpdated',
 }
 
 export type EventTypes = {
-  [Events.ProjectChanged]: Workspace.Workspace.Project|null,
-  [Events.RequestsForHeaderOverridesFileChanged]: Workspace.UISourceCode.UISourceCode,
-  [Events.LocalOverridesProjectUpdated]: boolean,
+  [Events.PROJECT_CHANGED]: Workspace.Workspace.Project|null,
+  [Events.REQUEST_FOR_HEADER_OVERRIDES_FILE_CHANGED]: Workspace.UISourceCode.UISourceCode,
+  [Events.LOCAL_OVERRIDES_PROJECT_UPDATED]: boolean,
 };
 
 export interface HeaderOverride {

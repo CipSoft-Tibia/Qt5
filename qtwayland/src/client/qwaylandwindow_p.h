@@ -93,13 +93,16 @@ public:
     void setVisible(bool visible) override;
     void setParent(const QPlatformWindow *parent) override;
 
-    QString windowTitle() const;
+    QString windowTitle() const override;
     void setWindowTitle(const QString &title) override;
 
     inline QIcon windowIcon() const;
     void setWindowIcon(const QIcon &icon) override;
 
     void setGeometry(const QRect &rect) override;
+
+    bool allowsIndependentThreadedRendering() const override;
+
     void resizeFromApplyConfigure(const QSize &sizeWithMargins, const QPoint &offset = {0, 0});
     void repositionFromApplyConfigure(const QPoint &position);
     void setGeometryFromApplyConfigure(const QPoint &globalPosition, const QSize &sizeWithMargins);
@@ -193,9 +196,6 @@ public:
 
     QWaylandWindow *transientParent() const;
 
-    void doApplyConfigure();
-    void setCanResize(bool canResize);
-
     bool setMouseGrabEnabled(bool grab) override;
     static QWaylandWindow *mouseGrab() { return mMouseGrab; }
 
@@ -235,10 +235,14 @@ public:
     void endFrame();
 
     void closeChildPopups();
-    void sendRecursiveExposeEvent();
+
+    // should be invoked whenever a property that potentially affects
+    // exposure changes
+    void updateExposure();
 
     virtual void reinit();
     void reset();
+    void initializeWlSurface();
 
     bool windowEvent(QEvent *event) override;
 
@@ -252,6 +256,9 @@ Q_SIGNALS:
 protected:
     virtual void doHandleFrameCallback();
     virtual QRect defaultGeometry() const;
+
+    // this should be called directly for buffer size changes only
+    // use updateExposure for anything affecting the on/off state
     void sendExposeEvent(const QRect &rect);
 
     QWaylandDisplay *mDisplay = nullptr;
@@ -267,7 +274,7 @@ protected:
     QWaylandSubSurface *mSubSurfaceWindow = nullptr;
     QList<QWaylandSubSurface *> mChildren;
 
-    QWaylandAbstractDecoration *mWindowDecoration = nullptr;
+    std::unique_ptr<QWaylandAbstractDecoration> mWindowDecoration;
     bool mWindowDecorationEnabled = false;
     bool mMouseEventsInContentArea = false;
     Qt::MouseButtons mMousePressedInContentArea = Qt::NoButton;
@@ -289,8 +296,7 @@ protected:
     GestureState mGestureState = GestureNotActive;
 #endif
 
-    WId mWindowId;
-    bool mFrameCallbackTimedOut = false; // Whether the frame callback has timed out
+    std::atomic_bool mFrameCallbackTimedOut = false; // Whether the frame callback has timed out
     int mFrameCallbackCheckIntervalTimerId = -1;
     QAtomicInt mWaitingForUpdateDelivery = false;
 
@@ -301,13 +307,15 @@ protected:
     QWaitCondition mFrameSyncWait;
 
     // True when we have called deliverRequestUpdate, but the client has not yet attached a new buffer
-    bool mWaitingForUpdate = false;
+    std::atomic_bool mWaitingForUpdate = false;
+    bool mExposed = false;
+    std::atomic_bool mExposeEventNeedsAttachedBuffer = false;
 
-    QRecursiveMutex mResizeLock;
-    bool mWaitingToApplyConfigure = false;
-    bool mCanResize = true;
-    bool mResizeDirty = false;
-    bool mResizeAfterSwap;
+    // written from the main thread, read by the render thread
+    std::atomic_bool mWaitingToApplyConfigure = false;
+    // written from the render thread, read by the main thread
+    std::atomic_bool mInFrameRender = false;
+
     int mFrameCallbackTimeout = 100;
     QVariantMap m_properties;
 
@@ -338,20 +346,19 @@ protected:
 
     Qt::ScreenOrientation mLastReportedContentOrientation = Qt::PrimaryOrientation;
 
-private Q_SLOTS:
-    void doApplyConfigureFromOtherThread();
-
 private:
     void setGeometry_helper(const QRect &rect);
     void initWindow();
-    void initializeWlSurface();
     bool shouldCreateShellSurface() const;
     bool shouldCreateSubSurface() const;
+    void resetSurfaceRole();
+    void resetFrameCallback();
     QPlatformScreen *calculateScreenFromSurfaceEvents() const;
     void setOpaqueArea(const QRegion &opaqueArea);
     bool isOpaque() const;
     void updateInputRegion();
     void updateViewport();
+    bool calculateExposure() const;
 
     void handleMouseEventWithDecoration(QWaylandInputDevice *inputDevice, const QWaylandPointerEvent &e);
     void handleScreensChanged();
@@ -368,6 +375,7 @@ private:
 
     static const wl_callback_listener callbackListener;
     void handleFrameCallback(struct ::wl_callback* callback);
+    const QPlatformWindow *lastParent = nullptr;
 
     static QWaylandWindow *mMouseGrab;
     static QWaylandWindow *mTopPopup;

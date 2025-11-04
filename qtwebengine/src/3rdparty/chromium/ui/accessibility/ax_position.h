@@ -2,6 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#ifdef UNSAFE_BUFFERS_BUILD
+// TODO(crbug.com/40285824): Remove this and convert code to safer constructs.
+#pragma allow_unsafe_buffers
+#endif
+
 #ifndef UI_ACCESSIBILITY_AX_POSITION_H_
 #define UI_ACCESSIBILITY_AX_POSITION_H_
 
@@ -10,6 +15,7 @@
 
 #include <functional>
 #include <memory>
+#include <optional>
 #include <ostream>
 #include <string>
 #include <type_traits>
@@ -26,7 +32,6 @@
 #include "base/strings/string_number_conversions.h"
 #include "base/strings/string_util.h"
 #include "base/strings/utf_string_conversions.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "ui/accessibility/ax_common.h"
 #include "ui/accessibility/ax_enum_util.h"
 #include "ui/accessibility/ax_enums.mojom.h"
@@ -181,7 +186,7 @@ enum class AXEmbeddedObjectBehavior {
 // through it, otherwise the text field would be missed by the user.
 //
 // Tests should use ScopedAXEmbeddedObjectBehaviorSetter to change this.
-// TODO(crbug.com/1204592) Don't export this so tests can't change it.
+// TODO(crbug.com/40764129) Don't export this so tests can't change it.
 extern AX_EXPORT AXEmbeddedObjectBehavior g_ax_embedded_object_behavior;
 
 class AX_EXPORT ScopedAXEmbeddedObjectBehaviorSetter {
@@ -320,7 +325,7 @@ class AXPosition {
 
   AXPositionInstance CloneWithDownstreamAffinity() const {
     if (!IsTextPosition()) {
-      NOTREACHED() << "Only text positions have affinity.";
+      NOTREACHED_IN_MIGRATION() << "Only text positions have affinity.";
       return CreateNullPosition();
     }
 
@@ -332,7 +337,7 @@ class AXPosition {
 
   AXPositionInstance CloneWithUpstreamAffinity() const {
     if (!IsTextPosition()) {
-      NOTREACHED() << "Only text positions have affinity.";
+      NOTREACHED_IN_MIGRATION() << "Only text positions have affinity.";
       return CreateNullPosition();
     }
 
@@ -380,7 +385,7 @@ class AXPosition {
     // Use initialize without validation because this is used by ATs that
     // used outdated information to generated a selection request.
     new_position->InitializeWithoutValidation(
-        serialization.kind, ui::AXTreeID::FromString(serialization.tree_id),
+        serialization.kind, AXTreeID::FromString(serialization.tree_id),
         serialization.anchor_id, serialization.child_index,
         serialization.text_offset, serialization.affinity);
     return new_position;
@@ -587,7 +592,7 @@ class AXPosition {
 
     switch (kind_) {
       case AXPositionKind::NULL_POSITION:
-        NOTREACHED();
+        NOTREACHED_IN_MIGRATION();
         return false;
       case AXPositionKind::TREE_POSITION: {
         // If this is a "before text" or an "after text" tree position, it's
@@ -761,7 +766,7 @@ class AXPosition {
       case AXPositionKind::NULL_POSITION:
         return false;
       case AXPositionKind::TREE_POSITION:
-        NOTREACHED();
+        NOTREACHED_IN_MIGRATION();
         return false;
       case AXPositionKind::TEXT_POSITION: {
         const std::vector<int32_t>& word_starts =
@@ -789,7 +794,7 @@ class AXPosition {
       case AXPositionKind::NULL_POSITION:
         return false;
       case AXPositionKind::TREE_POSITION:
-        NOTREACHED();
+        NOTREACHED_IN_MIGRATION();
         return false;
       case AXPositionKind::TEXT_POSITION: {
         const std::vector<int32_t>& word_ends =
@@ -805,7 +810,7 @@ class AXPosition {
       case AXPositionKind::NULL_POSITION:
         return false;
       case AXPositionKind::TREE_POSITION:
-        NOTREACHED();
+        NOTREACHED_IN_MIGRATION();
         return false;
       case AXPositionKind::TEXT_POSITION:
         // We treat a position after some white space that is not connected to
@@ -838,8 +843,14 @@ class AXPosition {
           return true;
         }
 
+        // If the anchor is ignored, then by default it will not have a
+        // PreviousOnLineID set since we only set this on unignored nodes.
+        // However, it could still have something previous to it on the same
+        // line, like for example if we have some text on the same line, and a
+        // text node in the middle is set to aria-hidden.
         return text_position->GetPreviousOnLineID() == kInvalidAXNodeID &&
-               text_position->AtStartOfAnchor();
+               text_position->AtStartOfAnchor() &&
+               !text_position->GetAnchor()->IsIgnored();
     }
   }
 
@@ -849,7 +860,7 @@ class AXPosition {
       case AXPositionKind::NULL_POSITION:
         return false;
       case AXPositionKind::TREE_POSITION:
-        NOTREACHED();
+        NOTREACHED_IN_MIGRATION();
         return false;
       case AXPositionKind::TEXT_POSITION:
         // Text positions on objects with no text should not be considered at
@@ -997,7 +1008,7 @@ class AXPosition {
       case AXPositionKind::NULL_POSITION:
         return false;
       case AXPositionKind::TREE_POSITION:
-        NOTREACHED();
+        NOTREACHED_IN_MIGRATION();
         return false;
       case AXPositionKind::TEXT_POSITION: {
         const std::vector<int32_t>& sentence_starts =
@@ -1026,7 +1037,7 @@ class AXPosition {
       case AXPositionKind::NULL_POSITION:
         return false;
       case AXPositionKind::TREE_POSITION:
-        NOTREACHED();
+        NOTREACHED_IN_MIGRATION();
         return false;
       case AXPositionKind::TEXT_POSITION: {
         const std::vector<int32_t>& sentence_ends =
@@ -1065,7 +1076,7 @@ class AXPosition {
       case AXPositionKind::NULL_POSITION:
         return false;
       case AXPositionKind::TREE_POSITION:
-        NOTREACHED();
+        NOTREACHED_IN_MIGRATION();
         return false;
       case AXPositionKind::TEXT_POSITION: {
         // 1. The current leaf text position must be at the start of an anchor,
@@ -1141,7 +1152,7 @@ class AXPosition {
       case AXPositionKind::NULL_POSITION:
         return false;
       case AXPositionKind::TREE_POSITION:
-        NOTREACHED();
+        NOTREACHED_IN_MIGRATION();
         return false;
       case AXPositionKind::TEXT_POSITION: {
         // 1. The current leaf text position must be at the end of an anchor, or
@@ -1198,7 +1209,7 @@ class AXPosition {
       case AXPositionKind::NULL_POSITION:
         return false;
       case AXPositionKind::TREE_POSITION:
-        NOTREACHED();
+        NOTREACHED_IN_MIGRATION();
         return false;
       case AXPositionKind::TEXT_POSITION: {
         if (text_position->AtStartOfAnchor()) {
@@ -1244,7 +1255,7 @@ class AXPosition {
       case AXPositionKind::NULL_POSITION:
         return false;
       case AXPositionKind::TREE_POSITION:
-        NOTREACHED();
+        NOTREACHED_IN_MIGRATION();
         return false;
       case AXPositionKind::TEXT_POSITION: {
         if (!text_position->AtStartOfAnchor())
@@ -1272,7 +1283,7 @@ class AXPosition {
       case AXPositionKind::NULL_POSITION:
         return false;
       case AXPositionKind::TREE_POSITION:
-        NOTREACHED();
+        NOTREACHED_IN_MIGRATION();
         return false;
       case AXPositionKind::TEXT_POSITION: {
         if (!text_position->AtEndOfAnchor())
@@ -1991,13 +2002,13 @@ class AXPosition {
     AXPositionInstance resulting_position = CreateNullPosition();
     switch (boundary) {
       case ax::mojom::TextBoundary::kNone:
-        NOTREACHED();
+        NOTREACHED_IN_MIGRATION();
         break;
 
       case ax::mojom::TextBoundary::kCharacter:
         switch (direction) {
           case ax::mojom::MoveDirection::kNone:
-            NOTREACHED();
+            NOTREACHED_IN_MIGRATION();
             break;
           case ax::mojom::MoveDirection::kBackward:
             resulting_position = CreatePreviousCharacterPosition(options);
@@ -2011,7 +2022,7 @@ class AXPosition {
       case ax::mojom::TextBoundary::kFormatEnd:
         switch (direction) {
           case ax::mojom::MoveDirection::kNone:
-            NOTREACHED();
+            NOTREACHED_IN_MIGRATION();
             break;
           case ax::mojom::MoveDirection::kBackward:
             resulting_position = CreatePreviousFormatEndPosition(options);
@@ -2025,7 +2036,7 @@ class AXPosition {
       case ax::mojom::TextBoundary::kFormatStart:
         switch (direction) {
           case ax::mojom::MoveDirection::kNone:
-            NOTREACHED();
+            NOTREACHED_IN_MIGRATION();
             break;
           case ax::mojom::MoveDirection::kBackward:
             resulting_position = CreatePreviousFormatStartPosition(options);
@@ -2039,7 +2050,7 @@ class AXPosition {
       case ax::mojom::TextBoundary::kFormatStartOrEnd:
         switch (direction) {
           case ax::mojom::MoveDirection::kNone:
-            NOTREACHED();
+            NOTREACHED_IN_MIGRATION();
             break;
           case ax::mojom::MoveDirection::kBackward:
             resulting_position = CreatePreviousFormatStartPosition(options);
@@ -2053,7 +2064,7 @@ class AXPosition {
       case ax::mojom::TextBoundary::kLineEnd:
         switch (direction) {
           case ax::mojom::MoveDirection::kNone:
-            NOTREACHED();
+            NOTREACHED_IN_MIGRATION();
             break;
           case ax::mojom::MoveDirection::kBackward:
             resulting_position = CreatePreviousLineEndPosition(options);
@@ -2067,7 +2078,7 @@ class AXPosition {
       case ax::mojom::TextBoundary::kLineStart:
         switch (direction) {
           case ax::mojom::MoveDirection::kNone:
-            NOTREACHED();
+            NOTREACHED_IN_MIGRATION();
             break;
           case ax::mojom::MoveDirection::kBackward:
             resulting_position = CreatePreviousLineStartPosition(options);
@@ -2081,7 +2092,7 @@ class AXPosition {
       case ax::mojom::TextBoundary::kLineStartOrEnd:
         switch (direction) {
           case ax::mojom::MoveDirection::kNone:
-            NOTREACHED();
+            NOTREACHED_IN_MIGRATION();
             break;
           case ax::mojom::MoveDirection::kBackward:
             resulting_position = CreatePreviousLineStartPosition(options);
@@ -2095,7 +2106,7 @@ class AXPosition {
       case ax::mojom::TextBoundary::kObject:
         switch (direction) {
           case ax::mojom::MoveDirection::kNone:
-            NOTREACHED();
+            NOTREACHED_IN_MIGRATION();
             break;
           case ax::mojom::MoveDirection::kBackward:
             resulting_position = CreatePositionAtStartOfAnchor();
@@ -2109,7 +2120,7 @@ class AXPosition {
       case ax::mojom::TextBoundary::kPageEnd:
         switch (direction) {
           case ax::mojom::MoveDirection::kNone:
-            NOTREACHED();
+            NOTREACHED_IN_MIGRATION();
             break;
           case ax::mojom::MoveDirection::kBackward:
             resulting_position = CreatePreviousPageEndPosition(options);
@@ -2123,7 +2134,7 @@ class AXPosition {
       case ax::mojom::TextBoundary::kPageStart:
         switch (direction) {
           case ax::mojom::MoveDirection::kNone:
-            NOTREACHED();
+            NOTREACHED_IN_MIGRATION();
             break;
           case ax::mojom::MoveDirection::kBackward:
             resulting_position = CreatePreviousPageStartPosition(options);
@@ -2137,7 +2148,7 @@ class AXPosition {
       case ax::mojom::TextBoundary::kPageStartOrEnd:
         switch (direction) {
           case ax::mojom::MoveDirection::kNone:
-            NOTREACHED();
+            NOTREACHED_IN_MIGRATION();
             break;
           case ax::mojom::MoveDirection::kBackward:
             resulting_position = CreatePreviousPageStartPosition(options);
@@ -2151,7 +2162,7 @@ class AXPosition {
       case ax::mojom::TextBoundary::kParagraphEnd:
         switch (direction) {
           case ax::mojom::MoveDirection::kNone:
-            NOTREACHED();
+            NOTREACHED_IN_MIGRATION();
             break;
           case ax::mojom::MoveDirection::kBackward:
             resulting_position = CreatePreviousParagraphEndPosition(options);
@@ -2165,7 +2176,7 @@ class AXPosition {
       case ax::mojom::TextBoundary::kParagraphStart:
         switch (direction) {
           case ax::mojom::MoveDirection::kNone:
-            NOTREACHED();
+            NOTREACHED_IN_MIGRATION();
             break;
           case ax::mojom::MoveDirection::kBackward:
             resulting_position = CreatePreviousParagraphStartPosition(options);
@@ -2184,7 +2195,7 @@ class AXPosition {
       case ax::mojom::TextBoundary::kParagraphStartSkippingEmptyParagraphs:
         switch (direction) {
           case ax::mojom::MoveDirection::kNone:
-            NOTREACHED();
+            NOTREACHED_IN_MIGRATION();
             break;
           case ax::mojom::MoveDirection::kBackward:
             resulting_position =
@@ -2202,7 +2213,7 @@ class AXPosition {
       case ax::mojom::TextBoundary::kParagraphStartOrEnd:
         switch (direction) {
           case ax::mojom::MoveDirection::kNone:
-            NOTREACHED();
+            NOTREACHED_IN_MIGRATION();
             break;
           case ax::mojom::MoveDirection::kBackward:
             resulting_position = CreatePreviousParagraphStartPosition(options);
@@ -2216,7 +2227,7 @@ class AXPosition {
       case ax::mojom::TextBoundary::kSentenceEnd:
         switch (direction) {
           case ax::mojom::MoveDirection::kNone:
-            NOTREACHED();
+            NOTREACHED_IN_MIGRATION();
             break;
           case ax::mojom::MoveDirection::kBackward:
             resulting_position = CreatePreviousSentenceEndPosition(options);
@@ -2230,7 +2241,7 @@ class AXPosition {
       case ax::mojom::TextBoundary::kSentenceStart:
         switch (direction) {
           case ax::mojom::MoveDirection::kNone:
-            NOTREACHED();
+            NOTREACHED_IN_MIGRATION();
             break;
           case ax::mojom::MoveDirection::kBackward:
             resulting_position = CreatePreviousSentenceStartPosition(options);
@@ -2244,7 +2255,7 @@ class AXPosition {
       case ax::mojom::TextBoundary::kSentenceStartOrEnd:
         switch (direction) {
           case ax::mojom::MoveDirection::kNone:
-            NOTREACHED();
+            NOTREACHED_IN_MIGRATION();
             break;
           case ax::mojom::MoveDirection::kBackward:
             resulting_position = CreatePreviousSentenceStartPosition(options);
@@ -2261,7 +2272,7 @@ class AXPosition {
                "disallowed from crossing boundaries.";
         switch (direction) {
           case ax::mojom::MoveDirection::kNone:
-            NOTREACHED();
+            NOTREACHED_IN_MIGRATION();
             break;
           case ax::mojom::MoveDirection::kBackward:
             resulting_position = CreatePositionAtStartOfContent();
@@ -2275,7 +2286,7 @@ class AXPosition {
       case ax::mojom::TextBoundary::kWordEnd:
         switch (direction) {
           case ax::mojom::MoveDirection::kNone:
-            NOTREACHED();
+            NOTREACHED_IN_MIGRATION();
             break;
           case ax::mojom::MoveDirection::kBackward:
             resulting_position = CreatePreviousWordEndPosition(options);
@@ -2289,7 +2300,7 @@ class AXPosition {
       case ax::mojom::TextBoundary::kWordStart:
         switch (direction) {
           case ax::mojom::MoveDirection::kNone:
-            NOTREACHED();
+            NOTREACHED_IN_MIGRATION();
             break;
           case ax::mojom::MoveDirection::kBackward:
             resulting_position = CreatePreviousWordStartPosition(options);
@@ -2303,7 +2314,7 @@ class AXPosition {
       case ax::mojom::TextBoundary::kWordStartOrEnd:
         switch (direction) {
           case ax::mojom::MoveDirection::kNone:
-            NOTREACHED();
+            NOTREACHED_IN_MIGRATION();
             break;
           case ax::mojom::MoveDirection::kBackward:
             resulting_position = CreatePreviousWordStartPosition(options);
@@ -2440,7 +2451,7 @@ class AXPosition {
 
     switch (kind_) {
       case AXPositionKind::NULL_POSITION:
-        NOTREACHED();
+        NOTREACHED_IN_MIGRATION();
         return CreateNullPosition();
       case AXPositionKind::TREE_POSITION:
         return CreateTreePositionAtStartOfAnchor(*child_anchor);
@@ -2490,7 +2501,7 @@ class AXPosition {
 
     switch (kind_) {
       case AXPositionKind::NULL_POSITION:
-        NOTREACHED();
+        NOTREACHED_IN_MIGRATION();
         return CreateNullPosition();
 
       case AXPositionKind::TREE_POSITION: {
@@ -2518,7 +2529,7 @@ class AXPosition {
 
         switch (move_direction) {
           case ax::mojom::MoveDirection::kNone:
-            NOTREACHED();
+            NOTREACHED_IN_MIGRATION();
             return CreateNullPosition();
           case ax::mojom::MoveDirection::kBackward:
             // "move_direction" is only important when this position is an
@@ -2578,7 +2589,7 @@ class AXPosition {
 
         const int max_text_offset = MaxTextOffset();
 
-        // TODO(crbug.com/1404289): temporary disabled until ax position
+        // TODO(crbug.com/40885940): temporary disabled until ax position
         // autocorrection issue is fixed.
         // DCHECK_LE(text_offset_, max_text_offset);
 
@@ -2625,7 +2636,7 @@ class AXPosition {
             // of motion, and also reset the affinity.
             switch (move_direction) {
               case ax::mojom::MoveDirection::kNone:
-                NOTREACHED();
+                NOTREACHED_IN_MIGRATION();
                 return CreateNullPosition();
               case ax::mojom::MoveDirection::kBackward:
                 // Keep the offset to be right before the embedded object
@@ -3487,7 +3498,7 @@ class AXPosition {
         AXPositionInstance next_position;
         switch (move_direction) {
           case ax::mojom::MoveDirection::kNone:
-            NOTREACHED();
+            NOTREACHED_IN_MIGRATION();
             return CreateNullPosition();
           case ax::mojom::MoveDirection::kBackward:
             if (text_position->AtStartOfAnchor()) {
@@ -3510,7 +3521,7 @@ class AXPosition {
               AXBoundaryBehavior::kStopAtAnchorBoundary) {
             switch (move_direction) {
               case ax::mojom::MoveDirection::kNone:
-                NOTREACHED();
+                NOTREACHED_IN_MIGRATION();
                 return CreateNullPosition();
               case ax::mojom::MoveDirection::kBackward:
                 return CreatePositionAtStartOfAnchor()->AsUnignoredPosition(
@@ -3527,7 +3538,7 @@ class AXPosition {
             // this loop we'll try to do some adjustments to text_position.
             switch (move_direction) {
               case ax::mojom::MoveDirection::kNone:
-                NOTREACHED();
+                NOTREACHED_IN_MIGRATION();
                 return CreateNullPosition();
               case ax::mojom::MoveDirection::kBackward:
                 text_position = text_position->CreatePositionAtStartOfAnchor();
@@ -3562,7 +3573,7 @@ class AXPosition {
                AXBoundaryBehavior::kStopAtAnchorBoundary) {
       switch (move_direction) {
         case ax::mojom::MoveDirection::kNone:
-          NOTREACHED();
+          NOTREACHED_IN_MIGRATION();
           return CreateNullPosition();
         case ax::mojom::MoveDirection::kBackward:
           text_position = CreatePositionAtStartOfAnchor()->AsUnignoredPosition(
@@ -3651,7 +3662,7 @@ class AXPosition {
         AXPositionInstance next_position;
         switch (move_direction) {
           case ax::mojom::MoveDirection::kNone:
-            NOTREACHED();
+            NOTREACHED_IN_MIGRATION();
             return CreateNullPosition();
           case ax::mojom::MoveDirection::kBackward:
             next_position =
@@ -3677,7 +3688,7 @@ class AXPosition {
               AXBoundaryBehavior::kStopAtAnchorBoundary) {
             switch (move_direction) {
               case ax::mojom::MoveDirection::kNone:
-                NOTREACHED();
+                NOTREACHED_IN_MIGRATION();
                 return CreateNullPosition();
               case ax::mojom::MoveDirection::kBackward:
                 return CreatePositionAtStartOfAnchor()->AsUnignoredPosition(
@@ -3694,7 +3705,7 @@ class AXPosition {
             // this loop we'll try to do some adjustments to text_position.
             switch (move_direction) {
               case ax::mojom::MoveDirection::kNone:
-                NOTREACHED();
+                NOTREACHED_IN_MIGRATION();
                 return CreateNullPosition();
               case ax::mojom::MoveDirection::kBackward:
                 text_position = text_position->CreatePositionAtStartOfAnchor();
@@ -3729,7 +3740,7 @@ class AXPosition {
                AXBoundaryBehavior::kStopAtAnchorBoundary) {
       switch (move_direction) {
         case ax::mojom::MoveDirection::kNone:
-          NOTREACHED();
+          NOTREACHED_IN_MIGRATION();
           return CreateNullPosition();
         case ax::mojom::MoveDirection::kBackward:
           return CreatePositionAtStartOfAnchor()->AsUnignoredPosition(
@@ -3799,11 +3810,11 @@ class AXPosition {
   //    0: if this position is logically equivalent to the other position
   //   <0: if this position is logically less than the other position
   //   >0: if this position is logically greater than the other position
-  absl::optional<int> CompareTo(const AXPosition& other) const {
+  std::optional<int> CompareTo(const AXPosition& other) const {
     if (IsNullPosition() || other.IsNullPosition()) {
       if (IsNullPosition() && other.IsNullPosition())
         return 0;
-      return absl::nullopt;
+      return std::nullopt;
     }
     // Valid positions are required for comparison. Use `AsValidPosition`
     // or `SnapToMaxTextOffsetIfBeyond` before calling `CompareTo` or making
@@ -3883,7 +3894,7 @@ class AXPosition {
     }
 
     if (!common_anchor)
-      return absl::nullopt;
+      return std::nullopt;
 
     // If each position has an uncommon ancestor node, we can compare those
     // instead of needing to compute ancestor positions. Otherwise we need to
@@ -3984,17 +3995,17 @@ class AXPosition {
   // A less optimized, but much slower version of "CompareTo". Should only be
   // used when optimizations cannot be applied, e.g. when comparing ignored
   // positions. See "CompareTo" for an explanation of the return values.
-  absl::optional<int> SlowCompareTo(const AXPosition& other) const {
+  std::optional<int> SlowCompareTo(const AXPosition& other) const {
     if (IsNullPosition() && other.IsNullPosition())
       return 0;
     if (IsNullPosition() || other.IsNullPosition())
-      return absl::nullopt;
+      return std::nullopt;
 
     // If both positions share an anchor and either one is a text position, or
     // both are tree positions, we can do a straight comparison of text offsets
     // or child indices.
     if (GetAnchor() == other.GetAnchor()) {
-      absl::optional<int> optional_result;
+      std::optional<int> optional_result;
       ax::mojom::TextAffinity this_affinity;
       ax::mojom::TextAffinity other_affinity;
 
@@ -4055,14 +4066,14 @@ class AXPosition {
 
     const AXNode* common_anchor = this->LowestCommonAnchor(other);
     if (!common_anchor)
-      return absl::nullopt;
+      return std::nullopt;
 
     // If either of the two positions is a text position, and if one position is
     // an ancestor of the other, we need to compare using text positions,
     // because converting to tree positions will potentially lose information if
     // the text offset is anything other than 0 or `MaxTextOffset()`.
     if (IsTextPosition() || other.IsTextPosition()) {
-      absl::optional<int> optional_result;
+      std::optional<int> optional_result;
       ax::mojom::TextAffinity this_affinity;
       ax::mojom::TextAffinity other_affinity;
 
@@ -4357,15 +4368,12 @@ class AXPosition {
   // text representation. Some platforms use an embedded object replacement
   // character that replaces the text coming from most child nodes and empty
   // objects.
-  const std::u16string GetText(
+  std::u16string GetText(
       const AXEmbeddedObjectBehavior embedded_object_behavior =
           g_ax_embedded_object_behavior) const {
-    // Note that the use of `base::EmptyString16()` is a special case here. For
-    // performance reasons `base::EmptyString16()` should only be used when
-    // returning a const reference to a string and there is an error condition,
-    // not in any other case when an empty string16 is required.
-    if (IsNullPosition())
-      return base::EmptyString16();
+    if (IsNullPosition()) {
+      return std::u16string();
+    }
 
     static const base::NoDestructor<std::u16string> embedded_character_str(
         AXNode::kEmbeddedObjectCharacterUTF16);
@@ -4573,12 +4581,10 @@ class AXPosition {
 
  protected:
   AXPosition()
-      : kind_(AXPositionKind::NULL_POSITION),
-        tree_id_(AXTreeIDUnknown()),
+      : tree_id_(AXTreeIDUnknown()),
         anchor_id_(kInvalidAXNodeID),
         child_index_(INVALID_INDEX),
-        text_offset_(INVALID_OFFSET),
-        affinity_(ax::mojom::TextAffinity::kDownstream) {}
+        text_offset_(INVALID_OFFSET) {}
 
   // We explicitly don't copy any cached members.
   AXPosition(const AXPosition& other)
@@ -4587,8 +4593,7 @@ class AXPosition {
         anchor_id_(other.anchor_id_),
         child_index_(other.child_index_),
         text_offset_(other.text_offset_),
-        affinity_(other.affinity_),
-        name_() {}
+        affinity_(other.affinity_) {}
 
   // Returns the character offset inside our anchor's parent at which our text
   // starts.
@@ -4695,7 +4700,7 @@ class AXPosition {
         << "Creating a position without an anchor is disallowed:\n"
         << ToDebugString();
 
-    // TODO(crbug.com/1404289) Remove this line and let the below IsValid()
+    // TODO(crbug.com/40885940) Remove this line and let the below IsValid()
     // assertion get triggered instead. We shouldn't be creating test positions
     // with offsets that are too large. This seems to occur when the anchor node
     // is ignored, and leads to a number of failing tests.
@@ -4710,14 +4715,13 @@ class AXPosition {
     // child index is larger than AnchorChildCount(), which does not account
     // for them. We need to get a child count that includes extra mac nodes,
     // similar to how BrowserAccessibility::PlatformChildCount() does.
-    if (!IsValid() && IsTreePosition() &&
-        ui::IsTableLike(GetAnchor()->GetRole()) &&
+    if (!IsValid() && IsTreePosition() && IsTableLike(GetAnchor()->GetRole()) &&
         child_index > AnchorChildCount()) {
       child_index_ = AnchorChildCount();
     }
 #endif
 
-    // TODO(crbug.com/1404289) see TODO above.
+    // TODO(crbug.com/40885940) see TODO above.
     // Also look for the failures in
     // AXPositionTest.AsLeafTextPositionBeforeCharacterIncludingGeneratedNewlines,
     // AXPlatformNodeTextRangeProviderTest.TestNormalizeTextRangeForceSameAnchorOnDegenerateRange.
@@ -5409,7 +5413,7 @@ class AXPosition {
         return preceding_block || preceding_line_break;
       }
       default:
-        NOTREACHED();
+        NOTREACHED_IN_MIGRATION();
         return false;
     }
   }
@@ -5541,7 +5545,7 @@ class AXPosition {
                (move_type == AXMoveType::kAncestor ||
                 move_type == AXMoveType::kSibling);
     }
-    NOTREACHED();
+    NOTREACHED_IN_MIGRATION();
     return false;
   }
 
@@ -5666,7 +5670,7 @@ class AXPosition {
 
     switch (move_direction) {
       case ax::mojom::MoveDirection::kNone:
-        NOTREACHED();
+        NOTREACHED_IN_MIGRATION();
         return CreateNullPosition();
       case ax::mojom::MoveDirection::kBackward: {
         auto offsets_iterator =
@@ -5720,7 +5724,7 @@ class AXPosition {
         get_offsets.Run(text_position);
     switch (move_direction) {
       case ax::mojom::MoveDirection::kNone:
-        NOTREACHED();
+        NOTREACHED_IN_MIGRATION();
         return CreateNullPosition();
       case ax::mojom::MoveDirection::kBackward:
         if (boundary_offsets.empty()) {
@@ -5779,7 +5783,7 @@ class AXPosition {
 
     switch (move_direction) {
       case ax::mojom::MoveDirection::kNone:
-        NOTREACHED();
+        NOTREACHED_IN_MIGRATION();
         return CreateNullPosition();
       case ax::mojom::MoveDirection::kBackward:
         // If we are at a text offset greater than 0, we will simply decrease
@@ -5822,8 +5826,8 @@ class AXPosition {
     return text_position;
   }
 
-  AXPositionKind kind_;
-  // TODO(crbug.com/1362839): use weak pointers for the AXTree, so that
+  AXPositionKind kind_ = AXPositionKind::NULL_POSITION;
+  // TODO(crbug.com/40864560): use weak pointers for the AXTree, so that
   // AXPosition can be used without AXTreeManager support (and also faster than
   // the slow AXTreeID).
   AXTreeID tree_id_;
@@ -5851,7 +5855,7 @@ class AXPosition {
   // leaf text position before the soft line break would be pointing to the
   // end of its anchor node, whilst a leaf text position after the soft line
   // break would be pointing to the start of the next node.
-  ax::mojom::TextAffinity affinity_;
+  ax::mojom::TextAffinity affinity_ = ax::mojom::TextAffinity::kDownstream;
 
   //
   // Cached members that should be lazily created on first use.
@@ -5872,14 +5876,14 @@ const int AXPosition<AXPositionType, AXNodeType>::INVALID_OFFSET;
 template <class AXPositionType, class AXNodeType>
 bool operator==(const AXPosition<AXPositionType, AXNodeType>& first,
                 const AXPosition<AXPositionType, AXNodeType>& second) {
-  const absl::optional<int> compare_to_optional = first.CompareTo(second);
+  const std::optional<int> compare_to_optional = first.CompareTo(second);
   return compare_to_optional.has_value() && compare_to_optional.value() == 0;
 }
 
 template <class AXPositionType, class AXNodeType>
 bool operator!=(const AXPosition<AXPositionType, AXNodeType>& first,
                 const AXPosition<AXPositionType, AXNodeType>& second) {
-  const absl::optional<int> compare_to_optional = first.CompareTo(second);
+  const std::optional<int> compare_to_optional = first.CompareTo(second);
   // It makes sense to also return false if the positions are not comparable,
   // because by definition non-comparable positions are uniqual. Positions are
   // not comparable when one position is null and the other is not or if the
@@ -5890,28 +5894,28 @@ bool operator!=(const AXPosition<AXPositionType, AXNodeType>& first,
 template <class AXPositionType, class AXNodeType>
 bool operator<(const AXPosition<AXPositionType, AXNodeType>& first,
                const AXPosition<AXPositionType, AXNodeType>& second) {
-  const absl::optional<int> compare_to_optional = first.CompareTo(second);
+  const std::optional<int> compare_to_optional = first.CompareTo(second);
   return compare_to_optional.has_value() && compare_to_optional.value() < 0;
 }
 
 template <class AXPositionType, class AXNodeType>
 bool operator<=(const AXPosition<AXPositionType, AXNodeType>& first,
                 const AXPosition<AXPositionType, AXNodeType>& second) {
-  const absl::optional<int> compare_to_optional = first.CompareTo(second);
+  const std::optional<int> compare_to_optional = first.CompareTo(second);
   return compare_to_optional.has_value() && compare_to_optional.value() <= 0;
 }
 
 template <class AXPositionType, class AXNodeType>
 bool operator>(const AXPosition<AXPositionType, AXNodeType>& first,
                const AXPosition<AXPositionType, AXNodeType>& second) {
-  const absl::optional<int> compare_to_optional = first.CompareTo(second);
+  const std::optional<int> compare_to_optional = first.CompareTo(second);
   return compare_to_optional.has_value() && compare_to_optional.value() > 0;
 }
 
 template <class AXPositionType, class AXNodeType>
 bool operator>=(const AXPosition<AXPositionType, AXNodeType>& first,
                 const AXPosition<AXPositionType, AXNodeType>& second) {
-  const absl::optional<int> compare_to_optional = first.CompareTo(second);
+  const std::optional<int> compare_to_optional = first.CompareTo(second);
   return compare_to_optional.has_value() && compare_to_optional.value() >= 0;
 }
 

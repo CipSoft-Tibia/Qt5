@@ -8,6 +8,7 @@
 
 #include <math.h>
 
+#include <array>
 #include <iterator>
 #include <memory>
 #include <sstream>
@@ -31,6 +32,8 @@
 #include "core/fpdfdoc/cpdf_icon.h"
 #include "core/fpdfdoc/cpvt_word.h"
 #include "core/fxcrt/fx_string_wrappers.h"
+#include "core/fxcrt/numerics/safe_conversions.h"
+#include "core/fxcrt/span.h"
 #include "fpdfsdk/cpdfsdk_formfillenvironment.h"
 #include "fpdfsdk/cpdfsdk_interactiveform.h"
 #include "fpdfsdk/cpdfsdk_pageview.h"
@@ -38,8 +41,6 @@
 #include "fpdfsdk/pwl/cpwl_edit.h"
 #include "fpdfsdk/pwl/cpwl_edit_impl.h"
 #include "fpdfsdk/pwl/cpwl_wnd.h"
-#include "third_party/base/containers/span.h"
-#include "third_party/base/numerics/safe_conversions.h"
 
 namespace {
 
@@ -186,49 +187,50 @@ ByteString GetAP_Check(const CFX_FloatRect& crBBox) {
   const float fWidth = crBBox.Width();
   const float fHeight = crBBox.Height();
 
-  CFX_PointF pts[8][3] = {{CFX_PointF(0.28f, 0.52f), CFX_PointF(0.27f, 0.48f),
-                           CFX_PointF(0.29f, 0.40f)},
-                          {CFX_PointF(0.30f, 0.33f), CFX_PointF(0.31f, 0.29f),
-                           CFX_PointF(0.31f, 0.28f)},
-                          {CFX_PointF(0.39f, 0.28f), CFX_PointF(0.49f, 0.29f),
-                           CFX_PointF(0.77f, 0.67f)},
-                          {CFX_PointF(0.76f, 0.68f), CFX_PointF(0.78f, 0.69f),
-                           CFX_PointF(0.76f, 0.75f)},
-                          {CFX_PointF(0.76f, 0.75f), CFX_PointF(0.73f, 0.80f),
-                           CFX_PointF(0.68f, 0.75f)},
-                          {CFX_PointF(0.68f, 0.74f), CFX_PointF(0.68f, 0.74f),
-                           CFX_PointF(0.44f, 0.47f)},
-                          {CFX_PointF(0.43f, 0.47f), CFX_PointF(0.40f, 0.47f),
-                           CFX_PointF(0.41f, 0.58f)},
-                          {CFX_PointF(0.40f, 0.60f), CFX_PointF(0.28f, 0.66f),
-                           CFX_PointF(0.30f, 0.56f)}};
+  using PointRow = std::array<CFX_PointF, 3>;
+  std::array<PointRow, 8> point_table = {{
+      {{CFX_PointF(0.28f, 0.52f), CFX_PointF(0.27f, 0.48f),
+        CFX_PointF(0.29f, 0.40f)}},
+      {{CFX_PointF(0.30f, 0.33f), CFX_PointF(0.31f, 0.29f),
+        CFX_PointF(0.31f, 0.28f)}},
+      {{CFX_PointF(0.39f, 0.28f), CFX_PointF(0.49f, 0.29f),
+        CFX_PointF(0.77f, 0.67f)}},
+      {{CFX_PointF(0.76f, 0.68f), CFX_PointF(0.78f, 0.69f),
+        CFX_PointF(0.76f, 0.75f)}},
+      {{CFX_PointF(0.76f, 0.75f), CFX_PointF(0.73f, 0.80f),
+        CFX_PointF(0.68f, 0.75f)}},
+      {{CFX_PointF(0.68f, 0.74f), CFX_PointF(0.68f, 0.74f),
+        CFX_PointF(0.44f, 0.47f)}},
+      {{CFX_PointF(0.43f, 0.47f), CFX_PointF(0.40f, 0.47f),
+        CFX_PointF(0.41f, 0.58f)}},
+      {{CFX_PointF(0.40f, 0.60f), CFX_PointF(0.28f, 0.66f),
+        CFX_PointF(0.30f, 0.56f)}},
+  }};
 
-  for (size_t i = 0; i < std::size(pts); ++i) {
-    for (size_t j = 0; j < std::size(pts[0]); ++j) {
-      pts[i][j].x = pts[i][j].x * fWidth + crBBox.left;
-      pts[i][j].y *= pts[i][j].y * fHeight + crBBox.bottom;
+  for (PointRow& row : point_table) {
+    for (CFX_PointF& point : row) {
+      point.x = point.x * fWidth + crBBox.left;
+      point.y = point.y * fHeight + crBBox.bottom;
     }
   }
 
   fxcrt::ostringstream csAP;
-  WriteMove(csAP, pts[0][0]);
+  WriteMove(csAP, point_table[0][0]);
 
-  for (size_t i = 0; i < std::size(pts); ++i) {
-    size_t nNext = i < std::size(pts) - 1 ? i + 1 : 0;
-    const CFX_PointF& pt_next = pts[nNext][0];
-
-    float px1 = pts[i][1].x - pts[i][0].x;
-    float py1 = pts[i][1].y - pts[i][0].y;
-    float px2 = pts[i][2].x - pt_next.x;
-    float py2 = pts[i][2].y - pt_next.y;
-
+  for (size_t i = 0; i < point_table.size(); ++i) {
+    size_t nNext = i < point_table.size() - 1 ? i + 1 : 0;
+    const CFX_PointF& pt_next = point_table[nNext][0];
+    float px1 = point_table[i][1].x - point_table[i][0].x;
+    float py1 = point_table[i][1].y - point_table[i][0].y;
+    float px2 = point_table[i][2].x - pt_next.x;
+    float py2 = point_table[i][2].y - pt_next.y;
     WriteBezierCurve(
         csAP,
-        {pts[i][0].x + px1 * FXSYS_BEZIER, pts[i][0].y + py1 * FXSYS_BEZIER},
+        {point_table[i][0].x + px1 * FXSYS_BEZIER,
+         point_table[i][0].y + py1 * FXSYS_BEZIER},
         {pt_next.x + px2 * FXSYS_BEZIER, pt_next.y + py2 * FXSYS_BEZIER},
         pt_next);
   }
-
   return ByteString(csAP);
 }
 
@@ -317,7 +319,7 @@ ByteString GetAP_Star(const CFX_FloatRect& crBBox) {
   CFX_PointF ptCenter = CFX_PointF((crBBox.left + crBBox.right) / 2.0f,
                                    (crBBox.top + crBBox.bottom) / 2.0f);
 
-  CFX_PointF points[5];
+  std::array<CFX_PointF, 5> points;
   float fAngle = FXSYS_PI / 10.0f;
   for (auto& point : points) {
     point =
@@ -326,12 +328,11 @@ ByteString GetAP_Star(const CFX_FloatRect& crBBox) {
   }
 
   WriteMove(csAP, points[0]);
-
-  int next = 0;
-  for (size_t i = 0; i < std::size(points); ++i) {
-    next = (next + 2) % std::size(points);
-    WriteLine(csAP, points[next]);
-  }
+  WriteLine(csAP, points[2]);
+  WriteLine(csAP, points[4]);
+  WriteLine(csAP, points[1]);
+  WriteLine(csAP, points[3]);
+  WriteLine(csAP, points[0]);
 
   return ByteString(csAP);
 }
@@ -1092,18 +1093,15 @@ void SetDefaultIconName(CPDF_Stream* pIcon, const char* name) {
     return;
 
   RetainPtr<CPDF_Dictionary> pImageDict = pIcon->GetMutableDict();
-  if (!pImageDict)
-    return;
-
   if (pImageDict->KeyExist("Name"))
     return;
 
-  pImageDict->SetNewFor<CPDF_String>("Name", name, false);
+  pImageDict->SetNewFor<CPDF_String>("Name", name);
 }
 
-absl::optional<CheckStyle> CheckStyleFromCaption(const WideString& caption) {
+std::optional<CheckStyle> CheckStyleFromCaption(const WideString& caption) {
   if (caption.IsEmpty())
-    return absl::nullopt;
+    return std::nullopt;
 
   // Character values are ZapfDingbats encodings of named glyphs.
   switch (caption[0]) {
@@ -1120,7 +1118,7 @@ absl::optional<CheckStyle> CheckStyleFromCaption(const WideString& caption) {
     case L'u':
       return CheckStyle::kDiamond;
     default:
-      return absl::nullopt;
+      return std::nullopt;
   }
 }
 
@@ -1189,12 +1187,12 @@ void CPDFSDK_AppStream::SetAsPushButton() {
 
   CFX_FloatRect rcClient = rcWindow.GetDeflated(fBorderWidth, fBorderWidth);
   CPDF_DefaultAppearance da = pControl->GetDefaultAppearance();
-  absl::optional<CFX_Color> color = da.GetColor();
+  std::optional<CFX_Color> color = da.GetColor();
   CFX_Color crText = color.value_or(CFX_Color(CFX_Color::Type::kGray, 0));
 
   float fFontSize;
   ByteString csNameTag;
-  absl::optional<ByteString> font = da.GetFont(&fFontSize);
+  std::optional<ByteString> font = da.GetFont(&fFontSize);
   if (font.has_value())
     csNameTag = font.value();
   else
@@ -1340,7 +1338,7 @@ void CPDFSDK_AppStream::SetAsCheckBox() {
 
   CFX_FloatRect rcWindow = widget_->GetRotatedRect();
   CFX_FloatRect rcClient = rcWindow.GetDeflated(fBorderWidth, fBorderWidth);
-  absl::optional<CFX_Color> color = pControl->GetDefaultAppearance().GetColor();
+  std::optional<CFX_Color> color = pControl->GetDefaultAppearance().GetColor();
   CFX_Color crText = color.value_or(CFX_Color());
 
   CheckStyle nStyle = CheckStyleFromCaption(pControl->GetNormalCaption())
@@ -1419,7 +1417,7 @@ void CPDFSDK_AppStream::SetAsRadioButton() {
 
   CFX_FloatRect rcWindow = widget_->GetRotatedRect();
   CFX_FloatRect rcClient = rcWindow.GetDeflated(fBorderWidth, fBorderWidth);
-  absl::optional<CFX_Color> color = pControl->GetDefaultAppearance().GetColor();
+  std::optional<CFX_Color> color = pControl->GetDefaultAppearance().GetColor();
   CFX_Color crText = color.value_or(CFX_Color());
   CheckStyle nStyle = CheckStyleFromCaption(pControl->GetNormalCaption())
                           .value_or(CheckStyle::kCircle);
@@ -1505,7 +1503,7 @@ void CPDFSDK_AppStream::SetAsRadioButton() {
     widget_->SetAppStateOff();
 }
 
-void CPDFSDK_AppStream::SetAsComboBox(absl::optional<WideString> sValue) {
+void CPDFSDK_AppStream::SetAsComboBox(std::optional<WideString> sValue) {
   CPDF_FormControl* pControl = widget_->GetFormControl();
   CPDF_FormField* pField = pControl->GetField();
   fxcrt::ostringstream sBody;
@@ -1657,7 +1655,7 @@ void CPDFSDK_AppStream::SetAsListBox() {
         ByteString());
 }
 
-void CPDFSDK_AppStream::SetAsTextField(absl::optional<WideString> sValue) {
+void CPDFSDK_AppStream::SetAsTextField(std::optional<WideString> sValue) {
   CPDF_FormControl* pControl = widget_->GetFormControl();
   CPDF_FormField* pField = pControl->GetField();
   fxcrt::ostringstream sBody;
@@ -1708,7 +1706,7 @@ void CPDFSDK_AppStream::SetAsTextField(absl::optional<WideString> sValue) {
       }
     } else {
       if (sValue.has_value())
-        nMaxLen = pdfium::base::checked_cast<int>(sValue.value().GetLength());
+        nMaxLen = pdfium::checked_cast<int>(sValue.value().GetLength());
       pEdit->SetLimitChar(nMaxLen);
     }
   }
@@ -1801,14 +1799,11 @@ void CPDFSDK_AppStream::SetAsTextField(absl::optional<WideString> sValue) {
 }
 
 void CPDFSDK_AppStream::AddImage(const ByteString& sAPType,
-                                 CPDF_Stream* pImage) {
+                                 const CPDF_Stream* pImage) {
   RetainPtr<CPDF_Stream> pStream = dict_->GetMutableStreamFor(sAPType);
   RetainPtr<CPDF_Dictionary> pStreamDict = pStream->GetMutableDict();
-  ByteString sImageAlias = "IMG";
 
-  RetainPtr<const CPDF_Dictionary> pImageDict = pImage->GetDict();
-  if (pImageDict)
-    sImageAlias = pImageDict->GetByteStringFor("Name");
+  const ByteString sImageAlias = pImage->GetDict()->GetByteStringFor("Name");
 
   RetainPtr<CPDF_Dictionary> pStreamResList =
       pStreamDict->GetOrCreateDictFor("Resources");
@@ -1821,48 +1816,44 @@ void CPDFSDK_AppStream::AddImage(const ByteString& sAPType,
 void CPDFSDK_AppStream::Write(const ByteString& sAPType,
                               const ByteString& sContents,
                               const ByteString& sAPState) {
-  RetainPtr<CPDF_Dictionary> pParentDict;
+  RetainPtr<CPDF_Dictionary> parent_dict;
   ByteString key;
   if (sAPState.IsEmpty()) {
-    pParentDict = dict_;
+    parent_dict = dict_;
     key = sAPType;
   } else {
-    pParentDict = dict_->GetOrCreateDictFor(sAPType);
+    parent_dict = dict_->GetOrCreateDictFor(sAPType);
     key = sAPState;
   }
 
-  RetainPtr<CPDF_Dictionary> pOrigStreamDict;
-
-  // If `pStream` is created by CreateModifiedAPStream(), then it is safe to
+  // If `stream` is created by CreateModifiedAPStream(), then it is safe to
   // edit, as it is not shared.
-  RetainPtr<CPDF_Stream> pStream = pParentDict->GetMutableStreamFor(key);
+  RetainPtr<CPDF_Stream> stream = parent_dict->GetMutableStreamFor(key);
   CPDF_Document* doc = widget_->GetPageView()->GetPDFDocument();
-  if (!doc->IsModifiedAPStream(pStream.Get())) {
-    if (pStream)
-      pOrigStreamDict = pStream->GetMutableDict();
-    pStream.Reset(doc->CreateModifiedAPStream());
-    pParentDict->SetNewFor<CPDF_Reference>(key, doc, pStream->GetObjNum());
-  }
+  if (!doc->IsModifiedAPStream(stream.Get())) {
+    auto new_stream_dict = doc->New<CPDF_Dictionary>();
+    new_stream_dict->SetNewFor<CPDF_Name>("Type", "XObject");
+    new_stream_dict->SetNewFor<CPDF_Name>("Subtype", "Form");
+    new_stream_dict->SetNewFor<CPDF_Number>("FormType", 1);
 
-  RetainPtr<CPDF_Dictionary> pStreamDict = pStream->GetMutableDict();
-  if (!pStreamDict) {
-    pStreamDict = doc->New<CPDF_Dictionary>();
-    pStreamDict->SetNewFor<CPDF_Name>("Type", "XObject");
-    pStreamDict->SetNewFor<CPDF_Name>("Subtype", "Form");
-    pStreamDict->SetNewFor<CPDF_Number>("FormType", 1);
-
-    if (pOrigStreamDict) {
-      RetainPtr<const CPDF_Dictionary> pResources =
-          pOrigStreamDict->GetDictFor("Resources");
-      if (pResources)
-        pStreamDict->SetFor("Resources", pResources->Clone());
+    if (stream) {
+      RetainPtr<const CPDF_Dictionary> original_stream_dict = stream->GetDict();
+      if (original_stream_dict) {
+        RetainPtr<const CPDF_Dictionary> resources_dict =
+            original_stream_dict->GetDictFor("Resources");
+        if (resources_dict) {
+          new_stream_dict->SetFor("Resources", resources_dict->Clone());
+        }
+      }
     }
-
-    pStream->InitStreamWithEmptyData(pStreamDict);
+    stream = doc->CreateModifiedAPStream(std::move(new_stream_dict));
+    parent_dict->SetNewFor<CPDF_Reference>(key, doc, stream->GetObjNum());
   }
-  pStreamDict->SetMatrixFor("Matrix", widget_->GetMatrix());
-  pStreamDict->SetRectFor("BBox", widget_->GetRotatedRect());
-  pStream->SetDataAndRemoveFilter(sContents.raw_span());
+
+  RetainPtr<CPDF_Dictionary> stream_dict = stream->GetMutableDict();
+  stream_dict->SetMatrixFor("Matrix", widget_->GetMatrix());
+  stream_dict->SetRectFor("BBox", widget_->GetRotatedRect());
+  stream->SetDataAndRemoveFilter(sContents.unsigned_span());
 }
 
 void CPDFSDK_AppStream::Remove(ByteStringView sAPType) {

@@ -380,7 +380,7 @@ struct QSSGMaterialVertexPipeline
                                QSSGShaderLibraryManager &shaderLibraryManager);
     // The fragment shader expects a floating point constant, qt_objectOpacity to be defined
     // post this method.
-    void beginFragmentGeneration(QSSGShaderLibraryManager &shaderLibraryManager);
+    void beginFragmentGeneration(QSSGShaderLibraryManager &shaderLibraryManager, QSSGRenderLayer::OITMethod oitMethod);
     // Output variables may be mangled in some circumstances so the shader generation system
     // needs an abstraction
     // mechanism around this.

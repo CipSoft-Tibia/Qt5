@@ -386,6 +386,15 @@ void tst_QObject::disconnect()
     QVERIFY(!r2.called(2));
     QVERIFY(!r1.called(2));
     QVERIFY(!r2.called(2));
+
+    // breaking a connection to QObject::destroyed can be dangerous if Qt
+    // or other parts of the application depend on that signal to clean up
+    // data structures. We want to warn if this happens as a side effect of
+    // a wildcard disconnect call.
+    QObject::connect(&s, &QObject::destroyed, &r1, &ReceiverObject::slot1);
+    QTest::ignoreMessage(QtWarningMsg, QRegularExpression("wildcard call disconnects from destroyed"
+                                        " signal of SenderObject::"));
+    QVERIFY(s.disconnect());
 }
 
 class AutoConnectSender : public QObject
@@ -3080,7 +3089,7 @@ void tst_QObject::dynamicProperties()
 void tst_QObject::recursiveSignalEmission()
 {
 #if !QT_CONFIG(process)
-    QSKIP("No qprocess support", SkipAll);
+    QSKIP("No qprocess support");
 #else
     QProcess proc;
     // signalbug helper app should always be next to this test binary
@@ -7791,9 +7800,17 @@ void tst_QObject::nullReceiver()
 {
     QObject o;
     QObject *nullObj = nullptr; // Passing nullptr directly doesn't compile with gcc 4.8
+    auto ignoreMsg = [] {
+        QTest::ignoreMessage(QtWarningMsg, "QObject::connect(QObject, Unknown): invalid nullptr parameter");
+    };
+    ignoreMsg();
     QVERIFY(!connect(&o, &QObject::destroyed, nullObj, &QObject::deleteLater));
+    ignoreMsg();
     QVERIFY(!connect(&o, &QObject::destroyed, nullObj, [] {}));
+    ignoreMsg();
     QVERIFY(!connect(&o, &QObject::destroyed, nullObj, Functor_noexcept()));
+    QTest::ignoreMessage(QtWarningMsg,
+        "QObject::connect: Cannot connect QObject::destroyed() to (nullptr)::deleteLater()");
     QVERIFY(!connect(&o, SIGNAL(destroyed()), nullObj, SLOT(deleteLater())));
 }
 

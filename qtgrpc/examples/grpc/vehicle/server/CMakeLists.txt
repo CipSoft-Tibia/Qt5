@@ -6,13 +6,18 @@ project(VehicleServer LANGUAGES CXX)
 
 set(CMAKE_FIND_PACKAGE_PREFER_CONFIG TRUE)
 
-find_package(WrapProtoc)
-find_package(WrapgRPC)
-find_package(WrapgRPCPlugin)
+find_package(Protobuf)
+find_package(gRPC)
 
-if(NOT TARGET WrapProtoc::WrapProtoc OR NOT TARGET WrapgRPC::WrapLibgRPC
-    OR NOT TARGET WrapgRPC::WrapgRPCPlugin)
-    message(WARNING "Dependencies of VehicleServer not found. Skipping.")
+if(CMAKE_CROSSCOMPILING)
+    find_program(grpc_cpp_plugin grpc_cpp_plugin NO_CACHE)
+elseif(TARGET gRPC::grpc_cpp_plugin)
+    set(grpc_cpp_plugin $<TARGET_FILE:gRPC::grpc_cpp_plugin>)
+else()
+    set(grpc_cpp_plugin "")
+endif()
+
+if(NOT grpc_cpp_plugin OR NOT TARGET gRPC::grpc++)
     return()
 endif()
 
@@ -44,7 +49,7 @@ add_custom_command(
     --grpc_out "${out_dir}"
     --cpp_out "${out_dir}"
     -I "${CMAKE_CURRENT_LIST_DIR}/../proto/"
-    --plugin=protoc-gen-grpc=$<TARGET_FILE:WrapgRPC::WrapgRPCPlugin>
+    --plugin=protoc-gen-grpc=${grpc_cpp_plugin}
     "${proto_files}"
     WORKING_DIRECTORY ${out_dir}
     DEPENDS "${proto_files}"
@@ -65,9 +70,9 @@ target_include_directories(vehicle_server
     ${out_dir}
 )
 
-target_link_libraries(vehicle_server
-    PRIVATE
-    WrapgRPC::WrapLibgRPC
+target_link_libraries(vehicle_server PRIVATE
+    protobuf::libprotobuf
+    gRPC::grpc++
 )
 
 install(TARGETS vehicle_server

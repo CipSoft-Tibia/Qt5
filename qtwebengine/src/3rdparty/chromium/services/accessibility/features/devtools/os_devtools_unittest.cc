@@ -2,7 +2,13 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#ifdef UNSAFE_BUFFERS_BUILD
+// TODO(crbug.com/40285824): Remove this and convert code to safer constructs.
+#pragma allow_unsafe_buffers
+#endif
+
 #include <memory>
+#include <optional>
 #include <string>
 
 #include "base/functional/bind.h"
@@ -27,7 +33,6 @@
 #include "services/accessibility/features/v8_manager.h"
 #include "services/accessibility/public/mojom/accessibility_service.mojom.h"
 #include "testing/gtest/include/gtest/gtest.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "third_party/blink/public/mojom/devtools/devtools_agent.mojom.h"
 #include "third_party/inspector_protocol/crdtp/json.h"
 
@@ -90,11 +95,10 @@ class FakeDevToolsSessionHost : public blink::mojom::DevToolsSessionHost {
 
   void ExpectEvalResult(int call_id,
                         std::string type,
-                        absl::optional<base::Value> value = absl::nullopt) {
+                        std::optional<base::Value> value = std::nullopt) {
     expectations_[call_id] = (base::BindOnce(
-        [](std::string expected_type,
-           absl::optional<base::Value> expected_value, std::string actual_type,
-           absl::optional<base::Value> actual_value) {
+        [](std::string expected_type, std::optional<base::Value> expected_value,
+           std::string actual_type, std::optional<base::Value> actual_value) {
           EXPECT_EQ(expected_type, actual_type);
           EXPECT_EQ(expected_value.has_value(), actual_value.has_value());
           // If there are values to check.
@@ -127,7 +131,7 @@ class FakeDevToolsSessionHost : public blink::mojom::DevToolsSessionHost {
  private:
   void RunExpectation(int call_id,
                       std::string actual_type,
-                      absl::optional<base::Value> actual_value) {
+                      std::optional<base::Value> actual_value) {
     // Run expectation against the call id.
     if (auto it = expectations_.find(call_id); it != expectations_.end()) {
       std::move(it->second).Run(actual_type, std::move(actual_value));
@@ -137,7 +141,7 @@ class FakeDevToolsSessionHost : public blink::mojom::DevToolsSessionHost {
   }
 
   std::map<int,
-           base::OnceCallback<void(std::string, absl::optional<base::Value>)>>
+           base::OnceCallback<void(std::string, std::optional<base::Value>)>>
       expectations_;
 
   const base::RepeatingCallback<void(int remaining_expectations)>
@@ -240,7 +244,7 @@ class OSDevToolsTest : public testing::Test {
 
   void ExpectEvalResult(int call_id,
                         std::string type,
-                        absl::optional<base::Value> value = absl::nullopt) {
+                        std::optional<base::Value> value = std::nullopt) {
     fake_session_host_.ExpectEvalResult(call_id, type, std::move(value));
   }
 

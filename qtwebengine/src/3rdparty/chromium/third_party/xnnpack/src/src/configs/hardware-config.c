@@ -3,10 +3,9 @@
 // This source code is licensed under the BSD-style license found in the
 // LICENSE file in the root directory of this source tree.
 
-#include <stdbool.h>
-#include <math.h>  // For INFINITY
+#include <stddef.h>
 
-#include <xnnpack/common.h>
+#include "xnnpack/common.h"
 
 #if _WIN32
   #include <windows.h>
@@ -17,7 +16,13 @@
 #else
   #include <pthread.h>
 #endif
+#if XNN_ARCH_X86_64 && defined(__linux__) && !defined(CHROMIUM)
+#include <sys/syscall.h>
+#include <unistd.h>
 
+#define XFEATURE_XTILEDATA 18
+#define ARCH_REQ_XCOMP_PERM 0x1023
+#endif
 #if XNN_ENABLE_CPUINFO
   #include <cpuinfo.h>
 #endif  // XNN_ENABLE_CPUINFO
@@ -32,13 +37,28 @@
   #include <sys/auxv.h>
 #endif
 
-#if XNN_ARCH_WASMRELAXEDSIMD
-  #include <wasm_simd128.h>
+#if XNN_ARCH_WASM || XNN_ARCH_WASMSIMD || XNN_ARCH_WASMRELAXEDSIMD
+#include <math.h>
 #endif
 
-#include <xnnpack/config.h>
-#include <xnnpack/log.h>
+#if XNN_ARCH_WASMRELAXEDSIMD
+#include <wasm_simd128.h>
+#endif
 
+#include "xnnpack/hardware-config.h"
+#include "xnnpack/log.h"
+
+#if XNN_ARCH_X86_64 && defined(__linux__) && !defined(CHROMIUM)
+ssize_t xnn_syscall(size_t rax, size_t rdi, size_t rsi, size_t rdx) {
+  __asm (
+    "syscall"
+    : "+a" (rax)
+    : "D"(rdi), "S"(rsi), "d"(rdx)
+    : "rcx", "r11", "memory"
+  );
+  return rax;
+}
+#endif
 
 static struct xnn_hardware_config hardware_config = {0};
 
@@ -49,16 +69,6 @@ static struct xnn_hardware_config hardware_config = {0};
 #endif
 
 static void init_hardware_config(void) {
-  #if XNN_ARCH_ARM
-    hardware_config.use_arm_v6 = cpuinfo_has_arm_v6();
-    hardware_config.use_arm_vfpv2 = cpuinfo_has_arm_vfpv2();
-    hardware_config.use_arm_vfpv3 = cpuinfo_has_arm_vfpv3();
-    hardware_config.use_arm_neon = cpuinfo_has_arm_neon();
-    hardware_config.use_arm_neon_fp16 = cpuinfo_has_arm_neon_fp16();
-    hardware_config.use_arm_neon_fma = cpuinfo_has_arm_neon_fma();
-    hardware_config.use_arm_neon_v8 = cpuinfo_has_arm_neon_v8();
-  #endif
-
   #if XNN_ARCH_ARM64 || XNN_ARCH_ARM
     #if XNN_PLATFORM_WINDOWS
       SYSTEM_INFO system_info;
@@ -84,6 +94,17 @@ static void init_hardware_config(void) {
       hardware_config.use_arm_neon_dot = cpuinfo_has_arm_neon_dot();
     #endif
   #endif
+
+  #if XNN_ARCH_ARM
+    hardware_config.use_arm_v6 = cpuinfo_has_arm_v6();
+    hardware_config.use_arm_vfpv2 = cpuinfo_has_arm_vfpv2();
+    hardware_config.use_arm_vfpv3 = cpuinfo_has_arm_vfpv3();
+    hardware_config.use_arm_neon = cpuinfo_has_arm_neon();
+    hardware_config.use_arm_neon_fp16 = cpuinfo_has_arm_neon_fp16();
+    hardware_config.use_arm_neon_fma = cpuinfo_has_arm_neon_fma();
+    hardware_config.use_arm_neon_v8 = cpuinfo_has_arm_neon_v8();
+  #endif
+
   #if XNN_ARCH_ARM64
     hardware_config.use_arm_neon_i8mm = cpuinfo_has_arm_i8mm();
   #endif
@@ -94,20 +115,72 @@ static void init_hardware_config(void) {
     hardware_config.use_x86_avx = cpuinfo_has_x86_avx();
     hardware_config.use_x86_f16c = cpuinfo_has_x86_f16c();
     hardware_config.use_x86_fma3 = cpuinfo_has_x86_fma3();
-    hardware_config.use_x86_xop = cpuinfo_has_x86_xop();
     hardware_config.use_x86_avx2 = cpuinfo_has_x86_avx2();
     hardware_config.use_x86_avx512f = cpuinfo_has_x86_avx512f();
     hardware_config.use_x86_avx512skx = hardware_config.use_x86_avx512f &&
       cpuinfo_has_x86_avx512bw() && cpuinfo_has_x86_avx512dq() && cpuinfo_has_x86_avx512vl();
     hardware_config.use_x86_avx512vbmi = hardware_config.use_x86_avx512skx && cpuinfo_has_x86_avx512vbmi();
     hardware_config.use_x86_avx512vnni = hardware_config.use_x86_avx512skx && cpuinfo_has_x86_avx512vnni();
+    hardware_config.use_x86_avx512vnnigfni = hardware_config.use_x86_avx512vnni && cpuinfo_has_x86_gfni();
+#if XNN_ENABLE_AVX512FP16
+    hardware_config.use_x86_avx512fp16 = cpuinfo_has_x86_avx512fp16();
+#else
+    hardware_config.use_x86_avx512fp16 = 0;
+#endif
+#if XNN_ENABLE_AVX512AMX
+    hardware_config.use_x86_avx512amx = hardware_config.use_x86_avx512vnnigfni && cpuinfo_has_x86_amx_int8();
+#if XNN_ARCH_X86_64 && defined(__linux__) && !defined(CHROMIUM)
+    if (hardware_config.use_x86_avx512amx) {
+      size_t status = xnn_syscall(SYS_arch_prctl, ARCH_REQ_XCOMP_PERM, XFEATURE_XTILEDATA, 0);
+      if (status) {
+        xnn_log_info("XFEATURE_XTILEDATA setup is failed, TMUL usage is not allowed");
+        hardware_config.use_x86_avx512amx = 0;
+      }
+    }
+#endif
+#else
+    hardware_config.use_x86_avx512amx = 0;
+#endif
+#if XNN_ENABLE_AVXVNNI
     hardware_config.use_x86_avxvnni = hardware_config.use_x86_avx2 && cpuinfo_has_x86_avxvnni();
-  #endif  // !XNN_ARCH_X86 && !XNN_ARCH_X86_64
+#else
+    hardware_config.use_x86_avxvnni = 0;
+#endif
+#if XNN_ENABLE_AVX256SKX && XNN_ENABLE_AVX512AMX
+    // Using cpuinfo_has_x86_amx_int8 as placeholder for cpuinfo_has_x86_avx10
+    hardware_config.use_x86_avx256skx = hardware_config.use_x86_avx512skx || cpuinfo_has_x86_amx_int8();
+#else
+    hardware_config.use_x86_avx256skx = 0;
+#endif
+#if XNN_ENABLE_AVX256VNNI && XNN_ENABLE_AVX512AMX
+    // Using cpuinfo_has_x86_amx_int8 as placeholder for cpuinfo_has_x86_avx10
+    hardware_config.use_x86_avx256vnni = (hardware_config.use_x86_avx512skx && cpuinfo_has_x86_avxvnni()) || cpuinfo_has_x86_amx_int8();
+#else
+    hardware_config.use_x86_avx256vnni = 0;
+#endif
+#if XNN_ENABLE_AVX256VNNIGFNI && XNN_ENABLE_AVX512AMX
+    // Using cpuinfo_has_x86_amx_int8 as placeholder for cpuinfo_has_x86_avx10
+    hardware_config.use_x86_avx256vnnigfni = hardware_config.use_x86_avx256vnni && cpuinfo_has_x86_gfni();
+#else
+    hardware_config.use_x86_avx256vnnigfni = 0;
+#endif
+#endif  // !XNN_ARCH_X86 && !XNN_ARCH_X86_64
+
+#if XNN_ARCH_HEXAGON
+#if XNN_ENABLE_HVX
+    hardware_config.use_hvx = 1;
+#else
+    hardware_config.use_hvx = 0;
+#endif  // XNN_ENABLE_HVX
+#endif  // XNN_ARCH_HEXAGON
 
   #if XNN_ARCH_RISCV
     const long hwcap = getauxval(AT_HWCAP);
     xnn_log_debug("getauxval(AT_HWCAP) = %08lX", hwcap);
     hardware_config.use_riscv_vector = (hwcap & COMPAT_HWCAP_ISA_V) != 0;
+
+    /* There is no HWCAP for fp16 so disable by default */
+    hardware_config.use_riscv_vector_fp16_arith = false;
 
     if (hardware_config.use_riscv_vector) {
       register uint32_t vlenb __asm__ ("t0");
@@ -124,7 +197,7 @@ static void init_hardware_config(void) {
       hardware_config.use_vsx = 1;
     }
     #if defined PPC_FEATURE2_ARCH_3_1
-      if (HWCAPs_2 &  PPC_FEATURE2_ARCH_3_1) {
+      if (HWCAPs_2 & PPC_FEATURE2_ARCH_3_1) {
         hardware_config.use_vsx3 = 1;
       }
       if (HWCAPs_2 & PPC_FEATURE2_MMA) {
@@ -172,6 +245,18 @@ static void init_hardware_config(void) {
         wasm_v128_xor(overflow_output, wasm_i32x4_const(65536, 33024, 33024, 512))));
     }
     {
+      // Check out-of-bounds behaviour of Relaxed Integer Dot Product with Accumulation with signed and unsigned input (e.g. vpdpbusd).
+      const v128_t int8_input = wasm_i8x16_const(0, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 0);
+      const volatile v128_t xint8_input = wasm_i8x16_const(0, 0, 0, -128, 0, 0, -128, 0, 0, -128, 0, 0, -128, 0, 0, 0);  // volatile to confuse Clang which otherwise ICE's
+      const v128_t xint8_output = wasm_i32x4_relaxed_dot_i8x16_i7x16_add(int8_input, xint8_input, wasm_i8x16_const_splat(0));
+
+      const volatile v128_t overflow_input = wasm_i8x16_const(-128, -128, -128, -128, -128, -128, -1, -1, -1, -1, -128, -128, -1, -1, -1, -1);  // volatile to confuse Clang which otherwise ICE's
+      const v128_t overflow_output = wasm_i32x4_relaxed_dot_i8x16_i7x16_add(wasm_i8x16_const_splat(-128), overflow_input, wasm_i8x16_const_splat(0));
+      hardware_config.use_wasm_usdot = !wasm_v128_any_true(wasm_v128_or(
+        wasm_v128_xor(xint8_output, wasm_i32x4_const_splat(128)),
+        wasm_v128_xor(overflow_output, wasm_i32x4_const(-65536, -98048, -98048, -130560))));
+    }
+    {
       const v128_t input1 = wasm_i32x4_const(0xF0F0F0F0, 0xAAAAAAAA, 0xCCCCCCCC, 0x99999999);
       const v128_t input2 = wasm_i32x4_const(0x0F0F0F0F, 0x55555555, 0x33333333, 0x66666666);
       v128_t diff = wasm_i8x16_const_splat(0);
@@ -205,12 +290,12 @@ static void init_hardware_config(void) {
 #endif
 
 const struct xnn_hardware_config* xnn_init_hardware_config() {
-  #if !XNN_PLATFORM_WEB && !XNN_ARCH_RISCV && !XNN_ARCH_PPC64 && !(XNN_ARCH_ARM64 && XNN_PLATFORM_WINDOWS)
+  #if !XNN_PLATFORM_WEB && !XNN_ARCH_RISCV && !XNN_ARCH_PPC64 && XNN_ENABLE_CPUINFO
     if (!cpuinfo_initialize()) {
       xnn_log_error("failed to initialize cpuinfo");
       return NULL;
     }
-  #endif  // !XNN_PLATFORM_WEB && !XNN_ARCH_RISCV && !(XNN_ARCH_ARM64 && XNN_PLATFORM_WINDOWS)
+  #endif  // !XNN_PLATFORM_WEB && !XNN_ARCH_RISCV && !XNN_ARCH_PPC64
   #if XNN_ARCH_ARM
     #if XNN_PLATFORM_MOBILE
       if (!cpuinfo_has_arm_neon()) {

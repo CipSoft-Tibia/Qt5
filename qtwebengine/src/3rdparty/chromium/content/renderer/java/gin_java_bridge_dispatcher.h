@@ -30,10 +30,8 @@ class GinJavaBridgeObject;
 // bound to the window object of the main frame when that window object is next
 // cleared. These objects remain bound until the window object is cleared
 // again.
-class GinJavaBridgeDispatcher
-    : public base::SupportsWeakPtr<GinJavaBridgeDispatcher>,
-      public mojom::GinJavaBridge,
-      public RenderFrameObserver {
+class GinJavaBridgeDispatcher final : public mojom::GinJavaBridge,
+                                      public RenderFrameObserver {
  public:
   // GinJavaBridgeObjects are managed by gin. An object gets destroyed
   // when it is no more referenced from JS. As GinJavaBridgeObject reports
@@ -50,17 +48,8 @@ class GinJavaBridgeDispatcher
   ~GinJavaBridgeDispatcher() override;
 
   // RenderFrameObserver override:
-  bool OnMessageReceived(const IPC::Message& message) override;
   void DidClearWindowObject() override;
 
-  void GetJavaMethods(ObjectID object_id, std::vector<std::string>* methods);
-
-  bool HasJavaMethod(ObjectID object_id, const std::string& method_name);
-  std::unique_ptr<base::Value> InvokeJavaMethod(
-      ObjectID object_id,
-      const std::string& method_name,
-      base::Value::List arguments,
-      mojom::GinJavaBridgeError* error);
   GinJavaBridgeObject* GetObject(ObjectID object_id);
   void OnGinJavaBridgeObjectDeleted(GinJavaBridgeObject* object);
 
@@ -78,9 +67,10 @@ class GinJavaBridgeDispatcher
   NamedObjectMap named_objects_;
   ObjectMap objects_;
   bool inside_did_clear_window_object_ = false;
-  const bool enable_mojo_;
 
   mojo::Remote<mojom::GinJavaBridgeHost> remote_;
+
+  base::WeakPtrFactory<GinJavaBridgeDispatcher> weak_ptr_factory_{this};
 };
 
 }  // namespace content

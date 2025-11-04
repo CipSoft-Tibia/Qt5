@@ -6,6 +6,8 @@
 
 #include "core/fpdfdoc/cpdf_interactiveform.h"
 
+#include <optional>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
@@ -28,13 +30,18 @@
 #include "core/fpdfapi/parser/fpdf_parser_utility.h"
 #include "core/fpdfdoc/cpdf_filespec.h"
 #include "core/fpdfdoc/cpdf_formcontrol.h"
+#include "core/fxcrt/check.h"
+#include "core/fxcrt/compiler_specific.h"
+#include "core/fxcrt/containers/contains.h"
 #include "core/fxcrt/fx_codepage.h"
+#include "core/fxcrt/fx_memcpy_wrappers.h"
+#include "core/fxcrt/numerics/safe_conversions.h"
 #include "core/fxcrt/stl_util.h"
 #include "core/fxge/fx_font.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
-#include "third_party/base/check.h"
-#include "third_party/base/containers/contains.h"
-#include "third_party/base/numerics/safe_conversions.h"
+
+#if BUILDFLAG(IS_WIN)
+#include "core/fxcrt/win/win_util.h"
+#endif
 
 namespace {
 
@@ -54,7 +61,7 @@ int CALLBACK EnumFontFamExProc(ENUMLOGFONTEXA* lpelfe,
     return 1;
 
   PDF_FONTDATA* pData = (PDF_FONTDATA*)lParam;
-  memcpy(&pData->lf, &lpelfe->elfLogFont, sizeof(LOGFONTA));
+  pData->lf = lpelfe->elfLogFont;
   pData->bFind = true;
   return 0;
 }
@@ -62,7 +69,8 @@ int CALLBACK EnumFontFamExProc(ENUMLOGFONTEXA* lpelfe,
 bool RetrieveSpecificFont(FX_Charset charSet,
                           LPCSTR pcsFontName,
                           LOGFONTA& lf) {
-  memset(&lf, 0, sizeof(LOGFONTA));
+  lf = {};  // Aggregate initialization, not construction.
+  static_assert(std::is_aggregate_v<std::remove_reference_t<decltype(lf)>>);
   lf.lfCharSet = static_cast<int>(charSet);
   lf.lfPitchAndFamily = DEFAULT_PITCH | FF_DONTCARE;
   if (pcsFontName) {
@@ -71,15 +79,15 @@ bool RetrieveSpecificFont(FX_Charset charSet,
     strcpy(lf.lfFaceName, pcsFontName);
   }
 
-  PDF_FONTDATA fd;
-  memset(&fd, 0, sizeof(PDF_FONTDATA));
+  PDF_FONTDATA fd = {};  // Aggregate initialization, not construction.
+  static_assert(std::is_aggregate_v<decltype(fd)>);
   HDC hDC = ::GetDC(nullptr);
   EnumFontFamiliesExA(hDC, &lf, (FONTENUMPROCA)EnumFontFamExProc, (LPARAM)&fd,
                       0);
   ::ReleaseDC(nullptr, hDC);
-  if (fd.bFind)
-    memcpy(&lf, &fd.lf, sizeof(LOGFONTA));
-
+  if (fd.bFind) {
+    UNSAFE_TODO(FXSYS_memcpy(&lf, &fd.lf, sizeof(LOGFONTA)));
+  }
   return fd.bFind;
 }
 #endif  // BUILDFLAG(IS_WIN)
@@ -89,9 +97,16 @@ ByteString GetNativeFontName(FX_Charset charSet, void* pLogFont) {
 #if BUILDFLAG(IS_WIN)
   LOGFONTA lf = {};
   if (charSet == FX_Charset::kANSI) {
-    csFontName = CFX_Font::kDefaultAnsiFontName;
-    return csFontName;
+    return CFX_Font::kDefaultAnsiFontName;
   }
+
+  if (!pdfium::IsUser32AndGdi32Available()) {
+    // Without GDI32 and User32, GetDC / EnumFontFamiliesExW / ReleaseDC all
+    // fail, which is called by RetrieveSpecificFont. We won't be able to look
+    // up native fonts without GDI.
+    return ByteString();
+  }
+
   bool bRet = false;
   const ByteString default_font_name =
       CFX_Font::GetDefaultFontNameByCharset(charSet);
@@ -106,8 +121,9 @@ ByteString GetNativeFontName(FX_Charset charSet, void* pLogFont) {
   if (!bRet)
     bRet = RetrieveSpecificFont(charSet, nullptr, lf);
   if (bRet) {
-    if (pLogFont)
-      memcpy(pLogFont, &lf, sizeof(LOGFONTA));
+    if (pLogFont) {
+      UNSAFE_TODO(FXSYS_memcpy(pLogFont, &lf, sizeof(LOGFONTA)));
+    }
     csFontName = lf.lfFaceName;
   }
 #endif
@@ -292,7 +308,7 @@ RetainPtr<CPDF_Dictionary> InitDict(CPDF_Document* pDocument) {
   if (pFont)
     csDA = "/" + PDF_NameEncode(csBaseName) + " 0 Tf ";
   csDA += "0 g";
-  pFormDict->SetNewFor<CPDF_String>("DA", csDA, /*bHex=*/false);
+  pFormDict->SetNewFor<CPDF_String>("DA", csDA);
   return pFormDict;
 }
 
@@ -688,11 +704,11 @@ int CPDF_InteractiveForm::FindFieldInCalculationOrder(
   if (!pArray)
     return -1;
 
-  absl::optional<size_t> maybe_found = pArray->Find(pField->GetFieldDict());
+  std::optional<size_t> maybe_found = pArray->Find(pField->GetFieldDict());
   if (!maybe_found.has_value())
     return -1;
 
-  return pdfium::base::checked_cast<int>(maybe_found.value());
+  return pdfium::checked_cast<int>(maybe_found.value());
 }
 
 RetainPtr<CPDF_Font> CPDF_InteractiveForm::GetFormFont(
@@ -723,9 +739,8 @@ RetainPtr<CPDF_Font> CPDF_InteractiveForm::GetFontForElement(
 }
 
 CPDF_DefaultAppearance CPDF_InteractiveForm::GetDefaultAppearance() const {
-  if (!m_pFormDict)
-    return CPDF_DefaultAppearance();
-  return CPDF_DefaultAppearance(m_pFormDict->GetByteStringFor("DA"));
+  return CPDF_DefaultAppearance(
+      m_pFormDict ? m_pFormDict->GetByteStringFor("DA") : "");
 }
 
 int CPDF_InteractiveForm::GetFormAlignment() const {
@@ -943,8 +958,7 @@ std::unique_ptr<CFDF_Document> CPDF_InteractiveForm::ExportToFDF(
     auto pNewDict = pDoc->New<CPDF_Dictionary>();
     pNewDict->SetNewFor<CPDF_Name>("Type", "Filespec");
     WideString wsStr = CPDF_FileSpec::EncodeFileName(pdf_path);
-    pNewDict->SetNewFor<CPDF_String>(pdfium::stream::kF, wsStr.ToDefANSI(),
-                                     false);
+    pNewDict->SetNewFor<CPDF_String>(pdfium::stream::kF, wsStr.ToDefANSI());
     pNewDict->SetNewFor<CPDF_String>("UF", wsStr.AsStringView());
     pMainDict->SetFor("F", pNewDict);
   }
@@ -982,8 +996,7 @@ std::unique_ptr<CFDF_Document> CPDF_InteractiveForm::ExportToFDF(
       ByteString csBExport = PDF_EncodeText(csExport.AsStringView());
       RetainPtr<const CPDF_Object> pOpt = pField->GetFieldAttr("Opt");
       if (pOpt) {
-        pFieldDict->SetNewFor<CPDF_String>(pdfium::form_fields::kV, csBExport,
-                                           false);
+        pFieldDict->SetNewFor<CPDF_String>(pdfium::form_fields::kV, csBExport);
       } else {
         pFieldDict->SetNewFor<CPDF_Name>(pdfium::form_fields::kV, csBExport);
       }

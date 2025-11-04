@@ -4,6 +4,8 @@
 
 #include "ui/ozone/platform/wayland/host/shell_popup_wrapper.h"
 
+#include <optional>
+
 #include "base/check_op.h"
 #include "base/command_line.h"
 #include "base/debug/stack_trace.h"
@@ -12,7 +14,6 @@
 #include "base/nix/xdg_util.h"
 #include "base/notreached.h"
 #include "build/chromeos_buildflags.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "ui/base/owned_window_anchor.h"
 #include "ui/ozone/platform/wayland/common/wayland_util.h"
 #include "ui/ozone/platform/wayland/host/wayland_connection.h"
@@ -70,8 +71,9 @@ XDGPopupWrapperImpl* ShellPopupWrapper::AsXDGPopupWrapper() {
   return nullptr;
 }
 
-void ShellPopupWrapper::GrabIfPossible(WaylandConnection* connection,
-                                       WaylandWindow* parent_window) {
+void ShellPopupWrapper::GrabIfPossible(
+    WaylandConnection* connection,
+    std::optional<bool> parent_shell_popup_has_grab) {
 #if !BUILDFLAG(IS_CHROMEOS_LACROS)
   base::CommandLine* cmd_line = base::CommandLine::ForCurrentProcess();
   if (!cmd_line->HasSwitch(switches::kUseWaylandExplicitGrab))
@@ -97,8 +99,7 @@ void ShellPopupWrapper::GrabIfPossible(WaylandConnection* connection,
   // The parent of a grabbing popup must either be an xdg_toplevel surface or
   // another xdg_popup with an explicit grab. If it is a popup that did not take
   // an explicit grab, an error will be raised, so early out if that's the case.
-  auto* parent_popup = parent_window->AsWaylandPopup();
-  if (parent_popup && !parent_popup->shell_popup()->has_grab_) {
+  if (!parent_shell_popup_has_grab.value_or(true)) {
     return;
   }
 

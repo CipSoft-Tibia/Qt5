@@ -462,8 +462,7 @@ static void parse(Translator *tor, ConversionData &cd)
                         plural = true;
                     }
                 }
-                if (!text.isEmpty())
-                    recordMessage(tor, context(), text, com, extracomment, plural, cd);
+                recordMessage(tor, context(), text, com, extracomment, plural, cd);
             }
             break;
         case Tok_translate:
@@ -491,8 +490,7 @@ static void parse(Translator *tor, ConversionData &cd)
                             break;
                         }
                     }
-                    if (!text.isEmpty())
-                        recordMessage(tor, contextOverride, text, com, extracomment, plural, cd);
+                    recordMessage(tor, contextOverride, text, com, extracomment, plural, cd);
                 }
             }
             break;

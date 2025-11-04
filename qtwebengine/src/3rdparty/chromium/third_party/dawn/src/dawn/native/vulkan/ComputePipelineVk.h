@@ -31,6 +31,7 @@
 #include "dawn/native/ComputePipeline.h"
 
 #include "dawn/common/vulkan_platform.h"
+#include "dawn/native/CreatePipelineAsyncEvent.h"
 #include "dawn/native/Error.h"
 
 namespace dawn::native::vulkan {
@@ -42,13 +43,10 @@ class ComputePipeline final : public ComputePipelineBase {
     static Ref<ComputePipeline> CreateUninitialized(
         Device* device,
         const UnpackedPtr<ComputePipelineDescriptor>& descriptor);
-    static void InitializeAsync(Ref<ComputePipelineBase> computePipeline,
-                                WGPUCreateComputePipelineAsyncCallback callback,
-                                void* userdata);
 
     VkPipeline GetHandle() const;
 
-    MaybeError Initialize() override;
+    MaybeError InitializeImpl() override;
 
     // Dawn API
     void SetLabelImpl() override;

@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:data-parser
 
 #include "qplatformdefs.h"
 #include "qurl.h"
@@ -47,10 +48,10 @@ Q_CORE_EXPORT bool qDecodeDataUrl(const QUrl &uri, QString &mimeType, QByteArray
         QLatin1StringView textPlain;
         constexpr auto charset = "charset"_L1;
         if (QLatin1StringView{data}.startsWith(charset, Qt::CaseInsensitive)) {
-            qsizetype i = charset.size();
-            while (data.at(i) == ' ')
-                ++i;
-            if (data.at(i) == '=')
+            QByteArrayView copy = data.sliced(charset.size());
+            while (copy.startsWith(' '))
+                copy.slice(1);
+            if (copy.startsWith('='))
                 textPlain = "text/plain;"_L1;
         }
 

@@ -19,8 +19,10 @@ private slots:
         QTest::addColumn<ComVariant>("expected");
 
         QTest::addRow("bool") << QVariant{ true } << ComVariant{ VARIANT_TRUE };
-        QTest::addRow("short") << QVariant{ static_cast<short>(3) } << ComVariant{ static_cast<int>(3) }; // TODO: Fixme
-        QTest::addRow("unsigned short") << QVariant{ static_cast<ushort>(3) } << ComVariant{ static_cast<int>(3) }; // TODO: Fixme
+        QTest::addRow("short") << QVariant{ static_cast<short>(3) }
+                               << ComVariant{ static_cast<int>(3) }; // TODO: Fixme
+        QTest::addRow("unsigned short") << QVariant{ static_cast<ushort>(3) }
+                                        << ComVariant{ static_cast<int>(3) }; // TODO: Fixme
         QTest::addRow("int") << QVariant{ 3 } << ComVariant{ 3 };
         QTest::addRow("unsigned int") << QVariant{ 3u } << ComVariant{ 3u };
         QTest::addRow("long long") << QVariant{ 3ll } << ComVariant{ 3ll };
@@ -46,14 +48,14 @@ private slots:
         QCOMPARE_EQ(observer->lastArg, expected);
     }
 
-    void comObject_receivesVARIANT_whenCalledWithVariantStringList()
+    void comObject_receivesVariantContainingBSTRArray_whenCalledWithQVariantStringList()
     {
-        const QVariant value{ QList{ QVariant{ "A" }, QVariant{ "BC" } } };
-
         // Arrange
         ComServerLib::TestServer server;
         const ComPtr<Receiver> observer = makeComObject<Receiver>();
         server.SetObserver(observer.Get());
+
+        const QVariant value{ QList{ QVariant{ "A" }, QVariant{ "BC" } } };
 
         // Act
         server.VariantIn(value);
@@ -61,26 +63,35 @@ private slots:
         // Assert
         QVERIFY(V_ISARRAY(&observer->lastArg));
 
-        LPSAFEARRAY safeArray = V_ARRAY(&observer->lastArg);
+        const SafeArray safeArray{ V_ARRAY(&observer->lastArg) };
 
-        VARTYPE itemType;
-        if (SUCCEEDED(SafeArrayGetVartype(safeArray, &itemType)))
+        const QSpan<ComVariant> items = *safeArray.data<ComVariant>();
 
-        QCOMPARE_EQ(itemType, VT_VARIANT);
+        QCOMPARE_EQ(items[0], ComVariant{ QBStr{ L"A" } });
+        QCOMPARE_EQ(items[1], ComVariant{ QBStr{ L"BC" } });
+    }
 
-        LPVOID data;
-        QCOMPARE_EQ(SafeArrayAccessData(safeArray, &data), S_OK);
+    void comObject_receivesVariantContainingUnsignedCharArray_whenCalledWithQVariantByteArray()
+    {
+        // Arrange
+        ComServerLib::TestServer server;
+        const ComPtr<Receiver> observer = makeComObject<Receiver>();
+        server.SetObserver(observer.Get());
 
-        const auto *pItems = static_cast<const VARIANT*>(data);
-        ComVariant item1{ pItems[0] };
-        ComVariant item2{ pItems[1] };
+        QByteArray byteArray{ "Hello world" };
+        const QVariant value = QVariant::fromValue(byteArray);
 
-        QCOMPARE_EQ(item1, ComVariant{ QBStr{ L"A" } });
-        QCOMPARE_EQ(item2, ComVariant{ QBStr{ L"BC" } });
+        // Act
+        server.VariantIn(value);
 
-        // end accessing data
-        QCOMPARE_EQ(SafeArrayUnaccessData(safeArray), S_OK);
+        // Assert
+        QVERIFY(V_ISARRAY(&observer->lastArg));
 
+        const SafeArray receivedArg{ V_ARRAY(&observer->lastArg) };
+
+        QSpan<unsigned char> data = *receivedArg.data<unsigned char>();
+
+        QCOMPARE_EQ(byteArray, data);
     }
 };
 

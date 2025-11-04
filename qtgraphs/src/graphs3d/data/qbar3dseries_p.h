@@ -36,6 +36,8 @@ public:
 
     void setRowColors(const QList<QColor> &colors);
 
+    void setValueColoringEnabled(bool enabled);
+
     void setDataArray(const QBarDataArray &newDataArray);
     void clearRow(qsizetype rowIndex);
     void clearArray();
@@ -53,6 +55,7 @@ private:
     QStringList m_columnLabels;
     QPoint m_selectedBar;
     QList<QColor> m_rowColors;
+    bool m_valueColoring;
 
     friend class QQuickGraphsBars;
 };

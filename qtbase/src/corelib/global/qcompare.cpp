@@ -1149,14 +1149,14 @@ CHECK(strong, equivalent);
 
 /*!
     \internal
-    \macro Q_DECLARE_EQUALITY_COMPARABLE(LeftType, RightType, Attributes)
-    \macro Q_DECLARE_EQUALITY_COMPARABLE_LITERAL_TYPE(LeftType, RightType, Attributes)
-    \macro Q_DECLARE_PARTIALLY_ORDERED(LeftType, RightType, Attributes)
-    \macro Q_DECLARE_PARTIALLY_ORDERED_LITERAL_TYPE(LeftType, RightType, Attributes)
-    \macro Q_DECLARE_WEAKLY_ORDERED(LeftType, RightType, Attributes)
-    \macro Q_DECLARE_WEAKLY_ORDERED_LITERAL_TYPE(LeftType, RightType, Attributes)
-    \macro Q_DECLARE_STRONGLY_ORDERED(LeftType, RightType, Attributes)
-    \macro Q_DECLARE_STRONGLY_ORDERED_LITERAL_TYPE(LeftType, RightType, Attributes)
+    \macro Q_DECLARE_EQUALITY_COMPARABLE(LeftType, RightType, Attributes...)
+    \macro Q_DECLARE_EQUALITY_COMPARABLE_LITERAL_TYPE(LeftType, RightType, Attributes...)
+    \macro Q_DECLARE_PARTIALLY_ORDERED(LeftType, RightType, Attributes...)
+    \macro Q_DECLARE_PARTIALLY_ORDERED_LITERAL_TYPE(LeftType, RightType, Attributes...)
+    \macro Q_DECLARE_WEAKLY_ORDERED(LeftType, RightType, Attributes...)
+    \macro Q_DECLARE_WEAKLY_ORDERED_LITERAL_TYPE(LeftType, RightType, Attributes...)
+    \macro Q_DECLARE_STRONGLY_ORDERED(LeftType, RightType, Attributes...)
+    \macro Q_DECLARE_STRONGLY_ORDERED_LITERAL_TYPE(LeftType, RightType, Attributes...)
     \since 6.8
     \relates <QtCompare>
 
@@ -1169,6 +1169,35 @@ CHECK(strong, equivalent);
     deprecated) when implementing comparison of encoding-aware string types
     with C-style strings or byte arrays.
 
+    Starting from Qt 6.9, \c Attributes becomes a variable argument, meaning
+    that you can now specify more complex templates and constraints using
+    these macros.
+
+    For example, equality-comparison of a custom type with any integral type
+    can be implemented in the following way:
+
+    \code
+    class MyClass {
+    public:
+        ...
+    private:
+        template <typename T, std::enable_if_t<std::is_integral_v<T>, bool> = true>
+        friend constexpr bool comparesEqual(const MyClass &lhs, T rhs) noexcept
+        { ... }
+        Q_DECLARE_EQUALITY_COMPARABLE(MyClass, T,
+                                      template <typename T,
+                                                std::enable_if_t<std::is_integral_v<T>,
+                                                                 bool> = true>)
+    };
+    \endcode
+
+    \note Bear in mind that a macro treats each comma (unless within
+    parentheses) as starting a new argument; for example, the invocation above
+    has five arguments. Due to implementation details, the macros cannot have
+    more than nine arguments. If the constraint is too complicated, use an alias
+    template to give it a self-explanatory name, and use this alias as an
+    argument of the macro.
+
     \include qcompare.cpp noexcept-requirement-desc
 */
 
@@ -1176,22 +1205,78 @@ CHECK(strong, equivalent);
     \internal
     \macro Q_DECLARE_EQUALITY_COMPARABLE_NON_NOEXCEPT(Type)
     \macro Q_DECLARE_EQUALITY_COMPARABLE_NON_NOEXCEPT(LeftType, RightType)
-    \macro Q_DECLARE_EQUALITY_COMPARABLE_NON_NOEXCEPT(LeftType, RightType, Attributes)
+    \macro Q_DECLARE_EQUALITY_COMPARABLE_NON_NOEXCEPT(LeftType, RightType, Attributes...)
     \macro Q_DECLARE_PARTIALLY_ORDERED_NON_NOEXCEPT(Type)
     \macro Q_DECLARE_PARTIALLY_ORDERED_NON_NOEXCEPT(LeftType, RightType)
-    \macro Q_DECLARE_PARTIALLY_ORDERED_NON_NOEXCEPT(LeftType, RightType, Attributes)
+    \macro Q_DECLARE_PARTIALLY_ORDERED_NON_NOEXCEPT(LeftType, RightType, Attributes...)
     \macro Q_DECLARE_WEAKLY_ORDERED_NON_NOEXCEPT(Type)
     \macro Q_DECLARE_WEAKLY_ORDERED_NON_NOEXCEPT(LeftType, RightType)
-    \macro Q_DECLARE_WEAKLY_ORDERED_NON_NOEXCEPT(LeftType, RightType, Attributes)
+    \macro Q_DECLARE_WEAKLY_ORDERED_NON_NOEXCEPT(LeftType, RightType, Attributes...)
     \macro Q_DECLARE_STRONGLY_ORDERED_NON_NOEXCEPT(Type)
     \macro Q_DECLARE_STRONGLY_ORDERED_NON_NOEXCEPT(LeftType, RightType)
-    \macro Q_DECLARE_STRONGLY_ORDERED_NON_NOEXCEPT(LeftType, RightType, Attributes)
+    \macro Q_DECLARE_STRONGLY_ORDERED_NON_NOEXCEPT(LeftType, RightType, Attributes...)
     \since 6.8
     \relates <QtCompare>
 
     These macros behave like their versions without the \c {_NON_NOEXCEPT}
     suffix, but should be used when the relational operators cannot be
     \c {noexcept}.
+
+    Starting from Qt 6.9, \c Attributes becomes a variable argument.
+*/
+
+/*!
+    \internal
+    \macro Q_DECLARE_ORDERED(Type)
+    \macro Q_DECLARE_ORDERED(LeftType, RightType)
+    \macro Q_DECLARE_ORDERED(LeftType, RightType, Attributes...)
+    \macro Q_DECLARE_ORDERED_LITERAL_TYPE(Type)
+    \macro Q_DECLARE_ORDERED_LITERAL_TYPE(LeftType, RightType)
+    \macro Q_DECLARE_ORDERED_LITERAL_TYPE(LeftType, RightType, Attributes...)
+    \macro Q_DECLARE_ORDERED_NON_NOEXCEPT(Type)
+    \macro Q_DECLARE_ORDERED_NON_NOEXCEPT(LeftType, RightType)
+    \macro Q_DECLARE_ORDERED_NON_NOEXCEPT(LeftType, RightType, Attributes...)
+    \since 6.9
+    \relates <QtCompare>
+
+    These macros behave similarly to the
+    \c {Q_DECLARE_(PARTIALLY,WEAKLY,STRONGLY)_ORDERED} overloads, but represent
+    any one of those three, using \c auto return type.
+
+    This is what you typically would use for template classes where
+    the strength of the ordering depends on the template arguments.
+    For example, if one of the template arguments is a floating-point
+    type, the ordering would be \l {Qt::partial_ordering}, if they all
+    are integral - \l {Qt::strong_ordering}.
+
+    \note It is better to use one of the explicit-strength macros in general, to
+    communicate intent. Use these macros only when the stength actually does vary
+    with template arguments.
+
+    The (in)equality operators are implemented in terms of a helper function
+    \c {comparesEqual()}. The other relational operators are implemented in
+    terms of a helper function \c {compareThreeWay()}.
+    The \c {compareThreeWay()} function \e must return an object of an ordering
+    type. It's the user's responsibility to declare and define both helper
+    functions.
+
+    The \c {*_LITERAL_TYPE} overloads are used to generate \c constexpr
+    operators. This means that the helper \c {comparesEqual()} and
+    \c {compareThreeWay()} functions must also be \c constexpr.
+
+    See \l {Q_DECLARE_PARTIALLY_ORDERED} for usage examples.
+
+    By default, the generated operators are \c {noexcept}.
+    Use the \c {*_NON_NOEXCEPT} overloads if the relational operators cannot be
+    \c {noexcept}.
+
+    The three-argument versions of the macros allow specification of C++
+    attributes to add before every generated relational operator.
+    See \l {Q_DECLARE_EQUALITY_COMPARABLE(LeftType, RightType, Attributes...)}
+    for more details and usage examples.
+
+    \sa Q_DECLARE_PARTIALLY_ORDERED, Q_DECLARE_WEAKLY_ORDERED,
+        Q_DECLARE_STRONGLY_ORDERED, Q_DECLARE_EQUALITY_COMPARABLE
 */
 
 /*!
@@ -1201,9 +1286,6 @@ CHECK(strong, equivalent);
     \overload
 
     Implements three-way comparison of integral types.
-
-    \note This function participates in overload resolution only if both
-    \c LeftInt and \c RightInt are built-in integral types.
 
     Returns \c {lhs <=> rhs}, provided \c LeftInt and \c RightInt are built-in
     integral types. Unlike \c {operator<=>()}, this function template is also
@@ -1230,6 +1312,9 @@ CHECK(strong, equivalent);
 
     Returns an instance of \l Qt::strong_ordering that represents the relation
     between \a lhs and \a rhs.
+
+    \constraints both
+    \c LeftInt and \c RightInt are built-in integral types.
 */
 
 /*!
@@ -1239,9 +1324,6 @@ CHECK(strong, equivalent);
     \overload
 
     Implements three-way comparison of floating point types.
-
-    \note This function participates in overload resolution only if both
-    \c LeftFloat and \c RightFloat are built-in floating-point types.
 
     Returns \c {lhs <=> rhs}, provided \c LeftFloat and \c RightFloat are
     built-in floating-point types. Unlike \c {operator<=>()}, this function
@@ -1269,6 +1351,9 @@ CHECK(strong, equivalent);
     Returns an instance of \l Qt::partial_ordering that represents the relation
     between \a lhs and \a rhs. If \a lhs or \a rhs is not a number (NaN),
     \l Qt::partial_ordering::unordered is returned.
+
+    \constraints both
+    \c LeftFloat and \c RightFloat are built-in floating-point types.
 */
 
 /*!
@@ -1279,16 +1364,16 @@ CHECK(strong, equivalent);
 
     Implements three-way comparison of integral and floating point types.
 
-    \note This function participates in overload resolution only if \c IntType
-    is a built-in integral type and \c FloatType is a built-in floating-point
-    type.
-
     This function converts \a lhs to \c FloatType and calls the overload for
     floating-point types.
 
     Returns an instance of \l Qt::partial_ordering that represents the relation
     between \a lhs and \a rhs. If \a rhs is not a number (NaN),
     \l Qt::partial_ordering::unordered is returned.
+
+    \constraints \c IntType
+    is a built-in integral type and \c FloatType is a built-in floating-point
+    type.
 */
 
 /*!
@@ -1299,16 +1384,16 @@ CHECK(strong, equivalent);
 
     Implements three-way comparison of floating point and integral types.
 
-    \note This function participates in overload resolution only if \c FloatType
-    is a built-in floating-point type and \c IntType is a built-in integral
-    type.
-
     This function converts \a rhs to \c FloatType and calls the overload for
     floating-point types.
 
     Returns an instance of \l Qt::partial_ordering that represents the relation
     between \a lhs and \a rhs. If \a lhs is not a number (NaN),
     \l Qt::partial_ordering::unordered is returned.
+
+    \constraints \c FloatType
+    is a built-in floating-point type and \c IntType is a built-in integral
+    type.
 */
 
 #if QT_DEPRECATED_SINCE(6, 8)
@@ -1322,12 +1407,12 @@ CHECK(strong, equivalent);
 
     Implements three-way comparison of pointers.
 
-    \note This function participates in overload resolution if \c LeftType and
-    \c RightType are the same type, or base and derived types. It is also used
-    to compare any pointer to \c {std::nullptr_t}.
-
     Returns an instance of \l Qt::strong_ordering that represents the relation
     between \a lhs and \a rhs.
+
+    \constraints \c LeftType and
+    \c RightType are the same type, or base and derived types. It is also used
+    to compare any pointer to \c {std::nullptr_t}.
 */
 #endif // QT_DEPRECATED_SINCE(6, 8)
 
@@ -1339,14 +1424,13 @@ CHECK(strong, equivalent);
 
     Implements three-way comparison of enum types.
 
-    \note This function participates in overload resolution only if \c Enum
-    is an enum type.
-
     This function converts \c Enum to its underlying type and calls the
     overload for integral types.
 
     Returns an instance of \l Qt::strong_ordering that represents the relation
     between \a lhs and \a rhs.
+
+    \constraints \c Enum is an enum type.
 */
 
 /*!
@@ -1360,11 +1444,10 @@ CHECK(strong, equivalent);
     \l {https://en.cppreference.com/w/cpp/language/operator_comparison#Pointer_total_order}
     {strict total order over pointers} when doing the comparison.
 
-    \note This function participates in overload resolution if \c T and \c U
-    are the same type, or base and derived types.
-
     Returns an instance of \l Qt::strong_ordering that represents the relation
     between \a lhs and \a rhs.
+
+    \constraints \c T and \c U are the same type, or base and derived types.
 */
 
 /*!
@@ -1378,11 +1461,10 @@ CHECK(strong, equivalent);
     \l {https://en.cppreference.com/w/cpp/language/operator_comparison#Pointer_total_order}
     {strict total order over pointers} when doing the comparison.
 
-    \note This function participates in overload resolution if \c T and \c U
-    are the same type, or base and derived types.
-
     Returns an instance of \l Qt::strong_ordering that represents the relation
     between \a lhs and \a rhs.
+
+    \constraints \c T and \c U are the same type, or base and derived types.
 */
 
 /*!
@@ -1396,11 +1478,10 @@ CHECK(strong, equivalent);
     \l {https://en.cppreference.com/w/cpp/language/operator_comparison#Pointer_total_order}
     {strict total order over pointers} when doing the comparison.
 
-    \note This function participates in overload resolution if \c T and \c U
-    are the same type, or base and derived types.
-
     Returns an instance of \l Qt::strong_ordering that represents the relation
     between \a lhs and \a rhs.
+
+    \constraints \c T and \c U are the same type, or base and derived types.
 */
 
 /*!
@@ -1476,6 +1557,42 @@ CHECK(strong, equivalent);
     C++20 or later.
 
     \sa Qt::partial_ordering, Qt::weak_ordering, Qt::strong_ordering
+*/
+
+/*!
+    \fn template <typename InputIt1, typename InputIt2> QtOrderingPrivate::lexicographicalCompareThreeWay(InputIt1 first1, InputIt1 last1, InputIt2 first2, InputIt2 last2)
+    \internal
+    \relates <QtCompare>
+
+    \brief Three-way lexicographic comparison of ranges.
+
+    Checks how the range [ \a first1, \a last1 ) compares to the second range
+    [ \a first2, \a last2 ) and produces a result of the strongest applicable
+    category type.
+
+    This function can only be used if \c InputIt1::value_type and
+    \c InputIt2::value_type types provide a \c {compareThreeWay()} helper method
+    that returns one of the Qt ordering types.
+
+    \sa {Comparison types overview}
+*/
+
+/*!
+    \fn template <typename InputIt1, typename InputIt2, typename Comparator> QtOrderingPrivate::lexicographicalCompareThreeWay(InputIt1 first1, InputIt1 last1, InputIt2 first2, InputIt2 last2, Comparator cmp)
+    \internal
+    \relates <QtCompare>
+    \overload
+
+    This overload takes a custom \c Comparator that is used to do the comparison.
+    The comparator should have the following signature:
+
+    \badcode
+    OrderingType cmp(const InputIt1::value_type &lhs, const InputIt2::value_type &rhs);
+    \endcode
+
+    where \c OrderingType is one of the Qt ordering types.
+
+    \sa {Comparison types overview}
 */
 
 /*!

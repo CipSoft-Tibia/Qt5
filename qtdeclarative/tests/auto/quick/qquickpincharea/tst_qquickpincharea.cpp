@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QtCore/private/qvariantanimation_p.h>
-#include <QtTest/QtTest>
+#include <QtTest/QTest>
 #include <QtTest/QSignalSpy>
 #include <QtGui/QStyleHints>
 #include <QtGui/private/qevent_p.h>
@@ -40,7 +40,7 @@ private slots:
 
 private:
     QQuickView *createView();
-    QPointingDevice *device = QTest::createTouchDevice();
+    std::unique_ptr<QPointingDevice> touchscreen{QTest::createTouchDevice()};
 };
 
 void tst_QQuickPinchArea::cleanupTestCase()
@@ -195,7 +195,7 @@ void tst_QQuickPinchArea::scale()
     QPoint p1(80, 80);
     QPoint p2(100, 100);
     {
-        QTest::QTouchEventSequence pinchSequence = QTest::touchEvent(window, device);
+        QTest::QTouchEventSequence pinchSequence = QTest::touchEvent(window, touchscreen.get());
         pinchSequence.press(0, p1, window).commit();
         QQuickTouchUtils::flush(window);
         // In order for the stationary point to remember its previous position,
@@ -227,7 +227,7 @@ void tst_QQuickPinchArea::scale()
     p1 -= QPoint(50,50);
     p2 += QPoint(50,50);
     {
-        QTest::QTouchEventSequence pinchSequence = QTest::touchEvent(window, device);
+        QTest::QTouchEventSequence pinchSequence = QTest::touchEvent(window, touchscreen.get());
         pinchSequence.move(0, p1, window).move(1, p2, window).commit();
         QQuickTouchUtils::flush(window);
         QCOMPARE(blackRect->scale(), 2.0);
@@ -263,7 +263,7 @@ void tst_QQuickPinchArea::pan()
     QPoint p2(100, 100);
     {
         const int dragThreshold = QGuiApplication::styleHints()->startDragDistance();
-        QTest::QTouchEventSequence pinchSequence = QTest::touchEvent(window, device);
+        QTest::QTouchEventSequence pinchSequence = QTest::touchEvent(window, touchscreen.get());
         pinchSequence.press(0, p1, window).commit();
         QQuickTouchUtils::flush(window);
         // In order for the stationary point to remember its previous position,
@@ -331,13 +331,13 @@ void tst_QQuickPinchArea::pan()
     // pan x beyond bound
     p1 += QPoint(100,100);
     p2 += QPoint(100,100);
-    QTest::touchEvent(window, device).move(0, p1, window).move(1, p2, window);
+    QTest::touchEvent(window, touchscreen.get()).move(0, p1, window).move(1, p2, window);
     QQuickTouchUtils::flush(window);
 
     QCOMPARE(blackRect->x(), 140.0);
     QCOMPARE(blackRect->y(), 170.0);
 
-    QTest::touchEvent(window, device).release(0, p1, window).release(1, p2, window);
+    QTest::touchEvent(window, touchscreen.get()).release(0, p1, window).release(1, p2, window);
     QQuickTouchUtils::flush(window);
     QVERIFY(!root->property("pinchActive").toBool());
 }
@@ -371,7 +371,7 @@ void tst_QQuickPinchArea::retouch()
     QPoint p1(80, 80);
     QPoint p2(100, 100);
     {
-        QTest::QTouchEventSequence pinchSequence = QTest::touchEvent(window, device);
+        QTest::QTouchEventSequence pinchSequence = QTest::touchEvent(window, touchscreen.get());
         pinchSequence.press(0, p1, window).commit();
         QQuickTouchUtils::flush(window);
         // In order for the stationary point to remember its previous position,
@@ -459,7 +459,7 @@ void tst_QQuickPinchArea::cancel()
     QPoint p1(80, 80);
     QPoint p2(100, 100);
     {
-        QTest::QTouchEventSequence pinchSequence = QTest::touchEvent(window, device);
+        QTest::QTouchEventSequence pinchSequence = QTest::touchEvent(window, touchscreen.get());
         pinchSequence.press(0, p1, window).commit();
         QQuickTouchUtils::flush(window);
         // In order for the stationary point to remember its previous position,
@@ -486,7 +486,7 @@ void tst_QQuickPinchArea::cancel()
         QCOMPARE(root->property("center").toPointF(), QPointF(40, 40)); // blackrect is at 50,50
         QCOMPARE(blackRect->scale(), 1.5);
 
-        QTouchEvent cancelEvent(QEvent::TouchCancel, device);
+        QTouchEvent cancelEvent(QEvent::TouchCancel, touchscreen.get());
         QCoreApplication::sendEvent(window, &cancelEvent);
         QQuickTouchUtils::flush(window);
 
@@ -542,7 +542,7 @@ void tst_QQuickPinchArea::transformedPinchArea()
     const int threshold = qApp->styleHints()->startDragDistance();
 
     {
-        QTest::QTouchEventSequence pinchSequence = QTest::touchEvent(view, device);
+        QTest::QTouchEventSequence pinchSequence = QTest::touchEvent(view, touchscreen.get());
         // start pinch
         pinchSequence.press(0, p1, view).commit();
         QQuickTouchUtils::flush(view);
@@ -602,7 +602,7 @@ void tst_QQuickPinchArea::dragTransformedPinchArea() // QTBUG-63673
     QVERIFY(pinchAreaContainer);
     pinchAreaContainer->setRotation(rotation);
 
-    QTest::QTouchEventSequence pinchSequence = QTest::touchEvent(view, device);
+    QTest::QTouchEventSequence pinchSequence = QTest::touchEvent(view, touchscreen.get());
     // start pinch
     pinchSequence.press(1, pinchArea->mapToScene(p1).toPoint(), view)
                  .press(2, pinchArea->mapToScene(p2).toPoint(), view).commit();
@@ -643,7 +643,7 @@ void tst_QQuickPinchArea::pinchAreaKeepsDragInView()
     QVERIFY(pinchArea);
 
     // Press.
-    QTest::QTouchEventSequence pinchSequence = QTest::touchEvent(&view, device);
+    QTest::QTouchEventSequence pinchSequence = QTest::touchEvent(&view, touchscreen.get());
     QPoint point1Start = { 80, 120 };
     QPoint point2Start = { 120, 80 };
     const int dragThreshold = qApp->styleHints()->startDragDistance();
@@ -715,7 +715,7 @@ void tst_QQuickPinchArea::pinchInPathView()
     QVERIFY(pinchArea);
 
     // press
-    QTest::QTouchEventSequence pinchSequence = QTest::touchEvent(&view, device);
+    QTest::QTouchEventSequence pinchSequence = QTest::touchEvent(&view, touchscreen.get());
     QPoint point1Start = { 10, 10 };
     QPoint point2Start = { 100, 100 };
     const int dragThreshold = qApp->styleHints()->startDragDistance();

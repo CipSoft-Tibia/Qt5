@@ -16,7 +16,7 @@ namespace segmentation_platform {
 CachedResultProvider::CachedResultProvider(
     ClientResultPrefs* prefs,
     const std::vector<std::unique_ptr<Config>>& configs)
-    : configs_(configs), result_prefs_(std::move(prefs)) {
+    : configs_(configs), result_prefs_(prefs) {
   for (const auto& config : *configs_) {
     const proto::ClientResult* client_result =
         result_prefs_->ReadClientResultFromPrefs(config->segmentation_key);
@@ -43,12 +43,12 @@ CachedResultProvider::CachedResultProvider(
 
 CachedResultProvider::~CachedResultProvider() = default;
 
-absl::optional<proto::PredictionResult>
+std::optional<proto::PredictionResult>
 CachedResultProvider::GetPredictionResultForClient(
     const std::string& segmentation_key) {
   const auto iter = client_result_from_last_session_map_.find(segmentation_key);
   if (iter == client_result_from_last_session_map_.end()) {
-    return absl::nullopt;
+    return std::nullopt;
   }
 
   VLOG(1) << "CachedResultProvider loaded prefs with results from previous "

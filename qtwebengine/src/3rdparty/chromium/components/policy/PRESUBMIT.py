@@ -37,12 +37,12 @@ _MESSAGES_PATH = os.path.join(_TEMPLATES_PATH, 'messages.yaml')
 _COMMON_SCHEMAS_PATH = os.path.join(_TEMPLATES_PATH, 'common_schemas.yaml')
 _POLICIES_DEFINITIONS_PATH = os.path.join(_TEMPLATES_PATH, 'policy_definitions')
 _POLICIES_YAML_PATH = os.path.join(_TEMPLATES_PATH, 'policies.yaml')
-_HISTOGRAMS_PATH = os.path.join(
+_ENUMS_PATH = os.path.join(
       'tools', 'metrics', 'histograms', 'metadata', 'enterprise', 'enums.xml')
 _DEVICE_POLICY_PROTO_PATH = os.path.join(
       _COMPONENTS_POLICY_PATH, 'proto', 'chrome_device_policy.proto')
 _DEVICE_POLICY_PROTO_MAP_PATH = os.path.join(
-      _TEMPLATES_PATH, 'device_policy_proto_map.yaml')
+      _TEMPLATES_PATH, 'manual_device_policy_proto_map.yaml')
 _LEGACY_DEVICE_POLICY_PROTO_MAP_PATH = os.path.join(
       _TEMPLATES_PATH, 'legacy_device_policy_proto_map.yaml')
 
@@ -203,6 +203,11 @@ def _GetPolicyChangeList(input_api):
         filename == 'OWNERS' or
         filename == 'DIR_METADATA'):
       continue
+
+    if policy_name not in policy_name_to_id and affected_file.Action() != 'D':
+      raise Exception("Policy not listed in %s: '%s'" % (
+          _POLICIES_YAML_PATH, policy_name))
+
     old_policy = None
     new_policy = None
     if affected_file.Action() == 'M':
@@ -328,12 +333,12 @@ def CheckPolicyHistograms(input_api, output_api):
   results = []
   if _SkipPresubmitChecks(
       input_api,
-      [_HISTOGRAMS_PATH, _POLICIES_YAML_PATH, _PRESUBMIT_PATH]):
+      [_ENUMS_PATH, _POLICIES_YAML_PATH, _PRESUBMIT_PATH]):
     return results
 
   root = input_api.change.RepositoryRoot()
 
-  with open(os.path.join(root, _HISTOGRAMS_PATH), encoding='utf-8') as f:
+  with open(os.path.join(root, _ENUMS_PATH), encoding='utf-8') as f:
     tree = minidom.parseString(f.read())
   enums = (tree.getElementsByTagName('histogram-configuration')[0]
                .getElementsByTagName('enums')[0]
@@ -349,17 +354,13 @@ def CheckPolicyHistograms(input_api, output_api):
   missing_ids = policy_ids - policy_enum_ids
   extra_ids = policy_enum_ids - policy_ids
 
-  error_missing = ("Policy '%s' (id %d) was added to "
-                   "policy_templates.json but not to "
-                   "src/tools/metrics/histograms/enums.xml. Please update "
-                   "both files. To regenerate the policy part of enums.xml, "
-                   "run:\n"
-                   "python tools/metrics/histograms/update_policies.py")
-  error_extra = ("Policy id %d was found in "
-                 "src/tools/metrics/histograms/enums.xml, but no policy with "
-                 "this id exists in policy_templates.json. To regenerate the "
-                 "policy part of enums.xml, run:\n"
-                 "python tools/metrics/histograms/update_policies.py")
+  error_common = ("To regenerate the policy part of enums.xml, run:\n"
+                  "python3 tools/metrics/histograms/update_policies.py")
+  error_missing = (f"Policy '%s' (id %d) was added to policy_templates.json "
+                   f"but not to {_ENUMS_PATH}. Please update both files. "
+                   f"{error_common}")
+  error_extra = (f"Policy id %d was found in {_ENUMS_PATH}, but no policy with "
+                 f"this id exists in policy_templates.json. {error_common}")
   results = []
   for policy_id in missing_ids:
     results.append(
@@ -367,62 +368,6 @@ def CheckPolicyHistograms(input_api, output_api):
                                   (policies[policy_id], policy_id)))
   for policy_id in extra_ids:
     results.append(output_api.PresubmitError(error_extra % policy_id))
-  return results
-
-
-def CheckPolicyAtomicGroupsHistograms(input_api, output_api):
-  '''Verifies that the all policy atomic groups have a histogram entry.
-  This is ran when policies.yaml, tools/metrics/histograms/enums.xml or this
-  PRESUBMIT.py file are modified.
-  '''
-  results = []
-  if _SkipPresubmitChecks(
-      input_api,
-      [_HISTOGRAMS_PATH, _POLICIES_YAML_PATH, _PRESUBMIT_PATH]):
-    return results
-
-  root = input_api.change.RepositoryRoot()
-
-  with open(os.path.join(root, _HISTOGRAMS_PATH), encoding='utf-8') as f:
-    tree = minidom.parseString(f.read())
-  enums = (tree.getElementsByTagName('histogram-configuration')[0]
-               .getElementsByTagName('enums')[0]
-               .getElementsByTagName('enum'))
-  atomic_group_enums = [e for e in enums
-                        if e.getAttribute('name') == 'PolicyAtomicGroups']
-  if not atomic_group_enums:
-    return results
-
-  atomic_group_enum = atomic_group_enums[0]
-  atomic_group_enum_ids = frozenset(int(e.getAttribute('value'))
-                              for e in atomic_group_enum
-                                .getElementsByTagName('int'))
-  policies_yaml = _LoadYamlFile(root, _POLICIES_YAML_PATH)
-  atomic_groups = policies_yaml['atomic_groups']
-  atomic_group_ids = frozenset(
-    [id for id, name in atomic_groups.items() if name])
-
-  missing_ids = atomic_group_ids - atomic_group_enum_ids
-  extra_ids = atomic_group_enum_ids - atomic_group_ids
-
-  error_missing = ("Policy atomic group '%s' (id %d) was added to "
-                   "policy_templates.json but not to "
-                   "src/tools/metrics/histograms/enums.xml. Please update "
-                   "both files. To regenerate the policy part of enums.xml, "
-                   "run:\n"
-                   "python tools/metrics/histograms/update_policies.py")
-  error_extra = ("Policy atomic group id %d was found in "
-                 "src/tools/metrics/histograms/enums.xml, but no policy with "
-                 "this id exists in policy_templates.json. To regenerate the "
-                 "policy part of enums.xml, run:\n"
-                 "python tools/metrics/histograms/update_policies.py")
-  results = []
-  for atomic_group_id in missing_ids:
-    results.append(output_api.PresubmitError(error_missing %
-                              (atomic_groups[atomic_group_id],
-                              atomic_group_id)))
-  for atomic_group_id in extra_ids:
-    results.append(output_api.PresubmitError(error_extra % atomic_group_id))
   return results
 
 
@@ -652,16 +597,18 @@ def CheckPolicyChangeVersionPlatformCompatibility(input_api, output_api):
       # disable them in these cases to reduce the noise.
       if input_api.no_diffs:
         continue
-      # Support for policies can only be removed for past version until we have
-      # a better reminder process to cleanup the code related to deprecated
-      # policies.
-      if new_policy_platforms[platform]['to'] > current_version:
-        previous_version = int(current_version) - 1
+      # An end-milestone for policies can only be added for versions that have
+      # already branched, until we have a better reminder process to cleanup
+      # the code related to deprecated policies.
+      end_version = new_policy_platforms[platform]['to']
+      if end_version >= current_version:
         results.append(output_api.PresubmitPromptWarning(
-          f"In policy {policy_name}: Support on platform {platform} can only "
-          f"be removed for version {previous_version}. Please remove all "
-          "references in the code to that policy since it will not be "
-          f"supported in the current version {current_version}."))
+          f"In policy {policy_name} for platform {platform}: An end-milestone "
+          f"of {end_version} was used. But policies are only allowed to be end-"
+          f"dated at versions that have already branched, currently "
+          f"M{current_version - 1} or before. Please remove all references in "
+          f"the code to {end_version}, and instead file a bug with a reminder "
+          f"to add the end milestone after M{end_version - 1} branches."))
   return results
 
 
@@ -854,18 +801,30 @@ def CheckDevicePolicies(input_api, output_api):
   for policy in policy_definitions:
     if not policy.get('device_only', False):
       continue
+
     policy_name = policy['name']
-    if (policy_name not in proto_map and
-        policy_name not in legacy_proto_map):
-      results.append(output_api.PresubmitError(
-          f"Please add '{policy_name}' to device_policy_proto_map.yaml and map "
-          "it to the corresponding field in chrome_device_policy.proto."))
+    if policy.get('generate_device_proto', True):
+      if policy_name in proto_map or policy_name in legacy_proto_map:
+        results.append(output_api.PresubmitError(
+          f"'{policy_name}' generates the path to the proto. "
+          "Please remove it from *_device_policy_proto_map.yaml"))
+    else:
+      if (policy_name not in proto_map and
+          policy_name not in legacy_proto_map):
+        results.append(output_api.PresubmitError(
+            f"Please set generate_device_proto to true in '{policy_name}.yaml "
+            "or add a mapping in manual_device_policy_proto_map.yaml '"))
 
   # Check that the proto field is equal to the policy name for new policies
   for policy_change in policy_changelist:
+    if not policy_change['new_policy'].get('device_only', False):
+      continue
     if ('old_policy' in policy_change and
         policy_change['old_policy'] is not None):
       # Ignore existing policies
+      continue
+    if policy.get('generate_device_proto', True):
+      # Ignore policies which will be generated automatically
       continue
     policy_name = policy_change['policy']
 

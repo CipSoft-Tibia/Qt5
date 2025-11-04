@@ -1,19 +1,24 @@
 // Copyright (C) 2022 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-3.0-only
+
 #include "qambientsound.h"
-#include "qambientsound_p.h"
-#include "qaudioengine_p.h"
-#include "resonance_audio.h"
-#include <qaudiosink.h>
-#include <qurl.h>
-#include <qdebug.h>
-#include <qaudiodecoder.h>
+
+#include <QtCore/qdebug.h>
+#include <QtCore/qurl.h>
+#include <QtMultimedia/qaudiodecoder.h>
+#include <QtMultimedia/qaudiosink.h>
+#include <QtMultimedia/private/qmultimedia_assume_p.h>
+#include <QtSpatialAudio/private/qambientsound_p.h>
+#include <QtSpatialAudio/private/qaudioengine_p.h>
+
+#include <resonance_audio.h>
+#include <memory>
 
 QT_BEGIN_NAMESPACE
 
 void QAmbientSoundPrivate::load()
 {
-    decoder.reset(new QAudioDecoder);
+    decoder = std::make_unique<QAudioDecoder>();
     buffers.clear();
     currentBuffer = 0;
     sourceDeviceFile.reset(nullptr);
@@ -35,8 +40,18 @@ void QAmbientSoundPrivate::load()
     } else {
         decoder->setSource(url);
     }
-    connect(decoder.get(), &QAudioDecoder::bufferReady, this, &QAmbientSoundPrivate::bufferReady);
-    connect(decoder.get(), &QAudioDecoder::finished, this, &QAmbientSoundPrivate::finished);
+    QObject::connect(decoder.get(), &QAudioDecoder::bufferReady, decoder.get(), [this] {
+        QT_MM_ASSUME(this);
+
+        QMutexLocker l(&mutex);
+        auto b = decoder->read();
+        buffers.append(b);
+        if (m_autoPlay)
+            m_playing = true;
+    });
+    QObject::connect(decoder.get(), &QAudioDecoder::finished, decoder.get(), [this] {
+        m_loading = false;
+    });
     decoder->start();
 }
 
@@ -87,21 +102,6 @@ void QAmbientSoundPrivate::getBuffer(float *buf, int nframes, int channels)
     }
 }
 
-void QAmbientSoundPrivate::bufferReady()
-{
-    QMutexLocker l(&mutex);
-    auto b = decoder->read();
-    //    qDebug() << "read buffer" << b.format() << b.startTime() << b.duration();
-    buffers.append(b);
-    if (m_autoPlay)
-        m_playing = true;
-}
-
-void QAmbientSoundPrivate::finished()
-{
-    m_loading = false;
-}
-
 /*!
     \class QAmbientSound
     \inmodule QtSpatialAudio
@@ -118,8 +118,7 @@ void QAmbientSoundPrivate::finished()
 /*!
     Creates a stereo sound source for \a engine.
  */
-QAmbientSound::QAmbientSound(QAudioEngine *engine)
-    : d(new QAmbientSoundPrivate(this))
+QAmbientSound::QAmbientSound(QAudioEngine *engine) : QObject(*new QAmbientSoundPrivate())
 {
     setEngine(engine);
 }
@@ -127,7 +126,6 @@ QAmbientSound::QAmbientSound(QAudioEngine *engine)
 QAmbientSound::~QAmbientSound()
 {
     setEngine(nullptr);
-    delete d;
 }
 
 /*!
@@ -140,6 +138,7 @@ QAmbientSound::~QAmbientSound()
  */
 void QAmbientSound::setVolume(float volume)
 {
+    Q_D(QAmbientSound);
     if (d->volume == volume)
         return;
     d->volume = volume;
@@ -151,11 +150,13 @@ void QAmbientSound::setVolume(float volume)
 
 float QAmbientSound::volume() const
 {
+    Q_D(const QAmbientSound);
     return d->volume;
 }
 
 void QAmbientSound::setSource(const QUrl &url)
 {
+    Q_D(QAmbientSound);
     if (d->url == url)
         return;
     d->url = url;
@@ -171,6 +172,7 @@ void QAmbientSound::setSource(const QUrl &url)
  */
 QUrl QAmbientSound::source() const
 {
+    Q_D(const QAmbientSound);
     return d->url;
 }
 /*!
@@ -192,11 +194,13 @@ QUrl QAmbientSound::source() const
  */
 int QAmbientSound::loops() const
 {
+    Q_D(const QAmbientSound);
     return d->m_loops.loadRelaxed();
 }
 
 void QAmbientSound::setLoops(int loops)
 {
+    Q_D(QAmbientSound);
     int oldLoops = d->m_loops.fetchAndStoreRelaxed(loops);
     if (oldLoops != loops)
         emit loopsChanged();
@@ -212,11 +216,14 @@ void QAmbientSound::setLoops(int loops)
  */
 bool QAmbientSound::autoPlay() const
 {
+    Q_D(const QAmbientSound);
     return d->m_autoPlay.loadRelaxed();
 }
 
 void QAmbientSound::setAutoPlay(bool autoPlay)
 {
+    Q_D(QAmbientSound);
+
     bool old = d->m_autoPlay.fetchAndStoreRelaxed(autoPlay);
     if (old != autoPlay)
         emit autoPlayChanged();
@@ -227,6 +234,7 @@ void QAmbientSound::setAutoPlay(bool autoPlay)
  */
 void QAmbientSound::play()
 {
+    Q_D(QAmbientSound);
     d->play();
 }
 
@@ -235,6 +243,7 @@ void QAmbientSound::play()
  */
 void QAmbientSound::pause()
 {
+    Q_D(QAmbientSound);
     d->pause();
 }
 
@@ -244,6 +253,7 @@ void QAmbientSound::pause()
  */
 void QAmbientSound::stop()
 {
+    Q_D(QAmbientSound);
     d->stop();
 }
 
@@ -252,6 +262,8 @@ void QAmbientSound::stop()
  */
 void QAmbientSound::setEngine(QAudioEngine *engine)
 {
+    Q_D(QAmbientSound);
+
     if (d->engine == engine)
         return;
 
@@ -275,6 +287,8 @@ void QAmbientSound::setEngine(QAudioEngine *engine)
  */
 QAudioEngine *QAmbientSound::engine() const
 {
+    Q_D(const QAmbientSound);
+
     return d->engine;
 }
 

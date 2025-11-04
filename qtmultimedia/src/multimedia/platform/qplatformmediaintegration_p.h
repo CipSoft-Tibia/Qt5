@@ -14,11 +14,12 @@
 // We mean it.
 //
 
-#include <private/qtmultimediaglobal_p.h>
-#include <private/qmultimediautils_p.h>
-#include <qcapturablewindow.h>
-#include <qmediarecorder.h>
-#include <qstring.h>
+#include <QtCore/qstring.h>
+
+#include <QtMultimedia/qcapturablewindow.h>
+#include <QtMultimedia/qmediarecorder.h>
+#include <QtMultimedia/private/qmultimediautils_p.h>
+#include <QtMultimedia/private/qtmultimediaglobal_p.h>
 
 #include <memory>
 #include <mutex>
@@ -66,7 +67,6 @@ public:
 class Q_MULTIMEDIA_EXPORT QPlatformMediaIntegration : public QObject
 {
     Q_OBJECT
-    inline static const QString notAvailable = QStringLiteral("Not available");
 public:
     static QPlatformMediaIntegration *instance();
 
@@ -74,23 +74,44 @@ public:
     ~QPlatformMediaIntegration() override;
     const QPlatformMediaFormatInfo *formatInfo();
 
-    virtual QMaybe<QPlatformCamera *> createCamera(QCamera *) { return notAvailable; }
+    virtual QMaybe<QPlatformCamera *> createCamera(QCamera *)
+    {
+        return QUnexpected{ notAvailable };
+    }
     virtual QPlatformSurfaceCapture *createScreenCapture(QScreenCapture *) { return nullptr; }
     virtual QPlatformSurfaceCapture *createWindowCapture(QWindowCapture *) { return nullptr; }
 
-    virtual QMaybe<QPlatformAudioDecoder *> createAudioDecoder(QAudioDecoder *) { return notAvailable; }
+    virtual QMaybe<QPlatformAudioDecoder *> createAudioDecoder(QAudioDecoder *)
+    {
+        return QUnexpected{ notAvailable };
+    }
     virtual QMaybe<std::unique_ptr<QPlatformAudioResampler>>
     createAudioResampler(const QAudioFormat & /*inputFormat*/,
                          const QAudioFormat & /*outputFormat*/);
-    virtual QMaybe<QPlatformMediaCaptureSession *> createCaptureSession() { return notAvailable; }
-    virtual QMaybe<QPlatformMediaPlayer *> createPlayer(QMediaPlayer *) { return notAvailable; }
-    virtual QMaybe<QPlatformMediaRecorder *> createRecorder(QMediaRecorder *) { return notAvailable; }
-    virtual QMaybe<QPlatformImageCapture *> createImageCapture(QImageCapture *) { return notAvailable; }
+    virtual QMaybe<QPlatformMediaCaptureSession *> createCaptureSession()
+    {
+        return QUnexpected{ notAvailable };
+    }
+    virtual QMaybe<QPlatformMediaPlayer *> createPlayer(QMediaPlayer *)
+    {
+        return QUnexpected{ notAvailable };
+    }
+    virtual QMaybe<QPlatformMediaRecorder *> createRecorder(QMediaRecorder *)
+    {
+        return QUnexpected{ notAvailable };
+    }
+    virtual QMaybe<QPlatformImageCapture *> createImageCapture(QImageCapture *)
+    {
+        return QUnexpected{ notAvailable };
+    }
 
     virtual QMaybe<QPlatformAudioInput *> createAudioInput(QAudioInput *);
     virtual QMaybe<QPlatformAudioOutput *> createAudioOutput(QAudioOutput *);
 
-    virtual QMaybe<QPlatformVideoSink *> createVideoSink(QVideoSink *) { return notAvailable; }
+    virtual QMaybe<QPlatformVideoSink *> createVideoSink(QVideoSink *)
+    {
+        return QUnexpected{ notAvailable };
+    }
 
     QList<QCapturableWindow> capturableWindowsList();
     bool isCapturableWindowValid(const QCapturableWindowPrivate &);
@@ -120,6 +141,8 @@ protected:
 
     virtual std::unique_ptr<QPlatformAudioDevices> createAudioDevices();
 
+    inline static const QString notAvailable = QStringLiteral("Not available");
+
 private:
     friend class QMockIntegration;
     void resetInstance(); // tests only
@@ -141,6 +164,5 @@ private:
 };
 
 QT_END_NAMESPACE
-
 
 #endif // QPLATFORMMEDIAINTERFACE_H

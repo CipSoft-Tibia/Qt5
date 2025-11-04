@@ -3,13 +3,16 @@
 // This source code is licensed under the BSD-style license found in the
 // LICENSE file in the root directory of this source tree.
 
+#include <assert.h>
 #include <stdbool.h>
 #include <stddef.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 
-#include <xnnpack.h>
-#include <xnnpack/math.h>
+#include "xnnpack.h"
+#include "xnnpack/common.h"
+#include "xnnpack/math.h"
 
 void xnn_normalize_slice(
     const size_t num_dims,
@@ -32,8 +35,8 @@ void xnn_normalize_slice(
   size_t num_size_one = 0;
   for (size_t i = 0; i < num_dims; i++) {
     const size_t offset = offsets[num_dims - 1 - i];
-    const size_t size = sizes[num_dims - 1 - i];
     const size_t input_dim = input_shape[num_dims - 1 - i];
+    const size_t size = sizes[num_dims - 1 - i] > 0 ? sizes[num_dims - 1 - i] : input_dim;
 
     // If the innermost dimension is size 1, we can't merge it anywhere, so skip it.
     if (size == 1 && i != 0) {

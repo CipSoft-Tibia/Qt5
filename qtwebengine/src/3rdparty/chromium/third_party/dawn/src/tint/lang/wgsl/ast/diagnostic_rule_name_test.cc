@@ -27,7 +27,6 @@
 
 #include <string>
 
-#include "gtest/gtest-spi.h"
 #include "src/tint/lang/wgsl/ast/diagnostic_rule_name.h"
 #include "src/tint/lang/wgsl/ast/helper_test.h"
 
@@ -35,14 +34,15 @@ namespace tint::ast {
 namespace {
 
 using DiagnosticRuleNameTest = TestHelper;
+using DiagnosticRuleNameDeathTest = DiagnosticRuleNameTest;
 
 TEST_F(DiagnosticRuleNameTest, String) {
     EXPECT_EQ(DiagnosticRuleName("name")->String(), "name");
     EXPECT_EQ(DiagnosticRuleName("category", "name")->String(), "category.name");
 }
 
-TEST_F(DiagnosticRuleNameTest, Assert_NameNotTemplated) {
-    EXPECT_FATAL_FAILURE(
+TEST_F(DiagnosticRuleNameDeathTest, Assert_NameNotTemplated) {
+    EXPECT_DEATH_IF_SUPPORTED(
         {
             ProgramBuilder b;
             b.create<ast::DiagnosticRuleName>(b.Ident("name", "a", "b", "c"));
@@ -50,8 +50,8 @@ TEST_F(DiagnosticRuleNameTest, Assert_NameNotTemplated) {
         "internal compiler error");
 }
 
-TEST_F(DiagnosticRuleNameTest, Assert_CategoryNotTemplated) {
-    EXPECT_FATAL_FAILURE(
+TEST_F(DiagnosticRuleNameDeathTest, Assert_CategoryNotTemplated) {
+    EXPECT_DEATH_IF_SUPPORTED(
         {
             ProgramBuilder b;
             b.create<ast::DiagnosticRuleName>(b.Ident("name"), b.Ident("category", "a", "b", "c"));

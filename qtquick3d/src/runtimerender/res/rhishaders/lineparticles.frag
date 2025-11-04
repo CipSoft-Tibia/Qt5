@@ -1,5 +1,9 @@
 #version 440
 
+#extension GL_GOOGLE_include_directive : enable
+
+#include "../effectlib/orderindependenttransparency.glsllib"
+
 layout(std140, binding = 0) uniform buf {
     mat4 qt_modelMatrix;
     mat4 qt_viewMatrix;
@@ -34,6 +38,9 @@ layout(std140, binding = 0) uniform buf {
     bool qt_pointLights;
     bool qt_spotLights;
 #endif
+#if QSSG_OIT_METHOD == QSSG_OIT_WEIGHTED_BLENDED
+    vec2 qt_cameraProperties;
+#endif
 } ubuf;
 
 
@@ -41,6 +48,9 @@ layout(binding = 1) uniform sampler2D qt_sprite;
 layout(binding = 3) uniform sampler2D qt_colorTable;
 
 layout(location = 0) out vec4 fragColor;
+#if QSSG_OIT_METHOD == QSSG_OIT_WEIGHTED_BLENDED
+layout(location = 1) out vec4 revealageOutput;
+#endif
 
 layout(location = 0) in vec4 color;
 /*
@@ -98,5 +108,14 @@ vec4 qt_readColor()
 
 void main()
 {
-    fragColor = qt_readColor() * qt_readSprite();
+    vec4 ret = qt_readColor() * qt_readSprite();
+#if QSSG_OIT_METHOD == QSSG_OIT_WEIGHTED_BLENDED
+    float z = abs(gl_FragCoord.z);
+    float distWeight = qt_transparencyWeight(z, ret.a, ubuf.qt_cameraProperties.y);
+    fragColor = distWeight * ret;
+    revealageOutput = vec4(ret.a);
+#endif
+#if QSSG_OIT_METHOD == QSSG_OIT_NONE
+    fragColor = ret;
+#endif
 }

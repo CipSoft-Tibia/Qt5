@@ -188,7 +188,7 @@ struct QSSGRenderableNodeEntry
         Disabled = 0x1,
         GlobalTransform = 0x2,
         Materials = 0x4,
-        GlobalOpacity = 0x5
+        GlobalOpacity = 0x8,
     };
 
     QSSGRenderNode *node = nullptr;
@@ -235,6 +235,9 @@ struct QSSGRenderableObject
     const QMatrix4x4 &globalTransform;
     const QSSGBounds3 &bounds;
     QSSGBounds3 globalBounds;
+
+    // Used for shadow map bounds when model has instancing
+    QSSGBounds3 globalBoundsInstancing;
 
     QSSGRenderableObjectFlags renderableFlags;
     // For rough sorting for transparency and for depth
@@ -371,7 +374,8 @@ struct Q_QUICK3DRUNTIMERENDER_EXPORT QSSGSubsetRenderable : public QSSGRenderabl
                          const QSSGRenderGraphObject &mat,
                          QSSGRenderableImage *inFirstImage,
                          QSSGShaderDefaultMaterialKey inShaderKey,
-                         const QSSGShaderLightListView &inLights);
+                         const QSSGShaderLightListView &inLights,
+                         bool anyLightHasShadows);
 
     [[nodiscard]] const QSSGRenderGraphObject &getMaterial() const { return material; }
 };

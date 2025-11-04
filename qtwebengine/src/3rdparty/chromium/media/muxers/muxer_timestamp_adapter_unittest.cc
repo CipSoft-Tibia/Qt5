@@ -5,8 +5,8 @@
 
 #include <map>
 #include <memory>
+#include <string_view>
 
-#include "base/strings/string_piece.h"
 #include "base/test/task_environment.h"
 #include "base/time/time.h"
 #include "media/base/audio_parameters.h"
@@ -79,11 +79,11 @@ class SuccessfulMuxer : public Muxer {
 class MuxerTimestampAdapterTestBase {
  public:
   struct Frame {
-    Frame& WithData(base::StringPiece v) {
+    Frame& WithData(std::string_view v) {
       data = v;
       return *this;
     }
-    Frame& WithAlphaData(base::StringPiece v) {
+    Frame& WithAlphaData(std::string_view v) {
       alpha_data = v;
       return *this;
     }
@@ -127,7 +127,7 @@ class MuxerTimestampAdapterTestBase {
         ChannelLayoutConfig::Mono(),
         /*sample_rate=*/48000,
         /*frames_per_buffer=*/480);
-    return adapter_->OnEncodedAudio(audio_params, frame.data, absl::nullopt,
+    return adapter_->OnEncodedAudio(audio_params, frame.data, std::nullopt,
                                     frame.timestamp);
   }
 
@@ -135,7 +135,7 @@ class MuxerTimestampAdapterTestBase {
     auto video_params = Muxer::VideoParameters(
         *VideoFrame::CreateBlackFrame(gfx::Size(160, 80)));
     return adapter_->OnEncodedVideo(video_params, frame.data, frame.alpha_data,
-                                    absl::nullopt, frame.timestamp,
+                                    std::nullopt, frame.timestamp,
                                     frame.keyframe);
   }
 

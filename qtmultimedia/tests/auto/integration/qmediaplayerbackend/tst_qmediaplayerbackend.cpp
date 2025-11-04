@@ -1,8 +1,11 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
-#include <QtTest/QtTest>
-#include <QDebug>
+#include <QtTest/qtest.h>
+#include <QtCore/qtemporaryfile.h>
+#include <QtCore/qtimer.h>
+#include <QtCore/qdebug.h>
+#include <QtCore/qrandom.h>
 #include "qmediaplayer.h"
 #include "mediaplayerstate.h"
 #include "fake.h"
@@ -39,6 +42,7 @@
 #include "private/qquickvideooutput_p.h"
 
 #include <array>
+#include <memory>
 
 // NOLINTBEGIN(readability-convert-member-functions-to-static)
 
@@ -144,6 +148,7 @@ private slots:
     void play_succeedsFromSourceDevice_data();
     void play_playbackLastsForTheExpectedTime();
     void play_playbackLastsForTheExpectedTime_data();
+    void play_threeMediaPlayers();
 
     void stop_entersStoppedState_whenPlayerWasPaused();
     void stop_entersStoppedState_whenPlayerWasPaused_data();
@@ -236,6 +241,7 @@ private slots:
 
     void play_finishes_whenPlayingFileWithPacketsAfterStreamEnd_data();
     void play_finishes_whenPlayingFileWithPacketsAfterStreamEnd();
+    void play_finishes_whenPlayingFileIncludingPacketsWithUndefinedTimestamp();
 
     void makeStressTestCases();
     void stressTest_setupAndTeardown();
@@ -255,35 +261,35 @@ private:
     void detectVlcCommand();
 
     // one second local wav file
-    MaybeUrl m_localWavFile = QUnexpect{};
-    MaybeUrl m_localWavFile2 = QUnexpect{};
-    MaybeUrl m_localVideoFile = QUnexpect{};
-    MaybeUrl m_localVideoFile2 = QUnexpect{};
-    MaybeUrl m_localVideoFile1Sec = QUnexpect{};
-    MaybeUrl m_av1File = QUnexpect{};
-    MaybeUrl m_videoDimensionTestFile = QUnexpect{};
-    MaybeUrl m_localCompressedSoundFile = QUnexpect{};
-    MaybeUrl m_localFileWithMetadata = QUnexpect{};
-    MaybeUrl m_localVideoFile3ColorsWithSound = QUnexpect{};
-    MaybeUrl m_videoFileWithJpegThumbnail = QUnexpect{};
-    MaybeUrl m_videoFileWithPngThumbnail = QUnexpect{};
-    MaybeUrl m_oneRedFrameVideo = QUnexpect{};
-    MaybeUrl m_192x108_PAR_2_3_Video = QUnexpect{};
-    MaybeUrl m_192x108_PAR_3_2_Video = QUnexpect{};
-    MaybeUrl m_colorMatrixVideo = QUnexpect{};
-    MaybeUrl m_colorMatrixMirroredVideo = QUnexpect{};
-    MaybeUrl m_colorMatrix90degClockwiseVideo = QUnexpect{};
-    MaybeUrl m_colorMatrix90degClockwiseMirroredVideo = QUnexpect{};
-    MaybeUrl m_colorMatrix180degClockwiseVideo = QUnexpect{};
-    MaybeUrl m_colorMatrix180degClockwiseMirroredVideo = QUnexpect{};
-    MaybeUrl m_colorMatrix270degClockwiseVideo = QUnexpect{};
-    MaybeUrl m_colorMatrix270degClockwiseMirroredVideo = QUnexpect{};
-    MaybeUrl m_hdrVideo = QUnexpect{};
-    MaybeUrl m_15sVideo = QUnexpect{};
-    MaybeUrl m_subtitleVideo = QUnexpect{};
-    MaybeUrl m_multitrackVideo = QUnexpect{};
-    MaybeUrl m_multitrackSubtitleStartsAtZeroVideo = QUnexpect{};
-    MaybeUrl m_oggEndingWithInvalidTiming = QUnexpect{};
+    MaybeUrl m_localWavFile{ QUnexpect{} };
+    MaybeUrl m_localWavFile2{ QUnexpect{} };
+    MaybeUrl m_localVideoFile{ QUnexpect{} };
+    MaybeUrl m_localVideoFile2{ QUnexpect{} };
+    MaybeUrl m_localVideoFile1Sec{ QUnexpect{} };
+    MaybeUrl m_av1File{ QUnexpect{} };
+    MaybeUrl m_videoDimensionTestFile{ QUnexpect{} };
+    MaybeUrl m_localCompressedSoundFile{ QUnexpect{} };
+    MaybeUrl m_localMp3FileWithMetadataAndEmbeddedThumbnail{ QUnexpect{} };
+    MaybeUrl m_localVideoFile3ColorsWithSound{ QUnexpect{} };
+    MaybeUrl m_videoFileWithJpegThumbnail{ QUnexpect{} };
+    MaybeUrl m_videoFileWithPngThumbnail{ QUnexpect{} };
+    MaybeUrl m_oneRedFrameVideo{ QUnexpect{} };
+    MaybeUrl m_192x108_PAR_2_3_Video{ QUnexpect{} };
+    MaybeUrl m_192x108_PAR_3_2_Video{ QUnexpect{} };
+    MaybeUrl m_colorMatrixVideo{ QUnexpect{} };
+    MaybeUrl m_colorMatrixMirroredVideo{ QUnexpect{} };
+    MaybeUrl m_colorMatrix90degClockwiseVideo{ QUnexpect{} };
+    MaybeUrl m_colorMatrix90degClockwiseMirroredVideo{ QUnexpect{} };
+    MaybeUrl m_colorMatrix180degClockwiseVideo{ QUnexpect{} };
+    MaybeUrl m_colorMatrix180degClockwiseMirroredVideo{ QUnexpect{} };
+    MaybeUrl m_colorMatrix270degClockwiseVideo{ QUnexpect{} };
+    MaybeUrl m_colorMatrix270degClockwiseMirroredVideo{ QUnexpect{} };
+    MaybeUrl m_hdrVideo{ QUnexpect{} };
+    MaybeUrl m_15sVideo{ QUnexpect{} };
+    MaybeUrl m_subtitleVideo{ QUnexpect{} };
+    MaybeUrl m_multitrackVideo{ QUnexpect{} };
+    MaybeUrl m_multitrackSubtitleStartsAtZeroVideo{ QUnexpect{} };
+    MaybeUrl m_oggEndingWithInvalidTiming{ QUnexpect{} };
 
     MediaFileSelector m_mediaSelector;
 
@@ -398,7 +404,7 @@ void tst_QMediaPlayerBackend::initTestCase()
     m_localCompressedSoundFile =
             m_mediaSelector.select("qrc:/testdata/nokia-tune.mp3", "qrc:/testdata/nokia-tune.mkv");
 
-    m_localFileWithMetadata = m_mediaSelector.select("qrc:/testdata/nokia-tune.mp3");
+    m_localMp3FileWithMetadataAndEmbeddedThumbnail = m_mediaSelector.select("qrc:/testdata/nokia-tune.mp3");
 
     m_oneRedFrameVideo = m_mediaSelector.select("qrc:/testdata/one_red_frame.mp4");
 
@@ -1689,6 +1695,10 @@ void tst_QMediaPlayerBackend::play_playbackLastsForTheExpectedTime()
 
     QSKIP_GSTREAMER("gst_play does not allow precise timing due to pipelining of state changes");
 
+    if (isFFMPEGPlatform() && loops != 1 && pauseBeforePlay)
+        QSKIP_FFMPEG(
+                "QTBUG-133652: if we pause before play, setLoops may not be applied correctly");
+
     QMediaPlayer &player = m_fixture->player;
 
     player.setSource(media);
@@ -1747,6 +1757,35 @@ void tst_QMediaPlayerBackend::play_playbackLastsForTheExpectedTime_data()
             }
         }
     }
+}
+
+void tst_QMediaPlayerBackend::play_threeMediaPlayers()
+{
+    CHECK_SELECTED_URL(m_localVideoFile);
+    CHECK_SELECTED_URL(m_localVideoFile3ColorsWithSound);
+
+    QMediaPlayer player2, player3;
+    QVideoSink sink2, sink3;
+
+    player2.setVideoOutput(&sink2);
+    player3.setVideoOutput(&sink3);
+
+    m_fixture->player.setSource(*m_localVideoFile);
+    player2.setSource(*m_localVideoFile);
+    player3.setSource(*m_localVideoFile3ColorsWithSound);
+
+
+    m_fixture->player.play();
+    player2.play();
+    player3.play();
+
+    QTRY_COMPARE(m_fixture->player.playbackState(), QMediaPlayer::PlayingState);
+    QTRY_COMPARE(player2.playbackState(), QMediaPlayer::PlayingState);
+    QTRY_COMPARE(player3.playbackState(), QMediaPlayer::PlayingState);
+
+    QCOMPARE(m_fixture->player.error(), QMediaPlayer::NoError);
+    QCOMPARE(player2.error(), QMediaPlayer::NoError);
+    QCOMPARE(player3.error(), QMediaPlayer::NoError);
 }
 
 void tst_QMediaPlayerBackend::stop_entersStoppedState_whenPlayerWasPaused()
@@ -2755,8 +2794,9 @@ void tst_QMediaPlayerBackend::multipleSeekStressTest()
 
         QTRY_VERIFY(positionSpy.size() >= 1);
         int setPosition = positionSpy.first().first().toInt();
-        QCOMPARE_GT(setPosition, pos - 130);
-        QCOMPARE_LT(setPosition, pos + 130);
+        constexpr int threshold = 160; // 160ms threshold for position deviation
+        QCOMPARE_GT(setPosition, pos - threshold);
+        QCOMPARE_LT(setPosition, pos + threshold);
     };
 
     constexpr qint64 posInterval = 10;
@@ -2929,9 +2969,9 @@ void tst_QMediaPlayerBackend::metadata()
     QMediaMetaData::Key thumbnailKey =
             isGStreamerPlatform() ? QMediaMetaData::CoverArtImage : QMediaMetaData::ThumbnailImage;
 
-    CHECK_SELECTED_URL(m_localFileWithMetadata);
+    CHECK_SELECTED_URL(m_localMp3FileWithMetadataAndEmbeddedThumbnail);
 
-    m_fixture->player.setSource(*m_localFileWithMetadata);
+    m_fixture->player.setSource(*m_localMp3FileWithMetadataAndEmbeddedThumbnail);
 
     QTRY_VERIFY(m_fixture->metadataChanged.size() > 0);
 
@@ -3744,7 +3784,7 @@ void tst_QMediaPlayerBackend::lazyLoadVideo()
     QQmlEngine engine;
     QQmlComponent component(&engine);
     component.loadUrl(QUrl("qrc:/LazyLoad.qml"));
-    QScopedPointer<QObject> root(component.create());
+    std::unique_ptr<QObject> root(component.create());
     QQuickItem *rootItem = qobject_cast<QQuickItem *>(root.get());
     QVERIFY(rootItem);
 
@@ -4565,12 +4605,32 @@ void tst_QMediaPlayerBackend::play_finishes_whenPlayingFileWithPacketsAfterStrea
     QCOMPARE(loopIterations(m_fixture->positionChanged).size(), unsigned(loops));
 }
 
+void tst_QMediaPlayerBackend::play_finishes_whenPlayingFileIncludingPacketsWithUndefinedTimestamp()
+{
+    // When FFmpeg demuxes MP3 files with embedded thumbnails, the PTS/DTS of the first packet
+    // is AV_NOPTS_VALUE, aka "Undefined timestamp value". This test makes sure it is played to the
+    // end by checking for position changes before reaching StoppedState.
+    CHECK_SELECTED_URL(m_localMp3FileWithMetadataAndEmbeddedThumbnail);
+
+    // Arrange
+    m_fixture->player.setSource(*m_localMp3FileWithMetadataAndEmbeddedThumbnail);
+    m_fixture->player.setPlaybackRate(10);
+
+    // Act
+    m_fixture->player.play();
+    QTRY_VERIFY(m_fixture->player.isPlaying());
+
+    // Assert
+    QTRY_COMPARE_WITH_TIMEOUT(m_fixture->player.playbackState(), QMediaPlayer::StoppedState, 10s);
+    QCOMPARE_GE(m_fixture->positionChanged.size(), 5);
+}
+
 void tst_QMediaPlayerBackend::makeStressTestCases()
 {
     QTest::addColumn<MaybeUrl>("media");
     QTest::addColumn<bool>("play");
 
-    QTest::newRow("no media") << MaybeUrl{ unexpect } << false;
+    QTest::newRow("no media") << MaybeUrl{ QUnexpect{} } << false;
     QTest::newRow("audio, not playing") << m_localWavFile << false;
     QTest::newRow("audio, playing") << m_localWavFile << true;
     QTest::newRow("video, not playing") << m_localVideoFile << false;

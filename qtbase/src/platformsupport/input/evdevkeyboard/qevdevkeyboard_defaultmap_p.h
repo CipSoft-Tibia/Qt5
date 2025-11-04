@@ -16,16 +16,18 @@
 //
 
 #include "qnamespace.h"
+#include <QtInputSupport/private/qkeyboardmap_p.h>
+
 #include "private/qglobal_p.h"
 #ifdef Q_OS_FREEBSD
 #include <dev/evdev/input.h>
-#elif !defined(Q_OS_VXWORKS)
+#else
 #include "linux/input.h"
 #endif
 
 // no QT_BEGIN_NAMESPACE, since we include it internally...
 
-const QEvdevKeyboardMap::Mapping QEvdevKeyboardHandler::s_keymap_default[] = {
+const QKeyboardMap::Mapping QEvdevKeyboardHandler::s_keymap_default[] = {
     {   1, 0xffff, 0x01000000, 0x00, 0x00, 0x0000 },
     {   2, 0x0031, 0x00000031, 0x00, 0x00, 0x0000 },
     {   2, 0x0021, 0x00000021, 0x01, 0x00, 0x0000 },
@@ -613,7 +615,6 @@ const QEvdevKeyboardMap::Mapping QEvdevKeyboardHandler::s_keymap_default[] = {
     { 111, 0xffff, 0x01000000, 0x06, 0x08, 0x0200 },
     { 111, 0xffff, 0x01000000, 0x0c, 0x08, 0x0200 },
 
-#ifndef Q_OS_VXWORKS
     // 113 -> 248
     { KEY_MUTE,         0xffff, Qt::Key_VolumeMute,     0x00, 0x00, 0x0000 },
     { KEY_VOLUMEDOWN,   0xffff, Qt::Key_VolumeDown,     0x00, 0x00, 0x0000 },
@@ -642,10 +643,9 @@ const QEvdevKeyboardMap::Mapping QEvdevKeyboardHandler::s_keymap_default[] = {
     { KEY_BLUE,         0xffff, Qt::Key_Blue,           0x00, 0x00, 0x0000 },
     { KEY_CHANNELUP,    0xffff, Qt::Key_ChannelUp,      0x00, 0x00, 0x0000 },
     { KEY_CHANNELDOWN,  0xffff, Qt::Key_ChannelDown,    0x00, 0x00, 0x0000 },
-#endif
 };
 
-const QEvdevKeyboardMap::Composing QEvdevKeyboardHandler::s_keycompose_default[] = {
+const QKeyboardMap::Composing QEvdevKeyboardHandler::s_keycompose_default[] = {
     { 0x0060, 0x0041, 0x00c0 },
     { 0x0060, 0x0061, 0x00e0 },
     { 0x0027, 0x0041, 0x00c1 },

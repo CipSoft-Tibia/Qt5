@@ -41,7 +41,7 @@ printer::DuplexType ToCloudDuplexType(printing::mojom::DuplexMode mode) {
     case printing::mojom::DuplexMode::kShortEdge:
       return printer::DuplexType::SHORT_EDGE;
     default:
-      NOTREACHED();
+      NOTREACHED_IN_MIGRATION();
   }
   return printer::DuplexType::NO_DUPLEX;
 }
@@ -59,7 +59,7 @@ printer::TypedValueVendorCapability::ValueType ToCloudValueType(
     case printing::AdvancedCapability::Type::kString:
       return printer::TypedValueVendorCapability::ValueType::STRING;
     default:
-      NOTREACHED();
+      NOTREACHED_IN_MIGRATION();
   }
   return printer::TypedValueVendorCapability::ValueType::STRING;
 }
@@ -265,7 +265,7 @@ printer::VendorCapabilities GetVendorCapabilities(
 printer::SelectVendorCapability GetPageOutputQualityCapabilities(
     const printing::PrinterSemanticCapsAndDefaults& semantic_info) {
   printer::SelectVendorCapability page_output_quality_capabilities;
-  const absl::optional<printing::PageOutputQuality>& page_output_quality =
+  const std::optional<printing::PageOutputQuality>& page_output_quality =
       semantic_info.page_output_quality;
   for (const auto& attribute : page_output_quality->qualities) {
     page_output_quality_capabilities.AddDefaultOption(

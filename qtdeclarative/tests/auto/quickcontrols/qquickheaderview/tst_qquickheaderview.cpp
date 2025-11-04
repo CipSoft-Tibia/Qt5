@@ -213,6 +213,8 @@ class tst_QQuickHeaderView : public QQmlDataTest {
 public:
     tst_QQuickHeaderView();
 
+    QPoint getContextRowAndColumn(const QQuickItem *item) const;
+
 private slots:
     void initTestCase() override;
     void cleanupTestCase();
@@ -229,6 +231,8 @@ private slots:
     void headerData();
     void warnMissingDefaultRole();
     void dragInvalidItemDuringReorder();
+    void horizontalHeaderViewWithListModel_data();
+    void horizontalHeaderViewWithListModel();
     void reorderEmptyModel();
 
 private:
@@ -249,6 +253,14 @@ private:
 tst_QQuickHeaderView::tst_QQuickHeaderView()
     : QQmlDataTest(QT_QMLTEST_DATADIR, FailOnWarningsPolicy::FailOnWarnings)
 {
+}
+
+QPoint tst_QQuickHeaderView::getContextRowAndColumn(const QQuickItem *item) const
+{
+    const auto context = qmlContext(item);
+    const int row = context->contextProperty("row").toInt();
+    const int column = context->contextProperty("column").toInt();
+    return QPoint(column, row);
 }
 
 void tst_QQuickHeaderView::initTestCase()
@@ -473,7 +485,7 @@ void tst_QQuickHeaderView::dragInvalidItemDuringReorder()
     const auto item = hhv->itemAtIndex(hhv->index(0, 0));
     QQuickWindow *itemWindow = item->window();
 
-    QSignalSpy columnMovedSpy(hhv, SIGNAL(columnMoved(int, int, int)));
+    QSignalSpy columnMovedSpy(hhv, SIGNAL(columnMoved(int,int,int)));
     QVERIFY(columnMovedSpy.isValid());
 
     const QPoint localPos = QPoint(item->width() - 5, item->height() - 5);
@@ -490,6 +502,45 @@ void tst_QQuickHeaderView::dragInvalidItemDuringReorder()
     QCOMPARE(columnMovedSpy.size(), 0);
 }
 
+void tst_QQuickHeaderView::horizontalHeaderViewWithListModel_data()
+{
+    QTest::addColumn<QVariant>("model");
+
+    const QStringList stringModel = {"one", "two", "three"};
+
+    QTest::newRow("Number model") << QVariant::fromValue(3);
+    QTest::newRow("List model") << QVariant::fromValue(stringModel);
+}
+
+void tst_QQuickHeaderView::horizontalHeaderViewWithListModel()
+{
+    // Check that HorizontalHeaderView will be transposed when using a list model
+    QFETCH(QVariant, model);
+
+    QQmlComponent component(engine);
+    component.loadUrl(testFileUrl("Window.qml"));
+    QScopedPointer<QObject> root(component.create());
+    QVERIFY2(root, qPrintable(component.errorString()));
+    QVERIFY(QTest::qWaitForWindowActive(qobject_cast<QWindow *>(root.data())));
+
+    auto hhv = root->findChild<QQuickHorizontalHeaderView *>("horizontalHeader");
+    QVERIFY(hhv);
+
+    hhv->setModel(model);
+    QVERIFY(QQuickTest::qWaitForPolish(hhv));
+
+    // Check that the list elements are laid out in a row-major order
+    QCOMPARE(hhv->columns(), 3);
+    QCOMPARE(hhv->rows(), 1);
+
+    for (int col = 0; col < 3; ++col) {
+        auto item = hhv->itemAtCell({col, 0});
+        QVERIFY(item);
+        const QPoint contextCell = getContextRowAndColumn(item);
+        QCOMPARE(contextCell, QPoint(0, col));
+    }
+}
+
 void tst_QQuickHeaderView::reorderEmptyModel()
 {
     QQuickApplicationHelper helper(this, QStringLiteral("reorderEmptyModel.qml"));
@@ -501,7 +552,7 @@ void tst_QQuickHeaderView::reorderEmptyModel()
     auto hhv = window->findChild<QQuickHorizontalHeaderView *>("horizontalHeader");
     QVERIFY(hhv);
 
-    QSignalSpy columnMovedSpy(hhv, SIGNAL(columnMoved(int, int, int)));
+    QSignalSpy columnMovedSpy(hhv, SIGNAL(columnMoved(int,int,int)));
     QVERIFY(columnMovedSpy.isValid());
     hhv->moveColumn(0, 1);
     QVERIFY(!columnMovedSpy.isEmpty());

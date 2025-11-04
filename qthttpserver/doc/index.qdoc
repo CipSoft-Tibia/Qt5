@@ -10,29 +10,42 @@
     Qt HTTP Server supports building HTTP server functionality into an application.
     Common use cases are exposing the application's functionality through
     REST APIs, or making devices in a trusted environment configurable also via HTTP.
-    The limitations are described in \l{Limitations & Security}.
+    The limitations are described in \l{Limitations and Security}.
 
     \section1 Overview
 
     Qt HTTP Server provides building blocks for embedding a lightweight HTTP server
-    based on \l{RFC 2616} in an application. There are classes for the messages
-    sent and received, and for the various parts of an HTTP server.
+    based on \l{RFC 2616} and \l{RFC 9113} in an application. There are classes for
+    the messages sent and received, and for the various parts of an HTTP server.
 
-    An HTTP server can be created by subclassing the QAbstractHttpServer class and
-    overriding the \l{QAbstractHttpServer::}{handleRequest()} function.
-    The QAbstractHttpServer class provides functions for binding to an existing
-    QTcpServer, QSslServer, or QLocalServer. Dispatching to callables based on
-    incoming URLs can be simplified by using the QHttpServerRouter class.
+    The QHttpServer class has a \l{QHttpServer::}{route()} function to bind
+    callables to different incoming URLs. These callables can take as arguments
+    an \l{QHttpServerRouter::addConverter}{extensible} collection of different
+    copyable types that are parsed from the URL. Types supported are most numeric
+    types, QString, QByteArray, and QUrl. Optionally the callables can also take
+    QHttpServerRequest and QHttpServerResponder objects as arguments. The
+    QHttpServerRequest class contains all the information of an incoming request,
+    and is needed to get the \l{QHttpServerRequest::}{body()} from a POST HTTP
+    request. The callables either return a QHttpServerResponse object or respond
+    using the QHttpServerResponder argument. The QHttpServerResponse class
+    contains a complete response and has numerous constructors for different types,
+    while the QHttpServerResponder has various methods for writing back to the
+    client.
 
-    This can be simplified even further by using the QHttpServer class.
-    The QHttpServer class is a subclass of QAbstractHttpServer and defines an
-    overloaded route function to bind callables to different incoming URLs,
-    and an \l{QHttpServer::}{addAfterRequestHandler()} function to process the response
-    further.
+    The QHttpServer class also has an \l{QHttpServer::}{addAfterRequestHandler()}
+    function to process a QHttpServerResponse further, and a
+    \l{QHttpServer::}{setMissingHandler()} function to override the default
+    behavior of returning \c{404 Not Found} when no routes are matched. From
+    the QAbstractHttpServer class it inherits a \l{QAbstractHttpServer::}{bind()}
+    function to bind to a listening QTcpServer, QSslServer, or QLocalServer.
+
+    An HTTP server can also be created by subclassing the QAbstractHttpServer
+    class and overriding the \l{QAbstractHttpServer::}{handleRequest()} and
+    \l{QAbstractHttpServer::}{missingHandler()} functions.
 
     Runtime logging can be configured as described \l{qthttpserver-logging.html}{here}.
 
-    \section1 Limitations & Security
+    \section1 Limitations and Security
 
     Qt HTTP Server does not have many of the more advanced features and optimizations
     that general-purpose HTTP servers have. It also has not seen
@@ -41,8 +54,12 @@
     or in a trusted network, and do not expose the ports to the internet.
 
     You can add HTTPS support as a basic security measure, though. If Qt is compiled
-    with support for TLS, you can bind QAbstractHttpServer and its subclasses to a
-    QSslServer object, providing Transport Layer Security handling.
+    with support for TLS, you can bind the HTTP server to a QSslServer object,
+    providing Transport Layer Security handling.
+
+    The \l{QSslSocket::SupportedFeature::ServerSideAlpn} feature from the
+    active TLS backend is needed for HTTP/2 support. To check if a backend
+    supports this, use \l{QSslSocket::isFeatureSupported}.
 
     \section1 Using the Module
 

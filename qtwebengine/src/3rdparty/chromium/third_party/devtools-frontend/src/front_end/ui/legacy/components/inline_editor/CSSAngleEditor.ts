@@ -3,7 +3,6 @@
 // found in the LICENSE file.
 
 import * as Common from '../../../../core/common/common.js';
-import * as ComponentHelpers from '../../../components/helpers/helpers.js';
 import * as LitHtml from '../../../lit-html/lit-html.js';
 import * as VisualLogging from '../../../visual_logging/visual_logging.js';
 
@@ -33,7 +32,7 @@ export class CSSAngleEditor extends HTMLElement {
   private readonly shadow = this.attachShadow({mode: 'open'});
   private angle: Angle = {
     value: 0,
-    unit: AngleUnit.Rad,
+    unit: AngleUnit.RAD,
   };
   private onAngleUpdate?: (angle: Angle) => void;
   private background = '';
@@ -44,7 +43,7 @@ export class CSSAngleEditor extends HTMLElement {
 
   connectedCallback(): void {
     this.shadow.adoptedStyleSheets = [cssAngleEditorStyles];
-    ComponentHelpers.SetCSSProperty.set(this, '--clock-dial-length', `${CLOCK_DIAL_LENGTH}px`);
+    this.style.setProperty('--clock-dial-length', `${CLOCK_DIAL_LENGTH}px`);
   }
   set data(data: CSSAngleEditorData) {
     this.angle = data.angle;
@@ -67,7 +66,7 @@ export class CSSAngleEditor extends HTMLElement {
     if (shouldSnapToMultipleOf15Degrees) {
       const multipleInRadian = getRadiansFromAngle({
         value: 15,
-        unit: AngleUnit.Deg,
+        unit: AngleUnit.DEG,
       });
       const closestMultipleOf15Degrees = Math.round(radian / multipleInRadian) * multipleInRadian;
       this.onAngleUpdate(getAngleFromRadians(closestMultipleOf15Degrees, this.angle.unit));
@@ -131,7 +130,7 @@ export class CSSAngleEditor extends HTMLElement {
     // Disabled until https://crbug.com/1079231 is fixed.
     // clang-format off
     render(html`
-      <div class="editor" jslog=${VisualLogging.cssAngleEditor().track({click: true, drag: true})}>
+      <div class="editor" jslog=${VisualLogging.dialog('cssAngleEditor').track({click: true, drag: true, resize: true, keydown: 'Enter|Escape'})}>
         <span class="pointer"></span>
         <div
           class="clock"
@@ -157,7 +156,7 @@ export class CSSAngleEditor extends HTMLElement {
         const radius = this.clockRadius - CLOCK_DIAL_LENGTH - 3 /* clock border */;
         const {translateX, translateY} = get2DTranslationsForAngle({
           value: deg,
-          unit: AngleUnit.Deg,
+          unit: AngleUnit.DEG,
         }, radius);
         const dialStyles = {
           transform: `translate(${translateX}px, ${translateY}px) rotate(${deg}deg)`,
@@ -171,10 +170,9 @@ export class CSSAngleEditor extends HTMLElement {
   }
 }
 
-ComponentHelpers.CustomElements.defineComponent('devtools-css-angle-editor', CSSAngleEditor);
+customElements.define('devtools-css-angle-editor', CSSAngleEditor);
 
 declare global {
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   interface HTMLElementTagNameMap {
     'devtools-css-angle-editor': CSSAngleEditor;
   }

@@ -6,11 +6,12 @@
 
 namespace openscreen::osp {
 
-ProtocolConnection::ProtocolConnection(uint64_t endpoint_id, uint64_t id)
-    : endpoint_id_(endpoint_id), id_(id) {}
+ProtocolConnection::ProtocolConnection() = default;
+
+ProtocolConnection::~ProtocolConnection() = default;
 
 void ProtocolConnection::SetObserver(Observer* observer) {
-  OSP_DCHECK(!observer_ || !observer);
+  OSP_CHECK(!observer_ || !observer);
   observer_ = observer;
 }
 

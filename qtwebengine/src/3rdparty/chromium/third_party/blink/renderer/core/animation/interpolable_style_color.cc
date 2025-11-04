@@ -61,11 +61,11 @@ void InterpolableStyleColor::Composite(const BaseInterpolableColor& other,
 }
 
 void InterpolableStyleColor::Scale(double scale) {
-  NOTREACHED();
+  NOTREACHED_IN_MIGRATION();
 }
 
 void InterpolableStyleColor::Add(const InterpolableValue& other) {
-  NOTREACHED();
+  NOTREACHED_IN_MIGRATION();
 }
 
 Color InterpolableStyleColor::Resolve(
@@ -99,7 +99,7 @@ Color InterpolableStyleColor::Resolve(
 
   if (blend_op_ == BlendOp::kInterpolate) {
     SetupColorInterpolationSpaces(first, second);
-    return Color::InterpolateColors(first.GetColorSpace(), absl::nullopt, first,
+    return Color::InterpolateColors(first.GetColorSpace(), std::nullopt, first,
                                     second, fraction_);
   }
 

@@ -2,6 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#ifdef UNSAFE_BUFFERS_BUILD
+// TODO(crbug.com/351564777): Remove this and convert code to safer constructs.
+#pragma allow_unsafe_buffers
+#endif
+
 #include "device/vr/openxr/openxr_controller.h"
 
 #include <stdint.h>
@@ -30,7 +35,7 @@ const char* GetStringFromType(OpenXrHandednessType type) {
     case OpenXrHandednessType::kRight:
       return "right";
     case OpenXrHandednessType::kCount:
-      NOTREACHED();
+      NOTREACHED_IN_MIGRATION();
       return "";
   }
 }
@@ -39,11 +44,10 @@ std::string GetTopLevelUserPath(OpenXrHandednessType type) {
   return std::string("/user/hand/") + GetStringFromType(type);
 }
 
-absl::optional<gfx::Transform> GetOriginFromTarget(
-    XrTime predicted_display_time,
-    XrSpace origin,
-    XrSpace target,
-    bool* emulated_position) {
+std::optional<gfx::Transform> GetOriginFromTarget(XrTime predicted_display_time,
+                                                  XrSpace origin,
+                                                  XrSpace target,
+                                                  bool* emulated_position) {
   XrSpaceLocation location = {XR_TYPE_SPACE_LOCATION};
   // emulated_position indicates when there is a fallback from a fully-tracked
   // (i.e. 6DOF) type case to some form of orientation-only type tracking
@@ -56,7 +60,7 @@ absl::optional<gfx::Transform> GetOriginFromTarget(
           xrLocateSpace(target, origin, predicted_display_time, &location)) ||
       !(location.locationFlags & XR_SPACE_LOCATION_ORIENTATION_TRACKED_BIT) ||
       !(location.locationFlags & XR_SPACE_LOCATION_POSITION_VALID_BIT)) {
-    return absl::nullopt;
+    return std::nullopt;
   }
 
   *emulated_position = true;
@@ -82,13 +86,13 @@ absl::optional<gfx::Transform> GetOriginFromTarget(
   return gfx::Transform::Compose(decomp);
 }
 
-absl::optional<GamepadBuilder::ButtonData> GetAxisButtonData(
+std::optional<GamepadBuilder::ButtonData> GetAxisButtonData(
     OpenXrAxisType openxr_button_type,
-    absl::optional<GamepadButton> button_data,
+    std::optional<GamepadButton> button_data,
     std::vector<double> axis) {
   GamepadBuilder::ButtonData data;
   if (!button_data || axis.size() != 2) {
-    return absl::nullopt;
+    return std::nullopt;
   }
 
   switch (openxr_button_type) {
@@ -276,7 +280,7 @@ XrResult OpenXrController::SuggestBindings(
             interaction_profile_path, binding_prefix));
         break;
       case OpenXrHandednessType::kCount:
-        NOTREACHED() << "Controller can only be left or right";
+        NOTREACHED_IN_MIGRATION() << "Controller can only be left or right";
         return XR_ERROR_VALIDATION_FAILURE;
     }
 
@@ -310,7 +314,7 @@ device::mojom::XRHandedness OpenXrController::GetHandness() const {
       // LEFT controller and RIGHT controller are currently the only supported
       // controllers. In the future, other controllers such as sound (which
       // does not have a handedness) will be added here.
-      NOTREACHED();
+      NOTREACHED_IN_MIGRATION();
       return device::mojom::XRHandedness::NONE;
   }
 }
@@ -321,13 +325,16 @@ XrResult OpenXrController::Update(XrSpace base_space,
     RETURN_IF_XR_FAILED(UpdateInteractionProfile());
   }
 
-  if (hand_tracker_ &&
-      (hand_joints_enabled_ || IsCurrentProfileFromHandTracker())) {
+  if (IsHandTrackingEnabled() || IsCurrentProfileFromHandTracker()) {
     RETURN_IF_XR_FAILED(
         hand_tracker_->Update(base_space, predicted_display_time));
   }
 
   return XR_SUCCESS;
+}
+
+mojom::XRTargetRayMode OpenXrController::GetTargetRayMode() const {
+  return device::mojom::XRTargetRayMode::POINTING;
 }
 
 mojom::XRInputSourceDescriptionPtr OpenXrController::GetDescription(
@@ -342,9 +349,9 @@ mojom::XRInputSourceDescriptionPtr OpenXrController::GetDescription(
     }
     description_ = device::mojom::XRInputSourceDescription::New();
     description_->handedness = GetHandness();
-    description_->target_ray_mode = device::mojom::XRTargetRayMode::POINTING;
-    description_->profiles =
-        path_helper_->GetInputProfiles(interaction_profile_);
+    description_->target_ray_mode = GetTargetRayMode();
+    description_->profiles = path_helper_->GetInputProfiles(
+        interaction_profile_, hand_joints_enabled_);
   }
 
   description_->input_from_pointer =
@@ -359,7 +366,7 @@ bool OpenXrController::IsCurrentProfileFromHandTracker() const {
              hand_tracker_->controller()->interaction_profile();
 }
 
-absl::optional<GamepadButton> OpenXrController::GetButton(
+std::optional<GamepadButton> OpenXrController::GetButton(
     OpenXrButtonType type) const {
   if (IsCurrentProfileFromHandTracker()) {
     return hand_tracker_->controller()->GetButton(type);
@@ -402,7 +409,7 @@ absl::optional<GamepadButton> OpenXrController::GetButton(
   }
 
   if (!has_value) {
-    return absl::nullopt;
+    return std::nullopt;
   }
 
   return ret;
@@ -418,94 +425,84 @@ std::vector<double> OpenXrController::GetAxis(OpenXrAxisType type) const {
   return {axis_state_v2f.currentState.x, axis_state_v2f.currentState.y};
 }
 
-absl::optional<Gamepad> OpenXrController::GetXrStandardGamepad() const {
-  XRStandardGamepadBuilder builder(GetHandness());
+std::optional<Gamepad> OpenXrController::GetWebXRGamepad() const {
+  // We can return an XR-Standard gamepad as long as the following are true:
+  // 1) It targets via a tracked-pointer
+  // 2) It has a non-null grip space
+  // 3) It has a primary input button.
+  // We assume that any null grip space is due to transient errors, and thus
+  // ignore that requirement for simplicity of developers rather than sending
+  // gamepad add/removed and input source change events due to temporary
+  // tracking loss. We validate the other two requirements below before building
+  // the gamepad.
+  if (GetTargetRayMode() != mojom::XRTargetRayMode::POINTING) {
+    return std::nullopt;
+  }
 
-  absl::optional<GamepadButton> trigger_button =
+  std::optional<GamepadButton> trigger_button =
       GetButton(OpenXrButtonType::kTrigger);
   if (!trigger_button) {
-    return absl::nullopt;
+    return std::nullopt;
   }
+
+  XRStandardGamepadBuilder builder(GetHandness());
   builder.SetPrimaryButton(trigger_button.value());
 
-  absl::optional<GamepadButton> squeeze_button =
+  std::optional<GamepadButton> squeeze_button =
       GetButton(OpenXrButtonType::kSqueeze);
   if (squeeze_button) {
     builder.SetSecondaryButton(squeeze_button.value());
   }
 
-  absl::optional<GamepadButton> trackpad_button =
+  std::optional<GamepadButton> trackpad_button =
       GetButton(OpenXrButtonType::kTrackpad);
   std::vector<double> trackpad_axis = GetAxis(OpenXrAxisType::kTrackpad);
-  absl::optional<GamepadBuilder::ButtonData> trackpad_button_data =
+  std::optional<GamepadBuilder::ButtonData> trackpad_button_data =
       GetAxisButtonData(OpenXrAxisType::kTrackpad, trackpad_button,
                         trackpad_axis);
   if (trackpad_button_data) {
     builder.SetTouchpadData(trackpad_button_data.value());
   }
 
-  absl::optional<GamepadButton> thumbstick_button =
+  std::optional<GamepadButton> thumbstick_button =
       GetButton(OpenXrButtonType::kThumbstick);
   std::vector<double> thumbstick_axis = GetAxis(OpenXrAxisType::kThumbstick);
-  absl::optional<GamepadBuilder::ButtonData> thumbstick_button_data =
+  std::optional<GamepadBuilder::ButtonData> thumbstick_button_data =
       GetAxisButtonData(OpenXrAxisType::kThumbstick, thumbstick_button,
                         thumbstick_axis);
   if (thumbstick_button_data) {
     builder.SetThumbstickData(thumbstick_button_data.value());
   }
 
-  absl::optional<GamepadButton> x_button =
-      GetButton(OpenXrButtonType::kButton1);
+  std::optional<GamepadButton> x_button = GetButton(OpenXrButtonType::kButton1);
   if (x_button) {
     builder.AddOptionalButtonData(x_button.value());
   }
 
-  absl::optional<GamepadButton> y_button =
-      GetButton(OpenXrButtonType::kButton2);
+  std::optional<GamepadButton> y_button = GetButton(OpenXrButtonType::kButton2);
   if (y_button) {
     builder.AddOptionalButtonData(y_button.value());
   }
 
-  absl::optional<GamepadButton> thumbrest_button =
+  std::optional<GamepadButton> thumbrest_button =
       GetButton(OpenXrButtonType::kThumbrest);
   if (thumbrest_button) {
     builder.AddOptionalButtonData(thumbrest_button.value());
   }
 
-  absl::optional<GamepadButton> grasp_button =
+  std::optional<GamepadButton> grasp_button =
       GetButton(OpenXrButtonType::kGrasp);
   if (grasp_button) {
     builder.AddOptionalButtonData(grasp_button.value());
   }
 
-  absl::optional<GamepadButton> shoulder_button =
+  std::optional<GamepadButton> shoulder_button =
       GetButton(OpenXrButtonType::kShoulder);
   if (shoulder_button) {
     builder.AddOptionalButtonData(shoulder_button.value());
   }
 
   return builder.GetGamepad();
-}
-
-absl::optional<Gamepad> OpenXrController::GetWebXRGamepad() const {
-  auto mapping = GamepadMapping::kNone;
-
-  if (IsCurrentProfileFromHandTracker()) {
-    mapping = hand_tracker_->controller()->gamepad_mapping();
-  } else {
-    for (auto& it : GetOpenXrControllerInteractionProfiles()) {
-      if (interaction_profile_ == it.type) {
-        mapping = it.mapping;
-        break;
-      }
-    }
-  }
-
-  if (mapping == GamepadMapping::kXrStandard) {
-    return GetXrStandardGamepad();
-  }
-
-  return absl::nullopt;
 }
 
 XrResult OpenXrController::UpdateInteractionProfile() {
@@ -536,21 +533,26 @@ XrResult OpenXrController::UpdateInteractionProfile() {
   }
 
   if (description_) {
-    description_->profiles =
-        path_helper_->GetInputProfiles(interaction_profile_);
+    description_->profiles = path_helper_->GetInputProfiles(
+        interaction_profile_, hand_joints_enabled_);
   }
   return XR_SUCCESS;
 }
 
+bool OpenXrController::IsHandTrackingEnabled() const {
+  return hand_joints_enabled_ && hand_tracker_ &&
+         hand_tracker_->CanSupplyHandTrackingData();
+}
+
 mojom::XRHandTrackingDataPtr OpenXrController::GetHandTrackingData() {
-  if (!hand_joints_enabled_ || !hand_tracker_) {
+  if (!IsHandTrackingEnabled()) {
     return nullptr;
   }
 
   return hand_tracker_->GetHandTrackingData();
 }
 
-absl::optional<gfx::Transform> OpenXrController::GetMojoFromGripTransform(
+std::optional<gfx::Transform> OpenXrController::GetMojoFromGripTransform(
     XrTime predicted_display_time,
     XrSpace local_space,
     bool* emulated_position) const {
@@ -563,7 +565,7 @@ absl::optional<gfx::Transform> OpenXrController::GetMojoFromGripTransform(
                              grip_pose_space_, emulated_position);
 }
 
-absl::optional<gfx::Transform> OpenXrController::GetGripFromPointerTransform(
+std::optional<gfx::Transform> OpenXrController::GetGripFromPointerTransform(
     XrTime predicted_display_time) const {
   if (IsCurrentProfileFromHandTracker()) {
     return hand_tracker_->controller()->GetGripFromPointerTransform();

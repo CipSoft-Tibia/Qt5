@@ -52,7 +52,7 @@ private slots:
     void testDirection();
 
 private:
-    void loadTestData(const QByteArray &filename);
+    void loadTestData(const QString &filename);
     void updateProperty(int frame);
 
     BMEllipse *m_ellipse = nullptr;
@@ -237,7 +237,7 @@ void tst_BMEllipse::testDirection()
     QVERIFY(m_ellipse->direction() == 0);
 }
 
-void tst_BMEllipse::loadTestData(const QByteArray &filename)
+void tst_BMEllipse::loadTestData(const QString &filename)
 {
     if (m_ellipse) {
         delete m_ellipse;

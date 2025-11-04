@@ -4,10 +4,16 @@
 # The function generates Qt classes from the .proto schema of the well-know types passed in 'ARGN'
 # and adds the generated sources to the 'target'
 function(qt_internal_add_protobuf_wellknown_types target)
+    cmake_parse_arguments(PARSE_ARGV 1 arg "" "" "TYPES")
+
+    if(NOT arg_TYPES)
+        message("The TYPES argument is missing.")
+    endif()
+
     set(lookup_dirs "")
-    if(TARGET WrapProtobuf::WrapLibProtobuf)
-        get_target_property(lookup_dirs WrapProtobuf::WrapLibProtobuf
-            _qt_internal_proto_include_dirs)
+    if(TARGET protobuf::libprotobuf)
+        get_target_property(lookup_dirs protobuf::libprotobuf
+            INTERFACE_INCLUDE_DIRECTORIES)
     endif()
 
     if(QT_PROTOBUF_WELL_KNOWN_TYPES_PROTO_DIR)
@@ -21,7 +27,8 @@ function(qt_internal_add_protobuf_wellknown_types target)
     # them.
     set(generated_headers "")
     set(generated_targets "")
-    foreach(type IN LISTS ARGN)
+    set(types_found "")
+    foreach(type IN LISTS arg_TYPES)
         set(proto_file_name "google/protobuf/${type}.proto")
         unset(proto_file_dir)
         find_path(proto_file_dir
@@ -36,6 +43,7 @@ function(qt_internal_add_protobuf_wellknown_types target)
                 " https://bugreports.qt.io/, so we can adjust the implementation accordingly.")
             continue()
         endif()
+        list(APPEND types_found "${proto_file_name}")
 
         message(DEBUG "Adding well-known type ${proto_file_name}")
 
@@ -121,8 +129,23 @@ function(qt_internal_add_protobuf_wellknown_types target)
             EXPORT_NAME_PREFIX "${INSTALL_CMAKE_NAMESPACE}${target}"
         )
     endif()
+    set_property(TARGET ${target} APPEND PROPERTY
+        _qt_internal_protobuf_wellknown_types ${types_found})
+    set_property(TARGET ${target} APPEND PROPERTY
+        EXPORT_PROPERTIES _qt_internal_protobuf_wellknown_types)
 
-    set_property(TARGET ${target} APPEND PROPERTY EXPORT_PROPERTIES QT_PROTO_INCLUDES)
+    set(export_name "${INSTALL_CMAKE_NAMESPACE}${target}")
+    set(wellknown_types_extras "${export_name}Extras.cmake")
+
+    qt_path_join(config_build_dir ${QT_CONFIG_BUILD_DIR} ${export_name})
+    qt_path_join(config_install_dir ${QT_CONFIG_INSTALL_DIR} ${export_name})
+    set(module_extra_properties_file "${config_build_dir}/${wellknown_types_extras}")
+    configure_file("${CMAKE_CURRENT_SOURCE_DIR}/QtProtobufWellKnownTypesExtras.cmake.in"
+        "${module_extra_properties_file}" @ONLY)
+
+    qt_install(FILES "${module_extra_properties_file}" DESTINATION "${config_install_dir}")
+
+    qt_internal_protobuf_generate_properties(${target})
 endfunction()
 
 # The function generates the header 'alias_file' containing the include of the original

@@ -12,6 +12,8 @@
 #include <QtCore/qjniobject.h>
 #include <QtCore/qjnitypes.h>
 #include <QtCore/qstring.h>
+#include <QSignalSpy>
+#include <QAbstractItemModelTester>
 
 using namespace Qt::Literals;
 
@@ -27,10 +29,19 @@ class tst_AndroidItemModel : public QObject
     QAbstractItemModel *qProxy;
     void resetModel();
 
+    enum DataRole{
+        ROLE_STRING = Qt::UserRole,
+        ROLE_BOOLEAN,
+        ROLE_INTEGER,
+        ROLE_DOUBLE,
+        ROLE_LONG
+    };
+
 private slots:
     void initTestCase_data();
     void init();
     void cleanup();
+    void nonDestructiveChecks();
     void addRow();
     void addColumn();
     void removeRow();
@@ -39,6 +50,8 @@ private slots:
     void fetchMore();
     void hasIndex();
     void data();
+    void setData_data();
+    void setData();
 };
 
 void tst_AndroidItemModel::initTestCase_data()
@@ -64,6 +77,21 @@ void tst_AndroidItemModel::init()
 void tst_AndroidItemModel::cleanup()
 {
     resetModel();
+}
+
+void tst_AndroidItemModel::nonDestructiveChecks()
+{
+    QFETCH_GLOBAL(bool, isList);
+
+    for (int i = 0; i < 10; ++i)
+        jModel.callMethod<void>("addRow");
+
+    if (!isList) {
+        for (int i = 0; i < 10; ++i)
+            jModel.callMethod<void>("addCol");
+    }
+
+    QAbstractItemModelTester tester(qProxy);
 }
 
 void tst_AndroidItemModel::addRow()
@@ -112,11 +140,11 @@ void tst_AndroidItemModel::removeColumn()
 
 void tst_AndroidItemModel::roleNames()
 {
-    const static QHash<int, QByteArray> expectedRoles = { { 0, "stringRole" },
-                                                          { 1, "booleanRole" },
-                                                          { 2, "integerRole" },
-                                                          { 3, "doubleRole" },
-                                                          { 4, "longRole" } };
+    const static QHash<int, QByteArray> expectedRoles = { { ROLE_STRING, "stringRole" },
+                                                          { ROLE_BOOLEAN, "booleanRole" },
+                                                          { ROLE_INTEGER, "integerRole" },
+                                                          { ROLE_DOUBLE, "doubleRole" },
+                                                          { ROLE_LONG, "longRole" } };
     QCOMPARE(qProxy->roleNames(), expectedRoles);
 }
 
@@ -158,11 +186,11 @@ void tst_AndroidItemModel::hasIndex()
 
 void tst_AndroidItemModel::data()
 {
-    const static QHash<int, QMetaType::Type> roleToType = { { 0, QMetaType::QString },
-                                                            { 1, QMetaType::Bool },
-                                                            { 2, QMetaType::Int },
-                                                            { 3, QMetaType::Double },
-                                                            { 4, QMetaType::Long } };
+    const static QHash<int, QMetaType::Type> roleToType = { { ROLE_STRING, QMetaType::QString },
+                                                            { ROLE_BOOLEAN, QMetaType::Bool },
+                                                            { ROLE_INTEGER, QMetaType::Int },
+                                                            { ROLE_DOUBLE, QMetaType::Double },
+                                                            { ROLE_LONG, QMetaType::Long } };
     QFETCH_GLOBAL(int, columnCount);
     QFETCH_GLOBAL(bool, isList);
 
@@ -182,26 +210,71 @@ void tst_AndroidItemModel::data()
                 const QVariant data = qProxy->data(index, role);
                 QCOMPARE_EQ(data.typeId(), roleToType[role]);
                 switch (role) {
-                case 0:
+                case ROLE_STRING:
                     QCOMPARE(data.toString(),
                              "r%1/c%2"_L1.arg(QString::number(r), QString::number(c)));
                     break;
-                case 1:
+                case ROLE_BOOLEAN:
                     QCOMPARE(data.toBool(), ((r + c) % 2) == 0);
                     break;
-                case 2:
+                case ROLE_INTEGER:
                     QCOMPARE(data.toInt(), (c << 8) + r);
                     break;
-                case 3:
+                case ROLE_DOUBLE:
                     QVERIFY(qFuzzyCompare(data.toDouble(), (1.0 + r) / (1.0 + c)));
                     break;
-                case 4:
+                case ROLE_LONG:
                     QCOMPARE(data.toULongLong(), ((c << 8) * (r << 8)));
                     break;
                 }
             }
         }
     }
+}
+
+void tst_AndroidItemModel::setData_data()
+{
+    QTest::addColumn<int>("row");
+    QTest::addColumn<int>("column");
+    QTest::addColumn<int>("role");
+
+    QTest::newRow("role0") << 0 << 0 << int(ROLE_STRING);
+    QTest::newRow("role1") << 0 << 0 << int(ROLE_BOOLEAN);
+    QTest::newRow("role2") << 0 << 0 << int(ROLE_INTEGER);
+}
+
+void tst_AndroidItemModel::setData()
+{
+    QFETCH_GLOBAL(bool, isList);
+    QFETCH(int, row);
+    QFETCH(int, column);
+    QFETCH(int, role);
+
+    QSignalSpy spy(qProxy, &QAbstractItemModel::dataChanged);
+
+    jModel.callMethod<void>("addRow");
+    if (!isList)
+        jModel.callMethod<void>("addCol");
+
+    QCOMPARE_EQ(qProxy->rowCount(), 1);
+    QCOMPARE_EQ(qProxy->columnCount(), 1);
+
+    JQtModelIndex index = jModel.callMethod<JQtModelIndex>("index", row, column, JQtModelIndex());
+    QVERIFY(jModel.callMethod<jboolean>("setData", index, QJniObject(Void()), role));
+    QTRY_COMPARE(spy.count(), 1);
+
+    const QList<QVariant> arguments = spy.takeFirst();
+    QCOMPARE(arguments.size(), 3);
+
+    const auto topLeft = qvariant_cast<QModelIndex>(arguments.at(0));
+    const auto bottomRight = qvariant_cast<QModelIndex>(arguments.at(1));
+    const auto roles = qvariant_cast<QList<int>>(arguments.at(2));
+
+    QCOMPARE(topLeft, qProxy->index(row, column, QModelIndex()));
+    QCOMPARE(bottomRight, qProxy->index(row, column, QModelIndex()));
+    QCOMPARE(roles, QList<int>{role});
+
+    QTRY_COMPARE(jModel.getField<jint>("m_dataChangedCount"), 1);
 }
 
 void tst_AndroidItemModel::resetModel()

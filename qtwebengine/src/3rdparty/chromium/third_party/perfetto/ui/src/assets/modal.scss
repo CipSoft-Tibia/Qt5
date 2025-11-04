@@ -127,13 +127,14 @@
     background-color: #e6e6e6;
     color: rgba(0, 0, 0, 0.8);
     border: 2px solid transparent;
-    border-radius: 4px;
+    border-radius: $pf-border-radius;
     cursor: pointer;
     text-transform: none;
     overflow: visible;
     margin: 5px;
     width: fit-content;
-    transition: border-color 0.25s var(--anim-easing),
+    transition:
+      border-color 0.25s var(--anim-easing),
       background-color 0.25s var(--anim-easing);
 
     &:focus {

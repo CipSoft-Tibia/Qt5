@@ -9,13 +9,13 @@
 
 #include <openssl/base.h>
 #include <openssl/evp.h>
+#include <openssl/pki/signature_verify_cache.h>
 
 #include "cert_errors.h"
 #include "input.h"
 #include "parsed_certificate.h"
-#include "signature_verify_cache.h"
 
-namespace bssl {
+BSSL_NAMESPACE_BEGIN
 
 namespace der {
 struct GeneralizedTime;
@@ -30,8 +30,10 @@ enum class KeyPurpose {
   CLIENT_AUTH,
   SERVER_AUTH_STRICT,  // Skip ANY_EKU when checking, require EKU present in
                        // certificate.
+  SERVER_AUTH_STRICT_LEAF, // Same as above, but only for leaf cert.
   CLIENT_AUTH_STRICT,  // Skip ANY_EKU when checking, require EKU present in
                        // certificate.
+  CLIENT_AUTH_STRICT_LEAF, // Same as above, but only for leaf ce
 };
 
 enum class InitialExplicitPolicy {
@@ -54,18 +56,22 @@ enum class InitialAnyPolicyInhibit {
 class OPENSSL_EXPORT VerifyCertificateChainDelegate {
  public:
   // Implementations should return true if |signature_algorithm| is allowed for
-  // certificate signing, false otherwise. When returning false implementations
-  // can optionally add high-severity errors to |errors| with details on why it
-  // was rejected.
+  // certificate signing, false otherwise. When false is returned, the caller
+  // will add a high severity error of kUnacceptableSignatureAlgorithm to
+  // |errors|. When returning false, implementations can optionally add warnings
+  // to errors to |errors| with details on why it was rejected.  Implementations
+  // may add any further details on why the signature algorithm was deemed
+  // unacceptable by adding warnings to |errors|.
   virtual bool IsSignatureAlgorithmAcceptable(
       SignatureAlgorithm signature_algorithm, CertErrors *errors) = 0;
 
-  // Implementations should return true if |public_key| is acceptable. This is
-  // called for each certificate in the chain, including the target certificate.
-  // When returning false implementations can optionally add high-severity
-  // errors to |errors| with details on why it was rejected.
-  //
-  // |public_key| can be assumed to be non-null.
+  // Implementations should return true if |public_key| is acceptable, false
+  // otherwise. This is called for each certificate in the chain, including the
+  // target certificate.  When false is returned, the caller will add a high
+  // severity error of kUnacceptablePublicKey to |errors|. When returning false,
+  // implementations may add any further details on why the public key was
+  // deemed unacceptable by adding warnings to |errors|.  |public_key| can be
+  // assumed to be non-null.
   virtual bool IsPublicKeyAcceptable(EVP_PKEY *public_key,
                                      CertErrors *errors) = 0;
 
@@ -73,6 +79,13 @@ class OPENSSL_EXPORT VerifyCertificateChainDelegate {
   // verification cache if one exists. nullptr may be returned indicating there
   // is no verification cache.
   virtual SignatureVerifyCache *GetVerifyCache() = 0;
+
+  // This is called to determine if PreCertificates should be accepted, for the
+  // purpose of validating issued PreCertificates in a path. Most callers should
+  // return false here. This should never return true for TLS certificate
+  // validation. If this function returns true the CT precertificate poison
+  // extension will not prevent the certificate from being validated.
+  virtual bool AcceptPreCertificates() = 0;
 
   virtual ~VerifyCertificateChainDelegate();
 };
@@ -257,6 +270,6 @@ OPENSSL_EXPORT bool VerifyCertificateIsSelfSigned(const ParsedCertificate &cert,
                                                   SignatureVerifyCache *cache,
                                                   CertErrors *errors);
 
-}  // namespace bssl
+BSSL_NAMESPACE_END
 
 #endif  // BSSL_PKI_VERIFY_CERTIFICATE_CHAIN_H_

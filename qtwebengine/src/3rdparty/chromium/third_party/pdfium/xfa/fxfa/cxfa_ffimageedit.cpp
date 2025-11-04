@@ -8,8 +8,8 @@
 
 #include <utility>
 
+#include "core/fxcrt/check.h"
 #include "core/fxge/dib/cfx_dibitmap.h"
-#include "third_party/base/check.h"
 #include "v8/include/cppgc/visitor.h"
 #include "xfa/fwl/cfwl_app.h"
 #include "xfa/fwl/cfwl_messagemouse.h"
@@ -145,7 +145,7 @@ void CXFA_FFImageEdit::OnProcessMessage(CFWL_Message* pMessage) {
   m_pOldDelegate->OnProcessMessage(pMessage);
 }
 
-void CXFA_FFImageEdit::OnProcessEvent(CFWL_Event* pEvent) {
+void CXFA_FFImageEdit::OnProcessEvent(pdfium::CFWL_Event* pEvent) {
   CXFA_FFField::OnProcessEvent(pEvent);
   m_pOldDelegate->OnProcessEvent(pEvent);
 }

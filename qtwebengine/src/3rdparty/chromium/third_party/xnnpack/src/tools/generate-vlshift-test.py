@@ -27,7 +27,7 @@ parser.set_defaults(defines=list())
 
 
 def split_ukernel_name(name):
-  match = re.fullmatch(r"xnn_i16_vlshift_ukernel__(.+)_u(\d+)", name)
+  match = re.fullmatch(r"xnn_i16_vlshift_ukernel__(.+)_u(\d+)(v)?", name)
   assert match is not None
   batch_tile = int(match.group(2))
 
@@ -146,11 +146,9 @@ def main(args):
 
 
 #include <gtest/gtest.h>
-
-#include <xnnpack/common.h>
-#include <xnnpack/isa-checks.h>
-
-#include <xnnpack/vlshift.h>
+#include "xnnpack/common.h"
+#include "xnnpack/isa-checks.h"
+#include "xnnpack/vlshift.h"
 #include "vlshift-microkernel-tester.h"
 """.format(specification=options.spec, generator=sys.argv[0])
 

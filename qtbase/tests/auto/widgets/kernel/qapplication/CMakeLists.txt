@@ -21,6 +21,21 @@ qt_internal_add_executable(apphelper_widgets
         Qt::Widgets
 )
 set_target_properties(apphelper_widgets PROPERTIES OUTPUT_NAME apphelper)
+set_target_properties(tst_qapplication PROPERTIES
+    QT_ANDROID_EXTRA_LIBS ${CMAKE_CURRENT_BINARY_DIR}/libmodal_helper_${ANDROID_ABI}.so
+)
+
+if(QT_FEATURE_library)
+    qt_internal_add_cmake_library(apphelper_widgets_plugin
+        MODULE
+        SOURCES
+            ../../../corelib/kernel/qcoreapplication/apphelper_plugin.cpp
+        LIBRARIES
+            Qt::Widgets
+    )
+    qt_autogen_tools_initial_setup(apphelper_widgets_plugin)
+    add_dependencies(apphelper_widgets apphelper_widgets_plugin)
+endif()
 
 add_dependencies(tst_qapplication
     desktopsettingsaware_helper

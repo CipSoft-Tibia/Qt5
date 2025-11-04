@@ -10,6 +10,7 @@ QT_BEGIN_NAMESPACE
     \inqmlmodule QtOpcUa
     \brief Defines an EventFilter for a monitored item.
     \since QtOpcUa 5.13
+    \deprecated [6.9]
 
     An event filter is required for monitoring events on the server.
     It consists of \c select clauses and a \c where clause.

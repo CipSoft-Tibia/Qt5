@@ -33,21 +33,21 @@
 namespace tint::hlsl::writer {
 namespace {
 
-void GenerateHLSL(benchmark::State& state, std::string input_name) {
-    auto res = bench::LoadProgram(input_name);
+void GenerateHLSL_AST(benchmark::State& state, std::string input_name) {
+    auto res = bench::GetWgslProgram(input_name);
     if (res != Success) {
-        state.SkipWithError(res.Failure().reason.str());
+        state.SkipWithError(res.Failure().reason.Str());
         return;
     }
     for (auto _ : state) {
         auto gen_res = Generate(res->program, {});
         if (gen_res != Success) {
-            state.SkipWithError(gen_res.Failure().reason.str());
+            state.SkipWithError(gen_res.Failure().reason.Str());
         }
     }
 }
 
-TINT_BENCHMARK_PROGRAMS(GenerateHLSL);
+TINT_BENCHMARK_PROGRAMS(GenerateHLSL_AST);
 
 }  // namespace
 }  // namespace tint::hlsl::writer

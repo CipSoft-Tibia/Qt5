@@ -7,6 +7,7 @@
 
 #include <atomic>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -27,7 +28,6 @@
 #include "base/trace_event/typed_macros.h"
 #include "services/tracing/public/cpp/perfetto/perfetto_traced_process.h"
 #include "services/tracing/public/cpp/perfetto/track_event_thread_local_event_sink.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "third_party/perfetto/protos/perfetto/trace/chrome/chrome_metadata.pbzero.h"
 #include "third_party/perfetto/protos/perfetto/trace/chrome/chrome_trace_event.pbzero.h"
 
@@ -55,7 +55,7 @@ class COMPONENT_EXPORT(TRACING_CPP) TraceEventMetadataSource
   TraceEventMetadataSource& operator=(const TraceEventMetadataSource&) = delete;
 
   using JsonMetadataGeneratorFunction =
-      base::RepeatingCallback<absl::optional<base::Value::Dict>()>;
+      base::RepeatingCallback<std::optional<base::Value::Dict>()>;
 
   using MetadataGeneratorFunction = base::RepeatingCallback<void(
       perfetto::protos::pbzero::ChromeMetadataPacket*,
@@ -79,16 +79,12 @@ class COMPONENT_EXPORT(TRACING_CPP) TraceEventMetadataSource
       const perfetto::DataSourceConfig& data_source_config) override;
   void StopTracingImpl(base::OnceClosure stop_complete_callback) override;
   void Flush(base::RepeatingClosure flush_complete_callback) override;
-#if BUILDFLAG(USE_PERFETTO_CLIENT_LIBRARY)
   base::SequencedTaskRunner* GetTaskRunner() override;
-#endif
 
   void ResetForTesting();
 
-#if BUILDFLAG(USE_PERFETTO_CLIENT_LIBRARY)
   using DataSourceProxy =
       PerfettoTracedProcess::DataSourceProxy<TraceEventMetadataSource>;
-#endif
 
  private:
   friend class base::NoDestructor<TraceEventMetadataSource>;
@@ -112,10 +108,10 @@ class COMPONENT_EXPORT(TRACING_CPP) TraceEventMetadataSource
 
   void WriteMetadataPacket(perfetto::protos::pbzero::ChromeMetadataPacket*,
                            bool privacy_filtering_enabled);
-  absl::optional<base::Value::Dict> GenerateTraceConfigMetadataDict();
+  std::optional<base::Value::Dict> GenerateTraceConfigMetadataDict();
 
   // All members are protected by |lock_|.
-  // TODO(crbug.com/1138893): Change annotations to GUARDED_BY
+  // TODO(crbug.com/40153181): Change annotations to GUARDED_BY
   base::Lock lock_;
   std::vector<JsonMetadataGeneratorFunction> json_generator_functions_
       GUARDED_BY(lock_);
@@ -126,9 +122,6 @@ class COMPONENT_EXPORT(TRACING_CPP) TraceEventMetadataSource
   const scoped_refptr<base::SequencedTaskRunner> origin_task_runner_
       GUARDED_BY_FIXME(lock_);
 
-#if !BUILDFLAG(USE_PERFETTO_CLIENT_LIBRARY)
-  std::unique_ptr<perfetto::TraceWriter> trace_writer_ GUARDED_BY_FIXME(lock_);
-#endif
   bool privacy_filtering_enabled_ GUARDED_BY_FIXME(lock_) = false;
   std::string chrome_config_ GUARDED_BY(lock_);
   std::unique_ptr<base::trace_event::TraceConfig> parsed_chrome_config_

@@ -19,7 +19,7 @@ declare var Y: {
         setLighthouseChannel(e: any): void;
         document(): any;
         isDevTools(): boolean;
-        find(e: any, t: any): any;
+        find(e: any, t?: any): any;
         maybeFind(e: any, t: any): any;
         findAll(e: any, t: any): any[];
         fireEventOn(e: any, t: any, n: any): void;
@@ -100,15 +100,15 @@ declare var re: {
         _saveFile(e: any): void;
     };
 };
-declare namespace Mt {
-    export { zt as registerLocaleData };
-    export { Lt as hasLocale };
+declare namespace Lt {
+    export { At as registerLocaleData };
+    export { Ct as hasLocale };
 }
-declare function St(r: any, e?: {}): HTMLElement;
-declare function Ct(r: any, e: any): {
+declare function kt(r: any, e?: {}): HTMLElement;
+declare function St(r: any, e: any): {
     lhr: any;
     missingIcuMessageIds: any[];
 };
-declare function zt(r: any, e: any): void;
-declare function Lt(r: any): boolean;
-export { Y as DOM, ne as ReportRenderer, re as ReportUIFeatures, Mt as format, St as renderReport, Ct as swapLocale };
+declare function At(r: any, e: any): void;
+declare function Ct(r: any): boolean;
+export { Y as DOM, ne as ReportRenderer, re as ReportUIFeatures, Lt as format, kt as renderReport, St as swapLocale };

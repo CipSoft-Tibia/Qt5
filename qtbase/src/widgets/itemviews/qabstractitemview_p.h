@@ -25,7 +25,6 @@
 #include "QtGui/qpainter.h"
 #include "QtGui/qregion.h"
 
-#include "QtCore/qdebug.h"
 #include "QtCore/qbasictimer.h"
 #include "QtCore/qelapsedtimer.h"
 #include <QtCore/qpointer.h>
@@ -352,6 +351,7 @@ public:
     Qt::KeyboardModifiers pressedModifiers;
     QPoint pressedPosition;
     QPoint draggedPosition;
+    QPoint draggedPositionOffset;
     bool pressedAlreadySelected;
     bool releaseFromDoubleClick;
 
@@ -421,6 +421,8 @@ public:
     // Whether scroll mode has been explicitly set or its value come from SH_ItemView_ScrollMode
     bool verticalScrollModeSet;
     bool horizontalScrollModeSet;
+
+    int updateThreshold;
 
     virtual QRect visualRect(const QModelIndex &index) const { return q_func()->visualRect(index); }
 

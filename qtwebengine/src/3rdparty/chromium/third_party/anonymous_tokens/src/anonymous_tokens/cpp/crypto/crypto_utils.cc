@@ -30,7 +30,9 @@
 #include "absl/strings/string_view.h"
 #include "anonymous_tokens/cpp/crypto/constants.h"
 #include "anonymous_tokens/cpp/shared/status_utils.h"
+#include <openssl/base.h>
 #include <openssl/bytestring.h>
+#include <openssl/digest.h>
 #include <openssl/err.h>
 #include <openssl/hkdf.h>
 #include <openssl/mem.h>
@@ -222,7 +224,7 @@ absl::StatusOr<bssl::UniquePtr<BIGNUM>> GetRsaSqrtTwo(int x) {
 
   // Check that hard-coded result is correct length.
   int sqrt2_bits = 32 * sqrt2_size;
-  if (BN_num_bits(sqrt2.get()) != sqrt2_bits) {
+  if (BN_num_bits(sqrt2.get()) != static_cast<unsigned int>(sqrt2_bits)) {
     return absl::InternalError("RSA sqrt(2) is not correct length.");
   }
 
@@ -242,7 +244,7 @@ absl::StatusOr<bssl::UniquePtr<BIGNUM>> GetRsaSqrtTwo(int x) {
   }
 
   // Check that 2^(x - 1/2) is correct length.
-  if (BN_num_bits(sqrt2.get()) != x) {
+  if (BN_num_bits(sqrt2.get()) != static_cast<unsigned int>(x)) {
     return absl::InternalError(
         "2^(x-1/2) is not correct length after shifting.");
   }
@@ -390,7 +392,7 @@ absl::StatusOr<bssl::UniquePtr<BIGNUM>> ComputeExponentWithPublicMetadata(
   }
   int modulus_bytes = BN_num_bytes(&n);
   // The integer modulus_bytes is expected to be a power of 2.
-  int prime_bytes = modulus_bytes / 2;
+  unsigned int prime_bytes = modulus_bytes / 2;
 
   ANON_TOKENS_ASSIGN_OR_RETURN(std::string rsa_modulus_str,
                                BignumToString(n, modulus_bytes));
@@ -450,7 +452,7 @@ absl::Status RsaBlindSignatureVerify(const int salt_length,
                                      RSA* rsa_public_key) {
   ANON_TOKENS_ASSIGN_OR_RETURN(std::string message_digest,
                                ComputeHash(message, *sig_hash));
-  const int hash_size = EVP_MD_size(sig_hash);
+  const size_t hash_size = EVP_MD_size(sig_hash);
   // Make sure the size of the digest is correct.
   if (message_digest.size() != hash_size) {
     return absl::InvalidArgumentError(
@@ -459,7 +461,8 @@ absl::Status RsaBlindSignatureVerify(const int salt_length,
                      hash_size, " got ", message_digest.size()));
   }
   // Make sure the size of the signature is correct.
-  const int rsa_modulus_size = BN_num_bytes(RSA_get0_n(rsa_public_key));
+  const unsigned int rsa_modulus_size =
+      BN_num_bytes(RSA_get0_n(rsa_public_key));
   if (signature.size() != rsa_modulus_size) {
     return absl::InvalidArgumentError(
         "Signature size not equal to modulus size.");
@@ -473,7 +476,9 @@ absl::Status RsaBlindSignatureVerify(const int salt_length,
       reinterpret_cast<uint8_t*>(recovered_message_digest.data()),
       /*rsa=*/rsa_public_key,
       /*padding=*/RSA_NO_PADDING);
-  if (recovered_message_digest_size != rsa_modulus_size) {
+  if (recovered_message_digest_size == -1 ||
+      static_cast<unsigned int>(recovered_message_digest_size) !=
+          rsa_modulus_size) {
     return absl::InvalidArgumentError(
         absl::StrCat("Invalid signature size (likely an incorrect key is "
                      "used); expected ",
@@ -610,6 +615,29 @@ absl::StatusOr<std::string> RsaSsaPssPublicKeyToDerEncoding(const RSA* rsa) {
   OPENSSL_free(rsa_ssa_pss_public_key_der);
   // Return the DER encoding as string.
   return rsa_ssa_pss_public_key_der_str;
+}
+
+absl::StatusOr<bool> PrivacyPassTruncatedTokenKeyIdCollision(
+    const RSA* public_key, const RSA* other_public_key) {
+  const EVP_MD* sha256 = EVP_sha256();
+  ANON_TOKENS_ASSIGN_OR_RETURN(std::string public_key_der,
+                               RsaSsaPssPublicKeyToDerEncoding(public_key));
+  ANON_TOKENS_ASSIGN_OR_RETURN(std::string token_key_id,
+                               ComputeHash(public_key_der, *sha256));
+  ANON_TOKENS_ASSIGN_OR_RETURN(
+      std::string other_public_key_der,
+      RsaSsaPssPublicKeyToDerEncoding(other_public_key));
+  ANON_TOKENS_ASSIGN_OR_RETURN(std::string other_token_key_id,
+                               ComputeHash(other_public_key_der, *sha256));
+  if (token_key_id.empty() || other_token_key_id.empty()) {
+    return absl::InternalError(
+        "Empty hash produced for inputted RSA public key.");
+  }
+  if (token_key_id[token_key_id.size() - 1] ==
+      other_token_key_id[other_token_key_id.size() - 1]) {
+    return true;
+  }
+  return false;
 }
 
 }  // namespace anonymous_tokens

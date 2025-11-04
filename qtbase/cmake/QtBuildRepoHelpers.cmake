@@ -250,6 +250,7 @@ macro(qt_build_repo_begin)
     qt_enable_cmake_languages()
 
     qt_internal_generate_binary_strip_wrapper()
+    qt_internal_create_qt_configure_redo_script()
 
     if(NOT TARGET sync_headers)
         add_custom_target(sync_headers)
@@ -419,6 +420,23 @@ macro(qt_build_repo_end)
 
     if(NOT QT_SUPERBUILD)
         qt_internal_qt_configure_end()
+        if(QT_WILL_INSTALL AND QT_INSTALL_CONFIG_INFO_FILES)
+            string(TOLOWER "${PROJECT_NAME}" repo_name)
+            qt_install(
+                FILES
+                    "${CMAKE_BINARY_DIR}/config.opt"
+                RENAME
+                    "config_${repo_name}.opt"
+                DESTINATION ${INSTALL_DATADIR}
+            )
+            qt_install(
+                FILES
+                    "${CMAKE_BINARY_DIR}/config.summary"
+                RENAME
+                    "config_${repo_name}.summary"
+                DESTINATION ${INSTALL_DATADIR}
+            )
+        endif()
     endif()
 
     list(POP_BACK CMAKE_MESSAGE_CONTEXT)
@@ -735,6 +753,16 @@ macro(qt_internal_find_standalone_parts_config_files)
 endmacro()
 
 macro(qt_build_tests)
+    # Indicates that we are configuring tests now
+    set(QT_INTERNAL_CONFIGURING_TESTS TRUE)
+
+    # Set this as a directory scoped variable, so we can easily check the variable in child
+    # directories, to prevent certain code from running, like sbom file checks for all targets
+    # created in tests subdir.
+    if(NOT QT_BUILD_TESTS_BY_DEFAULT)
+        set(QT_INTERNAL_TEST_TARGETS_EXCLUDE_FROM_ALL TRUE)
+    endif()
+
     # Tests are not unity-ready.
     set(CMAKE_UNITY_BUILD OFF)
 
@@ -796,6 +824,7 @@ macro(qt_build_tests)
     endif()
 
     set(CMAKE_UNITY_BUILD ${QT_UNITY_BUILD})
+    unset(QT_INTERNAL_CONFIGURING_TESTS)
 endmacro()
 
 function(qt_compute_relative_path_from_cmake_config_dir_to_prefix)

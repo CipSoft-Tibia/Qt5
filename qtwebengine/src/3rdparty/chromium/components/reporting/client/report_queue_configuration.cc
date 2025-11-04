@@ -86,7 +86,7 @@ ReportQueueConfiguration::Builder ReportQueueConfiguration::Builder::SetDMToken(
 
 ReportQueueConfiguration::Builder
 ReportQueueConfiguration::Builder::SetSourceInfo(
-    absl::optional<SourceInfo> source_info) {
+    std::optional<SourceInfo> source_info) {
   if (final_value_.has_value()) {
     auto status = final_value_.value()->SetSourceInfo(std::move(source_info));
     if (!status.ok()) {
@@ -113,21 +113,6 @@ ReportQueueConfiguration::Builder ReportQueueConfiguration::Create(
   return Builder(settings);
 }
 
-// static
-StatusOr<std::unique_ptr<ReportQueueConfiguration>>
-ReportQueueConfiguration::Create(
-    EventType event_type,
-    Destination destination,
-    PolicyCheckCallback policy_check_callback,
-    std::unique_ptr<RateLimiterInterface> rate_limiter,
-    int64_t reserved_space) {
-  return ReportQueueConfiguration::Builder({.event_type = event_type,
-                                            .destination = destination,
-                                            .reserved_space = reserved_space})
-      .SetPolicyCheckCallback(policy_check_callback)
-      .SetRateLimiter(std::move(rate_limiter))
-      .Build();
-}
 
 // static
 StatusOr<std::unique_ptr<ReportQueueConfiguration>>
@@ -206,13 +191,13 @@ Status ReportQueueConfiguration::SetReservedSpace(int64_t reserved_space) {
 }
 
 Status ReportQueueConfiguration::SetSourceInfo(
-    absl::optional<SourceInfo> source_info) {
+    std::optional<SourceInfo> source_info) {
   if (source_info_.has_value()) {
     return Status(error::ALREADY_EXISTS, "SourceInfo cannot be reset");
   }
   if (!source_info.has_value()) {
     // No source info specified. Also the default.
-    source_info_ = absl::nullopt;
+    source_info_ = std::nullopt;
     return Status::StatusOK();
   }
 

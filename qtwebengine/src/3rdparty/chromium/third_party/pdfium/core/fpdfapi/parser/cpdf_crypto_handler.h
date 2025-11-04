@@ -10,14 +10,16 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include <array>
 #include <memory>
 
 #include "core/fdrm/fx_crypt.h"
 #include "core/fxcrt/binary_buffer.h"
 #include "core/fxcrt/bytestring.h"
+#include "core/fxcrt/data_vector.h"
 #include "core/fxcrt/fx_memory_wrappers.h"
 #include "core/fxcrt/retain_ptr.h"
-#include "third_party/base/containers/span.h"
+#include "core/fxcrt/span.h"
 
 class CPDF_Dictionary;
 class CPDF_Object;
@@ -33,16 +35,14 @@ class CPDF_CryptoHandler {
 
   static bool IsSignatureDictionary(const CPDF_Dictionary* dictionary);
 
-  CPDF_CryptoHandler(Cipher cipher, const uint8_t* key, size_t keylen);
+  CPDF_CryptoHandler(Cipher cipher, pdfium::span<const uint8_t> key);
   ~CPDF_CryptoHandler();
 
   bool DecryptObjectTree(RetainPtr<CPDF_Object> object);
-  size_t EncryptGetSize(pdfium::span<const uint8_t> source) const;
-  void EncryptContent(uint32_t objnum,
-                      uint32_t gennum,
-                      pdfium::span<const uint8_t> source,
-                      uint8_t* dest_buf,
-                      size_t& dest_size) const;
+
+  DataVector<uint8_t> EncryptContent(uint32_t objnum,
+                                     uint32_t gennum,
+                                     pdfium::span<const uint8_t> source) const;
 
   bool IsCipherAES() const;
 
@@ -59,7 +59,7 @@ class CPDF_CryptoHandler {
   const size_t m_KeyLen;
   const Cipher m_Cipher;
   std::unique_ptr<CRYPT_aes_context, FxFreeDeleter> m_pAESContext;
-  uint8_t m_EncryptKey[32] = {};
+  std::array<uint8_t, 32> m_EncryptKey = {};
 };
 
 #endif  // CORE_FPDFAPI_PARSER_CPDF_CRYPTO_HANDLER_H_

@@ -1,6 +1,7 @@
 // Copyright (C) 2017 The Qt Company Ltd.
 // Copyright (C) 2017 Intel Corporation.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qtemporarydir.h"
 
@@ -67,12 +68,11 @@ static QString defaultTemplateName()
 void QTemporaryDirPrivate::create(const QString &templateName)
 {
     QTemporaryFileName tfn(templateName);
+    constexpr auto perms = QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner;
     for (int i = 0; i < 256; ++i) {
         tfn.generateNext();
         QFileSystemEntry fileSystemEntry(tfn.path, QFileSystemEntry::FromNativePath());
-        if (QFileSystemEngine::createDirectory(fileSystemEntry, false,
-                                               QFile::ReadOwner | QFile::WriteOwner
-                                                       | QFile::ExeOwner)) {
+        if (QFileSystemEngine::mkdir(fileSystemEntry, perms)) {
             success = true;
             pathOrError = fileSystemEntry.filePath();
             return;

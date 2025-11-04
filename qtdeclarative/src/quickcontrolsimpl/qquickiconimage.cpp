@@ -24,50 +24,53 @@ bool QQuickIconImagePrivate::updateDevicePixelRatio(qreal targetDevicePixelRatio
     return QQuickImagePrivate::updateDevicePixelRatio(targetDevicePixelRatio);
 }
 
-void QQuickIconImagePrivate::updateIcon()
+void QQuickIconImage::load()
 {
-    Q_Q(QQuickIconImage);
+    Q_D(QQuickIconImage);
     // Both geometryChange() and QQuickImageBase::sourceSizeChanged()
-    // (which we connect to updateIcon() in the constructor) can be called as a result
-    // of updateIcon() changing the various sizes, so we must check that we're not recursing.
-    if (updatingIcon)
+    // (which we connect to load() in the constructor) can be called as a result
+    // of load() changing the various sizes, so we must check that we're not recursing.
+    if (d->updatingIcon)
         return;
 
-    updatingIcon = true;
+    d->updatingIcon = true;
 
-    QSize size = sourcesize;
+    QSize size = d->sourcesize;
     // If no size is specified for theme icons, it will use the smallest available size.
     if (size.width() <= 0)
-        size.setWidth(q->width());
+        size.setWidth(width());
     if (size.height() <= 0)
-        size.setHeight(q->height());
+        size.setHeight(height());
 
-    const qreal dpr = calculateDevicePixelRatio();
-    const QIconLoaderEngineEntry *entry = QIconLoaderEngine::entryForSize(icon, size * dpr, qCeil(dpr));
+    const qreal dpr = d->calculateDevicePixelRatio();
 
-    if (entry) {
-        QQmlContext *context = qmlContext(q);
+    if (const auto *entry = QIconLoaderEngine::entryForSize(d->icon, size * dpr, qCeil(dpr))) {
+        // First, try to load an icon from the theme (index.theme).
+        QQmlContext *context = qmlContext(this);
         const QUrl entryUrl = QUrl::fromLocalFile(entry->filename);
-        url = context ? context->resolvedUrl(entryUrl) : entryUrl;
-        isThemeIcon = true;
-    } else if (source.isEmpty()) {
-        std::unique_ptr<QIconEngine> iconEngine(QIconLoader::instance()->iconEngine(icon.iconName));
+        d->url = context ? context->resolvedUrl(entryUrl) : entryUrl;
+        d->isThemeIcon = true;
+    } else if (d->source.isEmpty()) {
+        // Then, try loading it through a platform icon engine.
+        std::unique_ptr<QIconEngine> iconEngine(QIconLoader::instance()->iconEngine(d->icon.iconName));
         if (iconEngine && !iconEngine->isNull()) {
             // ### TODO that's the best we can do for now to select different pixmaps based on the
             // QuickItem's state. QQuickIconImage cannot know about the state of the control that
             // uses it without adding more properties that are then synced up with the control.
-            const QIcon::Mode mode = q->isEnabled() ? QIcon::Normal : QIcon::Disabled;
+            const QIcon::Mode mode = isEnabled() ? QIcon::Normal : QIcon::Disabled;
             const QImage image = iconEngine->scaledPixmap(size, mode, QIcon::Off, dpr).toImage();
-            setImage(image);
+            d->devicePixelRatio = image.devicePixelRatio();
+            d->setImage(image);
         }
     } else {
-        url = source;
-        isThemeIcon = false;
+        // Either we failed to load a named icon or the source was set instead; use that.
+        d->url = d->source;
+        d->isThemeIcon = false;
     }
-    if (!url.isEmpty())
-        q->load();
+    if (!d->url.isEmpty())
+        QQuickImage::load();
 
-    updatingIcon = false;
+    d->updatingIcon = false;
 }
 
 void QQuickIconImagePrivate::updateFillMode()
@@ -120,7 +123,7 @@ void QQuickIconImage::setName(const QString &name)
     if (d->icon.iconName.isEmpty())
         d->icon.iconName = name;
     if (isComponentComplete())
-        d->updateIcon();
+        load();
     emit nameChanged();
 }
 
@@ -138,7 +141,7 @@ void QQuickIconImage::setColor(const QColor &color)
 
     d->color = color;
     if (isComponentComplete())
-        d->updateIcon();
+        load();
     emit colorChanged();
 }
 
@@ -150,7 +153,7 @@ void QQuickIconImage::setSource(const QUrl &source)
 
     d->source = source;
     if (isComponentComplete())
-        d->updateIcon();
+        load();
     emit sourceChanged(source);
 }
 
@@ -169,26 +172,15 @@ void QQuickIconImage::snapPositionTo(QPointF pos)
 
 void QQuickIconImage::componentComplete()
 {
-    Q_D(QQuickIconImage);
     QQuickImage::componentComplete();
-    d->updateIcon();
-    QObjectPrivate::connect(this, &QQuickImageBase::sourceSizeChanged, d, &QQuickIconImagePrivate::updateIcon);
+    load();
 }
 
 void QQuickIconImage::geometryChange(const QRectF &newGeometry, const QRectF &oldGeometry)
 {
-    Q_D(QQuickIconImage);
     QQuickImage::geometryChange(newGeometry, oldGeometry);
     if (isComponentComplete() && newGeometry.size() != oldGeometry.size())
-        d->updateIcon();
-}
-
-void QQuickIconImage::itemChange(ItemChange change, const ItemChangeData &value)
-{
-    Q_D(QQuickIconImage);
-    if (change == ItemDevicePixelRatioHasChanged)
-        d->updateIcon();
-    QQuickImage::itemChange(change, value);
+        load();
 }
 
 void QQuickIconImage::pixmapChange()

@@ -1,9 +1,10 @@
 // Copyright (C) 2017 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "ozone_platform_qt.h"
 
-#if defined(USE_OZONE)
+#include "build/build_config.h"
 #include "base/no_destructor.h"
 #include "base/task/thread_pool.h"
 #include "media/gpu/buildflags.h"
@@ -79,6 +80,7 @@ public:
         return properties;
     }
     bool IsNativePixmapConfigSupported(gfx::BufferFormat format, gfx::BufferUsage usage) const override;
+    bool IsWindowCompositingSupported() const override { return false; }
 
 private:
     bool InitializeUI(const ui::OzonePlatform::InitParams &) override;
@@ -86,7 +88,7 @@ private:
 
     void InitScreen(ui::PlatformScreen *) override {}
 
-    absl::optional<bool> m_supportsNativePixmaps;
+    std::optional<bool> m_supportsNativePixmaps;
     std::unique_ptr<QtWebEngineCore::SurfaceFactoryQt> surface_factory_ozone_;
     std::unique_ptr<CursorFactory> cursor_factory_;
 
@@ -215,7 +217,7 @@ bool OzonePlatformQt::InitializeUI(const ui::OzonePlatform::InitParams &)
         m_keyboardLayoutEngine = std::make_unique<StubKeyboardLayoutEngine>();
     } else {
         m_keyboardLayoutEngine = std::make_unique<XkbKeyboardLayoutEngine>(m_xkbEvdevCodeConverter);
-        m_keyboardLayoutEngine->SetCurrentLayoutByName(layout);
+        m_keyboardLayoutEngine->SetCurrentLayoutByName(layout, base::DoNothing());
     }
 #else
     m_keyboardLayoutEngine = std::make_unique<StubKeyboardLayoutEngine>();
@@ -279,7 +281,4 @@ gfx::ClientNativePixmapFactory *CreateClientNativePixmapFactoryQt()
     return gfx::CreateClientNativePixmapFactoryDmabuf();
 }
 
-}  // namespace ui
-
-#endif
-
+} // namespace ui

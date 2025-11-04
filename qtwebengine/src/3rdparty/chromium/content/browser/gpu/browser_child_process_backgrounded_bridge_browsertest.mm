@@ -6,6 +6,7 @@
 
 #include "base/mac/mac_util.h"
 #include "base/process/process.h"
+#include "base/run_loop.h"
 #include "base/test/scoped_feature_list.h"
 #include "content/browser/gpu/gpu_process_host.h"
 #include "content/public/browser/browser_child_process_host.h"
@@ -61,7 +62,8 @@ class BrowserChildProcessBackgroundedBridgeTest
   // Waits until the port for the GPU process is available.
   void WaitForPort() {
     auto* port_provider = content::BrowserChildProcessHost::GetPortProvider();
-    DCHECK(port_provider->TaskForPid(
+    // Note: On macOS, a process id and a process handle are the same thing.
+    DCHECK(port_provider->TaskForHandle(
                content::GpuProcessHost::Get()->process_id()) == MACH_PORT_NULL);
     port_provider->AddObserver(this);
     base::RunLoop run_loop;
@@ -115,7 +117,7 @@ IN_PROC_BROWSER_TEST_F(BrowserChildProcessBackgroundedBridgeTest,
             base::Process::Priority::kUserBlocking);
 }
 
-// TODO(crbug.com/1426160): Disabled because this test is flaky.
+// TODO(crbug.com/40899195): Disabled because this test is flaky.
 IN_PROC_BROWSER_TEST_F(BrowserChildProcessBackgroundedBridgeTest,
                        DISABLED_InitiallyBackgrounded) {
   // Set the browser process as backgrounded.

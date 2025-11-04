@@ -26,6 +26,7 @@ class Q_GRAPHS_EXPORT QHeightMapSurfaceDataProxy : public QSurfaceDataProxy
     Q_PROPERTY(float minYValue READ minYValue WRITE setMinYValue NOTIFY minYValueChanged FINAL)
     Q_PROPERTY(float maxYValue READ maxYValue WRITE setMaxYValue NOTIFY maxYValueChanged FINAL)
     Q_PROPERTY(bool autoScaleY READ autoScaleY WRITE setAutoScaleY NOTIFY autoScaleYChanged FINAL)
+    QML_NAMED_ELEMENT(HeightMapSurfaceDataProxy)
 
 public:
     explicit QHeightMapSurfaceDataProxy(QObject *parent = nullptr);

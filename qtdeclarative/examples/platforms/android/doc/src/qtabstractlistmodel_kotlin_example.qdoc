@@ -8,6 +8,8 @@
     a QML view.
     \ingroup qtquickexamples
 
+    \include running-qtquick-for-android-examples.qdocinc
+
     \section1 Overview
 
     \image qtabstractlistmodel_portrait.png

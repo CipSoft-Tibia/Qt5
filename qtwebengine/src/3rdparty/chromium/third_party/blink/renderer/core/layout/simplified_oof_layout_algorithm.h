@@ -13,33 +13,41 @@
 
 namespace blink {
 
-struct PhysicalFragmentLink;
-
-// This is more a copy-and-append algorithm than a layout algorithm.
-// This algorithm will only run when we are trying to add OOF-positioned
-// elements to an already laid out fragmentainer. It performs a copy of the
-// previous |PhysicalFragment| and appends the OOF-positioned elements to the
-// |container_builder_|.
+// Simplified fragmentainer layout algorithm, for OOF descendants. When regular
+// layout hasn't created enough fragmentainers (because the OOFs were not known
+// at that point), this algorithm will help build additional fragmentainers.
+// Additionally, it is used to add additional OOF children that belong in an
+// existing fragmentainer, in which case the resulting fragment returned from
+// Layout() will just be used to merge the new children into the existing
+// existing fragmentainer, by mutating it.
 class CORE_EXPORT SimplifiedOofLayoutAlgorithm
     : public LayoutAlgorithm<BlockNode, BoxFragmentBuilder, BlockBreakToken> {
  public:
+  // ``last_fragmentainer`` is the last previously generated fragmentainer,
+  // which this algorithm will use as a basis in order to fill out some fields
+  // in the builder.
   SimplifiedOofLayoutAlgorithm(const LayoutAlgorithmParams&,
-                               const PhysicalBoxFragment&,
-                               bool is_new_fragment);
+                               const PhysicalBoxFragment& last_fragmentainer);
 
-  const LayoutResult* Layout() override;
-  MinMaxSizesResult ComputeMinMaxSizes(const MinMaxSizesFloatInput&) override {
-    NOTREACHED();
+  const LayoutResult* Layout();
+  MinMaxSizesResult ComputeMinMaxSizes(const MinMaxSizesFloatInput&) {
+    NOTREACHED_IN_MIGRATION();
     return MinMaxSizesResult();
   }
 
-  void AppendOutOfFlowResult(const LayoutResult* child);
+  // To be called when creating a new column based on an existing one. The break
+  // token passed is the outgoing break token from the last column created so
+  // far.
+  void ResumeColumnLayout(const BlockBreakToken* old_fragment_break_token);
 
- private:
-  void AddChildFragment(const PhysicalFragmentLink& old_fragment);
+  void SetHasSubsequentChildren() {
+    // There will be more fragmentainers after this one. Make sure that an
+    // outgoing break token is created, regardless of whether any OOFs in this
+    // fragmentainer break or not.
+    container_builder_.SetHasSubsequentChildren();
+  }
 
-  const WritingDirectionMode writing_direction_;
-  PhysicalSize previous_physical_container_size_;
+  void AppendOutOfFlowResult(const LayoutResult*);
 };
 
 }  // namespace blink

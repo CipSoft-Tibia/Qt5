@@ -10,7 +10,7 @@
 QT_BEGIN_NAMESPACE
 
 Q_LOGGING_CATEGORY(lcSGCurveProcessor, "qt.quick.curveprocessor");
-Q_LOGGING_CATEGORY(lcSGCurveIntersectionSolver, "qt.quick.curveprocessor.intersections");
+Q_STATIC_LOGGING_CATEGORY(lcSGCurveIntersectionSolver, "qt.quick.curveprocessor.intersections");
 
 namespace {
 // Input coordinate space is pre-mapped so that (0, 0) maps to [0, 0] in uv space.
@@ -224,8 +224,8 @@ static bool isIntersecting(const TrianglePoints &t1, const TrianglePoints &t2, Q
     constexpr int maxIterations = 7; // Maximum iterations allowed for Newton
 
     // Convert to double to get better accuracy.
-    QPointF td1[3] = { t1[0].toPointF(), t1[1].toPointF(), t1[2].toPointF() };
-    QPointF td2[3] = { t2[0].toPointF(), t2[1].toPointF(), t2[2].toPointF() };
+    std::array<QPointF, 3> td1 = { t1[0].toPointF(), t1[1].toPointF(), t1[2].toPointF() };
+    std::array<QPointF, 3> td2 = { t2[0].toPointF(), t2[1].toPointF(), t2[2].toPointF() };
 
     // F = P1(t1) - P2(t2) where P1 and P2 are bezier curve functions.
     // F = (0, 0) at the intersection.
@@ -1546,13 +1546,14 @@ void QSGCurveProcessor::processStroke(const QQuadPath &strokePath,
     auto triangles = customTriangulator2(thePath, penWidth, joinStyle, capStyle, miterLimit);
 
     auto addCurveTriangle = [&](const QQuadPath::Element &element, const TriangleData &t) {
+        QSGCurveStrokeNode::TriangleFlags flags;
+        flags.setFlag(QSGCurveStrokeNode::TriangleFlag::Line, element.isLine());
         addTriangle(t.points,
                     { element.startPoint(), element.controlPoint(), element.endPoint() },
-                    t.normals,
-                    element.isLine());
+                    t.normals, flags);
     };
 
-    auto addBevelTriangle = [&](const TrianglePoints &p)
+    auto addBevelTriangle = [&](const TrianglePoints &p, QSGCurveStrokeNode::TriangleFlags flags)
     {
         QVector2D fp1 = p[0];
         QVector2D fp2 = p[2];
@@ -1574,12 +1575,13 @@ void QSGCurveProcessor::processStroke(const QQuadPath &strokePath,
         n[0] = (p[0] - p[1]).normalized();
         n[2] = (p[2] - p[1]).normalized();
 
-        addTriangle(p, { fp1, QVector2D(0.0f, 0.0f), fp2 }, n, true);
+        flags.setFlag(QSGCurveStrokeNode::TriangleFlag::Line);
+        addTriangle(p, { fp1, QVector2D(0.0f, 0.0f), fp2 }, n, flags);
     };
 
-    for (const auto &triangle : triangles) {
+    for (const auto &triangle : std::as_const(triangles)) {
         if (triangle.pathElementIndex < 0) {
-            addBevelTriangle(triangle.points);
+            addBevelTriangle(triangle.points, {});
             continue;
         }
         const auto &element = thePath.elementAt(triangle.pathElementIndex);

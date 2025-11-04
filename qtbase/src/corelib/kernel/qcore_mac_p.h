@@ -184,6 +184,35 @@ private:
     QString string;
 };
 
+class Q_CORE_EXPORT QObjCWeakPointerBase
+{
+public:
+    QObjCWeakPointerBase(NSObject *object = nil);
+    QObjCWeakPointerBase(const QObjCWeakPointerBase &other);
+    QObjCWeakPointerBase &operator=(const QObjCWeakPointerBase &other);
+
+protected:
+    ~QObjCWeakPointerBase();
+    NSObject *get() const;
+    union {
+        NSObject *m_object = nil;
+#if __has_feature(objc_arc_weak) && __has_feature(objc_arc_fields)
+        // Used by qcore_mac.mm, built with -fobjc-weak, to track lifetime
+        __weak id m_weakReference;
+#endif
+    };
+};
+
+template <typename T>
+class QObjCWeakPointer : public QObjCWeakPointerBase
+{
+public:
+    using QObjCWeakPointerBase::QObjCWeakPointerBase;
+    operator T*() const { return static_cast<T*>(get()); }
+};
+
+// -------------------------------------------------------------------------
+
 #ifdef Q_OS_MACOS
 Q_CORE_EXPORT bool qt_mac_applicationIsInDarkMode();
 Q_CORE_EXPORT bool qt_mac_runningUnderRosetta();
@@ -199,6 +228,7 @@ Q_CORE_EXPORT QDebug operator<<(QDebug debug, const QCFString &string);
 #endif
 
 Q_CORE_EXPORT bool qt_apple_isApplicationExtension();
+Q_CORE_EXPORT bool qt_apple_runningWithLiquidGlass();
 
 #if !defined(QT_BOOTSTRAPPED)
 Q_CORE_EXPORT bool qt_apple_isSandboxed();
@@ -379,7 +409,6 @@ public:
     QMacKeyValueObserver() = default;
 
 #if defined( __OBJC__)
-    // Note: QMacKeyValueObserver must not outlive the object observed!
     QMacKeyValueObserver(NSObject *object, NSString *keyPath, Callback callback,
         NSKeyValueObservingOptions options = NSKeyValueObservingOptionNew)
         : object(object), keyPath(keyPath), callback(new Callback(callback))
@@ -407,7 +436,7 @@ public:
 
     void swap(QMacKeyValueObserver &other) noexcept
     {
-        qt_ptr_swap(object, other.object);
+        std::swap(object, other.object);
         qt_ptr_swap(keyPath, other.keyPath);
         callback.swap(other.callback);
     }
@@ -417,7 +446,7 @@ private:
     void addObserver(NSKeyValueObservingOptions options);
 #endif
 
-    NSObject *object = nullptr;
+    QObjCWeakPointer<NSObject> object;
     NSString *keyPath = nullptr;
     std::unique_ptr<Callback> callback;
 
@@ -459,92 +488,6 @@ qt_objc_cast(id object)
     return nil;
 }
 #endif
-
-// -------------------------------------------------------------------------
-
-#if defined( __OBJC__)
-
-template <typename T = NSObject>
-class QObjCWeakPointer;
-
-#if __has_feature(objc_arc_weak) && __has_feature(objc_arc_fields)
-#  define USE_OBJC_WEAK 1
-#endif
-
-#if !USE_OBJC_WEAK
-QT_END_NAMESPACE
-#include <objc/runtime.h>
-Q_CORE_EXPORT
-QT_DECLARE_NAMESPACED_OBJC_INTERFACE(WeakPointerLifetimeTracker, NSObject
-@property (atomic, assign) QT_PREPEND_NAMESPACE(QObjCWeakPointer)<NSObject> *pointer;
-)
-QT_BEGIN_NAMESPACE
-#endif
-
-template <typename T>
-class QObjCWeakPointer
-{
-public:
-    QObjCWeakPointer(T *object = nil) : m_object(object)
-    {
-#if !USE_OBJC_WEAK
-        trackObjectLifetime();
-#endif
-    }
-
-    QObjCWeakPointer(const QObjCWeakPointer &other)
-    {
-        QMacAutoReleasePool pool;
-        m_object = other.m_object;
-#if !USE_OBJC_WEAK
-        trackObjectLifetime();
-#endif
-    }
-
-    QObjCWeakPointer &operator=(const QObjCWeakPointer &other)
-    {
-        QMacAutoReleasePool pool;
-#if !USE_OBJC_WEAK
-        objc_setAssociatedObject(m_object, this, nil, OBJC_ASSOCIATION_RETAIN);
-#endif
-        m_object = other.m_object;
-#if !USE_OBJC_WEAK
-        trackObjectLifetime();
-#endif
-        return *this;
-    }
-
-    ~QObjCWeakPointer()
-    {
-#if !USE_OBJC_WEAK
-        if (m_object)
-            objc_setAssociatedObject(m_object, this, nil, OBJC_ASSOCIATION_RETAIN);
-#endif
-    }
-
-    operator T*() const { return static_cast<T*>([[m_object retain] autorelease]); }
-
-private:
-#if USE_OBJC_WEAK
-    __weak
-#else
-    void trackObjectLifetime()
-    {
-        if (!m_object)
-            return;
-
-        auto *lifetimeTracker = [WeakPointerLifetimeTracker new];
-        lifetimeTracker.pointer = reinterpret_cast<QObjCWeakPointer<NSObject>*>(this);
-        objc_setAssociatedObject(m_object, this, lifetimeTracker, OBJC_ASSOCIATION_RETAIN);
-        [lifetimeTracker release];
-    }
-#endif
-    NSObject *m_object = nil;
-};
-
-#undef USE_OBJC_WEAK
-
-#endif //  __OBJC__
 
 // -------------------------------------------------------------------------
 

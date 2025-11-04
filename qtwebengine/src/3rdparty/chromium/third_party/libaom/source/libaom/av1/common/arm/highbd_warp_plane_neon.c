@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023, Alliance for Open Media. All rights reserved
+ * Copyright (c) 2023, Alliance for Open Media. All rights reserved.
  *
  * This source code is subject to the terms of the BSD 2 Clause License and
  * the Alliance for Open Media Patent License 1.0. If the BSD 2 Clause License
@@ -23,19 +23,11 @@
 #include "config/av1_rtcd.h"
 #include "highbd_warp_plane_neon.h"
 
-static INLINE int16x8_t highbd_horizontal_filter_4x1_f4(uint16x8x2_t in, int bd,
-                                                        int sx, int alpha) {
+static AOM_FORCE_INLINE int16x8_t
+highbd_horizontal_filter_4x1_f4(int16x8_t rv0, int16x8_t rv1, int16x8_t rv2,
+                                int16x8_t rv3, int bd, int sx, int alpha) {
   int16x8_t f[4];
   load_filters_4(f, sx, alpha);
-
-  int16x8_t rv0 = vextq_s16(vreinterpretq_s16_u16(in.val[0]),
-                            vreinterpretq_s16_u16(in.val[1]), 0);
-  int16x8_t rv1 = vextq_s16(vreinterpretq_s16_u16(in.val[0]),
-                            vreinterpretq_s16_u16(in.val[1]), 1);
-  int16x8_t rv2 = vextq_s16(vreinterpretq_s16_u16(in.val[0]),
-                            vreinterpretq_s16_u16(in.val[1]), 2);
-  int16x8_t rv3 = vextq_s16(vreinterpretq_s16_u16(in.val[0]),
-                            vreinterpretq_s16_u16(in.val[1]), 3);
 
   int32x4_t m0 = vmull_s16(vget_low_s16(f[0]), vget_low_s16(rv0));
   m0 = vmlal_s16(m0, vget_high_s16(f[0]), vget_high_s16(rv0));
@@ -57,27 +49,11 @@ static INLINE int16x8_t highbd_horizontal_filter_4x1_f4(uint16x8x2_t in, int bd,
   return vcombine_s16(vmovn_s32(res), vdup_n_s16(0));
 }
 
-static INLINE int16x8_t highbd_horizontal_filter_8x1_f8(uint16x8x2_t in, int bd,
-                                                        int sx, int alpha) {
+static AOM_FORCE_INLINE int16x8_t highbd_horizontal_filter_8x1_f8(
+    int16x8_t rv0, int16x8_t rv1, int16x8_t rv2, int16x8_t rv3, int16x8_t rv4,
+    int16x8_t rv5, int16x8_t rv6, int16x8_t rv7, int bd, int sx, int alpha) {
   int16x8_t f[8];
   load_filters_8(f, sx, alpha);
-
-  int16x8_t rv0 = vextq_s16(vreinterpretq_s16_u16(in.val[0]),
-                            vreinterpretq_s16_u16(in.val[1]), 0);
-  int16x8_t rv1 = vextq_s16(vreinterpretq_s16_u16(in.val[0]),
-                            vreinterpretq_s16_u16(in.val[1]), 1);
-  int16x8_t rv2 = vextq_s16(vreinterpretq_s16_u16(in.val[0]),
-                            vreinterpretq_s16_u16(in.val[1]), 2);
-  int16x8_t rv3 = vextq_s16(vreinterpretq_s16_u16(in.val[0]),
-                            vreinterpretq_s16_u16(in.val[1]), 3);
-  int16x8_t rv4 = vextq_s16(vreinterpretq_s16_u16(in.val[0]),
-                            vreinterpretq_s16_u16(in.val[1]), 4);
-  int16x8_t rv5 = vextq_s16(vreinterpretq_s16_u16(in.val[0]),
-                            vreinterpretq_s16_u16(in.val[1]), 5);
-  int16x8_t rv6 = vextq_s16(vreinterpretq_s16_u16(in.val[0]),
-                            vreinterpretq_s16_u16(in.val[1]), 6);
-  int16x8_t rv7 = vextq_s16(vreinterpretq_s16_u16(in.val[0]),
-                            vreinterpretq_s16_u16(in.val[1]), 7);
 
   int32x4_t m0 = vmull_s16(vget_low_s16(f[0]), vget_low_s16(rv0));
   m0 = vmlal_s16(m0, vget_high_s16(f[0]), vget_high_s16(rv0));
@@ -111,18 +87,10 @@ static INLINE int16x8_t highbd_horizontal_filter_8x1_f8(uint16x8x2_t in, int bd,
   return vcombine_s16(vmovn_s32(res0), vmovn_s32(res1));
 }
 
-static INLINE int16x8_t highbd_horizontal_filter_4x1_f1(uint16x8x2_t in, int bd,
-                                                        int sx) {
+static AOM_FORCE_INLINE int16x8_t
+highbd_horizontal_filter_4x1_f1(int16x8_t rv0, int16x8_t rv1, int16x8_t rv2,
+                                int16x8_t rv3, int bd, int sx) {
   int16x8_t f = load_filters_1(sx);
-
-  int16x8_t rv0 = vextq_s16(vreinterpretq_s16_u16(in.val[0]),
-                            vreinterpretq_s16_u16(in.val[1]), 0);
-  int16x8_t rv1 = vextq_s16(vreinterpretq_s16_u16(in.val[0]),
-                            vreinterpretq_s16_u16(in.val[1]), 1);
-  int16x8_t rv2 = vextq_s16(vreinterpretq_s16_u16(in.val[0]),
-                            vreinterpretq_s16_u16(in.val[1]), 2);
-  int16x8_t rv3 = vextq_s16(vreinterpretq_s16_u16(in.val[0]),
-                            vreinterpretq_s16_u16(in.val[1]), 3);
 
   int32x4_t m0 = vmull_s16(vget_low_s16(f), vget_low_s16(rv0));
   m0 = vmlal_s16(m0, vget_high_s16(f), vget_high_s16(rv0));
@@ -144,26 +112,10 @@ static INLINE int16x8_t highbd_horizontal_filter_4x1_f1(uint16x8x2_t in, int bd,
   return vcombine_s16(vmovn_s32(res), vdup_n_s16(0));
 }
 
-static INLINE int16x8_t highbd_horizontal_filter_8x1_f1(uint16x8x2_t in, int bd,
-                                                        int sx) {
+static AOM_FORCE_INLINE int16x8_t highbd_horizontal_filter_8x1_f1(
+    int16x8_t rv0, int16x8_t rv1, int16x8_t rv2, int16x8_t rv3, int16x8_t rv4,
+    int16x8_t rv5, int16x8_t rv6, int16x8_t rv7, int bd, int sx) {
   int16x8_t f = load_filters_1(sx);
-
-  int16x8_t rv0 = vextq_s16(vreinterpretq_s16_u16(in.val[0]),
-                            vreinterpretq_s16_u16(in.val[1]), 0);
-  int16x8_t rv1 = vextq_s16(vreinterpretq_s16_u16(in.val[0]),
-                            vreinterpretq_s16_u16(in.val[1]), 1);
-  int16x8_t rv2 = vextq_s16(vreinterpretq_s16_u16(in.val[0]),
-                            vreinterpretq_s16_u16(in.val[1]), 2);
-  int16x8_t rv3 = vextq_s16(vreinterpretq_s16_u16(in.val[0]),
-                            vreinterpretq_s16_u16(in.val[1]), 3);
-  int16x8_t rv4 = vextq_s16(vreinterpretq_s16_u16(in.val[0]),
-                            vreinterpretq_s16_u16(in.val[1]), 4);
-  int16x8_t rv5 = vextq_s16(vreinterpretq_s16_u16(in.val[0]),
-                            vreinterpretq_s16_u16(in.val[1]), 5);
-  int16x8_t rv6 = vextq_s16(vreinterpretq_s16_u16(in.val[0]),
-                            vreinterpretq_s16_u16(in.val[1]), 6);
-  int16x8_t rv7 = vextq_s16(vreinterpretq_s16_u16(in.val[0]),
-                            vreinterpretq_s16_u16(in.val[1]), 7);
 
   int32x4_t m0 = vmull_s16(vget_low_s16(f), vget_low_s16(rv0));
   m0 = vmlal_s16(m0, vget_high_s16(f), vget_high_s16(rv0));
@@ -197,7 +149,8 @@ static INLINE int16x8_t highbd_horizontal_filter_8x1_f1(uint16x8x2_t in, int bd,
   return vcombine_s16(vmovn_s32(res0), vmovn_s32(res1));
 }
 
-static INLINE int32x4_t vertical_filter_4x1_f1(const int16x8_t *tmp, int sy) {
+static AOM_FORCE_INLINE int32x4_t vertical_filter_4x1_f1(const int16x8_t *tmp,
+                                                         int sy) {
   const int16x8_t f = load_filters_1(sy);
   const int16x4_t f0123 = vget_low_s16(f);
   const int16x4_t f4567 = vget_high_s16(f);
@@ -213,7 +166,8 @@ static INLINE int32x4_t vertical_filter_4x1_f1(const int16x8_t *tmp, int sy) {
   return m0123;
 }
 
-static INLINE int32x4x2_t vertical_filter_8x1_f1(const int16x8_t *tmp, int sy) {
+static AOM_FORCE_INLINE int32x4x2_t vertical_filter_8x1_f1(const int16x8_t *tmp,
+                                                           int sy) {
   const int16x8_t f = load_filters_1(sy);
   const int16x4_t f0123 = vget_low_s16(f);
   const int16x4_t f4567 = vget_high_s16(f);
@@ -238,8 +192,8 @@ static INLINE int32x4x2_t vertical_filter_8x1_f1(const int16x8_t *tmp, int sy) {
   return (int32x4x2_t){ { m0123, m4567 } };
 }
 
-static INLINE int32x4_t vertical_filter_4x1_f4(const int16x8_t *tmp, int sy,
-                                               int gamma) {
+static AOM_FORCE_INLINE int32x4_t vertical_filter_4x1_f4(const int16x8_t *tmp,
+                                                         int sy, int gamma) {
   int16x8_t s0, s1, s2, s3;
   transpose_elems_s16_4x8(
       vget_low_s16(tmp[0]), vget_low_s16(tmp[1]), vget_low_s16(tmp[2]),
@@ -262,8 +216,8 @@ static INLINE int32x4_t vertical_filter_4x1_f4(const int16x8_t *tmp, int sy,
   return horizontal_add_4d_s32x4(m0123);
 }
 
-static INLINE int32x4x2_t vertical_filter_8x1_f8(const int16x8_t *tmp, int sy,
-                                                 int gamma) {
+static AOM_FORCE_INLINE int32x4x2_t vertical_filter_8x1_f8(const int16x8_t *tmp,
+                                                           int sy, int gamma) {
   int16x8_t s0 = tmp[0];
   int16x8_t s1 = tmp[1];
   int16x8_t s2 = tmp[2];

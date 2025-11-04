@@ -61,8 +61,8 @@ struct State {
     void Process() {
         // Find host-visible stores of types that contain padding bytes.
         Vector<Store*, 8> worklist;
-        for (auto inst : ir.instructions.Objects()) {
-            if (auto* store = inst->As<Store>(); store && store->Alive()) {
+        for (auto inst : ir.Instructions()) {
+            if (auto* store = inst->As<Store>()) {
                 auto* ptr = store->To()->Type()->As<core::type::Pointer>();
                 if (ptr->AddressSpace() == core::AddressSpace::kStorage &&
                     ContainsPadding(ptr->StoreType())) {
@@ -124,7 +124,7 @@ struct State {
         }
 
         // The type contains padding bytes, so call a helper function that decomposes the accesses.
-        auto* helper = helpers.GetOrCreate(store_type, [&] {
+        auto* helper = helpers.GetOrAdd(store_type, [&] {
             auto* func = b.Function("tint_store_and_preserve_padding", ty.void_());
             auto* target = b.FunctionParam("target", ty.ptr(storage, store_type));
             auto* value_param = b.FunctionParam("value_param", store_type);
@@ -143,7 +143,7 @@ struct State {
                             });
                     },
                     [&](const type::Matrix* mat) {
-                        for (uint32_t i = 0; i < mat->columns(); i++) {
+                        for (uint32_t i = 0; i < mat->Columns(); i++) {
                             auto* col_ptr =
                                 b.Access(ty.ptr(storage, mat->ColumnType()), target, u32(i));
                             auto* col_value = b.Access(mat->ColumnType(), value_param, u32(i));

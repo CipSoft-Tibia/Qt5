@@ -64,7 +64,8 @@ bool MockJobTaskRunner::PostDelayedTask(const Location& from_here,
   auto job_task = base::MakeRefCounted<MockJobTask>(std::move(closure));
   scoped_refptr<JobTaskSource> task_source = job_task->GetJobTaskSource(
       from_here, traits_, pooled_task_runner_delegate_);
-  return task_source->NotifyConcurrencyIncrease();
+  return pooled_task_runner_delegate_->EnqueueJobTaskSource(
+      std::move(task_source));
 }
 
 scoped_refptr<TaskRunner> CreateJobTaskRunner(
@@ -92,7 +93,7 @@ void MockWorkerThreadObserver::AllowCallsOnMainExit(int num_calls) {
 void MockWorkerThreadObserver::WaitCallsOnMainExit() {
   CheckedAutoLock auto_lock(lock_);
   while (allowed_calls_on_main_exit_ != 0)
-    on_main_exit_cv_->Wait();
+    on_main_exit_cv_.Wait();
 }
 
 void MockWorkerThreadObserver::OnWorkerThreadMainExit() {
@@ -100,7 +101,7 @@ void MockWorkerThreadObserver::OnWorkerThreadMainExit() {
   EXPECT_GE(allowed_calls_on_main_exit_, 0);
   --allowed_calls_on_main_exit_;
   if (allowed_calls_on_main_exit_ == 0)
-    on_main_exit_cv_->Signal();
+    on_main_exit_cv_.Signal();
 }
 
 scoped_refptr<Sequence> CreateSequenceWithTask(
@@ -312,7 +313,7 @@ scoped_refptr<JobTaskSource> MockJobTask::GetJobTaskSource(
     const Location& from_here,
     const TaskTraits& traits,
     PooledTaskRunnerDelegate* delegate) {
-  return CreateJobTaskSource(
+  return MakeRefCounted<JobTaskSource>(
       from_here, traits, base::BindRepeating(&test::MockJobTask::Run, this),
       base::BindRepeating(&test::MockJobTask::GetMaxConcurrency, this),
       delegate);

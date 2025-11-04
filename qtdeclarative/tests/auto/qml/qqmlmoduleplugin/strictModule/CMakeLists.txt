@@ -12,6 +12,7 @@ qt_internal_add_cmake_library(strictModule
     OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/../imports/org/qtproject/StrictModule"
     SOURCES
         plugin.cpp
+    MOC_OPTIONS "-Muri=org.qtproject.StrictModule"
     LIBRARIES
         Qt::Core
         Qt::CorePrivate
@@ -20,9 +21,19 @@ qt_internal_add_cmake_library(strictModule
         Qt::QmlPrivate
 )
 
+get_target_property(target_type strictModule TYPE)
+if(target_type STREQUAL STATIC_LIBRARY)
+    target_compile_definitions(strictModule PRIVATE QT_STATICPLUGIN)
+endif()
+
 #### Keys ignored in scope 1:.:.:strictModule.pro:<TRUE>:
 # IMPORT_FILES = "qmldir"
 # TEMPLATE = "lib"
+
+qt_internal_extend_target(strictModule CONDITION NOT BUILD_SHARED_LIBS
+    DEFINES
+        QT_STATICPLUGIN
+)
 
 qt_autogen_tools_initial_setup(strictModule)
 # special case begin

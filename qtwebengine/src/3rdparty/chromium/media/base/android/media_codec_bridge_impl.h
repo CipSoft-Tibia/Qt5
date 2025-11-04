@@ -57,7 +57,7 @@ class MEDIA_EXPORT VideoCodecConfig {
 
   // VP9 HDR metadata is only embedded in the container. HDR10 metadata is
   // embedded in the video stream.
-  absl::optional<gfx::HDRMetadata> hdr_metadata;
+  std::optional<gfx::HDRMetadata> hdr_metadata;
 
   // Enables the async MediaCodec.Callback API. |on_buffers_available_cb|
   // will be called when input or output buffers are available. This will be
@@ -67,6 +67,9 @@ class MEDIA_EXPORT VideoCodecConfig {
 
   // The name of decoder/encoder. It's used to create the MediaCodec instance.
   std::string name;
+
+  // Enables Block Model (LinearBlock).
+  bool use_block_model = false;
 };
 
 // A bridge to a Java MediaCodec.
@@ -124,6 +127,10 @@ class MEDIA_EXPORT MediaCodecBridgeImpl : public MediaCodecBridge {
                                     const uint8_t* data,
                                     size_t data_size,
                                     base::TimeDelta presentation_time) override;
+  MediaCodecResult QueueInputBlock(int index,
+                                   base::span<const uint8_t> data,
+                                   base::TimeDelta presentation_time,
+                                   bool is_eos) override;
   MediaCodecResult QueueSecureInputBuffer(
       int index,
       const uint8_t* data,
@@ -132,7 +139,7 @@ class MEDIA_EXPORT MediaCodecBridgeImpl : public MediaCodecBridge {
       const std::string& iv,
       const std::vector<SubsampleEntry>& subsamples,
       EncryptionScheme encryption_scheme,
-      absl::optional<EncryptionPattern> encryption_pattern,
+      std::optional<EncryptionPattern> encryption_pattern,
       base::TimeDelta presentation_time) override;
   void QueueEOS(int input_buffer_index) override;
   MediaCodecResult DequeueInputBuffer(base::TimeDelta timeout,

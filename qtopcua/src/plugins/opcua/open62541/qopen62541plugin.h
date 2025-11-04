@@ -4,7 +4,6 @@
 #ifndef QOPEN62541PLUGIN_H
 #define QOPEN62541PLUGIN_H
 
-#include "qopen62541.h"
 #include <QtOpcUa/qopcuaplugin.h>
 
 QT_BEGIN_NAMESPACE

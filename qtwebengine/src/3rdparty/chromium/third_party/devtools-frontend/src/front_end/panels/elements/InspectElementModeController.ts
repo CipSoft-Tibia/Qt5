@@ -33,6 +33,7 @@ import * as Root from '../../core/root/root.js';
 import * as SDK from '../../core/sdk/sdk.js';
 import * as Protocol from '../../generated/protocol.js';
 import * as UI from '../../ui/legacy/legacy.js';
+import * as VisualLogging from '../../ui/visual_logging/visual_logging.js';
 
 import {ElementsPanel} from './ElementsPanel.js';
 
@@ -47,15 +48,15 @@ export class InspectElementModeController implements SDK.TargetManager.SDKModelO
     this.toggleSearchAction = UI.ActionRegistry.ActionRegistry.instance().getAction('elements.toggle-element-search');
     this.mode = Protocol.Overlay.InspectMode.None;
     SDK.TargetManager.TargetManager.instance().addEventListener(
-        SDK.TargetManager.Events.SuspendStateChanged, this.suspendStateChanged, this);
+        SDK.TargetManager.Events.SUSPEND_STATE_CHANGED, this.suspendStateChanged, this);
     SDK.TargetManager.TargetManager.instance().addModelListener(
-        SDK.OverlayModel.OverlayModel, SDK.OverlayModel.Events.ExitedInspectMode,
+        SDK.OverlayModel.OverlayModel, SDK.OverlayModel.Events.EXITED_INSPECT_MODE,
         () => this.setMode(Protocol.Overlay.InspectMode.None), undefined, {scoped: true});
     SDK.OverlayModel.OverlayModel.setInspectNodeHandler(this.inspectNode.bind(this));
     SDK.TargetManager.TargetManager.instance().observeModels(SDK.OverlayModel.OverlayModel, this, {scoped: true});
 
     this.showDetailedInspectTooltipSetting =
-        Common.Settings.Settings.instance().moduleSetting('showDetailedInspectTooltip');
+        Common.Settings.Settings.instance().moduleSetting('show-detailed-inspect-tooltip');
     this.showDetailedInspectTooltipSetting.addChangeListener(this.showDetailedInspectTooltipChanged.bind(this));
 
     document.addEventListener('keydown', event => {
@@ -67,6 +68,7 @@ export class InspectElementModeController implements SDK.TargetManager.SDKModelO
       }
       this.setMode(Protocol.Overlay.InspectMode.None);
       event.consume(true);
+      void VisualLogging.logKeyDown(null, event, 'cancel-inspect-mode');
     }, true);
   }
 
@@ -101,7 +103,7 @@ export class InspectElementModeController implements SDK.TargetManager.SDKModelO
     if (this.isInInspectElementMode()) {
       mode = Protocol.Overlay.InspectMode.None;
     } else {
-      mode = Common.Settings.Settings.instance().moduleSetting('showUAShadowDOM').get() ?
+      mode = Common.Settings.Settings.instance().moduleSetting('show-ua-shadow-dom').get() ?
           Protocol.Overlay.InspectMode.SearchForUAShadowDOM :
           Protocol.Overlay.InspectMode.SearchForNode;
     }

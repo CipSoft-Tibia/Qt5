@@ -30,10 +30,13 @@
 #include <sstream>
 #include <string>
 
+#include "src/tint/lang/core/access.h"
+#include "src/tint/lang/core/address_space.h"
 #include "src/tint/lang/core/ir/disassembler.h"
+#include "src/tint/lang/core/texel_format.h"
 #include "src/tint/lang/core/type/storage_texture.h"
+#include "src/tint/lang/core/type/texture_dimension.h"
 #include "src/tint/lang/wgsl/ir/builtin_call.h"
-#include "src/tint/lang/wgsl/ir/unary.h"
 #include "src/tint/lang/wgsl/writer/ir_to_program/ir_to_program.h"
 #include "src/tint/lang/wgsl/writer/ir_to_program/ir_to_program_test.h"
 #include "src/tint/lang/wgsl/writer/writer.h"
@@ -47,13 +50,13 @@ using namespace tint::core::fluent_types;     // NOLINT
 IRToProgramTest::Result IRToProgramTest::Run() {
     Result result;
 
-    result.ir = tint::core::ir::Disassemble(mod);
+    result.ir = tint::core::ir::Disassembler(mod).Plain();
 
     ProgramOptions options;
     options.allowed_features = AllowedFeatures::Everything();
     auto output_program = IRToProgram(mod, options);
     if (!output_program.IsValid()) {
-        result.err = output_program.Diagnostics().str();
+        result.err = output_program.Diagnostics().Str();
         result.ast = Program::printer(output_program);
         return result;
     }
@@ -125,7 +128,7 @@ TEST_F(IRToProgramTest, EntryPoint_Compute) {
     fn->Block()->Append(b.Return(fn));
 
     EXPECT_WGSL(R"(
-@compute @workgroup_size(3, 4, 5)
+@compute @workgroup_size(3u, 4u, 5u)
 fn f() {
 }
 )");
@@ -147,12 +150,62 @@ TEST_F(IRToProgramTest, EntryPoint_Vertex) {
     auto* fn = b.Function("f", ty.vec4<f32>(), core::ir::Function::PipelineStage::kVertex);
     fn->SetReturnBuiltin(core::BuiltinValue::kPosition);
 
-    fn->Block()->Append(b.Return(fn, b.Splat(ty.vec4<f32>(), 0_f, 4)));
+    fn->Block()->Append(b.Return(fn, b.Splat<vec4<f32>>(0_f)));
 
     EXPECT_WGSL(R"(
 @vertex
 fn f() -> @builtin(position) vec4<f32> {
   return vec4<f32>();
+}
+)");
+}
+
+TEST_F(IRToProgramTest, EntryPoint_Parameter_BuiltinAndInvariant) {
+    auto* fn = b.Function("f", ty.void_(), core::ir::Function::PipelineStage::kFragment);
+    auto* param = b.FunctionParam("input", ty.vec4<f32>());
+    param->SetBuiltin(core::BuiltinValue::kPosition);
+    param->SetInvariant(true);
+    fn->SetParams({param});
+
+    fn->Block()->Append(b.Return(fn));
+
+    EXPECT_WGSL(R"(
+@fragment
+fn f(@builtin(position) @invariant input : vec4<f32>) {
+}
+)");
+}
+
+TEST_F(IRToProgramTest, EntryPoint_Parameter_LocationAndInterpolation) {
+    auto* fn = b.Function("f", ty.void_(), core::ir::Function::PipelineStage::kFragment);
+    auto* param = b.FunctionParam("input", ty.f32());
+    param->SetLocation(2u);
+    param->SetInterpolation(core::Interpolation{core::InterpolationType::kLinear,
+                                                core::InterpolationSampling::kCentroid});
+    fn->SetParams({param});
+
+    fn->Block()->Append(b.Return(fn));
+
+    EXPECT_WGSL(R"(
+@fragment
+fn f(@location(2u) @interpolate(linear, centroid) input : f32) {
+}
+)");
+}
+
+TEST_F(IRToProgramTest, EntryPoint_Parameter_Color) {
+    auto* fn = b.Function("f", ty.void_(), core::ir::Function::PipelineStage::kFragment);
+    auto* param = b.FunctionParam("input", ty.f32());
+    param->SetColor(2u);
+    fn->SetParams({param});
+
+    fn->Block()->Append(b.Return(fn));
+
+    EXPECT_WGSL(R"(
+enable chromium_experimental_framebuffer_fetch;
+
+@fragment
+fn f(@color(2u) input : f32) {
 }
 )");
 }
@@ -190,7 +243,7 @@ TEST_F(IRToProgramTest, EntryPoint_ReturnAttribute_Invariant) {
     fn->SetReturnBuiltin(core::BuiltinValue::kPosition);
     fn->SetReturnInvariant(true);
 
-    fn->Block()->Append(b.Return(fn, b.Splat(ty.vec4<f32>(), 0_f, 4)));
+    fn->Block()->Append(b.Return(fn, b.Splat<vec4<f32>>(0_f)));
 
     EXPECT_WGSL(R"(
 @vertex
@@ -202,13 +255,13 @@ fn f() -> @builtin(position) @invariant vec4<f32> {
 
 TEST_F(IRToProgramTest, EntryPoint_ReturnAttribute_Location) {
     auto* fn = b.Function("f", ty.vec4<f32>(), core::ir::Function::PipelineStage::kFragment);
-    fn->SetReturnLocation(1, std::nullopt);
+    fn->SetReturnLocation(1);
 
-    fn->Block()->Append(b.Return(fn, b.Splat(ty.vec4<f32>(), 0_f, 4)));
+    fn->Block()->Append(b.Return(fn, b.Splat<vec4<f32>>(0_f)));
 
     EXPECT_WGSL(R"(
 @fragment
-fn f() -> @location(1) vec4<f32> {
+fn f() -> @location(1u) vec4<f32> {
   return vec4<f32>();
 }
 )");
@@ -242,7 +295,7 @@ TEST_F(IRToProgramTest, EntryPoint_ParameterAttribute_Compute) {
     EXPECT_WGSL(R"(
 enable chromium_experimental_subgroups;
 
-@compute @workgroup_size(3, 4, 5)
+@compute @workgroup_size(3u, 4u, 5u)
 fn f(@builtin(local_invocation_id) v : vec3<u32>, @builtin(local_invocation_index) v_1 : u32, @builtin(global_invocation_id) v_2 : vec3<u32>, @builtin(workgroup_id) v_3 : vec3<u32>, @builtin(num_workgroups) v_4 : vec3<u32>, @builtin(subgroup_invocation_id) v_5 : u32, @builtin(subgroup_size) v_6 : u32) {
 }
 )");
@@ -254,13 +307,16 @@ TEST_F(IRToProgramTest, EntryPoint_ParameterAttribute_Fragment) {
         MakeBuiltinParam(b, ty.bool_(), core::BuiltinValue::kFrontFacing),
         MakeBuiltinParam(b, ty.u32(), core::BuiltinValue::kSampleIndex),
         MakeBuiltinParam(b, ty.u32(), core::BuiltinValue::kSampleMask),
+        MakeBuiltinParam(b, ty.u32(), core::BuiltinValue::kSubgroupSize),
     });
 
     fn->Block()->Append(b.Return(fn));
 
     EXPECT_WGSL(R"(
+enable chromium_experimental_subgroups;
+
 @fragment
-fn f(@builtin(front_facing) v : bool, @builtin(sample_index) v_1 : u32, @builtin(sample_mask) v_2 : u32) {
+fn f(@builtin(front_facing) v : bool, @builtin(sample_index) v_1 : u32, @builtin(sample_mask) v_2 : u32, @builtin(subgroup_size) v_3 : u32) {
 }
 )");
 }
@@ -562,7 +618,7 @@ TEST_F(IRToProgramTest, TypeConstruct_i32) {
     fn->SetParams({i});
 
     b.Append(fn->Block(), [&] {
-        b.Var("v", b.Construct<i32>(i));
+        Var("v", b.Construct<i32>(i));
         b.Return(fn);
     });
 
@@ -579,7 +635,7 @@ TEST_F(IRToProgramTest, TypeConstruct_u32) {
     fn->SetParams({i});
 
     b.Append(fn->Block(), [&] {
-        b.Var("v", b.Construct<u32>(i));
+        Var("v", b.Construct<u32>(i));
         b.Return(fn);
     });
 
@@ -596,7 +652,7 @@ TEST_F(IRToProgramTest, TypeConstruct_f32) {
     fn->SetParams({i});
 
     b.Append(fn->Block(), [&] {
-        b.Var("v", b.Construct<f32>(i));
+        Var("v", b.Construct<f32>(i));
         b.Return(fn);
     });
 
@@ -613,7 +669,7 @@ TEST_F(IRToProgramTest, TypeConstruct_bool) {
     fn->SetParams({i});
 
     b.Append(fn->Block(), [&] {
-        b.Var("v", b.Construct<bool>(i));
+        Var("v", b.Construct<bool>(i));
         b.Return(fn);
     });
 
@@ -638,7 +694,7 @@ TEST_F(IRToProgramTest, TypeConstruct_struct) {
     fn->SetParams({x, y, z});
 
     b.Append(fn->Block(), [&] {
-        b.Var("v", b.Construct(S, x, y, z));
+        Var("v", b.Construct(S, x, y, z));
         b.Return(fn);
     });
 
@@ -661,7 +717,7 @@ TEST_F(IRToProgramTest, TypeConstruct_array) {
     fn->SetParams({i});
 
     b.Append(fn->Block(), [&] {
-        b.Var("v", b.Construct<array<i32, 3u>>(i, i, i));
+        Var("v", b.Construct<array<i32, 3u>>(i, i, i));
         b.Return(fn);
     });
 
@@ -678,7 +734,7 @@ TEST_F(IRToProgramTest, TypeConstruct_vec3i_Splat) {
     fn->SetParams({i});
 
     b.Append(fn->Block(), [&] {
-        b.Var("v", b.Construct<vec3<i32>>(i));
+        Var("v", b.Construct<vec3<i32>>(i));
         b.Return(fn);
     });
 
@@ -695,7 +751,7 @@ TEST_F(IRToProgramTest, TypeConstruct_vec3i_Scalars) {
     fn->SetParams({i});
 
     b.Append(fn->Block(), [&] {
-        b.Var("v", b.Construct<vec3<i32>>(i, i, i));
+        Var("v", b.Construct<vec3<i32>>(i, i, i));
         b.Return(fn);
     });
 
@@ -712,7 +768,7 @@ TEST_F(IRToProgramTest, TypeConstruct_mat2x3f_Scalars) {
     fn->SetParams({i});
 
     b.Append(fn->Block(), [&] {
-        b.Var("v", b.Construct<mat2x3<f32>>(i, i, i, i, i, i));
+        Var("v", b.Construct<mat2x3<f32>>(i, i, i, i, i, i));
         b.Return(fn);
     });
 
@@ -731,7 +787,7 @@ TEST_F(IRToProgramTest, TypeConstruct_mat2x3f_Columns) {
     b.Append(fn->Block(), [&] {
         auto* col_0 = b.Construct<vec3<f32>>(i, i, i);
         auto* col_1 = b.Construct<vec3<f32>>(i, i, i);
-        b.Var("v", b.Construct<mat2x3<f32>>(col_0, col_1));
+        Var("v", b.Construct<mat2x3<f32>>(col_0, col_1));
         b.Return(fn);
     });
 
@@ -759,7 +815,7 @@ TEST_F(IRToProgramTest, TypeConstruct_Inlining) {
         auto* f0 = b.Construct<f32>(i0);
         auto* f2 = b.Construct<f32>(i2);
         auto* f1 = b.Construct<f32>(i1);
-        b.Var("v", b.Construct<mat2x3<f32>>(f0, f1, f2, f3, f4, f5));
+        Var("v", b.Construct<mat2x3<f32>>(f0, f1, f2, f3, f4, f5));
         b.Return(fn);
     });
 
@@ -779,7 +835,7 @@ TEST_F(IRToProgramTest, TypeConvert_i32_to_u32) {
     fn->SetParams({i});
 
     b.Append(fn->Block(), [&] {
-        b.Var("v", b.Convert<u32>(i));
+        Var("v", b.Convert<u32>(i));
         b.Return(fn);
     });
 
@@ -796,7 +852,7 @@ TEST_F(IRToProgramTest, TypeConvert_u32_to_f32) {
     fn->SetParams({i});
 
     b.Append(fn->Block(), [&] {
-        b.Var("v", b.Convert<f32>(i));
+        Var("v", b.Convert<f32>(i));
         b.Return(fn);
     });
 
@@ -813,7 +869,7 @@ TEST_F(IRToProgramTest, TypeConvert_f32_to_i32) {
     fn->SetParams({i});
 
     b.Append(fn->Block(), [&] {
-        b.Var("v", b.Convert<i32>(i));
+        Var("v", b.Convert<i32>(i));
         b.Return(fn);
     });
 
@@ -830,7 +886,7 @@ TEST_F(IRToProgramTest, TypeConvert_bool_to_u32) {
     fn->SetParams({i});
 
     b.Append(fn->Block(), [&] {
-        b.Var("v", b.Convert<u32>(i));
+        Var("v", b.Convert<u32>(i));
         b.Return(fn);
     });
 
@@ -847,7 +903,7 @@ TEST_F(IRToProgramTest, TypeConvert_vec3i_to_vec3u) {
     fn->SetParams({i});
 
     b.Append(fn->Block(), [&] {
-        b.Var("v", b.Convert<vec3<u32>>(i));
+        Var("v", b.Convert<vec3<u32>>(i));
         b.Return(fn);
     });
 
@@ -864,7 +920,7 @@ TEST_F(IRToProgramTest, TypeConvert_vec3u_to_vec3f) {
     fn->SetParams({i});
 
     b.Append(fn->Block(), [&] {
-        b.Var("v", b.Convert<vec3<f32>>(i));
+        Var("v", b.Convert<vec3<f32>>(i));
         b.Return(fn);
     });
 
@@ -881,7 +937,7 @@ TEST_F(IRToProgramTest, TypeConvert_mat2x3f_to_mat2x3h) {
     fn->SetParams({i});
 
     b.Append(fn->Block(), [&] {
-        b.Var("v", b.Convert<mat2x3<f16>>(i));
+        Var("v", b.Convert<mat2x3<f16>>(i));
         b.Return(fn);
     });
 
@@ -1006,218 +1062,7 @@ fn f(a : bool, b : bool, c : bool) -> bool {
 )");
 }
 
-TEST_F(IRToProgramTest, ShortCircuit_And_Let_2) {
-    auto* fn = b.Function("f", ty.bool_());
-    auto* pa = b.FunctionParam("a", ty.bool_());
-    auto* pb = b.FunctionParam("b", ty.bool_());
-    fn->SetParams({pa, pb});
-
-    b.Append(fn->Block(), [&] {
-        auto* if_ = b.If(pa);
-        if_->SetResults(b.InstructionResult(ty.bool_()));
-        b.Append(if_->True(), [&] { b.ExitIf(if_, pb); });
-        b.Append(if_->False(), [&] { b.ExitIf(if_, false); });
-
-        mod.SetName(if_, "l");
-        b.Return(fn, if_);
-    });
-
-    EXPECT_WGSL(R"(
-fn f(a : bool, b : bool) -> bool {
-  let l = (a && b);
-  return l;
-}
-)");
-}
-
-TEST_F(IRToProgramTest, ShortCircuit_And_Let_3_ab_c) {
-    auto* fn = b.Function("f", ty.bool_());
-    auto* pa = b.FunctionParam("a", ty.bool_());
-    auto* pb = b.FunctionParam("b", ty.bool_());
-    auto* pc = b.FunctionParam("c", ty.bool_());
-    fn->SetParams({pa, pb, pc});
-
-    b.Append(fn->Block(), [&] {
-        auto* if1 = b.If(pa);
-        if1->SetResults(b.InstructionResult(ty.bool_()));
-        b.Append(if1->True(), [&] { b.ExitIf(if1, pb); });
-        b.Append(if1->False(), [&] { b.ExitIf(if1, false); });
-
-        auto* if2 = b.If(if1);
-        if2->SetResults(b.InstructionResult(ty.bool_()));
-        b.Append(if2->True(), [&] { b.ExitIf(if2, pc); });
-        b.Append(if2->False(), [&] { b.ExitIf(if2, false); });
-
-        mod.SetName(if2, "l");
-        b.Return(fn, if2);
-    });
-
-    EXPECT_WGSL(R"(
-fn f(a : bool, b : bool, c : bool) -> bool {
-  let l = ((a && b) && c);
-  return l;
-}
-)");
-}
-
-TEST_F(IRToProgramTest, ShortCircuit_And_Let_3_a_bc) {
-    auto* fn = b.Function("f", ty.bool_());
-    auto* pa = b.FunctionParam("a", ty.bool_());
-    auto* pb = b.FunctionParam("b", ty.bool_());
-    auto* pc = b.FunctionParam("c", ty.bool_());
-    fn->SetParams({pa, pb, pc});
-
-    b.Append(fn->Block(), [&] {
-        auto* if1 = b.If(pa);
-        if1->SetResults(b.InstructionResult(ty.bool_()));
-        b.Append(if1->True(), [&] {
-            auto* if2 = b.If(pb);
-            if2->SetResults(b.InstructionResult(ty.bool_()));
-            b.Append(if2->True(), [&] { b.ExitIf(if2, pc); });
-            b.Append(if2->False(), [&] { b.ExitIf(if2, false); });
-
-            b.ExitIf(if1, if2);
-        });
-        b.Append(if1->False(), [&] { b.ExitIf(if1, false); });
-
-        mod.SetName(if1, "l");
-        b.Return(fn, if1);
-    });
-
-    EXPECT_WGSL(R"(
-fn f(a : bool, b : bool, c : bool) -> bool {
-  let l = (a && (b && c));
-  return l;
-}
-)");
-}
-
-TEST_F(IRToProgramTest, ShortCircuit_And_Call_2) {
-    auto* fn_a = b.Function("a", ty.bool_());
-    b.Append(fn_a->Block(), [&] { b.Return(fn_a, true); });
-
-    auto* fn_b = b.Function("b", ty.bool_());
-    b.Append(fn_b->Block(), [&] { b.Return(fn_b, true); });
-
-    auto* fn = b.Function("f", ty.bool_());
-
-    b.Append(fn->Block(), [&] {
-        auto* if_ = b.If(b.Call(ty.bool_(), fn_a));
-        if_->SetResults(b.InstructionResult(ty.bool_()));
-        b.Append(if_->True(), [&] { b.ExitIf(if_, b.Call(ty.bool_(), fn_b)); });
-        b.Append(if_->False(), [&] { b.ExitIf(if_, false); });
-
-        b.Return(fn, if_);
-    });
-
-    EXPECT_WGSL(R"(
-fn a() -> bool {
-  return true;
-}
-
-fn b() -> bool {
-  return true;
-}
-
-fn f() -> bool {
-  return (a() && b());
-}
-)");
-}
-
-TEST_F(IRToProgramTest, ShortCircuit_And_Call_3_ab_c) {
-    auto* fn_a = b.Function("a", ty.bool_());
-    b.Append(fn_a->Block(), [&] { b.Return(fn_a, true); });
-
-    auto* fn_b = b.Function("b", ty.bool_());
-    b.Append(fn_b->Block(), [&] { b.Return(fn_b, true); });
-
-    auto* fn_c = b.Function("c", ty.bool_());
-    b.Append(fn_c->Block(), [&] { b.Return(fn_c, true); });
-
-    auto* fn = b.Function("f", ty.bool_());
-
-    b.Append(fn->Block(), [&] {
-        auto* if1 = b.If(b.Call(ty.bool_(), fn_a));
-        if1->SetResults(b.InstructionResult(ty.bool_()));
-        b.Append(if1->True(), [&] { b.ExitIf(if1, b.Call(ty.bool_(), fn_b)); });
-        b.Append(if1->False(), [&] { b.ExitIf(if1, false); });
-
-        auto* if2 = b.If(if1);
-        if2->SetResults(b.InstructionResult(ty.bool_()));
-        b.Append(if2->True(), [&] { b.ExitIf(if2, b.Call(ty.bool_(), fn_c)); });
-        b.Append(if2->False(), [&] { b.ExitIf(if2, false); });
-
-        b.Return(fn, if2);
-    });
-
-    EXPECT_WGSL(R"(
-fn a() -> bool {
-  return true;
-}
-
-fn b() -> bool {
-  return true;
-}
-
-fn c() -> bool {
-  return true;
-}
-
-fn f() -> bool {
-  return ((a() && b()) && c());
-}
-)");
-}
-
-TEST_F(IRToProgramTest, ShortCircuit_And_Call_3_a_bc) {
-    auto* fn_a = b.Function("a", ty.bool_());
-    b.Append(fn_a->Block(), [&] { b.Return(fn_a, true); });
-
-    auto* fn_b = b.Function("b", ty.bool_());
-    b.Append(fn_b->Block(), [&] { b.Return(fn_b, true); });
-
-    auto* fn_c = b.Function("c", ty.bool_());
-    b.Append(fn_c->Block(), [&] { b.Return(fn_c, true); });
-
-    auto* fn = b.Function("f", ty.bool_());
-
-    b.Append(fn->Block(), [&] {
-        auto* if1 = b.If(b.Call(ty.bool_(), fn_a));
-        if1->SetResults(b.InstructionResult(ty.bool_()));
-        b.Append(if1->True(), [&] {
-            auto* if2 = b.If(b.Call(ty.bool_(), fn_b));
-            if2->SetResults(b.InstructionResult(ty.bool_()));
-            b.Append(if2->True(), [&] { b.ExitIf(if2, b.Call(ty.bool_(), fn_c)); });
-            b.Append(if2->False(), [&] { b.ExitIf(if2, false); });
-
-            b.ExitIf(if1, if2);
-        });
-        b.Append(if1->False(), [&] { b.ExitIf(if1, false); });
-
-        b.Return(fn, if1);
-    });
-
-    EXPECT_WGSL(R"(
-fn a() -> bool {
-  return true;
-}
-
-fn b() -> bool {
-  return true;
-}
-
-fn c() -> bool {
-  return true;
-}
-
-fn f() -> bool {
-  return (a() && (b() && c()));
-}
-)");
-}
-
-TEST_F(IRToProgramTest, ShortCircuit_Or_Param_2) {
+TEST_F(IRToProgramTest, ShortCircuit_Or_2) {
     auto* fn = b.Function("f", ty.bool_());
     auto* pa = b.FunctionParam("a", ty.bool_());
     auto* pb = b.FunctionParam("b", ty.bool_());
@@ -1239,7 +1084,7 @@ fn f(a : bool, b : bool) -> bool {
 )");
 }
 
-TEST_F(IRToProgramTest, ShortCircuit_Or_Param_3_ab_c) {
+TEST_F(IRToProgramTest, ShortCircuit_Or_3_ab_c) {
     auto* fn = b.Function("f", ty.bool_());
     auto* pa = b.FunctionParam("a", ty.bool_());
     auto* pb = b.FunctionParam("b", ty.bool_());
@@ -1267,7 +1112,7 @@ fn f(a : bool, b : bool, c : bool) -> bool {
 )");
 }
 
-TEST_F(IRToProgramTest, ShortCircuit_Or_Param_3_a_bc) {
+TEST_F(IRToProgramTest, ShortCircuit_Or_3_a_bc) {
     auto* fn = b.Function("f", ty.bool_());
     auto* pa = b.FunctionParam("a", ty.bool_());
     auto* pb = b.FunctionParam("b", ty.bool_());
@@ -1293,217 +1138,6 @@ TEST_F(IRToProgramTest, ShortCircuit_Or_Param_3_a_bc) {
     EXPECT_WGSL(R"(
 fn f(a : bool, b : bool, c : bool) -> bool {
   return (a || (b || c));
-}
-)");
-}
-
-TEST_F(IRToProgramTest, ShortCircuit_Or_Let_2) {
-    auto* fn = b.Function("f", ty.bool_());
-    auto* pa = b.FunctionParam("a", ty.bool_());
-    auto* pb = b.FunctionParam("b", ty.bool_());
-    fn->SetParams({pa, pb});
-
-    b.Append(fn->Block(), [&] {
-        auto* if_ = b.If(pa);
-        if_->SetResults(b.InstructionResult(ty.bool_()));
-        b.Append(if_->True(), [&] { b.ExitIf(if_, true); });
-        b.Append(if_->False(), [&] { b.ExitIf(if_, pb); });
-
-        mod.SetName(if_, "l");
-        b.Return(fn, if_);
-    });
-
-    EXPECT_WGSL(R"(
-fn f(a : bool, b : bool) -> bool {
-  let l = (a || b);
-  return l;
-}
-)");
-}
-
-TEST_F(IRToProgramTest, ShortCircuit_Or_Let_3_ab_c) {
-    auto* fn = b.Function("f", ty.bool_());
-    auto* pa = b.FunctionParam("a", ty.bool_());
-    auto* pb = b.FunctionParam("b", ty.bool_());
-    auto* pc = b.FunctionParam("c", ty.bool_());
-    fn->SetParams({pa, pb, pc});
-
-    b.Append(fn->Block(), [&] {
-        auto* if1 = b.If(pa);
-        if1->SetResults(b.InstructionResult(ty.bool_()));
-        b.Append(if1->True(), [&] { b.ExitIf(if1, true); });
-        b.Append(if1->False(), [&] { b.ExitIf(if1, pb); });
-
-        auto* if2 = b.If(if1);
-        if2->SetResults(b.InstructionResult(ty.bool_()));
-        b.Append(if2->True(), [&] { b.ExitIf(if2, true); });
-        b.Append(if2->False(), [&] { b.ExitIf(if2, pc); });
-
-        mod.SetName(if2, "l");
-        b.Return(fn, if2);
-    });
-
-    EXPECT_WGSL(R"(
-fn f(a : bool, b : bool, c : bool) -> bool {
-  let l = ((a || b) || c);
-  return l;
-}
-)");
-}
-
-TEST_F(IRToProgramTest, ShortCircuit_Or_Let_3_a_bc) {
-    auto* fn = b.Function("f", ty.bool_());
-    auto* pa = b.FunctionParam("a", ty.bool_());
-    auto* pb = b.FunctionParam("b", ty.bool_());
-    auto* pc = b.FunctionParam("c", ty.bool_());
-    fn->SetParams({pa, pb, pc});
-
-    b.Append(fn->Block(), [&] {
-        auto* if1 = b.If(pa);
-        if1->SetResults(b.InstructionResult(ty.bool_()));
-        b.Append(if1->True(), [&] { b.ExitIf(if1, true); });
-        b.Append(if1->False(), [&] {
-            auto* if2 = b.If(pb);
-            if2->SetResults(b.InstructionResult(ty.bool_()));
-            b.Append(if2->True(), [&] { b.ExitIf(if2, true); });
-            b.Append(if2->False(), [&] { b.ExitIf(if2, pc); });
-
-            b.ExitIf(if1, if2);
-        });
-
-        mod.SetName(if1, "l");
-        b.Return(fn, if1);
-    });
-
-    EXPECT_WGSL(R"(
-fn f(a : bool, b : bool, c : bool) -> bool {
-  let l = (a || (b || c));
-  return l;
-}
-)");
-}
-
-TEST_F(IRToProgramTest, ShortCircuit_Or_Call_2) {
-    auto* fn_a = b.Function("a", ty.bool_());
-    b.Append(fn_a->Block(), [&] { b.Return(fn_a, true); });
-
-    auto* fn_b = b.Function("b", ty.bool_());
-    b.Append(fn_b->Block(), [&] { b.Return(fn_b, true); });
-
-    auto* fn = b.Function("f", ty.bool_());
-
-    b.Append(fn->Block(), [&] {
-        auto* if_ = b.If(b.Call(ty.bool_(), fn_a));
-        if_->SetResults(b.InstructionResult(ty.bool_()));
-        b.Append(if_->True(), [&] { b.ExitIf(if_, true); });
-        b.Append(if_->False(), [&] { b.ExitIf(if_, b.Call(ty.bool_(), fn_b)); });
-
-        b.Return(fn, if_);
-    });
-
-    EXPECT_WGSL(R"(
-fn a() -> bool {
-  return true;
-}
-
-fn b() -> bool {
-  return true;
-}
-
-fn f() -> bool {
-  return (a() || b());
-}
-)");
-}
-
-TEST_F(IRToProgramTest, ShortCircuit_Or_Call_3_ab_c) {
-    auto* fn_a = b.Function("a", ty.bool_());
-    b.Append(fn_a->Block(), [&] { b.Return(fn_a, true); });
-
-    auto* fn_b = b.Function("b", ty.bool_());
-    b.Append(fn_b->Block(), [&] { b.Return(fn_b, true); });
-
-    auto* fn_c = b.Function("c", ty.bool_());
-    b.Append(fn_c->Block(), [&] { b.Return(fn_c, true); });
-
-    auto* fn = b.Function("f", ty.bool_());
-
-    b.Append(fn->Block(), [&] {
-        auto* if1 = b.If(b.Call(ty.bool_(), fn_a));
-        if1->SetResults(b.InstructionResult(ty.bool_()));
-        b.Append(if1->True(), [&] { b.ExitIf(if1, true); });
-        b.Append(if1->False(), [&] { b.ExitIf(if1, b.Call(ty.bool_(), fn_b)); });
-
-        auto* if2 = b.If(if1);
-        if2->SetResults(b.InstructionResult(ty.bool_()));
-        b.Append(if2->True(), [&] { b.ExitIf(if2, true); });
-        b.Append(if2->False(), [&] { b.ExitIf(if2, b.Call(ty.bool_(), fn_c)); });
-
-        b.Return(fn, if2);
-    });
-
-    EXPECT_WGSL(R"(
-fn a() -> bool {
-  return true;
-}
-
-fn b() -> bool {
-  return true;
-}
-
-fn c() -> bool {
-  return true;
-}
-
-fn f() -> bool {
-  return ((a() || b()) || c());
-}
-)");
-}
-
-TEST_F(IRToProgramTest, ShortCircuit_Or_Call_3_a_bc) {
-    auto* fn_a = b.Function("a", ty.bool_());
-    b.Append(fn_a->Block(), [&] { b.Return(fn_a, true); });
-
-    auto* fn_b = b.Function("b", ty.bool_());
-    b.Append(fn_b->Block(), [&] { b.Return(fn_b, true); });
-
-    auto* fn_c = b.Function("c", ty.bool_());
-    b.Append(fn_c->Block(), [&] { b.Return(fn_c, true); });
-
-    auto* fn = b.Function("f", ty.bool_());
-
-    b.Append(fn->Block(), [&] {
-        auto* if1 = b.If(b.Call(ty.bool_(), fn_a));
-        if1->SetResults(b.InstructionResult(ty.bool_()));
-        b.Append(if1->True(), [&] { b.ExitIf(if1, true); });
-        b.Append(if1->False(), [&] {
-            auto* if2 = b.If(b.Call(ty.bool_(), fn_b));
-            if2->SetResults(b.InstructionResult(ty.bool_()));
-            b.Append(if2->True(), [&] { b.ExitIf(if2, true); });
-            b.Append(if2->False(), [&] { b.ExitIf(if2, b.Call(ty.bool_(), fn_c)); });
-
-            b.ExitIf(if1, if2);
-        });
-
-        b.Return(fn, if1);
-    });
-
-    EXPECT_WGSL(R"(
-fn a() -> bool {
-  return true;
-}
-
-fn b() -> bool {
-  return true;
-}
-
-fn c() -> bool {
-  return true;
-}
-
-fn f() -> bool {
-  return (a() || (b() || c()));
 }
 )");
 }
@@ -1552,257 +1186,7 @@ fn d() -> bool {
 }
 
 fn f(a : bool, c : bool) -> bool {
-  let l = ((a || b()) && (c || d()));
-  return l;
-}
-)");
-}
-
-////////////////////////////////////////////////////////////////////////////////
-// Non short-circuiting binary ops
-// Similar to the above, but cannot be short-circuited as the RHS is evaluated
-// outside of the if block.
-////////////////////////////////////////////////////////////////////////////////
-TEST_F(IRToProgramTest, NonShortCircuit_And_ParamCallParam_a_bc) {
-    auto* fn_b = b.Function("b", ty.bool_());
-    b.Append(fn_b->Block(), [&] { b.Return(fn_b, true); });
-
-    auto* fn = b.Function("f", ty.bool_());
-    auto* pa = b.FunctionParam(ty.bool_());
-    auto* pc = b.FunctionParam(ty.bool_());
-    mod.SetName(pa, "a");
-    mod.SetName(pc, "c");
-    fn->SetParams({pa, pc});
-
-    b.Append(fn->Block(), [&] {
-        // 'b() && c' is evaluated before 'a'.
-        auto* if1 = b.If(b.Call(ty.bool_(), fn_b));
-        if1->SetResults(b.InstructionResult(ty.bool_()));
-        b.Append(if1->True(), [&] { b.ExitIf(if1, pc); });
-        b.Append(if1->False(), [&] { b.ExitIf(if1, false); });
-
-        auto* if2 = b.If(pa);
-        if2->SetResults(b.InstructionResult(ty.bool_()));
-        b.Append(if2->True(), [&] { b.ExitIf(if2, if1); });
-        b.Append(if2->False(), [&] { b.ExitIf(if2, false); });
-        b.Return(fn, if2);
-    });
-
-    EXPECT_WGSL(R"(
-fn b() -> bool {
-  return true;
-}
-
-fn f(a : bool, c : bool) -> bool {
-  let v = (b() && c);
-  return (a && v);
-}
-)");
-}
-
-TEST_F(IRToProgramTest, NonShortCircuit_And_Call_3_a_bc) {
-    auto* fn_a = b.Function("a", ty.bool_());
-
-    b.Append(fn_a->Block(), [&] { b.Return(fn_a, true); });
-
-    auto* fn_b = b.Function("b", ty.bool_());
-
-    b.Append(fn_b->Block(), [&] { b.Return(fn_b, true); });
-
-    auto* fn_c = b.Function("c", ty.bool_());
-
-    b.Append(fn_c->Block(), [&] { b.Return(fn_c, true); });
-
-    auto* fn = b.Function("f", ty.bool_());
-
-    b.Append(fn->Block(), [&] {
-        // 'b() && c()' is evaluated before 'a()'.
-        auto* if1 = b.If(b.Call(ty.bool_(), fn_b));
-        if1->SetResults(b.InstructionResult(ty.bool_()));
-        b.Append(if1->True(), [&] { b.ExitIf(if1, b.Call(ty.bool_(), fn_c)); });
-        b.Append(if1->False(), [&] { b.ExitIf(if1, false); });
-
-        auto* if2 = b.If(b.Call(ty.bool_(), fn_a));
-        if2->SetResults(b.InstructionResult(ty.bool_()));
-        b.Append(if2->True(), [&] { b.ExitIf(if2, if1); });
-        b.Append(if2->False(), [&] { b.ExitIf(if2, false); });
-
-        b.Return(fn, if2);
-    });
-
-    EXPECT_WGSL(R"(
-fn a() -> bool {
-  return true;
-}
-
-fn b() -> bool {
-  return true;
-}
-
-fn c() -> bool {
-  return true;
-}
-
-fn f() -> bool {
-  let v = (b() && c());
-  return (a() && v);
-}
-)");
-}
-
-TEST_F(IRToProgramTest, NonShortCircuit_And_Param_3_a_bc_EarlyEval) {
-    auto* fn = b.Function("f", ty.bool_());
-    auto* pa = b.FunctionParam(ty.bool_());
-    auto* pb = b.FunctionParam(ty.bool_());
-    auto* pc = b.FunctionParam(ty.bool_());
-    mod.SetName(pa, "a");
-    mod.SetName(pb, "b");
-    mod.SetName(pc, "c");
-    fn->SetParams({pa, pb, pc});
-
-    b.Append(fn->Block(), [&] {
-        // 'b && c' is evaluated outside the true block of if2, but these can be moved to the RHS
-        // of the 'a &&' as the 'b && c' is not sequenced.
-        auto* if1 = b.If(pb);
-        if1->SetResults(b.InstructionResult(ty.bool_()));
-        b.Append(if1->True(), [&] { b.ExitIf(if1, pc); });
-        b.Append(if1->False(), [&] { b.ExitIf(if1, false); });
-
-        auto* if2 = b.If(pa);
-        if2->SetResults(b.InstructionResult(ty.bool_()));
-        b.Append(if2->True(), [&] { b.ExitIf(if2, if1); });
-        b.Append(if2->False(), [&] { b.ExitIf(if2, false); });
-
-        b.Return(fn, if2);
-    });
-
-    EXPECT_WGSL(R"(
-fn f(a : bool, b : bool, c : bool) -> bool {
-  let v = (b && c);
-  return (a && v);
-}
-)");
-}
-
-TEST_F(IRToProgramTest, NonShortCircuit_Or_ParamCallParam_a_bc) {
-    auto* fn_b = b.Function("b", ty.bool_());
-    b.Append(fn_b->Block(), [&] { b.Return(fn_b, true); });
-
-    auto* fn = b.Function("f", ty.bool_());
-    auto* pa = b.FunctionParam(ty.bool_());
-    auto* pc = b.FunctionParam(ty.bool_());
-    mod.SetName(pa, "a");
-    mod.SetName(pc, "c");
-    fn->SetParams({pa, pc});
-
-    b.Append(fn->Block(), [&] {
-        // 'b() && c' is evaluated before 'a'.
-        auto* if1 = b.If(b.Call(ty.bool_(), fn_b));
-        if1->SetResults(b.InstructionResult(ty.bool_()));
-        b.Append(if1->True(), [&] { b.ExitIf(if1, true); });
-        b.Append(if1->False(), [&] { b.ExitIf(if1, pc); });
-
-        auto* if2 = b.If(pa);
-        if2->SetResults(b.InstructionResult(ty.bool_()));
-        b.Append(if2->True(), [&] { b.ExitIf(if2, true); });
-        b.Append(if2->False(), [&] { b.ExitIf(if2, if1); });
-
-        mod.SetName(if2, "l");
-        b.Return(fn, if2);
-    });
-
-    EXPECT_WGSL(R"(
-fn b() -> bool {
-  return true;
-}
-
-fn f(a : bool, c : bool) -> bool {
-  let v = (b() || c);
-  let l = (a || v);
-  return l;
-}
-)");
-}
-
-TEST_F(IRToProgramTest, NonShortCircuit_Or_Call_3_a_bc) {
-    auto* fn_a = b.Function("a", ty.bool_());
-
-    b.Append(fn_a->Block(), [&] { b.Return(fn_a, true); });
-
-    auto* fn_b = b.Function("b", ty.bool_());
-
-    b.Append(fn_b->Block(), [&] { b.Return(fn_b, true); });
-
-    auto* fn_c = b.Function("c", ty.bool_());
-
-    b.Append(fn_c->Block(), [&] { b.Return(fn_c, true); });
-
-    auto* fn = b.Function("f", ty.bool_());
-
-    b.Append(fn->Block(), [&] {
-        auto* if1 = b.If(b.Call(ty.bool_(), fn_b));
-        if1->SetResults(b.InstructionResult(ty.bool_()));
-        b.Append(if1->True(), [&] { b.ExitIf(if1, true); });
-        b.Append(if1->False(), [&] { b.ExitIf(if1, b.Call(ty.bool_(), fn_c)); });
-
-        auto* if2 = b.If(b.Call(ty.bool_(), fn_a));
-        if2->SetResults(b.InstructionResult(ty.bool_()));
-        b.Append(if2->True(), [&] { b.ExitIf(if2, true); });
-        b.Append(if2->False(), [&] { b.ExitIf(if2, if1); });
-
-        b.Return(fn, if2);
-    });
-
-    EXPECT_WGSL(R"(
-fn a() -> bool {
-  return true;
-}
-
-fn b() -> bool {
-  return true;
-}
-
-fn c() -> bool {
-  return true;
-}
-
-fn f() -> bool {
-  let v = (b() || c());
-  return (a() || v);
-}
-)");
-}
-
-TEST_F(IRToProgramTest, NonShortCircuit_Or_Param_3_a_bc_EarlyEval) {
-    auto* fn = b.Function("f", ty.bool_());
-    auto* pa = b.FunctionParam(ty.bool_());
-    auto* pb = b.FunctionParam(ty.bool_());
-    auto* pc = b.FunctionParam(ty.bool_());
-    mod.SetName(pa, "a");
-    mod.SetName(pb, "b");
-    mod.SetName(pc, "c");
-    fn->SetParams({pa, pb, pc});
-
-    b.Append(fn->Block(), [&] {
-        // 'b || c' is evaluated outside the true block of if2, but these can be moved to the RHS
-        // of the 'a ||' as the 'b || c' is not sequenced.
-        auto* if1 = b.If(pb);
-        if1->SetResults(b.InstructionResult(ty.bool_()));
-        b.Append(if1->True(), [&] { b.ExitIf(if1, true); });
-        b.Append(if1->False(), [&] { b.ExitIf(if1, pc); });
-
-        auto* if2 = b.If(pa);
-        if2->SetResults(b.InstructionResult(ty.bool_()));
-        b.Append(if2->True(), [&] { b.ExitIf(if2, true); });
-        b.Append(if2->False(), [&] { b.ExitIf(if2, if1); });
-
-        b.Return(fn, if2);
-    });
-
-    EXPECT_WGSL(R"(
-fn f(a : bool, b : bool, c : bool) -> bool {
-  let v = (b || c);
-  return (a || v);
+  return ((a || b()) && (c || d()));
 }
 )");
 }
@@ -1814,7 +1198,7 @@ TEST_F(IRToProgramTest, CompoundAssign_Increment) {
     auto* fn = b.Function("f", ty.void_());
 
     b.Append(fn->Block(), [&] {
-        auto* v = b.Var<function, i32>("v");
+        auto* v = Var<function, i32>("v");
         b.Store(v, b.Add(ty.i32(), b.Load(v), 1_i));
 
         b.Return(fn);
@@ -1832,7 +1216,7 @@ TEST_F(IRToProgramTest, CompoundAssign_Decrement) {
     auto* fn = b.Function("f", ty.void_());
 
     b.Append(fn->Block(), [&] {
-        auto* v = b.Var<function, i32>("v");
+        auto* v = Var<function, i32>("v");
         b.Store(v, b.Subtract(ty.i32(), b.Load(v), 1_i));
 
         b.Return(fn);
@@ -1850,7 +1234,7 @@ TEST_F(IRToProgramTest, CompoundAssign_Add) {
     auto* fn = b.Function("f", ty.void_());
 
     b.Append(fn->Block(), [&] {
-        auto* v = b.Var<function, i32>("v");
+        auto* v = Var<function, i32>("v");
         b.Store(v, b.Add(ty.i32(), b.Load(v), 8_i));
 
         b.Return(fn);
@@ -1868,7 +1252,7 @@ TEST_F(IRToProgramTest, CompoundAssign_Subtract) {
     auto* fn = b.Function("f", ty.void_());
 
     b.Append(fn->Block(), [&] {
-        auto* v = b.Var<function, i32>("v");
+        auto* v = Var<function, i32>("v");
         b.Store(v, b.Subtract(ty.i32(), b.Load(v), 8_i));
 
         b.Return(fn);
@@ -1886,7 +1270,7 @@ TEST_F(IRToProgramTest, CompoundAssign_Multiply) {
     auto* fn = b.Function("f", ty.void_());
 
     b.Append(fn->Block(), [&] {
-        auto* v = b.Var<function, i32>("v");
+        auto* v = Var<function, i32>("v");
         b.Store(v, b.Multiply(ty.i32(), b.Load(v), 8_i));
 
         b.Return(fn);
@@ -1904,7 +1288,7 @@ TEST_F(IRToProgramTest, CompoundAssign_Divide) {
     auto* fn = b.Function("f", ty.void_());
 
     b.Append(fn->Block(), [&] {
-        auto* v = b.Var<function, i32>("v");
+        auto* v = Var<function, i32>("v");
         b.Store(v, b.Divide(ty.i32(), b.Load(v), 8_i));
 
         b.Return(fn);
@@ -1922,7 +1306,7 @@ TEST_F(IRToProgramTest, CompoundAssign_Xor) {
     auto* fn = b.Function("f", ty.void_());
 
     b.Append(fn->Block(), [&] {
-        auto* v = b.Var<function, i32>("v");
+        auto* v = Var<function, i32>("v");
         b.Store(v, b.Xor(ty.i32(), b.Load(v), 8_i));
 
         b.Return(fn);
@@ -1982,7 +1366,7 @@ TEST_F(IRToProgramTest, FunctionScopeVar_i32) {
     auto* fn = b.Function("f", ty.void_());
 
     b.Append(fn->Block(), [&] {  //
-        b.Var<function, i32>("i");
+        Var<function, i32>("i");
 
         b.Return(fn);
     });
@@ -1998,7 +1382,7 @@ TEST_F(IRToProgramTest, FunctionScopeVar_i32_InitLiteral) {
     auto* fn = b.Function("f", ty.void_());
 
     b.Append(fn->Block(), [&] {
-        b.Var("i", 42_i);
+        Var("i", 42_i);
 
         b.Return(fn);
     });
@@ -2014,11 +1398,11 @@ TEST_F(IRToProgramTest, FunctionScopeVar_Chained) {
     auto* fn = b.Function("f", ty.void_());
 
     b.Append(fn->Block(), [&] {
-        auto* va = b.Var("a", 42_i);
+        auto* va = Var("a", 42_i);
 
-        auto* vb = b.Var("b", b.Load(va));
+        auto* vb = Var("b", b.Load(va));
 
-        b.Var("c", b.Load(vb));
+        Var("c", b.Load(vb));
 
         b.Return(fn);
     });
@@ -2090,7 +1474,7 @@ TEST_F(IRToProgramTest, If_Return_i32) {
     auto* fn = b.Function("f", ty.i32());
 
     b.Append(fn->Block(), [&] {
-        auto* cond = b.Var("cond", true);
+        auto* cond = Var("cond", true);
         auto if_ = b.If(b.Load(cond));
         b.Append(if_->True(), [&] { b.Return(fn, 42_i); });
 
@@ -2154,7 +1538,7 @@ TEST_F(IRToProgramTest, If_Return_f32_Else_Return_f32) {
     auto* fn = b.Function("f", ty.f32());
 
     b.Append(fn->Block(), [&] {
-        auto* cond = b.Var("cond", true);
+        auto* cond = Var("cond", true);
         auto if_ = b.If(b.Load(cond));
         b.Append(if_->True(), [&] { b.Return(fn, 1.0_f); });
         b.Append(if_->False(), [&] { b.Return(fn, 2.0_f); });
@@ -2184,7 +1568,7 @@ TEST_F(IRToProgramTest, If_Return_u32_Else_CallFn) {
     auto* fn = b.Function("f", ty.u32());
 
     b.Append(fn->Block(), [&] {
-        auto* cond = b.Var("cond", true);
+        auto* cond = Var("cond", true);
         auto if_ = b.If(b.Load(cond));
         b.Append(if_->True(), [&] { b.Return(fn, 1_u); });
         b.Append(if_->False(), [&] {
@@ -2228,7 +1612,7 @@ TEST_F(IRToProgramTest, If_CallFn_ElseIf_CallFn) {
     auto* fn = b.Function("f", ty.void_());
 
     b.Append(fn->Block(), [&] {
-        auto* cond = b.Var("cond", true);
+        auto* cond = Var("cond", true);
         auto if1 = b.If(b.Load(cond));
         b.Append(if1->True(), [&] {
             b.Call(ty.void_(), fn_a);
@@ -2340,7 +1724,7 @@ TEST_F(IRToProgramTest, Switch_Default) {
     auto* fn = b.Function("f", ty.void_());
 
     b.Append(fn->Block(), [&] {
-        auto* v = b.Var("v", 42_i);
+        auto* v = Var("v", 42_i);
 
         auto s = b.Switch(b.Load(v));
         b.Append(b.DefaultCase(s), [&] {
@@ -2379,7 +1763,7 @@ TEST_F(IRToProgramTest, Switch_3_Cases) {
     auto* fn = b.Function("f", ty.void_());
 
     b.Append(fn->Block(), [&] {
-        auto* v = b.Var("v", 42_i);
+        auto* v = Var("v", 42_i);
 
         auto s = b.Switch(b.Load(v));
         b.Append(b.Case(s, {b.Constant(0_i)}), [&] {
@@ -2432,7 +1816,7 @@ TEST_F(IRToProgramTest, Switch_3_Cases_AllReturn) {
     auto* fn = b.Function("f", ty.void_());
 
     b.Append(fn->Block(), [&] {
-        auto* v = b.Var("v", 42_i);
+        auto* v = Var("v", 42_i);
 
         auto s = b.Switch(b.Load(v));
         b.Append(b.Case(s, {b.Constant(0_i)}), [&] { b.Return(fn); });
@@ -2477,9 +1861,9 @@ TEST_F(IRToProgramTest, Switch_Nested) {
 
     auto* fn = b.Function("f", ty.void_());
     b.Append(fn->Block(), [&] {
-        auto* v1 = b.Var("v1", 42_i);
+        auto* v1 = Var("v1", 42_i);
 
-        auto* v2 = b.Var("v2", 24_i);
+        auto* v2 = Var("v2", 24_i);
 
         auto s1 = b.Switch(b.Load(v1));
         b.Append(b.Case(s1, {b.Constant(0_i)}), [&] {
@@ -2544,7 +1928,7 @@ TEST_F(IRToProgramTest, For_Empty) {
         auto* loop = b.Loop();
 
         b.Append(loop->Initializer(), [&] {
-            auto* i = b.Var("i", 0_i);
+            auto* i = Var("i", 0_i);
             b.NextIteration(loop);
 
             b.Append(loop->Body(), [&] {
@@ -2575,7 +1959,7 @@ TEST_F(IRToProgramTest, For_Empty_NoInit) {
     auto* fn = b.Function("f", ty.void_());
 
     b.Append(fn->Block(), [&] {
-        auto* i = b.Var("i", 0_i);
+        auto* i = Var("i", 0_i);
 
         auto* loop = b.Loop();
 
@@ -2610,7 +1994,7 @@ TEST_F(IRToProgramTest, For_Empty_NoCont) {
         auto* loop = b.Loop();
 
         b.Append(loop->Initializer(), [&] {
-            auto* i = b.Var("i", 0_i);
+            auto* i = Var("i", 0_i);
             b.NextIteration(loop);
 
             b.Append(loop->Body(), [&] {
@@ -2644,7 +2028,7 @@ TEST_F(IRToProgramTest, For_ComplexBody) {
         auto* loop = b.Loop();
 
         b.Append(loop->Initializer(), [&] {
-            auto* i = b.Var("i", 0_i);
+            auto* i = Var("i", 0_i);
             b.NextIteration(loop);
 
             b.Append(loop->Body(), [&] {
@@ -2694,7 +2078,7 @@ TEST_F(IRToProgramTest, For_ComplexBody_NoInit) {
     auto* fn = b.Function("f", ty.i32());
 
     b.Append(fn->Block(), [&] {
-        auto* i = b.Var("i", 0_i);
+        auto* i = Var("i", 0_i);
 
         auto* loop = b.Loop();
 
@@ -2749,7 +2133,7 @@ TEST_F(IRToProgramTest, For_ComplexBody_NoCont) {
         auto* loop = b.Loop();
 
         b.Append(loop->Initializer(), [&] {
-            auto* i = b.Var("i", 0_i);
+            auto* i = Var("i", 0_i);
             b.NextIteration(loop);
 
             b.Append(loop->Body(), [&] {
@@ -2761,7 +2145,7 @@ TEST_F(IRToProgramTest, For_ComplexBody_NoCont) {
                 b.Append(if2->True(), [&] { b.Return(fn, 1_i); });
                 b.Append(if2->False(), [&] { b.Return(fn, 2_i); });
 
-                b.NextIteration(loop);
+                b.Continue(loop);
             });
         });
 
@@ -2798,7 +2182,7 @@ TEST_F(IRToProgramTest, For_CallInInitCondCont) {
         auto* loop = b.Loop();
 
         b.Append(loop->Initializer(), [&] {
-            auto* i = b.Var("i", b.Call(ty.i32(), fn_n, 0_i));
+            auto* i = Var("i", b.Call(ty.i32(), fn_n, 0_i));
             b.NextIteration(loop);
 
             b.Append(loop->Body(), [&] {
@@ -2865,7 +2249,7 @@ TEST_F(IRToProgramTest, For_IncInInit_Cmp) {
     // }
 
     b.Append(mod.root_block, [&] {
-        auto* i = b.Var<storage, u32, read_write>();
+        auto* i = Var<storage, u32, read_write>();
         i->SetBindingPoint(0, 0);
 
         auto* fn_f = b.Function("f", ty.void_());
@@ -2894,7 +2278,7 @@ TEST_F(IRToProgramTest, For_IncInInit_Cmp) {
     });
 
     EXPECT_WGSL(R"(
-@group(0) @binding(0) var<storage, read_write> v : u32;
+@group(0u) @binding(0u) var<storage, read_write> v : u32;
 
 fn f() {
   for(v = (v + 1u); (v < 10u); ) {
@@ -3017,6 +2401,75 @@ fn f(cond : bool) {
 )");
 }
 
+TEST_F(IRToProgramTest, While_BreakAfterStatement) {
+    auto* fn = b.Function("f", ty.void_());
+
+    b.Append(fn->Block(), [&] {
+        auto* loop = b.Loop();
+
+        b.Append(loop->Body(), [&] {
+            auto* let = b.Let("cond", true);
+            auto* cond = b.If(let);
+            b.Append(cond->True(), [&] { b.ExitIf(cond); });
+            b.Append(cond->False(), [&] { b.ExitLoop(loop); });
+
+            b.ExitLoop(loop);
+        });
+
+        b.Return(fn);
+    });
+
+    EXPECT_WGSL(R"(
+fn f() {
+  loop {
+    let cond = true;
+    if (cond) {
+    } else {
+      break;
+    }
+    break;
+  }
+}
+)");
+}
+
+// Test that only the first "if continue then break" instruction is treated as the loop condition.
+// See crbug.com/351700183.
+TEST_F(IRToProgramTest, While_IfBreakInFalse) {
+    auto* fn = b.Function("f", ty.void_());
+    auto* cond = b.FunctionParam("cond", ty.bool_());
+    fn->SetParams({cond});
+
+    b.Append(fn->Block(), [&] {
+        auto* loop = b.Loop();
+
+        b.Append(loop->Body(), [&] {
+            auto* if1 = b.If(true);
+            b.Append(if1->True(), [&] { b.ExitIf(if1); });
+            b.Append(if1->False(), [&] { b.ExitLoop(loop); });
+
+            auto* if2 = b.If(cond);
+            b.Append(if2->True(), [&] { b.ExitIf(if2); });
+            b.Append(if2->False(), [&] { b.ExitLoop(loop); });
+
+            b.Continue(loop);
+        });
+
+        b.Return(fn);
+    });
+
+    EXPECT_WGSL(R"(
+fn f(cond : bool) {
+  while(true) {
+    if (cond) {
+    } else {
+      break;
+    }
+  }
+}
+)");
+}
+
 TEST_F(IRToProgramTest, While_IfReturn) {
     auto* fn = b.Function("f", ty.void_());
     auto* cond = b.FunctionParam("cond", ty.bool_());
@@ -3132,7 +2585,7 @@ TEST_F(IRToProgramTest, Loop_IfContinuing) {
     auto* fn = b.Function("f", ty.void_());
 
     b.Append(fn->Block(), [&] {
-        auto* cond = b.Var("cond", false);
+        auto* cond = Var("cond", false);
 
         auto* loop = b.Loop();
 
@@ -3169,12 +2622,12 @@ TEST_F(IRToProgramTest, Loop_VarsDeclaredOutsideAndInside) {
     auto* fn = b.Function("f", ty.void_());
 
     b.Append(fn->Block(), [&] {
-        auto* var_b = b.Var("b", 1_i);
+        auto* var_b = Var("b", 1_i);
 
         auto* loop = b.Loop();
 
         b.Append(loop->Body(), [&] {
-            auto* var_a = b.Var("a", 2_i);
+            auto* var_a = Var("a", 2_i);
 
             auto* body_load_a = b.Load(var_a);
             auto* body_load_b = b.Load(var_b);
@@ -3217,8 +2670,8 @@ fn f() {
 TEST_F(IRToProgramTest, Enable_ChromiumExperimentalSubgroups_SubgroupBallot) {
     auto* fn = b.Function("f", ty.void_());
     b.Append(fn->Block(), [&] {
-        auto* call = b.Append(mod.instructions.Create<wgsl::ir::BuiltinCall>(
-            b.InstructionResult(ty.vec4<u32>()), wgsl::BuiltinFn::kSubgroupBallot, Empty));
+        auto* call = b.CallWithResult<wgsl::ir::BuiltinCall>(
+            b.InstructionResult(ty.vec4<u32>()), wgsl::BuiltinFn::kSubgroupBallot, true);
         b.Let("v", call);
         b.Return(fn);
     });
@@ -3227,7 +2680,7 @@ TEST_F(IRToProgramTest, Enable_ChromiumExperimentalSubgroups_SubgroupBallot) {
 enable chromium_experimental_subgroups;
 
 fn f() {
-  let v = subgroupBallot();
+  let v = subgroupBallot(true);
 }
 )");
 }
@@ -3236,8 +2689,8 @@ TEST_F(IRToProgramTest, Enable_ChromiumExperimentalSubgroups_SubgroupBroadcast) 
     auto* fn = b.Function("f", ty.void_());
     b.Append(fn->Block(), [&] {
         auto* one = b.Value(1_u);
-        auto* call = b.Append(mod.instructions.Create<wgsl::ir::BuiltinCall>(
-            b.InstructionResult(ty.u32()), wgsl::BuiltinFn::kSubgroupBroadcast, Vector{one, one}));
+        auto* call = b.CallWithResult<wgsl::ir::BuiltinCall>(
+            b.InstructionResult(ty.u32()), wgsl::BuiltinFn::kSubgroupBroadcast, Vector{one, one});
         b.Let("v", call);
         b.Return(fn);
     });
@@ -3298,6 +2751,49 @@ struct S {
 
 fn f(v : S) {
 }
+)");
+}
+
+TEST_F(IRToProgramTest, Enable_ChromiumExperimentalFramebufferFetch_StructColor) {
+    core::type::Manager::StructMemberDesc member;
+    member.name = mod.symbols.New("a");
+    member.type = ty.f32();
+    member.attributes.color = 2u;
+
+    auto* S = ty.Struct(mod.symbols.New("S"), {member});
+
+    auto* fn = b.Function("f", ty.void_());
+    fn->SetParams({b.FunctionParam(S)});
+    b.Append(fn->Block(), [&] { b.Return(fn); });
+
+    EXPECT_WGSL(R"(
+enable chromium_experimental_framebuffer_fetch;
+
+struct S {
+  @color(2u)
+  a : f32,
+}
+
+fn f(v : S) {
+}
+)");
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// chromium_internal_graphite
+////////////////////////////////////////////////////////////////////////////////
+TEST_F(IRToProgramTest, Enable_ChromiumInternalGraphite_SubgroupBallot) {
+    b.Append(b.ir.root_block, [&] {
+        auto t = b.Var("T", ty.ref<core::AddressSpace::kHandle>(ty.Get<core::type::StorageTexture>(
+                                core::type::TextureDimension::k2d, core::TexelFormat::kR8Unorm,
+                                core::Access::kRead, ty.f32())));
+        t->SetBindingPoint(0, 0);
+    });
+
+    EXPECT_WGSL(R"(
+enable chromium_internal_graphite;
+
+@group(0u) @binding(0u) var T : texture_storage_2d<r8unorm, read>;
 )");
 }
 

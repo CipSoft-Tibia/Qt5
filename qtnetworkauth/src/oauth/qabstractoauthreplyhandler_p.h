@@ -18,6 +18,10 @@
 #include <QtCore/qloggingcategory.h>
 #include <QtCore/private/qglobal_p.h>
 
+QT_BEGIN_NAMESPACE
+
 Q_DECLARE_LOGGING_CATEGORY(lcReplyHandler)
+
+QT_END_NAMESPACE
 
 #endif // QABSTRACTOAUTHREPLYHANDLER_P_H

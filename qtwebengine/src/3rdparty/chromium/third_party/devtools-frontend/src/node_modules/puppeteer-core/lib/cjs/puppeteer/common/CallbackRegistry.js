@@ -1,18 +1,8 @@
 "use strict";
 /**
- * Copyright 2023 Google Inc. All rights reserved.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * @license
+ * Copyright 2023 Google Inc.
+ * SPDX-License-Identifier: Apache-2.0
  */
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.createIncrementalIdGenerator = exports.Callback = exports.CallbackRegistry = void 0;
@@ -37,17 +27,14 @@ class CallbackRegistry {
         catch (error) {
             // We still throw sync errors synchronously and clean up the scheduled
             // callback.
-            callback.promise
-                .valueOrThrow()
-                .catch(util_js_1.debugError)
-                .finally(() => {
+            callback.promise.catch(util_js_1.debugError).finally(() => {
                 this.#callbacks.delete(callback.id);
             });
             callback.reject(error);
             throw error;
         }
         // Must only have sync code up until here.
-        return callback.promise.valueOrThrow().finally(() => {
+        return callback.promise.finally(() => {
             this.#callbacks.delete(callback.id);
         });
     }
@@ -86,6 +73,16 @@ class CallbackRegistry {
         }
         this.#callbacks.clear();
     }
+    /**
+     * @internal
+     */
+    getPendingProtocolErrors() {
+        const result = [];
+        for (const callback of this.#callbacks.values()) {
+            result.push(new Error(`${callback.label} timed out. Trace: ${callback.error.stack}`));
+        }
+        return result;
+    }
 }
 exports.CallbackRegistry = CallbackRegistry;
 /**
@@ -118,7 +115,7 @@ class Callback {
         return this.#id;
     }
     get promise() {
-        return this.#deferred;
+        return this.#deferred.valueOrThrow();
     }
     get error() {
         return this.#error;

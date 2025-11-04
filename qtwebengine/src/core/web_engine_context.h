@@ -56,8 +56,6 @@ class ContentMainDelegateQt;
 class DevToolsServerQt;
 class ProfileAdapter;
 
-bool usingSoftwareDynamicGL();
-
 typedef std::tuple<bool, QString, QString> ProxyAuthentication;
 
 class WebEngineContext : public base::RefCounted<WebEngineContext> {
@@ -67,7 +65,7 @@ public:
     static ProxyAuthentication qProxyNetworkAuthentication(QString host, int port);
     static void flushMessages();
     static bool closingDown();
-#if defined(USE_OZONE)
+#if BUILDFLAG(IS_OZONE)
     static bool isGbmSupported();
 #endif
     ProfileAdapter *createDefaultProfileAdapter();
@@ -80,6 +78,7 @@ public:
     void destroyProfileAdapter();
     void addProfileAdapter(ProfileAdapter *profileAdapter);
     void removeProfileAdapter(ProfileAdapter *profileAdapter);
+    bool profileExistOnPath(const QString &dataPath);
     void destroy();
     static base::CommandLine *initCommandLine(bool &useEmbeddedSwitches,
                                               bool &enableGLSoftwareRendering);

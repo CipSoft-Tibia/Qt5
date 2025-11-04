@@ -27,7 +27,7 @@ export class BackForwardCacheTreeElement extends ApplicationPanelTreeElement {
       .LegacyWrapper<UI.Widget.Widget, ApplicationComponents.BackForwardCacheView.BackForwardCacheView>;
 
   constructor(resourcesPanel: ResourcesPanel) {
-    super(resourcesPanel, i18nString(UIStrings.backForwardCache), false);
+    super(resourcesPanel, i18nString(UIStrings.backForwardCache), false, 'bfcache');
     const icon = IconButton.Icon.create('database');
     this.setLeadingIcons([icon]);
   }
@@ -43,7 +43,8 @@ export class BackForwardCacheTreeElement extends ApplicationPanelTreeElement {
           UI.Widget.Widget, new ApplicationComponents.BackForwardCacheView.BackForwardCacheView());
     }
     this.showView(this.view);
-    Host.userMetrics.panelShown(Host.UserMetrics.PanelCodes[Host.UserMetrics.PanelCodes.back_forward_cache]);
+    Host.userMetrics.panelShown('back-forward-cache');
+
     return false;
   }
 }

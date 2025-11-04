@@ -42,6 +42,7 @@
 #include "libavutil/imgutils.h"
 #include "libavutil/film_grain_params.h"
 #include "libavutil/mastering_display_metadata.h"
+#include "libavutil/avassert.h"
 
 #include "avcodec.h"
 #include "codec_internal.h"
@@ -50,6 +51,7 @@
 #include "hwconfig.h"
 #include "qsv.h"
 #include "qsv_internal.h"
+#include "refstruct.h"
 
 #if QSV_ONEVPL
 #include <mfxdispatcher.h>
@@ -67,6 +69,8 @@ static const AVRational mfx_tb = { 1, 90000 };
     AV_NOPTS_VALUE : pts_tb.num ? \
     av_rescale_q(mfx_pts, mfx_tb, pts_tb) : mfx_pts)
 
+#define MFX_IMPL_VIA_MASK(impl) (0x0f00 & (impl))
+
 typedef struct QSVAsyncFrame {
     mfxSyncPoint *sync;
     QSVFrame     *frame;
@@ -76,6 +80,7 @@ typedef struct QSVContext {
     // the session used for decoding
     mfxSession session;
     mfxVersion ver;
+    mfxHandleType handle_type;
 
     // the session we allocated internally, in case the caller did not provide
     // one
@@ -182,6 +187,7 @@ static int qsv_init_session(AVCodecContext *avctx, QSVContext *q, mfxSession ses
                             AVBufferRef *hw_frames_ref, AVBufferRef *hw_device_ref)
 {
     int ret;
+    mfxIMPL impl;
 
     if (q->gpu_copy == MFX_GPUCOPY_ON &&
         !(q->iopattern & MFX_IOPATTERN_OUT_SYSTEM_MEMORY)) {
@@ -239,27 +245,52 @@ static int qsv_init_session(AVCodecContext *avctx, QSVContext *q, mfxSession ses
         q->session = q->internal_qs.session;
     }
 
+    if (MFXQueryIMPL(q->session, &impl) == MFX_ERR_NONE) {
+        switch (MFX_IMPL_VIA_MASK(impl)) {
+        case MFX_IMPL_VIA_VAAPI:
+            q->handle_type = MFX_HANDLE_VA_DISPLAY;
+            break;
+
+        case MFX_IMPL_VIA_D3D11:
+            q->handle_type = MFX_HANDLE_D3D11_DEVICE;
+            break;
+
+        case MFX_IMPL_VIA_D3D9:
+            q->handle_type = MFX_HANDLE_D3D9_DEVICE_MANAGER;
+            break;
+
+        default:
+            av_assert0(!"should not reach here");
+        }
+    } else {
+        av_log(avctx, AV_LOG_ERROR, "Error querying the implementation. \n");
+        goto fail;
+    }
+
     if (MFXQueryVersion(q->session, &q->ver) != MFX_ERR_NONE) {
         av_log(avctx, AV_LOG_ERROR, "Error querying the session version. \n");
-        q->session = NULL;
-
-        if (q->internal_qs.session) {
-            MFXClose(q->internal_qs.session);
-            q->internal_qs.session = NULL;
-        }
-
-        if (q->internal_qs.loader) {
-            MFXUnload(q->internal_qs.loader);
-            q->internal_qs.loader = NULL;
-        }
-
-        return AVERROR_EXTERNAL;
+        goto fail;
     }
 
     /* make sure the decoder is uninitialized */
     MFXVideoDECODE_Close(q->session);
 
     return 0;
+
+fail:
+    q->session = NULL;
+
+    if (q->internal_qs.session) {
+        MFXClose(q->internal_qs.session);
+        q->internal_qs.session = NULL;
+    }
+
+    if (q->internal_qs.loader) {
+        MFXUnload(q->internal_qs.loader);
+        q->internal_qs.loader = NULL;
+    }
+
+    return AVERROR_EXTERNAL;
 }
 
 static int qsv_decode_preinit(AVCodecContext *avctx, QSVContext *q, enum AVPixelFormat pix_fmt, mfxVideoParam *param)
@@ -309,7 +340,10 @@ static int qsv_decode_preinit(AVCodecContext *avctx, QSVContext *q, enum AVPixel
         hwframes_ctx->height            = FFALIGN(avctx->coded_height, 32);
         hwframes_ctx->format            = AV_PIX_FMT_QSV;
         hwframes_ctx->sw_format         = avctx->sw_pix_fmt;
-        hwframes_ctx->initial_pool_size = q->suggest_pool_size + 16 + avctx->extra_hw_frames;
+        if (QSV_RUNTIME_VERSION_ATLEAST(q->ver, 2, 9) && q->handle_type != MFX_HANDLE_D3D9_DEVICE_MANAGER)
+            hwframes_ctx->initial_pool_size = 0;
+        else
+            hwframes_ctx->initial_pool_size = q->suggest_pool_size + 16 + avctx->extra_hw_frames;
         frames_hwctx->frame_type        = MFX_MEMTYPE_VIDEO_MEMORY_DECODER_TARGET;
 
         ret = av_hwframe_ctx_init(avctx->hw_frames_ctx);
@@ -378,9 +412,12 @@ static int qsv_decode_init_context(AVCodecContext *avctx, QSVContext *q, mfxVide
 
     q->frame_info = param->mfx.FrameInfo;
 
-    if (!avctx->hw_frames_ctx)
-        q->pool = av_buffer_pool_init(av_image_get_buffer_size(avctx->pix_fmt,
-                    FFALIGN(avctx->width, 128), FFALIGN(avctx->height, 64), 1), av_buffer_allocz);
+    if (!avctx->hw_frames_ctx) {
+        ret = av_image_get_buffer_size(avctx->pix_fmt, FFALIGN(avctx->width, 128), FFALIGN(avctx->height, 64), 1);
+        if (ret < 0)
+            return ret;
+        q->pool = av_buffer_pool_init(ret, av_buffer_allocz);
+    }
     return 0;
 }
 
@@ -439,6 +476,11 @@ static int qsv_decode_header(AVCodecContext *avctx, QSVContext *q,
 
     param->ExtParam    = q->ext_buffers;
     param->NumExtParam = q->nb_ext_buffers;
+
+    if (param->mfx.FrameInfo.FrameRateExtN == 0 || param->mfx.FrameInfo.FrameRateExtD == 0) {
+        param->mfx.FrameInfo.FrameRateExtN = 25;
+        param->mfx.FrameInfo.FrameRateExtD = 1;
+    }
 
 #if QSV_VERSION_ATLEAST(1, 34)
     if (QSV_RUNTIME_VERSION_ATLEAST(q->ver, 1, 34) && avctx->codec_id == AV_CODEC_ID_AV1)
@@ -651,42 +693,50 @@ static int qsv_export_film_grain(AVCodecContext *avctx, mfxExtAV1FilmGrainParam 
 static int qsv_export_hdr_side_data(AVCodecContext *avctx, mfxExtMasteringDisplayColourVolume *mdcv,
                                     mfxExtContentLightLevelInfo *clli, AVFrame *frame)
 {
+    int ret;
+
     // The SDK re-uses this flag for HDR SEI parsing
     if (mdcv->InsertPayloadToggle) {
-        AVMasteringDisplayMetadata *mastering = av_mastering_display_metadata_create_side_data(frame);
+        AVMasteringDisplayMetadata *mastering;
         const int mapping[3] = {2, 0, 1};
         const int chroma_den = 50000;
         const int luma_den = 10000;
         int i;
 
-        if (!mastering)
-            return AVERROR(ENOMEM);
+        ret = ff_decode_mastering_display_new(avctx, frame, &mastering);
+        if (ret < 0)
+            return ret;
 
-        for (i = 0; i < 3; i++) {
-            const int j = mapping[i];
-            mastering->display_primaries[i][0] = av_make_q(mdcv->DisplayPrimariesX[j], chroma_den);
-            mastering->display_primaries[i][1] = av_make_q(mdcv->DisplayPrimariesY[j], chroma_den);
+        if (mastering) {
+            for (i = 0; i < 3; i++) {
+                const int j = mapping[i];
+                mastering->display_primaries[i][0] = av_make_q(mdcv->DisplayPrimariesX[j], chroma_den);
+                mastering->display_primaries[i][1] = av_make_q(mdcv->DisplayPrimariesY[j], chroma_den);
+            }
+
+            mastering->white_point[0] = av_make_q(mdcv->WhitePointX, chroma_den);
+            mastering->white_point[1] = av_make_q(mdcv->WhitePointY, chroma_den);
+
+            mastering->max_luminance = av_make_q(mdcv->MaxDisplayMasteringLuminance, luma_den);
+            mastering->min_luminance = av_make_q(mdcv->MinDisplayMasteringLuminance, luma_den);
+
+            mastering->has_luminance = 1;
+            mastering->has_primaries = 1;
         }
-
-        mastering->white_point[0] = av_make_q(mdcv->WhitePointX, chroma_den);
-        mastering->white_point[1] = av_make_q(mdcv->WhitePointY, chroma_den);
-
-        mastering->max_luminance = av_make_q(mdcv->MaxDisplayMasteringLuminance, luma_den);
-        mastering->min_luminance = av_make_q(mdcv->MinDisplayMasteringLuminance, luma_den);
-
-        mastering->has_luminance = 1;
-        mastering->has_primaries = 1;
     }
 
     // The SDK re-uses this flag for HDR SEI parsing
     if (clli->InsertPayloadToggle) {
-        AVContentLightMetadata *light = av_content_light_metadata_create_side_data(frame);
+        AVContentLightMetadata *light;
 
-        if (!light)
-            return AVERROR(ENOMEM);
+        ret = ff_decode_content_light_new(avctx, frame, &light);
+        if (ret < 0)
+            return ret;
 
-        light->MaxCLL  = clli->MaxContentLightLevel;
-        light->MaxFALL = clli->MaxPicAverageLightLevel;
+        if (light) {
+            light->MaxCLL  = clli->MaxContentLightLevel;
+            light->MaxFALL = clli->MaxPicAverageLightLevel;
+        }
     }
 
     return 0;
@@ -754,7 +804,9 @@ static int qsv_decode(AVCodecContext *avctx, QSVContext *q,
     if (!*sync && !bs.DataOffset) {
         bs.DataOffset = avpkt->size;
         ++q->zero_consume_run;
-        if (q->zero_consume_run > 1)
+        if (q->zero_consume_run > 1 &&
+            (avpkt->size ||
+            ret != MFX_ERR_MORE_DATA))
             ff_qsv_print_warning(avctx, ret, "A decode call did not consume any data");
     } else {
         q->zero_consume_run = 0;
@@ -875,7 +927,7 @@ static void qsv_decode_close_qsvcontext(QSVContext *q)
     ff_qsv_close_internal_session(&q->internal_qs);
 
     av_buffer_unref(&q->frames_ctx.hw_frames_ctx);
-    av_buffer_unref(&q->frames_ctx.mids_buf);
+    ff_refstruct_unref(&q->frames_ctx.mids);
     av_buffer_pool_uninit(&q->pool);
 }
 
@@ -917,7 +969,7 @@ static int qsv_process_data(AVCodecContext *avctx, QSVContext *q,
         ret = qsv_decode_header(avctx, q, pkt, pix_fmt, &param);
         if (ret < 0) {
             if (ret == AVERROR(EAGAIN))
-                av_log(avctx, AV_LOG_INFO, "More data is required to decode header\n");
+                av_log(avctx, AV_LOG_VERBOSE, "More data is required to decode header\n");
             else
                 av_log(avctx, AV_LOG_ERROR, "Error decoding header\n");
             goto reinit_fail;
@@ -1076,6 +1128,9 @@ static int qsv_decode_frame(AVCodecContext *avctx, AVFrame *frame,
 
         ret = qsv_process_data(avctx, &s->qsv, frame, got_frame, &s->buffer_pkt);
         if (ret < 0){
+            if (ret == AVERROR(EAGAIN))
+                ret = 0;
+
             /* Drop buffer_pkt when failed to decode the packet. Otherwise,
                the decoder will keep decoding the failure packet. */
             av_packet_unref(&s->buffer_pkt);
@@ -1124,17 +1179,6 @@ const FFCodec ff_##x##_qsv_decoder = { \
     .bsfs           = bsf_name, \
     .p.capabilities = AV_CODEC_CAP_DELAY | AV_CODEC_CAP_DR1 | AV_CODEC_CAP_AVOID_PROBING | AV_CODEC_CAP_HYBRID, \
     .p.priv_class   = &x##_qsv_class, \
-    .p.pix_fmts     = (const enum AVPixelFormat[]){ AV_PIX_FMT_NV12, \
-                                                    AV_PIX_FMT_P010, \
-                                                    AV_PIX_FMT_P012, \
-                                                    AV_PIX_FMT_YUYV422, \
-                                                    AV_PIX_FMT_Y210, \
-                                                    AV_PIX_FMT_Y212, \
-                                                    AV_PIX_FMT_VUYX, \
-                                                    AV_PIX_FMT_XV30, \
-                                                    AV_PIX_FMT_XV36, \
-                                                    AV_PIX_FMT_QSV, \
-                                                    AV_PIX_FMT_NONE }, \
     .hw_configs     = qsv_hw_configs, \
     .p.wrapper_name = "qsv", \
     .caps_internal  = FF_CODEC_CAP_NOT_INIT_THREADSAFE, \
@@ -1146,18 +1190,18 @@ const FFCodec ff_##x##_qsv_decoder = { \
 static const AVOption hevc_options[] = {
     { "async_depth", "Internal parallelization depth, the higher the value the higher the latency.", OFFSET(qsv.async_depth), AV_OPT_TYPE_INT, { .i64 = ASYNC_DEPTH_DEFAULT }, 1, INT_MAX, VD },
 
-    { "load_plugin", "A user plugin to load in an internal session", OFFSET(load_plugin), AV_OPT_TYPE_INT, { .i64 = LOAD_PLUGIN_HEVC_HW }, LOAD_PLUGIN_NONE, LOAD_PLUGIN_HEVC_HW, VD, "load_plugin" },
-    { "none",     NULL, 0, AV_OPT_TYPE_CONST, { .i64 = LOAD_PLUGIN_NONE },    0, 0, VD, "load_plugin" },
-    { "hevc_sw",  NULL, 0, AV_OPT_TYPE_CONST, { .i64 = LOAD_PLUGIN_HEVC_SW }, 0, 0, VD, "load_plugin" },
-    { "hevc_hw",  NULL, 0, AV_OPT_TYPE_CONST, { .i64 = LOAD_PLUGIN_HEVC_HW }, 0, 0, VD, "load_plugin" },
+    { "load_plugin", "A user plugin to load in an internal session", OFFSET(load_plugin), AV_OPT_TYPE_INT, { .i64 = LOAD_PLUGIN_HEVC_HW }, LOAD_PLUGIN_NONE, LOAD_PLUGIN_HEVC_HW, VD, .unit = "load_plugin" },
+    { "none",     NULL, 0, AV_OPT_TYPE_CONST, { .i64 = LOAD_PLUGIN_NONE },    0, 0, VD, .unit = "load_plugin" },
+    { "hevc_sw",  NULL, 0, AV_OPT_TYPE_CONST, { .i64 = LOAD_PLUGIN_HEVC_SW }, 0, 0, VD, .unit = "load_plugin" },
+    { "hevc_hw",  NULL, 0, AV_OPT_TYPE_CONST, { .i64 = LOAD_PLUGIN_HEVC_HW }, 0, 0, VD, .unit = "load_plugin" },
 
     { "load_plugins", "A :-separate list of hexadecimal plugin UIDs to load in an internal session",
         OFFSET(qsv.load_plugins), AV_OPT_TYPE_STRING, { .str = "" }, 0, 0, VD },
 
-    { "gpu_copy", "A GPU-accelerated copy between video and system memory", OFFSET(qsv.gpu_copy), AV_OPT_TYPE_INT, { .i64 = MFX_GPUCOPY_DEFAULT }, MFX_GPUCOPY_DEFAULT, MFX_GPUCOPY_OFF, VD, "gpu_copy"},
-        { "default", NULL, 0, AV_OPT_TYPE_CONST, { .i64 = MFX_GPUCOPY_DEFAULT }, 0, 0, VD, "gpu_copy"},
-        { "on",      NULL, 0, AV_OPT_TYPE_CONST, { .i64 = MFX_GPUCOPY_ON },      0, 0, VD, "gpu_copy"},
-        { "off",     NULL, 0, AV_OPT_TYPE_CONST, { .i64 = MFX_GPUCOPY_OFF },     0, 0, VD, "gpu_copy"},
+    { "gpu_copy", "A GPU-accelerated copy between video and system memory", OFFSET(qsv.gpu_copy), AV_OPT_TYPE_INT, { .i64 = MFX_GPUCOPY_DEFAULT }, MFX_GPUCOPY_DEFAULT, MFX_GPUCOPY_OFF, VD, .unit = "gpu_copy"},
+        { "default", NULL, 0, AV_OPT_TYPE_CONST, { .i64 = MFX_GPUCOPY_DEFAULT }, 0, 0, VD, .unit = "gpu_copy"},
+        { "on",      NULL, 0, AV_OPT_TYPE_CONST, { .i64 = MFX_GPUCOPY_ON },      0, 0, VD, .unit = "gpu_copy"},
+        { "off",     NULL, 0, AV_OPT_TYPE_CONST, { .i64 = MFX_GPUCOPY_OFF },     0, 0, VD, .unit = "gpu_copy"},
     { NULL },
 };
 DEFINE_QSV_DECODER_WITH_OPTION(hevc, HEVC, "hevc_mp4toannexb", hevc_options)
@@ -1166,10 +1210,10 @@ DEFINE_QSV_DECODER_WITH_OPTION(hevc, HEVC, "hevc_mp4toannexb", hevc_options)
 static const AVOption options[] = {
     { "async_depth", "Internal parallelization depth, the higher the value the higher the latency.", OFFSET(qsv.async_depth), AV_OPT_TYPE_INT, { .i64 = ASYNC_DEPTH_DEFAULT }, 1, INT_MAX, VD },
 
-    { "gpu_copy", "A GPU-accelerated copy between video and system memory", OFFSET(qsv.gpu_copy), AV_OPT_TYPE_INT, { .i64 = MFX_GPUCOPY_DEFAULT }, MFX_GPUCOPY_DEFAULT, MFX_GPUCOPY_OFF, VD, "gpu_copy"},
-        { "default", NULL, 0, AV_OPT_TYPE_CONST, { .i64 = MFX_GPUCOPY_DEFAULT }, 0, 0, VD, "gpu_copy"},
-        { "on",      NULL, 0, AV_OPT_TYPE_CONST, { .i64 = MFX_GPUCOPY_ON },      0, 0, VD, "gpu_copy"},
-        { "off",     NULL, 0, AV_OPT_TYPE_CONST, { .i64 = MFX_GPUCOPY_OFF },     0, 0, VD, "gpu_copy"},
+    { "gpu_copy", "A GPU-accelerated copy between video and system memory", OFFSET(qsv.gpu_copy), AV_OPT_TYPE_INT, { .i64 = MFX_GPUCOPY_DEFAULT }, MFX_GPUCOPY_DEFAULT, MFX_GPUCOPY_OFF, VD, .unit = "gpu_copy"},
+        { "default", NULL, 0, AV_OPT_TYPE_CONST, { .i64 = MFX_GPUCOPY_DEFAULT }, 0, 0, VD, .unit = "gpu_copy"},
+        { "on",      NULL, 0, AV_OPT_TYPE_CONST, { .i64 = MFX_GPUCOPY_ON },      0, 0, VD, .unit = "gpu_copy"},
+        { "off",     NULL, 0, AV_OPT_TYPE_CONST, { .i64 = MFX_GPUCOPY_OFF },     0, 0, VD, .unit = "gpu_copy"},
     { NULL },
 };
 

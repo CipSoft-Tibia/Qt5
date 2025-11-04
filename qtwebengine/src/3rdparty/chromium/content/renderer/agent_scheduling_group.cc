@@ -27,6 +27,7 @@
 #include "third_party/blink/public/common/page/browsing_context_group_info.h"
 #include "third_party/blink/public/mojom/frame/frame.mojom.h"
 #include "third_party/blink/public/mojom/page/page.mojom.h"
+#include "third_party/blink/public/mojom/page/prerender_page_param.mojom.h"
 #include "third_party/blink/public/mojom/shared_storage/shared_storage_worklet_service.mojom.h"
 #include "third_party/blink/public/mojom/worker/worklet_global_scope_creation_params.mojom.h"
 #include "third_party/blink/public/platform/scheduler/web_thread_scheduler.h"
@@ -113,8 +114,7 @@ AgentSchedulingGroup::ReceiverData::~ReceiverData() = default;
 // AgentSchedulingGroup:
 AgentSchedulingGroup::AgentSchedulingGroup(
     RenderThread& render_thread,
-    mojo::PendingReceiver<IPC::mojom::ChannelBootstrap> bootstrap,
-    mojo::PendingRemote<blink::mojom::BrowserInterfaceBroker> broker_remote)
+    mojo::PendingReceiver<IPC::mojom::ChannelBootstrap> bootstrap)
     : agent_group_scheduler_(
           blink::scheduler::WebThreadScheduler::MainThreadScheduler()
               .CreateWebAgentGroupScheduler()),
@@ -124,14 +124,17 @@ AgentSchedulingGroup::AgentSchedulingGroup(
   DCHECK(agent_group_scheduler_);
   DCHECK_NE(GetMBIMode(), features::MBIMode::kLegacy);
 
-  agent_group_scheduler_->BindInterfaceBroker(std::move(broker_remote));
-
   channel_ = SyncChannel::Create(
       /*listener=*/this, /*ipc_task_runner=*/render_thread_->GetIOTaskRunner(),
       /*listener_task_runner=*/agent_group_scheduler_->DefaultTaskRunner(),
       render_thread_->GetShutdownEvent());
 
-  // TODO(crbug.com/1111231): Add necessary filters.
+  if (base::FeatureList::IsEnabled(
+          blink::features::kBlinkSchedulerPrioritizeNavigationIPCs)) {
+    channel_->SetUrgentMessageObserver(agent_group_scheduler_.get());
+  }
+
+  // TODO(crbug.com/40142495): Add necessary filters.
   // Currently, the renderer process has these filters:
   // 1. `UnfreezableMessageFilter` - in the process of being removed,
   // 2. `PnaclTranslationResourceHost` - NaCl is going away, and
@@ -147,8 +150,7 @@ AgentSchedulingGroup::AgentSchedulingGroup(
 
 AgentSchedulingGroup::AgentSchedulingGroup(
     RenderThread& render_thread,
-    PendingAssociatedReceiver<mojom::AgentSchedulingGroup> receiver,
-    mojo::PendingRemote<blink::mojom::BrowserInterfaceBroker> broker_remote)
+    PendingAssociatedReceiver<mojom::AgentSchedulingGroup> receiver)
     : agent_group_scheduler_(
           blink::scheduler::WebThreadScheduler::MainThreadScheduler()
               .CreateWebAgentGroupScheduler()),
@@ -158,7 +160,6 @@ AgentSchedulingGroup::AgentSchedulingGroup(
                 agent_group_scheduler_->DefaultTaskRunner()) {
   DCHECK(agent_group_scheduler_);
   DCHECK_EQ(GetMBIMode(), features::MBIMode::kLegacy);
-  agent_group_scheduler_->BindInterfaceBroker(std::move(broker_remote));
 }
 
 AgentSchedulingGroup::~AgentSchedulingGroup() = default;
@@ -280,6 +281,9 @@ blink::WebView* AgentSchedulingGroup::CreateWebView(
     mojom::CreateViewParamsPtr params,
     bool was_created_by_renderer,
     const blink::WebURL& base_url) {
+  TRACE_EVENT0("navigation", "AgentSchedulingGroup::CreateWebView");
+  base::ScopedUmaHistogramTimer histogram_timer(
+      "Navigation.AgentSchedulingGroup.CreateWebView");
   DCHECK(RenderThread::IsMainThread());
 
   blink::WebFrame* opener_frame = nullptr;
@@ -288,8 +292,8 @@ blink::WebView* AgentSchedulingGroup::CreateWebView(
         blink::WebFrame::FromFrameToken(params->opener_frame_token.value());
 
   blink::WebView* web_view = blink::WebView::Create(
-      new SelfOwnedWebViewClient(), params->hidden, params->is_prerendering,
-      /*is_inside_portal=*/false,
+      new SelfOwnedWebViewClient(), params->hidden,
+      std::move(params->prerender_param),
       params->type == mojom::ViewWidgetType::kFencedFrame
           ? std::make_optional(params->fenced_frame_mode)
           : std::nullopt,
@@ -297,14 +301,14 @@ blink::WebView* AgentSchedulingGroup::CreateWebView(
       opener_frame ? opener_frame->View() : nullptr,
       std::move(params->blink_page_broadcast), agent_group_scheduler(),
       params->session_storage_namespace_id, params->base_background_color,
-      params->browsing_context_group_info);
+      params->browsing_context_group_info, &params->color_provider_colors,
+      std::move(params->partitioned_popin_params));
 
   bool local_main_frame = params->main_frame->is_local_params();
 
   web_view->SetRendererPreferences(params->renderer_preferences);
   web_view->SetWebPreferences(params->web_preferences);
   web_view->SetPageAttributionSupport(params->attribution_support);
-  web_view->SetColorProviders(params->color_provider_colors);
 
   const bool is_for_nested_main_frame =
       params->type != mojom::ViewWidgetType::kTopLevel;
@@ -418,6 +422,9 @@ blink::WebView* AgentSchedulingGroup::CreateWebView(
 }
 
 void AgentSchedulingGroup::CreateFrame(mojom::CreateFrameParamsPtr params) {
+  TRACE_EVENT0("navigation", "AgentSchedulingGroup::CreateFrame");
+  base::ScopedUmaHistogramTimer histogram_timer(
+      "Navigation.AgentSchedulingGroup.CreateFrame");
   RenderFrameImpl::CreateFrame(
       *this, params->frame_token, params->routing_id, std::move(params->frame),
       std::move(params->interface_broker),

@@ -20,7 +20,9 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
+#include "config.h"
 #include "libavutil/attributes_internal.h"
+#include "libavutil/mem_internal.h"
 
 static void sbr_sum64x5_c(INTFLOAT *z)
 {
@@ -102,8 +104,6 @@ av_cold void AAC_RENAME(ff_sbrdsp_init)(SBRDSPContext *s)
     ff_sbrdsp_init_riscv(s);
 #elif ARCH_X86
     ff_sbrdsp_init_x86(s);
-#elif ARCH_MIPS
-    ff_sbrdsp_init_mips(s);
 #endif
 #endif /* !USE_FIXED */
 }

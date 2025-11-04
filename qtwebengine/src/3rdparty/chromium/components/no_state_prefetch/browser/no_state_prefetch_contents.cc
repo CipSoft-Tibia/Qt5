@@ -7,6 +7,7 @@
 #include <stddef.h>
 
 #include <functional>
+#include <optional>
 #include <utility>
 
 #include "base/containers/contains.h"
@@ -39,7 +40,6 @@
 #include "net/http/http_response_headers.h"
 #include "services/resource_coordinator/public/cpp/memory_instrumentation/memory_instrumentation.h"
 #include "services/service_manager/public/cpp/binder_registry.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "third_party/blink/public/common/associated_interfaces/associated_interface_provider.h"
 #include "ui/base/page_transition_types.h"
 #include "ui/gfx/geometry/size.h"
@@ -61,7 +61,7 @@ class NoStatePrefetchContentsFactoryImpl
       content::BrowserContext* browser_context,
       const GURL& url,
       const content::Referrer& referrer,
-      const absl::optional<url::Origin>& initiator_origin,
+      const std::optional<url::Origin>& initiator_origin,
       Origin origin) override {
     return new NoStatePrefetchContents(
         std::move(delegate), no_state_prefetch_manager, browser_context, url,
@@ -95,8 +95,11 @@ class NoStatePrefetchContents::WebContentsDelegateImpl
       : no_state_prefetch_contents_(no_state_prefetch_contents) {}
 
   // content::WebContentsDelegate implementation:
-  WebContents* OpenURLFromTab(WebContents* source,
-                              const OpenURLParams& params) override {
+  WebContents* OpenURLFromTab(
+      WebContents* source,
+      const OpenURLParams& params,
+      base::OnceCallback<void(content::NavigationHandle&)>
+          navigation_handle_callback) override {
     // |OpenURLFromTab| is typically called when a frame performs a navigation
     // that requires the browser to perform the transition instead of WebKit.
     // Examples include client redirects to hosted app URLs.
@@ -161,7 +164,7 @@ NoStatePrefetchContents::NoStatePrefetchContents(
     content::BrowserContext* browser_context,
     const GURL& url,
     const content::Referrer& referrer,
-    const absl::optional<url::Origin>& initiator_origin,
+    const std::optional<url::Origin>& initiator_origin,
     Origin origin)
     : no_state_prefetch_manager_(no_state_prefetch_manager),
       delegate_(std::move(delegate)),
@@ -171,14 +174,9 @@ NoStatePrefetchContents::NoStatePrefetchContents(
       browser_context_(browser_context),
       final_status_(FINAL_STATUS_UNKNOWN),
       process_pid_(base::kNullProcessId),
-      origin_(origin),
-      network_bytes_(0) {
+      origin_(origin) {
   switch (origin) {
-    case ORIGIN_OMNIBOX:
-    case ORIGIN_EXTERNAL_REQUEST:
-    case ORIGIN_EXTERNAL_REQUEST_FORCED_PRERENDER:
     case ORIGIN_NAVIGATION_PREDICTOR:
-    case ORIGIN_ISOLATED_PRERENDER:
       DCHECK(!initiator_origin_.has_value());
       break;
 
@@ -191,7 +189,7 @@ NoStatePrefetchContents::NoStatePrefetchContents(
       break;
     case ORIGIN_NONE:
     case ORIGIN_MAX:
-      NOTREACHED();
+      NOTREACHED_IN_MIGRATION();
   }
 
   DCHECK(no_state_prefetch_manager);
@@ -304,10 +302,7 @@ void NoStatePrefetchContents::StartPrerendering(
   load_url_params.referrer = referrer_;
   load_url_params.initiator_origin = initiator_origin_;
   load_url_params.transition_type = ui::PAGE_TRANSITION_LINK;
-  if (origin_ == ORIGIN_OMNIBOX) {
-    load_url_params.transition_type = ui::PageTransitionFromInt(
-        ui::PAGE_TRANSITION_TYPED | ui::PAGE_TRANSITION_FROM_ADDRESS_BAR);
-  } else if (origin_ == ORIGIN_NAVIGATION_PREDICTOR) {
+  if (origin_ == ORIGIN_NAVIGATION_PREDICTOR) {
     load_url_params.transition_type =
         ui::PageTransitionFromInt(ui::PAGE_TRANSITION_GENERATED);
   }
@@ -333,8 +328,6 @@ NoStatePrefetchContents::~NoStatePrefetchContents() {
   DCHECK_NE(ORIGIN_MAX, origin());
 
   no_state_prefetch_manager_->RecordFinalStatus(origin(), final_status());
-  no_state_prefetch_manager_->RecordNetworkBytesConsumed(origin(),
-                                                         network_bytes_);
 
   if (no_state_prefetch_contents_) {
     no_state_prefetch_contents_->SetDelegate(nullptr);
@@ -586,9 +579,9 @@ RenderFrameHost* NoStatePrefetchContents::GetPrimaryMainFrame() {
              : nullptr;
 }
 
-absl::optional<base::Value::Dict> NoStatePrefetchContents::GetAsDict() const {
+std::optional<base::Value::Dict> NoStatePrefetchContents::GetAsDict() const {
   if (!no_state_prefetch_contents_)
-    return absl::nullopt;
+    return std::nullopt;
   base::Value::Dict dict;
   dict.Set("url", prefetch_url_.spec());
   base::TimeTicks current_time = base::TimeTicks::Now();
@@ -615,12 +608,6 @@ void NoStatePrefetchContents::CancelPrerenderForNoStatePrefetch() {
 void NoStatePrefetchContents::AddPrerenderCancelerReceiver(
     mojo::PendingReceiver<prerender::mojom::PrerenderCanceler> receiver) {
   prerender_canceler_receiver_set_.Add(this, std::move(receiver));
-}
-
-void NoStatePrefetchContents::AddNetworkBytes(int64_t bytes) {
-  network_bytes_ += bytes;
-  for (Observer& observer : observer_list_)
-    observer.OnPrefetchNetworkBytesChanged(this);
 }
 
 }  // namespace prerender

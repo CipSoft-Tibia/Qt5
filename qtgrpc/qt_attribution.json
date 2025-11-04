@@ -12,7 +12,11 @@
         "LicenseId": "BSD-3-Clause",
         "LicenseFile": "LICENSES/LicenseRef-protobuf.txt",
         "Copyright": "Copyright 2008 Google Inc.",
-        "Version": "21.9"
+        "Version": "21.9",
+        "PURL": [
+            "pkg:github/protocolbuffers/protobuf@v$<VERSION>"
+        ],
+        "CPE": "cpe:2.3:a:google:protobuf:$<VERSION>:*:*:*:*:*:*:*"
     },
     {
         "Id": "protobuf-qtgrpcgen",
@@ -27,7 +31,11 @@
         "LicenseId": "BSD-3-Clause",
         "LicenseFile": "LICENSES/LicenseRef-protobuf.txt",
         "Copyright": "Copyright 2008 Google Inc.",
-        "Version": "21.9"
+        "Version": "21.9",
+        "PURL": [
+            "pkg:github/protocolbuffers/protobuf@v$<VERSION>"
+        ],
+        "CPE": "cpe:2.3:a:google:protobuf:$<VERSION>:*:*:*:*:*:*:*"
     },
     {
         "Id": "grpc",
@@ -38,6 +46,7 @@
 
         "SecurityCritical": false,
         "Homepage": "https://grpc.io",
+        "Comment": "no relevant PURL or CPE set, because the dependency is just for examples and tests",
         "License": "Apache License 2.0",
         "LicenseId": "Apache-2.0",
         "LicenseFile": "LICENSE.Apache-2.0.txt",

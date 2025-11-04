@@ -69,14 +69,15 @@ class InstanceRegistryTest : public testing::Test,
   void OnInstanceRegistryWillBeDestroyed(
       apps::InstanceRegistry* instance_registry) override {
     // The test code explicitly calls both AddObserver and RemoveObserver.
-    NOTREACHED();
+    NOTREACHED_IN_MIGRATION();
   }
 
   apps::InstanceRegistry& instance_registry() { return instance_registry_; }
 
   int num_running_apps_ = 0;
   std::set<std::string> updated_ids_;
-  std::set<const aura::Window*> updated_enclosing_windows_;
+  std::set<raw_ptr<const aura::Window, SetExperimental>>
+      updated_enclosing_windows_;
 
   apps::InstanceRegistry instance_registry_;
 };
@@ -638,7 +639,7 @@ TEST_F(InstanceRegistryTest, GetInstances) {
   EXPECT_EQ(2U, instances.size());
 
   std::set<aura::Window*> windows;
-  for (const auto* instance : instances) {
+  for (const apps::Instance* instance : instances) {
     EXPECT_EQ("a", instance->AppId());
     windows.insert(instance->Window());
   }

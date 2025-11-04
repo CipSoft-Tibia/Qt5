@@ -104,6 +104,7 @@
     \list
     \li QSpan is using the signed qsizetype as \c{size_type}
         whereas \c{std::span} uses \c{size_t}.
+    \li (since Qt 6.9) \c{QSpan<const T>} doesn't detach Qt containers, \c{std::span} does.
     \li All QSpan constructors are implicit;
         many \c{std::span} ones are \c{explicit}.
     \li QSpan can be constructed from rvalue owning containers, \c{std::span} can not.
@@ -295,8 +296,7 @@
 
     \c{[first, count)} must be a valid range.
 
-    \note This constructor participates in overload resolution only if \c{It}
-    is \l{span-compatible-iterators}{a compatible iterator}.
+    \constraints \c{It} is \l{span-compatible-iterators}{a compatible iterator}.
 */
 
 /*!
@@ -307,8 +307,7 @@
 
     \c{[first, last)} must be a valid range.
 
-    \note This constructor participates in overload resolution only if \c{It}
-    is \l{span-compatible-iterators}{a compatible iterator}.
+    \constraints \c{It} is \l{span-compatible-iterators}{a compatible iterator}.
 */
 
 /*!
@@ -318,14 +317,14 @@
 
     Constructs a QSpan referencing the data in the supplied array \a arr.
 
-    \note This constructor participates in overload resolution only if
+    \note \c{q20::type_identity_t} is a C++17 backport of C++20's
+    \l{https://en.cppreference.com/w/cpp/types/type_identity}{\c{std::type_identity_t}}.
+
+    \constraints
     \list
     \li either \c{N} or \l{extent} are \c{std::dynamic_extent} or otherwise \l{extent} \c{==} \c{N}
     \li and either \c{S} or \c{const S} are the same as \c{T}.
     \endlist
-
-    \note \c{q20::type_identity_t} is a C++17 backport of C++20's
-    \l{https://en.cppreference.com/w/cpp/types/type_identity}{\c{std::type_identity_t}}.
 */
 
 /*!
@@ -333,8 +332,7 @@
 
     Constructs a QSpan referencing the data in the supplied range \a r.
 
-    \note This constructor participates in overload resolution only if \c{Range}
-    is \l{span-compatible-ranges}{a compatible range}.
+    \constraints \c{Range} is \l{span-compatible-ranges}{a compatible range}.
 */
 
 /*!
@@ -343,7 +341,7 @@
 
     Constructs a QSpan referencing the data in the supplied span \a other.
 
-    \note This constructor participates in overload resolution only if
+    \constraints
     \list
     \li either \c{N} or \l{extent} are \c{std::dynamic_extent} or \l{extent} \c{==} \c{N}
     \li and either \c{S} or \c{const S} are the same as \c{T}.
@@ -355,11 +353,11 @@
 
     Constructs a QSpan referencing the data in the supplied initializer list \a il.
 
-    \note This constructor participates in overload resolution only if \c{T} is \c{const}-qualified.
-
     \note This constructor is \c{noexcept} only if \c{E} is \c{std::dynamic_extent}.
 
     \note If \c{E} is not \c{std::dynamic_extent} and the size of \a il is not \c{E}, the behavior is undefined.
+
+    \constraints \c{T} is \c{const}-qualified.
 
     \sa {Const and Mutable Spans}
 */
@@ -606,7 +604,7 @@
 
     \sa {first-t}{first<N>()}, last(QSpan<T,E>::size_type), subspan(QSpan<T,E>::size_type),
         subspan(QSpan<T,E>::size_type, QSpan<T,E>::size_type)
-    \sa sliced()
+    \sa sliced(), chopped()
 */
 
 /*!
@@ -622,7 +620,7 @@
     size() >= \a n), otherwise the behavior is undefined.
 
     \sa last(), first(QSpan<T,E>::size_type), subspan(QSpan<T,E>::size_type),
-        subspan(QSpan<T,E>::size_type, QSpan<T,E>::size_type), sliced()
+        subspan(QSpan<T,E>::size_type, QSpan<T,E>::size_type), sliced(), chopped()
 */
 
 /*!
@@ -642,7 +640,7 @@
     These functions do the same thing: subspan() is provided for STL
     compatibility and sliced() is provided for Qt compatibility.
 
-    \sa subspan(), first(QSpan<T,E>::size_type), last(QSpan<T,E>::size_type)
+    \sa subspan(), first(QSpan<T,E>::size_type), last(QSpan<T,E>::size_type), chopped(), slice()
 */
 
 /*!
@@ -662,7 +660,57 @@
     These functions do the same thing: subspan() is provided for STL
     compatibility and sliced() is provided for Qt compatibility.
 
-    \sa subspan(), first(QSpan<T,E>::size_type), last(QSpan<T,E>::size_type)
+    \sa subspan(), first(QSpan<T,E>::size_type), last(QSpan<T,E>::size_type), chopped(), slice()
+*/
+
+/*!
+    \fn template <typename T, size_t E> auto QSpan<T,E>::chopped(qsizetype n) const
+    \since 6.9
+
+    Returns a \l{variable-fixed-spans}{variable-sized} span of size size() - \a
+    n referencing the first size() - \a n elements of this span.
+
+    Same as \c{first(size() - n)}.
+
+    \a n must be non-negative.
+
+    This span must hold at least \a n elements (\c{E} >= \a n \e{and} size() >=
+    \a n), otherwise the behavior is undefined.
+
+    \sa subspan(), first(QSpan<T,E>::size_type), last(QSpan<T,E>::size_type), chop()
+*/
+
+/*!
+    \fn template <typename T, size_t E> void QSpan<T,E>::chop(qsizetype n)
+    \since 6.9
+
+    Same as \c{*this = chopped(}\a{n}\c{)}.
+
+    This function is only available on \l{variable-fixed-spans}{variable-sized spans}.
+
+    \sa chopped()
+*/
+
+/*!
+    \fn template <typename T, size_t E> void QSpan<T,E>::slice(qsizetype pos)
+    \since 6.9
+
+    Same as \c{*this = sliced(}\a{pos}\c{)}.
+
+    This function is only available on \l{variable-fixed-spans}{variable-sized spans}.
+
+    \sa sliced()
+*/
+
+/*!
+    \fn template <typename T, size_t E> void QSpan<T,E>::slice(qsizetype pos, qsizetype n)
+    \since 6.9
+
+    Same as \c{*this = sliced(}\a{pos}\c{, }\a{n}\c{)}.
+
+    This function is only available on \l{variable-fixed-spans}{variable-sized spans}.
+
+    \sa sliced()
 */
 
 /*!
@@ -691,11 +739,10 @@
     If \c{E} is \c{std::dynamic_extent} then so is \c{E'}.
     Otherwise, \c{E' = E * sizeof(T)}.
 
-    \note This function participates in overload resolution only if
-    \c{!std::is_const_v<T>}.
-
     \note \c{q20::dynamic_extent} is a C++17 backport of C++20's
     \l{https://en.cppreference.com/w/cpp/container/span/dynamic_extent}{\c{std::dynamic_extent}}.
+
+    \constraints \c{!std::is_const_v<T>}.
 
     \sa as_bytes(), size_bytes(), {Const and Mutable Spans}
 */

@@ -51,9 +51,10 @@ export class CoveragePlugin extends Plugin {
     super(uiSourceCode);
     this.originalSourceCode = this.uiSourceCode;
     this.#transformer = transformer;
-    this.infoInToolbar = new UI.Toolbar.ToolbarButton(i18nString(UIStrings.clickToShowCoveragePanel));
+    this.infoInToolbar = new UI.Toolbar.ToolbarButton(
+        i18nString(UIStrings.clickToShowCoveragePanel), undefined, undefined, 'debugger.show-coverage');
     this.infoInToolbar.setSecondary();
-    this.infoInToolbar.addEventListener(UI.Toolbar.ToolbarButton.Events.Click, () => {
+    this.infoInToolbar.addEventListener(UI.Toolbar.ToolbarButton.Events.CLICK, () => {
       void UI.ViewManager.ViewManager.instance().showView('coverage');
     });
 
@@ -130,7 +131,8 @@ export class CoveragePlugin extends Plugin {
     }
   }
 
-  override decorationChanged(type: SourceFrame.SourceFrame.DecoratorType, editor: TextEditor.TextEditor.TextEditor): void {
+  override decorationChanged(type: SourceFrame.SourceFrame.DecoratorType, editor: TextEditor.TextEditor.TextEditor):
+      void {
     if (type === SourceFrame.SourceFrame.DecoratorType.COVERAGE) {
       this.startDecoUpdate(editor);
     }
@@ -138,25 +140,25 @@ export class CoveragePlugin extends Plugin {
 
   private startDecoUpdate(editor: TextEditor.TextEditor.TextEditor): void {
     const manager = this.getCoverageManager();
-    void (manager ? manager.usageByLine(this.uiSourceCode, this.#editorLines(editor)) : Promise.resolve([
-    ])).then(usageByLine => {
-      const enabled = Boolean(editor.state.field(coverageState, false));
-      if (!usageByLine.length) {
-        if (enabled) {
-          editor.dispatch({effects: coverageCompartment.reconfigure([])});
-        }
-      } else if (!enabled) {
-        editor.dispatch({
-          effects: coverageCompartment.reconfigure([
-            coverageState.init(state => markersFromCoverageData(usageByLine, state)),
-            coverageGutter(this.uiSourceCode.url()),
-            theme,
-          ]),
+    void (manager ? manager.usageByLine(this.uiSourceCode, this.#editorLines(editor)) : Promise.resolve([]))
+        .then(usageByLine => {
+          const enabled = Boolean(editor.state.field(coverageState, false));
+          if (!usageByLine.length) {
+            if (enabled) {
+              editor.dispatch({effects: coverageCompartment.reconfigure([])});
+            }
+          } else if (!enabled) {
+            editor.dispatch({
+              effects: coverageCompartment.reconfigure([
+                coverageState.init(state => markersFromCoverageData(usageByLine, state)),
+                coverageGutter(this.uiSourceCode.url()),
+                theme,
+              ]),
+            });
+          } else {
+            editor.dispatch({effects: setCoverageState.of(usageByLine)});
+          }
         });
-      } else {
-        editor.dispatch({effects: setCoverageState.of(usageByLine)});
-      }
-    });
   }
 
   /**
@@ -212,7 +214,7 @@ const coverageState = CodeMirror.StateField.define<CodeMirror.RangeSet<CodeMirro
 
 function coverageGutter(url: Platform.DevToolsPath.UrlString): CodeMirror.Extension {
   return CodeMirror.gutter({
-    markers: (view): CodeMirror.RangeSet<CodeMirror.GutterMarker> => view.state.field(coverageState),
+    markers: view => view.state.field(coverageState),
 
     domEventHandlers: {
       click() {
@@ -243,9 +245,9 @@ const theme = CodeMirror.EditorView.baseTheme({
     marginLeft: '3px',
   },
   '.cm-coverageUnused': {
-    backgroundColor: 'var(--sys-color-error-bright)',
+    backgroundColor: 'var(--app-color-coverage-unused)',
   },
   '.cm-coverageUsed': {
-    backgroundColor: 'var(--sys-color-green-bright)',
+    backgroundColor: 'var(--app-color-coverage-used)',
   },
 });

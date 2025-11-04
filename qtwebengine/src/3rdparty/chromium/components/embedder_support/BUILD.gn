@@ -2,6 +2,8 @@
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
+import("//build/config/features.gni")
+
 static_library("embedder_support") {
   sources = [
     "pref_names.h",
@@ -27,12 +29,20 @@ static_library("browser_util") {
     "//components/background_sync",
     "//components/content_settings/browser",
     "//components/content_settings/core/browser",
+    "//components/content_settings/core/browser:cookie_settings",
     "//components/permissions",
     "//components/policy/core/common",
     "//components/prefs",
     "//components/version_info",
     "//content/public/browser",
+    "//services/device/public/cpp:device_features",
+    "//services/device/public/cpp/geolocation:buildflags",
   ]
+  if (is_qtwebengine) {
+    deps -= [
+      "//components/policy/core/common",
+    ]
+  }
 }
 
 source_set("unit_tests") {

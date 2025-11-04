@@ -9,6 +9,8 @@ Item {
     property alias row: rowAxis
     property alias value: valueAxis
     property alias total: totalAxis
+    property real maxAxisSegmentCount: 10
+    property real minAxisSegmentCount: 1
 
     // Custom labels for columns, since the data contains abbreviated month names.
     //! [0]
@@ -40,5 +42,6 @@ Item {
         title: "Monthly income"
         labelAutoAngle: 90
         titleVisible: true
+        segmentCount: 6
     }
 }

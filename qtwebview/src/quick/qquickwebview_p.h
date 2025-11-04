@@ -59,7 +59,7 @@ public:
 
     QString httpUserAgent() const override;
     void setHttpUserAgent(const QString &userAgent) override;
-    QUrl url() const override;
+    QUrl url() const;
     void setUrl(const QUrl &url) override;
     int loadProgress() const override;
     QString title() const override;

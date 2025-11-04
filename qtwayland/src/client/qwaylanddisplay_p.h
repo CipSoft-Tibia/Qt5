@@ -1,4 +1,5 @@
 // Copyright (C) 2016 The Qt Company Ltd.
+// Copyright (C) 2024 Jie Liu <liujie01@kylinos.cn>
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QWAYLANDDISPLAY_H
@@ -48,7 +49,6 @@ class QPlatformScreen;
 class QPlatformPlaceholderScreen;
 
 namespace QtWayland {
-    class qt_surface_extension;
     class zwp_text_input_manager_v1;
     class zwp_text_input_manager_v2;
     class zwp_text_input_manager_v3;
@@ -56,13 +56,15 @@ namespace QtWayland {
     class wp_cursor_shape_manager_v1;
     class wp_fractional_scale_manager_v1;
     class wp_viewporter;
+    class xdg_system_bell_v1;
     class xdg_toplevel_drag_manager_v1;
 }
 
 namespace QtWaylandClient {
 
-Q_WAYLANDCLIENT_EXPORT Q_DECLARE_LOGGING_CATEGORY(lcQpaWayland);
+QT_DECLARE_EXPORTED_QT_LOGGING_CATEGORY(lcQpaWayland, Q_WAYLANDCLIENT_EXPORT);
 
+class QWaylandAppMenuManager;
 class QWaylandInputDevice;
 class QWaylandBuffer;
 class QWaylandScreen;
@@ -70,6 +72,9 @@ class QWaylandXdgOutputManagerV1;
 class QWaylandClientBufferIntegration;
 class QWaylandWindowManagerIntegration;
 class QWaylandDataDeviceManager;
+#if QT_CONFIG(clipboard)
+class QWaylandDataControlManagerV1;
+#endif
 #if QT_CONFIG(wayland_client_primary_selection)
 class QWaylandPrimarySelectionDeviceManagerV1;
 #endif
@@ -147,16 +152,18 @@ public:
         return mGlobals.dndSelectionHandler.get();
     }
 #endif
+#if QT_CONFIG(clipboard)
+    QWaylandDataControlManagerV1 *dataControlManager() const
+    {
+        return mGlobals.dataControlManager.get();
+    }
+#endif
 #if QT_CONFIG(wayland_client_primary_selection)
     QWaylandPrimarySelectionDeviceManagerV1 *primarySelectionManager() const
     {
         return mGlobals.primarySelectionManager.get();
     }
 #endif
-    QtWayland::qt_surface_extension *windowExtension() const
-    {
-        return mGlobals.surfaceExtension.get();
-    }
 #if QT_CONFIG(tabletevent)
     QWaylandTabletManagerV2 *tabletManager() const
     {
@@ -211,7 +218,14 @@ public:
     {
         return mGlobals.xdgToplevelDragManager.get();
     }
-
+    QtWayland::xdg_system_bell_v1 *systemBell() const
+    {
+        return mGlobals.systemBell.get();
+    }
+    QWaylandAppMenuManager *appMenuManager() const
+    {
+        return mGlobals.appMenuManager.get();
+    }
 
     struct RegistryGlobal {
         uint32_t id;
@@ -260,7 +274,6 @@ public:
     void initEventThread();
 
 public Q_SLOTS:
-    void blockingReadEvents();
     void flushRequests();
 
 Q_SIGNALS:
@@ -323,7 +336,6 @@ private:
 #if QT_CONFIG(wayland_datadevice)
         std::unique_ptr<QWaylandDataDeviceManager> dndSelectionHandler;
 #endif
-        std::unique_ptr<QtWayland::qt_surface_extension> surfaceExtension;
         std::unique_ptr<QtWayland::wl_subcompositor> subCompositor;
         std::unique_ptr<QWaylandTouchExtension> touchExtension;
         std::unique_ptr<QWaylandQtKeyExtension> qtKeyExtension;
@@ -331,6 +343,9 @@ private:
         std::unique_ptr<QWaylandTabletManagerV2> tabletManager;
 #endif
         std::unique_ptr<QWaylandPointerGestures> pointerGestures;
+#if QT_CONFIG(clipboard)
+        std::unique_ptr<QWaylandDataControlManagerV1> dataControlManager;
+#endif
 #if QT_CONFIG(wayland_client_primary_selection)
         std::unique_ptr<QWaylandPrimarySelectionDeviceManagerV1> primarySelectionManager;
 #endif
@@ -343,9 +358,12 @@ private:
         std::unique_ptr<QtWayland::wp_viewporter> viewporter;
         std::unique_ptr<QtWayland::wp_fractional_scale_manager_v1> fractionalScaleManager;
         std::unique_ptr<QtWayland::wp_cursor_shape_manager_v1> cursorShapeManager;
+        std::unique_ptr<QtWayland::xdg_system_bell_v1> systemBell;
         std::unique_ptr<QtWayland::xdg_toplevel_drag_manager_v1> xdgToplevelDragManager;
         std::unique_ptr<QWaylandWindowManagerIntegration> windowManagerIntegration;
+        std::unique_ptr<QWaylandAppMenuManager> appMenuManager;
     } mGlobals;
+
     int mFd = -1;
     int mWritableNotificationFd = -1;
     QList<RegistryGlobal> mRegistryGlobals;
@@ -357,6 +375,7 @@ private:
     struct wl_callback *mSyncCallback = nullptr;
     static const wl_callback_listener syncCallbackListener;
     bool mWaylandTryReconnect = false;
+    bool mPreferWlrDataControl = false;
 
     bool mWaylandInputContextRequested = [] () {
         const auto requested = QPlatformInputContextFactory::requested();

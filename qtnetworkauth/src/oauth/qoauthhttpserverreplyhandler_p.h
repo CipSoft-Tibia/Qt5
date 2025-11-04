@@ -38,16 +38,19 @@ public:
     QString callback() const;
     QString callbackHost() const;
 
-    QTcpServer httpServer;
+    QTcpServer *httpServer = nullptr;
     QString text;
     QString path;
     QHostAddress callbackAddress;
+    QString callbackHostname;
     quint16 callbackPort = 0;
 
 private:
     void _q_clientConnected();
     void _q_readData(QTcpSocket *socket);
     void _q_answerClient(QTcpSocket *socket, const QUrl &url);
+    void initializeLocalServer();
+    bool listen(const QHostAddress &address, quint16 port);
 
     struct QHttpRequest {
         quint16 port = 0;

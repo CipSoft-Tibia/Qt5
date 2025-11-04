@@ -51,8 +51,8 @@ export class ThrottlingPresets {
       title,
       description: i18nString(UIStrings.noThrottling),
       network: SDK.NetworkManager.NoThrottlingConditions,
-      cpuThrottlingRate: SDK.CPUThrottlingManager.CPUThrottlingRates.NoThrottling,
-      jslogContext: 'No throttling',
+      cpuThrottlingRate: SDK.CPUThrottlingManager.CPUThrottlingRates.NO_THROTTLING,
+      jslogContext: 'no-throttling',
     };
   }
 
@@ -64,7 +64,7 @@ export class ThrottlingPresets {
       title,
       description: i18nString(UIStrings.noInternetConnectivity),
       network: SDK.NetworkManager.OfflineConditions,
-      cpuThrottlingRate: SDK.CPUThrottlingManager.CPUThrottlingRates.NoThrottling,
+      cpuThrottlingRate: SDK.CPUThrottlingManager.CPUThrottlingRates.NO_THROTTLING,
       jslogContext: 'offline',
     };
   }
@@ -75,7 +75,7 @@ export class ThrottlingPresets {
       description: i18nString(UIStrings.slowGXCpuSlowdown),
       network: SDK.NetworkManager.Slow3GConditions,
       cpuThrottlingRate: SDK.CPUThrottlingManager.CPUThrottlingRates.LowEndMobile,
-      jslogContext: 'lowEndMobile',
+      jslogContext: 'low-end-mobile',
     };
   }
 
@@ -83,9 +83,9 @@ export class ThrottlingPresets {
     return {
       title: i18nString(UIStrings.midtierMobile),
       description: i18nString(UIStrings.fastGXCpuSlowdown),
-      network: SDK.NetworkManager.Fast3GConditions,
+      network: SDK.NetworkManager.Slow4GConditions,
       cpuThrottlingRate: SDK.CPUThrottlingManager.CPUThrottlingRates.MidTierMobile,
-      jslogContext: 'midTierMobile',
+      jslogContext: 'mid-tier-mobile',
     };
   }
 
@@ -112,15 +112,17 @@ export class ThrottlingPresets {
   }
 
   static networkPresets: SDK.NetworkManager.Conditions[] = [
-    SDK.NetworkManager.Fast3GConditions,
+    SDK.NetworkManager.Fast4GConditions,
+    SDK.NetworkManager.Slow4GConditions,
     SDK.NetworkManager.Slow3GConditions,
     SDK.NetworkManager.OfflineConditions,
   ];
 
   static cpuThrottlingPresets: SDK.CPUThrottlingManager.CPUThrottlingRates[] = [
-    SDK.CPUThrottlingManager.CPUThrottlingRates.NoThrottling,
+    SDK.CPUThrottlingManager.CPUThrottlingRates.NO_THROTTLING,
     SDK.CPUThrottlingManager.CPUThrottlingRates.MidTierMobile,
     SDK.CPUThrottlingManager.CPUThrottlingRates.LowEndMobile,
+    SDK.CPUThrottlingManager.CPUThrottlingRates.EXTRA_SLOW,
   ];
 }
 

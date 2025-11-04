@@ -30,7 +30,7 @@
 #include "perfetto/ext/tracing/core/tracing_service.h"
 #include "perfetto/tracing/core/data_source_config.h"
 #include "perfetto/tracing/core/data_source_descriptor.h"
-#include "src/tracing/core/metatrace_writer.h"
+#include "src/tracing/service/metatrace_writer.h"
 
 #include "protos/perfetto/config/android/android_sdk_sysprop_guard_config.pbzero.h"
 
@@ -53,7 +53,8 @@ constexpr char kJavaHprofOomDataSourceName[] = "android.java_hprof.oom";
 constexpr char kTracedPerfDataSourceName[] = "linux.perf";
 constexpr char kLazyHeapprofdPropertyName[] = "traced.lazy.heapprofd";
 constexpr char kLazyTracedPerfPropertyName[] = "traced.lazy.traced_perf";
-constexpr char kJavaHprofOomActivePropertyName[] = "traced.oome_heap_session.count";
+constexpr char kJavaHprofOomActivePropertyName[] =
+    "traced.oome_heap_session.count";
 
 constexpr char kAndroidSdkSyspropGuardDataSourceName[] =
     "android.sdk_sysprop_guard";

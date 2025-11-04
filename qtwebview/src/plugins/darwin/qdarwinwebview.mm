@@ -18,6 +18,7 @@
 #include <WebKit/WebKit.h>
 
 #include <QtCore/qjsondocument.h>
+#include <QtCore/qfile.h>
 
 #ifdef Q_OS_IOS
 #import <UIKit/UIKit.h>
@@ -360,6 +361,13 @@ void QDarwinWebViewPrivate::setUrl(const QUrl &url)
 {
     if (url.isValid()) {
         if (url.isLocalFile()) {
+            // NOTE: Check if the file exists before attempting to load it, we follow the same
+            // asynchronous pattern as expected to not break the tests (Started + Failed).
+            if (!QFile::exists(url.toLocalFile())) {
+                QMetaObject::invokeMethod(this, &QDarwinWebViewPrivate::loadingChanged, Qt::QueuedConnection, QWebViewLoadRequestPrivate(url, QWebView::LoadStartedStatus, {}));
+                QMetaObject::invokeMethod(this, &QDarwinWebViewPrivate::loadingChanged, Qt::QueuedConnection, QWebViewLoadRequestPrivate(url, QWebView::LoadFailedStatus, QStringLiteral("File does not exist")));
+                return;
+            }
             // We need to pass local files via loadFileURL and the read access should cover
             // the directory that the file is in, to facilitate loading referenced images etc
             if (m_settings->allowFileAccess()) {
@@ -371,6 +379,8 @@ void QDarwinWebViewPrivate::setUrl(const QUrl &url)
         } else {
             [wkWebView loadRequest:[NSURLRequest requestWithURL:url.toNSURL()]];
         }
+    } else {
+        QMetaObject::invokeMethod(this, &QDarwinWebViewPrivate::loadingChanged, Qt::QueuedConnection, QWebViewLoadRequestPrivate(url, QWebView::LoadFailedStatus, QStringLiteral("Invalid URL")));
     }
 }
 

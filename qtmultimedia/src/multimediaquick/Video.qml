@@ -105,11 +105,30 @@ Item {
     property alias fillMode:            videoOut.fillMode
 
     /*!
+        \qmlproperty enumeration Video::endOfStreamPolicy
+        \since 6.9
+
+        This property specifies the policy to apply when the video stream ends.
+
+        The \c endOfStreamPolicy can be one of:
+
+        \value ClearOutput      The video output is cleared.
+        \value KeepLastFrame    The video output continues displaying the last
+                                frame. Use the method \l clearOutput() to
+                                clear the output manually.
+
+        The default value is \c VideoOutput.ClearOutput.
+    */
+    property alias endOfStreamPolicy:            videoOut.endOfStreamPolicy
+
+    /*!
         \qmlproperty int Video::orientation
+        \since 6.9
 
         This property determines the angle, in degrees, at which the displayed video
         is rotated clockwise in video coordinates, where the Y-axis points
         downwards on the display.
+        The orientation transformation is applied before \l mirrored.
 
         Only multiples of \c 90 degrees are supported, that is 0, 90, -90, 180, 270, etc.,
         otherwise, the specified value is ignored.
@@ -117,6 +136,16 @@ Item {
         The default value is \c 0.
     */
     property alias orientation:         videoOut.orientation
+
+
+    /*!
+        \qmlproperty int Video::mirrored
+
+        Determines whether the displayed video is mirrored around its vertical axis.
+        The mirroring is applied after \l orientation.
+        The default value is \c false.
+    */
+    property alias mirrored:         videoOut.mirrored
 
 
     /*** Properties of MediaPlayer ***/
@@ -373,5 +402,18 @@ Item {
     */
     function seek(offset) {
         player.position = offset;
+    }
+
+    /*!
+        \qmlmethod Video::clearOutput()
+        \since 6.9
+
+        Clears the video output by removing the current video frame.
+        This method is recommended when you need to remove the last video frame after
+        the video stream ends with the \l endOfStreamPolicy Video property
+        set to \c KeepLastFrame.
+    */
+    function clearOutput() {
+        videoOut.clearOutput();
     }
 }

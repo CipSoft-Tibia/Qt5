@@ -30,6 +30,7 @@
 
 #include <memory>
 #include <string>
+#include <utility>
 
 #include "src/tint/lang/core/constant/manager.h"
 #include "src/tint/lang/core/ir/block.h"
@@ -39,6 +40,7 @@
 #include "src/tint/lang/core/ir/value.h"
 #include "src/tint/lang/core/type/manager.h"
 #include "src/tint/utils/containers/const_propagating_ptr.h"
+#include "src/tint/utils/containers/filtered_iterator.h"
 #include "src/tint/utils/containers/vector.h"
 #include "src/tint/utils/diagnostic/source.h"
 #include "src/tint/utils/id/generation_id.h"
@@ -56,6 +58,12 @@ class Module {
     /// Map of value to name
     Hashmap<const Value*, Symbol, 32> value_to_name_;
 
+    /// A predicate function that returns true if the instruction or value is alive.
+    struct IsAlive {
+        bool operator()(const Instruction* instruction) const { return instruction->Alive(); }
+        bool operator()(const Value* value) const { return value->Alive(); }
+    };
+
   public:
     /// Constructor
     Module();
@@ -69,6 +77,25 @@ class Module {
     /// @param o the module to assign from
     /// @returns a reference to this module
     Module& operator=(Module&& o);
+
+    /// Creates a new `TYPE` instruction owned by the module
+    /// When the Module is destructed the object will be destructed and freed.
+    /// @param args the arguments to pass to the constructor
+    /// @returns the pointer to the instruction
+    template <typename TYPE, typename... ARGS>
+    TYPE* CreateInstruction(ARGS&&... args) {
+        return allocators_.instructions.Create<TYPE>(NextInstructionId(),
+                                                     std::forward<ARGS>(args)...);
+    }
+
+    /// Creates a new `TYPE` value owned by the module
+    /// When the Module is destructed the object will be destructed and freed.
+    /// @param args the arguments to pass to the constructor
+    /// @returns the pointer to the value
+    template <typename TYPE, typename... ARGS>
+    TYPE* CreateValue(ARGS&&... args) {
+        return allocators_.values.Create<TYPE>(std::forward<ARGS>(args)...);
+    }
 
     /// @param inst the instruction
     /// @return the name of the given instruction, or an invalid symbol if the instruction is not
@@ -102,19 +129,38 @@ class Module {
     /// @return the type manager for the module
     const core::type::Manager& Types() const { return constant_values.types; }
 
+    /// @returns a iterable of all the alive instructions
+    FilteredIterable<IsAlive, BlockAllocator<Instruction>::View> Instructions() {
+        return {allocators_.instructions.Objects()};
+    }
+
+    /// @returns a iterable of all the alive instructions
+    FilteredIterable<IsAlive, BlockAllocator<Instruction>::ConstView> Instructions() const {
+        return {allocators_.instructions.Objects()};
+    }
+
+    /// @returns a iterable of all the alive values
+    FilteredIterable<IsAlive, BlockAllocator<Value>::View> Values() {
+        return {allocators_.values.Objects()};
+    }
+
+    /// @returns a iterable of all the alive values
+    FilteredIterable<IsAlive, BlockAllocator<Value>::ConstView> Values() const {
+        return {allocators_.values.Objects()};
+    }
+
+    /// @returns the functions in the module, in dependency order
+    Vector<Function*, 16> DependencyOrderedFunctions();
+    /// @returns the functions in the module, in dependency order
+    Vector<const Function*, 16> DependencyOrderedFunctions() const;
+
     /// The block allocator
     BlockAllocator<Block> blocks;
 
     /// The constant value manager
     core::constant::Manager constant_values;
 
-    /// The instruction allocator
-    BlockAllocator<Instruction> instructions;
-
-    /// The value allocator
-    BlockAllocator<Value> values;
-
-    /// List of functions in the program
+    /// List of functions in the module.
     Vector<ConstPropagatingPtr<Function>, 8> functions;
 
     /// The block containing module level declarations, if any exist.
@@ -125,6 +171,21 @@ class Module {
 
     /// The map of core::constant::Value to their ir::Constant.
     Hashmap<const core::constant::Value*, ir::Constant*, 16> constants;
+
+  private:
+    /// @returns the next instruction id for this module
+    Instruction::Id NextInstructionId() { return next_instruction_id_++; }
+
+    /// The various BlockAllocators for the module
+    struct {
+        /// The instruction allocator
+        BlockAllocator<Instruction> instructions;
+
+        /// The value allocator
+        BlockAllocator<Value> values;
+    } allocators_;
+
+    Instruction::Id next_instruction_id_ = 0;
 };
 
 }  // namespace tint::core::ir

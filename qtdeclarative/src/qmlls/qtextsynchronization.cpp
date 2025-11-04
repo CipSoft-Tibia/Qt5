@@ -35,7 +35,7 @@ void TextSynchronization::didDidChangeTextDocument(const DidChangeTextDocumentPa
     auto openDoc = m_codeModel->openDocumentByUrl(url);
     std::shared_ptr<Utils::TextDocument> document = openDoc.textDocument;
     if (!document) {
-        qCWarning(lspServerLog) << "Ingnoring changes to non open or closed document"
+        qCWarning(lspServerLog) << "Ignoring changes to non open or closed document"
                                 << QString::fromUtf8(url);
         return;
     }

@@ -68,6 +68,7 @@ export class SnackbarManager extends LitElement {
       // Close the snackbar to restart the snackbar timer.
       this.snackbar.hidePopover();
     }
+    this.button.slot = options.buttonText ? 'action' : '';
     this.button.style.display = options.buttonText ? 'block' : 'none';
     this.button.label = options.buttonText || '';
     this.snackbar.message = options.messageText;

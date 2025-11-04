@@ -23,8 +23,10 @@
 #include "components/unexportable_keys/unexportable_key_service.h"
 #include "components/unexportable_keys/unexportable_key_service_impl.h"
 #include "components/unexportable_keys/unexportable_key_task_manager.h"
+#include "components/variations/scoped_variations_ids_provider.h"
 #include "crypto/scoped_mock_unexportable_key_provider.h"
 #include "crypto/signature_verifier.h"
+#include "crypto/unexportable_key.h"
 #include "net/http/http_response_headers.h"
 #include "services/network/public/cpp/resource_request.h"
 #include "services/network/public/cpp/weak_wrapper_shared_url_loader_factory.h"
@@ -64,7 +66,8 @@ constexpr std::string_view kBoundSessionParamsValidJson = R"(
                     "path": "/"
                 }
             }
-        ]
+        ],
+        "refresh_url": "/rotate"
     }
 )";
 constexpr std::string_view kBoundSessionParamsMissingSessionIdJson = R"(
@@ -78,7 +81,8 @@ constexpr std::string_view kBoundSessionParamsMissingSessionIdJson = R"(
                     "path": "/"
                 }
             }
-        ]
+        ],
+        "refresh_url": "/rotate"
     }
 )";
 constexpr std::string_view kChallenge = "test_challenge";
@@ -111,9 +115,10 @@ bound_session_credentials::Credential CreateTestBoundSessionCredential(
 bound_session_credentials::BoundSessionParams CreateTestBoundSessionParams(
     const std::string& wrapped_key) {
   bound_session_credentials::BoundSessionParams params;
-  params.set_site("https://google.com");
+  params.set_site("https://google.com/");
   params.set_session_id("007");
   params.set_wrapped_key(wrapped_key);
+  params.set_refresh_url("https://www.google.com/rotate");
   *params.mutable_creation_time() =
       bound_session_credentials::TimeToTimestamp(base::Time::Now());
 
@@ -184,7 +189,7 @@ class BoundSessionRegistrationFetcherImplTest : public testing::Test {
             kRegistrationUrl, CreateAlgArray(), std::string(kChallenge));
     return std::make_unique<BoundSessionRegistrationFetcherImpl>(
         std::move(params), url_loader_factory_.GetSafeWeakWrapper(),
-        unexportable_key_service());
+        unexportable_key_service(), /*is_off_the_record_profile=*/false);
   }
 
   void DisableKeyProvider() {
@@ -224,12 +229,15 @@ class BoundSessionRegistrationFetcherImplTest : public testing::Test {
       base::test::TaskEnvironment::ThreadPoolExecutionMode::
           QUEUED};  // QUEUED - tasks don't run until `RunUntilIdle()` is
                     // called.
-  unexportable_keys::UnexportableKeyTaskManager task_manager_;
-  unexportable_keys::UnexportableKeyServiceImpl unexportable_key_service_;
+  variations::ScopedVariationsIdsProvider scoped_variations_ids_provider_{
+      variations::VariationsIdsProvider::Mode::kUseSignedInState};
   // Provides a mock key provider by default.
   absl::variant<crypto::ScopedMockUnexportableKeyProvider,
                 crypto::ScopedNullUnexportableKeyProvider>
       scoped_key_provider_;
+  unexportable_keys::UnexportableKeyTaskManager task_manager_{
+      crypto::UnexportableKeyProvider::Config()};
+  unexportable_keys::UnexportableKeyServiceImpl unexportable_key_service_;
   network::TestURLLoaderFactory url_loader_factory_;
   base::HistogramTester histogram_tester_;
 
@@ -351,7 +359,8 @@ TEST_F(BoundSessionRegistrationFetcherImplTest,
                     "path": "/"
                 }
             }
-        ]
+        ],
+        "refresh_url": "/rotate"
     }
   )");
   std::unique_ptr<BoundSessionRegistrationFetcher> fetcher = CreateFetcher();
@@ -478,4 +487,80 @@ TEST_F(BoundSessionRegistrationFetcherImplTest,
   auto result = fetcher->ParseCredentials(credentials_list);
 
   EXPECT_TRUE(result.has_value());
+}
+
+TEST_F(BoundSessionRegistrationFetcherImplTest, ParseJsonAbsoluteRefreshUrl) {
+  SetUpServerResponse(R"(
+    {
+        "session_identifier": "007",
+        "credentials": [{
+                "type": "cookie",
+                "name": "auth_cookie_1P",
+                "scope": {
+                    "domain": ".google.com",
+                    "path": "/"
+                }
+            }],
+        "refresh_url": "https://accounts.google.com/RotateCookies"
+    }
+  )");
+  std::unique_ptr<BoundSessionRegistrationFetcher> fetcher = CreateFetcher();
+  RegistrationResultFuture future;
+
+  fetcher->Start(future.GetCallback());
+  RunBackgroundTasks();
+
+  ASSERT_TRUE(future.Get().has_value());
+  EXPECT_EQ(future.Get()->refresh_url(),
+            GURL("https://accounts.google.com/RotateCookies"));
+  ExpectRecordedMetrics(RegistrationError::kNone);
+}
+
+TEST_F(BoundSessionRegistrationFetcherImplTest, ParseJsonAbsentRefreshUrl) {
+  SetUpServerResponse(R"(
+    {
+        "session_identifier": "007",
+        "credentials": [{
+                "type": "cookie",
+                "name": "auth_cookie_1P",
+                "scope": {
+                    "domain": ".google.com",
+                    "path": "/"
+                }
+            }]
+    }
+  )");
+  std::unique_ptr<BoundSessionRegistrationFetcher> fetcher = CreateFetcher();
+  RegistrationResultFuture future;
+
+  fetcher->Start(future.GetCallback());
+  RunBackgroundTasks();
+
+  EXPECT_EQ(future.Get<>(), std::nullopt);
+  ExpectRecordedMetrics(RegistrationError::kRequiredFieldMissing);
+}
+
+TEST_F(BoundSessionRegistrationFetcherImplTest, ParseJsonInvalidRefreshUrl) {
+  SetUpServerResponse(R"(
+    {
+        "session_identifier": "007",
+        "credentials": [{
+                "type": "cookie",
+                "name": "auth_cookie_1P",
+                "scope": {
+                    "domain": ".google.com",
+                    "path": "/"
+                }
+            }],
+        "refresh_url": "not-a-url://"
+    }
+  )");
+  std::unique_ptr<BoundSessionRegistrationFetcher> fetcher = CreateFetcher();
+  RegistrationResultFuture future;
+
+  fetcher->Start(future.GetCallback());
+  RunBackgroundTasks();
+
+  EXPECT_EQ(future.Get<>(), std::nullopt);
+  ExpectRecordedMetrics(RegistrationError::kInvalidSessionParams);
 }

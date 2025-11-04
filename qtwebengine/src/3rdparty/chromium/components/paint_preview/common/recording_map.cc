@@ -4,8 +4,9 @@
 
 #include "components/paint_preview/common/recording_map.h"
 
+#include <string_view>
+
 #include "base/files/file_path.h"
-#include "base/strings/string_piece.h"
 #include "base/strings/utf_string_conversions.h"
 #include "build/build_config.h"
 
@@ -13,7 +14,7 @@ namespace paint_preview {
 
 namespace {
 
-base::FilePath ToFilePath(base::StringPiece path_str) {
+base::FilePath ToFilePath(std::string_view path_str) {
 #if BUILDFLAG(IS_WIN)
   return base::FilePath(base::UTF8ToWide(path_str));
 #else
@@ -45,7 +46,7 @@ std::pair<RecordingMap, PaintPreviewProto> RecordingMapFromCaptureResult(
           capture_result.proto};
   }
 
-  NOTREACHED();
+  NOTREACHED_IN_MIGRATION();
   return {};
 }
 
@@ -61,11 +62,11 @@ RecordingMap RecordingMapFromPaintPreviewProto(const PaintPreviewProto& proto) {
   if (!root_frame_recording.IsValid())
     return {};
 
-  absl::optional<base::UnguessableToken> root_frame_embedding_token =
+  std::optional<base::UnguessableToken> root_frame_embedding_token =
       base::UnguessableToken::Deserialize(
           proto.root_frame().embedding_token_high(),
           proto.root_frame().embedding_token_low());
-  // TODO(https://crbug.com/1406995): Investigate whether a deserialization
+  // TODO(crbug.com/40252979): Investigate whether a deserialization
   // failure can actually occur here and if it can, add a comment discussing
   // how this can happen.
   if (!root_frame_embedding_token.has_value()) {
@@ -82,10 +83,10 @@ RecordingMap RecordingMapFromPaintPreviewProto(const PaintPreviewProto& proto) {
     if (!frame_recording.IsValid())
       continue;
 
-    absl::optional<base::UnguessableToken> subframe_embedding_token =
+    std::optional<base::UnguessableToken> subframe_embedding_token =
         base::UnguessableToken::Deserialize(subframe.embedding_token_high(),
                                             subframe.embedding_token_low());
-    // TODO(https://crbug.com/1406995): Investigate whether a deserialization
+    // TODO(crbug.com/40252979): Investigate whether a deserialization
     // failure can actually occur here and if it can, add a comment discussing
     // how this can happen.
     if (!subframe_embedding_token.has_value()) {

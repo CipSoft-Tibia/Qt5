@@ -120,11 +120,11 @@ static QString seedAndTemplate()
 tst_QMimeDatabase::tst_QMimeDatabase()
     : m_temporaryDir(seedAndTemplate())
 {
+    QLocale::setDefault(QLocale::c());
 }
 
 void tst_QMimeDatabase::initTestCase()
 {
-    QLocale::setDefault(QLocale::c());
     QVERIFY2(m_temporaryDir.isValid(), qPrintable(m_temporaryDir.errorString()));
     QStandardPaths::setTestModeEnabled(true);
     m_localMimeDir = QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation) + "/mime";
@@ -221,7 +221,7 @@ void tst_QMimeDatabase::mimeTypeForName()
     QCOMPARE(doesNotExist.comment(), QString());
     QCOMPARE(doesNotExist.aliases(), QStringList());
 
-#ifdef Q_OS_LINUX
+#if defined(Q_OS_UNIX) && !defined(Q_OS_DARWIN)
     if (m_hasFreedesktopOrg) {
         QString exePath = QStandardPaths::findExecutable(QLatin1String("ls"));
         if (exePath.isEmpty())
@@ -510,11 +510,9 @@ void tst_QMimeDatabase::comment()
     if (!m_hasFreedesktopOrg)
         QSKIP("Translations not yet available for tika mimetypes");
 
-    struct RestoreLocale
-    {
-        ~RestoreLocale() { QLocale::setDefault(QLocale::c()); }
-    } restoreLocale;
-
+    const auto restoreLocale = qScopeGuard([prior = QLocale()]() {
+        QLocale::setDefault(prior);
+    });
     QLocale::setDefault(QLocale("de"));
     QMimeDatabase db;
     QMimeType directory = db.mimeTypeForName(s_inodeMimetype);
@@ -648,6 +646,9 @@ void tst_QMimeDatabase::mimeTypeForData_data()
     else
         QTest::newRow("diff_space") << QByteArray("diff ") << "text/x-diff";
     QTest::newRow("unknown") << QByteArray("\001abc?}") << "application/octet-stream";
+    QTest::newRow("ambigous svg/xml") << QByteArray(R"(<?xml version="1.0"?>
+<svg version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+</svg>)") << "image/svg+xml";
 }
 
 void tst_QMimeDatabase::mimeTypeForData()
@@ -1236,11 +1237,9 @@ void tst_QMimeDatabase::installNewGlobalMimeType()
 
     // Test if we can use the default comment
     {
-        struct RestoreLocale
-        {
-            ~RestoreLocale() { QLocale::setDefault(QLocale::c()); }
-        } restoreLocale;
-
+        const auto restoreLocale = qScopeGuard([prior = QLocale()]() {
+            QLocale::setDefault(prior);
+        });
         QLocale::setDefault(QLocale("zh_CN"));
         QMimeType suseymp = db.mimeTypeForName("text/x-suse-ymp");
         QVERIFY(suseymp.isValid());
@@ -1363,9 +1362,11 @@ void tst_QMimeDatabase::installNewLocalMimeType()
     if (QTest::currentTestFailed())
         return;
 
-    comment();
-    if (QTest::currentTestFailed())
-        return;
+    if (m_hasFreedesktopOrg) {
+        comment();
+        if (QTest::currentTestFailed())
+            return;
+    }
 
     mimeTypeForFileWithContent();
     if (QTest::currentTestFailed())

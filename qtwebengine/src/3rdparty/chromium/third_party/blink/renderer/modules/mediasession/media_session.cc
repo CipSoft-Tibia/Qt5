@@ -5,12 +5,12 @@
 #include "third_party/blink/renderer/modules/mediasession/media_session.h"
 
 #include <memory>
+#include <optional>
 
 #include "base/time/default_tick_clock.h"
 #include "base/time/time.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
-#include "third_party/blink/public/common/browser_interface_broker_proxy.h"
 #include "third_party/blink/public/mojom/frame/user_activation_notification_type.mojom-blink.h"
+#include "third_party/blink/public/platform/browser_interface_broker_proxy.h"
 #include "third_party/blink/renderer/bindings/modules/v8/v8_media_position_state.h"
 #include "third_party/blink/renderer/bindings/modules/v8/v8_media_session_action_details.h"
 #include "third_party/blink/renderer/bindings/modules/v8/v8_media_session_action_handler.h"
@@ -90,12 +90,12 @@ const AtomicString& MojomActionToActionName(MediaSessionAction action) {
     case MediaSessionAction::kEnterPictureInPicture:
       return enter_picture_in_picture_action_name;
     default:
-      NOTREACHED();
+      NOTREACHED_IN_MIGRATION();
   }
   return WTF::g_empty_atom;
 }
 
-absl::optional<MediaSessionAction> ActionNameToMojomAction(
+std::optional<MediaSessionAction> ActionNameToMojomAction(
     const String& action_name) {
   if ("play" == action_name)
     return MediaSessionAction::kPlay;
@@ -129,8 +129,8 @@ absl::optional<MediaSessionAction> ActionNameToMojomAction(
     return MediaSessionAction::kEnterPictureInPicture;
   }
 
-  NOTREACHED();
-  return absl::nullopt;
+  NOTREACHED_IN_MIGRATION();
+  return std::nullopt;
 }
 
 const AtomicString& MediaSessionPlaybackStateToString(
@@ -147,7 +147,7 @@ const AtomicString& MediaSessionPlaybackStateToString(
     case mojom::blink::MediaSessionPlaybackState::PLAYING:
       return playing_value;
   }
-  NOTREACHED();
+  NOTREACHED_IN_MIGRATION();
   return WTF::g_empty_atom;
 }
 
@@ -285,6 +285,12 @@ void MediaSession::setPositionState(MediaPositionState* position_state,
   // The duration cannot be missing.
   if (!position_state->hasDuration()) {
     exception_state.ThrowTypeError("The duration must be provided.");
+    return;
+  }
+
+  // The duration cannot be NaN.
+  if (std::isnan(position_state->duration())) {
+    exception_state.ThrowTypeError("The provided duration cannot be NaN.");
     return;
   }
 

@@ -4,6 +4,7 @@
 
 #include "components/signin/public/identity_manager/identity_manager.h"
 
+#include <optional>
 #include <string>
 
 #include "base/functional/bind.h"
@@ -25,7 +26,6 @@
 #include "components/signin/public/identity_manager/diagnostics_provider.h"
 #include "components/signin/public/identity_manager/primary_account_mutator.h"
 #include "services/network/public/cpp/shared_url_loader_factory.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 
 #if BUILDFLAG(IS_ANDROID)
 #include "base/android/jni_string.h"
@@ -80,11 +80,10 @@ void SetPrimaryAccount(IdentityManager* identity_manager,
 
   if (!primary_account_id.empty()) {
     // Different primary account found, have to clear it first.
-    // TODO(https://crbug.com/1223364): Replace this if with a CHECK after all
+    // TODO(crbug.com/40774609): Replace this if with a CHECK after all
     //                                  the existing users have been migrated.
     identity_manager->GetPrimaryAccountMutator()->ClearPrimaryAccount(
-        signin_metrics::ProfileSignout::kAccountRemovedFromDevice,
-        signin_metrics::SignoutDelete::kIgnoreMetric);
+        signin_metrics::ProfileSignout::kAccountRemovedFromDevice);
   }
 
   PrimaryAccountMutator::PrimaryAccountError error =
@@ -126,7 +125,8 @@ IdentityManager::IdentityManager(IdentityManager::InitParameters&& parameters)
           std::move(parameters.device_accounts_synchronizer))),
       diagnostics_provider_(std::move(parameters.diagnostics_provider)),
       account_consistency_(parameters.account_consistency),
-      should_verify_scope_access_(parameters.should_verify_scope_access) {
+      require_sync_consent_for_scope_verification_(
+          parameters.require_sync_consent_for_scope_verification) {
 #if !defined(TOOLKIT_QT)
   DCHECK(account_fetcher_service_);
 #endif
@@ -168,10 +168,10 @@ IdentityManager::IdentityManager(IdentityManager::InitParameters&& parameters)
   // Profile / KeyedServices - but with the availability of IdentityManager. We
   // don't have such a place in Lacros - which guarantees that the Primary
   // Account will be available on startup - just like Ash.
-  absl::optional<account_manager::Account> initial_account =
+  std::optional<account_manager::Account> initial_account =
       signin_client_->GetInitialPrimaryAccount();
   if (initial_account.has_value()) {
-    const absl::optional<bool>& initial_account_is_child =
+    const std::optional<bool>& initial_account_is_child =
         signin_client_->IsInitialPrimaryAccountChild();
     CHECK(initial_account_is_child.has_value());
     SetPrimaryAccount(this, account_tracker_service_.get(), signin_client_,
@@ -219,7 +219,7 @@ void IdentityManager::RemoveObserver(Observer* observer) {
   observer_list_.RemoveObserver(observer);
 }
 
-// TODO(862619) change return type to absl::optional<CoreAccountInfo>
+// TODO(crbug.com/40584518) change return type to std::optional<CoreAccountInfo>
 CoreAccountInfo IdentityManager::GetPrimaryAccountInfo(
     ConsentLevel consent) const {
   return primary_account_manager_->GetPrimaryAccountInfo(consent);
@@ -243,7 +243,7 @@ IdentityManager::CreateAccessTokenFetcherForAccount(
   return std::make_unique<AccessTokenFetcher>(
       account_id, oauth_consumer_name, token_service_.get(),
       primary_account_manager_.get(), scopes, std::move(callback), mode,
-      should_verify_scope_access_);
+      require_sync_consent_for_scope_verification_);
 }
 
 std::unique_ptr<AccessTokenFetcher>
@@ -257,7 +257,7 @@ IdentityManager::CreateAccessTokenFetcherForAccount(
   return std::make_unique<AccessTokenFetcher>(
       account_id, oauth_consumer_name, token_service_.get(),
       primary_account_manager_.get(), url_loader_factory, scopes,
-      std::move(callback), mode, should_verify_scope_access_);
+      std::move(callback), mode, require_sync_consent_for_scope_verification_);
 }
 
 void IdentityManager::RemoveAccessTokenFromCache(
@@ -315,6 +315,14 @@ bool IdentityManager::HasAccountWithRefreshTokenInPersistentErrorState(
     const CoreAccountId& account_id) const {
   return GetErrorStateOfRefreshTokenForAccount(account_id).IsPersistentError();
 }
+
+#if BUILDFLAG(ENABLE_BOUND_SESSION_CREDENTIALS)
+std::vector<uint8_t>
+IdentityManager::GetWrappedBindingKeyOfRefreshTokenForAccount(
+    const CoreAccountId& account_id) const {
+  return token_service_->GetWrappedBindingKey(account_id);
+}
+#endif
 
 GoogleServiceAuthError IdentityManager::GetErrorStateOfRefreshTokenForAccount(
     const CoreAccountId& account_id) const {
@@ -425,12 +433,11 @@ DiagnosticsProvider* IdentityManager::GetDiagnosticsProvider() {
   return diagnostics_provider_.get();
 }
 
-#if BUILDFLAG(IS_ANDROID)
-base::android::ScopedJavaLocalRef<jobject>
-IdentityManager::LegacyGetAccountTrackerServiceJavaObject() {
-  return account_tracker_service_->GetJavaObject();
+void IdentityManager::PrepareForAddingNewAccount() {
+  account_fetcher_service_->PrepareForFetchingAccountCapabilities();
 }
 
+#if BUILDFLAG(IS_ANDROID)
 base::android::ScopedJavaLocalRef<jobject> IdentityManager::GetJavaObject() {
   DCHECK(java_identity_manager_);
   return base::android::ScopedJavaLocalRef<jobject>(java_identity_manager_);
@@ -459,11 +466,6 @@ void IdentityManager::RefreshAccountInfoIfStale(
   if (j_core_account_id) {
     RefreshAccountInfoIfStale(
         ConvertFromJavaCoreAccountId(env, j_core_account_id));
-  } else {
-    std::vector<CoreAccountInfo> accounts = GetAccountsWithRefreshTokens();
-    for (const CoreAccountInfo& account : accounts) {
-      RefreshAccountInfoIfStale(account.account_id);
-    }
   }
 }
 
@@ -548,7 +550,7 @@ IdentityManager::GetAccountManagerFacade() const {
 
 AccountInfo IdentityManager::GetAccountInfoForAccountWithRefreshToken(
     const CoreAccountId& account_id) const {
-  // TODO(https://crbug.com/919793): This invariant is not currently possible to
+  // TODO(crbug.com/41434401): This invariant is not currently possible to
   // enforce on Android due to the underlying relationship between
   // O2TS::GetAccounts(), O2TS::RefreshTokenIsAvailable(), and
   // O2TS::Observer::OnRefreshTokenAvailable().
@@ -623,13 +625,14 @@ void IdentityManager::OnEndBatchChanges() {
 
 void IdentityManager::OnAuthErrorChanged(
     const CoreAccountId& account_id,
-    const GoogleServiceAuthError& auth_error) {
+    const GoogleServiceAuthError& auth_error,
+    signin_metrics::SourceForRefreshTokenOperation token_operation_source) {
   CoreAccountInfo account_info =
       GetAccountInfoForAccountWithRefreshToken(account_id);
 
   for (auto& observer : observer_list_)
-    observer.OnErrorStateOfRefreshTokenUpdatedForAccount(account_info,
-                                                         auth_error);
+    observer.OnErrorStateOfRefreshTokenUpdatedForAccount(
+        account_info, auth_error, token_operation_source);
 }
 
 void IdentityManager::OnGaiaAccountsInCookieUpdated(
@@ -669,7 +672,7 @@ void IdentityManager::OnFetchAccessTokenComplete(
     const CoreAccountId& account_id,
     const std::string& consumer_id,
     const ScopeSet& scopes,
-    GoogleServiceAuthError error,
+    const GoogleServiceAuthError& error,
     base::Time expiration_time) {
   for (auto& observer : diagnostics_observation_list_)
     observer.OnAccessTokenRequestCompleted(account_id, consumer_id, scopes,
@@ -728,6 +731,9 @@ void IdentityManager::OnAccountUpdated(const AccountInfo& info) {
 }
 
 void IdentityManager::OnAccountRemoved(const AccountInfo& info) {
+#if (BUILDFLAG(IS_ANDROID))
+    account_fetcher_service_->DestroyFetchers(info.account_id);
+#endif
   for (auto& observer : observer_list_)
     observer.OnExtendedAccountInfoRemoved(info);
 }

@@ -4,6 +4,8 @@
 #ifndef QJNITYPES_H
 #define QJNITYPES_H
 
+#include <QtCore/qglobal.h>
+
 #if defined(Q_QDOC) || defined(Q_OS_ANDROID)
 
 #include <QtCore/qjnitypes_impl.h>
@@ -157,7 +159,7 @@ struct JNITypeForArgImpl<QString>
 
     static QString fromVarArg(Type t)
     {
-        return QJniObject(t).toString();
+        return t ? QtJniTypes::Detail::toQString(t, QJniEnvironment::getJniEnv()) : QString();
     }
 };
 
@@ -184,7 +186,7 @@ public:
 
     static QList<T> fromVarArg(Type t)
     {
-        return QJniArray<ElementType>(t).toContainer();
+        return t ? QJniArray<ElementType>(t).toContainer() : QList<T>{};
     }
 };
 

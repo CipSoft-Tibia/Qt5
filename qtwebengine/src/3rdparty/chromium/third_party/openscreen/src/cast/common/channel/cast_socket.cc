@@ -14,8 +14,8 @@
 
 namespace openscreen::cast {
 
-using ::cast::channel::CastMessage;
 using message_serialization::DeserializeResult;
+using proto::CastMessage;
 
 CastSocket::Client::~Client() = default;
 
@@ -24,7 +24,7 @@ CastSocket::CastSocket(std::unique_ptr<TlsConnection> connection,
     : connection_(std::move(connection)),
       client_(client),
       socket_id_(g_next_socket_id_++) {
-  OSP_DCHECK(client);
+  OSP_CHECK(client);
   connection_->SetClient(this);
 }
 
@@ -44,14 +44,14 @@ Error CastSocket::Send(const CastMessage& message) {
     return out.error();
   }
 
-  if (!connection_->Send(out.value().data(), out.value().size())) {
+  if (!connection_->Send(out.value())) {
     return Error::Code::kAgain;
   }
   return Error::Code::kNone;
 }
 
 void CastSocket::SetClient(Client* client) {
-  OSP_DCHECK(client);
+  OSP_CHECK(client);
   client_ = client;
 }
 
@@ -71,7 +71,7 @@ std::array<uint8_t, 2> CastSocket::GetSanitizedIpAddress() {
   return result;
 }
 
-void CastSocket::OnError(TlsConnection* connection, Error error) {
+void CastSocket::OnError(TlsConnection* connection, const Error& error) {
   state_ = State::kError;
   client_->OnError(this, error);
 }

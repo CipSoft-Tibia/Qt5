@@ -6,6 +6,7 @@
 #include "qsvgfont_p.h"
 #include "qsvggraphics_p.h"
 #include "qsvgnode_p.h"
+#include "private/qsvganimate_p.h"
 #include "qsvgtinydocument_p.h"
 
 #include "qpainter.h"
@@ -16,6 +17,22 @@
 #include "qnumeric.h"
 
 QT_BEGIN_NAMESPACE
+
+static QColor sumColor(const QColor &c1, const QColor &c2)
+{
+    QRgb rgb1 = c1.rgba();
+    QRgb rgb2 = c2.rgba();
+    int sumRed = qRed(rgb1) + qRed(rgb2);
+    int sumGreen = qGreen(rgb1) + qGreen(rgb2);
+    int sumBlue = qBlue(rgb1) + qBlue(rgb2);
+
+    QRgb sumRgb = qRgba(qBound(0, sumRed, 255),
+          qBound(0, sumGreen, 255),
+          qBound(0, sumBlue, 255),
+          255);
+
+    return QColor(sumRgb);
+}
 
 QSvgExtraStates::QSvgExtraStates()
     : fillOpacity(1.0),
@@ -437,9 +454,7 @@ void QSvgTransformStyle::apply(QPainter *p, const QSvgNode *, QSvgExtraStates &)
 
 void QSvgTransformStyle::revert(QPainter *p, QSvgExtraStates &)
 {
-    QTransform oldTransform = m_oldWorldTransform.size() == 1 ? m_oldWorldTransform.top()
-                              : m_oldWorldTransform.pop();
-    p->setWorldTransform(oldTransform, false /* don't combine */);
+    p->setWorldTransform(m_oldWorldTransform.pop(), false /* don't combine */);
 }
 
 QSvgStyleProperty::Type QSvgQualityStyle::type() const
@@ -510,383 +525,6 @@ QSvgStyleProperty::Type QSvgCompOpStyle::type() const
     return COMP_OP;
 }
 
-QSvgStyle::~QSvgStyle()
-{
-}
-
-void QSvgStyle::apply(QPainter *p, const QSvgNode *node, QSvgExtraStates &states)
-{
-    if (quality) {
-        quality->apply(p, node, states);
-    }
-
-    if (fill) {
-        fill->apply(p, node, states);
-    }
-
-    if (viewportFill) {
-        viewportFill->apply(p, node, states);
-    }
-
-    if (font) {
-        font->apply(p, node, states);
-    }
-
-    if (stroke) {
-        stroke->apply(p, node, states);
-    }
-
-    if (transform) {
-        transform->apply(p, node, states);
-    }
-
-    for (auto it = animateColors.constBegin(); it != animateColors.constEnd(); ++it)
-        (*it)->apply(p, node, states);
-
-    //animated transforms have to be applied
-    //_after_ the original object transformations
-    if (!animateTransforms.isEmpty()) {
-        qreal totalTimeElapsed = node->document()->currentElapsed();
-        // Find the last animateTransform with additive="replace", since this will override all
-        // previous animateTransforms.
-        QList<QSvgRefCounter<QSvgAnimateTransform> >::const_iterator itr = animateTransforms.constEnd();
-        do {
-            --itr;
-            if ((*itr)->animActive(totalTimeElapsed)
-                && (*itr)->additiveType() == QSvgAnimateTransform::Replace) {
-                // An animateTransform with additive="replace" will replace the transform attribute.
-                if (transform)
-                    transform->revert(p, states);
-                break;
-            }
-        } while (itr != animateTransforms.constBegin());
-
-        // Apply the animateTransforms after and including the last one with additive="replace".
-        for (; itr != animateTransforms.constEnd(); ++itr) {
-            if ((*itr)->animActive(totalTimeElapsed))
-                (*itr)->apply(p, node, states);
-        }
-    }
-
-    if (opacity) {
-        opacity->apply(p, node, states);
-    }
-
-    if (compop) {
-        compop->apply(p, node, states);
-    }
-}
-
-void QSvgStyle::revert(QPainter *p, QSvgExtraStates &states)
-{
-    if (quality) {
-        quality->revert(p, states);
-    }
-
-    if (fill) {
-        fill->revert(p, states);
-    }
-
-    if (viewportFill) {
-        viewportFill->revert(p, states);
-    }
-
-    if (font) {
-        font->revert(p, states);
-    }
-
-    if (stroke) {
-        stroke->revert(p, states);
-    }
-
-    //animated transforms need to be reverted _before_
-    //the native transforms
-    if (!animateTransforms.isEmpty()) {
-        QList<QSvgRefCounter<QSvgAnimateTransform> >::const_iterator itr = animateTransforms.constBegin();
-        for (; itr != animateTransforms.constEnd(); ++itr) {
-            if ((*itr)->transformApplied()) {
-                (*itr)->revert(p, states);
-                break;
-            }
-        }
-        for (; itr != animateTransforms.constEnd(); ++itr)
-            (*itr)->clearTransformApplied();
-    }
-
-    if (transform) {
-        transform->revert(p, states);
-    }
-
-    for (auto it = animateColors.constBegin(); it != animateColors.constEnd(); ++it)
-        (*it)->revert(p, states);
-
-    if (opacity) {
-        opacity->revert(p, states);
-    }
-
-    if (compop) {
-        compop->revert(p, states);
-    }
-}
-
-QSvgAnimate::QSvgAnimate()
-    : QSvgStyleProperty(),
-      m_from(-1),
-      m_totalRunningTime(0),
-      m_end(0),
-      m_repeatCount(-1.0),
-      m_finished(false)
-
-{}
-
-void QSvgAnimate::setRepeatCount(qreal repeatCount)
-{
-    m_repeatCount = repeatCount;
-}
-
-void QSvgAnimate::setRunningTime(int startMs, int durMs, int endMs, int by)
-{
-    Q_UNUSED(by)
-    m_from = startMs;
-    m_end = endMs;
-    m_totalRunningTime = startMs + durMs;
-}
-
-qreal QSvgAnimate::lerp(qreal a, qreal b, qreal t) const
-{
-    return a + (b - a) * t;
-}
-
-qreal QSvgAnimate::currentIterTimeFraction(qreal elpasedTime)
-{
-    qreal fractionOfTotalTime = 0;
-    if (m_totalRunningTime != 0) {
-        fractionOfTotalTime = (elpasedTime - m_from) / m_totalRunningTime;
-        if (m_repeatCount >= 0 && m_repeatCount < fractionOfTotalTime) {
-            m_finished = true;
-            fractionOfTotalTime = m_repeatCount;
-        }
-    }
-
-    return fractionOfTotalTime - std::trunc(fractionOfTotalTime);
-}
-
-QSvgAnimateTransform::QSvgAnimateTransform()
-    : m_type(Empty),
-      m_additive(Replace),
-      m_count(0),
-      m_freeze(false),
-      m_transformApplied(false)
-{
-}
-
-void QSvgAnimateTransform::setArgs(TransformType type, Additive additive, const QList<qreal> &args)
-{
-    m_type = type;
-    m_args = args;
-    m_additive = additive;
-    Q_ASSERT(!(args.size()%3));
-    m_count = args.size() / 3;
-}
-
-void QSvgAnimateTransform::apply(QPainter *p, const QSvgNode *node, QSvgExtraStates &)
-{
-    m_oldWorldTransform = p->worldTransform();
-    resolveMatrix(node);
-    p->setWorldTransform(m_transform, true);
-    m_transformApplied = true;
-}
-
-void QSvgAnimateTransform::revert(QPainter *p, QSvgExtraStates &)
-{
-    p->setWorldTransform(m_oldWorldTransform, false /* don't combine */);
-    m_transformApplied = false;
-}
-
-void QSvgAnimateTransform::resolveMatrix(const QSvgNode *node)
-{
-    qreal elapsedTime = node->document()->currentElapsed();
-    if (elapsedTime < m_from || m_finished)
-        return;
-
-    qreal fractionOfCurrentIterationTime = currentIterTimeFraction(elapsedTime);
-    qreal currentIndexPosition = fractionOfCurrentIterationTime * (m_count - 1);
-    int endElem = qCeil(currentIndexPosition);
-    int startElem = qMax(endElem - 1, 0);
-
-    qreal fractionOfCurrentElement = currentIndexPosition - std::trunc(currentIndexPosition);
-
-    switch(m_type)
-    {
-    case Translate: {
-        startElem *= 3;
-        endElem   *= 3;
-        qreal from1, from2;
-        qreal to1, to2;
-        from1 = m_args[startElem++];
-        from2 = m_args[startElem++];
-        to1   = m_args[endElem++];
-        to2   = m_args[endElem++];
-
-        qreal transX = lerp(from1, to1, fractionOfCurrentElement);
-        qreal transY = lerp(from2, to2, fractionOfCurrentElement);
-        m_transform = QTransform();
-        m_transform.translate(transX, transY);
-        break;
-    }
-    case Scale: {
-        startElem *= 3;
-        endElem   *= 3;
-        qreal from1, from2;
-        qreal to1, to2;
-        from1 = m_args[startElem++];
-        from2 = m_args[startElem++];
-        to1   = m_args[endElem++];
-        to2   = m_args[endElem++];
-
-        qreal scaleX = lerp(from1, to1, fractionOfCurrentElement);
-        qreal scaleY = lerp(from2, to2, fractionOfCurrentElement);
-        if (scaleY == 0)
-            scaleY = scaleX;
-        m_transform = QTransform();
-        m_transform.scale(scaleX, scaleY);
-        break;
-    }
-    case Rotate: {
-        startElem *= 3;
-        endElem   *= 3;
-        qreal from1, from2, from3;
-        qreal to1, to2, to3;
-        from1 = m_args[startElem++];
-        from2 = m_args[startElem++];
-        from3 = m_args[startElem++];
-        to1   = m_args[endElem++];
-        to2   = m_args[endElem++];
-        to3   = m_args[endElem++];
-
-        qreal rotationDiff = (to1 - from1) * fractionOfCurrentElement;
-
-        qreal transX = lerp(from2, to2, fractionOfCurrentElement);
-        qreal transY = lerp(from3, to3, fractionOfCurrentElement);
-        m_transform = QTransform();
-        m_transform.translate(transX, transY);
-        m_transform.rotate(rotationDiff);
-        m_transform.translate(-transX, -transY);
-        break;
-    }
-    case SkewX: {
-        startElem *= 3;
-        endElem   *= 3;
-        qreal from1;
-        qreal to1;
-        from1 = m_args[startElem++];
-        to1   = m_args[endElem++];
-
-        qreal skewX = lerp(from1, to1, fractionOfCurrentElement);
-        m_transform = QTransform();
-        m_transform.shear(qTan(qDegreesToRadians(skewX)), 0);
-        break;
-    }
-    case SkewY: {
-        startElem *= 3;
-        endElem   *= 3;
-        qreal from1;
-        qreal to1;
-        from1 = m_args[startElem++];
-        to1   = m_args[endElem++];
-
-        qreal skewY = lerp(from1, to1, fractionOfCurrentElement);
-        m_transform = QTransform();
-        m_transform.shear(0, qTan(qDegreesToRadians(skewY)));
-        break;
-    }
-    default:
-        break;
-    }
-}
-
-QSvgStyleProperty::Type QSvgAnimateTransform::type() const
-{
-    return ANIMATE_TRANSFORM;
-}
-
-void QSvgAnimateTransform::setFreeze(bool freeze)
-{
-    m_freeze = freeze;
-}
-
-QSvgAnimateColor::QSvgAnimateColor()
-    : m_fill(false),
-      m_freeze(false)
-{
-}
-
-void QSvgAnimateColor::setArgs(bool fill,
-                               const QList<QColor> &colors)
-{
-    m_fill = fill;
-    m_colors = colors;
-}
-
-void QSvgAnimateColor::setFreeze(bool freeze)
-{
-    m_freeze = freeze;
-}
-
-void QSvgAnimateColor::apply(QPainter *p, const QSvgNode *node, QSvgExtraStates &)
-{
-    qreal elapsedTime = node->document()->currentElapsed();
-    if (elapsedTime < m_from || m_finished)
-        return;
-
-    qreal fractionOfCurrentIterationTime = currentIterTimeFraction(elapsedTime);
-
-    qreal currentPosition = fractionOfCurrentIterationTime * (m_colors.size() - 1);
-
-    int startElem = qFloor(currentPosition);
-    int endElem   = qCeil(currentPosition);
-    QColor start = m_colors[startElem];
-    QColor end = m_colors[endElem];
-
-    qreal percentOfColorMorph = currentPosition;
-    if (percentOfColorMorph > 1) {
-        percentOfColorMorph -= ((int)percentOfColorMorph);
-    }
-
-    int alpha  = lerp(start.alpha(), end.alpha(), percentOfColorMorph);
-    int red    = lerp(start.red(), end.red(), percentOfColorMorph);
-    int green  = lerp(start.green(), end.green(), percentOfColorMorph);
-    int blue   = lerp(start.blue(), end.blue(), percentOfColorMorph);;
-
-    QColor color(red, green, blue, alpha);
-
-    if (m_fill) {
-        QBrush b = p->brush();
-        m_oldBrush = b;
-        b.setColor(color);
-        p->setBrush(b);
-    } else {
-        QPen pen = p->pen();
-        m_oldPen = pen;
-        pen.setColor(color);
-        p->setPen(pen);
-    }
-}
-
-void QSvgAnimateColor::revert(QPainter *p, QSvgExtraStates &)
-{
-    if (m_fill) {
-        p->setBrush(m_oldBrush);
-    } else {
-        p->setPen(m_oldPen);
-    }
-}
-
-QSvgStyleProperty::Type QSvgAnimateColor::type() const
-{
-    return ANIMATE_COLOR;
-}
-
 QSvgOpacityStyle::QSvgOpacityStyle(qreal opacity)
     : m_opacity(opacity), m_oldOpacity(0)
 {
@@ -938,6 +576,170 @@ void QSvgGradientStyle::resolveStops_helper(QStringList *visited)
             qWarning("Could not resolve property : %s", qPrintable(m_link));
         }
         m_link = QString();
+    }
+}
+
+QSvgStaticStyle::QSvgStaticStyle()
+    : quality(0)
+    , fill(0)
+    , viewportFill(0)
+    , font(0)
+    , stroke(0)
+    , solidColor(0)
+    , gradient(0)
+    , pattern(0)
+    , transform(0)
+    , opacity(0)
+    , compop(0)
+{
+}
+
+QSvgStaticStyle::~QSvgStaticStyle()
+{
+}
+
+void QSvgStaticStyle::apply(QPainter *p, const QSvgNode *node, QSvgExtraStates &states)
+{
+    if (quality) {
+        quality->apply(p, node, states);
+    }
+
+    if (fill) {
+        fill->apply(p, node, states);
+    }
+
+    if (viewportFill) {
+        viewportFill->apply(p, node, states);
+    }
+
+    if (font) {
+        font->apply(p, node, states);
+    }
+
+    if (stroke) {
+        stroke->apply(p, node, states);
+    }
+
+    if (transform) {
+        transform->apply(p, node, states);
+    }
+
+    if (opacity) {
+        opacity->apply(p, node, states);
+    }
+
+    if (compop) {
+        compop->apply(p, node, states);
+    }
+}
+
+void QSvgStaticStyle::revert(QPainter *p, QSvgExtraStates &states)
+{
+    if (quality) {
+        quality->revert(p, states);
+    }
+
+    if (fill) {
+        fill->revert(p, states);
+    }
+
+    if (viewportFill) {
+        viewportFill->revert(p, states);
+    }
+
+    if (font) {
+        font->revert(p, states);
+    }
+
+    if (stroke) {
+        stroke->revert(p, states);
+    }
+
+    if (transform) {
+        transform->revert(p, states);
+    }
+
+    if (opacity) {
+        opacity->revert(p, states);
+    }
+
+    if (compop) {
+        compop->revert(p, states);
+    }
+}
+
+QSvgAnimatedStyle::QSvgAnimatedStyle()
+{
+}
+
+QSvgAnimatedStyle::~QSvgAnimatedStyle()
+{
+}
+
+void QSvgAnimatedStyle::apply(QPainter *p, const QSvgNode *node, QSvgExtraStates &states)
+{
+    QSharedPointer<QSvgAbstractAnimator> animator = node->document()->animator();
+    QList<QSvgAbstractAnimation *> nodeAnims = animator->animationsForNode(node);
+
+    savePaintingState(p, node, states);
+    if (nodeAnims.isEmpty())
+        return;
+
+    for (auto anim : nodeAnims) {
+        if (!anim->isActive())
+            continue;
+
+        bool replace = anim->animationType() == QSvgAbstractAnimation::CSS ? true :
+                           (static_cast<QSvgAnimateNode *>(anim))->additiveType() == QSvgAnimateNode::Replace;
+        QList<QSvgAbstractAnimatedProperty *> props = anim->properties();
+        for (auto prop : props)
+            applyPropertyAnimation(p, prop, replace);
+    }
+}
+
+void QSvgAnimatedStyle::revert(QPainter *p, QSvgExtraStates &states)
+{
+    Q_UNUSED(states);
+    p->setWorldTransform(m_worldTransform, false);
+    p->setBrush(m_brush);
+    p->setPen(m_pen);
+}
+
+void QSvgAnimatedStyle::savePaintingState(const QPainter *p, const QSvgNode *node, QSvgExtraStates &states)
+{
+    Q_UNUSED(states);
+    QSvgStaticStyle style = node->style();
+    m_worldTransform = m_transformToNode = p->worldTransform();
+    if (style.transform)
+        m_transformToNode = style.transform->qtransform().inverted() * m_transformToNode;
+
+    m_brush = p->brush();
+    m_pen = p->pen();
+}
+
+void QSvgAnimatedStyle::applyPropertyAnimation(QPainter *p, QSvgAbstractAnimatedProperty *property,
+                                               bool replace)
+{
+    if (property->propertyName() == QStringLiteral("fill")) {
+        QBrush brush = p->brush();
+        QColor brushColor = brush.color();
+        QColor animatedColor = property->interpolatedValue().value<QColor>();
+        brush.setColor(replace == true ? animatedColor : sumColor(brushColor, animatedColor));
+        p->setBrush(brush);
+    } else if (property->propertyName() == QStringLiteral("stroke")) {
+        QPen pen = p->pen();
+        QBrush penBrush = pen.brush();
+        QColor penColor = penBrush.color();
+        QColor animatedColor = property->interpolatedValue().value<QColor>();
+        penBrush.setColor(replace == true ? animatedColor : sumColor(penColor, animatedColor));
+        penBrush.setStyle(Qt::SolidPattern);
+        pen.setBrush(penBrush);
+        p->setPen(pen);
+    } else if (property->propertyName() == QStringLiteral("transform")) {
+        if (replace)
+            p->setWorldTransform(property->interpolatedValue().value<QTransform>() * m_transformToNode);
+        else
+            p->setWorldTransform(property->interpolatedValue().value<QTransform>() * p->worldTransform());
     }
 }
 

@@ -1,6 +1,7 @@
 // Copyright (C) 2021 The Qt Company Ltd.
 // Copyright (C) 2021 Intel Corporation.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:execute-external-code
 
 #include "qdir.h"
 #include "qstringlist.h"
@@ -746,6 +747,14 @@ QStringList QLibraryInfo::platformPluginArguments(const QString &platformName)
 /*!
     \typealias QLibraryInfo::LibraryLocation
     \deprecated [6.0] Use LibraryPath with QLibraryInfo::path() instead.
+*/
+
+/*!
+    \headerfile <QtVersion>
+    \inmodule QtCore
+    \ingroup funclists
+    \brief Information about which Qt version the application is running on,
+           and the version it was compiled against.
 */
 
 /*!

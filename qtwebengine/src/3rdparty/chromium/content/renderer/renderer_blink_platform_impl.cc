@@ -2,6 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#ifdef UNSAFE_BUFFERS_BUILD
+// TODO(crbug.com/342213636): Remove this and spanify to fix the errors.
+#pragma allow_unsafe_buffers
+#endif
+
 #include "content/renderer/renderer_blink_platform_impl.h"
 
 #include <algorithm>
@@ -10,6 +15,7 @@
 #include <utility>
 #include <vector>
 
+#include "base/check_is_test.h"
 #include "base/command_line.h"
 #include "base/feature_list.h"
 #include "base/files/file_path.h"
@@ -63,7 +69,7 @@
 #include "content/renderer/worker/dedicated_worker_host_factory_client.h"
 #include "content/renderer/worker/worker_thread_registry.h"
 #include "device/gamepad/public/cpp/gamepads.h"
-#include "gin/array_buffer.h"  // TODO(crbug.com/1321521) remove import once resolved.
+#include "gin/array_buffer.h"  // TODO(crbug.com/40837434) remove import once resolved.
 #include "gpu/command_buffer/client/gles2_interface.h"
 #include "gpu/config/gpu_driver_bug_workarounds.h"
 #include "gpu/config/gpu_finch_features.h"
@@ -77,6 +83,7 @@
 #include "media/webrtc/webrtc_features.h"
 #include "mojo/public/cpp/base/big_buffer.h"
 #include "mojo/public/cpp/system/platform_handle.h"
+#include "net/base/schemeful_site.h"
 #include "ppapi/buildflags/buildflags.h"
 #include "services/network/public/cpp/features.h"
 #include "services/network/public/cpp/shared_url_loader_factory.h"
@@ -112,6 +119,12 @@
 #include "url/gurl.h"
 #include "url/origin.h"
 
+#if BUILDFLAG(IS_WIN)
+#include "content/renderer/font_data/font_data_manager.h"
+#include "skia/ext/font_utils.h"
+#include "third_party/blink/public/web/win/web_font_rendering.h"
+#endif
+
 #if BUILDFLAG(IS_MAC)
 #include "content/child/child_process_sandbox_support_impl_mac.h"
 #elif BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS)
@@ -140,7 +153,7 @@ namespace content {
 
 namespace {
 
-// TODO(https://crbug.com/787252): Move this method and its callers to Blink.
+// TODO(crbug.com/40550966): Move this method and its callers to Blink.
 media::AudioParameters GetAudioHardwareParams() {
   blink::WebLocalFrame* const web_frame =
       blink::WebLocalFrame::FrameForCurrentContext();
@@ -167,7 +180,7 @@ gpu::ContextType ToGpuContextType(blink::Platform::ContextType type) {
     case blink::Platform::kWebGPUContextType:
       return gpu::CONTEXT_TYPE_WEBGPU;
   }
-  NOTREACHED();
+  NOTREACHED_IN_MIGRATION();
   return gpu::CONTEXT_TYPE_OPENGLES2;
 }
 
@@ -196,6 +209,17 @@ RendererBlinkPlatformImpl::RendererBlinkPlatformImpl(
         font_service.InitWithNewPipeAndPassReceiver());
     font_loader = sk_make_sp<font_service::FontLoader>(std::move(font_service));
     SkFontConfigInterface::SetGlobal(font_loader);
+#endif
+
+#if BUILDFLAG(IS_WIN)
+    if (base::CommandLine::ForCurrentProcess()->HasSwitch(
+            switches::kUseSkiaFontManager)) {
+      sk_sp<font_data_service::FontDataManager> font_data_manager =
+          sk_make_sp<font_data_service::FontDataManager>();
+
+      blink::WebFontRendering::SetSkiaFontManager(font_data_manager);
+      skia::OverrideDefaultSkFontMgr(font_data_manager);
+    }
 #endif
   }
 
@@ -285,8 +309,22 @@ uint64_t RendererBlinkPlatformImpl::VisitedLinkHash(
   return GetContentClient()->renderer()->VisitedLinkHash(canonical_url);
 }
 
+uint64_t RendererBlinkPlatformImpl::PartitionedVisitedLinkFingerprint(
+    std::string_view canonical_link_url,
+    const net::SchemefulSite& top_level_site,
+    const blink::WebSecurityOrigin& frame_origin) {
+  return GetContentClient()->renderer()->PartitionedVisitedLinkFingerprint(
+      canonical_link_url, top_level_site, frame_origin);
+}
+
 bool RendererBlinkPlatformImpl::IsLinkVisited(uint64_t link_hash) {
   return GetContentClient()->renderer()->IsLinkVisited(link_hash);
+}
+
+void RendererBlinkPlatformImpl::AddOrUpdateVisitedLinkSalt(
+    const url::Origin& origin,
+    uint64_t salt) {
+  GetContentClient()->renderer()->AddOrUpdateVisitedLinkSalt(origin, salt);
 }
 
 blink::WebString RendererBlinkPlatformImpl::UserAgent() {
@@ -333,6 +371,12 @@ RendererBlinkPlatformImpl::CreateWebSocketHandshakeThrottleProvider() {
       ->CreateWebSocketHandshakeThrottleProvider();
 }
 
+bool RendererBlinkPlatformImpl::ShouldUseCodeCacheWithHashing(
+    const blink::WebURL& request_url) const {
+  return GetContentClient()->renderer()->ShouldUseCodeCacheWithHashing(
+      request_url);
+}
+
 bool RendererBlinkPlatformImpl::IsolateStartsInBackground() {
   if (auto* renderer = GetContentClient()->renderer()) {
     // Isolates start in the background if we do not handle hidden/visibility
@@ -363,8 +407,12 @@ void RendererBlinkPlatformImpl::SuddenTerminationChanged(bool enabled) {
   }
 
   RenderThreadImpl* thread = RenderThreadImpl::current();
-  if (thread)  // NULL in unittests.
-    thread->GetRendererHost()->SuddenTerminationChanged(enabled);
+  if (!thread) {
+    CHECK_IS_TEST();
+    return;
+  }
+
+  thread->GetRendererHost()->SuddenTerminationChanged(enabled);
 }
 
 //------------------------------------------------------------------------------
@@ -386,8 +434,12 @@ void RendererBlinkPlatformImpl::SetIsLockedToSite() {
 bool RendererBlinkPlatformImpl::IsGpuCompositingDisabled() const {
   DCHECK_CALLED_ON_VALID_THREAD(main_thread_checker_);
   RenderThreadImpl* thread = RenderThreadImpl::current();
-  // |thread| can be NULL in tests.
-  return !thread || thread->IsGpuCompositingDisabled();
+  if (!thread) {
+    CHECK_IS_TEST();
+    return true;
+  }
+
+  return thread->IsGpuCompositingDisabled();
 }
 
 #if BUILDFLAG(IS_ANDROID)
@@ -449,20 +501,8 @@ std::unique_ptr<WebAudioDevice> RendererBlinkPlatformImpl::CreateAudioDevice(
     unsigned number_of_output_channels,
     const blink::WebAudioLatencyHint& latency_hint,
     media::AudioRendererSink::RenderCallback* callback) {
-  // The `number_of_output_channels` does not manifest the actual channel
-  // layout of the audio output device. We use the best guess to the channel
-  // layout based on the number of channels.
-  media::ChannelLayout layout =
-      media::GuessChannelLayout(number_of_output_channels);
-
-  // Use "discrete" channel layout when the best guess was not successful.
-  if (layout == media::CHANNEL_LAYOUT_UNSUPPORTED) {
-    layout = media::CHANNEL_LAYOUT_DISCRETE;
-  }
-
-  return RendererWebAudioDeviceImpl::Create(sink_descriptor, layout,
-                                            number_of_output_channels,
-                                            latency_hint, callback);
+  return RendererWebAudioDeviceImpl::Create(
+      sink_descriptor, number_of_output_channels, latency_hint, callback);
 }
 
 bool RendererBlinkPlatformImpl::DecodeAudioFileData(
@@ -497,6 +537,10 @@ RendererBlinkPlatformImpl::SharedCompositorWorkerContextProvider(
     cc::RasterDarkModeFilter* dark_mode_filter) {
   return RenderThreadImpl::current()->SharedCompositorWorkerContextProvider(
       dark_mode_filter);
+}
+
+bool RendererBlinkPlatformImpl::IsGpuRemoteDisconnected() {
+  return RenderThreadImpl::current()->IsGpuRemoteDisconnected();
 }
 
 scoped_refptr<gpu::GpuChannelHost>
@@ -604,13 +648,11 @@ void RendererBlinkPlatformImpl::GetWebRTCRendererPreferences(
 }
 
 bool RendererBlinkPlatformImpl::IsWebRtcHWEncodingEnabled() {
-  return !base::CommandLine::ForCurrentProcess()->HasSwitch(
-      switches::kDisableWebRtcHWEncoding);
+  return base::FeatureList::IsEnabled(::features::kWebRtcHWEncoding);
 }
 
 bool RendererBlinkPlatformImpl::IsWebRtcHWDecodingEnabled() {
-  return !base::CommandLine::ForCurrentProcess()->HasSwitch(
-      switches::kDisableWebRtcHWDecoding);
+  return base::FeatureList::IsEnabled(::features::kWebRtcHWDecoding);
 }
 
 bool RendererBlinkPlatformImpl::IsWebRtcSrtpEncryptedHeadersEnabled() {
@@ -751,7 +793,7 @@ CreateWebGPUGraphicsContext3DImpl(
   // buffers need to be mapped using the ArrayBuffer shared memory mapper. As
   // there is currently no way of specifying a custom mapper per buffer, we
   // have to map all buffers created by this provider using the custom mapper.
-  // TODO(crbug.com/1321521) instead of mapping all buffers created by this
+  // TODO(crbug.com/40837434) instead of mapping all buffers created by this
   // provider with the array buffer mapper, only map those that will actually
   // be used as ArrayBuffers and remove this per-provider mapper again.
   base::SharedMemoryMapper* buffer_mapper =
@@ -775,7 +817,7 @@ RendererBlinkPlatformImpl::CreateWebGPUGraphicsContext3DProvider(
   scoped_refptr<gpu::GpuChannelHost> gpu_channel_host(
       RenderThreadImpl::current()->EstablishGpuChannelSync());
   if (!gpu_channel_host) {
-    // TODO(crbug.com/973017): Collect GPU info and surface context creation
+    // TODO(crbug.com/41464325): Collect GPU info and surface context creation
     // error.
     return nullptr;
   }
@@ -899,7 +941,7 @@ void RendererBlinkPlatformImpl::CreateServiceWorkerSubresourceLoaderFactory(
     std::unique_ptr<network::PendingSharedURLLoaderFactory> fallback_factory,
     mojo::PendingReceiver<network::mojom::URLLoaderFactory> receiver,
     scoped_refptr<base::SequencedTaskRunner> task_runner) {
-  // TODO(crbug.com/1371756): plumb `router_rules` with the function callers
+  // TODO(crbug.com/40241479): plumb `router_rules` with the function callers
   // if there is such use case. As of 2023-06-01, only
   // `DedicatedOrSharedWorkerFetchContextImpl` calls the function, and
   // no need to allow it set the `router_rules`.
@@ -964,6 +1006,7 @@ base::WeakPtr<media::DecoderFactory>
 RendererBlinkPlatformImpl::GetMediaDecoderFactory() {
   blink::WebLocalFrame* const web_frame =
       blink::WebLocalFrame::FrameForCurrentContext();
+  CHECK(web_frame);
   RenderFrameImpl* render_frame = RenderFrameImpl::FromWebFrame(web_frame);
   return render_frame->GetMediaDecoderFactory();
 }
@@ -1036,7 +1079,7 @@ RendererBlinkPlatformImpl::VideoFrameCompositorTaskRunner() {
       video_frame_compositor_thread_ =
           std::make_unique<base::Thread>("VideoFrameCompositor");
       video_frame_compositor_thread_->StartWithOptions(
-          base::Thread::Options(base::ThreadType::kCompositing));
+          base::Thread::Options(base::ThreadType::kDisplayCritical));
     }
 
     return video_frame_compositor_thread_->task_runner();

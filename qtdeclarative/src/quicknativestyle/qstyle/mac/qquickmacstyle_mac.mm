@@ -1628,23 +1628,18 @@ QMacStyle::QMacStyle()
             for (const auto &o : QMacStylePrivate::scrollBars)
                 QCoreApplication::sendEvent(o, &event);
     });
-
-#if QT_MACOS_PLATFORM_SDK_EQUAL_OR_ABOVE(__MAC_10_14)
-    Q_D(QMacStyle);
-    // FIXME: Tie this logic into theme change, or even polish/unpolish
-    if (QOperatingSystemVersion::current() >= QOperatingSystemVersion::MacOSMojave) {
-        d->appearanceObserver = QMacKeyValueObserver(NSApp, @"effectiveAppearance", [this] {
-            Q_D(QMacStyle);
-            for (NSView *b : d->cocoaControls)
-                [b release];
-            d->cocoaControls.clear();
-        });
-    }
-#endif
 }
 
 QMacStyle::~QMacStyle()
 {
+}
+
+void QMacStyle::handleThemeChange()
+{
+    Q_D(QMacStyle);
+    for (NSView *b : d->cocoaControls)
+        [b release];
+    d->cocoaControls.clear();
 }
 
 int QMacStyle::pixelMetric(PixelMetric metric, const QStyleOption *opt) const
@@ -2582,7 +2577,7 @@ void QMacStyle::drawPrimitive(PrimitiveElement pe, const QStyleOption *opt, QPai
         }
         break;
     case PE_FrameWindow:
-        if (const QStyleOptionFrame *frame = qstyleoption_cast<const QStyleOptionFrame *>(opt)) {
+//        if (const QStyleOptionFrame *frame = qstyleoption_cast<const QStyleOptionFrame *>(opt)) {
 //            if (w && w->inherits("QMdiSubWindow")) {
 //                p->save();
 //                p->setPen(QPen(frame->palette.dark().color(), frame->lineWidth));
@@ -2590,7 +2585,7 @@ void QMacStyle::drawPrimitive(PrimitiveElement pe, const QStyleOption *opt, QPai
 //                p->drawRect(frame->rect);
 //                p->restore();
 //            }
-        }
+//        }
         break;
     case PE_IndicatorDockWidgetResizeHandle: {
             // The docwidget resize handle is drawn as a one-pixel wide line.
@@ -4250,7 +4245,7 @@ QRect QMacStyle::subElementRect(SubElement sr, const QStyleOption *opt) const
         }
         break;
     case SE_ScrollBarLayoutItem:
-        if (const QStyleOptionSlider *sliderOpt = qstyleoption_cast<const QStyleOptionSlider *>(opt)) {
+        if (qstyleoption_cast<const QStyleOptionSlider *>(opt)) {
             rect = opt->rect;
         }
     case SE_FrameLayoutItem:
@@ -5546,7 +5541,7 @@ QSize QMacStyle::sizeFromContents(ContentsType ct, const QStyleOption *opt, cons
         }
         break;
     case CT_LineEdit:
-        if (const QStyleOptionFrame *f = qstyleoption_cast<const QStyleOptionFrame *>(opt)) {
+        if (qstyleoption_cast<const QStyleOptionFrame *>(opt)) {
             // Minimum size (with padding: 18x24)
             if (sz.width() < 10)
                 sz.setWidth(10);

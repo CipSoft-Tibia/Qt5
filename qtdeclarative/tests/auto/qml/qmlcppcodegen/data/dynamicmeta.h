@@ -25,7 +25,11 @@ public:
         free(metaObject);
     };
 
+#if QT_VERSION >= QT_VERSION_CHECK(7, 0, 0)
+    const QMetaObject *toDynamicMetaObject(QObject *) const override
+#else
     QMetaObject *toDynamicMetaObject(QObject *) override
+#endif
     {
         return metaObject;
     }

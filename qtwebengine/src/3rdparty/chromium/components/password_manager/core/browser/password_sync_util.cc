@@ -46,17 +46,20 @@ bool IsSyncAccountEmail(const std::string& username,
                         const signin::IdentityManager* identity_manager,
                         signin::ConsentLevel consent_level) {
   // |identity_manager| can be null if user is not signed in.
-  if (!identity_manager)
+  if (!identity_manager) {
     return false;
+  }
 
   std::string sync_email =
       identity_manager->GetPrimaryAccountInfo(consent_level).email;
 
-  if (sync_email.empty() || username.empty())
+  if (sync_email.empty() || username.empty()) {
     return false;
+  }
 
-  if (username.find('@') == std::string::npos)
+  if (username.find('@') == std::string::npos) {
     return false;
+  }
 
   return gaia::AreEmailsSame(username, sync_email);
 }
@@ -79,9 +82,15 @@ bool ShouldSaveEnterprisePasswordHash(const PasswordForm& form,
   return false;
 }
 
+bool HasChosenToSyncPasswords(const syncer::SyncService* sync_service) {
+  return sync_service && sync_service->GetDisableReasons().empty() &&
+         sync_service->GetUserSettings()->GetSelectedTypes().Has(
+             syncer::UserSelectableType::kPasswords);
+}
+
 bool IsSyncFeatureEnabledIncludingPasswords(
     const syncer::SyncService* sync_service) {
-  // TODO(crbug.com/1462552): Remove this function once IsSyncFeatureEnabled()
+  // TODO(crbug.com/40066949): Remove this function once IsSyncFeatureEnabled()
   // is fully deprecated, see ConsentLevel::kSync documentation for details.
   return sync_service && sync_service->IsSyncFeatureEnabled() &&
          sync_service->GetUserSettings()->GetSelectedTypes().Has(
@@ -95,38 +104,27 @@ bool IsSyncFeatureActiveIncludingPasswords(
 }
 
 std::optional<std::string> GetAccountForSaving(
+    const PrefService* pref_service,
     const syncer::SyncService* sync_service) {
   if (!sync_service) {
     return std::nullopt;
   }
   if (IsSyncFeatureEnabledIncludingPasswords(sync_service) ||
-      features_util::IsOptedInForAccountStorage(sync_service)) {
+      features_util::IsOptedInForAccountStorage(pref_service, sync_service)) {
     return sync_service->GetAccountInfo().email;
   }
   return std::nullopt;
 }
 
-password_manager::SyncState GetPasswordSyncState(
-    const syncer::SyncService* sync_service) {
+SyncState GetPasswordSyncState(const syncer::SyncService* sync_service) {
   if (!sync_service ||
       !sync_service->GetActiveDataTypes().Has(syncer::PASSWORDS)) {
-    return password_manager::SyncState::kNotSyncing;
+    return SyncState::kNotActive;
   }
-
-  if (sync_service->IsSyncFeatureActive()) {
-    return sync_service->GetUserSettings()->IsUsingExplicitPassphrase()
-               ? password_manager::SyncState::kSyncingWithCustomPassphrase
-               : password_manager::SyncState::kSyncingNormalEncryption;
-  }
-
-  DCHECK(base::FeatureList::IsEnabled(
-      password_manager::features::kEnablePasswordsAccountStorage));
 
   return sync_service->GetUserSettings()->IsUsingExplicitPassphrase()
-             ? password_manager::SyncState::
-                   kAccountPasswordsActiveWithCustomPassphrase
-             : password_manager::SyncState::
-                   kAccountPasswordsActiveNormalEncryption;
+             ? SyncState::kActiveWithCustomPassphrase
+             : SyncState::kActiveWithNormalEncryption;
 }
 
 }  // namespace sync_util

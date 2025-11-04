@@ -9,6 +9,7 @@
 
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string_view>
 
 #include "base/component_export.h"
@@ -19,8 +20,8 @@
 #include "device/fido/ctap_get_assertion_request.h"
 #include "device/fido/ctap_make_credential_request.h"
 #include "device/fido/discoverable_credential_metadata.h"
+#include "device/fido/fido_authenticator.h"
 #include "device/fido/fido_constants.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "third_party/microsoft_webauthn/webauthn.h"
 
 namespace device {
@@ -110,16 +111,15 @@ class COMPONENT_EXPORT(DEVICE_FIDO) WinWebAuthnApi {
   WinWebAuthnApi();
 };
 
-std::pair<CtapDeviceResponseCode,
-          absl::optional<AuthenticatorMakeCredentialResponse>>
+std::pair<MakeCredentialStatus,
+          std::optional<AuthenticatorMakeCredentialResponse>>
 AuthenticatorMakeCredentialBlocking(WinWebAuthnApi* webauthn_api,
                                     HWND h_wnd,
                                     GUID cancellation_id,
                                     CtapMakeCredentialRequest request,
                                     MakeCredentialOptions request_options);
 
-std::pair<CtapDeviceResponseCode,
-          absl::optional<AuthenticatorGetAssertionResponse>>
+std::pair<GetAssertionStatus, std::optional<AuthenticatorGetAssertionResponse>>
 AuthenticatorGetAssertionBlocking(WinWebAuthnApi* webauthn_api,
                                   HWND h_wnd,
                                   GUID cancellation_id,

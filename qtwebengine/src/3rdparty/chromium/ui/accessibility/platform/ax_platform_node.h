@@ -14,6 +14,7 @@
 #include "build/build_config.h"
 #include "ui/accessibility/ax_enums.mojom-forward.h"
 #include "ui/accessibility/ax_mode.h"
+#include "ui/accessibility/platform/ax_platform_node_id.h"
 #include "ui/gfx/native_widget_types.h"
 
 namespace ui {
@@ -54,20 +55,12 @@ class COMPONENT_EXPORT(AX_PLATFORM) AXPlatformNode {
 
   // Disallow any updates to the AXMode when needing to force a certain AXMode,
   // like during testing.
-  static void DisallowAXModeChanges();
-
-  // Convenience method to get the current accessibility mode.
-  // Note: new callers should use AXPlatform::GetMode.
-  static AXMode GetAccessibilityMode();
+  static void SetAXModeChangeAllowed(bool allow);
+  static bool IsAXModeChangeAllowed();
 
   // Helper static function to notify all global observers about
   // the addition of an AXMode flag.
   static void NotifyAddAXModeFlags(AXMode mode_flags);
-
-  // Helper static function to update the AXMode. This is called when flags
-  // are removed. It doesn't currently notify global observers.
-  // *** Do not use! Use BrowserAccessibilityStateImpl instead. ***
-  static void SetAXMode(AXMode new_mode);
 
   // Return the focused object in any UI popup overlaying content, or null.
   static gfx::NativeViewAccessible GetPopupFocusOverride();
@@ -108,7 +101,7 @@ class COMPONENT_EXPORT(AX_PLATFORM) AXPlatformNode {
   virtual bool IsDescendantOf(AXPlatformNode* ancestor) const = 0;
 
   // Return the unique ID.
-  int32_t GetUniqueId() const;
+  AXPlatformNodeId GetUniqueId() const;
 
   // Creates a string representation of this node's data.
   std::string ToString();
@@ -135,7 +128,7 @@ class COMPONENT_EXPORT(AX_PLATFORM) AXPlatformNode {
   static base::LazyInstance<NativeWindowHandlerCallback>::Leaky
       native_window_handler_;
 
-  static bool disallow_ax_mode_changes_;
+  static bool allow_ax_mode_changes_;
 
   // This allows UI menu popups like to act as if they are focused in the
   // exposed platform accessibility API, even though actual focus remains in

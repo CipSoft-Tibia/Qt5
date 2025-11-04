@@ -32,7 +32,7 @@ class MockMessagePortClient : public openscreen::cast::MessagePort::Client {
               OnMessage,
               (const std::string&, const std::string&, const std::string&),
               (override));
-  MOCK_METHOD(void, OnError, (openscreen::Error), (override));
+  MOCK_METHOD(void, OnError, (const openscreen::Error&), (override));
 
   const std::string& source_id() override { return source_id_; }
 
@@ -66,7 +66,7 @@ class OpenscreenMessagePortTest : public ::testing::Test,
   // mojom::CastMessageChannel implementation (outbound messages).
   void OnMessage(mojom::CastMessagePtr message) override {
     EXPECT_EQ(message->message_namespace, kNamespace);
-    absl::optional<base::Value> value =
+    std::optional<base::Value> value =
         base::JSONReader::Read(message->json_format_data);
     ASSERT_TRUE(value);
     std::string message_type;

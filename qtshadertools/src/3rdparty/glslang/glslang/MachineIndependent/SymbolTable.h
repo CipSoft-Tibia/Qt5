@@ -68,6 +68,7 @@
 #include "../Include/Common.h"
 #include "../Include/intermediate.h"
 #include "../Include/InfoSink.h"
+#include <cstdint>
 
 namespace QtShaderTools {
 namespace glslang {
@@ -85,7 +86,8 @@ typedef TVector<const char*> TExtensionList;
 class TSymbol {
 public:
     POOL_ALLOCATOR_NEW_DELETE(GetThreadPoolAllocator())
-    explicit TSymbol(const TString *n) :  name(n), uniqueId(0), extensions(nullptr), writable(true) { }
+    explicit TSymbol(const TString *n, const TString *mn) :  name(n), mangledName(mn), uniqueId(0), extensions(nullptr), writable(true) { }
+    explicit TSymbol(const TString *n) : TSymbol(n, n) { }
     virtual TSymbol* clone() const = 0;
     virtual ~TSymbol() { }  // rely on all symbol owned memory coming from the pool
 
@@ -97,7 +99,7 @@ public:
         newName.append(*name);
         changeName(NewPoolTString(newName.c_str()));
     }
-    virtual const TString& getMangledName() const { return getName(); }
+    virtual const TString& getMangledName() const { return *mangledName; }
     virtual TFunction* getAsFunction() { return nullptr; }
     virtual const TFunction* getAsFunction() const { return nullptr; }
     virtual TVariable* getAsVariable() { return nullptr; }
@@ -129,6 +131,7 @@ protected:
     TSymbol& operator=(const TSymbol&);
 
     const TString *name;
+    const TString *mangledName;
     unsigned long long uniqueId;      // For cross-scope comparing during code generation
 
     // For tracking what extensions must be present
@@ -155,7 +158,9 @@ protected:
 class TVariable : public TSymbol {
 public:
     TVariable(const TString *name, const TType& t, bool uT = false )
-        : TSymbol(name),
+        : TVariable(name, name, t, uT) {}
+    TVariable(const TString *name, const TString *mangledName, const TType& t, bool uT = false )
+        : TSymbol(name, mangledName),
           userType(uT),
           constSubtree(nullptr),
           memberExtensions(nullptr),
@@ -189,7 +194,7 @@ public:
             (*memberExtensions)[member].push_back(exts[e]);
     }
     virtual bool hasMemberExtensions() const { return memberExtensions != nullptr; }
-    virtual int getNumMemberExtensions(int member) const 
+    virtual int getNumMemberExtensions(int member) const
     {
         return memberExtensions == nullptr ? 0 : (int)(*memberExtensions)[member].size();
     }

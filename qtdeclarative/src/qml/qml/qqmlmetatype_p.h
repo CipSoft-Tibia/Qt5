@@ -85,7 +85,6 @@ public:
         return findInlineComponentType(inlineComponentUrl(baseUrl, name), compilationUnit);
     }
 
-    static void unregisterInternalCompositeType(QMetaType metaType, QMetaType listMetaType);
     static QQmlType registerType(const QQmlPrivate::RegisterType &type);
     static QQmlType registerInterface(const QQmlPrivate::RegisterInterface &type);
     static QQmlType registerSingletonType(
@@ -286,13 +285,13 @@ inline const QMetaObject *dynamicQmlMetaObject(const QtPrivate::QMetaTypeInterfa
 // metatype interface for composite QML types
 struct QQmlMetaTypeInterface : QtPrivate::QMetaTypeInterface
 {
-    const QByteArray name;
-    QQmlMetaTypeInterface(const QByteArray &name)
+    QByteArray name;
+    QQmlMetaTypeInterface(QByteArray name)
         : QMetaTypeInterface {
             /*.revision=*/ QMetaTypeInterface::CurrentRevision,
             /*.alignment=*/ alignof(QObject *),
             /*.size=*/ sizeof(QObject *),
-            /*.flags=*/ QtPrivate::QMetaTypeTypeFlags<QObject *>::Flags,
+            /*.flags=*/ QtPrivate::QMetaTypeForType<QObject *>::flags(),
             /*.typeId=*/ 0,
             /*.metaObjectFn=*/ &dynamicQmlMetaObject,
             /*.name=*/ name.constData(),
@@ -313,21 +312,21 @@ struct QQmlMetaTypeInterface : QtPrivate::QMetaTypeInterface
             /*.dataStreamIn=*/ nullptr,
             /*.legacyRegisterOp=*/ nullptr
         }
-        , name(name) { }
+        , name(std::move(name)) { }
 };
 
 // metatype for qml list types
 struct QQmlListMetaTypeInterface : QtPrivate::QMetaTypeInterface
 {
-    const QByteArray name;
+    QByteArray name;
     // if this interface is for list<type>; valueType stores the interface for type
     const QtPrivate::QMetaTypeInterface *valueType;
-    QQmlListMetaTypeInterface(const QByteArray &name, const QtPrivate::QMetaTypeInterface *valueType)
+    QQmlListMetaTypeInterface(QByteArray name, const QtPrivate::QMetaTypeInterface *valueType)
         : QMetaTypeInterface {
             /*.revision=*/ QMetaTypeInterface::CurrentRevision,
             /*.alignment=*/ alignof(QQmlListProperty<QObject>),
             /*.size=*/ sizeof(QQmlListProperty<QObject>),
-            /*.flags=*/ QtPrivate::QMetaTypeTypeFlags<QQmlListProperty<QObject>>::Flags,
+            /*.flags=*/ QtPrivate::QMetaTypeForType<QQmlListProperty<QObject>>::flags(),
             /*.typeId=*/ 0,
             /*.metaObjectFn=*/ &dynamicQmlListMarker,
             /*.name=*/ name.constData(),
@@ -352,7 +351,7 @@ struct QQmlListMetaTypeInterface : QtPrivate::QMetaTypeInterface
             /*.dataStreamIn=*/ nullptr,
             /*.legacyRegisterOp=*/ nullptr
         }
-        , name(name), valueType(valueType) { }
+        , name(std::move(name)), valueType(valueType) { }
 };
 
 QT_END_NAMESPACE

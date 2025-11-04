@@ -91,7 +91,7 @@ QImage QQuickDesignerSupport::renderImageForItem(QQuickItem *referencedItem, con
     renderTexture->updateTexture();
 
     QImage renderImage = renderTexture->toImage();
-    renderImage = renderImage.mirrored(false, true);
+    renderImage.flip();
 
     if (renderImage.size().isEmpty())
         qDebug() << __FILE__ << __LINE__ << "Warning: Image is empty.";

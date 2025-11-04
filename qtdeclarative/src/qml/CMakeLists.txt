@@ -220,6 +220,7 @@ qt_internal_add_qml_module(Qml
         jsruntime/qv4typedarray.cpp jsruntime/qv4typedarray_p.h
         jsruntime/qv4urlobject.cpp jsruntime/qv4urlobject_p.h
         jsruntime/qv4value.cpp jsruntime/qv4value_p.h
+        jsruntime/qv4variantassociationobject.cpp jsruntime/qv4variantassociationobject_p.h
         jsruntime/qv4variantobject.cpp jsruntime/qv4variantobject_p.h
         jsruntime/qv4vme_moth.cpp jsruntime/qv4vme_moth_p.h
         jsruntime/qv4vtable_p.h
@@ -247,7 +248,7 @@ qt_internal_add_qml_module(Qml
         qml/ftw/qprimefornumbits_p.h
         qml/ftw/qqmlnullablevalue_p.h
         qml/ftw/qqmlrefcount_p.h
-        qml/ftw/qqmlthread.cpp qml/ftw/qqmlthread_p.h
+        qml/ftw/qqmlthread_p.h
         qml/ftw/qrecursionwatcher_p.h
         qml/ftw/qrecyclepool_p.h
         qml/ftw/qstringhash_p.h
@@ -345,6 +346,7 @@ qt_internal_add_qml_module(Qml
         qtqmlcompilerglobal.h qtqmlcompilerglobal_p.h
         qtqmlglobal.h qtqmlglobal_p.h
         util/qqmlpropertymap.cpp util/qqmlpropertymap.h
+        util/qqmlpropertyutils_p.h
 
         qmltc/qqmltcobjectcreationhelper_p.h
         qmltc/qqmltcobjectcreationhelper.cpp
@@ -434,6 +436,7 @@ qt_internal_add_qml_module(Qml
         "${CMAKE_CURRENT_LIST_DIR}/${INSTALL_CMAKE_NAMESPACE}QmlModuleDirMappingTemplate.qrc.in"
         "${CMAKE_CURRENT_LIST_DIR}/${INSTALL_CMAKE_NAMESPACE}QmltcFileMappingTemplate.qrc.in"
         "${CMAKE_CURRENT_LIST_DIR}/${INSTALL_CMAKE_NAMESPACE}QmlPublicCMakeHelpers.cmake"
+        "${CMAKE_CURRENT_LIST_DIR}/${INSTALL_CMAKE_NAMESPACE}UpdateQmllsIni.cmake"
         ${extra_cmake_files}
     EXTRA_CMAKE_INCLUDES
         "${INSTALL_CMAKE_NAMESPACE}QmlFindQmlscInternal.cmake"
@@ -529,6 +532,16 @@ qt_internal_extend_target(Qml CONDITION QT_FEATURE_qml_network
         qml/qqmltypeloadernetworkreplyproxy.cpp qml/qqmltypeloadernetworkreplyproxy_p.h
     PUBLIC_LIBRARIES
         Qt::Network
+)
+
+qt_internal_extend_target(Qml CONDITION QT_FEATURE_qml_type_loader_thread
+    SOURCES
+        qml/ftw/qqmlthread_impl.cpp
+)
+
+qt_internal_extend_target(Qml CONDITION NOT QT_FEATURE_qml_type_loader_thread
+    SOURCES
+        qml/ftw/qqmlthread_stub.cpp
 )
 
 qt_internal_extend_target(Qml CONDITION MSVC AND (TEST_architecture_arch STREQUAL "i386")

@@ -64,14 +64,14 @@ Status AlgorithmImplementation::GenerateKey(
 Status AlgorithmImplementation::DeriveBits(
     const blink::WebCryptoAlgorithm& algorithm,
     const blink::WebCryptoKey& base_key,
-    absl::optional<unsigned int> length_bits,
+    std::optional<unsigned int> length_bits,
     std::vector<uint8_t>* derived_bytes) const {
   return Status::ErrorUnsupported();
 }
 
 Status AlgorithmImplementation::GetKeyLength(
     const blink::WebCryptoAlgorithm& key_length_algorithm,
-    absl::optional<unsigned int>* length_bits) const {
+    std::optional<unsigned int>* length_bits) const {
   return Status::ErrorUnsupported();
 }
 
@@ -117,7 +117,7 @@ Status AlgorithmImplementation::SerializeKeyForClone(
       return status;
     }
   }
-  NOTREACHED();
+  NOTREACHED_IN_MIGRATION();
   return Status::ErrorUnexpected();
 }
 

@@ -20,8 +20,8 @@
 #include "p2p/base/p2p_constants.h"
 #include "p2p/base/port_allocator.h"
 #include "rtc_base/checks.h"
+#include "rtc_base/crypto_random.h"
 #include "rtc_base/experiments/field_trial_parser.h"
-#include "rtc_base/helpers.h"
 #include "rtc_base/ip_address.h"
 #include "rtc_base/logging.h"
 #include "rtc_base/network/received_packet.h"
@@ -102,7 +102,7 @@ class StunBindingRequest : public StunRequest {
                       << port_->GetLocalAddress().ToSensitiveString() << " ("
                       << port_->Network()->name() << ")";
     port_->OnStunBindingOrResolveRequestFailed(
-        server_addr_, SERVER_NOT_REACHABLE_ERROR,
+        server_addr_, STUN_ERROR_SERVER_NOT_REACHABLE,
         "STUN binding request timed out.");
   }
 
@@ -159,18 +159,13 @@ bool UDPPort::AddressResolver::GetResolvedAddress(
   return it->second->result().GetResolvedAddress(family, output);
 }
 
-UDPPort::UDPPort(rtc::Thread* thread,
-                 absl::string_view type,
-                 rtc::PacketSocketFactory* factory,
-                 const rtc::Network* network,
+UDPPort::UDPPort(const PortParametersRef& args,
+                 webrtc::IceCandidateType type,
                  rtc::AsyncPacketSocket* socket,
-                 absl::string_view username,
-                 absl::string_view password,
-                 bool emit_local_for_anyaddress,
-                 const webrtc::FieldTrialsView* field_trials)
-    : Port(thread, type, factory, network, username, password, field_trials),
+                 bool emit_local_for_anyaddress)
+    : Port(args, type),
       request_manager_(
-          thread,
+          args.network_thread,
           [this](const void* data, size_t size, StunRequest* request) {
             OnSendPacket(data, size, request);
           }),
@@ -181,27 +176,14 @@ UDPPort::UDPPort(rtc::Thread* thread,
       dscp_(rtc::DSCP_NO_CHANGE),
       emit_local_for_anyaddress_(emit_local_for_anyaddress) {}
 
-UDPPort::UDPPort(rtc::Thread* thread,
-                 absl::string_view type,
-                 rtc::PacketSocketFactory* factory,
-                 const rtc::Network* network,
+UDPPort::UDPPort(const PortParametersRef& args,
+                 webrtc::IceCandidateType type,
                  uint16_t min_port,
                  uint16_t max_port,
-                 absl::string_view username,
-                 absl::string_view password,
-                 bool emit_local_for_anyaddress,
-                 const webrtc::FieldTrialsView* field_trials)
-    : Port(thread,
-           type,
-           factory,
-           network,
-           min_port,
-           max_port,
-           username,
-           password,
-           field_trials),
+                 bool emit_local_for_anyaddress)
+    : Port(args, type, min_port, max_port),
       request_manager_(
-          thread,
+          args.network_thread,
           [this](const void* data, size_t size, StunRequest* request) {
             OnSendPacket(data, size, request);
           }),
@@ -359,11 +341,11 @@ ProtocolType UDPPort::GetProtocol() const {
   return PROTO_UDP;
 }
 
-void UDPPort::GetStunStats(absl::optional<StunStats>* stats) {
+void UDPPort::GetStunStats(std::optional<StunStats>* stats) {
   *stats = stats_;
 }
 
-void UDPPort::set_stun_keepalive_delay(const absl::optional<int>& delay) {
+void UDPPort::set_stun_keepalive_delay(const std::optional<int>& delay) {
   stun_keepalive_delay_ = delay.value_or(STUN_KEEPALIVE_INTERVAL);
 }
 
@@ -380,7 +362,8 @@ void UDPPort::OnLocalAddressReady(rtc::AsyncPacketSocket* socket,
   MaybeSetDefaultLocalAddress(&addr);
 
   AddAddress(addr, addr, rtc::SocketAddress(), UDP_PROTOCOL_NAME, "", "",
-             LOCAL_PORT_TYPE, ICE_TYPE_PREFERENCE_HOST, 0, "", false);
+             webrtc::IceCandidateType::kHost, ICE_TYPE_PREFERENCE_HOST, 0, "",
+             false);
   MaybePrepareStunCandidate();
 }
 
@@ -459,7 +442,7 @@ void UDPPort::OnResolveResult(const rtc::SocketAddress& input, int error) {
     RTC_LOG(LS_WARNING) << ToString()
                         << ": StunPort: stun host lookup received error "
                         << error;
-    OnStunBindingOrResolveRequestFailed(input, SERVER_NOT_REACHABLE_ERROR,
+    OnStunBindingOrResolveRequestFailed(input, STUN_ERROR_SERVER_NOT_REACHABLE,
                                         "STUN host lookup received error.");
     return;
   }
@@ -483,11 +466,13 @@ void UDPPort::SendStunBindingRequest(const rtc::SocketAddress& stun_addr) {
           new StunBindingRequest(this, stun_addr, rtc::TimeMillis()));
     } else {
       // Since we can't send stun messages to the server, we should mark this
-      // port ready.
-      const char* reason = "STUN server address is incompatible.";
-      RTC_LOG(LS_WARNING) << reason;
-      OnStunBindingOrResolveRequestFailed(stun_addr, SERVER_NOT_REACHABLE_ERROR,
-                                          reason);
+      // port ready. This is not an error but similar to ignoring
+      // a mismatch of th address family when pairing candidates.
+      RTC_LOG(LS_WARNING) << ToString()
+                          << ": STUN server address is incompatible.";
+      OnStunBindingOrResolveRequestFailed(
+          stun_addr, STUN_ERROR_NOT_AN_ERROR,
+          "STUN server address is incompatible.");
     }
   }
 }
@@ -541,7 +526,7 @@ void UDPPort::OnStunBindingRequestSucceeded(
     url << "stun:" << stun_server_addr.hostname() << ":"
         << stun_server_addr.port();
     AddAddress(stun_reflected_addr, socket_->GetLocalAddress(), related_address,
-               UDP_PROTOCOL_NAME, "", "", STUN_PORT_TYPE,
+               UDP_PROTOCOL_NAME, "", "", webrtc::IceCandidateType::kSrflx,
                ICE_TYPE_PREFERENCE_SRFLX, 0, url.str(), false);
   }
   MaybeSetPortCompleteOrError();
@@ -551,12 +536,14 @@ void UDPPort::OnStunBindingOrResolveRequestFailed(
     const rtc::SocketAddress& stun_server_addr,
     int error_code,
     absl::string_view reason) {
-  rtc::StringBuilder url;
-  url << "stun:" << stun_server_addr.ToString();
-  SignalCandidateError(
-      this, IceCandidateErrorEvent(GetLocalAddress().HostAsSensitiveURIString(),
-                                   GetLocalAddress().port(), url.str(),
-                                   error_code, reason));
+  if (error_code != STUN_ERROR_NOT_AN_ERROR) {
+    rtc::StringBuilder url;
+    url << "stun:" << stun_server_addr.ToString();
+    SignalCandidateError(
+        this, IceCandidateErrorEvent(
+                  GetLocalAddress().HostAsSensitiveURIString(),
+                  GetLocalAddress().port(), url.str(), error_code, reason));
+  }
   if (bind_request_failed_servers_.find(stun_server_addr) !=
       bind_request_failed_servers_.end()) {
     return;
@@ -623,20 +610,13 @@ bool UDPPort::HasStunCandidateWithAddress(
 }
 
 std::unique_ptr<StunPort> StunPort::Create(
-    rtc::Thread* thread,
-    rtc::PacketSocketFactory* factory,
-    const rtc::Network* network,
+    const PortParametersRef& args,
     uint16_t min_port,
     uint16_t max_port,
-    absl::string_view username,
-    absl::string_view password,
     const ServerAddresses& servers,
-    absl::optional<int> stun_keepalive_interval,
-    const webrtc::FieldTrialsView* field_trials) {
+    std::optional<int> stun_keepalive_interval) {
   // Using `new` to access a non-public constructor.
-  auto port = absl::WrapUnique(new StunPort(thread, factory, network, min_port,
-                                            max_port, username, password,
-                                            servers, field_trials));
+  auto port = absl::WrapUnique(new StunPort(args, min_port, max_port, servers));
   port->set_stun_keepalive_delay(stun_keepalive_interval);
   if (!port->Init()) {
     return nullptr;
@@ -644,25 +624,35 @@ std::unique_ptr<StunPort> StunPort::Create(
   return port;
 }
 
-StunPort::StunPort(rtc::Thread* thread,
-                   rtc::PacketSocketFactory* factory,
-                   const rtc::Network* network,
+std::unique_ptr<StunPort> StunPort::Create(
+    webrtc::TaskQueueBase* thread,
+    rtc::PacketSocketFactory* factory,
+    const rtc::Network* network,
+    uint16_t min_port,
+    uint16_t max_port,
+    absl::string_view username,
+    absl::string_view password,
+    const ServerAddresses& servers,
+    std::optional<int> stun_keepalive_interval,
+    const webrtc::FieldTrialsView* field_trials) {
+  return Create({.network_thread = thread,
+                 .socket_factory = factory,
+                 .network = network,
+                 .ice_username_fragment = username,
+                 .ice_password = password,
+                 .field_trials = field_trials},
+                min_port, max_port, servers, stun_keepalive_interval);
+}
+
+StunPort::StunPort(const PortParametersRef& args,
                    uint16_t min_port,
                    uint16_t max_port,
-                   absl::string_view username,
-                   absl::string_view password,
-                   const ServerAddresses& servers,
-                   const webrtc::FieldTrialsView* field_trials)
-    : UDPPort(thread,
-              STUN_PORT_TYPE,
-              factory,
-              network,
+                   const ServerAddresses& servers)
+    : UDPPort(args,
+              webrtc::IceCandidateType::kSrflx,
               min_port,
               max_port,
-              username,
-              password,
-              false,
-              field_trials) {
+              false) {
   set_server_addresses(servers);
 }
 

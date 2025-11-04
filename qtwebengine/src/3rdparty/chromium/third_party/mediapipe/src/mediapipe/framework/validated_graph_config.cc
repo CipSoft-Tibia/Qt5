@@ -34,7 +34,6 @@
 #include "mediapipe/framework/packet_type.h"
 #include "mediapipe/framework/port.h"
 #include "mediapipe/framework/port/core_proto_inc.h"
-#include "mediapipe/framework/port/integral_types.h"
 #include "mediapipe/framework/port/logging.h"
 #include "mediapipe/framework/port/proto_ns.h"
 #include "mediapipe/framework/port/ret_check.h"
@@ -326,7 +325,7 @@ absl::Status NodeTypeInfo::Initialize(
 absl::Status ValidatedGraphConfig::Initialize(
     CalculatorGraphConfig input_config, const GraphRegistry* graph_registry,
     const Subgraph::SubgraphOptions* graph_options,
-    const GraphServiceManager* service_manager) {
+    std::shared_ptr<GraphServiceManager> service_manager) {
   RET_CHECK(!initialized_)
       << "ValidatedGraphConfig can be initialized only once.";
 
@@ -416,7 +415,7 @@ absl::Status ValidatedGraphConfig::Initialize(
 absl::Status ValidatedGraphConfig::Initialize(
     const std::string& graph_type, const GraphRegistry* graph_registry,
     const Subgraph::SubgraphOptions* graph_options,
-    const GraphServiceManager* service_manager) {
+    std::shared_ptr<GraphServiceManager> service_manager) {
   graph_registry =
       graph_registry ? graph_registry : &GraphRegistry::global_graph_registry;
   Subgraph::SubgraphOptions local_graph_options;
@@ -437,7 +436,7 @@ absl::Status ValidatedGraphConfig::Initialize(
     const std::vector<CalculatorGraphTemplate>& input_templates,
     const std::string& graph_type,
     const Subgraph::SubgraphOptions* graph_options,
-    const GraphServiceManager* service_manager) {
+    std::shared_ptr<GraphServiceManager> service_manager) {
   GraphRegistry graph_registry;
   for (auto& config : input_configs) {
     graph_registry.Register(config.type(), config);
@@ -452,7 +451,7 @@ absl::Status ValidatedGraphConfig::Initialize(
 absl::Status ValidatedGraphConfig::PerformBasicTransforms(
     const GraphRegistry* graph_registry,
     const Subgraph::SubgraphOptions* graph_options,
-    const GraphServiceManager* service_manager) {
+    std::shared_ptr<GraphServiceManager> service_manager) {
   MP_RETURN_IF_ERROR(tool::ExpandSubgraphs(&config_, graph_registry,
                                            graph_options, service_manager));
 

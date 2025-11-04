@@ -69,22 +69,25 @@ export class CompilerSourceMappingContentProvider implements TextUtils.ContentPr
   }
 
   async requestContent(): Promise<TextUtils.ContentProvider.DeferredContent> {
+    const contentData = await this.requestContentData();
+    return TextUtils.ContentData.ContentData.asDeferredContent(contentData);
+  }
+
+  async requestContentData(): Promise<TextUtils.ContentData.ContentDataOrError> {
     try {
       const {content} = await PageResourceLoader.instance().loadResource(this.#sourceURL, this.#initiator);
-      return {content, isEncoded: false};
+      return new TextUtils.ContentData.ContentData(
+          content, /* isBase64=*/ false, this.#contentTypeInternal.canonicalMimeType());
     } catch (e) {
       const error = i18nString(UIStrings.couldNotLoadContentForSS, {PH1: this.#sourceURL, PH2: e.message});
       console.error(error);
-      return {content: null, error, isEncoded: false};
+      return {error};
     }
   }
 
   async searchInContent(query: string, caseSensitive: boolean, isRegex: boolean):
       Promise<TextUtils.ContentProvider.SearchMatch[]> {
-    const {content} = await this.requestContent();
-    if (typeof content !== 'string') {
-      return [];
-    }
-    return TextUtils.TextUtils.performSearchInContent(content, query, caseSensitive, isRegex);
+    const contentData = await this.requestContentData();
+    return TextUtils.TextUtils.performSearchInContentData(contentData, query, caseSensitive, isRegex);
   }
 }

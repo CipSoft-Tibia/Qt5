@@ -63,7 +63,10 @@ def main(argv: list[str], out: TextIO, err: TextIO) -> int:
     parser.add_argument('--calendars', help='select calendars to emit data for',
                         nargs='+', metavar='CALENDAR',
                         choices=all_calendars, default=all_calendars)
-
+    parser.add_argument('-v', '--verbose', help='more verbose output',
+                        action='count', default=0)
+    parser.add_argument('-q', '--quiet', help='less output',
+                        dest='verbose', action='store_const', const=-1)
     args = parser.parse_args(argv[1:])
 
     root = Path(args.cldr_path)
@@ -80,15 +83,17 @@ def main(argv: list[str], out: TextIO, err: TextIO) -> int:
         parser.error(f'Please use a .xml extension on your output file name, not {xml}')
     else:
         try:
-            emit = open(xml, 'w')
+            emit = open(xml, 'w', encoding="utf-8")
         except IOError as e:
             parser.error(f'Failed to open "{xml}" to write output to it')
 
-    # TODO - command line options to tune choice of grumble and whitter:
-    reader = CldrReader(root, err.write, err.write)
-    writer = QLocaleXmlWriter(emit.write)
+    reader = CldrReader(root,
+                        (lambda *x: 0) if args.verbose < 0 else
+                        # Use stderr for logging if stdout is where our XML is going:
+                        err.write if out is emit else out.write,
+                        err.write)
+    writer = QLocaleXmlWriter(reader.root.cldrVersion, emit.write)
 
-    writer.version(reader.root.cldrVersion)
     writer.enumData(reader.root.englishNaming)
     writer.likelySubTags(reader.likelySubTags())
     writer.zoneData(*reader.zoneData()) # Locale-independent zone data.

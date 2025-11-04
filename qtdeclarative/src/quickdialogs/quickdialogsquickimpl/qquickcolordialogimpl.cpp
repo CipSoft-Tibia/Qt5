@@ -198,7 +198,7 @@ QColor QQuickColorDialogImpl::color() const
 void QQuickColorDialogImpl::setColor(const QColor &c)
 {
     Q_D(QQuickColorDialogImpl);
-    if (color().rgba() == c.rgba())
+    if (const QColor old = color(); old.spec() == c.spec() && old == c)
         return;
 
     // If we get a QColor from an Hsv or Hsl color system,

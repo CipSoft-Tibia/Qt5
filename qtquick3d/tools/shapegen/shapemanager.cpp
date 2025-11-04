@@ -71,7 +71,7 @@ bool ShapeManager::loadImage()
         m_image = m_image.convertToFormat(QImage::Format_ARGB32_Premultiplied);
 
     // Flip the image
-    m_image.mirror();
+    m_image.flip();
 
     return true;
 }

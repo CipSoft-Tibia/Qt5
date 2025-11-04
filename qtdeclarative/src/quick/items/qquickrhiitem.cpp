@@ -14,11 +14,6 @@ QT_BEGIN_NAMESPACE
     QQuickFramebufferObject that is not tied to OpenGL, but rather allows
     integrating rendering with the QRhi APIs with Qt Quick.
 
-    \preliminary
-
-    \note QQuickRhiItem is in tech preview in Qt 6.7. \b {The API is under
-    development and subject to change.}
-
     QQuickRhiItem is effectively the counterpart of \l QRhiWidget in the world of
     Qt Quick. Both of these are meant to be subclassed, and they both enable
     recording QRhi-based rendering that targets an offscreen color buffer. The
@@ -413,6 +408,15 @@ void QQuickRhiItemNode::render()
  */
 QQuickRhiItem::QQuickRhiItem(QQuickItem *parent)
     : QQuickItem(*new QQuickRhiItemPrivate, parent)
+{
+    setFlag(ItemHasContents);
+}
+
+/*!
+ *  \internal
+ */
+QQuickRhiItem::QQuickRhiItem(QQuickRhiItemPrivate &dd, QQuickItem *parent)
+    : QQuickItem(dd, parent)
 {
     setFlag(ItemHasContents);
 }
@@ -1156,3 +1160,6 @@ QRhiRenderTarget *QQuickRhiItemRenderer::renderTarget() const
  */
 
 QT_END_NAMESPACE
+
+#include "moc_qquickrhiitem.cpp"
+#include "moc_qquickrhiitem_p.cpp"

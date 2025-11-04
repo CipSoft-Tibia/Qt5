@@ -19,7 +19,7 @@ XRPlane::XRPlane(uint64_t id,
                  double timestamp)
     : XRPlane(id,
               session,
-              mojo::TypeConverter<absl::optional<blink::XRPlane::Orientation>,
+              mojo::TypeConverter<std::optional<blink::XRPlane::Orientation>,
                                   device::mojom::blink::XRPlaneOrientation>::
                   Convert(plane_data.orientation),
               mojo::TypeConverter<
@@ -31,9 +31,9 @@ XRPlane::XRPlane(uint64_t id,
 
 XRPlane::XRPlane(uint64_t id,
                  XRSession* session,
-                 const absl::optional<Orientation>& orientation,
+                 const std::optional<Orientation>& orientation,
                  HeapVector<Member<DOMPointReadOnly>> polygon,
-                 const absl::optional<device::Pose>& mojo_from_plane,
+                 const std::optional<device::Pose>& mojo_from_plane,
                  double timestamp)
     : id_(id),
       polygon_(MakeGarbageCollected<FrozenArray<DOMPointReadOnly>>(
@@ -57,9 +57,9 @@ XRSpace* XRPlane::planeSpace() const {
   return plane_space_.Get();
 }
 
-absl::optional<gfx::Transform> XRPlane::MojoFromObject() const {
+std::optional<gfx::Transform> XRPlane::MojoFromObject() const {
   if (!mojo_from_plane_) {
-    return absl::nullopt;
+    return std::nullopt;
   }
 
   return mojo_from_plane_->ToTransform();
@@ -98,7 +98,7 @@ void XRPlane::Update(const device::mojom::blink::XRPlaneData& plane_data,
   last_changed_time_ = timestamp;
 
   orientation_ =
-      mojo::TypeConverter<absl::optional<blink::XRPlane::Orientation>,
+      mojo::TypeConverter<std::optional<blink::XRPlane::Orientation>,
                           device::mojom::blink::XRPlaneOrientation>::
           Convert(plane_data.orientation);
 

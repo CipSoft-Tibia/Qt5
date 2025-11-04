@@ -59,7 +59,7 @@ export class MetricsSidebarPane extends ElementsSidebarPane {
     this.inlineStyle = null;
     this.highlightMode = '';
     this.boxElements = [];
-    this.contentElement.setAttribute('jslog', `${VisualLogging.pane().context('styles-metrics')}`);
+    this.contentElement.setAttribute('jslog', `${VisualLogging.pane('styles-metrics')}`);
   }
 
   override doUpdate(): Promise<void> {
@@ -184,8 +184,11 @@ export class MetricsSidebarPane extends ElementsSidebarPane {
       value = Platform.NumberUtilities.toFixedIfFloating(value);
 
       element.textContent = value;
-      element.setAttribute(
-          'jslog', `${VisualLogging.value().track({dblclick: true}).context('element-value-modification')}`);
+      element.setAttribute('jslog', `${VisualLogging.value(propertyName).track({
+                             dblclick: true,
+                             keydown: 'Enter|Escape|ArrowUp|ArrowDown|PageUp|PageDown',
+                             change: true,
+                           })}`);
       element.addEventListener('dblclick', this.startEditing.bind(this, element, name, propertyName, style), false);
       return element;
     }
@@ -290,15 +293,21 @@ export class MetricsSidebarPane extends ElementsSidebarPane {
         widthElement.textContent = getContentAreaWidthPx(style);
         widthElement.addEventListener(
             'dblclick', this.startEditing.bind(this, widthElement, 'width', 'width', style), false);
-        widthElement.setAttribute(
-            'jslog', `${VisualLogging.value().track({'dblclick': true}).context('element-value-modification')}`);
+        widthElement.setAttribute('jslog', `${VisualLogging.value('width').track({
+                                    dblclick: true,
+                                    keydown: 'Enter|Escape|ArrowUp|ArrowDown|PageUp|PageDown',
+                                    change: true,
+                                  })}`);
 
         const heightElement = document.createElement('span');
         heightElement.textContent = getContentAreaHeightPx(style);
         heightElement.addEventListener(
             'dblclick', this.startEditing.bind(this, heightElement, 'height', 'height', style), false);
-        heightElement.setAttribute(
-            'jslog', `${VisualLogging.value().track({'dblclick': true}).context('element-value-modification')}`);
+        heightElement.setAttribute('jslog', `${VisualLogging.value('height').track({
+                                     dblclick: true,
+                                     keydown: 'Enter|Escape|ArrowUp|ArrowDown|PageUp|PageDown',
+                                     change: true,
+                                   })}`);
 
         const timesElement = document.createElement('span');
         timesElement.textContent = ' × ';
@@ -347,7 +356,7 @@ export class MetricsSidebarPane extends ElementsSidebarPane {
       styleProperty: string,
       computedStyle: Map<string, string>,
       keyDownHandler: (arg0: Event) => void,
-    } = {box, styleProperty, computedStyle, keyDownHandler: (): void => {}};
+    } = {box, styleProperty, computedStyle, keyDownHandler: () => {}};
     const boundKeyDown = this.handleKeyDown.bind(this, context);
     context.keyDownHandler = boundKeyDown;
     targetElement.addEventListener('keydown', boundKeyDown, false);

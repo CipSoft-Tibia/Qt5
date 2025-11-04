@@ -4,21 +4,23 @@
 
 #include "third_party/blink/renderer/modules/webcodecs/test_helpers.h"
 
+#include "base/containers/span.h"
+
 namespace blink {
 
 AllowSharedBufferSource* StringToBuffer(std::string_view data) {
   return MakeGarbageCollected<AllowSharedBufferSource>(
-      DOMArrayBuffer::Create(data.data(), data.size()));
+      DOMArrayBuffer::Create(base::as_byte_span(data)));
 }
 
 std::string BufferToString(const media::DecoderBuffer& buffer) {
   return std::string(reinterpret_cast<const char*>(buffer.data()),
-                     buffer.data_size());
+                     buffer.size());
 }
 
 std::unique_ptr<media::DecryptConfig> CreateTestDecryptConfig(
     media::EncryptionScheme scheme,
-    absl::optional<media::EncryptionPattern> pattern) {
+    std::optional<media::EncryptionPattern> pattern) {
   constexpr const char kKeyId[] = "123";
   using std::string_literals::operator""s;
   const std::string kIV = "\x00\x02\x02\x04\x06 abc1234567"s;

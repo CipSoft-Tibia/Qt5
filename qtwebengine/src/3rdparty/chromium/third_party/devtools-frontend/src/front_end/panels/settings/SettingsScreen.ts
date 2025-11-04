@@ -33,7 +33,7 @@ import * as Host from '../../core/host/host.js';
 import * as i18n from '../../core/i18n/i18n.js';
 import type * as Platform from '../../core/platform/platform.js';
 import * as Root from '../../core/root/root.js';
-import * as IconButton from '../../ui/components/icon_button/icon_button.js';
+import * as Buttons from '../../ui/components/buttons/buttons.js';
 import * as Components from '../../ui/legacy/components/utils/utils.js';
 import * as UI from '../../ui/legacy/legacy.js';
 import * as VisualLogging from '../../ui/visual_logging/visual_logging.js';
@@ -112,14 +112,13 @@ export class SettingsScreen extends UI.Widget.VBox implements UI.View.ViewLocati
   private constructor() {
     super(true);
 
-    this.element.setAttribute('jslog', `${VisualLogging.panel().context('settings')}`);
-
     this.contentElement.classList.add('settings-window-main');
     this.contentElement.classList.add('vbox');
 
     const settingsLabelElement = document.createElement('div');
+    settingsLabelElement.classList.add('settings-window-label-element');
     const settingsTitleElement =
-        UI.Utils
+        UI.UIUtils
             .createShadowRootWithCoreStyles(
                 settingsLabelElement, {cssFile: [settingsScreenStyles], delegatesFocus: undefined})
             .createChild('div', 'settings-window-title');
@@ -131,7 +130,7 @@ export class SettingsScreen extends UI.Widget.VBox implements UI.View.ViewLocati
         () => SettingsScreen.revealSettingsScreen(), 'settings-view');
     const tabbedPane = this.tabbedLocation.tabbedPane();
     tabbedPane.registerCSSFiles([settingsScreenStyles]);
-    tabbedPane.leftToolbar().appendToolbarItem(new UI.Toolbar.ToolbarItem(settingsLabelElement));
+    tabbedPane.headerElement().prepend(settingsLabelElement);
     tabbedPane.setShrinkableTabs(false);
     tabbedPane.makeVerticalTabLayout();
     const keyBindsView = UI.ViewManager.ViewManager.instance().view('keybinds');
@@ -162,15 +161,15 @@ export class SettingsScreen extends UI.Widget.VBox implements UI.View.ViewLocati
     }
 
     settingsScreen.reportTabOnReveal = true;
-    const dialog = new UI.Dialog.Dialog();
+    const dialog = new UI.Dialog.Dialog('settings');
     dialog.contentElement.tabIndex = -1;
     dialog.addCloseButton();
     dialog.setOutsideClickCallback(() => {});
-    dialog.setPointerEventsBehavior(UI.GlassPane.PointerEventsBehavior.PierceGlassPane);
-    dialog.setOutsideTabIndexBehavior(UI.Dialog.OutsideTabIndexBehavior.PreserveMainViewTabIndex);
+    dialog.setPointerEventsBehavior(UI.GlassPane.PointerEventsBehavior.PIERCE_GLASS_PANE);
+    dialog.setOutsideTabIndexBehavior(UI.Dialog.OutsideTabIndexBehavior.PRESERVE_MAIN_VIEW_TAB_INDEX);
     settingsScreen.show(dialog.contentElement);
     dialog.setEscapeKeyCallback(settingsScreen.onEscapeKeyPressed.bind(settingsScreen));
-    dialog.setMarginBehavior(UI.GlassPane.MarginBehavior.NoMargin);
+    dialog.setMarginBehavior(UI.GlassPane.MarginBehavior.NO_MARGIN);
     // UI.Dialog extends GlassPane and overrides the `show` method with a wider
     // accepted type. However, TypeScript uses the supertype declaration to
     // determine the full type, which requires a `!Document`.
@@ -269,13 +268,13 @@ abstract class SettingsTab extends UI.Widget.VBox {
 }
 
 export class GenericSettingsTab extends SettingsTab {
-  private readonly syncSection: PanelComponents.SyncSection.SyncSection = new PanelComponents.SyncSection.SyncSection();
+  private readonly syncSection = new PanelComponents.SyncSection.SyncSection();
   private readonly settingToControl = new Map<Common.Settings.Setting<unknown>, HTMLElement>();
 
   constructor() {
     super(i18nString(UIStrings.preferences), 'preferences-tab-content');
 
-    this.element.setAttribute('jslog', `${VisualLogging.pane().context('preferences')}`);
+    this.element.setAttribute('jslog', `${VisualLogging.pane('preferences')}`);
 
     // GRID, MOBILE, EMULATION, and RENDERING are intentionally excluded from this list.
     const explicitSectionOrder: Common.Settings.SettingCategory[] = [
@@ -295,7 +294,7 @@ export class GenericSettingsTab extends SettingsTab {
     ];
 
     // Some settings define their initial ordering.
-    const preRegisteredSettings = Common.Settings.getRegisteredSettings().sort(
+    const preRegisteredSettings = Common.Settings.Settings.instance().getRegisteredSettings().sort(
         (firstSetting, secondSetting) => {
           if (firstSetting.order && secondSetting.order) {
             return (firstSetting.order - secondSetting.order);
@@ -328,10 +327,7 @@ export class GenericSettingsTab extends SettingsTab {
   }
 
   static isSettingVisible(setting: Common.Settings.SettingRegistration): boolean {
-    const titleMac = setting.titleMac && setting.titleMac();
-    const defaultTitle = setting.title && setting.title();
-    const title = titleMac || defaultTitle;
-    return Boolean(title && setting.category);
+    return Boolean(setting.title?.()) && Boolean(setting.category);
   }
 
   override wasShown(): void {
@@ -349,7 +345,7 @@ export class GenericSettingsTab extends SettingsTab {
     Host.InspectorFrontendHost.InspectorFrontendHostInstance.getSyncInformation(syncInfo => {
       this.syncSection.data = {
         syncInfo,
-        syncSetting: Common.Settings.moduleSetting('sync_preferences') as Common.Settings.Setting<boolean>,
+        syncSetting: Common.Settings.moduleSetting('sync-preferences') as Common.Settings.Setting<boolean>,
       };
     });
   }
@@ -412,7 +408,7 @@ export class ExperimentsSettingsTab extends SettingsTab {
     const filterSection = this.appendSection();
     filterSection.classList.add('experiments-filter');
 
-    this.element.setAttribute('jslog', `${VisualLogging.pane().context('experiments')}`);
+    this.element.setAttribute('jslog', `${VisualLogging.pane('experiments')}`);
 
     const labelElement = filterSection.createChild('label');
     labelElement.textContent = i18nString(UIStrings.filterExperimentsLabel);
@@ -457,6 +453,7 @@ export class ExperimentsSettingsTab extends SettingsTab {
       this.#experimentsSection = this.appendSection();
       const warning = this.#experimentsSection.createChild('span');
       warning.textContent = i18nString(UIStrings.noResults);
+      UI.ARIAUtils.alert(warning.textContent);
     }
   }
 
@@ -491,23 +488,26 @@ export class ExperimentsSettingsTab extends SettingsTab {
     }
     p.appendChild(label);
 
-    if (experiment.docLink) {
-      const link = UI.XLink.XLink.create(
-          experiment.docLink, undefined, undefined, undefined, `${experiment.name}:documentation`);
-      link.textContent = '';
-      link.setAttribute('aria-label', i18nString(UIStrings.learnMore));
+    const experimentLink = experiment.docLink;
+    if (experimentLink) {
+      const linkButton = new Buttons.Button.Button();
+      linkButton.data = {
+        iconName: 'help',
+        variant: Buttons.Button.Variant.ICON,
+        size: Buttons.Button.Size.SMALL,
+        jslogContext: `${experiment.name}-documentation`,
+      };
+      linkButton.addEventListener(
+          'click', () => Host.InspectorFrontendHost.InspectorFrontendHostInstance.openInNewTab(experimentLink));
+      linkButton.ariaLabel = i18nString(UIStrings.learnMore);
+      linkButton.classList.add('link-icon');
 
-      const linkIcon = new IconButton.Icon.Icon();
-      linkIcon.data = {iconName: 'help', color: 'var(--icon-default)', width: '16px', height: '16px'};
-      linkIcon.classList.add('link-icon');
-      link.prepend(linkIcon);
-
-      p.appendChild(link);
+      p.appendChild(linkButton);
     }
 
     if (experiment.feedbackLink) {
       const link = UI.XLink.XLink.create(
-          experiment.feedbackLink, undefined, undefined, undefined, `${experiment.name}:feedback`);
+          experiment.feedbackLink, undefined, undefined, undefined, `${experiment.name}-feedback`);
       link.textContent = i18nString(UIStrings.sendFeedback);
       link.classList.add('feedback-link');
 
@@ -528,7 +528,7 @@ export class ExperimentsSettingsTab extends SettingsTab {
 
   setFilter(filterText: string): void {
     this.#inputElement.value = filterText;
-    this.#inputElement.dispatchEvent(new Event('input', {'bubbles': true, 'cancelable': true}));
+    this.#inputElement.dispatchEvent(new Event('input', {bubbles: true, cancelable: true}));
   }
 
   override wasShown(): void {
@@ -572,7 +572,7 @@ export class Revealer implements Common.Revealer.Revealer<Root.Runtime.Experimen
       return;
     }
 
-    for (const settingRegistration of Common.Settings.getRegisteredSettings()) {
+    for (const settingRegistration of Common.Settings.Settings.instance().getRegisteredSettings()) {
       if (!GenericSettingsTab.isSettingVisible(settingRegistration)) {
         continue;
       }
@@ -588,7 +588,8 @@ export class Revealer implements Common.Revealer.Revealer<Root.Runtime.Experimen
     }
 
     // Reveal settings views
-    for (const view of UI.ViewManager.getRegisteredViewExtensions()) {
+    for (const view of UI.ViewManager.getRegisteredViewExtensions(
+             Common.Settings.Settings.instance().getHostConfig())) {
       const id = view.viewId();
       const location = view.location();
       if (location !== UI.ViewManager.ViewLocationValues.SETTINGS_VIEW) {

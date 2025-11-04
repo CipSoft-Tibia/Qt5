@@ -1,5 +1,6 @@
 // Copyright (C) 2021 Intel Corporation.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:data-parser
 
 #include "qurlquery.h"
 #include "qurl_p.h"
@@ -174,8 +175,8 @@ template<> void QSharedDataPointer<QUrlQueryPrivate>::detach()
                              : new QUrlQueryPrivate);
     x->ref.ref();
     if (d && !d->ref.deref())
-        delete d;
-    d = x;
+        delete d.get();
+    d.reset(x);
 }
 
 // Here's how we do the encoding in QUrlQuery

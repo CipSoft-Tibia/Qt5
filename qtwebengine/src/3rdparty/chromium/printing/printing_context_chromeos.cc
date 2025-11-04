@@ -10,6 +10,7 @@
 
 #include <map>
 #include <memory>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -42,7 +43,7 @@ const char kUsernamePlaceholder[] = "chronos";
 // We only support sending document name for secure printers.
 const char kDocumentNamePlaceholder[] = "-";
 
-bool IsUriSecure(base::StringPiece uri) {
+bool IsUriSecure(std::string_view uri) {
   return base::StartsWith(uri, "ipps:") || base::StartsWith(uri, "https:") ||
          base::StartsWith(uri, "usb:") || base::StartsWith(uri, "ippusb:");
 }
@@ -214,7 +215,7 @@ ScopedIppPtr SettingsToIPPOptions(const PrintSettings& settings,
       sides = CUPS_SIDES_TWO_SIDED_LANDSCAPE;
       break;
     default:
-      NOTREACHED();
+      NOTREACHED_IN_MIGRATION();
   }
 
   // duplexing
@@ -343,7 +344,7 @@ void PrintingContextChromeos::AskUserForSettings(
     bool is_scripted,
     PrintSettingsCallback callback) {
   // We don't want to bring up a dialog here.  Ever.  This should not be called.
-  NOTREACHED();
+  NOTREACHED_IN_MIGRATION();
 }
 
 mojom::ResultCode PrintingContextChromeos::UseDefaultSettings() {
@@ -517,7 +518,7 @@ mojom::ResultCode PrintingContextChromeos::PrintDocument(
 
   return StreamData(buffer);
 #else
-  NOTREACHED();
+  NOTREACHED_IN_MIGRATION();
   return mojom::ResultCode::kFailed;
 #endif  // BUILDFLAG(USE_CUPS)
 }

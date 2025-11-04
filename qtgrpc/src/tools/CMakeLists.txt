@@ -5,7 +5,7 @@ qt_internal_skip_sanitizer()
 
 # Skip building qtprotoccommon when not building tools
 if((QT_FEATURE_qtprotobufgen OR QT_FEATURE_qtgrpcgen) AND
-    TARGET WrapProtobuf::WrapLibProtoc AND TARGET WrapProtobuf::WrapLibProtobuf)
+    TARGET protobuf::libprotoc AND TARGET protobuf::libprotobuf)
     add_subdirectory(qtprotoccommon)
 endif()
 

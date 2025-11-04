@@ -9,6 +9,8 @@
 
 QT_BEGIN_NAMESPACE
 
+static constexpr quint32 NUM_TEXTURE_SIZES = 5;
+
 static QRhiTexture *allocateRhiShadowTexture(QRhi *rhi, QRhiTexture::Format format, const QSize &size, quint32 numLayers, QRhiTexture::Flags flags)
 {
     auto texture = rhi->newTexture(format, size, 1, flags);
@@ -27,13 +29,13 @@ static QRhiRenderBuffer *allocateRhiShadowRenderBuffer(QRhi *rhi, QRhiRenderBuff
     return renderBuffer;
 }
 
-static QRhiTexture::Format getShadowMapTextureFormat(QRhi *rhi)
+static QRhiTexture::Format getShadowMapTextureFormat(QRhi *rhi, bool use32bit)
 {
-    QRhiTexture::Format rhiFormat = QRhiTexture::R16F;
-    if (!rhi->isTextureFormatSupported(rhiFormat))
-        rhiFormat = QRhiTexture::R16;
-
-    return rhiFormat;
+    if (use32bit && rhi->isTextureFormatSupported(QRhiTexture::R32F))
+        return QRhiTexture::R32F;
+    if (rhi->isTextureFormatSupported(QRhiTexture::R16F))
+        return QRhiTexture::R16F;
+    return QRhiTexture::R16;
 }
 
 static quint8 mapSizeToIndex(quint32 mapSize)
@@ -41,13 +43,13 @@ static quint8 mapSizeToIndex(quint32 mapSize)
     Q_ASSERT(!(mapSize & (mapSize - 1)) && "shadow map resolution is power of 2");
     Q_ASSERT(mapSize >= 256);
     quint8 index = qCountTrailingZeroBits(mapSize) - 8;
-    Q_ASSERT(index <= 4);
+    Q_ASSERT(index < NUM_TEXTURE_SIZES);
     return index;
 }
 
 static quint32 indexToMapSize(quint8 index)
 {
-    Q_ASSERT(index <= 4);
+    Q_ASSERT(index < NUM_TEXTURE_SIZES);
     return 1 << (index + 8);
 }
 
@@ -66,10 +68,11 @@ void QSSGRenderShadowMap::releaseCachedResources()
     for (QSSGShadowMapEntry &entry : m_shadowMapList)
         entry.destroyRhiResources();
 
-    for (auto& textureArray : m_depthTextureArrays) {
-        delete textureArray;
+    for (auto &hash : m_depthTextureArrays) {
+        for (auto &textureArray : hash)
+            delete textureArray;
+        hash.clear();
     }
-    m_depthTextureArrays.clear();
     m_shadowMapList.clear();
 }
 
@@ -83,9 +86,25 @@ void QSSGRenderShadowMap::addShadowMaps(const QSSGShaderLightList &renderableLig
     constexpr quint32 MAX_SPLITS = 4;
     const quint32 numLights = renderableLights.size();
     qsizetype numShadows = 0;
-    std::array<quint8, 4> textureSizeLayerCount = {};
+    std::array<std::array<quint8, NUM_TEXTURE_SIZES>, 2> textureSizeLayerCount = {}; // 0: 16 bit, 1: 32bit
     QVarLengthArray<quint8, 16> lightIndexToLayerStartIndex;
     lightIndexToLayerStartIndex.resize(numLights * MAX_SPLITS);
+
+    // NOTE: This is a quite ugly workaround. If 32bit is not supported then go through all lights and disable it.
+    const bool supports32BitTextures = rhi->isTextureFormatSupported(QRhiTexture::R32F);
+    if (!supports32BitTextures) {
+        bool any32bit = false;
+        for (quint32 lightIndex = 0; lightIndex < numLights; ++lightIndex) {
+            QSSGRenderLight *light = renderableLights.at(lightIndex).light;
+            any32bit = any32bit || light->m_use32BitShadowmap;
+            light->m_use32BitShadowmap = false;
+        }
+        static bool warned32bit = false;
+        if (!warned32bit && any32bit) {
+            qWarning() << "WARN: 32 bit shadow maps are unsupported, falling back to 16 bit.";
+            warned32bit = true;
+        }
+    }
 
     for (quint32 lightIndex = 0; lightIndex < numLights; ++lightIndex) {
         const QSSGShaderLight &shaderLight = renderableLights.at(lightIndex);
@@ -97,7 +116,7 @@ void QSSGRenderShadowMap::addShadowMaps(const QSSGShaderLightList &renderableLig
             continue;
 
         quint32 mapSize = shaderLight.light->m_shadowMapRes;
-        quint8 &layerCount = textureSizeLayerCount[mapSizeToIndex(mapSize)];
+        quint8 &layerCount = textureSizeLayerCount[shaderLight.light->m_use32BitShadowmap ? 1 : 0][mapSizeToIndex(mapSize)];
         quint8 layerIndex = layerCount;
         layerCount += shaderLight.light->m_csmNumSplits + 1;
         lightIndexToLayerStartIndex[lightIndex] = layerIndex;
@@ -118,12 +137,13 @@ void QSSGRenderShadowMap::addShadowMaps(const QSSGShaderLightList &renderableLig
                 break;
             }
 
+            QRhiTexture::Format textureFormat = getShadowMapTextureFormat(rhi, shaderLight.light->m_use32BitShadowmap);
             ShadowMapModes mapMode = (shaderLight.light->type == QSSGRenderLight::Type::PointLight) ? ShadowMapModes::CUBE
                                                                                                     : ShadowMapModes::VSM;
             quint32 mapSize = shaderLight.light->m_shadowMapRes;
             quint32 csmNumSplits = shaderLight.light->m_csmNumSplits;
             quint32 layerIndex = mapMode == ShadowMapModes::VSM ? lightIndexToLayerStartIndex[lightIndex] : 0;
-            if (!pEntry->isCompatible(QSize(mapSize, mapSize), layerIndex, csmNumSplits, mapMode)) {
+            if (!pEntry->isCompatible(QSize(mapSize, mapSize), layerIndex, csmNumSplits, mapMode, textureFormat)) {
                 needsRebuild = true;
                 break;
             }
@@ -136,16 +156,19 @@ void QSSGRenderShadowMap::addShadowMaps(const QSSGShaderLightList &renderableLig
     releaseCachedResources();
 
     // Create VSM texture arrays
-    for (quint32 i = 0; i < textureSizeLayerCount.size(); i++) {
-        const quint32 numLayers = textureSizeLayerCount[i];
-        if (numLayers == 0)
-            continue;
+    for (quint32 hashI = 0; hashI < 2; ++hashI) {
+        const bool use32bit = hashI == 1;
+        QRhiTexture::Format rhiFormat = getShadowMapTextureFormat(rhi, use32bit);
+        for (quint32 sizeI = 0; sizeI < NUM_TEXTURE_SIZES; sizeI++) {
+            const quint32 numLayers = textureSizeLayerCount[hashI][sizeI];
+            if (numLayers == 0)
+                continue;
 
-        const quint32 mapSize = indexToMapSize(i);
-        QSize texSize = QSize(mapSize, mapSize);
-        QRhiTexture::Format rhiFormat = getShadowMapTextureFormat(rhi);
-        auto texture = allocateRhiShadowTexture(rhi, rhiFormat, texSize, numLayers, QRhiTexture::RenderTarget | QRhiTexture::TextureArray);
-        m_depthTextureArrays.insert(texSize, texture);
+            const quint32 mapSize = indexToMapSize(sizeI);
+            QSize texSize = QSize(mapSize, mapSize);
+            auto texture = allocateRhiShadowTexture(rhi, rhiFormat, texSize, numLayers, QRhiTexture::RenderTarget | QRhiTexture::TextureArray);
+            m_depthTextureArrays[hashI].insert(texSize, texture);
+        }
     }
 
     // Setup render targets
@@ -154,6 +177,7 @@ void QSSGRenderShadowMap::addShadowMaps(const QSSGShaderLightList &renderableLig
         if (!shaderLight.shadows)
             continue;
 
+        const bool use32bit = shaderLight.light->m_use32BitShadowmap;
         QSize mapSize = QSize(shaderLight.light->m_shadowMapRes, shaderLight.light->m_shadowMapRes);
         ShadowMapModes mapMode = (shaderLight.light->type == QSSGRenderLight::Type::PointLight) ? ShadowMapModes::CUBE
                                                                                                 : ShadowMapModes::VSM;
@@ -161,11 +185,11 @@ void QSSGRenderShadowMap::addShadowMaps(const QSSGShaderLightList &renderableLig
         case ShadowMapModes::VSM: {
             quint32 layerStartIndex = lightIndexToLayerStartIndex.value(lightIdx);
             quint32 csmNumSplits = shaderLight.light->m_csmNumSplits;
-            addDirectionalShadowMap(lightIdx, mapSize, layerStartIndex, csmNumSplits, shaderLight.light->debugObjectName);
+            addDirectionalShadowMap(lightIdx, mapSize, use32bit, layerStartIndex, csmNumSplits, shaderLight.light->debugObjectName);
             break;
         }
         case ShadowMapModes::CUBE: {
-            addCubeShadowMap(lightIdx, mapSize, shaderLight.light->debugObjectName);
+            addCubeShadowMap(lightIdx, mapSize, use32bit, shaderLight.light->debugObjectName);
             break;
         }
         default:
@@ -177,6 +201,7 @@ void QSSGRenderShadowMap::addShadowMaps(const QSSGShaderLightList &renderableLig
 
 QSSGShadowMapEntry *QSSGRenderShadowMap::addDirectionalShadowMap(qint32 lightIdx,
                                                                  QSize size,
+                                                                 bool use32bit,
                                                                  quint32 layerStartIndex,
                                                                  quint32 csmNumSplits,
                                                                  const QString &renderNodeObjName)
@@ -187,7 +212,7 @@ QSSGShadowMapEntry *QSSGRenderShadowMap::addDirectionalShadowMap(qint32 lightIdx
     Q_ASSERT(rhi);
     Q_ASSERT(!pEntry);
 
-    auto texture = m_depthTextureArrays.value(size);
+    auto texture = m_depthTextureArrays[use32bit ? 1 : 0].value(size);
     Q_ASSERT(texture);
     m_shadowMapList.push_back(QSSGShadowMapEntry::withRhiDepthMap(lightIdx, ShadowMapModes::VSM, texture));
 
@@ -226,7 +251,7 @@ QSSGShadowMapEntry *QSSGRenderShadowMap::addDirectionalShadowMap(qint32 lightIdx
     return pEntry;
 }
 
-QSSGShadowMapEntry *QSSGRenderShadowMap::addCubeShadowMap(qint32 lightIdx, QSize size, const QString &renderNodeObjName)
+QSSGShadowMapEntry *QSSGRenderShadowMap::addCubeShadowMap(qint32 lightIdx, QSize size, bool use32bit, const QString &renderNodeObjName)
 {
     QRhi *rhi = m_context.rhiContext()->rhi();
     QSSGShadowMapEntry *pEntry = shadowMapEntry(lightIdx);
@@ -234,7 +259,7 @@ QSSGShadowMapEntry *QSSGRenderShadowMap::addCubeShadowMap(qint32 lightIdx, QSize
     Q_ASSERT(rhi);
     Q_ASSERT(!pEntry);
 
-    QRhiTexture::Format rhiFormat = getShadowMapTextureFormat(rhi);
+    QRhiTexture::Format rhiFormat = getShadowMapTextureFormat(rhi, use32bit);
     QRhiTexture *depthMap = allocateRhiShadowTexture(rhi, rhiFormat, size, 0, QRhiTexture::RenderTarget | QRhiTexture::CubeMap);
     QRhiRenderBuffer *depthStencil = allocateRhiShadowRenderBuffer(rhi, QRhiRenderBuffer::DepthStencil, size);
     m_shadowMapList.push_back(QSSGShadowMapEntry::withRhiDepthCubeMap(lightIdx, ShadowMapModes::CUBE, depthMap, depthStencil));
@@ -301,7 +326,7 @@ QSSGShadowMapEntry QSSGShadowMapEntry::withRhiDepthCubeMap(quint32 lightIdx, Sha
     return e;
 }
 
-bool QSSGShadowMapEntry::isCompatible(QSize mapSize, quint32 layerIndex, quint32 csmNumSplits, ShadowMapModes mapMode)
+bool QSSGShadowMapEntry::isCompatible(QSize mapSize, quint32 layerIndex, quint32 csmNumSplits, ShadowMapModes mapMode, QRhiTexture::Format textureFormat)
 {
     if (csmNumSplits != m_csmNumSplits)
         return false;
@@ -317,7 +342,8 @@ bool QSSGShadowMapEntry::isCompatible(QSize mapSize, quint32 layerIndex, quint32
         break;
     }
     case ShadowMapModes::VSM: {
-        if (mapSize != m_rhiDepthTextureArray->pixelSize() || int(layerIndex) >= m_rhiDepthTextureArray->arraySize()) {
+        if (mapSize != m_rhiDepthTextureArray->pixelSize() || int(layerIndex) >= m_rhiDepthTextureArray->arraySize()
+            || textureFormat != m_rhiDepthTextureArray->format()) {
             return false;
         }
         break;

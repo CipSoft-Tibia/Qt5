@@ -2,6 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#ifdef UNSAFE_BUFFERS_BUILD
+// TODO(crbug.com/351564777): Remove this and convert code to safer constructs.
+#pragma allow_unsafe_buffers
+#endif
+
 #include "sandbox/win/src/sandbox_policy_base.h"
 
 #include <stddef.h>
@@ -153,6 +158,7 @@ ConfigBase::ConfigBase() noexcept
       desktop_(Desktop::kDefault),
       filter_environment_(false),
       zero_appshim_(false),
+      handle_closer_(0),
       policy_maker_(nullptr),
       policy_(nullptr) {
 }
@@ -161,7 +167,7 @@ bool ConfigBase::IsOnCreatingThread() const {
 #if DCHECK_IS_ON()
   return GetCurrentThreadId() == creating_thread_id_;
 #else  // DCHECK_IS_ON()
-  NOTREACHED();
+  NOTREACHED_IN_MIGRATION();
   return true;
 #endif
 }
@@ -199,6 +205,22 @@ std::optional<base::span<const uint8_t>> ConfigBase::policy_span() {
   return std::nullopt;
 }
 
+bool ConfigBase::NeedsIpc(IpcTag service) const {
+  // Some IPCs are always needed.
+  if (service == IpcTag::PING1 || service == IpcTag::PING1 ||
+      service == IpcTag::NTOPENTHREAD ||
+      service == IpcTag::NTOPENPROCESSTOKENEX ||
+      service == IpcTag::CREATETHREAD) {
+    return true;
+  }
+
+  // Otherwise we only need the IPC dispatcher if a rule is setup.
+  if (policy_) {
+    return policy_->NeedsIpc(service);
+  }
+  return false;
+}
+
 std::vector<std::wstring>& ConfigBase::blocklisted_dlls() {
   DCHECK(configured_);
   return blocklisted_dlls_;
@@ -230,7 +252,7 @@ sandbox::LowLevelPolicy* ConfigBase::PolicyMaker() {
 ResultCode ConfigBase::AllowFileAccess(FileSemantics semantics,
                                        const wchar_t* pattern) {
   if (!FileSystemPolicy::GenerateRules(pattern, semantics, PolicyMaker())) {
-    NOTREACHED();
+    NOTREACHED_IN_MIGRATION();
     return SBOX_ERROR_BAD_PARAMS;
   }
   return SBOX_ALL_OK;
@@ -241,7 +263,7 @@ ResultCode ConfigBase::SetFakeGdiInit() {
       << "Enable MITIGATION_WIN32K_DISABLE before adding win32k policy "
          "rules.";
   if (!ProcessMitigationsWin32KLockdownPolicy::GenerateRules(PolicyMaker())) {
-    NOTREACHED();
+    NOTREACHED_IN_MIGRATION();
     return SBOX_ERROR_BAD_PARAMS;
   }
   return SBOX_ALL_OK;
@@ -257,7 +279,7 @@ ResultCode ConfigBase::AllowExtraDlls(const wchar_t* pattern) {
         << "Enable MITIGATION_FORCE_MS_SIGNED_BINS before adding signed "
            "policy rules.";
     if (!SignedPolicy::GenerateRules(pattern, PolicyMaker())) {
-      NOTREACHED();
+      NOTREACHED_IN_MIGRATION();
       return SBOX_ERROR_BAD_PARAMS;
     }
   }
@@ -335,8 +357,7 @@ void ConfigBase::SetLockdownDefaultDacl() {
   lockdown_default_dacl_ = true;
 }
 
-ResultCode ConfigBase::AddAppContainerProfile(const wchar_t* package_name,
-                                              bool create_profile) {
+ResultCode ConfigBase::AddAppContainerProfile(const wchar_t* package_name) {
   if (!features::IsAppContainerSandboxSupported())
     return SBOX_ERROR_UNSUPPORTED;
 
@@ -345,13 +366,9 @@ ResultCode ConfigBase::AddAppContainerProfile(const wchar_t* package_name,
   if (app_container_ || integrity_level_ != INTEGRITY_LEVEL_LAST) {
     return SBOX_ERROR_BAD_PARAMS;
   }
+  app_container_ =
+      AppContainerBase::CreateProfile(package_name, L"Chrome Sandbox");
 
-  if (create_profile) {
-    app_container_ = AppContainerBase::CreateProfile(
-        package_name, L"Chrome Sandbox", L"Profile for Chrome Sandbox");
-  } else {
-    app_container_ = AppContainerBase::Open(package_name);
-  }
   if (!app_container_)
     return SBOX_ERROR_CREATE_APPCONTAINER;
 
@@ -371,8 +388,8 @@ ResultCode ConfigBase::AddAppContainerProfile(const wchar_t* package_name,
   return SBOX_ALL_OK;
 }
 
-scoped_refptr<AppContainer> ConfigBase::GetAppContainer() {
-  return app_container_;
+AppContainer* ConfigBase::GetAppContainer() {
+  return app_container_.get();
 }
 
 ResultCode ConfigBase::SetTokenLevel(TokenLevel initial, TokenLevel lockdown) {
@@ -407,23 +424,32 @@ void ConfigBase::SetJobMemoryLimit(size_t memory_limit) {
   memory_limit_ = memory_limit;
 }
 
-ResultCode ConfigBase::AddKernelObjectToClose(const wchar_t* handle_type,
-                                              const wchar_t* handle_name) {
+void ConfigBase::AddKernelObjectToClose(HandleToClose handle_info) {
   DCHECK(!configured_);
-  if (!handle_closer_)
-    handle_closer_ = std::make_unique<HandleCloser>();
-  return handle_closer_->AddHandle(handle_type, handle_name);
+  handle_closer_.handle_closer_enabled = true;
+  switch (handle_info) {
+    case HandleToClose::kWindowsShellGlobalCounters:
+      handle_closer_.section_windows_global_shell_counters = true;
+      break;
+    case HandleToClose::kDeviceApi:
+      handle_closer_.file_device_api = true;
+      break;
+    case HandleToClose::kKsecDD:
+      handle_closer_.file_ksecdd = true;
+      break;
+    case HandleToClose::kDisconnectCsrss:
+      handle_closer_.disconnect_csrss = true;
+      break;
+  }
 }
 
-ResultCode ConfigBase::SetDisconnectCsrss() {
+void ConfigBase::SetDisconnectCsrss() {
 // Does not work on 32-bit, and the ASAN runtime falls over with the
 // CreateThread EAT patch used when this is enabled.
 // See https://crbug.com/783296#c27.
 #if defined(_WIN64) && !defined(ADDRESS_SANITIZER)
   is_csrss_connected_ = false;
-  return AddKernelObjectToClose(L"ALPC Port", nullptr);
-#else
-  return SBOX_ALL_OK;
+  AddKernelObjectToClose(HandleToClose::kDisconnectCsrss);
 #endif  // !defined(_WIN64) || defined(ADDRESS_SANITIZER)
 }
 
@@ -450,9 +476,8 @@ PolicyBase::PolicyBase(std::string_view tag)
       stdout_handle_(INVALID_HANDLE_VALUE),
       stderr_handle_(INVALID_HANDLE_VALUE),
       delegate_data_(nullptr),
-      job_() {
-  dispatcher_ = std::make_unique<TopLevelDispatcher>(this);
-}
+      dispatcher_(nullptr),
+      job_() {}
 
 PolicyBase::~PolicyBase() {
   // Ensure this is cleared before other members - this terminates the process
@@ -630,6 +655,7 @@ ResultCode PolicyBase::ApplyToTarget(std::unique_ptr<TargetProcess> target) {
     return SBOX_ERROR_APPLY_ASLR_MITIGATIONS;
   }
 
+  dispatcher_ = std::make_unique<TopLevelDispatcher>(this);
   ResultCode ret = SetupAllInterceptions(*target);
 
   if (ret != SBOX_ALL_OK)
@@ -697,7 +723,7 @@ EvalResult PolicyBase::EvalPolicy(IpcTag service,
     }
     for (size_t i = 0; i < params->count; i++) {
       if (!params->parameters[i].IsValid()) {
-        NOTREACHED();
+        NOTREACHED_IN_MIGRATION();
         return SIGNAL_ALARM;
       }
     }
@@ -725,7 +751,7 @@ ResultCode PolicyBase::SetupAllInterceptions(TargetProcess& target) {
   InterceptionManager manager(target);
   PolicyGlobal* policy = config()->policy();
   if (policy) {
-    for (size_t i = 0; i < kMaxIpcTag; i++) {
+    for (size_t i = 0; i < kSandboxIpcCount; i++) {
       if (policy->entry[i] &&
           !dispatcher_->SetupService(&manager, static_cast<IpcTag>(i)))
         return SBOX_ERROR_SETUP_INTERCEPTION_SERVICE;
@@ -750,10 +776,18 @@ ResultCode PolicyBase::SetupAllInterceptions(TargetProcess& target) {
 }
 
 bool PolicyBase::SetupHandleCloser(TargetProcess& target) {
-  auto* handle_closer = config()->handle_closer();
-  if (!handle_closer)
+  const HandleCloserConfig& handle_closer = config()->handle_closer();
+  // Do nothing on an empty list (target's config already initialized to zero).
+  if (!handle_closer.handle_closer_enabled) {
     return true;
-  return handle_closer->InitializeTargetHandles(target);
+  }
+
+  static_assert(sizeof(g_handle_closer_info) == sizeof(handle_closer));
+  ResultCode rc = target.TransferVariable("g_handle_closer_info",
+                                          &handle_closer, &g_handle_closer_info,
+                                          sizeof(g_handle_closer_info));
+
+  return (SBOX_ALL_OK == rc);
 }
 
 std::optional<base::span<const uint8_t>> PolicyBase::delegate_data_span() {

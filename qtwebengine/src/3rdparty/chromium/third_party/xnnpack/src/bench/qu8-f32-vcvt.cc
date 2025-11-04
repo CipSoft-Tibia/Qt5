@@ -11,12 +11,47 @@
 #include <benchmark/benchmark.h>
 #include "bench/utils.h"
 #include "bench/vcvt-benchmark.h"
+#include "xnnpack.h"
+#include "xnnpack/common.h"
+#include "xnnpack/microfnptr.h"
+#include "xnnpack/microparams-init.h"
+#include "xnnpack/vcvt.h"
 
-#include <xnnpack.h>
-#include <xnnpack/common.h>
-#include <xnnpack/microfnptr.h>
-#include <xnnpack/microparams-init.h>
-#include <xnnpack/vcvt.h>
+
+#if XNN_ARCH_WASMSIMD || XNN_ARCH_WASMRELAXEDSIMD
+  BENCHMARK_CAPTURE(qu8_f32_vcvt, wasmsimd_u8,
+                    xnn_qu8_f32_vcvt_ukernel__wasmsimd_u8,
+                    xnn_init_qu8_f32_cvt_wasmsimd_params)
+    ->Apply(benchmark::utils::UnaryElementwiseParameters<uint8_t, float>)
+    ->UseRealTime();
+#endif  // XNN_ARCH_WASMSIMD || XNN_ARCH_WASMRELAXEDSIMD
+
+
+#if XNN_ARCH_WASMSIMD || XNN_ARCH_WASMRELAXEDSIMD
+  BENCHMARK_CAPTURE(qu8_f32_vcvt, wasmsimd_u16,
+                    xnn_qu8_f32_vcvt_ukernel__wasmsimd_u16,
+                    xnn_init_qu8_f32_cvt_wasmsimd_params)
+    ->Apply(benchmark::utils::UnaryElementwiseParameters<uint8_t, float>)
+    ->UseRealTime();
+#endif  // XNN_ARCH_WASMSIMD || XNN_ARCH_WASMRELAXEDSIMD
+
+
+#if XNN_ARCH_WASMSIMD || XNN_ARCH_WASMRELAXEDSIMD
+  BENCHMARK_CAPTURE(qu8_f32_vcvt, wasmsimd_u24,
+                    xnn_qu8_f32_vcvt_ukernel__wasmsimd_u24,
+                    xnn_init_qu8_f32_cvt_wasmsimd_params)
+    ->Apply(benchmark::utils::UnaryElementwiseParameters<uint8_t, float>)
+    ->UseRealTime();
+#endif  // XNN_ARCH_WASMSIMD || XNN_ARCH_WASMRELAXEDSIMD
+
+
+#if XNN_ARCH_WASMSIMD || XNN_ARCH_WASMRELAXEDSIMD
+  BENCHMARK_CAPTURE(qu8_f32_vcvt, wasmsimd_u32,
+                    xnn_qu8_f32_vcvt_ukernel__wasmsimd_u32,
+                    xnn_init_qu8_f32_cvt_wasmsimd_params)
+    ->Apply(benchmark::utils::UnaryElementwiseParameters<uint8_t, float>)
+    ->UseRealTime();
+#endif  // XNN_ARCH_WASMSIMD || XNN_ARCH_WASMRELAXEDSIMD
 
 
 #if XNN_ARCH_ARM || XNN_ARCH_ARM64
@@ -213,42 +248,6 @@
     ->Apply(benchmark::utils::UnaryElementwiseParameters<uint8_t, float>)
     ->UseRealTime();
 #endif  // XNN_ARCH_X86 || XNN_ARCH_X86_64
-
-
-#if XNN_ARCH_WASMSIMD || XNN_ARCH_WASMRELAXEDSIMD
-  BENCHMARK_CAPTURE(qu8_f32_vcvt, wasmsimd_u8,
-                    xnn_qu8_f32_vcvt_ukernel__wasmsimd_u8,
-                    xnn_init_qu8_f32_cvt_wasmsimd_params)
-    ->Apply(benchmark::utils::UnaryElementwiseParameters<uint8_t, float>)
-    ->UseRealTime();
-#endif  // XNN_ARCH_WASMSIMD || XNN_ARCH_WASMRELAXEDSIMD
-
-
-#if XNN_ARCH_WASMSIMD || XNN_ARCH_WASMRELAXEDSIMD
-  BENCHMARK_CAPTURE(qu8_f32_vcvt, wasmsimd_u16,
-                    xnn_qu8_f32_vcvt_ukernel__wasmsimd_u16,
-                    xnn_init_qu8_f32_cvt_wasmsimd_params)
-    ->Apply(benchmark::utils::UnaryElementwiseParameters<uint8_t, float>)
-    ->UseRealTime();
-#endif  // XNN_ARCH_WASMSIMD || XNN_ARCH_WASMRELAXEDSIMD
-
-
-#if XNN_ARCH_WASMSIMD || XNN_ARCH_WASMRELAXEDSIMD
-  BENCHMARK_CAPTURE(qu8_f32_vcvt, wasmsimd_u24,
-                    xnn_qu8_f32_vcvt_ukernel__wasmsimd_u24,
-                    xnn_init_qu8_f32_cvt_wasmsimd_params)
-    ->Apply(benchmark::utils::UnaryElementwiseParameters<uint8_t, float>)
-    ->UseRealTime();
-#endif  // XNN_ARCH_WASMSIMD || XNN_ARCH_WASMRELAXEDSIMD
-
-
-#if XNN_ARCH_WASMSIMD || XNN_ARCH_WASMRELAXEDSIMD
-  BENCHMARK_CAPTURE(qu8_f32_vcvt, wasmsimd_u32,
-                    xnn_qu8_f32_vcvt_ukernel__wasmsimd_u32,
-                    xnn_init_qu8_f32_cvt_wasmsimd_params)
-    ->Apply(benchmark::utils::UnaryElementwiseParameters<uint8_t, float>)
-    ->UseRealTime();
-#endif  // XNN_ARCH_WASMSIMD || XNN_ARCH_WASMRELAXEDSIMD
 
 
 BENCHMARK_CAPTURE(qu8_f32_vcvt, scalar_u1,

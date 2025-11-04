@@ -36,6 +36,7 @@
 #include "dawn/native/d3d12/BindGroupLayoutD3D12.h"
 #include "dawn/native/d3d12/DeviceD3D12.h"
 #include "dawn/native/d3d12/PlatformFunctionsD3D12.h"
+#include "dawn/native/d3d12/UtilsD3D12.h"
 
 using Microsoft::WRL::ComPtr;
 
@@ -54,21 +55,6 @@ static constexpr uint32_t kDynamicStorageBufferLengthsBaseRegister = 0;
 
 static constexpr uint32_t kInvalidDynamicStorageBufferLengthsParameterIndex =
     std::numeric_limits<uint32_t>::max();
-
-D3D12_SHADER_VISIBILITY ShaderVisibilityType(wgpu::ShaderStage visibility) {
-    DAWN_ASSERT(visibility != wgpu::ShaderStage::None);
-
-    if (visibility == wgpu::ShaderStage::Vertex) {
-        return D3D12_SHADER_VISIBILITY_VERTEX;
-    }
-
-    if (visibility == wgpu::ShaderStage::Fragment) {
-        return D3D12_SHADER_VISIBILITY_PIXEL;
-    }
-
-    // For compute or any two combination of stages, visibility must be ALL
-    return D3D12_SHADER_VISIBILITY_ALL;
-}
 
 D3D12_ROOT_PARAMETER_TYPE RootParameterType(wgpu::BufferBindingType type) {
     switch (type) {
@@ -167,16 +153,20 @@ MaybeError PipelineLayout::Initialize() {
     // Parameters are D3D12_ROOT_PARAMETER_TYPE which is either a root table, constant, or
     // descriptor.
     std::vector<D3D12_ROOT_PARAMETER1> rootParameters;
+    std::vector<D3D12_STATIC_SAMPLER_DESC> staticSamplers;
 
     size_t rangesCount = 0;
+    size_t staticSamplerCount = 0;
     for (BindGroupIndex group : IterateBitSet(GetBindGroupLayoutsMask())) {
         const BindGroupLayout* bindGroupLayout = ToBackend(GetBindGroupLayout(group));
         rangesCount += bindGroupLayout->GetCbvUavSrvDescriptorRanges().size() +
                        bindGroupLayout->GetSamplerDescriptorRanges().size();
+        staticSamplerCount += bindGroupLayout->GetStaticSamplerCount();
     }
 
     // We are taking pointers to `ranges`, so we cannot let it resize while we're pushing to it.
     std::vector<D3D12_DESCRIPTOR_RANGE1> ranges(rangesCount);
+    staticSamplers.reserve(staticSamplerCount);
 
     uint32_t rangeIndex = 0;
 
@@ -218,6 +208,12 @@ MaybeError PipelineLayout::Initialize() {
             mSamplerRootParameterInfo[group] = rootParameters.size() - 1;
         }
 
+        // Combine the static samplers from the all of the bind group layouts to one vector.
+        for (auto& samplerDesc : bindGroupLayout->GetStaticSamplers()) {
+            auto& newSampler = staticSamplers.emplace_back(samplerDesc);
+            newSampler.RegisterSpace = static_cast<uint32_t>(group);
+        }
+
         // Init root descriptors in root signatures for dynamic buffer bindings.
         // These are packed at the beginning of the layout binding info.
         mDynamicRootParameterIndices[group].resize(bindGroupLayout->GetDynamicBufferCount());
@@ -249,7 +245,8 @@ MaybeError PipelineLayout::Initialize() {
             mDynamicRootParameterIndices[group][dynamicBindingIndex] = rootParameters.size();
 
             // Set parameter types according to bind group layout descriptor.
-            rootParameter.ParameterType = RootParameterType(bindingInfo.buffer.type);
+            rootParameter.ParameterType =
+                RootParameterType(std::get<BufferBindingInfo>(bindingInfo.bindingLayout).type);
 
             // Set visibilities according to bind group layout descriptor.
             rootParameter.ShaderVisibility = ShaderVisibilityType(bindingInfo.visibility);
@@ -334,8 +331,8 @@ MaybeError PipelineLayout::Initialize() {
     versionedRootSignatureDescriptor.Version = D3D_ROOT_SIGNATURE_VERSION_1_1;
     versionedRootSignatureDescriptor.Desc_1_1.NumParameters = rootParameters.size();
     versionedRootSignatureDescriptor.Desc_1_1.pParameters = rootParameters.data();
-    versionedRootSignatureDescriptor.Desc_1_1.NumStaticSamplers = 0;
-    versionedRootSignatureDescriptor.Desc_1_1.pStaticSamplers = nullptr;
+    versionedRootSignatureDescriptor.Desc_1_1.NumStaticSamplers = staticSamplers.size();
+    versionedRootSignatureDescriptor.Desc_1_1.pStaticSamplers = staticSamplers.data();
     versionedRootSignatureDescriptor.Desc_1_1.Flags =
         D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT;
 
@@ -355,7 +352,7 @@ MaybeError PipelineLayout::Initialize() {
         // TODO(crbug.com/1512318): Add some telemetry so we log how often/when this happens.
         std::ostringstream messageStream;
         if (error) {
-            messageStream << static_cast<const char*>(error->GetBufferPointer()) << std::endl;
+            messageStream << static_cast<const char*>(error->GetBufferPointer()) << "\n";
         }
         HRESULT hr = SerializeRootParameter1_0(device, versionedRootSignatureDescriptor,
                                                &mRootSignatureBlob, &error);
@@ -363,7 +360,7 @@ MaybeError PipelineLayout::Initialize() {
             return {};
         }
         if (error) {
-            messageStream << static_cast<const char*>(error->GetBufferPointer()) << std::endl;
+            messageStream << static_cast<const char*>(error->GetBufferPointer()) << "\n";
         }
         messageStream << "D3D12 serialize root signature";
         DAWN_TRY(CheckHRESULT(hr, messageStream.str().c_str()));
@@ -424,7 +421,9 @@ PipelineLayout::GetDynamicStorageBufferLengthInfo() const {
 uint32_t PipelineLayout::GetDynamicRootParameterIndex(BindGroupIndex group,
                                                       BindingIndex bindingIndex) const {
     DAWN_ASSERT(group < kMaxBindGroupsTyped);
-    DAWN_ASSERT(GetBindGroupLayout(group)->GetBindingInfo(bindingIndex).buffer.hasDynamicOffset);
+    DAWN_ASSERT(std::get<BufferBindingInfo>(
+                    GetBindGroupLayout(group)->GetBindingInfo(bindingIndex).bindingLayout)
+                    .hasDynamicOffset);
     DAWN_ASSERT(GetBindGroupLayout(group)->GetBindingInfo(bindingIndex).visibility !=
                 wgpu::ShaderStage::None);
     return mDynamicRootParameterIndices[group][bindingIndex];

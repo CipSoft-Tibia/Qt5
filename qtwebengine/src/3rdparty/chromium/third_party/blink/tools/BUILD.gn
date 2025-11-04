@@ -3,7 +3,6 @@
 # found in the LICENSE file.
 
 # WPT codebase for running webplatform tests
-import("//build/config/features.gni")
 
 group("wpt_tests_isolate") {
   testonly = true
@@ -28,6 +27,9 @@ group("wpt_tests_isolate") {
     "//third_party/blink/web_tests/FlagSpecificConfig",
     "//third_party/blink/web_tests/VirtualTestSuites",
     "//third_party/blink/web_tests/TestLists/",
+
+    # exception reporting protos
+    "//build/util/lib/proto",
 
     # Include the root vpython spec.
     "//.vpython3",
@@ -78,7 +80,7 @@ if (!is_ios) {
       "//mojo/public/mojom/base:base_js_data_deps",
     ]
 
-  if(is_qtwebengine && is_android) {
+  if(is_qtpdf && is_android) {
     data_deps -= [
       "//:layout_test_data_mojo_bindings",
       "//:layout_test_data_mojo_bindings_lite",

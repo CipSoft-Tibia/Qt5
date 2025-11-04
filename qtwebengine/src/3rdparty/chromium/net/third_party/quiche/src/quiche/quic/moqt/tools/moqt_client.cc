@@ -22,8 +22,8 @@
 #include "quiche/quic/tools/quic_default_client.h"
 #include "quiche/quic/tools/quic_event_loop_tools.h"
 #include "quiche/quic/tools/quic_name_lookup.h"
+#include "quiche/common/http/http_header_block.h"
 #include "quiche/common/platform/api/quiche_logging.h"
-#include "quiche/spdy/core/http2_header_block.h"
 
 namespace moqt {
 
@@ -75,7 +75,7 @@ absl::Status MoqtClient::ConnectInner(std::string path,
   }
   spdy_client_.set_store_response(true);
 
-  spdy::Http2HeaderBlock headers;
+  quiche::HttpHeaderBlock headers;
   headers[":scheme"] = "https";
   headers[":authority"] = spdy_client_.server_id().host();
   headers[":path"] = path;
@@ -88,12 +88,7 @@ absl::Status MoqtClient::ConnectInner(std::string path,
     return absl::InternalError("Failed to initialize WebTransport session");
   }
 
-  MoqtSessionParameters parameters;
-  parameters.version = MoqtVersion::kDraft01;
-  parameters.perspective = quic::Perspective::IS_CLIENT,
-  parameters.using_webtrans = true;
-  parameters.path = "";
-  parameters.deliver_partial_objects = false;
+  MoqtSessionParameters parameters(quic::Perspective::IS_CLIENT);
 
   // Ensure that we never have a dangling pointer to the session.
   MoqtSessionDeletedCallback deleted_callback =

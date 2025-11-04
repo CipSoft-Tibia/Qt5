@@ -2,6 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#ifdef UNSAFE_BUFFERS_BUILD
+// TODO(crbug.com/351564777): Remove this and convert code to safer constructs.
+#pragma allow_unsafe_buffers
+#endif
+
 #include "mojo/core/ipcz_driver/transport.h"
 
 #include <utility>
@@ -15,7 +20,6 @@
 #include "base/process/process.h"
 #include "base/task/single_thread_task_runner.h"
 #include "build/build_config.h"
-#include "mojo/core/core.h"
 #include "mojo/core/ipcz_driver/data_pipe.h"
 #include "mojo/core/ipcz_driver/invitation.h"
 #include "mojo/core/ipcz_driver/object.h"
@@ -29,6 +33,7 @@
 #include "third_party/ipcz/include/ipcz/ipcz.h"
 
 #if BUILDFLAG(IS_WIN)
+#include "base/win/win_util.h"
 #include "mojo/public/cpp/platform/platform_handle_security_util_win.h"
 #endif
 
@@ -129,11 +134,13 @@ bool EncodeHandle(PlatformHandle& handle,
                   const base::Process& remote_process,
                   HandleOwner handle_owner,
                   HandleData& out_handle_data,
-                  bool is_remote_process_untrusted) {
+                  Transport::ProcessTrust remote_process_trust) {
+  CHECK(handle.is_valid());
   // Duplicating INVALID_HANDLE_VALUE passes a process handle. If you intend to
   // do this, you must open a valid process handle, not pass the result of
-  // GetCurrentProcess(). e.g. https://crbug.com/243339.
-  CHECK(handle.is_valid());
+  // GetCurrentProcess() or GetCurrentThread(). e.g. https://crbug.com/243339.
+  CHECK(!handle.is_pseudo_handle());
+
   if (handle_owner == HandleOwner::kSender) {
     // Nothing to do when sending handles that belong to us. The recipient must
     // be sufficiently privileged and equipped to duplicate such handles to
@@ -149,7 +156,7 @@ bool EncodeHandle(PlatformHandle& handle,
   DCHECK_EQ(handle_owner, HandleOwner::kRecipient);
   DCHECK(remote_process.IsValid());
 #if BUILDFLAG(IS_WIN)
-  if (is_remote_process_untrusted) {
+  if (remote_process_trust == Transport::ProcessTrust::kUntrusted) {
     DcheckIfFileHandleIsUnsafe(handle.GetHandle().get());
   }
 #endif
@@ -173,6 +180,10 @@ PlatformHandle DecodeHandle(HandleData data,
                             HandleOwner handle_owner,
                             Transport& from_transport) {
   const HANDLE handle = DataToHandle(data);
+  // Do not decode sentinel values used by Windows (INVALID_HANDLE_VALUE &
+  // GetCurrentThread()).
+  CHECK(!base::win::IsPseudoHandle(handle));
+
   if (handle_owner == HandleOwner::kRecipient) {
     if (from_transport.destination_type() != Transport::kBroker &&
         !from_transport.is_peer_trusted() && !remote_process.is_current()) {
@@ -206,23 +217,20 @@ scoped_refptr<base::SingleThreadTaskRunner>& GetIOTaskRunnerStorage() {
 Transport::Transport(EndpointTypes endpoint_types,
                      PlatformChannelEndpoint endpoint,
                      base::Process remote_process,
-                     bool is_remote_process_untrusted)
+                     ProcessTrust remote_process_trust)
     : endpoint_types_(endpoint_types),
       remote_process_(std::move(remote_process)),
-#if BUILDFLAG(IS_WIN)
-      is_remote_process_untrusted_(is_remote_process_untrusted),
-#endif
-      inactive_endpoint_(std::move(endpoint)) {
-}
+      remote_process_trust_(remote_process_trust),
+      inactive_endpoint_(std::move(endpoint)) {}
 
 // static
 scoped_refptr<Transport> Transport::Create(EndpointTypes endpoint_types,
                                            PlatformChannelEndpoint endpoint,
                                            base::Process remote_process,
-                                           bool is_remote_process_untrusted) {
+                                           ProcessTrust remote_process_trust) {
   return base::MakeRefCounted<Transport>(endpoint_types, std::move(endpoint),
                                          std::move(remote_process),
-                                         is_remote_process_untrusted);
+                                         remote_process_trust);
 }
 
 // static
@@ -296,7 +304,6 @@ bool Transport::Activate(IpczHandle transport,
     self_reference_for_channel_ = base::WrapRefCounted(this);
     channel_ = Channel::CreateForIpczDriver(this, std::move(inactive_endpoint_),
                                             io_task_runner_);
-    channel_->Start();
     if (leak_channel_on_shutdown_) {
       io_task_runner_->PostTask(
           FROM_HERE,
@@ -307,10 +314,15 @@ bool Transport::Activate(IpczHandle transport,
 
     if (!pending_transmissions_.empty()) {
       pending_transmissions_.swap(pending_transmissions);
-      channel = channel_;
     }
+
+    channel = channel_;
   }
 
+  // NOTE: Some Channel implementations could re-enter this Transport from
+  // within Start(), so it's critical that we don't call it while holding our
+  // lock.
+  channel->Start();
   for (auto& transmission : pending_transmissions) {
     channel->Write(Channel::Message::CreateIpczMessage(
         base::make_span(transmission.bytes), std::move(transmission.handles)));
@@ -457,7 +469,7 @@ IpczResult Transport::SerializeObject(ObjectBase& object,
   for (size_t i = 0; i < object_num_handles; ++i) {
 #if BUILDFLAG(IS_WIN)
     ok &= EncodeHandle(platform_handles[i], remote_process_, handle_owner,
-                       handle_data[i], is_remote_process_untrusted_);
+                       handle_data[i], remote_process_trust());
 #else
     handles[i] = TransmissiblePlatformHandle::ReleaseAsHandle(
         base::MakeRefCounted<TransmissiblePlatformHandle>(
@@ -619,23 +631,39 @@ scoped_refptr<Transport> Transport::Deserialize(
     process = base::Process(handles[1].ReleaseHandle());
   }
 #endif
+  // Reject transports with out of range enum value in destination_type.
+  if (!(header.destination_type == kBroker ||
+        header.destination_type == kNonBroker)) {
+    return nullptr;
+  }
+
   const bool is_source_trusted = from_transport.is_peer_trusted() ||
                                  from_transport.destination_type() == kBroker;
+
   const bool is_new_peer_trusted = header.is_peer_trusted;
+  const bool is_trusted_by_peer = header.is_trusted_by_peer;
+
   if (is_new_peer_trusted && !is_source_trusted) {
     // Untrusted transports cannot send us trusted transports.
     return nullptr;
   }
+
+  if (header.destination_type == kBroker && !is_source_trusted) {
+    // Do not accept broker connections from untrusted transports.
+    return nullptr;
+  }
+
   if (header.is_same_remote_process &&
       from_transport.remote_process().IsValid()) {
     process = from_transport.remote_process().Duplicate();
   }
-  auto transport = Create({.source = from_transport.source_type(),
-                           .destination = header.destination_type},
-                          PlatformChannelEndpoint(std::move(handles[0])),
-                          std::move(process));
+  auto transport =
+      Create({.source = from_transport.source_type(),
+              .destination = header.destination_type},
+             PlatformChannelEndpoint(std::move(handles[0])), std::move(process),
+             from_transport.remote_process_trust());
   transport->set_is_peer_trusted(is_new_peer_trusted);
-  transport->set_is_trusted_by_peer(header.is_trusted_by_peer);
+  transport->set_is_trusted_by_peer(is_trusted_by_peer);
 
   // Inherit the IO task used by the receiving Transport. Deserialized
   // transports are always adopted by the receiving node, and we want any given

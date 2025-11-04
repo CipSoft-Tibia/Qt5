@@ -1,3 +1,13 @@
+/*
+ *  Copyright (c) 2024 The WebM project authors. All Rights Reserved.
+ *
+ *  Use of this source code is governed by a BSD-style license
+ *  that can be found in the LICENSE file in the root of the source
+ *  tree. An additional intellectual property rights grant can be found
+ *  in the file PATENTS.  All contributing project authors may
+ *  be found in the AUTHORS file in the root of the source tree.
+ */
+
 // This file is generated. Do not edit.
 #ifndef VPX_DSP_RTCD_H_
 #define VPX_DSP_RTCD_H_
@@ -3106,7 +3116,10 @@ void vpx_subtract_block_neon(int rows,
 
 uint64_t vpx_sum_squares_2d_i16_c(const int16_t* src, int stride, int size);
 uint64_t vpx_sum_squares_2d_i16_neon(const int16_t* src, int stride, int size);
-#define vpx_sum_squares_2d_i16 vpx_sum_squares_2d_i16_neon
+uint64_t vpx_sum_squares_2d_i16_sve(const int16_t* src, int stride, int size);
+RTCD_EXTERN uint64_t (*vpx_sum_squares_2d_i16)(const int16_t* src,
+                                               int stride,
+                                               int size);
 
 void vpx_tm_predictor_16x16_c(uint8_t* dst,
                               ptrdiff_t stride,
@@ -3716,6 +3729,10 @@ static void setup_rtcd_internal(void) {
   if (flags & HAS_NEON_DOTPROD) {
     vpx_sse = vpx_sse_neon_dotprod;
   }
+  vpx_sum_squares_2d_i16 = vpx_sum_squares_2d_i16_neon;
+  if (flags & HAS_SVE) {
+    vpx_sum_squares_2d_i16 = vpx_sum_squares_2d_i16_sve;
+  }
   vpx_variance16x16 = vpx_variance16x16_neon;
   if (flags & HAS_NEON_DOTPROD) {
     vpx_variance16x16 = vpx_variance16x16_neon_dotprod;
@@ -3775,4 +3792,4 @@ static void setup_rtcd_internal(void) {
 }  // extern "C"
 #endif
 
-#endif
+#endif  // VPX_DSP_RTCD_H_

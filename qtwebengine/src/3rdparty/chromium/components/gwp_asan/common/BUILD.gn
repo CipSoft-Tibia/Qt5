@@ -14,6 +14,7 @@ static_library("common") {
     "allocation_info.h",
     "allocator_state.cc",
     "allocator_state.h",
+    "extreme_lightweight_detector_util.h",
     "lightweight_detector_state.cc",
     "lightweight_detector_state.h",
     "pack_stack_trace.cc",
@@ -42,7 +43,10 @@ source_set("unit_tests") {
 
 fuzzer_test("pack_stack_trace_unpack_fuzzer") {
   sources = [ "pack_stack_trace_unpack_fuzzer.cc" ]
-  deps = [ "//components/gwp_asan/common" ]
+  deps = [
+    "//base",
+    "//components/gwp_asan/common",
+  ]
 }
 
 fuzzer_test("pack_stack_trace_differential_fuzzer") {

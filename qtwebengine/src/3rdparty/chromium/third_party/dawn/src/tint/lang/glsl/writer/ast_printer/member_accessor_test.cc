@@ -298,6 +298,7 @@ TEST_F(GlslASTPrinterTest_MemberAccessor, StorageBuffer_Store_Matrix_Empty) {
     auto* expected =
         R"(#version 310 es
 precision highp float;
+precision highp int;
 
 struct Data {
   int a;
@@ -311,13 +312,13 @@ layout(binding = 0, std430) buffer data_block_ssbo {
   Data inner;
 } data;
 
-void assign_and_preserve_padding_data_b(mat2x3 value) {
+void assign_and_preserve_padding_data_inner_b(mat2x3 value) {
   data.inner.b[0] = value[0u];
   data.inner.b[1] = value[1u];
 }
 
 void tint_symbol() {
-  assign_and_preserve_padding_data_b(mat2x3(vec3(0.0f), vec3(0.0f)));
+  assign_and_preserve_padding_data_inner_b(mat2x3(vec3(0.0f), vec3(0.0f)));
 }
 
 void main() {
@@ -351,6 +352,7 @@ TEST_F(GlslASTPrinterTest_MemberAccessor, StorageBuffer_Load_Matrix_Single_Eleme
     auto* expected =
         R"(#version 310 es
 precision highp float;
+precision highp int;
 
 struct Data {
   float z;
@@ -399,6 +401,7 @@ TEST_F(GlslASTPrinterTest_MemberAccessor,
     auto* expected =
         R"(#version 310 es
 precision highp float;
+precision highp int;
 
 struct Data {
   float z;
@@ -447,6 +450,7 @@ TEST_F(GlslASTPrinterTest_MemberAccessor,
     auto* expected =
         R"(#version 310 es
 precision highp float;
+precision highp int;
 
 struct Data {
   float z;
@@ -494,6 +498,7 @@ TEST_F(GlslASTPrinterTest_MemberAccessor, StorageBuffer_Store_ToArray) {
     auto* expected =
         R"(#version 310 es
 precision highp float;
+precision highp int;
 
 struct Data {
   float z;
@@ -547,6 +552,7 @@ TEST_F(GlslASTPrinterTest_MemberAccessor, StorageBuffer_Load_MultiLevel) {
     auto* expected =
         R"(#version 310 es
 precision highp float;
+precision highp int;
 
 struct Inner {
   vec3 a;
@@ -608,6 +614,7 @@ TEST_F(GlslASTPrinterTest_MemberAccessor, StorageBuffer_Load_MultiLevel_Swizzle)
     auto* expected =
         R"(#version 310 es
 precision highp float;
+precision highp int;
 
 struct Inner {
   vec3 a;
@@ -670,6 +677,7 @@ TEST_F(GlslASTPrinterTest_MemberAccessor,
     auto* expected =
         R"(#version 310 es
 precision highp float;
+precision highp int;
 
 struct Inner {
   vec3 a;
@@ -731,6 +739,7 @@ TEST_F(GlslASTPrinterTest_MemberAccessor, StorageBuffer_Load_MultiLevel_Index) {
     auto* expected =
         R"(#version 310 es
 precision highp float;
+precision highp int;
 
 struct Inner {
   vec3 a;
@@ -791,6 +800,7 @@ TEST_F(GlslASTPrinterTest_MemberAccessor, StorageBuffer_Store_MultiLevel) {
     auto* expected =
         R"(#version 310 es
 precision highp float;
+precision highp int;
 
 struct Inner {
   vec3 a;
@@ -852,6 +862,7 @@ TEST_F(GlslASTPrinterTest_MemberAccessor, StorageBuffer_Store_Swizzle_SingleLett
     auto* expected =
         R"(#version 310 es
 precision highp float;
+precision highp int;
 
 struct Inner {
   ivec3 a;

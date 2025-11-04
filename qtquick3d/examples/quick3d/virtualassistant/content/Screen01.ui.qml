@@ -73,15 +73,6 @@ Rectangle {
         }
     }
 
-    Item {
-        id: __materialLibrary__
-        DefaultMaterial {
-            id: defaultMaterial
-            objectName: "Default Material"
-            diffuseColor: "#4aee45"
-        }
-    }
-
     TabBar {
         id: bar
         anchors.left: parent.left

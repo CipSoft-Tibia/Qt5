@@ -37,15 +37,18 @@ public:
     inline void swap(QSet<T> &other) noexcept { q_hash.swap(other.q_hash); }
 
 #ifndef Q_QDOC
-    template <typename U = T>
-    QTypeTraits::compare_eq_result_container<QSet, U> operator==(const QSet<T> &other) const
-    { return q_hash == other.q_hash; }
-    template <typename U = T>
-    QTypeTraits::compare_eq_result_container<QSet, U> operator!=(const QSet<T> &other) const
-    { return q_hash != other.q_hash; }
+private:
+    template <typename U = T, QTypeTraits::compare_eq_result_container<QSet, U> = true>
+    friend bool comparesEqual(const QSet &lhs, const QSet &rhs) noexcept
+    {
+        return lhs.q_hash == rhs.q_hash;
+    }
+    QT_DECLARE_EQUALITY_OPERATORS_HELPER(QSet, QSet, /* non-constexpr */, noexcept,
+            template <typename U = T, QTypeTraits::compare_eq_result_container<QSet, U> = true>)
+public:
 #else
-    bool operator==(const QSet &other) const;
-    bool operator!=(const QSet &other) const;
+    friend bool operator==(const QSet &lhs, const QSet &rhs) noexcept;
+    friend bool operator!=(const QSet &lhs, const QSet &rhs) noexcept;
 #endif
 
     inline qsizetype size() const { return q_hash.size(); }
@@ -203,7 +206,7 @@ public:
     friend QSet operator-(const QSet &lhs, const QSet &rhs) { return QSet(lhs) -= rhs; }
     friend QSet operator-(QSet &&lhs, const QSet &rhs) { lhs -= rhs; return std::move(lhs); }
 
-    QList<T> values() const;
+    inline QList<T> values() const;
 
 private:
     static inline QSet intersected_helper(const QSet &lhs, const QSet &rhs);
@@ -329,7 +332,7 @@ Q_INLINE_TEMPLATE bool QSet<T>::contains(const QSet<T> &other) const
 }
 
 template <typename T>
-Q_OUTOFLINE_TEMPLATE QList<T> QSet<T>::values() const
+QList<T> QSet<T>::values() const
 {
     QList<T> result;
     result.reserve(size());

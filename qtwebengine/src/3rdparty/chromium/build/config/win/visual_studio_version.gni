@@ -22,11 +22,9 @@ declare_args() {
 
   # Version of the Windows SDK pointed to by the windows_sdk_path.
   windows_sdk_version = ""
-
-  ninja_use_custom_environment_files = true
 }
 
-if (visual_studio_path == "" && ninja_use_custom_environment_files) {
+if (visual_studio_path == "") {
   toolchain_data =
       exec_script("../../vs_toolchain.py", [ "get_toolchain_dir" ], "scope")
   visual_studio_path = toolchain_data.vs_path
@@ -40,9 +38,7 @@ if (visual_studio_path == "" && ninja_use_custom_environment_files) {
          "You must set the visual_studio_version if you set the path")
   assert(windows_sdk_version != "",
          "You must set the windows_sdk_version if you set the path")
-  if (ninja_use_custom_environment_files) {
-    assert(wdk_path != "",
-           "You must set the wdk_path if you set the visual studio path")
-  }
-  visual_studio_runtime_dirs = []
+  assert(wdk_path != "",
+         "You must set the wdk_path if you set the visual studio path")
+  visual_studio_runtime_dirs = " "
 }

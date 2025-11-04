@@ -49,5 +49,5 @@ int main(int argc, char **argv)
     // surface.surfaceWidget()->show();
 #endif
 
-    return app.exec();
+    return QCoreApplication::exec();
 }

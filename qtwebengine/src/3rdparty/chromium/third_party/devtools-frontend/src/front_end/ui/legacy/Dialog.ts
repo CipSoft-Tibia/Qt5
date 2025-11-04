@@ -29,17 +29,16 @@
  */
 
 import * as Common from '../../core/common/common.js';
+import * as VisualLogging from '../visual_logging/visual_logging.js';
 
 import * as ARIAUtils from './ARIAUtils.js';
+import dialogStyles from './dialog.css.legacy.js';
 import {GlassPane, PointerEventsBehavior} from './GlassPane.js';
 import {InspectorView} from './InspectorView.js';
 import {KeyboardShortcut, Keys} from './KeyboardShortcut.js';
 import {type SplitWidget} from './SplitWidget.js';
 import {type DevToolsCloseButton} from './UIUtils.js';
-
-import {WidgetFocusRestorer, type WidgetElement} from './Widget.js';
-
-import dialogStyles from './dialog.css.legacy.js';
+import {WidgetFocusRestorer} from './Widget.js';
 
 export class Dialog extends Common.ObjectWrapper.eventMixin<EventTypes, typeof GlassPane>(GlassPane) {
   private tabIndexBehavior: OutsideTabIndexBehavior;
@@ -50,19 +49,23 @@ export class Dialog extends Common.ObjectWrapper.eventMixin<EventTypes, typeof G
   private readonly targetDocumentKeyDownHandler: (event: Event) => void;
   private escapeKeyCallback: ((arg0: Event) => void)|null;
 
-  constructor() {
+  constructor(jslogContext?: string) {
     super();
     this.registerRequiredCSS(dialogStyles);
     this.contentElement.tabIndex = 0;
     this.contentElement.addEventListener('focus', () => this.widget().focus(), false);
+    if (jslogContext) {
+      this.contentElement.setAttribute(
+          'jslog', `${VisualLogging.dialog(jslogContext).track({resize: true, keydown: 'Escape'})}`);
+    }
     this.widget().setDefaultFocusedElement(this.contentElement);
-    this.setPointerEventsBehavior(PointerEventsBehavior.BlockedByGlassPane);
+    this.setPointerEventsBehavior(PointerEventsBehavior.BLOCKED_BY_GLASS_PANE);
     this.setOutsideClickCallback(event => {
       this.hide();
       event.consume(true);
     });
     ARIAUtils.markAsModalDialog(this.contentElement);
-    this.tabIndexBehavior = OutsideTabIndexBehavior.DisableAllOutsideTabIndex;
+    this.tabIndexBehavior = OutsideTabIndexBehavior.DISABLE_ALL_OUTSIDE_TAB_INDEX;
     this.tabIndexMap = new Map();
     this.focusRestorer = null;
     this.closeOnEscape = true;
@@ -74,8 +77,13 @@ export class Dialog extends Common.ObjectWrapper.eventMixin<EventTypes, typeof G
     return Boolean(Dialog.instance);
   }
 
-  override show(where?: Document | Element): void {
-    const document = (where instanceof Document ? where : (where || InspectorView.instance().element).ownerDocument as Document);
+  static getInstance(): Dialog|null {
+    return Dialog.instance;
+  }
+
+  override show(where?: Document|Element): void {
+    const document =
+        (where instanceof Document ? where : (where || InspectorView.instance().element).ownerDocument as Document);
     this.targetDocument = document;
     this.targetDocument.addEventListener('keydown', this.targetDocumentKeyDownHandler, true);
 
@@ -98,7 +106,7 @@ export class Dialog extends Common.ObjectWrapper.eventMixin<EventTypes, typeof G
       this.targetDocument.removeEventListener('keydown', this.targetDocumentKeyDownHandler, true);
     }
     this.restoreTabIndexOnElements();
-    this.dispatchEventToListeners(Events.Hidden);
+    this.dispatchEventToListeners(Events.HIDDEN);
     Dialog.instance = null;
   }
 
@@ -121,12 +129,12 @@ export class Dialog extends Common.ObjectWrapper.eventMixin<EventTypes, typeof G
   }
 
   private disableTabIndexOnElements(document: Document): void {
-    if (this.tabIndexBehavior === OutsideTabIndexBehavior.PreserveTabIndex) {
+    if (this.tabIndexBehavior === OutsideTabIndexBehavior.PRESERVE_TAB_INDEX) {
       return;
     }
 
     let exclusionSet: Set<HTMLElement>|(Set<HTMLElement>| null) = (null as Set<HTMLElement>| null);
-    if (this.tabIndexBehavior === OutsideTabIndexBehavior.PreserveMainViewTabIndex) {
+    if (this.tabIndexBehavior === OutsideTabIndexBehavior.PRESERVE_MAIN_VIEW_TAB_INDEX) {
       exclusionSet = this.getMainWidgetTabIndexElements(InspectorView.instance().ownerSplit());
     }
 
@@ -160,7 +168,7 @@ export class Dialog extends Common.ObjectWrapper.eventMixin<EventTypes, typeof G
       return elementSet;
     }
 
-    let node: Node|null|WidgetElement = mainWidget.element;
+    let node: Node|null = mainWidget.element;
     for (; node; node = node.traverseNextNode(mainWidget.element)) {
       if (!(node instanceof HTMLElement)) {
         continue;
@@ -207,15 +215,15 @@ export class Dialog extends Common.ObjectWrapper.eventMixin<EventTypes, typeof G
 }
 
 export const enum Events {
-  Hidden = 'hidden',
+  HIDDEN = 'hidden',
 }
 
 export type EventTypes = {
-  [Events.Hidden]: void,
+  [Events.HIDDEN]: void,
 };
 
 export const enum OutsideTabIndexBehavior {
-  DisableAllOutsideTabIndex = 'DisableAllTabIndex',
-  PreserveMainViewTabIndex = 'PreserveMainViewTabIndex',
-  PreserveTabIndex = 'PreserveTabIndex',
+  DISABLE_ALL_OUTSIDE_TAB_INDEX = 'DisableAllTabIndex',
+  PRESERVE_MAIN_VIEW_TAB_INDEX = 'PreserveMainViewTabIndex',
+  PRESERVE_TAB_INDEX = 'PreserveTabIndex',
 }

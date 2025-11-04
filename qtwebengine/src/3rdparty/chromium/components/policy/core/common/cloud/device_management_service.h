@@ -9,6 +9,7 @@
 
 #include <map>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -21,7 +22,6 @@
 #include "components/policy/core/common/cloud/dm_auth.h"
 #include "components/policy/policy_export.h"
 #include "services/network/public/cpp/simple_url_loader.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 
 namespace base {
 class SequencedTaskRunner;
@@ -208,7 +208,7 @@ class POLICY_EXPORT DeviceManagementService {
       /* TYPE_REQUEST_LICENSE_TYPES = 16, */
       /*Deprecated, CloudPolicyClient no longer uses it.
         TYPE_UPLOAD_APP_INSTALL_REPORT = 17,*/
-      TYPE_TOKEN_ENROLLMENT = 18,
+      TYPE_BROWSER_REGISTRATION = 18,
       TYPE_CHROME_DESKTOP_REPORT = 19,
       TYPE_INITIAL_ENROLLMENT_STATE_RETRIEVAL = 20,
       TYPE_UPLOAD_POLICY_VALIDATION_REPORT = 21,
@@ -223,6 +223,9 @@ class POLICY_EXPORT DeviceManagementService {
       TYPE_BROWSER_UPLOAD_PUBLIC_KEY = 30,
       TYPE_CHROME_PROFILE_REPORT = 31,
       TYPE_OIDC_REGISTRATION = 32,
+      TYPE_TOKEN_BASED_DEVICE_REGISTRATION = 33,
+      TYPE_UPLOAD_FM_REGISTRATION_TOKEN = 34,
+      TYPE_POLICY_AGENT_REGISTRATION = 35,
     };
 
     // The set of HTTP query parameters of the request.
@@ -282,7 +285,7 @@ class POLICY_EXPORT DeviceManagementService {
                                    int response_code,
                                    const std::string& response_body) = 0;
 
-    virtual absl::optional<base::TimeDelta> GetTimeoutDuration() = 0;
+    virtual std::optional<base::TimeDelta> GetTimeoutDuration() = 0;
   };
 
   explicit DeviceManagementService(
@@ -374,12 +377,12 @@ class POLICY_EXPORT JobConfigurationBase
   DeviceManagementService::Job::RetryMethod ShouldRetry(
       int response_code,
       const std::string& response_body) override;
-  absl::optional<base::TimeDelta> GetTimeoutDuration() override;
+  std::optional<base::TimeDelta> GetTimeoutDuration() override;
 
  protected:
   JobConfigurationBase(JobType type,
                        DMAuth auth_data,
-                       absl::optional<std::string> oauth_token,
+                       std::optional<std::string> oauth_token,
                        scoped_refptr<network::SharedURLLoaderFactory> factory);
   ~JobConfigurationBase() override;
 
@@ -393,7 +396,7 @@ class POLICY_EXPORT JobConfigurationBase
   virtual GURL GetURL(int last_error) const = 0;
 
   // Timeout for job request
-  absl::optional<base::TimeDelta> timeout_;
+  std::optional<base::TimeDelta> timeout_;
 
  private:
   JobType type_;
@@ -405,7 +408,7 @@ class POLICY_EXPORT JobConfigurationBase
 
   // OAuth token that will be passed as a query parameter. Both |auth_data_|
   // and |oauth_token_| can be specified for one request.
-  absl::optional<std::string> oauth_token_;
+  std::optional<std::string> oauth_token_;
 
   // Query parameters for the network request.
   ParameterMap query_params_;

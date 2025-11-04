@@ -18,4 +18,9 @@ set(QT_REPO_NOT_WARNINGS_CLEAN TRUE)
 find_package(Qt6 ${PROJECT_VERSION} CONFIG REQUIRED COMPONENTS BuildInternals Core)
 find_package(Qt6 ${PROJECT_VERSION} QUIET CONFIG OPTIONAL_COMPONENTS Linguist)
 
+if(NOT Qt6Linguist_FOUND)
+    message(NOTICE "Skipping the build as the condition \"Qt6Linguist_FOUND\" is not met.")
+    return()
+endif()
+
 qt_build_repo()

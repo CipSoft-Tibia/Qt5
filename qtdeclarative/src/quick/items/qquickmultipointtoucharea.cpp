@@ -660,8 +660,8 @@ void QQuickMultiPointTouchArea::updateTouchData(QEvent *event, RemapEventPoints 
             for (const QEventPoint &p : std::as_const(touchPoints)) {
                 if (p.state() == QEventPoint::State::Released)
                     continue;
-                const QPointF &currentPos = p.scenePosition();
-                const QPointF &startPos = p.scenePressPosition();
+                const QPointF currentPos = mapFromScene(p.scenePosition());
+                const QPointF startPos = mapFromScene(p.scenePressPosition());
                 if (qAbs(currentPos.x() - startPos.x()) > dragThreshold)
                     offerGrab = true;
                 else if (qAbs(currentPos.y() - startPos.y()) > dragThreshold)
@@ -765,7 +765,7 @@ void QQuickMultiPointTouchArea::setTouchEventsEnabled(bool enable)
     // Resolve function for enabling touch events from the (cocoa) platform plugin.
     typedef void (*RegisterTouchWindowFunction)(QWindow *, bool);
     RegisterTouchWindowFunction registerTouchWindow = reinterpret_cast<RegisterTouchWindowFunction>(
-        QGuiApplication::platformNativeInterface()->nativeResourceFunctionForIntegration("registertouchwindow"));
+        QFunctionPointer(QGuiApplication::platformNativeInterface()->nativeResourceFunctionForIntegration("registertouchwindow")));
     if (!registerTouchWindow)
         return; // Not necessarily an error, Qt might be using a different platform plugin.
 

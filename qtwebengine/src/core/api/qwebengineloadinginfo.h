@@ -1,5 +1,6 @@
 // Copyright (C) 2021 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QWEBENGINELOADINGINFO_H
 #define QWEBENGINELOADINGINFO_H
@@ -28,6 +29,7 @@ class Q_WEBENGINECORE_EXPORT QWebEngineLoadingInfo
     Q_PROPERTY(ErrorDomain errorDomain READ errorDomain CONSTANT FINAL)
     Q_PROPERTY(int errorCode READ errorCode CONSTANT FINAL)
     Q_PROPERTY(QMultiMap<QByteArray,QByteArray> responseHeaders READ responseHeaders CONSTANT REVISION(6,6) FINAL)
+    Q_PROPERTY(bool isDownload READ isDownload CONSTANT REVISION(6,9))
 
 public:
     enum LoadStatus {
@@ -50,6 +52,7 @@ public:
     };
     Q_ENUM(ErrorDomain)
 
+    QWebEngineLoadingInfo() : QWebEngineLoadingInfo(QUrl(), LoadStartedStatus) {}
     QWebEngineLoadingInfo(const QWebEngineLoadingInfo &other);
     QWebEngineLoadingInfo &operator=(const QWebEngineLoadingInfo &other);
     QWebEngineLoadingInfo(QWebEngineLoadingInfo &&other);
@@ -63,12 +66,14 @@ public:
     ErrorDomain errorDomain() const;
     int errorCode() const;
     QMultiMap<QByteArray,QByteArray> responseHeaders() const;
+    bool isDownload() const;
 
 private:
     QWebEngineLoadingInfo(const QUrl &url, LoadStatus status, bool isErrorPage = false,
                           const QString &errorString = QString(), int errorCode = 0,
                           ErrorDomain errorDomain = NoErrorDomain,
-                          const QMultiMap<QByteArray,QByteArray> &responseHeaders = {});
+                          const QMultiMap<QByteArray,QByteArray> &responseHeaders = {},
+                          bool isDownload = false);
     class QWebEngineLoadingInfoPrivate;
     Q_DECLARE_PRIVATE(QWebEngineLoadingInfo)
     QExplicitlySharedDataPointer<QWebEngineLoadingInfoPrivate> d_ptr;

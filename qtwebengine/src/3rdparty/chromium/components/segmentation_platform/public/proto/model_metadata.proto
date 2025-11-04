@@ -162,6 +162,12 @@ message CustomInput {
     // Output type: float
     // Output length: 1
     FILL_RANDOM = 10;
+
+    // Fill various metrics from the shopping service. Currently only support
+    // shopping bookmark count.
+    // Output type: float
+    // Output length: 1
+    FILL_FROM_SHOPPING_SERVICE = 11;
   }
 
   // The fill type of the custom input.
@@ -281,8 +287,8 @@ message TrainingOutputs {
         // The user action or histogram to trigger a training data output
         // collection. Note: Only the name and type should be used with
         // bucket_duration = 0.
-        // TODO(crbug.com/1364292): Figure out how to include the trigger as one
-        // of the outputs automatically.
+        // TODO(crbug.com/40239034): Figure out how to include the trigger as
+        // one of the outputs automatically.
         UMAOutput uma_trigger = 2;
       }
     }

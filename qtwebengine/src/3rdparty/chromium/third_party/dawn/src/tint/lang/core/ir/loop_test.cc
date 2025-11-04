@@ -26,7 +26,6 @@
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "src/tint/lang/core/ir/loop.h"
-#include "gtest/gtest-spi.h"
 #include "src/tint/lang/core/ir/ir_helper_test.h"
 
 namespace tint::core::ir {
@@ -34,6 +33,7 @@ namespace {
 
 using namespace tint::core::number_suffixes;  // NOLINT
 using IR_LoopTest = IRTestHelper;
+using IR_LoopDeathTest = IR_LoopTest;
 
 TEST_F(IR_LoopTest, Parent) {
     auto* loop = b.Loop();
@@ -47,34 +47,34 @@ TEST_F(IR_LoopTest, Result) {
     EXPECT_TRUE(loop->Results().IsEmpty());
 }
 
-TEST_F(IR_LoopTest, Fail_NullInitializerBlock) {
-    EXPECT_FATAL_FAILURE(
+TEST_F(IR_LoopDeathTest, Fail_NullInitializerBlock) {
+    EXPECT_DEATH_IF_SUPPORTED(
         {
             Module mod;
             Builder b{mod};
-            Loop loop(nullptr, b.MultiInBlock(), b.MultiInBlock());
+            mod.CreateInstruction<Loop>(nullptr, b.MultiInBlock(), b.MultiInBlock());
         },
-        "");
+        "internal compiler error");
 }
 
-TEST_F(IR_LoopTest, Fail_NullBodyBlock) {
-    EXPECT_FATAL_FAILURE(
+TEST_F(IR_LoopDeathTest, Fail_NullBodyBlock) {
+    EXPECT_DEATH_IF_SUPPORTED(
         {
             Module mod;
             Builder b{mod};
-            Loop loop(b.Block(), nullptr, b.MultiInBlock());
+            mod.CreateInstruction<Loop>(b.Block(), nullptr, b.MultiInBlock());
         },
-        "");
+        "internal compiler error");
 }
 
-TEST_F(IR_LoopTest, Fail_NullContinuingBlock) {
-    EXPECT_FATAL_FAILURE(
+TEST_F(IR_LoopDeathTest, Fail_NullContinuingBlock) {
+    EXPECT_DEATH_IF_SUPPORTED(
         {
             Module mod;
             Builder b{mod};
-            Loop loop(b.Block(), b.MultiInBlock(), nullptr);
+            mod.CreateInstruction<Loop>(b.Block(), b.MultiInBlock(), nullptr);
         },
-        "");
+        "internal compiler error");
 }
 
 TEST_F(IR_LoopTest, Clone) {

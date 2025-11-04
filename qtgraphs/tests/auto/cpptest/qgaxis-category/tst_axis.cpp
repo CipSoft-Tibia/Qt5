@@ -65,6 +65,8 @@ void tst_axis::initialProperties()
     QCOMPARE(m_axis->title(), QString(""));
     QCOMPARE(m_axis->isTitleFixed(), true);
     QCOMPARE(m_axis->isTitleVisible(), false);
+    QCOMPARE(m_axis->isScaleLabelsByCount(), false);
+    QCOMPARE(m_axis->labelSize(), 1.0f);
     QCOMPARE(m_axis->type(), QAbstract3DAxis::AxisType::Category);
 }
 
@@ -100,6 +102,8 @@ void tst_axis::initializeProperties()
     m_axis->setTitle("title");
     m_axis->setTitleFixed(false);
     m_axis->setTitleVisible(true);
+    m_axis->setScaleLabelsByCount(true);
+    m_axis->setLabelSize(2.0f);
 
     QCOMPARE(m_axis->isAutoAdjustRange(), false);
     QCOMPARE(m_axis->labelAutoAngle(), 15.0f);
@@ -108,6 +112,8 @@ void tst_axis::initializeProperties()
     QCOMPARE(m_axis->title(), QString("title"));
     QCOMPARE(m_axis->isTitleFixed(), false);
     QCOMPARE(m_axis->isTitleVisible(), true);
+    QCOMPARE(m_axis->isScaleLabelsByCount(), true);
+    QCOMPARE(m_axis->labelSize(), 2.0f);
 
     QCOMPARE(autoAdjustSpy.size(), 1);
     QCOMPARE(labelAutoAngleSpy.size(), 1);

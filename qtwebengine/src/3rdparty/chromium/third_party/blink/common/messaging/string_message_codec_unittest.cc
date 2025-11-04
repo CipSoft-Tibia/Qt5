@@ -2,6 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#ifdef UNSAFE_BUFFERS_BUILD
+// TODO(crbug.com/351564777): Remove this and convert code to safer constructs.
+#pragma allow_unsafe_buffers
+#endif
+
 #include "third_party/blink/public/common/messaging/string_message_codec.h"
 
 #include <string>
@@ -144,7 +149,7 @@ TransferableMessage EncodeWithV8(const WebMessagePayload& message,
   return transferable_message;
 }
 
-void CheckStringEQ(const absl::optional<WebMessagePayload>& optional_payload,
+void CheckStringEQ(const std::optional<WebMessagePayload>& optional_payload,
                    const std::u16string& str) {
   EXPECT_TRUE(optional_payload);
   auto& payload = optional_payload.value();
@@ -152,7 +157,7 @@ void CheckStringEQ(const absl::optional<WebMessagePayload>& optional_payload,
   EXPECT_EQ(str, absl::get<std::u16string>(payload));
 }
 
-void CheckVectorEQ(const absl::optional<WebMessagePayload>& optional_payload,
+void CheckVectorEQ(const std::optional<WebMessagePayload>& optional_payload,
                    const std::vector<uint8_t>& buffer) {
   EXPECT_TRUE(optional_payload);
   auto& payload = optional_payload.value();

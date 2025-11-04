@@ -13,11 +13,11 @@
 // limitations under the License.
 
 import {globals} from '../../../frontend/globals';
-
 import {AdbKey} from './adb_auth';
 
-function isPasswordCredential(cred: Credential|
-                              null): cred is PasswordCredential {
+function isPasswordCredential(
+  cred: Credential | null,
+): cred is PasswordCredential {
   return cred !== null && cred.type === 'password';
 }
 
@@ -26,7 +26,7 @@ function hasPasswordCredential() {
 }
 
 // how long we will store the key in memory
-const KEY_IN_MEMORY_TIMEOUT = 1000 * 60 * 30;  // 30 minutes
+const KEY_IN_MEMORY_TIMEOUT = 1000 * 60 * 30; // 30 minutes
 
 // Update credential store with the given key.
 export async function maybeStoreKey(key: AdbKey): Promise<void> {
@@ -92,8 +92,10 @@ export class AdbKeyManager {
     if (this.keyInMemoryTimerId) {
       clearTimeout(this.keyInMemoryTimerId);
     }
-    this.keyInMemoryTimerId =
-        setTimeout(() => this.key = undefined, KEY_IN_MEMORY_TIMEOUT);
+    this.keyInMemoryTimerId = setTimeout(
+      () => (this.key = undefined),
+      KEY_IN_MEMORY_TIMEOUT,
+    );
     return key;
   }
 }

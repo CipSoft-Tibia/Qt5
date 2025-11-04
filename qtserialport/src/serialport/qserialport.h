@@ -34,6 +34,9 @@ class Q_SERIALPORT_EXPORT QSerialPort : public QIODevice
     Q_PROPERTY(SerialPortError error READ error RESET clearError NOTIFY errorOccurred BINDABLE bindableError)
     Q_PROPERTY(bool breakEnabled READ isBreakEnabled WRITE setBreakEnabled NOTIFY breakEnabledChanged
                 BINDABLE bindableIsBreakEnabled)
+    Q_PROPERTY(bool settingsRestoredOnClose READ settingsRestoredOnClose
+                WRITE setSettingsRestoredOnClose NOTIFY settingsRestoredOnCloseChanged
+                REVISION(6, 9))
 
 #if defined(Q_OS_WIN32)
     typedef void* Handle;
@@ -189,6 +192,9 @@ public:
     bool isBreakEnabled() const;
     QBindable<bool> bindableIsBreakEnabled();
 
+    bool settingsRestoredOnClose() const;
+    void setSettingsRestoredOnClose(bool restore);
+
     Handle handle() const;
 
 Q_SIGNALS:
@@ -201,6 +207,7 @@ Q_SIGNALS:
     void requestToSendChanged(bool set);
     void errorOccurred(QSerialPort::SerialPortError error);
     void breakEnabledChanged(bool set);
+    void settingsRestoredOnCloseChanged(bool restore);
 
 protected:
     qint64 readData(char *data, qint64 maxSize) override;

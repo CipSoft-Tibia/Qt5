@@ -3,6 +3,7 @@
 // Copyright (C) 2019 Mail.ru Group.
 // Copyright (C) 2020 Klarälvdalens Datakonsult AB, a KDAB Group company, info@kdab.com, author Marc Mutz <marc.mutz@kdab.com>
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:data-parser
 
 #ifndef QSTRING_H
 #define QSTRING_H
@@ -43,6 +44,7 @@ class tst_QString;
 
 QT_BEGIN_NAMESPACE
 
+class qfloat16;
 class QRegularExpression;
 class QRegularExpressionMatch;
 class QString;
@@ -56,6 +58,17 @@ using IsCompatibleChar32TypeHelper =
 template <typename Char>
 using IsCompatibleChar32Type
     = IsCompatibleChar32TypeHelper<q20::remove_cvref_t<Char>>;
+
+// hack to work around ushort/uchar etc being treated as both characters and
+// integers, depending on which Qt API you look at:
+template <typename T> struct treat_as_integral_arg : std::false_type {};
+template <> struct treat_as_integral_arg<unsigned short> : std::true_type {};
+template <> struct treat_as_integral_arg<  signed short> : std::true_type {};
+template <> struct treat_as_integral_arg<unsigned  char> : std::true_type {};
+template <> struct treat_as_integral_arg<  signed  char> : std::true_type {};
+// QTBUG-126054, keep until we can fix it for all platforms, not just Windows
+// (where wchar_t does convert to QAnyStringView):
+template <> struct treat_as_integral_arg<wchar_t> : std::true_type {};
 }
 
 // Qt 4.x compatibility
@@ -146,6 +159,37 @@ class Q_CORE_EXPORT QString
             QtPrivate::IsCompatibleChar8Type<Char>,
             std::is_same<Char, QLatin1Char> // special case
         >;
+
+    template <typename T>
+    using is_string_like = std::conjunction<
+            std::negation<QtPrivate::treat_as_integral_arg<std::remove_cv_t<T>>>, // used to be integral, so keep
+            std::is_convertible<T, QAnyStringView>
+        >;
+
+    template <typename T>
+    using if_string_like = std::enable_if_t<is_string_like<T>::value, bool>;
+
+    template <typename T>
+    using is_floating_point_like = std::disjunction<
+        #if QFLOAT16_IS_NATIVE
+            std::is_same<q20::remove_cvref_t<T>, QtPrivate::NativeFloat16Type>,
+        #endif
+            std::is_same<q20::remove_cvref_t<T>, qfloat16>,
+            std::is_floating_point<T>
+        >;
+
+    template <typename T>
+    using if_floating_point = std::enable_if_t<is_floating_point_like<T>::value, bool>;
+
+    template <typename T>
+    using if_integral_non_char = std::enable_if_t<std::conjunction_v<
+            std::disjunction< // unlike is_integral, also covers unscoped enums
+                std::is_convertible<T, qulonglong>,
+                std::is_convertible<T, qlonglong>
+            >,
+            std::negation<is_floating_point_like<T>>, // has its own overload
+            std::negation<is_string_like<T>>          // ditto
+        >, bool>;
 
     template <typename Iterator>
     static constexpr bool is_compatible_iterator_v = std::conjunction_v<
@@ -238,6 +282,7 @@ public:
     [[nodiscard]] inline QChar back() const { return at(size() - 1); }
     [[nodiscard]] inline QChar &back();
 
+#if QT_CORE_REMOVED_SINCE(6, 9)
     [[nodiscard]] QString arg(qlonglong a, int fieldwidth=0, int base=10,
                 QChar fillChar = u' ') const;
     [[nodiscard]] QString arg(qulonglong a, int fieldwidth=0, int base=10,
@@ -266,13 +311,38 @@ public:
                 QChar fillChar = u' ') const;
     [[nodiscard]] QString arg(QLatin1StringView a, int fieldWidth = 0,
                 QChar fillChar = u' ') const;
+#endif
+
+    template <typename T, if_integral_non_char<T> = true>
+    [[nodiscard]] QString arg(T a, int fieldWidth = 0, int base = 10,
+                              QChar fillChar = u' ') const
+    {
+        using U = typename std::conditional<
+                // underlying_type_t<non-enum> is UB in C++17/SFINAE in C++20, so wrap:
+                std::is_enum_v<T>, std::underlying_type<T>,
+                                   q20::type_identity<T>
+            >::type::type;
+        if constexpr (std::is_signed_v<U>)
+            return arg_impl(qlonglong(a), fieldWidth, base, fillChar);
+        else
+            return arg_impl(qulonglong(a), fieldWidth, base, fillChar);
+    }
+
+    template <typename T, if_floating_point<T> = true>
+    [[nodiscard]] QString arg(T a, int fieldWidth = 0, char format = 'g', int precision = -1,
+                              QChar fillChar = u' ') const
+    { return arg_impl(double(a), fieldWidth, format, precision, fillChar); }
+
+    template <typename T, if_string_like<T> = true>
+    [[nodiscard]] QString arg(const T &a, int fieldWidth = 0, QChar fillChar = u' ') const
+    { return arg_impl(QAnyStringView(a), fieldWidth, fillChar); }
+
 private:
-    template <typename T>
-    using is_convertible_to_view_or_qstring = std::disjunction<
-            std::is_convertible<T, QString>,
-            std::is_convertible<T, QStringView>,
-            std::is_convertible<T, QLatin1StringView>
-        >;
+    QString arg_impl(qlonglong a, int fieldwidth, int base, QChar fillChar) const;
+    QString arg_impl(qulonglong a, int fieldwidth, int base, QChar fillChar) const;
+    QString arg_impl(double a, int fieldWidth, char format, int precision, QChar fillChar) const;
+    QString arg_impl(QAnyStringView a, int fieldWidth, QChar fillChar) const;
+
 public:
     template <typename...Args>
     [[nodiscard]]
@@ -280,10 +350,7 @@ public:
     QString
 #else
     typename std::enable_if<
-        sizeof...(Args) >= 2 && std::is_same<
-            QtPrivate::BoolList<is_convertible_to_view_or_qstring<Args>::value..., true>,
-            QtPrivate::BoolList<true, is_convertible_to_view_or_qstring<Args>::value...>
-        >::value,
+        sizeof...(Args) >= 2 && std::conjunction_v<is_string_like<Args>...>,
         QString
     >::type
 #endif
@@ -702,7 +769,17 @@ public:
 
     QString &setRawData(const QChar *unicode, qsizetype size);
     QString &setUnicode(const QChar *unicode, qsizetype size);
-    inline QString &setUtf16(const ushort *utf16, qsizetype size); // ### Qt 7 char16_t
+    Q_WEAK_OVERLOAD
+    QString &setUnicode(const char16_t *utf16, qsizetype size)
+    { return setUnicode(reinterpret_cast<const QChar *>(utf16), size); }
+    QString &setUtf16(const char16_t *utf16, qsizetype size)
+    { return setUnicode(reinterpret_cast<const QChar *>(utf16), size); }
+
+#if !QT_CORE_REMOVED_SINCE(6, 9)
+    Q_WEAK_OVERLOAD
+#endif
+    QString &setUtf16(const ushort *autf16, qsizetype asize)
+    { return setUnicode(reinterpret_cast<const QChar *>(autf16), asize); }
 
     int compare(const QString &s, Qt::CaseSensitivity cs = Qt::CaseSensitive) const noexcept;
     int compare(QLatin1StringView other, Qt::CaseSensitivity cs = Qt::CaseSensitive) const noexcept;
@@ -1009,12 +1086,14 @@ public:
 
 private:
 #if defined(QT_NO_CAST_FROM_ASCII)
-    QString &operator+=(const char *s);
-    QString &operator+=(const QByteArray &s);
-    QString(const char *ch);
-    QString(const QByteArray &a);
-    QString &operator=(const char  *ch);
-    QString &operator=(const QByteArray &a);
+#define QSTRING_DECL_DELETED_ASCII_OP Q_DECL_EQ_DELETE_X("This function is not available under QT_NO_CAST_FROM_ASCII")
+    QString &operator+=(const char *s) QSTRING_DECL_DELETED_ASCII_OP;
+    QString &operator+=(const QByteArray &s) QSTRING_DECL_DELETED_ASCII_OP;
+    QString(const char *ch) QSTRING_DECL_DELETED_ASCII_OP;
+    QString(const QByteArray &a) QSTRING_DECL_DELETED_ASCII_OP;
+    QString &operator=(const char  *ch) QSTRING_DECL_DELETED_ASCII_OP;
+    QString &operator=(const QByteArray &a) QSTRING_DECL_DELETED_ASCII_OP;
+#undef QSTRING_DECL_DELETED_ASCII_OP
 #endif
 
     DataPointer d;
@@ -1275,6 +1354,7 @@ QString &QString::setNum(ulong n, int base)
 { return setNum(qulonglong(n), base); }
 QString &QString::setNum(float n, char f, int prec)
 { return setNum(double(n),f,prec); }
+#if QT_CORE_REMOVED_SINCE(6, 9)
 QString QString::arg(int a, int fieldWidth, int base, QChar fillChar) const
 { return arg(qlonglong(a), fieldWidth, base, fillChar); }
 QString QString::arg(uint a, int fieldWidth, int base, QChar fillChar) const
@@ -1287,6 +1367,7 @@ QString QString::arg(short a, int fieldWidth, int base, QChar fillChar) const
 { return arg(qlonglong(a), fieldWidth, base, fillChar); }
 QString QString::arg(ushort a, int fieldWidth, int base, QChar fillChar) const
 { return arg(qulonglong(a), fieldWidth, base, fillChar); }
+#endif // QT_CORE_REMOVED_SINCE
 
 QString QString::section(QChar asep, qsizetype astart, qsizetype aend, SectionFlags aflags) const
 { return section(QString(asep), astart, aend, aflags); }
@@ -1347,8 +1428,6 @@ void QString::squeeze()
         d.clearFlag(Data::CapacityReserved);
 }
 
-QString &QString::setUtf16(const ushort *autf16, qsizetype asize)
-{ return setUnicode(reinterpret_cast<const QChar *>(autf16), asize); }
 QChar &QString::operator[](qsizetype i)
 { verify(i, 1); return data()[i]; }
 QChar &QString::front() { return operator[](0); }
@@ -1422,6 +1501,7 @@ bool QByteArray::operator>=(const QString &s) const
 #endif // !defined(QT_NO_CAST_FROM_ASCII) && !defined(QT_RESTRICTED_CAST_FROM_ASCII)
 
 #if !defined(QT_USE_FAST_OPERATOR_PLUS) && !defined(QT_USE_QSTRINGBUILDER)
+// QString + QString
 inline QString operator+(const QString &s1, const QString &s2)
 { QString t(s1); t += s2; return t; }
 inline QString operator+(QString &&lhs, const QString &rhs)
@@ -1432,6 +1512,17 @@ inline QString operator+(QString &&lhs, QChar rhs)
 { return std::move(lhs += rhs); }
 inline QString operator+(QChar s1, const QString &s2)
 { QString t(s1); t += s2; return t; }
+inline QString operator+(const QString &lhs, QStringView rhs)
+{
+    QString ret{lhs.size() + rhs.size(), Qt::Uninitialized};
+    return ret.assign(lhs).append(rhs);
+}
+inline QString operator+(QStringView lhs, const QString &rhs)
+{
+    QString ret{lhs.size() + rhs.size(), Qt::Uninitialized};
+    return ret.assign(lhs).append(rhs);
+}
+
 #  if !defined(QT_NO_CAST_FROM_ASCII) && !defined(QT_RESTRICTED_CAST_FROM_ASCII)
 QT_ASCII_CAST_WARN inline QString operator+(const QString &s1, const char *s2)
 { QString t(s1); t += QUtf8StringView(s2); return t; }
@@ -1558,7 +1649,7 @@ inline QString &&asString(QString &&s)              { return std::move(s); }
 namespace QtPrivate {
 
 struct ArgBase {
-    enum Tag : uchar { L1, U8, U16 } tag;
+    enum Tag : uchar { L1, Any, U16 } tag;
 };
 
 struct QStringViewArg : ArgBase {
@@ -1573,20 +1664,26 @@ struct QLatin1StringArg : ArgBase {
     constexpr explicit QLatin1StringArg(QLatin1StringView v) noexcept : ArgBase{L1}, string{v} {}
 };
 
+struct QAnyStringArg : ArgBase {
+    QAnyStringView string;
+    QAnyStringArg() = default;
+    constexpr explicit QAnyStringArg(QAnyStringView v) noexcept : ArgBase{Any}, string{v} {}
+};
+
+#if QT_CORE_REMOVED_SINCE(6, 9)
 [[nodiscard]] Q_CORE_EXPORT QString argToQString(QStringView pattern, size_t n, const ArgBase **args);
 [[nodiscard]] Q_CORE_EXPORT QString argToQString(QLatin1StringView pattern, size_t n, const ArgBase **args);
+#endif
+[[nodiscard]] Q_CORE_EXPORT QString argToQString(QAnyStringView pattern, size_t n, const ArgBase **args);
 
-template <typename StringView, typename...Args>
-[[nodiscard]] Q_ALWAYS_INLINE QString argToQStringDispatch(StringView pattern, const Args &...args)
+template <typename...Args>
+[[nodiscard]] Q_ALWAYS_INLINE QString argToQStringDispatch(QAnyStringView pattern, const Args &...args)
 {
     const ArgBase *argBases[] = {&args..., /* avoid zero-sized array */ nullptr};
     return QtPrivate::argToQString(pattern, sizeof...(Args), argBases);
 }
 
-          inline QStringViewArg   qStringLikeToArg(const QString &s) noexcept { return QStringViewArg{qToStringViewIgnoringNull(s)}; }
-constexpr inline QStringViewArg   qStringLikeToArg(QStringView s) noexcept { return QStringViewArg{s}; }
-          inline QStringViewArg   qStringLikeToArg(const QChar &c) noexcept { return QStringViewArg{QStringView{&c, 1}}; }
-constexpr inline QLatin1StringArg qStringLikeToArg(QLatin1StringView s) noexcept { return QLatin1StringArg{s}; }
+constexpr inline QAnyStringArg qStringLikeToArg(QAnyStringView s) noexcept { return QAnyStringArg{s}; }
 
 } // namespace QtPrivate
 
@@ -1600,6 +1697,19 @@ QString QStringView::arg(Args &&...args) const
 template <typename...Args>
 Q_ALWAYS_INLINE
 QString QLatin1StringView::arg(Args &&...args) const
+{
+    return QtPrivate::argToQStringDispatch(*this, QtPrivate::qStringLikeToArg(args)...);
+}
+
+template <bool HasChar8T>
+template <typename...Args>
+QString QBasicUtf8StringView<HasChar8T>::arg(Args &&...args) const
+{
+    return QtPrivate::argToQStringDispatch(*this, QtPrivate::qStringLikeToArg(args)...);
+}
+
+template <typename...Args>
+QString QAnyStringView::arg(Args &&...args) const
 {
     return QtPrivate::argToQStringDispatch(*this, QtPrivate::qStringLikeToArg(args)...);
 }

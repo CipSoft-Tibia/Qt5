@@ -5,9 +5,10 @@
 #ifndef THIRD_PARTY_BLINK_RENDERER_CORE_FRAME_REMOTE_FRAME_VIEW_H_
 #define THIRD_PARTY_BLINK_RENDERER_CORE_FRAME_REMOTE_FRAME_VIEW_H_
 
+#include <optional>
+
 #include "base/check.h"
 #include "base/time/time.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "third_party/blink/public/mojom/frame/lifecycle.mojom-blink-forward.h"
 #include "third_party/blink/public/mojom/frame/viewport_intersection_state.mojom-blink.h"
 #include "third_party/blink/renderer/core/frame/embedded_content_view.h"
@@ -51,6 +52,7 @@ class RemoteFrameView final : public GarbageCollected<RemoteFrameView>,
   void Dispose() override;
   void SetFrameRect(const gfx::Rect&) override;
   void PropagateFrameRects() override;
+  void ZoomFactorChanged(float zoom_factor) override;
   void Paint(GraphicsContext&,
              PaintFlags,
              const CullRect&,
@@ -61,7 +63,7 @@ class RemoteFrameView final : public GarbageCollected<RemoteFrameView>,
 
   bool UpdateViewportIntersectionsForSubtree(
       unsigned parent_flags,
-      absl::optional<base::TimeTicks>&) override;
+      ComputeIntersectionsContext&) override;
   void SetNeedsOcclusionTracking(bool);
   bool NeedsOcclusionTracking() const { return needs_occlusion_tracking_; }
 
@@ -89,7 +91,7 @@ class RemoteFrameView final : public GarbageCollected<RemoteFrameView>,
 
   void Trace(Visitor*) const override;
 
-  void ResetFrozenSize() { frozen_size_ = absl::nullopt; }
+  void ResetFrozenSize() { frozen_size_ = std::nullopt; }
 
  protected:
   bool NeedsViewportOffset() const override { return true; }
@@ -101,8 +103,8 @@ class RemoteFrameView final : public GarbageCollected<RemoteFrameView>,
  private:
   // This function returns the LocalFrameView associated with the parent frame's
   // local root, or nullptr if the parent frame is not a local frame. For
-  // portals, this will return the local root associated with the portal's
-  // owner.
+  // fenced frames, this will return the local root associated with the fenced
+  // frame's owner.
   LocalFrameView* ParentLocalRootFrameView() const;
 
   // This provides the rectangle that the embedded compositor should raster
@@ -121,7 +123,7 @@ class RemoteFrameView final : public GarbageCollected<RemoteFrameView>,
   Member<RemoteFrame> remote_frame_;
   mojom::blink::ViewportIntersectionState last_intersection_state_;
   gfx::Rect compositing_rect_;
-  absl::optional<gfx::Size> frozen_size_;
+  std::optional<gfx::Size> frozen_size_;
   float compositing_scale_factor_ = 1.0f;
 
   IntrinsicSizingInfo intrinsic_sizing_info_;

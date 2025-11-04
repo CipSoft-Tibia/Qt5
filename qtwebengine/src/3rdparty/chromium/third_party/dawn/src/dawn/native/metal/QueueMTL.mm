@@ -59,10 +59,9 @@ void Queue::DestroyImpl() {
     mCommandQueue = nullptr;
     mLastSubmittedCommands = nullptr;
 
-    // Don't free mMtlSharedEvent because it can be queried after device destruction for
-    // synchronization needs.
-
-    QueueBase::DestroyImpl();
+    mSharedFence = nullptr;
+    // Don't free `mMtlSharedEvent` because it can be queried after device destruction for
+    // synchronization needs. However, we destroy the `mSharedFence` to release its device ref.
 }
 
 MaybeError Queue::Initialize() {
@@ -75,6 +74,10 @@ MaybeError Queue::Initialize() {
 
     if (@available(macOS 10.14, iOS 12.0, *)) {
         mMtlSharedEvent.Acquire([mtlDevice newSharedEvent]);
+        if (mMtlSharedEvent == nil) {
+            return DAWN_INTERNAL_ERROR("Failed to create MTLSharedEvent.");
+        }
+        DAWN_TRY_ASSIGN(mSharedFence, GetOrCreateSharedFence());
     }
 
     return mCommandContext.PrepareNextCommandBuffer(*mCommandQueue);
@@ -104,6 +107,9 @@ MaybeError Queue::WaitForIdleForDestruction() {
 }
 
 void Queue::WaitForCommandsToBeScheduled() {
+    if (!IsAlive()) {
+        return;
+    }
     if (GetDevice()->ConsumedError(SubmitPendingCommandBuffer())) {
         return;
     }
@@ -179,29 +185,27 @@ MaybeError Queue::SubmitPendingCommandBuffer() {
 
     TRACE_EVENT_ASYNC_BEGIN0(platform, GPUWork, "DeviceMTL::SubmitPendingCommandBuffer",
                              uint64_t(pendingSerial));
-    if (@available(macOS 10.14, *)) {
-        id rawEvent = *mMtlSharedEvent;
-        id<MTLSharedEvent> sharedEvent = static_cast<id<MTLSharedEvent>>(rawEvent);
-        [*pendingCommands encodeSignalEvent:sharedEvent value:static_cast<uint64_t>(pendingSerial)];
+    if (@available(macOS 10.14, iOS 12.0, *)) {
+        DAWN_ASSERT(mSharedFence);
+        [*pendingCommands encodeSignalEvent:mSharedFence->GetMTLSharedEvent()
+                                      value:static_cast<uint64_t>(pendingSerial)];
     }
     [*pendingCommands commit];
 
     return mCommandContext.PrepareNextCommandBuffer(*mCommandQueue);
 }
 
-void Queue::ExportLastSignaledEvent(ExternalImageMTLSharedEventDescriptor* desc) {
-    // Ensure commands are submitted before getting the last submited serial.
-    // Ignore the error since we still want to export the serial of the last successful
-    // submission - that was the last serial that was actually signaled.
-    ForceEventualFlushOfCommands();
+id<MTLSharedEvent> Queue::GetMTLSharedEvent() const {
+    return mMtlSharedEvent.Get();
+}
 
-    if (GetDevice()->ConsumedError(SubmitPendingCommandBuffer())) {
-        desc->sharedEvent = nullptr;
-        return;
+ResultOrError<Ref<SharedFence>> Queue::GetOrCreateSharedFence() {
+    if (mSharedFence) {
+        return mSharedFence;
     }
-
-    desc->sharedEvent = *mMtlSharedEvent;
-    desc->signaledValue = static_cast<uint64_t>(GetLastSubmittedCommandSerial());
+    SharedFenceMTLSharedEventDescriptor desc;
+    desc.sharedEvent = mMtlSharedEvent.Get();
+    return SharedFence::Create(ToBackend(GetDevice()), "Internal MTLSharedEvent", &desc);
 }
 
 MaybeError Queue::SubmitImpl(uint32_t commandCount, CommandBufferBase* const* commands) {
@@ -222,6 +226,10 @@ MaybeError Queue::SubmitImpl(uint32_t commandCount, CommandBufferBase* const* co
 
 bool Queue::HasPendingCommands() const {
     return mCommandContext.NeedsSubmit();
+}
+
+MaybeError Queue::SubmitPendingCommands() {
+    return SubmitPendingCommandBuffer();
 }
 
 ResultOrError<ExecutionSerial> Queue::CheckAndUpdateCompletedSerials() {

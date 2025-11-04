@@ -796,6 +796,7 @@ void QVirtualKeyboardInputEngine::timerEvent(QTimerEvent *timerEvent)
         \li \c InputEngine.InputMode.Thai Thai input mode.
         \li \c InputEngine.InputMode.Stroke Stroke input mode for Chinese.
         \li \c InputEngine.InputMode.Romaji Romaji input mode for Japanese.
+        \li \c InputEngine.InputMode.HiraganaFlick flick input mode for Japanese.
     \endlist
 */
 
@@ -883,6 +884,8 @@ void QVirtualKeyboardInputEngine::timerEvent(QTimerEvent *timerEvent)
            Stroke input mode for Chinese.
     \value Romaji
            Romaji input mode for Japanese.
+    \value HiraganaFlick
+           Flick input mode for Japanese.
 */
 
 /*!

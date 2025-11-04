@@ -4,7 +4,7 @@
 #ifndef PARTICLES_TESTS_SHARED
 #define PARTICLES_TESTS_SHARED
 #include <QtQuick/QQuickView>
-#include <QtTest>
+#include <QTest>
 #include <QAbstractAnimation>
 #include <QScopedPointer>
 

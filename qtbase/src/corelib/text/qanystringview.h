@@ -27,6 +27,10 @@ using wrapped_t = typename wrapped<Tag, Result>::type;
 
 } // namespace QtPrivate
 
+#if QT_VERSION >= QT_VERSION_CHECK(7, 0, 0) || defined(QT_BOOTSTRAPPED)
+# define QT_ANYSTRINGVIEW_TAG_IN_LOWER_BITS
+#endif
+
 class QAnyStringView
 {
 public:
@@ -34,7 +38,7 @@ public:
     typedef qsizetype size_type;
 private:
     static constexpr size_t SizeMask = (std::numeric_limits<size_t>::max)() / 4;
-#if QT_VERSION >= QT_VERSION_CHECK(7, 0, 0) || defined(QT_BOOTSTRAPPED)
+#ifdef QT_ANYSTRINGVIEW_TAG_IN_LOWER_BITS
     static constexpr int SizeShift = 2;
     static constexpr size_t Latin1Flag = 1;
 #else
@@ -96,10 +100,6 @@ private:
         std::is_convertible<T, QStringOrQByteArray>
     >, bool>;
 
-    // confirm we don't make an accidental copy constructor:
-    static_assert(QtPrivate::IsContainerCompatibleWithQStringView<QAnyStringView>::value == false);
-    static_assert(QtPrivate::IsContainerCompatibleWithQUtf8StringView<QAnyStringView>::value == false);
-
     template<typename Char>
     static constexpr bool isAsciiOnlyCharsAtCompileTime(Char *str, qsizetype sz) noexcept
     {
@@ -150,6 +150,15 @@ private:
         explicit QCharContainer() = default;
         QChar ch;
     };
+
+    template <typename Char>
+    static constexpr QAnyStringView fromCharInternal(const Char &ch) noexcept
+    {
+        if constexpr (sizeof ch == 1) // even char8_t is Latin-1 as single octet
+            return QAnyStringView{&ch, 1, size_t{Tag::Latin1}};
+        else // sizeof ch == 2
+            return {&ch, 1};
+    }
 
     explicit constexpr QAnyStringView(const void *d, qsizetype n, std::size_t sizeAndType) noexcept
         : m_data{d}, m_size{std::size_t(n) | (sizeAndType & TypeMask)} {}
@@ -206,7 +215,7 @@ public:
 
     template <typename Char, if_compatible_char<Char> = true>
     constexpr QAnyStringView(const Char &c) noexcept
-        : QAnyStringView{&c, 1} {}
+        : QAnyStringView{fromCharInternal(c)} {}
     template <typename Char, if_convertible_to<QChar, Char> = true>
     constexpr QAnyStringView(Char ch, QCharContainer &&capacity = QCharContainer()) noexcept
         : QAnyStringView{&(capacity.ch = ch), 1} {}
@@ -253,7 +262,7 @@ public:
     }
 
     [[nodiscard]] constexpr QAnyStringView sliced(qsizetype pos) const
-    { verify(pos, 0); auto r = *this; r.advanceData(pos); r.setSize(size() - pos); return r; }
+    { verify(pos, 0); auto r = *this; r.advanceData(pos); r.decreaseSize(pos); return r; }
     [[nodiscard]] constexpr QAnyStringView sliced(qsizetype pos, qsizetype n) const
     { verify(pos, n); auto r = *this; r.advanceData(pos); r.setSize(n); return r; }
     [[nodiscard]] constexpr QAnyStringView first(qsizetype n) const
@@ -271,8 +280,10 @@ public:
     constexpr void truncate(qsizetype n)
     { verify(0, n); setSize(n); }
     constexpr void chop(qsizetype n)
-    { verify(0, n); setSize(size() - n); }
+    { verify(0, n); decreaseSize(n); }
 
+    template <typename...Args>
+    [[nodiscard]] inline QString arg(Args &&...args) const;
 
     [[nodiscard]] inline QString toString() const; // defined in qstring.h
 
@@ -340,6 +351,11 @@ private:
     [[nodiscard]] inline constexpr QLatin1StringView asLatin1StringView() const;
     [[nodiscard]] constexpr size_t charSize() const noexcept { return isUtf16() ? 2 : 1; }
     constexpr void setSize(qsizetype sz) noexcept { m_size = size_t(sz) | tag(); }
+    constexpr void decreaseSize(qsizetype delta) noexcept
+    {
+        delta <<= SizeShift;
+        m_size -= delta;
+    }
     constexpr void advanceData(qsizetype delta) noexcept
     { m_data_utf8 += delta * charSize(); }
     Q_ALWAYS_INLINE constexpr void verify([[maybe_unused]] qsizetype pos = 0,

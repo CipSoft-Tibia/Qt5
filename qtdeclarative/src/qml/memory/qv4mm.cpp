@@ -1,31 +1,32 @@
 // Copyright (C) 2021 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
-#include "qv4engine_p.h"
-#include "qv4object_p.h"
-#include "qv4mm_p.h"
-#include "qv4qobjectwrapper_p.h"
-#include "qv4identifiertable_p.h"
-#include <QtCore/qalgorithms.h>
-#include <QtCore/private/qnumeric_p.h>
-#include <QtCore/qloggingcategory.h>
-#include <private/qv4alloca_p.h>
-#include <qqmlengine.h>
-#include "PageReservation.h"
 #include "PageAllocation.h"
+#include "PageReservation.h"
 
-#include <QElapsedTimer>
-#include <QMap>
-#include <QScopedValueRollback>
+#include <private/qnumeric_p.h>
+#include <private/qv4alloca_p.h>
+#include <private/qv4engine_p.h>
+#include <private/qv4identifiertable_p.h>
+#include <private/qv4mapobject_p.h>
+#include <private/qv4mm_p.h>
+#include <private/qv4object_p.h>
+#include <private/qv4profiling_p.h>
+#include <private/qv4qobjectwrapper_p.h>
+#include <private/qv4setobject_p.h>
+#include <private/qv4stackframe_p.h>
 
-#include <iostream>
-#include <cstdlib>
+#include <QtQml/qqmlengine.h>
+
+#include <QtCore/qalgorithms.h>
+#include <QtCore/qelapsedtimer.h>
+#include <QtCore/qloggingcategory.h>
+#include <QtCore/qmap.h>
+#include <QtCore/qscopedvaluerollback.h>
+
 #include <algorithm>
-#include "qv4profiling_p.h"
-#include "qv4mapobject_p.h"
-#include "qv4setobject_p.h"
-
 #include <chrono>
+#include <cstdlib>
 
 //#define MM_STATS
 
@@ -56,16 +57,11 @@
 #include <pthread_np.h>
 #endif
 
-Q_LOGGING_CATEGORY(lcGcStats, "qt.qml.gc.statistics")
-Q_DECLARE_LOGGING_CATEGORY(lcGcStats)
-Q_LOGGING_CATEGORY(lcGcAllocatorStats, "qt.qml.gc.allocatorStats")
-Q_DECLARE_LOGGING_CATEGORY(lcGcAllocatorStats)
-Q_LOGGING_CATEGORY(lcGcStateTransitions, "qt.qml.gc.stateTransitions")
-Q_DECLARE_LOGGING_CATEGORY(lcGcStateTransitions)
-Q_LOGGING_CATEGORY(lcGcForcedRuns, "qt.qml.gc.forcedRuns")
-Q_DECLARE_LOGGING_CATEGORY(lcGcForcedRuns)
-Q_LOGGING_CATEGORY(lcGcStepExecution, "qt.qml.gc.stepExecution")
-Q_DECLARE_LOGGING_CATEGORY(lcGcStepExecution)
+Q_STATIC_LOGGING_CATEGORY(lcGcStats, "qt.qml.gc.statistics")
+Q_STATIC_LOGGING_CATEGORY(lcGcAllocatorStats, "qt.qml.gc.allocatorStats")
+Q_STATIC_LOGGING_CATEGORY(lcGcStateTransitions, "qt.qml.gc.stateTransitions")
+Q_STATIC_LOGGING_CATEGORY(lcGcForcedRuns, "qt.qml.gc.forcedRuns")
+Q_STATIC_LOGGING_CATEGORY(lcGcStepExecution, "qt.qml.gc.stepExecution")
 
 using namespace WTF;
 
@@ -1478,6 +1474,19 @@ void MemoryManager::collectFromJSStack(MarkStack *markStack) const
             m->mark(markStack);
         }
         ++v;
+    }
+
+    for (auto *frame = engine->currentStackFrame; frame; frame = frame->parentFrame()) {
+        if (!frame->isMetaTypesFrame())
+            continue;
+
+        if (const QQmlPrivate::AOTTrackedLocalsStorage *locals
+                = static_cast<const MetaTypesStackFrame *>(frame)->locals()) {
+            // Actual AOT-compiled functions initialize the locals firsth thing when they
+            // are called. However, the ScopedStackFrame has no locals, but still uses a
+            // MetaTypesStackFrame.
+            locals->markObjects(markStack);
+        }
     }
 }
 

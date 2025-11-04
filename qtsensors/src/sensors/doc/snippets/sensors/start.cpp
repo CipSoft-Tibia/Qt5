@@ -3,7 +3,7 @@
 
 #include <QtSensors/qsensor.h>
 #include <QtCore/QMetaObject>
-#include <QtCore/QMetaproperty>
+#include <QtCore/QMetaProperty>
 
 void start()
 {

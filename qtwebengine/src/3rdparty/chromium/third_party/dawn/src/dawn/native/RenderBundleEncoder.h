@@ -45,6 +45,8 @@ class RenderBundleEncoder final : public RenderEncoderBase {
                                            const RenderBundleEncoderDescriptor* descriptor);
     static Ref<RenderBundleEncoder> MakeError(DeviceBase* device, const char* label);
 
+    ~RenderBundleEncoder() override;
+
     ObjectType GetType() const override;
 
     RenderBundleBase* APIFinish(const RenderBundleDescriptor* descriptor);
@@ -57,7 +59,7 @@ class RenderBundleEncoder final : public RenderEncoderBase {
 
     void DestroyImpl() override;
 
-    ResultOrError<Ref<RenderBundleBase>> FinishImpl(const RenderBundleDescriptor* descriptor);
+    ResultOrError<Ref<RenderBundleBase>> Finish(const RenderBundleDescriptor* descriptor);
     MaybeError ValidateFinish(const RenderPassResourceUsage& usages) const;
 
     EncodingContext mBundleEncodingContext;

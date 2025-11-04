@@ -41,6 +41,8 @@ jumbo_component("wm") {
     "core/focus_rules.h",
     "core/native_cursor_manager.h",
     "core/native_cursor_manager_delegate.h",
+    "core/scoped_animation_disabler.cc",
+    "core/scoped_animation_disabler.h",
     "core/shadow_controller.cc",
     "core/shadow_controller.h",
     "core/shadow_controller_delegate.h",
@@ -79,6 +81,7 @@ jumbo_component("wm") {
     "//ui/base",
     "//ui/base/cursor",
     "//ui/base/cursor/mojom:cursor_type",
+    "//ui/base/mojom:mojom",
     "//ui/color",
     "//ui/compositor",
     "//ui/display",
@@ -89,11 +92,13 @@ jumbo_component("wm") {
   ]
 
   deps = [
+    "//cc/paint",
     "//skia",
     "//ui/base/ime",
     "//ui/compositor_extra",
     "//ui/events/platform",
     "//ui/gfx/animation",
+    "//ui/lottie",
     "//ui/resources",
   ]
 
@@ -169,6 +174,7 @@ test("wm_unittests") {
     "//ui/base/cursor",
     "//ui/base/cursor/mojom:cursor_type",
     "//ui/base/ime",
+    "//ui/base/mojom:mojom",
     "//ui/compositor:test_support",
     "//ui/compositor_extra",
     "//ui/events:test_support",

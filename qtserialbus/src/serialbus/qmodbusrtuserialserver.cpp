@@ -1,5 +1,6 @@
 // Copyright (C) 2017 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:data-parser
 
 #include "qmodbusrtuserialserver.h"
 #include "qmodbusrtuserialserver_p.h"
@@ -147,7 +148,7 @@ void QModbusRtuSerialServer::close()
 QModbusResponse QModbusRtuSerialServer::processRequest(const QModbusPdu &request)
 {
     if (request.functionCode() == QModbusRequest::EncapsulatedInterfaceTransport) {
-        quint8 meiType;
+        quint8 meiType = 0;
         request.decodeData(&meiType);
         if (meiType == EncapsulatedInterfaceTransport::CanOpenGeneralReference) {
             return QModbusExceptionResponse(request.functionCode(),

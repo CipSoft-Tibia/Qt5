@@ -4,7 +4,7 @@
 cmake_minimum_required(VERSION 3.16)
 
 if (NOT QT_BUILD_STANDALONE_TESTS AND NOT QT_BUILDING_QT)
-    project(tst_qmltestbed LANGUAGES C CXX ASM)
+    project(tst_qmltestbed LANGUAGES C CXX)
     find_package(Qt6BuildInternals COMPONENTS STANDALONE_TEST)
 endif()
 
@@ -56,6 +56,7 @@ set(qmltestbed_resource_files
     "qml/qmltestbed/AddRemovePie.qml"
     "qml/qmltestbed/QmlUsageSeries.qml"
     "qml/qmltestbed/PieModelMapping.qml"
+    "qml/qmltestbed/CustomInput.qml"
     "qml/qmltestbed/images/arrow_icon.png"
     "qml/qmltestbed/images/icon_settings.png"
     "qml/qmltestbed/images/happy_box.png"

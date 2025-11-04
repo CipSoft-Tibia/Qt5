@@ -116,7 +116,7 @@ struct AX_BASE_EXPORT AXNodeData {
   //
 
   void AddBoolAttribute(ax::mojom::BoolAttribute attribute, bool value);
-  void AddChildTreeId(const ui::AXTreeID& tree_id);
+  void AddChildTreeId(const AXTreeID& tree_id);
   void AddIntAttribute(ax::mojom::IntAttribute attribute, int32_t value);
   void AddFloatAttribute(ax::mojom::FloatAttribute attribute, float value);
   // This method cannot be used to set kChildTreeId due to a common
@@ -148,6 +148,10 @@ struct AX_BASE_EXPORT AXNodeData {
   //
   // Convenience functions.
   //
+
+  // Return the DOMNodeID, if this object was associated with a DOM Node in
+  // an HTML renderer, otherwise return 0.
+  int GetDOMNodeId() const;
 
   // Adds the name attribute or replaces it if already present. Also sets the
   // NameFrom attribute if not already set.
@@ -214,13 +218,12 @@ struct AX_BASE_EXPORT AXNodeData {
   bool HasState(ax::mojom::State state) const;
   bool HasAction(ax::mojom::Action action) const;
   bool HasTextStyle(ax::mojom::TextStyle text_style) const;
-  // aria-dropeffect is deprecated in WAI-ARIA 1.1.
-  bool HasDropeffect(ax::mojom::Dropeffect dropeffect) const;
 
   // Set or remove bits in the given enum's corresponding bitfield.
   void AddState(ax::mojom::State state);
   void RemoveState(ax::mojom::State state);
   void AddAction(ax::mojom::Action action);
+  void RemoveAction(ax::mojom::Action action);
   void AddTextStyle(ax::mojom::TextStyle text_style);
 
   // Helper functions to get or set some common int attributes with some
@@ -339,6 +342,9 @@ struct AX_BASE_EXPORT AXNodeData {
   // Helper to determine if the data belongs to a node that supports
   // expand/collapse.
   bool SupportsExpandCollapse() const;
+
+  bool HasChildTreeID() const;
+  std::optional<AXTreeID> GetChildTreeID() const;
 
   // Return a string representation of this data, for debugging.
   virtual std::string ToString(bool verbose = true) const;

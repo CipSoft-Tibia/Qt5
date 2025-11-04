@@ -12,6 +12,8 @@
 
 \cmakecommandsince 6.2
 
+\include cmake-find-package-qml.qdocinc
+
 \section1 Synopsis
 
 \badcode
@@ -471,19 +473,18 @@ be controlled by setting the \c QT_RESOURCE_ALIAS source property, just as for
 
 \target RESOURCE_PREFIX
 \c RESOURCE_PREFIX is intended to encapsulate a namespace for the project and
-will often be the same for all QML modules that the project defines. It should
-be chosen to avoid clashing with the resource prefix of anything else used by
-the project or likely to be used by any other project that might consume it.
-A good choice is to incorporate the domain name of the organization the project
-belongs to. A common convention is to append \c{/imports} to the domain name to
-form the resource prefix. For example:
+will often be the same for all QML modules that the project defines.
 
-\badcode
-qt_add_qml_module(someTarget
-    RESOURCE_PREFIX /my.company.com/imports
-    ...
-)
-\endcode
+However, it is better to set the \l QTP0001 CMake policy instead. It defines a
+default resource prefix that ensures that your QML module ends
+up under one of the QML engine's default \l[QtQml]{QML Import Path}{import paths}.
+
+If you set a \c RESOURCE_PREFIX, you should also add it to the
+\l[QtQml]{QML Import Path}{import paths} for the QML Engine to find the QML module.
+
+If \l QTP0001 is enabled (e.g. via
+\c {qt_standard_project_setup(REQUIRES 6.5)}), the default value is
+\c "/qt/qml/", otherwise it is \c {"/"}.
 
 \target NO_RESOURCE_TARGET_PATH
 When various files are added to the compiled-in resources, they are placed

@@ -6,6 +6,7 @@
 #define MEDIA_GPU_CHROMEOS_CHROMEOS_COMPRESSED_GPU_MEMORY_BUFFER_VIDEO_FRAME_UTILS_H_
 
 #include <memory>
+#include <vector>
 
 #include "base/memory/scoped_refptr.h"
 
@@ -60,6 +61,9 @@ bool IsIntelMediaCompressedModifier(uint64_t modifier);
 
 // Returns the name of an Intel Media Compressed modifier as a string.
 std::string IntelMediaCompressedModifierToString(uint64_t modifier);
+
+// Returns a list of Intel Media Compressed modifiers.
+std::vector<uint64_t> GetIntelMediaCompressedModifiers();
 }  // namespace media
 
 #endif  // MEDIA_GPU_CHROMEOS_CHROMEOS_COMPRESSED_GPU_MEMORY_BUFFER_VIDEO_FRAME_UTILS_H_

@@ -25,7 +25,7 @@ EnumTraits<blink::mojom::AuthenticatorTransport,
     case ::device::FidoTransportProtocol::kAndroidAccessory:
       return blink::mojom::AuthenticatorTransport::HYBRID;
   }
-  NOTREACHED();
+  NOTREACHED_IN_MIGRATION();
   return blink::mojom::AuthenticatorTransport::USB;
 }
 
@@ -51,7 +51,7 @@ bool EnumTraits<blink::mojom::AuthenticatorTransport,
       *output = ::device::FidoTransportProtocol::kInternal;
       return true;
   }
-  NOTREACHED();
+  NOTREACHED_IN_MIGRATION();
   return false;
 }
 
@@ -63,7 +63,7 @@ EnumTraits<blink::mojom::PublicKeyCredentialType,
     case ::device::CredentialType::kPublicKey:
       return blink::mojom::PublicKeyCredentialType::PUBLIC_KEY;
   }
-  NOTREACHED();
+  NOTREACHED_IN_MIGRATION();
   return blink::mojom::PublicKeyCredentialType::PUBLIC_KEY;
 }
 
@@ -76,7 +76,7 @@ bool EnumTraits<blink::mojom::PublicKeyCredentialType, device::CredentialType>::
       *output = ::device::CredentialType::kPublicKey;
       return true;
   }
-  NOTREACHED();
+  NOTREACHED_IN_MIGRATION();
   return false;
 }
 
@@ -123,7 +123,7 @@ blink::mojom::AuthenticatorAttachment EnumTraits<
     case ::device::AuthenticatorAttachment::kCrossPlatform:
       return blink::mojom::AuthenticatorAttachment::CROSS_PLATFORM;
   }
-  NOTREACHED();
+  NOTREACHED_IN_MIGRATION();
   return blink::mojom::AuthenticatorAttachment::NO_PREFERENCE;
 }
 
@@ -143,7 +143,7 @@ bool EnumTraits<blink::mojom::AuthenticatorAttachment,
       *output = ::device::AuthenticatorAttachment::kCrossPlatform;
       return true;
   }
-  NOTREACHED();
+  NOTREACHED_IN_MIGRATION();
   return false;
 }
 
@@ -160,7 +160,7 @@ blink::mojom::ResidentKeyRequirement EnumTraits<
     case ::device::ResidentKeyRequirement::kRequired:
       return blink::mojom::ResidentKeyRequirement::REQUIRED;
   }
-  NOTREACHED();
+  NOTREACHED_IN_MIGRATION();
   return blink::mojom::ResidentKeyRequirement::DISCOURAGED;
 }
 
@@ -180,7 +180,7 @@ bool EnumTraits<blink::mojom::ResidentKeyRequirement,
       *output = ::device::ResidentKeyRequirement::kRequired;
       return true;
   }
-  NOTREACHED();
+  NOTREACHED_IN_MIGRATION();
   return false;
 }
 
@@ -197,7 +197,7 @@ EnumTraits<blink::mojom::UserVerificationRequirement,
     case ::device::UserVerificationRequirement::kDiscouraged:
       return blink::mojom::UserVerificationRequirement::DISCOURAGED;
   }
-  NOTREACHED();
+  NOTREACHED_IN_MIGRATION();
   return blink::mojom::UserVerificationRequirement::REQUIRED;
 }
 
@@ -217,7 +217,7 @@ bool EnumTraits<blink::mojom::UserVerificationRequirement,
       *output = ::device::UserVerificationRequirement::kDiscouraged;
       return true;
   }
-  NOTREACHED();
+  NOTREACHED_IN_MIGRATION();
   return false;
 }
 
@@ -233,7 +233,7 @@ EnumTraits<blink::mojom::LargeBlobSupport, device::LargeBlobSupport>::ToMojom(
     case ::device::LargeBlobSupport::kPreferred:
       return blink::mojom::LargeBlobSupport::PREFERRED;
   }
-  NOTREACHED();
+  NOTREACHED_IN_MIGRATION();
   return blink::mojom::LargeBlobSupport::NOT_REQUESTED;
 }
 
@@ -252,7 +252,7 @@ bool EnumTraits<blink::mojom::LargeBlobSupport, device::LargeBlobSupport>::
       *output = ::device::LargeBlobSupport::kPreferred;
       return true;
   }
-  NOTREACHED();
+  NOTREACHED_IN_MIGRATION();
   return false;
 }
 
@@ -307,8 +307,8 @@ bool StructTraits<blink::mojom::CableAuthenticationDataView,
          device::CableDiscoveryData* out) {
   switch (data.version()) {
     case 1: {
-      absl::optional<std::array<uint8_t, 16>> client_eid, authenticator_eid;
-      absl::optional<std::array<uint8_t, 32>> session_pre_key;
+      std::optional<std::array<uint8_t, 16>> client_eid, authenticator_eid;
+      std::optional<std::array<uint8_t, 32>> session_pre_key;
       if (!data.ReadClientEid(&client_eid) || !client_eid ||
           !data.ReadAuthenticatorEid(&authenticator_eid) ||
           !authenticator_eid || !data.ReadSessionPreKey(&session_pre_key) ||
@@ -325,8 +325,8 @@ bool StructTraits<blink::mojom::CableAuthenticationDataView,
     }
 
     case 2: {
-      absl::optional<std::vector<uint8_t>> server_link_data;
-      absl::optional<std::vector<uint8_t>> experiments;
+      std::optional<std::vector<uint8_t>> server_link_data;
+      std::optional<std::vector<uint8_t>> experiments;
       if (!data.ReadServerLinkData(&server_link_data) || !server_link_data ||
           !data.ReadExperiments(&experiments) || !experiments) {
         return false;
@@ -364,7 +364,7 @@ EnumTraits<blink::mojom::AttestationConveyancePreference,
         kEnterpriseApprovedByBrowser:
       return blink::mojom::AttestationConveyancePreference::ENTERPRISE;
   }
-  NOTREACHED();
+  NOTREACHED_IN_MIGRATION();
   return blink::mojom::AttestationConveyancePreference::NONE;
 }
 
@@ -388,7 +388,7 @@ bool EnumTraits<blink::mojom::AttestationConveyancePreference,
           kEnterpriseIfRPListedOnAuthenticator;
       return true;
   }
-  NOTREACHED();
+  NOTREACHED_IN_MIGRATION();
   return false;
 }
 

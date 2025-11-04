@@ -39,7 +39,7 @@ std::unique_ptr<Power> CreatePowerFromSpecifics(
     case sync_pb::PowerBookmarkSpecifics::POWER_TYPE_NOTE:
       return std::make_unique<Power>(specifics);
     default:
-      NOTREACHED();
+      NOTREACHED_IN_MIGRATION();
   }
   return nullptr;
 }
@@ -316,7 +316,7 @@ bool PowerBookmarkDatabaseImpl::CreateSchema() {
   DCHECK(db_.IsSQLValid(kCreateBlobSchemaSql));
   return db_.Execute(kCreateBlobSchemaSql);
 
-  // TODO(crbug.com/1376612): Create indexes for searching capabilities.
+  // TODO(crbug.com/40243263): Create indexes for searching capabilities.
 }
 
 std::vector<std::unique_ptr<Power>> PowerBookmarkDatabaseImpl::GetPowersForURL(
@@ -343,7 +343,7 @@ std::vector<std::unique_ptr<Power>> PowerBookmarkDatabaseImpl::GetPowersForURL(
   while (statement.Step()) {
     DCHECK_EQ(3, statement.ColumnCount());
 
-    absl::optional<sync_pb::PowerBookmarkSpecifics> specifics =
+    std::optional<sync_pb::PowerBookmarkSpecifics> specifics =
         DeserializeOrDelete(
             statement.ColumnString(1),
             base::Uuid::ParseLowercase(statement.ColumnString(0)));
@@ -361,7 +361,7 @@ PowerBookmarkDatabaseImpl::GetPowerOverviewsForType(
     const sync_pb::PowerBookmarkSpecifics::PowerType& power_type) {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
 
-  // TODO(crbug.com/1382855): Optimize this query to avoid SCAN TABLE.
+  // TODO(crbug.com/40245847): Optimize this query to avoid SCAN TABLE.
   static constexpr char kGetPowerOverviewsForTypeSql[] =
       // clang-format off
       "SELECT blobs.id, blobs.specifics, COUNT(blobs.id) FROM blobs "
@@ -380,7 +380,7 @@ PowerBookmarkDatabaseImpl::GetPowerOverviewsForType(
   while (statement.Step()) {
     DCHECK_EQ(3, statement.ColumnCount());
 
-    absl::optional<sync_pb::PowerBookmarkSpecifics> specifics =
+    std::optional<sync_pb::PowerBookmarkSpecifics> specifics =
         DeserializeOrDelete(
             statement.ColumnString(1),
             base::Uuid::ParseLowercase(statement.ColumnString(0)));
@@ -399,7 +399,7 @@ PowerBookmarkDatabaseImpl::GetPowersForSearchParams(
     const SearchParams& search_params) {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
 
-  // TODO(crbug.com/1382855): Optimize this query to avoid SCAN TABLE.
+  // TODO(crbug.com/40245847): Optimize this query to avoid SCAN TABLE.
   static constexpr char kGetPowersForSearchParamsSql[] =
       // clang-format off
       "SELECT blobs.id, blobs.specifics "
@@ -415,7 +415,7 @@ PowerBookmarkDatabaseImpl::GetPowersForSearchParams(
   while (statement.Step()) {
     DCHECK_EQ(2, statement.ColumnCount());
 
-    absl::optional<sync_pb::PowerBookmarkSpecifics> specifics =
+    std::optional<sync_pb::PowerBookmarkSpecifics> specifics =
         DeserializeOrDelete(
             statement.ColumnString(1),
             base::Uuid::ParseLowercase(statement.ColumnString(0)));
@@ -435,7 +435,7 @@ PowerBookmarkDatabaseImpl::GetPowerOverviewsForSearchParams(
     const SearchParams& search_params) {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
 
-  // TODO(crbug.com/1382855): Optimize this query to avoid SCAN TABLE.
+  // TODO(crbug.com/40245847): Optimize this query to avoid SCAN TABLE.
   static constexpr char kGetPowerOverviewsForSearchParamsSql[] =
       // clang-format off
       "SELECT blobs.id, blobs.specifics, url, power_type "
@@ -485,7 +485,7 @@ PowerBookmarkDatabaseImpl::GetPowerOverviewsForSearchParams(
       overview_count = 1;
     }
 
-    absl::optional<sync_pb::PowerBookmarkSpecifics> specifics =
+    std::optional<sync_pb::PowerBookmarkSpecifics> specifics =
         DeserializeOrDelete(
             statement.ColumnString(1),
             base::Uuid::ParseLowercase(statement.ColumnString(0)));
@@ -608,22 +608,18 @@ PowerBookmarkDatabaseImpl::GetPowersForGUIDs(
   for (auto& guid : guids) {
     DCHECK(base::Uuid::ParseCaseInsensitive(guid).is_valid());
   }
-  static constexpr char kGetPowersForGUIDsSql[] =
-      // clang-format off
-      "SELECT blobs.id, blobs.specifics, saves.url "
-          "FROM blobs JOIN saves ON blobs.id=saves.id "
-          "WHERE saves.id IN ('";
-  // clang-format on
-  std::string sql_string = (std::string(kGetPowersForGUIDsSql) +
-                            base::JoinString(guids, "','") + "')");
-  db_.IsSQLValid(sql_string.c_str());
-  sql::Statement statement(
-      db_.GetCachedStatement(SQL_FROM_HERE, sql_string.c_str()));
+  const std::string query =
+      base::StrCat({"SELECT blobs.id, blobs.specifics, saves.url "
+                    "FROM blobs JOIN saves ON blobs.id=saves.id "
+                    "WHERE saves.id IN ('",
+                    base::JoinString(guids, "','"), "')"});
+  db_.IsSQLValid(query);
+  sql::Statement statement(db_.GetUniqueStatement(query));
   std::vector<std::unique_ptr<Power>> powers;
   while (statement.Step()) {
     DCHECK_EQ(3, statement.ColumnCount());
 
-    absl::optional<sync_pb::PowerBookmarkSpecifics> specifics =
+    std::optional<sync_pb::PowerBookmarkSpecifics> specifics =
         DeserializeOrDelete(
             statement.ColumnString(1),
             base::Uuid::ParseLowercase(statement.ColumnString(0)));
@@ -652,7 +648,7 @@ std::vector<std::unique_ptr<Power>> PowerBookmarkDatabaseImpl::GetAllPowers() {
   while (statement.Step()) {
     DCHECK_EQ(3, statement.ColumnCount());
 
-    absl::optional<sync_pb::PowerBookmarkSpecifics> specifics =
+    std::optional<sync_pb::PowerBookmarkSpecifics> specifics =
         DeserializeOrDelete(
             statement.ColumnString(1),
             base::Uuid::ParseLowercase(statement.ColumnString(0)));
@@ -685,7 +681,7 @@ std::unique_ptr<Power> PowerBookmarkDatabaseImpl::GetPowerForGUID(
   while (statement.Step()) {
     DCHECK_EQ(3, statement.ColumnCount());
 
-    absl::optional<sync_pb::PowerBookmarkSpecifics> specifics =
+    std::optional<sync_pb::PowerBookmarkSpecifics> specifics =
         DeserializeOrDelete(
             statement.ColumnString(1),
             base::Uuid::ParseLowercase(statement.ColumnString(0)));
@@ -720,7 +716,7 @@ PowerBookmarkDatabaseImpl::GetSyncMetadataDatabase() {
   return sync_db_.get();
 }
 
-absl::optional<sync_pb::PowerBookmarkSpecifics>
+std::optional<sync_pb::PowerBookmarkSpecifics>
 PowerBookmarkDatabaseImpl::DeserializeOrDelete(const std::string& data,
                                                const base::Uuid& id) {
   sync_pb::PowerBookmarkSpecifics specifics;
@@ -731,7 +727,7 @@ PowerBookmarkDatabaseImpl::DeserializeOrDelete(const std::string& data,
 
   bool delete_success = DeletePower(id);
   DCHECK(delete_success);
-  return absl::nullopt;
+  return std::nullopt;
 }
 
 std::vector<std::string> PowerBookmarkDatabaseImpl::GetGUIDsForURL(

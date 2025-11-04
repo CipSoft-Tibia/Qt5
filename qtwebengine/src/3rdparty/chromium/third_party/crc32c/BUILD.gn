@@ -39,7 +39,7 @@ config("crc32c_config") {
     defines += [ "HAVE_BUILTIN_PREFETCH=0" ]
   }
 
-  if (current_cpu == "arm64") {
+  if (current_cpu == "arm64" && (!is_msvc || is_clang)) {
     defines += [ "HAVE_ARM64_CRC32C=1" ]
   } else {
     defines += [ "HAVE_ARM64_CRC32C=0" ]

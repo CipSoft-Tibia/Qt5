@@ -595,11 +595,28 @@ TEST(PrivateNetworkAccessCheckerTest,
       1);
 }
 
+TEST(PrivateNetworkAccessCheckerTest,
+     CheckBlockedByUnmatchedRequiredAddressSpaceAndResourceAddressSpace) {
+  mojom::ClientSecurityState client_security_state;
+  client_security_state.ip_address_space = mojom::IPAddressSpace::kPublic;
+  client_security_state.private_network_request_policy =
+      mojom::PrivateNetworkRequestPolicy::kPreflightBlock;
+
+  ResourceRequest request;
+  request.target_ip_address_space = mojom::IPAddressSpace::kUnknown;
+  request.required_ip_address_space = mojom::IPAddressSpace::kPrivate;
+  PrivateNetworkAccessChecker checker(request, &client_security_state,
+                                      mojom::kURLLoadOptionNone);
+
+  EXPECT_EQ(checker.Check(DirectTransport(PublicEndpoint())),
+            Result::kBlockedByTargetIpAddressSpace);
+}
+
 TEST(PrivateNetworkAccessCheckerTest, ResponseAddressSpace) {
   PrivateNetworkAccessChecker checker(
       ResourceRequest(), kNullClientSecurityState, mojom::kURLLoadOptionNone);
 
-  EXPECT_EQ(checker.ResponseAddressSpace(), absl::nullopt);
+  EXPECT_EQ(checker.ResponseAddressSpace(), std::nullopt);
 
   checker.Check(DirectTransport(PublicEndpoint()));
 
@@ -692,7 +709,7 @@ TEST(PrivateNetworkAccessCheckerTest, ResetResponseAddressSpace) {
 
   checker.ResetForRedirect(GURL("http://foo.com"));
 
-  EXPECT_EQ(checker.ResponseAddressSpace(), absl::nullopt);
+  EXPECT_EQ(checker.ResponseAddressSpace(), std::nullopt);
 
   // This succeeds even though the IP address space does not match that of the
   // previous endpoint passed to `Check()`, thanks to `ResetForRedirect()`.

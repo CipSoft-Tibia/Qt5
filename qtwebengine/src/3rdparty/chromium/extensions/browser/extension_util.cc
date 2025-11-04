@@ -9,7 +9,6 @@
 #include "base/no_destructor.h"
 #include "build/chromeos_buildflags.h"
 #include "components/crx_file/id_util.h"
-#include "components/guest_view/browser/guest_view_base.h"
 #include "content/public/browser/browser_context.h"
 #include "content/public/browser/child_process_security_policy.h"
 #include "content/public/browser/render_frame_host.h"
@@ -19,20 +18,25 @@
 #include "extensions/browser/extension_prefs.h"
 #include "extensions/browser/extension_registry.h"
 #include "extensions/browser/extensions_browser_client.h"
-#include "extensions/browser/renderer_startup_helper.h"
 #include "extensions/browser/ui_util.h"
 #include "extensions/common/extension.h"
+#include "extensions/common/extension_id.h"
 #include "extensions/common/features/feature.h"
 #include "extensions/common/manifest.h"
 #include "extensions/common/manifest_handlers/incognito_info.h"
 #include "extensions/common/manifest_handlers/shared_module_info.h"
-#include "extensions/common/mojom/host_id.mojom.h"
 #include "extensions/common/permissions/permissions_data.h"
 #include "extensions/common/switches.h"
 #include "extensions/grit/extensions_browser_resources.h"
 #include "mojo/public/cpp/bindings/clone_traits.h"
 #include "ui/base/resource/resource_bundle.h"
 #include "url/gurl.h"
+
+#if BUILDFLAG(IS_CHROMEOS)
+#include "chromeos/constants/chromeos_features.h"
+#include "chromeos/constants/pref_names.h"
+#include "components/prefs/pref_service.h"
+#endif
 
 #if BUILDFLAG(IS_CHROMEOS_ASH)
 #include "base/system/sys_info.h"
@@ -42,10 +46,6 @@ namespace extensions {
 namespace util {
 
 namespace {
-
-const char kDefaultUserScriptWorldKey[] = "_default";
-const char kUserScriptWorldMessagingKey[] = "messaging";
-const char kUserScriptWorldCspKey[] = "csp";
 
 #if BUILDFLAG(IS_CHROMEOS_ASH)
 bool IsSigninProfileTestExtensionOnTestImage(const Extension* extension) {
@@ -58,31 +58,6 @@ bool IsSigninProfileTestExtensionOnTestImage(const Extension* extension) {
 
 }  // namespace
 
-mojom::HostID::HostType HostIdTypeFromGuestView(
-    const guest_view::GuestViewBase& guest) {
-  if (guest.IsOwnedByWebUI()) {
-    return mojom::HostID::HostType::kWebUi;
-  }
-
-  if (guest.IsOwnedByControlledFrameEmbedder()) {
-    return mojom::HostID::HostType::kControlledFrameEmbedder;
-  }
-
-  // Note: We return a type of kExtensions for all cases where
-  // |guest.IsOwnedByExtension()| are true, as well as some additional cases
-  // where that call is false but also |guest.IsOwnedByWebUI()| and
-  // |guest.IsOwnedByControlledFrameEmbedder()| are false. Those appear to be
-  // when the provided extension identifier is blank. Future work in this area
-  // could improve the checks here so all the cases are declared relative to
-  // what the GuestView instance asserts itself to be.
-  return mojom::HostID::HostType::kExtensions;
-}
-
-mojom::HostID GenerateHostIdFromGuestView(
-    const guest_view::GuestViewBase& guest) {
-  return mojom::HostID(HostIdTypeFromGuestView(guest), guest.owner_host());
-}
-
 bool CanBeIncognitoEnabled(const Extension* extension) {
   return IncognitoInfo::IsIncognitoAllowed(extension) &&
          (!extension->is_platform_app() ||
@@ -92,8 +67,8 @@ bool CanBeIncognitoEnabled(const Extension* extension) {
 bool IsIncognitoEnabled(const ExtensionId& extension_id,
                         content::BrowserContext* context) {
   const Extension* extension =
-      ExtensionRegistry::Get(context)->GetExtensionById(
-          extension_id, ExtensionRegistry::ENABLED);
+      ExtensionRegistry::Get(context)->enabled_extensions().GetByID(
+          extension_id);
   if (extension) {
     if (!CanBeIncognitoEnabled(extension))
       return false;
@@ -108,6 +83,24 @@ bool IsIncognitoEnabled(const ExtensionId& extension_id,
       return true;
 #endif
   }
+#if BUILDFLAG(IS_CHROMEOS)
+  if (chromeos::features::IsCaptivePortalPopupWindowEnabled()) {
+    // An OTR Profile is used for captive portal signin to hide PII from
+    // captive portals (which require HTTP redirects to function).
+    // However, for captive portal signin we do not want want to disable
+    // extensions by default. (Proxies are explicitly disabled elsewhere).
+    // See b/261727502 for details.
+    PrefService* prefs =
+        ExtensionsBrowserClient::Get()->GetPrefServiceForContext(context);
+    if (prefs) {
+      const PrefService::Preference* captive_portal_pref =
+          prefs->FindPreference(chromeos::prefs::kCaptivePortalSignin);
+      if (captive_portal_pref && captive_portal_pref->GetValue()->GetBool()) {
+        return true;
+      }
+    }
+  }
+#endif
   return ExtensionPrefs::Get(context)->IsIncognitoEnabled(extension_id);
 }
 
@@ -166,58 +159,6 @@ content::ServiceWorkerContext* GetServiceWorkerContextForExtensionId(
     content::BrowserContext* browser_context) {
   return GetStoragePartitionForExtensionId(extension_id, browser_context)
       ->GetServiceWorkerContext();
-}
-
-void SetUserScriptWorldInfo(const Extension& extension,
-                            content::BrowserContext* browser_context,
-                            std::optional<std::string> csp,
-                            bool messaging) {
-  // Persist world configuratation in state store.
-  auto* extension_prefs = ExtensionPrefs::Get(browser_context);
-  ExtensionPrefs::ScopedDictionaryUpdate update(
-      extension_prefs, extension.id(), kUserScriptsWorldsConfiguration.name);
-  std::unique_ptr<prefs::DictionaryValueUpdate> update_dict = update.Get();
-  if (!update_dict) {
-    update_dict = update.Create();
-  }
-
-  base::Value::Dict world_info;
-  world_info.Set(kUserScriptWorldMessagingKey, messaging);
-  if (csp.has_value()) {
-    world_info.Set(kUserScriptWorldCspKey, *csp);
-  }
-  update_dict->SetKey(kDefaultUserScriptWorldKey,
-                      base::Value(std::move(world_info)));
-
-  // Notify the renderer.
-  RendererStartupHelperFactory::GetForBrowserContext(browser_context)
-      ->SetUserScriptWorldProperties(extension, csp, messaging);
-}
-
-mojom::UserScriptWorldInfoPtr GetUserScriptWorldInfo(
-    const ExtensionId& extension_id,
-    content::BrowserContext* browser_context) {
-  bool enable_messaging = false;
-  std::optional<std::string> csp = std::nullopt;
-
-  const base::Value::Dict* worlds_configuration =
-      ExtensionPrefs::Get(browser_context)
-          ->ReadPrefAsDictionary(extension_id, kUserScriptsWorldsConfiguration);
-  if (worlds_configuration) {
-    const base::Value::Dict* world_info =
-        worlds_configuration->FindDict(kDefaultUserScriptWorldKey);
-
-    if (world_info) {
-      enable_messaging =
-          world_info->FindBool(kUserScriptWorldMessagingKey).value_or(false);
-
-      const std::string* csp_pref =
-          world_info->FindString(kUserScriptWorldCspKey);
-      csp = csp_pref ? std::make_optional(*csp_pref) : std::nullopt;
-    }
-  }
-
-  return mojom::UserScriptWorldInfo::New(extension_id, csp, enable_messaging);
 }
 
 // This function is security sensitive. Bugs could cause problems that break
@@ -333,7 +274,7 @@ bool IsExtensionVisibleToContext(const Extension& extension,
 
 void InitializeFileSchemeAccessForExtension(
     int render_process_id,
-    const std::string& extension_id,
+    const ExtensionId& extension_id,
     content::BrowserContext* browser_context) {
   ExtensionPrefs* prefs = ExtensionPrefs::Get(browser_context);
   // TODO(karandeepb): This should probably use
@@ -391,14 +332,22 @@ std::string GetExtensionIdFromFrame(
 }
 
 bool CanRendererHostExtensionOrigin(int render_process_id,
-                                    const ExtensionId& extension_id) {
+                                    const ExtensionId& extension_id,
+                                    bool is_sandboxed) {
   url::Origin extension_origin =
       Extension::CreateOriginFromExtensionId(extension_id);
+  if (is_sandboxed) {
+    // If the extension frame is sandboxed, the corresponding process is only
+    // allowed to host opaque origins, per crbug.com/325410297. Therefore,
+    // convert the origin into an opaque origin, and note that HostsOrigin()
+    // will still validate the extension ID in the origin's precursor.
+    extension_origin = extension_origin.DeriveNewOpaqueOrigin();
+  }
   auto* policy = content::ChildProcessSecurityPolicy::GetInstance();
-  return policy->CanAccessDataForOrigin(render_process_id, extension_origin);
+  return policy->HostsOrigin(render_process_id, extension_origin);
 }
 
-bool IsChromeApp(const std::string& extension_id,
+bool IsChromeApp(const ExtensionId& extension_id,
                  content::BrowserContext* context) {
   const Extension* extension =
       ExtensionRegistry::Get(context)->enabled_extensions().GetByID(
@@ -406,17 +355,17 @@ bool IsChromeApp(const std::string& extension_id,
   return extension->is_platform_app();
 }
 
-bool IsAppLaunchable(const std::string& extension_id,
+bool IsAppLaunchable(const ExtensionId& extension_id,
                      content::BrowserContext* context) {
   int reason = ExtensionPrefs::Get(context)->GetDisableReasons(extension_id);
   return !((reason & disable_reason::DISABLE_UNSUPPORTED_REQUIREMENT) ||
            (reason & disable_reason::DISABLE_CORRUPTED));
 }
 
-bool IsAppLaunchableWithoutEnabling(const std::string& extension_id,
+bool IsAppLaunchableWithoutEnabling(const ExtensionId& extension_id,
                                     content::BrowserContext* context) {
-  return ExtensionRegistry::Get(context)->GetExtensionById(
-             extension_id, ExtensionRegistry::ENABLED) != nullptr;
+  return ExtensionRegistry::Get(context)->enabled_extensions().Contains(
+      extension_id);
 }
 
 }  // namespace util

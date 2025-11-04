@@ -23,14 +23,17 @@ QV4::CompiledData::Location QQmlQmldirData::importLocation(QQmlTypeLoader::Blob 
     return it->import->location;
 }
 
-void QQmlQmldirData::setPriority(QQmlTypeLoader::Blob *blob,
-                                 QQmlTypeLoader::Blob::PendingImportPtr import, int priority)
+void QQmlQmldirData::setPriority(
+        QQmlTypeLoader::Blob *blob, const QQmlTypeLoader::Blob::PendingImportPtr &import,
+        int priority)
 {
-    m_imports.insert(blob, { std::move(import), priority });
+    Q_ASSERT(isTypeLoaderThread());
+    m_imports.insert(blob, { import, priority });
 }
 
 void QQmlQmldirData::dataReceived(const SourceCodeData &data)
 {
+    Q_ASSERT(isTypeLoaderThread());
     QString error;
     m_content = data.readAll(&error);
     if (!error.isEmpty()) {
@@ -41,6 +44,7 @@ void QQmlQmldirData::dataReceived(const SourceCodeData &data)
 
 void QQmlQmldirData::initializeFromCachedUnit(const QQmlPrivate::CachedQmlUnit *)
 {
+    Q_ASSERT(isTypeLoaderThread());
     Q_UNIMPLEMENTED();
 }
 

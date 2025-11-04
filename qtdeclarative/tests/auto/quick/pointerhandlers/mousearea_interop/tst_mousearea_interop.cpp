@@ -1,7 +1,8 @@
 // Copyright (C) 2019 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
-#include <QtTest/QtTest>
+#include <QtTest/QTest>
+#include <QtTest/QSignalSpy>
 
 #include <QtGui/qstylehints.h>
 #include <QtQml/qqmlengine.h>
@@ -37,7 +38,7 @@ private slots:
 
 private:
     void createView(QScopedPointer<QQuickView> &window, const char *fileName);
-    QPointingDevice *touchDevice = QTest::createTouchDevice();
+    std::unique_ptr<QPointingDevice> touchscreen{QTest::createTouchDevice()};
 };
 
 void tst_MouseAreaInterop::createView(QScopedPointer<QQuickView> &window, const char *fileName)
@@ -45,6 +46,7 @@ void tst_MouseAreaInterop::createView(QScopedPointer<QQuickView> &window, const 
     window.reset(new QQuickView);
     window->setSource(testFileUrl(fileName));
     QTRY_COMPARE(window->status(), QQuickView::Ready);
+    window.data()->setFlag(Qt::FramelessWindowHint);
     QQuickViewTestUtils::centerOnScreen(window.data());
     QQuickViewTestUtils::moveMouseAway(window.data());
 
@@ -59,6 +61,10 @@ void tst_MouseAreaInterop::dragHandlerInSiblingStealingGrabFromMouseAreaViaMouse
     QScopedPointer<QQuickView> windowPtr;
     createView(windowPtr, "dragTakeOverFromSibling.qml");
     QQuickView * window = windowPtr.data();
+
+    const QPoint pos = QGuiApplication::primaryScreen()->availableGeometry().topLeft();
+    window->setFramePosition(pos);
+    QTRY_COMPARE(window->framePosition(), pos);
 
     QPointer<QQuickPointerHandler> handler = window->rootObject()->findChild<QQuickPointerHandler*>();
     QVERIFY(handler);
@@ -108,7 +114,11 @@ void tst_MouseAreaInterop::dragHandlerInSiblingStealingGrabFromMouseAreaViaTouch
     QScopedPointer<QQuickView> windowPtr;
     createView(windowPtr, "dragTakeOverFromSibling.qml");
     QQuickView * window = windowPtr.data();
-    auto devPriv = QPointingDevicePrivate::get(touchDevice);
+    auto devPriv = QPointingDevicePrivate::get(touchscreen.get());
+
+    const QPoint pos = QGuiApplication::primaryScreen()->availableGeometry().topLeft();
+    window->setFramePosition(pos);
+    QTRY_COMPARE(window->framePosition(), pos);
 
     QPointer<QQuickPointerHandler> handler = window->rootObject()->findChild<QQuickPointerHandler*>();
     QVERIFY(handler);
@@ -117,7 +127,7 @@ void tst_MouseAreaInterop::dragHandlerInSiblingStealingGrabFromMouseAreaViaTouch
     ma->setPreventStealing(preventStealing);
 
     QPoint p1(150, 150);
-    QTest::QTouchEventSequence touch = QTest::touchEvent(window, touchDevice);
+    QTest::QTouchEventSequence touch = QTest::touchEvent(window, touchscreen.get());
 
     touch.press(1, p1).commit();
     QQuickTouchUtils::flush(window);

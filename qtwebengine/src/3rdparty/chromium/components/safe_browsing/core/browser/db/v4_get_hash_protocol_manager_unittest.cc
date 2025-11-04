@@ -384,9 +384,9 @@ TEST_F(V4GetHashProtocolManagerTest, TestGetHashRequest) {
   }
 
   // Serialize and Base64 encode.
-  std::string req_data, req_base64;
+  std::string req_data;
   req.SerializeToString(&req_data);
-  base::Base64Encode(req_data, &req_base64);
+  std::string req_base64 = base::Base64Encode(req_data);
 
   std::vector<HashPrefixStr> prefixes_to_request = {one, two};
   EXPECT_EQ(req_base64, pm->GetHashRequest(prefixes_to_request, client_states));
@@ -662,7 +662,7 @@ TEST_F(V4GetHashProtocolManagerTest,
   res.mutable_negative_cache_duration()->set_seconds(600);
   ThreatMatch* m = res.add_matches();
   m->set_threat_type(API_ABUSE);
-  // TODO(crbug.com/1030487): This special case for Android will no longer be
+  // TODO(crbug.com/40661879): This special case for Android will no longer be
   // needed once GetCurrentPlatformType() returns ANDROID_PLATFORM on Android.
 #if BUILDFLAG(IS_ANDROID)
   m->set_platform_type(ANDROID_PLATFORM);

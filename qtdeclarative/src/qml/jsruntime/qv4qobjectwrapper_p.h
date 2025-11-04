@@ -29,6 +29,8 @@
 
 QT_BEGIN_NAMESPACE
 
+Q_DECLARE_LOGGING_CATEGORY(lcBuiltinsBindingRemoval)
+
 class QObject;
 class QQmlData;
 class QQmlPropertyCache;
@@ -175,8 +177,11 @@ struct Q_QML_EXPORT QObjectWrapper : public Object
             ExecutionEngine *engine, Heap::Object *wrapper, QObject *object,
             const QQmlPropertyData *property, Flags flags);
 
+    static ReturnedValue getMethodFallback(
+            ExecutionEngine *engine, Heap::Object *wrapper, QObject *object,
+            QV4::String *name, Flags flags);
+
     static ReturnedValue virtualResolveLookupGetter(const Object *object, ExecutionEngine *engine, Lookup *lookup);
-    static ReturnedValue lookupAttached(Lookup *l, ExecutionEngine *engine, const Value &object);
 
     template <typename ReversalFunctor> static ReturnedValue lookupPropertyGetterImpl(
             Lookup *l, ExecutionEngine *engine, const Value &object,
@@ -378,9 +383,8 @@ struct Q_QML_EXPORT QObjectMethod : public QV4::FunctionObject
     QV4::ReturnedValue method_toString(QV4::ExecutionEngine *engine, QObject *o) const;
     QV4::ReturnedValue method_destroy(
             QV4::ExecutionEngine *ctx, QObject *o, const Value *args, int argc) const;
-    void method_destroy(
-            QV4::ExecutionEngine *engine, QObject *o,
-            void **argv, const QMetaType *types, int argc) const;
+    bool method_destroy(
+            QV4::ExecutionEngine *engine, QObject *o, int delay) const;
 
     static ReturnedValue virtualCall(
             const FunctionObject *, const Value *thisObject, const Value *argv, int argc);

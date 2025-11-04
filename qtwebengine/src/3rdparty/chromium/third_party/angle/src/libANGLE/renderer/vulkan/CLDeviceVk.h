@@ -8,9 +8,13 @@
 #ifndef LIBANGLE_RENDERER_VULKAN_CLDEVICEVK_H_
 #define LIBANGLE_RENDERER_VULKAN_CLDEVICEVK_H_
 
+#include "libANGLE/renderer/vulkan/DisplayVk.h"
 #include "libANGLE/renderer/vulkan/cl_types.h"
+#include "libANGLE/renderer/vulkan/vk_renderer.h"
 
 #include "libANGLE/renderer/CLDeviceImpl.h"
+
+#include "libANGLE/Display.h"
 
 namespace rx
 {
@@ -18,11 +22,12 @@ namespace rx
 class CLDeviceVk : public CLDeviceImpl
 {
   public:
-    explicit CLDeviceVk(const cl::Device &device);
+    explicit CLDeviceVk(const cl::Device &device, vk::Renderer *renderer);
     ~CLDeviceVk() override;
 
     Info createInfo(cl::DeviceType type) const override;
 
+    const vk::Renderer *getRenderer() const { return mRenderer; }
     angle::Result getInfoUInt(cl::DeviceInfo name, cl_uint *value) const override;
     angle::Result getInfoULong(cl::DeviceInfo name, cl_ulong *value) const override;
     angle::Result getInfoSizeT(cl::DeviceInfo name, size_t *value) const override;
@@ -33,6 +38,16 @@ class CLDeviceVk : public CLDeviceImpl
                                    cl_uint numDevices,
                                    CreateFuncs &subDevices,
                                    cl_uint *numDevicesRet) override;
+
+    // Returns runtime-selected LWS value
+    cl::WorkgroupSize selectWorkGroupSize(const cl::NDRange &ndrange) const;
+
+  private:
+    vk::Renderer *mRenderer;
+    angle::HashMap<cl::DeviceInfo, cl_uint> mInfoUInt;
+    angle::HashMap<cl::DeviceInfo, cl_ulong> mInfoULong;
+    angle::HashMap<cl::DeviceInfo, size_t> mInfoSizeT;
+    angle::HashMap<cl::DeviceInfo, std::string> mInfoString;
 };
 
 }  // namespace rx

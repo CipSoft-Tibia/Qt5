@@ -3,6 +3,7 @@
 // found in the LICENSE file.
 
 #include "components/segmentation_platform/internal/data_collection/training_data_collector_impl.h"
+
 #include <cstdint>
 
 #include "base/containers/contains.h"
@@ -32,6 +33,7 @@
 #include "components/segmentation_platform/public/proto/model_metadata.pb.h"
 #include "components/segmentation_platform/public/proto/segmentation_platform.pb.h"
 #include "components/segmentation_platform/public/trigger.h"
+#include "services/metrics/public/cpp/ukm_source_id.h"
 
 namespace segmentation_platform {
 namespace {
@@ -98,7 +100,7 @@ constexpr base::FeatureParam<int> TimeDelaySamplingRate{
 
 struct TrainingDataCollectorImpl::TrainingTimings {
   base::Time prediction_time;
-  absl::optional<base::TimeDelta> observation_delayed_task;
+  std::optional<base::TimeDelta> observation_delayed_task;
 };
 
 TrainingDataCollectorImpl::TrainingDataCollectorImpl(
@@ -247,7 +249,7 @@ void TrainingDataCollectorImpl::OnHistogramSignalUpdated(
   auto it = immediate_trigger_histograms_.find(hash);
   if (it != immediate_trigger_histograms_.end()) {
     auto segments = it->second;
-    auto param = absl::make_optional<ImmediateCollectionParam>();
+    auto param = std::make_optional<ImmediateCollectionParam>();
     param->output_metric_name = histogram_name;
     param->output_metric_hash = hash;
     param->output_value = static_cast<float>(sample);
@@ -279,7 +281,7 @@ void TrainingDataCollectorImpl::OnUserAction(const std::string& user_action,
     for (auto segment : segments) {
       const SegmentInfo* info = segment_info_database_->GetCachedSegmentInfo(
           segment.first, segment.second);
-      OnUmaUpdatedReportForSegmentInfo(absl::nullopt, info);
+      OnUmaUpdatedReportForSegmentInfo(std::nullopt, info);
     }
   }
 }
@@ -290,12 +292,11 @@ void TrainingDataCollectorImpl::SetSamplingRateForTesting(
 }
 
 void TrainingDataCollectorImpl::OnUmaUpdatedReportForSegmentInfo(
-    const absl::optional<ImmediateCollectionParam>& param,
+    const std::optional<ImmediateCollectionParam>& param,
     const proto::SegmentInfo* segment) {
   if (segment) {
-    absl::optional<TrainingRequestId> request_id =
-        training_cache_->GetRequestId(segment->segment_id(),
-                                      segment->model_source());
+    std::optional<TrainingRequestId> request_id = training_cache_->GetRequestId(
+        segment->segment_id(), segment->model_source());
     if (request_id.has_value()) {
       RecordTrainingDataCollectionEvent(
           segment->segment_id(),
@@ -375,7 +376,7 @@ bool TrainingDataCollectorImpl::CanReportTrainingData(
 }
 
 void TrainingDataCollectorImpl::OnGetTrainingTensors(
-    const absl::optional<ImmediateCollectionParam>& param,
+    const std::optional<ImmediateCollectionParam>& param,
     const proto::SegmentInfo& segment_info,
     bool has_error,
     const ModelProvider::Request& input_tensors,
@@ -400,22 +401,25 @@ void TrainingDataCollectorImpl::OnGetTrainingTensors(
     output_indexes.emplace_back(i);
   }
 
+  ukm::SourceId client_ukm_source_id = ukm::kInvalidSourceId;
+
   // TODO(haileywang): Find the right output index from the metadata using the
   // matching hash value, in case the client has 2 different histogram triggers
   // in the metadata, the server cannot identify which one was triggered.
   if (param.has_value()) {
     output_indexes.emplace_back(output_tensors.size());
     output_values.emplace_back(param->output_value);
+    client_ukm_source_id = param->ukm_source_id;
   }
 
   // Cached results are stored in two formats depending on whether the model is
   // using the legacy output config or the new multi-output model config.
   // |prediction_results| represents the new format which may contains multiple
   // outputs as floats.
-  absl::optional<proto::PredictionResult> prediction_result;
+  std::optional<proto::PredictionResult> prediction_result;
   // |selected_segment| represents the legacy format which contains a single
   // segment ID.
-  absl::optional<SelectedSegment> selected_segment;
+  std::optional<SelectedSegment> selected_segment;
 
   if (metadata_utils::ConfigUsesLegacyOutput(config)) {
     selected_segment =
@@ -426,8 +430,9 @@ void TrainingDataCollectorImpl::OnGetTrainingTensors(
   }
 
   auto ukm_source_id = SegmentationUkmHelper::GetInstance()->RecordTrainingData(
-      segment_info.segment_id(), segment_info.model_version(), input_tensors,
-      output_values, output_indexes, prediction_result, selected_segment);
+      segment_info.segment_id(), segment_info.model_version(),
+      client_ukm_source_id, input_tensors, output_values, output_indexes,
+      prediction_result, selected_segment);
   if (ukm_source_id == ukm::kInvalidSourceId) {
     RecordTrainingDataCollectionEvent(
         segment_info.segment_id(),
@@ -465,7 +470,7 @@ void TrainingDataCollectorImpl::ReportCollectedContinuousTrainingData() {
     for (auto id : continuous_collection_segments_) {
       OnDecisionTime(id, /*input_context=*/nullptr,
                      proto::TrainingOutputs::TriggerConfig::PERIODIC,
-                     absl::nullopt);
+                     std::nullopt);
     }
   }
 }
@@ -473,6 +478,7 @@ void TrainingDataCollectorImpl::ReportCollectedContinuousTrainingData() {
 void TrainingDataCollectorImpl::CollectTrainingData(
     SegmentId segment_id,
     TrainingRequestId request_id,
+    ukm::SourceId ukm_source_id,
     const TrainingLabels& param,
     SuccessCallback callback) {
   auto available_segments =
@@ -486,7 +492,7 @@ void TrainingDataCollectorImpl::CollectTrainingData(
   }
   const auto* segment_info = it->second;
 
-  absl::optional<TrainingDataCollector::ImmediateCollectionParam>
+  std::optional<TrainingDataCollector::ImmediateCollectionParam>
       immediate_param;
   if (param.output_metric) {
     immediate_param = TrainingDataCollector::ImmediateCollectionParam();
@@ -494,6 +500,7 @@ void TrainingDataCollectorImpl::CollectTrainingData(
         base::HashMetricName(param.output_metric.value().first);
     immediate_param->output_value =
         static_cast<float>(param.output_metric.value().second);
+    immediate_param->ukm_source_id = ukm_source_id;
   }
   VLOG(1) << "Observation ended for " << proto::SegmentId_Name(segment_id)
           << " " << (param.output_metric ? param.output_metric->first : "");
@@ -505,7 +512,7 @@ TrainingRequestId TrainingDataCollectorImpl::OnDecisionTime(
     proto::SegmentId segment_id,
     scoped_refptr<InputContext> input_context,
     DecisionType type,
-    absl::optional<ModelProvider::Request> inputs,
+    std::optional<ModelProvider::Request> inputs,
     bool decision_result_update_trigger) {
   if (all_segments_for_training_.count(segment_id) == 0) {
     return TrainingRequestId();
@@ -542,7 +549,7 @@ void TrainingDataCollectorImpl::OnGetSegmentInfoAtDecisionTime(
     DecisionType type,
     scoped_refptr<InputContext> input_context,
     const proto::SegmentInfo& segment_info,
-    absl::optional<ModelProvider::Request> inputs) {
+    std::optional<ModelProvider::Request> inputs) {
   TrainingTimings training_request = ComputeDecisionTiming(segment_info);
   if (!CanReportTrainingData(segment_info, /*include_outputs*/ false)) {
     return;
@@ -673,14 +680,14 @@ void TrainingDataCollectorImpl::PostObservationTask(
   base::SingleThreadTaskRunner::GetCurrentDefault()->PostDelayedTask(
       FROM_HERE,
       base::BindOnce(&TrainingDataCollectorImpl::OnObservationTrigger,
-                     weak_ptr_factory_.GetWeakPtr(), absl::nullopt, request_id,
+                     weak_ptr_factory_.GetWeakPtr(), std::nullopt, request_id,
                      segment_info, base::DoNothing()),
       delay);
   RecordTrainingDataCollectionEvent(segment_info.segment_id(), event);
 }
 
 void TrainingDataCollectorImpl::OnObservationTrigger(
-    const absl::optional<ImmediateCollectionParam>& param,
+    const std::optional<ImmediateCollectionParam>& param,
     TrainingRequestId request_id,
     const proto::SegmentInfo& segment_info,
     SuccessCallback callback) {
@@ -708,10 +715,10 @@ void TrainingDataCollectorImpl::OnObservationTrigger(
 }
 
 void TrainingDataCollectorImpl::OnGetStoredTrainingData(
-    const absl::optional<ImmediateCollectionParam>& param,
+    const std::optional<ImmediateCollectionParam>& param,
     const proto::SegmentInfo& segment_info,
     SuccessCallback callback,
-    absl::optional<proto::TrainingData> input) {
+    std::optional<proto::TrainingData> input) {
   if (!input.has_value()) {
     RecordTrainingDataCollectionEvent(
         segment_info.segment_id(),
@@ -747,7 +754,7 @@ void TrainingDataCollectorImpl::OnGetStoredTrainingData(
 }
 
 void TrainingDataCollectorImpl::OnGetOutputsOnObservationTrigger(
-    const absl::optional<ImmediateCollectionParam>& param,
+    const std::optional<ImmediateCollectionParam>& param,
     const proto::SegmentInfo& segment_info,
     const ModelProvider::Request& cached_input_tensors,
     bool has_error,
@@ -771,7 +778,7 @@ TrainingDataCollectorImpl::ComputeDecisionTiming(
   base::Time current_time = clock_->Now();
 
   // Check for delay triggers in the config.
-  absl::optional<uint64_t> delay_sec;
+  std::optional<uint64_t> delay_sec;
   for (int i = 0; i < training_config.observation_trigger_size(); i++) {
     const auto& trigger = training_config.observation_trigger(i);
     if (trigger.delay_sec() > 0) {
@@ -808,7 +815,7 @@ TrainingDataCollectorImpl::ComputeDecisionTiming(
     } else {
       // If on demand and delay is not provided then wait for histogram or
       // client trigger instead.
-      training_request.observation_delayed_task = absl::nullopt;
+      training_request.observation_delayed_task = std::nullopt;
     }
   }
 
@@ -825,7 +832,7 @@ base::Time TrainingDataCollectorImpl::ComputeObservationTiming(
       training_config.use_flexible_observation_time();
 
   // Check for delay triggers in the config.
-  absl::optional<uint64_t> delay_sec;
+  std::optional<uint64_t> delay_sec;
   for (int i = 0; i < training_config.observation_trigger_size(); i++) {
     const auto& trigger = training_config.observation_trigger(i);
     if (trigger.has_delay_sec()) {

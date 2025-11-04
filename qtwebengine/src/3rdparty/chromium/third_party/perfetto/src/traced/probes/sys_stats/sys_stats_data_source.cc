@@ -18,7 +18,6 @@
 
 #include <stdlib.h>
 #include <unistd.h>
-
 #include <algorithm>
 #include <array>
 #include <bitset>
@@ -96,7 +95,6 @@ SysStatsDataSource::SysStatsDataSource(
   psi_cpu_fd_ = open_fn("/proc/pressure/cpu");
   psi_io_fd_ = open_fn("/proc/pressure/io");
   psi_memory_fd_ = open_fn("/proc/pressure/memory");
-
   read_buf_ = base::PagedMemory::Allocate(kReadBufSize);
 
   // Build a lookup map that allows to quickly translate strings like "MemTotal"
@@ -148,8 +146,8 @@ SysStatsDataSource::SysStatsDataSource(
     stat_enabled_fields_ |= 1ul << static_cast<uint32_t>(*counter);
   }
 
-  std::array<uint32_t, 8> periods_ms{};
-  std::array<uint32_t, 8> ticks{};
+  std::array<uint32_t, 11> periods_ms{};
+  std::array<uint32_t, 11> ticks{};
   static_assert(periods_ms.size() == ticks.size(), "must have same size");
 
   periods_ms[0] = ClampTo10Ms(cfg.meminfo_period_ms(), "meminfo_period_ms");
@@ -160,6 +158,9 @@ SysStatsDataSource::SysStatsDataSource(
   periods_ms[5] = ClampTo10Ms(cfg.buddyinfo_period_ms(), "buddyinfo_period_ms");
   periods_ms[6] = ClampTo10Ms(cfg.diskstat_period_ms(), "diskstat_period_ms");
   periods_ms[7] = ClampTo10Ms(cfg.psi_period_ms(), "psi_period_ms");
+  periods_ms[8] = ClampTo10Ms(cfg.thermal_period_ms(), "thermal_period_ms");
+  periods_ms[9] = ClampTo10Ms(cfg.cpuidle_period_ms(), "cpuidle_period_ms");
+  periods_ms[10] = ClampTo10Ms(cfg.gpufreq_period_ms(), "gpufreq_period_ms");
 
   tick_period_ms_ = 0;
   for (uint32_t ms : periods_ms) {
@@ -186,6 +187,9 @@ SysStatsDataSource::SysStatsDataSource(
   buddyinfo_ticks_ = ticks[5];
   diskstat_ticks_ = ticks[6];
   psi_ticks_ = ticks[7];
+  thermal_ticks_ = ticks[8];
+  cpuidle_ticks_ = ticks[9];
+  gpufreq_ticks_ = ticks[10];
 }
 
 void SysStatsDataSource::Start() {
@@ -241,10 +245,178 @@ void SysStatsDataSource::ReadSysStats() {
   if (psi_ticks_ && tick_ % psi_ticks_ == 0)
     ReadPsi(sys_stats);
 
+  if (thermal_ticks_ && tick_ % thermal_ticks_ == 0)
+    ReadThermalZones(sys_stats);
+
+  if (cpuidle_ticks_ && tick_ % cpuidle_ticks_ == 0)
+    ReadCpuIdleStates(sys_stats);
+
+  if (gpufreq_ticks_ && tick_ % gpufreq_ticks_ == 0)
+    ReadGpuFrequency(sys_stats);
+
   sys_stats->set_collection_end_timestamp(
       static_cast<uint64_t>(base::GetBootTimeNs().count()));
 
   tick_++;
+}
+
+base::ScopedDir SysStatsDataSource::OpenDirAndLogOnErrorOnce(
+    const std::string& dir_path,
+    bool* already_logged) {
+  base::ScopedDir dir(opendir(dir_path.c_str()));
+  if (!dir && !(*already_logged)) {
+    PERFETTO_PLOG("Failed to open %s", dir_path.c_str());
+    *already_logged = true;
+  }
+  return dir;
+}
+
+std::optional<std::string> SysStatsDataSource::ReadFileToString(
+    const std::string& path) {
+  base::ScopedFile fd = OpenReadOnly(path.c_str());
+  if (!fd) {
+    return std::nullopt;
+  }
+  size_t rsize = ReadFile(&fd, path.c_str());
+  if (!rsize)
+    return std::nullopt;
+  return base::StripSuffix(static_cast<char*>(read_buf_.Get()), "\n");
+}
+
+std::optional<uint64_t> SysStatsDataSource::ReadFileToUInt64(
+    const std::string& path) {
+  base::ScopedFile fd = OpenReadOnly(path.c_str());
+  if (!fd) {
+    return std::nullopt;
+  }
+  size_t rsize = ReadFile(&fd, path.c_str());
+  if (!rsize)
+    return std::nullopt;
+
+  return static_cast<uint64_t>(
+      strtoll(static_cast<char*>(read_buf_.Get()), nullptr, 10));
+}
+
+void SysStatsDataSource::ReadThermalZones(protos::pbzero::SysStats* sys_stats) {
+  std::string base_dir = "/sys/class/thermal/";
+  base::ScopedDir thermal_dir =
+      OpenDirAndLogOnErrorOnce(base_dir, &thermal_error_logged_);
+  if (!thermal_dir) {
+    return;
+  }
+  while (struct dirent* dir_ent = readdir(*thermal_dir)) {
+    // Entries in /sys/class/thermal are symlinks to /devices/virtual
+    if (dir_ent->d_type != DT_LNK)
+      continue;
+    const char* name = dir_ent->d_name;
+    if (!base::StartsWith(name, "thermal_zone")) {
+      continue;
+    }
+    auto* thermal_zone = sys_stats->add_thermal_zone();
+    thermal_zone->set_name(name);
+    base::StackString<256> thermal_zone_temp_path("/sys/class/thermal/%s/temp",
+                                                  name);
+    auto temp = ReadFileToUInt64(thermal_zone_temp_path.ToStdString());
+    if (temp) {
+      thermal_zone->set_temp(*temp / 1000);
+    }
+    base::StackString<256> thermal_zone_type_path("/sys/class/thermal/%s/type",
+                                                  name);
+    auto type = ReadFileToString(thermal_zone_type_path.ToStdString());
+    if (type) {
+      thermal_zone->set_type(*type);
+    }
+  }
+}
+
+void SysStatsDataSource::ReadCpuIdleStates(
+    protos::pbzero::SysStats* sys_stats) {
+  std::string cpu_dir_path = "/sys/devices/system/cpu/";
+  base::ScopedDir cpu_dir =
+      OpenDirAndLogOnErrorOnce(cpu_dir_path, &cpuidle_error_logged_);
+  if (!cpu_dir) {
+    return;
+  }
+  // Iterate over all CPUs.
+  while (struct dirent* cpu_dir_ent = readdir(*cpu_dir)) {
+    const char* cpu_name = cpu_dir_ent->d_name;
+    if (!base::StartsWith(cpu_name, "cpu"))
+      continue;
+    auto maybe_cpu_index =
+        base::StringToUInt32(base::StripPrefix(cpu_name, "cpu"));
+    if (!maybe_cpu_index.has_value()) {
+      continue;
+    }
+    uint32_t cpu_id = maybe_cpu_index.value();
+
+    auto* cpuidle_stats = sys_stats->add_cpuidle_state();
+    cpuidle_stats->set_cpu_id(cpu_id);
+    std::string cpuidle_path =
+        "/sys/devices/system/cpu/" + std::string(cpu_name) + "/cpuidle/";
+    base::ScopedDir cpu_state_dir =
+        OpenDirAndLogOnErrorOnce(cpuidle_path, &cpuidle_error_logged_);
+    if (!cpu_state_dir) {
+      return;
+    }
+    // Iterate over all CPU idle states.
+    while (struct dirent* state_dir_ent = readdir(*cpu_state_dir)) {
+      const char* state_name = state_dir_ent->d_name;
+      if (!base::StartsWith(state_name, "state"))
+        continue;
+      base::StackString<256> cpuidle_state_name_path(
+          "/sys/devices/system/cpu/%s/cpuidle/%s/name", cpu_name, state_name);
+      auto cpuidle_state_name =
+          ReadFileToString(cpuidle_state_name_path.ToStdString());
+
+      base::StackString<256> cpuidle_state_time_path(
+          "/sys/devices/system/cpu/%s/cpuidle/%s/time", cpu_name, state_name);
+      auto time = ReadFileToUInt64(cpuidle_state_time_path.ToStdString());
+      if (!cpuidle_state_name || !time) {
+        continue;
+      }
+      auto cpuidle_state = cpuidle_stats->add_cpuidle_state_entry();
+      cpuidle_state->set_state(*cpuidle_state_name);
+      cpuidle_state->set_duration_us(*time);
+    }
+  }
+}
+
+std::optional<uint64_t> SysStatsDataSource::ReadAMDGpuFreq() {
+  std::optional<std::string> amd_gpu_freq =
+      ReadFileToString("/sys/class/drm/card0/device/pp_dpm_sclk");
+  if (!amd_gpu_freq) {
+    return std::nullopt;
+  }
+  for (base::StringSplitter lines(*amd_gpu_freq, '\n'); lines.Next();) {
+    base::StringView line(lines.cur_token(), lines.cur_token_size());
+    // Current frequency indicated with asterisk.
+    if (line.EndsWith("*")) {
+      for (base::StringSplitter words(line.ToStdString(), ' '); words.Next();) {
+        if (!base::EndsWith(words.cur_token(), "Mhz"))
+          continue;
+        // Strip suffix "Mhz".
+        std::string maybe_freq = std::string(words.cur_token())
+                                     .substr(0, words.cur_token_size() - 3);
+        auto freq = base::StringToUInt32(maybe_freq);
+        return freq;
+      }
+    }
+  }
+  return std::nullopt;
+}
+
+void SysStatsDataSource::ReadGpuFrequency(protos::pbzero::SysStats* sys_stats) {
+  std::optional<uint64_t> freq;
+  // Intel GPU Frequency.
+  freq = ReadFileToUInt64("/sys/class/drm/card0/gt_act_freq_mhz");
+  if (freq) {
+    sys_stats->add_gpufreq_mhz((*freq));
+    return;
+  }
+  freq = ReadAMDGpuFreq();
+  if (freq) {
+    sys_stats->add_gpufreq_mhz((*freq));
+  }
 }
 
 void SysStatsDataSource::ReadDiskStat(protos::pbzero::SysStats* sys_stats) {
@@ -380,19 +552,22 @@ void SysStatsDataSource::ReadBuddyInfo(protos::pbzero::SysStats* sys_stats) {
 }
 
 void SysStatsDataSource::ReadDevfreq(protos::pbzero::SysStats* sys_stats) {
-  base::ScopedDir devfreq_dir = OpenDevfreqDir();
-  if (devfreq_dir) {
-    while (struct dirent* dir_ent = readdir(*devfreq_dir)) {
-      // Entries in /sys/class/devfreq are symlinks to /devices/platform
-      if (dir_ent->d_type != DT_LNK)
-        continue;
-      const char* name = dir_ent->d_name;
-      const char* file_content = ReadDevfreqCurFreq(name);
-      auto value = static_cast<uint64_t>(strtoll(file_content, nullptr, 10));
-      auto* devfreq = sys_stats->add_devfreq();
-      devfreq->set_key(name);
-      devfreq->set_value(value);
-    }
+  std::string base_dir = "/sys/class/devfreq/";
+  base::ScopedDir devfreq_dir =
+      OpenDirAndLogOnErrorOnce(base_dir, &devfreq_error_logged_);
+  if (!devfreq_dir) {
+    return;
+  }
+  while (struct dirent* dir_ent = readdir(*devfreq_dir)) {
+    // Entries in /sys/class/devfreq are symlinks to /devices/platform
+    if (dir_ent->d_type != DT_LNK)
+      continue;
+    const char* name = dir_ent->d_name;
+    const char* file_content = ReadDevfreqCurFreq(name);
+    auto value = static_cast<uint64_t>(strtoll(file_content, nullptr, 10));
+    auto* devfreq = sys_stats->add_devfreq();
+    devfreq->set_key(name);
+    devfreq->set_value(value);
   }
 }
 
@@ -401,16 +576,6 @@ void SysStatsDataSource::ReadCpufreq(protos::pbzero::SysStats* sys_stats) {
 
   for (const auto& c : cpufreq)
     sys_stats->add_cpufreq_khz(c);
-}
-
-base::ScopedDir SysStatsDataSource::OpenDevfreqDir() {
-  const char* base_dir = "/sys/class/devfreq/";
-  base::ScopedDir devfreq_dir(opendir(base_dir));
-  if (!devfreq_dir && !devfreq_error_logged_) {
-    devfreq_error_logged_ = true;
-    PERFETTO_PLOG("failed to opendir(/sys/class/devfreq)");
-  }
-  return devfreq_dir;
 }
 
 const char* SysStatsDataSource::ReadDevfreqCurFreq(

@@ -11,7 +11,7 @@
 
 
 qt_find_package(LTTngUST PROVIDED_TARGETS LTTng::UST MODULE_NAME qml QMAKE_LIB lttng-ust)
-qt_find_package(Python REQUIRED)
+qt_find_package(Python MODULE REQUIRED)
 if(Python_Interpreter_FOUND)
     # Need to make it globally available to the project
     set(QT_INTERNAL_DECLARATIVE_PYTHON "${Python_EXECUTABLE}" CACHE STRING "" FORCE)
@@ -174,6 +174,12 @@ qt_feature("qml-xmllistmodel" PRIVATE
     LABEL "QML XmlListModel"
     PURPOSE "Enable XmlListModel in QML"
     CONDITION QT_FEATURE_qml_itemmodel AND QT_FEATURE_future
+)
+qt_feature("qml-type-loader-thread" PRIVATE
+    SECTION "QML"
+    LABEL "QmlTypeLoader on separate thread."
+    PURPOSE "Run QmlTypeLoader on separate thread."
+    CONDITION QT_FEATURE_thread AND NOT WASM
 )
 
 qt_feature("qml-python" PRIVATE

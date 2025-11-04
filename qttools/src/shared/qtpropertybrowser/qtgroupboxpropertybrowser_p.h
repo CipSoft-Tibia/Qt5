@@ -25,8 +25,8 @@ class QtGroupBoxPropertyBrowser : public QtAbstractPropertyBrowser
 {
     Q_OBJECT
 public:
-    QtGroupBoxPropertyBrowser(QWidget *parent = 0);
-    ~QtGroupBoxPropertyBrowser();
+    QtGroupBoxPropertyBrowser(QWidget *parent = nullptr);
+    ~QtGroupBoxPropertyBrowser() override;
 
 protected:
     void itemInserted(QtBrowserItem *item, QtBrowserItem *afterItem) override;

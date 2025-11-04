@@ -23,19 +23,18 @@ namespace content {
 
 namespace {
 
-void ProcessCookies(base::OnceCallback<void(bool)> callback,
-                    const std::vector<net::CookieWithAccessResult>& cookies,
+bool HasDebugCookie(const std::vector<net::CookieWithAccessResult>& cookies,
                     const std::vector<net::CookieWithAccessResult>& excluded) {
   bool is_debug_cookie_set =
       base::ranges::any_of(cookies, [](const net::CookieWithAccessResult& c) {
         // It is not possible to create a `SameSite: None` cookie insecurely, so
         // we only DCHECK this for now.
-        DCHECK(c.cookie.IsSecure());
+        DCHECK(c.cookie.SecureAttribute());
         return c.cookie.IsHttpOnly() && !c.cookie.IsPartitioned() &&
                c.cookie.Name() == "ar_debug";
       });
 
-  std::move(callback).Run(is_debug_cookie_set);
+  return is_debug_cookie_set;
 }
 
 }  // namespace
@@ -47,9 +46,8 @@ AttributionCookieCheckerImpl::AttributionCookieCheckerImpl(
 
 AttributionCookieCheckerImpl::~AttributionCookieCheckerImpl() = default;
 
-void AttributionCookieCheckerImpl::IsDebugCookieSet(
-    const url::Origin& origin,
-    base::OnceCallback<void(bool)> callback) {
+void AttributionCookieCheckerImpl::IsDebugCookieSet(const url::Origin& origin,
+                                                    Callback callback) {
   // We only care about `SameSite: None` cookies, but
   // `SameSiteCookieContext::ContextType::CROSS_SITE` is the default.
   net::CookieOptions options;
@@ -58,7 +56,7 @@ void AttributionCookieCheckerImpl::IsDebugCookieSet(
 
   storage_partition_->GetCookieManagerForBrowserProcess()->GetCookieList(
       origin.GetURL(), options, net::CookiePartitionKeyCollection(),
-      base::BindOnce(&ProcessCookies, std::move(callback)));
+      base::BindOnce(&HasDebugCookie).Then(std::move(callback)));
 }
 
 }  // namespace content

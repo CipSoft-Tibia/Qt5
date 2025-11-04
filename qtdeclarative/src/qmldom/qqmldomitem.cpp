@@ -1,6 +1,6 @@
 // Copyright (C) 2020 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
-#include "qqmldomattachedinfo_p.h"
+#include "qqmldomfilelocations_p.h"
 #include "qqmldomconstants_p.h"
 #include "qqmldomitem_p.h"
 #include "qqmldompath_p.h"
@@ -17,6 +17,7 @@
 #include "qqmldomlinewriter_p.h"
 #include "qqmldom_utils_p.h"
 #include "qqmldomscriptelements_p.h"
+#include <qqmldomlinewriterfactory_p.h>
 
 #include <QtQml/private/qqmljslexer_p.h>
 #include <QtQml/private/qqmljsparser_p.h>
@@ -44,7 +45,7 @@
 QT_BEGIN_NAMESPACE
 
 Q_LOGGING_CATEGORY(writeOutLog, "qt.qmldom.writeOut", QtWarningMsg);
-static Q_LOGGING_CATEGORY(refLog, "qt.qmldom.ref", QtWarningMsg);
+Q_STATIC_LOGGING_CATEGORY(refLog, "qt.qmldom.ref", QtWarningMsg);
 
 namespace QQmlJS {
 namespace Dom {
@@ -1233,74 +1234,36 @@ void DomItem::writeOutPost(OutWriter &ow) const
     ow.itemEnd(*this);
 }
 
-DomItem::WriteOutCheckResult DomItem::performWriteOutChecks(const DomItem &original, const DomItem &reformatted,
+DomItem::WriteOutCheckResult DomItem::performWriteOutChecks(const DomItem &reformatted,
                                                             OutWriter &ow,
                                                             WriteOutChecks extraChecks) const
 {
-    QStringList dumped;
-    auto maybeDump = [&ow, extraChecks, &dumped](const DomItem &obj, QStringView objName) {
-        QString objDumpPath;
-        if (extraChecks & WriteOutCheck::DumpOnFailure) {
-            objDumpPath = QDir(QDir::tempPath())
-                                  .filePath(objName.toString()
-                                            + QFileInfo(ow.lineWriter.fileName()).baseName()
-                                            + QLatin1String(".dump.json"));
-            obj.dump(objDumpPath);
-            dumped.append(objDumpPath);
-        }
-        return objDumpPath;
-    };
-    auto dumpedDumper = [&dumped](const Sink &s) {
-        if (dumped.isEmpty())
-            return;
-        s(u"\ndump: ");
-        for (const auto &dumpPath : dumped) {
-            s(u" ");
-            sinkEscaped(s, dumpPath);
-        }
-    };
-    auto compare = [&maybeDump, &dumpedDumper, this](const DomItem &obj1, QStringView obj1Name,
-                                                     const DomItem &obj2, QStringView obj2Name,
-                                                     const FieldFilter &filter) {
+    auto compare = [this](const DomItem &obj1, const DomItem &obj2, QStringView obj2Name,
+                          const FieldFilter &filter) {
         const auto diffList = domCompareStrList(obj1, obj2, filter, DomCompareStrList::AllDiffs);
         if (!diffList.isEmpty()) {
-            maybeDump(obj1, obj1Name);
-            maybeDump(obj2, obj2Name);
             qCWarning(writeOutLog).noquote().nospace()
                     << obj2Name << " writeOut of " << this->canonicalFilePath() << " has changes:\n"
-                    << diffList.join(QString()) << dumpedDumper;
+                    << diffList.join(QString());
             return false;
         }
         return true;
     };
-    auto checkStability = [&maybeDump, &dumpedDumper, &dumped, &ow,
-                           this](const QString &expected, const DomItem &obj, QStringView objName) {
+    auto checkStability = [&ow, this](const QString &expected, const DomItem &obj,
+                                      QStringView objName) {
         LineWriter lw2([](QStringView) {}, ow.lineWriter.fileName(), ow.lineWriter.options());
         OutWriter ow2(lw2);
         ow2.indentNextlines = true;
         obj.writeOut(ow2);
         ow2.eof();
         if (ow2.writtenStr != expected) {
-            DomItem fObj = this->fileObject();
-            maybeDump(fObj, u"initial");
-            maybeDump(obj, objName);
             qCWarning(writeOutLog).noquote().nospace()
                     << objName << " non stable writeOut of " << this->canonicalFilePath() << ":"
-                    << lineDiff(ow2.writtenStr, expected, 2) << dumpedDumper;
-            dumped.clear();
+                    << lineDiff(ow2.writtenStr, expected, 2);
             return false;
         }
         return true;
     };
-
-    if ((extraChecks & WriteOutCheck::UpdatedDomCompare)
-        && !compare(original, u"initial", reformatted, u"reformatted",
-                    FieldFilter::noLocationFilter()))
-        return WriteOutCheckResult::Failed;
-
-    if (extraChecks & WriteOutCheck::UpdatedDomStable) {
-        checkStability(ow.writtenStr, reformatted, u"reformatted");
-    }
 
     if (extraChecks
         & (WriteOutCheck::Reparse | WriteOutCheck::ReparseCompare | WriteOutCheck::ReparseStable)) {
@@ -1310,8 +1273,6 @@ DomItem::WriteOutCheckResult DomItem::performWriteOutChecks(const DomItem &origi
             return WriteOutCheckResult::Failed;
 
         auto newFilePtr = std::make_shared<QmlFile>(canonicalFilePath(), ow.writtenStr);
-        if (!newFilePtr)
-            return WriteOutCheckResult::Failed;
         newEnvPtr->addQmlFile(newFilePtr, AddOption::Overwrite);
 
         DomItem newFile = newEnv.copy(newFilePtr, Path());
@@ -1319,7 +1280,7 @@ DomItem::WriteOutCheckResult DomItem::performWriteOutChecks(const DomItem &origi
             if (extraChecks & (WriteOutCheck::ReparseCompare | WriteOutCheck::ReparseStable)) {
                 newEnvPtr->populateFromQmlFile(newFile);
                 if ((extraChecks & WriteOutCheck::ReparseCompare)
-                    && !compare(reformatted, u"reformatted", newFile, u"reparsed",
+                    && !compare(reformatted, newFile, u"reparsed",
                                 FieldFilter::compareNoCommentsFilter()))
                     return WriteOutCheckResult::Failed;
                 if ((extraChecks & WriteOutCheck::ReparseStable))
@@ -1363,11 +1324,10 @@ bool DomItem::writeOutForFile(OutWriter &ow, WriteOutChecks extraChecks) const
     ow.eof();
 
     auto currentFileItem = fileObject();
-    auto writtenFileItem = ow.restoreWrittenFileItem(currentFileItem);
     WriteOutCheckResult result = WriteOutCheckResult::Success;
-    if (extraChecks & WriteOutCheck::All)
-        result = performWriteOutChecks(currentFileItem, writtenFileItem, ow, extraChecks);
-    return result == WriteOutCheckResult::Success ? bool(writtenFileItem) : false;
+    if (extraChecks)
+        result = performWriteOutChecks(currentFileItem, ow, extraChecks);
+    return result == WriteOutCheckResult::Success ? bool(currentFileItem) : false;
 }
 
 bool DomItem::writeOut(const QString &path, int nBackups, const LineWriterOptions &options, 
@@ -1379,8 +1339,8 @@ bool DomItem::writeOut(const QString &path, int nBackups, const LineWriterOption
     auto status = fw->write(
             path,
             [this, path, &options, extraChecks](QTextStream &ts) {
-                LineWriter lw([&ts](QStringView s) { ts << s; }, path, options);
-                OutWriter ow(lw);
+                auto lw = createLineWriter([&ts](QStringView s) { ts << s; }, path, options);
+                OutWriter ow(*lw);
                 return writeOutForFile(ow, extraChecks);
             },
             nBackups);
@@ -2111,22 +2071,6 @@ QString DomItem::canonicalFilePath() const
     return visitEl([this](auto &&e) { return e->canonicalFilePath(*this); });
 }
 
-DomItem DomItem::fileLocationsTree() const
-{
-    if (DomItem l = field(Fields::fileLocationsTree))
-        return l;
-    auto res = FileLocations::findAttachedInfo(*this);
-    if (res && res.foundTreePath) {
-        return copy(res.foundTree, res.foundTreePath);
-    }
-    return DomItem();
-}
-
-DomItem DomItem::fileLocations() const
-{
-    return fileLocationsTree().field(Fields::infoItem);
-}
-
 MutableDomItem DomItem::makeCopy(DomItem::CopyOption option) const
 {
     if (m_kind == DomType::Empty)
@@ -2193,7 +2137,7 @@ MutableDomItem DomItem::makeCopy(DomItem::CopyOption option) const
     case DomType::ScriptExpression:
     case DomType::AstComments:
     case DomType::LoadInfo:
-    case DomType::AttachedInfo:
+    case DomType::FileLocationsNode:
     case DomType::DomEnvironment:
     case DomType::DomUniverse:
         qCWarning(domLog) << "DomItem::makeCopy " << internalKindStr()
@@ -2830,7 +2774,7 @@ void List::writeOut(const DomItem &self, OutWriter &ow, bool compact) const
                 if (first)
                     first = false;
                 else
-                    ow.write(u", ", LineWriter::TextAddType::Extra);
+                    ow.writeRegion(CommaTokenRegion).ensureSpace();
                 if (!compact)
                     ow.ensureNewline(1);
                 DomItem el = elF();
@@ -3593,7 +3537,7 @@ void ListPBase::writeOut(const DomItem &self, OutWriter &ow, bool compact) const
         if (first)
             first = false;
         else
-            ow.write(u", ", LineWriter::TextAddType::Extra);
+            ow.writeRegion(CommaTokenRegion).ensureSpace();
         if (!compact)
             ow.ensureNewline(1);
         DomItem el = index(self, i);

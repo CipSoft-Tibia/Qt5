@@ -35,6 +35,8 @@ qt_internal_add_example(sceneeffects)
 qt_internal_add_example(volumeraycaster)
 qt_internal_add_example(virtualassistant)
 qt_internal_add_example(extensions/stenciloutline)
+qt_internal_add_example(cascadedshadowmaps)
+qt_internal_add_example(orderindependenttransparency)
 
 if(QT_FEATURE_quick3dxr_openxr)
     qt_internal_add_example(xr_simple)
@@ -42,4 +44,23 @@ if(QT_FEATURE_quick3dxr_openxr)
     qt_internal_add_example(xr_freeformteleportation)
     qt_internal_add_example(xr_input)
     qt_internal_add_example(xr_touch)
+    qt_internal_add_example(xr_interaction)
 endif()
+
+# qt_examples_build_end() misses at least some of these due to some
+# source subdirectories being added multiple times. See QTBUG-96159.
+if(QT_FEATURE_quick3dxr_openxr)
+    set(reused_dir_targets
+        xr_interaction_shared
+        xr_interaction_shared_init
+    )
+endif()
+
+foreach(target IN LISTS reused_dir_targets)
+    if(TARGET ${target})
+        qt_autogen_tools(${target} ENABLE_AUTOGEN_TOOLS moc rcc)
+        if(TARGET Qt6::Widgets)
+            qt_autogen_tools(${target} ENABLE_AUTOGEN_TOOLS uic)
+        endif()
+    endif()
+endforeach()

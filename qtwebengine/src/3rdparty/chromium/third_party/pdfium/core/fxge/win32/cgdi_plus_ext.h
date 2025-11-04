@@ -13,15 +13,13 @@
 #include <vector>
 
 #include "core/fxcrt/retain_ptr.h"
-#include "third_party/base/containers/span.h"
+#include "core/fxcrt/span.h"
 
 class CFX_DIBBase;
 class CFX_GraphStateData;
 class CFX_Matrix;
 class CFX_Path;
 struct CFX_FillRenderOptions;
-struct FXDIB_ResampleOptions;
-struct FX_RECT;
 
 class CGdiplusExt {
  public:
@@ -35,9 +33,7 @@ class CGdiplusExt {
                      int dest_left,
                      int dest_top,
                      int dest_width,
-                     int dest_height,
-                     const FX_RECT* pClipRect,
-                     const FXDIB_ResampleOptions& options);
+                     int dest_height);
   bool DrawPath(HDC hDC,
                 const CFX_Path& path,
                 const CFX_Matrix* pObject2Device,

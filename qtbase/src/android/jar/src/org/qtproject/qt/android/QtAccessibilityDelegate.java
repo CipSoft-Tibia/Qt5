@@ -4,7 +4,6 @@
 
 package org.qtproject.qt.android;
 
-import android.app.Activity;
 import android.content.Context;
 import android.graphics.Rect;
 import android.os.Build;
@@ -29,10 +28,6 @@ class QtAccessibilityDelegate extends View.AccessibilityDelegate
     // Qt uses the upper half of the unsigned integers
     // all low positive ints should be fine.
     static final int INVALID_ID = 333; // half evil
-
-    // The platform might ask for the class implementing the "view".
-    // Pretend to be an inner class of the QtSurface.
-    private static final String DEFAULT_CLASS_NAME = "$VirtualChild";
 
     private View m_view = null;
     private AccessibilityManager m_manager;
@@ -67,8 +62,10 @@ class QtAccessibilityDelegate extends View.AccessibilityDelegate
 
     void initLayoutAccessibility(QtLayout layout)
     {
-        if (m_layout == null)
+        if (layout == null) {
             Log.w(TAG, "Unable to initialize the accessibility delegate with a null layout");
+            return;
+        }
 
         m_layout = layout;
 
@@ -82,54 +79,62 @@ class QtAccessibilityDelegate extends View.AccessibilityDelegate
         }
     }
 
-    private class AccessibilityManagerListener implements AccessibilityManager.AccessibilityStateChangeListener
+    private class AccessibilityManagerListener
+            implements AccessibilityManager.AccessibilityStateChangeListener
     {
         @Override
         public void onAccessibilityStateChanged(boolean enabled)
         {
-            if (m_layout == null || Os.getenv("QT_ANDROID_DISABLE_ACCESSIBILITY") != null)
+            if (m_layout == null)
                 return;
-            if (enabled) {
-                try {
-                        View view = m_view;
-                        if (view == null) {
-                            view = new View(m_layout.getContext());
-                            view.setId(View.NO_ID);
-                        }
 
-                        // ### Keep this for debugging for a while. It allows us to visually see that our View
-                        // ### is on top of the surface(s)
-                        //noinspection CommentedOutCode
-                        {
-                            // ColorDrawable color = new ColorDrawable(0x80ff8080);    //0xAARRGGBB
-                            // view.setBackground(color);
-                        }
-                        view.setAccessibilityDelegate(QtAccessibilityDelegate.this);
+            final String isA11yOff = Os.getenv("QT_ANDROID_DISABLE_ACCESSIBILITY");
+            if (isA11yOff != null && (isA11yOff.equalsIgnoreCase("true") || isA11yOff.equals("1")))
+                return;
 
-                        // if all is fine, add it to the layout
-                        if (m_view == null) {
-                            //m_layout.addAccessibilityView(view);
-                            m_layout.addView(view, m_layout.getChildCount(),
-                                             new ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
-                        }
-                        m_view = view;
-
-                        m_view.setOnHoverListener(new HoverEventListener());
-                    } catch (Exception e) {
-                        // Unknown exception means something went wrong.
-                        Log.w("Qt A11y", "Unknown exception: " + e);
-                    }
-            } else {
+            if (!enabled) {
                 if (m_view != null) {
                     m_layout.removeView(m_view);
                     m_view = null;
                 }
+                QtNativeAccessibility.setActive(enabled);
+                return;
+            }
+
+            try {
+                View view = m_view;
+                if (view == null) {
+                    view = new View(m_layout.getContext());
+                    view.setId(View.NO_ID);
+                }
+
+                // ### Keep this for debugging for a while. It allows us to visually see that our View
+                // ### is on top of the surface(s)
+                //noinspection CommentedOutCode
+                {
+                    // ColorDrawable color = new ColorDrawable(0x80ff8080);    //0xAARRGGBB
+                    // view.setBackground(color);
+                }
+                view.setAccessibilityDelegate(QtAccessibilityDelegate.this);
+
+                // if all is fine, add it to the layout
+                if (m_view == null) {
+                    //m_layout.addAccessibilityView(view);
+                    m_layout.addView(view, m_layout.getChildCount(),
+                            new ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
+                                    ViewGroup.LayoutParams.MATCH_PARENT));
+                }
+                m_view = view;
+
+                m_view.setOnHoverListener(new HoverEventListener());
+            } catch (Exception e) {
+                // Unknown exception means something went wrong.
+                Log.w("Qt A11y", "Unknown exception: " + e);
             }
 
             QtNativeAccessibility.setActive(enabled);
         }
     }
-
 
     @Override
     public AccessibilityNodeProvider getAccessibilityNodeProvider(View host)
@@ -241,7 +246,7 @@ class QtAccessibilityDelegate extends View.AccessibilityDelegate
                     AccessibilityEvent.obtain(AccessibilityEvent.TYPE_ANNOUNCEMENT);
 
             event.setEnabled(true);
-            event.setClassName(m_view.getClass().getName() + DEFAULT_CLASS_NAME);
+            event.setClassName(getNodeForVirtualViewId(viewId).getClassName());
 
             event.setContentDescription(value);
 
@@ -258,6 +263,37 @@ class QtAccessibilityDelegate extends View.AccessibilityDelegate
         });
     }
 
+    void notifyDescriptionOrNameChanged(int viewId, String value)
+    {
+        if (viewId == m_focusedVirtualViewId)
+            notifyValueChanged(viewId, value);
+    }
+
+    void notifyAnnouncementEvent(int viewId, String message)
+    {
+        QtNative.runAction(() -> {
+            if (m_view == null)
+                return;
+
+            if (viewId == INVALID_ID) {
+                Log.w(TAG, "notifyAnnouncementEvent() for invalid view");
+                return;
+            }
+
+            if (!m_manager.isEnabled()) {
+                Log.w(TAG, "notifyAnnouncementEvent for disabled AccessibilityManager");
+                return;
+            }
+
+            final AccessibilityEvent event =
+                    AccessibilityEvent.obtain(AccessibilityEvent.TYPE_ANNOUNCEMENT);
+            event.getText().add(message);
+            event.setClassName(getNodeForVirtualViewId(viewId).getClassName());
+            event.setPackageName(m_view.getContext().getPackageName());
+            sendAccessibilityEvent(event);
+        });
+    }
+
     void sendEventForVirtualViewId(int virtualViewId, int eventType)
     {
         final AccessibilityEvent event = getEventForVirtualViewId(virtualViewId, eventType);
@@ -271,7 +307,8 @@ class QtAccessibilityDelegate extends View.AccessibilityDelegate
 
         final ViewGroup group = (ViewGroup) m_view.getParent();
         if (group == null) {
-            Log.w(TAG, "Could not send AccessibilityEvent because group was null. This should really not happen.");
+            Log.w(TAG, "Could not send AccessibilityEvent because group was null. " +
+                    "This should really not happen.");
             return;
         }
 
@@ -280,7 +317,8 @@ class QtAccessibilityDelegate extends View.AccessibilityDelegate
 
     void invalidateVirtualViewId(int virtualViewId)
     {
-        final AccessibilityEvent event = getEventForVirtualViewId(virtualViewId, AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED);
+        final AccessibilityEvent event = getEventForVirtualViewId(virtualViewId,
+                AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED);
 
         if (event == null)
             return;
@@ -315,7 +353,7 @@ class QtAccessibilityDelegate extends View.AccessibilityDelegate
         final AccessibilityEvent event = AccessibilityEvent.obtain(eventType);
 
         event.setEnabled(true);
-        event.setClassName(m_view.getClass().getName() + DEFAULT_CLASS_NAME);
+        event.setClassName(getNodeForVirtualViewId(virtualViewId).getClassName());
 
         event.setContentDescription(QtNativeAccessibility.descriptionForAccessibleObject(virtualViewId));
         if (event.getText().isEmpty() && TextUtils.isEmpty(event.getContentDescription()))
@@ -411,7 +449,6 @@ class QtAccessibilityDelegate extends View.AccessibilityDelegate
 
         final AccessibilityNodeInfo node = AccessibilityNodeInfo.obtain();
 
-        node.setClassName(m_view.getClass().getName() + DEFAULT_CLASS_NAME);
         node.setPackageName(m_view.getContext().getPackageName());
 
         if (m_layout.getChildCount() == 0 || !QtNativeAccessibility.populateNode(virtualViewId, node)) {
@@ -531,6 +568,9 @@ class QtAccessibilityDelegate extends View.AccessibilityDelegate
             success = QtNativeAccessibility.clickAction(virtualViewId);
             if (success)
                 sendEventForVirtualViewId(virtualViewId, AccessibilityEvent.TYPE_VIEW_CLICKED);
+            break;
+        case AccessibilityNodeInfo.ACTION_ACCESSIBILITY_FOCUS:
+            success = QtNativeAccessibility.focusAction(virtualViewId);
             break;
         case AccessibilityNodeInfo.ACTION_SCROLL_FORWARD:
             success = QtNativeAccessibility.scrollForward(virtualViewId);

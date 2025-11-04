@@ -46,7 +46,8 @@ class NATIVE_THEME_EXPORT NativeThemeMac : public NativeThemeBase {
              const gfx::Rect& rect,
              const ExtraParams& extra,
              ColorScheme color_scheme,
-             const absl::optional<SkColor>& accent_color) const override;
+             bool in_forced_colors,
+             const std::optional<SkColor>& accent_color) const override;
   void PaintMenuPopupBackground(
       cc::PaintCanvas* canvas,
       const ColorProvider* color_provider,
@@ -88,7 +89,7 @@ class NATIVE_THEME_EXPORT NativeThemeMac : public NativeThemeBase {
   // Returns the minimum size for the thumb. We will not inset the thumb if it
   // will be smaller than this size. The scale parameter should be the device
   // scale factor.
-  gfx::Size GetThumbMinSize(bool vertical, float scale) const;
+  static gfx::Size GetThumbMinSize(bool vertical, float scale);
 
  protected:
   friend class NativeTheme;
@@ -97,6 +98,9 @@ class NATIVE_THEME_EXPORT NativeThemeMac : public NativeThemeBase {
 
   NativeThemeMac(bool configure_web_instance, bool should_only_use_dark_colors);
   ~NativeThemeMac() override;
+
+  // NativeTheme:
+  std::optional<base::TimeDelta> GetPlatformCaretBlinkInterval() const override;
 
  private:
   // Paint the selected menu item background, and a border for emphasis when in
@@ -133,7 +137,7 @@ class NATIVE_THEME_EXPORT NativeThemeMac : public NativeThemeBase {
     kTrackOuterBorder,
   };
 
-  absl::optional<SkColor> GetScrollbarColor(
+  std::optional<SkColor> GetScrollbarColor(
       ScrollbarPart part,
       ColorScheme color_scheme,
       const ScrollbarExtraParams& extra_params) const;

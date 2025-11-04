@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:data-parser
 
 #include "qcssparser_p.h"
 
@@ -14,7 +15,7 @@
 #include <qimagereader.h>
 #include <qtextformat.h>
 
-#include <algorithm>
+#include <QtCore/q20algorithm.h>
 
 #ifndef QT_NO_CSSPARSER
 
@@ -34,10 +35,30 @@ struct QCssKnownValue
 {
     const char name[28];
     quint64 id;
+
+    struct ByName;
 };
 
+struct QCssKnownValue::ByName
+{
+    constexpr bool operator()(const QCssKnownValue &lhs, const QCssKnownValue &rhs) const noexcept
+    { return std::string_view{lhs.name} < std::string_view{rhs.name}; }
+};
+#if !defined(Q_CC_GNU_ONLY) || Q_CC_GNU >= 1000
+#  define NOT_OLD_GCCs(...) __VA_ARGS__
+#else
+#  define NOT_OLD_GCCs(...) /* nothing */
+#endif
+#define CHECK_ARRAY_IS_SORTED(array, Num) \
+    static_assert(std::size(array) == Num); \
+    NOT_OLD_GCCs( \
+    static_assert(q20::is_sorted(std::begin(array), std::end(array), \
+                                 QCssKnownValue::ByName{})); \
+    ) /* NOT_OLD_GCCs */ \
+    /* end */
+
 // This array is sorted alphabetically.
-static const QCssKnownValue properties[NumProperties - 1] = {
+static constexpr QCssKnownValue properties[] = {
     { "-qt-background-role", QtBackgroundRole },
     { "-qt-block-indent", QtBlockIndent },
     { "-qt-fg-texture-cachekey", QtForegroundTextureCacheKey },
@@ -159,8 +180,10 @@ static const QCssKnownValue properties[NumProperties - 1] = {
     { "width", Width },
     { "word-spacing", WordSpacing }
 };
+CHECK_ARRAY_IS_SORTED(properties, size_t(NumProperties) - 1)
 
-static const QCssKnownValue values[NumKnownValues - 1] = {
+static constexpr QCssKnownValue values[] = {
+    { "accent", Value_Accent },
     { "active", Value_Active },
     { "alternate-base", Value_AlternateBase },
     { "always", Value_Always },
@@ -204,6 +227,7 @@ static const QCssKnownValue values[NumKnownValues - 1] = {
     { "midlight", Value_Midlight },
     { "miterjoin", Value_MiterJoin},
     { "native", Value_Native },
+    { "no-role", Value_NoRole },
     { "none", Value_None },
     { "normal", Value_Normal },
     { "nowrap", Value_NoWrap },
@@ -212,6 +236,7 @@ static const QCssKnownValue values[NumKnownValues - 1] = {
     { "on", Value_On },
     { "outset", Value_Outset },
     { "overline", Value_Overline },
+    { "placeholder-text", Value_PlaceholderText },
     { "pre", Value_Pre },
     { "pre-line", Value_PreLine },
     { "pre-wrap", Value_PreWrap },
@@ -230,6 +255,8 @@ static const QCssKnownValue values[NumKnownValues - 1] = {
     { "super", Value_Super },
     { "svgmiterjoin", Value_SvgMiterJoin},
     { "text", Value_Text },
+    { "tooltip-base", Value_ToolTipBase },
+    { "tooltip-text", Value_ToolTipText },
     { "top", Value_Top },
     { "transparent", Value_Transparent },
     { "underline", Value_Underline },
@@ -242,12 +269,16 @@ static const QCssKnownValue values[NumKnownValues - 1] = {
     { "x-large", Value_XLarge },
     { "xx-large", Value_XXLarge }
 };
+CHECK_ARRAY_IS_SORTED(values, size_t(NumKnownValues) - 1)
 
 //Map id to strings as they appears in the 'values' array above
-static const short indexOfId[NumKnownValues] = { 0, 44, 51, 45, 52, 53, 60, 37, 28, 78, 79, 27, 46, 6, 71, 50,
-    31, 65, 66, 29, 55, 69, 7, 11, 42, 62, 20, 14, 18, 19, 21, 23, 54, 26, 49, 75, 39, 3, 2, 43, 70, 17, 12,
-    63, 15, 34, 72, 35, 73, 61, 74, 36, 64, 22, 56, 41, 5, 57, 67, 77, 9, 30, 40, 13, 38, 68, 8, 10, 4, 76,
-    59, 24, 25, 32, 33, 1, 16, 0, 58, 48, 47 };
+static constexpr uchar indexOfId[] = {
+    0, 46, 54, 47, 55, 56, 63, 38, 29, 83, 84, 28, 48, 7, 76, 52,
+    32, 68, 69, 30, 58, 74, 8, 12, 43, 65, 21, 15, 19, 20, 22, 24, 57, 27, 51, 80, 40, 4, 3, 45, 75, 18, 13,
+    66, 16, 35, 77, 36, 78, 64, 79, 37, 67, 23, 59, 42, 6, 60, 70, 82, 10, 31, 41, 14, 39, 71, 9, 11, 5, 81,
+    62, 25, 26, 33, 34, 2, 44, 72, 73, 53, 0, 17, 1, 61, 50, 49 };
+
+static_assert(std::size(indexOfId) == size_t(NumKnownValues));
 
 QString Value::toString() const
 {
@@ -258,7 +289,7 @@ QString Value::toString() const
     }
 }
 
-static const QCssKnownValue pseudos[NumPseudos - 1] = {
+static constexpr QCssKnownValue pseudos[] = {
     { "active", PseudoClass_Active },
     { "adjoins-item", PseudoClass_Item },
     { "alternate", PseudoClass_Alternate },
@@ -304,44 +335,51 @@ static const QCssKnownValue pseudos[NumPseudos - 1] = {
     { "vertical", PseudoClass_Vertical },
     { "window", PseudoClass_Window }
 };
+CHECK_ARRAY_IS_SORTED(pseudos, size_t(NumPseudos) - 1)
 
-static const QCssKnownValue origins[NumKnownOrigins - 1] = {
+static constexpr QCssKnownValue origins[] = {
     { "border", Origin_Border },
     { "content", Origin_Content },
     { "margin", Origin_Margin }, // not in css
     { "padding", Origin_Padding }
 };
+CHECK_ARRAY_IS_SORTED(origins, size_t(NumKnownOrigins) - 1)
 
-static const QCssKnownValue repeats[NumKnownRepeats - 1] = {
+static constexpr QCssKnownValue repeats[] = {
     { "no-repeat", Repeat_None },
     { "repeat-x", Repeat_X },
     { "repeat-xy", Repeat_XY },
     { "repeat-y", Repeat_Y }
 };
+CHECK_ARRAY_IS_SORTED(repeats, size_t(NumKnownRepeats) - 1)
 
-static const QCssKnownValue tileModes[NumKnownTileModes - 1] = {
+static constexpr QCssKnownValue tileModes[] = {
     { "repeat", TileMode_Repeat },
     { "round", TileMode_Round },
     { "stretch", TileMode_Stretch },
 };
+CHECK_ARRAY_IS_SORTED(tileModes, size_t(NumKnownTileModes) - 1)
 
-static const QCssKnownValue positions[NumKnownPositionModes - 1] = {
+static constexpr QCssKnownValue positions[] = {
     { "absolute", PositionMode_Absolute },
     { "fixed", PositionMode_Fixed },
     { "relative", PositionMode_Relative },
     { "static", PositionMode_Static }
 };
+CHECK_ARRAY_IS_SORTED(positions, size_t(NumKnownPositionModes) - 1)
 
-static const QCssKnownValue attachments[NumKnownAttachments - 1] = {
+static constexpr QCssKnownValue attachments[] = {
     { "fixed", Attachment_Fixed },
     { "scroll", Attachment_Scroll }
 };
+CHECK_ARRAY_IS_SORTED(attachments, size_t(NumKnownAttachments) - 1)
 
-static const QCssKnownValue styleFeatures[NumKnownStyleFeatures - 1] = {
+static constexpr QCssKnownValue styleFeatures[] = {
     { "background-color", StyleFeature_BackgroundColor },
     { "background-gradient", StyleFeature_BackgroundGradient },
     { "none", StyleFeature_None }
 };
+CHECK_ARRAY_IS_SORTED(styleFeatures, size_t(NumKnownStyleFeatures) - 1)
 
 static bool operator<(const QString &name, const QCssKnownValue &prop)
 {
@@ -353,9 +391,12 @@ static bool operator<(const QCssKnownValue &prop, const QString &name)
     return QString::compare(QLatin1StringView(prop.name), name, Qt::CaseInsensitive) < 0;
 }
 
+#undef CHECK_ARRAY_IS_SORTED
+#undef NOT_OLD_GCCs
+
 static quint64 findKnownValue(const QString &name, const QCssKnownValue *start, int numValues)
 {
-    const QCssKnownValue *end = start + numValues - 1;
+    const QCssKnownValue *end = start + (numValues - 1);
     const QCssKnownValue *prop = std::lower_bound(start, end, name);
     if ((prop == end) || (name < *prop))
         return 0;
@@ -731,6 +772,8 @@ static ColorData parseColorValue(QCss::Value v)
 
     const QString &identifier = lst.at(0);
     if ((identifier.compare("palette"_L1, Qt::CaseInsensitive)) == 0) {
+        static_assert((Value_LastColorRole - Value_FirstColorRole + 1) == QPalette::ColorRole::NColorRoles);
+
         int role = findKnownValue(lst.at(1).trimmed(), values, NumKnownValues);
         if (role >= Value_FirstColorRole && role <= Value_LastColorRole)
             return (QPalette::ColorRole)(role-Value_FirstColorRole);
@@ -2427,6 +2470,10 @@ bool Parser::parse(StyleSheet *styleSheet, Qt::CaseSensitivity nameCaseSensitivi
             PageRule rule;
             if (!parsePage(&rule)) return false;
             styleSheet->pageRules.append(rule);
+        } else if (testAnimation()) {
+            AnimationRule rule;
+            if (!parseAnimation(&rule)) return false;
+            styleSheet->animationRules.append(rule);
         } else if (testRuleset()) {
             StyleRule rule;
             if (!parseRuleset(&rule)) return false;
@@ -2550,6 +2597,72 @@ bool Parser::parseNextOperator(Value *value)
         case COMMA: value->type = Value::TermOperatorComma; skipSpace(); break;
         default: prev(); break;
     }
+    return true;
+}
+
+bool Parser::parseAnimation(AnimationRule *animationRule)
+{
+    skipSpace();
+    if (!test(IDENT)) return false;
+
+    animationRule->animName = lexem();
+
+    if (!next(LBRACE)) return false;
+    skipSpace();
+
+    while (test(PERCENTAGE) || test(IDENT)) {
+        AnimationRule::AnimationRuleSet set;
+        if (lookup() == PERCENTAGE) {
+            QString name = lexem();
+            name.removeLast();
+            float keyFrame = name.toFloat() / 100;
+            set.keyFrame = keyFrame;
+        } else if (lookup() == IDENT) {
+            QString name;
+            if (parseElementName(&name)) {
+                if (name == QStringLiteral("from"))
+                    set.keyFrame = 0;
+                else if (name == QStringLiteral("to"))
+                    set.keyFrame = 1;
+            }
+        }
+
+        skipSpace();
+        if (!next(LBRACE)) return false;
+        const int declarationStart = index;
+
+        do {
+            skipSpace();
+            Declaration decl;
+            const int rewind = index;
+            if (!parseNextDeclaration(&decl)) {
+                index = rewind;
+                const bool foundSemicolon = until(SEMICOLON);
+                const int semicolonIndex = index;
+
+                index = declarationStart;
+                const bool foundRBrace = until(RBRACE);
+
+                if (foundSemicolon && semicolonIndex < index) {
+                    decl = Declaration();
+                    index = semicolonIndex - 1;
+                } else {
+                    skipSpace();
+                    return foundRBrace;
+                }
+            }
+            if (!decl.isEmpty())
+                set.declarations.append(decl);
+        } while (test(SEMICOLON));
+
+        if (!next(RBRACE)) return false;
+        skipSpace();
+        animationRule->ruleSets.append(set);
+    }
+
+    if (!next(RBRACE)) return false;
+    skipSpace();
+
     return true;
 }
 

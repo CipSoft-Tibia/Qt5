@@ -1,7 +1,13 @@
 // Copyright (C) 2022 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "file_system_access_permission_grant_qt.h"
+
+// based on chrome_file_system_access_permission_context.cc:
+// Copyright 2019 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
 
 #include "file_system_access_permission_request_manager_qt.h"
 
@@ -93,7 +99,8 @@ void FileSystemAccessPermissionGrantQt::RequestPermission(
     }
 
     // Drop fullscreen mode so that the user sees the URL bar.
-    base::ScopedClosureRunner fullscreen_block = web_contents->ForSecurityDropFullscreen();
+    base::ScopedClosureRunner fullscreen_block =
+            web_contents->ForSecurityDropFullscreen(display::kInvalidDisplayId);
 
     FileSystemAccessPermissionRequestManagerQt::Access access = m_type == GrantType::kRead
             ? FileSystemAccessPermissionRequestManagerQt::Access::kRead

@@ -6,7 +6,10 @@
 
 #include <algorithm>
 #include <cerrno>
+#include <cmath>
 #include <memory>
+#include <utility>
+#include <vector>
 
 #include "absl/types/span.h"
 #include "quiche/quic/core/io/quic_event_loop.h"
@@ -113,11 +116,13 @@ int QuicPollEventLoop::PollWithRetries(absl::Span<pollfd> fds,
     poll_result =
         PollSyscall(fds.data(), fds.size(), static_cast<int>(timeout_ms));
 
-    // Retry if EINTR happens.
-    bool is_eintr = poll_result < 0 && errno == EINTR;
-    if (!is_eintr) {
+    // Stop if there are events or a non-EINTR error.
+    bool done = poll_result > 0 || (poll_result < 0 && errno != EINTR);
+    if (done) {
       break;
     }
+    // Poll until `clock_` shows the timeout was exceeded.
+    // PollSyscall uses a system clock internally that may run faster.
     QuicTime now = clock_->Now();
     if (now >= timeout_at) {
       break;
@@ -173,10 +178,10 @@ void QuicPollEventLoop::DispatchIoEvent(std::vector<ReadyListEntry>& ready_list,
   Registration& registration = *it->second;
 
   mask |= GetPollMask(registration.artificially_notify_at_next_iteration);
-  registration.artificially_notify_at_next_iteration = QuicSocketEventMask();
-
   // poll() always returns certain classes of events even if not requested.
-  mask &= GetPollMask(registration.events);
+  mask &= GetPollMask(registration.events |
+                      registration.artificially_notify_at_next_iteration);
+  registration.artificially_notify_at_next_iteration = QuicSocketEventMask();
   if (!mask) {
     return;
   }

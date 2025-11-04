@@ -20,11 +20,15 @@
 #include "core/fpdfdoc/cpdf_annot.h"
 #include "core/fpdfdoc/cpdf_interactiveform.h"
 #include "core/fpdfdoc/cpdf_metadata.h"
+#include "core/fxcrt/check.h"
+#include "core/fxcrt/compiler_specific.h"
+#include "core/fxcrt/fx_memcpy_wrappers.h"
+#include "core/fxcrt/fx_safe_types.h"
+#include "core/fxcrt/numerics/safe_conversions.h"
 #include "core/fxcrt/span_util.h"
+#include "core/fxcrt/stl_util.h"
 #include "core/fxcrt/unowned_ptr.h"
 #include "fpdfsdk/cpdfsdk_formfillenvironment.h"
-#include "third_party/base/check.h"
-#include "third_party/base/numerics/safe_conversions.h"
 
 namespace {
 
@@ -66,10 +70,25 @@ unsigned long GetStreamMaybeCopyAndReturnLengthImpl(
     stream_acc->LoadAllDataRaw();
 
   pdfium::span<const uint8_t> stream_data_span = stream_acc->GetSpan();
-  if (!buffer.empty() && buffer.size() <= stream_data_span.size())
-    fxcrt::spancpy(buffer, stream_data_span);
+  if (!buffer.empty() && buffer.size() <= stream_data_span.size()) {
+    fxcrt::Copy(stream_data_span, buffer);
+  }
+  return pdfium::checked_cast<unsigned long>(stream_data_span.size());
+}
 
-  return pdfium::base::checked_cast<unsigned long>(stream_data_span.size());
+// TODO(tsepez): should be UNSAFE_BUFFER_USAGE.
+size_t FPDFWideStringLength(const unsigned short* str) {
+  if (!str) {
+    return 0;
+  }
+  size_t len = 0;
+  // SAFETY: NUL-termination required from caller.
+  UNSAFE_BUFFERS({
+    while (str[len]) {
+      len++;
+    }
+  });
+  return len;
 }
 
 #ifdef PDF_ENABLE_XFA
@@ -81,14 +100,10 @@ class FPDF_FileHandlerContext final : public IFX_SeekableStream {
   FX_FILESIZE GetSize() override;
   FX_FILESIZE GetPosition() override;
   bool IsEOF() override;
-  size_t ReadBlock(pdfium::span<uint8_t> buffer) override;
   bool ReadBlockAtOffset(pdfium::span<uint8_t> buffer,
                          FX_FILESIZE offset) override;
-  bool WriteBlockAtOffset(pdfium::span<const uint8_t> buffer,
-                          FX_FILESIZE offset) override;
+  bool WriteBlock(pdfium::span<const uint8_t> buffer) override;
   bool Flush() override;
-
-  void SetPosition(FX_FILESIZE pos) { m_nCurPos = pos; }
 
  private:
   explicit FPDF_FileHandlerContext(FPDF_FILEHANDLER* pFS);
@@ -99,16 +114,20 @@ class FPDF_FileHandlerContext final : public IFX_SeekableStream {
 };
 
 FPDF_FileHandlerContext::FPDF_FileHandlerContext(FPDF_FILEHANDLER* pFS)
-    : m_pFS(pFS) {}
+    : m_pFS(pFS) {
+  CHECK(m_pFS);
+}
 
 FPDF_FileHandlerContext::~FPDF_FileHandlerContext() {
-  if (m_pFS && m_pFS->Release)
+  if (m_pFS->Release) {
     m_pFS->Release(m_pFS->clientData);
+  }
 }
 
 FX_FILESIZE FPDF_FileHandlerContext::GetSize() {
-  if (m_pFS && m_pFS->GetSize)
+  if (m_pFS->GetSize) {
     return static_cast<FX_FILESIZE>(m_pFS->GetSize(m_pFS->clientData));
+  }
   return 0;
 }
 
@@ -122,56 +141,52 @@ FX_FILESIZE FPDF_FileHandlerContext::GetPosition() {
 
 bool FPDF_FileHandlerContext::ReadBlockAtOffset(pdfium::span<uint8_t> buffer,
                                                 FX_FILESIZE offset) {
-  if (buffer.empty() || !m_pFS->ReadBlock)
+  if (buffer.empty() || !m_pFS->ReadBlock) {
     return false;
+  }
+
+  FX_SAFE_FILESIZE new_position = offset;
+  new_position += buffer.size();
+  if (!new_position.IsValid()) {
+    return false;
+  }
 
   if (m_pFS->ReadBlock(m_pFS->clientData, static_cast<FPDF_DWORD>(offset),
                        buffer.data(),
-                       static_cast<FPDF_DWORD>(buffer.size())) == 0) {
-    m_nCurPos = offset + buffer.size();
-    return true;
-  }
-  return false;
-}
-
-size_t FPDF_FileHandlerContext::ReadBlock(pdfium::span<uint8_t> buffer) {
-  if (buffer.empty() || !m_pFS->ReadBlock)
-    return 0;
-
-  FX_FILESIZE nSize = GetSize();
-  if (m_nCurPos >= nSize)
-    return 0;
-  FX_FILESIZE dwAvail = nSize - m_nCurPos;
-  if (dwAvail < (FX_FILESIZE)buffer.size())
-    buffer = buffer.first(static_cast<size_t>(dwAvail));
-  if (m_pFS->ReadBlock(m_pFS->clientData, static_cast<FPDF_DWORD>(m_nCurPos),
-                       buffer.data(),
-                       static_cast<FPDF_DWORD>(buffer.size())) == 0) {
-    m_nCurPos += buffer.size();
-    return buffer.size();
-  }
-
-  return 0;
-}
-
-bool FPDF_FileHandlerContext::WriteBlockAtOffset(
-    pdfium::span<const uint8_t> buffer,
-    FX_FILESIZE offset) {
-  if (!m_pFS || !m_pFS->WriteBlock)
+                       static_cast<FPDF_DWORD>(buffer.size())) != 0) {
     return false;
-
-  if (m_pFS->WriteBlock(m_pFS->clientData, static_cast<FPDF_DWORD>(offset),
-                        buffer.data(),
-                        static_cast<FPDF_DWORD>(buffer.size())) == 0) {
-    m_nCurPos = offset + buffer.size();
-    return true;
   }
-  return false;
+
+  m_nCurPos = new_position.ValueOrDie();
+  return true;
+}
+
+bool FPDF_FileHandlerContext::WriteBlock(pdfium::span<const uint8_t> buffer) {
+  if (!m_pFS->WriteBlock) {
+    return false;
+  }
+
+  const FX_FILESIZE size = GetSize();
+  FX_SAFE_FILESIZE new_position = size;
+  new_position += buffer.size();
+  if (!new_position.IsValid()) {
+    return false;
+  }
+
+  if (m_pFS->WriteBlock(m_pFS->clientData, static_cast<FPDF_DWORD>(size),
+                        buffer.data(),
+                        static_cast<FPDF_DWORD>(buffer.size())) != 0) {
+    return false;
+  }
+
+  m_nCurPos = new_position.ValueOrDie();
+  return true;
 }
 
 bool FPDF_FileHandlerContext::Flush() {
-  if (!m_pFS || !m_pFS->Flush)
+  if (!m_pFS->Flush) {
     return true;
+  }
 
   return m_pFS->Flush(m_pFS->clientData) == 0;
 }
@@ -199,6 +214,21 @@ CPDF_Page* CPDFPageFromFPDFPage(FPDF_PAGE page) {
   return page ? IPDFPageFromFPDFPage(page)->AsPDFPage() : nullptr;
 }
 
+FXDIB_Format FXDIBFormatFromFPDFFormat(int format) {
+  switch (format) {
+    case FPDFBitmap_Gray:
+      return FXDIB_Format::k8bppRgb;
+    case FPDFBitmap_BGR:
+      return FXDIB_Format::kBgr;
+    case FPDFBitmap_BGRx:
+      return FXDIB_Format::kBgrx;
+    case FPDFBitmap_BGRA:
+      return FXDIB_Format::kBgra;
+    default:
+      return FXDIB_Format::kInvalid;
+  }
+}
+
 CPDFSDK_InteractiveForm* FormHandleToInteractiveForm(FPDF_FORMHANDLE hHandle) {
   CPDFSDK_FormFillEnvironment* pFormFillEnv =
       CPDFSDKFormFillEnvironmentFromFPDFFormHandle(hHandle);
@@ -206,12 +236,28 @@ CPDFSDK_InteractiveForm* FormHandleToInteractiveForm(FPDF_FORMHANDLE hHandle) {
 }
 
 ByteString ByteStringFromFPDFWideString(FPDF_WIDESTRING wide_string) {
-  return WideStringFromFPDFWideString(wide_string).ToUTF8();
+  // SAFETY: caller ensures `wide_string` is NUL-terminated and enforced
+  // by UNSAFE_BUFFER_USAGE in header file.
+  return UNSAFE_BUFFERS(WideStringFromFPDFWideString(wide_string).ToUTF8());
 }
 
 WideString WideStringFromFPDFWideString(FPDF_WIDESTRING wide_string) {
-  return WideString::FromUTF16LE({reinterpret_cast<const uint8_t*>(wide_string),
-                                  WideString::WStringLength(wide_string) * 2});
+  // SAFETY: caller ensures `wide_string` is NUL-terminated and enforced
+  // by UNSAFE_BUFFER_USAGE in header file.
+  return WideString::FromUTF16LE(UNSAFE_BUFFERS(
+      pdfium::make_span(reinterpret_cast<const uint8_t*>(wide_string),
+                        FPDFWideStringLength(wide_string) * 2)));
+}
+
+UNSAFE_BUFFER_USAGE pdfium::span<char> SpanFromFPDFApiArgs(
+    void* buffer,
+    pdfium::StrictNumeric<size_t> buflen) {
+  if (!buffer) {
+    // API convention is to ignore `buflen` arg when `buffer` is NULL.
+    return pdfium::span<char>();
+  }
+  // SAFETY: required from caller, enforced by UNSAFE_BUFFER_USAGE in header.
+  return UNSAFE_BUFFERS(pdfium::make_span(static_cast<char*>(buffer), buflen));
 }
 
 #ifdef PDF_ENABLE_XFA
@@ -281,25 +327,21 @@ FS_MATRIX FSMatrixFromCFXMatrix(const CFX_Matrix& matrix) {
   return {matrix.a, matrix.b, matrix.c, matrix.d, matrix.e, matrix.f};
 }
 
-unsigned long NulTerminateMaybeCopyAndReturnLength(const ByteString& text,
-                                                   void* buffer,
-                                                   unsigned long buflen) {
-  const unsigned long len =
-      pdfium::base::checked_cast<unsigned long>(text.GetLength() + 1);
-  if (buffer && len <= buflen)
-    memcpy(buffer, text.c_str(), len);
-  return len;
+unsigned long NulTerminateMaybeCopyAndReturnLength(
+    const ByteString& text,
+    pdfium::span<char> result_span) {
+  pdfium::span<const char> text_span = text.span_with_terminator();
+  fxcrt::try_spancpy(result_span, text_span);
+  return pdfium::checked_cast<unsigned long>(text_span.size());
 }
 
-unsigned long Utf16EncodeMaybeCopyAndReturnLength(const WideString& text,
-                                                  void* buffer,
-                                                  unsigned long buflen) {
+unsigned long Utf16EncodeMaybeCopyAndReturnLength(
+    const WideString& text,
+    pdfium::span<char> result_span) {
   ByteString encoded_text = text.ToUTF16LE();
-  const unsigned long len =
-      pdfium::base::checked_cast<unsigned long>(encoded_text.GetLength());
-  if (buffer && len <= buflen)
-    memcpy(buffer, encoded_text.c_str(), len);
-  return len;
+  pdfium::span<const char> encoded_text_span = encoded_text.span();
+  fxcrt::try_spancpy(result_span, encoded_text_span);
+  return pdfium::checked_cast<unsigned long>(encoded_text_span.size());
 }
 
 unsigned long GetRawStreamMaybeCopyAndReturnLength(
@@ -478,18 +520,16 @@ std::vector<uint32_t> ParsePageRangeString(const ByteString& bsPageRange,
   for (const auto& entry : fxcrt::Split(bsStrippedPageRange, ',')) {
     std::vector<ByteString> args = fxcrt::Split(entry, '-');
     if (args.size() == 1) {
-      uint32_t page_num =
-          pdfium::base::checked_cast<uint32_t>(atoi(args[0].c_str()));
+      uint32_t page_num = pdfium::checked_cast<uint32_t>(atoi(args[0].c_str()));
       if (page_num == 0 || page_num > nCount)
         return std::vector<uint32_t>();
       results.push_back(page_num - 1);
     } else if (args.size() == 2) {
       uint32_t first_num =
-          pdfium::base::checked_cast<uint32_t>(atoi(args[0].c_str()));
+          pdfium::checked_cast<uint32_t>(atoi(args[0].c_str()));
       if (first_num == 0)
         return std::vector<uint32_t>();
-      uint32_t last_num =
-          pdfium::base::checked_cast<uint32_t>(atoi(args[1].c_str()));
+      uint32_t last_num = pdfium::checked_cast<uint32_t>(atoi(args[1].c_str()));
       if (last_num == 0 || first_num > last_num || last_num > nCount)
         return std::vector<uint32_t>();
       for (uint32_t i = first_num; i <= last_num; ++i)

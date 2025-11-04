@@ -41,12 +41,14 @@ class Let final : public Castable<Let, OperandInstruction<1, 1>> {
     static constexpr size_t kValueOperandOffset = 0;
 
     /// Constructor (no result, no operands)
-    Let();
+    /// @param id the instruction id
+    explicit Let(Id id);
 
     /// Constructor
+    /// @param id the instruction id
     /// @param result the result value
     /// @param value the let's value
-    Let(InstructionResult* result, Value* value);
+    Let(Id id, InstructionResult* result, Value* value);
 
     ~Let() override;
 
@@ -57,10 +59,10 @@ class Let final : public Castable<Let, OperandInstruction<1, 1>> {
     void SetValue(ir::Value* value) { SetOperand(kValueOperandOffset, value); }
 
     /// @returns the value
-    ir::Value* Value() { return operands_[kValueOperandOffset]; }
+    ir::Value* Value() { return Operand(kValueOperandOffset); }
 
     /// @returns the value
-    const ir::Value* Value() const { return operands_[kValueOperandOffset]; }
+    const ir::Value* Value() const { return Operand(kValueOperandOffset); }
 
     /// @returns the friendly name for the instruction
     std::string FriendlyName() const override { return "let"; }

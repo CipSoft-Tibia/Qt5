@@ -10,8 +10,10 @@
 #include <memory>
 #include <utility>
 
+#include "core/fxcrt/check_op.h"
+#include "core/fxcrt/compiler_specific.h"
 #include "core/fxcrt/fx_memory_wrappers.h"
-#include "third_party/base/containers/span.h"
+#include "core/fxcrt/span.h"
 
 namespace fxcrt {
 
@@ -20,7 +22,10 @@ namespace fxcrt {
 // accessible using spans.
 // It can either initialize its data with zeros, or leave its data
 // uninitialized.
-template <typename T>
+template <typename T,
+          typename = std::enable_if_t<std::is_arithmetic<T>::value ||
+                                      std::is_enum<T>::value ||
+                                      IsFXDataPartitionException<T>::value>>
 class FixedSizeDataVector {
  public:
   FixedSizeDataVector() = default;
@@ -31,7 +36,19 @@ class FixedSizeDataVector {
     if (size == 0) {
       return FixedSizeDataVector();
     }
-    return FixedSizeDataVector(FX_AllocUninit(T, size), size);
+    // SAFETY: same `size` value passed to FX_Alloc() as to the ctor.
+    return UNSAFE_BUFFERS(FixedSizeDataVector(FX_AllocUninit(T, size), size));
+  }
+
+  // Same as above, but return an empty vector when insufficient memory.
+  static FixedSizeDataVector TryUninit(size_t size) {
+    if (size == 0) {
+      return FixedSizeDataVector();
+    }
+    T* ptr = FX_TryAllocUninit(T, size);
+    // SAFETY: same `size` value passed to FX_TryAlloc() above as
+    // passed to ctor when the ptr is non-null.
+    return UNSAFE_BUFFERS(FixedSizeDataVector(ptr, ptr ? size : 0u));
   }
 
   // Allocates a vector of the given size with zeroed memory.
@@ -40,7 +57,8 @@ class FixedSizeDataVector {
     if (size == 0) {
       return FixedSizeDataVector();
     }
-    return FixedSizeDataVector(FX_Alloc(T, size), size);
+    // SAFETY: same `size` value passed to FX_Alloc() as to the ctor.
+    return UNSAFE_BUFFERS(FixedSizeDataVector(FX_Alloc(T, size), size));
   }
 
   // Same as above, but return an empty vector when insufficient memory.
@@ -49,7 +67,17 @@ class FixedSizeDataVector {
       return FixedSizeDataVector();
     }
     T* ptr = FX_TryAlloc(T, size);
-    return FixedSizeDataVector(ptr, ptr ? size : 0u);
+    // SAFETY: same `size` value passed to FX_TryAlloc() above as
+    // passed to ctor when the ptr is non-null.
+    return UNSAFE_BUFFERS(FixedSizeDataVector(ptr, ptr ? size : 0u));
+  }
+
+  static FixedSizeDataVector TruncatedFrom(FixedSizeDataVector&& that,
+                                           size_t new_size) {
+    CHECK_LE(new_size, that.size_);
+    FixedSizeDataVector result = std::move(that);
+    result.size_ = new_size;
+    return result;
   }
 
   FixedSizeDataVector(const FixedSizeDataVector&) = delete;
@@ -74,9 +102,13 @@ class FixedSizeDataVector {
   operator pdfium::span<const T>() const { return span(); }
 
   // Explicit access to data via span.
-  pdfium::span<T> span() { return pdfium::span<T>(data_.get(), size_); }
+  pdfium::span<T> span() {
+    // SAFETY: size_ describes size of data_.
+    return UNSAFE_BUFFERS(pdfium::make_span(data_.get(), size_));
+  }
   pdfium::span<const T> span() const {
-    return pdfium::span<const T>(data_.get(), size_);
+    // SAFETY: size_ describes size of data_.
+    return UNSAFE_BUFFERS(pdfium::make_span(data_.get(), size_));
   }
 
   // Convenience methods to slice the vector into spans.
@@ -98,7 +130,8 @@ class FixedSizeDataVector {
   pdfium::span<const T> last(size_t count) const { return span().last(count); }
 
  private:
-  FixedSizeDataVector(T* ptr, size_t size) : data_(ptr), size_(size) {}
+  UNSAFE_BUFFER_USAGE FixedSizeDataVector(T* ptr, size_t size)
+      : data_(ptr), size_(size) {}
 
   std::unique_ptr<T, FxFreeDeleter> data_;
   size_t size_ = 0;

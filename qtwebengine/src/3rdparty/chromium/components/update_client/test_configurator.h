@@ -7,6 +7,7 @@
 
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -19,7 +20,6 @@
 #include "base/time/time.h"
 #include "components/update_client/configurator.h"
 #include "services/network/test/test_url_loader_factory.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "url/gurl.h"
 
 class PrefService;
@@ -34,6 +34,7 @@ class CrxDownloaderFactory;
 class NetworkFetcherFactory;
 class PatchChromiumFactory;
 class ProtocolHandlerFactory;
+class TestActivityDataService;
 class UnzipChromiumFactory;
 
 #define POST_INTERCEPT_SCHEME "https"
@@ -77,6 +78,8 @@ class TestConfigurator : public Configurator {
   TestConfigurator(const TestConfigurator&) = delete;
   TestConfigurator& operator=(const TestConfigurator&) = delete;
 
+  TestActivityDataService* GetActivityDataService() const;
+
   // Overrides for Configurator.
   base::TimeDelta InitialDelay() const override;
   base::TimeDelta NextCheckDelay() const override;
@@ -103,9 +106,9 @@ class TestConfigurator : public Configurator {
   bool IsPerUserInstall() const override;
   std::unique_ptr<ProtocolHandlerFactory> GetProtocolHandlerFactory()
       const override;
-  absl::optional<bool> IsMachineExternallyManaged() const override;
+  std::optional<bool> IsMachineExternallyManaged() const override;
   UpdaterStateProvider GetUpdaterStateProvider() const override;
-  absl::optional<base::FilePath> GetCrxCachePath() const override;
+  std::optional<base::FilePath> GetCrxCachePath() const override;
   bool IsConnectionMetered() const override;
 
   void SetOnDemandTime(base::TimeDelta seconds);
@@ -118,7 +121,7 @@ class TestConfigurator : public Configurator {
   void SetCrxDownloaderFactory(
       scoped_refptr<CrxDownloaderFactory> crx_downloader_factory);
   void SetIsMachineExternallyManaged(
-      absl::optional<bool> is_machine_externally_managed);
+      std::optional<bool> is_machine_externally_managed);
   void SetIsNetworkConnectionMetered(bool is_network_connection_metered);
   void SetUpdaterStateProvider(UpdaterStateProvider update_state_provider);
   network::TestURLLoaderFactory* test_url_loader_factory() {
@@ -138,6 +141,7 @@ class TestConfigurator : public Configurator {
   bool enabled_cup_signing_;
   raw_ptr<PrefService> pref_service_;
   std::unique_ptr<PersistedData> persisted_data_;
+  raw_ptr<TestActivityDataService> activity_data_service_;
   std::vector<GURL> update_check_urls_;
   GURL ping_url_;
   scoped_refptr<update_client::UnzipChromiumFactory> unzip_factory_;
@@ -147,7 +151,7 @@ class TestConfigurator : public Configurator {
   scoped_refptr<NetworkFetcherFactory> network_fetcher_factory_;
   scoped_refptr<CrxDownloaderFactory> crx_downloader_factory_;
   UpdaterStateProvider updater_state_provider_;
-  absl::optional<bool> is_machine_externally_managed_;
+  std::optional<bool> is_machine_externally_managed_;
   bool is_network_connection_metered_;
   base::ScopedTempDir crx_cache_root_temp_dir_;
 };

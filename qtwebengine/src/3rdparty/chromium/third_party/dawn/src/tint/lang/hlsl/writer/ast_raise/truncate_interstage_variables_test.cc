@@ -38,6 +38,10 @@ using ::testing::ContainerEq;
 
 using TruncateInterstageVariablesTest = ast::transform::TransformTest;
 
+TEST(TintCheckAllFieldsReflected, HlslWriterAstRaiseTruncateInterstageVariablesTest) {
+    TINT_ASSERT_ALL_FIELDS_REFLECTED(TruncateInterstageVariables::Config);
+}
+
 TEST_F(TruncateInterstageVariablesTest, ShouldRunVertex) {
     auto* src = R"(
 struct ShaderIO {
@@ -605,6 +609,33 @@ fn f(@builtin(vertex_index) vid : u32) -> tint_symbol {
 
     auto got = Run<TruncateInterstageVariables>(src, data);
 
+    EXPECT_EQ(expect, str(got));
+}
+
+TEST_F(TruncateInterstageVariablesTest, LocationOutOfRange) {
+    auto* src = R"(
+struct ShaderIO {
+  @builtin(position) pos: vec4<f32>,
+  @location(0) f_0: f32,
+  @location(30) f_2: f32,
+}
+@vertex
+fn f() -> ShaderIO {
+  var io: ShaderIO;
+  io.f_0 = 1.0;
+  io.f_2 = io.f_2 + 3.0;
+  return io;
+}
+)";
+
+    // Return error when location >= 30 (maximum supported number of inter-stage shader variables)
+    auto* expect = "error: The location (30) of f_2 in ShaderIO exceeds the maximum value (29).";
+
+    TruncateInterstageVariables::Config cfg;
+    ast::transform::DataMap data;
+    data.Add<TruncateInterstageVariables::Config>(cfg);
+
+    auto got = Run<TruncateInterstageVariables>(src, data);
     EXPECT_EQ(expect, str(got));
 }
 

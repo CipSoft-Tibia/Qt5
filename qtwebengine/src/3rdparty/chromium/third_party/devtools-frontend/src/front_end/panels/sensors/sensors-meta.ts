@@ -140,10 +140,11 @@ UI.ViewManager.registerViewExtension({
   settings: [
     'emulation.locations',
   ],
+  iconName: 'location-on',
 });
 
 Common.Settings.registerSettingExtension({
-  storageType: Common.Settings.SettingStorageType.Synced,
+  storageType: Common.Settings.SettingStorageType.SYNCED,
   settingName: 'emulation.locations',
   settingType: Common.Settings.SettingType.ARRAY,
   // TODO(crbug.com/1136655): http://crrev.com/c/2666426 regressed localization of city titles.
@@ -237,7 +238,7 @@ Common.Settings.registerSettingExtension({
 
 Common.Settings.registerSettingExtension({
   title: i18nLazyString(UIStrings.emulateIdleDetectorState),
-  settingName: 'emulation.idleDetection',
+  settingName: 'emulation.idle-detection',
   settingType: Common.Settings.SettingType.ENUM,
   defaultValue: 'none',
   options: [

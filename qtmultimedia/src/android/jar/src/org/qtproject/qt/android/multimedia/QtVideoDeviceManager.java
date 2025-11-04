@@ -103,11 +103,15 @@ class QtVideoDeviceManager {
         return characteristics.get(CameraCharacteristics.SENSOR_ORIENTATION);
     }
 
+    // Returns -1 when camera is not available.
     @UsedFromNativeCode
     int getLensFacing(String cameraId) {
-        CameraCharacteristics characteristics =  getCameraCharacteristics(cameraId);
+        final CameraCharacteristics characteristics = getCameraCharacteristics(cameraId);
         if (characteristics == null)
-            return 0;
+            return -1;
+
+        // The docs guarantees this is not null:
+        // https://developer.android.com/reference/android/hardware/camera2/CameraCharacteristics#LENS_FACING
         return characteristics.get(CameraCharacteristics.LENS_FACING);
     }
 
@@ -235,27 +239,12 @@ class QtVideoDeviceManager {
         return characteristicsValue != null ? characteristicsValue : new int[0];
     }
 
-    // Returns true if the afMode is both available and we have a working implementation
-    // for it.
-    @UsedFromNativeCode
-    boolean isAfModeSupported(String cameraId, int afMode) {
+    boolean isAfModeAvailable(String cameraId, int afMode) {
         if (cameraId == null || cameraId.isEmpty())
             return false;
-
-        final boolean available = Arrays
+        return Arrays
             .stream(getAllAvailableAfModes(cameraId))
             .anyMatch(value -> value == afMode);
-
-        if (available) {
-            if (afMode == CameraCharacteristics.CONTROL_AF_MODE_CONTINUOUS_PICTURE)
-                return true;
-            else if (afMode == CameraCharacteristics.CONTROL_AF_MODE_OFF
-                && isManualFocusDistanceSupported(cameraId))
-                return true;
-        }
-
-
-        return false;
     }
 
     // Returns supported QCamera::FocusModes as strings. I.e FocusModeAuto becomes "FocusModeAuto".
@@ -269,11 +258,11 @@ class QtVideoDeviceManager {
         ArrayList<String> outList = new ArrayList<String>();
 
         // FocusModeAuto maps to the CONTINUOUS_PICTURE mode.
-        if (isAfModeSupported(cameraId, CameraCharacteristics.CONTROL_AF_MODE_CONTINUOUS_PICTURE)) {
+        if (isAfModeAvailable(cameraId, CameraCharacteristics.CONTROL_AF_MODE_CONTINUOUS_PICTURE)) {
             outList.add("FocusModeAuto");
         }
 
-        if (isAfModeSupported(cameraId, CameraCharacteristics.CONTROL_AF_MODE_OFF)
+        if (isAfModeAvailable(cameraId, CameraCharacteristics.CONTROL_AF_MODE_OFF)
             && isManualFocusDistanceSupported(cameraId))
             outList.add("FocusModeManual");
 

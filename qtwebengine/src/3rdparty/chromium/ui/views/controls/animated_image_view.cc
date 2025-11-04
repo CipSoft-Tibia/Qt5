@@ -38,19 +38,20 @@ void AnimatedImageView::SetAnimatedImage(
     return;
   }
 
-  gfx::Size preferred_size(GetPreferredSize());
+  gfx::Size preferred_size(GetPreferredSize({}));
   animated_image_ = std::move(animated_image);
 
   // Stop the animation to reset it.
   Stop();
 
-  if (preferred_size != GetPreferredSize())
+  if (preferred_size != GetPreferredSize({})) {
     PreferredSizeChanged();
+  }
   SchedulePaint();
 }
 
 void AnimatedImageView::Play(
-    absl::optional<lottie::Animation::PlaybackConfig> playback_config) {
+    std::optional<lottie::Animation::PlaybackConfig> playback_config) {
   DCHECK(animated_image_);
   if (state_ == State::kPlaying)
     return;

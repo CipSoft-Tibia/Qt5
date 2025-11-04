@@ -27,6 +27,8 @@ QT_REQUIRE_CONFIG(process);
 
 using namespace Qt::StringLiterals;
 
+enum class Throw { OnFail = 1 };
+
 struct BenchmarkResult
 {
     qint64  total;
@@ -638,11 +640,6 @@ bool TestLogger::shouldIgnoreTest(const QString &test) const
         return true;
 #endif
 
-    if (!qEnvironmentVariableIsEmpty("WAYLAND_DISPLAY")) {
-        qDebug() << "TestLogger::shouldIgnoreTest() ignore" << test << "on wayland/xwayland!";
-        return true;
-    }
-
     // These tests are affected by timing and whether the CPU tick counter
     // is monotonically increasing. They won't work on some machines so
     // leave them off by default. Feel free to enable them for your own
@@ -673,6 +670,12 @@ bool TestLogger::shouldIgnoreTest(const QString &test) const
         return true;
 #endif
 
+#if defined(QT_NO_EXCEPTIONS) || !QT_CONFIG(future) || defined(QT_NO_CONCURRENT)
+    // This test requires exceptions, QException, and QtConcurrent::run():
+    if (test == "throwonfailandskip")
+        return true;
+#endif
+
     if (test == "benchlibcallgrind") {
 #if defined(__GNUC__) && (defined(__i386) || defined(__x86_64)) && defined(Q_OS_LINUX)
 #  ifdef __AVX512F__
@@ -692,6 +695,13 @@ bool TestLogger::shouldIgnoreTest(const QString &test) const
         return true;
 #endif
     }
+
+#ifndef __cpp_lib_three_way_comparison
+    if (test == "threewaycompare") {
+        WARN("The threewaycompare test requires C++20 support. Skipping.");
+        return true;
+    }
+#endif
 
     if (logger != QTestLog::Plain || outputMode == FileOutput) {
         // The following tests only work with plain text output to stdout,

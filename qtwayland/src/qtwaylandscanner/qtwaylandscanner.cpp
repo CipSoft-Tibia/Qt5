@@ -1214,7 +1214,10 @@ bool Scanner::process()
                     printf("\n");
                 }
                 int actualArgumentCount = new_id ? int(e.arguments.size()) - 1 : int(e.arguments.size());
-                printf("        %s::%s_%s(\n", new_id ? "return " : "", interfaceName, e.name.constData());
+                if (new_id)
+                    printf("        %s %s = ::%s_%s(\n", new_id_str.constData(), new_id->name.constData(), interfaceName, e.name.constData());
+                else
+                    printf("        ::%s_%s(\n", interfaceName, e.name.constData());
                 printf("            m_%s%s", interfaceName, actualArgumentCount > 0 ? "," : "");
                 bool needsComma = false;
                 for (const WaylandArgument &a : e.arguments) {
@@ -1245,6 +1248,8 @@ bool Scanner::process()
                 printf(");\n");
                 if (e.type == "destructor")
                     printf("        m_%s = nullptr;\n", interfaceName);
+                if (new_id)
+                    printf("        return %s;\n", new_id->name.constData());
                 printf("    }\n");
             }
 

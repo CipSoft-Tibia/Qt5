@@ -5,7 +5,9 @@
 
 #include <QtCore/QJniEnvironment>
 #include <QtCore/QJniObject>
-#include <QtTest/QtTest>
+#include <QtTest/QTest>
+
+QT_BEGIN_NAMESPACE
 
 static const char javaTestClass[] =
         "org/qtproject/qt/android/testdatapackage/QtJniEnvironmentTestClass";
@@ -373,6 +375,8 @@ void tst_QJniEnvironment::findStaticField()
     // check that all exceptions are already cleared
     QVERIFY(!env.checkAndClearExceptions());
 }
+
+QT_END_NAMESPACE
 
 QTEST_MAIN(tst_QJniEnvironment)
 

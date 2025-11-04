@@ -130,7 +130,7 @@ EIGEN_STRONG_INLINE EIGEN_DEVICE_FUNC Packet pldexp_generic(const Packet& a, con
   PacketI b = parithmetic_shift_right<2>(e);                                          // floor(e/4);
   Packet c = preinterpret<Packet>(plogical_shift_left<MantissaBits>(padd(b, bias)));  // 2^b
   Packet out = pmul(pmul(pmul(a, c), c), c);                                          // a * 2^(3b)
-  b = psub(psub(psub(e, b), b), b);                                                   // e - 3b
+  b = pnmadd(pset1<PacketI>(3), b, e);                                                // e - 3b
   c = preinterpret<Packet>(plogical_shift_left<MantissaBits>(padd(b, bias)));         // 2^(e-3*b)
   out = pmul(out, c);
   return out;
@@ -555,7 +555,7 @@ inline float trig_reduce_huge(float xf, Eigen::numext::int32_t* quadrant) {
   return float(double(int64_t(p)) * pio2_62);
 }
 
-template <bool ComputeSine, typename Packet>
+template <bool ComputeSine, typename Packet, bool ComputeBoth = false>
 EIGEN_DEFINE_FUNCTION_ALLOWING_MULTIPLE_DEFINITIONS
 #if EIGEN_COMP_GNUC_STRICT
     __attribute__((optimize("-fno-unsafe-math-optimizations")))
@@ -582,8 +582,8 @@ EIGEN_DEFINE_FUNCTION_ALLOWING_MULTIPLE_DEFINITIONS
 
 // Subtract y * Pi/2 to reduce x to the interval -Pi/4 <= x <= +Pi/4
 // using "Extended precision modular arithmetic"
-#if defined(EIGEN_HAS_SINGLE_INSTRUCTION_MADD)
-  // This version requires true FMA for high accuracy
+#if defined(EIGEN_VECTORIZE_FMA)
+  // This version requires true FMA for high accuracy.
   // It provides a max error of 1ULP up to (with absolute_error < 5.9605e-08):
   const float huge_th = ComputeSine ? 117435.992f : 71476.0625f;
   x = pmadd(y, pset1<Packet>(-1.57079601287841796875f), x);
@@ -669,10 +669,21 @@ EIGEN_DEFINE_FUNCTION_ALLOWING_MULTIPLE_DEFINITIONS
   y2 = pmadd(y2, x, x);
 
   // Select the correct result from the two polynomials.
-  y = ComputeSine ? pselect(poly_mask, y2, y1) : pselect(poly_mask, y1, y2);
-
+  if (ComputeBoth) {
+    Packet peven = peven_mask(x);
+    Packet ysin = pselect(poly_mask, y2, y1);
+    Packet ycos = pselect(poly_mask, y1, y2);
+    Packet sign_bit_sin = pxor(_x, preinterpret<Packet>(plogical_shift_left<30>(y_int)));
+    Packet sign_bit_cos = preinterpret<Packet>(plogical_shift_left<30>(padd(y_int, csti_1)));
+    sign_bit_sin = pand(sign_bit_sin, cst_sign_mask);  // clear all but left most bit
+    sign_bit_cos = pand(sign_bit_cos, cst_sign_mask);  // clear all but left most bit
+    y = pselect(peven, pxor(ysin, sign_bit_sin), pxor(ycos, sign_bit_cos));
+  } else {
+    y = ComputeSine ? pselect(poly_mask, y2, y1) : pselect(poly_mask, y1, y2);
+    y = pxor(y, sign_bit);
+  }
   // Update the sign and filter huge inputs
-  return pxor(y, sign_bit);
+  return y;
 }
 
 template <typename Packet>
@@ -683,6 +694,174 @@ EIGEN_DEFINE_FUNCTION_ALLOWING_MULTIPLE_DEFINITIONS Packet psin_float(const Pack
 template <typename Packet>
 EIGEN_DEFINE_FUNCTION_ALLOWING_MULTIPLE_DEFINITIONS Packet pcos_float(const Packet& x) {
   return psincos_float<false>(x);
+}
+
+// Trigonometric argument reduction for double for inputs smaller than 15.
+// Reduces trigonometric arguments for double inputs where x < 15. Given an argument x and its corresponding quadrant
+// count n, the function computes and returns the reduced argument t such that x = n * pi/2 + t.
+template <typename Packet>
+Packet trig_reduce_small_double(const Packet& x, const Packet& q) {
+  // Pi/2 split into 2 values
+  const Packet cst_pio2_a = pset1<Packet>(-1.570796325802803);
+  const Packet cst_pio2_b = pset1<Packet>(-9.920935184482005e-10);
+
+  Packet t;
+  t = pmadd(cst_pio2_a, q, x);
+  t = pmadd(cst_pio2_b, q, t);
+  return t;
+}
+
+// Trigonometric argument reduction for double for inputs smaller than 1e14.
+// Reduces trigonometric arguments for double inputs where x < 1e14. Given an argument x and its corresponding quadrant
+// count n, the function computes and returns the reduced argument t such that x = n * pi/2 + t.
+template <typename Packet>
+Packet trig_reduce_medium_double(const Packet& x, const Packet& q_high, const Packet& q_low) {
+  // Pi/2 split into 4 values
+  const Packet cst_pio2_a = pset1<Packet>(-1.570796325802803);
+  const Packet cst_pio2_b = pset1<Packet>(-9.920935184482005e-10);
+  const Packet cst_pio2_c = pset1<Packet>(-6.123234014771656e-17);
+  const Packet cst_pio2_d = pset1<Packet>(1.903488962019325e-25);
+
+  Packet t;
+  t = pmadd(cst_pio2_a, q_high, x);
+  t = pmadd(cst_pio2_a, q_low, t);
+  t = pmadd(cst_pio2_b, q_high, t);
+  t = pmadd(cst_pio2_b, q_low, t);
+  t = pmadd(cst_pio2_c, q_high, t);
+  t = pmadd(cst_pio2_c, q_low, t);
+  t = pmadd(cst_pio2_d, padd(q_low, q_high), t);
+  return t;
+}
+
+template <bool ComputeSine, typename Packet, bool ComputeBoth = false>
+EIGEN_DEFINE_FUNCTION_ALLOWING_MULTIPLE_DEFINITIONS
+#if EIGEN_COMP_GNUC_STRICT
+    __attribute__((optimize("-fno-unsafe-math-optimizations")))
+#endif
+    Packet
+    psincos_double(const Packet& x) {
+  typedef typename unpacket_traits<Packet>::integer_packet PacketI;
+  typedef typename unpacket_traits<PacketI>::type ScalarI;
+
+  const Packet cst_sign_mask = pset1frombits<Packet>(static_cast<Eigen::numext::uint64_t>(0x8000000000000000u));
+
+  // If the argument is smaller than this value, use a simpler argument reduction
+  const double small_th = 15;
+  // If the argument is bigger than this value, use the non-vectorized std version
+  const double huge_th = 1e14;
+
+  const Packet cst_2oPI = pset1<Packet>(0.63661977236758134307553505349006);  // 2/PI
+  // Integer Packet constants
+  const PacketI cst_one = pset1<PacketI>(ScalarI(1));
+  // Constant for splitting
+  const Packet cst_split = pset1<Packet>(1 << 24);
+
+  Packet x_abs = pabs(x);
+
+  // Scale x by 2/Pi
+  PacketI q_int;
+  Packet s;
+
+  // TODO Implement huge angle argument reduction
+  if (EIGEN_PREDICT_FALSE(predux_any(pcmp_le(pset1<Packet>(small_th), x_abs)))) {
+    Packet q_high = pmul(pfloor(pmul(x_abs, pdiv(cst_2oPI, cst_split))), cst_split);
+    Packet q_low_noround = psub(pmul(x_abs, cst_2oPI), q_high);
+    q_int = pcast<Packet, PacketI>(padd(q_low_noround, pset1<Packet>(0.5)));
+    Packet q_low = pcast<PacketI, Packet>(q_int);
+    s = trig_reduce_medium_double(x_abs, q_high, q_low);
+  } else {
+    Packet qval_noround = pmul(x_abs, cst_2oPI);
+    q_int = pcast<Packet, PacketI>(padd(qval_noround, pset1<Packet>(0.5)));
+    Packet q = pcast<PacketI, Packet>(q_int);
+    s = trig_reduce_small_double(x_abs, q);
+  }
+
+  // All the upcoming approximating polynomials have even exponents
+  Packet ss = pmul(s, s);
+
+  // Padé approximant of cos(x)
+  // Assuring < 1 ULP error on the interval [-pi/4, pi/4]
+  // cos(x) ~= (80737373*x^8 - 13853547000*x^6 + 727718024880*x^4 - 11275015752000*x^2 + 23594700729600)/(147173*x^8 +
+  // 39328920*x^6 + 5772800880*x^4 + 522334612800*x^2 + 23594700729600)
+  // MATLAB code to compute those coefficients:
+  //    syms x;
+  //    cosf = @(x) cos(x);
+  //    pade_cosf = pade(cosf(x), x, 0, 'Order', 8)
+  Packet sc1_num = pmadd(ss, pset1<Packet>(80737373), pset1<Packet>(-13853547000));
+  Packet sc2_num = pmadd(sc1_num, ss, pset1<Packet>(727718024880));
+  Packet sc3_num = pmadd(sc2_num, ss, pset1<Packet>(-11275015752000));
+  Packet sc4_num = pmadd(sc3_num, ss, pset1<Packet>(23594700729600));
+  Packet sc1_denum = pmadd(ss, pset1<Packet>(147173), pset1<Packet>(39328920));
+  Packet sc2_denum = pmadd(sc1_denum, ss, pset1<Packet>(5772800880));
+  Packet sc3_denum = pmadd(sc2_denum, ss, pset1<Packet>(522334612800));
+  Packet sc4_denum = pmadd(sc3_denum, ss, pset1<Packet>(23594700729600));
+  Packet scos = pdiv(sc4_num, sc4_denum);
+
+  // Padé approximant of sin(x)
+  // Assuring < 1 ULP error on the interval [-pi/4, pi/4]
+  // sin(x) ~= (x*(4585922449*x^8 - 1066023933480*x^6 + 83284044283440*x^4 - 2303682236856000*x^2 +
+  // 15605159573203200))/(45*(1029037*x^8 + 345207016*x^6 + 61570292784*x^4 + 6603948711360*x^2 + 346781323848960))
+  // MATLAB code to compute those coefficients:
+  //    syms x;
+  //    sinf = @(x) sin(x);
+  //    pade_sinf = pade(sinf(x), x, 0, 'Order', 8, 'OrderMode', 'relative')
+  Packet ss1_num = pmadd(ss, pset1<Packet>(4585922449), pset1<Packet>(-1066023933480));
+  Packet ss2_num = pmadd(ss1_num, ss, pset1<Packet>(83284044283440));
+  Packet ss3_num = pmadd(ss2_num, ss, pset1<Packet>(-2303682236856000));
+  Packet ss4_num = pmadd(ss3_num, ss, pset1<Packet>(15605159573203200));
+  Packet ss1_denum = pmadd(ss, pset1<Packet>(1029037), pset1<Packet>(345207016));
+  Packet ss2_denum = pmadd(ss1_denum, ss, pset1<Packet>(61570292784));
+  Packet ss3_denum = pmadd(ss2_denum, ss, pset1<Packet>(6603948711360));
+  Packet ss4_denum = pmadd(ss3_denum, ss, pset1<Packet>(346781323848960));
+  Packet ssin = pdiv(pmul(s, ss4_num), pmul(pset1<Packet>(45), ss4_denum));
+
+  Packet poly_mask = preinterpret<Packet>(pcmp_eq(pand(q_int, cst_one), pzero(q_int)));
+
+  Packet sign_sin = pxor(x, preinterpret<Packet>(plogical_shift_left<62>(q_int)));
+  Packet sign_cos = preinterpret<Packet>(plogical_shift_left<62>(padd(q_int, cst_one)));
+  Packet sign_bit, sFinalRes;
+  if (ComputeBoth) {
+    Packet peven = peven_mask(x);
+    sign_bit = pselect((s), sign_sin, sign_cos);
+    sFinalRes = pselect(pxor(peven, poly_mask), ssin, scos);
+  } else {
+    sign_bit = ComputeSine ? sign_sin : sign_cos;
+    sFinalRes = ComputeSine ? pselect(poly_mask, ssin, scos) : pselect(poly_mask, scos, ssin);
+  }
+  sign_bit = pand(sign_bit, cst_sign_mask);  // clear all but left most bit
+  sFinalRes = pxor(sFinalRes, sign_bit);
+
+  // If the inputs values are higher than that a value that the argument reduction can currently address, compute them
+  // using std::sin and std::cos
+  // TODO Remove it when huge angle argument reduction is implemented
+  if (EIGEN_PREDICT_FALSE(predux_any(pcmp_le(pset1<Packet>(huge_th), x_abs)))) {
+    const int PacketSize = unpacket_traits<Packet>::size;
+    EIGEN_ALIGN_TO_BOUNDARY(sizeof(Packet)) double sincos_vals[PacketSize];
+    EIGEN_ALIGN_TO_BOUNDARY(sizeof(Packet)) double x_cpy[PacketSize];
+    pstoreu(x_cpy, x);
+    pstoreu(sincos_vals, sFinalRes);
+    for (int k = 0; k < PacketSize; ++k) {
+      double val = x_cpy[k];
+      if (std::abs(val) > huge_th && (numext::isfinite)(val)) {
+        if (ComputeBoth)
+          sincos_vals[k] = k % 2 == 0 ? std::sin(val) : std::cos(val);
+        else
+          sincos_vals[k] = ComputeSine ? std::sin(val) : std::cos(val);
+      }
+    }
+    sFinalRes = ploadu<Packet>(sincos_vals);
+  }
+  return sFinalRes;
+}
+
+template <typename Packet>
+EIGEN_DEFINE_FUNCTION_ALLOWING_MULTIPLE_DEFINITIONS Packet psin_double(const Packet& x) {
+  return psincos_double<true>(x);
+}
+
+template <typename Packet>
+EIGEN_DEFINE_FUNCTION_ALLOWING_MULTIPLE_DEFINITIONS Packet pcos_double(const Packet& x) {
+  return psincos_double<false>(x);
 }
 
 // Generic implementation of acos(x).
@@ -779,150 +958,247 @@ EIGEN_DEFINE_FUNCTION_ALLOWING_MULTIPLE_DEFINITIONS Packet pasin_float(const Pac
   return por(invalid_mask, p);
 }
 
-// Computes elementwise atan(x) for x in [-1:1] with 2 ulp accuracy.
+template <typename Scalar>
+struct patan_reduced {
+  template <typename Packet>
+  static EIGEN_DEFINE_FUNCTION_ALLOWING_MULTIPLE_DEFINITIONS Packet run(const Packet& x);
+};
+
+template <>
 template <typename Packet>
-EIGEN_DEFINE_FUNCTION_ALLOWING_MULTIPLE_DEFINITIONS Packet patan_reduced_float(const Packet& x) {
-  const Packet q0 = pset1<Packet>(-0.3333314359188079833984375f);
-  const Packet q2 = pset1<Packet>(0.19993579387664794921875f);
-  const Packet q4 = pset1<Packet>(-0.14209578931331634521484375f);
-  const Packet q6 = pset1<Packet>(0.1066047251224517822265625f);
-  const Packet q8 = pset1<Packet>(-7.5408883392810821533203125e-2f);
-  const Packet q10 = pset1<Packet>(4.3082617223262786865234375e-2f);
-  const Packet q12 = pset1<Packet>(-1.62907354533672332763671875e-2f);
-  const Packet q14 = pset1<Packet>(2.90188402868807315826416015625e-3f);
+EIGEN_DEFINE_FUNCTION_ALLOWING_MULTIPLE_DEFINITIONS Packet patan_reduced<double>::run(const Packet& x) {
+  const Packet p1 = pset1<Packet>(3.3004361289279920e-01);
+  const Packet p3 = pset1<Packet>(8.2704055405494614e-01);
+  const Packet p5 = pset1<Packet>(7.5365702534987022e-01);
+  const Packet p7 = pset1<Packet>(3.0409318473444424e-01);
+  const Packet p9 = pset1<Packet>(5.2574296781008604e-02);
+  const Packet p11 = pset1<Packet>(3.0917513112462781e-03);
+  const Packet p13 = pset1<Packet>(2.6667153866462208e-05);
+  const Packet q0 = p1;
+  const Packet q2 = pset1<Packet>(9.3705509168587852e-01);
+  const Packet q4 = pset1<Packet>(1.0);
+  const Packet q6 = pset1<Packet>(4.9716458728465573e-01);
+  const Packet q8 = pset1<Packet>(1.1548932646420353e-01);
+  const Packet q10 = pset1<Packet>(1.0899150928962708e-02);
+  const Packet q12 = pset1<Packet>(2.7311202462436667e-04);
 
-  // Approximate atan(x) by a polynomial of the form
-  //   P(x) = x + x^3 * Q(x^2),
-  // where Q(x^2) is a 7th order polynomial in x^2.
-  // We evaluate even and odd terms in x^2 in parallel
-  // to take advantage of instruction level parallelism
-  // and hardware with multiple FMA units.
+  Packet x2 = pmul(x, x);
+  Packet p = pmadd(p13, x2, p11);
+  Packet q = pmadd(q12, x2, q10);
+  p = pmadd(p, x2, p9);
+  q = pmadd(q, x2, q8);
+  p = pmadd(p, x2, p7);
+  q = pmadd(q, x2, q6);
+  p = pmadd(p, x2, p5);
+  q = pmadd(q, x2, q4);
+  p = pmadd(p, x2, p3);
+  q = pmadd(q, x2, q2);
+  p = pmadd(p, x2, p1);
+  q = pmadd(q, x2, q0);
+  return pmul(x, pdiv(p, q));
+}
 
-  // note: if x == -0, this returns +0
-  const Packet x2 = pmul(x, x);
-  const Packet x4 = pmul(x2, x2);
-  Packet q_odd = pmadd(q14, x4, q10);
-  Packet q_even = pmadd(q12, x4, q8);
-  q_odd = pmadd(q_odd, x4, q6);
-  q_even = pmadd(q_even, x4, q4);
-  q_odd = pmadd(q_odd, x4, q2);
-  q_even = pmadd(q_even, x4, q0);
-  const Packet q = pmadd(q_odd, x2, q_even);
-  return pmadd(q, pmul(x, x2), x);
+// Computes elementwise atan(x) for x in [-1:1] with 2 ulp accuracy.
+template <>
+template <typename Packet>
+EIGEN_DEFINE_FUNCTION_ALLOWING_MULTIPLE_DEFINITIONS Packet patan_reduced<float>::run(const Packet& x) {
+  const Packet p1 = pset1<Packet>(8.109951019287109375e-01f);
+  const Packet p3 = pset1<Packet>(7.296695709228515625e-01f);
+  const Packet p5 = pset1<Packet>(1.12026982009410858154296875e-01f);
+  const Packet q0 = p1;
+  const Packet q2 = pset1<Packet>(1.0f);
+  const Packet q4 = pset1<Packet>(2.8318560123443603515625e-01f);
+  const Packet q6 = pset1<Packet>(1.00917108356952667236328125e-02f);
+
+  Packet x2 = pmul(x, x);
+  Packet p = pmadd(p5, x2, p3);
+  Packet q = pmadd(q6, x2, q4);
+  p = pmadd(p, x2, p1);
+  q = pmadd(q, x2, q2);
+  q = pmadd(q, x2, q0);
+  return pmul(x, pdiv(p, q));
 }
 
 template <typename Packet>
-EIGEN_DEFINE_FUNCTION_ALLOWING_MULTIPLE_DEFINITIONS Packet patan_float(const Packet& x_in) {
+EIGEN_DEFINE_FUNCTION_ALLOWING_MULTIPLE_DEFINITIONS Packet generic_patan(const Packet& x_in) {
   typedef typename unpacket_traits<Packet>::type Scalar;
-  static_assert(std::is_same<Scalar, float>::value, "Scalar type must be float");
 
-  constexpr float kPiOverTwo = static_cast<float>(EIGEN_PI / 2);
+  constexpr Scalar kPiOverTwo = static_cast<Scalar>(EIGEN_PI / 2);
 
-  const Packet cst_signmask = pset1<Packet>(-0.0f);
-  const Packet cst_one = pset1<Packet>(1.0f);
+  const Packet cst_signmask = pset1<Packet>(-Scalar(0));
+  const Packet cst_one = pset1<Packet>(Scalar(1));
   const Packet cst_pi_over_two = pset1<Packet>(kPiOverTwo);
 
   //   "Large": For |x| > 1, use atan(1/x) = sign(x)*pi/2 - atan(x).
   //   "Small": For |x| <= 1, approximate atan(x) directly by a polynomial
-  //            calculated using Sollya.
+  //            calculated using Rminimax.
 
   const Packet abs_x = pabs(x_in);
   const Packet x_signmask = pand(x_in, cst_signmask);
   const Packet large_mask = pcmp_lt(cst_one, abs_x);
   const Packet x = pselect(large_mask, preciprocal(abs_x), abs_x);
-  const Packet p = patan_reduced_float(x);
+  const Packet p = patan_reduced<Scalar>::run(x);
   // Apply transformations according to the range reduction masks.
   Packet result = pselect(large_mask, psub(cst_pi_over_two, p), p);
   // Return correct sign
   return pxor(result, x_signmask);
 }
 
-// Computes elementwise atan(x) for x in [-tan(pi/8):tan(pi/8)]
-// with 2 ulp accuracy.
-template <typename Packet>
-EIGEN_DEFINE_FUNCTION_ALLOWING_MULTIPLE_DEFINITIONS Packet patan_reduced_double(const Packet& x) {
-  const Packet q0 = pset1<Packet>(-0.33333333333330028569463365784031338989734649658203);
-  const Packet q2 = pset1<Packet>(0.199999999990664090177006073645316064357757568359375);
-  const Packet q4 = pset1<Packet>(-0.142857141937123677255527809393242932856082916259766);
-  const Packet q6 = pset1<Packet>(0.111111065991039953404495577160560060292482376098633);
-  const Packet q8 = pset1<Packet>(-9.0907812986129224452902519715280504897236824035645e-2);
-  const Packet q10 = pset1<Packet>(7.6900542950704739442180368769186316058039665222168e-2);
-  const Packet q12 = pset1<Packet>(-6.6410112986494976294871150912513257935643196105957e-2);
-  const Packet q14 = pset1<Packet>(5.6920144995467943094258345126945641823112964630127e-2);
-  const Packet q16 = pset1<Packet>(-4.3577020814990513608577771265117917209863662719727e-2);
-  const Packet q18 = pset1<Packet>(2.1244050233624342527427586446719942614436149597168e-2);
+/** \internal \returns the hyperbolic tan of \a a (coeff-wise)
+    Doesn't do anything fancy, just a 9/8-degree rational interpolant which
+    is accurate up to a couple of ulps in the (approximate) range [-8, 8],
+    outside of which tanh(x) = +/-1 in single precision. The input is clamped
+    to the range [-c, c]. The value c is chosen as the smallest value where
+    the approximation evaluates to exactly 1.
 
-  // Approximate atan(x) on [0:tan(pi/8)] by a polynomial of the form
-  //   P(x) = x + x^3 * Q(x^2),
-  // where Q(x^2) is a 9th order polynomial in x^2.
-  // We evaluate even and odd terms in x^2 in parallel
-  // to take advantage of instruction level parallelism
-  // and hardware with multiple FMA units.
-  const Packet x2 = pmul(x, x);
-  const Packet x4 = pmul(x2, x2);
-  Packet q_odd = pmadd(q18, x4, q14);
-  Packet q_even = pmadd(q16, x4, q12);
-  q_odd = pmadd(q_odd, x4, q10);
-  q_even = pmadd(q_even, x4, q8);
-  q_odd = pmadd(q_odd, x4, q6);
-  q_even = pmadd(q_even, x4, q4);
-  q_odd = pmadd(q_odd, x4, q2);
-  q_even = pmadd(q_even, x4, q0);
-  const Packet p = pmadd(q_odd, x2, q_even);
-  return pmadd(p, pmul(x, x2), x);
+    This implementation works on both scalars and packets.
+*/
+template <typename T>
+EIGEN_DEFINE_FUNCTION_ALLOWING_MULTIPLE_DEFINITIONS T ptanh_float(const T& a_x) {
+  // Clamp the inputs to the range [-c, c] and set everything
+  // outside that range to 1.0. The value c is chosen as the smallest
+  // floating point argument such that the approximation is exactly 1.
+  // This saves clamping the value at the end.
+#ifdef EIGEN_VECTORIZE_FMA
+  const T plus_clamp = pset1<T>(8.01773357391357422f);
+  const T minus_clamp = pset1<T>(-8.01773357391357422f);
+#else
+  const T plus_clamp = pset1<T>(7.90738964080810547f);
+  const T minus_clamp = pset1<T>(-7.90738964080810547f);
+#endif
+  const T x = pmax(pmin(a_x, plus_clamp), minus_clamp);
+
+  // The following rational approximation was generated by rminimax
+  // (https://gitlab.inria.fr/sfilip/rminimax) using the following
+  // command:
+  // $ ratapprox --function="tanh(x)" --dom='[-8.67,8.67]' --num="odd"
+  //   --den="even" --type="[9,8]" --numF="[SG]" --denF="[SG]" --log
+  //   --output=tanhf.sollya --dispCoeff="dec"
+
+  // The monomial coefficients of the numerator polynomial (odd).
+  const T alpha_3 = pset1<T>(1.340216100e-1f);
+  const T alpha_5 = pset1<T>(3.520756727e-3f);
+  const T alpha_7 = pset1<T>(2.102733560e-5f);
+  const T alpha_9 = pset1<T>(1.394553628e-8f);
+
+  // The monomial coefficients of the denominator polynomial (even).
+  const T beta_0 = pset1<T>(1.0f);
+  const T beta_2 = pset1<T>(4.673548340e-1f);
+  const T beta_4 = pset1<T>(2.597254514e-2f);
+  const T beta_6 = pset1<T>(3.326951409e-4f);
+  const T beta_8 = pset1<T>(8.015776984e-7f);
+
+  // Since the polynomials are odd/even, we need x^2.
+  const T x2 = pmul(x, x);
+  const T x3 = pmul(x2, x);
+
+  // Interleave the evaluation of the numerator polynomial p and
+  // denominator polynomial q.
+  T p = pmadd(x2, alpha_9, alpha_7);
+  T q = pmadd(x2, beta_8, beta_6);
+  p = pmadd(x2, p, alpha_5);
+  q = pmadd(x2, q, beta_4);
+  p = pmadd(x2, p, alpha_3);
+  q = pmadd(x2, q, beta_2);
+  // Take advantage of the fact that alpha_1 = 1 to compute
+  // x*(x^2*p + alpha_1) = x^3 * p + x.
+  p = pmadd(x3, p, x);
+  q = pmadd(x2, q, beta_0);
+
+  // Divide the numerator by the denominator.
+  return pdiv(p, q);
 }
 
-template <typename Packet>
-EIGEN_DEFINE_FUNCTION_ALLOWING_MULTIPLE_DEFINITIONS Packet patan_double(const Packet& x_in) {
-  typedef typename unpacket_traits<Packet>::type Scalar;
-  static_assert(std::is_same<Scalar, double>::value, "Scalar type must be double");
+/** \internal \returns the hyperbolic tan of \a a (coeff-wise)
+    This uses a 19/18-degree rational interpolant which
+    is accurate up to a couple of ulps in the (approximate) range [-18.7, 18.7],
+    outside of which tanh(x) = +/-1 in single precision. The input is clamped
+    to the range [-c, c]. The value c is chosen as the smallest value where
+    the approximation evaluates to exactly 1.
 
-  constexpr double kPiOverTwo = static_cast<double>(EIGEN_PI / 2);
-  constexpr double kPiOverFour = static_cast<double>(EIGEN_PI / 4);
-  constexpr double kTanPiOverEight = 0.4142135623730950488016887;
-  constexpr double kTan3PiOverEight = 2.4142135623730950488016887;
+    This implementation works on both scalars and packets.
+*/
+template <typename T>
+EIGEN_DEFINE_FUNCTION_ALLOWING_MULTIPLE_DEFINITIONS T ptanh_double(const T& a_x) {
+  // Clamp the inputs to the range [-c, c] and set everything
+  // outside that range to 1.0. The value c is chosen as the smallest
+  // floating point argument such that the approximation is exactly 1.
+  // This saves clamping the value at the end.
+#ifdef EIGEN_VECTORIZE_FMA
+  const T plus_clamp = pset1<T>(17.6610191624600077);
+  const T minus_clamp = pset1<T>(-17.6610191624600077);
+#else
+  const T plus_clamp = pset1<T>(17.714196154005176);
+  const T minus_clamp = pset1<T>(-17.714196154005176);
+#endif
+  const T x = pmax(pmin(a_x, plus_clamp), minus_clamp);
 
-  const Packet cst_signmask = pset1<Packet>(-0.0);
-  const Packet cst_one = pset1<Packet>(1.0);
-  const Packet cst_pi_over_two = pset1<Packet>(kPiOverTwo);
-  const Packet cst_pi_over_four = pset1<Packet>(kPiOverFour);
-  const Packet cst_large = pset1<Packet>(kTan3PiOverEight);
-  const Packet cst_medium = pset1<Packet>(kTanPiOverEight);
+  // The following rational approximation was generated by rminimax
+  // (https://gitlab.inria.fr/sfilip/rminimax) using the following
+  // command:
+  // $ ./ratapprox --function="tanh(x)" --dom='[-18.72,18.72]'
+  //   --num="odd" --den="even" --type="[19,18]" --numF="[D]"
+  //   --denF="[D]" --log --output=tanh.sollya --dispCoeff="dec"
 
-  // Use the same range reduction strategy (to [0:tan(pi/8)]) as the
-  // Cephes library:
-  //   "Large": For x >= tan(3*pi/8), use atan(1/x) = pi/2 - atan(x).
-  //   "Medium": For x in [tan(pi/8) : tan(3*pi/8)),
-  //             use atan(x) = pi/4 + atan((x-1)/(x+1)).
-  //   "Small": For x < tan(pi/8), approximate atan(x) directly by a polynomial
-  //            calculated using Sollya.
+  // The monomial coefficients of the numerator polynomial (odd).
+  const T alpha_3 = pset1<T>(1.5184719640284322e-01);
+  const T alpha_5 = pset1<T>(5.9809711724441161e-03);
+  const T alpha_7 = pset1<T>(9.3839087674268880e-05);
+  const T alpha_9 = pset1<T>(6.8644367682497074e-07);
+  const T alpha_11 = pset1<T>(2.4618379131293676e-09);
+  const T alpha_13 = pset1<T>(4.2303918148209176e-12);
+  const T alpha_15 = pset1<T>(3.1309488231386680e-15);
+  const T alpha_17 = pset1<T>(7.6534862268749319e-19);
+  const T alpha_19 = pset1<T>(2.6158007860482230e-23);
 
-  const Packet abs_x = pabs(x_in);
-  const Packet x_signmask = pand(x_in, cst_signmask);
-  const Packet large_mask = pcmp_lt(cst_large, abs_x);
-  const Packet medium_mask = pandnot(pcmp_lt(cst_medium, abs_x), large_mask);
+  // The monomial coefficients of the denominator polynomial (even).
+  const T beta_0 = pset1<T>(1.0);
+  const T beta_2 = pset1<T>(4.851805297361760360e-01);
+  const T beta_4 = pset1<T>(3.437448108450402717e-02);
+  const T beta_6 = pset1<T>(8.295161192716231542e-04);
+  const T beta_8 = pset1<T>(8.785185266237658698e-06);
+  const T beta_10 = pset1<T>(4.492975677839633985e-08);
+  const T beta_12 = pset1<T>(1.123643448069621992e-10);
+  const T beta_14 = pset1<T>(1.293019623712687916e-13);
+  const T beta_16 = pset1<T>(5.782506856739003571e-17);
+  const T beta_18 = pset1<T>(6.463747022670968018e-21);
 
-  Packet x = abs_x;
-  x = pselect(large_mask, preciprocal(abs_x), x);
-  x = pselect(medium_mask, pdiv(psub(abs_x, cst_one), padd(abs_x, cst_one)), x);
+  // Since the polynomials are odd/even, we need x^2.
+  const T x2 = pmul(x, x);
+  const T x3 = pmul(x2, x);
 
-  // Compute approximation of p ~= atan(x') where x' is the argument reduced to
-  // [0:tan(pi/8)].
-  Packet p = patan_reduced_double(x);
+  // Interleave the evaluation of the numerator polynomial p and
+  // denominator polynomial q.
+  T p = pmadd(x2, alpha_19, alpha_17);
+  T q = pmadd(x2, beta_18, beta_16);
+  p = pmadd(x2, p, alpha_15);
+  q = pmadd(x2, q, beta_14);
+  p = pmadd(x2, p, alpha_13);
+  q = pmadd(x2, q, beta_12);
+  p = pmadd(x2, p, alpha_11);
+  q = pmadd(x2, q, beta_10);
+  p = pmadd(x2, p, alpha_9);
+  q = pmadd(x2, q, beta_8);
+  p = pmadd(x2, p, alpha_7);
+  q = pmadd(x2, q, beta_6);
+  p = pmadd(x2, p, alpha_5);
+  q = pmadd(x2, q, beta_4);
+  p = pmadd(x2, p, alpha_3);
+  q = pmadd(x2, q, beta_2);
+  // Take advantage of the fact that alpha_1 = 1 to compute
+  // x*(x^2*p + alpha_1) = x^3 * p + x.
+  p = pmadd(x3, p, x);
+  q = pmadd(x2, q, beta_0);
 
-  // Apply transformations according to the range reduction masks.
-  p = pselect(large_mask, psub(cst_pi_over_two, p), p);
-  p = pselect(medium_mask, padd(cst_pi_over_four, p), p);
-  // Return the correct sign
-  return pxor(p, x_signmask);
+  // Divide the numerator by the denominator.
+  return pdiv(p, q);
 }
 
 template <typename Packet>
 EIGEN_DEFINE_FUNCTION_ALLOWING_MULTIPLE_DEFINITIONS Packet patanh_float(const Packet& x) {
   typedef typename unpacket_traits<Packet>::type Scalar;
   static_assert(std::is_same<Scalar, float>::value, "Scalar type must be float");
-  const Packet half = pset1<Packet>(0.5f);
-  const Packet x_gt_half = pcmp_le(half, pabs(x));
+
   // For |x| in [0:0.5] we use a polynomial approximation of the form
   // P(x) = x + x^3*(c3 + x^2 * (c5 + x^2 * (... x^2 * c11) ... )).
   const Packet C3 = pset1<Packet>(0.3333373963832855224609375f);
@@ -938,10 +1214,65 @@ EIGEN_DEFINE_FUNCTION_ALLOWING_MULTIPLE_DEFINITIONS Packet patanh_float(const Pa
   p = pmadd(pmul(x, x2), p, x);
 
   // For |x| in ]0.5:1.0] we use atanh = 0.5*ln((1+x)/(1-x));
+  const Packet half = pset1<Packet>(0.5f);
   const Packet one = pset1<Packet>(1.0f);
   Packet r = pdiv(padd(one, x), psub(one, x));
   r = pmul(half, plog(r));
-  return pselect(x_gt_half, r, p);
+
+  const Packet x_gt_half = pcmp_le(half, pabs(x));
+  const Packet x_eq_one = pcmp_eq(one, pabs(x));
+  const Packet x_gt_one = pcmp_lt(one, pabs(x));
+  const Packet sign_mask = pset1<Packet>(-0.0f);
+  const Packet x_sign = pand(sign_mask, x);
+  const Packet inf = pset1<Packet>(std::numeric_limits<float>::infinity());
+  return por(x_gt_one, pselect(x_eq_one, por(x_sign, inf), pselect(x_gt_half, r, p)));
+}
+
+template <typename Packet>
+EIGEN_DEFINE_FUNCTION_ALLOWING_MULTIPLE_DEFINITIONS Packet patanh_double(const Packet& x) {
+  typedef typename unpacket_traits<Packet>::type Scalar;
+  static_assert(std::is_same<Scalar, double>::value, "Scalar type must be double");
+  // For x in [-0.5:0.5] we use a rational approximation of the form
+  // R(x) = x + x^3*P(x^2)/Q(x^2), where P is or order 4 and Q is of order 5.
+  const Packet p0 = pset1<Packet>(1.2306328729812676e-01);
+  const Packet p2 = pset1<Packet>(-2.5949536095445679e-01);
+  const Packet p4 = pset1<Packet>(1.8185306179826699e-01);
+  const Packet p6 = pset1<Packet>(-4.7129526768798737e-02);
+  const Packet p8 = pset1<Packet>(3.3071338469301391e-03);
+
+  const Packet q0 = pset1<Packet>(3.6918986189438030e-01);
+  const Packet q2 = pset1<Packet>(-1.0000000000000000e+00);
+  const Packet q4 = pset1<Packet>(9.8733495886883648e-01);
+  const Packet q6 = pset1<Packet>(-4.2828141436397615e-01);
+  const Packet q8 = pset1<Packet>(7.6391885763341910e-02);
+  const Packet q10 = pset1<Packet>(-3.8679974580640881e-03);
+
+  const Packet x2 = pmul(x, x);
+  const Packet x3 = pmul(x, x2);
+  Packet q = pmadd(q10, x2, q8);
+  Packet p = pmadd(p8, x2, p6);
+  q = pmadd(x2, q, q6);
+  p = pmadd(x2, p, p4);
+  q = pmadd(x2, q, q4);
+  p = pmadd(x2, p, p2);
+  q = pmadd(x2, q, q2);
+  p = pmadd(x2, p, p0);
+  q = pmadd(x2, q, q0);
+  Packet y_small = pmadd(x3, pdiv(p, q), x);
+
+  // For |x| in ]0.5:1.0] we use atanh = 0.5*ln((1+x)/(1-x));
+  const Packet half = pset1<Packet>(0.5);
+  const Packet one = pset1<Packet>(1.0);
+  Packet y_large = pdiv(padd(one, x), psub(one, x));
+  y_large = pmul(half, plog(y_large));
+
+  const Packet x_gt_half = pcmp_le(half, pabs(x));
+  const Packet x_eq_one = pcmp_eq(one, pabs(x));
+  const Packet x_gt_one = pcmp_lt(one, pabs(x));
+  const Packet sign_mask = pset1<Packet>(-0.0);
+  const Packet x_sign = pand(sign_mask, x);
+  const Packet inf = pset1<Packet>(std::numeric_limits<double>::infinity());
+  return por(x_gt_one, pselect(x_eq_one, por(x_sign, inf), pselect(x_gt_half, y_large, y_small)));
 }
 
 template <typename Packet>
@@ -962,6 +1293,77 @@ EIGEN_DEFINE_FUNCTION_ALLOWING_MULTIPLE_DEFINITIONS Packet pdiv_complex(const Pa
   result_scaled = Packet(pdiv(result_scaled.v, denom));
   // Rescale result
   return Packet(pdiv(result_scaled.v, y_max));
+}
+
+template <typename Packet>
+EIGEN_DEFINE_FUNCTION_ALLOWING_MULTIPLE_DEFINITIONS Packet plog_complex(const Packet& x) {
+  typedef typename unpacket_traits<Packet>::type Scalar;
+  typedef typename Scalar::value_type RealScalar;
+  typedef typename unpacket_traits<Packet>::as_real RealPacket;
+
+  RealPacket real_mask_rp = peven_mask(x.v);
+  Packet real_mask(real_mask_rp);
+
+  // Real part
+  RealPacket x_flip = pcplxflip(x).v;  // b, a
+  Packet x_norm = phypot_complex(x);   // sqrt(a^2 + b^2), sqrt(a^2 + b^2)
+  RealPacket xlogr = plog(x_norm.v);   // log(sqrt(a^2 + b^2)), log(sqrt(a^2 + b^2))
+
+  // Imag part
+  RealPacket ximg = patan2(x.v, x_flip);  // atan2(a, b), atan2(b, a)
+
+  const RealPacket cst_pos_inf = pset1<RealPacket>(NumTraits<RealScalar>::infinity());
+  RealPacket x_abs = pabs(x.v);
+  RealPacket is_x_pos_inf = pcmp_eq(x_abs, cst_pos_inf);
+  RealPacket is_y_pos_inf = pcplxflip(Packet(is_x_pos_inf)).v;
+  RealPacket is_any_inf = por(is_x_pos_inf, is_y_pos_inf);
+  RealPacket xreal = pselect(is_any_inf, cst_pos_inf, xlogr);
+
+  Packet xres = pselect(real_mask, Packet(xreal), Packet(ximg));  // log(sqrt(a^2 + b^2)), atan2(b, a)
+  return xres;
+}
+
+template <typename Packet>
+EIGEN_DEFINE_FUNCTION_ALLOWING_MULTIPLE_DEFINITIONS Packet pexp_complex(const Packet& a) {
+  typedef typename unpacket_traits<Packet>::as_real RealPacket;
+  typedef typename unpacket_traits<Packet>::type Scalar;
+  typedef typename Scalar::value_type RealScalar;
+  const RealPacket even_mask = peven_mask(a.v);
+  const RealPacket odd_mask = pcplxflip(Packet(even_mask)).v;
+
+  // Let a = x + iy.
+  // exp(a) = exp(x) * cis(y), plus some special edge-case handling.
+
+  // exp(x):
+  RealPacket x = pand(a.v, even_mask);
+  x = por(x, pcplxflip(Packet(x)).v);
+  RealPacket expx = pexp(x);  // exp(x);
+
+  // cis(y):
+  RealPacket y = pand(odd_mask, a.v);
+  y = por(y, pcplxflip(Packet(y)).v);
+  RealPacket cisy = psincos_float<false, RealPacket, true>(y);
+  cisy = pcplxflip(Packet(cisy)).v;  // cos(y) + i * sin(y)
+
+  const RealPacket cst_pos_inf = pset1<RealPacket>(NumTraits<RealScalar>::infinity());
+  const RealPacket cst_neg_inf = pset1<RealPacket>(-NumTraits<RealScalar>::infinity());
+
+  // If x is -inf, we know that cossin(y) is bounded,
+  //   so the result is (0, +/-0), where the sign of the imaginary part comes
+  //   from the sign of cossin(y).
+  RealPacket cisy_sign = por(pandnot(cisy, pabs(cisy)), pset1<RealPacket>(RealScalar(1)));
+  cisy = pselect(pcmp_eq(x, cst_neg_inf), cisy_sign, cisy);
+
+  // If x is inf, and cos(y) has unknown sign (y is inf or NaN), the result
+  // is (+/-inf, NaN), where the signs are undetermined (take the sign of y).
+  RealPacket y_sign = por(pandnot(y, pabs(y)), pset1<RealPacket>(RealScalar(1)));
+  cisy = pselect(pand(pcmp_eq(x, cst_pos_inf), pisnan(cisy)), pand(y_sign, even_mask), cisy);
+  Packet result = Packet(pmul(expx, cisy));
+
+  // If y is +/- 0, the input is real, so take the real result for consistency.
+  result = pselect(Packet(pcmp_eq(y, pzero(y))), Packet(por(pand(expx, even_mask), pand(y, odd_mask))), result);
+
+  return result;
 }
 
 template <typename Packet>
@@ -1076,6 +1478,41 @@ EIGEN_DEFINE_FUNCTION_ALLOWING_MULTIPLE_DEFINITIONS Packet psqrt_complex(const P
   return pselect(is_imag_inf, imag_inf_result, pselect(is_real_inf, real_inf_result, result));
 }
 
+// \internal \returns the norm of a complex number z = x + i*y, defined as sqrt(x^2 + y^2).
+// Implemented using the hypot(a,b) algorithm from https://doi.org/10.48550/arXiv.1904.09481
+template <typename Packet>
+EIGEN_DEFINE_FUNCTION_ALLOWING_MULTIPLE_DEFINITIONS Packet phypot_complex(const Packet& a) {
+  typedef typename unpacket_traits<Packet>::type Scalar;
+  typedef typename Scalar::value_type RealScalar;
+  typedef typename unpacket_traits<Packet>::as_real RealPacket;
+
+  const RealPacket cst_zero_rp = pset1<RealPacket>(static_cast<RealScalar>(0.0));
+  const RealPacket cst_minus_one_rp = pset1<RealPacket>(static_cast<RealScalar>(-1.0));
+  const RealPacket cst_two_rp = pset1<RealPacket>(static_cast<RealScalar>(2.0));
+  const RealPacket evenmask = peven_mask(a.v);
+
+  RealPacket a_abs = pabs(a.v);
+  RealPacket a_flip = pcplxflip(Packet(a_abs)).v;       // |b|, |a|
+  RealPacket a_all = pselect(evenmask, a_abs, a_flip);  // |a|, |a|
+  RealPacket b_all = pselect(evenmask, a_flip, a_abs);  // |b|, |b|
+
+  RealPacket a2 = pmul(a.v, a.v);                    // |a^2, b^2|
+  RealPacket a2_flip = pcplxflip(Packet(a2)).v;      // |b^2, a^2|
+  RealPacket h = psqrt(padd(a2, a2_flip));           // |sqrt(a^2 + b^2), sqrt(a^2 + b^2)|
+  RealPacket h_sq = pmul(h, h);                      // |a^2 + b^2, a^2 + b^2|
+  RealPacket a_sq = pselect(evenmask, a2, a2_flip);  // |a^2, a^2|
+  RealPacket m_h_sq = pmul(h_sq, cst_minus_one_rp);
+  RealPacket m_a_sq = pmul(a_sq, cst_minus_one_rp);
+  RealPacket x = psub(psub(pmadd(h, h, m_h_sq), pmadd(b_all, b_all, psub(a_sq, h_sq))), pmadd(a_all, a_all, m_a_sq));
+  h = psub(h, pdiv(x, pmul(cst_two_rp, h)));  // |h - x/(2*h), h - x/(2*h)|
+
+  // handle zero-case
+  RealPacket iszero = pcmp_eq(por(a_abs, a_flip), cst_zero_rp);
+
+  h = pandnot(h, iszero);  // |sqrt(a^2+b^2), sqrt(a^2+b^2)|
+  return Packet(h);        // |sqrt(a^2+b^2), sqrt(a^2+b^2)|
+}
+
 template <typename Packet>
 struct psign_impl<Packet, std::enable_if_t<!NumTraits<typename unpacket_traits<Packet>::type>::IsComplex &&
                                            !NumTraits<typename unpacket_traits<Packet>::type>::IsInteger>> {
@@ -1181,7 +1618,7 @@ EIGEN_STRONG_INLINE void fast_twosum(const Packet& x, const Packet& y, Packet& s
   s_lo = psub(y, t);
 }
 
-#ifdef EIGEN_HAS_SINGLE_INSTRUCTION_MADD
+#ifdef EIGEN_VECTORIZE_FMA
 // This function implements the extended precision product of
 // a pair of floating point numbers. Given {x, y}, it computes the pair
 // {p_hi, p_lo} such that x * y = p_hi + p_lo holds exactly and
@@ -1227,7 +1664,7 @@ EIGEN_STRONG_INLINE void twoprod(const Packet& x, const Packet& y, Packet& p_hi,
   p_lo = pmadd(x_lo, y_lo, p_lo);
 }
 
-#endif  // EIGEN_HAS_SINGLE_INSTRUCTION_MADD
+#endif  // EIGEN_VECTORIZE_FMA
 
 // This function implements Dekker's algorithm for the addition
 // of two double word numbers represented by {x_hi, x_lo} and {y_hi, y_lo}.
@@ -1311,7 +1748,7 @@ EIGEN_STRONG_INLINE void twoprod(const Packet& x_hi, const Packet& x_lo, const P
 }
 
 // This function implements the division of double word {x_hi, x_lo}
-// by float y. This is Algorithm 15 from "Tight and rigourous error bounds
+// by float y. This is Algorithm 15 from "Tight and rigorous error bounds
 // for basic building blocks of double-word arithmetic", Joldes, Muller, & Popescu,
 // 2017. https://hal.archives-ouvertes.fr/hal-01351529
 template <typename Packet>
@@ -2032,7 +2469,7 @@ template <typename Packet, typename ScalarExponent,
 EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Packet handle_negative_exponent(const Packet& x, const ScalarExponent& exponent) {
   using Scalar = typename unpacket_traits<Packet>::type;
 
-  // singed integer base, signed integer exponent case
+  // signed integer base, signed integer exponent case
 
   // This routine handles negative exponents.
   // The return value is either 0, 1, or -1.
@@ -2123,6 +2560,95 @@ struct unary_pow_impl<Packet, ScalarExponent, true, true, false> {
   static EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Packet run(const Packet& x, const ScalarExponent& exponent) {
     return unary_pow::int_pow(x, exponent);
   }
+};
+
+template <typename Packet>
+EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Packet generic_rint(const Packet& a) {
+  using Scalar = typename unpacket_traits<Packet>::type;
+  using IntType = typename numext::get_integer_by_size<sizeof(Scalar)>::signed_type;
+  // Adds and subtracts signum(a) * 2^kMantissaBits to force rounding.
+  const IntType kLimit = IntType(1) << (NumTraits<Scalar>::digits() - 1);
+  const Packet cst_limit = pset1<Packet>(static_cast<Scalar>(kLimit));
+  Packet abs_a = pabs(a);
+  Packet sign_a = pandnot(a, abs_a);
+  Packet rint_a = padd(abs_a, cst_limit);
+  // Don't compile-away addition and subtraction.
+  EIGEN_OPTIMIZATION_BARRIER(rint_a);
+  rint_a = psub(rint_a, cst_limit);
+  rint_a = por(rint_a, sign_a);
+  // If greater than limit (or NaN), simply return a.
+  Packet mask = pcmp_lt(abs_a, cst_limit);
+  Packet result = pselect(mask, rint_a, a);
+  return result;
+}
+
+template <typename Packet>
+EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Packet generic_floor(const Packet& a) {
+  using Scalar = typename unpacket_traits<Packet>::type;
+  const Packet cst_1 = pset1<Packet>(Scalar(1));
+  Packet rint_a = generic_rint(a);
+  // if a < rint(a), then rint(a) == ceil(a)
+  Packet mask = pcmp_lt(a, rint_a);
+  Packet offset = pand(cst_1, mask);
+  Packet result = psub(rint_a, offset);
+  return result;
+}
+
+template <typename Packet>
+EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Packet generic_ceil(const Packet& a) {
+  using Scalar = typename unpacket_traits<Packet>::type;
+  const Packet cst_1 = pset1<Packet>(Scalar(1));
+  Packet rint_a = generic_rint(a);
+  // if rint(a) < a, then rint(a) == floor(a)
+  Packet mask = pcmp_lt(rint_a, a);
+  Packet offset = pand(cst_1, mask);
+  Packet result = padd(rint_a, offset);
+  return result;
+}
+
+template <typename Packet>
+EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Packet generic_trunc(const Packet& a) {
+  Packet abs_a = pabs(a);
+  Packet sign_a = pandnot(a, abs_a);
+  Packet floor_abs_a = generic_floor(abs_a);
+  Packet result = por(floor_abs_a, sign_a);
+  return result;
+}
+
+template <typename Packet>
+EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Packet generic_round(const Packet& a) {
+  using Scalar = typename unpacket_traits<Packet>::type;
+  const Packet cst_half = pset1<Packet>(Scalar(0.5));
+  const Packet cst_1 = pset1<Packet>(Scalar(1));
+  Packet abs_a = pabs(a);
+  Packet sign_a = pandnot(a, abs_a);
+  Packet floor_abs_a = generic_floor(abs_a);
+  Packet diff = psub(abs_a, floor_abs_a);
+  Packet mask = pcmp_le(cst_half, diff);
+  Packet offset = pand(cst_1, mask);
+  Packet result = padd(floor_abs_a, offset);
+  result = por(result, sign_a);
+  return result;
+}
+
+template <typename Packet>
+struct nearest_integer_packetop_impl<Packet, /*IsScalar*/ false, /*IsInteger*/ false> {
+  using Scalar = typename unpacket_traits<Packet>::type;
+  static_assert(packet_traits<Scalar>::HasRound, "Generic nearest integer functions are disabled for this type.");
+  static EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Packet run_floor(const Packet& x) { return generic_floor(x); }
+  static EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Packet run_ceil(const Packet& x) { return generic_ceil(x); }
+  static EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Packet run_rint(const Packet& x) { return generic_rint(x); }
+  static EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Packet run_round(const Packet& x) { return generic_round(x); }
+  static EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Packet run_trunc(const Packet& x) { return generic_trunc(x); }
+};
+
+template <typename Packet>
+struct nearest_integer_packetop_impl<Packet, /*IsScalar*/ false, /*IsInteger*/ true> {
+  static EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Packet run_floor(const Packet& x) { return x; }
+  static EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Packet run_ceil(const Packet& x) { return x; }
+  static EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Packet run_rint(const Packet& x) { return x; }
+  static EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Packet run_round(const Packet& x) { return x; }
+  static EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Packet run_trunc(const Packet& x) { return x; }
 };
 
 }  // end namespace internal

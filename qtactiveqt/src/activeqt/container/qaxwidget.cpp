@@ -2410,4 +2410,24 @@ bool QAxWidget::translateKeyEvent(int message, int keycode) const
     return translate;
 }
 
+#ifndef QT_NO_DATASTREAM
+/*!
+    \internal
+*/
+// friend
+QDataStream &operator>>(QDataStream &s, QAxWidget &w)
+{
+    return s >> static_cast<QAxBase &>(w);
+}
+
+/*!
+    \internal
+*/
+// friend
+QDataStream &operator<<(QDataStream &s, const QAxWidget &w)
+{
+    return s << static_cast<const QAxBase &>(w);
+}
+#endif // QT_NO_DATASTREAM
+
 QT_END_NAMESPACE

@@ -10,6 +10,16 @@
 
 #include "api/rtp_receiver_interface.h"
 
+#include <string>
+#include <vector>
+
+#include "api/crypto/frame_decryptor_interface.h"
+#include "api/dtls_transport_interface.h"
+#include "api/frame_transformer_interface.h"
+#include "api/media_stream_interface.h"
+#include "api/scoped_refptr.h"
+#include "api/transport/rtp/rtp_source.h"
+
 namespace webrtc {
 
 std::vector<std::string> RtpReceiverInterface::stream_ids() const {
@@ -38,7 +48,7 @@ RtpReceiverInterface::dtls_transport() const {
   return nullptr;
 }
 
-void RtpReceiverInterface::SetDepacketizerToDecoderFrameTransformer(
+void RtpReceiverInterface::SetFrameTransformer(
     rtc::scoped_refptr<FrameTransformerInterface> frame_transformer) {}
 
 }  // namespace webrtc

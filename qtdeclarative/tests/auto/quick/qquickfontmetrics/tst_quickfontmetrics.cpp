@@ -4,7 +4,8 @@
 #include <QFont>
 #include <QFontDatabase>
 #include <QString>
-#include <QtTest>
+#include <QTest>
+#include <QSignalSpy>
 #include <QCoreApplication>
 
 #include <QtQuick/private/qquickfontmetrics_p.h>
@@ -55,6 +56,7 @@ void tst_QuickFontMetrics::properties()
         QCOMPARE(metrics.overlinePosition(), expected.overlinePos());
         QCOMPARE(metrics.strikeOutPosition(), expected.strikeOutPos());
         QCOMPARE(metrics.lineWidth(), expected.lineWidth());
+        QCOMPARE(metrics.capitalHeight(), expected.capHeight());
     }
 }
 

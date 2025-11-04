@@ -24,7 +24,8 @@ QSSGSubsetRenderable::QSSGSubsetRenderable(Type type,
                                            const QSSGRenderGraphObject &mat,
                                            QSSGRenderableImage *inFirstImage,
                                            QSSGShaderDefaultMaterialKey inShaderKey,
-                                           const QSSGShaderLightListView &inLights)
+                                           const QSSGShaderLightListView &inLights,
+                                           bool anyLightHasShadows)
     : QSSGRenderableObject(type,
                            inFlags,
                            inWorldCenterPt,
@@ -54,6 +55,27 @@ QSSGSubsetRenderable::QSSGSubsetRenderable(Type type,
         globalBounds = inModelContext.model.particleBuffer->bounds();
     else
         globalBounds.transform(globalTransform);
+
+    // Do we need instanced bounds
+    const QSSGRenderInstanceTable *instanceTable = inModelContext.model.instanceTable;
+    if (!instanceTable || !anyLightHasShadows || !(inFlags.castsShadows() || inFlags.receivesShadows()))
+        return;
+
+    // Check for specified instancing shadow bounds
+    QSSGBounds3 bounds = QSSGBounds3(instanceTable->getShadowBoundsMinimum(), instanceTable->getShadowBoundsMaximum());
+    if (!bounds.isEmpty() && bounds.isFinite()) {
+        globalBoundsInstancing = bounds;
+        return;
+    }
+
+    // Calculate instancing shadow bounds
+    const auto points = globalBounds.toQSSGBoxPointsNoEmptyCheck();
+    for (int i = 0; i < instanceTable->count(); ++i) {
+        const QMatrix4x4 transform = instanceTable->getTransform(i);
+        for (const QVector3D &point : points) {
+            globalBoundsInstancing.include(transform.map(point));
+        }
+    }
 }
 
 QSSGParticlesRenderable::QSSGParticlesRenderable(QSSGRenderableObjectFlags inFlags,

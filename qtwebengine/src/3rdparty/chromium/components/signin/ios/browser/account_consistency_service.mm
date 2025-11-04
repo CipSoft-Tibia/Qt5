@@ -10,6 +10,7 @@
 #include "base/command_line.h"
 #include "base/functional/bind.h"
 #include "base/logging.h"
+#import "base/memory/raw_ptr.h"
 #include "base/metrics/histogram_functions.h"
 #include "base/strings/string_number_conversions.h"
 #include "base/strings/sys_string_conversions.h"
@@ -28,7 +29,7 @@
 #import "ios/web/public/navigation/web_state_policy_decider.h"
 #import "ios/web/public/web_state.h"
 #include "ios/web/public/web_state_observer.h"
-#include "net/base/mac/url_conversions.h"
+#include "net/base/apple/url_conversions.h"
 #include "net/base/registry_controlled_domains/registry_controlled_domain.h"
 #include "net/cookies/canonical_cookie.h"
 #include "url/gurl.h"
@@ -137,11 +138,11 @@ class AccountConsistencyService::AccountConsistencyHandler
   // It is required to avoid having the keyboard showing up on top of the web
   // sign-in dialog.
   bool show_consistency_web_signin_ = false;
-  AccountConsistencyService* account_consistency_service_;  // Weak.
-  AccountReconcilor* account_reconcilor_;                   // Weak.
-  signin::IdentityManager* identity_manager_;
-  web::WebState* web_state_;
-  ManageAccountsDelegate* delegate_;  // Weak.
+  raw_ptr<AccountConsistencyService> account_consistency_service_;  // Weak.
+  raw_ptr<AccountReconcilor> account_reconcilor_;                   // Weak.
+  raw_ptr<signin::IdentityManager> identity_manager_;
+  raw_ptr<web::WebState> web_state_;
+  raw_ptr<ManageAccountsDelegate> delegate_;  // Weak.
   base::WeakPtrFactory<AccountConsistencyHandler> weak_ptr_factory_;
 };
 
@@ -259,7 +260,7 @@ void AccountConsistencyService::AccountConsistencyHandler::ShouldAllowResponse(
         delegate_->OnManageAccounts();
       break;
     case signin::GAIA_SERVICE_TYPE_NONE:
-      NOTREACHED();
+      NOTREACHED_IN_MIGRATION();
       break;
   }
 
@@ -319,15 +320,16 @@ void AccountConsistencyService::AccountConsistencyHandler::WebStateDestroyed() {
 }
 
 AccountConsistencyService::AccountConsistencyService(
-    web::BrowserState* browser_state,
+    CookieManagerCallback cookie_manager_cb,
     AccountReconcilor* account_reconcilor,
     scoped_refptr<content_settings::CookieSettings> cookie_settings,
     signin::IdentityManager* identity_manager)
-    : browser_state_(browser_state),
+    : cookie_manager_cb_(std::move(cookie_manager_cb)),
       account_reconcilor_(account_reconcilor),
       cookie_settings_(cookie_settings),
       identity_manager_(identity_manager),
       active_cookie_manager_requests_for_testing_(0) {
+  DCHECK(!cookie_manager_cb_.is_null());
   identity_manager_->AddObserver(this);
   if (identity_manager_->HasPrimaryAccount(signin::ConsentLevel::kSignin)) {
     AddChromeConnectedCookies();
@@ -346,8 +348,7 @@ BOOL AccountConsistencyService::RestoreGaiaCookies(
   if (last_gaia_cookie_update_time_.is_null() ||
       base::Time::Now() - last_gaia_cookie_update_time_ >
           GetDelayThresholdToUpdateGaiaCookie()) {
-    network::mojom::CookieManager* cookie_manager =
-        browser_state_->GetCookieManager();
+    network::mojom::CookieManager* cookie_manager = cookie_manager_cb_.Run();
     cookie_manager->GetCookieList(
         GaiaUrls::GetInstance()->secure_google_url(),
         net::CookieOptions::MakeAllInclusive(),
@@ -426,10 +427,7 @@ void AccountConsistencyService::RemoveWebStateHandler(
 
 void AccountConsistencyService::RemoveAllChromeConnectedCookies(
     base::OnceClosure callback) {
-  DCHECK(!browser_state_->IsOffTheRecord());
-
-  network::mojom::CookieManager* cookie_manager =
-      browser_state_->GetCookieManager();
+  network::mojom::CookieManager* cookie_manager = cookie_manager_cb_.Run();
 
   network::mojom::CookieDeletionFilterPtr filter =
       network::mojom::CookieDeletionFilter::New();
@@ -452,7 +450,7 @@ void AccountConsistencyService::OnDeleteCookiesFinished(
 }
 
 void AccountConsistencyService::SetChromeConnectedCookieWithUrls(
-    const std::vector<const GURL>& urls) {
+    const std::vector<GURL>& urls) {
   for (const GURL& url : urls) {
     SetChromeConnectedCookieWithUrl(url);
   }
@@ -491,7 +489,8 @@ void AccountConsistencyService::SetChromeConnectedCookieWithUrl(
           /*secure=*/true,
           /*httponly=*/false, net::CookieSameSite::LAX_MODE,
           net::COOKIE_PRIORITY_DEFAULT,
-          /*partition_key=*/absl::nullopt);
+          /*partition_key=*/std::nullopt,
+          /*status=*/nullptr);
   net::CookieOptions options;
   options.set_include_httponly();
   options.set_same_site_cookie_context(
@@ -499,8 +498,7 @@ void AccountConsistencyService::SetChromeConnectedCookieWithUrl(
 
   ++active_cookie_manager_requests_for_testing_;
 
-  network::mojom::CookieManager* cookie_manager =
-      browser_state_->GetCookieManager();
+  network::mojom::CookieManager* cookie_manager = cookie_manager_cb_.Run();
   cookie_manager->SetCanonicalCookie(
       *cookie, url, options,
       base::BindOnce(
@@ -515,7 +513,6 @@ void AccountConsistencyService::OnChromeConnectedCookieFinished(
 }
 
 void AccountConsistencyService::AddChromeConnectedCookies() {
-  DCHECK(!browser_state_->IsOffTheRecord());
   // These cookie requests are preventive. Chrome cannot be sure that
   // CHROME_CONNECTED cookies are set on google.com and youtube.com domains due
   // to ITP restrictions.
@@ -524,7 +521,7 @@ void AccountConsistencyService::AddChromeConnectedCookies() {
 
 void AccountConsistencyService::OnBrowsingDataRemoved() {
   // SAPISID cookie has been removed, notify the GCMS.
-  // TODO(https://crbug.com/930582) : Remove the need to expose this method
+  // TODO(crbug.com/40613324) : Remove the need to expose this method
   // or move it to the network::CookieManager.
   identity_manager_->GetAccountsCookieMutator()->ForceTriggerOnCookieChange();
 }

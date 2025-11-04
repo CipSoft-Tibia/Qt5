@@ -14,10 +14,10 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include <optional>
 #include <string>
 
-#include "absl/strings/string_view.h"
-#include "api/video/video_bitrate_allocation.h"
+#include "api/video/video_codec_constants.h"
 #include "api/video/video_codec_type.h"
 #include "api/video_codecs/scalability_mode.h"
 #include "api/video_codecs/simulcast_stream.h"
@@ -127,19 +127,22 @@ class RTC_EXPORT VideoCodec {
 
   // Scalability mode as described in
   // https://www.w3.org/TR/webrtc-svc/#scalabilitymodes*
-  absl::optional<ScalabilityMode> GetScalabilityMode() const {
+  std::optional<ScalabilityMode> GetScalabilityMode() const {
     return scalability_mode_;
   }
   void SetScalabilityMode(ScalabilityMode scalability_mode) {
     scalability_mode_ = scalability_mode;
   }
-  void UnsetScalabilityMode() { scalability_mode_ = absl::nullopt; }
+  void UnsetScalabilityMode() { scalability_mode_ = std::nullopt; }
 
   VideoCodecComplexity GetVideoEncoderComplexity() const;
   void SetVideoEncoderComplexity(VideoCodecComplexity complexity_setting);
 
   bool GetFrameDropEnabled() const;
   void SetFrameDropEnabled(bool enabled);
+
+  bool IsSinglecast() const { return numberOfSimulcastStreams <= 1; }
+  bool IsSimulcast() const { return !IsSinglecast(); }
 
   // Public variables. TODO(hta): Make them private with accessors.
   VideoCodecType codecType;
@@ -193,6 +196,7 @@ class RTC_EXPORT VideoCodec {
 
   bool operator==(const VideoCodec& other) const = delete;
   bool operator!=(const VideoCodec& other) const = delete;
+  std::string ToString() const;
 
   // Accessors for codec specific information.
   // There is a const version of each that returns a reference,
@@ -211,7 +215,7 @@ class RTC_EXPORT VideoCodec {
   // TODO(hta): Consider replacing the union with a pointer type.
   // This will allow removing the VideoCodec* types from this file.
   VideoCodecUnion codec_specific_;
-  absl::optional<ScalabilityMode> scalability_mode_;
+  std::optional<ScalabilityMode> scalability_mode_;
   // 'complexity_' indicates the CPU capability of the client. It's used to
   // determine encoder CPU complexity (e.g., cpu_used for VP8, VP9. and AV1).
   VideoCodecComplexity complexity_;

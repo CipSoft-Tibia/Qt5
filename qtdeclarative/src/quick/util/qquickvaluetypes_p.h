@@ -30,9 +30,8 @@
 
 QT_BEGIN_NAMESPACE
 
-class Q_QUICK_EXPORT QQuickColorValueType
+class Q_QUICK_EXPORT QQuickColorValueType : public QColor
 {
-    QColor v;
     Q_PROPERTY(qreal r READ r WRITE setR FINAL)
     Q_PROPERTY(qreal g READ g WRITE setG FINAL)
     Q_PROPERTY(qreal b READ b WRITE setB FINAL)
@@ -55,13 +54,14 @@ public:
     static QVariant create(const QJSValue &params);
 
     Q_INVOKABLE QQuickColorValueType() = default;
+    Q_INVOKABLE QQuickColorValueType(const QColor &color) : QColor(color) {}
     Q_INVOKABLE QQuickColorValueType(const QString &string);
     Q_INVOKABLE QString toString() const;
 
-    Q_INVOKABLE QVariant alpha(qreal value) const;
-    Q_INVOKABLE QVariant lighter(qreal factor = 1.5) const;
-    Q_INVOKABLE QVariant darker(qreal factor = 2.0) const;
-    Q_INVOKABLE QVariant tint(QVariant factor) const;
+    Q_INVOKABLE QColor alpha(qreal value) const;
+    Q_INVOKABLE QColor lighter(qreal factor = 1.5) const;
+    Q_INVOKABLE QColor darker(qreal factor = 2.0) const;
+    Q_INVOKABLE QColor tint(const QColor &tintColor) const;
 
     qreal r() const;
     qreal g() const;
@@ -84,13 +84,10 @@ public:
     void setHslHue(qreal);
     void setHslSaturation(qreal);
     void setHslLightness(qreal);
-
-    operator QColor() const { return v; }
 };
 
-class Q_QUICK_EXPORT QQuickVector2DValueType
+class Q_QUICK_EXPORT QQuickVector2DValueType : public QVector2D
 {
-    QVector2D v;
     Q_PROPERTY(qreal x READ x WRITE setX FINAL)
     Q_PROPERTY(qreal y READ y WRITE setY FINAL)
     Q_GADGET
@@ -104,6 +101,7 @@ public:
     static QVariant create(const QJSValue &params);
 
     Q_INVOKABLE QQuickVector2DValueType() = default;
+    Q_INVOKABLE QQuickVector2DValueType(const QVector2D &vector2D) : QVector2D(vector2D) {}
     Q_INVOKABLE QString toString() const;
 
     qreal x() const;
@@ -122,13 +120,10 @@ public:
     Q_INVOKABLE QVector4D toVector4d() const;
     Q_INVOKABLE bool fuzzyEquals(const QVector2D &vec, qreal epsilon) const;
     Q_INVOKABLE bool fuzzyEquals(const QVector2D &vec) const;
-
-    operator QVector2D() const { return v; }
 };
 
-class Q_QUICK_EXPORT QQuickVector3DValueType
+class Q_QUICK_EXPORT QQuickVector3DValueType : public QVector3D
 {
-    QVector3D v;
     Q_PROPERTY(qreal x READ x WRITE setX FINAL)
     Q_PROPERTY(qreal y READ y WRITE setY FINAL)
     Q_PROPERTY(qreal z READ z WRITE setZ FINAL)
@@ -143,6 +138,7 @@ public:
     static QVariant create(const QJSValue &params);
 
     Q_INVOKABLE QQuickVector3DValueType() = default;
+    Q_INVOKABLE QQuickVector3DValueType(const QVector3D &vector3D) : QVector3D(vector3D) {}
     Q_INVOKABLE QString toString() const;
 
     qreal x() const;
@@ -165,13 +161,10 @@ public:
     Q_INVOKABLE QVector4D toVector4d() const;
     Q_INVOKABLE bool fuzzyEquals(const QVector3D &vec, qreal epsilon) const;
     Q_INVOKABLE bool fuzzyEquals(const QVector3D &vec) const;
-
-    operator QVector3D() const { return v; }
 };
 
-class Q_QUICK_EXPORT QQuickVector4DValueType
+class Q_QUICK_EXPORT QQuickVector4DValueType : public QVector4D
 {
-    QVector4D v;
     Q_PROPERTY(qreal x READ x WRITE setX FINAL)
     Q_PROPERTY(qreal y READ y WRITE setY FINAL)
     Q_PROPERTY(qreal z READ z WRITE setZ FINAL)
@@ -187,6 +180,7 @@ public:
     static QVariant create(const QJSValue &params);
 
     Q_INVOKABLE QQuickVector4DValueType() = default;
+    Q_INVOKABLE QQuickVector4DValueType(const QVector4D &vector4d) : QVector4D(vector4d) {}
     Q_INVOKABLE QString toString() const;
 
     qreal x() const;
@@ -210,13 +204,10 @@ public:
     Q_INVOKABLE QVector3D toVector3d() const;
     Q_INVOKABLE bool fuzzyEquals(const QVector4D &vec, qreal epsilon) const;
     Q_INVOKABLE bool fuzzyEquals(const QVector4D &vec) const;
-
-    operator QVector4D() const { return v; }
 };
 
-class Q_QUICK_EXPORT QQuickQuaternionValueType
+class Q_QUICK_EXPORT QQuickQuaternionValueType : public QQuaternion
 {
-    QQuaternion v;
     Q_PROPERTY(qreal scalar READ scalar WRITE setScalar FINAL)
     Q_PROPERTY(qreal x READ x WRITE setX FINAL)
     Q_PROPERTY(qreal y READ y WRITE setY FINAL)
@@ -232,6 +223,7 @@ public:
     static QVariant create(const QJSValue &params);
 
     Q_INVOKABLE QQuickQuaternionValueType() = default;
+    Q_INVOKABLE QQuickQuaternionValueType(const QQuaternion &quat) : QQuaternion(quat) {}
     Q_INVOKABLE QString toString() const;
 
     qreal scalar() const;
@@ -260,13 +252,10 @@ public:
 
     Q_INVOKABLE bool fuzzyEquals(const QQuaternion &q, qreal epsilon) const;
     Q_INVOKABLE bool fuzzyEquals(const QQuaternion &q) const;
-
-    operator QQuaternion() const { return v; }
 };
 
-class Q_QUICK_EXPORT QQuickMatrix4x4ValueType
+class Q_QUICK_EXPORT QQuickMatrix4x4ValueType : public QMatrix4x4
 {
-    QMatrix4x4 v;
     Q_PROPERTY(qreal m11 READ m11 WRITE setM11 FINAL)
     Q_PROPERTY(qreal m12 READ m12 WRITE setM12 FINAL)
     Q_PROPERTY(qreal m13 READ m13 WRITE setM13 FINAL)
@@ -295,47 +284,50 @@ public:
 
     Q_INVOKABLE QQuickMatrix4x4ValueType() = default;
 
-    qreal m11() const { return v(0, 0); }
-    qreal m12() const { return v(0, 1); }
-    qreal m13() const { return v(0, 2); }
-    qreal m14() const { return v(0, 3); }
-    qreal m21() const { return v(1, 0); }
-    qreal m22() const { return v(1, 1); }
-    qreal m23() const { return v(1, 2); }
-    qreal m24() const { return v(1, 3); }
-    qreal m31() const { return v(2, 0); }
-    qreal m32() const { return v(2, 1); }
-    qreal m33() const { return v(2, 2); }
-    qreal m34() const { return v(2, 3); }
-    qreal m41() const { return v(3, 0); }
-    qreal m42() const { return v(3, 1); }
-    qreal m43() const { return v(3, 2); }
-    qreal m44() const { return v(3, 3); }
+    qreal m11() const { return (*this)(0, 0); }
+    qreal m12() const { return (*this)(0, 1); }
+    qreal m13() const { return (*this)(0, 2); }
+    qreal m14() const { return (*this)(0, 3); }
+    qreal m21() const { return (*this)(1, 0); }
+    qreal m22() const { return (*this)(1, 1); }
+    qreal m23() const { return (*this)(1, 2); }
+    qreal m24() const { return (*this)(1, 3); }
+    qreal m31() const { return (*this)(2, 0); }
+    qreal m32() const { return (*this)(2, 1); }
+    qreal m33() const { return (*this)(2, 2); }
+    qreal m34() const { return (*this)(2, 3); }
+    qreal m41() const { return (*this)(3, 0); }
+    qreal m42() const { return (*this)(3, 1); }
+    qreal m43() const { return (*this)(3, 2); }
+    qreal m44() const { return (*this)(3, 3); }
 
-    void setM11(qreal value) { v(0, 0) = value; }
-    void setM12(qreal value) { v(0, 1) = value; }
-    void setM13(qreal value) { v(0, 2) = value; }
-    void setM14(qreal value) { v(0, 3) = value; }
-    void setM21(qreal value) { v(1, 0) = value; }
-    void setM22(qreal value) { v(1, 1) = value; }
-    void setM23(qreal value) { v(1, 2) = value; }
-    void setM24(qreal value) { v(1, 3) = value; }
-    void setM31(qreal value) { v(2, 0) = value; }
-    void setM32(qreal value) { v(2, 1) = value; }
-    void setM33(qreal value) { v(2, 2) = value; }
-    void setM34(qreal value) { v(2, 3) = value; }
-    void setM41(qreal value) { v(3, 0) = value; }
-    void setM42(qreal value) { v(3, 1) = value; }
-    void setM43(qreal value) { v(3, 2) = value; }
-    void setM44(qreal value) { v(3, 3) = value; }
+    void setM11(qreal value) { (*this)(0, 0) = value; }
+    void setM12(qreal value) { (*this)(0, 1) = value; }
+    void setM13(qreal value) { (*this)(0, 2) = value; }
+    void setM14(qreal value) { (*this)(0, 3) = value; }
+    void setM21(qreal value) { (*this)(1, 0) = value; }
+    void setM22(qreal value) { (*this)(1, 1) = value; }
+    void setM23(qreal value) { (*this)(1, 2) = value; }
+    void setM24(qreal value) { (*this)(1, 3) = value; }
+    void setM31(qreal value) { (*this)(2, 0) = value; }
+    void setM32(qreal value) { (*this)(2, 1) = value; }
+    void setM33(qreal value) { (*this)(2, 2) = value; }
+    void setM34(qreal value) { (*this)(2, 3) = value; }
+    void setM41(qreal value) { (*this)(3, 0) = value; }
+    void setM42(qreal value) { (*this)(3, 1) = value; }
+    void setM43(qreal value) { (*this)(3, 2) = value; }
+    void setM44(qreal value) { (*this)(3, 3) = value; }
 
-    Q_INVOKABLE void translate(const QVector3D &t) { v.translate(t); }
-    Q_INVOKABLE void rotate(float angle, const QVector3D &axis) { v.rotate(angle, axis); }
-    Q_INVOKABLE void rotate(const QQuaternion &q) { v.rotate(q); }
-    Q_INVOKABLE void scale(float s) { v.scale(s); }
-    Q_INVOKABLE void scale(float sx, float sy, float sz) { v.scale(sx, sy, sz); }
-    Q_INVOKABLE void scale(const QVector3D &s) { v.scale(s); }
-    Q_INVOKABLE void lookAt(const QVector3D &eye, const QVector3D &center, const QVector3D &up) { v.lookAt(eye, center, up); }
+    Q_INVOKABLE void translate(const QVector3D &t) { QMatrix4x4::translate(t); }
+    Q_INVOKABLE void rotate(float angle, const QVector3D &axis) { QMatrix4x4::rotate(angle, axis); }
+    Q_INVOKABLE void rotate(const QQuaternion &q) { QMatrix4x4::rotate(q); }
+    Q_INVOKABLE void scale(float s) { QMatrix4x4::scale(s); }
+    Q_INVOKABLE void scale(float sx, float sy, float sz) { QMatrix4x4::scale(sx, sy, sz); }
+    Q_INVOKABLE void scale(const QVector3D &s) { QMatrix4x4::scale(s); }
+    Q_INVOKABLE void lookAt(const QVector3D &eye, const QVector3D &center, const QVector3D &up)
+    {
+        QMatrix4x4::lookAt(eye, center, up);
+    }
 
     Q_INVOKABLE QMatrix4x4 times(const QMatrix4x4 &m) const;
     Q_INVOKABLE QVector4D times(const QVector4D &vec) const;
@@ -356,8 +348,6 @@ public:
 
     Q_INVOKABLE bool fuzzyEquals(const QMatrix4x4 &m, qreal epsilon) const;
     Q_INVOKABLE bool fuzzyEquals(const QMatrix4x4 &m) const;
-
-    operator QMatrix4x4() const { return v; }
 };
 
 class Q_QUICK_EXPORT QQuickPlanarTransform : public QObject
@@ -413,11 +403,17 @@ enum HintingPreference {
     PreferFullHinting = QFont::PreferFullHinting
 };
 Q_ENUM_NS(HintingPreference)
+
+enum Style {
+    StyleNormal = QFont::StyleNormal,
+    StyleItalic = QFont::StyleItalic,
+    StyleOblique = QFont::StyleOblique,
+};
+Q_ENUM_NS(Style)
 };
 
-class Q_QUICK_EXPORT QQuickFontValueType
+class Q_QUICK_EXPORT QQuickFontValueType : public QFont
 {
-    QFont v;
     Q_GADGET
 
     Q_PROPERTY(QString family READ family WRITE setFamily FINAL)
@@ -451,6 +447,7 @@ public:
     static QVariant create(const QJSValue &value);
 
     Q_INVOKABLE QQuickFontValueType() = default;
+    Q_INVOKABLE QQuickFontValueType(const QFont &font) : QFont(font) {}
     Q_INVOKABLE QString toString() const;
 
     QString family() const;
@@ -512,8 +509,6 @@ public:
 
     bool preferTypoLineMetrics() const;
     void setPreferTypoLineMetrics(bool b);
-
-    operator QFont() const { return v; }
 };
 
 namespace QQuickColorSpaceEnums
@@ -551,9 +546,8 @@ enum class TransferFunction {
 Q_ENUM_NS(TransferFunction)
 }
 
-class Q_QUICK_EXPORT QQuickColorSpaceValueType
+class Q_QUICK_EXPORT QQuickColorSpaceValueType : public QColorSpace
 {
-    QColorSpace v;
     Q_GADGET
 
     Q_PROPERTY(QQuickColorSpaceEnums::NamedColorSpace namedColorSpace READ namedColorSpace WRITE setNamedColorSpace FINAL)
@@ -578,8 +572,6 @@ public:
     void setTransferFunction(QQuickColorSpaceEnums::TransferFunction transferFunction);
     float gamma() const noexcept;
     void setGamma(float gamma);
-
-    operator QColorSpace() const { return v; }
 };
 
 QT_END_NAMESPACE

@@ -8,16 +8,21 @@
 
 #include "base/functional/bind.h"
 #include "base/functional/callback_helpers.h"
+#include "base/notreached.h"
 #include "base/numerics/safe_conversions.h"
 #include "base/strings/string_number_conversions.h"
 #include "base/strings/string_util.h"
+#include "base/time/time.h"
 #include "base/types/expected.h"
+#include "base/types/expected_macros.h"
 #include "build/build_config.h"
 #include "components/download/public/common/download_url_parameters.h"
+#include "content/browser/compute_pressure/web_contents_pressure_manager_proxy.h"
+#include "content/browser/device_posture/device_posture_provider_impl.h"
 #include "content/browser/devtools/devtools_agent_host_impl.h"
 #include "content/browser/generic_sensor/web_contents_sensor_provider_proxy.h"
 #include "content/browser/idle/idle_manager_impl.h"
-#include "content/browser/renderer_host/input/touch_emulator.h"
+#include "content/browser/renderer_host/input/touch_emulator_impl.h"
 #include "content/browser/renderer_host/render_frame_host_impl.h"
 #include "content/browser/renderer_host/render_widget_host_impl.h"
 #include "content/browser/web_contents/web_contents_impl.h"
@@ -28,8 +33,11 @@
 #include "services/device/public/cpp/geolocation/geoposition.h"
 #include "services/device/public/mojom/geolocation_context.mojom.h"
 #include "services/device/public/mojom/geoposition.mojom.h"
+#include "services/device/public/mojom/pressure_manager.mojom.h"
+#include "services/device/public/mojom/pressure_update.mojom.h"
 #include "services/device/public/mojom/sensor.mojom-shared.h"
 #include "services/network/public/cpp/client_hints.h"
+#include "third_party/blink/public/mojom/device_posture/device_posture_provider.mojom.h"
 #include "ui/display/mojom/screen_orientation.mojom.h"
 #include "ui/events/gesture_detection/gesture_provider_config_helper.h"
 
@@ -40,6 +48,12 @@ namespace {
 
 constexpr char kCommandIsOnlyAvailableAtTopTarget[] =
     "Command can only be executed on top-level targets";
+#if BUILDFLAG(ENABLE_COMPUTE_PRESSURE)
+constexpr char kPressureSourceIsAlreadyOverridden[] =
+    "The specified pressure source is already overridden";
+constexpr char kPressureSourceIsNotOverridden[] =
+    "The specified pressure source is not being overridden";
+#endif  // BUILDFLAG(ENABLE_COMPUTE_PRESSURE)
 constexpr char kSensorIsAlreadyOverridden[] =
     "The specified sensor type is already overridden";
 constexpr char kSensorIsNotOverridden[] =
@@ -67,12 +81,12 @@ DisplayFeatureOrientationTypeFromString(const std::string& type) {
   return std::nullopt;
 }
 
-base::expected<device::mojom::DevicePostureType, protocol::Response>
+base::expected<blink::mojom::DevicePostureType, protocol::Response>
 DevicePostureTypeFromString(const std::string& type) {
   if (type == Emulation::DevicePosture::TypeEnum::Continuous) {
-    return device::mojom::DevicePostureType::kContinuous;
+    return blink::mojom::DevicePostureType::kContinuous;
   } else if (type == Emulation::DevicePosture::TypeEnum::Folded) {
-    return device::mojom::DevicePostureType::kFolded;
+    return blink::mojom::DevicePostureType::kFolded;
   } else {
     return base::unexpected(
         protocol::Response::InvalidParams("Invalid posture type"));
@@ -128,6 +142,9 @@ void EmulationHandler::SetRenderer(int process_host_id,
     return;
   if (!frame_host) {
     sensor_overrides_.clear();
+#if BUILDFLAG(ENABLE_COMPUTE_PRESSURE)
+    pressure_overrides_.clear();
+#endif  // BUILDFLAG(ENABLE_COMPUTE_PRESSURE)
   }
   host_ = frame_host;
   if (touch_emulation_enabled_)
@@ -156,6 +173,10 @@ Response EmulationHandler::Disable() {
   prefers_reduced_motion_ = "";
   prefers_reduced_transparency_ = "";
   sensor_overrides_.clear();
+#if BUILDFLAG(ENABLE_COMPUTE_PRESSURE)
+  pressure_overrides_.clear();
+#endif  // BUILDFLAG(ENABLE_COMPUTE_PRESSURE)
+  ClearDevicePostureOverride();
   return Response::Success();
 }
 
@@ -307,34 +328,28 @@ void EmulationHandler::GetOverriddenSensorInformation(
       std::move(callback)));
 }
 
-void EmulationHandler::SetSensorOverrideEnabled(
+Response EmulationHandler::SetSensorOverrideEnabled(
     bool enabled,
     const Emulation::SensorType& type,
-    Maybe<Emulation::SensorMetadata> metadata,
-    std::unique_ptr<SetSensorOverrideEnabledCallback> callback) {
+    Maybe<Emulation::SensorMetadata> metadata) {
   if (!host_) {
-    callback->sendFailure(Response::InternalError());
-    return;
+    return Response::InternalError();
   }
 
   device::mojom::SensorType sensor_type;
   if (auto response = ConvertSensorType(type, &sensor_type);
       !response.IsSuccess()) {
-    callback->sendFailure(response);
-    return;
+    return response;
   }
 
   if (enabled) {
     auto virtual_sensor_metadata = ParseSensorMetadata(metadata);
     if (!virtual_sensor_metadata.has_value()) {
-      callback->sendFailure(virtual_sensor_metadata.error());
-      return;
+      return virtual_sensor_metadata.error();
     }
 
     if (sensor_overrides_.contains(sensor_type)) {
-      callback->sendFailure(
-          Response::InvalidParams(kSensorIsAlreadyOverridden));
-      return;
+      return Response::InvalidParams(kSensorIsAlreadyOverridden);
     }
 
     auto virtual_sensor =
@@ -342,15 +357,13 @@ void EmulationHandler::SetSensorOverrideEnabled(
             ->CreateVirtualSensorForDevTools(
                 sensor_type, std::move(virtual_sensor_metadata.value()));
     if (!virtual_sensor) {
-      callback->sendFailure(
-          Response::InvalidParams(kSensorIsAlreadyOverridden));
-      return;
+      return Response::InvalidParams(kSensorIsAlreadyOverridden);
     }
     sensor_overrides_[sensor_type] = std::move(virtual_sensor);
   } else {
     sensor_overrides_.erase(sensor_type);
   }
-  callback->sendSuccess();
+  return Response::Success();
 }
 
 void EmulationHandler::SetSensorOverrideReadings(
@@ -400,6 +413,117 @@ void EmulationHandler::SetSensorOverrideReadings(
             }
           },
           std::move(callback)));
+}
+
+#if BUILDFLAG(ENABLE_COMPUTE_PRESSURE)
+namespace {
+
+device::mojom::VirtualPressureSourceMetadataPtr ConvertPressureMetadata(
+    Maybe<Emulation::PressureMetadata>& metadata) {
+  auto pressure_metadata = device::mojom::VirtualPressureSourceMetadata::New();
+  if (metadata.has_value()) {
+    pressure_metadata->available = metadata->GetAvailable(true);
+  }
+  return pressure_metadata;
+}
+
+Response ConvertPressureSource(const Emulation::PressureSource& source,
+                               device::mojom::PressureSource* out_type) {
+  if (source == Emulation::PressureSourceEnum::Cpu) {
+    *out_type = device::mojom::PressureSource::kCpu;
+  } else {
+    return Response::InvalidParams("Invalid pressure source: " + source);
+  }
+  return Response::Success();
+}
+
+Response ConvertPressureState(const Emulation::PressureState& state,
+                              device::mojom::PressureState* out_type) {
+  if (state == Emulation::PressureStateEnum::Nominal) {
+    *out_type = device::mojom::PressureState::kNominal;
+  } else if (state == Emulation::PressureStateEnum::Fair) {
+    *out_type = device::mojom::PressureState::kFair;
+  } else if (state == Emulation::PressureStateEnum::Serious) {
+    *out_type = device::mojom::PressureState::kSerious;
+  } else if (state == Emulation::PressureStateEnum::Critical) {
+    *out_type = device::mojom::PressureState::kCritical;
+  } else {
+    return Response::InvalidParams("Invalid pressure state: " + state);
+  }
+  return Response::Success();
+}
+
+}  // namespace
+#endif  // BUILDFLAG(ENABLE_COMPUTE_PRESSURE)
+
+Response EmulationHandler::SetPressureSourceOverrideEnabled(
+    bool enabled,
+    const Emulation::PressureSource& source,
+    Maybe<Emulation::PressureMetadata> metadata) {
+#if BUILDFLAG(ENABLE_COMPUTE_PRESSURE)
+  if (!host_) {
+    return Response::InternalError();
+  }
+  device::mojom::PressureSource mojo_source;
+  if (auto response = ConvertPressureSource(source, &mojo_source);
+      !response.IsSuccess()) {
+    return response;
+  }
+  if (enabled) {
+    if (pressure_overrides_.contains(mojo_source)) {
+      return Response::InvalidParams(kPressureSourceIsAlreadyOverridden);
+    }
+    auto virtual_pressure_source =
+        WebContentsPressureManagerProxy::GetOrCreate(GetWebContents())
+            ->CreateVirtualPressureSourceForDevTools(
+                mojo_source, ConvertPressureMetadata(metadata));
+    if (!virtual_pressure_source) {
+      return Response::InvalidParams(kPressureSourceIsAlreadyOverridden);
+    }
+    pressure_overrides_[mojo_source] = std::move(virtual_pressure_source);
+  } else {
+    pressure_overrides_.erase(mojo_source);
+  }
+  return Response::Success();
+#else
+  return Response::InternalError();
+#endif  // BUILDFLAG(ENABLE_COMPUTE_PRESSURE)
+}
+
+void EmulationHandler::SetPressureStateOverride(
+    const Emulation::PressureSource& source,
+    const Emulation::PressureState& state,
+    std::unique_ptr<SetPressureStateOverrideCallback> callback) {
+  if (!host_) {
+    callback->sendFailure(Response::InternalError());
+    return;
+  }
+
+#if BUILDFLAG(ENABLE_COMPUTE_PRESSURE)
+  device::mojom::PressureSource mojo_source;
+  if (auto response = ConvertPressureSource(source, &mojo_source);
+      !response.IsSuccess()) {
+    callback->sendFailure(response);
+    return;
+  }
+  device::mojom::PressureState mojo_state;
+  if (auto response = ConvertPressureState(state, &mojo_state);
+      !response.IsSuccess()) {
+    callback->sendFailure(response);
+    return;
+  }
+  auto it = pressure_overrides_.find(mojo_source);
+  if (it == pressure_overrides_.end()) {
+    callback->sendFailure(
+        Response::InvalidParams(kPressureSourceIsNotOverridden));
+    return;
+  }
+  it->second->UpdateVirtualPressureSourceState(
+      mojo_state, base::BindOnce(&SetPressureStateOverrideCallback::sendSuccess,
+                                 std::move(callback)));
+#else
+  callback->sendFailure(Response::InternalError());
+#endif  // BUILDFLAG(ENABLE_COMPUTE_PRESSURE)
 }
 
 Response EmulationHandler::SetIdleOverride(bool is_user_active,
@@ -503,8 +627,9 @@ Response EmulationHandler::SetDeviceMetricsOverride(
   const static double max_scale = 10;
   const static int max_orientation_angle = 360;
 
-  if (!host_)
+  if (!host_ || host_->GetRenderWidgetHost()->auto_resize_enabled()) {
     return Response::ServerError("Target does not support metrics override");
+  }
 
   if (host_->GetParentOrOuterDocument())
     return Response::ServerError(kCommandIsOnlyAvailableAtTopTarget);
@@ -580,10 +705,10 @@ Response EmulationHandler::SetDeviceMetricsOverride(
           return Response::InvalidParams("Negative display feature parameters");
         case content::DisplayFeature::ParamErrorEnum::kOutsideScreenWidth:
           return Response::InvalidParams(
-              "Display feature window segments outside screen width");
+              "Display feature viewport segments outside screen width");
         case content::DisplayFeature::ParamErrorEnum::kOutsideScreenHeight:
           return Response::InvalidParams(
-              "Display feature window segments outside screen height");
+              "Display feature viewport segments outside screen height");
       }
     }
   }
@@ -604,8 +729,8 @@ Response EmulationHandler::SetDeviceMetricsOverride(
   params.screen_orientation_angle = orientationAngle;
 
   if (content_display_feature) {
-    params.window_segments =
-        content_display_feature->ComputeWindowSegments(params.view_size);
+    params.viewport_segments =
+        content_display_feature->ComputeViewportSegments(params.view_size);
   }
 
   if (device_posture.has_value()) {
@@ -810,10 +935,10 @@ Response EmulationHandler::SetFocusEmulationEnabled(bool enabled) {
     return Response::FallThrough();
   focus_emulation_enabled_ = enabled;
   if (enabled) {
-    capture_handle_ =
-        GetWebContents()->IncrementCapturerCount(gfx::Size(),
-                                                 /*stay_hidden=*/false,
-                                                 /*stay_awake=*/false);
+    capture_handle_ = GetWebContents()->IncrementCapturerCount(
+        gfx::Size(),
+        /*stay_hidden=*/false,
+        /*stay_awake=*/false, /*is_activity=*/true);
   } else {
     capture_handle_.RunAndReset();
   }
@@ -887,15 +1012,17 @@ void EmulationHandler::UpdateTouchEventEmulationState() {
   DCHECK(!host_->GetParentOrOuterDocument());
 
   if (touch_emulation_enabled_) {
-    if (auto* touch_emulator =
-            host_->GetRenderWidgetHost()->GetTouchEmulator()) {
+    if (auto* touch_emulator = host_->GetRenderWidgetHost()->GetTouchEmulator(
+            /*create_if_necessary=*/true)) {
       touch_emulator->Enable(
-          TouchEmulator::Mode::kEmulatingTouchFromMouse,
+          input::TouchEmulator::Mode::kEmulatingTouchFromMouse,
           TouchEmulationConfigurationToType(touch_emulation_configuration_));
     }
   } else {
-    if (auto* touch_emulator = host_->GetRenderWidgetHost()->GetTouchEmulator())
+    if (auto* touch_emulator = host_->GetRenderWidgetHost()->GetTouchEmulator(
+            /*create_if_necessary=*/true)) {
       touch_emulator->Disable();
+    }
   }
   GetWebContents()->SetForceDisableOverscrollContent(touch_emulation_enabled_);
 }
@@ -916,8 +1043,8 @@ void EmulationHandler::UpdateDeviceEmulationState() {
   // the EmulationHandler somehow. Mojo callbacks should make this much simpler.
   host_->ForEachRenderFrameHostIncludingSpeculative(
       [this](RenderFrameHostImpl* host) {
-        // The main frame of nested subpages (ex. fenced frames, portals) inside
-        // this page are updated as well.
+        // The main frame of nested subpages (ex. fenced frames) inside this
+        // page are updated as well.
         if (host->is_main_frame())
           UpdateDeviceEmulationStateForHost(host->GetRenderWidgetHost());
       });
@@ -933,6 +1060,27 @@ void EmulationHandler::UpdateDeviceEmulationStateForHost(
   } else {
     frame_widget->DisableDeviceEmulation();
   }
+}
+
+Response EmulationHandler::SetDevicePostureOverride(
+    std::unique_ptr<protocol::Emulation::DevicePosture> posture) {
+  ASSIGN_OR_RETURN(blink::mojom::DevicePostureType posture_type,
+                   DevicePostureTypeFromString(posture->GetType()));
+  device_posture_emulation_enabled_ = true;
+  GetWebContents()
+      ->GetDevicePostureProvider()
+      ->OverrideDevicePostureForEmulation(posture_type);
+  return Response::Success();
+}
+
+Response EmulationHandler::ClearDevicePostureOverride() {
+  if (device_posture_emulation_enabled_) {
+    device_posture_emulation_enabled_ = false;
+    GetWebContents()
+        ->GetDevicePostureProvider()
+        ->DisableDevicePostureOverrideForEmulation();
+  }
+  return Response::Success();
 }
 
 void EmulationHandler::ApplyOverrides(net::HttpRequestHeaders* headers,

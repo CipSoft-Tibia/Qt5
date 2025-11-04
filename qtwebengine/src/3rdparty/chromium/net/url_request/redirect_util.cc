@@ -21,8 +21,8 @@ void RedirectUtil::UpdateHttpRequest(
     const GURL& original_url,
     const std::string& original_method,
     const RedirectInfo& redirect_info,
-    const absl::optional<std::vector<std::string>>& removed_headers,
-    const absl::optional<net::HttpRequestHeaders>& modified_headers,
+    const std::optional<std::vector<std::string>>& removed_headers,
+    const std::optional<net::HttpRequestHeaders>& modified_headers,
     HttpRequestHeaders* request_headers,
     bool* should_clear_upload) {
   DCHECK(request_headers);
@@ -89,14 +89,14 @@ void RedirectUtil::UpdateHttpRequest(
 }
 
 // static
-absl::optional<std::string> RedirectUtil::GetReferrerPolicyHeader(
+std::optional<std::string> RedirectUtil::GetReferrerPolicyHeader(
     const HttpResponseHeaders* response_headers) {
   if (!response_headers)
-    return absl::nullopt;
+    return std::nullopt;
   std::string referrer_policy_header;
   if (!response_headers->GetNormalizedHeader("Referrer-Policy",
                                              &referrer_policy_header)) {
-    return absl::nullopt;
+    return std::nullopt;
   }
   return referrer_policy_header;
 }
@@ -115,8 +115,9 @@ scoped_refptr<HttpResponseHeaders> RedirectUtil::SynthesizeRedirectHeaders(
       static_cast<int>(response_code), redirect_destination.spec().c_str(),
       redirect_reason.c_str());
 
-  std::string http_origin;
-  if (request_headers.GetHeader("Origin", &http_origin)) {
+  if (std::optional<std::string> http_origin =
+          request_headers.GetHeader("Origin");
+      http_origin) {
     // If this redirect is used in a cross-origin request, add CORS headers to
     // make sure that the redirect gets through. Note that the destination URL
     // is still subject to the usual CORS policy, i.e. the resource will only
@@ -126,7 +127,7 @@ scoped_refptr<HttpResponseHeaders> RedirectUtil::SynthesizeRedirectHeaders(
         "\n"
         "Access-Control-Allow-Origin: %s\n"
         "Access-Control-Allow-Credentials: true",
-        http_origin.c_str());
+        http_origin->c_str());
   }
 
   auto fake_headers = base::MakeRefCounted<HttpResponseHeaders>(

@@ -35,7 +35,7 @@ export var CDPSessionEvent;
  * @example
  *
  * ```ts
- * const client = await page.target().createCDPSession();
+ * const client = await page.createCDPSession();
  * await client.send('Animation.enable');
  * client.on('Animation.animationCreated', () =>
  *   console.log('Animation created!')
@@ -56,9 +56,6 @@ export class CDPSession extends EventEmitter {
     constructor() {
         super();
     }
-    connection() {
-        throw new Error('Not implemented');
-    }
     /**
      * Parent session in terms of CDP's auto-attach mechanism.
      *
@@ -66,22 +63,6 @@ export class CDPSession extends EventEmitter {
      */
     parentSession() {
         return undefined;
-    }
-    send() {
-        throw new Error('Not implemented');
-    }
-    /**
-     * Detaches the cdpSession from the target. Once detached, the cdpSession object
-     * won't emit any events and can't be used to send messages.
-     */
-    async detach() {
-        throw new Error('Not implemented');
-    }
-    /**
-     * Returns the session's id.
-     */
-    id() {
-        throw new Error('Not implemented');
     }
 }
 //# sourceMappingURL=CDPSession.js.map

@@ -5,6 +5,7 @@
 #include "services/device/geolocation/win/location_provider_winrt.h"
 
 #include <memory>
+#include <optional>
 #include <utility>
 
 #include "base/run_loop.h"
@@ -14,12 +15,13 @@
 #include "services/device/geolocation/win/fake_geolocator_winrt.h"
 #include "services/device/public/cpp/geolocation/geoposition.h"
 #include "testing/gtest/include/gtest/gtest.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 
 namespace device {
 namespace {
 using ABI::Windows::Devices::Geolocation::IGeolocator;
 using ABI::Windows::Devices::Geolocation::PositionStatus;
+using ABI::Windows::Devices::Geolocation::AltitudeReferenceSystem::
+    AltitudeReferenceSystem_Terrain;
 
 class MockLocationObserver {
  public:
@@ -60,11 +62,11 @@ class TestingLocationProviderWinrt : public LocationProviderWinrt {
 
   bool IsHighAccuracyEnabled() { return enable_high_accuracy_; }
 
-  absl::optional<EventRegistrationToken> GetStatusChangedToken() {
+  std::optional<EventRegistrationToken> GetStatusChangedToken() {
     return status_changed_token_;
   }
 
-  absl::optional<EventRegistrationToken> GetPositionChangedToken() {
+  std::optional<EventRegistrationToken> GetPositionChangedToken() {
     return position_changed_token_;
   }
 
@@ -119,7 +121,7 @@ class LocationProviderWinrtTest : public testing::Test {
 
   base::test::TaskEnvironment task_environment_;
   base::RunLoop run_loop_;
-  absl::optional<base::win::ScopedWinrtInitializer> winrt_initializer_;
+  std::optional<base::win::ScopedWinrtInitializer> winrt_initializer_;
   const std::unique_ptr<MockLocationObserver> observer_;
   const LocationProvider::LocationProviderUpdateCallback callback_;
   std::unique_ptr<TestingLocationProviderWinrt> provider_;
@@ -195,6 +197,8 @@ TEST_F(LocationProviderWinrtTest, HasPermissionsAllValues) {
   test_data.altitude_accuracy = 5;
   test_data.heading = 6;
   test_data.speed = 7;
+  test_data.altitude_reference_system = ABI::Windows::Devices::Geolocation::
+      AltitudeReferenceSystem::AltitudeReferenceSystem_Ellipsoid;
 
   InitializeProvider(test_data);
   provider_->OnPermissionGranted();
@@ -288,4 +292,41 @@ TEST_F(LocationProviderWinrtTest, PositionStatusDisabledOsPermissions) {
   EXPECT_EQ(last_result->get_error()->error_code,
             mojom::GeopositionErrorCode::kPermissionDenied);
 }
+
+// Tests when the altitude reference system is not Ellipsoid.
+// In this case, the altitude should be set to device::mojom::kBadAltitude.
+TEST_F(LocationProviderWinrtTest, NonEllipsoidAltitudeReferenceSystem) {
+  auto test_data = FakeGeocoordinateData();
+  test_data.longitude = 1;
+  test_data.latitude = 2;
+  test_data.accuracy = 3;
+  test_data.altitude = 4;
+  test_data.altitude_accuracy = 5;
+  test_data.altitude_reference_system = AltitudeReferenceSystem_Terrain;
+
+  InitializeProvider(test_data);
+  provider_->OnPermissionGranted();
+  provider_->StartProvider(/*enable_high_accuracy=*/false);
+
+  EXPECT_FALSE(observer_->on_location_update_called());
+  EXPECT_FALSE(observer_->GetLastResult());
+
+  EXPECT_EQ(GetProviderState(),
+            mojom::GeolocationDiagnostics::ProviderState::kLowAccuracy);
+  EXPECT_TRUE(provider_->GetStatusChangedToken().has_value());
+  EXPECT_TRUE(provider_->GetPositionChangedToken().has_value());
+
+  run_loop_.Run();
+
+  EXPECT_TRUE(observer_->on_location_update_called());
+  auto* last_result = observer_->GetLastResult();
+  ASSERT_TRUE(last_result && last_result->is_position());
+  auto& position = *last_result->get_position();
+  EXPECT_TRUE(ValidateGeoposition(position));
+  EXPECT_EQ(position.latitude, test_data.latitude);
+  EXPECT_EQ(position.longitude, test_data.longitude);
+  EXPECT_EQ(position.accuracy, test_data.accuracy);
+  EXPECT_EQ(position.altitude, device::mojom::kBadAltitude);
+}
+
 }  // namespace device

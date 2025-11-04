@@ -30,10 +30,12 @@
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
 #include "./centipede/environment.h"
-#include "./centipede/logging.h"
 #include "./centipede/util.h"
+#include "./common/logging.h"
 
-static const auto *default_env = new centipede::Environment();
+namespace {
+const auto *default_env = new centipede::Environment();
+}  // namespace
 
 // TODO(kcc): document usage of standalone binaries and how to use @@ wildcard.
 // If the "binary" contains @@, it means the binary can only accept inputs
@@ -160,14 +162,10 @@ ABSL_FLAG(absl::Time, stop_at, default_env->stop_at,
           "supported. Tip: `date` is useful for conversion of mostly free "
           "format human readable date/time strings, e.g. "
           "--stop_at=$(date --date='next Monday 6pm' --utc --iso-8601=seconds) "
-          ". Also see --stop_after. If both are specified, the last one wins.");
+          ". Also see --stop_after. These two flags are mutually exclusive.");
 ABSL_FLAG(absl::Duration, stop_after, absl::InfiniteDuration(),
           "Equivalent to setting --stop_at to the current date/time + this "
-          "duration. If both flags are specified, the last one wins.")
-    .OnUpdate([]() {
-      absl::SetFlag(  //
-          &FLAGS_stop_at, absl::Now() + absl::GetFlag(FLAGS_stop_after));
-    });
+          "duration. These two flags are mutually exclusive.");
 ABSL_FLAG(bool, fork_server, default_env->fork_server,
           "If true (default) tries to execute the target(s) via the fork "
           "server, if supported by the target(s). Prepend the binary path with "
@@ -289,15 +287,24 @@ ABSL_FLAG(std::string, runner_dl_path_suffix,
           "The value could be the full path, like '/path/to/my.so' "
           "or a suffix, like '/my.so' or 'my.so'."
           "This flag is experimental and may be removed in future");
-// TODO(kcc): --distill and several others better be sub-command, not flags.
+// TODO(kcc): --distill and several others had better be dedicated binaries.
 ABSL_FLAG(bool, distill, default_env->distill,
-          "Experimental reimplementation of distillation - not ready yet. "
-          "All `total_shards` shards of the corpus in `workdir` are loaded "
-          "together with features for `binary`. "
-          "`num_threads` independent distillation threads work concurrently "
-          "loading the shards in random order. "
-          "Each distillation thread writes a minimized (distilled) "
-          "corpus to workdir/distilled-BINARY.`my_shard_index`.");
+          "Distill (minimize) the --total_shards input shards from --workdir "
+          "into --num_threads output shards. The input shards are randomly and "
+          "evenly divided between --num_threads concurrent distillation "
+          "threads to speed up processing. The threads share and update the "
+          "global coverage info as they go, so the output shards will never "
+          "have identical input/feature pairs (some intputs can still be "
+          "identical if a non-deterministic target produced different features "
+          "for identical inputs in the corpus). The features.* files are "
+          "looked up in a --workdir subdirectory that corresponds to "
+          "--coverage_binary and --binary_hash, if --binary_hash is provided; "
+          "if it is not provided, the actual hash of the --coverage_binary "
+          "file on disk is computed and used. Therefore, with an explicit "
+          "--binary_hash, --coverage_binary can be just the basename of the "
+          "actual target binary; without it, it must be the full path. "
+          "Each distillation thread writes a distilled corpus shard to "
+          "to <--workdir>/distilled-<--coverage_binary basename>.<index>.");
 ABSL_RETIRED_FLAG(size_t, distill_shards, 0,
                   "No longer supported: use --distill instead.");
 ABSL_FLAG(size_t, log_features_shards, default_env->log_features_shards,
@@ -313,6 +320,10 @@ ABSL_FLAG(std::string, minimize_crash, default_env->minimize_crash_file_path,
           " inputs in workdir/crashes/."
           " --num_runs and --num_threads apply. "
           " Assumes local workdir.");
+ABSL_FLAG(bool, batch_triage_suspect_only,
+          default_env->batch_triage_suspect_only,
+          "If set, triage the crash on only the suspected input in a crashing "
+          "batch. Otherwise, triage on all the executed inputs");
 ABSL_FLAG(std::string, input_filter, default_env->input_filter,
           "Path to a tool that filters bad inputs. The tool is invoked as "
           "`input_filter INPUT_FILE` and should return 0 if the input is good "
@@ -337,9 +348,10 @@ ABSL_FLAG(std::string, experiment, default_env->experiment,
           "number of flag combinations.");
 ABSL_FLAG(bool, analyze, default_env->analyze,
           "If set, Centipede will read the corpora from the work dirs provided"
-          " as argv and analyze differences between those corpora."
-          " Used by the Centipede developers to improve the engine. "
-          " TODO(kcc) implement. ");
+          " as argv. If two corpora are provided, then analyze differences"
+          " between those corpora. If one corpus is provided, then save the"
+          " coverage report to a file within workdir with prefix"
+          " 'coverage-report-'.");
 ABSL_FLAG(std::vector<std::string>, dictionary, default_env->dictionary,
           "A comma-separated list of paths to dictionary files. The dictionary "
           "file is either in AFL/libFuzzer plain text format or in the binary "
@@ -353,12 +365,11 @@ ABSL_FLAG(std::string, function_filter, default_env->function_filter,
 ABSL_FLAG(size_t, shmem_size_mb, default_env->shmem_size_mb,
           "Size of the shared memory regions used to communicate between the "
           "ending and the runner.");
-ABSL_FLAG(
-    bool, use_posix_shmem, default_env->use_posix_shmem,
-    "[INTERNAL] When true, uses shm_open/shm_unlink instead of memfd_create to "
-    "allocate shared memory. You may want this if your target doesn't have "
-    "access to /proc/<arbitrary_pid> subdirs or the memfd_create syscall is "
-    "not supported.");
+ABSL_FLAG(bool, use_posix_shmem, default_env->use_posix_shmem,
+          "[INTERNAL] When true, uses shm_open/shm_unlink instead of "
+          "memfd_create to allocate shared memory. You may want this if your "
+          "target doesn't have access to /proc/<arbitrary_pid> subdirs or the "
+          "memfd_create syscall is not supported.");
 ABSL_FLAG(bool, dry_run, default_env->dry_run,
           "Initializes as much of Centipede as possible without actually "
           "running any fuzzing. Useful to validate the rest of the command "
@@ -366,9 +377,9 @@ ABSL_FLAG(bool, dry_run, default_env->dry_run,
           "etc. Also useful in combination with --save_config or "
           "--update_config to stop execution immediately after writing the "
           "(updated) config file.");
-ABSL_FLAG(
-    bool, save_binary_info, default_env->save_binary_info,
-    "Save the BinaryInfo from the fuzzing run within the working directory.");
+ABSL_FLAG(bool, save_binary_info, default_env->save_binary_info,
+          "Save the BinaryInfo from the fuzzing run within the working "
+          "directory.");
 ABSL_FLAG(bool, populate_binary_info, default_env->populate_binary_info,
           "Get binary info from a coverage instrumented binary. This should "
           "only be turned off when coverage is not based on instrumenting some "
@@ -382,6 +393,24 @@ ABSL_FLAG(bool, riegeli, default_env->riegeli,
 namespace centipede {
 
 namespace {
+
+// Computes the final stop-at time based on the possibly user-provided inputs.
+absl::Time GetStopAtTime(absl::Time stop_at, absl::Duration stop_after) {
+  const bool stop_at_is_non_default = stop_at != absl::InfiniteFuture();
+  const bool stop_after_is_non_default = stop_after != absl::InfiniteDuration();
+  CHECK_LE(stop_at_is_non_default + stop_after_is_non_default, 1)
+      << "At most one of --stop_at and --stop_after should be specified, "
+         "including via --config file: "
+      << VV(stop_at) << VV(stop_after);
+  if (stop_at_is_non_default) {
+    return stop_at;
+  } else if (stop_after_is_non_default) {
+    return absl::Now() + stop_after;
+  } else {
+    return absl::InfiniteFuture();
+  }
+}
+
 // If the passed `timeout_per_batch` is 0, computes its value as a function of
 // `timeout_per_input` and `batch_size` and returns it. Otherwise, just returns
 // the `timeout_per_batch`.
@@ -412,6 +441,7 @@ size_t ComputeTimeoutPerBatch(  //
   }
   return timeout_per_batch;
 }
+
 }  // namespace
 
 Environment CreateEnvironmentFromFlags(const std::vector<std::string> &argv) {
@@ -449,7 +479,8 @@ Environment CreateEnvironmentFromFlags(const std::vector<std::string> &argv) {
           ComputeTimeoutPerBatch(absl::GetFlag(FLAGS_timeout_per_batch),
                                  absl::GetFlag(FLAGS_timeout_per_input),
                                  absl::GetFlag(FLAGS_batch_size)),
-      .stop_at = absl::GetFlag(FLAGS_stop_at),
+      .stop_at = GetStopAtTime(absl::GetFlag(FLAGS_stop_at),
+                               absl::GetFlag(FLAGS_stop_after)),
       .fork_server = absl::GetFlag(FLAGS_fork_server),
       .full_sync = absl::GetFlag(FLAGS_full_sync),
       .use_corpus_weights = absl::GetFlag(FLAGS_use_corpus_weights),
@@ -488,6 +519,8 @@ Environment CreateEnvironmentFromFlags(const std::vector<std::string> &argv) {
       .exit_on_crash = absl::GetFlag(FLAGS_exit_on_crash),
       .max_num_crash_reports = absl::GetFlag(FLAGS_num_crash_reports),
       .minimize_crash_file_path = absl::GetFlag(FLAGS_minimize_crash),
+      .batch_triage_suspect_only =
+          absl::GetFlag(FLAGS_batch_triage_suspect_only),
       .shmem_size_mb = absl::GetFlag(FLAGS_shmem_size_mb),
       .use_posix_shmem = absl::GetFlag(FLAGS_use_posix_shmem),
       .dry_run = absl::GetFlag(FLAGS_dry_run),

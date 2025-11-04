@@ -281,6 +281,10 @@ int runMoc(int argc, char **argv)
     noNotesWarningsCompatOption.setFlags(QCommandLineOption::ShortOptionStyle);
     parser.addOption(noNotesWarningsCompatOption);
 
+    QCommandLineOption activeQtMode(QStringLiteral("active-qt"));
+    activeQtMode.setFlags(QCommandLineOption::HiddenFromHelp);
+    parser.addOption(activeQtMode);
+
     QCommandLineOption noNotesOption(QStringLiteral("no-notes"));
     noNotesOption.setDescription(QStringLiteral("Do not display notes."));
     parser.addOption(noNotesOption);
@@ -338,6 +342,9 @@ int runMoc(int argc, char **argv)
         return 1;
 
     parser.process(arguments);
+
+    // used by ActiveQt's dumpcpp to suppress some functions
+    moc.activeQtMode = parser.isSet(activeQtMode);
 
     const QStringList files = parser.positionalArguments();
     output = parser.value(outputOption);

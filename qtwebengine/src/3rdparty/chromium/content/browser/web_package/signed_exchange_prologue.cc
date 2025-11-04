@@ -4,7 +4,8 @@
 
 #include "content/browser/web_package/signed_exchange_prologue.h"
 
-#include "base/strings/string_piece.h"
+#include <string_view>
+
 #include "base/strings/string_util.h"
 #include "base/strings/stringprintf.h"
 #include "base/trace_event/trace_event.h"
@@ -53,7 +54,7 @@ BeforeFallbackUrl BeforeFallbackUrl::Parse(
 
   CHECK_EQ(input.size(), kEncodedSizeInBytes);
 
-  const auto magic_string = input.subspan(0, sizeof(kSignedExchangeMagic));
+  const auto magic_string = input.first(sizeof(kSignedExchangeMagic));
   const auto encoded_fallback_url_length_field = input.subspan(
       sizeof(kSignedExchangeMagic), kFallbackUrlLengthFieldSizeInBytes);
 
@@ -98,9 +99,8 @@ FallbackUrlAndAfter FallbackUrlAndAfter::Parse(
     return FallbackUrlAndAfter();
   }
 
-  base::StringPiece fallback_url_str(
-      reinterpret_cast<const char*>(input.data()),
-      before_fallback_url.fallback_url_length());
+  std::string_view fallback_url_str(reinterpret_cast<const char*>(input.data()),
+                                    before_fallback_url.fallback_url_length());
   if (!base::IsStringUTF8(fallback_url_str)) {
     signed_exchange_utils::ReportErrorAndTraceEvent(
         devtools_proxy, "`fallbackUrl` is not a valid UTF-8 sequence.");

@@ -3,18 +3,16 @@
 # found in the LICENSE file.
 
 import("../../scripts/build/ninja/copy.gni")
-import("../../third_party/typescript/typescript.gni")
+import("../../scripts/build/typescript/typescript.gni")
 
 group("perf") {
   deps = [
-    ":config",
+    ":test_inputs",
     ":tests",
   ]
 }
 
-ts_library("tests") {
-  testonly = true
-
+node_ts_library("tests") {
   deps = [
     "application",
     "helpers",
@@ -22,11 +20,14 @@ ts_library("tests") {
     "report",
     "setup",
   ]
+
+  sources = [ "mocharc.ts" ]
 }
 
-copy_to_gen("config") {
-  sources = [
-    ".mocharc.js",
-    "test-runner-config.json",
-  ]
+generated_file("test_inputs") {
+  outputs = [ "$target_gen_dir/tests.txt" ]
+  data_keys = [ "tests" ]
+  rebase = target_gen_dir
+
+  deps = [ ":tests" ]
 }

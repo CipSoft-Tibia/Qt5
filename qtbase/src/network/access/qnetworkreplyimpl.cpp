@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:data-parser
 
 #include "qnetworkreplyimpl_p.h"
 #include "qnetworkaccessbackend_p.h"
@@ -125,8 +126,9 @@ void QNetworkReplyImplPrivate::_q_copyReadyRead()
     // emit readyRead before downloadProgress in case this will cause events to be
     // processed and we get into a recursive call (as in QProgressDialog).
     emit q->readyRead();
-    if (downloadProgressSignalChoke.elapsed() >= progressSignalInterval) {
-        downloadProgressSignalChoke.restart();
+    if (downloadProgressSignalChoke.isValid() &&
+        downloadProgressSignalChoke.elapsed() >= progressSignalInterval) {
+        downloadProgressSignalChoke.start();
         emit q->downloadProgress(bytesDownloaded, totalSizeOpt.value_or(-1));
     }
     resumeNotificationHandling();
@@ -389,10 +391,8 @@ void QNetworkReplyImplPrivate::emitUploadProgress(qint64 bytesSent, qint64 bytes
             if (bytesSent != bytesTotal && uploadProgressSignalChoke.elapsed() < progressSignalInterval) {
                 return;
             }
-            uploadProgressSignalChoke.restart();
-        } else {
-            uploadProgressSignalChoke.start();
         }
+        uploadProgressSignalChoke.start();
     }
 
     pauseNotificationHandling();
@@ -490,8 +490,9 @@ void QNetworkReplyImplPrivate::appendDownstreamDataSignalEmissions()
     emit q->readyRead();
     // emit readyRead before downloadProgress in case this will cause events to be
     // processed and we get into a recursive call (as in QProgressDialog).
-    if (downloadProgressSignalChoke.elapsed() >= progressSignalInterval) {
-        downloadProgressSignalChoke.restart();
+    if (downloadProgressSignalChoke.isValid() &&
+        downloadProgressSignalChoke.elapsed() >= progressSignalInterval) {
+        downloadProgressSignalChoke.start();
         emit q->downloadProgress(bytesDownloaded, totalSizeOpt.value_or(-1));
     }
 
@@ -579,8 +580,9 @@ void QNetworkReplyImplPrivate::appendDownstreamDataDownloadBuffer(qint64 bytesRe
     // processed and we get into a recursive call (as in QProgressDialog).
     if (bytesDownloaded > 0)
         emit q->readyRead();
-    if (downloadProgressSignalChoke.elapsed() >= progressSignalInterval) {
-        downloadProgressSignalChoke.restart();
+    if (downloadProgressSignalChoke.isValid() &&
+        downloadProgressSignalChoke.elapsed() >= progressSignalInterval) {
+        downloadProgressSignalChoke.start();
         emit q->downloadProgress(bytesDownloaded, bytesTotal);
     }
 }

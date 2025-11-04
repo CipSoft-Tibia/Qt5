@@ -139,7 +139,7 @@ Rectangle {
             Item { Layout.fillHeight: true }
 
             Text {
-                text: qsTr("Client IP: ")
+                text: qsTr("Detected IPs for This Machine:")
                 color: "gray"
                 font.bold: true
             }
@@ -158,18 +158,15 @@ Rectangle {
                 color: "gray"
                 font.bold: true
             }
-            Text {
-                Layout.leftMargin: 20
-                text: "65002 (https)"
-                color: "gray"
-                font.italic: true
-            }
-            Text {
-                Layout.leftMargin: 20
-                Layout.bottomMargin: 20
-                text: "65003 (http)"
-                color: "gray"
-                font.italic: true
+            Repeater {
+                model: ChatEngine.displayServerPorts()
+                Text {
+                    required property string modelData
+                    Layout.leftMargin: 20
+                    text: modelData
+                    color: "gray"
+                    font.italic: true
+                }
             }
 
             Text {

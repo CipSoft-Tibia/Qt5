@@ -123,13 +123,25 @@ export class Snackbar extends LitElement {
   private onToggle(e: ToggleEvent) {
     this.openInternal = e.newState === 'open';
     if (e.newState === 'open') {
+      // `toggle` events are coalesced:
+      // https://developer.mozilla.org/en-US/docs/Web/API/HTMLElement/toggle_event#a_note_on_toggle_event_coalescing.
+      // Clearing the timeout when toggling from 'open' to 'open' allows
+      // `hidePopover()` and `showPopover()` to be called in the same event
+      // loop cycle to refresh the popover timeout.
+      if (e.oldState === 'open') {
+        this.clearTimeout();
+      }
       this.startTimeout();
     } else if (e.newState === 'closed') {
       // If the snackbar was closed before the timer fired cancel it.
-      if (this.pendingTimeout) {
-        clearTimeout(this.pendingTimeout);
-        this.pendingTimeout = null;
-      }
+      this.clearTimeout();
+    }
+  }
+
+  private clearTimeout() {
+    if (this.pendingTimeout) {
+      clearTimeout(this.pendingTimeout);
+      this.pendingTimeout = null;
     }
   }
 
@@ -139,8 +151,7 @@ export class Snackbar extends LitElement {
     this.pendingTimeout = setTimeout(() => {
       this.hidePopover();
       this.dispatchEvent(new CustomEvent(Snackbar.events.TIMEOUT));
-      clearTimeout(this.pendingTimeout!);
-      this.pendingTimeout = null;
+      this.clearTimeout();
     }, this.timeoutMs);
   }
 

@@ -10,7 +10,6 @@
 #include "base/memory/raw_ptr.h"
 #include "base/memory/weak_ptr.h"
 #include "base/unguessable_token.h"
-#include "extensions/buildflags/buildflags.h"
 #include "extensions/common/mojom/automation_registry.mojom.h"
 #include "extensions/common/mojom/event_dispatcher.mojom.h"
 #include "extensions/common/mojom/event_router.mojom.h"
@@ -20,6 +19,7 @@
 #include "extensions/renderer/v8_schema_registry.h"
 #include "mojo/public/cpp/bindings/associated_receiver.h"
 #include "mojo/public/cpp/bindings/associated_remote.h"
+#include "third_party/blink/public/common/tokens/tokens.h"
 #include "third_party/blink/public/web/modules/service_worker/web_service_worker_context_proxy.h"
 
 namespace extensions {
@@ -29,27 +29,22 @@ class ScriptContext;
 // Per ServiceWorker data in worker thread.
 // TODO(lazyboy): Also put worker ScriptContexts in this.
 class ServiceWorkerData
-#if !BUILDFLAG(ENABLE_EXTENSIONS_LEGACY_IPC)
     : public mojom::EventDispatcher,
       public mojom::ServiceWorker
-#endif
 {
  public:
   ServiceWorkerData(
       blink::WebServiceWorkerContextProxy* proxy,
       int64_t service_worker_version_id,
       const std::optional<base::UnguessableToken>& activation_sequence,
+      const blink::ServiceWorkerToken& service_worker_token,
       ScriptContext* context,
       std::unique_ptr<NativeExtensionBindingsSystem> bindings_system);
 
   ServiceWorkerData(const ServiceWorkerData&) = delete;
   ServiceWorkerData& operator=(const ServiceWorkerData&) = delete;
 
-#if BUILDFLAG(ENABLE_EXTENSIONS_LEGACY_IPC)
-  ~ServiceWorkerData();
-#else
   ~ServiceWorkerData() override;
-#endif
 
   void Init();
 
@@ -71,7 +66,6 @@ class ServiceWorkerData
 
   mojom::RendererHost* GetRendererHost();
 
-#if !BUILDFLAG(ENABLE_EXTENSIONS_LEGACY_IPC)
   mojom::ServiceWorkerHost* GetServiceWorkerHost();
   mojom::EventRouter* GetEventRouter();
   mojom::RendererAutomationRegistry* GetAutomationRegistry();
@@ -94,21 +88,19 @@ class ServiceWorkerData
   void DispatchEvent(mojom::DispatchEventParamsPtr params,
                      base::Value::List event_args,
                      DispatchEventCallback callback) override;
-#endif
-
  private:
   void OnServiceWorkerRequest(
       mojo::PendingAssociatedReceiver<mojom::ServiceWorker> receiver);
 
-  blink::WebServiceWorkerContextProxy* proxy_;
+  raw_ptr<blink::WebServiceWorkerContextProxy> proxy_;
   const int64_t service_worker_version_id_;
   const std::optional<base::UnguessableToken> activation_sequence_;
-  const raw_ptr<ScriptContext, ExperimentalRenderer> context_ = nullptr;
+  const blink::ServiceWorkerToken service_worker_token_;
+  const raw_ptr<ScriptContext, DanglingUntriaged> context_ = nullptr;
 
   std::unique_ptr<V8SchemaRegistry> v8_schema_registry_;
   std::unique_ptr<NativeExtensionBindingsSystem> bindings_system_;
   mojo::AssociatedRemote<mojom::RendererHost> renderer_host_;
-#if !BUILDFLAG(ENABLE_EXTENSIONS_LEGACY_IPC)
   mojo::AssociatedRemote<mojom::ServiceWorkerHost> service_worker_host_;
   mojo::AssociatedReceiver<mojom::EventDispatcher> event_dispatcher_receiver_{
       this};
@@ -116,7 +108,6 @@ class ServiceWorkerData
   mojo::AssociatedRemote<mojom::RendererAutomationRegistry>
       renderer_automation_registry_remote_;
   mojo::AssociatedReceiver<mojom::ServiceWorker> receiver_{this};
-#endif
 
   base::WeakPtrFactory<ServiceWorkerData> weak_ptr_factory_{this};
 };

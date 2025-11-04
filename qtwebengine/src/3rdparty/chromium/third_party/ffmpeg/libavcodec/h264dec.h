@@ -336,7 +336,7 @@ typedef struct H264Context {
     H264DSPContext h264dsp;
     H264ChromaContext h264chroma;
     H264QpelContext h264qpel;
-    H274FilmGrainDatabase h274db;
+    H274FilmGrainDatabase* h274db;  // Dynamic allocation due to large size.
 
     H264Picture DPB[H264_MAX_PICTURE_COUNT];
     H264Picture *cur_pic_ptr;
@@ -356,7 +356,6 @@ typedef struct H264Context {
     int chroma_x_shift, chroma_y_shift;
 
     int droppable;
-    int coded_picture_number;
 
     int context_initialized;
     int flags;

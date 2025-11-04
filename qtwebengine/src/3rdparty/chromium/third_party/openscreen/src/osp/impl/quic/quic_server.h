@@ -6,40 +6,41 @@
 #define OSP_IMPL_QUIC_QUIC_SERVER_H_
 
 #include <cstdint>
+#include <functional>
 #include <map>
 #include <memory>
-#include <utility>
+#include <string>
 #include <vector>
 
-#include "osp/impl/quic/quic_connection_factory.h"
-#include "osp/impl/quic/quic_service_common.h"
+#include "osp/impl/quic/quic_connection_factory_server.h"
+#include "osp/impl/quic/quic_service_base.h"
 #include "osp/public/protocol_connection_server.h"
-#include "platform/api/task_runner.h"
-#include "platform/api/time.h"
-#include "platform/base/ip_address.h"
-#include "util/alarm.h"
 
 namespace openscreen::osp {
 
 // This class is the default implementation of ProtocolConnectionServer for the
 // library.  It manages connections to other endpoints as well as the lifetime
 // of each incoming and outgoing stream.  It works in conjunction with a
-// QuicConnectionFactory implementation and MessageDemuxer.
-// QuicConnectionFactory provides the ability to make a new QUIC
+// QuicConnectionFactoryServer and MessageDemuxer.
+// QuicConnectionFactoryServer provides the ability to make a new QUIC
 // connection from packets received on its server sockets.  Incoming data is
 // given to the QuicServer by the underlying QUIC implementation (through
-// QuicConnectionFactory) and this is in turn handed to MessageDemuxer for
+// QuicConnectionFactoryServer) and this is in turn handed to MessageDemuxer for
 // routing CBOR messages.
 class QuicServer final : public ProtocolConnectionServer,
-                         public QuicConnectionFactory::ServerDelegate,
-                         public ServiceConnectionDelegate::ServiceDelegate {
+                         public QuicConnectionFactoryServer::ServerDelegate,
+                         public QuicServiceBase {
  public:
-  QuicServer(const ServerConfig& config,
-             MessageDemuxer* demuxer,
-             std::unique_ptr<QuicConnectionFactory> connection_factory,
-             ProtocolConnectionServer::Observer* observer,
+  QuicServer(const ServiceConfig& config,
+             std::unique_ptr<QuicConnectionFactoryServer> connection_factory,
+             ProtocolConnectionServiceObserver& observer,
              ClockNowFunctionPtr now_function,
-             TaskRunner& task_runner);
+             TaskRunner& task_runner,
+             size_t buffer_limit);
+  QuicServer(const QuicServer&) = delete;
+  QuicServer& operator=(const QuicServer&) = delete;
+  QuicServer(QuicServer&&) noexcept = delete;
+  QuicServer& operator=(QuicServer&&) noexcept = delete;
   ~QuicServer() override;
 
   // ProtocolConnectionServer overrides.
@@ -47,63 +48,38 @@ class QuicServer final : public ProtocolConnectionServer,
   bool Stop() override;
   bool Suspend() override;
   bool Resume() override;
+  State GetState() override;
+  MessageDemuxer& GetMessageDemuxer() override;
+  InstanceRequestIds& GetInstanceRequestIds() override;
   std::unique_ptr<ProtocolConnection> CreateProtocolConnection(
-      uint64_t endpoint_id) override;
+      uint64_t instance_id) override;
+  std::string GetAgentFingerprint() override;
+  std::string GetAuthToken() override;
 
-  // QuicProtocolConnection::Owner overrides.
-  void OnConnectionDestroyed(QuicProtocolConnection* connection) override;
+  // QuicServiceBase overrides.
+  void OnClientCertificates(std::string_view instance_name,
+                            const std::vector<std::string>& certs) override;
 
-  // ServiceConnectionDelegate::ServiceDelegate overrides.
-  uint64_t OnCryptoHandshakeComplete(ServiceConnectionDelegate* delegate,
-                                     uint64_t connection_id) override;
-  void OnIncomingStream(
-      std::unique_ptr<QuicProtocolConnection> connection) override;
-  void OnConnectionClosed(uint64_t endpoint_id,
-                          uint64_t connection_id) override;
-  void OnDataReceived(uint64_t endpoint_id,
-                      uint64_t connection_id,
-                      const uint8_t* data,
-                      size_t data_size) override;
+  const std::string& instance_name() const { return instance_name_; }
 
  private:
-  void CloseAllConnections();
-
-  // QuicConnectionFactory::ServerDelegate overrides.
-  QuicConnection::Delegate* NextConnectionDelegate(
-      const IPEndpoint& source) override;
+  // QuicConnectionFactoryServer::ServerDelegate overrides.
+  QuicConnection::Delegate& GetConnectionDelegate() override { return *this; }
   void OnIncomingConnection(
       std::unique_ptr<QuicConnection> connection) override;
 
-  // Deletes dead QUIC connections then returns the time interval before this
-  // method should be run again.
-  void Cleanup();
+  std::string GenerateToken(int length);
 
-  const std::vector<IPEndpoint> connection_endpoints_;
-  std::unique_ptr<QuicConnectionFactory> connection_factory_;
+  // This is used for server name indication check.
+  const std::string instance_name_;
 
-  std::unique_ptr<ServiceConnectionDelegate> pending_connection_delegate_;
+  // An alphanumeric and unguessable token for authentication.
+  // See https://w3c.github.io/openscreenprotocol/#authentication.
+  std::string auth_token_;
 
-  // Maps an IPEndpoint to a generated endpoint ID.  This is used to insulate
-  // callers from post-handshake changes to a connections actual peer endpoint.
-  std::map<IPEndpoint, uint64_t> endpoint_map_;
-
-  // Value that will be used for the next new endpoint in a Connect call.
-  uint64_t next_endpoint_id_ = 0;
-
-  // Maps endpoint addresses to data about connections that haven't successfully
-  // completed the QUIC handshake.
-  std::map<IPEndpoint, ServiceConnectionData> pending_connections_;
-
-  // Maps endpoint IDs to data about connections that have successfully
-  // completed the QUIC handshake.
-  std::map<uint64_t, ServiceConnectionData> connections_;
-
-  // Connections (endpoint IDs) that need to be destroyed, but have to wait for
-  // the next event loop due to the underlying QUIC implementation's way of
-  // referencing them.
-  std::vector<uint64_t> delete_connections_;
-
-  Alarm cleanup_alarm_;
+  // Maps an instance name to the fingerprint of the instance's active agent
+  // certificate.
+  std::map<std::string, std::string, std::less<>> fingerprint_map_;
 };
 
 }  // namespace openscreen::osp

@@ -5,6 +5,7 @@
 //
 // cl_stubs.cpp: Stubs for CL entry points.
 
+#include "libANGLE/cl_utils.h"
 #include "libGLESv2/cl_stubs_autogen.h"
 
 #include "libGLESv2/proc_table_cl.h"
@@ -144,7 +145,7 @@ cl_int SetDefaultDeviceCommandQueue(cl_context context,
                                     cl_command_queue command_queue)
 {
     WARN_NOT_SUPPORTED(SetDefaultDeviceCommandQueue);
-    return 0;
+    return CL_INVALID_OPERATION;
 }
 
 cl_int GetDeviceAndHostTimer(cl_device_id device,
@@ -152,13 +153,13 @@ cl_int GetDeviceAndHostTimer(cl_device_id device,
                              cl_ulong *host_timestamp)
 {
     WARN_NOT_SUPPORTED(GetDeviceAndHostTimer);
-    return 0;
+    return CL_INVALID_OPERATION;
 }
 
 cl_int GetHostTimer(cl_device_id device, cl_ulong *host_timestamp)
 {
     WARN_NOT_SUPPORTED(GetHostTimer);
-    return 0;
+    return CL_INVALID_OPERATION;
 }
 
 cl_context CreateContext(const cl_context_properties *properties,
@@ -216,7 +217,7 @@ cl_int SetContextDestructorCallback(cl_context context,
                                     void *user_data)
 {
     WARN_NOT_SUPPORTED(SetContextDestructorCallback);
-    return 0;
+    return CL_INVALID_OPERATION;
 }
 
 cl_command_queue CreateCommandQueueWithProperties(cl_context context,
@@ -303,6 +304,7 @@ cl_mem CreatePipe(cl_context context,
                   const cl_pipe_properties *properties)
 {
     WARN_NOT_SUPPORTED(CreatePipe);
+    cl::gClErrorTls = CL_INVALID_OPERATION;
     return 0;
 }
 
@@ -360,7 +362,7 @@ cl_int GetPipeInfo(cl_mem pipe,
                    size_t *param_value_size_ret)
 {
     WARN_NOT_SUPPORTED(GetPipeInfo);
-    return 0;
+    return CL_INVALID_MEM_OBJECT;
 }
 
 cl_int SetMemObjectDestructorCallback(cl_mem memobj,
@@ -507,7 +509,7 @@ cl_int SetProgramReleaseCallback(cl_program program,
                                  void *user_data)
 {
     WARN_NOT_SUPPORTED(SetProgramReleaseCallback);
-    return 0;
+    return CL_INVALID_OPERATION;
 }
 
 cl_int SetProgramSpecializationConstant(cl_program program,
@@ -516,7 +518,7 @@ cl_int SetProgramSpecializationConstant(cl_program program,
                                         const void *spec_value)
 {
     WARN_NOT_SUPPORTED(SetProgramSpecializationConstant);
-    return 0;
+    return CL_INVALID_OPERATION;
 }
 
 cl_int UnloadPlatformCompiler(cl_platform_id platform)
@@ -588,7 +590,7 @@ cl_int SetKernelArg(cl_kernel kernel, cl_uint arg_index, size_t arg_size, const 
 cl_int SetKernelArgSVMPointer(cl_kernel kernel, cl_uint arg_index, const void *arg_value)
 {
     WARN_NOT_SUPPORTED(SetKernelArgSVMPointer);
-    return 0;
+    return CL_INVALID_OPERATION;
 }
 
 cl_int SetKernelExecInfo(cl_kernel kernel,
@@ -597,7 +599,7 @@ cl_int SetKernelExecInfo(cl_kernel kernel,
                          const void *param_value)
 {
     WARN_NOT_SUPPORTED(SetKernelExecInfo);
-    return 0;
+    return CL_INVALID_OPERATION;
 }
 
 cl_int GetKernelInfo(cl_kernel kernel,
@@ -642,7 +644,7 @@ cl_int GetKernelSubGroupInfo(cl_kernel kernel,
                              size_t *param_value_size_ret)
 {
     WARN_NOT_SUPPORTED(GetKernelSubGroupInfo);
-    return 0;
+    return CL_INVALID_OPERATION;
 }
 
 cl_int WaitForEvents(cl_uint num_events, const cl_event *event_list)
@@ -748,9 +750,10 @@ cl_int EnqueueReadBufferRect(cl_command_queue command_queue,
                              cl_event *event)
 {
     CL_RETURN_ERROR(command_queue->cast<CommandQueue>().enqueueReadBufferRect(
-        buffer, blocking_read, buffer_origin, host_origin, region, buffer_row_pitch,
-        buffer_slice_pitch, host_row_pitch, host_slice_pitch, ptr, num_events_in_wait_list,
-        event_wait_list, event));
+        buffer, blocking_read, cl::MemOffsets{buffer_origin[0], buffer_origin[1], buffer_origin[2]},
+        cl::MemOffsets{host_origin[0], host_origin[1], host_origin[2]},
+        cl::Coordinate{region[0], region[1], region[2]}, buffer_row_pitch, buffer_slice_pitch,
+        host_row_pitch, host_slice_pitch, ptr, num_events_in_wait_list, event_wait_list, event));
 }
 
 cl_int EnqueueWriteBuffer(cl_command_queue command_queue,
@@ -784,9 +787,11 @@ cl_int EnqueueWriteBufferRect(cl_command_queue command_queue,
                               cl_event *event)
 {
     CL_RETURN_ERROR(command_queue->cast<CommandQueue>().enqueueWriteBufferRect(
-        buffer, blocking_write, buffer_origin, host_origin, region, buffer_row_pitch,
-        buffer_slice_pitch, host_row_pitch, host_slice_pitch, ptr, num_events_in_wait_list,
-        event_wait_list, event));
+        buffer, blocking_write,
+        cl::MemOffsets{buffer_origin[0], buffer_origin[1], buffer_origin[2]},
+        cl::MemOffsets{host_origin[0], host_origin[1], host_origin[2]},
+        cl::Coordinate{region[0], region[1], region[2]}, buffer_row_pitch, buffer_slice_pitch,
+        host_row_pitch, host_slice_pitch, ptr, num_events_in_wait_list, event_wait_list, event));
 }
 
 cl_int EnqueueFillBuffer(cl_command_queue command_queue,
@@ -834,7 +839,9 @@ cl_int EnqueueCopyBufferRect(cl_command_queue command_queue,
                              cl_event *event)
 {
     CL_RETURN_ERROR(command_queue->cast<CommandQueue>().enqueueCopyBufferRect(
-        src_buffer, dst_buffer, src_origin, dst_origin, region, src_row_pitch, src_slice_pitch,
+        src_buffer, dst_buffer, cl::MemOffsets{src_origin[0], src_origin[1], src_origin[2]},
+        cl::MemOffsets{dst_origin[0], dst_origin[1], dst_origin[2]},
+        cl::Coordinate{region[0], region[1], region[2]}, src_row_pitch, src_slice_pitch,
         dst_row_pitch, dst_slice_pitch, num_events_in_wait_list, event_wait_list, event));
 }
 
@@ -851,8 +858,9 @@ cl_int EnqueueReadImage(cl_command_queue command_queue,
                         cl_event *event)
 {
     CL_RETURN_ERROR(command_queue->cast<CommandQueue>().enqueueReadImage(
-        image, blocking_read, origin, region, row_pitch, slice_pitch, ptr, num_events_in_wait_list,
-        event_wait_list, event));
+        image, blocking_read, cl::MemOffsets{origin[0], origin[1], origin[2]},
+        cl::Coordinate{region[0], region[1], region[2]}, row_pitch, slice_pitch, ptr,
+        num_events_in_wait_list, event_wait_list, event));
 }
 
 cl_int EnqueueWriteImage(cl_command_queue command_queue,
@@ -868,7 +876,8 @@ cl_int EnqueueWriteImage(cl_command_queue command_queue,
                          cl_event *event)
 {
     CL_RETURN_ERROR(command_queue->cast<CommandQueue>().enqueueWriteImage(
-        image, blocking_write, origin, region, input_row_pitch, input_slice_pitch, ptr,
+        image, blocking_write, cl::MemOffsets{origin[0], origin[1], origin[2]},
+        cl::Coordinate{region[0], region[1], region[2]}, input_row_pitch, input_slice_pitch, ptr,
         num_events_in_wait_list, event_wait_list, event));
 }
 
@@ -882,7 +891,9 @@ cl_int EnqueueFillImage(cl_command_queue command_queue,
                         cl_event *event)
 {
     CL_RETURN_ERROR(command_queue->cast<CommandQueue>().enqueueFillImage(
-        image, fill_color, origin, region, num_events_in_wait_list, event_wait_list, event));
+        image, fill_color, cl::MemOffsets{origin[0], origin[1], origin[2]},
+        cl::Coordinate{region[0], region[1], region[2]}, num_events_in_wait_list, event_wait_list,
+        event));
 }
 
 cl_int EnqueueCopyImage(cl_command_queue command_queue,
@@ -896,8 +907,10 @@ cl_int EnqueueCopyImage(cl_command_queue command_queue,
                         cl_event *event)
 {
     CL_RETURN_ERROR(command_queue->cast<CommandQueue>().enqueueCopyImage(
-        src_image, dst_image, src_origin, dst_origin, region, num_events_in_wait_list,
-        event_wait_list, event));
+        src_image, dst_image, cl::MemOffsets{src_origin[0], src_origin[1], src_origin[2]},
+        cl::MemOffsets{dst_origin[0], dst_origin[1], dst_origin[2]},
+        cl::Coordinate{region[0], region[1], region[2]}, num_events_in_wait_list, event_wait_list,
+        event));
 }
 
 cl_int EnqueueCopyImageToBuffer(cl_command_queue command_queue,
@@ -911,7 +924,8 @@ cl_int EnqueueCopyImageToBuffer(cl_command_queue command_queue,
                                 cl_event *event)
 {
     CL_RETURN_ERROR(command_queue->cast<CommandQueue>().enqueueCopyImageToBuffer(
-        src_image, dst_buffer, src_origin, region, dst_offset, num_events_in_wait_list,
+        src_image, dst_buffer, cl::MemOffsets{src_origin[0], src_origin[1], src_origin[2]},
+        cl::Coordinate{region[0], region[1], region[2]}, dst_offset, num_events_in_wait_list,
         event_wait_list, event));
 }
 
@@ -926,8 +940,10 @@ cl_int EnqueueCopyBufferToImage(cl_command_queue command_queue,
                                 cl_event *event)
 {
     CL_RETURN_ERROR(command_queue->cast<CommandQueue>().enqueueCopyBufferToImage(
-        src_buffer, dst_image, src_offset, dst_origin, region, num_events_in_wait_list,
-        event_wait_list, event));
+        src_buffer, dst_image, src_offset,
+        cl::MemOffsets{dst_origin[0], dst_origin[1], dst_origin[2]},
+        cl::Coordinate{region[0], region[1], region[2]}, num_events_in_wait_list, event_wait_list,
+        event));
 }
 
 void *EnqueueMapBuffer(cl_command_queue command_queue,
@@ -957,10 +973,11 @@ void *EnqueueMapImage(cl_command_queue command_queue,
                       const cl_event *event_wait_list,
                       cl_event *event)
 {
-    CL_RETURN_PTR(ptrOut,
-                  command_queue->cast<CommandQueue>().enqueueMapImage(
-                      image, blocking_map, map_flags, origin, region, image_row_pitch,
-                      image_slice_pitch, num_events_in_wait_list, event_wait_list, event, ptrOut));
+    CL_RETURN_PTR(
+        ptrOut, command_queue->cast<CommandQueue>().enqueueMapImage(
+                    image, blocking_map, map_flags, cl::MemOffsets{origin[0], origin[1], origin[2]},
+                    cl::Coordinate{region[0], region[1], region[2]}, image_row_pitch,
+                    image_slice_pitch, num_events_in_wait_list, event_wait_list, event, ptrOut));
 }
 
 cl_int EnqueueUnmapMemObject(cl_command_queue command_queue,
@@ -996,9 +1013,9 @@ cl_int EnqueueNDRangeKernel(cl_command_queue command_queue,
                             const cl_event *event_wait_list,
                             cl_event *event)
 {
+    cl::NDRange ndrange(work_dim, global_work_offset, global_work_size, local_work_size);
     CL_RETURN_ERROR(command_queue->cast<CommandQueue>().enqueueNDRangeKernel(
-        kernel, work_dim, global_work_offset, global_work_size, local_work_size,
-        num_events_in_wait_list, event_wait_list, event));
+        kernel, ndrange, num_events_in_wait_list, event_wait_list, event));
 }
 
 cl_int EnqueueNativeKernel(cl_command_queue command_queue,
@@ -1048,7 +1065,7 @@ cl_int EnqueueSVMFree(cl_command_queue command_queue,
                       cl_event *event)
 {
     WARN_NOT_SUPPORTED(EnqueueSVMFree);
-    return 0;
+    return CL_INVALID_OPERATION;
 }
 
 cl_int EnqueueSVMMemcpy(cl_command_queue command_queue,
@@ -1061,7 +1078,7 @@ cl_int EnqueueSVMMemcpy(cl_command_queue command_queue,
                         cl_event *event)
 {
     WARN_NOT_SUPPORTED(EnqueueSVMMemcpy);
-    return 0;
+    return CL_INVALID_OPERATION;
 }
 
 cl_int EnqueueSVMMemFill(cl_command_queue command_queue,
@@ -1074,7 +1091,7 @@ cl_int EnqueueSVMMemFill(cl_command_queue command_queue,
                          cl_event *event)
 {
     WARN_NOT_SUPPORTED(EnqueueSVMMemFill);
-    return 0;
+    return CL_INVALID_OPERATION;
 }
 
 cl_int EnqueueSVMMap(cl_command_queue command_queue,
@@ -1087,7 +1104,7 @@ cl_int EnqueueSVMMap(cl_command_queue command_queue,
                      cl_event *event)
 {
     WARN_NOT_SUPPORTED(EnqueueSVMMap);
-    return 0;
+    return CL_INVALID_OPERATION;
 }
 
 cl_int EnqueueSVMUnmap(cl_command_queue command_queue,
@@ -1097,7 +1114,7 @@ cl_int EnqueueSVMUnmap(cl_command_queue command_queue,
                        cl_event *event)
 {
     WARN_NOT_SUPPORTED(EnqueueSVMUnmap);
-    return 0;
+    return CL_INVALID_OPERATION;
 }
 
 cl_int EnqueueSVMMigrateMem(cl_command_queue command_queue,
@@ -1110,7 +1127,7 @@ cl_int EnqueueSVMMigrateMem(cl_command_queue command_queue,
                             cl_event *event)
 {
     WARN_NOT_SUPPORTED(EnqueueSVMMigrateMem);
-    return 0;
+    return CL_INVALID_OPERATION;
 }
 
 void *GetExtensionFunctionAddressForPlatform(cl_platform_id platform, const char *func_name)

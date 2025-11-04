@@ -8,10 +8,10 @@
 
 #include <utility>
 
+#include "core/fxcrt/check_op.h"
 #include "fxjs/cfxjs_engine.h"
 #include "fxjs/fxv8.h"
 #include "fxjs/xfa/cfxjse_isolatetracker.h"
-#include "third_party/base/check_op.h"
 #include "v8/include/v8-context.h"
 #include "v8/include/v8-external.h"
 #include "v8/include/v8-isolate.h"
@@ -50,8 +50,8 @@ std::unique_ptr<CFXJSE_RuntimeData> CFXJSE_RuntimeData::Create(
 }
 
 CFXJSE_RuntimeData* CFXJSE_RuntimeData::Get(v8::Isolate* pIsolate) {
-  FXJS_PerIsolateData::SetUp(pIsolate);
-  FXJS_PerIsolateData* pData = FXJS_PerIsolateData::Get(pIsolate);
+  CFXJS_PerIsolateData::SetUp(pIsolate);
+  CFXJS_PerIsolateData* pData = CFXJS_PerIsolateData::Get(pIsolate);
   if (!pData->GetExtension())
     pData->SetExtension(CFXJSE_RuntimeData::Create(pIsolate));
   return static_cast<CFXJSE_RuntimeData*>(pData->GetExtension());

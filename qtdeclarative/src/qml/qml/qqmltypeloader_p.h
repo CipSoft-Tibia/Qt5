@@ -18,6 +18,7 @@
 #include <private/qqmldatablob_p.h>
 #include <private/qqmlimport_p.h>
 #include <private/qqmlmetatype_p.h>
+#include <private/qqmltypeloaderthread_p.h>
 #include <private/qv4compileddata_p.h>
 
 #include <QtQml/qtqmlglobal.h>
@@ -72,7 +73,7 @@ public:
             QTypeRevision version;
 
             PendingImport() = default;
-            PendingImport(Blob *blob, const QV4::CompiledData::Import *import,
+            PendingImport(const QQmlRefPointer<Blob> &blob, const QV4::CompiledData::Import *import,
                           QQmlImports::ImportFlags flags);
         };
         using PendingImportPtr = std::shared_ptr<PendingImport>;
@@ -82,9 +83,11 @@ public:
     protected:
         bool addImport(const QV4::CompiledData::Import *import, QQmlImports::ImportFlags,
                        QList<QQmlError> *errors);
-        bool addImport(PendingImportPtr import, QList<QQmlError> *errors);
+        bool addImport(const PendingImportPtr &import, QList<QQmlError> *errors);
 
-        bool fetchQmldir(const QUrl &url, PendingImportPtr import, int priority, QList<QQmlError> *errors);
+        bool fetchQmldir(
+                const QUrl &url, const PendingImportPtr &import, int priority,
+                QList<QQmlError> *errors);
         bool updateQmldir(const QQmlRefPointer<QQmlQmldirData> &data, const PendingImportPtr &import, QList<QQmlError> *errors);
 
     private:
@@ -94,15 +97,23 @@ public:
 
         virtual bool qmldirDataAvailable(const QQmlRefPointer<QQmlQmldirData> &, QList<QQmlError> *);
 
-        virtual void scriptImported(const QQmlRefPointer<QQmlScriptBlob> &, const QV4::CompiledData::Location &, const QString &, const QString &) {}
+        virtual void scriptImported(
+                const QQmlRefPointer<QQmlScriptBlob> &, const QV4::CompiledData::Location &,
+                const QString &, const QString &)
+        {
+            Q_ASSERT(isTypeLoaderThread());
+        }
 
-        void dependencyComplete(QQmlDataBlob *) override;
+        void dependencyComplete(const QQmlDataBlob::Ptr &) override;
 
         bool loadImportDependencies(
                 const PendingImportPtr &currentImport, const QString &qmldirUri,
                 QQmlImports::ImportFlags flags, QList<QQmlError> *errors);
 
     protected:
+
+        bool registerPendingTypes(const PendingImportPtr &import);
+
         bool loadDependentImports(
                 const QList<QQmlDirParser::Import> &imports, const QString &qualifier,
                 QTypeRevision version, quint16 precedence, QQmlImports::ImportFlags flags,
@@ -149,7 +160,7 @@ public:
     QQmlRefPointer<QQmlTypeData> getType(const QUrl &unNormalizedUrl, Mode mode = PreferSynchronous);
     QQmlRefPointer<QQmlTypeData> getType(const QByteArray &, const QUrl &url, Mode mode = PreferSynchronous);
 
-    QQmlRefPointer<QV4::CompiledData::CompilationUnit> injectScript(
+    QQmlRefPointer<QV4::CompiledData::CompilationUnit> injectModule(
             const QUrl &relativeUrl, const QV4::CompiledData::Unit *unit);
 
     QQmlRefPointer<QQmlScriptBlob> getScript(const QUrl &unNormalizedUrl, const QUrl &relativeUrl);
@@ -168,12 +179,12 @@ public:
     bool isTypeLoaded(const QUrl &url) const;
     bool isScriptLoaded(const QUrl &url) const;
 
-    void lock() { m_mutex.lock(); }
-    void unlock() { m_mutex.unlock(); }
+    void lock() { m_thread->lock(); }
+    void unlock() { m_thread->unlock(); }
 
-    void load(QQmlDataBlob *, Mode = PreferSynchronous);
-    void loadWithStaticData(QQmlDataBlob *, const QByteArray &, Mode = PreferSynchronous);
-    void loadWithCachedUnit(QQmlDataBlob *blob, const QQmlPrivate::CachedQmlUnit *unit, Mode mode = PreferSynchronous);
+    void load(const QQmlDataBlob::Ptr &,  Mode = PreferSynchronous);
+    void loadWithStaticData(const QQmlDataBlob::Ptr &blob, const QByteArray &, Mode = PreferSynchronous);
+    void loadWithCachedUnit(const QQmlDataBlob::Ptr &blob, const QQmlPrivate::CachedQmlUnit *unit, Mode mode = PreferSynchronous);
     void drop(const QQmlDataBlob::Ptr &blob);
 
     QQmlEngine *engine() const;
@@ -214,15 +225,14 @@ private:
     void setData(const QQmlDataBlob::Ptr &, const QQmlDataBlob::SourceCodeData &);
     void setCachedUnit(const QQmlDataBlob::Ptr &blob, const QQmlPrivate::CachedQmlUnit *unit);
 
-    typedef QHash<QUrl, QQmlTypeData *> TypeCache;
-    typedef QHash<QUrl, QQmlScriptBlob *> ScriptCache;
-    typedef QHash<QUrl, QQmlQmldirData *> QmldirCache;
+    typedef QHash<QUrl, QQmlRefPointer<QQmlTypeData>> TypeCache;
+    typedef QHash<QUrl, QQmlRefPointer<QQmlScriptBlob>> ScriptCache;
+    typedef QHash<QUrl, QQmlRefPointer<QQmlQmldirData>> QmldirCache;
     typedef QCache<QString, QCache<QString, bool> > ImportDirCache;
     typedef QStringHash<QQmlTypeLoaderQmldirContent *> ImportQmlDirCache;
 
     QQmlEngine *m_engine;
     QQmlTypeLoaderThread *m_thread;
-    QMutex &m_mutex;
 
 #if QT_CONFIG(qml_debug)
     QScopedPointer<QQmlProfiler> m_profiler;
@@ -240,7 +250,7 @@ private:
     ChecksumCache m_checksumCache;
 
     template<typename Loader>
-    void doLoad(const Loader &loader, QQmlDataBlob *blob, Mode mode);
+    void doLoad(const Loader &loader, const QQmlDataBlob::Ptr &blob, Mode mode);
     void updateTypeCacheTrimThreshold();
 
     friend struct PlainLoader;

@@ -14,6 +14,7 @@
 
 #include "sdk/android/native_api/jni/java_types.h"
 #include "sdk/android/src/jni/jni_helpers.h"
+#include "third_party/jni_zero/jni_zero.h"
 
 namespace webrtc {
 namespace jni {
@@ -50,8 +51,10 @@ JNI_FUNCTION_DECLARATION(void,
                          jint j_severity,
                          jstring j_tag,
                          jstring j_message) {
-  std::string message = JavaToStdString(jni, JavaParamRef<jstring>(j_message));
-  std::string tag = JavaToStdString(jni, JavaParamRef<jstring>(j_tag));
+  std::string message =
+      JavaToStdString(jni, jni_zero::JavaParamRef<jstring>(jni, j_message));
+  std::string tag =
+      JavaToStdString(jni, jni_zero::JavaParamRef<jstring>(jni, j_tag));
   RTC_LOG_TAG(static_cast<rtc::LoggingSeverity>(j_severity), tag.c_str())
       << message;
 }

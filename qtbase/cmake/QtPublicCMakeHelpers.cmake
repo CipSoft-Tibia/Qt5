@@ -153,7 +153,7 @@ function(__qt_internal_collect_additional_module_paths)
         if(is_path_to_cmake)
             list(APPEND CMAKE_MODULE_PATH "${prefix_path}/${QT_CMAKE_EXPORT_NAMESPACE}")
         else()
-            __qt_internal_get_possible_cmake_dirs(additional_cmake_dirs "${additional_path}")
+            __qt_internal_get_possible_cmake_dirs(additional_cmake_dirs "${prefix_path}")
             list(TRANSFORM additional_cmake_dirs APPEND "/${QT_CMAKE_EXPORT_NAMESPACE}")
             list(APPEND CMAKE_MODULE_PATH ${additional_cmake_dirs})
         endif()
@@ -172,6 +172,21 @@ function(__qt_internal_prefix_paths_to_roots out_var prefix_paths)
         list(APPEND result "${path}")
     endforeach()
     set("${out_var}" "${result}" PARENT_SCOPE)
+endfunction()
+
+function(_qt_internal_get_check_cxx_source_compiles_out_var out_output_var out_func_args)
+    # This just resets the output var in the parent scope to an empty string.
+    set(${out_output_var} "" PARENT_SCOPE)
+
+    # OUTPUT_VARIABLE is an internal undocumented variable of check_cxx_source_compiles
+    # since 3.23. Allow an opt out in case this breaks in the future.
+    set(extra_func_args "")
+    if(CMAKE_VERSION VERSION_GREATER_EQUAL "3.23"
+            AND NOT QT_INTERNAL_NO_TRY_COMPILE_OUTPUT_VARIABLE)
+        set(extra_func_args OUTPUT_VARIABLE ${out_output_var})
+    endif()
+
+    set(${out_func_args} "${extra_func_args}" PARENT_SCOPE)
 endfunction()
 
 # This function gets all targets below this directory
@@ -536,8 +551,14 @@ endfunction()
 
 # Takes a list of path components and joins them into one path separated by forward slashes "/",
 # and saves the path in out_var.
+# Filters out any path parts that are bare "."s.
 function(_qt_internal_path_join out_var)
-    string(JOIN "/" path ${ARGN})
+    set(args ${ARGN})
+
+    # Remove any bare ".", to avoid any CMP0177 warnings for paths passed to install().
+    list(REMOVE_ITEM args ".")
+
+    string(JOIN "/" path ${args})
     set(${out_var} ${path} PARENT_SCOPE)
 endfunction()
 
@@ -715,6 +736,29 @@ function(_qt_internal_forward_function_args)
     set(${arg_FORWARD_OUT_VAR} "${forward_args}" PARENT_SCOPE)
 endfunction()
 
+# Function adds the transitive property of the specified type to a target, avoiding duplicates.
+# Supported types: COMPILE, LINK
+#
+# See:
+#   https://cmake.org/cmake/help/latest/prop_tgt/TRANSITIVE_COMPILE_PROPERTIES.html
+#   https://cmake.org/cmake/help/latest/prop_tgt/TRANSITIVE_LINK_PROPERTIES.html
+function(_qt_internal_add_transitive_property target type property)
+    if(CMAKE_VERSION VERSION_LESS 3.30)
+        return()
+    endif()
+    if(NOT type MATCHES "^(COMPILE|LINK)$")
+        message(FATAL_ERROR "Attempt to assign unknown TRANSITIVE_${type}_PROPERTIES property")
+    endif()
+
+    _qt_internal_dealias_target(target)
+    get_target_property(transitive_properties ${target}
+        TRANSITIVE_${type}_PROPERTIES)
+    if(NOT "${property}" IN_LIST transitive_properties)
+        set_property(TARGET ${target}
+            APPEND PROPERTY TRANSITIVE_${type}_PROPERTIES ${property})
+    endif()
+endfunction()
+
 # Compatibility of `cmake_path(RELATIVE_PATH)`
 #
 # In order to be compatible with `file(RELATIVE_PATH)`, path normalization of the result is
@@ -767,4 +811,137 @@ function(_qt_internal_relative_path path_var)
                 "${${arg_OUTPUT_VARIABLE}}")
     endif()
     set(${arg_OUTPUT_VARIABLE} "${${arg_OUTPUT_VARIABLE}}" PARENT_SCOPE)
+endfunction()
+
+# Configures the file using either the input template or the CONTENT.
+# Behaves as either file(CONFIGURE or configure_file( command, but do not depend
+# on CMake version.
+#
+# Synopsis
+#    _qt_internal_configure_file(<CONFIGURE|GENERATE>
+#        OUTPUT <path>
+#        <INPUT path|CONTENT data>
+#    )
+#
+# Arguments
+# `CONFIGURE` Run in pure CONFIGURE mode.
+#
+# `GENERATE` Configure CONTENT and generate file with the generator expression
+#   support.
+#
+# `OUTPUT` The output file name to generate.
+#
+# `INPUT` The input template file name.
+#
+# `CONTENT` The template content. If both INPUT and CONTENT are specified, INPUT
+#   argument is ignored.
+function(_qt_internal_configure_file mode)
+    cmake_parse_arguments(PARSE_ARGV 1 arg "" "OUTPUT;INPUT;CONTENT" "")
+
+    if(NOT arg_OUTPUT)
+        message(FATAL_ERROR "No OUTPUT file provided to _qt_internal_configure_file.")
+    endif()
+
+    # Substitute the '@' wrapped variables and generate the file with the
+    # the generator expressions evaluation inside the resulting CONTENT.
+    if(mode STREQUAL "GENERATE")
+        if(arg_INPUT)
+            configure_file("${arg_INPUT}" "${arg_OUTPUT}.tmp" @ONLY)
+            file(GENERATE OUTPUT "${arg_OUTPUT}" INPUT "${arg_OUTPUT}.tmp")
+        else()
+            string(CONFIGURE "${arg_CONTENT}" arg_CONTENT @ONLY)
+            file(GENERATE OUTPUT "${arg_OUTPUT}" CONTENT "${arg_CONTENT}")
+        endif()
+        return()
+    endif()
+
+    # We use this check for the cases when the specified CONTENT is empty. The value of arg_CONTENT
+    # is undefined, but we still want to create a file with empty content.
+    if("CONTENT" IN_LIST ARGV)
+        if(arg_INPUT)
+            message(WARNING "Both CONTENT and INPUT are specified. CONTENT will be used to generate"
+                " output")
+        endif()
+        if(CMAKE_VERSION VERSION_GREATER_EQUAL 3.18)
+            file(CONFIGURE OUTPUT "${arg_OUTPUT}" CONTENT "${arg_CONTENT}" @ONLY)
+            return()
+        endif()
+        set(template_name "QtFileConfigure.txt.in")
+        # When building qtbase, use the source template file.
+        # Otherwise use the installed file (basically wherever Qt6 package is found).
+        # This should work for non-prefix and superbuilds as well.
+        if(QtBase_SOURCE_DIR)
+            set(input_file "${QtBase_SOURCE_DIR}/cmake/${template_name}")
+        else()
+            set(input_file "${_qt_6_config_cmake_dir}/${template_name}")
+        endif()
+        set(__qt_file_configure_content "${arg_CONTENT}")
+    elseif(arg_INPUT)
+        set(input_file "${arg_INPUT}")
+    else()
+        message(FATAL_ERROR "No input value provided to _qt_internal_configure_file.")
+    endif()
+
+    configure_file("${input_file}" "${arg_OUTPUT}" @ONLY)
+endfunction()
+
+function(qt_set01 result)
+    if (${ARGN})
+        set("${result}" 1 PARENT_SCOPE)
+    else()
+        set("${result}" 0 PARENT_SCOPE)
+    endif()
+endfunction()
+
+function(_qt_internal_get_moc_compiler_flavor_flags out_var)
+    set(flags "")
+    if(WIN32)
+        list(APPEND flags -DWIN32)
+    endif()
+    if(MSVC)
+        list(APPEND flags --compiler-flavor=msvc)
+    endif()
+
+    set(${out_var} "${flags}" PARENT_SCOPE)
+endfunction()
+
+# Compatibility of `cmake_path(IS_PREFIX)`
+#
+# NORMALIZE keyword is not supported
+#
+# Synopsis
+#
+#   _qt_internal_path_is_prefix(<path-var> <input> <out-var>)
+#
+# Arguments
+#
+# `path-var`
+#   Equivalent to `cmake_path(IS_PREFIX <path-var>)`.
+#
+# `input`
+#   Equivalent to `cmake_path(IS_PREFIX <input>)`.
+#
+# `out-var`
+#   Equivalent to `cmake_path(IS_PREFIX <out-var>)`.
+function(_qt_internal_path_is_prefix path_var input out_var)
+
+    # Make sure the path ends with `/`
+    if(NOT ${path_var} MATCHES "/$")
+        set(${path_var} "${${path_var}}/")
+    endif()
+    # For the case input == path_var, we need to also include a trailing `/` to match the
+    # previous change. We discard the actual path for input so we can add it unconditionally
+    set(input "${input}/")
+    if(CMAKE_VERSION VERSION_LESS 3.20)
+        string(FIND "${input}" "${${path_var}}" find_pos)
+        if(find_pos EQUAL 0)
+            # input starts_with path_var
+            set(${out_var} ON)
+        else()
+            set(${out_var} OFF)
+        endif()
+    else()
+        cmake_path(IS_PREFIX ${path_var} ${input} ${out_var})
+    endif()
+    set(${out_var} "${${out_var}}" PARENT_SCOPE)
 endfunction()

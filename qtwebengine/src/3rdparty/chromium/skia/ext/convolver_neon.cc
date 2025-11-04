@@ -1,3 +1,8 @@
+
+#ifdef UNSAFE_BUFFERS_BUILD
+// TODO(crbug.com/351564777): Remove this and convert code to safer constructs.
+#pragma allow_unsafe_buffers
+#endif
 /*
  * Copyright 2016 Google Inc.
  *
@@ -71,8 +76,8 @@ void ConvolveHorizontally_Neon(const unsigned char* src_data,
     int remainder = filter_length & 3;
     if (remainder) {
       int remainder_offset = (filter_offset + filter_length - remainder) * 4;
-      accum +=
-          AccumRemainder(src_data + remainder_offset, filter_values, remainder);
+      accum = vaddq_s32(accum,
+          AccumRemainder(src_data + remainder_offset, filter_values, remainder));
     }
 
     // Bring this value back in range. All of the filter scaling factors
@@ -128,10 +133,10 @@ void Convolve4RowsHorizontally_Neon(const unsigned char* src_data[4],
         return accum;
       };
 
-      accum0 += iteration(src_data[0] + start);
-      accum1 += iteration(src_data[1] + start);
-      accum2 += iteration(src_data[2] + start);
-      accum3 += iteration(src_data[3] + start);
+      accum0 = vaddq_s32(accum0, iteration(src_data[0] + start));
+      accum1 = vaddq_s32(accum1, iteration(src_data[1] + start));
+      accum2 = vaddq_s32(accum2, iteration(src_data[2] + start));
+      accum3 = vaddq_s32(accum3, iteration(src_data[3] + start));
 
       start += 16;
       filter_values += 4;
@@ -140,14 +145,14 @@ void Convolve4RowsHorizontally_Neon(const unsigned char* src_data[4],
     int remainder = filter_length & 3;
     if (remainder) {
       int remainder_offset = (filter_offset + filter_length - remainder) * 4;
-      accum0 += AccumRemainder(src_data[0] + remainder_offset, filter_values,
-                               remainder);
-      accum1 += AccumRemainder(src_data[1] + remainder_offset, filter_values,
-                               remainder);
-      accum2 += AccumRemainder(src_data[2] + remainder_offset, filter_values,
-                               remainder);
-      accum3 += AccumRemainder(src_data[3] + remainder_offset, filter_values,
-                               remainder);
+      accum0 = vaddq_s32(accum0, AccumRemainder(src_data[0] + remainder_offset, filter_values,
+                               remainder));
+      accum1 = vaddq_s32(accum1, AccumRemainder(src_data[1] + remainder_offset, filter_values,
+                               remainder));
+      accum2 = vaddq_s32(accum2, AccumRemainder(src_data[2] + remainder_offset, filter_values,
+                               remainder));
+      accum3 = vaddq_s32(accum3, AccumRemainder(src_data[3] + remainder_offset, filter_values,
+                               remainder));
     }
 
     auto pack_result = [](int32x4_t accum) {
@@ -252,8 +257,8 @@ void ConvolveVertically_Neon(const ConvolutionFilter1D::Fixed* filter_values,
       accum8 = vmaxq_u8(b, accum8);
     } else {
       // Set value of alpha channels to 0xFF.
-      accum8 = vreinterpretq_u8_u32(vreinterpretq_u32_u8(accum8) |
-                                    vdupq_n_u32(0xFF000000));
+      accum8 = vreinterpretq_u8_u32(vorrq_u32(vreinterpretq_u32_u8(accum8),
+                                    vdupq_n_u32(0xFF000000)));
     }
 
     // Store the convolution result (16 bytes) and advance the pixel pointers.
@@ -313,8 +318,8 @@ void ConvolveVertically_Neon(const ConvolutionFilter1D::Fixed* filter_values,
       accum8 = vmaxq_u8(b, accum8);
     } else {
       // Set value of alpha channels to 0xFF.
-      accum8 = vreinterpretq_u8_u32(vreinterpretq_u32_u8(accum8) |
-                                    vdupq_n_u32(0xFF000000));
+      accum8 = vreinterpretq_u8_u32(vorrq_u32(vreinterpretq_u32_u8(accum8),
+                                    vdupq_n_u32(0xFF000000)));
     }
 
     switch (remainder) {

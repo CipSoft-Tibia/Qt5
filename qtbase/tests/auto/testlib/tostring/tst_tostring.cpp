@@ -4,6 +4,7 @@
 #include <QTest>
 
 #include <QtCore/qtypes.h>
+#include <QtCore/qcompare.h>
 
 #include <memory>
 
@@ -21,6 +22,9 @@ private slots:
 
     void chrono_duration_data();
     void chrono_duration() { testRows(); }
+
+    void orderingTypeValue_data();
+    void orderingTypeValue() { testRows(); }
 };
 
 void tst_toString::addColumns()
@@ -165,7 +169,7 @@ void tst_toString::chrono_duration_data()
     ADD_ROW("1decades", decades{1}, "1[10]yr (315569520s)");
     ADD_ROW("1centuries", centuries{1}, "1[100]yr (3.1556952e+09s)");
     ADD_ROW("1millennia", millennia{1}, "1[1000]yr (3.1556952e+10s)");
-#if defined(Q_OS_LINUX) || defined(Q_OS_DARWIN)
+#if defined(Q_OS_LINUX) || defined(Q_OS_DARWIN) || defined(__GLIBC__)
     // some OSes print the exponent differently
     ADD_ROW("13gigayears", gigayears{13}, "13[1e+09]yr (4.10240376e+17s)");
 #endif
@@ -204,11 +208,44 @@ void tst_toString::chrono_duration_data()
     ADD_ROW("1.0zs", fpsec{1e-21}, "1e-21s");  // zeptosecond
     ADD_ROW("1.0ys", fpsec{1e-24}, "1e-24s");  // yoctosecond
     ADD_ROW("planck-time", fpsec(5.39124760e-44), "5.3912476e-44s");
-#if defined(Q_OS_LINUX) || defined(Q_OS_DARWIN)
+#if defined(Q_OS_LINUX) || defined(Q_OS_DARWIN) || defined(__GLIBC__)
     // some OSes print the exponent differently
     ADD_ROW("13.813Gyr", fpGyr(13.813), "13.813[1e+09]yr (4.35896178e+17s)");
     ADD_ROW("1universe", universe{1}, "1[1.3813e+10]yr (4.35896178e+17s)");
 #endif
+}
+
+void tst_toString::orderingTypeValue_data()
+{
+    addColumns();
+#define CHECK(x) ADD_ROW(#x, x, #x)
+    CHECK(Qt::strong_ordering::equal);
+    CHECK(Qt::strong_ordering::less);
+    CHECK(Qt::strong_ordering::greater);
+
+    CHECK(Qt::partial_ordering::equivalent);
+    CHECK(Qt::partial_ordering::less);
+    CHECK(Qt::partial_ordering::greater);
+    CHECK(Qt::partial_ordering::unordered);
+
+    CHECK(Qt::weak_ordering::equivalent);
+    CHECK(Qt::weak_ordering::less);
+    CHECK(Qt::weak_ordering::greater);
+#ifdef __cpp_lib_three_way_comparison
+    CHECK(std::strong_ordering::equal);
+    CHECK(std::strong_ordering::less);
+    CHECK(std::strong_ordering::greater);
+
+    CHECK(std::partial_ordering::equivalent);
+    CHECK(std::partial_ordering::less);
+    CHECK(std::partial_ordering::greater);
+    CHECK(std::partial_ordering::unordered);
+
+    CHECK(std::weak_ordering::equivalent);
+    CHECK(std::weak_ordering::less);
+    CHECK(std::weak_ordering::greater);
+#endif // __cpp_lib_three_way_comparison
+#undef CHECK
 }
 
 QTEST_APPLESS_MAIN(tst_toString)

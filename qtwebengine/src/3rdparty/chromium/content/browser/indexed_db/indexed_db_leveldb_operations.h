@@ -27,32 +27,15 @@ namespace storage {
 struct BucketLocator;
 }  // namespace storage
 
-namespace content {
+namespace content::indexed_db {
+
 class TransactionalLevelDBDatabase;
 class TransactionalLevelDBIterator;
 class TransactionalLevelDBTransaction;
 class LevelDBDirectTransaction;
 
-namespace indexed_db {
-
-extern const base::FilePath::CharType kBlobExtension[];
-extern CONTENT_EXPORT const base::FilePath::CharType kIndexedDBExtension[];
-extern const base::FilePath::CharType kIndexedDBFile[];
-extern CONTENT_EXPORT const base::FilePath::CharType kLevelDBExtension[];
-
-// Returns whether the legacy (first-party/default-bucket) path should be used
-// for storing IDB files for the given bucket.
-bool ShouldUseLegacyFilePath(const storage::BucketLocator& bucket_locator);
-
-base::FilePath GetBlobStoreFileName(
-    const storage::BucketLocator& bucket_locator);
-base::FilePath GetLevelDBFileName(const storage::BucketLocator& bucket_locator);
 base::FilePath ComputeCorruptionFileName(
     const storage::BucketLocator& bucket_locator);
-
-// Returns if the given file path is too long for the current operating system's
-// file system.
-bool IsPathTooLong(const base::FilePath& leveldb_dir);
 
 // If a corruption file for the given `storage_key` at the given |path_base|
 // exists it is deleted, and the message is returned. If the file does not
@@ -229,7 +212,6 @@ template <typename Transaction>
 
 CONTENT_EXPORT const leveldb::Comparator* GetDefaultLevelDBComparator();
 
-}  // namespace indexed_db
-}  // namespace content
+}  // namespace content::indexed_db
 
 #endif  // CONTENT_BROWSER_INDEXED_DB_INDEXED_DB_LEVELDB_OPERATIONS_H_

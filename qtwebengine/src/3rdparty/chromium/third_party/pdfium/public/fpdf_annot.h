@@ -101,6 +101,7 @@ typedef enum FPDFANNOT_COLORTYPE {
 // Check if an annotation subtype is currently supported for creation.
 // Currently supported subtypes:
 //    - circle
+//    - fileattachment
 //    - freetext
 //    - highlight
 //    - ink
@@ -845,6 +846,23 @@ FPDFAnnot_GetFontSize(FPDF_FORMHANDLE hHandle,
                       float* value);
 
 // Experimental API.
+// Get the RGB value of the font color for an |annot| with variable text.
+//
+//   hHandle  - handle to the form fill module, returned by
+//              FPDFDOC_InitFormFillEnvironment.
+//   annot    - handle to an annotation.
+//   R, G, B  - buffer to hold the RGB value of the color. Ranges from 0 to 255.
+//
+// Returns true if the font color was set, false on error or if the font
+// color was not provided.
+FPDF_EXPORT FPDF_BOOL FPDF_CALLCONV
+FPDFAnnot_GetFontColor(FPDF_FORMHANDLE hHandle,
+                       FPDF_ANNOTATION annot,
+                       unsigned int* R,
+                       unsigned int* G,
+                       unsigned int* B);
+
+// Experimental API.
 // Determine if |annot| is a form widget that is checked. Intended for use with
 // checkbox and radio button widgets.
 //
@@ -967,6 +985,25 @@ FPDFAnnot_GetFormFieldExportValue(FPDF_FORMHANDLE hHandle,
 // Returns true if successful.
 FPDF_EXPORT FPDF_BOOL FPDF_CALLCONV FPDFAnnot_SetURI(FPDF_ANNOTATION annot,
                                                      const char* uri);
+
+// Experimental API.
+// Get the attachment from |annot|.
+//
+//   annot - handle to a file annotation.
+//
+// Returns the handle to the attachment object, or NULL on failure.
+FPDF_EXPORT FPDF_ATTACHMENT FPDF_CALLCONV
+FPDFAnnot_GetFileAttachment(FPDF_ANNOTATION annot);
+
+// Experimental API.
+// Add an embedded file with |name| to |annot|.
+//
+//   annot    - handle to a file annotation.
+//   name     - name of the new attachment.
+//
+// Returns a handle to the new attachment object, or NULL on failure.
+FPDF_EXPORT FPDF_ATTACHMENT FPDF_CALLCONV
+FPDFAnnot_AddFileAttachment(FPDF_ANNOTATION annot, FPDF_WIDESTRING name);
 
 #ifdef __cplusplus
 }  // extern "C"

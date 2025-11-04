@@ -4,19 +4,20 @@
 
 #include "services/network/public/cpp/network_anonymization_key_mojom_traits.h"
 
+#include <optional>
+
 #include "base/test/scoped_feature_list.h"
 #include "base/unguessable_token.h"
 #include "mojo/public/cpp/test_support/test_utils.h"
 #include "net/base/features.h"
 #include "services/network/public/mojom/network_anonymization_key.mojom.h"
 #include "testing/gtest/include/gtest/gtest.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "url/gurl.h"
 #include "url/origin.h"
 
 namespace mojo {
 
-// TODO(crbug.com/1371667): Test is failing.
+// TODO(crbug.com/40870601): Test is failing.
 TEST(NetworkAnonymizationKeyMojomTraitsTest,
      SerializeAndDeserializeDoubleKeyWithCrossSiteFlag) {
   base::UnguessableToken token = base::UnguessableToken::Create();

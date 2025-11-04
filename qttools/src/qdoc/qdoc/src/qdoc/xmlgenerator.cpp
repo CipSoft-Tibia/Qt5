@@ -164,9 +164,14 @@ std::pair<QString, int> XmlGenerator::getAtomListValue(const Atom *atom)
         lookAhead = lookAhead->next();
         Q_ASSERT(lookAhead && lookAhead->type() == Atom::String);
         t += QLatin1String(" (since ");
-        if (lookAhead->string().at(0).isDigit())
-            t += QLatin1String("Qt ");
-        t += lookAhead->string() + QLatin1String(")");
+        const QString sinceString = lookAhead->string();
+        if (sinceString.at(0).isDigit()) {
+            const QString productName = Config::instance().get(CONFIG_PRODUCTNAME).asString();
+            t += productName.isEmpty() ? sinceString : productName + " " + sinceString;
+        } else {
+            t += sinceString;
+        }
+        t += QLatin1String(")");
         skipAhead = 4;
     } else {
         skipAhead = 1;
@@ -357,12 +362,16 @@ QString XmlGenerator::linkForNode(const Node *node, const Node *relative)
     }
 
     /*
-      If the output is going to subdirectories, the
-      two nodes have different output directories if 'node'
-      was read from index.
+      If the output is going to subdirectories, the two nodes have
+      different output directories if `node` was read from index or
+      is located in a different tree than `relative`. These two
+      conditions may differ only when running in single-exec mode
+      where QDoc does not load index files (or mark nodes as being
+      index nodes).
      */
     if (relative && (node != relative)) {
-        if (useOutputSubdirs() && !node->isExternalPage() && node->isIndexNode())
+        if (useOutputSubdirs() && !node->isExternalPage() &&
+                (node->isIndexNode() || node->tree() != relative->tree()))
             link.prepend("../%1/"_L1.arg(node->tree()->physicalModuleName()));
     }
     return link;
@@ -405,11 +414,13 @@ QString XmlGenerator::getLink(const Atom *atom, const Node *relative, const Node
   are not marked with the qdoc link command that qdoc has
   reason to believe should be links.
 
-  It returns the string for a link found by using the data
-  in the \a atom to search the database. It also sets \a node
-  to point to the target node for that link. \a relative points
-  to the node holding the qdoc comment where the link command
-  was found.
+  Returns the string for a link found by using the data in the \a atom to
+  search the database. \a relative points to the node holding the qdoc comment
+  where the link command was found. Sets \a node to point to the target node
+  for that link if a target was found. \a genus specifies the kind of target to
+  look for.
+
+  If no target was found, returns an empty string which may also be null.
  */
 QString XmlGenerator::getAutoLink(const Atom *atom, const Node *relative, const Node **node,
                                   Node::Genus genus)

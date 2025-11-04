@@ -7,6 +7,8 @@ include(selfcover.cmake)
 ## Test Module:
 #####################################################################
 
+include("${CMAKE_CURRENT_SOURCE_DIR}/QtTestProperties.cmake")
+
 qt_internal_add_module(Test
     CONFIG_MODULE_NAME testlib
     QMAKE_MODULE_CONFIG console testlib_defines
@@ -84,6 +86,10 @@ qt_internal_add_module(Test
         3rdparty/cycle
         3rdparty/linux
         3rdparty/valgrind
+    EXTRA_CMAKE_FILES
+        "${CMAKE_CURRENT_SOURCE_DIR}/QtTestProperties.cmake"
+    EXTRA_CMAKE_INCLUDES
+        QtTestProperties.cmake
 )
 
 if(TARGET Gui)
@@ -146,9 +152,15 @@ set(qt_bool_tc_build_dir "$<BOOL:${qt_tc_build_dir}>")
 set(qt_tc_build_dir_def
     "$<IF:${qt_bool_tc_build_dir},${qt_tc_build_dir},$<TARGET_PROPERTY:BINARY_DIR>>"
 )
+
+string(JOIN "" testcase_dirs_genex
+    "$<$<NOT:$<BOOL:$<TARGET_PROPERTY:QT_SKIP_DEFAULT_TESTCASE_DIRS>>>:"
+        "QT_TESTCASE_BUILDDIR=\"${qt_tc_build_dir_def}\"$<SEMICOLON>"
+        "QT_TESTCASE_SOURCEDIR=\"$<TARGET_PROPERTY:SOURCE_DIR>\""
+    ">"
+)
 set_property(TARGET Test APPEND PROPERTY INTERFACE_COMPILE_DEFINITIONS
-    QT_TESTCASE_BUILDDIR="${qt_tc_build_dir_def}"
-    QT_TESTCASE_SOURCEDIR="$<TARGET_PROPERTY:SOURCE_DIR>"
+    ${testcase_dirs_genex}
 )
 
 qt_internal_add_docs(Test
@@ -157,8 +169,7 @@ qt_internal_add_docs(Test
 
 qt_internal_apply_testlib_coverage_options(Test)
 
-# include the snippet projects for developer-builds
-if(QT_FEATURE_private_tests)
+if(QT_FEATURE_doc_snippets)
     add_subdirectory(doc/snippets/code)
 endif()
 

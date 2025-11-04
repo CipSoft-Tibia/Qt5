@@ -118,7 +118,9 @@ void QQmlApplicationEnginePrivate::startLoad(QAnyStringView uri, QAnyStringView 
     ensureInitialized();
 
     auto *componentPriv = QQmlComponentPrivate::get(c);
-    const auto [status, type] = componentPriv->prepareLoadFromModule(uri, typeName);
+    componentPriv->prepareLoadFromModule(uri, typeName, QQmlTypeLoader::Synchronous);
+
+    const QQmlType type = componentPriv->loadHelper->type();
 
     if (type.sourceUrl().isValid()) {
         const auto qmlDirData = typeLoader.getQmldir(type.sourceUrl());
@@ -137,7 +139,7 @@ void QQmlApplicationEnginePrivate::startLoad(QAnyStringView uri, QAnyStringView 
      * loading because the translation directory needs to be set in between.
      */
     _q_loadTranslations();
-    componentPriv->completeLoadFromModule(uri, typeName, type, status);
+    componentPriv->completeLoadFromModule(uri, typeName);
 
     ensureLoadingFinishes(c);
 }

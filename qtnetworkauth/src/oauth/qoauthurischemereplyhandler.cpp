@@ -1,5 +1,6 @@
 // Copyright (C) 2024 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
+// Qt-Security score:critical reason:authorization-protocol
 
 #include "qabstractoauthreplyhandler_p.h" // for lcReplyHandler()
 #include "qoauthoobreplyhandler_p.h"
@@ -43,10 +44,12 @@ QT_BEGIN_NAMESPACE
 
     The following code illustrates the usage. First, the needed variables:
 
-    \snippet src_oauth_replyhandlers.cpp uri-variables
+    \snippet src_oauth_replyhandlers_p.h uri-variables
 
     Followed up by the OAuth setup (error handling omitted for brevity):
 
+    \snippet src_oauth_replyhandlers.cpp uri-service-configuration
+    \codeline
     \snippet src_oauth_replyhandlers.cpp uri-oauth-setup
 
     Finally, we then set up the URI scheme reply-handler:
@@ -140,7 +143,9 @@ QT_BEGIN_NAMESPACE
 
     \section2 \l {Qt for Windows}{Windows}, \l {Qt for Linux/X11}{Linux}
 
-    Currently not supported.
+    Currently not supported. However platforms and use cases supporting
+    \l {Qt WebEngine Platform Notes}{Qt WebEngine} can still use this reply
+    handler - see \l {Qt OAuth2 Browser Support} for details.
 */
 
 class QOAuthUriSchemeReplyHandlerPrivate : public QOAuthOobReplyHandlerPrivate
@@ -156,7 +161,7 @@ public:
                && redirectUrl.fragment().isEmpty();
     }
 
-    void _q_handleRedirectUrl(const QUrl &url)
+    bool _q_handleRedirectUrl(const QUrl &url)
     {
         Q_Q(QOAuthUriSchemeReplyHandler);
         // Remove the query parameters from comparison, and compare them manually (the parameters
@@ -181,14 +186,17 @@ public:
 
         if (!urlMatch) {
             qCDebug(lcReplyHandler(), "Url ignored");
-            // The URLs received here might be unrelated. Further, in case of "https" scheme,
-            // the first request issued to the authorization server comes through here
-            // (if this handler is listening)
-            QDesktopServices::openUrl(url);
-            return;
+            if (forwardUnhandledUrls) {
+                // The URLs received here might be unrelated. Further, in case of "https" scheme,
+                // the first request issued to the authorization server comes through here
+                // (if this handler is listening)
+                QDesktopServices::openUrl(url);
+            }
+            return false;
         }
 
         qCDebug(lcReplyHandler(), "Url handled");
+        emit q->callbackDataReceived(url.toEncoded());
 
         QVariantMap resultParameters;
         const auto responseItems = responseQuery.queryItems(QUrl::FullyDecoded);
@@ -196,10 +204,12 @@ public:
             resultParameters.insert(item.first, item.second);
 
         emit q->callbackReceived(resultParameters);
+        return true;
     }
 
 public:
     QUrl redirectUrl;
+    bool forwardUnhandledUrls = true;
     bool listening = false;
 };
 
@@ -294,6 +304,33 @@ QUrl QOAuthUriSchemeReplyHandler::redirectUrl() const
 {
     Q_D(const QOAuthUriSchemeReplyHandler);
     return d->redirectUrl;
+}
+
+/*!
+    \since 6.9
+    This function is used to supply the redirect URL the Authorization
+    Server provides at the end of the authorization stage. The provided
+    \a url undergoes the same URL matching as described in \l {redirectUrl}.
+
+    Suppyling the URL can be useful for scenarios where this redirect URL
+    is captured by some other means, for example with \l {Qt WebEngine} or
+    through some other custom arrangement. This way such agent usage can be
+    integrated with rest of the OAuth2 flow.
+
+    This handler does not need to be listening, and therefore it is
+    recommended to \l close() the handler to avoid unnecessary listening.
+
+    Returns \c true if the URL matched and was handled, \c false otherwise.
+
+    See also \l {Redirect URI Schemes}{Redirect URI Schemes with Qt WebEngine}.
+*/
+bool QOAuthUriSchemeReplyHandler::handleAuthorizationRedirect(const QUrl &url)
+{
+    Q_D(QOAuthUriSchemeReplyHandler);
+    d->forwardUnhandledUrls = false;
+    const bool handled = d->_q_handleRedirectUrl(url);
+    d->forwardUnhandledUrls = true;
+    return handled;
 }
 
 /*!

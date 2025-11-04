@@ -5,8 +5,8 @@
 
 #pragma once
 
-#include <xnnpack/common.h>
-#include <xnnpack/unaligned.h>
+#include "xnnpack/common.h"
+#include "xnnpack/unaligned.h"
 
 
 #if defined(__SSE2__)
@@ -85,9 +85,9 @@ static XNN_INTRINSIC
 float _mm512_reduce_add_ps(__m512 v) {
 #if __AVX512DQ__
   const __m256 sum2 = _mm256_add_ps(_mm512_castps512_ps256(v), _mm512_extractf32x8_ps(v, 1));
-#else
+#else  // __AVX512DQ__
   const __m256 sum2 = _mm256_add_ps(_mm512_castps512_ps256(v), _mm256_castpd_ps(_mm512_extractf64x4_pd(_mm512_castps_pd(v), 1)));
-#endif
+#endif  // __AVX512DQ__
   const __m128 sum4 = _mm_add_ps(_mm256_castps256_ps128(sum2), _mm256_extractf128_ps(sum2, 1));
   const __m128 sum8 = _mm_add_ps(sum4, _mm_movehl_ps(sum4, sum4));
   const __m128 sum16 = _mm_add_ss(sum8, _mm_movehdup_ps(sum8));
@@ -98,9 +98,9 @@ static XNN_INTRINSIC
 float _mm512_reduce_max_ps(__m512 v) {
 #if __AVX512DQ__
   const __m256 sum2 = _mm256_max_ps(_mm512_castps512_ps256(v), _mm512_extractf32x8_ps(v, 1));
-#else
+#else  // __AVX512DQ__
   const __m256 sum2 = _mm256_max_ps(_mm512_castps512_ps256(v), _mm256_castpd_ps(_mm512_extractf64x4_pd(_mm512_castps_pd(v), 1)));
-#endif
+#endif  // __AVX512DQ__
   const __m128 sum4 = _mm_max_ps(_mm256_castps256_ps128(sum2), _mm256_extractf128_ps(sum2, 1));
   const __m128 sum8 = _mm_max_ps(sum4, _mm_movehl_ps(sum4, sum4));
   const __m128 sum16 = _mm_max_ss(sum8, _mm_movehdup_ps(sum8));
@@ -148,9 +148,60 @@ __m512i _mm512_set_epi8(
 static XNN_INTRINSIC __m512 _mm512_zextps128_ps512(__m128 v) {
   return _mm512_insertf32x4(_mm512_setzero_ps(), v, 0);
 }
+
+static XNN_INTRINSIC
+__m512i _mm512_loadu_epi16 (void const* mem_addr) {
+  return _mm512_set1_epi16((int) unaligned_load_s16(mem_addr));
+}
+
+static XNN_INTRINSIC
+__m512i _mm512_loadu_epi32 (void const* mem_addr) {
+  return _mm512_set1_epi32((int) unaligned_load_s32(mem_addr));
+}
+
+static XNN_INTRINSIC
+void _mm512_storeu_epi16 (void* mem_addr, __m512i a) {
+  _mm512_storeu_si512(mem_addr, a);
+}
+
+static XNN_INTRINSIC
+void _mm512_storeu_epi32 (void* mem_addr, __m512i a) {
+  _mm512_storeu_si512(mem_addr, a);
+}
 #endif  // GCC pre-10
 
+#ifdef __AVX512BW__
+// VNNI replacement that uses vpmaddubsw.
+// u4 is uint4 in lower 4 bits.
+// subtracting zero_point (8) converts 4 bit value to sign extended 8 bit value.
+static XNN_INTRINSIC
+__m512i _mm512_dpbusd_epi32_madd(__m512i i32, const __m512i u8, const __m512i u4) {
+  const __m512i vzero_point = _mm512_set1_epi8(8);
+  const __m512i vsixteen = _mm512_set1_epi16(16);
+  const __m512i i4 = _mm512_sub_epi8(u4, vzero_point);  // convert uint4 to int4
+  const __m512i i12 = _mm512_maddubs_epi16(u8, i4);  // u8 * i4 = i12
+  const __m512i v = _mm512_madd_epi16(i12, vsixteen);  // convert 16 bits to 32 bits
+  return _mm512_add_epi32(i32, v);
+}
+#endif  // __AVX512BW__
 #endif  // __AVX512F__
+
+#ifdef __AVX2__
+
+// AVXVNNI replacement that uses vpmaddubsw.
+// u4 is uint4 in lower 4 bits.
+static XNN_INTRINSIC
+__m256i _mm256_dpbusd_epi32_madd(__m256i i32, const __m256i u8, const __m256i u4) {
+  const __m256i vzero_point = _mm256_set1_epi8(8);
+  const __m256i vsixteen = _mm256_set1_epi16(16);  // accumulators are times 16
+  const __m256i i4 = _mm256_sub_epi8(u4, vzero_point);  // convert uint4 to int4
+  const __m256i i12 = _mm256_maddubs_epi16(u8, i4);  // u8 * i4 = i12
+  const __m256i v = _mm256_madd_epi16(i12, vsixteen);  // convert 16 bits to 32 bits
+  return _mm256_add_epi32(i32, v);
+}
+
+#endif  // __AVX2__
+
 
 #if XNN_ARCH_ARM
 
@@ -266,3 +317,107 @@ uint8x16x4_t vld1q_u8_x4(const uint8_t* address) {
 #endif  // AArch64 GCC pre-8, 8.1-8.4, 9.1-9.3
 
 #endif  // ARM64 NEON
+
+// Hexagon
+#if XNN_ARCH_HEXAGON
+#include <hexagon_types.h>
+#include <hvx_hexagon_protos.h>
+
+// Conditional Store:
+// - addr: destination
+// - n: number of elements * sizeof(datatype) where n <= 128
+// - vin: input
+static XNN_INTRINSIC
+void Q6_V_vstu_variable(void *addr, uint32_t n, HVX_Vector vin)
+{
+    // Rotate as needed.
+    vin = Q6_V_vlalign_VVR(vin, vin, (size_t) addr);
+
+    uint32_t left_off = (size_t) addr & 127;
+    uint32_t right_off = left_off + n;
+
+    HVX_VectorPred ql_not = Q6_Q_vsetq_R((size_t) addr);
+    HVX_VectorPred qr = Q6_Q_vsetq2_R(right_off);
+
+    if (right_off > 128)
+    {
+        Q6_vmem_QRIV(qr, (HVX_Vector*) addr + 1, vin);
+        // all 1's
+        qr = Q6_Q_vcmp_eq_VbVb(vin, vin);
+    }
+
+    ql_not = Q6_Q_or_QQn(ql_not, qr);
+    Q6_vmem_QnRIV(ql_not, (HVX_Vector*) addr, vin);
+}
+
+// 32x16 Integer Multiplication:
+// - multiplier: 32-bit integer
+// - vin: 16-bit signed integer
+// - Return 'HVX_VectorPair' keeping the same order as vin
+//   but with elements widened to 32-bit.
+static XNN_INTRINSIC
+HVX_VectorPair Q6_Vw_vmpyi_VwVh(HVX_Vector multiplier, HVX_Vector vin)
+{
+    vin = Q6_Vh_vshuffe_VhVh(vin, vin);
+    HVX_Vector mul_e = Q6_Vw_vmpyio_VwVh(multiplier, vin);
+    HVX_Vector mul_o = Q6_Vw_vmpyio_VwVh(multiplier, vin);
+    
+    return Q6_W_vshuff_VVR(mul_o, mul_e, -4);
+}
+
+// 32x16 Integer Multiplication of even elements in the 'vin':
+// multiplier_hi: upper part of 32-bit integer multiplier
+// multiplier_lo: lower part of 32-bit integer multiplier
+// vin: 16-bit signed integer
+// - Return 'vout' in the HVX_Vector format,
+//   containing only the multiplication results of the even elements from 'vin' and
+//   widened to 32-bit.
+static XNN_INTRINSIC
+HVX_Vector Q6_Vw_vmpyie_VwVh(HVX_Vector multiplier_lo, HVX_Vector multiplier_hi, HVX_Vector vin)
+{
+    multiplier_hi = Q6_Vh_vshuffe_VhVh(multiplier_hi, multiplier_hi);
+    HVX_Vector vout = Q6_Vw_vmpyieo_VhVh(vin, multiplier_hi);
+    vout = Q6_Vw_vmpyieacc_VwVwVh(vout, multiplier_lo, vin);
+
+    return vout;
+}
+
+// Horizontal vector sum by pairwise addition.
+// To calculate fewer elements than the full 128 bytes in 'vin', 
+// use the following code first before calling the intrinsic:
+//   vin = Q6_V_vand_QV(Q6_Q_vsetq_R(batch), vin);
+// where 'batch' is equal to 'elements * sizeof(float)'
+static XNN_INTRINSIC
+float Q6_f32_vrsum_Vsf(HVX_Vector vin){
+    HVX_VectorPair vsum_pair = Q6_W_vshuff_VVR(vin, vin, 64);
+    vin = Q6_Vsf_vadd_VsfVsf(Q6_V_lo_W(vsum_pair), Q6_V_hi_W(vsum_pair));
+
+    vsum_pair = Q6_W_vshuff_VVR(vin, vin, 32);
+    vin = Q6_Vsf_vadd_VsfVsf(Q6_V_lo_W(vsum_pair), Q6_V_hi_W(vsum_pair));
+
+    vsum_pair = Q6_W_vshuff_VVR(vin, vin, 16);
+    vin = Q6_Vsf_vadd_VsfVsf(Q6_V_lo_W(vsum_pair), Q6_V_hi_W(vsum_pair));
+
+    vsum_pair = Q6_W_vshuff_VVR(vin, vin, 8);
+    vin = Q6_Vsf_vadd_VsfVsf(Q6_V_lo_W(vsum_pair), Q6_V_hi_W(vsum_pair));
+
+    vsum_pair = Q6_W_vshuff_VVR(vin, vin, 4);
+    vin = Q6_Vsf_vadd_VsfVsf(Q6_V_lo_W(vsum_pair), Q6_V_hi_W(vsum_pair));
+
+    return *((float *) &vin);
+}
+
+// Temporary div implementation for HVX.
+// TODO: improve the implementation 
+//       e.g., use reprocical with newton-raphson approximation
+static XNN_INTRINSIC
+HVX_Vector Q6_Vsf_vdiv_VsfVsf(HVX_Vector vin1, HVX_Vector vin2){
+    float* svin1 = (float *) &vin1;
+    float* svin2 = (float *) &vin2;
+
+    for(int i = 0; i < 32; i++)
+      svin1[i] = svin1[i] / svin2[i];
+
+    return *((HVX_UVector *) svin1);
+}
+#endif  // XNN_ARCH_HEXAGON

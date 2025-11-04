@@ -85,7 +85,10 @@ private slots:
     void objectListArgumentMethod();
     void variantListQJsonConversion();
     void attachedObjectOfUnregistered();
+    void dropCUOnEngineShutdown();
     void multiLoadedJavaScriptModule();
+    void metaObjectOfScriptCU();
+    void registerModule();
 
 public slots:
     QObject *createAQObjectForOwnershipTest ()
@@ -601,8 +604,10 @@ QT_WARNING_POP
     const JsSingleton *oldJsSingleton = engine.singletonInstance<JsSingleton *>(jsObject);
     QVERIFY(oldJsSingleton != nullptr);
     const uint oldJsSingletonId = oldJsSingleton->id;
-    const QObject *oldQmlSingleton = engine.singletonInstance<QObject *>(qmlObject);
+    QObject *oldQmlSingleton = engine.singletonInstance<QObject *>(qmlObject);
     QVERIFY(oldQmlSingleton != nullptr);
+    QCOMPARE(oldQmlSingleton->objectName(), "theSingleton");
+    oldQmlSingleton->setObjectName("marked");
 
     QQmlComponent c(&engine);
     c.setData("import ClearSingletons\n"
@@ -660,7 +665,7 @@ QT_WARNING_POP
     QVERIFY(newJsSingleton->id != oldJsSingletonId);
     const QObject *newQmlSingleton = engine.singletonInstance<QObject *>(qmlObject);
     QVERIFY(newQmlSingleton != nullptr);
-    QVERIFY(newQmlSingleton != oldQmlSingleton);
+    QCOMPARE(newQmlSingleton->objectName(), "theSingleton");
 
     // Holding on to an old singleton instance is OK. We don't delete those.
     QCOMPARE(qvariant_cast<QObject *>(singletonUser->property("a")), &objectCaller1);
@@ -1816,6 +1821,35 @@ void tst_qqmlengine::attachedObjectOfUnregistered()
     QVERIFY(c != a);
 }
 
+void tst_qqmlengine::dropCUOnEngineShutdown()
+{
+    QScopedPointer<QObject> o;
+    const QUrl url("qrc:/some/Type.qml");
+    {
+        QQmlEngine e;
+        QQmlComponent c(&e);
+        c.setData("import QtQml\nQtObject {}", url);
+        QVERIFY2(c.isReady(), qPrintable(c.errorString()));
+        o.reset(c.create());
+        QVERIFY(!o.isNull());
+        QVERIFY(QByteArray(o->metaObject()->className()).startsWith("Type_QMLTYPE_"));
+        QVERIFY(QQmlMetaType::qmlType(url).isValid());
+        QVERIFY(!QQmlMetaType::obtainCompilationUnit(url).isNull());
+    }
+
+    // The object is still there (don't do this at home).
+    QVERIFY(!o.isNull());
+
+    // QMetaObject is still ok.
+    QVERIFY(QByteArray(o->metaObject()->className()).startsWith("Type_QMLTYPE_"));
+
+    // But the QQmlType is gone.
+    QVERIFY(!QQmlMetaType::qmlType(url).isValid());
+
+    // And also the CU.
+    QVERIFY(QQmlMetaType::obtainCompilationUnit(url).isNull());
+}
+
 void tst_qqmlengine::multiLoadedJavaScriptModule()
 {
     QQmlEngine e;
@@ -1828,6 +1862,34 @@ void tst_qqmlengine::multiLoadedJavaScriptModule()
 
     QScopedPointer<QObject> o(c.create());
     QVERIFY(!o.isNull());
+}
+
+void tst_qqmlengine::metaObjectOfScriptCU()
+{
+    QQmlEngine engine;
+    engine.addImportPath(dataDirectory());
+    QQmlComponent c(&engine);
+    c.setData(R"(
+        import JS
+        import QtQml
+        QtObject {
+            objectName: ColorUtils.withOpacity('blue', 0.5)
+        })", QUrl());
+    QVERIFY2(c.isReady(), qPrintable(c.errorString()));
+    QScopedPointer<QObject> o(c.create());
+    QVERIFY(!o.isNull());
+    QCOMPARE(o->objectName(), "blue/0.5");
+
+    // Don't crash when retrieving the (possibly non-existent) metaobject for the script.
+    for (int i = QMetaType::User + 1; QMetaType::isRegistered(i); ++i)
+        QMetaType(i).metaObject();
+}
+
+void tst_qqmlengine::registerModule()
+{
+    // Make sure that registerModule() doesn't crash when invoked via QQmlEngine
+    QQmlEngine engine;
+    QVERIFY(engine.registerModule("magic", QJSValue(63)));
 }
 
 QTEST_MAIN(tst_qqmlengine)

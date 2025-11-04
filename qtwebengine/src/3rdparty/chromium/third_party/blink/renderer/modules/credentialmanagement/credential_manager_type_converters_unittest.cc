@@ -2,8 +2,15 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#ifdef UNSAFE_BUFFERS_BUILD
+// TODO(crbug.com/351564777): Remove this and convert code to safer constructs.
+#pragma allow_unsafe_buffers
+#endif
+
 #include "third_party/blink/renderer/modules/credentialmanagement/credential_manager_type_converters.h"
 
+#include "base/compiler_specific.h"
+#include "base/containers/span.h"
 #include "mojo/public/cpp/bindings/type_converter.h"
 #include "testing/gmock/include/gmock/gmock.h"
 #include "testing/gtest/include/gtest/gtest.h"
@@ -21,6 +28,7 @@
 #include "third_party/blink/renderer/bindings/modules/v8/v8_authentication_extensions_supplemental_pub_keys_outputs.h"
 #include "third_party/blink/renderer/bindings/modules/v8/v8_cable_authentication_data.h"
 #include "third_party/blink/renderer/bindings/modules/v8/v8_identity_credential_request_options_context.h"
+#include "third_party/blink/renderer/bindings/modules/v8/v8_identity_provider_request_options.h"
 #include "third_party/blink/renderer/bindings/modules/v8/v8_public_key_credential_request_options.h"
 #include "third_party/blink/renderer/bindings/modules/v8/v8_remote_desktop_client_override.h"
 #include "third_party/blink/renderer/core/typed_arrays/dom_array_buffer.h"
@@ -209,9 +217,9 @@ TEST(CredentialManagerTypeConvertersTest,
       blink::mojom::blink::AuthenticationExtensionsClientOutputs::New();
   mojo_type->echo_prf = true;
   mojo_type->prf_results = blink::mojom::blink::PRFValues::New(
-      /*id=*/absl::nullopt,
+      /*id=*/std::nullopt,
       /*first=*/Vector<uint8_t>{1, 2, 3},
-      /*second=*/absl::nullopt);
+      /*second=*/std::nullopt);
 
   auto* blink_type =
       ConvertTo<blink::AuthenticationExtensionsClientOutputs*>(mojo_type);
@@ -232,7 +240,7 @@ TEST(CredentialManagerTypeConvertersTest,
       blink::mojom::blink::AuthenticationExtensionsClientOutputs::New();
   mojo_type->echo_prf = true;
   mojo_type->prf_results = blink::mojom::blink::PRFValues::New(
-      /*id=*/absl::nullopt,
+      /*id=*/std::nullopt,
       /*first=*/Vector<uint8_t>{1, 2, 3},
       /*second=*/Vector<uint8_t>{4, 5, 6});
 
@@ -422,23 +430,34 @@ TEST(CredentialManagerTypeConvertersTest,
   auto sample_vector = vectorOf(kSample, std::size(kSample));
   Vector<blink::mojom::blink::PRFValuesPtr> expected_prf_values;
   expected_prf_values.emplace_back(blink::mojom::blink::PRFValues::New(
-      absl::optional<Vector<uint8_t>>(), sample_vector,
-      absl::optional<Vector<uint8_t>>()));
+      std::optional<Vector<uint8_t>>(), sample_vector,
+      std::optional<Vector<uint8_t>>()));
   ASSERT_EQ(mojo_type->prf_inputs[0]->first, expected_prf_values[0]->first);
 }
 
 static blink::V8UnionArrayBufferOrArrayBufferView* arrayBufferOrView(
     const uint8_t* data,
     size_t size) {
-  blink::DOMArrayBuffer* dom_array = blink::DOMArrayBuffer::Create(data, size);
   return blink::MakeGarbageCollected<
-      blink::V8UnionArrayBufferOrArrayBufferView>(std::move(dom_array));
+      blink::V8UnionArrayBufferOrArrayBufferView>(
+      blink::DOMArrayBuffer::Create(UNSAFE_TODO(base::span(data, size))));
 }
 
 static Vector<uint8_t> vectorOf(const uint8_t* data, size_t size) {
   Vector<uint8_t> vector;
   std::copy(data, data + size, std::back_insert_iterator(vector));
   return vector;
+}
+
+// Crash test for crbug.com/347715555.
+TEST(CredentialManagerTypeConvertersTest, NoClientId) {
+  blink::IdentityProviderRequestOptions* provider =
+      blink::IdentityProviderRequestOptions::Create();
+  provider->setConfigURL("any");
+  blink::mojom::blink::IdentityProviderRequestOptionsPtr identity_provider =
+      ConvertTo<blink::mojom::blink::IdentityProviderRequestOptionsPtr>(
+          *provider);
+  EXPECT_EQ(identity_provider->config->client_id, "");
 }
 
 }  // namespace mojo

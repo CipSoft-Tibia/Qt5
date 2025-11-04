@@ -6,7 +6,7 @@
 
 #include <QtQuickTestUtils/private/qmlutils_p.h>
 
-#include <QtTest/QtTest>
+#include <QtTest/QTest>
 
 class tst_qqmljsutils: public QQmlDataTest
 {

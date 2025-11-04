@@ -7,6 +7,7 @@
 #include <utility>
 
 #include "base/debug/stack_trace.h"
+#include "base/not_fatal_until.h"
 #include "base/task/single_thread_task_runner.h"
 #include "base/trace_event/trace_event.h"
 #include "components/viz/common/features.h"
@@ -187,7 +188,7 @@ void CanvasResourceDispatcher::DispatchFrameSync(
   WTF::Vector<viz::ReturnedResource> resources;
   sink_->SubmitCompositorFrameSync(
       parent_local_surface_id_allocator_.GetCurrentLocalSurfaceId(),
-      std::move(frame), absl::nullopt, 0, &resources);
+      std::move(frame), std::nullopt, 0, &resources);
   DidReceiveCompositorFrameAck(std::move(resources));
 }
 
@@ -207,7 +208,7 @@ void CanvasResourceDispatcher::DispatchFrame(
   pending_compositor_frames_++;
   sink_->SubmitCompositorFrame(
       parent_local_surface_id_allocator_.GetCurrentLocalSurfaceId(),
-      std::move(frame), absl::nullopt, 0);
+      std::move(frame), std::nullopt, 0);
 }
 
 bool CanvasResourceDispatcher::PrepareFrame(
@@ -264,7 +265,7 @@ bool CanvasResourceDispatcher::PrepareFrame(
 
   viz::SharedQuadState* sqs = pass->CreateAndAppendSharedQuadState();
   sqs->SetAll(gfx::Transform(), bounds, bounds, gfx::MaskFilterInfo(),
-              /*clip=*/absl::nullopt, is_opaque, /*opacity_f=*/1.f,
+              /*clip=*/std::nullopt, is_opaque, /*opacity_f=*/1.f,
               SkBlendMode::kSrcOver, /*sorting_context=*/0, /*layer_id=*/0u,
               /*fast_rounded_corner=*/false);
 
@@ -275,7 +276,8 @@ bool CanvasResourceDispatcher::PrepareFrame(
       canvas_resource->FilterQuality() == cc::PaintFlags::FilterQuality::kNone;
 
   canvas_resource->PrepareTransferableResource(
-      &resource, &frame_resource->release_callback, kVerifiedSyncToken);
+      &resource, &frame_resource->release_callback,
+      /*needs_verified_synctoken=*/true);
   const viz::ResourceId resource_id = next_resource_id;
   resource.id = resource_id;
 
@@ -410,7 +412,7 @@ void CanvasResourceDispatcher::ReclaimResources(
   for (const auto& resource : resources) {
     auto it = resources_.find(resource.id);
 
-    DCHECK(it != resources_.end());
+    CHECK(it != resources_.end(), base::NotFatalUntil::M130);
     if (it == resources_.end())
       continue;
 
@@ -455,12 +457,13 @@ void CanvasResourceDispatcher::Reshape(const gfx::Size& size) {
 
 void CanvasResourceDispatcher::DidAllocateSharedBitmap(
     base::ReadOnlySharedMemoryRegion region,
-    const gpu::Mailbox& id) {
+    const viz::SharedBitmapId& id) {
   if (sink_)
     sink_->DidAllocateSharedBitmap(std::move(region), id);
 }
 
-void CanvasResourceDispatcher::DidDeleteSharedBitmap(const gpu::Mailbox& id) {
+void CanvasResourceDispatcher::DidDeleteSharedBitmap(
+    const viz::SharedBitmapId& id) {
   if (sink_)
     sink_->DidDeleteSharedBitmap(id);
 }

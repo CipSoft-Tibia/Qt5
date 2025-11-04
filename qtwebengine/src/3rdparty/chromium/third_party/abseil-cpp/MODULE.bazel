@@ -20,6 +20,9 @@ module(
     compatibility_level = 1,
 )
 
+cc_configure = use_extension("@bazel_tools//tools/cpp:cc_configure.bzl", "cc_configure_extension")
+use_repo(cc_configure, "local_config_cc")
+
 # Only direct dependencies need to be listed below.
 # Please keep the versions in sync with the versions in the WORKSPACE file.
 
@@ -32,8 +35,8 @@ bazel_dep(name = "google_benchmark",
           dev_dependency = True)
 
 bazel_dep(name = "googletest",
-          version = "1.14.0.bcr.1",
+          version = "1.15.2",
           repo_name = "com_google_googletest")
 
 bazel_dep(name = "platforms",
-          version = "0.0.8")
+          version = "0.0.10")

@@ -40,7 +40,7 @@ std::string getApplicationLocale();
 #endif
 
 #if BUILDFLAG(ENABLE_OOP_PRINTING)
-#include "chrome/browser/printing/prefs_util.h"
+#include "chrome/browser/printing/oop_features.h"
 #include "chrome/browser/printing/printer_query_oop.h"
 #endif
 
@@ -322,7 +322,7 @@ void PrinterQuery::ApplyDefaultPrintableAreaToVirtualPrinterPrintSettings(
 #if BUILDFLAG(ENABLE_OOP_PRINTING)
 void PrinterQuery::SetClientId(PrintBackendServiceManager::ClientId client_id) {
   // Only supposed to be called for `PrinterQueryOop` objects.
-  NOTREACHED_NORETURN();
+  NOTREACHED();
 }
 #endif
 

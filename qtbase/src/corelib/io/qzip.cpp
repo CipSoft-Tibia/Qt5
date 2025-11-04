@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:data-parser
 
 #include "qzipreader_p.h"
 #include "qzipwriter_p.h"
@@ -91,7 +92,7 @@ static void writeMSDosDate(uchar *dest, const QDateTime& dt)
 
 static int inflate(Bytef *dest, ulong *destLen, const Bytef *source, ulong sourceLen)
 {
-    z_stream stream;
+    z_stream stream = {};
     int err;
 
     stream.next_in = const_cast<Bytef*>(source);
@@ -103,9 +104,6 @@ static int inflate(Bytef *dest, ulong *destLen, const Bytef *source, ulong sourc
     stream.avail_out = (uInt)*destLen;
     if ((uLong)stream.avail_out != *destLen)
         return Z_BUF_ERROR;
-
-    stream.zalloc = (alloc_func)nullptr;
-    stream.zfree = (free_func)nullptr;
 
     err = inflateInit2(&stream, -MAX_WBITS);
     if (err != Z_OK)
@@ -1009,6 +1007,8 @@ bool QZipReader::extractAll(const QString &destinationDir) const
     // need to recreate directory structure based on the file paths.
     if (hasDirs && !foundDirs) {
         for (const FileInfo &fi : allFiles) {
+            if (!fi.filePath.contains(u"/"))
+                continue;
             const auto dirPath = fi.filePath.left(fi.filePath.lastIndexOf(u"/"));
             if (!baseDir.mkpath(dirPath))
                 return false;

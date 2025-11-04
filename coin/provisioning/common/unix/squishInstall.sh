@@ -11,8 +11,8 @@ set -ex
 # This script will fetch and extract pre-buildt squish package for Linux and Mac.
 # Squish is need by Release Test Automation (RTA)
 
-version="8.0.0"
-qtBranch="67x"
+version="8.1.0"
+qtBranch="68x"
 installFolder="/opt"
 squishFolder="$installFolder/squish"
 preBuildCacheUrl="ci-files01-hki.ci.qt.io:/hdd/www/input/squish/jenkins_build/stable"
@@ -24,14 +24,14 @@ testSuiteUrl="ci-files01-hki.ci.qt.io:/hdd/www/input/squish/coin/suite_test_squi
 testSuiteLocal="/tmp/squish_test_suite"
 if uname -a |grep -q Darwin; then
     compressedFolder="prebuild-squish-$version-$qtBranch-mac-x64.tar.gz"
-    sha1="8ae422b44af9b8e5f0d15cdca08df99973b8699a"
+    sha1="03a0c713d0d328667df2e7804f2e4d507707b849"
 else
     if [ "$PROVISIONING_ARCH" = arm64 ] ; then
         compressedFolder="prebuild-squish-$version-$qtBranch-linux-arm64.tar.gz"
-        sha1="06d542579271f88b1527d6ddca2bfd4eaf2dade5"
+        sha1="f6a2eb69faed64f13b164fb8d056182c41d2952c"
     else
         compressedFolder="prebuild-squish-$version-$qtBranch-linux-x64.tar.gz"
-        sha1="db5c48f359b46a460551cdf9362c63f557cbc04f"
+        sha1="b798417ddf4b668306cb90d551df906828644152"
     fi
 fi
 

@@ -31,7 +31,8 @@ enum UpdateOption {
     RelativeLocations = 512,
     NoLocations = 1024,
     NoUiLines = 2048,
-    SourceIsUtf16 = 4096
+    SourceIsUtf16 = 4096,
+    Werror = 8192
 };
 
 Q_DECLARE_FLAGS(UpdateOptions, UpdateOption)
@@ -48,6 +49,7 @@ bool loadUI(Translator &translator, const QString &filename, ConversionData &cd)
 
 #ifndef QT_NO_QML
 bool loadQScript(Translator &translator, const QString &filename, ConversionData &cd);
+bool loadJSModule(Translator &translator, const QString &filename, ConversionData &cd);
 bool loadQml(Translator &translator, const QString &filename, ConversionData &cd);
 #endif
 

@@ -1,5 +1,6 @@
 // Copyright (C) 2022 Intel Corporation.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:data-parser
 
 #include "qcborvalue.h"
 #include "qcborvalue_p.h"
@@ -15,6 +16,7 @@
 #include "qcborstreamwriter.h"
 #endif
 
+#include <QtCore/qdebug.h>
 #include <qendian.h>
 #include <qlocale.h>
 #include <qdatetime.h>
@@ -774,6 +776,7 @@ static QCborValue::Type convertToExtendedType(QCborContainerPrivate *d)
     };
 
     switch (tag) {
+#if QT_CONFIG(datestring)
     case qint64(QCborKnownTags::DateTimeString):
     case qint64(QCborKnownTags::UnixTime_t): {
         QDateTime dt;
@@ -813,6 +816,7 @@ static QCborValue::Type convertToExtendedType(QCborContainerPrivate *d)
         }
         break;
     }
+#endif
 
 #ifndef QT_BOOTSTRAPPED
     case qint64(QCborKnownTags::Url):
@@ -1640,6 +1644,14 @@ static void encodeToCbor(QCborStreamWriter &writer, const QCborContainerPrivate 
 #endif // QT_CONFIG(cborstreamwriter)
 
 #if QT_CONFIG(cborstreamreader)
+// confirm that our basic Types match QCborStreamReader::Types
+static_assert(int(QCborValue::Integer) == int(QCborStreamReader::UnsignedInteger));
+static_assert(int(QCborValue::ByteArray) == int(QCborStreamReader::ByteArray));
+static_assert(int(QCborValue::String) == int(QCborStreamReader::String));
+static_assert(int(QCborValue::Array) == int(QCborStreamReader::Array));
+static_assert(int(QCborValue::Map) == int(QCborStreamReader::Map));
+static_assert(int(QCborValue::Tag) == int(QCborStreamReader::Tag));
+
 static inline double integerOutOfRange(const QCborStreamReader &reader)
 {
     Q_ASSERT(reader.isInteger());
@@ -1775,7 +1787,7 @@ static QCborValue taggedValueFromCbor(QCborStreamReader &reader, int remainingRe
 extern void qt_cbor_stream_set_error(QCborStreamReaderPrivate *d, QCborError error);
 inline void QCborContainerPrivate::setErrorInReader(QCborStreamReader &reader, QCborError error)
 {
-    qt_cbor_stream_set_error(reader.d.data(), error);
+    qt_cbor_stream_set_error(reader.d.get(), error);
 }
 
 extern QCborStreamReader::StringResultCode qt_cbor_append_string_chunk(QCborStreamReader &reader, QByteArray *data);
@@ -1795,8 +1807,14 @@ void QCborContainerPrivate::decodeStringFromCbor(QCborStreamReader &reader)
         return;
     }
 
+    auto resetSize = qScopeGuard([this, oldSize = data.size()] {
+        data.resize(oldSize);
+        if (oldSize < data.capacity() / 2)
+            data.squeeze();
+    });
+
     Element e = {};
-    e.type = (reader.isByteArray() ? QCborValue::ByteArray : QCborValue::String);
+    e.type = QCborValue::Type(reader.type());
     if (len || !reader.isLengthKnown()) {
         // The use of size_t means none of the operations here can overflow because
         // all inputs are less than half SIZE_MAX.
@@ -1839,9 +1857,8 @@ void QCborContainerPrivate::decodeStringFromCbor(QCborStreamReader &reader)
             // verify UTF-8 string validity
             auto utf8result = QUtf8::isValidUtf8(QByteArrayView(data).last(len));
             if (!utf8result.isValidUtf8) {
-                status = QCborStreamReader::Error;
                 setErrorInReader(reader, { QCborError::InvalidUtf8String });
-                break;
+                return;
             }
             isAscii = isAscii && utf8result.isValidAscii;
         }
@@ -1852,8 +1869,8 @@ void QCborContainerPrivate::decodeStringFromCbor(QCborStreamReader &reader)
             status = qt_cbor_append_string_chunk(reader, &data);
         } else {
             // error
-            status = QCborStreamReader::Error;
             setErrorInReader(reader, { QCborError::DataTooLarge });
+            return;
         }
     }
 
@@ -1875,15 +1892,14 @@ void QCborContainerPrivate::decodeStringFromCbor(QCborStreamReader &reader)
         if (e.type == QCborValue::String) {
             if (Q_UNLIKELY(b->len > QString::maxSize())) {
                 setErrorInReader(reader, { QCborError::DataTooLarge });
-                status = QCborStreamReader::Error;
+                return;
             }
         }
     }
 
-    if (status == QCborStreamReader::Error) {
-        data.truncate(e.value);
-    } else {
+    if (status == QCborStreamReader::EndOfString) {
         elements.append(e);
+        resetSize.dismiss();
     }
 }
 
@@ -2030,6 +2046,7 @@ QCborValue::QCborValue(const QCborValue &other) noexcept
         container->ref.ref();
 }
 
+#if QT_CONFIG(datestring)
 /*!
     Creates a QCborValue object of the date/time extended type and containing
     the value represented by \a dt. The value can later be retrieved using
@@ -2050,6 +2067,7 @@ QCborValue::QCborValue(const QDateTime &dt)
     t = DateTime;
     container->elements[1].type = String;
 }
+#endif
 
 #ifndef QT_BOOTSTRAPPED
 /*!
@@ -2193,6 +2211,7 @@ QString QCborValue::toString(const QString &defaultValue) const
     return container->stringAt(n);
 }
 
+#if QT_CONFIG(datestring)
 /*!
     Returns the date/time value stored in this QCborValue, if it is of the
     date/time extended type. Otherwise, it returns \a defaultValue.
@@ -2216,6 +2235,7 @@ QDateTime QCborValue::toDateTime(const QDateTime &defaultValue) const
     Q_ASSERT((container->elements.at(1).flags & Element::StringIsUtf16) == 0);
     return QDateTime::fromString(byteData->asLatin1(), Qt::ISODateWithMs);
 }
+#endif
 
 #ifndef QT_BOOTSTRAPPED
 /*!
@@ -3160,8 +3180,10 @@ size_t qHash(const QCborValue &value, size_t seed)
         return seed;
     case QCborValue::Double:
         return qHash(value.toDouble(), seed);
+#if QT_CONFIG(datestring)
     case QCborValue::DateTime:
         return qHash(value.toDateTime(), seed);
+#endif
 #ifndef QT_BOOTSTRAPPED
     case QCborValue::Url:
         return qHash(value.toUrl(), seed);
@@ -3295,8 +3317,10 @@ static QDebug debugContents(QDebug &dbg, const QCborValue &v)
         else
             return dbg << v.toDouble();
     }
+#if QT_CONFIG(datestring)
     case QCborValue::DateTime:
         return dbg << v.toDateTime();
+#endif
 #ifndef QT_BOOTSTRAPPED
     case QCborValue::Url:
         return dbg << v.toUrl();

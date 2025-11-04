@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 //
-// Next MinVersion: 35
+// Next MinVersion: 37
 
 module arc.mojom;
 
@@ -209,6 +209,9 @@ struct ArcNotificationData {
   int32 reply_button_index;
   [MinVersion=34]
   array<ArcNotificationData>? children_data;
+  // Array of extra messages for messaging style notifications.
+  [MinVersion=35]
+  array<ArcNotificationMessage>? messages;
 };
 
 struct ArcDoNotDisturbStatus {
@@ -248,6 +251,16 @@ enum MessageCenterVisibility {
   VISIBILITY_TRANSIENT = 0,
   // When the message center view is being displayed.
   VISIBILITY_MESSAGE_CENTER = 1,
+};
+
+struct ArcNotificationMessage {
+  // Message that was sent in the notification.
+  string? message;
+  // Name of the message sender that should be displayed above message.
+  string? sender_name;
+  // Profile icon of the message sender that needs to be displayed on the left
+  // of message.
+  ArcBitmap? sender_icon;
 };
 
 // Next Method ID: 12
@@ -294,7 +307,6 @@ interface NotificationsHost {
 
 // Deprecated method IDs: 0
 // Next Method ID: 15
-// TODO(lhchavez): Migrate all request/response messages to Mojo.
 interface NotificationsInstance {
   // Establishes full-duplex communication with the host.
   [MinVersion=14] Init@5(pending_remote<NotificationsHost> host_remote) => ();
@@ -369,4 +381,12 @@ interface NotificationsInstance {
     string key,
     uint32 action_button_index,
     string input);
+
+  // Pops up the notification settings page for a specific application. This is
+  // called when the user clicks 'turn off notifications' button in inline
+  // settings view from the Chrome side in Chrome rendered ARC notifications.
+  // |key| is the identifier of the notification which is generated  by Android
+  // side.
+  [MinVersion=36]
+  PopUpAppNotificationSettings@15(string key);
 };

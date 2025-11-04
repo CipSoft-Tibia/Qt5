@@ -37,7 +37,10 @@ class CXFA_FFPageView;
 class CXFA_FFWidgetHandler;
 class CXFA_Margin;
 class IFX_SeekableReadStream;
+
+namespace pdfium {
 enum class FWL_WidgetHit;
+}  // namespace pdfium
 
 inline float XFA_UnitPx2Pt(float fPx, float fDpi) {
   return fPx * 72.0f / fDpi;
@@ -135,7 +138,7 @@ class CXFA_FFWidget : public cppgc::GarbageCollected<CXFA_FFWidget>,
   [[nodiscard]] virtual bool OnChar(uint32_t dwChar,
                                     Mask<XFA_FWL_KeyFlag> dwFlags);
 
-  virtual FWL_WidgetHit HitTest(const CFX_PointF& point);
+  virtual pdfium::FWL_WidgetHit HitTest(const CFX_PointF& point);
   virtual bool CanUndo();
   virtual bool CanRedo();
   virtual bool CanCopy();
@@ -146,8 +149,8 @@ class CXFA_FFWidget : public cppgc::GarbageCollected<CXFA_FFWidget>,
   virtual bool CanDeSelect();
   virtual bool Undo();
   virtual bool Redo();
-  virtual absl::optional<WideString> Copy();
-  virtual absl::optional<WideString> Cut();
+  virtual std::optional<WideString> Copy();
+  virtual std::optional<WideString> Cut();
   virtual bool Paste(const WideString& wsPaste);
   virtual void SelectAll();
   virtual void Delete();

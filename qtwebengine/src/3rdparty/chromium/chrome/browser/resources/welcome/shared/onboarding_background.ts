@@ -8,13 +8,14 @@
  */
 
 import 'chrome://resources/cr_elements/cr_icon_button/cr_icon_button.js';
-import './icons.html.js';
 import '../strings.m.js';
 
+import {assert} from 'chrome://resources/js/assert.js';
 import {loadTimeData} from 'chrome://resources/js/load_time_data.js';
-import {PolymerElement} from 'chrome://resources/polymer/v3_0/polymer/polymer_bundled.min.js';
+import {CrLitElement} from 'chrome://resources/lit/v3_0/lit.rollup.js';
 
-import {getTemplate} from './onboarding_background.html.js';
+import {getCss} from './onboarding_background.css.js';
+import {getHtml} from './onboarding_background.html.js';
 
 export interface OnboardingBackgroundElement {
   $: {
@@ -22,20 +23,24 @@ export interface OnboardingBackgroundElement {
   };
 }
 
-export class OnboardingBackgroundElement extends PolymerElement {
+export class OnboardingBackgroundElement extends CrLitElement {
   static get is() {
     return 'onboarding-background';
   }
 
-  static get template() {
-    return getTemplate();
+  static override get styles() {
+    return getCss();
   }
 
-  static get properties() {
+  override render() {
+    return getHtml.bind(this)();
+  }
+
+  static override get properties() {
     return {
       forcePaused_: {
         type: Boolean,
-        reflectToAttribute: true,
+        reflect: true,
       },
     };
   }
@@ -54,8 +59,9 @@ export class OnboardingBackgroundElement extends PolymerElement {
       ['yellow-line', 49],
     ];
     details.forEach(([id, width]) => {
-      this.createLineAnimation_(
-          (this.shadowRoot!.querySelector(`#${id}`) as HTMLElement), width);
+      const element = this.shadowRoot!.querySelector<HTMLElement>(`#${id}`);
+      assert(element);
+      this.createLineAnimation_(element, width);
     });
   }
 
@@ -118,11 +124,11 @@ export class OnboardingBackgroundElement extends PolymerElement {
     this.loopAnimation_(lineTransformAnimation);
   }
 
-  private getPlayPauseIcon_(): string {
+  protected getPlayPauseIcon_(): string {
     return this.forcePaused_ ? 'welcome:play' : 'welcome:pause';
   }
 
-  private getPlayPauseLabel_(): string {
+  protected getPlayPauseLabel_(): string {
     return loadTimeData.getString(
         this.forcePaused_ ? 'landingPlayAnimations' : 'landingPauseAnimations');
   }
@@ -137,7 +143,7 @@ export class OnboardingBackgroundElement extends PolymerElement {
     };
   }
 
-  private onLogoClick_() {
+  protected onLogoClick_() {
     this.$.logo.animate(
         {
           transform: [
@@ -151,7 +157,7 @@ export class OnboardingBackgroundElement extends PolymerElement {
         });
   }
 
-  private onPlayPauseClick_() {
+  protected onPlayPauseClick_() {
     if (this.forcePaused_) {
       this.play();
     } else {

@@ -17,7 +17,7 @@
 #include "libANGLE/features.h"
 #include "libANGLE/validationEGL.h"
 
-#if defined(ANGLE_PLATFORM_APPLE) || (ANGLE_PLATFORM_ANDROID)
+#if defined(ANGLE_PLATFORM_APPLE) || (ANGLE_PLATFORM_ANDROID) || defined(ANGLE_USE_ANDROID_TLS_SLOT)
 #    include "common/tls.h"
 #endif
 
@@ -39,6 +39,9 @@ gl::Context *GetGlobalLastContext();
 void SetGlobalLastContext(gl::Context *context);
 Thread *GetCurrentThread();
 Debug *GetDebug();
+
+void SetEGLValidationEnabled(bool enabled);
+bool IsEGLValidationEnabled();
 
 // Sync the current context from Thread to global state.
 class [[nodiscard]] ScopedSyncCurrentContextFromThread
@@ -116,7 +119,7 @@ ANGLE_INLINE Context *GetGlobalContext()
 ANGLE_INLINE Context *GetValidGlobalContext()
 {
 #if defined(ANGLE_USE_ANDROID_TLS_SLOT)
-    // TODO: Replace this branch with a compile time flag (http://anglebug.com/4764)
+    // TODO: Replace this branch with a compile time flag (http://anglebug.com/42263361)
     if (angle::gUseAndroidOpenGLTlsSlot)
     {
         return static_cast<gl::Context *>(ANGLE_ANDROID_GET_GL_TLS()[angle::kAndroidOpenGLTlsSlot]);

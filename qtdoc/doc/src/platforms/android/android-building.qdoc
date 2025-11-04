@@ -52,21 +52,7 @@
     With Qt 6, you can build Qt for Android from source code using \c CMake. Qt 6
     for Android requires a host Qt build, which means to build Qt for Android, you
     need to build Qt for the desktop platform used as a host (that is, Linux, \macos,
-    or Windows).
-
-    To configure and do a minimalistic host build to be used with Qt for Android
-    build, use the following command:
-
-    \badcode
-    mkdir ~/dev/build-host
-    cd ~/dev/build-host
-    ./configure -developer-build -nomake tests -nomake examples
-    cmake --build . --target host_tools
-    \endcode
-
-    That will configure a developer build for your host and only build the necessary
-    dependencies used for the Android build. For more information on doing a full
-    and more customizable build for your host, see \l{Building Qt Sources}.
+    or Windows). See \l{Cross-compiling Qt} for details.
 
     To configure Qt for Android, create a shadow build directory to keep the source
     directory clean:
@@ -78,10 +64,10 @@
 
     Qt for Android supports the following device architectures (ABIs): \AndroidAbis
 
-    And then run the configure script:
+    And then run the configure script from within the build directory you just created:
 
     \badcode \NdkFullVer
-    ./configure -prefix <install_path> -qt-host-path <qt_host_path> \
+    <qt5_super_repo_path>/configure -prefix <install_path> -qt-host-path <qt_host_path> \
         -android-abis <abi> -android-sdk ~/Android/Sdk -android-ndk ~/Android/Sdk/ndk/\1
     \endcode
 
@@ -91,7 +77,10 @@
 
     \section1 Advanced Configure Arguments
 
-    Qt for Android contains Java code which is compiled into \e {*.jar} files
+    Before exploring this section, see \l{Qt Configure Options}, which contains more
+    information about the configure options.
+
+    Qt for Android contains Java code compiled into \e {*.jar} files
     with the \e javac compiler. To set the \e javac version for source and target,
     use \e -android-javac-source and \e -android-javac-target respectively:
 
@@ -106,10 +95,8 @@
     -developer-build
     \endcode
 
-    \note When using this configure argument, it's not required to install your
-    Qt build, Qt for Android can be used directly from within the build directory.
-
-    \l{Qt Configure Options} contains more information about the configure options.
+    The \c -qt-host-path should point to the \c qtbase directory in the host build directory
+    in a host developer build. For example: \c ~/dev/build-qt-host/qtbase.
 
     \section1 Building
 

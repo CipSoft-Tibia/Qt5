@@ -11,9 +11,9 @@
 
 #include <assert.h>
 
-#include <xnnpack/common.h>
-#include <xnnpack/math.h>
-#include <xnnpack/transpose.h>
+#include "xnnpack/common.h"
+#include "xnnpack/math.h"
+#include "xnnpack/transpose.h"
 
 void xnn_x32_transposec_ukernel__4x4_reuse_switch_zip_neon(
     const uint32_t* input,
@@ -24,8 +24,8 @@ void xnn_x32_transposec_ukernel__4x4_reuse_switch_zip_neon(
     size_t block_height,
     const union xnn_x32_transpose_params params[restrict XNN_MIN_ELEMENTS(1)]) XNN_OOB_READS
 {
-  assert(output_stride >= block_height * sizeof(uint32_t));
-  assert(input_stride >= block_width * sizeof(uint32_t));
+  assert(block_width == 1 || output_stride >= block_height * sizeof(uint32_t));
+  assert(block_height == 1 || input_stride >= block_width * sizeof(uint32_t));
 
   const size_t tile_height = 4;
   const size_t tile_width = 4;
@@ -58,10 +58,13 @@ void xnn_x32_transposec_ukernel__4x4_reuse_switch_zip_neon(
       switch (rem) {
         case 3:
           vst1q_u32(oN, v0_1.val[1]); oN = (uint32_t*) ((uintptr_t) oN + minus_output_stride);
+          XNN_FALLTHROUGH
         case 2:
           vst1q_u32(oN, v0_1.val[0]); oN = (uint32_t*) ((uintptr_t) oN + minus_output_stride);
+          XNN_FALLTHROUGH
         case 1:
           vst1q_u32(oN, v0_0.val[1]);
+          XNN_FALLTHROUGH
         case 0:
           vst1q_u32(o, v0_0.val[0]); o = (uint32_t*) ((uintptr_t) o + tile_hbytes);
           break;
@@ -100,10 +103,13 @@ void xnn_x32_transposec_ukernel__4x4_reuse_switch_zip_neon(
         switch (rem) {
           case 3:
             vst1_u32(oN, v3_low); oN = (uint32_t*) ((uintptr_t) oN + minus_output_stride);
+            XNN_FALLTHROUGH
           case 2:
             vst1_u32(oN, v2_low); oN = (uint32_t*) ((uintptr_t) oN + minus_output_stride);
+            XNN_FALLTHROUGH
           case 1:
             vst1_u32(oN, v1_low);
+            XNN_FALLTHROUGH
           case 0:
             vst1_u32(o, v0_low); o += 2;
             break;
@@ -121,10 +127,13 @@ void xnn_x32_transposec_ukernel__4x4_reuse_switch_zip_neon(
         switch (rem) {
           case 3:
             vst1_lane_u32(oN, v3_low, 0); oN = (uint32_t*) ((uintptr_t) oN + minus_output_stride);
+          XNN_FALLTHROUGH
           case 2:
             vst1_lane_u32(oN, v2_low, 0); oN = (uint32_t*) ((uintptr_t) oN + minus_output_stride);
+          XNN_FALLTHROUGH
           case 1:
             vst1_lane_u32(oN, v1_low, 0);
+            XNN_FALLTHROUGH
           case 0:
             vst1_lane_u32(o, v0_low, 0);
             break;

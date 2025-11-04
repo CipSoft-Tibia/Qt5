@@ -6,6 +6,7 @@
 #define COMPONENTS_POLICY_CORE_COMMON_CLOUD_DMSERVER_JOB_CONFIGURATIONS_H_
 
 #include <memory>
+#include <optional>
 #include <string>
 
 #include "base/functional/callback.h"
@@ -16,7 +17,6 @@
 #include "components/policy/policy_export.h"
 #include "components/policy/proto/cloud_policy.pb.h"
 #include "components/policy/proto/device_management_backend.pb.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "url/gurl.h"
 
 namespace network {
@@ -41,6 +41,9 @@ struct DMServerJobResult {
   //   - potential error from parsing `response`
   DeviceManagementStatus dm_status =
       DeviceManagementStatus::DM_STATUS_REQUEST_INVALID;
+
+  // HTTP response codes of the DMServer.
+  int response_code = 0;
 
   // The parsed response proto received from DMServer. This could be empty
   // in case of errors.
@@ -71,7 +74,7 @@ class POLICY_EXPORT DMServerJobConfiguration : public JobConfigurationBase {
         const std::string& client_id,
         bool critical,
         DMAuth auth_data,
-        absl::optional<std::string> oauth_token,
+        std::optional<std::string> oauth_token,
         scoped_refptr<network::SharedURLLoaderFactory> factory,
         Callback callback);
 
@@ -90,8 +93,8 @@ class POLICY_EXPORT DMServerJobConfiguration : public JobConfigurationBase {
     std::string client_id;
     bool critical = false;
     DMAuth auth_data = DMAuth::NoAuth();
-    absl::optional<std::string> profile_id = absl::nullopt;
-    absl::optional<std::string> oauth_token = absl::nullopt;
+    std::optional<std::string> profile_id = std::nullopt;
+    std::optional<std::string> oauth_token = std::nullopt;
     scoped_refptr<network::SharedURLLoaderFactory> factory;
     DMServerJobConfiguration::Callback callback;
   };
@@ -105,7 +108,7 @@ class POLICY_EXPORT DMServerJobConfiguration : public JobConfigurationBase {
       const std::string& client_id,
       bool critical,
       DMAuth auth_data,
-      absl::optional<std::string>&& oauth_token,
+      std::optional<std::string>&& oauth_token,
       scoped_refptr<network::SharedURLLoaderFactory> factory,
       Callback callback);
 
@@ -114,7 +117,7 @@ class POLICY_EXPORT DMServerJobConfiguration : public JobConfigurationBase {
                            CloudPolicyClient* client,
                            bool critical,
                            DMAuth auth_data,
-                           absl::optional<std::string>&& oauth_token,
+                           std::optional<std::string>&& oauth_token,
                            Callback callback);
 
   DMServerJobConfiguration(const DMServerJobConfiguration&) = delete;

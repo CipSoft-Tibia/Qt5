@@ -124,11 +124,6 @@ void QAndroidWebViewPrivate::setHttpUserAgent(const QString &userAgent)
     Q_EMIT httpUserAgentChanged(userAgent);
 }
 
-QUrl QAndroidWebViewPrivate::url() const
-{
-    return QUrl::fromUserInput(m_viewController.callMethod<QString>("getUrl"));
-}
-
 void QAndroidWebViewPrivate::setUrl(const QUrl &url)
 {
     m_viewController.callMethod<void>("loadUrl", url.toString());

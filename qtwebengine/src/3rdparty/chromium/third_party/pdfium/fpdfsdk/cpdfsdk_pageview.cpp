@@ -16,6 +16,8 @@
 #include "core/fpdfdoc/cpdf_annotlist.h"
 #include "core/fpdfdoc/cpdf_interactiveform.h"
 #include "core/fxcrt/autorestorer.h"
+#include "core/fxcrt/check.h"
+#include "core/fxcrt/containers/contains.h"
 #include "core/fxcrt/stl_util.h"
 #include "fpdfsdk/cpdfsdk_annot.h"
 #include "fpdfsdk/cpdfsdk_annotiteration.h"
@@ -23,8 +25,6 @@
 #include "fpdfsdk/cpdfsdk_formfillenvironment.h"
 #include "fpdfsdk/cpdfsdk_helpers.h"
 #include "fpdfsdk/cpdfsdk_interactiveform.h"
-#include "third_party/base/check.h"
-#include "third_party/base/containers/contains.h"
 
 #ifdef PDF_ENABLE_XFA
 #include "fpdfsdk/fpdfxfa/cpdfxfa_page.h"
@@ -105,7 +105,7 @@ std::unique_ptr<CPDFSDK_Annot> CPDFSDK_PageView::NewAnnot(CPDF_Annot* annot) {
     auto ret = std::make_unique<CPDFSDK_Widget>(annot, this, form);
     form->AddMap(form_control, ret.get());
     if (pdf_form->NeedConstructAP())
-      ret->ResetAppearance(absl::nullopt, CPDFSDK_Widget::kValueUnchanged);
+      ret->ResetAppearance(std::nullopt, CPDFSDK_Widget::kValueUnchanged);
     return ret;
   }
 
@@ -154,31 +154,31 @@ CPDFSDK_Annot* CPDFSDK_PageView::AddAnnotForFFWidget(CXFA_FFWidget* pWidget) {
 }
 
 void CPDFSDK_PageView::DeleteAnnotForFFWidget(CXFA_FFWidget* pWidget) {
-  CPDFSDK_Annot* pAnnot = GetAnnotForFFWidget(pWidget);
-  if (!pAnnot)
+  ObservedPtr<CPDFSDK_Annot> pAnnot(GetAnnotForFFWidget(pWidget));
+  if (!pAnnot) {
     return;
-
+  }
   IPDF_Page* pPage = pAnnot->GetXFAPage();
-  if (!pPage)
+  if (!pPage) {
     return;
-
+  }
   CPDF_Document::Extension* pContext = pPage->GetDocument()->GetExtension();
-  if (pContext && !pContext->ContainsExtensionForm())
+  if (pContext && !pContext->ContainsExtensionForm()) {
     return;
-
-  ObservedPtr<CPDFSDK_Annot> pObserved(pAnnot);
-  if (GetFocusAnnot() == pAnnot)
-    m_pFormFillEnv->KillFocusAnnot({});  // May invoke JS, invalidating pAnnot.
-
-  if (pObserved) {
+  }
+  if (GetFocusAnnot() == pAnnot) {
+    // May invoke JS, invalidating pAnnot.
+    m_pFormFillEnv->KillFocusAnnot({});
+  }
+  if (pAnnot) {
     auto it = std::find(m_SDKAnnotArray.begin(), m_SDKAnnotArray.end(),
-                        fxcrt::MakeFakeUniquePtr(pAnnot));
+                        fxcrt::MakeFakeUniquePtr(pAnnot.Get()));
     if (it != m_SDKAnnotArray.end())
       m_SDKAnnotArray.erase(it);
   }
-
-  if (m_pCaptureWidget.Get() == pAnnot)
+  if (m_pCaptureWidget.Get() == pAnnot) {
     m_pCaptureWidget.Reset();
+  }
 }
 
 CPDFXFA_Page* CPDFSDK_PageView::XFAPageIfNotBackedByPDFPage() {
@@ -420,22 +420,23 @@ bool CPDFSDK_PageView::OnMouseMove(Mask<FWL_EVENTFLAG> nFlags,
   ObservedPtr<CPDFSDK_Annot> pFXAnnot(GetFXAnnotAtPoint(point));
   ObservedPtr<CPDFSDK_PageView> pThis(this);
 
-  if (m_bOnWidget && m_pCaptureWidget != pFXAnnot)
-    ExitWidget(true, nFlags);
+  if (pThis->m_bOnWidget && pThis->m_pCaptureWidget != pFXAnnot) {
+    pThis->ExitWidget(true, nFlags);
+  }
 
   // ExitWidget() may have invalidated objects.
   if (!pThis || !pFXAnnot)
     return false;
 
-  if (!m_bOnWidget) {
-    EnterWidget(pFXAnnot, nFlags);
+  if (!pThis->m_bOnWidget) {
+    pThis->EnterWidget(pFXAnnot, nFlags);
 
     // EnterWidget() may have invalidated objects.
     if (!pThis)
       return false;
 
     if (!pFXAnnot) {
-      ExitWidget(false, nFlags);
+      pThis->ExitWidget(false, nFlags);
       return true;
     }
   }
@@ -452,20 +453,21 @@ void CPDFSDK_PageView::EnterWidget(ObservedPtr<CPDFSDK_Annot>& pAnnot,
 
 void CPDFSDK_PageView::ExitWidget(bool callExitCallback,
                                   Mask<FWL_EVENTFLAG> nFlags) {
-  m_bOnWidget = false;
-  if (!m_pCaptureWidget)
+  ObservedPtr<CPDFSDK_PageView> pThis(this);
+  pThis->m_bOnWidget = false;
+  if (!pThis->m_pCaptureWidget) {
     return;
-
-  if (callExitCallback) {
-    ObservedPtr<CPDFSDK_PageView> pThis(this);
-    CPDFSDK_Annot::OnMouseExit(m_pCaptureWidget, nFlags);
-
-    // OnMouseExit() may have invalidated |this|.
-    if (!pThis)
-      return;
   }
 
-  m_pCaptureWidget.Reset();
+  if (callExitCallback) {
+    CPDFSDK_Annot::OnMouseExit(pThis->m_pCaptureWidget, nFlags);
+
+    // OnMouseExit() may have invalidated |this|.
+    if (!pThis) {
+      return;
+    }
+  }
+  pThis->m_pCaptureWidget.Reset();
 }
 
 bool CPDFSDK_PageView::OnMouseWheel(Mask<FWL_EVENTFLAG> nFlags,

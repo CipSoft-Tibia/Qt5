@@ -135,8 +135,6 @@ class CORE_EXPORT LayoutBlock : public LayoutBox {
   // These two functions are overridden for inline-block.
   LayoutUnit FirstLineHeight() const override;
 
-  bool UseLogicalBottomMarginEdgeForInlineBlockBaseline() const;
-
   const char* GetName() const override;
 
  protected:
@@ -200,18 +198,13 @@ class CORE_EXPORT LayoutBlock : public LayoutBox {
  protected:
   void WillBeDestroyed() override;
 
-  void UpdateLayout() override {
-    NOT_DESTROYED();
-    NOTREACHED_NORETURN();
-  }
-
  public:
   void Paint(const PaintInfo&) const override;
 
   virtual bool HasLineIfEmpty() const;
   // Returns baseline offset if we can get |SimpleFontData| from primary font.
   // Or returns no value if we can't get font data.
-  absl::optional<LayoutUnit> BaselineForEmptyLine() const;
+  std::optional<LayoutUnit> BaselineForEmptyLine() const;
 
   bool NodeAtPoint(HitTestResult&,
                    const HitTestLocation&,

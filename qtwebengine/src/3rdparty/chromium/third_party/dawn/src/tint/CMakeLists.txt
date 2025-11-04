@@ -41,10 +41,27 @@ if(NOT TINT_BUILD_AS_OTHER_OS)
   endif()
 endif()
 
-if (TARGET libprotobuf)
-  set(TINT_BUILD_IR_BINARY 1)
-else()
-  set(TINT_BUILD_IR_BINARY 0)
+################################################################################
+# Dependent flag checks
+################################################################################
+
+if (TINT_BUILD_IR_BINARY)
+  if (NOT DAWN_BUILD_PROTOBUF)
+    message(FATAL_ERROR "Building IR binary format 'TINT_BUILD_IR_BINARY' is "
+                        "enabled, but building protobuf 'DAWN_BUILD_PROTOBUF' "
+                        "is not")
+  endif()
+  if (NOT TARGET libprotobuf)
+    message(FATAL_ERROR "Building IR binary format 'TINT_BUILD_IR_BINARY' is "
+                        "enabled, but protobuf target is not available, "
+                        "possibly missing '${DAWN_THIRD_PARTY_DIR}/protobuf'")
+  endif()
+endif()
+
+if (TINT_BUILD_IR_FUZZER AND NOT TINT_BUILD_IR_BINARY)
+  message(FATAL_ERROR "Building IR fuzzer 'TINT_BUILD_IR_FUZZER' is enabled, "
+                      "but building IR binary format 'TINT_BUILD_IR_BINARY' is "
+                      "not")
 endif()
 
 ################################################################################
@@ -57,6 +74,7 @@ function(tint_core_compile_options TARGET)
   target_compile_definitions(${TARGET} PUBLIC -DTINT_BUILD_GLSL_WRITER=$<BOOL:${TINT_BUILD_GLSL_WRITER}>)
   target_compile_definitions(${TARGET} PUBLIC -DTINT_BUILD_HLSL_WRITER=$<BOOL:${TINT_BUILD_HLSL_WRITER}>)
   target_compile_definitions(${TARGET} PUBLIC -DTINT_BUILD_IR_BINARY=$<BOOL:${TINT_BUILD_IR_BINARY}>)
+  target_compile_definitions(${TARGET} PUBLIC -DTINT_BUILD_IR_FUZZER=$<BOOL:${TINT_BUILD_IR_FUZZER}>)
   target_compile_definitions(${TARGET} PUBLIC -DTINT_BUILD_IS_LINUX=$<BOOL:${TINT_BUILD_IS_LINUX}>)
   target_compile_definitions(${TARGET} PUBLIC -DTINT_BUILD_IS_MAC=$<BOOL:${TINT_BUILD_IS_MAC}>)
   target_compile_definitions(${TARGET} PUBLIC -DTINT_BUILD_IS_WIN=$<BOOL:${TINT_BUILD_IS_WIN}>)
@@ -66,6 +84,7 @@ function(tint_core_compile_options TARGET)
   target_compile_definitions(${TARGET} PUBLIC -DTINT_BUILD_SYNTAX_TREE_WRITER=$<BOOL:${TINT_BUILD_SYNTAX_TREE_WRITER}>)
   target_compile_definitions(${TARGET} PUBLIC -DTINT_BUILD_WGSL_READER=$<BOOL:${TINT_BUILD_WGSL_READER}>)
   target_compile_definitions(${TARGET} PUBLIC -DTINT_BUILD_WGSL_WRITER=$<BOOL:${TINT_BUILD_WGSL_WRITER}>)
+  target_compile_definitions(${TARGET} PUBLIC -DTINT_BUILD_TINTD=$<BOOL:${TINT_BUILD_TINTD}>)
 
   if(TINT_BUILD_FUZZERS)
     target_compile_options(${TARGET} PRIVATE "-fsanitize=fuzzer")
@@ -81,13 +100,15 @@ function(tint_default_compile_options TARGET)
 
   set(COMMON_GNU_OPTIONS
     -Wall
-    -Werror
     -Wextra
     -Wno-documentation-unknown-command
     -Wno-padded
     -Wno-switch-enum
     -Wno-unknown-pragmas
   )
+  if (${DAWN_WERROR})
+      list(APPEND COMMON_GNU_OPTIONS -Werror)
+  endif()
 
   set(COMMON_CLANG_OPTIONS
     -Wno-c++98-compat
@@ -129,7 +150,6 @@ function(tint_default_compile_options TARGET)
       /bigobj
       /EHsc
       /W4
-      /WX
       /wd4068 # unknown pragma
       /wd4127 # conditional expression is constant
       /wd4244 # 'conversion' conversion from 'type1' to 'type2', possible loss of data
@@ -147,10 +167,19 @@ function(tint_default_compile_options TARGET)
       /wd5026 # 'type': move constructor was implicitly defined as deleted
       /wd5027 # 'type': move assignment operator was implicitly defined as deleted
     )
+    if (${DAWN_WERROR})
+      target_compile_options(${TARGET} PRIVATE /WX)
+    endif()
 
-    # When building with clang-cl on Windows, try to match our clang build
-    # options as much as possible.
+    # Some versions of MSVC ignores the [[noreturn]] on ~InternalCompilerError(), triggering a
+    # warning if it is the last statement on a function that has a return value.
+    target_compile_options(${TARGET} PRIVATE
+      /wd4715 # not all control paths return a value
+    )
+
     if(COMPILER_IS_CLANG_CL)
+      # When building with clang-cl on Windows, try to match our clang build
+      # options as much as possible.
       target_compile_options(${TARGET} PRIVATE
         ${COMMON_GNU_OPTIONS}
         ${COMMON_CLANG_OPTIONS}
@@ -164,6 +193,14 @@ function(tint_default_compile_options TARGET)
         -Wno-reserved-id-macro
         -Wno-language-extension-token
       )
+    else()
+      if(NOT $CMAKE_BUILD_TYPE STREQUAL "Debug")
+        # MSVC sometimes warns code is unreachable after inlining of code, which
+        # is impossible to silence with pragmas.
+        target_compile_options(${TARGET} PRIVATE
+          /wd4702 # unreachable code
+        )
+      endif()
     endif()
   endif()
 
@@ -222,6 +259,9 @@ endfunction()
 
 function(tint_bench_compile_options TARGET)
   tint_core_compile_options(${TARGET})
+  add_dependencies(${TARGET} tint_generate_benchmark_inputs)
+  target_include_directories(${TARGET} PUBLIC "${DAWN_BUILD_GEN_DIR}")
+  set_target_properties(${TARGET} PROPERTIES FOLDER "Benchmarks")
 endfunction()
 
 function(tint_fuzz_compile_options TARGET)
@@ -268,7 +308,7 @@ function(tint_fuzz_cmd_compile_options TARGET)
   target_link_libraries(${TARGET} PRIVATE "tint_api_sanitize_fuzzer")
 endfunction()
 
-# TODO(bclayton): Remove this when fuzzers fully migrated to gen build
+# TODO(crbug.com/tint/2223): Remove this when fuzzers are fully migrated to gen build
 function(tint_fuzzer_compile_options TARGET)
   tint_fuzz_cmd_compile_options(${TARGET})
   target_link_libraries(${TARGET} PRIVATE "tint_api_sanitize_fuzzer")
@@ -282,47 +322,20 @@ endif()
 ################################################################################
 # Benchmarks
 ################################################################################
-if(TINT_BUILD_BENCHMARKS AND TINT_EXTERNAL_BENCHMARK_CORPUS_DIR)
-  # Glob all the files at TINT_EXTERNAL_BENCHMARK_CORPUS_DIR, and create a header
-  # that lists these with the macros:
-  # TINT_BENCHMARK_EXTERNAL_WGSL_PROGRAMS()
-  # TINT_BENCHMARK_EXTERNAL_SPV_PROGRAMS()
-  set(TINT_BENCHMARK_GEN_DIR "${DAWN_BUILD_GEN_DIR}/src/tint/benchmark/")
-  set(TINT_BENCHMARK_EXTERNAL_SHADERS_HEADER "${TINT_BENCHMARK_GEN_DIR}/external_wgsl_programs.h")
-  message("Globbing ${TINT_EXTERNAL_BENCHMARK_CORPUS_DIR}...")
-
-  file(GLOB_RECURSE
-    TINT_EXTERNAL_WGSL_BENCHMARK_FILES
-    RELATIVE "${TINT_EXTERNAL_BENCHMARK_CORPUS_DIR}"
-    "${TINT_EXTERNAL_BENCHMARK_CORPUS_DIR}/**.wgsl"
+if(TINT_BUILD_BENCHMARKS)
+  set(SCRIPT "${TINT_ROOT_SOURCE_DIR}/src/tint/cmd/bench/generate_benchmark_inputs.py")
+  set(GENERATED_HEADER_REL_PATH "gen/src/tint/cmd/bench/benchmark_inputs.h")
+  set(GENERATED_HEADER_ABS_PATH "${Dawn_BINARY_DIR}/${GENERATED_HEADER_REL_PATH}")
+  set(ARGS ${Python3_EXECUTABLE} ${SCRIPT} header ${Dawn_BINARY_DIR} ${GENERATED_HEADER_REL_PATH})
+  add_custom_command(
+    COMMAND ${ARGS}
+    OUTPUT ${GENERATED_HEADER_ABS_PATH}
+    DEPENDS ${SCRIPT}
+    DEPFILE ${GENERATED_HEADER_ABS_PATH}.d
+    COMMENT "Tint benchmark: Generating ${GENERATED_HEADER_ABS_PATH}."
   )
-  list(TRANSFORM TINT_EXTERNAL_WGSL_BENCHMARK_FILES REPLACE
-    "(.+)"
-    "    BENCHMARK_CAPTURE\(FUNC, \"\\1\", \"${TINT_EXTERNAL_BENCHMARK_CORPUS_DIR}/\\1\")"
-  )
-  list(JOIN TINT_EXTERNAL_WGSL_BENCHMARK_FILES "; \\\n" TINT_EXTERNAL_WGSL_BENCHMARK_FILES)
-
-  file(GLOB_RECURSE
-    TINT_EXTERNAL_SPV_BENCHMARK_FILES
-    RELATIVE "${TINT_EXTERNAL_BENCHMARK_CORPUS_DIR}"
-    "${TINT_EXTERNAL_BENCHMARK_CORPUS_DIR}/**.spv")
-
-  list(TRANSFORM TINT_EXTERNAL_SPV_BENCHMARK_FILES REPLACE
-    "(.+)"
-    "    BENCHMARK_CAPTURE\(FUNC, \"\\1\", \"${TINT_EXTERNAL_BENCHMARK_CORPUS_DIR}/\\1\")"
-  )
-  list(JOIN TINT_EXTERNAL_SPV_BENCHMARK_FILES "; \\\n" TINT_EXTERNAL_SPV_BENCHMARK_FILES)
-
-  file(CONFIGURE
-    OUTPUT "${TINT_BENCHMARK_EXTERNAL_SHADERS_HEADER}"
-    CONTENT "
-#define TINT_BENCHMARK_EXTERNAL_WGSL_PROGRAMS(FUNC) \\
-${TINT_EXTERNAL_WGSL_BENCHMARK_FILES};
-
-#define TINT_BENCHMARK_EXTERNAL_SPV_PROGRAMS(FUNC) \\
-${TINT_EXTERNAL_SPV_BENCHMARK_FILES};"
-  )
-endif(TINT_BUILD_BENCHMARKS AND TINT_EXTERNAL_BENCHMARK_CORPUS_DIR)
+  add_custom_target(tint_generate_benchmark_inputs DEPENDS ${GENERATED_HEADER_ABS_PATH})
+endif()
 
 ################################################################################
 # Functions used by BUILD.cmake files
@@ -498,8 +511,20 @@ function(tint_target_add_external_dependencies TARGET KIND)
   foreach(DEPENDENCY ${DEPENDENCIES})  # Each external dependency requires special handling...
     if(${DEPENDENCY} STREQUAL "abseil")
       target_link_libraries(${TARGET} PRIVATE
-        absl_strings
+        absl::strings
       )
+    elseif(${DEPENDENCY} STREQUAL "dl")
+      target_link_libraries(${TARGET} PRIVATE ${CMAKE_DL_LIBS})
+    elseif(${DEPENDENCY} STREQUAL "dxc-include")
+      target_include_directories(${TARGET} PRIVATE "${DAWN_THIRD_PARTY_DIR}/dxc/include")
+    elseif(${DEPENDENCY} STREQUAL "dxcompiler-for-fuzzer")
+      if(TINT_BUILD_FUZZERS) # TODO: and target arch is not x86
+        target_link_libraries(${TARGET} PRIVATE dxcompiler)
+      endif()
+    elseif(${DEPENDENCY} STREQUAL "jsoncpp")
+      target_link_libraries(${TARGET} PRIVATE jsoncpp_static)
+    elseif(${DEPENDENCY} STREQUAL "langsvr")
+      target_link_libraries(${TARGET} PRIVATE langsvr)
     elseif(${DEPENDENCY} STREQUAL "glslang")
       target_link_libraries(${TARGET} PRIVATE glslang)
       if(NOT MSVC)
@@ -517,14 +542,11 @@ function(tint_target_add_external_dependencies TARGET KIND)
     elseif(${DEPENDENCY} STREQUAL "google-benchmark")
       set_target_properties(${TARGET} PROPERTIES FOLDER "Benchmarks")
       target_link_libraries(${TARGET} PRIVATE benchmark::benchmark)
-      if(TINT_BENCHMARK_EXTERNAL_SHADERS_HEADER)
-        target_compile_definitions(${TARGET} PRIVATE
-          "TINT_BENCHMARK_EXTERNAL_SHADERS_HEADER=\"${TINT_BENCHMARK_EXTERNAL_SHADERS_HEADER}\""
-        )
-      endif()
     elseif(${DEPENDENCY} STREQUAL "gtest")
       target_include_directories(${TARGET} PRIVATE ${gmock_SOURCE_DIR}/include)
       target_link_libraries(${TARGET} PRIVATE gmock)
+    elseif(${DEPENDENCY} STREQUAL "libprotobuf-mutator")
+      target_link_libraries(${TARGET} PRIVATE libprotobuf-mutator)
     elseif(${DEPENDENCY} STREQUAL "metal")
       find_library(CoreGraphicsFramework CoreGraphics REQUIRED)
       find_library(FoundationFramework Foundation REQUIRED)
@@ -553,6 +575,8 @@ function(tint_target_add_external_dependencies TARGET KIND)
       target_link_libraries(${TARGET} PRIVATE Threads::Threads)
     elseif(${DEPENDENCY} STREQUAL "winsock")
       target_link_libraries(${TARGET} PRIVATE ws2_32)
+    elseif(${DEPENDENCY} STREQUAL "src_utils")
+      target_link_libraries(${TARGET} PRIVATE dawn_shared_utils)
     else()
       message(FATAL_ERROR "unhandled external dependency ${DEPENDENCY}")
     endif()
@@ -626,7 +650,6 @@ if(TINT_BUILD_FUZZERS)
   set(TINT_BUILD_TESTS FALSE)
   set(TINT_BUILD_BENCHMARKS FALSE)
   include("BUILD.cmake")
-  add_subdirectory(fuzzers)
 
   # Restore the build flags
   set(TINT_BUILD_CMD_TOOLS ${SAVE_TINT_BUILD_CMD_TOOLS})
@@ -643,57 +666,69 @@ endif(TINT_BUILD_FUZZERS)
 ################################################################################
 # Generate protobuf sources
 ################################################################################
-foreach(PROTO_TARGET ${TINT_PROTO_TARGETS})
-  generate_protos(
-    TARGET ${PROTO_TARGET}
-    PROTOC_OUT_DIR "${DAWN_BUILD_GEN_DIR}/src/tint/")
-  target_include_directories(${PROTO_TARGET} PRIVATE "${DAWN_BUILD_GEN_DIR}/src/tint/")
-  target_include_directories(${PROTO_TARGET} PUBLIC "${DAWN_BUILD_GEN_DIR}")
-  target_link_libraries(${PROTO_TARGET} libprotobuf)
-endforeach()
+if (DAWN_BUILD_PROTOBUF)
+  foreach(PROTO_TARGET ${TINT_PROTO_TARGETS})
+    generate_protos(
+      TARGET ${PROTO_TARGET}
+      IMPORT_DIRS "${TINT_ROOT_SOURCE_DIR}"
+      PROTOC_OUT_DIR "${DAWN_BUILD_GEN_DIR}")
+    target_include_directories(${PROTO_TARGET} PRIVATE "${DAWN_BUILD_GEN_DIR}/src/tint/")
+    target_include_directories(${PROTO_TARGET} PUBLIC "${DAWN_BUILD_GEN_DIR}")
+    target_link_libraries(${PROTO_TARGET} PUBLIC libprotobuf)
+  endforeach()
+endif()
+
+################################################################################
+# tintd (VSCode WGSL language server)
+################################################################################
+if(TINT_BUILD_TINTD)
+  # Copy all the files out of cmd/tintd/vscode to {build}/vscode
+  set(VSCODE_SRC_DIR "${CMAKE_CURRENT_SOURCE_DIR}/cmd/tintd/vscode")
+  set(VSCODE_DST_DIR "${DAWN_BUILD_GEN_DIR}/vscode")
+
+  file(GLOB VSCODE_ASSETS RELATIVE "${VSCODE_SRC_DIR}" "${VSCODE_SRC_DIR}/*")
+  foreach(FILE ${VSCODE_ASSETS})
+    configure_file("${VSCODE_SRC_DIR}/${FILE}" "${VSCODE_DST_DIR}/${FILE}" COPYONLY)
+  endforeach()
+  set_target_properties(tint_cmd_tintd_cmd PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${VSCODE_DST_DIR}")
+endif(TINT_BUILD_TINTD)
 
 
 ################################################################################
 # Bespoke target settings
 ################################################################################
-if (MSVC)
+if(MSVC)
   target_sources(tint_api PRIVATE tint.natvis)
 endif()
 
+
 ################################################################################
-# Additional fuzzer tests
+# Unit tests
 ################################################################################
 if(TINT_BUILD_TESTS)
-  if(${TINT_BUILD_FUZZERS})
-    target_sources(tint_cmd_test_test_cmd PRIVATE
-      fuzzers/mersenne_twister_engine.cc
-      fuzzers/mersenne_twister_engine.h
-      fuzzers/random_generator.cc
-      fuzzers/random_generator.h
-      fuzzers/random_generator_engine.cc
-      fuzzers/random_generator_engine.h
-      fuzzers/random_generator_test.cc
-    )
-  endif()
-
   add_test(NAME tint_unittests COMMAND tint_cmd_test_test_cmd)
 endif(TINT_BUILD_TESTS)
+
 
 ################################################################################
 # Target aliases
 ################################################################################
 add_library(libtint ALIAS tint_api)
 
+
+################################################################################
+# Install rules
+################################################################################
 if (TINT_ENABLE_INSTALL)
   # We need to recurse all folders and include all headers because tint.h includes most headers from src/tint
   file(GLOB TINT_HEADERS "${DAWN_INCLUDE_DIR}/tint/*.h")
 
   install(FILES ${TINT_HEADERS}  DESTINATION  ${CMAKE_INSTALL_INCLUDEDIR}/tint/)
 
-  file(GLOB_RECURSE TINT_SRC_HEADERS RELATIVE ${CMAKE_SOURCE_DIR}/src/tint/ "*.h")
+  file(GLOB_RECURSE TINT_SRC_HEADERS RELATIVE ${TINT_ROOT_SOURCE_DIR} "*.h")
 
   foreach(TINT_HEADER_FILE ${TINT_SRC_HEADERS})
       get_filename_component(TINT_HEADER_DIR ${TINT_HEADER_FILE} DIRECTORY)
-      install(FILES ${CMAKE_SOURCE_DIR}/src/tint/${TINT_HEADER_FILE}  DESTINATION  ${CMAKE_INSTALL_INCLUDEDIR}/src/tint/${TINT_HEADER_DIR})
+      install(FILES ${TINT_ROOT_SOURCE_DIR}/${TINT_HEADER_FILE}  DESTINATION  ${CMAKE_INSTALL_INCLUDEDIR}/src/tint/${TINT_HEADER_DIR})
   endforeach ()
 endif()

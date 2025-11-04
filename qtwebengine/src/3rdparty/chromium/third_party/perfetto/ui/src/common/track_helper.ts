@@ -12,24 +12,16 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import {Disposable} from '../base/disposable';
+import {BigintMath} from '../base/bigint_math';
 import {duration, Time, time, TimeSpan} from '../base/time';
+export {Store} from '../base/store';
 import {raf} from '../core/raf_scheduler';
-import {globals} from '../frontend/globals';
 
-export {Store} from '../frontend/store';
-export {EngineProxy} from '../trace_processor/engine';
-export {
-  LONG,
-  LONG_NULL,
-  NUM,
-  NUM_NULL,
-  STR,
-  STR_NULL,
-} from '../trace_processor/query_result';
-
-type FetchTimeline<Data> = (start: time, end: time, resolution: duration) =>
-    Promise<Data>;
+type FetchTimeline<Data> = (
+  start: time,
+  end: time,
+  resolution: duration,
+) => Promise<Data>;
 
 // This helper provides the logic to call |doFetch()| only when more
 // data is needed as the visible window is panned and zoomed about, and
@@ -50,28 +42,32 @@ export class TimelineFetcher<Data> implements Disposable {
     this.latestResolution = 0n;
   }
 
-  async requestDataForCurrentTime(): Promise<void> {
-    const currentTimeSpan = globals.timeline.visibleTimeSpan;
-    const currentResolution = globals.getCurResolution();
-    await this.requestData(currentTimeSpan, currentResolution);
-  }
-
   async requestData(timespan: TimeSpan, resolution: duration): Promise<void> {
     if (this.shouldLoadNewData(timespan, resolution)) {
       // Over request data, one page worth to the left and right.
-      const start = Time.sub(timespan.start, timespan.duration);
-      const end = Time.add(timespan.end, timespan.duration);
-      this.latestTimespan = new TimeSpan(start, end);
+      const padded = timespan.pad(timespan.duration);
+      const start = padded.start;
+      const end = padded.end;
+
+      // Quantize up and down to the bounds of |resolution|.
+      const startQ = Time.fromRaw(BigintMath.quantFloor(start, resolution));
+      const endQ = Time.fromRaw(BigintMath.quantCeil(end, resolution));
+
+      this.latestTimespan = new TimeSpan(startQ, endQ);
       this.latestResolution = resolution;
       await this.loadData();
     }
   }
 
-  get data(): Data|undefined {
+  get data(): Data | undefined {
     return this.data_;
   }
 
-  dispose() {
+  invalidate() {
+    this.data_ = undefined;
+  }
+
+  [Symbol.dispose]() {
     this.data_ = undefined;
   }
 

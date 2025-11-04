@@ -983,7 +983,8 @@ void QQDMIncubationTask::initializeRequiredProperties(QQmlDelegateModelItem *mod
                 if (wasInRequired) {
                     QQmlAnyBinding binding;
                     binding = new QQmlPropertyToPropertyBinding(
-                            engine, itemOrProxy, i, targetProp.object(), targetProp.index());
+                            engine, itemOrProxy, QQmlPropertyIndex(i),
+                            targetProp.object(), targetProp.index());
                     binding.installOn(targetProp);
                 }
             }
@@ -1356,12 +1357,19 @@ QVariant QQmlDelegateModelPrivate::variantValue(QQmlListCompositor::Group group,
             role = name.left(dot);
         QVariant value = model->value(it.modelIndex(), role);
         while (dot > 0) {
-            QObject *obj = qvariant_cast<QObject*>(value);
-            if (!obj)
-                return QVariant();
             const int from = dot + 1;
             dot = name.indexOf(QLatin1Char('.'), from);
-            value = obj->property(QStringView{name}.mid(from, dot - from).toUtf8());
+            QStringView propertyName = QStringView{name}.mid(from, dot - from);
+            if (QObject *obj = qvariant_cast<QObject*>(value)) {
+                value = obj->property(propertyName.toUtf8());
+            } else if (const QMetaObject *metaObject = QQmlMetaType::metaObjectForValueType(value.metaType())) {
+                // Q_GADGET
+                const int propertyIndex = metaObject->indexOfProperty(propertyName.toUtf8());
+                if (propertyIndex >= 0)
+                    value = metaObject->property(propertyIndex).readOnGadget(value.constData());
+            } else {
+                return QVariant();
+            }
         }
         return value;
     }
@@ -2382,8 +2390,7 @@ void QQmlDelegateModelItem::childContextObjectDestroyed(QObject *childContextObj
 
     for (QQmlRefPointer<QQmlContextData> ctxt = contextData->childContexts(); ctxt;
          ctxt = ctxt->nextChild()) {
-        if (ctxt->contextObject() == childContextObject)
-            ctxt->setContextObject(nullptr);
+        ctxt->deepClearContextObject(childContextObject);
     }
 }
 
@@ -2484,9 +2491,8 @@ void QQmlDelegateModelItem::destroyObject()
     Q_ASSERT(data);
     if (data->ownContext) {
         data->ownContext->clearContext();
-        if (data->ownContext->contextObject() == object)
-            data->ownContext->setContextObject(nullptr);
-        data->ownContext = nullptr;
+        data->ownContext->deepClearContextObject(object);
+        data->ownContext.reset();
         data->context = nullptr;
     }
     /* QTBUG-87228: when destroying object at the application exit, the deferred

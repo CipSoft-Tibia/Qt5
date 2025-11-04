@@ -9,6 +9,8 @@ import '@material/web/focus/md-focus-ring.js';
 
 import {css, CSSResultGroup, html, LitElement, nothing} from 'lit';
 
+import {shadowPiercingActiveElements} from '../helpers/helpers';
+
 const DEFAULT_TICK_MARGIN = css`14px`;
 
 function renderTick() {
@@ -27,6 +29,9 @@ function renderTick() {
                 0l4.5-4.5c.44-.439.44-1.151 0-1.59Z"/>
       </svg>`;
 }
+
+/** The style options for the Card component. */
+export type CardStyle = 'outline'|'filled'|'elevated';
 
 /** A chromeOS compliant card. */
 export class Card extends LitElement {
@@ -71,6 +76,7 @@ export class Card extends LitElement {
       position: relative;
       text-align: start;
       width: 100%;
+      isolation: isolate;
     }
 
     #content {
@@ -164,7 +170,7 @@ export class Card extends LitElement {
   interactive = false;
 
   /** @export */
-  cardStyle: 'outline'|'filled'|'elevated' = 'outline';
+  cardStyle: CardStyle = 'outline';
 
   /**
    * The card's aria role. Allowed values are a short list of expected roles for
@@ -218,6 +224,20 @@ export class Card extends LitElement {
     `;
   }
 
+  /**
+   * Sets focus on the card container if the card is interactive and tabbable.
+   * Otherwise, attempts to set focus on a nested element.
+   */
+  override focus() {
+    const isTabbable = this.tabIndex > -1;
+    const isInteractive = !this.disabled && this.interactive && isTabbable;
+    if (isInteractive || isTabbable) {
+      this.renderRoot.querySelector<HTMLDivElement>('#container')?.focus();
+      return;
+    }
+    this.attemptToFocusOnNestedElement();
+  }
+
   private onKeyDown(e: KeyboardEvent) {
     switch (e.key) {
       case 'Enter':
@@ -233,6 +253,106 @@ export class Card extends LitElement {
         break;
       default:
         break;
+    }
+  }
+
+  /**
+   * Returns true if setting focus on the element would make it the active
+   * element.
+   */
+  private tryFocus(el: HTMLElement) {
+    // Skip elements with attributes that make them not focusable.
+    // https://web.dev/learn/html/focus#making_interactive_elements_inert
+    const notTabbable = el.hasAttribute('tabindex') && el.tabIndex < 0;
+    const disabled = el.hasAttribute('disabled');
+    const inert = el.hasAttribute('inert');
+    if (notTabbable || disabled || inert) {
+      return false;
+    }
+
+    // Attempt to focus the element and verify if focus succeeded by checking
+    // if it is the shadow piercing active element.
+    el.focus();
+    const activeElement = shadowPiercingActiveElements();
+    if (activeElement.includes(el)) {
+      return true;
+    }
+
+    return false;
+  }
+
+  /**
+   * Recursively checks if provided element or any of the element's children are
+   * focusable via the tryFocus method. Stops at the first focusable element and
+   * focuses it.
+   */
+  private hasFocusableChild(parent: HTMLElement) {
+    const orderedChildren =
+        this.convertElementsToSortedHTMLElements(parent.children);
+    for (const child of orderedChildren) {
+      if (this.tryFocus(child)) {
+        return true;
+      }
+      if (this.hasFocusableChild(child)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /**
+   * Converts list of Elements or HTMLCollection to a list of HTMLElements
+   * sorted in an attempt to honor tab order. For tabIndex, positive values are
+   * tabbable in assending order. Followed by elements with tabIndex=0. In sort,
+   * NaN is treated as zero.  Finally, elements
+   * with tabIndex=-1 are not tabbable and thus filtered out. See:
+   * http://go/mdn/HTML/Global_attributes/tabindex
+   */
+  private convertElementsToSortedHTMLElements(elements: Element[]|
+                                              HTMLCollection) {
+    if (elements.length === 0) {
+      return [] as HTMLElement[];
+    }
+    const sorted =
+        Array.from(elements)
+            .map(el => el as HTMLElement)
+            // Remove elements which are not tabbable (i.e. tabIndex=-1) or
+            // became undefined when casting to a HTMLElement.
+            .filter(
+                el => el &&
+                    (!el.hasAttribute('tabindex') ||
+                     (el.hasAttribute('tabindex') && el.tabIndex > -1))) ??
+        [];
+    sorted.sort((a, b) => {
+      if (a.tabIndex !== b.tabIndex && a.tabIndex === 0) {
+        return 1;
+      }
+
+      if (a.tabIndex !== b.tabIndex && b.tabIndex === 0) {
+        return -1;
+      }
+
+      return a.tabIndex - b.tabIndex;
+    });
+    return sorted;
+  }
+
+  /**
+   * Attempts to set the active element to the first focusable child of the
+   * card's default slot.
+   */
+  private attemptToFocusOnNestedElement() {
+    const slot =
+        this.renderRoot.querySelector<HTMLSlotElement>('#content > slot');
+    const slottedItems =
+        this.convertElementsToSortedHTMLElements(slot!.assignedElements());
+    for (const element of slottedItems) {
+      if (this.tryFocus(element)) {
+        return;
+      }
+      if (this.hasFocusableChild(element)) {
+        return;
+      }
     }
   }
 }

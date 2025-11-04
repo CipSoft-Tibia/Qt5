@@ -1,5 +1,6 @@
 // Copyright (C) 2020 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 // qfutureinterface.h included from qfuture.h
 #include "qfuture.h"
@@ -898,8 +899,8 @@ void QFutureInterfaceBase::setContinuation(std::function<void(const QFutureInter
     // future's data stays alive.
     if (d->continuationState != QFutureInterfaceBasePrivate::Cleaned) {
         if (d->continuation) {
-            qWarning() << "Adding a continuation to a future which already has a continuation. "
-                          "The existing continuation is overwritten.";
+            qWarning("Adding a continuation to a future which already has a continuation. "
+                     "The existing continuation is overwritten.");
         }
         d->continuation = std::move(func);
         d->continuationData = continuationFutureData;

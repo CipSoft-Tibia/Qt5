@@ -38,6 +38,7 @@ namespace internal {
   V(kInvalidJumpTableIndex, "Invalid jump table index")                        \
   V(kInvalidParametersAndRegistersInGenerator,                                 \
     "invalid parameters and registers in generator")                           \
+  V(kMaglevGraphBuildingFailed, "Maglev optimized graph construction failed")  \
   V(kMissingBytecodeArray, "Missing bytecode array from function")             \
   V(kObjectNotTagged, "The object is not tagged")                              \
   V(kObjectTagged, "The object is tagged")                                     \
@@ -60,7 +61,6 @@ namespace internal {
   V(kOperandIsNotACode, "Operand is not a Code object")                        \
   V(kOperandIsNotAMap, "Operand is not a Map object")                          \
   V(kOperandIsNotASmi, "Operand is not a smi")                                 \
-  V(kMaglevOsrTodo, "OSR into maglev is not implemented yet")                  \
   V(kPromiseAlreadySettled, "Promise already settled")                         \
   V(kReceivedInvalidReturnAddress, "Received invalid return address")          \
   V(kRegisterDidNotMatchExpectedRoot, "Register did not match expected root")  \
@@ -104,7 +104,10 @@ namespace internal {
   V(kInvalidReceiver, "Expected JS object or primitive object")                \
   V(kUnexpectedInstanceType, "Unexpected instance type encountered")           \
   V(kTurboshaftTypeAssertionFailed,                                            \
-    "A type assertion failed in Turboshaft-generated code")
+    "A type assertion failed in Turboshaft-generated code")                    \
+  V(kMetadataAreaStartDoesNotMatch,                                            \
+    "The metadata doesn't belong to the "                                      \
+    "chunk")
 
 #define BAILOUT_MESSAGES_LIST(V)                                             \
   V(kNoReason, "no reason")                                                  \

@@ -1,0 +1,52 @@
+// Copyright (C) 2025 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
+
+#ifndef QGRPCOPERATIONCONTEXT_P_H
+#define QGRPCOPERATIONCONTEXT_P_H
+
+//
+//  W A R N I N G
+//  -------------
+//
+// This file is not part of the Qt API.  It exists for the convenience
+// of other Qt classes.  This header file may change from version to
+// version without notice, or even be removed.
+//
+// We mean it.
+//
+
+#include <QtGrpc/qabstractgrpcchannel.h>
+#include <QtGrpc/qgrpccalloptions.h>
+#include <QtGrpc/qgrpcoperationcontext.h>
+
+#include <QtCore/private/qobject_p.h>
+#include <QtCore/qhash.h>
+#include <QtCore/qmetatype.h>
+#include <QtCore/qtconfigmacros.h>
+
+QT_BEGIN_NAMESPACE
+
+class QGrpcOperationContextPrivate : public QObjectPrivate
+{
+    Q_DECLARE_PUBLIC(QGrpcOperationContext)
+public:
+    QGrpcOperationContextPrivate(QLatin1StringView method_, QLatin1StringView service_,
+                                 QByteArrayView argument_, QGrpcCallOptions options_,
+                                 std::shared_ptr<QAbstractProtobufSerializer> &&serializer_)
+        : method(method_), service(service_), argument(argument_.toByteArray()),
+          options(std::move(options_)), serializer(std::move(serializer_))
+    {
+    }
+
+    QLatin1StringView method;
+    QLatin1StringView service;
+    QByteArray argument;
+    QGrpcCallOptions options;
+    std::shared_ptr<QAbstractProtobufSerializer> serializer;
+    QHash<QByteArray, QByteArray> serverMetadata;
+    QMetaType responseMetaType;
+};
+
+QT_END_NAMESPACE
+
+#endif // QGRPCOPERATIONCONTEXT_P_H

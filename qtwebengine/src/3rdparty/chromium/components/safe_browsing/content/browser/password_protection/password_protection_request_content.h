@@ -6,6 +6,8 @@
 #define COMPONENTS_SAFE_BROWSING_CONTENT_BROWSER_PASSWORD_PROTECTION_PASSWORD_PROTECTION_REQUEST_CONTENT_H_
 
 #include <memory>
+#include <optional>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -23,6 +25,7 @@
 
 #if BUILDFLAG(SAFE_BROWSING_AVAILABLE)
 #include "components/safe_browsing/content/common/safe_browsing.mojom.h"
+#include "mojo/public/cpp/base/proto_wrapper_passkeys.h"
 #include "mojo/public/cpp/bindings/remote.h"
 #include "third_party/skia/include/core/SkBitmap.h"
 #endif  // BUILDFLAG(SAFE_BROWSING_AVAILABLE)
@@ -97,7 +100,8 @@ class PasswordProtectionRequestContent final
   // associated modal warning dialog.
   void ResumeDeferredNavigations();
 
-  std::set<PasswordProtectionCommitDeferringCondition*>&
+  std::set<
+      raw_ptr<PasswordProtectionCommitDeferringCondition, SetExperimental>>&
   get_deferred_navigations_for_testing() {
     return deferred_navigations_;
   }
@@ -130,7 +134,7 @@ class PasswordProtectionRequestContent final
 
   // Called when the DOM feature extraction is complete.
   void OnGetDomFeatures(mojom::PhishingDetectorResult result,
-                        const std::string& verdict);
+                        std::optional<mojo_base::ProtoWrapper> verdict);
 
   void ExtractClientPhishingRequestFeatures(ClientPhishingRequest verdict);
 
@@ -169,7 +173,8 @@ class PasswordProtectionRequestContent final
 
   // Tracks navigations that are deferred on this request and any associated
   // modal dialog.
-  std::set<PasswordProtectionCommitDeferringCondition*> deferred_navigations_;
+  std::set<raw_ptr<PasswordProtectionCommitDeferringCondition, SetExperimental>>
+      deferred_navigations_;
 
   // If a request is sent, this is the token returned by the WebUI.
   int web_ui_token_;

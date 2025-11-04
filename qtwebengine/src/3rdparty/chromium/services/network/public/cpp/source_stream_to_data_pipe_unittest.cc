@@ -4,6 +4,9 @@
 
 #include "services/network/public/cpp/source_stream_to_data_pipe.h"
 
+#include <optional>
+
+#include "base/containers/span.h"
 #include "base/functional/bind.h"
 #include "base/memory/raw_ptr.h"
 #include "base/test/bind.h"
@@ -11,7 +14,6 @@
 #include "net/base/net_errors.h"
 #include "net/filter/mock_source_stream.h"
 #include "testing/gtest/include/gtest/gtest.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 
 namespace network {
 
@@ -112,10 +114,11 @@ class SourceStreamToDataPipeTest
   int ReadPipe(std::string* output) {
     MojoResult result = MOJO_RESULT_OK;
     while (result == MOJO_RESULT_OK || result == MOJO_RESULT_SHOULD_WAIT) {
-      char buffer[16];
-      uint32_t read_size = sizeof(buffer);
-      result =
-          consumer_end().ReadData(buffer, &read_size, MOJO_READ_DATA_FLAG_NONE);
+      std::string buffer(16, '\0');
+      size_t read_size = 0;
+      result = consumer_end().ReadData(MOJO_READ_DATA_FLAG_NONE,
+                                       base::as_writable_byte_span(buffer),
+                                       read_size);
       if (result == MOJO_RESULT_FAILED_PRECONDITION)
         break;
       if (result == MOJO_RESULT_SHOULD_WAIT) {
@@ -123,7 +126,7 @@ class SourceStreamToDataPipeTest
         CompleteReadsIfAsync();
       } else {
         EXPECT_EQ(result, MOJO_RESULT_OK);
-        output->append(buffer, read_size);
+        output->append(std::string_view(buffer).substr(0, read_size));
       }
     }
     EXPECT_TRUE(CallbackResult().has_value());
@@ -136,7 +139,7 @@ class SourceStreamToDataPipeTest
 
   void CloseConsumerHandle() { consumer_end_.reset(); }
   void RunUntilIdle() { task_environment_.RunUntilIdle(); }
-  absl::optional<int> CallbackResult() { return callback_result_; }
+  std::optional<int> CallbackResult() { return callback_result_; }
 
  private:
   void FinishedReading(int result) { callback_result_ = result; }
@@ -145,7 +148,7 @@ class SourceStreamToDataPipeTest
   std::unique_ptr<SourceStreamToDataPipe> adapter_;  // owned by `adapter_`.
   raw_ptr<net::MockSourceStream> source_;
   mojo::ScopedDataPipeConsumerHandle consumer_end_;
-  absl::optional<int> callback_result_;
+  std::optional<int> callback_result_;
 };
 
 INSTANTIATE_TEST_SUITE_P(

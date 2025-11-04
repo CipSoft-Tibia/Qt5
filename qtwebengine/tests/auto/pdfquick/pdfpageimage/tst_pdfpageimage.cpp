@@ -14,7 +14,7 @@ using namespace Qt::StringLiterals;
 // #define DEBUG_WRITE_OUTPUT
 
 #ifdef DEBUG_WRITE_OUTPUT
-Q_LOGGING_CATEGORY(lcTests, "qt.pdf.tests")
+Q_STATIC_LOGGING_CATEGORY(lcTests, "qt.pdf.tests")
 #endif
 
 class tst_PdfPageImage : public QQuickDataTest
@@ -55,7 +55,10 @@ void tst_PdfPageImage::settableProperties_data()
     QTest::addColumn<QRegularExpression>("expectedWarning");
 
     const QRegularExpression NoWarning;
-    const qreal dpr = qGuiApp->devicePixelRatio();
+    QQuickView window;
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+    auto dpr = window.devicePixelRatio();
 
     QTest::newRow("source") << Properties(Source) << (QSizeF(600, 790) * dpr).toSize()
         << QRegularExpression("document property not set: falling back to inefficient loading"); // QTBUG-104767

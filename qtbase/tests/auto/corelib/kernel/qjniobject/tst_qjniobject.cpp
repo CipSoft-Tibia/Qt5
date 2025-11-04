@@ -6,7 +6,9 @@
 #include <QString>
 #include <QtCore/QJniEnvironment>
 #include <QtCore/QJniObject>
-#include <QtTest>
+#include <QTest>
+
+QT_BEGIN_NAMESPACE
 
 using namespace Qt::StringLiterals;
 
@@ -2274,6 +2276,8 @@ void tst_QJniObject::callStaticOverloadResolution()
             "staticEchoMethod", str.object<jstring>()).toString();
     QCOMPARE(result, value);
 }
+
+QT_END_NAMESPACE
 
 QTEST_MAIN(tst_QJniObject)
 

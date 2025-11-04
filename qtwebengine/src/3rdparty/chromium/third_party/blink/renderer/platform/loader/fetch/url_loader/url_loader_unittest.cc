@@ -2,9 +2,12 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#include "third_party/blink/renderer/platform/loader/fetch/url_loader/url_loader.h"
+
 #include <stdint.h>
 #include <string.h>
 
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -37,6 +40,7 @@
 #include "services/network/public/mojom/url_loader_completion_status.mojom.h"
 #include "services/network/public/mojom/url_response_head.mojom.h"
 #include "testing/gtest/include/gtest/gtest.h"
+#include "third_party/abseil-cpp/absl/types/variant.h"
 #include "third_party/blink/public/platform/resource_load_info_notifier_wrapper.h"
 #include "third_party/blink/public/platform/scheduler/test/renderer_scheduler_test_support.h"
 #include "third_party/blink/public/platform/web_data.h"
@@ -52,7 +56,6 @@
 #include "third_party/blink/renderer/platform/loader/fetch/url_loader/resource_request_client.h"
 #include "third_party/blink/renderer/platform/loader/fetch/url_loader/resource_request_sender.h"
 #include "third_party/blink/renderer/platform/loader/fetch/url_loader/sync_load_response.h"
-#include "third_party/blink/renderer/platform/loader/fetch/url_loader/url_loader.h"
 #include "third_party/blink/renderer/platform/loader/fetch/url_loader/url_loader_client.h"
 #include "third_party/blink/renderer/platform/weborigin/kurl.h"
 #include "third_party/blink/renderer/platform/wtf/functional.h"
@@ -157,12 +160,12 @@ class FakeURLLoaderFactory final : public network::mojom::URLLoaderFactory {
       mojo::PendingRemote<network::mojom::URLLoaderClient> client,
       const net::MutableNetworkTrafficAnnotationTag& traffic_annotation)
       override {
-    NOTREACHED();
+    NOTREACHED_IN_MIGRATION();
   }
 
   void Clone(mojo::PendingReceiver<network::mojom::URLLoaderFactory> receiver)
       override {
-    NOTREACHED();
+    NOTREACHED_IN_MIGRATION();
   }
 };
 
@@ -234,8 +237,8 @@ class TestURLLoaderClient : public URLLoaderClient {
 
   void DidReceiveResponse(
       const WebURLResponse& response,
-      mojo::ScopedDataPipeConsumerHandle body,
-      absl::optional<mojo_base::BigBuffer> cached_metadata) override {
+      absl::variant<mojo::ScopedDataPipeConsumerHandle, SegmentedBuffer> body,
+      std::optional<mojo_base::BigBuffer> cached_metadata) override {
     EXPECT_TRUE(loader_);
     EXPECT_FALSE(did_receive_response_);
 
@@ -246,13 +249,13 @@ class TestURLLoaderClient : public URLLoaderClient {
       return;
     }
     DCHECK(!response_body_);
-    if (body) {
-      response_body_ = std::move(body);
+    // SegmentedBuffer is used only for BackgroundUrlLoader.
+    CHECK(absl::holds_alternative<mojo::ScopedDataPipeConsumerHandle>(body));
+    mojo::ScopedDataPipeConsumerHandle body_handle =
+        std::move(absl::get<mojo::ScopedDataPipeConsumerHandle>(body));
+    if (body_handle) {
+      response_body_ = std::move(body_handle);
     }
-  }
-
-  void DidReceiveData(const char* data, size_t dataLength) override {
-    NOTREACHED();
   }
 
   void DidFinishLoading(base::TimeTicks finishTime,
@@ -296,7 +299,7 @@ class TestURLLoaderClient : public URLLoaderClient {
   bool did_receive_response() const { return did_receive_response_; }
   bool did_receive_response_body() const { return !!response_body_; }
   bool did_finish() const { return did_finish_; }
-  const absl::optional<WebURLError>& error() const { return error_; }
+  const std::optional<WebURLError>& error() const { return error_; }
   const WebURLResponse& response() const { return response_; }
 
  private:
@@ -313,7 +316,7 @@ class TestURLLoaderClient : public URLLoaderClient {
   bool did_receive_response_;
   mojo::ScopedDataPipeConsumerHandle response_body_;
   bool did_finish_;
-  absl::optional<WebURLError> error_;
+  std::optional<WebURLError> error_;
   WebURLResponse response_;
 };
 
@@ -373,7 +376,7 @@ class URLLoaderTest : public testing::Test {
 
     resource_request_client()->OnReceivedResponse(
         network::mojom::URLResponseHead::New(), std::move(handle_to_pass),
-        /*cached_metadata=*/absl::nullopt);
+        /*cached_metadata=*/std::nullopt);
     EXPECT_TRUE(client()->did_receive_response());
   }
 
@@ -417,7 +420,7 @@ class URLLoaderTest : public testing::Test {
   base::test::SingleThreadTaskEnvironment task_environment_;
   mojo::ScopedDataPipeProducerHandle body_handle_;
   std::unique_ptr<TestURLLoaderClient> client_;
-  raw_ptr<MockResourceRequestSender, ExperimentalRenderer> sender_ = nullptr;
+  raw_ptr<MockResourceRequestSender> sender_ = nullptr;
 };
 
 TEST_F(URLLoaderTest, Success) {
@@ -540,9 +543,9 @@ TEST_F(URLLoaderTest, SSLInfo) {
       {"subjectAltName_sanity_check.pem", "root_ca_cert.pem"}, &certs));
   ASSERT_EQ(2U, certs.size());
 
-  base::StringPiece cert0_der =
+  std::string_view cert0_der =
       net::x509_util::CryptoBufferAsStringPiece(certs[0]->cert_buffer());
-  base::StringPiece cert1_der =
+  std::string_view cert1_der =
       net::x509_util::CryptoBufferAsStringPiece(certs[1]->cert_buffer());
 
   net::SSLInfo ssl_info;
@@ -555,7 +558,7 @@ TEST_F(URLLoaderTest, SSLInfo) {
   head.ssl_info = ssl_info;
   WebURLResponse web_url_response = WebURLResponse::Create(url, head, true, -1);
 
-  const absl::optional<net::SSLInfo>& got_ssl_info =
+  const std::optional<net::SSLInfo>& got_ssl_info =
       web_url_response.ToResourceResponse().GetSSLInfo();
   ASSERT_TRUE(got_ssl_info.has_value());
   EXPECT_EQ(ssl_info.connection_status, got_ssl_info->connection_status);
@@ -588,7 +591,7 @@ TEST_F(URLLoaderTest, SyncLengths) {
   sender()->set_sync_load_response(std::move(sync_load_response));
 
   WebURLResponse response;
-  absl::optional<WebURLError> error;
+  std::optional<WebURLError> error;
   scoped_refptr<SharedBuffer> data;
   int64_t encoded_data_length = 0;
   uint64_t encoded_body_length = 0;

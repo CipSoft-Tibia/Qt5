@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!DOCTYPE TS>
-<TS version="2.1" language="sv">
+<TS version="2.1" language="sv_SE">
 <context>
     <name>AboutDialog</name>
     <message>
@@ -28,7 +28,7 @@
     </message>
     <message>
         <source>Note that the modified entries will be reset to unfinished if &apos;Set translated entries to finished&apos; above is unchecked</source>
-        <translation>Notera att ändrade poster kommer att anges som oavslutade, om &quot;Ange översatta poster som slutförda&quot; är avmarkerat.</translation>
+        <translation>Notera att ändrade poster kommer att nollställas till oavslutade, om &quot;Ange översatta poster som färdiga&quot; är avmarkerat</translation>
     </message>
     <message>
         <source>Translate also finished entries</source>
@@ -167,11 +167,11 @@ Kommer att anta en enskild universell form.</translation>
     <name>FMT</name>
     <message>
         <source>GNU Gettext localization files</source>
-        <translation>GNU Gettext översättningsfiler</translation>
+        <translation>GNU Gettext-lokalanpassningsfiler</translation>
     </message>
     <message>
         <source>GNU Gettext localization template files</source>
-        <translation>GNU Gettext översättningsmallar</translation>
+        <translation>GNU Gettext lokalanpassningsmallfiler</translation>
     </message>
     <message>
         <source>Compiled Qt translations</source>
@@ -179,15 +179,15 @@ Kommer att anta en enskild universell form.</translation>
     </message>
     <message>
         <source>Qt Linguist &apos;Phrase Book&apos;</source>
-        <translation>Qt Linguist &quot;Ordbok&quot;</translation>
+        <translation>Qt Linguist &apos;ordbok&apos;</translation>
     </message>
     <message>
         <source>Qt translation sources</source>
-        <translation>Qt översättningskällor</translation>
+        <translation>Qt-översättningskällor</translation>
     </message>
     <message>
         <source>XLIFF localization files</source>
-        <translation>XLIFF översättningsfiler</translation>
+        <translation>XLIFF lokalanpassningsfiler</translation>
     </message>
 </context>
 <context>
@@ -317,29 +317,29 @@ Kommer att anta en enskild universell form.</translation>
     <message numerus="yes">
         <source>Dropped %n message(s) which had no ID.</source>
         <translation>
-            <numerusform>Undantog %n meddelande som saknade ID.</numerusform>
-            <numerusform>Undantog %n meddelanden som saknade ID.</numerusform>
+            <numerusform>Släppte %n meddelande som inte har något id.</numerusform>
+            <numerusform>Släppte %n meddelanden som inte har något id.</numerusform>
         </translation>
     </message>
     <message numerus="yes">
         <source>Excess context/disambiguation dropped from %n message(s).</source>
         <translation>
-            <numerusform>Överflödig kontext/tvetydighet avlägsnades från %n meddelande.</numerusform>
-            <numerusform>Överflödig kontext/tvetydighet avlägsnades från %n meddelanden.</numerusform>
+            <numerusform>Överflödiga kontext/särskiljning släpptes från %n meddelande.</numerusform>
+            <numerusform>Överflödiga kontext/särskiljning släpptes från %n meddelanden.</numerusform>
         </translation>
     </message>
     <message numerus="yes">
         <source>    Generated %n translation(s) (%1 finished and %2 unfinished)</source>
         <translation>
-            <numerusform>    Genererade %n översättning (%1 slutförd och %2 oavslutad)</numerusform>
+            <numerusform>    Genererade %n översättning (%1 slutförda och %2 oavslutade)</numerusform>
             <numerusform>    Genererade %n översättningar (%1 slutförda och %2 oavslutade)</numerusform>
         </translation>
     </message>
     <message numerus="yes">
         <source>    Ignored %n untranslated source text(s)</source>
         <translation>
-            <numerusform>    Ignorerade %n oöversatt källtext</numerusform>
-            <numerusform>    Ignorerade %n oöversatta källtexter</numerusform>
+            <numerusform>    Ignorerade %n oavslutad källtext</numerusform>
+            <numerusform>    Ignorerade %n oavslutade källtexter</numerusform>
         </translation>
     </message>
 </context>
@@ -611,7 +611,7 @@ Kommer att anta en enskild universell form.</translation>
     </message>
     <message>
         <source>Move to the previous item.</source>
-        <translation>Flytta till föregående post</translation>
+        <translation>Flytta till föregående post.</translation>
     </message>
     <message>
         <source>Ctrl+Shift+K</source>
@@ -664,10 +664,6 @@ Kommer att anta en enskild universell form.</translation>
     <message>
         <source>&amp;Accelerators</source>
         <translation>&amp;Acceleratorer</translation>
-    </message>
-    <message>
-        <source>Toggle the validity check of accelerators</source>
-        <translation>Validering av acceleratorer</translation>
     </message>
     <message>
         <source>Toggles the validity check of accelerators, i.e. whether the number of ampersands in the source and translation text is the same. If the check fails, a message is shown in the warnings window.</source>
@@ -751,7 +747,7 @@ Kommer att anta en enskild universell form.</translation>
     </message>
     <message>
         <source>Sort the items back in the same order as in the message file.</source>
-        <translation>Sortera tillbaka objekten till samma ordning som i meddelandefilen.</translation>
+        <translation>Sortera tillbaka posterna till samma ordning som i meddelandefilen.</translation>
     </message>
     <message>
         <source>&amp;Display guesses</source>
@@ -799,7 +795,7 @@ Kommer att anta en enskild universell form.</translation>
     </message>
     <message>
         <source>Enter What&apos;s This? mode.</source>
-        <translation>Vill du gå till förklaringsläget?</translation>
+        <translation>Gå in i &quot;Vad är detta?&quot;-läget.</translation>
     </message>
     <message>
         <source>Shift+F1</source>
@@ -910,10 +906,6 @@ Kommer att anta en enskild universell form.</translation>
         <translation>Visualisera blanksteg</translation>
     </message>
     <message>
-        <source>Toggle visualize whitespace in editors</source>
-        <translation>Visualisera blanksteg i redigerare</translation>
-    </message>
-    <message>
         <source>Increase</source>
         <translation>Öka</translation>
     </message>
@@ -963,11 +955,11 @@ Kommer att anta en enskild universell form.</translation>
     </message>
     <message>
         <source>Mark item as done</source>
-        <translation>Markera objekt som slutfört</translation>
+        <translation>Markera post som slutförd</translation>
     </message>
     <message>
         <source>Mark this item as done.</source>
-        <translation>Markera detta objekt som slutfört.</translation>
+        <translation>Markera denna post som slutförd.</translation>
     </message>
     <message>
         <source></source>
@@ -988,7 +980,7 @@ Kommer att anta en enskild universell form.</translation>
     </message>
     <message>
         <source>Items</source>
-        <translation>Objekt</translation>
+        <translation>Poster</translation>
     </message>
     <message>
         <source>This panel lists the source contexts.</source>
@@ -1102,7 +1094,7 @@ Alla filer (*)</translation>
     </message>
     <message>
         <source>Search wrapped.</source>
-        <translation>Sök inslagna.</translation>
+        <translation>Sökningen nådde slutet.</translation>
     </message>
     <message>
         <source>Qt Linguist</source>
@@ -1185,8 +1177,12 @@ Alla filer (*)</translation>
         <translation>Version %1</translation>
     </message>
     <message>
-        <source>&lt;center&gt;&lt;img src=&quot;:/images/icons/linguist-128-32.png&quot;/&gt;&lt;/img&gt;&lt;p&gt;%1&lt;/p&gt;&lt;/center&gt;&lt;p&gt;Qt Linguist is a tool for adding translations to Qt applications.&lt;/p&gt;&lt;p&gt;Copyright (C) %2 The Qt Company Ltd.</source>
-        <translation>&lt;center&gt;&lt;img src=&quot;:/images/icons/linguist-128-32.png&quot;/&gt;&lt;/img&gt;&lt;p&gt;%1&lt;/p&gt;&lt;/center&gt;&lt;p&gt;Qt Linguist är ett verktyg för att lägga till översättningar i Qt-program.&lt;/p&gt;&lt;p&gt;Copyright (C) %2 Qt Company Ltd.</translation>
+        <source>Qt Linguist is a tool for adding translations to Qt applications.</source>
+        <translation>Qt Linguist är ett verktyg för att lägga till översättningar till Qt-program.</translation>
+    </message>
+    <message>
+        <source>Copyright (C) %1 The Qt Company Ltd.</source>
+        <translation>Copyright (C) %1 The Qt Company Ltd.</translation>
     </message>
     <message>
         <source>Do you want to save the modified files?</source>
@@ -1318,6 +1314,14 @@ Alla filer (*)</translation>
     <message>
         <source>All</source>
         <translation>Alla</translation>
+    </message>
+    <message>
+        <source>Toggles the validity check of accelerators</source>
+        <translation>Växlar giltighetskontroll för acceleratorer</translation>
+    </message>
+    <message>
+        <source>Toggles visualize whitespace in editors</source>
+        <translation>Växlar visualisera blanksteg i redigerare</translation>
     </message>
 </context>
 <context>
@@ -1689,7 +1693,7 @@ Rad: %2</translation>
     </message>
     <message>
         <source>%1 (%2)</source>
-        <extracomment>&lt;english&gt; (&lt;endonym&gt;) (language and country names)</extracomment>
+        <extracomment>&lt;english&gt; (&lt;endonym&gt;) (language names)</extracomment>
         <translation>%1 (%2)</translation>
     </message>
     <message>
@@ -1698,7 +1702,7 @@ Rad: %2</translation>
     </message>
     <message>
         <source>Any Country</source>
-        <translation>Alla länder</translation>
+        <translation>Valfritt land</translation>
     </message>
 </context>
 </TS>

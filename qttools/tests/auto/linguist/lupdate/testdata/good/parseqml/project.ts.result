@@ -312,5 +312,10 @@
         <source>template literal</source>
         <translation type="unfinished"></translation>
     </message>
+    <message>
+        <location filename="main.qml" line="108"/>
+        <source></source>
+        <translation type="unfinished"></translation>
+    </message>
 </context>
 </TS>

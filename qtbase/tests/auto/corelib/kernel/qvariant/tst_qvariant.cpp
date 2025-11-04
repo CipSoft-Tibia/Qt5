@@ -51,7 +51,11 @@ CHECK_GET(MyVariant, const &&);
 
 #include <QTest>
 
+// In each group:
 // Please stick to alphabetic order.
+#include <QtGui/qtransform.h>
+
+// QtCore:
 #include <QAssociativeIterable>
 #include <QBitArray>
 #include <QBuffer>
@@ -215,6 +219,24 @@ private slots:
     void toBool_data();
     void toBool();
 
+    void toSChar_data();
+    void toSChar();
+
+    void toUChar_data();
+    void toUChar();
+
+    void toShort_data();
+    void toShort();
+
+    void toUShort_data();
+    void toUShort();
+
+    void toLong_data();
+    void toLong();
+
+    void toULong_data();
+    void toULong();
+
     void toLongLong_data();
     void toLongLong();
 
@@ -242,6 +264,9 @@ private slots:
     void toFloat_data();
     void toFloat();
 
+    void toFloat16_data();
+    void toFloat16();
+
     void toPointF_data();
     void toPointF();
 
@@ -254,6 +279,7 @@ private slots:
     void qvariant_cast_QObject_wrapper();
     void qvariant_cast_QSharedPointerQObject();
     void qvariant_cast_const();
+    void qvariant_cast_QTransform();
 
     void toLocale();
 
@@ -397,11 +423,13 @@ private slots:
 
     void getIf_int() { getIf_impl(42); }
     void getIf_QString() { getIf_impl(u"string"_s); };
+    void getIf_QTransform() { getIf_impl(QTransform{1, 2, 3, 4, 5, 6, 7, 8, 9}); } // too large
     void getIf_NonDefaultConstructible();
     void getIfSpecial();
 
     void get_int() { get_impl(42); }
     void get_QString() { get_impl(u"string"_s); }
+    void get_QTransform() { get_impl(QTransform{1, 2, 3, 4, 5, 6, 7, 8, 9}); } // too large
     void get_NonDefaultConstructible();
 
 private:
@@ -409,6 +437,7 @@ private:
             // list here all the types with which we instantiate getIf_impl:
             int,
             QString,
+            QTransform,
             NonDefaultConstructible
         >;
     template <typename T>
@@ -829,47 +858,93 @@ void tst_QVariant::convert()
    QCOMPARE(var.toInt(), 0);
 }
 
-void tst_QVariant::toInt_data()
+template <typename To, typename From> static void addNumberConversionHelper(From v)
+{
+    if constexpr (std::is_same_v<From, To>)
+        return;
+
+    To to = To(v);
+    QVariant var = QVariant::fromValue(v);
+
+    // std::numeric_limits is specialized for qfloat16, std::is_floating_point isn't.
+    if constexpr (std::numeric_limits<From>::is_iec559 && std::is_unsigned_v<To>) {
+        using STo = std::make_signed_t<To>;
+        STo s = STo(v);
+        Q_ASSERT(v < 0);
+        Q_ASSERT(s < 0);
+        QTest::addRow("negative-%s", var.typeName()) << var << To(s) << true;
+
+        v = -v;
+        to = To(v);
+        var = QVariant::fromValue(v);
+    }
+    QTest::addRow("%s", var.typeName()) << var << to << true;
+}
+
+template <typename To> static void addNumberConversions()
 {
     QTest::addColumn<QVariant>("value");
-    QTest::addColumn<int>("result");
+    QTest::addColumn<To>("result");
     QTest::addColumn<bool>("valueOK");
 
-    QTest::newRow( "invalid" ) << QVariant()  << 0 << false;
-    QTest::newRow( "int" ) << QVariant( 123 ) << 123 << true;
-    QTest::newRow( "char" ) << QVariant::fromValue('a') << int('a') << true;
-    signed char signedChar = -13;
-    QTest::newRow( "signed char" ) << QVariant::fromValue(signedChar) << -13 << true;
-    QTest::newRow( "short" ) << QVariant::fromValue(short(-7)) << int(-7) << true;
-    QTest::newRow( "ushort" ) << QVariant::fromValue(ushort(30000)) << 30000 << true;
-    QTest::newRow( "double" ) << QVariant( 3.1415927 ) << 3 << true;
-    QTest::newRow( "float" ) << QVariant( 3.1415927f ) << 3 << true;
-    QTest::newRow( "uint" ) << QVariant( 123u ) << 123 << true;
-    QTest::newRow( "int-string" ) << QVariant( QString("123") ) << 123 << true;
-    QTest::newRow( "string" ) << QVariant( QString("Unicode String") ) << 0 << false;
-    QTest::newRow( "longlong0" ) << QVariant( (qlonglong)34 ) << 34 << true;
-    QTest::newRow( "longlong1" ) << QVariant( intMax1 ) << (int)INT_MIN << true;
-    QTest::newRow( "ulonglong0" ) << QVariant( (qulonglong)34 ) << 34 << true;
-    QTest::newRow( "ulonglong1" ) << QVariant( uintMax1 ) << 0 << true;
-    QTest::newRow( "signedint" ) << QVariant( -123 ) << -123 << true;
-    QTest::newRow( "signeddouble" ) << QVariant( -3.1415927 ) << -3 << true;
-    QTest::newRow( "signedfloat" ) << QVariant( -3.1415927f ) << -3 << true;
-    QTest::newRow( "signedint-string" ) << QVariant( QString("-123") ) << -123 << true;
-    QTest::newRow( "signedlonglong0" ) << QVariant( (qlonglong)-34 ) << -34 << true;
-    QTest::newRow( "QChar" ) << QVariant(QChar('a')) << int('a') << true;
-    QByteArray bytearray(4, ' ');
-    bytearray[0] = 'T';
-    bytearray[1] = 'e';
-    bytearray[2] = 's';
-    bytearray[3] = 't';
-    QTest::newRow( "QByteArray1" ) << QVariant( bytearray ) << 0 << false;
-    bytearray[0] = '4';
-    bytearray[1] = '5';
-    bytearray[2] = '0';
-    bytearray[3] = '0';
-    QTest::newRow( "QByteArray2" ) << QVariant( bytearray ) << 4500 << true;
-    QTest::newRow("int-QJsonValue") << QVariant(QJsonValue(321)) << 321 << true;
-    QTest::newRow("undefined-QJsonValue") << QVariant(QJsonValue(QJsonValue::Undefined)) << 0 << false;
+    QTest::newRow("invalid") << QVariant() << To{} << false;
+
+    auto addNumber = [](auto v) { addNumberConversionHelper<To>(v); };
+    addNumber(true);
+    addNumber(char(1));
+    addNumber(qint8(-1));
+    addNumber(quint8(2));
+    // addNumber(u'A');
+    addNumber(short(-256));
+    addNumber(ushort(256));
+    // addNumber(U'\U00010000');
+    addNumber(-65536);
+    addNumber(65536U);
+    addNumber(-0x8000'0000L);
+    addNumber(0x8000'0000UL);
+    addNumber(-0x1'0000'0000LL);
+    addNumber(0x1'0000'000'0000ULL);
+    addNumber(qfloat16(-3.1415927f));
+    addNumber(-3.1415927f);
+    addNumber(-3.1415927);
+
+    if constexpr (sizeof(To) > sizeof(int)) {
+        // note: this includes double
+        qint64 value64 = (Q_INT64_C(12) << 35) + 8;
+        QTest::newRow("qint64") << QVariant::fromValue(value64) << To(value64) << true;
+        QTest::newRow("-qint64") << QVariant::fromValue(-value64) << To(-value64) << true;
+        QTest::newRow("LONG_MIN") << QVariant::fromValue(LONG_MIN) << To(LONG_MIN)  << true;
+        QTest::newRow("-LONG_MIN/2") << QVariant::fromValue(-(LONG_MIN / 2)) << -To(LONG_MIN/2)  << true;
+
+        if constexpr (std::is_integral_v<To>) {
+            QTest::newRow("LONG_MAX") << QVariant::fromValue(LONG_MAX) << To(LONG_MAX)  << true;
+            QTest::newRow("ULONG_MAX") << QVariant::fromValue(ULONG_MAX) << To(ULONG_MAX)  << true;
+        }
+    }
+
+    if constexpr (std::is_integral_v<To>)
+        QTest::newRow("QChar") << QVariant(QChar('a')) << To('a') << true;
+    QTest::newRow("nonint-QByteArray") << QVariant(QByteArray("zzzz")) << To{} << false;
+    QTest::newRow("nonint-QString") << QVariant(QString("zzzz")) << To{} << false;
+    QTest::newRow("undefined-QCborValue") << QVariant::fromValue<QCborValue>({}) << To{} << false;
+    QTest::newRow("undefined-QJsonValue") << QVariant(QJsonValue()) << To{} << false;
+
+    QTest::newRow("int-QByteArray") << QVariant(QByteArray("123")) << To(123) << true;
+    QTest::newRow("int-QCborValue") << QVariant::fromValue(QCborValue(321)) << To(321) << true;
+    QTest::newRow("int-QJsonValue") << QVariant(QJsonValue(321)) << To(321) << true;
+    QTest::newRow("int-QString") << QVariant(QString("123")) << To(123) << true;
+
+    if constexpr (std::numeric_limits<To>::is_iec559) {
+        QTest::newRow("fp-QByteArray") << QVariant(QByteArray("32.1")) << To(32.1) << true;
+        QTest::newRow("fp-QCborValue") << QVariant::fromValue(QCborValue(32.1)) << To(32.1) << true;
+        QTest::newRow("fp-QJsonValue") << QVariant(QJsonValue(32.1)) << To(32.1) << true;
+        QTest::newRow("fp-QString") << QVariant(QString("32.1")) << To(32.1) << true;
+    }
+}
+
+void tst_QVariant::toInt_data()
+{
+    addNumberConversions<int>();
 }
 
 #if QT_DEPRECATED_SINCE(6, 0)
@@ -878,70 +953,46 @@ void tst_QVariant::toInt_data()
 # define EXEC_DEPRECATED_CALL(x)
 #endif
 
-void tst_QVariant::toInt()
+template <typename T> static void checkNumberConversions(T (QVariant:: *toType)(bool *) const = nullptr)
 {
     QFETCH( QVariant, value );
-    QFETCH( int, result );
+    QFETCH( T, result );
     QFETCH( bool, valueOK );
-    EXEC_DEPRECATED_CALL(QVERIFY( value.isValid() == value.canConvert( QVariant::Int ) );)
-    QVERIFY( value.isValid() == value.canConvert(QMetaType::fromType<int>()) );
-    bool ok;
-    int i = value.toInt( &ok );
-    QCOMPARE( i, result );
-    QVERIFY( ok == valueOK );
+
+    QMetaType mt = QMetaType::fromType<T>();
+    int typeId = mt.id();
+    EXEC_DEPRECATED_CALL(QVERIFY(value.isValid() == value.canConvert(typeId));)
+    QCOMPARE(value.isValid(), value.canConvert(mt));
+
+    if (toType) {
+        // QVariant conversion API
+        bool ok;
+        T i = (value.*toType)(&ok);
+        QCOMPARE(i, result);
+        QVERIFY(ok == valueOK);
+    }
+
+    if (value.isValid()) {
+        // test the conversion API (through QMetaType)
+        QCOMPARE(value.convert(mt), valueOK);
+        QCOMPARE(qvariant_cast<T>(value), result);
+    }
+}
+
+void tst_QVariant::toInt()
+{
+    checkNumberConversions(&QVariant::toInt);
 }
 
 void tst_QVariant::toUInt_data()
 {
-    QTest::addColumn<QVariant>("value");
-    QTest::addColumn<uint>("result");
-    QTest::addColumn<bool>("valueOK");
-
-    QTest::newRow( "int" ) << QVariant( 123 ) << (uint)123 << true;
-    QTest::newRow( "char" ) << QVariant::fromValue('a') << uint('a') << true;
-    signed char signedChar = 12;
-    QTest::newRow( "signed char" ) << QVariant::fromValue(signedChar) << uint(12) << true;
-    QTest::newRow( "double" ) << QVariant( 3.1415927 ) << (uint)3 << true;
-    QTest::newRow( "float" ) << QVariant( 3.1415927f ) << (uint)3 << true;
-    QTest::newRow( "uint" ) << QVariant( 123u ) << (uint)123 << true;
-    QTest::newRow( "int-string" ) << QVariant( QString("123") ) << (uint)123 << true;
-    QTest::newRow( "string" ) << QVariant( QString("Unicode String") ) << (uint)0 << false;
-    QTest::newRow( "string2" ) << QVariant( QString("4") ) << (uint)4 << true;
-    QTest::newRow( "longlong0" ) << QVariant( (qlonglong)34 ) << (uint)34 << true;
-    QTest::newRow( "longlong1" ) << QVariant( intMax1 ) << (uint)INT_MIN << true;
-    QTest::newRow( "ulonglong0" ) << QVariant( (qulonglong)34 ) << (uint)34 << true;
-    QTest::newRow( "ulonglong1" ) << QVariant( uintMax1 ) << (uint)0 << true;
-    QTest::newRow( "negativeint" ) << QVariant( -123 ) << (uint)-123 << true;
-    QTest::newRow( "negativedouble" ) << QVariant( -3.1415927 ) << (uint)-3 << true;
-    QTest::newRow( "negativefloat" ) << QVariant( -3.1415927f ) << (uint)-3 << true;
-    QTest::newRow( "negativeint-string" ) << QVariant( QString("-123") ) << (uint)0 << false;
-    QTest::newRow( "negativelonglong0" ) << QVariant( (qlonglong)-34 ) << (uint)-34 << true;
-    QTest::newRow( "QChar" ) << QVariant(QChar('a')) << uint('a') << true;
-    QByteArray bytearray(4, ' ');
-    bytearray[0] = '4';
-    bytearray[1] = '3';
-    bytearray[2] = '2';
-    bytearray[3] = '1';
-    QTest::newRow( "QByteArray" ) << QVariant( bytearray ) << (uint)4321 << true;
-    QTest::newRow("int-QJsonValue") << QVariant(QJsonValue(321)) << (uint)321 << true;
-    QTest::newRow("null-QJsonValue") << QVariant(QJsonValue(QJsonValue::Null)) << (uint)0 << false;
+    addNumberConversions<uint>();
 }
 
 void tst_QVariant::toUInt()
 {
-    QFETCH( QVariant, value );
-    QFETCH( uint, result );
-    QFETCH( bool, valueOK );
-    QVERIFY( value.isValid() );
-    EXEC_DEPRECATED_CALL(QVERIFY( value.canConvert( QVariant::UInt ) );)
-    QVERIFY( value.canConvert(QMetaType::fromType<uint>()) );
-
-    bool ok;
-    uint i = value.toUInt( &ok );
-    QVERIFY( ok == valueOK );
-    QCOMPARE( i, result );
+    checkNumberConversions(&QVariant::toUInt);
 }
-
 
 void tst_QVariant::toSize_data()
 {
@@ -1106,8 +1157,10 @@ void tst_QVariant::toBool_data()
     QTest::newRow( "uint1" ) << QVariant( 123u ) << true;
     QTest::newRow( "double0" ) << QVariant( 0.0 ) << false;
     QTest::newRow( "float0" ) << QVariant( 0.0f ) << false;
+    QTest::newRow( "float16_0" ) << QVariant::fromValue( qfloat16() ) << false;
     QTest::newRow( "double1" ) << QVariant( 3.1415927 ) << true;
     QTest::newRow( "float1" ) << QVariant( 3.1415927f ) << true;
+    QTest::newRow( "float16_1" ) << QVariant::fromValue( qfloat16(3.1415927f) ) << true;
     QTest::newRow( "string0" ) << QVariant( QString("3") ) << true;
     QTest::newRow( "string1" ) << QVariant( QString("true") ) << true;
     QTest::newRow( "string2" ) << QVariant( QString("0") ) << false;
@@ -1120,6 +1173,8 @@ void tst_QVariant::toBool_data()
     QTest::newRow( "Null_QChar" ) << QVariant(QChar(0)) << false;
     QTest::newRow("QJsonValue(true)") << QVariant(QJsonValue(true)) << true;
     QTest::newRow("QJsonValue(false)") << QVariant(QJsonValue(false)) << false;
+    QTest::newRow("QCborValue(true)") << QVariant::fromValue(QCborValue(true)) << true;
+    QTest::newRow("QCborValue(false)") << QVariant::fromValue(QCborValue(false)) << false;
 }
 
 void tst_QVariant::toBool()
@@ -1132,6 +1187,9 @@ void tst_QVariant::toBool()
 
     bool i = value.toBool();
     QCOMPARE( i, result );
+
+    QVERIFY(value.convert(QMetaType::fromType<bool>()));
+    QCOMPARE(value.toBool(), result);
 }
 
 void tst_QVariant::toPointF_data()
@@ -1176,170 +1234,113 @@ void tst_QVariant::toRectF()
 
 void tst_QVariant::toDouble_data()
 {
-    QTest::addColumn<QVariant>("value");
-    QTest::addColumn<double>("result");
-    QTest::addColumn<bool>("valueOK");
-
-    QByteArray bytearray(4, ' ');
-    bytearray[0] = '3';
-    bytearray[1] = '2';
-    bytearray[2] = '.';
-    bytearray[3] = '1';
-    QTest::newRow( "bytearray" ) << QVariant( bytearray ) << 32.1 << true;
-    QTest::newRow("double-QJsonValue") << QVariant(QJsonValue(32.1)) << 32.1 << true;
-    QTest::newRow("null-QJsonValue") << QVariant(QJsonValue(QJsonValue::Null)) << 0.0 << false;
+    addNumberConversions<double>();
 }
 
 void tst_QVariant::toDouble()
 {
-    QFETCH( QVariant, value );
-    QFETCH( double, result );
-    QFETCH( bool, valueOK );
-    QVERIFY( value.isValid() );
-    EXEC_DEPRECATED_CALL(QVERIFY( value.canConvert( QVariant::Double ) );)
-    QVERIFY( value.canConvert(QMetaType::fromType<double>()) );
-    bool ok;
-    double d = value.toDouble( &ok );
-    QCOMPARE( d, result );
-    QVERIFY( ok == valueOK );
+    checkNumberConversions(&QVariant::toDouble);
 }
 
 void tst_QVariant::toFloat_data()
 {
-    QTest::addColumn<QVariant>("value");
-    QTest::addColumn<float>("result");
-    QTest::addColumn<bool>("valueOK");
-
-    QByteArray bytearray(4, ' ');
-    bytearray[0] = '3';
-    bytearray[1] = '2';
-    bytearray[2] = '.';
-    bytearray[3] = '1';
-    QTest::newRow("QByteArray") << QVariant(bytearray) << float(32.1) << true;
-    QTest::newRow("double-QJsonValue") << QVariant(QJsonValue(32.1)) << float(32.1) << true;
-    QTest::newRow("undefined-QJsonValue") << QVariant(QJsonValue(QJsonValue::Undefined)) << float(0.0) << false;
+    addNumberConversions<float>();
 }
 
 void tst_QVariant::toFloat()
 {
-    QFETCH(QVariant, value );
-    QFETCH(float, result);
-    QFETCH(bool, valueOK);
-    QVERIFY(value.isValid());
-    EXEC_DEPRECATED_CALL(QVERIFY(value.canConvert(QMetaType::Float));)
-    QVERIFY(value.canConvert(QMetaType::fromType<float>()));
-    bool ok;
-    float d = value.toFloat(&ok);
-    QCOMPARE(d, result);
-    QCOMPARE(ok, valueOK);
+    checkNumberConversions(&QVariant::toFloat);
+}
+
+void tst_QVariant::toFloat16_data()
+{
+    addNumberConversions<qfloat16>();
+}
+
+void tst_QVariant::toFloat16()
+{
+    checkNumberConversions<qfloat16>(nullptr);
+}
+
+void tst_QVariant::toSChar_data()
+{
+    addNumberConversions<signed char>();
+}
+
+void tst_QVariant::toSChar()
+{
+    checkNumberConversions<signed char>();
+}
+
+void tst_QVariant::toUChar_data()
+{
+    addNumberConversions<uchar>();
+}
+
+void tst_QVariant::toUChar()
+{
+    checkNumberConversions<uchar>();
+}
+
+void tst_QVariant::toShort_data()
+{
+    addNumberConversions<short>();
+}
+
+void tst_QVariant::toShort()
+{
+    checkNumberConversions<short>();
+}
+
+void tst_QVariant::toUShort_data()
+{
+    addNumberConversions<ushort>();
+}
+
+void tst_QVariant::toUShort()
+{
+    checkNumberConversions<ushort>();
+}
+
+void tst_QVariant::toLong_data()
+{
+    addNumberConversions<long>();
+}
+
+void tst_QVariant::toLong()
+{
+    checkNumberConversions<long>();
+}
+
+void tst_QVariant::toULong_data()
+{
+    addNumberConversions<ulong>();
+}
+
+void tst_QVariant::toULong()
+{
+    checkNumberConversions<ulong>();
 }
 
 void tst_QVariant::toLongLong_data()
 {
-    QTest::addColumn<QVariant>("value");
-    QTest::addColumn<qlonglong>("result");
-    QTest::addColumn<bool>("valueOK");
+    addNumberConversions<qlonglong>();
 
-    QTest::newRow( "int0" ) << QVariant( 123 ) << (qlonglong)123 << true;
-    QTest::newRow( "double" ) << QVariant( 3.1415927 ) << (qlonglong)3 << true;
-    QTest::newRow( "float" ) << QVariant( 3.1415927f ) << (qlonglong)3 << true;
-    QTest::newRow( "uint" ) << QVariant( 123u ) << (qlonglong)123 << true;
-    QTest::newRow( "int-string" ) << QVariant( QString("123") )
-                               << (qlonglong)123 << true;
-    QTest::newRow( "string" ) << QVariant( QString("Unicode fun") ) << (qlonglong)0
-                           << false;
-    QTest::newRow( "longlong" ) << QVariant( intMax1 ) << intMax1 << true;
-    QTest::newRow( "ulonglong" ) << QVariant( uintMax1 ) << (qlonglong)uintMax1 << true;
-    QTest::newRow( "QChar" ) << QVariant(QChar('a')) << qlonglong('a') << true;
-    QByteArray bytearray(4, ' ');
-    bytearray[0] = '3';
-    bytearray[1] = '2';
-    bytearray[2] = '0';
-    bytearray[3] = '0';
-    QTest::newRow( "QByteArray" ) << QVariant( bytearray ) << (qlonglong) 3200 << true;
-    QTest::newRow("int-QJsonValue") << QVariant(QJsonValue(321)) << (qlonglong)321 << true;
-    QTest::newRow("string-QJsonValue") << QVariant(QJsonValue(QString("string"))) << (qlonglong)0 << false;
-
-    qint64 value64 = (Q_INT64_C(12) << 35) + 8;
-    QTest::newRow("qint64") << QVariant::fromValue(value64) << qlonglong(value64) << true;
-    QTest::newRow("-qint64") << QVariant::fromValue(-value64) << qlonglong(-value64) << true;
-    QTest::newRow("long") << QVariant::fromValue(long(464646)) << qlonglong(464646)  << true;
-    QTest::newRow("LONG_MAX") << QVariant::fromValue( LONG_MAX ) << qlonglong(LONG_MAX)  << true;
-    QTest::newRow("LONG_MIN") << QVariant::fromValue( LONG_MIN ) << qlonglong(LONG_MIN)  << true;
-
-    QTest::newRow( "short" ) << QVariant(short(12)) << qlonglong(12) << true;
-    QTest::newRow( "-short" ) << QVariant(short(-24)) << qlonglong(-24) << true;
-    QTest::newRow( "ushort" ) << QVariant(ushort(15)) << qlonglong(15) << true;
 }
 
 void tst_QVariant::toLongLong()
 {
-    QFETCH( QVariant, value );
-    QFETCH( qlonglong, result );
-    QFETCH( bool, valueOK );
-    QVERIFY( value.isValid() );
-    EXEC_DEPRECATED_CALL(QVERIFY( value.canConvert( QVariant::LongLong ) );)
-    QVERIFY( value.canConvert(QMetaType::fromType<qlonglong>()) );
-    bool ok;
-    qlonglong ll = value.toLongLong( &ok );
-    QCOMPARE( ll, result );
-    QVERIFY( ok == valueOK );
+    checkNumberConversions(&QVariant::toLongLong);
 }
 
 void tst_QVariant::toULongLong_data()
 {
-    QTest::addColumn<QVariant>("value");
-    QTest::addColumn<qulonglong>("result");
-    QTest::addColumn<bool>("valueOK");
-
-    QTest::newRow( "int0" ) << QVariant( 123 ) << (qulonglong)123 << true;
-    QTest::newRow( "double" ) << QVariant( 3.1415927 ) << (qulonglong)3 << true;
-    QTest::newRow( "float" ) << QVariant( 3.1415927f ) << (qulonglong)3 << true;
-    QTest::newRow( "uint" ) << QVariant( 123u ) << (qulonglong)123 << true;
-    QTest::newRow( "int-string" ) << QVariant( QString("123") )
-                               << (qulonglong)123 << true;
-    QTest::newRow( "string" ) << QVariant( QString("Unicode fun") ) << (qulonglong)0
-                           << false;
-    QTest::newRow( "ulonglong-string" ) << QVariant( QString("18446744073709551615") )
-                                     << Q_UINT64_C(18446744073709551615)
-                                     << true;
-    QTest::newRow( "bytaa-string" ) << QVariant( QString("18446744073709551615") )
-                                     << Q_UINT64_C(18446744073709551615)
-                                     << true;
-    QTest::newRow( "longlong" ) << QVariant( intMax1 ) << (qulonglong)intMax1 << true;
-    QTest::newRow( "ulonglong" ) << QVariant( uintMax1 ) << uintMax1 << true;
-    QTest::newRow( "QChar" ) << QVariant(QChar('a')) << qulonglong('a') << true;
-    QByteArray bytearray(4, ' ');
-    bytearray[0] = '3';
-    bytearray[1] = '2';
-    bytearray[2] = '0';
-    bytearray[3] = '1';
-    QTest::newRow( "QByteArray" ) << QVariant( bytearray ) << (qulonglong) 3201 << true;
-    QTest::newRow("int-QJsonValue") << QVariant(QJsonValue(321)) << (qulonglong)321 << true;
-    QTest::newRow("bool-QJsonValue") << QVariant(QJsonValue(true)) << (qulonglong)0 << false;
-
-    quint64 value64 = (Q_INT64_C(12) << 35) + 8;
-    QTest::newRow("qint64") << QVariant::fromValue(value64) << qulonglong(value64) << true;
-    QTest::newRow("long") << QVariant::fromValue(long(464646)) << qulonglong(464646)  << true;
-    QTest::newRow("LONG_MAX") << QVariant::fromValue( LONG_MAX ) << qulonglong(LONG_MAX)  << true;
-    QTest::newRow("ULONG_MAX") << QVariant::fromValue( ULONG_MAX ) << qulonglong(ULONG_MAX)  << true;
-    QTest::newRow( "short" ) << QVariant(short(12)) << qulonglong(12) << true;
-    QTest::newRow( "-short" ) << QVariant(short(-24)) << qulonglong(-24) << true;
-    QTest::newRow( "ushort" ) << QVariant(ushort(15)) << qulonglong(15) << true;
+    addNumberConversions<qulonglong>();
 }
 
 void tst_QVariant::toULongLong()
 {
-    QFETCH( QVariant, value );
-    QFETCH( qulonglong, result );
-    QFETCH( bool, valueOK );
-    QVERIFY( value.isValid() );
-    EXEC_DEPRECATED_CALL(QVERIFY( value.canConvert( QVariant::ULongLong ) );)
-    QVERIFY( value.canConvert(QMetaType::fromType<qulonglong>()) );
-    bool ok;
-    qulonglong ll = value.toULongLong( &ok );
-    QCOMPARE( ll, result );
-    QVERIFY( ok == valueOK );
+    checkNumberConversions(&QVariant::toULongLong);
 }
 
 void tst_QVariant::toByteArray_data()
@@ -2931,6 +2932,14 @@ void tst_QVariant::qvariant_cast_const()
     QCOMPARE(vConst.value<const int *>(), &i);
 }
 
+void tst_QVariant::qvariant_cast_QTransform()
+{
+    QTransform t{1, 2, 3, 4, 5, 6, 7, 8, 9};
+    // this basically checks that GCC doesn't emit -Warray-bound
+    const auto t2 = qvariant_cast<QTransform>(QVariant::fromValue(t));
+    QCOMPARE(t, t2);
+}
+
 void tst_QVariant::convertToQUint8() const
 {
     /* qint8. */
@@ -3043,6 +3052,7 @@ void tst_QVariant::compareNumerics_data() const
     addCompareToInvalid(ulong(0));
     addCompareToInvalid(qint64(0));
     addCompareToInvalid(quint64(0));
+    addCompareToInvalid(qfloat16(0.f));
     addCompareToInvalid(0.f);
     addCompareToInvalid(0.0);
     addCompareToInvalid(QCborSimpleType{});
@@ -3083,7 +3093,7 @@ QT_WARNING_POP
         T one = T(zero + 1);
         T min = std::numeric_limits<T>::min();
         T max = std::numeric_limits<T>::max();
-        T mid = max / 2 + 1;
+        T mid = T(max / 2 + 1);
         if (min != zero)
             addList(std::array{zero, one, min, mid, max});
         else
@@ -3102,6 +3112,7 @@ QT_WARNING_POP
     addSingleType(quint32(0));
     addSingleType(qint64(0));
     addSingleType(quint64(0));
+    addSingleType(qfloat16(0.f));
     addSingleType(0.f);
     addSingleType(0.0);
     addList(std::array{ EnumTest_Enum0{}, EnumTest_Enum0_value, EnumTest_Enum0_negValue });
@@ -3161,6 +3172,22 @@ QT_WARNING_POP
     // addComparePair(LLONG_MIN, LLONG_MAX); // already added by addSingleType()
 
     // floating point
+    addComparePair(qfloat16(0.f), 0);
+    addComparePair(qfloat16(0.f), 0U);
+    addComparePair(qfloat16(0.f), Q_INT64_C(0));
+    addComparePair(qfloat16(0.f), Q_UINT64_C(0));
+    addComparePair(qfloat16(0.f), 0.f);
+    addComparePair(qfloat16(0.f), 1.f);
+    addComparePair(qfloat16(0.f), 0.);
+    addComparePair(qfloat16(0.f), 1.);
+    addComparePair(qfloat16(1 << 11), 1 << 11);
+    addComparePair(qfloat16(1 << 11) - 1, (1 << 11) - 1);
+    addComparePair(-qfloat16(1 << 11), 1 << 11);
+    addComparePair(-qfloat16(1 << 11) + 1, -(1 << 11) + 1);
+    addComparePair(std::numeric_limits<qfloat16>::infinity(), qInf());
+    addComparePair(std::numeric_limits<qfloat16>::infinity(), -qInf());
+    addComparePair(std::numeric_limits<qfloat16>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN());
+
     addComparePair(0.f, 0);
     addComparePair(0.f, 0U);
     addComparePair(0.f, Q_INT64_C(0));
@@ -3173,7 +3200,7 @@ QT_WARNING_POP
     addComparePair(-float(1 << 24) + 1, -(1 << 24) + 1);
     addComparePair(HUGE_VALF, qInf());
     addComparePair(HUGE_VALF, -qInf());
-    addComparePair(qQNaN(), std::numeric_limits<float>::quiet_NaN());
+    addComparePair(std::numeric_limits<float>::quiet_NaN(), qQNaN());
     if (sizeof(qreal) == sizeof(double)) {
         addComparePair(std::numeric_limits<float>::min(), std::numeric_limits<double>::min());
         addComparePair(std::numeric_limits<float>::min(), std::numeric_limits<double>::max());
@@ -5371,10 +5398,6 @@ template <typename Enum, auto Value> static void testVariantMetaEnum()
 
     QVariant strVar = string;
     QVERIFY(strVar.canConvert<Enum>());
-    // unary + to silence gcc warning
-    if ((+static_cast<qint64>(value) > INT_MAX) || (+static_cast<qint64>(value) < INT_MIN)) {
-        QEXPECT_FAIL("", "QMetaEnum api uses 'int' as return type  QTBUG-27451", Abort);
-    }
     QCOMPARE(strVar.value<Enum>(), value);
     strVar = string.toLatin1();
     QVERIFY(strVar.canConvert<Enum>());
@@ -5878,7 +5901,7 @@ void tst_QVariant::equalsWithoutMetaObject()
         /*.revision=*/ 0,
         /*.alignment=*/ alignof(T),
         /*.size=*/ sizeof(T),
-        /*.flags=*/ QtPrivate::QMetaTypeTypeFlags<T>::Flags,
+        /*.flags=*/ QtPrivate::QMetaTypeForType<T>::flags(),
         /*.typeId=*/ 0,
         /*.metaObject=*/ nullptr, // on purpose.
         /*.name=*/ "NoMetaObject*",
@@ -6165,6 +6188,11 @@ void tst_QVariant::get_NonDefaultConstructible()
 
 template <typename T>
 T mutate(const T &t) { return t + t; }
+template <>
+QTransform mutate(const QTransform &t)
+{
+    return t * 2;
+}
 template <>
 NonDefaultConstructible mutate(const NonDefaultConstructible &t)
 {

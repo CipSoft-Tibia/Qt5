@@ -107,14 +107,14 @@ class TestAnimationEffect : public AnimationEffect {
   }
   AnimationTimeDelta CalculateTimeToEffectChange(
       bool forwards,
-      absl::optional<AnimationTimeDelta> local_time,
+      std::optional<AnimationTimeDelta> local_time,
       AnimationTimeDelta time_to_next_iteration) const override {
     local_time_ = local_time;
     time_to_next_iteration_ = time_to_next_iteration;
     return AnimationTimeDelta::Max();
   }
-  absl::optional<AnimationTimeDelta> TimelineDuration() const override {
-    return absl::nullopt;
+  std::optional<AnimationTimeDelta> TimelineDuration() const override {
+    return std::nullopt;
   }
   double TakeLocalTime() {
     DCHECK(local_time_);
@@ -123,8 +123,8 @@ class TestAnimationEffect : public AnimationEffect {
     return result;
   }
 
-  absl::optional<AnimationTimeDelta> TakeTimeToNextIteration() {
-    const absl::optional<AnimationTimeDelta> result = time_to_next_iteration_;
+  std::optional<AnimationTimeDelta> TakeTimeToNextIteration() {
+    const std::optional<AnimationTimeDelta> result = time_to_next_iteration_;
     time_to_next_iteration_.reset();
     return result;
   }
@@ -136,8 +136,8 @@ class TestAnimationEffect : public AnimationEffect {
 
  private:
   Member<TestAnimationEffectEventDelegate> event_delegate_;
-  mutable absl::optional<AnimationTimeDelta> local_time_;
-  mutable absl::optional<AnimationTimeDelta> time_to_next_iteration_;
+  mutable std::optional<AnimationTimeDelta> local_time_;
+  mutable std::optional<AnimationTimeDelta> time_to_next_iteration_;
 };
 
 TEST(AnimationAnimationEffectTest, Sanity) {
@@ -751,7 +751,7 @@ TEST(AnimationAnimationEffectTest, TimeToEffectChange) {
 
   animation_node->UpdateInheritedTime(0);
   EXPECT_EQ(0, animation_node->TakeLocalTime());
-  absl::optional<AnimationTimeDelta> time_to_next_iteration =
+  std::optional<AnimationTimeDelta> time_to_next_iteration =
       animation_node->TakeTimeToNextIteration();
   EXPECT_TRUE(time_to_next_iteration);
   EXPECT_TRUE(time_to_next_iteration->is_max());
@@ -844,50 +844,62 @@ TEST(AnimationAnimationEffectTest, UpdateTimingThrowsWhenExpected) {
   Timing timing;
   auto* effect = MakeGarbageCollected<TestAnimationEffect>(timing);
 
-  DummyExceptionStateForTesting exception_state;
-
   // iterationStart must be non-negative
-  OptionalEffectTiming* effect_timing = OptionalEffectTiming::Create();
-  effect_timing->setIterationStart(-10);
-  effect->updateTiming(effect_timing, exception_state);
-  EXPECT_TRUE(exception_state.HadException());
+  {
+    DummyExceptionStateForTesting exception_state;
+    OptionalEffectTiming* effect_timing = OptionalEffectTiming::Create();
+    effect_timing->setIterationStart(-10);
+    effect->updateTiming(effect_timing, exception_state);
+    EXPECT_TRUE(exception_state.HadException());
+  }
 
   // iterations must be non-negative and non-null.
-  exception_state.ClearException();
-  effect_timing = OptionalEffectTiming::Create();
-  effect_timing->setIterations(-2);
-  effect->updateTiming(effect_timing, exception_state);
-  EXPECT_TRUE(exception_state.HadException());
+  {
+    DummyExceptionStateForTesting exception_state;
+    OptionalEffectTiming* effect_timing = OptionalEffectTiming::Create();
+    effect_timing->setIterations(-2);
+    effect->updateTiming(effect_timing, exception_state);
+    EXPECT_TRUE(exception_state.HadException());
+  }
 
-  exception_state.ClearException();
-  effect_timing = OptionalEffectTiming::Create();
-  effect_timing->setIterations(std::numeric_limits<double>::quiet_NaN());
-  effect->updateTiming(effect_timing, exception_state);
-  EXPECT_TRUE(exception_state.HadException());
+  {
+    DummyExceptionStateForTesting exception_state;
+    OptionalEffectTiming* effect_timing = OptionalEffectTiming::Create();
+    effect_timing->setIterations(std::numeric_limits<double>::quiet_NaN());
+    effect->updateTiming(effect_timing, exception_state);
+    EXPECT_TRUE(exception_state.HadException());
+  }
 
   // If it is a number, duration must be non-negative and non-null.
-  exception_state.ClearException();
-  effect_timing = OptionalEffectTiming::Create();
-  effect_timing->setDuration(
-      MakeGarbageCollected<V8UnionCSSNumericValueOrStringOrUnrestrictedDouble>(
-          -100));
-  effect->updateTiming(effect_timing, exception_state);
-  EXPECT_TRUE(exception_state.HadException());
+  {
+    DummyExceptionStateForTesting exception_state;
+    OptionalEffectTiming* effect_timing = OptionalEffectTiming::Create();
+    effect_timing->setDuration(
+        MakeGarbageCollected<
+            V8UnionCSSNumericValueOrStringOrUnrestrictedDouble>(-100));
+    effect->updateTiming(effect_timing, exception_state);
+    EXPECT_TRUE(exception_state.HadException());
+  }
 
-  exception_state.ClearException();
-  effect_timing = OptionalEffectTiming::Create();
-  effect_timing->setDuration(
-      MakeGarbageCollected<V8UnionCSSNumericValueOrStringOrUnrestrictedDouble>(
-          std::numeric_limits<double>::quiet_NaN()));
-  effect->updateTiming(effect_timing, exception_state);
-  EXPECT_TRUE(exception_state.HadException());
+  {
+    DummyExceptionStateForTesting exception_state;
+    OptionalEffectTiming* effect_timing = OptionalEffectTiming::Create();
+    effect_timing->setDuration(
+        MakeGarbageCollected<
+            V8UnionCSSNumericValueOrStringOrUnrestrictedDouble>(
+            std::numeric_limits<double>::quiet_NaN()));
+    effect->updateTiming(effect_timing, exception_state);
+    EXPECT_TRUE(exception_state.HadException());
+  }
 
   // easing must be a valid timing function
-  exception_state.ClearException();
-  effect_timing = OptionalEffectTiming::Create();
-  effect_timing->setEasing("my-custom-timing-function");
-  effect->updateTiming(effect_timing, exception_state);
-  EXPECT_TRUE(exception_state.HadException());
+  {
+    DummyExceptionStateForTesting exception_state;
+    OptionalEffectTiming* effect_timing = OptionalEffectTiming::Create();
+    effect_timing->setEasing("my-custom-timing-function");
+    effect->updateTiming(effect_timing, exception_state);
+    EXPECT_TRUE(exception_state.HadException());
+  }
 }
 
 TEST(AnimationAnimationEffectTest, UpdateTimingInformsOwnerOnChange) {

@@ -16,6 +16,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <functional>
 #include <string>
 #include <vector>
@@ -35,7 +36,6 @@
 #include "mediapipe/framework/formats/image_frame_opencv.h"
 #include "mediapipe/framework/formats/yuv_image.h"
 #include "mediapipe/framework/port/aligned_malloc_and_free.h"
-#include "mediapipe/framework/port/integral_types.h"
 #include "mediapipe/framework/port/port.h"
 #include "mediapipe/framework/port/status_macros.h"
 
@@ -101,12 +101,34 @@ void ImageFrameToYUVImage(const ImageFrame& image_frame, YUVImage* yuv_image) {
                         u, uv_stride,                     //
                         v, uv_stride,                     //
                         width, height);
-  int rv =
-      libyuv::RAWToI420(image_frame.PixelData(), image_frame.WidthStep(),  //
-                        y, y_stride,                                       //
-                        u, uv_stride,                                      //
-                        v, uv_stride,                                      //
-                        width, height);
+  int rv = 0;
+  switch (image_frame.Format()) {
+    case ImageFormat::SRGBA:
+      // ABGR little endian (RGBA in memory).
+      rv = libyuv::ABGRToI420(image_frame.PixelData(), image_frame.WidthStep(),
+                              y, y_stride,   //
+                              u, uv_stride,  //
+                              v, uv_stride,  //
+                              width, height);
+      break;
+    case ImageFormat::SRGB:
+      // RAW in libyuv is byte order R, G, B, see libyuv/convert.h.
+      rv = libyuv::RAWToI420(image_frame.PixelData(), image_frame.WidthStep(),
+                             y, y_stride,   //
+                             u, uv_stride,  //
+                             v, uv_stride,  //
+                             width, height);
+      break;
+    default:
+      ABSL_LOG(ERROR)
+          << "Using RGB conversion for unexpected image frame format";
+      // RAW in libyuv is byte order R, G, B, see libyuv/convert.h.
+      rv = libyuv::RAWToI420(image_frame.PixelData(), image_frame.WidthStep(),
+                             y, y_stride,   //
+                             u, uv_stride,  //
+                             v, uv_stride,  //
+                             width, height);
+  }
   ABSL_CHECK_EQ(0, rv);
 }
 

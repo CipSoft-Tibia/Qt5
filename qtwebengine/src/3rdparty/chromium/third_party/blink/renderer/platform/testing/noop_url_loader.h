@@ -23,7 +23,7 @@ class NoopURLLoader final : public URLLoader {
                          base::TimeDelta timeout_interval,
                          URLLoaderClient*,
                          WebURLResponse&,
-                         absl::optional<WebURLError>&,
+                         std::optional<WebURLError>&,
                          scoped_refptr<SharedBuffer>&,
                          int64_t& encoded_data_length,
                          uint64_t& encoded_body_length,
@@ -41,7 +41,7 @@ class NoopURLLoader final : public URLLoader {
 
   void Freeze(LoaderFreezeMode) override {}
   void DidChangePriority(WebURLRequest::Priority, int) override {
-    NOTREACHED();
+    NOTREACHED_IN_MIGRATION();
   }
   scoped_refptr<base::SingleThreadTaskRunner> GetTaskRunnerForBodyLoader()
       override {

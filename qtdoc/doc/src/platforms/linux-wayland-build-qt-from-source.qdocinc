@@ -23,7 +23,7 @@ your choice:
     \header \li Tool \li Supported Versions
     \row
         \li CMake
-        \li Version 3.16 and newer (3.21 and newer for \c{-static} builds).
+        \li Version 3.22 and newer.
     \row
         \li Ninja
         \li -

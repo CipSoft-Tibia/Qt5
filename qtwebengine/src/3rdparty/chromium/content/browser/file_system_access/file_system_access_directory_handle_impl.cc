@@ -75,6 +75,21 @@ struct FileSystemAccessDirectoryHandleImpl::
 
   mojo::Remote<blink::mojom::FileSystemAccessDirectoryEntriesListener> listener;
 
+  // Tracks the number of invocation of
+  // FileSystemAccessDirectoryHandleImpl::DidReadDirectory.
+  int32_t total_batch_count{0};
+
+  // The termination of each call of
+  // FileSystemAccessDirectoryHandleImpl::DidReadDirectory will trigger a call
+  // to FileSystemAccessDirectoryHandleImpl::CurrentBatchEntriesReady. This
+  // counter tracks the number of calls to
+  // FileSystemAccessDirectoryHandleImpl::CurrentBatchEntriesReady.
+  int32_t processed_batch_count{0};
+
+  // Tracks whether the final entries have been received. This is used to
+  // determine whether the listener should expect more entries.
+  bool has_received_final_batch{false};
+
  private:
   ~FileSystemAccessDirectoryEntriesListenerHolder() = default;
   friend class base::RefCountedDeleteOnSequence<
@@ -266,7 +281,7 @@ void FileSystemAccessDirectoryHandleImpl::Move(
     MoveCallback callback) {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
 
-  // TODO(crbug.com/1250534): Implement move for directory handles.
+  // TODO(crbug.com/40198034): Implement move for directory handles.
   std::move(callback).Run(file_system_access_error::FromStatus(
       blink::mojom::FileSystemAccessStatus::kOperationAborted));
 }
@@ -276,7 +291,7 @@ void FileSystemAccessDirectoryHandleImpl::Rename(
     RenameCallback callback) {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
 
-  // TODO(crbug.com/1250534): Implement rename for directory handles.
+  // TODO(crbug.com/40198034): Implement rename for directory handles.
   std::move(callback).Run(file_system_access_error::FromStatus(
       blink::mojom::FileSystemAccessStatus::kOperationAborted));
 }
@@ -497,6 +512,9 @@ void FileSystemAccessDirectoryHandleImpl::DidReadDirectory(
     return;
   }
 
+  ++listener_holder->total_batch_count;
+  listener_holder->has_received_final_batch = !has_more_entries;
+
   if (base::FeatureList::IsEnabled(
           features::kFileSystemAccessDirectoryIterationBlocklistCheck) &&
       manager()->permission_context()) {
@@ -505,10 +523,9 @@ void FileSystemAccessDirectoryHandleImpl::DidReadDirectory(
     // since then, pointing to a blocklisted file or directory. Before merging
     // a child into a result vector, check for sensitive entry access, which is
     // run on the resolved path.
-    auto final_callback =
-        base::BindOnce(&FileSystemAccessDirectoryHandleImpl::AllEntriesReady,
-                       weak_factory_.GetWeakPtr(), has_more_entries,
-                       std::move(listener_holder));
+    auto final_callback = base::BindOnce(
+        &FileSystemAccessDirectoryHandleImpl::CurrentBatchEntriesReady,
+        weak_factory_.GetWeakPtr(), std::move(listener_holder));
 
     // Barrier callback is used to wait for checking each path in the
     // `file_list` and creating a `FileSystemAccessEntryPtr` if the path is
@@ -518,8 +535,9 @@ void FileSystemAccessDirectoryHandleImpl::DidReadDirectory(
     // barrier callback with a valid `FileSystemAccessEntryPtr` or nullptr.
     auto barrier_callback = base::BarrierCallback<FileSystemAccessEntryPtr>(
         file_list.size(),
-        base::BindOnce(&FileSystemAccessDirectoryHandleImpl::MergeAllEntries,
-                       weak_factory_.GetWeakPtr(), std::move(final_callback)));
+        base::BindOnce(
+            &FileSystemAccessDirectoryHandleImpl::MergeCurrentBatchEntries,
+            weak_factory_.GetWeakPtr(), std::move(final_callback)));
 
     for (const auto& entry : file_list) {
       std::string basename = storage::FilePathToString(entry.name);
@@ -578,8 +596,7 @@ void FileSystemAccessDirectoryHandleImpl::DidReadDirectory(
                         ? HandleType::kDirectory
                         : HandleType::kFile));
   }
-  AllEntriesReady(has_more_entries, std::move(listener_holder),
-                  std::move(entries));
+  CurrentBatchEntriesReady(std::move(listener_holder), std::move(entries));
 }
 
 void FileSystemAccessDirectoryHandleImpl::DidVerifySensitiveAccessForFileEntry(
@@ -599,7 +616,7 @@ void FileSystemAccessDirectoryHandleImpl::DidVerifySensitiveAccessForFileEntry(
   std::move(barrier_callback).Run(std::move(entry));
 }
 
-void FileSystemAccessDirectoryHandleImpl::MergeAllEntries(
+void FileSystemAccessDirectoryHandleImpl::MergeCurrentBatchEntries(
     base::OnceCallback<void(std::vector<FileSystemAccessEntryPtr>)>
         final_callback,
     std::vector<FileSystemAccessEntryPtr> entries) {
@@ -615,19 +632,26 @@ void FileSystemAccessDirectoryHandleImpl::MergeAllEntries(
   std::move(final_callback).Run(std::move(filtered_entries));
 }
 
-void FileSystemAccessDirectoryHandleImpl::AllEntriesReady(
-    bool has_more_entries,
+void FileSystemAccessDirectoryHandleImpl::CurrentBatchEntriesReady(
     scoped_refptr<FileSystemAccessDirectoryEntriesListenerHolder>
         listener_holder,
     std::vector<FileSystemAccessEntryPtr> entries) {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
-
   if (!listener_holder->listener) {
     return;
   }
 
-  listener_holder->listener->DidReadDirectory(
-      file_system_access_error::Ok(), std::move(entries), has_more_entries);
+  ++listener_holder->processed_batch_count;
+
+  const bool all_batches_are_processed =
+      listener_holder->processed_batch_count ==
+      listener_holder->total_batch_count;
+  const bool more_batches_are_expected =
+      !all_batches_are_processed || !listener_holder->has_received_final_batch;
+
+  listener_holder->listener->DidReadDirectory(file_system_access_error::Ok(),
+                                              std::move(entries),
+                                              more_batches_are_expected);
 }
 
 blink::mojom::FileSystemAccessErrorPtr
@@ -637,7 +661,8 @@ FileSystemAccessDirectoryHandleImpl::GetChildURL(
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
 
   const storage::FileSystemURL& parent = url();
-  if (!manager()->IsSafePathComponent(parent.type(), basename)) {
+  if (!manager()->IsSafePathComponent(
+          parent.type(), context().storage_key.origin(), basename)) {
     return file_system_access_error::FromStatus(
         FileSystemAccessStatus::kInvalidArgument, "Name is not allowed.");
   }

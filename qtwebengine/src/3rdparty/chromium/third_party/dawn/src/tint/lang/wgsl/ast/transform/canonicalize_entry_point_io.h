@@ -32,6 +32,7 @@
 
 #include "src/tint/lang/wgsl/ast/internal_attribute.h"
 #include "src/tint/lang/wgsl/ast/transform/transform.h"
+#include "src/tint/utils/reflection/reflection.h"
 
 namespace tint::ast::transform {
 
@@ -115,12 +116,17 @@ class CanonicalizeEntryPointIO final : public Castable<CanonicalizeEntryPointIO,
     /// Configuration options for the transform.
     struct Config final : public Castable<Config, Data> {
         /// Constructor
+        Config();
+
+        /// Constructor
         /// @param style the approach to use for emitting shader IO.
         /// @param sample_mask an optional sample mask to combine with shader masks
         /// @param emit_vertex_point_size `true` to generate a pointsize builtin
+        /// @param polyfill_f16_io `true` to replace f16 types with f32 types
         explicit Config(ShaderStyle style,
                         uint32_t sample_mask = 0xFFFFFFFF,
-                        bool emit_vertex_point_size = false);
+                        bool emit_vertex_point_size = false,
+                        bool polyfill_f16_io = false);
 
         /// Copy constructor
         Config(const Config&);
@@ -129,14 +135,24 @@ class CanonicalizeEntryPointIO final : public Castable<CanonicalizeEntryPointIO,
         ~Config() override;
 
         /// The approach to use for emitting shader IO.
-        const ShaderStyle shader_style;
+        ShaderStyle shader_style = ShaderStyle::kSpirv;
 
         /// A fixed sample mask to combine into masks produced by fragment shaders.
-        const uint32_t fixed_sample_mask;
+        uint32_t fixed_sample_mask = 0xffffffff;
 
         /// Set to `true` to generate a pointsize builtin and have it set to 1.0
         /// from all vertex shaders in the module.
-        const bool emit_vertex_point_size;
+        bool emit_vertex_point_size = false;
+
+        /// Set to `true` to replace f16 IO types with f32 types and convert them.
+        bool polyfill_f16_io = false;
+
+        /// Reflection for this struct
+        TINT_REFLECT(Config,
+                     shader_style,
+                     fixed_sample_mask,
+                     emit_vertex_point_size,
+                     polyfill_f16_io);
     };
 
     /// HLSLWaveIntrinsic is an InternalAttribute that is used to decorate a stub function so that
@@ -169,6 +185,25 @@ class CanonicalizeEntryPointIO final : public Castable<CanonicalizeEntryPointIO,
         const Op op;
     };
 
+    /// HLSLClipDistance1 is an InternalAttribute that is used to represent `SV_ClipDistance1`.
+    class HLSLClipDistance1 final : public Castable<HLSLClipDistance1, InternalAttribute> {
+      public:
+        /// Constructor
+        /// @param pid the identifier of the program that owns this node
+        /// @param nid the unique node identifier
+        HLSLClipDistance1(GenerationID pid, NodeID nid);
+        /// Destructor
+        ~HLSLClipDistance1() override;
+
+        /// @copydoc InternalAttribute::InternalName
+        std::string InternalName() const override;
+
+        /// Performs a deep clone of this object using the program::CloneContext `ctx`.
+        /// @param ctx the clone context
+        /// @return the newly cloned object
+        const HLSLClipDistance1* Clone(CloneContext& ctx) const override;
+    };
+
     /// Constructor
     CanonicalizeEntryPointIO();
     ~CanonicalizeEntryPointIO() override;
@@ -183,5 +218,12 @@ class CanonicalizeEntryPointIO final : public Castable<CanonicalizeEntryPointIO,
 };
 
 }  // namespace tint::ast::transform
+
+namespace tint {
+
+/// Reflection for ShaderStyle
+TINT_REFLECT_ENUM_RANGE(ast::transform::CanonicalizeEntryPointIO::ShaderStyle, kSpirv, kHlsl);
+
+}  // namespace tint
 
 #endif  // SRC_TINT_LANG_WGSL_AST_TRANSFORM_CANONICALIZE_ENTRY_POINT_IO_H_

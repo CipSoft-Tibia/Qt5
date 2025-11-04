@@ -1,6 +1,7 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // Copyright (C) 2016 Intel Corporation.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qdbusintegrator_p.h"
 
@@ -11,7 +12,6 @@
 #include <qobject.h>
 #include <qsocketnotifier.h>
 #include <qstringlist.h>
-#include <qtimer.h>
 #include <qthread.h>
 #include <private/qlocking_p.h>
 #include <QtCore/qset.h>
@@ -50,7 +50,7 @@ QT_IMPL_METATYPE_EXTERN(QDBusSlotCache)
 // used with dbus_server_allocate_data_slot
 static dbus_int32_t server_slot = -1;
 
-Q_LOGGING_CATEGORY(dbusIntegration, "qt.dbus.integration", QtWarningMsg)
+Q_STATIC_LOGGING_CATEGORY(dbusIntegration, "qt.dbus.integration", QtWarningMsg)
 
 Q_CONSTINIT static QBasicAtomicInt isDebugging = Q_BASIC_ATOMIC_INITIALIZER(-1);
 #define qDBusDebug              if (::isDebugging.loadRelaxed() == 0); else qDebug

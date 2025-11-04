@@ -2,6 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#ifdef UNSAFE_BUFFERS_BUILD
+// TODO(crbug.com/40285824): Remove this and convert code to safer constructs.
+#pragma allow_unsafe_buffers
+#endif
+
 #include "components/zucchini/disassembler_ztf.h"
 
 #include <algorithm>
@@ -293,7 +298,7 @@ class ZtfReferenceReader : public ReferenceReader {
 
   // Walks |offset_| from |lo| to |hi_| running |parser_|. If any matches are
   // found they are returned.
-  absl::optional<Reference> GetNext() override {
+  std::optional<Reference> GetNext() override {
     T line_col;
     for (; offset_ < hi_; ++offset_) {
       if (!parser_.MatchAtOffset(offset_, &line_col))
@@ -307,7 +312,7 @@ class ZtfReferenceReader : public ReferenceReader {
       offset_ += config_.Width(line_col);
       return Reference{location, target};
     }
-    return absl::nullopt;
+    return std::nullopt;
   }
 
  private:
@@ -459,12 +464,12 @@ offset_t ZtfTranslator::LineColToOffset(ztf::LineCol lc) const {
   return target;
 }
 
-absl::optional<ztf::LineCol> ZtfTranslator::OffsetToLineCol(
+std::optional<ztf::LineCol> ZtfTranslator::OffsetToLineCol(
     offset_t offset) const {
   DCHECK(!line_starts_.empty());
   // Don't place a target outside the image.
   if (offset >= line_starts_.back())
-    return absl::nullopt;
+    return std::nullopt;
   auto it = SearchForRange(offset);
   ztf::LineCol lc;
   lc.line = std::distance(line_starts_.cbegin(), it) + 1;

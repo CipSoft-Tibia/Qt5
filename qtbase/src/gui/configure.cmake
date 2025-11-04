@@ -90,9 +90,13 @@ if((X11_SUPPORTED) OR QT_FIND_ALL_PACKAGES_ALWAYS)
 endif()
 qt_add_qmake_lib_dependency(xcb_icccm xcb)
 if((X11_SUPPORTED) OR QT_FIND_ALL_PACKAGES_ALWAYS)
+    qt_find_package(XCB 0.3.8 COMPONENTS UTIL PROVIDED_TARGETS XCB::UTIL MODULE_NAME gui QMAKE_LIB xcb_util)
+endif()
+qt_add_qmake_lib_dependency(xcb_util xcb)
+if((X11_SUPPORTED) OR QT_FIND_ALL_PACKAGES_ALWAYS)
     qt_find_package(XCB 0.3.9 COMPONENTS IMAGE PROVIDED_TARGETS XCB::IMAGE MODULE_NAME gui QMAKE_LIB xcb_image)
 endif()
-qt_add_qmake_lib_dependency(xcb_image xcb_shm xcb)
+qt_add_qmake_lib_dependency(xcb_image xcb_shm xcb_util xcb)
 if((X11_SUPPORTED) OR QT_FIND_ALL_PACKAGES_ALWAYS)
     qt_find_package(XCB 0.3.9 COMPONENTS KEYSYMS PROVIDED_TARGETS XCB::KEYSYMS MODULE_NAME gui QMAKE_LIB xcb_keysyms)
 endif()
@@ -372,25 +376,15 @@ qt_config_compile_test(evdev
     CODE
 "#if defined(__FreeBSD__)
 #  include <dev/evdev/input.h>
-#elif defined(__VXWORKS__)
-#include <evdevLib.h>
-typedef EV_DEV_EVENT input_event;
 #else
 #  include <linux/input.h>
 #  include <linux/kd.h>
 #endif
 enum {
-#if defined(__VXWORKS__)
-    e1 = EV_DEV_ABS,
-    e2 = EV_DEV_PTR_ABS_X,
-    e3 = EV_DEV_PTR_ABS_Y,
-    e4 = EV_DEV_PTR_BTN_TOUCH,
-#else
     e1 = ABS_PRESSURE,
     e2 = ABS_X,
     e3 = REL_X,
     e4 = SYN_REPORT,
-#endif
 };
 
 int main(void)
@@ -402,6 +396,26 @@ input_event buf[32];
     return 0;
 }
 ")
+
+# vxworksevdev
+qt_config_compile_test(vxworksevdev
+    LABEL "VxWorks evdev"
+"#include <evdevLib.h>
+enum {
+    e1 = EV_DEV_ABS,
+    e2 = EV_DEV_PTR_ABS_X,
+    e3 = EV_DEV_PTR_ABS_Y,
+    e4 = EV_DEV_PTR_BTN_TOUCH,
+};
+
+int main(void)
+{
+    /* BEGIN TEST: */
+EV_DEV_EVENT buf[32];
+(void) buf;
+    /* END TEST: */
+    return 0;
+}")
 
 # integrityfb
 qt_config_compile_test(integrityfb
@@ -515,6 +529,7 @@ qt_config_compile_test(xcb_syslibs
     LIBRARIES
         XCB::CURSOR
         XCB::ICCCM
+        XCB::UTIL
         XCB::IMAGE
         XCB::KEYSYMS
         XCB::RANDR
@@ -530,6 +545,7 @@ qt_config_compile_test(xcb_syslibs
 "// xkb.h is using a variable called 'explicit', which is a reserved keyword in C++
 #define explicit dont_use_cxx_explicit
 #include <xcb/xcb.h>
+#include <xcb/xcb_util.h>
 #include <xcb/xcb_image.h>
 #include <xcb/xcb_keysyms.h>
 #include <xcb/xcb_cursor.h>
@@ -613,6 +629,36 @@ int main(int, char **)
 }
 ")
 
+# directwritecolrv1
+qt_config_compile_test(directwritecolrv1
+    LABEL "WINDOWS directwritecolrv1"
+    LIBRARIES
+        dwrite
+    CODE
+"#include <dwrite_3.h>
+int main(int, char **)
+{
+    IUnknown *factory = nullptr;
+    // Just check that the API is available for the build
+    DWRITE_PAINT_ELEMENT paintElement;
+
+    if (false) {
+        DWRITE_COLOR_F dwColor;
+        dwColor.r = 0;
+        dwColor.g = 0;
+        dwColor.b = 0;
+        dwColor.a = 0;
+        IDWritePaintReader *paintReader = nullptr;
+        // Some versions of MinGW has a dwrite_3.h header with buggy generated APIs. One of these
+        // is that the SetTextColor() function takes a pointer instead of a const-ref. We check
+        // for this to disable the COLRv1 feature for broken headers.
+        paintReader->SetTextColor(dwColor);
+    }
+
+    return 0;
+}
+")
+
 qt_config_compile_test(d2d1
     LABEL "WINDOWS Direct2D"
     LIBRARIES
@@ -681,6 +727,11 @@ qt_feature("directwrite3" PRIVATE
     CONDITION QT_FEATURE_directwrite AND TEST_directwrite3
     EMIT_IF WIN32
 )
+qt_feature("directwritecolrv1" PRIVATE
+    LABEL "DirectWrite COLRv1 Support"
+    CONDITION QT_FEATURE_directwrite3 AND TEST_directwritecolrv1
+    EMIT_IF WIN32
+)
 qt_feature("direct2d" PRIVATE
     LABEL "Direct 2D"
     CONDITION WIN32 AND NOT WINRT AND TEST_d2d1
@@ -689,9 +740,19 @@ qt_feature("direct2d1_1" PRIVATE
     LABEL "Direct 2D 1.1"
     CONDITION QT_FEATURE_direct2d AND TEST_d2d1_1
 )
+qt_feature("emojisegmenter" PUBLIC PRIVATE
+    SECTION "Fonts"
+    LABEL "Emoji Segmenter"
+    PURPOSE "Supports parsing complex emoji sequences for better font resolution."
+)
+qt_feature_definition("emojisegmenter" "QT_NO_EMOJISEGMENTER" NEGATE VALUE "1")
 qt_feature("evdev" PRIVATE
     LABEL "evdev"
     CONDITION QT_FEATURE_thread AND TEST_evdev
+)
+qt_feature("vxworksevdev" PRIVATE
+    LABEL "vxworksevdev"
+    CONDITION QT_FEATURE_thread AND TEST_vxworksevdev
 )
 qt_feature("freetype" PUBLIC PRIVATE
     SECTION "Fonts"
@@ -699,7 +760,7 @@ qt_feature("freetype" PUBLIC PRIVATE
     PURPOSE "Supports the FreeType 2 font engine (and its supported font formats)."
 )
 qt_feature_definition("freetype" "QT_NO_FREETYPE" NEGATE VALUE "1")
-qt_feature("system-freetype" PRIVATE
+qt_feature("system-freetype" PRIVATE SYSTEM_LIBRARY
     LABEL "  Using system FreeType"
     AUTODETECT NOT MSVC
     CONDITION QT_FEATURE_freetype AND WrapSystemFreetype_FOUND
@@ -721,7 +782,7 @@ qt_feature("harfbuzz" PUBLIC PRIVATE
     LABEL "HarfBuzz"
 )
 qt_feature_definition("harfbuzz" "QT_NO_HARFBUZZ" NEGATE VALUE "1")
-qt_feature("system-harfbuzz" PRIVATE
+qt_feature("system-harfbuzz" PRIVATE SYSTEM_LIBRARY
     LABEL "  Using system HarfBuzz"
     AUTODETECT NOT APPLE AND NOT WIN32
     CONDITION QT_FEATURE_harfbuzz AND WrapSystemHarfbuzz_FOUND
@@ -853,7 +914,7 @@ qt_feature("openvg" PUBLIC
 )
 qt_feature("egl" PUBLIC
     LABEL "EGL"
-    CONDITION ( QT_FEATURE_opengl OR QT_FEATURE_openvg ) AND EGL_FOUND AND ( QT_FEATURE_dlopen OR NOT UNIX OR INTEGRITY )
+    CONDITION ( QT_FEATURE_opengl OR QT_FEATURE_openvg ) AND EGL_FOUND AND ( QT_FEATURE_dlopen OR NOT UNIX OR INTEGRITY OR VXWORKS)
 )
 qt_feature_definition("egl" "QT_NO_EGL" NEGATE VALUE "1")
 qt_feature("egl_x11" PRIVATE
@@ -921,7 +982,7 @@ qt_feature("jpeg" PRIVATE
     DISABLE INPUT_libjpeg STREQUAL 'no'
 )
 qt_feature_definition("jpeg" "QT_NO_IMAGEFORMAT_JPEG" NEGATE VALUE "1")
-qt_feature("system-jpeg" PRIVATE
+qt_feature("system-jpeg" PRIVATE SYSTEM_LIBRARY
     LABEL "  Using system libjpeg"
     CONDITION QT_FEATURE_jpeg AND JPEG_FOUND
     ENABLE INPUT_libjpeg STREQUAL 'system'
@@ -932,7 +993,7 @@ qt_feature("png" PRIVATE
     DISABLE INPUT_libpng STREQUAL 'no'
 )
 qt_feature_definition("png" "QT_NO_IMAGEFORMAT_PNG" NEGATE)
-qt_feature("system-png" PRIVATE
+qt_feature("system-png" PRIVATE SYSTEM_LIBRARY
     LABEL "  Using system libpng"
     AUTODETECT QT_FEATURE_system_zlib
     CONDITION QT_FEATURE_png AND WrapSystemPNG_FOUND
@@ -999,7 +1060,7 @@ qt_feature("xcb-sm" PRIVATE
     CONDITION QT_FEATURE_sessionmanager AND X11_SM_FOUND
     EMIT_IF QT_FEATURE_xcb
 )
-qt_feature("system-xcb-xinput" PRIVATE
+qt_feature("system-xcb-xinput" PRIVATE SYSTEM_LIBRARY
     LABEL "Using system-provided xcb-xinput"
     AUTODETECT OFF
     CONDITION XCB_XINPUT_FOUND
@@ -1033,7 +1094,7 @@ qt_feature("textmarkdownreader" PUBLIC
     ENABLE INPUT_libmd4c STREQUAL 'system' OR INPUT_libmd4c STREQUAL 'qt' OR INPUT_libmd4c STREQUAL 'yes'
     DISABLE INPUT_libmd4c STREQUAL 'no'
 )
-qt_feature("system-textmarkdownreader" PUBLIC
+qt_feature("system-textmarkdownreader" PUBLIC SYSTEM_LIBRARY
     SECTION "Kernel"
     LABEL "  Using system libmd4c"
     CONDITION QT_FEATURE_textmarkdownreader AND WrapSystemMd4c_FOUND
@@ -1101,7 +1162,6 @@ qt_feature("im" PUBLIC
     SECTION "Kernel"
     LABEL "QInputContext"
     PURPOSE "Provides complex input methods."
-    CONDITION QT_FEATURE_library
 )
 qt_feature_definition("im" "QT_NO_IM" NEGATE VALUE "1")
 qt_feature("highdpiscaling" PUBLIC
@@ -1251,6 +1311,14 @@ qt_feature("raster-fp" PRIVATE
     PURPOSE "Internal painting support for floating point rasterization."
     CONDITION NOT VXWORKS # QTBUG-115777
 )
+
+qt_feature("qtgui-threadpool" PRIVATE
+    SECTION "Painting"
+    LABEL "Multi-threaded image and painting helpers"
+    PURPOSE "Multi-threaded image transforms and QPainter fills."
+    CONDITION QT_FEATURE_thread AND NOT WASM
+)
+
 qt_feature("undocommand" PUBLIC
     SECTION "Utilities"
     LABEL "QUndoCommand"
@@ -1282,9 +1350,15 @@ qt_feature("wayland" PUBLIC
     LABEL "Wayland"
     CONDITION TARGET Wayland::Client
 )
+qt_feature("run-opengl-tests" PRIVATE
+    LABEL "Run opengl tests"
+    PURPOSE "Provides the ability to skip tests which require opengl to run"
+    CONDITION QT_FEATURE_opengl
+)
 
 qt_configure_add_summary_section(NAME "Qt Gui")
 qt_configure_add_summary_entry(ARGS "accessibility")
+qt_configure_add_summary_entry(ARGS "emojisegmenter")
 qt_configure_add_summary_entry(ARGS "freetype")
 qt_configure_add_summary_entry(ARGS "system-freetype")
 qt_configure_add_summary_entry(ARGS "harfbuzz")
@@ -1323,6 +1397,10 @@ qt_configure_add_summary_entry(ARGS "vulkan")
 qt_configure_add_summary_entry(ARGS "metal")
 qt_configure_add_summary_entry(ARGS "graphicsframecapture")
 qt_configure_add_summary_entry(ARGS "sessionmanager")
+qt_configure_add_summary_entry(
+    ARGS "qtgui-threadpool"
+    CONDITION QT_FEATURE_thread
+)
 qt_configure_end_summary_section() # end of "Qt Gui" section
 qt_configure_add_summary_section(NAME "Features used by QPA backends")
 qt_configure_add_summary_entry(ARGS "evdev")
@@ -1332,6 +1410,7 @@ qt_configure_add_summary_entry(ARGS "integrityhid")
 qt_configure_add_summary_entry(ARGS "mtdev")
 qt_configure_add_summary_entry(ARGS "tslib")
 qt_configure_add_summary_entry(ARGS "xkbcommon")
+qt_configure_add_summary_entry(ARGS "vxworksevdev")
 qt_configure_add_summary_section(NAME "X11 specific")
 qt_configure_add_summary_entry(ARGS "xlib")
 qt_configure_add_summary_entry(ARGS "xcb-xlib")
@@ -1379,6 +1458,7 @@ qt_configure_add_summary_entry(ARGS "direct2d")
 qt_configure_add_summary_entry(ARGS "direct2d1_1")
 qt_configure_add_summary_entry(ARGS "directwrite")
 qt_configure_add_summary_entry(ARGS "directwrite3")
+qt_configure_add_summary_entry(ARGS "directwritecolrv1")
 qt_configure_end_summary_section() # end of "Windows" section
 qt_configure_end_summary_section() # end of "QPA backends" section
 qt_configure_add_report_entry(
@@ -1410,4 +1490,9 @@ qt_configure_add_report_entry(
     TYPE ERROR
     MESSAGE "XCB plugin requires xkbcommon and xkbcommon-x11, but -no-xkbcommon was provided."
     CONDITION ( NOT INPUT_xcb STREQUAL '' ) AND ( NOT INPUT_xcb STREQUAL 'no' ) AND INPUT_xkbcommon STREQUAL 'no'
+)
+qt_configure_add_report_entry(
+    TYPE ERROR
+    MESSAGE "The desktopservices feature is required on macOS and iOS, and cannot be disabled."
+    CONDITION APPLE AND NOT QT_FEATURE_desktopservices
 )

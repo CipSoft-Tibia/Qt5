@@ -46,7 +46,11 @@ const UIStrings = {
    * @example {index.ts} PH1
    */
   overrideSourceMappedFileExplanation: '‘{PH1}’ is a source mapped file and cannot be overridden.',
-
+  /**
+   * @description An error message shown in the DevTools console after the user clicked "Save as" in
+   * the context menu of a WebAssembly file.
+   */
+  saveWasmFailed: 'Unable to save WASM module to disk. Most likely the module is too large.',
 };
 const str_ = i18n.i18n.registerUIStrings('models/persistence/PersistenceActions.ts', UIStrings);
 const i18nString = i18n.i18n.getLocalizedString.bind(undefined, str_);
@@ -56,19 +60,28 @@ export class ContextMenuProvider implements
         .Provider<Workspace.UISourceCode.UISourceCode|SDK.Resource.Resource|SDK.NetworkRequest.NetworkRequest> {
   appendApplicableItems(
       _event: Event, contextMenu: UI.ContextMenu.ContextMenu,
-      contentProvider: Workspace.UISourceCode.UISourceCode|SDK.Resource.Resource|
-      SDK.NetworkRequest.NetworkRequest): void {
+      contentProvider: TextUtils.ContentProvider.ContentProvider): void {
     async function saveAs(): Promise<void> {
       if (contentProvider instanceof Workspace.UISourceCode.UISourceCode) {
         (contentProvider as Workspace.UISourceCode.UISourceCode).commitWorkingCopy();
       }
-      const content = await contentProvider.requestContent();
-      let decodedContent = content.content || '';
-      if (content.isEncoded) {
-        decodedContent = window.atob(decodedContent);
-      }
       const url = contentProvider.contentURL();
-      await Workspace.FileManager.FileManager.instance().save(url, decodedContent, true);
+      let content: TextUtils.ContentProvider.DeferredContent;
+      const maybeScript = getScript(contentProvider);
+      if (maybeScript?.isWasm()) {
+        try {
+          const byteCode = await maybeScript.getWasmBytecode();
+          const base64 = await Common.Base64.encode(byteCode);
+          content = {isEncoded: true, content: base64};
+        } catch (e) {
+          console.error(`Unable to convert WASM byte code for ${url} to base64. Not saving to disk`, e.stack);
+          Common.Console.Console.instance().error(i18nString(UIStrings.saveWasmFailed), /* show=*/ false);
+          return;
+        }
+      } else {
+        content = await contentProvider.requestContent();
+      }
+      await Workspace.FileManager.FileManager.instance().save(url, content.content ?? '', true, content.isEncoded);
       Workspace.FileManager.FileManager.instance().close(url);
     }
 
@@ -82,9 +95,9 @@ export class ContextMenuProvider implements
     }
 
     if (contentProvider.contentType().isDocumentOrScriptOrStyleSheet()) {
-      contextMenu.saveSection().appendItem(i18nString(UIStrings.saveAs), saveAs);
+      contextMenu.saveSection().appendItem(i18nString(UIStrings.saveAs), saveAs, {jslogContext: 'save-as'});
     } else if (contentProvider instanceof SDK.Resource.Resource && contentProvider.contentType().isImage()) {
-      contextMenu.saveSection().appendItem(i18nString(UIStrings.saveImage), saveImage);
+      contextMenu.saveSection().appendItem(i18nString(UIStrings.saveImage), saveImage, {jslogContext: 'save-image'});
     }
 
     // Retrieve uiSourceCode by URL to pick network resources everywhere.
@@ -98,7 +111,8 @@ export class ContextMenuProvider implements
       const path = Common.ParsedURL.ParsedURL.urlToRawPathString(fileURL, Host.Platform.isWin());
       contextMenu.revealSection().appendItem(
           i18nString(UIStrings.openInContainingFolder),
-          () => Host.InspectorFrontendHost.InspectorFrontendHostInstance.showItemInFolder(path));
+          () => Host.InspectorFrontendHost.InspectorFrontendHostInstance.showItemInFolder(path),
+          {jslogContext: 'open-in-containing-folder'});
     }
 
     if (contentProvider instanceof Workspace.UISourceCode.UISourceCode &&
@@ -122,13 +136,14 @@ export class ContextMenuProvider implements
         }
       }
     }
-    contextMenu.overrideSection().appendItem(i18nString(UIStrings.overrideContent), handler, {disabled});
+    contextMenu.overrideSection().appendItem(
+        i18nString(UIStrings.overrideContent), handler, {disabled, jslogContext: 'override-content'});
 
     if (contentProvider instanceof SDK.NetworkRequest.NetworkRequest) {
       contextMenu.overrideSection().appendItem(i18nString(UIStrings.showOverrides), async () => {
         await UI.ViewManager.ViewManager.instance().showView('navigator-overrides');
         Host.userMetrics.actionTaken(Host.UserMetrics.Action.ShowAllOverridesFromNetworkContextMenu);
-      });
+      }, {jslogContext: 'show-overrides'});
     }
   }
 
@@ -176,7 +191,8 @@ export class ContextMenuProvider implements
     const warningMessage = i18nString(UIStrings.overrideSourceMappedFileWarning, {PH1: deployedName}) + '\n' +
         i18nString(UIStrings.overrideSourceMappedFileExplanation, {PH1: originalName});
 
-    const shouldJumpToDeployedFile = await UI.UIUtils.ConfirmDialog.show(warningMessage);
+    const shouldJumpToDeployedFile = await UI.UIUtils.ConfirmDialog.show(
+        warningMessage, undefined, {jslogContext: 'override-source-mapped-file-warning'});
 
     if (shouldJumpToDeployedFile) {
       Host.userMetrics.actionTaken(Host.UserMetrics.Action.OverrideContentContextMenuRedirectToDeployed);
@@ -207,4 +223,29 @@ export class ContextMenuProvider implements
 
     return deployedUiSourceCode;
   }
+}
+
+/**
+ * @returns The script if the content provider is a UISourceCode and the DebuggerModel actually created one for the UISourceCode.
+ */
+function getScript(contentProvider: TextUtils.ContentProvider.ContentProvider): SDK.Script.Script|null {
+  if (!(contentProvider instanceof Workspace.UISourceCode.UISourceCode)) {
+    return null;
+  }
+
+  // First we try to resolve the target and use that to get the script.
+  const target = Bindings.NetworkProject.NetworkProject.targetForUISourceCode(contentProvider);
+  const model = target?.model(SDK.DebuggerModel.DebuggerModel);
+  if (model) {
+    const resourceFile =
+        Bindings.DebuggerWorkspaceBinding.DebuggerWorkspaceBinding.instance().scriptFile(contentProvider, model);
+    if (resourceFile?.script) {
+      return resourceFile.script;
+    }
+  }
+
+  // Otherwise we'll check all possible scripts for this UISourceCode and take the first one.
+  return Bindings.DebuggerWorkspaceBinding.DebuggerWorkspaceBinding.instance().scriptsForUISourceCode(
+             contentProvider)[0] ??
+      null;
 }

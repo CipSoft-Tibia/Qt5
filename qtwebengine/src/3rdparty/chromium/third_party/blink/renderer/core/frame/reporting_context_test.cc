@@ -7,7 +7,7 @@
 #include "base/test/metrics/histogram_tester.h"
 #include "base/time/time.h"
 #include "testing/gtest/include/gtest/gtest.h"
-#include "third_party/blink/public/common/browser_interface_broker_proxy.h"
+#include "third_party/blink/public/platform/browser_interface_broker_proxy.h"
 #include "third_party/blink/renderer/core/frame/deprecation/deprecation_report_body.h"
 #include "third_party/blink/renderer/core/frame/document_policy_violation_report_body.h"
 #include "third_party/blink/renderer/core/frame/local_dom_window.h"
@@ -49,7 +49,7 @@ class MockReportingServiceProxy : public mojom::blink::ReportingServiceProxy {
     broker_.SetBinderForTesting(ReportingServiceProxy::Name_, {});
   }
 
-  absl::optional<base::Time> DeprecationReportAnticipatedRemoval() const {
+  std::optional<base::Time> DeprecationReportAnticipatedRemoval() const {
     return deprecation_report_anticipated_removal_;
   }
 
@@ -63,7 +63,7 @@ class MockReportingServiceProxy : public mojom::blink::ReportingServiceProxy {
 
   void QueueDeprecationReport(const KURL& url,
                               const String& id,
-                              absl::optional<base::Time> anticipated_removal,
+                              std::optional<base::Time> anticipated_removal,
                               const String& message,
                               const String& source_file,
                               int32_t line_number,
@@ -132,7 +132,7 @@ class MockReportingServiceProxy : public mojom::blink::ReportingServiceProxy {
   base::OnceClosure reached_callback_;
 
   // Last reported values
-  absl::optional<base::Time> deprecation_report_anticipated_removal_;
+  std::optional<base::Time> deprecation_report_anticipated_removal_;
 
   // Last reported report's message.
   String last_message_;

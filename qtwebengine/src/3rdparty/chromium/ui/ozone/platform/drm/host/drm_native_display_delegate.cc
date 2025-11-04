@@ -53,9 +53,9 @@ void DrmNativeDisplayDelegate::GetDisplays(
 void DrmNativeDisplayDelegate::Configure(
     const std::vector<display::DisplayConfigurationParams>& config_requests,
     display::ConfigureCallback callback,
-    uint32_t modeset_flag) {
+    display::ModesetFlags modeset_flags) {
   display_manager_->ConfigureDisplays(config_requests, std::move(callback),
-                                      modeset_flag);
+                                      modeset_flags);
 }
 
 void DrmNativeDisplayDelegate::SetHdcpKeyProp(
@@ -103,29 +103,19 @@ void DrmNativeDisplayDelegate::SetGammaAdjustment(
   display->SetGammaAdjustment(adjustment);
 }
 
-bool DrmNativeDisplayDelegate::SetColorMatrix(
-    int64_t display_id,
-    const std::vector<float>& color_matrix) {
-  DrmDisplayHost* display = display_manager_->GetDisplay(display_id);
-  display->SetColorMatrix(color_matrix);
-  return true;
-}
-
-bool DrmNativeDisplayDelegate::SetGammaCorrection(
-    int64_t display_id,
-    const display::GammaCurve& degamma,
-    const display::GammaCurve& gamma) {
-  DrmDisplayHost* display = display_manager_->GetDisplay(display_id);
-  display->SetGammaCorrection(degamma, gamma);
-  return true;
-}
-
 void DrmNativeDisplayDelegate::SetPrivacyScreen(
     int64_t display_id,
     bool enabled,
     display::SetPrivacyScreenCallback callback) {
   DrmDisplayHost* display = display_manager_->GetDisplay(display_id);
   display->SetPrivacyScreen(enabled, std::move(callback));
+}
+
+void DrmNativeDisplayDelegate::GetSeamlessRefreshRates(
+    int64_t display_id,
+    display::GetSeamlessRefreshRatesCallback callback) const {
+  DrmDisplayHost* display = display_manager_->GetDisplay(display_id);
+  display->GetSeamlessRefreshRates(std::move(callback));
 }
 
 void DrmNativeDisplayDelegate::AddObserver(

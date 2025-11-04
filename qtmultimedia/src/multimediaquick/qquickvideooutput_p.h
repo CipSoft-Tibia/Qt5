@@ -17,15 +17,16 @@
 //
 
 #include <QtCore/qrect.h>
-#include <QtCore/qsharedpointer.h>
-#include <QtQuick/qquickitem.h>
 #include <QtCore/qpointer.h>
 #include <QtCore/qmutex.h>
+#include <QtQuick/qquickitem.h>
 
-#include <private/qtmultimediaquickglobal_p.h>
-#include <qvideoframe.h>
-#include <qvideoframeformat.h>
-#include <qvideosink.h>
+#include <QtMultimedia/qvideoframe.h>
+#include <QtMultimedia/qvideoframeformat.h>
+#include <QtMultimedia/qvideosink.h>
+#include <QtMultimediaQuick/private/qtmultimediaquickglobal_p.h>
+
+#include <thread>
 
 QT_BEGIN_NAMESPACE
 
@@ -56,7 +57,10 @@ class Q_MULTIMEDIAQUICK_EXPORT QQuickVideoOutput : public QQuickItem
     Q_OBJECT
     Q_DISABLE_COPY(QQuickVideoOutput)
     Q_PROPERTY(FillMode fillMode READ fillMode WRITE setFillMode NOTIFY fillModeChanged)
+    Q_PROPERTY(EndOfStreamPolicy endOfStreamPolicy READ endOfStreamPolicy WRITE setEndOfStreamPolicy
+                       NOTIFY endOfStreamPolicyChanged REVISION(6, 9))
     Q_PROPERTY(int orientation READ orientation WRITE setOrientation NOTIFY orientationChanged)
+    Q_PROPERTY(bool mirrored READ mirrored WRITE setMirrored NOTIFY mirroredChanged REVISION(6, 9))
     Q_PROPERTY(QRectF sourceRect READ sourceRect NOTIFY sourceRectChanged)
     Q_PROPERTY(QRectF contentRect READ contentRect NOTIFY contentRectChanged)
     Q_PROPERTY(QVideoSink* videoSink READ videoSink CONSTANT)
@@ -74,6 +78,13 @@ public:
     };
     Q_ENUM(FillMode)
 
+    enum EndOfStreamPolicy
+    {
+        ClearOutput,
+        KeepLastFrame
+    };
+    Q_ENUM(EndOfStreamPolicy)
+
     QQuickVideoOutput(QQuickItem *parent = 0);
     ~QQuickVideoOutput() override;
 
@@ -85,15 +96,25 @@ public:
     int orientation() const;
     void setOrientation(int);
 
+    bool mirrored() const;
+    void setMirrored(bool);
+
     QRectF sourceRect() const;
     QRectF contentRect() const;
+
+    EndOfStreamPolicy endOfStreamPolicy() const;
+    void setEndOfStreamPolicy(EndOfStreamPolicy policy);
+
+    Q_REVISION(6, 9) Q_INVOKABLE void clearOutput();
 
 Q_SIGNALS:
     void sourceChanged();
     void fillModeChanged(QQuickVideoOutput::FillMode);
     void orientationChanged();
+    void mirroredChanged();
     void sourceRectChanged();
     void contentRectChanged();
+    void endOfStreamPolicyChanged(QQuickVideoOutput::EndOfStreamPolicy);
 
 protected:
     QSGNode *updatePaintNode(QSGNode *, UpdatePaintNodeData *) override;
@@ -110,13 +131,11 @@ private:
 
     void initRhiForSink();
     void updateHdr(QSGVideoNode *videoNode);
+    void disconnectWindowConnections();
 
 private Q_SLOTS:
     void _q_newFrame(QSize);
     void _q_updateGeometry();
-    void _q_invalidateSceneGraph();
-    void _q_sceneGraphInitialized();
-    void _q_afterFrameEnd();
 
 private:
     QSize m_nativeSize;
@@ -139,6 +158,45 @@ private:
     QMutex m_frameMutex;
     QRectF m_renderedRect;         // Destination pixel coordinates, clipped
     QRectF m_sourceTextureRect;    // Source texture coordinates
+
+    EndOfStreamPolicy m_endOfStreamPolicy = ClearOutput;
+
+    struct DestructorGuard
+    {
+        QMutex m_mutex;
+        bool m_isAlive{ true };
+
+        template <typename Functor>
+        void runWhileAlive(Functor &&f)
+        {
+            QMutexLocker lock(&m_mutex);
+            if (m_isAlive)
+                f();
+        }
+    };
+
+    std::shared_ptr<DestructorGuard> m_destructorGuard = std::make_shared<DestructorGuard>();
+
+    template <typename Functor>
+    auto makeGuardedCall(Functor &&f)
+    {
+        return [f = std::forward<Functor>(f), guard = m_destructorGuard](auto... params) {
+            if (g_signalBackoff) {
+                Q_UNLIKELY_BRANCH;
+                std::this_thread::sleep_for(*g_signalBackoff);
+            }
+
+            guard->runWhileAlive([&] {
+                f(params...);
+            });
+        };
+    }
+
+    // for testing
+    static std::optional<std::chrono::nanoseconds> g_signalBackoff;
+
+public:
+    static void setSignalBackoff(std::optional<std::chrono::nanoseconds>);
 };
 
 QT_END_NAMESPACE

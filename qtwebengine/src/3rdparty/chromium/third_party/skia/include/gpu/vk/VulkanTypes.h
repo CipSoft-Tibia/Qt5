@@ -11,7 +11,11 @@
 #include "include/core/SkTypes.h"
 #include "include/private/gpu/vk/SkiaVulkan.h"
 
+#include <cstddef>
+#include <cstdint>
 #include <functional>
+#include <string>
+#include <vector>
 
 #ifndef VK_VERSION_1_1
 #error Skia requires the use of Vulkan 1.1 headers
@@ -62,14 +66,24 @@ struct VulkanYcbcrConversionInfo {
         if (!this->isValid() && !that.isValid()) {
             return true;
         }
-        return this->fFormat == that.fFormat &&
-               this->fExternalFormat == that.fExternalFormat &&
-               this->fYcbcrModel == that.fYcbcrModel &&
-               this->fYcbcrRange == that.fYcbcrRange &&
-               this->fXChromaOffset == that.fXChromaOffset &&
-               this->fYChromaOffset == that.fYChromaOffset &&
-               this->fChromaFilter == that.fChromaFilter &&
-               this->fForceExplicitReconstruction == that.fForceExplicitReconstruction;
+
+        // Note that we do not need to check for fFormatFeatures equality. This is because the
+        // Vulkan spec dictates that Android hardware buffers with the same external format must
+        // have the same support for key features. See
+        // https://docs.vulkan.org/spec/latest/chapters/memory.html#_android_hardware_buffer_external_memory
+        // for more details.
+        return this->fFormat                      == that.fFormat                      &&
+               this->fExternalFormat              == that.fExternalFormat              &&
+               this->fYcbcrModel                  == that.fYcbcrModel                  &&
+               this->fYcbcrRange                  == that.fYcbcrRange                  &&
+               this->fXChromaOffset               == that.fXChromaOffset               &&
+               this->fYChromaOffset               == that.fYChromaOffset               &&
+               this->fChromaFilter                == that.fChromaFilter                &&
+               this->fForceExplicitReconstruction == that.fForceExplicitReconstruction &&
+               this->fComponents.r                == that.fComponents.r                &&
+               this->fComponents.g                == that.fComponents.g                &&
+               this->fComponents.b                == that.fComponents.b                &&
+               this->fComponents.a                == that.fComponents.a;
     }
     bool operator!=(const VulkanYcbcrConversionInfo& that) const { return !(*this == that); }
 
@@ -96,7 +110,20 @@ struct VulkanYcbcrConversionInfo {
     // For external images format features here should be those returned by a call to
     // vkAndroidHardwareBufferFormatPropertiesANDROID
     VkFormatFeatureFlags fFormatFeatures = 0;
+
+    // This is ignored when fExternalFormat is non-zero.
+    VkComponentMapping fComponents            = {VK_COMPONENT_SWIZZLE_IDENTITY,
+                                                 VK_COMPONENT_SWIZZLE_IDENTITY,
+                                                 VK_COMPONENT_SWIZZLE_IDENTITY,
+                                                 VK_COMPONENT_SWIZZLE_IDENTITY};
 };
+
+typedef void* VulkanDeviceLostContext;
+typedef void (*VulkanDeviceLostProc)(VulkanDeviceLostContext faultContext,
+                                     const std::string& description,
+                                     const std::vector<VkDeviceFaultAddressInfoEXT>& addressInfos,
+                                     const std::vector<VkDeviceFaultVendorInfoEXT>& vendorInfos,
+                                     const std::vector<std::byte>& vendorBinaryData);
 
 } // namespace skgpu
 

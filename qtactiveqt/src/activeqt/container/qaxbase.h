@@ -116,6 +116,31 @@ private:
     int internalInvoke(QMetaObject::Call, int index, void **v);
     bool dynamicCallHelper(const char *name, void *out, QList<QVariant> &var,
                            QByteArray &type, unsigned flags = 0);
+
+private:
+#ifndef QT_NO_DATASTREAM
+    friend QDataStream &operator>>(QDataStream &s, QAxBase &c)
+    {
+        QAxBase::PropertyBag bag;
+        const QSignalBlocker blocker(c.qObject());
+        QString control;
+        s >> control;
+        c.setControl(control);
+        s >> bag;
+        c.setPropertyBag(bag);
+
+        return s;
+    }
+
+    friend QDataStream &operator<<(QDataStream &s, const QAxBase &c)
+    {
+        QAxBase::PropertyBag bag = c.propertyBag();
+        s << c.control();
+        s << bag;
+
+        return s;
+    }
+#endif // QT_NO_DATASTREAM
 };
 
 template <> inline QAxBase *qobject_cast<QAxBase*>(const QObject *o)
@@ -136,30 +161,6 @@ inline QString QAxBase::generateDocumentation()
 {
     return qax_generateDocumentation(this);
 }
-
-#ifndef QT_NO_DATASTREAM
-inline QDataStream &operator >>(QDataStream &s, QAxBase &c)
-{
-    QAxBase::PropertyBag bag;
-    const QSignalBlocker blocker(c.qObject());
-    QString control;
-    s >> control;
-    c.setControl(control);
-    s >> bag;
-    c.setPropertyBag(bag);
-
-    return s;
-}
-
-inline QDataStream &operator <<(QDataStream &s, const QAxBase &c)
-{
-    QAxBase::PropertyBag bag = c.propertyBag();
-    s << c.control();
-    s << bag;
-
-    return s;
-}
-#endif // QT_NO_DATASTREAM
 
 QT_END_NAMESPACE
 

@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:network-protocol
 
 #ifndef QWEBENGINEPROFILE_P_H
 #define QWEBENGINEPROFILE_P_H
@@ -51,7 +52,7 @@ public:
 
     void cleanDownloads();
 
-    void downloadRequested(DownloadItemInfo &info) override;
+    void downloadRequested(const DownloadItemInfo &info) override;
     void downloadUpdated(const DownloadItemInfo &info) override;
 
     void showNotification(QSharedPointer<QtWebEngineCore::UserNotificationController> &) override;

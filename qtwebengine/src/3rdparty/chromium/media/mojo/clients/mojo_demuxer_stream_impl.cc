@@ -32,14 +32,14 @@ void MojoDemuxerStreamImpl::Initialize(InitializeCallback callback) {
   DVLOG(2) << __func__;
 
   // Prepare the initial config.
-  absl::optional<AudioDecoderConfig> audio_config;
-  absl::optional<VideoDecoderConfig> video_config;
+  std::optional<AudioDecoderConfig> audio_config;
+  std::optional<VideoDecoderConfig> video_config;
   if (stream_->type() == Type::AUDIO) {
     audio_config = stream_->audio_decoder_config();
   } else if (stream_->type() == Type::VIDEO) {
     video_config = stream_->video_decoder_config();
   } else {
-    NOTREACHED() << "Unsupported stream type: " << stream_->type();
+    NOTREACHED_IN_MIGRATION() << "Unsupported stream type: " << stream_->type();
     return;
   }
 
@@ -53,7 +53,7 @@ void MojoDemuxerStreamImpl::Initialize(InitializeCallback callback) {
 }
 
 void MojoDemuxerStreamImpl::Read(uint32_t count, ReadCallback callback) {
-  DVLOG(3) << __func__ << " client receive count:" << count;
+  DVLOG(3) << __func__ << ": count=" << count;
   stream_->Read(
       count, base::BindOnce(&MojoDemuxerStreamImpl::OnBufferReady,
                             weak_factory_.GetWeakPtr(), std::move(callback)));
@@ -67,10 +67,11 @@ void MojoDemuxerStreamImpl::OnBufferReady(
     ReadCallback callback,
     Status status,
     media::DemuxerStream::DecoderBufferVector buffers) {
-  absl::optional<AudioDecoderConfig> audio_config;
-  absl::optional<VideoDecoderConfig> video_config;
-  DVLOG(3) << __func__ << "status:" << status
-           << " buffers.size:" << buffers.size();
+  std::optional<AudioDecoderConfig> audio_config;
+  std::optional<VideoDecoderConfig> video_config;
+  DVLOG(3) << __func__
+           << ": status=" << ::media::DemuxerStream::GetStatusName(status)
+           << ", buffers.size=" << buffers.size();
 
   if (status == Status::kConfigChanged) {
     // To simply the config change handling on renderer(receiver) side, prefer
@@ -86,8 +87,9 @@ void MojoDemuxerStreamImpl::OnBufferReady(
     } else if (stream_->type() == Type::VIDEO) {
       video_config = stream_->video_decoder_config();
     } else {
-      NOTREACHED() << "Unsupported config change encountered for type: "
-                   << stream_->type();
+      NOTREACHED_IN_MIGRATION()
+          << "Unsupported config change encountered for type: "
+          << stream_->type();
     }
     std::move(callback).Run(Status::kConfigChanged, {}, audio_config,
                             video_config);

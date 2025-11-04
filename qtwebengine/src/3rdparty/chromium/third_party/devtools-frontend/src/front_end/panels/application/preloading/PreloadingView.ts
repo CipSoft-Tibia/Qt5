@@ -20,6 +20,7 @@ import * as VisualLogging from '../../../ui/visual_logging/visual_logging.js';
 import * as PreloadingComponents from './components/components.js';
 import type * as PreloadingHelper from './helper/helper.js';
 import preloadingViewStyles from './preloadingView.css.js';
+import preloadingViewDropDownStyles from './preloadingViewDropDown.css.js';
 
 const UIStrings = {
   /**
@@ -30,6 +31,11 @@ const UIStrings = {
    *@description DropDown text for filtering preloading attempts by rule set: No filter
    */
   filterAllPreloads: 'All speculative loads',
+  /**
+   *@description Dropdown subtitle for filtering preloading attempts by rule set
+   *             when there are no rule sets in the page.
+   */
+  noRuleSets: 'no rule sets',
   /**
    *@description Text in grid: Rule set is valid
    */
@@ -77,36 +83,36 @@ class PreloadingUIUtils {
   static status(status: SDK.PreloadingModel.PreloadingStatus): string {
     // See content/public/browser/preloading.h PreloadingAttemptOutcome.
     switch (status) {
-      case SDK.PreloadingModel.PreloadingStatus.NotTriggered:
+      case SDK.PreloadingModel.PreloadingStatus.NOT_TRIGGERED:
         return i18nString(UIStrings.statusNotTriggered);
-      case SDK.PreloadingModel.PreloadingStatus.Pending:
+      case SDK.PreloadingModel.PreloadingStatus.PENDING:
         return i18nString(UIStrings.statusPending);
-      case SDK.PreloadingModel.PreloadingStatus.Running:
+      case SDK.PreloadingModel.PreloadingStatus.RUNNING:
         return i18nString(UIStrings.statusRunning);
-      case SDK.PreloadingModel.PreloadingStatus.Ready:
+      case SDK.PreloadingModel.PreloadingStatus.READY:
         return i18nString(UIStrings.statusReady);
-      case SDK.PreloadingModel.PreloadingStatus.Success:
+      case SDK.PreloadingModel.PreloadingStatus.SUCCESS:
         return i18nString(UIStrings.statusSuccess);
-      case SDK.PreloadingModel.PreloadingStatus.Failure:
+      case SDK.PreloadingModel.PreloadingStatus.FAILURE:
         return i18nString(UIStrings.statusFailure);
       // NotSupported is used to handle unreachable case. For example,
       // there is no code path for
       // PreloadingTriggeringOutcome::kTriggeredButPending in prefetch,
       // which is mapped to NotSupported. So, we regard it as an
       // internal error.
-      case SDK.PreloadingModel.PreloadingStatus.NotSupported:
+      case SDK.PreloadingModel.PreloadingStatus.NOT_SUPPORTED:
         return i18n.i18n.lockedString('Internal error');
     }
   }
 
   static preloadsStatusSummary(countsByStatus: Map<SDK.PreloadingModel.PreloadingStatus, number>): string {
     const LIST = [
-      SDK.PreloadingModel.PreloadingStatus.NotTriggered,
-      SDK.PreloadingModel.PreloadingStatus.Pending,
-      SDK.PreloadingModel.PreloadingStatus.Running,
-      SDK.PreloadingModel.PreloadingStatus.Ready,
-      SDK.PreloadingModel.PreloadingStatus.Success,
-      SDK.PreloadingModel.PreloadingStatus.Failure,
+      SDK.PreloadingModel.PreloadingStatus.NOT_TRIGGERED,
+      SDK.PreloadingModel.PreloadingStatus.PENDING,
+      SDK.PreloadingModel.PreloadingStatus.RUNNING,
+      SDK.PreloadingModel.PreloadingStatus.READY,
+      SDK.PreloadingModel.PreloadingStatus.SUCCESS,
+      SDK.PreloadingModel.PreloadingStatus.FAILURE,
     ];
 
     return LIST.filter(status => (countsByStatus?.get(status) || 0) > 0)
@@ -179,10 +185,10 @@ export class PreloadingRuleSetView extends UI.Widget.VBox {
     this.model = model;
     SDK.TargetManager.TargetManager.instance().addScopeChangeListener(this.onScopeChange.bind(this));
     SDK.TargetManager.TargetManager.instance().addModelListener(
-        SDK.PreloadingModel.PreloadingModel, SDK.PreloadingModel.Events.ModelUpdated, this.render, this,
+        SDK.PreloadingModel.PreloadingModel, SDK.PreloadingModel.Events.MODEL_UPDATED, this.render, this,
         {scoped: true});
     SDK.TargetManager.TargetManager.instance().addModelListener(
-        SDK.PreloadingModel.PreloadingModel, SDK.PreloadingModel.Events.WarningsUpdated,
+        SDK.PreloadingModel.PreloadingModel, SDK.PreloadingModel.Events.WARNINGS_UPDATED,
         this.warningsView.onWarningsUpdated, this.warningsView, {scoped: true});
 
     // this (VBox)
@@ -210,7 +216,7 @@ export class PreloadingRuleSetView extends UI.Widget.VBox {
             ${this.ruleSetGrid}
           </div>
           <div slot="sidebar" class="overflow-auto" style="height: 100%"
-          jslog=${VisualLogging.section().context('rule-set-details')}>
+          jslog=${VisualLogging.section('rule-set-details')}>
             ${this.ruleSetDetails}
           </div>
         </${SplitView.SplitView.SplitView.litTagName}>`,
@@ -301,14 +307,14 @@ export class PreloadingAttemptView extends UI.Widget.VBox {
   constructor(model: SDK.PreloadingModel.PreloadingModel) {
     super(/* isWebComponent */ true, /* delegatesFocus */ false);
 
-    this.element.setAttribute('jslog', `${VisualLogging.pane().context('preloading-speculations')}`);
+    this.element.setAttribute('jslog', `${VisualLogging.pane('preloading-speculations')}`);
     this.model = model;
     SDK.TargetManager.TargetManager.instance().addScopeChangeListener(this.onScopeChange.bind(this));
     SDK.TargetManager.TargetManager.instance().addModelListener(
-        SDK.PreloadingModel.PreloadingModel, SDK.PreloadingModel.Events.ModelUpdated, this.render, this,
+        SDK.PreloadingModel.PreloadingModel, SDK.PreloadingModel.Events.MODEL_UPDATED, this.render, this,
         {scoped: true});
     SDK.TargetManager.TargetManager.instance().addModelListener(
-        SDK.PreloadingModel.PreloadingModel, SDK.PreloadingModel.Events.WarningsUpdated,
+        SDK.PreloadingModel.PreloadingModel, SDK.PreloadingModel.Events.WARNINGS_UPDATED,
         this.warningsView.onWarningsUpdated, this.warningsView, {scoped: true});
 
     // this (VBox)
@@ -333,6 +339,7 @@ export class PreloadingAttemptView extends UI.Widget.VBox {
     const vbox = new UI.Widget.VBox();
 
     const toolbar = new UI.Toolbar.Toolbar('preloading-toolbar', vbox.contentElement);
+    toolbar.element.setAttribute('jslog', `${VisualLogging.toolbar()}`);
     this.ruleSetSelector = new PreloadingRuleSetSelector(() => this.render());
     toolbar.appendToolbarItem(this.ruleSetSelector.item());
 
@@ -448,14 +455,14 @@ export class PreloadingSummaryView extends UI.Widget.VBox {
   constructor(model: SDK.PreloadingModel.PreloadingModel) {
     super(/* isWebComponent */ true, /* delegatesFocus */ false);
 
-    this.element.setAttribute('jslog', `${VisualLogging.pane().context('speculative-loads')}`);
+    this.element.setAttribute('jslog', `${VisualLogging.pane('speculative-loads')}`);
     this.model = model;
     SDK.TargetManager.TargetManager.instance().addScopeChangeListener(this.onScopeChange.bind(this));
     SDK.TargetManager.TargetManager.instance().addModelListener(
-        SDK.PreloadingModel.PreloadingModel, SDK.PreloadingModel.Events.ModelUpdated, this.render, this,
+        SDK.PreloadingModel.PreloadingModel, SDK.PreloadingModel.Events.MODEL_UPDATED, this.render, this,
         {scoped: true});
     SDK.TargetManager.TargetManager.instance().addModelListener(
-        SDK.PreloadingModel.PreloadingModel, SDK.PreloadingModel.Events.WarningsUpdated,
+        SDK.PreloadingModel.PreloadingModel, SDK.PreloadingModel.Events.WARNINGS_UPDATED,
         this.warningsView.onWarningsUpdated, this.warningsView, {scoped: true});
 
     this.warningsContainer = document.createElement('div');
@@ -515,7 +522,7 @@ class PreloadingRuleSetSelector implements
     this.model = model;
     SDK.TargetManager.TargetManager.instance().addScopeChangeListener(this.onScopeChange.bind(this));
     SDK.TargetManager.TargetManager.instance().addModelListener(
-        SDK.PreloadingModel.PreloadingModel, SDK.PreloadingModel.Events.ModelUpdated, this.onModelUpdated, this,
+        SDK.PreloadingModel.PreloadingModel, SDK.PreloadingModel.Events.MODEL_UPDATED, this.onModelUpdated, this,
         {scoped: true});
 
     this.listModel = new UI.ListModel.ListModel();
@@ -528,7 +535,7 @@ class PreloadingRuleSetSelector implements
     this.toolbarItem.setTitle(i18nString(UIStrings.filterFilterByRuleSet));
     this.toolbarItem.element.classList.add('toolbar-has-dropdown');
     this.toolbarItem.element.setAttribute(
-        'jslog', `${VisualLogging.action().track({click: true}).context('filter-by-rule-set')}`);
+        'jslog', `${VisualLogging.action('filter-by-rule-set').track({click: true})}`);
 
     // Initializes `listModel` and `dropDown` using data of the model.
     this.onModelUpdated();
@@ -554,6 +561,17 @@ class PreloadingRuleSetSelector implements
     } else {
       this.dropDown.selectItem(selected);
     }
+    this.updateWidth(items);
+  }
+
+  // Updates the width for the DropDown element.
+  private updateWidth(items: (Protocol.Preload.RuleSetId|typeof AllRuleSetRootId)[]): void {
+    // Width set by `UI.SoftDropDown`.
+    const DEFAULT_WIDTH = 315;
+    const urlLengths = items.map(x => this.titleFor(x).length);
+    const maxLength = Math.max(...urlLengths);
+    const width = Math.min(maxLength * 6 + 16, DEFAULT_WIDTH);
+    this.dropDown.setWidth(width);
   }
 
   // AllRuleSetRootId is used within the selector to indicate the root item. When interacting with PreloadingModel,
@@ -600,14 +618,14 @@ class PreloadingRuleSetSelector implements
     const convertedId = this.translateItemIdToRuleSetId(id);
     const countsByStatus = this.model.getPreloadCountsByRuleSetId().get(convertedId) ||
         new Map<SDK.PreloadingModel.PreloadingStatus, number>();
-    return PreloadingUIUtils.preloadsStatusSummary(countsByStatus);
+    return PreloadingUIUtils.preloadsStatusSummary(countsByStatus) || `(${i18nString(UIStrings.noRuleSets)})`;
   }
 
   // Method for UI.SoftDropDown.Delegate<Protocol.Preload.RuleSetId|typeof AllRuleSetRootId>
   createElementForItem(id: Protocol.Preload.RuleSetId|typeof AllRuleSetRootId): Element {
     const element = document.createElement('div');
-    const shadowRoot =
-        UI.Utils.createShadowRootWithCoreStyles(element, {cssFile: undefined, delegatesFocus: undefined});
+    const shadowRoot = UI.UIUtils.createShadowRootWithCoreStyles(
+        element, {cssFile: [preloadingViewDropDownStyles], delegatesFocus: undefined});
     const title = shadowRoot.createChild('div', 'title');
     UI.UIUtils.createTextChild(title, Platform.StringUtilities.trimEndWithMaxLength(this.titleFor(id), 100));
     const subTitle = shadowRoot.createChild('div', 'subtitle');

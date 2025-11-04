@@ -633,10 +633,10 @@ void GraphModifier::gradientPressed()
     }
 
     QLinearGradient gradient;
-    gradient.setColorAt(0.0, Qt::black);
-    gradient.setColorAt(0.33, Qt::blue);
-    gradient.setColorAt(0.67, Qt::red);
-    gradient.setColorAt(1.0, Qt::yellow);
+    gradient.setColorAt(0.0, QColor(0, 0, 0, 255));
+    gradient.setColorAt(0.33, QColor(0, 0, 255, 100));
+    gradient.setColorAt(0.67, QColor(255, 0, 0, 150));
+    gradient.setColorAt(1.0, QColor(255, 255, 0, 200));
 
     QList<QLinearGradient> gradients;
     gradients << gradient;
@@ -941,6 +941,12 @@ void GraphModifier::changeShadowQuality(int quality)
 {
     QtGraphs3D::ShadowQuality sq = QtGraphs3D::ShadowQuality(quality);
     m_graph->setShadowQuality(sq);
+}
+
+void GraphModifier::changeTransparencyTechnique(int technique)
+{
+    QtGraphs3D::TransparencyTechnique sq = QtGraphs3D::TransparencyTechnique(technique);
+    m_graph->setTransparencyTechnique(sq);
 }
 
 void GraphModifier::changeSelectionMode(int mode)

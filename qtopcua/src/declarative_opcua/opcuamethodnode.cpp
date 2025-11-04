@@ -15,6 +15,7 @@ QT_BEGIN_NAMESPACE
     \brief Calls a method on the server.
     \since QtOpcUa 5.12
     \inherits Node
+    \deprecated [6.9]
 
     This QML element supports calling method nodes on a server.
     The target object node ID has to be specified by the \l objectNodeId property.

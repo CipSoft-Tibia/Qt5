@@ -118,7 +118,8 @@ Q_LOGGING_CATEGORY(lcPermissions, "qt.permissions", QtWarningMsg);
 
     To ensure the relevant permission backend is included with your
     application, please \l {QT_ANDROID_PACKAGE_SOURCE_DIR}
-    {point the build system to your custom \c AndroidManifest.xml}.
+    {point the build system to your custom \c AndroidManifest.xml}
+    or use \l {qt_add_android_permission()}.
 
     The relevant permission names are described in the documentation
     for each permission type.
@@ -242,8 +243,8 @@ Q_LOGGING_CATEGORY(lcPermissions, "qt.permissions", QtWarningMsg);
     You do not need to construct this type explicitly, as the type is automatically
     used when checking or requesting permissions.
 
-    This constructor participates in overload resolution only if \c T is one of
-    the \l{typed permission} classes:
+    \constraints
+    \c T is one of the \l{typed permission} classes:
 
     \annotatedlist permissions
 */
@@ -256,8 +257,8 @@ Q_LOGGING_CATEGORY(lcPermissions, "qt.permissions", QtWarningMsg);
 
     Use type() for dynamically choosing which typed permission to request.
 
-    This function participates in overload resolution only if \c T is one of
-    the \l{typed permission} classes:
+    \constraints
+    \c T is one of the \l{typed permission} classes:
 
     \annotatedlist permissions
 */

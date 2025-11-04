@@ -8,6 +8,7 @@
 
 #include "core/fxcrt/fx_extension.h"
 #include "fxjs/xfa/cjx_node.h"
+#include "xfa/fgas/graphics/cfgas_gecolor.h"
 #include "xfa/fxfa/parser/cxfa_document.h"
 
 namespace {
@@ -32,43 +33,46 @@ FX_ARGB CXFA_Color::StringToFXARGB(WideStringView view) {
   if (view.IsEmpty())
     return kDefaultValue;
 
-  const wchar_t* str = view.unterminated_c_str();
-  size_t len = view.GetLength();
+  pdfium::span<const wchar_t> str = view.span();
   size_t cc = 0;
-  while (cc < len && FXSYS_iswspace(str[cc]))
+  while (cc < str.size() && FXSYS_iswspace(str[cc])) {
     cc++;
+  }
 
-  if (cc >= len)
+  if (cc >= str.size()) {
     return kDefaultValue;
+  }
 
   uint8_t r = 0;
   uint8_t g = 0;
   uint8_t b = 0;
-  while (cc < len) {
+  while (cc < str.size()) {
     if (str[cc] == ',' || !FXSYS_IsDecimalDigit(str[cc]))
       break;
 
     r = r * 10 + str[cc] - '0';
     cc++;
   }
-  if (cc < len && str[cc] == ',') {
+  if (cc < str.size() && str[cc] == ',') {
     cc++;
-    while (cc < len && FXSYS_iswspace(str[cc]))
+    while (cc < str.size() && FXSYS_iswspace(str[cc])) {
       cc++;
+    }
 
-    while (cc < len) {
+    while (cc < str.size()) {
       if (str[cc] == ',' || !FXSYS_IsDecimalDigit(str[cc]))
         break;
 
       g = g * 10 + str[cc] - '0';
       cc++;
     }
-    if (cc < len && str[cc] == ',') {
+    if (cc < str.size() && str[cc] == ',') {
       cc++;
-      while (cc < len && FXSYS_iswspace(str[cc]))
+      while (cc < str.size() && FXSYS_iswspace(str[cc])) {
         cc++;
+      }
 
-      while (cc < len) {
+      while (cc < str.size()) {
         if (str[cc] == ',' || !FXSYS_IsDecimalDigit(str[cc]))
           break;
 
@@ -95,23 +99,19 @@ CXFA_Color::CXFA_Color(CXFA_Document* doc, XFA_PacketType packet)
 CXFA_Color::~CXFA_Color() = default;
 
 FX_ARGB CXFA_Color::GetValue() const {
-  absl::optional<WideString> val =
+  std::optional<WideString> val =
       JSObject()->TryCData(XFA_Attribute::Value, false);
   return val.has_value() ? StringToFXARGB(val->AsStringView()) : 0xFF000000;
 }
 
 FX_ARGB CXFA_Color::GetValueOrDefault(FX_ARGB defaultValue) const {
-  absl::optional<WideString> val =
+  std::optional<WideString> val =
       JSObject()->TryCData(XFA_Attribute::Value, false);
   return val.has_value() ? StringToFXARGB(val->AsStringView()) : defaultValue;
 }
 
 void CXFA_Color::SetValue(FX_ARGB color) {
-  int a;
-  int r;
-  int g;
-  int b;
-  std::tie(a, r, g, b) = ArgbDecode(color);
   JSObject()->SetCData(XFA_Attribute::Value,
-                       WideString::Format(L"%d,%d,%d", r, g, b));
+                       WideString::FromASCII(
+                           CFGAS_GEColor::ColorToString(color).AsStringView()));
 }

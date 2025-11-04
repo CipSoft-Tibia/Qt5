@@ -53,7 +53,6 @@ class CORE_EXPORT ScriptValue final {
   DISALLOW_NEW();
 
  public:
-  // Defined in to_v8_traits.h due to circular dependency
   // ScriptValue::From() is restricted to certain types that are unambiguous in
   // how they are exposed to V8. Objects that need to know what the expected IDL
   // type is in order to be correctly converted must explicitly use ToV8Traits<>
@@ -62,37 +61,14 @@ class CORE_EXPORT ScriptValue final {
     requires std::derived_from<T, bindings::DictionaryBase> ||
              std::derived_from<T, ScriptWrappable> ||
              std::derived_from<T, bindings::UnionBase>
-  static ScriptValue From(ScriptState*, T* value);
-
-  template <typename T, typename... Arguments>
-  static inline T To(v8::Isolate* isolate,
-                     v8::Local<v8::Value> value,
-                     ExceptionState& exception_state,
-                     Arguments const&... arguments) {
-    return NativeValueTraits<T>::NativeValue(isolate, value, exception_state,
-                                             arguments...);
-  }
-
-  template <typename T, typename... Arguments>
-  static inline T To(v8::Isolate* isolate,
-                     const ScriptValue& value,
-                     ExceptionState& exception_state,
-                     Arguments const&... arguments) {
-    return To<T>(isolate, value.V8Value(), exception_state, arguments...);
+  static ScriptValue From(ScriptState* script_state, T* value) {
+    return ScriptValue(script_state->GetIsolate(), value->ToV8(script_state));
   }
 
   ScriptValue() = default;
 
   ScriptValue(v8::Isolate* isolate, v8::Local<v8::Value> value)
       : isolate_(isolate), value_(isolate, value) {
-    DCHECK(isolate_);
-  }
-
-  template <typename T>
-  ScriptValue(v8::Isolate* isolate, v8::MaybeLocal<T> value)
-      : isolate_(isolate),
-        value_(isolate,
-               value.IsEmpty() ? v8::Local<T>() : value.ToLocalChecked()) {
     DCHECK(isolate_);
   }
 

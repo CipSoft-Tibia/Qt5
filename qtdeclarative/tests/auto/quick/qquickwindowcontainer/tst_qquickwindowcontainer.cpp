@@ -37,6 +37,9 @@ private slots:
 
     void windowDestroyed();
     void windowLifetimeFollowsContainer();
+
+    void focusNavigation();
+
 #if TEST_WINDOW_PARENT
     void deferredVisibilityWithoutWindow();
     void windowComponent();
@@ -136,6 +139,43 @@ void tst_QQuickWindowContainer::windowLifetimeFollowsContainer()
     }
 
     QVERIFY(windowGuard);
+}
+
+void tst_QQuickWindowContainer::focusNavigation()
+{
+    if (QGuiApplication::styleHints()->tabFocusBehavior() != Qt::TabFocusAllControls)
+        QSKIP("Test requires Qt::TabFocusAllControls tab focus behavior");
+
+    auto *topLevelWindow = qobject_cast<QQuickWindow*>(m_engine->rootObjects().first());
+    auto *childWindow = topLevelWindow->findChild<QWindow *>("childWindow");
+    QVERIFY(childWindow);
+
+    QQuickItem *rect1 = topLevelWindow->findChild<QQuickItem *>("rect1");
+    QQuickItem *rect2 = topLevelWindow->findChild<QQuickItem *>("rect2");
+    QVERIFY(rect1);
+    QVERIFY(rect2);
+
+    QQuickItem *rect1Embedded = childWindow->findChild<QQuickItem *>("rect1embedded");
+    QQuickItem *rect2Embedded = childWindow->findChild<QQuickItem *>("rect2embedded");
+    QVERIFY(rect1Embedded);
+    QVERIFY(rect2Embedded);
+
+    topLevelWindow->show();
+    QVERIFY(QTest::qWaitForWindowExposed(topLevelWindow));
+    if (!QTest::qWaitForWindowFocused(topLevelWindow))
+        QSKIP("Window failed to activate and be focused, skipping test");
+    rect1->forceActiveFocus();
+
+    auto verifyFocusChain = [](const QList<QQuickItem *> &focusChain, Qt::Key key) {
+        for (QQuickItem *expectedFocusTarget : focusChain) {
+            const QByteArray objectName = expectedFocusTarget->objectName().toLatin1();
+            QTRY_VERIFY2(expectedFocusTarget->hasActiveFocus(), "expectedFocusTarget: " + objectName);
+            QTest::keyClick(QGuiApplication::focusWindow(), key);
+        }
+    };
+
+    verifyFocusChain({rect1, rect2, rect1Embedded, rect2Embedded}, Qt::Key_Tab);
+    verifyFocusChain({rect1, rect2Embedded, rect1Embedded, rect2, rect1}, Qt::Key_Backtab);
 }
 
 #if TEST_WINDOW_PARENT

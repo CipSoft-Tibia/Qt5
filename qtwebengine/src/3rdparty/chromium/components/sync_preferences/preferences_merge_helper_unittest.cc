@@ -18,14 +18,13 @@ namespace {
 const char kMergeableDictPref[] = "mergeable.dict.pref";
 const char kMergeableListPref[] = "mergeable.list.pref";
 
-const std::unordered_map<std::string, SyncablePrefMetadata>
-    kSyncablePrefsDatabase = {
-        {kMergeableListPref,
-         {/*syncable_pref_id=*/1, syncer::PREFERENCES, PrefSensitivity::kNone,
-          MergeBehavior::kMergeableListWithRewriteOnUpdate}},
-        {kMergeableDictPref,
-         {/*syncable_pref_id=*/2, syncer::PREFERENCES, PrefSensitivity::kNone,
-          MergeBehavior::kMergeableDict}},
+const TestSyncablePrefsDatabase::PrefsMap kSyncablePrefsDatabase = {
+    {kMergeableListPref,
+     {/*syncable_pref_id=*/1, syncer::PREFERENCES, PrefSensitivity::kNone,
+      MergeBehavior::kMergeableListWithRewriteOnUpdate}},
+    {kMergeableDictPref,
+     {/*syncable_pref_id=*/2, syncer::PREFERENCES, PrefSensitivity::kNone,
+      MergeBehavior::kMergeableDict}},
 };
 
 TEST(PreferencesMergeHelperTest, MergeListValues) {
@@ -210,7 +209,7 @@ TEST(PreferencesMergeHelperTest,
   }
 }
   )";
-  absl::optional<base::Value> local_value =
+  std::optional<base::Value> local_value =
       base::JSONReader::Read(local_dict_json);
   ASSERT_TRUE(local_value.has_value() && local_value->is_dict());
 
@@ -222,7 +221,7 @@ TEST(PreferencesMergeHelperTest,
   }
 }
   )";
-  absl::optional<base::Value> account_value =
+  std::optional<base::Value> account_value =
       base::JSONReader::Read(account_dict_json);
   ASSERT_TRUE(account_value.has_value() && account_value->is_dict());
 
@@ -239,7 +238,7 @@ TEST(PreferencesMergeHelperTest,
   }
 }
   )";
-  absl::optional<base::Value> new_value = base::JSONReader::Read(new_dict_json);
+  std::optional<base::Value> new_value = base::JSONReader::Read(new_dict_json);
   ASSERT_TRUE(new_value.has_value() && new_value->is_dict());
 
   // "local_key" is unchanged, "new_key" was added and "server_key1" was
@@ -254,7 +253,7 @@ TEST(PreferencesMergeHelperTest,
   }
 }
   )";
-  absl::optional<base::Value> expected_local_value =
+  std::optional<base::Value> expected_local_value =
       base::JSONReader::Read(expected_local_dict_json);
   ASSERT_TRUE(expected_local_value.has_value() &&
               expected_local_value->is_dict());
@@ -271,7 +270,7 @@ TEST(PreferencesMergeHelperTest,
   }
 }
   )";
-  absl::optional<base::Value> expected_account_value =
+  std::optional<base::Value> expected_account_value =
       base::JSONReader::Read(expected_account_dict_json);
   ASSERT_TRUE(expected_account_value.has_value() &&
               expected_account_value->is_dict());
@@ -297,7 +296,7 @@ TEST(
   }
 }
   )";
-  absl::optional<base::Value> local_value =
+  std::optional<base::Value> local_value =
       base::JSONReader::Read(local_dict_json);
   ASSERT_TRUE(local_value.has_value() && local_value->is_dict());
 
@@ -311,7 +310,7 @@ TEST(
   }
 }
   )";
-  absl::optional<base::Value> account_value =
+  std::optional<base::Value> account_value =
       base::JSONReader::Read(account_dict_json);
   ASSERT_TRUE(account_value.has_value() && account_value->is_dict());
 
@@ -331,7 +330,7 @@ TEST(
   }
 }
   )";
-  absl::optional<base::Value> new_value = base::JSONReader::Read(new_dict_json);
+  std::optional<base::Value> new_value = base::JSONReader::Read(new_dict_json);
   ASSERT_TRUE(new_value.has_value() && new_value->is_dict());
   // The new value is the same as the merged value.
   ASSERT_EQ(new_value->GetDict(),
@@ -355,7 +354,7 @@ TEST(PreferencesMergeHelperTest,
   }
 }
   )";
-  absl::optional<base::Value> local_value =
+  std::optional<base::Value> local_value =
       base::JSONReader::Read(local_dict_json);
   ASSERT_TRUE(local_value.has_value() && local_value->is_dict());
 
@@ -366,7 +365,7 @@ TEST(PreferencesMergeHelperTest,
   }
 }
   )";
-  absl::optional<base::Value> account_value =
+  std::optional<base::Value> account_value =
       base::JSONReader::Read(account_dict_json);
   ASSERT_TRUE(account_value.has_value() && account_value->is_dict());
 
@@ -382,7 +381,7 @@ TEST(PreferencesMergeHelperTest,
   }
 }
   )";
-  absl::optional<base::Value> new_value = base::JSONReader::Read(new_dict_json);
+  std::optional<base::Value> new_value = base::JSONReader::Read(new_dict_json);
   ASSERT_TRUE(new_value.has_value() && new_value->is_dict());
 
   auto [new_local_value, new_account_value] = helper::UnmergeDictionaryValues(
@@ -402,7 +401,7 @@ TEST(PreferencesMergeHelperTest,
   }
 }
   )";
-  absl::optional<base::Value> local_value =
+  std::optional<base::Value> local_value =
       base::JSONReader::Read(local_dict_json);
   ASSERT_TRUE(local_value.has_value() && local_value->is_dict());
 
@@ -413,7 +412,7 @@ TEST(PreferencesMergeHelperTest,
   }
 }
   )";
-  absl::optional<base::Value> account_value =
+  std::optional<base::Value> account_value =
       base::JSONReader::Read(account_dict_json);
   ASSERT_TRUE(account_value.has_value() && account_value->is_dict());
 
@@ -432,7 +431,7 @@ TEST(PreferencesMergeHelperTest,
   }
 }
   )";
-  absl::optional<base::Value> new_value = base::JSONReader::Read(new_dict_json);
+  std::optional<base::Value> new_value = base::JSONReader::Read(new_dict_json);
   ASSERT_TRUE(new_value.has_value() && new_value->is_dict());
 
   // "local_key2" and "server_key2" were added. Since, "server_key1" was
@@ -448,7 +447,7 @@ TEST(PreferencesMergeHelperTest,
   }
 }
   )";
-  absl::optional<base::Value> expected_local_value =
+  std::optional<base::Value> expected_local_value =
       base::JSONReader::Read(expected_local_dict_json);
   ASSERT_TRUE(expected_local_value.has_value() &&
               expected_local_value->is_dict());
@@ -466,7 +465,7 @@ TEST(PreferencesMergeHelperTest,
   }
 }
   )";
-  absl::optional<base::Value> expected_account_value =
+  std::optional<base::Value> expected_account_value =
       base::JSONReader::Read(expected_account_dict_json);
   ASSERT_TRUE(expected_account_value.has_value() &&
               expected_account_value->is_dict());
@@ -491,7 +490,7 @@ TEST(PreferencesMergeHelperTest,
   }
 }
   )";
-  absl::optional<base::Value> local_value =
+  std::optional<base::Value> local_value =
       base::JSONReader::Read(local_dict_json);
   ASSERT_TRUE(local_value.has_value() && local_value->is_dict());
 
@@ -505,7 +504,7 @@ TEST(PreferencesMergeHelperTest,
   }
 }
   )";
-  absl::optional<base::Value> account_value =
+  std::optional<base::Value> account_value =
       base::JSONReader::Read(account_dict_json);
   ASSERT_TRUE(account_value.has_value() && account_value->is_dict());
 
@@ -520,7 +519,7 @@ TEST(PreferencesMergeHelperTest,
   }
 }
   )";
-  absl::optional<base::Value> new_value = base::JSONReader::Read(new_dict_json);
+  std::optional<base::Value> new_value = base::JSONReader::Read(new_dict_json);
   ASSERT_TRUE(new_value.has_value() && new_value->is_dict());
 
   // "local_key1" and "server_key2" were removed. So, "local_key1" got removed
@@ -532,7 +531,7 @@ TEST(PreferencesMergeHelperTest,
   }
 }
   )";
-  absl::optional<base::Value> expected_local_value =
+  std::optional<base::Value> expected_local_value =
       base::JSONReader::Read(expected_local_dict_json);
   ASSERT_TRUE(expected_local_value.has_value() &&
               expected_local_value->is_dict());
@@ -546,7 +545,7 @@ TEST(PreferencesMergeHelperTest,
   }
 }
   )";
-  absl::optional<base::Value> expected_account_value =
+  std::optional<base::Value> expected_account_value =
       base::JSONReader::Read(expected_account_dict_json);
   ASSERT_TRUE(expected_account_value.has_value() &&
               expected_account_value->is_dict());
@@ -570,7 +569,7 @@ class TestPrefModelAssociatorClient : public PrefModelAssociatorClient {
 
   // PrefModelAssociatorClient implementation.
   base::Value MaybeMergePreferenceValues(
-      const std::string& pref_name,
+      std::string_view pref_name,
       const base::Value& local_value,
       const base::Value& server_value) const override {
     return base::Value();
@@ -671,7 +670,7 @@ TEST(PreferencesMergeHelperTest,
 }
 
 // Tests for MergePreference() exists in pref_model_associator_unittest.cc.
-// TODO(crbug.com/1416479): Move those tests here.
+// TODO(crbug.com/40256874): Move those tests here.
 
 }  // namespace
 }  // namespace sync_preferences

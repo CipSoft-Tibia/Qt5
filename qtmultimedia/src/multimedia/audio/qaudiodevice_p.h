@@ -26,8 +26,8 @@ QT_BEGIN_NAMESPACE
 class Q_MULTIMEDIA_EXPORT QAudioDevicePrivate : public QSharedData
 {
 public:
-    QAudioDevicePrivate(QByteArray i, QAudioDevice::Mode m, QString description)
-        : id(std::move(i)), mode(m), description(std::move(description))
+    QAudioDevicePrivate(QByteArray id, QAudioDevice::Mode m, QString description)
+        : id(std::move(id)), mode(m), description(std::move(description))
     {}
     virtual ~QAudioDevicePrivate();
     const QByteArray id;
@@ -43,7 +43,16 @@ public:
     QList<QAudioFormat::SampleFormat> supportedSampleFormats;
     QAudioFormat::ChannelConfig channelConfiguration = QAudioFormat::ChannelConfigUnknown;
 
-    QAudioDevice create() { return QAudioDevice(this); }
+    static QAudioDevice createQAudioDevice(std::unique_ptr<QAudioDevicePrivate> devicePrivate);
+
+    static const QAudioDevicePrivate *handle(const QAudioDevice &device) { return device.d.get(); }
+
+    template <typename Derived>
+    static const Derived *handle(const QAudioDevice &device)
+    {
+        // Note: RTTI is required for dispatching in the gstreamer backend
+        return dynamic_cast<const Derived *>(handle(device));
+    }
 };
 
 inline const QList<QAudioFormat::SampleFormat> &qAllSupportedSampleFormats()

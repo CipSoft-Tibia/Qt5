@@ -37,7 +37,13 @@ namespace {
 class ImageReader
 {
 public:
-    ImageReader(const QString &fileName) : m_reader(fileName), m_atEnd(false) { }
+    ImageReader(const QString &fileName, QSize size)
+        : m_reader(fileName)
+        , m_atEnd(false)
+    {
+        if (m_reader.supportsOption(QImageIOHandler::ScaledSize))
+            m_reader.setScaledSize(size);
+    }
 
     QByteArray format() const { return m_reader.format(); }
     bool supportsReadSize() const { return m_reader.supportsOption(QImageIOHandler::Size); }
@@ -93,8 +99,8 @@ private:
   This enum describes the state for which a pixmap is intended to be
   used. The \e state can be:
 
-  \value Off  Display the pixmap when the widget is in an "off" state
   \value On  Display the pixmap when the widget is in an "on" state
+  \value Off  Display the pixmap when the widget is in an "off" state
 */
 
 static int nextSerialNumCounter()
@@ -138,7 +144,7 @@ void QIconPrivate::clearIconCache()
 /*! \internal
     Computes the displayDevicePixelRatio for a pixmap.
 
-    If displayDevicePixelRatio is 1.0 the reurned value is 1.0, always.
+    If displayDevicePixelRatio is 1.0 the returned value is 1.0, always.
 
     For a displayDevicePixelRatio of 2.0 the returned value will be between
     1.0 and 2.0, depending on requestedSize and actualsize:
@@ -155,8 +161,9 @@ qreal QIconPrivate::pixmapDevicePixelRatio(qreal displayDevicePixelRatio, const 
         return displayDevicePixelRatio;
     }
     qreal scale = 0.5 * (qreal(actualSize.width()) / qreal(targetSize.width()) +
-                         qreal(actualSize.height() / qreal(targetSize.height())));
-    return qMax(qreal(1.0), displayDevicePixelRatio *scale);
+                         qreal(actualSize.height()) / qreal(targetSize.height()));
+    qreal dpr = qMax(qreal(1.0), displayDevicePixelRatio * scale);
+    return qRound(dpr * 100) / 100.0;
 }
 
 QPixmapIconEngine::QPixmapIconEngine()
@@ -289,9 +296,9 @@ QPixmapIconEngineEntry *QPixmapIconEngine::bestMatch(const QSize &size, qreal sc
 
     if (pe->pixmap.isNull()) {
         // delay-load the image
-        ImageReader imageReader(pe->fileName);
         QImage image, prevImage;
         const QSize realSize = size * scale;
+        ImageReader imageReader(pe->fileName, realSize);
         bool fittingImageFound = false;
         if (imageReader.supportsReadSize()) {
             // find the image with the best size without loading the entire image
@@ -450,7 +457,7 @@ void QPixmapIconEngine::addFile(const QString &fileName, const QSize &size, QIco
         return;
     const QString abs = fileName.startsWith(u':') ? fileName : QFileInfo(fileName).absoluteFilePath();
     const bool ignoreSize = !size.isValid();
-    ImageReader imageReader(abs);
+    ImageReader imageReader(abs, size);
     const QByteArray format = imageReader.format();
     if (format.isEmpty()) // Device failed to open or unsupported format.
         return;
@@ -603,14 +610,22 @@ QFactoryLoader *qt_iconEngineFactoryLoader()
   QImageWriter::supportedImageFormats() functions to retrieve a
   complete list of the supported file formats.
 
+  \note If using an SVG image file, make sure to add it before any non-SVG files,
+  so that the correct \l{Icon Engines}{icon engine} gets selected.
+
   \section1 Creating an icon from a theme or icon library
 
   The most convenient way to construct an icon is by using the
   \l{QIcon::}{fromTheme()} factory function. Qt implements access to
   the native icon library on platforms that support the
-  \l {Freedesktop Icon Theme Specification}. Since Qt 6.7, Qt also
-  provides access to the native icon library on macOS, iOS, and
-  Windows 10 and 11. On Android, Qt can access icons from the Material
+  \l {Freedesktop Icon Theme Specification}.
+
+  Applications can use the same theming specification to provide
+  their own icon library. See below for an example theme description
+  and the corresponding directory structure for the image files.
+
+  Since Qt 6.7, Qt also provides access to the native icon library on macOS,
+  iOS, and Windows 10 and 11. On Android, Qt can access icons from the Material
   design system as long as the
   \l{https://github.com/google/material-design-icons/tree/master/font}
   {MaterialIcons-Regular} font is available on the system, or bundled
@@ -619,11 +634,14 @@ QFactoryLoader *qt_iconEngineFactoryLoader()
 
   \snippet code/src_gui_image_qicon.cpp fromTheme
 
-  Applications can use the same theming specification to provide
-  their own icon library. See below for an example theme description
-  and the corresponding directory structure for the image files.
-  Icons from an application-provided theme take precedence over the
-  native icon library.
+  Since Qt 6.9, Qt can generate icons from named glyphs in an available icon
+  font. Set the \l{QIcon::themeName()}{theme name} to the family name of the
+  font, and use \l{QIcon::}{fromTheme()} with the name of the glyph.
+
+  \snippet code/src_gui_image_qicon.cpp iconFont
+
+  The icon font can be installed on the system, or bundled as an
+  \l{QFontDatabase::addApplicationFont()}{application font}.
 
   \section1 Icon Engines
 
@@ -647,7 +665,7 @@ QFactoryLoader *qt_iconEngineFactoryLoader()
   third parties to provide additional icon engines to those included
   with Qt.
 
-  \section1 Making Classes that Use QIcon
+  \section1 Using QIcon in the User Interface
 
   If you write your own widgets that have an option to set a small
   pixmap, consider allowing a QIcon to be set for that pixmap.  The
@@ -673,15 +691,22 @@ QFactoryLoader *qt_iconEngineFactoryLoader()
   selected item. If the widget can be toggled, the "On" mode might be
   used to draw a different icon.
 
+  QIcons generated from the native icon library, or from an icon font, use the
+  same glyph for both the \c On and \c Off states of the icon. Applications can
+  change the icon depending on the state of the respective UI control or action.
+  In a Qt Quick application, this can be done with a binding.
+
+  \snippet code/src_gui_image_qicon.qml iconFont
+
   \image icon.png QIcon
 
   \note QIcon needs a QGuiApplication instance before the icon is created.
 
   \section1 High DPI Icons
 
-  Icons that are provided by the native icon library are usually based
-  on vector graphics, and will automatically be rendered in the appropriate
-  resolution.
+  Icons that are provided by the native icon library, or generated from the
+  glyph in an icon font, are usually based on vector graphics, and will
+  automatically be rendered in the appropriate resolution.
 
   When providing your own image files via \l addFile(), then QIcon will
   use Qt's \l {High Resolution Versions of Images}{"@nx" high DPI syntax}.
@@ -902,6 +927,8 @@ QPixmap QIcon::pixmap(const QSize &size, Mode mode, State state) const
   might be smaller than requested, but never larger, unless the device-pixel ratio
   of the returned pixmap is larger than 1.
 
+  \note The requested devicePixelRatio might not match the returned one. This delays the
+  scaling of the QPixmap until it is drawn later on.
   \note Prior to Qt 6.8 this function wronlgy passed the device dependent pixmap size to
   QIconEngine::scaledPixmap(), since Qt 6.8 it's the device independent size (not scaled
   with the \a devicePixelRatio).
@@ -917,15 +944,10 @@ QPixmap QIcon::pixmap(const QSize &size, qreal devicePixelRatio, Mode mode, Stat
     if (devicePixelRatio == -1)
         devicePixelRatio = qApp->devicePixelRatio();
 
-    // Handle the simple normal-dpi case
-    if (!(devicePixelRatio > 1.0)) {
-        QPixmap pixmap = d->engine->pixmap(size, mode, state);
-        pixmap.setDevicePixelRatio(1.0);
-        return pixmap;
-    }
-
-    // Try get a pixmap that is big enough to be displayed at device pixel resolution.
     QPixmap pixmap = d->engine->scaledPixmap(size, mode, state, devicePixelRatio);
+    // even though scaledPixmap() should return a pixmap with an appropriate size, we
+    // can not rely on it. Therefore we simply set the dpr to a correct size to make
+    // sure the pixmap is not larger than requested.
     pixmap.setDevicePixelRatio(d->pixmapDevicePixelRatio(devicePixelRatio, size, pixmap.size()));
     return pixmap;
 }
@@ -1176,9 +1198,22 @@ void QIcon::addFile(const QString &fileName, const QSize &size, Mode mode, State
         return;
 
     // Check if a "@Nx" file exists and add it.
-    QString atNxFileName = qt_findAtNxFile(fileName, qApp->devicePixelRatio());
-    if (atNxFileName != fileName)
-        d->engine->addFile(atNxFileName, size, mode, state);
+    QVarLengthArray<int, 4> devicePixelRatios;
+    const auto screens = qApp->screens();
+    for (const auto *screen : screens) {
+        const auto dpr = qCeil(screen->devicePixelRatio()); // qt_findAtNxFile only supports integer values
+        if (dpr >= 1 && !devicePixelRatios.contains(dpr))
+            devicePixelRatios.push_back(dpr);
+    }
+    std::sort(devicePixelRatios.begin(), devicePixelRatios.end(), std::greater<int>());
+    qreal sourceDevicePixelRatio = std::numeric_limits<qreal>::max();
+    for (const auto dpr : std::as_const(devicePixelRatios)) {
+        if (dpr >= sourceDevicePixelRatio)
+            continue;
+        const QString atNxFileName = qt_findAtNxFile(fileName, dpr, &sourceDevicePixelRatio);
+        if (atNxFileName != fileName)
+            d->engine->addFile(atNxFileName, size, mode, state);
+    }
 }
 
 /*!
@@ -1277,12 +1312,15 @@ void QIcon::setFallbackSearchPaths(const QStringList &paths)
 /*!
     Sets the current icon theme to \a name.
 
-    The theme will be will be looked up in themeSearchPaths().
+    If the theme matches the name of an installed font that provides named
+    glyphs, then QIcon::fromTheme calls that match one of the glyphs will
+    produce an icon for that glyph.
 
-    At the moment the only supported icon theme format is the
-    \l{Freedesktop Icon Theme Specification}. The \a name should
-    correspond to a directory name in the themeSearchPath()
-    containing an \c index.theme file describing its contents.
+    Otherwise, the theme will be looked up in themeSearchPaths(). At the moment
+    the only supported icon theme format is the \l{Freedesktop Icon Theme
+    Specification}. The \a name should correspond to a directory name in the
+    themeSearchPath() containing an \c index.theme file describing its
+    contents.
 
     \sa themeSearchPaths(), themeName(),
     {Freedesktop Icon Theme Specification}
@@ -2015,6 +2053,8 @@ QDebug operator<<(QDebug dbg, const QIcon &i)
 QString qt_findAtNxFile(const QString &baseFileName, qreal targetDevicePixelRatio,
                         qreal *sourceDevicePixelRatio)
 {
+    if (sourceDevicePixelRatio)
+        *sourceDevicePixelRatio = 1;
     if (targetDevicePixelRatio <= 1.0)
         return baseFileName;
 

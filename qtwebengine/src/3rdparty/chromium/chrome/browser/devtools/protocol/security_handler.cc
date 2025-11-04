@@ -8,8 +8,8 @@
 #include <vector>
 
 #include "base/base64.h"
-#include "chrome/browser/ssl/security_state_tab_helper.h"
 #include "components/security_state/content/content_utils.h"
+#include "components/security_state/content/security_state_tab_helper.h"
 #include "content/public/browser/web_contents.h"
 #include "net/base/net_errors.h"
 #include "net/cert/x509_certificate.h"
@@ -50,11 +50,11 @@ std::string SecurityLevelToProtocolSecurityState(
     case security_state::DANGEROUS:
       return protocol::Security::SecurityStateEnum::InsecureBroken;
     case security_state::SECURITY_LEVEL_COUNT:
-      NOTREACHED();
+      NOTREACHED_IN_MIGRATION();
       return protocol::Security::SecurityStateEnum::Neutral;
   }
 
-  NOTREACHED();
+  NOTREACHED_IN_MIGRATION();
   return protocol::Security::SecurityStateEnum::Neutral;
 }
 
@@ -63,14 +63,12 @@ CreateCertificateSecurityState(
     const security_state::VisibleSecurityState& state) {
   auto certificate = std::make_unique<protocol::Array<protocol::String>>();
   if (state.certificate) {
-    certificate->emplace_back();
-    base::Base64Encode(net::x509_util::CryptoBufferAsStringPiece(
-                           state.certificate->cert_buffer()),
-                       &certificate->back());
+    certificate->push_back(
+        base::Base64Encode(net::x509_util::CryptoBufferAsStringPiece(
+            state.certificate->cert_buffer())));
     for (const auto& cert : state.certificate->intermediate_buffers()) {
-      certificate->emplace_back();
-      base::Base64Encode(net::x509_util::CryptoBufferAsStringPiece(cert.get()),
-                         &certificate->back());
+      certificate->push_back(base::Base64Encode(
+          net::x509_util::CryptoBufferAsStringPiece(cert.get())));
     }
   }
 

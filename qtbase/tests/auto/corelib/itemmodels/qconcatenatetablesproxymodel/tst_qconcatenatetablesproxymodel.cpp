@@ -83,9 +83,12 @@ private Q_SLOTS:
     void shouldPropagateDropBetweenItemsAtModelBoundary();
     void shouldPropagateDropAfterLastRow_data();
     void shouldPropagateDropAfterLastRow();
+    void addModelWithFilterOnTop();
     void qtbug91788();
     void qtbug91878();
     void createPersistentOnLayoutAboutToBeChanged();
+    void shouldMergeRoleNames();
+
 private:
     QStandardItemModel mod;
     QStandardItemModel mod2;
@@ -99,11 +102,13 @@ void tst_QConcatenateTablesProxyModel::init()
     mod.appendRow({ new QStandardItem(QStringLiteral("A")), new QStandardItem(QStringLiteral("B")), new QStandardItem(QStringLiteral("C")) });
     mod.setHorizontalHeaderLabels(QStringList() << QStringLiteral("H1") << QStringLiteral("H2") << QStringLiteral("H3"));
     mod.setVerticalHeaderLabels(QStringList() << QStringLiteral("One"));
+    mod.setItemRoleNames({ { Qt::UserRole, "user" } });
 
     mod2.clear();
     mod2.appendRow({ new QStandardItem(QStringLiteral("D")), new QStandardItem(QStringLiteral("E")), new QStandardItem(QStringLiteral("F")) });
     mod2.setHorizontalHeaderLabels(QStringList() << QStringLiteral("H1") << QStringLiteral("H2") << QStringLiteral("H3"));
     mod2.setVerticalHeaderLabels(QStringList() << QStringLiteral("Two"));
+    mod2.setItemRoleNames({ { Qt::UserRole + 1, "user+1" } });
 
     mod3.clear();
     mod3.appendRow({ new QStandardItem(QStringLiteral("1")), new QStandardItem(QStringLiteral("2")), new QStandardItem(QStringLiteral("3")) });
@@ -860,6 +865,39 @@ void tst_QConcatenateTablesProxyModel::shouldPropagateDropAfterLastRow()
 
 }
 
+class RefuseRowsProxy : public QSortFilterProxyModel
+{
+public:
+    bool filterAcceptsRow(int source_row, const QModelIndex &source_parent) const override
+    {
+        Q_UNUSED(source_row)
+        Q_UNUSED(source_parent)
+        return false;
+    }
+};
+
+void tst_QConcatenateTablesProxyModel::addModelWithFilterOnTop() // QTBUG-134210
+{
+    // Given a QSFPM -> QConcatenateTablesProxyModel and a QStandardItemModel
+    QStandardItemModel sim;
+    sim.appendRow(new QStandardItem("ITEM"));
+
+    QConcatenateTablesProxyModel concat;
+    RefuseRowsProxy proxyFilter;
+    proxyFilter.setSourceModel(&concat);
+    proxyFilter.setRecursiveFilteringEnabled(true);
+
+    // When adding the QStandardItemModel as source model
+    concat.addSourceModel(&sim);
+
+    // Then the item should be filtered out
+    // (without hitting an assert in QConcat::index() nor an infinite recursion in QSFPM)
+    QCOMPARE(concat.rowCount(), 1);
+    QCOMPARE(concat.columnCount(), 1);
+    QCOMPARE(proxyFilter.rowCount(), 0);
+    QCOMPARE(proxyFilter.columnCount(), 1);
+}
+
 void tst_QConcatenateTablesProxyModel::qtbug91788()
 {
     QConcatenateTablesProxyModel proxyConcat;
@@ -925,6 +963,30 @@ void tst_QConcatenateTablesProxyModel::createPersistentOnLayoutAboutToBeChanged(
     model1.sort(0);
     QCOMPARE(layoutAboutToBeChangedSpy.size(), 1);
     QCOMPARE(layoutChangedSpy.size(), 1);
+}
+
+void tst_QConcatenateTablesProxyModel::shouldMergeRoleNames()
+{
+    // Given a combining proxy
+    QConcatenateTablesProxyModel pm;
+
+    // When adding three source models
+    pm.addSourceModel(&mod);
+    pm.addSourceModel(&mod2);
+    pm.addSourceModel(&mod3);
+
+    // Then the role names should be merged
+    const auto roleNames = pm.roleNames();
+    QCOMPARE(roleNames[Qt::DisplayRole], "display");
+    QCOMPARE(roleNames[Qt::UserRole], "user");
+    QCOMPARE(roleNames[Qt::UserRole + 1], "user+1");
+
+    // When removing a source model
+    pm.removeSourceModel(&mod2);
+
+    // Then the role names should be updated
+    const auto roleNamesAfterMod2Removal = pm.roleNames();
+    QVERIFY(!roleNamesAfterMod2Removal.contains(Qt::UserRole + 1));
 }
 
 QTEST_GUILESS_MAIN(tst_QConcatenateTablesProxyModel)

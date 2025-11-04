@@ -15,7 +15,9 @@ namespace {
 
 constexpr char kExampleUrl[] = "https://www.google.com";
 constexpr char kExampleJsonUrlType[] =
-    R"({"endpoint_type":"url","url":"https://www.google.com/"})";
+    "{\"endpoint_type\":\"url\","
+    "\"off_the_record\":true,"
+    "\"url\":\"https://www.google.com/\"}";
 constexpr char kExampleJsonUrlTypeNoUrl[] = R"({"endpoint_type":"url"})";
 
 #if BUILDFLAG(IS_CHROMEOS)
@@ -25,15 +27,17 @@ constexpr char kExampleJsonNonUrlType[] = R"({"endpoint_type":"crostini"})";
 }  // namespace
 
 TEST(DataTransferEndpointSerializerTest, DataTransferEndpointToJsonUrl) {
-  const DataTransferEndpoint example(GURL(kExampleUrl),
-                                     /*notify_if_restricted=*/true);
+  const DataTransferEndpoint example(
+      GURL(kExampleUrl),
+      {.notify_if_restricted = true, .off_the_record = true});
   std::string actual = ConvertDataTransferEndpointToJson(example);
   EXPECT_EQ(kExampleJsonUrlType, actual);
 }
 
 TEST(DataTransferEndpointSerializerTest, JsonToDataTransferEndpointUrl) {
-  DataTransferEndpoint expected(GURL(kExampleUrl),
-                                /*notify_if_restricted=*/true);
+  DataTransferEndpoint expected(
+      GURL(kExampleUrl),
+      {.notify_if_restricted = true, .off_the_record = true});
   std::unique_ptr<DataTransferEndpoint> actual =
       ConvertJsonToDataTransferEndpoint(kExampleJsonUrlType);
 
@@ -53,7 +57,7 @@ TEST(DataTransferEndpointSerializerTest,
 #if BUILDFLAG(IS_CHROMEOS)
 TEST(DataTransferEndpointSerializerTest, DataTransferEndpointToJsonNonUrl) {
   const DataTransferEndpoint example(EndpointType::kCrostini,
-                                     /*notify_if_restricted=*/true);
+                                     {.notify_if_restricted = true});
   std::string actual = ConvertDataTransferEndpointToJson(example);
 
   EXPECT_EQ(kExampleJsonNonUrlType, actual);

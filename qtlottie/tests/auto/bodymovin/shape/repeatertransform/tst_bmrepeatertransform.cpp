@@ -71,7 +71,7 @@ private slots:
     void testActive();
 
 private:
-    void loadTestData(const QByteArray &filename);
+    void loadTestData(const QString &filename);
     void updateProperty(int frame);
 
     BMRepeaterTransform *m_transform = nullptr;
@@ -382,7 +382,7 @@ void tst_BMRepeaterTransform::testActive()
     QVERIFY(m_transform->active(100) == true);
 }
 
-void tst_BMRepeaterTransform::loadTestData(const QByteArray &filename)
+void tst_BMRepeaterTransform::loadTestData(const QString &filename)
 {
     if (m_transform) {
         delete m_transform;

@@ -38,7 +38,7 @@ bool IsValidRequestInitiator(const network::ResourceRequest& request,
   switch (initiator_lock_compatibility) {
     case network::InitiatorLockCompatibility::kBrowserProcess:
       // kBrowserProcess cannot happen outside of NetworkService.
-      NOTREACHED();
+      NOTREACHED_IN_MIGRATION();
       return false;
 
     case network::InitiatorLockCompatibility::kNoLock:
@@ -46,7 +46,7 @@ bool IsValidRequestInitiator(const network::ResourceRequest& request,
       // Only browser-initiated navigations can specify no initiator and we only
       // expect subresource requests (i.e. non-navigations) to go through
       // SubresourceSignedExchangeURLLoaderFactory::CreateLoaderAndStart.
-      NOTREACHED();
+      NOTREACHED_IN_MIGRATION();
       return false;
 
     case network::InitiatorLockCompatibility::kCompatibleLock:
@@ -56,13 +56,13 @@ bool IsValidRequestInitiator(const network::ResourceRequest& request,
       // This branch indicates that either 1) the CreateLoaderAndStart IPC was
       // forged by a malicious/compromised renderer process or 2) there are
       // renderer-side bugs.
-      NOTREACHED();
+      NOTREACHED_IN_MIGRATION();
       return false;
   }
 
   // Failing safely for an unrecognied `network::InitiatorLockCompatibility`
   // enum value.
-  NOTREACHED();
+  NOTREACHED_IN_MIGRATION();
   return false;
 }
 
@@ -92,7 +92,7 @@ void SubresourceSignedExchangeURLLoaderFactory::CreateLoaderAndStart(
     mojo::PendingRemote<network::mojom::URLLoaderClient> client,
     const net::MutableNetworkTrafficAnnotationTag& traffic_annotation) {
   if (!IsValidRequestInitiator(request, request_initiator_origin_lock_)) {
-    NOTREACHED();
+    NOTREACHED_IN_MIGRATION();
     network::debug::ScopedResourceRequestCrashKeys request_crash_keys(request);
     network::debug::ScopedRequestInitiatorOriginLockCrashKey lock_crash_keys(
         request_initiator_origin_lock_);
@@ -112,7 +112,7 @@ void SubresourceSignedExchangeURLLoaderFactory::CreateLoaderAndStart(
           std::make_unique<const storage::BlobDataHandle>(
               *entry_->blob_data_handle()),
           *entry_->completion_status(), std::move(client),
-          false /* is_navigation_request */, corb_state_),
+          false /* is_navigation_request */, orb_state_),
       std::move(loader));
 }
 

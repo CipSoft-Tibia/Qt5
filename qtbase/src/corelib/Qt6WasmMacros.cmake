@@ -56,18 +56,52 @@ function(_qt_internal_wasm_add_target_helpers target)
             configure_file("${WASM_BUILD_DIR}/libexec/util.js"
                            "${target_output_directory}/util.js" COPYONLY)
         else()
+            get_target_property(no_wasm_files ${target} NO_WASM_DEFAULT_FILES)
+
             if(target_output_directory)
                 set(_target_directory "${target_output_directory}")
             else()
                 set(_target_directory "${CMAKE_CURRENT_BINARY_DIR}")
             endif()
 
-            configure_file("${WASM_BUILD_DIR}/plugins/platforms/wasm_shell.html"
-                "${_target_directory}/${_target_output_name}.html" @ONLY)
-            configure_file("${WASM_BUILD_DIR}/plugins/platforms/qtloader.js"
-                ${_target_directory}/qtloader.js COPYONLY)
-            configure_file("${WASM_BUILD_DIR}/plugins/platforms/qtlogo.svg"
-                ${_target_directory}/qtlogo.svg COPYONLY)
+            if (NOT no_wasm_files)
+                configure_file("${WASM_BUILD_DIR}/plugins/platforms/wasm_shell.html"
+                    "${_target_directory}/${_target_output_name}.html" @ONLY)
+                if(CMAKE_CONFIGURATION_TYPES) # if multiconfig generator
+                    add_custom_command(
+                        TARGET ${target} POST_BUILD
+                        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                            "${_target_directory}/${_target_output_name}.html"
+                            ${_target_directory}/$<CONFIG>/${_target_output_name}.html
+                    )
+                    add_custom_command(
+                        TARGET ${target} POST_BUILD
+                        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                            "${WASM_BUILD_DIR}/plugins/platforms/qtloader.js"
+                            ${_target_directory}/$<CONFIG>/qtloader.js
+                    )
+                    add_custom_command(
+                        TARGET ${target} POST_BUILD
+                        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                            "${WASM_BUILD_DIR}/plugins/platforms/qtlogo.svg"
+                            ${_target_directory}/$<CONFIG>/qtlogo.svg
+                    )
+                else()
+                    configure_file("${WASM_BUILD_DIR}/plugins/platforms/qtloader.js"
+                        ${_target_directory}/qtloader.js COPYONLY)
+                    configure_file("${WASM_BUILD_DIR}/plugins/platforms/qtlogo.svg"
+                        ${_target_directory}/qtlogo.svg COPYONLY)
+                    if(QT_FEATURE_shared)
+                        set(TARGET_DIR "${_target_directory}")
+                        set(SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
+                        set(QT_HOST_DIR "${QT_HOST_PATH}")
+                        set(QT_WASM_DIR "${WASM_BUILD_DIR}")
+                        set(QT_INSTALL_DIR "${QT6_INSTALL_PREFIX}")
+                        configure_file("${WASM_BUILD_DIR}/libexec/generate_default_preloads.sh.in"
+                            "${_target_directory}/generate_default_preloads_for_${target}.sh" @ONLY)
+                    endif()
+                endif()
+            endif()
         endif()
 
         if(QT_FEATURE_thread)
@@ -96,7 +130,12 @@ function(_qt_internal_wasm_add_target_helpers target)
         if(_tmp_maximumMemory)
             set(QT_WASM_MAXIMUM_MEMORY "${_tmp_maximumMemory}")
         elseif(NOT DEFINED QT_WASM_MAXIMUM_MEMORY)
-            set(QT_WASM_MAXIMUM_MEMORY "4GB")
+            if(QT_FEATURE_wasm_jspi)
+                # Work around Emscripten >2GB and JSPI compatibility issue.
+                set(QT_WASM_MAXIMUM_MEMORY "2GB")
+            else()
+                set(QT_WASM_MAXIMUM_MEMORY "4GB")
+            endif()
         endif()
         target_link_options("${target}" PRIVATE "SHELL:-s MAXIMUM_MEMORY=${QT_WASM_MAXIMUM_MEMORY}")
 
@@ -121,6 +160,11 @@ function(_qt_internal_add_wasm_extra_exported_methods target)
         target_link_options("${target}" PRIVATE
             "SHELL:-s EXPORTED_RUNTIME_METHODS=${wasm_default_exported_methods}"
         )
+    endif()
+    # TODO: Remove these flags when LLVM got fixed - QTBUG-131279
+    if(QT_FEATURE_thread)
+         target_link_options("${target}" PRIVATE
+                "SHELL:-s EXPORTED_FUNCTIONS=_main,__embind_initialize_bindings")
     endif()
 endfunction()
 

@@ -16,7 +16,7 @@
     </message>
     <message>
         <source>Preferences...</source>
-        <translation>Tercihler...</translation>
+        <translation>Tercihler…</translation>
     </message>
     <message>
         <source>Services</source>
@@ -159,11 +159,11 @@
     </message>
     <message>
         <source>Increase the value</source>
-        <translation>Değeri artırır</translation>
+        <translation>Değeri artır</translation>
     </message>
     <message>
         <source>Decrease the value</source>
-        <translation>Değeri azaltır</translation>
+        <translation>Değeri azalt</translation>
     </message>
     <message>
         <source>Shows the menu</source>
@@ -225,7 +225,7 @@
     <name>QApplication</name>
     <message>
         <source>Application &quot;%1&quot; requires Qt %2, found Qt %3.</source>
-        <translation>&apos;%1&apos; uygulaması Qt %2 gerektirir, Qt %3 bulundu.</translation>
+        <translation>“%1” uygulaması Qt %2 gerektirir, Qt %3 bulundu.</translation>
     </message>
     <message>
         <source>Incompatible Qt Library Error</source>
@@ -291,7 +291,7 @@
     <name>QCocoaTheme</name>
     <message>
         <source>Don&apos;t Save</source>
-        <translation>Kaydet&apos;me</translation>
+        <translation>Kaydetme</translation>
     </message>
 </context>
 <context>
@@ -331,8 +331,8 @@
     <message>
         <source>Cursor at %1, %2
 Press ESC to cancel</source>
-        <translation>İmleç %1 konumunda, %2
-İptal etmek için Vazgeç&apos;e basın</translation>
+        <translation>İmleç %1, %2 konumunda.
+İptal etmek için Vazgeç’e basın.</translation>
     </message>
     <message>
         <source>Select Color</source>
@@ -386,7 +386,7 @@ Press ESC to cancel</source>
     </message>
     <message>
         <source>Unknown option &apos;%1&apos;.</source>
-        <translation>Bilinmeyen seçenek &apos;%1&apos;.</translation>
+        <translation>Bilinmeyen seçenek “%1”.</translation>
     </message>
     <message>
         <source>Unknown options: %1.</source>
@@ -394,11 +394,11 @@ Press ESC to cancel</source>
     </message>
     <message>
         <source>Missing value after &apos;%1&apos;.</source>
-        <translation>&apos;%1&apos; sonrası değer eksik.</translation>
+        <translation>“%1” sonrası değer eksik.</translation>
     </message>
     <message>
         <source>Unexpected value after &apos;%1&apos;.</source>
-        <translation>&apos;%1&apos; sonrası beklenmeyen değer.</translation>
+        <translation>“%1” sonrası beklenmedik değer.</translation>
     </message>
     <message>
         <source>[options]</source>
@@ -463,23 +463,23 @@ Press ESC to cancel</source>
     </message>
     <message>
         <source>Day (06:00 to 17:59)</source>
-        <translation>Gün (06:00-17:59)</translation>
+        <translation>Gün (06:00–17:59)</translation>
     </message>
     <message>
         <source>Night (18:00 to 05:59)</source>
-        <translation>Gece (18:00-05:59)</translation>
+        <translation>Gece (18:00–05:59)</translation>
     </message>
     <message>
         <source>Second Shift (16:00 to 23:59)</source>
-        <translation>İkinci Vardiya (16:00-23:59)</translation>
+        <translation>İkinci Vardiya (16:00–23:59)</translation>
     </message>
     <message>
         <source>Third Shift (00:00 to 07:59)</source>
-        <translation>Üçüncü Vardiya (00:00-07:59)</translation>
+        <translation>Üçüncü Vardiya (00:00–07:59)</translation>
     </message>
     <message>
         <source>Weekend (Saturday to Sunday)</source>
-        <translation>Haftasonu (Cumartesi-Pazar)</translation>
+        <translation>Hafta Sonu (Cumartesi–Pazar)</translation>
     </message>
     <message>
         <source>Specific Time</source>
@@ -601,7 +601,7 @@ Press ESC to cancel</source>
     <name>QDialog</name>
     <message>
         <source>What&apos;s This?</source>
-        <translation>Bu &apos;Nedir?</translation>
+        <translation>Bu Nedir?</translation>
     </message>
 </context>
 <context>
@@ -620,6 +620,10 @@ Press ESC to cancel</source>
     <message>
         <source>Invalid domain name</source>
         <translation>Geçersiz alan adı</translation>
+    </message>
+    <message>
+        <source>SSL/TLS support not present</source>
+        <translation>SSL/TLS desteği yok</translation>
     </message>
     <message>
         <source>Request timed out</source>
@@ -694,6 +698,10 @@ Press ESC to cancel</source>
         <translation>Geçersiz hizmet kaydı</translation>
     </message>
     <message>
+        <source>Invalid TLS association record</source>
+        <translation>Geçersiz TLS ilişkilendirme kaydı</translation>
+    </message>
+    <message>
         <source>Invalid text record</source>
         <translation>Geçersiz metin kaydı</translation>
     </message>
@@ -754,7 +762,7 @@ Press ESC to cancel</source>
     </message>
     <message>
         <source>Unexpected end element &apos;%1&apos;</source>
-        <translation>Beklenmeyen son öge &apos;%1&apos;</translation>
+        <translation>Beklenmeyen son öge “%1”</translation>
     </message>
     <message>
         <source>Error occurred while processing an end element</source>
@@ -978,12 +986,16 @@ Press ESC to cancel</source>
         <translation>Kopya engelleme kullanarak sıralı dosyayı yeniden adlandırmaz</translation>
     </message>
     <message>
+        <source>Cannot remove source file: %1</source>
+        <translation>Kaynak dosya kaldırılamıyor: %1</translation>
+    </message>
+    <message>
         <source>Cannot remove source file</source>
-        <translation>Kaynak dosya kaldırılamıyor</translation>
+        <translation type="vanished">Kaynak dosya kaldırılamıyor</translation>
     </message>
     <message>
         <source>Cannot open destination file: %1</source>
-        <translation>Hedef dosya açılamıyor: %1</translation>
+        <translation type="vanished">Hedef dosya açılamıyor: %1</translation>
     </message>
     <message>
         <source>Cannot open %1 for input</source>
@@ -994,19 +1006,23 @@ Press ESC to cancel</source>
         <translation>Çıktı için açılamıyor: %1</translation>
     </message>
     <message>
+        <source>Could not copy to %1: %2</source>
+        <translation>%1 konumuna kopyalanamadı: %2</translation>
+    </message>
+    <message>
         <source>Failure to write block: %1</source>
         <translation>Blok yazılamadı: %1</translation>
     </message>
     <message>
         <source>Cannot create %1 for output: %2</source>
-        <translation>Çıktı için %1 oluşturulamadı: %2</translation>
+        <translation type="vanished">Çıktı için %1 oluşturulamadı: %2</translation>
     </message>
 </context>
 <context>
     <name>QFileDevice</name>
     <message>
         <source>No file engine available or engine does not support UnMapExtension</source>
-        <translation>Hiçbir dosya işletkesi yok veya işletke UnMapExtension&apos;ı desteklemiyor</translation>
+        <translation>Hiçbir dosya işletkesi yok veya işletke UnMapExtension’ı desteklemiyor</translation>
     </message>
     <message>
         <source>No file engine available</source>
@@ -1017,7 +1033,7 @@ Press ESC to cancel</source>
     <name>QFileDialog</name>
     <message>
         <source>All Files (*)</source>
-        <translation>Tüm Dosyalar (*)</translation>
+        <translation>Tüm dosyalar (*)</translation>
     </message>
     <message>
         <source>Look in:</source>
@@ -1153,7 +1169,7 @@ Press ESC to cancel</source>
     </message>
     <message>
         <source>All files (*)</source>
-        <translation>Tüm Dosyalar (*)</translation>
+        <translation>Tüm dosyalar (*)</translation>
     </message>
     <message>
         <source>Directories</source>
@@ -1192,12 +1208,12 @@ Lütfen doğru dosya adının verildiğini doğrulayın.</translation>
     <message>
         <source>&apos;%1&apos; is write protected.
 Do you want to delete it anyway?</source>
-        <translation>&apos;%1&apos; yazma korumalı.
+        <translation>“%1” yazma korumalı.
 Yine de silmek istiyor musunuz?</translation>
     </message>
     <message>
         <source>Are you sure you want to delete &apos;%1&apos;?</source>
-        <translation>&apos;%1&apos; silinecek, emin misiniz?</translation>
+        <translation>“%1” silinecek, emin misiniz?</translation>
     </message>
     <message>
         <source>Could not delete directory.</source>
@@ -1437,7 +1453,7 @@ Yine de silmek istiyor musunuz?</translation>
     </message>
     <message>
         <source>N&apos;Ko</source>
-        <translation>N&apos;Ko</translation>
+        <translation>N’Ko</translation>
     </message>
 </context>
 <context>
@@ -1551,7 +1567,7 @@ Yine de silmek istiyor musunuz?</translation>
     </message>
     <message>
         <source>Instance name according to ICCCM 4.1.2.5.</source>
-        <translation>ICCCM 4.1.2.5&apos;e göre örnek adı.</translation>
+        <translation>ICCCM 4.1.2.5’e göre örnek adı.</translation>
     </message>
     <message>
         <source>Disable mouse grabbing (useful in debuggers).</source>
@@ -1563,7 +1579,7 @@ Yine de silmek istiyor musunuz?</translation>
     </message>
     <message>
         <source>ID of the X11 Visual to use.</source>
-        <translation>Kullanılacak X11 Visual&apos;ın kimliği.</translation>
+        <translation>Kullanılacak X11 Visual’ın kimliği.</translation>
     </message>
     <message>
         <source>Alias for --qwindowgeometry.</source>
@@ -1663,6 +1679,15 @@ Yine de silmek istiyor musunuz?</translation>
         <translation>Sıkıştırılması açılmış çıktı, QNetworkRequest::decompressedSafetyCheckThreshold() tarafından belirtilen sınırları aşıyor</translation>
     </message>
     <message>
+        <source>Brotli error: %1</source>
+        <extracomment>Brotli (compression algorithm) decoding error, e.g. corrupted input or memory allocation problem.</extracomment>
+        <translation>Brotli hatası: %1</translation>
+    </message>
+    <message>
+        <source>ZStandard error: %1</source>
+        <translation>ZStandard hatası: %1</translation>
+    </message>
+    <message>
         <source>Decompression failed: %1</source>
         <translation>Sıkıştırmayı açma başarısız oldu: %1</translation>
     </message>
@@ -1718,7 +1743,7 @@ Yine de silmek istiyor musunuz?</translation>
     <name>QIBaseDriver</name>
     <message>
         <source>failed to query time zone mapping from system table</source>
-        <translation>sistem tablosundan zaman dilimi eşlemleri sorgulanamadı</translation>
+        <translation type="vanished">sistem tablosundan zaman dilimi eşlemleri sorgulanamadı</translation>
     </message>
     <message>
         <source>Error opening database</source>
@@ -1735,6 +1760,14 @@ Yine de silmek istiyor musunuz?</translation>
     <message>
         <source>Unable to rollback transaction</source>
         <translation>İşlem geri alınamıyor</translation>
+    </message>
+    <message>
+        <source>Could not subscribe to event notifications for %1.</source>
+        <translation>%1 için olan olay bildirimlerine abone olunamadı.</translation>
+    </message>
+    <message>
+        <source>Could not unsubscribe from event notifications for %1.</source>
+        <translation>%1 için olan olay bildirimleri aboneliğinden çıkılamadı.</translation>
     </message>
 </context>
 <context>
@@ -1762,6 +1795,18 @@ Yine de silmek istiyor musunuz?</translation>
     <message>
         <source>Could not get array data</source>
         <translation>Diziliş verisi alınamadı</translation>
+    </message>
+    <message>
+        <source>Array size mismatch. Field name: %3, expected size: %1. Supplied size: %2</source>
+        <translation>Diziliş boyutu uyumsuzluğu. Alan adı: %3, beklenen boyut: %1. Sağlanan boyut: %2</translation>
+    </message>
+    <message>
+        <source>Array dimensions mismatch. Field name: %1</source>
+        <translation>Diziliş boyutu uyumsuzluğu. Alan adı: %3</translation>
+    </message>
+    <message>
+        <source>Array size mismatch: size of %1 is %2, size of provided list is %3</source>
+        <translation>Diziliş boyutu uyumsuzluğu: %1 boyutu %2, sağlanan listenin boyutu %3</translation>
     </message>
     <message>
         <source>Could not get query info</source>
@@ -1964,7 +2009,7 @@ Yine de silmek istiyor musunuz?</translation>
     <message>
         <source>%1, ...</source>
         <extracomment>This text is an &quot;unfinished&quot; shortcut, expands like &quot;Ctrl+A, ...&quot;</extracomment>
-        <translation>%1, ...</translation>
+        <translation>%1, …</translation>
     </message>
 </context>
 <context>
@@ -1979,7 +2024,7 @@ Yine de silmek istiyor musunuz?</translation>
     </message>
     <message>
         <source>file has an unexpected ABI</source>
-        <translation>dosyanın beklenmeyen bir ABI&apos;si var</translation>
+        <translation>Dosyanın beklenmeyen bir ABI’si var</translation>
     </message>
     <message>
         <source>file is not a shared object</source>
@@ -1987,7 +2032,11 @@ Yine de silmek istiyor musunuz?</translation>
     </message>
     <message>
         <source>&apos;%1&apos; is not a valid ELF object (%2)</source>
-        <translation>&apos;%1&apos;, geçerli bir ELF nesnesi değil (%2)</translation>
+        <translation>“%1”, geçerli bir ELF nesnesi değil (%2)</translation>
+    </message>
+    <message>
+        <source>unimplemented: PN_XNUM program headers</source>
+        <translation>gerçeklenmedi: PN_XNUM program üstbilgileri</translation>
     </message>
     <message>
         <source>program header table extends past the end of the file</source>
@@ -2031,11 +2080,15 @@ Yine de silmek istiyor musunuz?</translation>
     </message>
     <message>
         <source>Failed to extract plugin meta data from &apos;%1&apos;: %2</source>
-        <translation>&apos;%1&apos; konumundan eklenti üst verisi çıkarılamadı: %2</translation>
+        <translation>“%1” konumundan eklenti üst verisi çıkarılamadı: %2</translation>
     </message>
     <message>
         <source>The shared library was not found.</source>
         <translation>Paylaşılan kitaplık bulunamadı.</translation>
+    </message>
+    <message>
+        <source>Could not resolve &apos;qt_plugin_instance&apos; function</source>
+        <translation>“qt_plugin_instance” işlevi çözülemedi</translation>
     </message>
     <message>
         <source>metadata too small</source>
@@ -2047,15 +2100,15 @@ Yine de silmek istiyor musunuz?</translation>
     </message>
     <message>
         <source>The file &apos;%1&apos; is not a valid Qt plugin.</source>
-        <translation>&apos;%1&apos; dosyası geçerli bir Qt eklentisi değil.</translation>
+        <translation>“%1” dosyası geçerli bir Qt eklentisi değil.</translation>
     </message>
     <message>
         <source>The plugin &apos;%1&apos; uses incompatible Qt library. (%2.%3.%4) [%5]</source>
-        <translation>&apos;%1&apos; eklentisi uyumsuz Qt kitaplığı kullanıyor. (%2.%3.%4) [%5]</translation>
+        <translation>“%1” eklentisi uyumsuz Qt kitaplığı kullanıyor. (%2.%3.%4) [%5]</translation>
     </message>
     <message>
         <source>The plugin &apos;%1&apos; uses incompatible Qt library. (Cannot mix debug and release libraries.)</source>
-        <translation>&apos;%1&apos; eklentisi uyumsuz Qt kitaplığı kullanıyor. (Hata ayıklama ve sürüm kitaplıkları karıştırılamıyor.)</translation>
+        <translation>“%1” eklentisi uyumsuz Qt kitaplığı kullanıyor. (Hata ayıklama ve sürüm kitaplıkları karıştırılamıyor.)</translation>
     </message>
     <message>
         <source>Unknown error</source>
@@ -2071,7 +2124,7 @@ Yine de silmek istiyor musunuz?</translation>
     </message>
     <message>
         <source>&apos;%1&apos; is not a valid Mach-O binary (%2)</source>
-        <translation>&apos;%1&apos; geçerli bir Mach-O ikili dosyası değil (%2)</translation>
+        <translation>“%1” geçerli bir Mach-O ikili dosyası değil (%2)</translation>
     </message>
     <message>
         <source>file is corrupt</source>
@@ -2095,19 +2148,19 @@ Yine de silmek istiyor musunuz?</translation>
     </message>
     <message>
         <source>&apos;%1&apos; is not a Qt plugin</source>
-        <translation>&apos;%1&apos; bir Qt eklentisi değil</translation>
+        <translation>“%1” bir Qt eklentisi değil</translation>
     </message>
     <message>
         <source>&apos;%1&apos; is not a valid Windows DLL (%2)</source>
-        <translation>&apos;%1&apos;, geçerli bir Windows DLL&apos;si değil (%2)</translation>
+        <translation>“%1”, geçerli bir Windows DLL’si değil (%2)</translation>
     </message>
     <message>
         <source>&apos;%1&apos; is too small</source>
-        <translation>&apos;%1&apos; pek küçük</translation>
+        <translation>“%1” pek küçük</translation>
     </message>
     <message>
         <source>&apos;%1&apos; is not a Qt plugin (%2)</source>
-        <translation>&apos;%1&apos; bir Qt eklentisi değil (%2)</translation>
+        <translation>“%1” bir Qt eklentisi değil (%2)</translation>
     </message>
     <message>
         <source>metadata not found</source>
@@ -2287,7 +2340,7 @@ Yine de silmek istiyor musunuz?</translation>
     </message>
     <message>
         <source>Unable to open database &apos;%1&apos;</source>
-        <translation>&apos;%1&apos; veritabanı açılamıyor</translation>
+        <translation>“%1” veritabanı açılamıyor</translation>
     </message>
     <message>
         <source>Unable to connect</source>
@@ -2364,11 +2417,11 @@ Yine de silmek istiyor musunuz?</translation>
     <name>QMdiSubWindow</name>
     <message>
         <source>- [%1]</source>
-        <translation>- [%1]</translation>
+        <translation>— [%1]</translation>
     </message>
     <message>
         <source>%1 - [%2]</source>
-        <translation>%1 - [%2]</translation>
+        <translation>%1 — [%2]</translation>
     </message>
     <message>
         <source>Minimize</source>
@@ -2439,20 +2492,25 @@ Yine de silmek istiyor musunuz?</translation>
     <name>QMessageBox</name>
     <message>
         <source>Show Details...</source>
-        <translation>Ayrıntıları Göster...</translation>
+        <translation>Ayrıntıları Göster…</translation>
     </message>
     <message>
         <source>Hide Details...</source>
-        <translation>Ayrıntıları Gizle...</translation>
+        <translation>Ayrıntıları Gizle…</translation>
     </message>
     <message>
         <source>&lt;h3&gt;About Qt&lt;/h3&gt;&lt;p&gt;This program uses Qt version %1.&lt;/p&gt;</source>
         <translation>&lt;h3&gt;Qt Hakkında&lt;/h3&gt;&lt;p&gt;Bu program Qt %1 sürümünü kullanıyor.&lt;/p&gt;</translation>
     </message>
     <message>
+        <source>&lt;p&gt;Qt is a C++ toolkit for cross-platform application development.&lt;/p&gt;&lt;p&gt;Qt provides single-source portability across all major desktop operating systems. It is also available for embedded Linux and other embedded and mobile operating systems.&lt;/p&gt;&lt;p&gt;Qt is available under multiple licensing options designed to accommodate the needs of our various users.&lt;/p&gt;&lt;p&gt;Qt licensed under our commercial license agreement is appropriate for development of proprietary/commercial software where you do not want to share any source code with third parties or otherwise cannot comply with the terms of GNU (L)GPL.&lt;/p&gt;&lt;p&gt;Qt licensed under GNU (L)GPL is appropriate for the development of Qt&amp;nbsp;applications provided you can comply with the terms and conditions of the respective licenses.&lt;/p&gt;&lt;p&gt;Please see &lt;a href=&quot;https://%2/&quot;&gt;%2&lt;/a&gt; for an overview of Qt licensing.&lt;/p&gt;&lt;p&gt;Copyright (C) The Qt Company Ltd. and other contributors.&lt;/p&gt;&lt;p&gt;Qt and the Qt logo are trademarks of The Qt Company Ltd.&lt;/p&gt;&lt;p&gt;Qt is The Qt Company Ltd. product developed as an open source project. See &lt;a href=&quot;https://%3/&quot;&gt;%3&lt;/a&gt; for more information.&lt;/p&gt;</source>
+        <extracomment>Leave this text untranslated or include a verbatim copy of it below and note that it is the authoritative version in case of doubt.</extracomment>
+        <translation>&lt;p&gt;Qt is a C++ toolkit for cross-platform application development.&lt;/p&gt;&lt;p&gt;Qt provides single-source portability across all major desktop operating systems. It is also available for embedded Linux and other embedded and mobile operating systems.&lt;/p&gt;&lt;p&gt;Qt is available under multiple licensing options designed to accommodate the needs of our various users.&lt;/p&gt;&lt;p&gt;Qt licensed under our commercial license agreement is appropriate for development of proprietary/commercial software where you do not want to share any source code with third parties or otherwise cannot comply with the terms of GNU (L)GPL.&lt;/p&gt;&lt;p&gt;Qt licensed under GNU (L)GPL is appropriate for the development of Qt&amp;nbsp;applications provided you can comply with the terms and conditions of the respective licenses.&lt;/p&gt;&lt;p&gt;Please see &lt;a href=&quot;https://%2/&quot;&gt;%2&lt;/a&gt; for an overview of Qt licensing.&lt;/p&gt;&lt;p&gt;Copyright (C) The Qt Company Ltd. and other contributors.&lt;/p&gt;&lt;p&gt;Qt and the Qt logo are trademarks of The Qt Company Ltd.&lt;/p&gt;&lt;p&gt;Qt is The Qt Company Ltd. product developed as an open source project. See &lt;a href=&quot;https://%3/&quot;&gt;%3&lt;/a&gt; for more information.&lt;/p&gt;</translation>
+    </message>
+    <message>
         <source>&lt;p&gt;Qt is a C++ toolkit for cross-platform application development.&lt;/p&gt;&lt;p&gt;Qt provides single-source portability across all major desktop operating systems. It is also available for embedded Linux and other embedded and mobile operating systems.&lt;/p&gt;&lt;p&gt;Qt is available under multiple licensing options designed to accommodate the needs of our various users.&lt;/p&gt;&lt;p&gt;Qt licensed under our commercial license agreement is appropriate for development of proprietary/commercial software where you do not want to share any source code with third parties or otherwise cannot comply with the terms of GNU (L)GPL.&lt;/p&gt;&lt;p&gt;Qt licensed under GNU (L)GPL is appropriate for the development of Qt&amp;nbsp;applications provided you can comply with the terms and conditions of the respective licenses.&lt;/p&gt;&lt;p&gt;Please see &lt;a href=&quot;http://%2/&quot;&gt;%2&lt;/a&gt; for an overview of Qt licensing.&lt;/p&gt;&lt;p&gt;Copyright (C) %1 The Qt Company Ltd and other contributors.&lt;/p&gt;&lt;p&gt;Qt and the Qt logo are trademarks of The Qt Company Ltd.&lt;/p&gt;&lt;p&gt;Qt is The Qt Company Ltd product developed as an open source project. See &lt;a href=&quot;http://%3/&quot;&gt;%3&lt;/a&gt; for more information.&lt;/p&gt;</source>
         <extracomment>Leave this text untranslated or include a verbatim copy of it below and note that it is the authoritative version in case of doubt.</extracomment>
-        <translation>&lt;p&gt;Qt is a C++ toolkit for cross-platform application development.&lt;/p&gt;&lt;p&gt;Qt provides single-source portability across all major desktop operating systems. It is also available for embedded Linux and other embedded and mobile operating systems.&lt;/p&gt;&lt;p&gt;Qt is available under multiple licensing options designed to accommodate the needs of our various users.&lt;/p&gt;&lt;p&gt;Qt licensed under our commercial license agreement is appropriate for development of proprietary/commercial software where you do not want to share any source code with third parties or otherwise cannot comply with the terms of GNU (L)GPL.&lt;/p&gt;&lt;p&gt;Qt licensed under GNU (L)GPL is appropriate for the development of Qt&amp;nbsp;applications provided you can comply with the terms and conditions of the respective licenses.&lt;/p&gt;&lt;p&gt;Please see &lt;a href=&quot;http://%2/&quot;&gt;%2&lt;/a&gt; for an overview of Qt licensing.&lt;/p&gt;&lt;p&gt;Copyright (C) %1 The Qt Company Ltd and other contributors.&lt;/p&gt;&lt;p&gt;Qt and the Qt logo are trademarks of The Qt Company Ltd.&lt;/p&gt;&lt;p&gt;Qt is The Qt Company Ltd product developed as an open source project. See &lt;a href=&quot;http://%3/&quot;&gt;%3&lt;/a&gt; for more information.&lt;/p&gt;</translation>
+        <translation type="vanished">&lt;p&gt;Qt is a C++ toolkit for cross-platform application development.&lt;/p&gt;&lt;p&gt;Qt provides single-source portability across all major desktop operating systems. It is also available for embedded Linux and other embedded and mobile operating systems.&lt;/p&gt;&lt;p&gt;Qt is available under multiple licensing options designed to accommodate the needs of our various users.&lt;/p&gt;&lt;p&gt;Qt licensed under our commercial license agreement is appropriate for development of proprietary/commercial software where you do not want to share any source code with third parties or otherwise cannot comply with the terms of GNU (L)GPL.&lt;/p&gt;&lt;p&gt;Qt licensed under GNU (L)GPL is appropriate for the development of Qt&amp;nbsp;applications provided you can comply with the terms and conditions of the respective licenses.&lt;/p&gt;&lt;p&gt;Please see &lt;a href=&quot;http://%2/&quot;&gt;%2&lt;/a&gt; for an overview of Qt licensing.&lt;/p&gt;&lt;p&gt;Copyright (C) %1 The Qt Company Ltd and other contributors.&lt;/p&gt;&lt;p&gt;Qt and the Qt logo are trademarks of The Qt Company Ltd.&lt;/p&gt;&lt;p&gt;Qt is The Qt Company Ltd product developed as an open source project. See &lt;a href=&quot;http://%3/&quot;&gt;%3&lt;/a&gt; for more information.&lt;/p&gt;</translation>
     </message>
     <message>
         <source>About Qt</source>
@@ -2634,7 +2692,7 @@ Yine de silmek istiyor musunuz?</translation>
     <name>QNetworkReply</name>
     <message>
         <source>Error transferring %1 - server replied: %2</source>
-        <translation>%1 aktarılırken hata oluştu - sunucu yanıtı: %2</translation>
+        <translation>%1 aktarılırken hata oluştu — sunucu yanıtı: %2</translation>
     </message>
     <message>
         <source>backend start error.</source>
@@ -2642,7 +2700,7 @@ Yine de silmek istiyor musunuz?</translation>
     </message>
     <message>
         <source>Protocol &quot;%1&quot; is unknown</source>
-        <translation>&quot;%1&quot; protokolü bilinmiyor</translation>
+        <translation>“%1” protokolü bilinmiyor</translation>
     </message>
 </context>
 <context>
@@ -2730,7 +2788,7 @@ Yine de silmek istiyor musunuz?</translation>
     </message>
     <message>
         <source>Unable to connect - Driver doesn&apos;t support all functionality required</source>
-        <translation>Bağlanılamıyor - Sürücü gereken tüm işlevleri desteklemiyor</translation>
+        <translation>Bağlanılamıyor — sürücü gereken tüm işlevleri desteklemiyor</translation>
     </message>
     <message>
         <source>Unable to disable autocommit</source>
@@ -2753,11 +2811,15 @@ Yine de silmek istiyor musunuz?</translation>
     <name>QODBCResult</name>
     <message>
         <source>QODBCResult::reset: Unable to set &apos;SQL_CURSOR_STATIC&apos; as statement attribute. Please check your ODBC driver configuration</source>
-        <translation>QODBCResult::reset: &apos;SQL_CURSOR_STATIC&apos; ifade özniteliği olarak ayarlanamıyor. Lütfen ODBC sürücü yapılandırmanızı denetleyin</translation>
+        <translation>QODBCResult::reset: “SQL_CURSOR_STATIC” ifade özniteliği olarak ayarlanamıyor. Lütfen ODBC sürücü yapılandırmanızı denetleyin.</translation>
     </message>
     <message>
         <source>Unable to execute statement</source>
         <translation>İfade yürütülemiyor</translation>
+    </message>
+    <message>
+        <source>QODBCResult::reset: Unable to set &apos;SQL_ATTR_CURSOR_TYPE&apos; as statement attribute. Please check your ODBC driver configuration</source>
+        <translation>QODBCResult::reset: İfade özniteliği olarak “SQL_ATTR_CURSOR_TYPE” ayarlanamıyor. Lütfen, ODBC sürücüsü yapılandırmanızı denetleyin.</translation>
     </message>
     <message>
         <source>Unable to fetch</source>
@@ -2796,7 +2858,7 @@ Yine de silmek istiyor musunuz?</translation>
     </message>
     <message>
         <source>Unable to set client encoding to &apos;UNICODE&apos;</source>
-        <translation>İstemci kodlaması &apos;UNICODE&apos; olarak ayarlanamıyor</translation>
+        <translation>İstemci kodlaması “UNICODE” olarak ayarlanamıyor</translation>
     </message>
     <message>
         <source>Could not begin transaction</source>
@@ -2823,7 +2885,7 @@ Yine de silmek istiyor musunuz?</translation>
     <name>QPSQLResult</name>
     <message>
         <source>Query results lost - probably discarded on executing another SQL query.</source>
-        <translation>Sorgu sonuçları kaybedildi - muhtemelen başka bir SQL sorgusu yürütülürken atıldı.</translation>
+        <translation>Sorgu sonuçları kaybedildi — büyük olasılıkla başka bir SQL sorgusu yürütülürken atıldı.</translation>
     </message>
     <message>
         <source>Unable to create query</source>
@@ -2850,7 +2912,7 @@ Yine de silmek istiyor musunuz?</translation>
     </message>
     <message>
         <source>Paper</source>
-        <translation>Kağıt</translation>
+        <translation>Kâğıt</translation>
     </message>
     <message>
         <source>Page size:</source>
@@ -2866,7 +2928,7 @@ Yine de silmek istiyor musunuz?</translation>
     </message>
     <message>
         <source>Paper source:</source>
-        <translation>Kağıt kaynağı:</translation>
+        <translation>Kâğıt kaynağı:</translation>
     </message>
     <message>
         <source>Orientation</source>
@@ -2984,37 +3046,37 @@ Yine de silmek istiyor musunuz?</translation>
     <message>
         <source>Custom (%1mm x %2mm)</source>
         <extracomment>Custom size name in millimeters</extracomment>
-        <translation>Özel (%1 mm x %2 mm)</translation>
+        <translation>Özel (%1 mm × %2 mm)</translation>
     </message>
     <message>
         <source>Custom (%1pt x %2pt)</source>
         <extracomment>Custom size name in points</extracomment>
-        <translation>Özel (%1 pt x %2 pt)</translation>
+        <translation>Özel (%1 pt × %2 pt)</translation>
     </message>
     <message>
         <source>Custom (%1in x %2in)</source>
         <extracomment>Custom size name in inches</extracomment>
-        <translation>Özel (%1 in x %2 in)</translation>
+        <translation>Özel (%1 in × %2 in)</translation>
     </message>
     <message>
         <source>Custom (%1pc x %2pc)</source>
         <extracomment>Custom size name in picas</extracomment>
-        <translation>Özel (%1 pk x %2 pk)</translation>
+        <translation>Özel (%1 pk × %2 pk)</translation>
     </message>
     <message>
         <source>Custom (%1DD x %2DD)</source>
         <extracomment>Custom size name in didots</extracomment>
-        <translation>Özel (%1 DD x %2 DD)</translation>
+        <translation>Özel (%1 DD × %2 DD)</translation>
     </message>
     <message>
         <source>Custom (%1CC x %2CC)</source>
         <extracomment>Custom size name in ciceros</extracomment>
-        <translation>Özel (%1 CC x %2 CC)</translation>
+        <translation>Özel (%1 CC × %2 CC)</translation>
     </message>
     <message>
         <source>%1 x %2 in</source>
         <extracomment>Page size in &apos;Inch&apos;.</extracomment>
-        <translation>%1 x %2 in</translation>
+        <translation>%1 × %2 in</translation>
     </message>
     <message>
         <source>A0</source>
@@ -3106,15 +3168,15 @@ Yine de silmek istiyor musunuz?</translation>
     </message>
     <message>
         <source>Executive (7.5 x 10 in)</source>
-        <translation>Yönetici (7.5 x 10 in)</translation>
+        <translation>Yönetici (7,5 × 10 in)</translation>
     </message>
     <message>
         <source>Executive (7.25 x 10.5 in)</source>
-        <translation>Yönetici (7.25 x 10.5 in)</translation>
+        <translation>Yönetici (7,25 × 10,5 in)</translation>
     </message>
     <message>
         <source>Folio (8.27 x 13 in)</source>
-        <translation>Folyo (8.27 x 13 in)</translation>
+        <translation>Folyo (8,27 × 13 in)</translation>
     </message>
     <message>
         <source>Legal</source>
@@ -3218,23 +3280,23 @@ Yine de silmek istiyor musunuz?</translation>
     </message>
     <message>
         <source>Legal Extra</source>
-        <translation>Ekstra Yasal</translation>
+        <translation>Yasal Ekstra</translation>
     </message>
     <message>
         <source>Letter Extra</source>
-        <translation>Ekstra Mektup</translation>
+        <translation>Mektup Ekstra</translation>
     </message>
     <message>
         <source>Letter Plus</source>
-        <translation>Artı Mektup</translation>
+        <translation>Mektup Artı</translation>
     </message>
     <message>
         <source>Letter Small</source>
-        <translation>Küçük Zarf</translation>
+        <translation>Mektup Küçük</translation>
     </message>
     <message>
         <source>Tabloid Extra</source>
-        <translation>Ekstra Küçük Gazete</translation>
+        <translation>Tabloit Ekstra</translation>
     </message>
     <message>
         <source>Architect A</source>
@@ -3298,15 +3360,15 @@ Yine de silmek istiyor musunuz?</translation>
     </message>
     <message>
         <source>Fan-fold US (14.875 x 11 in)</source>
-        <translation>Fan-fold ABD (14.875 x 11 in)</translation>
+        <translation>Sürekli Form Kâğıdı ABD (14,875 × 11 in)</translation>
     </message>
     <message>
         <source>Fan-fold German (8.5 x 12 in)</source>
-        <translation>Fan-fold Alman (8.5 x 12 in)</translation>
+        <translation>Sürekli Form Kâğıdı Alman (8,5 × 12 in)</translation>
     </message>
     <message>
         <source>Fan-fold German Legal (8.5 x 13 in)</source>
-        <translation>Fan-fold Yasal Alman (8.5 x 13 in)</translation>
+        <translation>Sürekli Form Kâğıdı Alman Yasal (8,5 × 13 in)</translation>
     </message>
     <message>
         <source>Envelope B4</source>
@@ -3454,7 +3516,7 @@ Yine de silmek istiyor musunuz?</translation>
     </message>
     <message>
         <source>Envelope You 4</source>
-        <translation>Senin Zarf 4</translation>
+        <translation>Zarf You 4</translation>
     </message>
 </context>
 <context>
@@ -3583,27 +3645,27 @@ Yine de silmek istiyor musunuz?</translation>
     </message>
     <message>
         <source>1 (1x1)</source>
-        <translation>1 (1 x 1)</translation>
+        <translation>1 (1 × 1)</translation>
     </message>
     <message>
         <source>2 (2x1)</source>
-        <translation>2 (2 x 1)</translation>
+        <translation>2 (2 × 1)</translation>
     </message>
     <message>
         <source>4 (2x2)</source>
-        <translation>4 (2 x 2)</translation>
+        <translation>4 (2 × 2)</translation>
     </message>
     <message>
         <source>6 (2x3)</source>
-        <translation>6 (2 x 3)</translation>
+        <translation>6 (2 × 3)</translation>
     </message>
     <message>
         <source>9 (3x3)</source>
-        <translation>9 (3 x 3)</translation>
+        <translation>9 (3 × 3)</translation>
     </message>
     <message>
         <source>16 (4x4)</source>
-        <translation>16 (4 x 4)</translation>
+        <translation>16 (4 × 4)</translation>
     </message>
     <message>
         <source>All Pages</source>
@@ -3619,7 +3681,7 @@ Yine de silmek istiyor musunuz?</translation>
     </message>
     <message>
         <source>&amp;Options &gt;&gt;</source>
-        <translation>&amp;Seçenekler &gt;&gt;</translation>
+        <translation>&amp;Seçenekler ≫</translation>
     </message>
     <message>
         <source>&amp;Print</source>
@@ -3627,7 +3689,7 @@ Yine de silmek istiyor musunuz?</translation>
     </message>
     <message>
         <source>&amp;Options &lt;&lt;</source>
-        <translation>&amp;Seçenekler &lt;&lt;</translation>
+        <translation>&amp;Seçenekler ≪</translation>
     </message>
     <message>
         <source>Invalid Pages Definition</source>
@@ -3635,7 +3697,7 @@ Yine de silmek istiyor musunuz?</translation>
     </message>
     <message>
         <source>%1 does not follow the correct syntax. Please use &apos;,&apos; to separate ranges and pages, &apos;-&apos; to define ranges and make sure ranges do not intersect with each other.</source>
-        <translation>%1 doğru sözdizimini izlemiyor. Aralıkları ve sayfaları ayırmak için lütfen &apos;,&apos; aralıkları tanımlamak ve aralıkların birbiriyle kesişmediğinden emin olmak için &apos;-&apos; kullanın.</translation>
+        <translation>%1 doğru sözdizimi izlemiyor. Aralıkları ve sayfaları ayırmak için lütfen “,” aralıkları tanımlamak ve aralıkların birbiriyle kesişmediğinden emin olmak için “-” kullanın.</translation>
     </message>
     <message>
         <source>Duplex Settings Conflicts</source>
@@ -3659,7 +3721,7 @@ Yine de silmek istiyor musunuz?</translation>
     </message>
     <message>
         <source>Print To File ...</source>
-        <translation>Dosyaya Yazdır...</translation>
+        <translation>Dosyaya Yazdır…</translation>
     </message>
     <message>
         <source>%1 is a directory.
@@ -3682,12 +3744,12 @@ Do you want to overwrite it?</source>
     <message>
         <source>Options &apos;Pages Per Sheet&apos; and &apos;Page Set&apos; cannot be used together.
 Please turn one of those options off.</source>
-        <translation>&apos;Yaprak Başına Sayfa&apos; ve &apos;Sayfa Kümesi&apos; seçenekleri birlikte kullanılamaz.
+        <translation>“Yaprak Başına Sayfa” ve “Sayfa Kümesi” seçenekleri birlikte kullanılamaz.
 Lütfen bu seçeneklerden birini kapatın.</translation>
     </message>
     <message>
         <source>The &apos;From&apos; value cannot be greater than the &apos;To&apos; value.</source>
-        <translation>&apos;Kimden&apos; değeri &apos;Kime&apos; değerinden büyük olamaz.</translation>
+        <translation>“Kimden” değeri, “Kime” değerinden büyük olamaz.</translation>
     </message>
 </context>
 <context>
@@ -3766,7 +3828,7 @@ Lütfen bu seçeneklerden birini kapatın.</translation>
     </message>
     <message>
         <source>Export to PDF</source>
-        <translation>PDF&apos;ye dışa aktar</translation>
+        <translation>PDF’ye Dışa Aktar</translation>
     </message>
 </context>
 <context>
@@ -3827,7 +3889,7 @@ Lütfen bu seçeneklerden birini kapatın.</translation>
     </message>
     <message>
         <source>Print range</source>
-        <translation>Aralığı yazdır</translation>
+        <translation>Erimi yazdır</translation>
     </message>
     <message>
         <source>Print all</source>
@@ -3847,7 +3909,7 @@ Lütfen bu seçeneklerden birini kapatın.</translation>
     </message>
     <message>
         <source>Specify pages or ranges separated by commas. Ranges are specified by two numbers separated by a hyphen. E.g: 3,5-7,9 prints pages 3, 5, 6, 7 and 9.</source>
-        <translation>Virgüllerle ayrılmış sayfaları veya aralıkları belirtin. Aralıklar, tire işareti ile ayrılmış iki sayı ile belirtilir. Ör: 3,5-7,9, sayfa 3, 5, 6, 7 ve 9&apos;u yazdırır.</translation>
+        <translation>Virgüllerle ayrılmış sayfaları veya aralıkları belirtin. Aralıklar, tire işareti ile ayrılmış iki sayı ile belirtilir. Örneğin: 3,5-7,9; sayfa 3, 5, 6, 7 ve 9’u yazdırır.</translation>
     </message>
     <message>
         <source>Current Page</source>
@@ -3859,7 +3921,7 @@ Lütfen bu seçeneklerden birini kapatın.</translation>
     </message>
     <message>
         <source>Page Set:</source>
-        <translation>Sayfa Kümesi:</translation>
+        <translation>Sayfa kümesi:</translation>
     </message>
     <message>
         <source>Output Settings</source>
@@ -3946,7 +4008,7 @@ Lütfen bu seçeneklerden birini kapatın.</translation>
     </message>
     <message>
         <source>...</source>
-        <translation>...</translation>
+        <translation>…</translation>
     </message>
 </context>
 <context>
@@ -3985,23 +4047,23 @@ Lütfen bu seçeneklerden birini kapatın.</translation>
     </message>
     <message>
         <source>childProcessModifier() function threw an exception</source>
-        <translation>childProcessModifier() bir istisna verdi</translation>
+        <translation type="vanished">childProcessModifier() bir istisna verdi</translation>
     </message>
     <message>
         <source>Child process modifier threw an exception: %1</source>
-        <translation type="obsolete">Alt süreç değiştiricisi bir istisna verdi: %1</translation>
+        <translation>Alt süreç niteleyicisi bir istisna verdi: %1</translation>
     </message>
     <message>
         <source>Child process modifier reported error: %1</source>
-        <translation type="obsolete">Alt süreç değiştiricisi hata bildirdi: %1</translation>
+        <translation>Alt süreç niteleyicisi hata bildirdi: %1</translation>
     </message>
     <message>
         <source>Child process modifier reported error: %1: %2</source>
-        <translation type="obsolete">Alt süreç değiştiricisi hata bildirdi: %1: %2</translation>
+        <translation>Alt süreç niteleyicisi hata bildirdi: %1: %2</translation>
     </message>
     <message>
         <source>Child process set up failed: %1: %2</source>
-        <translation type="obsolete">Alt süreç ayarlaması başarısız oldu: %1: %2</translation>
+        <translation>Alt süreç ayarlanamadı: %1: %2</translation>
     </message>
     <message>
         <source>Could not open output redirection for writing</source>
@@ -4043,7 +4105,7 @@ Lütfen bu seçeneklerden birini kapatın.</translation>
     </message>
     <message>
         <source>number too big in {} quantifier</source>
-        <translation>{} nicelik belirtecinde sayı pek büyük</translation>
+        <translation>{} nicelik belirtecindeki sayı pek büyük</translation>
     </message>
     <message>
         <source>missing terminating ] for character class</source>
@@ -4067,7 +4129,7 @@ Lütfen bu seçeneklerden birini kapatın.</translation>
     </message>
     <message>
         <source>unrecognized character after (? or (?-</source>
-        <translation>(? veya (? - sonrası tanınmayan karakter</translation>
+        <translation>(? veya (?- sonrası tanınmayan karakter</translation>
     </message>
     <message>
         <source>POSIX named classes are supported only within a class</source>
@@ -4151,7 +4213,7 @@ Lütfen bu seçeneklerden birini kapatın.</translation>
     </message>
     <message>
         <source>this version of PCRE2 does not have Unicode support</source>
-        <translation>PCRE2&apos;nin bu sürümü Unicode desteğine sahip değil</translation>
+        <translation>PCRE2’nin bu sürümü Unicode desteğine sahip değil</translation>
     </message>
     <message>
         <source>parentheses are too deeply nested (stack check)</source>
@@ -4175,7 +4237,7 @@ Lütfen bu seçeneklerden birini kapatın.</translation>
     </message>
     <message>
         <source>number after (?C is greater than 255</source>
-        <translation>(?C sonrası sayı 255&apos;ten büyük</translation>
+        <translation>(?C sonrası sayı 255’ten büyük</translation>
     </message>
     <message>
         <source>closing parenthesis for (?C expected</source>
@@ -4203,7 +4265,7 @@ Lütfen bu seçeneklerden birini kapatın.</translation>
     </message>
     <message>
         <source>this version of PCRE2 does not have support for \P, \p, or \X</source>
-        <translation>PCRE2&apos;nin bu sürümü \P, \p veya \X için destek içermiyor</translation>
+        <translation>PCRE2’nin bu sürümü \P, \p veya \X için destek içermiyor</translation>
     </message>
     <message>
         <source>malformed \P or \p sequence</source>
@@ -4211,7 +4273,7 @@ Lütfen bu seçeneklerden birini kapatın.</translation>
     </message>
     <message>
         <source>unknown property name after \P or \p</source>
-        <translation>\P veya \p&apos;den sonra bilinmeyen özellik adı</translation>
+        <translation>\P veya \p’den sonra bilinmeyen özellik adı</translation>
     </message>
     <message>
         <source>subpattern name is too long (maximum 32 code units)</source>
@@ -4227,7 +4289,7 @@ Lütfen bu seçeneklerden birini kapatın.</translation>
     </message>
     <message>
         <source>octal value is greater than \377 in 8-bit non-UTF-8 mode</source>
-        <translation>8 bit UTF-8 olmayan kipte sekizlik değer \377&apos;den büyük</translation>
+        <translation>8 bit UTF-8 olmayan kipte sekizlik değer \377’den büyük</translation>
     </message>
     <message>
         <source>internal error: overran compiling workspace</source>
@@ -4335,7 +4397,7 @@ Lütfen bu seçeneklerden birini kapatın.</translation>
     </message>
     <message>
         <source>character code point value in \u.... sequence is too large</source>
-        <translation>\u.... dizisindeki karakter kod noktası değeri pek büyük</translation>
+        <translation>\u…. dizisindeki karakter kod noktası değeri pek büyük</translation>
     </message>
     <message>
         <source>digits missing in \x{} or \o{} or \N{U+}</source>
@@ -4595,7 +4657,7 @@ Lütfen bu seçeneklerden birini kapatın.</translation>
     </message>
     <message>
         <source>internal error - pattern overwritten?</source>
-        <translation>iç hata - dizginin üzerine yazılıyor mu?</translation>
+        <translation>iç hata — dizginin üzerine yazılıyor mu?</translation>
     </message>
     <message>
         <source>bad JIT option</source>
@@ -4679,11 +4741,15 @@ Lütfen bu seçeneklerden birini kapatın.</translation>
     </message>
     <message>
         <source>internal error - duplicate substitution match</source>
-        <translation>iç hata - yinelenen ikame eşleşmesi</translation>
+        <translation>iç hata — yinelenen ikame eşleşmesi</translation>
     </message>
     <message>
         <source>PCRE2_MATCH_INVALID_UTF is not supported for DFA matching</source>
         <translation>PCRE2_MATCH_INVALID_UTF, DFA eşleşmesi için desteklenmiyor</translation>
+    </message>
+    <message>
+        <source>INTERNAL ERROR: invalid substring offset</source>
+        <translation>İÇSEL HATA: Geçersiz alt dizi ofseti</translation>
     </message>
 </context>
 <context>
@@ -4752,7 +4818,7 @@ Lütfen bu seçeneklerden birini kapatın.</translation>
     </message>
     <message>
         <source>QSaveFile cannot open &apos;%1&apos; without direct write fallback enabled.</source>
-        <translation>QSaveFile doğrudan yazma geri dönüşü etkinleştirilmeden &apos;%1&apos; dosyasını açamıyor.</translation>
+        <translation>QSaveFile doğrudan yazma geri dönüşü etkinleştirilmeden “%1” dosyasını açamıyor.</translation>
     </message>
     <message>
         <source>Writing canceled by application</source>
@@ -4825,7 +4891,7 @@ Lütfen bu seçeneklerden birini kapatın.</translation>
     <name>QSharedMemory</name>
     <message>
         <source>%1: create size is less then 0</source>
-        <translation>%1: Oluşturma boyutu 0&apos;dan küçük</translation>
+        <translation>%1: Oluşturma boyutu 0’dan küçük</translation>
     </message>
     <message>
         <source>%1: unable to lock</source>
@@ -5075,7 +5141,7 @@ Lütfen bu seçeneklerden birini kapatın.</translation>
     <message>
         <source>Toggle Media Play/Pause</source>
         <extracomment>Media player button to toggle between playing and paused</extracomment>
-        <translation>Ortamı Çal-Oynat/Duraklat</translation>
+        <translation>Ortamı Çal–Oynat/Duraklat</translation>
     </message>
     <message>
         <source>Home Page</source>
@@ -5602,6 +5668,10 @@ Lütfen bu seçeneklerden birini kapatın.</translation>
         <translation>Mikrofon Sesini Düşür</translation>
     </message>
     <message>
+        <source>Keyboard</source>
+        <translation>Klavye</translation>
+    </message>
+    <message>
         <source>New</source>
         <translation>Yeni</translation>
     </message>
@@ -6030,9 +6100,7 @@ Lütfen bu seçeneklerden birini kapatın.</translation>
     </message>
     <message>
         <source>frame</source>
-        <extracomment>Role of an accessible object: a window with frame and title
-----------
-Role of an accessible object</extracomment>
+        <extracomment>Role of an accessible object: a window with frame and title</extracomment>
         <translation>çerçeve</translation>
     </message>
     <message>
@@ -6351,6 +6419,11 @@ Role of an accessible object</extracomment>
         <translation>bildirim</translation>
     </message>
     <message>
+        <source>block quote</source>
+        <extracomment>Role of an accessible object</extracomment>
+        <translation>blok alıntı</translation>
+    </message>
+    <message>
         <source>unknown</source>
         <extracomment>Role of an accessible object</extracomment>
         <translation>bilinmeyen</translation>
@@ -6659,7 +6732,7 @@ Role of an accessible object</extracomment>
     </message>
     <message>
         <source>Failed to extract &apos;this update time&apos; from the SingleResponse</source>
-        <translation>&apos;Bu güncelleme zamanı&apos; SingleResponse&apos;den alınamadı</translation>
+        <translation>“Bu güncelleme zamanı” SingleResponse’den alınamadı</translation>
     </message>
     <message>
         <source>Insufficient memory</source>
@@ -6711,7 +6784,11 @@ Role of an accessible object</extracomment>
     </message>
     <message>
         <source>The data could not be encrypted</source>
-        <translation>Veriler şifrelenemedi</translation>
+        <translation>Veri şifrelenemedi</translation>
+    </message>
+    <message>
+        <source>The data could not be decrypted</source>
+        <translation>Verinin şifresi çözülemedi</translation>
     </message>
     <message>
         <source>No cipher suites in common</source>
@@ -6825,6 +6902,10 @@ Role of an accessible object</extracomment>
         <translation>Önbellek</translation>
     </message>
     <message>
+        <source>State</source>
+        <translation>Durum</translation>
+    </message>
+    <message>
         <source>Shared Data</source>
         <translation>Paylaşılan Veri</translation>
     </message>
@@ -6843,6 +6924,10 @@ Role of an accessible object</extracomment>
     <message>
         <source>Shared Cache</source>
         <translation>Paylaşılan Önbellek</translation>
+    </message>
+    <message>
+        <source>Shared State</source>
+        <translation>Paylaşılan Durum</translation>
     </message>
     <message>
         <source>Download</source>
@@ -6906,7 +6991,7 @@ Role of an accessible object</extracomment>
     </message>
     <message>
         <source>%1: System V semaphores are not available for sandboxed applications. Please build Qt with -feature-ipc_posix</source>
-        <translation>%1: System V semaforları kum havuzundaki uygulamalarda kullanılamaz. Lütfen, Qt&apos;yi -feature-ipc_posix ile yapın</translation>
+        <translation>%1: System V semaforları kum havuzundaki uygulamalarda kullanılamaz. Lütfen, Qt’yi -feature-ipc_posix ile yapın.</translation>
     </message>
     <message>
         <source>%1: unable to make key</source>
@@ -7113,7 +7198,7 @@ Role of an accessible object</extracomment>
         <source>Qt cannot load the direct2d platform plugin because the Direct2D version on this system is too old. The minimum system requirement for this platform plugin is Windows 7 SP1 with Platform Update.
 
 The minimum Direct2D version required is %1. The Direct2D version on this system is %2.</source>
-        <translation>Qt, bu sistemdeki Direct2D sürümü pek eski olduğundan direct2d platform eklentisini yükleyemiyor. Bu platform eklentisi için en düşük sistem gereksinimi Platform Güncellemeli Windows 7 SP1&apos;dir.
+        <translation>Qt, bu sistemdeki Direct2D sürümü pek eski olduğundan direct2d platform eklentisini yükleyemiyor. Bu platform eklentisi için en düşük sistem gereksinimi Platform Güncellemeli Windows 7 SP1’dir.
 
 Gereken en düşük Direct2D sürümü %1. Bu sistemdeki Direct2D sürümü %2.</translation>
     </message>
@@ -7185,7 +7270,7 @@ Gereken en düşük Direct2D sürümü %1. Bu sistemdeki Direct2D sürümü %2.<
     </message>
     <message>
         <source>Sequence &apos;]]&gt;&apos; not allowed in content.</source>
-        <translation>&apos;]]&gt;&apos; sırasına içerikte izin verilmiyor.</translation>
+        <translation>“]]&gt;” sırasına içerikte izin verilmiyor.</translation>
     </message>
     <message>
         <source>Encountered incorrectly encoded content.</source>
@@ -7193,7 +7278,7 @@ Gereken en düşük Direct2D sürümü %1. Bu sistemdeki Direct2D sürümü %2.<
     </message>
     <message>
         <source>Namespace prefix &apos;%1&apos; not declared</source>
-        <translation>&apos;%1&apos; ad alanı öneki bildirilmedi</translation>
+        <translation>“%1” ad alanı öneki bildirilmedi</translation>
     </message>
     <message>
         <source>Illegal namespace declaration.</source>
@@ -7201,11 +7286,11 @@ Gereken en düşük Direct2D sürümü %1. Bu sistemdeki Direct2D sürümü %2.<
     </message>
     <message>
         <source>Attribute &apos;%1&apos; redefined.</source>
-        <translation>&apos;%1&apos; özelliği yeniden tanımlandı.</translation>
+        <translation>“%1” özelliği yeniden tanımlandı.</translation>
     </message>
     <message>
         <source>Unexpected character &apos;%1&apos; in public id literal.</source>
-        <translation>Genel kimlik değişmezinde beklenmeyen &apos;%1&apos; karakteri.</translation>
+        <translation>Genel kimlik düz verisinde beklenmeyen “%1” karakteri.</translation>
     </message>
     <message>
         <source>Invalid XML version string.</source>
@@ -7259,33 +7344,33 @@ Gereken en düşük Direct2D sürümü %1. Bu sistemdeki Direct2D sürümü %2.<
         <source>&apos;%1&apos;</source>
         <comment>expected</comment>
         <extracomment>&apos;&lt;first option&gt;&apos;</extracomment>
-        <translation>&apos;%1&apos;</translation>
+        <translation>“%1”</translation>
     </message>
     <message>
         <source>%1 or &apos;%2&apos;</source>
         <comment>expected</comment>
         <extracomment>&lt;first option&gt;, &apos;&lt;second option&gt;&apos;</extracomment>
-        <translation>%1 veya &apos;%2&apos;</translation>
+        <translation>%1 veya “%2”</translation>
     </message>
     <message>
         <source>%1, &apos;%2&apos;</source>
         <comment>expected</comment>
         <extracomment>&lt;options so far&gt;, &apos;&lt;next option&gt;&apos;</extracomment>
-        <translation>%1, &apos;%2&apos;</translation>
+        <translation>%1, “%2”</translation>
     </message>
     <message>
         <source>%1, or &apos;%2&apos;</source>
         <comment>expected</comment>
         <extracomment>&lt;options so far&gt;, or &apos;&lt;final option&gt;&apos;</extracomment>
-        <translation>%1 veya &apos;%2&apos;</translation>
+        <translation>%1 veya “%2”</translation>
     </message>
     <message>
         <source>Expected %1, but got &apos;%2&apos;.</source>
-        <translation>%1 bekleniyordu; ancak &apos;%2&apos; alındı.</translation>
+        <translation>%1 bekleniyordu; ancak “%2” alındı.</translation>
     </message>
     <message>
         <source>Unexpected &apos;%1&apos;.</source>
-        <translation>Beklenmedik &apos;%1&apos;.</translation>
+        <translation>Beklenmedik “%1”.</translation>
     </message>
     <message>
         <source>Expected character data.</source>
@@ -7333,15 +7418,15 @@ Gereken en düşük Direct2D sürümü %1. Bu sistemdeki Direct2D sürümü %2.<
     </message>
     <message>
         <source>Entity &apos;%1&apos; not declared.</source>
-        <translation>&apos;%1&apos; varlık bildirilmedi.</translation>
+        <translation>“%1” varlık bildirilmedi.</translation>
     </message>
     <message>
         <source>Reference to unparsed entity &apos;%1&apos;.</source>
-        <translation>Ayrıştırılmamış &apos;%1&apos; varlığına başvuru.</translation>
+        <translation>Ayrıştırılmamış “%1” varlığına başvuru.</translation>
     </message>
     <message>
         <source>Reference to external entity &apos;%1&apos; in attribute value.</source>
-        <translation>Özellik değerinde &apos;%1&apos; dış varlığına başvuru.</translation>
+        <translation>Özellik değerinde “%1” dış varlığına başvuru.</translation>
     </message>
     <message>
         <source>Invalid character reference.</source>
@@ -7525,6 +7610,2411 @@ Gereken en düşük Direct2D sürümü %1. Bu sistemdeki Direct2D sürümü %2.<
     <message>
         <source>Could not roll back transaction</source>
         <translation>İşlem geri alınamadı</translation>
+    </message>
+</context>
+<context>
+    <name>QAxSelect</name>
+    <message>
+        <source>Select ActiveX Control</source>
+        <translation>ActiveX Denetimi Seç</translation>
+    </message>
+    <message>
+        <source>Filter</source>
+        <translation>Süzgeç</translation>
+    </message>
+    <message>
+        <source>COM &amp;Object:</source>
+        <translation>COM &amp;nesnesi:</translation>
+    </message>
+    <message>
+        <source>Sandboxing:</source>
+        <translation>Yalıtım:</translation>
+    </message>
+    <message>
+        <source>Name:</source>
+        <translation>Ad:</translation>
+    </message>
+    <message>
+        <source>Type:</source>
+        <translation>Tür:</translation>
+    </message>
+    <message>
+        <source>In process</source>
+        <translation>Sürüyor</translation>
+    </message>
+    <message>
+        <source>Out of process</source>
+        <translation>Süreç dışı</translation>
+    </message>
+    <message>
+        <source>CLSID:</source>
+        <translation>CLSID:</translation>
+    </message>
+    <message>
+        <source>Key:</source>
+        <translation>Anahtar:</translation>
+    </message>
+    <message>
+        <source>Word&amp;nbsp;size:</source>
+        <translation>Sözcük&amp;nbsp;boyutu:</translation>
+    </message>
+    <message>
+        <source>DLL:</source>
+        <translation>DLL:</translation>
+    </message>
+    <message>
+        <source>Binary:</source>
+        <translation>İkili:</translation>
+    </message>
+    <message>
+        <source>Version:</source>
+        <translation>Sürüm:</translation>
+    </message>
+</context>
+<context>
+    <name>QMimeType</name>
+    <message>
+        <source>Empty document</source>
+        <extracomment>application/x-zerosize</extracomment>
+        <translation>Boş belge</translation>
+    </message>
+    <message>
+        <source>Desktop file</source>
+        <extracomment>application/x-desktop</extracomment>
+        <translation>Masaüstü dosyası</translation>
+    </message>
+    <message>
+        <source>Qt Markup Language file</source>
+        <extracomment>text/x-qml</extracomment>
+        <translation>Qt Markup Language dosyası</translation>
+    </message>
+    <message>
+        <source>Compressed postscript</source>
+        <extracomment>application/x-gzpostscript</extracomment>
+        <translation>Sıkıştırılmış PostScript</translation>
+    </message>
+    <message>
+        <source>Core dump</source>
+        <extracomment>application/x-core</extracomment>
+        <translation>Çekirdek dökümü</translation>
+    </message>
+    <message>
+        <source>BZip2 compressed tar file</source>
+        <extracomment>application/x-bzip2-compressed-tar</extracomment>
+        <translation>BZip2 sıkıştırılmış TAR dosyası</translation>
+    </message>
+    <message>
+        <source>Directory</source>
+        <extracomment>inode/directory</extracomment>
+        <translation>Dizin</translation>
+    </message>
+    <message>
+        <source>Windows Batch / Command File</source>
+        <extracomment>application/x-bat</extracomment>
+        <translation>Windows toplu iş/komut dosyası</translation>
+    </message>
+    <message>
+        <source>BizAgi Process Modeler</source>
+        <extracomment>application/bizagi-modeler</extracomment>
+        <translation>BizAgi süreç modelleyicisi</translation>
+    </message>
+    <message>
+        <source>Concise Binary Object Representation container</source>
+        <extracomment>application/cbor</extracomment>
+        <translation>Concise Binary Object Representation kapsayıcısı</translation>
+    </message>
+    <message>
+        <source>CorelDraw</source>
+        <extracomment>application/coreldraw</extracomment>
+        <translation>CorelDraw</translation>
+    </message>
+    <message>
+        <source>DICOM medical imaging data</source>
+        <extracomment>application/dicom</extracomment>
+        <translation>DICOM medikal görselleştirme verisi</translation>
+    </message>
+    <message>
+        <source>Darwin Information Typing Architecture</source>
+        <extracomment>application/dita+xml</extracomment>
+        <translation>Darwin Information Typing Architecture</translation>
+    </message>
+    <message>
+        <source>DVD information file</source>
+        <extracomment>application/x-dvd-ifo</extracomment>
+        <translation>DVD bilgisi dosyası</translation>
+    </message>
+    <message>
+        <source>EBU-STL subtitles</source>
+        <extracomment>application/x-ebu-stl</extracomment>
+        <translation>EBU-STL altyazıları</translation>
+    </message>
+    <message>
+        <source>Electronic Publication</source>
+        <extracomment>application/epub+zip</extracomment>
+        <translation>Elektronik yayım</translation>
+    </message>
+    <message>
+        <source>Flexible Image Transport System</source>
+        <extracomment>application/fits</extracomment>
+        <translation>Flexible Image Transport System</translation>
+    </message>
+    <message>
+        <source>Adobe Illustrator Artwork</source>
+        <extracomment>application/illustrator</extracomment>
+        <translation>Adobe Illustrator sanatı</translation>
+    </message>
+    <message>
+        <source>Adobe Illustrator Artwork -- the older postscript based AI files</source>
+        <extracomment>application/illustrator+ps</extracomment>
+        <translation>Adobe Illustrator sanatı — eski PostScript tabanlı AI dosyaları</translation>
+    </message>
+    <message>
+        <source>Windows setup INFormation</source>
+        <extracomment>application/inf</extracomment>
+        <translation>Windows kurulum bilgisi</translation>
+    </message>
+    <message>
+        <source>Java Archive</source>
+        <extracomment>application/java-archive</extracomment>
+        <translation>Java arşivi</translation>
+    </message>
+    <message>
+        <source>JavaScript Source Code</source>
+        <extracomment>text/javascript</extracomment>
+        <translation>JavaScript kaynak kodu</translation>
+    </message>
+    <message>
+        <source>Web Application Manifest file</source>
+        <extracomment>application/manifest+json</extracomment>
+        <translation>Web uygulaması manifestosu dosyası</translation>
+    </message>
+    <message>
+        <source>Java Class File</source>
+        <extracomment>application/java-vm</extracomment>
+        <translation>Java sınıf dosyası</translation>
+    </message>
+    <message>
+        <source>Java Native Library for OSX</source>
+        <extracomment>application/x-java-jnilib</extracomment>
+        <translation>macOS için Java yerel kitaplığı</translation>
+    </message>
+    <message>
+        <source>Java hprof text file</source>
+        <extracomment>application/vnd.java.hprof----------application/vnd.java.hprof.text</extracomment>
+        <translation>Java hprof metin dosyası</translation>
+    </message>
+    <message>
+        <source>Wolfram Mathematica</source>
+        <extracomment>application/mathematica</extracomment>
+        <translation>Wolfram Mathematica</translation>
+    </message>
+    <message>
+        <source>Wolfram Language</source>
+        <extracomment>application/vnd.wolfram.wl</extracomment>
+        <translation>Wolfram Language</translation>
+    </message>
+    <message>
+        <source>Adobe MIF File</source>
+        <extracomment>application/vnd.mif</extracomment>
+        <translation>Adobe MIF dosyası</translation>
+    </message>
+    <message>
+        <source>QuickTime container format</source>
+        <extracomment>application/quicktime</extracomment>
+        <translation>QuickTime kapsayıcı biçimi</translation>
+    </message>
+    <message>
+        <source>MP4 container format</source>
+        <extracomment>application/mp4</extracomment>
+        <translation>MP4 kapsayıcı biçimi</translation>
+    </message>
+    <message>
+        <source>Microsoft Word Document</source>
+        <extracomment>application/msword</extracomment>
+        <translation>Microsoft Word belgesi</translation>
+    </message>
+    <message>
+        <source>Microsoft Word 2 Document</source>
+        <extracomment>application/msword2</extracomment>
+        <translation>Microsoft Word 2 belgesi</translation>
+    </message>
+    <message>
+        <source>Microsoft Word 5 Document</source>
+        <extracomment>application/msword5</extracomment>
+        <translation>Microsoft Word 5 belgesi</translation>
+    </message>
+    <message>
+        <source>OneNote Package</source>
+        <extracomment>application/onenote; format=package</extracomment>
+        <translation>OneNote paketi</translation>
+    </message>
+    <message>
+        <source>Portable Document Format</source>
+        <extracomment>application/pdf</extracomment>
+        <translation>Taşınabilir belge biçimi</translation>
+    </message>
+    <message>
+        <source>PostScript</source>
+        <extracomment>application/postscript</extracomment>
+        <translation>PostScript</translation>
+    </message>
+    <message>
+        <source>Excel 2003 xml format, pre-ooxml</source>
+        <extracomment>application/vnd.ms-spreadsheetml</extracomment>
+        <translation>Excel 2003 XML biçimi, OOXML öncesi</translation>
+    </message>
+    <message>
+        <source>Word 2003 xml format, pre-ooxml</source>
+        <extracomment>application/vnd.ms-wordml</extracomment>
+        <translation>Word 2003 XML biçimi, OOXML öncesi</translation>
+    </message>
+    <message>
+        <source>Word 2006 xml format, pre-ooxml</source>
+        <extracomment>application/vnd.ms-word2006ml</extracomment>
+        <translation>Word 2006 XML biçimi, OOXML öncesi</translation>
+    </message>
+    <message>
+        <source>XML syntax for RDF graphs</source>
+        <extracomment>application/rdf+xml</extracomment>
+        <translation>RDF grafikleri için XML sözdizimi</translation>
+    </message>
+    <message>
+        <source>Rich Text Format File</source>
+        <extracomment>application/rtf</extracomment>
+        <translation>Zengin metin biçimi dosyası</translation>
+    </message>
+    <message>
+        <source>Sereal binary serialization format</source>
+        <extracomment>application/sereal</extracomment>
+        <translation>Sereal ikili dizileştirme biçimi</translation>
+    </message>
+    <message>
+        <source>SMIL Multimedia</source>
+        <extracomment>application/smil+xml</extracomment>
+        <translation>SMIL çoklu ortam dosyası</translation>
+    </message>
+    <message>
+        <source>SolidWorks CAD program</source>
+        <extracomment>application/sldworks</extracomment>
+        <translation>SolidWorks CAD programı</translation>
+    </message>
+    <message>
+        <source>Password Protected iWorks File</source>
+        <extracomment>application/x-tika-iworks-protected</extracomment>
+        <translation>Parola korumalı iWorks dosyası</translation>
+    </message>
+    <message>
+        <source>web archive frictionless zip</source>
+        <extracomment>application/x-wacz</extracomment>
+        <translation>Sürtünmesiz ZIP web arşivi</translation>
+    </message>
+    <message>
+        <source>frictionless data package zip package</source>
+        <extracomment>application/x-vnd.datapackage+zip</extracomment>
+        <translation>Sürtünmesiz ZIP veri paketi</translation>
+    </message>
+    <message>
+        <source>frictionless data package - standalong datapackage.json</source>
+        <extracomment>application/x-vnd.datapackage+json</extracomment>
+        <translation>Sürtünmesiz veri paketi — tekil datapackage.json</translation>
+    </message>
+    <message>
+        <source>frictionless data package - gzip of standalone datapackage.json</source>
+        <extracomment>application/x-vnd.datapackage+gz</extracomment>
+        <translation>Sürtünmesiz veri paketi — tekil datapackage.json GZIP’i</translation>
+    </message>
+    <message>
+        <source>digilite.eu Prolights configuration file</source>
+        <extracomment>application/vnd.digilite.prolights</extracomment>
+        <translation>digilite.eu Prolights yapılandırma dosyası</translation>
+    </message>
+    <message>
+        <source>Extended Associated Signature Container</source>
+        <extracomment>application/vnd.etsi.asic-e+zip</extracomment>
+        <translation>Genişletilmiş ilişkili imza kapsayıcısı</translation>
+    </message>
+    <message>
+        <source>Simple Associated Signature Container</source>
+        <extracomment>application/vnd.etsi.asic-s+zip</extracomment>
+        <translation>Basit ilişkili imza kapsayıcısı</translation>
+    </message>
+    <message>
+        <source>Forms Data Format</source>
+        <extracomment>application/vnd.fdf</extracomment>
+        <translation>Forms veri biçimi</translation>
+    </message>
+    <message>
+        <source>Keyhole Markup Language</source>
+        <extracomment>application/vnd.google-earth.kml+xml</extracomment>
+        <translation>Keyhole işaretleme dili</translation>
+    </message>
+    <message>
+        <source>XML syntax for IPTC NewsMessages</source>
+        <extracomment>application/vnd.iptc.g2.newsmessage+xml</extracomment>
+        <translation>IPTC NewsMessages için XML sözdizimi</translation>
+    </message>
+    <message>
+        <source>KChart File</source>
+        <extracomment>application/vnd.kde.kchart</extracomment>
+        <translation>KChart dosyası</translation>
+    </message>
+    <message>
+        <source>KPresenter File</source>
+        <extracomment>application/vnd.kde.kpresenter</extracomment>
+        <translation>KPresenter dosyası</translation>
+    </message>
+    <message>
+        <source>KSpread File</source>
+        <extracomment>application/vnd.kde.kspread</extracomment>
+        <translation>KSpread dosyası</translation>
+    </message>
+    <message>
+        <source>KWord File</source>
+        <extracomment>application/vnd.kde.kword</extracomment>
+        <translation>KWord dosyası</translation>
+    </message>
+    <message>
+        <source>SSEYO Koan File</source>
+        <extracomment>application/vnd.koan</extracomment>
+        <translation>SSEYO Koan dosyası</translation>
+    </message>
+    <message>
+        <source>Lotus 1-2-3</source>
+        <extracomment>application/vnd.lotus-1-2-3</extracomment>
+        <translation>Lotus 1-2-3</translation>
+    </message>
+    <message>
+        <source>Lotus 1-2-3, version 1</source>
+        <extracomment>application/vnd.lotus-1-2-3;version=1</extracomment>
+        <translation>Lotus 1-2-3, sürüm 1</translation>
+    </message>
+    <message>
+        <source>Lotus 1-2-3, version 2</source>
+        <extracomment>application/vnd.lotus-1-2-3;version=2</extracomment>
+        <translation>Lotus 1-2-3, sürüm 2</translation>
+    </message>
+    <message>
+        <source>Lotus 1-2-3, version 3</source>
+        <extracomment>application/vnd.lotus-1-2-3;version=3</extracomment>
+        <translation>Lotus 1-2-3, sürüm 3</translation>
+    </message>
+    <message>
+        <source>Lotus 1-2-3, version 4-5</source>
+        <extracomment>application/vnd.lotus-1-2-3;version=4</extracomment>
+        <translation>Lotus 1-2-3, sürüm 4–5</translation>
+    </message>
+    <message>
+        <source>Lotus 1-2-3, version 97/9.x</source>
+        <extracomment>application/vnd.lotus-1-2-3;version=97+9.x</extracomment>
+        <translation>Lotus 1-2-3, sürüm 97/9.x</translation>
+    </message>
+    <message>
+        <source>FrameMaker Interchange Format</source>
+        <extracomment>application/vnd.mif</extracomment>
+        <translation>FrameMaker değişim biçimi</translation>
+    </message>
+    <message>
+        <source>MindManager</source>
+        <extracomment>application/vnd.mindjet.mindmanager</extracomment>
+        <translation>MindManager</translation>
+    </message>
+    <message>
+        <source>Microsoft Excel Spreadsheet</source>
+        <extracomment>application/vnd.ms-excel</extracomment>
+        <translation>Microsoft Excel hesap tablosu</translation>
+    </message>
+    <message>
+        <source>Office Open XML Workbook Add-in (macro-enabled)</source>
+        <extracomment>application/vnd.ms-excel.addin.macroenabled.12</extracomment>
+        <translation>Office Open XML çalışma kitabı eklentisi (makrolar etkin)</translation>
+    </message>
+    <message>
+        <source>Office Open XML Workbook (macro-enabled)</source>
+        <extracomment>application/vnd.ms-excel.sheet.macroenabled.12</extracomment>
+        <translation>Office Open XML çalışma kitabı (makrolar etkin)</translation>
+    </message>
+    <message>
+        <source>Microsoft Excel 2007 Binary Spreadsheet</source>
+        <extracomment>application/vnd.ms-excel.sheet.binary.macroenabled.12</extracomment>
+        <translation>Microsoft Excel 2007 ikili hesap tablosu</translation>
+    </message>
+    <message>
+        <source>Microsoft Excel 4 Worksheet</source>
+        <extracomment>application/vnd.ms-excel.sheet.4</extracomment>
+        <translation>Microsoft Excel 4 çalışma sayfası</translation>
+    </message>
+    <message>
+        <source>Microsoft Excel 4 Workspace</source>
+        <extracomment>application/vnd.ms-excel.workspace.4</extracomment>
+        <translation>Microsoft Excel 4 çalışma alanı</translation>
+    </message>
+    <message>
+        <source>Microsoft Excel 3 Worksheet</source>
+        <extracomment>application/vnd.ms-excel.sheet.3</extracomment>
+        <translation>Microsoft Excel 3 çalışma sayfası</translation>
+    </message>
+    <message>
+        <source>Microsoft Excel 3 Workspace</source>
+        <extracomment>application/vnd.ms-excel.workspace.3</extracomment>
+        <translation>Microsoft Excel 3 çalışma alanı</translation>
+    </message>
+    <message>
+        <source>Microsoft Excel 2 Worksheet</source>
+        <extracomment>application/vnd.ms-excel.sheet.2</extracomment>
+        <translation>Microsoft Excel 2 çalışma sayfası</translation>
+    </message>
+    <message>
+        <source>Microsoft Outlook Message</source>
+        <extracomment>application/vnd.ms-outlook</extracomment>
+        <translation>Microsoft Outlook iletisi</translation>
+    </message>
+    <message>
+        <source>Outlook Personal Folders File Format</source>
+        <extracomment>application/vnd.ms-outlook-pst</extracomment>
+        <translation>Outlook kişisel klasörler dosya biçimi</translation>
+    </message>
+    <message>
+        <source>3D manufacturing format</source>
+        <extracomment>application/vnd.ms-package.3dmanufacturing-3dmodel+xml</extracomment>
+        <translation>3B üretim biçimi</translation>
+    </message>
+    <message>
+        <source>Microsoft Powerpoint Presentation</source>
+        <extracomment>application/vnd.ms-powerpoint</extracomment>
+        <translation>Microsoft Powerpoint sunusu</translation>
+    </message>
+    <message>
+        <source>Office Open XML Presentation Add-in (macro-enabled)</source>
+        <extracomment>application/vnd.ms-powerpoint.addin.macroenabled.12</extracomment>
+        <translation>Office Open XML sunusu eklentisi (makrolar etkin)</translation>
+    </message>
+    <message>
+        <source>Office Open XML Presentation (macro-enabled)</source>
+        <extracomment>application/vnd.ms-powerpoint.presentation.macroenabled.12</extracomment>
+        <translation>Office Open XML sunusu (makrolar etkin)</translation>
+    </message>
+    <message>
+        <source>Office Open XML Presentation Slideshow (macro-enabled)</source>
+        <extracomment>application/vnd.ms-powerpoint.slideshow.macroenabled.12</extracomment>
+        <translation>Office Open XML slayt gösterisi (makrolar etkin)</translation>
+    </message>
+    <message>
+        <source>Office Open XML Document (macro-enabled)</source>
+        <extracomment>application/vnd.ms-word.document.macroenabled.12</extracomment>
+        <translation>Office Open XML belgesi (makrolar etkin)</translation>
+    </message>
+    <message>
+        <source>Office Open XML Document Template (macro-enabled)</source>
+        <extracomment>application/vnd.ms-word.template.macroenabled.12</extracomment>
+        <translation>Office Open XML belge şablonu (makrolar etkin)</translation>
+    </message>
+    <message>
+        <source>Open XML Paper Specification</source>
+        <extracomment>application/vnd.ms-xpsdocument</extracomment>
+        <translation>Open XML kâğıt belirtimi</translation>
+    </message>
+    <message>
+        <source>Magic Shadow Archiver</source>
+        <extracomment>application/vnd.msa-disk-image</extracomment>
+        <translation>Magic Shadow arşivleyicisi</translation>
+    </message>
+    <message>
+        <source>OpenDocument v1.0: Chart document</source>
+        <extracomment>application/vnd.oasis.opendocument.chart</extracomment>
+        <translation>OpenDocument v1.0: Çizelge belgesi</translation>
+    </message>
+    <message>
+        <source>OpenDocument v1.0: Chart document used as template</source>
+        <extracomment>application/vnd.oasis.opendocument.chart-template</extracomment>
+        <translation>OpenDocument v1.0: Şablon olarak kullanılan çizelge belgesi</translation>
+    </message>
+    <message>
+        <source>OpenDocument v1.0: Formula document</source>
+        <extracomment>application/vnd.oasis.opendocument.formula</extracomment>
+        <translation>OpenDocument v1.0: Formül belgesi</translation>
+    </message>
+    <message>
+        <source>OpenDocument v1.0: Formula document used as template</source>
+        <extracomment>application/vnd.oasis.opendocument.formula-template</extracomment>
+        <translation>OpenDocument v1.0: Şablon olarak kullanılan formül belgesi</translation>
+    </message>
+    <message>
+        <source>OpenDocument v1.0: Graphics document (Drawing)</source>
+        <extracomment>application/vnd.oasis.opendocument.graphics</extracomment>
+        <translation>OpenDocument v1.0: Grafik belgesi (çizim)</translation>
+    </message>
+    <message>
+        <source>OpenDocument v1.0: Graphics document used as template</source>
+        <extracomment>application/vnd.oasis.opendocument.graphics-template</extracomment>
+        <translation>OpenDocument v1.0: Şablon olarak kullanılan grafik belgesi</translation>
+    </message>
+    <message>
+        <source>OpenDocument v1.0: Image document</source>
+        <extracomment>application/vnd.oasis.opendocument.image</extracomment>
+        <translation>OpenDocument v1.0: Görsel belgesi</translation>
+    </message>
+    <message>
+        <source>OpenDocument v1.0: Image document used as template</source>
+        <extracomment>application/vnd.oasis.opendocument.image-template</extracomment>
+        <translation>OpenDocument v1.0: Şablon olarak kullanılan görsel belgesi</translation>
+    </message>
+    <message>
+        <source>OpenDocument v1.0: Presentation document</source>
+        <extracomment>application/vnd.oasis.opendocument.presentation</extracomment>
+        <translation>OpenDocument v1.0: Sunum belgesi</translation>
+    </message>
+    <message>
+        <source>OpenDocument v1.0: Presentation document used as template</source>
+        <extracomment>application/vnd.oasis.opendocument.presentation-template</extracomment>
+        <translation>OpenDocument v1.0: Şablon olarak kullanılan sunum belgesi</translation>
+    </message>
+    <message>
+        <source>OpenDocument v1.0: Spreadsheet document</source>
+        <extracomment>application/vnd.oasis.opendocument.spreadsheet</extracomment>
+        <translation>OpenDocument v1.0: Hesap tablosu belgesi</translation>
+    </message>
+    <message>
+        <source>OpenDocument v1.0: Spreadsheet document used as template</source>
+        <extracomment>application/vnd.oasis.opendocument.spreadsheet-template</extracomment>
+        <translation>OpenDocument v1.0: Şablon olarak kullanılan hesap tablosu belgesi</translation>
+    </message>
+    <message>
+        <source>OpenDocument v1.0: Text document</source>
+        <extracomment>application/vnd.oasis.opendocument.text</extracomment>
+        <translation>OpenDocument v1.0: Metin belgesi</translation>
+    </message>
+    <message>
+        <source>OpenDocument v1.0: Flat Text document</source>
+        <extracomment>application/vnd.oasis.opendocument.tika.flat.document----------application/vnd.oasis.opendocument.flat.text</extracomment>
+        <translation>OpenDocument v1.0: Düz metin belgesi</translation>
+    </message>
+    <message>
+        <source>OpenDocument v1.0: Flat Presentation document</source>
+        <extracomment>application/vnd.oasis.opendocument.flat.presentation</extracomment>
+        <translation>OpenDocument v1.0: Düz sunum belgesi</translation>
+    </message>
+    <message>
+        <source>OpenDocument v1.0: Flat Spreadsheet document</source>
+        <extracomment>application/vnd.oasis.opendocument.flat.spreadsheet</extracomment>
+        <translation>OpenDocument v1.0: Düz hesap tablosu belgesi</translation>
+    </message>
+    <message>
+        <source>OpenDocument v1.0: Global Text document</source>
+        <extracomment>application/vnd.oasis.opendocument.text-master</extracomment>
+        <translation>OpenDocument v1.0: Global metin belgesi</translation>
+    </message>
+    <message>
+        <source>OpenDocument v1.0: Text document used as template</source>
+        <extracomment>application/vnd.oasis.opendocument.text-template</extracomment>
+        <translation>OpenDocument v1.0: Şablon olarak kullanılan metin belgesi</translation>
+    </message>
+    <message>
+        <source>OpenDocument v1.0: Text document used as template for HTML documents</source>
+        <extracomment>application/vnd.oasis.opendocument.text-web</extracomment>
+        <translation>OpenDocument v1.0: HTML belgeleri için şablon olarak kullanılan metin belgesi</translation>
+    </message>
+    <message>
+        <source>Office Open XML Presentation</source>
+        <extracomment>application/vnd.openxmlformats-officedocument.presentationml.presentation</extracomment>
+        <translation>Office Open XML sunusu</translation>
+    </message>
+    <message>
+        <source>Office Open XML Presentation Template</source>
+        <extracomment>application/vnd.openxmlformats-officedocument.presentationml.template</extracomment>
+        <translation>Office Open XML sunusu şablonu</translation>
+    </message>
+    <message>
+        <source>Office Open XML Presentation Slideshow</source>
+        <extracomment>application/vnd.openxmlformats-officedocument.presentationml.slideshow</extracomment>
+        <translation>Office Open XML sunusu slayt gösterisi</translation>
+    </message>
+    <message>
+        <source>Office Open XML Workbook</source>
+        <extracomment>application/vnd.openxmlformats-officedocument.spreadsheetml.sheet</extracomment>
+        <translation>Office Open XML çalışma kitabı</translation>
+    </message>
+    <message>
+        <source>Office Open XML Workbook Template</source>
+        <extracomment>application/vnd.openxmlformats-officedocument.spreadsheetml.template</extracomment>
+        <translation>Office Open XML çalışma kitabı şablonu</translation>
+    </message>
+    <message>
+        <source>Office Open XML Workbook Template (macro-enabled)</source>
+        <extracomment>application/vnd.ms-excel.template.macroenabled.12</extracomment>
+        <translation>Office Open XML çalışma kitabı şablonu (makrolar etkin)</translation>
+    </message>
+    <message>
+        <source>Office Open XML Document</source>
+        <extracomment>application/vnd.openxmlformats-officedocument.wordprocessingml.document</extracomment>
+        <translation>Office Open XML belgesi</translation>
+    </message>
+    <message>
+        <source>Office Open XML Document Template</source>
+        <extracomment>application/vnd.openxmlformats-officedocument.wordprocessingml.template</extracomment>
+        <translation>Office Open XML belgesi şablonu</translation>
+    </message>
+    <message>
+        <source>SubRip (srt) subtitles</source>
+        <extracomment>application/x-subrip</extracomment>
+        <translation>SubRip (srt) altyazıları</translation>
+    </message>
+    <message>
+        <source>OpenOffice v1.0: Writer Document</source>
+        <extracomment>application/vnd.sun.xml.writer</extracomment>
+        <translation>OpenOffice v1.0: Writer belgesi</translation>
+    </message>
+    <message>
+        <source>TCPDump pcap packet capture</source>
+        <extracomment>application/vnd.tcpdump.pcap</extracomment>
+        <translation>TCPDump pcap paket yakalaması</translation>
+    </message>
+    <message>
+        <source>TCPDump next gen pcap packet capture</source>
+        <extracomment>application/vnd.tcpdump.pcapng</extracomment>
+        <translation>TCPDump next gen pcap paket yakalaması</translation>
+    </message>
+    <message>
+        <source>TMX Translation Memory</source>
+        <extracomment>application/x-tmx</extracomment>
+        <translation>TMX çeviri belleği</translation>
+    </message>
+    <message>
+        <source>Microsoft Visio Diagram</source>
+        <extracomment>application/vnd.visio</extracomment>
+        <translation>Microsoft Visio diyagramı</translation>
+    </message>
+    <message>
+        <source>Office Open XML Visio Drawing (macro-free)</source>
+        <extracomment>application/vnd.ms-visio.drawing</extracomment>
+        <translation>Office Open XML Visio çizimi (makrosuz)</translation>
+    </message>
+    <message>
+        <source>Office Open XML Visio Template (macro-free)</source>
+        <extracomment>application/vnd.ms-visio.template</extracomment>
+        <translation>Office Open XML Visio şablonu (makrosuz)</translation>
+    </message>
+    <message>
+        <source>Office Open XML Visio Stencil (macro-free)</source>
+        <extracomment>application/vnd.ms-visio.stencil</extracomment>
+        <translation>Office Open XML Visio kalıbı (makrosuz)</translation>
+    </message>
+    <message>
+        <source>Office Open XML Visio Drawing (macro-enabled)</source>
+        <extracomment>application/vnd.ms-visio.drawing.macroEnabled.12</extracomment>
+        <translation>Office Open XML Visio çizimi (makrolar etkin)</translation>
+    </message>
+    <message>
+        <source>Office Open XML Visio Template (macro-enabled)</source>
+        <extracomment>application/vnd.ms-visio.template.macroEnabled.12</extracomment>
+        <translation>Office Open XML Visio şablonu (makrolar etkin)</translation>
+    </message>
+    <message>
+        <source>Office Open XML Visio Stencil (macro-enabled)</source>
+        <extracomment>application/vnd.ms-visio.stencil.macroEnabled.12</extracomment>
+        <translation>Office Open XML Visio kalıbı (makrolar etkin)</translation>
+    </message>
+    <message>
+        <source>Compiled WML Document</source>
+        <extracomment>application/vnd.wap.wmlc</extracomment>
+        <translation>Derlenmiş WML belgesi</translation>
+    </message>
+    <message>
+        <source>Compiled WML Script</source>
+        <extracomment>application/vnd.wap.wmlscriptc</extracomment>
+        <translation>Derlenmiş WML betiği</translation>
+    </message>
+    <message>
+        <source>WordPerfect - Corel Word Processing</source>
+        <extracomment>application/vnd.wordperfect</extracomment>
+        <translation>WordPerfect — Corel sözcük işleme</translation>
+    </message>
+    <message>
+        <source>WARC</source>
+        <extracomment>application/warc----------application/warc+gz</extracomment>
+        <translation>WARC</translation>
+    </message>
+    <message>
+        <source>Web Assembly</source>
+        <extracomment>application/wasm</extracomment>
+        <translation>Web Assembly</translation>
+    </message>
+    <message>
+        <source>Targa image data</source>
+        <extracomment>image/x-tga</extracomment>
+        <translation>Targa görseli verisi</translation>
+    </message>
+    <message>
+        <source>AxCrypt</source>
+        <extracomment>application/x-axcrypt</extracomment>
+        <translation>AxCrypt</translation>
+    </message>
+    <message>
+        <source>Adobe InDesign document</source>
+        <extracomment>application/x-adobe-indesign</extracomment>
+        <translation>Adobe InDesign belgesi</translation>
+    </message>
+    <message>
+        <source>Flow Cytometry Standard File</source>
+        <extracomment>application/vnd.isac.fcs</extracomment>
+        <translation>Flow Cytometry standardı dosyası</translation>
+    </message>
+    <message>
+        <source>IDML</source>
+        <extracomment>application/vnd.adobe.indesign-idml-package</extracomment>
+        <translation>IDML</translation>
+    </message>
+    <message>
+        <source>Adobe InDesign Interchange format</source>
+        <extracomment>application/x-adobe-indesign-interchange</extracomment>
+        <translation>Adobe InDesign değişim biçimi</translation>
+    </message>
+    <message>
+        <source>ASPRS Lidar Data Exchange Format</source>
+        <extracomment>application/x-asprs</extracomment>
+        <translation>ASPRS Lidar veri değişimi biçimi</translation>
+    </message>
+    <message>
+        <source>Berkeley DB</source>
+        <extracomment>application/x-berkeley-db</extracomment>
+        <translation>Berkeley DB</translation>
+    </message>
+    <message>
+        <source>CD Audio</source>
+        <extracomment>application/x-cdf</extracomment>
+        <translation>CD sesi</translation>
+    </message>
+    <message>
+        <source>GNU tar Compressed File Archive (GNU Tape Archive)</source>
+        <extracomment>application/x-gtar</extracomment>
+        <translation>GNU tar sıkıştırılmış dosya arşivi (GNU teyp arşivi)</translation>
+    </message>
+    <message>
+        <source>Guitar Pro</source>
+        <extracomment>application/x-guitar-pro</extracomment>
+        <translation>Guitar Pro</translation>
+    </message>
+    <message>
+        <source>Amiga Disk File</source>
+        <extracomment>application/x-amiga-disk-format</extracomment>
+        <translation>Amiga disk dosyası</translation>
+    </message>
+    <message>
+        <source>Bzip 2 UNIX Compressed File</source>
+        <extracomment>application/x-bzip2</extracomment>
+        <translation>Bzip 2 UNIX sıkıştırılmış dosya</translation>
+    </message>
+    <message>
+        <source>Virtual CD-ROM CD Image File</source>
+        <extracomment>application/x-cdlink</extracomment>
+        <translation>Sanal CD-ROM CD kalıbı dosyası</translation>
+    </message>
+    <message>
+        <source>Chrome Extension Package</source>
+        <extracomment>application/x-chrome-package</extracomment>
+        <translation>Chrome genişletmesi paketi</translation>
+    </message>
+    <message>
+        <source>UNIX CPIO Archive</source>
+        <extracomment>application/x-cpio</extracomment>
+        <translation>UNIX CPIO arşivi</translation>
+    </message>
+    <message>
+        <source>Dalvik Executable Format</source>
+        <extracomment>application/x-dex</extracomment>
+        <translation>Dalvik yürütülebilir biçimi</translation>
+    </message>
+    <message>
+        <source>Shockwave Movie</source>
+        <extracomment>application/x-director</extracomment>
+        <translation>Shockwave filmi</translation>
+    </message>
+    <message>
+        <source>TeX Device Independent Document</source>
+        <extracomment>application/x-dvi</extracomment>
+        <translation>TeX aygıttan bağımsız dosyası</translation>
+    </message>
+    <message>
+        <source>Emacs Lisp bytecode</source>
+        <extracomment>application/x-elc</extracomment>
+        <translation>Emacs Lisp bayt kodu</translation>
+    </message>
+    <message>
+        <source>fat disk image; extensions: ima, img, dsk</source>
+        <extracomment>application/x-fat-diskimage</extracomment>
+        <translation>FAT diski kalıbı; uzantılar: ima, img, dsk</translation>
+    </message>
+    <message>
+        <source>KIllustrator File</source>
+        <extracomment>application/x-killustrator</extracomment>
+        <translation>KIllustrator dosyası</translation>
+    </message>
+    <message>
+        <source>Modified Maximum Method Digisonde Portable Sounder File format</source>
+        <extracomment>application/x-mmm-digisonde</extracomment>
+        <translation>Modified Maximum Method Digisonde Portable Sounder dosyası biçimi</translation>
+    </message>
+    <message>
+        <source>DOS/Windows executable (EXE)</source>
+        <extracomment>application/x-dosexec</extracomment>
+        <translation>DOS/Windows yürütülebiliri (EXE)</translation>
+    </message>
+    <message>
+        <source>FileMaker Pro 7</source>
+        <extracomment>application/x-filemaker</extracomment>
+        <translation>FileMaker Pro 7</translation>
+    </message>
+    <message>
+        <source>OpenType Font</source>
+        <extracomment>application/x-font-otf</extracomment>
+        <translation>OpenType yazıtipi</translation>
+    </message>
+    <message>
+        <source>TrueType Font</source>
+        <extracomment>application/x-font-ttf</extracomment>
+        <translation>TrueType yazıtipi</translation>
+    </message>
+    <message>
+        <source>Adobe Font Metric</source>
+        <extracomment>application/x-font-adobe-metric</extracomment>
+        <translation>Adobe yazıtipi ölçüsü</translation>
+    </message>
+    <message>
+        <source>Printer Font Metric</source>
+        <extracomment>application/x-font-printer-metric</extracomment>
+        <translation>Yazıcı yazıtipi ölçüsü</translation>
+    </message>
+    <message>
+        <source>Foxmail Email File</source>
+        <extracomment>application/x-foxmail</extracomment>
+        <translation>Foxmail e-posta dosyası</translation>
+    </message>
+    <message>
+        <source>Macromedia FutureSplash File</source>
+        <extracomment>application/x-futuresplash</extracomment>
+        <translation>Macromedia FutureSplash dosyası</translation>
+    </message>
+    <message>
+        <source>General Regularly-distributed Information in Binary form</source>
+        <extracomment>application/x-grib</extracomment>
+        <translation>İkili biçimde genel düzenli olarak dağıtılan bilgi</translation>
+    </message>
+    <message>
+        <source>Gzip Compressed Archive</source>
+        <extracomment>application/gzip</extracomment>
+        <translation>Gzip sıkıştırılmış arşivi</translation>
+    </message>
+    <message>
+        <source>https://en.wikipedia.org/wiki/Zstandard</source>
+        <extracomment>application/zstd</extracomment>
+        <translation>https://en.wikipedia.org/wiki/Zstandard</translation>
+    </message>
+    <message>
+        <source>ESRI Layer file</source>
+        <extracomment>application/x-esri-layer</extracomment>
+        <translation>ESRI katmanı dosyası</translation>
+    </message>
+    <message>
+        <source>Hierarchical Data Format File</source>
+        <extracomment>application/x-hdf</extracomment>
+        <translation>Hiyerarşik veri biçimi dosyası</translation>
+    </message>
+    <message>
+        <source>Hangul Word Processor File</source>
+        <extracomment>application/x-hwp</extracomment>
+        <translation>Hangul sözcük işlemcisi dosyası</translation>
+    </message>
+    <message>
+        <source>Hangul Word Processor File v5</source>
+        <extracomment>application/x-hwp-v5</extracomment>
+        <translation>Hangul sözcük işlemcisi dosyası v5</translation>
+    </message>
+    <message>
+        <source>Hangul Word Processor File, zip based</source>
+        <extracomment>application/hwp+zip</extracomment>
+        <translation>Hangul sözcük işlemcisi dosyası, ZIP tabanlı</translation>
+    </message>
+    <message>
+        <source>Apple iBooks Author publication format</source>
+        <extracomment>application/x-ibooks+zip</extracomment>
+        <translation>Apple iBooks yazar yayım biçimi</translation>
+    </message>
+    <message>
+        <source>NV5 Geospatial Interactive Data Language Save File</source>
+        <extracomment>application/x-idl-save-file</extracomment>
+        <translation>NV5 coğrafi olarak uzamsal interaktif veri dili kayıt dosyası</translation>
+    </message>
+    <message>
+        <source>ARC</source>
+        <extracomment>application/x-internet-archive</extracomment>
+        <translation>ARC</translation>
+    </message>
+    <message>
+        <source>ISA-Tab Investigation file</source>
+        <extracomment>application/x-isatab-investigation</extracomment>
+        <translation>ISA-Tab araştırma dosyası</translation>
+    </message>
+    <message>
+        <source>ISA-Tab Study file</source>
+        <extracomment>application/x-isatab</extracomment>
+        <translation>ISA-Tab çalışma dosyası</translation>
+    </message>
+    <message>
+        <source>ISA-Tab Assay file</source>
+        <extracomment>application/x-isatab-assay</extracomment>
+        <translation>ISA-Tab makale dosyası</translation>
+    </message>
+    <message>
+        <source>ISO 9660 CD-ROM filesystem data</source>
+        <extracomment>application/x-iso9660-image</extracomment>
+        <translation>ISO 9660 CD-ROM dosya sistemi verisi</translation>
+    </message>
+    <message>
+        <source>Apple iTunes Binary Property List</source>
+        <extracomment>application/x-itunes-bplist</extracomment>
+        <translation>Apple iTunes ikili özellik listesi</translation>
+    </message>
+    <message>
+        <source>Apple iOS IPA AppStore file</source>
+        <extracomment>application/x-itunes-ipa</extracomment>
+        <translation>Apple iOS IPA App Store dosyası</translation>
+    </message>
+    <message>
+        <source>JDF NMR Spectroscopy</source>
+        <extracomment>application/x-jeol-jdf</extracomment>
+        <translation>JDF NMR tayf ölçümü</translation>
+    </message>
+    <message>
+        <source>Jigsaw Download</source>
+        <extracomment>application/x-jigdo</extracomment>
+        <translation>Jigsaw indirmesi</translation>
+    </message>
+    <message>
+        <source>LaTeX Source Document</source>
+        <extracomment>application/x-latex</extracomment>
+        <translation>LaTeX kaynak belgesi</translation>
+    </message>
+    <message>
+        <source>First match LZ4 Frame</source>
+        <extracomment>application/x-lz4</extracomment>
+        <translation>First match LZ4 çerçevesi</translation>
+    </message>
+    <message>
+        <source>Lzip (LZMA) compressed archive</source>
+        <extracomment>application/x-lzip</extracomment>
+        <translation>Lzip (LZMA) sıkıştırılmış arşivi</translation>
+    </message>
+    <message>
+        <source>LZMA compressed archive</source>
+        <extracomment>application/x-lzma</extracomment>
+        <translation>LZMA sıkıştırılmış arşivi</translation>
+    </message>
+    <message>
+        <source>Mach-O</source>
+        <extracomment>application/x-mach-o</extracomment>
+        <translation>Mach-O</translation>
+    </message>
+    <message>
+        <source>Apple Xcode Memgraph</source>
+        <extracomment>application/x-memgraph</extracomment>
+        <translation>Apple Xcode bellek grafiği</translation>
+    </message>
+    <message>
+        <source>Mobipocket Ebook</source>
+        <extracomment>application/x-mobipocket-ebook</extracomment>
+        <translation>Mobipocket e-kitap</translation>
+    </message>
+    <message>
+        <source>MS-DOS compression szzd</source>
+        <extracomment>application/x-ms-compress-szdd</extracomment>
+        <translation>MS-DOS sıkıştırma szzd</translation>
+    </message>
+    <message>
+        <source>Temporary files created by MSOffice applications</source>
+        <extracomment>application/x-ms-owner</extracomment>
+        <translation>MS Office uygulamaları tarafından oluşturulan geçici dosyalar</translation>
+    </message>
+    <message>
+        <source>Microsoft National Language Support</source>
+        <extracomment>application/x-ms-nls</extracomment>
+        <translation>Microsoft ulusal dil desteği</translation>
+    </message>
+    <message>
+        <source>Microsoft Windows Installer</source>
+        <extracomment>application/x-ms-installer</extracomment>
+        <translation>Microsoft Windows kurulum programı</translation>
+    </message>
+    <message>
+        <source>MySQL Table Definition (Format)</source>
+        <extracomment>application/x-mysql-table-definition</extracomment>
+        <translation>MySQL tablo tanımı (biçim)</translation>
+    </message>
+    <message>
+        <source>MySQL MISAM Index</source>
+        <extracomment>application/x-mysql-misam-index</extracomment>
+        <translation>MySQL MISAM indeksi</translation>
+    </message>
+    <message>
+        <source>MySQL MISAM Compressed Index</source>
+        <extracomment>application/x-mysql-misam-compressed-index</extracomment>
+        <translation>MySQL MISAM sıkıştırılmış indeksi</translation>
+    </message>
+    <message>
+        <source>MySQL MISAM Data</source>
+        <extracomment>application/x-mysql-misam-data</extracomment>
+        <translation>MySQL MISAM verisi</translation>
+    </message>
+    <message>
+        <source>Nintendo Entertainment System ROM</source>
+        <extracomment>application/x-nesrom</extracomment>
+        <translation>Nintendo eğlence sistemi ROM’u</translation>
+    </message>
+    <message>
+        <source>Planetary Data System Version 3 format</source>
+        <extracomment>application/x-pds</extracomment>
+        <translation>Gezegensel veri sistemi sürüm 3 biçimi</translation>
+    </message>
+    <message>
+        <source>Quattro Pro - Corel Spreadsheet (part of WordPerfect Office suite)</source>
+        <extracomment>application/x-quattro-pro</extracomment>
+        <translation>Quattro Pro — Corel hesap tablosu (WordPerfect ofis takımının bir parçası)</translation>
+    </message>
+    <message>
+        <source>Quattro Pro for DOS, version 1-4</source>
+        <extracomment>application/x-quattro-pro;version=1-4</extracomment>
+        <translation>DOS için Quattro Pro, sürüm 1–4</translation>
+    </message>
+    <message>
+        <source>Quattro Pro for DOS, version 5</source>
+        <extracomment>application/x-quattro-pro;version=5</extracomment>
+        <translation>DOS için Quattro Pro, sürüm 5</translation>
+    </message>
+    <message>
+        <source>Quattro Pro for Windows, version 1, 5</source>
+        <extracomment>application/x-quattro-pro;version=1+5</extracomment>
+        <translation>Windows için Quattro Pro, sürüm 1–5</translation>
+    </message>
+    <message>
+        <source>Quattro Pro for Windows, version 6</source>
+        <extracomment>application/x-quattro-pro;version=6</extracomment>
+        <translation>Windows için Quattro Pro, sürüm 6</translation>
+    </message>
+    <message>
+        <source>XQuery source code</source>
+        <extracomment>application/xquery</extracomment>
+        <translation>XQuery kaynak kodu</translation>
+    </message>
+    <message>
+        <source>RAR archive</source>
+        <extracomment>application/x-rar-compressed----------application/x-rar-compressed;version=4----------application/x-rar-compressed;version=5</extracomment>
+        <translation>RAR arşivi</translation>
+    </message>
+    <message>
+        <source>RedHat Package Manager</source>
+        <extracomment>application/x-rpm</extracomment>
+        <translation>RedHat paket yöneticisi</translation>
+    </message>
+    <message>
+        <source>SAS Program</source>
+        <extracomment>application/x-sas</extracomment>
+        <translation>SAS programı</translation>
+    </message>
+    <message>
+        <source>SAS Stored Program (DATA Step)</source>
+        <extracomment>application/x-sas-program-data</extracomment>
+        <translation>SAS depolanmış programı (DATA adımı)</translation>
+    </message>
+    <message>
+        <source>SAS Audit</source>
+        <extracomment>application/x-sas-audit</extracomment>
+        <translation>SAS denetimi</translation>
+    </message>
+    <message>
+        <source>SAS v6 Data Set</source>
+        <extracomment>application/x-sas-data-v6</extracomment>
+        <translation>SAS v6 veri kümesi</translation>
+    </message>
+    <message>
+        <source>SAS Data Set</source>
+        <extracomment>application/x-sas-data</extracomment>
+        <translation>SAS veri kümesi</translation>
+    </message>
+    <message>
+        <source>SAS Data Set View</source>
+        <extracomment>application/x-sas-view</extracomment>
+        <translation>SAS veri kümesi görünümü</translation>
+    </message>
+    <message>
+        <source>SAS Data Set Index</source>
+        <extracomment>application/x-sas-data-index</extracomment>
+        <translation>SAS veri kümesi indeksi</translation>
+    </message>
+    <message>
+        <source>SAS Catalog</source>
+        <extracomment>application/x-sas-catalog</extracomment>
+        <translation>SAS kataloğu</translation>
+    </message>
+    <message>
+        <source>SAS Access Descriptor</source>
+        <extracomment>application/x-sas-access</extracomment>
+        <translation>SAS erişim açıklayıcısı</translation>
+    </message>
+    <message>
+        <source>SAS FDB Consolidation Database File</source>
+        <extracomment>application/x-sas-fdb</extracomment>
+        <translation>SAS FDB mutabakat veritabanı dosyası</translation>
+    </message>
+    <message>
+        <source>SAS MDDB Multi-Dimensional Database File</source>
+        <extracomment>application/x-sas-mddb</extracomment>
+        <translation>SAS MDDB çok boyutlu veritabanı dosyası</translation>
+    </message>
+    <message>
+        <source>SAS DMDB Data Mining Database File</source>
+        <extracomment>application/x-sas-dmdb</extracomment>
+        <translation>SAS DMDB veri madenciliği veritabanı dosyası</translation>
+    </message>
+    <message>
+        <source>SAS Item Store (ItemStor) File</source>
+        <extracomment>application/x-sas-itemstor</extracomment>
+        <translation>SAS öge deposu dosyası</translation>
+    </message>
+    <message>
+        <source>SAS Utility</source>
+        <extracomment>application/x-sas-utility</extracomment>
+        <translation>SAS izlencesi</translation>
+    </message>
+    <message>
+        <source>SAS Permanent Utility</source>
+        <extracomment>application/x-sas-putility</extracomment>
+        <translation>SAS kalıcı izlencesi</translation>
+    </message>
+    <message>
+        <source>SAS Transport File</source>
+        <extracomment>application/x-sas-transport</extracomment>
+        <translation>SAS ulaşım dosyası</translation>
+    </message>
+    <message>
+        <source>SAS Backup</source>
+        <extracomment>application/x-sas-backup</extracomment>
+        <translation>SAS yedeği</translation>
+    </message>
+    <message>
+        <source>SAS XPORT Transfer File</source>
+        <extracomment>application/x-sas-xport</extracomment>
+        <translation>SAS XPORT ulaşım dosyası</translation>
+    </message>
+    <message>
+        <source>SPSS Data File</source>
+        <extracomment>application/x-spss-sav</extracomment>
+        <translation>SPSS veri dosyası</translation>
+    </message>
+    <message>
+        <source>UNIX/LINUX Shell Script</source>
+        <extracomment>application/x-sh</extracomment>
+        <translation>UNIX/Linux kabuk betiği</translation>
+    </message>
+    <message>
+        <source>ESRI Shapefiles</source>
+        <extracomment>application/x-shapefile</extracomment>
+        <translation>ESRI şekil dosyaları</translation>
+    </message>
+    <message>
+        <source>Adobe Flash</source>
+        <extracomment>application/x-shockwave-flash</extracomment>
+        <translation>Adobe Flash</translation>
+    </message>
+    <message>
+        <source>Sibelius</source>
+        <extracomment>application/x-sibelius</extracomment>
+        <translation>Sibelius</translation>
+    </message>
+    <message>
+        <source>Snappy Framed</source>
+        <extracomment>application/x-snappy-framed</extracomment>
+        <translation>Snappy Framed</translation>
+    </message>
+    <message>
+        <source>Standard Formatted Data Units (SFDUs) data</source>
+        <extracomment>application/x-sfdu</extracomment>
+        <translation>Standart biçimlendirilmiş veri birimleri (SFDU) verisi</translation>
+    </message>
+    <message>
+        <source>TAP (ZX Spectrum)</source>
+        <extracomment>application/x-spectrum-tzx</extracomment>
+        <translation>TAP (ZX Spectrum)</translation>
+    </message>
+    <message>
+        <source>Stata DTA Script</source>
+        <extracomment>application/x-stata-do</extracomment>
+        <translation>Stata DTA betiği</translation>
+    </message>
+    <message>
+        <source>Stata DTA Dataset</source>
+        <extracomment>application/x-stata-dta</extracomment>
+        <translation>Stata DTA veri kümesi</translation>
+    </message>
+    <message>
+        <source>TeX Source</source>
+        <extracomment>application/x-tex</extracomment>
+        <translation>TeX kaynağı</translation>
+    </message>
+    <message>
+        <source>TeX Virtual Font format</source>
+        <extracomment>application/x-tex-virtual-font</extracomment>
+        <translation>TeX sanal yazıtipi biçimi</translation>
+    </message>
+    <message>
+        <source>Pre-OLE2 (Old) Microsoft Excel Worksheets</source>
+        <extracomment>application/x-tika-old-excel</extracomment>
+        <translation>OLE2 öncesi (eski) Microsoft Excel çalışma sayfaları</translation>
+    </message>
+    <message>
+        <source>Password Protected OOXML File</source>
+        <extracomment>application/x-tika-ooxml-protected</extracomment>
+        <translation>Parola korumalı OOXML dosyası</translation>
+    </message>
+    <message>
+        <source>Visio OOXML File</source>
+        <extracomment>application/x-tika-visio-ooxml</extracomment>
+        <translation>Visio OOXML dosyası</translation>
+    </message>
+    <message>
+        <source>Virtual PC Virtual Hard Disk</source>
+        <extracomment>application/x-vhd</extracomment>
+        <translation>Virtual PC sanal sabit diski</translation>
+    </message>
+    <message>
+        <source>Virtual Disk Format</source>
+        <extracomment>application/x-vmdk</extracomment>
+        <translation>Sanal disk biçimi</translation>
+    </message>
+    <message>
+        <source>Java Keystore</source>
+        <extracomment>application/x-java-keystore</extracomment>
+        <translation>Java anahtar deposu</translation>
+    </message>
+    <message>
+        <source>XMind Pro</source>
+        <extracomment>application/x-xmind</extracomment>
+        <translation>XMind Pro</translation>
+    </message>
+    <message>
+        <source>Zeno IMproved (ZIM)</source>
+        <extracomment>application/x-zim</extracomment>
+        <translation>Zeno IMproved (ZIM)</translation>
+    </message>
+    <message>
+        <source>Extensible Markup Language</source>
+        <extracomment>application/xml</extracomment>
+        <translation>Genişletilebilir işaretleme dili</translation>
+    </message>
+    <message>
+        <source>XML Document Type Definition</source>
+        <extracomment>application/xml-dtd</extracomment>
+        <translation>XML belgesi türü tanımı</translation>
+    </message>
+    <message>
+        <source>XSL Format</source>
+        <extracomment>application/xslfo+xml</extracomment>
+        <translation>XSL biçimi</translation>
+    </message>
+    <message>
+        <source>XSL Transformations</source>
+        <extracomment>application/xslt+xml</extracomment>
+        <translation>XSL dönüşümleri</translation>
+    </message>
+    <message>
+        <source>XML Shareable Playlist Format</source>
+        <extracomment>application/xspf+xml</extracomment>
+        <translation>XML paylaşılabilir oynatma/çalma listesi biçimi</translation>
+    </message>
+    <message>
+        <source>Compressed Archive File</source>
+        <extracomment>application/zip</extracomment>
+        <translation>Sıkıştırılmış arşiv dosyası</translation>
+    </message>
+    <message>
+        <source>ZLIB Compressed Data Format</source>
+        <extracomment>application/zlib</extracomment>
+        <translation>ZLIB sıkıştırılmış veri biçimi</translation>
+    </message>
+    <message>
+        <source>7-zip archive</source>
+        <extracomment>application/x-7z-compressed</extracomment>
+        <translation>7-Zip arşivi</translation>
+    </message>
+    <message>
+        <source>Dolby Digital Audio Compression File</source>
+        <extracomment>audio/ac3</extracomment>
+        <translation>Dolby Digital ses sıkıştırma dosyası</translation>
+    </message>
+    <message>
+        <source>uLaw/AU Audio File</source>
+        <extracomment>audio/basic</extracomment>
+        <translation>uLaw/AU ses dosyası</translation>
+    </message>
+    <message>
+        <source>Musical Instrument Digital Interface</source>
+        <extracomment>audio/midi</extracomment>
+        <translation>Müzikal enstrüman sayısal arayüzü</translation>
+    </message>
+    <message>
+        <source>MPEG-1 Audio Layer 3</source>
+        <extracomment>audio/mpeg</extracomment>
+        <translation>MPEG-1 Audio Layer 3</translation>
+    </message>
+    <message>
+        <source>Ogg Vorbis Audio</source>
+        <extracomment>audio/ogg</extracomment>
+        <translation>Ogg Vorbis sesi</translation>
+    </message>
+    <message>
+        <source>Ogg Vorbis Codec Compressed WAV File</source>
+        <extracomment>audio/vorbis</extracomment>
+        <translation>Ogg Vorbis kodlayıcısı sıkıştırmalı WAV dosyası</translation>
+    </message>
+    <message>
+        <source>Portable Sound Format</source>
+        <extracomment>audio/x-psf</extracomment>
+        <translation>Taşınabilir ses biçimi</translation>
+    </message>
+    <message>
+        <source>Slight Atari Player</source>
+        <extracomment>audio/x-sap</extracomment>
+        <translation>Slight Atari oynatıcısı</translation>
+    </message>
+    <message>
+        <source>Ogg Packaged Free Lossless Audio Codec</source>
+        <extracomment>audio/x-oggflac</extracomment>
+        <translation>Ogg paketli özgür kayıpsız ses kodlayıcısı</translation>
+    </message>
+    <message>
+        <source>Ogg Packaged Unompressed WAV File</source>
+        <extracomment>audio/x-oggpcm</extracomment>
+        <translation>Ogg paketli sıkıştırılmamış WAV dosyası</translation>
+    </message>
+    <message>
+        <source>Ogg Opus Codec Compressed WAV File</source>
+        <extracomment>audio/opus</extracomment>
+        <translation>Ogg Opus kodlayıcısı sıkıştırmalı WAV dosyası</translation>
+    </message>
+    <message>
+        <source>Ogg Speex Codec Compressed WAV File</source>
+        <extracomment>audio/speex</extracomment>
+        <translation>Ogg Speex kodlayıcısı sıkıştırmalı WAV dosyası</translation>
+    </message>
+    <message>
+        <source>Audio Interchange File Format</source>
+        <extracomment>audio/x-aiff</extracomment>
+        <translation>Ses değişimi dosya biçimi</translation>
+    </message>
+    <message>
+        <source>Core Audio Format</source>
+        <extracomment>audio/x-caf</extracomment>
+        <translation>Çekirdek ses biçimi</translation>
+    </message>
+    <message>
+        <source>Free Lossless Audio Codec</source>
+        <extracomment>audio/x-flac</extracomment>
+        <translation>Özgür kayıpsız ses kodlayıcısı</translation>
+    </message>
+    <message>
+        <source>MP3 Playlist File</source>
+        <extracomment>audio/x-mpegurl</extracomment>
+        <translation>MP3 çalma listesi dosyası</translation>
+    </message>
+    <message>
+        <source>Real Audio</source>
+        <extracomment>audio/x-pn-realaudio</extracomment>
+        <translation>Real Audio</translation>
+    </message>
+    <message>
+        <source>RealMedia Player Plug-in</source>
+        <extracomment>audio/x-pn-realaudio-plugin</extracomment>
+        <translation>RealMedia Player eklentisi</translation>
+    </message>
+    <message>
+        <source>Brookhaven Protein Databank File</source>
+        <extracomment>chemical/x-pdb</extracomment>
+        <translation>Brookhaven Protein veri bankası dosyası</translation>
+    </message>
+    <message>
+        <source>3D Studio (V1)</source>
+        <extracomment>image/x-3ds</extracomment>
+        <translation>3D Studio (V1)</translation>
+    </message>
+    <message>
+        <source>ACES Image Container File</source>
+        <extracomment>image/aces</extracomment>
+        <translation>ACES görsel kapsayıcısı dosyası</translation>
+    </message>
+    <message>
+        <source>OS2 bitmap array</source>
+        <extracomment>image/x-os2-graphics; charset=binary</extracomment>
+        <translation>OS2 biteşlemi dizilişi</translation>
+    </message>
+    <message>
+        <source>Windows bitmap</source>
+        <extracomment>image/bmp</extracomment>
+        <translation>Windows biteşlemi</translation>
+    </message>
+    <message>
+        <source>Better Portable Graphics</source>
+        <extracomment>image/x-bpg</extracomment>
+        <translation>Daha iyi taşınabilir grafikler</translation>
+    </message>
+    <message>
+        <source>Computer Graphics Metafile</source>
+        <extracomment>image/cgm</extracomment>
+        <translation>Bilgisayar grafikleri meta dosyası</translation>
+    </message>
+    <message>
+        <source>Digital Picture Exchange from SMPTE</source>
+        <extracomment>image/x-dpx</extracomment>
+        <translation>SMPTE’den sayısal resim değişimi biçimi</translation>
+    </message>
+    <message>
+        <source>Enhanced Metafile</source>
+        <extracomment>image/emf</extracomment>
+        <translation>İyileştirilmiş meta dosya</translation>
+    </message>
+    <message>
+        <source>Compressed Enhanced Metafile</source>
+        <extracomment>image/x-emf-compressed</extracomment>
+        <translation>Sıkıştırılmış iyileştirilmiş meta dosya</translation>
+    </message>
+    <message>
+        <source>Graphics Interchange Format</source>
+        <extracomment>image/gif</extracomment>
+        <translation>Grafik değişim biçimi</translation>
+    </message>
+    <message>
+        <source>AV1 Image File</source>
+        <extracomment>image/avif</extracomment>
+        <translation>AV1 görseli dosyası</translation>
+    </message>
+    <message>
+        <source>HEIF - High Efficiency Image File</source>
+        <extracomment>image/heif</extracomment>
+        <translation>HEIF — Yüksek verimlilikli görsel dosyası</translation>
+    </message>
+    <message>
+        <source>HEIF Sequence - High Efficiency Image Sequence</source>
+        <extracomment>image/heif-sequence</extracomment>
+        <translation>HEIF Sequence — Yüksek verimlilikli görsel dizisi</translation>
+    </message>
+    <message>
+        <source>HEIF Image using HEVC Codec</source>
+        <extracomment>image/heic</extracomment>
+        <translation>HEVC kodlayıcısı kullanan HEIF görseli</translation>
+    </message>
+    <message>
+        <source>HEIF Sequence using HEVC Codec</source>
+        <extracomment>image/heic-sequence</extracomment>
+        <translation>HEVC kodlayıcısı kullanan HEIF diziai</translation>
+    </message>
+    <message>
+        <source>Apple Icon Image Format</source>
+        <extracomment>image/icns</extracomment>
+        <translation>Apple simge görseli biçimi</translation>
+    </message>
+    <message>
+        <source>JPEG 2000 Part 1 (JP2)</source>
+        <extracomment>image/jp2</extracomment>
+        <translation>JPEG 2000 Part 1 (JP2)</translation>
+    </message>
+    <message>
+        <source>Joint Photographic Experts Group</source>
+        <extracomment>image/jpeg</extracomment>
+        <translation>Birleşik fotografik uzmanları grubu</translation>
+    </message>
+    <message>
+        <source>JPEG 2000 Part 6 (JPM)</source>
+        <extracomment>image/jpm</extracomment>
+        <translation>JPEG 2000 Part 6 (JPM)</translation>
+    </message>
+    <message>
+        <source>JPEG 2000 Part 2 (JPX)</source>
+        <extracomment>image/jpx</extracomment>
+        <translation>JPEG 2000 Part 2 (JPX)</translation>
+    </message>
+    <message>
+        <source>Portable Network Graphics</source>
+        <extracomment>image/png</extracomment>
+        <translation>Taşınabilir ağ grafikleri</translation>
+    </message>
+    <message>
+        <source>Scalable Vector Graphics</source>
+        <extracomment>image/svg+xml</extracomment>
+        <translation>Ölçeklenebilir vektör grafikler</translation>
+    </message>
+    <message>
+        <source>Tagged Image File Format</source>
+        <extracomment>image/tiff</extracomment>
+        <translation>Künyeli görsel dosyası biçimi</translation>
+    </message>
+    <message>
+        <source>Photoshop Image</source>
+        <extracomment>image/vnd.adobe.photoshop</extracomment>
+        <translation>Photoshop görseli</translation>
+    </message>
+    <message>
+        <source>MicroStation v7 drawing</source>
+        <extracomment>image/vnd.dgn;version=7</extracomment>
+        <translation>MicroStation v7 çizimi</translation>
+    </message>
+    <message>
+        <source>MicroStation v8 drawing; requires ole2 detector</source>
+        <extracomment>image/vnd.dgn;version=8</extracomment>
+        <translation>MicroStation v8 çizimi; ole2 algılayıcısı gerektirir</translation>
+    </message>
+    <message>
+        <source>AutoCad Drawing</source>
+        <extracomment>image/vnd.dwg</extracomment>
+        <translation>AutoCad çizimi</translation>
+    </message>
+    <message>
+        <source>AutoCAD DXF simplified Binary</source>
+        <extracomment>image/vnd.dxb</extracomment>
+        <translation>AutoCAD DXF basitleştirilmiş ikilisi</translation>
+    </message>
+    <message>
+        <source>AutoCAD DXF</source>
+        <extracomment>image/vnd.dxf</extracomment>
+        <translation>AutoCAD DXF</translation>
+    </message>
+    <message>
+        <source>Microsoft Document Imaging</source>
+        <extracomment>image/vnd.ms-modi</extracomment>
+        <translation>Microsoft belge görselleştirmesi</translation>
+    </message>
+    <message>
+        <source>Wireless Bitmap File Format</source>
+        <extracomment>image/vnd.wap.wbmp</extracomment>
+        <translation>Kablosuz biteşlem dosyası biçimi</translation>
+    </message>
+    <message>
+        <source>ZSoft Multi-Page Paintbrush</source>
+        <extracomment>image/vnd.zbrush.dcx</extracomment>
+        <translation>ZSoft Multi-Page Paintbrush</translation>
+    </message>
+    <message>
+        <source>ZSoft Paintbrush PiCture eXchange</source>
+        <extracomment>image/vnd.zbrush.pcx</extracomment>
+        <translation>ZSoft Paintbrush resim değişimi biçimi</translation>
+    </message>
+    <message>
+        <source>Windows Metafile</source>
+        <extracomment>image/wmf</extracomment>
+        <translation>Windows meta dosyası</translation>
+    </message>
+    <message>
+        <source>FreeHand image</source>
+        <extracomment>image/x-freehand</extracomment>
+        <translation>FreeHand görseli</translation>
+    </message>
+    <message>
+        <source>A lossless image compression standard from the
+      Joint Bi-level Image Experts Group.</source>
+        <extracomment>image/x-jbig2</extracomment>
+        <translation>Joint Bi-level Image Experts Group’tan
+       kayıpsız görsel sıkıştırma standardı.</translation>
+    </message>
+    <message>
+        <source>JPEG 2000 Codestream</source>
+        <extracomment>image/x-jp2-codestream</extracomment>
+        <translation>JPEG 2000 kod akışı</translation>
+    </message>
+    <message>
+        <source>JPEG 2000 Container Format</source>
+        <extracomment>image/x-jp2-container</extracomment>
+        <translation>JPEG 2000 kapsayıcı biçimi</translation>
+    </message>
+    <message>
+        <source>JPEG XL</source>
+        <extracomment>image/jxl</extracomment>
+        <translation>JPEG XL</translation>
+    </message>
+    <message>
+        <source>Navy Interchange File Format</source>
+        <extracomment>image/x-niff</extracomment>
+        <translation>Navy değişim dosyası biçimi</translation>
+    </message>
+    <message>
+        <source>Apple Macintosh QuickDraw/PICT Format</source>
+        <extracomment>image/x-pict</extracomment>
+        <translation>Apple Macintosh QuickDraw/PICT biçimi</translation>
+    </message>
+    <message>
+        <source>Portable Any Map</source>
+        <extracomment>image/x-portable-anymap</extracomment>
+        <translation>Taşınabilir herhangi bir eşlem</translation>
+    </message>
+    <message>
+        <source>Portable Bit Map</source>
+        <extracomment>image/x-portable-bitmap</extracomment>
+        <translation>Taşınabilir biteşlem</translation>
+    </message>
+    <message>
+        <source>Portable Graymap Graphic</source>
+        <extracomment>image/x-portable-graymap</extracomment>
+        <translation>Taşınabilir gri eşlemli grafik</translation>
+    </message>
+    <message>
+        <source>UNIX Portable Bitmap Graphic</source>
+        <extracomment>image/x-portable-pixmap</extracomment>
+        <translation>UNIX taşınabilir biteşlem grafiği</translation>
+    </message>
+    <message>
+        <source>UNIX Portable Bitmap Graphic Arbitrary Map</source>
+        <extracomment>image/x-portable-arbitrarymap</extracomment>
+        <translation>UNIX taşınabilir biteşlem grafik eşlemi</translation>
+    </message>
+    <message>
+        <source>Adobe Digital Negative</source>
+        <extracomment>image/x-raw-adobe</extracomment>
+        <translation>Adobe sayısal negatifi</translation>
+    </message>
+    <message>
+        <source>Hasselblad raw image</source>
+        <extracomment>image/x-raw-hasselblad</extracomment>
+        <translation>Hasselblad RAW görseli</translation>
+    </message>
+    <message>
+        <source>Fuji raw image</source>
+        <extracomment>image/x-raw-fuji</extracomment>
+        <translation>Fuji RAW görseli</translation>
+    </message>
+    <message>
+        <source>Canon raw image</source>
+        <extracomment>image/x-raw-canon</extracomment>
+        <translation>Canon RAW görseli</translation>
+    </message>
+    <message>
+        <source>Canon raw image, version 2, TIFF-based</source>
+        <extracomment>image/x-canon-cr2</extracomment>
+        <translation>Canon RAW görseli, sürüm 2, TIFF tabanlı</translation>
+    </message>
+    <message>
+        <source>Canon raw image, version 3, Quicktime-based</source>
+        <extracomment>image/x-canon-cr3</extracomment>
+        <translation>Canon RAW görseli, sürüm 3, QuickTime tabanlı</translation>
+    </message>
+    <message>
+        <source>Kodak raw image</source>
+        <extracomment>image/x-raw-kodak</extracomment>
+        <translation>Kodak RAW görseli</translation>
+    </message>
+    <message>
+        <source>Minolta raw image</source>
+        <extracomment>image/x-raw-minolta</extracomment>
+        <translation>Minolta RAW görseli</translation>
+    </message>
+    <message>
+        <source>Nikon raw image</source>
+        <extracomment>image/x-raw-nikon</extracomment>
+        <translation>Nikon RAW görseli</translation>
+    </message>
+    <message>
+        <source>Olympus raw image</source>
+        <extracomment>image/x-raw-olympus</extracomment>
+        <translation>Olympus RAW görseli</translation>
+    </message>
+    <message>
+        <source>Pentax raw image</source>
+        <extracomment>image/x-raw-pentax</extracomment>
+        <translation>Pentax RAW görseli</translation>
+    </message>
+    <message>
+        <source>Sony raw image</source>
+        <extracomment>image/x-raw-sony</extracomment>
+        <translation>Sony RAW görseli</translation>
+    </message>
+    <message>
+        <source>Sigma raw image</source>
+        <extracomment>image/x-raw-sigma</extracomment>
+        <translation>Sigma RAW görseli</translation>
+    </message>
+    <message>
+        <source>Epson raw image</source>
+        <extracomment>image/x-raw-epson</extracomment>
+        <translation>Epson RAW görseli</translation>
+    </message>
+    <message>
+        <source>Mamiya raw image</source>
+        <extracomment>image/x-raw-mamiya</extracomment>
+        <translation>Mamiya RAW görseli</translation>
+    </message>
+    <message>
+        <source>Leaf raw image</source>
+        <extracomment>image/x-raw-leaf</extracomment>
+        <translation>Leaf RAW görseli</translation>
+    </message>
+    <message>
+        <source>Panasonic raw image</source>
+        <extracomment>image/x-raw-panasonic</extracomment>
+        <translation>Panasonic RAW görseli</translation>
+    </message>
+    <message>
+        <source>Phase One raw image</source>
+        <extracomment>image/x-raw-phaseone</extracomment>
+        <translation>Phase One RAW görseli</translation>
+    </message>
+    <message>
+        <source>Red raw image</source>
+        <extracomment>image/x-raw-red</extracomment>
+        <translation>Red RAW görseli</translation>
+    </message>
+    <message>
+        <source>Imacon raw image</source>
+        <extracomment>image/x-raw-imacon</extracomment>
+        <translation>Imacon RAW görseli</translation>
+    </message>
+    <message>
+        <source>Logitech raw image</source>
+        <extracomment>image/x-raw-logitech</extracomment>
+        <translation>Logitech RAW görseli</translation>
+    </message>
+    <message>
+        <source>Casio raw image</source>
+        <extracomment>image/x-raw-casio</extracomment>
+        <translation>Casio RAW görseli</translation>
+    </message>
+    <message>
+        <source>Rawzor raw image</source>
+        <extracomment>image/x-raw-rawzor</extracomment>
+        <translation>Rawzor RAW görseli</translation>
+    </message>
+    <message>
+        <source>Silicon Graphics RGB Bitmap</source>
+        <extracomment>image/x-rgb</extracomment>
+        <translation>Silicon Graphics RGB biteşlemi</translation>
+    </message>
+    <message>
+        <source>GIMP Image File</source>
+        <extracomment>image/x-xcf</extracomment>
+        <translation>GIMP görseli dosyası</translation>
+    </message>
+    <message>
+        <source>X Windows Dump</source>
+        <extracomment>image/x-xwindowdump</extracomment>
+        <translation>X Windows dökümü</translation>
+    </message>
+    <message>
+        <source>MIME Encapsulation of Aggregate HTML Documents</source>
+        <extracomment>multipart/related</extracomment>
+        <translation>Toplu HTML belgelerinin MIME kapsüllenmesi</translation>
+    </message>
+    <message>
+        <source>3d imaging data exchange</source>
+        <extracomment>model/e57</extracomment>
+        <translation>3B görselleştirme veri değişimi</translation>
+    </message>
+    <message>
+        <source>Initial Graphics Exchange Specification Format</source>
+        <extracomment>model/iges</extracomment>
+        <translation>İlk grafik değişimi belirtimi biçimi</translation>
+    </message>
+    <message>
+        <source>no magic available</source>
+        <extracomment>model/x.stl-binary</extracomment>
+        <translation>no magic available</translation>
+    </message>
+    <message>
+        <source>AutoCAD Design Web Format</source>
+        <extracomment>model/vnd.dwf----------model/vnd.dwfx+xps</extracomment>
+        <translation>AutoCAD tasarımı web biçimi</translation>
+    </message>
+    <message>
+        <source>ONline Information eXchange (ONIX) for books</source>
+        <extracomment>application/onix-message+xml----------application/onix-message-short+xml</extracomment>
+        <translation>Kitaplar için ONline Information eXchange (ONIX)</translation>
+    </message>
+    <message>
+        <source>ActionScript source code</source>
+        <extracomment>text/x-actionscript</extracomment>
+        <translation>ActionScript kaynak kodu</translation>
+    </message>
+    <message>
+        <source>Ada source code</source>
+        <extracomment>text/x-ada</extracomment>
+        <translation>Ada kaynak kodu</translation>
+    </message>
+    <message>
+        <source>AppleScript source code</source>
+        <extracomment>text/x-applescript</extracomment>
+        <translation>AppleScript kaynak kodu</translation>
+    </message>
+    <message>
+        <source>Active Server Page</source>
+        <extracomment>text/asp</extracomment>
+        <translation>Etkin sunucu sayfası</translation>
+    </message>
+    <message>
+        <source>ASP .NET</source>
+        <extracomment>text/aspdotnet</extracomment>
+        <translation>ASP .NET</translation>
+    </message>
+    <message>
+        <source>AspectJ source code</source>
+        <extracomment>text/x-aspectj</extracomment>
+        <translation>AspectJ kaynak kodu</translation>
+    </message>
+    <message>
+        <source>Assembler source code</source>
+        <extracomment>text/x-assembly</extracomment>
+        <translation>Assembler kaynak kodu</translation>
+    </message>
+    <message>
+        <source>Cascading Style Sheet</source>
+        <extracomment>text/css</extracomment>
+        <translation>Basamaklı biçem sayfası</translation>
+    </message>
+    <message>
+        <source>HyperText Markup Language</source>
+        <extracomment>text/html</extracomment>
+        <translation>HyperText işaretleme dili</translation>
+    </message>
+    <message>
+        <source>Makefile build file</source>
+        <extracomment>text/x-makefile</extracomment>
+        <translation>Makefile yapı dosyası</translation>
+    </message>
+    <message>
+        <source>Roff/nroff/troff/groff Unformatted Manual Page (UNIX)</source>
+        <extracomment>text/troff</extracomment>
+        <translation>Roff/nroff/troff/groff biçimlendirilmemiş kılavuz sayfası (UNIX)</translation>
+    </message>
+    <message>
+        <source>Graphviz Graph Visualization Software</source>
+        <extracomment>text/vnd.graphviz</extracomment>
+        <translation>Graphviz grafik görselleştirme yazılımı</translation>
+    </message>
+    <message>
+        <source>American Newspaper Publishers Association Wire Feeds</source>
+        <extracomment>text/vnd.iptc.anpa</extracomment>
+        <translation>Amerikan gazete yayımcıları birliği iletişim beslemeleri</translation>
+    </message>
+    <message>
+        <source>WML Script</source>
+        <extracomment>text/vnd.wap.wmlscript</extracomment>
+        <translation>WML betiği</translation>
+    </message>
+    <message>
+        <source>Web Video Text Tracks Format</source>
+        <extracomment>text/vtt</extracomment>
+        <translation>Web videosu metin izleri biçimi</translation>
+    </message>
+    <message>
+        <source>AWK script</source>
+        <extracomment>text/x-awk</extracomment>
+        <translation>AWK betiği</translation>
+    </message>
+    <message>
+        <source>Basic source code</source>
+        <extracomment>text/x-basic</extracomment>
+        <translation>Basit kaynak kod</translation>
+    </message>
+    <message>
+        <source>C++ source code header</source>
+        <extracomment>text/x-c++hdr</extracomment>
+        <translation>C++ kaynak kodu üstbilgisi</translation>
+    </message>
+    <message>
+        <source>C++ source code</source>
+        <extracomment>text/x-c++src</extracomment>
+        <translation>C++ kaynak kodu</translation>
+    </message>
+    <message>
+        <source>CGI script</source>
+        <extracomment>text/x-cgi</extracomment>
+        <translation>CGI betiği</translation>
+    </message>
+    <message>
+        <source>C source code header</source>
+        <extracomment>text/x-chdr</extracomment>
+        <translation>C kaynak kodu üstbilgisi</translation>
+    </message>
+    <message>
+        <source>Clojure source code</source>
+        <extracomment>text/x-clojure</extracomment>
+        <translation>Clojure kaynak kodu</translation>
+    </message>
+    <message>
+        <source>CoffeeScript source code</source>
+        <extracomment>text/x-coffeescript</extracomment>
+        <translation>CoffeeScript kaynak kodu</translation>
+    </message>
+    <message>
+        <source>C source code</source>
+        <extracomment>text/x-csrc</extracomment>
+        <translation>C kaynak kodu</translation>
+    </message>
+    <message>
+        <source>C# source code</source>
+        <extracomment>text/x-csharp</extracomment>
+        <translation>C# kaynak kodu</translation>
+    </message>
+    <message>
+        <source>COBOL source code</source>
+        <extracomment>text/x-cobol</extracomment>
+        <translation>COBOL kaynak kodu</translation>
+    </message>
+    <message>
+        <source>ColdFusion source code</source>
+        <extracomment>text/x-coldfusion</extracomment>
+        <translation>ColdFusion kaynak kodu</translation>
+    </message>
+    <message>
+        <source>Common Lisp source code</source>
+        <extracomment>text/x-common-lisp</extracomment>
+        <translation>Common Lisp kaynak kodu</translation>
+    </message>
+    <message>
+        <source>Eiffel source code</source>
+        <extracomment>text/x-eiffel</extracomment>
+        <translation>Eiffel kaynak kodu</translation>
+    </message>
+    <message>
+        <source>Emacs Lisp source code</source>
+        <extracomment>text/x-emacs-lisp</extracomment>
+        <translation>Emacs Lisp kaynak kodu</translation>
+    </message>
+    <message>
+        <source>Erlang source code</source>
+        <extracomment>text/x-erlang</extracomment>
+        <translation>Erlang kaynak kodu</translation>
+    </message>
+    <message>
+        <source>Expect Script</source>
+        <extracomment>text/x-expect</extracomment>
+        <translation>Expect betiği</translation>
+    </message>
+    <message>
+        <source>Forth source code</source>
+        <extracomment>text/x-forth</extracomment>
+        <translation>Forth kaynak kodu</translation>
+    </message>
+    <message>
+        <source>Fortran source code</source>
+        <extracomment>text/x-fortran</extracomment>
+        <translation>Fortran kaynak kodu</translation>
+    </message>
+    <message>
+        <source>Go source code</source>
+        <extracomment>text/x-go</extracomment>
+        <translation>Go kaynak kodu</translation>
+    </message>
+    <message>
+        <source>Groovy source code</source>
+        <extracomment>text/x-groovy</extracomment>
+        <translation>Groovy kaynak kodu</translation>
+    </message>
+    <message>
+        <source>Haskell source code</source>
+        <extracomment>text/x-haskell</extracomment>
+        <translation>Haskell kaynak kodu</translation>
+    </message>
+    <message>
+        <source>Interface Definition Language</source>
+        <extracomment>text/x-idl</extracomment>
+        <translation>Arabirim tanımlama dili</translation>
+    </message>
+    <message>
+        <source>Configuration file</source>
+        <extracomment>text/x-ini</extracomment>
+        <translation>Yapılandırma dosyası</translation>
+    </message>
+    <message>
+        <source>Java source code</source>
+        <extracomment>text/x-java-source</extracomment>
+        <translation>Java kaynak kodu</translation>
+    </message>
+    <message>
+        <source>Java Properties</source>
+        <extracomment>text/x-java-properties</extracomment>
+        <translation>Java özellikleri</translation>
+    </message>
+    <message>
+        <source>Java Server Page</source>
+        <extracomment>text/x-jsp</extracomment>
+        <translation>Java sunucu sayfası</translation>
+    </message>
+    <message>
+        <source>LESS source code</source>
+        <extracomment>text/x-less</extracomment>
+        <translation>LESS kaynak kodu</translation>
+    </message>
+    <message>
+        <source>Lex/Flex source code</source>
+        <extracomment>text/x-lex</extracomment>
+        <translation>Lex/Flex kaynak kodu</translation>
+    </message>
+    <message>
+        <source>application log</source>
+        <extracomment>text/x-log</extracomment>
+        <translation>Uygulama günlüğü</translation>
+    </message>
+    <message>
+        <source>Lua source code</source>
+        <extracomment>text/x-lua</extracomment>
+        <translation>Lua kaynak kodu</translation>
+    </message>
+    <message>
+        <source>ML source code</source>
+        <extracomment>text/x-ml</extracomment>
+        <translation>ML kaynak kodu</translation>
+    </message>
+    <message>
+        <source>Matlab source code</source>
+        <extracomment>text/x-matlab</extracomment>
+        <translation>MATLAB kaynak kodu</translation>
+    </message>
+    <message>
+        <source>MATLAB data file</source>
+        <extracomment>application/x-matlab-data</extracomment>
+        <translation>MATLAB veri dosyası</translation>
+    </message>
+    <message>
+        <source>Modula source code</source>
+        <extracomment>text/x-modula</extracomment>
+        <translation>Modula kaynak kodu</translation>
+    </message>
+    <message>
+        <source>Objective-C source code</source>
+        <extracomment>text/x-objcsrc</extracomment>
+        <translation>Objective-C kaynak kodu</translation>
+    </message>
+    <message>
+        <source>Ocaml source code</source>
+        <extracomment>text/x-ocaml</extracomment>
+        <translation>Ocaml kaynak kodu</translation>
+    </message>
+    <message>
+        <source>Pascal source code</source>
+        <extracomment>text/x-pascal</extracomment>
+        <translation>Pascal kaynak kodu</translation>
+    </message>
+    <message>
+        <source>Perl script</source>
+        <extracomment>text/x-perl</extracomment>
+        <translation>Perl kaynak kodu</translation>
+    </message>
+    <message>
+        <source>PHP script</source>
+        <extracomment>text/x-php</extracomment>
+        <translation>PHP betiği</translation>
+    </message>
+    <message>
+        <source>Prolog source code</source>
+        <extracomment>text/x-prolog</extracomment>
+        <translation>Prolog kaynak kodu</translation>
+    </message>
+    <message>
+        <source>Python script</source>
+        <extracomment>text/x-python</extracomment>
+        <translation>Python betiği</translation>
+    </message>
+    <message>
+        <source>reStructuredText source code</source>
+        <extracomment>text/x-rst</extracomment>
+        <translation>reStructuredText kaynak kodu</translation>
+    </message>
+    <message>
+        <source>Rexx source code</source>
+        <extracomment>text/x-rexx</extracomment>
+        <translation>Rexx kaynak kodu</translation>
+    </message>
+    <message>
+        <source>Ruby source code</source>
+        <extracomment>text/x-ruby</extracomment>
+        <translation>Ruby kaynak kodu</translation>
+    </message>
+    <message>
+        <source>Scala source code</source>
+        <extracomment>text/x-scala</extracomment>
+        <translation>Scala kaynak kodu</translation>
+    </message>
+    <message>
+        <source>Scheme source code</source>
+        <extracomment>text/x-scheme</extracomment>
+        <translation>Scheme kaynak kodu</translation>
+    </message>
+    <message>
+        <source>Sed code</source>
+        <extracomment>text/x-sed</extracomment>
+        <translation>Sed kodu</translation>
+    </message>
+    <message>
+        <source>SQL code</source>
+        <extracomment>text/x-sql</extracomment>
+        <translation>SQL kodu</translation>
+    </message>
+    <message>
+        <source>Smalltalk source code</source>
+        <extracomment>text/x-stsrc</extracomment>
+        <translation>Smalltalk kaynak kodu</translation>
+    </message>
+    <message>
+        <source>Tcl script</source>
+        <extracomment>text/x-tcl</extracomment>
+        <translation>Tcl betiği</translation>
+    </message>
+    <message>
+        <source>Text-based (non-binary) Message</source>
+        <extracomment>text/x-tika-text-based-message</extracomment>
+        <translation>Metin tabanlı (ikili olmayan) ileti</translation>
+    </message>
+    <message>
+        <source>Visual basic source code</source>
+        <extracomment>text/x-vbasic</extracomment>
+        <translation>Visual Basic kaynak kodu</translation>
+    </message>
+    <message>
+        <source>VB.NET source code</source>
+        <extracomment>text/x-vbdotnet</extracomment>
+        <translation>VB.NET kaynak kodu</translation>
+    </message>
+    <message>
+        <source>VBScript source code</source>
+        <extracomment>text/x-vbscript</extracomment>
+        <translation>VBScript kaynak kodu</translation>
+    </message>
+    <message>
+        <source>Verilog source code</source>
+        <extracomment>text/x-verilog</extracomment>
+        <translation>Verilog kaynak kodu</translation>
+    </message>
+    <message>
+        <source>VHDL source code</source>
+        <extracomment>text/x-vhdl</extracomment>
+        <translation>VHDL kaynak kodu</translation>
+    </message>
+    <message>
+        <source>Markdown source code</source>
+        <extracomment>text/x-web-markdown</extracomment>
+        <translation>Markdown kaynak kodu</translation>
+    </message>
+    <message>
+        <source>Yacc/Bison source code</source>
+        <extracomment>text/x-yacc</extracomment>
+        <translation>Yacc/Bison kaynak kodu</translation>
+    </message>
+    <message>
+        <source>YAML source code</source>
+        <extracomment>text/x-yaml</extracomment>
+        <translation>YAML kaynak kodu</translation>
+    </message>
+    <message>
+        <source>JPEG 2000 Part 3 (Motion JPEG, MJ2)</source>
+        <extracomment>video/mj2</extracomment>
+        <translation>JPEG 2000 Part 3 (Motion JPEG, MJ2)</translation>
+    </message>
+    <message>
+        <source>MPEG Movie Clip</source>
+        <extracomment>video/mpeg</extracomment>
+        <translation>MPEG film klibi</translation>
+    </message>
+    <message>
+        <source>Ogg Vorbis Video</source>
+        <extracomment>video/ogg</extracomment>
+        <translation>Ogg Vorbis videosu</translation>
+    </message>
+    <message>
+        <source>Ogg Daala Video</source>
+        <extracomment>video/daala</extracomment>
+        <translation>Ogg Daala videosu</translation>
+    </message>
+    <message>
+        <source>Ogg Theora Video</source>
+        <extracomment>video/theora</extracomment>
+        <translation>Ogg Theora videosu</translation>
+    </message>
+    <message>
+        <source>Ogg Packaged Dirac Video</source>
+        <extracomment>video/x-dirac</extracomment>
+        <translation>Ogg paketlenmiş Dirac videosu</translation>
+    </message>
+    <message>
+        <source>Ogg Packaged OGM Video</source>
+        <extracomment>video/x-ogm</extracomment>
+        <translation>Ogg paketlenmiş OGM videosu</translation>
+    </message>
+    <message>
+        <source>Ogg Packaged Raw UVS Video</source>
+        <extracomment>video/x-ogguvs</extracomment>
+        <translation>Ogg paketlenmiş ham UVS videosu</translation>
+    </message>
+    <message>
+        <source>Ogg Packaged Raw YUV Video</source>
+        <extracomment>video/x-oggyuv</extracomment>
+        <translation>Ogg paketlenmiş ham YUV videosu</translation>
+    </message>
+    <message>
+        <source>Ogg Packaged Raw RGB Video</source>
+        <extracomment>video/x-oggrgb</extracomment>
+        <translation>Ogg paketlenmiş ham RGB videosu</translation>
+    </message>
+    <message>
+        <source>QuickTime Video</source>
+        <extracomment>video/quicktime</extracomment>
+        <translation>QuickTime videosu</translation>
+    </message>
+    <message>
+        <source>Windows Media Metafile</source>
+        <extracomment>application/x-ms-asx</extracomment>
+        <translation>Windows ortam meta dosyası</translation>
+    </message>
+    <message>
+        <source>Audio Video Interleave File</source>
+        <extracomment>video/x-msvideo</extracomment>
+        <translation>Ses ve video ara dosyası</translation>
+    </message>
+    <message>
+        <source>Matroska Media Container</source>
+        <extracomment>application/x-matroska</extracomment>
+        <translation>Matroska ortam kapsayıcısı</translation>
+    </message>
+    <message>
+        <source>Cooltalk Audio</source>
+        <extracomment>x-conference/x-cooltalk</extracomment>
+        <translation>Cooltalk sesi</translation>
+    </message>
+    <message>
+        <source>FictionBook document</source>
+        <extracomment>application/x-fictionbook+xml</extracomment>
+        <translation>FictionBook belgesi</translation>
+    </message>
+    <message>
+        <source>Asciidoc source code</source>
+        <extracomment>text/x-asciidoc</extracomment>
+        <translation>Asciidoc kaynak kodu</translation>
+    </message>
+    <message>
+        <source>D source code</source>
+        <extracomment>text/x-d</extracomment>
+        <translation>D kaynak kodu</translation>
+    </message>
+    <message>
+        <source>HAML source code</source>
+        <extracomment>text/x-haml</extracomment>
+        <translation>HAML kaynak kodu</translation>
+    </message>
+    <message>
+        <source>Haxe source code</source>
+        <extracomment>text/x-haxe</extracomment>
+        <translation>Haxe kaynak kodu</translation>
+    </message>
+    <message>
+        <source>XLIFF 1.2 document</source>
+        <extracomment>application/x-xliff+xml</extracomment>
+        <translation>XLIFF 1.2 belgesi</translation>
+    </message>
+    <message>
+        <source>XLZ Archive</source>
+        <extracomment>application/x-xliff+zip</extracomment>
+        <translation>XLZ arşivi</translation>
+    </message>
+    <message>
+        <source>R source code</source>
+        <extracomment>text/x-rsrc</extracomment>
+        <translation>R kaynak kodu</translation>
+    </message>
+</context>
+<context>
+    <name>Assets::Downloader::AssetDownloader</name>
+    <message>
+        <source>Downloading JSON file...</source>
+        <translation>JSON dosyası indiriliyor…</translation>
+    </message>
+    <message>
+        <source>Downloading zip file...</source>
+        <translation>ZIP dosyası indiriliyor…</translation>
+    </message>
+    <message>
+        <source>Unzipping...</source>
+        <translation>ZIP açılıyor…</translation>
+    </message>
+    <message>
+        <source>Downloading assets...</source>
+        <translation>Varlıklar indiriliyor…</translation>
+    </message>
+    <message>
+        <source>Copying assets...</source>
+        <translation>Varlıklar kopyalanıyor…</translation>
+    </message>
+</context>
+<context>
+    <name>QCoreApplication</name>
+    <message>
+        <source>QHttp</source>
+        <translation>QHttp</translation>
+    </message>
+</context>
+<context>
+    <name>QWindowsUiaMainProvider</name>
+    <message>
+        <source>blockquote</source>
+        <translation>blok alıntı</translation>
+    </message>
+</context>
+<context>
+    <name>QProgressBar</name>
+    <message>
+        <source>%p%</source>
+        <extracomment>%p is the percent value, % is the percent sign. When translated to the identical %p%, then the second % symbol will be replaced by the percentage-symbol from the user&apos;s locale.</extracomment>
+        <translation>%%p</translation>
+    </message>
+</context>
+<context>
+    <name>QTgaFile</name>
+    <message>
+        <source>Could not read image data</source>
+        <translation>Görsel verisi okunamadı</translation>
+    </message>
+    <message>
+        <source>Sequential device (eg socket) for image read not supported</source>
+        <translation>Görsel okuması için sıralı aygıt (örneğin, yuva) desteklenmiyor</translation>
+    </message>
+    <message>
+        <source>Seek file/device for image read failed</source>
+        <translation>Görsel okuması için aygıta/dosyaya bakma başarısız</translation>
+    </message>
+    <message>
+        <source>Image header read failed</source>
+        <translation>Görsel üstbilgisi okuması başarısız</translation>
+    </message>
+    <message>
+        <source>Image type not supported</source>
+        <translation>Görsel türü desteklenmiyor</translation>
+    </message>
+    <message>
+        <source>Image depth not valid</source>
+        <translation>Görsel derinliği geçerli değil</translation>
+    </message>
+    <message>
+        <source>Image size exceeds limit</source>
+        <translation>Görsel boyutu sınırı aşıyor</translation>
+    </message>
+    <message>
+        <source>Could not seek to image read footer</source>
+        <translation>Görsel okuması altbilgisine bakılamadı</translation>
+    </message>
+    <message>
+        <source>Could not read footer</source>
+        <translation>Altbilgi okunamadı</translation>
+    </message>
+    <message>
+        <source>Image type (non-TrueVision 2.0) not supported</source>
+        <translation>Görsel türü (TrueVision 2.0 olmayan) desteklenmiyor</translation>
+    </message>
+    <message>
+        <source>Could not reset to read data</source>
+        <translation>Veriyi okumak için sıfırlanamadı</translation>
+    </message>
+    <message>
+        <source>Invalid color map depth (%1)</source>
+        <translation>Geçersiz renk eşlemi derinliği (%1)</translation>
     </message>
 </context>
 </TS>

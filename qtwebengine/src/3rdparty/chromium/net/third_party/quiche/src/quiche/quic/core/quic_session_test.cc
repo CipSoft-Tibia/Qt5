@@ -5,10 +5,12 @@
 #include "quiche/quic/core/quic_session.h"
 
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <set>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/base/macros.h"
 #include "absl/memory/memory.h"
@@ -170,7 +172,7 @@ class TestCryptoStream : public QuicCryptoStream, public QuicCryptoHandshaker {
 
   MOCK_METHOD(bool, HasPendingRetransmission, (), (const, override));
 
-  void OnConnectionClosed(QuicErrorCode /*error*/,
+  void OnConnectionClosed(const QuicConnectionCloseFrame& /*frame*/,
                           ConnectionCloseSource /*source*/) override {}
 
   bool ExportKeyingMaterial(absl::string_view /*label*/,
@@ -3350,7 +3352,41 @@ TEST_P(QuicSessionTestServer,
                    ->GetPreferredAddressToSend(quiche::IpAddressFamily::IP_V6)
                    .has_value());
   EXPECT_EQ(preferred_address,
-            QuicConnectionPeer::GetSentServerPreferredAddress(connection_));
+            connection_->expected_server_preferred_address());
+}
+
+TEST_P(QuicSessionTestServer,
+       SetDNatServerPreferredAddressAccordingToAddressFamily) {
+  if (!session_.version().HasIetfQuicFrames()) {
+    return;
+  }
+  EXPECT_EQ(quiche::IpAddressFamily::IP_V4,
+            connection_->peer_address().host().address_family());
+  QuicConnectionPeer::SetEffectivePeerAddress(connection_,
+                                              connection_->peer_address());
+  QuicTagVector copt;
+  copt.push_back(kSPAD);
+  QuicConfigPeer::SetReceivedConnectionOptions(session_.config(), copt);
+  QuicSocketAddress sent_preferred_address(QuicIpAddress::Loopback4(), 12345);
+  QuicSocketAddress expected_preferred_address(QuicIpAddress::Loopback4(),
+                                               12346);
+  session_.config()->SetIPv4AlternateServerAddressForDNat(
+      sent_preferred_address, expected_preferred_address);
+  session_.config()->SetIPv6AlternateServerAddressForDNat(
+      QuicSocketAddress(QuicIpAddress::Loopback6(), 12345),
+      QuicSocketAddress(QuicIpAddress::Loopback6(), 12346));
+
+  connection_->SetDefaultEncryptionLevel(ENCRYPTION_FORWARD_SECURE);
+  session_.OnConfigNegotiated();
+  EXPECT_EQ(QuicSocketAddress(QuicIpAddress::Loopback4(), 12345),
+            session_.config()
+                ->GetPreferredAddressToSend(quiche::IpAddressFamily::IP_V4)
+                .value());
+  EXPECT_FALSE(session_.config()
+                   ->GetPreferredAddressToSend(quiche::IpAddressFamily::IP_V6)
+                   .has_value());
+  EXPECT_EQ(expected_preferred_address,
+            connection_->expected_server_preferred_address());
 }
 
 TEST_P(QuicSessionTestServer, NoServerPreferredAddressIfAddressFamilyMismatch) {
@@ -3375,8 +3411,8 @@ TEST_P(QuicSessionTestServer, NoServerPreferredAddressIfAddressFamilyMismatch) {
   EXPECT_FALSE(session_.config()
                    ->GetPreferredAddressToSend(quiche::IpAddressFamily::IP_V6)
                    .has_value());
-  EXPECT_FALSE(QuicConnectionPeer::GetSentServerPreferredAddress(connection_)
-                   .IsInitialized());
+  EXPECT_FALSE(
+      connection_->expected_server_preferred_address().IsInitialized());
 }
 
 TEST_P(QuicSessionTestServer, OpenStreamLimitPerEventLoop) {

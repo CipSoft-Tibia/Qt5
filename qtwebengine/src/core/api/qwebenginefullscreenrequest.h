@@ -1,5 +1,6 @@
 // Copyright (C) 2021 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QWEBENGINEFULLSCREENREQUEST_H
 #define QWEBENGINEFULLSCREENREQUEST_H
@@ -23,6 +24,7 @@ class Q_WEBENGINECORE_EXPORT QWebEngineFullScreenRequest
     Q_PROPERTY(QUrl origin READ origin CONSTANT)
 
 public:
+    QWebEngineFullScreenRequest() : QWebEngineFullScreenRequest(QUrl(), false, [](bool){}) {}
     QWebEngineFullScreenRequest(const QWebEngineFullScreenRequest &other);
     QWebEngineFullScreenRequest &operator=(const QWebEngineFullScreenRequest &other);
     QWebEngineFullScreenRequest(QWebEngineFullScreenRequest &&other);

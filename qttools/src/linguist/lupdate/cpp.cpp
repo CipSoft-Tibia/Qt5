@@ -24,6 +24,11 @@ size_t qHash(const HashString &str)
     return str.m_hash;
 }
 
+QDebug operator<<(QDebug debug, const HashString &s)
+{
+    return debug << s.value();
+}
+
 size_t qHash(const HashStringList &list)
 {
     if (list.m_hash & 0x80000000) {
@@ -35,6 +40,11 @@ size_t qHash(const HashStringList &list)
         list.m_hash = hash;
     }
     return list.m_hash;
+}
+
+QDebug operator<<(QDebug debug, const HashStringList &lst)
+{
+    return debug << lst.m_list;
 }
 
 static int nextFileId;
@@ -151,7 +161,7 @@ private:
                       const QString &segments, bool isDeclaration,
                       NamespaceList *resolved, NamespaceList *unresolved) const;
     bool findNamespaceCallback(const Namespace *ns, void *context) const;
-    const Namespace *findNamespace(const NamespaceList &namespaces, int nsCount = -1) const;
+    Namespace *findNamespace(const NamespaceList &namespaces, int nsCount = -1) const;
     void enterNamespace(NamespaceList *namespaces, const HashString &name);
     void truncateNamespaces(NamespaceList *namespaces, int lenght);
     Namespace *modifyNamespace(NamespaceList *namespaces, bool haveLast = true);
@@ -160,6 +170,7 @@ private:
     QString yyFileName;
     int yyCh;
     bool yyAtNewline;
+    bool yyTrailingSpace;
     QString yyWord;
     qsizetype yyWordInitialCapacity = 0;
     QStack<IfdefState> yyIfdefStack;
@@ -566,6 +577,7 @@ CppParser::TokenType CppParser::getToken()
             } while ((yyCh >= 'A' && yyCh <= 'Z') || (yyCh >= 'a' && yyCh <= 'z')
                      || (yyCh >= '0' && yyCh <= '9') || yyCh == '_');
             yyWord.resize(ptr - (ushort *)yyWord.unicode());
+            yyTrailingSpace = isspace(yyCh);
 
             //qDebug() << "IDENT: " << yyWord;
 
@@ -1075,6 +1087,21 @@ bool CppParser::fullyQualify(const NamespaceList &namespaces, int nsCnt,
         nsIdx = nsCnt - 1;
     }
 
+    auto matchSeg = segments.crbegin();
+    auto matchNs = namespaces.crbegin();
+
+    if (matchSeg->value() != matchNs->value())
+        matchSeg++;
+
+    while (matchSeg != segments.crend()
+           && matchNs != namespaces.crend()
+           && matchSeg->value() == matchNs->value()) {
+
+        matchSeg++;
+        matchNs++;
+        nsIdx--;
+    }
+
     do {
         if (qualifyOne(namespaces, nsIdx + 1, segments[initSegIdx], resolved)) {
             int segIdx = initSegIdx;
@@ -1121,9 +1148,9 @@ bool CppParser::findNamespaceCallback(const Namespace *ns, void *context) const
     return true;
 }
 
-const Namespace *CppParser::findNamespace(const NamespaceList &namespaces, int nsCount) const
+Namespace *CppParser::findNamespace(const NamespaceList &namespaces, int nsCount) const
 {
-    const Namespace *ns = 0;
+    Namespace *ns = 0;
     if (nsCount == -1)
         nsCount = namespaces.size();
     visitNamespace(namespaces, nsCount, &CppParser::findNamespaceCallback, &ns);
@@ -1133,8 +1160,17 @@ const Namespace *CppParser::findNamespace(const NamespaceList &namespaces, int n
 void CppParser::enterNamespace(NamespaceList *namespaces, const HashString &name)
 {
     *namespaces << name;
-    if (!findNamespace(*namespaces))
-        modifyNamespace(namespaces, false);
+
+    Namespace *ns;
+    if (!(ns = findNamespace(*namespaces)))
+        ns = modifyNamespace(namespaces, false);
+
+    const Namespace *cns = &results->rootNamespace;
+    for (int i = 0; i < namespaces->size(); ++i) {
+        ns->usings << cns->usings;
+        if (!(cns = cns->children.value(namespaces->at(i))))
+            break;
+    }
 }
 
 void CppParser::truncateNamespaces(NamespaceList *namespaces, int length)
@@ -1462,7 +1498,7 @@ void CppParser::handleTr(QString &prefix, bool plural)
         yyMsg() << "//% cannot be used with tr() / QT_TR_NOOP(). Ignoring\n";
     int line = yyLineNo;
     yyTok = getToken();
-    if (matchString(&text) && !text.isEmpty()) {
+    if (matchString(&text)) {
         comment.clear();
 
         if (yyTok == Tok_RightParen) {
@@ -1724,8 +1760,13 @@ void CppParser::parseInternal(ConversionData &cd, const QStringList &includeStac
             /*
               Partial support for inlined functions.
             */
+
+           case_class:
             yyTok = getToken();
-            if (yyBraceDepth == namespaceDepths.size() && yyParenDepth == 0) {
+            if (yyTok == Tok_Equals) { // we're in a template entity
+                yyTok = getToken();
+                break;
+            } else if (yyBraceDepth == namespaceDepths.size() && yyParenDepth == 0) {
                 NamespaceList quali;
                 HashString fct;
 
@@ -1764,6 +1805,8 @@ void CppParser::parseInternal(ConversionData &cd, const QStringList &includeStac
                             goto goteof;
                         if (yyTok == Tok_Cancel)
                             goto case_default;
+                        if (yyTok == Tok_class)
+                            goto case_class;
                     } while (yyTok != Tok_LeftBrace && yyTok != Tok_Semicolon);
                 } else {
                     if (yyTok != Tok_LeftBrace) {
@@ -1950,7 +1993,7 @@ void CppParser::parseInternal(ConversionData &cd, const QStringList &includeStac
                 yyTok = getToken();
                 break;
             }
-            if (yyTok == Tok_ColonColon && !maybeInTrailingReturnType) {
+            if (yyTok == Tok_ColonColon && !maybeInTrailingReturnType && !yyTrailingSpace) {
                 prefix += yyWord;
                 prefix.detach();
             } else {
@@ -1980,7 +2023,8 @@ void CppParser::parseInternal(ConversionData &cd, const QStringList &includeStac
             }
             if (yyBraceDepth == namespaceDepths.size() && yyParenDepth == 0 && !yyTokColonSeen)
                 prospectiveContext = prefix;
-            prefix += strColons;
+            if (!prefix.isEmpty())
+                prefix += strColons;
             yyTok = getToken();
             break;
         case Tok_RightBrace:
@@ -2101,6 +2145,12 @@ void CppParser::parseInternal(ConversionData &cd, const QStringList &includeStac
             yyTok = getToken();
             // If it is an enum class then ignore
             if (yyTok == Tok_class)
+                yyTok = getToken();
+
+            // Allow the parser to flexibly detect and ignore 
+            // colons in front of the typed enums.
+            yyTok = getToken();
+            if (yyTok == Tok_Colon) // ignore any colons in front of a typed enum
                 yyTok = getToken();
             break;
         default:

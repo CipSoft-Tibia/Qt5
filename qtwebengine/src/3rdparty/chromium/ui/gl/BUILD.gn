@@ -3,7 +3,6 @@
 # found in the LICENSE file.
 
 import("//build/buildflag_header.gni")
-import("//build/config/cast.gni")
 import("//build/config/chrome_build.gni")
 import("//build/config/chromeos/ui_mode.gni")
 import("//build/config/jumbo.gni")
@@ -20,10 +19,7 @@ declare_args() {
   # Whether service side logging (actual calls into the GL driver) is enabled
   # or not.
   enable_gpu_service_logging = false
-  use_glx = false
 }
-
-use_glx = ozone_platform_x11
 
 if (is_android) {
   import("//build/config/android/config.gni")
@@ -43,16 +39,17 @@ buildflag_header("buildflags") {
   ]
 }
 
-config("gl_config") {
-  defines = []
-  if (use_glx) {
-    defines += [
-      "USE_GLX",
-    ]
-  }
-  if (use_egl) {
-    defines += [ "USE_EGL" ]
-  }
+jumbo_component("gl_enums") {
+  sources = [
+    "gl_enums.cc",
+    "gl_enums.h",
+    "gl_enums_implementation_autogen.h",
+    "gl_export.h",
+  ]
+
+  defines = [ "GL_IMPLEMENTATION" ]
+
+  public_deps = [ "//third_party/angle:includes" ]
 }
 
 jumbo_component("gl") {
@@ -60,31 +57,39 @@ jumbo_component("gl") {
 
   sources = [
     "angle_implementation.h",
-    "dual_gpu_state.cc",
-    "dual_gpu_state.h",
+    "angle_platform_impl.cc",
+    "angle_platform_impl.h",
     "egl_timestamps.h",
+    "egl_util.cc",
+    "egl_util.h",
     "gl_bindings.cc",
     "gl_bindings.h",
+    "gl_bindings_autogen_egl.cc",
+    "gl_bindings_autogen_egl.h",
     "gl_bindings_autogen_gl.cc",
     "gl_bindings_autogen_gl.h",
     "gl_context.cc",
     "gl_context.h",
+    "gl_context_egl.cc",
+    "gl_context_egl.h",
     "gl_context_stub.cc",
     "gl_context_stub.h",
     "gl_display.cc",
     "gl_display.h",
+    "gl_display_egl_util.cc",
+    "gl_display_egl_util.h",
     "gl_display_manager.cc",
     "gl_display_manager.h",
-    "gl_enums.cc",
-    "gl_enums.h",
-    "gl_enums_implementation_autogen.h",
-    "gl_export.h",
+    "gl_egl_api_implementation.cc",
+    "gl_egl_api_implementation.h",
     "gl_features.cc",
     "gl_features.h",
     "gl_fence.cc",
     "gl_fence.h",
     "gl_fence_arb.cc",
     "gl_fence_arb.h",
+    "gl_fence_egl.cc",
+    "gl_fence_egl.h",
     "gl_fence_nv.cc",
     "gl_fence_nv.h",
     "gl_gl_api_implementation.cc",
@@ -105,6 +110,8 @@ jumbo_component("gl") {
     "gl_stub_autogen_gl.h",
     "gl_surface.cc",
     "gl_surface.h",
+    "gl_surface_egl.cc",
+    "gl_surface_egl.h",
     "gl_surface_format.cc",
     "gl_surface_format.h",
     "gl_surface_overlay.cc",
@@ -128,6 +135,8 @@ jumbo_component("gl") {
     "progress_reporter.h",
     "scoped_binders.cc",
     "scoped_binders.h",
+    "scoped_egl_image.cc",
+    "scoped_egl_image.h",
     "scoped_make_current.cc",
     "scoped_make_current.h",
     "scoped_make_current_unsafe.cc",
@@ -136,6 +145,8 @@ jumbo_component("gl") {
     "scoped_restore_texture.h",
     "shader_tracking.cc",
     "shader_tracking.h",
+    "shared_gl_fence_egl.cc",
+    "shared_gl_fence_egl.h",
     "sync_control_vsync_provider.cc",
     "sync_control_vsync_provider.h",
     "trace_util.cc",
@@ -146,45 +157,21 @@ jumbo_component("gl") {
     "presenter.cc",
   ]
 
-  if (is_android) {
-    sources += [
-      "android/scoped_a_native_window.cc",
-      "android/scoped_a_native_window.h",
-      "android/scoped_java_surface.cc",
-      "android/scoped_java_surface.h",
-      "android/scoped_java_surface_control.cc",
-      "android/scoped_java_surface_control.h",
-      "android/surface_texture.cc",
-      "android/surface_texture.h",
-      "android/surface_texture_listener.cc",
-      "android/surface_texture_listener.h",
-    ]
-  }
-
   configs += [ "//build/config:precompiled_headers" ]
   defines = [ "GL_IMPLEMENTATION" ]
   if (enable_gpu_service_logging) {
     defines += [ "GPU_ENABLE_SERVICE_LOGGING" ]
   }
 
-  include_dirs = [ "//third_party/mesa_headers" ]
-
-  all_dependent_configs = [ ":gl_config" ]
-
-  public_configs = [ "//third_party/khronos:khronos_headers" ]
-
   deps = [
     ":buildflags",
-    "//base/third_party/dynamic_annotations",
     "//build:chromeos_buildflags",
     "//mojo/public/cpp/bindings",
-
-    # ANGLE includes are used cross-platform.
-    "//third_party/angle:includes",
     "//ui/base:ozone_buildflags",
     "//ui/gfx/mojom",
   ]
   public_deps = [
+    ":gl_enums",
     "//base",
     "//third_party/mesa_headers",
     "//ui/events/platform",
@@ -199,73 +186,22 @@ jumbo_component("gl") {
       "//third_party/swiftshader/src/Vulkan:swiftshader_libvulkan",
     ]
   }
-  if (use_egl) {
+
+  if (enable_vulkan) {
     sources += [
-      "angle_platform_impl.cc",
-      "angle_platform_impl.h",
-      "egl_util.cc",
-      "egl_util.h",
-      "gl_bindings_autogen_egl.cc",
-      "gl_bindings_autogen_egl.h",
-      "gl_context_egl.cc",
-      "gl_context_egl.h",
-      "gl_display_egl_util.cc",
-      "gl_display_egl_util.h",
-      "gl_egl_api_implementation.cc",
-      "gl_egl_api_implementation.h",
-      "gl_fence_egl.cc",
-      "gl_fence_egl.h",
-      "gl_surface_egl.cc",
-      "gl_surface_egl.h",
-      "scoped_egl_image.cc",
-      "scoped_egl_image.h",
-      "shared_gl_fence_egl.cc",
-      "shared_gl_fence_egl.h",
+      "gl_angle_util_vulkan.cc",
+      "gl_angle_util_vulkan.h",
     ]
-
-    if (enable_vulkan) {
-      sources += [
-        "gl_angle_util_vulkan.cc",
-        "gl_angle_util_vulkan.h",
-      ]
-
-      jumbo_excluded_sources += [
-        "gl_angle_util_vulkan.cc",
-      ]
-    }
-
-    if (is_android) {
-      sources += [
-        "android/egl_fence_utils.cc",
-        "android/egl_fence_utils.h",
-        "gl_surface_egl_surface_control.cc",
-        "gl_surface_egl_surface_control.h",
-      ]
-    }
-
-    if (is_android || is_chromeos || is_linux) {
-      # Windows has USE_EGL but doesn't support base::FileDescriptor.
-      # libsync isn't supported or needed on MacOSX.
-      # Fuchsia is excluded due to a libsync dependency and because it's
-      # unknown if the required EGL_ANDROID_native_fence_sync extension works
-      # there. If it does and there's a use case, this could be revisited.
-      sources += [
-        "gl_fence_android_native_fence_sync.cc",
-        "gl_fence_android_native_fence_sync.h",
-      ]
-
-      deps += [ "//third_party/libsync" ]
-    }
   }
 
   if (use_ozone) {
-    if (use_egl && !is_fuchsia) {
+    if (!is_fuchsia) {
       data_deps += [
         "//third_party/angle:libEGL",
         "//third_party/angle:libGLESv2",
       ]
       if (angle_shared_libvulkan && !is_chromeos) {
-        data_deps += [ "//third_party/vulkan-deps/vulkan-loader/src:libvulkan" ]
+        data_deps += [ "//third_party/vulkan-loader/src:libvulkan" ]
       }
     }
   }
@@ -276,8 +212,6 @@ jumbo_component("gl") {
       "gl_surface_egl_x11.h",
       "gl_surface_egl_x11_gles2.cc",
       "gl_surface_egl_x11_gles2.h",
-      "gl_surface_glx_x11.cc",
-      "gl_surface_glx_x11.h",
     ]
 
     deps += [
@@ -287,31 +221,13 @@ jumbo_component("gl") {
       "//ui/gfx/linux:gpu_memory_buffer_support_x11",
     ]
 
-    assert(use_egl)
     data_deps += [
       "//third_party/angle:libEGL",
       "//third_party/angle:libGLESv2",
     ]
     if (angle_shared_libvulkan && !is_chromeos) {
-      data_deps += [ "//third_party/vulkan-deps/vulkan-loader/src:libvulkan" ]
+      data_deps += [ "//third_party/vulkan-loader/src:libvulkan" ]
     }
-  }
-
-  if (use_glx) {
-    sources += [
-      "gl_bindings_autogen_glx.cc",
-      "gl_bindings_autogen_glx.h",
-      "gl_context_glx.cc",
-      "gl_context_glx.h",
-      "gl_glx_api_implementation.cc",
-      "gl_glx_api_implementation.h",
-      "gl_surface_glx.h",
-    ]
-
-    deps += [
-      "//ui/base/x",
-      "//ui/gfx/x",
-    ]
   }
 
   if (is_win) {
@@ -331,30 +247,18 @@ jumbo_component("gl") {
       "dcomp_surface_registry.h",
       "debug_utils.cc",
       "debug_utils.h",
+      "delegated_ink_point_renderer_gpu.cc",
       "delegated_ink_point_renderer_gpu.h",
-      "direct_composition_child_surface_win.cc",
-      "direct_composition_child_surface_win.h",
       "direct_composition_support.cc",
       "direct_composition_support.h",
-      "direct_composition_surface_win.cc",
-      "direct_composition_surface_win.h",
       "gl_angle_util_win.cc",
       "gl_angle_util_win.h",
-      "gl_bindings_autogen_wgl.cc",
-      "gl_bindings_autogen_wgl.h",
-      "gl_context_wgl.cc",
-      "gl_context_wgl.h",
       "gl_fence_win.cc",
       "gl_fence_win.h",
-      "gl_surface_wgl.cc",
-      "gl_surface_wgl.h",
-      "gl_wgl_api_implementation.cc",
-      "gl_wgl_api_implementation.h",
       "hdr_metadata_helper_win.cc",
       "hdr_metadata_helper_win.h",
       "swap_chain_presenter.cc",
       "swap_chain_presenter.h",
-      "vsync_observer.h",
       "vsync_provider_win.cc",
       "vsync_provider_win.h",
       "vsync_thread_win.cc",
@@ -376,7 +280,6 @@ jumbo_component("gl") {
       "//ui/gfx/mojom:dxgi_info",
     ]
 
-    assert(use_egl)
     data_deps += [
       "//third_party/angle:libEGL",
       "//third_party/angle:libGLESv2",
@@ -388,9 +291,10 @@ jumbo_component("gl") {
       ]
     }
     if (angle_shared_libvulkan && !is_chromeos) {
-      data_deps += [ "//third_party/vulkan-deps/vulkan-loader/src:libvulkan" ]
+      data_deps += [ "//third_party/vulkan-loader/src:libvulkan" ]
     }
   }
+
   if (is_apple) {
     sources += [
       "ca_renderer_layer_params.cc",
@@ -398,8 +302,6 @@ jumbo_component("gl") {
       "egl_surface_io_surface.cc",
       "egl_surface_io_surface.h",
       "gl_display_egl.mm",
-      "gl_fence_apple.cc",
-      "gl_fence_apple.h",
     ]
 
     # Do not compile with ARC because //gpu/command_buffer code is not able to
@@ -413,18 +315,13 @@ jumbo_component("gl") {
       "IOSurface.framework",
     ]
   }
-  if (is_mac) {
-    sources += [
-      "dual_gpu_state_mac.cc",
-      "dual_gpu_state_mac.h",
-    ]
 
+  if (is_mac) {
     frameworks += [
       "OpenGL.framework",
       "Quartz.framework",
     ]
 
-    assert(use_egl)
     data_deps += [
       "//third_party/angle:libEGL",
       "//third_party/angle:libGLESv2",
@@ -439,7 +336,25 @@ jumbo_component("gl") {
 
     defines += [ "GL_SILENCE_DEPRECATION" ]
   }
+
   if (is_android) {
+    sources += [
+      "android/egl_fence_utils.cc",
+      "android/egl_fence_utils.h",
+      "android/scoped_a_native_window.cc",
+      "android/scoped_a_native_window.h",
+      "android/scoped_java_surface.cc",
+      "android/scoped_java_surface.h",
+      "android/scoped_java_surface_control.cc",
+      "android/scoped_java_surface_control.h",
+      "android/surface_texture.cc",
+      "android/surface_texture.h",
+      "android/surface_texture_listener.cc",
+      "android/surface_texture_listener.h",
+      "gl_surface_egl_surface_control.cc",
+      "gl_surface_egl_surface_control.h",
+    ]
+
     defines += [
       "GL_GLEXT_PROTOTYPES",
       "EGL_EGLEXT_PROTOTYPES",
@@ -449,23 +364,34 @@ jumbo_component("gl") {
 
     deps += [ ":gl_jni_headers" ]
   }
+
+  if (is_android || is_chromeos || is_linux) {
+    # Windows doesn't support base::FileDescriptor.
+    # libsync isn't supported or needed on MacOSX.
+    # Fuchsia is excluded due to a libsync dependency and because it's
+    # unknown if the required EGL_ANDROID_native_fence_sync extension works
+    # there. If it does and there's a use case, this could be revisited.
+    sources += [
+      "gl_fence_android_native_fence_sync.cc",
+      "gl_fence_android_native_fence_sync.h",
+    ]
+
+    deps += [ "//third_party/libsync" ]
+  }
+
   if ((is_linux || is_chromeos) && enable_vulkan) {
     deps += [ "//third_party/angle:angle_gpu_info_util" ]
   }
 
   if (is_qtwebengine && !is_android && !is_ios) {
-    if (use_egl) {
-      data_deps -= [
-        "//third_party/angle:libEGL",
-        "//third_party/angle:libGLESv2",
-      ]
-    }
+    data_deps -= [
+      "//third_party/angle:libEGL",
+      "//third_party/angle:libGLESv2",
+    ]
   }
 }
 
 if (is_mac) {
-  assert(use_egl)
-
   # We need to copy the ANGLE and SwiftShader libraries so that the
   # bundle_data dependencies have a "copy" target type. Otherwise for
   # "shared_library" target types it will try to link things into
@@ -515,12 +441,11 @@ jumbo_static_library("gl_unittest_utils") {
     "gpu_timing_fake.h",
   ]
 
-  configs += [ "//third_party/khronos:khronos_headers" ]
-
   deps = [
     ":gl",
     "//testing/gmock",
     "//testing/gtest",
+    "//third_party/angle:includes",
   ]
 }
 
@@ -535,8 +460,6 @@ jumbo_static_library("test_support") {
     "test/gl_test_support.h",
   ]
 
-  configs += [ "//third_party/khronos:khronos_headers" ]
-
   public_deps = [
     ":gl",
     "//ui/gl/init",
@@ -544,6 +467,7 @@ jumbo_static_library("test_support") {
   deps = [
     "//base/test:test_support",
     "//testing/gtest",
+    "//third_party/angle:includes",
     "//ui/base",
   ]
 
@@ -553,10 +477,6 @@ jumbo_static_library("test_support") {
 
   if (use_ozone) {
     deps += [ "//ui/ozone" ]
-
-    if (is_chromeos) {
-      deps += [ "//ui/gfx/linux:gbm" ]
-    }
   }
 
   # If the run-time search path isn't set properly when we use ANGLE with its
@@ -593,39 +513,26 @@ test("gl_unittests") {
   use_xvfb = use_xvfb_in_this_config
 
   sources = [
+    "egl_api_unittest.cc",
     "gl_api_unittest.cc",
+    "gl_display_manager_unittest.cc",
     "gl_version_info_unittest.cc",
     "gpu_timing_unittest.cc",
+    "test/egl_initialization_displays_unittest.cc",
   ]
 
-  if (use_egl && !use_ozone) {
+  if (!use_ozone) {
     sources += [ "gl_surface_egl_unittest.cc" ]
-  }
-
-  if (use_egl) {
-    sources += [
-      "egl_api_unittest.cc",
-      "gl_display_manager_unittest.cc",
-      "test/egl_initialization_displays_unittest.cc",
-    ]
-  }
-
-  if (use_glx) {
-    sources += [ "glx_api_unittest.cc" ]
   }
 
   if (is_win) {
     sources += [
       "dcomp_presenter_unittest.cc",
       "delegated_ink_point_renderer_gpu_unittest.cc",
-      "direct_composition_surface_win_unittest.cc",
       "gl_fence_win_unittest.cc",
       "hdr_metadata_helper_win_unittest.cc",
-      "wgl_api_unittest.cc",
     ]
   }
-
-  include_dirs = [ "//third_party/khronos" ]
 
   deps = [
     ":gl",
@@ -635,6 +542,7 @@ test("gl_unittests") {
     "//base",
     "//testing/gmock",
     "//testing/gtest",
+    "//third_party/angle:includes",
     "//ui/base:base",
     "//ui/gfx",
     "//ui/gfx:test_support",

@@ -26,3 +26,12 @@
     \l{QGrpcOperation::} {finished} signal is emitted. After receiving this
     signal, the handler can be safely reassigned or destroyed.
 //! [rpc-lifetime-note]
+
+//! [http2-metadata-note]
+    \note QGrpcHttp2Channel transports metadata as HTTP/2 headers. \b{Keys} are
+    case-insensitive ASCII strings. You must avoid using the internal prefixes:
+    \c{:} (pseudo-header), \c{grpc-}, or \c{qtgrpc-}. \b{Values} may be either
+    ASCII strings or binary data. For more information, see
+    \l{https://www.rfc-editor.org/rfc/rfc7540.html#section-8.1.2}{RFC 7540,
+    Section 8.1.2}.
+//! [http2-metadata-note]

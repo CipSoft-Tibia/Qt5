@@ -12,19 +12,32 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import("../../../../../gn/perfetto_tp_tables.gni")
 import("../../../../../gn/test.gni")
 
 assert(enable_perfetto_trace_processor_sqlite)
 
 source_set("functions") {
   sources = [
+    "base64.cc",
+    "base64.h",
     "clock_functions.h",
+    "counter_intervals.cc",
+    "counter_intervals.h",
     "create_function.cc",
     "create_function.h",
     "create_view_function.cc",
     "create_view_function.h",
+    "dominator_tree.cc",
+    "dominator_tree.h",
+    "graph_scan.cc",
+    "graph_scan.h",
+    "graph_traversal.cc",
+    "graph_traversal.h",
     "import.cc",
     "import.h",
+    "interval_intersect.cc",
+    "interval_intersect.h",
     "layout_functions.cc",
     "layout_functions.h",
     "math.cc",
@@ -35,12 +48,17 @@ source_set("functions") {
     "sqlite3_str_split.h",
     "stack_functions.cc",
     "stack_functions.h",
+    "structural_tree_partition.cc",
+    "structural_tree_partition.h",
     "to_ftrace.cc",
     "to_ftrace.h",
+    "type_builders.cc",
+    "type_builders.h",
     "utils.h",
     "window_functions.h",
   ]
   deps = [
+    ":tables",
     "../../..:demangle",
     "../../..:export_json",
     "../../..:metatrace",
@@ -60,6 +78,7 @@ source_set("functions") {
     "../../../perfetto_sql/intrinsics/table_functions",
     "../../../sqlite",
     "../../../storage",
+    "../../../tables",
     "../../../types",
     "../../../util",
     "../../../util:profile_builder",
@@ -67,6 +86,8 @@ source_set("functions") {
     "../../../util:sql_argument",
     "../../../util:stdlib",
     "../../engine",
+    "../../parser",
+    "../types",
   ]
   public_deps = [ ":interface" ]
 }
@@ -82,6 +103,10 @@ source_set("interface") {
     "../../../../../include/perfetto/trace_processor:basic_types",
     "../../../../base",
   ]
+}
+
+perfetto_tp_tables("tables") {
+  sources = [ "tables.py" ]
 }
 
 perfetto_unittest_source_set("unittests") {

@@ -19,7 +19,7 @@ CJBig2_HTRDProc::~CJBig2_HTRDProc() = default;
 
 std::unique_ptr<CJBig2_Image> CJBig2_HTRDProc::DecodeArith(
     CJBig2_ArithDecoder* pArithDecoder,
-    JBig2ArithCtx* gbContext,
+    pdfium::span<JBig2ArithCtx> gbContexts,
     PauseIndicatorIface* pPause) {
   std::unique_ptr<CJBig2_Image> HSKIP;
   if (HENABLESKIP == 1) {
@@ -70,7 +70,7 @@ std::unique_ptr<CJBig2_Image> CJBig2_HTRDProc::DecodeArith(
     CJBig2_GRDProc::ProgressiveArithDecodeState state;
     state.pImage = &pImage;
     state.pArithDecoder = pArithDecoder;
-    state.gbContext = gbContext;
+    state.gbContexts = gbContexts;
     state.pPause = nullptr;
     FXCODEC_STATUS status = GRD.StartDecodeArith(&state);
     state.pPause = pPause;
@@ -104,14 +104,14 @@ std::unique_ptr<CJBig2_Image> CJBig2_HTRDProc::DecodeMMR(
     return nullptr;
 
   pStream->alignByte();
-  pStream->offset(3);
+  pStream->addOffset(3);
   for (int32_t J = GSBPP - 2; J >= 0; --J) {
     GRD.StartDecodeMMR(&GSPLANES[J], pStream);
     if (!GSPLANES[J])
       return nullptr;
 
     pStream->alignByte();
-    pStream->offset(3);
+    pStream->addOffset(3);
     GSPLANES[J]->ComposeFrom(0, 0, GSPLANES[J + 1].get(), JBIG2_COMPOSE_XOR);
   }
   return DecodeImage(GSPLANES);

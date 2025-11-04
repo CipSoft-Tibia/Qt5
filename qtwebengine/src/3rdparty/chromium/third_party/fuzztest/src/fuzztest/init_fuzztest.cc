@@ -1,21 +1,41 @@
 #include "./fuzztest/init_fuzztest.h"
 
+#if defined(__linux__)
+#include <unistd.h>
+#endif
+
+#include <algorithm>
+#include <cctype>
+#include <cerrno>
+#include <csignal>
 #include <cstdlib>
+#include <cstring>
+#include <iostream>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
 
 #include "gtest/gtest.h"
+#include "absl/algorithm/container.h"
+#include "absl/base/no_destructor.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/flags/flag.h"
+#include "absl/flags/parse.h"
+#include "absl/flags/reflection.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/str_join.h"
+#include "absl/strings/str_replace.h"
 #include "absl/strings/string_view.h"
+#include "absl/strings/strip.h"
 #include "absl/time/time.h"
 #include "./fuzztest/internal/configuration.h"
 #include "./fuzztest/internal/flag_name.h"
 #include "./fuzztest/internal/googletest_adaptor.h"
 #include "./fuzztest/internal/io.h"
+#include "./fuzztest/internal/logging.h"
 #include "./fuzztest/internal/registry.h"
 #include "./fuzztest/internal/runtime.h"
 
@@ -26,37 +46,43 @@ FUZZTEST_DEFINE_FLAG(
     bool, list_fuzz_tests, false,
     "Prints (to stdout) the list of all available FUZZ_TEST-s in the "
     "binary and exits. I.e., prints the test names that can be run with "
-    "the flag `--" FUZZTEST_FLAG_PREFIX "fuzz=<test name>`.");
+    "the flag `--" FUZZTEST_FLAG_PREFIX "fuzz=<test name>`.")
+    .OnUpdate([]() {
+      fuzztest::internal::SetFuzzTestListingModeValidatorForGoogleTest(
+          absl::GetFlag(FUZZTEST_FLAG(list_fuzz_tests)));
+    });
 
 static constexpr absl::string_view kUnspecified = "<unspecified>";
 
 FUZZTEST_DEFINE_FLAG(
     std::string, fuzz, std::string(kUnspecified),
-    "Runs a single FUZZ_TEST in continuous fuzzing mode. "
-    "E.g., `--" FUZZTEST_FLAG_PREFIX
-    "fuzz=MySuite.MyFuzzTest` runs the given FUZZ_TEST in "
-    "fuzzing mode. You can also provide just a part of the name, e.g., "
+    "Runs a single FUZZ_TEST in continuous fuzzing mode. E.g., "
     "`--" FUZZTEST_FLAG_PREFIX
-    "fuzz=MyFuzz`, if it matches only a single FUZZ_TEST. "
-    "If you have only one fuzz test in your binary, you can also use "
+    "fuzz=MySuite.MyFuzzTest` runs the given FUZZ_TEST in fuzzing mode. You "
+    "can also provide just a part of the name, e.g., "
     "`--" FUZZTEST_FLAG_PREFIX
-    "fuzz=` to run it in fuzzing mode (i.e., by setting the "
-    "flag to empty string). "
-    "In fuzzing mode the selected test runs until a bug is found or "
+    "fuzz=MyFuzz`, if it matches only a single FUZZ_TEST. If you have only one "
+    "fuzz test in your binary, you can also use `--" FUZZTEST_FLAG_PREFIX
+    "fuzz=` to run it in fuzzing mode (i.e., by setting the flag to empty "
+    "string). In fuzzing mode the selected test runs until a bug is found or "
     "until manually stopped. Fuzzing mode uses coverage feedback to "
-    "iteratively build up a corpus of inputs that maximize coverage and "
-    "to reach deep bugs. Note that the binary must be compiled with "
+    "iteratively build up a corpus of inputs that maximize coverage and to "
+    "reach deep bugs. Note that the binary must be compiled with "
     "`--config=fuzztest` for this to work, as it needs coverage "
     "instrumentation.");
 
 FUZZTEST_DEFINE_FLAG(
     absl::Duration, fuzz_for, absl::InfiniteDuration(),
-    "Runs all fuzz tests in fuzzing mode for the specified duration. Can "
+    "Runs all fuzz tests in fuzzing mode up to the specified duration. Can "
     "be combined with --" FUZZTEST_FLAG_PREFIX
-    "fuzz to select a single fuzz tests, or "
-    "with --" FUZZTEST_FLAG_PREFIX
-    "filter to select a subset of fuzz tests. Recommended "
-    "to use with test sharding.");
+    "fuzz to select a single fuzz tests, or with --" GTEST_FLAG_PREFIX_
+    "filter to select a subset of fuzz tests. It's recommended to run the "
+    "tests in the binary in parallel (e.g., "
+    "https://bazel.build/reference/test-encyclopedia#test-sharding). This flag "
+    "can be useful for setting up periodic fuzzing in CI. The specified "
+    "duration is the maximum time used for fuzzing a single FUZZ_TEST or all "
+    "FUZZ_TESTs in the binary, based on the value of --" FUZZTEST_FLAG_PREFIX
+    "time_budget_type.");
 
 FUZZTEST_DEFINE_FLAG(
     std::string, corpus_database,
@@ -76,13 +102,48 @@ FUZZTEST_DEFINE_FLAG(
 
 FUZZTEST_DEFINE_FLAG(bool, reproduce_findings_as_separate_tests, false,
                      "When true, the selected tests replay all crashing inputs "
-                     "in the database as separate TEST-s.");
+                     "in the corpus database as separate TEST-s.");
 
 FUZZTEST_DEFINE_FLAG(
-    bool, replay_coverage_inputs, false,
-    "When true, the selected tests replay coverage inputs in the database for "
-    "a given test. This is useful for measuring the coverage of the corpus "
-    "built up during previously ran fuzzing sessions.");
+    std::string, replay_corpus, std::string(kUnspecified),
+    "Runs a single FUZZ_TEST in corpus replay mode. E.g., "
+    "`--" FUZZTEST_FLAG_PREFIX
+    "replay_corpus=MySuite.MyFuzzTest` replays the corpus from the corpus "
+    "database for the given FUZZ_TEST. You can also provide just a part of the "
+    "name, e.g., `--" FUZZTEST_FLAG_PREFIX
+    "replay_corpus=MyFuzz`, if it matches only a single FUZZ_TEST. If you have "
+    "only one fuzz test in your binary, you can also use "
+    "`--" FUZZTEST_FLAG_PREFIX
+    "replay_corpus=` to run it in the corpus replay mode (i.e., by setting the "
+    "flag to empty string). In corpus replay mode the selected test replays "
+    "the inputs that exercise unique coverage (corpus) from the corpus "
+    "database. Note that this does not include crashing inputs (counterexample "
+    "findings). Replaying coverage (non-crashing) inputs is useful for "
+    "measuring the coverage of the corpus built up during previously ran "
+    "fuzzing sessions, or to catch newly introduced regressions at presubmit "
+    "time in CI.");
+
+FUZZTEST_DEFINE_FLAG(
+    absl::Duration, replay_corpus_for, absl::ZeroDuration(),
+    "Runs all fuzz tests in corpus replay mode up to the specified duration. "
+    "Can be combined with --" FUZZTEST_FLAG_PREFIX
+    "fuzz to select a single fuzz test, or with --" GTEST_FLAG_PREFIX_
+    "filter to select a subset of fuzz tests. To replay the entire corpus for "
+    "each FUZZ_TEST in the binary, set this flag to `inf` (infinite time "
+    "budget). It's recommended to run the tests in the binary in parallel "
+    "(e.g., https://bazel.build/reference/test-encyclopedia#test-sharding). "
+    "The specified duration is the maximum time used for replaying the corpus "
+    "for a single FUZZ_TEST or all FUZZ_TESTs in the binary, based on the "
+    "value of --" FUZZTEST_FLAG_PREFIX "time_budget_type.");
+
+FUZZTEST_DEFINE_FLAG(
+    fuzztest::internal::TimeBudgetType, time_budget_type,
+    fuzztest::internal::TimeBudgetType::kPerTest,
+    "Determines whether the time budget specified by --" FUZZTEST_FLAG_PREFIX
+    "fuzz_for or --" FUZZTEST_FLAG_PREFIX
+    "replay_corpus_for is for each FUZZ_TEST or for all 'N' running FUZZ_TESTs "
+    ". In the latter case, each FUZZ_TEST will run for at most (1/N)th of the "
+    "time budget.");
 
 FUZZTEST_DEFINE_FLAG(
     size_t, stack_limit_kb, 128,
@@ -147,29 +208,58 @@ std::string GetMatchingFuzzTestOrExit(std::string_view name) {
 
 namespace {
 
-internal::Configuration CreateConfigurationsFromFlags(
-    absl::string_view binary_path) {
-  const std::string binary_identifier =
-      std::string(internal::Basename(binary_path));
-  std::string binary_corpus = absl::StrCat(
-      absl::GetFlag(FUZZTEST_FLAG(corpus_database)), "/", binary_identifier);
-  if (getenv("TEST_SRCDIR")) {
-    binary_corpus = absl::StrCat(getenv("TEST_SRCDIR"), "/", binary_corpus);
+std::optional<absl::Duration> GetFuzzingTime() {
+  absl::Duration fuzz_time_limit = absl::GetFlag(FUZZTEST_FLAG(fuzz_for));
+  if (fuzz_time_limit <= absl::ZeroDuration()) {
+    fuzz_time_limit = absl::InfiniteDuration();
   }
-  return internal::Configuration{
-      .corpus_database = internal::CorpusDatabase(
-          binary_corpus, absl::GetFlag(FUZZTEST_FLAG(replay_coverage_inputs)),
-          absl::GetFlag(FUZZTEST_FLAG(reproduce_findings_as_separate_tests))),
-      .stack_limit = absl::GetFlag(FUZZTEST_FLAG(stack_limit_kb)) * 1024,
-      .rss_limit = absl::GetFlag(FUZZTEST_FLAG(rss_limit_mb)) * 1024 * 1024,
-      .time_limit_per_input =
-          absl::GetFlag(FUZZTEST_FLAG(time_limit_per_input)),
-  };
+  if (absl::GetFlag(FUZZTEST_FLAG(fuzz)) == kUnspecified &&
+      fuzz_time_limit == absl::InfiniteDuration()) {
+    return std::nullopt;
+  }
+  return fuzz_time_limit;
 }
 
+std::optional<absl::Duration> GetReplayCorpusTime() {
+  absl::Duration replay_corpus_time_limit =
+      absl::GetFlag(FUZZTEST_FLAG(replay_corpus_for));
+  if (absl::GetFlag(FUZZTEST_FLAG(replay_corpus)) == kUnspecified &&
+      replay_corpus_time_limit <= absl::ZeroDuration()) {
+    return std::nullopt;
+  }
+  if (absl::GetFlag(FUZZTEST_FLAG(replay_corpus)) != kUnspecified &&
+      replay_corpus_time_limit <= absl::ZeroDuration()) {
+    replay_corpus_time_limit = absl::InfiniteDuration();
+  }
+  return replay_corpus_time_limit;
+}
+
+internal::Configuration CreateConfigurationsFromFlags(
+    absl::string_view binary_identifier) {
+  bool reproduce_findings_as_separate_tests =
+      absl::GetFlag(FUZZTEST_FLAG(reproduce_findings_as_separate_tests));
+  std::optional<absl::Duration> fuzzing_time_limit = GetFuzzingTime();
+  std::optional<absl::Duration> replay_corpus_time_limit =
+      GetReplayCorpusTime();
+  absl::Duration time_limit = fuzzing_time_limit ? *fuzzing_time_limit
+                              : replay_corpus_time_limit
+                                  ? *replay_corpus_time_limit
+                                  : absl::ZeroDuration();
+  return internal::Configuration{
+      absl::GetFlag(FUZZTEST_FLAG(corpus_database)),
+      /*stats_root=*/"",
+      std::string(binary_identifier),
+      /*fuzz_tests=*/ListRegisteredTests(),
+      /*fuzz_tests_in_current_shard=*/ListRegisteredTests(),
+      reproduce_findings_as_separate_tests,
+      /*stack_limit=*/absl::GetFlag(FUZZTEST_FLAG(stack_limit_kb)) * 1024,
+      /*rss_limit=*/absl::GetFlag(FUZZTEST_FLAG(rss_limit_mb)) * 1024 * 1024,
+      absl::GetFlag(FUZZTEST_FLAG(time_limit_per_input)), time_limit,
+      absl::GetFlag(FUZZTEST_FLAG(time_budget_type))};
+}
 }  // namespace
 
-void RunSpecifiedFuzzTest(std::string_view binary_id, std::string_view name) {
+void RunSpecifiedFuzzTest(std::string_view name, std::string_view binary_id) {
   const std::string matching_fuzz_test = GetMatchingFuzzTestOrExit(name);
   internal::Configuration configuration =
       CreateConfigurationsFromFlags({binary_id.data(), binary_id.size()});
@@ -182,7 +272,7 @@ void RunSpecifiedFuzzTest(std::string_view binary_id, std::string_view name) {
   });
 }
 
-void InitFuzzTest(int* argc, char*** argv) {
+void InitFuzzTest(int* argc, char*** argv, std::string_view binary_id) {
   const bool is_listing = absl::GetFlag(FUZZTEST_FLAG(list_fuzz_tests));
   if (is_listing) {
     for (const auto& name : ListRegisteredTests()) {
@@ -190,33 +280,71 @@ void InitFuzzTest(int* argc, char*** argv) {
     }
     std::exit(0);
   }
-
+  std::optional<absl::Duration> fuzzing_time_limit = GetFuzzingTime();
+  std::optional<absl::Duration> replay_corpus_time_limit =
+      GetReplayCorpusTime();
+  FUZZTEST_INTERNAL_CHECK(
+      !fuzzing_time_limit || !replay_corpus_time_limit,
+      "Cannot run in fuzzing and corpus replay mode at the same time.");
   const auto test_to_fuzz = absl::GetFlag(FUZZTEST_FLAG(fuzz));
-  const bool is_test_to_fuzz_specified = test_to_fuzz != kUnspecified;
-  if (is_test_to_fuzz_specified) {
+  const auto test_to_replay_corpus =
+      absl::GetFlag(FUZZTEST_FLAG(replay_corpus));
+  const auto specified_test =
+      test_to_fuzz != kUnspecified ? test_to_fuzz : test_to_replay_corpus;
+  const bool is_test_specified = specified_test != kUnspecified;
+  if (is_test_specified) {
     const std::string matching_fuzz_test =
-        GetMatchingFuzzTestOrExit(test_to_fuzz);
+        GetMatchingFuzzTestOrExit(specified_test);
     // Delegate the test to GoogleTest.
     GTEST_FLAG_SET(filter, matching_fuzz_test);
   }
 
-  const auto duration = absl::GetFlag(FUZZTEST_FLAG(fuzz_for));
-  const bool is_duration_specified =
-      absl::ZeroDuration() < duration && duration < absl::InfiniteDuration();
-  if (is_duration_specified) {
-    // TODO(b/307513669): Use the Configuration class instead of Runtime.
-    internal::Runtime::instance().SetFuzzTimeLimit(duration);
-  }
-
+  std::string derived_binary_id =
+      binary_id.empty() ? std::string(internal::Basename(*argv[0]))
+                        : std::string(binary_id);
+  std::optional<std::string> reproduction_command_template;
   internal::Configuration configuration =
-      CreateConfigurationsFromFlags(*argv[0]);
+      CreateConfigurationsFromFlags(derived_binary_id);
+  configuration.reproduction_command_template = reproduction_command_template;
   internal::RegisterFuzzTestsAsGoogleTests(argc, argv, configuration);
 
-  const RunMode run_mode = is_test_to_fuzz_specified || is_duration_specified
-                               ? RunMode::kFuzz
-                               : RunMode::kUnitTest;
+  const bool is_fuzzing_or_replaying =
+      (fuzzing_time_limit || replay_corpus_time_limit);
+  if (is_fuzzing_or_replaying && !is_test_specified) {
+    absl::flat_hash_set<std::string> fuzz_tests = {
+        configuration.fuzz_tests.begin(), configuration.fuzz_tests.end()};
+    std::vector<std::string> non_fuzz_tests;
+    for (const auto* test : internal::GetRegisteredTests()) {
+      const std::string test_name =
+          absl::StrCat(test->test_suite_name(), ".", test->name());
+      if (!fuzz_tests.contains(test_name)) {
+        non_fuzz_tests.push_back(test_name);
+      }
+    }
+    if (!non_fuzz_tests.empty()) {
+      // Run only the fuzz tests, and not the unit tests.
+      // TODO: b/340232436 -- This is needed because we currently rely on a fuzz
+      // test being the first test to run so that Centipede can get the
+      // serialized configuration from the binary.
+      std::string filter = absl::StrCat(
+          GTEST_FLAG_GET(filter),
+          // When the filter already includes the negative patterns, append to
+          // the negative patterns.
+          absl::StrContains(GTEST_FLAG_GET(filter), '-') ? ":" : "-",
+          absl::StrJoin(non_fuzz_tests, ":"));
+      GTEST_FLAG_SET(filter, filter);
+    }
+  }
+  const RunMode run_mode =
+      fuzzing_time_limit.has_value() ? RunMode::kFuzz : RunMode::kUnitTest;
   // TODO(b/307513669): Use the Configuration class instead of Runtime.
   internal::Runtime::instance().SetRunMode(run_mode);
+}
+
+void ParseAbslFlags(int argc, char** argv) {
+  std::vector<char*> positional_args;
+  std::vector<absl::UnrecognizedFlag> unrecognized_flags;
+  absl::ParseAbseilFlagsOnly(argc, argv, positional_args, unrecognized_flags);
 }
 
 }  // namespace fuzztest

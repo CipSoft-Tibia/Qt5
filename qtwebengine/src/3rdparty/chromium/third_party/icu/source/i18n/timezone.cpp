@@ -732,7 +732,8 @@ void TimeZone::getOffset(UDate date, UBool local, int32_t& rawOffset,
         int32_t year, month, dom, dow, millis;
         double day = ClockMath::floorDivide(date, U_MILLIS_PER_DAY, &millis);
 
-        Grego::dayToFields(day, year, month, dom, dow);
+        Grego::dayToFields(day, year, month, dom, dow, ec);
+        if (U_FAILURE(ec)) return;
 
         dstOffset = getOffset(GregorianCalendar::AD, year, month, dom,
                               (uint8_t) dow, millis,
@@ -1589,6 +1590,22 @@ TimeZone::getCanonicalID(const UnicodeString& id, UnicodeString& canonicalID, UB
         }
     }
     return canonicalID;
+}
+
+UnicodeString&
+TimeZone::getIanaID(const UnicodeString& id, UnicodeString& ianaID, UErrorCode& status)
+{
+    ianaID.remove();
+    if (U_FAILURE(status)) {
+        return ianaID;
+    }
+    if (id.compare(ConstChar16Ptr(UNKNOWN_ZONE_ID), UNKNOWN_ZONE_ID_LENGTH) == 0) {
+        status = U_ILLEGAL_ARGUMENT_ERROR;
+        ianaID.setToBogus();
+    } else {
+        ZoneMeta::getIanaID(id, ianaID, status);
+    }
+    return ianaID;
 }
 
 UnicodeString&

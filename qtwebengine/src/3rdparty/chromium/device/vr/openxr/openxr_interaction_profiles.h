@@ -13,6 +13,11 @@
 
 namespace device {
 
+// A special system name used for hand tracking profiles to help differentiate
+// between the set of profiles to use when hand joint data is exposed (this one)
+// or the hand joint data is not exposed (the default one).
+inline constexpr char kOpenXrHandJointSystem[] = "hand-joints";
+
 enum class OpenXrHandednessType {
   kLeft = 0,
   kRight = 1,
@@ -86,7 +91,6 @@ struct OpenXrControllerInteractionProfile {
   mojom::OpenXrInteractionProfileType type;
   std::string path;
   std::string required_extension;
-  GamepadMapping mapping;
   std::vector<OpenXrButtonPathMap> common_button_maps;
   std::vector<OpenXrButtonPathMap> left_button_maps;
   std::vector<OpenXrButtonPathMap> right_button_maps;
@@ -96,7 +100,6 @@ struct OpenXrControllerInteractionProfile {
       mojom::OpenXrInteractionProfileType type,
       std::string path,
       std::string required_extension,
-      GamepadMapping mapping,
       std::vector<OpenXrButtonPathMap> common_button_maps,
       std::vector<OpenXrButtonPathMap> left_button_maps,
       std::vector<OpenXrButtonPathMap> right_button_maps,

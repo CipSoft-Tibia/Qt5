@@ -411,6 +411,7 @@ TEST(DocumentScanTypeConvertersTest, GetScannerListResponse_Usb) {
   scanner_in->connection_type = mojom::ScannerInfo_ConnectionType::kUsb;
   scanner_in->secure = true;
   scanner_in->image_formats = {"image/png", "image/jpeg"};
+  // scanner_in->protocol_type is unset.
   input->scanners.emplace_back(std::move(scanner_in));
 
   auto output = input.To<document_scan::GetScannerListResponse>();
@@ -426,6 +427,7 @@ TEST(DocumentScanTypeConvertersTest, GetScannerListResponse_Usb) {
   EXPECT_EQ(scanner_out.secure, true);
   EXPECT_THAT(scanner_out.image_formats,
               UnorderedElementsAre("image/png", "image/jpeg"));
+  EXPECT_EQ(scanner_out.protocol_type, "");
 }
 
 TEST(DocumentScanTypeConvertersTest, GetScannerListResponse_Network) {
@@ -440,6 +442,7 @@ TEST(DocumentScanTypeConvertersTest, GetScannerListResponse_Network) {
   scanner_in->connection_type = mojom::ScannerInfo_ConnectionType::kNetwork;
   scanner_in->secure = true;
   scanner_in->image_formats = {"image/png", "image/jpeg"};
+  scanner_in->protocol_type = "protocol_type";
   input->scanners.emplace_back(std::move(scanner_in));
 
   auto output = input.To<document_scan::GetScannerListResponse>();
@@ -456,6 +459,7 @@ TEST(DocumentScanTypeConvertersTest, GetScannerListResponse_Network) {
   EXPECT_EQ(scanner_out.secure, true);
   EXPECT_THAT(scanner_out.image_formats,
               UnorderedElementsAre("image/png", "image/jpeg"));
+  EXPECT_EQ(scanner_out.protocol_type, "protocol_type");
 }
 
 TEST(DocumentScanTypeConvertersTest, OpenScannerResponse_Empty) {
@@ -707,6 +711,17 @@ TEST(DocumentScanTypeConvertersTest, StartScanOptions_Success) {
   input.format = "format";
   auto output = mojom::StartScanOptions::From(input);
   EXPECT_EQ(output->format, "format");
+  EXPECT_FALSE(output->max_read_size.has_value());
+}
+
+TEST(DocumentScanTypeConvertersTest, StartScanOptions_WithMaxReadSize) {
+  document_scan::StartScanOptions input;
+  input.format = "format";
+  input.max_read_size = 100000;
+  auto output = mojom::StartScanOptions::From(input);
+  EXPECT_EQ(output->format, "format");
+  ASSERT_TRUE(output->max_read_size.has_value());
+  EXPECT_EQ(output->max_read_size.value(), 100000U);
 }
 
 TEST(DocumentScanTypeConvertersTest, StartScanResponse_Empty) {

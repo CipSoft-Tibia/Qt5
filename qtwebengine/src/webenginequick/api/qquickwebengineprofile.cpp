@@ -6,7 +6,6 @@
 #include "qquickwebenginedownloadrequest.h"
 #include "qquickwebenginesettings_p.h"
 #include "qquickwebenginescriptcollection_p.h"
-#include "qquickwebenginescriptcollection_p_p.h"
 #include "qquickwebengineview_p_p.h"
 
 #include "profile_adapter.h"
@@ -23,8 +22,8 @@
 
 #include <QtCore/qdir.h>
 #include <QtCore/qfileinfo.h>
-#include <QtQml/qqmlcontext.h>
 #include <QtQml/qqmlengine.h>
+#include <QtQml/qqmlinfo.h>
 
 using QtWebEngineCore::ProfileAdapter;
 
@@ -242,9 +241,15 @@ void QQuickWebEngineProfilePrivate::cleanDownloads()
     m_ongoingDownloads.clear();
 }
 
-void QQuickWebEngineProfilePrivate::downloadRequested(DownloadItemInfo &info)
+void QQuickWebEngineProfilePrivate::downloadRequested(const DownloadItemInfo &info)
 {
     Q_Q(QQuickWebEngineProfile);
+
+    if (!q->receivers(SIGNAL(downloadRequested(QQuickWebEngineDownloadRequest*)))) {
+        m_profileAdapter->acceptDownload(info.id, info.accepted, info.useDownloadTargetCallback, info.path,
+                                         info.savePageFormat);
+        return;
+    }
 
     Q_ASSERT(!m_ongoingDownloads.contains(info.id));
     QWebEngineDownloadRequestPrivate *itemPrivate =
@@ -262,6 +267,7 @@ void QQuickWebEngineProfilePrivate::downloadRequested(DownloadItemInfo &info)
     itemPrivate->savePageFormat = static_cast<QWebEngineDownloadRequest::SavePageFormat>(
                 info.savePageFormat);
     itemPrivate->isSavePageDownload = info.isSavePageDownload;
+    itemPrivate->useDownloadTargetCallback = info.useDownloadTargetCallback;
     if (info.page && info.page->clientType() == QtWebEngineCore::WebContentsAdapterClient::QmlClient)
         itemPrivate->adapterClient = info.page;
     else
@@ -275,17 +281,9 @@ void QQuickWebEngineProfilePrivate::downloadRequested(DownloadItemInfo &info)
     QQmlEngine::setObjectOwnership(download, QQmlEngine::JavaScriptOwnership);
     Q_EMIT q->downloadRequested(download);
 
-    QWebEngineDownloadRequest::DownloadState state = download->state();
-    info.path = QDir(download->downloadDirectory()).filePath(download->downloadFileName());
-    info.savePageFormat = itemPrivate->savePageFormat;
-    info.accepted = state != QWebEngineDownloadRequest::DownloadCancelled
-                      && state != QWebEngineDownloadRequest::DownloadRequested;
-
-    if (state == QWebEngineDownloadRequest::DownloadRequested) {
-        // Delete unaccepted downloads.
-        info.accepted = false;
-        delete download;
-    }
+    // Callbacks of automatically accepted save operations have to be called here
+    if (info.isSavePageDownload && info.accepted)
+        itemPrivate->answer();
 }
 
 void QQuickWebEngineProfilePrivate::downloadUpdated(const DownloadItemInfo &info)
@@ -325,16 +323,12 @@ void QQuickWebEngineProfilePrivate::clearHttpCacheCompleted()
 
 QQuickWebEngineScriptCollection *QQuickWebEngineProfilePrivate::getUserScripts()
 {
-    Q_Q(QQuickWebEngineProfile);
     if (!m_scriptCollection)
         m_scriptCollection.reset(
             new QQuickWebEngineScriptCollection(
-                new QQuickWebEngineScriptCollectionPrivate(
+                new QWebEngineScriptCollection(
                     new QWebEngineScriptCollectionPrivate(
-                        m_profileAdapter->userResourceController()))));
-
-    if (!m_scriptCollection->qmlEngine())
-        m_scriptCollection->setQmlEngine(qmlEngine(q));
+                        profileAdapter()->userResourceController()))));
 
     return m_scriptCollection.data();
 }
@@ -366,6 +360,9 @@ QQuickWebEngineScriptCollection *QQuickWebEngineProfilePrivate::getUserScripts()
 
     Each web engine view has an associated profile. Views that do not have a specific profile set
     share a common one, which is off-the-record by default.
+
+    \note It is recommended to use the new \l {WebEngineProfilePrototype} for profile creation
+    from 6.9
 */
 
 /*!
@@ -414,6 +411,27 @@ QQuickWebEngineScriptCollection *QQuickWebEngineProfilePrivate::getUserScripts()
 QQuickWebEngineProfile::QQuickWebEngineProfile(QObject *parent)
     : QObject(parent),
       d_ptr(new QQuickWebEngineProfilePrivate(new QtWebEngineCore::ProfileAdapter()))
+{
+    qmlWarning(this) << QStringLiteral(
+            "Please use WebEngineProfilePrototype for profile creation from 6.9, as this function "
+            "will be deprecated in the future releases");
+    d_ptr->q_ptr = this;
+}
+
+/*!
+    Constructs a new profile with the storage name \a storageName and parent \a parent.
+
+    The storage name must be unique.
+
+    A disk-based QQuickWebEngineProfile should be destroyed on or before application exit, otherwise the cache
+    and persistent data may not be fully flushed to disk.
+
+    \since QtWebEngine 6.9
+    \sa storageName()
+*/
+QQuickWebEngineProfile::QQuickWebEngineProfile(const QString &storageName, QObject *parent)
+    : QObject(parent)
+    , d_ptr(new QQuickWebEngineProfilePrivate(new QtWebEngineCore::ProfileAdapter(storageName)))
 {
     d_ptr->q_ptr = this;
 }
@@ -1290,14 +1308,6 @@ QList<QWebEnginePermission> QQuickWebEngineProfile::listPermissionsForPermission
     }
 
     return d->profileAdapter()->listPermissions(QUrl(), permissionType);
-}
-
-void QQuickWebEngineProfile::ensureQmlContext(const QObject *object)
-{
-    if (!qmlContext(this)) {
-        auto engine = qmlEngine(object);
-        QQmlEngine::setContextForObject(this, new QQmlContext(engine, engine));
-    }
 }
 
 QT_END_NAMESPACE

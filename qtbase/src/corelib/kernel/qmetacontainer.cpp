@@ -44,6 +44,16 @@ QT_BEGIN_NAMESPACE
     \brief The QMetaContainer class provides common functionality for sequential
         and associative containers.
 
+    QMetaContainer is part of Qt's meta-type system that allows type-erased access
+    to container-like types at runtime.
+
+    It serves as a common base for accessing properties of containers in a generic
+    way, such as size, iteration, and clearing operations, without knowing the actual
+    container type.
+
+    Derived classes, such as QMetaSequence, provide specialized interfaces for
+    sequential containers.
+
     \ingroup objectmodel
 
     \compares equality
@@ -176,7 +186,7 @@ void QMetaSequence::addValueAtBegin(void *container, const void *value) const
 
 /*!
     Returns \c true if values can be removed from the beginning of the container
-    using \l removeValue() can be placed at the, otherwise returns \c false.
+    using \l removeValue(), otherwise returns \c false.
 
     \sa removeValueAtBegin(), canRemoveValueAtEnd()
  */
@@ -230,7 +240,7 @@ void QMetaSequence::addValueAtEnd(void *container, const void *value) const
 
 /*!
     Returns \c true if values can be removed from the end of the container
-    using \l removeValue() can be placed at the, otherwise returns \c false.
+    using \l removeValue(), otherwise returns \c false.
 
     \sa removeValueAtEnd(), canRemoveValueAtBegin()
  */
@@ -324,7 +334,7 @@ void QMetaSequence::valueAtIndex(const void *container, qsizetype index, void *r
 }
 
 /*!
-    Returns \c true if an value can be written to the container by index,
+    Returns \c true if a value can be written to the container by index,
     otherwise \c false.
 
     \sa setValueAtIndex()
@@ -396,7 +406,7 @@ bool QMetaSequence::canRemoveValue() const
 }
 
 /*!
-    Removes an value from the \a container if possible. If
+    Removes a value from the \a container if possible. If
     \l canRemoveValue() returns \c false, no value is removed. Else, if
     \l canRemoveValueAtEnd() returns \c true, the last value in
     the \a container is removed. Else, if \l canRemoveValueAtBegin()
@@ -457,7 +467,7 @@ void *QMetaContainer::begin(void *container) const
 
     Returns \c nullptr if the container doesn't offer any non-const iterators.
 
-    \sa hasIterator(), end(), constBegin(), constEnd(), destroyIterator()
+    \sa hasIterator(), begin(), constBegin(), constEnd(), destroyIterator()
  */
 void *QMetaContainer::end(void *container) const
 {

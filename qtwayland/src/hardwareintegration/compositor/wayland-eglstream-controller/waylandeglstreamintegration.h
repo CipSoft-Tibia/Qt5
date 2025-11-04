@@ -29,7 +29,7 @@ private:
     QScopedPointer<WaylandEglStreamClientBufferIntegrationPrivate> d_ptr;
 };
 
-struct BufferState;
+struct ControllerBufferState;
 
 class WaylandEglStreamClientBuffer : public QtWayland::ClientBuffer
 {
@@ -48,7 +48,7 @@ private:
 
     WaylandEglStreamClientBuffer(WaylandEglStreamClientBufferIntegration* integration, wl_resource *bufferResource);
 
-    BufferState *d = nullptr;
+    ControllerBufferState *d = nullptr;
     WaylandEglStreamClientBufferIntegration *m_integration = nullptr;
 };
 

@@ -894,10 +894,6 @@ error::Error DoDrawElementsInstancedBaseVertexBaseInstanceANGLE(
     GLint basevertices,
     GLuint baseinstances);
 error::Error DoVertexAttribDivisorANGLE(GLuint index, GLuint divisor);
-error::Error DoProduceTextureDirectCHROMIUM(GLuint texture_client_id,
-                                            const volatile GLbyte* mailbox);
-error::Error DoCreateAndConsumeTextureINTERNAL(GLuint texture_client_id,
-                                               const volatile GLbyte* mailbox);
 error::Error DoBindUniformLocationCHROMIUM(GLuint program,
                                            GLint location,
                                            const char* name);
@@ -913,7 +909,6 @@ error::Error DoWaitSyncTokenCHROMIUM(CommandBufferNamespace namespace_id,
                                      CommandBufferId command_buffer_id,
                                      GLuint64 release_count);
 error::Error DoDrawBuffersEXT(GLsizei count, const volatile GLenum* bufs);
-error::Error DoDiscardBackbufferCHROMIUM();
 
 error::Error DoFlushDriverCachesCHROMIUM();
 error::Error DoMatrixLoadfCHROMIUM(GLenum matrixMode,

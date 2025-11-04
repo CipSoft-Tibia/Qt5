@@ -20,9 +20,8 @@
 #include "components/signin/public/base/signin_switches.h"
 #include "components/signin/public/identity_manager/accounts_in_cookie_jar_info.h"
 #include "components/signin/public/identity_manager/identity_manager.h"
+#include "components/signin/public/identity_manager/identity_utils.h"
 #include "components/signin/public/identity_manager/primary_account_mutator.h"
-#include "components/supervised_user/core/common/buildflags.h"
-#include "components/supervised_user/core/common/features.h"
 
 #if BUILDFLAG(IS_CHROMEOS_LACROS)
 #include "chrome/browser/lacros/account_manager/signin_helper_lacros.h"
@@ -109,6 +108,13 @@ SigninManager::CreateAccountSelectionInProgressHandle() {
 }
 
 void SigninManager::UpdateUnconsentedPrimaryAccount() {
+  if (!signin::IsImplicitBrowserSigninOrExplicitDisabled(
+          &identity_manager_.get(), &prefs_.get())) {
+    // Only update the primary account implicitly if the user hasn't explicitly
+    // signed in or `switches::kExplicitBrowserSigninUIOnDesktop` is disabled.
+    return;
+  }
+
   if (live_account_selection_handles_count_ > 0) {
     // Don't update the unconsented primary account while some UI flow is also
     // manipulating it.
@@ -123,14 +129,13 @@ void SigninManager::UpdateUnconsentedPrimaryAccount() {
   CoreAccountInfo account = ComputeUnconsentedPrimaryAccountInfo();
 
   if (!account.IsEmpty()) {
-    if (!base::FeatureList::IsEnabled(switches::kUnoDesktop) &&
-        identity_manager_->GetPrimaryAccountInfo(
+    if (identity_manager_->GetPrimaryAccountInfo(
             signin::ConsentLevel::kSignin) != account) {
       DCHECK(
           !identity_manager_->HasPrimaryAccount(signin::ConsentLevel::kSync));
-      // The access point is the same as the access point that added the
-      // account. If it is unknown, report `ACCESS_POINT_DESKTOP_SIGNIN_MANAGER`
-      // instead.
+      // The access point is the point from where the last authentication
+      // happened, either through adding the account or a reauth. If it is
+      // unknown, report `ACCESS_POINT_DESKTOP_SIGNIN_MANAGER` instead.
       signin_metrics::AccessPoint access_point =
           identity_manager_->FindExtendedAccountInfo(account).access_point;
       if (access_point == signin_metrics::AccessPoint::ACCESS_POINT_UNKNOWN) {
@@ -155,8 +160,7 @@ void SigninManager::UpdateUnconsentedPrimaryAccount() {
     signin_metrics::ProfileSignout source =
         signin_metrics::ProfileSignout::kSigninManagerUpdateUPA;
 #endif
-    identity_manager_->GetPrimaryAccountMutator()->ClearPrimaryAccount(
-        source, signin_metrics::SignoutDelete::kIgnoreMetric);
+    identity_manager_->GetPrimaryAccountMutator()->ClearPrimaryAccount(source);
   }
 }
 
@@ -224,23 +228,19 @@ CoreAccountInfo SigninManager::ComputeUnconsentedPrimaryAccountInfo() const {
 
   bool is_current_primary_account_valid =
       IsValidUnconsentedPrimaryAccount(current_primary_account);
-#if BUILDFLAG(ENABLE_SUPERVISED_USERS)
   if (is_current_primary_account_valid) {
     AccountInfo extended_account_info =
         identity_manager_->FindExtendedAccountInfo(current_primary_account);
     bool is_subject_to_parental_controls =
         extended_account_info.capabilities.is_subject_to_parental_controls() ==
         signin::Tribool::kTrue;
-    if (is_subject_to_parental_controls &&
-        base::FeatureList::IsEnabled(
-            supervised_user::kClearingCookiesKeepsSupervisedUsersSignedIn)) {
+    if (is_subject_to_parental_controls) {
       // For supervised users, in some cases like clear browsing data including
       // cookies, they shouldn't be signed out. If the refresh token is valid
       // and not in error state, the account reconcilor will rebuild cookies.
       return current_primary_account;
     }
   }
-#endif
 
   signin::AccountsInCookieJarInfo cookie_info =
       identity_manager_->GetAccountsInCookieJar();
@@ -339,7 +339,8 @@ void SigninManager::OnAccountsInCookieUpdated(
 
 void SigninManager::OnErrorStateOfRefreshTokenUpdatedForAccount(
     const CoreAccountInfo& account_info,
-    const GoogleServiceAuthError& error) {
+    const GoogleServiceAuthError& error,
+    signin_metrics::SourceForRefreshTokenOperation token_operation_source) {
   CoreAccountInfo current_account =
       identity_manager_->GetPrimaryAccountInfo(signin::ConsentLevel::kSignin);
 
@@ -357,6 +358,8 @@ void SigninManager::OnErrorStateOfRefreshTokenUpdatedForAccount(
 }
 
 void SigninManager::OnSigninAllowedPrefChanged() {
+  // TODO(crbug.com/350699437): Use kUserDisabledAllowChromeSignIn instead of
+  // kSigninManagerUpdateUPA in UpdateUnconsentedPrimaryAccount().
   UpdateUnconsentedPrimaryAccount();
 }
 

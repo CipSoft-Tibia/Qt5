@@ -15,17 +15,18 @@
 #include "./centipede/centipede_default_callbacks.h"
 
 #include <cstddef>
+#include <string>
 #include <string_view>
 #include <vector>
 
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "./centipede/centipede_callbacks.h"
-#include "./centipede/defs.h"
 #include "./centipede/environment.h"
-#include "./centipede/logging.h"  // IWYU pragma: keep
 #include "./centipede/mutation_input.h"
 #include "./centipede/runner_result.h"
+#include "./common/defs.h"
+#include "./common/logging.h"  // IWYU pragma: keep
 
 namespace centipede {
 
@@ -55,6 +56,15 @@ size_t CentipedeDefaultCallbacks::GetSeeds(size_t num_seeds,
     return num_seeds;
   else
     return CentipedeCallbacks::GetSeeds(num_seeds, seeds);
+}
+
+std::string CentipedeDefaultCallbacks::GetSerializedTargetConfig() {
+  std::string serialized_target_config;
+  if (GetSerializedTargetConfigViaExternalBinary(env_.binary,
+                                                 serialized_target_config)) {
+    return serialized_target_config;
+  }
+  return CentipedeCallbacks::GetSerializedTargetConfig();
 }
 
 void CentipedeDefaultCallbacks::Mutate(

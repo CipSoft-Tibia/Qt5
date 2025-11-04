@@ -4,8 +4,9 @@
 
 #include "third_party/blink/renderer/core/paint/paint_invalidator.h"
 
+#include <optional>
+
 #include "base/trace_event/trace_event.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "third_party/blink/renderer/core/accessibility/ax_object_cache.h"
 #include "third_party/blink/renderer/core/editing/frame_selection.h"
 #include "third_party/blink/renderer/core/frame/local_frame.h"
@@ -35,6 +36,10 @@ void PaintInvalidator::UpdatePaintingLayer(const LayoutObject& object,
   if (object.HasLayer() &&
       To<LayoutBoxModelObject>(object).HasSelfPaintingLayer()) {
     context.painting_layer = To<LayoutBoxModelObject>(object).Layer();
+  } else if (object.IsInlineRubyText()) {
+    // Physical fragments and fragment items for ruby-text boxes are not
+    // managed by inline parents.
+    context.painting_layer = object.PaintingLayer();
   }
 
   if (object.IsFloating()) {
@@ -257,11 +262,6 @@ bool PaintInvalidator::InvalidatePaint(
         tree_builder_context->fragment_context;
     UpdateFromTreeBuilderContext(fragment_tree_builder_context, context);
     UpdateLayoutShiftTracking(object, fragment_tree_builder_context, context);
-    if (RuntimeEnabledFeatures::IntersectionOptimizationEnabled() &&
-        object.ShouldCheckLayoutForPaintInvalidation()) {
-      object.GetMutableForPainting()
-          .InvalidateIntersectionObserverCachedRects();
-    }
   } else {
     context.old_paint_offset = context.fragment_data->PaintOffset();
   }
@@ -275,6 +275,17 @@ bool PaintInvalidator::InvalidatePaint(
        // Delay invalidation if the client has never been painted.
        reason == PaintInvalidationReason::kJustCreated))
     pending_delayed_paint_invalidations_.push_back(&object);
+
+  if (RuntimeEnabledFeatures::IntersectionOptimizationEnabled() &&
+      object.ShouldCheckLayoutForPaintInvalidation() &&
+      (IsLayoutPaintInvalidationReason(reason) ||
+       reason == PaintInvalidationReason::kJustCreated ||
+       // We don't invalidate paint of visibility:hidden objects, but observe
+       // intersection for them.
+       object.StyleRef().UsedVisibility() != EVisibility::kVisible)) {
+    object.GetFrameView()->SetIntersectionObservationState(
+        LocalFrameView::kDesired);
+  }
 
   return reason != PaintInvalidationReason::kNone;
 }

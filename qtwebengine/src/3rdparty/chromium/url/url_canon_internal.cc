@@ -2,6 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#ifdef UNSAFE_BUFFERS_BUILD
+// TODO(crbug.com/350788890): Remove this and spanify to fix the errors.
+#pragma allow_unsafe_buffers
+#endif
+
 #include "url/url_canon_internal.h"
 
 #include <errno.h>
@@ -19,6 +24,7 @@
 #include "base/bits.h"
 #include "base/numerics/safe_conversions.h"
 #include "base/strings/utf_string_conversion_utils.h"
+#include "url/url_features.h"
 
 namespace url {
 
@@ -408,11 +414,15 @@ void SetupOverrideComponents(const char* base,
   DoOverrideComponent(repl_source.password, repl_parsed.password,
                       &source->password, &parsed->password);
 
-  // Our host should be empty if not present, so override the default setup.
   DoOverrideComponent(repl_source.host, repl_parsed.host, &source->host,
                       &parsed->host);
-  if (parsed->host.len == -1)
-    parsed->host.len = 0;
+  if (!url::IsUsingStandardCompliantNonSpecialSchemeURLParsing()) {
+    // For backward compatibility, the following is probably required while the
+    // flag is disabled by default.
+    if (parsed->host.len == -1) {
+      parsed->host.len = 0;
+    }
+  }
 
   DoOverrideComponent(repl_source.port, repl_parsed.port, &source->port,
                       &parsed->port);

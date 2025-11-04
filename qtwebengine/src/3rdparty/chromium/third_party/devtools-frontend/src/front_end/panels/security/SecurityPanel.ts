@@ -9,6 +9,7 @@ import type * as Platform from '../../core/platform/platform.js';
 import * as SDK from '../../core/sdk/sdk.js';
 import * as Protocol from '../../generated/protocol.js';
 import * as NetworkForward from '../../panels/network/forward/forward.js';
+import * as IconButton from '../../ui/components/icon_button/icon_button.js';
 import * as UI from '../../ui/legacy/legacy.js';
 import * as VisualLogging from '../../ui/visual_logging/visual_logging.js';
 
@@ -19,6 +20,7 @@ import {
   Events,
   type PageVisibleSecurityState,
   SecurityModel,
+  securityStateCompare,
   SecurityStyleExplanation,
   SummaryMessages,
 } from './SecurityModel.js';
@@ -488,6 +490,53 @@ const SignatureSchemeStrings = new Map([
   [0x0806, 'RSA-PSS with SHA-512'],
 ]);
 
+const LOCK_ICON_NAME = 'lock';
+const WARNING_ICON_NAME = 'warning';
+const INFO_ICON_NAME = 'info';
+
+function getSecurityStateIconForDetailedView(
+    securityState: Protocol.Security.SecurityState, className: string): IconButton.Icon.Icon {
+  let iconName: string;
+
+  switch (securityState) {
+    case Protocol.Security.SecurityState.Neutral:   // fallthrough
+    case Protocol.Security.SecurityState.Insecure:  // fallthrough
+    case Protocol.Security.SecurityState.InsecureBroken:
+      iconName = WARNING_ICON_NAME;
+      break;
+    case Protocol.Security.SecurityState.Secure:
+      iconName = LOCK_ICON_NAME;
+      break;
+    case Protocol.Security.SecurityState.Info:  // fallthrough
+    case Protocol.Security.SecurityState.Unknown:
+      iconName = INFO_ICON_NAME;
+      break;
+  }
+
+  return IconButton.Icon.create(iconName, className);
+}
+
+function getSecurityStateIconForOverview(
+    securityState: Protocol.Security.SecurityState, className: string): IconButton.Icon.Icon {
+  let iconName: string;
+  switch (securityState) {
+    case Protocol.Security.SecurityState.Unknown:  // fallthrough
+    case Protocol.Security.SecurityState.Neutral:
+      iconName = INFO_ICON_NAME;
+      break;
+    case Protocol.Security.SecurityState.Insecure:  // fallthrough
+    case Protocol.Security.SecurityState.InsecureBroken:
+      iconName = WARNING_ICON_NAME;
+      break;
+    case Protocol.Security.SecurityState.Secure:
+      iconName = LOCK_ICON_NAME;
+      break;
+    case Protocol.Security.SecurityState.Info:
+      throw new Error(`Unexpected security state ${securityState}`);
+  }
+  return IconButton.Icon.create(iconName, className);
+}
+
 export class SecurityPanel extends UI.Panel.PanelWithSidebar implements
     SDK.TargetManager.SDKModelObserver<SecurityModel> {
   readonly mainView: SecurityMainView;
@@ -505,12 +554,21 @@ export class SecurityPanel extends UI.Panel.PanelWithSidebar implements
 
     this.mainView = new SecurityMainView(this);
 
-    const title = document.createElement('span');
-    title.classList.add('title');
-    title.textContent = i18nString(UIStrings.overview);
-    this.sidebarMainViewElement = new SecurityPanelSidebarTreeElement(
-        title, this.setVisibleView.bind(this, this.mainView), 'security-main-view-sidebar-tree-item', 'lock-icon');
-    this.sidebarMainViewElement.tooltip = title.textContent;
+    const getIconForSecurityState = (securityState: Protocol.Security.SecurityState): IconButton.Icon.Icon =>
+        getSecurityStateIconForOverview(securityState, `lock-icon lock-icon-${securityState}`);
+    const getTitleForSecurityState = (_securityState: Protocol.Security.SecurityState): Element => {
+      const title = document.createElement('span');
+      title.classList.add('title');
+      title.textContent = i18nString(UIStrings.overview);
+      return title;
+    };
+    this.sidebarMainViewElement = new SecurityPanelSidebarTreeElement({
+      onSelect: this.setVisibleView.bind(this, this.mainView),
+      getIconForSecurityState,
+      getTitleForSecurityState,
+      className: 'security-main-view-sidebar-tree-item',
+    });
+    this.sidebarMainViewElement.tooltip = i18nString(UIStrings.overview);
     this.sidebarTree = new SecurityPanelSidebarTree(this.sidebarMainViewElement, this.showOrigin.bind(this));
     this.panelSidebarElement().appendChild(this.sidebarTree.element);
 
@@ -546,7 +604,7 @@ export class SecurityPanel extends UI.Panel.PanelWithSidebar implements
       if (names.length > 0) {
         Host.InspectorFrontendHost.InspectorFrontendHostInstance.showCertificateViewer(names);
       }
-    }, {className: 'origin-button', jslogContext: 'security.view-certificate-for-origin'});
+    }, {className: 'origin-button', jslogContext: 'security.view-certificate-for-origin', title: text});
     UI.ARIAUtils.markAsButton(certificateButton);
     return certificateButton;
   }
@@ -572,7 +630,7 @@ export class SecurityPanel extends UI.Panel.PanelWithSidebar implements
     }
 
     const highlightedUrl = document.createElement('span');
-
+    highlightedUrl.classList.add('highlighted-url');
     const scheme = url.substr(0, index);
     const content = url.substr(index + schemeSeparator.length);
     highlightedUrl.createChild('span', 'url-scheme-' + securityState).textContent = scheme;
@@ -650,9 +708,7 @@ export class SecurityPanel extends UI.Panel.PanelWithSidebar implements
       return;
     }
 
-    let securityState: Protocol.Security.SecurityState.Insecure|Protocol.Security.SecurityState =
-        request.securityState() as Protocol.Security.SecurityState;
-
+    let securityState = request.securityState();
     if (request.mixedContentType === Protocol.Security.MixedContentType.Blockable ||
         request.mixedContentType === Protocol.Security.MixedContentType.OptionallyBlockable) {
       securityState = Protocol.Security.SecurityState.Insecure;
@@ -660,10 +716,9 @@ export class SecurityPanel extends UI.Panel.PanelWithSidebar implements
 
     const originState = this.origins.get(origin);
     if (originState) {
-      const oldSecurityState = originState.securityState;
-      originState.securityState = this.securityStateMin(oldSecurityState, securityState);
-      if (oldSecurityState !== originState.securityState) {
-        const securityDetails = request.securityDetails() as Protocol.Network.SecurityDetails | null;
+      if (securityStateCompare(securityState, originState.securityState) < 0) {
+        originState.securityState = securityState;
+        const securityDetails = request.securityDetails();
         if (securityDetails) {
           originState.securityDetails = securityDetails;
         }
@@ -701,13 +756,13 @@ export class SecurityPanel extends UI.Panel.PanelWithSidebar implements
       return;
     }
 
-    let filterKey: string = NetworkForward.UIFilter.MixedContentFilterValues.All;
+    let filterKey: string = NetworkForward.UIFilter.MixedContentFilterValues.ALL;
     if (request.wasBlocked()) {
-      filterKey = NetworkForward.UIFilter.MixedContentFilterValues.Blocked;
+      filterKey = NetworkForward.UIFilter.MixedContentFilterValues.BLOCKED;
     } else if (request.mixedContentType === Protocol.Security.MixedContentType.Blockable) {
-      filterKey = NetworkForward.UIFilter.MixedContentFilterValues.BlockOverridden;
+      filterKey = NetworkForward.UIFilter.MixedContentFilterValues.BLOCK_OVERRIDDEN;
     } else if (request.mixedContentType === Protocol.Security.MixedContentType.OptionallyBlockable) {
-      filterKey = NetworkForward.UIFilter.MixedContentFilterValues.Displayed;
+      filterKey = NetworkForward.UIFilter.MixedContentFilterValues.DISPLAYED;
     }
 
     const currentCount = this.filterRequestCounts.get(filterKey);
@@ -722,11 +777,6 @@ export class SecurityPanel extends UI.Panel.PanelWithSidebar implements
 
   filterRequestCount(filterKey: string): number {
     return this.filterRequestCounts.get(filterKey) || 0;
-  }
-
-  private securityStateMin(stateA: Protocol.Security.SecurityState, stateB: Protocol.Security.SecurityState):
-      Protocol.Security.SecurityState {
-    return SecurityModel.SecurityStateComparator(stateA, stateB) < 0 ? stateA : stateB;
   }
 
   modelAdded(securityModel: SecurityModel): void {
@@ -813,7 +863,6 @@ export class SecurityPanelSidebarTree extends UI.TreeOutline.TreeOutlineInShadow
 
   constructor(mainViewElement: SecurityPanelSidebarTreeElement, showOriginInPanel: (arg0: Origin) => void) {
     super();
-    this.element.setAttribute('jslog', `${VisualLogging.pane().context('security.sidebar')}`);
 
     this.appendChild(mainViewElement);
 
@@ -873,9 +922,16 @@ export class SecurityPanelSidebarTree extends UI.TreeOutline.TreeOutlineInShadow
 
   addOrigin(origin: Platform.DevToolsPath.UrlString, securityState: Protocol.Security.SecurityState): void {
     this.mainViewReloadMessage.hidden = true;
-    const originElement = new SecurityPanelSidebarTreeElement(
-        SecurityPanel.createHighlightedUrl(origin, securityState), this.showOriginInPanel.bind(this, origin),
-        'security-sidebar-tree-item', 'security-property');
+    const getIconForSecurityState = (securityState: Protocol.Security.SecurityState): IconButton.Icon.Icon =>
+        getSecurityStateIconForDetailedView(securityState, `security-property security-property-${securityState}`);
+    const getTitleForSecurityState = (securityState: Protocol.Security.SecurityState): Element =>
+        SecurityPanel.createHighlightedUrl(origin, securityState);
+    const originElement = new SecurityPanelSidebarTreeElement({
+      onSelect: this.showOriginInPanel.bind(this, origin),
+      getIconForSecurityState,
+      getTitleForSecurityState,
+      className: 'security-sidebar-tree-item',
+    });
     originElement.tooltip = origin;
     this.elementsByOrigin.set(origin, originElement);
     this.updateOrigin(origin, securityState);
@@ -950,37 +1006,41 @@ export class SecurityPanelSidebarTree extends UI.TreeOutline.TreeOutlineInShadow
 }
 
 export enum OriginGroup {
+  /* eslint-disable @typescript-eslint/naming-convention -- Used by web_tests. */
   MainOrigin = 'MainOrigin',
   NonSecure = 'NonSecure',
   Secure = 'Secure',
   Unknown = 'Unknown',
+  /* eslint-enable @typescript-eslint/naming-convention */
 }
 
 export class SecurityPanelSidebarTreeElement extends UI.TreeOutline.TreeElement {
   private readonly selectCallback: () => void;
-  private readonly cssPrefix: string;
-  private readonly iconElement: HTMLElement;
   private securityStateInternal: Protocol.Security.SecurityState|null;
 
-  constructor(textElement: Element, selectCallback: () => void, className: string, cssPrefix: string) {
+  #getIconForSecurityState: (securityState: Protocol.Security.SecurityState) => IconButton.Icon.Icon;
+  #getTitleForSecurityState: (securityState: Protocol.Security.SecurityState) => Element;
+
+  constructor(options: {
+    onSelect: () => void,
+    getIconForSecurityState: (securityState: Protocol.Security.SecurityState) => IconButton.Icon.Icon,
+    getTitleForSecurityState: (securityState: Protocol.Security.SecurityState) => Element,
+    className: string,
+  }) {
     super('', false);
-    this.selectCallback = selectCallback;
-    this.cssPrefix = cssPrefix;
-    this.listItemElement.classList.add(className);
-    this.iconElement = this.listItemElement.createChild('div', 'icon');
-    this.iconElement.classList.add(this.cssPrefix);
-    this.listItemElement.appendChild(textElement);
+    this.selectCallback = options.onSelect;
+    this.listItemElement.classList.add(options.className);
+
+    this.#getIconForSecurityState = options.getIconForSecurityState;
+    this.#getTitleForSecurityState = options.getTitleForSecurityState;
     this.securityStateInternal = null;
     this.setSecurityState(Protocol.Security.SecurityState.Unknown);
   }
 
   setSecurityState(newSecurityState: Protocol.Security.SecurityState): void {
-    if (this.securityStateInternal) {
-      this.iconElement.classList.remove(this.cssPrefix + '-' + this.securityStateInternal);
-    }
-
     this.securityStateInternal = newSecurityState;
-    this.iconElement.classList.add(this.cssPrefix + '-' + newSecurityState);
+    this.setLeadingIcons([this.#getIconForSecurityState(newSecurityState)]);
+    this.listItemElement.replaceChildren(this.#getTitleForSecurityState(newSecurityState));
   }
 
   securityState(): Protocol.Security.SecurityState|null {
@@ -1004,7 +1064,7 @@ export class SecurityMainView extends UI.Widget.VBox {
   private securityState: Protocol.Security.SecurityState|null;
   constructor(panel: SecurityPanel) {
     super(true);
-    this.element.setAttribute('jslog', `${VisualLogging.pane().context('security.main-view')}`);
+    this.element.setAttribute('jslog', `${VisualLogging.pane('security.main-view')}`);
 
     this.setMinimumSize(200, 100);
 
@@ -1027,9 +1087,21 @@ export class SecurityMainView extends UI.Widget.VBox {
 
     const lockSpectrum = this.summarySection.createChild('div', 'lock-spectrum');
     this.lockSpectrum = new Map([
-      [Protocol.Security.SecurityState.Secure, lockSpectrum.createChild('div', 'lock-icon lock-icon-secure')],
-      [Protocol.Security.SecurityState.Neutral, lockSpectrum.createChild('div', 'lock-icon lock-icon-neutral')],
-      [Protocol.Security.SecurityState.Insecure, lockSpectrum.createChild('div', 'lock-icon lock-icon-insecure')],
+      [
+        Protocol.Security.SecurityState.Secure,
+        lockSpectrum.appendChild(
+            getSecurityStateIconForOverview(Protocol.Security.SecurityState.Secure, 'lock-icon lock-icon-secure')),
+      ],
+      [
+        Protocol.Security.SecurityState.Neutral,
+        lockSpectrum.appendChild(
+            getSecurityStateIconForOverview(Protocol.Security.SecurityState.Neutral, 'lock-icon lock-icon-neutral')),
+      ],
+      [
+        Protocol.Security.SecurityState.Insecure,
+        lockSpectrum.appendChild(
+            getSecurityStateIconForOverview(Protocol.Security.SecurityState.Insecure, 'lock-icon lock-icon-insecure')),
+      ],
     ]);
     UI.Tooltip.Tooltip.install(
         this.getLockSpectrumDiv(Protocol.Security.SecurityState.Secure), i18nString(UIStrings.secure));
@@ -1062,8 +1134,9 @@ export class SecurityMainView extends UI.Widget.VBox {
     const explanationSection = parent.createChild('div', 'security-explanation');
     explanationSection.classList.add('security-explanation-' + explanation.securityState);
 
-    explanationSection.createChild('div', 'security-property')
-        .classList.add('security-property-' + explanation.securityState);
+    const icon = getSecurityStateIconForDetailedView(
+        explanation.securityState, 'security-property security-property-' + explanation.securityState);
+    explanationSection.appendChild(icon);
     const text = explanationSection.createChild('div', 'security-explanation-text');
 
     const explanationHeader = text.createChild('div', 'security-explanation-title');
@@ -1380,11 +1453,11 @@ export class SecurityMainView extends UI.Widget.VBox {
           case Protocol.Security.MixedContentType.Blockable:
             this.addMixedContentExplanation(
                 this.securityExplanationsMain, explanation,
-                NetworkForward.UIFilter.MixedContentFilterValues.BlockOverridden);
+                NetworkForward.UIFilter.MixedContentFilterValues.BLOCK_OVERRIDDEN);
             break;
           case Protocol.Security.MixedContentType.OptionallyBlockable:
             this.addMixedContentExplanation(
-                this.securityExplanationsMain, explanation, NetworkForward.UIFilter.MixedContentFilterValues.Displayed);
+                this.securityExplanationsMain, explanation, NetworkForward.UIFilter.MixedContentFilterValues.DISPLAYED);
             break;
           default:
             this.addExplanation(this.securityExplanationsMain, explanation);
@@ -1393,7 +1466,7 @@ export class SecurityMainView extends UI.Widget.VBox {
       }
     }
 
-    if (this.panel.filterRequestCount(NetworkForward.UIFilter.MixedContentFilterValues.Blocked) > 0) {
+    if (this.panel.filterRequestCount(NetworkForward.UIFilter.MixedContentFilterValues.BLOCKED) > 0) {
       const explanation = {
         securityState: Protocol.Security.SecurityState.Info,
         summary: i18nString(UIStrings.blockedMixedContent),
@@ -1403,7 +1476,7 @@ export class SecurityMainView extends UI.Widget.VBox {
         title: '',
       } as Protocol.Security.SecurityStateExplanation;
       this.addMixedContentExplanation(
-          this.securityExplanationsMain, explanation, NetworkForward.UIFilter.MixedContentFilterValues.Blocked);
+          this.securityExplanationsMain, explanation, NetworkForward.UIFilter.MixedContentFilterValues.BLOCKED);
     }
   }
 
@@ -1424,17 +1497,13 @@ export class SecurityMainView extends UI.Widget.VBox {
       return;
     }
 
-    const requestsAnchor = element.createChild('div', 'security-mixed-content devtools-link') as HTMLElement;
+    const requestsAnchor =
+        element.createChild('button', 'security-mixed-content devtools-link text-button link-style') as HTMLElement;
     UI.ARIAUtils.markAsLink(requestsAnchor);
     requestsAnchor.tabIndex = 0;
     requestsAnchor.textContent = i18nString(UIStrings.viewDRequestsInNetworkPanel, {n: filterRequestCount});
 
     requestsAnchor.addEventListener('click', this.showNetworkFilter.bind(this, filterKey));
-    requestsAnchor.addEventListener('keydown', event => {
-      if (event.key === 'Enter') {
-        this.showNetworkFilter(filterKey, event);
-      }
-    });
   }
 
   showNetworkFilter(filterKey: string, e: Event): void {
@@ -1453,7 +1522,7 @@ export class SecurityOriginView extends UI.Widget.VBox {
   private readonly originLockIcon: HTMLElement;
   constructor(panel: SecurityPanel, origin: Platform.DevToolsPath.UrlString, originState: OriginState) {
     super();
-    this.element.setAttribute('jslog', `${VisualLogging.pane().context('security.origin-view')}`);
+    this.element.setAttribute('jslog', `${VisualLogging.pane('security.origin-view')}`);
     this.panel = panel;
     this.setMinimumSize(200, 100);
 
@@ -1465,8 +1534,10 @@ export class SecurityOriginView extends UI.Widget.VBox {
     UI.ARIAUtils.markAsHeading(titleDiv, 1);
 
     const originDisplay = titleSection.createChild('div', 'origin-display');
-    this.originLockIcon = originDisplay.createChild('span', 'security-property');
-    this.originLockIcon.classList.add('security-property-' + originState.securityState);
+    this.originLockIcon = originDisplay.createChild('span');
+    const icon = getSecurityStateIconForDetailedView(
+        originState.securityState, `security-property security-property-${originState.securityState}`);
+    this.originLockIcon.appendChild(icon);
 
     originDisplay.appendChild(SecurityPanel.createHighlightedUrl(origin, originState.securityState));
 
@@ -1478,7 +1549,7 @@ export class SecurityOriginView extends UI.Widget.VBox {
         {filterType: NetworkForward.UIFilter.FilterType.Domain, filterValue: parsedURL.host},
         {filterType: NetworkForward.UIFilter.FilterType.Scheme, filterValue: parsedURL.scheme},
       ]));
-    }, {jslogContext: 'security.view-requests-in-network-panel'});
+    }, {jslogContext: 'reveal-in-network'});
     originNetworkDiv.appendChild(originNetworkButton);
     UI.ARIAUtils.markAsLink(originNetworkButton);
 
@@ -1707,14 +1778,12 @@ export class SecurityOriginView extends UI.Widget.VBox {
   }
 
   setSecurityState(newSecurityState: Protocol.Security.SecurityState): void {
-    for (const className of Array.prototype.slice.call(this.originLockIcon.classList)) {
-      if (className.startsWith('security-property-')) {
-        this.originLockIcon.classList.remove(className);
-      }
-    }
-
-    this.originLockIcon.classList.add('security-property-' + newSecurityState);
+    this.originLockIcon.removeChildren();
+    const icon = getSecurityStateIconForDetailedView(
+        newSecurityState, `security-property security-property-${newSecurityState}`);
+    this.originLockIcon.appendChild(icon);
   }
+
   override wasShown(): void {
     super.wasShown();
     this.registerCSSFiles([originViewStyles, lockIconStyles]);

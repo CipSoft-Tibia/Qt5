@@ -20,6 +20,7 @@
 */
 
 #include <widgetutil.h>
+#include <visualutil.h>
 #include <QtNetwork/private/qtnetworkglobal_p.h>
 #include <QtWebEngineCore/qtwebenginecore-config.h>
 #include <QtWebEngineCore/private/qtwebenginecoreglobal_p.h>
@@ -49,9 +50,6 @@
 #include <QWebChannel>
 #endif
 #include <httpserver.h>
-#include <qnetworkcookiejar.h>
-#include <qnetworkreply.h>
-#include <qnetworkrequest.h>
 #include <qwebengineclienthints.h>
 #include <qwebenginedownloadrequest.h>
 #include <qwebenginedesktopmediarequest.h>
@@ -92,6 +90,11 @@ static void removeRecursive(const QString& dirname)
         else
             dir.remove(entries[i].fileName());
     QDir().rmdir(dirname);
+}
+
+bool fuzzyEqual(float a, float b, float epsilon = 1e-4f)
+{
+    return std::fabs(a - b) <= epsilon;
 }
 
 struct TestBasePage : QWebEnginePage
@@ -181,8 +184,7 @@ private Q_SLOTS:
     void requestQuota_data();
     void requestQuota();
 
-
-    // Tests from tst_QWebEngineFrame
+    // Tests from pre-6.8 tst_QWebEngineFrame
     void symmetricUrl();
     void progressSignal();
     void urlChange();
@@ -507,7 +509,7 @@ void tst_QWebEnginePage::geolocationRequestJS()
     QVERIFY(QTest::qWaitForWindowExposed(&view));
 
     if (evaluateJavaScriptSync(newPage, QLatin1String("!navigator.geolocation")).toBool())
-        W_QSKIP("Geolocation is not supported.", SkipSingle);
+        QSKIP("Geolocation is not supported.");
 
     evaluateJavaScriptSync(newPage, "var errorCode = 0; var done = false; function error(err) { errorCode = err.code; done = true; } function success(pos) { done = true; } navigator.geolocation.getCurrentPosition(success, error)");
 
@@ -581,6 +583,9 @@ void tst_QWebEnginePage::callbackSpyDeleted()
 
 void tst_QWebEnginePage::pasteImage()
 {
+    if (QGuiApplication::platformName().startsWith(QLatin1String("wayland"), Qt::CaseInsensitive))
+        QSKIP("Wayland: Manipulating the clipboard requires real input events. Can't auto test.");
+
     // Pixels with an alpha value of 0 will have different RGB values after the
     // test -> clipboard -> webengine -> test roundtrip.
     // Clear the alpha channel to make QCOMPARE happy.
@@ -906,23 +911,6 @@ void tst_QWebEnginePage::popupFormSubmission()
     // Check if the form submission was OK.
     QTRY_VERIFY(page.createdWindows[0]->url().toString().contains("?foo=bar"));
 }
-
-class TestNetworkManager : public QNetworkAccessManager
-{
-public:
-    TestNetworkManager(QObject* parent) : QNetworkAccessManager(parent) {}
-
-    QList<QUrl> requestedUrls;
-    QList<QNetworkRequest> requests;
-
-protected:
-    QNetworkReply* createRequest(Operation op, const QNetworkRequest &request, QIODevice* outgoingData) override
-    {
-        requests.append(request);
-        requestedUrls.append(request.url());
-        return QNetworkAccessManager::createRequest(op, request, outgoingData);
-    }
-};
 
 void tst_QWebEnginePage::multipleProfilesAndLocalStorage()
 {
@@ -1503,6 +1491,10 @@ void tst_QWebEnginePage::comboBoxPopupPositionAfterMove()
 #if defined(Q_OS_MACOS) && (defined(__arm64__) || defined(__aarch64__))
     QSKIP("This test crashes for Apple M1");
 #endif
+
+    if (QGuiApplication::platformName().startsWith(QLatin1String("wayland"), Qt::CaseInsensitive))
+        QSKIP("Wayland: Moving the window requires real input events. Can't auto test.");
+
     QWebEngineView view;
     QTRY_VERIFY(QGuiApplication::primaryScreen());
     view.move(QGuiApplication::primaryScreen()->availableGeometry().topLeft());
@@ -2340,96 +2332,6 @@ void tst_QWebEnginePage::urlChange()
     QCOMPARE(urlSpy.takeFirst().value(0).toUrl(), testUrl);
 }
 
-class FakeReply : public QNetworkReply {
-    Q_OBJECT
-
-public:
-    static const QUrl urlFor404ErrorWithoutContents;
-
-    FakeReply(const QNetworkRequest& request, QObject* parent = 0)
-        : QNetworkReply(parent)
-    {
-        setOperation(QNetworkAccessManager::GetOperation);
-        setRequest(request);
-        setUrl(request.url());
-        if (request.url() == QUrl("qrc:/test1.html")) {
-            setHeader(QNetworkRequest::LocationHeader, QString("qrc:/test2.html"));
-            setAttribute(QNetworkRequest::RedirectionTargetAttribute, QUrl("qrc:/test2.html"));
-            QTimer::singleShot(0, this, SLOT(continueRedirect()));
-        }
-#if QT_CONFIG(openssl)
-        else if (request.url() == QUrl("qrc:/fake-ssl-error.html")) {
-            setError(QNetworkReply::SslHandshakeFailedError, tr("Fake error!"));
-            QTimer::singleShot(0, this, SLOT(continueError()));
-        }
-#endif
-        else if (request.url().host() == QLatin1String("abcdef.abcdef")) {
-            setError(QNetworkReply::HostNotFoundError, tr("Invalid URL"));
-            QTimer::singleShot(0, this, SLOT(continueError()));
-        } else if (request.url() == FakeReply::urlFor404ErrorWithoutContents) {
-            setError(QNetworkReply::ContentNotFoundError, "Not found");
-            setAttribute(QNetworkRequest::HttpStatusCodeAttribute, 404);
-            QTimer::singleShot(0, this, SLOT(continueError()));
-        }
-
-        open(QIODevice::ReadOnly);
-    }
-    ~FakeReply()
-    {
-        close();
-    }
-    void abort() override {}
-    void close() override {}
-
-protected:
-    qint64 readData(char*, qint64) override
-    {
-        return 0;
-    }
-
-private Q_SLOTS:
-    void continueRedirect()
-    {
-        emit metaDataChanged();
-        emit finished();
-    }
-
-    void continueError()
-    {
-        emit errorOccurred(this->error());
-        emit finished();
-    }
-};
-
-const QUrl FakeReply::urlFor404ErrorWithoutContents = QUrl("http://this.will/return-http-404-error-without-contents.html");
-
-class FakeNetworkManager : public QNetworkAccessManager {
-    Q_OBJECT
-
-public:
-    FakeNetworkManager(QObject* parent) : QNetworkAccessManager(parent) { }
-
-protected:
-    QNetworkReply* createRequest(Operation op, const QNetworkRequest& request, QIODevice* outgoingData) override
-    {
-        QString url = request.url().toString();
-        if (op == QNetworkAccessManager::GetOperation) {
-#if QT_CONFIG(openssl)
-            if (url == "qrc:/fake-ssl-error.html") {
-                FakeReply* reply = new FakeReply(request, this);
-                QList<QSslError> errors;
-                emit sslErrors(reply, errors << QSslError(QSslError::UnspecifiedError));
-                return reply;
-            }
-#endif
-            if (url == "qrc:/test1.html" || url == "http://abcdef.abcdef/" || request.url() == FakeReply::urlFor404ErrorWithoutContents)
-                return new FakeReply(request, this);
-        }
-
-        return QNetworkAccessManager::createRequest(op, request, outgoingData);
-    }
-};
-
 void tst_QWebEnginePage::requestedUrlAfterSetAndLoadFailures()
 {
     QWebEnginePage page;
@@ -2544,11 +2446,10 @@ void tst_QWebEnginePage::setHtmlWithBaseURL()
     // As we are using a local file as baseUrl, its security origin should be able to load local resources.
 
     if (!QDir(QDir(QT_TESTCASE_SOURCEDIR).canonicalPath()).exists())
-        W_QSKIP(QString("This test requires access to resources found in '%1'")
+        QSKIP(QString("This test requires access to resources found in '%1'")
                         .arg(QDir(QT_TESTCASE_SOURCEDIR).canonicalPath())
                         .toLatin1()
-                        .constData(),
-                SkipAll);
+                        .constData());
 
     QDir::setCurrent(QDir(QT_TESTCASE_SOURCEDIR).canonicalPath());
     qDebug()<<QDir::current();
@@ -2688,13 +2589,16 @@ void tst_QWebEnginePage::scrollPosition()
 
     // try to set the scroll offset programmatically
     view.page()->runJavaScript("window.scrollTo(23, 29);");
-    QTRY_COMPARE(view.page()->scrollPosition().x(), 23);
-    QCOMPARE(view.page()->scrollPosition().y(), 29);
+    double dpr = view.windowHandle()->devicePixelRatio();
+    float expectedX = qFloor(23 * dpr) / dpr;
+    float expectedY = qFloor(29 * dpr) / dpr;
+    QTRY_VERIFY(fuzzyEqual(view.page()->scrollPosition().x(), expectedX));
+    QVERIFY(fuzzyEqual(view.page()->scrollPosition().y(), expectedY));
 
-    int x = evaluateJavaScriptSync(view.page(), "window.scrollX").toInt();
-    int y = evaluateJavaScriptSync(view.page(), "window.scrollY").toInt();
-    QCOMPARE(x, 23);
-    QCOMPARE(y, 29);
+    float x = evaluateJavaScriptSync(view.page(), "window.scrollX").toFloat();
+    float y = evaluateJavaScriptSync(view.page(), "window.scrollY").toFloat();
+    QVERIFY(fuzzyEqual(x, expectedX));
+    QVERIFY(fuzzyEqual(y, expectedY));
 }
 
 void tst_QWebEnginePage::scrollbarsOff()
@@ -2785,33 +2689,6 @@ void tst_QWebEnginePage::setContent()
     QVERIFY(loadSpy.wait());
     QCOMPARE(toPlainTextSync(m_view->page()), expected);
 }
-
-class CacheNetworkAccessManager : public QNetworkAccessManager {
-public:
-    CacheNetworkAccessManager(QObject* parent = 0)
-        : QNetworkAccessManager(parent)
-        , m_lastCacheLoad(QNetworkRequest::PreferNetwork)
-    {
-    }
-
-    QNetworkReply* createRequest(Operation, const QNetworkRequest& request, QIODevice*) override
-    {
-        QVariant cacheLoad = request.attribute(QNetworkRequest::CacheLoadControlAttribute);
-        if (cacheLoad.isValid())
-            m_lastCacheLoad = static_cast<QNetworkRequest::CacheLoadControl>(cacheLoad.toUInt());
-        else
-            m_lastCacheLoad = QNetworkRequest::PreferNetwork; // default value
-        return new FakeReply(request, this);
-    }
-
-    QNetworkRequest::CacheLoadControl lastCacheLoad() const
-    {
-        return m_lastCacheLoad;
-    }
-
-private:
-    QNetworkRequest::CacheLoadControl m_lastCacheLoad;
-};
 
 void tst_QWebEnginePage::setUrlWithPendingLoads()
 {
@@ -3439,13 +3316,19 @@ void tst_QWebEnginePage::mouseButtonTranslation()
 
 void tst_QWebEnginePage::mouseMovementProperties()
 {
+    SKIP_IF_NO_WINDOW_ACTIVATION();
+
+    if (QGuiApplication::platformName().startsWith(QLatin1String("wayland"), Qt::CaseInsensitive))
+        QSKIP("Wayland: Can't manipulating the mouse cursor in auto test.");
+
     QWebEngineView view;
     ConsolePage page;
     view.setPage(&page);
     view.resize(640, 480);
     QTest::mouseMove(&view, QPoint(10, 10));
     view.show();
-    QVERIFY(QTest::qWaitForWindowExposed(&view));
+    view.window()->windowHandle()->requestActivate();
+    QVERIFY(QTest::qWaitForWindowActive(&view));
 
     QSignalSpy loadFinishedSpy(&page, SIGNAL(loadFinished(bool)));
     page.setHtml(QStringLiteral(
@@ -3522,11 +3405,10 @@ void tst_QWebEnginePage::viewSourceURL_data()
 void tst_QWebEnginePage::viewSourceURL()
 {
     if (!QDir(QDir(QT_TESTCASE_SOURCEDIR).canonicalPath()).exists())
-        W_QSKIP(QString("This test requires access to resources found in '%1'")
+        QSKIP(QString("This test requires access to resources found in '%1'")
                         .arg(QDir(QT_TESTCASE_SOURCEDIR).canonicalPath())
                         .toLatin1()
-                        .constData(),
-                SkipAll);
+                        .constData());
 
     QFETCH(QUrl, userInputUrl);
     QFETCH(bool, loadSucceed);
@@ -4319,7 +4201,7 @@ void tst_QWebEnginePage::localFontAccessPermission() {
     QVERIFY(QTest::qWaitForWindowExposed(&view));
 
     if (evaluateJavaScriptSync(&page, QStringLiteral("!window.queryLocalFonts")).toBool())
-        W_QSKIP("Local fonts access is not supported.", SkipSingle);
+        QSKIP("Local fonts access is not supported.");
 
     // Access to the API requires recent user interaction
     QTest::keyPress(view.focusProxy(), Qt::Key_Space);

@@ -11,6 +11,7 @@
 #include <cstdint>
 #include <optional>
 #include <string>
+#include <string_view>
 
 #include "base/component_export.h"
 #include "base/metrics/field_trial.h"
@@ -24,10 +25,10 @@ namespace variations {
 class COMPONENT_EXPORT(VARIATIONS) SHA1EntropyProvider
     : public base::FieldTrial::EntropyProvider {
  public:
-  // Creates a SHA1EntropyProvider with the given |entropy_source|, which
+  // Creates a SHA1EntropyProvider with the given `entropy_source`, which
   // should contain a large amount of entropy - for example, a textual
   // representation of a persistent randomly-generated 128-bit value.
-  explicit SHA1EntropyProvider(const std::string& entropy_source);
+  explicit SHA1EntropyProvider(std::string_view entropy_source);
 
   SHA1EntropyProvider(const SHA1EntropyProvider&) = delete;
   SHA1EntropyProvider& operator=(const SHA1EntropyProvider&) = delete;
@@ -35,7 +36,7 @@ class COMPONENT_EXPORT(VARIATIONS) SHA1EntropyProvider
   ~SHA1EntropyProvider() override;
 
   // base::FieldTrial::EntropyProvider implementation:
-  double GetEntropyForTrial(base::StringPiece trial_name,
+  double GetEntropyForTrial(std::string_view trial_name,
                             uint32_t randomization_seed) const override;
 
  private:
@@ -69,7 +70,7 @@ class COMPONENT_EXPORT(VARIATIONS) NormalizedMurmurHashEntropyProvider final
   ~NormalizedMurmurHashEntropyProvider() override;
 
   // base::FieldTrial::EntropyProvider:
-  double GetEntropyForTrial(base::StringPiece trial_name,
+  double GetEntropyForTrial(std::string_view trial_name,
                             uint32_t randomization_seed) const override;
 
   uint32_t entropy_value() const { return entropy_value_.value; }
@@ -84,18 +85,26 @@ class SessionEntropyProvider : public base::FieldTrial::EntropyProvider {
   SessionEntropyProvider() = default;
   ~SessionEntropyProvider() override;
 
-  double GetEntropyForTrial(base::StringPiece trial_name,
+  double GetEntropyForTrial(std::string_view trial_name,
                             uint32_t randomization_seed) const override;
 };
 
 class COMPONENT_EXPORT(VARIATIONS) EntropyProviders {
  public:
-  // Construct providers from the given entropy sources.
-  // If |high_entropy_source| is empty, no high entropy provider is created.
-  // If |enable_benchmarking| is true, randomization should be suppressed.
-  EntropyProviders(const std::string& high_entropy_value,
+  // Construct providers from the given entropy sources. Note:
+  //  - If `high_entropy_source` is empty, no high entropy provider is created.
+  //  - A limited entropy provider is created when `limited_entropy_value` is a
+  //    non-empty string. `limited_entropy_value` is a 128-bit GUID as a string.
+  //    It is used to randomize any study that is constrained to a layer with
+  //    LIMITED entropy mode.
+  //  - The value of `enable_benchmarking` will be returned by
+  //    benchmarking_enabled(). If true, the caller should suppress
+  //    randomization.
+  EntropyProviders(std::string_view high_entropy_value,
                    ValueInRange low_entropy_value,
+                   std::string_view limited_entropy_value,
                    bool enable_benchmarking = false);
+
   EntropyProviders(const EntropyProviders&) = delete;
   EntropyProviders& operator=(const EntropyProviders&) = delete;
   virtual ~EntropyProviders();
@@ -108,9 +117,21 @@ class COMPONENT_EXPORT(VARIATIONS) EntropyProviders {
   virtual const base::FieldTrial::EntropyProvider& low_entropy() const;
   virtual const base::FieldTrial::EntropyProvider& session_entropy() const;
 
+  // Returns the limited entropy provider.
+  // NOTE: the caller should call has_limited_entropy() before calling this to
+  // ensure the limited entropy provider is available. The limited entropy
+  // provider can be constructed by supplying `limited_entropy_value` in the
+  // constructor.
+  virtual const base::FieldTrial::EntropyProvider& limited_entropy() const;
+
   bool default_entropy_is_high_entropy() const {
     return high_entropy_.has_value();
   }
+
+  // Whether a limited entropy source was created. A limited entropy source can
+  // be created by instantiating with the `limited_entropy_randomization_source`
+  // parameter.
+  bool has_limited_entropy() const { return limited_entropy_.has_value(); }
 
   size_t low_entropy_value() const { return low_entropy_.entropy_value(); }
   size_t low_entropy_domain() const { return low_entropy_.entropy_domain(); }
@@ -119,6 +140,7 @@ class COMPONENT_EXPORT(VARIATIONS) EntropyProviders {
 
  private:
   std::optional<SHA1EntropyProvider> high_entropy_;
+  std::optional<SHA1EntropyProvider> limited_entropy_;
   NormalizedMurmurHashEntropyProvider low_entropy_;
   SessionEntropyProvider session_entropy_;
   bool benchmarking_enabled_;

@@ -27,7 +27,7 @@ parser.set_defaults(defines=list())
 
 
 def split_ukernel_name(name):
-  match = re.fullmatch(r"xnn_(qs8|qu8)_vlrelu_ukernel__(.+)_u(\d+)", name)
+  match = re.fullmatch(r"xnn_(qs8|qu8)_vlrelu_ukernel__(.+)_u(\d+)(v)?", name)
   if match is None:
     raise ValueError("Unexpected microkernel name: " + name)
 
@@ -202,11 +202,10 @@ def main(args):
 
 
 #include <gtest/gtest.h>
-
-#include <xnnpack/common.h>
-#include <xnnpack/isa-checks.h>
-
-#include <xnnpack/vlrelu.h>
+#include "xnnpack/common.h"
+#include "xnnpack/isa-checks.h"
+#include "xnnpack/microparams-init.h"
+#include "xnnpack/vlrelu.h"
 #include "vlrelu-microkernel-tester.h"
 """.format(specification=options.spec, generator=sys.argv[0])
 

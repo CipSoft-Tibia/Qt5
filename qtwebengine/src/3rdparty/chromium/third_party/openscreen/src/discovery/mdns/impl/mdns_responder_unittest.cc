@@ -102,7 +102,7 @@ class MockRecordHandler : public MdnsResponder::RecordHandler {
 
 class MockMdnsSender : public MdnsSender {
  public:
-  explicit MockMdnsSender(UdpSocket* socket) : MdnsSender(socket) {}
+  explicit MockMdnsSender(UdpSocket& socket) : MdnsSender(socket) {}
 
   MOCK_METHOD1(SendMulticast, Error(const MdnsMessage& message));
   MOCK_METHOD2(SendMessage,
@@ -120,16 +120,16 @@ class MdnsResponderTest : public testing::Test {
  public:
   MdnsResponderTest()
       : clock_(Clock::now()),
-        task_runner_(&clock_),
-        sender_(&socket_),
+        task_runner_(clock_),
+        sender_(socket_),
         receiver_(config_),
-        responder_(&record_handler_,
-                   &probe_manager_,
-                   &sender_,
-                   &receiver_,
+        responder_(record_handler_,
+                   probe_manager_,
+                   sender_,
+                   receiver_,
                    task_runner_,
                    FakeClock::now,
-                   &random_,
+                   random_,
                    config_) {}
 
  protected:
@@ -305,10 +305,6 @@ TEST_F(MdnsResponderTest, MulticastMessageSentOverMulticast) {
 
 // Validate that records are added as expected based on the query type, and that
 // additional records are populated as specified in RFC 6762 and 6763.
-
-// TODO(issuetracker.google.com/203003316): Refactor shared code from these
-// tests into the test fixture, or consider a data driven test approach, to
-// remove lots of duplication
 TEST_F(MdnsResponderTest, AnyQueryResultsAllApplied) {
   EXPECT_CALL(probe_manager_, IsDomainClaimed(_)).WillOnce(Return(true));
   EXPECT_CALL(record_handler_, HasRecords(_, _, _))

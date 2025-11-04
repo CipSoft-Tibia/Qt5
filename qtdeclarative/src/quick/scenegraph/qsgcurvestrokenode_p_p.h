@@ -26,14 +26,13 @@ class QSGCurveStrokeMaterial;
 class Q_QUICK_EXPORT QSGCurveStrokeMaterialShader : public QSGMaterialShader
 {
 public:
-    QSGCurveStrokeMaterialShader(int viewCount)
+    QSGCurveStrokeMaterialShader(bool useDerivatives, int viewCount)
     {
-        setShaderFileName(VertexStage,
-                          QStringLiteral(":/qt-project.org/scenegraph/shaders_ng/shapestroke.vert.qsb"),
-                          viewCount);
-        setShaderFileName(FragmentStage,
-                          QStringLiteral(":/qt-project.org/scenegraph/shaders_ng/shapestroke.frag.qsb"),
-                          viewCount);
+        QString baseName(u":/qt-project.org/scenegraph/shaders_ng/shapestroke");
+        if (useDerivatives)
+            baseName += u"_derivatives";
+        setShaderFileName(VertexStage, baseName + u".vert.qsb", viewCount);
+        setShaderFileName(FragmentStage, baseName + u".frag.qsb", viewCount);
     }
 
     bool updateUniformData(RenderState &state, QSGMaterial *newEffect, QSGMaterial *oldEffect) override;
@@ -62,9 +61,9 @@ protected:
         static QSGMaterialType t;
         return &t;
     }
-    QSGMaterialShader *createShader(QSGRendererInterface::RenderMode) const override
+    QSGMaterialShader *createShader(QSGRendererInterface::RenderMode renderMode) const override
     {
-        return new QSGCurveStrokeMaterialShader(viewCount());
+        return new QSGCurveStrokeMaterialShader(renderMode == QSGRendererInterface::RenderMode3D, viewCount());
     }
 
     QSGCurveStrokeNode *m_node;

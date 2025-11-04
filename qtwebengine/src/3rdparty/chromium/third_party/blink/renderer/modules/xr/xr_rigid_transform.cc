@@ -2,11 +2,17 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#ifdef UNSAFE_BUFFERS_BUILD
+// TODO(crbug.com/351564777): Remove this and convert code to safer constructs.
+#pragma allow_unsafe_buffers
+#endif
+
 #include "third_party/blink/renderer/modules/xr/xr_rigid_transform.h"
 
 #include <cmath>
 #include <utility>
 
+#include "base/not_fatal_until.h"
 #include "third_party/blink/renderer/bindings/core/v8/v8_dom_point_init.h"
 #include "third_party/blink/renderer/core/geometry/dom_point_read_only.h"
 #include "third_party/blink/renderer/modules/xr/xr_utils.h"
@@ -33,8 +39,9 @@ XRRigidTransform::XRRigidTransform(const gfx::Transform& transformationMatrix)
 
 void XRRigidTransform::DecomposeMatrix() {
   // decompose matrix to position and orientation
-  absl::optional<gfx::DecomposedTransform> decomp = matrix_->Decompose();
-  DCHECK(decomp) << "Matrix decompose failed for " << matrix_->ToString();
+  std::optional<gfx::DecomposedTransform> decomp = matrix_->Decompose();
+  CHECK(decomp, base::NotFatalUntil::M129)
+      << "Matrix decompose failed for " << matrix_->ToString();
 
   position_ = DOMPointReadOnly::Create(
       decomp->translate[0], decomp->translate[1], decomp->translate[2], 1.0);

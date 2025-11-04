@@ -27,7 +27,7 @@ parser.set_defaults(defines=list())
 
 
 def split_ukernel_name(name):
-  match = re.fullmatch(r"xnn_x8_lut_ukernel__(.+)_u(\d+)", name)
+  match = re.fullmatch(r"xnn_x8_lut_ukernel__(.+)_u(\d+)(v)?", name)
   if match is None:
     raise ValueError("Unexpected microkernel name: " + name)
   batch_tile = int(match.group(2))
@@ -131,11 +131,9 @@ def main(args):
 
 
 #include <gtest/gtest.h>
-
-#include <xnnpack/common.h>
-#include <xnnpack/isa-checks.h>
-
-#include <xnnpack/lut.h>
+#include "xnnpack/common.h"
+#include "xnnpack/isa-checks.h"
+#include "xnnpack/lut.h"
 #include "lut-microkernel-tester.h"
 """.format(specification=options.spec, generator=sys.argv[0])
 

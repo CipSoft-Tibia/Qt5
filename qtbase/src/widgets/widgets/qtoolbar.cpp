@@ -4,9 +4,6 @@
 #include "qtoolbar.h"
 
 #include <qapplication.h>
-#if QT_CONFIG(combobox)
-#include <qcombobox.h>
-#endif
 #if QT_CONFIG(draganddrop)
 #include <qdrag.h>
 #endif
@@ -14,18 +11,11 @@
 #include <qlayout.h>
 #include <qmainwindow.h>
 #include <qmenu.h>
-#if QT_CONFIG(menubar)
-#include <qmenubar.h>
-#endif
 #include <qmimedata.h>
-#if QT_CONFIG(rubberband)
-#include <qrubberband.h>
-#endif
 #include <qstylepainter.h>
 #include <qstyleoption.h>
 #include <qtoolbutton.h>
 #include <qwidgetaction.h>
-#include <qtimer.h>
 #include <private/qwidgetaction_p.h>
 #include <private/qmainwindowlayout_p.h>
 #include <private/qhighdpiscaling_p.h>
@@ -1001,7 +991,8 @@ static void enableMacToolBar(QToolBar *toolbar, bool enable)
         return; // Not Cocoa platform plugin.
 
     typedef void (*SetContentBorderAreaEnabledFunction)(QWindow *window, void *identifier, bool enabled);
-    (reinterpret_cast<SetContentBorderAreaEnabledFunction>(function))(toolbar->window()->windowHandle(), toolbar, enable);
+    (reinterpret_cast<SetContentBorderAreaEnabledFunction>(QFunctionPointer(function)))(
+        toolbar->window()->windowHandle(), toolbar, enable);
 }
 #endif
 

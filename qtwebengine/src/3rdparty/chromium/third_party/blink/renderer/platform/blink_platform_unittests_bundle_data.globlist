@@ -15,8 +15,11 @@
 # List TTF as well since globing is case sensitive on most platforms.
 ../../web_tests/external/wpt/fonts/**/*.TTF
 ../../web_tests/external/wpt/fonts/**/*.woff
+../../web_tests/external/wpt/fonts/**/*.woff2
 -../../web_tests/external/wpt/fonts/CSSTest/**
 ../../web_tests/images/resources/**
+../../web_tests/images/bmp-suite/**/*.bmp
+../../web_tests/images/bmp-suite/**/*.png
 ../../web_tests/third_party/**/*.ttf
 ../../web_tests/third_party/**/*.otf
 # pop(ignore-relative)

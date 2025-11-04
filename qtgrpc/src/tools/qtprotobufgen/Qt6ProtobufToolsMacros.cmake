@@ -12,6 +12,7 @@ macro(_qt_internal_get_protoc_common_options option_args single_args multi_args)
     )
     set(${single_args}
         EXTRA_NAMESPACE
+        HEADER_GUARD
     )
 
     set(${multi_args} "")
@@ -191,11 +192,12 @@ function(_qt_internal_protoc_generate target generator output_directory)
         AUTOGEN_TARGET_DEPENDS "${deps_target}")
     set_property(TARGET ${target} APPEND PROPERTY AUTOMOC_MACRO_NAMES "Q_PROTOBUF_OBJECT")
     set_property(TARGET ${target} PROPERTY _qt_${generator}_deps_num "${num_deps}")
-    set_source_files_properties(${generated_files} PROPERTIES
-        GENERATED TRUE
-    )
+    _qt_internal_set_source_file_generated(SOURCES ${generated_files})
 
     get_target_property(proto_files ${target} _qt_internal_proto_files)
+    if(NOT proto_files)
+        set(proto_files "")
+    endif()
     list(APPEND proto_files "${arg_PROTO_FILES}")
     list(REMOVE_DUPLICATES proto_files)
     set_target_properties(${target} PROPERTIES _qt_internal_proto_files "${proto_files}")
@@ -357,6 +359,13 @@ function(qt6_add_protobuf target)
         set(base_dir "${arg_PROTO_FILES_BASE_DIR}")
     else()
         set(base_dir "${CMAKE_CURRENT_SOURCE_DIR}")
+    endif()
+
+    if(arg_HEADER_GUARD)
+        if(NOT arg_HEADER_GUARD MATCHES "^(pragma|filename)$")
+            message(FATAL_ERROR "Invalid HEADER_GUARD type specified ${arg_HEADER_GUARD}."
+                "Supported types: pragma, filename.")
+        endif()
     endif()
 
     _qt_internal_protobuf_preparse_proto_files(${target}

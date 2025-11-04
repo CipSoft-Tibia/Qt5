@@ -17,6 +17,7 @@ export * from './Dialog.js';
 export * from './ElementHandle.js';
 export * from './EmulationManager.js';
 export * from './ExecutionContext.js';
+export * from './ExtensionTransport.js';
 export * from './FirefoxTargetManager.js';
 export * from './Frame.js';
 export * from './FrameManager.js';
@@ -36,6 +37,6 @@ export * from './PredefinedNetworkConditions.js';
 export * from './Target.js';
 export * from './TargetManager.js';
 export * from './Tracing.js';
+export * from './utils.js';
 export * from './WebWorker.js';
-export * from './cdp.js';
 //# sourceMappingURL=cdp.d.ts.map

@@ -2,6 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#ifdef UNSAFE_BUFFERS_BUILD
+// TODO(crbug.com/351564777): Remove this and convert code to safer constructs.
+#pragma allow_unsafe_buffers
+#endif
+
 #include "extensions/browser/api/messaging/message_service.h"
 
 #include <stdint.h>
@@ -11,11 +16,13 @@
 #include <utility>
 
 #include "base/containers/contains.h"
+#include "base/containers/span.h"
 #include "base/functional/bind.h"
 #include "base/functional/callback.h"
 #include "base/functional/overloaded.h"
 #include "base/json/json_writer.h"
 #include "base/lazy_instance.h"
+#include "base/ranges/algorithm.h"
 #include "base/values.h"
 #include "build/build_config.h"
 #include "components/back_forward_cache/back_forward_cache_disable.h"
@@ -50,6 +57,7 @@
 #include "extensions/common/api/messaging/messaging_endpoint.h"
 #include "extensions/common/api/messaging/port_context.h"
 #include "extensions/common/extension.h"
+#include "extensions/common/extension_id.h"
 #include "extensions/common/manifest_constants.h"
 #include "extensions/common/manifest_handlers/background_info.h"
 #include "extensions/common/manifest_handlers/externally_connectable.h"
@@ -496,13 +504,16 @@ void MessageService::OpenChannelToExtension(
     // rejected without showing a prompt. See http://crbug.com/442497
     EventRouter* event_router = EventRouter::Get(context);
     const char* const events[] = {
-        "runtime.onConnectExternal", "runtime.onConnectNative",
-        "runtime.onMessageExternal", "extension.onRequestExternal", nullptr};
-    bool has_event_listener = false;
-    for (const char* const* event = events; *event; event++) {
-      has_event_listener |=
-          event_router->ExtensionHasEventListener(target_extension_id, *event);
-    }
+        "runtime.onConnectExternal",
+        "runtime.onConnectNative",
+        "runtime.onMessageExternal",
+        "extension.onRequestExternal",
+    };
+    const bool has_event_listener =
+        base::ranges::any_of(events, [&](const char* event) {
+          return event_router->ExtensionHasEventListener(target_extension_id,
+                                                         event);
+        });
     if (!has_event_listener) {
       OnOpenChannelAllowed(std::move(params), false);
       return;
@@ -613,7 +624,7 @@ void MessageService::OpenChannelToTabImpl(
     int tab_id,
     int frame_id,
     const std::string& document_id,
-    const std::string& extension_id,
+    const ExtensionId& extension_id,
     mojom::ChannelType channel_type,
     const std::string& channel_name,
     mojo::PendingAssociatedRemote<extensions::mojom::MessagePort> port,
@@ -724,7 +735,7 @@ void MessageService::OpenChannelImpl(BrowserContext* browser_context,
     // The channel won't open. If this was a pending channel, remove it,
     // because now it will never open. This prevents the pending message
     // from being re-added indefinitely. See https://crbug.com/1231683.
-    // TODO(crbug.com/1296492): This probably isn't the best solution.
+    // TODO(crbug.com/40821724): This probably isn't the best solution.
     // Ideally, we should close the channel before we get to this point
     // if there's no chance it will ever open, remove it from pending
     // channels, and then only try to open the pending channel if it's
@@ -1072,7 +1083,7 @@ void MessageService::OnOpenChannelAllowed(
 
   auto pending_for_incognito = pending_incognito_channels_.find(channel_id);
   if (pending_for_incognito == pending_incognito_channels_.end()) {
-    NOTREACHED();
+    NOTREACHED_IN_MIGRATION();
     return;
   }
   PendingMessagesQueue pending_messages;

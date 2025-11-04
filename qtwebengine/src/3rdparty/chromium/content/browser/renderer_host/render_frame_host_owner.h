@@ -118,19 +118,18 @@ class RenderFrameHostOwner {
   // Cancels the navigation owned by the FrameTreeNode.
   // Note: this does not cancel navigations that are owned by the current or
   // speculative RenderFrameHosts.
-  virtual void CancelNavigation() = 0;
+  virtual void CancelNavigation(NavigationDiscardReason reason) = 0;
+
+  // Reset every non-speculative navigation in this frame, and its descendants.
+  // This is called after outermost main frame has been discarded.
+  //
+  // This takes into account:
+  // - Non-pending commit NavigationRequest owned by the FrameTreeNode
+  // - Pending commit NavigationRequest owned by the current RenderFrameHost
+  virtual void ResetNavigationsForDiscard() = 0;
 
   // Return the iframe.credentialless attribute value.
   virtual bool Credentialless() const = 0;
-
-  // Stores the payload that will be sent as part of an automatic beacon. Right
-  // now only the "reserved.top_navigation" beacon is supported.
-  virtual void SetFencedFrameAutomaticBeaconReportEventData(
-      blink::mojom::AutomaticBeaconType event_type,
-      const std::string& event_data,
-      const std::vector<blink::FencedFrame::ReportingDestination>& destinations,
-      bool once,
-      bool cross_origin_exposed) = 0;
 
 #if !BUILDFLAG(IS_ANDROID)
   virtual void GetVirtualAuthenticatorManager(

@@ -163,6 +163,21 @@ QT_BEGIN_NAMESPACE
 */
 
 /*!
+    \property QAbstractAxis::alignment
+    \since 6.9
+    \brief The alignment of the axis.
+
+    Can be Qt::AlignLeft, Qt::AlignRight, Qt::AlignBottom, or Qt::AlignTop.
+*/
+/*!
+    \qmlproperty alignment AbstractAxis::alignment
+    \since 6.9
+    The alignment of the axis. Can be \l{Qt::AlignLeft}{Qt.AlignLeft},
+    \l{Qt::AlignRight}{Qt.AlignRight}, \l{Qt::AlignBottom}{Qt.AlignBottom}, or
+    \l{Qt::AlignTop}{Qt.AlignTop}.
+*/
+
+/*!
     \fn void QAbstractAxis::update()
     This signal is emitted when the axis needs to be updated.
 */
@@ -486,6 +501,34 @@ void QAbstractAxis::setRange(const QVariant &min, const QVariant &max)
     d->setRange(min, max);
 }
 
+Qt::Alignment QAbstractAxis::alignment() const
+{
+    const Q_D(QAbstractAxis);
+    return d->m_alignment;
+}
+
+void QAbstractAxis::setAlignment(Qt::Alignment alignment)
+{
+    Q_D(QAbstractAxis);
+    if (d->m_alignment == alignment)
+        return;
+    switch (alignment) {
+    case Qt::AlignTop:
+    case Qt::AlignBottom:
+    case Qt::AlignLeft:
+    case Qt::AlignRight:
+        d->m_alignment = alignment;
+        if (d->m_graph)
+            d->m_graph->updateComponentSizes();
+        emit update();
+        emit alignmentChanged(alignment);
+        break;
+    default:
+        qWarning("Invalid alignment.");
+        break;
+    }
+}
+
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 QAbstractAxisPrivate::QAbstractAxisPrivate() {}
@@ -497,11 +540,17 @@ QAbstractAxisPrivate::~QAbstractAxisPrivate()
         m_graph->removeAxis(q);
 }
 
+void QAbstractAxisPrivate::setGraph(QGraphsView *graph)
+{
+    if (m_graph && graph)
+        qWarning("%p axis already associated with %p", this, m_graph);
+
+    m_graph = graph;
+}
+
 void QAbstractAxisPrivate::handleRangeChanged(qreal min, qreal max)
 {
     setRange(min,max);
 }
 
 QT_END_NAMESPACE
-
-

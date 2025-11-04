@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016, Alliance for Open Media. All rights reserved
+ * Copyright (c) 2016, Alliance for Open Media. All rights reserved.
  *
  * This source code is subject to the terms of the BSD 2 Clause License and
  * the Alliance for Open Media Patent License 1.0. If the BSD 2 Clause License
@@ -11,20 +11,24 @@
  */
 
 #include <math.h>
+#include <stddef.h>
 
 #include "config/aom_config.h"
-#include "config/aom_dsp_rtcd.h"
 #include "config/aom_scale_rtcd.h"
 
+#include "aom/internal/aom_codec_internal.h"
 #include "aom_mem/aom_mem.h"
+#include "aom_dsp/aom_dsp_common.h"
+#include "aom_mem/aom_mem.h"
+#include "aom_ports/mem.h"
+#include "aom_util/aom_pthread.h"
+
 #include "av1/common/av1_common_int.h"
+#include "av1/common/convolve.h"
+#include "av1/common/enums.h"
 #include "av1/common/resize.h"
 #include "av1/common/restoration.h"
 #include "av1/common/thread_common.h"
-#include "aom_dsp/aom_dsp_common.h"
-#include "aom_mem/aom_mem.h"
-
-#include "aom_ports/mem.h"
 
 // The 's' values are calculated based on original 'r' and 'e' values in the
 // spec using GenSgrprojVtable().
@@ -115,8 +119,9 @@ void av1_loop_restoration_precal(void) {
 #endif
 }
 
-static void extend_frame_lowbd(uint8_t *data, int width, int height, int stride,
-                               int border_horz, int border_vert) {
+static void extend_frame_lowbd(uint8_t *data, int width, int height,
+                               ptrdiff_t stride, int border_horz,
+                               int border_vert) {
   uint8_t *data_p;
   int i;
   for (i = 0; i < height; ++i) {
@@ -136,7 +141,8 @@ static void extend_frame_lowbd(uint8_t *data, int width, int height, int stride,
 
 #if CONFIG_AV1_HIGHBITDEPTH
 static void extend_frame_highbd(uint16_t *data, int width, int height,
-                                int stride, int border_horz, int border_vert) {
+                                ptrdiff_t stride, int border_horz,
+                                int border_vert) {
   uint16_t *data_p;
   int i, j;
   for (i = 0; i < height; ++i) {
@@ -988,8 +994,10 @@ void av1_loop_restoration_filter_unit(
 
   int unit_h = limits->v_end - limits->v_start;
   int unit_w = limits->h_end - limits->h_start;
-  uint8_t *data8_tl = data8 + limits->v_start * stride + limits->h_start;
-  uint8_t *dst8_tl = dst8 + limits->v_start * dst_stride + limits->h_start;
+  uint8_t *data8_tl =
+      data8 + limits->v_start * (ptrdiff_t)stride + limits->h_start;
+  uint8_t *dst8_tl =
+      dst8 + limits->v_start * (ptrdiff_t)dst_stride + limits->h_start;
 
   if (unit_rtype == RESTORE_NONE) {
     copy_rest_unit(unit_w, unit_h, data8_tl, stride, dst8_tl, dst_stride,
@@ -1074,7 +1082,8 @@ void av1_loop_restoration_filter_frame_init(AV1LrStruct *lr_ctxt,
   if (aom_realloc_frame_buffer(
           lr_ctxt->dst, frame_width, frame_height, seq_params->subsampling_x,
           seq_params->subsampling_y, highbd, AOM_RESTORATION_FRAME_BORDER,
-          cm->features.byte_alignment, NULL, NULL, NULL, 0, 0) != AOM_CODEC_OK)
+          cm->features.byte_alignment, NULL, NULL, NULL, false,
+          0) != AOM_CODEC_OK)
     aom_internal_error(cm->error, AOM_CODEC_MEM_ERROR,
                        "Failed to allocate restoration dst buffer");
 
@@ -1131,6 +1140,46 @@ void av1_loop_restoration_copy_planes(AV1LrStruct *loop_rest_ctxt,
   }
 }
 
+// Call on_rest_unit for each loop restoration unit in the plane.
+static void foreach_rest_unit_in_plane(const struct AV1Common *cm, int plane,
+                                       rest_unit_visitor_t on_rest_unit,
+                                       void *priv, int32_t *tmpbuf,
+                                       RestorationLineBuffers *rlbs) {
+  const RestorationInfo *rsi = &cm->rst_info[plane];
+  const int hnum_rest_units = rsi->horz_units;
+  const int vnum_rest_units = rsi->vert_units;
+  const int unit_size = rsi->restoration_unit_size;
+
+  const int is_uv = plane > 0;
+  const int ss_y = is_uv && cm->seq_params->subsampling_y;
+  const int ext_size = unit_size * 3 / 2;
+  int plane_w, plane_h;
+  av1_get_upsampled_plane_size(cm, is_uv, &plane_w, &plane_h);
+
+  int y0 = 0, i = 0;
+  while (y0 < plane_h) {
+    int remaining_h = plane_h - y0;
+    int h = (remaining_h < ext_size) ? remaining_h : unit_size;
+
+    RestorationTileLimits limits;
+    limits.v_start = y0;
+    limits.v_end = y0 + h;
+    assert(limits.v_end <= plane_h);
+    // Offset upwards to align with the restoration processing stripe
+    const int voffset = RESTORATION_UNIT_OFFSET >> ss_y;
+    limits.v_start = AOMMAX(0, limits.v_start - voffset);
+    if (limits.v_end < plane_h) limits.v_end -= voffset;
+
+    av1_foreach_rest_unit_in_row(&limits, plane_w, on_rest_unit, i, unit_size,
+                                 hnum_rest_units, vnum_rest_units, plane, priv,
+                                 tmpbuf, rlbs, av1_lr_sync_read_dummy,
+                                 av1_lr_sync_write_dummy, NULL, cm->error);
+
+    y0 += h;
+    ++i;
+  }
+}
+
 static void foreach_rest_unit_in_planes(AV1LrStruct *lr_ctxt, AV1_COMMON *cm,
                                         int num_planes) {
   FilterFrameCtxt *ctxt = lr_ctxt->ctxt;
@@ -1140,8 +1189,8 @@ static void foreach_rest_unit_in_planes(AV1LrStruct *lr_ctxt, AV1_COMMON *cm,
       continue;
     }
 
-    av1_foreach_rest_unit_in_plane(cm, plane, lr_ctxt->on_rest_unit,
-                                   &ctxt[plane], cm->rst_tmpbuf, cm->rlbs);
+    foreach_rest_unit_in_plane(cm, plane, lr_ctxt->on_rest_unit, &ctxt[plane],
+                               cm->rst_tmpbuf, cm->rlbs);
   }
 }
 
@@ -1223,45 +1272,6 @@ void av1_lr_sync_write_dummy(void *const lr_sync, int r, int c,
   (void)c;
   (void)sb_cols;
   (void)plane;
-}
-
-void av1_foreach_rest_unit_in_plane(const struct AV1Common *cm, int plane,
-                                    rest_unit_visitor_t on_rest_unit,
-                                    void *priv, int32_t *tmpbuf,
-                                    RestorationLineBuffers *rlbs) {
-  const RestorationInfo *rsi = &cm->rst_info[plane];
-  const int hnum_rest_units = rsi->horz_units;
-  const int vnum_rest_units = rsi->vert_units;
-  const int unit_size = rsi->restoration_unit_size;
-
-  const int is_uv = plane > 0;
-  const int ss_y = is_uv && cm->seq_params->subsampling_y;
-  const int ext_size = unit_size * 3 / 2;
-  int plane_w, plane_h;
-  av1_get_upsampled_plane_size(cm, is_uv, &plane_w, &plane_h);
-
-  int y0 = 0, i = 0;
-  while (y0 < plane_h) {
-    int remaining_h = plane_h - y0;
-    int h = (remaining_h < ext_size) ? remaining_h : unit_size;
-
-    RestorationTileLimits limits;
-    limits.v_start = y0;
-    limits.v_end = y0 + h;
-    assert(limits.v_end <= plane_h);
-    // Offset upwards to align with the restoration processing stripe
-    const int voffset = RESTORATION_UNIT_OFFSET >> ss_y;
-    limits.v_start = AOMMAX(0, limits.v_start - voffset);
-    if (limits.v_end < plane_h) limits.v_end -= voffset;
-
-    av1_foreach_rest_unit_in_row(&limits, plane_w, on_rest_unit, i, unit_size,
-                                 hnum_rest_units, vnum_rest_units, plane, priv,
-                                 tmpbuf, rlbs, av1_lr_sync_read_dummy,
-                                 av1_lr_sync_write_dummy, NULL, cm->error);
-
-    y0 += h;
-    ++i;
-  }
 }
 
 int av1_loop_restoration_corners_in_sb(const struct AV1Common *cm, int plane,
@@ -1349,7 +1359,7 @@ static void save_deblock_boundary_lines(
   const int is_uv = plane > 0;
   const uint8_t *src_buf = REAL_PTR(use_highbd, frame->buffers[plane]);
   const int src_stride = frame->strides[is_uv] << use_highbd;
-  const uint8_t *src_rows = src_buf + row * src_stride;
+  const uint8_t *src_rows = src_buf + row * (ptrdiff_t)src_stride;
 
   uint8_t *bdry_buf = is_above ? boundaries->stripe_boundary_above
                                : boundaries->stripe_boundary_below;
@@ -1404,7 +1414,7 @@ static void save_cdef_boundary_lines(const YV12_BUFFER_CONFIG *frame,
   const int is_uv = plane > 0;
   const uint8_t *src_buf = REAL_PTR(use_highbd, frame->buffers[plane]);
   const int src_stride = frame->strides[is_uv] << use_highbd;
-  const uint8_t *src_rows = src_buf + row * src_stride;
+  const uint8_t *src_rows = src_buf + row * (ptrdiff_t)src_stride;
 
   uint8_t *bdry_buf = is_above ? boundaries->stripe_boundary_above
                                : boundaries->stripe_boundary_below;

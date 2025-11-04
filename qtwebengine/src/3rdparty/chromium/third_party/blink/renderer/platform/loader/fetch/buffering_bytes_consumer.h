@@ -29,6 +29,12 @@ class PLATFORM_EXPORT BufferingBytesConsumer final
     : public BytesConsumer,
       private BytesConsumer::Client {
  public:
+  // Once `total_buffer_size_` reaches this, we will stop reading until it drops
+  // below it again. For most users the simple cache won't store any file larger
+  // than 55MB, so there's no point in buffering more than that. This limit is
+  // only applied when the BufferedBytesConsumerLimitSize feature is enabled.
+  static constexpr size_t kMaxBufferSize = 55 * 1024 * 1024;
+
   // Creates a BufferingBytesConsumer that waits some delay before beginning
   // to buffer data from the underlying consumer. This delay provides an
   // opportunity for the data to be drained before buffering begins. The
@@ -90,6 +96,9 @@ class PLATFORM_EXPORT BufferingBytesConsumer final
   HeapDeque<Member<HeapVector<char>>> buffer_;
   size_t offset_for_first_chunk_ = 0;
 
+  // The sum of the sizes of all Vectors in `buffer_`.
+  size_t total_buffer_size_ = 0;
+
   enum class BufferingState {
     kDelayed,
     kStarted,
@@ -99,7 +108,9 @@ class PLATFORM_EXPORT BufferingBytesConsumer final
 
   bool has_seen_end_of_data_ = false;
   bool has_seen_error_ = false;
+  bool is_limiting_total_buffer_size_;
   Member<BytesConsumer::Client> client_;
+  SEQUENCE_CHECKER(sequence_checker_);
 };
 
 }  // namespace blink

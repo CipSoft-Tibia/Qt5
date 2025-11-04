@@ -6,14 +6,17 @@
  */
 
 #include "gm/gm.h"
+#include "include/codec/SkPngDecoder.h"
 #include "include/core/SkBitmap.h"
 #include "include/core/SkCanvas.h"
 #include "include/core/SkPicture.h"
 #include "include/core/SkPictureRecorder.h"
+#include "include/core/SkSerialProcs.h"
 #include "include/core/SkStream.h"
 #include "include/core/SkString.h"
 #include "include/core/SkSurface.h"
 #include "include/encode/SkPngEncoder.h"
+#include "include/private/base/SkAssert.h"
 #include "src/base/SkBase64.h"
 #include "tools/testrunners/gm/vias/Draw.h"
 
@@ -67,7 +70,7 @@ static std::string bitmap_to_base64_data_uri(const SkBitmap& bitmap) {
     // and should only output them on failure.
     static const size_t kMaxBase64Length = 1024 * 1024;
     if (len > kMaxBase64Length) {
-        return SkStringPrintf("Encoded image too large (%lu bytes)", len).c_str();
+        return SkStringPrintf("Encoded image too large (%zu bytes)", len).c_str();
     }
 
     std::string out;
@@ -95,12 +98,25 @@ static GMOutput draw_via_picture(skiagm::GM* gm, SkSurface* surface, bool serial
         return {result, msg.c_str()};
     }
 
-    // Finish recording, and optionally serialize and then deserialize the resulting picture. Note
-    // that the pic->serialize() call uses the default behavior from SkSerialProcs, which implies a
-    // dependency on libpng.
+    // Finish recording, and optionally serialize and then deserialize the resulting picture using
+    // the PNG encoder/decoder.
     sk_sp<SkPicture> pic = recorder.finishRecordingAsPicture();
     if (serialize) {
-        pic = SkPicture::MakeFromData(pic->serialize().get());
+        SkSerialProcs serialProcs = {.fImageProc = [](SkImage* img, void*) -> sk_sp<SkData> {
+            SkASSERT_RELEASE(!img->isTextureBacked());
+            return SkPngEncoder::Encode(nullptr, img, SkPngEncoder::Options{});
+        }};
+        SkDeserialProcs deserialProcs = {.fImageDataProc = [](sk_sp<SkData> data,
+                                                              std::optional<SkAlphaType>,
+                                                              void* ctx) -> sk_sp<SkImage> {
+            SkCodec::Result decodeResult;
+            std::unique_ptr<SkCodec> codec = SkPngDecoder::Decode(data, &decodeResult);
+            SkASSERT(decodeResult == SkCodec::Result::kSuccess);
+            auto [image, getImageResult] = codec->getImage();
+            SkASSERT(getImageResult == SkCodec::Result::kSuccess);
+            return image;
+        }};
+        pic = SkPicture::MakeFromData(pic->serialize(&serialProcs).get(), &deserialProcs);
     }
 
     // Draw the recorded picture on the surface under test and extract it as a bitmap.
@@ -128,8 +144,8 @@ static GMOutput draw_via_picture(skiagm::GM* gm, SkSurface* surface, bool serial
     if (recordedBitmap.computeByteSize() != referenceBitmap.computeByteSize()) {
         return {skiagm::DrawResult::kFail,
                 SkStringPrintf("Recorded and reference bitmap dimensions do not match: "
-                               "expected byte size %lu, width %d and height %d; "
-                               "got %lu, %d and %d",
+                               "expected byte size %zu, width %d and height %d; "
+                               "got %zu, %d and %d",
                                referenceBitmap.computeByteSize(),
                                referenceBitmap.bounds().width(),
                                referenceBitmap.bounds().height(),

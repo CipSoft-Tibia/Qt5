@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 // This is based on chrome/browser/printing/print_view_manager_base.cc:
 // Copyright 2013 The Chromium Authors. All rights reserved.
@@ -27,8 +28,6 @@
 #include "content/public/browser/render_frame_host.h"
 #include "content/public/browser/render_process_host.h"
 #include "content/public/browser/render_view_host.h"
-#include "content/public/browser/notification_service.h"
-#include "content/public/browser/notification_types.h"
 #include "printing/metafile_skia.h"
 #include "printing/print_job_constants.h"
 #include "printing/printed_document.h"

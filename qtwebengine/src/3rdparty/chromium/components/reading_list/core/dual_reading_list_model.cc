@@ -5,6 +5,7 @@
 #include "components/reading_list/core/dual_reading_list_model.h"
 
 #include "base/auto_reset.h"
+#include "base/location.h"
 #include "base/memory/scoped_refptr.h"
 #include "base/notreached.h"
 #include "base/stl_util.h"
@@ -55,16 +56,16 @@ bool DualReadingListModel::loaded() const {
   return local_or_syncable_model_->loaded() && account_model_->loaded();
 }
 
-base::WeakPtr<syncer::ModelTypeControllerDelegate>
+base::WeakPtr<syncer::DataTypeControllerDelegate>
 DualReadingListModel::GetSyncControllerDelegate() {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   return local_or_syncable_model_->GetSyncControllerDelegate();
 }
 
-base::WeakPtr<syncer::ModelTypeControllerDelegate>
+base::WeakPtr<syncer::DataTypeControllerDelegate>
 DualReadingListModel::GetSyncControllerDelegateForTransportMode() {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
-  // TODO(crbug.com/1402200): This logic should be moved to a controller and
+  // TODO(crbug.com/40251098): This logic should be moved to a controller and
   // made more sophisticated by enabling it only if the user opted in (possibly
   // pref-based).
   if (syncer::IsReadingListAccountStorageEnabled()) {
@@ -151,7 +152,7 @@ void DualReadingListModel::MarkAllSeen() {
   DCHECK_EQ(unseen_entry_count_, 0ul);
 }
 
-bool DualReadingListModel::DeleteAllEntries() {
+bool DualReadingListModel::DeleteAllEntries(const base::Location& location) {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
 
   if (!loaded()) {
@@ -164,7 +165,7 @@ bool DualReadingListModel::DeleteAllEntries() {
   std::unique_ptr<DualReadingListModel::ScopedReadingListBatchUpdate>
       scoped_model_batch_updates = BeginBatchUpdates();
   for (const auto& url : GetKeys()) {
-    RemoveEntryByURL(url);
+    RemoveEntryByURL(url, location);
   }
 
   DCHECK_EQ(0u, local_or_syncable_model_->size());
@@ -239,7 +240,7 @@ void DualReadingListModel::MarkAllForUploadToSyncServerIfNeeded() {
 
   for (const GURL& url : local_or_syncable_model_->GetKeys()) {
     scoped_refptr<ReadingListEntry> entry = GetEntryByURL(url)->Clone();
-    local_or_syncable_model_->RemoveEntryByURL(url);
+    local_or_syncable_model_->RemoveEntryByURL(url, FROM_HERE);
     // If the url already exists in the account model, remove the account entry
     // first before adding the "merged" entry back to the account model.
     // Note: This workaround is used than just using AddOrReplaceEntry() to
@@ -247,7 +248,7 @@ void DualReadingListModel::MarkAllForUploadToSyncServerIfNeeded() {
     // AddOrReplaceEntry(), which causes observers to be notified even though
     // this particular function does not need to send any notifications at all
     // (including ReadingListModelBeganBatchUpdates).
-    account_model_->RemoveEntryByURL(url);
+    account_model_->RemoveEntryByURL(url, FROM_HERE);
     account_model_->AddEntry(std::move(entry),
                              reading_list::ADDED_VIA_CURRENT_APP);
     // The entry state counters do not need to updated since no value was
@@ -271,7 +272,7 @@ const ReadingListEntry& DualReadingListModel::AddOrReplaceEntry(
       scoped_model_batch_updates;
   if (GetEntryByURL(url)) {
     scoped_model_batch_updates = BeginBatchUpdates();
-    RemoveEntryByURL(url);
+    RemoveEntryByURL(url, FROM_HERE);
   }
 
   if (account_model_->IsTrackingSyncMetadata()) {
@@ -288,7 +289,8 @@ const ReadingListEntry& DualReadingListModel::AddOrReplaceEntry(
   return entry;
 }
 
-void DualReadingListModel::RemoveEntryByURL(const GURL& url) {
+void DualReadingListModel::RemoveEntryByURL(const GURL& url,
+                                            const base::Location& location) {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   DCHECK(loaded());
 
@@ -306,8 +308,8 @@ void DualReadingListModel::RemoveEntryByURL(const GURL& url) {
   {
     base::AutoReset<bool> auto_reset_suppress_observer_notifications(
         &suppress_observer_notifications_, true);
-    local_or_syncable_model_->RemoveEntryByURL(url);
-    account_model_->RemoveEntryByURL(url);
+    local_or_syncable_model_->RemoveEntryByURL(url, location);
+    account_model_->RemoveEntryByURL(url, location);
   }
 
   NotifyObserversWithDidRemoveEntry(url);
@@ -568,10 +570,9 @@ void DualReadingListModel::ReadingListWillRemoveEntry(
     return;
   }
 
-  if (model == account_model_.get() &&
-      local_or_syncable_model_->GetEntryByURL(url)) {
-    // The entry was removed via sync from `account_model_`, but the fact that
-    // the entry also exists in `local_or_syncable_model_` means the result is
+  if (local_or_syncable_model_->GetEntryByURL(url) &&
+      account_model_->GetEntryByURL(url)) {
+    // The fact that the entry exists in one of the models means the result is
     // not an actual deletion but, at most, an update.
     NotifyObserversWithWillUpdateEntry(url);
   } else {
@@ -588,10 +589,10 @@ void DualReadingListModel::ReadingListDidRemoveEntry(
     return;
   }
 
-  if (local_or_syncable_model_->GetEntryByURL(url)) {
-    // The entry is still present in `local_or_syncable_model_`, so this is an
+  if (local_or_syncable_model_->GetEntryByURL(url) ||
+      account_model_->GetEntryByURL(url)) {
+    // The entry is still present in one of the models, so this is an
     // update rather than a deletion.
-    DCHECK(model == account_model_.get());
     UpdateEntryStateCountersOnEntryInsertion(*GetEntryByURL(url));
     NotifyObserversWithDidUpdateEntry(url);
     return;
@@ -629,11 +630,10 @@ void DualReadingListModel::ReadingListWillAddEntry(
     return;
   }
 
-  if (local_or_syncable_model_->GetEntryByURL(entry.URL())) {
-    // The presence of the entry in `local_or_syncable_model_` indicates that
-    // this is an update, not an insertion.
-    DCHECK_EQ(model, account_model_.get());
-    DCHECK(account_model_->IsTrackingSyncMetadata());
+  if (local_or_syncable_model_->GetEntryByURL(entry.URL()) ||
+      account_model_->GetEntryByURL(entry.URL())) {
+    // The presence of the entry in one of the models indicates that this is an
+    // update, not an insertion.
     NotifyObserversWithWillUpdateEntry(entry.URL());
     UpdateEntryStateCountersOnEntryRemoval(*GetEntryByURL(entry.URL()));
     return;
@@ -654,12 +654,10 @@ void DualReadingListModel::ReadingListDidAddEntry(
 
   UpdateEntryStateCountersOnEntryInsertion(*GetEntryByURL(url));
 
-  if (model == account_model_.get() &&
-      local_or_syncable_model_->GetEntryByURL(url)) {
-    // The entry was added to `account_model_`, but since it was already present
-    // in `local_or_syncable_model_`, then this is an update instead of
-    // insertion.
-    DCHECK(account_model_->IsTrackingSyncMetadata());
+  if (local_or_syncable_model_->GetEntryByURL(url) &&
+      account_model_->GetEntryByURL(url)) {
+    // The entry was added to one of the models, but since it was already
+    // present in the other one, then this is an update instead of insertion.
     NotifyObserversWithDidUpdateEntry(url);
     return;
   }
@@ -672,21 +670,19 @@ void DualReadingListModel::ReadingListDidAddEntry(
 void DualReadingListModel::ReadingListWillUpdateEntry(
     const ReadingListModel* model,
     const GURL& url) {
-  if (!suppress_observer_notifications_) {
-    // TODO(crbug.com/1424750): This should be reached via sync after merging
-    // ReadingList(Will|Did)MoveEntry() with ReadingList(Will|Did)UpdateEntry().
-    NOTREACHED();
+  if (!loaded() || suppress_observer_notifications_) {
+    return;
   }
+  NotifyObserversWithWillUpdateEntry(url);
 }
 
 void DualReadingListModel::ReadingListDidUpdateEntry(
     const ReadingListModel* model,
     const GURL& url) {
-  if (!suppress_observer_notifications_) {
-    // TODO(crbug.com/1424750): This should be reached via sync after merging
-    // ReadingList(Will|Did)MoveEntry() with ReadingList(Will|Did)UpdateEntry().
-    NOTREACHED();
+  if (!loaded() || suppress_observer_notifications_) {
+    return;
   }
+  NotifyObserversWithDidUpdateEntry(url);
 }
 
 void DualReadingListModel::ReadingListDidApplyChanges(ReadingListModel* model) {

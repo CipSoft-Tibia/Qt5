@@ -24,7 +24,7 @@
 
 QT_BEGIN_NAMESPACE
 
-static Q_LOGGING_CATEGORY(qLcGstreamerAudioDecoder, "qt.multimedia.gstreameraudiodecoder");
+Q_STATIC_LOGGING_CATEGORY(qLcGstreamerAudioDecoder, "qt.multimedia.gstreameraudiodecoder");
 
 typedef enum {
     GST_PLAY_FLAG_VIDEO         = 0x00000001,
@@ -43,7 +43,7 @@ QMaybe<QPlatformAudioDecoder *> QGstreamerAudioDecoder::create(QAudioDecoder *pa
 {
     static const auto error = qGstErrorMessageIfElementsNotAvailable("audioconvert", "playbin");
     if (error)
-        return *error;
+        return QUnexpected{ *error };
 
     return new QGstreamerAudioDecoder(parent);
 }

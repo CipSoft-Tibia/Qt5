@@ -1,7 +1,7 @@
 // Copyright (C) 2017 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
-#include <QtTest>
+#include <QTest>
 #include <QtQml>
 #include <QtCore/private/qhooks_p.h>
 #include <QtCore/qpair.h>
@@ -19,8 +19,7 @@
 #include <QtQuickTestUtils/private/qmlutils_p.h>
 #include <QtQuickControlsTestUtils/private/controlstestutils_p.h>
 #include <QtQmlCompiler/private/qqmljslinter_p.h>
-#include <QtQmlCompiler/private/qqmljstyperesolver_p.h>
-#include <QtQmlCompiler/private/qqmljsimportvisitor_p.h>
+#include <utility>
 
 Q_IMPORT_PLUGIN(QuickControlsSanityPlugin)
 
@@ -66,12 +65,21 @@ tst_Sanity::tst_Sanity()
     m_linter.setPluginsEnabled(true);
 
     for (auto &category : m_categories) {
-        if (category.id() == qmlDeferredPropertyId || category.id() == qmlAttachedPropertyReuse) {
-            category.setLevel(QtWarningMsg);
-            category.setIgnored(false);
-        } else {
-            category.setLevel(QtCriticalMsg);
-            category.setIgnored(true);
+        category.setLevel(QtCriticalMsg);
+        category.setIgnored(true);
+    }
+
+    for (auto &plugin: m_linter.plugins()) {
+        if (plugin.name() != u"QuickControlsSanity") {
+            plugin.setEnabled(false);
+            continue;
+        }
+
+        for (const auto &category: plugin.categories()) {
+            m_categories.append(category);
+            m_categories.back().setLevel(QtWarningMsg);
+            m_categories.back().setIgnored(false);
+
         }
     }
 }

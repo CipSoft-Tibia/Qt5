@@ -6,12 +6,12 @@
 #define THIRD_PARTY_BLINK_RENDERER_MODULES_MEDIARECORDER_AUDIO_TRACK_MOJO_ENCODER_H_
 
 #include <memory>
+#include <optional>
 
 #include "base/containers/queue.h"
 #include "base/memory/weak_ptr.h"
 #include "media/base/audio_encoder.h"
 #include "media/base/encoder_status.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "third_party/blink/renderer/modules/mediarecorder/audio_track_encoder.h"
 #include "third_party/blink/renderer/modules/mediarecorder/audio_track_recorder.h"
 #include "third_party/blink/renderer/modules/modules_export.h"
@@ -45,6 +45,7 @@ class MODULES_EXPORT AudioTrackMojoEncoder : public AudioTrackEncoder {
       scoped_refptr<base::SequencedTaskRunner> encoder_task_runner,
       AudioTrackRecorder::CodecId codec,
       OnEncodedAudioCB on_encoded_audio_cb,
+      OnEncodedAudioErrorCB on_encoded_audio_error_cb,
       uint32_t bits_per_second = 0);
 
   AudioTrackMojoEncoder(const AudioTrackMojoEncoder&) = delete;
@@ -74,7 +75,8 @@ class MODULES_EXPORT AudioTrackMojoEncoder : public AudioTrackEncoder {
   void OnEncodeDone(media::EncoderStatus status);
   void OnEncodeOutput(
       media::EncodedAudioBuffer encoded_buffer,
-      absl::optional<media::AudioEncoder::CodecDescription> codec_desc);
+      std::optional<media::AudioEncoder::CodecDescription> codec_desc);
+  void NotifyError(media::EncoderStatus error);
 
   // The `media::AudioEncoder` interface requires the callback provided to
   // `Initialize` to be run before any further calls are made. So, we store any
@@ -91,9 +93,15 @@ class MODULES_EXPORT AudioTrackMojoEncoder : public AudioTrackEncoder {
 
   // Target bitrate. An optional parameter for the `mojo_encoder_`;
   const uint32_t bits_per_second_;
-  media::EncoderStatus current_status_;
   std::unique_ptr<media::AudioEncoder> mojo_encoder_;
   base::queue<PendingData> input_queue_;
+
+  // When the format has been set, a new mojo encoder is created. Until it has
+  // finished initialization, no additional work can be done.
+  bool pending_initialization_ = true;
+
+  // The encoder has encountered an error and will need to be reinitialized.
+  bool has_error_ = true;
 
   base::WeakPtrFactory<AudioTrackMojoEncoder> weak_factory_{this};
 };

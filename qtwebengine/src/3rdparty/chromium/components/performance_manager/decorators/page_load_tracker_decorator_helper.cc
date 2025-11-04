@@ -74,11 +74,16 @@ class PageLoadTrackerDecoratorHelper::WebContentsObserver
     DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
     DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
     DCHECK(web_contents()->IsLoading());
-    DCHECK_EQ(loading_state_, LoadingState::kNotLoading);
+
+    // May be called spuriously when the `WebContents` is already loading.
+    if (loading_state_ != LoadingState::kNotLoading) {
+      return;
+    }
 
     // Only observe top-level navigation to a different document.
-    if (!web_contents()->ShouldShowLoadingUI())
+    if (!web_contents()->ShouldShowLoadingUI()) {
       return;
+    }
 
     loading_state_ = LoadingState::kWaitingForNavigation;
     NotifyPageLoadTrackerDecoratorOnPMSequence(
@@ -157,7 +162,7 @@ class PageLoadTrackerDecoratorHelper::WebContentsObserver
   }
 
  private:
-  // TODO(https://crbug.com/1048719): Extract the logic to manage a linked list
+  // TODO(crbug.com/40117344): Extract the logic to manage a linked list
   // of WebContentsObservers to a helper class.
   const raw_ptr<PageLoadTrackerDecoratorHelper> outer_;
   raw_ptr<WebContentsObserver> prev_ GUARDED_BY_CONTEXT(sequence_checker_);

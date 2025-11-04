@@ -1,5 +1,6 @@
 // Copyright (C) 2023 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QWEBENGINECLIENTHINTS_H
 #define QWEBENGINECLIENTHINTS_H
@@ -9,7 +10,6 @@
 #include <QtCore/qobject.h>
 #include <QtCore/qpointer.h>
 #include <QtCore/qvariantmap.h>
-#include <QtQml/qqmlregistration.h>
 
 namespace QtWebEngineCore {
 class ProfileAdapter;
@@ -33,10 +33,6 @@ class Q_WEBENGINECORE_EXPORT QWebEngineClientHints : public QObject
     Q_PROPERTY(bool isAllClientHintsEnabled READ isAllClientHintsEnabled WRITE setAllClientHintsEnabled FINAL)
 
 public:
-    QML_NAMED_ELEMENT(WebEngineClientHints)
-    QML_UNCREATABLE("")
-    QML_ADDED_IN_VERSION(6, 8)
-
     ~QWebEngineClientHints();
 
     QString arch() const;
@@ -70,6 +66,7 @@ private:
     Q_DISABLE_COPY(QWebEngineClientHints)
     friend class QWebEngineProfilePrivate;
     friend class QQuickWebEngineProfilePrivate;
+    friend class QQuickWebEngineProfile;
 
     QPointer<QtWebEngineCore::ProfileAdapter> m_profileAdapter;
 };

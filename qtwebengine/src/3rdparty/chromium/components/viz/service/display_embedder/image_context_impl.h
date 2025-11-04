@@ -6,6 +6,7 @@
 #define COMPONENTS_VIZ_SERVICE_DISPLAY_EMBEDDER_IMAGE_CONTEXT_IMPL_H_
 
 #include <memory>
+#include <optional>
 #include <utility>
 #include <vector>
 
@@ -17,11 +18,10 @@
 #include "gpu/command_buffer/common/mailbox_holder.h"
 #include "gpu/command_buffer/service/shared_image/shared_image_representation.h"
 #include "gpu/ipc/common/vulkan_ycbcr_info.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "third_party/skia/include/core/SkImageInfo.h"
 #include "third_party/skia/include/core/SkRefCnt.h"
-#include "third_party/skia/include/gpu/GrBackendSurface.h"
-#include "third_party/skia/include/gpu/GrTypes.h"
+#include "third_party/skia/include/gpu/ganesh/GrBackendSurface.h"
+#include "third_party/skia/include/gpu/ganesh/GrTypes.h"
 #include "third_party/skia/include/gpu/graphite/BackendTexture.h"
 #include "third_party/skia/include/private/chromium/GrPromiseImageTexture.h"
 #include "ui/gfx/geometry/size.h"
@@ -29,7 +29,6 @@
 class SkColorSpace;
 
 namespace gpu {
-class MailboxManager;
 class SharedContextState;
 class SharedImageRepresentationFactory;
 namespace gles2 {
@@ -50,7 +49,7 @@ class ImageContextImpl final : public ExternalUseClient::ImageContext {
                    const gfx::Size& size,
                    SharedImageFormat format,
                    bool maybe_concurrent_reads,
-                   const absl::optional<gpu::VulkanYCbCrInfo>& ycbcr_info,
+                   const std::optional<gpu::VulkanYCbCrInfo>& ycbcr_info,
                    sk_sp<SkColorSpace> color_space,
                    bool is_for_render_pass,
                    bool raw_draw_if_possible = false);
@@ -91,7 +90,6 @@ class ImageContextImpl final : public ExternalUseClient::ImageContext {
   void BeginAccessIfNecessary(
       gpu::SharedContextState* context_state,
       gpu::SharedImageRepresentationFactory* representation_factory,
-      gpu::MailboxManager* mailbox_manager,
       std::vector<GrBackendSemaphore>* begin_semaphores,
       std::vector<GrBackendSemaphore>* end_semaphores);
   bool BeginRasterAccess(
@@ -100,8 +98,14 @@ class ImageContextImpl final : public ExternalUseClient::ImageContext {
 
  private:
   void DeleteFallbackTextures();
+
+  // Creates a solid color fallback image that can be substituted for the
+  // original image. Note that this may fail if it's not possible to allocate a
+  // fallback image, for example if the original image was externally allocated.
+  // In this case the promise image fulfillment will fail and skia will abort
+  // drawing the entire render pass, so we rely on this being a transient state.
   void CreateFallbackImage(gpu::SharedContextState* context_state);
-  bool BeginAccessIfNecessaryForSharedImage(
+  bool BeginAccessIfNecessaryInternal(
       gpu::SharedContextState* context_state,
       gpu::SharedImageRepresentationFactory* representation_factory,
       std::vector<GrBackendSemaphore>* begin_semaphores,

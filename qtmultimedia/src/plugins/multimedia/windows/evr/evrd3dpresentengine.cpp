@@ -25,7 +25,7 @@
 
 QT_BEGIN_NAMESPACE
 
-static Q_LOGGING_CATEGORY(qLcEvrD3DPresentEngine, "qt.multimedia.evrd3dpresentengine");
+Q_STATIC_LOGGING_CATEGORY(qLcEvrD3DPresentEngine, "qt.multimedia.evrd3dpresentengine");
 
 class IMFSampleVideoBuffer : public QHwVideoBuffer
 {
@@ -436,13 +436,13 @@ static bool readWglNvDxInteropProc(WglNvDxInterop &f)
 namespace {
 
 bool hwTextureRenderingEnabled() {
-    // add possibility for an user to opt-in to HW video rendering
+    // add possibility for an user to opt-out HW video rendering
     // using the same env. variable as for FFmpeg backend
     static bool isDisableConversionSet = false;
     static const int disableHwConversion = qEnvironmentVariableIntValue(
             "QT_DISABLE_HW_TEXTURES_CONVERSION", &isDisableConversionSet);
 
-    return isDisableConversionSet && !disableHwConversion;
+    return !isDisableConversionSet || !disableHwConversion;
 }
 
 }
@@ -645,8 +645,95 @@ HRESULT D3DPresentEngine::createVideoSamples(IMFMediaType *format,
         videoSampleQueue.append(videoSample);
     }
 
+    std::optional<QVideoFrameFormat::ColorRange> colorRange =
+            [&]() -> std::optional<QVideoFrameFormat::ColorRange> {
+        MFNominalRange range;
+        if (SUCCEEDED(format->GetUINT32(MF_MT_VIDEO_NOMINAL_RANGE,
+                                        reinterpret_cast<UINT32 *>(&range)))) {
+            qCDebug(qLcEvrD3DPresentEngine) << "MF_MT_VIDEO_NOMINAL_RANGE =" << range;
+            switch (range) {
+            case MFNominalRange::MFNominalRange_16_235:
+                return QVideoFrameFormat::ColorRange::ColorRange_Video;
+            case MFNominalRange::MFNominalRange_0_255:
+                return QVideoFrameFormat::ColorRange::ColorRange_Full;
+            default:
+                break;
+            }
+        } else {
+            qCDebug(qLcEvrD3DPresentEngine) << "MF_MT_VIDEO_NOMINAL_RANGE not set";
+        }
+        return std::nullopt;
+    }();
+
+    std::optional<QVideoFrameFormat::ColorTransfer> colorTransfer =
+            [&]() -> std::optional<QVideoFrameFormat::ColorTransfer> {
+        MFVideoTransferMatrix transferMatrix;
+        if (SUCCEEDED(format->GetUINT32(MF_MT_YUV_MATRIX,
+                                        reinterpret_cast<UINT32 *>(&transferMatrix)))) {
+            qCDebug(qLcEvrD3DPresentEngine) << "MF_MT_YUV_MATRIX =" << transferMatrix;
+
+            switch (transferMatrix) {
+            case MFVideoTransferMatrix_BT709:
+                return QVideoFrameFormat::ColorTransfer::ColorTransfer_BT709;
+            case MFVideoTransferMatrix_BT601:
+                return QVideoFrameFormat::ColorTransfer::ColorTransfer_BT601;
+            case MFVideoTransferMatrix_SMPTE240M:
+                return QVideoFrameFormat::ColorTransfer::ColorTransfer_BT709;
+            case MFVideoTransferMatrix_BT2020_10:
+            case MFVideoTransferMatrix_BT2020_12:
+                return QVideoFrameFormat::ColorTransfer::ColorTransfer_ST2084;
+            default:
+                break;
+            }
+        } else {
+            qCDebug(qLcEvrD3DPresentEngine) << "MF_MT_YUV_MATRIX not set";
+        }
+        return std::nullopt;
+    }();
+
+    std::optional<QVideoFrameFormat::ColorSpace> colorSpace =
+            [&]() -> std::optional<QVideoFrameFormat::ColorSpace> {
+        MFVideoPrimaries primaries;
+        if (SUCCEEDED(format->GetUINT32(MF_MT_VIDEO_PRIMARIES,
+                                        reinterpret_cast<UINT32 *>(&primaries)))) {
+            qCDebug(qLcEvrD3DPresentEngine) << "MFVideoPrimaries =" << primaries;
+
+            switch (primaries) {
+            case MFVideoPrimaries_BT709:
+                return QVideoFrameFormat::ColorSpace::ColorSpace_BT709;
+            case MFVideoPrimaries_BT470_2_SysM:
+            case MFVideoPrimaries_BT470_2_SysBG:
+            case MFVideoPrimaries_SMPTE170M:
+            case MFVideoPrimaries_EBU3213:
+            case MFVideoPrimaries_SMPTE_C:
+                return QVideoFrameFormat::ColorSpace::ColorSpace_BT601;
+
+            case MFVideoPrimaries_SMPTE240M:
+                return QVideoFrameFormat::ColorSpace::ColorSpace_BT709;
+            case MFVideoPrimaries_BT2020:
+                return QVideoFrameFormat::ColorSpace::ColorSpace_BT2020;
+            case MFVideoPrimaries_DCI_P3:
+                return QVideoFrameFormat::ColorSpace::ColorSpace_BT2020;
+            case MFVideoPrimaries_XYZ:
+            case MFVideoPrimaries_ACES:
+                return QVideoFrameFormat::ColorSpace::ColorSpace_Undefined;
+            default:
+                return QVideoFrameFormat::ColorSpace::ColorSpace_Undefined;
+            }
+        } else {
+            qCDebug(qLcEvrD3DPresentEngine) << "MF_MT_YUV_MATRIX not set";
+        }
+        return std::nullopt;
+    }();
+
     if (SUCCEEDED(hr)) {
         m_surfaceFormat = QVideoFrameFormat(QSize(width, height), qt_evr_pixelFormatFromD3DFormat(d3dFormat));
+        if (colorRange)
+            m_surfaceFormat.setColorRange(*colorRange);
+        if (colorTransfer)
+            m_surfaceFormat.setColorTransfer(*colorTransfer);
+        if (colorSpace)
+            m_surfaceFormat.setColorSpace(*colorSpace);
     } else {
         releaseResources();
     }
@@ -654,7 +741,8 @@ HRESULT D3DPresentEngine::createVideoSamples(IMFMediaType *format,
     return hr;
 }
 
-QVideoFrame D3DPresentEngine::makeVideoFrame(const ComPtr<IMFSample> &sample)
+QVideoFrame D3DPresentEngine::makeVideoFrame(const ComPtr<IMFSample> &sample,
+                                             QtVideo::Rotation rotation)
 {
     if (!sample)
         return {};
@@ -680,7 +768,9 @@ QVideoFrame D3DPresentEngine::makeVideoFrame(const ComPtr<IMFSample> &sample)
     if (!vb)
         vb = std::make_unique<IMFSampleVideoBuffer>(m_device, sample, rhi);
 
-    QVideoFrame frame = QVideoFramePrivate::createFrame(std::move(vb), m_surfaceFormat);
+    auto format = m_surfaceFormat;
+    format.setRotation(rotation);
+    QVideoFrame frame = QVideoFramePrivate::createFrame(std::move(vb), format);
 
     // WMF uses 100-nanosecond units, Qt uses microseconds
     LONGLONG startTime = 0;

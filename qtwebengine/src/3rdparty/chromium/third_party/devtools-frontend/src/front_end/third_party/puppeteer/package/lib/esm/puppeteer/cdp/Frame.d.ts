@@ -5,12 +5,17 @@
  */
 import type { Protocol } from 'devtools-protocol';
 import type { CDPSession } from '../api/CDPSession.js';
+import type { WaitForOptions } from '../api/Frame.js';
 import { Frame } from '../api/Frame.js';
 import type { HTTPResponse } from '../api/HTTPResponse.js';
 import type { WaitTimeoutOptions } from '../api/Page.js';
 import { disposeSymbol } from '../util/disposable.js';
+import { Accessibility } from './Accessibility.js';
+import type { Binding } from './Binding.js';
+import type { CdpPreloadScript } from './CdpPreloadScript.js';
 import type { DeviceRequestPrompt } from './DeviceRequestPrompt.js';
 import type { FrameManager } from './FrameManager.js';
+import type { IsolatedWorldChart } from './IsolatedWorld.js';
 import { IsolatedWorld } from './IsolatedWorld.js';
 import { type PuppeteerLifeCycleEvent } from './LifecycleWatcher.js';
 import type { CdpPage } from './Page.js';
@@ -20,10 +25,12 @@ import type { CdpPage } from './Page.js';
 export declare class CdpFrame extends Frame {
     #private;
     _frameManager: FrameManager;
-    _id: string;
     _loaderId: string;
     _lifecycleEvents: Set<string>;
+    _id: string;
     _parentId?: string;
+    accessibility: Accessibility;
+    worlds: IsolatedWorldChart;
     constructor(frameManager: FrameManager, frameId: string, parentFrameId: string | undefined, client: CDPSession);
     /**
      * This is used internally in DevTools.
@@ -36,19 +43,15 @@ export declare class CdpFrame extends Frame {
      * replaced by a different frame.
      */
     updateId(id: string): void;
-    updateClient(client: CDPSession, keepWorlds?: boolean): void;
+    updateClient(client: CDPSession): void;
     page(): CdpPage;
-    isOOPFrame(): boolean;
     goto(url: string, options?: {
         referer?: string;
         referrerPolicy?: string;
         timeout?: number;
         waitUntil?: PuppeteerLifeCycleEvent | PuppeteerLifeCycleEvent[];
     }): Promise<HTTPResponse | null>;
-    waitForNavigation(options?: {
-        timeout?: number;
-        waitUntil?: PuppeteerLifeCycleEvent | PuppeteerLifeCycleEvent[];
-    }): Promise<HTTPResponse | null>;
+    waitForNavigation(options?: WaitForOptions): Promise<HTTPResponse | null>;
     get client(): CDPSession;
     mainRealm(): IsolatedWorld;
     isolatedRealm(): IsolatedWorld;
@@ -59,6 +62,9 @@ export declare class CdpFrame extends Frame {
     url(): string;
     parentFrame(): CdpFrame | null;
     childFrames(): CdpFrame[];
+    addPreloadScript(preloadScript: CdpPreloadScript): Promise<void>;
+    addExposedFunctionBinding(binding: Binding): Promise<void>;
+    removeExposedFunctionBinding(binding: Binding): Promise<void>;
     waitForDevicePrompt(options?: WaitTimeoutOptions): Promise<DeviceRequestPrompt>;
     _navigated(framePayload: Protocol.Page.Frame): void;
     _navigatedWithinDocument(url: string): void;

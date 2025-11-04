@@ -89,10 +89,11 @@ QT_BEGIN_NAMESPACE
     produces better quality shadows.
 
     Supported quality values are:
-    \value Light.ShadowMapQualityLow Render shadowmap using 256x256 texture.
-    \value Light.ShadowMapQualityMedium Render shadowmap using 512x512 texture.
-    \value Light.ShadowMapQualityHigh Render shadowmap using 1024x1024 texture.
-    \value Light.ShadowMapQualityVeryHigh Render shadowmap using 2048x2048 texture.
+    \value Light.ShadowMapQualityLow Render shadowmap using a 256x256 texture.
+    \value Light.ShadowMapQualityMedium Render shadowmap using a 512x512 texture.
+    \value Light.ShadowMapQualityHigh Render shadowmap using a 1024x1024 texture.
+    \value Light.ShadowMapQualityVeryHigh Render shadowmap using a 2048x2048 texture.
+    \value Light.ShadowMapQualityUltra Render shadowmap using a 4096x4096 texture.
 
     The default value is \c Light.ShadowMapQualityLow
 */
@@ -192,6 +193,17 @@ QT_BEGIN_NAMESPACE
     \sa Light::softShadowQuality
 */
 
+/*!
+    \qmlproperty bool Light::use32BitShadowmap
+    \since 6.9
+
+    The property controls if a 32-bit shadowmap depth buffer should be used for the light.
+
+    Default value: \c{false}
+
+    \sa Light::castsShadow
+*/
+
 QQuick3DAbstractLight::QQuick3DAbstractLight(QQuick3DNodePrivate &dd, QQuick3DNode *parent)
     : QQuick3DNode(dd, parent)
     , m_color(Qt::white)
@@ -262,6 +274,11 @@ QQuick3DAbstractLight::QSSGBakeMode QQuick3DAbstractLight::bakeMode() const
 float QQuick3DAbstractLight::pcfFactor() const
 {
     return m_pcfFactor;
+}
+
+bool QQuick3DAbstractLight::use32BitShadowmap() const
+{
+    return m_use32BitShadowmap;
 }
 
 void QQuick3DAbstractLight::markAllDirty()
@@ -397,6 +414,17 @@ void QQuick3DAbstractLight::setPcfFactor(float pcfFactor)
     update();
 }
 
+void QQuick3DAbstractLight::setUse32BitShadowmap(bool use32BitShadowmap)
+{
+    if (m_use32BitShadowmap == use32BitShadowmap)
+        return;
+
+    m_use32BitShadowmap = use32BitShadowmap;
+    m_dirtyFlags.setFlag(DirtyFlag::ShadowDirty);
+    emit use32BitShadowmapChanged();
+    update();
+}
+
 void QQuick3DAbstractLight::setShadowMapFar(float shadowMapFar)
 {
     if (qFuzzyCompare(m_shadowMapFar, shadowMapFar))
@@ -428,6 +456,8 @@ quint32 QQuick3DAbstractLight::mapToShadowResolution(QSSGShadowMapQuality qualit
         return 1024;
     case QSSGShadowMapQuality::ShadowMapQualityVeryHigh:
         return 2048;
+    case QSSGShadowMapQuality::ShadowMapQualityUltra:
+        return 4096;
     default:
         break;
     }
@@ -467,6 +497,7 @@ QSSGRenderGraphObject *QQuick3DAbstractLight::updateSpatialNode(QSSGRenderGraphO
         light->m_shadowMapFar = m_shadowMapFar;
         light->m_shadowFilter = m_shadowFilter;
         light->m_pcfFactor = m_pcfFactor;
+        light->m_use32BitShadowmap = m_use32BitShadowmap;
     }
 
     if (m_dirtyFlags.testFlag(DirtyFlag::BakeModeDirty)) {

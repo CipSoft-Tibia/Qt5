@@ -35,6 +35,7 @@ class BMShapeTransform;
 class BMRepeaterTransform;
 class BMShapeLayer;
 class BMEllipse;
+class BMPolyStar;
 class BMRound;
 class BMFreeFormShape;
 class BMTrimPath;
@@ -57,6 +58,7 @@ public:
     virtual void render(const BMLayer &layer) = 0;
     virtual void render(const BMRect &rect) = 0;
     virtual void render(const BMEllipse &ellipse) = 0;
+    virtual void render(const BMPolyStar &star) = 0;
     virtual void render(const BMRound &round) = 0;
     virtual void render(const BMFill &fill) = 0;
     virtual void render(const BMGFill &fill) = 0;

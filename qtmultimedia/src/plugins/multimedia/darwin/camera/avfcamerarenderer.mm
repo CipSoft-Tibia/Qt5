@@ -7,12 +7,12 @@
 #include "avfcamerarenderer_p.h"
 #include "avfcamerasession_p.h"
 #include "avfcameraservice_p.h"
-#include "avfcameradebug_p.h"
+#include <QtMultimedia/private/qavfcameradebug_p.h>
 #include "avfcamera_p.h"
 #include <avfvideosink_p.h>
 #include <avfvideobuffer_p.h>
 #include "qvideosink.h"
-#include "qavfhelpers_p.h"
+#include <QtMultimedia/private/qavfhelpers_p.h>
 
 #include <rhi/qrhi.h>
 
@@ -62,8 +62,10 @@ QT_USE_NAMESPACE
     // NB: on iOS captureOutput/connection can be nil (when recording a video -
     // avfmediaassetwriter).
 
-    CVImageBufferRef imageBuffer = CMSampleBufferGetImageBuffer(sampleBuffer);
-    auto buffer = std::make_unique<AVFVideoBuffer>(m_renderer, imageBuffer);
+    auto buffer =
+            std::make_unique<AVFVideoBuffer>(m_renderer,
+                                             QCFType<CVImageBufferRef>::constructFromGet(
+                                                     CMSampleBufferGetImageBuffer(sampleBuffer)));
     auto format = buffer->videoFormat();
     if (!format.isValid()) {
         return;

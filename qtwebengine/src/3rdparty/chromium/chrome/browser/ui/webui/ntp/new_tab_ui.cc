@@ -36,10 +36,6 @@
 #include "ui/native_theme/native_theme.h"
 #include "url/gurl.h"
 
-#if !BUILDFLAG(IS_CHROMEOS)
-#include "chrome/browser/ui/webui/ntp/app_launcher_handler.h"
-#endif
-
 namespace {
 
 // Strings sent to the page via jstemplates used to set the direction of the
@@ -84,15 +80,6 @@ NewTabUI::NewTabUI(content::WebUI* web_ui) : content::WebUIController(web_ui) {
 }
 
 NewTabUI::~NewTabUI() {}
-
-// static
-void NewTabUI::RegisterProfilePrefs(
-    user_prefs::PrefRegistrySyncable* registry) {
-  CoreAppLauncherHandler::RegisterProfilePrefs(registry);
-#if !BUILDFLAG(IS_CHROMEOS)
-  AppLauncherHandler::RegisterProfilePrefs(registry);
-#endif
-}
 
 // static
 bool NewTabUI::IsNewTab(const GURL& url) {
@@ -160,12 +147,14 @@ void NewTabUI::NewTabHTMLSource::StartDataRequest(
     const content::WebContents::Getter& wc_getter,
     content::URLDataSource::GotDataCallback callback) {
   DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
-  // TODO(crbug/1009127): Simplify usages of |path| since |url| is available.
+  // TODO(crbug.com/40050262): Simplify usages of |path| since |url| is
+  // available.
   const std::string path = content::URLDataSource::URLToRequestPath(url);
   if (!path.empty() && path[0] != '#') {
     // A path under new-tab was requested; it's likely a bad relative
     // URL from the new tab page, but in any case it's an error.
-    NOTREACHED() << path << " should not have been requested on the NTP";
+    NOTREACHED_IN_MIGRATION()
+        << path << " should not have been requested on the NTP";
     std::move(callback).Run(nullptr);
     return;
   }
@@ -212,7 +201,7 @@ std::string NewTabUI::NewTabHTMLSource::GetContentSecurityPolicy(
   } else if (directive ==
                  network::mojom::CSPDirectiveName::RequireTrustedTypesFor ||
              directive == network::mojom::CSPDirectiveName::TrustedTypes) {
-    // TODO(crbug.com/1098687): Trusted Type New Tab Page
+    // TODO(crbug.com/40137143): Trusted Type New Tab Page
     // This removes require-trusted-types-for and trusted-types directives
     // from the CSP header.
     return std::string();

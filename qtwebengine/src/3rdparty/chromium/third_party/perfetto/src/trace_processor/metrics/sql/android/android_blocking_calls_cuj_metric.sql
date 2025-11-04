@@ -21,6 +21,7 @@ SELECT RUN_METRIC('android/android_jank_cuj.sql');
 
 INCLUDE PERFETTO MODULE android.slices;
 INCLUDE PERFETTO MODULE android.binder;
+INCLUDE PERFETTO MODULE android.critical_blocking_calls;
 
 -- Jank "J<*>" and latency "L<*>" cujs are put together in android_cujs table.
 -- They are computed separately as latency ones are slightly different, don't
@@ -31,6 +32,9 @@ WITH latency_cujs AS (
     SELECT
         ROW_NUMBER() OVER (ORDER BY ts) AS cuj_id,
         process.upid AS upid,
+        -- Latency CUJs don't have a well defined thread. Let's always consider
+        -- the app main thread for those.
+        process.upid AS utid,
         process.name AS process_name,
         process_metadata.metadata AS process_metadata,
         -- Extracts "CUJ_NAME" from "L<CUJ_NAME>"
@@ -51,7 +55,8 @@ WITH latency_cujs AS (
 all_cujs AS (
     SELECT
         cuj_id,
-        upid,
+        cuj.upid,
+        t.utid as ui_thread,
         process_name,
         process_metadata,
         cuj_name,
@@ -59,11 +64,13 @@ all_cujs AS (
         tb.dur,
         tb.ts_end
     FROM android_jank_cuj_main_thread_cuj_boundary tb
-        JOIN android_jank_cuj using (cuj_id)
+        JOIN android_jank_cuj cuj USING (cuj_id)
+        JOIN android_jank_cuj_main_thread t USING (cuj_id)
 UNION
     SELECT
         cuj_id,
         upid,
+        utid as ui_thread,
         process_name,
         process_metadata,
         cuj_name,
@@ -75,101 +82,20 @@ UNION
 SELECT ROW_NUMBER() OVER (ORDER BY ts) AS cuj_id, *
 FROM all_cujs;
 
-
-DROP TABLE IF EXISTS relevant_binder_calls_with_names;
-CREATE TABLE relevant_binder_calls_with_names AS
-SELECT DISTINCT
-    tx.aidl_name AS name,
-    tx.client_ts AS ts,
-    s.track_id,
-    tx.client_dur AS dur,
-    s.id,
-    tx.client_process as process_name,
-    tx.client_utid as utid,
-    tx.client_upid as upid
-FROM android_sync_binder_metrics_by_txn AS tx
-         JOIN slice AS s ON s.id = tx.binder_txn_id
-WHERE is_main_thread AND aidl_name IS NOT NULL;
-
-
-DROP TABLE IF EXISTS android_blocking_calls_cuj_calls;
-CREATE TABLE android_blocking_calls_cuj_calls AS
-WITH all_main_thread_relevant_slices AS (
-    SELECT DISTINCT
-        android_standardize_slice_name(s.name) AS name,
-        s.ts,
-        s.track_id,
-        s.dur,
-        s.id,
-        process.name AS process_name,
-        thread.utid,
-        process.upid
-    FROM slice s
-        JOIN thread_track ON s.track_id = thread_track.id
-        JOIN thread USING (utid)
-        JOIN process USING (upid)
-    WHERE
-        thread.is_main_thread AND (
-               s.name = 'measure'
-            OR s.name = 'layout'
-            OR s.name = 'configChanged'
-            OR s.name = 'animation'
-            OR s.name = 'input'
-            OR s.name = 'traversal'
-            OR s.name = 'Contending for pthread mutex'
-            OR s.name = 'postAndWait'
-            OR s.name GLOB 'monitor contention with*'
-            OR s.name GLOB 'SuspendThreadByThreadId*'
-            OR s.name GLOB 'LoadApkAssetsFd*'
-            OR s.name GLOB '*binder transaction*'
-            OR s.name GLOB 'inflate*'
-            OR s.name GLOB 'Lock contention on*'
-            OR s.name GLOB 'android.os.Handler: kotlinx.coroutines*'
-            OR s.name GLOB 'relayoutWindow*'
-            OR s.name GLOB 'ImageDecoder#decode*'
-            OR s.name GLOB 'NotificationStackScrollLayout#onMeasure'
-            OR s.name GLOB 'ExpNotRow#*'
-            OR s.name GLOB 'GC: Wait For*'
-            OR (
-                -- Some top level handler slices
-                    s.depth = 0
-                AND s.name NOT GLOB '*Choreographer*'
-                AND s.name NOT GLOB '*Input*'
-                AND s.name NOT GLOB '*input*'
-                AND s.name NOT GLOB 'android.os.Handler: #*'
-                AND (
-                   -- Handler pattern heuristics
-                      s.name GLOB '*Handler: *$*'
-                   OR s.name GLOB '*.*.*: *$*'
-                   OR s.name GLOB '*.*$*: #*'
-                )
-            )
-        )
-    UNION ALL
-    SELECT
-        name,
-        ts,
-        track_id,
-        dur,
-        id,
-        process_name,
-        utid,
-        upid
-    FROM relevant_binder_calls_with_names
-),
--- Now we have:
---  (1) a list of slices from the main thread of each process
+-- We have:
+--  (1) a list of slices from the main thread of each process from the
+--  all_main_thread_relevant_slices table.
 --  (2) a list of android cuj with beginning, end, and process
 -- It's needed to:
 --  (1) assign a cuj to each slice. If there are multiple cujs going on during a
 --      slice, there needs to be 2 entries for that slice, one for each cuj id.
 --  (2) each slice needs to be trimmed to be fully inside the cuj associated
 --      (as we don't care about what's outside cujs)
-main_thread_slices_scoped_to_cujs AS (
+DROP TABLE IF EXISTS main_thread_slices_scoped_to_cujs;
+CREATE PERFETTO TABLE main_thread_slices_scoped_to_cujs AS
 SELECT
     s.id,
     s.id AS slice_id,
-    s.track_id,
     s.name,
     max(s.ts, cuj.ts) AS ts,
     min(s.ts + s.dur, cuj.ts_end) as ts_end,
@@ -179,13 +105,18 @@ SELECT
     s.process_name,
     s.upid,
     s.utid
-FROM all_main_thread_relevant_slices s
+FROM _android_critical_blocking_calls s
     JOIN  android_cujs cuj
     -- only when there is an overlap
     ON s.ts + s.dur > cuj.ts AND s.ts < cuj.ts_end
         -- and are from the same process
         AND s.upid = cuj.upid
-)
+        -- from the CUJ ui thread only
+        AND s.utid = cuj.ui_thread;
+
+
+DROP TABLE IF EXISTS android_blocking_calls_cuj_calls;
+CREATE TABLE android_blocking_calls_cuj_calls AS
 SELECT
     name,
     COUNT(*) AS occurrences,

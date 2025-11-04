@@ -12,9 +12,7 @@ export class ListModel<T> extends Common.ObjectWrapper.ObjectWrapper<EventTypes<
     this.items = items || [];
   }
 
-  // TODO(crbug.com/1172300) Ignored during the jsdoc to ts migration
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  [Symbol.iterator](): Iterator<T, any, undefined> {
+  [Symbol.iterator](): Iterator<T> {
     return this.items[Symbol.iterator]();
   }
 
@@ -104,12 +102,12 @@ export class ListModel<T> extends Common.ObjectWrapper.ObjectWrapper<EventTypes<
   }
 
   private replaced(index: number, removed: T[], inserted: number, keepSelectedIndex?: boolean): void {
-    this.dispatchEventToListeners(Events.ItemsReplaced, {index, removed, inserted, keepSelectedIndex});
+    this.dispatchEventToListeners(Events.ITEMS_REPLACED, {index, removed, inserted, keepSelectedIndex});
   }
 }
 
 export const enum Events {
-  ItemsReplaced = 'ItemsReplaced',
+  ITEMS_REPLACED = 'ItemsReplaced',
 }
 
 export interface ItemsReplacedEvent<T> {
@@ -120,5 +118,5 @@ export interface ItemsReplacedEvent<T> {
 }
 
 export type EventTypes<T> = {
-  [Events.ItemsReplaced]: ItemsReplacedEvent<T>,
+  [Events.ITEMS_REPLACED]: ItemsReplacedEvent<T>,
 };

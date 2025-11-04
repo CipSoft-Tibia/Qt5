@@ -357,8 +357,8 @@ void tst_QQuickWebView::changeUserAgent()
 
 void tst_QQuickWebView::setAndDeleteCookies()
 {
-    QSignalSpy cookieAddedSpy(webView(), SIGNAL(cookieAdded(const QString &, const QString &)));
-    QSignalSpy cookieRemovedSpy(webView(), SIGNAL(cookieRemoved(const QString &, const QString &)));
+    QSignalSpy cookieAddedSpy(webView(), SIGNAL(cookieAdded(QString,QString)));
+    QSignalSpy cookieRemovedSpy(webView(), SIGNAL(cookieRemoved(QString,QString)));
 
 #ifdef QT_WEBVIEW_WEBENGINE_BACKEND
     webView()->setUrl(QUrl("qrc:///cookies.html"));

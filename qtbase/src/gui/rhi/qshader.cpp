@@ -5,6 +5,10 @@
 #include <QDataStream>
 #include <QBuffer>
 
+#ifndef QT_NO_DEBUG_STREAM
+#include <QtCore/qdebug.h>
+#endif
+
 QT_BEGIN_NAMESPACE
 
 /*!
@@ -533,6 +537,11 @@ static void readShaderKey(QDataStream *ds, QShaderKey *k)
     If \a data cannot be deserialized successfully, the result is a default
     constructed QShader for which isValid() returns \c false.
 
+    \warning Shader packages, including \c{.qsb} files in the filesystem, are
+    assumed to be trusted content. Application developers are advised to
+    carefully consider the potential implications before allowing the loading of
+    user-provided content that is not part of the application.
+
     \sa serialized()
   */
 QShader QShader::fromSerialized(const QByteArray &data)
@@ -979,7 +988,7 @@ QDebug operator<<(QDebug dbg, const QShaderVersion &v)
 /*!
     \typedef QShader::NativeResourceBindingMap
 
-    Synonym for QMap<int, QPair<int, int>>.
+    Synonym for QMap<int, std::pair<int, int>>.
 
     The resource binding model QRhi assumes is based on SPIR-V. This means that
     uniform buffers, storage buffers, combined image samplers, and storage

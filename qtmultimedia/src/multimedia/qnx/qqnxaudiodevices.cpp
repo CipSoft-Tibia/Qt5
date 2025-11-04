@@ -28,13 +28,14 @@ static QList<QAudioDevice> enumeratePcmDevices(QAudioDevice::Mode mode)
     // QNX PCM devices names start with the pcm prefix and end either with the
     // 'p' (playback) or 'c' (capture) suffix
 
-    const char modeSuffix = mode == QAudioDevice::Input ? 'c' : 'p';
+    const QChar modeSuffix = mode == QAudioDevice::Input ? u'c' : u'p';
 
     QList<QAudioDevice> devices;
 
     for (const QString &entry : dir.entryList()) {
         if (entry.startsWith(QStringLiteral("pcm")) && entry.back() == modeSuffix)
-            devices << (new QnxAudioDeviceInfo(entry.toUtf8(), mode))->create();
+            devices << QAudioDevicePrivate::createQAudioDevice(
+                    std::make_unique<QnxAudioDeviceInfo>(entry.toUtf8(), mode));
     }
 
     return devices;
@@ -59,18 +60,14 @@ QPlatformAudioSource *QQnxAudioDevices::createAudioSource(const QAudioDevice &de
                                                           const QAudioFormat &fmt,
                                                           QObject *parent)
 {
-    auto src = new QQnxAudioSource(deviceInfo, parent);
-    src->setFormat(fmt);
-    return src;
+    return new QQnxAudioSource(deviceInfo, fmt, parent);
 }
 
 QPlatformAudioSink *QQnxAudioDevices::createAudioSink(const QAudioDevice &deviceInfo,
                                                       const QAudioFormat &fmt,
                                                       QObject *parent)
 {
-    auto sink = new QQnxAudioSink(deviceInfo, parent);
-    sink->setFormat(fmt);
-    return sink;
+    return new QQnxAudioSink(deviceInfo, fmt, parent);
 }
 
 QT_END_NAMESPACE

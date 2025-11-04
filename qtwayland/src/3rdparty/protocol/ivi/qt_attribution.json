@@ -10,6 +10,10 @@
         "Homepage": "https://at.projects.genivi.org/wiki/display/WIE/Wayland+IVI+Extension+Home",
         "Version": "1.9.1",
         "DownloadLocation": "https://github.com/GENIVI/wayland-ivi-extension/releases/tag/1.9.1",
+        "PURL": [
+            "pkg:github/GENIVI/wayland-ivi-extension@$<VERSION>"
+        ],
+        "Comment": "no relevant CPE found",
         "LicenseId": "MIT",
         "License": "MIT License",
         "LicenseFile": "../MIT_LICENSE.txt",

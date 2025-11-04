@@ -12,10 +12,13 @@
 
 #include <algorithm>  // std::min
 #include <memory>
+#include <optional>
 
-#include "absl/types/optional.h"
 #include "api/audio_codecs/builtin_audio_decoder_factory.h"
 #include "api/audio_codecs/builtin_audio_encoder_factory.h"
+#include "api/environment/environment.h"
+#include "api/environment/environment_factory.h"
+#include "api/units/timestamp.h"
 #include "modules/audio_coding/codecs/cng/audio_encoder_cng.h"
 #include "modules/audio_coding/include/audio_coding_module.h"
 #include "modules/audio_coding/neteq/tools/rtp_generator.h"
@@ -45,7 +48,7 @@ class AcmReceiverTestOldApi : public AudioPacketizationCallback,
 
   void SetUp() override {
     acm_ = AudioCodingModule::Create();
-    receiver_.reset(new AcmReceiver(config_));
+    receiver_ = std::make_unique<AcmReceiver>(env_, config_);
     ASSERT_TRUE(receiver_.get() != NULL);
     ASSERT_TRUE(acm_.get() != NULL);
     acm_->RegisterTransportCallback(this);
@@ -64,11 +67,11 @@ class AcmReceiverTestOldApi : public AudioPacketizationCallback,
                             const SdpAudioFormat& format,
                             const std::map<int, int> cng_payload_types = {}) {
     // Create the speech encoder.
-    absl::optional<AudioCodecInfo> info =
+    std::optional<AudioCodecInfo> info =
         encoder_factory_->QueryAudioEncoder(format);
     RTC_CHECK(info.has_value());
     std::unique_ptr<AudioEncoder> enc =
-        encoder_factory_->MakeAudioEncoder(payload_type, format, absl::nullopt);
+        encoder_factory_->Create(env_, format, {.payload_type = payload_type});
 
     // If we have a compatible CN specification, stack a CNG on top.
     auto it = cng_payload_types.find(info->sample_rate_hz);
@@ -119,7 +122,8 @@ class AcmReceiverTestOldApi : public AudioPacketizationCallback,
 
     int ret_val = receiver_->InsertPacket(
         rtp_header_,
-        rtc::ArrayView<const uint8_t>(payload_data, payload_len_bytes));
+        rtc::ArrayView<const uint8_t>(payload_data, payload_len_bytes),
+        Timestamp::MinusInfinity());
     if (ret_val < 0) {
       RTC_DCHECK_NOTREACHED();
       return -1;
@@ -130,6 +134,7 @@ class AcmReceiverTestOldApi : public AudioPacketizationCallback,
     return 0;
   }
 
+  const Environment env_ = CreateEnvironment();
   const rtc::scoped_refptr<AudioEncoderFactory> encoder_factory_ =
       CreateBuiltinAudioEncoderFactory();
   const rtc::scoped_refptr<AudioDecoderFactory> decoder_factory_ =
@@ -190,9 +195,6 @@ class AcmReceiverTestFaxModeOldApi : public AcmReceiverTestOldApi {
     const size_t output_channels = info.num_channels;
     const size_t samples_per_ms = rtc::checked_cast<size_t>(
         rtc::CheckedDivExact(output_sample_rate_hz, 1000));
-    const AudioFrame::VADActivity expected_vad_activity =
-        output_sample_rate_hz > 16000 ? AudioFrame::kVadActive
-                                      : AudioFrame::kVadPassive;
 
     // Expect the first output timestamp to be 5*fs/8000 samples before the
     // first inserted timestamp (because of NetEq's look-ahead). (This value is
@@ -217,7 +219,6 @@ class AcmReceiverTestFaxModeOldApi : public AcmReceiverTestOldApi {
         EXPECT_EQ(output_sample_rate_hz, frame.sample_rate_hz_);
         EXPECT_EQ(output_channels, frame.num_channels_);
         EXPECT_EQ(AudioFrame::kNormalSpeech, frame.speech_type_);
-        EXPECT_EQ(expected_vad_activity, frame.vad_activity_);
         EXPECT_FALSE(muted);
       }
     }
@@ -243,61 +244,6 @@ TEST_F(AcmReceiverTestFaxModeOldApi, MAYBE_VerifyAudioFrameOpus) {
 }
 
 #if defined(WEBRTC_ANDROID)
-#define MAYBE_PostdecodingVad DISABLED_PostdecodingVad
-#else
-#define MAYBE_PostdecodingVad PostdecodingVad
-#endif
-TEST_F(AcmReceiverTestOldApi, MAYBE_PostdecodingVad) {
-  EXPECT_TRUE(config_.neteq_config.enable_post_decode_vad);
-  constexpr int payload_type = 34;
-  const SdpAudioFormat codec = {"L16", 16000, 1};
-  const AudioCodecInfo info = SetEncoder(payload_type, codec);
-  receiver_->SetCodecs({{payload_type, codec}});
-  constexpr int kNumPackets = 5;
-  AudioFrame frame;
-  for (int n = 0; n < kNumPackets; ++n) {
-    const int num_10ms_frames = InsertOnePacketOfSilence(info);
-    for (int k = 0; k < num_10ms_frames; ++k) {
-      bool muted;
-      ASSERT_EQ(0, receiver_->GetAudio(info.sample_rate_hz, &frame, &muted));
-    }
-  }
-  EXPECT_EQ(AudioFrame::kVadPassive, frame.vad_activity_);
-}
-
-class AcmReceiverTestPostDecodeVadPassiveOldApi : public AcmReceiverTestOldApi {
- protected:
-  AcmReceiverTestPostDecodeVadPassiveOldApi() {
-    config_.neteq_config.enable_post_decode_vad = false;
-  }
-};
-
-#if defined(WEBRTC_ANDROID)
-#define MAYBE_PostdecodingVad DISABLED_PostdecodingVad
-#else
-#define MAYBE_PostdecodingVad PostdecodingVad
-#endif
-TEST_F(AcmReceiverTestPostDecodeVadPassiveOldApi, MAYBE_PostdecodingVad) {
-  EXPECT_FALSE(config_.neteq_config.enable_post_decode_vad);
-  constexpr int payload_type = 34;
-  const SdpAudioFormat codec = {"L16", 16000, 1};
-  const AudioCodecInfo info = SetEncoder(payload_type, codec);
-  auto const value = encoder_factory_->QueryAudioEncoder(codec);
-  ASSERT_TRUE(value.has_value());
-  receiver_->SetCodecs({{payload_type, codec}});
-  const int kNumPackets = 5;
-  AudioFrame frame;
-  for (int n = 0; n < kNumPackets; ++n) {
-    const int num_10ms_frames = InsertOnePacketOfSilence(info);
-    for (int k = 0; k < num_10ms_frames; ++k) {
-      bool muted;
-      ASSERT_EQ(0, receiver_->GetAudio(info.sample_rate_hz, &frame, &muted));
-    }
-  }
-  EXPECT_EQ(AudioFrame::kVadUnknown, frame.vad_activity_);
-}
-
-#if defined(WEBRTC_ANDROID)
 #define MAYBE_LastAudioCodec DISABLED_LastAudioCodec
 #else
 #define MAYBE_LastAudioCodec LastAudioCodec
@@ -318,7 +264,7 @@ TEST_F(AcmReceiverTestOldApi, MAYBE_LastAudioCodec) {
   }
 
   // No audio payload is received.
-  EXPECT_EQ(absl::nullopt, receiver_->LastDecoder());
+  EXPECT_EQ(std::nullopt, receiver_->LastDecoder());
 
   // Start with sending DTX.
   packet_sent_ = false;
@@ -329,8 +275,8 @@ TEST_F(AcmReceiverTestOldApi, MAYBE_LastAudioCodec) {
   EXPECT_EQ(AudioFrameType::kAudioFrameCN, last_frame_type_);
 
   // Has received, only, DTX. Last Audio codec is undefined.
-  EXPECT_EQ(absl::nullopt, receiver_->LastDecoder());
-  EXPECT_EQ(absl::nullopt, receiver_->last_packet_sample_rate_hz());
+  EXPECT_EQ(std::nullopt, receiver_->LastDecoder());
+  EXPECT_EQ(std::nullopt, receiver_->last_packet_sample_rate_hz());
 
   for (size_t i = 0; i < codecs.size(); ++i) {
     // Set DTX off to send audio payload.
@@ -432,7 +378,8 @@ TEST_F(AcmReceiverTestOldApi, MAYBE_NetEqCalls) {
 
   for (int num_calls = 0; num_calls < kNumNormalCalls; ++num_calls) {
     const uint8_t kPayload[kPayloadSizeBytes] = {0};
-    ASSERT_EQ(0, receiver_->InsertPacket(rtp_header, kPayload));
+    ASSERT_EQ(0, receiver_->InsertPacket(rtp_header, kPayload,
+                                         Timestamp::MinusInfinity()));
     ++rtp_header.sequenceNumber;
     rtp_header.timestamp += kFrameSizeSamples;
     ASSERT_EQ(0, receiver_->GetAudio(-1, &audio_frame, &muted));

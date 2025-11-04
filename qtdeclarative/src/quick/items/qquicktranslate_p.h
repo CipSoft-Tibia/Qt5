@@ -125,6 +125,49 @@ private:
     Q_DECLARE_PRIVATE(QQuickRotation)
 };
 
+class QQuickShearPrivate;
+class Q_QUICK_EXPORT QQuickShear : public QQuickTransform
+{
+    Q_OBJECT
+
+    Q_PROPERTY(QVector3D origin READ origin WRITE setOrigin NOTIFY originChanged)
+    Q_PROPERTY(qreal xFactor READ xFactor WRITE setXFactor NOTIFY xFactorChanged)
+    Q_PROPERTY(qreal yFactor READ yFactor WRITE setYFactor NOTIFY yFactorChanged)
+    Q_PROPERTY(qreal xAngle READ xAngle WRITE setXAngle NOTIFY xAngleChanged)
+    Q_PROPERTY(qreal yAngle READ yAngle WRITE setYAngle NOTIFY yAngleChanged)
+    QML_NAMED_ELEMENT(Shear)
+    QML_ADDED_IN_VERSION(6, 9)
+public:
+    QQuickShear(QObject *parent = nullptr);
+
+    QVector3D origin() const;
+    void setOrigin(const QVector3D &point);
+
+    qreal xFactor() const;
+    void setXFactor(qreal);
+
+    qreal yFactor() const;
+    void setYFactor(qreal);
+
+    qreal xAngle() const;
+    void setXAngle(qreal);
+
+    qreal yAngle() const;
+    void setYAngle(qreal);
+
+    void applyTo(QMatrix4x4 *matrix) const override;
+
+Q_SIGNALS:
+    void originChanged();
+    void xFactorChanged();
+    void yFactorChanged();
+    void xAngleChanged();
+    void yAngleChanged();
+
+private:
+    Q_DECLARE_PRIVATE(QQuickShear)
+};
+
 class QQuickMatrix4x4Private;
 class Q_QUICK_EXPORT QQuickMatrix4x4 : public QQuickTransform
 {

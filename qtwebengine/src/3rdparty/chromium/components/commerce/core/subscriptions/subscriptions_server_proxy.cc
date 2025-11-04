@@ -12,6 +12,7 @@
 #include "base/json/json_reader.h"
 #include "base/json/json_writer.h"
 #include "base/json/values_util.h"
+#include "base/time/time.h"
 #include "components/commerce/core/commerce_constants.h"
 #include "components/commerce/core/commerce_feature_list.h"
 #include "components/commerce/core/subscriptions/commerce_subscription.h"
@@ -61,6 +62,7 @@ const char kSubscriptionSeenOfferKey[] = "userSeenOffer";
 const char kSeenOfferIdKey[] = "offerId";
 const char kSeenOfferPriceKey[] = "seenPriceMicros";
 const char kSeenOfferCountryKey[] = "countryCode";
+const char kSeenOfferLocaleKey[] = "languageCode";
 
 }  // namespace
 
@@ -278,22 +280,17 @@ SubscriptionsServerProxy::CreateEndpointFetcher(
     const std::string& http_method,
     const std::string& post_data,
     const net::NetworkTrafficAnnotationTag& annotation_tag) {
-#if BUILDFLAG(IS_IOS)
   // If ReplaceSyncPromosWithSignInPromos is enabled - ConsentLevel::kSync is no
   // longer attainable. See crbug.com/1503156 for details.
   signin::ConsentLevel consent_level =
       base::FeatureList::IsEnabled(syncer::kReplaceSyncPromosWithSignInPromos)
           ? signin::ConsentLevel::kSignin
           : signin::ConsentLevel::kSync;
-#else
-  // TODO(crbug.com/1504089): Remove ifdefs after scope checking is disabled
-  //                          on non-iOS platforms.
-  signin::ConsentLevel consent_level = signin::ConsentLevel::kSync;
-#endif
   return std::make_unique<EndpointFetcher>(
       url_loader_factory_, kOAuthName, url, http_method, kContentType,
-      std::vector<std::string>{kOAuthScope}, kTimeoutMs.Get(), post_data,
-      annotation_tag, identity_manager_, consent_level);
+      std::vector<std::string>{kOAuthScope},
+      base::Milliseconds(kTimeoutMs.Get()), post_data, annotation_tag,
+      identity_manager_, consent_level);
 }
 
 void SubscriptionsServerProxy::HandleManageSubscriptionsResponses(
@@ -382,6 +379,10 @@ SubscriptionsServerProxy::GetSubscriptionsFromParsedJson(
   return subscriptions;
 }
 
+bool SubscriptionsServerProxy::IsPriceTrackingLocaleKeyEnabled() {
+  return base::FeatureList::IsEnabled(kPriceTrackingSubscriptionServiceLocaleKey);
+}
+
 base::Value::Dict SubscriptionsServerProxy::Serialize(
     const CommerceSubscription& subscription) {
   base::Value::Dict subscription_json;
@@ -399,13 +400,16 @@ base::Value::Dict SubscriptionsServerProxy::Serialize(
     seen_offer_json.Set(kSeenOfferPriceKey,
                         base::NumberToString(seen_offer->user_seen_price));
     seen_offer_json.Set(kSeenOfferCountryKey, seen_offer->country_code);
+    if (IsPriceTrackingLocaleKeyEnabled()) {
+      seen_offer_json.Set(kSeenOfferLocaleKey, seen_offer->locale);
+    }
     subscription_json.Set(kSubscriptionSeenOfferKey,
                           std::move(seen_offer_json));
   }
   return subscription_json;
 }
 
-absl::optional<CommerceSubscription> SubscriptionsServerProxy::Deserialize(
+std::optional<CommerceSubscription> SubscriptionsServerProxy::Deserialize(
     const base::Value& value) {
   if (value.is_dict()) {
     const base::Value::Dict& value_dict = value.GetDict();
@@ -417,7 +421,7 @@ absl::optional<CommerceSubscription> SubscriptionsServerProxy::Deserialize(
     auto timestamp =
         base::ValueToInt64(value_dict.Find(kSubscriptionTimestampKey));
     if (type && id_type && id && management_type && timestamp) {
-      return absl::make_optional<CommerceSubscription>(
+      return std::make_optional<CommerceSubscription>(
           StringToSubscriptionType(*type), StringToSubscriptionIdType(*id_type),
           *id, StringToSubscriptionManagementType(*management_type),
           *timestamp);
@@ -425,7 +429,7 @@ absl::optional<CommerceSubscription> SubscriptionsServerProxy::Deserialize(
   }
 
   VLOG(1) << "Subscription in response is not valid";
-  return absl::nullopt;
+  return std::nullopt;
 }
 
 }  // namespace commerce

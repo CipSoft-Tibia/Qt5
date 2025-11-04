@@ -37,8 +37,8 @@ Item {
             Model {
                 source: "#Cube"
                 scale: Qt.vector3d(0.02, 0.02, 0.15)
-                materials: DefaultMaterial {
-                    lighting: DefaultMaterial.NoLighting
+                materials: PrincipledMaterial {
+                    lighting: PrincipledMaterial.NoLighting
                 }
             }
         }
@@ -47,7 +47,7 @@ Item {
             id: emittingSphere
             source: "#Sphere"
             scale: Qt.vector3d(0.5, 0.5, 0.5)
-            materials: DefaultMaterial {
+            materials: PrincipledMaterial {
                 opacity: 0.4
             }
 
@@ -112,7 +112,7 @@ Item {
         Model {
             id: targetSphere
             source: "#Sphere"
-            materials: DefaultMaterial {
+            materials: PrincipledMaterial {
                 opacity: 0.2
             }
             y: -200

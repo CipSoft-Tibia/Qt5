@@ -26,7 +26,7 @@
 
 // Version number for shader translation API.
 // It is incremented every time the API changes.
-#define ANGLE_SH_VERSION 346
+#define ANGLE_SH_VERSION 359
 
 enum ShShaderSpec
 {
@@ -67,13 +67,15 @@ enum ShShaderOutput
     // Prefer using these to specify HLSL output type:
     SH_HLSL_3_0_OUTPUT       = 0x8B48,  // D3D 9
     SH_HLSL_4_1_OUTPUT       = 0x8B49,  // D3D 11
-    SH_HLSL_4_0_FL9_3_OUTPUT = 0x8B4A,  // D3D 11 feature level 9_3
 
     // Output SPIR-V for the Vulkan backend.
     SH_SPIRV_VULKAN_OUTPUT = 0x8B4B,
 
     // Output for MSL
     SH_MSL_METAL_OUTPUT = 0x8B4D,
+
+    // Output for WGSL
+    SH_WGSL_OUTPUT = 0x8B4E,
 };
 
 struct ShCompileOptionsMetal
@@ -81,13 +83,17 @@ struct ShCompileOptionsMetal
     // Direct-to-metal backend constants:
 
     // Binding index for driver uniforms:
-    int driverUniformsBindingIndex;
+    int driverUniformsBindingIndex = 0;
     // Binding index for default uniforms:
-    int defaultUniformsBindingIndex;
+    int defaultUniformsBindingIndex = 0;
     // Binding index for UBO's argument buffer
-    int UBOArgumentBufferBindingIndex;
+    int UBOArgumentBufferBindingIndex = 0;
 
-    bool generateShareableShaders;
+    bool generateShareableShaders = false;
+
+    // Insert asm("") instructions into loop bodies, telling the compiler that all loops have side
+    // effects and cannot be optimized out.
+    bool injectAsmStatementIntoLoopBodies = false;
 };
 
 // For ANGLE_shader_pixel_local_storage.
@@ -131,8 +137,8 @@ struct ShPixelLocalStorageOptions
     // Or do we need to manually pack and unpack from r32i/r32ui?
     bool supportsNativeRGBA8ImageFormats = false;
 
-    // anglebug.com/7792 -- Metal [[raster_order_group()]] does not work for read_write textures on
-    // AMD when the render pass doesn't have a color attachment on slot 0. To work around this we
+    // anglebug.com/42266263 -- Metal [[raster_order_group()]] does not work for read_write textures
+    // on AMD when the render pass doesn't have a color attachment on slot 0. To work around this we
     // attach one of the PLS textures to GL_COLOR_ATTACHMENT0, if there isn't one already.
     bool renderPassNeedsAMDRasterOrderGroupsWorkaround = false;
 };
@@ -335,16 +341,14 @@ struct ShCompileOptions
     // targeted to workaround a bug in NVIDIA D3D driver where the return value from
     // RWByteAddressBuffer.InterlockedAdd does not get resolved when used in the .yzw components of
     // a RWByteAddressBuffer.Store operation. Only has an effect on HLSL translation.
-    // http://anglebug.com/3246
+    // http://anglebug.com/42261924
     uint64_t forceAtomicValueResolution : 1;
 
     // Rewrite gl_BaseVertex and gl_BaseInstance as uniform int
     uint64_t emulateGLBaseVertexBaseInstance : 1;
 
-    // Emulate seamful cube map sampling for OpenGL ES2.0.  Currently only applies to the Vulkan
-    // backend, as is done after samplers are moved out of structs.  Can likely be made to work on
-    // the other backends as well.
-    uint64_t emulateSeamfulCubeMapSampling : 1;
+    // Workaround for a driver bug with nested switches.
+    uint64_t wrapSwitchInIfTrue : 1;
 
     // This flag controls how to translate WEBGL_video_texture sampling function.
     uint64_t takeVideoTextureAsExternalOES : 1;
@@ -414,9 +418,9 @@ struct ShCompileOptions
     // causing the comparison to fail.
     uint64_t castMediumpFloatTo16Bit : 1;
 
-    // anglebug.com/7527: packUnorm4x8 fails on Pixel 4 if it is not passed a highp vec4.
-    // TODO(anglebug.com/7527): This workaround is currently only applied for pixel local storage.
-    // We may want to apply it generally.
+    // anglebug.com/42265995: packUnorm4x8 fails on Pixel 4 if it is not passed a highp vec4.
+    // TODO(anglebug.com/42265995): This workaround is currently only applied for pixel local
+    // storage. We may want to apply it generally.
     uint64_t passHighpToPackUnormSnormBuiltins : 1;
 
     // Use an integer uniform to pass a bitset of enabled clip distances.
@@ -437,6 +441,18 @@ struct ShCompileOptions
 
     // Pre-transform explicit cubemap derivatives for Apple GPUs.
     uint64_t preTransformTextureCubeGradDerivatives : 1;
+
+    // Workaround for a driver bug with the use of the OpSelect SPIR-V instruction.
+    uint64_t avoidOpSelectWithMismatchingRelaxedPrecision : 1;
+
+    // Whether SPIR-V 1.4 can be emitted.  If not set, SPIR-V 1.3 is emitted.
+    uint64_t emitSPIRV14 : 1;
+
+    // Reject shaders with obvious undefined behavior:
+    //
+    // - Shader contains easy-to-detect infinite loops
+    //
+    uint64_t rejectWebglShadersWithUndefinedBehavior : 1;
 
     ShCompileOptionsMetal metal;
     ShPixelLocalStorageOptions pls;
@@ -493,6 +509,7 @@ struct ShBuiltInResources
     int OES_shader_io_blocks;
     int EXT_shader_io_blocks;
     int EXT_gpu_shader5;
+    int OES_gpu_shader5;
     int EXT_shader_non_constant_global_initializers;
     int OES_texture_storage_multisample_2d_array;
     int OES_texture_3D;
@@ -509,6 +526,7 @@ struct ShBuiltInResources
     int OES_shader_multisample_interpolation;
     int OES_shader_image_atomic;
     int EXT_tessellation_shader;
+    int OES_tessellation_shader;
     int OES_texture_buffer;
     int EXT_texture_buffer;
     int OES_sample_variables;
@@ -556,6 +574,9 @@ struct ShBuiltInResources
 
     // The maximum complexity an expression can be when limitExpressionComplexity is turned on.
     int MaxExpressionComplexity;
+
+    // The maximum depth of certain nestable statements (while, switch);
+    int MaxStatementDepth;
 
     // The maximum depth a call stack can be.
     int MaxCallStackDepth;
@@ -939,6 +960,9 @@ enum class MetadataFlags
     // Applicable to fragment shaders
     HasDiscard,
     EnablesPerSampleShading,
+    HasInputAttachment0,
+    // Flag for attachment i is HasInputAttachment0 + i
+    HasInputAttachment7 = HasInputAttachment0 + 7,
     // Applicable to geometry shaders
     HasValidGeometryShaderInputPrimitiveType,
     HasValidGeometryShaderOutputPrimitiveType,
@@ -1090,6 +1114,9 @@ enum ReservedIds
     kIdXfbEmulationBufferBlockThree,
     // Additional varying added to hold untransformed gl_Position for transform feedback capture
     kIdXfbExtensionPosition,
+    // Input attachments used for framebuffer fetch and advanced blend emulation
+    kIdInputAttachment0,
+    kIdInputAttachment7 = kIdInputAttachment0 + 7,
 
     kIdFirstUnreserved,
 };

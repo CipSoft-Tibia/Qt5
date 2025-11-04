@@ -20,13 +20,12 @@ import java.security.InvalidParameterException;
  * Android app with QML content but do not want to make the entire app using the Qt framework.
  * It brings the power of Qt Quick into your Android app, making it possible to use various Qt Quick
  * APIs, in Android Java or Kotlin apps.
- * </p>
- * <p>
+ *
  * <b>Known limitations:</b>
- * <p><ul>
+ * <ul>
  * <li> Only CMake is supported, not qmake.
  * <li> Only one QtQuickView can be added to your app, adding multiple outcomes unknown.
- * </ul><p>
+ * </ul>
  * @see <a href="https://doc.qt.io/qt-6/qquickview.html">Qt QQuickView</a>
  **/
 public class QtQuickView extends QtView {
@@ -51,7 +50,7 @@ public class QtQuickView extends QtView {
      * Creates a QtQuickView to load and view a QML component. Instantiating a QtQuickView will load
      * the Qt libraries, including the app library specified by <code>appName</code>. Then it
      * creates a QQuickView that loads the QML source specified by <code>qmlUri</code>.
-     * <p>
+     *
      * @param context the parent Context
      * @param qmlUri  the URI of the main QML file
      * @param appName the name of the Qt app library to load and start. This corresponds to the
@@ -69,7 +68,7 @@ public class QtQuickView extends QtView {
      * the Qt libraries, including the app library specified by appName. Then it creates a
      * QQuickView that loads the QML source specified by qmlUri. This overload accepts an array of
      * strings in the case where the QML application should load QML modules from custom paths.
-     * <p>
+     *
      * @param context        the parent Context
      * @param qmlUri         the URI of the main QML file
      * @param appName        the name of the Qt app library to load and start. This corresponds to
@@ -107,7 +106,7 @@ public class QtQuickView extends QtView {
      * of the QML content will be extracted from the QtQuickViewContent to load the QML content.
      * This overload accepts an array of strings in the case where the QML content should load
      * QML modules from custom paths.
-     * <p>
+     *
      * @param qmlContent   an instance of an object that extends QtQuickViewContent
      * @param qmlImportPaths an array of strings for additional import paths to be passed to
      *                       QQmlEngine, or null if additional import paths are not required
@@ -155,7 +154,7 @@ public class QtQuickView extends QtView {
     /**
      * Loads QML content represented by a QtQuickViewContent. The library name and the qrc path of
      * the QML content will be extracted from the QtQuickViewContent to load the QML component.
-     * <p>
+     *
      * @param qmlContent an instance of a class that extends QtQuickViewContent
      * @throws InvalidParameterException if QtQuickViewContent does not contain valid information
      * about the module name, and the qrc path.
@@ -178,7 +177,7 @@ public class QtQuickView extends QtView {
      * {@link java.lang.Boolean} and {@link java.lang.String}. These types get converted to their
      * corresponding QML types int, double/float, bool and string. This function does not add
      * properties to the QML root object if they do not exist, but prints a warning.
-     * <p>
+     *
      * @param propertyName the name of the existing root object property to set the value of
      * @param value        the value to set the property to QML's int, double/float, bool or
                            string
@@ -198,8 +197,8 @@ public class QtQuickView extends QtView {
      * {@link java.lang.Boolean} and {@link java.lang.String}. These types get converted to their
      * corresponding QML types int, double/float, bool and string. If the property does not
      * exist or the status of the QML component is anything other than
-     * {@link QtQuickView#STATUS_READY STATUS_READY}, this function will return null.
-     * <p>
+     * {@link QtQmlStatus#READY READY}, this function will return null.
+     *
      * @param propertyName the name of the existing root object property
      * @throws ClassCastException if the returned type could not be casted to the requested type.
      * @see <a href="https://doc.qt.io/qt-6/qml-int.html">QML int</a>
@@ -217,7 +216,7 @@ public class QtQuickView extends QtView {
 
     /**
      * Connects a SignalListener to a signal of the QML root object.
-     * <p>
+     *
      * @param signalName the name of the root object signal
      * @param argType    the Class type of the signal argument
      * @param listener   an instance of the QtSignalListener interface
@@ -239,9 +238,9 @@ public class QtQuickView extends QtView {
 
     /**
      * Disconnects a SignalListener with a given id obtained from
-     * {@link QtQuickView#connectSignalListener() connectSignalListener} call, from listening to
-     * a signal.
-     * <p>
+     * {@link QtQuickView#connectSignalListener(String, Class, QtSignalListener)} call,
+     * from listening to a signal.
+     *
      * @param signalListenerId the connection id
      * @return Returns true if the connection id is valid and has been successfuly removed,
      *         otherwise returns false.
@@ -253,14 +252,15 @@ public class QtQuickView extends QtView {
 
     /**
      * Gets the status of the QML component.
-     * <p>
+     *
      * @return Returns QtQmlStatus.READY when the QML component is ready. Invoking methods that
-     *         operate on the QML root object ({@link QtQuickView#setProperty() setProperty},
-     *         {@link QtQuickView#getProperty() getProperty}, and
-     *         {@link QtQuickView#addSignalListener() addSignalListener}) would succeed <b>only</b>
-     *         if the current status is QtQmlStatus.READY. It can also return QtQmlStatus.NULL,
-     *         QtQmlStatus.LOADING, or QtQmlStatus.ERROR based on the status of the underlaying
-               QQuickView instance.
+     *         operate on the QML root object {@link QtQuickView#setProperty(String, Object)},
+     *         {@link QtQuickView#getProperty(String)} and
+     *         {@link QtQuickView#connectSignalListener(String, Class, QtSignalListener)} would
+     *         succeed <b>only</b> if the current status is {@link QtQmlStatus#READY READY}.
+     *         It can also return {@link QtQmlStatus#NULL NULL}, {@link QtQmlStatus#LOADING LOADING},
+     *         or {@link QtQmlStatus#ERROR ERROR} based on the status of the underlaying QQuickView
+     *         instance.
      * @see <a href="https://doc.qt.io/qt-6/qquickview.html">QQuickView</a>
      **/
     public QtQmlStatus getStatus()
@@ -270,7 +270,7 @@ public class QtQuickView extends QtView {
 
     /**
      * Sets a QtQmlStatusChangeListener to listen to status changes.
-     * <p>
+     *
      * @param listener an instance of a QtQmlStatusChangeListener interface
      **/
     public void setStatusChangeListener(QtQmlStatusChangeListener listener)
@@ -278,7 +278,7 @@ public class QtQuickView extends QtView {
         m_statusChangeListener = listener;
 
         if (m_hasQueuedStatus) {
-            QtNative.runAction(() -> { m_statusChangeListener.onStatusChanged(m_lastStatus); });
+            sendStatusChanged(m_lastStatus);
             m_hasQueuedStatus = false;
         }
     }
@@ -292,11 +292,23 @@ public class QtQuickView extends QtView {
             e.printStackTrace();
         }
 
-        if (m_statusChangeListener != null)
-            QtNative.runAction(() -> {
-                m_statusChangeListener.onStatusChanged(QtQmlStatus.fromInt(status));
-            });
-        else
+        if (m_statusChangeListener == null)
             m_hasQueuedStatus = true;
+        else
+            sendStatusChanged(m_lastStatus);
+    }
+
+    private void sendStatusChanged(QtQmlStatus status)
+    {
+        QtNative.runAction(() -> {
+            if (m_statusChangeListener != null) {
+                QtQuickViewContent content = m_loadedComponent != null ?
+                    m_loadedComponent.get() : null;
+                if (content == null)
+                    m_statusChangeListener.onStatusChanged(status);
+                else
+                    m_statusChangeListener.onStatusChanged(status, content);
+            }
+        });
     }
 }

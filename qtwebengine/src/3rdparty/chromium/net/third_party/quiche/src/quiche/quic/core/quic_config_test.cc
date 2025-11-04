@@ -6,6 +6,7 @@
 
 #include <memory>
 #include <string>
+#include <utility>
 
 #include "quiche/quic/core/crypto/crypto_handshake_message.h"
 #include "quiche/quic/core/crypto/crypto_protocol.h"
@@ -120,7 +121,7 @@ TEST_P(QuicConfigTest, ProcessClientHello) {
     return;
   }
   const uint32_t kTestMaxAckDelayMs =
-      static_cast<uint32_t>(kDefaultDelayedAckTimeMs + 1);
+      static_cast<uint32_t>(GetDefaultDelayedAckTimeMs() + 1);
   QuicConfig client_config;
   QuicTagVector cgst;
   cgst.push_back(kQBIC);
@@ -187,7 +188,7 @@ TEST_P(QuicConfigTest, ProcessServerHello) {
       0x50, 0x51, 0x52, 0x53, 0x54, 0x55, 0x56, 0x57,
       0x58, 0x59, 0x5a, 0x5b, 0x5c, 0x5d, 0x5e, 0x5f};
   const uint32_t kTestMaxAckDelayMs =
-      static_cast<uint32_t>(kDefaultDelayedAckTimeMs + 1);
+      static_cast<uint32_t>(GetDefaultDelayedAckTimeMs() + 1);
   QuicConfig server_config;
   QuicTagVector cgst;
   cgst.push_back(kQBIC);
@@ -537,6 +538,37 @@ TEST_P(QuicConfigTest, FillTransportParams) {
   EXPECT_EQ(kFakeGoogleHandshakeMessage, params.google_handshake_message);
 }
 
+TEST_P(QuicConfigTest, DNATPreferredAddress) {
+  QuicIpAddress host_v4;
+  host_v4.FromString("127.0.3.1");
+  QuicSocketAddress server_address_v4 = QuicSocketAddress(host_v4, 1234);
+  QuicSocketAddress expected_server_address_v4 =
+      QuicSocketAddress(host_v4, 1235);
+
+  QuicIpAddress host_v6;
+  host_v6.FromString("2001:db8:0::1");
+  QuicSocketAddress server_address_v6 = QuicSocketAddress(host_v6, 1234);
+  QuicSocketAddress expected_server_address_v6 =
+      QuicSocketAddress(host_v6, 1235);
+
+  config_.SetIPv4AlternateServerAddressForDNat(server_address_v4,
+                                               expected_server_address_v4);
+  config_.SetIPv6AlternateServerAddressForDNat(server_address_v6,
+                                               expected_server_address_v6);
+
+  EXPECT_EQ(server_address_v4,
+            config_.GetPreferredAddressToSend(quiche::IpAddressFamily::IP_V4));
+  EXPECT_EQ(server_address_v6,
+            config_.GetPreferredAddressToSend(quiche::IpAddressFamily::IP_V6));
+
+  EXPECT_EQ(expected_server_address_v4,
+            config_.GetMappedAlternativeServerAddress(
+                quiche::IpAddressFamily::IP_V4));
+  EXPECT_EQ(expected_server_address_v6,
+            config_.GetMappedAlternativeServerAddress(
+                quiche::IpAddressFamily::IP_V6));
+}
+
 TEST_P(QuicConfigTest, FillTransportParamsNoV4PreferredAddress) {
   if (!version_.UsesTls()) {
     // TransportParameters are only used for QUIC+TLS.
@@ -566,6 +598,43 @@ TEST_P(QuicConfigTest, FillTransportParamsNoV4PreferredAddress) {
             QuicSocketAddress(QuicIpAddress::Any4(), 0));
   EXPECT_EQ(params.preferred_address->ipv6_socket_address,
             kTestServerAddressV6);
+}
+
+TEST_P(QuicConfigTest, SupportsServerPreferredAddress) {
+  SetQuicFlag(quic_always_support_server_preferred_address, true);
+  EXPECT_TRUE(config_.SupportsServerPreferredAddress(Perspective::IS_CLIENT));
+  EXPECT_TRUE(config_.SupportsServerPreferredAddress(Perspective::IS_SERVER));
+
+  SetQuicFlag(quic_always_support_server_preferred_address, false);
+  EXPECT_FALSE(config_.SupportsServerPreferredAddress(Perspective::IS_CLIENT));
+  EXPECT_FALSE(config_.SupportsServerPreferredAddress(Perspective::IS_SERVER));
+
+  QuicTagVector copt;
+  copt.push_back(kSPAD);
+  config_.SetConnectionOptionsToSend(copt);
+  EXPECT_TRUE(config_.SupportsServerPreferredAddress(Perspective::IS_CLIENT));
+  EXPECT_FALSE(config_.SupportsServerPreferredAddress(Perspective::IS_SERVER));
+
+  config_.SetInitialReceivedConnectionOptions(copt);
+  EXPECT_TRUE(config_.SupportsServerPreferredAddress(Perspective::IS_CLIENT));
+  EXPECT_TRUE(config_.SupportsServerPreferredAddress(Perspective::IS_SERVER));
+}
+
+TEST_P(QuicConfigTest, AddConnectionOptionsToSend) {
+  QuicTagVector copt;
+  copt.push_back(kNOIP);
+  config_.AddConnectionOptionsToSend(copt);
+  ASSERT_TRUE(config_.HasSendConnectionOptions());
+  EXPECT_TRUE(quic::ContainsQuicTag(config_.SendConnectionOptions(), kNOIP));
+
+  copt.clear();
+  copt.push_back(kSPAD);
+  copt.push_back(kSPA2);
+  config_.AddConnectionOptionsToSend(copt);
+  ASSERT_EQ(3, config_.SendConnectionOptions().size());
+  EXPECT_TRUE(quic::ContainsQuicTag(config_.SendConnectionOptions(), kNOIP));
+  EXPECT_TRUE(quic::ContainsQuicTag(config_.SendConnectionOptions(), kSPAD));
+  EXPECT_TRUE(quic::ContainsQuicTag(config_.SendConnectionOptions(), kSPA2));
 }
 
 TEST_P(QuicConfigTest, ProcessTransportParametersServer) {

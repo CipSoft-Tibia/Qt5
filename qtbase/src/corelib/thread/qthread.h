@@ -1,6 +1,7 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // Copyright (C) 2017 Klarälvdalens Datakonsult AB, a KDAB Group company, info@kdab.com, author Giuseppe D'Angelo <giuseppe.dangelo@kdab.com>
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QTHREAD_H
 #define QTHREAD_H
@@ -51,6 +52,13 @@ public:
         InheritPriority
     };
 
+    enum class QualityOfService {
+        Auto,
+        High,
+        Eco,
+    };
+    Q_ENUM(QualityOfService)
+
     void setPriority(Priority priority);
     Priority priority() const;
 
@@ -70,6 +78,9 @@ public:
     int loopLevel() const;
 
     bool isCurrentThread() const noexcept;
+
+    void setServiceLevel(QualityOfService serviceLevel);
+    QualityOfService serviceLevel() const;
 
     template <typename Function, typename... Args>
     [[nodiscard]] static QThread *create(Function &&f, Args &&... args);

@@ -34,8 +34,14 @@ public:
 
 void FindRayQueryHandlesForFunction(
     llvm::Function *F, llvm::SmallPtrSetImpl<llvm::Value *> &RayQueryHandles);
-llvm::CallInst *CreateUAV(hlsl::DxilModule &DM, llvm::IRBuilder<> &Builder,
-                          unsigned int registerId, const char *name);
+enum class PixUAVHandleMode { NonLib, Lib };
+llvm::CallInst *CreateUAVOnceForModule(hlsl::DxilModule &DM,
+                                       llvm::IRBuilder<> &Builder,
+                                       unsigned int hlslBindIndex,
+                                       const char *name);
+hlsl::DxilResource *CreateGlobalUAVResource(hlsl::DxilModule &DM,
+                                            unsigned int hlslBindIndex,
+                                            const char *name);
 llvm::CallInst *CreateHandleForResource(hlsl::DxilModule &DM,
                                         llvm::IRBuilder<> &Builder,
                                         hlsl::DxilResourceBase *resource,
@@ -74,4 +80,6 @@ ExpandedStruct ExpandStructType(llvm::LLVMContext &Ctx,
                                 llvm::Type *OriginalPayloadStructType);
 void ReplaceAllUsesOfInstructionWithNewValueAndDeleteInstruction(
     llvm::Instruction *Instr, llvm::Value *newValue, llvm::Type *newType);
+unsigned int FindOrAddSV_Position(hlsl::DxilModule &DM,
+                                  unsigned UpStreamSVPosRow);
 } // namespace PIXPassHelpers

@@ -21,6 +21,7 @@
 
 #include "libavutil/internal.h"
 #include "libavutil/intreadwrite.h"
+#include "libavutil/mem.h"
 #include "avcodec.h"
 #include "codec_internal.h"
 #include "decode.h"
@@ -60,6 +61,14 @@ typedef struct OSQContext {
     AVPacket *pkt;
     int pkt_offset;
 } OSQContext;
+
+static void osq_flush(AVCodecContext *avctx)
+{
+    OSQContext *s = avctx->priv_data;
+
+    s->bitstream_size = 0;
+    s->pkt_offset = 0;
+}
 
 static av_cold int osq_close(AVCodecContext *avctx)
 {
@@ -213,8 +222,8 @@ static int osq_channel_parameters(AVCodecContext *avctx, int ch)
 #define C (-3)
 #define D (-4)
 #define E (-5)
-#define P2 ((dst[A] + dst[A]) - dst[B])
-#define P3 ((dst[A] - dst[B]) * 3 + dst[C])
+#define P2 (((unsigned)dst[A] + dst[A]) - dst[B])
+#define P3 (((unsigned)dst[A] - dst[B]) * 3 + dst[C])
 
 static int do_decode(AVCodecContext *avctx, AVFrame *frame, int decorrelate, int downsample)
 {
@@ -264,10 +273,10 @@ static int do_decode(AVCodecContext *avctx, AVFrame *frame, int decorrelate, int
             case 0:
                 break;
             case 1:
-                dst[n] += dst[A];
+                dst[n] += (unsigned)dst[A];
                 break;
             case 2:
-                dst[n] += dst[A] + p;
+                dst[n] += (unsigned)dst[A] + p;
                 break;
             case 3:
                 dst[n] += P2;
@@ -282,28 +291,28 @@ static int do_decode(AVCodecContext *avctx, AVFrame *frame, int decorrelate, int
                 dst[n] += P3 + p;
                 break;
             case 7:
-                dst[n] += (P2 + P3) / 2 + p;
+                dst[n] += (int)(P2 + P3) / 2 + (unsigned)p;
                 break;
             case 8:
-                dst[n] += (P2 + P3) / 2;
+                dst[n] += (int)(P2 + P3) / 2;
                 break;
             case 9:
-                dst[n] += (P2 * 2 + P3) / 3 + p;
+                dst[n] += (int)(P2 * 2 + P3) / 3 + (unsigned)p;
                 break;
             case 10:
-                dst[n] += (P2 + P3 * 2) / 3 + p;
+                dst[n] += (int)(P2 + P3 * 2) / 3 + (unsigned)p;
                 break;
             case 11:
-                dst[n] += (dst[A] + dst[B]) / 2;
+                dst[n] += (int)((unsigned)dst[A] + dst[B]) / 2;
                 break;
             case 12:
-                dst[n] += dst[B];
+                dst[n] += (unsigned)dst[B];
                 break;
             case 13:
-                dst[n] += (dst[D] + dst[B]) / 2;
+                dst[n] += (int)(unsigned)(dst[D] + dst[B]) / 2;
                 break;
             case 14:
-                dst[n] += (P2 + dst[A]) / 2 + p;
+                dst[n] += (int)((unsigned)P2 + dst[A]) / 2 + (unsigned)p;
                 break;
             default:
                 return AVERROR_INVALIDDATA;
@@ -478,4 +487,5 @@ const FFCodec ff_osq_decoder = {
                                                         AV_SAMPLE_FMT_S16P,
                                                         AV_SAMPLE_FMT_S32P,
                                                         AV_SAMPLE_FMT_NONE },
+    .flush            = osq_flush,
 };

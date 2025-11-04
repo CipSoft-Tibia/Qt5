@@ -2,9 +2,27 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+import * as Common from '../../core/common/common.js';
 import * as SDK from '../../core/sdk/sdk.js';
 import type * as ProtocolProxyApi from '../../generated/protocol-proxy-api.js';
 import * as Protocol from '../../generated/protocol.js';
+
+import {AnimationDOMNode} from './AnimationDOMNode.js';
+
+function shouldGroupAnimations(firstAnimation: AnimationImpl, anim: AnimationImpl): boolean {
+  const firstAnimationTimeline = firstAnimation.viewOrScrollTimeline();
+  const animationTimeline = anim.viewOrScrollTimeline();
+  if (firstAnimationTimeline) {
+    // This is a SDA group so check whether the animation's
+    // scroll container and scroll axis is the same with the first animation.
+    return Boolean(
+        animationTimeline && firstAnimationTimeline.sourceNodeId === animationTimeline.sourceNodeId &&
+        firstAnimationTimeline.axis === animationTimeline.axis);
+  }
+  // This is a non-SDA group so check whether the coming animation
+  // is a time based one too and if so, compare their start times.
+  return !animationTimeline && firstAnimation.startTime() === anim.startTime();
+}
 
 export class AnimationModel extends SDK.SDKModel.SDKModel<EventTypes> {
   readonly runtimeModel: SDK.RuntimeModel.RuntimeModel;
@@ -15,6 +33,7 @@ export class AnimationModel extends SDK.SDKModel.SDKModel<EventTypes> {
   playbackRate: number;
   readonly #screenshotCapture?: ScreenshotCapture;
   #enabled?: boolean;
+  #flushPendingAnimations: () => void;
 
   constructor(target: SDK.Target.Target) {
     super(target);
@@ -32,6 +51,12 @@ export class AnimationModel extends SDK.SDKModel.SDKModel<EventTypes> {
     if (screenCaptureModel) {
       this.#screenshotCapture = new ScreenshotCapture(this, screenCaptureModel);
     }
+
+    this.#flushPendingAnimations = Common.Debouncer.debounce(() => {
+      while (this.#pendingAnimations.size) {
+        this.matchExistingGroups(this.createGroupFromPendingAnimations());
+      }
+    }, 100);
   }
 
   private reset(): void {
@@ -41,26 +66,45 @@ export class AnimationModel extends SDK.SDKModel.SDKModel<EventTypes> {
     this.dispatchEventToListeners(Events.ModelReset);
   }
 
-  animationCreated(id: string): void {
-    this.#pendingAnimations.add(id);
+  async devicePixelRatio(): Promise<number> {
+    const evaluateResult = await this.target().runtimeAgent().invoke_evaluate({expression: 'window.devicePixelRatio'});
+    if (evaluateResult?.result.type === 'number') {
+      return evaluateResult?.result.value as number ?? 1;
+    }
+
+    return 1;
   }
 
   animationCanceled(id: string): void {
     this.#pendingAnimations.delete(id);
-    this.flushPendingAnimationsIfNeeded();
   }
 
-  animationStarted(payload: Protocol.Animation.Animation): void {
+  async animationUpdated(payload: Protocol.Animation.Animation): Promise<void> {
+    let foundAnimationGroup: AnimationGroup|undefined;
+    let foundAnimation: AnimationImpl|undefined;
+    for (const animationGroup of this.animationGroups.values()) {
+      foundAnimation = animationGroup.animations().find(animation => animation.id() === payload.id);
+      if (foundAnimation) {
+        foundAnimationGroup = animationGroup;
+        break;
+      }
+    }
+
+    if (!foundAnimation || !foundAnimationGroup) {
+      return;
+    }
+
+    await foundAnimation.setPayload(payload);
+    this.dispatchEventToListeners(Events.AnimationGroupUpdated, foundAnimationGroup);
+  }
+
+  async animationStarted(payload: Protocol.Animation.Animation): Promise<void> {
     // We are not interested in animations without effect or target.
     if (!payload.source || !payload.source.backendNodeId) {
       return;
     }
 
-    const animation = AnimationImpl.parsePayload(this, payload);
-    if (!animation) {
-      return;
-    }
-
+    const animation = await AnimationImpl.parsePayload(this, payload);
     // Ignore Web Animations custom effects & groups.
     const keyframesRule = animation.source().keyframesRule();
     if (animation.type() === 'WebAnimation' && keyframesRule && keyframesRule.keyframes().length === 0) {
@@ -70,19 +114,7 @@ export class AnimationModel extends SDK.SDKModel.SDKModel<EventTypes> {
       this.#pendingAnimations.add(animation.id());
     }
 
-    this.flushPendingAnimationsIfNeeded();
-  }
-
-  private flushPendingAnimationsIfNeeded(): void {
-    for (const id of this.#pendingAnimations) {
-      if (!this.#animationsById.get(id)) {
-        return;
-      }
-    }
-
-    while (this.#pendingAnimations.size) {
-      this.matchExistingGroups(this.createGroupFromPendingAnimations());
-    }
+    this.#flushPendingAnimations();
   }
 
   private matchExistingGroups(incomingGroup: AnimationGroup): boolean {
@@ -90,7 +122,13 @@ export class AnimationModel extends SDK.SDKModel.SDKModel<EventTypes> {
     for (const group of this.animationGroups.values()) {
       if (group.matches(incomingGroup)) {
         matchedGroup = group;
-        group.update(incomingGroup);
+        group.rebaseTo(incomingGroup);
+        break;
+      }
+
+      if (group.shouldInclude(incomingGroup)) {
+        matchedGroup = group;
+        group.appendAnimations(incomingGroup.animations());
         break;
       }
     }
@@ -100,8 +138,10 @@ export class AnimationModel extends SDK.SDKModel.SDKModel<EventTypes> {
       if (this.#screenshotCapture) {
         this.#screenshotCapture.captureScreenshots(incomingGroup.finiteDuration(), incomingGroup.screenshotsInternal);
       }
+      this.dispatchEventToListeners(Events.AnimationGroupStarted, incomingGroup);
+    } else {
+      this.dispatchEventToListeners(Events.AnimationGroupUpdated, matchedGroup);
     }
-    this.dispatchEventToListeners(Events.AnimationGroupStarted, matchedGroup || incomingGroup);
     return Boolean(matchedGroup);
   }
 
@@ -116,17 +156,20 @@ export class AnimationModel extends SDK.SDKModel.SDKModel<EventTypes> {
     }
 
     const groupedAnimations = [firstAnimation];
-    const groupStartTime = firstAnimation.startTime();
     const remainingAnimations = new Set<string>();
+
     for (const id of this.#pendingAnimations) {
-      const anim = (this.#animationsById.get(id) as AnimationImpl);
-      if (anim.startTime() === groupStartTime) {
+      const anim = this.#animationsById.get(id) as AnimationImpl;
+      if (shouldGroupAnimations(firstAnimation, anim)) {
         groupedAnimations.push(anim);
       } else {
         remainingAnimations.add(id);
       }
     }
+
     this.#pendingAnimations = remainingAnimations;
+    // Show the first starting animation at the top of the animations of the animation group.
+    groupedAnimations.sort((anim1, anim2) => anim1.startTime() - anim2.startTime());
     return new AnimationGroup(this, firstAnimationId, groupedAnimations);
   }
 
@@ -161,33 +204,80 @@ export class AnimationModel extends SDK.SDKModel.SDKModel<EventTypes> {
 }
 
 export enum Events {
+  /* eslint-disable @typescript-eslint/naming-convention -- Used by web_tests. */
   AnimationGroupStarted = 'AnimationGroupStarted',
+  AnimationGroupUpdated = 'AnimationGroupUpdated',
   ModelReset = 'ModelReset',
+  /* eslint-enable @typescript-eslint/naming-convention */
 }
 
 export type EventTypes = {
   [Events.AnimationGroupStarted]: AnimationGroup,
+  [Events.AnimationGroupUpdated]: AnimationGroup,
   [Events.ModelReset]: void,
 };
 
 export class AnimationImpl {
   readonly #animationModel: AnimationModel;
-  readonly #payloadInternal: Protocol.Animation.Animation;
-  #sourceInternal: AnimationEffect;
+  #payloadInternal!: Protocol.Animation
+      .Animation;  // Assertion is safe because only way to create `AnimationImpl` is to use `parsePayload` which calls `setPayload` and sets the value.
+  #sourceInternal!:
+      AnimationEffect;  // Assertion is safe because only way to create `AnimationImpl` is to use `parsePayload` which calls `setPayload` and sets the value.
   #playStateInternal?: string;
-  constructor(animationModel: AnimationModel, payload: Protocol.Animation.Animation) {
+
+  private constructor(animationModel: AnimationModel) {
     this.#animationModel = animationModel;
+  }
+
+  static async parsePayload(animationModel: AnimationModel, payload: Protocol.Animation.Animation):
+      Promise<AnimationImpl> {
+    const animation = new AnimationImpl(animationModel);
+    await animation.setPayload(payload);
+    return animation;
+  }
+
+  async setPayload(payload: Protocol.Animation.Animation): Promise<void> {
+    // TODO(b/40929569): Remove normalizing by devicePixelRatio after the attached bug is resolved.
+    if (payload.viewOrScrollTimeline) {
+      const devicePixelRatio = await this.#animationModel.devicePixelRatio();
+      if (payload.viewOrScrollTimeline.startOffset) {
+        payload.viewOrScrollTimeline.startOffset /= devicePixelRatio;
+      }
+
+      if (payload.viewOrScrollTimeline.endOffset) {
+        payload.viewOrScrollTimeline.endOffset /= devicePixelRatio;
+      }
+    }
+
     this.#payloadInternal = payload;
-    this.#sourceInternal =
-        new AnimationEffect(animationModel, (this.#payloadInternal.source as Protocol.Animation.AnimationEffect));
+    if (this.#sourceInternal && payload.source) {
+      this.#sourceInternal.setPayload(payload.source);
+    } else if (!this.#sourceInternal && payload.source) {
+      this.#sourceInternal = new AnimationEffect(this.#animationModel, payload.source);
+    }
   }
 
-  static parsePayload(animationModel: AnimationModel, payload: Protocol.Animation.Animation): AnimationImpl {
-    return new AnimationImpl(animationModel, payload);
+  // `startTime` and `duration` is represented as the
+  // percentage of the view timeline range that starts at `startOffset`px
+  // from the scroll container and ends at `endOffset`px of the scroll container.
+  // This takes a percentage of the timeline range and returns the absolute
+  // pixels values as a scroll offset of the scroll container.
+  private percentageToPixels(percentage: number, viewOrScrollTimeline: Protocol.Animation.ViewOrScrollTimeline):
+      number {
+    const {startOffset, endOffset} = viewOrScrollTimeline;
+    if (startOffset === undefined || endOffset === undefined) {
+      // We don't expect this situation to occur since after an animation is started
+      // we expect the scroll offsets to be resolved and provided correctly. If `startOffset`
+      // or `endOffset` is not provided in a viewOrScrollTimeline; we can assume that there is a bug here
+      // so it's fine to throw an error.
+      throw new Error('startOffset or endOffset does not exist in viewOrScrollTimeline');
+    }
+
+    return (endOffset - startOffset) * (percentage / 100);
   }
 
-  payload(): Protocol.Animation.Animation {
-    return this.#payloadInternal;
+  viewOrScrollTimeline(): Protocol.Animation.ViewOrScrollTimeline|undefined {
+    return this.#payloadInternal.viewOrScrollTimeline;
   }
 
   id(): string {
@@ -214,24 +304,65 @@ export class AnimationImpl {
     return this.#payloadInternal.playbackRate;
   }
 
+  // For scroll driven animations, it returns the pixel offset in the scroll container
+  // For time animations, it returns milliseconds.
   startTime(): number {
+    const viewOrScrollTimeline = this.viewOrScrollTimeline();
+    if (viewOrScrollTimeline) {
+      return this.percentageToPixels(
+                 this.playbackRate() > 0 ? this.#payloadInternal.startTime : 100 - this.#payloadInternal.startTime,
+                 viewOrScrollTimeline) +
+          (this.viewOrScrollTimeline()?.startOffset ?? 0);
+    }
+
     return this.#payloadInternal.startTime;
   }
 
+  // For scroll driven animations, it returns the duration in pixels (i.e. after how many pixels of scroll the animation is going to end)
+  // For time animations, it returns milliseconds.
+  iterationDuration(): number {
+    const viewOrScrollTimeline = this.viewOrScrollTimeline();
+    if (viewOrScrollTimeline) {
+      return this.percentageToPixels(this.source().duration(), viewOrScrollTimeline);
+    }
+
+    return this.source().duration();
+  }
+
+  // For scroll driven animations, it returns the duration in pixels (i.e. after how many pixels of scroll the animation is going to end)
+  // For time animations, it returns milliseconds.
   endTime(): number {
     if (!this.source().iterations) {
       return Infinity;
     }
+
+    if (this.viewOrScrollTimeline()) {
+      return this.startTime() + this.iterationDuration() * this.source().iterations();
+    }
+
     return this.startTime() + this.source().delay() + this.source().duration() * this.source().iterations() +
         this.source().endDelay();
   }
 
+  // For scroll driven animations, it returns the duration in pixels (i.e. after how many pixels of scroll the animation is going to end)
+  // For time animations, it returns milliseconds.
   finiteDuration(): number {
     const iterations = Math.min(this.source().iterations(), 3);
+    if (this.viewOrScrollTimeline()) {
+      return this.iterationDuration() * iterations;
+    }
+
     return this.source().delay() + this.source().duration() * iterations;
   }
 
+  // For scroll driven animations, it returns the duration in pixels (i.e. after how many pixels of scroll the animation is going to end)
+  // For time animations, it returns milliseconds.
   currentTime(): number {
+    const viewOrScrollTimeline = this.viewOrScrollTimeline();
+    if (viewOrScrollTimeline) {
+      return this.percentageToPixels(this.#payloadInternal.currentTime, viewOrScrollTimeline);
+    }
+
     return this.#payloadInternal.currentTime;
   }
 
@@ -252,6 +383,17 @@ export class AnimationImpl {
     const firstAnimation = this.startTime() < animation.startTime() ? this : animation;
     const secondAnimation = firstAnimation === this ? animation : this;
     return firstAnimation.endTime() >= secondAnimation.startTime();
+  }
+
+  // Utility method for returning `delay` for time based animations
+  // and `startTime` in pixels for scroll driven animations. It is used to
+  // find the exact starting time of the first keyframe for both cases.
+  delayOrStartTime(): number {
+    if (this.viewOrScrollTimeline()) {
+      return this.startTime();
+    }
+
+    return this.source().delay();
   }
 
   setTiming(duration: number, delay: number): void {
@@ -301,19 +443,27 @@ export class AnimationImpl {
 
 export class AnimationEffect {
   #animationModel: AnimationModel;
-  readonly #payload: Protocol.Animation.AnimationEffect;
-  readonly #keyframesRuleInternal: KeyframesRule|undefined;
-  delayInternal: number;
-  durationInternal: number;
+  #payload!: Protocol.Animation
+      .AnimationEffect;       // Assertion is safe because `setPayload` call in `constructor` sets the value.
+  delayInternal!: number;     // Assertion is safe because `setPayload` call in `constructor` sets the value.
+  durationInternal!: number;  // Assertion is safe because `setPayload` call in `constructor` sets the value.
+  #keyframesRuleInternal: KeyframesRule|undefined;
   #deferredNodeInternal?: SDK.DOMModel.DeferredDOMNode;
   constructor(animationModel: AnimationModel, payload: Protocol.Animation.AnimationEffect) {
     this.#animationModel = animationModel;
+    this.setPayload(payload);
+  }
+
+  setPayload(payload: Protocol.Animation.AnimationEffect): void {
     this.#payload = payload;
-    if (payload.keyframesRule) {
+    if (!this.#keyframesRuleInternal && payload.keyframesRule) {
       this.#keyframesRuleInternal = new KeyframesRule(payload.keyframesRule);
+    } else if (this.#keyframesRuleInternal && payload.keyframesRule) {
+      this.#keyframesRuleInternal.setPayload(payload.keyframesRule);
     }
-    this.delayInternal = this.#payload.delay;
-    this.durationInternal = this.#payload.duration;
+
+    this.delayInternal = payload.delay;
+    this.durationInternal = payload.duration;
   }
 
   delay(): number {
@@ -322,10 +472,6 @@ export class AnimationEffect {
 
   endDelay(): number {
     return this.#payload.endDelay;
-  }
-
-  iterationStart(): number {
-    return this.#payload.iterationStart;
   }
 
   iterations(): number {
@@ -374,19 +520,23 @@ export class AnimationEffect {
 }
 
 export class KeyframesRule {
-  readonly #payload: Protocol.Animation.KeyframesRule;
-  #keyframesInternal: KeyframeStyle[];
+  #payload!: Protocol.Animation
+      .KeyframesRule;  // Assertion is safe because `setPayload` call in `constructor` sets the value.;
+  #keyframesInternal!:
+      KeyframeStyle[];  // Assertion is safe because `setPayload` call in `constructor` sets the value.;
   constructor(payload: Protocol.Animation.KeyframesRule) {
-    this.#payload = payload;
-    this.#keyframesInternal = this.#payload.keyframes.map(function(keyframeStyle) {
-      return new KeyframeStyle(keyframeStyle);
-    });
+    this.setPayload(payload);
   }
 
-  private setKeyframesPayload(payload: Protocol.Animation.KeyframeStyle[]): void {
-    this.#keyframesInternal = payload.map(function(keyframeStyle) {
-      return new KeyframeStyle(keyframeStyle);
-    });
+  setPayload(payload: Protocol.Animation.KeyframesRule): void {
+    this.#payload = payload;
+    if (!this.#keyframesInternal) {
+      this.#keyframesInternal = this.#payload.keyframes.map(keyframeStyle => new KeyframeStyle(keyframeStyle));
+    } else {
+      this.#payload.keyframes.forEach((keyframeStyle, index) => {
+        this.#keyframesInternal[index]?.setPayload(keyframeStyle);
+      });
+    }
   }
 
   name(): string|undefined {
@@ -399,11 +549,16 @@ export class KeyframesRule {
 }
 
 export class KeyframeStyle {
-  readonly #payload: Protocol.Animation.KeyframeStyle;
-  #offsetInternal: string;
+  #payload!:
+      Protocol.Animation.KeyframeStyle;  // Assertion is safe because `setPayload` call in `constructor` sets the value.
+  #offsetInternal!: string;              // Assertion is safe because `setPayload` call in `constructor` sets the value.
   constructor(payload: Protocol.Animation.KeyframeStyle) {
+    this.setPayload(payload);
+  }
+
+  setPayload(payload: Protocol.Animation.KeyframeStyle): void {
     this.#payload = payload;
-    this.#offsetInternal = this.#payload.offset;
+    this.#offsetInternal = payload.offset;
   }
 
   offset(): string {
@@ -426,6 +581,7 @@ export class KeyframeStyle {
 export class AnimationGroup {
   readonly #animationModel: AnimationModel;
   readonly #idInternal: string;
+  #scrollNodeInternal: AnimationDOMNode|undefined;
   #animationsInternal: AnimationImpl[];
   #pausedInternal: boolean;
   screenshotsInternal: string[];
@@ -438,6 +594,10 @@ export class AnimationGroup {
     this.screenshotsInternal = [];
 
     this.#screenshotImages = [];
+  }
+
+  isScrollDriven(): boolean {
+    return Boolean(this.#animationsInternal[0]?.viewOrScrollTimeline());
   }
 
   id(): string {
@@ -465,12 +625,57 @@ export class AnimationGroup {
     return this.#animationsInternal[0].startTime();
   }
 
+  // For scroll driven animations, it returns the duration in pixels (i.e. after how many pixels of scroll the animation is going to end)
+  // For time animations, it returns milliseconds.
+  groupDuration(): number {
+    let duration = 0;
+    for (const anim of this.#animationsInternal) {
+      duration = Math.max(duration, anim.delayOrStartTime() + anim.iterationDuration());
+    }
+    return duration;
+  }
+
+  // For scroll driven animations, it returns the duration in pixels (i.e. after how many pixels of scroll the animation is going to end)
+  // For time animations, it returns milliseconds.
   finiteDuration(): number {
     let maxDuration = 0;
     for (let i = 0; i < this.#animationsInternal.length; ++i) {
       maxDuration = Math.max(maxDuration, this.#animationsInternal[i].finiteDuration());
     }
     return maxDuration;
+  }
+
+  scrollOrientation(): Protocol.DOM.ScrollOrientation|null {
+    const timeline = this.#animationsInternal[0]?.viewOrScrollTimeline();
+    if (!timeline) {
+      return null;
+    }
+
+    return timeline.axis;
+  }
+
+  async scrollNode(): Promise<AnimationDOMNode|null> {
+    if (this.#scrollNodeInternal) {
+      return this.#scrollNodeInternal;
+    }
+
+    if (!this.isScrollDriven()) {
+      return null;
+    }
+
+    const sourceNodeId = this.#animationsInternal[0]?.viewOrScrollTimeline()?.sourceNodeId;
+    if (!sourceNodeId) {
+      return null;
+    }
+
+    const deferredScrollNode = new SDK.DOMModel.DeferredDOMNode(this.#animationModel.target(), sourceNodeId);
+    const scrollNode = await deferredScrollNode.resolvePromise();
+    if (!scrollNode) {
+      return null;
+    }
+
+    this.#scrollNodeInternal = new AnimationDOMNode(scrollNode);
+    return this.#scrollNodeInternal;
   }
 
   seekTo(currentTime: number): void {
@@ -506,10 +711,11 @@ export class AnimationGroup {
 
   matches(group: AnimationGroup): boolean {
     function extractId(anim: AnimationImpl): string {
-      if (anim.type() === Protocol.Animation.AnimationType.WebAnimation) {
-        return anim.type() + anim.id();
-      }
-      return anim.cssId();
+      const timelineId = (anim.viewOrScrollTimeline()?.sourceNodeId ?? '') + (anim.viewOrScrollTimeline()?.axis ?? '');
+      const regularId =
+          anim.type() === Protocol.Animation.AnimationType.WebAnimation ? anim.type() + anim.id() : anim.cssId();
+
+      return regularId + timelineId;
     }
 
     if (this.#animationsInternal.length !== group.#animationsInternal.length) {
@@ -525,9 +731,22 @@ export class AnimationGroup {
     return true;
   }
 
-  update(group: AnimationGroup): void {
+  shouldInclude(group: AnimationGroup): boolean {
+    // We want to include the animations coming from the incoming group
+    // inside this group if they were to be grouped if the events came at the same time.
+    const [firstIncomingAnimation] = group.#animationsInternal;
+    const [firstAnimation] = this.#animationsInternal;
+    return shouldGroupAnimations(firstAnimation, firstIncomingAnimation);
+  }
+
+  appendAnimations(animations: AnimationImpl[]): void {
+    this.#animationsInternal.push(...animations);
+  }
+
+  rebaseTo(group: AnimationGroup): void {
     this.#animationModel.releaseAnimations(this.animationIds());
     this.#animationsInternal = group.#animationsInternal;
+    this.#scrollNodeInternal = undefined;
   }
 
   screenshots(): HTMLImageElement[] {
@@ -547,8 +766,22 @@ export class AnimationDispatcher implements ProtocolProxyApi.AnimationDispatcher
     this.#animationModel = animationModel;
   }
 
-  animationCreated({id}: Protocol.Animation.AnimationCreatedEvent): void {
-    this.#animationModel.animationCreated(id);
+  animationCreated(_event: Protocol.Animation.AnimationCreatedEvent): void {
+    // Previously this event was used to batch the animations into groups
+    // and we were waiting for animationStarted events to be sent for
+    // all the created animations and until then we weren't creating any
+    // groups. This was allowing us to not miss any animations that were
+    // going to be in the same group. However, now we're not using this event
+    // to do batching and instead:
+    // * We debounce the flush calls so that if the animationStarted events
+    // for the same animation group come in different times; we create one
+    // group for them.
+    // * Even though an animation group is created and rendered for some animations
+    // that have the same startTime (or same timeline & scroll axis for SDAs), now
+    // whenever an `animationStarted` event comes we check whether there is a group
+    // we can add the related animation. If so, we add it and emit `animationGroupUpdated`
+    // event. So that, all the animations that were supposed to be in the same group
+    // will be in the same group.
   }
 
   animationCanceled({id}: Protocol.Animation.AnimationCanceledEvent): void {
@@ -556,7 +789,11 @@ export class AnimationDispatcher implements ProtocolProxyApi.AnimationDispatcher
   }
 
   animationStarted({animation}: Protocol.Animation.AnimationStartedEvent): void {
-    this.#animationModel.animationStarted(animation);
+    void this.#animationModel.animationStarted(animation);
+  }
+
+  animationUpdated({animation}: Protocol.Animation.AnimationUpdatedEvent): void {
+    void this.#animationModel.animationUpdated(animation);
   }
 }
 
@@ -577,7 +814,7 @@ export class ScreenshotCapture {
   captureScreenshots(duration: number, screenshots: string[]): void {
     const screencastDuration = Math.min(duration / this.#animationModel.playbackRate, 3000);
     const endTime = screencastDuration + window.performance.now();
-    this.#requests.push({endTime: endTime, screenshots: screenshots});
+    this.#requests.push({endTime, screenshots});
 
     if (!this.#endTime || endTime > this.#endTime) {
       clearTimeout(this.#stopTimer);

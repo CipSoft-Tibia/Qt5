@@ -126,9 +126,8 @@ class NativeViewHostAuraTest : public test::NativeViewHostTestBase {
   void CreateHost() {
     CreateTopLevel();
     CreateTestingHost();
-    child_.reset(CreateChildForHost(toplevel()->GetNativeView(),
-                                    toplevel()->client_view(), new View,
-                                    host()));
+    child_ = CreateChildForHost(toplevel()->GetNativeView(),
+                                toplevel()->client_view(), new View, host());
   }
 
   // test::NativeViewHostTestBase:
@@ -184,7 +183,7 @@ TEST_F(NativeViewHostAuraTest, CursorForNativeView) {
 
   toplevel()->SetCursor(ui::mojom::CursorType::kHand);
   child()->SetCursor(ui::mojom::CursorType::kWait);
-  ui::MouseEvent move_event(ui::ET_MOUSE_MOVED, gfx::Point(0, 0),
+  ui::MouseEvent move_event(ui::EventType::kMouseMoved, gfx::Point(0, 0),
                             gfx::Point(0, 0), ui::EventTimeForNow(), 0, 0);
 
   EXPECT_EQ(ui::mojom::CursorType::kWait, host()->GetCursor(move_event).type());
@@ -344,8 +343,8 @@ TEST_F(NativeViewHostAuraTest, InstallClip) {
 // a regression test for http://crbug.com/389261.
 TEST_F(NativeViewHostAuraTest, ParentAfterDetach) {
   CreateHost();
-  // Force a Layout() now so that the visibility is set to false (because the
-  // bounds is empty).
+  // Trigger layout so that the visibility is set to false (because the bounds
+  // is empty).
   test::RunScheduledLayout(host());
 
   aura::Window* child_win = child()->GetNativeView();
@@ -416,8 +415,7 @@ TEST_F(NativeViewHostAuraTest, Attach) {
 
   host()->Attach(child()->GetNativeView());
 
-  // Visibiliity is not updated until Layout() happens. This is normally async,
-  // but force a Layout() so this code doesn't have to wait.
+  // Visibiliity is not updated until layout happens.
   test::RunScheduledLayout(host());
 
   auto expected_bounds = client_bounds;
@@ -511,9 +509,12 @@ TEST_F(NativeViewHostAuraTest, FocusManagerUpdatedDuringDestruction) {
       std::make_unique<NativeViewHost>();
   toplevel()->GetContentsView()->AddChildView(native_view_host.get());
 
-  Widget::InitParams params = CreateParams(Widget::InitParams::TYPE_CONTROL);
-  params.ownership = views::Widget::InitParams::WIDGET_OWNS_NATIVE_WIDGET;
-  params.delegate = new views::WidgetDelegateView();  // Owned by the widget.
+  auto widget_delegate_view = std::make_unique<WidgetDelegateView>();
+  Widget::InitParams params =
+      CreateParams(views::Widget::InitParams::CLIENT_OWNS_WIDGET,
+                   Widget::InitParams::TYPE_CONTROL);
+  // Delegate is "owned" via the view and will be deleted with it.
+  params.delegate = widget_delegate_view.release();
   params.child = true;
   params.bounds = gfx::Rect(10, 10, 100, 100);
   params.parent = window.get();
@@ -522,10 +523,10 @@ TEST_F(NativeViewHostAuraTest, FocusManagerUpdatedDuringDestruction) {
 
   native_view_host->Attach(window.get());
 
-  View* view1 = new View;  // Owned by |child_widget|.
+  View* view1 = child_widget->GetContentsView()->AddChildView(
+      std::make_unique<View>());  // Owned by |child_widget|.
   view1->SetFocusBehavior(View::FocusBehavior::ALWAYS);
   view1->SetBounds(0, 0, 20, 20);
-  child_widget->GetContentsView()->AddChildView(view1);
   child_widget->Show();
   view1->RequestFocus();
   EXPECT_EQ(view1, toplevel()->GetFocusManager()->GetFocusedView());
@@ -548,7 +549,7 @@ ui::EventTarget* GetTarget(aura::Window* window, const gfx::Point& location) {
   gfx::Point root_location = location;
   aura::Window::ConvertPointToTarget(window, window->GetRootWindow(),
                                      &root_location);
-  ui::MouseEvent event(ui::ET_MOUSE_MOVED, root_location, root_location,
+  ui::MouseEvent event(ui::EventType::kMouseMoved, root_location, root_location,
                        base::TimeTicks::Now(), 0, 0);
   return window->GetHost()->dispatcher()->event_targeter()->FindTargetForEvent(
       window->GetRootWindow(), &event);

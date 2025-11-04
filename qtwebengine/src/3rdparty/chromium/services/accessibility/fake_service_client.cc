@@ -34,11 +34,17 @@ void FakeServiceClient::Enable(EnableCallback callback) {
   std::move(callback).Run(desktop_tree_id_);
 }
 
-void FakeServiceClient::Disable() {}
+void FakeServiceClient::Disable() {
+  num_disable_called_++;
+}
 
-void FakeServiceClient::EnableTree(const ui::AXTreeID& tree_id) {}
+void FakeServiceClient::EnableChildTree(const ui::AXTreeID& tree_id) {}
 
-void FakeServiceClient::PerformAction(const ui::AXActionData& data) {}
+void FakeServiceClient::PerformAction(const ui::AXActionData& data) {
+  if (perform_action_called_callback_) {
+    std::move(perform_action_called_callback_).Run(data);
+  }
+}
 
 #if BUILDFLAG(SUPPORTS_OS_ACCESSIBILITY_SERVICE)
 void FakeServiceClient::BindAutoclickClient(
@@ -109,7 +115,7 @@ void FakeServiceClient::BindAccessibilityFileLoader(
 
 void FakeServiceClient::Load(const base::FilePath& path,
                              LoadCallback callback) {
-  // TODO(crbug.com/1493546): Implement file loading for
+  // TODO(crbug.com/40936729): Implement file loading for
   // FakeAccessibilityServiceClient.
 }
 
@@ -193,6 +199,14 @@ void FakeServiceClient::SendSyntheticKeyEventForShortcutOrNavigation(
   }
 }
 
+void FakeServiceClient::SendSyntheticMouseEvent(
+    mojom::SyntheticMouseEventPtr mouse_event) {
+  mouse_events_.emplace_back(mouse_event.Clone());
+  if (synthetic_mouse_event_callback_) {
+    synthetic_mouse_event_callback_.Run();
+  }
+}
+
 void FakeServiceClient::DarkenScreen(bool darken) {
   if (darken_screen_callback_) {
     darken_screen_callback_.Run(darken);
@@ -208,7 +222,7 @@ void FakeServiceClient::OpenSettingsSubpage(const std::string& subpage) {
 void FakeServiceClient::ShowConfirmationDialog(
     const std::string& title,
     const std::string& description,
-    const absl::optional<std::string>& cancel_name,
+    const std::optional<std::string>& cancel_name,
     ShowConfirmationDialogCallback callback) {
   std::move(callback).Run(true);
 }
@@ -249,6 +263,11 @@ void FakeServiceClient::SetAutomationBoundClosure(base::OnceClosure closure) {
 
 bool FakeServiceClient::AutomationIsBound() const {
   return automation_client_receivers_.size() && automation_remotes_.size();
+}
+
+void FakeServiceClient::SetPerformActionCalledCallback(
+    base::OnceCallback<void(const ui::AXActionData&)> callback) {
+  perform_action_called_callback_ = std::move(callback);
 }
 
 #if BUILDFLAG(SUPPORTS_OS_ACCESSIBILITY_SERVICE)
@@ -310,9 +329,19 @@ void FakeServiceClient::SetSyntheticKeyEventCallback(
   synthetic_key_event_callback_ = std::move(callback);
 }
 
+void FakeServiceClient::SetSyntheticMouseEventCallback(
+    base::RepeatingCallback<void()> callback) {
+  synthetic_mouse_event_callback_ = std::move(callback);
+}
+
 const std::vector<mojom::SyntheticKeyEventPtr>&
 FakeServiceClient::GetKeyEvents() const {
   return key_events_;
+}
+
+const std::vector<mojom::SyntheticMouseEventPtr>&
+FakeServiceClient::GetMouseEvents() const {
+  return mouse_events_;
 }
 
 void FakeServiceClient::SetDarkenScreenCallback(
@@ -359,6 +388,19 @@ void FakeServiceClient::SendAccessibilityEvents(
   for (auto& remote : automation_remotes_) {
     remote->DispatchAccessibilityEvents(tree_id, updates, mouse_location,
                                         events);
+  }
+}
+
+void FakeServiceClient::SendTreeDestroyedEvent(const ui::AXTreeID& tree_id) {
+  for (auto& remote : automation_remotes_) {
+    remote->DispatchTreeDestroyedEvent(tree_id);
+  }
+}
+
+void FakeServiceClient::SendActionResult(const ui::AXActionData& data,
+                                         bool result) {
+  for (auto& remote : automation_remotes_) {
+    remote->DispatchActionResult(data, result);
   }
 }
 

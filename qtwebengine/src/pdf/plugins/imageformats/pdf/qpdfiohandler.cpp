@@ -5,10 +5,11 @@
 #include <QLoggingCategory>
 #include <QPainter>
 #include <QtPdf/private/qpdffile_p.h>
+#include <QtPdf/private/qtpdfglobal_p.h>
 
 QT_BEGIN_NAMESPACE
 
-Q_LOGGING_CATEGORY(qLcPdf, "qt.imageformat.pdf")
+Q_PDF_LOGGING_CATEGORY(qLcPdf, "qt.imageformat.pdf")
 
 QPdfIOHandler::QPdfIOHandler()
 {

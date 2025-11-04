@@ -18,14 +18,18 @@
  * See README.md for more information.
  */
 
-import {assert} from 'chrome://resources/js/assert.js';
-import {EventTracker} from 'chrome://resources/js/event_tracker.js';
-import {InsetsF, RectF} from 'chrome://resources/mojo/ui/gfx/geometry/mojom/geometry.mojom-webui.js';
-import {dedupingMixin, PolymerElement} from 'chrome://resources/polymer/v3_0/polymer/polymer_bundled.min.js';
+import {assert} from '//resources/js/assert.js';
+import {EventTracker} from '//resources/js/event_tracker.js';
+import type {InsetsF, RectF} from '//resources/mojo/ui/gfx/geometry/mojom/geometry.mojom-webui.js';
+import type {PolymerElement} from '//resources/polymer/v3_0/polymer/polymer_bundled.min.js';
+import {dedupingMixin} from '//resources/polymer/v3_0/polymer/polymer_bundled.min.js';
 
-import {debounceEnd, HELP_BUBBLE_DISMISSED_EVENT, HELP_BUBBLE_TIMED_OUT_EVENT, HelpBubbleDismissedEvent, HelpBubbleElement} from './help_bubble.js';
-import {HelpBubbleClientCallbackRouter, HelpBubbleClosedReason, HelpBubbleHandlerInterface, HelpBubbleParams} from './help_bubble.mojom-webui.js';
-import {HelpBubbleController, Trackable} from './help_bubble_controller.js';
+import type {HelpBubbleDismissedEvent, HelpBubbleElement} from './help_bubble.js';
+import {debounceEnd, HELP_BUBBLE_DISMISSED_EVENT, HELP_BUBBLE_TIMED_OUT_EVENT} from './help_bubble.js';
+import type {HelpBubbleClientCallbackRouter, HelpBubbleHandlerInterface, HelpBubbleParams} from './help_bubble.mojom-webui.js';
+import {HelpBubbleClosedReason} from './help_bubble.mojom-webui.js';
+import type {Trackable} from './help_bubble_controller.js';
+import {HelpBubbleController} from './help_bubble_controller.js';
 import {HelpBubbleProxyImpl} from './help_bubble_proxy.js';
 
 type Constructor<T> = new (...args: any[]) => T;
@@ -375,7 +379,7 @@ export const HelpBubbleMixin = dedupingMixin(
          * e.g. cause a Tutorial or interactive test to advance to the next
          * step.
          *
-         * TODO(crbug.com/1376262): Figure out how to automatically send the
+         * TODO(crbug.com/40243127): Figure out how to automatically send the
          * activated event when an anchor element is clicked.
          */
         notifyHelpBubbleAnchorActivated(nativeId: string): boolean {

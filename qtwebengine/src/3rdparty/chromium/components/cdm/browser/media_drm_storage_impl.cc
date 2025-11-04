@@ -6,9 +6,9 @@
 
 #include <map>
 #include <memory>
+#include <optional>
 #include <tuple>
 
-#include "base/debug/dump_without_crashing.h"
 #include "base/functional/bind.h"
 #include "base/functional/callback_helpers.h"
 #include "base/json/values_util.h"
@@ -16,6 +16,7 @@
 #include "base/memory/ptr_util.h"
 #include "base/memory/raw_ptr.h"
 #include "base/no_destructor.h"
+#include "base/not_fatal_until.h"
 #include "base/strings/string_util.h"
 #include "build/build_config.h"
 #include "components/prefs/pref_registry_simple.h"
@@ -26,7 +27,6 @@
 #include "content/public/browser/navigation_handle.h"
 #include "content/public/browser/web_contents.h"
 #include "media/base/media_drm_key_type.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "url/origin.h"
 #include "url/url_constants.h"
 
@@ -86,7 +86,7 @@ bool GetMediaDrmKeyTypeFromDict(const base::Value::Dict& dict,
                                 media::MediaDrmKeyType* value_out) {
   DCHECK(value_out);
 
-  const absl::optional<int> value = dict.FindInt(kKeyType);
+  const std::optional<int> value = dict.FindInt(kKeyType);
   if (!value)
     return false;
 
@@ -119,7 +119,7 @@ bool GetStringFromDict(const base::Value::Dict& dict,
 bool GetCreationTimeFromDict(const base::Value::Dict& dict, base::Time* time) {
   DCHECK(time);
 
-  const absl::optional<double> time_value = dict.FindDouble(kCreationTime);
+  const std::optional<double> time_value = dict.FindDouble(kCreationTime);
   if (!time_value)
     return false;
 
@@ -163,7 +163,7 @@ class OriginData {
     if (!origin_id_value || !origin_id_value->is_string())
       return nullptr;
 
-    absl::optional<base::UnguessableToken> origin_id =
+    std::optional<base::UnguessableToken> origin_id =
         base::ValueToUnguessableToken(*origin_id_value);
     if (!origin_id)
       return nullptr;
@@ -404,13 +404,11 @@ void ClearMediaDrmLicensesBlocking(
     scoped_refptr<media::MediaDrmBridge> media_drm_bridge =
         media::MediaDrmBridge::CreateWithoutSessionSupport(
             kWidevineKeySystem, origin_id.ToString(),
-            media::MediaDrmBridge::SECURITY_LEVEL_DEFAULT,
+            media::MediaDrmBridge::SECURITY_LEVEL_DEFAULT, "ClearMediaLicenses",
             base::NullCallback());
 
     if (media_drm_bridge) {
       media_drm_bridge->Unprovision();
-    } else {
-      base::debug::DumpWithoutCrashing();
     }
   }
 }
@@ -560,7 +558,7 @@ class InitializationSerializer {
 
     // Now call any callbacks waiting for this origin ID to be allocated.
     auto entry = pending_requests_.find({pref_service, origin});
-    DCHECK(entry != pending_requests_.end());
+    CHECK(entry != pending_requests_.end(), base::NotFatalUntil::M130);
 
     std::vector<MediaDrmStorageImpl::OriginIdObtainedCB> callbacks;
     callbacks.swap(entry->second);
@@ -725,7 +723,7 @@ MediaDrmStorageImpl::~MediaDrmStorageImpl() {
   DVLOG(1) << __func__;
   DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
   if (init_cb_)
-    std::move(init_cb_).Run(false, absl::nullopt);
+    std::move(init_cb_).Run(false, std::nullopt);
 }
 
 void MediaDrmStorageImpl::Initialize(InitializeCallback callback) {
@@ -770,7 +768,7 @@ void MediaDrmStorageImpl::OnOriginIdObtained(
 }
 
 void MediaDrmStorageImpl::OnEmptyOriginIdAllowed(bool allowed) {
-  std::move(init_cb_).Run(allowed, absl::nullopt);
+  std::move(init_cb_).Run(allowed, std::nullopt);
 }
 
 void MediaDrmStorageImpl::OnProvisioned(OnProvisionedCallback callback) {

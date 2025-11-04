@@ -13,8 +13,8 @@
 #include <stdint.h>
 
 #include <limits>
+#include <optional>
 
-#include "absl/types/optional.h"
 #include "api/priority.h"
 #include "media/sctp/sctp_transport_internal.h"
 #include "rtc_base/byte_buffer.h"
@@ -55,9 +55,10 @@ class SctpUtilsTest : public ::testing::Test {
     if (config.priority) {
       // Exact values are checked by round-trip conversion, but
       // all values defined are greater than zero.
-      EXPECT_GT(priority, 0);
+      EXPECT_EQ(priority, config.priority->value());
     } else {
-      EXPECT_EQ(priority, 0);
+      EXPECT_EQ(priority,
+                webrtc::PriorityValue(webrtc::Priority::kLow).value());
     }
 
     ASSERT_TRUE(buffer.ReadUInt32(&reliability));
@@ -154,7 +155,7 @@ TEST_F(SctpUtilsTest, WriteParseOpenMessageWithPriority) {
   webrtc::DataChannelInit config;
   std::string label = "abc";
   config.protocol = "y";
-  config.priority = webrtc::Priority::kVeryLow;
+  config.priority = webrtc::PriorityValue(webrtc::Priority::kVeryLow);
 
   rtc::CopyOnWriteBuffer packet;
   ASSERT_TRUE(webrtc::WriteDataChannelOpenMessage(label, config, &packet));
@@ -208,35 +209,4 @@ TEST(SctpSidTest, Basics) {
   static_assert(
       cricket::kSpecMaxSctpSid == std::numeric_limits<uint16_t>::max(),
       "Max legal sctp stream value should be 0xffff");
-
-  // cricket::kMaxSctpSid is a chosen value in the webrtc implementation,
-  // the highest generated `sid` value chosen for resource reservation reasons.
-  // It's one less than kMaxSctpStreams (1024) or 1023 since sid values are
-  // zero based.
-
-  EXPECT_TRUE(!StreamId(-1).HasValue());
-  EXPECT_TRUE(!StreamId(-2).HasValue());
-  EXPECT_TRUE(StreamId(cricket::kMinSctpSid).HasValue());
-  EXPECT_TRUE(StreamId(cricket::kMinSctpSid + 1).HasValue());
-  EXPECT_TRUE(StreamId(cricket::kSpecMaxSctpSid).HasValue());
-  EXPECT_TRUE(StreamId(cricket::kMaxSctpSid).HasValue());
-
-  // Two illegal values are equal (both not valid).
-  EXPECT_EQ(StreamId(-1), StreamId(-2));
-  // Two different, but legal, values, are not equal.
-  EXPECT_NE(StreamId(1), StreamId(2));
-  // Test operator<() for container compatibility.
-  EXPECT_LT(StreamId(1), StreamId(2));
-
-  // Test assignment, value() and reset().
-  StreamId sid1;
-  StreamId sid2(cricket::kMaxSctpSid);
-  EXPECT_NE(sid1, sid2);
-  sid1 = sid2;
-  EXPECT_EQ(sid1, sid2);
-
-  EXPECT_EQ(sid1.stream_id_int(), cricket::kMaxSctpSid);
-  EXPECT_TRUE(sid1.HasValue());
-  sid1.reset();
-  EXPECT_FALSE(sid1.HasValue());
 }

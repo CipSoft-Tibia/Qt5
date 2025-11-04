@@ -1,5 +1,6 @@
 // Copyright (C) 2021 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:data-parser
 
 #ifndef QDATASTREAM_H
 #define QDATASTREAM_H
@@ -11,6 +12,7 @@
 #include <QtCore/qttypetraits.h>
 
 #include <iterator>         // std::distance(), std::next()
+#include <memory>
 
 #ifdef Status
 #error qdatastream.h must be included before any header file that defines Status
@@ -27,7 +29,6 @@ class QIODevice;
 class QString;
 
 #if !defined(QT_NO_DATASTREAM)
-class QDataStreamPrivate;
 namespace QtPrivate {
 class StreamStateSaver;
 template <typename Container>
@@ -88,8 +89,9 @@ public:
         Qt_6_6 = 21,
         Qt_6_7 = 22,
         Qt_6_8 = Qt_6_7,
-        Qt_DefaultCompiledVersion = Qt_6_8
-#if QT_VERSION >= QT_VERSION_CHECK(6, 9, 0)
+        Qt_6_9 = Qt_6_7,
+        Qt_DefaultCompiledVersion = Qt_6_9
+#if QT_VERSION >= QT_VERSION_CHECK(6, 10, 0)
 #error Add the datastream version for this Qt version and update Qt_DefaultCompiledVersion
 #endif
     };
@@ -215,7 +217,9 @@ public:
 private:
     Q_DISABLE_COPY(QDataStream)
 
-    QScopedPointer<QDataStreamPrivate> d;
+#if QT_VERSION < QT_VERSION_CHECK(7, 0, 0)
+    void* const d = nullptr;
+#endif
 
     QIODevice *dev = nullptr;
     bool owndev = false;
@@ -265,7 +269,8 @@ class StreamStateSaver
 {
     Q_DISABLE_COPY_MOVE(StreamStateSaver)
 public:
-    inline StreamStateSaver(QDataStream *s) : stream(s), oldStatus(s->status())
+    Q_NODISCARD_CTOR
+    explicit StreamStateSaver(QDataStream *s) : stream(s), oldStatus(s->status())
     {
         if (!stream->isDeviceTransactionStarted())
             stream->resetStatus();
@@ -290,7 +295,7 @@ QDataStream &readArrayBasedContainer(QDataStream &s, Container &c)
 
     c.clear();
     qint64 size = QDataStream::readQSizeType(s);
-    qsizetype n = size;
+    const auto n = qsizetype(size);
     if (size != n || size < 0) {
         s.setStatus(QDataStream::SizeLimitExceeded);
         return s;
@@ -316,7 +321,7 @@ QDataStream &readListBasedContainer(QDataStream &s, Container &c)
 
     c.clear();
     qint64 size = QDataStream::readQSizeType(s);
-    qsizetype n = size;
+    const auto n = qsizetype(size);
     if (size != n || size < 0) {
         s.setStatus(QDataStream::SizeLimitExceeded);
         return s;
@@ -341,7 +346,7 @@ QDataStream &readAssociativeContainer(QDataStream &s, Container &c)
 
     c.clear();
     qint64 size = QDataStream::readQSizeType(s);
-    qsizetype n = size;
+    const auto n = qsizetype(size);
     if (size != n || size < 0) {
         s.setStatus(QDataStream::SizeLimitExceeded);
         return s;
@@ -515,26 +520,35 @@ inline QDataStream &QDataStream::operator<<(quint64 i)
 
 template <typename Enum>
 inline QDataStream &operator<<(QDataStream &s, QFlags<Enum> e)
-{ return s << typename QFlags<Enum>::Int(e); }
+{ return s << e.toInt(); }
 
 template <typename Enum>
 inline QDataStream &operator>>(QDataStream &s, QFlags<Enum> &e)
 {
     typename QFlags<Enum>::Int i;
     s >> i;
-    e = QFlag(i);
+    e = QFlags<Enum>::fromInt(i);
     return s;
 }
 
 template <typename T>
 typename std::enable_if_t<std::is_enum<T>::value, QDataStream &>
 operator<<(QDataStream &s, const T &t)
-{ return s << static_cast<typename std::underlying_type<T>::type>(t); }
+{
+    // std::underlying_type_t<T> may be long or ulong, for which QDataStream
+    // provides no streaming operators. For those, cast to qint64 or quint64.
+    return s << typename QIntegerForSizeof<T>::Unsigned(t);
+}
 
 template <typename T>
 typename std::enable_if_t<std::is_enum<T>::value, QDataStream &>
 operator>>(QDataStream &s, T &t)
-{ return s >> reinterpret_cast<typename std::underlying_type<T>::type &>(t); }
+{
+    typename QIntegerForSizeof<T>::Unsigned i;
+    s >> i;
+    t = T(i);
+    return s;
+}
 
 #ifndef Q_QDOC
 

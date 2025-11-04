@@ -40,7 +40,7 @@ namespace tint::cli {
 Option::Option() = default;
 Option::~Option() = default;
 
-void OptionSet::ShowHelp(std::ostream& s_out) {
+void OptionSet::ShowHelp(std::ostream& s_out, bool show_equal_form) {
     Vector<const Option*, 32> sorted_options;
     for (auto* opt : options.Objects()) {
         sorted_options.Push(opt);
@@ -58,7 +58,7 @@ void OptionSet::ShowHelp(std::ostream& s_out) {
             std::stringstream left, right;
             left << "--" << opt->Name();
             if (auto param = opt->Parameter(); !param.empty()) {
-                left << " <" << param << ">";
+                left << (show_equal_form ? '=' : ' ') << "<" << param << ">";
             }
             right << opt->Description();
             if (auto def = opt->DefaultValue(); !def.empty()) {
@@ -115,7 +115,7 @@ void OptionSet::ShowHelp(std::ostream& s_out) {
                     if (left_lines[i].length() > left_width) {
                         // Left exceeds column width.
                         // Insert a new line and indent to the right
-                        s_out << std::endl;
+                        s_out << "\n";
                         pad(left_width);
                     } else {
                         pad(left_width - left_lines[i].length());
@@ -127,7 +127,7 @@ void OptionSet::ShowHelp(std::ostream& s_out) {
             if (has_right) {
                 s_out << "  " << right_lines[i];
             }
-            s_out << std::endl;
+            s_out << "\n";
         }
     }
 }
@@ -169,13 +169,13 @@ Result<OptionSet::Unconsumed> OptionSet::Parse(VectorRef<std::string_view> argum
             unconsumed.Push(arg);
             continue;
         }
-        if (auto opt = options_by_name.Find(name)) {
+        if (auto opt = options_by_name.Get(name)) {
             if (auto err = (*opt)->Parse(arguments); !err.empty()) {
                 return Failure{err};
             }
         } else if (!parse_options.ignore_unknown) {
-            StringStream err;
-            err << "unknown flag: " << arg << std::endl;
+            StyledText err;
+            err << "unknown flag: " << arg << "\n";
             auto names = options_by_name.Keys();
             auto alternatives =
                 Transform(names, [&](const std::string& s) { return std::string_view(s); });
@@ -183,7 +183,7 @@ Result<OptionSet::Unconsumed> OptionSet::Parse(VectorRef<std::string_view> argum
             opts.prefix = "--";
             opts.list_possible_values = false;
             SuggestAlternatives(arg, alternatives.Slice(), err, opts);
-            return Failure{err.str()};
+            return Failure{err.Plain()};
         }
     }
 

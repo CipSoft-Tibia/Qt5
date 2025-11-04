@@ -15,7 +15,7 @@
 // We mean it.
 //
 
-#include <qavfcamerabase_p.h>
+#include <QtMultimedia/private/qavfcamerabase_p.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -28,7 +28,7 @@ class AVFCamera : public QAVFCameraBase
 Q_OBJECT
 public:
     AVFCamera(QCamera *camera);
-    ~AVFCamera();
+    ~AVFCamera() override;
 
     void setCaptureSession(QPlatformMediaCaptureSession *) override;
 

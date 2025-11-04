@@ -5,7 +5,8 @@
 #ifndef THIRD_PARTY_BLINK_RENDERER_CORE_PAINT_CLIP_PATH_CLIPPER_H_
 #define THIRD_PARTY_BLINK_RENDERER_CORE_PAINT_CLIP_PATH_CLIPPER_H_
 
-#include "third_party/abseil-cpp/absl/types/optional.h"
+#include <optional>
+
 #include "third_party/blink/renderer/core/core_export.h"
 #include "third_party/blink/renderer/platform/graphics/path.h"
 #include "ui/gfx/geometry/rect_f.h"
@@ -21,6 +22,9 @@ class CORE_EXPORT ClipPathClipper {
   STATIC_ONLY(ClipPathClipper);
 
  public:
+  static void ResolveClipPathStatus(const LayoutObject& layout_object,
+                                    bool is_in_block_fragmentation);
+
   static void PaintClipPathAsMaskImage(GraphicsContext&,
                                        const LayoutObject&,
                                        const DisplayItemClient&);
@@ -31,7 +35,7 @@ class CORE_EXPORT ClipPathClipper {
   // Returns the bounding box of the computed clip path, which could be
   // smaller or bigger than the reference box. Returns nullopt if the
   // clip path is invalid.
-  static absl::optional<gfx::RectF> LocalClipPathBoundingBox(
+  static std::optional<gfx::RectF> LocalClipPathBoundingBox(
       const LayoutObject&);
 
   // The argument |clip_path_owner| is the layout object that owns the
@@ -39,9 +43,7 @@ class CORE_EXPORT ClipPathClipper {
   // same as the layout object getting clipped, but in the case of nested
   // clip-path, it could be one of the SVG clip path in the chain.
   // Returns the path if the clip-path can use path-based clip.
-  static absl::optional<Path> PathBasedClip(
-      const LayoutObject& clip_path_owner,
-      const bool is_in_block_fragmentation);
+  static std::optional<Path> PathBasedClip(const LayoutObject& clip_path_owner);
 
   // Returns true if `location` intersects the `clip_path_owner`'s clip-path.
   // `reference_box`, which should be calculated from `reference_box_object`, is

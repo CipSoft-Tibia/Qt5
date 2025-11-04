@@ -1,6 +1,7 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // Copyright (C) 2014 BlackBerry Limited. All rights reserved.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:network-protocol
 
 #include "qhttpnetworkconnectionchannel_p.h"
 #include "qhttpnetworkconnection_p.h"
@@ -28,20 +29,6 @@
 #include <utility>
 
 QT_BEGIN_NAMESPACE
-
-namespace
-{
-
-class ProtocolHandlerDeleter : public QObject
-{
-public:
-    explicit ProtocolHandlerDeleter(QAbstractProtocolHandler *h) : handler(h) {}
-    ~ProtocolHandlerDeleter() { delete handler; }
-private:
-    QAbstractProtocolHandler *handler = nullptr;
-};
-
-}
 
 // TODO: Put channel specific stuff here so it does not pollute qhttpnetworkconnection.cpp
 
@@ -237,14 +224,14 @@ void QHttpNetworkConnectionChannel::abort()
 }
 
 
-bool QHttpNetworkConnectionChannel::sendRequest()
+void QHttpNetworkConnectionChannel::sendRequest()
 {
     Q_ASSERT(protocolHandler);
     if (waitingForPotentialAbort) {
         needInvokeSendRequest = true;
-        return false; // this return value is unused
+        return;
     }
-    return protocolHandler->sendRequest();
+    protocolHandler->sendRequest();
 }
 
 /*
@@ -285,7 +272,7 @@ void QHttpNetworkConnectionChannel::_q_readyRead()
 void QHttpNetworkConnectionChannel::handleUnexpectedEOF()
 {
     Q_ASSERT(reply);
-    if (reconnectAttempts <= 0) {
+    if (reconnectAttempts <= 0 || !request.methodIsIdempotent()) {
         // too many errors reading/receiving/parsing the status, close the socket and emit error
         requeueCurrentlyPipelinedRequests();
         close();
@@ -494,27 +481,18 @@ void QHttpNetworkConnectionChannel::allDone()
 
             // As allDone() gets called from the protocol handler, it's not yet
             // safe to delete it. There is no 'deleteLater', since
-            // QAbstractProtocolHandler is not a QObject. Instead we do this
-            // trick with ProtocolHandlerDeleter, a QObject-derived class.
-            // These dances below just make it somewhat exception-safe.
-            // 1. Create a new owner:
-            QAbstractProtocolHandler *oldHandler = protocolHandler.get();
-            auto deleter = std::make_unique<ProtocolHandlerDeleter>(oldHandler);
-            // 2. Retire the old one:
-            Q_UNUSED(protocolHandler.release());
-            // 3. Call 'deleteLater':
-            deleter->deleteLater();
-            // 3. Give up the ownerthip:
-            Q_UNUSED(deleter.release());
+            // QAbstractProtocolHandler is not a QObject. Instead delete it in
+            // a queued emission.
+
+            QMetaObject::invokeMethod(this, [oldHandler = std::move(protocolHandler)]() mutable {
+                oldHandler.reset();
+            }, Qt::QueuedConnection);
 
             connection->fillHttp2Queue();
             protocolHandler.reset(new QHttp2ProtocolHandler(this));
             QHttp2ProtocolHandler *h2c = static_cast<QHttp2ProtocolHandler *>(protocolHandler.get());
             QMetaObject::invokeMethod(h2c, "_q_receiveReply", Qt::QueuedConnection);
             QMetaObject::invokeMethod(connection, "_q_startNextRequest", Qt::QueuedConnection);
-            // If we only had one request sent with H2 allowed, we may fail to send
-            // a client preface and SETTINGS, which is required by RFC 7540, 3.2.
-            QMetaObject::invokeMethod(h2c, "ensureClientPrefaceSent", Qt::QueuedConnection);
             return;
         } else {
             // Ok, whatever happened, we do not try HTTP/2 anymore ...

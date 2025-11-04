@@ -7,8 +7,6 @@
 #include <QtCore/qobject.h>
 #include <QtStateMachine/qstatemachineglobal.h>
 
-QT_REQUIRE_CONFIG(statemachine);
-
 QT_BEGIN_NAMESPACE
 
 class QState;

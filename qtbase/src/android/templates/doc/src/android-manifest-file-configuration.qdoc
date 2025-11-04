@@ -3,7 +3,7 @@
 
 /*!
 \page android-manifest-file-configuration.html
-\title Qt Android Manifest File Configuration
+\title \Q4A Manifest File Configuration
 \ingroup androidplatform
 \brief Provides details on the AndroidManifest.xml configuration.
 \previouspage android-openssl-support.html
@@ -14,7 +14,7 @@ app configuration for different settings and features that the app uses, as well
 as details on the app itself, such as, package name, app name, version, etc.
 Permissions and hardware features can also be set from the manifest.
 
-Qt for Android maintains a version of \c {AndroidManifest.xml} with default
+\Q4A maintains a version of \c {AndroidManifest.xml} with default
 configuration that include features, permissions and other configuration
 used by the build system which are needed for building and running Qt apps
 on Android.
@@ -70,13 +70,19 @@ Qt sets the following manifest configuration by default:
         default values are \c anyDensity, \c largeScreens,
         \c normalScreens, and \c smallScreens.
 \row
-    \li {1, 6} \l {Android: App Manifest <application>}{<application>}
+    \li {1, 7} \l {Android: App Manifest <application>}{<application>}
     \li android:name
     \li The application class name. Default value is
         \c {org.qtproject.qt.android.bindings.QtApplication}.
 \row
     \li android:label
     \li The application name label. Default value is the Qt project's target name.
+        This can be set using \l {QT_ANDROID_APP_NAME}.
+\row
+    \li android:icon
+    \li The application icon as a reference to a drawable or mipmap resource. This
+        tag is not used unless set using \l {QT_ANDROID_APP_ICON} or set manually
+        in the \c {AndroidManifest.xml}.
 \row
     \li android:hardwareAccelerated
     \li Sets hardware acceleration preference. The default value is \c true.
@@ -121,6 +127,7 @@ Qt sets the following manifest configuration by default:
         The default value is \c true.
 \endtable
 
+\target android-manifest-qt-specific-metadata
 \section1 Qt Specific Meta-data
 
 In addition to the default manifest configuration that Qt sets, Qt defines
@@ -252,10 +259,14 @@ Since Qt 6.8.1, it is possible to override the default permissions set
 by Qt modules. This is useful if you need to define the same permissions
 as used by a Qt module, but with additional or different attributes.
 
-To achieve this, you can manually define these permissions in the Android
-manifest file, along with the \c {<!-- %%INSERT_PERMISSIONS -->} placeholder.
-Manually defined permissions take precedence over the same permissions added
-by Qt modules, avoiding duplication.
+There are two ways to achieve this. First way is to use
+\l {qt_add_android_permission} CMake function in the application's
+\c {CMakeLists.txt}. Permissions defined this way take precedence over
+the same permissions defined by Qt modules, avoiding duplication.
+
+Second way is to manually define these permissions in the Android
+manifest file. Permissions defined this way take precedence over permissions
+set by Qt modules, or set with \l {qt_add_android_permission}.
 
 \section2 Style Extraction
 
@@ -263,11 +274,10 @@ Qt uses different methods to determine how Qt Widgets and Qt Quick Controls
 should be styled:
 
 \list
-    \li \c default or \c full: when using Qt Widgets or Qt Quick Controls 1.
-        \note This method uses some Android non-SDK interfaces, that are being
-        restricted and removed by Google starting from Android 9.0 (API 28).
-        For that reason, this is not recommended for Android 9.0 or greater.
-    \li \c minimal: when using Qt Quick Controls 2 and no Qt Widgets or Qt Quick
+    \li \c full: when using Qt Widgets or Qt Quick Controls 1.
+        \note This method is obsolete as it uses some Android non-SDK interfaces, that were
+        restricted by Google starting from Android 9.0 (API 28). You should use one of the other methods.
+    \li \c default or  \c minimal: when using Qt Quick Controls 2 and no Qt Widgets or Qt Quick
         Controls 1. This is faster than using the default or full options.
     \li \c none: no style extraction.
 \endlist

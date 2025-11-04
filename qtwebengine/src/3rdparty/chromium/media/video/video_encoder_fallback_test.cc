@@ -46,7 +46,11 @@ class VideoEncoderFallbackTest : public testing::Test {
 
   void RunLoop() { task_environment_.RunUntilIdle(); }
 
-  std::unique_ptr<VideoEncoder> CreateSecondaryEncoder() {
+  media::EncoderStatus::Or<std::unique_ptr<media::VideoEncoder>>
+  CreateSecondaryEncoder() {
+    if (!secondary_video_encoder_holder_) {
+      return EncoderStatus::Codes::kEncoderInitializationError;
+    }
     return std::unique_ptr<VideoEncoder>(
         secondary_video_encoder_holder_.release());
   }
@@ -102,7 +106,7 @@ TEST_F(VideoEncoderFallbackTest, NoFallbackEncoding) {
   VideoEncoder::OutputCB output_cb =
       base::BindPostTaskToCurrentDefault(base::BindLambdaForTesting(
           [&](VideoEncoderOutput,
-              absl::optional<VideoEncoder::CodecDescription>) { outputs++; }));
+              std::optional<VideoEncoder::CodecDescription>) { outputs++; }));
   VideoEncoder::OutputCB saved_output_cb;
 
   EXPECT_CALL(*main_video_encoder_, Initialize(_, _, _, _, _))
@@ -159,7 +163,7 @@ TEST_F(VideoEncoderFallbackTest, FallbackOnInitialize) {
   VideoEncoder::OutputCB output_cb =
       base::BindPostTaskToCurrentDefault(base::BindLambdaForTesting(
           [&](VideoEncoderOutput,
-              absl::optional<VideoEncoder::CodecDescription>) { outputs++; }));
+              std::optional<VideoEncoder::CodecDescription>) { outputs++; }));
   VideoEncoder::OutputCB saved_output_cb;
 
   // Initialize() on the main encoder should fail
@@ -231,7 +235,7 @@ TEST_F(VideoEncoderFallbackTest, FallbackOnEncode) {
   VideoEncoder::OutputCB output_cb =
       base::BindPostTaskToCurrentDefault(base::BindLambdaForTesting(
           [&](VideoEncoderOutput,
-              absl::optional<VideoEncoder::CodecDescription>) { outputs++; }));
+              std::optional<VideoEncoder::CodecDescription>) { outputs++; }));
   VideoEncoder::OutputCB primary_output_cb;
   VideoEncoder::OutputCB secondary_output_cb;
 
@@ -383,7 +387,7 @@ TEST_F(VideoEncoderFallbackTest, SecondaryFailureOnEncode) {
   VideoEncoder::OutputCB output_cb =
       base::BindPostTaskToCurrentDefault(base::BindLambdaForTesting(
           [&](VideoEncoderOutput,
-              absl::optional<VideoEncoder::CodecDescription>) { outputs++; }));
+              std::optional<VideoEncoder::CodecDescription>) { outputs++; }));
   VideoEncoder::OutputCB primary_output_cb;
   VideoEncoder::OutputCB secondary_output_cb;
 
@@ -484,7 +488,7 @@ TEST_F(VideoEncoderFallbackTest, SecondaryFailureOnCreation) {
   VideoEncoder::OutputCB output_cb =
       base::BindPostTaskToCurrentDefault(base::BindLambdaForTesting(
           [&](VideoEncoderOutput,
-              absl::optional<VideoEncoder::CodecDescription>) { outputs++; }));
+              std::optional<VideoEncoder::CodecDescription>) { outputs++; }));
   VideoEncoder::OutputCB primary_output_cb;
 
   // Initialize() on the main encoder should succeed

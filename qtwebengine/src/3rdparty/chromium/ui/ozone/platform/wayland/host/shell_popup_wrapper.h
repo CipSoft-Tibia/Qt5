@@ -6,8 +6,8 @@
 #define UI_OZONE_PLATFORM_WAYLAND_HOST_SHELL_POPUP_WRAPPER_H_
 
 #include <cstdint>
+#include <optional>
 
-#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "ui/base/owned_window_anchor.h"
 #include "ui/base/ui_base_types.h"
 #include "ui/gfx/geometry/rect.h"
@@ -17,7 +17,6 @@
 namespace ui {
 
 class WaylandConnection;
-class WaylandWindow;
 class XDGPopupWrapperImpl;
 
 struct ShellPopupParams {
@@ -27,11 +26,9 @@ struct ShellPopupParams {
   ~ShellPopupParams();
 
   gfx::Rect bounds;
-  MenuType menu_type = MenuType::kRootContextMenu;
-
   // This parameter is temporarily optional. Later, when all the clients
-  // start to pass these parameters, absl::optional type will be removed.
-  absl::optional<OwnedWindowAnchor> anchor;
+  // start to pass these parameters, std::optional type will be removed.
+  std::optional<OwnedWindowAnchor> anchor;
 };
 
 // Wrapper interface for shell popups.
@@ -85,13 +82,17 @@ class ShellPopupWrapper {
   // Casts `this` to XDGPopupWrapperImpl, if it is of that type.
   virtual XDGPopupWrapperImpl* AsXDGPopupWrapper();
 
+  bool has_grab() const { return has_grab_; }
+
  protected:
   // Asks the compositor to take explicit-grab for this popup.
   virtual void Grab(uint32_t serial) = 0;
 
   // Returns the serial value for a popup grab, if there is one available.
+  // `parent_shell_popup_has_grab` has value if this popup is dangling off
+  // another shell_popup, true if that popup has grab.
   void GrabIfPossible(WaylandConnection* connection,
-                      WaylandWindow* parent_window);
+                      std::optional<bool> parent_shell_popup_has_grab);
 
  private:
   // Tells if explicit grab was taken for this popup. As per

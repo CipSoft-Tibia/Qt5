@@ -6,6 +6,36 @@ qt_feature("graphs-2d" PUBLIC
     PURPOSE "Support for 2D graphs"
 )
 
+qt_feature("graphs-2d-area" PUBLIC
+    LABEL "Area"
+    PURPOSE "Support for Area graph"
+)
+
+qt_feature("graphs-2d-bar" PUBLIC
+    LABEL "Bar"
+    PURPOSE "Support for Bar graph"
+)
+
+qt_feature("graphs-2d-donut-pie" PUBLIC
+    LABEL "Donut and Pie"
+    PURPOSE "Support for Donut and Pie graphs"
+)
+
+qt_feature("graphs-2d-line" PUBLIC
+    LABEL "Line"
+    PURPOSE "Support for Line graph"
+)
+
+qt_feature("graphs-2d-scatter" PUBLIC
+    LABEL "Scatter"
+    PURPOSE "Support for Scatter graph"
+)
+
+qt_feature("graphs-2d-spline" PUBLIC
+    LABEL "Spline"
+    PURPOSE "Support for Spline graph"
+)
+
 qt_feature("graphs-3d" PUBLIC
     LABEL "3D Graphs"
     PURPOSE "Support for 3D graphs"

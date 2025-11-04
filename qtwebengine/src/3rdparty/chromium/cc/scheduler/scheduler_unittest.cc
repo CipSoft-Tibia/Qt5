@@ -156,6 +156,8 @@ class FakeSchedulerClient : public SchedulerClient,
     frame_interval_ = interval;
   }
 
+  void OnBeginImplFrameDeadline() override {}
+
   const viz::BeginFrameArgs& last_begin_main_frame_args() {
     return last_begin_main_frame_args_;
   }
@@ -178,9 +180,8 @@ class FakeSchedulerClient : public SchedulerClient,
 
     if (swap_will_happen_if_draw_happens_) {
       last_begin_frame_ack_ = scheduler_->CurrentBeginFrameAckForActiveTree();
-      scheduler_->DidSubmitCompositorFrame(0, base::TimeTicks::Now(),
-                                           EventMetricsSet(),
-                                           /*has_missing_content=*/false);
+      SubmitInfo submit_info;
+      scheduler_->DidSubmitCompositorFrame(submit_info);
 
       if (automatic_ack_)
         scheduler_->DidReceiveCompositorFrameAck();
@@ -194,6 +195,7 @@ class FakeSchedulerClient : public SchedulerClient,
     last_begin_frame_ack_ = scheduler_->CurrentBeginFrameAckForActiveTree();
     return DrawResult::kSuccess;
   }
+  void ScheduledActionUpdateDisplayTree() override { NOTIMPLEMENTED(); }
   void ScheduledActionCommit() override {
     EXPECT_FALSE(inside_action_);
     base::AutoReset<bool> mark_inside(&inside_action_, true);
@@ -218,7 +220,6 @@ class FakeSchedulerClient : public SchedulerClient,
     EXPECT_FALSE(inside_action_);
     base::AutoReset<bool> mark_inside(&inside_action_, true);
     PushAction("ScheduledActionPrepareTiles");
-    scheduler_->WillPrepareTiles();
     scheduler_->DidPrepareTiles();
   }
   void ScheduledActionInvalidateLayerTreeFrameSink(bool needs_redraw) override {
@@ -859,7 +860,7 @@ class SchedulerClientThatsetNeedsDrawInsideDraw : public FakeSchedulerClient {
   }
 
   DrawResult ScheduledActionDrawForced() override {
-    NOTREACHED();
+    NOTREACHED_IN_MIGRATION();
     return DrawResult::kSuccess;
   }
 
@@ -966,7 +967,7 @@ class SchedulerClientThatSetNeedsBeginMainFrameInsideDraw
   }
 
   DrawResult ScheduledActionDrawForced() override {
-    NOTREACHED();
+    NOTREACHED_IN_MIGRATION();
     return DrawResult::kSuccess;
   }
 
@@ -1213,7 +1214,6 @@ TEST_F(SchedulerTest, PrepareTilesOncePerFrame) {
   EXPECT_TRUE(client_->IsInsideBeginImplFrame());
 
   EXPECT_TRUE(scheduler_->PrepareTilesPending());
-  scheduler_->WillPrepareTiles();
   scheduler_->DidPrepareTiles();  // An explicit PrepareTiles.
   EXPECT_FALSE(scheduler_->PrepareTilesPending());
 
@@ -1247,7 +1247,6 @@ TEST_F(SchedulerTest, PrepareTilesOncePerFrame) {
 
   // If we get another DidPrepareTiles within the same frame, we should
   // not PrepareTiles on the next frame.
-  scheduler_->WillPrepareTiles();
   scheduler_->DidPrepareTiles();  // An explicit PrepareTiles.
   scheduler_->SetNeedsPrepareTiles();
   scheduler_->SetNeedsRedraw();
@@ -1270,7 +1269,6 @@ TEST_F(SchedulerTest, PrepareTilesOncePerFrame) {
   // frame. This verifies we don't alternate calling PrepareTiles once and
   // twice.
   EXPECT_TRUE(scheduler_->PrepareTilesPending());
-  scheduler_->WillPrepareTiles();
   scheduler_->DidPrepareTiles();  // An explicit PrepareTiles.
   EXPECT_FALSE(scheduler_->PrepareTilesPending());
   scheduler_->SetNeedsPrepareTiles();
@@ -1333,7 +1331,6 @@ TEST_F(SchedulerTest, DidPrepareTilesPreventsPrepareTilesForOneFrame) {
   // We don't want to hinder scheduled prepare tiles for more than one frame
   // even if we call unscheduled prepare tiles many times.
   for (int i = 0; i < 10; i++) {
-    scheduler_->WillPrepareTiles();
     scheduler_->DidPrepareTiles();
   }
 
@@ -3982,11 +3979,6 @@ TEST_F(SchedulerTest, NoInvalidationForAnimateOnlyFrames) {
 }
 
 TEST_F(SchedulerTest, SendEarlyDidNotProduceFrameIfIdle) {
-  base::test::ScopedFeatureList scoped_feature_list;
-  scoped_feature_list.InitWithFeatures(
-      /* enabled_features*/ {},
-      /* disabled_features*/ {features::kResetTimerWhenNoActiveTreeLikely});
-
   SetUpScheduler(EXTERNAL_BFS);
   scheduler_->SetNeedsBeginMainFrame();
 
@@ -4046,89 +4038,28 @@ TEST_F(SchedulerTest,
   EXPECT_ACTIONS("WillBeginImplFrame");
 }
 
-TEST_F(SchedulerTest, SendEarlyDidNotProduceFrameInDeadlineIfIdle) {
-  base::test::ScopedFeatureList scoped_feature_list;
-  scoped_feature_list.InitWithFeatures(
-      /* enabled_features*/ {features::kResetTimerWhenNoActiveTreeLikely},
-      /* disabled_features*/ {});
+class WarmUpCompositorSchedulerTest : public SchedulerTest {
+ public:
+  WarmUpCompositorSchedulerTest() {
+    scoped_feature_list_.InitAndEnableFeature(features::kWarmUpCompositor);
+  }
 
-  SetUpScheduler(EXTERNAL_BFS);
-  scheduler_->SetNeedsBeginMainFrame();
+ private:
+  base::test::ScopedFeatureList scoped_feature_list_;
+};
 
+// Tests that `SetShouldWarmUp()` will start initial `LayerTreeFrameSink`
+// creation even if invisible.
+TEST_F(WarmUpCompositorSchedulerTest,
+       SetShouldWarmUpWillStartLayerTreeFrameSinkCreation) {
+  SetUpSchedulerWithNoLayerTreeFrameSink(EXTERNAL_BFS);
+  scheduler_->SetVisible(false);
+
+  scheduler_->SetShouldWarmUp();
+  EXPECT_ACTIONS("ScheduledActionBeginLayerTreeFrameSinkCreation");
   client_->Reset();
-  EXPECT_SCOPED(AdvanceFrame());
-  EXPECT_ACTIONS("WillBeginImplFrame", "ScheduledActionSendBeginMainFrame");
-  auto begin_main_frame_args = client_->last_begin_main_frame_args();
-  EXPECT_NE(client_->last_begin_frame_ack().frame_id.sequence_number,
-            begin_main_frame_args.frame_id.sequence_number);
-
-  client_->Reset();
-  scheduler_->NotifyBeginMainFrameStarted(task_runner_->NowTicks());
-  // Request a new commit before finishing the current one to simulate behavior
-  // seen in certain OOPIF renderers.
-  scheduler_->SetNeedsBeginMainFrame();
-  scheduler_->BeginMainFrameAborted(CommitEarlyOutReason::kFinishedNoUpdates);
-  // Early DidNotProduceFrame is sent in immediate timer.
-  task_runner_->RunUntilTime(task_runner_->NowTicks());
-  EXPECT_EQ(client_->last_begin_frame_ack().frame_id.sequence_number,
-            begin_main_frame_args.frame_id.sequence_number);
-}
-
-TEST_F(SchedulerTest, StopBeginFramesWhenNoNewActiveTreeLikely) {
-  base::test::ScopedFeatureList scoped_feature_list;
-  scoped_feature_list.InitWithFeatures(
-      /* enabled_features*/ {features::kResetTimerWhenNoActiveTreeLikely},
-      /* disabled_features*/ {});
-
-  SetUpScheduler(EXTERNAL_BFS);
-  scheduler_->SetNeedsBeginMainFrame();
-  EXPECT_ACTIONS("AddObserver(this)");
-  client_->Reset();
-
-  constexpr uint64_t kSourceId = viz::BeginFrameArgs::kStartingSourceId;
-  uint64_t sequence_number = viz::BeginFrameArgs::kStartingFrameNumber;
-  base::TimeDelta interval = viz::BeginFrameArgs::DefaultInterval();
-  // Time gap between first args and second args.
-  base::TimeDelta time_gap = base::Milliseconds(1) + interval;
-  base::TimeTicks tick1 = task_runner_->NowTicks();
-  base::TimeTicks tick2 = task_runner_->NowTicks() + time_gap + interval;
-  base::TimeTicks tick3 = task_runner_->NowTicks() + time_gap + interval * 2;
-
-  // First begin frame is missed.
-  viz::BeginFrameArgs first_args = viz::BeginFrameArgs::Create(
-      BEGINFRAME_FROM_HERE, kSourceId, sequence_number++, tick1,
-      tick1 + interval, interval, viz::BeginFrameArgs::MISSED);
-  viz::BeginFrameArgs second_args = viz::BeginFrameArgs::Create(
-      BEGINFRAME_FROM_HERE, kSourceId, sequence_number++, tick2,
-      tick2 + interval, interval, viz::BeginFrameArgs::NORMAL);
-  viz::BeginFrameArgs third_args = viz::BeginFrameArgs::Create(
-      BEGINFRAME_FROM_HERE, kSourceId, sequence_number++, tick3,
-      tick3 + interval, interval, viz::BeginFrameArgs::NORMAL);
-
-  // Deliver first missed begin frame little late.
-  task_runner_->AdvanceMockTickClock(time_gap);
-  fake_external_begin_frame_source_->TestOnBeginFrame(first_args);
-
-  // Second begin frame.
-  task_runner_->AdvanceMockTickClock(interval);
-  fake_external_begin_frame_source_->TestOnBeginFrame(second_args);
-  task_runner_->RunUntilTime(task_runner_->NowTicks());
-  EXPECT_ACTIONS("WillBeginImplFrame", "ScheduledActionSendBeginMainFrame");
-  scheduler_->NotifyBeginMainFrameStarted(task_runner_->NowTicks());
-  scheduler_->NotifyReadyToCommit(nullptr);
-  scheduler_->NotifyReadyToActivate();
-  scheduler_->NotifyReadyToDraw();
-
-  // Third begin frame.
-  client_->Reset();
-  task_runner_->AdvanceMockTickClock(interval);
-  fake_external_begin_frame_source_->TestOnBeginFrame(third_args);
-  task_runner_->RunUntilTime(task_runner_->NowTicks());
-  // "RemoveObserver(this)" will be called only when
-  // features::kResetTimerWhenNoActiveTreeLikely is enabled, otherwise
-  // "RemoveObserver(this)" will be called on next vsync in late timer.
-  EXPECT_ACTIONS("ScheduledActionDrawIfPossible", "WillBeginImplFrame",
-                 "RemoveObserver(this)");
+  scheduler_->DidCreateAndInitializeLayerTreeFrameSink();
+  EXPECT_NO_ACTION();
 }
 
 }  // namespace

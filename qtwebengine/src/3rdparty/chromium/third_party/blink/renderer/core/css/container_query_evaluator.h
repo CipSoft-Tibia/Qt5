@@ -21,9 +21,10 @@ namespace blink {
 
 class ComputedStyle;
 class ContainerQuery;
-class ContainerQueryScrollSnapshot;
 class Element;
 class MatchResult;
+class SnappedQueryScrollSnapshot;
+class StuckQueryScrollSnapshot;
 class StyleRecalcContext;
 
 class CORE_EXPORT ContainerQueryEvaluator final
@@ -31,8 +32,8 @@ class CORE_EXPORT ContainerQueryEvaluator final
  public:
   explicit ContainerQueryEvaluator(Element& container);
 
-  // Look for a container query container in the shadow-including inclusive
-  // ancestor chain of 'starting_element'.
+  // Look for a container query container in the flat tree inclusive ancestor
+  // chain of 'starting_element'.
   static Element* FindContainer(Element* starting_element,
                                 const ContainerSelector&,
                                 const TreeScope* selector_tree_scope);
@@ -42,16 +43,23 @@ class CORE_EXPORT ContainerQueryEvaluator final
                          ContainerSelectorCache&,
                          MatchResult&);
 
+  // Get the parent container candidate for container queries. Either the flat
+  // tree parent or the shadow-including parent based on a runtime flag due to a
+  // spec change.
+  // To be removed when the CSSFlatTreeContainer flag is removed.
+  static Element* ParentContainerCandidateElement(Element& element);
+
   // Width/Height are used by container relative units (qi, qb, etc).
   //
-  // A return value of absl::nullopt normally means that the relevant axis
+  // A return value of std::nullopt normally means that the relevant axis
   // doesn't have effective containment (e.g. elements with display:table).
   //
   // https://drafts.csswg.org/css-contain-2/#containment-size
-  absl::optional<double> Width() const;
-  absl::optional<double> Height() const;
+  std::optional<double> Width() const;
+  std::optional<double> Height() const;
   void SetReferencedByUnit() { referenced_by_unit_ = true; }
   bool DependsOnStyle() const { return depends_on_style_; }
+  bool DependsOnSnapped() const { return depends_on_snapped_; }
 
   enum class Change : uint8_t {
     // The update has no effect on the evaluation of queries associated with
@@ -77,13 +85,14 @@ class CORE_EXPORT ContainerQueryEvaluator final
   Change StyleContainerChanged();
 
   // Update the ContainerValues for the evaluator if necessary based on the
-  // latest snapshot.
-  Change ApplyScrollSnapshot();
+  // latest snapshots for stuck and snapped states.
+  Change ApplyScrollState();
 
-  // Re-evaluate the cached results and clear any results which are affected by
-  // the ContainerStuckPhysical changes.
-  Change StickyContainerChanged(ContainerStuckPhysical stuck_horizontal,
-                                ContainerStuckPhysical stuck_vertical);
+  // Set the pending snapped state when updating scroll snapshots.
+  // ApplyScrollState() will set the snapped state from the pending snapped
+  // state during style recalc.
+  void SetPendingSnappedStateFromScrollSnapshot(
+      const SnappedQueryScrollSnapshot&);
 
   // We may need to update the internal CSSContainerValues of this evaluator
   // when e.g. the rem unit changes.
@@ -98,6 +107,8 @@ class CORE_EXPORT ContainerQueryEvaluator final
   void MarkFontDirtyIfNeeded(const ComputedStyle& old_style,
                              const ComputedStyle& new_style);
 
+  Element* ContainerElement() const;
+
   void Trace(Visitor*) const;
 
  private:
@@ -111,7 +122,24 @@ class CORE_EXPORT ContainerQueryEvaluator final
   void UpdateContainerStuck(ContainerStuckPhysical stuck_horizontal,
                             ContainerStuckPhysical stuck_vertical);
 
-  enum ContainerType { kSizeContainer, kStyleContainer, kStickyContainer };
+  // Update the CSSContainerValues with the new stuck state.
+  void UpdateContainerSnapped(ContainerSnappedFlags snapped);
+
+  // Re-evaluate the cached results and clear any results which are affected by
+  // the ContainerStuckPhysical changes.
+  Change StickyContainerChanged(ContainerStuckPhysical stuck_horizontal,
+                                ContainerStuckPhysical stuck_vertical);
+
+  // Re-evaluate the cached results and clear any results which are affected by
+  // the snapped target changes.
+  Change SnapContainerChanged(ContainerSnappedFlags snapped);
+
+  enum ContainerType {
+    kSizeContainer,
+    kStyleContainer,
+    kStickyContainer,
+    kSnapContainer
+  };
   void ClearResults(Change change, ContainerType container_type);
 
   // Re-evaluate cached query results after a size change and return which
@@ -122,6 +150,7 @@ class CORE_EXPORT ContainerQueryEvaluator final
   // elements need to be invalidated if necessary.
   Change ComputeStyleChange() const;
   Change ComputeStickyChange() const;
+  Change ComputeSnapChange() const;
 
   struct Result {
     // Main evaluation result.
@@ -148,15 +177,20 @@ class CORE_EXPORT ContainerQueryEvaluator final
   PhysicalAxes contained_axes_;
   ContainerStuckPhysical stuck_horizontal_ = ContainerStuckPhysical::kNo;
   ContainerStuckPhysical stuck_vertical_ = ContainerStuckPhysical::kNo;
+  ContainerSnappedFlags snapped_ =
+      static_cast<ContainerSnappedFlags>(ContainerSnapped::kNone);
+  ContainerSnappedFlags pending_snapped_ =
+      static_cast<ContainerSnappedFlags>(ContainerSnapped::kNone);
   HeapHashMap<Member<const ContainerQuery>, Result> results_;
-  Member<ContainerQueryScrollSnapshot> snapshot_;
+  Member<StuckQueryScrollSnapshot> stuck_snapshot_;
   // The MediaQueryExpValue::UnitFlags of all queries evaluated against this
   // ContainerQueryEvaluator.
   unsigned unit_flags_ = 0;
   bool referenced_by_unit_ = false;
   bool font_dirty_ = false;
   bool depends_on_style_ = false;
-  bool depends_on_state_ = false;
+  bool depends_on_stuck_ = false;
+  bool depends_on_snapped_ = false;
 };
 
 }  // namespace blink

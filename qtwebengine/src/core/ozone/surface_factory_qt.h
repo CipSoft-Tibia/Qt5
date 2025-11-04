@@ -1,10 +1,9 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef SURFACE_FACTORY_QT
 #define SURFACE_FACTORY_QT
-
-#if defined(USE_OZONE)
 
 #include "ui/ozone/public/surface_factory_ozone.h"
 
@@ -27,7 +26,7 @@ public:
         gfx::Size size,
         gfx::BufferFormat format,
         gfx::BufferUsage usage,
-        absl::optional<gfx::Size> framebuffer_size = absl::nullopt) override;
+        std::optional<gfx::Size> framebuffer_size = std::nullopt) override;
     void CreateNativePixmapAsync(gfx::AcceleratedWidget widget,
                                  gpu::VulkanDeviceQueue* device_queue,
                                  gfx::Size size,
@@ -48,7 +47,4 @@ private:
 
 } // namespace QtWebEngineCore
 
-#endif // defined(USE_OZONE)
-
 #endif // SURFACE_FACTORY_QT
-

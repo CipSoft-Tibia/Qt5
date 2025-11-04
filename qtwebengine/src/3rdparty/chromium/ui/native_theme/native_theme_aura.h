@@ -46,20 +46,23 @@ class NATIVE_THEME_EXPORT NativeThemeAura : public NativeThemeBase {
                                const gfx::Rect& rect,
                                const MenuItemExtraParams& menu_item,
                                ColorScheme color_scheme) const override;
-  void PaintArrowButton(cc::PaintCanvas* gc,
-                        const ColorProvider* color_provider,
-                        const gfx::Rect& rect,
-                        Part direction,
-                        State state,
-                        ColorScheme color_scheme,
-                        const ScrollbarArrowExtraParams& arrow) const override;
+  void PaintArrowButton(
+      cc::PaintCanvas* gc,
+      const ColorProvider* color_provider,
+      const gfx::Rect& rect,
+      Part direction,
+      State state,
+      ColorScheme color_scheme,
+      bool in_forced_colors,
+      const ScrollbarArrowExtraParams& extra_params) const override;
   void PaintScrollbarTrack(cc::PaintCanvas* canvas,
                            const ColorProvider* color_provider,
                            Part part,
                            State state,
                            const ScrollbarTrackExtraParams& extra_params,
                            const gfx::Rect& rect,
-                           ColorScheme color_scheme) const override;
+                           ColorScheme color_scheme,
+                           bool in_forced_colors) const override;
   void PaintScrollbarThumb(cc::PaintCanvas* canvas,
                            const ColorProvider* color_provider,
                            Part part,
@@ -67,6 +70,11 @@ class NATIVE_THEME_EXPORT NativeThemeAura : public NativeThemeBase {
                            const gfx::Rect& rect,
                            const ScrollbarThumbExtraParams& extra_params,
                            ColorScheme color_scheme) const override;
+  gfx::Insets GetScrollbarSolidColorThumbInsets(Part part) const override;
+  SkColor4f GetScrollbarThumbColor(
+      const ui::ColorProvider& color_provider,
+      State state,
+      const ScrollbarThumbExtraParams& extra) const override;
   void PaintScrollbarCorner(cc::PaintCanvas* canvas,
                             const ColorProvider* color_provider,
                             State state,

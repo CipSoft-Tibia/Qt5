@@ -1,7 +1,9 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 #include <qtest.h>
-#include <QtTest/QtTest>
+#include <QtTest/QTest>
+#include <QtTest/QTestEventLoop>
+#include <QtCore/QTimer>
 #include <QtQuick/private/qquickimage_p_p.h>
 #include <QtQuick/private/qquickpixmapcache_p.h>
 #include <QtQml/qqmlengine.h>

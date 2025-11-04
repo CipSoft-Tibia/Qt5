@@ -11,6 +11,7 @@
 QT_BEGIN_NAMESPACE
 
 class QBar3DSeriesPrivate;
+class QQuaternion;
 
 class Q_GRAPHS_EXPORT QBar3DSeries : public QAbstract3DSeries
 {
@@ -26,7 +27,10 @@ class Q_GRAPHS_EXPORT QBar3DSeries : public QAbstract3DSeries
                    columnLabelsChanged FINAL)
     Q_PROPERTY(
         QBarDataArray dataArray READ dataArray WRITE setDataArray NOTIFY dataArrayChanged FINAL)
-
+    Q_PROPERTY(bool valueColoringEnabled READ isValueColoringEnabled WRITE setValueColoringEnabled
+                   NOTIFY valueColoringEnabledChanged REVISION(6, 9))
+    QML_ELEMENT
+    QML_UNCREATABLE("Trying to create uncreatable: QBar3DSeries, use Bar3DSeries instead.")
 public:
     explicit QBar3DSeries(QObject *parent = nullptr);
     explicit QBar3DSeries(QBarDataProxy *dataProxy, QObject *parent = nullptr);
@@ -44,6 +48,9 @@ public:
 
     QList<QColor> rowColors() const;
     void setRowColors(const QList<QColor> &colors);
+
+    bool isValueColoringEnabled() const;
+    void setValueColoringEnabled(bool enabled);
 
     void setDataArray(const QBarDataArray &newDataArray);
     void clearRow(qsizetype rowIndex);
@@ -63,6 +70,7 @@ Q_SIGNALS:
     void rowLabelsChanged();
     void columnLabelsChanged();
     void dataArrayChanged(const QBarDataArray &array);
+    Q_REVISION(6, 9) void valueColoringEnabledChanged(bool enabled);
 
 private:
     Q_DISABLE_COPY(QBar3DSeries)

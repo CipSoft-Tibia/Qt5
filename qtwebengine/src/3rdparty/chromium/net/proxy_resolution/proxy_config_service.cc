@@ -76,7 +76,7 @@ class UnsetProxyConfigService : public ProxyConfigService {
 #endif
 
 // Config getter that always returns direct settings.
-class ProxyConfigServiceDirect : public ProxyConfigService {
+class ProxyConfigServiceDirectPCS : public ProxyConfigService {
  public:
   // ProxyConfigService implementation:
   void AddObserver(Observer* observer) override {}
@@ -132,12 +132,12 @@ ProxyConfigService::CreateSystemProxyConfigService(
       std::move(main_task_runner),
       base::SingleThreadTaskRunner::GetCurrentDefault());
 #elif BUILDFLAG(IS_FUCHSIA)
-  // TODO(crbug.com/889195): Implement a system proxy service for Fuchsia.
-  return std::make_unique<ProxyConfigServiceDirect>();
+  // TODO(crbug.com/42050626): Implement a system proxy service for Fuchsia.
+  return std::make_unique<ProxyConfigServiceDirectPCS>();
 #else
   LOG(WARNING) << "Failed to choose a system proxy settings fetcher "
                   "for this platform.";
-  return std::make_unique<ProxyConfigServiceDirect>();
+  return std::make_unique<ProxyConfigServiceDirectPCS>();
 #endif
 }
 

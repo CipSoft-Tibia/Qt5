@@ -2,6 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#ifdef UNSAFE_BUFFERS_BUILD
+// TODO(crbug.com/351564777): Remove this and convert code to safer constructs.
+#pragma allow_unsafe_buffers
+#endif
+
 #include "third_party/blink/renderer/modules/sensor/orientation_sensor.h"
 
 #include "third_party/blink/renderer/bindings/core/v8/v8_union_dommatrix_float32array_float64array.h"
@@ -12,10 +17,10 @@ using device::mojom::blink::SensorType;
 
 namespace blink {
 
-absl::optional<Vector<double>> OrientationSensor::quaternion() {
+std::optional<Vector<double>> OrientationSensor::quaternion() {
   reading_dirty_ = false;
   if (!hasReading())
-    return absl::nullopt;
+    return std::nullopt;
   const auto& quat = GetReading().orientation_quat;
   return Vector<double>({quat.x, quat.y, quat.z, quat.w});
 }

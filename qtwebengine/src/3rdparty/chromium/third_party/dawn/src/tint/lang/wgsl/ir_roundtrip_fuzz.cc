@@ -29,31 +29,70 @@
 
 #include <iostream>
 
-#include "src/tint/cmd/fuzz/ir/fuzz.h"
+#include "src/tint/cmd/fuzz/wgsl/fuzz.h"
 #include "src/tint/lang/core/ir/disassembler.h"
-#include "src/tint/lang/wgsl/reader/lower/lower.h"
-#include "src/tint/lang/wgsl/reader/parser/parser.h"
+#include "src/tint/lang/core/ir/validator.h"
+#include "src/tint/lang/wgsl/ast/module.h"
+#include "src/tint/lang/wgsl/ast/transform/renamer.h"
+#include "src/tint/lang/wgsl/helpers/apply_substitute_overrides.h"
 #include "src/tint/lang/wgsl/reader/program_to_ir/program_to_ir.h"
+#include "src/tint/lang/wgsl/reader/reader.h"
 #include "src/tint/lang/wgsl/writer/ir_to_program/ir_to_program.h"
 #include "src/tint/lang/wgsl/writer/raise/raise.h"
 #include "src/tint/lang/wgsl/writer/writer.h"
+#include "src/tint/utils/command/command.h"
+#include "src/tint/utils/text/string.h"
 
 namespace tint::wgsl {
 
-void IRRoundtripFuzzer(core::ir::Module& ir) {
-    if (auto res = tint::wgsl::writer::Raise(ir); res != Success) {
-        TINT_ICE() << res.Failure();
+bool CanRun(core::ir::Module& ir) {
+    // IRToProgram cannot handle constants whose types are builtin structures, since it would have
+    // to reverse-engineer the builtin function call that would produce the right output.
+    for (auto* c : ir.constant_values) {
+        if (auto* str = c->Type()->As<core::type::Struct>()) {
+            // TODO(350778507): Consider using a struct flag for builtin structures instead.
+            if (tint::HasPrefix(str->Name().NameView(), "__")) {
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
+void IRRoundtripFuzzer(const tint::Program& program, const fuzz::wgsl::Context& context) {
+    if (program.AST().Enables().Any(tint::wgsl::reader::IsUnsupportedByIR)) {
+        return;
+    }
+    auto transformed = tint::wgsl::ApplySubstituteOverrides(program);
+    auto& src = transformed ? transformed.value() : program;
+    if (!src.IsValid()) {
+        return;
+    }
+    auto ir = tint::wgsl::reader::ProgramToLoweredIR(src);
+    if (ir != Success) {
+        return;
+    }
+    if (auto val = core::ir::Validate(ir.Get()); val != Success) {
+        TINT_ICE() << val.Failure();
+    }
+
+    if (!CanRun(ir.Get())) {
         return;
     }
 
-    auto dst = tint::wgsl::writer::IRToProgram(ir);
+    if (auto res = tint::wgsl::writer::Raise(ir.Get()); res != Success) {
+        TINT_ICE() << res.Failure();
+    }
+
+    writer::ProgramOptions program_options;
+    program_options.allowed_features = AllowedFeatures::Everything();
+    auto dst = tint::wgsl::writer::IRToProgram(ir.Get(), program_options);
     if (!dst.IsValid()) {
-        std::cerr << "IR:\n" << core::ir::Disassemble(ir) << std::endl;
+        std::cerr << "IR:\n" << core::ir::Disassembler(ir.Get()).Plain() << "\n";
         if (auto result = tint::wgsl::writer::Generate(dst, {}); result == Success) {
-            std::cerr << "WGSL:\n" << result->wgsl << std::endl << std::endl;
+            std::cerr << "WGSL:\n" << result->wgsl << "\n\n";
         }
         TINT_ICE() << dst.Diagnostics();
-        return;
     }
 
     return;
@@ -61,4 +100,4 @@ void IRRoundtripFuzzer(core::ir::Module& ir) {
 
 }  // namespace tint::wgsl
 
-TINT_IR_MODULE_FUZZER(tint::wgsl::IRRoundtripFuzzer);
+TINT_WGSL_PROGRAM_FUZZER(tint::wgsl::IRRoundtripFuzzer);

@@ -15,6 +15,7 @@
     information on how you can use the command line interface:
 
     \list
+        \li \l{Downloading \QOI with Command Line Interface}
         \li \l{Component Names For Installation}
         \li \l{Installing Without User Interaction}
         \li \l{Installing With User Interaction}
@@ -27,6 +28,22 @@
         \li \l{Summary of Command Line Interface Usage}
     \endlist
 
+    \section1 Downloading \QOI with Command Line Interface
+
+    You can use the \c curl command on the command line interface to download \QOI.
+    To see all the \QOI packages available for different platforms, visit
+    \l {\QOI official releases}.
+
+    To download a specific \QOI package with the same name as the remote file,
+    use the \c -O (uppercase 'O') option.
+
+    The example command below downloads the \c qt-online-installer-linux-x64-online.run
+    package:
+
+    \badcode
+    curl -O https://download.qt.io/official_releases/online_installers/qt-online-installer-linux-x64-online.run
+    \endcode
+
     \section1 Component Names for Installation
 
     \section2 Quick Installation with Alias Packages
@@ -36,53 +53,71 @@
     are a shortcut to include the actual packages for an easier installation
     experience.
 
+    \section3 Listing Existing Alias Packages
+
     To list the existing alias packages, use the following command on the command
-    line interface:
+    line interface.
+
+    \e {Using \QOI}:
 
     \badcode
-    installer.exe / maintenancetool.exe search
+    <installer executable> search
     \endcode
+
+    For details on the \e{\QOI} executables for different platforms,
+    see \l {Installing With User Interaction}.
+
+    \e {Using \QMT}:
+
+    \badcode
+    <maintenancetool executable> search
+    \endcode
+
+    For details on the \e{\QMT} executables for different platforms,
+    see \l {Installing With User Interaction}.
+
+    \section3 Contents of Alias Packages
 
     The contents of the alias packages are listed in the table below.
 
-    \note Qt 6.8.0 release is used in the alias package examples listed below.
+    \note Qt \QtVersion release is used in the alias package examples listed below.
     Always remember to use the packages that match the Qt release you are working
     on.
 
     \table
     \header
        \li Alias package name
-       \li Qt Online Installer (package content)
+       \li \QOI (package content)
     \row
-       \li qt6.8.0-essentials
+       \li qt\QtVersion-essentials
        \li
           \list
-             \li \l {https://doc.qt.io/qt-6/qtmodules.html#qt-essentials} {essential module libraries}
+             \li \l {Qt Essentials} {essential module libraries}
              \li essential module headers
              \li essential module private headers
              \li essential module runtime tools
              \li essential module development tools
           \endlist
     \row
-       \li qt6.8.0-essentials-dev
+       \li qt\QtVersion-essentials-dev
        \li
           \list
-             \li \l {https://doc.qt.io/qt-6/qtmodules.html#qt-essentials} {essential module libraries}
+             \li \l {Qt Essentials} {essential module libraries}
              \li essential module headers
              \li essential module private headers
              \li essential module runtime tools
              \li essential module development tools
          \endlist
     \row
-       \li qt6.8.0-full
+       \li qt\QtVersion-full
        \li
           \list
-             \li \l {https://doc.qt.io/qt-6/qtmodules.html#qt-essentials} {essential module libraries}
+             \li \l {Qt Essentials} {essential module libraries}
              \li essential module headers
              \li essential module private headers
              \li essential module runtime tools
              \li essential module development tools
-             \li \l {https://doc.qt.io/qt-6/qtmodules.html#qt-add-ons} {add-on module libraries}
+             \li \l {Qt Add-Ons} {add-on module libraries}
              \li add-on module headers
              \li add-on module private headers
              \li add-on module runtime tools
@@ -90,15 +125,15 @@
              \li sources
          \endlist
     \row
-       \li qt6.8.0-full-dev
+       \li qt\QtVersion-full-dev
        \li
           \list
-             \li \l {https://doc.qt.io/qt-6/qtmodules.html#qt-essentials} {essential module libraries}
+             \li \l {Qt Essentials} {essential module libraries}
              \li essential module headers
              \li essential module private headers
              \li essential module runtime tools
              \li essential module development tools
-             \li \l {https://doc.qt.io/qt-6/qtmodules.html#qt-add-ons} {add-on module libraries}
+             \li \l {Qt Add-Ons} {add-on module libraries}
              \li add-on module headers
              \li add-on module private headers
              \li add-on module runtime tools
@@ -106,50 +141,94 @@
              \li sources
          \endlist
     \row
-       \li qt6.8.0-full-dbg
+       \li qt\QtVersion-full-dbg
        \li
           \list
              \li Qt debug information files for:
                 \list
-                   \li \l {https://doc.qt.io/qt-6/qtmodules.html#qt-essentials} {essential module libraries}
-                   \li \l {https://doc.qt.io/qt-6/qtmodules.html#qt-add-ons} {add-on module libraries}
+                   \li \l {Qt Essentials} {essential module libraries}
+                   \li \l {Qt Add-Ons} {add-on module libraries}
                 \endlist
           \endlist
     \row
-       \li qt6.8.0-sdk
+       \li qt\QtVersion-sdk
        \li
        \list
-             \li latest Qt Creator
-             \li qt6.8.0-full-dev (details above)
-             \li qt6.8.0-full-dbg (details above)
+             \li latest \QC
+             \li qt\QtVersion-full-dev (details above)
+             \li qt\QtVersion-full-dbg (details above)
              \li Ninja
              \li CMake
           \endlist
     \endtable
 
-    \b {Qt Online Installer command examples}
+    \b {\QOI command examples}
 
-    \badcode
+    \badcode \QtVersion
     # Windows: new installation with Qt Online Installer
-    qt-unified-windows-x64-[Qt Online Installer version]-online.exe install qt6.8.0-sdk
+    qt-unified-windows-x64-[Qt Online Installer version]-online.exe install qt\1-sdk
 
     # macOS: new installation with Qt Online Installer
     hdiutil attach qt-unified-macOS-x64-[Qt Online Installer version]-online.dmg
-    /Volumes/qt-unified-macOS-x64-[Qt Online Installer version]-online/qt-unified-macOS-x64-[Qt Online Installer version]-online.app/Contents/MacOS/qt-unified-macOS-x64-[Qt Online Installer version]-online install qt6.8.0-sdk
+    /Volumes/qt-unified-macOS-x64-[Qt Online Installer version]-online/qt-unified-macOS-x64-[Qt Online Installer version]-online.app/Contents/MacOS/qt-unified-macOS-x64-[Qt Online Installer version]-online install qt\1-sdk
     hdiutil detach /Volumes/qt-unified-macOS-x64-[Qt Online Installer version]-online
 
     # Linux: new installation with Qt Online Installer
-    qt-unified-linux-x64-[Qt Online Installer version]-online.run install qt6.8.0-sdk
+    qt-unified-linux-x64-[Qt Online Installer version]-online.run install qt\1-sdk
     \endcode
+
+    \section3 Alias Package Options for Windows
+
+    \note The information in this section is valid for the Qt 6.8, Qt 6.9, and
+          Qt 6.10 releases.
+
+    \e {Windows on ARM64}
+
+    Only the MSVC binaries (msvc2022-arm64) are installed as other Qt binary
+    packages are not available for Windows on Arm (WoA).
+
+    \e {Windows on x86_64}
+
+    By default, only the MinGW binaries are installed.
+
+    However, with \e {Windows on x86_64} you can also install binaries for the
+    following toolchains.
+
+    \list
+        \li llvm-mingw
+        \li msvc2022
+        \li msvc2022-arm64 (for cross-compilation)
+    \endlist
+
+    Using, for example, the \e {qt\QtVersion-essentials} alias package installs
+    the package with the default MinGW binaries.
+
+    To get the \c {Qt essentials} package content with, for example, the MSVC 2022
+    binaries, use the corresponding \e {qt\QtVersion-msvc2022-essentials} alias
+    package.
 
     \section2 Listing Non-Alias Packages
 
     To list the non-alias packages, use the following command on the command
-    line interface:
+    line interface.
+
+    \e {Using \QOI}:
 
     \badcode
-    installer.exe / maintenancetool.exe search --type package
+    <installer executable> search --type package
     \endcode
+
+    For details on the \e{\QOI} executables for different platforms,
+    see \l {Installing With User Interaction}.
+
+    \e {Using \QMT}:
+
+    \badcode
+    <maintenancetool executable> search --type package
+    \endcode
+
+    For details on the \e{\QMT} executables for different platforms,
+    see \l {Installing With User Interaction}.
 
     \section2 Advanced Searching for Specific Installation Packages
 
@@ -158,24 +237,24 @@
     \b{\c{--filter-packages <regexp>}}. For example, filtering with the display
     name information can help search.
 
-    For example, the following command finds all MSVC 2022 packages for Qt 6.8.0:
+    For example, the following command finds all MSVC 2022 packages for Qt \QtVersion:
 
-    \badcode
-    search .*680.*msvc2022
+    \badcode \QtVersionTag
+    search .*\1.*msvc2022
     \endcode
 
     You get the same result when you filter the search result as follows:
 
-    \badcode
-    search --filter-packages DisplayName=MSVC 2022,Version=6.8.0
+    \badcode \QtVersion
+    search --filter-packages DisplayName=MSVC 2022,Version=\1
     \endcode
 
     As a result, you get the following packages:
 
-    \badcode
+    \badcode \QtVersionTag \QtVersion
     <availablepackages>
-        <package name="qt.qt6.680.win64_msvc2022_64" displayname="MSVC 2022 64-bit" version="6.8.0-0-202303290841"/>
-        <package name="qt.qt6.680.win64_msvc2022_arm64" displayname="MSVC 2022 ARM64 (TP)" version="6.8.0-0-202303290841"/>
+        <package name="qt.qt6.\1.win64_msvc2022_64" displayname="MSVC 2022 64-bit" version="\2.-0-<timestamp>"/>
+        <package name="qt.qt6.\1.win64_msvc2022_arm64" displayname="MSVC 2022 ARM64" version="\2.-0-<timestamp>"/>
     </availablepackages>
     \endcode
 
@@ -191,9 +270,9 @@
 
     \badcode
     <availablepackages>
-        <package name="qt.qt5.5125.qtcharts" displayname="Qt Charts" version="5.12.5-0-201909090651"/>
-        <package name="qt.qt6.641.addons.qtcharts" displayname="Qt Charts" version="6.4.1-0-202211101525"/>
-        <package name="qt.qt5.5123.qtcharts" displayname="Qt Charts" version="5.12.3-0-201904161619"/>
+        <package name="qt.qt5.5125.qtcharts" displayname="Qt Charts" version="5.12.5-0-<timestamp>"/>
+        <package name="qt.qt6.641.addons.qtcharts" displayname="Qt Charts" version="6.4.1-0-<timestamp>"/>
+        <package name="qt.qt5.5123.qtcharts" displayname="Qt Charts" version="5.12.3-0-<timestamp>"/>
     \endcode
 
     \section1 Installing Without User Interaction
@@ -216,21 +295,21 @@
         \l{Options for Unattended Usage}.
     \endlist
 
-    The following examples demonstrate how you install Qt 6.8.0 binaries
+    The following examples demonstrate how you install Qt \QtVersion binaries
     with \QOI for Windows, macOS, and Linux. The unattended
     commands automatically accept the licenses (\b{\c{--accept-licenses}}), answer
     all message queries with their default answer (\b{\c{--default-answer}}), and
     skip asking for permission to continue performing (\b{\c{--confirm-command}}):
 
-    \badcode
+    \badcode \QtVersionTag
     # Windows: new installation with Qt Online Installer
-    qt-unified-windows-x64-[Qt Online Installer version]-online.exe --root C:\Users\[username]\installation_dir --accept-licenses --default-answer --confirm-command install qt.qt6.680.win64_msvc2022_64
+    qt-unified-windows-x64-[Qt Online Installer version]-online.exe --root C:\Users\[username]\installation_dir --accept-licenses --default-answer --confirm-command install qt.qt6.\1.win64_msvc2022_64
 
     # macOS: new installation with Qt Online Installer
-    qt-unified-macOS-x64-[Qt Online Installer version]-online.dmg --root /home/<username>/installation_dir --accept-licenses --default-answer --confirm-command install qt.qt6.680.clang_644
+    qt-unified-macOS-x64-[Qt Online Installer version]-online.dmg --root /home/<username>/installation_dir --accept-licenses --default-answer --confirm-command install qt.qt6.\1.clang_644
 
     # linux: new installation with Qt Online Installer
-    qt-unified-linux-x64-[Qt Online Installer version]-online.run --root /home/<username>/installation_dir --accept-licenses --default-answer --confirm-command install qt.qt6.680.gcc_64
+    qt-unified-linux-x64-[Qt Online Installer version]-online.run --root /home/<username>/installation_dir --accept-licenses --default-answer --confirm-command install qt.qt6.\1.linux_gcc_64
     \endcode
 
     \l{Options for Unattended Usage} lists all available options for unattended
@@ -248,22 +327,22 @@
         \l{Options for Unattended Usage}.
     \endlist
 
-    The following examples demonstrate how you add Qt 6.8.0 binaries
+    The following examples demonstrate how you add Qt \QtVersion binaries
     with \QMT to an exsting installation on Windows, macOS, and
     Linux. The unattended commands automatically accept the licenses
     (\b{\c{--accept-licenses}}), answer all message queries with their default
     answer (\b{\c{--default-answer}}), and skip asking for permission to continue
     performing (\b{\c{--confirm-command}}):
 
-    \badcode
+    \badcode \QtVersionTag
     # Windows: update installation with Qt Maintenance Tool
-    MaintenanceTool.exe --accept-licenses --default-answer --confirm-command install qt.qt6.680.win64_msvc2022_64
+    MaintenanceTool.exe --accept-licenses --default-answer --confirm-command install qt.qt6.\1.win64_msvc2022_64
 
     # macOS: update installation with Qt Maintenance Tool
-    MaintenanceTool.app/Contents/MacOS/MaintenanceTool --accept-licenses --default-answer --confirm-command install qt.qt6.680.clang_64
+    MaintenanceTool.app/Contents/MacOS/MaintenanceTool --accept-licenses --default-answer --confirm-command install qt.qt6.\1.clang_64
 
     # linux: update installation with Qt Maintenance Tool
-    MaintenanceTool.run --accept-licenses --default-answer --confirm-command install qt.qt6.680.gcc_64
+    MaintenanceTool.run --accept-licenses --default-answer --confirm-command install qt.qt6.\1.linux_gcc_64
     \endcode
 
     \section2 Options for Unattended Usage
@@ -406,31 +485,31 @@
     \endlist
 
     The following examples demonstrate how you create a new installation
-    of Qt 6.8.0 binaries with \QOI for Windows, macOS, and Linux:
+    of Qt \QtVersion binaries with \QOI for Windows, macOS, and Linux:
 
-    \badcode
+    \badcode \QtVersionTag
     # Windows: new installation with user interaction
-    qt-unified-windows-x64-[Qt Online Installer version]-online.exe --root C:\Users\[username]\installation_dir install qt.qt6.680.win64_msvc2022_64
+    qt-unified-windows-x64-[Qt Online Installer version]-online.exe --root C:\Users\[username]\installation_dir install qt.qt6.\1.win64_msvc2022_64
 
     # macOS: new installation with user interaction
-    qt-unified-macOS-x64-[Qt Online Installer version]-online.dmg --root /home/<username>/installation_dir install qt.qt6.680.clang_64
+    qt-unified-macOS-x64-[Qt Online Installer version]-online.dmg --root /home/<username>/installation_dir install qt.qt6.\1.clang_64
 
     # linux: new installation with user interaction
-    qt-unified-linux-x64-[Qt Online Installer version]-online.run --root /home/<username>/installation_dir install qt.qt6.680.gcc_64
+    qt-unified-linux-x64-[Qt Online Installer version]-online.run --root /home/<username>/installation_dir install qt.qt6.\1.linux_gcc_64
     \endcode
 
     The following examples demonstrate how you update your existing
-    installation by installing the Qt 6.8.0 binaries with \QMT:
+    installation by installing the Qt \QtVersion binaries with \QMT:
 
-    \badcode
+    \badcode \QtVersionTag
     # Windows: update installation with Qt Maintenance Tool
-    MaintenanceTool.exe install qt.qt6.680.win64_msvc2022_64
+    MaintenanceTool.exe install qt.qt6.\1.win64_msvc2022_64
 
     # macOS: update installation with Qt Maintenance Tool
-    MaintenanceTool.dmg install qt.qt6.680.clang_64
+    MaintenanceTool.dmg install qt.qt6.\1.clang_64
 
     # Linux: update installation with Qt Maintenance Tool
-    MaintenanceTool.run install qt.qt6.680.gcc_64
+    MaintenanceTool.run install qt.qt6.\1.linux_gcc_64
     \endcode
 
     \section1 Uninstalling Packages
@@ -450,18 +529,18 @@
     prevent accidental changes. Use \b{\c{--confirm-command}} to skip asking for
     permission to continue.
 
-    The following example uninstalls the Qt 6.8.0 binaries without user
+    The following example uninstalls the Qt \QtVersion binaries without user
     interaction:
 
-    \badcode
+    \badcode \QtVersionTag
     # windows
-    MaintenanceTool.exe --confirm-command remove qt.qt6.680.win64_msvc2022_64
+    MaintenanceTool.exe --confirm-command remove qt.qt6.\1.win64_msvc2022_64
 
     # macOS
-    MaintenanceTool.dmg --confirm-command remove install qt.qt6.680.clang_64
+    MaintenanceTool.dmg --confirm-command remove install qt.qt6.\1.clang_64
 
     # linux
-    MaintenanceTool.run --confirm-command remove qt.qt6.680.gcc_64
+    MaintenanceTool.run --confirm-command remove qt.qt6.\1.linux_gcc_64
     \endcode
 
     The following examples uninstall all packages and ask for permission to

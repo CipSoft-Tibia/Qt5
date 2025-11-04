@@ -103,8 +103,8 @@ Item {
             scale: Qt.vector3d(15, 15, 15)
             eulerRotation.x: -90
             materials: [
-                DefaultMaterial {
-                    diffuseColor: Qt.rgba(0.4, 0.4, 0.4, 1.0)
+                PrincipledMaterial {
+                    baseColor: Qt.rgba(0.4, 0.4, 0.4, 1.0)
                 }
             ]
         }
@@ -113,8 +113,8 @@ Item {
             z: -400
             scale: Qt.vector3d(15, 15, 15)
             materials: [
-                DefaultMaterial {
-                    diffuseColor: Qt.rgba(0.4, 0.4, 0.4, 1.0)
+                PrincipledMaterial {
+                    baseColor: Qt.rgba(0.4, 0.4, 0.4, 1.0)
                 }
             ]
         }

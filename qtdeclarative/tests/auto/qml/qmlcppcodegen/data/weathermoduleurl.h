@@ -18,6 +18,12 @@ class WeatherModelUrl
 public:
     WeatherModelUrl() : m_timeIndex(-1) {}
     WeatherModelUrl(qsizetype timeIdx) : m_timeIndex(timeIdx) {}
+    Q_INVOKABLE WeatherModelUrl(const WeatherModelUrl &) = default;
+
+    ~WeatherModelUrl() = default;
+    WeatherModelUrl(WeatherModelUrl &&) = default;
+    WeatherModelUrl &operator=(const WeatherModelUrl &) = default;
+    WeatherModelUrl &operator=(WeatherModelUrl &&) = default;
 
     qsizetype timeIndex() const { return m_timeIndex; }
 

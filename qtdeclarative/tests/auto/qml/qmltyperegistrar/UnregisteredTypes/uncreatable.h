@@ -211,6 +211,14 @@ class GoodUncreatableExtended : public QObject
     GoodUncreatableExtended() = delete;
 };
 
+class UncreatableGadget
+{
+    Q_GADGET
+    QML_VALUE_TYPE(uncreatableGadget)
+
+    UncreatableGadget() = delete;
+};
+
 class FixingBadUncreatable
 {
     Q_GADGET

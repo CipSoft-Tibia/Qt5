@@ -25,6 +25,8 @@
 
 #include <algorithm>
 
+using namespace std::chrono_literals;
+
 QT_BEGIN_NAMESPACE
 
 /** \internal
@@ -1020,6 +1022,25 @@ void QTableViewPrivate::sortIndicatorChanged(int column, Qt::SortOrder order)
     model->sort(column, order);
 }
 
+QStyleOptionViewItem::ViewItemPosition QTableViewPrivate::viewItemPosition(
+        const QModelIndex &index) const
+{
+    int visualColumn = horizontalHeader->visualIndex(index.column());
+    int count = horizontalHeader->count();
+
+    if (count <= 0 || visualColumn < 0 || visualColumn >= count)
+        return QStyleOptionViewItem::Invalid;
+
+    if (count == 1 && visualColumn == 0)
+        return QStyleOptionViewItem::OnlyOne;
+    else if (visualColumn == 0)
+        return QStyleOptionViewItem::Beginning;
+    else if (visualColumn == count - 1)
+        return QStyleOptionViewItem::End;
+    else
+        return QStyleOptionViewItem::Middle;
+}
+
 /*!
   \internal
   Draws a table cell.
@@ -1043,6 +1064,7 @@ void QTableViewPrivate::drawCell(QPainter *painter, const QStyleOptionViewItem &
         }
         opt.palette.setCurrentColorGroup(cg);
     }
+    opt.viewItemPosition = viewItemPosition(index);
 
     if (index == q->currentIndex()) {
         const bool focus = (q->hasFocus() || viewport->hasFocus()) && q->currentIndex().isValid();
@@ -2593,8 +2615,6 @@ int QTableView::rowAt(int y) const
 }
 
 /*!
-    \since 4.1
-
     Sets the height of the given \a row to be \a height.
 */
 void QTableView::setRowHeight(int row, int height)
@@ -2640,8 +2660,6 @@ int QTableView::columnAt(int x) const
 }
 
 /*!
-    \since 4.1
-
     Sets the width of the given \a column to be \a width.
 */
 void QTableView::setColumnWidth(int column, int width)
@@ -2711,7 +2729,6 @@ void QTableView::setColumnHidden(int column, bool hide)
 }
 
 /*!
-    \since 4.2
     \property QTableView::sortingEnabled
     \brief whether sorting is enabled
 
@@ -2810,13 +2827,12 @@ void QTableView::setGridStyle(Qt::PenStyle style)
 /*!
     \property QTableView::wordWrap
     \brief the item text word-wrapping policy
-    \since 4.3
 
     If this property is \c true then the item text is wrapped where
     necessary at word-breaks; otherwise it is not wrapped at all.
     This property is \c true by default.
 
-    Note that even of wrapping is enabled, the cell will not be
+    Note that even if wrapping is enabled, the cell will not be
     expanded to fit all text. Ellipsis will be inserted according to
     the current \l{QAbstractItemView::}{textElideMode}.
 
@@ -2841,7 +2857,6 @@ bool QTableView::wordWrap() const
 /*!
     \property QTableView::cornerButtonEnabled
     \brief whether the button in the top-left corner is enabled
-    \since 4.3
 
     If this property is \c true then button in the top-left corner
     of the table view is enabled. Clicking on this button will
@@ -3029,8 +3044,8 @@ void QTableView::rowResized(int row, int, int)
 {
     Q_D(QTableView);
     d->rowsToUpdate.append(row);
-    if (d->rowResizeTimerID == 0)
-        d->rowResizeTimerID = startTimer(0);
+    if (!d->rowResizeTimer.isActive())
+        d->rowResizeTimer.start(0ns, this);
 }
 
 /*!
@@ -3044,8 +3059,8 @@ void QTableView::columnResized(int column, int, int)
 {
     Q_D(QTableView);
     d->columnsToUpdate.append(column);
-    if (d->columnResizeTimerID == 0)
-        d->columnResizeTimerID = startTimer(0);
+    if (!d->columnResizeTimer.isActive())
+        d->columnResizeTimer.start(0ns, this);
 }
 
 /*!
@@ -3055,12 +3070,11 @@ void QTableView::timerEvent(QTimerEvent *event)
 {
     Q_D(QTableView);
 
-    if (event->timerId() == d->columnResizeTimerID) {
+    if (event->id() == d->columnResizeTimer.id()) {
         const int oldScrollMax = horizontalScrollBar()->maximum();
         if (horizontalHeader()->d_func()->state != QHeaderViewPrivate::ResizeSection) {
             updateGeometries();
-            killTimer(d->columnResizeTimerID);
-            d->columnResizeTimerID = 0;
+            d->columnResizeTimer.stop();
         } else {
             updateEditorGeometries();
         }
@@ -3085,12 +3099,11 @@ void QTableView::timerEvent(QTimerEvent *event)
         d->columnsToUpdate.clear();
     }
 
-    if (event->timerId() == d->rowResizeTimerID) {
+    if (event->id() == d->rowResizeTimer.id()) {
         const int oldScrollMax = verticalScrollBar()->maximum();
         if (verticalHeader()->d_func()->state != QHeaderViewPrivate::ResizeSection) {
             updateGeometries();
-            killTimer(d->rowResizeTimerID);
-            d->rowResizeTimerID = 0;
+            d->rowResizeTimer.stop();
         } else {
             updateEditorGeometries();
         }
@@ -3150,8 +3163,7 @@ void QTableView::dropEvent(QDropEvent *event)
 
                 int r = row == -1 ? model()->rowCount() : (dropRow.row() >= 0 ? dropRow.row() : row);
                 bool dataMoved = false;
-                for (int i = 0; i < persIndexes.size(); ++i) {
-                    const QPersistentModelIndex &pIndex = persIndexes.at(i);
+                for (const QPersistentModelIndex &pIndex : std::as_const(persIndexes)) {
                     // only generate a move when not same row or behind itself
                     if (r != pIndex.row() && r != pIndex.row() + 1) {
                         // try to move (preserves selection)
@@ -3362,8 +3374,6 @@ void QTableView::resizeColumnsToContents()
 }
 
 /*!
-  \since 4.2
-
   Sorts the model by the values in the given \a column and \a order.
 
   \a column may be -1, in which case no sort indicator will be shown
@@ -3419,7 +3429,6 @@ bool QTableView::isIndexHidden(const QModelIndex &index) const
 
 /*!
     \fn void QTableView::setSpan(int row, int column, int rowSpanCount, int columnSpanCount)
-    \since 4.2
 
     Sets the span of the table element at (\a row, \a column) to the number of
     rows and columns specified by (\a rowSpanCount, \a columnSpanCount).
@@ -3436,8 +3445,6 @@ void QTableView::setSpan(int row, int column, int rowSpan, int columnSpan)
 }
 
 /*!
-  \since 4.2
-
   Returns the row span of the table element at (\a row, \a column).
   The default is 1.
 
@@ -3450,8 +3457,6 @@ int QTableView::rowSpan(int row, int column) const
 }
 
 /*!
-  \since 4.2
-
   Returns the column span of the table element at (\a row, \a
   column). The default is 1.
 
@@ -3464,8 +3469,6 @@ int QTableView::columnSpan(int row, int column) const
 }
 
 /*!
-  \since 4.4
-
   Removes all row and column spans in the table view.
 
   \sa setSpan()

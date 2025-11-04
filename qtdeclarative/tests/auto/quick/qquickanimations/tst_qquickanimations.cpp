@@ -22,6 +22,8 @@
 #include <QtTest/qtest.h>
 #include <QtTest/qsignalspy.h>
 
+#include <QtQuickTestUtils/private/visualtestutils_p.h>
+
 #include <QtQml/qqmlengine.h>
 #include <QtQml/qqmlcomponent.h>
 
@@ -105,6 +107,7 @@ private slots:
     void restartNestedAnimationGroupWhenDirty();
     void targetsDeletedNotRemoved();
     void alwaysRunToEndSetFalseRestartBug();
+    void animationInstantiator();
 };
 
 #define QTIMED_COMPARE(lhs, rhs) do { \
@@ -1300,7 +1303,7 @@ void tst_qquickanimations::startStopSignals()
 
     root->setProperty("alwaysRunToEnd", true);
 
-    timer.restart();
+    timer.start();
     QMetaObject::invokeMethod(root, "start");
 
     QCOMPARE(root->property("startedCount").toInt(), 3);
@@ -1851,8 +1854,7 @@ void tst_qquickanimations::fastFlickingBug()
 
 void tst_qquickanimations::opacityAnimationFromZero()
 {
-    if (QGuiApplication::platformName() == QLatin1String("minimal"))
-        QSKIP("Skipping due to grabWindow not functional on minimal platforms");
+    SKIP_IF_NO_WINDOW_GRAB;
 
     // not easy to verify this in threaded render loop
     // since it's difficult to capture the first frame when scene graph
@@ -2332,6 +2334,16 @@ void tst_qquickanimations::alwaysRunToEndSetFalseRestartBug()
     QCOMPARE(sequential.isRunning(), true);
     sequential.stop();
     QCOMPARE(sequential.isRunning(), false);
+}
+
+void tst_qquickanimations::animationInstantiator()
+{
+    QQmlEngine engine;
+    QQmlComponent c(&engine, testFileUrl("animationInstantiator.qml"));
+    QVERIFY2(c.isReady(), qPrintable(c.errorString()));
+    QScopedPointer<QObject> o(c.create());
+    QVERIFY(!o.isNull());
+    QTRY_VERIFY(o->property("v").toInt() > 10);
 }
 
 QTEST_MAIN(tst_qquickanimations)

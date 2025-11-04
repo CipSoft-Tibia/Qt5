@@ -5,7 +5,7 @@
 #include <QtQml/qqml.h>
 #include <QDebug>
 
-class MyPlugin : public QQmlExtensionPlugin
+class MyPluginWithQml : public QQmlExtensionPlugin
 {
     Q_OBJECT
     Q_PLUGIN_METADATA(IID QQmlExtensionInterface_iid)

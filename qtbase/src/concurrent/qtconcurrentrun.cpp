@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 /*!
     \page qtconcurrentrun.html
@@ -21,6 +22,18 @@
     the computation on the caller's demand.
 
     This function is a part of the Qt Concurrent framework.
+
+    \section1 Optimize includes
+
+    If you include the \c <QtConcurrent> header, the entire Qt Concurrent
+    module with the entire Qt Core module will be included, which may increase
+    compilation times and binary sizes. To use the
+    \l {QtConcurrent::run}{QtConcurrent::run()} function, you can include a
+    more specific header:
+
+    \code
+    #include <QtConcurrentRun>
+    \endcode
 
     \section1 Concurrent Run (basic mode)
 
@@ -96,10 +109,11 @@
 
     \section3 Using Member Functions
 
-    QtConcurrent::run() also accepts pointers to member functions. The first
-    argument must be either a const reference or a pointer to an instance of
-    the class. Passing by const reference is useful when calling const member
-    functions; passing by pointer is useful for calling non-const member
+    QtConcurrent::run() also accepts pointers to member functions.
+    In Qt 6, the first argument must be the pointer to the member function,
+    followed by either a const reference or a pointer to an instance of the
+    class. Passing a const reference is useful when calling const member
+    functions; passing a pointer is useful for calling non-const member
     functions that modify the instance.
 
     For example, calling QByteArray::split() (a const member function) in a

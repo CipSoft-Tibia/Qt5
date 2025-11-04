@@ -21,7 +21,6 @@ class GL_EXPORT GLFenceNV : public GLFence {
   ~GLFenceNV() override;
 
   // GLFence implementation:
-  TransferableFence Transfer() override;
   bool ResetSupported() override;
   void ResetState() override;
   bool HasCompleted() override;

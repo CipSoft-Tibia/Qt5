@@ -6,12 +6,12 @@ import * as i18n from '../../core/i18n/i18n.js';
 import type * as TraceEngine from '../../models/trace/trace.js';
 import * as ThemeSupport from '../../ui/legacy/theme_support/theme_support.js';
 
-import {buildGroupStyle, buildTrackHeader, getFormattedTime} from './AppenderUtils.js';
+import {buildGroupStyle, buildTrackHeader} from './AppenderUtils.js';
 import {
   type CompatibilityTracksAppender,
-  type HighlightedEntryInfo,
   type TrackAppender,
   type TrackAppenderName,
+  VisualLoggingTrackName,
 } from './CompatibilityTracksAppender.js';
 
 const UIStrings = {
@@ -47,21 +47,13 @@ export class AnimationsTrackAppender implements TrackAppender {
 
   #appendTrackHeaderAtLevel(currentLevel: number, expanded?: boolean): void {
     const style = buildGroupStyle({useFirstLineForOverview: false});
-    const group =
-        buildTrackHeader(currentLevel, i18nString(UIStrings.animations), style, /* selectable= */ true, expanded);
+    const group = buildTrackHeader(
+        VisualLoggingTrackName.ANIMATIONS, currentLevel, i18nString(UIStrings.animations), style,
+        /* selectable= */ true, expanded);
     this.#compatibilityBuilder.registerTrackForGroup(group, this);
   }
 
   colorForEvent(): string {
     return ThemeSupport.ThemeSupport.instance().getComputedValue('--app-color-rendering');
-  }
-
-  titleForEvent(event: TraceEngine.Types.TraceEvents.TraceEventData): string {
-    return event.name;
-  }
-
-  highlightedEntryInfo(event: TraceEngine.Types.TraceEvents.TraceEventData): HighlightedEntryInfo {
-    const title = this.titleForEvent(event);
-    return {title, formattedTime: getFormattedTime(event.dur)};
   }
 }

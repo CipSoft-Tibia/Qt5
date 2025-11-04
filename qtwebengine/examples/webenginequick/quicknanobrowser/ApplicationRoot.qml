@@ -7,19 +7,16 @@ import QtWebEngine
 QtObject {
     id: root
 
-    property QtObject defaultProfile: WebEngineProfile {
-        offTheRecord: false
+    property QtObject defaultProfilePrototype : WebEngineProfilePrototype {
         storageName: "Profile"
         Component.onCompleted: {
-            let fullVersionList = defaultProfile.clientHints.fullVersionList;
+            let fullVersionList = defaultProfilePrototype.instance().clientHints.fullVersionList;
             fullVersionList["QuickNanoBrowser"] = "1.0";
-            defaultProfile.clientHints.fullVersionList = fullVersionList;
+            defaultProfilePrototype.instance().clientHints.fullVersionList = fullVersionList;
         }
-
     }
 
-    property QtObject otrProfile: WebEngineProfile {
-        offTheRecord: true
+    property QtObject otrPrototype : WebEngineProfilePrototype {
     }
 
     property Component browserWindowComponent: BrowserWindow {
@@ -40,7 +37,7 @@ QtObject {
         return newDialog;
     }
     function load(url) {
-        var browserWindow = createWindow(defaultProfile);
+        var browserWindow = createWindow(defaultProfilePrototype.instance());
         browserWindow.currentWebView.url = url;
     }
 }

@@ -305,6 +305,20 @@ QAccessibleInterface *QAccessibleQuickItem::parent() const
 
     if (parent) {
         if (parent == ci) {
+            if (itemWindow && !itemWindow->handle()) {
+                // If the item's window is a QQuickWidgetOffscreenWindow, then use
+                // the QQuickWidget as the accessible parent of the item. Since the
+                // QQuickWidget reports the quick items as its accessible children,
+                // why not report QQuickWidget as their accessible parent?
+                // The QQuickWidget instance has been set as the "_q_parentWidget"
+                // property of the QQuickWidgetOffscreenWindow when creating the
+                // instance of its offscreenWindow
+                const auto parentWidgetProp = itemWindow->property("_q_parentWidget");
+                if (parentWidgetProp.isValid()) {
+                    if (QObject *parentWidget = parentWidgetProp.value<QObject *>())
+                        return QAccessible::queryAccessibleInterface(parentWidget);
+                }
+            }
             // Jump out to the window if the parent is the root item
             return QAccessible::queryAccessibleInterface(window());
         } else {
@@ -667,20 +681,28 @@ void QAccessibleQuickItem::setText(QAccessible::Text textType, const QString &te
 
 void *QAccessibleQuickItem::interface_cast(QAccessible::InterfaceType t)
 {
-    QAccessible::Role r = role();
-    if (t == QAccessible::ActionInterface)
+    const QAccessible::Role r = role();
+    switch (t) {
+    case QAccessible::ActionInterface:
         return static_cast<QAccessibleActionInterface*>(this);
-    if (t == QAccessible::ValueInterface &&
-           (r == QAccessible::Slider ||
-            r == QAccessible::SpinBox ||
-            r == QAccessible::Dial ||
-            r == QAccessible::ScrollBar))
-       return static_cast<QAccessibleValueInterface*>(this);
-
-    if (t == QAccessible::TextInterface) {
-        if (r == QAccessible::EditableText ||
-            r == QAccessible::StaticText)
-        return static_cast<QAccessibleTextInterface*>(this);
+    case QAccessible::ValueInterface:
+        if (r == QAccessible::Slider
+         || r == QAccessible::SpinBox
+         || r == QAccessible::Dial
+         || r == QAccessible::ScrollBar
+         || r == QAccessible::ProgressBar) {
+            return static_cast<QAccessibleValueInterface*>(this);
+        }
+        break;
+    case QAccessible::TextInterface:
+        if (r == QAccessible::EditableText
+         || r == QAccessible::StaticText
+         || r == QAccessible::Heading) {
+            return static_cast<QAccessibleTextInterface*>(this);
+        }
+        break;
+    default:
+        break;
     }
 
     return QAccessibleObject::interface_cast(t);
@@ -698,12 +720,34 @@ void QAccessibleQuickItem::setCurrentValue(const QVariant &value)
 
 QVariant QAccessibleQuickItem::maximumValue() const
 {
-    return item()->property("maximumValue");
+    const auto minimumValue = item()->property("minimumValue");
+    const auto maximumValue = item()->property("maximumValue");
+    const auto from = item()->property("from");
+    const auto to   = item()->property("to");
+
+    if (minimumValue.isValid() && maximumValue.isValid())
+        return maximumValue;
+
+    if (from.isValid() && to.isValid())
+        return to;
+
+    return QVariant();
 }
 
 QVariant QAccessibleQuickItem::minimumValue() const
 {
-    return item()->property("minimumValue");
+    const auto minimumValue = item()->property("minimumValue");
+    const auto maximumValue = item()->property("maximumValue");
+    const auto from = item()->property("from");
+    const auto to   = item()->property("to");
+
+    if (minimumValue.isValid() && maximumValue.isValid())
+        return minimumValue;
+
+    if (from.isValid() && to.isValid())
+        return from;
+
+    return QVariant();
 }
 
 QVariant QAccessibleQuickItem::minimumStepSize() const
@@ -723,19 +767,20 @@ QRect itemScreenRect(QQuickItem *item)
         return QRect();
     }
 
-    QSize itemSize((int)item->width(), (int)item->height());
+    QSizeF itemSize(item->width(), item->height());
     // ### If the bounding rect fails, we first try the implicit size, then we go for the
     // parent size. WE MIGHT HAVE TO REVISIT THESE FALLBACKS.
     if (itemSize.isEmpty()) {
-        itemSize = QSize((int)item->implicitWidth(), (int)item->implicitHeight());
+        itemSize = QSize(item->implicitWidth(), item->implicitHeight());
         if (itemSize.isEmpty() && item->parentItem())
             // ### Seems that the above fallback is not enough, fallback to use the parent size...
-            itemSize = QSize((int)item->parentItem()->width(), (int)item->parentItem()->height());
+            itemSize = QSize(item->parentItem()->width(), item->parentItem()->height());
     }
 
-    QPointF scenePoint = item->mapToScene(QPointF(0, 0));
-    QPoint screenPos = item->window()->mapToGlobal(scenePoint.toPoint());
-    return QRect(screenPos, itemSize);
+    QRectF sceneRect = item->mapRectToScene(QRectF(QPointF(0, 0), itemSize));
+    QPoint screenPos = item->window()->mapToGlobal(sceneRect.topLeft().toPoint());
+    QSize screenSize = sceneRect.size().toSize();
+    return QRect(screenPos, screenSize);
 }
 
 QTextDocument *QAccessibleQuickItem::textDocument() const
@@ -755,7 +800,11 @@ int QAccessibleQuickItem::characterCount() const
         cursor.movePosition(QTextCursor::End);
         return cursor.position();
     }
-    return text(QAccessible::Value).size();
+
+    if (role() == QAccessible::EditableText)
+        return text(QAccessible::Value).size();
+
+    return text(QAccessible::Name).size();
 }
 
 int QAccessibleQuickItem::cursorPosition() const
@@ -777,7 +826,11 @@ QString QAccessibleQuickItem::text(int startOffset, int endOffset) const
         cursor.setPosition(endOffset, QTextCursor::KeepAnchor);
         return cursor.selectedText();
     }
-    return text(QAccessible::Value).mid(startOffset, endOffset - startOffset);
+
+    if (role() == QAccessible::EditableText)
+        return text(QAccessible::Value).mid(startOffset, endOffset - startOffset);
+
+    return text(QAccessible::Name).mid(startOffset, endOffset - startOffset);
 }
 
 QString QAccessibleQuickItem::textBeforeOffset(int offset, QAccessible::TextBoundaryType boundaryType,

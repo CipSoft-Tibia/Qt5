@@ -26,10 +26,11 @@
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include <string>
-#include <unordered_set>
 #include <utility>
 
-#include "gtest/gtest-spi.h"
+#include "gmock/gmock.h"
+#include "gtest/gtest.h"
+
 #include "src/tint/lang/wgsl/program/clone_context.h"
 #include "src/tint/lang/wgsl/program/program_builder.h"
 #include "src/tint/lang/wgsl/resolver/resolve.h"
@@ -103,6 +104,7 @@ struct IDNode : public Castable<IDNode, ast::Node> {
 };
 
 using ProgramCloneContextNodeTest = ::testing::Test;
+using ProgramCloneContextNodeDeathTest = ProgramCloneContextNodeTest;
 
 TEST_F(ProgramCloneContextNodeTest, Clone) {
     Allocator alloc;
@@ -1047,10 +1049,10 @@ TEST_F(ProgramCloneContextNodeTest, CloneWithInsertBeforeAndAfterRemoved_Functio
     EXPECT_EQ(cloned_root->vec[3]->name, cloned.Symbols().Get("c"));
 }
 
-TEST_F(ProgramCloneContextNodeTest, CloneWithReplaceAll_SameTypeTwice) {
+TEST_F(ProgramCloneContextNodeDeathTest, CloneWithReplaceAll_SameTypeTwice) {
     std::string node_name = TypeInfo::Of<Node>().name;
 
-    EXPECT_FATAL_FAILURE(
+    EXPECT_DEATH_IF_SUPPORTED(
         {
             ProgramBuilder cloned;
             Program original;
@@ -1058,15 +1060,16 @@ TEST_F(ProgramCloneContextNodeTest, CloneWithReplaceAll_SameTypeTwice) {
             ctx.ReplaceAll([](const Node*) { return nullptr; });
             ctx.ReplaceAll([](const Node*) { return nullptr; });
         },
-        "internal compiler error: ReplaceAll() called with a handler for type " + node_name +
-            " that is already handled by a handler for type " + node_name);
+        testing::HasSubstr("internal compiler error: ReplaceAll() called with a handler for type " +
+                           node_name + " that is already handled by a handler for type " +
+                           node_name));
 }
 
-TEST_F(ProgramCloneContextNodeTest, CloneWithReplaceAll_BaseThenDerived) {
+TEST_F(ProgramCloneContextNodeDeathTest, CloneWithReplaceAll_BaseThenDerived) {
     std::string node_name = TypeInfo::Of<Node>().name;
     std::string replaceable_name = TypeInfo::Of<Replaceable>().name;
 
-    EXPECT_FATAL_FAILURE(
+    EXPECT_DEATH_IF_SUPPORTED(
         {
             ProgramBuilder cloned;
             Program original;
@@ -1074,15 +1077,16 @@ TEST_F(ProgramCloneContextNodeTest, CloneWithReplaceAll_BaseThenDerived) {
             ctx.ReplaceAll([](const Node*) { return nullptr; });
             ctx.ReplaceAll([](const Replaceable*) { return nullptr; });
         },
-        "internal compiler error: ReplaceAll() called with a handler for type " + replaceable_name +
-            " that is already handled by a handler for type " + node_name);
+        testing::HasSubstr("internal compiler error: ReplaceAll() called with a handler for type " +
+                           replaceable_name + " that is already handled by a handler for type " +
+                           node_name));
 }
 
-TEST_F(ProgramCloneContextNodeTest, CloneWithReplaceAll_DerivedThenBase) {
+TEST_F(ProgramCloneContextNodeDeathTest, CloneWithReplaceAll_DerivedThenBase) {
     std::string node_name = TypeInfo::Of<Node>().name;
     std::string replaceable_name = TypeInfo::Of<Replaceable>().name;
 
-    EXPECT_FATAL_FAILURE(
+    EXPECT_DEATH_IF_SUPPORTED(
         {
             ProgramBuilder cloned;
             Program original;
@@ -1090,14 +1094,16 @@ TEST_F(ProgramCloneContextNodeTest, CloneWithReplaceAll_DerivedThenBase) {
             ctx.ReplaceAll([](const Replaceable*) { return nullptr; });
             ctx.ReplaceAll([](const Node*) { return nullptr; });
         },
-        "internal compiler error: ReplaceAll() called with a handler for type " + node_name +
-            " that is already handled by a handler for type " + replaceable_name);
+        testing::HasSubstr("internal compiler error: ReplaceAll() called with a handler for type " +
+                           node_name + " that is already handled by a handler for type " +
+                           replaceable_name));
 }
 
 using ProgramCloneContextTest = ::testing::Test;
+using ProgramCloneContextDeathTest = ProgramCloneContextTest;
 
-TEST_F(ProgramCloneContextTest, CloneWithReplaceAll_SymbolsTwice) {
-    EXPECT_FATAL_FAILURE(
+TEST_F(ProgramCloneContextDeathTest, CloneWithReplaceAll_SymbolsTwice) {
+    EXPECT_DEATH_IF_SUPPORTED(
         {
             ProgramBuilder cloned;
             Program original;
@@ -1105,8 +1111,8 @@ TEST_F(ProgramCloneContextTest, CloneWithReplaceAll_SymbolsTwice) {
             ctx.ReplaceAll([](const Symbol s) { return s; });
             ctx.ReplaceAll([](const Symbol s) { return s; });
         },
-        "internal compiler error: ReplaceAll(const SymbolTransform&) called "
-        "multiple times on the same CloneContext");
+        testing::HasSubstr("internal compiler error: ReplaceAll(const SymbolTransform&) called "
+                           "multiple times on the same CloneContext"));
 }
 
 TEST_F(ProgramCloneContextTest, CloneNewUnnamedSymbols) {
@@ -1202,8 +1208,8 @@ TEST_F(ProgramCloneContextTest, GenerationIDs) {
     EXPECT_EQ(cloned->generation_id, dst.ID());
 }
 
-TEST_F(ProgramCloneContextTest, GenerationIDs_Clone_ObjectNotOwnedBySrc) {
-    EXPECT_FATAL_FAILURE(
+TEST_F(ProgramCloneContextDeathTest, GenerationIDs_Clone_ObjectNotOwnedBySrc) {
+    EXPECT_DEATH_IF_SUPPORTED(
         {
             ProgramBuilder dst;
             Program src(ProgramBuilder{});
@@ -1211,11 +1217,12 @@ TEST_F(ProgramCloneContextTest, GenerationIDs_Clone_ObjectNotOwnedBySrc) {
             Allocator allocator;
             ctx.Clone(allocator.Create<IDNode>(GenerationID::New(), dst.ID()));
         },
-        R"(internal compiler error: TINT_ASSERT_GENERATION_IDS_EQUAL_IF_VALID(src_id, object))");
+        testing::HasSubstr(
+            "internal compiler error: TINT_ASSERT_GENERATION_IDS_EQUAL_IF_VALID(src_id, object)"));
 }
 
-TEST_F(ProgramCloneContextTest, GenerationIDs_Clone_ObjectNotOwnedByDst) {
-    EXPECT_FATAL_FAILURE(
+TEST_F(ProgramCloneContextDeathTest, GenerationIDs_Clone_ObjectNotOwnedByDst) {
+    EXPECT_DEATH_IF_SUPPORTED(
         {
             ProgramBuilder dst;
             Program src(ProgramBuilder{});
@@ -1223,7 +1230,8 @@ TEST_F(ProgramCloneContextTest, GenerationIDs_Clone_ObjectNotOwnedByDst) {
             Allocator allocator;
             ctx.Clone(allocator.Create<IDNode>(src.ID(), GenerationID::New()));
         },
-        R"(internal compiler error: TINT_ASSERT_GENERATION_IDS_EQUAL_IF_VALID(dst, out))");
+        testing::HasSubstr(
+            "internal compiler error: TINT_ASSERT_GENERATION_IDS_EQUAL_IF_VALID(dst, out)"));
 }
 
 }  // namespace

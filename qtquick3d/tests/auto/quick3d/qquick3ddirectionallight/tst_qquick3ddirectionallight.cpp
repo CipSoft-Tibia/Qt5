@@ -71,11 +71,12 @@ void tst_QQuick3DDirectionalLight::testProperties()
         QQuick3DAbstractLight::QSSGShadowMapQuality::ShadowMapQualityLow,
         QQuick3DAbstractLight::QSSGShadowMapQuality::ShadowMapQualityMedium,
         QQuick3DAbstractLight::QSSGShadowMapQuality::ShadowMapQualityHigh,
-        QQuick3DAbstractLight::QSSGShadowMapQuality::ShadowMapQualityVeryHigh
+        QQuick3DAbstractLight::QSSGShadowMapQuality::ShadowMapQualityVeryHigh,
+        QQuick3DAbstractLight::QSSGShadowMapQuality::ShadowMapQualityUltra
     };
-    const unsigned int mappedResolutions[] = {256, 512, 1024, 2048};
+    const unsigned int mappedResolutions[] = {256, 512, 1024, 2048, 4096};
 
-    for (int i = 0; i < 4; ++i) {
+    for (int i = 0; i < 5; ++i) {
         const auto shadowMapQuality = qualities[i];
         const auto mappedResolution = mappedResolutions[i];
         light.setShadowMapQuality(shadowMapQuality);
@@ -113,12 +114,21 @@ void tst_QQuick3DDirectionalLight::testProperties()
     QCOMPARE(light.csmSplit2(), splits[1]);
     QCOMPARE(light.csmSplit3(), splits[2]);
 
+    QCOMPARE(light.lockShadowmapTexels(), false);
+    light.setLockShadowmapTexels(true);
+    node = static_cast<QSSGRenderLight *>(light.updateSpatialNode(node));
+    QCOMPARE(light.lockShadowmapTexels(), true);
+
     light.setCastsShadow(true);
     node = static_cast<QSSGRenderLight *>(light.updateSpatialNode(node));
     QVERIFY(node->m_castShadow);
     light.setCastsShadow(false);
     node = static_cast<QSSGRenderLight *>(light.updateSpatialNode(node));
     QVERIFY(!node->m_castShadow);
+    QVERIFY(!node->m_use32BitShadowmap);
+    light.setUse32BitShadowmap(true);
+    node = static_cast<QSSGRenderLight *>(light.updateSpatialNode(node));
+    QVERIFY(node->m_use32BitShadowmap);
 
     QColor color1("#12345678");
     QVector3D color1Vec3 = QSSGUtils::color::sRGBToLinear(color1).toVector3D();

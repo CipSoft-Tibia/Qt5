@@ -94,6 +94,11 @@ ResultOrError<ShaderModuleEntryPoint> ValidateProgrammableStage(DeviceBase* devi
         DAWN_TRY(ValidateCompatibilityWithPipelineLayout(device, metadata, layout));
     }
 
+    DAWN_INVALID_IF(device->IsCompatibilityMode() && metadata.usesTextureLoadWithDepthTexture,
+                    "textureLoad can not be used with depth textures in compatibility mode in "
+                    "stage (%s), entry point \"%s\"",
+                    metadata.stage, entryPoint.name);
+
     // Validate if overridable constants exist in shader module
     // pipelineBase is not yet constructed at this moment so iterate constants from descriptor
     size_t numUninitializedConstants = metadata.uninitializedOverrides.size();
@@ -348,6 +353,27 @@ bool PipelineBase::EqualForCache(const PipelineBase* a, const PipelineBase* b) {
     }
 
     return true;
+}
+
+PipelineBase::ScopedUseShaderPrograms PipelineBase::UseShaderPrograms() {
+    ScopedUseShaderPrograms programs;
+    for (SingleShaderStage shaderStage :
+         {SingleShaderStage::Vertex, SingleShaderStage::Fragment, SingleShaderStage::Compute}) {
+        auto& module = mStages[shaderStage].module;
+        if (module.Get()) {
+            // Hold an external API reference of ShaderModuleBase to keep mTintProgram in
+            // ShaderModuleBase alive.
+            programs[shaderStage] = module->UseTintProgram();
+        }
+    }
+    return programs;
+}
+
+MaybeError PipelineBase::Initialize(std::optional<ScopedUseShaderPrograms> scopedUsePrograms) {
+    if (!scopedUsePrograms) {
+        scopedUsePrograms = UseShaderPrograms();
+    }
+    return InitializeImpl();
 }
 
 }  // namespace dawn::native

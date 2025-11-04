@@ -28,12 +28,17 @@ Example usages
   the underlying test binary can be specified in the command.
 
   ./build/lacros/test_runner.py test out/lacros/browser_tests \\
-    --ash-chrome-version=793554
+    --ash-chrome-version=120.0.6099.0
 
   The above command runs tests with a given version of ash-chrome, which is
-  useful to reproduce test failures, the version corresponds to the commit
-  position of commits on the master branch, and a list of prebuilt versions can
-  be found at: gs://ash-chromium-on-linux-prebuilts/x86_64.
+  useful to reproduce test failures. A list of prebuilt versions can
+  be found at:
+  https://chrome-infra-packages.appspot.com/p/chromium/testing/linux-ash-chromium/x86_64/ash.zip
+  Click on any instance, you should see the version number for that instance.
+  Also, there are refs, which points to the instance for that channel. It should
+  be close the prod version but no guarantee.
+  For legacy refs, like legacy119, it point to the latest version for that
+  milestone.
 
   ./testing/xvfb.py ./build/lacros/test_runner.py test out/lacros/browser_tests
 
@@ -85,7 +90,7 @@ _ASAN_SYMBOLIZER_PATH = os.path.join(_SRC_ROOT, 'tools', 'valgrind', 'asan',
 
 # Number of seconds to wait for ash-chrome to start.
 ASH_CHROME_TIMEOUT_SECONDS = (
-    300 if os.environ.get('ASH_WRAPPER', None) else 10)
+    300 if os.environ.get('ASH_WRAPPER', None) else 25)
 
 # List of targets that require ash-chrome as a Wayland server in order to run.
 _TARGETS_REQUIRE_ASH_CHROME = [
@@ -276,7 +281,7 @@ def _WaitForAshChromeToStart(tmp_xdg_dir, lacros_mojo_socket_file,
   Determine whether ash-chrome is up and running by checking whether two files
   (lock file + socket) have been created in the |XDG_RUNTIME_DIR| and the lacros
   mojo socket file has been created if enabling the mojo "crosapi" interface.
-  TODO(crbug.com/1107966): Figure out a more reliable hook to determine the
+  TODO(crbug.com/40707216): Figure out a more reliable hook to determine the
   status of ash-chrome, likely through mojo connection.
 
   Args:
@@ -432,7 +437,7 @@ def _ClearDir(dirpath):
   """
   for e in os.scandir(dirpath):
     if e.is_dir():
-      shutil.rmtree(e.path)
+      shutil.rmtree(e.path, ignore_errors=True)
     elif e.is_file():
       os.remove(e.path)
 
@@ -575,6 +580,7 @@ lacros_version_skew_tests_v92.0.4515.130/test_ash_chrome
         '--enable-field-trial-config',
         '--enable-logging=stderr',
         '--enable-features=LacrosSupport,LacrosPrimary,LacrosOnly',
+        '--enable-lacros-for-testing',
         '--ash-ready-file-path=%s' % ash_ready_file,
         '--wayland-server-socket=%s' % ash_wayland_socket_name,
     ]
@@ -642,7 +648,7 @@ lacros_version_skew_tests_v92.0.4515.130/test_ash_chrome
     while not ash_process_has_started and num_tries < total_tries:
       num_tries += 1
       ash_start_time = time.monotonic()
-      logging.info('Starting ash-chrome.')
+      logging.info('Starting ash-chrome: ' + ' '.join(ash_cmd))
 
       # Using preexec_fn=os.setpgrp here will detach the forked process from
       # this process group before exec-ing Ash. This prevents interactive
@@ -823,9 +829,9 @@ def Main():
       '--ash-chrome-version',
       type=str,
       help='Version of an prebuilt ash-chrome to use for testing, for example: '
-      '"793554", and the version corresponds to the commit position of commits '
-      'on the main branch. If not specified, will use the latest version '
-      'available')
+      '"120.0.6099.0", and the version corresponds to the commit position of '
+      'commits on the main branch. If not specified, will use the latest '
+      'version available')
   version_group.add_argument(
       '--ash-chrome-path',
       type=str,

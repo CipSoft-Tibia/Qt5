@@ -911,6 +911,7 @@ private:
 };
 
 #ifndef QT_NO_DEBUG_STREAM
+// ### Qt 7: move this to Qt Core and add a hook to allow GUI events to be printed: QTBUG-127680
 Q_GUI_EXPORT QDebug operator<<(QDebug, const QEvent *);
 #endif
 

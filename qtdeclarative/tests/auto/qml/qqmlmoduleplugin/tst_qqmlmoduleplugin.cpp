@@ -22,6 +22,33 @@
 #include <unistd.h>
 #endif
 
+#ifdef QT_STATIC
+Q_IMPORT_QML_PLUGIN(MyPlugin);
+Q_IMPORT_QML_PLUGIN(MyPluginV2);
+Q_IMPORT_QML_PLUGIN(MyPluginV2_1);
+Q_IMPORT_QML_PLUGIN(MyPluginV2_2);
+Q_IMPORT_QML_PLUGIN(MyChildPlugin);
+Q_IMPORT_QML_PLUGIN(MyChildPluginV2);
+Q_IMPORT_QML_PLUGIN(MyChildPluginV2_1);
+
+Q_IMPORT_QML_PLUGIN(MyMixedPlugin);
+Q_IMPORT_QML_PLUGIN(QtQuick2Plugin);
+
+Q_IMPORT_QML_PLUGIN(MyPluginWithQml);
+Q_IMPORT_QML_PLUGIN(MyMixedPluginVersion);
+Q_IMPORT_QML_PLUGIN(MyPluginNested);
+
+Q_IMPORT_QML_PLUGIN(MyPluginStrict);
+Q_IMPORT_QML_PLUGIN(MyPluginStrictV2);
+Q_IMPORT_QML_PLUGIN(MyPluginNonStrict);
+Q_IMPORT_QML_PLUGIN(MyPluginPreemptive);
+Q_IMPORT_QML_PLUGIN(MyPluginPreemptedStrict);
+Q_IMPORT_QML_PLUGIN(MyPluginInvalidNamespace);
+Q_IMPORT_QML_PLUGIN(MyPluginInvalidFirstCommand);
+
+Q_IMPORT_QML_PLUGIN(MyPluginSingleton);
+#endif
+
 #include <QtQuickTestUtils/private/testhttpserver_p.h>
 #include <QtQuickTestUtils/private/qmlutils_p.h>
 
@@ -29,6 +56,7 @@
 // it would result in repeated attempts to insert types into the same namespace.
 // This occurs because type registration is process-global, while the test
 // cases should really be run in proper per-process isolation.
+
 
 class tst_qqmlmoduleplugin : public QQmlDataTest
 {
@@ -57,9 +85,6 @@ private slots:
     void importStrictModule_data();
     void importProtectedModule();
     void importVersionedModule();
-    void importsChildPlugin();
-    void importsChildPlugin2();
-    void importsChildPlugin21();
     void parallelPluginImport();
     void multiSingleton();
     void optionalPlugin();
@@ -206,9 +231,23 @@ void tst_qqmlmoduleplugin::importsPlugin()
 
     QQmlEngine engine;
     engine.addImportPath(m_importsDirectory);
-    QTest::ignoreMessage(QtWarningMsg, qPrintable(QString("plugin%1 created").arg(suffix)));
-    QTest::ignoreMessage(QtWarningMsg, qPrintable(QString("import%1 worked").arg(suffix)));
-    QTest::ignoreMessage(QtWarningMsg, "Module 'org.qtproject.AutoTestQmlPluginType' does not contain a module identifier directive - it cannot be protected from external registrations.");
+#ifndef QT_STATIC
+    const auto childPrefix =
+            qmlFile.startsWith("child") ? QLatin1String("child ") : QLatin1String("");
+    QTest::ignoreMessage(QtWarningMsg,
+                         qPrintable(QString("%1plugin%2 created").arg(childPrefix, suffix)));
+    QTest::ignoreMessage(QtWarningMsg,
+                         qPrintable(QString("%1import%2 worked").arg(childPrefix, suffix)));
+    const auto moduleURIsuffix =
+            childPrefix.empty() ? QLatin1String("") : QLatin1String(".ChildPlugin");
+    QTest::ignoreMessage(
+            QtWarningMsg,
+            qPrintable(QString("Module 'org.qtproject.AutoTestQmlPluginType%1' does not contain a "
+                               "module "
+                               "identifier directive - it cannot be protected from external "
+                               "registrations.")
+                               .arg(moduleURIsuffix)));
+#endif
     QQmlComponent component(&engine, testFileUrl(qmlFile));
     const auto errors = component.errors();
     for (const QQmlError &err : errors)
@@ -228,6 +267,10 @@ void tst_qqmlmoduleplugin::importsPlugin_data()
     QTest::newRow("2.0") << "2" << "works2.qml";
     QTest::newRow("2.1") << "2.1" << "works21.qml";
     QTest::newRow("2.2") << "2.2" << "works22.qml";
+
+    QTest::newRow("c1.0") << "" << "child.qml";
+    QTest::newRow("c2.0") << "2" << "child2.qml";
+    QTest::newRow("c2.1") << "2.1" << "child21.qml";
 }
 
 void tst_qqmlmoduleplugin::incorrectPluginCase()
@@ -242,9 +285,11 @@ void tst_qqmlmoduleplugin::incorrectPluginCase()
 
     QString expectedError = QLatin1String("module \"org.qtproject.WrongCase\" plugin \"PluGin\" not found");
 
+#ifndef QT_STATIC
 #if defined(Q_OS_DARWIN) || defined(Q_OS_WIN32)
 #if defined(Q_OS_DARWIN)
-    bool caseSensitive = pathconf(QDir::currentPath().toLatin1().constData(), _PC_CASE_SENSITIVE) == 1;
+    bool caseSensitive =
+            pathconf(QDir::currentPath().toLatin1().constData(), _PC_CASE_SENSITIVE) == 1;
 #if QT_CONFIG(debug) && !QT_CONFIG(framework)
     QString libname = "libPluGin_debug.dylib";
 #else
@@ -260,7 +305,7 @@ void tst_qqmlmoduleplugin::incorrectPluginCase()
             + QLatin1Char('"');
     }
 #endif
-
+#endif
     QCOMPARE(errors.at(0).description(), expectedError);
 }
 
@@ -449,18 +494,22 @@ void tst_qqmlmoduleplugin::importsNested_data()
 {
     QTest::addColumn<QString>("file");
     QTest::addColumn<QString>("errorFile");
+    QTest::addColumn<bool>("expectGreeting");
 
-    // Note: no other test case should import the plugin used for this test, or the
-    // wrong order test will pass spuriously
-    QTest::newRow("wrongOrder") << "importsNested.1.qml" << "importsNested.1.errors.txt";
-    QTest::newRow("missingImport") << "importsNested.3.qml" << "importsNested.3.errors.txt";
-    QTest::newRow("invalidVersion") << "importsNested.4.qml" << "importsNested.4.errors.txt";
-    QTest::newRow("correctOrder") << "importsNested.2.qml" << QString();
+    // NB: The order is wrong in the sense that it tries to load the "Nested" URI first, which
+    //     is not visible in the file system. However, in the process of loading the non-nested
+    //     URI it can discover the types for the nested one and insert them in the right place.
+    //     This used to be an error but doesn't have to be.
+    QTest::newRow("wrongOrder") << "importsNested.1.qml" << QString() << true;
+    QTest::newRow("missingImport") << "importsNested.3.qml" << "importsNested.3.errors.txt" << false;
+    QTest::newRow("invalidVersion") << "importsNested.4.qml" << "importsNested.4.errors.txt" << false;
+    QTest::newRow("correctOrder") << "importsNested.2.qml" << QString() << false;
 }
 void tst_qqmlmoduleplugin::importsNested()
 {
     QFETCH(QString, file);
     QFETCH(QString, errorFile);
+    QFETCH(bool, expectGreeting);
 
     // Note: because imports are cached between test case data rows (and the plugins remain loaded),
     // these tests should really be run in new instances of the app...
@@ -477,6 +526,10 @@ void tst_qqmlmoduleplugin::importsNested()
         QTest::ignoreMessage(QtWarningMsg, "Module 'org.qtproject.AutoTestQmlNestedPluginType' does not contain a module identifier directive - it cannot be protected from external registrations.");
 
     QQmlComponent component(&engine, testFile(file));
+
+    if (expectGreeting)
+        QTest::ignoreMessage(QtDebugMsg, "Hello");
+
     std::unique_ptr<QObject> obj { component.create() };
 
     if (errorFile.isEmpty()) {
@@ -601,17 +654,24 @@ void tst_qqmlmoduleplugin::importStrictModule_data()
         << QString();
 
     QTest::newRow("non-strict clash")
-        << "import org.qtproject.NonstrictModule 1.0\n"
-           "MyPluginType {}"
-        << "Module 'org.qtproject.NonstrictModule' does not contain a module identifier directive - it cannot be protected from external registrations."
-        << ":1:1: Cannot install element 'MyPluginType' into protected module 'org.qtproject.StrictModule' version '1'";
+            << "import QtQml\n"
+               "import org.qtproject.StrictModule 1.0 as S\n"
+               "import org.qtproject.NonstrictModule 1.0 as N\n"
+               "S.MyPluginType { Component.onCompleted: "
+               "Qt.createComponent(\"org.qtproject.NonstrictModule\", \"MyPluginType\") }"
+            << "Module 'org.qtproject.NonstrictModule' does not contain a module identifier "
+               "directive - it cannot be protected from external registrations."
+            << ":3:1: Cannot install element 'MyPluginType' into protected module "
+               "'org.qtproject.StrictModule' version '1'";
 
     QTest::newRow("non-strict preemption")
-        << "import org.qtproject.PreemptiveModule 1.0\n"
-           "import org.qtproject.PreemptedStrictModule 1.0\n"
-           "MyPluginType {}"
-        << "Module 'org.qtproject.PreemptiveModule' does not contain a module identifier directive - it cannot be protected from external registrations."
-        << ":2:1: Namespace 'org.qtproject.PreemptedStrictModule' has already been used for type registration";
+            << "import org.qtproject.PreemptiveModule 1.0\n"
+               "import org.qtproject.PreemptedStrictModule 1.0\n"
+               "MyPluginType {}"
+            << "Module 'org.qtproject.PreemptiveModule' does not contain a module identifier "
+               "directive - it cannot be protected from external registrations."
+            << ":2:1: Namespace 'org.qtproject.PreemptedStrictModule' has already been used for "
+               "type registration";
 
     QTest::newRow("invalid namespace")
         << "import org.qtproject.InvalidNamespaceModule 1.0\n"
@@ -670,57 +730,6 @@ void tst_qqmlmoduleplugin::importVersionedModule()
     QScopedPointer<QObject> object12(component.create());
     QVERIFY(object12.isNull());
     QCOMPARE(component.errorString(), QString("%1:1 module \"org.qtproject.VersionedModule\" version 1.2 is not installed\n").arg(url.toString()));
-}
-
-void tst_qqmlmoduleplugin::importsChildPlugin()
-{
-    QQmlEngine engine;
-    engine.addImportPath(m_importsDirectory);
-    QTest::ignoreMessage(QtWarningMsg, "child plugin created");
-    QTest::ignoreMessage(QtWarningMsg, "child import worked");
-    QTest::ignoreMessage(QtWarningMsg, "Module 'org.qtproject.AutoTestQmlPluginType.ChildPlugin' does not contain a module identifier directive - it cannot be protected from external registrations.");
-    QQmlComponent component(&engine, testFileUrl(QStringLiteral("child.qml")));
-    const auto errors = component.errors();
-    for (const QQmlError &err : errors)
-        qWarning() << err;
-    VERIFY_ERRORS(0);
-    std::unique_ptr<QObject> object { component.create() };
-    QVERIFY(object.get() != nullptr);
-    QCOMPARE(object->property("value").toInt(),123);
-}
-
-void tst_qqmlmoduleplugin::importsChildPlugin2()
-{
-    QQmlEngine engine;
-    engine.addImportPath(m_importsDirectory);
-    QTest::ignoreMessage(QtWarningMsg, "child plugin2 created");
-    QTest::ignoreMessage(QtWarningMsg, "child import2 worked");
-    QTest::ignoreMessage(QtWarningMsg, "Module 'org.qtproject.AutoTestQmlPluginType.ChildPlugin' does not contain a module identifier directive - it cannot be protected from external registrations.");
-    QQmlComponent component(&engine, testFileUrl(QStringLiteral("child2.qml")));
-    const auto errors = component.errors();
-    for (const QQmlError &err : errors)
-        qWarning() << err;
-    VERIFY_ERRORS(0);
-    std::unique_ptr<QObject> object { component.create() };
-    QVERIFY(object.get() != nullptr);
-    QCOMPARE(object->property("value").toInt(),123);
-}
-
-void tst_qqmlmoduleplugin::importsChildPlugin21()
-{
-    QQmlEngine engine;
-    engine.addImportPath(m_importsDirectory);
-    QTest::ignoreMessage(QtWarningMsg, "child plugin2.1 created");
-    QTest::ignoreMessage(QtWarningMsg, "child import2.1 worked");
-    QTest::ignoreMessage(QtWarningMsg, "Module 'org.qtproject.AutoTestQmlPluginType.ChildPlugin' does not contain a module identifier directive - it cannot be protected from external registrations.");
-    QQmlComponent component(&engine, testFileUrl(QStringLiteral("child21.qml")));
-    const auto errors = component.errors();
-    for (const QQmlError &err : errors)
-        qWarning() << err;
-    VERIFY_ERRORS(0);
-    std::unique_ptr<QObject> object { component.create() };
-    QVERIFY(object.get() != nullptr);
-    QCOMPARE(object->property("value").toInt(),123);
 }
 
 void tst_qqmlmoduleplugin::parallelPluginImport()

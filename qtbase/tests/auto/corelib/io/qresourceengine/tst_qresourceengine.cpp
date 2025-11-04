@@ -91,6 +91,11 @@ void tst_QResourceEngine::initTestCase()
 
 void tst_QResourceEngine::cleanupTestCase()
 {
+#if defined(Q_OS_VXWORKS)
+    // Due to bug in patched std::optional on VxWorks, which is not running destructor for contained object, this tests leaks memory.
+    // Once unpatched optional version from VxWorks 24.03 will be used on CI, below skip will be removed.
+    QSKIP("QTBUG-130069: reference count of resource isn't getting down to 0");
+#endif
     // make sure we don't leak memory
     QVERIFY(QResource::unregisterResource(m_runtimeResourceRcc));
     auto resourcePtr = reinterpret_cast<const uchar *>(m_runtimeResourceData.constData());
@@ -201,7 +206,6 @@ void tst_QResourceEngine::checkStructure_data()
                                        << (QStringList()
 #if defined(BUILTIN_TESTDATA)
                                            << "parentdir.txt"
-                                           << "runtime_resource.rcc"
 #endif
                                            << "search_file.txt"
 #if defined(BUILTIN_TESTDATA)
@@ -425,6 +429,9 @@ void tst_QResourceEngine::checkStructure()
     QFETCH(qlonglong, contentsSize);
 
     bool directory = (containedDirs.size() + containedFiles.size() > 0);
+    const auto restoreLocale = qScopeGuard([prior = QLocale()]() {
+        QLocale::setDefault(prior);
+    });
     QLocale::setDefault(locale);
 
     QFileInfo fileInfo(pathName);
@@ -498,7 +505,6 @@ void tst_QResourceEngine::checkStructure()
         QByteArrayView bav(reinterpret_cast<const char *>(ptr), file.size());
         QCOMPARE(bav, contents);
     }
-    QLocale::setDefault(QLocale::system());
 }
 
 void tst_QResourceEngine::searchPath_data()
@@ -612,6 +618,9 @@ void tst_QResourceEngine::setLocale_data()
 void tst_QResourceEngine::setLocale()
 {
     QFETCH(QString, prefix);
+    const auto restoreLocale = qScopeGuard([prior = QLocale()]() {
+        QLocale::setDefault(prior);
+    });
     QLocale::setDefault(QLocale::c());
 
     // default constructed QResource gets the default locale
@@ -627,9 +636,6 @@ void tst_QResourceEngine::setLocale()
     // then explicitly set the locale on qresource
     resource.setLocale(QLocale("de_CH"));
     QVERIFY(resource.compressionAlgorithm() != QResource::NoCompression);
-
-    // the reset the default locale back
-    QLocale::setDefault(QLocale::system());
 }
 
 void tst_QResourceEngine::lastModified()

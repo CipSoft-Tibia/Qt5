@@ -7,7 +7,6 @@
 #include <memory>
 
 #include "ash/bluetooth_devices_observer.h"
-#include "ash/constants/app_types.h"
 #include "ash/constants/ash_features.h"
 #include "ash/public/cpp/keyboard/keyboard_controller.h"
 #include "ash/public/cpp/session/session_controller.h"
@@ -29,7 +28,6 @@
 #include "components/fullscreen_control/fullscreen_control_popup.h"
 #include "components/fullscreen_control/subtle_notification_view.h"
 #include "components/strings/grit/components_strings.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "ui/aura/client/aura_constants.h"
 #include "ui/aura/window.h"
 #include "ui/aura/window_observer.h"
@@ -149,7 +147,7 @@ views::Widget* CreateEscNotification(
       l10n_util::GetStringFUTF16(message_id, key_names, nullptr),
       std::move(icons));
 
-  gfx::Size size = content_view->GetPreferredSize();
+  gfx::Size size = content_view->GetPreferredSize({});
   views::Widget* popup = SubtleNotificationView::CreatePopupWidget(
       parent, std::move(content_view));
   popup->SetZOrderLevel(ui::ZOrderLevel::kSecuritySurface);
@@ -545,7 +543,7 @@ void UILockController::OnKeyEvent(ui::KeyEvent* event) {
 
   if (event->code() == ui::DomCode::ESCAPE &&
       (event->flags() & kExcludedFlags) == 0) {
-    OnEscapeKey(event->type() == ui::ET_KEY_PRESSED);
+    OnEscapeKey(event->type() == ui::EventType::kKeyPressed);
   }
 }
 

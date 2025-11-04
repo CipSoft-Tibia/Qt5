@@ -50,6 +50,15 @@ TIntermTyped *CreateZeroNode(const TType &type)
     TType constType(type);
     constType.setQualifier(EvqConst);
 
+    // Make sure as a constructor, the type does not inherit qualifiers that are otherwise specified
+    // on interface blocks and varyings.
+    constType.setInvariant(false);
+    constType.setPrecise(false);
+    constType.setInterpolant(false);
+    constType.setMemoryQualifier(TMemoryQualifier::Create());
+    constType.setLayoutQualifier(TLayoutQualifier::Create());
+    constType.setInterfaceBlock(nullptr);
+
     if (!type.isArray() && type.getBasicType() != EbtStruct)
     {
         size_t size       = constType.getObjectSize();
@@ -180,21 +189,20 @@ TIntermConstantUnion *CreateBoolNode(bool value)
 TVariable *CreateTempVariable(TSymbolTable *symbolTable, const TType *type)
 {
     ASSERT(symbolTable != nullptr);
-    // TODO(oetuaho): Might be useful to sanitize layout qualifier etc. on the type of the created
-    // variable. This might need to be done in other places as well.
     return new TVariable(symbolTable, kEmptyImmutableString, type, SymbolType::AngleInternal);
 }
 
 TVariable *CreateTempVariable(TSymbolTable *symbolTable, const TType *type, TQualifier qualifier)
 {
     ASSERT(symbolTable != nullptr);
-    if (type->getQualifier() == qualifier)
+    if (type->getQualifier() != qualifier || type->getInterfaceBlock() != nullptr)
     {
-        return CreateTempVariable(symbolTable, type);
+        TType *newType = new TType(*type);
+        newType->setQualifier(qualifier);
+        newType->setInterfaceBlock(nullptr);
+        type = newType;
     }
-    TType *typeWithQualifier = new TType(*type);
-    typeWithQualifier->setQualifier(qualifier);
-    return CreateTempVariable(symbolTable, typeWithQualifier);
+    return new TVariable(symbolTable, kEmptyImmutableString, type, SymbolType::AngleInternal);
 }
 
 TIntermSymbol *CreateTempSymbolNode(const TVariable *tempVariable)
@@ -341,12 +349,22 @@ TIntermBlock *EnsureBlock(TIntermNode *node)
         return nullptr;
     TIntermBlock *blockNode = node->getAsBlock();
     if (blockNode != nullptr)
+    {
         return blockNode;
-
+    }
     blockNode = new TIntermBlock();
     blockNode->setLine(node->getLine());
     blockNode->appendStatement(node);
     return blockNode;
+}
+
+TIntermBlock *EnsureLoopBodyBlock(TIntermNode *node)
+{
+    if (node == nullptr)
+    {
+        return new TIntermBlock();
+    }
+    return EnsureBlock(node);
 }
 
 TIntermSymbol *ReferenceGlobalVariable(const ImmutableString &name, const TSymbolTable &symbolTable)

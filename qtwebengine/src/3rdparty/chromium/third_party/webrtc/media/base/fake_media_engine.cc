@@ -11,11 +11,11 @@
 #include "media/base/fake_media_engine.h"
 
 #include <memory>
+#include <optional>
 #include <utility>
 
 #include "absl/algorithm/container.h"
 #include "absl/strings/match.h"
-#include "absl/types/optional.h"
 #include "media/base/media_channel.h"
 #include "rtc_base/checks.h"
 
@@ -43,7 +43,7 @@ void FakeVoiceMediaReceiveChannel::VoiceChannelAudioSink::OnData(
     int sample_rate,
     size_t number_of_channels,
     size_t number_of_frames,
-    absl::optional<int64_t> absolute_capture_timestamp_ms) {}
+    std::optional<int64_t> absolute_capture_timestamp_ms) {}
 void FakeVoiceMediaReceiveChannel::VoiceChannelAudioSink::OnClose() {
   source_ = nullptr;
 }
@@ -62,8 +62,7 @@ FakeVoiceMediaReceiveChannel::FakeVoiceMediaReceiveChannel(
   SetOptions(options);
 }
 FakeVoiceMediaReceiveChannel::~FakeVoiceMediaReceiveChannel() = default;
-const std::vector<AudioCodec>& FakeVoiceMediaReceiveChannel::recv_codecs()
-    const {
+const std::vector<Codec>& FakeVoiceMediaReceiveChannel::recv_codecs() const {
   return recv_codecs_;
 }
 const std::vector<FakeVoiceMediaReceiveChannel::DtmfInfo>&
@@ -134,13 +133,13 @@ bool FakeVoiceMediaReceiveChannel::SetBaseMinimumPlayoutDelayMs(uint32_t ssrc,
     return true;
   }
 }
-absl::optional<int> FakeVoiceMediaReceiveChannel::GetBaseMinimumPlayoutDelayMs(
+std::optional<int> FakeVoiceMediaReceiveChannel::GetBaseMinimumPlayoutDelayMs(
     uint32_t ssrc) const {
   const auto it = output_delays_.find(ssrc);
   if (it != output_delays_.end()) {
     return it->second;
   }
-  return absl::nullopt;
+  return std::nullopt;
 }
 bool FakeVoiceMediaReceiveChannel::GetStats(VoiceMediaReceiveInfo* info,
                                             bool get_and_clear_legacy_stats) {
@@ -160,7 +159,7 @@ std::vector<webrtc::RtpSource> FakeVoiceMediaReceiveChannel::GetSources(
   return std::vector<webrtc::RtpSource>();
 }
 bool FakeVoiceMediaReceiveChannel::SetRecvCodecs(
-    const std::vector<AudioCodec>& codecs) {
+    const std::vector<Codec>& codecs) {
   if (fail_set_recv_codecs()) {
     // Fake the failure in SetRecvCodecs.
     return false;
@@ -199,7 +198,7 @@ void FakeVoiceMediaSendChannel::VoiceChannelAudioSink::OnData(
     int sample_rate,
     size_t number_of_channels,
     size_t number_of_frames,
-    absl::optional<int64_t> absolute_capture_timestamp_ms) {}
+    std::optional<int64_t> absolute_capture_timestamp_ms) {}
 void FakeVoiceMediaSendChannel::VoiceChannelAudioSink::OnClose() {
   source_ = nullptr;
 }
@@ -216,14 +215,14 @@ FakeVoiceMediaSendChannel::FakeVoiceMediaSendChannel(
   SetOptions(options);
 }
 FakeVoiceMediaSendChannel::~FakeVoiceMediaSendChannel() = default;
-const std::vector<AudioCodec>& FakeVoiceMediaSendChannel::send_codecs() const {
+const std::vector<Codec>& FakeVoiceMediaSendChannel::send_codecs() const {
   return send_codecs_;
 }
-absl::optional<Codec> FakeVoiceMediaSendChannel::GetSendCodec() const {
+std::optional<Codec> FakeVoiceMediaSendChannel::GetSendCodec() const {
   if (!send_codecs_.empty()) {
     return send_codecs_.front();
   }
-  return absl::nullopt;
+  return std::nullopt;
 }
 const std::vector<FakeVoiceMediaSendChannel::DtmfInfo>&
 FakeVoiceMediaSendChannel::dtmf_info_queue() const {
@@ -267,7 +266,7 @@ bool FakeVoiceMediaSendChannel::HasSource(uint32_t ssrc) const {
   return local_sinks_.find(ssrc) != local_sinks_.end();
 }
 bool FakeVoiceMediaSendChannel::CanInsertDtmf() {
-  for (std::vector<AudioCodec>::const_iterator it = send_codecs_.begin();
+  for (std::vector<Codec>::const_iterator it = send_codecs_.begin();
        it != send_codecs_.end(); ++it) {
     // Find the DTMF telephone event "codec".
     if (absl::EqualsIgnoreCase(it->name, "telephone-event")) {
@@ -292,7 +291,7 @@ bool FakeVoiceMediaSendChannel::GetStats(VoiceMediaSendInfo* info) {
   return false;
 }
 bool FakeVoiceMediaSendChannel::SetSendCodecs(
-    const std::vector<AudioCodec>& codecs) {
+    const std::vector<Codec>& codecs) {
   if (fail_set_send_codecs()) {
     // Fake the failure in SetSendCodecs.
     return false;
@@ -343,10 +342,10 @@ FakeVideoMediaSendChannel::FakeVideoMediaSendChannel(
   SetOptions(options);
 }
 FakeVideoMediaSendChannel::~FakeVideoMediaSendChannel() = default;
-const std::vector<VideoCodec>& FakeVideoMediaSendChannel::send_codecs() const {
+const std::vector<Codec>& FakeVideoMediaSendChannel::send_codecs() const {
   return send_codecs_;
 }
-const std::vector<VideoCodec>& FakeVideoMediaSendChannel::codecs() const {
+const std::vector<Codec>& FakeVideoMediaSendChannel::codecs() const {
   return send_codecs();
 }
 const VideoOptions& FakeVideoMediaSendChannel::options() const {
@@ -363,9 +362,9 @@ bool FakeVideoMediaSendChannel::SetSenderParameters(
           SetSendRtpHeaderExtensions(params.extensions) &&
           SetMaxSendBandwidth(params.max_bandwidth_bps));
 }
-absl::optional<Codec> FakeVideoMediaSendChannel::GetSendCodec() const {
+std::optional<Codec> FakeVideoMediaSendChannel::GetSendCodec() const {
   if (send_codecs_.empty()) {
-    return absl::nullopt;
+    return std::nullopt;
   }
   return send_codecs_[0];
 }
@@ -393,7 +392,7 @@ bool FakeVideoMediaSendChannel::GetStats(VideoMediaSendInfo* info) {
   return false;
 }
 bool FakeVideoMediaSendChannel::SetSendCodecs(
-    const std::vector<VideoCodec>& codecs) {
+    const std::vector<Codec>& codecs) {
   if (fail_set_send_codecs()) {
     // Fake the failure in SetSendCodecs.
     return false;
@@ -424,8 +423,7 @@ FakeVideoMediaReceiveChannel::FakeVideoMediaReceiveChannel(
   SetOptions(options);
 }
 FakeVideoMediaReceiveChannel::~FakeVideoMediaReceiveChannel() = default;
-const std::vector<VideoCodec>& FakeVideoMediaReceiveChannel::recv_codecs()
-    const {
+const std::vector<Codec>& FakeVideoMediaReceiveChannel::recv_codecs() const {
   return recv_codecs_;
 }
 bool FakeVideoMediaReceiveChannel::rendering() const {
@@ -494,16 +492,16 @@ bool FakeVideoMediaReceiveChannel::SetBaseMinimumPlayoutDelayMs(uint32_t ssrc,
     return true;
   }
 }
-absl::optional<int> FakeVideoMediaReceiveChannel::GetBaseMinimumPlayoutDelayMs(
+std::optional<int> FakeVideoMediaReceiveChannel::GetBaseMinimumPlayoutDelayMs(
     uint32_t ssrc) const {
   const auto it = output_delays_.find(ssrc);
   if (it != output_delays_.end()) {
     return it->second;
   }
-  return absl::nullopt;
+  return std::nullopt;
 }
 bool FakeVideoMediaReceiveChannel::SetRecvCodecs(
-    const std::vector<VideoCodec>& codecs) {
+    const std::vector<Codec>& codecs) {
   if (fail_set_recv_codecs()) {
     // Fake the failure in SetRecvCodecs.
     return false;
@@ -566,20 +564,20 @@ FakeVoiceEngine::CreateReceiveChannel(
                                                      call->network_thread());
   return ch;
 }
-const std::vector<AudioCodec>& FakeVoiceEngine::send_codecs() const {
+const std::vector<Codec>& FakeVoiceEngine::send_codecs() const {
   return send_codecs_;
 }
-const std::vector<AudioCodec>& FakeVoiceEngine::recv_codecs() const {
+const std::vector<Codec>& FakeVoiceEngine::recv_codecs() const {
   return recv_codecs_;
 }
-void FakeVoiceEngine::SetCodecs(const std::vector<AudioCodec>& codecs) {
+void FakeVoiceEngine::SetCodecs(const std::vector<Codec>& codecs) {
   send_codecs_ = codecs;
   recv_codecs_ = codecs;
 }
-void FakeVoiceEngine::SetRecvCodecs(const std::vector<AudioCodec>& codecs) {
+void FakeVoiceEngine::SetRecvCodecs(const std::vector<Codec>& codecs) {
   recv_codecs_ = codecs;
 }
-void FakeVoiceEngine::SetSendCodecs(const std::vector<AudioCodec>& codecs) {
+void FakeVoiceEngine::SetSendCodecs(const std::vector<Codec>& codecs) {
   send_codecs_ = codecs;
 }
 int FakeVoiceEngine::GetInputLevel() {
@@ -589,9 +587,9 @@ bool FakeVoiceEngine::StartAecDump(webrtc::FileWrapper file,
                                    int64_t max_size_bytes) {
   return false;
 }
-absl::optional<webrtc::AudioDeviceModule::Stats>
+std::optional<webrtc::AudioDeviceModule::Stats>
 FakeVoiceEngine::GetAudioDeviceStats() {
-  return absl::nullopt;
+  return std::nullopt;
 }
 void FakeVoiceEngine::StopAecDump() {}
 
@@ -647,19 +645,19 @@ FakeVideoEngine::CreateReceiveChannel(
                                                      call->network_thread());
   return ch;
 }
-std::vector<VideoCodec> FakeVideoEngine::send_codecs(bool use_rtx) const {
+std::vector<Codec> FakeVideoEngine::send_codecs(bool use_rtx) const {
   return send_codecs_;
 }
 
-std::vector<VideoCodec> FakeVideoEngine::recv_codecs(bool use_rtx) const {
+std::vector<Codec> FakeVideoEngine::recv_codecs(bool use_rtx) const {
   return recv_codecs_;
 }
 
-void FakeVideoEngine::SetSendCodecs(const std::vector<VideoCodec>& codecs) {
+void FakeVideoEngine::SetSendCodecs(const std::vector<Codec>& codecs) {
   send_codecs_ = codecs;
 }
 
-void FakeVideoEngine::SetRecvCodecs(const std::vector<VideoCodec>& codecs) {
+void FakeVideoEngine::SetRecvCodecs(const std::vector<Codec>& codecs) {
   recv_codecs_ = codecs;
 }
 
@@ -682,18 +680,16 @@ FakeMediaEngine::FakeMediaEngine()
       voice_(static_cast<FakeVoiceEngine*>(&voice())),
       video_(static_cast<FakeVideoEngine*>(&video())) {}
 FakeMediaEngine::~FakeMediaEngine() {}
-void FakeMediaEngine::SetAudioCodecs(const std::vector<AudioCodec>& codecs) {
+void FakeMediaEngine::SetAudioCodecs(const std::vector<Codec>& codecs) {
   voice_->SetCodecs(codecs);
 }
-void FakeMediaEngine::SetAudioRecvCodecs(
-    const std::vector<AudioCodec>& codecs) {
+void FakeMediaEngine::SetAudioRecvCodecs(const std::vector<Codec>& codecs) {
   voice_->SetRecvCodecs(codecs);
 }
-void FakeMediaEngine::SetAudioSendCodecs(
-    const std::vector<AudioCodec>& codecs) {
+void FakeMediaEngine::SetAudioSendCodecs(const std::vector<Codec>& codecs) {
   voice_->SetSendCodecs(codecs);
 }
-void FakeMediaEngine::SetVideoCodecs(const std::vector<VideoCodec>& codecs) {
+void FakeMediaEngine::SetVideoCodecs(const std::vector<Codec>& codecs) {
   video_->SetSendCodecs(codecs);
   video_->SetRecvCodecs(codecs);
 }

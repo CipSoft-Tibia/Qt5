@@ -27,6 +27,9 @@ class PLATFORM_EXPORT WebFontTypefaceFactory {
 
   using FontInstantiator = struct {
     InstantiationFunction make_system;
+#if !BUILDFLAG(IS_QTWEBENGINE)
+    InstantiationFunction make_fontations;
+#endif
 #if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_APPLE)
     InstantiationFunction make_fallback;
 #endif

@@ -267,6 +267,12 @@ int main(int argc, char *argv[])
     shadowQuality->addItem(QStringLiteral("High Soft"));
     shadowQuality->setCurrentIndex(3);
 
+    QComboBox *transparencyTechnique = new QComboBox(widget);
+    transparencyTechnique->addItem(QStringLiteral("Default"));
+    transparencyTechnique->addItem(QStringLiteral("Approximate"));
+    transparencyTechnique->addItem(QStringLiteral("Accurate"));
+    transparencyTechnique->setCurrentIndex(0);
+
     QComboBox *selectionMode = new QComboBox(widget);
     selectionMode->addItem(QStringLiteral("None"), int(QtGraphs3D::SelectionFlag::None));
     selectionMode->addItem(QStringLiteral("Item"), int(QtGraphs3D::SelectionFlag::Item));
@@ -533,6 +539,8 @@ int main(int argc, char *argv[])
     vLayout2->addWidget(themeList);
     vLayout2->addWidget(new QLabel(QStringLiteral("Adjust shadow quality")));
     vLayout2->addWidget(shadowQuality);
+    vLayout2->addWidget(new QLabel(QStringLiteral("Change Transparency Technique")));
+    vLayout2->addWidget(transparencyTechnique);
     vLayout2->addWidget(new QLabel(QStringLiteral("Selection Mode")));
     vLayout2->addWidget(selectionMode);
     vLayout2->addWidget(new QLabel(QStringLiteral("Camera target")));
@@ -727,8 +735,14 @@ int main(int argc, char *argv[])
                      modifier, SLOT(changeTheme(int)));
     QObject::connect(shadowQuality, SIGNAL(currentIndexChanged(int)),
                      modifier, SLOT(changeShadowQuality(int)));
-    QObject::connect(selectionMode, SIGNAL(currentIndexChanged(int)),
-                     modifier, SLOT(changeSelectionMode(int)));
+    QObject::connect(transparencyTechnique,
+                     SIGNAL(currentIndexChanged(int)),
+                     modifier,
+                     SLOT(changeTransparencyTechnique(int)));
+    QObject::connect(selectionMode,
+                     SIGNAL(currentIndexChanged(int)),
+                     modifier,
+                     SLOT(changeSelectionMode(int)));
 #ifndef MULTI_SERIES
     QObject::connect(selectButton, &QPushButton::clicked,
                      modifier, &GraphModifier::selectButtonClicked);

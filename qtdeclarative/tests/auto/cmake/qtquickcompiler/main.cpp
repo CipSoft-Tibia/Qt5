@@ -3,7 +3,7 @@
 
 #include <QtCore>
 #include <QtQml>
-#include <QtTest>
+#include <QTest>
 
 class tst_QQC : public QObject
 {

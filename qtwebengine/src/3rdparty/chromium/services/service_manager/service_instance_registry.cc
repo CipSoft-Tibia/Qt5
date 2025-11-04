@@ -101,7 +101,7 @@ void ServiceInstanceRegistry::Register(ServiceInstance* instance) {
       break;
 
     default:
-      NOTREACHED();
+      NOTREACHED_IN_MIGRATION();
   }
 }
 
@@ -179,7 +179,7 @@ ServiceInstance* ServiceInstanceRegistry::FindMatching(
 
 ServiceInstance* ServiceInstanceRegistry::FindMatchInEntries(
     const std::vector<Entry>& entries,
-    const absl::optional<base::Token>& guid) const {
+    const std::optional<base::Token>& guid) const {
   DCHECK(!entries.empty());
   if (!guid.has_value())
     return entries.front().instance;

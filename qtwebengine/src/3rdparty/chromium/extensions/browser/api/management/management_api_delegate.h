@@ -11,7 +11,8 @@
 #include "extensions/common/api/management.h"
 #include "extensions/common/constants.h"
 #include "extensions/common/extension.h"
-#include "extensions/common/extension_icon_set.h"
+#include "extensions/common/extension_id.h"
+#include "extensions/common/icons/extension_icon_set.h"
 #include "url/gurl.h"
 
 namespace content {
@@ -84,14 +85,14 @@ class ManagementAPIDelegate {
 
   // Enables the extension identified by |extension_id|.
   virtual void EnableExtension(content::BrowserContext* context,
-                               const std::string& extension_id) const = 0;
+                               const ExtensionId& extension_id) const = 0;
 
   // Disables the extension identified by |extension_id|. |source_extension| (if
   // specified) is the extension that originated the request.
   virtual void DisableExtension(
       content::BrowserContext* context,
       const Extension* source_extension,
-      const std::string& extension_id,
+      const ExtensionId& extension_id,
       disable_reason::DisableReason disable_reason) const = 0;
 
   // Used to show a confirmation dialog when uninstalling |target_extension|.
@@ -114,7 +115,7 @@ class ManagementAPIDelegate {
 
   // Forwards the call to launch_util::SetLaunchType in chrome.
   virtual void SetLaunchType(content::BrowserContext* context,
-                             const std::string& extension_id,
+                             const ExtensionId& extension_id,
                              LaunchType launch_type) const = 0;
 
   // Creates a bookmark app for |launch_url|.
@@ -138,13 +139,21 @@ class ManagementAPIDelegate {
   // Forwards the call to ExtensionIconSource::GetIconURL in chrome.
   virtual GURL GetIconURL(const Extension* extension,
                           int icon_size,
-                          ExtensionIconSet::MatchType match,
+                          ExtensionIconSet::Match match,
                           bool grayscale) const = 0;
 
   // Returns effective update URL from ExtensionManagement.
   virtual GURL GetEffectiveUpdateURL(
       const Extension& extension,
       content::BrowserContext* context) const = 0;
+
+  // Displays the re-enable dialog when `extension` was disabled due to the MV2
+  // deprecation. Calls `done_callback` when accepted/cancelled.
+  virtual void ShowMv2DeprecationReEnableDialog(
+      content::BrowserContext* context,
+      content::WebContents* web_contents,
+      const Extension& extension,
+      base::OnceCallback<void(bool)> done_callback) const = 0;
 };
 
 }  // namespace extensions

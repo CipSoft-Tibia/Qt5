@@ -6,10 +6,8 @@
 
 #include "fxjs/xfa/cjx_logpseudomodel.h"
 
-#include <vector>
-
+#include "core/fxcrt/span.h"
 #include "fxjs/xfa/cfxjse_value.h"
-#include "third_party/base/containers/span.h"
 #include "xfa/fxfa/parser/cscript_logpseudomodel.h"
 
 const CJX_MethodSpec CJX_LogPseudoModel::MethodSpecs[] = {

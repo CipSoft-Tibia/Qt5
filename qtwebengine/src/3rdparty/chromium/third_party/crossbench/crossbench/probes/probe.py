@@ -6,28 +6,25 @@ from __future__ import annotations
 
 import abc
 import argparse
-import datetime as dt
-import enum
-import pathlib
-from typing import (TYPE_CHECKING, Any, Dict, Generic, Iterable, Optional, Set,
-                    Tuple, Type, TypeVar, Union)
+from typing import (TYPE_CHECKING, Any, Dict, Hashable, Optional, Set, Tuple,
+                    Type, TypeVar)
 
-from crossbench import compat, plt
+from crossbench import plt
+from crossbench.browsers.attributes import BrowserAttributes
 from crossbench.config import ConfigParser
-from crossbench.probes.results import (BrowserProbeResult, EmptyProbeResult,
-                                       ProbeResult)
+from crossbench.probes.probe_context import ProbeContext, ProbeSessionContext
+from crossbench.probes.result_location import ResultLocation
+from crossbench.probes.results import EmptyProbeResult, ProbeResult
 
 if TYPE_CHECKING:
-  from selenium.webdriver.common.options import BaseOptions
-
   from crossbench.browsers.browser import Browser
   from crossbench.env import HostEnvironment
-  from crossbench.runner.groups import (BrowsersRunGroup,
+  from crossbench.runner.groups import (BrowserSessionRunGroup,
+                                        BrowsersRunGroup,
                                         CacheTemperatureRunGroup,
-                                        RepetitionsRunGroup, StoriesRunGroup,
-                                        BrowserSessionRunGroup)
+                                        RepetitionsRunGroup, StoriesRunGroup)
   from crossbench.runner.run import Run
-  from crossbench.runner.runner import Runner
+
 
 ProbeT = TypeVar("ProbeT", bound="Probe")
 
@@ -35,18 +32,12 @@ ProbeT = TypeVar("ProbeT", bound="Probe")
 class ProbeConfigParser(ConfigParser[ProbeT]):
 
   def __init__(self, probe_cls: Type[ProbeT]) -> None:
-    super().__init__("Probe", probe_cls)
+    super().__init__("Probe", probe_cls, allow_unused_config_data=False)
     self._probe_cls: Type[ProbeT] = probe_cls
 
-
-@enum.unique
-class ResultLocation(compat.StrEnumWithHelp):
-  LOCAL = ("local",
-           "Probe always produces results on the runner's local platform.")
-  BROWSER = ("browser",
-             ("Probe produces results on the browser's platform. "
-              "This can be either remote (for instance android browser) "
-              "or local (default system browser)."))
+  @property
+  def probe_cls(self) -> Type[ProbeT]:
+    return self._probe_cls
 
 
 class ProbeMissingDataError(ValueError):
@@ -66,7 +57,10 @@ class ProbeIncompatibleBrowser(ProbeValidationError):
                probe: Probe,
                browser: Browser,
                message: str = "Incompatible browser") -> None:
-    super().__init__(probe, f"{message}, got {browser}")
+    super().__init__(probe, f"{message}, got {browser.attributes}")
+
+
+ProbeKeyT = Tuple[Tuple[str, Hashable], ...]
 
 
 class Probe(abc.ABC):
@@ -91,14 +85,10 @@ class Probe(abc.ABC):
   - setup(): Used for high-overhead Probe initialization
   - start(): Low-overhead start-to-measure signal
   - stop():  Low-overhead stop-to-measure signal
-  - tear_down(): Used for high-overhead Probe cleanup
+  - teardown(): Used for high-overhead Probe cleanup
 
   """
-
-  @property
-  @abc.abstractmethod
-  def NAME(self) -> str:
-    pass
+  NAME: str = ""
 
   @classmethod
   def config_parser(cls) -> ProbeConfigParser:
@@ -106,17 +96,15 @@ class Probe(abc.ABC):
 
   @classmethod
   def from_config(cls: Type[ProbeT], config_data: Dict) -> ProbeT:
-    config_parser = cls.config_parser()
-    kwargs: Dict[str, Any] = config_parser.kwargs_from_config(config_data)
-    if config_data:
-      raise argparse.ArgumentTypeError(
-          f"Config for Probe={cls.NAME} contains unused properties: "
-          f"{', '.join(config_data.keys())}")
-    return cls(**kwargs)
+    return cls.config_parser().parse(config_data)
 
   @classmethod
   def help_text(cls) -> str:
-    return str(cls.config_parser())
+    return cls.config_parser().help
+
+  @classmethod
+  def summary_text(cls) -> str:
+    return cls.config_parser().summary
 
   # Set to False if the Probe cannot be used with arbitrary Stories or Pages
   IS_GENERAL_PURPOSE: bool = True
@@ -127,11 +115,9 @@ class Probe(abc.ABC):
   # Set to True if the probe only works on battery power with single runs
   BATTERY_ONLY: bool = False
 
-  _browsers: Set[Browser]
-
   def __init__(self) -> None:
     assert self.name is not None, "A Probe must define a name"
-    self._browsers = set()
+    self._browsers: Set[Browser] = set()
 
   def __str__(self) -> str:
     return type(self).__name__
@@ -144,7 +130,13 @@ class Probe(abc.ABC):
     return self.key == other.key
 
   @property
-  def key(self) -> Tuple[Tuple, ...]:
+  def is_internal(self) -> bool:
+    """Returns True for subclasses of InternalProbe that are not
+    directly user-accessible."""
+    return False
+
+  @property
+  def key(self) -> ProbeKeyT:
     """Return a sort key."""
     return (("name", self.name),)
 
@@ -196,15 +188,12 @@ class Probe(abc.ABC):
 
   def expect_browser(self,
                      browser: Browser,
-                     types: Union[Type, Tuple[Type]],
+                     attributes: BrowserAttributes,
                      message: Optional[str] = None) -> None:
-    if isinstance(browser, types):
+    if attributes in browser.attributes:
       return
     if not message:
-      if not isinstance(types, tuple):
-        types = (types,)
-      type_names = ",".join(str(type.__name__) for type in types)
-      message = f"Incompatible browser, expected {type_names}"
+      message = f"Incompatible browser, expected {attributes}"
     raise ProbeIncompatibleBrowser(self, browser, message)
 
   def expect_macos(self, browser: Browser) -> None:
@@ -242,8 +231,13 @@ class Probe(abc.ABC):
     return EmptyProbeResult()
 
   @abc.abstractmethod
-  def get_context(self: ProbeT, run: Run) -> ProbeContext[ProbeT]:
+  def get_context(self: ProbeT, run: Run) -> Optional[ProbeContext[ProbeT]]:
     pass
+
+  def get_session_context(
+      self: ProbeT,
+      session: BrowserSessionRunGroup) -> Optional[ProbeSessionContext[ProbeT]]:
+    del session
 
   def log_run_result(self, run: Run) -> None:
     """
@@ -257,171 +251,3 @@ class Probe(abc.ABC):
     Override to print a short summary of all the collected results.
     """
     del group
-
-
-class ProbeContext(Generic[ProbeT], metaclass=abc.ABCMeta):
-  """
-  A scope during which a probe is actively collecting data.
-  Override in Probe subclasses to implement actual performance data
-  collection.
-  - The data should be written to self.result_path.
-  - A file / list / dict of result file Paths should be returned by the
-    override tear_down() method
-  """
-
-  def __init__(self, probe: ProbeT, run: Run) -> None:
-    self._probe: ProbeT = probe
-    self._run: Run = run
-    self._default_result_path: pathlib.Path = self.get_default_result_path()
-    self._is_active: bool = False
-    self._is_success: bool = False
-    self._start_time: Optional[dt.datetime] = None
-    self._stop_time: Optional[dt.datetime] = None
-
-  def get_default_result_path(self) -> pathlib.Path:
-    return self._run.get_default_probe_result_path(self._probe)
-
-  def set_start_time(self, start_datetime: dt.datetime) -> None:
-    assert self._start_time is None
-    self._start_time = start_datetime
-
-  def __enter__(self) -> ProbeContext[ProbeT]:
-    assert not self._is_active
-    assert not self._is_success
-    with self._run.exception_handler(f"Probe {self.name} start"):
-      self._is_active = True
-      self.start()
-    return self
-
-  def __exit__(self, exc_type, exc_value, traceback) -> None:
-    assert self._is_active
-    with self._run.exception_handler(f"Probe {self.name} stop"):
-      self.stop()
-      self._is_success = True
-      assert self._stop_time is None
-    self._stop_time = dt.datetime.now()
-
-  @property
-  def probe(self) -> ProbeT:
-    return self._probe
-
-  @property
-  def run(self) -> Run:
-    return self._run
-
-  @property
-  def session(self) -> BrowserSessionRunGroup:
-    return self._run.session
-
-  @property
-  def browser(self) -> Browser:
-    return self._run.browser
-
-  @property
-  def runner(self) -> Runner:
-    return self._run.runner
-
-  @property
-  def browser_platform(self) -> plt.Platform:
-    return self.browser.platform
-
-  @property
-  def runner_platform(self) -> plt.Platform:
-    return self.runner.platform
-
-  def browser_result(
-      self,
-      url: Optional[Iterable[str]] = None,
-      file: Optional[Iterable[pathlib.Path]] = None,
-      json: Optional[Iterable[pathlib.Path]] = None,
-      csv: Optional[Iterable[pathlib.Path]] = None) -> BrowserProbeResult:
-    """Helper to create BrowserProbeResult that might be stored on a remote
-    browser/device and need to be copied over to the local machine."""
-    return BrowserProbeResult(self.run, url, file, json, csv)
-
-  @property
-  def start_time(self) -> dt.datetime:
-    """
-    Returns a unified start time that is the same for all ProbeContexts
-    within a run. This can be used to account for startup delays caused by other
-    Probes.
-    """
-    assert self._start_time
-    return self._start_time
-
-  @property
-  def duration(self) -> dt.timedelta:
-    assert self._start_time and self._stop_time
-    return self._stop_time - self._start_time
-
-  @property
-  def is_success(self) -> bool:
-    return self._is_success
-
-  @property
-  def result_path(self) -> pathlib.Path:
-    return self._default_result_path
-
-  @property
-  def name(self) -> str:
-    return self.probe.name
-
-  @property
-  def browser_pid(self) -> int:
-    maybe_pid = self.run.browser.pid
-    assert maybe_pid, "Browser is not runner or does not provide a pid."
-    return maybe_pid
-
-  def setup(self) -> None:
-    """
-    Called before starting the browser, typically used to set run-specific
-    browser flags.
-    """
-
-  def setup_selenium_options(self, options: BaseOptions) -> None:
-    """
-    Custom hook to change selenium options before starting the browser.
-    """
-    del options
-
-  @abc.abstractmethod
-  def start(self) -> None:
-    """
-    Called immediately before starting the given Run, after the browser started.
-    This method should have as little overhead as possible. If possible,
-    delegate heavy computation to the "SetUp" method.
-    """
-
-  def start_story_run(self) -> None:
-    """
-    Called before running a Story's core workload (Story.run)
-    and after running Story.setup.
-    """
-
-  def stop_story_run(self) -> None:
-    """
-    Called after running a Story's core workload (Story.run) and before running
-    Story.tear_down.
-    """
-
-  @abc.abstractmethod
-  def stop(self) -> None:
-    """
-    Called immediately after finishing the given Run with the browser still
-    running.
-    This method should have as little overhead as possible. If possible,
-    delegate heavy computation to the "tear_down" method.
-    """
-    return None
-
-  @abc.abstractmethod
-  def tear_down(self) -> ProbeResult:
-    """
-    Called after stopping all probes and shutting down the browser.
-    Returns
-    - None if no data was collected
-    - If Data was collected:
-      - Either a path (or list of paths) to results file
-      - Directly a primitive json-serializable object containing the data
-    """
-    return EmptyProbeResult()

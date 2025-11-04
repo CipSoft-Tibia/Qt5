@@ -61,3 +61,5 @@ const QSGGeometry::AttributeSet &QSGCurveFillNode::attributes()
 }
 
 QT_END_NAMESPACE
+
+#include "moc_qsgcurvefillnode_p.cpp"

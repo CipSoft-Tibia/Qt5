@@ -70,7 +70,7 @@ class RendererImpl::RendererClientInternal final : public RendererClient {
     DCHECK(type_ == DemuxerStream::VIDEO);
     renderer_->OnVideoOpacityChange(opaque);
   }
-  void OnVideoFrameRateChange(absl::optional<int> fps) override {
+  void OnVideoFrameRateChange(std::optional<int> fps) override {
     DCHECK(type_ == DemuxerStream::VIDEO);
     renderer_->OnVideoFrameRateChange(fps);
   }
@@ -183,8 +183,7 @@ void RendererImpl::SetCdm(CdmContext* cdm_context,
   InitializeAudioRenderer();
 }
 
-void RendererImpl::SetLatencyHint(
-    absl::optional<base::TimeDelta> latency_hint) {
+void RendererImpl::SetLatencyHint(std::optional<base::TimeDelta> latency_hint) {
   DVLOG(1) << __func__;
   DCHECK(!latency_hint || (*latency_hint >= base::TimeDelta()));
   DCHECK(task_runner_->RunsTasksInCurrentSequence());
@@ -204,14 +203,14 @@ void RendererImpl::SetPreservesPitch(bool preserves_pitch) {
     audio_renderer_->SetPreservesPitch(preserves_pitch);
 }
 
-void RendererImpl::SetWasPlayedWithUserActivation(
-    bool was_played_with_user_activation) {
+void RendererImpl::SetWasPlayedWithUserActivationAndHighMediaEngagement(
+    bool was_played_with_user_activation_and_high_media_engagement) {
   DVLOG(1) << __func__;
   DCHECK(task_runner_->RunsTasksInCurrentSequence());
 
   if (audio_renderer_)
-    audio_renderer_->SetWasPlayedWithUserActivation(
-        was_played_with_user_activation);
+    audio_renderer_->SetWasPlayedWithUserActivationAndHighMediaEngagement(
+        was_played_with_user_activation_and_high_media_engagement);
 }
 
 void RendererImpl::Flush(base::OnceClosure flush_cb) {
@@ -352,7 +351,7 @@ bool RendererImpl::GetWallClockTimes(
 }
 
 bool RendererImpl::HasEncryptedStream() {
-  std::vector<raw_ptr<DemuxerStream, VectorExperimental>> demuxer_streams =
+  std::vector<DemuxerStream*> demuxer_streams =
       media_resource_->GetAllStreams();
 
   for (media::DemuxerStream* stream : demuxer_streams) {
@@ -834,7 +833,7 @@ void RendererImpl::PausePlayback() {
     case STATE_UNINITIALIZED:
     case STATE_INIT_PENDING_CDM:
     case STATE_INITIALIZING:
-      NOTREACHED() << "Invalid state: " << state_;
+      NOTREACHED_IN_MIGRATION() << "Invalid state: " << state_;
       break;
 
     case STATE_ERROR:
@@ -973,7 +972,7 @@ void RendererImpl::OnVideoOpacityChange(bool opaque) {
   client_->OnVideoOpacityChange(opaque);
 }
 
-void RendererImpl::OnVideoFrameRateChange(absl::optional<int> fps) {
+void RendererImpl::OnVideoFrameRateChange(std::optional<int> fps) {
   DCHECK(task_runner_->RunsTasksInCurrentSequence());
   client_->OnVideoFrameRateChange(fps);
 }

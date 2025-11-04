@@ -9,5 +9,6 @@ qt_internal_add_test(tst_qwebenginesettings
     LIBRARIES
         Qt::WebEngineCore
         Qt::WebEngineWidgets
+        Qt::WebEngineCorePrivate
         Test::Util
 )

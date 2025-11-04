@@ -11,11 +11,11 @@
 #include <memory>
 #include <utility>
 
+#include "core/fxcodec/data_and_bytes_consumed.h"
 #include "core/fxcodec/flate/flatemodule.h"
-#include "core/fxcrt/fx_memory_wrappers.h"
+#include "core/fxcrt/check.h"
 #include "fxjs/gc/container_trace.h"
 #include "fxjs/xfa/cjx_object.h"
-#include "third_party/base/check.h"
 #include "xfa/fxfa/parser/cxfa_acrobat.h"
 #include "xfa/fxfa/parser/cxfa_common.h"
 #include "xfa/fxfa/parser/cxfa_locale.h"
@@ -1069,14 +1069,13 @@ CXFA_XMLLocale* GetLocaleFromBuffer(cppgc::Heap* heap,
   if (src_span.empty())
     return nullptr;
 
-  std::unique_ptr<uint8_t, FxFreeDeleter> output;
-  uint32_t dwSize;
-  FlateModule::FlateOrLZWDecode(false, src_span, true, 0, 0, 0, 0, 0, &output,
-                                &dwSize);
-  if (!output)
+  DataAndBytesConsumed result =
+      FlateModule::FlateOrLZWDecode(false, src_span, true, 0, 0, 0, 0, 0);
+  if (result.data.empty()) {
     return nullptr;
+  }
 
-  return CXFA_XMLLocale::Create(heap, pdfium::make_span(output.get(), dwSize));
+  return CXFA_XMLLocale::Create(heap, result.data);
 }
 
 CXFA_LocaleMgr::LangID GetLanguageID(WideString wsLanguage) {
@@ -1231,7 +1230,7 @@ void CXFA_LocaleMgr::SetDefLocale(GCedLocaleIface* pLocale) {
   m_pDefLocale = pLocale;
 }
 
-absl::optional<WideString> CXFA_LocaleMgr::GetConfigLocaleName(
+std::optional<WideString> CXFA_LocaleMgr::GetConfigLocaleName(
     CXFA_Node* pConfig) const {
   if (m_bConfigLocaleCached)
     return m_wsConfigLocale;
@@ -1260,7 +1259,7 @@ absl::optional<WideString> CXFA_LocaleMgr::GetConfigLocaleName(
   if (!pLocale)
     return m_wsConfigLocale;
 
-  absl::optional<WideString> wsMaybeLocale =
+  std::optional<WideString> wsMaybeLocale =
       pLocale->JSObject()->TryCData(XFA_Attribute::Value, false);
   if (!wsMaybeLocale.has_value() || wsMaybeLocale.value().IsEmpty())
     return m_wsConfigLocale;

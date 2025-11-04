@@ -140,7 +140,7 @@ bool SuggestionMarkerListImpl::ShiftMarkersForSuggestionReplacement(
 
     std::optional<DocumentMarker::MarkerOffsets> result =
         marker->ComputeOffsetsAfterShift(offset, old_length, new_length);
-    if (result == absl::nullopt) {
+    if (result == std::nullopt) {
       did_shift_marker = true;
       continue;
     }
@@ -198,11 +198,13 @@ void SuggestionMarkerListImpl::Trace(Visitor* visitor) const {
 }
 
 bool SuggestionMarkerListImpl::RemoveMarkerByTag(int32_t tag) {
-  for (auto* it = markers_.begin(); it != markers_.end(); it++) {
-    if (To<SuggestionMarker>(it->Get())->Tag() == tag) {
-      markers_.erase(it);
+  wtf_size_t posn = 0;
+  for (DocumentMarker* marker : markers_) {
+    if (To<SuggestionMarker>(marker)->Tag() == tag) {
+      markers_.EraseAt(posn, 1);
       return true;
     }
+    posn++;
   }
 
   return false;
@@ -210,11 +212,13 @@ bool SuggestionMarkerListImpl::RemoveMarkerByTag(int32_t tag) {
 
 bool SuggestionMarkerListImpl::RemoveMarkerByType(
     const SuggestionMarker::SuggestionType& type) {
-  for (auto* it = markers_.begin(); it != markers_.end(); it++) {
-    if (To<SuggestionMarker>(it->Get())->GetSuggestionType() == type) {
-      markers_.erase(it);
+  wtf_size_t posn = 0;
+  for (DocumentMarker* marker : markers_) {
+    if (To<SuggestionMarker>(marker)->GetSuggestionType() == type) {
+      markers_.EraseAt(posn, 1);
       return true;
     }
+    posn++;
   }
 
   return false;

@@ -88,6 +88,10 @@ IntMessage &IntMessage::operator =(const IntMessage &other)
 }
 IntMessage::IntMessage(IntMessage &&other) noexcept
     = default;
+IntMessage::operator QVariant() const
+{
+    return QVariant::fromValue(*this);
+}
 bool comparesEqual(const IntMessage &lhs, const IntMessage &rhs) noexcept
 {
     return operator ==(static_cast<const QProtobufMessage&>(lhs),

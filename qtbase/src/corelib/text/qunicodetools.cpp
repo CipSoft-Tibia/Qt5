@@ -860,6 +860,7 @@ static void getLineBreaks(const char16_t *string, qsizetype len, QCharAttributes
                 }
                 goto next;
             case LB::BRS::LB28a_4: // Wait for more characters
+            Q_LIKELY_BRANCH
             case LB::BRS::None: // Nothing to do
                 break;
             }
@@ -927,6 +928,7 @@ static void getLineBreaks(const char16_t *string, qsizetype len, QCharAttributes
                 for (qsizetype j = nestart + 1; j < pos; ++j)
                     attributes[j].lineBreak = false;
                 Q_FALLTHROUGH();
+            Q_LIKELY_BRANCH
             case LB::NS::None:
                 nelast = LB::NS::XX; // reset state
                 break;
@@ -2569,73 +2571,195 @@ static void khmerAttributes(QChar::Script script, const char16_t *text, qsizetyp
 }
 
 
-const CharAttributeFunction charAttributeFunction[] = {
-//    Script_Unknown,
-    nullptr,
-//    Script_Inherited,
-    nullptr,
-//    Script_Common,
-    nullptr,
-//    Script_Latin,
-    nullptr,
-//    Script_Greek,
-    nullptr,
-//    Script_Cyrillic,
-    nullptr,
-//    Script_Armenian,
-    nullptr,
-//    Script_Hebrew,
-    nullptr,
-//    Script_Arabic,
-    nullptr,
-//    Script_Syriac,
-    nullptr,
-//    Script_Thaana,
-    nullptr,
-//    Script_Devanagari,
-    indicAttributes,
-//    Script_Bengali,
-    indicAttributes,
-//    Script_Gurmukhi,
-    indicAttributes,
-//    Script_Gujarati,
-    indicAttributes,
-//    Script_Oriya,
-    indicAttributes,
-//    Script_Tamil,
-    indicAttributes,
-//    Script_Telugu,
-    indicAttributes,
-//    Script_Kannada,
-    indicAttributes,
-//    Script_Malayalam,
-    indicAttributes,
-//    Script_Sinhala,
-    indicAttributes,
-//    Script_Thai,
-    thaiAttributes,
-//    Script_Lao,
-    nullptr,
-//    Script_Tibetan,
-    tibetanAttributes,
-//    Script_Myanmar,
-    myanmarAttributes,
-//    Script_Georgian,
-    nullptr,
-//    Script_Hangul,
-    nullptr,
-//    Script_Ethiopic,
-    nullptr,
-//    Script_Cherokee,
-    nullptr,
-//    Script_CanadianAboriginal,
-    nullptr,
-//    Script_Ogham,
-    nullptr,
-//    Script_Runic,
-    nullptr,
-//    Script_Khmer,
-    khmerAttributes
+static CharAttributeFunction charAttributeFunction(QChar::Script script)
+{
+    switch (script) {
+    case QChar::Script_Unknown:
+    case QChar::Script_Inherited:
+    case QChar::Script_Common:
+    case QChar::Script_Latin:
+    case QChar::Script_Greek:
+    case QChar::Script_Cyrillic:
+    case QChar::Script_Armenian:
+    case QChar::Script_Hebrew:
+    case QChar::Script_Arabic:
+    case QChar::Script_Syriac:
+    case QChar::Script_Thaana:
+        return nullptr;
+    case QChar::Script_Devanagari:
+    case QChar::Script_Bengali:
+    case QChar::Script_Gurmukhi:
+    case QChar::Script_Gujarati:
+    case QChar::Script_Oriya:
+    case QChar::Script_Tamil:
+    case QChar::Script_Telugu:
+    case QChar::Script_Kannada:
+    case QChar::Script_Malayalam:
+    case QChar::Script_Sinhala:
+        return &indicAttributes;
+    case QChar::Script_Thai:
+        return &thaiAttributes;
+    case QChar::Script_Lao:
+        return nullptr;
+    case QChar::Script_Tibetan:
+        return &tibetanAttributes;
+    case QChar::Script_Myanmar:
+        return &myanmarAttributes;
+    case QChar::Script_Georgian:
+    case QChar::Script_Hangul:
+    case QChar::Script_Ethiopic:
+    case QChar::Script_Cherokee:
+    case QChar::Script_CanadianAboriginal:
+    case QChar::Script_Ogham:
+    case QChar::Script_Runic:
+        return nullptr;
+    case QChar::Script_Khmer:
+        return &khmerAttributes;
+    case QChar::Script_Mongolian:
+    case QChar::Script_Hiragana:
+    case QChar::Script_Katakana:
+    case QChar::Script_Bopomofo:
+    case QChar::Script_Han:
+    case QChar::Script_Yi:
+    case QChar::Script_OldItalic:
+    case QChar::Script_Gothic:
+    case QChar::Script_Deseret:
+    case QChar::Script_Tagalog:
+    case QChar::Script_Hanunoo:
+    case QChar::Script_Buhid:
+    case QChar::Script_Tagbanwa:
+    case QChar::Script_Coptic:
+    case QChar::Script_Limbu:
+    case QChar::Script_TaiLe:
+    case QChar::Script_LinearB:
+    case QChar::Script_Ugaritic:
+    case QChar::Script_Shavian:
+    case QChar::Script_Osmanya:
+    case QChar::Script_Cypriot:
+    case QChar::Script_Braille:
+    case QChar::Script_Buginese:
+    case QChar::Script_NewTaiLue:
+    case QChar::Script_Glagolitic:
+    case QChar::Script_Tifinagh:
+    case QChar::Script_SylotiNagri:
+    case QChar::Script_OldPersian:
+    case QChar::Script_Kharoshthi:
+    case QChar::Script_Balinese:
+    case QChar::Script_Cuneiform:
+    case QChar::Script_Phoenician:
+    case QChar::Script_PhagsPa:
+    case QChar::Script_Nko:
+    case QChar::Script_Sundanese:
+    case QChar::Script_Lepcha:
+    case QChar::Script_OlChiki:
+    case QChar::Script_Vai:
+    case QChar::Script_Saurashtra:
+    case QChar::Script_KayahLi:
+    case QChar::Script_Rejang:
+    case QChar::Script_Lycian:
+    case QChar::Script_Carian:
+    case QChar::Script_Lydian:
+    case QChar::Script_Cham:
+    case QChar::Script_TaiTham:
+    case QChar::Script_TaiViet:
+    case QChar::Script_Avestan:
+    case QChar::Script_EgyptianHieroglyphs:
+    case QChar::Script_Samaritan:
+    case QChar::Script_Lisu:
+    case QChar::Script_Bamum:
+    case QChar::Script_Javanese:
+    case QChar::Script_MeeteiMayek:
+    case QChar::Script_ImperialAramaic:
+    case QChar::Script_OldSouthArabian:
+    case QChar::Script_InscriptionalParthian:
+    case QChar::Script_InscriptionalPahlavi:
+    case QChar::Script_OldTurkic:
+    case QChar::Script_Kaithi:
+    case QChar::Script_Batak:
+    case QChar::Script_Brahmi:
+    case QChar::Script_Mandaic:
+    case QChar::Script_Chakma:
+    case QChar::Script_MeroiticCursive:
+    case QChar::Script_MeroiticHieroglyphs:
+    case QChar::Script_Miao:
+    case QChar::Script_Sharada:
+    case QChar::Script_SoraSompeng:
+    case QChar::Script_Takri:
+    case QChar::Script_CaucasianAlbanian:
+    case QChar::Script_BassaVah:
+    case QChar::Script_Duployan:
+    case QChar::Script_Elbasan:
+    case QChar::Script_Grantha:
+    case QChar::Script_PahawhHmong:
+    case QChar::Script_Khojki:
+    case QChar::Script_LinearA:
+    case QChar::Script_Mahajani:
+    case QChar::Script_Manichaean:
+    case QChar::Script_MendeKikakui:
+    case QChar::Script_Modi:
+    case QChar::Script_Mro:
+    case QChar::Script_OldNorthArabian:
+    case QChar::Script_Nabataean:
+    case QChar::Script_Palmyrene:
+    case QChar::Script_PauCinHau:
+    case QChar::Script_OldPermic:
+    case QChar::Script_PsalterPahlavi:
+    case QChar::Script_Siddham:
+    case QChar::Script_Khudawadi:
+    case QChar::Script_Tirhuta:
+    case QChar::Script_WarangCiti:
+    case QChar::Script_Ahom:
+    case QChar::Script_AnatolianHieroglyphs:
+    case QChar::Script_Hatran:
+    case QChar::Script_Multani:
+    case QChar::Script_OldHungarian:
+    case QChar::Script_SignWriting:
+    case QChar::Script_Adlam:
+    case QChar::Script_Bhaiksuki:
+    case QChar::Script_Marchen:
+    case QChar::Script_Newa:
+    case QChar::Script_Osage:
+    case QChar::Script_Tangut:
+    case QChar::Script_MasaramGondi:
+    case QChar::Script_Nushu:
+    case QChar::Script_Soyombo:
+    case QChar::Script_ZanabazarSquare:
+    case QChar::Script_Dogra:
+    case QChar::Script_GunjalaGondi:
+    case QChar::Script_HanifiRohingya:
+    case QChar::Script_Makasar:
+    case QChar::Script_Medefaidrin:
+    case QChar::Script_OldSogdian:
+    case QChar::Script_Sogdian:
+    case QChar::Script_Elymaic:
+    case QChar::Script_Nandinagari:
+    case QChar::Script_NyiakengPuachueHmong:
+    case QChar::Script_Wancho:
+    case QChar::Script_Chorasmian:
+    case QChar::Script_DivesAkuru:
+    case QChar::Script_KhitanSmallScript:
+    case QChar::Script_Yezidi:
+    case QChar::Script_CyproMinoan:
+    case QChar::Script_OldUyghur:
+    case QChar::Script_Tangsa:
+    case QChar::Script_Toto:
+    case QChar::Script_Vithkuqi:
+    case QChar::Script_Kawi:
+    case QChar::Script_NagMundari:
+    case QChar::Script_Garay:
+    case QChar::Script_GurungKhema:
+    case QChar::Script_KiratRai:
+    case QChar::Script_OlOnal:
+    case QChar::Script_Sunuwar:
+    case QChar::Script_Todhri:
+    case QChar::Script_TuluTigalari:
+        return nullptr;
+    case QChar::ScriptCount:
+        // Don't Q_UNREACHABLE here; this might be a newer value in later Qt versions
+        // (incl. patch releases)
+        ;
+    }
+    return nullptr;
 };
 
 static void getCharAttributes(const char16_t *string, qsizetype stringLength,
@@ -2646,9 +2770,7 @@ static void getCharAttributes(const char16_t *string, qsizetype stringLength,
         return;
     for (qsizetype i = 0; i < numItems; ++i) {
         QChar::Script script = items[i].script;
-        if (script > QChar::Script_Khmer)
-            script = QChar::Script_Common;
-        CharAttributeFunction attributeFunction = charAttributeFunction[script];
+        CharAttributeFunction attributeFunction = charAttributeFunction(script);
         if (!attributeFunction)
             continue;
         qsizetype end = i < numItems - 1 ? items[i + 1].position : stringLength;

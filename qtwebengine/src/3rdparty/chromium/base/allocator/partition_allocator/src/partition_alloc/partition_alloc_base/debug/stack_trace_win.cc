@@ -4,15 +4,16 @@
 
 #include "partition_alloc/partition_alloc_base/debug/stack_trace.h"
 
+#include <windows.h>
+
+#include <psapi.h>
+
+#include <algorithm>
+#include <vector>
+
 #include "partition_alloc/partition_alloc_base/logging.h"
 #include "partition_alloc/partition_alloc_base/process/process_handle.h"
 #include "partition_alloc/partition_alloc_base/strings/safe_sprintf.h"
-
-#include <windows.h>
-#include <algorithm>
-
-#include <psapi.h>  // Depends on "windows.h"
-#include <vector>
 
 namespace partition_alloc::internal::base::debug {
 

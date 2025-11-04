@@ -11,9 +11,17 @@
 
 #include "libANGLE/ProgramExecutable.h"
 #include "libANGLE/renderer/ProgramExecutableImpl.h"
+#include "libANGLE/renderer/wgpu/wgpu_pipeline_state.h"
+
+#include <dawn/webgpu_cpp.h>
 
 namespace rx
 {
+struct TranslatedWGPUShaderModule
+{
+    wgpu::ShaderModule module;
+};
+
 class ProgramExecutableWgpu : public ProgramExecutableImpl
 {
   public:
@@ -74,6 +82,16 @@ class ProgramExecutableWgpu : public ProgramExecutableImpl
     void getUniformfv(const gl::Context *context, GLint location, GLfloat *params) const override;
     void getUniformiv(const gl::Context *context, GLint location, GLint *params) const override;
     void getUniformuiv(const gl::Context *context, GLint location, GLuint *params) const override;
+
+    TranslatedWGPUShaderModule &getShaderModule(gl::ShaderType type);
+
+    angle::Result getRenderPipeline(ContextWgpu *context,
+                                    const webgpu::RenderPipelineDesc &desc,
+                                    wgpu::RenderPipeline *pipelineOut);
+
+  private:
+    gl::ShaderMap<TranslatedWGPUShaderModule> mShaderModules;
+    webgpu::PipelineCache mPipelineCache;
 };
 
 }  // namespace rx

@@ -8,8 +8,8 @@
       "webworker",
       "webworker.iterable"
     ],
-    "typeRoots": ["./node_modules/@types", "./node_modules/@webgpu/types"],
-    "outDir": "ignored-for-vscode"
+    "outDir": "ignored-for-vscode",
+    "allowUmdGlobalAccess": true
   },
   "include": [
     "front_end/",

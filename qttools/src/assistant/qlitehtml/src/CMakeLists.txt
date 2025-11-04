@@ -15,7 +15,7 @@ set(QLITEHTML_VERSION ${PROJECT_VERSION})
 set(QLITEHTML_VERSION_MAJOR ${PROJECT_VERSION_MAJOR})
 set(QLITEHTML_VERSION_COMPAT ${QLITEHTML_VERSION} CACHE STRING "qlitehtml compat version number.")
 
-option(QLITEHTML_USE_SYSTEM_LITEHTML "Uses litehtml from the system if available" ON)
+option(QLITEHTML_USE_SYSTEM_LITEHTML "Uses litehtml from the system if available" OFF)
 if(QLITEHTML_USE_SYSTEM_LITEHTML)
   find_package(litehtml QUIET)
 endif()

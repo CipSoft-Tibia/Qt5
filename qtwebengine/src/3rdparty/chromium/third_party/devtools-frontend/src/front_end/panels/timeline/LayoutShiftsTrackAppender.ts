@@ -2,6 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 import * as i18n from '../../core/i18n/i18n.js';
+import * as Root from '../../core/root/root.js';
 import * as TraceEngine from '../../models/trace/trace.js';
 import * as ThemeSupport from '../../ui/legacy/theme_support/theme_support.js';
 
@@ -11,17 +12,25 @@ import {
   type HighlightedEntryInfo,
   type TrackAppender,
   type TrackAppenderName,
+  VisualLoggingTrackName,
 } from './CompatibilityTracksAppender.js';
 
 const UIStrings = {
   /**
    *@description Text in Timeline Flame Chart Data Provider of the Performance panel
    */
-  layoutShifts: 'Layout Shifts',
+  layoutShifts: 'Layout shifts',
 };
 
 const str_ = i18n.i18n.registerUIStrings('panels/timeline/LayoutShiftsTrackAppender.ts', UIStrings);
 const i18nString = i18n.i18n.getLocalizedString.bind(undefined, str_);
+
+// Bit of a hack: LayoutShifts are instant events, so have no duration. But
+// OPP doesn't do well at making tiny events easy to spot and click. So we
+// set it to a small duration so that the user is able to see and click
+// them more easily. Long term we will explore a better UI solution to
+// allow us to do this properly and not hack around it.
+export const LAYOUT_SHIFT_SYNTHETIC_DURATION = TraceEngine.Types.Timing.MicroSeconds(5_000);
 
 export class LayoutShiftsTrackAppender implements TrackAppender {
   readonly appenderName: TrackAppenderName = 'LayoutShifts';
@@ -64,7 +73,7 @@ export class LayoutShiftsTrackAppender implements TrackAppender {
   #appendTrackHeaderAtLevel(currentLevel: number, expanded?: boolean): void {
     const style = buildGroupStyle({collapsible: false});
     const group = buildTrackHeader(
-        currentLevel, i18nString(UIStrings.layoutShifts), style,
+        VisualLoggingTrackName.LAYOUT_SHIFTS, currentLevel, i18nString(UIStrings.layoutShifts), style,
         /* selectable= */ true, expanded);
     this.#compatibilityBuilder.registerTrackForGroup(group, this);
   }
@@ -79,20 +88,31 @@ export class LayoutShiftsTrackAppender implements TrackAppender {
    */
   #appendLayoutShiftsAtLevel(currentLevel: number): number {
     const allLayoutShifts = this.#traceParsedData.LayoutShifts.clusters.flatMap(cluster => cluster.events);
-    const msDuration = TraceEngine.Types.Timing.MicroSeconds(5_000);
     const setFlameChartEntryTotalTime =
-        (_event: TraceEngine.Types.TraceEvents.SyntheticLayoutShift, index: number): void => {
-          // Bit of a hack: LayoutShifts are instant events, so have no duration. But
-          // OPP doesn't do well at making tiny events easy to spot and click. So we
-          // set it to a small duration so that the user is able to see and click
-          // them more easily. Long term we will explore a better UI solution to
-          // allow us to do this properly and not hack around it.
+        (_event: TraceEngine.Types.TraceEvents.SyntheticLayoutShift|
+         TraceEngine.Types.TraceEvents.SyntheticLayoutShiftCluster,
+         index: number): void => {
+          let totalTime = LAYOUT_SHIFT_SYNTHETIC_DURATION;
+          if (TraceEngine.Types.TraceEvents.isSyntheticLayoutShiftCluster(_event)) {
+            // This is to handle the cases where there is a singular shift for a cluster.
+            // A single shift would make the cluster duration 0 and hard to read.
+            // So in this case, give it the LAYOUT_SHIFT_SYNTHETIC_DURATION duration.
+            totalTime = _event.dur || LAYOUT_SHIFT_SYNTHETIC_DURATION;
+          }
           this.#compatibilityBuilder.getFlameChartTimelineData().entryTotalTimes[index] =
-              TraceEngine.Helpers.Timing.microSecondsToMilliseconds(msDuration);
+              TraceEngine.Helpers.Timing.microSecondsToMilliseconds(totalTime);
         };
+    let shiftLevel = currentLevel;
+    if (Root.Runtime.experiments.isEnabled(Root.Runtime.ExperimentName.TIMELINE_LAYOUT_SHIFT_DETAILS)) {
+      const allClusters = this.#traceParsedData.LayoutShifts.clusters;
+      this.#compatibilityBuilder.appendEventsAtLevel(allClusters, currentLevel, this, setFlameChartEntryTotalTime);
+
+      // layout shifts should be below clusters.
+      shiftLevel = currentLevel + 1;
+    }
 
     return this.#compatibilityBuilder.appendEventsAtLevel(
-        allLayoutShifts, currentLevel, this, setFlameChartEntryTotalTime);
+        allLayoutShifts, shiftLevel, this, setFlameChartEntryTotalTime);
   }
 
   /*
@@ -115,6 +135,9 @@ export class LayoutShiftsTrackAppender implements TrackAppender {
   titleForEvent(event: TraceEngine.Types.TraceEvents.TraceEventData): string {
     if (TraceEngine.Types.TraceEvents.isTraceEventLayoutShift(event)) {
       return 'Layout shift';
+    }
+    if (TraceEngine.Types.TraceEvents.isSyntheticLayoutShiftCluster(event)) {
+      return 'Layout shift cluster';
     }
     return event.name;
   }

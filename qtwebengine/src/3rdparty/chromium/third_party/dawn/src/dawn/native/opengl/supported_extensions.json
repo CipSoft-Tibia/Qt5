@@ -29,14 +29,11 @@
     ],
 
     "supported_extensions": [
+        "GL_OES_texture_stencil8",
         "GL_EXT_texture_compression_s3tc",
         "GL_EXT_texture_compression_s3tc_srgb",
         "GL_OES_EGL_image",
         "GL_EXT_texture_format_BGRA8888",
         "GL_APPLE_texture_format_BGRA8888"
-    ],
-
-    "supported_angle_extensions": [
-        "GL_ANGLE_base_vertex_base_instance"
     ]
 }

@@ -1,6 +1,6 @@
-qt_add_library(Quick3DAssets_LightDecal STATIC)
+qt_add_library(Ast_LightDecal STATIC)
 
-qt_add_qml_module(Quick3DAssets_LightDecal
+qt_add_qml_module(Ast_LightDecal
     URI "Quick3DAssets.LightDecal"
     CLASS_NAME "LightDecalPlugin"
     VERSION 1.0

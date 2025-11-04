@@ -6,7 +6,9 @@
 #define COMPONENTS_AUTOFILL_CORE_BROWSER_DATA_MODEL_AUTOFILL_I18N_API_H_
 
 #include "components/autofill/core/browser/country_type.h"
+#if !BUILDFLAG(IS_QTWEBENGINE)
 #include "components/autofill/core/browser/data_model/autofill_i18n_hierarchies.h"
+#endif
 #include "components/autofill/core/browser/data_model/autofill_i18n_parsing_expression_components.h"
 #include "components/autofill/core/browser/data_model/autofill_structured_address_component.h"
 #include "components/autofill/core/browser/data_model/autofill_structured_address_component_store.h"
@@ -25,6 +27,14 @@ static const AddressCountryCode kLegacyHierarchyCountryCode;
 // country is provided, returns the legacy address hierarchy.
 AddressComponentsStore CreateAddressComponentModel(
     AddressCountryCode country_code = AddressCountryCode(""));
+
+// Returns whether or not the `field_type` is a synthesized type on the address
+// model for `country_code`.
+// A synthesized type, is a type whose value is calculated from other address
+// types (its constituents). While synthesized types are not directly part of
+// the address hierarchy tree, its constituents are. Synthesized types cannot be
+// stored, learned from form submissions, or viewed in settings.
+bool IsSynthesizedType(FieldType field_type, AddressCountryCode country_code);
 
 // Returns the formatting expression corresponding to the provided parameters.
 // If the expression can't be found or the country is empty, it attempts to look

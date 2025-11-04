@@ -1,4 +1,5 @@
 // Copyright (C) 2016 The Qt Company Ltd.
+// Copyright (C) 2024 Jie Liu <liujie01@kylinos.cn>
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qwaylandinputdevice_p.h"
@@ -11,6 +12,9 @@
 #if QT_CONFIG(wayland_datadevice)
 #include "qwaylanddatadevice_p.h"
 #include "qwaylanddatadevicemanager_p.h"
+#endif
+#if QT_CONFIG(clipboard)
+#include "qwaylanddatacontrolv1_p.h"
 #endif
 #if QT_CONFIG(wayland_client_primary_selection)
 #include "qwaylandprimaryselectionv1_p.h"
@@ -242,7 +246,8 @@ void QWaylandInputDevice::Pointer::updateCursor()
         return;
 
     // Set from shape using theme
-    uint time = seat()->mCursor.animationTimer.elapsed();
+    const QElapsedTimer &timer = seat()->mCursor.animationTimer;
+    const uint time = timer.isValid() ? timer.elapsed() : 0;
 
     if (struct ::wl_cursor *waylandCursor = mCursor.theme->cursor(shape)) {
         uint duration = 0;
@@ -316,6 +321,13 @@ QWaylandInputDevice::QWaylandInputDevice(QWaylandDisplay *display, int version, 
     , mDisplay(display->wl_display())
     , mId(id)
 {
+
+#if QT_CONFIG(clipboard)
+    if (auto *dataControlManager = mQDisplay->dataControlManager()) {
+        setDataControlDevice(dataControlManager->createDevice(this));
+    }
+#endif
+
 #if QT_CONFIG(wayland_datadevice)
     if (mQDisplay->dndSelectionHandler()) {
         mDataDevice = mQDisplay->dndSelectionHandler()->getDataDevice(this);
@@ -360,54 +372,63 @@ QWaylandInputDevice::~QWaylandInputDevice()
 void QWaylandInputDevice::seat_capabilities(uint32_t caps)
 {
     mCaps = caps;
+    maybeRegisterInputDevices();
+}
 
-    if (caps & WL_SEAT_CAPABILITY_KEYBOARD && !mKeyboard) {
+void QWaylandInputDevice::seat_name(const QString &name)
+{
+    mSeatName = name;
+    mSeatNameKnown = true;
+    maybeRegisterInputDevices();
+}
+
+void QWaylandInputDevice::maybeRegisterInputDevices()
+{
+    if (!mSeatNameKnown)
+        return; // too early
+
+    if (mCaps & WL_SEAT_CAPABILITY_KEYBOARD && !mKeyboard) {
         mKeyboard.reset(createKeyboard(this));
-    } else if (!(caps & WL_SEAT_CAPABILITY_KEYBOARD) && mKeyboard) {
+    } else if (!(mCaps & WL_SEAT_CAPABILITY_KEYBOARD) && mKeyboard) {
         mKeyboard.reset();
     }
 
-    if (caps & WL_SEAT_CAPABILITY_POINTER && !mPointer) {
+    if (mCaps & WL_SEAT_CAPABILITY_POINTER && !mPointer) {
         mPointer.reset(createPointer(this));
 
         auto *pointerGestures = mQDisplay->pointerGestures();
         if (pointerGestures) {
             // NOTE: The name of the device and its system ID are not exposed on Wayland.
             mTouchPadDevice = new QPointingDevice(
-                        QLatin1String("touchpad"), 0, QInputDevice::DeviceType::TouchPad,
-                        QPointingDevice::PointerType::Finger, QInputDevice::Capability::Position,
-                        MaxTouchPoints, 0, mSeatName, QPointingDeviceUniqueId(), this);
+                    QLatin1StringView("touchpad"), 0, QInputDevice::DeviceType::TouchPad,
+                    QPointingDevice::PointerType::Finger, QInputDevice::Capability::Position,
+                    MaxTouchPoints, 0, mSeatName, QPointingDeviceUniqueId(), this);
             QWindowSystemInterface::registerInputDevice(mTouchPadDevice);
             mPointerGesturePinch.reset(pointerGestures->createPointerGesturePinch(this));
             mPointerGesturePinch->init(pointerGestures->get_pinch_gesture(mPointer->object()));
             mPointerGestureSwipe.reset(pointerGestures->createPointerGestureSwipe(this));
             mPointerGestureSwipe->init(pointerGestures->get_swipe_gesture(mPointer->object()));
         }
-    } else if (!(caps & WL_SEAT_CAPABILITY_POINTER) && mPointer) {
+    } else if (!(mCaps & WL_SEAT_CAPABILITY_POINTER) && mPointer) {
         mPointer.reset();
         mPointerGesturePinch.reset();
         mPointerGestureSwipe.reset();
     }
 
-    if (caps & WL_SEAT_CAPABILITY_TOUCH && !mTouch) {
+    if (mCaps & WL_SEAT_CAPABILITY_TOUCH && !mTouch) {
         mTouch.reset(createTouch(this));
 
         if (!mTouchDevice) {
             // TODO number of touchpoints, actual name and ID
             mTouchDevice = new QPointingDevice(
-                        QLatin1String("some touchscreen"), 0, QInputDevice::DeviceType::TouchScreen,
-                        QPointingDevice::PointerType::Finger, QInputDevice::Capability::Position,
-                        MaxTouchPoints, 0, mSeatName, QPointingDeviceUniqueId(), this);
+                    QLatin1StringView("touchscreen"), 0, QInputDevice::DeviceType::TouchScreen,
+                    QPointingDevice::PointerType::Finger, QInputDevice::Capability::Position,
+                    MaxTouchPoints, 0, mSeatName, QPointingDeviceUniqueId(), this);
             QWindowSystemInterface::registerInputDevice(mTouchDevice);
         }
-    } else if (!(caps & WL_SEAT_CAPABILITY_TOUCH) && mTouch) {
+    } else if (!(mCaps & WL_SEAT_CAPABILITY_TOUCH) && mTouch) {
         mTouch.reset();
     }
-}
-
-void QWaylandInputDevice::seat_name(const QString &name)
-{
-    mSeatName = name;
 }
 
 QWaylandInputDevice::Keyboard *QWaylandInputDevice::createKeyboard(QWaylandInputDevice *device)
@@ -473,6 +494,18 @@ void QWaylandInputDevice::setDataDevice(QWaylandDataDevice *device)
 QWaylandDataDevice *QWaylandInputDevice::dataDevice() const
 {
     return mDataDevice;
+}
+#endif
+
+#if QT_CONFIG(clipboard)
+void QWaylandInputDevice::setDataControlDevice(QWaylandDataControlDeviceV1 *dataControlDevice)
+{
+    mDataControlDevice.reset(dataControlDevice);
+}
+
+QWaylandDataControlDeviceV1 *QWaylandInputDevice::dataControlDevice() const
+{
+    return mDataControlDevice.data();
 }
 #endif
 
@@ -609,8 +642,10 @@ void QWaylandInputDevice::setCursor(const QCursor *cursor, const QSharedPointer<
     if (mPointer)
         mPointer->updateCursor();
 
+#if QT_CONFIG(tabletevent)
     if (mTabletSeat)
         mTabletSeat->updateCursor();
+#endif
 }
 #endif
 
@@ -644,10 +679,14 @@ void QWaylandInputDevice::Pointer::pointer_enter(uint32_t serial, struct wl_surf
     connect(mFocus.data(), &QObject::destroyed, this, &Pointer::handleFocusDestroyed);
 
     mSurfacePos = QPointF(wl_fixed_to_double(sx), wl_fixed_to_double(sy));
-    mGlobalPos = window->mapToGlobal(mSurfacePos.toPoint());
+    mGlobalPos = window->mapToGlobalF(mSurfacePos);
 
     mParent->mSerial = serial;
     mEnterSerial = serial;
+
+    if (!mParent->mQDisplay->lastInputDevice()) {
+        mParent->mQDisplay->setLastInputDevice(mParent, serial, window);
+    }
 
 #if QT_CONFIG(cursor)
     // Depends on mEnterSerial being updated
@@ -668,12 +707,12 @@ public:
     {}
 };
 
-void QWaylandInputDevice::Pointer::pointer_leave(uint32_t time, struct wl_surface *surface)
+void QWaylandInputDevice::Pointer::pointer_leave(uint32_t serial, struct wl_surface *surface)
 {
     invalidateFocus();
     mButtons = Qt::NoButton;
 
-    mParent->mTime = time;
+    mParent->mSerial = serial;
 
     // The event may arrive after destroying the window, indicated by
     // a null surface.
@@ -709,9 +748,7 @@ void QWaylandInputDevice::Pointer::pointer_motion(uint32_t time, wl_fixed_t surf
     }
 
     QPointF pos(wl_fixed_to_double(surface_x), wl_fixed_to_double(surface_y));
-    QPointF delta = pos - pos.toPoint();
-    QPointF global = window->mapToGlobal(pos.toPoint());
-    global += delta;
+    QPointF global = window->mapToGlobalF(pos);
 
     mSurfacePos = pos;
     mGlobalPos = global;
@@ -722,7 +759,7 @@ void QWaylandInputDevice::Pointer::pointer_motion(uint32_t time, wl_fixed_t surf
         // We can't know the true position since we're getting events for another surface,
         // so we just set it outside of the window boundaries.
         pos = QPointF(-1, -1);
-        global = grab->mapToGlobal(pos.toPoint());
+        global = grab->mapToGlobalF(pos);
         window = grab;
     }
     setFrameEvent(new MotionEvent(window, time, pos, global, mButtons, mParent->modifiers()));
@@ -804,7 +841,7 @@ void QWaylandInputDevice::Pointer::pointer_button(uint32_t serial, uint32_t time
     QPointF global = mGlobalPos;
     if (grab && grab != focusWindow()) {
         pos = QPointF(-1, -1);
-        global = grab->mapToGlobal(pos.toPoint());
+        global = grab->mapToGlobalF(pos);
 
         window = grab;
     }
@@ -827,6 +864,7 @@ void QWaylandInputDevice::Pointer::invalidateFocus()
 void QWaylandInputDevice::Pointer::releaseButtons()
 {
     setFrameEvent(new ReleaseEvent(nullptr, mParent->mTime, mSurfacePos, mGlobalPos, Qt::NoButton, Qt::NoButton, mParent->modifiers()));
+    flushFrameEvent();
 }
 
 void QWaylandInputDevice::Pointer::leavePointers()
@@ -1163,6 +1201,9 @@ void QWaylandInputDevice::Keyboard::keyboard_keymap(uint32_t format, int32_t fd,
 {
     mKeymapFormat = format;
 #if QT_CONFIG(xkbcommon)
+    if (format == WL_KEYBOARD_KEYMAP_FORMAT_NO_KEYMAP)
+        return;
+
     if (format != WL_KEYBOARD_KEYMAP_FORMAT_XKB_V1) {
         qCWarning(lcQpaWayland) << "unknown keymap format:" << format;
         close(fd);
@@ -1193,9 +1234,9 @@ void QWaylandInputDevice::Keyboard::keyboard_keymap(uint32_t format, int32_t fd,
 #endif
 }
 
-void QWaylandInputDevice::Keyboard::keyboard_enter(uint32_t time, struct wl_surface *surface, struct wl_array *keys)
+void QWaylandInputDevice::Keyboard::keyboard_enter(uint32_t serial, struct wl_surface *surface, struct wl_array *keys)
 {
-    Q_UNUSED(time);
+    Q_UNUSED(serial);
     Q_UNUSED(keys);
 
     if (!surface) {
@@ -1219,9 +1260,9 @@ void QWaylandInputDevice::Keyboard::keyboard_enter(uint32_t time, struct wl_surf
     mParent->mQDisplay->handleKeyboardFocusChanged(mParent);
 }
 
-void QWaylandInputDevice::Keyboard::keyboard_leave(uint32_t time, struct wl_surface *surface)
+void QWaylandInputDevice::Keyboard::keyboard_leave(uint32_t serial, struct wl_surface *surface)
 {
-    Q_UNUSED(time);
+    Q_UNUSED(serial);
 
     if (!surface) {
         // Either a compositor bug, or a race condition with wl_surface.destroy, ignore the event.
@@ -1465,11 +1506,8 @@ void QWaylandInputDevice::handleTouchPoint(int id, QEventPoint::State state, con
             return;
 
         tp.area = QRectF(0, 0, 8, 8);
-        QPointF localPosition = win->mapFromWlSurface(surfacePosition);
-        // TODO: This doesn't account for high dpi scaling for the delta, but at least it matches
-        // what we have for mouse input.
-        QPointF delta = localPosition - localPosition.toPoint();
-        QPointF globalPosition = win->mapToGlobal(localPosition.toPoint()) + delta;
+        const QPointF localPosition = win->mapFromWlSurface(surfacePosition);
+        const QPointF globalPosition = win->mapToGlobalF(localPosition);
         tp.area.moveCenter(globalPosition);
     }
 

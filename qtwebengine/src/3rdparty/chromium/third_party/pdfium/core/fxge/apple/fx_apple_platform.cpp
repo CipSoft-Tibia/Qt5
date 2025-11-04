@@ -9,6 +9,7 @@
 #include <memory>
 #include <utility>
 
+#include "core/fxcrt/compiler_specific.h"
 #include "core/fxcrt/fx_codepage.h"
 #include "core/fxge/cfx_folderfontinfo.h"
 #include "core/fxge/cfx_fontmgr.h"
@@ -126,13 +127,17 @@ void* CFX_MacFontInfo::MapFont(int weight,
 }
 
 bool CFX_MacFontInfo::ParseFontCfg(const char** pUserPaths) {
-  if (!pUserPaths)
+  if (!pUserPaths) {
     return false;
-
-  for (const char** pPath = pUserPaths; *pPath; ++pPath)
-    AddPath(*pPath);
+  }
+  UNSAFE_TODO({
+    for (const char** pPath = pUserPaths; *pPath; ++pPath) {
+      AddPath(*pPath);
+    }
+  });
   return true;
 }
+
 }  // namespace
 
 CApplePlatform::CApplePlatform() = default;
@@ -149,7 +154,7 @@ CApplePlatform::CreateDefaultSystemFontInfo() {
     pInfo->AddPath("/Library/Fonts");
     pInfo->AddPath("/System/Library/Fonts");
   }
-  return std::move(pInfo);
+  return pInfo;
 }
 
 void* CApplePlatform::CreatePlatformFont(

@@ -6,6 +6,7 @@
 
 #include "core/fpdfdoc/cpdf_formcontrol.h"
 
+#include <array>
 #include <iterator>
 #include <utility>
 
@@ -19,11 +20,11 @@
 #include "core/fpdfapi/parser/fpdf_parser_decode.h"
 #include "core/fpdfapi/parser/fpdf_parser_utility.h"
 #include "core/fpdfdoc/cpdf_interactiveform.h"
-#include "third_party/base/check.h"
+#include "core/fxcrt/check.h"
 
 namespace {
 
-constexpr char kHighlightModes[] = {'N', 'I', 'O', 'P', 'T'};
+constexpr std::array<char, 5> kHighlightModes = {{'N', 'I', 'O', 'P', 'T'}};
 
 // Order of |kHighlightModes| must match order of HighlightingMode enum.
 static_assert(kHighlightModes[CPDF_FormControl::kNone] == 'N',
@@ -91,7 +92,7 @@ WideString CPDF_FormControl::GetExportValue() const {
     csOn = pArray->GetByteStringAt(m_pField->GetControlIndex(this));
   if (csOn.IsEmpty())
     csOn = "Yes";
-  return PDF_DecodeText(csOn.raw_span());
+  return PDF_DecodeText(csOn.unsigned_span());
 }
 
 bool CPDF_FormControl::IsChecked() const {
@@ -131,8 +132,9 @@ CPDF_FormControl::HighlightingMode CPDF_FormControl::GetHighlightingMode()
   ByteString csH = m_pWidgetDict->GetByteStringFor("H", "I");
   for (size_t i = 0; i < std::size(kHighlightModes); ++i) {
     // TODO(tsepez): disambiguate string ctors.
-    if (csH == ByteStringView(kHighlightModes[i]))
-      return static_cast<HighlightingMode>(i);
+      if (csH == ByteStringView(kHighlightModes[i])) {
+        return static_cast<HighlightingMode>(i);
+      }
   }
   return kInvert;
 }
@@ -192,10 +194,10 @@ CPDF_DefaultAppearance CPDF_FormControl::GetDefaultAppearance() const {
   return m_pForm->GetDefaultAppearance();
 }
 
-absl::optional<WideString> CPDF_FormControl::GetDefaultControlFontName() const {
+std::optional<WideString> CPDF_FormControl::GetDefaultControlFontName() const {
   RetainPtr<CPDF_Font> pFont = GetDefaultControlFont();
   if (!pFont)
-    return absl::nullopt;
+    return std::nullopt;
 
   return WideString::FromDefANSI(pFont->GetBaseFontName().AsStringView());
 }
@@ -203,7 +205,7 @@ absl::optional<WideString> CPDF_FormControl::GetDefaultControlFontName() const {
 RetainPtr<CPDF_Font> CPDF_FormControl::GetDefaultControlFont() const {
   float fFontSize;
   CPDF_DefaultAppearance cDA = GetDefaultAppearance();
-  absl::optional<ByteString> csFontNameTag = cDA.GetFont(&fFontSize);
+  std::optional<ByteString> csFontNameTag = cDA.GetFont(&fFontSize);
   if (!csFontNameTag.has_value() || csFontNameTag->IsEmpty())
     return nullptr;
 

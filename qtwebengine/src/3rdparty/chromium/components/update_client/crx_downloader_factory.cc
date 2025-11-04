@@ -4,6 +4,9 @@
 
 #include "components/update_client/crx_downloader_factory.h"
 
+#include <cstdint>
+#include <optional>
+
 #include "base/files/file_path.h"
 #include "base/memory/scoped_refptr.h"
 #include "base/task/sequenced_task_runner.h"
@@ -13,14 +16,11 @@
 #include "components/update_client/network.h"
 #include "components/update_client/task_traits.h"
 #include "components/update_client/url_fetcher_downloader.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 
 #if BUILDFLAG(IS_WIN)
 #include "components/update_client/background_downloader_win.h"
 #elif BUILDFLAG(IS_MAC)
-#include "base/feature_list.h"
 #include "components/update_client/background_downloader_mac.h"
-#include "components/update_client/features.h"
 #endif
 
 namespace update_client {
@@ -30,7 +30,7 @@ class CrxDownloaderFactoryChromium : public CrxDownloaderFactory {
  public:
   explicit CrxDownloaderFactoryChromium(
       scoped_refptr<NetworkFetcherFactory> network_fetcher_factory,
-      absl::optional<base::FilePath> background_downloader_cache_path)
+      std::optional<base::FilePath> background_downloader_cache_path)
       : network_fetcher_factory_(network_fetcher_factory) {
 #if BUILDFLAG(IS_MAC)
     if (background_downloader_cache_path) {
@@ -63,15 +63,11 @@ scoped_refptr<CrxDownloader> CrxDownloaderFactoryChromium::MakeCrxDownloader(
   scoped_refptr<CrxDownloader> url_fetcher_downloader =
       base::MakeRefCounted<UrlFetcherDownloader>(nullptr,
                                                  network_fetcher_factory_);
-
   if (background_download_enabled) {
 #if BUILDFLAG(IS_MAC)
-    if (background_downloader_shared_session_ &&
-        base::FeatureList::IsEnabled(features::kBackgroundCrxDownloaderMac)) {
-      return base::MakeRefCounted<BackgroundDownloader>(
-          url_fetcher_downloader, background_downloader_shared_session_,
-          background_sequence_);
-    }
+    return base::MakeRefCounted<BackgroundDownloader>(
+        url_fetcher_downloader, background_downloader_shared_session_,
+        background_sequence_);
 #elif BUILDFLAG(IS_WIN)
     return base::MakeRefCounted<BackgroundDownloader>(url_fetcher_downloader);
 #endif
@@ -84,7 +80,7 @@ scoped_refptr<CrxDownloader> CrxDownloaderFactoryChromium::MakeCrxDownloader(
 
 scoped_refptr<CrxDownloaderFactory> MakeCrxDownloaderFactory(
     scoped_refptr<NetworkFetcherFactory> network_fetcher_factory,
-    absl::optional<base::FilePath> background_downloader_cache_path) {
+    std::optional<base::FilePath> background_downloader_cache_path) {
   return base::MakeRefCounted<CrxDownloaderFactoryChromium>(
       network_fetcher_factory, background_downloader_cache_path);
 }

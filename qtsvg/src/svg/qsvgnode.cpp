@@ -3,6 +3,7 @@
 
 #include "qsvgnode_p.h"
 #include "qsvgtinydocument_p.h"
+#include "qsvggraphics_p.h"
 
 #include <QLoggingCategory>
 #include<QElapsedTimer>
@@ -15,9 +16,9 @@
 
 QT_BEGIN_NAMESPACE
 
-Q_DECLARE_LOGGING_CATEGORY(lcSvgDraw);
-
-Q_LOGGING_CATEGORY(lcSvgTiming, "qt.svg.timing")
+#ifndef QT_NO_DEBUG
+Q_STATIC_LOGGING_CATEGORY(lcSvgTiming, "qt.svg.timing")
+#endif
 
 #if !defined(QT_SVG_SIZE_LIMIT)
 #  define QT_SVG_SIZE_LIMIT QT_RASTER_COORD_LIMIT
@@ -43,6 +44,7 @@ void QSvgNode::draw(QPainter *p, QSvgExtraStates &states)
 
     if (shouldDrawNode(p, states)) {
         applyStyle(p, states);
+        applyAnimatedStyle(p, states);
         QSvgNode *maskNode = this->hasMask() ? document()->namedNode(this->maskId()) : nullptr;
         QSvgFilterContainer *filterNode = this->hasFilter() ? static_cast<QSvgFilterContainer*>(document()->namedNode(this->filterId()))
                                                             : nullptr;
@@ -66,7 +68,7 @@ void QSvgNode::draw(QPainter *p, QSvgExtraStates &states)
             QRectF boundsRect;
             QImage mask = static_cast<QSvgMask*>(maskNode)->createMask(p, states, this, &boundsRect);
             drawWithMask(p, states, mask, boundsRect.toRect());
-        } else if (!qFuzzyCompare(p->opacity(), 1.0) && requiresGroupRendering()) {
+        } else if (!qFuzzyCompare(p->opacity(), qreal(1.0)) && requiresGroupRendering()) {
             QTransform xf = p->transform();
             p->resetTransform();
 
@@ -88,6 +90,7 @@ void QSvgNode::draw(QPainter *p, QSvgExtraStates &states)
                 drawCommand(p, states);
 
         }
+        revertAnimatedStyle(p ,states);
         revertStyle(p, states);
     }
 
@@ -225,14 +228,6 @@ void QSvgNode::appendStyleProperty(QSvgStyleProperty *prop, const QString &id)
     case QSvgStyleProperty::TRANSFORM:
         m_style.transform = static_cast<QSvgTransformStyle*>(prop);
         break;
-    case QSvgStyleProperty::ANIMATE_COLOR:
-        m_style.animateColors.append(
-            static_cast<QSvgAnimateColor*>(prop));
-        break;
-    case QSvgStyleProperty::ANIMATE_TRANSFORM:
-        m_style.animateTransforms.append(
-            static_cast<QSvgAnimateTransform*>(prop));
-        break;
     case QSvgStyleProperty::OPACITY:
         m_style.opacity = static_cast<QSvgOpacityStyle*>(prop);
         break;
@@ -278,6 +273,18 @@ void QSvgNode::revertStyleRecursive(QPainter *p, QSvgExtraStates &states) const
         parent()->revertStyleRecursive(p, states);
 }
 
+void QSvgNode::applyAnimatedStyle(QPainter *p, QSvgExtraStates &states) const
+{
+    if (document()->animated())
+        m_animatedStyle.apply(p, this, states);
+}
+
+void QSvgNode::revertAnimatedStyle(QPainter *p, QSvgExtraStates &states) const
+{
+    if (document()->animated())
+        m_animatedStyle.revert(p, states);
+}
+
 QSvgStyleProperty * QSvgNode::styleProperty(QSvgStyleProperty::Type type) const
 {
     const QSvgNode *node = this;
@@ -318,14 +325,6 @@ QSvgStyleProperty * QSvgNode::styleProperty(QSvgStyleProperty::Type type) const
         case QSvgStyleProperty::TRANSFORM:
             if (node->m_style.transform)
                 return node->m_style.transform;
-            break;
-        case QSvgStyleProperty::ANIMATE_COLOR:
-            if (!node->m_style.animateColors.isEmpty())
-                return node->m_style.animateColors.first();
-            break;
-        case QSvgStyleProperty::ANIMATE_TRANSFORM:
-            if (!node->m_style.animateTransforms.isEmpty())
-                return node->m_style.animateTransforms.first();
             break;
         case QSvgStyleProperty::OPACITY:
             if (node->m_style.opacity)
@@ -401,7 +400,8 @@ QString QSvgNode::typeName() const
         case Group: return QStringLiteral("g");
         case Defs: return QStringLiteral("defs");
         case Switch: return QStringLiteral("switch");
-        case Animation: return QStringLiteral("animation");
+        case AnimateColor: return QStringLiteral("animateColor");
+        case AnimateTransform: return QStringLiteral("animateTransform");
         case Circle: return QStringLiteral("circle");
         case Ellipse: return QStringLiteral("ellipse");
         case Image: return QStringLiteral("image");
@@ -427,6 +427,7 @@ QString QSvgNode::typeName() const
         case FeOffset: return QStringLiteral("feOffset");
         case FeComposite: return QStringLiteral("feComposite");
         case FeFlood: return QStringLiteral("feFlood");
+        case FeBlend: return QStringLiteral("feBlend");
         case FeUnsupported: return QStringLiteral("feUnsupported");
     }
     return QStringLiteral("unknown");

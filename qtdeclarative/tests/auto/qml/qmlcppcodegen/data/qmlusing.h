@@ -134,6 +134,7 @@ public:
     UsingUserValue val() const { return m_val; }
     void setVal(const UsingUserValue &val)
     {
+        ++m_setValCalls;
         if (val == m_val)
             return;
 
@@ -145,12 +146,16 @@ public:
     Q_INVOKABLE void setB(myInt32 b) { m_b = b; }
     Q_INVOKABLE void setB(const QString &) { m_b = 101; }
 
+    int setValCalls() const { return m_setValCalls; }
+
 signals:
     void aChanged();
     void uChanged();
     void valChanged();
 
 private:
+    int m_setValCalls = 0;
+
     myInt32 m_a = 7;
     myInt32 m_b = 5;
     myUInt32 m_u = 9;

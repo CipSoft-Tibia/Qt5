@@ -11,39 +11,38 @@ import {applyMatrixToPoint, parseHexa} from './highlight_common.js';
  * There are 12 different types of arrows for labels.
  *
  * The first word in an arrow type corresponds to the side of the label
- * container the arrow is on (e.g. 'left' means the arrow is on the left side of
+ * container the arrow is on (e.g. 'LEFT' means the arrow is on the left side of
  * the container).
  *
- * The second word defines where, along that side, the arrow is (e.g. 'top' in
- * a 'leftTop' type means the arrow is at the top of the left side of the
+ * The second word defines where, along that side, the arrow is (e.g. 'TOP' in
+ * a 'LEFT_TOP' type means the arrow is at the top of the left side of the
  * container).
  *
  * Here are 2 examples to illustrate:
  *
- *              +----+
- * rightMid:    |     >
- *              +----+
+ *               +----+
+ * RIGHT_MID:    |     >
+ *               +----+
  *
- *              +----+
- * bottomRight: |    |
- *              +--  +
- *                  \|
+ *               +----+
+ * BOTTOM_RIGHT: |    |
+ *               +--  +
+ *                   \|
  */
-// eslint-disable-next-line @typescript-eslint/naming-convention
-const GridArrowTypes = {
-  leftTop: 'left-top',
-  leftMid: 'left-mid',
-  leftBottom: 'left-bottom',
-  topLeft: 'top-left',
-  topMid: 'top-mid',
-  topRight: 'top-right',
-  rightTop: 'right-top',
-  rightMid: 'right-mid',
-  rightBottom: 'right-bottom',
-  bottomLeft: 'bottom-left',
-  bottomMid: 'bottom-mid',
-  bottomRight: 'bottom-right',
-};
+const enum GridArrowType {
+  LEFT_TOP = 'left-top',
+  LEFT_MID = 'left-mid',
+  LEFT_BOTTOM = 'left-bottom',
+  TOP_LEFT = 'top-left',
+  TOP_MID = 'top-mid',
+  TOP_RIGHT = 'top-right',
+  RIGHT_TOP = 'right-top',
+  RIGHT_MID = 'right-mid',
+  RIGHT_BOTTOM = 'right-bottom',
+  BOTTOM_LEFT = 'bottom-left',
+  BOTTOM_MID = 'bottom-mid',
+  BOTTOM_RIGHT = 'bottom-right',
+}
 
 // The size (in px) of a label arrow.
 const gridArrowWidth = 3;
@@ -444,7 +443,7 @@ export function drawGridTrackSizes(
     }
 
     let arrowType = adaptArrowTypeForWritingMode(
-        direction === 'column' ? GridArrowTypes.bottomMid : GridArrowTypes.rightMid, writingMode);
+        direction === 'column' ? GridArrowType.BOTTOM_MID : GridArrowType.RIGHT_MID, writingMode);
     arrowType = flipArrowTypeIfNeeded(arrowType, flipIn);
 
     placeLineLabel(element, arrowType, point.x, point.y, labelSize, emulationScaleFactor);
@@ -590,11 +589,11 @@ function placePositiveRowLabel(
     element.classList.add('inner-shared-corner');
   }
 
-  let arrowType = adaptArrowTypeForWritingMode(GridArrowTypes.rightMid, writingMode);
+  let arrowType = adaptArrowTypeForWritingMode(GridArrowType.RIGHT_MID, writingMode);
   if (isTooCloseToViewportStart || isAtSharedStartCorner) {
-    arrowType = adaptArrowTypeForWritingMode(GridArrowTypes.rightTop, writingMode);
+    arrowType = adaptArrowTypeForWritingMode(GridArrowType.RIGHT_TOP, writingMode);
   } else if (isTooCloseToViewportEnd || isAtSharedEndCorner) {
-    arrowType = adaptArrowTypeForWritingMode(GridArrowTypes.rightBottom, writingMode);
+    arrowType = adaptArrowTypeForWritingMode(GridArrowType.RIGHT_BOTTOM, writingMode);
   }
   arrowType = flipArrowTypeIfNeeded(arrowType, flipIn);
 
@@ -622,11 +621,11 @@ function placeNegativeRowLabel(
     element.classList.add('inner-shared-corner');
   }
 
-  let arrowType = adaptArrowTypeForWritingMode(GridArrowTypes.leftMid, writingMode);
+  let arrowType = adaptArrowTypeForWritingMode(GridArrowType.LEFT_MID, writingMode);
   if (isTooCloseToViewportStart || isAtSharedStartCorner) {
-    arrowType = adaptArrowTypeForWritingMode(GridArrowTypes.leftTop, writingMode);
+    arrowType = adaptArrowTypeForWritingMode(GridArrowType.LEFT_TOP, writingMode);
   } else if (isTooCloseToViewportEnd || isAtSharedEndCorner) {
-    arrowType = adaptArrowTypeForWritingMode(GridArrowTypes.leftBottom, writingMode);
+    arrowType = adaptArrowTypeForWritingMode(GridArrowType.LEFT_BOTTOM, writingMode);
   }
   arrowType = flipArrowTypeIfNeeded(arrowType, flipIn);
 
@@ -655,11 +654,11 @@ function placePositiveColumnLabel(
     element.classList.add('inner-shared-corner');
   }
 
-  let arrowType = adaptArrowTypeForWritingMode(GridArrowTypes.bottomMid, writingMode);
+  let arrowType = adaptArrowTypeForWritingMode(GridArrowType.BOTTOM_MID, writingMode);
   if (isTooCloseToViewportStart) {
-    arrowType = adaptArrowTypeForWritingMode(GridArrowTypes.bottomLeft, writingMode);
+    arrowType = adaptArrowTypeForWritingMode(GridArrowType.BOTTOM_LEFT, writingMode);
   } else if (isTooCloseToViewportEnd) {
-    arrowType = adaptArrowTypeForWritingMode(GridArrowTypes.bottomRight, writingMode);
+    arrowType = adaptArrowTypeForWritingMode(GridArrowType.BOTTOM_RIGHT, writingMode);
   }
 
   arrowType = flipArrowTypeIfNeeded(arrowType, flipIn);
@@ -689,11 +688,11 @@ function placeNegativeColumnLabel(
     element.classList.add('inner-shared-corner');
   }
 
-  let arrowType = adaptArrowTypeForWritingMode(GridArrowTypes.topMid, writingMode);
+  let arrowType = adaptArrowTypeForWritingMode(GridArrowType.TOP_MID, writingMode);
   if (isTooCloseToViewportStart) {
-    arrowType = adaptArrowTypeForWritingMode(GridArrowTypes.topLeft, writingMode);
+    arrowType = adaptArrowTypeForWritingMode(GridArrowType.TOP_LEFT, writingMode);
   } else if (isTooCloseToViewportEnd) {
-    arrowType = adaptArrowTypeForWritingMode(GridArrowTypes.topRight, writingMode);
+    arrowType = adaptArrowTypeForWritingMode(GridArrowType.TOP_RIGHT, writingMode);
   }
   arrowType = flipArrowTypeIfNeeded(arrowType, flipIn);
 
@@ -767,36 +766,36 @@ function getAdjustedLabelWidth(element: HTMLElement) {
  * |                  +------+   |
  *  -----------------------------
  */
-function flipArrowTypeIfNeeded(arrowType: string, flipIn: boolean): string {
+function flipArrowTypeIfNeeded(arrowType: GridArrowType, flipIn: boolean): GridArrowType {
   if (!flipIn) {
     return arrowType;
   }
 
   switch (arrowType) {
-    case GridArrowTypes.leftTop:
-      return GridArrowTypes.rightTop;
-    case GridArrowTypes.leftMid:
-      return GridArrowTypes.rightMid;
-    case GridArrowTypes.leftBottom:
-      return GridArrowTypes.rightBottom;
-    case GridArrowTypes.rightTop:
-      return GridArrowTypes.leftTop;
-    case GridArrowTypes.rightMid:
-      return GridArrowTypes.leftMid;
-    case GridArrowTypes.rightBottom:
-      return GridArrowTypes.leftBottom;
-    case GridArrowTypes.topLeft:
-      return GridArrowTypes.bottomLeft;
-    case GridArrowTypes.topMid:
-      return GridArrowTypes.bottomMid;
-    case GridArrowTypes.topRight:
-      return GridArrowTypes.bottomRight;
-    case GridArrowTypes.bottomLeft:
-      return GridArrowTypes.topLeft;
-    case GridArrowTypes.bottomMid:
-      return GridArrowTypes.topMid;
-    case GridArrowTypes.bottomRight:
-      return GridArrowTypes.topRight;
+    case GridArrowType.LEFT_TOP:
+      return GridArrowType.RIGHT_TOP;
+    case GridArrowType.LEFT_MID:
+      return GridArrowType.RIGHT_MID;
+    case GridArrowType.LEFT_BOTTOM:
+      return GridArrowType.RIGHT_BOTTOM;
+    case GridArrowType.RIGHT_TOP:
+      return GridArrowType.LEFT_TOP;
+    case GridArrowType.RIGHT_MID:
+      return GridArrowType.LEFT_MID;
+    case GridArrowType.RIGHT_BOTTOM:
+      return GridArrowType.LEFT_BOTTOM;
+    case GridArrowType.TOP_LEFT:
+      return GridArrowType.BOTTOM_LEFT;
+    case GridArrowType.TOP_MID:
+      return GridArrowType.BOTTOM_MID;
+    case GridArrowType.TOP_RIGHT:
+      return GridArrowType.BOTTOM_RIGHT;
+    case GridArrowType.BOTTOM_LEFT:
+      return GridArrowType.TOP_LEFT;
+    case GridArrowType.BOTTOM_MID:
+      return GridArrowType.TOP_MID;
+    case GridArrowType.BOTTOM_RIGHT:
+      return GridArrowType.TOP_RIGHT;
   }
 
   return arrowType;
@@ -806,62 +805,62 @@ function flipArrowTypeIfNeeded(arrowType: string, flipIn: boolean): string {
  * Given an arrow type for the standard horizontal-tb writing-mode, return the corresponding type for a differnet
  * writing-mode.
  */
-function adaptArrowTypeForWritingMode(arrowType: string, writingMode: string): string {
+function adaptArrowTypeForWritingMode(arrowType: GridArrowType, writingMode: string): GridArrowType {
   if (writingMode === 'vertical-lr') {
     switch (arrowType) {
-      case GridArrowTypes.leftTop:
-        return GridArrowTypes.topLeft;
-      case GridArrowTypes.leftMid:
-        return GridArrowTypes.topMid;
-      case GridArrowTypes.leftBottom:
-        return GridArrowTypes.topRight;
-      case GridArrowTypes.topLeft:
-        return GridArrowTypes.leftTop;
-      case GridArrowTypes.topMid:
-        return GridArrowTypes.leftMid;
-      case GridArrowTypes.topRight:
-        return GridArrowTypes.leftBottom;
-      case GridArrowTypes.rightTop:
-        return GridArrowTypes.bottomRight;
-      case GridArrowTypes.rightMid:
-        return GridArrowTypes.bottomMid;
-      case GridArrowTypes.rightBottom:
-        return GridArrowTypes.bottomLeft;
-      case GridArrowTypes.bottomLeft:
-        return GridArrowTypes.rightTop;
-      case GridArrowTypes.bottomMid:
-        return GridArrowTypes.rightMid;
-      case GridArrowTypes.bottomRight:
-        return GridArrowTypes.rightBottom;
+      case GridArrowType.LEFT_TOP:
+        return GridArrowType.TOP_LEFT;
+      case GridArrowType.LEFT_MID:
+        return GridArrowType.TOP_MID;
+      case GridArrowType.LEFT_BOTTOM:
+        return GridArrowType.TOP_RIGHT;
+      case GridArrowType.TOP_LEFT:
+        return GridArrowType.LEFT_TOP;
+      case GridArrowType.TOP_MID:
+        return GridArrowType.LEFT_MID;
+      case GridArrowType.TOP_RIGHT:
+        return GridArrowType.LEFT_BOTTOM;
+      case GridArrowType.RIGHT_TOP:
+        return GridArrowType.BOTTOM_RIGHT;
+      case GridArrowType.RIGHT_MID:
+        return GridArrowType.BOTTOM_MID;
+      case GridArrowType.RIGHT_BOTTOM:
+        return GridArrowType.BOTTOM_LEFT;
+      case GridArrowType.BOTTOM_LEFT:
+        return GridArrowType.RIGHT_TOP;
+      case GridArrowType.BOTTOM_MID:
+        return GridArrowType.RIGHT_MID;
+      case GridArrowType.BOTTOM_RIGHT:
+        return GridArrowType.RIGHT_BOTTOM;
     }
   }
 
   if (writingMode === 'vertical-rl') {
     switch (arrowType) {
-      case GridArrowTypes.leftTop:
-        return GridArrowTypes.topRight;
-      case GridArrowTypes.leftMid:
-        return GridArrowTypes.topMid;
-      case GridArrowTypes.leftBottom:
-        return GridArrowTypes.topLeft;
-      case GridArrowTypes.topLeft:
-        return GridArrowTypes.rightTop;
-      case GridArrowTypes.topMid:
-        return GridArrowTypes.rightMid;
-      case GridArrowTypes.topRight:
-        return GridArrowTypes.rightBottom;
-      case GridArrowTypes.rightTop:
-        return GridArrowTypes.bottomRight;
-      case GridArrowTypes.rightMid:
-        return GridArrowTypes.bottomMid;
-      case GridArrowTypes.rightBottom:
-        return GridArrowTypes.bottomLeft;
-      case GridArrowTypes.bottomLeft:
-        return GridArrowTypes.leftTop;
-      case GridArrowTypes.bottomMid:
-        return GridArrowTypes.leftMid;
-      case GridArrowTypes.bottomRight:
-        return GridArrowTypes.leftBottom;
+      case GridArrowType.LEFT_TOP:
+        return GridArrowType.TOP_RIGHT;
+      case GridArrowType.LEFT_MID:
+        return GridArrowType.TOP_MID;
+      case GridArrowType.LEFT_BOTTOM:
+        return GridArrowType.TOP_LEFT;
+      case GridArrowType.TOP_LEFT:
+        return GridArrowType.RIGHT_TOP;
+      case GridArrowType.TOP_MID:
+        return GridArrowType.RIGHT_MID;
+      case GridArrowType.TOP_RIGHT:
+        return GridArrowType.RIGHT_BOTTOM;
+      case GridArrowType.RIGHT_TOP:
+        return GridArrowType.BOTTOM_RIGHT;
+      case GridArrowType.RIGHT_MID:
+        return GridArrowType.BOTTOM_MID;
+      case GridArrowType.RIGHT_BOTTOM:
+        return GridArrowType.BOTTOM_LEFT;
+      case GridArrowType.BOTTOM_LEFT:
+        return GridArrowType.LEFT_TOP;
+      case GridArrowType.BOTTOM_MID:
+        return GridArrowType.LEFT_MID;
+      case GridArrowType.BOTTOM_RIGHT:
+        return GridArrowType.LEFT_BOTTOM;
     }
   }
 
@@ -880,51 +879,51 @@ function getLabelPositionByArrowType(
   x *= emulationScaleFactor;
   y *= emulationScaleFactor;
   switch (arrowType) {
-    case GridArrowTypes.leftTop:
+    case GridArrowType.LEFT_TOP:
       contentTop = y;
       contentLeft = x + gridArrowWidth;
       break;
-    case GridArrowTypes.leftMid:
+    case GridArrowType.LEFT_MID:
       contentTop = y - (labelHeight / 2);
       contentLeft = x + gridArrowWidth;
       break;
-    case GridArrowTypes.leftBottom:
+    case GridArrowType.LEFT_BOTTOM:
       contentTop = y - labelHeight;
       contentLeft = x + gridArrowWidth;
       break;
-    case GridArrowTypes.rightTop:
+    case GridArrowType.RIGHT_TOP:
       contentTop = y;
       contentLeft = x - gridArrowWidth - labelWidth;
       break;
-    case GridArrowTypes.rightMid:
+    case GridArrowType.RIGHT_MID:
       contentTop = y - (labelHeight / 2);
       contentLeft = x - gridArrowWidth - labelWidth;
       break;
-    case GridArrowTypes.rightBottom:
+    case GridArrowType.RIGHT_BOTTOM:
       contentTop = y - labelHeight;
       contentLeft = x - labelWidth - gridArrowWidth;
       break;
-    case GridArrowTypes.topLeft:
+    case GridArrowType.TOP_LEFT:
       contentTop = y + gridArrowWidth;
       contentLeft = x;
       break;
-    case GridArrowTypes.topMid:
+    case GridArrowType.TOP_MID:
       contentTop = y + gridArrowWidth;
       contentLeft = x - (labelWidth / 2);
       break;
-    case GridArrowTypes.topRight:
+    case GridArrowType.TOP_RIGHT:
       contentTop = y + gridArrowWidth;
       contentLeft = x - labelWidth;
       break;
-    case GridArrowTypes.bottomLeft:
+    case GridArrowType.BOTTOM_LEFT:
       contentTop = y - gridArrowWidth - labelHeight;
       contentLeft = x;
       break;
-    case GridArrowTypes.bottomMid:
+    case GridArrowType.BOTTOM_MID:
       contentTop = y - gridArrowWidth - labelHeight;
       contentLeft = x - (labelWidth / 2);
       break;
-    case GridArrowTypes.bottomRight:
+    case GridArrowType.BOTTOM_RIGHT:
       contentTop = y - gridArrowWidth - labelHeight;
       contentLeft = x - labelWidth;
       break;

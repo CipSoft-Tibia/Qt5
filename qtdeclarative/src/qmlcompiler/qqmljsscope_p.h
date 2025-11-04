@@ -168,6 +168,7 @@ public:
         Structured = 0x1000,
         ExtensionIsJavaScript = 0x2000,
         EnforcesScopedEnums = 0x4000,
+        FileRootComponent = 0x8000,
         AssignedToUnknownProperty = 0x10000,
     };
     Q_DECLARE_FLAGS(Flags, Flag)
@@ -424,6 +425,9 @@ public:
 
     bool isStructured() const;
     void setStructuredFlag(bool v) { m_flags.setFlag(Structured, v); }
+
+    bool isFileRootComponent() const { return m_flags.testFlag(FileRootComponent); }
+    void setIsRootFileComponentFlag(bool v) { m_flags.setFlag(FileRootComponent, v); }
 
     void setAccessSemantics(AccessSemantics semantics) { m_semantics = semantics; }
     AccessSemantics accessSemantics() const { return m_semantics; }

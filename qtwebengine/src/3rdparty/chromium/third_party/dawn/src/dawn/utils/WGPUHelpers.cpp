@@ -41,17 +41,6 @@
 #include "spirv-tools/optimizer.hpp"
 #endif
 
-namespace {
-std::array<float, 12> kYuvToRGBMatrixBT709 = {1.164384f, 0.0f,       1.792741f,  -0.972945f,
-                                              1.164384f, -0.213249f, -0.532909f, 0.301483f,
-                                              1.164384f, 2.112402f,  0.0f,       -1.133402f};
-std::array<float, 9> kGamutConversionMatrixBT709ToSrgb = {1.0f, 0.0f, 0.0f, 0.0f, 1.0f,
-                                                          0.0f, 0.0f, 0.0f, 1.0f};
-std::array<float, 7> kGammaDecodeBT709 = {2.2, 1.0 / 1.099, 0.099 / 1.099, 1 / 4.5, 0.081,
-                                          0.0, 0.0};
-std::array<float, 7> kGammaEncodeSrgb = {1 / 2.4, 1.137119, 0.0, 12.92, 0.0031308, -0.055, 0.0};
-}  // namespace
-
 namespace dawn::utils {
 #if TINT_BUILD_SPV_READER
 wgpu::ShaderModule CreateShaderModuleFromASM(
@@ -72,7 +61,7 @@ wgpu::ShaderModule CreateShaderModuleFromASM(
         DAWN_ASSERT(spirv != nullptr);
         DAWN_ASSERT(spirv->wordCount <= std::numeric_limits<uint32_t>::max());
 
-        wgpu::ShaderModuleSPIRVDescriptor spirvDesc;
+        wgpu::ShaderSourceSPIRV spirvDesc;
         spirvDesc.codeSize = static_cast<uint32_t>(spirv->wordCount);
         spirvDesc.code = spirv->code;
         spirvDesc.nextInChain = spirv_options;
@@ -96,7 +85,7 @@ wgpu::ShaderModule CreateShaderModuleFromASM(
 #endif
 
 wgpu::ShaderModule CreateShaderModule(const wgpu::Device& device, const char* source) {
-    wgpu::ShaderModuleWGSLDescriptor wgslDesc;
+    wgpu::ShaderSourceWGSL wgslDesc;
     wgslDesc.code = source;
     wgpu::ShaderModuleDescriptor descriptor;
     descriptor.nextInChain = &wgslDesc;
@@ -349,6 +338,7 @@ BindingLayoutEntryInitializationHelper::BindingLayoutEntryInitializationHelper(
     storageTexture.viewDimension = textureViewDimension;
 }
 
+#ifndef __EMSCRIPTEN__
 // ExternalTextureBindingLayout never contains data, so just make one that can be reused instead
 // of declaring a new one every time it's needed.
 wgpu::ExternalTextureBindingLayout kExternalTextureBindingLayout = {};
@@ -362,6 +352,14 @@ BindingLayoutEntryInitializationHelper::BindingLayoutEntryInitializationHelper(
     nextInChain = bindingLayout;
 }
 
+BindingInitializationHelper::BindingInitializationHelper(
+    uint32_t binding,
+    const wgpu::ExternalTexture& externalTexture)
+    : binding(binding) {
+    externalTextureBindingEntry.externalTexture = externalTexture;
+}
+#endif  // __EMSCRIPTEN__
+
 BindingLayoutEntryInitializationHelper::BindingLayoutEntryInitializationHelper(
     const wgpu::BindGroupLayoutEntry& entry)
     : wgpu::BindGroupLayoutEntry(entry) {}
@@ -373,13 +371,6 @@ BindingInitializationHelper::BindingInitializationHelper(uint32_t binding,
 BindingInitializationHelper::BindingInitializationHelper(uint32_t binding,
                                                          const wgpu::TextureView& textureView)
     : binding(binding), textureView(textureView) {}
-
-BindingInitializationHelper::BindingInitializationHelper(
-    uint32_t binding,
-    const wgpu::ExternalTexture& externalTexture)
-    : binding(binding) {
-    externalTextureBindingEntry.externalTexture = externalTexture;
-}
 
 BindingInitializationHelper::BindingInitializationHelper(uint32_t binding,
                                                          const wgpu::Buffer& buffer,
@@ -401,9 +392,11 @@ wgpu::BindGroupEntry BindingInitializationHelper::GetAsBinding() const {
     result.buffer = buffer;
     result.offset = offset;
     result.size = size;
+#ifndef __EMSCRIPTEN__
     if (externalTextureBindingEntry.externalTexture != nullptr) {
         result.nextInChain = &externalTextureBindingEntry;
     }
+#endif  // __EMSCRIPTEN__
 
     return result;
 }
@@ -427,12 +420,57 @@ wgpu::BindGroup MakeBindGroup(
 
 ColorSpaceConversionInfo GetYUVBT709ToRGBSRGBColorSpaceConversionInfo() {
     ColorSpaceConversionInfo info;
-    info.yuvToRgbConversionMatrix = kYuvToRGBMatrixBT709;
-    info.gamutConversionMatrix = kGamutConversionMatrixBT709ToSrgb;
-    info.srcTransferFunctionParameters = kGammaDecodeBT709;
-    info.dstTransferFunctionParameters = kGammaEncodeSrgb;
+    info.yuvToRgbConversionMatrix = {1.164384f, 0.0f,       1.792741f,  -0.972945f,
+                                     1.164384f, -0.213249f, -0.532909f, 0.301483f,
+                                     1.164384f, 2.112402f,  0.0f,       -1.133402f};
+    info.gamutConversionMatrix = {1.0f, 0.0f, 0.0f,  //
+                                  0.0f, 1.0f, 0.0f,  //
+                                  0.0f, 0.0f, 1.0f};
+    info.srcTransferFunctionParameters = {2.2, 1.0 / 1.099, 0.099 / 1.099, 1 / 4.5, 0.081,
+                                          0.0, 0.0};
+    info.dstTransferFunctionParameters = {1 / 2.4, 1.137119, 0.0, 12.92, 0.0031308, -0.055, 0.0};
+    return info;
+}
+
+ColorSpaceConversionInfo GetNoopRGBColorSpaceConversionInfo() {
+    ColorSpaceConversionInfo info;
+
+    // YUV to RGB is not used as the data is RGB.
+    info.yuvToRgbConversionMatrix = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+    // Identity gamut conversion matrix.
+    info.gamutConversionMatrix = {1.0f, 0.0f, 0.0f,  //
+                                  0.0f, 1.0f, 0.0f,  //
+                                  0.0f, 0.0f, 1.0f};
+
+    // Set A = G = 1 and everything else to 0 to turn the code below into pow(x, 1) which is x
+    //
+    //    if (abs(v) < params.D) {
+    //        return sign(v) * (params.C * abs(v) + params.F);
+    //    }
+    //    return pow(A * x + B, G) + E
+    //
+    // Note that for some reason the order of the data is G A B C D E F
+    info.srcTransferFunctionParameters = {1, 1, 0, 0, 0, 0, 0};
+    info.dstTransferFunctionParameters = {1, 1, 0, 0, 0, 0, 0};
 
     return info;
+}
+
+bool BackendRequiresCompat(wgpu::BackendType backend) {
+    switch (backend) {
+        case wgpu::BackendType::D3D12:
+        case wgpu::BackendType::Metal:
+        case wgpu::BackendType::Vulkan:
+        case wgpu::BackendType::WebGPU:
+        case wgpu::BackendType::Null:
+            return false;
+        case wgpu::BackendType::D3D11:
+        case wgpu::BackendType::OpenGL:
+        case wgpu::BackendType::OpenGLES:
+            return true;
+        case wgpu::BackendType::Undefined:
+            DAWN_UNREACHABLE();
+    }
 }
 
 }  // namespace dawn::utils

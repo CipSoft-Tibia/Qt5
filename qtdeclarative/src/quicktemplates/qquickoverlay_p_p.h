@@ -27,7 +27,7 @@ QT_BEGIN_NAMESPACE
 class QQuickPopup;
 
 class Q_AUTOTEST_EXPORT QQuickOverlayPrivate : public QQuickItemPrivate,
-                                               public QQuickItemChangeListener
+                                               public QSafeQuickItemChangeListener<QQuickOverlayPrivate>
 {
 public:
     Q_DECLARE_PUBLIC(QQuickOverlay)

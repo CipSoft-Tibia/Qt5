@@ -11,8 +11,10 @@
 #include <vector>
 
 #include <openssl/base.h>
+#include <openssl/span.h>
 
-namespace bssl::string_util {
+BSSL_NAMESPACE_BEGIN
+namespace string_util {
 
 // Returns true if the characters in |str| are all ASCII, false otherwise.
 OPENSSL_EXPORT bool IsAscii(std::string_view str);
@@ -45,8 +47,8 @@ OPENSSL_EXPORT bool StartsWith(std::string_view str, std::string_view prefix);
 // Compares |str1| and |suffix|. Returns true if |str1| ends with |suffix|.
 OPENSSL_EXPORT bool EndsWith(std::string_view str, std::string_view suffix);
 
-// Returns a hexadecimal string encoding |data| of length |length|.
-OPENSSL_EXPORT std::string HexEncode(const uint8_t *data, size_t length);
+// Returns a hexadecimal string encoding |data|.
+OPENSSL_EXPORT std::string HexEncode(Span<const uint8_t> data);
 
 // Returns a decimal string representation of |i|.
 OPENSSL_EXPORT std::string NumberToDecimalString(int i);
@@ -69,6 +71,7 @@ OPENSSL_EXPORT bool Base64Encode(const std::string_view &input,
 OPENSSL_EXPORT bool Base64Decode(const std::string_view &input,
                                  std::string *output);
 
-}  // namespace bssl::string_util
+}  // namespace string_util
+BSSL_NAMESPACE_END
 
 #endif  // BSSL_PKI_STRING_UTIL_H_

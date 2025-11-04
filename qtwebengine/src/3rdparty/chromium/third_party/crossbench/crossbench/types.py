@@ -4,9 +4,9 @@
 
 from __future__ import annotations
 
-from typing import Union, Dict, List, Tuple
+from typing import Dict, List, Tuple, Union
 
-JSON = Union["JsonDict", "JsonList", "JsonTuple", str, int, float, bool, None]
-JsonDict = Dict[str, "JSON"]
-JsonList = List["JSON"]
-JsonTuple = Tuple["JSON"]
+Json = Union["JsonDict", "JsonList", "JsonTuple", str, int, float, bool, None]
+JsonDict = Dict[str, Json]
+JsonList = List[Json]
+JsonTuple = Tuple[Json, ...]

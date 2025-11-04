@@ -82,6 +82,8 @@ const WrapperTypeInfo ${class_name}::wrapper_type_info_body_{
     nullptr,
     "${class_name}",
     nullptr,  // parent_class
+    kDOMWrappersTag,
+    kDOMWrappersTag,
     WrapperTypeInfo::kWrapperTypeNoPrototype,
     WrapperTypeInfo::kObjectClassId,
     WrapperTypeInfo::kNotInheritFromActiveScriptWrappable,
@@ -129,7 +131,7 @@ def make_constructors(cg_context):
     func_decl = CxxFuncDeclNode(
         name=cg_context.class_name,
         arg_decls=[
-            "ScriptWrappable* platform_object",
+            "GarbageCollectedMixin* platform_object",
             "SetAlgorithmCallback set_algorithm_callback",
             "DeleteAlgorithmCallback delete_algorithm_callback",
         ],
@@ -138,7 +140,7 @@ def make_constructors(cg_context):
     func_def = CxxFuncDefNode(
         name=cg_context.class_name,
         arg_decls=[
-            "ScriptWrappable* platform_object",
+            "GarbageCollectedMixin* platform_object",
             "SetAlgorithmCallback set_algorithm_callback",
             "DeleteAlgorithmCallback delete_algorithm_callback",
         ],
@@ -225,6 +227,7 @@ def make_handler_template_function(cg_context):
           "${per_isolate_data}->FindV8Template(${world}, template_key);"),
         CxxLikelyIfNode(
             cond="!v8_template.IsEmpty()",
+            attribute=None,
             body=T("return v8_template.As<v8::FunctionTemplate>();")),
         EmptyNode(),
         T("v8::Local<v8::FunctionTemplate> constructor_template = "
@@ -437,18 +440,25 @@ def generate_observable_array(observable_array_identifier):
     header_node.accumulator.add_include_headers([
         component_export_header(api_component, for_testing),
         "third_party/blink/renderer/bindings/core/v8/idl_types.h",
-        "third_party/blink/renderer/bindings/core/v8/observable_array.h",
+        "third_party/blink/renderer/platform/bindings/observable_array.h",
     ])
     source_node.accumulator.add_include_headers([
         "third_party/blink/renderer/bindings/core/v8/generated_code_helper.h",
         "third_party/blink/renderer/bindings/core/v8/observable_array_exotic_object_handler.h",
         "third_party/blink/renderer/platform/bindings/v8_binding.h",
     ])
-    (header_forward_decls, header_include_headers, source_forward_decls,
-     source_include_headers) = collect_forward_decls_and_include_headers(
-         [observable_array.element_type])
+    (
+        header_forward_decls,
+        header_include_headers,
+        header_stdcpp_include_headers,
+        source_forward_decls,
+        source_include_headers,
+    ) = collect_forward_decls_and_include_headers(
+        [observable_array.element_type])
     header_node.accumulator.add_class_decls(header_forward_decls)
     header_node.accumulator.add_include_headers(header_include_headers)
+    header_node.accumulator.add_stdcpp_include_headers(
+        header_stdcpp_include_headers)
     source_node.accumulator.add_class_decls(source_forward_decls)
     source_node.accumulator.add_include_headers(source_include_headers)
 
@@ -469,7 +479,8 @@ def generate_observable_array(observable_array_identifier):
 
     class_def.public_section.append(
         TextNode("using SetAlgorithmCallback = "
-                 "void (ScriptWrappable::*)("
+                 "void (*)("
+                 "GarbageCollectedMixin* platform_object, "
                  "ScriptState* script_state, "
                  "{}& observable_array, "
                  "size_type index, "
@@ -478,7 +489,8 @@ def generate_observable_array(observable_array_identifier):
                      cg_context.class_name)))
     class_def.public_section.append(
         TextNode("using DeleteAlgorithmCallback = "
-                 "void (ScriptWrappable::*)("
+                 "void (*)("
+                 "GarbageCollectedMixin* platform_object, "
                  "ScriptState* script_state, "
                  "{}& observable_array, "
                  "size_type index, "

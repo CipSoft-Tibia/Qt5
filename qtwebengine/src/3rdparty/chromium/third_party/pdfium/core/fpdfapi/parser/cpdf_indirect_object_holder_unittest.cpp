@@ -7,9 +7,9 @@
 #include "core/fpdfapi/parser/cpdf_array.h"
 #include "core/fpdfapi/parser/cpdf_dictionary.h"
 #include "core/fpdfapi/parser/cpdf_null.h"
+#include "core/fxcrt/check.h"
 #include "testing/gmock/include/gmock/gmock.h"
 #include "testing/gtest/include/gtest/gtest.h"
-#include "third_party/base/check.h"
 
 namespace {
 
@@ -18,7 +18,7 @@ class MockIndirectObjectHolder final : public CPDF_IndirectObjectHolder {
   MockIndirectObjectHolder() = default;
   ~MockIndirectObjectHolder() override = default;
 
-  MOCK_METHOD1(ParseIndirectObject, RetainPtr<CPDF_Object>(uint32_t objnum));
+  MOCK_METHOD(RetainPtr<CPDF_Object>, ParseIndirectObject, (uint32_t objnum));
 };
 
 }  // namespace

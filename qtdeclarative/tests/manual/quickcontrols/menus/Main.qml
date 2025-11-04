@@ -315,11 +315,6 @@ ApplicationWindow {
     }
 
     TapHandler {
-        objectName: "backgroundMouseTapHandler"
-        acceptedButtons: Qt.RightButton
-        onPressedChanged: if (pressed) backgroundContextMenu.popup()
-    }
-    TapHandler {
         objectName: "backgroundTouchTapHandler"
         acceptedDevices: PointerDevice.TouchScreen
         onLongPressed: backgroundContextMenu.popup()
@@ -341,7 +336,7 @@ ApplicationWindow {
         onTriggered: print("triggered \"" + text + "\"")
     }
 
-    Menu {
+    contentItem.ContextMenu.menu: Menu {
         id: backgroundContextMenu
         objectName: "backgroundContextMenu"
         popupType: popupTypeCombo.popupType()

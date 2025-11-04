@@ -140,10 +140,11 @@ class QuicIntervalDequePeer;
 template <class T, class C = quiche::QuicheCircularDeque<T>>
 class QUICHE_NO_EXPORT QuicIntervalDeque {
  public:
+  // `Iterator` satisfies the requirements for LegacyRandomAccessIterator
+  // for efficient std::lower_bound() calls.
   class QUICHE_NO_EXPORT Iterator {
    public:
-    // Used by |std::lower_bound|
-    using iterator_category = std::forward_iterator_tag;
+    using iterator_category = std::random_access_iterator_tag;
     using value_type = T;
     using difference_type = std::ptrdiff_t;
     using pointer = T*;
@@ -157,12 +158,13 @@ class QUICHE_NO_EXPORT QuicIntervalDeque {
     Iterator(std::size_t index, QuicIntervalDeque* deque)
         : index_(index), deque_(deque) {}
     // Only the ++ operator attempts to update the cached index. Other operators
-    // are used by |lower_bound| to binary search and are thus private.
+    // are used by |lower_bound| to binary search.
     Iterator& operator++() {
       // Don't increment when we are at the end.
       const std::size_t container_size = deque_->container_.size();
       if (index_ >= container_size) {
-        QUIC_BUG(quic_bug_10862_1) << "Iterator out of bounds.";
+        QUIC_BUG(QuicIntervalDeque_operator_plus_plus_iterator_out_of_bounds)
+            << "Iterator out of bounds.";
         return *this;
       }
       index_++;
@@ -185,32 +187,41 @@ class QUICHE_NO_EXPORT QuicIntervalDeque {
       ++(*this);
       return copy;
     }
-    reference operator*() { return *&deque_->container_[index_]; }
-    reference operator*() const { return *&deque_->container_[index_]; }
+    Iterator& operator--() {
+      if (index_ == 0) {
+        QUIC_BUG(QuicIntervalDeque_operator_minus_minus_iterator_out_of_bounds)
+            << "Iterator out of bounds.";
+        return *this;
+      }
+      index_--;
+      return *this;
+    }
+    Iterator operator--(int) {
+      Iterator copy = *this;
+      --(*this);
+      return copy;
+    }
+    reference operator*() { return deque_->container_[index_]; }
+    reference operator*() const { return deque_->container_[index_]; }
     pointer operator->() { return &deque_->container_[index_]; }
     bool operator==(const Iterator& rhs) const {
       return index_ == rhs.index_ && deque_ == rhs.deque_;
     }
     bool operator!=(const Iterator& rhs) const { return !(*this == rhs); }
-
-   private:
-    // A set of private operators for |std::lower_bound|
-    Iterator operator+(difference_type amount) const {
-      Iterator copy = *this;
-      copy.index_ += amount;
-      QUICHE_DCHECK(copy.index_ < copy.deque_->Size());
-      return copy;
-    }
     Iterator& operator+=(difference_type amount) {
+      // `amount` might be negative, check for underflow.
+      QUICHE_DCHECK_GE(static_cast<difference_type>(index_), -amount);
       index_ += amount;
-      QUICHE_DCHECK(index_ < deque_->Size());
+      QUICHE_DCHECK_LT(index_, deque_->Size());
       return *this;
     }
+    Iterator& operator-=(difference_type amount) { return operator+=(-amount); }
     difference_type operator-(const Iterator& rhs) const {
       return static_cast<difference_type>(index_) -
              static_cast<difference_type>(rhs.index_);
     }
 
+   private:
     // |index_| is the index of the item in |*deque_|.
     std::size_t index_;
     // |deque_| is a pointer to the container the iterator came from.
@@ -278,7 +289,8 @@ void QuicIntervalDeque<T, C>::PushBack(const T& item) {
 template <class T, class C>
 void QuicIntervalDeque<T, C>::PopFront() {
   if (container_.size() == 0) {
-    QUIC_BUG(quic_bug_10862_2) << "Trying to pop from an empty container.";
+    QUIC_BUG(QuicIntervalDeque_PopFront_empty)
+        << "Trying to pop from an empty container.";
     return;
   }
   container_.pop_front();
@@ -361,7 +373,7 @@ void QuicIntervalDeque<T, C>::PushBackUniversal(U&& item) {
   QuicInterval<std::size_t> interval = item.interval();
   // Adding an empty interval is a bug.
   if (interval.Empty()) {
-    QUIC_BUG(quic_bug_10862_3)
+    QUIC_BUG(QuicIntervalDeque_PushBackUniversal_empty)
         << "Trying to save empty interval to quiche::QuicheCircularDeque.";
     return;
   }

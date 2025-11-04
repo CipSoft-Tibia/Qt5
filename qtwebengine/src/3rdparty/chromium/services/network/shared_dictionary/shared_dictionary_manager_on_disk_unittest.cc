@@ -4,10 +4,12 @@
 
 #include "services/network/shared_dictionary/shared_dictionary_manager_on_disk.h"
 
+#include "base/feature_list.h"
 #include "base/files/file_path.h"
 #include "base/files/file_util.h"
 #include "base/files/scoped_temp_dir.h"
 #include "base/functional/callback.h"
+#include "base/memory/ref_counted.h"
 #include "base/strings/strcat.h"
 #include "base/strings/string_number_conversions.h"
 #include "base/strings/stringprintf.h"
@@ -27,7 +29,9 @@
 #include "net/disk_cache/disk_cache_test_util.h"
 #include "net/extras/shared_dictionary/shared_dictionary_info.h"
 #include "net/http/http_response_headers.h"
-#include "services/network/shared_dictionary/shared_dictionary.h"
+#include "net/shared_dictionary/shared_dictionary.h"
+#include "services/network/public/cpp/features.h"
+#include "services/network/public/mojom/shared_dictionary_error.mojom.h"
 #include "services/network/shared_dictionary/shared_dictionary_constants.h"
 #include "services/network/shared_dictionary/shared_dictionary_disk_cache.h"
 #include "services/network/shared_dictionary/shared_dictionary_manager_on_disk.h"
@@ -54,6 +58,10 @@ const net::SchemefulSite kSite(kUrl);
 const std::string kTestData1 = "Hello world";
 const std::string kTestData2 = "Bonjour le monde";
 
+// Default cache control header for dictionary entries which expires in 30 days.
+const std::string kDefaultCacheControlHeader =
+    "cache-control: max-age=2592000\n";
+
 const int kCurrentVersionNumber = 1;
 
 base::OnceCallback<bool()> DummyAccessAllowedCheckCallback() {
@@ -64,35 +72,54 @@ void WriteDictionary(SharedDictionaryStorage* storage,
                      const GURL& dictionary_url,
                      const std::string& match,
                      const std::string& data) {
+  const std::string use_as_dictionary_header =
+      base::StrCat({"match=\"/", match, "\""});
   scoped_refptr<net::HttpResponseHeaders> headers =
       net::HttpResponseHeaders::TryToCreate(base::StrCat(
           {"HTTP/1.1 200 OK\n", shared_dictionary::kUseAsDictionaryHeaderName,
-           ": match=\"/", match, "\"\n\n"}));
+           ": ", use_as_dictionary_header, "\n", kDefaultCacheControlHeader,
+           "\n"}));
   ASSERT_TRUE(headers);
-  scoped_refptr<SharedDictionaryWriter> writer = storage->MaybeCreateWriter(
-      dictionary_url, base::Time::Now(), *headers,
-      /*was_fetched_via_cache=*/false, DummyAccessAllowedCheckCallback());
-  ASSERT_TRUE(writer);
-  writer->Append(data.c_str(), data.size());
-  writer->Finish();
+  base::expected<scoped_refptr<SharedDictionaryWriter>,
+                 mojom::SharedDictionaryError>
+      writer = SharedDictionaryStorage::MaybeCreateWriter(
+          use_as_dictionary_header, /*shared_dictionary_writer_enabled=*/true,
+          storage, mojom::RequestMode::kSameOrigin,
+          mojom::FetchResponseType::kBasic, dictionary_url,
+          /*request_time=*/base::Time::Now(),
+          /*response_time=*/base::Time::Now(), *headers,
+          /*was_fetched_via_cache=*/false, DummyAccessAllowedCheckCallback());
+  ASSERT_TRUE(writer.has_value());
+  ASSERT_TRUE(*writer);
+  (*writer)->Append(data.c_str(), data.size());
+  (*writer)->Finish();
 }
 void WriteDictionaryWithExpiry(SharedDictionaryStorage* storage,
                                const GURL& dictionary_url,
                                const std::string& match,
                                const base::TimeDelta& expires,
                                const std::string& data) {
+  const std::string use_as_dictionary_header =
+      base::StrCat({"match=\"/", match, "\""});
   scoped_refptr<net::HttpResponseHeaders> headers =
       net::HttpResponseHeaders::TryToCreate(base::StrCat(
           {"HTTP/1.1 200 OK\n", shared_dictionary::kUseAsDictionaryHeaderName,
-           ": match=\"/", match,
-           "\", expires=", base::NumberToString(expires.InSeconds()), "\n\n"}));
+           ":", use_as_dictionary_header, "\n", "cache-control: max-age=",
+           base::NumberToString(expires.InSeconds()), "\n\n"}));
   ASSERT_TRUE(headers);
-  scoped_refptr<SharedDictionaryWriter> writer = storage->MaybeCreateWriter(
-      dictionary_url, base::Time::Now(), *headers,
-      /*was_fetched_via_cache=*/false, DummyAccessAllowedCheckCallback());
-  ASSERT_TRUE(writer);
-  writer->Append(data.c_str(), data.size());
-  writer->Finish();
+  base::expected<scoped_refptr<SharedDictionaryWriter>,
+                 mojom::SharedDictionaryError>
+      writer = SharedDictionaryStorage::MaybeCreateWriter(
+          use_as_dictionary_header, /*shared_dictionary_writer_enabled=*/true,
+          storage, mojom::RequestMode::kSameOrigin,
+          mojom::FetchResponseType::kBasic, dictionary_url,
+          /*request_time=*/base::Time::Now(),
+          /*response_time=*/base::Time::Now(), *headers,
+          /*was_fetched_via_cache=*/false, DummyAccessAllowedCheckCallback());
+  ASSERT_TRUE(writer.has_value());
+  ASSERT_TRUE(*writer);
+  (*writer)->Append(data.c_str(), data.size());
+  (*writer)->Finish();
 }
 
 bool DiskCacheEntryExists(SharedDictionaryManager* manager,
@@ -149,18 +176,6 @@ void WriteDiskCacheEntry(SharedDictionaryManager* manager,
           write_callback.callback(), /*truncate=*/false)));
 }
 
-base::UnguessableToken GetDiskCacheKeyTokenOfFirstDictionary(
-    const std::map<url::SchemeHostPort,
-                   std::map<std::string, net::SharedDictionaryInfo>>&
-        dictionary_map,
-    const std::string& scheme_host_port_str) {
-  auto it =
-      dictionary_map.find(url::SchemeHostPort(GURL(scheme_host_port_str)));
-  CHECK(it != dictionary_map.end()) << scheme_host_port_str;
-  CHECK(!it->second.empty());
-  return it->second.begin()->second.disk_cache_key_token();
-}
-
 }  // namespace
 
 class SharedDictionaryManagerOnDiskTest : public ::testing::Test {
@@ -182,6 +197,20 @@ class SharedDictionaryManagerOnDiskTest : public ::testing::Test {
   void TearDown() override { FlushCacheTasks(); }
 
  protected:
+  static base::UnguessableToken GetDiskCacheKeyTokenOfFirstDictionary(
+      const std::map<
+          url::SchemeHostPort,
+          std::map<std::tuple<std::string, std::set<mojom::RequestDestination>>,
+                   SharedDictionaryStorageOnDisk::WrappedDictionaryInfo>>&
+          dictionary_map,
+      const std::string& scheme_host_port_str) {
+    auto it =
+        dictionary_map.find(url::SchemeHostPort(GURL(scheme_host_port_str)));
+    CHECK(it != dictionary_map.end()) << scheme_host_port_str;
+    CHECK(!it->second.empty());
+    return it->second.begin()->second.disk_cache_key_token();
+  }
+
   std::unique_ptr<SharedDictionaryManager> CreateSharedDictionaryManager(
       uint64_t cache_max_size = 0,
       uint64_t cache_max_count =
@@ -193,8 +222,10 @@ class SharedDictionaryManagerOnDiskTest : public ::testing::Test {
 #endif  // BUILDFLAG(IS_ANDROID)
         /*file_operations_factory=*/nullptr);
   }
-  const std::map<url::SchemeHostPort,
-                 std::map<std::string, net::SharedDictionaryInfo>>&
+  const std::map<
+      url::SchemeHostPort,
+      std::map<std::tuple<std::string, std::set<mojom::RequestDestination>>,
+               SharedDictionaryStorageOnDisk::WrappedDictionaryInfo>>&
   GetOnDiskDictionaryMap(SharedDictionaryStorage* storage) {
     return static_cast<SharedDictionaryStorageOnDisk*>(storage)
         ->GetDictionaryMapForTesting();
@@ -227,7 +258,7 @@ class SharedDictionaryManagerOnDiskTest : public ::testing::Test {
     ASSERT_TRUE(meta_table.Init(db.get(), kCurrentVersionNumber,
                                 kCurrentVersionNumber));
     for (const std::string& query : queries) {
-      ASSERT_TRUE(db->Execute(query.c_str()));
+      ASSERT_TRUE(db->Execute(query));
     }
     db->Close();
   }
@@ -259,8 +290,9 @@ TEST_F(SharedDictionaryManagerOnDiskTest, ReusingRefCountedSharedDictionary) {
   FlushCacheTasks();
 
   // Check the returned dictionary from GetDictionarySync().
-  std::unique_ptr<SharedDictionary> dict1 =
-      storage->GetDictionarySync(GURL("https://origin.test/testfile?1"));
+  scoped_refptr<net::SharedDictionary> dict1 =
+      storage->GetDictionarySync(GURL("https://origin.test/testfile?1"),
+                                 mojom::RequestDestination::kEmpty);
   ASSERT_TRUE(dict1);
   {
     base::RunLoop run_loop;
@@ -271,13 +303,14 @@ TEST_F(SharedDictionaryManagerOnDiskTest, ReusingRefCountedSharedDictionary) {
               })));
     run_loop.Run();
   }
-  std::unique_ptr<SharedDictionary> dict2 =
-      storage->GetDictionarySync(GURL("https://origin.test/testfile?2"));
+  scoped_refptr<net::SharedDictionary> dict2 =
+      storage->GetDictionarySync(GURL("https://origin.test/testfile?2"),
+                                 mojom::RequestDestination::kEmpty);
   ASSERT_TRUE(dict2);
   // `dict2` shares the same RefCountedSharedDictionary with `dict1`. So
   // ReadAll() must synchronously return OK.
   EXPECT_EQ(net::OK, dict2->ReadAll(base::BindLambdaForTesting(
-                         [&](int rv) { NOTREACHED(); })));
+                         [&](int rv) { NOTREACHED_IN_MIGRATION(); })));
   // `dict2` shares the same IOBuffer with `dict1`.
   EXPECT_EQ(dict1->data(), dict2->data());
   EXPECT_EQ(dict1->size(), dict2->size());
@@ -299,17 +332,28 @@ TEST_F(SharedDictionaryManagerOnDiskTest,
 
   manager.reset();
 
+  const std::string use_as_dictionary_header =
+      base::StrCat({"match=\"/testfile*\""});
   scoped_refptr<net::HttpResponseHeaders> headers =
       net::HttpResponseHeaders::TryToCreate(base::StrCat(
           {"HTTP/1.1 200 OK\n", shared_dictionary::kUseAsDictionaryHeaderName,
-           ": match=\"/testfile*\"\n\n"}));
+           ": ", use_as_dictionary_header, "\n", kDefaultCacheControlHeader,
+           "\n"}));
   ASSERT_TRUE(headers);
 
   // MaybeCreateWriter() must return nullptr, after `manager` was deleted.
-  scoped_refptr<SharedDictionaryWriter> writer = storage->MaybeCreateWriter(
-      GURL("https://origin.test/dict"), base::Time::Now(), *headers,
-      /*was_fetched_via_cache=*/false, DummyAccessAllowedCheckCallback());
-  EXPECT_FALSE(writer);
+  base::expected<scoped_refptr<SharedDictionaryWriter>,
+                 mojom::SharedDictionaryError>
+      writer = SharedDictionaryStorage::MaybeCreateWriter(
+          use_as_dictionary_header, /*shared_dictionary_writer_enabled=*/true,
+          storage.get(), mojom::RequestMode::kSameOrigin,
+          mojom::FetchResponseType::kBasic, GURL("https://origin.test/dict"),
+          /*request_time=*/base::Time::Now(),
+          /*response_time=*/base::Time::Now(), *headers,
+          /*was_fetched_via_cache=*/false, DummyAccessAllowedCheckCallback());
+  EXPECT_FALSE(writer.has_value());
+  EXPECT_EQ(mojom::SharedDictionaryError::kWriteErrorShuttingDown,
+            writer.error());
 }
 
 TEST_F(SharedDictionaryManagerOnDiskTest, GetDictionaryAfterManagerDeleted) {
@@ -324,8 +368,9 @@ TEST_F(SharedDictionaryManagerOnDiskTest, GetDictionaryAfterManagerDeleted) {
   manager.reset();
 
   // GetDictionarySync() must return nullptr, after `manager` was deleted.
-  std::unique_ptr<SharedDictionary> dict =
-      storage->GetDictionarySync(GURL("https://origin.test/testfile?1"));
+  scoped_refptr<net::SharedDictionary> dict =
+      storage->GetDictionarySync(GURL("https://origin.test/testfile?1"),
+                                 mojom::RequestDestination::kEmpty);
   EXPECT_FALSE(dict);
 }
 
@@ -371,8 +416,8 @@ TEST_F(SharedDictionaryManagerOnDiskTest, OverridingDictionary) {
   }
 
   // Check the returned dictionary from GetDictionarySync().
-  std::unique_ptr<SharedDictionary> dict1 =
-      storage->GetDictionarySync(GURL("https://origin.test/testfile"));
+  scoped_refptr<net::SharedDictionary> dict1 = storage->GetDictionarySync(
+      GURL("https://origin.test/testfile"), mojom::RequestDestination::kEmpty);
   ASSERT_TRUE(dict1);
 
   // The disk cache entry must exist.
@@ -398,8 +443,8 @@ TEST_F(SharedDictionaryManagerOnDiskTest, OverridingDictionary) {
   // The disk cache entry should have been doomed.
   EXPECT_FALSE(DiskCacheEntryExists(manager.get(), disk_cache_key_token1));
 
-  std::unique_ptr<SharedDictionary> dict2 =
-      storage->GetDictionarySync(GURL("https://origin.test/testfile"));
+  scoped_refptr<net::SharedDictionary> dict2 = storage->GetDictionarySync(
+      GURL("https://origin.test/testfile"), mojom::RequestDestination::kEmpty);
   ASSERT_TRUE(dict2);
 
   // We can read the new dictionary from `dict2`.
@@ -439,12 +484,14 @@ TEST_F(SharedDictionaryManagerOnDiskTest, MultipleDictionaries) {
 
     FlushCacheTasks();
 
-    std::unique_ptr<SharedDictionary> dict1 =
-        storage->GetDictionarySync(GURL("https://origin.test/testfile1"));
+    scoped_refptr<net::SharedDictionary> dict1 =
+        storage->GetDictionarySync(GURL("https://origin.test/testfile1"),
+                                   mojom::RequestDestination::kEmpty);
     ASSERT_TRUE(dict1);
 
-    std::unique_ptr<SharedDictionary> dict2 =
-        storage->GetDictionarySync(GURL("https://origin.test/testfile2"));
+    scoped_refptr<net::SharedDictionary> dict2 =
+        storage->GetDictionarySync(GURL("https://origin.test/testfile2"),
+                                   mojom::RequestDestination::kEmpty);
     ASSERT_TRUE(dict2);
 
     net::TestCompletionCallback read_callback1;
@@ -479,12 +526,12 @@ TEST_F(SharedDictionaryManagerOnDiskTest, MultipleDictionaries) {
   ASSERT_EQ(1u, dictionary_map.size());
   ASSERT_EQ(2u, dictionary_map.begin()->second.size());
 
-  std::unique_ptr<SharedDictionary> dict1 =
-      storage->GetDictionarySync(GURL("https://origin.test/testfile1"));
+  scoped_refptr<net::SharedDictionary> dict1 = storage->GetDictionarySync(
+      GURL("https://origin.test/testfile1"), mojom::RequestDestination::kEmpty);
   ASSERT_TRUE(dict1);
 
-  std::unique_ptr<SharedDictionary> dict2 =
-      storage->GetDictionarySync(GURL("https://origin.test/testfile2"));
+  scoped_refptr<net::SharedDictionary> dict2 = storage->GetDictionarySync(
+      GURL("https://origin.test/testfile2"), mojom::RequestDestination::kEmpty);
   ASSERT_TRUE(dict2);
 
   net::TestCompletionCallback read_callback1;
@@ -530,14 +577,15 @@ TEST_F(SharedDictionaryManagerOnDiskTest, GetDictionary) {
       manager->GetStorage(isolation_key);
   ASSERT_TRUE(storage);
 
-  EXPECT_FALSE(
-      storage->GetDictionarySync(GURL("https://origin.test/testfile")));
-  std::unique_ptr<SharedDictionary> dict;
-  storage->GetDictionary(GURL("https://origin.test/testfile"),
-                         base::BindLambdaForTesting(
-                             [&](std::unique_ptr<SharedDictionary> dictionary) {
-                               dict = std::move(dictionary);
-                             }));
+  EXPECT_FALSE(storage->GetDictionarySync(GURL("https://origin.test/testfile"),
+                                          mojom::RequestDestination::kEmpty));
+  scoped_refptr<net::SharedDictionary> dict;
+  storage->GetDictionary(
+      GURL("https://origin.test/testfile"), mojom::RequestDestination::kEmpty,
+      base::BindLambdaForTesting(
+          [&](scoped_refptr<net::SharedDictionary> dictionary) {
+            dict = std::move(dictionary);
+          }));
   EXPECT_FALSE(dict);
 
   // RunUntilIdle() to load from the database.
@@ -623,8 +671,9 @@ TEST_F(SharedDictionaryManagerOnDiskTest, CorruptedDiskCacheAndGetData) {
       ASSERT_EQ(1u, dictionary_map.begin()->second.size());
     }
 
-    std::unique_ptr<SharedDictionary> dict =
-        storage->GetDictionarySync(GURL("https://origin.test/testfile1"));
+    scoped_refptr<net::SharedDictionary> dict =
+        storage->GetDictionarySync(GURL("https://origin.test/testfile1"),
+                                   mojom::RequestDestination::kEmpty);
     ASSERT_TRUE(dict);
 
     // Reading the dictionary should fail because the disk cache is broken.
@@ -637,7 +686,8 @@ TEST_F(SharedDictionaryManagerOnDiskTest, CorruptedDiskCacheAndGetData) {
     // After failing to read the disk cache entry, MismatchingEntryDeletionTask
     // cleans all dictionary in the metadata store.
     EXPECT_FALSE(
-        storage->GetDictionarySync(GURL("https://origin.test/testfile1")));
+        storage->GetDictionarySync(GURL("https://origin.test/testfile1"),
+                                   mojom::RequestDestination::kEmpty));
     EXPECT_TRUE(GetOnDiskDictionaryMap(storage.get()).empty());
   }
 }
@@ -695,8 +745,9 @@ TEST_F(SharedDictionaryManagerOnDiskTest, CorruptedDatabase) {
     FlushCacheTasks();
     EXPECT_FALSE(GetOnDiskDictionaryMap(storage.get()).empty());
 
-    std::unique_ptr<SharedDictionary> dict =
-        storage->GetDictionarySync(GURL("https://origin.test/testfile"));
+    scoped_refptr<net::SharedDictionary> dict =
+        storage->GetDictionarySync(GURL("https://origin.test/testfile"),
+                                   mojom::RequestDestination::kEmpty);
     ASSERT_TRUE(dict);
 
     // We can read the new dictionary.
@@ -824,16 +875,18 @@ TEST_F(SharedDictionaryManagerOnDiskTest, LastUsedTime) {
     // Move the clock forward by 1 second.
     task_environment_.FastForwardBy(base::Seconds(1));
 
-    std::unique_ptr<SharedDictionary> dict1 =
-        storage->GetDictionarySync(GURL("https://origin.test/testfile?1"));
+    scoped_refptr<net::SharedDictionary> dict1 =
+        storage->GetDictionarySync(GURL("https://origin.test/testfile?1"),
+                                   mojom::RequestDestination::kEmpty);
     base::Time last_used_time_after_first_get_dict =
         dictionary_map.begin()->second.begin()->second.last_used_time();
 
     // Move the clock forward by 1 second.
     task_environment_.FastForwardBy(base::Seconds(1));
 
-    std::unique_ptr<SharedDictionary> dict2 =
-        storage->GetDictionarySync(GURL("https://origin.test/testfile?2"));
+    scoped_refptr<net::SharedDictionary> dict2 =
+        storage->GetDictionarySync(GURL("https://origin.test/testfile?2"),
+                                   mojom::RequestDestination::kEmpty);
     last_used_time_after_second_get_dict =
         dictionary_map.begin()->second.begin()->second.last_used_time();
     EXPECT_NE(initial_last_used_time, last_used_time_after_first_get_dict);
@@ -908,8 +961,8 @@ TEST_F(SharedDictionaryManagerOnDiskTest, ClearData) {
     task_environment_.FastForwardBy(base::Hours(12));
 
     // Get a dictionary before calling ClearData().
-    std::unique_ptr<SharedDictionary> dict =
-        storage->GetDictionarySync(GURL("https://target.test/p3?"));
+    scoped_refptr<net::SharedDictionary> dict = storage->GetDictionarySync(
+        GURL("https://target.test/p3?"), mojom::RequestDestination::kEmpty);
     ASSERT_TRUE(dict);
 
     base::RunLoop run_loop;
@@ -928,13 +981,23 @@ TEST_F(SharedDictionaryManagerOnDiskTest, ClearData) {
         ElementsAre(
             Pair(url::SchemeHostPort(GURL("https://origin.test/")),
                  ElementsAre(
-                     Pair("/p1*", DictionaryUrlIs("https://origin.test/1")),
-                     Pair("/p2*", DictionaryUrlIs("https://origin.test/2")),
-                     Pair("/p3*", DictionaryUrlIs("https://origin.test/3")))),
+                     Pair(std::make_tuple(
+                              "/p1*", std::set<mojom::RequestDestination>()),
+                          DictionaryUrlIs("https://origin.test/1")),
+                     Pair(std::make_tuple(
+                              "/p2*", std::set<mojom::RequestDestination>()),
+                          DictionaryUrlIs("https://origin.test/2")),
+                     Pair(std::make_tuple(
+                              "/p3*", std::set<mojom::RequestDestination>()),
+                          DictionaryUrlIs("https://origin.test/3")))),
             Pair(url::SchemeHostPort(GURL("https://target.test/")),
                  ElementsAre(
-                     Pair("/p1*", DictionaryUrlIs("https://target.test/1")),
-                     Pair("/p4*", DictionaryUrlIs("https://target.test/4"))))));
+                     Pair(std::make_tuple(
+                              "/p1*", std::set<mojom::RequestDestination>()),
+                          DictionaryUrlIs("https://target.test/1")),
+                     Pair(std::make_tuple(
+                              "/p4*", std::set<mojom::RequestDestination>()),
+                          DictionaryUrlIs("https://target.test/4"))))));
 
     // We can still read the deleted dictionary from `dict`.
     net::TestCompletionCallback read_callback;
@@ -964,13 +1027,23 @@ TEST_F(SharedDictionaryManagerOnDiskTest, ClearData) {
       ElementsAre(
           Pair(url::SchemeHostPort(GURL("https://origin.test/")),
                ElementsAre(
-                   Pair("/p1*", DictionaryUrlIs("https://origin.test/1")),
-                   Pair("/p2*", DictionaryUrlIs("https://origin.test/2")),
-                   Pair("/p3*", DictionaryUrlIs("https://origin.test/3")))),
+                   Pair(std::make_tuple("/p1*",
+                                        std::set<mojom::RequestDestination>()),
+                        DictionaryUrlIs("https://origin.test/1")),
+                   Pair(std::make_tuple("/p2*",
+                                        std::set<mojom::RequestDestination>()),
+                        DictionaryUrlIs("https://origin.test/2")),
+                   Pair(std::make_tuple("/p3*",
+                                        std::set<mojom::RequestDestination>()),
+                        DictionaryUrlIs("https://origin.test/3")))),
           Pair(url::SchemeHostPort(GURL("https://target.test/")),
                ElementsAre(
-                   Pair("/p1*", DictionaryUrlIs("https://target.test/1")),
-                   Pair("/p4*", DictionaryUrlIs("https://target.test/4"))))));
+                   Pair(std::make_tuple("/p1*",
+                                        std::set<mojom::RequestDestination>()),
+                        DictionaryUrlIs("https://target.test/1")),
+                   Pair(std::make_tuple("/p4*",
+                                        std::set<mojom::RequestDestination>()),
+                        DictionaryUrlIs("https://target.test/4"))))));
 }
 
 TEST_F(SharedDictionaryManagerOnDiskTest, ClearDataSerializedOperation) {
@@ -990,12 +1063,16 @@ TEST_F(SharedDictionaryManagerOnDiskTest, ClearDataSerializedOperation) {
   EXPECT_THAT(
       GetOnDiskDictionaryMap(storage.get()),
       ElementsAre(
-          Pair(url::SchemeHostPort(GURL("https://target1.test/")),
-               ElementsAre(
-                   Pair("/p*", DictionaryUrlIs("https://target1.test/d")))),
-          Pair(url::SchemeHostPort(GURL("https://target2.test/")),
-               ElementsAre(
-                   Pair("/p*", DictionaryUrlIs("https://target2.test/d"))))));
+          Pair(
+              url::SchemeHostPort(GURL("https://target1.test/")),
+              ElementsAre(Pair(
+                  std::make_tuple("/p*", std::set<mojom::RequestDestination>()),
+                  DictionaryUrlIs("https://target1.test/d")))),
+          Pair(
+              url::SchemeHostPort(GURL("https://target2.test/")),
+              ElementsAre(Pair(
+                  std::make_tuple("/p*", std::set<mojom::RequestDestination>()),
+                  DictionaryUrlIs("https://target2.test/d"))))));
 
   base::RunLoop run_loop1;
   manager->ClearData(base::Time(), base::Time::Max(),
@@ -1013,11 +1090,13 @@ TEST_F(SharedDictionaryManagerOnDiskTest, ClearDataSerializedOperation) {
 
   // The dictionary of "https://target2.test/" must still alive, because the
   // operation of ClearData is serialized.
-  EXPECT_THAT(GetOnDiskDictionaryMap(storage.get()),
-              ElementsAre(Pair(
-                  url::SchemeHostPort(GURL("https://target2.test/")),
-                  ElementsAre(Pair(
-                      "/p*", DictionaryUrlIs("https://target2.test/d"))))));
+  EXPECT_THAT(
+      GetOnDiskDictionaryMap(storage.get()),
+      ElementsAre(Pair(
+          url::SchemeHostPort(GURL("https://target2.test/")),
+          ElementsAre(Pair(
+              std::make_tuple("/p*", std::set<mojom::RequestDestination>()),
+              DictionaryUrlIs("https://target2.test/d"))))));
 
   run_loop2.Run();
 
@@ -1048,8 +1127,8 @@ TEST_F(SharedDictionaryManagerOnDiskTest, ClearDataForIsolationKey) {
     FlushCacheTasks();
 
     // Get a dictionary before calling ClearDataForIsolationKey().
-    std::unique_ptr<SharedDictionary> dict =
-        storage1->GetDictionarySync(GURL("https://origin1.test/p?"));
+    scoped_refptr<net::SharedDictionary> dict = storage1->GetDictionarySync(
+        GURL("https://origin1.test/p?"), mojom::RequestDestination::kEmpty);
     ASSERT_TRUE(dict);
 
     base::RunLoop run_loop;
@@ -1058,11 +1137,13 @@ TEST_F(SharedDictionaryManagerOnDiskTest, ClearDataForIsolationKey) {
 
     // The dictionaries for `isolation_key1` must have been deleted.
     EXPECT_TRUE(GetOnDiskDictionaryMap(storage1.get()).empty());
-    EXPECT_THAT(GetOnDiskDictionaryMap(storage2.get()),
-                ElementsAre(Pair(
-                    url::SchemeHostPort(GURL("https://origin1.test/")),
-                    ElementsAre(Pair(
-                        "/p*", DictionaryUrlIs("https://origin1.test/d"))))));
+    EXPECT_THAT(
+        GetOnDiskDictionaryMap(storage2.get()),
+        ElementsAre(Pair(
+            url::SchemeHostPort(GURL("https://origin1.test/")),
+            ElementsAre(Pair(
+                std::make_tuple("/p*", std::set<mojom::RequestDestination>()),
+                DictionaryUrlIs("https://origin1.test/d"))))));
 
     // We can still read the deleted dictionary from `dict`.
     net::TestCompletionCallback read_callback;
@@ -1089,11 +1170,13 @@ TEST_F(SharedDictionaryManagerOnDiskTest, ClearDataForIsolationKey) {
   task_environment_.RunUntilIdle();
 
   EXPECT_TRUE(GetOnDiskDictionaryMap(storage1.get()).empty());
-  EXPECT_THAT(GetOnDiskDictionaryMap(storage2.get()),
-              ElementsAre(Pair(
-                  url::SchemeHostPort(GURL("https://origin1.test/")),
-                  ElementsAre(Pair(
-                      "/p*", DictionaryUrlIs("https://origin1.test/d"))))));
+  EXPECT_THAT(
+      GetOnDiskDictionaryMap(storage2.get()),
+      ElementsAre(Pair(
+          url::SchemeHostPort(GURL("https://origin1.test/")),
+          ElementsAre(Pair(
+              std::make_tuple("/p*", std::set<mojom::RequestDestination>()),
+              DictionaryUrlIs("https://origin1.test/d"))))));
 }
 
 TEST_F(SharedDictionaryManagerOnDiskTest, ExpiredDictionaryDeletionOnReload) {
@@ -1134,11 +1217,13 @@ TEST_F(SharedDictionaryManagerOnDiskTest, ExpiredDictionaryDeletionOnReload) {
   task_environment_.RunUntilIdle();
 
   // The first dictionary must have been deleted.
-  EXPECT_THAT(GetOnDiskDictionaryMap(storage.get()),
-              ElementsAre(Pair(
-                  url::SchemeHostPort(GURL("https://target2.test/")),
-                  ElementsAre(Pair(
-                      "/p*", DictionaryUrlIs("https://target2.test/d"))))));
+  EXPECT_THAT(
+      GetOnDiskDictionaryMap(storage.get()),
+      ElementsAre(Pair(
+          url::SchemeHostPort(GURL("https://target2.test/")),
+          ElementsAre(Pair(
+              std::make_tuple("/p*", std::set<mojom::RequestDestination>()),
+              DictionaryUrlIs("https://target2.test/d"))))));
   EXPECT_FALSE(DiskCacheEntryExists(manager.get(), token1));
   EXPECT_TRUE(DiskCacheEntryExists(manager.get(), token2));
 }
@@ -1163,11 +1248,13 @@ TEST_F(SharedDictionaryManagerOnDiskTest,
   // Move the clock forward by 10 second.
   task_environment_.FastForwardBy(base::Seconds(10));
   // The first dictionary still exists.
-  EXPECT_THAT(GetOnDiskDictionaryMap(storage.get()),
-              ElementsAre(Pair(
-                  url::SchemeHostPort(GURL("https://target1.test/")),
-                  ElementsAre(Pair(
-                      "/p*", DictionaryUrlIs("https://target1.test/d"))))));
+  EXPECT_THAT(
+      GetOnDiskDictionaryMap(storage.get()),
+      ElementsAre(Pair(
+          url::SchemeHostPort(GURL("https://target1.test/")),
+          ElementsAre(Pair(
+              std::make_tuple("/p*", std::set<mojom::RequestDestination>()),
+              DictionaryUrlIs("https://target1.test/d"))))));
   EXPECT_TRUE(DiskCacheEntryExists(manager.get(), token1));
 
   // Write a second dictionary.
@@ -1179,11 +1266,13 @@ TEST_F(SharedDictionaryManagerOnDiskTest,
       GetOnDiskDictionaryMap(storage.get()), "https://target2.test/");
 
   // The first dictionary must have been deleted.
-  EXPECT_THAT(GetOnDiskDictionaryMap(storage.get()),
-              ElementsAre(Pair(
-                  url::SchemeHostPort(GURL("https://target2.test/")),
-                  ElementsAre(Pair(
-                      "/p*", DictionaryUrlIs("https://target2.test/d"))))));
+  EXPECT_THAT(
+      GetOnDiskDictionaryMap(storage.get()),
+      ElementsAre(Pair(
+          url::SchemeHostPort(GURL("https://target2.test/")),
+          ElementsAre(Pair(
+              std::make_tuple("/p*", std::set<mojom::RequestDestination>()),
+              DictionaryUrlIs("https://target2.test/d"))))));
   EXPECT_FALSE(DiskCacheEntryExists(manager.get(), token1));
   EXPECT_TRUE(DiskCacheEntryExists(manager.get(), token2));
 }
@@ -1207,11 +1296,13 @@ TEST_F(SharedDictionaryManagerOnDiskTest,
   // Move the clock forward by 10 second.
   task_environment_.FastForwardBy(base::Seconds(10));
   // The first dictionary still exists.
-  EXPECT_THAT(GetOnDiskDictionaryMap(storage.get()),
-              ElementsAre(Pair(
-                  url::SchemeHostPort(GURL("https://target1.test/")),
-                  ElementsAre(Pair(
-                      "/p*", DictionaryUrlIs("https://target1.test/d"))))));
+  EXPECT_THAT(
+      GetOnDiskDictionaryMap(storage.get()),
+      ElementsAre(Pair(
+          url::SchemeHostPort(GURL("https://target1.test/")),
+          ElementsAre(Pair(
+              std::make_tuple("/p*", std::set<mojom::RequestDestination>()),
+              DictionaryUrlIs("https://target1.test/d"))))));
 
   // Set the max size to kTestData1.size() * 100
   manager->SetCacheMaxSize(kTestData1.size() * 100);
@@ -1243,11 +1334,13 @@ TEST_F(SharedDictionaryManagerOnDiskTest,
   // Move the clock forward by 10 second.
   task_environment_.FastForwardBy(base::Seconds(10));
   // The first dictionary still exists.
-  EXPECT_THAT(GetOnDiskDictionaryMap(storage.get()),
-              ElementsAre(Pair(
-                  url::SchemeHostPort(GURL("https://target1.test/")),
-                  ElementsAre(Pair(
-                      "/p*", DictionaryUrlIs("https://target1.test/d"))))));
+  EXPECT_THAT(
+      GetOnDiskDictionaryMap(storage.get()),
+      ElementsAre(Pair(
+          url::SchemeHostPort(GURL("https://target1.test/")),
+          ElementsAre(Pair(
+              std::make_tuple("/p*", std::set<mojom::RequestDestination>()),
+              DictionaryUrlIs("https://target1.test/d"))))));
 
   base::RunLoop run_loop;
   manager->ClearData(
@@ -1282,11 +1375,13 @@ TEST_F(SharedDictionaryManagerOnDiskTest,
   // Move the clock forward by 10 second.
   task_environment_.FastForwardBy(base::Seconds(10));
   // The first dictionary still exists.
-  EXPECT_THAT(GetOnDiskDictionaryMap(storage.get()),
-              ElementsAre(Pair(
-                  url::SchemeHostPort(GURL("https://target1.test/")),
-                  ElementsAre(Pair(
-                      "/p*", DictionaryUrlIs("https://target1.test/d"))))));
+  EXPECT_THAT(
+      GetOnDiskDictionaryMap(storage.get()),
+      ElementsAre(Pair(
+          url::SchemeHostPort(GURL("https://target1.test/")),
+          ElementsAre(Pair(
+              std::make_tuple("/p*", std::set<mojom::RequestDestination>()),
+              DictionaryUrlIs("https://target1.test/d"))))));
 
   base::RunLoop run_loop;
   manager->ClearDataForIsolationKey(
@@ -1345,11 +1440,13 @@ TEST_F(SharedDictionaryManagerOnDiskTest, CacheEvictionOnReload) {
   task_environment_.RunUntilIdle();
 
   // Only the third dictionary exists.
-  EXPECT_THAT(GetOnDiskDictionaryMap(storage.get()),
-              ElementsAre(Pair(
-                  url::SchemeHostPort(GURL("https://target3.test/")),
-                  ElementsAre(Pair(
-                      "/p*", DictionaryUrlIs("https://target3.test/d"))))));
+  EXPECT_THAT(
+      GetOnDiskDictionaryMap(storage.get()),
+      ElementsAre(Pair(
+          url::SchemeHostPort(GURL("https://target3.test/")),
+          ElementsAre(Pair(
+              std::make_tuple("/p*", std::set<mojom::RequestDestination>()),
+              DictionaryUrlIs("https://target3.test/d"))))));
   EXPECT_FALSE(DiskCacheEntryExists(manager.get(), token1));
   EXPECT_FALSE(DiskCacheEntryExists(manager.get(), token2));
   EXPECT_TRUE(DiskCacheEntryExists(manager.get(), token3));
@@ -1387,11 +1484,13 @@ TEST_F(SharedDictionaryManagerOnDiskTest, CacheEvictionOnSetCacheMaxSize) {
   task_environment_.RunUntilIdle();
 
   // Only the third dictionary exists.
-  EXPECT_THAT(GetOnDiskDictionaryMap(storage.get()),
-              ElementsAre(Pair(
-                  url::SchemeHostPort(GURL("https://target3.test/")),
-                  ElementsAre(Pair(
-                      "/p*", DictionaryUrlIs("https://target3.test/d"))))));
+  EXPECT_THAT(
+      GetOnDiskDictionaryMap(storage.get()),
+      ElementsAre(Pair(
+          url::SchemeHostPort(GURL("https://target3.test/")),
+          ElementsAre(Pair(
+              std::make_tuple("/p*", std::set<mojom::RequestDestination>()),
+              DictionaryUrlIs("https://target3.test/d"))))));
   EXPECT_FALSE(DiskCacheEntryExists(manager.get(), token1));
   EXPECT_FALSE(DiskCacheEntryExists(manager.get(), token2));
   EXPECT_TRUE(DiskCacheEntryExists(manager.get(), token3));
@@ -1440,16 +1539,20 @@ TEST_F(SharedDictionaryManagerOnDiskTest, CacheEvictionOnNewDictionary) {
   task_environment_.FastForwardBy(base::Seconds(1));
 
   // Both the dictinaries exist.
-  EXPECT_THAT(GetOnDiskDictionaryMap(storage1.get()),
-              ElementsAre(Pair(
-                  url::SchemeHostPort(GURL("https://target1.test/")),
-                  ElementsAre(Pair(
-                      "/p*", DictionaryUrlIs("https://target1.test/d"))))));
-  EXPECT_THAT(GetOnDiskDictionaryMap(storage2.get()),
-              ElementsAre(Pair(
-                  url::SchemeHostPort(GURL("https://target2.test/")),
-                  ElementsAre(Pair(
-                      "/p*", DictionaryUrlIs("https://target2.test/d"))))));
+  EXPECT_THAT(
+      GetOnDiskDictionaryMap(storage1.get()),
+      ElementsAre(Pair(
+          url::SchemeHostPort(GURL("https://target1.test/")),
+          ElementsAre(Pair(
+              std::make_tuple("/p*", std::set<mojom::RequestDestination>()),
+              DictionaryUrlIs("https://target1.test/d"))))));
+  EXPECT_THAT(
+      GetOnDiskDictionaryMap(storage2.get()),
+      ElementsAre(Pair(
+          url::SchemeHostPort(GURL("https://target2.test/")),
+          ElementsAre(Pair(
+              std::make_tuple("/p*", std::set<mojom::RequestDestination>()),
+              DictionaryUrlIs("https://target2.test/d"))))));
   EXPECT_TRUE(DiskCacheEntryExists(manager.get(), token1));
   EXPECT_TRUE(DiskCacheEntryExists(manager.get(), token2));
 
@@ -1462,11 +1565,13 @@ TEST_F(SharedDictionaryManagerOnDiskTest, CacheEvictionOnNewDictionary) {
   // Only the third dictionary exists.
   EXPECT_TRUE(GetOnDiskDictionaryMap(storage1.get()).empty());
   EXPECT_TRUE(GetOnDiskDictionaryMap(storage2.get()).empty());
-  EXPECT_THAT(GetOnDiskDictionaryMap(storage3.get()),
-              ElementsAre(Pair(
-                  url::SchemeHostPort(GURL("https://target3.test/")),
-                  ElementsAre(Pair(
-                      "/p*", DictionaryUrlIs("https://target3.test/d"))))));
+  EXPECT_THAT(
+      GetOnDiskDictionaryMap(storage3.get()),
+      ElementsAre(Pair(
+          url::SchemeHostPort(GURL("https://target3.test/")),
+          ElementsAre(Pair(
+              std::make_tuple("/p*", std::set<mojom::RequestDestination>()),
+              DictionaryUrlIs("https://target3.test/d"))))));
 
   EXPECT_FALSE(DiskCacheEntryExists(manager.get(), token1));
   EXPECT_FALSE(DiskCacheEntryExists(manager.get(), token2));
@@ -1504,11 +1609,13 @@ TEST_F(SharedDictionaryManagerOnDiskTest,
   FlushCacheTasks();
   base::UnguessableToken token1 = GetDiskCacheKeyTokenOfFirstDictionary(
       GetOnDiskDictionaryMap(storage1.get()), "https://target1.test/");
-  EXPECT_THAT(GetOnDiskDictionaryMap(storage1.get()),
-              ElementsAre(Pair(
-                  url::SchemeHostPort(GURL("https://target1.test/")),
-                  ElementsAre(Pair(
-                      "/p*", DictionaryUrlIs("https://target1.test/d"))))));
+  EXPECT_THAT(
+      GetOnDiskDictionaryMap(storage1.get()),
+      ElementsAre(Pair(
+          url::SchemeHostPort(GURL("https://target1.test/")),
+          ElementsAre(Pair(
+              std::make_tuple("/p*", std::set<mojom::RequestDestination>()),
+              DictionaryUrlIs("https://target1.test/d"))))));
   EXPECT_TRUE(DiskCacheEntryExists(manager.get(), token1));
   task_environment_.FastForwardBy(base::Seconds(1));
 
@@ -1518,11 +1625,13 @@ TEST_F(SharedDictionaryManagerOnDiskTest,
   FlushCacheTasks();
   base::UnguessableToken token2 = GetDiskCacheKeyTokenOfFirstDictionary(
       GetOnDiskDictionaryMap(storage2.get()), "https://target2.test/");
-  EXPECT_THAT(GetOnDiskDictionaryMap(storage2.get()),
-              ElementsAre(Pair(
-                  url::SchemeHostPort(GURL("https://target2.test/")),
-                  ElementsAre(Pair(
-                      "/p*", DictionaryUrlIs("https://target2.test/d"))))));
+  EXPECT_THAT(
+      GetOnDiskDictionaryMap(storage2.get()),
+      ElementsAre(Pair(
+          url::SchemeHostPort(GURL("https://target2.test/")),
+          ElementsAre(Pair(
+              std::make_tuple("/p*", std::set<mojom::RequestDestination>()),
+              DictionaryUrlIs("https://target2.test/d"))))));
   EXPECT_TRUE(DiskCacheEntryExists(manager.get(), token2));
   task_environment_.FastForwardBy(base::Seconds(1));
 
@@ -1532,19 +1641,23 @@ TEST_F(SharedDictionaryManagerOnDiskTest,
   FlushCacheTasks();
   base::UnguessableToken token3 = GetDiskCacheKeyTokenOfFirstDictionary(
       GetOnDiskDictionaryMap(storage3.get()), "https://target3.test/");
-  EXPECT_THAT(GetOnDiskDictionaryMap(storage3.get()),
-              ElementsAre(Pair(
-                  url::SchemeHostPort(GURL("https://target3.test/")),
-                  ElementsAre(Pair(
-                      "/p*", DictionaryUrlIs("https://target3.test/d"))))));
+  EXPECT_THAT(
+      GetOnDiskDictionaryMap(storage3.get()),
+      ElementsAre(Pair(
+          url::SchemeHostPort(GURL("https://target3.test/")),
+          ElementsAre(Pair(
+              std::make_tuple("/p*", std::set<mojom::RequestDestination>()),
+              DictionaryUrlIs("https://target3.test/d"))))));
   EXPECT_TRUE(DiskCacheEntryExists(manager.get(), token3));
 
   // The first dictionary must still exist.
-  EXPECT_THAT(GetOnDiskDictionaryMap(storage1.get()),
-              ElementsAre(Pair(
-                  url::SchemeHostPort(GURL("https://target1.test/")),
-                  ElementsAre(Pair(
-                      "/p*", DictionaryUrlIs("https://target1.test/d"))))));
+  EXPECT_THAT(
+      GetOnDiskDictionaryMap(storage1.get()),
+      ElementsAre(Pair(
+          url::SchemeHostPort(GURL("https://target1.test/")),
+          ElementsAre(Pair(
+              std::make_tuple("/p*", std::set<mojom::RequestDestination>()),
+              DictionaryUrlIs("https://target1.test/d"))))));
   EXPECT_TRUE(DiskCacheEntryExists(manager.get(), token1));
 
   // The second dictionary must have been deleted because the size limit per
@@ -1584,11 +1697,13 @@ TEST_F(SharedDictionaryManagerOnDiskTest,
   FlushCacheTasks();
   base::UnguessableToken token1 = GetDiskCacheKeyTokenOfFirstDictionary(
       GetOnDiskDictionaryMap(storage1.get()), "https://target1.test/");
-  EXPECT_THAT(GetOnDiskDictionaryMap(storage1.get()),
-              ElementsAre(Pair(
-                  url::SchemeHostPort(GURL("https://target1.test/")),
-                  ElementsAre(Pair(
-                      "/p*", DictionaryUrlIs("https://target1.test/d"))))));
+  EXPECT_THAT(
+      GetOnDiskDictionaryMap(storage1.get()),
+      ElementsAre(Pair(
+          url::SchemeHostPort(GURL("https://target1.test/")),
+          ElementsAre(Pair(
+              std::make_tuple("/p*", std::set<mojom::RequestDestination>()),
+              DictionaryUrlIs("https://target1.test/d"))))));
   EXPECT_TRUE(DiskCacheEntryExists(manager.get(), token1));
   task_environment_.FastForwardBy(base::Seconds(1));
 
@@ -1598,11 +1713,13 @@ TEST_F(SharedDictionaryManagerOnDiskTest,
   FlushCacheTasks();
   base::UnguessableToken token2 = GetDiskCacheKeyTokenOfFirstDictionary(
       GetOnDiskDictionaryMap(storage2.get()), "https://target2.test/");
-  EXPECT_THAT(GetOnDiskDictionaryMap(storage2.get()),
-              ElementsAre(Pair(
-                  url::SchemeHostPort(GURL("https://target2.test/")),
-                  ElementsAre(Pair(
-                      "/p*", DictionaryUrlIs("https://target2.test/d"))))));
+  EXPECT_THAT(
+      GetOnDiskDictionaryMap(storage2.get()),
+      ElementsAre(Pair(
+          url::SchemeHostPort(GURL("https://target2.test/")),
+          ElementsAre(Pair(
+              std::make_tuple("/p*", std::set<mojom::RequestDestination>()),
+              DictionaryUrlIs("https://target2.test/d"))))));
   EXPECT_TRUE(DiskCacheEntryExists(manager.get(), token2));
   task_environment_.FastForwardBy(base::Seconds(1));
 
@@ -1615,12 +1732,16 @@ TEST_F(SharedDictionaryManagerOnDiskTest,
   EXPECT_THAT(
       GetOnDiskDictionaryMap(storage2.get()),
       ElementsAre(
-          Pair(url::SchemeHostPort(GURL("https://target2.test/")),
-               ElementsAre(
-                   Pair("/p*", DictionaryUrlIs("https://target2.test/d")))),
-          Pair(url::SchemeHostPort(GURL("https://target3.test/")),
-               ElementsAre(
-                   Pair("/p*", DictionaryUrlIs("https://target3.test/d"))))));
+          Pair(
+              url::SchemeHostPort(GURL("https://target2.test/")),
+              ElementsAre(Pair(
+                  std::make_tuple("/p*", std::set<mojom::RequestDestination>()),
+                  DictionaryUrlIs("https://target2.test/d")))),
+          Pair(
+              url::SchemeHostPort(GURL("https://target3.test/")),
+              ElementsAre(Pair(
+                  std::make_tuple("/p*", std::set<mojom::RequestDestination>()),
+                  DictionaryUrlIs("https://target3.test/d"))))));
   EXPECT_TRUE(DiskCacheEntryExists(manager.get(), token3));
 
   // Register the fourth dictionary.
@@ -1629,28 +1750,34 @@ TEST_F(SharedDictionaryManagerOnDiskTest,
   FlushCacheTasks();
   base::UnguessableToken token4 = GetDiskCacheKeyTokenOfFirstDictionary(
       GetOnDiskDictionaryMap(storage3.get()), "https://target4.test/");
-  EXPECT_THAT(GetOnDiskDictionaryMap(storage3.get()),
-              ElementsAre(Pair(
-                  url::SchemeHostPort(GURL("https://target4.test/")),
-                  ElementsAre(Pair(
-                      "/p*", DictionaryUrlIs("https://target4.test/d"))))));
+  EXPECT_THAT(
+      GetOnDiskDictionaryMap(storage3.get()),
+      ElementsAre(Pair(
+          url::SchemeHostPort(GURL("https://target4.test/")),
+          ElementsAre(Pair(
+              std::make_tuple("/p*", std::set<mojom::RequestDestination>()),
+              DictionaryUrlIs("https://target4.test/d"))))));
   EXPECT_TRUE(DiskCacheEntryExists(manager.get(), token4));
 
   // The first dictionary must still exist.
-  EXPECT_THAT(GetOnDiskDictionaryMap(storage1.get()),
-              ElementsAre(Pair(
-                  url::SchemeHostPort(GURL("https://target1.test/")),
-                  ElementsAre(Pair(
-                      "/p*", DictionaryUrlIs("https://target1.test/d"))))));
+  EXPECT_THAT(
+      GetOnDiskDictionaryMap(storage1.get()),
+      ElementsAre(Pair(
+          url::SchemeHostPort(GURL("https://target1.test/")),
+          ElementsAre(Pair(
+              std::make_tuple("/p*", std::set<mojom::RequestDestination>()),
+              DictionaryUrlIs("https://target1.test/d"))))));
   EXPECT_TRUE(DiskCacheEntryExists(manager.get(), token1));
 
   // The third dictionary must still exist. But the second dictionary must have
   // been deleted because the count limit per site is 2 (4 / 2).
-  EXPECT_THAT(GetOnDiskDictionaryMap(storage2.get()),
-              ElementsAre(Pair(
-                  url::SchemeHostPort(GURL("https://target3.test/")),
-                  ElementsAre(Pair(
-                      "/p*", DictionaryUrlIs("https://target3.test/d"))))));
+  EXPECT_THAT(
+      GetOnDiskDictionaryMap(storage2.get()),
+      ElementsAre(Pair(
+          url::SchemeHostPort(GURL("https://target3.test/")),
+          ElementsAre(Pair(
+              std::make_tuple("/p*", std::set<mojom::RequestDestination>()),
+              DictionaryUrlIs("https://target3.test/d"))))));
   EXPECT_FALSE(DiskCacheEntryExists(manager.get(), token2));
   EXPECT_TRUE(DiskCacheEntryExists(manager.get(), token3));
 }
@@ -1701,8 +1828,8 @@ TEST_F(SharedDictionaryManagerOnDiskTest,
   task_environment_.FastForwardBy(base::Seconds(1));
 
   // Call GetDictionary to update the last used time of the dictionary 1.
-  std::unique_ptr<SharedDictionary> dict1 =
-      storage->GetDictionarySync(GURL("https://target1.test/path?"));
+  scoped_refptr<net::SharedDictionary> dict1 = storage->GetDictionarySync(
+      GURL("https://target1.test/path?"), mojom::RequestDestination::kEmpty);
   ASSERT_TRUE(dict1);
 
   // Set the max size to kTestData1.size() * 3. The low water mark will be
@@ -1715,12 +1842,16 @@ TEST_F(SharedDictionaryManagerOnDiskTest,
   EXPECT_THAT(
       GetOnDiskDictionaryMap(storage.get()),
       ElementsAre(
-          Pair(url::SchemeHostPort(GURL("https://target1.test/")),
-               ElementsAre(
-                   Pair("/p*", DictionaryUrlIs("https://target1.test/d")))),
-          Pair(url::SchemeHostPort(GURL("https://target4.test/")),
-               ElementsAre(
-                   Pair("/p*", DictionaryUrlIs("https://target4.test/d"))))));
+          Pair(
+              url::SchemeHostPort(GURL("https://target1.test/")),
+              ElementsAre(Pair(
+                  std::make_tuple("/p*", std::set<mojom::RequestDestination>()),
+                  DictionaryUrlIs("https://target1.test/d")))),
+          Pair(
+              url::SchemeHostPort(GURL("https://target4.test/")),
+              ElementsAre(Pair(
+                  std::make_tuple("/p*", std::set<mojom::RequestDestination>()),
+                  DictionaryUrlIs("https://target4.test/d"))))));
   EXPECT_TRUE(DiskCacheEntryExists(manager.get(), token1));
   EXPECT_FALSE(DiskCacheEntryExists(manager.get(), token2));
   EXPECT_FALSE(DiskCacheEntryExists(manager.get(), token3));
@@ -1802,11 +1933,13 @@ TEST_F(SharedDictionaryManagerOnDiskTest,
     FlushCacheTasks();
 
     const auto& dictionary_map = GetOnDiskDictionaryMap(storage.get());
-    EXPECT_THAT(dictionary_map,
-                ElementsAre(Pair(
-                    url::SchemeHostPort(GURL("https://target1.test/")),
-                    ElementsAre(Pair(
-                        "/p*", DictionaryUrlIs("https://target1.test/d"))))));
+    EXPECT_THAT(
+        dictionary_map,
+        ElementsAre(Pair(
+            url::SchemeHostPort(GURL("https://target1.test/")),
+            ElementsAre(Pair(
+                std::make_tuple("/p*", std::set<mojom::RequestDestination>()),
+                DictionaryUrlIs("https://target1.test/d"))))));
 
     DoomDiskCacheEntry(manager.get(),
                        GetDiskCacheKeyTokenOfFirstDictionary(
@@ -1905,16 +2038,25 @@ TEST_F(SharedDictionaryManagerOnDiskTest,
   ASSERT_TRUE(storage);
 
   // Start writing a dictionary.
+  const std::string use_as_dictionary_header = "match=\"/p*\"";
   scoped_refptr<net::HttpResponseHeaders> headers =
       net::HttpResponseHeaders::TryToCreate(base::StrCat(
           {"HTTP/1.1 200 OK\n", shared_dictionary::kUseAsDictionaryHeaderName,
-           ": match=\"/p*\"\n\n"}));
+           ": ", use_as_dictionary_header, "\n", kDefaultCacheControlHeader,
+           "\n"}));
   ASSERT_TRUE(headers);
-  scoped_refptr<SharedDictionaryWriter> writer = storage->MaybeCreateWriter(
-      GURL("https://target1.test/d"), base::Time::Now(), *headers,
-      /*was_fetched_via_cache=*/false, DummyAccessAllowedCheckCallback());
-  ASSERT_TRUE(writer);
-  writer->Append(kTestData1.c_str(), kTestData1.size());
+  base::expected<scoped_refptr<SharedDictionaryWriter>,
+                 mojom::SharedDictionaryError>
+      writer = SharedDictionaryStorage::MaybeCreateWriter(
+          use_as_dictionary_header, /*shared_dictionary_writer_enabled=*/true,
+          storage.get(), mojom::RequestMode::kSameOrigin,
+          mojom::FetchResponseType::kBasic, GURL("https://target1.test/d"),
+          /*request_time=*/base::Time::Now(),
+          /*response_time=*/base::Time::Now(), *headers,
+          /*was_fetched_via_cache=*/false, DummyAccessAllowedCheckCallback());
+  ASSERT_TRUE(writer.has_value());
+  ASSERT_TRUE(*writer);
+  (*writer)->Append(kTestData1.c_str(), kTestData1.size());
 
   base::RunLoop run_loop;
   manager->ClearData(
@@ -1935,7 +2077,7 @@ TEST_F(SharedDictionaryManagerOnDiskTest,
       0, 1);
 
   // Finish writing the dictionary.
-  writer->Finish();
+  (*writer)->Finish();
 
   // FlushCacheTasks() to finish the persistence operation.
   FlushCacheTasks();
@@ -1950,11 +2092,13 @@ TEST_F(SharedDictionaryManagerOnDiskTest,
       0, 1);
 
   const auto& dictionary_map = GetOnDiskDictionaryMap(storage.get());
-  EXPECT_THAT(dictionary_map,
-              ElementsAre(Pair(
-                  url::SchemeHostPort(GURL("https://target1.test/")),
-                  ElementsAre(Pair(
-                      "/p*", DictionaryUrlIs("https://target1.test/d"))))));
+  EXPECT_THAT(
+      dictionary_map,
+      ElementsAre(Pair(
+          url::SchemeHostPort(GURL("https://target1.test/")),
+          ElementsAre(Pair(
+              std::make_tuple("/p*", std::set<mojom::RequestDestination>()),
+              DictionaryUrlIs("https://target1.test/d"))))));
 }
 
 TEST_F(SharedDictionaryManagerOnDiskTest,
@@ -1982,11 +2126,13 @@ TEST_F(SharedDictionaryManagerOnDiskTest,
   FlushCacheTasks();
 
   const auto& dictionary_map = GetOnDiskDictionaryMap(storage.get());
-  EXPECT_THAT(dictionary_map,
-              ElementsAre(Pair(
-                  url::SchemeHostPort(GURL("https://target1.test/")),
-                  ElementsAre(Pair(
-                      "/p*", DictionaryUrlIs("https://target1.test/d"))))));
+  EXPECT_THAT(
+      dictionary_map,
+      ElementsAre(Pair(
+          url::SchemeHostPort(GURL("https://target1.test/")),
+          ElementsAre(Pair(
+              std::make_tuple("/p*", std::set<mojom::RequestDestination>()),
+              DictionaryUrlIs("https://target1.test/d"))))));
   histogram_tester.ExpectUniqueSample(
       "Net.SharedDictionaryManagerOnDisk.InvalidDiskCacheEntryCount", 0, 1);
   histogram_tester.ExpectUniqueSample(

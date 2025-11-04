@@ -1,11 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!DOCTYPE TS>
-<TS version="2.1" language="lg">
+<TS version="2.1" language="lg_UG">
 <context>
     <name>%1: key is empty</name>
     <message>
         <source>QSystemSemaphore</source>
-        <translation>QSystemSemaphore</translation>
+        <translation type="vanished">QSystemSemaphore</translation>
     </message>
 </context>
 <context>
@@ -64,7 +64,7 @@
     <name>QAbstractSocket</name>
     <message>
         <source>Socket operation timed out</source>
-        <translation>Omukolo og&apos;woku soketi obudde buguyiseko</translation>
+        <translation>Omukolo ogw&apos;oku soketi obudde buguyiseko</translation>
     </message>
     <message>
         <source>Operation on socket is not supported</source>
@@ -84,7 +84,7 @@
     </message>
     <message>
         <source>Trying to connect while connection is in progress</source>
-        <translation>Omulimu ogwo&apos;kussawo enkatagana omulala gusangidwa gubumbujja</translation>
+        <translation>Omulimu ogw&apos;okussawo enkwatagana omulala gusangidwa gubumbujja</translation>
     </message>
     <message>
         <source>Socket is not connected</source>
@@ -162,7 +162,7 @@
     </message>
     <message>
         <source>Triggers the action</source>
-        <translation>Tandika ekikolebwa</translation>
+        <translation>Kitandika ekikolebwa</translation>
     </message>
     <message>
         <source>Increase the value</source>
@@ -174,39 +174,39 @@
     </message>
     <message>
         <source>Shows the menu</source>
-        <translation>Laga menyu</translation>
+        <translation>Kireeta menyu</translation>
     </message>
     <message>
         <source>Sets the focus</source>
-        <translation>Tegeka ekirobedwa</translation>
+        <translation>Kitegeka ekirobedwa</translation>
     </message>
     <message>
         <source>Toggles the state</source>
-        <translation>Wanyisa obutegeke</translation>
+        <translation>Kiwanyisa obutegeke</translation>
     </message>
     <message>
         <source>Scrolls to the left</source>
-        <translation>Seesa ebirabwa byeyongereyo ku kkono</translation>
+        <translation>Kiseesa ebirabwa ne byeyongerayo ku kkono</translation>
     </message>
     <message>
         <source>Scrolls to the right</source>
-        <translation>Seesa ebirabwa byeyongereyo ku ddyo</translation>
+        <translation>Kiseesa ebirabwa ne byeyongerayo ku ddyo</translation>
     </message>
     <message>
         <source>Scrolls up</source>
-        <translation>Seesa olutimbe ebiri waggulu byeyongere okulabika</translation>
+        <translation>Kiseesa olutimbe ebiri waggulu ne byeyongera okulabika</translation>
     </message>
     <message>
         <source>Scrolls down</source>
-        <translation>Seesa olutimbe ebiri wansi byeyongere okulabika</translation>
+        <translation>Kiseesa olutimbe ebiri wansi ne byeyongera okulabika</translation>
     </message>
     <message>
         <source>Goes back a page</source>
-        <translation>Dda ku lupapula olukulembera luno</translation>
+        <translation>Kikuzza ku lupapula olukulembera luno</translation>
     </message>
     <message>
         <source>Goes to the next page</source>
-        <translation>Dda ku lupapula oluddako</translation>
+        <translation>Kikutwala ku lupapula oluddako</translation>
     </message>
 </context>
 <context>
@@ -232,7 +232,11 @@
     <name>QApplication</name>
     <message>
         <source>Executable &apos;%1&apos; requires Qt %2, found Qt %3.</source>
-        <translation>Puloguramu &apos;%1&apos; yetaaga Qt %2, naye esanze Qt %3.</translation>
+        <translation type="vanished">Puloguramu &apos;%1&apos; yetaaga Qt %2, naye esanze Qt %3.</translation>
+    </message>
+    <message>
+        <source>Application &quot;%1&quot; requires Qt %2, found Qt %3.</source>
+        <translation>Puloguramu &quot;%1&quot; yetaaga Qt %2, naye esanze Qt %3.</translation>
     </message>
     <message>
         <source>Incompatible Qt Library Error</source>
@@ -325,11 +329,11 @@
     </message>
     <message>
         <source>Bl&amp;ue:</source>
-        <translation>Obwa&amp;bululu:</translation>
+        <translation>Obwab&amp;ululu:</translation>
     </message>
     <message>
         <source>A&amp;lpha channel:</source>
-        <translation>E&amp;njolesa ey&apos;okutangalijja:</translation>
+        <translation>Enjo&amp;lesa ey&apos;okutangalijja:</translation>
     </message>
     <message>
         <source>&amp;HTML:</source>
@@ -381,15 +385,19 @@ Nyiga ESC okusazamu</translation>
     <name>QCommandLineParser</name>
     <message>
         <source>Displays version information.</source>
-        <translation>Laga ebikwata ku luwandika lwa puloguramu.</translation>
+        <translation>Kiraga ebikwata ku luwandika lwa puloguramu.</translation>
     </message>
     <message>
         <source>Displays help on commandline options.</source>
-        <translation>Laga ebinnyonyola obuwayiro obusobola okwongerwa ku kiragiro ekitandika puloguramu okuva mu kiwandikiro.</translation>
+        <translation>Kiraga ebinnyonyola obuwayiro obusobola okwongerwa ku kiragiro ekitandika puloguramu okuva mu kiwandikiro.</translation>
     </message>
     <message>
         <source>Displays help including Qt specific options.</source>
-        <translation>Laga ebinnyonyola obuwayiro obwa mu Qt obusobola okwongerwa ku kiragiro ekitandika puloguramu okuva mu kiwandikiro.</translation>
+        <translation type="vanished">Laga ebinnyonyola obuwayiro obwa mu Qt obusobola okwongerwa ku kiragiro ekitandika puloguramu okuva mu kiwandikiro.</translation>
+    </message>
+    <message>
+        <source>Displays help, including generic Qt options.</source>
+        <translation>Kiraga ebinnyonyola obuwayiro obwa mu Qt obusobola okwongerwa ku kiragiro ekitandika puloguramu okuva mu kiwandikiro.</translation>
     </message>
     <message>
         <source>Unknown option &apos;%1&apos;.</source>
@@ -429,17 +437,17 @@ Nyiga ESC okusazamu</translation>
     <message>
         <source>%1: key is empty</source>
         <comment>QSystemSemaphore</comment>
-        <translation>%1: obwawuliro tebutegekedwa</translation>
+        <translation type="vanished">%1: obwawuliro tebutegekedwa</translation>
     </message>
     <message>
         <source>%1: unable to make key</source>
         <comment>QSystemSemaphore</comment>
-        <translation>%1: nemedwa okutegeka obwawuliro</translation>
+        <translation type="vanished">%1: nemedwa okutegeka obwawuliro</translation>
     </message>
     <message>
         <source>%1: ftok failed</source>
         <comment>QSystemSemaphore</comment>
-        <translation>%1: ftok eremedwa okukolawo obwawuliro</translation>
+        <translation type="vanished">%1: ftok eremedwa okukolawo obwawuliro</translation>
     </message>
 </context>
 <context>
@@ -585,7 +593,7 @@ Nyiga ESC okusazamu</translation>
     </message>
     <message>
         <source>Unable to set autocommit</source>
-        <translation>Teksobose okutegeka autocommit</translation>
+        <translation>Tekisobose okutegeka autocommit</translation>
     </message>
 </context>
 <context>
@@ -626,19 +634,19 @@ Nyiga ESC okusazamu</translation>
     <name>QDateTimeParser</name>
     <message>
         <source>AM</source>
-        <translation>AM</translation>
+        <translation type="vanished">AM</translation>
     </message>
     <message>
         <source>am</source>
-        <translation>am</translation>
+        <translation type="vanished">am</translation>
     </message>
     <message>
         <source>PM</source>
-        <translation>PM</translation>
+        <translation type="vanished">PM</translation>
     </message>
     <message>
         <source>pm</source>
-        <translation>pm</translation>
+        <translation type="vanished">pm</translation>
     </message>
 </context>
 <context>
@@ -659,25 +667,25 @@ Nyiga ESC okusazamu</translation>
     <name>QDirModel</name>
     <message>
         <source>Name</source>
-        <translation>Linnya</translation>
+        <translation type="vanished">Linnya</translation>
     </message>
     <message>
         <source>Size</source>
-        <translation>Bunene</translation>
+        <translation type="vanished">Bunene</translation>
     </message>
     <message>
         <source>Kind</source>
         <comment>Match OS X Finder</comment>
-        <translation>Ngeri</translation>
+        <translation type="vanished">Ngeri</translation>
     </message>
     <message>
         <source>Type</source>
         <comment>All other platforms</comment>
-        <translation>Kika</translation>
+        <translation type="vanished">Kika</translation>
     </message>
     <message>
         <source>Date Modified</source>
-        <translation>Makyusa</translation>
+        <translation type="vanished">Makyusa</translation>
     </message>
 </context>
 <context>
@@ -686,28 +694,17 @@ Nyiga ESC okusazamu</translation>
         <source>Operation cancelled</source>
         <translation>Omukolo gusazidwamu</translation>
     </message>
-</context>
-<context>
-    <name>QDnsLookupRunnable</name>
-    <message>
-        <source>IPv6 addresses for nameservers are currently not supported</source>
-        <translation>Sisitemu eno kakano tesobola kukwataganya ndagiriro eza bulijjo ne ez&apos;ennono ez&apos;ekika kya IPv6</translation>
-    </message>
     <message>
         <source>Invalid domain name</source>
         <translation>Erinnya ery&apos;oku mutimbagano terikkirizidwa</translation>
     </message>
     <message>
-        <source>Not yet supported on Android</source>
-        <translation>Omukolo tegunnasoboka ku Android</translation>
+        <source>SSL/TLS support not present</source>
+        <translation>Ebisobozesa empulizagana ey&apos;ekika kya SSL/TLS tebiriiwo</translation>
     </message>
     <message>
-        <source>Resolver functions not found</source>
-        <translation>Tewali puloguramu enona endagiriro ez&apos;ennono</translation>
-    </message>
-    <message>
-        <source>Resolver initialization failed</source>
-        <translation>Tekisobose okutandika puloguramu enona endagiriro ez&apos;ennono</translation>
+        <source>Request timed out</source>
+        <translation>Ekiragiro kya ku kayungirizi obw&apos;okukilindirira bukiweddeko</translation>
     </message>
     <message>
         <source>Server could not process query</source>
@@ -719,19 +716,35 @@ Nyiga ESC okusazamu</translation>
     </message>
     <message>
         <source>Non existent domain</source>
-        <translation>Puloguramu ekwataganya amannya n&apos;endagiriro egezeza okukola ku twale eritaliwo</translation>
+        <translation>Puloguramu ekwataganya amannya n&apos;endagiriro egezeza okukola ku domeyini etaliwo</translation>
     </message>
     <message>
         <source>Server refused to answer</source>
         <translation>Puloguramu ekwataganya amannya n&apos;endagiriro egaanye okuddamu</translation>
     </message>
     <message>
+        <source>Invalid reply received (rcode %1)</source>
+        <translation>Kompyuta etereka enkwatagana y&apos;amannya n&apos;endagiriro ez&apos;ennono etuddiziza ebitakozeseka (rcode %1)</translation>
+    </message>
+    <message>
         <source>Invalid reply received</source>
         <translation>Kompyuta etereka enkwatagana y&apos;amannya n&apos;endagiriro ez&apos;ennono etuddiziza ebitakozeseka</translation>
     </message>
     <message>
+        <source>Invalid reply received (%1)</source>
+        <translation>Kompyuta etereka enkwatagana y&apos;amannya n&apos;endagiriro ez&apos;ennono etuddiziza ebitakozeseka (%1)</translation>
+    </message>
+    <message>
+        <source>IPv6 nameservers are currently not supported on this OS</source>
+        <translation>Sisitemu eno kakano tesobola kukwataganya ndagiriro eza bulijjo ne ez&apos;ennono ez&apos;ekika kya IPv6</translation>
+    </message>
+    <message>
+        <source>Reply was too large</source>
+        <translation>Okwanukula kuyitiridde obuwanvu</translation>
+    </message>
+    <message>
         <source>Could not expand domain name</source>
-        <translation>Tekisobose okuzingulula erinnya lya ku mutimbagano effunze</translation>
+        <translation>Tekisobose okuzingulula erinnya lya domeyini effunze</translation>
     </message>
     <message>
         <source>Invalid IPv4 address record</source>
@@ -762,28 +775,115 @@ Nyiga ESC okusazamu</translation>
         <translation>Ekiwandise ekitegeka pooti puloguramu empeereze kw&apos;esangibwa tekikozeseka</translation>
     </message>
     <message>
+        <source>Invalid TLS association record</source>
+        <translation>Ekiwandise ekikwataganya emmatizo ya TLS n&apos;erinnya lya domeyini kwe kisangibwa tekikozeseka</translation>
+    </message>
+    <message>
         <source>Invalid text record</source>
         <translation>Ekiwandise ekikwataganya ebiwandiko n&apos;erinnya ly&apos;ekisangibwa ku mutimbagano tekikozeseka</translation>
     </message>
+</context>
+<context>
+    <name>QDnsLookupRunnable</name>
+    <message>
+        <source>IPv6 addresses for nameservers are currently not supported</source>
+        <translation type="vanished">Sisitemu eno kakano tesobola kukwataganya ndagiriro eza bulijjo ne ez&apos;ennono ez&apos;ekika kya IPv6</translation>
+    </message>
+    <message>
+        <source>Invalid domain name</source>
+        <translation type="vanished">Erinnya ery&apos;oku mutimbagano terikkirizidwa</translation>
+    </message>
+    <message>
+        <source>Not yet supported on Android</source>
+        <translation type="vanished">Omukolo tegunnasoboka ku Android</translation>
+    </message>
+    <message>
+        <source>Resolver functions not found</source>
+        <translation type="vanished">Tewali puloguramu enona endagiriro ez&apos;ennono</translation>
+    </message>
+    <message>
+        <source>Resolver initialization failed</source>
+        <translation type="vanished">Tekisobose okutandika puloguramu enona endagiriro ez&apos;ennono</translation>
+    </message>
+    <message>
+        <source>Server could not process query</source>
+        <translation type="vanished">Puloguramu ekwataganya amannya n&apos;endagiriro tesobodde okunoonya</translation>
+    </message>
+    <message>
+        <source>Server failure</source>
+        <translation type="vanished">Puloguramu ekwataganya amannya n&apos;endagiriro efunye kiremya</translation>
+    </message>
+    <message>
+        <source>Non existent domain</source>
+        <translation type="vanished">Puloguramu ekwataganya amannya n&apos;endagiriro egezeza okukola ku twale eritaliwo</translation>
+    </message>
+    <message>
+        <source>Server refused to answer</source>
+        <translation type="vanished">Puloguramu ekwataganya amannya n&apos;endagiriro egaanye okuddamu</translation>
+    </message>
+    <message>
+        <source>Invalid reply received</source>
+        <translation type="vanished">Kompyuta etereka enkwatagana y&apos;amannya n&apos;endagiriro ez&apos;ennono etuddiziza ebitakozeseka</translation>
+    </message>
+    <message>
+        <source>Could not expand domain name</source>
+        <translation type="vanished">Tekisobose okuzingulula erinnya lya ku mutimbagano effunze</translation>
+    </message>
+    <message>
+        <source>Invalid IPv4 address record</source>
+        <translation type="vanished">Endagiriro ey&apos;ennono ey&apos;ekika kya IPv4 efunidwa tekozeseka</translation>
+    </message>
+    <message>
+        <source>Invalid IPv6 address record</source>
+        <translation type="vanished">Endagiriro ey&apos;ennono ey&apos;ekika kya IPv6 efunidwa tekozeseka</translation>
+    </message>
+    <message>
+        <source>Invalid canonical name record</source>
+        <translation type="vanished">Ekiwandise ekifunidwa ekikwataganya erinnya eribbule n&apos;ery&apos;enno tekikozeseka</translation>
+    </message>
+    <message>
+        <source>Invalid name server record</source>
+        <translation type="vanished">Ekiwandise ekifunidwa okuva ku kompyuta etereka nkalala ezikwataganya amannya n&apos;endagiriro tekikozeseka</translation>
+    </message>
+    <message>
+        <source>Invalid pointer record</source>
+        <translation type="vanished">Ebifunidwa birimu akakimakigendawo akatakozeseka</translation>
+    </message>
+    <message>
+        <source>Invalid mail exchange record</source>
+        <translation type="vanished">Ekiwandise ekitegeka obusangiro bwa puloguramu ewereza eya yimeero tekikozeseka</translation>
+    </message>
+    <message>
+        <source>Invalid service record</source>
+        <translation type="vanished">Ekiwandise ekitegeka pooti puloguramu empeereze kw&apos;esangibwa tekikozeseka</translation>
+    </message>
+    <message>
+        <source>Invalid text record</source>
+        <translation type="vanished">Ekiwandise ekikwataganya ebiwandiko n&apos;erinnya ly&apos;ekisangibwa ku mutimbagano tekikozeseka</translation>
+    </message>
     <message>
         <source>Resolver library can&apos;t be loaded: No runtime library loading support</source>
-        <translation>Tekisobose okutandika puloguramu enona endagiriro ez&apos;ennono: Sisitemu eno teriko puloguramu ezisobozesa eyo okutuukiriza mulimu gwa yo</translation>
+        <translation type="vanished">Tekisobose okutandika puloguramu enona endagiriro ez&apos;ennono: Sisitemu eno teriko puloguramu ezisobozesa eyo okutuukiriza mulimu gwa yo</translation>
     </message>
     <message>
         <source>No hostname given</source>
-        <translation>Ku bulako erinnya lya kompyuta eneekeberwa</translation>
+        <translation type="vanished">Ku bulako erinnya lya kompyuta eneekeberwa</translation>
     </message>
     <message>
         <source>Invalid hostname</source>
-        <translation>Ekiweeredwa ng&apos;erinnya lya kompyuta eneekeberwa tekikozeseka</translation>
+        <translation type="vanished">Ekiweeredwa ng&apos;erinnya lya kompyuta eneekeberwa tekikozeseka</translation>
     </message>
     <message>
         <source>Host %1 could not be found.</source>
-        <translation>Kompyuta %1 ebuze.</translation>
+        <translation type="vanished">Kompyuta %1 ebuze.</translation>
     </message>
     <message>
         <source>Unknown error</source>
-        <translation>Wazzewo kiremya atategeereka</translation>
+        <translation type="vanished">Wazzewo kiremya atategeereka</translation>
+    </message>
+    <message>
+        <source>Not yet supported on this OS</source>
+        <translation>Omukolo tegunnasoboka ku sisitemu eno</translation>
     </message>
 </context>
 <context>
@@ -831,15 +931,15 @@ Nyiga ESC okusazamu</translation>
     </message>
     <message>
         <source>Error occurred while processing a start element</source>
-        <translation>Wazzewo kiremya mu kukola ku kitundu eky&apos;ekika kya start element</translation>
+        <translation>Wazzewo kiremya mu kukola ku tokeni etandika ekitundu ky&apos;ekiwandiko</translation>
     </message>
     <message>
         <source>Unexpected end element &apos;%1&apos;</source>
-        <translation>Ekitundu &apos;%1&apos; eky&apos;ekika kya end element kisangidwa we kitasuubirwa</translation>
+        <translation>Tokeni &apos;%1&apos; efundikira ekitundu ky&apos;ekiwandiko esangidwa w&apos;etasuubirwa</translation>
     </message>
     <message>
         <source>Error occurred while processing an end element</source>
-        <translation>Wazzewo kiremya mu kukola ku kitundu eky&apos;ekika kya end element</translation>
+        <translation>Wazzewo kiremya mu kukola ku tokeni efundikira ekitundu ky&apos;ekiwandiko</translation>
     </message>
     <message>
         <source>Error occurred while processing the element content</source>
@@ -890,7 +990,7 @@ Nyiga ESC okusazamu</translation>
     </message>
     <message>
         <source>Cannot set verification name after handshake started</source>
-        <translation>Tekisoboka kutegeka linnya lya kompyuta erinaakakasibwa kubanga okutegeeragana kutandise</translation>
+        <translation>Tekisoboka kutegeka linnya lya kompyuta erinaakakasibwa nga okutegeeragana kutandise</translation>
     </message>
     <message>
         <source>Cannot set configuration after handshake started</source>
@@ -898,7 +998,7 @@ Nyiga ESC okusazamu</translation>
     </message>
     <message>
         <source>Cannot start/continue handshake, invalid handshake state</source>
-        <translation>Tekisobose okutandika/kweyongera okutegeeragana, embeera gyekulimu tetegeereka</translation>
+        <translation>Tekisobose okutandika/kweyongera okutegeeragana, embeera gye kulimu tetegeereka</translation>
     </message>
     <message>
         <source>Invalid (nullptr) socket</source>
@@ -955,7 +1055,7 @@ Nyiga ESC okusazamu</translation>
     </message>
     <message>
         <source>Invalid protocol version, DTLS protocol expected</source>
-        <translation>Ekika ky &apos;empulizagana ekitegekedwa tekikozeseka, eya DTLS y&apos;ebadde esuubirwa</translation>
+        <translation>Ekika ky&apos;empulizagana ekitegekedwa tekikozeseka, eya DTLS y&apos;ebadde esuubirwa</translation>
     </message>
     <message>
         <source>BIO_ADD_new failed, cannot start handshake</source>
@@ -990,15 +1090,23 @@ Nyiga ESC okusazamu</translation>
     <name>QDtlsClientVerifier</name>
     <message>
         <source>A valid UDP socket, non-empty datagram, valid address/port were expected</source>
-        <translation>Wabadde wasuubirwawo soketi eya UDP, dataguramu etali njereere n&apos;endagiriro/pooti ebikozeseka</translation>
+        <translation type="vanished">Wabadde wasuubirwawo soketi eya UDP, dataguramu etali njereere n&apos;endagiriro/pooti ebikozeseka</translation>
     </message>
     <message>
         <source>BIO_ADDR_new failed, ignoring client hello</source>
         <translation>Dataguramu ey&apos;okweyanjula (ClientHello) ebooledwa kubanga omulimu gwa BIO_ADD_new gugaanye</translation>
     </message>
+    <message>
+        <source>A valid UDP socket, non-empty datagram, and valid address/port were expected</source>
+        <translation>Wabadde wasuubirwawo soketi eya UDP, dataguramu etali njereere n&apos;endagiriro/pooti ebikozeseka</translation>
+    </message>
 </context>
 <context>
     <name>QErrorMessage</name>
+    <message>
+        <source>An error occurred</source>
+        <translation>Wazzewo kiremya</translation>
+    </message>
     <message>
         <source>Debug Message:</source>
         <translation>Bubaka Obuyamba Kuzuula Nsibuko ya Kiremya:</translation>
@@ -1040,7 +1148,7 @@ Nyiga ESC okusazamu</translation>
     </message>
     <message>
         <source>Destination file exists</source>
-        <translation>Fayiro egenderwa gyeri</translation>
+        <translation>Fayiro egenderwa esangidwa gyeri</translation>
     </message>
     <message>
         <source>Error while renaming: %1</source>
@@ -1072,12 +1180,20 @@ Nyiga ESC okusazamu</translation>
         <translation>Tekisobose okubikkula awanaagenda ebivaamu: %1</translation>
     </message>
     <message>
+        <source>Failure to write block: %1</source>
+        <translation>Okuwandika buloka kugaanye: %1</translation>
+    </message>
+    <message>
+        <source>Cannot create %1 for output: %2</source>
+        <translation>Tekisobose okukolawo %1 awanaagenda ebivaamu: %2</translation>
+    </message>
+    <message>
         <source>Failure to write block</source>
-        <translation>Okuwandika buloka kugaanye</translation>
+        <translation type="vanished">Okuwandika buloka kugaanye</translation>
     </message>
     <message>
         <source>Cannot create %1 for output</source>
-        <translation>Tekisobose okukolawo %1 awanaagenda ebivaamu</translation>
+        <translation type="vanished">Tekisobose okukolawo %1 awanaagenda ebivaamu</translation>
     </message>
 </context>
 <context>
@@ -1248,7 +1364,8 @@ Wekkaanye erinnya ly&apos;okozesezza.</translation>
     <message>
         <source>%1 already exists.
 Do you want to replace it?</source>
-        <translation>%1 gyeri. Okakasa oyagala okugigyawo waddewo kirala?</translation>
+        <translation>%1 gyeri.
+Okakasa oyagala okugigyawo waddewo kirala?</translation>
     </message>
     <message>
         <source>%1
@@ -1290,55 +1407,55 @@ Era oyagala egyibwewo?</translation>
     </message>
     <message>
         <source>My Computer</source>
-        <translation>Kompyuta Yange</translation>
+        <translation type="vanished">Kompyuta Yange</translation>
     </message>
     <message>
         <source>Drive</source>
-        <translation>Kibondo</translation>
+        <translation type="vanished">Kibondo</translation>
     </message>
     <message>
         <source>%1 File</source>
         <extracomment>%1 is a file name suffix, for example txt</extracomment>
-        <translation>Fayiro ey&apos;ekika kya %1</translation>
+        <translation type="vanished">Fayiro ey&apos;ekika kya %1</translation>
     </message>
     <message>
         <source>File</source>
-        <translation>Fayiro</translation>
+        <translation type="vanished">Fayiro</translation>
     </message>
     <message>
         <source>File Folder</source>
         <comment>Match Windows Explorer</comment>
-        <translation>Tterekero lya Fayiro</translation>
+        <translation type="vanished">Tterekero lya Fayiro</translation>
     </message>
     <message>
         <source>Folder</source>
         <comment>All other platforms</comment>
-        <translation>Tterekero</translation>
+        <translation type="vanished">Tterekero</translation>
     </message>
     <message>
         <source>Alias</source>
         <comment>OS X Finder</comment>
-        <translation>Kasaliikiriza</translation>
+        <translation type="vanished">Kasaliikiriza</translation>
     </message>
     <message>
         <source>Shortcut</source>
         <comment>All other platforms</comment>
-        <translation>Kasaliikiriza</translation>
+        <translation type="vanished">Kasaliikiriza</translation>
     </message>
     <message>
         <source>Unknown</source>
-        <translation>Kitategeerese</translation>
+        <translation type="vanished">Kitategeerese</translation>
     </message>
 </context>
 <context>
     <name>QFileSystemModel</name>
     <message>
         <source>&lt;b&gt;The name &quot;%1&quot; cannot be used.&lt;/b&gt;&lt;p&gt;Try using another name, with fewer characters or no punctuation marks.</source>
-        <translation>&lt;b&gt;Tekisobose kukozesa linnya &quot;%1&quot;.&lt;/b&gt; Ennukuta ziyitiridde obungi oba lirimu obubonero obwawula mboozi.</translation>
+        <translation type="vanished">&lt;b&gt;Tekisobose kukozesa linnya &quot;%1&quot;.&lt;/b&gt; Ennukuta ziyitiridde obungi oba lirimu obubonero obwawula mboozi.</translation>
     </message>
     <message>
         <source>Invalid filename</source>
-        <translation>Erinnya lya fayiro teritegeeredwa</translation>
+        <translation type="vanished">Erinnya lya fayiro teritegeeredwa</translation>
     </message>
     <message>
         <source>Name</source>
@@ -1609,89 +1726,89 @@ Era oyagala egyibwewo?</translation>
     <name>QFtp</name>
     <message>
         <source>Not connected</source>
-        <translation>Tewali mpulizagana</translation>
+        <translation type="vanished">Tewali mpulizagana</translation>
     </message>
     <message>
         <source>Host %1 not found</source>
-        <translation>Kompyuta enyunge %1 terabidwa</translation>
+        <translation type="vanished">Kompyuta enyunge %1 terabidwa</translation>
     </message>
     <message>
         <source>Connection refused to host %1</source>
-        <translation>Empulizagana ne kompyuta %1 egaanidwa</translation>
+        <translation type="vanished">Empulizagana ne kompyuta %1 egaanidwa</translation>
     </message>
     <message>
         <source>Connection timed out to host %1</source>
-        <translation>Okukwatagana ne kompyuta enyunge %1 obudde bukuyiseko</translation>
+        <translation type="vanished">Okukwatagana ne kompyuta enyunge %1 obudde bukuyiseko</translation>
     </message>
     <message>
         <source>Connected to host %1</source>
-        <translation>Waliwo empulizagana ne kompyuta %1</translation>
+        <translation type="vanished">Waliwo empulizagana ne kompyuta %1</translation>
     </message>
     <message>
         <source>Data Connection refused</source>
-        <translation>Enkwatagana ey&apos;okuwanisagana data egaanidwa</translation>
+        <translation type="vanished">Enkwatagana ey&apos;okuwanisagana data egaanidwa</translation>
     </message>
     <message>
         <source>Unknown error</source>
-        <translation>Wazzewo kiremya atategeereka</translation>
+        <translation type="vanished">Wazzewo kiremya atategeereka</translation>
     </message>
     <message>
         <source>Connecting to host failed:
 %1</source>
-        <translation>Okukwatagana ne kompyuta enyunge kugaanye:
+        <translation type="vanished">Okukwatagana ne kompyuta enyunge kugaanye:
 %1</translation>
     </message>
     <message>
         <source>Login failed:
 %1</source>
-        <translation>Okutandika olutuula kugaanye:
+        <translation type="vanished">Okutandika olutuula kugaanye:
 %1</translation>
     </message>
     <message>
         <source>Listing directory failed:
 %1</source>
-        <translation>Okulaga ebiri mu tterekero kugaanye:
+        <translation type="vanished">Okulaga ebiri mu tterekero kugaanye:
 %1</translation>
     </message>
     <message>
         <source>Changing directory failed:
 %1</source>
-        <translation>Okudda mu tterekero ddala kugaanye:
+        <translation type="vanished">Okudda mu tterekero ddala kugaanye:
 %1</translation>
     </message>
     <message>
         <source>Downloading file failed:
 %1</source>
-        <translation>Okuwanula fayiro kugaanye:
+        <translation type="vanished">Okuwanula fayiro kugaanye:
 %1</translation>
     </message>
     <message>
         <source>Uploading file failed:
 %1</source>
-        <translation>Okuteekayo fayiro kugaanye:
+        <translation type="vanished">Okuteekayo fayiro kugaanye:
 %1</translation>
     </message>
     <message>
         <source>Removing file failed:
 %1</source>
-        <translation>Okugyawo fayiro kugaanye:
+        <translation type="vanished">Okugyawo fayiro kugaanye:
 %1</translation>
     </message>
     <message>
         <source>Creating directory failed:
 %1</source>
-        <translation>Okukolawo tterekero kugaanye:
+        <translation type="vanished">Okukolawo tterekero kugaanye:
 %1</translation>
     </message>
     <message>
         <source>Removing directory failed:
 %1</source>
-        <translation>Okugywao tterekero kugaanye:
+        <translation type="vanished">Okugywao tterekero kugaanye:
 %1</translation>
     </message>
     <message>
         <source>Connection closed</source>
-        <translation>Okuwulizagana kuggadwawo</translation>
+        <translation type="vanished">Okuwulizagana kuggadwawo</translation>
     </message>
 </context>
 <context>
@@ -1754,7 +1871,7 @@ Era oyagala egyibwewo?</translation>
     </message>
     <message>
         <source>Sets the application&apos;s layout direction to Qt::RightToLeft (debugging helper).</source>
-        <translation>Tegeka enjalirira y&apos;ebitundu ebya puloguramu ebirabikira ku lutimbe efugibwe Qt::RightToLeft (kyeyambisibwa mu kunoonya bitali bituufu).</translation>
+        <translation>Kitegeka enjalirira y&apos;ebitundu ebya puloguramu ebirabikira ku lutimbe efugibwe Qt::RightToLeft (kyeyambisibwa mu kunoonya bitali bituufu).</translation>
     </message>
     <message>
         <source>Restores the application from an earlier session.</source>
@@ -1778,7 +1895,7 @@ Era oyagala egyibwewo?</translation>
     </message>
     <message>
         <source>ID of the X11 Visual to use.</source>
-        <translation>Ennamba (ID) eya Visual eya X11 enaakozesebwa.</translation>
+        <translation>Ennamba (ID) ya Ntabulalangi eya X11 enaakozesebwa.</translation>
     </message>
     <message>
         <source>Alias for --qwindowgeometry.</source>
@@ -1839,7 +1956,7 @@ Era oyagala egyibwewo?</translation>
     </message>
     <message>
         <source>Proxy requires authentication</source>
-        <translation>Masanganzira etuuka ku intaneti yetaaga kusooka kukakasa</translation>
+        <translation>Kalaani yetaaga kusooka kukakasa</translation>
     </message>
     <message>
         <source>Host requires authentication</source>
@@ -1865,12 +1982,36 @@ Era oyagala egyibwewo?</translation>
         <source>Insecure redirect</source>
         <translation>Wasangidwa ekiragiro ekyongezayo ku ndagiriro ndala ekiteesigika</translation>
     </message>
+    <message>
+        <source>Unsupported content encoding: %1</source>
+        <translation>Enkongojja y&apos;ebyolesebwa tetegeereka: %1</translation>
+    </message>
+    <message>
+        <source>Failed to initialize the compression decoder.</source>
+        <translation>Tekisobose okutandikawaza puloguramu epakulula ebifunidwa.</translation>
+    </message>
+    <message>
+        <source>The decompressed output exceeds the limits specified by QNetworkRequest::decompressedSafetyCheckThreshold()</source>
+        <translation>Ebipakululudwa bingi okusinga ekkomo eritegekedwa QNetworkRequest::decompressedSafetyCheckThreshold()</translation>
+    </message>
+    <message>
+        <source>Decompression failed: %1</source>
+        <translation>Okupakulula kugaanye: %1</translation>
+    </message>
+    <message>
+        <source>Data downloaded is too large to store</source>
+        <translation>Data ewanudwa teterekeka olw&apos;okuba nga eyitiridde obungi</translation>
+    </message>
+    <message>
+        <source>Failed to initialize decompression: %1</source>
+        <translation>Okutandikawaza okupakulula kugaanye: %1</translation>
+    </message>
 </context>
 <context>
     <name>QHttpSocketEngine</name>
     <message>
         <source>Did not receive HTTP response from proxy</source>
-        <translation>Kompyuta masanganzira etuuka ku intaneti teyanukudde</translation>
+        <translation>Kalaani teyanukudde</translation>
     </message>
     <message>
         <source>Error parsing authentication request from proxy</source>
@@ -1882,7 +2023,7 @@ Era oyagala egyibwewo?</translation>
     </message>
     <message>
         <source>Proxy denied connection</source>
-        <translation>Kompyuta masanganzira etuuka ku mutimbagano egaanye okuteekawo okuwulizagana</translation>
+        <translation>Kalaani egaanye okuteekawo okuwulizagana</translation>
     </message>
     <message>
         <source>Error communicating with HTTP proxy</source>
@@ -1890,19 +2031,19 @@ Era oyagala egyibwewo?</translation>
     </message>
     <message>
         <source>Proxy server not found</source>
-        <translation>Kompyuta masanganzira etuuka ku mutimbagano terabidwa</translation>
+        <translation>Kalaani terabidwa</translation>
     </message>
     <message>
         <source>Proxy connection refused</source>
-        <translation>Kompyuta masanganzira etuuka ku mutimbagano egaanye okuteekawo okuwulizagana</translation>
+        <translation>Kalaani egaanye okuteekawo okuwulizagana</translation>
     </message>
     <message>
         <source>Proxy server connection timed out</source>
-        <translation>Okukwatagana ne kompyuta masanganzira etuuka ku mutimbagano obudde bukuyiseko</translation>
+        <translation>Okukwatagana ne kalaani obudde bukuyiseko</translation>
     </message>
     <message>
         <source>Proxy connection closed prematurely</source>
-        <translation>Okukuwatagana ne kompyuta masanganzira etuuka ku mutimbagano kuggadwawo nga bukyali</translation>
+        <translation>Okukuwatagana ne kalaani kuggadwawo nga bukyali</translation>
     </message>
 </context>
 <context>
@@ -1922,6 +2063,14 @@ Era oyagala egyibwewo?</translation>
     <message>
         <source>Unable to rollback transaction</source>
         <translation>Tekisobose okujjulula ebikyusidwa</translation>
+    </message>
+    <message>
+        <source>Could not subscribe to event notifications for %1.</source>
+        <translation>Tekisobose okusaba okufunanga obubaka ku ebiba biguddewo ku %1.</translation>
+    </message>
+    <message>
+        <source>Could not unsubscribe from event notifications for %1.</source>
+        <translation>Tekisobose okukomya okufunanga obubaka ku ebiba biguddewo ku %1.</translation>
     </message>
 </context>
 <context>
@@ -1951,6 +2100,18 @@ Era oyagala egyibwewo?</translation>
         <translation>Tekisobose okufuna data okuva mu areyi</translation>
     </message>
     <message>
+        <source>Array size mismatch. Field name: %3, expected size: %1. Supplied size: %2</source>
+        <translation>Nsobi mu bunene bwa areyi. Erinnya ly&apos;awajjuzibwa: %3, obunune bwa wo: %1. Obunene bwa wo obulagidwa: %2</translation>
+    </message>
+    <message>
+        <source>Array dimensions mismatch. Field name: %1</source>
+        <translation>Nsobi mu bigero bya areyi. Erinnya ly&apos;awajjuzibwa: %1</translation>
+    </message>
+    <message>
+        <source>Array size mismatch: size of %1 is %2, size of provided list is %3</source>
+        <translation>Nsobi mu bigero bya areyi. %1 eweza %2, olukalala oluliwo lwo luweza %3</translation>
+    </message>
+    <message>
         <source>Could not get query info</source>
         <translation>Tekisobose okufuna ebikwata ku kiragiro ekinoonyeza mu gwanika lya data</translation>
     </message>
@@ -1964,7 +2125,7 @@ Era oyagala egyibwewo?</translation>
     </message>
     <message>
         <source>Could not allocate statement</source>
-        <translation>Tekisobose ekiragiro ekinoonyeza mu ggwanika lya data okukikolera hando</translation>
+        <translation>Tekisobose ekiragiro ekya mu ggwanika lya data okukikolera hando</translation>
     </message>
     <message>
         <source>Could not prepare statement</source>
@@ -1972,7 +2133,7 @@ Era oyagala egyibwewo?</translation>
     </message>
     <message>
         <source>Could not describe input statement</source>
-        <translation>Tekisobose okufuna ebikwata ku paramita ezetaagbwa ekiragiro ekinoonyeza mu ggwanika lya data</translation>
+        <translation>Tekisobose okufuna ebikwata ku paramita ez&apos;etaagbwa ekiragiro ekinoonyeza mu ggwanika lya data</translation>
     </message>
     <message>
         <source>Could not describe statement</source>
@@ -1980,7 +2141,7 @@ Era oyagala egyibwewo?</translation>
     </message>
     <message>
         <source>Unable to close statement</source>
-        <translation>Tekisobose okukomya ekiragiro ekinoonyeza mu ggwanika lya data</translation>
+        <translation>Tekisobose okukomya ekiragiro ekya mu ggwanika lya data</translation>
     </message>
     <message>
         <source>Unable to execute query</source>
@@ -1992,7 +2153,7 @@ Era oyagala egyibwewo?</translation>
     </message>
     <message>
         <source>Could not get statement info</source>
-        <translation>Tekisobose okufuna ebikwata ku kiragiro ekinoonyeza mu gwanika lya data</translation>
+        <translation>Tekisobose okufuna ebikwata ku kiragiro ekya mu gwanika lya data</translation>
     </message>
 </context>
 <context>
@@ -2026,7 +2187,7 @@ Era oyagala egyibwewo?</translation>
     <name>QImageReader</name>
     <message>
         <source>Invalid device</source>
-        <translation>Ssi kyuma</translation>
+        <translation>Ekyuma tekikozeseka</translation>
     </message>
     <message>
         <source>File not found</source>
@@ -2091,7 +2252,7 @@ Era oyagala egyibwewo?</translation>
     </message>
     <message>
         <source>missing name separator</source>
-        <translation>waliwo awabula akabonero ak&apos;awula ekyasanguzo ekimu ku kinnaakyo</translation>
+        <translation>waliwo awabula akabonero ak&apos;awula erinnya erimu ku linnaalyo</translation>
     </message>
     <message>
         <source>unterminated array</source>
@@ -2158,74 +2319,150 @@ Era oyagala egyibwewo?</translation>
     <name>QLibrary</name>
     <message>
         <source>&apos;%1&apos; is not an ELF object (%2)</source>
-        <translation>&apos;%1&apos; ssi kyetongole kya ELF (%2)</translation>
+        <translation type="vanished">&apos;%1&apos; ssi kyetongole kya ELF (%2)</translation>
+    </message>
+    <message>
+        <source>file is for the wrong endianness</source>
+        <translation>Entereka ya bayiti ezikongojja ennamba fayiro eno gy&apos;ekozesa ssi ye eyetaagibwa</translation>
+    </message>
+    <message>
+        <source>file has an unknown ELF version</source>
+        <translation>fayiro eno oluwandika lwa ELF lw&apos;egoberera sisitemu terumanyi</translation>
+    </message>
+    <message>
+        <source>file has an unexpected ABI</source>
+        <translation>ABI, amateeka agafuga empulizagana wakati wa fayiro eno ne binariyo endala ssi ge gasuubidwa</translation>
+    </message>
+    <message>
+        <source>file is not a shared object</source>
+        <translation>fayiro eno ssi puloguramu eyeyazikibwa</translation>
+    </message>
+    <message>
+        <source>&apos;%1&apos; is not a valid ELF object (%2)</source>
+        <translation>&apos;%1&apos; ssi kyetongole kya ELF ekikkirizibwa (%2)</translation>
+    </message>
+    <message>
+        <source>unimplemented: PN_XNUM program headers</source>
+        <translation>sisitemu tebikozesa: Olukalala lwa mu kitundu eky&apos;okweyanjula ekya puloguramu okubeerako ebintu ebisukka mu PN_XNUM</translation>
+    </message>
+    <message>
+        <source>program header table extends past the end of the file</source>
+        <translation>olukalala lwa mu kitundu eky&apos;okweyanjula ekya puloguramu lulinga olweyongera okusukka fayiro gy&apos;ekoma</translation>
+    </message>
+    <message>
+        <source>a program header entry extends past the end of the file</source>
+        <translation>waliwo ekisangibwa ku lukalala lwa mu kitundu eky&apos;okweyanjula ekya puloguramu ekiringa ekyeyongera okusukka fayiro gy&apos;ekoma</translation>
+    </message>
+    <message>
+        <source>a note segment start is not properly aligned (offset 0x%1, alignment %2)</source>
+        <translation>waliwo segimenti ey&apos;ekika kya note etandikira awasobu (offset 0x%1, alignment %2)</translation>
+    </message>
+    <message>
+        <source>section table extends past the end of the file</source>
+        <translation>olukalala olutottola sekisoni lulinga olweyongera okuyisa fayiro gy&apos;ekoma</translation>
+    </message>
+    <message>
+        <source>section header string table extends past the end of the file</source>
+        <translation>waliwo ekigambo mu lukalala olwanjula sekisoni ekiringa ekyeyongera yo okuyisa fayiro gy&apos;ekoma</translation>
+    </message>
+    <message>
+        <source>a section name extends past the end of the file</source>
+        <translation>waliwo erinnya lya sekisoni eriringa eryeyongerayo okuyisa fayiro gy&apos;ekoma</translation>
     </message>
     <message>
         <source>file too small</source>
         <translation>fayiro ssi nnene ekimala</translation>
     </message>
     <message>
+        <source>unexpected program header entry size (%1)</source>
+        <translation>waliwo ekiwandise mu kitundu ekyanjula ebya puloguramu nga obunene bwa kyo ssi bwe busuubidwa (%1)</translation>
+    </message>
+    <message>
+        <source>unexpected section entry size (%1)</source>
+        <translation>waliwo ekiwandise mu sekisoni nga obunene bwa kyo ssi bwe busuubidwa (%1)</translation>
+    </message>
+    <message>
+        <source>e_shstrndx greater than the number of sections e_shnum (%1 &gt;= %2)</source>
+        <translation>e_shstrndx kinene okusinga obungi bwa sekisoni e_shnum (%1 &gt;= %2)</translation>
+    </message>
+    <message>
         <source>&apos;%1&apos; is not an ELF object</source>
-        <translation>&apos;%1&apos; ssi kyetongole kya ELF</translation>
+        <translation type="vanished">&apos;%1&apos; ssi kyetongole kya ELF</translation>
     </message>
     <message>
         <source>&apos;%1&apos; is an invalid ELF object (%2)</source>
-        <translation>&apos;%1&apos; ssi kyetongole kya ELF ekikkirizibwa (%2)</translation>
+        <translation type="vanished">&apos;%1&apos; ssi kyetongole kya ELF ekikkirizibwa (%2)</translation>
     </message>
     <message>
         <source>odd cpu architecture</source>
-        <translation>ekika ky&apos;ekitundu ekibazi kye kitegekedwa tekitegeereka</translation>
+        <translation type="vanished">ekika ky&apos;ekitundu ekibazi kye kitegekedwa tekitegeereka</translation>
     </message>
     <message>
         <source>wrong cpu architecture</source>
-        <translation>ekika ky&apos;ekitundu ekibazi kye kitegekedwa ssi kituufu</translation>
+        <translation type="vanished">ekika ky&apos;ekitundu ekibazi kye kitegekedwa ssi kituufu</translation>
     </message>
     <message>
         <source>odd endianness</source>
-        <translation>Entereka ya bayiti ezikongojja ennamba tetegeereka</translation>
+        <translation type="vanished">Entereka ya bayiti ezikongojja ennamba tetegeereka</translation>
     </message>
     <message>
         <source>unexpected e_shsize</source>
-        <translation>e_shsize ssi y&apos;esuubidwa</translation>
+        <translation type="vanished">e_shsize ssi y&apos;esuubidwa</translation>
     </message>
     <message>
         <source>unexpected e_shentsize</source>
-        <translation>e_shentsize ssi y&apos;esuubidwa</translation>
+        <translation type="vanished">e_shentsize ssi y&apos;esuubidwa</translation>
     </message>
     <message numerus="yes">
         <source>announced %n section(s), each %1 byte(s), exceed file size</source>
-        <translation>
+        <translation type="vanished">
             <numerusform>ekitundu %n kirangiridwa, kya bayiti %1, kiyise ku kkomo ly&apos;obunene</numerusform>
             <numerusform>ebitundu %n birangiridwa, buli kimu kya bayiti %1, biyise ku kkomo ly&apos;obunene</numerusform>
         </translation>
     </message>
     <message>
         <source>shstrtab section header seems to be at %1</source>
-        <translation>olukalala shtrtab lulabika nga olusangibwa ku %1</translation>
+        <translation type="vanished">olukalala shtrtab lulabika nga olusangibwa ku %1</translation>
     </message>
     <message>
         <source>string table seems to be at %1</source>
-        <translation>Tabulo y&apos;ebigambo erabika nga esangibwa ku %1</translation>
+        <translation type="vanished">Tabulo y&apos;ebigambo erabika nga esangibwa ku %1</translation>
     </message>
     <message>
         <source>section name %1 of %2 behind end of file</source>
-        <translation>obusangiro bw&apos;ekitundu %1 ekya %2 buteeredwa wala okusinga fayiro gy&apos;ekoma</translation>
+        <translation type="vanished">obusangiro bw&apos;ekitundu %1 ekya %2 buteeredwa wala okusinga fayiro gy&apos;ekoma</translation>
     </message>
     <message>
         <source>empty .rodata. not a library.</source>
-        <translation>ekitundu .rodata. kyereere, eno ssi puloguramu eyeyayzikibwa.</translation>
+        <translation type="vanished">ekitundu .rodata. kyereere, eno ssi puloguramu eyeyayzikibwa.</translation>
     </message>
     <message>
         <source>missing section data. This is not a library.</source>
-        <translation>data ey&apos;ebifa ku bitundu teeriwo. Eno ssi puloguramu eyeyazikibwa.</translation>
+        <translation type="vanished">data ey&apos;ebifa ku bitundu teeriwo. Eno ssi puloguramu eyeyazikibwa.</translation>
     </message>
     <message>
         <source>Failed to extract plugin meta data from &apos;%1&apos;</source>
-        <translation>Tekisobose okusoma ebikwata ku byongerwako okuva mu &apos;%1&apos;</translation>
+        <translation type="vanished">Tekisobose okusoma ebikwata ku byongerwako okuva mu &apos;%1&apos;</translation>
+    </message>
+    <message>
+        <source>Failed to extract plugin meta data from &apos;%1&apos;: %2</source>
+        <translation>Tekisobose okusoma ebikwata ku byongerwako okuva mu &apos;%1&apos;: %2</translation>
     </message>
     <message>
         <source>The shared library was not found.</source>
         <translation>Puloguramu eyeyazikibwa ey&apos;awamu ebuze.</translation>
+    </message>
+    <message>
+        <source>Could not resolve &apos;qt_plugin_instance&apos; function</source>
+        <translation>Tekisobose okuyungulula ekikongojjedwa mu &apos;qt_plugin_instance&apos;</translation>
+    </message>
+    <message>
+        <source>metadata too small</source>
+        <translation>meta-data tewera</translation>
+    </message>
+    <message>
+        <source>entrypoint to query the plugin meta data not found</source>
+        <translation>entandikwa y&apos;ebiragiro ebikebera meta-data y&apos;ekyongerwako tezuuse</translation>
     </message>
     <message>
         <source>The file &apos;%1&apos; is not a valid Qt plugin.</source>
@@ -2238,7 +2475,7 @@ Era oyagala egyibwewo?</translation>
     <message>
         <source>The plugin &apos;%1&apos; uses incompatible Qt library. (Cannot mix debug and release libraries.)</source>
         <translation>Ekyongerwako &apos;%1&apos; kikozesa puloguramu eyeyazikibwa eya Qt etakolagana ne sisitemu eno.
-(puloguramu ezeyazikibwa eza bulijjo tezitabikibwa n&apos;ezikozesebwa mu kunoonya nsobi.)</translation>
+(puloguramu ez&apos;eyazikibwa eza bulijjo tezitabikibwa n&apos;ezikozesebwa mu kunoonya nsobi.)</translation>
     </message>
     <message>
         <source>Unknown error</source>
@@ -2270,7 +2507,7 @@ Era oyagala egyibwewo?</translation>
     </message>
     <message>
         <source>wrong architecture</source>
-        <translation>ssi kika ky&apos;ekitundu ekibazi ekikolera wano</translation>
+        <translation>ssi bya kika ky&apos;ekitundu ekibazi sisitemu eno kyerina</translation>
     </message>
     <message>
         <source>not a dynamic library</source>
@@ -2279,6 +2516,70 @@ Era oyagala egyibwewo?</translation>
     <message>
         <source>&apos;%1&apos; is not a Qt plugin</source>
         <translation>&apos;%1&apos; ssi kyongerwako kya mu Qt</translation>
+    </message>
+    <message>
+        <source>&apos;%1&apos; is not a valid Windows DLL (%2)</source>
+        <translation>&apos;%1&apos; tekibalibwa nga DLL eya mu Windows (%2)</translation>
+    </message>
+    <message>
+        <source>&apos;%1&apos; is too small</source>
+        <translation>&apos;%1&apos; ssi nnene ekimala</translation>
+    </message>
+    <message>
+        <source>&apos;%1&apos; is not a Qt plugin (%2)</source>
+        <translation>&apos;%1&apos; ssi kyongerwako kya mu Qt (%2)</translation>
+    </message>
+    <message>
+        <source>metadata not found</source>
+        <translation>metadata terabidwa</translation>
+    </message>
+    <message>
+        <source>invalid signature</source>
+        <translation>ekigambo ekikakasa ekika kya fayiro kisobu</translation>
+    </message>
+    <message>
+        <source>file is for a different processor</source>
+        <translation>fayiro eno egenderedwa okukozesebwa ekitundu ekibazi eky&apos;ekika ekirala</translation>
+    </message>
+    <message>
+        <source>file has no sections</source>
+        <translation>fayiro temuli sekisoni</translation>
+    </message>
+    <message>
+        <source>wrong characteristics</source>
+        <translation>ebigambo bya byabutonde ebiriwo ssi bye byetaagibwa</translation>
+    </message>
+    <message>
+        <source>file is for a different word size</source>
+        <translation>fayiro ekolera ku bigambo eby&apos;ekigero ekirala</translation>
+    </message>
+    <message>
+        <source>file has no code</source>
+        <translation>fayiro temuli biragiro</translation>
+    </message>
+    <message>
+        <source>a section name is empty or extends past the end of the file</source>
+        <translation>waliwo erinnya lya sekisoni nga bbanga jjereere oba nga liringa eryeyongerayo okuyisa fayiro gy&apos;ekoma</translation>
+    </message>
+    <message>
+        <source>section contents extend past the end of the file</source>
+        <translation>ebiri mu sekisoni biringa ebyeyongerayo okuyisa fayiro gy&apos;ekoma</translation>
+    </message>
+    <message>
+        <source>.qtmetadata section is too small</source>
+        <translation>sekisoni eya .qtmetadata tewera</translation>
+    </message>
+    <message>
+        <source>.qtmetadata section has incorrect magic</source>
+        <translation>waliwo sekisoni eya .qtmetadata erimu akasumuluzo akasobi</translation>
+    </message>
+    <message>
+        <source>.qtmetadata section is writable</source>
+        <translation>sekisoni eya .qtmetadata ekkiriza okugiwandika mu</translation>
+    </message>
+    <message>
+        <source>.qtmetadata section is executable</source>
+        <translation>sekisoni eya .qtmetadata esobola okukola nga puloguramu</translation>
     </message>
 </context>
 <context>
@@ -2351,11 +2652,11 @@ Era oyagala egyibwewo?</translation>
     </message>
     <message>
         <source>%1: Socket resource error</source>
-        <translation>%1: Sistemu bye yeyambsa okukola omulimu tebimala, byonna bikozesebwa</translation>
+        <translation>%1: Sistemu bye yeyambisa okukola omulimu tebimala, byonna bikozesebwa</translation>
     </message>
     <message>
         <source>%1: Socket operation timed out</source>
-        <translation>%1: Omukolo og&apos;woku soketi obudde buguyiseko</translation>
+        <translation>%1: Omukolo ogw&apos;oku soketi obudde buguyiseko</translation>
     </message>
     <message>
         <source>%1: Datagram too large</source>
@@ -2371,7 +2672,7 @@ Era oyagala egyibwewo?</translation>
     </message>
     <message>
         <source>%1: Operation not permitted when socket is in this state</source>
-        <translation>%1: Soketi nga eri mu mbeera eno sisitemu eno omukolo ogwo tegusobola</translation>
+        <translation>%1: Soketi nga eri mu mbeera eno sisitemu eno omukolo ogwo tegukkiriza</translation>
     </message>
     <message>
         <source>%1: Unknown error</source>
@@ -2379,7 +2680,7 @@ Era oyagala egyibwewo?</translation>
     </message>
     <message>
         <source>Trying to connect while connection is in progress</source>
-        <translation>Omulimu ogwo&apos;kussawo enkatagana omulala gusangidwa gubumbujja</translation>
+        <translation>Omulimu ogw&apos;okussawo enkwatagana omulala gusangidwa gubumbujja</translation>
     </message>
     <message>
         <source>%1: Unknown error %2</source>
@@ -2392,6 +2693,10 @@ Era oyagala egyibwewo?</translation>
     <message>
         <source>Socket is not connected</source>
         <translation>Soketi tekwataganizidwa</translation>
+    </message>
+    <message>
+        <source>Remote closed</source>
+        <translation>Kompyuta ey&apos;ebunaayira eggadewo okuwulizagana</translation>
     </message>
 </context>
 <context>
@@ -2449,7 +2754,7 @@ Era oyagala egyibwewo?</translation>
     </message>
     <message>
         <source>Unable to reset statement</source>
-        <translation>Tekisobose okuzza ekiragiro ekinoonyeza mu ggwanika lya data mu mbeera yayo eyasoose</translation>
+        <translation>Tekisobose okuzza ekiragiro ekya mu ggwanika lya data mu mbeera ya kyo eyasoose</translation>
     </message>
     <message>
         <source>Unable to bind value</source>
@@ -2457,7 +2762,7 @@ Era oyagala egyibwewo?</translation>
     </message>
     <message>
         <source>Unable to execute statement</source>
-        <translation>Tekisobose okutandika ekiragiro ekinoonyeza mu ggwanika lya data</translation>
+        <translation>Tekisobose okutandika ekiragiro ekya mu ggwanika lya data</translation>
     </message>
     <message>
         <source>Unable to bind outvalues</source>
@@ -2565,9 +2870,15 @@ Era oyagala egyibwewo?</translation>
         <translation>&lt;h3&gt;Ku Qt&lt;/h3&gt;&lt;p&gt;Puloguramu eno ekozesa Qt wa luwandika %1.&lt;/p&gt;</translation>
     </message>
     <message>
+        <source>&lt;p&gt;Qt is a C++ toolkit for cross-platform application development.&lt;/p&gt;&lt;p&gt;Qt provides single-source portability across all major desktop operating systems. It is also available for embedded Linux and other embedded and mobile operating systems.&lt;/p&gt;&lt;p&gt;Qt is available under multiple licensing options designed to accommodate the needs of our various users.&lt;/p&gt;&lt;p&gt;Qt licensed under our commercial license agreement is appropriate for development of proprietary/commercial software where you do not want to share any source code with third parties or otherwise cannot comply with the terms of GNU (L)GPL.&lt;/p&gt;&lt;p&gt;Qt licensed under GNU (L)GPL is appropriate for the development of Qt&amp;nbsp;applications provided you can comply with the terms and conditions of the respective licenses.&lt;/p&gt;&lt;p&gt;Please see &lt;a href=&quot;https://%2/&quot;&gt;%2&lt;/a&gt; for an overview of Qt licensing.&lt;/p&gt;&lt;p&gt;Copyright (C) The Qt Company Ltd. and other contributors.&lt;/p&gt;&lt;p&gt;Qt and the Qt logo are trademarks of The Qt Company Ltd.&lt;/p&gt;&lt;p&gt;Qt is The Qt Company Ltd. product developed as an open source project. See &lt;a href=&quot;https://%3/&quot;&gt;%3&lt;/a&gt; for more information.&lt;/p&gt;</source>
+        <extracomment>Leave this text untranslated or include a verbatim copy of it below and note that it is the authoritative version in case of doubt.</extracomment>
+        <translatorcomment>Left untranslated as one of the options provided by the developer.</translatorcomment>
+        <translation></translation>
+    </message>
+    <message>
         <source>&lt;p&gt;Qt is a C++ toolkit for cross-platform application development.&lt;/p&gt;&lt;p&gt;Qt provides single-source portability across all major desktop operating systems. It is also available for embedded Linux and other embedded and mobile operating systems.&lt;/p&gt;&lt;p&gt;Qt is available under multiple licensing options designed to accommodate the needs of our various users.&lt;/p&gt;&lt;p&gt;Qt licensed under our commercial license agreement is appropriate for development of proprietary/commercial software where you do not want to share any source code with third parties or otherwise cannot comply with the terms of GNU (L)GPL.&lt;/p&gt;&lt;p&gt;Qt licensed under GNU (L)GPL is appropriate for the development of Qt&amp;nbsp;applications provided you can comply with the terms and conditions of the respective licenses.&lt;/p&gt;&lt;p&gt;Please see &lt;a href=&quot;http://%2/&quot;&gt;%2&lt;/a&gt; for an overview of Qt licensing.&lt;/p&gt;&lt;p&gt;Copyright (C) %1 The Qt Company Ltd and other contributors.&lt;/p&gt;&lt;p&gt;Qt and the Qt logo are trademarks of The Qt Company Ltd.&lt;/p&gt;&lt;p&gt;Qt is The Qt Company Ltd product developed as an open source project. See &lt;a href=&quot;http://%3/&quot;&gt;%3&lt;/a&gt; for more information.&lt;/p&gt;</source>
         <extracomment>Leave this text untranslated or include a verbatim copy of it below and note that it is the authoritative version in case of doubt.</extracomment>
-        <translation>Left untranslated as one of the options provided by the developer.</translation>
+        <translation type="vanished">Left untranslated as one of the options provided by the developer.</translation>
     </message>
     <message>
         <source>About Qt</source>
@@ -2674,7 +2985,7 @@ Era oyagala egyibwewo?</translation>
     </message>
     <message>
         <source>The proxy type is invalid for this operation</source>
-        <translation>Ekika kya manganzira tekikwatagana n&apos;omukolo guno</translation>
+        <translation>Ekika kya kalaani tekikwatagana n&apos;omukolo guno</translation>
     </message>
     <message>
         <source>Temporary error</source>
@@ -2686,7 +2997,7 @@ Era oyagala egyibwewo?</translation>
     </message>
     <message>
         <source>Connection reset by peer</source>
-        <translation>Kompyuta ey&apos;ebunaayira empulizagana ekuzizzayo mu mbeera yakwo eyasooka</translation>
+        <translation>Kompyuta ey&apos;ebunaayira okuwulizagana ekuzizzayo mu mbeera yakwo eyasooka</translation>
     </message>
     <message>
         <source>Unknown error</source>
@@ -2715,7 +3026,7 @@ Era oyagala egyibwewo?</translation>
     </message>
     <message>
         <source>Socket error on %1: %2</source>
-        <translation>Wazzewo kireya ku soketi %1: %2</translation>
+        <translation>Wazzewo kiremya ku soketi %1: %2</translation>
     </message>
     <message>
         <source>Remote host closed the connection prematurely on %1</source>
@@ -2749,23 +3060,23 @@ Era oyagala egyibwewo?</translation>
     <name>QNetworkAccessFtpBackend</name>
     <message>
         <source>No suitable proxy found</source>
-        <translation>Tewali kompyuta masanganzira etuuka ku mutimbagano ekozeseka</translation>
+        <translation type="vanished">Tewali kompyuta masanganzira etuuka ku mutimbagano ekozeseka</translation>
     </message>
     <message>
         <source>Cannot open %1: is a directory</source>
-        <translation>Tekisobose okubikkula %1: tterekero</translation>
+        <translation type="vanished">Tekisobose okubikkula %1: tterekero</translation>
     </message>
     <message>
         <source>Logging in to %1 failed: authentication required</source>
-        <translation>Okuyingira %1 kugaanye: kyetaagisa kukakasibwa</translation>
+        <translation type="vanished">Okuyingira %1 kugaanye: kyetaagisa kukakasibwa</translation>
     </message>
     <message>
         <source>Error while downloading %1: %2</source>
-        <translation>Okuwanula %1 kuzzemu kiremya: %2</translation>
+        <translation type="vanished">Okuwanula %1 kuzzemu kiremya: %2</translation>
     </message>
     <message>
         <source>Error while uploading %1: %2</source>
-        <translation>Okuteekayo %1 kuzzemu kiremya: %2</translation>
+        <translation type="vanished">Okuteekayo %1 kuzzemu kiremya: %2</translation>
     </message>
 </context>
 <context>
@@ -2776,11 +3087,11 @@ Era oyagala egyibwewo?</translation>
     </message>
     <message>
         <source>Network session error.</source>
-        <translation>Olukolagana lwa ku kayungirizi luzzemu kiremya.</translation>
+        <translation type="vanished">Olukolagana lwa ku kayungirizi luzzemu kiremya.</translation>
     </message>
     <message>
         <source>Background request not allowed.</source>
-        <translation>Ebiragiro eby&apos;emmanju kakano tebikkirizibwa.</translation>
+        <translation type="vanished">Ebiragiro eby&apos;emmanju kakano tebikkirizibwa.</translation>
     </message>
     <message>
         <source>backend start error.</source>
@@ -2788,7 +3099,7 @@ Era oyagala egyibwewo?</translation>
     </message>
     <message>
         <source>Temporary network failure.</source>
-        <translation>Okuwulizagana kukomezedwa mu ngeri ya kiseerabuseera.</translation>
+        <translation type="vanished">Okuwulizagana kukomezedwa mu ngeri ya kiseerabuseera.</translation>
     </message>
     <message>
         <source>Protocol &quot;%1&quot; is unknown</source>
@@ -2803,7 +3114,7 @@ Era oyagala egyibwewo?</translation>
     </message>
     <message>
         <source>No suitable proxy found</source>
-        <translation>Tewali kompyuta masanganzira etuuka ku mutimbagano ekozeseka</translation>
+        <translation>Tewali kalaani ekozeseka</translation>
     </message>
 </context>
 <context>
@@ -2817,30 +3128,30 @@ Era oyagala egyibwewo?</translation>
     <name>QNetworkSession</name>
     <message>
         <source>Invalid configuration.</source>
-        <translation>Enteekateeka y&apos;ebyakayungirizi eriwo eremesa omukolo.</translation>
+        <translation type="vanished">Enteekateeka y&apos;ebyakayungirizi eriwo eremesa omukolo.</translation>
     </message>
 </context>
 <context>
     <name>QNetworkSessionPrivateImpl</name>
     <message>
         <source>Unknown session error.</source>
-        <translation>Olukolagana lwa ku kayungirizi luzzemu kiremya atategeereka.</translation>
+        <translation type="vanished">Olukolagana lwa ku kayungirizi luzzemu kiremya atategeereka.</translation>
     </message>
     <message>
         <source>The session was aborted by the user or system.</source>
-        <translation>Olukolagana lukomezedwa omukozesa oba sisitemu.</translation>
+        <translation type="vanished">Olukolagana lukomezedwa omukozesa oba sisitemu.</translation>
     </message>
     <message>
         <source>The requested operation is not supported by the system.</source>
-        <translation>Sisitemu eno omukolo ogw&apos;oku kayungirizi ogwo tegusobola.</translation>
+        <translation type="vanished">Sisitemu eno omukolo ogw&apos;oku kayungirizi ogwo tegusobola.</translation>
     </message>
     <message>
         <source>The specified configuration cannot be used.</source>
-        <translation>Enteekateeka y&apos;ebyakayungirizi erondedwa tekozeseka.</translation>
+        <translation type="vanished">Enteekateeka y&apos;ebyakayungirizi erondedwa tekozeseka.</translation>
     </message>
     <message>
         <source>Roaming was aborted or is not possible.</source>
-        <translation>Okukyusanga mukutu guyitibwamu okutuuka ku kayungirizi eya waya tekusoboka oba kukomezedwa.</translation>
+        <translation type="vanished">Okukyusanga mukutu guyitibwamu okutuuka ku kayungirizi eya waya tekusoboka oba kukomezedwa.</translation>
     </message>
 </context>
 <context>
@@ -2899,7 +3210,7 @@ Era oyagala egyibwewo?</translation>
     </message>
     <message>
         <source>Unable to execute statement</source>
-        <translation>Tekisobose okutandika ekiragiro ekinoonyeza mu ggwanika lya data</translation>
+        <translation>Tekisobose okutandika ekiragiro ekya mu ggwanika lya data</translation>
     </message>
 </context>
 <context>
@@ -2910,7 +3221,7 @@ Era oyagala egyibwewo?</translation>
     </message>
     <message>
         <source>Unable to connect - Driver doesn&apos;t support all functionality required</source>
-        <translation>Okukwatagana kulemye - puloguramu etabaganya obusobozi obwetaagibwa obumu tebulina</translation>
+        <translation>Okukwatagana kulemye - Puloguramu etabaganya ebulako obumu ku obusobozi obwetaagibwa</translation>
     </message>
     <message>
         <source>Unable to disable autocommit</source>
@@ -2933,12 +3244,17 @@ Era oyagala egyibwewo?</translation>
     <name>QODBCResult</name>
     <message>
         <source>QODBCResult::reset: Unable to set &apos;SQL_CURSOR_STATIC&apos; as statement attribute. Please check your ODBC driver configuration</source>
-        <translation>QODBCResult::reset: Tekisobose okutegeka &apos;SQL_CURSOR_STATIC&apos; okbeera atiributo y&apos;ekiragiro kya mu ggwanika lya data.
+        <translation>QODBCResult::reset: Tekisobose okutegeka &apos;SQL_CURSOR_STATIC&apos; okubeera atiributo y&apos;ekiragiro kya mu ggwanika lya data.
 Kebera enteekateeka za puloguramu ekutabaganira ODBC ne kompyuta yo</translation>
     </message>
     <message>
         <source>Unable to execute statement</source>
-        <translation>Tekisobose okutandika ekiragiro ekinoonyeza mu ggwanika lya data</translation>
+        <translation>Tekisobose okutandika ekiragiro ekya mu ggwanika lya data</translation>
+    </message>
+    <message>
+        <source>QODBCResult::reset: Unable to set &apos;SQL_ATTR_CURSOR_TYPE&apos; as statement attribute. Please check your ODBC driver configuration</source>
+        <translation>QODBCResult::reset: Tekisobose okutegeka &apos;SQL_ATTR_CURSOR_TYPE&apos; okubeera atiributo y&apos;ekiragiro kya mu ggwanika lya data.
+Kebera enteekateeka za puloguramu ekutabaganira ODBC ne kompyuta yo</translation>
     </message>
     <message>
         <source>Unable to fetch</source>
@@ -2974,6 +3290,10 @@ Kebera enteekateeka za puloguramu ekutabaganira ODBC ne kompyuta yo</translation
     <message>
         <source>Unable to connect</source>
         <translation>Okukwatagana kulemye</translation>
+    </message>
+    <message>
+        <source>Unable to set client encoding to &apos;UNICODE&apos;</source>
+        <translation>Tekisobose okutegeka enkongojja ekozesebwa kasitoma ebeere &apos;UNICODE&apos;</translation>
     </message>
     <message>
         <source>Could not begin transaction</source>
@@ -3186,7 +3506,7 @@ Kebera enteekateeka za puloguramu ekutabaganira ODBC ne kompyuta yo</translation
     <message>
         <source>Custom (%1CC x %2CC)</source>
         <extracomment>Custom size name in ciceros</extracomment>
-        <translation></translation>
+        <translation>Kigero kikyo mu cicero (%1CC x %2CC)</translation>
     </message>
     <message>
         <source>%1 x %2 in</source>
@@ -3804,7 +4124,7 @@ Kebera enteekateeka za puloguramu ekutabaganira ODBC ne kompyuta yo</translation
     </message>
     <message>
         <source>&amp;Options &lt;&lt;</source>
-        <translation>&amp;Ebisoboka&lt;&lt;</translation>
+        <translation>&amp;Ebisoboka &lt;&lt;</translation>
     </message>
     <message>
         <source>Invalid Pages Definition</source>
@@ -3812,7 +4132,7 @@ Kebera enteekateeka za puloguramu ekutabaganira ODBC ne kompyuta yo</translation
     </message>
     <message>
         <source>%1 does not follow the correct syntax. Please use &apos;,&apos; to separate ranges and pages, &apos;-&apos; to define ranges and make sure ranges do not intersect with each other.</source>
-        <translation>Empandika ya %1 erimu ensobi. Kozesa akabonero  &apos;-&apos; okulaga olubu lw&apos;empapula era genderera nti embu bwe zisukka mu lumu teziyingiragana. Kozesa akabonero &apos;,&apos; okwawula ennamba z&apos;empapula z&apos;olaga kinnalumu.</translation>
+        <translation>Empandika ya %1 erimu ensobi. Kozesa akabonero &apos;-&apos; okulaga olubu lw&apos;empapula era genderera nti embu bwe zisukka mu lumu teziyingiragana. Kozesa akabonero &apos;,&apos; okwawula ennamba z&apos;empapula z&apos;olaga kinnalumu.</translation>
     </message>
     <message>
         <source>Duplex Settings Conflicts</source>
@@ -3848,12 +4168,12 @@ Fayiro girondere erinnya ddala.</translation>
         <source>File %1 is not writable.
 Please choose a different file name.</source>
         <translation>Fayiro %1 tewandikikamu.
-Londa erinnya lya fayiro ddala.</translation>
+Londa erinnya lya fayiro eddala.</translation>
     </message>
     <message>
         <source>%1 already exists.
 Do you want to overwrite it?</source>
-        <translation>%1 gyeri. Oyagala okugigyawo waddewo kirala?</translation>
+        <translation>%1 esangidwa gyeri. Oyagala okugigyawo waddewo kirala?</translation>
     </message>
     <message>
         <source>Options &apos;Pages Per Sheet&apos; and &apos;Page Set&apos; cannot be used together.
@@ -3867,7 +4187,7 @@ Jjululako ekimu.</translation>
     </message>
     <message>
         <source>OK</source>
-        <translation>Kale</translation>
+        <translation type="vanished">Kale</translation>
     </message>
 </context>
 <context>
@@ -3961,7 +4281,7 @@ Jjululako ekimu.</translation>
     </message>
     <message>
         <source>Page Setup Conflicts</source>
-        <translation>Ebitegekedwa ku binaakubisibwa ebimu tebikolagana</translation>
+        <translation>Ebitakolagana mu Bitegekedwa ku Binaakubisibwa</translation>
     </message>
     <message>
         <source>There are conflicts in page setup options. Do you want to fix them?</source>
@@ -3969,7 +4289,7 @@ Jjululako ekimu.</translation>
     </message>
     <message>
         <source>Advanced Option Conflicts</source>
-        <translation>Ebitegekedwa ebyetaaga bumanyirivu ebimu tebikolagana</translation>
+        <translation>Ebitakolagana mu Bitegekedwa Ebyetaaga Bumanyirivu</translation>
     </message>
     <message>
         <source>There are conflicts in some advanced options. Do you want to fix them?</source>
@@ -4125,7 +4445,7 @@ Eky&apos;okulabirako: Bw&apos;owandika 3,5-7,9 empapula namba 3, 5, 6, 7 ne 9 ze
     </message>
     <message>
         <source>Output &amp;file:</source>
-        <translation>Fayiro e&amp;genda okukubisibwa:</translation>
+        <translation>&amp;Fayiro egenda okukubisibwa:</translation>
     </message>
     <message>
         <source>...</source>
@@ -4144,7 +4464,7 @@ Eky&apos;okulabirako: Bw&apos;owandika 3,5-7,9 empapula namba 3, 5, 6, 7 ne 9 ze
     </message>
     <message>
         <source>Process operation timed out</source>
-        <translation>Omukolo og&apos;womu mulimu obudde buguyiseko</translation>
+        <translation>Omukolo ogw&apos;omu mulimu obudde buguyiseko</translation>
     </message>
     <message>
         <source>Error reading from process</source>
@@ -4167,6 +4487,22 @@ Eky&apos;okulabirako: Bw&apos;owandika 3,5-7,9 empapula namba 3, 5, 6, 7 ne 9 ze
         <translation>Obusobozi bwa kompyuta bufunye kiremya (Omulimu gulemedwa okwekolamu koppi): %1</translation>
     </message>
     <message>
+        <source>Child process modifier threw an exception: %1</source>
+        <translation>Omukolo ogufuulamu omulimu ogutandikidwa gunnaagwo guzzeeko kiremya: %1</translation>
+    </message>
+    <message>
+        <source>Child process modifier reported error: %1</source>
+        <translation>Omukolo ogufuulamu omulimu ogutandikidwa gunnaagwo gulabye awali kiremya: %1</translation>
+    </message>
+    <message>
+        <source>Child process modifier reported error: %1: %2</source>
+        <translation>Omukolo ogufuulamu omulimu ogutandikidwa gunnaagwo gulabye awali kiremya: %1: %2</translation>
+    </message>
+    <message>
+        <source>Child process set up failed: %1: %2</source>
+        <translation>Okutegeka omulimu gutandikibwe gunnaagwo kugaanye: %1: %2</translation>
+    </message>
+    <message>
         <source>Could not open output redirection for writing</source>
         <translation>Tekisobose okubikkula ekifo ekipya awanaateekebwanga ebiva mu mulimu</translation>
     </message>
@@ -4186,51 +4522,51 @@ Eky&apos;okulabirako: Bw&apos;owandika 3,5-7,9 empapula namba 3, 5, 6, 7 ne 9 ze
     <name>QRegExp</name>
     <message>
         <source>no error occurred</source>
-        <translation>temubadde nsobi</translation>
+        <translation type="vanished">temubadde nsobi</translation>
     </message>
     <message>
         <source>disabled feature used</source>
-        <translation>ekiragiro kigeza okukozesa obusobozi obwaadibizibwa</translation>
+        <translation type="vanished">ekiragiro kigeza okukozesa obusobozi obwaadibizibwa</translation>
     </message>
     <message>
         <source>bad char class syntax</source>
-        <translation>emboozi enoonyako kamu ku lubu lw&apos;obubonero erimu ensobi</translation>
+        <translation type="vanished">emboozi enoonyako kamu ku lubu lw&apos;obubonero erimu ensobi</translation>
     </message>
     <message>
         <source>bad lookahead syntax</source>
-        <translation>emboozi enoonya kifo mu ginnaayo erimu ensobi</translation>
+        <translation type="vanished">emboozi enoonya kifo mu ginnaayo erimu ensobi</translation>
     </message>
     <message>
         <source>lookbehinds not supported, see QTBUG-2371</source>
-        <translation>emboozi ezinoonya ebikulembera ekifo mu zinnaazo sisitemu eno tezitegeera, soma QTBUG-2371</translation>
+        <translation type="vanished">emboozi ezinoonya ebikulembera ekifo mu zinnaazo sisitemu eno tezitegeera, soma QTBUG-2371</translation>
     </message>
     <message>
         <source>bad repetition syntax</source>
-        <translation>awalaga obungi bw&apos;ekinoonyezebwa emboozi enoonya waliwo nsobi</translation>
+        <translation type="vanished">awalaga obungi bw&apos;ekinoonyezebwa emboozi enoonya waliwo nsobi</translation>
     </message>
     <message>
         <source>invalid octal value</source>
-        <translation>waliwo omuwendo ogw&apos;ennengamunaana omusobu</translation>
+        <translation type="vanished">waliwo omuwendo ogw&apos;ennengamunaana omusobu</translation>
     </message>
     <message>
         <source>missing left delim</source>
-        <translation>waliwo awabulako akabonero ak&apos;awuzi ak&apos;oku kkuono</translation>
+        <translation type="vanished">waliwo awabulako akabonero ak&apos;awuzi ak&apos;oku kkuono</translation>
     </message>
     <message>
         <source>unexpected end</source>
-        <translation>emboozi enoonya ekomye mu ngeri etasuubidwa</translation>
+        <translation type="vanished">emboozi enoonya ekomye mu ngeri etasuubidwa</translation>
     </message>
     <message>
         <source>met internal limit</source>
-        <translation>ebiragiro ebinoonyesa ebigoberera oba ebikulembera ekifo bisusse obungi mu mboozi</translation>
+        <translation type="vanished">ebiragiro ebinoonyesa ebigoberera oba ebikulembera ekifo bisusse obungi mu mboozi</translation>
     </message>
     <message>
         <source>invalid interval</source>
-        <translation>entegeka y&apos;obungi bw&apos;ekinoonyezebwa eriko nsobi</translation>
+        <translation type="vanished">entegeka y&apos;obungi bw&apos;ekinoonyezebwa eriko nsobi</translation>
     </message>
     <message>
         <source>invalid category</source>
-        <translation>enteekateeka y&apos;ekika kya bubonero obwa mu Unicode eriko kiremya</translation>
+        <translation type="vanished">enteekateeka y&apos;ekika kya bubonero obwa mu Unicode eriko kiremya</translation>
     </message>
 </context>
 <context>
@@ -4253,7 +4589,7 @@ Eky&apos;okulabirako: Bw&apos;owandika 3,5-7,9 empapula namba 3, 5, 6, 7 ne 9 ze
     </message>
     <message>
         <source>numbers out of order in {} quantifier</source>
-        <translation>ennamba eziri wakati w&apos;obubonero &apos;{}&apos; obulaga obungi bw&apos;ebinoonyezebwa ssi nsengeke</translation>
+        <translation>ennamba eziri wakati w&apos;obubonero &apos;{}&apos; obulaga obungi bw&apos;ebinoonyezebwa ssi nsengeke bulungi</translation>
     </message>
     <message>
         <source>number too big in {} quantifier</source>
@@ -4269,7 +4605,7 @@ Eky&apos;okulabirako: Bw&apos;owandika 3,5-7,9 empapula namba 3, 5, 6, 7 ne 9 ze
     </message>
     <message>
         <source>range out of order in character class</source>
-        <translation>emboozi enoonyako kamu ku lubu lw&apos;obubonero obubonero bwa mu ssi busengeke</translation>
+        <translation>emboozi enoonyako kamu ku lubu lw&apos;obubonero obubonero bwa mu ssi busengeke bulungi</translation>
     </message>
     <message>
         <source>quantifier does not follow a repeatable item</source>
@@ -4313,7 +4649,7 @@ Eky&apos;okulabirako: Bw&apos;owandika 3,5-7,9 empapula namba 3, 5, 6, 7 ne 9 ze
     </message>
     <message>
         <source>parentheses are too deeply nested</source>
-        <translation>waliwo obubonero obwa ( ne ) we buyitiridde obungi muda mwa bunnaabwo</translation>
+        <translation>waliwo obubonero obwa ( ne ) we buyitiridde obungi munda mwa bunnaabwo</translation>
     </message>
     <message>
         <source>regular expression is too large</source>
@@ -4333,7 +4669,7 @@ Eky&apos;okulabirako: Bw&apos;owandika 3,5-7,9 empapula namba 3, 5, 6, 7 ne 9 ze
     </message>
     <message>
         <source>missing closing parenthesis for condition</source>
-        <translation>waliwo embeera ebulako ka ) akagifundikira</translation>
+        <translation>waliwo akakwakkulizo akabulako ka ) akakafundikira</translation>
     </message>
     <message>
         <source>lookbehind assertion is not fixed length</source>
@@ -4369,11 +4705,11 @@ Eky&apos;okulabirako: Bw&apos;owandika 3,5-7,9 empapula namba 3, 5, 6, 7 ne 9 ze
     </message>
     <message>
         <source>parentheses are too deeply nested (stack check)</source>
-        <translation>waliwo obubonero obwa ( ne ) we buyitiridde obungi muda mwa bunnaabwo (ggwanika eripangibwa)</translation>
+        <translation>waliwo obubonero obwa ( ne ) we buyitiridde obungi munda mwa bunnaabwo (ggwanika eripangibwa)</translation>
     </message>
     <message>
         <source>character code point value in \x{} or \o{} is too large</source>
-        <translation>ennamba ya kabonero ezingidwa mu \x{} ob mu \o{} eyitiridde obunene</translation>
+        <translation>ennamba ya kabonero ezingidwa mu \x{} oba mu \o{} eyitiridde obunene</translation>
     </message>
     <message>
         <source>lookbehind is too complicated</source>
@@ -4401,11 +4737,11 @@ Eky&apos;okulabirako: Bw&apos;owandika 3,5-7,9 empapula namba 3, 5, 6, 7 ne 9 ze
     </message>
     <message>
         <source>unrecognized character after (?P</source>
-        <translation>obubonero (?P buddiridwa akalala akatategeeredwa</translation>
+        <translation>akabonero akaddirira (?P tekatategeeredwa</translation>
     </message>
     <message>
         <source>syntax error in subpattern name (missing terminator?)</source>
-        <translation>erinnya ly&apos;enyingo y&apos;ekinoonyezebwa lirimu ensoba y&apos;empandika (kubulako ekifundikira?)</translation>
+        <translation>erinnya ly&apos;enyingo y&apos;ekinoonyezebwa lirimu ensobi y&apos;empandika (kubulako ekifundikira?)</translation>
     </message>
     <message>
         <source>two named subpatterns have the same name (PCRE2_DUPNAMES not set)</source>
@@ -4413,11 +4749,11 @@ Eky&apos;okulabirako: Bw&apos;owandika 3,5-7,9 empapula namba 3, 5, 6, 7 ne 9 ze
     </message>
     <message>
         <source>subpattern name must start with a non-digit</source>
-        <translation>enyingo y&apos;ekinoonyezebwa liteekwa okutandika n&apos;ekitali digiti</translation>
+        <translation>erinnya ly&apos;enyingo y&apos;ekinoonyezebwa liteekwa okutandika n&apos;ekitali digiti</translation>
     </message>
     <message>
         <source>this version of PCRE2 does not have support for \P, \p, or \X</source>
-        <translation>PCRE2 tekozesa \P, \p, ne \X</translation>
+        <translation>oluwandika lwa PCRE2 luno terukozesa \P, \p, ne \X</translation>
     </message>
     <message>
         <source>malformed \P or \p sequence</source>
@@ -4437,7 +4773,7 @@ Eky&apos;okulabirako: Bw&apos;owandika 3,5-7,9 empapula namba 3, 5, 6, 7 ne 9 ze
     </message>
     <message>
         <source>invalid range in character class</source>
-        <translation>emboozi enoonya olubu lw&apos;obubonero lwa mu terukozeseka</translation>
+        <translation>olubu lw&apos;obubonero oluli mu mboozi enoonya terukozeseka</translation>
     </message>
     <message>
         <source>octal value is greater than \377 in 8-bit non-UTF-8 mode</source>
@@ -4469,7 +4805,7 @@ Eky&apos;okulabirako: Bw&apos;owandika 3,5-7,9 empapula namba 3, 5, 6, 7 ne 9 ze
     </message>
     <message>
         <source>(?R (recursive pattern call) must be followed by a closing parenthesis</source>
-        <translation>ebiddirira (?R nga by&apos;ekolako biteekwa okufundikirwa )</translation>
+        <translation>ebiddirira (?R nga bye by&apos;ekolako biteekwa okufundikirwa )</translation>
     </message>
     <message>
         <source>obsolete error (should not occur)</source>
@@ -4489,11 +4825,11 @@ Eky&apos;okulabirako: Bw&apos;owandika 3,5-7,9 empapula namba 3, 5, 6, 7 ne 9 ze
     </message>
     <message>
         <source>internal error: parsed pattern overflow</source>
-        <translation>puloguramu ezeemu kiremya: ekinoonyezebwa ky&apos;ekebedde kigereetedde okumalawo ekifo ekigweeredwa okukoleramu mu ggwanika</translation>
+        <translation>puloguramu ezeemu kiremya: ekebedde ekinoonyezebwa ne kigereetera okumalawo ekifo ekigiweeredwa okukoleramu mu ggwanika</translation>
     </message>
     <message>
         <source>non-octal character in \o{} (closing brace missing?)</source>
-        <translation>\o{} kiriu akabonero akatali ka nnengamunaana (oba ka } akafundikira ke kataliiko)</translation>
+        <translation>\o{} kirimu akabonero akatali ka nnengamunaana (oba ka } (akafundikira ke kataliiko?)</translation>
     </message>
     <message>
         <source>different names for subpatterns of the same number are not allowed</source>
@@ -4505,7 +4841,7 @@ Eky&apos;okulabirako: Bw&apos;owandika 3,5-7,9 empapula namba 3, 5, 6, 7 ne 9 ze
     </message>
     <message>
         <source>non-hex character in \x{} (closing brace missing?)</source>
-        <translation>\x{} kiriu akabonero akatali ka nnengakkuminamukaaga (oba ka } akafundikira ke kataliiko)</translation>
+        <translation>\x{} kirimu akabonero akatali ka nnengakkuminamukaaga (oba ka } akafundikira ke kataliiko?)</translation>
     </message>
     <message>
         <source>\c must be followed by a printable ASCII character</source>
@@ -4529,7 +4865,7 @@ Eky&apos;okulabirako: Bw&apos;owandika 3,5-7,9 empapula namba 3, 5, 6, 7 ne 9 ze
     </message>
     <message>
         <source>callout string is too long</source>
-        <translation>emboozi eya mu kiragiro ekyeyazisi eyitiridde obuwanvu</translation>
+        <translation>ekigambo ekya mu kiragiro ekyeyazisi kiyitiridde obuwanvu</translation>
     </message>
     <message>
         <source>disallowed Unicode code point (&gt;= 0xd800 &amp;&amp; &lt;= 0xdfff)</source>
@@ -4549,7 +4885,7 @@ Eky&apos;okulabirako: Bw&apos;owandika 3,5-7,9 empapula namba 3, 5, 6, 7 ne 9 ze
     </message>
     <message>
         <source>character code point value in \u.... sequence is too large</source>
-        <translation>ennamba ya kabonero ezingidwa mu ebigobereragana \u ... eyitiridde obunene</translation>
+        <translation>ennamba ya kabonero ezingidwa mu ebigobereragana ebigendera ku \u ... eyitiridde obunene</translation>
     </message>
     <message>
         <source>digits missing in \x{} or \o{} or \N{U+}</source>
@@ -4565,11 +4901,11 @@ Eky&apos;okulabirako: Bw&apos;owandika 3,5-7,9 empapula namba 3, 5, 6, 7 ne 9 ze
     </message>
     <message>
         <source>missing terminating delimiter for callout with string argument</source>
-        <translation>waliwo ekiragiro ekyeyazisi nga agumenti ya yo kigambo ekibulako akabonero ak&apos;awuzi akakifundikira</translation>
+        <translation>waliwo ekiragiro ekyeyazisi nga agumenti ya kyo kigambo ekibulako akabonero ak&apos;awuzi akakifundikira</translation>
     </message>
     <message>
         <source>unrecognized string delimiter follows (?C</source>
-        <translation>obubonero (?C buddidwako akabonero akabonero ak&apos;awuzi akatategeeredwa</translation>
+        <translation>akabonero ak&apos;awuzi akaddirira obubonero (?C tekategeeredwa</translation>
     </message>
     <message>
         <source>using \C is disabled by the application</source>
@@ -4577,7 +4913,7 @@ Eky&apos;okulabirako: Bw&apos;owandika 3,5-7,9 empapula namba 3, 5, 6, 7 ne 9 ze
     </message>
     <message>
         <source>(?| and/or (?J: or (?x: parentheses are too deeply nested</source>
-        <translation>(?| ne/oba (?J: oba (?x: waliwo obubonero obwa ( ne ) we buyitiridde obungi muda mwa bunnaabwo</translation>
+        <translation>(?| ne/oba (?J: oba (?x: waliwo obubonero obwa ( ne ) we buyitiridde obungi munda mwa bunnaabwo</translation>
     </message>
     <message>
         <source>using \C is disabled in this PCRE2 library</source>
@@ -4585,7 +4921,7 @@ Eky&apos;okulabirako: Bw&apos;owandika 3,5-7,9 empapula namba 3, 5, 6, 7 ne 9 ze
     </message>
     <message>
         <source>regular expression is too complicated</source>
-        <translation>emboozi enoonya eyitiridde ebitundu ebingi</translation>
+        <translation>emboozi enoonya eyitiridde mu ebitundu ebingi</translation>
     </message>
     <message>
         <source>lookbehind assertion is too long</source>
@@ -4593,11 +4929,11 @@ Eky&apos;okulabirako: Bw&apos;owandika 3,5-7,9 empapula namba 3, 5, 6, 7 ne 9 ze
     </message>
     <message>
         <source>pattern string is longer than the limit set by the application</source>
-        <translation>obuwanvu bw&apos;emboozi eya mu kinoonyezebwa busyise ku kkomo puloguramu gy&apos;etaddewo</translation>
+        <translation>obuwanvu bw&apos;emboozi eya mu kinoonyezebwa buyise ku kkomo puloguramu gy&apos;etaddewo</translation>
     </message>
     <message>
         <source>internal error: unknown code in parsed pattern</source>
-        <translation>puloguramu ezzeemu kiremya: esanze ebiragiro by&apos;etategeera mu kinonyezebwa ky&apos;ekebeddeo</translation>
+        <translation>puloguramu ezzeemu kiremya: esanze ebiragiro by&apos;etategeera mu kinonyezebwa ky&apos;ekebedde</translation>
     </message>
     <message>
         <source>internal error: bad code value in parsed_skip()</source>
@@ -4633,7 +4969,7 @@ Eky&apos;okulabirako: Bw&apos;owandika 3,5-7,9 empapula namba 3, 5, 6, 7 ne 9 ze
     </message>
     <message>
         <source>atomic assertion expected after (?( or (?(?C)</source>
-        <translation>e kiragiro ekinoonyesa emboozi enoonya ekifobufo mu ginnaayo ekiddirira (?( or (?(?C) kyetaaga okubeera nga emboozi ya mu ekozesebwa wamu ng&apos;ekigambo</translation>
+        <translation>ekiragiro ekinoonyesa emboozi enoonya ekifobufo mu ginnaayo ekiddirira (?( or (?(?C) kyetaaga okubeera nga emboozi ya mu ekozesebwa wamu ng&apos;ekigambo</translation>
     </message>
     <message>
         <source>no match</source>
@@ -4665,19 +5001,19 @@ Eky&apos;okulabirako: Bw&apos;owandika 3,5-7,9 empapula namba 3, 5, 6, 7 ne 9 ze
     </message>
     <message>
         <source>UTF-8 error: byte 2 top bits not 0x80</source>
-        <translation>kiremya wa mu UTF-8: wasangidwa ekirina bbiti ezisinga obuzito mu bayiti yakyo eyokubiri nga teziri 0x80</translation>
+        <translation>kiremya wa mu UTF-8: wasangidwa ekirina bbiti ezisinga obuzito mu bayiti yakyo ey&apos;okubiri nga teziri 0x80</translation>
     </message>
     <message>
         <source>UTF-8 error: byte 3 top bits not 0x80</source>
-        <translation>kiremya wa mu UTF-8: wasangidwa ekirina bbiti ezisinga obuzito mu bayiti yakyo eyokusatu nga teziri 0x80</translation>
+        <translation>kiremya wa mu UTF-8: wasangidwa ekirina bbiti ezisinga obuzito mu bayiti yakyo ey&apos;okusatu nga teziri 0x80</translation>
     </message>
     <message>
         <source>UTF-8 error: byte 4 top bits not 0x80</source>
-        <translation>kiremya wa mu UTF-8: wasangidwa ekirina bbiti ezisinga obuzito mu bayiti yakyo eyokuna nga teziri 0x80</translation>
+        <translation>kiremya wa mu UTF-8: wasangidwa ekirina bbiti ezisinga obuzito mu bayiti yakyo ey&apos;okuna nga teziri 0x80</translation>
     </message>
     <message>
         <source>UTF-8 error: byte 5 top bits not 0x80</source>
-        <translation>kiremya wa mu UTF-8: wasangidwa ekirina bbiti ezisinga obuzito mu bayiti yakyo eyokutaano nga teziri 0x80</translation>
+        <translation>kiremya wa mu UTF-8: wasangidwa ekirina bbiti ezisinga obuzito mu bayiti yakyo ey&apos;okutaano nga teziri 0x80</translation>
     </message>
     <message>
         <source>UTF-8 error: byte 6 top bits not 0x80</source>
@@ -4813,7 +5149,7 @@ Eky&apos;okulabirako: Bw&apos;owandika 3,5-7,9 empapula namba 3, 5, 6, 7 ne 9 ze
     </message>
     <message>
         <source>bad JIT option</source>
-        <translation>akawayiro aka bad JIT</translation>
+        <translation>waliwo akawayiro aka JIT akasobi</translation>
     </message>
     <message>
         <source>JIT stack limit reached</source>
@@ -4829,7 +5165,7 @@ Eky&apos;okulabirako: Bw&apos;owandika 3,5-7,9 empapula namba 3, 5, 6, 7 ne 9 ze
     </message>
     <message>
         <source>unknown substring</source>
-        <translation>kitundu ekitayatuukirizidwa eky&apos;ekigambo</translation>
+        <translation>waliwo ekitundu ekitayatuukirizidwa eky&apos;ekigambo</translation>
     </message>
     <message>
         <source>non-unique substring name</source>
@@ -4873,7 +5209,7 @@ Eky&apos;okulabirako: Bw&apos;owandika 3,5-7,9 empapula namba 3, 5, 6, 7 ne 9 ze
     </message>
     <message>
         <source>match with end before start or start moved backwards is not supported</source>
-        <translation>sisitrmu temanyi okunoonya ebifaanana ekinoonyezebwa ku nkomerero z&apos;ebinonoonyezebwamu</translation>
+        <translation>sisitemu temanyi okunoonya ebifaanana ekinoonyezebwa ku nkomerero z&apos;ebinoonyezebwamu</translation>
     </message>
     <message>
         <source>too many replacements (more than INT_MAX)</source>
@@ -4885,7 +5221,7 @@ Eky&apos;okulabirako: Bw&apos;owandika 3,5-7,9 empapula namba 3, 5, 6, 7 ne 9 ze
     </message>
     <message>
         <source>heap limit exceeded</source>
-        <translation>ekkomo ly&apos;eggwanka ery&apos;entuumo liyisidwako</translation>
+        <translation>ekkomo ly&apos;eggwanka ery&apos;entuumo liyitidwako</translation>
     </message>
     <message>
         <source>invalid syntax</source>
@@ -4893,41 +5229,45 @@ Eky&apos;okulabirako: Bw&apos;owandika 3,5-7,9 empapula namba 3, 5, 6, 7 ne 9 ze
     </message>
     <message>
         <source>internal error - duplicate substitution match</source>
-        <translation>puloguramu ezzeemu kiremya - waliwo ekizuulidwa ekiragidwa okuwanyisibwamu by mirundi ebiri</translation>
+        <translation>puloguramu ezzeemu kiremya - waliwo ekizuulidwa ekiragidwa okuwanyisibwamu bya mirundi ebiri</translation>
     </message>
     <message>
         <source>PCRE2_MATCH_INVALID_UTF is not supported for DFA matching</source>
         <translation>PCRE2_MATCH_INVALID_UTF tekikolagana n&apos;ogw&apos;okunoonya ogwa puloguramu eyekozesa emikolo emibale</translation>
+    </message>
+    <message>
+        <source>INTERNAL ERROR: invalid substring offset</source>
+        <translation>PULOGURAMU EZZEEMU KIREMYA: entandikwa y&apos;ekitundu ky&apos;ekinoonyezebwa eweeredwa tekozeseka</translation>
     </message>
 </context>
 <context>
     <name>QSQLite2Driver</name>
     <message>
         <source>Error opening database</source>
-        <translation>Wazzewo kiremya mu kubikkula ggwanika lya data</translation>
+        <translation type="vanished">Wazzewo kiremya mu kubikkula ggwanika lya data</translation>
     </message>
     <message>
         <source>Unable to begin transaction</source>
-        <translation>Tekisobose okutandika omukolo</translation>
+        <translation type="vanished">Tekisobose okutandika omukolo</translation>
     </message>
     <message>
         <source>Unable to commit transaction</source>
-        <translation>Tekisobose okukaza ebikyusidwa</translation>
+        <translation type="vanished">Tekisobose okukaza ebikyusidwa</translation>
     </message>
     <message>
         <source>Unable to rollback transaction</source>
-        <translation>Tekisobose okujjulula ebikyusidwa</translation>
+        <translation type="vanished">Tekisobose okujjulula ebikyusidwa</translation>
     </message>
 </context>
 <context>
     <name>QSQLite2Result</name>
     <message>
         <source>Unable to fetch results</source>
-        <translation>Tekisobose okunona ebivudde mu kunoonya</translation>
+        <translation type="vanished">Tekisobose okunona ebivudde mu kunoonya</translation>
     </message>
     <message>
         <source>Unable to execute statement</source>
-        <translation>Tekisobose okutandika ekiragiro ekinoonyeza mu ggwanika lya data</translation>
+        <translation type="vanished">Tekisobose okutandika ekiragiro ekinoonyeza mu ggwanika lya data</translation>
     </message>
 </context>
 <context>
@@ -4965,19 +5305,19 @@ Eky&apos;okulabirako: Bw&apos;owandika 3,5-7,9 empapula namba 3, 5, 6, 7 ne 9 ze
     </message>
     <message>
         <source>Unable to execute statement</source>
-        <translation>Tekisobose okutandika ekiragiro ekinoonyeza mu ggwanika lya data</translation>
+        <translation>Tekisobose okutandika ekiragiro ekya mu ggwanika lya data</translation>
     </message>
     <message>
         <source>Unable to execute multiple statements at a time</source>
-        <translation>Tekisobose okutandikira okumu ebiragiro ebinoonyeza mu ggwanika lya data ebisukka mu kimu</translation>
+        <translation>Tekisobose okutandikira okumu ebiragiro ebya mu ggwanika lya data ebisukka mu kimu</translation>
     </message>
     <message>
         <source>Unable to reset statement</source>
-        <translation>Tekisobose okuzza ekiragiro ekinoonyeza mu ggwanika lya data mu mbeera yayo eyasoose</translation>
+        <translation>Tekisobose okuzza ekiragiro ekya mu ggwanika lya data mu mbeera yakyo eyasoose</translation>
     </message>
     <message>
         <source>Unable to bind parameters</source>
-        <translation>Tekisobose okuzza ekikongojje ekya ddala mu kifo ky&apos;ekikwatakifo</translation>
+        <translation>Tekisobose okuzza ebikongojje ebya ddala mu bifo by&apos;ebikwatakifo</translation>
     </message>
     <message>
         <source>Parameter count mismatch</source>
@@ -5069,7 +5409,7 @@ Eky&apos;okulabirako: Bw&apos;owandika 3,5-7,9 empapula namba 3, 5, 6, 7 ne 9 ze
     <name>QSharedMemory</name>
     <message>
         <source>%1: unable to set key on lock</source>
-        <translation>%1: waliwo ekikugizo ekigaana ekitundu ky&apos;eggwanika okugabanibwa</translation>
+        <translation type="vanished">%1: waliwo ekikugizo ekigaana ekitundu ky&apos;eggwanika okugabanibwa</translation>
     </message>
     <message>
         <source>%1: create size is less then 0</source>
@@ -5093,11 +5433,11 @@ Eky&apos;okulabirako: Bw&apos;owandika 3,5-7,9 empapula namba 3, 5, 6, 7 ne 9 ze
     </message>
     <message>
         <source>%1: UNIX key file doesn&apos;t exist</source>
-        <translation>%1: ftok teraba fayiro gy&apos;ekolera ennambakifo</translation>
+        <translation type="vanished">%1: ftok teraba fayiro gy&apos;ekolera ennambakifo</translation>
     </message>
     <message>
         <source>%1: ftok failed</source>
-        <translation>%1: ftok eremeredwa</translation>
+        <translation type="vanished">%1: ftok eremeredwa</translation>
     </message>
     <message>
         <source>%1: unable to make key</source>
@@ -5110,6 +5450,14 @@ Eky&apos;okulabirako: Bw&apos;owandika 3,5-7,9 empapula namba 3, 5, 6, 7 ne 9 ze
     <message>
         <source>%1: not attached</source>
         <translation>%1: ekitundu ky&apos;eggwanika tekikwataganizidwa</translation>
+    </message>
+    <message>
+        <source>%1: unsupported key type</source>
+        <translation>%1: waliwo ennamba y&apos;endagiriro ey&apos;ekika ekitategeereka</translation>
+    </message>
+    <message>
+        <source>%1: unable to set key on lock (%2)</source>
+        <translation>%1: waliwo ekikugizo ekigaana ekitundu ky&apos;eggwanika okugabanibwa (%2)</translation>
     </message>
     <message>
         <source>%1: permission denied</source>
@@ -5128,12 +5476,16 @@ Eky&apos;okulabirako: Bw&apos;owandika 3,5-7,9 empapula namba 3, 5, 6, 7 ne 9 ze
         <translation>%1: sisitemu bye yeyambsa okukola omulimu tebimala, byonna bikozesebwa</translation>
     </message>
     <message>
+        <source>%1: unknown error: %2</source>
+        <translation>%1: wazzewo kiremya atategeereka: %2</translation>
+    </message>
+    <message>
         <source>%1: unknown error %2</source>
-        <translation>%1: wazzewo kiremya atategeereka %2</translation>
+        <translation type="vanished">%1: wazzewo kiremya atategeereka %2</translation>
     </message>
     <message>
         <source>%1: invalid size</source>
-        <translation>%1: obunene obutgekedwa tebukozeseka</translation>
+        <translation>%1: obunene obutegekedwa tebukozeseka</translation>
     </message>
     <message>
         <source>%1: key error</source>
@@ -5185,11 +5537,11 @@ Eky&apos;okulabirako: Bw&apos;owandika 3,5-7,9 empapula namba 3, 5, 6, 7 ne 9 ze
     </message>
     <message>
         <source>Pause</source>
-        <translation>Yimirizamu</translation>
+        <translation>Pause</translation>
     </message>
     <message>
         <source>Print</source>
-        <translation>Kubisa</translation>
+        <translation>Print</translation>
     </message>
     <message>
         <source>SysReq</source>
@@ -5205,19 +5557,19 @@ Eky&apos;okulabirako: Bw&apos;owandika 3,5-7,9 empapula namba 3, 5, 6, 7 ne 9 ze
     </message>
     <message>
         <source>Left</source>
-        <translation>Kkono</translation>
+        <translation>Left</translation>
     </message>
     <message>
         <source>Up</source>
-        <translation>Yambuka</translation>
+        <translation>Up</translation>
     </message>
     <message>
         <source>Right</source>
-        <translation>Ddyo</translation>
+        <translation>Right</translation>
     </message>
     <message>
         <source>Down</source>
-        <translation>Kka</translation>
+        <translation>Down</translation>
     </message>
     <message>
         <source>PgUp</source>
@@ -5261,7 +5613,7 @@ Eky&apos;okulabirako: Bw&apos;owandika 3,5-7,9 empapula namba 3, 5, 6, 7 ne 9 ze
     </message>
     <message>
         <source>Refresh</source>
-        <translation>Zza Buto</translation>
+        <translation>Nyumunguza</translation>
     </message>
     <message>
         <source>Volume Down</source>
@@ -5281,19 +5633,19 @@ Eky&apos;okulabirako: Bw&apos;owandika 3,5-7,9 empapula namba 3, 5, 6, 7 ne 9 ze
     </message>
     <message>
         <source>Bass Up</source>
-        <translation>Tumbula beesi</translation>
+        <translation>Yongeza Beesi</translation>
     </message>
     <message>
         <source>Bass Down</source>
-        <translation>Kendeeza beesi</translation>
+        <translation>Kendeeza Beesi</translation>
     </message>
     <message>
         <source>Treble Up</source>
-        <translation>Tumbula kaloboozi</translation>
+        <translation>Yongeza Kaloboozi</translation>
     </message>
     <message>
         <source>Treble Down</source>
-        <translation>Kendeeza kaloboozi</translation>
+        <translation>Kendeeza Kaloboozi</translation>
     </message>
     <message>
         <source>Media Play</source>
@@ -5301,15 +5653,15 @@ Eky&apos;okulabirako: Bw&apos;owandika 3,5-7,9 empapula namba 3, 5, 6, 7 ne 9 ze
     </message>
     <message>
         <source>Media Stop</source>
-        <translation>Yimiriza okwolesa Mediya</translation>
+        <translation>Yimiriza Mediya</translation>
     </message>
     <message>
         <source>Media Previous</source>
-        <translation>Mediya eyakulembera eno</translation>
+        <translation>Mediya Ekulembera Eno</translation>
     </message>
     <message>
         <source>Media Next</source>
-        <translation>Mediya eddako</translation>
+        <translation>Mediya Eddako</translation>
     </message>
     <message>
         <source>Media Record</source>
@@ -5318,12 +5670,12 @@ Eky&apos;okulabirako: Bw&apos;owandika 3,5-7,9 empapula namba 3, 5, 6, 7 ne 9 ze
     <message>
         <source>Media Pause</source>
         <extracomment>Media player pause button</extracomment>
-        <translation>Yimirizamu okwolesa Mediya</translation>
+        <translation>Yimirizamu Mediya</translation>
     </message>
     <message>
         <source>Toggle Media Play/Pause</source>
         <extracomment>Media player button to toggle between playing and paused</extracomment>
-        <translation>Kyusa wakati w&apos;okwolesa  n&apos;okyimirizamu okwolesa Mediya</translation>
+        <translation>Yolesa/Yimirizamu Mediya</translation>
     </message>
     <message>
         <source>Home Page</source>
@@ -5539,7 +5891,7 @@ Eky&apos;okulabirako: Bw&apos;owandika 3,5-7,9 empapula namba 3, 5, 6, 7 ne 9 ze
     </message>
     <message>
         <source>Clear Grab</source>
-        <translation>Ta ebirobedwa</translation>
+        <translation>Ta Ebirobedwa</translation>
     </message>
     <message>
         <source>Close</source>
@@ -5583,7 +5935,7 @@ Eky&apos;okulabirako: Bw&apos;owandika 3,5-7,9 empapula namba 3, 5, 6, 7 ne 9 ze
     </message>
     <message>
         <source>Go</source>
-        <translation>Kibe</translation>
+        <translation>Genda Yo</translation>
     </message>
     <message>
         <source>iTouch</source>
@@ -5615,7 +5967,7 @@ Eky&apos;okulabirako: Bw&apos;owandika 3,5-7,9 empapula namba 3, 5, 6, 7 ne 9 ze
     </message>
     <message>
         <source>My Sites</source>
-        <translation>Ebifo bye nzijjumbira</translation>
+        <translation>Ebifo bye nzijumbira</translation>
     </message>
     <message>
         <source>News</source>
@@ -5695,7 +6047,7 @@ Eky&apos;okulabirako: Bw&apos;owandika 3,5-7,9 empapula namba 3, 5, 6, 7 ne 9 ze
     </message>
     <message>
         <source>Travel</source>
-        <translation>Ebyokutambula</translation>
+        <translation>Eby&apos;okutambula</translation>
     </message>
     <message>
         <source>Video</source>
@@ -5751,7 +6103,7 @@ Eky&apos;okulabirako: Bw&apos;owandika 3,5-7,9 empapula namba 3, 5, 6, 7 ne 9 ze
     </message>
     <message>
         <source>Wireless</source>
-        <translation>Kayungirizi etakozesa waya</translation>
+        <translation>Wayaleesi</translation>
     </message>
     <message>
         <source>Ultra Wide Band</source>
@@ -5763,11 +6115,11 @@ Eky&apos;okulabirako: Bw&apos;owandika 3,5-7,9 empapula namba 3, 5, 6, 7 ne 9 ze
     </message>
     <message>
         <source>Audio Repeat</source>
-        <translation>Ebiwulirizibwa bwe biggwa biddengamu</translation>
+        <translation>Ebiwulirizibwa biddengamu nga bituuse gye bikoma</translation>
     </message>
     <message>
         <source>Audio Random Play</source>
-        <translation>Ebiwulirizibwa birondibwe muwawa</translation>
+        <translation>Ebiwulirizibwa birondebwe muwawa</translation>
     </message>
     <message>
         <source>Subtitle</source>
@@ -5775,7 +6127,7 @@ Eky&apos;okulabirako: Bw&apos;owandika 3,5-7,9 empapula namba 3, 5, 6, 7 ne 9 ze
     </message>
     <message>
         <source>Audio Cycle Track</source>
-        <translation>Ekiwulirizibwa kiddemu buli lwe kiggwa ko</translation>
+        <translation>Yita Mu Fayiro Ez&apos;ebiwulirizibwa Nga Bwe Zigobereragana</translation>
     </message>
     <message>
         <source>Time</source>
@@ -5823,7 +6175,7 @@ Eky&apos;okulabirako: Bw&apos;owandika 3,5-7,9 empapula namba 3, 5, 6, 7 ne 9 ze
     </message>
     <message>
         <source>Channel Up</source>
-        <translation>Dda ki mukutu oguddirira</translation>
+        <translation>Dda ku mukutu oguddirira</translation>
     </message>
     <message>
         <source>Channel Down</source>
@@ -5954,7 +6306,7 @@ Eky&apos;okulabirako: Bw&apos;owandika 3,5-7,9 empapula namba 3, 5, 6, 7 ne 9 ze
     <message>
         <source>Toggle Call/Hangup</source>
         <extracomment>Button that will hang up if we&apos;re in call, or make a call if we&apos;re not.</extracomment>
-        <translation>Kyusa wakati wa kukubira n&apos;okuva ko</translation>
+        <translation>Kukubira/Vva ko</translation>
     </message>
     <message>
         <source>Flip</source>
@@ -6126,15 +6478,19 @@ Eky&apos;okulabirako: Bw&apos;owandika 3,5-7,9 empapula namba 3, 5, 6, 7 ne 9 ze
     </message>
     <message>
         <source>Touchpad Toggle</source>
-        <translation>Nasula Touchpad</translation>
+        <translation>Zuukusa/siba akasongesebwa k&apos;osiisiriza</translation>
     </message>
     <message>
         <source>Touchpad On</source>
-        <translation>Zukusa Touchpad</translation>
+        <translation>Zuukusa akasongesebwa k&apos;osiisiriza</translation>
     </message>
     <message>
         <source>Touchpad Off</source>
-        <translation>Siba Touchpad</translation>
+        <translation>Siba akasongesebwa k&apos;osiisiriza</translation>
+    </message>
+    <message>
+        <source>Control</source>
+        <translation>Control</translation>
     </message>
     <message>
         <source>Ctrl</source>
@@ -6159,7 +6515,7 @@ Eky&apos;okulabirako: Bw&apos;owandika 3,5-7,9 empapula namba 3, 5, 6, 7 ne 9 ze
     <message>
         <source>+</source>
         <extracomment>Key separator in shortcut string</extracomment>
-        <translation></translation>
+        <translation>+</translation>
     </message>
     <message>
         <source>F%1</source>
@@ -6170,27 +6526,27 @@ Eky&apos;okulabirako: Bw&apos;owandika 3,5-7,9 empapula namba 3, 5, 6, 7 ne 9 ze
     <name>QSocks5SocketEngine</name>
     <message>
         <source>Connection to proxy refused</source>
-        <translation>Kompyuta masanganzira etuuka ku mutimbagano egaanye okuteekawo okuwulizagana</translation>
+        <translation>Kalaani egaanye okuteekawo okuwulizagana</translation>
     </message>
     <message>
         <source>Connection to proxy closed prematurely</source>
-        <translation>Okukuwatagana ne kompyuta masanganzira etuuka ku mutimbagano kuggadwawo nga bukyali</translation>
+        <translation>Okukuwatagana ne kalaani kuggadwawo nga bukyali</translation>
     </message>
     <message>
         <source>Proxy host not found</source>
-        <translation>Kompyuta masanganzira etuuka ku mutimbagano terabidwa</translation>
+        <translation>Kompyuta okuli kalaani terabidwa</translation>
     </message>
     <message>
         <source>Connection to proxy timed out</source>
-        <translation>Okukwatagana ne kompyuta masanganzira etuuka ku mutimbagano obudde bukuyiseko</translation>
+        <translation>Okukwatagana ne kalaani obudde bukuyiseko</translation>
     </message>
     <message>
         <source>Proxy authentication failed</source>
-        <translation>Ogw&apos;okukakasa ku kompyuta masanganzira etuuka ku mutimbagano gugaanye</translation>
+        <translation>Ogw&apos;okukakasa ewa kalaani gugaanye</translation>
     </message>
     <message>
         <source>Proxy authentication failed: %1</source>
-        <translation>Ogw&apos;okukakasa ku kompyuta masanganzira etuuka ku mutimbagano gugaanye: %1</translation>
+        <translation>Ogw&apos;okukakasa ewa kalaani gugaanye: %1</translation>
     </message>
     <message>
         <source>SOCKS version 5 protocol error</source>
@@ -6218,7 +6574,7 @@ Eky&apos;okulabirako: Bw&apos;owandika 3,5-7,9 empapula namba 3, 5, 6, 7 ne 9 ze
     </message>
     <message>
         <source>Unknown SOCKSv5 proxy error code 0x%1</source>
-        <translation>Ennamba 0x%1 eya kiremya wa ku kompyuta masanganzira ekolera ku mpulizagana ey&apos;ekika ky SOCKSv5 sisitemu eno tegimanyi</translation>
+        <translation>Ennamba 0x%1 eya kiremya wa mu kalaani ekola ku mpulizagana ey&apos;ekika ky SOCKSv5 sisitemu eno tegimanyi</translation>
     </message>
     <message>
         <source>Network operation timed out</source>
@@ -6357,12 +6713,12 @@ Role of an accessible object</extracomment>
     <message>
         <source>column</source>
         <extracomment>Role of an accessible object - part of a table</extracomment>
-        <translation>Kikumbo kya mu tabulo</translation>
+        <translation>kikumbo kya mu tabulo</translation>
     </message>
     <message>
         <source>row</source>
         <extracomment>Role of an accessible object - part of a table</extracomment>
-        <translation>Lunyiriri lwa mu tabulo</translation>
+        <translation>lunyiriri lwa mu tabulo</translation>
     </message>
     <message>
         <source>cell</source>
@@ -6462,7 +6818,7 @@ Role of an accessible object</extracomment>
     <message>
         <source>dial</source>
         <extracomment>Role of an accessible object</extracomment>
-        <translation>kirawuli kya saawa</translation>
+        <translation>munyoro</translation>
     </message>
     <message>
         <source>hotkey field</source>
@@ -6557,7 +6913,7 @@ Role of an accessible object</extracomment>
     <message>
         <source>footer</source>
         <extracomment>Role of an accessible object</extracomment>
-        <translation>milannamiro gy&apos;empapula</translation>
+        <translation>milannamiro gy&apos;olupapula</translation>
     </message>
     <message>
         <source>form</source>
@@ -6647,7 +7003,7 @@ Role of an accessible object</extracomment>
     </message>
     <message>
         <source>Cannot provide a certificate with no key, %1</source>
-        <translation>Tekisobose okugaba mmatizo nga tewali kasumuluzo, %1</translation>
+        <translation type="vanished">Tekisobose okugaba mmatizo nga tewali kasumuluzo, %1</translation>
     </message>
     <message>
         <source>Error loading local certificate, %1</source>
@@ -6779,7 +7135,7 @@ Role of an accessible object</extracomment>
     </message>
     <message>
         <source>The host name did not match any of the valid hosts for this certificate</source>
-        <translation>Erinnya lya ku kayungirizi tekwataganye n&apos;aga kompyuta enyunge emmatizo eno kw&apos;ekolera</translation>
+        <translation>Erinnya lya ku kayungirizi terikwataganye n&apos;aga kompyuta enyunge emmatizo eno kw&apos;ekolera</translation>
     </message>
     <message>
         <source>The peer certificate is blacklisted</source>
@@ -6911,7 +7267,7 @@ Role of an accessible object</extracomment>
     </message>
     <message>
         <source>Insufficient memory</source>
-        <translation>Ekifo ekisigadde mu ggwanika lya kompyuta ekimala</translation>
+        <translation>Ekifo ekisigadde mu ggwanika lya kompyuta tekimala</translation>
     </message>
     <message>
         <source>Internal error</source>
@@ -6927,11 +7283,11 @@ Role of an accessible object</extracomment>
     </message>
     <message>
         <source>Access denied</source>
-        <translation>Okuyingira kugaanya olw&apos;okubeera nti ebisaanyizo ebiweredwayo tebikozeka</translation>
+        <translation>Okuyingira kugaanye olw&apos;okubeera nti ebisaanyizo ebiweredwayo tebikozeka</translation>
     </message>
     <message>
         <source>No authority could be contacted for authorization</source>
-        <translation>Omukolo gugaanye lwa butasobola kutuukirirayo omugabi wammatizo</translation>
+        <translation>Omukolo gugaanye lwa butasobola kutuukirirayo omugabi wa mmatizo</translation>
     </message>
     <message>
         <source>No credentials</source>
@@ -6960,6 +7316,10 @@ Role of an accessible object</extracomment>
     <message>
         <source>The data could not be encrypted</source>
         <translation>Tekisobose okukisawaza data</translation>
+    </message>
+    <message>
+        <source>The data could not be decrypted</source>
+        <translation>Tekisobose okukisulula data</translation>
     </message>
     <message>
         <source>No cipher suites in common</source>
@@ -7073,6 +7433,10 @@ Role of an accessible object</extracomment>
         <translation>Ggwanika ly&apos;ebyanguyisa</translation>
     </message>
     <message>
+        <source>State</source>
+        <translation>Embeera</translation>
+    </message>
+    <message>
         <source>Shared Data</source>
         <translation>Ebigabanibwa</translation>
     </message>
@@ -7093,8 +7457,20 @@ Role of an accessible object</extracomment>
         <translation>Ggwanika ly&apos;ebyanguyisa erigabanibwa</translation>
     </message>
     <message>
+        <source>Shared State</source>
+        <translation>Embeera Egabanibwa</translation>
+    </message>
+    <message>
         <source>Download</source>
         <translation>Ebiwanudwa</translation>
+    </message>
+    <message>
+        <source>Public</source>
+        <translation>Bya Bonna</translation>
+    </message>
+    <message>
+        <source>Templates</source>
+        <translation>Entiba</translation>
     </message>
     <message>
         <source>Application Data</source>
@@ -7104,32 +7480,41 @@ Role of an accessible object</extracomment>
         <source>Application Configuration</source>
         <translation>Enteekateeka za Puloguramu</translation>
     </message>
+    <message>
+        <source>Temporary Items</source>
+        <extracomment>macOS: Temporary directory</extracomment>
+        <translation>Eby&apos;ekiseerabuseera</translation>
+    </message>
 </context>
 <context>
     <name>QStateMachine</name>
     <message>
         <source>Missing initial state in compound state &apos;%1&apos;</source>
-        <translation>Sisitemu eyingira mbeera efuulikamu &apos;%1&apos; etalina mbeera ey&apos;entandikwa</translation>
+        <translation type="vanished">Sisitemu eyingira mbeera efuulikamu &apos;%1&apos; etalina mbeera ey&apos;entandikwa</translation>
     </message>
     <message>
         <source>Missing default state in history state &apos;%1&apos;</source>
-        <translation>Embeera sisitemu gyeyabeeramu ko &apos;%1&apos; terina mbeera eyekubirwa</translation>
+        <translation type="vanished">Embeera sisitemu gyeyabeeramu ko &apos;%1&apos; terina mbeera eyekubirwa</translation>
     </message>
     <message>
         <source>No common ancestor for targets and source of transition from state &apos;%1&apos;</source>
-        <translation>Entandikwa n&apos;ekigenderwa eby&apos;enkyuka okuva mu mbeera &apos;%1&apos; tebiri mu sisitemu ya mbeera y&apos;emu</translation>
+        <translation type="vanished">Entandikwa n&apos;ekigenderwa eby&apos;enkyuka okuva mu mbeera &apos;%1&apos; tebiri mu sisitemu ya mbeera y&apos;emu</translation>
     </message>
     <message>
         <source>Child mode of state machine &apos;%1&apos; is not &apos;ExclusiveStates&apos;.</source>
-        <translation>Sisitemu y&apos;embeera &apos;%1&apos; enyingira y&apos;embeera ya yo tetegekedwa okubeera &apos;ExclusiveStates&apos;.</translation>
+        <translation type="vanished">Sisitemu y&apos;embeera &apos;%1&apos; enyingira y&apos;embeera ya yo tetegekedwa okubeera &apos;ExclusiveStates&apos;.</translation>
     </message>
     <message>
         <source>Unknown error</source>
-        <translation>Wazzewo kiremya atategeereka</translation>
+        <translation type="vanished">Wazzewo kiremya atategeereka</translation>
     </message>
 </context>
 <context>
     <name>QSystemSemaphore</name>
+    <message>
+        <source>%1: unsupported key type</source>
+        <translation>%1: waliwo ennamba y&apos;endagiriro ey&apos;ekika ekitategeereka</translation>
+    </message>
     <message>
         <source>%1: permission denied</source>
         <translation>%1: Olukusa teruweeredwa</translation>
@@ -7147,19 +7532,43 @@ Role of an accessible object</extracomment>
         <translation>%1: sisitemu bye yeyambsa okukola omulimu tebimala, byonna bikozesebwa</translation>
     </message>
     <message>
-        <source>%1: unknown error %2</source>
+        <source>%1: key too long</source>
+        <translation>%1: ennamba ey&apos;endagiriro eyitiridde obuwanvu</translation>
+    </message>
+    <message>
+        <source>%1: unknown error: %2</source>
         <translation>%1: wazzewo kiremya atategeereka %2</translation>
+    </message>
+    <message>
+        <source>%1: unknown error %2</source>
+        <translation type="vanished">%1: wazzewo kiremya atategeereka %2</translation>
+    </message>
+    <message>
+        <source>%1: key is empty</source>
+        <translation>%1: ennamba ey&apos;endagiriro bbanga jjereere</translation>
+    </message>
+    <message>
+        <source>%1: System V semaphores are not available for sandboxed applications. Please build Qt with -feature-ipc_posix</source>
+        <translation>%1: Puloguramu ezikola nga z&apos;awulidwa ku mirimu egya bulijjo tezikkirizibwa okweyambisa semafora eza System V. Qt wetaaga okugitegeka nga otaddeko n&apos;akwayiro aka -feature-ipc_posix</translation>
+    </message>
+    <message>
+        <source>%1: unable to make key</source>
+        <translation>%1: tekisobose okukola ennamba ey&apos;endagiriro</translation>
+    </message>
+    <message>
+        <source>%1: ftok failed</source>
+        <translation>%1: ftok eremeredwa</translation>
     </message>
 </context>
 <context>
     <name>QTDSDriver</name>
     <message>
         <source>Unable to open connection</source>
-        <translation>Tekisobose okuteekawo okukwatagana</translation>
+        <translation type="vanished">Tekisobose okuteekawo okukwatagana</translation>
     </message>
     <message>
         <source>Unable to use database</source>
-        <translation>Tekisobose okukozesa ggwanika lya data</translation>
+        <translation type="vanished">Tekisobose okukozesa ggwanika lya data</translation>
     </message>
 </context>
 <context>
@@ -7192,7 +7601,7 @@ Role of an accessible object</extracomment>
     </message>
     <message>
         <source>Seek file/device for image read failed</source>
-        <translation>Tekisobose okutegeka awokutandikira okukebera fayiro/kyuma okuyungululamu kifaananyi</translation>
+        <translation>Tekisobose okutegeka aw&apos;okutandikira okukebera fayiro/kyuma okuyungululamu kifaananyi</translation>
     </message>
     <message>
         <source>Image header read failed</source>
@@ -7216,7 +7625,7 @@ Role of an accessible object</extracomment>
     </message>
     <message>
         <source>Could not read footer</source>
-        <translation>Tekisobose okusoma fayiro obubaka obufundikira fayiro</translation>
+        <translation>Tekisobose okusoma obubaka obufundikira fayiro</translation>
     </message>
     <message>
         <source>Image type (non-TrueVision 2.0) not supported</source>
@@ -7469,103 +7878,103 @@ Oluwandika lwa &apos;Direct2D&apos; olusinga obukadde olukola lwe olwa %1. Oluwa
     <name>QXml</name>
     <message>
         <source>no error occurred</source>
-        <translation>temubadde nsobi</translation>
+        <translation type="vanished">temubadde nsobi</translation>
     </message>
     <message>
         <source>error triggered by consumer</source>
-        <translation>kiremya avudde ku puloguramu ekola ku by&apos;esanzewo</translation>
+        <translation type="vanished">kiremya avudde ku puloguramu ekola ku by&apos;esanzewo</translation>
     </message>
     <message>
         <source>unexpected end of file</source>
-        <translation>fayiro ekomye mu ngeri etasuubidwa</translation>
+        <translation type="vanished">fayiro ekomye mu ngeri etasuubidwa</translation>
     </message>
     <message>
         <source>more than one document type definition</source>
-        <translation>enteekateeka z&apos;ebika by&apos;ebitundu ebikozesebwa mu kiwandiko zisukka mu kimu</translation>
+        <translation type="vanished">enteekateeka z&apos;ebika by&apos;ebitundu ebikozesebwa mu kiwandiko zisukka mu kimu</translation>
     </message>
     <message>
         <source>error occurred while parsing element</source>
-        <translation>Wazzewo kiremya mu kukeberera mateeka g&apos;empandika mu kitundu ky&apos;ekiwandiko</translation>
+        <translation type="vanished">Wazzewo kiremya mu kukeberera mateeka g&apos;empandika mu kitundu ky&apos;ekiwandiko</translation>
     </message>
     <message>
         <source>tag mismatch</source>
-        <translation>waliwo ekigambo ekiramba entandikwa y&apos;ekitundu eky&apos;ekiwandiko we kitagendera ku kiramba gye kikoma</translation>
+        <translation type="vanished">waliwo ekigambo ekiramba entandikwa y&apos;ekitundu eky&apos;ekiwandiko we kitagendera ku kiramba gye kikoma</translation>
     </message>
     <message>
         <source>error occurred while parsing content</source>
-        <translation>wazzewo kiremya mu kukeberera mateeka g&apos;empandika mu kitundu ky&apos;ekiwandiko</translation>
+        <translation type="vanished">wazzewo kiremya mu kukeberera mateeka g&apos;empandika mu kitundu ky&apos;ekiwandiko</translation>
     </message>
     <message>
         <source>unexpected character</source>
-        <translation>akabonero kasangidwa we kabadde tekasuubidwa</translation>
+        <translation type="vanished">akabonero kasangidwa we kabadde tekasuubidwa</translation>
     </message>
     <message>
         <source>invalid name for processing instruction</source>
-        <translation>ekiragiro ekya mu XML eky&apos;enjawulo kituumidwa erinnya eritakozeseka</translation>
+        <translation type="vanished">ekiragiro ekya mu XML eky&apos;enjawulo kituumidwa erinnya eritakozeseka</translation>
     </message>
     <message>
         <source>version expected while reading the XML declaration</source>
-        <translation>ekitundu ekiteekateeka enkozesa ya XML kibulamu ekiraga oluwandika olugobererwa</translation>
+        <translation type="vanished">ekitundu ekiteekateeka enkozesa ya XML kibulamu ekiraga oluwandika olugobererwa</translation>
     </message>
     <message>
         <source>wrong value for standalone declaration</source>
-        <translation>ekyasanguzo ekiraga puloguramu oba waliwo enteekateeka z&apos;enkozesa ya XML mu kiwandiko ekirala kirimu ekikongojje ekisobi</translation>
+        <translation type="vanished">ekyasanguzo ekiraga puloguramu oba waliwo enteekateeka z&apos;enkozesa ya XML mu kiwandiko ekirala kirimu ekikongojje ekisobi</translation>
     </message>
     <message>
         <source>encoding declaration or standalone declaration expected while reading the XML declaration</source>
-        <translation>ekitundu ekiteekateeka enkozesa ya XML kibula mu ekyasanguzo ekiraga olulyo lw&apos;ennamba ezikongojja
+        <translation type="vanished">ekitundu ekiteekateeka enkozesa ya XML kibula mu ekyasanguzo ekiraga olulyo lw&apos;ennamba ezikongojja
 obubonero oba ekiraga oba waliwo enteekateeka z&apos;enkozesa ya XML mu kiwandiko ekirala</translation>
     </message>
     <message>
         <source>standalone declaration expected while reading the XML declaration</source>
-        <translation>ekitundu ekiteekateeka enkozesa ya XML kibulamu ekiraga oba waliwo enteekateeka z&apos;enkozesa ya XML mu kiwandiko ekirala</translation>
+        <translation type="vanished">ekitundu ekiteekateeka enkozesa ya XML kibulamu ekiraga oba waliwo enteekateeka z&apos;enkozesa ya XML mu kiwandiko ekirala</translation>
     </message>
     <message>
         <source>error occurred while parsing document type definition</source>
-        <translation>wazzewo kiremya mu kukeberera enteekateeka z&apos;ebika by&apos;ebitundu ebikozesebwa mu kiwandiko</translation>
+        <translation type="vanished">wazzewo kiremya mu kukeberera enteekateeka z&apos;ebika by&apos;ebitundu ebikozesebwa mu kiwandiko</translation>
     </message>
     <message>
         <source>letter is expected</source>
-        <translation>wabadde wasuubidwawo nnukuta</translation>
+        <translation type="vanished">wabadde wasuubidwawo nnukuta</translation>
     </message>
     <message>
         <source>error occurred while parsing comment</source>
-        <translation>Wazzewo kiremya mu kukebera ebigambo ebinnonyola ebya mu kifo ekisukka mu kimu</translation>
+        <translation type="vanished">Wazzewo kiremya mu kukebera ebigambo ebinnonyola ebya mu kifo ekisukka mu kimu</translation>
     </message>
     <message>
         <source>error occurred while parsing reference</source>
-        <translation>wazzewo kiremya mu kukebera obubonero obukongojja kannaabwo</translation>
+        <translation type="vanished">wazzewo kiremya mu kukebera obubonero obukongojja kannaabwo</translation>
     </message>
     <message>
         <source>internal general entity reference not allowed in DTD</source>
-        <translation>tekikkirizibwa okukozesa obubonero obukongojja okukwatira ekikongojjabingi ekifo awategeka ebika by&apos;ebitundu ebikozesebwa mu kiwandiko</translation>
+        <translation type="vanished">tekikkirizibwa okukozesa obubonero obukongojja okukwatira ekikongojjabingi ekifo awategeka ebika by&apos;ebitundu ebikozesebwa mu kiwandiko</translation>
     </message>
     <message>
         <source>external parsed general entity reference not allowed in attribute value</source>
-        <translation>ebikongojje ebya mu atiributo tebikkirizibwa okubeeramu ebigambo ebiwandisawo ebikongozzi ebikongojjabingi ebikeberwa</translation>
+        <translation type="vanished">ebikongojje ebya mu atiributo tebikkirizibwa okubeeramu ebigambo ebiwandisawo ebikongozzi ebikongojjabingi ebikeberwa</translation>
     </message>
     <message>
         <source>external parsed general entity reference not allowed in DTD</source>
-        <translation>tebikkirizibwa okuteeka ebigambo ebiwandisawo ebikongozzi ebikongojjabingi ebikeberwa awategeka ebika by&apos;ebitundu ebikozesebwa mu kiwandiko</translation>
+        <translation type="vanished">tebikkirizibwa okuteeka ebigambo ebiwandisawo ebikongozzi ebikongojjabingi ebikeberwa awategeka ebika by&apos;ebitundu ebikozesebwa mu kiwandiko</translation>
     </message>
     <message>
         <source>unparsed entity reference in wrong context</source>
-        <translation>ekigambo ekiwandisawo ekikongozzi ekitaakeberwe kisangidwa we kitandibadde</translation>
+        <translation type="vanished">ekigambo ekiwandisawo ekikongozzi ekitaakeberwe kisangidwa we kitandibadde</translation>
     </message>
     <message>
         <source>recursive entities</source>
-        <translation>mulimu ebikongozzi ebyekongojja</translation>
+        <translation type="vanished">mulimu ebikongozzi ebyekongojja</translation>
     </message>
     <message>
         <source>error in the text declaration of an external entity</source>
-        <translation>wazzewo kiremya mu kyasanguzo ekiraga oluwandika lwa XML olugobererwa n&apos;olulyo lw&apos;ennamba ezikongojja obubonero eky&apos;omu kikongozzi ekinone</translation>
+        <translation type="vanished">wazzewo kiremya mu kyasanguzo ekiraga oluwandika lwa XML olugobererwa n&apos;olulyo lw&apos;ennamba ezikongojja obubonero eky&apos;omu kikongozzi ekinone</translation>
     </message>
 </context>
 <context>
     <name>QXmlStream</name>
     <message>
         <source>Extra content at end of document.</source>
-        <translation>Ekiwandiko kirimu ebyeyongerayo okusukka kyandikomye.</translation>
+        <translation>Ekiwandiko kirimu ebyeyongerayo okusukka we kyandikomye.</translation>
     </message>
     <message>
         <source>Invalid entity value.</source>
@@ -7625,8 +8034,20 @@ atiributo ennefaananyirize eraga oba waliwo enteekateeka z&apos;enkozesa ya XML 
         <translation>Ekyasanguzo ekiraga puloguramu oba waliwo enteekateeka z&apos;enkozesa ya XML mu kiwandiko ekirala kijjuzibwamu yes oba no byokka.</translation>
     </message>
     <message>
+        <source>Invalid attribute in XML declaration: %1 = %2</source>
+        <translation>Ekitundu ekiteekateeka enkozesa ya XML mu kiwandiko kirimu atiributo etakkirizibwa: %1 = %2</translation>
+    </message>
+    <message>
+        <source>Unexpected token type %1 in %2.</source>
+        <translation>Token ey&apos;ekika kya %1 etasuubirwawo esangidwa mu %2.</translation>
+    </message>
+    <message>
+        <source>Found second DTD token in %1.</source>
+        <translation>%1 erimu tokeni eya DTD ey&apos;okubiri.</translation>
+    </message>
+    <message>
         <source>Invalid attribute in XML declaration.</source>
-        <translation>Waliwo ekiteekateeke ekya XML ekirimu atiributo etategeerebwa.</translation>
+        <translation type="vanished">Waliwo ekiteekateeke ekya XML ekirimu atiributo etategeerebwa.</translation>
     </message>
     <message>
         <source>Premature end of document.</source>
@@ -7635,6 +8056,10 @@ atiributo ennefaananyirize eraga oba waliwo enteekateeka z&apos;enkozesa ya XML 
     <message>
         <source>Invalid document.</source>
         <translation>Ekiwandiko tekikozeseka.</translation>
+    </message>
+    <message>
+        <source>Length of XML attribute name exceeds implementation limits (4KiB characters).</source>
+        <translation>Waliwo atiributo eya mu XML eweeredwa erinnya eriwanvu okusinga ekkomo lya sisitemu eno (obubonero obukozesa KiB ezitasussa 4).</translation>
     </message>
     <message>
         <source>&apos;%1&apos;</source>
@@ -7710,7 +8135,7 @@ atiributo ennefaananyirize eraga oba waliwo enteekateeka z&apos;enkozesa ya XML 
     </message>
     <message>
         <source>Opening and ending tag mismatch.</source>
-        <translation>Waliwo awali ekirambakitundu eky&apos;entadikwa n&apos;ekifundikira ebitakwatagana.</translation>
+        <translation>Waliwo awali ekirambakitundu eky&apos;entandikwa n&apos;ekifundikira ebitakwatagana.</translation>
     </message>
     <message>
         <source>Entity &apos;%1&apos; not declared.</source>
@@ -7727,6 +8152,267 @@ atiributo ennefaananyirize eraga oba waliwo enteekateeka z&apos;enkozesa ya XML 
     <message>
         <source>Invalid character reference.</source>
         <translation>Waliwo awali obubonero obukongojja kannabwo obutakozeseka.</translation>
+    </message>
+</context>
+<context>
+    <name>QAxSelect</name>
+    <message>
+        <source>Select ActiveX Control</source>
+        <translation>Londa Kapuloguramu Akayambi Aka Mu ActiveX</translation>
+    </message>
+    <message>
+        <source>Filter</source>
+        <translation>Ekisunsuzibwa</translation>
+    </message>
+    <message>
+        <source>COM &amp;Object:</source>
+        <translation>Ekyetongole ekya C&amp;OM:</translation>
+    </message>
+    <message>
+        <source>Sandboxing:</source>
+        <translation>Okwawulibwa:</translation>
+    </message>
+    <message>
+        <source>Name:</source>
+        <translation>Linnya:</translation>
+    </message>
+    <message>
+        <source>Type:</source>
+        <translation>Kika kya yo:</translation>
+    </message>
+    <message>
+        <source>In process</source>
+        <translation>N&apos;eyazike</translation>
+    </message>
+    <message>
+        <source>Out of process</source>
+        <translation>N&apos;etonguvu</translation>
+    </message>
+    <message>
+        <source>CLSID:</source>
+        <translation>CLSID:</translation>
+    </message>
+    <message>
+        <source>Key:</source>
+        <translation>Kasumuluzo:</translation>
+    </message>
+    <message>
+        <source>Word&amp;nbsp;size:</source>
+        <translation>Kigero&amp;nbsp;ky&apos;ekigambo:</translation>
+    </message>
+    <message>
+        <source>DLL:</source>
+        <translation>DLL:</translation>
+    </message>
+    <message>
+        <source>Binary:</source>
+        <translation>Kiwandike kya mu binariyo:</translation>
+    </message>
+    <message>
+        <source>Version:</source>
+        <translation>Luwandika:</translation>
+    </message>
+</context>
+<context>
+    <name>Assets::Downloader::AssetDownloader</name>
+    <message>
+        <source>Downloading JSON file...</source>
+        <translation>Mpanula fayiro ey&apos;ekika kya SON...</translation>
+    </message>
+    <message>
+        <source>Downloading zip file...</source>
+        <translation>Mpanula fayiro ey&apos;ekika kya zip...</translation>
+    </message>
+    <message>
+        <source>Unzipping...</source>
+        <translation>Mpakulula...</translation>
+    </message>
+    <message>
+        <source>Downloading assets...</source>
+        <translation>Mpanula bintu...</translation>
+    </message>
+    <message>
+        <source>Copying assets...</source>
+        <translation>Nkola koppi z&apos;ebintu...</translation>
+    </message>
+</context>
+<context>
+    <name>QFactoryLoader</name>
+    <message>
+        <source>Metadata parsing error: %1</source>
+        <translation>Wazzewo kiremya mu kukebera meta-data: %1</translation>
+    </message>
+    <message>
+        <source>Invalid metadata version</source>
+        <translation>Oluwandika lwa meta-data luno tulukozeseka</translation>
+    </message>
+    <message>
+        <source>Unexpected metadata contents</source>
+        <translation>Metadata mulimu ebitakkirizibwa</translation>
+    </message>
+</context>
+<context>
+    <name>QAbstractFileIconProvider</name>
+    <message>
+        <source>Drive</source>
+        <translation>Kibondo</translation>
+    </message>
+    <message>
+        <source>File</source>
+        <translation>Fayiro</translation>
+    </message>
+    <message>
+        <source>File Folder</source>
+        <comment>Match Windows Explorer</comment>
+        <translation>Tterekero lya Fayiro</translation>
+    </message>
+    <message>
+        <source>Folder</source>
+        <comment>All other platforms</comment>
+        <translation>Tterekero</translation>
+    </message>
+    <message>
+        <source>Alias</source>
+        <comment>macOS Finder</comment>
+        <translation>Nyunzi</translation>
+    </message>
+    <message>
+        <source>Shortcut</source>
+        <comment>All other platforms</comment>
+        <translation>Nyunzi</translation>
+    </message>
+    <message>
+        <source>Unknown</source>
+        <translation>Kitategeerese</translation>
+    </message>
+</context>
+<context>
+    <name>QCocoaMenuBar</name>
+    <message>
+        <source>Edit</source>
+        <translation>Kyusamu</translation>
+    </message>
+</context>
+<context>
+    <name>quiaccessibilityelement</name>
+    <message>
+        <source>checked</source>
+        <translation>watonyeze</translation>
+    </message>
+    <message>
+        <source>unchecked</source>
+        <translation>ssi watonnyeze</translation>
+    </message>
+</context>
+<context>
+    <name>QMimerSQL</name>
+    <message>
+        <source>No Mimer SQL error for code %1</source>
+        <translation>Mu SQL owa Mimer temuli kiremya owa namba %1</translation>
+    </message>
+    <message>
+        <source>Generic Mimer SQL error</source>
+        <translation>SQL owa Mimer afunye kiremya</translation>
+    </message>
+</context>
+<context>
+    <name>QMimerSQLResult</name>
+    <message>
+        <source>Could not get %1, column %2</source>
+        <extracomment>Data type, column</extracomment>
+        <translation>Tekisobose okufuna %1, kikumbo namba %2</translation>
+    </message>
+    <message>
+        <source>Could not set %1, parameter %2</source>
+        <extracomment>Data type, parameter</extracomment>
+        <translation>Tekisobose okutegeka %1, paramita namba %2</translation>
+    </message>
+    <message>
+        <source>Could not close cursor</source>
+        <translation>Tekisobose okukomya kanonabiwandise</translation>
+    </message>
+    <message>
+        <source>Could not close statement</source>
+        <translation>Tekisobose okukomya ekiragiro ekya mu ggwanika lya data</translation>
+    </message>
+    <message>
+        <source>Fetch did not succeed</source>
+        <translation>Okunona tekuyisemu</translation>
+    </message>
+    <message>
+        <source>Fetch first did not succeed</source>
+        <translation>Okunona ekisooka tekuyisemu</translation>
+    </message>
+    <message>
+        <source>Could not fetch next row</source>
+        <translation>Tekisobose okunona olunyiriri oluddako</translation>
+    </message>
+    <message>
+        <source>Unknown data type %1</source>
+        <translation>Ekika kya data %1 tekitegeerese</translation>
+    </message>
+    <message>
+        <source>Could not check null, column %1</source>
+        <translation>Ssi null, kikumbo %1</translation>
+    </message>
+    <message>
+        <source>Could not prepare/execute statement</source>
+        <translation>Tekisobose okutandika oba okutegeka kiragiro kya SQL kiddibwengamu mangu</translation>
+    </message>
+    <message>
+        <source>Wrong number of parameters</source>
+        <translation>Obungi bwa paramita ssi butuufu</translation>
+    </message>
+    <message>
+        <source>Unknown datatype, parameter %1</source>
+        <translation>Ekika kya data paramita %1 tekitegeerese</translation>
+    </message>
+    <message>
+        <source>Could not execute statement/open cursor</source>
+        <translation>Tekisobose okutandika kiragiro oba akanonakiwandise</translation>
+    </message>
+    <message>
+        <source>Only input parameters can be used in batch operations</source>
+        <translation>Ebiragiro ebigattike okkirizibwa okubitegekera paramita ez&apos;ebikolebwako naye ssi ez&apos;ebivamu</translation>
+    </message>
+    <message>
+        <source>Could not add batch %1</source>
+        <extracomment>%1 is the batch number</extracomment>
+        <translation>Tekisobose okwongerako ekigattike %1</translation>
+    </message>
+    <message>
+        <source>Could not execute batch</source>
+        <translation>Tekisobose okutandika ekigattike</translation>
+    </message>
+</context>
+<context>
+    <name>QMimerSQLResult:</name>
+    <message>
+        <source>Fetch last did not succeed</source>
+        <translation>Omukolo ogwa fetchLast gulemye</translation>
+    </message>
+    <message>
+        <source>Column %1 out of range</source>
+        <translation>Ekikumbo namba %1 tekituukikako</translation>
+    </message>
+</context>
+<context>
+    <name>QMimerSQLDriver</name>
+    <message>
+        <source>Could not connect to database</source>
+        <translation>Tekisobose okukwatagana n&apos;eggwanika lya data</translation>
+    </message>
+    <message>
+        <source>Could not start transaction</source>
+        <translation>tekisobose okutandika omukolo ogwa mu ggwanika lya data</translation>
+    </message>
+    <message>
+        <source>Could not commit transaction</source>
+        <translation>Tekisobose okukaza ebikyusidwa</translation>
+    </message>
+    <message>
+        <source>Could not roll back transaction</source>
+        <translation>Tekisobose okujjulula ebikyusidwa</translation>
     </message>
 </context>
 </TS>

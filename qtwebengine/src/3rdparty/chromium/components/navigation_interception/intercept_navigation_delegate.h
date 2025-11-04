@@ -58,7 +58,7 @@ class InterceptNavigationDelegate : public base::SupportsUserData::Data {
   // base::EscapeExternalHandlerValue() invoked on URLs passed to
   // ShouldIgnoreNavigation() before the navigation is processed.
   InterceptNavigationDelegate(JNIEnv* env,
-                              jobject jdelegate,
+                              const jni_zero::JavaRef<jobject>& jdelegate,
                               bool escape_external_handler_value = false);
 
   InterceptNavigationDelegate(const InterceptNavigationDelegate&) = delete;
@@ -91,7 +91,7 @@ class InterceptNavigationDelegate : public base::SupportsUserData::Data {
       const GURL& url,
       ui::PageTransition page_transition,
       bool has_user_gesture,
-      const absl::optional<url::Origin>& initiating_origin,
+      const std::optional<url::Origin>& initiating_origin,
       mojo::PendingRemote<network::mojom::URLLoaderFactory>* out_factory);
 
   // To be called when a main frame requests a resource with a user gesture (eg.

@@ -33,6 +33,7 @@
 
 #include "src/tint/lang/wgsl/ast/disable_validation_attribute.h"
 #include "src/tint/lang/wgsl/ast/parameter.h"
+#include "src/tint/lang/wgsl/ast/transform/add_block_attribute.h"
 #include "src/tint/lang/wgsl/program/clone_context.h"
 #include "src/tint/lang/wgsl/program/program_builder.h"
 #include "src/tint/lang/wgsl/resolver/resolve.h"
@@ -50,13 +51,20 @@ namespace {
 
 void CreatePadding(Vector<const ast::StructMember*, 8>* new_members,
                    Hashset<const ast::StructMember*, 8>* padding_members,
+                   Hashset<std::string, 8>* member_names,
+                   int& last_padding_index,
                    ast::Builder* b,
                    uint32_t bytes) {
     const size_t count = bytes / 4u;
     padding_members->Reserve(count);
     new_members->Reserve(count);
+    member_names->Reserve(count);
+    std::string name = "pad";
     for (uint32_t i = 0; i < count; ++i) {
-        auto name = b->Symbols().New("pad");
+        while (member_names->Contains(name)) {
+            name = "pad_" + std::to_string(++last_padding_index);
+        }
+        member_names->Add(name);
         auto* member = b->Member(name, b->ty.u32());
         padding_members->Add(member);
         new_members->Push(member);
@@ -85,46 +93,56 @@ ast::transform::Transform::ApplyResult PadStructs::Apply(const Program& src,
             return nullptr;
         }
         uint32_t offset = 0;
-        bool has_runtime_sized_array = false;
         tint::Vector<const ast::StructMember*, 8> new_members;
+        Hashset<std::string, 8> member_names;
+        for (auto* mem : str->Members()) {
+            member_names.Add(mem->Name().Name());
+        }
+
+        int last_padding_index = 0;
         for (auto* mem : str->Members()) {
             auto name = mem->Name().Name();
 
             if (offset < mem->Offset()) {
-                CreatePadding(&new_members, &padding_members, ctx.dst, mem->Offset() - offset);
+                CreatePadding(&new_members, &padding_members, &member_names, last_padding_index,
+                              ctx.dst, mem->Offset() - offset);
                 offset = mem->Offset();
             }
 
             auto* ty = mem->Type();
             auto type = CreateASTTypeFor(ctx, ty);
 
-            new_members.Push(b.Member(name, type));
-
             uint32_t size = ty->Size();
             if (ty->Is<core::type::Struct>() && str->UsedAs(core::AddressSpace::kUniform)) {
                 // std140 structs should be padded out to 16 bytes.
-                size = tint::RoundUp(16u, size);
-            } else if (auto* array_ty = ty->As<core::type::Array>()) {
-                if (array_ty->Count()->Is<core::type::RuntimeArrayCount>()) {
-                    has_runtime_sized_array = true;
-                }
+                uint32_t rounded_size = tint::RoundUp(16u, size);
+
+                // Add a @size attribute to satisfy WGSL validator rules.
+                // But do not add manual padding for the part of (rounded_size - size),
+                // which is implicitly padded by std140.
+                new_members.Push(
+                    b.Member(name, type, tint::Vector{b.MemberSize(core::AInt(rounded_size))}));
+
+                offset += rounded_size;
+            } else {
+                new_members.Push(b.Member(name, type));
+                offset += size;
             }
-            offset += size;
         }
 
-        // Add any required padding after the last member, if it's not a runtime-sized array.
         uint32_t struct_size = str->Size();
-        if (str->UsedAs(core::AddressSpace::kUniform)) {
-            struct_size = tint::RoundUp(16u, struct_size);
-        }
-        if (offset < struct_size && !has_runtime_sized_array) {
-            CreatePadding(&new_members, &padding_members, ctx.dst, struct_size - offset);
+
+        // Add any required padding after the last member, if it's not a block.
+        bool is_block = ast::HasAttribute<ast::transform::AddBlockAttribute::BlockAttribute>(
+            ast_str->attributes);
+        if (offset < struct_size && !is_block) {
+            CreatePadding(&new_members, &padding_members, &member_names, last_padding_index,
+                          ctx.dst, struct_size - offset);
         }
 
-        tint::Vector<const ast::Attribute*, 1> struct_attribs;
+        tint::Vector<const ast::Attribute*, 1> struct_attribs = ctx.Clone(ast_str->attributes);
         if (!padding_members.IsEmpty()) {
-            struct_attribs =
-                tint::Vector{b.Disable(ast::DisabledValidation::kIgnoreStructMemberLimit)};
+            struct_attribs.Push(b.Disable(ast::DisabledValidation::kIgnoreStructMemberLimit));
         }
 
         auto* new_struct = b.create<ast::Struct>(ctx.Clone(ast_str->name), std::move(new_members),

@@ -11,6 +11,7 @@
 #include <optional>
 #include <string>
 #include <vector>
+
 #include "base/callback_list.h"
 #include "base/functional/callback.h"
 #include "base/memory/raw_ptr.h"
@@ -29,9 +30,12 @@
 #include "extensions/common/context_data.h"
 #include "extensions/common/error_utils.h"
 #include "extensions/common/extension.h"
+#include "extensions/common/extension_id.h"
 #include "extensions/common/features/feature.h"
 #include "extensions/common/mojom/context_type.mojom.h"
 #include "extensions/common/mojom/extra_response_data.mojom.h"
+#include "extensions/common/mojom/frame.mojom.h"
+#include "extensions/common/stack_frame.h"
 #include "third_party/blink/public/mojom/devtools/console_message.mojom-forward.h"
 #include "third_party/blink/public/mojom/devtools/inspector_issue.mojom-forward.h"
 #include "third_party/blink/public/mojom/service_worker/service_worker_database.mojom-forward.h"
@@ -293,7 +297,7 @@ class ExtensionFunction : public base::RefCountedThreadSafe<
     extension_ = extension;
   }
   const extensions::Extension* extension() const { return extension_.get(); }
-  const std::string& extension_id() const {
+  const extensions::ExtensionId& extension_id() const {
     DCHECK(extension())
         << "extension_id() called without an Extension. If " << name()
         << " is allowed to be called without any Extension then you should "
@@ -422,6 +426,14 @@ class ExtensionFunction : public base::RefCountedThreadSafe<
 
   // Same as above, but global. Yuck. Do not add any more uses of this.
   static bool ignore_all_did_respond_for_testing_do_not_use;
+
+  void set_js_callstack(extensions::StackTrace js_callstack) {
+    js_callstack_ = std::move(js_callstack);
+  }
+
+  const std::optional<extensions::StackTrace>& js_callstack() const {
+    return js_callstack_;
+  }
 
  protected:
   // ResponseValues.
@@ -668,7 +680,7 @@ class ExtensionFunction : public base::RefCountedThreadSafe<
   // ResponseCallback, and calling this method avoids that. This is nececessary
   // for tests that use test_utils::RunFunction*(), as those tests typically
   // retrieve the result afterwards through GetResultListForTest().
-  // TODO(https://crbug.com/1268112): Remove this once GetResultListForTest() is
+  // TODO(crbug.com/40803310): Remove this once GetResultListForTest() is
   // removed after ensuring consumers only use RunFunctionAndReturnResult() to
   // retrieve the results.
   bool preserve_results_for_testing_ = false;
@@ -692,6 +704,9 @@ class ExtensionFunction : public base::RefCountedThreadSafe<
 
   // The blobs transferred to the renderer process.
   std::vector<blink::mojom::SerializedBlobPtr> transferred_blobs_;
+
+  // The JS call stack snapshot captured at function invocation time.
+  std::optional<extensions::StackTrace> js_callstack_;
 };
 
 #endif  // EXTENSIONS_BROWSER_EXTENSION_FUNCTION_H_

@@ -10,6 +10,7 @@ import * as IssuesManager from '../../models/issues_manager/issues_manager.js';
 import * as IconButton from '../../ui/components/icon_button/icon_button.js';
 import * as IssueCounter from '../../ui/components/issue_counter/issue_counter.js';
 import * as UI from '../../ui/legacy/legacy.js';
+import * as VisualLogging from '../../ui/visual_logging/visual_logging.js';
 
 const UIStrings = {
   /**
@@ -48,9 +49,10 @@ export class WarningErrorCounter implements UI.Toolbar.Provider {
     this.toolbarItem = new UI.Toolbar.ToolbarItemWithCompactLayout(countersWrapper);
     this.toolbarItem.setVisible(false);
     this.toolbarItem.addEventListener(
-        UI.Toolbar.ToolbarItemWithCompactLayoutEvents.CompactLayoutUpdated, this.onSetCompactLayout, this);
+        UI.Toolbar.ToolbarItemWithCompactLayoutEvents.COMPACT_LAYOUT_UPDATED, this.onSetCompactLayout, this);
 
     this.consoleCounter = new IconButton.IconButton.IconButton();
+    this.consoleCounter.setAttribute('jslog', `${VisualLogging.counter('console').track({click: true})}`);
     countersWrapper.appendChild(this.consoleCounter);
     this.consoleCounter.data = {
       clickHandler: Common.Console.Console.instance().show.bind(Common.Console.Console.instance()),
@@ -63,14 +65,15 @@ export class WarningErrorCounter implements UI.Toolbar.Provider {
     const issuesManager = IssuesManager.IssuesManager.IssuesManager.instance();
     this.issueCounter = new IssueCounter.IssueCounter.IssueCounter();
     this.issueCounter.classList.add('main-toolbar');
+    this.issueCounter.setAttribute('jslog', `${VisualLogging.counter('issue').track({click: true})}`);
     countersWrapper.appendChild(this.issueCounter);
     this.issueCounter.data = {
-      clickHandler: (): void => {
-        Host.userMetrics.issuesPanelOpenedFrom(Host.UserMetrics.IssueOpener.StatusBarIssuesCounter);
+      clickHandler: () => {
+        Host.userMetrics.issuesPanelOpenedFrom(Host.UserMetrics.IssueOpener.STATUS_BAR_ISSUES_COUNTER);
         void UI.ViewManager.ViewManager.instance().showView('issues-pane');
       },
       issuesManager,
-      displayMode: IssueCounter.IssueCounter.DisplayMode.OnlyMostImportant,
+      displayMode: IssueCounter.IssueCounter.DisplayMode.ONLY_MOST_IMPORTANT,
     };
 
     this.throttler = new Common.Throttler.Throttler(100);
@@ -82,7 +85,7 @@ export class WarningErrorCounter implements UI.Toolbar.Provider {
     SDK.TargetManager.TargetManager.instance().addModelListener(
         SDK.ConsoleModel.ConsoleModel, SDK.ConsoleModel.Events.MessageUpdated, this.update, this);
 
-    issuesManager.addEventListener(IssuesManager.IssuesManager.Events.IssuesCountUpdated, this.update, this);
+    issuesManager.addEventListener(IssuesManager.IssuesManager.Events.ISSUES_COUNT_UPDATED, this.update, this);
 
     this.update();
   }

@@ -235,9 +235,9 @@ ApplicationWindow {
             Model {
                 visible: drawBoundingBox.checked
                 geometry: LineBoxGeometry {}
-                materials: DefaultMaterial {
-                    diffuseColor: "#323232"
-                    lighting: DefaultMaterial.NoLighting
+                materials: PrincipledMaterial {
+                    baseColor: "#323232"
+                    lighting: PrincipledMaterial.NoLighting
                 }
                 receivesShadows: false
                 castsShadows: false
@@ -246,9 +246,9 @@ ApplicationWindow {
             Model {
                 visible: drawBoundingBox.checked
                 geometry: LineBoxGeometry {}
-                materials: DefaultMaterial {
-                    diffuseColor: "#323232"
-                    lighting: DefaultMaterial.NoLighting
+                materials: PrincipledMaterial {
+                    baseColor: "#323232"
+                    lighting: PrincipledMaterial.NoLighting
                 }
                 receivesShadows: false
                 castsShadows: false

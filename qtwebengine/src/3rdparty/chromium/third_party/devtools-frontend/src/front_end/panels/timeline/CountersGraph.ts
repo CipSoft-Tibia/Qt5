@@ -42,7 +42,7 @@ const UIStrings = {
   /**
    *@description Text for a heap profile type
    */
-  jsHeap: 'JS Heap',
+  jsHeap: 'JS heap',
   /**
    *@description Text for documents, a type of resources
    */
@@ -58,13 +58,17 @@ const UIStrings = {
   /**
    *@description Text in Counters Graph of the Performance panel
    */
-  gpuMemory: 'GPU Memory',
+  gpuMemory: 'GPU memory',
   /**
    *@description Range text content in Counters Graph of the Performance panel
    *@example {2} PH1
    *@example {10} PH2
    */
   ss: '[{PH1} – {PH2}]',
+  /**
+   * @description text shown when no counter events are found and the graph is empty
+   */
+  noEventsFound: 'No memory usage data found within selected events.',
 };
 const str_ = i18n.i18n.registerUIStrings('panels/timeline/CountersGraph.ts', UIStrings);
 const i18nString = i18n.i18n.getLocalizedString.bind(undefined, str_);
@@ -75,7 +79,7 @@ export class CountersGraph extends UI.Widget.VBox {
   private readonly header: UI.Widget.HBox;
   readonly toolbar: UI.Toolbar.Toolbar;
   private graphsContainer: UI.Widget.VBox;
-  canvasContainer: UI.Widget.WidgetElement;
+  canvasContainer: typeof UI.Widget.Widget.prototype.element;
   private canvas: HTMLCanvasElement;
   private readonly timelineGrid: PerfUI.TimelineGrid.TimelineGrid;
   private readonly counters: Counter[];
@@ -86,6 +90,9 @@ export class CountersGraph extends UI.Widget.VBox {
   currentValuesBar?: HTMLElement;
   private markerXPosition?: number;
   #onTraceBoundsChangeBound = this.#onTraceBoundsChange.bind(this);
+
+  #noEventsFoundMessage = document.createElement('div');
+  #showNoEventsMessage: boolean = false;
 
   constructor(delegate: TimelineModeViewDelegate) {
     super();
@@ -112,6 +119,13 @@ export class CountersGraph extends UI.Widget.VBox {
     this.canvasContainer.appendChild(this.canvas);
     this.canvas.id = 'memory-counters-graph';
 
+    const noEventsFound = document.createElement('p');
+    noEventsFound.innerText = i18nString(UIStrings.noEventsFound);
+    this.#noEventsFoundMessage.classList.add('no-events-found');
+    this.#noEventsFoundMessage.setAttribute('hidden', 'hidden');
+    this.#noEventsFoundMessage.appendChild(noEventsFound);
+    this.canvasContainer.appendChild(this.#noEventsFoundMessage);
+
     this.canvasContainer.addEventListener('mouseover', this.onMouseMove.bind(this), true);
     this.canvasContainer.addEventListener('mousemove', this.onMouseMove.bind(this), true);
     this.canvasContainer.addEventListener('mouseleave', this.onMouseLeave.bind(this), true);
@@ -126,14 +140,19 @@ export class CountersGraph extends UI.Widget.VBox {
     this.countersByName = new Map();
     this.countersByName.set(
         'jsHeapSizeUsed',
-        this.createCounter(i18nString(UIStrings.jsHeap), 'hsl(220, 90%, 43%)', Platform.NumberUtilities.bytesToString));
-    this.countersByName.set('documents', this.createCounter(i18nString(UIStrings.documents), 'hsl(0, 90%, 43%)'));
-    this.countersByName.set('nodes', this.createCounter(i18nString(UIStrings.nodes), 'hsl(120, 90%, 43%)'));
+        this.createCounter(
+            i18nString(UIStrings.jsHeap), 'js-heap-size-used', 'hsl(220, 90%, 43%)',
+            Platform.NumberUtilities.bytesToString));
     this.countersByName.set(
-        'jsEventListeners', this.createCounter(i18nString(UIStrings.listeners), 'hsl(38, 90%, 43%)'));
+        'documents', this.createCounter(i18nString(UIStrings.documents), 'documents', 'hsl(0, 90%, 43%)'));
+    this.countersByName.set('nodes', this.createCounter(i18nString(UIStrings.nodes), 'nodes', 'hsl(120, 90%, 43%)'));
+    this.countersByName.set(
+        'jsEventListeners',
+        this.createCounter(i18nString(UIStrings.listeners), 'js-event-listeners', 'hsl(38, 90%, 43%)'));
 
     this.gpuMemoryCounter = this.createCounter(
-        i18nString(UIStrings.gpuMemory), 'hsl(300, 90%, 43%)', Platform.NumberUtilities.bytesToString);
+        i18nString(UIStrings.gpuMemory), 'gpu-memory-used-kb', 'hsl(300, 90%, 43%)',
+        Platform.NumberUtilities.bytesToString);
     this.countersByName.set('gpuMemoryUsedKB', this.gpuMemoryCounter);
 
     TraceBounds.TraceBounds.onChange(this.#onTraceBoundsChangeBound);
@@ -151,11 +170,10 @@ export class CountersGraph extends UI.Widget.VBox {
       traceEngineData: TraceEngine.Handlers.Types.TraceParseData|null,
       events: TraceEngine.Types.TraceEvents.TraceEventData[]|null): void {
     this.#events = events;
-    if (!events) {
+    if (!events || !traceEngineData) {
       return;
     }
-    const minTime =
-        traceEngineData ? TraceEngine.Helpers.Timing.traceWindowMilliSeconds(traceEngineData.Meta.traceBounds).min : 0;
+    const minTime = TraceEngine.Helpers.Timing.traceWindowMilliSeconds(traceEngineData.Meta.traceBounds).min;
     this.calculator.setZeroTime(minTime);
 
     for (let i = 0; i < this.counters.length; ++i) {
@@ -163,11 +181,13 @@ export class CountersGraph extends UI.Widget.VBox {
       this.counterUI[i].reset();
     }
     this.#scheduleRefresh();
+    let counterEventsFound = 0;
     for (let i = 0; i < events.length; ++i) {
       const event = events[i];
       if (!TraceEngine.Types.TraceEvents.isTraceEventUpdateCounters(event)) {
         continue;
       }
+      counterEventsFound++;
 
       const counters = event.args.data;
       if (!counters) {
@@ -176,7 +196,7 @@ export class CountersGraph extends UI.Widget.VBox {
       for (const name in counters) {
         const counter = this.countersByName.get(name);
         if (counter) {
-          const {startTime} = TraceEngine.Legacy.timesForEventInMilliseconds(event);
+          const {startTime} = TraceEngine.Helpers.Timing.eventTimingsMilliSeconds(event);
           counter.appendSample(
               startTime, counters[name as 'documents' | 'jsEventListeners' | 'jsHeapSizeUsed' | 'nodes']);
         }
@@ -186,6 +206,7 @@ export class CountersGraph extends UI.Widget.VBox {
         this.gpuMemoryCounter.setLimit(counters.gpuMemoryLimitKB);
       }
     }
+    this.#showNoEventsMessage = counterEventsFound === 0;
   }
 
   private createCurrentValuesBar(): void {
@@ -193,10 +214,11 @@ export class CountersGraph extends UI.Widget.VBox {
     this.currentValuesBar.id = 'counter-values-bar';
   }
 
-  private createCounter(uiName: string, color: string, formatter?: ((arg0: number) => string)): Counter {
+  private createCounter(uiName: string, settingsKey: string, color: string, formatter?: ((arg0: number) => string)):
+      Counter {
     const counter = new Counter();
     this.counters.push(counter);
-    this.counterUI.push(new CounterUI(this, uiName, color, counter, formatter));
+    this.counterUI.push(new CounterUI(this, uiName, settingsKey, color, counter, formatter));
     return counter;
   }
 
@@ -218,6 +240,11 @@ export class CountersGraph extends UI.Widget.VBox {
 
   draw(): void {
     this.clear();
+    if (this.#showNoEventsMessage) {
+      this.#noEventsFoundMessage.removeAttribute('hidden');
+    } else {
+      this.#noEventsFoundMessage.setAttribute('hidden', 'hidden');
+    }
     for (const counter of this.counters) {
       counter.calculateVisibleIndexes(this.calculator);
       counter.calculateXValues(this.canvas.width);
@@ -400,13 +427,13 @@ export class CounterUI {
   private marker: HTMLElement;
 
   constructor(
-      countersPane: CountersGraph, title: string, graphColor: string, counter: Counter,
+      countersPane: CountersGraph, title: string, settingsKey: string, graphColor: string, counter: Counter,
       formatter?: (arg0: number) => string) {
     this.countersPane = countersPane;
     this.counter = counter;
     this.formatter = formatter || Platform.NumberUtilities.withThousandsSeparator;
 
-    this.setting = Common.Settings.Settings.instance().createSetting('timelineCountersGraph-' + title, true);
+    this.setting = Common.Settings.Settings.instance().createSetting('timeline-counters-graph-' + settingsKey, true);
     this.setting.setTitle(title);
     this.filter = new UI.Toolbar.ToolbarSettingCheckbox(this.setting, title);
     this.filter.inputElement.classList.add('-theme-preserve-input');

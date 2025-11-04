@@ -1,7 +1,7 @@
 // Copyright 2021 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
-#include "chrome/browser/extensions/api/enterprise_reporting_private/enterprise_reporting_private_api.h"
+#include <string_view>
 
 #include "base/command_line.h"
 #include "base/test/scoped_feature_list.h"
@@ -11,6 +11,7 @@
 #include "chrome/browser/content_settings/host_content_settings_map_factory.h"
 #include "chrome/browser/enterprise/connectors/test/deep_scanning_test_utils.h"
 #include "chrome/browser/enterprise/util/managed_browser_utils.h"
+#include "chrome/browser/extensions/api/enterprise_reporting_private/enterprise_reporting_private_api.h"
 #include "chrome/browser/net/profile_network_context_service.h"
 #include "chrome/browser/net/profile_network_context_service_factory.h"
 #include "chrome/browser/policy/chrome_browser_policy_connector.h"
@@ -32,6 +33,7 @@
 #include "content/public/common/content_switches.h"
 #include "content/public/test/browser_test.h"
 #include "extensions/browser/api_test_utils.h"
+#include "net/base/features.h"
 #include "net/cert/x509_certificate.h"
 #include "net/cert/x509_util.h"
 #include "net/ssl/client_cert_identity_test_util.h"
@@ -109,8 +111,9 @@ class MockClientCertStore : public net::ClientCertStore {
   explicit MockClientCertStore(net::ClientCertIdentityList certs)
       : certs_(std::move(certs)) {}
 
-  void GetClientCerts(const net::SSLCertRequestInfo& cert_request_info,
-                      ClientCertListCallback callback) override {
+  void GetClientCerts(
+      scoped_refptr<const net::SSLCertRequestInfo> cert_request_info,
+      ClientCertListCallback callback) override {
     std::move(callback).Run(std::move(certs_));
   }
 
@@ -162,7 +165,7 @@ class EnterpriseReportingPrivateGetContextInfoBrowserTest
     if (browser_managed()) {
       SetupDMToken();
     }
-    feature_list_.InitAndEnableFeature(features::kAsyncDns);
+    feature_list_.InitAndEnableFeature(net::features::kAsyncDns);
   }
 
   bool browser_managed() const { return testing::get<0>(GetParam()); }
@@ -608,7 +611,7 @@ class EnterpriseReportingPrivateGetCertificateTest : public policy::PolicyTest {
   }
 
   void SetPolicyValue(const std::string& policy_value) {
-    EXPECT_FALSE(chrome::enterprise_util::IsMachinePolicyPref(
+    EXPECT_FALSE(enterprise_util::IsMachinePolicyPref(
         prefs::kManagedAutoSelectCertificateForUrls));
 
     base::Value::List list;
@@ -621,7 +624,7 @@ class EnterpriseReportingPrivateGetCertificateTest : public policy::PolicyTest {
                  nullptr);
     UpdateProviderPolicy(policies);
 
-    EXPECT_TRUE(chrome::enterprise_util::IsMachinePolicyPref(
+    EXPECT_TRUE(enterprise_util::IsMachinePolicyPref(
         prefs::kManagedAutoSelectCertificateForUrls));
   }
 
@@ -753,7 +756,7 @@ IN_PROC_BROWSER_TEST_F(EnterpriseReportingPrivateGetCertificateTest,
   EXPECT_EQ(enterprise_reporting_private::CertificateStatus::kOk, cert.status);
   EXPECT_TRUE(cert.encoded_certificate.has_value());
 
-  base::StringPiece der_cert = net::x509_util::CryptoBufferAsStringPiece(
+  std::string_view der_cert = net::x509_util::CryptoBufferAsStringPiece(
       client_certs()[0]->cert_buffer());
   std::vector<uint8_t> expected_der_bytes(der_cert.begin(), der_cert.end());
 

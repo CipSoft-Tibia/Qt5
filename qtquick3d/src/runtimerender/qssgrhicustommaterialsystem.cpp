@@ -192,7 +192,8 @@ void QSSGCustomMaterialSystem::rhiPrepareRenderable(QSSGRhiGraphicsPipelineState
                                                     QSSGRenderCamera *alteredCamera,
                                                     QSSGRenderTextureCubeFace cubeFace,
                                                     QMatrix4x4 *alteredModelViewProjection,
-                                                    QSSGReflectionMapEntry *entry)
+                                                    QSSGReflectionMapEntry *entry,
+                                                    bool oit)
 {
     QSSGRhiContext *rhiCtx = context->rhiContext().get();
 
@@ -257,7 +258,8 @@ void QSSGCustomMaterialSystem::rhiPrepareRenderable(QSSGRhiGraphicsPipelineState
 
         ps->cullMode = QSSGRhiHelpers::toCullMode(cullMode);
 
-        ps->targetBlend = blend;
+        if (!oit)
+            ps->targetBlend[0] = blend;
 
         auto &ia = QSSGRhiInputAssemblerStatePrivate::get(*ps);
 

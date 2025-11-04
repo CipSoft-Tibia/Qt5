@@ -1,10 +1,9 @@
 // Copyright (C) 2018 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef PLATFORM_WINDOW_QT_H
 #define PLATFORM_WINDOW_QT_H
-
-#if defined(USE_OZONE)
 
 #include "ui/base/cursor/platform_cursor.h"
 #include "ui/events/platform/platform_event_dispatcher.h"
@@ -61,7 +60,6 @@ private:
     gfx::Rect bounds_;
 };
 
-}
+} // namespace ui
 
-#endif // defined(USE_OZONE)
-#endif //PLATFORM_WINDOW_QT_H
+#endif // PLATFORM_WINDOW_QT_H

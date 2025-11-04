@@ -42,13 +42,20 @@ Q_NORETURN void qAbort()
 
     // Fallback
     TerminateProcess(GetCurrentProcess(), STATUS_FATAL_APP_EXIT);
-
-    // Tell the compiler the application has stopped.
-    Q_UNREACHABLE_IMPL();
 #else // !Q_OS_WIN
     std::abort();
 #endif
+
+    // Tell the compiler the application has stopped.
+    Q_UNREACHABLE_IMPL();
 }
+
+/*!
+    \headerfile <QtAssert>
+    \inmodule QtCore
+    \ingroup funclists
+    \brief Macros for condition checks during development and debugging.
+*/
 
 /*!
     \macro void Q_ASSERT(bool test)

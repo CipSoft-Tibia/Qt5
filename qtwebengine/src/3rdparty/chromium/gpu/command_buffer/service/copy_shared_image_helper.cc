@@ -2,6 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#ifdef UNSAFE_BUFFERS_BUILD
+// TODO(crbug.com/351564777): Remove this and convert code to safer constructs.
+#pragma allow_unsafe_buffers
+#endif
+
 #include "gpu/command_buffer/service/copy_shared_image_helper.h"
 
 #include <memory>
@@ -28,15 +33,15 @@
 #include "third_party/skia/include/core/SkImage.h"
 #include "third_party/skia/include/core/SkRect.h"
 #include "third_party/skia/include/core/SkSurface.h"
-#include "third_party/skia/include/gpu/GrBackendSemaphore.h"
-#include "third_party/skia/include/gpu/GrBackendSurface.h"
-#include "third_party/skia/include/gpu/GrDirectContext.h"
-#include "third_party/skia/include/gpu/GrTypes.h"
-#include "third_party/skia/include/gpu/GrYUVABackendTextures.h"
+#include "third_party/skia/include/gpu/ganesh/GrBackendSemaphore.h"
+#include "third_party/skia/include/gpu/ganesh/GrBackendSurface.h"
+#include "third_party/skia/include/gpu/ganesh/GrDirectContext.h"
+#include "third_party/skia/include/gpu/ganesh/GrTypes.h"
+#include "third_party/skia/include/gpu/ganesh/GrYUVABackendTextures.h"
 #include "third_party/skia/include/gpu/ganesh/SkImageGanesh.h"
 #include "third_party/skia/include/gpu/ganesh/SkSurfaceGanesh.h"
 #include "third_party/skia/include/gpu/ganesh/gl/GrGLBackendSurface.h"
-#include "third_party/skia/include/gpu/gl/GrGLTypes.h"
+#include "third_party/skia/include/gpu/ganesh/gl/GrGLTypes.h"
 #include "third_party/skia/include/gpu/graphite/Context.h"
 #include "third_party/skia/include/gpu/graphite/Image.h"
 #include "third_party/skia/include/gpu/graphite/Recorder.h"
@@ -67,7 +72,7 @@ SkColorType GetCompatibleSurfaceColorType(GrGLenum format) {
     case GL_SRGB8_ALPHA8:
       return kRGBA_8888_SkColorType;
     default:
-      NOTREACHED();
+      NOTREACHED_IN_MIGRATION() << "Unknown format: " << format;
       return kUnknown_SkColorType;
   }
 }
@@ -196,73 +201,6 @@ base::expected<void, GLError> ConvertYUVACommon(
   return base::ok();
 }
 
-void InsertRecordingAndSubmit(SharedContextState* context,
-                              bool sync_cpu = false) {
-  CHECK(context->graphite_context());
-  auto recording = context->gpu_main_graphite_recorder()->snap();
-  if (recording) {
-    skgpu::graphite::InsertRecordingInfo info = {};
-    info.fRecording = recording.get();
-    context->graphite_context()->insertRecording(info);
-  }
-  context->graphite_context()->submit(sync_cpu
-                                          ? skgpu::graphite::SyncToCpu::kYes
-                                          : skgpu::graphite::SyncToCpu::kNo);
-}
-
-void FlushSurface(SkiaImageRepresentation::ScopedWriteAccess* access) {
-  int num_planes = access->representation()->format().NumberOfPlanes();
-  for (int plane_index = 0; plane_index < num_planes; plane_index++) {
-    auto* surface = access->surface(plane_index);
-    DCHECK(surface);
-    skgpu::ganesh::Flush(surface);
-  }
-  access->ApplyBackendSurfaceEndState();
-}
-
-void SubmitIfNecessary(std::vector<GrBackendSemaphore> signal_semaphores,
-                       SharedContextState* context,
-                       bool is_drdc_enabled) {
-  // Note that when DrDc is enabled, we need to call
-  // AddVulkanCleanupTaskForSkiaFlush() on gpu main thread and do skia flush.
-  // This will ensure that vulkan memory allocated on gpu main thread will be
-  // cleaned up.
-  if (!signal_semaphores.empty() || is_drdc_enabled) {
-    CHECK(context->gr_context());
-    GrFlushInfo flush_info = {
-        .fNumSemaphores = signal_semaphores.size(),
-        .fSignalSemaphores = signal_semaphores.data(),
-    };
-    gpu::AddVulkanCleanupTaskForSkiaFlush(context->vk_context_provider(),
-                                          &flush_info);
-
-    auto result = context->gr_context()->flush(flush_info);
-    DCHECK_EQ(result, GrSemaphoresSubmitted::kYes);
-  }
-
-  bool sync_cpu =
-      gpu::ShouldVulkanSyncCpuForSkiaSubmit(context->vk_context_provider());
-
-  // If DrDc is enabled, submit the gr_context() to ensure correct ordering
-  // of vulkan commands between raster and display compositor.
-  // TODO(vikassoni): This submit could be happening more often than
-  // intended resulting in perf penalty. Explore ways to reduce it by
-  // trying to issue submit only once per draw call for both gpu main and
-  // drdc thread gr_context. Also add metric to see how often submits are
-  // happening per frame.
-  const bool need_submit =
-      sync_cpu || !signal_semaphores.empty() || is_drdc_enabled;
-
-  if (need_submit) {
-    CHECK(context->gr_context());
-    context->gr_context()->submit(sync_cpu ? GrSyncCpu::kYes : GrSyncCpu::kNo);
-  }
-
-  if (context->graphite_context()) {
-    InsertRecordingAndSubmit(context, sync_cpu);
-  }
-}
-
 sk_sp<SkColorSpace> ReadSkColorSpace(const volatile GLbyte* bytes) {
   size_t offset = 0;
   const volatile skcms_TransferFunction* transfer =
@@ -289,7 +227,6 @@ bool TryCopySubTextureINTERNALMemory(
     SkiaImageRepresentation::ScopedWriteAccess* dest_scoped_access,
     SharedImageRepresentationFactory* representation_factory,
     SharedContextState* shared_context_state,
-    bool is_drdc_enabled,
     const std::vector<GrBackendSemaphore>& begin_semaphores,
     std::vector<GrBackendSemaphore>& end_semaphores) {
   if (unpack_flip_y) {
@@ -329,9 +266,10 @@ bool TryCopySubTextureINTERNALMemory(
 
   dest_scoped_access->surface()->writePixels(subset, xoffset, yoffset);
 
-  FlushSurface(dest_scoped_access);
-  SubmitIfNecessary(std::move(end_semaphores), shared_context_state,
-                    is_drdc_enabled);
+  shared_context_state->FlushWriteAccess(dest_scoped_access);
+  shared_context_state->SubmitIfNecessary(
+      std::move(end_semaphores),
+      dest_scoped_access->NeedGraphiteContextSubmit());
 
   if (!dest_shared_image->IsCleared()) {
     dest_shared_image->SetClearedRect(dest_cleared_rect);
@@ -359,10 +297,7 @@ CopySharedImageHelper::CopySharedImageHelper(
     SharedImageRepresentationFactory* representation_factory,
     SharedContextState* shared_context_state)
     : representation_factory_(representation_factory),
-      shared_context_state_(shared_context_state),
-      is_drdc_enabled_(
-          features::IsDrDcEnabled() &&
-          !shared_context_state->feature_info()->workarounds().disable_drdc) {}
+      shared_context_state_(shared_context_state) {}
 
 CopySharedImageHelper::~CopySharedImageHelper() = default;
 
@@ -426,10 +361,11 @@ base::expected<void, GLError> CopySharedImageHelper::ConvertRGBAToYUVAMailboxes(
 
   // Perform ApplyBackendSurfaceEndState() on the ScopedReadAccess before
   // exiting.
+  bool need_graphite_submit = rgba_scoped_access->NeedGraphiteContextSubmit();
   absl::Cleanup cleanup = [&]() {
     rgba_scoped_access->ApplyBackendSurfaceEndState();
-    SubmitIfNecessary(std::move(end_semaphores), shared_context_state_,
-                      is_drdc_enabled_);
+    shared_context_state_->SubmitIfNecessary(std::move(end_semaphores),
+                                             need_graphite_submit);
   };
 
   auto rgba_sk_image = rgba_scoped_access->CreateSkImage(shared_context_state_);
@@ -451,6 +387,7 @@ base::expected<void, GLError> CopySharedImageHelper::ConvertRGBAToYUVAMailboxes(
       return base::unexpected(
           GLError(GL_INVALID_OPERATION, "glConvertRGBAToYUVAMailboxes", msg));
     }
+    need_graphite_submit |= yuva_scoped_access[i]->NeedGraphiteContextSubmit();
   }
   SkSurface* yuva_sk_surfaces[SkYUVAInfo::kMaxPlanes];
   for (int i = 0; i < num_yuva_planes; ++i) {
@@ -469,7 +406,7 @@ base::expected<void, GLError> CopySharedImageHelper::ConvertRGBAToYUVAMailboxes(
   skia::BlitRGBAToYUVA(rgba_sk_image.get(), yuva_sk_surfaces, yuva_info);
 
   for (int i = 0; i < num_yuva_planes; ++i) {
-    FlushSurface(yuva_scoped_access[i].get());
+    shared_context_state_->FlushWriteAccess(yuva_scoped_access[i].get());
     if (!yuva_images[i]->IsCleared()) {
       yuva_images[i]->SetCleared();
     }
@@ -521,9 +458,11 @@ base::expected<void, GLError> CopySharedImageHelper::ConvertYUVAMailboxesToRGB(
   auto result = ConvertYUVAMailboxesToSkSurface(
       "glConvertYUVAMailboxesToRGB", src_x, src_y, width, height,
       planes_yuv_color_space, plane_config, subsampling, bytes_in,
-      dest_scoped_access->surface(), begin_semaphores, end_semaphores,
-      src_rgb_color_space,
-      [&dest_scoped_access]() { FlushSurface(dest_scoped_access.get()); });
+      dest_scoped_access->surface(),
+      dest_scoped_access->NeedGraphiteContextSubmit(), begin_semaphores,
+      end_semaphores, src_rgb_color_space, [&]() {
+        shared_context_state_->FlushWriteAccess(dest_scoped_access.get());
+      });
 
   bool drew_image = result.has_value();
   if (!rgba_image->IsCleared() && drew_image) {
@@ -545,6 +484,7 @@ CopySharedImageHelper::ConvertYUVAMailboxesToSkSurface(
     GLenum subsampling,
     const volatile GLbyte* bytes_in,
     SkSurface* dest_surface,
+    bool dest_need_graphite_submit,
     std::vector<GrBackendSemaphore>& begin_semaphores,
     std::vector<GrBackendSemaphore>& end_semaphores,
     sk_sp<SkColorSpace> src_rgb_color_space,
@@ -651,13 +591,16 @@ CopySharedImageHelper::ConvertYUVAMailboxesToSkSurface(
   }
 
   flush_dest_surface_function();
+  bool need_graphite_submit = dest_need_graphite_submit;
   for (int i = 0; i < num_src_planes; ++i) {
     if (source_scoped_access[i]) {
       source_scoped_access[i]->ApplyBackendSurfaceEndState();
+      need_graphite_submit |=
+          source_scoped_access[i]->NeedGraphiteContextSubmit();
     }
   }
-  SubmitIfNecessary(std::move(end_semaphores), shared_context_state_,
-                    is_drdc_enabled_);
+  shared_context_state_->SubmitIfNecessary(std::move(end_semaphores),
+                                           need_graphite_submit);
 
   return result;
 }
@@ -699,7 +642,8 @@ CopySharedImageHelper::ConvertYUVAMailboxesToGLTexture(
   return ConvertYUVAMailboxesToSkSurface(
       "glConvertYUVAMailboxesToGLTexture", src_x, src_y, width, height,
       planes_yuv_color_space, plane_config, subsampling, bytes_in,
-      dest_surface.get(), begin_semaphores, end_semaphores,
+      dest_surface.get(), /*dest_need_graphite_submit=*/false, begin_semaphores,
+      end_semaphores,
       /*src_rgb_color_space=*/nullptr, [direct_context, &dest_surface]() {
         direct_context->flush(dest_surface.get());
       });
@@ -739,8 +683,7 @@ base::expected<void, GLError> CopySharedImageHelper::CopySharedImage(
 
   auto dest_format = dest_shared_image->format();
   // Destination shared image cannot prefer external sampler.
-  if (dest_format.IsLegacyMultiplanar() ||
-      dest_format.PrefersExternalSampler()) {
+  if (dest_format.PrefersExternalSampler()) {
     return base::unexpected(
         GLError(GL_INVALID_VALUE, "glCopySubTexture", "unexpected format"));
   }
@@ -765,11 +708,12 @@ base::expected<void, GLError> CopySharedImageHelper::CopySharedImage(
                                     "Dest shared image is not writable"));
   }
 
+  bool need_graphite_submit = dest_scoped_access->NeedGraphiteContextSubmit();
   // Flush dest surface and submit if necessary before exiting.
   absl::Cleanup cleanup = [&]() {
-    FlushSurface(dest_scoped_access.get());
-    SubmitIfNecessary(std::move(end_semaphores), shared_context_state_,
-                      is_drdc_enabled_);
+    shared_context_state_->FlushWriteAccess(dest_scoped_access.get());
+    shared_context_state_->SubmitIfNecessary(std::move(end_semaphores),
+                                             need_graphite_submit);
   };
 
   gfx::Rect new_cleared_rect;
@@ -789,8 +733,7 @@ base::expected<void, GLError> CopySharedImageHelper::CopySharedImage(
           xoffset, yoffset, x, y, width, height, new_cleared_rect,
           unpack_flip_y, source_mailbox, dest_shared_image.get(),
           dest_scoped_access.get(), representation_factory_,
-          shared_context_state_, is_drdc_enabled_, begin_semaphores,
-          end_semaphores)) {
+          shared_context_state_, begin_semaphores, end_semaphores)) {
     // Cancel cleanup as TryCopySubTextureINTERNALMemory already handles it.
     std::move(cleanup).Cancel();
     return base::ok();
@@ -844,6 +787,9 @@ base::expected<void, GLError> CopySharedImageHelper::CopySharedImage(
                                     "Source shared image is not accessable"));
   }
 
+  // Update submit is needed by `source_scoped_access`.
+  need_graphite_submit |= source_scoped_access->NeedGraphiteContextSubmit();
+
   base::expected<void, GLError> result = base::ok();
   auto source_image =
       source_scoped_access->CreateSkImage(shared_context_state_);
@@ -882,7 +828,7 @@ base::expected<void, GLError> CopySharedImageHelper::CopySharedImage(
             dest_scoped_access->surface(plane_index);
       }
 
-      // TODO(crbug.com/828599): This should really default to rec709.
+      // TODO(crbug.com/41380578): This should really default to rec709.
       SkYUVColorSpace yuv_color_space = kRec601_SkYUVColorSpace;
       dest_shared_image->color_space().ToSkYUVColorSpace(
           dest_format.MultiplanarBitDepth(), &yuv_color_space);
@@ -891,7 +837,7 @@ base::expected<void, GLError> CopySharedImageHelper::CopySharedImage(
                            ToSkYUVAPlaneConfig(dest_format),
                            ToSkYUVASubsampling(dest_format), yuv_color_space);
       // Perform skia::BlitRGBAToYUVA for the multiplanar YUV format image.
-      // TODO(crbug.com/1451025): This will scale the image if the source image
+      // TODO(crbug.com/40270413): This will scale the image if the source image
       // is smaller than the destination image. What we should actually do
       // instead is just blit the destination rect and clear out the rest.
       // However, doing that resulted in resulted in pixeltest failures due to
@@ -912,10 +858,10 @@ base::expected<void, GLError> CopySharedImageHelper::CopySharedImage(
 
   // Cancel cleanup as the cleanup order is different here.
   std::move(cleanup).Cancel();
-  FlushSurface(dest_scoped_access.get());
+  shared_context_state_->FlushWriteAccess(dest_scoped_access.get());
   source_scoped_access->ApplyBackendSurfaceEndState();
-  SubmitIfNecessary(std::move(end_semaphores), shared_context_state_,
-                    is_drdc_enabled_);
+  shared_context_state_->SubmitIfNecessary(std::move(end_semaphores),
+                                           need_graphite_submit);
   return result;
 }
 
@@ -967,7 +913,8 @@ base::expected<void, GLError> CopySharedImageHelper::CopySharedImageToGLTexture(
     canvas->clear(SkColors::kBlack);
 
     direct_context->flush(dest_surface.get());
-    SubmitIfNecessary({}, shared_context_state_, is_drdc_enabled_);
+    shared_context_state_->SubmitIfNecessary(/*signal_semaphores=*/{},
+                                             /*need_graphite_submit=*/false);
 
     // Note, that we still generate error for the client to indicate there was
     // problem.
@@ -998,8 +945,8 @@ base::expected<void, GLError> CopySharedImageHelper::CopySharedImageToGLTexture(
   if (!source_scoped_access) {
     // We still need to flush surface for begin semaphores above.
     direct_context->flush(dest_surface.get());
-    SubmitIfNecessary(std::move(end_semaphores), shared_context_state_,
-                      is_drdc_enabled_);
+    shared_context_state_->SubmitIfNecessary(std::move(end_semaphores),
+                                             /*need_graphite_submit=*/false);
 
     return base::unexpected<GLError>(
         GLError(GL_INVALID_VALUE, "glCopySharedImageToTexture",
@@ -1032,8 +979,8 @@ base::expected<void, GLError> CopySharedImageHelper::CopySharedImageToGLTexture(
 
   direct_context->flush(dest_surface.get());
   source_scoped_access->ApplyBackendSurfaceEndState();
-  SubmitIfNecessary(std::move(end_semaphores), shared_context_state_,
-                    is_drdc_enabled_);
+  shared_context_state_->SubmitIfNecessary(std::move(end_semaphores),
+                                           /*need_graphite_submit=*/false);
   return result;
 }
 
@@ -1079,35 +1026,42 @@ base::expected<void, GLError> CopySharedImageHelper::ReadPixels(
 
   if (!sk_image) {
     source_scoped_access->ApplyBackendSurfaceEndState();
-    SubmitIfNecessary(std::move(end_semaphores), shared_context_state_,
-                      is_drdc_enabled_);
+    shared_context_state_->SubmitIfNecessary(
+        std::move(end_semaphores),
+        source_scoped_access->NeedGraphiteContextSubmit());
     return base::unexpected(GLError(GL_INVALID_OPERATION,
                                     "glReadbackImagePixels",
                                     "Couldn't create SkImage for reading."));
   }
 
-  // TODO(crbug.com/1502623): Add back src_rect validation once renderer passes
+  // TODO(crbug.com/40942998): Add back src_rect validation once renderer passes
   // a correct rect size.
   bool success = false;
   if (gr_context) {
     success = sk_image->readPixels(gr_context, dst_info, pixel_address,
                                    row_bytes, src_x, src_y);
+    source_scoped_access->ApplyBackendSurfaceEndState();
+    shared_context_state_->SubmitIfNecessary(
+        std::move(end_semaphores), /*need_graphite_context_submit==*/false);
   } else {
-    CHECK(shared_context_state_->graphite_context());
+    auto* graphite_context = shared_context_state_->graphite_context();
+    CHECK(graphite_context);
     ReadPixelsContext context;
     gfx::Rect src_rect(src_x, src_y, dst_info.width(), dst_info.height());
-    shared_context_state_->graphite_context()->asyncRescaleAndReadPixels(
+    graphite_context->asyncRescaleAndReadPixels(
         sk_image.get(), dst_info, RectToSkIRect(src_rect),
         SkImage::RescaleGamma::kSrc, SkImage::RescaleMode::kRepeatedLinear,
         &OnReadPixelsDone, &context);
-    InsertRecordingAndSubmit(shared_context_state_, /*sync_cpu=*/true);
+    // We don't need to insert a recording since asyncRescaleAndReadPixels is a
+    // context operation that inserts its own recording internally.
+    graphite_context->submit(skgpu::graphite::SyncToCpu::kYes);
     CHECK(context.finished);
     if (context.async_result) {
       success = true;
       // Use CopyPlane to flip as Graphite doesn't support bottom left origin
       // images. Using a negative height causes CopyPlane to flip while copying.
-      // TODO(crbug.com/1449764): Remove this if Graphite performs the flip once
-      // it supports bottom left origin images.
+      // TODO(crbug.com/40269891): Remove this if Graphite performs the flip
+      // once it supports bottom left origin images.
       const int height =
           source_shared_image->surface_origin() == kTopLeft_GrSurfaceOrigin
               ? dst_info.height()
@@ -1121,10 +1075,6 @@ base::expected<void, GLError> CopySharedImageHelper::ReadPixels(
       success = false;
     }
   }
-
-  source_scoped_access->ApplyBackendSurfaceEndState();
-  SubmitIfNecessary(std::move(end_semaphores), shared_context_state_,
-                    is_drdc_enabled_);
   if (!success) {
     return base::unexpected(GLError(GL_INVALID_OPERATION,
                                     "glReadbackImagePixels",
@@ -1141,7 +1091,7 @@ base::expected<void, GLError> CopySharedImageHelper::WritePixelsYUV(
     std::unique_ptr<SkiaImageRepresentation> dest_shared_image,
     std::unique_ptr<SkiaImageRepresentation::ScopedWriteAccess>
         dest_scoped_access) {
-  // Order of destruction for moved unique pointers is not guaranteed and the
+  // Order of destruction for function arguments is not specified, but the
   // ScopedWriteAccess must be destroyed before representation; so perform a
   // Cleanup before exiting.
   absl::Cleanup cleanup = [&]() { dest_scoped_access.reset(); };
@@ -1152,9 +1102,8 @@ base::expected<void, GLError> CopySharedImageHelper::WritePixelsYUV(
     if (gr_context) {
       written = gr_context->updateBackendTexture(
           dest_scoped_access->promise_image_texture(plane)->backendTexture(),
-          &pixmaps[plane],
-          /*numLevels=*/1, dest_shared_image->surface_origin(), nullptr,
-          nullptr);
+          &pixmaps[plane], /*numLevels=*/1, dest_shared_image->surface_origin(),
+          /*finishedProc=*/nullptr, /*finishedContext=*/nullptr);
     } else {
       CHECK(shared_context_state_->graphite_context());
       written =
@@ -1164,17 +1113,18 @@ base::expected<void, GLError> CopySharedImageHelper::WritePixelsYUV(
                   /*numLevels=*/1);
     }
     if (!written) {
+      dest_scoped_access->ApplyBackendSurfaceEndState();
+      shared_context_state_->SubmitIfNecessary(std::move(end_semaphores),
+                                               /*need_graphite_submit=*/true);
       return base::unexpected(
           GLError(GL_INVALID_OPERATION, "glWritePixelsYUV",
                   "Failed to upload pixels to dest shared image"));
     }
   }
 
-  if (gr_context) {
-    dest_scoped_access->ApplyBackendSurfaceEndState();
-  }
-  SubmitIfNecessary(std::move(end_semaphores), shared_context_state_,
-                    is_drdc_enabled_);
+  shared_context_state_->FlushWriteAccess(dest_scoped_access.get());
+  shared_context_state_->SubmitIfNecessary(std::move(end_semaphores),
+                                           /*need_graphite_submit=*/true);
 
   if (!dest_shared_image->IsCleared()) {
     dest_shared_image->SetClearedRect(gfx::Rect(src_width, src_height));

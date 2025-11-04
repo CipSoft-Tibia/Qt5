@@ -65,7 +65,7 @@ public:
     void SelectFileImpl(Type type, const std::u16string &title, const base::FilePath &default_path,
                         const FileTypeInfo *file_types, int file_type_index,
                         const base::FilePath::StringType &default_extension,
-                        gfx::NativeWindow owning_window, void *params, const GURL *) override;
+                        gfx::NativeWindow owning_window, const GURL *) override;
 
     bool HasMultipleFileTypeChoicesImpl() override;
 
@@ -106,19 +106,18 @@ void SelectFileDialogQt::SelectFileImpl(Type type, const std::u16string &title,
                                         const base::FilePath &default_path,
                                         const FileTypeInfo *file_types, int file_type_index,
                                         const base::FilePath::StringType &default_extension,
-                                        gfx::NativeWindow owning_window, void *params, const GURL *caller)
+                                        gfx::NativeWindow owning_window, const GURL *caller)
 {
     Q_UNUSED(title);
     Q_UNUSED(file_type_index);
     Q_UNUSED(default_extension);
     Q_UNUSED(owning_window);
-    Q_UNUSED(params);
     Q_UNUSED(caller);
 
     QStringList acceptedSuffixes;
     if (file_types) {
-        for (const auto &type : file_types->extensions) {
-            for (const auto &extension : type)
+        for (const auto &typeExtensions : file_types->extensions) {
+            for (const auto &extension : typeExtensions)
                 acceptedSuffixes.append(u'.' + toQt(extension));
         }
     }

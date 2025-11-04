@@ -9,6 +9,7 @@
 #include <QtCore/qstringlist.h>
 #include <QtCore/qtclasshelpermacros.h>
 #include <QtGraphs/qgraphsglobal.h>
+#include <QtQmlIntegration/qqmlintegration.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -32,11 +33,17 @@ class Q_GRAPHS_EXPORT QAbstract3DAxis : public QObject
                    autoAdjustRangeChanged FINAL)
     Q_PROPERTY(float labelAutoAngle READ labelAutoAngle WRITE setLabelAutoAngle NOTIFY
                    labelAutoAngleChanged FINAL)
+    Q_PROPERTY(bool scaleLabelsByCount READ isScaleLabelsByCount WRITE setScaleLabelsByCount NOTIFY
+                   scaleLabelsByCountChanged REVISION(6, 9))
+    Q_PROPERTY(qreal labelSize READ labelSize WRITE setLabelSize NOTIFY labelSizeChanged NOTIFY
+                   labelSizeChanged REVISION(6, 9))
     Q_PROPERTY(bool titleVisible READ isTitleVisible WRITE setTitleVisible NOTIFY
                    titleVisibleChanged FINAL)
     Q_PROPERTY(bool titleFixed READ isTitleFixed WRITE setTitleFixed NOTIFY titleFixedChanged FINAL)
     Q_PROPERTY(
         float titleOffset READ titleOffset WRITE setTitleOffset NOTIFY titleOffsetChanged FINAL)
+    QML_NAMED_ELEMENT(Abstract3DAxis)
+    QML_UNCREATABLE("")
 
 public:
     enum class AxisOrientation { None, X, Y, Z };
@@ -73,6 +80,12 @@ public:
     void setAutoAdjustRange(bool autoAdjust);
     bool isAutoAdjustRange() const;
 
+    void setScaleLabelsByCount(bool adjust);
+    bool isScaleLabelsByCount() const;
+
+    void setLabelSize(qreal size);
+    qreal labelSize() const;
+
     void setRange(float min, float max);
 
     void setLabelAutoAngle(float degree);
@@ -98,6 +111,8 @@ Q_SIGNALS:
     void maxChanged(float value);
     void rangeChanged(float min, float max);
     void autoAdjustRangeChanged(bool autoAdjust);
+    Q_REVISION(6, 9) void scaleLabelsByCountChanged(bool adjust);
+    Q_REVISION(6, 9) void labelSizeChanged(qreal size);
     void labelAutoAngleChanged(float angle);
     void titleVisibleChanged(bool visible);
     void labelVisibleChanged(bool visible);

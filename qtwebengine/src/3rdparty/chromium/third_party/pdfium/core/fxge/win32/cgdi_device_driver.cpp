@@ -10,10 +10,17 @@
 #include <windows.h>
 
 #include <algorithm>
+#include <array>
 #include <vector>
 
+#include "core/fxcrt/check.h"
+#include "core/fxcrt/check_op.h"
+#include "core/fxcrt/compiler_specific.h"
+#include "core/fxcrt/fixed_size_data_vector.h"
 #include "core/fxcrt/fx_string.h"
-#include "core/fxge/agg/fx_agg_driver.h"
+#include "core/fxcrt/notreached.h"
+#include "core/fxcrt/numerics/safe_conversions.h"
+#include "core/fxge/agg/cfx_agg_devicedriver.h"
 #include "core/fxge/cfx_defaultrenderdevice.h"
 #include "core/fxge/cfx_fillrenderoptions.h"
 #include "core/fxge/cfx_graphstatedata.h"
@@ -23,10 +30,6 @@
 #include "core/fxge/render_defines.h"
 #include "core/fxge/win32/cwin32_platform.h"
 #include "third_party/agg23/agg_clip_liang_barsky.h"
-#include "third_party/base/check.h"
-#include "third_party/base/check_op.h"
-#include "third_party/base/notreached.h"
-#include "third_party/base/numerics/safe_conversions.h"
 
 namespace {
 
@@ -100,7 +103,7 @@ HPEN CreateExtPen(const CFX_GraphStateData* pGraphState,
   }
   return ExtCreatePen(
       PenStyle, (DWORD)ceil(width), &lb,
-      pdfium::base::checked_cast<DWORD>(pGraphState->m_DashArray.size()),
+      pdfium::checked_cast<DWORD>(pGraphState->m_DashArray.size()),
       reinterpret_cast<const DWORD*>(dashes.data()));
 }
 
@@ -153,24 +156,22 @@ void SetPathToDC(HDC hDC, const CFX_Path& path, const CFX_Matrix* pMatrix) {
   EndPath(hDC);
 }
 
-ByteString GetBitmapInfo(const RetainPtr<const CFX_DIBBase>& source) {
-  int len = sizeof(BITMAPINFOHEADER);
+FixedSizeDataVector<uint8_t> GetBitmapInfoHeader(
+    const RetainPtr<const CFX_DIBBase>& source) {
+  size_t len = sizeof(BITMAPINFOHEADER);
   if (source->GetBPP() == 1 || source->GetBPP() == 8) {
     len += sizeof(DWORD) * (int)(1 << source->GetBPP());
   }
 
-  ByteString result;
-  {
-    // Span's lifetime must end before ReleaseBuffer() below.
-    pdfium::span<char> cspan = result.GetBuffer(len);
-    BITMAPINFOHEADER* pbmih = reinterpret_cast<BITMAPINFOHEADER*>(cspan.data());
-    memset(pbmih, 0, sizeof(BITMAPINFOHEADER));
-    pbmih->biSize = sizeof(BITMAPINFOHEADER);
-    pbmih->biBitCount = source->GetBPP();
-    pbmih->biCompression = BI_RGB;
-    pbmih->biHeight = -(int)source->GetHeight();
-    pbmih->biPlanes = 1;
-    pbmih->biWidth = source->GetWidth();
+  auto result = FixedSizeDataVector<uint8_t>::Zeroed(len);
+  auto* pbmih = reinterpret_cast<BITMAPINFOHEADER*>(result.span().data());
+  pbmih->biSize = sizeof(BITMAPINFOHEADER);
+  pbmih->biBitCount = source->GetBPP();
+  pbmih->biCompression = BI_RGB;
+  pbmih->biHeight = -(int)source->GetHeight();
+  pbmih->biPlanes = 1;
+  pbmih->biWidth = source->GetWidth();
+  UNSAFE_TODO({
     if (source->GetBPP() == 8) {
       uint32_t* palette = (uint32_t*)(pbmih + 1);
       if (source->HasPalette()) {
@@ -195,8 +196,7 @@ ByteString GetBitmapInfo(const RetainPtr<const CFX_DIBBase>& source) {
         palette[1] = 0xffffff;
       }
     }
-  }
-  result.ReleaseBuffer(len);
+  });
   return result;
 }
 
@@ -258,8 +258,10 @@ unsigned clip_liang_barsky(float x1,
   }
   if (tin1 <= 1.0f) {
     if (0 < tin1) {
-      *x++ = xin;
-      *y++ = yin;
+      UNSAFE_TODO({
+        *x++ = xin;
+        *y++ = yin;
+      });
       ++np;
     }
     if (tin2 <= 1.0f) {
@@ -270,34 +272,48 @@ unsigned clip_liang_barsky(float x1,
         if (tin2 <= tout1) {
           if (tin2 > 0) {
             if (tinx > tiny) {
-              *x++ = xin;
-              *y++ = y1 + (deltay * tinx);
+              UNSAFE_TODO({
+                *x++ = xin;
+                *y++ = y1 + (deltay * tinx);
+              });
             } else {
-              *x++ = x1 + (deltax * tiny);
-              *y++ = yin;
+              UNSAFE_TODO({
+                *x++ = x1 + (deltax * tiny);
+                *y++ = yin;
+              });
             }
             ++np;
           }
           if (tout1 < 1.0f) {
             if (toutx < touty) {
-              *x++ = xout;
-              *y++ = y1 + (deltay * toutx);
+              UNSAFE_TODO({
+                *x++ = xout;
+                *y++ = y1 + (deltay * toutx);
+              });
             } else {
-              *x++ = x1 + (deltax * touty);
-              *y++ = yout;
+              UNSAFE_TODO({
+                *x++ = x1 + (deltax * touty);
+                *y++ = yout;
+              });
             }
           } else {
-            *x++ = x2;
-            *y++ = y2;
+            UNSAFE_TODO({
+              *x++ = x2;
+              *y++ = y2;
+            });
           }
           ++np;
         } else {
           if (tinx > tiny) {
-            *x++ = xin;
-            *y++ = yout;
+            UNSAFE_TODO({
+              *x++ = xin;
+              *y++ = yout;
+            });
           } else {
-            *x++ = xout;
-            *y++ = yin;
+            UNSAFE_TODO({
+              *x++ = xout;
+              *y++ = yin;
+            });
           }
           ++np;
         }
@@ -339,7 +355,7 @@ CGdiDeviceDriver::CGdiDeviceDriver(HDC hDC, DeviceType device_type)
     HBITMAP hBitmap = CreateBitmap(1, 1, 1, 1, nullptr);
     hBitmap = (HBITMAP)SelectObject(m_hDC, hBitmap);
     BITMAP bitmap;
-    GetObject(hBitmap, sizeof bitmap, &bitmap);
+    GetObject(hBitmap, sizeof(bitmap), &bitmap);
     m_nBitsPerPixel = bitmap.bmBitsPixel;
     m_Width = bitmap.bmWidth;
     m_Height = abs(bitmap.bmHeight);
@@ -350,10 +366,10 @@ CGdiDeviceDriver::CGdiDeviceDriver(HDC hDC, DeviceType device_type)
     m_Width = ::GetDeviceCaps(m_hDC, HORZRES);
     m_Height = ::GetDeviceCaps(m_hDC, VERTRES);
   }
-  if (m_DeviceType != DeviceType::kDisplay) {
-    m_RenderCaps = FXRC_BIT_MASK;
+  if (m_DeviceType == DeviceType::kDisplay) {
+    m_RenderCaps = FXRC_GET_BITS;
   } else {
-    m_RenderCaps = FXRC_GET_BITS | FXRC_BIT_MASK;
+    m_RenderCaps = 0;
   }
 }
 
@@ -388,7 +404,7 @@ void CGdiDeviceDriver::RestoreState(bool bKeepSaved) {
     SaveDC(m_hDC);
 }
 
-bool CGdiDeviceDriver::GDI_SetDIBits(const RetainPtr<const CFX_DIBBase>& source,
+bool CGdiDeviceDriver::GDI_SetDIBits(RetainPtr<const CFX_DIBBase> source,
                                      const FX_RECT& src_rect,
                                      int left,
                                      int top) {
@@ -400,8 +416,9 @@ bool CGdiDeviceDriver::GDI_SetDIBits(const RetainPtr<const CFX_DIBBase>& source,
     }
 
     CHECK(!flipped_source->GetBuffer().empty());
-    ByteString info = GetBitmapInfo(flipped_source);
-    ((BITMAPINFOHEADER*)info.c_str())->biHeight *= -1;
+    FixedSizeDataVector<uint8_t> info = GetBitmapInfoHeader(flipped_source);
+    auto* header = reinterpret_cast<BITMAPINFOHEADER*>(info.span().data());
+    header->biHeight *= -1;
     FX_RECT dst_rect(0, 0, src_rect.Width(), src_rect.Height());
     dst_rect.Intersect(0, 0, flipped_source->GetWidth(),
                        flipped_source->GetHeight());
@@ -409,7 +426,8 @@ bool CGdiDeviceDriver::GDI_SetDIBits(const RetainPtr<const CFX_DIBBase>& source,
     int dst_height = dst_rect.Height();
     ::StretchDIBits(m_hDC, left, top, dst_width, dst_height, 0, 0, dst_width,
                     dst_height, flipped_source->GetBuffer().data(),
-                    (BITMAPINFO*)info.c_str(), DIB_RGB_COLORS, SRCCOPY);
+                    reinterpret_cast<BITMAPINFO*>(header), DIB_RGB_COLORS,
+                    SRCCOPY);
     return true;
   }
 
@@ -417,12 +435,13 @@ bool CGdiDeviceDriver::GDI_SetDIBits(const RetainPtr<const CFX_DIBBase>& source,
   if (!realized_source) {
     return false;
   }
-  ByteString info = GetBitmapInfo(realized_source);
+  FixedSizeDataVector<uint8_t> info = GetBitmapInfoHeader(realized_source);
+  auto* header = reinterpret_cast<BITMAPINFOHEADER*>(info.span().data());
   ::SetDIBitsToDevice(
       m_hDC, left, top, src_rect.Width(), src_rect.Height(), src_rect.left,
       realized_source->GetHeight() - src_rect.bottom, 0,
       realized_source->GetHeight(), realized_source->GetBuffer().data(),
-      (BITMAPINFO*)info.c_str(), DIB_RGB_COLORS);
+      reinterpret_cast<BITMAPINFO*>(header), DIB_RGB_COLORS);
   return true;
 }
 
@@ -458,11 +477,13 @@ bool CGdiDeviceDriver::GDI_StretchDIBits(RetainPtr<const CFX_DIBBase> source,
   }
 
   CHECK(!realized_source->GetBuffer().empty());
-  ByteString info = GetBitmapInfo(realized_source);
+  FixedSizeDataVector<uint8_t> info = GetBitmapInfoHeader(realized_source);
+  auto* header = reinterpret_cast<BITMAPINFOHEADER*>(info.span().data());
   ::StretchDIBits(m_hDC, dest_left, dest_top, dest_width, dest_height, 0, 0,
                   realized_source->GetWidth(), realized_source->GetHeight(),
                   realized_source->GetBuffer().data(),
-                  (BITMAPINFO*)info.c_str(), DIB_RGB_COLORS, SRCCOPY);
+                  reinterpret_cast<BITMAPINFO*>(header), DIB_RGB_COLORS,
+                  SRCCOPY);
   return true;
 }
 
@@ -485,9 +506,8 @@ bool CGdiDeviceDriver::GDI_StretchBitMask(RetainPtr<const CFX_DIBBase> source,
   int height = realized_source->GetHeight();
   struct {
     BITMAPINFOHEADER bmiHeader;
-    uint32_t bmiColors[2];
-  } bmi;
-  memset(&bmi.bmiHeader, 0, sizeof(BITMAPINFOHEADER));
+    std::array<uint32_t, 2> bmiColors;
+  } bmi = {};
   bmi.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
   bmi.bmiHeader.biBitCount = 1;
   bmi.bmiHeader.biCompression = BI_RGB;
@@ -531,8 +551,12 @@ bool CGdiDeviceDriver::GDI_StretchBitMask(RetainPtr<const CFX_DIBBase> source,
   return true;
 }
 
-bool CGdiDeviceDriver::GetClipBox(FX_RECT* pRect) {
-  return !!(::GetClipBox(m_hDC, (RECT*)pRect));
+FX_RECT CGdiDeviceDriver::GetClipBox() const {
+  FX_RECT rect;
+  if (::GetClipBox(m_hDC, reinterpret_cast<RECT*>(&rect))) {
+    return rect;
+  }
+  return FX_RECT(0, 0, m_Width, m_Height);
 }
 
 bool CGdiDeviceDriver::MultiplyAlpha(float alpha) {
@@ -541,8 +565,7 @@ bool CGdiDeviceDriver::MultiplyAlpha(float alpha) {
   NOTREACHED_NORETURN();
 }
 
-bool CGdiDeviceDriver::MultiplyAlphaMask(
-    const RetainPtr<const CFX_DIBBase>& mask) {
+bool CGdiDeviceDriver::MultiplyAlphaMask(RetainPtr<const CFX_DIBitmap> mask) {
   // Not implemented. All callers are using `CFX_DIBitmap`-backed raster devices
   // anyway.
   NOTREACHED_NORETURN();
@@ -586,11 +609,7 @@ bool CGdiDeviceDriver::DrawPath(const CFX_Path& path,
                                 const CFX_GraphStateData* pGraphState,
                                 uint32_t fill_color,
                                 uint32_t stroke_color,
-                                const CFX_FillRenderOptions& fill_options,
-                                BlendMode blend_type) {
-  if (blend_type != BlendMode::kNormal)
-    return false;
-
+                                const CFX_FillRenderOptions& fill_options) {
   auto* pPlatform =
       static_cast<CWin32Platform*>(CFX_GEModule::Get()->GetPlatform());
   if (!(pGraphState || stroke_color == 0) &&
@@ -603,12 +622,11 @@ bool CGdiDeviceDriver::DrawPath(const CFX_Path& path,
     if (bbox.Width() <= 0) {
       return DrawCosmeticLine(CFX_PointF(bbox.left, bbox.top),
                               CFX_PointF(bbox.left, bbox.bottom + 1),
-                              fill_color, BlendMode::kNormal);
+                              fill_color);
     }
     if (bbox.Height() <= 0) {
       return DrawCosmeticLine(CFX_PointF(bbox.left, bbox.top),
-                              CFX_PointF(bbox.right + 1, bbox.top), fill_color,
-                              BlendMode::kNormal);
+                              CFX_PointF(bbox.right + 1, bbox.top), fill_color);
     }
   }
   int fill_alpha = FXARGB_A(fill_color);
@@ -684,20 +702,15 @@ bool CGdiDeviceDriver::DrawPath(const CFX_Path& path,
   return true;
 }
 
-bool CGdiDeviceDriver::FillRectWithBlend(const FX_RECT& rect,
-                                         uint32_t fill_color,
-                                         BlendMode blend_type) {
-  if (blend_type != BlendMode::kNormal)
-    return false;
-
-  int alpha;
-  FX_COLORREF colorref;
-  std::tie(alpha, colorref) = ArgbToAlphaAndColorRef(fill_color);
-  if (alpha == 0)
+bool CGdiDeviceDriver::FillRect(const FX_RECT& rect, uint32_t fill_color) {
+  auto [alpha, colorref] = ArgbToAlphaAndColorRef(fill_color);
+  if (alpha == 0) {
     return true;
+  }
 
-  if (alpha < 255)
+  if (alpha < 255) {
     return false;
+  }
 
   HBRUSH hBrush = CreateSolidBrush(colorref);
   const RECT* pRect = reinterpret_cast<const RECT*>(&rect);
@@ -714,7 +727,7 @@ bool CGdiDeviceDriver::SetClip_PathFill(
     const CFX_Path& path,
     const CFX_Matrix* pMatrix,
     const CFX_FillRenderOptions& fill_options) {
-  absl::optional<CFX_FloatRect> maybe_rectf = path.GetRect(pMatrix);
+  std::optional<CFX_FloatRect> maybe_rectf = path.GetRect(pMatrix);
   if (maybe_rectf.has_value()) {
     FX_RECT rect = maybe_rectf.value().GetOuterRect();
     // Can easily apply base clip to protect against wildly large rectangular
@@ -747,16 +760,11 @@ bool CGdiDeviceDriver::SetClip_PathStroke(
 
 bool CGdiDeviceDriver::DrawCosmeticLine(const CFX_PointF& ptMoveTo,
                                         const CFX_PointF& ptLineTo,
-                                        uint32_t color,
-                                        BlendMode blend_type) {
-  if (blend_type != BlendMode::kNormal)
-    return false;
-
-  int alpha;
-  FX_COLORREF colorref;
-  std::tie(alpha, colorref) = ArgbToAlphaAndColorRef(color);
-  if (alpha == 0)
+                                        uint32_t color) {
+  auto [alpha, colorref] = ArgbToAlphaAndColorRef(color);
+  if (alpha == 0) {
     return true;
+  }
 
   HPEN hPen = CreatePen(PS_SOLID, 1, colorref);
   hPen = (HPEN)SelectObject(m_hDC, hPen);

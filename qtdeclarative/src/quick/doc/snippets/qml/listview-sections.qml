@@ -23,6 +23,7 @@ ListModel {
 Component {
     id: nameDelegate
     Text {
+        required property string name
         text: name;
         font.pixelSize: 24
         anchors.left: parent.left

@@ -12,31 +12,30 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import {
-  Plugin,
-  PluginContext,
-  PluginContextTrace,
-  PluginDescriptor,
-} from '../../public';
+import {Trace} from '../../public/trace';
+import {PerfettoPlugin, PluginDescriptor} from '../../public/plugin';
 
-class LargeScreensPerf implements Plugin {
-  onActivate(_ctx: PluginContext): void {}
-
-  async onTraceLoad(ctx: PluginContextTrace): Promise<void> {
-    ctx.registerCommand({
+class LargeScreensPerf implements PerfettoPlugin {
+  async onTraceLoad(ctx: Trace): Promise<void> {
+    ctx.commands.registerCommand({
       id: 'dev.perfetto.LargeScreensPerf#PinUnfoldLatencyTracks',
       name: 'Pin: Unfold latency tracks',
       callback: () => {
-        ctx.timeline.pinTracksByPredicate((tags) => {
-          return !!tags.name?.includes('UnfoldTransition') ||
-              tags.name?.includes('Screen on blocked') ||
-              tags.name?.includes('hingeAngle') ||
-              tags.name?.includes('UnfoldLightRevealOverlayAnimation') ||
-              tags.name?.startsWith('waitForAllWindowsDrawn') ||
-              tags.name?.endsWith('UNFOLD_ANIM>') ||
-              tags.name?.endsWith('UNFOLD>') ||
-              tags.name == 'Waiting for KeyguardDrawnCallback#onDrawn' ||
-              tags.name == 'FoldedState' || tags.name == 'FoldUpdate';
+        ctx.workspace.flatTracks.forEach((track) => {
+          if (
+            !!track.displayName.includes('UnfoldTransition') ||
+            track.displayName.includes('Screen on blocked') ||
+            track.displayName.includes('hingeAngle') ||
+            track.displayName.includes('UnfoldLightRevealOverlayAnimation') ||
+            track.displayName.startsWith('waitForAllWindowsDrawn') ||
+            track.displayName.endsWith('UNFOLD_ANIM>') ||
+            track.displayName.endsWith('UNFOLD>') ||
+            track.displayName == 'Waiting for KeyguardDrawnCallback#onDrawn' ||
+            track.displayName == 'FoldedState' ||
+            track.displayName == 'FoldUpdate'
+          ) {
+            track.pin();
+          }
         });
       },
     });

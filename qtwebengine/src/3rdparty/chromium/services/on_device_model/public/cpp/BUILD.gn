@@ -2,10 +2,16 @@
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
+import("//build/buildflag_header.gni")
+import("//services/on_device_model/on_device_model.gni")
+
 source_set("cpp") {
   output_name = "on_device_model_cpp"
-  sources = [ "on_device_model.h" ]
+  sources = [
+    # TODO b/361619655 - Move some client logic here.
+  ]
   public_deps = [
+    ":buildflags",
     ":model_assets",
     "//base",
     "//services/on_device_model/public/mojom",
@@ -15,6 +21,8 @@ source_set("cpp") {
 
 component("model_assets") {
   sources = [
+    "adaptation_assets_mojom_traits.cc",
+    "adaptation_assets_mojom_traits.h",
     "model_assets.cc",
     "model_assets.h",
     "model_assets_mojom_traits.cc",
@@ -26,4 +34,9 @@ component("model_assets") {
     "//services/on_device_model/public/mojom:mojom_shared",
   ]
   defines = [ "IS_ON_DEVICE_MODEL_ASSETS_CPP_IMPL" ]
+}
+
+buildflag_header("buildflags") {
+  header = "buildflags.h"
+  flags = [ "USE_CHROMEOS_MODEL_SERVICE=$use_chromeos_model_service" ]
 }

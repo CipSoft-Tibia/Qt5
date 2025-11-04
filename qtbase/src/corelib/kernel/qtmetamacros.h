@@ -11,7 +11,8 @@
 QT_BEGIN_NAMESPACE
 
 #ifndef Q_MOC_OUTPUT_REVISION
-#define Q_MOC_OUTPUT_REVISION 68
+// This number should be in sync with moc's outputrevision.h
+#define Q_MOC_OUTPUT_REVISION 69
 #endif
 
 // The following macros can be defined by tools that understand Qt
@@ -94,8 +95,6 @@ QT_BEGIN_NAMESPACE
 #define QT_TR_FUNCTIONS
 #endif
 
-#define Q_DECL_HIDDEN_STATIC_METACALL Q_DECL_HIDDEN
-
 #if defined(Q_CC_CLANG)
 #  if Q_CC_CLANG >= 1100
 #    define Q_OBJECT_NO_OVERRIDE_WARNING    QT_WARNING_DISABLE_CLANG("-Winconsistent-missing-override") QT_WARNING_DISABLE_CLANG("-Wsuggest-override")
@@ -116,6 +115,20 @@ QT_BEGIN_NAMESPACE
 #  define Q_OBJECT_NO_ATTRIBUTES_WARNING
 #endif
 
+#define QT_META_OBJECT_VARS \
+    template <typename> static constexpr auto qt_create_metaobjectdata();       \
+    template <typename MetaObjectTagType> static constexpr inline auto          \
+    qt_staticMetaObjectContent = qt_create_metaobjectdata<MetaObjectTagType>(); \
+    template <typename MetaObjectTagType> static constexpr inline auto          \
+    qt_staticMetaObjectStaticContent = qt_staticMetaObjectContent<MetaObjectTagType>.staticData;\
+    template <typename MetaObjectTagType> static constexpr inline auto          \
+    qt_staticMetaObjectRelocatingContent = qt_staticMetaObjectContent<MetaObjectTagType>.relocatingData;
+
+#define QT_OBJECT_GADGET_COMMON  \
+    QT_META_OBJECT_VARS \
+    Q_OBJECT_NO_ATTRIBUTES_WARNING \
+    Q_DECL_HIDDEN static void qt_static_metacall(QObject *, QMetaObject::Call, int, void **);
+
 /* qmake ignore Q_OBJECT */
 #define Q_OBJECT \
 public: \
@@ -127,10 +140,9 @@ public: \
     virtual int qt_metacall(QMetaObject::Call, int, void **); \
     QT_TR_FUNCTIONS \
 private: \
-    Q_OBJECT_NO_ATTRIBUTES_WARNING \
-    Q_DECL_HIDDEN_STATIC_METACALL static void qt_static_metacall(QObject *, QMetaObject::Call, int, void **); \
-    QT_WARNING_POP \
+    QT_OBJECT_GADGET_COMMON \
     QT_DEFINE_TAG_STRUCT(QPrivateSignal); \
+    QT_WARNING_POP \
     QT_ANNOTATE_CLASS(qt_qobject, "")
 
 /* qmake ignore Q_OBJECT */
@@ -145,8 +157,7 @@ public: \
     typedef void QtGadgetHelper; \
 private: \
     QT_WARNING_PUSH \
-    Q_OBJECT_NO_ATTRIBUTES_WARNING \
-    Q_DECL_HIDDEN_STATIC_METACALL static void qt_static_metacall(QObject *, QMetaObject::Call, int, void **); \
+    QT_OBJECT_GADGET_COMMON \
     QT_WARNING_POP \
     QT_ANNOTATE_CLASS(qt_qgadget, "") \
     /*end*/
@@ -157,6 +168,7 @@ private: \
     /* qmake ignore Q_NAMESPACE_EXPORT */
 #define Q_NAMESPACE_EXPORT(...) \
     extern __VA_ARGS__ const QMetaObject staticMetaObject; \
+    template <typename> static constexpr auto qt_create_metaobjectdata(); \
     QT_ANNOTATE_CLASS(qt_qnamespace, "") \
     /*end*/
 

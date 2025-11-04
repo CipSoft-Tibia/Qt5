@@ -185,6 +185,8 @@ public:
     bool flick(QQuickItemViewPrivate::AxisData &data, qreal minExtent, qreal maxExtent, qreal vSize,
                QQuickTimeLineCallback::Callback fixupCallback, QEvent::Type eventType, qreal velocity) override;
 
+    QQuickItemViewAttached *getAttachedObject(const QObject *object) const override;
+
     QQuickGridView::Flow flow;
     qreal cellWidth;
     qreal cellHeight;
@@ -569,7 +571,7 @@ void QQuickGridViewPrivate::removeItem(FxViewItem *item)
     } else
 #endif
     {
-        releaseItem(item, QQmlDelegateModel::NotReusable);
+        releaseItem(item, reusableFlag);
     }
 }
 
@@ -1113,6 +1115,12 @@ bool QQuickGridViewPrivate::flick(AxisData &data, qreal minExtent, qreal maxExte
         fixup(data, minExtent, maxExtent);
         return false;
     }
+}
+
+QQuickItemViewAttached *QQuickGridViewPrivate::getAttachedObject(const QObject *object) const
+{
+    QObject *attachedObject = qmlAttachedPropertiesObject<QQuickGridView>(object);
+    return static_cast<QQuickItemViewAttached *>(attachedObject);
 }
 
 

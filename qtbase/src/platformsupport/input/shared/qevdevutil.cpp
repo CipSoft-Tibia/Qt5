@@ -19,13 +19,11 @@ ParsedSpecification parseSpecification(const QString &specification)
         if (arg.startsWith("/dev/"_L1)) {
             // if device is specified try to use it
             result.devices.append(arg.toString());
-        }
 #ifdef Q_OS_VXWORKS
-        else if (arg.startsWith("/input/"_L1)) {
+        } else if (arg.startsWith("/input/"_L1)) {
             result.devices.append(arg.toString());
-        }
 #endif
-        else {
+        } else {
             // build new specification without /dev/ elements
             result.spec += arg + u':';
         }

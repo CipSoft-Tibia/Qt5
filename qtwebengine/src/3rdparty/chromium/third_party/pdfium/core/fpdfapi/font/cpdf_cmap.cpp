@@ -6,6 +6,7 @@
 
 #include "core/fpdfapi/font/cpdf_cmap.h"
 
+#include <array>
 #include <utility>
 #include <vector>
 
@@ -13,7 +14,9 @@
 #include "core/fpdfapi/font/cpdf_cmapparser.h"
 #include "core/fpdfapi/font/cpdf_fontglobals.h"
 #include "core/fpdfapi/parser/cpdf_simple_parser.h"
-#include "third_party/base/check.h"
+#include "core/fxcrt/check.h"
+#include "core/fxcrt/fx_memcpy_wrappers.h"
+#include "core/fxcrt/notreached.h"
 
 namespace {
 
@@ -27,7 +30,6 @@ struct PredefinedCMap {
   CIDSet m_Charset;
   CIDCoding m_Coding;
   CPDF_CMap::CodingScheme m_CodingScheme;
-  uint8_t m_LeadingSegCount;
   ByteRange m_LeadingSegs[2];
 };
 
@@ -36,174 +38,122 @@ constexpr PredefinedCMap kPredefinedCMaps[] = {
      CIDSET_GB1,
      CIDCoding::kGB,
      CPDF_CMap::MixedTwoBytes,
-     1,
      {{0xa1, 0xfe}}},
     {"GBpc-EUC",
      CIDSET_GB1,
      CIDCoding::kGB,
      CPDF_CMap::MixedTwoBytes,
-     1,
      {{0xa1, 0xfc}}},
     {"GBK-EUC",
      CIDSET_GB1,
      CIDCoding::kGB,
      CPDF_CMap::MixedTwoBytes,
-     1,
      {{0x81, 0xfe}}},
     {"GBKp-EUC",
      CIDSET_GB1,
      CIDCoding::kGB,
      CPDF_CMap::MixedTwoBytes,
-     1,
      {{0x81, 0xfe}}},
     {"GBK2K-EUC",
      CIDSET_GB1,
      CIDCoding::kGB,
      CPDF_CMap::MixedTwoBytes,
-     1,
      {{0x81, 0xfe}}},
     {"GBK2K",
      CIDSET_GB1,
      CIDCoding::kGB,
      CPDF_CMap::MixedTwoBytes,
-     1,
      {{0x81, 0xfe}}},
-    {"UniGB-UCS2", CIDSET_GB1, CIDCoding::kUCS2, CPDF_CMap::TwoBytes, 0, {}},
-    {"UniGB-UTF16", CIDSET_GB1, CIDCoding::kUTF16, CPDF_CMap::TwoBytes, 0, {}},
+    {"UniGB-UCS2", CIDSET_GB1, CIDCoding::kUCS2, CPDF_CMap::TwoBytes, {}},
+    {"UniGB-UTF16", CIDSET_GB1, CIDCoding::kUTF16, CPDF_CMap::TwoBytes, {}},
     {"B5pc",
      CIDSET_CNS1,
      CIDCoding::kBIG5,
      CPDF_CMap::MixedTwoBytes,
-     1,
      {{0xa1, 0xfc}}},
     {"HKscs-B5",
      CIDSET_CNS1,
      CIDCoding::kBIG5,
      CPDF_CMap::MixedTwoBytes,
-     1,
      {{0x88, 0xfe}}},
     {"ETen-B5",
      CIDSET_CNS1,
      CIDCoding::kBIG5,
      CPDF_CMap::MixedTwoBytes,
-     1,
      {{0xa1, 0xfe}}},
     {"ETenms-B5",
      CIDSET_CNS1,
      CIDCoding::kBIG5,
      CPDF_CMap::MixedTwoBytes,
-     1,
      {{0xa1, 0xfe}}},
-    {"UniCNS-UCS2", CIDSET_CNS1, CIDCoding::kUCS2, CPDF_CMap::TwoBytes, 0, {}},
-    {"UniCNS-UTF16",
-     CIDSET_CNS1,
-     CIDCoding::kUTF16,
-     CPDF_CMap::TwoBytes,
-     0,
-     {}},
+    {"UniCNS-UCS2", CIDSET_CNS1, CIDCoding::kUCS2, CPDF_CMap::TwoBytes, {}},
+    {"UniCNS-UTF16", CIDSET_CNS1, CIDCoding::kUTF16, CPDF_CMap::TwoBytes, {}},
     {"83pv-RKSJ",
      CIDSET_JAPAN1,
      CIDCoding::kJIS,
      CPDF_CMap::MixedTwoBytes,
-     2,
      {{0x81, 0x9f}, {0xe0, 0xfc}}},
     {"90ms-RKSJ",
      CIDSET_JAPAN1,
      CIDCoding::kJIS,
      CPDF_CMap::MixedTwoBytes,
-     2,
      {{0x81, 0x9f}, {0xe0, 0xfc}}},
     {"90msp-RKSJ",
      CIDSET_JAPAN1,
      CIDCoding::kJIS,
      CPDF_CMap::MixedTwoBytes,
-     2,
      {{0x81, 0x9f}, {0xe0, 0xfc}}},
     {"90pv-RKSJ",
      CIDSET_JAPAN1,
      CIDCoding::kJIS,
      CPDF_CMap::MixedTwoBytes,
-     2,
      {{0x81, 0x9f}, {0xe0, 0xfc}}},
     {"Add-RKSJ",
      CIDSET_JAPAN1,
      CIDCoding::kJIS,
      CPDF_CMap::MixedTwoBytes,
-     2,
      {{0x81, 0x9f}, {0xe0, 0xfc}}},
     {"EUC",
      CIDSET_JAPAN1,
      CIDCoding::kJIS,
      CPDF_CMap::MixedTwoBytes,
-     2,
      {{0x8e, 0x8e}, {0xa1, 0xfe}}},
-    {"H",
-     CIDSET_JAPAN1,
-     CIDCoding::kJIS,
-     CPDF_CMap::TwoBytes,
-     1,
-     {{0x21, 0x7e}}},
-    {"V",
-     CIDSET_JAPAN1,
-     CIDCoding::kJIS,
-     CPDF_CMap::TwoBytes,
-     1,
-     {{0x21, 0x7e}}},
+    {"H", CIDSET_JAPAN1, CIDCoding::kJIS, CPDF_CMap::TwoBytes, {{0x21, 0x7e}}},
+    {"V", CIDSET_JAPAN1, CIDCoding::kJIS, CPDF_CMap::TwoBytes, {{0x21, 0x7e}}},
     {"Ext-RKSJ",
      CIDSET_JAPAN1,
      CIDCoding::kJIS,
      CPDF_CMap::MixedTwoBytes,
-     2,
      {{0x81, 0x9f}, {0xe0, 0xfc}}},
-    {"UniJIS-UCS2",
-     CIDSET_JAPAN1,
-     CIDCoding::kUCS2,
-     CPDF_CMap::TwoBytes,
-     0,
-     {}},
+    {"UniJIS-UCS2", CIDSET_JAPAN1, CIDCoding::kUCS2, CPDF_CMap::TwoBytes, {}},
     {"UniJIS-UCS2-HW",
      CIDSET_JAPAN1,
      CIDCoding::kUCS2,
      CPDF_CMap::TwoBytes,
-     0,
      {}},
-    {"UniJIS-UTF16",
-     CIDSET_JAPAN1,
-     CIDCoding::kUTF16,
-     CPDF_CMap::TwoBytes,
-     0,
-     {}},
+    {"UniJIS-UTF16", CIDSET_JAPAN1, CIDCoding::kUTF16, CPDF_CMap::TwoBytes, {}},
     {"KSC-EUC",
      CIDSET_KOREA1,
      CIDCoding::kKOREA,
      CPDF_CMap::MixedTwoBytes,
-     1,
      {{0xa1, 0xfe}}},
     {"KSCms-UHC",
      CIDSET_KOREA1,
      CIDCoding::kKOREA,
      CPDF_CMap::MixedTwoBytes,
-     1,
      {{0x81, 0xfe}}},
     {"KSCms-UHC-HW",
      CIDSET_KOREA1,
      CIDCoding::kKOREA,
      CPDF_CMap::MixedTwoBytes,
-     1,
      {{0x81, 0xfe}}},
     {"KSCpc-EUC",
      CIDSET_KOREA1,
      CIDCoding::kKOREA,
      CPDF_CMap::MixedTwoBytes,
-     1,
      {{0xa1, 0xfd}}},
-    {"UniKS-UCS2", CIDSET_KOREA1, CIDCoding::kUCS2, CPDF_CMap::TwoBytes, 0, {}},
-    {"UniKS-UTF16",
-     CIDSET_KOREA1,
-     CIDCoding::kUTF16,
-     CPDF_CMap::TwoBytes,
-     0,
-     {}},
+    {"UniKS-UCS2", CIDSET_KOREA1, CIDCoding::kUCS2, CPDF_CMap::TwoBytes, {}},
+    {"UniKS-UTF16", CIDSET_KOREA1, CIDCoding::kUTF16, CPDF_CMap::TwoBytes, {}},
 };
 
 const PredefinedCMap* GetPredefinedCMap(ByteStringView cmapid) {
@@ -218,47 +168,55 @@ const PredefinedCMap* GetPredefinedCMap(ByteStringView cmapid) {
 
 std::vector<bool> LoadLeadingSegments(const PredefinedCMap& map) {
   std::vector<bool> segments(256);
-  for (uint32_t i = 0; i < map.m_LeadingSegCount; ++i) {
-    const ByteRange& seg = map.m_LeadingSegs[i];
-    for (int b = seg.m_First; b <= seg.m_Last; ++b)
+  const auto seg_span = pdfium::make_span(map.m_LeadingSegs);
+  for (const ByteRange& seg : seg_span) {
+    if (seg.m_First == 0 && seg.m_Last == 0) {
+      break;
+    }
+    for (int b = seg.m_First; b <= seg.m_Last; ++b) {
       segments[b] = true;
+    }
   }
   return segments;
 }
 
-int CheckFourByteCodeRange(uint8_t* codes,
-                           size_t size,
-                           const std::vector<CPDF_CMap::CodeRange>& ranges) {
+int CheckFourByteCodeRange(pdfium::span<uint8_t> codes,
+                           pdfium::span<const CPDF_CMap::CodeRange> ranges) {
   for (size_t i = ranges.size(); i > 0; i--) {
-    size_t seg = i - 1;
-    if (ranges[seg].m_CharSize < size)
+    const auto& range = ranges[i - 1];
+    if (range.m_CharSize < codes.size()) {
       continue;
+    }
     size_t iChar = 0;
-    while (iChar < size) {
-      if (codes[iChar] < ranges[seg].m_Lower[iChar] ||
-          codes[iChar] > ranges[seg].m_Upper[iChar]) {
+    while (iChar < codes.size()) {
+      if (codes[iChar] < range.m_Lower[iChar] ||
+          codes[iChar] > range.m_Upper[iChar]) {
         break;
       }
       ++iChar;
     }
-    if (iChar == ranges[seg].m_CharSize)
+    if (iChar == range.m_CharSize) {
       return 2;
-    if (iChar)
-      return (size == ranges[seg].m_CharSize) ? 2 : 1;
+    }
+    if (iChar) {
+      return (codes.size() == range.m_CharSize) ? 2 : 1;
+    }
   }
   return 0;
 }
 
 size_t GetFourByteCharSizeImpl(
     uint32_t charcode,
-    const std::vector<CPDF_CMap::CodeRange>& ranges) {
+    pdfium::span<const CPDF_CMap::CodeRange> ranges) {
   if (ranges.empty())
     return 1;
 
-  uint8_t codes[4];
-  codes[0] = codes[1] = 0x00;
-  codes[2] = static_cast<uint8_t>(charcode >> 8 & 0xFF);
-  codes[3] = static_cast<uint8_t>(charcode);
+  std::array<uint8_t, 4> codes = {{
+      0x00,
+      0x00,
+      static_cast<uint8_t>(charcode >> 8 & 0xFF),
+      static_cast<uint8_t>(charcode),
+  }};
   for (size_t offset = 0; offset < 4; offset++) {
     size_t size = 4 - offset;
     for (size_t j = 0; j < ranges.size(); j++) {
@@ -361,7 +319,7 @@ uint16_t CPDF_CMap::CIDFromCharCode(uint32_t charcode) const {
 
 uint32_t CPDF_CMap::GetNextChar(ByteStringView pString, size_t* pOffset) const {
   size_t& offset = *pOffset;
-  auto pBytes = pString.raw_span();
+  auto pBytes = pString.unsigned_span();
   switch (m_CodingScheme) {
     case OneByte: {
       return offset < pBytes.size() ? pBytes[offset++] : 0;
@@ -379,12 +337,13 @@ uint32_t CPDF_CMap::GetNextChar(ByteStringView pString, size_t* pOffset) const {
       return 256 * byte1 + byte2;
     }
     case MixedFourBytes: {
-      uint8_t codes[4];
+      std::array<uint8_t, 4> codes;
       int char_size = 1;
       codes[0] = offset < pBytes.size() ? pBytes[offset++] : 0;
       while (true) {
-        int ret = CheckFourByteCodeRange(codes, char_size,
-                                         m_MixedFourByteLeadingRanges);
+        int ret =
+            CheckFourByteCodeRange(pdfium::make_span(codes).first(char_size),
+                                   m_MixedFourByteLeadingRanges);
         if (ret == 0)
           return 0;
         if (ret == 2) {
@@ -399,7 +358,7 @@ uint32_t CPDF_CMap::GetNextChar(ByteStringView pString, size_t* pOffset) const {
       }
     }
   }
-  return 0;
+  NOTREACHED_NORETURN();
 }
 
 int CPDF_CMap::GetCharSize(uint32_t charcode) const {
@@ -421,7 +380,7 @@ int CPDF_CMap::GetCharSize(uint32_t charcode) const {
         return 3;
       return 4;
   }
-  return 1;
+  NOTREACHED_NORETURN();
 }
 
 size_t CPDF_CMap::CountChar(ByteStringView pString) const {
@@ -449,55 +408,55 @@ size_t CPDF_CMap::CountChar(ByteStringView pString) const {
       return count;
     }
   }
-  return pString.GetLength();
+  NOTREACHED_NORETURN();
 }
 
-int CPDF_CMap::AppendChar(char* str, uint32_t charcode) const {
+void CPDF_CMap::AppendChar(ByteString* str, uint32_t charcode) const {
   switch (m_CodingScheme) {
     case OneByte:
-      str[0] = static_cast<char>(charcode);
-      return 1;
+      *str += static_cast<char>(charcode);
+      return;
     case TwoBytes:
-      str[0] = static_cast<char>(charcode / 256);
-      str[1] = static_cast<char>(charcode % 256);
-      return 2;
+      *str += static_cast<char>(charcode / 256);
+      *str += static_cast<char>(charcode % 256);
+      return;
     case MixedTwoBytes:
       if (charcode < 0x100 && !m_MixedTwoByteLeadingBytes[charcode]) {
-        str[0] = static_cast<char>(charcode);
-        return 1;
+        *str += static_cast<char>(charcode);
+        return;
       }
-      str[0] = static_cast<char>(charcode >> 8);
-      str[1] = static_cast<char>(charcode);
-      return 2;
+      *str += static_cast<char>(charcode >> 8);
+      *str += static_cast<char>(charcode);
+      return;
     case MixedFourBytes:
       if (charcode < 0x100) {
         int iSize = static_cast<int>(
             GetFourByteCharSizeImpl(charcode, m_MixedFourByteLeadingRanges));
-        if (iSize == 0)
-          iSize = 1;
-        str[iSize - 1] = static_cast<char>(charcode);
-        if (iSize > 1)
-          memset(str, 0, iSize - 1);
-        return iSize;
+        int pad = iSize != 0 ? iSize - 1 : 0;
+        for (int i = 0; i < pad; ++i) {
+          *str += static_cast<char>(0);
+        }
+        *str += static_cast<char>(charcode);
+        return;
       }
       if (charcode < 0x10000) {
-        str[0] = static_cast<char>(charcode >> 8);
-        str[1] = static_cast<char>(charcode);
-        return 2;
+        *str += static_cast<char>(charcode >> 8);
+        *str += static_cast<char>(charcode);
+        return;
       }
       if (charcode < 0x1000000) {
-        str[0] = static_cast<char>(charcode >> 16);
-        str[1] = static_cast<char>(charcode >> 8);
-        str[2] = static_cast<char>(charcode);
-        return 3;
+        *str += static_cast<char>(charcode >> 16);
+        *str += static_cast<char>(charcode >> 8);
+        *str += static_cast<char>(charcode);
+        return;
       }
-      str[0] = static_cast<char>(charcode >> 24);
-      str[1] = static_cast<char>(charcode >> 16);
-      str[2] = static_cast<char>(charcode >> 8);
-      str[3] = static_cast<char>(charcode);
-      return 4;
+      *str += static_cast<char>(charcode >> 24);
+      *str += static_cast<char>(charcode >> 16);
+      *str += static_cast<char>(charcode >> 8);
+      *str += static_cast<char>(charcode);
+      return;
   }
-  return 0;
+  NOTREACHED_NORETURN();
 }
 
 void CPDF_CMap::SetAdditionalMappings(std::vector<CIDRange> mappings) {

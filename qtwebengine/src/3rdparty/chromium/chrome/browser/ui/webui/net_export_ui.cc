@@ -16,6 +16,7 @@
 #include "base/lazy_instance.h"
 #include "base/memory/raw_ptr.h"
 #include "base/memory/ref_counted.h"
+#include "base/memory/weak_ptr.h"
 #include "base/scoped_observation.h"
 #include "base/strings/string_util.h"
 #include "base/strings/utf_string_conversions.h"
@@ -73,9 +74,8 @@ void CreateAndAddNetExportHTMLSource(Profile* profile) {
 // This class receives javascript messages from the renderer.
 // Note that the WebUI infrastructure runs on the UI thread, therefore all of
 // this class's public methods are expected to run on the UI thread.
-class NetExportMessageHandler
+class NetExportMessageHandler final
     : public WebUIMessageHandler,
-      public base::SupportsWeakPtr<NetExportMessageHandler>,
       public ui::SelectFileDialog::Listener,
       public net_log::NetExportFileWriter::StateObserver {
  public:
@@ -97,10 +97,8 @@ class NetExportMessageHandler
   void OnShowFile(const base::Value::List& list);
 
   // ui::SelectFileDialog::Listener implementation.
-  void FileSelected(const ui::SelectedFileInfo& file,
-                    int index,
-                    void* params) override;
-  void FileSelectionCanceled(void* params) override;
+  void FileSelected(const ui::SelectedFileInfo& file, int index) override;
+  void FileSelectionCanceled() override;
 
   // net_log::NetExportFileWriter::StateObserver implementation.
   void OnNewState(const base::Value::Dict& state) override;
@@ -262,12 +260,12 @@ void NetExportMessageHandler::OnSendNetLog(const base::Value::List& list) {
 void NetExportMessageHandler::OnShowFile(const base::Value::List& list) {
   DCHECK_CURRENTLY_ON(BrowserThread::UI);
   file_writer_->GetFilePathToCompletedLog(
-      base::BindOnce(&NetExportMessageHandler::ShowFileInShell, AsWeakPtr()));
+      base::BindOnce(&NetExportMessageHandler::ShowFileInShell,
+                     weak_ptr_factory_.GetWeakPtr()));
 }
 
 void NetExportMessageHandler::FileSelected(const ui::SelectedFileInfo& file,
-                                           int index,
-                                           void* params) {
+                                           int index) {
   DCHECK_CURRENTLY_ON(BrowserThread::UI);
   DCHECK(select_file_dialog_);
   *last_save_dir.Pointer() = file.path().DirName();
@@ -279,7 +277,7 @@ void NetExportMessageHandler::FileSelected(const ui::SelectedFileInfo& file,
   select_file_dialog_ = nullptr;
 }
 
-void NetExportMessageHandler::FileSelectionCanceled(void* params) {
+void NetExportMessageHandler::FileSelectionCanceled() {
   DCHECK(select_file_dialog_);
   select_file_dialog_ = nullptr;
 }
@@ -356,12 +354,12 @@ void NetExportMessageHandler::ShowSelectFileDialog(
 
   select_file_dialog_ = ui::SelectFileDialog::Create(
       this, std::make_unique<ChromeSelectFilePolicy>(webcontents));
-  ui::SelectFileDialog::FileTypeInfo file_type_info;
-  file_type_info.extensions = {{FILE_PATH_LITERAL("json")}};
+  ui::SelectFileDialog::FileTypeInfo file_type_info{
+      {FILE_PATH_LITERAL("json")}};
   gfx::NativeWindow owning_window = webcontents->GetTopLevelNativeWindow();
   select_file_dialog_->SelectFile(
       ui::SelectFileDialog::SELECT_SAVEAS_FILE, std::u16string(), default_path,
-      &file_type_info, 0, base::FilePath::StringType(), owning_window, nullptr);
+      &file_type_info, 0, base::FilePath::StringType(), owning_window);
 }
 
 }  // namespace

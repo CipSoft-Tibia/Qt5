@@ -15,7 +15,7 @@
 #include <QtCore/qpermissions.h>
 #endif
 
-static Q_LOGGING_CATEGORY(qLcAndroidAudioSource, "qt.multimedia.android.audiosource")
+Q_STATIC_LOGGING_CATEGORY(qLcAndroidAudioSource, "qt.multimedia.android.audiosource")
 
 QT_BEGIN_NAMESPACE
 
@@ -44,31 +44,29 @@ static void bufferQueueCallback(SLBufferQueueItf, void *context)
     QMetaObject::invokeMethod(reinterpret_cast<QAndroidAudioSource*>(context), "processBuffer");
 }
 
-QAndroidAudioSource::QAndroidAudioSource(const QByteArray &device, QObject *parent)
-    : QPlatformAudioSource(parent)
-    , m_device(device)
-    , m_engine(QOpenSLESEngine::instance())
-    , m_recorderObject(0)
-    , m_recorder(0)
-    , m_bufferQueue(0)
-    , m_pullMode(true)
-    , m_processedBytes(0)
-    , m_audioSource(0)
-    , m_bufferIODevice(0)
-    , m_errorState(QAudio::NoError)
-    , m_deviceState(QAudio::StoppedState)
-    , m_lastNotifyTime(0)
-    , m_volume(1.0)
-    , m_bufferSize(0)
-    , m_buffers(new QByteArray[NUM_BUFFERS])
-    , m_currentBuffer(0)
+QAndroidAudioSource::QAndroidAudioSource(QAudioDevice device, const QAudioFormat &format,
+                                         QObject *parent)
+    : QPlatformAudioSource(std::move(device), format, parent),
+      m_engine(QOpenSLESEngine::instance()),
+      m_recorderObject(0),
+      m_recorder(0),
+      m_bufferQueue(0),
+      m_pullMode(true),
+      m_processedBytes(0),
+      m_audioSource(0),
+      m_bufferIODevice(0),
+      m_deviceState(QAudio::StoppedState),
+      m_lastNotifyTime(0),
+      m_bufferSize(0),
+      m_buffers(new QByteArray[NUM_BUFFERS]),
+      m_currentBuffer(0)
 {
 #ifdef ANDROID
-    if (qstrcmp(device, QT_ANDROID_PRESET_CAMCORDER) == 0)
+    if (qstrcmp(m_audioDevice.id(), QT_ANDROID_PRESET_CAMCORDER) == 0)
         m_recorderPreset = SL_ANDROID_RECORDING_PRESET_CAMCORDER;
-    else if (qstrcmp(device, QT_ANDROID_PRESET_VOICE_RECOGNITION) == 0)
+    else if (qstrcmp(m_audioDevice.id(), QT_ANDROID_PRESET_VOICE_RECOGNITION) == 0)
         m_recorderPreset = SL_ANDROID_RECORDING_PRESET_VOICE_RECOGNITION;
-    else if (qstrcmp(device, QT_ANDROID_PRESET_VOICE_COMMUNICATION) == 0)
+    else if (qstrcmp(m_audioDevice.id(), QT_ANDROID_PRESET_VOICE_COMMUNICATION) == 0)
         m_recorderPreset = SL_ANDROID_RECORDING_PRESET_VOICE_COMMUNICATION;
     else
         m_recorderPreset = SL_ANDROID_RECORDING_PRESET_GENERIC;
@@ -82,25 +80,9 @@ QAndroidAudioSource::~QAndroidAudioSource()
     delete[] m_buffers;
 }
 
-QAudio::Error QAndroidAudioSource::error() const
-{
-    return m_errorState;
-}
-
 QAudio::State QAndroidAudioSource::state() const
 {
     return m_deviceState;
-}
-
-void QAndroidAudioSource::setFormat(const QAudioFormat &format)
-{
-    if (m_deviceState == QAudio::StoppedState)
-        m_format = format;
-}
-
-QAudioFormat QAndroidAudioSource::format() const
-{
-    return m_format;
 }
 
 void QAndroidAudioSource::start(QIODevice *device)
@@ -121,7 +103,6 @@ void QAndroidAudioSource::start(QIODevice *device)
         m_deviceState = QAudio::ActiveState;
     } else {
         m_deviceState = QAudio::StoppedState;
-        Q_EMIT errorChanged(m_errorState);
     }
 
     Q_EMIT stateChanged(m_deviceState);
@@ -148,7 +129,6 @@ QIODevice *QAndroidAudioSource::start()
         m_deviceState = QAudio::IdleState;
     } else {
         m_deviceState = QAudio::StoppedState;
-        Q_EMIT errorChanged(m_errorState);
         m_bufferIODevice->close();
         delete m_bufferIODevice;
         m_bufferIODevice = 0;
@@ -198,7 +178,7 @@ bool QAndroidAudioSource::startRecording()
                                                           &audioSrc, &audioSnk,
                                                           sizeof(req) / sizeof(SLboolean), id, req);
     if (result != SL_RESULT_SUCCESS) {
-        m_errorState = QAudio::OpenError;
+        setError(QAudio::OpenError);
         return false;
     }
 
@@ -208,7 +188,7 @@ bool QAndroidAudioSource::startRecording()
     result = (*m_recorderObject)->GetInterface(m_recorderObject, SL_IID_ANDROIDCONFIGURATION,
                                                &configItf);
     if (result != SL_RESULT_SUCCESS) {
-        m_errorState = QAudio::OpenError;
+        setError(QAudio::OpenError);
         return false;
     }
 
@@ -221,7 +201,7 @@ bool QAndroidAudioSource::startRecording()
                                             &presetSize, (void*)&presetValue);
 
     if (result != SL_RESULT_SUCCESS || presetValue == SL_ANDROID_RECORDING_PRESET_NONE) {
-        m_errorState = QAudio::OpenError;
+        setError(QAudio::OpenError);
         return false;
     }
 #endif
@@ -229,14 +209,14 @@ bool QAndroidAudioSource::startRecording()
     // realize the audio recorder
     result = (*m_recorderObject)->Realize(m_recorderObject, SL_BOOLEAN_FALSE);
     if (result != SL_RESULT_SUCCESS) {
-        m_errorState = QAudio::OpenError;
+        setError(QAudio::OpenError);
         return false;
     }
 
     // get the record interface
     result = (*m_recorderObject)->GetInterface(m_recorderObject, SL_IID_RECORD, &m_recorder);
     if (result != SL_RESULT_SUCCESS) {
-        m_errorState = QAudio::FatalError;
+        setError(QAudio::FatalError);
         return false;
     }
 
@@ -248,14 +228,14 @@ bool QAndroidAudioSource::startRecording()
 #endif
     result = (*m_recorderObject)->GetInterface(m_recorderObject, bufferqueueItfID, &m_bufferQueue);
     if (result != SL_RESULT_SUCCESS) {
-        m_errorState = QAudio::FatalError;
+        setError(QAudio::FatalError);
         return false;
     }
 
     // register callback on the buffer queue
     result = (*m_bufferQueue)->RegisterCallback(m_bufferQueue, bufferQueueCallback, this);
     if (result != SL_RESULT_SUCCESS) {
-        m_errorState = QAudio::FatalError;
+        setError(QAudio::FatalError);
         return false;
     }
 
@@ -273,7 +253,7 @@ bool QAndroidAudioSource::startRecording()
 
         result = (*m_bufferQueue)->Enqueue(m_bufferQueue, m_buffers[i].data(), m_bufferSize);
         if (result != SL_RESULT_SUCCESS) {
-            m_errorState = QAudio::FatalError;
+            setError(QAudio::FatalError);
             return false;
         }
     }
@@ -281,11 +261,11 @@ bool QAndroidAudioSource::startRecording()
     // start recording
     result = (*m_recorder)->SetRecordState(m_recorder, SL_RECORDSTATE_RECORDING);
     if (result != SL_RESULT_SUCCESS) {
-        m_errorState = QAudio::FatalError;
+        setError(QAudio::FatalError);
         return false;
     }
 
-    m_errorState = QAudio::NoError;
+    setError(QAudio::NoError);
 
     return true;
 }
@@ -299,7 +279,7 @@ void QAndroidAudioSource::stop()
 
     stopRecording();
 
-    m_errorState = QAudio::NoError;
+    setError(QAudio::NoError);
     Q_EMIT stateChanged(m_deviceState);
 }
 
@@ -351,7 +331,7 @@ void QAndroidAudioSource::processBuffer()
         return;
 
     if (m_deviceState != QAudio::ActiveState) {
-        m_errorState = QAudio::NoError;
+        setError(QAudio::NoError);
         m_deviceState = QAudio::ActiveState;
         emit stateChanged(m_deviceState);
     }
@@ -379,8 +359,7 @@ void QAndroidAudioSource::processBuffer()
     result = (*m_bufferQueue)->GetState(m_bufferQueue, &state);
     if (result != SL_RESULT_SUCCESS || state.count == 0) {
         stop();
-        m_errorState = QAudio::FatalError;
-        Q_EMIT errorChanged(m_errorState);
+        setError(QAudio::FatalError);
     }
 }
 
@@ -391,9 +370,9 @@ void QAndroidAudioSource::writeDataToDevice(const char *data, int size)
     QByteArray outData;
 
     // Apply volume
-    if (m_volume < 1.0f) {
+    if (volume() < 1.0f) {
         outData.resize(size);
-        QAudioHelperInternal::qMultiplySamples(m_volume, m_format, data, outData.data(), size);
+        QAudioHelperInternal::qMultiplySamples(volume(), m_format, data, outData.data(), size);
     } else {
         outData.append(data, size);
     }
@@ -402,8 +381,7 @@ void QAndroidAudioSource::writeDataToDevice(const char *data, int size)
         // write buffer to the QIODevice
         if (m_audioSource->write(outData) < 0) {
             stop();
-            m_errorState = QAudio::IOError;
-            Q_EMIT errorChanged(m_errorState);
+            setError(QAudio::IOError);
         }
     } else {
         // emits readyRead() so user will call read() on QIODevice to get some audio data
@@ -450,16 +428,6 @@ qsizetype QAndroidAudioSource::bufferSize() const
 qint64 QAndroidAudioSource::processedUSecs() const
 {
     return m_format.durationForBytes(m_processedBytes);
-}
-
-void QAndroidAudioSource::setVolume(qreal vol)
-{
-    m_volume = vol;
-}
-
-qreal QAndroidAudioSource::volume() const
-{
-    return m_volume;
 }
 
 void QAndroidAudioSource::reset()

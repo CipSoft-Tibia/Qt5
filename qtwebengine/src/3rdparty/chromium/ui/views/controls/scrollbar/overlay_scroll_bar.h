@@ -17,7 +17,7 @@ class VIEWS_EXPORT OverlayScrollBar : public ScrollBar {
   METADATA_HEADER(OverlayScrollBar, ScrollBar)
 
  public:
-  explicit OverlayScrollBar(bool horizontal);
+  explicit OverlayScrollBar(Orientation orientation);
 
   OverlayScrollBar(const OverlayScrollBar&) = delete;
   OverlayScrollBar& operator=(const OverlayScrollBar&) = delete;
@@ -48,7 +48,8 @@ class VIEWS_EXPORT OverlayScrollBar : public ScrollBar {
 
    protected:
     // BaseScrollBarThumb:
-    gfx::Size CalculatePreferredSize() const override;
+    gfx::Size CalculatePreferredSize(
+        const SizeBounds& /*available_size*/) const override;
     void OnPaint(gfx::Canvas* canvas) override;
     void OnBoundsChanged(const gfx::Rect& previous_bounds) override;
     void OnStateChanged() override;

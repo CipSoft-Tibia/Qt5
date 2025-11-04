@@ -1,5 +1,6 @@
 // Copyright (C) 2022 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qtexttospeech_flite.h"
 
@@ -13,7 +14,7 @@ QTextToSpeechEngineFlite::QTextToSpeechEngineFlite(const QVariantMap &parameters
     : QTextToSpeechEngine(parent)
 {
     QAudioDevice audioDevice;
-    if (const auto it = parameters.find("audioDevice"_L1); it != parameters.end())
+    if (const auto it = parameters.find(u"audioDevice"_s); it != parameters.end())
         audioDevice = (*it).value<QAudioDevice>();
     else
         audioDevice = QMediaDevices::defaultAudioOutput();
@@ -52,6 +53,7 @@ QTextToSpeechEngineFlite::QTextToSpeechEngineFlite(const QVariantMap &parameters
 
     if (voiceIndex) {
         m_state = QTextToSpeech::Ready;
+        m_thread.setObjectName("QTextToSpeechEngineFlite");
         m_processor->moveToThread(&m_thread);
         m_thread.start();
     } else {

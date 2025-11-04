@@ -14,16 +14,17 @@
 //! Core NP Rust FFI structures and methods for v0 advertisement deserialization.
 
 use crate::common::*;
-use crate::credentials::credential_book::CredentialBook;
+use crate::credentials::CredentialBook;
 use crate::credentials::MatchedCredential;
-use crate::deserialize::DecryptMetadataError;
+use crate::deserialize::{
+    allocate_decrypted_metadata_handle, DecryptMetadataError, DecryptMetadataResult,
+};
 use crate::utils::{FfiEnum, LocksLongerThan};
+use crate::v0::V0DataElement;
 use crypto_provider_default::CryptoProviderImpl;
-use handle_map::{declare_handle_map, HandleLike, HandleMapDimensions, HandleMapFullError};
-use np_adv::legacy::actions::ActionsDataElement;
-use np_adv::legacy::{data_elements as np_adv_de, Ciphertext, PacketFlavorEnum, Plaintext};
-use np_adv::HasIdentityMatch;
-use std::vec::Vec;
+use handle_map::{declare_handle_map, HandleLike, HandleMapFullError};
+use np_adv::credential::matched::HasIdentityMatch;
+use np_adv::legacy;
 
 /// Discriminant for possible results of V0 advertisement deserialization
 #[derive(Clone, Copy)]
@@ -32,12 +33,12 @@ pub enum DeserializedV0AdvertisementKind {
     /// The deserialized V0 advertisement was legible.
     /// The associated payload may be obtained via
     /// `DeserializedV0Advertisement#into_legible`.
-    Legible = 0,
+    Legible = 1,
     /// The deserialized V0 advertisement is illegible,
     /// likely meaning that the receiver does not hold
     /// the proper credentials to be able to read
     /// the received advertisement.
-    NoMatchingCredentials = 1,
+    NoMatchingCredentials = 2,
 }
 
 /// Represents a deserialized V0 advertisement
@@ -61,8 +62,9 @@ impl FfiEnum for DeserializedV0Advertisement {
 }
 
 impl DeserializedV0Advertisement {
-    /// Attempts to deallocate memory utilized internally by this V0 advertisement
-    /// (which contains a handle to actual advertisement contents behind-the-scenes).
+    /// Attempts to deallocate memory utilized internally by this V0 advertisement (which contains
+    /// a handle to actual advertisement contents behind-the-scenes). This function takes ownership
+    /// of that internal handle.
     pub fn deallocate(self) -> DeallocateResult {
         match self {
             DeserializedV0Advertisement::Legible(adv) => adv.deallocate(),
@@ -71,25 +73,25 @@ impl DeserializedV0Advertisement {
     }
 
     pub(crate) fn allocate_with_contents(
-        contents: np_adv::V0AdvertisementContents<
-            np_adv::credential::ReferencedMatchedCredential<MatchedCredential>,
+        contents: legacy::V0AdvertisementContents<
+            np_adv::credential::matched::ReferencedMatchedCredential<MatchedCredential>,
         >,
     ) -> Result<Self, DeserializeAdvertisementError> {
         match contents {
-            np_adv::V0AdvertisementContents::Plaintext(plaintext_contents) => {
+            legacy::V0AdvertisementContents::Plaintext(plaintext_contents) => {
                 let adv = LegibleDeserializedV0Advertisement::allocate_with_plaintext_contents(
                     plaintext_contents,
                 )?;
                 Ok(Self::Legible(adv))
             }
-            np_adv::V0AdvertisementContents::Decrypted(decrypted_contents) => {
+            legacy::V0AdvertisementContents::Decrypted(decrypted_contents) => {
                 let decrypted_contents = decrypted_contents.clone_match_data();
                 let adv = LegibleDeserializedV0Advertisement::allocate_with_decrypted_contents(
                     decrypted_contents,
                 )?;
                 Ok(Self::Legible(adv))
             }
-            np_adv::V0AdvertisementContents::NoMatchingCredentials => {
+            legacy::V0AdvertisementContents::NoMatchingCredentials => {
                 Ok(Self::NoMatchingCredentials)
             }
         }
@@ -108,7 +110,7 @@ pub struct LegibleDeserializedV0Advertisement {
 
 impl LegibleDeserializedV0Advertisement {
     pub(crate) fn allocate_with_plaintext_contents(
-        contents: np_adv::legacy::deserialize::PlaintextAdvContents,
+        contents: legacy::deserialize::UnencryptedAdvContents,
     ) -> Result<Self, DeserializeAdvertisementError> {
         let data_elements = contents
             .data_elements()
@@ -119,9 +121,9 @@ impl LegibleDeserializedV0Advertisement {
         Ok(Self { num_des, payload, identity_kind: DeserializedV0IdentityKind::Plaintext })
     }
     pub(crate) fn allocate_with_decrypted_contents(
-        contents: np_adv::WithMatchedCredential<
+        contents: np_adv::credential::matched::WithMatchedCredential<
             MatchedCredential,
-            np_adv::legacy::deserialize::DecryptedAdvContents,
+            legacy::deserialize::DecryptedAdvContents,
         >,
     ) -> Result<Self, DeserializeAdvertisementError> {
         let data_elements = contents
@@ -132,28 +134,23 @@ impl LegibleDeserializedV0Advertisement {
         let num_des = data_elements.len() as u8;
 
         let salt = contents.contents().salt();
-        let identity_type = contents.contents().identity_type();
 
         // Reduce the information contained in the contents to just
         // the metadata key, since we're done copying over the DEs
         // and other data into an FFI-friendly form.
-        let match_data = contents.map(|x| x.metadata_key());
+        let match_data = contents.map(|x| x.identity_token());
 
-        let payload = V0Payload::allocate_with_decrypted_contents(
-            identity_type,
-            salt,
-            match_data,
-            data_elements,
-        )?;
+        let payload = V0Payload::allocate_with_decrypted_contents(salt, match_data, data_elements)?;
 
         Ok(Self { num_des, payload, identity_kind: DeserializedV0IdentityKind::Decrypted })
     }
-    /// Gets the number of data-elements in this adv's payload
-    /// Suitable as an iteration bound for `Self.into_payload().get_de(...)`.
+    /// Gets the number of data-elements in this adv's payload. This number is suitable as an
+    /// iteration bound for `Self.into_payload().get_de(...)`.
     pub fn num_des(&self) -> u8 {
         self.num_des
     }
-    /// Destructures this legible advertisement into just the payload
+    /// Get a copy of the payload handle. This does not copy the underlying payload. The copied
+    /// handle shares a lifetime with the payload handle in this struct; it's the same handle.
     pub fn payload(&self) -> V0Payload {
         self.payload
     }
@@ -162,7 +159,8 @@ impl LegibleDeserializedV0Advertisement {
     pub fn identity_kind(&self) -> DeserializedV0IdentityKind {
         self.identity_kind
     }
-    /// Deallocates the underlying handle of the payload
+    /// Deallocates the underlying handle of the payload. This function takes ownership of the
+    /// payload handle.
     pub fn deallocate(self) -> DeallocateResult {
         self.payload.deallocate().map(|_| ()).into()
     }
@@ -174,9 +172,9 @@ impl LegibleDeserializedV0Advertisement {
 #[repr(u8)]
 pub enum DeserializedV0IdentityKind {
     /// The deserialized identity was a plaintext identity.
-    Plaintext = 0,
+    Plaintext = 1,
     /// The deserialized identity was some decrypted identity.
-    Decrypted = 1,
+    Decrypted = 2,
 }
 
 /// Information about the identity which matched a
@@ -184,41 +182,31 @@ pub enum DeserializedV0IdentityKind {
 #[derive(Clone, Copy)]
 #[repr(C)]
 pub struct DeserializedV0IdentityDetails {
-    /// The identity type (private/provisioned/trusted)
-    identity_type: EncryptedIdentityType,
     /// The ID of the credential which
     /// matched the deserialized adv
-    cred_id: u32,
-    /// The 14-byte legacy metadata key
-    metadata_key: [u8; 14],
+    cred_id: i64,
+    /// The 14-byte legacy identity token
+    identity_token: [u8; 14],
     /// The 2-byte advertisement salt
     salt: [u8; 2],
 }
 
 impl DeserializedV0IdentityDetails {
     pub(crate) fn new(
-        cred_id: u32,
-        identity_type: np_adv::de_type::EncryptedIdentityDataElementType,
-        salt: ldt_np_adv::LegacySalt,
-        metadata_key: np_adv::legacy::ShortMetadataKey,
+        cred_id: i64,
+        salt: ldt_np_adv::V0Salt,
+        identity_token: ldt_np_adv::V0IdentityToken,
     ) -> Self {
-        let metadata_key = metadata_key.0;
-        let salt = *salt.bytes();
-        let identity_type = identity_type.into();
-        Self { identity_type, cred_id, salt, metadata_key }
+        let salt = salt.bytes();
+        Self { cred_id, salt, identity_token: identity_token.bytes() }
     }
-    /// Returns the ID of the credential which
-    /// matched the deserialized adv
-    pub fn cred_id(&self) -> u32 {
+    /// Returns the ID of the credential which matched the deserialized adv
+    pub fn cred_id(&self) -> i64 {
         self.cred_id
     }
-    /// Returns the identity type (private/provisioned/trusted)
-    pub fn identity_type(&self) -> EncryptedIdentityType {
-        self.identity_type
-    }
     /// Returns the 14-byte legacy metadata key
-    pub fn metadata_key(&self) -> [u8; 14] {
-        self.metadata_key
+    pub fn identity_token(&self) -> [u8; 14] {
+        self.identity_token
     }
     /// Returns the 2-byte advertisement salt
     pub fn salt(&self) -> [u8; 2] {
@@ -274,22 +262,23 @@ pub(crate) struct DeserializedV0IdentityInternals {
     /// The metadata key, together with the matched
     /// credential and enough information to decrypt
     /// the credential metadata, if desired.
-    match_data: np_adv::WithMatchedCredential<MatchedCredential, np_adv::legacy::ShortMetadataKey>,
+    match_data: np_adv::credential::matched::WithMatchedCredential<
+        MatchedCredential,
+        ldt_np_adv::V0IdentityToken,
+    >,
 }
 
 impl DeserializedV0IdentityInternals {
     pub(crate) fn new(
-        identity_type: np_adv::de_type::EncryptedIdentityDataElementType,
-        salt: ldt_np_adv::LegacySalt,
-        match_data: np_adv::WithMatchedCredential<
+        salt: ldt_np_adv::V0Salt,
+        match_data: np_adv::credential::matched::WithMatchedCredential<
             MatchedCredential,
-            np_adv::legacy::ShortMetadataKey,
+            ldt_np_adv::V0IdentityToken,
         >,
     ) -> Self {
         let cred_id = match_data.matched_credential().id();
-        let metadata_key = match_data.contents();
-        let details =
-            DeserializedV0IdentityDetails::new(cred_id, identity_type, salt, *metadata_key);
+        let identity_token = match_data.contents();
+        let details = DeserializedV0IdentityDetails::new(cred_id, salt, *identity_token);
         Self { details, match_data }
     }
     /// Gets the directly-transmissible details about
@@ -341,20 +330,19 @@ impl V0PayloadInternals {
     }
 }
 
-fn get_v0_payload_handle_map_dimensions() -> HandleMapDimensions {
-    HandleMapDimensions {
-        num_shards: global_num_shards(),
-        max_active_handles: global_max_num_deserialized_v0_advertisements(),
-    }
+/// A `#[repr(C)]` handle to a value of type `V0PayloadInternals`
+#[repr(C)]
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub struct V0Payload {
+    handle_id: u64,
 }
 
-declare_handle_map! {
-    mod v0_payload {
-        #[dimensions = super::get_v0_payload_handle_map_dimensions()]
-        type V0Payload: HandleLike<Object = super::V0PayloadInternals>;
-    }
-}
-use v0_payload::V0Payload;
+declare_handle_map!(
+    v0_payload,
+    crate::common::default_handle_map_dimensions(),
+    super::V0Payload,
+    super::V0PayloadInternals
+);
 
 use super::DeserializeAdvertisementError;
 
@@ -362,9 +350,7 @@ impl LocksLongerThan<V0Payload> for CredentialBook {}
 
 impl V0Payload {
     pub(crate) fn allocate_with_plaintext_data_elements(
-        data_elements: Vec<
-            np_adv::legacy::deserialize::PlainDataElement<np_adv::legacy::Plaintext>,
-        >,
+        data_elements: Vec<legacy::deserialize::DeserializedDataElement<legacy::Plaintext>>,
     ) -> Result<Self, HandleMapFullError> {
         Self::allocate(move || {
             let des = data_elements.into_iter().map(V0DataElement::from).collect();
@@ -373,24 +359,21 @@ impl V0Payload {
         })
     }
     pub(crate) fn allocate_with_decrypted_contents(
-        identity_type: np_adv::de_type::EncryptedIdentityDataElementType,
-        salt: ldt_np_adv::LegacySalt,
-        match_data: np_adv::WithMatchedCredential<
+        salt: ldt_np_adv::V0Salt,
+        match_data: np_adv::credential::matched::WithMatchedCredential<
             MatchedCredential,
-            np_adv::legacy::ShortMetadataKey,
+            ldt_np_adv::V0IdentityToken,
         >,
-        data_elements: Vec<
-            np_adv::legacy::deserialize::PlainDataElement<np_adv::legacy::Ciphertext>,
-        >,
+        data_elements: Vec<legacy::deserialize::DeserializedDataElement<legacy::Ciphertext>>,
     ) -> Result<Self, HandleMapFullError> {
         Self::allocate(move || {
             let des = data_elements.into_iter().map(V0DataElement::from).collect();
-            let identity =
-                Some(DeserializedV0IdentityInternals::new(identity_type, salt, match_data));
+            let identity = Some(DeserializedV0IdentityInternals::new(salt, match_data));
             V0PayloadInternals { des, identity }
         })
     }
-    /// Gets the data-element with the given index in this v0 adv payload
+    /// Gets the data-element with the given index in this v0 adv payload. This uses the handle but
+    /// does not take ownership of it.
     pub fn get_de(&self, index: u8) -> GetV0DEResult {
         match self.get() {
             Ok(read_guard) => read_guard.get_de(index),
@@ -398,9 +381,9 @@ impl V0Payload {
         }
     }
 
-    /// Gets the identity details for this V0 payload,
-    /// if this payload was associted with an identity
-    /// (i.e: non-public advertisements).
+    /// Gets the identity details for this V0 payload, if this payload was associated with an
+    /// identity (i.e: encrypted advertisements). This uses the handle but does not take ownership
+    /// of it.
     pub fn get_identity_details(&self) -> GetV0IdentityDetailsResult {
         match self.get() {
             Ok(read_guard) => read_guard.get_identity_details(),
@@ -408,23 +391,20 @@ impl V0Payload {
         }
     }
 
-    /// Attempts to decrypt the metadata for the matched
-    /// credential for this V0 payload (if any)
-    ///
-    /// Note that while this method is publicly exposed
-    /// from `np_ffi_core`, since it involves the (FFI-layer-unexpressed)
-    /// type `Vec<u8>`, a direct wrapper will not suffice,
-    /// and instead a language-specific binding will need to
-    /// be generated for this method which respects the
-    /// expected memory-management semantics of the target language.
-    pub fn decrypt_metadata(&self) -> Result<Vec<u8>, DecryptMetadataError> {
+    /// Attempts to decrypt the metadata for the matched credential for this V0 payload (if any).
+    /// This uses the handle but does not take ownership of it. The caller is given ownership of
+    /// the returned `DecryptedMetadata` handle if present.
+    pub fn decrypt_metadata(&self) -> DecryptMetadataResult {
         match self.get() {
-            Ok(read_guard) => read_guard.decrypt_metadata(),
-            Err(_) => Err(DecryptMetadataError::EncryptedMetadataNotAvailable),
+            Ok(read_guard) => match read_guard.decrypt_metadata() {
+                Ok(decrypted_metadata) => allocate_decrypted_metadata_handle(decrypted_metadata),
+                Err(_) => DecryptMetadataResult::Error,
+            },
+            Err(_) => DecryptMetadataResult::Error,
         }
     }
 
-    /// Deallocates any underlying data held by a V0Payload
+    /// Deallocates any underlying data held by a `V0Payload`. This takes ownership of the handle.
     pub fn deallocate_payload(&self) -> DeallocateResult {
         self.deallocate().map(|_| ()).into()
     }
@@ -465,209 +445,4 @@ impl FfiEnum for GetV0DEResult {
 
 impl GetV0DEResult {
     declare_enum_cast! {into_success, Success, V0DataElement}
-}
-
-/// Discriminant for `V0DataElement`.
-#[repr(u8)]
-pub enum V0DataElementKind {
-    /// A transmission Power (Tx Power) data-element.
-    /// The associated payload may be obtained via
-    /// `V0DataElement#into_tx_power`.
-    TxPower = 0,
-    /// The Actions data-element.
-    /// The associated payload may be obtained via
-    /// `V0DataElement#into_actions`.
-    Actions = 1,
-}
-
-/// Representation of a V0 data element.
-#[repr(C)]
-#[allow(missing_docs)]
-#[derive(Clone)]
-pub enum V0DataElement {
-    TxPower(TxPower),
-    Actions(V0Actions),
-}
-
-impl<F: np_adv::legacy::PacketFlavor> From<np_adv::legacy::deserialize::PlainDataElement<F>>
-    for V0DataElement
-{
-    fn from(de: np_adv::legacy::deserialize::PlainDataElement<F>) -> Self {
-        use np_adv::legacy::deserialize::PlainDataElement;
-        match de {
-            PlainDataElement::Actions(x) => V0DataElement::Actions(x.into()),
-            PlainDataElement::TxPower(x) => V0DataElement::TxPower(x.into()),
-        }
-    }
-}
-
-impl FfiEnum for V0DataElement {
-    type Kind = V0DataElementKind;
-    fn kind(&self) -> Self::Kind {
-        match self {
-            V0DataElement::Actions(_) => V0DataElementKind::Actions,
-            V0DataElement::TxPower(_) => V0DataElementKind::TxPower,
-        }
-    }
-}
-
-impl V0DataElement {
-    declare_enum_cast! {into_tx_power, TxPower, TxPower}
-    declare_enum_cast! {into_actions, Actions, V0Actions}
-}
-
-/// Representation of a transmission power,
-/// as used for the Tx Power DE in V0 and V1.
-#[derive(Clone)]
-#[repr(C)]
-pub struct TxPower {
-    tx_power: i8,
-}
-
-impl TxPower {
-    /// Yields this Tx Power value as an i8.
-    pub fn as_i8(&self) -> i8 {
-        self.tx_power
-    }
-}
-
-impl From<np_adv_de::TxPowerDataElement> for TxPower {
-    fn from(de: np_adv_de::TxPowerDataElement) -> Self {
-        Self { tx_power: de.tx_power_value() }
-    }
-}
-
-/// Representation of the Actions DE in V0.
-#[derive(Clone)]
-#[repr(C)]
-pub enum V0Actions {
-    /// A set of action bits which were present in a plaintext identity advertisement
-    Plaintext(V0ActionBits),
-    /// A set of action bits which were present in a encrypted identity advertisement
-    Encrypted(V0ActionBits),
-}
-
-impl<F: np_adv::legacy::PacketFlavor> From<np_adv::legacy::actions::ActionsDataElement<F>>
-    for V0Actions
-{
-    fn from(value: ActionsDataElement<F>) -> Self {
-        match F::ENUM_VARIANT {
-            PacketFlavorEnum::Plaintext => {
-                Self::Plaintext(V0ActionBits { bitfield: value.action.as_u32() })
-            }
-            PacketFlavorEnum::Ciphertext => {
-                Self::Encrypted(V0ActionBits { bitfield: value.action.as_u32() })
-            }
-        }
-    }
-}
-
-#[repr(C)]
-#[derive(Clone)]
-/// The bitfield data of a VOActions data element
-pub struct V0ActionBits {
-    bitfield: u32,
-}
-
-#[allow(missing_docs)]
-#[repr(u8)]
-/// The possible boolean action types which can be present in an Actions data element
-pub enum BooleanActionType {
-    ActiveUnlock = 8,
-    NearbyShare = 9,
-    InstantTethering = 10,
-    PhoneHub = 11,
-    PresenceManager = 12,
-    Finder = 13,
-    FastPairSass = 14,
-}
-
-impl From<&BooleanActionType> for np_adv::legacy::actions::ActionType {
-    fn from(value: &BooleanActionType) -> Self {
-        match value {
-            BooleanActionType::ActiveUnlock => np_adv::legacy::actions::ActionType::ActiveUnlock,
-            BooleanActionType::NearbyShare => np_adv::legacy::actions::ActionType::NearbyShare,
-            BooleanActionType::InstantTethering => {
-                np_adv::legacy::actions::ActionType::InstantTethering
-            }
-            BooleanActionType::PhoneHub => np_adv::legacy::actions::ActionType::PhoneHub,
-            BooleanActionType::Finder => np_adv::legacy::actions::ActionType::Finder,
-            BooleanActionType::FastPairSass => np_adv::legacy::actions::ActionType::FastPairSass,
-            BooleanActionType::PresenceManager => {
-                np_adv::legacy::actions::ActionType::PresenceManager
-            }
-        }
-    }
-}
-
-/// Error returned if action bits inside of a V0Actions struct are invalid. If the struct was
-/// created by the np_adv deserializer, the bits will always be valid, they are only invalid if a
-/// user reaches in and changes them to something invalid.
-#[derive(Debug)]
-pub struct InvalidActionBits;
-
-impl V0Actions {
-    /// Gets the V0 Action bits as represented by a u32 where the last 8 bits are
-    /// always 0 since V0 actions can only hold up to 24 bits.
-    pub fn as_u32(&self) -> u32 {
-        match self {
-            V0Actions::Plaintext(bits) => bits.bitfield,
-            V0Actions::Encrypted(bits) => bits.bitfield,
-        }
-    }
-
-    /// Return whether a boolean action type is set in this data element
-    #[allow(clippy::expect_used)]
-    pub fn has_action(&self, action_type: &BooleanActionType) -> Result<bool, InvalidActionBits> {
-        match self {
-            V0Actions::Plaintext(action_bits) => {
-                let bits = np_adv::legacy::actions::ActionBits::<Plaintext>::try_from(
-                    action_bits.bitfield,
-                )
-                .map_err(|_| InvalidActionBits)?;
-
-                let actions_de = np_adv::legacy::actions::ActionsDataElement::from(bits);
-                Ok(actions_de
-                    .action
-                    .has_action(&action_type.into())
-                    .expect("BooleanActionType only has one bit"))
-            }
-            V0Actions::Encrypted(action_bits) => {
-                let bits = np_adv::legacy::actions::ActionBits::<Ciphertext>::try_from(
-                    action_bits.bitfield,
-                )
-                .map_err(|_| InvalidActionBits)?;
-
-                let actions_de = np_adv::legacy::actions::ActionsDataElement::from(bits);
-                Ok(actions_de
-                    .action
-                    .has_action(&action_type.into())
-                    .expect("BooleanActionType only has one bit"))
-            }
-        }
-    }
-
-    /// Return the context sequence number from this data element
-    #[allow(clippy::expect_used)]
-    pub fn get_context_sync_seq_num(&self) -> Result<u8, InvalidActionBits> {
-        match self {
-            V0Actions::Plaintext(action_bits) => {
-                let bits = np_adv::legacy::actions::ActionBits::<Plaintext>::try_from(
-                    action_bits.bitfield,
-                )
-                .map_err(|_| InvalidActionBits)?;
-
-                let actions_de = np_adv::legacy::actions::ActionsDataElement::from(bits);
-                Ok(actions_de.action.context_sync_seq_num().as_u8())
-            }
-            V0Actions::Encrypted(action_bits) => {
-                let bits = np_adv::legacy::actions::ActionBits::<Ciphertext>::try_from(
-                    action_bits.bitfield,
-                )
-                .map_err(|_| InvalidActionBits)?;
-                let actions_de = np_adv::legacy::actions::ActionsDataElement::from(bits);
-                Ok(actions_de.action.context_sync_seq_num().as_u8())
-            }
-        }
-    }
 }

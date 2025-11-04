@@ -4,6 +4,8 @@
 
 #include "chrome/browser/extensions/api/extension_action/test_extension_action_api_observer.h"
 
+#include "base/memory/raw_ptr.h"
+
 namespace extensions {
 
 TestExtensionActionAPIObserver::TestExtensionActionAPIObserver(
@@ -16,7 +18,8 @@ TestExtensionActionAPIObserver::TestExtensionActionAPIObserver(
 TestExtensionActionAPIObserver::TestExtensionActionAPIObserver(
     content::BrowserContext* context,
     const ExtensionId& extension_id,
-    const std::set<content::WebContents*>& contents_to_observe)
+    const std::set<raw_ptr<content::WebContents, SetExperimental>>&
+        contents_to_observe)
     : TestExtensionActionAPIObserver(context, extension_id) {
   contents_to_observe_ = contents_to_observe;
 }
@@ -35,8 +38,9 @@ void TestExtensionActionAPIObserver::OnExtensionActionUpdated(
     last_web_contents_ = web_contents;
     contents_to_observe_.erase(web_contents);
 
-    if (contents_to_observe_.empty())
+    if (contents_to_observe_.empty()) {
       run_loop_.QuitWhenIdle();
+    }
   }
 }
 

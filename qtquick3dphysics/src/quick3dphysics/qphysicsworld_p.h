@@ -53,6 +53,7 @@ class QQuick3DModel;
 class QQuick3DGeometry;
 class QQuick3DDefaultMaterial;
 class QPhysXWorld;
+class SimulationWorker;
 
 class Q_QUICK3DPHYSICS_EXPORT QPhysicsWorld : public QObject, public QQmlParserStatus
 {
@@ -257,6 +258,7 @@ private:
     static physx::PxPhysics *getPhysics();
     static physx::PxCooking *getCooking();
     QThread m_workerThread;
+    SimulationWorker *m_simulationWorker = nullptr;
     QQuick3DNode *m_scene = nullptr;
     bool m_inDesignStudio = false;
     int m_numThreads = -1;

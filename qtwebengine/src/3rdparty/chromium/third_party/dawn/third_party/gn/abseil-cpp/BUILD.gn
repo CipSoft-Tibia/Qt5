@@ -30,7 +30,7 @@ import("../../../scripts/dawn_overrides_with_defaults.gni")
 import("${dawn_root}/scripts/dawn_features.gni")
 
 config("absl_config") {
-  if (dawn_standalone && is_clang) {
+  if (!build_with_chromium && is_clang) {
     cflags = [
       # Allow the use of enable_if()
       "-Wno-gcc-compat",
@@ -66,6 +66,7 @@ absl_source_set("container") {
   deps = [
     ":algorithm",
     ":core_headers",
+    ":nullability",
     ":type_traits",
   ]
 }
@@ -111,6 +112,7 @@ absl_source_set("base") {
     ":cycleclock_internal",
     ":dynamic_annotations",
     ":log_severity",
+    ":nullability",
     ":raw_logging_internal",
     ":spinlock_wait",
     ":type_traits",
@@ -213,11 +215,17 @@ absl_source_set("malloc_internal") {
   ]
 }
 
-absl_source_set("prefetch") {
-  public = [
-    "${dawn_abseil_dir}/absl/base/internal/prefetch.h",
-    "${dawn_abseil_dir}/absl/base/prefetch.h",
+absl_source_set("nullability") {
+  sources = [ "${dawn_abseil_dir}/absl/base/internal/nullability_impl.h" ]
+  public = [ "${dawn_abseil_dir}/absl/base/nullability.h" ]
+  deps = [
+    ":core_headers",
+    ":type_traits",
   ]
+}
+
+absl_source_set("prefetch") {
+  public = [ "${dawn_abseil_dir}/absl/base/prefetch.h" ]
   deps = [
     ":config",
     ":core_headers",
@@ -331,9 +339,11 @@ absl_source_set("hash_function_defaults") {
   public =
       [ "${dawn_abseil_dir}/absl/container/internal/hash_function_defaults.h" ]
   deps = [
+    ":common",
     ":config",
     ":hash",
     ":string_view",
+    ":type_traits",
   ]
 }
 
@@ -369,6 +379,31 @@ absl_source_set("hashtablez_sampler") {
     ":synchronization",
     ":time",
     ":utility",
+  ]
+}
+
+absl_source_set("inlined_vector") {
+  public = [ "${dawn_abseil_dir}/absl/container/inlined_vector.h" ]
+  deps = [
+    ":algorithm",
+    ":core_headers",
+    ":inlined_vector_internal",
+    ":memory",
+    ":throw_delegate",
+    ":type_traits",
+  ]
+}
+
+absl_source_set("inlined_vector_internal") {
+  public = [ "${dawn_abseil_dir}/absl/container/internal/inlined_vector.h" ]
+  deps = [
+    ":base_internal",
+    ":compressed_tuple",
+    ":config",
+    ":core_headers",
+    ":memory",
+    ":span",
+    ":type_traits",
   ]
 }
 
@@ -430,8 +465,14 @@ absl_source_set("debugging_internal") {
 }
 
 absl_source_set("demangle_internal") {
-  sources = [ "${dawn_abseil_dir}/absl/debugging/internal/demangle.cc" ]
-  public = [ "${dawn_abseil_dir}/absl/debugging/internal/demangle.h" ]
+  sources = [
+    "${dawn_abseil_dir}/absl/debugging/internal/demangle.cc",
+    "${dawn_abseil_dir}/absl/debugging/internal/demangle_rust.cc",
+  ]
+  public = [
+    "${dawn_abseil_dir}/absl/debugging/internal/demangle.h",
+    "${dawn_abseil_dir}/absl/debugging/internal/demangle_rust.h",
+  ]
   deps = [
     ":base",
     ":config",
@@ -639,7 +680,6 @@ absl_source_set("strings") {
     "${dawn_abseil_dir}/absl/strings/str_cat.cc",
     "${dawn_abseil_dir}/absl/strings/str_replace.cc",
     "${dawn_abseil_dir}/absl/strings/str_split.cc",
-    "${dawn_abseil_dir}/absl/strings/string_view.cc",
     "${dawn_abseil_dir}/absl/strings/substitute.cc",
   ]
   public = [
@@ -653,7 +693,6 @@ absl_source_set("strings") {
     "${dawn_abseil_dir}/absl/strings/str_join.h",
     "${dawn_abseil_dir}/absl/strings/str_replace.h",
     "${dawn_abseil_dir}/absl/strings/str_split.h",
-    "${dawn_abseil_dir}/absl/strings/string_view.h",
     "${dawn_abseil_dir}/absl/strings/strip.h",
     "${dawn_abseil_dir}/absl/strings/substitute.h",
   ]
@@ -663,6 +702,7 @@ absl_source_set("strings") {
     ":endian",
     ":int128",
     ":raw_logging_internal",
+    ":string_view",
     ":strings_internal",
     ":throw_delegate",
     ":type_traits",
@@ -676,7 +716,6 @@ absl_source_set("strings_internal") {
     "${dawn_abseil_dir}/absl/strings/internal/utf8.cc",
   ]
   public = [
-    "${dawn_abseil_dir}/absl/strings/internal/char_map.h",
     "${dawn_abseil_dir}/absl/strings/internal/escaping.h",
     "${dawn_abseil_dir}/absl/strings/internal/ostringstream.h",
     "${dawn_abseil_dir}/absl/strings/internal/resize_uninitialized.h",
@@ -702,7 +741,13 @@ absl_source_set("string_view") {
 
 absl_source_set("str_format") {
   public = [ "${dawn_abseil_dir}/absl/strings/str_format.h" ]
-  deps = [ ":str_format_internal" ]
+  deps = [
+    ":core_headers",
+    ":nullability",
+    ":span",
+    ":str_format_internal",
+    ":string_view",
+  ]
 }
 
 absl_source_set("str_format_internal") {
@@ -727,8 +772,12 @@ absl_source_set("str_format_internal") {
     ":bits",
     ":config",
     ":core_headers",
+    ":fixed_array",
     ":function_ref",
+    ":inlined_vector",
     ":int128",
+    ":span",
+    ":string_view",
     ":strings",
     ":type_traits",
     ":utility",
@@ -959,6 +1008,18 @@ absl_source_set("optional") {
     ":memory",
     ":type_traits",
     ":utility",
+  ]
+}
+
+absl_source_set("span") {
+  public = [ "${dawn_abseil_dir}/absl/types/span.h" ]
+  sources = [ "${dawn_abseil_dir}/absl/types/internal/span.h" ]
+  public_deps = [
+    ":algorithm",
+    ":core_headers",
+    ":nullability",
+    ":throw_delegate",
+    ":type_traits",
   ]
 }
 

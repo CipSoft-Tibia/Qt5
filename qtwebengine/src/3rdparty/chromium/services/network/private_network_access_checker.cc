@@ -53,14 +53,14 @@ const mojom::ClientSecurityState* ChooseClientSecurityState(
   return request_client_security_state;
 }
 
-absl::optional<net::IPAddress> ParsePrivateIpFromUrl(const GURL& url) {
+std::optional<net::IPAddress> ParsePrivateIpFromUrl(const GURL& url) {
   net::IPAddress address;
   if (!address.AssignFromIPLiteral(url.HostNoBracketsPiece())) {
-    return absl::nullopt;
+    return std::nullopt;
   }
 
   if (IPAddressToIPAddressSpace(address) != mojom::IPAddressSpace::kPrivate) {
-    return absl::nullopt;
+    return std::nullopt;
   }
 
   return address;
@@ -79,7 +79,8 @@ PrivateNetworkAccessChecker::PrivateNetworkAccessChecker(
       should_block_local_request_(url_load_options &
                                   mojom::kURLLoadOptionBlockLocalRequest),
       target_address_space_(request.target_ip_address_space),
-      request_initiator_(request.request_initiator) {
+      request_initiator_(request.request_initiator),
+      required_address_space_(request.required_ip_address_space) {
   SetRequestUrl(request.url);
 
   if (!client_security_state_ ||
@@ -154,7 +155,7 @@ void PrivateNetworkAccessChecker::ResetForRetry() {
   // See also: https://crbug.com/1293891
   target_address_space_ = mojom::IPAddressSpace::kUnknown;
 
-  response_address_space_ = absl::nullopt;
+  response_address_space_ = std::nullopt;
 }
 
 mojom::ClientSecurityStatePtr
@@ -224,7 +225,7 @@ Result PrivateNetworkAccessChecker::CheckInternal(
   //
   // `response_address_space_` behaves similarly to `target_address_space_`,
   // except `kUnknown` is also subject to checks (instead
-  // `response_address_space_ == absl::nullopt` indicates that no check
+  // `response_address_space_ == std::nullopt` indicates that no check
   // should be performed).
   if (response_address_space_.has_value() &&
       resource_address_space != *response_address_space_) {
@@ -245,6 +246,16 @@ Result PrivateNetworkAccessChecker::CheckInternal(
     return Result::kBlockedByInconsistentIpAddressSpace;
   }
 
+  // `required_address_space_` is the IP address space the website claimed the
+  // subresource to be. If it doesn't meet the real situation, then we should
+  // fail the request.
+  if (base::FeatureList::IsEnabled(
+          features::kPrivateNetworkAccessPermissionPrompt) &&
+      required_address_space_ != mojom::IPAddressSpace::kUnknown &&
+      resource_address_space != required_address_space_) {
+    return Result::kBlockedByTargetIpAddressSpace;
+  }
+
   if (!IsLessPublicAddressSpace(resource_address_space,
                                 client_security_state_->ip_address_space)) {
     return Result::kAllowedNoLessPublic;
@@ -254,7 +265,8 @@ Result PrivateNetworkAccessChecker::CheckInternal(
   // added to the `PrivateNetworkRequestPolicy` enum.
   switch (policy) {
     case Policy::kAllow:
-      NOTREACHED();  // Should have been handled by the if statement above.
+      NOTREACHED_IN_MIGRATION();  // Should have been handled by the if
+                                  // statement above.
       return Result::kAllowedByPolicyAllow;
     case Policy::kWarn:
       return Result::kAllowedByPolicyWarn;

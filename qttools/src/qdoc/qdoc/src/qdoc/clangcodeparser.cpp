@@ -6,7 +6,6 @@
 
 #include "access.h"
 #include "classnode.h"
-#include "codechunk.h"
 #include "config.h"
 #include "enumnode.h"
 #include "functionnode.h"
@@ -15,6 +14,7 @@
 #include "qdocdatabase.h"
 #include "typedefnode.h"
 #include "variablenode.h"
+#include "sourcefileparser.h"
 #include "utilities.h"
 
 #include <QtCore/qdebug.h>
@@ -572,9 +572,21 @@ static Node *findNodeForCursor(QDocDatabase *qdb, CXCursor cur)
         return qdb->primaryTreeRoot();
 
     Node *p = findNodeForCursor(qdb, clang_getCursorSemanticParent(cur));
-    if (p == nullptr)
-        return nullptr;
-    if (!p->isAggregate())
+    // Special case; if the cursor represents a template type|non-type|template parameter
+    // and its semantic parent is a function, return a pointer to the function node.
+    if (p && p->isFunction(Node::CPP)) {
+        switch (kind) {
+        case CXCursor_TemplateTypeParameter:
+        case CXCursor_NonTypeTemplateParameter:
+        case CXCursor_TemplateTemplateParameter:
+            return p;
+        default:
+            break;
+        }
+    }
+
+    // ...otherwise, the semantic parent must be an Aggregate node.
+    if (!p || !p->isAggregate())
         return nullptr;
     auto parent = static_cast<Aggregate *>(p);
 
@@ -595,6 +607,14 @@ static Node *findNodeForCursor(QDocDatabase *qdb, CXCursor cur)
     case CXCursor_ConversionFunction: {
         NodeVector candidates;
         parent->findChildren(functionName(cur), candidates);
+        // Hidden friend functions are recorded under their lexical parent in the database
+        if (candidates.isEmpty() && get_cursor_declaration(cur)->getFriendObjectKind() != clang::Decl::FOK_None) {
+            if (auto *lexical_parent = findNodeForCursor(qdb, clang_getCursorLexicalParent(cur));
+                    lexical_parent && lexical_parent->isAggregate() && lexical_parent != parent) {
+                static_cast<Aggregate *>(lexical_parent)->findChildren(functionName(cur), candidates);
+            }
+        }
+
         if (candidates.isEmpty())
             return nullptr;
 
@@ -627,8 +647,17 @@ static Node *findNodeForCursor(QDocDatabase *qdb, CXCursor cur)
 
             const Parameters &parameters = fn->parameters();
 
-            if (parameters.count() != numArg + isVariadic)
+            if (parameters.count() != numArg + isVariadic) {
+                // Ignore possible last argument of type QPrivateSignal as it may have been dropped
+                if (numArg > 0 && parameters.isPrivateSignal() &&
+                        (parameters.isEmpty() || !parameters.last().type().endsWith(
+                                QLatin1String("QPrivateSignal")))) {
+                    if (parameters.count() != --numArg + isVariadic)
+                        continue;
+                } else {
                 continue;
+                }
+            }
 
             if (fn->isConst() != bool(clang_CXXMethod_isConst(cur)))
                 continue;
@@ -727,6 +756,7 @@ public:
             auto loc = clang_getCursorLocation(cur);
             if (clang_Location_isFromMainFile(loc))
                 return visitSource(cur, loc);
+
             CXFile file;
             clang_getFileLocation(loc, &file, nullptr, nullptr, nullptr);
             bool isInteresting = false;
@@ -913,25 +943,36 @@ CXChildVisitResult ClangVisitor::visitHeader(CXCursor cursor, CXSourceLocation l
     switch (kind) {
     case CXCursor_TypeAliasTemplateDecl:
     case CXCursor_TypeAliasDecl: {
-        QString aliasDecl = getSpelling(clang_getCursorExtent(cursor)).simplified();
-        QStringList typeAlias = aliasDecl.split(QLatin1Char('='));
-        if (typeAlias.size() == 2) {
-            typeAlias[0] = typeAlias[0].trimmed();
-            const QLatin1String usingString("using ");
-            qsizetype usingPos = typeAlias[0].indexOf(usingString);
-            if (usingPos != -1) {
-                typeAlias[0].remove(0, usingPos + usingString.size());
-                typeAlias[0] = typeAlias[0].split(QLatin1Char(' ')).first();
-                typeAlias[1] = typeAlias[1].trimmed();
-                auto *ta = new TypeAliasNode(parent_, typeAlias[0], typeAlias[1]);
-                ta->setAccess(fromCX_CXXAccessSpecifier(clang_getCXXAccessSpecifier(cursor)));
-                ta->setLocation(fromCXSourceLocation(clang_getCursorLocation(cursor)));
+        const QString aliasName = fromCXString(clang_getCursorSpelling(cursor));
+        QString aliasedType;
 
-                if (kind == CXCursor_TypeAliasTemplateDecl) {
-                    auto template_decl = llvm::dyn_cast<clang::TemplateDecl>(get_cursor_declaration(cursor));
-                    ta->setTemplateDecl(get_template_declaration(template_decl));
+        const auto *templateDecl = (kind == CXCursor_TypeAliasTemplateDecl)
+                                 ? llvm::dyn_cast<clang::TemplateDecl>(get_cursor_declaration(cursor))
+                                 : nullptr;
+
+        if (kind == CXCursor_TypeAliasTemplateDecl) {
+            // For template aliases, get the underlying TypeAliasDecl from the TemplateDecl
+            if (const auto *aliasTemplate = llvm::dyn_cast<clang::TypeAliasTemplateDecl>(templateDecl)) {
+                if (const auto *aliasDecl = aliasTemplate->getTemplatedDecl()) {
+                    clang::QualType underlyingType = aliasDecl->getUnderlyingType();
+                    aliasedType = QString::fromStdString(underlyingType.getAsString());
                 }
             }
+        } else {
+            // For non-template aliases, get the underlying type via C API
+            const CXType aliasedCXType = clang_getTypedefDeclUnderlyingType(cursor);
+            if (aliasedCXType.kind != CXType_Invalid) {
+                aliasedType = fromCXString(clang_getTypeSpelling(aliasedCXType));
+            }
+        }
+
+        if (!aliasedType.isEmpty()) {
+            auto *ta = new TypeAliasNode(parent_, aliasName, aliasedType);
+            ta->setAccess(fromCX_CXXAccessSpecifier(clang_getCXXAccessSpecifier(cursor)));
+            ta->setLocation(fromCXSourceLocation(clang_getCursorLocation(cursor)));
+
+            if (templateDecl)
+                ta->setTemplateDecl(get_template_declaration(templateDecl));
         }
         return CXChildVisit_Continue;
     }
@@ -1488,6 +1529,7 @@ static const char *defaultArgs_[] = {
     "-Wno-nullability-completeness",
     "-fvisibility=default",
     "-ferror-limit=0",
+    "-xc++"
 };
 
 /*!
@@ -1688,7 +1730,9 @@ static float getUnpatchedVersion(QString t)
   and add its parsed contents to the database. \a location is
   used for reporting errors.
 
-  Call matchDocsAndStuff() to do all the parsing and tree building.
+  If parsing C++ header file as source, do not use the precompiled
+  header as the source file itself is likely already included in the
+  PCH and therefore interferes visiting the TU's children.
  */
 ParsedCppFileIR ClangCodeParser::parse_cpp_file(const QString &filePath)
 {
@@ -1699,7 +1743,8 @@ ParsedCppFileIR ClangCodeParser::parse_cpp_file(const QString &filePath)
     CompilationIndex index{ clang_createIndex(1, kClangDontDisplayDiagnostics) };
 
     getDefaultArgs(m_defines, m_args);
-    if (m_pch && !filePath.endsWith(".mm")) {
+    if (m_pch && !filePath.endsWith(".mm")
+            && !std::holds_alternative<CppHeaderSourceFile>(tag_source_file(filePath).second)) {
         m_args.push_back("-w");
         m_args.push_back("-include-pch");
         m_args.push_back((*m_pch).get().name.constData());

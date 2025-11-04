@@ -9,6 +9,7 @@
 #include <string>
 
 #include "base/memory/raw_ptr.h"
+#include "base/time/time.h"
 #include "base/values.h"
 #include "url/gurl.h"
 
@@ -37,6 +38,9 @@ class SecurityInterstitialPage {
   SecurityInterstitialPage& operator=(const SecurityInterstitialPage&) = delete;
 
   virtual ~SecurityInterstitialPage();
+
+  // Called when the interstitial is committed.
+  void OnInterstitialShown();
 
   // Prevents creating the actual interstitial view for testing.
   void DontCreateViewForTesting();
@@ -94,7 +98,6 @@ class SecurityInterstitialPage {
   bool create_view_;
 
   // Store some data about the initial state of extended reporting opt-in.
-  bool on_show_extended_reporting_pref_exists_;
   bool on_show_extended_reporting_pref_value_;
 
   // For subclasses that don't have their own ControllerClients yet.

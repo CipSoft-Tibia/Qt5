@@ -4,6 +4,8 @@
 #include "qscatter3dseries_p.h"
 #include "scatteritemmodelhandler_p.h"
 
+#include <QtGui/qquaternion.h>
+
 QT_BEGIN_NAMESPACE
 
 ScatterItemModelHandler::ScatterItemModelHandler(QItemModelScatterDataProxy *proxy, QObject *parent)

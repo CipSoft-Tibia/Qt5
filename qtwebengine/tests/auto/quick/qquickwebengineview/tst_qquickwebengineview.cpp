@@ -1,9 +1,11 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
+#include "QtWidgets/qapplication.h"
 #include "testwindow.h"
 #include "quickutil.h"
 #include "util.h"
+#include "visualutil.h"
 
 #include <QScopedPointer>
 #include <QtCore/qelapsedtimer.h>
@@ -76,6 +78,7 @@ private Q_SLOTS:
 #if QT_CONFIG(accessibility)
     void focusChild_data();
     void focusChild();
+    void accessibilityRect();
 #endif
     void htmlSelectPopup();
     void savePage_data();
@@ -446,7 +449,11 @@ void tst_QQuickWebEngineView::transparentWebEngineViews()
 
 void tst_QQuickWebEngineView::inputMethod()
 {
+    SKIP_IF_NO_WINDOW_ACTIVATION();
+
     m_window->show();
+    m_window->requestActivate();
+    QVERIFY(QTest::qWaitForWindowActive(m_window.get()));
     QQuickItem *input;
 
     QQuickWebEngineView *view = webEngineView();
@@ -548,8 +555,11 @@ void tst_QQuickWebEngineView::interruptImeTextComposition_data()
 
 void tst_QQuickWebEngineView::interruptImeTextComposition()
 {
+    SKIP_IF_NO_WINDOW_ACTIVATION();
+
     m_window->show();
-    QTRY_VERIFY(qApp->focusObject());
+    m_window->requestActivate();
+    QVERIFY(QTest::qWaitForWindowActive(m_window.get()));
     QQuickItem *input;
 
     QQuickWebEngineView *view = webEngineView();
@@ -598,8 +608,11 @@ void tst_QQuickWebEngineView::interruptImeTextComposition()
 
 void tst_QQuickWebEngineView::inputContextQueryInput()
 {
+    SKIP_IF_NO_WINDOW_ACTIVATION();
+
     m_window->show();
-    QTRY_VERIFY(qApp->focusObject());
+    m_window->requestActivate();
+    QVERIFY(QTest::qWaitForWindowActive(m_window.get()));
     TestInputContext testContext;
 
     QQuickWebEngineView *view = webEngineView();
@@ -743,8 +756,11 @@ void tst_QQuickWebEngineView::inputContextQueryInput()
 
 void tst_QQuickWebEngineView::inputMethodHints()
 {
+    SKIP_IF_NO_WINDOW_ACTIVATION();
+
     m_window->show();
-    QTRY_VERIFY(qApp->focusObject());
+    m_window->requestActivate();
+    QVERIFY(QTest::qWaitForWindowActive(m_window.get()));
     QQuickItem *input;
 
     QQuickWebEngineView *view = webEngineView();
@@ -846,7 +862,7 @@ void tst_QQuickWebEngineView::printToPdf()
     view->setUrl(urlFromTestPath("html/basic_page.html"));
     QVERIFY(waitForLoadSucceeded(view));
 
-    QSignalSpy savePdfSpy(view, SIGNAL(pdfPrintingFinished(const QString&, bool)));
+    QSignalSpy savePdfSpy(view, SIGNAL(pdfPrintingFinished(QString,bool)));
     QString path = tempDir.path() + "/print_success.pdf";
     view->printToPdf(path, QQuickWebEngineView::A4, QQuickWebEngineView::Portrait);
     QTRY_VERIFY2(savePdfSpy.size() == 1, "Printing to PDF file failed without signal");
@@ -1097,6 +1113,9 @@ void tst_QQuickWebEngineView::javascriptClipboard_data()
 
 void tst_QQuickWebEngineView::javascriptClipboard()
 {
+    if (QGuiApplication::platformName().startsWith(QLatin1String("wayland"), Qt::CaseInsensitive))
+        QSKIP("Wayland: Manipulating the clipboard requires real input events. Can't auto test.");
+
     QFETCH(bool, javascriptCanAccessClipboard);
     QFETCH(bool, javascriptCanPaste);
     QFETCH(bool, copyResult);
@@ -1254,6 +1273,74 @@ void tst_QQuickWebEngineView::focusChild()
     // <html> -> <body> -> <input>
     QCOMPARE(traverseToWebDocumentAccessibleInterface(iface)->child(0)->child(0), iface->focusChild());
 }
+
+void tst_QQuickWebEngineView::accessibilityRect()
+{
+    auto *engine = new QQmlEngine(this);
+    auto *component = new QQmlComponent(engine, this);
+    component->setData(QByteArrayLiteral("import QtQuick\n"
+                                           "import QtWebEngine\n"
+                                           "Window {\n"
+                                           " visible: true; width: 600; height: 400\n"
+                                           " Text { id: textId; text: \"text\"; width: 100; Accessible.focusable: true; Accessible.name: \"text\" }\n"
+                                           " WebEngineView { anchors.left: textId.right; anchors.top: textId.bottom; anchors.right: parent.right; anchors.bottom: parent.bottom }\n"
+                                           "}")
+                         , QUrl());
+    QObject *rootObject = component->create();
+    QVERIFY(rootObject);
+
+    QQuickWebEngineView *webView = rootObject->findChild<QQuickWebEngineView*>();
+    QVERIFY(webView);
+
+    webView->loadHtml("<html><body bgcolor=\"red\"><input type='text' id='input1' /></body></html>");
+    QVERIFY(waitForLoadSucceeded(webView));
+
+    QAccessibleInterface *rootObjectIface = QAccessible::queryAccessibleInterface(rootObject);
+    QVERIFY(rootObjectIface);
+    QCOMPARE(rootObjectIface->childCount(), 2);
+
+    QAccessibleInterface *textIface = rootObjectIface->child(0);
+    QVERIFY(textIface);
+    QCOMPARE(textIface->role(), QAccessible::StaticText);
+
+    QCOMPARE(textIface->rect().width(), 100);
+    QVERIFY(textIface->rect().height() > 0);
+
+    // It takes a while for the webIface to get its width, unfortunately we can't have a
+    // QTRY_COMPARE since it seems in some platforms the iface gets recreated and we end up
+    // accessible the wrong pointer, so roll up our own try+compare
+    QAccessibleInterface *webIface = nullptr;
+    QElapsedTimer t;
+    t.start();
+    bool isWebIfaceOfCorrectWidth = false;
+    while (!isWebIfaceOfCorrectWidth && t.elapsed() < 5000) {
+        QTest::qWait(100);
+        webIface = rootObjectIface->child(1)->child(0);
+        QVERIFY(webIface);
+        QCOMPARE(webIface->role(), QAccessible::WebDocument);
+        isWebIfaceOfCorrectWidth = webIface->rect().width() == 500;
+    }
+
+    QVERIFY(isWebIfaceOfCorrectWidth);
+    QCOMPARE(webIface->rect().height(), 400 - textIface->rect().height());
+    QCOMPARE(webIface->rect().x(), textIface->rect().x() + textIface->rect().width());
+    QCOMPARE(webIface->rect().y(), textIface->rect().y() + textIface->rect().height());
+
+    // Set active focus on the input field.
+    webView->runJavaScript("document.getElementById('input1').focus();");
+    QTRY_COMPARE(evaluateJavaScriptSync(webView, "document.activeElement.id").toString(), QStringLiteral("input1"));
+
+    // Check that children of the web rect are inside it
+    QAccessibleInterface *inputIface = webIface->focusChild();
+    QVERIFY(inputIface);
+    QTRY_COMPARE(inputIface->role(), QAccessible::EditableText);
+    QVERIFY(webIface->rect().contains(inputIface->rect()));
+
+    delete rootObject;
+    delete component;
+    delete engine;
+}
+
 #endif // QT_CONFIG(accessibility)
 
 void tst_QQuickWebEngineView::htmlSelectPopup()
@@ -1275,7 +1362,14 @@ void tst_QQuickWebEngineView::htmlSelectPopup()
 
     makeTouch(view.window(), elementCenter(&view, "select"));
     QPointer<QQuickWindow> popup;
-    QTRY_VERIFY((popup = m_window->findChild<QQuickWindow *>()));
+    auto findPopup = [](QQuickView *view) -> QQuickWindow * {
+        for (auto window : QApplication::topLevelWindows()) {
+            if (window->transientParent() == view)
+                return dynamic_cast<QQuickWindow *>(window);
+        }
+        return nullptr;
+    };
+    QTRY_VERIFY((popup = findPopup(m_window.get())));
     QCOMPARE(activeElementId(&view), QStringLiteral("select"));
 
     makeTouch(popup, QPoint(popup->width() / 2, popup->height() / 2));

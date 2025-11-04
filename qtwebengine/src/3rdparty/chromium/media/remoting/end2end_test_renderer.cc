@@ -388,7 +388,7 @@ void End2EndTestRenderer::OnAcquireRendererDone(int receiver_renderer_handle) {
 }
 
 void End2EndTestRenderer::SetLatencyHint(
-    absl::optional<base::TimeDelta> latency_hint) {
+    std::optional<base::TimeDelta> latency_hint) {
   courier_renderer_->SetLatencyHint(latency_hint);
 }
 
@@ -436,7 +436,7 @@ void End2EndTestRenderer::SendFrameToSink(
   } else if (type == DemuxerStream::Type::VIDEO) {
     media_remotee_->OnVideoFrame(frame_count, decoder_buffer);
   } else {
-    NOTREACHED();
+    NOTREACHED_IN_MIGRATION();
   }
 }
 

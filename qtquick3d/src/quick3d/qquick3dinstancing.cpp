@@ -96,6 +96,34 @@ QT_BEGIN_NAMESPACE
 */
 
 /*!
+    \qmlproperty vector3d Instancing::shadowBoundsMinimum
+
+    Sets the minimum bounds used when calculating the shadow map bounds of the models in the
+    instance table.
+
+    Default value: \c{(1, 1, 1)}
+
+    \note This property is only enabled when the respective components of
+    Instancing::shadowBoundsMinimum are smaller than those in
+    Instancing::shadowBoundsMaximum. Otherwise the bounds are calculated automatically.
+    \sa shadowBoundsMaximum
+*/
+
+/*!
+    \qmlproperty vector3d Instancing::shadowBoundsMaximum
+
+    Sets the maximum bounds used when calculating the shadow map bounds of the models in the
+    instance table.
+
+    Default value: \c{(-1, -1, -1)}
+
+    \note This property is only enabled when the respective components of
+    Instancing::shadowBoundsMinimum are smaller than those in
+    Instancing::shadowBoundsMaximum. Otherwise the bounds are calculated automatically.
+    \sa shadowBoundsMinimum
+*/
+
+/*!
     \class QQuick3DInstancing
     \inmodule QtQuick3D
     \inherits QQuick3DObject
@@ -159,6 +187,18 @@ bool QQuick3DInstancing::depthSortingEnabled() const
 {
     Q_D(const QQuick3DInstancing);
     return d->m_depthSortingEnabled;
+}
+
+QVector3D QQuick3DInstancing::shadowBoundsMinimum() const
+{
+    Q_D(const QQuick3DInstancing);
+    return d->m_shadowBoundsMinimum;
+}
+
+QVector3D QQuick3DInstancing::shadowBoundsMaximum() const
+{
+    Q_D(const QQuick3DInstancing);
+    return d->m_shadowBoundsMaximum;
 }
 
 const QQuick3DInstancing::InstanceTableEntry *QQuick3DInstancing::getInstanceEntry(int index)
@@ -325,6 +365,28 @@ void QQuick3DInstancing::setDepthSortingEnabled(bool enabled)
     emit depthSortingEnabledChanged();
 }
 
+void QQuick3DInstancing::setShadowBoundsMinimum(const QVector3D &newShadowBoundsMinimum)
+{
+    Q_D(QQuick3DInstancing);
+    if (d->m_shadowBoundsMinimum == newShadowBoundsMinimum)
+        return;
+
+    d->m_shadowBoundsMinimum = newShadowBoundsMinimum;
+    d->dirty(QQuick3DObjectPrivate::DirtyType::Content);
+    emit shadowBoundsMinimumChanged();
+}
+
+void QQuick3DInstancing::setShadowBoundsMaximum(const QVector3D &newShadowBoundsMaximum)
+{
+    Q_D(QQuick3DInstancing);
+    if (d->m_shadowBoundsMinimum == newShadowBoundsMaximum)
+        return;
+
+    d->m_shadowBoundsMaximum = newShadowBoundsMaximum;
+    d->dirty(QQuick3DObjectPrivate::DirtyType::Content);
+    emit shadowBoundsMaximumChanged();
+}
+
 /*!
   Mark that the instance data has changed and must be uploaded again.
 
@@ -365,6 +427,8 @@ QSSGRenderGraphObject *QQuick3DInstancing::updateSpatialNode(QSSGRenderGraphObje
     d->m_instanceCountOverrideChanged = false;
     instanceTable->setHasTransparency(d->m_hasTransparency);
     instanceTable->setDepthSorting(d->m_depthSortingEnabled);
+    instanceTable->setShadowBoundsMinimum(d->m_shadowBoundsMinimum);
+    instanceTable->setShadowBoundsMaximum(d->m_shadowBoundsMaximum);
     return node;
 }
 

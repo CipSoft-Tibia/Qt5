@@ -16,6 +16,9 @@
 
 #include <private/qcalendarmath_p.h>
 #include <private/qnumeric_p.h>
+#if QT_CONFIG(icu) || !QT_CONFIG(timezone_locale)
+#  include <private/qstringiterator_p.h>
+#endif
 #include <private/qtools_p.h>
 
 #include <algorithm>
@@ -28,14 +31,14 @@ using namespace Qt::StringLiterals;
 
 // For use with std::is_sorted() in assertions:
 [[maybe_unused]]
-constexpr bool earlierZoneData(const ZoneData &less, const ZoneData &more) noexcept
+constexpr bool earlierZoneData(ZoneData less, ZoneData more) noexcept
 {
     return less.windowsIdKey < more.windowsIdKey
         || (less.windowsIdKey == more.windowsIdKey && less.territory < more.territory);
 }
 
 [[maybe_unused]]
-static bool earlierWinData(const WindowsData &less, const WindowsData &more) noexcept
+static bool earlierWinData(WindowsData less, WindowsData more) noexcept
 {
     // Actually only tested in the negative, to check more < less never happens,
     // so should be true if more < less in either part; hence || not && combines.
@@ -44,27 +47,27 @@ static bool earlierWinData(const WindowsData &less, const WindowsData &more) noe
 }
 
 // For use with std::lower_bound():
-constexpr bool atLowerUtcOffset(const UtcData &entry, qint32 offsetSeconds) noexcept
+constexpr bool atLowerUtcOffset(UtcData entry, qint32 offsetSeconds) noexcept
 {
     return entry.offsetFromUtc < offsetSeconds;
 }
 
-constexpr bool atLowerWindowsKey(const WindowsData &entry, qint16 winIdKey) noexcept
+constexpr bool atLowerWindowsKey(WindowsData entry, qint16 winIdKey) noexcept
 {
     return entry.windowsIdKey < winIdKey;
 }
 
-static bool earlierAliasId(const AliasData &entry, QByteArrayView aliasId) noexcept
+static bool earlierAliasId(AliasData entry, QByteArrayView aliasId) noexcept
 {
     return entry.aliasId().compare(aliasId, Qt::CaseInsensitive) < 0;
 }
 
-static bool earlierWindowsId(const WindowsData &entry, QByteArrayView winId) noexcept
+static bool earlierWindowsId(WindowsData entry, QByteArrayView winId) noexcept
 {
     return entry.windowsId().compare(winId, Qt::CaseInsensitive) < 0;
 }
 
-constexpr bool zoneAtLowerWindowsKey(const ZoneData &entry, qint16 winIdKey) noexcept
+constexpr bool zoneAtLowerWindowsKey(ZoneData entry, qint16 winIdKey) noexcept
 {
     return entry.windowsIdKey < winIdKey;
 }
@@ -121,18 +124,8 @@ QTimeZonePrivate::QTimeZonePrivate()
                             earlierWinData));
 }
 
-QTimeZonePrivate::QTimeZonePrivate(const QTimeZonePrivate &other)
-    : QSharedData(other), m_id(other.m_id)
-{
-}
-
 QTimeZonePrivate::~QTimeZonePrivate()
 {
-}
-
-QTimeZonePrivate *QTimeZonePrivate::clone() const
-{
-    return new QTimeZonePrivate(*this);
 }
 
 bool QTimeZonePrivate::operator==(const QTimeZonePrivate &other) const
@@ -182,7 +175,7 @@ QString QTimeZonePrivate::displayName(qint64 atMSecsSinceEpoch,
 {
     const Data tran = data(atMSecsSinceEpoch);
     if (tran.atMSecsSinceEpoch != invalidMSecs()) {
-        if (nameType == QTimeZone::OffsetName && locale.language() == QLocale::C)
+        if (nameType == QTimeZone::OffsetName && isAnglicLocale(locale))
             return isoOffsetFormat(tran.offsetFromUtc);
         if (nameType == QTimeZone::ShortName && isDataLocale(locale))
             return tran.abbreviation;
@@ -204,7 +197,7 @@ QString QTimeZonePrivate::displayName(QTimeZone::TimeType timeType,
 {
     const Data tran = data(timeType);
     if (tran.atMSecsSinceEpoch != invalidMSecs()) {
-        if (nameType == QTimeZone::OffsetName && isDataLocale(locale))
+        if (nameType == QTimeZone::OffsetName && isAnglicLocale(locale))
             return isoOffsetFormat(tran.offsetFromUtc);
 
 #if QT_CONFIG(timezone_locale)
@@ -216,6 +209,11 @@ QString QTimeZonePrivate::displayName(QTimeZone::TimeType timeType,
 
 QString QTimeZonePrivate::abbreviation(qint64 atMSecsSinceEpoch) const
 {
+    if (QLocale() != QLocale::c()) {
+        const QString name = displayName(atMSecsSinceEpoch, QTimeZone::ShortName, QLocale());
+        if (!name.isEmpty())
+            return name;
+    }
     return displayName(atMSecsSinceEpoch, QTimeZone::ShortName, QLocale::c());
 }
 
@@ -253,14 +251,14 @@ bool QTimeZonePrivate::isDaylightTime(qint64 atMSecsSinceEpoch) const
 QTimeZonePrivate::Data QTimeZonePrivate::data(QTimeZone::TimeType timeType) const
 {
     // True if tran is valid and has the DST-ness to match timeType:
-    const auto validMatch = [timeType](const QTimeZonePrivate::Data &tran) {
+    const auto validMatch = [timeType](const Data &tran) {
         return tran.atMSecsSinceEpoch != invalidMSecs()
             && ((timeType == QTimeZone::DaylightTime) != (tran.daylightTimeOffset == 0));
     };
 
     // Get current tran, use if suitable:
     const qint64 currentMSecs = QDateTime::currentMSecsSinceEpoch();
-    QTimeZonePrivate::Data tran = data(currentMSecs);
+    Data tran = data(currentMSecs);
     if (validMatch(tran))
         return tran;
 
@@ -310,7 +308,7 @@ QTimeZonePrivate::Data QTimeZonePrivate::data(qint64 forMSecsSinceEpoch) const
 QDateTimePrivate::ZoneState QTimeZonePrivate::stateAtZoneTime(
     qint64 forLocalMSecs, QDateTimePrivate::TransitionOptions resolve) const
 {
-    auto dataToState = [](const QTimeZonePrivate::Data &d) {
+    auto dataToState = [](const Data &d) {
         return QDateTimePrivate::ZoneState(d.atMSecsSinceEpoch + d.offsetFromUtc * 1000,
                                            d.offsetFromUtc,
                                            d.daylightTimeOffset ? QDateTimePrivate::DaylightTime
@@ -341,6 +339,12 @@ QDateTimePrivate::ZoneState QTimeZonePrivate::stateAtZoneTime(
     Q_ASSERT(recent < imminent && seventeenHoursInMSecs < imminent - recent + 1);
 
     const Data past = data(recent), future = data(imminent);
+    if (future.atMSecsSinceEpoch == invalidMSecs()
+        && past.atMSecsSinceEpoch == invalidMSecs()) {
+        // Failed to get any useful data near this time: apparently out of range
+        // for the backend.
+        return { forLocalMSecs };
+    }
     // > 99% of the time, past and future will agree:
     if (Q_LIKELY(past.offsetFromUtc == future.offsetFromUtc
                  && past.standardTimeOffset == future.standardTimeOffset
@@ -600,17 +604,12 @@ QByteArray QTimeZonePrivate::systemTimeZoneId() const
     return QByteArray();
 }
 
-bool QTimeZonePrivate::isTimeZoneIdAvailable(const QByteArray& ianaId) const
+bool QTimeZonePrivate::isTimeZoneIdAvailable(const QByteArray &ianaId) const
 {
     // Fall-back implementation, can be made faster in subclasses.
     // Backends that don't cache the available list SHOULD override this.
     const QList<QByteArray> tzIds = availableTimeZoneIds();
     return std::binary_search(tzIds.begin(), tzIds.end(), ianaId);
-}
-
-QList<QByteArray> QTimeZonePrivate::availableTimeZoneIds() const
-{
-    return QList<QByteArray>();
 }
 
 static QList<QByteArray> selectAvailable(QList<QByteArrayView> &&desired,
@@ -628,8 +627,11 @@ static QList<QByteArray> selectAvailable(QList<QByteArrayView> &&desired,
 
 QList<QByteArrayView> QTimeZonePrivate::matchingTimeZoneIds(QLocale::Territory territory) const
 {
-    // Default fall-back mode, use the zoneTable to find Region of know Zones
+    // Default fall-back mode: use the CLDR data to find zones for this territory.
     QList<QByteArrayView> regions;
+#if QT_CONFIG(timezone_locale) && !QT_CONFIG(icu)
+    regions = QtTimeZoneLocale::ianaIdsForTerritory(territory);
+#endif
     // Get all Zones in the table associated with this territory:
     if (territory == QLocale::World) {
         // World names are filtered out of zoneDataTable to provide the defaults
@@ -798,6 +800,162 @@ QString QTimeZonePrivate::isoOffsetFormat(int offsetFromUtc, QTimeZone::NameType
         result += QString::asprintf(":%02d", secs);
     return result;
 }
+
+#if QT_CONFIG(icu) || !QT_CONFIG(timezone_locale)
+static QTimeZonePrivate::NamePrefixMatch
+findUtcOffsetPrefix(QStringView text, const QLocale &locale)
+{
+    // First, see if we have a {UTC,GMT}+offset. This would ideally use
+    // locale-appropriate versions of the offset format, but we don't know those.
+    qsizetype signLen = 0;
+    char sign = '\0';
+    auto signStart = [&signLen, &sign, locale](QStringView str) {
+        QString signStr = locale.negativeSign();
+        if (str.startsWith(signStr)) {
+            sign = '-';
+            signLen = signStr.size();
+            return true;
+        }
+        // Special case: U+2212 MINUS SIGN (cf. qlocale.cpp's NumericTokenizer)
+        if (str.startsWith(u'\u2212')) {
+            sign = '-';
+            signLen = 1;
+            return true;
+        }
+        signStr = locale.positiveSign();
+        if (str.startsWith(signStr)) {
+            sign = '+';
+            signLen = signStr.size();
+            return true;
+        }
+        return false;
+    };
+    // Should really use locale-appropriate
+    if (!((text.startsWith(u"UTC") || text.startsWith(u"GMT")) && signStart(text.sliced(3))))
+        return {};
+
+    QStringView offset = text.sliced(3 + signLen);
+    QStringIterator iter(offset);
+    qsizetype hourEnd = 0, hmMid = 0, minEnd = 0;
+    int digits = 0;
+    char32_t ch;
+    while (iter.hasNext()) {
+        ch = iter.next();
+        if (!QChar::isDigit(ch))
+            break;
+
+        ++digits;
+        // Have hourEnd keep track of the end of the last-but-two digit, if
+        // we have that many; use hmMid to hold the last-but-one.
+        hourEnd = std::exchange(hmMid, std::exchange(minEnd, iter.index()));
+    }
+    if (digits < 1 || digits > 4) // No offset or something other than an offset.
+        return {};
+
+    QStringView hourStr, minStr;
+    if (digits < 3 && iter.hasNext() && QChar::isPunct(ch)) {
+        hourEnd = minEnd; // Use all digits seen thus far for hour.
+        hmMid = iter.index(); // Reuse as minStart, in effect.
+        int mindig = 0;
+        while (mindig < 2 && iter.hasNext() && QChar::isDigit(iter.next())) {
+            ++mindig;
+            minEnd = iter.index();
+        }
+        if (mindig == 2)
+            minStr = offset.first(minEnd).sliced(hmMid);
+        else
+            minEnd = hourEnd; // Ignore punctuator and beyond
+    } else {
+        minStr = offset.first(minEnd).sliced(hourEnd);
+    }
+    hourStr = offset.first(hourEnd);
+
+    bool ok = false;
+    uint hour = 0, minute = 0;
+    if (!hourStr.isEmpty())
+        hour = locale.toUInt(hourStr, &ok);
+    if (ok && !minStr.isEmpty()) {
+        minute = locale.toUInt(minStr, &ok);
+        // If the part after a punctuator is bad, pretend we never saw it:
+        if ((!ok || minute >= 60) && minEnd > hourEnd + minStr.size()) {
+            minEnd = hourEnd;
+            minute = 0;
+            ok = true;
+        }
+        // but if we had too many digits for just an hour, and its tail
+        // isn't minutes, then this isn't an offset form.
+    }
+
+    constexpr int MaxOffsetSeconds
+        = qMax(QTimeZone::MaxUtcOffsetSecs, -QTimeZone::MinUtcOffsetSecs);
+    if (!ok || (hour * 60 + minute) * 60 > MaxOffsetSeconds)
+        return {}; // Let the zone-name scan find UTC or GMT prefix as a zone name.
+
+    // Transform offset into the form the QTimeZone constructor prefers:
+    char buffer[26];
+    // We need: 3 for "UTC", 1 for sign, 2+2 for digits, 1 for colon between, 1
+    // for '\0'; but gcc [-Werror=format-truncation=] doesn't know the %02u
+    // fields can't be longer than 2 digits, so complains if we don't have space
+    // for 10 digits in each.
+    if (minute)
+        std::snprintf(buffer, sizeof(buffer), "UTC%c%02u:%02u", sign, hour, minute);
+    else
+        std::snprintf(buffer, sizeof(buffer), "UTC%c%02u", sign, hour);
+
+    return { QByteArray(buffer, qstrnlen(buffer, sizeof(buffer))),
+             3 + signLen + minEnd,
+             QTimeZone::GenericTime };
+}
+
+QTimeZonePrivate::NamePrefixMatch
+QTimeZonePrivate::findLongNamePrefix(QStringView text, const QLocale &locale,
+                                     std::optional<qint64> atEpochMillis)
+{
+    // Search all known zones for one that matches a prefix of text in our locale.
+    const auto when = atEpochMillis
+        ? QDateTime::fromMSecsSinceEpoch(*atEpochMillis, QTimeZone::UTC)
+        : QDateTime();
+    const auto typeFor = [when](QTimeZone zone) {
+        if (when.isValid() && zone.isDaylightTime(when))
+            return QTimeZone::DaylightTime;
+        // Assume standard time name applies equally as generic:
+        return QTimeZone::GenericTime;
+    };
+    QTimeZonePrivate::NamePrefixMatch best = findUtcOffsetPrefix(text, locale);
+    constexpr QTimeZone::TimeType types[]
+        = { QTimeZone::GenericTime, QTimeZone::StandardTime, QTimeZone::DaylightTime };
+    const auto improves = [text, &best](const QString &name) {
+        return text.startsWith(name, Qt::CaseInsensitive) && name.size() > best.nameLength;
+    };
+    const QList<QByteArray> allZones = QTimeZone::availableTimeZoneIds();
+    for (const QByteArray &iana : allZones) {
+        QTimeZone zone(iana);
+        if (!zone.isValid())
+            continue;
+        if (when.isValid()) {
+            QString name = zone.displayName(when, QTimeZone::LongName, locale);
+            if (improves(name))
+                best = { iana, name.size(), typeFor(zone) };
+        } else {
+            for (const QTimeZone::TimeType type : types) {
+                QString name = zone.displayName(type, QTimeZone::LongName, locale);
+                if (improves(name))
+                    best = { iana, name.size(), type };
+            }
+        }
+        // If we have a match for all of text, we can't get any better:
+        if (best.nameLength >= text.size())
+            break;
+    }
+    // This has the problem of selecting the first IANA ID of a zone with a
+    // match; where several IANA IDs share a long name, this may not be the
+    // natural one to pick. Hopefully a backend that does its own name L10n will
+    // at least produce one with the same offsets as the most natural choice.
+    return best;
+}
+#else
+// Implemented in qtimezonelocale.cpp
+#endif // icu || !timezone_locale
 
 QByteArray QTimeZonePrivate::aliasToIana(QByteArrayView alias)
 {
@@ -1042,8 +1200,8 @@ QTimeZonePrivate::Data QUtcTimeZonePrivate::data(QTimeZone::TimeType timeType) c
 
 bool QUtcTimeZonePrivate::isDataLocale(const QLocale &locale) const
 {
-    // Officially only supports C locale names; these are surely also viable for English.
-    return locale.language() == QLocale::C || locale.language() == QLocale::English;
+    // Officially only supports C locale names; these are surely also viable for en-Latn-*.
+    return isAnglicLocale(locale);
 }
 
 void QUtcTimeZonePrivate::init(const QByteArray &zoneId, int offsetSeconds, const QString &name,
@@ -1081,11 +1239,52 @@ QString QUtcTimeZonePrivate::displayName(QTimeZone::TimeType timeType,
                                          QTimeZone::NameType nameType,
                                          const QLocale &locale) const
 {
+#if QT_CONFIG(timezone_locale)
+    QString name = QTimeZonePrivate::displayName(timeType, nameType, locale);
+    // That may fall back to standard offset format, in which case we'd sooner
+    // use m_name if it's non-empty (for the benefit of custom zones).
+    // However, a localized fallback is better than ignoring the locale, so only
+    // consider the fallback a match if it matches modulo reading GMT as UTC,
+    // U+2212 as MINUS SIGN and the narrow form of offset the fallback uses.
+    const auto matchesFallback = [](int offset, QStringView name) {
+        // Fallback rounds offset to nearest minute:
+        int seconds = offset % 60;
+        int rounded = offset
+            + (seconds > 30 || (seconds == 30 && (offset / 60) % 2)
+               ? 60 - seconds // Round up to next minute
+               : (seconds < -30 || (seconds == -30 && (offset / 60) % 2)
+                  ? -(60 + seconds) // Round down to previous minute
+                  : -seconds));
+        const QString avoid = isoOffsetFormat(rounded);
+        if (name == avoid)
+            return true;
+        Q_ASSERT(avoid.startsWith("UTC"_L1));
+        Q_ASSERT(avoid.size() == 9);
+        // Fallback may use GMT in place of UTC, but always has sign plus at
+        // least one hour digit, even for +0:
+        if (!(name.startsWith("GMT"_L1) || name.startsWith("UTC"_L1)) || name.size() < 5)
+            return false;
+        // Fallback drops trailing ":00" minute:
+        QStringView tail{avoid};
+        tail = tail.sliced(3);
+        if (tail.endsWith(":00"_L1))
+            tail = tail.chopped(3);
+        if (name.sliced(3) == tail)
+            return true;
+        // Accept U+2212 as minus sign:
+        const QChar sign = name[3] == u'\u2212' ? u'-' : name[3];
+        // Fallback doesn't zero-pad hour:
+        return sign == tail[0] && tail.sliced(tail[1] == u'0' ? 2 : 1) == name.sliced(4);
+    };
+    if (!name.isEmpty() && (m_name.isEmpty() || !matchesFallback(m_offsetFromUtc, name)))
+        return name;
+#else // No L10N :-(
     Q_UNUSED(timeType);
     Q_UNUSED(locale);
+#endif
     if (nameType == QTimeZone::ShortName)
         return m_abbreviation;
-    else if (nameType == QTimeZone::OffsetName)
+    if (nameType == QTimeZone::OffsetName)
         return isoOffsetFormat(m_offsetFromUtc);
     return m_name;
 }
@@ -1113,6 +1312,7 @@ QByteArray QUtcTimeZonePrivate::systemTimeZoneId() const
     return utcQByteArray();
 }
 
+// TODO: port to QByteArrayView
 bool QUtcTimeZonePrivate::isTimeZoneIdAvailable(const QByteArray &ianaId) const
 {
     // Only the zone IDs supplied by CLDR and recognized by constructor.

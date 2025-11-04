@@ -22,16 +22,30 @@ QT_BEGIN_NAMESPACE
 
 namespace QtPrivate {
 
-class Q_MULTIMEDIA_EXPORT QAutoResetEventWin32 : public QObject
+class Q_MULTIMEDIA_EXPORT QAutoResetEventWin32 final : public QObject
 {
     Q_OBJECT
 
 public:
     explicit QAutoResetEventWin32(QObject *parent = nullptr);
     ~QAutoResetEventWin32();
+    Q_DISABLE_COPY_MOVE(QAutoResetEventWin32)
 
     bool isValid() const;
     void set();
+
+    template <typename... Args>
+    QMetaObject::Connection callOnActivated(Args &&...args)
+    {
+        return connect(this, &QAutoResetEventWin32::activated, std::forward<Args>(args)...);
+    }
+
+    template <typename Functor>
+    QMetaObject::Connection callOnActivated(Functor &&functor)
+    {
+        return connect(this, &QAutoResetEventWin32::activated, this,
+                       std::forward<Functor>(functor));
+    }
 
 Q_SIGNALS:
     void activated();

@@ -56,6 +56,9 @@ protected:
                                                 const QProtobufMessage &arg,
                                                 const QGrpcCallOptions &options);
 
+    static void setOperationResponseMetaType(QGrpcOperation *operation,
+                                                 QMetaType responseMetaType);
+
 private:
     Q_DISABLE_COPY_MOVE(QGrpcClientBase)
     Q_DECLARE_PRIVATE(QGrpcClientBase)

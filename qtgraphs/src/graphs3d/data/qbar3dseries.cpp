@@ -8,6 +8,8 @@
 #include "qquickgraphsbars_p.h"
 #include "qvalue3daxis_p.h"
 
+#include <QtGui/qquaternion.h>
+
 QT_BEGIN_NAMESPACE
 
 /*!
@@ -406,6 +408,31 @@ void QBar3DSeries::setRowColors(const QList<QColor> &colors)
 }
 
 /*!
+ * \property QBar3DSeries::valueColoringEnabled
+ * \since 6.9
+ *
+ * \brief Use the given value to color the whole bar based on the range gradient
+ *
+ * This property can be used to color each
+ * bar separately based on its value and given range gradient.
+ * The QGraphsTheme::ColorStyle must be set to
+ * QGraphsTheme::ColorStyle::RangeGradient to use this property.
+ *
+ * \sa QGraphsTheme::ColorStyle::RangeGradient
+ */
+void QBar3DSeries::setValueColoringEnabled(bool enabled)
+{
+    Q_D(QBar3DSeries);
+    d->setValueColoringEnabled(enabled);
+}
+
+bool QBar3DSeries::isValueColoringEnabled() const
+{
+    Q_D(const QBar3DSeries);
+    return d->m_valueColoring;
+}
+
+/*!
  * \property QBar3DSeries::dataArray
  *
  * \brief Data array for the series.
@@ -425,7 +452,7 @@ void QBar3DSeries::setRowColors(const QList<QColor> &colors)
 void QBar3DSeries::setDataArray(const QBarDataArray &newDataArray)
 {
     Q_D(QBar3DSeries);
-    if (d->m_dataArray.data() != newDataArray.data())
+    if (!d->m_dataArray.isSharedWith(newDataArray))
         d->m_dataArray = newDataArray;
 }
 
@@ -538,6 +565,7 @@ QBar3DSeriesPrivate::QBar3DSeriesPrivate()
 {
     m_itemLabelFormat = QStringLiteral("@valueLabel");
     m_mesh = QAbstract3DSeries::Mesh::BevelBar;
+    m_valueColoring = false;
 }
 
 QBar3DSeriesPrivate::~QBar3DSeriesPrivate() {}
@@ -691,7 +719,7 @@ void QBar3DSeriesPrivate::createItemLabel()
     static const QString seriesNameTag(QStringLiteral("@seriesName"));
 
     if (m_selectedBar == QBar3DSeries::invalidSelectionPosition()) {
-        m_itemLabel = hiddenLabelTag;
+        m_itemLabel = QString(hiddenLabelTag);
         return;
     }
 
@@ -750,6 +778,15 @@ void QBar3DSeriesPrivate::setRowColors(const QList<QColor> &colors)
     if (m_rowColors != colors) {
         m_rowColors = colors;
         emit q->rowColorsChanged(m_rowColors);
+    }
+}
+
+void QBar3DSeriesPrivate::setValueColoringEnabled(bool enabled)
+{
+    Q_Q(QBar3DSeries);
+    if (m_valueColoring != enabled) {
+        m_valueColoring = enabled;
+        emit q->valueColoringEnabledChanged(enabled);
     }
 }
 

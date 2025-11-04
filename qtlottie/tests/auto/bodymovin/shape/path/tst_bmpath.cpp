@@ -132,7 +132,7 @@ private slots:
     void testDirection();
 
 private:
-    void loadTestData(const QByteArray &filename);
+    void loadTestData(const QString &filename);
     void updateProperty(int frame);
 
     BMFreeFormShape *m_path = nullptr;
@@ -1086,7 +1086,7 @@ void tst_BMPath::testDirection()
     QVERIFY(m_path->direction() == 0);
 }
 
-void tst_BMPath::loadTestData(const QByteArray &filename)
+void tst_BMPath::loadTestData(const QString &filename)
 {
     if (m_path) {
         delete m_path;

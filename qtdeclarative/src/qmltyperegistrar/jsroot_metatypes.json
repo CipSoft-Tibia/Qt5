@@ -5540,6 +5540,14 @@
                         "type": "number"
                     },
                     {
+                        "name": "ExpandedClientAreaHint",
+                        "type": "number"
+                    },
+                    {
+                        "name": "NoTitleBarBackgroundHint",
+                        "type": "number"
+                    },
+                    {
                         "name": "CustomizeWindowHint",
                         "type": "number"
                     },
@@ -9549,15 +9557,6 @@
                 ],
                 "className": "QtApplicationArgumentsPrototype",
                 "methods": [
-                    {
-                        "access": "public",
-                        "arguments": [
-                            {
-                            }
-                        ],
-                        "isJavaScriptFunction": true,
-                        "name": "sort"
-                    },
                     {
                         "access": "public",
                         "arguments": [

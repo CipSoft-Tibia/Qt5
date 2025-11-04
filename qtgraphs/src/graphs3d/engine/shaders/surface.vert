@@ -32,6 +32,6 @@ void MAIN()
 
     pos = VERTEX;
     vec4 pos = MODELVIEWPROJECTION_MATRIX * vec4(VERTEX, 1.0);
-    pos.z += 0.000001;
+    pos.z += 0.000002 * (order + 1);
     POSITION = pos;
 }

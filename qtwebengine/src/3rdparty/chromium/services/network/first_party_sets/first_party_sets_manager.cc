@@ -6,6 +6,7 @@
 
 #include <initializer_list>
 #include <memory>
+#include <optional>
 #include <set>
 #include <utility>
 
@@ -24,7 +25,6 @@
 #include "net/first_party_sets/first_party_set_entry.h"
 #include "net/first_party_sets/first_party_set_metadata.h"
 #include "net/first_party_sets/global_first_party_sets.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 
 namespace network {
 
@@ -44,7 +44,7 @@ FirstPartySetsManager::~FirstPartySetsManager() {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
 }
 
-absl::optional<net::FirstPartySetMetadata>
+std::optional<net::FirstPartySetMetadata>
 FirstPartySetsManager::ComputeMetadata(
     const net::SchemefulSite& site,
     const net::SchemefulSite* top_frame_site,
@@ -59,8 +59,8 @@ FirstPartySetsManager::ComputeMetadata(
     EnqueuePendingQuery(base::BindOnce(
         &FirstPartySetsManager::ComputeMetadataAndInvoke,
         weak_factory_.GetWeakPtr(), site, base::OptionalFromPtr(top_frame_site),
-        fps_context_config.Clone(), std::move(callback), base::ElapsedTimer()));
-    return absl::nullopt;
+        fps_context_config.Clone(), std::move(callback)));
+    return std::nullopt;
   }
 
   return ComputeMetadataInternal(site, top_frame_site, fps_context_config);
@@ -68,15 +68,11 @@ FirstPartySetsManager::ComputeMetadata(
 
 void FirstPartySetsManager::ComputeMetadataAndInvoke(
     const net::SchemefulSite& site,
-    const absl::optional<net::SchemefulSite> top_frame_site,
+    const std::optional<net::SchemefulSite> top_frame_site,
     const net::FirstPartySetsContextConfig& fps_context_config,
-    base::OnceCallback<void(net::FirstPartySetMetadata)> callback,
-    base::ElapsedTimer timer) const {
+    base::OnceCallback<void(net::FirstPartySetMetadata)> callback) const {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   CHECK(sets_.has_value());
-
-  UMA_HISTOGRAM_TIMES("Cookie.FirstPartySets.EnqueueingDelay.ComputeMetadata2",
-                      timer.Elapsed());
 
   std::move(callback).Run(ComputeMetadataInternal(
       site, base::OptionalToPtr(top_frame_site), fps_context_config));
@@ -92,15 +88,15 @@ net::FirstPartySetMetadata FirstPartySetsManager::ComputeMetadataInternal(
   return sets_->ComputeMetadata(site, top_frame_site, fps_context_config);
 }
 
-absl::optional<net::FirstPartySetEntry> FirstPartySetsManager::FindEntry(
+std::optional<net::FirstPartySetEntry> FirstPartySetsManager::FindEntry(
     const net::SchemefulSite& site,
     const net::FirstPartySetsContextConfig& fps_context_config) const {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   CHECK(sets_.has_value());
   const base::ElapsedTimer timer;
 
-  absl::optional<net::FirstPartySetEntry> entry =
-      is_enabled() ? sets_->FindEntry(site, fps_context_config) : absl::nullopt;
+  std::optional<net::FirstPartySetEntry> entry =
+      is_enabled() ? sets_->FindEntry(site, fps_context_config) : std::nullopt;
 
   UMA_HISTOGRAM_CUSTOM_MICROSECONDS_TIMES(
       "Cookie.FirstPartySets.FindOwner.Latency", timer.Elapsed(),
@@ -108,7 +104,7 @@ absl::optional<net::FirstPartySetEntry> FirstPartySetsManager::FindEntry(
   return entry;
 }
 
-absl::optional<FirstPartySetsManager::EntriesResult>
+std::optional<FirstPartySetsManager::EntriesResult>
 FirstPartySetsManager::FindEntries(
     const base::flat_set<net::SchemefulSite>& sites,
     const net::FirstPartySetsContextConfig& fps_context_config,
@@ -119,11 +115,11 @@ FirstPartySetsManager::FindEntries(
     if (!wait_for_init_) {
       return FirstPartySetsManager::EntriesResult();
     }
-    EnqueuePendingQuery(base::BindOnce(
-        &FirstPartySetsManager::FindEntriesAndInvoke,
-        weak_factory_.GetWeakPtr(), sites, fps_context_config.Clone(),
-        std::move(callback), base::ElapsedTimer()));
-    return absl::nullopt;
+    EnqueuePendingQuery(
+        base::BindOnce(&FirstPartySetsManager::FindEntriesAndInvoke,
+                       weak_factory_.GetWeakPtr(), sites,
+                       fps_context_config.Clone(), std::move(callback)));
+    return std::nullopt;
   }
 
   return FindEntriesInternal(sites, fps_context_config);
@@ -132,13 +128,10 @@ FirstPartySetsManager::FindEntries(
 void FirstPartySetsManager::FindEntriesAndInvoke(
     const base::flat_set<net::SchemefulSite>& sites,
     const net::FirstPartySetsContextConfig& fps_context_config,
-    base::OnceCallback<void(FirstPartySetsManager::EntriesResult)> callback,
-    base::ElapsedTimer timer) const {
+    base::OnceCallback<void(FirstPartySetsManager::EntriesResult)> callback)
+    const {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   CHECK(sets_.has_value());
-
-  UMA_HISTOGRAM_TIMES("Cookie.FirstPartySets.EnqueueingDelay.FindOwners2",
-                      timer.Elapsed());
 
   std::move(callback).Run(FindEntriesInternal(sites, fps_context_config));
 }

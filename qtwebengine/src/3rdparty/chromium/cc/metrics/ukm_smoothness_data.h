@@ -5,6 +5,7 @@
 #ifndef CC_METRICS_UKM_SMOOTHNESS_DATA_H_
 #define CC_METRICS_UKM_SMOOTHNESS_DATA_H_
 
+#include "base/memory/shared_memory_safety_checker.h"
 #include "base/time/time.h"
 #include "cc/cc_export.h"
 #include "cc/metrics/shared_metrics_buffer.h"
@@ -48,5 +49,15 @@ struct CC_EXPORT UkmSmoothnessData {
 using UkmSmoothnessDataShared = SharedMetricsBuffer<UkmSmoothnessData>;
 
 }  // namespace cc
+
+#if defined(COMPILER_MSVC)
+namespace base::subtle {
+  template <>
+  struct SharedMemorySafetyChecker<cc::UkmSmoothnessDataShared> {
+    static constexpr bool kIsAllowed =
+        std::atomic<int32_t>::is_always_lock_free;
+  };
+}
+#endif
 
 #endif  // CC_METRICS_UKM_SMOOTHNESS_DATA_H_

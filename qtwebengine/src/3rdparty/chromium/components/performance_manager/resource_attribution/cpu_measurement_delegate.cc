@@ -9,14 +9,16 @@
 #include "base/process/process.h"
 #include "base/process/process_handle.h"
 #include "base/process/process_metrics.h"
+#include "base/types/expected.h"
 #include "build/build_config.h"
 #include "components/performance_manager/public/graph/process_node.h"
 #include "components/performance_manager/resource_attribution/cpu_measurement_monitor.h"
+#include "components/performance_manager/resource_attribution/performance_manager_aliases.h"
 #include "components/performance_manager/resource_attribution/query_scheduler.h"
 #include "content/public/browser/browser_child_process_host.h"
 #include "content/public/common/process_type.h"
 
-namespace performance_manager::resource_attribution {
+namespace resource_attribution {
 
 namespace {
 
@@ -27,7 +29,8 @@ class CPUMeasurementDelegateImpl final : public CPUMeasurementDelegate {
   explicit CPUMeasurementDelegateImpl(const ProcessNode* process_node);
   ~CPUMeasurementDelegateImpl() final = default;
 
-  base::TimeDelta GetCumulativeCPUUsage() final;
+  base::expected<base::TimeDelta, ProcessCPUUsageError> GetCumulativeCPUUsage()
+      final;
 
  private:
   std::unique_ptr<base::ProcessMetrics> process_metrics_;
@@ -44,12 +47,9 @@ CPUMeasurementDelegateImpl::CPUMeasurementDelegateImpl(
 #endif
 }
 
-base::TimeDelta CPUMeasurementDelegateImpl::GetCumulativeCPUUsage() {
-#if BUILDFLAG(IS_WIN)
-  return process_metrics_->GetPreciseCumulativeCPUUsage();
-#else
+base::expected<base::TimeDelta, CPUMeasurementDelegate::ProcessCPUUsageError>
+CPUMeasurementDelegateImpl::GetCumulativeCPUUsage() {
   return process_metrics_->GetCumulativeCPUUsage();
-#endif
 }
 
 // The default production factory for CPUMeasurementDelegateImpl objects.
@@ -107,4 +107,4 @@ CPUMeasurementDelegate::Factory* CPUMeasurementDelegate::GetDefaultFactory() {
   return default_factory.get();
 }
 
-}  // namespace performance_manager::resource_attribution
+}  // namespace resource_attribution

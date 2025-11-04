@@ -106,6 +106,7 @@ Item {
         userDefinedMesh: ":/customitem.mesh"
         visible: false
         rowColors: [rowColor1, rowColor2, rowColor3]
+        valueColoringEnabled: true
     }
 
     ItemModelBarDataProxy {
@@ -167,6 +168,7 @@ Item {
             compare(initial.type, Abstract3DSeries.SeriesType.Bar)
             compare(initial.userDefinedMesh, "")
             compare(initial.visible, true)
+            compare(initial.valueColoringEnabled, false)
         }
     }
 
@@ -197,6 +199,7 @@ Item {
             compare(initialized.singleHighlightGradient, gradient3)
             compare(initialized.userDefinedMesh, ":/customitem.mesh")
             compare(initialized.visible, false)
+            compare(initialized.valueColoringEnabled, true)
         }
     }
 
@@ -240,6 +243,7 @@ Item {
             change.singleHighlightGradient = gradient3
             change.userDefinedMesh = ":/customitem.mesh"
             change.visible = false
+            change.valueColoringEnabled = true
 
             compare(change.baseColor, "#0000ff")
             compare(change.baseGradient, gradient1)
@@ -255,6 +259,7 @@ Item {
             compare(change.singleHighlightGradient, gradient3)
             compare(change.userDefinedMesh, ":/customitem.mesh")
             compare(change.visible, false)
+            compare(change.valueColoringEnabled, true)
 
             compare(baseColorSpy.count, 1)
             compare(baseGradientSpy.count, 1)

@@ -7,11 +7,22 @@
 
 class Profile;
 
+namespace signin_metrics {
+enum class AccessPoint;
+}
+
 namespace signin {
 
-// Returns true if the sign in promo should be visible.
-// |profile| is the profile of the tab the promo would be shown on.
-bool ShouldShowPromo(Profile* profile);
+// Whether we should show the sync promo.
+bool ShouldShowSyncPromo(Profile& profile);
+
+// Whether we should show the sign in promo after data of the type
+// |signin_promo_type| was saved.
+bool ShouldShowSignInPromo(Profile& profile,
+                           signin_metrics::AccessPoint access_point);
+
+// Returns whether `access_point` has an equivalent autofill signin promo.
+bool IsAutofillSigninPromo(signin_metrics::AccessPoint access_point);
 
 }  // namespace signin
 

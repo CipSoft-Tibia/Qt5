@@ -16,8 +16,8 @@
 #include "core/fpdfapi/font/cpdf_cid2unicodemap.h"
 #include "core/fpdfapi/font/cpdf_cmap.h"
 #include "core/fpdfapi/parser/cpdf_document.h"
-#include "third_party/base/check.h"
-#include "third_party/base/containers/contains.h"
+#include "core/fxcrt/check.h"
+#include "core/fxcrt/containers/contains.h"
 
 namespace {
 
@@ -89,28 +89,22 @@ void CPDF_FontGlobals::Clear(CPDF_Document* pDoc) {
 }
 
 void CPDF_FontGlobals::LoadEmbeddedGB1CMaps() {
-  SetEmbeddedCharset(CIDSET_GB1, pdfium::make_span(fxcmap::kGB1_cmaps,
-                                                   fxcmap::kGB1_cmaps_size));
+  SetEmbeddedCharset(CIDSET_GB1, fxcmap::kGB1_cmaps_span);
   SetEmbeddedToUnicode(CIDSET_GB1, fxcmap::kGB1CID2Unicode_5);
 }
 
 void CPDF_FontGlobals::LoadEmbeddedCNS1CMaps() {
-  SetEmbeddedCharset(CIDSET_CNS1, pdfium::make_span(fxcmap::kCNS1_cmaps,
-                                                    fxcmap::kCNS1_cmaps_size));
+  SetEmbeddedCharset(CIDSET_CNS1, fxcmap::kCNS1_cmaps_span);
   SetEmbeddedToUnicode(CIDSET_CNS1, fxcmap::kCNS1CID2Unicode_5);
 }
 
 void CPDF_FontGlobals::LoadEmbeddedJapan1CMaps() {
-  SetEmbeddedCharset(
-      CIDSET_JAPAN1,
-      pdfium::make_span(fxcmap::kJapan1_cmaps, fxcmap::kJapan1_cmaps_size));
+  SetEmbeddedCharset(CIDSET_JAPAN1, fxcmap::kJapan1_cmaps_span);
   SetEmbeddedToUnicode(CIDSET_JAPAN1, fxcmap::kJapan1CID2Unicode_4);
 }
 
 void CPDF_FontGlobals::LoadEmbeddedKorea1CMaps() {
-  SetEmbeddedCharset(
-      CIDSET_KOREA1,
-      pdfium::make_span(fxcmap::kKorea1_cmaps, fxcmap::kKorea1_cmaps_size));
+  SetEmbeddedCharset(CIDSET_KOREA1, fxcmap::kKorea1_cmaps_span);
   SetEmbeddedToUnicode(CIDSET_KOREA1, fxcmap::kKorea1CID2Unicode_2);
 }
 

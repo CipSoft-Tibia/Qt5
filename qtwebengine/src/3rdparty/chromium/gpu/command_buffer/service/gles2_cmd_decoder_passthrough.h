@@ -9,9 +9,9 @@
 
 #include <algorithm>
 #include <memory>
+#include <optional>
 #include <vector>
 
-#include <optional>
 #include "base/containers/circular_deque.h"
 #include "base/containers/flat_map.h"
 #include "base/containers/flat_set.h"
@@ -28,7 +28,6 @@
 #include "gpu/command_buffer/service/context_group.h"
 #include "gpu/command_buffer/service/gles2_cmd_decoder.h"
 #include "gpu/command_buffer/service/logger.h"
-#include "gpu/command_buffer/service/mailbox_manager.h"
 #include "gpu/command_buffer/service/shared_context_state.h"
 #include "gpu/command_buffer/service/shared_image/shared_image_representation.h"
 #include "gpu/command_buffer/service/texture_manager.h"
@@ -37,10 +36,6 @@
 #include "ui/gl/gl_fence.h"
 #include "ui/gl/gl_surface.h"
 #include "ui/gl/gpu_switching_observer.h"
-
-#if !BUILDFLAG(IS_ANDROID)
-#include "gpu/command_buffer/service/passthrough_abstract_texture_impl.h"
-#endif
 
 namespace gl {
 class GLFence;
@@ -54,7 +49,6 @@ namespace gles2 {
 
 class ContextGroup;
 class GPUTracer;
-class PassthroughAbstractTextureImpl;
 class MultiDrawManager;
 class GLES2DecoderPassthroughImpl;
 class GLES2ExternalFramebuffer;
@@ -74,19 +68,6 @@ struct PassthroughResources {
 
   // api is null if we don't have a context (e.g. lost).
   void Destroy(gl::GLApi* api, gl::ProgressReporter* progress_reporter);
-
-#if !BUILDFLAG(IS_ANDROID)
-  // Resources stores a shared list of textures pending deletion.
-  // If we have don't context when this function is called, we can mark
-  // these textures as lost context and drop all references to them.
-  // NOTE: This functionality is exercised only when the decoder is asked to
-  // create textures via CreateAbstractTexture(), an API that does not exist on
-  // Android.
-  void DestroyPendingTextures(bool has_context);
-
-  // If there are any textures pending destruction.
-  bool HasTexturesPendingDestruction() const;
-#endif
 
   void SuspendSharedImageAccessIfNeeded();
   bool ResumeSharedImageAccessIfNeeded(gl::GLApi* api);
@@ -149,16 +130,6 @@ struct PassthroughResources {
   // TODO(ericrk): Remove this once TexturePassthrough holds a reference to
   // the GLTexturePassthroughImageRepresentation itself.
   base::flat_map<GLuint, SharedImageData> texture_shared_image_map;
-
-#if !BUILDFLAG(IS_ANDROID)
-  // A set of yet-to-be-deleted TexturePassthrough, which should be tossed
-  // whenever a context switch happens or the resources is destroyed.
-  // NOTE: The concept of "textures pending destruction" is relevant only when
-  // the decoder is asked to create textures via CreateAbstractTexture(), an API
-  // that does not exist on Android.
-  base::flat_set<scoped_refptr<TexturePassthrough>>
-      textures_pending_destruction;
-#endif
 
   // Mapping of client buffer IDs that are mapped to the shared memory used to
   // back the mapping so that it can be flushed when the buffer is unmapped
@@ -351,18 +322,6 @@ class GPU_GLES2_EXPORT GLES2DecoderPassthroughImpl
 
   ErrorState* GetErrorState() override;
 
-#if !BUILDFLAG(IS_ANDROID)
-  std::unique_ptr<AbstractTexture> CreateAbstractTexture(
-      unsigned target,
-      unsigned internal_format,
-      int width,
-      int height,
-      int depth,
-      int border,
-      unsigned format,
-      unsigned type) override;
-#endif
-
   void WaitForReadPixels(base::OnceClosure callback) override;
 
   // Returns true if the context was lost either by GL_ARB_robustness, forced
@@ -402,11 +361,6 @@ class GPU_GLES2_EXPORT GLES2DecoderPassthroughImpl
       override;
   void SetCopyTexImageBlitterForTest(
       CopyTexImageResourceManager* copy_tex_image_blit) override;
-
-#if !BUILDFLAG(IS_ANDROID)
-  void OnAbstractTextureDestroyed(PassthroughAbstractTextureImpl*,
-                                  scoped_refptr<TexturePassthrough>);
-#endif
 
   const FeatureInfo::FeatureFlags& features() const {
     return feature_info_->feature_flags();
@@ -523,12 +477,6 @@ class GPU_GLES2_EXPORT GLES2DecoderPassthroughImpl
 
   bool OnlyHasPendingProgramCompletionQueries();
 
-#if !BUILDFLAG(IS_ANDROID)
-  // A set of raw pointers to currently living PassthroughAbstractTextures
-  // which allow us to properly signal to them when we are destroyed.
-  base::flat_set<PassthroughAbstractTextureImpl*> abstract_textures_;
-#endif
-
   int commands_to_process_;
 
   DebugMarkerManager debug_marker_manager_;
@@ -554,31 +502,6 @@ class GPU_GLES2_EXPORT GLES2DecoderPassthroughImpl
 
   // A table of CommandInfo for all the commands.
   static const CommandInfo command_info[kNumCommands - kFirstGLES2Command];
-
-  // Creates lazily and holds a SharedContextState on a GLContext that is in the
-  // same share group as the command decoder's context. This is done so that
-  // skia operations can be performed on textures from the context and not worry
-  // about state tracking.
-  class LazySharedContextState {
-   public:
-    static std::unique_ptr<LazySharedContextState> Create(
-        GLES2DecoderPassthroughImpl* impl);
-
-    explicit LazySharedContextState(GLES2DecoderPassthroughImpl* impl);
-    ~LazySharedContextState();
-
-    SharedContextState* shared_context_state() {
-      return shared_context_state_.get();
-    }
-
-   private:
-    bool Initialize();
-
-    raw_ptr<GLES2DecoderPassthroughImpl> impl_ = nullptr;
-    scoped_refptr<SharedContextState> shared_context_state_;
-  };
-
-  std::unique_ptr<LazySharedContextState> lazy_context_;
 
   // The GLApi to make the gl calls on.
   raw_ptr<gl::GLApi> api_ = nullptr;
@@ -610,9 +533,6 @@ class GPU_GLES2_EXPORT GLES2DecoderPassthroughImpl
   ClientServiceMap<GLuint, GLuint> query_id_map_;
   ClientServiceMap<GLuint, GLuint> vertex_array_id_map_;
 
-  // Mailboxes
-  raw_ptr<MailboxManager> mailbox_manager_ = nullptr;
-
   std::unique_ptr<GpuFenceManager> gpu_fence_manager_;
 
   std::unique_ptr<MultiDrawManager> multi_draw_manager_;
@@ -628,8 +548,11 @@ class GPU_GLES2_EXPORT GLES2DecoderPassthroughImpl
     k2DMultisample = 4,
     kExternal = 5,
     kRectangle = 6,
+    kBuffer = 7,
+    kCubeMapArray = 8,
+    k2DMultisampleArray = 9,
 
-    kUnkown = 7,
+    kUnkown = 10,
     kCount = kUnkown,
   };
   static TextureTarget GLenumToTextureTarget(GLenum target);
@@ -645,12 +568,6 @@ class GPU_GLES2_EXPORT GLES2DecoderPassthroughImpl
     GLuint client_id = 0;
     scoped_refptr<TexturePassthrough> texture;
   };
-
-  // Tracked viewport and scissor state for surface offset
-  GLint viewport_[4] = {0, 0, 0, 0};
-  GLint scissor_[4] = {0, 0, 0, 0};
-  gfx::Vector2d GetSurfaceDrawOffset() const;
-  void ApplySurfaceDrawOffset();
 
   // Use a limit that is at least ANGLE's IMPLEMENTATION_MAX_ACTIVE_TEXTURES
   // constant
@@ -812,9 +729,33 @@ class GPU_GLES2_EXPORT GLES2DecoderPassthroughImpl
   // has, we need to start using the pixel local storage interrupt mechanism.
   bool has_activated_pixel_local_storage_ = false;
 
+  // Creates lazily and holds a SharedContextState on a GLContext that is in the
+  // same share group as the command decoder's context. This is done so that
+  // skia operations can be performed on textures from the context and not worry
+  // about state tracking.
+  class LazySharedContextState {
+   public:
+    static std::unique_ptr<LazySharedContextState> Create(
+        GLES2DecoderPassthroughImpl* impl);
+
+    explicit LazySharedContextState(GLES2DecoderPassthroughImpl* impl);
+    ~LazySharedContextState();
+
+    SharedContextState* shared_context_state() {
+      return shared_context_state_.get();
+    }
+
+   private:
+    bool Initialize();
+
+    raw_ptr<GLES2DecoderPassthroughImpl> impl_ = nullptr;
+    scoped_refptr<SharedContextState> shared_context_state_;
+  };
+
+  std::unique_ptr<LazySharedContextState> lazy_context_;
   // Tracing
   std::unique_ptr<GPUTracer> gpu_tracer_;
-  const unsigned char* gpu_decoder_category_ = nullptr;
+  raw_ptr<const unsigned char> gpu_decoder_category_ = nullptr;
   int gpu_trace_level_;
   bool gpu_trace_commands_;
   bool gpu_debug_commands_;

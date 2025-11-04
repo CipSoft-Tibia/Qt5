@@ -22,9 +22,11 @@
 
 #include "../../../../manual/qstorageinfo/printvolumes.cpp"
 
-#ifdef Q_OS_LINUX
+#if defined(Q_OS_LINUX) && defined(QT_BUILD_INTERNAL)
 #  include "../../../../../src/corelib/io/qstorageinfo_linux_p.h"
 #endif
+
+using namespace Qt::StringLiterals;
 
 class tst_QStorageInfo : public QObject
 {
@@ -139,8 +141,10 @@ void tst_QStorageInfo::root()
     QVERIFY(storage.isReady());
     QCOMPARE(storage.rootPath(), QDir::rootPath());
     QVERIFY(storage.isRoot());
+#ifndef Q_OS_WASM
     QVERIFY(!storage.device().isEmpty());
     QVERIFY(!storage.fileSystemType().isEmpty());
+#endif
 #ifndef Q_OS_HAIKU
     QCOMPARE_GE(storage.bytesTotal(), 0);
     QCOMPARE_GE(storage.bytesFree(), 0);
@@ -151,6 +155,9 @@ void tst_QStorageInfo::root()
 void tst_QStorageInfo::currentStorage()
 {
     QString appPath = QCoreApplication::applicationFilePath();
+    if (appPath.isEmpty())
+        QSKIP("No applicationFilePath(), cannot test");
+
     QStorageInfo storage(appPath);
     QVERIFY(storage.isValid());
     QVERIFY(storage.isReady());
@@ -310,7 +317,10 @@ void tst_QStorageInfo::freeSpaceUpdate()
     QCOMPARE(free, storage2.bytesFree());
     storage2.refresh();
     QCOMPARE(storage1, storage2);
+
+#ifndef Q_OS_WASM
     QCOMPARE_NE(free, storage2.bytesFree());
+#endif
 }
 
 #if defined(Q_OS_LINUX) && defined(QT_BUILD_INTERNAL)

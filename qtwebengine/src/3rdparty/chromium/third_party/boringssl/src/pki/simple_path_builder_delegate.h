@@ -8,12 +8,12 @@
 #include <stddef.h>
 
 #include <openssl/base.h>
+#include <openssl/pki/signature_verify_cache.h>
 
 #include "path_builder.h"
 #include "signature_algorithm.h"
-#include "signature_verify_cache.h"
 
-namespace bssl {
+BSSL_NAMESPACE_BEGIN
 
 class CertErrors;
 
@@ -70,11 +70,14 @@ class OPENSSL_EXPORT SimplePathBuilderDelegate
   // No-op implementation.
   void DebugLog(std::string_view msg) override;
 
+  // No-op implementation.
+  bool AcceptPreCertificates() override;
+
  private:
   const size_t min_rsa_modulus_length_bits_;
   const DigestPolicy digest_policy_;
 };
 
-}  // namespace bssl
+BSSL_NAMESPACE_END
 
 #endif  // BSSL_PKI_SIMPLE_PATH_BUILDER_DELEGATE_H_

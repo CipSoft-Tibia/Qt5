@@ -18,8 +18,8 @@
 #include "src/gpu/graphite/Log.h"
 #include "src/gpu/graphite/RecordingPriv.h"
 #include "src/gpu/graphite/Surface_Graphite.h"
-#include "src/gpu/graphite/Task.h"
 #include "src/gpu/graphite/UploadBufferManager.h"
+#include "src/gpu/graphite/task/Task.h"
 
 namespace skgpu::graphite {
 
@@ -45,7 +45,7 @@ QueueManager::~QueueManager() {
 
 bool QueueManager::setupCommandBuffer(ResourceProvider* resourceProvider) {
     if (!fCurrentCommandBuffer) {
-        if (fAvailableCommandBuffers.size()) {
+        if (!fAvailableCommandBuffers.empty()) {
             fCurrentCommandBuffer = std::move(fAvailableCommandBuffers.back());
             fAvailableCommandBuffers.pop_back();
             if (!fCurrentCommandBuffer->setNewCommandBufferResources()) {
@@ -84,6 +84,9 @@ bool QueueManager::addRecording(const InsertRecordingInfo& info, Context* contex
         uint32_t* recordingID = fLastAddedRecordingIDs.find(info.fRecording->priv().recorderID());
         if (recordingID &&
             info.fRecording->priv().uniqueID() != *recordingID+1) {
+            if (callback) {
+                callback->setFailureResult();
+            }
             SKGPU_LOG_E("Recordings are expected to be replayed in order");
             return false;
         }
@@ -92,11 +95,6 @@ bool QueueManager::addRecording(const InsertRecordingInfo& info, Context* contex
         fLastAddedRecordingIDs.set(info.fRecording->priv().recorderID(),
                                    info.fRecording->priv().uniqueID());
     }
-
-// Merge error, remove later
-//    // Note the new Recording ID.
-//    fLastAddedRecordingIDs.set(info.fRecording->priv().recorderID(),
-//                               info.fRecording->priv().uniqueID());
 
     if (info.fTargetSurface &&
         !static_cast<const SkSurface_Base*>(info.fTargetSurface)->isGraphiteBacked()) {
@@ -182,7 +180,7 @@ bool QueueManager::addTask(Task* task,
         return false;
     }
 
-    if (!task->addCommands(context, fCurrentCommandBuffer.get(), {})) {
+    if (task->addCommands(context, fCurrentCommandBuffer.get(), {}) == Task::Status::kFail) {
         SKGPU_LOG_E("Adding Task commands to the CommandBuffer has failed");
         return false;
     }
@@ -250,7 +248,7 @@ void QueueManager::checkForFinishedWork(SyncToCpu sync) {
         // wait for the last submission to finish
         OutstandingSubmission* back = (OutstandingSubmission*)fOutstandingSubmissions.back();
         if (back) {
-            (*back)->waitUntilFinished();
+            (*back)->waitUntilFinished(fSharedContext);
         }
     }
 
@@ -260,7 +258,7 @@ void QueueManager::checkForFinishedWork(SyncToCpu sync) {
     // Repeat till we find a submission that has not finished yet (and all others afterwards are
     // also guaranteed to not have finished).
     OutstandingSubmission* front = (OutstandingSubmission*)fOutstandingSubmissions.front();
-    while (front && (*front)->isFinished()) {
+    while (front && (*front)->isFinished(fSharedContext)) {
         // Make sure we remove before deleting as deletion might try to kick off another submit
         // (though hopefully *not* in Graphite).
         fOutstandingSubmissions.pop_front();

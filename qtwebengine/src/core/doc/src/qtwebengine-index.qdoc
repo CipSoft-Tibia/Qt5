@@ -9,6 +9,10 @@
 
     \QWE provides functionality for rendering regions of dynamic web content.
 
+    \note By default, Qt WebEngine depends on the \l {Qt Positioning} and
+    \l {Qt WebChannel} optional modules, but can be built without them. Be sure to
+    install these add-ons when using the online installer.
+
     The functionality in \QWE is divided into the following modules:
 
     \annotatedlist qtwebengine-modules
@@ -23,8 +27,8 @@
         \li \l{Qt WebEngine Debugging and Profiling}
         \li \l{Deploying Qt WebEngine Applications}
         \li \l{Porting from Qt WebKit to Qt WebEngine}
+        \li \l{Qt WebEngine Security Considerations}
     \endlist
-
 
     \section1 Module Evolution
 

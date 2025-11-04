@@ -478,7 +478,7 @@ void VideoRendererImpl::OnTimeStopped() {
 }
 
 void VideoRendererImpl::SetLatencyHint(
-    absl::optional<base::TimeDelta> latency_hint) {
+    std::optional<base::TimeDelta> latency_hint) {
   base::AutoLock auto_lock(lock_);
 
   latency_hint_ = latency_hint;
@@ -666,7 +666,7 @@ void VideoRendererImpl::FrameReady(VideoDecoderStream::ReadResult result) {
   if (!sink_started_ && !painted_first_frame_ && algorithm_->frames_queued()) {
     if (received_end_of_stream_ ||
         (algorithm_->effective_frames_queued() && has_best_first_frame)) {
-      PaintFirstFrame();
+      PaintFirstFrame_Locked();
     } else if (cant_read) {
       // `cant_read` isn't always reliable, so only paint after 250ms if we
       // haven't gotten anything better. This resets for each frame received. We
@@ -855,7 +855,7 @@ void VideoRendererImpl::ReportFrameRateIfNeeded_Locked() {
   DCHECK(task_runner_->RunsTasksInCurrentSequence());
   lock_.AssertAcquired();
 
-  absl::optional<int> current_fps = fps_estimator_.ComputeFPS();
+  std::optional<int> current_fps = fps_estimator_.ComputeFPS();
   if (last_reported_fps_ && current_fps &&
       *last_reported_fps_ == *current_fps) {
     // Reported an FPS before, and it hasn't changed.
@@ -1067,7 +1067,14 @@ void VideoRendererImpl::AttemptReadAndCheckForMetadataChanges(
 }
 
 void VideoRendererImpl::PaintFirstFrame() {
+  base::AutoLock auto_lock(lock_);
+  PaintFirstFrame_Locked();
+}
+
+void VideoRendererImpl::PaintFirstFrame_Locked() {
   DCHECK(task_runner_->RunsTasksInCurrentSequence());
+  lock_.AssertAcquired();
+
   if (painted_first_frame_ || sink_started_) {
     return;
   }
@@ -1077,8 +1084,8 @@ void VideoRendererImpl::PaintFirstFrame() {
   auto first_frame =
       algorithm_->Render(base::TimeTicks(), base::TimeTicks(), nullptr);
   DCHECK(first_frame);
-  CheckForMetadataChanges(first_frame->format(), first_frame->natural_size());
   sink_->PaintSingleFrame(first_frame);
+  CheckForMetadataChanges(first_frame->format(), first_frame->natural_size());
   painted_first_frame_ = true;
   paint_first_frame_cb_.Cancel();
 }

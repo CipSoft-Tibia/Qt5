@@ -28,6 +28,7 @@ export type duration = bigint;
 // The conversion factor for converting between different time units.
 const TIME_UNITS_PER_SEC = 1e9;
 const TIME_UNITS_PER_MILLISEC = 1e6;
+const TIME_UNITS_PER_MICROSEC = 1e3;
 
 export class Time {
   // Negative time is never found in a trace - so -1 is commonly used as a flag
@@ -54,9 +55,9 @@ export class Time {
   // value and it's decayed to a |bigint| consider using the static math methods
   // in |Time| instead, as they will do the appropriate casting for you.
   static fromRaw(v: bigint): time;
-  static fromRaw(v?: bigint): time|undefined;
-  static fromRaw(v?: bigint): time|undefined {
-    return v as (time | undefined);
+  static fromRaw(v?: bigint): time | undefined;
+  static fromRaw(v?: bigint): time | undefined {
+    return v as time | undefined;
   }
 
   // Convert seconds (number) to a time value.
@@ -87,6 +88,20 @@ export class Time {
     return Number(t) / TIME_UNITS_PER_MILLISEC;
   }
 
+  // Convert microseconds (number) to a time value.
+  // Note: number -> BigInt conversion is relatively slow.
+  static fromMicros(millis: number): time {
+    return Time.fromRaw(BigInt(Math.floor(millis * TIME_UNITS_PER_MICROSEC)));
+  }
+
+  // Convert time value to microseconds and return as a number (i.e. float).
+  // Warning: This function is lossy, i.e. precision is lost when converting
+  // BigInt -> number.
+  // Note: BigInt -> number conversion is relatively slow.
+  static toMicros(t: time): number {
+    return Number(t) / TIME_UNITS_PER_MICROSEC;
+  }
+
   // Convert a Date object to a time value, given an offset from the unix epoch.
   // Note: number -> BigInt conversion is relatively slow.
   static fromDate(d: Date, offset: duration): time {
@@ -108,11 +123,9 @@ export class Time {
   // Find the closest previous midnight for a given time value.
   static getLatestMidnight(time: time, offset: duration): time {
     const date = Time.toDate(time, offset);
-    const floorDay = new Date(Date.UTC(
-        date.getUTCFullYear(),
-        date.getUTCMonth(),
-        date.getUTCDate(),
-        ));
+    const floorDay = new Date(
+      Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()),
+    );
 
     return Time.fromDate(floorDay, offset);
   }
@@ -149,9 +162,16 @@ export class Time {
     return Time.fromRaw(BigintMath.quant(a, b));
   }
 
-  // Format time as seconds.
   static formatSeconds(time: time): string {
     return Time.toSeconds(time).toString() + ' s';
+  }
+
+  static formatMilliseconds(time: time): string {
+    return Time.toMillis(time).toString() + ' ms';
+  }
+
+  static formatMicroseconds(time: time): string {
+    return Time.toMicros(time).toString() + ' us';
   }
 
   static toTimecode(time: time): Timecode {
@@ -178,9 +198,9 @@ export class Duration {
   // value and it's decayed to a |bigint| consider using the static math methods
   // in |duration| instead, as they will do the appropriate casting for you.
   static fromRaw(v: bigint): duration;
-  static fromRaw(v?: bigint): duration|undefined;
-  static fromRaw(v?: bigint): duration|undefined {
-    return v as (duration | undefined);
+  static fromRaw(v?: bigint): duration | undefined;
+  static fromRaw(v?: bigint): duration | undefined {
+    return v as duration | undefined;
   }
 
   static min(a: duration, b: duration): duration {
@@ -201,6 +221,18 @@ export class Duration {
     return Number(d) / TIME_UNITS_PER_SEC;
   }
 
+  // Convert time to seconds as a number.
+  // Use this function with caution. It loses precision and is slow.
+  static toMilliseconds(d: duration) {
+    return Number(d) / TIME_UNITS_PER_MILLISEC;
+  }
+
+  // Convert time to seconds as a number.
+  // Use this function with caution. It loses precision and is slow.
+  static toMicroSeconds(d: duration) {
+    return Number(d) / TIME_UNITS_PER_MICROSEC;
+  }
+
   // Print duration as as human readable string - i.e. to only a handful of
   // significant figues.
   // Use this when readability is more desireable than precision.
@@ -209,7 +241,7 @@ export class Duration {
   //           123,123,123,123,123 -> 34h 12m
   //           1,000,000,023 -> 1 s
   //           1,230,000,023 -> 1.2 s
-  static humanise(dur: duration) {
+  static humanise(dur: duration): string {
     const sec = Duration.toSeconds(dur);
     const units = ['s', 'ms', 'us', 'ns'];
     const sign = Math.sign(sec);
@@ -247,6 +279,14 @@ export class Duration {
   static formatSeconds(dur: duration): string {
     return Duration.toSeconds(dur).toString() + ' s';
   }
+
+  static formatMilliseconds(dur: duration): string {
+    return Duration.toMilliseconds(dur).toString() + ' s';
+  }
+
+  static formatMicroseconds(dur: duration): string {
+    return Duration.toMicroSeconds(dur).toString() + ' s';
+  }
 }
 
 // This class takes a time and converts it to a set of strings representing a
@@ -267,7 +307,7 @@ export class Timecode {
 
     const absTime = BigintMath.abs(time);
 
-    const days = (absTime / 86_400_000_000_000n);
+    const days = absTime / 86_400_000_000_000n;
     const hours = (absTime / 3_600_000_000_000n) % 24n;
     const minutes = (absTime / 60_000_000_000n) % 60n;
     const seconds = (absTime / 1_000_000_000n) % 60n;
@@ -302,40 +342,24 @@ export class Timecode {
   }
 }
 
-
 export function currentDateHourAndMinute(): string {
   const date = new Date();
-  return `${date.toISOString().substr(0, 10)}-${date.getHours()}-${
-      date.getMinutes()}`;
+  return `${date
+    .toISOString()
+    .substr(0, 10)}-${date.getHours()}-${date.getMinutes()}`;
 }
 
-// Create a Time value from an arbitrary SQL value.
-
-
-// Represents a half-open interval of time in the form [start, end).
-// E.g. interval contains all time values which are >= start and < end.
-export interface Span<TimeT, DurationT = TimeT> {
-  get start(): TimeT;
-  get end(): TimeT;
-  get duration(): DurationT;
-  get midpoint(): TimeT;
-  contains(span: TimeT|Span<TimeT, DurationT>): boolean;
-  intersectsInterval(span: Span<TimeT, DurationT>): boolean;
-  intersects(a: TimeT, b: TimeT): boolean;
-  equals(span: Span<TimeT, DurationT>): boolean;
-  add(offset: DurationT): Span<TimeT, DurationT>;
-  pad(padding: DurationT): Span<TimeT, DurationT>;
-}
-
-export class TimeSpan implements Span<time, duration> {
+export class TimeSpan {
   static readonly ZERO = new TimeSpan(Time.ZERO, Time.ZERO);
+
   readonly start: time;
   readonly end: time;
 
   constructor(start: time, end: time) {
     assertTrue(
-        start <= end,
-        `Span start [${start}] cannot be greater than end [${end}]`);
+      start <= end,
+      `Span start [${start}] cannot be greater than end [${end}]`,
+    );
     this.start = start;
     this.end = end;
   }
@@ -352,33 +376,31 @@ export class TimeSpan implements Span<time, duration> {
     return Time.fromRaw((this.start + this.end) / 2n);
   }
 
-  contains(x: time|Span<time, duration>): boolean {
-    if (typeof x === 'bigint') {
-      return this.start <= x && x < this.end;
-    } else {
-      return this.start <= x.start && x.end <= this.end;
-    }
+  contains(t: time): boolean {
+    return this.start <= t && t < this.end;
   }
 
-  intersectsInterval(span: Span<time, duration>): boolean {
-    return !(span.end <= this.start || span.start >= this.end);
+  containsSpan(start: time, end: time): boolean {
+    return this.start <= start && end <= this.end;
   }
 
-  intersects(start: time, end: time): boolean {
+  overlaps(start: time, end: time): boolean {
     return !(end <= this.start || start >= this.end);
   }
 
-  equals(span: Span<time, duration>): boolean {
+  equals(span: TimeSpan): boolean {
     return this.start === span.start && this.end === span.end;
   }
 
-  add(x: duration): Span<time, duration> {
+  translate(x: duration): TimeSpan {
     return new TimeSpan(Time.add(this.start, x), Time.add(this.end, x));
   }
 
-  pad(padding: duration): Span<time, duration> {
+  pad(padding: duration): TimeSpan {
     return new TimeSpan(
-        Time.sub(this.start, padding), Time.add(this.end, padding));
+      Time.sub(this.start, padding),
+      Time.add(this.end, padding),
+    );
   }
 }
 

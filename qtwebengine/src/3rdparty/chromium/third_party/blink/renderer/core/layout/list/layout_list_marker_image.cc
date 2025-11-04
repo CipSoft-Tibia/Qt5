@@ -23,7 +23,7 @@ LayoutListMarkerImage* LayoutListMarkerImage::CreateAnonymous(
 
 gfx::SizeF LayoutListMarkerImage::DefaultSize() const {
   NOT_DESTROYED();
-  const SimpleFontData* font_data = Style()->GetFont().PrimaryFont();
+  const SimpleFontData* font_data = Style()->GetFont()->PrimaryFont();
   DCHECK(font_data);
   if (!font_data)
     return gfx::SizeF(kDefaultWidth, kDefaultHeight);

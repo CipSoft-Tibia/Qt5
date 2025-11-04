@@ -7,6 +7,7 @@
 #ifndef XFA_FGAS_FONT_CFGAS_FONTMGR_H_
 #define XFA_FGAS_FONT_CFGAS_FONTMGR_H_
 
+#include <array>
 #include <deque>
 #include <map>
 #include <memory>
@@ -14,6 +15,7 @@
 #include <vector>
 
 #include "build/build_config.h"
+#include "core/fxcrt/compiler_specific.h"
 #include "core/fxcrt/fx_codepage_forward.h"
 #include "core/fxcrt/retain_ptr.h"
 #include "core/fxcrt/widestring.h"
@@ -24,8 +26,8 @@ class IFX_SeekableReadStream;
 
 #if BUILDFLAG(IS_WIN)
 struct FX_FONTSIGNATURE {
-  uint32_t fsUsb[4];
-  uint32_t fsCsb[2];
+  std::array<uint32_t, 4> fsUsb;
+  std::array<uint32_t, 2> fsCsb;
 };
 
 inline bool operator==(const FX_FONTSIGNATURE& left,
@@ -61,8 +63,8 @@ class CFGAS_FontDescriptor {
   uint32_t m_dwFontStyles = 0;
   WideString m_wsFaceName;
   std::vector<WideString> m_wsFamilyNames;
-  uint32_t m_dwUsb[4] = {};
-  uint32_t m_dwCsb[2] = {};
+  std::array<uint32_t, 4> m_dwUsb = {};
+  std::array<uint32_t, 2> m_dwCsb = {};
 };
 
 struct CFGAS_FontDescriptorInfo {

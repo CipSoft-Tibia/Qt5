@@ -193,7 +193,9 @@ public:
 
 QWaylandGLContext::QWaylandGLContext(EGLDisplay eglDisplay, QWaylandDisplay *display,
                                      const QSurfaceFormat &fmt, QPlatformOpenGLContext *share)
-    : QEGLPlatformContext(fmt, share, eglDisplay), m_display(display)
+    : QEGLPlatformContext(fmt, share, eglDisplay)
+    , m_display(display)
+    , m_decorationsContext(EGL_NO_CONTEXT)
 {
     m_reconnectionWatcher = QObject::connect(m_display, &QWaylandDisplay::connected,
                                              m_display, [this] { invalidateContext(); });
@@ -212,13 +214,15 @@ QWaylandGLContext::QWaylandGLContext(EGLDisplay eglDisplay, QWaylandDisplay *dis
         break;
     }
 
-    // Create an EGL context for the decorations blitter. By using a dedicated context we don't need to make sure to not
-    // change the context state and we also use OpenGL ES 2 API independently to what the app is using to draw.
-    QList<EGLint> eglDecorationsContextAttrs = { EGL_CONTEXT_CLIENT_VERSION, 2, EGL_NONE };
-    m_decorationsContext = eglCreateContext(eglDisplay, eglConfig(), eglContext(),
-                                            eglDecorationsContextAttrs.constData());
-    if (m_decorationsContext == EGL_NO_CONTEXT)
-        qWarning("QWaylandGLContext: Failed to create the decorations EGLContext. Decorations will not be drawn.");
+    if (m_display->supportsWindowDecoration()) {
+        // Create an EGL context for the decorations blitter. By using a dedicated context we are free to
+        // change its state and we also use OpenGL ES 2 API independently to what the app is using to draw.
+        QList<EGLint> eglDecorationsContextAttrs = { EGL_CONTEXT_CLIENT_VERSION, 2, EGL_NONE };
+        m_decorationsContext = eglCreateContext(eglDisplay, eglConfig(), eglContext(),
+                                                eglDecorationsContextAttrs.constData());
+        if (m_decorationsContext == EGL_NO_CONTEXT)
+            qWarning("QWaylandGLContext: Failed to create the decorations EGLContext. Decorations will not be drawn.");
+    }
 
     EGLint a = EGL_MIN_SWAP_INTERVAL;
     EGLint b = EGL_MAX_SWAP_INTERVAL;
@@ -342,9 +346,6 @@ bool QWaylandGLContext::makeCurrent(QPlatformSurface *surface)
         return true;
     }
 
-    if (m_currentWindow->isExposed())
-        m_currentWindow->setCanResize(false);
-
     if (eglSurface == EGL_NO_SURFACE) {
         m_currentWindow->updateSurface(true);
         eglSurface = m_currentWindow->eglSurface();
@@ -352,7 +353,6 @@ bool QWaylandGLContext::makeCurrent(QPlatformSurface *surface)
 
     if (!eglMakeCurrent(eglDisplay(), eglSurface, eglSurface, eglContext())) {
         qWarning("QWaylandGLContext::makeCurrent: eglError: %#x, this: %p \n", eglGetError(), this);
-        m_currentWindow->setCanResize(true);
         return false;
     }
 
@@ -405,8 +405,6 @@ void QWaylandGLContext::swapBuffers(QPlatformSurface *surface)
     window->handleUpdate();
     if (!eglSwapBuffers(eglDisplay(), eglSurface))
         qCWarning(lcQpaWayland, "eglSwapBuffers failed with %#x, surface: %p", eglGetError(), eglSurface);
-
-    window->setCanResize(true);
 }
 
 GLuint QWaylandGLContext::defaultFramebufferObject(QPlatformSurface *surface) const

@@ -13,16 +13,14 @@
 // limitations under the License.
 
 import m from 'mithril';
-
 import {raf} from '../core/raf_scheduler';
-import {EngineProxy} from '../trace_processor/engine';
+import {Engine} from '../trace_processor/engine';
 import {Editor} from '../widgets/editor';
 import {VegaView} from '../widgets/vega_view';
-
 import {globals} from './globals';
 import {createPage} from './pages';
 
-function getEngine(): EngineProxy|undefined {
+function getEngine(): Engine | undefined {
   const engineId = globals.getCurrentEngine()?.id;
   if (engineId === undefined) {
     return undefined;
@@ -31,9 +29,8 @@ function getEngine(): EngineProxy|undefined {
   return engine;
 }
 
-
 let SPEC = '';
-let ENGINE: EngineProxy|undefined = undefined;
+let ENGINE: Engine | undefined = undefined;
 
 export const VizPage = createPage({
   oncreate() {
@@ -42,18 +39,18 @@ export const VizPage = createPage({
 
   view() {
     return m(
-        '.viz-page',
-        m(VegaView, {
-          spec: SPEC,
-          engine: ENGINE,
-          data: {},
-        }),
-        m(Editor, {
-          onUpdate: (text: string) => {
-            SPEC = text;
-            raf.scheduleFullRedraw();
-          },
-        }),
+      '.viz-page',
+      m(VegaView, {
+        spec: SPEC,
+        engine: ENGINE,
+        data: {},
+      }),
+      m(Editor, {
+        onUpdate: (text: string) => {
+          SPEC = text;
+          raf.scheduleFullRedraw();
+        },
+      }),
     );
   },
 });

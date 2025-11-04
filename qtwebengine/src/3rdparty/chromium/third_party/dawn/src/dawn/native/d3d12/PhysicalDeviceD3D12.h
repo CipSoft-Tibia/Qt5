@@ -40,12 +40,16 @@ class Backend;
 
 class PhysicalDevice : public d3d::PhysicalDevice {
   public:
-    PhysicalDevice(Backend* backend, ComPtr<IDXGIAdapter3> hardwareAdapter);
+    PhysicalDevice(Backend* backend, ComPtr<IDXGIAdapter4> hardwareAdapter);
     ~PhysicalDevice() override;
 
     // PhysicalDeviceBase Implementation
     bool SupportsExternalImages() const override;
     bool SupportsFeatureLevel(FeatureLevel featureLevel) const override;
+
+    // Get the applied shader model version under the given adapter or device toggle state, which
+    // may be lower than the shader model reported in mDeviceInfo.
+    uint32_t GetAppliedShaderModelUnderToggles(const TogglesState& toggles) const;
 
     const D3D12DeviceInfo& GetDeviceInfo() const;
     Backend* GetBackend() const;
@@ -54,12 +58,16 @@ class PhysicalDevice : public d3d::PhysicalDevice {
   private:
     using Base = d3d::PhysicalDevice;
 
-    void SetupBackendAdapterToggles(TogglesState* adapterToggles) const override;
-    void SetupBackendDeviceToggles(TogglesState* deviceToggles) const override;
+    void SetupBackendAdapterToggles(dawn::platform::Platform* platform,
+                                    TogglesState* adapterToggles) const override;
+    void SetupBackendDeviceToggles(dawn::platform::Platform* platform,
+                                   TogglesState* deviceToggles) const override;
 
-    ResultOrError<Ref<DeviceBase>> CreateDeviceImpl(AdapterBase* adapter,
-                                                    const UnpackedPtr<DeviceDescriptor>& descriptor,
-                                                    const TogglesState& deviceToggles) override;
+    ResultOrError<Ref<DeviceBase>> CreateDeviceImpl(
+        AdapterBase* adapter,
+        const UnpackedPtr<DeviceDescriptor>& descriptor,
+        const TogglesState& deviceToggles,
+        Ref<DeviceBase::DeviceLostEvent>&& lostEvent) override;
 
     MaybeError ResetInternalDeviceForTestingImpl() override;
 
@@ -76,7 +84,7 @@ class PhysicalDevice : public d3d::PhysicalDevice {
     MaybeError InitializeDebugLayerFilters();
     void CleanUpDebugLayerFilters();
 
-    void PopulateBackendProperties(UnpackedPtr<AdapterProperties>& properties) const override;
+    void PopulateBackendProperties(UnpackedPtr<AdapterInfo>& info) const override;
 
     ComPtr<ID3D12Device> mD3d12Device;
 

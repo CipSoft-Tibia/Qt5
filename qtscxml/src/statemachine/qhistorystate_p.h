@@ -22,6 +22,7 @@
 #include <QtStateMachine/qabstracttransition.h>
 #include <QtStateMachine/qhistorystate.h>
 #include <QtCore/private/qproperty_p.h>
+#include <private/qstatemachineglobal_p.h>
 
 QT_REQUIRE_CONFIG(statemachine);
 

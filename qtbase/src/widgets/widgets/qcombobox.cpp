@@ -348,6 +348,12 @@ QSize QComboBoxPrivate::recomputeSizeHint(QSize &sh) const
 {
     Q_Q(const QComboBox);
     if (!sh.isValid()) {
+        if (q->itemDelegate() && q->labelDrawingMode() == QComboBox::LabelDrawingMode::UseDelegate) {
+            QStyleOptionViewItem option;
+            initViewItemOption(&option);
+            sh = q->itemDelegate()->sizeHint(option, currentIndex);
+        }
+
         bool hasIcon = sizeAdjustPolicy == QComboBox::AdjustToMinimumContentsLengthWithIcon;
         int count = q->count();
         QSize iconSize = q->iconSize();
@@ -378,8 +384,19 @@ QSize QComboBoxPrivate::recomputeSizeHint(QSize &sh) const
             for (int i = 0; i < count && !hasIcon; ++i)
                 hasIcon = !q->itemIcon(i).isNull();
         }
-        if (minimumContentsLength > 0)
-            sh.setWidth(qMax(sh.width(), minimumContentsLength * fm.horizontalAdvance(u'X') + (hasIcon ? iconSize.width() + 4 : 0)));
+        if (minimumContentsLength > 0) {
+            auto r = qint64{minimumContentsLength} * fm.horizontalAdvance(u'X');
+            if (hasIcon)
+                r += iconSize.width() + 4;
+            if (r <= QWIDGETSIZE_MAX) {
+                sh.setWidth(qMax(sh.width(), int(r)));
+            } else {
+                qWarning("QComboBox: cannot take minimumContentsLength %d into account for sizeHint(), "
+                         "since it causes the widget to be wider than QWIDGETSIZE_MAX. "
+                         "Consider setting it to a less extreme value.",
+                         minimumContentsLength);
+            }
+        }
         if (!placeholderText.isEmpty())
             sh.setWidth(qMax(sh.width(), fm.boundingRect(placeholderText).width()));
 
@@ -1259,6 +1276,16 @@ void QComboBox::initStyleOption(QStyleOptionComboBox *option) const
         option->state |= QStyle::State_On;
 }
 
+void QComboBoxPrivate::initViewItemOption(QStyleOptionViewItem *option) const
+{
+    Q_Q(const QComboBox);
+    q->view()->initViewItemOption(option);
+    option->widget = q;
+    option->index = currentIndex;
+    option->text = q->currentText();
+    option->icon = itemIcon(currentIndex);
+}
+
 void QComboBoxPrivate::updateLineEditGeometry()
 {
     if (!lineEdit)
@@ -1456,8 +1483,14 @@ QComboBox::~QComboBox()
         ; // objects can't throw in destructor
     }
 
-    // Dispose of container before QComboBox goes away
-    delete d->container;
+    // Dispose of container before QComboBox goes away. Close explicitly so that
+    // update cycles back into the combobox (e.g. from accessibility when the
+    // active window changes) are completed first.
+    if (d->container) {
+        d->container->close();
+        delete d->container;
+        d->container = nullptr;
+    }
 }
 
 /*!
@@ -2881,7 +2914,7 @@ void QComboBox::hidePopup()
     QItemSelectionModel *selectionModel = d->container->itemView()
                                         ? d->container->itemView()->selectionModel() : nullptr;
     // Flash selected/triggered item (if any) before hiding the popup.
-    if (style()->styleHint(QStyle::SH_Menu_FlashTriggeredItem) &&
+    if (style()->styleHint(QStyle::SH_Menu_FlashTriggeredItem, nullptr, this) &&
         selectionModel && selectionModel->hasSelection()) {
         const QItemSelection selection = selectionModel->selection();
 
@@ -3067,6 +3100,7 @@ void QComboBox::resizeEvent(QResizeEvent *)
 */
 void QComboBox::paintEvent(QPaintEvent *)
 {
+    Q_D(QComboBox);
     QStylePainter painter(this);
     painter.setPen(palette().color(QPalette::Text));
 
@@ -3080,8 +3114,17 @@ void QComboBox::paintEvent(QPaintEvent *)
         opt.currentText = placeholderText();
     }
 
-    // draw the icon and text
-    painter.drawControl(QStyle::CE_ComboBoxLabel, opt);
+    // draw contents
+    if (itemDelegate() && labelDrawingMode() == QComboBox::LabelDrawingMode::UseDelegate) {
+        QStyleOptionViewItem itemOption;
+        d->initViewItemOption(&itemOption);
+        itemOption.rect = style()->subControlRect(QStyle::CC_ComboBox, &opt,
+                                                  QStyle::SC_ComboBoxEditField, this);
+        itemDelegate()->paint(&painter, itemOption, d->currentIndex);
+    } else {
+        // draw the icon and text
+        painter.drawControl(QStyle::CE_ComboBoxLabel, opt);
+    }
 }
 
 /*!
@@ -3406,6 +3449,8 @@ void QComboBox::wheelEvent(QWheelEvent *e)
             d->emitActivated(d->currentIndex);
         }
         e->accept();
+    } else {
+        e->ignore();
     }
 }
 #endif
@@ -3572,6 +3617,47 @@ void QComboBox::setModelColumn(int visibleColumn)
         d->lineEdit->completer()->setCompletionColumn(visibleColumn);
 #endif
     setCurrentIndex(currentIndex()); //update the text to the text of the new column;
+}
+
+/*!
+    \enum QComboBox::LabelDrawingMode
+    \since 6.9
+
+    This enum specifies how the combobox draws its label.
+
+    \value UseStyle The combobox uses the \l{QStyle}{style} to draw its label.
+    \value UseDelegate The combobox uses the \l{itemDelegate()}{item delegate} to
+           draw the label. Set a suitable item delegate when using this mode.
+
+    \sa labelDrawingMode, {Books}{Books example}
+*/
+
+/*!
+    \property QComboBox::labelDrawingMode
+    \since 6.9
+
+    \brief the mode used by the combobox to draw its label.
+
+    The default value is \l{QComboBox::}{UseStyle}. When changing this property
+    to UseDelegate, make sure to also set a suitable \l{itemDelegate()}{item delegate}.
+    The default delegate depends on the style and might not be suitable for
+    drawing the label.
+
+    \sa {Books}{Books example}
+*/
+QComboBox::LabelDrawingMode QComboBox::labelDrawingMode() const
+{
+    Q_D(const QComboBox);
+    return d->labelDrawingMode;
+}
+
+void QComboBox::setLabelDrawingMode(LabelDrawingMode drawingLabel)
+{
+    Q_D(QComboBox);
+    if (d->labelDrawingMode != drawingLabel) {
+        d->labelDrawingMode = drawingLabel;
+        update();
+    }
 }
 
 QT_END_NAMESPACE

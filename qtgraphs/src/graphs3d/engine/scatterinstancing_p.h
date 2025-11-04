@@ -17,6 +17,10 @@
 #include <QtGraphs/qgraphsglobal.h>
 #include <private/qquick3dinstancing_p.h>
 
+#include <QtGui/qquaternion.h>
+
+QT_BEGIN_NAMESPACE
+
 struct DataItemHolder
 {
     QVector3D position;
@@ -62,5 +66,7 @@ private:
     bool m_rangeGradient = false;
     qsizetype m_previousHideIndex = -1;
 };
+
+QT_END_NAMESPACE
 
 #endif // SCATTERINSTANCING_H

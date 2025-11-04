@@ -9,6 +9,7 @@
 #include <QtGui/qimage.h>
 #include <QtGui/qquaternion.h>
 #include <QtGui/qvector3d.h>
+#include <QtQmlIntegration/qqmlintegration.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -31,6 +32,7 @@ class Q_GRAPHS_EXPORT QCustom3DItem : public QObject
                    shadowCastingChanged FINAL)
     Q_PROPERTY(bool scalingAbsolute READ isScalingAbsolute WRITE setScalingAbsolute NOTIFY
                    scalingAbsoluteChanged FINAL)
+    QML_NAMED_ELEMENT(Custom3DItem)
 
 public:
     explicit QCustom3DItem(QObject *parent = nullptr);

@@ -3,6 +3,12 @@
 
 set -ex
 
+sudo zypper clean
+sudo rm -rf /var/cache/zypp
+sudo zypper rr repo-backports-update
+sudo zypper ar -f http://ftp.funet.fi/pub/mirrors/ftp.opensuse.com/pub/opensuse/update/leap/15.5/backports/ repo-backports-update
+sudo zypper refresh
+
 sudo zypper -nq install git gcc9 gcc9-c++ ninja
 sudo /usr/sbin/update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-9 1 \
                                      --slave /usr/bin/g++ g++ /usr/bin/g++-9 \
@@ -48,8 +54,9 @@ sudo zypper -nq install libxml2-devel libxslt-devel
 # yasm (for ffmpeg in multimedia)
 sudo zypper -nq install yasm
 
-# pulseaudio (qtmultimedia)
-sudo zypper -nq install libpulse-devel pipewire-devel
+# GStreamer (qtwebkit and qtmultimedia), pulseaudio (qtmultimedia)
+sudo zypper -nq install gstreamer-devel gstreamer-plugins-base-devel libpulse-devel pipewire-devel \
+         gstreamer-1.20-plugin-openh264 gstreamer-plugins-bad-devel
 
 # cups
 sudo zypper -nq install cups-devel
@@ -78,14 +85,17 @@ sudo zypper -nq install valgrind-devel
 # cifs-utils, for mounting smb drive
 sudo zypper -nq install cifs-utils
 
+# For Firebird in RTA
+sudo zypper -nq install libtommath-devel
+
 # Java
 sudo zypper -nq install java-17-openjdk
 
-# For tst_license.pl with all the machines generating SBOM
-sudo zypper -nq install perl-JSON
-
-gccVersion="$(gcc --version |grep gcc |cut -b 17-23)"
+gccVersion="$(gcc --version |grep -Eo '[0-9]+\.[0-9]+(\.[0-9]+)?' |head -n 1)"
 echo "GCC = $gccVersion" >> versions.txt
+
+glibcVersion="$(ldd --version |grep -Eo '[0-9]+\.[0-9]+(\.[0-9]+)?' |head -n 1)"
+echo "glibc = $glibcVersion" >> versions.txt
 
 OpenSSLVersion="$(openssl-3 version |cut -b 9-14)"
 echo "System's OpenSSL = $OpenSSLVersion" >> ~/versions.txt

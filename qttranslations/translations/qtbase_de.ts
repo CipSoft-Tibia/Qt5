@@ -1671,6 +1671,14 @@ Möchten Sie die Datei trotzdem löschen?</translation>
         <translation>Die Größe der dekomprimierten Ausgabedaten überschreitet die durch QNetworkRequest::decompressedSafetyCheckThreshold() gesetzten Grenzen</translation>
     </message>
     <message>
+        <source>Brotli error: %1</source>
+        <translation>Brotli-Fehler: %1</translation>
+    </message>
+    <message>
+        <source>ZStandard error: %1</source>
+        <translation>ZStandard-Fehler: %1</translation>
+    </message>
+    <message>
         <source>Decompression failed: %1</source>
         <translation>Die Dekomprimierung schlug fehl: %1</translation>
     </message>
@@ -6113,9 +6121,7 @@ Bitte deaktivieren Sie eine der beiden.</translation>
     </message>
     <message>
         <source>frame</source>
-        <extracomment>Role of an accessible object: a window with frame and title
-----------
-Role of an accessible object</extracomment>
+        <extracomment>Role of an accessible object: a window with frame and title</extracomment>
         <translation>Rahmen</translation>
     </message>
     <message>
@@ -6387,6 +6393,11 @@ Role of an accessible object</extracomment>
         <source>notification</source>
         <extracomment>Role of an accessible object</extracomment>
         <translation>Benachrichtigung</translation>
+    </message>
+    <message>
+        <source>block quote</source>
+        <extracomment>Role of an accessible object</extracomment>
+        <translation>Zitatblock</translation>
     </message>
     <message>
         <source>unknown</source>
@@ -6750,6 +6761,10 @@ Role of an accessible object</extracomment>
     <message>
         <source>The data could not be encrypted</source>
         <translation>Die Daten konnten nicht verschlüsselt werden</translation>
+    </message>
+    <message>
+        <source>The data could not be decrypted</source>
+        <translation>Die Daten konnten nicht entschlüsselt werden</translation>
     </message>
     <message>
         <source>No cipher suites in common</source>
@@ -7704,6 +7719,20 @@ Die minimal erforderliche Version von Direct2D ist %1 Die auf diesem System inst
     <message>
         <source>Copying assets...</source>
         <translation>Kopiere Assets...</translation>
+    </message>
+</context>
+<context>
+    <name>QCoreApplication</name>
+    <message>
+        <source>QHttp</source>
+        <translation>QHttp</translation>
+    </message>
+</context>
+<context>
+    <name>QWindowsUiaMainProvider</name>
+    <message>
+        <source>blockquote</source>
+        <translation>Zitatblock</translation>
     </message>
 </context>
 </TS>

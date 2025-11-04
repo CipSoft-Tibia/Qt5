@@ -22,7 +22,7 @@ mojom::PermissionStatus ToPermissionStatus(const std::string& status) {
     return mojom::PermissionStatus::ASK;
   if (status == "denied")
     return mojom::PermissionStatus::DENIED;
-  NOTREACHED();
+  NOTREACHED_IN_MIGRATION();
   return mojom::PermissionStatus::DENIED;
 }
 
@@ -72,6 +72,8 @@ std::string GetPermissionString(PermissionType permission) {
       return "VR";
     case PermissionType::AR:
       return "AR";
+    case PermissionType::HAND_TRACKING:
+      return "HandTracking";
     case PermissionType::SMART_CARD:
       return "SmartCard";
     case PermissionType::STORAGE_ACCESS_GRANT:
@@ -90,15 +92,25 @@ std::string GetPermissionString(PermissionType permission) {
       return "CapturedSurfaceControl";
     case PermissionType::WEB_PRINTING:
       return "WebPrinting";
+    case PermissionType::SPEAKER_SELECTION:
+      return "SpeakerSelection";
+    case PermissionType::KEYBOARD_LOCK:
+      return "KeyboardLock";
+    case PermissionType::POINTER_LOCK:
+      return "PointerLock";
+    case PermissionType::AUTOMATIC_FULLSCREEN:
+      return "AutomaticFullscreen";
+    case PermissionType::WEB_APP_INSTALLATION:
+      return "WebAppInstallation";
     case PermissionType::NUM:
-      NOTREACHED();
+      NOTREACHED_IN_MIGRATION();
       return std::string();
   }
-  NOTREACHED();
+  NOTREACHED_IN_MIGRATION();
   return std::string();
 }
 
-absl::optional<mojom::PermissionsPolicyFeature>
+std::optional<mojom::PermissionsPolicyFeature>
 PermissionTypeToPermissionsPolicyFeature(PermissionType permission) {
   switch (permission) {
     case PermissionType::GEOLOCATION:
@@ -121,6 +133,8 @@ PermissionTypeToPermissionsPolicyFeature(PermissionType permission) {
       return mojom::PermissionsPolicyFeature::kIdleDetection;
     case PermissionType::WAKE_LOCK_SCREEN:
       return mojom::PermissionsPolicyFeature::kScreenWakeLock;
+    case PermissionType::HAND_TRACKING:
+      return mojom::PermissionsPolicyFeature::kWebXr;
     case PermissionType::VR:
       return mojom::PermissionsPolicyFeature::kWebXr;
     case PermissionType::AR:
@@ -141,6 +155,12 @@ PermissionTypeToPermissionsPolicyFeature(PermissionType permission) {
       return mojom::PermissionsPolicyFeature::kDisplayCapture;
     case PermissionType::CAPTURED_SURFACE_CONTROL:
       return mojom::PermissionsPolicyFeature::kCapturedSurfaceControl;
+    case PermissionType::SPEAKER_SELECTION:
+      return mojom::PermissionsPolicyFeature::kSpeakerSelection;
+    case PermissionType::AUTOMATIC_FULLSCREEN:
+      return mojom::PermissionsPolicyFeature::kFullscreen;
+    case PermissionType::WEB_APP_INSTALLATION:
+      return mojom::PermissionsPolicyFeature::kWebAppInstallation;
 
     case PermissionType::PERIODIC_BACKGROUND_SYNC:
     case PermissionType::DURABLE_STORAGE:
@@ -155,14 +175,16 @@ PermissionTypeToPermissionsPolicyFeature(PermissionType permission) {
     case PermissionType::NFC:
     case PermissionType::CAMERA_PAN_TILT_ZOOM:
     case PermissionType::NOTIFICATIONS:
-      return absl::nullopt;
+    case PermissionType::KEYBOARD_LOCK:
+    case PermissionType::POINTER_LOCK:
+      return std::nullopt;
 
     case PermissionType::NUM:
-      NOTREACHED();
-      return absl::nullopt;
+      NOTREACHED_IN_MIGRATION();
+      return std::nullopt;
   }
-  NOTREACHED();
-  return absl::nullopt;
+  NOTREACHED_IN_MIGRATION();
+  return std::nullopt;
 }
 
 const std::vector<PermissionType>& GetAllPermissionTypes() {
@@ -185,7 +207,7 @@ const std::vector<PermissionType>& GetAllPermissionTypes() {
   return *kAllPermissionTypes;
 }
 
-absl::optional<PermissionType> PermissionDescriptorToPermissionType(
+std::optional<PermissionType> PermissionDescriptorToPermissionType(
     const PermissionDescriptorPtr& descriptor) {
   return PermissionDescriptorInfoToPermissionType(
       descriptor->name,
@@ -196,15 +218,18 @@ absl::optional<PermissionType> PermissionDescriptorToPermissionType(
       descriptor->extension && descriptor->extension->is_clipboard() &&
           descriptor->extension->get_clipboard()->will_be_sanitized,
       descriptor->extension && descriptor->extension->is_clipboard() &&
-          descriptor->extension->get_clipboard()->has_user_gesture);
+          descriptor->extension->get_clipboard()->has_user_gesture,
+      descriptor->extension && descriptor->extension->is_fullscreen() &&
+          descriptor->extension->get_fullscreen()->allow_without_user_gesture);
 }
 
-absl::optional<PermissionType> PermissionDescriptorInfoToPermissionType(
+std::optional<PermissionType> PermissionDescriptorInfoToPermissionType(
     mojom::PermissionName name,
     bool midi_sysex,
     bool camera_ptz,
     bool clipboard_will_be_sanitized,
-    bool clipboard_has_user_gesture) {
+    bool clipboard_has_user_gesture,
+    bool fullscreen_allow_without_user_gesture) {
   switch (name) {
     case PermissionName::GEOLOCATION:
       return PermissionType::GEOLOCATION;
@@ -221,7 +246,7 @@ absl::optional<PermissionType> PermissionDescriptorInfoToPermissionType(
       return PermissionType::PROTECTED_MEDIA_IDENTIFIER;
 #else
       NOTIMPLEMENTED();
-      return absl::nullopt;
+      return std::nullopt;
 #endif  // defined(ENABLE_PROTECTED_MEDIA_IDENTIFIER_PERMISSION)
     case PermissionName::DURABLE_STORAGE:
       return PermissionType::DURABLE_STORAGE;
@@ -276,9 +301,24 @@ absl::optional<PermissionType> PermissionDescriptorInfoToPermissionType(
       return PermissionType::TOP_LEVEL_STORAGE_ACCESS;
     case PermissionName::CAPTURED_SURFACE_CONTROL:
       return PermissionType::CAPTURED_SURFACE_CONTROL;
-
-      NOTREACHED();
-      return absl::nullopt;
+    case PermissionName::SPEAKER_SELECTION:
+      return PermissionType::SPEAKER_SELECTION;
+    case PermissionName::KEYBOARD_LOCK:
+      return PermissionType::KEYBOARD_LOCK;
+    case PermissionName::POINTER_LOCK:
+      return PermissionType::POINTER_LOCK;
+    case PermissionName::FULLSCREEN:
+      if (fullscreen_allow_without_user_gesture) {
+        return PermissionType::AUTOMATIC_FULLSCREEN;
+      }
+      // There is no PermissionType for fullscreen with user gesture.
+      NOTIMPLEMENTED_LOG_ONCE();
+      return std::nullopt;
+    case PermissionName::WEB_APP_INSTALLATION:
+      return PermissionType::WEB_APP_INSTALLATION;
+    default:
+      NOTREACHED_IN_MIGRATION();
+      return std::nullopt;
   }
 }
 

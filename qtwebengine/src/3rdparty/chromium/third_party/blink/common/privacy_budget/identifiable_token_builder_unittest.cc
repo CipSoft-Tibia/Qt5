@@ -2,6 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#ifdef UNSAFE_BUFFERS_BUILD
+// TODO(crbug.com/351564777): Remove this and convert code to safer constructs.
+#pragma allow_unsafe_buffers
+#endif
+
 #include "third_party/blink/public/common/privacy_budget/identifiable_token_builder.h"
 
 #include <cstdint>
@@ -43,8 +48,8 @@ TEST(IdentifiableTokenBuilderTest, TwoBytesInTwoTakes) {
   auto bytes_span = base::as_bytes(base::span<const char>(kBytes));
   IdentifiableTokenBuilder whole_span_token(bytes_span);
   IdentifiableTokenBuilder two_parts_token;
-  two_parts_token.AddBytes(bytes_span.first(1));
-  two_parts_token.AddBytes(bytes_span.last(1));
+  two_parts_token.AddBytes(bytes_span.first(1u));
+  two_parts_token.AddBytes(bytes_span.last(1u));
   EXPECT_EQ(whole_span_token.GetToken(), two_parts_token.GetToken());
 }
 

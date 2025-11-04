@@ -13,6 +13,7 @@
 #include "third_party/blink/renderer/core/inspector/inspector_base_agent.h"
 #include "third_party/blink/renderer/core/inspector/protocol/cache_storage.h"
 #include "third_party/blink/renderer/modules/modules_export.h"
+#include "third_party/blink/renderer/platform/heap/collection_support/heap_hash_map.h"
 #include "third_party/blink/renderer/platform/heap/disallow_new_wrapper.h"
 #include "third_party/blink/renderer/platform/mojo/heap_mojo_remote.h"
 #include "third_party/blink/renderer/platform/wtf/gc_plugin.h"
@@ -64,7 +65,7 @@ class MODULES_EXPORT InspectorCacheStorageAgent final
   base::expected<mojom::blink::CacheStorage*, protocol::Response>
   GetCacheStorageRemote(
       const String& storage_key,
-      const absl::optional<String>& storage_bucket_name,
+      const std::optional<String>& storage_bucket_name,
       base::OnceCallback<void(protocol::Response)> on_failure_callback);
   base::expected<mojom::blink::CacheStorage*, protocol::Response>
   GetCacheStorageRemoteForId(

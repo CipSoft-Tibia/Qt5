@@ -5,14 +5,15 @@
 
 # This script will install emscripten needed by WebAssembly
 
-$version = "3.1.56"
+$version = "3.1.70"
 $zipVersion = $version -replace '\.', "_"
 $temp = "$env:tmp"
 $cacheUrl = "https://ci-files01-hki.ci.qt.io/input/emsdk/emsdk_windows_${zipVersion}.zip"
-$sha = "ab376d218f1a66302c36770977948f74f0576a42"
+$sha = "4d05e378575cb3d74e2740b121730ba1f5822f27"
 
-# Make sure python is in the path
-Prepend-Path "C:\Python27"
+# Python used for '.\emsdk install'
+$pythonPath = [System.Environment]::GetEnvironmentVariable("PYTHON3_PATH", "Machine")
+Prepend-Path $pythonPath
 
 cd "C:\\Utils"
 $installLocationEmsdk = "C:\\Utils\\emsdk"
@@ -24,11 +25,18 @@ try {
     cd $installLocationEmsdk
     .\emsdk activate $version
 } catch {
-    Write-Host "Can't find cached emsdk. Cloning it"
+    Write-Host "Can't find cached emsdk or another error occurred. Cloning it"
+    Write-Host "Error details: $_"
+
     C:\PROGRA~1\Git\bin\git clone https://github.com/emscripten-core/emsdk.git
     cd $installLocationEmsdk
-    .\emsdk install $version
-    .\emsdk activate $version
+
+    try {
+        .\emsdk install $version
+        .\emsdk activate $version
+    } catch {
+        throw "emsdk installation failed: $_"
+    }
 }
 
 $versionWinPython = $($Env:EMSDK_PYTHON -split ('python\\') -split ('_64bit'))[1]

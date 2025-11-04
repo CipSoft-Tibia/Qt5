@@ -1,8 +1,7 @@
 {
   "$build/chromium_orchestrator": {
     "compilator": "android-arm64-rel-compilator",
-    "compilator_watcher_git_revision": "27c191f304c8d7329a393d8a69020fc14032c3c3",
-    "propagate_properties_to_compilator": true
+    "compilator_watcher_git_revision": "27c191f304c8d7329a393d8a69020fc14032c3c3"
   },
   "$build/chromium_tests_builder_config": {
     "builder_config": {
@@ -14,8 +13,8 @@
           {
             "builder_id": {
               "bucket": "ci",
-              "builder": "Android Release (Nexus 5X)",
-              "project": "chromium-m122"
+              "builder": "Android Release (Pixel 2)",
+              "project": "chromium-m130"
             },
             "builder_spec": {
               "build_gs_bucket": "chromium-gpu-archive",
@@ -45,8 +44,39 @@
           {
             "builder_id": {
               "bucket": "ci",
+              "builder": "android-14-arm64-rel",
+              "project": "chromium-m130"
+            },
+            "builder_spec": {
+              "build_gs_bucket": "chromium-android-archive",
+              "builder_group": "chromium.android",
+              "execution_mode": "COMPILE_AND_TEST",
+              "legacy_android_config": {
+                "config": "main_builder"
+              },
+              "legacy_chromium_config": {
+                "apply_configs": [
+                  "download_xr_test_apks",
+                  "mb"
+                ],
+                "build_config": "Release",
+                "config": "android",
+                "target_bits": 64,
+                "target_platform": "android"
+              },
+              "legacy_gclient_config": {
+                "apply_configs": [
+                  "android"
+                ],
+                "config": "chromium"
+              }
+            }
+          },
+          {
+            "builder_id": {
+              "bucket": "ci",
               "builder": "android-pie-arm64-rel",
-              "project": "chromium-m122"
+              "project": "chromium-m130"
             },
             "builder_spec": {
               "build_gs_bucket": "chromium-android-archive",
@@ -78,13 +108,18 @@
       "builder_ids": [
         {
           "bucket": "ci",
-          "builder": "Android Release (Nexus 5X)",
-          "project": "chromium-m122"
+          "builder": "Android Release (Pixel 2)",
+          "project": "chromium-m130"
+        },
+        {
+          "bucket": "ci",
+          "builder": "android-14-arm64-rel",
+          "project": "chromium-m130"
         },
         {
           "bucket": "ci",
           "builder": "android-pie-arm64-rel",
-          "project": "chromium-m122"
+          "project": "chromium-m130"
         }
       ]
     }
@@ -102,7 +137,6 @@
   },
   "$build/reclient": {
     "instance": "rbe-chromium-untrusted",
-    "jobs": 500,
     "metrics_project": "chromium-reclient-metrics",
     "scandeps_server": true
   },
@@ -113,7 +147,8 @@
     "enable_cloud_profiler": true,
     "enable_cloud_trace": true,
     "experiments": [],
-    "project": "rbe-chromium-untrusted"
+    "project": "rbe-chromium-untrusted",
+    "remote_jobs": -1
   },
   "$recipe_engine/resultdb/test_presentation": {
     "column_keys": [],

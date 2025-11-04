@@ -9,13 +9,14 @@
 #include <algorithm>
 
 #include "build/build_config.h"
+#include "core/fxcrt/check.h"
+#include "core/fxcrt/compiler_specific.h"
+#include "core/fxcrt/containers/adapters.h"
 #include "core/fxcrt/fx_extension.h"
 #include "core/fxcrt/fx_safe_types.h"
+#include "core/fxcrt/numerics/safe_math.h"
 #include "core/fxcrt/stl_util.h"
 #include "core/fxge/text_char_pos.h"
-#include "third_party/base/check.h"
-#include "third_party/base/containers/adapters.h"
-#include "third_party/base/numerics/safe_math.h"
 #include "xfa/fgas/font/cfgas_gefont.h"
 #include "xfa/fgas/layout/cfgas_char.h"
 #include "xfa/fgas/layout/cfgas_textpiece.h"
@@ -122,7 +123,7 @@ CFGAS_Char::BreakType CFGAS_RTFBreak::AppendChar(wchar_t wch) {
 }
 
 void CFGAS_RTFBreak::AppendChar_Combination(CFGAS_Char* pCurChar) {
-  absl::optional<uint16_t> iCharWidthRet;
+  std::optional<uint16_t> iCharWidthRet;
   if (m_pFont) {
     iCharWidthRet = m_pFont->GetCharWidth(pCurChar->char_code());
   }
@@ -207,12 +208,12 @@ CFGAS_Char::BreakType CFGAS_RTFBreak::AppendChar_Arabic(CFGAS_Char* pCurChar) {
     if (pLastChar) {
       m_pCurLine->m_iWidth -= pLastChar->m_iCharWidth;
       CFGAS_Char* pPrevChar = GetLastChar(2, false, true);
-      wForm = pdfium::arabic::GetFormChar(pLastChar, pPrevChar, pCurChar);
+      wForm = pdfium::GetArabicFormChar(pLastChar, pPrevChar, pCurChar);
       bAlef = (wForm == pdfium::unicode::kZeroWidthNoBreakSpace &&
                pLastChar->GetCharType() == FX_CHARTYPE::kArabicAlef);
       FX_SAFE_INT32 iCharWidth = 0;
       if (m_pFont) {
-        absl::optional<uint16_t> iCharWidthRet = m_pFont->GetCharWidth(wForm);
+        std::optional<uint16_t> iCharWidthRet = m_pFont->GetCharWidth(wForm);
         if (iCharWidthRet.has_value()) {
           iCharWidth = iCharWidthRet.value();
         } else {
@@ -237,11 +238,11 @@ CFGAS_Char::BreakType CFGAS_RTFBreak::AppendChar_Arabic(CFGAS_Char* pCurChar) {
     }
   }
 
-  wForm = pdfium::arabic::GetFormChar(pCurChar, bAlef ? nullptr : pLastChar,
-                                      nullptr);
+  wForm =
+      pdfium::GetArabicFormChar(pCurChar, bAlef ? nullptr : pLastChar, nullptr);
   FX_SAFE_INT32 iCharWidth = 0;
   if (m_pFont) {
-    absl::optional<uint16_t> iCharWidthRet = m_pFont->GetCharWidth(wForm);
+    std::optional<uint16_t> iCharWidthRet = m_pFont->GetCharWidth(wForm);
     if (!iCharWidthRet.has_value())
       iCharWidthRet = m_pFont->GetCharWidth(pCurChar->char_code());
     iCharWidth = iCharWidthRet.value_or(0);
@@ -372,7 +373,7 @@ bool CFGAS_RTFBreak::EndBreakSplitLine(CFGAS_BreakLine* pNextLine,
   int32_t iLast = fxcrt::CollectionSize<int32_t>(m_pCurLine->m_LineChars) - 1;
   int32_t j = 0;
   for (int32_t i = 0; i <= iLast;) {
-    const CFGAS_Char* pTC = pCurChars + i;
+    const CFGAS_Char* pTC = UNSAFE_TODO(pCurChars + i);
     if (bNew) {
       tp.SetStartChar(i);
       tp.IncrementStartPos(tp.GetWidth());
@@ -495,7 +496,7 @@ void CFGAS_RTFBreak::EndBreakAlignment(const std::deque<TPO>& tpos,
   int32_t iNetWidth = m_pCurLine->m_iWidth;
   int32_t iGapChars = 0;
   bool bFind = false;
-  for (const TPO& pos : pdfium::base::Reversed(tpos)) {
+  for (const TPO& pos : pdfium::Reversed(tpos)) {
     const CFGAS_BreakPiece& ttp = m_pCurLine->m_LinePieces[pos.index];
     if (!bFind)
       iNetWidth = ttp.GetEndPos();
@@ -590,7 +591,7 @@ int32_t CFGAS_RTFBreak::GetBreakPos(std::vector<CFGAS_Char>& tca,
   }
 
   CFGAS_Char* pCharArray = tca.data();
-  CFGAS_Char* pCur = pCharArray + iLength;
+  CFGAS_Char* pCur = UNSAFE_TODO(pCharArray + iLength);
   --iLength;
   if (bAllChars)
     pCur->m_eLineBreakType = FX_LINEBREAKTYPE::kUNKNOWN;
@@ -601,7 +602,7 @@ int32_t CFGAS_RTFBreak::GetBreakPos(std::vector<CFGAS_Char>& tca,
     *pEndPos -= iCharWidth;
 
   while (iLength >= 0) {
-    pCur = pCharArray + iLength;
+    pCur = UNSAFE_TODO(pCharArray + iLength);
     FX_BREAKPROPERTY nCur =
         pdfium::unicode::GetBreakProperty(pCur->char_code());
     bool bNeedBreak = false;
@@ -703,7 +704,7 @@ void CFGAS_RTFBreak::SplitTextLine(CFGAS_BreakLine* pCurLine,
 }
 
 size_t CFGAS_RTFBreak::GetDisplayPos(const CFGAS_TextPiece* pPiece,
-                                     std::vector<TextCharPos>* pCharPos) const {
+                                     pdfium::span<TextCharPos> pCharPos) const {
   if (pPiece->iChars == 0 || !pPiece->pFont)
     return 0;
 
@@ -730,7 +731,7 @@ size_t CFGAS_RTFBreak::GetDisplayPos(const CFGAS_TextPiece* pPiece,
   float fY = rtText.top + fAscent;
   size_t szCount = 0;
   for (int32_t i = 0; i < pPiece->iChars; ++i) {
-    TextCharPos& current_char_pos = (*pCharPos)[szCount];
+    TextCharPos& current_char_pos = pCharPos[szCount];
     wchar_t wch = pPiece->szText[i];
     int32_t iWidth = pPiece->Widths[i];
     FX_CHARTYPE dwCharType = pdfium::unicode::GetCharType(wch);
@@ -756,7 +757,7 @@ size_t CFGAS_RTFBreak::GetDisplayPos(const CFGAS_TextPiece* pPiece,
       } else {
         wNext = pdfium::unicode::kZeroWidthNoBreakSpace;
       }
-      wForm = pdfium::arabic::GetFormChar(wch, wPrev, wNext);
+      wForm = pdfium::GetArabicFormChar(wch, wPrev, wNext);
     } else if (bRTLPiece) {
       wForm = pdfium::unicode::GetMirrorChar(wch);
     }

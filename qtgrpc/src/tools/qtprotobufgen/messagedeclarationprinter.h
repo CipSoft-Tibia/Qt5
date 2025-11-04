@@ -23,6 +23,7 @@ public:
 private:
     void printCopyFunctionality();
     void printMoveSemantic();
+    void printQVariantOperator();
     void printComparisonOperators();
     void printClassBody();
     void printProperties();

@@ -2,6 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#ifdef UNSAFE_BUFFERS_BUILD
+// TODO(crbug.com/40285824): Remove this and convert code to safer constructs.
+#pragma allow_unsafe_buffers
+#endif
+
 #include "components/exo/wayland/wayland_dmabuf_feedback_manager.h"
 
 #include <bits/types.h>
@@ -257,7 +262,9 @@ class WaylandDmabufSurfaceFeedback : public SurfaceObserver {
 
   Surface* GetSurface() { return surface_; }
   WaylandDmabufFeedback* GetFeedback() { return feedback_.get(); }
-  std::set<WaylandDmabufSurfaceFeedbackResourceWrapper*> GetFeedbackRefs() {
+  std::set<
+      raw_ptr<WaylandDmabufSurfaceFeedbackResourceWrapper, SetExperimental>>
+  GetFeedbackRefs() {
     return surface_feedback_refs_;
   }
 
@@ -265,7 +272,9 @@ class WaylandDmabufSurfaceFeedback : public SurfaceObserver {
   const raw_ptr<WaylandDmabufFeedbackManager> feedback_manager_;
   const raw_ptr<Surface> surface_;
   std::unique_ptr<WaylandDmabufFeedback> const feedback_;
-  std::set<WaylandDmabufSurfaceFeedbackResourceWrapper*> surface_feedback_refs_;
+  std::set<
+      raw_ptr<WaylandDmabufSurfaceFeedbackResourceWrapper, SetExperimental>>
+      surface_feedback_refs_;
 };
 
 // Simple helper class to use a surface feedback with multiple resource objects
@@ -293,7 +302,8 @@ class WaylandDmabufSurfaceFeedbackResourceWrapper {
   void SetInert() { surface_feedback_ = nullptr; }
 
  private:
-  raw_ptr<WaylandDmabufSurfaceFeedback> surface_feedback_;
+  // Dangling when starting Borealis and Steam starts updating.
+  raw_ptr<WaylandDmabufSurfaceFeedback, DanglingUntriaged> surface_feedback_;
   raw_ptr<wl_resource> resource_;
 };
 
@@ -395,7 +405,7 @@ WaylandDmabufFeedbackManager::WaylandDmabufFeedbackManager(Display* display)
   size_t size = sizeof(WaylandDmabufFeedbackFormat) * format_table_index;
   base::MappedReadOnlyRegion mapped_region =
       base::ReadOnlySharedMemoryRegion::Create(size);
-  DCHECK(mapped_region.IsValid());
+  CHECK(mapped_region.IsValid());
 
   shared_memory_region_ = std::make_unique<base::ReadOnlySharedMemoryRegion>(
       std::move(mapped_region.region));
@@ -528,7 +538,8 @@ void WaylandDmabufFeedbackManager::AddSurfaceToScanoutCandidates(
     return;
   }
 
-  for (auto* feedback_ref : surface_feedback->GetFeedbackRefs()) {
+  for (WaylandDmabufSurfaceFeedbackResourceWrapper* feedback_ref :
+       surface_feedback->GetFeedbackRefs()) {
     SendFeedback(feedback, feedback_ref->GetFeedbackResource());
   }
 }
@@ -561,7 +572,8 @@ void WaylandDmabufFeedbackManager::RemoveSurfaceFromScanoutCandidates(
   }
 
   feedback->ClearScanoutTranche();
-  for (auto* feedback_ref : surface_feedback->GetFeedbackRefs()) {
+  for (WaylandDmabufSurfaceFeedbackResourceWrapper* feedback_ref :
+       surface_feedback->GetFeedbackRefs()) {
     SendFeedback(feedback, feedback_ref->GetFeedbackResource());
   }
 }
@@ -576,7 +588,8 @@ void WaylandDmabufFeedbackManager::MaybeResendFeedback(Surface* surface) {
   auto* feedback = surface_feedback->GetFeedback();
   feedback->MaybeAddScanoutTranche(surface);
 
-  for (auto* feedback_ref : surface_feedback->GetFeedbackRefs()) {
+  for (WaylandDmabufSurfaceFeedbackResourceWrapper* feedback_ref :
+       surface_feedback->GetFeedbackRefs()) {
     SendFeedback(feedback, feedback_ref->GetFeedbackResource());
   }
 }

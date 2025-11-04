@@ -21,7 +21,7 @@
 
 QT_BEGIN_NAMESPACE
 
-class QGeoCoordinatePrivate : public QSharedData
+class Q_POSITIONING_EXPORT QGeoCoordinatePrivate : public QSharedData
 {
 public:
     QGeoCoordinatePrivate();

@@ -52,7 +52,7 @@ void SimNetwork::DidReceiveResponse(URLLoaderClient* client,
   if (it == requests_.end()) {
     client->DidReceiveResponse(response,
                                /*body=*/mojo::ScopedDataPipeConsumerHandle(),
-                               /*cached_metadata=*/absl::nullopt);
+                               /*cached_metadata=*/std::nullopt);
     return;
   }
   DCHECK(it->value);
@@ -61,10 +61,9 @@ void SimNetwork::DidReceiveResponse(URLLoaderClient* client,
 }
 
 void SimNetwork::DidReceiveData(URLLoaderClient* client,
-                                const char* data,
-                                size_t data_length) {
+                                base::span<const char> data) {
   if (!current_request_)
-    client->DidReceiveData(data, data_length);
+    client->DidReceiveDataForTesting(data);
 }
 
 void SimNetwork::DidFail(URLLoaderClient* client,

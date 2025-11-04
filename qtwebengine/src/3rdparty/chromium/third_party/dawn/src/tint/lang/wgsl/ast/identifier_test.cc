@@ -25,13 +25,13 @@
 // OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-#include "gtest/gtest-spi.h"
 #include "src/tint/lang/wgsl/ast/helper_test.h"
 
 namespace tint::ast {
 namespace {
 
 using IdentifierTest = TestHelper;
+using IdentifierDeathTest = IdentifierTest;
 
 TEST_F(IdentifierTest, Creation) {
     auto* i = Ident("ident");
@@ -52,8 +52,8 @@ TEST_F(IdentifierTest, IsIdentifier) {
     EXPECT_TRUE(i->Is<Identifier>());
 }
 
-TEST_F(IdentifierTest, Assert_InvalidSymbol) {
-    EXPECT_FATAL_FAILURE(
+TEST_F(IdentifierDeathTest, Assert_InvalidSymbol) {
+    EXPECT_DEATH_IF_SUPPORTED(
         {
             ProgramBuilder b;
             b.Ident("");
@@ -61,8 +61,8 @@ TEST_F(IdentifierTest, Assert_InvalidSymbol) {
         "internal compiler error");
 }
 
-TEST_F(IdentifierTest, Assert_DifferentGenerationID_Symbol) {
-    EXPECT_FATAL_FAILURE(
+TEST_F(IdentifierDeathTest, Assert_DifferentGenerationID_Symbol) {
+    EXPECT_DEATH_IF_SUPPORTED(
         {
             ProgramBuilder b1;
             ProgramBuilder b2;

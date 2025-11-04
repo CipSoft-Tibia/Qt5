@@ -52,7 +52,7 @@ using ::base::test::EqualsProto;
 // if the constant used internally in the implementation changes.
 constexpr char kIdenticalToSafeSeedSentinel[] = "safe_seed_content";
 
-// TODO(crbug/1205645): Consider consolidating TestVariationsSeedStore and
+// TODO(crbug.com/40764723): Consider consolidating TestVariationsSeedStore and
 // SignatureVerifyingVariationsSeedStore. Outside of tests, signature
 // verification is enabled although prior to crrev.com/c/2181564, signature
 // verification was not done on iOS or Android.
@@ -146,9 +146,7 @@ std::string Gzip(const std::string& data) {
 
 // Gzips |data| and then base64-encodes it.
 std::string GzipAndBase64Encode(const std::string& data) {
-  std::string result;
-  base::Base64Encode(Gzip(data), &result);
-  return result;
+  return base::Base64Encode(Gzip(data));
 }
 
 // Serializes |seed| to gzipped base64-encoded protobuf binary format.

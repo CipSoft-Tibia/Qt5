@@ -157,6 +157,9 @@ void registerTypes()
 
     qmlRegisterTypesAndRevisions<BaseValueType>("ValueTypes", 1);
     qmlRegisterTypesAndRevisions<DerivedValueType>("ValueTypes", 1);
+    qmlRegisterTypesAndRevisions<CustomIdentifier>("ValueTypes", 1);
+    qmlRegisterTypesAndRevisions<IdProvider>("ValueTypes", 1);
+
     qmlRegisterTypesAndRevisions<GetterObject>("Test", 1);
 
     qmlRegisterNamespaceAndRevisions(&TypedEnums::staticMetaObject, "TypedEnums", 1);
@@ -186,6 +189,12 @@ void registerTypes()
             InvokableValueType
     >("Test", 1);
     qmlRegisterTypesAndRevisions<NestedVectors>("Test", 1);
+    qmlRegisterTypesAndRevisions<VariantAssociationProvider>("Test", 1);
+
+    qmlRegisterTypesAndRevisions<BindablePoint>("Test", 1);
+
+    qmlRegisterTypesAndRevisions<LargeRevisionBase>("Test", 1);
+    qmlRegisterTypesAndRevisions<LargeRevision>("Test", 1);
 }
 
 QVariant myCustomVariantTypeConverter(const QString &data)

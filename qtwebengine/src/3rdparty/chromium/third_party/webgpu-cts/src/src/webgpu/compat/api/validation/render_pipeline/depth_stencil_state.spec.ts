@@ -42,10 +42,12 @@ g.test('depthBiasClamp')
       },
       depthStencil: {
         format: 'depth24plus',
+        depthWriteEnabled: true,
+        depthCompare: 'always',
         ...(depthBiasClamp !== undefined && { depthBiasClamp }),
       },
     };
 
-    const success = !depthBiasClamp;
+    const success = !t.isCompatibility || !depthBiasClamp;
     t.doCreateRenderPipelineTest(async, success, pipelineDescriptor);
   });

@@ -105,10 +105,10 @@ typedef struct ZSTDMT_bufferPool_s {
 
 static void ZSTDMT_freeBufferPool(ZSTDMT_bufferPool* bufPool)
 {
-    unsigned u;
     DEBUGLOG(3, "ZSTDMT_freeBufferPool (address:%08X)", (U32)(size_t)bufPool);
     if (!bufPool) return;   /* compatibility with free on NULL */
     if (bufPool->buffers) {
+        unsigned u;
         for (u=0; u<bufPool->totalBuffers; u++) {
             DEBUGLOG(4, "free buffer %2u (address:%08X)", u, (U32)(size_t)bufPool->buffers[u].start);
             ZSTD_customFree(bufPool->buffers[u].start, bufPool->cMem);
@@ -121,7 +121,7 @@ static void ZSTDMT_freeBufferPool(ZSTDMT_bufferPool* bufPool)
 
 static ZSTDMT_bufferPool* ZSTDMT_createBufferPool(unsigned maxNbBuffers, ZSTD_customMem cMem)
 {
-    ZSTDMT_bufferPool* const bufPool = 
+    ZSTDMT_bufferPool* const bufPool =
         (ZSTDMT_bufferPool*)ZSTD_customCalloc(sizeof(ZSTDMT_bufferPool), cMem);
     if (bufPool==NULL) return NULL;
     if (ZSTD_pthread_mutex_init(&bufPool->poolMutex, NULL)) {
@@ -364,10 +364,10 @@ typedef struct {
 /* note : all CCtx borrowed from the pool must be reverted back to the pool _before_ freeing the pool */
 static void ZSTDMT_freeCCtxPool(ZSTDMT_CCtxPool* pool)
 {
-    int cid;
     if (!pool) return;
     ZSTD_pthread_mutex_destroy(&pool->poolMutex);
     if (pool->cctxs) {
+        int cid;
         for (cid=0; cid<pool->totalCCtx; cid++)
             ZSTD_freeCCtx(pool->cctxs[cid]);  /* free compatible with NULL */
         ZSTD_customFree(pool->cctxs, pool->cMem);
@@ -380,7 +380,7 @@ static void ZSTDMT_freeCCtxPool(ZSTDMT_CCtxPool* pool)
 static ZSTDMT_CCtxPool* ZSTDMT_createCCtxPool(int nbWorkers,
                                               ZSTD_customMem cMem)
 {
-    ZSTDMT_CCtxPool* const cctxPool = 
+    ZSTDMT_CCtxPool* const cctxPool =
         (ZSTDMT_CCtxPool*) ZSTD_customCalloc(sizeof(ZSTDMT_CCtxPool), cMem);
     assert(nbWorkers > 0);
     if (!cctxPool) return NULL;

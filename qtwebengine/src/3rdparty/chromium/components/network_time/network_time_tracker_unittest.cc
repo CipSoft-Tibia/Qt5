@@ -6,6 +6,7 @@
 
 #include <memory>
 #include <string>
+#include <string_view>
 #include <utility>
 
 #include "base/compiler_specific.h"
@@ -49,7 +50,21 @@ struct MockedResponse {
 
 class NetworkTimeTrackerTest : public ::testing::Test {
  public:
-  ~NetworkTimeTrackerTest() override {}
+  class NetworkTimeTestObserver
+      : public NetworkTimeTracker::NetworkTimeObserver {
+   public:
+    NetworkTimeTestObserver() = default;
+    ~NetworkTimeTestObserver() override = default;
+
+    void OnNetworkTimeChanged(TimeTracker::TimeTrackerState state) override {
+      times_called_++;
+      last_state_ = state;
+    }
+    int times_called_ = 0;
+    TimeTracker::TimeTrackerState last_state_;
+  };
+
+  ~NetworkTimeTrackerTest() override = default;
 
   NetworkTimeTrackerTest()
       : task_environment_(
@@ -70,7 +85,8 @@ class NetworkTimeTrackerTest : public ::testing::Test {
         std::unique_ptr<base::Clock>(clock_),
         std::unique_ptr<const base::TickClock>(tick_clock_), &pref_service_,
         base::MakeRefCounted<network::WeakWrapperSharedURLLoaderFactory>(
-            &url_loader_factory_));
+            &url_loader_factory_),
+        std::nullopt);
 
     // Do this to be sure that |is_null| returns false.
     clock_->Advance(base::Days(111));
@@ -91,7 +107,7 @@ class NetworkTimeTrackerTest : public ::testing::Test {
 
   // Replaces |tracker_| with a new object, while preserving the
   // testing clocks.
-  void Reset() {
+  void Reset(std::optional<NetworkTimeTracker::FetchBehavior> behavior) {
     base::SimpleTestClock* new_clock = new base::SimpleTestClock();
     new_clock->SetNow(clock_->Now());
     base::SimpleTestTickClock* new_tick_clock = new base::SimpleTestTickClock();
@@ -102,7 +118,8 @@ class NetworkTimeTrackerTest : public ::testing::Test {
         std::unique_ptr<base::Clock>(clock_),
         std::unique_ptr<const base::TickClock>(tick_clock_), &pref_service_,
         base::MakeRefCounted<network::WeakWrapperSharedURLLoaderFactory>(
-            &url_loader_factory_));
+            &url_loader_factory_),
+        behavior);
   }
 
   // Good signature over invalid data, though made with a non-production key.
@@ -365,7 +382,7 @@ TEST_F(NetworkTimeTrackerTest, Serialize) {
   // 6 days is just under the threshold for discarding data.
   base::TimeDelta delta = base::Days(6);
   AdvanceBoth(delta);
-  Reset();
+  Reset(std::nullopt);
   EXPECT_EQ(NetworkTimeTracker::NETWORK_TIME_AVAILABLE,
             tracker_->GetNetworkTime(&out_network_time, &out_uncertainty));
   EXPECT_EQ(in_network_time + delta, out_network_time);
@@ -382,7 +399,7 @@ TEST_F(NetworkTimeTrackerTest, DeserializeOldFormat) {
   base::Time out_network_time;
   EXPECT_EQ(NetworkTimeTracker::NETWORK_TIME_AVAILABLE,
             tracker_->GetNetworkTime(&out_network_time, nullptr));
-  absl::optional<double> local, network;
+  std::optional<double> local, network;
   const base::Value::Dict& saved_prefs =
       pref_service_.GetDict(prefs::kNetworkTimeMapping);
   local = saved_prefs.FindDouble("local");
@@ -393,7 +410,7 @@ TEST_F(NetworkTimeTrackerTest, DeserializeOldFormat) {
   prefs.Set("local", *local);
   prefs.Set("network", *network);
   pref_service_.Set(prefs::kNetworkTimeMapping, base::Value(std::move(prefs)));
-  Reset();
+  Reset(std::nullopt);
   EXPECT_EQ(NetworkTimeTracker::NETWORK_TIME_NO_SYNC_ATTEMPT,
             tracker_->GetNetworkTime(&out_network_time, nullptr));
 }
@@ -408,7 +425,7 @@ TEST_F(NetworkTimeTrackerTest, SerializeWithLongDelay) {
   EXPECT_EQ(NetworkTimeTracker::NETWORK_TIME_AVAILABLE,
             tracker_->GetNetworkTime(&out_network_time, nullptr));
   AdvanceBoth(base::Days(8));
-  Reset();
+  Reset(std::nullopt);
   EXPECT_EQ(NetworkTimeTracker::NETWORK_TIME_NO_SYNC_ATTEMPT,
             tracker_->GetNetworkTime(&out_network_time, nullptr));
 }
@@ -423,7 +440,7 @@ TEST_F(NetworkTimeTrackerTest, SerializeWithTickClockAdvance) {
   EXPECT_EQ(NetworkTimeTracker::NETWORK_TIME_AVAILABLE,
             tracker_->GetNetworkTime(&out_network_time, nullptr));
   tick_clock_->Advance(base::Days(1));
-  Reset();
+  Reset(std::nullopt);
   EXPECT_EQ(NetworkTimeTracker::NETWORK_TIME_SYNC_LOST,
             tracker_->GetNetworkTime(&out_network_time, nullptr));
 }
@@ -439,7 +456,7 @@ TEST_F(NetworkTimeTrackerTest, SerializeWithWallClockAdvance) {
   EXPECT_EQ(NetworkTimeTracker::NETWORK_TIME_AVAILABLE,
             tracker_->GetNetworkTime(&out_network_time, nullptr));
   clock_->Advance(base::Days(1));
-  Reset();
+  Reset(std::nullopt);
   EXPECT_EQ(NetworkTimeTracker::NETWORK_TIME_SYNC_LOST,
             tracker_->GetNetworkTime(&out_network_time, nullptr));
 }
@@ -613,8 +630,8 @@ static const uint8_t kDevKeyPubBytes[] = {
 TEST_F(NetworkTimeTrackerTest, UpdateFromNetworkBadData) {
   SetResponseHandler(
       base::BindRepeating(&NetworkTimeTrackerTest::BadDataResponseHandler));
-  base::StringPiece key = {reinterpret_cast<const char*>(kDevKeyPubBytes),
-                           sizeof(kDevKeyPubBytes)};
+  std::string_view key = {reinterpret_cast<const char*>(kDevKeyPubBytes),
+                          sizeof(kDevKeyPubBytes)};
   tracker_->SetPublicKeyForTesting(key);
   EXPECT_TRUE(tracker_->QueryTimeServiceForTesting());
   tracker_->WaitForFetchForTesting(123123123);
@@ -678,8 +695,8 @@ TEST_F(NetworkTimeTrackerTest, UpdateFromNetworkLargeResponse) {
 TEST_F(NetworkTimeTrackerTest, UpdateFromNetworkFirstSyncPending) {
   SetResponseHandler(
       base::BindRepeating(&NetworkTimeTrackerTest::BadDataResponseHandler));
-  base::StringPiece key = {reinterpret_cast<const char*>(kDevKeyPubBytes),
-                           sizeof(kDevKeyPubBytes)};
+  std::string_view key = {reinterpret_cast<const char*>(kDevKeyPubBytes),
+                          sizeof(kDevKeyPubBytes)};
   tracker_->SetPublicKeyForTesting(key);
   EXPECT_TRUE(tracker_->QueryTimeServiceForTesting());
 
@@ -695,8 +712,8 @@ TEST_F(NetworkTimeTrackerTest, UpdateFromNetworkFirstSyncPending) {
 TEST_F(NetworkTimeTrackerTest, UpdateFromNetworkSubseqeuntSyncPending) {
   SetResponseHandler(
       base::BindRepeating(&NetworkTimeTrackerTest::BadDataResponseHandler));
-  base::StringPiece key = {reinterpret_cast<const char*>(kDevKeyPubBytes),
-                           sizeof(kDevKeyPubBytes)};
+  std::string_view key = {reinterpret_cast<const char*>(kDevKeyPubBytes),
+                          sizeof(kDevKeyPubBytes)};
   tracker_->SetPublicKeyForTesting(key);
   EXPECT_TRUE(tracker_->QueryTimeServiceForTesting());
   tracker_->WaitForFetchForTesting(123123123);
@@ -712,6 +729,37 @@ TEST_F(NetworkTimeTrackerTest, UpdateFromNetworkSubseqeuntSyncPending) {
             tracker_->GetNetworkTime(&out_network_time, nullptr));
 
   tracker_->WaitForFetchForTesting(123123123);
+}
+
+TEST_F(NetworkTimeTrackerTest, CustomFetchBehaviorTest) {
+  // On creation, the test is configured as if the feature param is set to
+  // FETCHES_IN_BACKGROUND_AND_ON_DEMAND.
+  EXPECT_EQ(
+      NetworkTimeTracker::FetchBehavior::FETCHES_IN_BACKGROUND_AND_ON_DEMAND,
+      tracker_->GetFetchBehavior());
+  // When created with a parameter, the tracker should ignore the feature param,
+  // and instead use the parameter.
+  Reset(NetworkTimeTracker::FetchBehavior::FETCHES_IN_BACKGROUND_ONLY);
+  EXPECT_EQ(NetworkTimeTracker::FetchBehavior::FETCHES_IN_BACKGROUND_ONLY,
+            tracker_->GetFetchBehavior());
+}
+
+TEST_F(NetworkTimeTrackerTest, ObserverTest) {
+  NetworkTimeTestObserver observer;
+  base::Time now = clock_->Now();
+  base::TimeTicks now_ticks = tick_clock_->NowTicks();
+  base::Time in_network_time = now;
+  tracker_->AddObserver(&observer);
+  UpdateNetworkTime(in_network_time - latency_ / 2, resolution_, latency_,
+                    now_ticks);
+  base::TimeDelta expected_offset = latency_ / 2;
+
+  EXPECT_EQ(observer.times_called_, 1);
+  EXPECT_EQ(observer.last_state_.known_time, in_network_time - latency_ / 2);
+  EXPECT_EQ(observer.last_state_.system_time, now - expected_offset);
+  EXPECT_EQ(observer.last_state_.system_ticks, now_ticks - expected_offset);
+  EXPECT_EQ(observer.last_state_.uncertainty,
+            resolution_ + latency_ + adjustment_);
 }
 
 }  // namespace network_time

@@ -13,7 +13,6 @@
 // limitations under the License.
 
 import m from 'mithril';
-
 import {HTMLAttrs} from './common';
 import {Icon} from './icon';
 
@@ -27,10 +26,10 @@ export class Callout implements m.ClassComponent<CalloutAttrs> {
     const {icon, ...htmlAttrs} = attrs;
 
     return m(
-        '.pf-callout',
-        htmlAttrs,
-        icon && m(Icon, {className: 'pf-left-icon', icon}),
-        children,
+      '.pf-callout',
+      htmlAttrs,
+      icon && m(Icon, {className: 'pf-left-icon', icon}),
+      children,
     );
   }
 }

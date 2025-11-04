@@ -2883,17 +2883,19 @@ bool QStateMachine::event(QEvent *e)
     return QState::event(e);
 }
 
-#if QT_CONFIG(qeventtransition)
 /*!
   \reimp
 */
 bool QStateMachine::eventFilter(QObject *watched, QEvent *event)
 {
+#if QT_CONFIG(qeventtransition)
     Q_D(QStateMachine);
     d->handleFilteredEvent(watched, event);
     return false;
-}
+#else
+    return QState::eventFilter(watched, event);
 #endif
+}
 
 /*!
   \internal

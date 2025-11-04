@@ -87,11 +87,9 @@ scoped_refptr<VideoFrame> CreateTestNV12GpuMemoryBufferVideoFrame() {
     return nullptr;
   }
 
-  gpu::MailboxHolder dummy_mailbox[media::VideoFrame::kMaxPlanes];
   auto gmb_video_frame = VideoFrame::WrapExternalGpuMemoryBuffer(
       /*visible_rect=*/gfx::Rect(640, 368),
-      /*natural_size=*/gfx::Size(640, 368), std::move(gmb), dummy_mailbox,
-      base::NullCallback(), base::TimeDelta());
+      /*natural_size=*/gfx::Size(640, 368), std::move(gmb), base::TimeDelta());
   if (!gmb_video_frame) {
     return nullptr;
   }
@@ -120,7 +118,7 @@ class MockVideoFrameHandleReleaser : public mojom::VideoFrameHandleReleaser {
   // mojom::VideoFrameHandleReleaser implementation.
   MOCK_METHOD2(ReleaseVideoFrame,
                void(const base::UnguessableToken& release_token,
-                    const absl::optional<gpu::SyncToken>& release_sync_token));
+                    const std::optional<gpu::SyncToken>& release_sync_token));
 
  private:
   mojo::Receiver<mojom::VideoFrameHandleReleaser>
@@ -173,7 +171,7 @@ class MockVideoDecoder : public mojom::VideoDecoder {
   MOCK_METHOD4(Initialize,
                void(const VideoDecoderConfig& config,
                     bool low_delay,
-                    const absl::optional<base::UnguessableToken>& cdm_id,
+                    const std::optional<base::UnguessableToken>& cdm_id,
                     InitializeCallback callback));
   MOCK_METHOD2(Decode,
                void(mojom::DecoderBufferPtr buffer, DecodeCallback callback));
@@ -347,9 +345,7 @@ std::unique_ptr<AuxiliaryEndpoints> ConstructStableVideoDecoder(
 class StableVideoDecoderServiceTest : public testing::Test {
  public:
   StableVideoDecoderServiceTest()
-      : stable_video_decoder_factory_service_(
-            gpu::GpuFeatureInfo(),
-            /*enable_direct_video_decoder=*/true) {
+      : stable_video_decoder_factory_service_(gpu::GpuFeatureInfo()) {
     stable_video_decoder_factory_service_
         .SetVideoDecoderCreationCallbackForTesting(
             video_decoder_creation_cb_.Get());
@@ -527,7 +523,7 @@ TEST_F(StableVideoDecoderServiceTest, StableVideoDecoderCanBeInitialized) {
   const VideoDecoderConfig config_to_send = CreateValidVideoDecoderConfig();
   VideoDecoderConfig received_config;
   constexpr bool kLowDelay = true;
-  constexpr absl::optional<base::UnguessableToken> kCdmId = absl::nullopt;
+  constexpr std::optional<base::UnguessableToken> kCdmId = std::nullopt;
   StrictMock<base::MockOnceCallback<void(
       const media::DecoderStatus& status, bool needs_bitstream_conversion,
       int32_t max_decode_requests, VideoDecoderType decoder_type,
@@ -543,7 +539,7 @@ TEST_F(StableVideoDecoderServiceTest, StableVideoDecoderCanBeInitialized) {
               Initialize(/*config=*/_, kLowDelay, kCdmId,
                          /*callback=*/_))
       .WillOnce([&](const VideoDecoderConfig& config, bool low_delay,
-                    const absl::optional<base::UnguessableToken>& cdm_id,
+                    const std::optional<base::UnguessableToken>& cdm_id,
                     mojom::VideoDecoder::InitializeCallback callback) {
         received_config = config;
         received_initialize_cb = std::move(callback);
@@ -615,7 +611,7 @@ TEST_F(StableVideoDecoderServiceTest, StableVideoDecoderCanDecode) {
 
   constexpr uint8_t kEncodedData[] = {1, 2, 3};
   scoped_refptr<DecoderBuffer> decoder_buffer_to_send =
-      DecoderBuffer::CopyFrom(kEncodedData, std::size(kEncodedData));
+      DecoderBuffer::CopyFrom(kEncodedData);
   decoder_buffer_to_send->WritableSideData().secure_handle = 42;
   ASSERT_TRUE(decoder_buffer_to_send);
   mojom::DecoderBufferPtr received_decoder_buffer_ptr;
@@ -671,7 +667,7 @@ TEST_F(StableVideoDecoderServiceTest,
 
   constexpr uint8_t kEncodedData[] = {1, 2, 3};
   scoped_refptr<DecoderBuffer> decoder_buffer_to_send =
-      DecoderBuffer::CopyFrom(kEncodedData, std::size(kEncodedData));
+      DecoderBuffer::CopyFrom(kEncodedData);
   ASSERT_TRUE(decoder_buffer_to_send);
   StrictMock<base::MockOnceCallback<void(const media::DecoderStatus& status)>>
       decode_cb_to_send;
@@ -753,8 +749,8 @@ TEST_F(StableVideoDecoderServiceTest, VideoFramesCanBeReleased) {
 
   const base::UnguessableToken release_token_to_send =
       base::UnguessableToken::Create();
-  const absl::optional<gpu::SyncToken> expected_release_sync_token =
-      absl::nullopt;
+  const std::optional<gpu::SyncToken> expected_release_sync_token =
+      std::nullopt;
 
   EXPECT_CALL(
       *auxiliary_endpoints->mock_video_frame_handle_releaser,

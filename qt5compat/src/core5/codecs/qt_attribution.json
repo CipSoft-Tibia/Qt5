@@ -8,6 +8,7 @@
 
         "Description": "Treat as final version; no upstream known",
         "Description": "The Big5 codecs (QBig5Codec, QBig5hkscsCodec)\nprovide conversion to and from the Big5 encodings.",
+        "Comment": "no relevant PURL or CPE set, because the upstream is unknown",
         "License": "BSD 2-clause \"Simplified\" License",
         "LicenseId": "BSD-2-Clause",
         "LicenseFile": "LICENSE.QBIG5CODEC.txt",
@@ -22,6 +23,7 @@
 
         "Description": "Treat as final version; no upstream known",
         "Description": "The EUC-JP text codec provides conversion to and from EUC-JP,\nthe main legacy encoding for Unix machines in Japan.",
+        "Comment": "no relevant PURL or CPE set, because the upstream is unknown",
         "License": "BSD 2-clause \"Simplified\" License",
         "LicenseId": "BSD-2-Clause",
         "LicenseFile": "LICENSE.QEUCJPCODEC.txt",
@@ -36,6 +38,7 @@
 
         "Description": "Treat as final version; no upstream known",
         "Description": "The EUC-KR text codec provides conversion to and from EUC-KR, KR,\nthe main legacy encoding for Unix machines in Korea.",
+        "Comment": "no relevant PURL or CPE set, because the upstream is unknown",
         "License": "BSD 2-clause \"Simplified\" License",
         "LicenseId": "BSD-2-Clause",
         "LicenseFile": "LICENSE.QEUCKRCODEC.txt",
@@ -50,6 +53,7 @@
 
         "Description": "Treat as final version; no upstream known",
         "Description": "The ISO 2022-JP (JIS) text codec provides conversion to and from ISO 2022-JP.",
+        "Comment": "no relevant PURL or CPE set, because the upstream is unknown",
         "License": "BSD 2-clause \"Simplified\" License",
         "LicenseId": "BSD-2-Clause",
         "LicenseFile": "LICENSE.QJISCODEC.txt",
@@ -64,6 +68,7 @@
 
         "Description": "Treat as final version; no upstream known",
         "Description": "The Shift-JIS text codec provides conversion to and from Shift-JIS.",
+        "Comment": "no relevant PURL or CPE set, because the upstream is unknown",
         "License": "BSD 2-clause \"Simplified\" License",
         "LicenseId": "BSD-2-Clause",
         "LicenseFile": "LICENSE.QSJISCODEC.txt",
@@ -78,6 +83,7 @@
 
         "Description": "Treat as final version; no upstream known",
         "Description": "The TSCII text codec provides conversion to and from the Tamil TSCII\nencoding.",
+        "Comment": "no relevant PURL or CPE set, because the upstream is unknown",
         "License": "BSD 2-clause \"Simplified\" License",
         "LicenseId": "BSD-2-Clause",
         "LicenseFile": "LICENSE.QTSCIICODEC.txt",
@@ -92,6 +98,7 @@
 
         "Description": "Treat as final version; no upstream known",
         "Description": "The GBK codec provides conversion to and from the Chinese\nGB18030/GBK/GB2312 encoding.",
+        "Comment": "no relevant PURL or CPE set, because the upstream is unknown",
         "License": "BSD 2-clause \"Simplified\" License",
         "LicenseId": "BSD-2-Clause",
         "LicenseFile": "LICENSE.QBKCODEC.txt",

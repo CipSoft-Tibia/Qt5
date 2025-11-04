@@ -15,15 +15,15 @@
 namespace skgpu::graphite {
 
 GlobalCache::GlobalCache()
-        : fGraphicsPipelineCache(256) // TODO: find a good value for these limits
-        , fComputePipelineCache(16) {}
+        : fGraphicsPipelineCache(256)  // TODO: find a good value for these limits
+        , fComputePipelineCache(256) {}
 
 GlobalCache::~GlobalCache() {
     // These should have been cleared out earlier by deleteResources().
     SkDEBUGCODE(SkAutoSpinlock lock{ fSpinLock });
     SkASSERT(fGraphicsPipelineCache.count() == 0);
     SkASSERT(fComputePipelineCache.count() == 0);
-    SkASSERT(fStaticResource.size() == 0);
+    SkASSERT(fStaticResource.empty());
 }
 
 void GlobalCache::deleteResources() {
@@ -55,7 +55,7 @@ sk_sp<GraphicsPipeline> GlobalCache::addGraphicsPipeline(const UniqueKey& key,
     return *entry;
 }
 
-#if defined(GRAPHITE_TEST_UTILS)
+#if defined(GPU_TEST_UTILS)
 int GlobalCache::numGraphicsPipelines() const {
     SkAutoSpinlock lock{fSpinLock};
 
@@ -76,7 +76,7 @@ void GlobalCache::forEachGraphicsPipeline(
         fn(*k, v->get());
     });
 }
-#endif // defined(GRAPHITE_TEST_UTILS)
+#endif // defined(GPU_TEST_UTILS)
 
 sk_sp<ComputePipeline> GlobalCache::findComputePipeline(const UniqueKey& key) {
     SkAutoSpinlock lock{fSpinLock};

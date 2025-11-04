@@ -49,10 +49,10 @@ __attribute__((noinline)) extern "C" void IndirectCallFunc(uint8_t input) {
 }
 
 __attribute__((noinline)) extern "C" void CallThisRecursively(int times) {
-    static volatile int sink;
-    [[maybe_unused]] volatile char stack_usage[1024] = {};
-    if (times > 0) CallThisRecursively(times - 1);
-    sink = 0;
+  [[maybe_unused]] static volatile int sink;
+  [[maybe_unused]] volatile char stack_usage[1024] = {};
+  if (times > 0) CallThisRecursively(times - 1);
+  sink = 0;
 }
 
 // Used to test data flow instrumentation.
@@ -106,6 +106,20 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
 
   // Deep recursion for stack overflow
   if (size == 3 && data[0] == 's' && data[1] == 't' && data[2] == 'k') {
+    CallThisRecursively(100);
+  }
+
+  // Stack overflow that triggers an instrumented SIGABRT handler in the current
+  // stack.
+  if (size == 4 && data[0] == 's' && data[1] == 't' && data[2] == 'k' &&
+      data[3] == '2') {
+    const auto signal_handler = +[](int sig_num) { SingleEdgeFunc(); };
+    struct sigaction act = {};
+    act.sa_handler = signal_handler;
+    if (sigaction(SIGABRT, &act, nullptr) != 0) {
+      printf("failed to set up the signal handler for SIGABRT\n");
+      abort();
+    }
     CallThisRecursively(100);
   }
 

@@ -52,9 +52,9 @@ void FetchContext::PrepareRequest(ResourceRequest&,
 void FetchContext::AddResourceTiming(mojom::blink::ResourceTimingInfoPtr,
                                      const WTF::AtomicString&) {}
 
-void FetchContext::PopulateResourceRequest(
+void FetchContext::UpgradeResourceRequestForLoader(
     ResourceType,
-    const absl::optional<float> resource_width,
+    const std::optional<float> resource_width,
     ResourceRequest&,
     const ResourceLoaderOptions&) {}
 

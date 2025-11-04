@@ -67,6 +67,7 @@ public:
         Thai,
         Stroke,
         Romaji,
+        HiraganaFlick,
     };
     Q_ENUM(InputMode)
 

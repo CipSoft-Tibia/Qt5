@@ -28,11 +28,10 @@
 #ifndef SRC_DAWN_WIRE_CLIENT_QUEUE_H_
 #define SRC_DAWN_WIRE_CLIENT_QUEUE_H_
 
-#include "dawn/webgpu.h"
+#include <webgpu/webgpu.h>
 
 #include "dawn/wire/WireClient.h"
 #include "dawn/wire/client/ObjectBase.h"
-#include "dawn/wire/client/RequestTracker.h"
 
 namespace dawn::wire::client {
 
@@ -41,9 +40,12 @@ class Queue final : public ObjectWithEventsBase {
     using ObjectWithEventsBase::ObjectWithEventsBase;
     ~Queue() override;
 
+    ObjectType GetObjectType() const override;
+
     // Dawn API
     void OnSubmittedWorkDone(WGPUQueueWorkDoneCallback callback, void* userdata);
     WGPUFuture OnSubmittedWorkDoneF(const WGPUQueueWorkDoneCallbackInfo& callbackInfo);
+    WGPUFuture OnSubmittedWorkDone2(const WGPUQueueWorkDoneCallbackInfo2& callbackInfo);
     void WriteBuffer(WGPUBuffer cBuffer, uint64_t bufferOffset, const void* data, size_t size);
     void WriteTexture(const WGPUImageCopyTexture* destination,
                       const void* data,

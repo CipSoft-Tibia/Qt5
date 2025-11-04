@@ -20,6 +20,7 @@
 #include <QtCore/qlist.h>
 #include <QtCore/qpointer.h>
 #include <QtCore/qsharedpointer.h>
+#include <private/qstatemachineglobal_p.h>
 
 QT_REQUIRE_CONFIG(statemachine);
 

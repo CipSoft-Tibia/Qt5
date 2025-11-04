@@ -1,16 +1,12 @@
 #!/usr/bin/env bash
-# Copyright (C) 2023 The Qt Company Ltd.
-# SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+#Copyright (C) 2025 The Qt Company Ltd
+#SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
-# Will install homebrew package manager for macOS.
-#     WARNING: Requires commandlinetools
+set -ex
 
-
-set -e
+INSTALLTYPE="PKG"
 
 BASEDIR=$(dirname "$0")
-"$BASEDIR/../common/macos/homebrew_for_arm_mac.sh"
-# Can we force reading bash env this late?
-echo "if [ -f ~/.bashrc ]; then
-        . ~/.bashrc
-fi" >> .profile
+# Usage "$BASEDIR/../common/macos/homebrew.sh" "$INSTALLTYPE" "$HOMEBREW_VERSION" "$HOMEBREW_HASH"
+# Specify HOMEBREW_VERSION and HOMEBREW_HASH only if defaults set in homebrew.sh are not suitable for this platform
+"$BASEDIR/../common/macos/homebrew.sh" "$INSTALLTYPE"

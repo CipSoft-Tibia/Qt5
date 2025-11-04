@@ -14,15 +14,24 @@ set(__qt_chainload_toolchain_file \"\${__qt_initially_configured_toolchain_file}
 ")
     endif()
 
-    if(VCPKG_CHAINLOAD_TOOLCHAIN_FILE)
-        file(TO_CMAKE_PATH "${VCPKG_CHAINLOAD_TOOLCHAIN_FILE}" VCPKG_CHAINLOAD_TOOLCHAIN_FILE)
-        list(APPEND init_vcpkg
-             "set(VCPKG_CHAINLOAD_TOOLCHAIN_FILE \"${VCPKG_CHAINLOAD_TOOLCHAIN_FILE}\")")
-    endif()
+    if(QT_USE_VCPKG)
+        set(init_vcpkg "set(__qt_initially_configured_use_vcpkg TRUE)")
+        if(VCPKG_CHAINLOAD_TOOLCHAIN_FILE)
+            file(TO_CMAKE_PATH "${VCPKG_CHAINLOAD_TOOLCHAIN_FILE}"
+                initial_vcpkg_chainload_toolchain_file)
+            get_filename_component(initial_vcpkg_chainload_toolchain_file
+                "${initial_vcpkg_chainload_toolchain_file}" REALPATH)
+            list(APPEND init_vcpkg
+                "set(__qt_initially_configured_vcpkg_chainload_toolchain_file \
+    \"${initial_vcpkg_chainload_toolchain_file}\")")
+        endif()
 
-    if(VCPKG_TARGET_TRIPLET)
-        list(APPEND init_vcpkg
-             "set(VCPKG_TARGET_TRIPLET \"${VCPKG_TARGET_TRIPLET}\" CACHE STRING \"\")")
+        if(VCPKG_TARGET_TRIPLET)
+            list(APPEND init_vcpkg
+                "set(__qt_initially_configured_vcpkg_target_triplet \"${VCPKG_TARGET_TRIPLET}\")")
+        endif()
+    else()
+        set(init_vcpkg "")
     endif()
 
     if(CMAKE_SYSTEM_NAME STREQUAL "Windows" AND CMAKE_SYSTEM_PROCESSOR STREQUAL "arm64" AND CMAKE_SYSTEM_VERSION STREQUAL "10")
@@ -159,7 +168,7 @@ endif()")
         set(cmake_sysroot_name "$CACHE{CMAKE_OSX_SYSROOT}")
 
         list(LENGTH CMAKE_OSX_ARCHITECTURES _qt_osx_architectures_count)
-        if(cmake_sysroot_name AND NOT _qt_osx_architectures_count GREATER 1 AND UIKIT)
+        if(cmake_sysroot_name AND (MACOS OR (UIKIT AND NOT _qt_osx_architectures_count GREATER 1)))
             list(APPEND init_platform "
 if(NOT DEFINED CMAKE_OSX_SYSROOT)
     set(CMAKE_OSX_SYSROOT \"${cmake_sysroot_name}\" CACHE STRING \"\")

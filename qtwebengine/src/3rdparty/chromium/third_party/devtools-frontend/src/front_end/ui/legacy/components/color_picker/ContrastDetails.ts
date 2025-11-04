@@ -140,7 +140,7 @@ export class ContrastDetails extends Common.ObjectWrapper.ObjectWrapper<EventTyp
 
     const expandToolbar = new UI.Toolbar.Toolbar('expand', contrastValueRowContents);
     this.expandButton = new UI.Toolbar.ToolbarButton(i18nString(UIStrings.showMore), 'chevron-down');
-    this.expandButton.addEventListener(UI.Toolbar.ToolbarButton.Events.Click, this.expandButtonClicked.bind(this));
+    this.expandButton.addEventListener(UI.Toolbar.ToolbarButton.Events.CLICK, this.expandButtonClicked.bind(this));
     UI.ARIAUtils.setExpanded(this.expandButton.element, false);
     expandToolbar.appendToolbarItem(this.expandButton);
 
@@ -167,13 +167,13 @@ export class ContrastDetails extends Common.ObjectWrapper.ObjectWrapper<EventTyp
     this.bgColorPickerButton = new UI.Toolbar.ToolbarToggle(
         i18nString(UIStrings.toggleBackgroundColorPicker), 'color-picker', 'color-picker-filled');
     this.bgColorPickerButton.addEventListener(
-        UI.Toolbar.ToolbarButton.Events.Click, this.toggleBackgroundColorPickerInternal.bind(this, undefined, true));
+        UI.Toolbar.ToolbarButton.Events.CLICK, this.toggleBackgroundColorPickerInternal.bind(this, undefined, true));
     pickerToolbar.appendToolbarItem(this.bgColorPickerButton);
     this.bgColorPickedBound = this.bgColorPicked.bind(this);
 
     this.bgColorSwatch = new Swatch(bgColorContainer);
 
-    this.contrastInfo.addEventListener(ContrastInfoEvents.ContrastInfoUpdated, this.update.bind(this));
+    this.contrastInfo.addEventListener(ContrastInfoEvents.CONTRAST_INFO_UPDATED, this.update.bind(this));
   }
 
   private showNoContrastInfoAvailableMessage(): void {
@@ -218,11 +218,7 @@ export class ContrastDetails extends Common.ObjectWrapper.ObjectWrapper<EventTyp
 
   private createFixColorButton(parent: Element, suggestedColor: Common.Color.Color): HTMLElement {
     const button = parent.createChild('button', 'contrast-fix-button') as HTMLElement;
-    const originalColorFormat = this.contrastInfo.colorFormat();
-    const colorFormat = originalColorFormat && originalColorFormat !== Common.Color.Format.Nickname ?
-        originalColorFormat :
-        Common.Color.Format.HEXA;
-    const formattedColor = suggestedColor.asString(colorFormat);
+    const formattedColor = suggestedColor.asString(this.contrastInfo.colorFormat());
     const suggestedColorString = formattedColor ? formattedColor + ' ' : '';
     const label = i18nString(UIStrings.useSuggestedColorStoFixLow, {PH1: suggestedColorString});
     UI.ARIAUtils.setLabel(button, label);
@@ -242,7 +238,7 @@ export class ContrastDetails extends Common.ObjectWrapper.ObjectWrapper<EventTyp
     this.setVisible(true);
     this.hideNoContrastInfoAvailableMessage();
 
-    const isAPCAEnabled = Root.Runtime.experiments.isEnabled('APCA');
+    const isAPCAEnabled = Root.Runtime.experiments.isEnabled('apca');
 
     const fgColor = this.contrastInfo.color();
     const bgColor = this.contrastInfo.bgColor();
@@ -435,7 +431,7 @@ export class ContrastDetails extends Common.ObjectWrapper.ObjectWrapper<EventTyp
   }
 
   backgroundColorPickerEnabled(): boolean {
-    return this.bgColorPickerButton.toggled();
+    return this.bgColorPickerButton.isToggled();
   }
 
   toggleBackgroundColorPicker(enabled: boolean): void {
@@ -444,12 +440,11 @@ export class ContrastDetails extends Common.ObjectWrapper.ObjectWrapper<EventTyp
 
   private toggleBackgroundColorPickerInternal(enabled?: boolean, shouldTriggerEvent: boolean|undefined = true): void {
     if (enabled === undefined) {
-      enabled = !this.bgColorPickerButton.toggled();
+      enabled = this.bgColorPickerButton.isToggled();
     }
-    this.bgColorPickerButton.setToggled(enabled);
 
     if (shouldTriggerEvent) {
-      this.dispatchEventToListeners(Events.BackgroundColorPickerWillBeToggled, enabled);
+      this.dispatchEventToListeners(Events.BACKGROUND_COLOR_PICKER_WILL_BE_TOGGLED, enabled);
     }
 
     Host.InspectorFrontendHost.InspectorFrontendHostInstance.setEyeDropperActive(enabled);
@@ -474,11 +469,11 @@ export class ContrastDetails extends Common.ObjectWrapper.ObjectWrapper<EventTyp
 }
 
 export const enum Events {
-  BackgroundColorPickerWillBeToggled = 'BackgroundColorPickerWillBeToggled',
+  BACKGROUND_COLOR_PICKER_WILL_BE_TOGGLED = 'BackgroundColorPickerWillBeToggled',
 }
 
 export type EventTypes = {
-  [Events.BackgroundColorPickerWillBeToggled]: boolean,
+  [Events.BACKGROUND_COLOR_PICKER_WILL_BE_TOGGLED]: boolean,
 };
 
 export class Swatch {

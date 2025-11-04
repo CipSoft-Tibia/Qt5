@@ -5,6 +5,8 @@
 
 #include <QtGraphs/QBar3DSeries>
 
+#include <QtGui/qquaternion.h>
+
 class tst_series: public QObject
 {
     Q_OBJECT
@@ -84,6 +86,7 @@ void tst_series::initialProperties()
     QCOMPARE(m_series->type(), QAbstract3DSeries::SeriesType::Bar);
     QCOMPARE(m_series->userDefinedMesh(), QString(""));
     QCOMPARE(m_series->isVisible(), true);
+    QCOMPARE(m_series->isValueColoringEnabled(), false);
 }
 
 void tst_series::initializeProperties()
@@ -161,6 +164,7 @@ void tst_series::initializeProperties()
     m_series->setSingleHighlightGradient(gradient3);
     m_series->setUserDefinedMesh(":/customitem.mesh");
     m_series->setVisible(false);
+    m_series->setValueColoringEnabled(true);
     m_series->setRowLabels(rowLabels);
     m_series->setColumnLabels(columnLabels);
 
@@ -181,6 +185,7 @@ void tst_series::initializeProperties()
     QCOMPARE(m_series->singleHighlightGradient().stops().at(0).second, QColor(Qt::white));
     QCOMPARE(m_series->userDefinedMesh(), QString(":/customitem.mesh"));
     QCOMPARE(m_series->isVisible(), false);
+    QCOMPARE(m_series->isValueColoringEnabled(), true);
     QCOMPARE(m_series->rowLabels(), rowLabels);
     QCOMPARE(m_series->columnLabels(), columnLabels);
 

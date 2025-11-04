@@ -16,16 +16,16 @@
 #include "bench/gemm.h"
 #include "bench/utils.h"
 
-#include <xnnpack/aligned-allocator.h>
-#include <xnnpack/allocator.h>
-#include <xnnpack/common.h>
-#include <xnnpack/gemm.h>
-#include <xnnpack/math.h>
-#include <xnnpack/microfnptr.h>
-#include <xnnpack/microparams-init.h>
-#include <xnnpack/pack.h>
-#include <xnnpack/packx.h>
-#include <xnnpack/ppmm.h>
+#include "xnnpack/aligned-allocator.h"
+#include "xnnpack/allocator.h"
+#include "xnnpack/common.h"
+#include "xnnpack/gemm.h"
+#include "xnnpack/math.h"
+#include "xnnpack/microfnptr.h"
+#include "xnnpack/microparams-init.h"
+#include "xnnpack/pack.h"
+#include "xnnpack/packx.h"
+#include "xnnpack/ppmm.h"
 
 
 static void GEMMBenchmark(benchmark::State& state,
@@ -665,36 +665,6 @@ static void GEMMBenchmark(benchmark::State& state,
       /*mr=*/6, /*nr=*/8, /*kr=*/1, /*sr=*/1,
       benchmark::utils::CheckSSE41);
   }
-  static void f32_qc4w_gemm_1x8__sse2_dup(benchmark::State& state, const char* net) {
-    GEMMBenchmark(state,
-      xnn_f32_qc4w_gemm_minmax_ukernel_1x8__sse2_dup,
-      xnn_init_f32_qc4w_minmax_sse_params,
-      /*mr=*/1, /*nr=*/8, /*kr=*/1, /*sr=*/1);
-  }
-  static void f32_qc4w_gemm_3x8__sse2_dup(benchmark::State& state, const char* net) {
-    GEMMBenchmark(state,
-      xnn_f32_qc4w_gemm_minmax_ukernel_3x8__sse2_dup,
-      xnn_init_f32_qc4w_minmax_sse_params,
-      /*mr=*/3, /*nr=*/8, /*kr=*/1, /*sr=*/1);
-  }
-  static void f32_qc4w_gemm_4x8__sse2_dup(benchmark::State& state, const char* net) {
-    GEMMBenchmark(state,
-      xnn_f32_qc4w_gemm_minmax_ukernel_4x8__sse2_dup,
-      xnn_init_f32_qc4w_minmax_sse_params,
-      /*mr=*/4, /*nr=*/8, /*kr=*/1, /*sr=*/1);
-  }
-  static void f32_qc4w_gemm_5x8__sse2_dup(benchmark::State& state, const char* net) {
-    GEMMBenchmark(state,
-      xnn_f32_qc4w_gemm_minmax_ukernel_5x8__sse2_dup,
-      xnn_init_f32_qc4w_minmax_sse_params,
-      /*mr=*/5, /*nr=*/8, /*kr=*/1, /*sr=*/1);
-  }
-  static void f32_qc4w_gemm_6x8__sse2_dup(benchmark::State& state, const char* net) {
-    GEMMBenchmark(state,
-      xnn_f32_qc4w_gemm_minmax_ukernel_6x8__sse2_dup,
-      xnn_init_f32_qc4w_minmax_sse_params,
-      /*mr=*/6, /*nr=*/8, /*kr=*/1, /*sr=*/1);
-  }
 
   BENCHMARK_GEMM(f32_qc4w_gemm_1x32__avx512skx_broadcast)
   BENCHMARK_GEMM(f32_qc4w_gemm_2x32__avx512skx_broadcast)
@@ -733,11 +703,6 @@ static void GEMMBenchmark(benchmark::State& state,
   BENCHMARK_GEMM(f32_qc4w_gemm_4x8__sse41_dup)
   BENCHMARK_GEMM(f32_qc4w_gemm_5x8__sse41_dup)
   BENCHMARK_GEMM(f32_qc4w_gemm_6x8__sse41_dup)
-  BENCHMARK_GEMM(f32_qc4w_gemm_1x8__sse2_dup)
-  BENCHMARK_GEMM(f32_qc4w_gemm_3x8__sse2_dup)
-  BENCHMARK_GEMM(f32_qc4w_gemm_4x8__sse2_dup)
-  BENCHMARK_GEMM(f32_qc4w_gemm_5x8__sse2_dup)
-  BENCHMARK_GEMM(f32_qc4w_gemm_6x8__sse2_dup)
 #endif  // XNN_ARCH_X86 || XNN_ARCH_X86_64
 
 static void f32_qc4w_gemm_1x4__scalar(benchmark::State& state, const char* net) {

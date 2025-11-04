@@ -6,6 +6,7 @@
 
 #include "core/fpdfapi/render/cpdf_progressiverenderer.h"
 
+#include "build/build_config.h"
 #include "core/fpdfapi/page/cpdf_image.h"
 #include "core/fpdfapi/page/cpdf_imageobject.h"
 #include "core/fpdfapi/page/cpdf_pageimagecache.h"
@@ -13,6 +14,7 @@
 #include "core/fpdfapi/page/cpdf_pageobjectholder.h"
 #include "core/fpdfapi/render/cpdf_renderoptions.h"
 #include "core/fpdfapi/render/cpdf_renderstatus.h"
+#include "core/fxcrt/check.h"
 #include "core/fxcrt/pauseindicator_iface.h"
 #include "core/fxge/cfx_renderdevice.h"
 
@@ -20,7 +22,10 @@ CPDF_ProgressiveRenderer::CPDF_ProgressiveRenderer(
     CPDF_RenderContext* pContext,
     CFX_RenderDevice* pDevice,
     const CPDF_RenderOptions* pOptions)
-    : m_pContext(pContext), m_pDevice(pDevice), m_pOptions(pOptions) {}
+    : m_pContext(pContext), m_pDevice(pDevice), m_pOptions(pOptions) {
+  CHECK(m_pContext);
+  CHECK(m_pDevice);
+}
 
 CPDF_ProgressiveRenderer::~CPDF_ProgressiveRenderer() {
   if (m_pRenderStatus) {
@@ -30,7 +35,7 @@ CPDF_ProgressiveRenderer::~CPDF_ProgressiveRenderer() {
 }
 
 void CPDF_ProgressiveRenderer::Start(PauseIndicatorIface* pPause) {
-  if (!m_pContext || !m_pDevice || m_Status != kReady) {
+  if (m_Status != kReady) {
     m_Status = kFailed;
     return;
   }
@@ -71,18 +76,20 @@ void CPDF_ProgressiveRenderer::Continue(PauseIndicatorIface* pPause) {
     bool is_mask = false;
     while (iter != iterEnd) {
       CPDF_PageObject* pCurObj = iter->get();
-      if (pCurObj && pCurObj->GetRect().left <= m_ClipRect.right &&
+      if (pCurObj->GetRect().left <= m_ClipRect.right &&
           pCurObj->GetRect().right >= m_ClipRect.left &&
           pCurObj->GetRect().bottom <= m_ClipRect.top &&
           pCurObj->GetRect().top >= m_ClipRect.bottom) {
         if (m_pOptions->GetOptions().bBreakForMasks && pCurObj->IsImage() &&
             pCurObj->AsImage()->GetImage()->IsMask()) {
+#if BUILDFLAG(IS_WIN)
           if (m_pDevice->GetDeviceType() == DeviceType::kPrinter) {
             m_LastObjectRendered = iter;
             m_pRenderStatus->ProcessClipPath(pCurObj->clip_path(),
                                              m_pCurrentLayer->GetMatrix());
             return;
           }
+#endif
           is_mask = true;
         }
         if (m_pRenderStatus->ContinueSingleObject(

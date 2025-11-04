@@ -37,11 +37,14 @@ struct Q_QML_EXPORT QQmlPropertyResolver
         IgnoreRevision
     };
 
-    const QQmlPropertyData *property(const QString &name, bool *notInRevision = nullptr,
-                               RevisionCheck check = CheckRevision) const;
+    const QQmlPropertyData *property(
+            const QString &name, bool *notInRevision = nullptr,
+            RevisionCheck check = CheckRevision) const;
 
     // This code must match the semantics of QQmlPropertyPrivate::findSignalByName
-    const QQmlPropertyData *signal(const QString &name, bool *notInRevision) const;
+    const QQmlPropertyData *signal(
+            const QString &name, bool *notInRevision = nullptr,
+            RevisionCheck check = CheckRevision) const;
 
     QQmlPropertyCache::ConstPtr cache;
 };

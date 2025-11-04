@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <qqmldebugprocess_p.h>
-#include <QtTest>
+#include <QTest>
 
 #include <QtCore/qcoreapplication.h>
 #include <QtCore/qscopedpointer.h>

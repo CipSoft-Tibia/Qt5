@@ -41,15 +41,21 @@ Rectangle {
             required property var model
 
             color: "#2CDE85"
-            border.color: "#00414A"
-            border.width: 2
-            Text {
+            border {color: "#00414A"; width: 2}
+
+            TextEdit {
                 // Calls MyDataModel::data to get data based on the roles.
                 // Called in Qt qtMainLoopThread thread context.
-                text: model.row + model.column
-                font.pixelSize: 26
-                font.bold: true
+                //
+                // After editing is finished, call MyDataModel::setData()
+                // to update the value of selected cell.
+                onEditingFinished: parent.model.edit = text
+
+                text: parent.model.display
+                font {pixelSize: 26; bold: true}
+                padding: 5
                 anchors.fill: parent
+                wrapMode: TextEdit.Wrap
                 horizontalAlignment: TextEdit.AlignHCenter
                 verticalAlignment: TextEdit.AlignVCenter
             }

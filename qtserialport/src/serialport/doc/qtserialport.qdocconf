@@ -40,3 +40,6 @@ depends += qtcore qtdoc qtnetwork qmake qtcmake
 
 navigation.landingpage = "Qt Serial Port"
 navigation.cppclassespage = "Qt Serial Port C++ Classes"
+
+# Allow zero warnings when testing documentation in CI
+warninglimit = 0

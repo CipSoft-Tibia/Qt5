@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 // Loosely based on print_view_manager.cc and print_preview_message_handler.cc
 // Copyright 2013 The Chromium Authors. All rights reserved.
@@ -18,6 +19,7 @@
 #include <QtGui/qpagelayout.h>
 #include <QtGui/qpageranges.h>
 #include <QtGui/qpagesize.h>
+#include <QWebEngineSettings>
 
 #include "base/values.h"
 #include "base/memory/ref_counted_memory.h"
@@ -25,6 +27,7 @@
 #include "chrome/browser/printing/print_job_manager.h"
 #include "chrome/browser/printing/printer_query.h"
 #include "components/printing/common/print.mojom.h"
+#include "components/url_formatter/url_formatter.h"
 #include "content/browser/renderer_host/render_view_host_impl.h"
 #include "content/browser/web_contents/web_contents_impl.h"
 #include "content/public/browser/browser_task_traits.h"
@@ -113,37 +116,30 @@ static base::Value::Dict createPrintSettings()
 }
 
 static base::Value::Dict createPrintSettingsFromQPageLayout(const QPageLayout &pageLayout,
-                                                                 bool useCustomMargins)
+                                                            bool useCSSMargins)
 {
     base::Value::Dict printSettings = createPrintSettings();
-    QRectF pageSizeInMillimeter;
 
-    if (useCustomMargins) {
-        // Apply page margins when printing to PDF
-        pageSizeInMillimeter = pageLayout.pageSize().rect(QPageSize::Millimeter);
-
+    if (useCSSMargins) {
+        printSettings.Set(printing::kSettingMarginsType,
+                          (int)printing::mojom::MarginType::kDefaultMargins);
+    } else {
         QMargins pageMarginsInPoints = pageLayout.marginsPoints();
         base::Value::Dict marginsDict;
         marginsDict.Set(printing::kSettingMarginTop, pageMarginsInPoints.top());
         marginsDict.Set(printing::kSettingMarginBottom, pageMarginsInPoints.bottom());
         marginsDict.Set(printing::kSettingMarginLeft, pageMarginsInPoints.left());
         marginsDict.Set(printing::kSettingMarginRight, pageMarginsInPoints.right());
-
         printSettings.Set(printing::kSettingMarginsCustom, std::move(marginsDict));
-        printSettings.Set(printing::kSettingMarginsType, (int)printing::mojom::MarginType::kCustomMargins);
-
-        // pageSizeInMillimeter is in portrait orientation. Transpose it if necessary.
-        printSettings.Set(printing::kSettingLandscape, pageLayout.orientation() == QPageLayout::Landscape);
-    } else {
-        // QPrinter will handle margins
-        pageSizeInMillimeter = pageLayout.paintRect(QPageLayout::Millimeter);
-        printSettings.Set(printing::kSettingMarginsType, (int)printing::mojom::MarginType::kNoMargins);
-
-        // pageSizeInMillimeter already contains the orientation.
-        printSettings.Set(printing::kSettingLandscape, false);
+        printSettings.Set(printing::kSettingMarginsType,
+                          (int)printing::mojom::MarginType::kCustomMargins);
     }
 
-    //Set page size attributes, chromium expects these in micrometers
+    printSettings.Set(printing::kSettingLandscape,
+                      pageLayout.orientation() == QPageLayout::Landscape);
+
+    // Set page size attributes, Chromium expects these in micrometers
+    QRectF pageSizeInMillimeter = pageLayout.pageSize().rect(QPageSize::Millimeter);
     base::Value::Dict sizeDict;
     sizeDict.Set(printing::kSettingMediaSizeWidthMicrons, int(pageSizeInMillimeter.width() * kMicronsToMillimeter));
     sizeDict.Set(printing::kSettingMediaSizeHeightMicrons, int(pageSizeInMillimeter.height() * kMicronsToMillimeter));
@@ -189,8 +185,7 @@ void PrintViewManagerQt::PrintToPDFFileWithCallback(const QPageLayout &pageLayou
 
     m_pdfOutputPath = toFilePath(filePath);
     m_pdfSaveCallback = std::move(callback);
-    if (!PrintToPDFInternal(pageLayout, pageRanges, printInColor, /*useCustomMargins*/ true,
-                            frameId)) {
+    if (!PrintToPDFInternal(pageLayout, pageRanges, printInColor, frameId)) {
         content::GetUIThreadTaskRunner({})->PostTask(FROM_HERE,
                        base::BindOnce(std::move(m_pdfSaveCallback), false));
         resetPdfState();
@@ -199,8 +194,7 @@ void PrintViewManagerQt::PrintToPDFFileWithCallback(const QPageLayout &pageLayou
 
 void PrintViewManagerQt::PrintToPDFWithCallback(const QPageLayout &pageLayout,
                                                 const QPageRanges &pageRanges, bool printInColor,
-                                                bool useCustomMargins, quint64 frameId,
-                                                PrintToPDFCallback callback)
+                                                quint64 frameId, PrintToPDFCallback callback)
 {
     if (callback.is_null())
         return;
@@ -213,7 +207,7 @@ void PrintViewManagerQt::PrintToPDFWithCallback(const QPageLayout &pageLayout,
     }
 
     m_pdfPrintCallback = std::move(callback);
-    if (!PrintToPDFInternal(pageLayout, pageRanges, printInColor, useCustomMargins, frameId)) {
+    if (!PrintToPDFInternal(pageLayout, pageRanges, printInColor, frameId)) {
         content::GetUIThreadTaskRunner({})->PostTask(FROM_HERE,
                        base::BindOnce(std::move(m_pdfPrintCallback), QSharedPointer<QByteArray>()));
 
@@ -223,18 +217,40 @@ void PrintViewManagerQt::PrintToPDFWithCallback(const QPageLayout &pageLayout,
 
 bool PrintViewManagerQt::PrintToPDFInternal(const QPageLayout &pageLayout,
                                             const QPageRanges &pageRanges, const bool printInColor,
-                                            const bool useCustomMargins, quint64 frameId)
+                                            quint64 frameId)
 {
     if (!pageLayout.isValid())
         return false;
 
-    m_printSettings = createPrintSettingsFromQPageLayout(pageLayout, useCustomMargins);
+    bool printHeaderAndFooter = false;
+    bool useCSSMargins = false;
+    content::WebContentsView *view =
+            static_cast<content::WebContentsImpl *>(web_contents()->GetOutermostWebContents())
+                    ->GetView();
+    if (WebContentsAdapterClient *client = WebContentsViewQt::from(view)->client()) {
+        QWebEngineSettings *settings = client->webEngineSettings();
+        printHeaderAndFooter = settings->testAttribute(QWebEngineSettings::PrintHeaderAndFooter);
+        useCSSMargins = settings->testAttribute(QWebEngineSettings::PreferCSSMarginsForPrinting);
+    }
+
+    m_printSettings = createPrintSettingsFromQPageLayout(pageLayout, useCSSMargins);
     m_printSettings.Set(printing::kSettingShouldPrintBackgrounds,
                                 web_contents()->GetOrCreateWebPreferences().should_print_backgrounds);
     m_printSettings.Set(printing::kSettingColor,
                                 int(printInColor ? printing::mojom::ColorModel::kColor : printing::mojom::ColorModel::kGrayscale));
     if (!pageRanges.isEmpty())
         m_printSettings.Set(printing::kSettingPageRange, createPageRangeSettings(pageRanges.toRangeList()));
+
+    if (printHeaderAndFooter) {
+        m_printSettings.Set(printing::kSettingHeaderFooterEnabled, true);
+        m_printSettings.Set(printing::kSettingHeaderFooterTitle, web_contents()->GetTitle());
+        GURL::Replacements sanitizer;
+        sanitizer.ClearUsername();
+        sanitizer.ClearPassword();
+        const GURL &url = web_contents()->GetLastCommittedURL();
+        m_printSettings.Set(printing::kSettingHeaderFooterURL,
+                            url_formatter::FormatUrl(url.ReplaceComponents(sanitizer)));
+    }
 
     if (web_contents()->IsCrashed())
         return false;
@@ -250,7 +266,8 @@ bool PrintViewManagerQt::PrintToPDFInternal(const QPageLayout &pageLayout,
                     FindPdfChildFrame(full_page_plugin ? full_page_plugin : rfh))
             rfh = pdf_rfh;
     } else {
-        auto *ftn = content::FrameTreeNode::GloballyFindByID(static_cast<int>(frameId));
+        auto *ftn = content::FrameTreeNode::GloballyFindByID(
+                static_cast<content::FrameTreeNodeId>(frameId));
         if (!ftn)
             return false;
         rfh = ftn->current_frame_host();
@@ -347,7 +364,8 @@ void PrintViewManagerQt::SetupScriptedPrintPreview(SetupScriptedPrintPreviewCall
     if (web_contents()->GetPrimaryMainFrame() == rfh)
         client->printRequested();
     else
-        client->printRequestedByFrame(static_cast<quint64>(rfh->GetFrameTreeNodeId()));
+        client->printRequestedByFrame(
+                static_cast<quint64>(rfh->GetFrameTreeNodeId().GetUnsafeValue()));
 }
 
 void PrintViewManagerQt::ShowScriptedPrintPreview(bool /*source_is_modifiable*/)

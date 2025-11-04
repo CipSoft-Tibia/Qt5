@@ -1,7 +1,7 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
-#include <QtTest/QtTest>
+#include <QtTest/QTest>
 
 #include <QtQml/private/qanimationgroupjob_p.h>
 #include <QtQml/private/qsequentialanimationgroupjob_p.h>

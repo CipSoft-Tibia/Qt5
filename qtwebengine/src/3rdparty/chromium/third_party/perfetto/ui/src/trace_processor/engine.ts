@@ -13,9 +13,7 @@
 // limitations under the License.
 
 import {defer, Deferred} from '../base/deferred';
-import {Disposable} from '../base/disposable';
 import {assertExists, assertTrue} from '../base/logging';
-import {duration, Span, Time, time, TimeSpan} from '../base/time';
 import {
   ComputeMetricArgs,
   ComputeMetricResult,
@@ -24,24 +22,20 @@ import {
   MetatraceCategories,
   QueryArgs,
   QueryResult as ProtoQueryResult,
+  RegisterSqlModuleArgs,
   ResetTraceProcessorArgs,
   TraceProcessorRpc,
   TraceProcessorRpcStream,
 } from '../protos';
-
 import {ProtoRingBuffer} from './proto_ring_buffer';
 import {
   createQueryResult,
-  LONG,
-  LONG_NULL,
-  NUM,
   QueryError,
   QueryResult,
-  STR,
   WritableQueryResult,
 } from './query_result';
-
 import TPM = TraceProcessorRpc.TraceProcessorMethod;
+import {Result} from '../base/utils';
 
 export interface LoadingTracker {
   beginLoading(): void;
@@ -53,7 +47,6 @@ export class NullLoadingTracker implements LoadingTracker {
   endLoading(): void {}
 }
 
-
 // This is used to skip the decoding of queryResult from protobufjs and deal
 // with it ourselves. See the comment below around `QueryResult.decode = ...`.
 interface QueryResultBypass {
@@ -64,6 +57,47 @@ export interface TraceProcessorConfig {
   cropTrackEvents: boolean;
   ingestFtraceInRawTable: boolean;
   analyzeTraceProtoContent: boolean;
+  ftraceDropUntilAllCpusValid: boolean;
+}
+
+export interface Engine {
+  /**
+   * Execute a query against the database, returning a promise that resolves
+   * when the query has completed but rejected when the query fails for whatever
+   * reason. On success, the promise will only resolve once all the resulting
+   * rows have been received.
+   *
+   * The promise will be rejected if the query fails.
+   *
+   * @param sql The query to execute.
+   * @param tag An optional tag used to trace the origin of the query.
+   */
+  query(sql: string, tag?: string): Promise<QueryResult>;
+
+  /**
+   * Execute a query against the database, returning a promise that resolves
+   * when the query has completed or failed. The promise will never get
+   * rejected, it will always successfully resolve. Use the returned wrapper
+   * object to determine whether the query completed successfully.
+   *
+   * The promise will only resolve once all the resulting rows have been
+   * received.
+   *
+   * @param sql The query to execute.
+   * @param tag An optional tag used to trace the origin of the query.
+   */
+  tryQuery(sql: string, tag?: string): Promise<Result<QueryResult, Error>>;
+
+  /**
+   * Execute one or more metric and get the result.
+   *
+   * @param metrics The metrics to run.
+   * @param format The format of the response.
+   */
+  computeMetric(
+    metrics: string[],
+    format: 'json' | 'prototext' | 'proto',
+  ): Promise<string | Uint8Array>;
 }
 
 // Abstract interface of a trace proccessor.
@@ -77,10 +111,8 @@ export interface TraceProcessorConfig {
 // 1. Implement the abstract rpcSendRequestBytes() function, sending the
 //    proto-encoded TraceProcessorRpc requests to the TraceProcessor instance.
 // 2. Call onRpcResponseBytes() when response data is received.
-export abstract class Engine {
+export abstract class EngineBase implements Engine {
   abstract readonly id: string;
-  private _cpus?: number[];
-  private _numGpus?: number;
   private loadingTracker: LoadingTracker;
   private txSeqId = 0;
   private rxSeqId = 0;
@@ -90,8 +122,9 @@ export abstract class Engine {
   private pendingResetTraceProcessors = new Array<Deferred<void>>();
   private pendingQueries = new Array<WritableQueryResult>();
   private pendingRestoreTables = new Array<Deferred<void>>();
-  private pendingComputeMetrics = new Array<Deferred<string|Uint8Array>>();
+  private pendingComputeMetrics = new Array<Deferred<string | Uint8Array>>();
   private pendingReadMetatrace?: Deferred<DisableAndReadMetatraceResult>;
+  private pendingRegisterSqlModule?: Deferred<void>;
   private _isMetatracingEnabled = false;
 
   constructor(tracker?: LoadingTracker) {
@@ -160,8 +193,9 @@ export abstract class Engine {
     if (rpc.seq !== this.rxSeqId + 1 && this.rxSeqId !== 0 && rpc.seq !== 0) {
       // "(ERR:rpc_seq)" is intercepted by error_dialog.ts to show a more
       // graceful and actionable error.
-      throw new Error(`RPC sequence id mismatch cur=${rpc.seq} last=${
-          this.rxSeqId} (ERR:rpc_seq)`);
+      throw new Error(
+        `RPC sequence id mismatch cur=${rpc.seq} last=${this.rxSeqId} (ERR:rpc_seq)`,
+      );
     }
 
     this.rxSeqId = rpc.seq;
@@ -199,31 +233,49 @@ export abstract class Engine {
         break;
       case TPM.TPM_COMPUTE_METRIC:
         const metricRes = assertExists(rpc.metricResult) as ComputeMetricResult;
-        const pendingComputeMetric =
-            assertExists(this.pendingComputeMetrics.shift());
+        const pendingComputeMetric = assertExists(
+          this.pendingComputeMetrics.shift(),
+        );
         if (metricRes.error && metricRes.error.length > 0) {
-          const error =
-              new QueryError(`ComputeMetric() error: ${metricRes.error}`, {
-                query: 'COMPUTE_METRIC',
-              });
+          const error = new QueryError(
+            `ComputeMetric() error: ${metricRes.error}`,
+            {
+              query: 'COMPUTE_METRIC',
+            },
+          );
           pendingComputeMetric.reject(error);
         } else {
-          const result = metricRes.metricsAsPrototext ||
-              metricRes.metricsAsJson || metricRes.metrics || '';
+          const result =
+            metricRes.metricsAsPrototext ??
+            metricRes.metricsAsJson ??
+            metricRes.metrics ??
+            '';
           pendingComputeMetric.resolve(result);
         }
         break;
       case TPM.TPM_DISABLE_AND_READ_METATRACE:
-        const metatraceRes =
-            assertExists(rpc.metatrace) as DisableAndReadMetatraceResult;
+        const metatraceRes = assertExists(
+          rpc.metatrace,
+        ) as DisableAndReadMetatraceResult;
         assertExists(this.pendingReadMetatrace).resolve(metatraceRes);
         this.pendingReadMetatrace = undefined;
         break;
+      case TPM.TPM_REGISTER_SQL_MODULE:
+        const registerResult = assertExists(rpc.registerSqlModuleResult);
+        const res = assertExists(this.pendingRegisterSqlModule);
+        if (registerResult.error && registerResult.error.length > 0) {
+          res.reject(registerResult.error);
+        } else {
+          res.resolve();
+        }
+        break;
       default:
         console.log(
-            'Unexpected TraceProcessor response received: ', rpc.response);
+          'Unexpected TraceProcessor response received: ',
+          rpc.response,
+        );
         break;
-    }  // switch(rpc.response);
+    } // switch(rpc.response);
 
     if (isFinalResponse) {
       this.loadingTracker.endLoading();
@@ -234,7 +286,6 @@ export abstract class Engine {
   // The methods below are called by the various controllers in the UI and
   // deal with marshalling / unmarshaling requests to/from TraceProcessor.
 
-
   // Push trace data into the engine. The engine is supposed to automatically
   // figure out the type of the trace (JSON vs Protobuf).
   parse(data: Uint8Array): Promise<void> {
@@ -244,7 +295,7 @@ export abstract class Engine {
     rpc.request = TPM.TPM_APPEND_TRACE_DATA;
     rpc.appendTraceData = data;
     this.rpcSendRequest(rpc);
-    return asyncRes;  // Linearize with the worker.
+    return asyncRes; // Linearize with the worker.
   }
 
   // Notify the engine that we reached the end of the trace.
@@ -255,26 +306,30 @@ export abstract class Engine {
     const rpc = TraceProcessorRpc.create();
     rpc.request = TPM.TPM_FINALIZE_TRACE_DATA;
     this.rpcSendRequest(rpc);
-    return asyncRes;  // Linearize with the worker.
+    return asyncRes; // Linearize with the worker.
   }
 
   // Updates the TraceProcessor Config. This method creates a new
   // TraceProcessor instance, so it should be called before passing any trace
   // data.
-  resetTraceProcessor(
-      {cropTrackEvents, ingestFtraceInRawTable, analyzeTraceProtoContent}:
-          TraceProcessorConfig): Promise<void> {
+  resetTraceProcessor({
+    cropTrackEvents,
+    ingestFtraceInRawTable,
+    analyzeTraceProtoContent,
+    ftraceDropUntilAllCpusValid,
+  }: TraceProcessorConfig): Promise<void> {
     const asyncRes = defer<void>();
     this.pendingResetTraceProcessors.push(asyncRes);
     const rpc = TraceProcessorRpc.create();
     rpc.request = TPM.TPM_RESET_TRACE_PROCESSOR;
-    const args = rpc.resetTraceProcessorArgs = new ResetTraceProcessorArgs();
-    args.dropTrackEventDataBefore = cropTrackEvents ?
-        ResetTraceProcessorArgs.DropTrackEventDataBefore
-            .TRACK_EVENT_RANGE_OF_INTEREST :
-        ResetTraceProcessorArgs.DropTrackEventDataBefore.NO_DROP;
+    const args = (rpc.resetTraceProcessorArgs = new ResetTraceProcessorArgs());
+    args.dropTrackEventDataBefore = cropTrackEvents
+      ? ResetTraceProcessorArgs.DropTrackEventDataBefore
+          .TRACK_EVENT_RANGE_OF_INTEREST
+      : ResetTraceProcessorArgs.DropTrackEventDataBefore.NO_DROP;
     args.ingestFtraceInRawTable = ingestFtraceInRawTable;
     args.analyzeTraceProtoContent = analyzeTraceProtoContent;
+    args.ftraceDropUntilAllCpusValid = ftraceDropUntilAllCpusValid;
     this.rpcSendRequest(rpc);
     return asyncRes;
   }
@@ -287,17 +342,19 @@ export abstract class Engine {
     const rpc = TraceProcessorRpc.create();
     rpc.request = TPM.TPM_RESTORE_INITIAL_TABLES;
     this.rpcSendRequest(rpc);
-    return asyncRes;  // Linearize with the worker.
+    return asyncRes; // Linearize with the worker.
   }
 
   // Shorthand for sending a compute metrics request to the engine.
-  async computeMetric(metrics: string[], format: 'json'|'prototext'|'proto'):
-      Promise<string|Uint8Array> {
-    const asyncRes = defer<string|Uint8Array>();
+  async computeMetric(
+    metrics: string[],
+    format: 'json' | 'prototext' | 'proto',
+  ): Promise<string | Uint8Array> {
+    const asyncRes = defer<string | Uint8Array>();
     this.pendingComputeMetrics.push(asyncRes);
     const rpc = TraceProcessorRpc.create();
     rpc.request = TPM.TPM_COMPUTE_METRIC;
-    const args = rpc.computeMetricArgs = new ComputeMetricArgs();
+    const args = (rpc.computeMetricArgs = new ComputeMetricArgs());
     args.metricNames = metrics;
     if (format === 'json') {
       args.format = ComputeMetricArgs.ResultFormat.JSON;
@@ -320,7 +377,7 @@ export abstract class Engine {
   // the rows incrementally.
   //
   // Example usage:
-  // const res = engine.query('SELECT foo, bar FROM table');
+  // const res = engine.execute('SELECT foo, bar FROM table');
   // console.log(res.numRows());  // Will print 0 because we didn't await.
   // await(res.waitAllRows());
   // console.log(res.numRows());  // Will print the total number of rows.
@@ -331,7 +388,10 @@ export abstract class Engine {
   //
   // Optional |tag| (usually a component name) can be provided to allow
   // attributing trace processor workload to different UI components.
-  query(sqlQuery: string, tag?: string): Promise<QueryResult>&QueryResult {
+  private streamingQuery(
+    sqlQuery: string,
+    tag?: string,
+  ): Promise<QueryResult> & QueryResult {
     const rpc = TraceProcessorRpc.create();
     rpc.request = TPM.TPM_QUERY_STREAMING;
     rpc.queryArgs = new QueryArgs();
@@ -347,6 +407,37 @@ export abstract class Engine {
     return result;
   }
 
+  // Wraps .streamingQuery(), captures errors and re-throws with current stack.
+  //
+  // Note: This function is less flexible than .execute() as it only returns a
+  // promise which must be unwrapped before the QueryResult may be accessed.
+  async query(sqlQuery: string, tag?: string): Promise<QueryResult> {
+    try {
+      return await this.streamingQuery(sqlQuery, tag);
+    } catch (e) {
+      // Replace the error's stack trace with the one from here
+      // Note: It seems only V8 can trace the stack up the promise chain, so its
+      // likely this stack won't be useful on !V8.
+      // See
+      // https://docs.google.com/document/d/13Sy_kBIJGP0XT34V1CV3nkWya4TwYx9L3Yv45LdGB6Q
+      captureStackTrace(e);
+      throw e;
+    }
+  }
+
+  async tryQuery(
+    sql: string,
+    tag?: string,
+  ): Promise<Result<QueryResult, Error>> {
+    try {
+      const result = await this.query(sql, tag);
+      return {success: true, result};
+    } catch (error: unknown) {
+      // We know we only throw Error type objects so we can type assert safely
+      return {success: false, error: error as Error};
+    }
+  }
+
   isMetatracingEnabled(): boolean {
     return this._isMetatracingEnabled;
   }
@@ -354,7 +445,7 @@ export abstract class Engine {
   enableMetatrace(categories?: MetatraceCategories) {
     const rpc = TraceProcessorRpc.create();
     rpc.request = TPM.TPM_ENABLE_METATRACE;
-    if (categories) {
+    if (categories !== undefined && categories !== MetatraceCategories.NONE) {
       rpc.enableMetatraceArgs = new EnableMetatraceArgs();
       rpc.enableMetatraceArgs.categories = categories;
     }
@@ -378,6 +469,26 @@ export abstract class Engine {
     return result;
   }
 
+  registerSqlModules(p: {
+    name: string;
+    modules: {name: string; sql: string}[];
+  }): Promise<void> {
+    if (this.pendingRegisterSqlModule) {
+      return Promise.reject(new Error('Already finalising a metatrace'));
+    }
+
+    const result = defer<void>();
+
+    const rpc = TraceProcessorRpc.create();
+    rpc.request = TPM.TPM_REGISTER_SQL_MODULE;
+    const args = (rpc.registerSqlModuleArgs = new RegisterSqlModuleArgs());
+    args.topLevelPackageName = p.name;
+    args.modules = p.modules;
+    this.pendingRegisterSqlModule = result;
+    this.rpcSendRequest(rpc);
+    return result;
+  }
+
   // Marshals the TraceProcessorRpc request arguments and sends the request
   // to the concrete Engine (Wasm or HTTP).
   private rpcSendRequest(rpc: TraceProcessorRpc) {
@@ -391,131 +502,74 @@ export abstract class Engine {
     this.rpcSendRequestBytes(buf);
   }
 
-  // TODO(hjd): When streaming must invalidate this somehow.
-  async getCpus(): Promise<number[]> {
-    if (!this._cpus) {
-      const cpus = [];
-      const queryRes = await this.query(
-          'select distinct(cpu) as cpu from sched order by cpu;');
-      for (const it = queryRes.iter({cpu: NUM}); it.valid(); it.next()) {
-        cpus.push(it.cpu);
-      }
-      this._cpus = cpus;
-    }
-    return this._cpus;
-  }
-
-  async getNumberOfGpus(): Promise<number> {
-    // eslint-disable-next-line @typescript-eslint/strict-boolean-expressions
-    if (!this._numGpus) {
-      const result = await this.query(`
-        select count(distinct(gpu_id)) as gpuCount
-        from gpu_counter_track
-        where name = 'gpufreq';
-      `);
-      this._numGpus = result.firstRow({gpuCount: NUM}).gpuCount;
-    }
-    return this._numGpus;
-  }
-
-  // TODO: This should live in code that's more specific to chrome, instead of
-  // in engine.
-  async getNumberOfProcesses(): Promise<number> {
-    const result = await this.query('select count(*) as cnt from process;');
-    return result.firstRow({cnt: NUM}).cnt;
-  }
-
-  async getTraceTimeBounds(): Promise<Span<time, duration>> {
-    const result = await this.query(
-        `select start_ts as startTs, end_ts as endTs from trace_bounds`);
-    const bounds = result.firstRow({
-      startTs: LONG,
-      endTs: LONG,
-    });
-    return new TimeSpan(
-        Time.fromRaw(bounds.startTs), Time.fromRaw(bounds.endTs));
-  }
-
-  async getTracingMetadataTimeBounds(): Promise<Span<time, duration>> {
-    const queryRes = await this.query(`select
-         name,
-         int_value as intValue
-         from metadata
-         where name = 'tracing_started_ns' or name = 'tracing_disabled_ns'
-         or name = 'all_data_source_started_ns'`);
-    let startBound = Time.MIN;
-    let endBound = Time.MAX;
-    const it = queryRes.iter({'name': STR, 'intValue': LONG_NULL});
-    for (; it.valid(); it.next()) {
-      const columnName = it.name;
-      const timestamp = it.intValue;
-      if (timestamp === null) continue;
-      if (columnName === 'tracing_disabled_ns') {
-        endBound = Time.min(endBound, Time.fromRaw(timestamp));
-      } else {
-        startBound = Time.max(startBound, Time.fromRaw(timestamp));
-      }
-    }
-
-    return new TimeSpan(startBound, endBound);
-  }
-
   getProxy(tag: string): EngineProxy {
     return new EngineProxy(this, tag);
   }
 }
 
-// Lightweight wrapper over Engine exposing only `query` method and annotating
-// all queries going through it with a tag.
-export class EngineProxy implements Disposable {
-  private engine: Engine;
+// Lightweight engine proxy which annotates all queries with a tag
+export class EngineProxy implements Engine, Disposable {
+  private engine: EngineBase;
   private tag: string;
   private _isAlive: boolean;
 
-  get isAlive(): boolean {
-    return this._isAlive;
-  }
-
-  constructor(engine: Engine, tag: string) {
+  constructor(engine: EngineBase, tag: string) {
     this.engine = engine;
     this.tag = tag;
     this._isAlive = true;
   }
 
-  query(query: string, tag?: string): Promise<QueryResult>&QueryResult {
-    if (!this.isAlive) {
+  async query(query: string, tag?: string): Promise<QueryResult> {
+    if (!this._isAlive) {
       throw new Error(`EngineProxy ${this.tag} was disposed.`);
     }
-    return this.engine.query(query, tag || this.tag);
+    return await this.engine.query(query, tag);
   }
 
-  async computeMetric(metrics: string[], format: 'json'|'prototext'|'proto'):
-      Promise<string|Uint8Array> {
-    if (!this.isAlive) {
+  async tryQuery(
+    query: string,
+    tag?: string,
+  ): Promise<Result<QueryResult, Error>> {
+    if (!this._isAlive) {
+      return {
+        success: false,
+        error: new Error(`EngineProxy ${this.tag} was disposed.`),
+      };
+    }
+    return await this.engine.tryQuery(query, tag);
+  }
+
+  async computeMetric(
+    metrics: string[],
+    format: 'json' | 'prototext' | 'proto',
+  ): Promise<string | Uint8Array> {
+    if (!this._isAlive) {
       return Promise.reject(new Error(`EngineProxy ${this.tag} was disposed.`));
     }
     return this.engine.computeMetric(metrics, format);
-  }
-
-  async getCpus(): Promise<number[]> {
-    if (!this.isAlive) {
-      return Promise.reject(new Error(`EngineProxy ${this.tag} was disposed.`));
-    }
-    return this.engine.getCpus();
-  }
-
-  async getNumberOfGpus(): Promise<number> {
-    if (!this.isAlive) {
-      return Promise.reject(new Error(`EngineProxy ${this.tag} was disposed.`));
-    }
-    return this.engine.getNumberOfGpus();
   }
 
   get engineId(): string {
     return this.engine.id;
   }
 
-  dispose() {
+  [Symbol.dispose]() {
     this._isAlive = false;
+  }
+}
+
+// Capture stack trace and attach to the given error object
+function captureStackTrace(e: Error): void {
+  const stack = new Error().stack;
+  if ('captureStackTrace' in Error) {
+    // V8 specific
+    Error.captureStackTrace(e, captureStackTrace);
+  } else {
+    // Generic
+    Object.defineProperty(e, 'stack', {
+      value: stack,
+      writable: true,
+      configurable: true,
+    });
   }
 }

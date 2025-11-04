@@ -17,6 +17,7 @@
 
 #include <QtQuick/private/qquickwindowmodule_p.h>
 #include <QtQuickTemplates2/private/qtquicktemplates2global_p.h>
+#include <QtQuickTemplates2/private/qquickcontentitem_p.h>
 #include <QtGui/qfont.h>
 #include <QtGui/qpalette.h>
 #include <QtCore/qlocale.h>
@@ -26,6 +27,7 @@ QT_BEGIN_NAMESPACE
 class QQuickApplicationWindowPrivate;
 class QQuickApplicationWindowAttached;
 class QQuickApplicationWindowAttachedPrivate;
+class QQuickControl;
 
 class Q_QUICKTEMPLATES2_EXPORT QQuickApplicationWindow : public QQuickWindowQmlImpl
 {
@@ -42,6 +44,16 @@ class Q_QUICKTEMPLATES2_EXPORT QQuickApplicationWindow : public QQuickWindowQmlI
     Q_PROPERTY(QQuickItem *menuBar READ menuBar WRITE setMenuBar NOTIFY menuBarChanged FINAL REVISION(2, 3))
     // 2.14 (Qt 6)
     Q_PRIVATE_PROPERTY(QQuickApplicationWindow::d_func(), QQuickPalette *palette READ palette WRITE setPalette RESET resetPalette NOTIFY paletteChanged REVISION(2, 3))
+
+    Q_PRIVATE_PROPERTY(QQuickApplicationWindow::d_func()->control,
+        qreal topPadding READ topPadding WRITE setTopPadding RESET resetTopPadding NOTIFY topPaddingChanged FINAL REVISION(6, 9))
+    Q_PRIVATE_PROPERTY(QQuickApplicationWindow::d_func()->control,
+        qreal leftPadding READ leftPadding WRITE setLeftPadding RESET resetLeftPadding NOTIFY leftPaddingChanged FINAL REVISION(6, 9))
+    Q_PRIVATE_PROPERTY(QQuickApplicationWindow::d_func()->control,
+        qreal rightPadding READ rightPadding WRITE setRightPadding RESET resetRightPadding NOTIFY rightPaddingChanged FINAL REVISION(6, 9))
+    Q_PRIVATE_PROPERTY(QQuickApplicationWindow::d_func()->control,
+        qreal bottomPadding READ bottomPadding WRITE setBottomPadding RESET resetBottomPadding NOTIFY bottomPaddingChanged FINAL REVISION(6, 9))
+
     Q_CLASSINFO("DeferredPropertyNames", "background")
     Q_CLASSINFO("DefaultProperty", "contentData")
     QML_NAMED_ELEMENT(ApplicationWindow)
@@ -87,6 +99,11 @@ Q_SIGNALS:
     void localeChanged();
     Q_REVISION(2, 3) void menuBarChanged();
 
+    Q_REVISION(6, 9) void topPaddingChanged();
+    Q_REVISION(6, 9) void leftPaddingChanged();
+    Q_REVISION(6, 9) void rightPaddingChanged();
+    Q_REVISION(6, 9) void bottomPaddingChanged();
+
 protected:
     bool isComponentComplete() const;
     void classBegin() override;
@@ -96,6 +113,7 @@ protected:
 private:
     Q_DISABLE_COPY(QQuickApplicationWindow)
     Q_DECLARE_PRIVATE(QQuickApplicationWindow)
+
     Q_PRIVATE_SLOT(d_func(), void _q_updateActiveFocus())
 };
 

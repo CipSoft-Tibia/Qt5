@@ -131,7 +131,7 @@ void QProtobufGenerator::GenerateHeader(const FileDescriptor *file,
 
     const std::string
         headerGuard = common::headerGuardFromFilename(identifier + CommonTemplates::HeaderSuffix());
-    headerPrinter->Print({{"header_guard", headerGuard}}, CommonTemplates::PreambleTemplate());
+    QProtobufGenerator::printHeaderGuardBegin(headerPrinter.get(), headerGuard);
     if (!Options::instance().exportMacroFilename().empty()) {
         std::string exportMacroFilename = Options::instance().exportMacroFilename();
         internalIncludes.insert(exportMacroFilename);
@@ -169,9 +169,10 @@ void QProtobufGenerator::GenerateHeader(const FileDescriptor *file,
             const auto *field = message->field(i);
             if (field->type() == FieldDescriptor::TYPE_MESSAGE && !field->is_map()
                 && !field->is_repeated() && common::isQtType(field)) {
-                externalIncludes.insert(field->message_type()->file()->package()
-                                        + "/" + field->message_type()->name());
-                qtTypesSet.insert(field->message_type()->file()->package());
+                const std::string package{ field->message_type()->file()->package() };
+                externalIncludes.insert(package + "/"
+                                        + std::string{ field->message_type()->name() });
+                qtTypesSet.insert(package);
             }
 
             if (common::isOptionalField(field))
@@ -241,7 +242,7 @@ void QProtobufGenerator::GenerateHeader(const FileDescriptor *file,
         MessageDeclarationPrinter messageDef(message, headerPrinter);
     });
 
-    headerPrinter->Print({{"header_guard", headerGuard}}, CommonTemplates::FooterTemplate());
+    QProtobufGenerator::printHeaderGuardEnd(headerPrinter.get(), headerGuard);
 }
 
 bool QProtobufGenerator::GenerateMessages(const FileDescriptor *file,

@@ -1,5 +1,6 @@
 // Copyright (C) 2021 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:data-parser
 
 #include "qapplication.h"
 #include "qwebenginenotificationpresenter_p.h"
@@ -1481,7 +1482,7 @@ void QWebEngineView::printToPdf(const std::function<void(const QByteArray&)> &re
 
     When finished the signal printFinished() is emitted with the \c true for success or \c false for failure.
 
-    It is the users responsibility to ensure the \a printer remains valid until printFinished()
+    It is the user's responsibility to ensure the \a printer remains valid until printFinished()
     has been emitted.
 
     \note Printing runs on the browser process, which is by default not sandboxed.
@@ -1511,7 +1512,7 @@ void QWebEngineView::print(QPrinter *printer)
     };
     dPage->adapter->printToPDFCallbackResult(std::move(callback), printer->pageLayout(),
                                              printer->pageRanges(),
-                                             printer->colorMode() == QPrinter::Color, false,
+                                             printer->colorMode() == QPrinter::Color,
                                              QtWebEngineCore::WebContentsAdapter::kUseMainFrameId);
 #else
     Q_UNUSED(printer);

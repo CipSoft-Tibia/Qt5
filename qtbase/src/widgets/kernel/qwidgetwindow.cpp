@@ -106,13 +106,6 @@ public:
 
     QRectF closestAcceptableGeometry(const QRectF &rect) const override;
 
-    void processSafeAreaMarginsChanged() override
-    {
-        Q_Q(QWidgetWindow);
-        if (QWidget *widget = q->widget())
-            QWidgetPrivate::get(widget)->updateContentsRect();
-    }
-
     bool participatesInLastWindowClosed() const override;
     bool treatAsVisible() const override;
 };
@@ -391,6 +384,10 @@ bool QWidgetWindow::event(QEvent *event)
         handleDevicePixelRatioChange();
         break;
 
+    case QEvent::SafeAreaMarginsChange:
+        QWidgetPrivate::get(m_widget)->updateContentsRect();
+        break;
+
     default:
         break;
     }
@@ -508,6 +505,12 @@ void QWidgetWindow::handleNonClientAreaMouseEvent(QMouseEvent *e)
 
 void QWidgetWindow::handleMouseEvent(QMouseEvent *event)
 {
+    Q_D(QWidgetWindow);
+
+    // Event delivery can potentially result in window re-creation (QTBUG-132912)
+    // so we need QPointer to avoid a dangling d below
+    QPointer<QWidgetWindow> self = this;
+
     if (auto *activePopupWidget = QApplication::activePopupWidget()) {
         QPointF mapped = event->position();
         if (activePopupWidget != m_widget)
@@ -619,7 +622,21 @@ void QWidgetWindow::handleMouseEvent(QMouseEvent *event)
                 }
             }
             QApplicationPrivate::replayMousePress = false;
+#ifndef QT_NO_CONTEXTMENU
+        } else if (event->type() == QGuiApplicationPrivate::contextMenuEventType()
+                   && event->button() == Qt::RightButton) {
+            QWidget *receiver = activePopupWidget;
+            if (qt_button_down)
+                receiver = qt_button_down;
+            else if (popupChild)
+                receiver = popupChild;
+            const QPoint localPos = receiver->mapFromGlobal(event->globalPosition().toPoint());
+            QContextMenuEvent e(QContextMenuEvent::Mouse, localPos, event->globalPosition().toPoint(), event->modifiers());
+            QApplication::forwardEvent(receiver, &e, event);
         }
+#else
+        }
+#endif
 
         if (releaseAfter) {
             qt_button_down = nullptr;
@@ -650,7 +667,7 @@ void QWidgetWindow::handleMouseEvent(QMouseEvent *event)
     if (!receiver)
         return;
 
-    if (d_func()->isPopup() && receiver->window()->windowHandle() != this) {
+    if (d->isPopup() && receiver->window()->windowHandle() != this) {
         receiver = widget;
         mapped = event->position().toPoint();
     }
@@ -667,16 +684,17 @@ void QWidgetWindow::handleMouseEvent(QMouseEvent *event)
                                             &qt_button_down, qt_last_mouse_receiver);
         event->setAccepted(translated.isAccepted());
     }
-#ifndef QT_NO_CONTEXTMENU
-    if (event->type() == QGuiApplicationPrivate::contextMenuEventType()
-        && event->button() == Qt::RightButton
-        && m_widget->rect().contains(event->position().toPoint())) {
-        QContextMenuEvent e(QContextMenuEvent::Mouse, mapped.toPoint(), event->globalPosition().toPoint(), event->modifiers());
-        QGuiApplication::forwardEvent(receiver, &e, event);
-        if (e.isAccepted())
-            event->accept();
-    }
+
+    if (self.isNull())
+        return;
+
+#if QT_VERSION < QT_VERSION_CHECK(7, 0, 0)
+    if (
+#else
+    if (event->isAccepted() &&
 #endif
+            (event->type() == QEvent::MouseButtonPress || event->type() == QEvent::MouseButtonRelease))
+        d->maybeSynthesizeContextMenuEvent(event);
 }
 
 void QWidgetWindow::handleTouchEvent(QTouchEvent *event)
@@ -755,9 +773,8 @@ void QWidgetWindow::handleScreenChange()
     // Send an event recursively to the widget and its children.
     sendChangeRecursively(m_widget, QEvent::ScreenChangeInternal);
 
-    // Invalidate the backing store buffer and repaint immediately.
-    if (screen())
-        repaintWindow();
+    // Invalidate the backing store buffer and schedule repaint
+    scheduleRepaint();
 }
 
 void QWidgetWindow::handleDevicePixelRatioChange()
@@ -765,20 +782,35 @@ void QWidgetWindow::handleDevicePixelRatioChange()
     // Send an event recursively to the widget and its children.
     sendChangeRecursively(m_widget, QEvent::DevicePixelRatioChange);
 
-    // Invalidate the backing store buffer and repaint immediately.
-    if (screen())
-        repaintWindow();
+    // Invalidate the backing store buffer and schedule repaint
+    scheduleRepaint();
 }
 
-void QWidgetWindow::repaintWindow()
+/*
+    Schedules a repaint in response to screen or DPR changes
+
+    Normally these changes will come with a corresponding expose
+    event following the change, but to guarantee that we refresh
+    the widget based on the new properties we also schedule our
+    own repaint.
+
+    Note that we do not do a synchronous repaint here, as the system
+    hasn't asked us to repaint just yet, it just informed us about
+    the new window state.
+*/
+void QWidgetWindow::scheduleRepaint()
 {
+    if (!screen())
+        return;
+
     if (!m_widget->isVisible() || !m_widget->updatesEnabled() || !m_widget->rect().isValid())
         return;
 
     QTLWExtra *tlwExtra = m_widget->window()->d_func()->maybeTopData();
-    if (tlwExtra && tlwExtra->backingStore)
+    if (tlwExtra && tlwExtra->backingStore) {
         tlwExtra->repaintManager->markDirty(m_widget->rect(), m_widget,
-                                                 QWidgetRepaintManager::UpdateNow, QWidgetRepaintManager::BufferInvalid);
+            QWidgetRepaintManager::UpdateLater, QWidgetRepaintManager::BufferInvalid);
+    }
 }
 
 // Store normal geometry used for saving application settings.
@@ -930,7 +962,17 @@ static QWidget *findDnDTarget(QWidget *parent, const QPoint &pos)
     return widget;
 }
 
-void QWidgetWindow::handleDragEnterEvent(QDragEnterEvent *event, QWidget *widget)
+/*!
+    \internal
+
+    Sends \a event to \a widget.
+
+    Also called from dragMoveEvent(), in which case \a event is-a
+    QDragMoveEvent only, not a full QDragEnterEvent, which is why this function
+    takes \a event as a QDragMoveEvent and not, as one would expect,
+    QDragEnterEvent (downcast would be UB).
+*/
+void QWidgetWindow::handleDragEnterEvent(QDragMoveEvent *event, QWidget *widget)
 {
     Q_ASSERT(m_dragTarget == nullptr);
     if (!widget)
@@ -979,7 +1021,7 @@ void QWidgetWindow::handleDragMoveEvent(QDragMoveEvent *event)
             // widget might have been deleted when handling the leaveEvent
             if (widget) {
                 // Send DragEnter to new widget.
-                handleDragEnterEvent(static_cast<QDragEnterEvent*>(event), widget);
+                handleDragEnterEvent(event, widget);
                 // Handling 'DragEnter' should suffice for the application.
                 translated.setDropAction(event->dropAction());
                 translated.setAccepted(event->isAccepted());
@@ -1161,28 +1203,36 @@ void QWidgetWindow::handleGestureEvent(QNativeGestureEvent *e)
 #ifndef QT_NO_CONTEXTMENU
 void QWidgetWindow::handleContextMenuEvent(QContextMenuEvent *e)
 {
-    // We are only interested in keyboard originating context menu events here,
-    // mouse originated context menu events for widgets are generated in mouse handling methods.
-    if (e->reason() != QContextMenuEvent::Keyboard)
-        return;
+    QWidget *receiver = qt_last_mouse_receiver.get();
+    QPoint pos = e->pos();
+    QPoint globalPos = e->globalPos();
 
-    QWidget *fw = QWidget::keyboardGrabber();
-    if (!fw) {
-        if (QApplication::activePopupWidget()) {
-            fw = (QApplication::activePopupWidget()->focusWidget()
-                  ? QApplication::activePopupWidget()->focusWidget()
-                  : QApplication::activePopupWidget());
-        } else if (QApplication::focusWidget()) {
-            fw = QApplication::focusWidget();
-        } else {
-            fw = m_widget;
+    // Keyboard-originating context menu events are delivered to the focus widget,
+    // independently of event position.
+    if (e->reason() == QContextMenuEvent::Keyboard) {
+        receiver = QWidget::keyboardGrabber();
+        if (!receiver) {
+            if (QApplication::activePopupWidget()) {
+                receiver = (QApplication::activePopupWidget()->focusWidget()
+                            ? QApplication::activePopupWidget()->focusWidget()
+                            : QApplication::activePopupWidget());
+            } else if (QApplication::focusWidget()) {
+                receiver = QApplication::focusWidget();
+            } else {
+                receiver = m_widget;
+            }
         }
+        if (Q_LIKELY(receiver)) {
+            pos = receiver->inputMethodQuery(Qt::ImCursorRectangle).toRect().center();
+            globalPos = receiver->mapToGlobal(pos);
+        }
+    } else if (Q_LIKELY(receiver)) {
+        pos = receiver->mapFromGlobal(e->globalPos());
     }
-    if (fw && fw->isEnabled()) {
-        QPoint pos = fw->inputMethodQuery(Qt::ImCursorRectangle).toRect().center();
-        QContextMenuEvent widgetEvent(QContextMenuEvent::Keyboard, pos, fw->mapToGlobal(pos),
-                                      e->modifiers());
-        QGuiApplication::forwardEvent(fw, &widgetEvent, e);
+
+    if (receiver && receiver->isEnabled()) {
+        QContextMenuEvent widgetEvent(e->reason(), pos, globalPos, e->modifiers());
+        QGuiApplication::forwardEvent(receiver, &widgetEvent, e);
     }
 }
 #endif // QT_NO_CONTEXTMENU

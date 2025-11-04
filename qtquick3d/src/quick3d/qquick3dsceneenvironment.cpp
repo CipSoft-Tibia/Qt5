@@ -1557,4 +1557,48 @@ void QQuick3DSceneEnvironment::setFog(QQuick3DFog *fog)
     update();
 }
 
+/*!
+    \qmlproperty enumeration QtQuick3D::SceneEnvironment::oitMethod
+    \since 6.9
+
+    This property holds the Order Independent Transparency method. Setting this
+    property to a valid OIT method causes the renderer to render transparent pixels
+    in the correct depth order.
+
+    Possible values are:
+    \value SceneEnvironment.OITNone OIT is turned off.
+    \value SceneEnvironment.OITWeightedBlended Approximates order independent transparency.
+
+    The default is \c None and order independent transparency is turned off.
+
+    \b Weighted Blended
+
+    This is an approximation of order independent transparency. The transparent fragments are
+    rendered to an offscreen buffer while weighting is applied to each fragment based on its
+    distance to the camera. This buffer is then blended to the backbuffer after de-weighting
+    each pixel. This method doesn't follow the source-over composition rule for all fragments
+    and the result is different from the correct result, however this method works also on
+    older hardware and is faster than the other more rigorous methods.
+
+    \note OIT might not work with MSAA on devices with GLES 3.1 or lower. It is recommended
+    not to use MSAA if oit is wanted on such devices.
+
+    \note Order independent transparenty is only applicaple to source-over blend mode.
+    If scene contains objects with other blending modes, OIT is disabled.
+*/
+
+QQuick3DSceneEnvironment::QQuick3DEnvironmentOITMethod QQuick3DSceneEnvironment::oitMethod() const
+{
+    return m_oitMethod;
+}
+
+void QQuick3DSceneEnvironment::setOitMethod(QQuick3DSceneEnvironment::QQuick3DEnvironmentOITMethod method)
+{
+    if (m_oitMethod == method)
+        return;
+    m_oitMethod = method;
+    emit oitMethodChanged();
+    update();
+}
+
 QT_END_NAMESPACE

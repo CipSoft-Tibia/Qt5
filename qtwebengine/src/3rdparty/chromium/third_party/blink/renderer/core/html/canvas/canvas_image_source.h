@@ -48,6 +48,7 @@ enum SourceImageStatus {
   kZeroSizeImageSourceStatus,    // Image element with width or height of zero
   kIncompleteSourceImageStatus,  // Image element with no source media
   kInvalidSourceImageStatus,
+  kLayersOpenInCanvasSource,  // Source is a canvas with open layers
 };
 
 // This is the helper function to get the canvas image with a
@@ -67,7 +68,7 @@ class CORE_EXPORT CanvasImageSource {
       FlushReason,
       SourceImageStatus*,
       const gfx::SizeF&,
-      const AlphaDisposition alpha_disposition = kPremultiplyAlpha) = 0;
+      const AlphaDisposition alpha_disposition) = 0;
 
   // IMPORTANT: Result must be independent of whether destinationContext is
   // already tainted because this function may be used to determine whether

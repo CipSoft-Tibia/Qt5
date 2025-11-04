@@ -6,14 +6,15 @@
 
 import type * as Bidi from 'chromium-bidi/lib/cjs/protocol/protocol.js';
 
-import {type AutofillData, ElementHandle} from '../api/ElementHandle.js';
-import {UnsupportedOperation} from '../common/Errors.js';
+import {ElementHandle, type AutofillData} from '../api/ElementHandle.js';
+import type {AwaitableIterable} from '../common/types.js';
+import {environment} from '../environment.js';
+import {AsyncIterableUtil} from '../util/AsyncIterableUtil.js';
 import {throwIfDisposed} from '../util/decorators.js';
 
 import type {BidiFrame} from './Frame.js';
 import {BidiJSHandle} from './JSHandle.js';
-import type {BidiRealm} from './Realm.js';
-import type {Sandbox} from './Sandbox.js';
+import type {BidiFrameRealm} from './Realm.js';
 
 /**
  * @internal
@@ -21,26 +22,26 @@ import type {Sandbox} from './Sandbox.js';
 export class BidiElementHandle<
   ElementType extends Node = Element,
 > extends ElementHandle<ElementType> {
-  declare handle: BidiJSHandle<ElementType>;
-
-  constructor(sandbox: Sandbox, remoteValue: Bidi.Script.RemoteValue) {
-    super(new BidiJSHandle(sandbox, remoteValue));
+  static from<ElementType extends Node = Element>(
+    value: Bidi.Script.RemoteValue,
+    realm: BidiFrameRealm
+  ): BidiElementHandle<ElementType> {
+    return new BidiElementHandle(value, realm);
   }
 
-  override get realm(): Sandbox {
-    return this.handle.realm;
+  declare handle: BidiJSHandle<ElementType>;
+
+  constructor(value: Bidi.Script.RemoteValue, realm: BidiFrameRealm) {
+    super(BidiJSHandle.from(value, realm));
+  }
+
+  override get realm(): BidiFrameRealm {
+    // SAFETY: See the super call in the constructor.
+    return this.handle.realm as BidiFrameRealm;
   }
 
   override get frame(): BidiFrame {
     return this.realm.environment;
-  }
-
-  context(): BidiRealm {
-    return this.handle.context();
-  }
-
-  get isPrimitiveValue(): boolean {
-    return this.handle.isPrimitiveValue;
   }
 
   remoteValue(): Bidi.Script.RemoteValue {
@@ -69,19 +70,60 @@ export class BidiElementHandle<
   @ElementHandle.bindIsolatedHandle
   override async contentFrame(): Promise<BidiFrame | null> {
     using handle = (await this.evaluateHandle(element => {
-      if (element instanceof HTMLIFrameElement) {
+      if (
+        element instanceof HTMLIFrameElement ||
+        element instanceof HTMLFrameElement
+      ) {
         return element.contentWindow;
       }
       return;
     })) as BidiJSHandle;
     const value = handle.remoteValue();
     if (value.type === 'window') {
-      return this.frame.page().frame(value.value.context);
+      return (
+        this.frame
+          .page()
+          .frames()
+          .find(frame => {
+            return frame._id === value.value.context;
+          }) ?? null
+      );
     }
     return null;
   }
 
-  override uploadFile(this: ElementHandle<HTMLInputElement>): never {
-    throw new UnsupportedOperation();
+  override async uploadFile(
+    this: BidiElementHandle<HTMLInputElement>,
+    ...files: string[]
+  ): Promise<void> {
+    // Locate all files and confirm that they exist.
+    const path = environment.value.path;
+    files = files.map(file => {
+      if (path.win32.isAbsolute(file) || path.posix.isAbsolute(file)) {
+        return file;
+      } else {
+        return path.resolve(file);
+      }
+    });
+    await this.frame.setFiles(this, files);
+  }
+
+  override async *queryAXTree(
+    this: BidiElementHandle<HTMLElement>,
+    name?: string | undefined,
+    role?: string | undefined
+  ): AwaitableIterable<ElementHandle<Node>> {
+    const results = await this.frame.locateNodes(this, {
+      type: 'accessibility',
+      value: {
+        role,
+        name,
+      },
+    });
+
+    return yield* AsyncIterableUtil.map(results, node => {
+      // TODO: maybe change ownership since the default ownership is probably none.
+      return Promise.resolve(BidiElementHandle.from(node, this.realm));
+    });
   }
 }

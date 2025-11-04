@@ -176,9 +176,8 @@ void Module::Copy(CloneContext& ctx, const Module* src) {
     diagnostic_directives_.Clear();
 
     for (auto* decl : global_declarations_) {
-        if (TINT_UNLIKELY(!decl)) {
+        if (DAWN_UNLIKELY(!decl)) {
             TINT_ICE() << "src global declaration was nullptr";
-            continue;
         }
         BinGlobalDeclaration(decl);
     }

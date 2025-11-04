@@ -6,12 +6,14 @@
 #include <assert.h>
 #include <stddef.h>
 #include <stdlib.h>
+
 #ifdef __ANDROID__
   #include <malloc.h>
 #endif
 
-#include <xnnpack/allocator.h>
-#include <xnnpack/common.h>
+#include "xnnpack.h"
+#include "xnnpack/allocator.h"
+#include "xnnpack/common.h"
 
 
 extern int posix_memalign(void **memptr, size_t alignment, size_t size);

@@ -6,8 +6,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Iterable
 
-from .base import RunGroup
-from .repetitions import RepetitionsRunGroup
+from crossbench.runner.groups.base import RunGroup
+from crossbench.runner.groups.repetitions import RepetitionsRunGroup
 
 if TYPE_CHECKING:
   from crossbench import exception

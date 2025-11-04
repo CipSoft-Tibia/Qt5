@@ -58,11 +58,12 @@
 
 #if QT_CONFIG(accessibility)
 
+#include <QtGui/private/qaccessiblehelper_p.h>
+
 QT_BEGIN_NAMESPACE
 
 using namespace Qt::StringLiterals;
 
-QString qt_accStripAmp(const QString &text);
 QString qt_accHotKey(const QString &text);
 
 QWidgetList _q_ac_childWidgets(const QWidget *widget)
@@ -563,7 +564,7 @@ QWidget *QAccessibleCalendarWidget::navigationBar() const
 // If there is a custom title bar widget, that one becomes child 1, after the content 0
 // (in that case the buttons are ignored)
 QAccessibleDockWidget::QAccessibleDockWidget(QWidget *widget)
-    : QAccessibleWidget(widget, QAccessible::Window)
+    : QAccessibleWidget(widget)
 {
 }
 
@@ -635,6 +636,15 @@ QString QAccessibleDockWidget::text(QAccessible::Text t) const
     }
     return QString();
 }
+
+QAccessible::Role QAccessibleDockWidget::role() const
+{
+    if (dockWidget()->isFloating())
+        return QAccessible::Window;
+
+    return QAccessible::Pane;
+}
+
 #endif // QT_CONFIG(dockwidget)
 
 #ifndef QT_NO_CURSOR

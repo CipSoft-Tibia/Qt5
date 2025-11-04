@@ -31,6 +31,8 @@ class Q_GRAPHSWIDGETS_EXPORT Q3DGraphsWidgetItem : public QObject
                    NOTIFY selectionModeChanged)
     Q_PROPERTY(QtGraphs3D::ShadowQuality shadowQuality READ shadowQuality WRITE setShadowQuality
                    NOTIFY shadowQualityChanged)
+    Q_PROPERTY(QtGraphs3D::TransparencyTechnique transparencyTechnique READ transparencyTechnique
+                   WRITE setTransparencyTechnique NOTIFY transparencyTechniqueChanged REVISION(6, 9))
     Q_PROPERTY(Q3DScene *scene READ scene CONSTANT)
     Q_PROPERTY(bool measureFps READ measureFps WRITE setMeasureFps NOTIFY measureFpsChanged)
     Q_PROPERTY(int currentFps READ currentFps NOTIFY currentFpsChanged)
@@ -103,6 +105,9 @@ public:
     QGraphsTheme *activeTheme() const;
     void setActiveTheme(QGraphsTheme *activeTheme);
     QList<QGraphsTheme *> themes() const;
+
+    void setTransparencyTechnique(QtGraphs3D::TransparencyTechnique technique);
+    QtGraphs3D::TransparencyTechnique transparencyTechnique() const;
 
     QtGraphs3D::ShadowQuality shadowQuality() const;
     void setShadowQuality(const QtGraphs3D::ShadowQuality &shadowQuality);
@@ -225,6 +230,7 @@ public:
     void setMsaaSamples(int samples);
 
     void doPicking(QPoint point);
+    void doRayPicking(QVector3D origin, QVector3D direction);
 
     float ambientLightStrength() const;
     void setAmbientLightStrength(float newAmbientLightStrength);
@@ -251,6 +257,7 @@ protected:
 Q_SIGNALS:
     void activeThemeChanged(QGraphsTheme *activeTheme);
     void shadowQualityChanged(QtGraphs3D::ShadowQuality quality);
+    Q_REVISION(6, 9) void transparencyTechniqueChanged(QtGraphs3D::TransparencyTechnique technique);
     void selectionModeChanged(const QtGraphs3D::SelectionFlags selectionMode);
     void selectedElementChanged(QtGraphs3D::ElementType type);
     void measureFpsChanged(bool enabled);

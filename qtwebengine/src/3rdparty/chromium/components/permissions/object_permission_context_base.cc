@@ -4,6 +4,7 @@
 
 #include "components/permissions/object_permission_context_base.h"
 
+#include <string_view>
 #include <utility>
 
 #include "base/containers/contains.h"
@@ -35,7 +36,7 @@ ObjectPermissionContextBase::ObjectPermissionContextBase(
 ObjectPermissionContextBase::ObjectPermissionContextBase(
     ContentSettingsType data_content_settings_type,
     HostContentSettingsMap* host_content_settings_map)
-    : guard_content_settings_type_(absl::nullopt),
+    : guard_content_settings_type_(std::nullopt),
       data_content_settings_type_(data_content_settings_type),
       host_content_settings_map_(host_content_settings_map) {
   DCHECK(host_content_settings_map_);
@@ -71,7 +72,7 @@ ObjectPermissionContextBase::Object::Clone() {
 }
 
 void ObjectPermissionContextBase::PermissionObserver::OnObjectPermissionChanged(
-    absl::optional<ContentSettingsType> guard_content_settings_type,
+    std::optional<ContentSettingsType> guard_content_settings_type,
     ContentSettingsType data_content_settings_type) {}
 
 void ObjectPermissionContextBase::PermissionObserver::OnPermissionRevoked(
@@ -98,7 +99,7 @@ bool ObjectPermissionContextBase::CanRequestObjectPermission(
 
 std::unique_ptr<ObjectPermissionContextBase::Object>
 ObjectPermissionContextBase::GetGrantedObject(const url::Origin& origin,
-                                              const base::StringPiece key) {
+                                              const std::string_view key) {
   if (!CanRequestObjectPermission(origin))
     return nullptr;
 
@@ -165,8 +166,7 @@ void ObjectPermissionContextBase::GrantObjectPermission(
   const std::string key = GetKeyForObject(object);
 
   objects()[origin][key] = std::make_unique<Object>(
-      origin, std::move(object),
-      content_settings::SettingSource::SETTING_SOURCE_USER,
+      origin, std::move(object), content_settings::SettingSource::kUser,
       host_content_settings_map_->IsOffTheRecord());
 
   ScheduleSaveWebsiteSetting(origin);
@@ -205,7 +205,7 @@ void ObjectPermissionContextBase::RevokeObjectPermission(
 
 void ObjectPermissionContextBase::RevokeObjectPermission(
     const url::Origin& origin,
-    const base::StringPiece key) {
+    const std::string_view key) {
   auto origin_objects_it = objects().find(origin);
   if (origin_objects_it == objects().end()) {
     return;

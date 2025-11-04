@@ -4,7 +4,7 @@
 
 import * as Common from '../../core/common/common.js';
 import * as i18n from '../../core/i18n/i18n.js';
-import * as Platform from '../../core/platform/platform.js';
+import type * as Platform from '../../core/platform/platform.js';
 import * as TextUtils from '../../models/text_utils/text_utils.js';
 import * as Workspace from '../../models/workspace/workspace.js';
 import * as DataGrid from '../../ui/legacy/components/data_grid/data_grid.js';
@@ -118,9 +118,9 @@ export function coverageTypeToString(type: CoverageType): string {
   if (type & CoverageType.CSS) {
     types.push(i18nString(UIStrings.css));
   }
-  if (type & CoverageType.JavaScriptPerFunction) {
+  if (type & CoverageType.JAVA_SCRIPT_PER_FUNCTION) {
     types.push(i18nString(UIStrings.jsPerFunction));
-  } else if (type & CoverageType.JavaScript) {
+  } else if (type & CoverageType.JAVA_SCRIPT) {
     types.push(i18nString(UIStrings.jsPerBlock));
   }
   return types.join('+');
@@ -138,10 +138,9 @@ export class CoverageListView extends UI.Widget.VBox {
     this.isVisibleFilter = isVisibleFilter;
     this.highlightRegExp = null;
 
-    const k = Platform.StringUtilities.kebab;
     const columns = [
       {
-        id: k('url'),
+        id: 'url',
         title: i18nString(UIStrings.url),
         width: '250px',
         weight: 3,
@@ -149,35 +148,35 @@ export class CoverageListView extends UI.Widget.VBox {
         sortable: true,
         disclosure: true,
       },
-      {id: k('type'), title: i18nString(UIStrings.type), width: '45px', weight: 1, fixedWidth: true, sortable: true},
+      {id: 'type', title: i18nString(UIStrings.type), width: '45px', weight: 1, fixedWidth: true, sortable: true},
       {
-        id: k('size'),
+        id: 'size',
         title: i18nString(UIStrings.totalBytes),
         width: '60px',
         fixedWidth: true,
         sortable: true,
-        align: DataGrid.DataGrid.Align.Right,
+        align: DataGrid.DataGrid.Align.RIGHT,
         weight: 1,
       },
       {
-        id: k('unused-size'),
+        id: 'unused-size',
         title: i18nString(UIStrings.unusedBytes),
         width: '100px',
         fixedWidth: true,
         sortable: true,
-        align: DataGrid.DataGrid.Align.Right,
+        align: DataGrid.DataGrid.Align.RIGHT,
         sort: DataGrid.DataGrid.Order.Descending,
         weight: 1,
       },
       {
-        id: k('bars'),
+        id: 'bars',
         title: i18nString(UIStrings.usageVisualization),
         width: '250px',
         fixedWidth: false,
         sortable: true,
         weight: 1,
       },
-    ];
+    ] as DataGrid.DataGrid.ColumnDescriptor[];
     this.dataGrid = new DataGrid.SortableDataGrid.SortableDataGrid<GridNode>({
       displayName: i18nString(UIStrings.codeCoverage),
       columns,
@@ -185,12 +184,11 @@ export class CoverageListView extends UI.Widget.VBox {
       refreshCallback: undefined,
       deleteCallback: undefined,
     });
-    this.dataGrid.setResizeMethod(DataGrid.DataGrid.ResizeMethod.Last);
+    this.dataGrid.setResizeMethod(DataGrid.DataGrid.ResizeMethod.LAST);
     this.dataGrid.setStriped(true);
     this.dataGrid.element.classList.add('flex-auto');
-    this.dataGrid.element.addEventListener('keydown', this.onKeyDown.bind(this), false);
-    this.dataGrid.addEventListener(DataGrid.DataGrid.Events.OpenedNode, this.onOpenedNode, this);
-    this.dataGrid.addEventListener(DataGrid.DataGrid.Events.SortingChanged, this.sortingChanged, this);
+    this.dataGrid.addEventListener(DataGrid.DataGrid.Events.OPENED_NODE, this.onOpenedNode, this);
+    this.dataGrid.addEventListener(DataGrid.DataGrid.Events.SORTING_CHANGED, this.sortingChanged, this);
 
     const dataGridWidget = this.dataGrid.asWidget();
     dataGridWidget.show(this.contentElement);
@@ -306,14 +304,6 @@ export class CoverageListView extends UI.Widget.VBox {
     void this.revealSourceForSelectedNode();
   }
 
-  private onKeyDown(event: KeyboardEvent): void {
-    if (!(event.key === 'Enter')) {
-      return;
-    }
-    event.consume(true);
-    void this.revealSourceForSelectedNode();
-  }
-
   private async revealSourceForSelectedNode(): Promise<void> {
     const node = this.dataGrid.selectedNode;
     if (!node) {
@@ -361,6 +351,15 @@ function getPercentageFormatter(): Intl.NumberFormat {
     });
   }
   return percentageFormatter;
+}
+
+let bytesFormatter: Intl.NumberFormat|null = null;
+
+function getBytesFormatter(): Intl.NumberFormat {
+  if (!bytesFormatter) {
+    bytesFormatter = new Intl.NumberFormat(i18n.DevToolsLocale.DevToolsLocale.instance().locale);
+  }
+  return bytesFormatter;
 }
 
 export class GridNode extends DataGrid.SortableDataGrid.SortableDataGridNode<GridNode> {
@@ -415,17 +414,19 @@ export class GridNode extends DataGrid.SortableDataGrid.SortableDataGridNode<Gri
       }
       case 'type': {
         cell.textContent = coverageTypeToString(this.coverageInfo.type());
-        if (this.coverageInfo.type() & CoverageType.JavaScriptPerFunction) {
+        if (this.coverageInfo.type() & CoverageType.JAVA_SCRIPT_PER_FUNCTION) {
           UI.Tooltip.Tooltip.install(cell, i18nString(UIStrings.jsCoverageWithPerFunction));
-        } else if (this.coverageInfo.type() & CoverageType.JavaScript) {
+        } else if (this.coverageInfo.type() & CoverageType.JAVA_SCRIPT) {
           UI.Tooltip.Tooltip.install(cell, i18nString(UIStrings.jsCoverageWithPerBlock));
         }
         break;
       }
       case 'size': {
+        const size = this.coverageInfo.size() || 0;
         const sizeSpan = cell.createChild('span');
-        sizeSpan.textContent = Platform.NumberUtilities.withThousandsSeparator(this.coverageInfo.size() || 0);
-        const sizeAccessibleName = i18nString(UIStrings.sBytes, {n: this.coverageInfo.size() || 0});
+        const sizeFormatted = getBytesFormatter().format(size);
+        sizeSpan.textContent = sizeFormatted;
+        const sizeAccessibleName = i18nString(UIStrings.sBytes, {n: size});
         this.setCellAccessibleName(sizeAccessibleName, cell, columnId);
         break;
       }
@@ -433,7 +434,8 @@ export class GridNode extends DataGrid.SortableDataGrid.SortableDataGridNode<Gri
         const unusedSize = this.coverageInfo.unusedSize() || 0;
         const unusedSizeSpan = cell.createChild('span');
         const unusedPercentsSpan = cell.createChild('span', 'percent-value');
-        unusedSizeSpan.textContent = Platform.NumberUtilities.withThousandsSeparator(unusedSize);
+        const unusedSizeFormatted = getBytesFormatter().format(unusedSize);
+        unusedSizeSpan.textContent = unusedSizeFormatted;
         const unusedPercentFormatted = getPercentageFormatter().format(this.coverageInfo.unusedPercentage());
         unusedPercentsSpan.textContent = unusedPercentFormatted;
         const unusedAccessibleName = i18nString(UIStrings.sBytesS, {n: unusedSize, percentage: unusedPercentFormatted});
@@ -447,13 +449,13 @@ export class GridNode extends DataGrid.SortableDataGrid.SortableDataGridNode<Gri
         if (this.coverageInfo.unusedSize() > 0) {
           const unusedSizeBar = barContainer.createChild('div', 'bar bar-unused-size');
           unusedSizeBar.style.width = ((this.coverageInfo.unusedSize() / this.maxSize) * 100 || 0) + '%';
-          if (this.coverageInfo.type() & CoverageType.JavaScriptPerFunction) {
+          if (this.coverageInfo.type() & CoverageType.JAVA_SCRIPT_PER_FUNCTION) {
             UI.Tooltip.Tooltip.install(
                 unusedSizeBar,
                 i18nString(
                     UIStrings.sBytesSBelongToFunctionsThatHave,
                     {PH1: this.coverageInfo.unusedSize(), PH2: unusedPercent}));
-          } else if (this.coverageInfo.type() & CoverageType.JavaScript) {
+          } else if (this.coverageInfo.type() & CoverageType.JAVA_SCRIPT) {
             UI.Tooltip.Tooltip.install(
                 unusedSizeBar,
                 i18nString(
@@ -463,13 +465,13 @@ export class GridNode extends DataGrid.SortableDataGrid.SortableDataGridNode<Gri
         if (this.coverageInfo.usedSize() > 0) {
           const usedSizeBar = barContainer.createChild('div', 'bar bar-used-size');
           usedSizeBar.style.width = ((this.coverageInfo.usedSize() / this.maxSize) * 100 || 0) + '%';
-          if (this.coverageInfo.type() & CoverageType.JavaScriptPerFunction) {
+          if (this.coverageInfo.type() & CoverageType.JAVA_SCRIPT_PER_FUNCTION) {
             UI.Tooltip.Tooltip.install(
                 usedSizeBar,
                 i18nString(
                     UIStrings.sBytesSBelongToFunctionsThatHaveExecuted,
                     {PH1: this.coverageInfo.usedSize(), PH2: usedPercent}));
-          } else if (this.coverageInfo.type() & CoverageType.JavaScript) {
+          } else if (this.coverageInfo.type() & CoverageType.JAVA_SCRIPT) {
             UI.Tooltip.Tooltip.install(
                 usedSizeBar,
                 i18nString(
@@ -502,16 +504,16 @@ export class GridNode extends DataGrid.SortableDataGrid.SortableDataGridNode<Gri
       case 'url':
         return compareURL;
       case 'type':
-        return (a: GridNode, b: GridNode): number => {
+        return (a: GridNode, b: GridNode) => {
           const typeA = coverageTypeToString(a.coverageInfo.type());
           const typeB = coverageTypeToString(b.coverageInfo.type());
           return typeA.localeCompare(typeB) || compareURL(a, b);
         };
       case 'size':
-        return (a: GridNode, b: GridNode): number => a.coverageInfo.size() - b.coverageInfo.size() || compareURL(a, b);
+        return (a: GridNode, b: GridNode) => a.coverageInfo.size() - b.coverageInfo.size() || compareURL(a, b);
       case 'bars':
       case 'unused-size':
-        return (a: GridNode, b: GridNode): number =>
+        return (a: GridNode, b: GridNode) =>
                    a.coverageInfo.unusedSize() - b.coverageInfo.unusedSize() || compareURL(a, b);
       default:
         console.assert(false, 'Unknown sort field: ' + columnId);

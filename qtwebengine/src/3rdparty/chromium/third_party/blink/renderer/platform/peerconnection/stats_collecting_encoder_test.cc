@@ -1,6 +1,9 @@
 // Copyright 2022 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
+#include "third_party/blink/renderer/platform/peerconnection/stats_collecting_encoder.h"
+
+#include <optional>
 #include <vector>
 
 #include "base/memory/raw_ptr.h"
@@ -8,8 +11,6 @@
 #include "base/test/task_environment.h"
 #include "testing/gmock/include/gmock/gmock.h"
 #include "testing/gtest/include/gtest/gtest.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
-#include "third_party/blink/renderer/platform/peerconnection/stats_collecting_encoder.h"
 #include "third_party/webrtc/api/make_ref_counted.h"
 #include "third_party/webrtc/api/video/i420_buffer.h"
 #include "third_party/webrtc/api/video/video_bitrate_allocation.h"
@@ -59,7 +60,7 @@ webrtc::VideoFrame CreateMockFrame(int width, int height, uint32_t timestamp) {
   return webrtc::VideoFrame::Builder()
       .set_video_frame_buffer(
           rtc::make_ref_counted<FakeVideoFrameBuffer>(width, height))
-      .set_timestamp_rtp(timestamp)
+      .set_rtp_timestamp(timestamp)
       .build();
 }
 
@@ -82,7 +83,7 @@ class MockEncoder : public webrtc::VideoEncoder {
       const webrtc::VideoFrame& frame,
       const std::vector<webrtc::VideoFrameType>* frame_types) override {
     webrtc::EncodedImage encoded_frame;
-    encoded_frame.SetRtpTimestamp(frame.timestamp());
+    encoded_frame.SetRtpTimestamp(frame.rtp_timestamp());
     encoded_frame._frameType = frame_types && !frame_types->empty()
                                    ? frame_types->at(0)
                                    : webrtc::VideoFrameType::kVideoFrameDelta;
@@ -122,10 +123,10 @@ class MockEncoder : public webrtc::VideoEncoder {
 
  private:
   int frame_counter_ = 0;
-  raw_ptr<base::test::TaskEnvironment, ExperimentalRenderer> task_environment_;
-  raw_ptr<int, ExperimentalRenderer> spatial_layers_;
-  const raw_ptr<bool, ExperimentalRenderer> is_hw_accelerated_;
-  raw_ptr<webrtc::EncodedImageCallback, ExperimentalRenderer> callback_;
+  raw_ptr<base::test::TaskEnvironment> task_environment_;
+  raw_ptr<int> spatial_layers_;
+  const raw_ptr<bool> is_hw_accelerated_;
+  raw_ptr<webrtc::EncodedImageCallback> callback_;
 };
 
 class FakeEncodedImageCallback : public webrtc::EncodedImageCallback {
@@ -157,7 +158,10 @@ class StatsCollectingEncoderTest : public ::testing::Test {
     stats_encoder_.RegisterEncodeCompleteCallback(&encoded_image_callback_);
   }
 
-  void TearDown() override { stats_encoder_.Release(); }
+  void TearDown() override {
+    internal_encoder_ = nullptr;
+    stats_encoder_.Release();
+  }
 
   void StoreProcessingStatsCB(const StatsCollector::StatsKey& stats_key,
                               const StatsCollector::VideoStats& video_stats) {
@@ -216,7 +220,7 @@ class StatsCollectingEncoderTest : public ::testing::Test {
   int spatial_layers_{1};
   bool is_hw_accelerated_{false};
   FakeEncodedImageCallback encoded_image_callback_;
-  raw_ptr<MockEncoder, DanglingUntriaged> internal_encoder_;
+  raw_ptr<MockEncoder> internal_encoder_;
   StatsCollectingEncoder stats_encoder_;
 
   uint32_t frame_counter_{0};

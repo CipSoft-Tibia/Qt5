@@ -104,10 +104,10 @@ __sancov_fuzz_target = rule(
             executable = True,
             mandatory = True,
         ),
+        "sancov": attr.string(),
         "_allowlist_function_transition": attr.label(
             default = "@bazel_tools//tools/allowlists/function_transition_allowlist",
         ),
-        "sancov": attr.string(),
     },
     executable = True,
 )

@@ -30,9 +30,6 @@
 #include "qmenubar_p.h"
 #endif
 #include "qwidgetaction.h"
-#if QT_CONFIG(toolbutton)
-#include "qtoolbutton.h"
-#endif
 #include "qpushbutton.h"
 #if QT_CONFIG(tooltip)
 #include "qtooltip.h"
@@ -625,6 +622,13 @@ void QMenuPrivate::hideMenu(QMenu *menu)
 QWindow *QMenuPrivate::transientParentWindow() const
 {
     Q_Q(const QMenu);
+    if (causedPopup.widget) {
+        if (const QWidget *w = causedPopup.widget.data()) {
+            if (const QWidget *ww = w->window())
+                return ww->windowHandle();
+        }
+    }
+
     if (const QWidget *parent = q->nativeParentWidget()) {
         if (parent->windowHandle())
             return parent->windowHandle();
@@ -633,13 +637,6 @@ QWindow *QMenuPrivate::transientParentWindow() const
     if (const QWindow *w = q->windowHandle()) {
         if (w->transientParent())
             return w->transientParent();
-    }
-
-    if (causedPopup.widget) {
-        if (const QWidget *w = causedPopup.widget.data()) {
-            if (const QWidget *ww = w->window())
-                return ww->windowHandle();
-        }
     }
 
     return nullptr;
@@ -2450,9 +2447,11 @@ void QMenuPrivate::popup(const QPoint &p, QAction *atAction, PositionFunction po
         }
     }
 
-    // do nothing if we don't have a valid size, e.g. when all actions are invisible
+    // Do nothing if we don't have a valid size, e.g. when all actions are invisible
+    // and there are no child widgets.
     const auto rectIsNull = [](const QRect &rect) { return rect.isNull(); };
-    if (std::all_of(actionRects.cbegin(), actionRects.cend(), rectIsNull)) {
+    if (q->childrenRect().isEmpty()
+     && std::all_of(actionRects.cbegin(), actionRects.cend(), rectIsNull)) {
         eventLoop = nullptr;
         syncAction = nullptr;
         return;
@@ -3038,7 +3037,7 @@ bool QMenu::event(QEvent *e)
         d->sloppyState.reset();
         if (d->currentAction)
             d->popupAction(d->currentAction, 0, false);
-        if (isWindow() && window() && window()->windowHandle() && !window()->windowHandle()->transientParent())
+        if (isWindow() && window() && window()->windowHandle())
             window()->windowHandle()->setTransientParent(d->transientParentWindow());
         break;
 #if QT_CONFIG(tooltip)

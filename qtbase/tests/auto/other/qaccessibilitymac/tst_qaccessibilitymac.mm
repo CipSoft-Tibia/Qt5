@@ -5,6 +5,7 @@
 #include <QtWidgets>
 #include <QTest>
 #include <QtCore/qcoreapplication.h>
+#include <QtCore/qregularexpression.h>
 
 // some versions of CALayer.h use 'slots' as an identifier
 #define QT_NO_KEYWORDS
@@ -65,6 +66,7 @@ QDebug operator<<(QDebug dbg, AXErrorTag err)
     bool axError;
 }
     @property (readonly) NSString *role;
+    @property (readonly) NSString *roleDescription;
     @property (readonly) NSString *title;
     @property (readonly) NSString *description;
     @property (readonly) NSString *value;
@@ -147,6 +149,21 @@ QDebug operator<<(QDebug dbg, AXErrorTag err)
                                                                     (CFArrayRef *) &arr))) {
         axError = true;
         qDebug() << "AXUIElementCopyAttributeValue(kAXColumnsAttribute) returned error = "
+                 << AXErrorTag(err) << "with reference" << reference;
+    }
+    return arr;
+}
+
+- (NSArray *)tabs
+{
+    NSArray *arr;
+    AXError err;
+
+    if (kAXErrorSuccess != (err = AXUIElementCopyAttributeValues(reference, kAXTabsAttribute,
+                                                                    0, 100, /*min, max*/
+                                                                    (CFArrayRef *) &arr))) {
+        axError = true;
+        qDebug() << "AXUIElementCopyAttributeValue(kAXTabsAttribute) returned error = "
                  << AXErrorTag(err) << "with reference" << reference;
     }
     return arr;
@@ -352,6 +369,7 @@ QDebug operator<<(QDebug dbg, AXErrorTag err)
 
 - (bool)                valid { return reference != nil; }
 - (NSString*)           role { return [self _stringAttributeValue:kAXRoleAttribute]; }
+- (NSString*)           roleDescription { return [self _stringAttributeValue:kAXRoleDescriptionAttribute]; }
 - (NSString*)           title { return [self _stringAttributeValue:kAXTitleAttribute]; }
 - (NSString*)           description { return [self _stringAttributeValue:kAXDescriptionAttribute]; }
 - (NSString*)           value { return [self _stringAttributeValue:kAXValueAttribute]; }
@@ -364,6 +382,7 @@ QDebug operator<<(QDebug dbg, AXErrorTag err)
     return rect;
 }
 - (AXUIElementRef)      parent { return (AXUIElementRef)[self _attributeValue:kAXParentAttribute]; }
+- (AXUIElementRef)      window { return (AXUIElementRef)[self _attributeValue:kAXWindowAttribute]; }
 - (BOOL)                focused { return [self _boolAttributeValue:kAXFocusedAttribute]; }
 - (NSInteger)           numberOfCharacters { return [self _numberAttributeValue:kAXNumberOfCharactersAttribute]; }
 - (NSString*)           selectedText { return [self _stringAttributeValue:kAXSelectedTextAttribute]; }
@@ -430,6 +449,8 @@ private Q_SLOTS:
     void checkBoxTest();
     void tableViewTest();
     void treeViewTest();
+    void tabBarTest();
+    void windowTest();
 
 private:
     AccessibleTestWindow *m_window;
@@ -480,6 +501,7 @@ void tst_QAccessibilityMac::singleWidgetTest()
     delete le;
     QCoreApplication::processEvents();
     TestAXObject *lineEditInvalid = [[TestAXObject alloc] initWithAXUIElementRef: lineEditRef];
+    QTest::ignoreMessage(QtDebugMsg, QRegularExpression("kAXErrorInvalidUIElement"));
     QVERIFY([[lineEditInvalid value] length] == 0);
 }
 
@@ -781,18 +803,20 @@ void tst_QAccessibilityMac::treeViewTest()
     QVERIFY(window.valid);
 
     // children of window
-    AXUIElementRef treeView = [window findDirectChildByRole:kAXOutlineRole];
-    QVERIFY(treeView != nil);
 
-    TestAXObject *tv = [[TestAXObject alloc] initWithAXUIElementRef:treeView];
+    auto accessibleTreeView = [window]() -> TestAXObject * {
+        AXUIElementRef treeView = [window findDirectChildByRole:kAXOutlineRole];
+        Q_ASSERT(treeView != nil);
+        TestAXObject *tv = [[TestAXObject alloc] initWithAXUIElementRef:treeView];
+        return tv;
+    };
+
+    TestAXObject *tv = accessibleTreeView();
     QVERIFY(tv.valid);
-
-    [appObject release];
-    [window release];
 
     // here start actual treeview tests. NSAccessibilityOutline is a specialization
     // of NSAccessibilityTable, and we represent trees as tables.
-    const auto cellText = [tv](int rowIndex, int columnIndex) -> QString {
+    const auto cellText = [&tv](int rowIndex, int columnIndex) -> QString {
         NSArray *rowArray = [tv tableRows];
         Q_ASSERT(rowArray.count > uint(rowIndex));
         TestAXObject *row = [[TestAXObject alloc] initWithAXUIElementRef:(AXUIElementRef)rowArray[rowIndex]];
@@ -846,9 +870,99 @@ void tst_QAccessibilityMac::treeViewTest()
     // this should not trigger any assert
     tw->setCurrentItem(lastChild);
 
+    // cache will have been cleared, reinitialize
+    [tv release];
+    tv = accessibleTreeView();
+    QVERIFY(tv.valid);
+
     QCOMPARE(cellText(0, 0), root->text(0));
     QCOMPARE(cellText(1, 0), users->text(0));
     QCOMPARE(cellText(1, 1), users->text(1));
+
+    [appObject release];
+    [window release];
+}
+
+void tst_QAccessibilityMac::tabBarTest()
+{
+    QTabBar *tbar = new QTabBar;
+    static const unsigned int nTabs = 20;
+    for (unsigned int i = 0; i < nTabs; ++i)
+        tbar->addTab(QString::number(i));
+    tbar->setUsesScrollButtons(true);
+
+    m_window->addWidget(tbar);
+    QVERIFY(QTest::qWaitForWindowExposed(m_window));
+    QCoreApplication::processEvents();
+
+    TestAXObject *appObject = [TestAXObject getApplicationAXObject];
+    QVERIFY(appObject);
+
+    NSArray *windowList = [appObject windowList];
+    // one window
+    QVERIFY([windowList count] == 1);
+    AXUIElementRef windowRef = (AXUIElementRef)[windowList objectAtIndex:0];
+    QVERIFY(windowRef != nil);
+    TestAXObject *window = [[TestAXObject alloc] initWithAXUIElementRef:windowRef];
+    QVERIFY(window.valid);
+
+    // children of window
+    AXUIElementRef axTarBar = [window findDirectChildByRole:kAXTabGroupRole];
+    QVERIFY(axTarBar != nil);
+
+    TestAXObject *tb = [[TestAXObject alloc] initWithAXUIElementRef:axTarBar];
+    QVERIFY(tb.valid);
+
+    [appObject release];
+    [window release];
+
+    NSArray *tbChildList = [tb childList];
+    // +2 because of the scroll buttons
+    QCOMPARE([tbChildList count], nTabs + 2);
+
+    NSArray *tbTabsList = [tb tabs];
+    QCOMPARE([tbTabsList count], nTabs);
+
+    for (unsigned int i = 0; i < nTabs; ++i) {
+        AXUIElementRef axTab = (AXUIElementRef)[tbTabsList objectAtIndex:i];
+        QVERIFY(axTab != nil);
+
+        TestAXObject *tab = [[TestAXObject alloc] initWithAXUIElementRef:axTab];
+        QVERIFY(tab.valid);
+        QCOMPARE(QString::fromNSString(tab.role), QString::fromCFString(kAXRadioButtonRole));
+        QCOMPARE(QString::fromNSString(tab.title), QString::number(i));
+        QCOMPARE(QString::fromNSString(tab.roleDescription), "tab");
+    }
+}
+
+void tst_QAccessibilityMac::windowTest()
+{
+    QTextEdit *textEdit = new QTextEdit;
+    m_window->addWidget(textEdit);
+    QVERIFY(QTest::qWaitForWindowExposed(m_window));
+    QCoreApplication::processEvents();
+
+    TestAXObject *appObject = [TestAXObject getApplicationAXObject];
+    QVERIFY(appObject);
+
+    NSArray *windowList = [appObject windowList];
+    // one window
+    QVERIFY([windowList count] == 1);
+    AXUIElementRef windowRef = (AXUIElementRef)[windowList objectAtIndex:0];
+    QVERIFY(windowRef != nil);
+    TestAXObject *window = [[TestAXObject alloc] initWithAXUIElementRef:windowRef];
+    QVERIFY(window.valid);
+
+    AXUIElementRef axTextEdit = [window findDirectChildByRole:kAXTextAreaRole];
+    QVERIFY(axTextEdit != nil);
+
+    [appObject release];
+    [window release];
+
+    TestAXObject *edit = [[TestAXObject alloc] initWithAXUIElementRef:axTextEdit];
+    QVERIFY(edit.valid);
+    AXUIElementRef axWindow = edit.window;
+    QVERIFY(axWindow);
 }
 
 QTEST_MAIN(tst_QAccessibilityMac)

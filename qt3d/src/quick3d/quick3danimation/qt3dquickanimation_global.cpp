@@ -19,6 +19,8 @@ void Quick3DAnimation_registerType(const char *className, const char *quickName,
     QuickAnimationNodeFactory::instance()->registerType(className, quickName, major, minor);
 }
 
+Q_CONSTRUCTOR_FUNCTION(Quick3DAnimation_initialize)
+
 } // namespace Quick
 } // namespace Qt3DAnimation
 

@@ -1,4 +1,3 @@
-#include "./centipede/binary_info.h"
 // Copyright 2022 The Centipede Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -16,19 +15,20 @@
 #ifndef THIRD_PARTY_CENTIPEDE_CENTIPEDE_H_
 #define THIRD_PARTY_CENTIPEDE_CENTIPEDE_H_
 
+#include <atomic>
 #include <cstddef>
 #include <string>
 #include <string_view>
 #include <vector>
 
+#include "absl/base/nullability.h"
 #include "absl/time/time.h"
-#include "./centipede/blob_file.h"
+#include "./centipede/binary_info.h"
 #include "./centipede/centipede_callbacks.h"
 #include "./centipede/command.h"
 #include "./centipede/control_flow.h"
 #include "./centipede/corpus.h"
 #include "./centipede/coverage.h"
-#include "./centipede/defs.h"
 #include "./centipede/environment.h"
 #include "./centipede/feature.h"
 #include "./centipede/feature_set.h"
@@ -38,6 +38,8 @@
 #include "./centipede/stats.h"
 #include "./centipede/symbol_table.h"
 #include "./centipede/workdir.h"
+#include "./common/blob_file.h"
+#include "./common/defs.h"
 
 namespace centipede {
 
@@ -46,7 +48,7 @@ class Centipede {
  public:
   Centipede(const Environment &env, CentipedeCallbacks &user_callbacks,
             const BinaryInfo &binary_info, CoverageLogger &coverage_logger,
-            Stats &stats);
+            std::atomic<Stats> &stats);
   virtual ~Centipede() = default;
 
   // Non-copyable and non-movable.
@@ -77,10 +79,13 @@ class Centipede {
   // Returns true if new features were observed.
   // Post-condition: `batch_result.results.size()` == `input_vec.size()`.
   bool RunBatch(const std::vector<ByteArray> &input_vec,
-                BlobFileWriter *corpus_file, BlobFileWriter *features_file,
-                BlobFileWriter *unconditional_features_file);
-  // Loads seed inputs from the user callbacks.
-  void LoadSeedInputs();
+                absl::Nullable<BlobFileWriter *> corpus_file,
+                absl::Nullable<BlobFileWriter *> features_file,
+                absl::Nullable<BlobFileWriter *> unconditional_features_file);
+  // Loads seed inputs from the user callbacks, execute them, and store them
+  // with the corresponding features into `corpus_file` and `features_file`.
+  void LoadSeedInputs(absl::Nonnull<BlobFileWriter *> corpus_file,
+                      absl::Nonnull<BlobFileWriter *> features_file);
   // Loads a shard `shard_index` from `load_env.workdir`.
   // Note: `load_env_` may be different from `env_`.
   // If `rerun` is true, then also re-runs any inputs
@@ -192,7 +197,7 @@ class Centipede {
   CoverageLogger &coverage_logger_;
 
   // Statistics of the current run.
-  Stats &stats_;
+  std::atomic<Stats> &stats_;
 
   // Counts the number of crashes reported so far.
   int num_crashes_ = 0;

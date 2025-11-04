@@ -17,11 +17,11 @@ cd libyuv
 : # When changing the commit below to a newer version of libyuv, it is best to make sure it is being used by chromium,
 : # because the test suite of chromium provides additional test coverage of libyuv.
 : # It can be looked up at https://source.chromium.org/chromium/chromium/src/+/main:DEPS?q=libyuv.
-git checkout 464c51a0
+git checkout a6a2ec65
 
 mkdir build
 cd build
 
 cmake -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_POSITION_INDEPENDENT_CODE=ON ..
-ninja yuv
 cd ../..
+ninja -C libyuv/build yuv

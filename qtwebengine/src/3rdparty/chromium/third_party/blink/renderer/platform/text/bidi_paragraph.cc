@@ -2,6 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#ifdef UNSAFE_BUFFERS_BUILD
+// TODO(crbug.com/351564777): Remove this and convert code to safer constructs.
+#pragma allow_unsafe_buffers
+#endif
+
 #include "third_party/blink/renderer/platform/text//bidi_paragraph.h"
 
 #include "third_party/blink/renderer/platform/text/icu_error.h"
@@ -12,7 +17,7 @@
 namespace blink {
 
 bool BidiParagraph::SetParagraph(const String& text,
-                                 absl::optional<TextDirection> base_direction) {
+                                 std::optional<TextDirection> base_direction) {
   DCHECK(!text.IsNull());
   DCHECK(!ubidi_);
   ubidi_ = UBidiPtr(ubidi_open());
@@ -29,7 +34,7 @@ bool BidiParagraph::SetParagraph(const String& text,
   ubidi_setPara(ubidi_.get(), text.Characters16(), text.length(), para_level,
                 nullptr, &error);
   if (U_FAILURE(error)) {
-    NOTREACHED();
+    NOTREACHED_IN_MIGRATION();
     ubidi_ = nullptr;
     return false;
   }
@@ -43,7 +48,7 @@ bool BidiParagraph::SetParagraph(const String& text,
 
 // static
 template <>
-absl::optional<TextDirection> BidiParagraph::BaseDirectionForString(
+std::optional<TextDirection> BidiParagraph::BaseDirectionForString(
     base::span<const LChar> text,
     bool (*stop_at)(UChar)) {
   for (const LChar ch : text) {
@@ -55,12 +60,12 @@ absl::optional<TextDirection> BidiParagraph::BaseDirectionForString(
       break;
     }
   }
-  return absl::nullopt;
+  return std::nullopt;
 }
 
 // static
 template <>
-absl::optional<TextDirection> BidiParagraph::BaseDirectionForString(
+std::optional<TextDirection> BidiParagraph::BaseDirectionForString(
     base::span<const UChar> text,
     bool (*stop_at)(UChar)) {
   const UChar* data = text.data();
@@ -82,11 +87,11 @@ absl::optional<TextDirection> BidiParagraph::BaseDirectionForString(
       break;
     }
   }
-  return absl::nullopt;
+  return std::nullopt;
 }
 
 // static
-absl::optional<TextDirection> BidiParagraph::BaseDirectionForString(
+std::optional<TextDirection> BidiParagraph::BaseDirectionForString(
     const StringView& text,
     bool (*stop_at)(UChar)) {
   return text.Is8Bit() ? BaseDirectionForString(text.Span8(), stop_at)

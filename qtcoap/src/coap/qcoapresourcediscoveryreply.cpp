@@ -1,6 +1,7 @@
 // Copyright (C) 2017 Witekio.
 // Copyright (C) 2018 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
+// Qt-Security score:critical reason:data-parser
 
 #include "qcoapresourcediscoveryreply_p.h"
 #include "qcoapinternalreply_p.h"
@@ -108,14 +109,14 @@ QCoapResourceDiscoveryReplyPrivate::resourcesFromCoreLinkList(const QHostAddress
 
     QLatin1String quote = QLatin1String("\"");
     const QList<QByteArray> links = data.split(',');
-    for (QByteArray link : links) {
+    for (const QByteArray &link : links) {
         QCoapResource resource;
         resource.setHost(sender);
 
         const QList<QByteArray> parameterList = link.split(';');
-        for (QByteArray parameter : parameterList) {
+        for (const QByteArray &parameter : parameterList) {
             QString parameterString = QString::fromUtf8(parameter);
-            int length = parameterString.size();
+            const qsizetype length = parameterString.size();
             if (parameter.startsWith('<'))
                 resource.setPath(parameterString.mid(1, length - 2));
             else if (parameter.startsWith("title="))

@@ -55,7 +55,7 @@ bool IsSecuritySensitiveVerdict(
     case LoginReputationClientResponse::PHISHING:
       return true;
   }
-  NOTREACHED() << "Unexpected verdict_type: " << verdict_type;
+  NOTREACHED_IN_MIGRATION() << "Unexpected verdict_type: " << verdict_type;
   return false;
 }
 
@@ -175,15 +175,6 @@ void PasswordProtectionServiceBase::RequestFinished(
                    password_type, *response, base::Time::Now());
     }
 
-    // If it's password alert mode and a Gsuite/enterprise account, we do not
-    // show a modal warning.
-    if (outcome == RequestOutcome::PASSWORD_ALERT_MODE &&
-        (password_type.account_type() == ReusedPasswordAccountType::GSUITE ||
-         password_type.account_type() ==
-             ReusedPasswordAccountType::NON_GAIA_ENTERPRISE)) {
-      return;
-    }
-
     if (ShouldShowModalWarning(request->trigger_type(), password_type,
                                response->verdict_type())) {
       username_for_last_shown_warning_ = request->username();
@@ -213,7 +204,8 @@ void PasswordProtectionServiceBase::RequestFinished(
 // Disabled on Android, because enterprise reporting extension is not supported.
 #if !BUILDFLAG(IS_ANDROID)
     MaybeReportPasswordReuseDetected(
-        request, request->username(), request->password_type(),
+        request->main_frame_url(), request->username(),
+        request->password_type(),
         verdict == LoginReputationClientResponse::PHISHING, warning_shown);
 #endif
 
@@ -277,7 +269,7 @@ int PasswordProtectionServiceBase::GetRequestTimeoutInMS() {
   return kRequestTimeoutMs;
 }
 
-void PasswordProtectionServiceBase::OnURLsDeleted(
+void PasswordProtectionServiceBase::OnHistoryDeletions(
     history::HistoryService* history_service,
     const history::DeletionInfo& deletion_info) {
   base::SequencedTaskRunner::GetCurrentDefault()->PostTask(
@@ -318,7 +310,7 @@ PasswordProtectionServiceBase::GetPasswordProtectionReusedPasswordType(
     case PasswordType::PASSWORD_TYPE_COUNT:
       break;
   }
-  NOTREACHED();
+  NOTREACHED_IN_MIGRATION();
   return PasswordReuseEvent::REUSED_PASSWORD_TYPE_UNKNOWN;
 }
 
@@ -351,7 +343,8 @@ PasswordProtectionServiceBase::GetPasswordProtectionReusedPasswordAccountType(
     }
     case PasswordType::OTHER_GAIA_PASSWORD: {
       AccountInfo account_info = GetAccountInfoForUsername(username);
-      if (account_info.account_id.empty()) {
+      if (account_info.account_id.empty() ||
+          account_info.hosted_domain.empty()) {
         reused_password_account_type.set_account_type(
             ReusedPasswordAccountType::UNKNOWN);
         return reused_password_account_type;
@@ -367,7 +360,7 @@ PasswordProtectionServiceBase::GetPasswordProtectionReusedPasswordAccountType(
           ReusedPasswordAccountType::UNKNOWN);
       return reused_password_account_type;
   }
-  NOTREACHED();
+  NOTREACHED_IN_MIGRATION();
   return reused_password_account_type;
 }
 
@@ -406,7 +399,7 @@ bool PasswordProtectionServiceBase::IsSupportedPasswordTypeForPinging(
     case PasswordType::PASSWORD_TYPE_COUNT:
       return false;
   }
-  NOTREACHED();
+  NOTREACHED_IN_MIGRATION();
   return false;
 }
 

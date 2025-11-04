@@ -113,6 +113,9 @@ function(find_gstreamer_component component)
                         return 0;
                     }")
 
+                    # Run the test immediately because we can't rely on lazy evaluation here
+                    qt_run_config_compile_test("gstreamer_version_check_${component}")
+
                     if (${TEST_gstreamer_version_check_${component}})
                         add_library(GStreamer::${component} INTERFACE IMPORTED)
 

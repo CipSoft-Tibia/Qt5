@@ -5,7 +5,7 @@
 """Library for defining orchestrators and compilators."""
 
 load("@stdlib//internal/graph.star", "graph")
-load("./builder_url.star", "builder_url")
+load("./html.star", "builder_url")
 load("./nodes.star", "nodes")
 
 # The generator in builder_config.star will set the
@@ -261,7 +261,6 @@ def _set_orchestrator_properties(ctx):
         orchestrator_properties["$build/chromium_orchestrator"] = {
             "compilator": compilator.simple_name,
             "compilator_watcher_git_revision": _COMPILATOR_WATCHER_GIT_REVISION,
-            "propagate_properties_to_compilator": True,
         }
         encoded_orchestrator_properties = json.encode(orchestrator_properties)
         orchestrator.builder.properties = encoded_orchestrator_properties

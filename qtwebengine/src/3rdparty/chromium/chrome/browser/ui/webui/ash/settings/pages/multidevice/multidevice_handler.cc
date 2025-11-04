@@ -20,7 +20,7 @@
 #include "chrome/browser/nearby_sharing/nearby_share_feature_status.h"
 #include "chrome/browser/nearby_sharing/nearby_sharing_service_factory.h"
 #include "chrome/browser/profiles/profile.h"
-#include "chrome/browser/ui/ash/session_controller_client_impl.h"
+#include "chrome/browser/ui/ash/session/session_controller_client_impl.h"
 #include "chrome/browser/ui/webui/ash/multidevice_setup/multidevice_setup_dialog.h"
 #include "chromeos/ash/components/multidevice/logging/logging.h"
 #include "chromeos/ash/components/osauth/public/auth_session_storage.h"
@@ -103,8 +103,6 @@ MultideviceHandler::MultideviceHandler(
       apps_access_manager_(apps_access_manager),
       camera_roll_manager_(camera_roll_manager),
       browser_tabs_model_provider_(browser_tabs_model_provider) {
-  CHECK((multidevice_setup_client_ != nullptr) ==
-        multidevice_setup::AreAnyMultiDeviceFeaturesAllowed(prefs_));
   pref_change_registrar_.Init(prefs_);
 }
 

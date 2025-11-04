@@ -32,7 +32,6 @@
 #include "src/tint/lang/core/type/sampled_texture.h"
 #include "src/tint/lang/core/type/texture_dimension.h"
 #include "src/tint/lang/wgsl/ast/assignment_statement.h"
-#include "src/tint/lang/wgsl/ast/bitcast_expression.h"
 #include "src/tint/lang/wgsl/ast/break_statement.h"
 #include "src/tint/lang/wgsl/ast/builtin_texture_helper_test.h"
 #include "src/tint/lang/wgsl/ast/call_statement.h"
@@ -154,7 +153,7 @@ TEST_F(ResolverBuiltinTest, Select) {
     ASSERT_NE(TypeOf(expr), nullptr);
     EXPECT_TRUE(TypeOf(expr)->Is<core::type::Vector>());
     EXPECT_EQ(TypeOf(expr)->As<core::type::Vector>()->Width(), 3u);
-    EXPECT_TRUE(TypeOf(expr)->As<core::type::Vector>()->type()->Is<core::type::F32>());
+    EXPECT_TRUE(TypeOf(expr)->As<core::type::Vector>()->Type()->Is<core::type::F32>());
 }
 
 TEST_F(ResolverBuiltinTest, Select_Error_NoParams) {
@@ -164,12 +163,15 @@ TEST_F(ResolverBuiltinTest, Select_Error_NoParams) {
     EXPECT_FALSE(r()->Resolve());
 
     EXPECT_EQ(r()->error(),
-              R"(error: no matching call to select()
+              R"(error: no matching call to 'select()'
 
 3 candidate functions:
-  select(T, T, bool) -> T  where: T is abstract-int, abstract-float, f32, f16, i32, u32 or bool
-  select(vecN<T>, vecN<T>, bool) -> vecN<T>  where: T is abstract-int, abstract-float, f32, f16, i32, u32 or bool
-  select(vecN<T>, vecN<T>, vecN<bool>) -> vecN<T>  where: T is abstract-int, abstract-float, f32, f16, i32, u32 or bool
+ • 'select(T  ✗ , T  ✗ , bool  ✗ ) -> T' where:
+      ✗  'T' is 'abstract-int', 'abstract-float', 'f32', 'f16', 'i32', 'u32' or 'bool'
+ • 'select(vecN<T>  ✗ , vecN<T>  ✗ , bool  ✗ ) -> vecN<T>' where:
+      ✗  'T' is 'abstract-int', 'abstract-float', 'f32', 'f16', 'i32', 'u32' or 'bool'
+ • 'select(vecN<T>  ✗ , vecN<T>  ✗ , vecN<bool>  ✗ ) -> vecN<T>' where:
+      ✗  'T' is 'abstract-int', 'abstract-float', 'f32', 'f16', 'i32', 'u32' or 'bool'
 )");
 }
 
@@ -180,12 +182,15 @@ TEST_F(ResolverBuiltinTest, Select_Error_SelectorInt) {
     EXPECT_FALSE(r()->Resolve());
 
     EXPECT_EQ(r()->error(),
-              R"(error: no matching call to select(i32, i32, i32)
+              R"(error: no matching call to 'select(i32, i32, i32)'
 
 3 candidate functions:
-  select(T, T, bool) -> T  where: T is abstract-int, abstract-float, f32, f16, i32, u32 or bool
-  select(vecN<T>, vecN<T>, bool) -> vecN<T>  where: T is abstract-int, abstract-float, f32, f16, i32, u32 or bool
-  select(vecN<T>, vecN<T>, vecN<bool>) -> vecN<T>  where: T is abstract-int, abstract-float, f32, f16, i32, u32 or bool
+ • 'select(T  ✓ , T  ✓ , bool  ✗ ) -> T' where:
+      ✓  'T' is 'abstract-int', 'abstract-float', 'f32', 'f16', 'i32', 'u32' or 'bool'
+ • 'select(vecN<T>  ✗ , vecN<T>  ✗ , bool  ✗ ) -> vecN<T>' where:
+      ✗  'T' is 'abstract-int', 'abstract-float', 'f32', 'f16', 'i32', 'u32' or 'bool'
+ • 'select(vecN<T>  ✗ , vecN<T>  ✗ , vecN<bool>  ✗ ) -> vecN<T>' where:
+      ✗  'T' is 'abstract-int', 'abstract-float', 'f32', 'f16', 'i32', 'u32' or 'bool'
 )");
 }
 
@@ -198,12 +203,15 @@ TEST_F(ResolverBuiltinTest, Select_Error_Matrix) {
     EXPECT_FALSE(r()->Resolve());
 
     EXPECT_EQ(r()->error(),
-              R"(error: no matching call to select(mat2x2<f32>, mat2x2<f32>, bool)
+              R"(error: no matching call to 'select(mat2x2<f32>, mat2x2<f32>, bool)'
 
 3 candidate functions:
-  select(T, T, bool) -> T  where: T is abstract-int, abstract-float, f32, f16, i32, u32 or bool
-  select(vecN<T>, vecN<T>, bool) -> vecN<T>  where: T is abstract-int, abstract-float, f32, f16, i32, u32 or bool
-  select(vecN<T>, vecN<T>, vecN<bool>) -> vecN<T>  where: T is abstract-int, abstract-float, f32, f16, i32, u32 or bool
+ • 'select(T  ✗ , T  ✗ , bool  ✓ ) -> T' where:
+      ✗  'T' is 'abstract-int', 'abstract-float', 'f32', 'f16', 'i32', 'u32' or 'bool'
+ • 'select(vecN<T>  ✗ , vecN<T>  ✗ , bool  ✓ ) -> vecN<T>' where:
+      ✗  'T' is 'abstract-int', 'abstract-float', 'f32', 'f16', 'i32', 'u32' or 'bool'
+ • 'select(vecN<T>  ✗ , vecN<T>  ✗ , vecN<bool>  ✗ ) -> vecN<T>' where:
+      ✗  'T' is 'abstract-int', 'abstract-float', 'f32', 'f16', 'i32', 'u32' or 'bool'
 )");
 }
 
@@ -214,12 +222,15 @@ TEST_F(ResolverBuiltinTest, Select_Error_MismatchTypes) {
     EXPECT_FALSE(r()->Resolve());
 
     EXPECT_EQ(r()->error(),
-              R"(error: no matching call to select(f32, vec2<f32>, bool)
+              R"(error: no matching call to 'select(f32, vec2<f32>, bool)'
 
 3 candidate functions:
-  select(T, T, bool) -> T  where: T is abstract-int, abstract-float, f32, f16, i32, u32 or bool
-  select(vecN<T>, vecN<T>, bool) -> vecN<T>  where: T is abstract-int, abstract-float, f32, f16, i32, u32 or bool
-  select(vecN<T>, vecN<T>, vecN<bool>) -> vecN<T>  where: T is abstract-int, abstract-float, f32, f16, i32, u32 or bool
+ • 'select(T  ✓ , T  ✗ , bool  ✓ ) -> T' where:
+      ✓  'T' is 'abstract-int', 'abstract-float', 'f32', 'f16', 'i32', 'u32' or 'bool'
+ • 'select(vecN<T>  ✗ , vecN<T>  ✓ , bool  ✓ ) -> vecN<T>' where:
+      ✓  'T' is 'abstract-int', 'abstract-float', 'f32', 'f16', 'i32', 'u32' or 'bool'
+ • 'select(vecN<T>  ✗ , vecN<T>  ✓ , vecN<bool>  ✗ ) -> vecN<T>' where:
+      ✓  'T' is 'abstract-int', 'abstract-float', 'f32', 'f16', 'i32', 'u32' or 'bool'
 )");
 }
 
@@ -230,12 +241,15 @@ TEST_F(ResolverBuiltinTest, Select_Error_MismatchVectorSize) {
     EXPECT_FALSE(r()->Resolve());
 
     EXPECT_EQ(r()->error(),
-              R"(error: no matching call to select(vec2<f32>, vec3<f32>, bool)
+              R"(error: no matching call to 'select(vec2<f32>, vec3<f32>, bool)'
 
 3 candidate functions:
-  select(T, T, bool) -> T  where: T is abstract-int, abstract-float, f32, f16, i32, u32 or bool
-  select(vecN<T>, vecN<T>, bool) -> vecN<T>  where: T is abstract-int, abstract-float, f32, f16, i32, u32 or bool
-  select(vecN<T>, vecN<T>, vecN<bool>) -> vecN<T>  where: T is abstract-int, abstract-float, f32, f16, i32, u32 or bool
+ • 'select(vecN<T>  ✓ , vecN<T>  ✗ , bool  ✓ ) -> vecN<T>' where:
+      ✓  'T' is 'abstract-int', 'abstract-float', 'f32', 'f16', 'i32', 'u32' or 'bool'
+ • 'select(T  ✗ , T  ✗ , bool  ✓ ) -> T' where:
+      ✗  'T' is 'abstract-int', 'abstract-float', 'f32', 'f16', 'i32', 'u32' or 'bool'
+ • 'select(vecN<T>  ✓ , vecN<T>  ✗ , vecN<bool>  ✗ ) -> vecN<T>' where:
+      ✓  'T' is 'abstract-int', 'abstract-float', 'f32', 'f16', 'i32', 'u32' or 'bool'
 )");
 }
 
@@ -269,10 +283,13 @@ TEST_F(ResolverBuiltinArrayTest, ArrayLength_Error_ArraySized) {
     EXPECT_FALSE(r()->Resolve());
 
     EXPECT_EQ(r()->error(),
-              R"(error: no matching call to arrayLength(ptr<private, array<i32, 4>, read_write>)
+              R"(error: no matching call to 'arrayLength(ptr<private, array<i32, 4>, read_write>)'
 
-1 candidate function:
-  arrayLength(ptr<storage, array<T>, A>) -> u32
+2 candidate functions:
+ • 'arrayLength(ptr<storage, array<T>, R>  ✗ ) -> u32' where:
+      ✗  'R' is 'read'
+ • 'arrayLength(ptr<storage, array<T>, W>  ✗ ) -> u32' where:
+      ✗  'W' is 'write' or 'read_write'
 )");
 }
 
@@ -307,7 +324,7 @@ TEST_P(ResolverBuiltinTest_FloatBuiltin_IdenticalType, Error_NoParams) {
     EXPECT_FALSE(r()->Resolve());
 
     EXPECT_THAT(r()->error(),
-                HasSubstr("error: no matching call to " + std::string(param.name) + "()"));
+                HasSubstr("error: no matching call to '" + std::string(param.name) + "()'"));
 }
 
 TEST_P(ResolverBuiltinTest_FloatBuiltin_IdenticalType, OneParam_Scalar_f32) {
@@ -332,7 +349,7 @@ TEST_P(ResolverBuiltinTest_FloatBuiltin_IdenticalType, OneParam_Scalar_f32) {
         EXPECT_FALSE(r()->Resolve());
 
         EXPECT_THAT(r()->error(),
-                    HasSubstr("error: no matching call to " + std::string(param.name) + "(f32)"));
+                    HasSubstr("error: no matching call to '" + std::string(param.name) + "(f32)'"));
     }
 }
 
@@ -350,16 +367,16 @@ TEST_P(ResolverBuiltinTest_FloatBuiltin_IdenticalType, OneParam_Vector_f32) {
         EXPECT_TRUE(r()->Resolve()) << r()->error();
 
         ASSERT_NE(TypeOf(call), nullptr);
-        EXPECT_TRUE(TypeOf(call)->is_float_vector());
+        EXPECT_TRUE(TypeOf(call)->IsFloatVector());
         EXPECT_EQ(TypeOf(call)->As<core::type::Vector>()->Width(), 3u);
-        ASSERT_NE(TypeOf(call)->As<core::type::Vector>()->type(), nullptr);
-        EXPECT_TRUE(TypeOf(call)->As<core::type::Vector>()->type()->Is<core::type::F32>());
+        ASSERT_NE(TypeOf(call)->As<core::type::Vector>()->Type(), nullptr);
+        EXPECT_TRUE(TypeOf(call)->As<core::type::Vector>()->Type()->Is<core::type::F32>());
     } else {
         // Invalid parameter count.
         EXPECT_FALSE(r()->Resolve());
 
-        EXPECT_THAT(r()->error(), HasSubstr("error: no matching call to " +
-                                            std::string(param.name) + "(vec3<f32>)"));
+        EXPECT_THAT(r()->error(), HasSubstr("error: no matching call to '" +
+                                            std::string(param.name) + "(vec3<f32>)'"));
     }
 }
 
@@ -379,8 +396,8 @@ TEST_P(ResolverBuiltinTest_FloatBuiltin_IdenticalType, TwoParams_Scalar_f32) {
         // Invalid parameter count.
         EXPECT_FALSE(r()->Resolve());
 
-        EXPECT_THAT(r()->error(), HasSubstr("error: no matching call to " +
-                                            std::string(param.name) + "(f32, f32)"));
+        EXPECT_THAT(r()->error(), HasSubstr("error: no matching call to '" +
+                                            std::string(param.name) + "(f32, f32)'"));
     }
 }
 
@@ -395,16 +412,16 @@ TEST_P(ResolverBuiltinTest_FloatBuiltin_IdenticalType, TwoParams_Vector_f32) {
         EXPECT_TRUE(r()->Resolve()) << r()->error();
 
         ASSERT_NE(TypeOf(call), nullptr);
-        EXPECT_TRUE(TypeOf(call)->is_float_vector());
+        EXPECT_TRUE(TypeOf(call)->IsFloatVector());
         EXPECT_EQ(TypeOf(call)->As<core::type::Vector>()->Width(), 3u);
-        ASSERT_NE(TypeOf(call)->As<core::type::Vector>()->type(), nullptr);
-        EXPECT_TRUE(TypeOf(call)->As<core::type::Vector>()->type()->Is<core::type::F32>());
+        ASSERT_NE(TypeOf(call)->As<core::type::Vector>()->Type(), nullptr);
+        EXPECT_TRUE(TypeOf(call)->As<core::type::Vector>()->Type()->Is<core::type::F32>());
     } else {
         // Invalid parameter count.
         EXPECT_FALSE(r()->Resolve());
 
-        EXPECT_THAT(r()->error(), HasSubstr("error: no matching call to " +
-                                            std::string(param.name) + "(vec3<f32>, vec3<f32>)"));
+        EXPECT_THAT(r()->error(), HasSubstr("error: no matching call to '" +
+                                            std::string(param.name) + "(vec3<f32>, vec3<f32>)'"));
     }
 }
 
@@ -424,8 +441,8 @@ TEST_P(ResolverBuiltinTest_FloatBuiltin_IdenticalType, ThreeParams_Scalar_f32) {
         // Invalid parameter count.
         EXPECT_FALSE(r()->Resolve());
 
-        EXPECT_THAT(r()->error(), HasSubstr("error: no matching call to " +
-                                            std::string(param.name) + "(f32, f32, f32)"));
+        EXPECT_THAT(r()->error(), HasSubstr("error: no matching call to '" +
+                                            std::string(param.name) + "(f32, f32, f32)'"));
     }
 }
 
@@ -441,17 +458,17 @@ TEST_P(ResolverBuiltinTest_FloatBuiltin_IdenticalType, ThreeParams_Vector_f32) {
         EXPECT_TRUE(r()->Resolve()) << r()->error();
 
         ASSERT_NE(TypeOf(call), nullptr);
-        EXPECT_TRUE(TypeOf(call)->is_float_vector());
+        EXPECT_TRUE(TypeOf(call)->IsFloatVector());
         EXPECT_EQ(TypeOf(call)->As<core::type::Vector>()->Width(), 3u);
-        ASSERT_NE(TypeOf(call)->As<core::type::Vector>()->type(), nullptr);
-        EXPECT_TRUE(TypeOf(call)->As<core::type::Vector>()->type()->Is<core::type::F32>());
+        ASSERT_NE(TypeOf(call)->As<core::type::Vector>()->Type(), nullptr);
+        EXPECT_TRUE(TypeOf(call)->As<core::type::Vector>()->Type()->Is<core::type::F32>());
     } else {
         // Invalid parameter count.
         EXPECT_FALSE(r()->Resolve());
 
         EXPECT_THAT(r()->error(),
-                    HasSubstr("error: no matching call to " + std::string(param.name) +
-                              "(vec3<f32>, vec3<f32>, vec3<f32>)"));
+                    HasSubstr("error: no matching call to '" + std::string(param.name) +
+                              "(vec3<f32>, vec3<f32>, vec3<f32>)'"));
     }
 }
 
@@ -471,8 +488,8 @@ TEST_P(ResolverBuiltinTest_FloatBuiltin_IdenticalType, FourParams_Scalar_f32) {
         // Invalid parameter count.
         EXPECT_FALSE(r()->Resolve());
 
-        EXPECT_THAT(r()->error(), HasSubstr("error: no matching call to " +
-                                            std::string(param.name) + "(f32, f32, f32, f32)"));
+        EXPECT_THAT(r()->error(), HasSubstr("error: no matching call to '" +
+                                            std::string(param.name) + "(f32, f32, f32, f32)'"));
     }
 }
 
@@ -488,17 +505,17 @@ TEST_P(ResolverBuiltinTest_FloatBuiltin_IdenticalType, FourParams_Vector_f32) {
         EXPECT_TRUE(r()->Resolve()) << r()->error();
 
         ASSERT_NE(TypeOf(call), nullptr);
-        EXPECT_TRUE(TypeOf(call)->is_float_vector());
+        EXPECT_TRUE(TypeOf(call)->IsFloatVector());
         EXPECT_EQ(TypeOf(call)->As<core::type::Vector>()->Width(), 3u);
-        ASSERT_NE(TypeOf(call)->As<core::type::Vector>()->type(), nullptr);
-        EXPECT_TRUE(TypeOf(call)->As<core::type::Vector>()->type()->Is<core::type::F32>());
+        ASSERT_NE(TypeOf(call)->As<core::type::Vector>()->Type(), nullptr);
+        EXPECT_TRUE(TypeOf(call)->As<core::type::Vector>()->Type()->Is<core::type::F32>());
     } else {
         // Invalid parameter count.
         EXPECT_FALSE(r()->Resolve());
 
         EXPECT_THAT(r()->error(),
-                    HasSubstr("error: no matching call to " + std::string(param.name) +
-                              "(vec3<f32>, vec3<f32>, vec3<f32>, vec3<f32>)"));
+                    HasSubstr("error: no matching call to '" + std::string(param.name) +
+                              "(vec3<f32>, vec3<f32>, vec3<f32>, vec3<f32>)'"));
     }
 }
 
@@ -526,7 +543,7 @@ TEST_P(ResolverBuiltinTest_FloatBuiltin_IdenticalType, OneParam_Scalar_f16) {
         EXPECT_FALSE(r()->Resolve());
 
         EXPECT_THAT(r()->error(),
-                    HasSubstr("error: no matching call to " + std::string(param.name) + "(f16)"));
+                    HasSubstr("error: no matching call to '" + std::string(param.name) + "(f16)'"));
     }
 }
 
@@ -546,16 +563,16 @@ TEST_P(ResolverBuiltinTest_FloatBuiltin_IdenticalType, OneParam_Vector_f16) {
         EXPECT_TRUE(r()->Resolve()) << r()->error();
 
         ASSERT_NE(TypeOf(call), nullptr);
-        EXPECT_TRUE(TypeOf(call)->is_float_vector());
+        EXPECT_TRUE(TypeOf(call)->IsFloatVector());
         EXPECT_EQ(TypeOf(call)->As<core::type::Vector>()->Width(), 3u);
-        ASSERT_NE(TypeOf(call)->As<core::type::Vector>()->type(), nullptr);
-        EXPECT_TRUE(TypeOf(call)->As<core::type::Vector>()->type()->Is<core::type::F16>());
+        ASSERT_NE(TypeOf(call)->As<core::type::Vector>()->Type(), nullptr);
+        EXPECT_TRUE(TypeOf(call)->As<core::type::Vector>()->Type()->Is<core::type::F16>());
     } else {
         // Invalid parameter count.
         EXPECT_FALSE(r()->Resolve());
 
-        EXPECT_THAT(r()->error(), HasSubstr("error: no matching call to " +
-                                            std::string(param.name) + "(vec3<f16>)"));
+        EXPECT_THAT(r()->error(), HasSubstr("error: no matching call to '" +
+                                            std::string(param.name) + "(vec3<f16>)'"));
     }
 }
 
@@ -577,8 +594,8 @@ TEST_P(ResolverBuiltinTest_FloatBuiltin_IdenticalType, TwoParams_Scalar_f16) {
         // Invalid parameter count.
         EXPECT_FALSE(r()->Resolve());
 
-        EXPECT_THAT(r()->error(), HasSubstr("error: no matching call to " +
-                                            std::string(param.name) + "(f16, f16)"));
+        EXPECT_THAT(r()->error(), HasSubstr("error: no matching call to '" +
+                                            std::string(param.name) + "(f16, f16)'"));
     }
 }
 
@@ -595,16 +612,16 @@ TEST_P(ResolverBuiltinTest_FloatBuiltin_IdenticalType, TwoParams_Vector_f16) {
         EXPECT_TRUE(r()->Resolve()) << r()->error();
 
         ASSERT_NE(TypeOf(call), nullptr);
-        EXPECT_TRUE(TypeOf(call)->is_float_vector());
+        EXPECT_TRUE(TypeOf(call)->IsFloatVector());
         EXPECT_EQ(TypeOf(call)->As<core::type::Vector>()->Width(), 3u);
-        ASSERT_NE(TypeOf(call)->As<core::type::Vector>()->type(), nullptr);
-        EXPECT_TRUE(TypeOf(call)->As<core::type::Vector>()->type()->Is<core::type::F16>());
+        ASSERT_NE(TypeOf(call)->As<core::type::Vector>()->Type(), nullptr);
+        EXPECT_TRUE(TypeOf(call)->As<core::type::Vector>()->Type()->Is<core::type::F16>());
     } else {
         // Invalid parameter count.
         EXPECT_FALSE(r()->Resolve());
 
-        EXPECT_THAT(r()->error(), HasSubstr("error: no matching call to " +
-                                            std::string(param.name) + "(vec3<f16>, vec3<f16>)"));
+        EXPECT_THAT(r()->error(), HasSubstr("error: no matching call to '" +
+                                            std::string(param.name) + "(vec3<f16>, vec3<f16>)'"));
     }
 }
 
@@ -626,8 +643,8 @@ TEST_P(ResolverBuiltinTest_FloatBuiltin_IdenticalType, ThreeParams_Scalar_f16) {
         // Invalid parameter count.
         EXPECT_FALSE(r()->Resolve());
 
-        EXPECT_THAT(r()->error(), HasSubstr("error: no matching call to " +
-                                            std::string(param.name) + "(f16, f16, f16)"));
+        EXPECT_THAT(r()->error(), HasSubstr("error: no matching call to '" +
+                                            std::string(param.name) + "(f16, f16, f16)'"));
     }
 }
 
@@ -645,17 +662,17 @@ TEST_P(ResolverBuiltinTest_FloatBuiltin_IdenticalType, ThreeParams_Vector_f16) {
         EXPECT_TRUE(r()->Resolve()) << r()->error();
 
         ASSERT_NE(TypeOf(call), nullptr);
-        EXPECT_TRUE(TypeOf(call)->is_float_vector());
+        EXPECT_TRUE(TypeOf(call)->IsFloatVector());
         EXPECT_EQ(TypeOf(call)->As<core::type::Vector>()->Width(), 3u);
-        ASSERT_NE(TypeOf(call)->As<core::type::Vector>()->type(), nullptr);
-        EXPECT_TRUE(TypeOf(call)->As<core::type::Vector>()->type()->Is<core::type::F16>());
+        ASSERT_NE(TypeOf(call)->As<core::type::Vector>()->Type(), nullptr);
+        EXPECT_TRUE(TypeOf(call)->As<core::type::Vector>()->Type()->Is<core::type::F16>());
     } else {
         // Invalid parameter count.
         EXPECT_FALSE(r()->Resolve());
 
         EXPECT_THAT(r()->error(),
-                    HasSubstr("error: no matching call to " + std::string(param.name) +
-                              "(vec3<f16>, vec3<f16>, vec3<f16>)"));
+                    HasSubstr("error: no matching call to '" + std::string(param.name) +
+                              "(vec3<f16>, vec3<f16>, vec3<f16>)'"));
     }
 }
 
@@ -677,8 +694,8 @@ TEST_P(ResolverBuiltinTest_FloatBuiltin_IdenticalType, FourParams_Scalar_f16) {
         // Invalid parameter count.
         EXPECT_FALSE(r()->Resolve());
 
-        EXPECT_THAT(r()->error(), HasSubstr("error: no matching call to " +
-                                            std::string(param.name) + "(f16, f16, f16, f16)"));
+        EXPECT_THAT(r()->error(), HasSubstr("error: no matching call to '" +
+                                            std::string(param.name) + "(f16, f16, f16, f16)'"));
     }
 }
 
@@ -696,17 +713,17 @@ TEST_P(ResolverBuiltinTest_FloatBuiltin_IdenticalType, FourParams_Vector_f16) {
         EXPECT_TRUE(r()->Resolve()) << r()->error();
 
         ASSERT_NE(TypeOf(call), nullptr);
-        EXPECT_TRUE(TypeOf(call)->is_float_vector());
+        EXPECT_TRUE(TypeOf(call)->IsFloatVector());
         EXPECT_EQ(TypeOf(call)->As<core::type::Vector>()->Width(), 3u);
-        ASSERT_NE(TypeOf(call)->As<core::type::Vector>()->type(), nullptr);
-        EXPECT_TRUE(TypeOf(call)->As<core::type::Vector>()->type()->Is<core::type::F16>());
+        ASSERT_NE(TypeOf(call)->As<core::type::Vector>()->Type(), nullptr);
+        EXPECT_TRUE(TypeOf(call)->As<core::type::Vector>()->Type()->Is<core::type::F16>());
     } else {
         // Invalid parameter count.
         EXPECT_FALSE(r()->Resolve());
 
         EXPECT_THAT(r()->error(),
-                    HasSubstr("error: no matching call to " + std::string(param.name) +
-                              "(vec3<f16>, vec3<f16>, vec3<f16>, vec3<f16>)"));
+                    HasSubstr("error: no matching call to '" + std::string(param.name) +
+                              "(vec3<f16>, vec3<f16>, vec3<f16>, vec3<f16>)'"));
     }
 }
 
@@ -773,9 +790,9 @@ TEST_F(ResolverBuiltinFloatTest, Cross_f32) {
     EXPECT_TRUE(r()->Resolve()) << r()->error();
 
     ASSERT_NE(TypeOf(call), nullptr);
-    EXPECT_TRUE(TypeOf(call)->is_float_vector());
+    EXPECT_TRUE(TypeOf(call)->IsFloatVector());
     EXPECT_EQ(TypeOf(call)->As<core::type::Vector>()->Width(), 3u);
-    EXPECT_TRUE(TypeOf(call)->As<core::type::Vector>()->type()->Is<core::type::F32>());
+    EXPECT_TRUE(TypeOf(call)->As<core::type::Vector>()->Type()->Is<core::type::F32>());
 }
 
 TEST_F(ResolverBuiltinFloatTest, Cross_f16) {
@@ -787,9 +804,9 @@ TEST_F(ResolverBuiltinFloatTest, Cross_f16) {
     EXPECT_TRUE(r()->Resolve()) << r()->error();
 
     ASSERT_NE(TypeOf(call), nullptr);
-    EXPECT_TRUE(TypeOf(call)->is_float_vector());
+    EXPECT_TRUE(TypeOf(call)->IsFloatVector());
     EXPECT_EQ(TypeOf(call)->As<core::type::Vector>()->Width(), 3u);
-    EXPECT_TRUE(TypeOf(call)->As<core::type::Vector>()->type()->Is<core::type::F16>());
+    EXPECT_TRUE(TypeOf(call)->As<core::type::Vector>()->Type()->Is<core::type::F16>());
 }
 
 TEST_F(ResolverBuiltinFloatTest, Cross_Error_NoArgs) {
@@ -798,10 +815,11 @@ TEST_F(ResolverBuiltinFloatTest, Cross_Error_NoArgs) {
 
     EXPECT_FALSE(r()->Resolve());
 
-    EXPECT_EQ(r()->error(), R"(error: no matching call to cross()
+    EXPECT_EQ(r()->error(), R"(error: no matching call to 'cross()'
 
 1 candidate function:
-  cross(vec3<T>, vec3<T>) -> vec3<T>  where: T is abstract-float, f32 or f16
+ • 'cross(vec3<T>  ✗ , vec3<T>  ✗ ) -> vec3<T>' where:
+      ✗  'T' is 'abstract-float', 'f32' or 'f16'
 )");
 }
 
@@ -811,10 +829,11 @@ TEST_F(ResolverBuiltinFloatTest, Cross_Error_Scalar) {
 
     EXPECT_FALSE(r()->Resolve());
 
-    EXPECT_EQ(r()->error(), R"(error: no matching call to cross(f32, f32)
+    EXPECT_EQ(r()->error(), R"(error: no matching call to 'cross(f32, f32)'
 
 1 candidate function:
-  cross(vec3<T>, vec3<T>) -> vec3<T>  where: T is abstract-float, f32 or f16
+ • 'cross(vec3<T>  ✗ , vec3<T>  ✗ ) -> vec3<T>' where:
+      ✗  'T' is 'abstract-float', 'f32' or 'f16'
 )");
 }
 
@@ -825,10 +844,11 @@ TEST_F(ResolverBuiltinFloatTest, Cross_Error_Vec3Int) {
     EXPECT_FALSE(r()->Resolve());
 
     EXPECT_EQ(r()->error(),
-              R"(error: no matching call to cross(vec3<i32>, vec3<i32>)
+              R"(error: no matching call to 'cross(vec3<i32>, vec3<i32>)'
 
 1 candidate function:
-  cross(vec3<T>, vec3<T>) -> vec3<T>  where: T is abstract-float, f32 or f16
+ • 'cross(vec3<T>  ✗ , vec3<T>  ✗ ) -> vec3<T>' where:
+      ✗  'T' is 'abstract-float', 'f32' or 'f16'
 )");
 }
 
@@ -841,10 +861,11 @@ TEST_F(ResolverBuiltinFloatTest, Cross_Error_Vec4) {
     EXPECT_FALSE(r()->Resolve());
 
     EXPECT_EQ(r()->error(),
-              R"(error: no matching call to cross(vec4<f32>, vec4<f32>)
+              R"(error: no matching call to 'cross(vec4<f32>, vec4<f32>)'
 
 1 candidate function:
-  cross(vec3<T>, vec3<T>) -> vec3<T>  where: T is abstract-float, f32 or f16
+ • 'cross(vec3<T>  ✗ , vec3<T>  ✗ ) -> vec3<T>' where:
+      ✗  'T' is 'abstract-float', 'f32' or 'f16'
 )");
 }
 
@@ -857,10 +878,12 @@ TEST_F(ResolverBuiltinFloatTest, Cross_Error_TooManyParams) {
     EXPECT_FALSE(r()->Resolve());
 
     EXPECT_EQ(r()->error(),
-              R"(error: no matching call to cross(vec3<f32>, vec3<f32>, vec3<f32>)
+              R"(error: no matching call to 'cross(vec3<f32>, vec3<f32>, vec3<f32>)'
 
 1 candidate function:
-  cross(vec3<T>, vec3<T>) -> vec3<T>  where: T is abstract-float, f32 or f16
+ • 'cross(vec3<T>  ✓ , vec3<T>  ✓ ) -> vec3<T>' where:
+      ✗  overload expects 2 arguments, call passed 3 arguments
+      ✓  'T' is 'abstract-float', 'f32' or 'f16'
 )");
 }
 
@@ -916,11 +939,15 @@ TEST_F(ResolverBuiltinFloatTest, Distance_TooManyParams) {
 
     EXPECT_FALSE(r()->Resolve());
 
-    EXPECT_EQ(r()->error(), R"(error: no matching call to distance(vec3<f32>, vec3<f32>, vec3<f32>)
+    EXPECT_EQ(r()->error(),
+              R"(error: no matching call to 'distance(vec3<f32>, vec3<f32>, vec3<f32>)'
 
 2 candidate functions:
-  distance(T, T) -> T  where: T is abstract-float, f32 or f16
-  distance(vecN<T>, vecN<T>) -> T  where: T is abstract-float, f32 or f16
+ • 'distance(vecN<T>  ✓ , vecN<T>  ✓ ) -> T' where:
+      ✗  overload expects 2 arguments, call passed 3 arguments
+      ✓  'T' is 'abstract-float', 'f32' or 'f16'
+ • 'distance(T  ✗ , T  ✗ ) -> T' where:
+      ✗  'T' is 'abstract-float', 'f32' or 'f16'
 )");
 }
 
@@ -930,11 +957,13 @@ TEST_F(ResolverBuiltinFloatTest, Distance_TooFewParams) {
 
     EXPECT_FALSE(r()->Resolve());
 
-    EXPECT_EQ(r()->error(), R"(error: no matching call to distance(vec3<f32>)
+    EXPECT_EQ(r()->error(), R"(error: no matching call to 'distance(vec3<f32>)'
 
 2 candidate functions:
-  distance(T, T) -> T  where: T is abstract-float, f32 or f16
-  distance(vecN<T>, vecN<T>) -> T  where: T is abstract-float, f32 or f16
+ • 'distance(vecN<T>  ✓ , vecN<T>  ✗ ) -> T' where:
+      ✓  'T' is 'abstract-float', 'f32' or 'f16'
+ • 'distance(T  ✗ , T  ✗ ) -> T' where:
+      ✗  'T' is 'abstract-float', 'f32' or 'f16'
 )");
 }
 
@@ -944,11 +973,13 @@ TEST_F(ResolverBuiltinFloatTest, Distance_NoParams) {
 
     EXPECT_FALSE(r()->Resolve());
 
-    EXPECT_EQ(r()->error(), R"(error: no matching call to distance()
+    EXPECT_EQ(r()->error(), R"(error: no matching call to 'distance()'
 
 2 candidate functions:
-  distance(T, T) -> T  where: T is abstract-float, f32 or f16
-  distance(vecN<T>, vecN<T>) -> T  where: T is abstract-float, f32 or f16
+ • 'distance(T  ✗ , T  ✗ ) -> T' where:
+      ✗  'T' is 'abstract-float', 'f32' or 'f16'
+ • 'distance(vecN<T>  ✗ , vecN<T>  ✗ ) -> T' where:
+      ✗  'T' is 'abstract-float', 'f32' or 'f16'
 )");
 }
 
@@ -1028,7 +1059,7 @@ TEST_F(ResolverBuiltinFloatTest, FrexpVector_f32) {
     auto* fract = ty->Members()[0];
     ASSERT_TRUE(fract->Type()->Is<core::type::Vector>());
     EXPECT_EQ(fract->Type()->As<core::type::Vector>()->Width(), 3u);
-    EXPECT_TRUE(fract->Type()->As<core::type::Vector>()->type()->Is<core::type::F32>());
+    EXPECT_TRUE(fract->Type()->As<core::type::Vector>()->Type()->Is<core::type::F32>());
     EXPECT_EQ(fract->Offset(), 0u);
     EXPECT_EQ(fract->Size(), 12u);
     EXPECT_EQ(fract->Align(), 16u);
@@ -1037,7 +1068,7 @@ TEST_F(ResolverBuiltinFloatTest, FrexpVector_f32) {
     auto* exp = ty->Members()[1];
     ASSERT_TRUE(exp->Type()->Is<core::type::Vector>());
     EXPECT_EQ(exp->Type()->As<core::type::Vector>()->Width(), 3u);
-    EXPECT_TRUE(exp->Type()->As<core::type::Vector>()->type()->Is<core::type::I32>());
+    EXPECT_TRUE(exp->Type()->As<core::type::Vector>()->Type()->Is<core::type::I32>());
     EXPECT_EQ(exp->Offset(), 16u);
     EXPECT_EQ(exp->Size(), 12u);
     EXPECT_EQ(exp->Align(), 16u);
@@ -1063,7 +1094,7 @@ TEST_F(ResolverBuiltinFloatTest, FrexpVector_f16) {
     auto* fract = ty->Members()[0];
     ASSERT_TRUE(fract->Type()->Is<core::type::Vector>());
     EXPECT_EQ(fract->Type()->As<core::type::Vector>()->Width(), 3u);
-    EXPECT_TRUE(fract->Type()->As<core::type::Vector>()->type()->Is<core::type::F16>());
+    EXPECT_TRUE(fract->Type()->As<core::type::Vector>()->Type()->Is<core::type::F16>());
     EXPECT_EQ(fract->Offset(), 0u);
     EXPECT_EQ(fract->Size(), 6u);
     EXPECT_EQ(fract->Align(), 8u);
@@ -1072,7 +1103,7 @@ TEST_F(ResolverBuiltinFloatTest, FrexpVector_f16) {
     auto* exp = ty->Members()[1];
     ASSERT_TRUE(exp->Type()->Is<core::type::Vector>());
     EXPECT_EQ(exp->Type()->As<core::type::Vector>()->Width(), 3u);
-    EXPECT_TRUE(exp->Type()->As<core::type::Vector>()->type()->Is<core::type::I32>());
+    EXPECT_TRUE(exp->Type()->As<core::type::Vector>()->Type()->Is<core::type::I32>());
     EXPECT_EQ(exp->Offset(), 16u);
     EXPECT_EQ(exp->Size(), 12u);
     EXPECT_EQ(exp->Align(), 16u);
@@ -1090,11 +1121,13 @@ TEST_F(ResolverBuiltinFloatTest, Frexp_Error_FirstParamInt) {
     EXPECT_FALSE(r()->Resolve());
 
     EXPECT_EQ(r()->error(),
-              R"(error: no matching call to frexp(i32, ptr<workgroup, i32, read_write>)
+              R"(error: no matching call to 'frexp(i32, ptr<workgroup, i32, read_write>)'
 
 2 candidate functions:
-  frexp(T) -> __frexp_result_T  where: T is abstract-float, f32 or f16
-  frexp(vecN<T>) -> __frexp_result_vecN_T  where: T is abstract-float, f32 or f16
+ • 'frexp(T  ✗ ) -> __frexp_result_T' where:
+      ✗  'T' is 'abstract-float', 'f32' or 'f16'
+ • 'frexp(vecN<T>  ✗ ) -> __frexp_result_vecN_T' where:
+      ✗  'T' is 'abstract-float', 'f32' or 'f16'
 )");
 }
 
@@ -1149,11 +1182,13 @@ TEST_F(ResolverBuiltinFloatTest, Length_NoParams) {
 
     EXPECT_FALSE(r()->Resolve());
 
-    EXPECT_EQ(r()->error(), R"(error: no matching call to length()
+    EXPECT_EQ(r()->error(), R"(error: no matching call to 'length()'
 
 2 candidate functions:
-  length(T) -> T  where: T is abstract-float, f32 or f16
-  length(vecN<T>) -> T  where: T is abstract-float, f32 or f16
+ • 'length(T  ✗ ) -> T' where:
+      ✗  'T' is 'abstract-float', 'f32' or 'f16'
+ • 'length(vecN<T>  ✗ ) -> T' where:
+      ✗  'T' is 'abstract-float', 'f32' or 'f16'
 )");
 }
 
@@ -1163,11 +1198,14 @@ TEST_F(ResolverBuiltinFloatTest, Length_TooManyParams) {
 
     EXPECT_FALSE(r()->Resolve());
 
-    EXPECT_EQ(r()->error(), R"(error: no matching call to length(f32, f32)
+    EXPECT_EQ(r()->error(), R"(error: no matching call to 'length(f32, f32)'
 
 2 candidate functions:
-  length(T) -> T  where: T is abstract-float, f32 or f16
-  length(vecN<T>) -> T  where: T is abstract-float, f32 or f16
+ • 'length(T  ✓ ) -> T' where:
+      ✗  overload expects 1 argument, call passed 2 arguments
+      ✓  'T' is 'abstract-float', 'f32' or 'f16'
+ • 'length(vecN<T>  ✗ ) -> T' where:
+      ✗  'T' is 'abstract-float', 'f32' or 'f16'
 )");
 }
 
@@ -1180,10 +1218,10 @@ TEST_F(ResolverBuiltinFloatTest, Mix_VectorScalar_f32) {
     EXPECT_TRUE(r()->Resolve()) << r()->error();
 
     ASSERT_NE(TypeOf(call), nullptr);
-    EXPECT_TRUE(TypeOf(call)->is_float_vector());
+    EXPECT_TRUE(TypeOf(call)->IsFloatVector());
     EXPECT_EQ(TypeOf(call)->As<core::type::Vector>()->Width(), 3u);
-    ASSERT_NE(TypeOf(call)->As<core::type::Vector>()->type(), nullptr);
-    EXPECT_TRUE(TypeOf(call)->As<core::type::Vector>()->type()->Is<core::type::F32>());
+    ASSERT_NE(TypeOf(call)->As<core::type::Vector>()->Type(), nullptr);
+    EXPECT_TRUE(TypeOf(call)->As<core::type::Vector>()->Type()->Is<core::type::F32>());
 }
 
 TEST_F(ResolverBuiltinFloatTest, Mix_VectorScalar_f16) {
@@ -1195,10 +1233,10 @@ TEST_F(ResolverBuiltinFloatTest, Mix_VectorScalar_f16) {
     EXPECT_TRUE(r()->Resolve()) << r()->error();
 
     ASSERT_NE(TypeOf(call), nullptr);
-    EXPECT_TRUE(TypeOf(call)->is_float_vector());
+    EXPECT_TRUE(TypeOf(call)->IsFloatVector());
     EXPECT_EQ(TypeOf(call)->As<core::type::Vector>()->Width(), 3u);
-    ASSERT_NE(TypeOf(call)->As<core::type::Vector>()->type(), nullptr);
-    EXPECT_TRUE(TypeOf(call)->As<core::type::Vector>()->type()->Is<core::type::F16>());
+    ASSERT_NE(TypeOf(call)->As<core::type::Vector>()->Type(), nullptr);
+    EXPECT_TRUE(TypeOf(call)->As<core::type::Vector>()->Type()->Is<core::type::F16>());
 }
 
 // modf: (f32) -> __modf_result, (vecN<f32>) -> __modf_result_vecN, (f16) -> __modf_result_f16,
@@ -1277,7 +1315,7 @@ TEST_F(ResolverBuiltinFloatTest, ModfVector_f32) {
     auto* fract = ty->Members()[0];
     ASSERT_TRUE(fract->Type()->Is<core::type::Vector>());
     EXPECT_EQ(fract->Type()->As<core::type::Vector>()->Width(), 3u);
-    EXPECT_TRUE(fract->Type()->As<core::type::Vector>()->type()->Is<core::type::F32>());
+    EXPECT_TRUE(fract->Type()->As<core::type::Vector>()->Type()->Is<core::type::F32>());
     EXPECT_EQ(fract->Offset(), 0u);
     EXPECT_EQ(fract->Size(), 12u);
     EXPECT_EQ(fract->Align(), 16u);
@@ -1286,7 +1324,7 @@ TEST_F(ResolverBuiltinFloatTest, ModfVector_f32) {
     auto* whole = ty->Members()[1];
     ASSERT_TRUE(whole->Type()->Is<core::type::Vector>());
     EXPECT_EQ(whole->Type()->As<core::type::Vector>()->Width(), 3u);
-    EXPECT_TRUE(whole->Type()->As<core::type::Vector>()->type()->Is<core::type::F32>());
+    EXPECT_TRUE(whole->Type()->As<core::type::Vector>()->Type()->Is<core::type::F32>());
     EXPECT_EQ(whole->Offset(), 16u);
     EXPECT_EQ(whole->Size(), 12u);
     EXPECT_EQ(whole->Align(), 16u);
@@ -1312,7 +1350,7 @@ TEST_F(ResolverBuiltinFloatTest, ModfVector_f16) {
     auto* fract = ty->Members()[0];
     ASSERT_TRUE(fract->Type()->Is<core::type::Vector>());
     EXPECT_EQ(fract->Type()->As<core::type::Vector>()->Width(), 3u);
-    EXPECT_TRUE(fract->Type()->As<core::type::Vector>()->type()->Is<core::type::F16>());
+    EXPECT_TRUE(fract->Type()->As<core::type::Vector>()->Type()->Is<core::type::F16>());
     EXPECT_EQ(fract->Offset(), 0u);
     EXPECT_EQ(fract->Size(), 6u);
     EXPECT_EQ(fract->Align(), 8u);
@@ -1321,7 +1359,7 @@ TEST_F(ResolverBuiltinFloatTest, ModfVector_f16) {
     auto* whole = ty->Members()[1];
     ASSERT_TRUE(whole->Type()->Is<core::type::Vector>());
     EXPECT_EQ(whole->Type()->As<core::type::Vector>()->Width(), 3u);
-    EXPECT_TRUE(whole->Type()->As<core::type::Vector>()->type()->Is<core::type::F16>());
+    EXPECT_TRUE(whole->Type()->As<core::type::Vector>()->Type()->Is<core::type::F16>());
     EXPECT_EQ(whole->Offset(), 8u);
     EXPECT_EQ(whole->Size(), 6u);
     EXPECT_EQ(whole->Align(), 8u);
@@ -1339,11 +1377,13 @@ TEST_F(ResolverBuiltinFloatTest, Modf_Error_FirstParamInt) {
     EXPECT_FALSE(r()->Resolve());
 
     EXPECT_EQ(r()->error(),
-              R"(error: no matching call to modf(i32, ptr<workgroup, f32, read_write>)
+              R"(error: no matching call to 'modf(i32, ptr<workgroup, f32, read_write>)'
 
 2 candidate functions:
-  modf(T) -> __modf_result_T  where: T is abstract-float, f32 or f16
-  modf(vecN<T>) -> __modf_result_vecN_T  where: T is abstract-float, f32 or f16
+ • 'modf(T  ✗ ) -> __modf_result_T' where:
+      ✗  'T' is 'abstract-float', 'f32' or 'f16'
+ • 'modf(vecN<T>  ✗ ) -> __modf_result_vecN_T' where:
+      ✗  'T' is 'abstract-float', 'f32' or 'f16'
 )");
 }
 
@@ -1355,11 +1395,14 @@ TEST_F(ResolverBuiltinFloatTest, Modf_Error_SecondParamIntPtr) {
     EXPECT_FALSE(r()->Resolve());
 
     EXPECT_EQ(r()->error(),
-              R"(error: no matching call to modf(f32, ptr<workgroup, i32, read_write>)
+              R"(error: no matching call to 'modf(f32, ptr<workgroup, i32, read_write>)'
 
 2 candidate functions:
-  modf(T) -> __modf_result_T  where: T is abstract-float, f32 or f16
-  modf(vecN<T>) -> __modf_result_vecN_T  where: T is abstract-float, f32 or f16
+ • 'modf(T  ✓ ) -> __modf_result_T' where:
+      ✗  overload expects 1 argument, call passed 2 arguments
+      ✓  'T' is 'abstract-float', 'f32' or 'f16'
+ • 'modf(vecN<T>  ✗ ) -> __modf_result_vecN_T' where:
+      ✗  'T' is 'abstract-float', 'f32' or 'f16'
 )");
 }
 
@@ -1369,11 +1412,14 @@ TEST_F(ResolverBuiltinFloatTest, Modf_Error_SecondParamNotAPointer) {
 
     EXPECT_FALSE(r()->Resolve());
 
-    EXPECT_EQ(r()->error(), R"(error: no matching call to modf(f32, f32)
+    EXPECT_EQ(r()->error(), R"(error: no matching call to 'modf(f32, f32)'
 
 2 candidate functions:
-  modf(T) -> __modf_result_T  where: T is abstract-float, f32 or f16
-  modf(vecN<T>) -> __modf_result_vecN_T  where: T is abstract-float, f32 or f16
+ • 'modf(T  ✓ ) -> __modf_result_T' where:
+      ✗  overload expects 1 argument, call passed 2 arguments
+      ✓  'T' is 'abstract-float', 'f32' or 'f16'
+ • 'modf(vecN<T>  ✗ ) -> __modf_result_vecN_T' where:
+      ✗  'T' is 'abstract-float', 'f32' or 'f16'
 )");
 }
 
@@ -1385,11 +1431,14 @@ TEST_F(ResolverBuiltinFloatTest, Modf_Error_VectorSizesDontMatch) {
     EXPECT_FALSE(r()->Resolve());
 
     EXPECT_EQ(r()->error(),
-              R"(error: no matching call to modf(vec2<f32>, ptr<workgroup, vec4<f32>, read_write>)
+              R"(error: no matching call to 'modf(vec2<f32>, ptr<workgroup, vec4<f32>, read_write>)'
 
 2 candidate functions:
-  modf(T) -> __modf_result_T  where: T is abstract-float, f32 or f16
-  modf(vecN<T>) -> __modf_result_vecN_T  where: T is abstract-float, f32 or f16
+ • 'modf(vecN<T>  ✓ ) -> __modf_result_vecN_T' where:
+      ✗  overload expects 1 argument, call passed 2 arguments
+      ✓  'T' is 'abstract-float', 'f32' or 'f16'
+ • 'modf(T  ✗ ) -> __modf_result_T' where:
+      ✗  'T' is 'abstract-float', 'f32' or 'f16'
 )");
 }
 
@@ -1401,9 +1450,9 @@ TEST_F(ResolverBuiltinFloatTest, Normalize_Vector_f32) {
     EXPECT_TRUE(r()->Resolve()) << r()->error();
 
     ASSERT_NE(TypeOf(call), nullptr);
-    EXPECT_TRUE(TypeOf(call)->is_float_vector());
+    EXPECT_TRUE(TypeOf(call)->IsFloatVector());
     EXPECT_EQ(TypeOf(call)->As<core::type::Vector>()->Width(), 3u);
-    EXPECT_TRUE(TypeOf(call)->As<core::type::Vector>()->type()->Is<core::type::F32>());
+    EXPECT_TRUE(TypeOf(call)->As<core::type::Vector>()->Type()->Is<core::type::F32>());
 }
 
 TEST_F(ResolverBuiltinFloatTest, Normalize_Vector_f16) {
@@ -1415,9 +1464,9 @@ TEST_F(ResolverBuiltinFloatTest, Normalize_Vector_f16) {
     EXPECT_TRUE(r()->Resolve()) << r()->error();
 
     ASSERT_NE(TypeOf(call), nullptr);
-    EXPECT_TRUE(TypeOf(call)->is_float_vector());
+    EXPECT_TRUE(TypeOf(call)->IsFloatVector());
     EXPECT_EQ(TypeOf(call)->As<core::type::Vector>()->Width(), 3u);
-    EXPECT_TRUE(TypeOf(call)->As<core::type::Vector>()->type()->Is<core::type::F16>());
+    EXPECT_TRUE(TypeOf(call)->As<core::type::Vector>()->Type()->Is<core::type::F16>());
 }
 
 TEST_F(ResolverBuiltinFloatTest, Normalize_Error_NoParams) {
@@ -1426,10 +1475,11 @@ TEST_F(ResolverBuiltinFloatTest, Normalize_Error_NoParams) {
 
     EXPECT_FALSE(r()->Resolve());
 
-    EXPECT_EQ(r()->error(), R"(error: no matching call to normalize()
+    EXPECT_EQ(r()->error(), R"(error: no matching call to 'normalize()'
 
 1 candidate function:
-  normalize(vecN<T>) -> vecN<T>  where: T is abstract-float, f32 or f16
+ • 'normalize(vecN<T>  ✗ ) -> vecN<T>' where:
+      ✗  'T' is 'abstract-float', 'f32' or 'f16'
 )");
 }
 
@@ -1464,7 +1514,7 @@ TEST_P(ResolverBuiltinTest_IntegerBuiltin_IdenticalType, Error_NoParams) {
     EXPECT_FALSE(r()->Resolve());
 
     EXPECT_THAT(r()->error(),
-                HasSubstr("error: no matching call to " + std::string(param.name) + "()"));
+                HasSubstr("error: no matching call to '" + std::string(param.name) + "()'"));
 }
 
 TEST_P(ResolverBuiltinTest_IntegerBuiltin_IdenticalType, OneParams_Scalar_i32) {
@@ -1484,7 +1534,7 @@ TEST_P(ResolverBuiltinTest_IntegerBuiltin_IdenticalType, OneParams_Scalar_i32) {
         EXPECT_FALSE(r()->Resolve());
 
         EXPECT_THAT(r()->error(),
-                    HasSubstr("error: no matching call to " + std::string(param.name) + "(i32)"));
+                    HasSubstr("error: no matching call to '" + std::string(param.name) + "(i32)'"));
     }
 }
 
@@ -1499,16 +1549,16 @@ TEST_P(ResolverBuiltinTest_IntegerBuiltin_IdenticalType, OneParams_Vector_i32) {
         EXPECT_TRUE(r()->Resolve()) << r()->error();
 
         ASSERT_NE(TypeOf(call), nullptr);
-        EXPECT_TRUE(TypeOf(call)->is_signed_integer_vector());
+        EXPECT_TRUE(TypeOf(call)->IsSignedIntegerVector());
         EXPECT_EQ(TypeOf(call)->As<core::type::Vector>()->Width(), 3u);
-        ASSERT_NE(TypeOf(call)->As<core::type::Vector>()->type(), nullptr);
-        EXPECT_TRUE(TypeOf(call)->As<core::type::Vector>()->type()->Is<core::type::I32>());
+        ASSERT_NE(TypeOf(call)->As<core::type::Vector>()->Type(), nullptr);
+        EXPECT_TRUE(TypeOf(call)->As<core::type::Vector>()->Type()->Is<core::type::I32>());
     } else {
         // Invalid parameter count.
         EXPECT_FALSE(r()->Resolve());
 
-        EXPECT_THAT(r()->error(), HasSubstr("error: no matching call to " +
-                                            std::string(param.name) + "(vec3<i32>)"));
+        EXPECT_THAT(r()->error(), HasSubstr("error: no matching call to '" +
+                                            std::string(param.name) + "(vec3<i32>)'"));
     }
 }
 
@@ -1529,7 +1579,7 @@ TEST_P(ResolverBuiltinTest_IntegerBuiltin_IdenticalType, OneParams_Scalar_u32) {
         EXPECT_FALSE(r()->Resolve());
 
         EXPECT_THAT(r()->error(),
-                    HasSubstr("error: no matching call to " + std::string(param.name) + "(u32)"));
+                    HasSubstr("error: no matching call to '" + std::string(param.name) + "(u32)'"));
     }
 }
 
@@ -1544,16 +1594,16 @@ TEST_P(ResolverBuiltinTest_IntegerBuiltin_IdenticalType, OneParams_Vector_u32) {
         EXPECT_TRUE(r()->Resolve()) << r()->error();
 
         ASSERT_NE(TypeOf(call), nullptr);
-        EXPECT_TRUE(TypeOf(call)->is_unsigned_integer_vector());
+        EXPECT_TRUE(TypeOf(call)->IsUnsignedIntegerVector());
         EXPECT_EQ(TypeOf(call)->As<core::type::Vector>()->Width(), 3u);
-        ASSERT_NE(TypeOf(call)->As<core::type::Vector>()->type(), nullptr);
-        EXPECT_TRUE(TypeOf(call)->As<core::type::Vector>()->type()->Is<core::type::U32>());
+        ASSERT_NE(TypeOf(call)->As<core::type::Vector>()->Type(), nullptr);
+        EXPECT_TRUE(TypeOf(call)->As<core::type::Vector>()->Type()->Is<core::type::U32>());
     } else {
         // Invalid parameter count.
         EXPECT_FALSE(r()->Resolve());
 
-        EXPECT_THAT(r()->error(), HasSubstr("error: no matching call to " +
-                                            std::string(param.name) + "(vec3<u32>)"));
+        EXPECT_THAT(r()->error(), HasSubstr("error: no matching call to '" +
+                                            std::string(param.name) + "(vec3<u32>)'"));
     }
 }
 
@@ -1573,8 +1623,8 @@ TEST_P(ResolverBuiltinTest_IntegerBuiltin_IdenticalType, TwoParams_Scalar_i32) {
         // Invalid parameter count.
         EXPECT_FALSE(r()->Resolve());
 
-        EXPECT_THAT(r()->error(), HasSubstr("error: no matching call to " +
-                                            std::string(param.name) + "(i32, i32)"));
+        EXPECT_THAT(r()->error(), HasSubstr("error: no matching call to '" +
+                                            std::string(param.name) + "(i32, i32)'"));
     }
 }
 
@@ -1589,16 +1639,16 @@ TEST_P(ResolverBuiltinTest_IntegerBuiltin_IdenticalType, TwoParams_Vector_i32) {
         EXPECT_TRUE(r()->Resolve()) << r()->error();
 
         ASSERT_NE(TypeOf(call), nullptr);
-        EXPECT_TRUE(TypeOf(call)->is_signed_integer_vector());
+        EXPECT_TRUE(TypeOf(call)->IsSignedIntegerVector());
         EXPECT_EQ(TypeOf(call)->As<core::type::Vector>()->Width(), 3u);
-        ASSERT_NE(TypeOf(call)->As<core::type::Vector>()->type(), nullptr);
-        EXPECT_TRUE(TypeOf(call)->As<core::type::Vector>()->type()->Is<core::type::I32>());
+        ASSERT_NE(TypeOf(call)->As<core::type::Vector>()->Type(), nullptr);
+        EXPECT_TRUE(TypeOf(call)->As<core::type::Vector>()->Type()->Is<core::type::I32>());
     } else {
         // Invalid parameter count.
         EXPECT_FALSE(r()->Resolve());
 
-        EXPECT_THAT(r()->error(), HasSubstr("error: no matching call to " +
-                                            std::string(param.name) + "(vec3<i32>, vec3<i32>)"));
+        EXPECT_THAT(r()->error(), HasSubstr("error: no matching call to '" +
+                                            std::string(param.name) + "(vec3<i32>, vec3<i32>)'"));
     }
 }
 
@@ -1618,8 +1668,8 @@ TEST_P(ResolverBuiltinTest_IntegerBuiltin_IdenticalType, TwoParams_Scalar_u32) {
         // Invalid parameter count.
         EXPECT_FALSE(r()->Resolve());
 
-        EXPECT_THAT(r()->error(), HasSubstr("error: no matching call to " +
-                                            std::string(param.name) + "(u32, u32)"));
+        EXPECT_THAT(r()->error(), HasSubstr("error: no matching call to '" +
+                                            std::string(param.name) + "(u32, u32)'"));
     }
 }
 
@@ -1634,16 +1684,16 @@ TEST_P(ResolverBuiltinTest_IntegerBuiltin_IdenticalType, TwoParams_Vector_u32) {
         EXPECT_TRUE(r()->Resolve()) << r()->error();
 
         ASSERT_NE(TypeOf(call), nullptr);
-        EXPECT_TRUE(TypeOf(call)->is_unsigned_integer_vector());
+        EXPECT_TRUE(TypeOf(call)->IsUnsignedIntegerVector());
         EXPECT_EQ(TypeOf(call)->As<core::type::Vector>()->Width(), 3u);
-        ASSERT_NE(TypeOf(call)->As<core::type::Vector>()->type(), nullptr);
-        EXPECT_TRUE(TypeOf(call)->As<core::type::Vector>()->type()->Is<core::type::U32>());
+        ASSERT_NE(TypeOf(call)->As<core::type::Vector>()->Type(), nullptr);
+        EXPECT_TRUE(TypeOf(call)->As<core::type::Vector>()->Type()->Is<core::type::U32>());
     } else {
         // Invalid parameter count.
         EXPECT_FALSE(r()->Resolve());
 
-        EXPECT_THAT(r()->error(), HasSubstr("error: no matching call to " +
-                                            std::string(param.name) + "(vec3<u32>, vec3<u32>)"));
+        EXPECT_THAT(r()->error(), HasSubstr("error: no matching call to '" +
+                                            std::string(param.name) + "(vec3<u32>, vec3<u32>)'"));
     }
 }
 
@@ -1663,8 +1713,8 @@ TEST_P(ResolverBuiltinTest_IntegerBuiltin_IdenticalType, ThreeParams_Scalar_i32)
         // Invalid parameter count.
         EXPECT_FALSE(r()->Resolve());
 
-        EXPECT_THAT(r()->error(), HasSubstr("error: no matching call to " +
-                                            std::string(param.name) + "(i32, i32, i32)"));
+        EXPECT_THAT(r()->error(), HasSubstr("error: no matching call to '" +
+                                            std::string(param.name) + "(i32, i32, i32)'"));
     }
 }
 
@@ -1680,17 +1730,17 @@ TEST_P(ResolverBuiltinTest_IntegerBuiltin_IdenticalType, ThreeParams_Vector_i32)
         EXPECT_TRUE(r()->Resolve()) << r()->error();
 
         ASSERT_NE(TypeOf(call), nullptr);
-        EXPECT_TRUE(TypeOf(call)->is_signed_integer_vector());
+        EXPECT_TRUE(TypeOf(call)->IsSignedIntegerVector());
         EXPECT_EQ(TypeOf(call)->As<core::type::Vector>()->Width(), 3u);
-        ASSERT_NE(TypeOf(call)->As<core::type::Vector>()->type(), nullptr);
-        EXPECT_TRUE(TypeOf(call)->As<core::type::Vector>()->type()->Is<core::type::I32>());
+        ASSERT_NE(TypeOf(call)->As<core::type::Vector>()->Type(), nullptr);
+        EXPECT_TRUE(TypeOf(call)->As<core::type::Vector>()->Type()->Is<core::type::I32>());
     } else {
         // Invalid parameter count.
         EXPECT_FALSE(r()->Resolve());
 
         EXPECT_THAT(r()->error(),
-                    HasSubstr("error: no matching call to " + std::string(param.name) +
-                              "(vec3<i32>, vec3<i32>, vec3<i32>)"));
+                    HasSubstr("error: no matching call to '" + std::string(param.name) +
+                              "(vec3<i32>, vec3<i32>, vec3<i32>)'"));
     }
 }
 
@@ -1710,8 +1760,8 @@ TEST_P(ResolverBuiltinTest_IntegerBuiltin_IdenticalType, ThreeParams_Scalar_u32)
         // Invalid parameter count.
         EXPECT_FALSE(r()->Resolve());
 
-        EXPECT_THAT(r()->error(), HasSubstr("error: no matching call to " +
-                                            std::string(param.name) + "(u32, u32, u32)"));
+        EXPECT_THAT(r()->error(), HasSubstr("error: no matching call to '" +
+                                            std::string(param.name) + "(u32, u32, u32)'"));
     }
 }
 
@@ -1727,17 +1777,17 @@ TEST_P(ResolverBuiltinTest_IntegerBuiltin_IdenticalType, ThreeParams_Vector_u32)
         EXPECT_TRUE(r()->Resolve()) << r()->error();
 
         ASSERT_NE(TypeOf(call), nullptr);
-        EXPECT_TRUE(TypeOf(call)->is_unsigned_integer_vector());
+        EXPECT_TRUE(TypeOf(call)->IsUnsignedIntegerVector());
         EXPECT_EQ(TypeOf(call)->As<core::type::Vector>()->Width(), 3u);
-        ASSERT_NE(TypeOf(call)->As<core::type::Vector>()->type(), nullptr);
-        EXPECT_TRUE(TypeOf(call)->As<core::type::Vector>()->type()->Is<core::type::U32>());
+        ASSERT_NE(TypeOf(call)->As<core::type::Vector>()->Type(), nullptr);
+        EXPECT_TRUE(TypeOf(call)->As<core::type::Vector>()->Type()->Is<core::type::U32>());
     } else {
         // Invalid parameter count.
         EXPECT_FALSE(r()->Resolve());
 
         EXPECT_THAT(r()->error(),
-                    HasSubstr("error: no matching call to " + std::string(param.name) +
-                              "(vec3<u32>, vec3<u32>, vec3<u32>)"));
+                    HasSubstr("error: no matching call to '" + std::string(param.name) +
+                              "(vec3<u32>, vec3<u32>, vec3<u32>)'"));
     }
 }
 
@@ -1757,8 +1807,8 @@ TEST_P(ResolverBuiltinTest_IntegerBuiltin_IdenticalType, FourParams_Scalar_i32) 
         // Invalid parameter count.
         EXPECT_FALSE(r()->Resolve());
 
-        EXPECT_THAT(r()->error(), HasSubstr("error: no matching call to " +
-                                            std::string(param.name) + "(i32, i32, i32, i32)"));
+        EXPECT_THAT(r()->error(), HasSubstr("error: no matching call to '" +
+                                            std::string(param.name) + "(i32, i32, i32, i32)'"));
     }
 }
 
@@ -1774,17 +1824,17 @@ TEST_P(ResolverBuiltinTest_IntegerBuiltin_IdenticalType, FourParams_Vector_i32) 
         EXPECT_TRUE(r()->Resolve()) << r()->error();
 
         ASSERT_NE(TypeOf(call), nullptr);
-        EXPECT_TRUE(TypeOf(call)->is_signed_integer_vector());
+        EXPECT_TRUE(TypeOf(call)->IsSignedIntegerVector());
         EXPECT_EQ(TypeOf(call)->As<core::type::Vector>()->Width(), 3u);
-        ASSERT_NE(TypeOf(call)->As<core::type::Vector>()->type(), nullptr);
-        EXPECT_TRUE(TypeOf(call)->As<core::type::Vector>()->type()->Is<core::type::I32>());
+        ASSERT_NE(TypeOf(call)->As<core::type::Vector>()->Type(), nullptr);
+        EXPECT_TRUE(TypeOf(call)->As<core::type::Vector>()->Type()->Is<core::type::I32>());
     } else {
         // Invalid parameter count.
         EXPECT_FALSE(r()->Resolve());
 
         EXPECT_THAT(r()->error(),
-                    HasSubstr("error: no matching call to " + std::string(param.name) +
-                              "(vec3<i32>, vec3<i32>, vec3<i32>, vec3<i32>)"));
+                    HasSubstr("error: no matching call to '" + std::string(param.name) +
+                              "(vec3<i32>, vec3<i32>, vec3<i32>, vec3<i32>)'"));
     }
 }
 
@@ -1804,8 +1854,8 @@ TEST_P(ResolverBuiltinTest_IntegerBuiltin_IdenticalType, FourParams_Scalar_u32) 
         // Invalid parameter count.
         EXPECT_FALSE(r()->Resolve());
 
-        EXPECT_THAT(r()->error(), HasSubstr("error: no matching call to " +
-                                            std::string(param.name) + "(u32, u32, u32, u32)"));
+        EXPECT_THAT(r()->error(), HasSubstr("error: no matching call to '" +
+                                            std::string(param.name) + "(u32, u32, u32, u32)'"));
     }
 }
 
@@ -1821,17 +1871,17 @@ TEST_P(ResolverBuiltinTest_IntegerBuiltin_IdenticalType, FourParams_Vector_u32) 
         EXPECT_TRUE(r()->Resolve()) << r()->error();
 
         ASSERT_NE(TypeOf(call), nullptr);
-        EXPECT_TRUE(TypeOf(call)->is_unsigned_integer_vector());
+        EXPECT_TRUE(TypeOf(call)->IsUnsignedIntegerVector());
         EXPECT_EQ(TypeOf(call)->As<core::type::Vector>()->Width(), 3u);
-        ASSERT_NE(TypeOf(call)->As<core::type::Vector>()->type(), nullptr);
-        EXPECT_TRUE(TypeOf(call)->As<core::type::Vector>()->type()->Is<core::type::U32>());
+        ASSERT_NE(TypeOf(call)->As<core::type::Vector>()->Type(), nullptr);
+        EXPECT_TRUE(TypeOf(call)->As<core::type::Vector>()->Type()->Is<core::type::U32>());
     } else {
         // Invalid parameter count.
         EXPECT_FALSE(r()->Resolve());
 
         EXPECT_THAT(r()->error(),
-                    HasSubstr("error: no matching call to " + std::string(param.name) +
-                              "(vec3<u32>, vec3<u32>, vec3<u32>, vec3<u32>)"));
+                    HasSubstr("error: no matching call to '" + std::string(param.name) +
+                              "(vec3<u32>, vec3<u32>, vec3<u32>, vec3<u32>)'"));
     }
 }
 
@@ -1943,10 +1993,11 @@ TEST_F(ResolverBuiltinTest, Determinant_NotSquare) {
 
     EXPECT_FALSE(r()->Resolve());
 
-    EXPECT_EQ(r()->error(), R"(error: no matching call to determinant(mat2x3<f32>)
+    EXPECT_EQ(r()->error(), R"(error: no matching call to 'determinant(mat2x3<f32>)'
 
 1 candidate function:
-  determinant(matNxN<T>) -> T  where: T is abstract-float, f32 or f16
+ • 'determinant(matNxN<T>  ✗ ) -> T' where:
+      ✗  'T' is 'abstract-float', 'f32' or 'f16'
 )");
 }
 
@@ -1958,10 +2009,11 @@ TEST_F(ResolverBuiltinTest, Determinant_NotMatrix) {
 
     EXPECT_FALSE(r()->Resolve());
 
-    EXPECT_EQ(r()->error(), R"(error: no matching call to determinant(f32)
+    EXPECT_EQ(r()->error(), R"(error: no matching call to 'determinant(f32)'
 
 1 candidate function:
-  determinant(matNxN<T>) -> T  where: T is abstract-float, f32 or f16
+ • 'determinant(matNxN<T>  ✗ ) -> T' where:
+      ✗  'T' is 'abstract-float', 'f32' or 'f16'
 )");
 }
 
@@ -2027,10 +2079,11 @@ TEST_F(ResolverBuiltinTest, Dot_Error_Scalar) {
     EXPECT_FALSE(r()->Resolve());
 
     EXPECT_EQ(r()->error(),
-              R"(error: no matching call to dot(f32, f32)
+              R"(error: no matching call to 'dot(f32, f32)'
 
 1 candidate function:
-  dot(vecN<T>, vecN<T>) -> T  where: T is abstract-float, abstract-int, f32, i32, u32 or f16
+ • 'dot(vecN<T>  ✗ , vecN<T>  ✗ ) -> T' where:
+      ✗  'T' is 'abstract-float', 'abstract-int', 'f32', 'i32', 'u32' or 'f16'
 )");
 }
 
@@ -2068,7 +2121,7 @@ TEST_P(ResolverBuiltinDerivativeTest, Vector) {
 
     ASSERT_NE(TypeOf(expr), nullptr);
     ASSERT_TRUE(TypeOf(expr)->Is<core::type::Vector>());
-    EXPECT_TRUE(TypeOf(expr)->As<core::type::Vector>()->type()->Is<core::type::F32>());
+    EXPECT_TRUE(TypeOf(expr)->As<core::type::Vector>()->Type()->Is<core::type::F32>());
     EXPECT_EQ(TypeOf(expr)->As<core::type::Vector>()->Width(), 4u);
 }
 
@@ -2080,10 +2133,14 @@ TEST_P(ResolverBuiltinDerivativeTest, MissingParam) {
 
     EXPECT_FALSE(r()->Resolve());
 
-    EXPECT_EQ(r()->error(), "error: no matching call to " + name +
-                                "()\n\n"
-                                "2 candidate functions:\n  " +
-                                name + "(f32) -> f32\n  " + name + "(vecN<f32>) -> vecN<f32>\n");
+    EXPECT_EQ(r()->error(), "error: no matching call to '" + name +
+                                "()'\n\n"
+                                "2 candidate functions:\n"
+                                " • '" +
+                                name +
+                                "(f32  ✗ ) -> f32'\n"
+                                " • '" +
+                                name + "(vecN<f32>  ✗ ) -> vecN<f32>'\n");
 }
 
 INSTANTIATE_TEST_SUITE_P(ResolverTest,
@@ -2203,11 +2260,11 @@ TEST_P(ResolverBuiltinTest_SampledTextureOperation, TextureLoadSampled) {
     ASSERT_NE(TypeOf(expr), nullptr);
     ASSERT_TRUE(TypeOf(expr)->Is<core::type::Vector>());
     if (type == Texture::kF32) {
-        EXPECT_TRUE(TypeOf(expr)->As<core::type::Vector>()->type()->Is<core::type::F32>());
+        EXPECT_TRUE(TypeOf(expr)->As<core::type::Vector>()->Type()->Is<core::type::F32>());
     } else if (type == Texture::kI32) {
-        EXPECT_TRUE(TypeOf(expr)->As<core::type::Vector>()->type()->Is<core::type::I32>());
+        EXPECT_TRUE(TypeOf(expr)->As<core::type::Vector>()->Type()->Is<core::type::I32>());
     } else {
-        EXPECT_TRUE(TypeOf(expr)->As<core::type::Vector>()->type()->Is<core::type::U32>());
+        EXPECT_TRUE(TypeOf(expr)->As<core::type::Vector>()->Type()->Is<core::type::U32>());
     }
     EXPECT_EQ(TypeOf(expr)->As<core::type::Vector>()->Width(), 4u);
 }
@@ -2503,14 +2560,14 @@ TEST_P(ResolverBuiltinTest_Texture, Call) {
                 auto* vec = As<core::type::Vector>(TypeOf(call));
                 ASSERT_NE(vec, nullptr);
                 EXPECT_EQ(vec->Width(), 2u);
-                EXPECT_TRUE(vec->type()->Is<core::type::U32>());
+                EXPECT_TRUE(vec->Type()->Is<core::type::U32>());
                 break;
             }
             case core::type::TextureDimension::k3d: {
                 auto* vec = As<core::type::Vector>(TypeOf(call));
                 ASSERT_NE(vec, nullptr);
                 EXPECT_EQ(vec->Width(), 3u);
-                EXPECT_TRUE(vec->type()->Is<core::type::U32>());
+                EXPECT_TRUE(vec->Type()->Is<core::type::U32>());
                 break;
             }
         }
@@ -2528,20 +2585,20 @@ TEST_P(ResolverBuiltinTest_Texture, Call) {
         EXPECT_EQ(vec->Width(), 4u);
         switch (param.texture_data_type) {
             case ast::test::TextureDataType::kF32:
-                EXPECT_TRUE(vec->type()->Is<core::type::F32>());
+                EXPECT_TRUE(vec->Type()->Is<core::type::F32>());
                 break;
             case ast::test::TextureDataType::kU32:
-                EXPECT_TRUE(vec->type()->Is<core::type::U32>());
+                EXPECT_TRUE(vec->Type()->Is<core::type::U32>());
                 break;
             case ast::test::TextureDataType::kI32:
-                EXPECT_TRUE(vec->type()->Is<core::type::I32>());
+                EXPECT_TRUE(vec->Type()->Is<core::type::I32>());
                 break;
         }
     } else if (std::string(param.function) == "textureGatherCompare") {
         auto* vec = As<core::type::Vector>(TypeOf(call));
         ASSERT_NE(vec, nullptr);
         EXPECT_EQ(vec->Width(), 4u);
-        EXPECT_TRUE(vec->type()->Is<core::type::F32>());
+        EXPECT_TRUE(vec->Type()->Is<core::type::F32>());
     } else {
         switch (param.texture_kind) {
             case ast::test::TextureKind::kRegular:
@@ -2551,13 +2608,13 @@ TEST_P(ResolverBuiltinTest_Texture, Call) {
                 ASSERT_NE(vec, nullptr);
                 switch (param.texture_data_type) {
                     case ast::test::TextureDataType::kF32:
-                        EXPECT_TRUE(vec->type()->Is<core::type::F32>());
+                        EXPECT_TRUE(vec->Type()->Is<core::type::F32>());
                         break;
                     case ast::test::TextureDataType::kU32:
-                        EXPECT_TRUE(vec->type()->Is<core::type::U32>());
+                        EXPECT_TRUE(vec->Type()->Is<core::type::U32>());
                         break;
                     case ast::test::TextureDataType::kI32:
-                        EXPECT_TRUE(vec->type()->Is<core::type::I32>());
+                        EXPECT_TRUE(vec->Type()->Is<core::type::I32>());
                         break;
                 }
                 break;
@@ -2613,7 +2670,7 @@ TEST_P(ResolverBuiltinTest_DataPacking, Error_IncorrectParamType) {
 
     EXPECT_FALSE(r()->Resolve());
 
-    EXPECT_THAT(r()->error(), HasSubstr("error: no matching call to " + std::string(param.name)));
+    EXPECT_THAT(r()->error(), HasSubstr("error: no matching call to '" + std::string(param.name)));
 }
 
 TEST_P(ResolverBuiltinTest_DataPacking, Error_NoParams) {
@@ -2624,7 +2681,7 @@ TEST_P(ResolverBuiltinTest_DataPacking, Error_NoParams) {
 
     EXPECT_FALSE(r()->Resolve());
 
-    EXPECT_THAT(r()->error(), HasSubstr("error: no matching call to " + std::string(param.name)));
+    EXPECT_THAT(r()->error(), HasSubstr("error: no matching call to '" + std::string(param.name)));
 }
 
 TEST_P(ResolverBuiltinTest_DataPacking, Error_TooManyParams) {
@@ -2639,7 +2696,7 @@ TEST_P(ResolverBuiltinTest_DataPacking, Error_TooManyParams) {
 
     EXPECT_FALSE(r()->Resolve());
 
-    EXPECT_THAT(r()->error(), HasSubstr("error: no matching call to " + std::string(param.name)));
+    EXPECT_THAT(r()->error(), HasSubstr("error: no matching call to '" + std::string(param.name)));
 }
 
 INSTANTIATE_TEST_SUITE_P(
@@ -2668,7 +2725,7 @@ TEST_P(ResolverBuiltinTest_DataUnpacking, InferType) {
 
     EXPECT_TRUE(r()->Resolve()) << r()->error();
     ASSERT_NE(TypeOf(call), nullptr);
-    EXPECT_TRUE(TypeOf(call)->is_float_vector());
+    EXPECT_TRUE(TypeOf(call)->IsFloatVector());
     if (pack4) {
         EXPECT_EQ(TypeOf(call)->As<core::type::Vector>()->Width(), 4u);
     } else {
@@ -2710,7 +2767,7 @@ TEST_P(ResolverBuiltinTest_Barrier, Error_TooManyParams) {
 
     EXPECT_FALSE(r()->Resolve());
 
-    EXPECT_THAT(r()->error(), HasSubstr("error: no matching call to " + std::string(param.name)));
+    EXPECT_THAT(r()->error(), HasSubstr("error: no matching call to '" + std::string(param.name)));
 }
 
 INSTANTIATE_TEST_SUITE_P(

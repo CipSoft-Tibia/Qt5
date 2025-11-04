@@ -85,7 +85,8 @@ QAbstractItemViewPrivate::QAbstractItemViewPrivate()
         delayedPendingLayout(true),
         moveCursorUpdatedView(false),
         verticalScrollModeSet(false),
-        horizontalScrollModeSet(false)
+        horizontalScrollModeSet(false),
+        updateThreshold(200)
 {
     keyboardInputTime.invalidate();
 }
@@ -483,7 +484,6 @@ void QAbstractItemViewPrivate::disconnectAll()
 */
 
 /*!
-    \since 4.2
     \enum QAbstractItemView::ScrollMode
 
     Describes how the scrollbar should behave. When setting the scroll mode
@@ -861,7 +861,7 @@ void QAbstractItemView::setItemDelegate(QAbstractItemDelegate *delegate)
 
     if (d->itemDelegate) {
         if (d->delegateRefCount(d->itemDelegate) == 1)
-            d->disconnectDelegate(delegate);
+            d->disconnectDelegate(d->itemDelegate);
     }
 
     if (delegate) {
@@ -912,8 +912,6 @@ QVariant QAbstractItemView::inputMethodQuery(Qt::InputMethodQuery query) const
 }
 
 /*!
-    \since 4.2
-
     Sets the given item \a delegate used by this view and model for the given
     \a row. All items on \a row will be drawn and managed by \a delegate
     instead of using the default delegate (i.e., itemDelegate()).
@@ -950,8 +948,6 @@ void QAbstractItemView::setItemDelegateForRow(int row, QAbstractItemDelegate *de
 }
 
 /*!
-   \since 4.2
-
    Returns the item delegate used by this view and model for the given \a row,
    or \nullptr if no delegate has been assigned. You can call itemDelegate()
    to get a pointer to the current delegate for a given index.
@@ -965,8 +961,6 @@ QAbstractItemDelegate *QAbstractItemView::itemDelegateForRow(int row) const
 }
 
 /*!
-    \since 4.2
-
     Sets the given item \a delegate used by this view and model for the given
     \a column. All items on \a column will be drawn and managed by \a delegate
     instead of using the default delegate (i.e., itemDelegate()).
@@ -1002,8 +996,6 @@ void QAbstractItemView::setItemDelegateForColumn(int column, QAbstractItemDelega
 }
 
 /*!
-    \since 4.2
-
     Returns the item delegate used by this view and model for the given \a
     column.  You can call itemDelegate() to get a pointer to the current delegate
     for a given index.
@@ -1271,6 +1263,12 @@ void QAbstractItemView::doItemsLayout()
     \l{EditTrigger}, combined using the OR
     operator. The view will only initiate the editing of an item if the
     action performed is set in this property.
+
+    The default value is:
+    \list
+    \li for QTableView: DoubleClicked|AnyKeyPressed
+    \li for all other views: DoubleClicked|EditKeyPressed
+    \endlist
 */
 void QAbstractItemView::setEditTriggers(EditTriggers actions)
 {
@@ -1285,7 +1283,6 @@ QAbstractItemView::EditTriggers QAbstractItemView::editTriggers() const
 }
 
 /*!
-    \since 4.2
     \property QAbstractItemView::verticalScrollMode
     \brief how the view scrolls its contents in the vertical direction
 
@@ -1324,7 +1321,6 @@ void QAbstractItemView::resetVerticalScrollMode()
 }
 
 /*!
-    \since 4.2
     \property QAbstractItemView::horizontalScrollMode
     \brief how the view scrolls its contents in the horizontal direction
 
@@ -1362,7 +1358,6 @@ void QAbstractItemView::resetHorizontalScrollMode()
 
 #if QT_CONFIG(draganddrop)
 /*!
-    \since 4.2
     \property QAbstractItemView::dragDropOverwriteMode
     \brief the view's drag and drop behavior
 
@@ -1422,7 +1417,6 @@ bool QAbstractItemView::hasAutoScroll() const
 }
 
 /*!
-    \since 4.4
     \property QAbstractItemView::autoScrollMargin
     \brief the size of the area when auto scrolling is triggered
 
@@ -1507,7 +1501,6 @@ bool QAbstractItemView::dragEnabled() const
 }
 
 /*!
-    \since 4.2
     \enum QAbstractItemView::DragDropMode
 
     Describes the various drag and drop events the view can act upon.
@@ -1530,7 +1523,6 @@ bool QAbstractItemView::dragEnabled() const
     \property QAbstractItemView::dragDropMode
     \brief the drag and drop event the view will act upon
 
-    \since 4.2
     \sa showDropIndicator, dragDropOverwriteMode
 */
 void QAbstractItemView::setDragDropMode(DragDropMode behavior)
@@ -1571,7 +1563,6 @@ QAbstractItemView::DragDropMode QAbstractItemView::dragDropMode() const
     If the property is not set, the drop action is CopyAction when the supported
     actions support CopyAction.
 
-    \since 4.6
     \sa showDropIndicator, dragDropOverwriteMode
 */
 void QAbstractItemView::setDefaultDropAction(Qt::DropAction dropAction)
@@ -1821,12 +1812,13 @@ void QAbstractItemView::mousePressEvent(QMouseEvent *event)
     QItemSelectionModel::SelectionFlags command = selectionCommand(index, event);
     d->noSelectionOnMousePress = command == QItemSelectionModel::NoUpdate || !index.isValid();
     QPoint offset = d->offset();
-    d->draggedPosition = pos + offset;
+    d->draggedPosition = pos;
+    d->draggedPositionOffset = offset;
 
 #if QT_CONFIG(draganddrop)
     // update the pressed position when drag was enable
     if (d->dragEnabled)
-        d->pressedPosition = d->draggedPosition;
+        d->pressedPosition = d->draggedPosition + d->draggedPositionOffset;
 #endif
 
     if (!(command & QItemSelectionModel::Current)) {
@@ -1883,7 +1875,8 @@ void QAbstractItemView::mouseMoveEvent(QMouseEvent *event)
     Q_D(QAbstractItemView);
     QPoint bottomRight = event->position().toPoint();
 
-    d->draggedPosition = bottomRight + d->offset();
+    d->draggedPosition = bottomRight;
+    d->draggedPositionOffset = d->offset();
 
     if (state() == ExpandingState || state() == CollapsingState)
         return;
@@ -2058,7 +2051,8 @@ void QAbstractItemView::dragEnterEvent(QDragEnterEvent *event)
 void QAbstractItemView::dragMoveEvent(QDragMoveEvent *event)
 {
     Q_D(QAbstractItemView);
-    d->draggedPosition = event->position().toPoint() + d->offset();
+    d->draggedPosition = event->position().toPoint();
+    d->draggedPositionOffset = d->offset();
     if (dragDropMode() == InternalMove
         && (event->source() != this || !(event->possibleActions() & Qt::MoveAction)))
         return;
@@ -2706,8 +2700,6 @@ void QAbstractItemView::inputMethodEvent(QInputMethodEvent *event)
 
 
 /*!
-    \since 4.1
-
     Returns the position of the drop indicator in relation to the closest item.
 */
 QAbstractItemView::DropIndicatorPosition QAbstractItemView::dropIndicatorPosition() const
@@ -2872,8 +2864,6 @@ void QAbstractItemView::updateEditorGeometries()
 }
 
 /*!
-    \since 4.4
-
     Updates the geometry of the child widgets of the view.
 */
 void QAbstractItemView::updateGeometries()
@@ -3229,6 +3219,37 @@ int QAbstractItemView::sizeHintForColumn(int column) const
 }
 
 /*!
+    \property QAbstractItemView::updateThreshold
+    \since 6.9
+    This property holds the amount of changed indexes to directly trigger
+    a full update of the view inside dataChanged().
+
+    The algorithm inside dataChanged() tries to minimize a full update of the
+    view by calculating if the changed indexes are visible or not. For very
+    large models, with a lot of large changes, this might take longer than the
+    actual update so it's counter-productive. This property gives the ability
+    to control the algorithm to skip the check and directly trigger a full
+    update when the amount of changed indexes exceeds the given value.
+
+    The default value is 200.
+
+    \sa dataChanged()
+*/
+int QAbstractItemView::updateThreshold() const
+{
+    Q_D(const QAbstractItemView);
+    return d->updateThreshold;
+}
+
+void QAbstractItemView::setUpdateThreshold(int threshold)
+{
+    Q_D(QAbstractItemView);
+    if (d->updateThreshold == threshold)
+        return;
+    d->updateThreshold = threshold;
+}
+
+/*!
     Opens a persistent editor on the item at the given \a index.
     If no editor exists, the delegate will create a new editor.
 
@@ -3280,8 +3301,6 @@ bool QAbstractItemView::isPersistentEditorOpen(const QModelIndex &index) const
 }
 
 /*!
-    \since 4.1
-
     Sets the given \a widget on the item at the given \a index, passing the
     ownership of the widget to the viewport.
 
@@ -3334,8 +3353,6 @@ void QAbstractItemView::setIndexWidget(const QModelIndex &index, QWidget *widget
 }
 
 /*!
-    \since 4.1
-
     Returns the widget for the item at the given \a index.
 */
 QWidget* QAbstractItemView::indexWidget(const QModelIndex &index) const
@@ -3349,8 +3366,6 @@ QWidget* QAbstractItemView::indexWidget(const QModelIndex &index) const
 }
 
 /*!
-    \since 4.1
-
     Scrolls the view to the top.
 
     \sa scrollTo(), scrollToBottom()
@@ -3361,8 +3376,6 @@ void QAbstractItemView::scrollToTop()
 }
 
 /*!
-    \since 4.1
-
     Scrolls the view to the bottom.
 
     \sa scrollTo(), scrollToTop()
@@ -3378,8 +3391,6 @@ void QAbstractItemView::scrollToBottom()
 }
 
 /*!
-    \since 4.3
-
     Updates the area occupied by the given \a index.
 
 */
@@ -3433,6 +3444,13 @@ void QAbstractItemView::dataChanged(const QModelIndex &topLeft, const QModelInde
                 topLeft.row() > bottomRight.row() ||
                 topLeft.column() > bottomRight.column()) {
                 // invalid parameter - call update() to redraw all
+                qWarning().nospace() << "dataChanged() called with an invalid index range:"
+                                     << "\n    topleft: " << topLeft
+                                     << "\n    bottomRight:" << bottomRight;
+                d->viewport->update();
+            } else if ((bottomRight.row() - topLeft.row() + 1LL) *
+                       (bottomRight.column() - topLeft.column() + 1LL) > d->updateThreshold) {
+                // too many indices to check - force full update
                 d->viewport->update();
             } else {
                 const QRect updateRect = d->intersectedRect(d->viewport->rect(), topLeft, bottomRight);
@@ -3980,8 +3998,6 @@ void QAbstractItemView::executeDelayedItemsLayout()
 }
 
 /*!
-    \since 4.1
-
     Marks the given \a region as dirty and schedules it to be updated.
     You only need to call this function if you are implementing
     your own view subclass.
@@ -4077,7 +4093,8 @@ void QAbstractItemView::doAutoScroll()
     const int verticalValue = verticalScroll->value();
     const int horizontalValue = horizontalScroll->value();
 
-    const QPoint pos = d->draggedPosition - d->offset();
+    const QPoint pos = d->draggedPosition;
+
     const QRect area = QWidgetPrivate::get(d->viewport)->clipRect();
 
     // do the scrolling if we are in the scroll margins
@@ -4117,7 +4134,8 @@ void QAbstractItemView::doAutoScroll()
             // update our dragged position manually after the scroll. "pos" is the old
             // draggedPosition - d->offset(), and d->offset() is now updated after scrolling, so
             // pos + d->offset() gives us the new position.
-            d->draggedPosition = pos + d->offset();
+            d->draggedPosition = pos;
+            d->draggedPositionOffset = d->offset();
             break;
         }
         default:
@@ -4421,7 +4439,7 @@ bool QAbstractItemViewPrivate::shouldAutoScroll(const QPoint &pos) const
 {
     if (!autoScroll)
         return false;
-    QRect area = static_cast<QAbstractItemView*>(viewport)->d_func()->clipRect(); // access QWidget private by bending C++ rules
+    const QRect area = QWidgetPrivate::get(viewport)->clipRect();
     return (pos.y() - area.top() < autoScrollMargin)
         || (area.bottom() - pos.y() < autoScrollMargin)
         || (pos.x() - area.left() < autoScrollMargin)

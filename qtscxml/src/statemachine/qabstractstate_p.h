@@ -17,6 +17,7 @@
 
 #include <private/qobject_p.h>
 #include <QtStateMachine/qabstractstate.h>
+#include <private/qstatemachineglobal_p.h>
 
 QT_REQUIRE_CONFIG(statemachine);
 

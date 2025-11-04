@@ -28,22 +28,40 @@
 #ifndef SRC_DAWN_NODE_BINDING_GPUDEVICE_H_
 #define SRC_DAWN_NODE_BINDING_GPUDEVICE_H_
 
+#include <webgpu/webgpu_cpp.h>
+
 #include <memory>
 #include <string>
 
-#include "dawn/webgpu_cpp.h"
 #include "src/dawn/node/binding/AsyncRunner.h"
 #include "src/dawn/node/interop/NodeAPI.h"
 #include "src/dawn/node/interop/WebGPU.h"
 
 namespace wgpu::binding {
+// GPUDeviceLostInfo is an implementation of interop::GPUDeviceLostInfo that wraps the members.
+class GPUDeviceLostInfo final : public interop::GPUDeviceLostInfo {
+  public:
+    GPUDeviceLostInfo(interop::GPUDeviceLostReason reason, std::string message);
+
+    interop::GPUDeviceLostReason getReason(Napi::Env env) override;
+    std::string getMessage(Napi::Env) override;
+
+  private:
+    interop::GPUDeviceLostReason reason_;
+    std::string message_;
+};
+
 // GPUDevice is an implementation of interop::GPUDevice that wraps a wgpu::Device.
 class GPUDevice final : public interop::GPUDevice {
   public:
-    GPUDevice(Napi::Env env, const wgpu::DeviceDescriptor& desc, wgpu::Device device);
+    GPUDevice(Napi::Env env,
+              const wgpu::DeviceDescriptor& desc,
+              wgpu::Device device,
+              interop::Promise<interop::Interface<interop::GPUDeviceLostInfo>> lost_promise,
+              std::shared_ptr<AsyncRunner> async);
     ~GPUDevice();
 
-    void ForceLoss(interop::GPUDeviceLostReason reason, const char* message);
+    void ForceLoss(wgpu::DeviceLostReason reason, const char* message);
 
     // interop::GPUDevice interface compliance
     interop::Interface<interop::GPUSupportedFeatures> getFeatures(Napi::Env) override;
@@ -117,8 +135,6 @@ class GPUDevice final : public interop::GPUDevice {
     bool dispatchEvent(Napi::Env, interop::Interface<interop::Event> event) override;
 
   private:
-    void QueueTick();
-
     Napi::Env env_;
     wgpu::Device device_;
     std::shared_ptr<AsyncRunner> async_;

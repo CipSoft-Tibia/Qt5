@@ -43,7 +43,6 @@ public:
     Qt::WindowFlags popupWindowType() const override;
 
     int result = 0;
-    QString title;
     QQuickDialogButtonBox *buttonBox = nullptr;
     QPlatformDialogHelper::StandardButtons standardButtons = QPlatformDialogHelper::NoButton;
 };

@@ -89,11 +89,12 @@ void tst_QQuick3DSpotLight::testProperties()
         QQuick3DAbstractLight::QSSGShadowMapQuality::ShadowMapQualityLow,
         QQuick3DAbstractLight::QSSGShadowMapQuality::ShadowMapQualityMedium,
         QQuick3DAbstractLight::QSSGShadowMapQuality::ShadowMapQualityHigh,
-        QQuick3DAbstractLight::QSSGShadowMapQuality::ShadowMapQualityVeryHigh
+        QQuick3DAbstractLight::QSSGShadowMapQuality::ShadowMapQualityVeryHigh,
+        QQuick3DAbstractLight::QSSGShadowMapQuality::ShadowMapQualityUltra
     };
-    const unsigned int mappedResolutions[] = {256, 512, 1024, 2048};
+    const unsigned int mappedResolutions[] = {256, 512, 1024, 2048, 4096};
 
-    for (int i = 0; i < 4; ++i) {
+    for (int i = 0; i < 5; ++i) {
         const auto shadowMapQuality = qualities[i];
         const auto mappedResolution = mappedResolutions[i];
         light.setShadowMapQuality(shadowMapQuality);
@@ -118,6 +119,10 @@ void tst_QQuick3DSpotLight::testProperties()
     light.setCastsShadow(false);
     node = static_cast<QSSGRenderLight *>(light.updateSpatialNode(node));
     QVERIFY(!node->m_castShadow);
+    QVERIFY(!node->m_use32BitShadowmap);
+    light.setUse32BitShadowmap(true);
+    node = static_cast<QSSGRenderLight *>(light.updateSpatialNode(node));
+    QVERIFY(node->m_use32BitShadowmap);
 
     float coneAngle = 60.0f;
     float innerConeAngle = 20.0f;

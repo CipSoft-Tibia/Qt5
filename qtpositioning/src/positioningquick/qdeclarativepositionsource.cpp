@@ -813,7 +813,7 @@ bool QDeclarativePositionSource::setBackendProperty(const QString &name, const Q
 }
 
 /*!
-     \qmlmethod Variant PositionSource::backendProperty(string name)
+    \qmlmethod Variant PositionSource::backendProperty(string name)
 
     Returns the value of the backend-specific property named \a name, if present.
     Otherwise, including if called on an uninitialized PositionSource, the return value will be invalid.
@@ -822,7 +822,7 @@ bool QDeclarativePositionSource::setBackendProperty(const QString &name, const Q
 
     \since Qt Positioning 5.14
 
-    \sa backendProperty, QGeoPositionInfoSource::setBackendProperty
+    \sa setBackendProperty, QGeoPositionInfoSource::setBackendProperty
 */
 QVariant QDeclarativePositionSource::backendProperty(const QString &name) const
 {

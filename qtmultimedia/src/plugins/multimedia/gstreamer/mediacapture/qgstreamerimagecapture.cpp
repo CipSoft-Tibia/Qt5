@@ -24,7 +24,8 @@
 QT_BEGIN_NAMESPACE
 
 namespace {
-Q_LOGGING_CATEGORY(qLcImageCaptureGst, "qt.multimedia.imageCapture")
+
+Q_STATIC_LOGGING_CATEGORY(qLcImageCaptureGst, "qt.multimedia.imageCapture")
 
 struct ThreadPoolSingleton
 {
@@ -109,7 +110,7 @@ QMaybe<QPlatformImageCapture *> QGstreamerImageCapture::create(QImageCapture *pa
     static const auto error = qGstErrorMessageIfElementsNotAvailable(
             "queue", "capsfilter", "videoconvert", "jpegenc", "jifmux", "fakesink");
     if (error)
-        return *error;
+        return QUnexpected{ *error };
 
     return new QGstreamerImageCapture(parent);
 }

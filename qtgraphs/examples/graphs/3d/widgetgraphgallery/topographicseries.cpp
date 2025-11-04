@@ -17,7 +17,7 @@ TopographicSeries::TopographicSeries()
 
 TopographicSeries::~TopographicSeries() = default;
 
-void TopographicSeries::setTopographyFile(const QString file, float width, float height)
+void TopographicSeries::setTopographyFile(const QString &file, float width, float height)
 {
     //! [1]
     QImage heightMapImage(file);

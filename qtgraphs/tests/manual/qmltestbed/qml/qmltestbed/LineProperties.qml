@@ -74,6 +74,31 @@ Rectangle {
                 text: "SELECTED: " + lineSeries1.selectedPoints
             }
         }
+
+        Column {
+            Button {
+                text: "Reset zoom/pan"
+                onClicked: {
+                    xAxis.zoom = 1;
+                    yAxis.zoom = 1;
+                    xAxis.pan = 0;
+                    yAxis.pan = 0;
+                }
+            }
+
+            CheckBox {
+                id: zoomAreaCheck
+                text: "Zoom area enabled"
+
+                contentItem: Text {
+                    text: zoomAreaCheck.text
+                    font: zoomAreaCheck.font
+                    color: "#ffffff"
+                    verticalAlignment: Text.AlignVCenter
+                    leftPadding: zoomAreaCheck.indicator.width + zoomAreaCheck.spacing
+                }
+            }
+        }
     }
 
     Rectangle {
@@ -137,6 +162,9 @@ Rectangle {
         anchors.top: toolbar.bottom
         anchors.margins: 10
         anchors.rightMargin: settingsView.posX + 20 * px
+        zoomStyle: GraphsView.ZoomStyle.Center;
+        panStyle: zoomAreaCheck.checked ? GraphsView.PanStyle.None : GraphsView.PanStyle.Drag
+        zoomAreaEnabled: zoomAreaCheck.checked
 
         axisX: ValueAxis {
             id: xAxis
@@ -183,6 +211,7 @@ Rectangle {
                 property color pointColor
                 property real pointValueX
                 property real pointValueY
+                property int pointIndex
                 width: 16
                 height: 16
                 Rectangle {
@@ -190,14 +219,14 @@ Rectangle {
                     color: "#202020"
                     border.width: 2
                     border.color: pointColor
-                    radius: width / 2
+                    radius: (pointIndex % 2 === 0) ? width / 2 : 2
                 }
                 Text {
                     anchors.horizontalCenter: parent.horizontalCenter
                     anchors.bottom: parent.top
                     color: "#ffffff"
                     font.pixelSize: 16
-                    text: "(" + pointValueX.toFixed(1) + ", " + pointValueY.toFixed(1) + ")"
+                    text: pointIndex + ": (" + pointValueX.toFixed(1) + ", " + pointValueY.toFixed(1) + ")"
                 }
             }
             XYPoint { x: 0; y: 6.6 }

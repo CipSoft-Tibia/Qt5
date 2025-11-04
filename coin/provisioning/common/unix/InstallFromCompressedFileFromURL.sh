@@ -27,6 +27,9 @@ function InstallFromCompressedFileFromURL {
     DownloadURL "$url" "$url_alt" "$expectedSha1" "$targetFile"
     echo "Uncompress $targetFile"
     case $extension in
+        "tgz")
+            tar -xzf "$targetFile" --directory "$targetDirectory"
+        ;;
         "tar.gz")
             tar -xzf "$targetFile" --directory "$targetDirectory"
         ;;

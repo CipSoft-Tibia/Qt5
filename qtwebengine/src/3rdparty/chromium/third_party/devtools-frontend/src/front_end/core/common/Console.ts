@@ -29,22 +29,36 @@ export class Console extends ObjectWrapper<EventTypes> {
     consoleInstance = undefined;
   }
 
-  addMessage(text: string, level: MessageLevel, show?: boolean): void {
-    const message = new Message(text, level || MessageLevel.Info, Date.now(), show || false);
+  /**
+   * Add a message to the Console panel.
+   *
+   * @param text the message text.
+   * @param level the message level.
+   * @param show whether to show the Console panel (if it's not already shown).
+   * @param source the message source.
+   */
+  addMessage(text: string, level = MessageLevel.INFO, show = false, source?: FrontendMessageSource): void {
+    const message = new Message(text, level, Date.now(), show, source);
     this.#messagesInternal.push(message);
-    this.dispatchEventToListeners(Events.MessageAdded, message);
+    this.dispatchEventToListeners(Events.MESSAGE_ADDED, message);
   }
 
   log(text: string): void {
-    this.addMessage(text, MessageLevel.Info);
+    this.addMessage(text, MessageLevel.INFO);
   }
 
-  warn(text: string): void {
-    this.addMessage(text, MessageLevel.Warning);
+  warn(text: string, source?: FrontendMessageSource): void {
+    this.addMessage(text, MessageLevel.WARNING, undefined, source);
   }
 
-  error(text: string): void {
-    this.addMessage(text, MessageLevel.Error, true);
+  /**
+   * Adds an error message to the Console panel.
+   *
+   * @param text the message text.
+   * @param show whether to show the Console panel (if it's not already shown).
+   */
+  error(text: string, show = true): void {
+    this.addMessage(text, MessageLevel.ERROR, show);
   }
 
   messages(): Message[] {
@@ -61,17 +75,25 @@ export class Console extends ObjectWrapper<EventTypes> {
 }
 
 export const enum Events {
-  MessageAdded = 'messageAdded',
+  MESSAGE_ADDED = 'messageAdded',
 }
 
 export type EventTypes = {
-  [Events.MessageAdded]: Message,
+  [Events.MESSAGE_ADDED]: Message,
 };
 
 export const enum MessageLevel {
-  Info = 'info',
-  Warning = 'warning',
-  Error = 'error',
+  INFO = 'info',
+  WARNING = 'warning',
+  ERROR = 'error',
+}
+
+export enum FrontendMessageSource {
+  CSS = 'css',
+  // eslint-disable-next-line @typescript-eslint/naming-convention -- Used by web_tests.
+  ConsoleAPI = 'console-api',
+  ISSUE_PANEL = 'issue-panel',
+  SELF_XSS = 'self-xss',
 }
 
 export class Message {
@@ -79,10 +101,14 @@ export class Message {
   level: MessageLevel;
   timestamp: number;
   show: boolean;
-  constructor(text: string, level: MessageLevel, timestamp: number, show: boolean) {
+  source?: FrontendMessageSource;
+  constructor(text: string, level: MessageLevel, timestamp: number, show: boolean, source?: FrontendMessageSource) {
     this.text = text;
     this.level = level;
     this.timestamp = (typeof timestamp === 'number') ? timestamp : Date.now();
     this.show = show;
+    if (source) {
+      this.source = source;
+    }
   }
 }

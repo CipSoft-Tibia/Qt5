@@ -26,6 +26,22 @@ class Error (Exception):
     def __str__(self):
         return self.message
 
+def qtVersion(root = qtbase_root, pfx = 'set(QT_REPO_MODULE_VERSION '):
+    with open(root.joinpath('.cmake.conf')) as fd:
+        for line in fd:
+            if line.startswith(pfx):
+                tail = line[len(pfx):].strip()
+                assert tail, ('No Qt version given', line)
+                if tail.startswith('"') or tail.startswith("'"):
+                    cut = tail.index(tail[0], 1) # assert: doesn't ValueError
+                    assert cut > 5, ('Truncated Qt version', tail)
+                    version = tail[1:cut].strip()
+                    assert all(x.isdigit() for x in version.split('.')), version
+                    return version
+                raise Error(f'Missing quotes on Qt version: {tail}')
+    raise Error(f'Failed to find {pfx}...) line in {root.joinpath(".cmake.conf")}')
+qtVersion = qtVersion()
+
 def unicode2hex(s: str) -> list[str]:
     lst: list[str] = []
     for x in s:
@@ -94,7 +110,7 @@ def AtomicRenameTemporaryFile(originalLocation: Path, *, prefix: str, dir: Path)
     On success closes the temporary file and moves its content to the original
     location. On error, removes temporary file, without disturbing the original.
     """
-    tempFile = NamedTemporaryFile('w', prefix=prefix, dir=dir, delete=False)
+    tempFile = NamedTemporaryFile('w', prefix=prefix, dir=dir, delete=False, encoding='utf-8')
     try:
         yield tempFile
         tempFile.close()
@@ -158,7 +174,7 @@ class Transcriber:
             self.writer = resources.enter_context(
                 AtomicRenameTemporaryFile(self.path, prefix=self.path.name, dir=self.tempDir))
             # Open the old file
-            self.reader = resources.enter_context(open(self.path))
+            self.reader = resources.enter_context(open(self.path, encoding='utf-8'))
 
             self.onEnter()
 

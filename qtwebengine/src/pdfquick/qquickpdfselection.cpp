@@ -11,8 +11,9 @@
 #include <QRegularExpression>
 #include <QStandardPaths>
 #include <QtPdf/private/qpdfdocument_p.h>
+#include <QtPdf/private/qtpdfglobal_p.h>
 
-Q_LOGGING_CATEGORY(qLcIm, "qt.pdf.im")
+Q_PDF_LOGGING_CATEGORY(qLcIm, "qt.pdf.im")
 
 QT_BEGIN_NAMESPACE
 

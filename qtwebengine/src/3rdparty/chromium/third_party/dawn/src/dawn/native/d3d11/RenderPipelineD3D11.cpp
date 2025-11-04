@@ -35,7 +35,7 @@
 #include <utility>
 
 #include "dawn/common/Range.h"
-#include "dawn/native/CreatePipelineAsyncTask.h"
+#include "dawn/native/CreatePipelineAsyncEvent.h"
 #include "dawn/native/d3d/D3DError.h"
 #include "dawn/native/d3d/ShaderUtils.h"
 #include "dawn/native/d3d11/DeviceD3D11.h"
@@ -234,7 +234,7 @@ RenderPipeline::RenderPipeline(Device* device,
     : RenderPipelineBase(device, descriptor),
       mD3DPrimitiveTopology(D3DPrimitiveTopology(GetPrimitiveTopology())) {}
 
-MaybeError RenderPipeline::Initialize() {
+MaybeError RenderPipeline::InitializeImpl() {
     DAWN_TRY(InitializeRasterizerState());
     DAWN_TRY(InitializeBlendState());
     DAWN_TRY(InitializeShaders());
@@ -405,14 +405,16 @@ MaybeError RenderPipeline::InitializeDepthStencilState() {
     const DepthStencilState* state = GetDepthStencilState();
 
     D3D11_DEPTH_STENCIL_DESC depthStencilDesc = {};
-    depthStencilDesc.DepthEnable =
-        (state->depthCompare == wgpu::CompareFunction::Always && !state->depthWriteEnabled) ? FALSE
-                                                                                            : TRUE;
-    depthStencilDesc.DepthWriteMask =
-        state->depthWriteEnabled ? D3D11_DEPTH_WRITE_MASK_ALL : D3D11_DEPTH_WRITE_MASK_ZERO;
+    depthStencilDesc.DepthEnable = (state->depthCompare == wgpu::CompareFunction::Always &&
+                                    state->depthWriteEnabled != wgpu::OptionalBool::True)
+                                       ? FALSE
+                                       : TRUE;
+    depthStencilDesc.DepthWriteMask = state->depthWriteEnabled == wgpu::OptionalBool::True
+                                          ? D3D11_DEPTH_WRITE_MASK_ALL
+                                          : D3D11_DEPTH_WRITE_MASK_ZERO;
     depthStencilDesc.DepthFunc = ToD3D11ComparisonFunc(state->depthCompare);
 
-    depthStencilDesc.StencilEnable = StencilTestEnabled(state) ? TRUE : FALSE;
+    depthStencilDesc.StencilEnable = UsesStencil() ? TRUE : FALSE;
     depthStencilDesc.StencilReadMask = static_cast<UINT8>(state->stencilReadMask);
     depthStencilDesc.StencilWriteMask = static_cast<UINT8>(state->stencilWriteMask);
 
@@ -441,10 +443,6 @@ MaybeError RenderPipeline::InitializeShaders() {
     // Tint does matrix multiplication expecting row major matrices
     compileFlags |= D3DCOMPILE_PACK_MATRIX_ROW_MAJOR;
 
-    if (!device->IsToggleEnabled(Toggle::D3DDisableIEEEStrictness)) {
-        compileFlags |= D3DCOMPILE_IEEE_STRICTNESS;
-    }
-
     PerStage<d3d::CompiledShader> compiledShader;
 
     std::optional<dawn::native::d3d::InterStageShaderVariablesMask> usedInterstageVariables;
@@ -459,11 +457,17 @@ MaybeError RenderPipeline::InitializeShaders() {
 
     if (GetStageMask() & wgpu::ShaderStage::Vertex) {
         const ProgrammableStage& programmableStage = GetStage(SingleShaderStage::Vertex);
+        uint32_t additionalCompileFlags = 0;
+        if (programmableStage.module->GetStrictMath().value_or(
+                !device->IsToggleEnabled(Toggle::D3DDisableIEEEStrictness))) {
+            additionalCompileFlags |= D3DCOMPILE_IEEE_STRICTNESS;
+        }
+
         DAWN_TRY_ASSIGN(
             compiledShader[SingleShaderStage::Vertex],
             ToBackend(programmableStage.module)
                 ->Compile(programmableStage, SingleShaderStage::Vertex, ToBackend(GetLayout()),
-                          compileFlags, usedInterstageVariables));
+                          compileFlags | additionalCompileFlags, usedInterstageVariables));
         const Blob& shaderBlob = compiledShader[SingleShaderStage::Vertex].shaderBlob;
         DAWN_TRY(CheckHRESULT(device->GetD3D11Device()->CreateVertexShader(
                                   shaderBlob.Data(), shaderBlob.Size(), nullptr, &mVertexShader),
@@ -473,11 +477,11 @@ MaybeError RenderPipeline::InitializeShaders() {
         mUsesInstanceIndex = compiledShader[SingleShaderStage::Vertex].usesInstanceIndex;
     }
 
-    std::optional<tint::PixelLocalOptions> pixelLocalOptions;
+    std::optional<tint::hlsl::writer::PixelLocalOptions> pixelLocalOptions;
     if (GetStageMask() & wgpu::ShaderStage::Fragment) {
-        pixelLocalOptions = tint::PixelLocalOptions();
+        pixelLocalOptions = tint::hlsl::writer::PixelLocalOptions();
         // HLSL SM5.0 doesn't support groups, so we set group index to 0.
-        pixelLocalOptions->pixel_local_group_index = 0;
+        pixelLocalOptions->group_index = 0;
 
         if (GetAttachmentState()->HasPixelLocalStorage()) {
             const std::vector<wgpu::TextureFormat>& storageAttachmentSlots =
@@ -501,15 +505,15 @@ MaybeError RenderPipeline::InitializeShaders() {
                     case wgpu::TextureFormat::Undefined:
                     case wgpu::TextureFormat::R32Uint:
                         pixelLocalOptions->attachment_formats[i] =
-                            tint::PixelLocalOptions::TexelFormat::kR32Uint;
+                            tint::hlsl::writer::PixelLocalOptions::TexelFormat::kR32Uint;
                         break;
                     case wgpu::TextureFormat::R32Sint:
                         pixelLocalOptions->attachment_formats[i] =
-                            tint::PixelLocalOptions::TexelFormat::kR32Sint;
+                            tint::hlsl::writer::PixelLocalOptions::TexelFormat::kR32Sint;
                         break;
                     case wgpu::TextureFormat::R32Float:
                         pixelLocalOptions->attachment_formats[i] =
-                            tint::PixelLocalOptions::TexelFormat::kR32Float;
+                            tint::hlsl::writer::PixelLocalOptions::TexelFormat::kR32Float;
                         break;
                     default:
                         DAWN_UNREACHABLE();
@@ -519,11 +523,17 @@ MaybeError RenderPipeline::InitializeShaders() {
         }
 
         const ProgrammableStage& programmableStage = GetStage(SingleShaderStage::Fragment);
-        DAWN_TRY_ASSIGN(
-            compiledShader[SingleShaderStage::Fragment],
-            ToBackend(programmableStage.module)
-                ->Compile(programmableStage, SingleShaderStage::Fragment, ToBackend(GetLayout()),
-                          compileFlags, usedInterstageVariables, pixelLocalOptions));
+        uint32_t additionalCompileFlags = 0;
+        if (programmableStage.module->GetStrictMath().value_or(
+                !device->IsToggleEnabled(Toggle::D3DDisableIEEEStrictness))) {
+            additionalCompileFlags |= D3DCOMPILE_IEEE_STRICTNESS;
+        }
+
+        DAWN_TRY_ASSIGN(compiledShader[SingleShaderStage::Fragment],
+                        ToBackend(programmableStage.module)
+                            ->Compile(programmableStage, SingleShaderStage::Fragment,
+                                      ToBackend(GetLayout()), compileFlags | additionalCompileFlags,
+                                      usedInterstageVariables, pixelLocalOptions));
         DAWN_TRY(CheckHRESULT(device->GetD3D11Device()->CreatePixelShader(
                                   compiledShader[SingleShaderStage::Fragment].shaderBlob.Data(),
                                   compiledShader[SingleShaderStage::Fragment].shaderBlob.Size(),
@@ -532,15 +542,6 @@ MaybeError RenderPipeline::InitializeShaders() {
     }
 
     return {};
-}
-
-void RenderPipeline::InitializeAsync(Ref<RenderPipelineBase> renderPipeline,
-                                     WGPUCreateRenderPipelineAsyncCallback callback,
-                                     void* userdata) {
-    std::unique_ptr<CreateRenderPipelineAsyncTask> asyncTask =
-        std::make_unique<CreateRenderPipelineAsyncTask>(std::move(renderPipeline), callback,
-                                                        userdata);
-    CreateRenderPipelineAsyncTask::RunAsync(std::move(asyncTask));
 }
 
 }  // namespace dawn::native::d3d11

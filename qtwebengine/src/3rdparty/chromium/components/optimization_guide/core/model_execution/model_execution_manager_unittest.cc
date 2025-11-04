@@ -11,14 +11,19 @@
 #include "base/test/scoped_feature_list.h"
 #include "base/test/task_environment.h"
 #include "base/test/test.pb.h"
+#include "components/optimization_guide/core/model_execution/model_execution_features.h"
+#include "components/optimization_guide/core/model_execution/model_execution_prefs.h"
 #include "components/optimization_guide/core/model_execution/on_device_model_access_controller.h"
 #include "components/optimization_guide/core/model_execution/on_device_model_service_controller.h"
 #include "components/optimization_guide/core/optimization_guide_constants.h"
 #include "components/optimization_guide/core/optimization_guide_logger.h"
+#include "components/optimization_guide/core/optimization_guide_model_executor.h"
 #include "components/optimization_guide/core/optimization_guide_util.h"
 #include "components/optimization_guide/core/test_model_info_builder.h"
 #include "components/optimization_guide/core/test_optimization_guide_model_provider.h"
+#include "components/prefs/pref_service.h"
 #include "components/signin/public/identity_manager/identity_test_environment.h"
+#include "components/sync_preferences/testing_pref_service_syncable.h"
 #include "components/variations/scoped_variations_ids_provider.h"
 #include "services/network/public/cpp/shared_url_loader_factory.h"
 #include "services/network/public/cpp/weak_wrapper_shared_url_loader_factory.h"
@@ -72,7 +77,7 @@ class FakeModelProvider : public TestOptimizationGuideModelProvider {
  public:
   void AddObserverForOptimizationTargetModel(
       proto::OptimizationTarget optimization_target,
-      const absl::optional<optimization_guide::proto::Any>& model_metadata,
+      const std::optional<optimization_guide::proto::Any>& model_metadata,
       OptimizationTargetModelObserver* observer) override {
     switch (optimization_target) {
       case proto::OPTIMIZATION_TARGET_TEXT_SAFETY:
@@ -84,8 +89,13 @@ class FakeModelProvider : public TestOptimizationGuideModelProvider {
         break;
 
       default:
-        NOTREACHED();
+        NOTREACHED_IN_MIGRATION();
     }
+  }
+
+  void Reset() {
+    registered_for_text_safety_ = false;
+    registered_for_language_detection_ = false;
   }
 
   bool was_registered() const {
@@ -100,7 +110,9 @@ class FakeModelProvider : public TestOptimizationGuideModelProvider {
 class ModelExecutionManagerTest : public testing::Test {
  public:
   ModelExecutionManagerTest() {
-    scoped_feature_list_.InitAndDisableFeature(features::kTextSafetyClassifier);
+    scoped_feature_list_.InitWithFeatures(
+        {}, {features::kTextSafetyClassifier,
+             features::internal::kModelAdaptationCompose});
   }
   ~ModelExecutionManagerTest() override = default;
 
@@ -108,10 +120,18 @@ class ModelExecutionManagerTest : public testing::Test {
     url_loader_factory_ =
         base::MakeRefCounted<network::WeakWrapperSharedURLLoaderFactory>(
             &test_url_loader_factory_);
+    local_state_ = std::make_unique<TestingPrefServiceSimple>();
+    model_execution::prefs::RegisterLocalStatePrefs(local_state_->registry());
     service_controller_ = base::MakeRefCounted<FakeServiceController>();
+    CreateModelExecutionManager();
+  }
+
+  void CreateModelExecutionManager() {
     model_execution_manager_ = std::make_unique<ModelExecutionManager>(
-        url_loader_factory_, identity_test_env_.identity_manager(),
-        service_controller_, &model_provider_, &optimization_guide_logger_);
+        url_loader_factory_, local_state_.get(),
+        identity_test_env_.identity_manager(), service_controller_,
+        &model_provider_, /*on_device_component_state_manager=*/nullptr,
+        &optimization_guide_logger_, nullptr);
   }
 
   bool SimulateResponse(const std::string& content,
@@ -157,9 +177,14 @@ class ModelExecutionManagerTest : public testing::Test {
     return &test_url_loader_factory_;
   }
 
+  PrefService* local_state() { return local_state_.get(); }
+
+  void Reset() { model_execution_manager_ = nullptr; }
+
  private:
   base::test::TaskEnvironment task_environment_;
   base::test::ScopedFeatureList scoped_feature_list_;
+  std::unique_ptr<TestingPrefServiceSimple> local_state_;
   signin::IdentityTestEnvironment identity_test_env_;
   variations::ScopedVariationsIdsProvider scoped_variations_ids_provider_{
       variations::VariationsIdsProvider::Mode::kUseSignedInState};
@@ -177,14 +202,18 @@ TEST_F(ModelExecutionManagerTest, ExecuteModelEmptyAccessToken) {
   request.mutable_generate_params()->set_user_input("a user typed this");
   base::RunLoop run_loop;
   model_execution_manager()->ExecuteModel(
-      proto::MODEL_EXECUTION_FEATURE_COMPOSE, request,
+      ModelBasedCapabilityKey::kCompose, request,
       /*log_ai_data_request=*/nullptr,
       base::BindOnce(
           [](base::RunLoop* run_loop,
              OptimizationGuideModelExecutionResult result,
              std::unique_ptr<ModelQualityLogEntry> log_entry) {
             EXPECT_FALSE(result.has_value());
-            EXPECT_EQ(log_entry.get(), nullptr);
+            EXPECT_NE(log_entry.get(), nullptr);
+            EXPECT_EQ(3u,  // ModelExecutionError::kPermissionDenied
+                      log_entry->log_ai_data_request()
+                          ->model_execution_info()
+                          .model_execution_error_enum());
             run_loop->Quit();
           },
           &run_loop));
@@ -201,7 +230,7 @@ TEST_F(ModelExecutionManagerTest, ExecuteModelWithUserSignIn) {
   identity_test_env()->MakePrimaryAccountAvailable(
       "test_email", signin::ConsentLevel::kSignin);
   model_execution_manager()->ExecuteModel(
-      proto::MODEL_EXECUTION_FEATURE_COMPOSE, request,
+      ModelBasedCapabilityKey::kCompose, request,
       /*log_ai_data_request=*/nullptr,
       base::BindOnce(
           [](base::RunLoop* run_loop,
@@ -214,10 +243,10 @@ TEST_F(ModelExecutionManagerTest, ExecuteModelWithUserSignIn) {
             EXPECT_NE(log_entry, nullptr);
             EXPECT_TRUE(log_entry->log_ai_data_request()
                             ->mutable_compose()
-                            ->has_request_data());
+                            ->has_request());
             EXPECT_TRUE(log_entry->log_ai_data_request()
                             ->mutable_compose()
-                            ->has_response_data());
+                            ->has_response());
             EXPECT_EQ(log_entry->log_ai_data_request()
                           ->model_execution_info()
                           .execution_id(),
@@ -242,17 +271,16 @@ TEST_F(ModelExecutionManagerTest, ExecuteModelWithServerError) {
   identity_test_env()->MakePrimaryAccountAvailable(
       "test_email", signin::ConsentLevel::kSignin);
   auto session = model_execution_manager()->StartSession(
-      proto::MODEL_EXECUTION_FEATURE_COMPOSE);
+      ModelBasedCapabilityKey::kCompose, /*config_params=*/std::nullopt);
   session->ExecuteModel(
       request, base::BindRepeating(
                    [](base::RunLoop* run_loop,
-                      OptimizationGuideModelStreamingExecutionResult result,
-                      std::unique_ptr<ModelQualityLogEntry> log_entry) {
-                     EXPECT_FALSE(result.has_value());
+                      OptimizationGuideModelStreamingExecutionResult result) {
+                     EXPECT_FALSE(result.response.has_value());
                      EXPECT_EQ(OptimizationGuideModelExecutionError::
                                    ModelExecutionError::kDisabled,
-                               result.error().error());
-                     EXPECT_EQ(log_entry, nullptr);
+                               result.response.error().error());
+                     EXPECT_EQ(result.log_entry, nullptr);
                      run_loop->Quit();
                    },
                    &run_loop));
@@ -284,24 +312,27 @@ TEST_F(ModelExecutionManagerTest,
   identity_test_env()->MakePrimaryAccountAvailable(
       "test_email", signin::ConsentLevel::kSignin);
   auto session = model_execution_manager()->StartSession(
-      proto::MODEL_EXECUTION_FEATURE_COMPOSE);
+      ModelBasedCapabilityKey::kCompose, /*config_params=*/std::nullopt);
   session->ExecuteModel(
       request, base::BindRepeating(
                    [](base::RunLoop* run_loop,
-                      OptimizationGuideModelStreamingExecutionResult result,
-                      std::unique_ptr<ModelQualityLogEntry> log_entry) {
-                     EXPECT_FALSE(result.has_value());
+                      OptimizationGuideModelStreamingExecutionResult result) {
+                     EXPECT_FALSE(result.response.has_value());
                      EXPECT_EQ(OptimizationGuideModelExecutionError::
                                    ModelExecutionError::kUnsupportedLanguage,
-                               result.error().error());
-                     EXPECT_NE(log_entry, nullptr);
-                     // Check that correct error state is recordered.
+                               result.response.error().error());
+                     EXPECT_NE(result.log_entry, nullptr);
+                     // Check that the correct error state and error enum are
+                     // recorded:
+                     auto model_execution_info =
+                         result.log_entry->log_ai_data_request()
+                             ->model_execution_info();
                      EXPECT_EQ(
                          proto::ErrorState::ERROR_STATE_UNSUPPORTED_LANGUAGE,
-                         log_entry->log_ai_data_request()
-                             ->mutable_model_execution_info()
-                             ->mutable_error_response()
-                             ->error_state());
+                         model_execution_info.error_response().error_state());
+                     EXPECT_EQ(
+                         7u,  // ModelExecutionError::kUnsupportedLanguage
+                         model_execution_info.model_execution_error_enum());
                      run_loop->Quit();
                    },
                    &run_loop));
@@ -325,6 +356,131 @@ TEST_F(ModelExecutionManagerTest,
       "OptimizationGuide.ModelExecution.Result.Compose", false, 1);
 }
 
+TEST_F(ModelExecutionManagerTest, ExecuteModelExecutionModeSetOnDeviceOnly) {
+  base::HistogramTester histogram_tester;
+
+  proto::ComposeRequest request;
+  request.mutable_generate_params()->set_user_input("a user typed this");
+  base::RunLoop run_loop;
+  identity_test_env()->MakePrimaryAccountAvailable(
+      "test_email", signin::ConsentLevel::kSignin);
+  auto session = model_execution_manager()->StartSession(
+      ModelBasedCapabilityKey::kCompose,
+      SessionConfigParams{
+          .execution_mode = SessionConfigParams::ExecutionMode::kOnDeviceOnly});
+  ASSERT_FALSE(session);
+
+  histogram_tester.ExpectTotalCount(
+      "OptimizationGuide.ModelExecution.SessionUsedRemoteExecution.Compose", 0);
+  // Should test for on-device eligibility.
+  histogram_tester.ExpectTotalCount(
+      "OptimizationGuide.ModelExecution.OnDeviceModelEligibilityReason.Compose",
+      1);
+}
+
+TEST_F(ModelExecutionManagerTest, ExecuteModelExecutionModeSetToServerOnly) {
+  base::HistogramTester histogram_tester;
+
+  proto::ComposeRequest request;
+  request.mutable_generate_params()->set_user_input("a user typed this");
+  base::RunLoop run_loop;
+  identity_test_env()->MakePrimaryAccountAvailable(
+      "test_email", signin::ConsentLevel::kSignin);
+  auto session = model_execution_manager()->StartSession(
+      ModelBasedCapabilityKey::kCompose,
+      SessionConfigParams{.execution_mode =
+                              SessionConfigParams::ExecutionMode::kServerOnly});
+  session->ExecuteModel(
+      request, base::BindRepeating(
+                   [](base::RunLoop* run_loop,
+                      OptimizationGuideModelStreamingExecutionResult result) {
+                     EXPECT_TRUE(result.response.has_value());
+                     EXPECT_EQ("foo response",
+                               ParsedAnyMetadata<proto::ComposeResponse>(
+                                   result.response->response)
+                                   ->output());
+                     EXPECT_TRUE(result.response->is_complete);
+                     EXPECT_NE(result.log_entry, nullptr);
+                     EXPECT_TRUE(result.log_entry->log_ai_data_request()
+                                     ->mutable_compose()
+                                     ->has_request());
+                     EXPECT_TRUE(result.log_entry->log_ai_data_request()
+                                     ->mutable_compose()
+                                     ->has_response());
+                     run_loop->Quit();
+                   },
+                   &run_loop));
+  identity_test_env()->WaitForAccessTokenRequestIfNecessaryAndRespondWithToken(
+      "access_token", base::Time::Max());
+  EXPECT_TRUE(SimulateSuccessfulResponse());
+  run_loop.Run();
+
+  histogram_tester.ExpectUniqueSample(
+      "OptimizationGuide.ModelExecution.SessionUsedRemoteExecution.Compose",
+      true, 1);
+  histogram_tester.ExpectUniqueSample(
+      "OptimizationGuide.ModelExecution.SessionUsedRemoteExecution.Compose",
+      true, 1);
+  histogram_tester.ExpectUniqueSample(
+      "OptimizationGuide.ModelExecution.Result.Compose", true, 1);
+  // Should not even test for on-device eligibility.
+  histogram_tester.ExpectTotalCount(
+      "OptimizationGuide.ModelExecution.OnDeviceModelEligibilityReason.Compose",
+      0);
+}
+
+TEST_F(ModelExecutionManagerTest,
+       ExecuteModelExecutionModeExplicitlySetToDefault) {
+  base::HistogramTester histogram_tester;
+
+  proto::ComposeRequest request;
+  request.mutable_generate_params()->set_user_input("a user typed this");
+  base::RunLoop run_loop;
+  identity_test_env()->MakePrimaryAccountAvailable(
+      "test_email", signin::ConsentLevel::kSignin);
+  auto session = model_execution_manager()->StartSession(
+      ModelBasedCapabilityKey::kCompose,
+      SessionConfigParams{.execution_mode =
+                              SessionConfigParams::ExecutionMode::kDefault});
+  session->ExecuteModel(
+      request, base::BindRepeating(
+                   [](base::RunLoop* run_loop,
+                      OptimizationGuideModelStreamingExecutionResult result) {
+                     EXPECT_TRUE(result.response.has_value());
+                     EXPECT_EQ("foo response",
+                               ParsedAnyMetadata<proto::ComposeResponse>(
+                                   result.response->response)
+                                   ->output());
+                     EXPECT_TRUE(result.response->is_complete);
+                     EXPECT_NE(result.log_entry, nullptr);
+                     EXPECT_TRUE(result.log_entry->log_ai_data_request()
+                                     ->mutable_compose()
+                                     ->has_request());
+                     EXPECT_TRUE(result.log_entry->log_ai_data_request()
+                                     ->mutable_compose()
+                                     ->has_response());
+                     run_loop->Quit();
+                   },
+                   &run_loop));
+  identity_test_env()->WaitForAccessTokenRequestIfNecessaryAndRespondWithToken(
+      "access_token", base::Time::Max());
+  EXPECT_TRUE(SimulateSuccessfulResponse());
+  run_loop.Run();
+
+  histogram_tester.ExpectUniqueSample(
+      "OptimizationGuide.ModelExecution.SessionUsedRemoteExecution.Compose",
+      true, 1);
+  histogram_tester.ExpectUniqueSample(
+      "OptimizationGuide.ModelExecution.SessionUsedRemoteExecution.Compose",
+      true, 1);
+  histogram_tester.ExpectUniqueSample(
+      "OptimizationGuide.ModelExecution.Result.Compose", true, 1);
+  // Should test for on-device eligibility.
+  histogram_tester.ExpectTotalCount(
+      "OptimizationGuide.ModelExecution.OnDeviceModelEligibilityReason.Compose",
+      1);
+}
+
 TEST_F(ModelExecutionManagerTest, ExecuteModelWithPassthroughSession) {
   base::HistogramTester histogram_tester;
 
@@ -334,25 +490,24 @@ TEST_F(ModelExecutionManagerTest, ExecuteModelWithPassthroughSession) {
   identity_test_env()->MakePrimaryAccountAvailable(
       "test_email", signin::ConsentLevel::kSignin);
   auto session = model_execution_manager()->StartSession(
-      proto::MODEL_EXECUTION_FEATURE_COMPOSE);
+      ModelBasedCapabilityKey::kCompose, /*config_params=*/std::nullopt);
   session->ExecuteModel(
       request, base::BindRepeating(
                    [](base::RunLoop* run_loop,
-                      OptimizationGuideModelStreamingExecutionResult result,
-                      std::unique_ptr<ModelQualityLogEntry> log_entry) {
-                     EXPECT_TRUE(result.has_value());
+                      OptimizationGuideModelStreamingExecutionResult result) {
+                     EXPECT_TRUE(result.response.has_value());
                      EXPECT_EQ("foo response",
                                ParsedAnyMetadata<proto::ComposeResponse>(
-                                   result->response)
+                                   result.response->response)
                                    ->output());
-                     EXPECT_TRUE(result->is_complete);
-                     EXPECT_NE(log_entry, nullptr);
-                     EXPECT_TRUE(log_entry->log_ai_data_request()
+                     EXPECT_TRUE(result.response->is_complete);
+                     EXPECT_NE(result.log_entry, nullptr);
+                     EXPECT_TRUE(result.log_entry->log_ai_data_request()
                                      ->mutable_compose()
-                                     ->has_request_data());
-                     EXPECT_TRUE(log_entry->log_ai_data_request()
+                                     ->has_request());
+                     EXPECT_TRUE(result.log_entry->log_ai_data_request()
                                      ->mutable_compose()
-                                     ->has_response_data());
+                                     ->has_response());
                      run_loop->Quit();
                    },
                    &run_loop));
@@ -376,7 +531,7 @@ TEST_F(ModelExecutionManagerTest, LogsContextToExecutionTimeHistogram) {
   identity_test_env()->MakePrimaryAccountAvailable(
       "test_email", signin::ConsentLevel::kSignin);
   auto session = model_execution_manager()->StartSession(
-      proto::MODEL_EXECUTION_FEATURE_COMPOSE);
+      ModelBasedCapabilityKey::kCompose, /*config_params=*/std::nullopt);
   auto execute_model = [&] {
     base::RunLoop run_loop;
     proto::ComposeRequest request;
@@ -384,8 +539,7 @@ TEST_F(ModelExecutionManagerTest, LogsContextToExecutionTimeHistogram) {
     session->ExecuteModel(
         request, base::BindRepeating(
                      [](base::RunLoop* run_loop,
-                        OptimizationGuideModelStreamingExecutionResult result,
-                        std::unique_ptr<ModelQualityLogEntry> log_entry) {
+                        OptimizationGuideModelStreamingExecutionResult result) {
                        run_loop->Quit();
                      },
                      &run_loop));
@@ -430,7 +584,7 @@ TEST_F(ModelExecutionManagerTest,
   identity_test_env()->MakePrimaryAccountAvailable(
       "test_email", signin::ConsentLevel::kSignin);
   auto session = model_execution_manager()->StartSession(
-      proto::MODEL_EXECUTION_FEATURE_COMPOSE);
+      ModelBasedCapabilityKey::kCompose, /*config_params=*/std::nullopt);
   // Message is added through AddContext().
   proto::ComposeRequest request;
   request.mutable_generate_params()->set_user_input("some test");
@@ -440,8 +594,7 @@ TEST_F(ModelExecutionManagerTest,
       proto::ComposeRequest(),
       base::BindRepeating(
           [](base::RunLoop* run_loop,
-             OptimizationGuideModelStreamingExecutionResult result,
-             std::unique_ptr<ModelQualityLogEntry> log_entry) {
+             OptimizationGuideModelStreamingExecutionResult result) {
             run_loop->Quit();
           },
           &run_loop));
@@ -458,7 +611,7 @@ TEST_F(ModelExecutionManagerTest,
   identity_test_env()->MakePrimaryAccountAvailable(
       "test_email", signin::ConsentLevel::kSignin);
   auto session = model_execution_manager()->StartSession(
-      proto::MODEL_EXECUTION_FEATURE_COMPOSE);
+      ModelBasedCapabilityKey::kCompose, /*config_params=*/std::nullopt);
   proto::ComposeRequest request;
   request.mutable_generate_params()->set_user_input("first test");
   session->AddContext(request);
@@ -469,8 +622,7 @@ TEST_F(ModelExecutionManagerTest,
       proto::ComposeRequest(),
       base::BindRepeating(
           [](base::RunLoop* run_loop,
-             OptimizationGuideModelStreamingExecutionResult result,
-             std::unique_ptr<ModelQualityLogEntry> log_entry) {
+             OptimizationGuideModelStreamingExecutionResult result) {
             run_loop->Quit();
           },
           &run_loop));
@@ -487,7 +639,7 @@ TEST_F(ModelExecutionManagerTest,
   identity_test_env()->MakePrimaryAccountAvailable(
       "test_email", signin::ConsentLevel::kSignin);
   auto session = model_execution_manager()->StartSession(
-      proto::MODEL_EXECUTION_FEATURE_COMPOSE);
+      ModelBasedCapabilityKey::kCompose, /*config_params=*/std::nullopt);
   // First message is added through AddContext().
   proto::ComposeRequest request;
   request.mutable_generate_params()->set_user_input("test_message");
@@ -497,8 +649,7 @@ TEST_F(ModelExecutionManagerTest,
   session->ExecuteModel(
       request, base::BindRepeating(
                    [](base::RunLoop* run_loop,
-                      OptimizationGuideModelStreamingExecutionResult result,
-                      std::unique_ptr<ModelQualityLogEntry> log_entry) {
+                      OptimizationGuideModelStreamingExecutionResult result) {
                      run_loop->Quit();
                    },
                    &run_loop));
@@ -519,7 +670,7 @@ TEST_F(ModelExecutionManagerTest, TestMultipleParallelRequests) {
       "test_email", signin::ConsentLevel::kSignin);
 
   model_execution_manager()->ExecuteModel(
-      proto::MODEL_EXECUTION_FEATURE_COMPOSE, request,
+      ModelBasedCapabilityKey::kCompose, request,
       /*log_ai_data_request=*/nullptr,
       base::BindOnce(
           [](base::RunLoop* run_loop,
@@ -534,7 +685,7 @@ TEST_F(ModelExecutionManagerTest, TestMultipleParallelRequests) {
           &run_loop_old));
 
   model_execution_manager()->ExecuteModel(
-      proto::MODEL_EXECUTION_FEATURE_COMPOSE, request,
+      ModelBasedCapabilityKey::kCompose, request,
       /*log_ai_data_request=*/nullptr,
       base::BindOnce(
           [](base::RunLoop* run_loop,
@@ -547,10 +698,10 @@ TEST_F(ModelExecutionManagerTest, TestMultipleParallelRequests) {
             EXPECT_NE(log_entry, nullptr);
             EXPECT_TRUE(log_entry->log_ai_data_request()
                             ->mutable_compose()
-                            ->has_request_data());
+                            ->has_request());
             EXPECT_TRUE(log_entry->log_ai_data_request()
                             ->mutable_compose()
-                            ->has_response_data());
+                            ->has_response());
             EXPECT_EQ(log_entry->log_ai_data_request()
                           ->model_execution_info()
                           .execution_id(),
@@ -581,7 +732,9 @@ class ModelExecutionManagerSafetyEnabledTest
     : public ModelExecutionManagerTest {
  public:
   ModelExecutionManagerSafetyEnabledTest() {
-    scoped_feature_list_.InitAndEnableFeature(features::kTextSafetyClassifier);
+    scoped_feature_list_.InitWithFeatures(
+        {features::kTextSafetyClassifier},
+        {features::internal::kModelAdaptationCompose});
   }
 
  private:
@@ -621,6 +774,22 @@ TEST_F(ModelExecutionManagerSafetyEnabledTest, UpdateLanguageDetection) {
   model_execution_manager()->OnModelUpdated(
       proto::OPTIMIZATION_TARGET_LANGUAGE_DETECTION, *model_info);
   EXPECT_EQ(kTestPath, service_controller()->language_detection_model_path());
+}
+
+TEST_F(ModelExecutionManagerSafetyEnabledTest,
+       NotRegisteredWhenDisabledByEnterprisePolicy) {
+  model_provider()->Reset();
+  local_state()->SetInteger(
+      model_execution::prefs::localstate::
+          kGenAILocalFoundationalModelEnterprisePolicySettings,
+      static_cast<int>(model_execution::prefs::
+                           GenAILocalFoundationalModelEnterprisePolicySettings::
+                               kDisallowed));
+  CreateModelExecutionManager();
+  EXPECT_FALSE(model_provider()->was_registered());
+
+  // Reset manager to make sure removing observer doesn't crash.
+  Reset();
 }
 
 }  // namespace

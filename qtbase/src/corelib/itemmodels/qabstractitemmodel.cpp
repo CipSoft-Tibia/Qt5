@@ -1,6 +1,7 @@
 // Copyright (C) 2022 The Qt Company Ltd.
 // Copyright (C) 2020 Klarälvdalens Datakonsult AB, a KDAB Group company, info@kdab.com, author Giuseppe D'Angelo <giuseppe.dangelo@kdab.com>
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qabstractitemmodel.h"
 #include <private/qabstractitemmodel_p.h>
@@ -25,7 +26,8 @@
 
 QT_BEGIN_NAMESPACE
 
-Q_LOGGING_CATEGORY(lcCheckIndex, "qt.core.qabstractitemmodel.checkindex")
+Q_STATIC_LOGGING_CATEGORY(lcCheckIndex, "qt.core.qabstractitemmodel.checkindex")
+Q_STATIC_LOGGING_CATEGORY(lcReset, "qt.core.qabstractitemmodel.reset")
 
 QT_IMPL_METATYPE_EXTERN(QModelIndexList)
 
@@ -2654,6 +2656,9 @@ QSize QAbstractItemModel::span(const QModelIndex &) const
 */
 QHash<int,QByteArray> QAbstractItemModel::roleNames() const
 {
+    // if the return value ever becomes dependent on *this, also change the following overrides:
+    // - QFileSystemModel
+    // - QConcatenateTablesProxyModel
     return QAbstractItemModelPrivate::defaultRoleNames();
 }
 
@@ -3404,6 +3409,7 @@ void QAbstractItemModel::beginResetModel()
         // Warn, but don't return early in case user code relies on the incorrect behavior.
     }
 
+    qCDebug(lcReset) << "beginResetModel called; about to emit modelAboutToBeReset";
     d->resetting = true;
     emit modelAboutToBeReset(QPrivateSignal());
 }
@@ -3427,6 +3433,7 @@ void QAbstractItemModel::endResetModel()
         // Warn, but don't return early in case user code relies on the incorrect behavior.
     }
 
+    qCDebug(lcReset) << "endResetModel called; about to emit modelReset";
     d->invalidatePersistentIndexes();
     resetInternalData();
     d->resetting = false;

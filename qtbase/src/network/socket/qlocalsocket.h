@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QLOCALSOCKET_H
 #define QLOCALSOCKET_H
@@ -8,14 +9,11 @@
 #include <QtCore/qiodevice.h>
 #include <QtNetwork/qabstractsocket.h>
 
-#ifndef QT_NO_DEBUG_STREAM
-#include <QtCore/qdebug.h>
-#endif
-
 QT_REQUIRE_CONFIG(localserver);
 
 QT_BEGIN_NAMESPACE
 
+class QDebug;
 class QLocalSocketPrivate;
 
 class Q_NETWORK_EXPORT QLocalSocket : public QIODevice

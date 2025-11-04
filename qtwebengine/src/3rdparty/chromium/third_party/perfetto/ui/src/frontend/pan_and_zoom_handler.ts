@@ -12,13 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import {Disposable, Trash} from '../base/disposable';
+import {DisposableStack} from '../base/disposable_stack';
 import {currentTargetOffset, elementIsEditable} from '../base/dom_utils';
 import {raf} from '../core/raf_scheduler';
-
 import {Animation} from './animation';
 import {DragGestureHandler} from './drag_gesture_handler';
-import {handleKey} from './keyboard_event_handler';
 
 // When first starting to pan or zoom, move at least this many units.
 const INITIAL_PAN_STEP_PX = 50;
@@ -70,7 +68,7 @@ export enum KeyMapping {
 enum Pan {
   None = 0,
   Left = -1,
-  Right = 1
+  Right = 1,
 }
 function keyToPan(e: KeyboardEvent): Pan {
   if (e.code === KeyMapping.KEY_PAN_LEFT) return Pan.Left;
@@ -81,7 +79,7 @@ function keyToPan(e: KeyboardEvent): Pan {
 enum Zoom {
   None = 0,
   In = 1,
-  Out = -1
+  Out = -1,
 }
 function keyToZoom(e: KeyboardEvent): Zoom {
   if (e.code === KeyMapping.KEY_ZOOM_IN) return Zoom.In;
@@ -93,7 +91,7 @@ function keyToZoom(e: KeyboardEvent): Zoom {
  * Enables horizontal pan and zoom with mouse-based drag and WASD navigation.
  */
 export class PanAndZoomHandler implements Disposable {
-  private mousePositionX: number|null = null;
+  private mousePositionX: number | null = null;
   private boundOnMouseMove = this.onMouseMove.bind(this);
   private boundOnWheel = this.onWheel.bind(this);
   private boundOnKeyDown = this.onKeyDown.bind(this);
@@ -112,11 +110,16 @@ export class PanAndZoomHandler implements Disposable {
   private onPanned: (movedPx: number) => void;
   private onZoomed: (zoomPositionPx: number, zoomRatio: number) => void;
   private editSelection: (currentPx: number) => boolean;
-  private onSelection:
-      (dragStartX: number, dragStartY: number, prevX: number, currentX: number,
-       currentY: number, editing: boolean) => void;
+  private onSelection: (
+    dragStartX: number,
+    dragStartY: number,
+    prevX: number,
+    currentX: number,
+    currentY: number,
+    editing: boolean,
+  ) => void;
   private endSelection: (edit: boolean) => void;
-  private trash: Trash;
+  private trash: DisposableStack;
 
   constructor({
     element,
@@ -126,14 +129,19 @@ export class PanAndZoomHandler implements Disposable {
     onSelection,
     endSelection,
   }: {
-    element: HTMLElement,
-    onPanned: (movedPx: number) => void,
-    onZoomed: (zoomPositionPx: number, zoomRatio: number) => void,
-    editSelection: (currentPx: number) => boolean,
-    onSelection:
-        (dragStartX: number, dragStartY: number, prevX: number,
-         currentX: number, currentY: number, editing: boolean) => void,
-    endSelection: (edit: boolean) => void,
+    element: HTMLElement;
+    onPanned: (movedPx: number) => void;
+    onZoomed: (zoomPositionPx: number, zoomRatio: number) => void;
+    editSelection: (currentPx: number) => boolean;
+    onSelection: (
+      dragStartX: number,
+      dragStartY: number,
+      prevX: number,
+      currentX: number,
+      currentY: number,
+      editing: boolean,
+    ) => void;
+    endSelection: (edit: boolean) => void;
   }) {
     this.element = element;
     this.onPanned = onPanned;
@@ -141,13 +149,13 @@ export class PanAndZoomHandler implements Disposable {
     this.editSelection = editSelection;
     this.onSelection = onSelection;
     this.endSelection = endSelection;
-    this.trash = new Trash();
+    this.trash = new DisposableStack();
 
     document.body.addEventListener('keydown', this.boundOnKeyDown);
     document.body.addEventListener('keyup', this.boundOnKeyUp);
     this.element.addEventListener('mousemove', this.boundOnMouseMove);
     this.element.addEventListener('wheel', this.boundOnWheel, {passive: true});
-    this.trash.addCallback(() => {
+    this.trash.defer(() => {
       this.element.removeEventListener('wheel', this.boundOnWheel);
       this.element.removeEventListener('mousemove', this.boundOnMouseMove);
       document.body.removeEventListener('keyup', this.boundOnKeyUp);
@@ -158,7 +166,8 @@ export class PanAndZoomHandler implements Disposable {
     let dragStartX = -1;
     let dragStartY = -1;
     let edit = false;
-    this.trash.add(new DragGestureHandler(
+    this.trash.use(
+      new DragGestureHandler(
         this.element,
         (x, y) => {
           if (this.shiftDown) {
@@ -187,11 +196,12 @@ export class PanAndZoomHandler implements Disposable {
           dragStartX = -1;
           dragStartY = -1;
           this.endSelection(edit);
-        }));
+        },
+      ),
+    );
   }
 
-
-  dispose() {
+  [Symbol.dispose]() {
     this.trash.dispose();
   }
 
@@ -258,50 +268,52 @@ export class PanAndZoomHandler implements Disposable {
     }
   }
 
-  private onKeyDown(e: KeyboardEvent) {
-    if (elementIsEditable(e.target)) return;
+  // Due to a bug in chrome, we get onKeyDown events fired where the payload is
+  // not a KeyboardEvent when selecting an item from an autocomplete suggestion.
+  // See https://issues.chromium.org/issues/41425904
+  // Thus, we can't assume we get an KeyboardEvent and must check manually.
+  private onKeyDown(e: Event) {
+    if (e instanceof KeyboardEvent) {
+      if (elementIsEditable(e.target)) return;
 
-    this.updateShift(e.shiftKey);
+      this.updateShift(e.shiftKey);
 
-    // Handle key events that are not pan or zoom.
-    if (handleKey(e, true)) return;
+      if (e.ctrlKey || e.metaKey) return;
 
-    if (e.ctrlKey || e.metaKey) return;
-
-    if (keyToPan(e) !== Pan.None) {
-      if (this.panning !== keyToPan(e)) {
-        this.panAnimation.stop();
-        this.panOffsetPx = 0;
-        this.targetPanOffsetPx = keyToPan(e) * INITIAL_PAN_STEP_PX;
+      if (keyToPan(e) !== Pan.None) {
+        if (this.panning !== keyToPan(e)) {
+          this.panAnimation.stop();
+          this.panOffsetPx = 0;
+          this.targetPanOffsetPx = keyToPan(e) * INITIAL_PAN_STEP_PX;
+        }
+        this.panning = keyToPan(e);
+        this.panAnimation.start(DEFAULT_ANIMATION_DURATION);
       }
-      this.panning = keyToPan(e);
-      this.panAnimation.start(DEFAULT_ANIMATION_DURATION);
-    }
 
-    if (keyToZoom(e) !== Zoom.None) {
-      if (this.zooming !== keyToZoom(e)) {
-        this.zoomAnimation.stop();
-        this.zoomRatio = 0;
-        this.targetZoomRatio = keyToZoom(e) * INITIAL_ZOOM_STEP;
+      if (keyToZoom(e) !== Zoom.None) {
+        if (this.zooming !== keyToZoom(e)) {
+          this.zoomAnimation.stop();
+          this.zoomRatio = 0;
+          this.targetZoomRatio = keyToZoom(e) * INITIAL_ZOOM_STEP;
+        }
+        this.zooming = keyToZoom(e);
+        this.zoomAnimation.start(DEFAULT_ANIMATION_DURATION);
       }
-      this.zooming = keyToZoom(e);
-      this.zoomAnimation.start(DEFAULT_ANIMATION_DURATION);
     }
   }
 
-  private onKeyUp(e: KeyboardEvent) {
-    this.updateShift(e.shiftKey);
+  private onKeyUp(e: Event) {
+    if (e instanceof KeyboardEvent) {
+      this.updateShift(e.shiftKey);
 
-    // Handle key events that are not pan or zoom.
-    if (handleKey(e, false)) return;
+      if (e.ctrlKey || e.metaKey) return;
 
-    if (e.ctrlKey || e.metaKey) return;
-
-    if (keyToPan(e) === this.panning) {
-      this.panning = Pan.None;
-    }
-    if (keyToZoom(e) === this.zooming) {
-      this.zooming = Zoom.None;
+      if (keyToPan(e) === this.panning) {
+        this.panning = Pan.None;
+      }
+      if (keyToZoom(e) === this.zooming) {
+        this.zooming = Zoom.None;
+      }
     }
   }
 

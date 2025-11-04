@@ -31,8 +31,10 @@ function(qt6_wrap_ui outfiles )
           ARGS ${ui_options} -o ${outfile} ${infile}
           MAIN_DEPENDENCY ${infile} VERBATIM)
         set_source_files_properties(${infile} PROPERTIES SKIP_AUTOUIC ON)
-        set_source_files_properties(${outfile} PROPERTIES SKIP_AUTOMOC ON)
-        set_source_files_properties(${outfile} PROPERTIES SKIP_AUTOUIC ON)
+        _qt_internal_set_source_file_generated(
+            SOURCES ${outfile}
+            SKIP_AUTOGEN
+        )
         list(APPEND ${outfiles} ${outfile})
     endforeach()
     set(${outfiles} ${${outfiles}} PARENT_SCOPE)
@@ -98,7 +100,7 @@ function(qt6_add_ui target)
 
             set(${out_generated_dash_path} "${additional_path}" PARENT_SCOPE)
         endfunction()
-        # NOTE: If previous folders are less than ../ folder count in
+        # Note: If previous folders are less than ../ folder count in
         # ${raw_include_prefix}, relative path calculation will miscalculate,
         # so we need to add dummy folders to calculate the relative path
         # correctly
@@ -113,7 +115,7 @@ function(qt6_add_ui target)
             set(dummy_path_for_relative_calculation "/")
             set(raw_include_prefix_to_compare "/${raw_include_prefix}")
         endif()
-        # NOTE: This relative path calculation could be done just by using the
+        # Note: This relative path calculation could be done just by using the
         # below code
         # cmake_path(RELATIVE_PATH normalized_include_prefix "${CMAKE_CURRENT_SOURCE_DIR}"
         # but due to the backward compatibility, we need to use
@@ -197,15 +199,8 @@ function(qt6_add_ui target)
         endif()
         set_source_files_properties(${infile} PROPERTIES SKIP_AUTOUIC ON)
 
-        macro(_qt_internal_set_output_file_properties file)
-            set_source_files_properties(${file} PROPERTIES
-                SKIP_AUTOMOC TRUE
-                SKIP_AUTOUIC TRUE
-                SKIP_LINTING TRUE)
-        endmacro()
-
         set(outfile "${output_directory}/ui_${outfile}.h")
-        # Before CMake 3.27, there is a bug for using $<CONFIG> in a generated
+        # Before CMake 3.27, there was a bug when using $<CONFIG> in a generated
         # file with Ninja Multi-Config generator. To avoid this issue, we need
         # to add the generated file for each configuration.
         # Explicitly set the output file properties for each configuration
@@ -220,19 +215,24 @@ function(qt6_add_ui target)
             foreach(config ${CMAKE_CONFIGURATION_TYPES})
                 string(REPLACE "$<CONFIG>" "${config}" outfile_with_config
                     "${outfile}")
-                    _qt_internal_set_output_file_properties(
-                        ${outfile_with_config})
+                _qt_internal_set_source_file_generated(
+                    SOURCES ${outfile_with_config}
+                    SKIP_AUTOGEN
+                )
                 target_sources(${target} PRIVATE ${outfile_with_config})
             endforeach()
         else()
-            _qt_internal_set_output_file_properties(${outfile})
+            _qt_internal_set_source_file_generated(
+                SOURCES ${outfile}
+                SKIP_AUTOGEN
+            )
             target_sources(${target} PRIVATE ${outfile})
         endif()
         # remove double slashes
         string(REGEX REPLACE "//" "/" outfile "${outfile}")
 
         # Note: If INCLUDE_PREFIX is changed without changing the corresponding
-        # include path in the source file and Ninja generator is used, this
+        # include path in the source file and the Ninja generator is used, this
         # casues the double build issue. To avoid this issue, we need to
         # remove the output file in configure step if the include_prefix is
         # changed.
@@ -271,7 +271,9 @@ function(qt6_add_ui target)
             MAIN_DEPENDENCY ${infile} VERBATIM)
     endforeach()
 
-
+    # We define a dummy target to check in the build time whether AUTOUIC is
+    # enabled after qt_add_ui is called. If AUTOUIC is enabled, we show an
+    # error message to the user.
     get_target_property(is_guard_on ${target} _qt_ui_property_check_guard)
     if(NOT is_guard_on)
         # Ninja fails when a newline is used. That's why message is

@@ -3,10 +3,10 @@
 # license that can be found in the LICENSE file.
 
 import os
+import re
 import setuptools
 import setuptools.command.build_ext
 import shutil
-import sys
 
 long_description = r"""A drop-in replacement for the re module.
 
@@ -48,9 +48,6 @@ class BuildExt(setuptools.command.build_ext.build_ext):
     if 'GITHUB_ACTIONS' not in os.environ:
       return super().build_extension(ext)
 
-    # For @pybind11_bazel's `python_configure()`.
-    os.environ['PYTHON_BIN_PATH'] = sys.executable
-
     cmd = ['bazel', 'build']
     try:
       cpu = os.environ['BAZEL_CPU']
@@ -63,10 +60,13 @@ class BuildExt(setuptools.command.build_ext.build_ext):
         cmd.append(f'--extra_toolchains=@local_config_cc//:cc-toolchain-{cpu}')
     except KeyError:
       pass
-    # Register the local Python toolchain with highest priority.
-    cmd.append('--extra_toolchains=@local_config_python//:py_toolchain')
-    # Print debug information during toolchain resolution.
-    cmd.append('--toolchain_resolution_debug=.*')
+    try:
+      ver = os.environ['MACOSX_DEPLOYMENT_TARGET']
+      cmd.append(f'--macos_minimum_os={ver}')
+    except KeyError:
+      pass
+    # Register the local Python toolchains with highest priority.
+    cmd.append('--extra_toolchains=//python/toolchains:all')
     cmd += ['--compilation_mode=opt', '--', ':all']
     self.spawn(cmd)
 
@@ -104,25 +104,55 @@ ext_module = setuptools.Extension(
     extra_compile_args=['-fvisibility=hidden'],
 )
 
-setuptools.setup(
-    name='google-re2',
-    version='1.1',
-    description='RE2 Python bindings',
-    long_description=long_description,
-    long_description_content_type='text/plain',
-    author='The RE2 Authors',
-    author_email='re2-dev@googlegroups.com',
-    url='https://github.com/google/re2',
-    py_modules=['re2'],
-    ext_modules=[ext_module],
-    classifiers=[
-        'Development Status :: 5 - Production/Stable',
-        'Intended Audience :: Developers',
-        'License :: OSI Approved :: BSD License',
-        'Programming Language :: C++',
-        'Programming Language :: Python :: 3.8',
-    ],
-    options=options(),
-    cmdclass={'build_ext': BuildExt},
-    python_requires='~=3.8',
-)
+# We need `re2` to be a package, not a module, because it appears that
+# modules can't have `.pyi` files, so munge the module into a package.
+PACKAGE = 're2'
+try:
+  # If we are building from the sdist, we are already in package form.
+  if not os.path.exists('PKG-INFO'):
+    os.makedirs(PACKAGE)
+    for filename in (
+        're2.py',
+        # TODO(junyer): Populate as per https://github.com/google/re2/issues/496.
+        # 're2.pyi',
+        # '_re2.pyi',
+    ):
+      with open(filename, 'r') as file:
+        contents = file.read()
+      filename = re.sub(r'^re2(?=\.py)', '__init__', filename)
+      contents = re.sub(r'^(?=import _)', 'from . ', contents, flags=re.MULTILINE)
+      with open(f'{PACKAGE}/{filename}', 'x') as file:
+        file.write(contents)
+    # TODO(junyer): Populate as per https://github.com/google/re2/issues/496.
+    # with open(f'{PACKAGE}/py.typed', 'x') as file:
+    #   pass
+
+  setuptools.setup(
+      name='google-re2',
+      version='1.1.20240702',
+      description='RE2 Python bindings',
+      long_description=long_description,
+      long_description_content_type='text/plain',
+      author='The RE2 Authors',
+      author_email='re2-dev@googlegroups.com',
+      url='https://github.com/google/re2',
+      packages=[PACKAGE],
+      ext_package=PACKAGE,
+      ext_modules=[ext_module],
+      classifiers=[
+          'Development Status :: 5 - Production/Stable',
+          'Intended Audience :: Developers',
+          'License :: OSI Approved :: BSD License',
+          'Programming Language :: C++',
+          'Programming Language :: Python :: 3.8',
+      ],
+      options=options(),
+      cmdclass={'build_ext': BuildExt},
+      python_requires='~=3.8',
+  )
+except:
+  raise
+else:
+  # If we are building from the sdist, we are already in package form.
+  if not os.path.exists('PKG-INFO'):
+    shutil.rmtree(PACKAGE)

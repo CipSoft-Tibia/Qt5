@@ -16,8 +16,6 @@
 #include <QtCore/private/qlocking_p.h>
 #include "qloggingcategory.h"
 #ifndef QT_BOOTSTRAPPED
-#include "qelapsedtimer.h"
-#include "qdeadlinetimer.h"
 #include "qdatetime.h"
 #include "qcoreapplication.h"
 #include "qthread.h"
@@ -121,6 +119,7 @@ static QT_PREPEND_NAMESPACE(qint64) qt_gettid()
 
 #include <cstdlib>
 #include <algorithm>
+#include <chrono>
 #include <memory>
 #include <vector>
 
@@ -187,7 +186,7 @@ static int checked_var_value(const char *varname)
 
     bool ok;
     int value = str.toInt(&ok, 0);
-    return ok ? value : 1;
+    return (ok && value >= 0) ? value : 1;
 }
 
 static bool is_fatal_count_down(QAtomicInt &n)
@@ -196,7 +195,7 @@ static bool is_fatal_count_down(QAtomicInt &n)
     // otherwise decrement if it's non-zero
 
     int v = n.loadRelaxed();
-    while (v != 0 && !n.testAndSetRelaxed(v, v - 1, v))
+    while (v > 1 && !n.testAndSetRelaxed(v, v - 1, v))
         qYieldCpu();
     return v == 1; // we exited the loop, so either v == 0 or CAS succeeded to set n from v to v-1
 }
@@ -1130,25 +1129,42 @@ static const char ifFatalTokenC[] = "%{if-fatal}";
 static const char endifTokenC[] = "%{endif}";
 static const char emptyTokenC[] = "";
 
-#ifdef Q_OS_ANDROID
-static const char defaultPattern[] = "%{message}";
-#else
-static const char defaultPattern[] = "%{if-category}%{category}: %{endif}%{message}";
-#endif
-
 struct QMessagePattern
 {
     QMessagePattern();
     ~QMessagePattern();
 
     void setPattern(const QString &pattern);
+    void setDefaultPattern()
+    {
+        const char *const defaultTokens[] = {
+#ifndef Q_OS_ANDROID
+            // "%{if-category}%{category}: %{endif}%{message}"
+            ifCategoryTokenC,
+            categoryTokenC,
+            ": ",   // won't point to literals[] but that's ok
+            endifTokenC,
+#endif
+            messageTokenC,
+        };
+
+        // we don't attempt to free the pointers, so only call from the ctor
+        Q_ASSERT(!tokens);
+        Q_ASSERT(!literals);
+
+        auto ptr = new const char *[std::size(defaultTokens) + 1];
+        auto end = std::copy(std::begin(defaultTokens), std::end(defaultTokens), ptr);
+        *end = nullptr;
+        tokens.release();
+        tokens.reset(ptr);
+    }
 
     // 0 terminated arrays of literal tokens / literal or placeholder tokens
     std::unique_ptr<std::unique_ptr<const char[]>[]> literals;
     std::unique_ptr<const char *[]> tokens;
     QList<QString> timeArgs; // timeFormats in sequence of %{time
 #ifndef QT_BOOTSTRAPPED
-    QElapsedTimer timer;
+    std::chrono::steady_clock::time_point appStartTime = std::chrono::steady_clock::now();
 #endif
 #ifdef QLOGGING_HAVE_BACKTRACE
     struct BacktraceParams
@@ -1183,12 +1199,9 @@ Q_CONSTINIT QBasicMutex QMessagePattern::mutex;
 
 QMessagePattern::QMessagePattern()
 {
-#ifndef QT_BOOTSTRAPPED
-    timer.start();
-#endif
-    const QString envPattern = QString::fromLocal8Bit(qgetenv("QT_MESSAGE_PATTERN"));
+    const QString envPattern = qEnvironmentVariable("QT_MESSAGE_PATTERN");
     if (envPattern.isEmpty()) {
-        setPattern(QLatin1StringView(defaultPattern));
+        setDefaultPattern();
         fromEnvironment = false;
     } else {
         setPattern(envPattern);
@@ -1673,19 +1686,25 @@ static QString formatLogMessage(QtMsgType type, const QMessageLogContext &contex
             message.append(formatBacktraceForLogMessage(backtraceParams, context));
 #endif
         } else if (token == timeTokenC) {
+            using namespace std::chrono;
+            auto formatElapsedTime = [](steady_clock::duration time) {
+                // we assume time > 0
+                auto ms = duration_cast<milliseconds>(time);
+                auto sec = duration_cast<seconds>(ms);
+                ms -= sec;
+                return QString::asprintf("%6lld.%03u", qint64(sec.count()), uint(ms.count()));
+            };
             QString timeFormat = pattern->timeArgs.at(timeArgsIdx);
             timeArgsIdx++;
             if (timeFormat == "process"_L1) {
-                quint64 ms = pattern->timer.elapsed();
-                message.append(QString::asprintf("%6d.%03d", uint(ms / 1000), uint(ms % 1000)));
+                message += formatElapsedTime(steady_clock::now() - pattern->appStartTime);
             } else if (timeFormat == "boot"_L1) {
                 // just print the milliseconds since the elapsed timer reference
                 // like the Linux kernel does
-                qint64 ms = QDeadlineTimer::current().deadline();
-                message.append(QString::asprintf("%6d.%03d", uint(ms / 1000), uint(ms % 1000)));
+                message += formatElapsedTime(steady_clock::now().time_since_epoch());
 #if QT_CONFIG(datestring)
             } else if (timeFormat.isEmpty()) {
-                    message.append(QDateTime::currentDateTime().toString(Qt::ISODate));
+                message.append(QDateTime::currentDateTime().toString(Qt::ISODate));
             } else {
                 message.append(QDateTime::currentDateTime().toString(timeFormat));
 #endif // QT_CONFIG(datestring)
@@ -2453,104 +2472,85 @@ QMessageLogContext &QMessageLogContext::copyContextFrom(const QMessageLogContext
 */
 
 /*!
-    \macro qDebug(const char *message, ...)
+    \macro qDebug(const char *format, ...)
     \relates <QtLogging>
     \threadsafe
 
-    Calls the message handler with the debug message \a message. If no
-    message handler has been installed, the message is printed to
-    stderr. Under Windows the message is sent to the console, if it is a
-    console application; otherwise, it is sent to the debugger. On QNX, the
-    message is sent to slogger2. This function does nothing if \c QT_NO_DEBUG_OUTPUT
-    was defined during compilation.
-
-    If you pass the function a format string and a list of arguments,
-    it works in similar way to the C printf() function. The format
-    should be a Latin-1 string.
+    Logs debug message \a format to the central message handler.
+    \a format can contain format specifiers that are
+    replaced by values specificed in additional arguments.
 
     Example:
 
     \snippet code/src_corelib_global_qglobal.cpp 24
 
-    If you include \c <QtDebug>, a more convenient syntax is also
-    available:
+    \a format can contain format specifiers like \c {%s} for UTF-8 strings, or
+    \c {%i} for integers. This is similar to how the C \c{printf()} function works.
+    For more details on the formatting, see \l QString::asprintf().
 
-    \snippet code/src_corelib_global_qglobal.cpp 25
+    For more convenience and further type support, you can also use
+    \l{QDebug::qDebug()}, which follows the streaming paradigm (similar to
+     \c{std::cout} or \c{std::cerr}).
 
-    With this syntax, the function returns a QDebug object that is
-    configured to use the QtDebugMsg message type. It automatically
-    puts a single space between each item, and outputs a newline at
-    the end. It supports many C++ and Qt types.
+    This function does nothing if \c QT_NO_DEBUG_OUTPUT was defined during compilation.
 
     To suppress the output at runtime, install your own message handler
     with qInstallMessageHandler().
 
-    \sa qCDebug(), qInfo(), qWarning(), qCritical(), qFatal(),
+    \sa QDebug::qDebug(), qCDebug(), qInfo(), qWarning(), qCritical(), qFatal(),
         qInstallMessageHandler(), {Debugging Techniques}
 */
 
 /*!
-    \macro qInfo(const char *message, ...)
+    \macro qInfo(const char *format, ...)
     \relates <QtLogging>
     \threadsafe
     \since 5.5
 
-    Calls the message handler with the informational message \a message. If no
-    message handler has been installed, the message is printed to
-    stderr. Under Windows, the message is sent to the console, if it is a
-    console application; otherwise, it is sent to the debugger. On QNX the
-    message is sent to slogger2. This function does nothing if \c QT_NO_INFO_OUTPUT
-    was defined during compilation.
-
-    If you pass the function a format string and a list of arguments,
-    it works in similar way to the C printf() function. The format
-    should be a Latin-1 string.
+    Logs informational message \a format to the central message handler.
+    \a format can contain format specifiers that are
+    replaced by values specificed in additional arguments.
 
     Example:
 
     \snippet code/src_corelib_global_qglobal.cpp qInfo_printf
 
-    If you include \c <QtDebug>, a more convenient syntax is also
-    available:
+    \a format can contain format specifiers like \c {%s} for UTF-8 strings, or
+    \c {%i} for integers. This is similar to how the C \c{printf()} function works.
+    For more details on the formatting, see \l QString::asprintf().
 
-    \snippet code/src_corelib_global_qglobal.cpp qInfo_stream
+    For more convenience and further type support, you can also use
+    \l{QDebug::qInfo()}, which follows the streaming paradigm (similar to
+    \c{std::cout} or \c{std::cerr}).
 
-    With this syntax, the function returns a QDebug object that is
-    configured to use the QtInfoMsg message type. It automatically
-    puts a single space between each item, and outputs a newline at
-    the end. It supports many C++ and Qt types.
+    This function does nothing if \c QT_NO_INFO_OUTPUT was defined during compilation.
 
     To suppress the output at runtime, install your own message handler
     using qInstallMessageHandler().
 
-    \sa qCInfo(), qDebug(), qWarning(), qCritical(), qFatal(),
+    \sa QDebug::qInfo(), qCInfo(), qDebug(), qWarning(), qCritical(), qFatal(),
         qInstallMessageHandler(), {Debugging Techniques}
 */
 
 /*!
-    \macro qWarning(const char *message, ...)
+    \macro qWarning(const char *format, ...)
     \relates <QtLogging>
     \threadsafe
 
-    Calls the message handler with the warning message \a message. If no
-    message handler has been installed, the message is printed to
-    stderr. Under Windows, the message is sent to the debugger.
-    On QNX the message is sent to slogger2.
-
-    This function takes a format string and a list of arguments,
-    similar to the C printf() function. The format should be a Latin-1
-    string.
+    Logs warning message \a format to the central message handler.
+    \a format can contain format specifiers that are
+    replaced by values specificed in additional arguments.
 
     Example:
     \snippet code/src_corelib_global_qglobal.cpp 26
 
-    If you include <QtDebug>, a more convenient syntax is
-    also available:
+    \a format can contain format specifiers like \c {%s} for UTF-8 strings, or
+    \c {%i} for integers. This is similar to how the C \c{printf()} function works.
+    For more details on the formatting, see \l QString::asprintf().
 
-    \snippet code/src_corelib_global_qglobal.cpp 27
-
-    This syntax inserts a space between each item, and
-    appends a newline at the end.
+    For more convenience and further type support, you can also use
+    \l{QDebug::qWarning()}, which follows the streaming paradigm (similar to
+     \c{std::cout} or \c{std::cerr}).
 
     This function does nothing if \c QT_NO_WARNING_OUTPUT was defined
     during compilation.
@@ -2559,7 +2559,7 @@ QMessageLogContext &QMessageLogContext::copyContextFrom(const QMessageLogContext
     \l{QLoggingCategory::installFilter()}{filter}.
 
     For debugging purposes, it is sometimes convenient to let the
-    program abort for warning messages. This allows you then
+    program abort for warning messages. This allows you
     to inspect the core dump, or attach a debugger - see also \l{qFatal()}.
     To enable this, set the environment variable \c{QT_FATAL_WARNINGS}
     to a number \c n. The program terminates then for the n-th warning.
@@ -2567,41 +2567,36 @@ QMessageLogContext &QMessageLogContext::copyContextFrom(const QMessageLogContext
     on the first call; if it contains the value 10, it will exit on the 10th
     call. Any non-numeric value in the environment variable is equivalent to 1.
 
-    \sa qCWarning(), qDebug(), qInfo(), qCritical(), qFatal(),
+    \sa QDebug::qWarning(), qCWarning(), qDebug(), qInfo(), qCritical(), qFatal(),
         qInstallMessageHandler(), {Debugging Techniques}
 */
 
 /*!
-    \macro qCritical(const char *message, ...)
+    \macro qCritical(const char *format, ...)
     \relates <QtLogging>
     \threadsafe
 
-    Calls the message handler with the critical message \a message. If no
-    message handler has been installed, the message is printed to
-    stderr. Under Windows, the message is sent to the debugger.
-    On QNX the message is sent to slogger2.
-
-    This function takes a format string and a list of arguments,
-    similar to the C printf() function. The format should be a Latin-1
-    string.
+    Logs critical message \a format to the central message handler.
+    \a format can contain format specifiers that are
+    replaced by values specificed in additional arguments.
 
     Example:
     \snippet code/src_corelib_global_qglobal.cpp 28
 
-    If you include <QtDebug>, a more convenient syntax is
-    also available:
+    \a format can contain format specifiers like \c {%s} for UTF-8 strings, or
+    \c {%i} for integers. This is similar to how the C \c{printf()} function works.
+    For more details on the formatting, see \l QString::asprintf().
 
-    \snippet code/src_corelib_global_qglobal.cpp 29
-
-    A space is inserted between the items, and a newline is
-    appended at the end.
+    For more convenience and further type support, you can also use
+    \l{QDebug::qCritical()}, which follows the streaming paradigm (similar to
+    \c{std::cout} or \c{std::cerr}).
 
     To suppress the output at runtime, you can define
     \l{QLoggingCategory}{logging rules} or register a custom
     \l{QLoggingCategory::installFilter()}{filter}.
 
     For debugging purposes, it is sometimes convenient to let the
-    program abort for critical messages. This allows you then
+    program abort for critical messages. This allows you
     to inspect the core dump, or attach a debugger - see also \l{qFatal()}.
     To enable this, set the environment variable \c{QT_FATAL_CRITICALS}
     to a number \c n. The program terminates then for the n-th critical
@@ -2610,29 +2605,25 @@ QMessageLogContext &QMessageLogContext::copyContextFrom(const QMessageLogContext
     on the first call; if it contains the value 10, it will exit on the 10th
     call. Any non-numeric value in the environment variable is equivalent to 1.
 
-    \sa qCCritical(), qDebug(), qInfo(), qWarning(), qFatal(),
+    \sa QDebug::qCritical, qCCritical(), qDebug(), qInfo(), qWarning(), qFatal(),
         qInstallMessageHandler(), {Debugging Techniques}
 */
 
 /*!
-    \macro qFatal(const char *message, ...)
+    \macro qFatal(const char *format, ...)
     \relates <QtLogging>
 
-    Calls the message handler with the fatal message \a message. If no
-    message handler has been installed, the message is printed to
-    stderr. Under Windows, the message is sent to the debugger.
-    On QNX the message is sent to slogger2.
+    Logs fatal message \a format to the central message handler.
+    \a format can contain format specifiers that are
+    replaced by values specificed in additional arguments.
+
+    Example:
+    \snippet code/src_corelib_global_qglobal.cpp 30
 
     If you are using the \b{default message handler} this function will
     abort to create a core dump. On Windows, for debug builds,
     this function will report a _CRT_ERROR enabling you to connect a debugger
     to the application.
-
-    This function takes a format string and a list of arguments,
-    similar to the C printf() function.
-
-    Example:
-    \snippet code/src_corelib_global_qglobal.cpp 30
 
     To suppress the output at runtime, install your own message handler
     with qInstallMessageHandler().

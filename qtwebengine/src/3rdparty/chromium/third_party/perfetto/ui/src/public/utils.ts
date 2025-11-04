@@ -12,20 +12,29 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-export function getTrackName(args: Partial<{
-  name: string | null,
-  utid: number,
-  processName: string | null,
-  pid: number | null,
-  threadName: string | null,
-  tid: number | null,
-  upid: number | null,
-  userName: string | null,
-  uid: number | null,
-  kind: string,
-  threadTrack: boolean,
-  uidTrack: boolean
-}>) {
+import m from 'mithril';
+import {LegacySelection} from '../public/selection';
+import {BottomTab} from '../frontend/bottom_tab';
+import {Tab} from './tab';
+import {exists} from '../base/utils';
+import {LegacyDetailsPanel} from './details_panel';
+
+export function getTrackName(
+  args: Partial<{
+    name: string | null;
+    utid: number | null;
+    processName: string | null;
+    pid: number | null;
+    threadName: string | null;
+    tid: number | null;
+    upid: number | null;
+    userName: string | null;
+    uid: number | null;
+    kind: string;
+    threadTrack: boolean;
+    uidTrack: boolean;
+  }>,
+) {
   const {
     name,
     upid,
@@ -85,4 +94,97 @@ export function getTrackName(args: Partial<{
     return `Unnamed ${kind}`;
   }
   return 'Unknown';
+}
+
+export interface BottomTabAdapterAttrs {
+  tabFactory: (sel: LegacySelection) => BottomTab | undefined;
+}
+
+/**
+ * This adapter wraps a BottomTab, converting it into a the new "current
+ * selection" API.
+ * This adapter is required because most bottom tab implementations expect to
+ * be created when the selection changes, however current selection sections
+ * stick around in memory forever and produce a section only when they detect a
+ * relevant selection.
+ * This adapter, given a bottom tab factory function, will simply call the
+ * factory function whenever the selection changes. It's up to the implementer
+ * to work out whether the selection is relevant and to construct a bottom tab.
+ *
+ * @example
+ * new BottomTabAdapter({
+      tabFactory: (sel) => {
+        if (sel.kind !== 'SLICE') {
+          return undefined;
+        }
+        return new ChromeSliceDetailsTab({
+          config: {
+            table: sel.table ?? 'slice',
+            id: sel.id,
+          },
+          engine: ctx.engine,
+          uuid: uuidv4(),
+        });
+      },
+    })
+ */
+export class BottomTabToSCSAdapter implements LegacyDetailsPanel {
+  private oldSelection?: LegacySelection;
+  private bottomTab?: BottomTab;
+  private attrs: BottomTabAdapterAttrs;
+
+  constructor(attrs: BottomTabAdapterAttrs) {
+    this.attrs = attrs;
+  }
+
+  render(selection: LegacySelection): m.Children {
+    // Detect selection changes, assuming selection is immutable
+    if (selection !== this.oldSelection) {
+      this.oldSelection = selection;
+      this.bottomTab = this.attrs.tabFactory(selection);
+    }
+
+    return this.bottomTab?.renderPanel();
+  }
+
+  // Note: Must be called after render()
+  isLoading(): boolean {
+    return this.bottomTab?.isLoading() ?? false;
+  }
+}
+
+/**
+ * This adapter wraps a BottomTab, converting it to work with the Tab API.
+ */
+export class BottomTabToTabAdapter implements Tab {
+  constructor(private bottomTab: BottomTab) {}
+
+  getTitle(): string {
+    return this.bottomTab.getTitle();
+  }
+
+  render(): m.Children {
+    return this.bottomTab.viewTab();
+  }
+}
+
+export function getThreadOrProcUri(
+  upid: number | null,
+  utid: number | null,
+): string {
+  if (exists(upid)) {
+    return `/process_${upid}`;
+  } else if (exists(utid)) {
+    return `/thread_${utid}`;
+  } else {
+    throw new Error('No upid or utid defined...');
+  }
+}
+
+export function getThreadUriPrefix(upid: number | null, utid: number): string {
+  if (exists(upid)) {
+    return `/process_${upid}/thread_${utid}`;
+  } else {
+    return `/thread_${utid}`;
+  }
 }

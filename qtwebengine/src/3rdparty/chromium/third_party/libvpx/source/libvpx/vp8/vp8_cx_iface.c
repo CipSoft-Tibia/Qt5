@@ -8,6 +8,11 @@
  *  be found in the AUTHORS file in the root of the source tree.
  */
 
+#include <limits.h>
+#include <stdint.h>
+#include <stdlib.h>
+#include <string.h>
+
 #include "./vpx_config.h"
 #include "./vp8_rtcd.h"
 #include "./vpx_dsp_rtcd.h"
@@ -27,8 +32,6 @@
 #include "vp8/encoder/firstpass.h"
 #include "vp8/common/onyx.h"
 #include "vp8/common/common.h"
-#include <stdlib.h>
-#include <string.h>
 
 struct vp8_extracfg {
   struct vpx_codec_pkt_list *pkt_list;
@@ -495,7 +498,10 @@ static vpx_codec_err_t vp8e_set_config(vpx_codec_alg_priv_t *ctx,
   set_vp8e_config(&ctx->oxcf, ctx->cfg, ctx->vp8_cfg, NULL);
   vp8_change_config(ctx->cpi, &ctx->oxcf);
 #if CONFIG_MULTITHREAD
-  if (vp8cx_create_encoder_threads(ctx->cpi)) return VPX_CODEC_ERROR;
+  if (vp8cx_create_encoder_threads(ctx->cpi)) {
+    ctx->cpi->common.error.setjmp = 0;
+    return VPX_CODEC_ERROR;
+  }
 #endif
   ctx->cpi->common.error.setjmp = 0;
   return VPX_CODEC_OK;
@@ -703,6 +709,7 @@ static vpx_codec_err_t vp8e_init(vpx_codec_ctx_t *ctx,
     priv->cx_data = malloc(priv->cx_data_sz);
 
     if (!priv->cx_data) {
+      priv->cx_data_sz = 0;
       return VPX_CODEC_MEM_ERROR;
     }
 
@@ -725,7 +732,17 @@ static vpx_codec_err_t vp8e_init(vpx_codec_ctx_t *ctx,
 
       set_vp8e_config(&priv->oxcf, priv->cfg, priv->vp8_cfg, mr_cfg);
       priv->cpi = vp8_create_compressor(&priv->oxcf);
-      if (!priv->cpi) res = VPX_CODEC_MEM_ERROR;
+      if (!priv->cpi) {
+#if CONFIG_MULTI_RES_ENCODING
+        // Release ownership of mr_cfg->mr_low_res_mode_info on failure. This
+        // prevents ownership confusion with the caller and avoids a double
+        // free when vpx_codec_destroy() is called on this instance.
+        priv->oxcf.mr_total_resolutions = 0;
+        priv->oxcf.mr_encoder_id = 0;
+        priv->oxcf.mr_low_res_mode_info = NULL;
+#endif
+        res = VPX_CODEC_MEM_ERROR;
+      }
     }
   }
 
@@ -777,9 +794,9 @@ static vpx_codec_err_t image2yuvconfig(const vpx_image_t *img,
   return res;
 }
 
-static void pick_quickcompress_mode(vpx_codec_alg_priv_t *ctx,
-                                    unsigned long duration,
-                                    vpx_enc_deadline_t deadline) {
+static vpx_codec_err_t pick_quickcompress_mode(vpx_codec_alg_priv_t *ctx,
+                                               unsigned long duration,
+                                               vpx_enc_deadline_t deadline) {
   int new_qc;
 
 #if !(CONFIG_REALTIME_ONLY)
@@ -788,13 +805,15 @@ static void pick_quickcompress_mode(vpx_codec_alg_priv_t *ctx,
 
   if (deadline) {
     /* Convert duration parameter from stream timebase to microseconds */
-    uint64_t duration_us;
-
     VPX_STATIC_ASSERT(TICKS_PER_SEC > 1000000 &&
                       (TICKS_PER_SEC % 1000000) == 0);
 
-    duration_us = duration * (uint64_t)ctx->timestamp_ratio.num /
-                  (ctx->timestamp_ratio.den * (TICKS_PER_SEC / 1000000));
+    if (duration > UINT64_MAX / (uint64_t)ctx->timestamp_ratio.num) {
+      ERROR("duration is too big");
+    }
+    uint64_t duration_us =
+        duration * (uint64_t)ctx->timestamp_ratio.num /
+        ((uint64_t)ctx->timestamp_ratio.den * (TICKS_PER_SEC / 1000000));
 
     /* If the deadline is more that the duration this frame is to be shown,
      * use good quality mode. Otherwise use realtime mode.
@@ -820,6 +839,7 @@ static void pick_quickcompress_mode(vpx_codec_alg_priv_t *ctx,
     ctx->oxcf.Mode = new_qc;
     vp8_change_config(ctx->cpi, &ctx->oxcf);
   }
+  return VPX_CODEC_OK;
 }
 
 static vpx_codec_err_t set_reference_and_update(vpx_codec_alg_priv_t *ctx,
@@ -894,13 +914,7 @@ static vpx_codec_err_t vp8e_encode(vpx_codec_alg_priv_t *ctx,
 
   if (!res) res = validate_config(ctx, &ctx->cfg, &ctx->vp8_cfg, 1);
 
-  if (!ctx->pts_offset_initialized) {
-    ctx->pts_offset = pts_val;
-    ctx->pts_offset_initialized = 1;
-  }
-  pts_val -= ctx->pts_offset;
-
-  pick_quickcompress_mode(ctx, duration, deadline);
+  if (!res) res = pick_quickcompress_mode(ctx, duration, deadline);
   vpx_codec_pkt_list_init(&ctx->pkt_list);
 
   // If no flags are set in the encode call, then use the frame flags as
@@ -924,7 +938,6 @@ static vpx_codec_err_t vp8e_encode(vpx_codec_alg_priv_t *ctx,
   /* Initialize the encoder instance on the first frame*/
   if (!res && ctx->cpi) {
     unsigned int lib_flags;
-    YV12_BUFFER_CONFIG sd;
     int64_t dst_time_stamp, dst_end_time_stamp;
     size_t size, cx_data_sz;
     unsigned char *cx_data;
@@ -951,12 +964,44 @@ static vpx_codec_err_t vp8e_encode(vpx_codec_alg_priv_t *ctx,
     /* Convert API flags to internal codec lib flags */
     lib_flags = (flags & VPX_EFLAG_FORCE_KF) ? FRAMEFLAGS_KEY : 0;
 
-    dst_time_stamp =
-        pts_val * ctx->timestamp_ratio.num / ctx->timestamp_ratio.den;
-    dst_end_time_stamp = (pts_val + (int64_t)duration) *
-                         ctx->timestamp_ratio.num / ctx->timestamp_ratio.den;
-
     if (img != NULL) {
+      YV12_BUFFER_CONFIG sd;
+
+      if (!ctx->pts_offset_initialized) {
+        ctx->pts_offset = pts_val;
+        ctx->pts_offset_initialized = 1;
+      }
+      if (pts_val < ctx->pts_offset) {
+        vpx_internal_error(&ctx->cpi->common.error, VPX_CODEC_INVALID_PARAM,
+                           "pts is smaller than initial pts");
+      }
+      pts_val -= ctx->pts_offset;
+      if (pts_val > INT64_MAX / ctx->timestamp_ratio.num) {
+        vpx_internal_error(
+            &ctx->cpi->common.error, VPX_CODEC_INVALID_PARAM,
+            "conversion of relative pts to ticks would overflow");
+      }
+      dst_time_stamp =
+          pts_val * ctx->timestamp_ratio.num / ctx->timestamp_ratio.den;
+#if ULONG_MAX > INT64_MAX
+      if (duration > INT64_MAX) {
+        vpx_internal_error(&ctx->cpi->common.error, VPX_CODEC_INVALID_PARAM,
+                           "duration is too big");
+      }
+#endif
+      if (pts_val > INT64_MAX - (int64_t)duration) {
+        vpx_internal_error(&ctx->cpi->common.error, VPX_CODEC_INVALID_PARAM,
+                           "relative pts + duration is too big");
+      }
+      vpx_codec_pts_t pts_end = pts_val + (int64_t)duration;
+      if (pts_end > INT64_MAX / ctx->timestamp_ratio.num) {
+        vpx_internal_error(
+            &ctx->cpi->common.error, VPX_CODEC_INVALID_PARAM,
+            "conversion of relative pts + duration to ticks would overflow");
+      }
+      dst_end_time_stamp =
+          pts_end * ctx->timestamp_ratio.num / ctx->timestamp_ratio.den;
+
       res = image2yuvconfig(img, &sd);
 
       if (vp8_receive_raw_frame(ctx->cpi, ctx->next_frame_flag | lib_flags, &sd,
@@ -980,6 +1025,7 @@ static vpx_codec_err_t vp8e_encode(vpx_codec_alg_priv_t *ctx,
           &dst_end_time_stamp, !img);
 
       if (comp_data_state == VPX_CODEC_CORRUPT_FRAME) {
+        ctx->cpi->common.error.setjmp = 0;
         return VPX_CODEC_CORRUPT_FRAME;
       } else if (comp_data_state == -1) {
         break;

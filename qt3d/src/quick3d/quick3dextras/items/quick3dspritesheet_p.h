@@ -17,6 +17,7 @@
 #include <Qt3DQuickExtras/qt3dquickextras_global.h>
 #include <Qt3DExtras/qspritesheet.h>
 #include <QtQml/QQmlListProperty>
+#include <QtQml/qqmlregistration.h>
 #include <private/qglobal_p.h>
 
 QT_BEGIN_NAMESPACE
@@ -36,6 +37,15 @@ public:
 
     QQmlListProperty<Qt3DExtras::QSpriteSheetItem> sprites();
     inline QSpriteSheet *parentSpriteSheet() const { return qobject_cast<QSpriteSheet *>(parent()); }
+};
+
+class QSpriteSheetForeign
+{
+    Q_GADGET
+    QML_NAMED_ELEMENT(SpriteSheet)
+    QML_FOREIGN(Qt3DExtras::QSpriteSheet)
+    QML_EXTENDED(Qt3DExtras::Extras::Quick::Quick3DSpriteSheet)
+    QML_ADDED_IN_VERSION(2, 10)
 };
 
 } // namespace Quick

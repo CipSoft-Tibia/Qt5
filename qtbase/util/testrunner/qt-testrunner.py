@@ -87,6 +87,13 @@ NON_XML_GENERATING_TESTS = {
     "tst_QDoc",                     # Some of QDoc's tests are using an external test framework (Catch) that does not support -o argument
     "tst_QDoc_Catch_Generators",    # Some of QDoc's tests are using an external test framework (Catch) that does not support -o argument
 }
+# These are scripts that are used to wrap test execution for special platforms.
+# They need special handling (most times just skipping the wrapper name in argv[]).
+TEST_RUNNER_WRAPPERS = {
+    "coin_qnx_qemu_runner.sh",
+    "coin_vxworks_qemu_runner.sh",
+    "androidtestrunner",                # extra special handling needed, see code below.
+}
 
 
 def parse_args():
@@ -144,12 +151,6 @@ Default flags: --max-repeats 5 --passes-needed 1
     if args.test_basename.endswith(".exe"):
         args.test_basename = args.test_basename[:-4]
 
-    # QNX test wrapper just needs to be skipped to figure out test_basename
-    if args.test_basename == "coin_qnx_qemu_runner.sh":
-        args.test_basename = os.path.basename(args.testargs[1])
-        L.info("Detected coin_qnx_qemu_runner, test will be handled specially. Detected test basename: %s",
-               args.test_basename)
-
     # On Android emulated platforms, "androidtestrunner" is invoked by CMake
     # to wrap the tests.  We have to append the test arguments to it after
     # "--". Besides that we have to detect the basename to avoid saving the
@@ -167,6 +168,9 @@ Default flags: --max-repeats 5 --passes-needed 1
                     break
         L.info("Detected androidtestrunner, test will be handled specially. Detected test basename: %s",
                args.test_basename)
+    # Test wrapper just needs to be skipped to figure out test_basename.
+    elif args.test_basename in TEST_RUNNER_WRAPPERS:
+        args.test_basename = os.path.basename(args.testargs[1])
 
     if args.test_basename in NON_XML_GENERATING_TESTS:
         L.info("Detected special test not able to generate XML log! Will not parse it and will not repeat individual testcases")
@@ -331,6 +335,7 @@ def main():
             sys.exit(3)
 
         try:
+            results_file = None
             failed_functions = []
             if args.parse_xml_testlog:      # do not run test, just parse file
                 failed_functions = parse_log(args.parse_xml_testlog)
@@ -344,6 +349,9 @@ def main():
                 if results_file:
                     failed_functions = parse_log(results_file)
 
+            if retcode < 0:
+                L.warning("CRASH detected, re-running the whole executable")
+                continue
             if retcode == 0:
                 if failed_functions:
                     L.warning("The test executable returned success but the logfile"
@@ -352,8 +360,9 @@ def main():
                 sys.exit(0)    # PASS
 
             if len(failed_functions) == 0:
-                L.warning("No failures listed in the XML test log!"
-                          " Did the test CRASH right after all its testcases PASSed?")
+                if results_file:
+                    L.warning("No failures listed in the XML test log!"
+                              " Did the test CRASH right after all its testcases PASSed?")
                 continue
 
             cant_rerun = [ f.func for f in failed_functions if f.func in NO_RERUN_FUNCTIONS ]

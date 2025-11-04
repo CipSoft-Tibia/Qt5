@@ -34,7 +34,7 @@
 
 // NOLINTBEGIN(readability-convert-member-functions-to-static)
 
-static Q_LOGGING_CATEGORY(qLcGstVideoRenderer, "qt.multimedia.gstvideorenderer")
+Q_STATIC_LOGGING_CATEGORY(qLcGstVideoRenderer, "qt.multimedia.gstvideorenderer");
 
 QT_BEGIN_NAMESPACE
 
@@ -138,7 +138,7 @@ QT_WARNING_POP
 
 void QGstVideoRenderer::handleNewBuffer(RenderBufferState state)
 {
-    auto videoBuffer = std::make_unique<QGstVideoBuffer>(state.buffer, m_videoInfo, m_sink,
+    auto videoBuffer = std::make_unique<QGstVideoBuffer>(state.buffer, state.videoInfo, m_sink,
                                                          state.format, state.memoryFormat);
     QVideoFrame frame = QVideoFramePrivate::createFrame(std::move(videoBuffer), state.format);
     QGstUtils::setFrameTimeStampsFromBuffer(&frame, state.buffer.get());
@@ -169,7 +169,7 @@ bool QGstVideoRenderer::start(const QGstCaps& caps)
         m_format = {};
         m_videoInfo = {};
     }
-    m_memoryFormat = caps.memoryFormat();
+    m_capsMemoryFormat = caps.memoryFormat();
 
     // NOTE: m_format will not be fully populated until GST_EVENT_TAG is processed
 
@@ -217,10 +217,29 @@ GstFlowReturn QGstVideoRenderer::render(GstBuffer *buffer)
         }
     }
 
+    // Some gst elements, like v4l2h264dec, can provide Direct Memory Access buffers (DMA-BUF)
+    // without specifying it in their caps. So we check the memory format manually:
+    QGstCaps::MemoryFormat bufferMemoryFormat = [&] {
+        if (m_capsMemoryFormat != QGstCaps::CpuMemory)
+            return m_capsMemoryFormat;
+
+        [[maybe_unused]] GstMemory *mem = gst_buffer_peek_memory(buffer, 0);
+#if QT_CONFIG(gstreamer_gl_egl) && QT_CONFIG(linux_dmabuf)
+        if (gst_is_dmabuf_memory(mem))
+            return QGstCaps::DMABuf;
+#endif
+#if QT_CONFIG(gstreamer_gl)
+        if (gst_is_gl_memory(mem))
+            return QGstCaps::GLTexture;
+#endif
+        return QGstCaps::CpuMemory;
+    }();
+
     RenderBufferState state{
         QGstBufferHandle{ buffer, QGstBufferHandle::NeedsRef },
         m_format,
-        m_memoryFormat,
+        m_videoInfo,
+        bufferMemoryFormat,
     };
 
     qCDebug(qLcGstVideoRenderer) << "    sending video frame";
@@ -237,17 +256,21 @@ bool QGstVideoRenderer::query(GstQuery *query)
 {
 #if QT_CONFIG(gstreamer_gl)
     if (GST_QUERY_TYPE(query) == GST_QUERY_CONTEXT) {
-        const gchar *type;
+        const gchar *type = nullptr;
         gst_query_parse_context_type(query, &type);
 
-        if (strcmp(type, "gst.gl.local_context") != 0)
+        QLatin1StringView typeStr(type);
+        if (typeStr != QLatin1StringView("gst.gl.GLDisplay")
+            && typeStr != QLatin1StringView("gst.gl.local_context")) {
             return false;
+        }
 
         QMutexLocker locker(&m_sinkMutex);
         if (!m_sink)
             return false;
 
-        auto *gstGlContext = m_sink->gstGlLocalContext();
+        auto *gstGlContext = typeStr == QLatin1StringView("gst.gl.GLDisplay")
+                ? m_sink->gstGlDisplayContext() : m_sink->gstGlLocalContext();
         if (!gstGlContext)
             return false;
 

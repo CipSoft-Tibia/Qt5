@@ -2,10 +2,16 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#ifdef UNSAFE_BUFFERS_BUILD
+// TODO(crbug.com/40284755): Remove this and spanify to fix the errors.
+#pragma allow_unsafe_buffers
+#endif
+
 #include "net/http/http_util.h"
 
 #include <algorithm>
 #include <limits>
+#include <string_view>
 
 #include "base/strings/string_util.h"
 #include "base/time/time.h"
@@ -1604,10 +1610,10 @@ TEST(HttpUtilTest, IsToken) {
   EXPECT_TRUE(HttpUtil::IsToken("~"));
 
   EXPECT_FALSE(HttpUtil::IsToken(""));
-  EXPECT_FALSE(HttpUtil::IsToken(base::StringPiece()));
+  EXPECT_FALSE(HttpUtil::IsToken(std::string_view()));
   EXPECT_FALSE(HttpUtil::IsToken("hello, world"));
   EXPECT_FALSE(HttpUtil::IsToken(" "));
-  EXPECT_FALSE(HttpUtil::IsToken(base::StringPiece("\0", 1)));
+  EXPECT_FALSE(HttpUtil::IsToken(std::string_view("\0", 1)));
   EXPECT_FALSE(HttpUtil::IsToken("\x01"));
   EXPECT_FALSE(HttpUtil::IsToken("\x7F"));
   EXPECT_FALSE(HttpUtil::IsToken("\x80"));

@@ -15,21 +15,30 @@
  */
 
 #include <benchmark/benchmark.h>
-#include <initializer_list>
-#include <string>
 
+#include <cstddef>
+#include <cstdint>
+#include <initializer_list>
+#include <optional>
+#include <string>
+#include <string_view>
+#include <vector>
+
+#include "perfetto/base/logging.h"
 #include "perfetto/ext/base/file_utils.h"
 #include "perfetto/ext/base/string_utils.h"
+#include "perfetto/ext/base/string_view.h"
 #include "perfetto/trace_processor/basic_types.h"
 #include "src/base/test/utils.h"
+#include "src/trace_processor/containers/string_pool.h"
+#include "src/trace_processor/db/column/types.h"
 #include "src/trace_processor/db/table.h"
 #include "src/trace_processor/tables/metadata_tables_py.h"
 #include "src/trace_processor/tables/profiler_tables_py.h"
 #include "src/trace_processor/tables/slice_tables_py.h"
 #include "src/trace_processor/tables/track_tables_py.h"
 
-namespace perfetto {
-namespace trace_processor {
+namespace perfetto::trace_processor {
 namespace {
 
 using SliceTable = tables::SliceTable;
@@ -40,24 +49,23 @@ using FtraceEventTable = tables::FtraceEventTable;
 using HeapGraphObjectTable = tables::HeapGraphObjectTable;
 
 // `SELECT * FROM SLICE` on android_monitor_contention_trace.at
-static char kSliceTable[] = "test/data/slice_table_for_benchmarks.csv";
+constexpr std::string_view kSliceTable =
+    "test/data/slice_table_for_benchmarks.csv";
 
 // `SELECT * FROM SLICE` on android_monitor_contention_trace.at
-static char kExpectedFrameTimelineTable[] =
+constexpr std::string_view kExpectedFrameTimelineTable =
     "test/data/expected_frame_timeline_for_benchmarks.csv";
 
 // `SELECT id, cpu FROM raw` on chrome_android_systrace.pftrace.
-static char kRawTable[] = "test/data/raw_cpu_for_benchmarks.csv";
+constexpr std::string_view kRawTable = "test/data/raw_cpu_for_benchmarks.csv";
 
 // `SELECT id, cpu FROM ftrace_event` on chrome_android_systrace.pftrace.
-static char kFtraceEventTable[] =
+constexpr std::string_view kFtraceEventTable =
     "test/data/ftrace_event_cpu_for_benchmarks.csv";
 
 // `SELECT id, upid, reference_set_id FROM heap_graph_object` on
-static char kHeapGraphObjectTable[] =
+constexpr std::string_view kHeapGraphObjectTable =
     "test/data/heap_pgraph_object_for_benchmarks_query.csv";
-
-enum DB { V1, V2 };
 
 std::vector<std::string> SplitCSVLine(const std::string& line) {
   std::vector<std::string> output;
@@ -81,10 +89,10 @@ std::vector<std::string> SplitCSVLine(const std::string& line) {
 }
 
 std::vector<std::string> ReadCSV(benchmark::State& state,
-                                 std::string file_name) {
+                                 std::string_view file_name) {
   std::string table_csv;
-  perfetto::base::ReadFile(perfetto::base::GetTestDataPath(file_name),
-                           &table_csv);
+  perfetto::base::ReadFile(
+      perfetto::base::GetTestDataPath(std::string(file_name)), &table_csv);
   if (table_csv.empty()) {
     state.SkipWithError(
         "Test strings missing. Googlers: download "
@@ -95,22 +103,35 @@ std::vector<std::string> ReadCSV(benchmark::State& state,
   return base::SplitString(table_csv, "\n");
 }
 
+template <typename It>
+double CountRows(It it) {
+  double i = 0;
+  for (; it; ++it, ++i) {
+  }
+  return i;
+}
+
+StringPool::Id StripAndIntern(StringPool& pool, const std::string& data) {
+  std::string res = base::StripSuffix(base::StripPrefix(data, "\""), "\"");
+  return pool.InternString(base::StringView(res));
+}
+
 SliceTable::Row GetSliceTableRow(const std::string& string_row,
                                  StringPool& pool) {
   std::vector<std::string> row_vec = SplitCSVLine(string_row);
   SliceTable::Row row;
-  PERFETTO_CHECK(row_vec.size() >= 12);
+  PERFETTO_CHECK(row_vec.size() >= 14);
   row.ts = *base::StringToInt64(row_vec[2]);
   row.dur = *base::StringToInt64(row_vec[3]);
   row.track_id = ThreadTrackTable::Id(*base::StringToUInt32(row_vec[4]));
-  row.category = pool.InternString(base::StringView(row_vec[5]));
-  row.name = pool.InternString(base::StringView(row_vec[6]));
+  row.category = StripAndIntern(pool, row_vec[5]);
+  row.name = StripAndIntern(pool, row_vec[6]);
   row.depth = *base::StringToUInt32(row_vec[7]);
   row.stack_id = *base::StringToInt32(row_vec[8]);
   row.parent_stack_id = *base::StringToInt32(row_vec[9]);
-  row.parent_id = base::StringToUInt32(row_vec[11]).has_value()
+  row.parent_id = base::StringToUInt32(row_vec[10]).has_value()
                       ? std::make_optional<SliceTable::Id>(
-                            *base::StringToUInt32(row_vec[11]))
+                            *base::StringToUInt32(row_vec[10]))
                       : std::nullopt;
   row.arg_set_id = *base::StringToUInt32(row_vec[11]);
   row.thread_ts = base::StringToInt64(row_vec[12]);
@@ -185,12 +206,12 @@ struct FtraceEventTableForBenchmark {
       while (cur_idx < idx) {
         std::vector<std::string> raw_row = SplitCSVLine(raw_rows[cur_idx + 1]);
         RawTable::Row r;
-        r.cpu = *base::StringToUInt32(raw_row[1]);
+        r.ucpu = tables::CpuTable::Id(*base::StringToUInt32(raw_row[1]));
         raw_.Insert(r);
         cur_idx++;
       }
       FtraceEventTable::Row row;
-      row.cpu = *base::StringToUInt32(row_vec[1]);
+      row.ucpu = tables::CpuTable::Id(*base::StringToUInt32(row_vec[1]));
       table_.Insert(row);
     }
   }
@@ -218,38 +239,29 @@ struct HeapGraphObjectTableForBenchmark {
   HeapGraphObjectTable table_{&pool_};
 };
 
-void BenchmarkSliceTable(benchmark::State& state,
-                         SliceTableForBenchmark& table,
-                         std::initializer_list<Constraint> c) {
-  Table::kUseFilterV2 = state.range(0) == 1;
-  for (auto _ : state) {
-    benchmark::DoNotOptimize(table.table_.FilterToRowMap(c));
-  }
-  state.counters["s/row"] =
-      benchmark::Counter(static_cast<double>(table.table_.row_count()),
-                         benchmark::Counter::kIsIterationInvariantRate |
-                             benchmark::Counter::kInvert);
-}
-
-void BenchmarkExpectedFrameTable(benchmark::State& state,
-                                 ExpectedFrameTimelineTableForBenchmark& table,
-                                 Constraint c) {
-  Table::kUseFilterV2 = state.range(0) == 1;
-  for (auto _ : state) {
-    benchmark::DoNotOptimize(table.table_.FilterToRowMap({c}));
-  }
-  state.counters["s/row"] =
-      benchmark::Counter(static_cast<double>(table.table_.row_count()),
-                         benchmark::Counter::kIsIterationInvariantRate |
-                             benchmark::Counter::kInvert);
-}
-
-void BenchmarkFtraceEventTable(benchmark::State& state,
-                               FtraceEventTableForBenchmark& table,
+void BenchmarkSliceTableFilter(benchmark::State& state,
+                               SliceTableForBenchmark& table,
                                std::initializer_list<Constraint> c) {
-  Table::kUseFilterV2 = state.range(0) == 1;
+  Query q;
+  q.constraints = c;
   for (auto _ : state) {
-    benchmark::DoNotOptimize(table.table_.FilterToRowMap(c));
+    benchmark::DoNotOptimize(table.table_.FilterToIterator(q));
+  }
+  state.counters["s/row"] =
+      benchmark::Counter(static_cast<double>(table.table_.row_count()),
+                         benchmark::Counter::kIsIterationInvariantRate |
+                             benchmark::Counter::kInvert);
+  state.counters["s/out"] =
+      benchmark::Counter(CountRows(table.table_.FilterToIterator(q)),
+                         benchmark::Counter::kIsIterationInvariantRate |
+                             benchmark::Counter::kInvert);
+}
+
+void BenchmarkSliceTableSort(benchmark::State& state,
+                             SliceTableForBenchmark& table,
+                             std::initializer_list<Order> ob) {
+  for (auto _ : state) {
+    benchmark::DoNotOptimize(table.table_.Sort(ob));
   }
   state.counters["s/row"] =
       benchmark::Counter(static_cast<double>(table.table_.row_count()),
@@ -257,170 +269,422 @@ void BenchmarkFtraceEventTable(benchmark::State& state,
                              benchmark::Counter::kInvert);
 }
 
-static void BM_QESliceTableTrackIdEq(benchmark::State& state) {
+void BenchmarkExpectedFrameTableQuery(
+    benchmark::State& state,
+    ExpectedFrameTimelineTableForBenchmark& table,
+    Query q) {
+  for (auto _ : state) {
+    benchmark::DoNotOptimize(table.table_.FilterToIterator(q));
+  }
+  state.counters["s/row"] =
+      benchmark::Counter(static_cast<double>(table.table_.row_count()),
+                         benchmark::Counter::kIsIterationInvariantRate |
+                             benchmark::Counter::kInvert);
+  state.counters["s/out"] =
+      benchmark::Counter(CountRows(table.table_.FilterToIterator(q)),
+                         benchmark::Counter::kIsIterationInvariantRate |
+                             benchmark::Counter::kInvert);
+}
+
+void BenchmarkFtraceEventTableQuery(benchmark::State& state,
+                                    FtraceEventTableForBenchmark& table,
+                                    Query q) {
+  for (auto _ : state) {
+    benchmark::DoNotOptimize(table.table_.FilterToIterator(q));
+  }
+  state.counters["s/row"] =
+      benchmark::Counter(static_cast<double>(table.table_.row_count()),
+                         benchmark::Counter::kIsIterationInvariantRate |
+                             benchmark::Counter::kInvert);
+  state.counters["s/out"] =
+      benchmark::Counter(CountRows(table.table_.FilterToIterator(q)),
+                         benchmark::Counter::kIsIterationInvariantRate |
+                             benchmark::Counter::kInvert);
+}
+
+void BenchmarkFtraceEventTableSort(benchmark::State& state,
+                                   FtraceEventTableForBenchmark& table,
+                                   std::initializer_list<Order> ob) {
+  for (auto _ : state) {
+    benchmark::DoNotOptimize(table.table_.Sort(ob));
+  }
+  state.counters["s/row"] =
+      benchmark::Counter(static_cast<double>(table.table_.row_count()),
+                         benchmark::Counter::kIsIterationInvariantRate |
+                             benchmark::Counter::kInvert);
+}
+
+void BM_QESliceTableTrackIdEq(benchmark::State& state) {
   SliceTableForBenchmark table(state);
-  BenchmarkSliceTable(state, table, {table.table_.track_id().eq(100)});
+  BenchmarkSliceTableFilter(state, table, {table.table_.track_id().eq(1213)});
 }
+BENCHMARK(BM_QESliceTableTrackIdEq);
 
-BENCHMARK(BM_QESliceTableTrackIdEq)->ArgsProduct({{DB::V1, DB::V2}});
-
-static void BM_QESliceTableParentIdIsNotNull(benchmark::State& state) {
+void BM_QESliceTableParentIdIsNotNull(benchmark::State& state) {
   SliceTableForBenchmark table(state);
-  BenchmarkSliceTable(state, table, {table.table_.parent_id().is_not_null()});
+  BenchmarkSliceTableFilter(state, table,
+                            {table.table_.parent_id().is_not_null()});
 }
+BENCHMARK(BM_QESliceTableParentIdIsNotNull);
 
-BENCHMARK(BM_QESliceTableParentIdIsNotNull)->ArgsProduct({{DB::V1, DB::V2}});
-
-static void BM_QESliceTableParentIdEq(benchmark::State& state) {
+void BM_QESliceTableParentIdEq(benchmark::State& state) {
   SliceTableForBenchmark table(state);
-  BenchmarkSliceTable(state, table, {table.table_.parent_id().eq(88)});
+  BenchmarkSliceTableFilter(state, table, {table.table_.parent_id().eq(26711)});
 }
+BENCHMARK(BM_QESliceTableParentIdEq);
 
-BENCHMARK(BM_QESliceTableParentIdEq)->ArgsProduct({{DB::V1, DB::V2}});
-
-static void BM_QESliceTableNameEq(benchmark::State& state) {
+void BM_QESliceTableNameEq(benchmark::State& state) {
   SliceTableForBenchmark table(state);
-  BenchmarkSliceTable(state, table, {table.table_.name().eq("cheese")});
-}
-
-BENCHMARK(BM_QESliceTableNameEq)->ArgsProduct({{DB::V1, DB::V2}});
-
-static void BM_QESliceTableNameGlobNoStars(benchmark::State& state) {
-  SliceTableForBenchmark table(state);
-  BenchmarkSliceTable(state, table, {table.table_.name().glob("cheese")});
-}
-
-BENCHMARK(BM_QESliceTableNameGlobNoStars)->ArgsProduct({{DB::V1, DB::V2}});
-
-static void BM_QESliceTableNameGlob(benchmark::State& state) {
-  SliceTableForBenchmark table(state);
-  BenchmarkSliceTable(state, table, {table.table_.name().glob("chee*se")});
-}
-
-BENCHMARK(BM_QESliceTableNameGlob)->ArgsProduct({{DB::V1, DB::V2}});
-
-static void BM_QESliceTableNameRegex(benchmark::State& state) {
-  SliceTableForBenchmark table(state);
-  BenchmarkSliceTable(state, table, {table.table_.name().regex(".*Pool.*")});
-}
-
-BENCHMARK(BM_QESliceTableNameRegex)->ArgsProduct({{DB::V1, DB::V2}});
-
-static void BM_QESliceTableSorted(benchmark::State& state) {
-  SliceTableForBenchmark table(state);
-  BenchmarkSliceTable(state, table, {table.table_.ts().gt(1000)});
-}
-
-BENCHMARK(BM_QESliceTableSorted)->ArgsProduct({{DB::V1, DB::V2}});
-
-static void BM_QEFilterWithSparseSelector(benchmark::State& state) {
-  ExpectedFrameTimelineTableForBenchmark table(state);
-  BenchmarkExpectedFrameTable(state, table, table.table_.track_id().eq(88));
-}
-
-BENCHMARK(BM_QEFilterWithSparseSelector)->ArgsProduct({{DB::V1, DB::V2}});
-
-static void BM_QEFilterWithDenseSelector(benchmark::State& state) {
-  FtraceEventTableForBenchmark table(state);
-  BenchmarkFtraceEventTable(state, table, {table.table_.cpu().eq(4)});
-}
-
-BENCHMARK(BM_QEFilterWithDenseSelector)->ArgsProduct({{DB::V1, DB::V2}});
-
-static void BM_QESliceEventFilterId(benchmark::State& state) {
-  SliceTableForBenchmark table(state);
-  BenchmarkSliceTable(state, table, {table.table_.id().eq(500)});
-}
-
-BENCHMARK(BM_QESliceEventFilterId)->ArgsProduct({{DB::V1, DB::V2}});
-
-static void BM_QEFtraceEventFilterId(benchmark::State& state) {
-  FtraceEventTableForBenchmark table(state);
-  BenchmarkFtraceEventTable(state, table, {table.table_.id().eq(500)});
-}
-
-BENCHMARK(BM_QEFtraceEventFilterId)->ArgsProduct({{DB::V1, DB::V2}});
-
-static void BM_QESliceTableTsAndTrackId(benchmark::State& state) {
-  SliceTableForBenchmark table(state);
-  BenchmarkSliceTable(
+  BenchmarkSliceTableFilter(
       state, table,
-      {table.table_.ts().ge(1740530419866), table.table_.ts().le(1740530474097),
-       table.table_.track_id().eq(100)});
+      {table.table_.name().eq("MarkFromReadBarrierWithMeasurements")});
+}
+BENCHMARK(BM_QESliceTableNameEq);
+
+void BM_QESliceTableNameGlobNoStars(benchmark::State& state) {
+  SliceTableForBenchmark table(state);
+  BenchmarkSliceTableFilter(
+      state, table,
+      {table.table_.name().glob("MarkFromReadBarrierWithMeasurements")});
+}
+BENCHMARK(BM_QESliceTableNameGlobNoStars);
+
+void BM_QESliceTableNameGlob(benchmark::State& state) {
+  SliceTableForBenchmark table(state);
+  BenchmarkSliceTableFilter(
+      state, table, {table.table_.name().glob("HIDL::IMapper::unlock::*")});
+}
+BENCHMARK(BM_QESliceTableNameGlob);
+
+void BM_QESliceTableNameRegex(benchmark::State& state) {
+  SliceTableForBenchmark table(state);
+  BenchmarkSliceTableFilter(state, table,
+                            {table.table_.name().regex(".*Pool.*")});
+}
+BENCHMARK(BM_QESliceTableNameRegex);
+
+void BM_QESliceTableSorted(benchmark::State& state) {
+  SliceTableForBenchmark table(state);
+  BenchmarkSliceTableFilter(state, table,
+                            {table.table_.ts().gt(1738923505854),
+                             table.table_.ts().lt(1738950140556)});
+}
+BENCHMARK(BM_QESliceTableSorted);
+
+void BM_QEFilterWithSparseSelector(benchmark::State& state) {
+  ExpectedFrameTimelineTableForBenchmark table(state);
+  Query q;
+  q.constraints = {table.table_.track_id().eq(1445)};
+  BenchmarkExpectedFrameTableQuery(state, table, q);
+}
+BENCHMARK(BM_QEFilterWithSparseSelector);
+
+void BM_QEFilterWithDenseSelector(benchmark::State& state) {
+  FtraceEventTableForBenchmark table(state);
+  Query q;
+  q.constraints = {table.table_.ucpu().eq(4)};
+  BenchmarkFtraceEventTableQuery(state, table, q);
+}
+BENCHMARK(BM_QEFilterWithDenseSelector);
+
+void BM_QESliceEventFilterId(benchmark::State& state) {
+  SliceTableForBenchmark table(state);
+  BenchmarkSliceTableFilter(state, table, {table.table_.id().eq(500)});
+}
+BENCHMARK(BM_QESliceEventFilterId);
+
+void BM_QEFtraceEventFilterId(benchmark::State& state) {
+  FtraceEventTableForBenchmark table(state);
+  Query q;
+  q.constraints = {table.table_.id().eq(500)};
+  BenchmarkFtraceEventTableQuery(state, table, q);
 }
 
-BENCHMARK(BM_QESliceTableTsAndTrackId)->ArgsProduct({{DB::V1, DB::V2}});
+BENCHMARK(BM_QEFtraceEventFilterId);
 
-static void BM_QEFilterWithArrangement(benchmark::State& state) {
-  Table::kUseFilterV2 = state.range(0) == 1;
+void BM_QESliceTableTsAndTrackId(benchmark::State& state) {
+  SliceTableForBenchmark table(state);
+  BenchmarkSliceTableFilter(
+      state, table,
+      {table.table_.ts().ge(1738923505854), table.table_.ts().le(1738950140556),
+       table.table_.track_id().eq(1422)});
+}
+BENCHMARK(BM_QESliceTableTsAndTrackId);
 
+void BM_QEFilterOneElement(benchmark::State& state) {
+  SliceTableForBenchmark table(state);
+  BenchmarkSliceTableFilter(
+      state, table,
+      {table.table_.id().eq(11732), table.table_.track_id().eq(1422)});
+}
+BENCHMARK(BM_QEFilterOneElement);
+
+void BM_QEFilterWithArrangement(benchmark::State& state) {
   SliceTableForBenchmark table(state);
   Order order{table.table_.dur().index_in_table(), false};
   Table slice_sorted_with_duration = table.table_.Sort({order});
 
   Constraint c{table.table_.track_id().index_in_table(), FilterOp::kGt,
                SqlValue::Long(10)};
+  Query q;
+  q.constraints = {c};
   for (auto _ : state) {
-    benchmark::DoNotOptimize(slice_sorted_with_duration.FilterToRowMap({c}));
+    benchmark::DoNotOptimize(slice_sorted_with_duration.QueryToRowMap(q));
   }
   state.counters["s/row"] = benchmark::Counter(
       static_cast<double>(slice_sorted_with_duration.row_count()),
       benchmark::Counter::kIsIterationInvariantRate |
           benchmark::Counter::kInvert);
+  state.counters["s/out"] = benchmark::Counter(
+      static_cast<double>(table.table_.QueryToRowMap(q).size()),
+      benchmark::Counter::kIsIterationInvariantRate |
+          benchmark::Counter::kInvert);
 }
+BENCHMARK(BM_QEFilterWithArrangement);
 
-BENCHMARK(BM_QEFilterWithArrangement)->ArgsProduct({{DB::V1, DB::V2}});
-
-static void BM_QEDenseNullFilter(benchmark::State& state) {
-  Table::kUseFilterV2 = state.range(0) == 1;
-
+void BM_QEDenseNullFilter(benchmark::State& state) {
   HeapGraphObjectTableForBenchmark table(state);
   Constraint c{table.table_.reference_set_id().index_in_table(), FilterOp::kGt,
                SqlValue::Long(1000)};
+  Query q;
+  q.constraints = {c};
   for (auto _ : state) {
-    benchmark::DoNotOptimize(table.table_.FilterToRowMap({c}));
+    benchmark::DoNotOptimize(table.table_.FilterToIterator(q));
   }
   state.counters["s/row"] =
       benchmark::Counter(static_cast<double>(table.table_.row_count()),
                          benchmark::Counter::kIsIterationInvariantRate |
                              benchmark::Counter::kInvert);
+  state.counters["s/out"] =
+      benchmark::Counter(CountRows(table.table_.FilterToIterator(q)),
+                         benchmark::Counter::kIsIterationInvariantRate |
+                             benchmark::Counter::kInvert);
 }
-BENCHMARK(BM_QEDenseNullFilter)->ArgsProduct({{DB::V1, DB::V2}});
+BENCHMARK(BM_QEDenseNullFilter);
 
-static void BM_QEDenseNullFilterIsNull(benchmark::State& state) {
-  Table::kUseFilterV2 = state.range(0) == 1;
-
+void BM_QEDenseNullFilterIsNull(benchmark::State& state) {
   HeapGraphObjectTableForBenchmark table(state);
   Constraint c{table.table_.reference_set_id().index_in_table(),
                FilterOp::kIsNull, SqlValue()};
+  Query q;
+  q.constraints = {c};
   for (auto _ : state) {
-    benchmark::DoNotOptimize(table.table_.FilterToRowMap({c}));
+    benchmark::DoNotOptimize(table.table_.FilterToIterator(q));
   }
   state.counters["s/row"] =
       benchmark::Counter(static_cast<double>(table.table_.row_count()),
                          benchmark::Counter::kIsIterationInvariantRate |
                              benchmark::Counter::kInvert);
+  state.counters["s/out"] =
+      benchmark::Counter(CountRows(table.table_.FilterToIterator(q)),
+                         benchmark::Counter::kIsIterationInvariantRate |
+                             benchmark::Counter::kInvert);
 }
-BENCHMARK(BM_QEDenseNullFilterIsNull)->ArgsProduct({{DB::V1, DB::V2}});
+BENCHMARK(BM_QEDenseNullFilterIsNull);
 
-static void BM_QEIdColumnWithIntAsDouble(benchmark::State& state) {
+void BM_QEIdColumnWithIntAsDouble(benchmark::State& state) {
   SliceTableForBenchmark table(state);
   Constraint c{table.table_.track_id().index_in_table(), FilterOp::kEq,
                SqlValue::Double(100)};
-  BenchmarkSliceTable(state, table, {c});
+  BenchmarkSliceTableFilter(state, table, {c});
 }
+BENCHMARK(BM_QEIdColumnWithIntAsDouble);
 
-BENCHMARK(BM_QEIdColumnWithIntAsDouble)->ArgsProduct({{DB::V1, DB::V2}});
-
-static void BM_QEIdColumnWithDouble(benchmark::State& state) {
+void BM_QEIdColumnWithDouble(benchmark::State& state) {
   SliceTableForBenchmark table(state);
   Constraint c{table.table_.track_id().index_in_table(), FilterOp::kEq,
                SqlValue::Double(100.5)};
-  BenchmarkSliceTable(state, table, {c});
+  BenchmarkSliceTableFilter(state, table, {c});
 }
+BENCHMARK(BM_QEIdColumnWithDouble);
 
-BENCHMARK(BM_QEIdColumnWithDouble)->ArgsProduct({{DB::V1, DB::V2}});
+void BM_QEFilterOrderedArrangement(benchmark::State& state) {
+  SliceTableForBenchmark table(state);
+  Order order{table.table_.dur().index_in_table(), false};
+  Table slice_sorted_with_duration = table.table_.Sort({order});
+
+  Constraint c{table.table_.dur().index_in_table(), FilterOp::kGt,
+               SqlValue::Long(10)};
+  Query q;
+  q.constraints = {c};
+  for (auto _ : state) {
+    benchmark::DoNotOptimize(slice_sorted_with_duration.QueryToRowMap(q));
+  }
+  state.counters["s/row"] = benchmark::Counter(
+      static_cast<double>(slice_sorted_with_duration.row_count()),
+      benchmark::Counter::kIsIterationInvariantRate |
+          benchmark::Counter::kInvert);
+  state.counters["s/out"] = benchmark::Counter(
+      static_cast<double>(table.table_.QueryToRowMap(q).size()),
+      benchmark::Counter::kIsIterationInvariantRate |
+          benchmark::Counter::kInvert);
+}
+BENCHMARK(BM_QEFilterOrderedArrangement);
+
+void BM_QEFilterNullOrderedArrangement(benchmark::State& state) {
+  SliceTableForBenchmark table(state);
+  Order order{table.table_.parent_id().index_in_table(), false};
+  Table slice_sorted_with_parent_id = table.table_.Sort({order});
+
+  Constraint c{table.table_.parent_id().index_in_table(), FilterOp::kGt,
+               SqlValue::Long(26091)};
+  Query q;
+  q.constraints = {c};
+  for (auto _ : state) {
+    benchmark::DoNotOptimize(slice_sorted_with_parent_id.QueryToRowMap(q));
+  }
+  state.counters["s/row"] = benchmark::Counter(
+      static_cast<double>(slice_sorted_with_parent_id.row_count()),
+      benchmark::Counter::kIsIterationInvariantRate |
+          benchmark::Counter::kInvert);
+  state.counters["s/out"] = benchmark::Counter(
+      static_cast<double>(table.table_.QueryToRowMap(q).size()),
+      benchmark::Counter::kIsIterationInvariantRate |
+          benchmark::Counter::kInvert);
+}
+BENCHMARK(BM_QEFilterNullOrderedArrangement);
+
+void BM_QESliceFilterIndexSearchOneElement(benchmark::State& state) {
+  SliceTableForBenchmark table(state);
+  BenchmarkSliceTableFilter(
+      state, table,
+      {table.table_.track_id().eq(1422), table.table_.id().eq(11732)});
+}
+BENCHMARK(BM_QESliceFilterIndexSearchOneElement);
+
+void BM_QESliceFilterIndexSearch(benchmark::State& state) {
+  SliceTableForBenchmark table(state);
+  BenchmarkSliceTableFilter(state, table,
+                            {table.table_.track_id().eq(1422),
+                             table.table_.name().eq("notifyFramePending")});
+}
+BENCHMARK(BM_QESliceFilterIndexSearch);
+
+void BM_QESliceSortNumericAsc(benchmark::State& state) {
+  SliceTableForBenchmark table(state);
+  BenchmarkSliceTableSort(state, table, {table.table_.track_id().ascending()});
+}
+BENCHMARK(BM_QESliceSortNumericAsc);
+
+void BM_QESliceSortNullNumericAsc(benchmark::State& state) {
+  SliceTableForBenchmark table(state);
+  BenchmarkSliceTableSort(state, table, {table.table_.parent_id().ascending()});
+}
+BENCHMARK(BM_QESliceSortNullNumericAsc);
+
+void BM_QEFtraceEventSortSelectorNumericAsc(benchmark::State& state) {
+  FtraceEventTableForBenchmark table(state);
+  BenchmarkFtraceEventTableSort(state, table,
+                                {table.table_.ucpu().ascending()});
+}
+BENCHMARK(BM_QEFtraceEventSortSelectorNumericAsc);
+
+void BM_QEFtraceEventSortSelectorNumericDesc(benchmark::State& state) {
+  FtraceEventTableForBenchmark table(state);
+  BenchmarkFtraceEventTableSort(state, table,
+                                {table.table_.ucpu().descending()});
+}
+BENCHMARK(BM_QEFtraceEventSortSelectorNumericDesc);
+
+void BM_QEDistinctWithSparseSelector(benchmark::State& state) {
+  ExpectedFrameTimelineTableForBenchmark table(state);
+  Query q;
+  q.order_type = Query::OrderType::kDistinct;
+  q.orders = {table.table_.track_id().descending()};
+  BenchmarkExpectedFrameTableQuery(state, table, q);
+}
+BENCHMARK(BM_QEDistinctWithSparseSelector);
+
+void BM_QEDistinctWithDenseSelector(benchmark::State& state) {
+  FtraceEventTableForBenchmark table(state);
+  Query q;
+  q.order_type = Query::OrderType::kDistinct;
+  q.orders = {table.table_.ucpu().descending()};
+  BenchmarkFtraceEventTableQuery(state, table, q);
+}
+BENCHMARK(BM_QEDistinctWithDenseSelector);
+
+void BM_QEDistinctSortedWithSparseSelector(benchmark::State& state) {
+  ExpectedFrameTimelineTableForBenchmark table(state);
+  Query q;
+  q.order_type = Query::OrderType::kDistinctAndSort;
+  q.orders = {table.table_.track_id().descending()};
+  BenchmarkExpectedFrameTableQuery(state, table, q);
+}
+BENCHMARK(BM_QEDistinctSortedWithSparseSelector);
+
+void BM_QEDistinctSortedWithDenseSelector(benchmark::State& state) {
+  FtraceEventTableForBenchmark table(state);
+  Query q;
+  q.order_type = Query::OrderType::kDistinctAndSort;
+  q.orders = {table.table_.ucpu().descending()};
+  BenchmarkFtraceEventTableQuery(state, table, q);
+}
+BENCHMARK(BM_QEDistinctSortedWithDenseSelector);
+
+void BM_QEDistinctWithArrangement(benchmark::State& state) {
+  SliceTableForBenchmark table(state);
+  Order order{table.table_.dur().index_in_table(), false};
+  Table slice_sorted_with_duration = table.table_.Sort({order});
+
+  Query q;
+  q.order_type = Query::OrderType::kDistinct;
+  q.orders = {table.table_.track_id().descending()};
+
+  for (auto _ : state) {
+    benchmark::DoNotOptimize(slice_sorted_with_duration.QueryToRowMap(q));
+  }
+  state.counters["s/row"] = benchmark::Counter(
+      static_cast<double>(slice_sorted_with_duration.row_count()),
+      benchmark::Counter::kIsIterationInvariantRate |
+          benchmark::Counter::kInvert);
+  state.counters["s/out"] = benchmark::Counter(
+      static_cast<double>(table.table_.QueryToRowMap(q).size()),
+      benchmark::Counter::kIsIterationInvariantRate |
+          benchmark::Counter::kInvert);
+}
+BENCHMARK(BM_QEDistinctWithArrangement);
+
+void BM_QEDistinctSortedWithArrangement(benchmark::State& state) {
+  SliceTableForBenchmark table(state);
+  Order order{table.table_.dur().index_in_table(), false};
+  Table slice_sorted_with_duration = table.table_.Sort({order});
+
+  Query q;
+  q.order_type = Query::OrderType::kDistinctAndSort;
+  q.orders = {table.table_.track_id().descending()};
+
+  for (auto _ : state) {
+    benchmark::DoNotOptimize(slice_sorted_with_duration.QueryToRowMap(q));
+  }
+  state.counters["s/row"] = benchmark::Counter(
+      static_cast<double>(slice_sorted_with_duration.row_count()),
+      benchmark::Counter::kIsIterationInvariantRate |
+          benchmark::Counter::kInvert);
+  state.counters["s/out"] = benchmark::Counter(
+      static_cast<double>(table.table_.QueryToRowMap(q).size()),
+      benchmark::Counter::kIsIterationInvariantRate |
+          benchmark::Counter::kInvert);
+}
+BENCHMARK(BM_QEDistinctSortedWithArrangement);
+
+void BM_QEOffsetLimit(benchmark::State& state) {
+  FtraceEventTableForBenchmark table(state);
+  Query q;
+  q.limit = 10;
+  q.offset = 100;
+  BenchmarkFtraceEventTableQuery(state, table, q);
+}
+BENCHMARK(BM_QEOffsetLimit);
+
+void BM_QEMax(benchmark::State& state) {
+  FtraceEventTableForBenchmark table(state);
+  Query q;
+  q.limit = 1;
+  q.orders = {table.table_.utid().descending()};
+  BenchmarkFtraceEventTableQuery(state, table, q);
+}
+BENCHMARK(BM_QEMax);
 
 }  // namespace
-}  // namespace trace_processor
-}  // namespace perfetto
+}  // namespace perfetto::trace_processor

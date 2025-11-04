@@ -11,17 +11,20 @@
 #include "build/build_config.h"
 #include "chrome/browser/accessibility/accessibility_state_utils.h"
 #include "chrome/browser/language/url_language_histogram_factory.h"
+#include "chrome/browser/manta/manta_service_factory.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/common/channel_info.h"
 #include "chrome/common/pref_names.h"
 #include "components/language/core/browser/language_usage_metrics.h"
 #include "components/language/core/browser/pref_names.h"
 #include "components/language/core/browser/url_language_histogram.h"
+#include "components/manta/manta_service.h"
 #include "components/pref_registry/pref_registry_syncable.h"
 #include "components/prefs/pref_service.h"
 #include "components/sync_preferences/pref_service_syncable.h"
 #include "components/version_info/channel.h"
 #include "content/public/browser/browser_accessibility_state.h"
+#include "content/public/browser/scoped_accessibility_mode.h"
 #include "content/public/browser/web_contents.h"
 #include "google_apis/google_api_keys.h"
 #include "services/data_decoder/public/cpp/data_decoder.h"
@@ -39,13 +42,6 @@
 using LanguageInfo = language::UrlLanguageHistogram::LanguageInfo;
 
 namespace {
-
-// Returns the Chrome Google API key for the channel of this build.
-std::string APIKeyForChannel() {
-  if (chrome::GetChannel() == version_info::Channel::STABLE)
-    return google_apis::GetAPIKey();
-  return google_apis::GetNonStableAPIKey();
-}
 
 AccessibilityLabelsService::ImageAnnotatorBinder&
 GetImageAnnotatorBinderOverride() {
@@ -98,8 +94,9 @@ class ImageAnnotatorClient : public image_annotation::Annotator::Client {
     std::vector<LanguageInfo> language_infos =
         url_language_histogram->GetTopLanguages();
     for (const LanguageInfo& info : language_infos) {
-      if (info.frequency >= kMinTopLanguageFrequency)
+      if (info.frequency >= kMinTopLanguageFrequency) {
         top_languages.push_back(info.language_code);
+      }
     }
     return top_languages;
   }
@@ -121,30 +118,20 @@ class ImageAnnotatorClient : public image_annotation::Annotator::Client {
 
 }  // namespace
 
-#if !BUILDFLAG(IS_ANDROID)
-AccessibilityLabelsService::AccessibilityLabelsService(Profile* profile)
-    : profile_(profile) {}
-AccessibilityLabelsService::~AccessibilityLabelsService() = default;
-#else
-// On Android we must add/remove a NetworkChangeObserver during construction/
-// destruction to provide the "Only on Wi-Fi" functionality.
-// We also add/remove an AXModeObserver to track users enabling a screenreader.
 AccessibilityLabelsService::AccessibilityLabelsService(Profile* profile)
     : profile_(profile) {
-  // Ensure the |BrowserAccessibilityState| is constructed before adding any
-  // observers. The |BrowserAccessibilityState| may change the accessibility
-  // mode in its constructor, so if we register the observer before the
-  // constructor, we will get a crash.
-  auto* state = content::BrowserAccessibilityState::GetInstance();
-  DCHECK(state);
-
+#if BUILDFLAG(IS_ANDROID)
+  // On Android we must add/remove a NetworkChangeObserver during construction/
+  // destruction to provide the "Only on Wi-Fi" functionality.
   net::NetworkChangeNotifier::AddNetworkChangeObserver(this);
-  ax_mode_observation_.Observe(&ui::AXPlatform::GetInstance());
-}
-AccessibilityLabelsService::~AccessibilityLabelsService() {
-  net::NetworkChangeNotifier::RemoveNetworkChangeObserver(this);
-}
 #endif
+}
+
+AccessibilityLabelsService::~AccessibilityLabelsService() {
+#if BUILDFLAG(IS_ANDROID)
+  net::NetworkChangeNotifier::RemoveNetworkChangeObserver(this);
+#endif
+}
 
 // static
 void AccessibilityLabelsService::RegisterProfilePrefs(
@@ -187,6 +174,9 @@ void AccessibilityLabelsService::Init() {
           &AccessibilityLabelsService::OnImageLabelsEnabledChanged,
           weak_factory_.GetWeakPtr()));
 
+  // This ensures prefs refresh the label images AXMode on startup.
+  OnImageLabelsEnabledChanged();
+
   // Log whether the feature is enabled after startup. This must be run on the
   // UI thread because it accesses prefs.
   content::BrowserAccessibilityState::GetInstance()
@@ -210,6 +200,8 @@ void AccessibilityLabelsService::EnableLabelsServiceOnce(
     return;
   }
 
+  // TODO(grt): Use ScopedAccessibilityMode here targeting the WC and remove
+  // the action.
   // For Android, we call through the JNI (see below) and send the web contents
   // directly, since Android does not support BrowserList::GetInstance.
 #if !BUILDFLAG(IS_ANDROID)
@@ -234,9 +226,13 @@ void AccessibilityLabelsService::BindImageAnnotator(
     if (binder) {
       binder.Run(std::move(service_receiver));
     } else {
+      auto* manta_service = manta::MantaServiceFactory::GetForProfile(profile_);
+      CHECK(manta_service);
       service_ = std::make_unique<image_annotation::ImageAnnotationService>(
-          std::move(service_receiver), APIKeyForChannel(),
+          std::move(service_receiver),
+          google_apis::GetAPIKey(chrome::GetChannel()),
           profile_->GetURLLoaderFactory(),
+          manta_service->CreateAnchovyProvider(),
           std::make_unique<ImageAnnotatorClient>(profile_));
     }
   }
@@ -250,30 +246,20 @@ void AccessibilityLabelsService::OverrideImageAnnotatorBinderForTesting(
 }
 
 void AccessibilityLabelsService::OnImageLabelsEnabledChanged() {
-#if !BUILDFLAG(IS_ANDROID)
-  bool enabled = profile_->GetPrefs()->GetBoolean(
-                     prefs::kAccessibilityImageLabelsEnabled) &&
-                 accessibility_state_utils::IsScreenReaderEnabled();
-
-  for (auto* web_contents : AllTabContentses()) {
-    if (web_contents->GetBrowserContext() != profile_)
-      continue;
-
-    ui::AXMode ax_mode = web_contents->GetAccessibilityMode();
-    ax_mode.set_mode(ui::AXMode::kLabelImages, enabled);
-    web_contents->SetAccessibilityMode(ax_mode);
+  if (!IsEnabled()) {
+    scoped_accessibility_mode_.reset();
+  } else if (!scoped_accessibility_mode_) {
+    scoped_accessibility_mode_ =
+        content::BrowserAccessibilityState::GetInstance()
+            ->CreateScopedModeForBrowserContext(profile_,
+                                                ui::AXMode::kLabelImages);
   }
-#else
-  // Android does not support AllTabContentses(), so we will get all web
-  // contents from the state and set the new AXMode there.
-  content::BrowserAccessibilityState::GetInstance()
-      ->SetImageLabelsModeForProfile(GetAndroidEnabledStatus(), profile_);
-#endif
 }
 
 void AccessibilityLabelsService::UpdateAccessibilityLabelsHistograms() {
-  if (!profile_ || !profile_->GetPrefs())
+  if (!profile_ || !profile_->GetPrefs()) {
     return;
+  }
 
   base::UmaHistogramBoolean("Accessibility.ImageLabels2",
                             profile_->GetPrefs()->GetBoolean(
@@ -297,23 +283,14 @@ void AccessibilityLabelsService::OnNetworkChanged(
     net::NetworkChangeNotifier::ConnectionType type) {
   // When the network status changes, we want to (potentially) update the
   // AXMode of all web contents for the current profile.
-  content::BrowserAccessibilityState::GetInstance()
-      ->SetImageLabelsModeForProfile(GetAndroidEnabledStatus(), profile_);
-}
-
-void AccessibilityLabelsService::OnAXModeAdded(ui::AXMode mode) {
-  // When the AXMode changes (e.g. user turned on a screenreader), we want to
-  // (potentially) update the AXMode of all web contents for current profile.
-  content::BrowserAccessibilityState::GetInstance()
-      ->SetImageLabelsModeForProfile(GetAndroidEnabledStatus(), profile_);
+  OnImageLabelsEnabledChanged();
 }
 
 bool AccessibilityLabelsService::GetAndroidEnabledStatus() {
   // On Android, user has an option to toggle "only on wifi", so also check
   // the current connection type if necessary.
   bool enabled = profile_->GetPrefs()->GetBoolean(
-                     prefs::kAccessibilityImageLabelsEnabledAndroid) &&
-                 accessibility_state_utils::IsScreenReaderEnabled();
+      prefs::kAccessibilityImageLabelsEnabledAndroid);
 
   bool only_on_wifi = profile_->GetPrefs()->GetBoolean(
       prefs::kAccessibilityImageLabelsOnlyOnWifi);
@@ -332,8 +309,9 @@ void JNI_ImageDescriptionsController_GetImageDescriptionsOnce(
   content::WebContents* web_contents =
       content::WebContents::FromJavaWebContents(j_web_contents);
 
-  if (!web_contents)
+  if (!web_contents) {
     return;
+  }
 
   // We only need to fire this event for the active page.
   ui::AXActionData action_data;

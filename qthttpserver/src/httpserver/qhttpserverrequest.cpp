@@ -1,5 +1,6 @@
 // Copyright (C) 2022 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
+// Qt-Security score:critical reason:network-protocol
 
 #include "qhttpserverrequest_p.h"
 
@@ -15,8 +16,6 @@
 #if QT_CONFIG(http)
 #include <QtNetwork/private/qhttp2connection_p.h>
 #endif
-
-Q_LOGGING_CATEGORY(lc, "qt.httpserver.request")
 
 QT_BEGIN_NAMESPACE
 
@@ -107,6 +106,8 @@ bool QHttpServerRequestPrivate::parseRequestLine(QByteArrayView line)
 
     parser.setMajorVersion(protocol[5] - '0');
     parser.setMinorVersion(protocol[7] - '0');
+    majorVersion = protocol[5] - '0';
+    minorVersion = protocol[7] - '0';
 
     method = parseRequestMethod(requestMethod);
     url = QUrl::fromEncoded(requestUrl.toByteArray());
@@ -358,6 +359,9 @@ bool QHttpServerRequestPrivate::parse(QHttp2Stream *socket)
 {
     parser.clear();
 
+    majorVersion = 2;
+    minorVersion = 0;
+
     for (const auto &pair : socket->receivedHeaders()) {
         if (pair.name == ":method") {
             method = parseRequestMethod(pair.value);
@@ -404,6 +408,8 @@ void QHttpServerRequestPrivate::clear()
     currentChunkRead = 0;
     currentChunkSize = 0;
     upgrade = false;
+    majorVersion = 0;
+    minorVersion = 0;
 
     fragment.clear();
     bodyBuffer.clear();

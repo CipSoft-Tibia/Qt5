@@ -37,7 +37,6 @@
 #include "third_party/blink/renderer/platform/bindings/script_state.h"
 #include "third_party/blink/renderer/platform/heap/cross_thread_handle.h"
 #include "third_party/blink/renderer/platform/instrumentation/use_counter.h"
-#include "third_party/blink/renderer/platform/runtime_enabled_features.h"
 #include "third_party/blink/renderer/platform/scheduler/public/post_cross_thread_task.h"
 #include "third_party/blink/renderer/platform/scheduler/public/thread.h"
 #include "third_party/blink/renderer/platform/wtf/cross_thread_functional.h"
@@ -175,19 +174,20 @@ void EncoderBase<Traits>::close(ExceptionState& exception_state) {
 }
 
 template <typename Traits>
-ScriptPromise EncoderBase<Traits>::flush(ExceptionState& exception_state) {
+ScriptPromise<IDLUndefined> EncoderBase<Traits>::flush(
+    ExceptionState& exception_state) {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   if (ThrowIfCodecStateClosed(state_, "flush", exception_state))
-    return ScriptPromise();
+    return EmptyPromise();
 
   if (ThrowIfCodecStateUnconfigured(state_, "flush", exception_state))
-    return ScriptPromise();
+    return EmptyPromise();
 
   MarkCodecActive();
 
   Request* request = MakeGarbageCollected<Request>();
   request->resolver =
-      MakeGarbageCollected<ScriptPromiseResolver>(script_state_);
+      MakeGarbageCollected<ScriptPromiseResolver<IDLUndefined>>(script_state_);
   request->reset_count = reset_count_;
   request->type = Request::Type::kFlush;
   EnqueueRequest(request);
@@ -309,7 +309,7 @@ void EncoderBase<Traits>::ProcessRequests() {
         ProcessFlush(request);
         break;
       default:
-        NOTREACHED();
+        NOTREACHED_IN_MIGRATION();
     }
   }
 

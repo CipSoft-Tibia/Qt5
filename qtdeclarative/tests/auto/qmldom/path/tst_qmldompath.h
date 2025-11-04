@@ -6,7 +6,7 @@
 #include <QtQmlDom/private/qqmldompath_p.h>
 #include <QtQmlDom/private/qqmldomitem_p.h>
 
-#include <QtTest/QtTest>
+#include <QtTest/QTest>
 
 QT_BEGIN_NAMESPACE
 namespace QQmlJS {

@@ -11,7 +11,6 @@
 #include "base/memory/scoped_refptr.h"
 #include "base/strings/strcat.h"
 #include "base/strings/string_number_conversions.h"
-#include "base/strings/string_piece.h"
 #include "base/test/scoped_feature_list.h"
 #include "net/base/features.h"
 #include "net/base/network_change_notifier.h"
@@ -140,7 +139,7 @@ class DnsOverHttpsIntegrationTest : public TestWithTaskEnvironment {
   URLRequestContext* context() { return request_context_.get(); }
 
   void ResetContext(SecureDnsMode mode = SecureDnsMode::kSecure) {
-    // TODO(crbug.com/1252155): Simplify this.
+    // TODO(crbug.com/40198637): Simplify this.
     HostResolver::ManagerOptions manager_options;
     // Without a DnsConfig, HostResolverManager will not use DoH, even in
     // kSecure mode. See https://crbug.com/1251715. However,
@@ -257,6 +256,9 @@ class TestHttpDelegate : public HttpStreamRequest::Delegate {
   void OnNeedsClientAuth(SSLCertRequestInfo* cert_info) override {}
 
   void OnQuicBroken() override {}
+
+  void OnSwitchesToHttpStreamPool(
+      HttpStreamPoolSwitchingInfo switching_info) override {}
 
  private:
   raw_ptr<base::RunLoop> loop_;

@@ -1,6 +1,7 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // Copyright (C) 2016 Intel Corporation.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:data-parser
 
 #include "qfsfileengine_p.h"
 #include "qfsfileengine_iterator_p.h"
@@ -76,7 +77,8 @@ static_assert(sizeof(SignedIOType) == sizeof(UnsignedIOType),
 */
 
 //**************** QFSFileEnginePrivate
-QFSFileEnginePrivate::QFSFileEnginePrivate() : QAbstractFileEnginePrivate()
+QFSFileEnginePrivate::QFSFileEnginePrivate(QAbstractFileEngine *q)
+    : QAbstractFileEnginePrivate(q)
 {
     init();
 }
@@ -108,7 +110,7 @@ void QFSFileEnginePrivate::init()
     Constructs a QFSFileEngine for the file name \a file.
 */
 QFSFileEngine::QFSFileEngine(const QString &file)
-    : QAbstractFileEngine(*new QFSFileEnginePrivate)
+    : QAbstractFileEngine(*new QFSFileEnginePrivate(this))
 {
     Q_D(QFSFileEngine);
     d->fileEntry = QFileSystemEntry(file);
@@ -117,7 +119,7 @@ QFSFileEngine::QFSFileEngine(const QString &file)
 /*!
     Constructs a QFSFileEngine.
 */
-QFSFileEngine::QFSFileEngine() : QAbstractFileEngine(*new QFSFileEnginePrivate)
+QFSFileEngine::QFSFileEngine() : QAbstractFileEngine(*new QFSFileEnginePrivate(this))
 {
 }
 
@@ -971,9 +973,10 @@ bool QFSFileEngine::remove()
     Q_D(QFSFileEngine);
     QSystemError error;
     bool ret = QFileSystemEngine::removeFile(d->fileEntry, error);
-    d->metaData.clear();
     if (!ret)
         setError(QFile::RemoveError, error.toString());
+    else
+        d->metaData.clear();
     return ret;
 }
 

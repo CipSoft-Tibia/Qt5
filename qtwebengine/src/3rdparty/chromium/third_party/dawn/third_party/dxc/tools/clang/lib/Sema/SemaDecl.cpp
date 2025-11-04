@@ -11,8 +11,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "clang/Sema/SemaInternal.h"
 #include "TypeLocBuilder.h"
+#include "dxc/DXIL/DxilSemantic.h" // HLSL Change
 #include "clang/AST/ASTConsumer.h"
 #include "clang/AST/ASTContext.h"
 #include "clang/AST/ASTLambda.h"
@@ -42,13 +42,14 @@
 #include "clang/Sema/ParsedTemplate.h"
 #include "clang/Sema/Scope.h"
 #include "clang/Sema/ScopeInfo.h"
+#include "clang/Sema/SemaHLSL.h" // HLSL Change
+#include "clang/Sema/SemaInternal.h"
 #include "clang/Sema/Template.h"
 #include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/Triple.h"
 #include <algorithm>
 #include <cstring>
 #include <functional>
-#include "clang/Sema/SemaHLSL.h" // HLSL Change
 using namespace clang;
 using namespace sema;
 
@@ -4972,8 +4973,6 @@ NamedDecl *Sema::HandleDeclarator(Scope *S, Declarator &D,
   if (!New)
     return nullptr;
 
-  TransferUnusualAttributes(D, New); // HLSL Change
-
   // If this has an identifier and is not an invalid redeclaration or 
   // function template specialization, add it to the scope stack.
   if (New->getDeclName() && AddToScope &&
@@ -5187,6 +5186,8 @@ Sema::ActOnTypedefDeclarator(Scope* S, Declarator& D, DeclContext* DC,
   bool Redeclaration = D.isRedeclaration();
   NamedDecl *ND = ActOnTypedefNameDecl(S, DC, NewTD, Previous, Redeclaration);
   D.setRedeclaration(Redeclaration);
+
+  TransferUnusualAttributes(D, ND); // HLSL Change
   return ND;
 }
 
@@ -6202,6 +6203,7 @@ Sema::ActOnVariableDeclarator(Scope *S, Declarator &D, DeclContext *DC,
     return NewTemplate;
   }
 
+  TransferUnusualAttributes(D, NewVD); // HLSL Change
   return NewVD;
 }
 
@@ -8108,10 +8110,14 @@ Sema::ActOnFunctionDeclarator(Scope *S, Declarator &D, DeclContext *DC,
     AddToScope = false;
   }
 
+  // HLSL Change Starts
+  TransferUnusualAttributes(D, NewFD);
+
   if (getLangOpts().HLSL && D.isFunctionDefinition() && D.hasName() &&
       NewFD->getDeclContext()->getRedeclContext()->isTranslationUnit()) {
     hlsl::DiagnoseEntry(*this, NewFD);
   }
+  // HLSL Change Ends
 
   return NewFD;
 }
@@ -14624,3 +14630,20 @@ AvailabilityResult Sema::getCurContextAvailability() const {
   return D ? D->getAvailability() : AR_Available;
 }
 
+// HLSL Change Begin
+void Sema::DiagnoseSemanticDecl(hlsl::SemanticDecl *Decl) {
+  StringRef SemName = Decl->SemanticName;
+
+  StringRef BaseSemName; // The 'FOO' in 'FOO1'
+  uint32_t SemIndex;     // The '1' in 'FOO1'
+
+  // Split name and index.
+  hlsl::Semantic::DecomposeNameAndIndex(SemName, &BaseSemName, &SemIndex);
+
+  // The valid semantic indices for SV_Target[n] are 0 <= n <= 7.
+  if (BaseSemName.equals("SV_Target") && SemIndex > 7) {
+    Diag(Decl->Loc, diag::err_hlsl_unsupported_semantic_index)
+        << SemName << SemIndex << "7";
+  }
+}
+// HLSL Change Ends

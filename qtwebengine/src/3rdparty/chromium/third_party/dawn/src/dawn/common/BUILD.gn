@@ -232,6 +232,20 @@ dawn_generator("dawn_gpu_info_gen") {
   ]
 }
 
+group("abseil") {
+  # When building within Chromium or ANGLE we need to include "//third_party/abseil-cpp:absl" while
+  # it's beneficial to be more specific with standalone Dawn, especially when it comes to
+  # including it as a dependency in other projects (such as Skia).
+  if (build_with_chromium || build_with_angle) {
+    public_deps = [ "$dawn_abseil_dir:absl" ]
+  } else {
+    public_deps = [
+      "${dawn_root}/third_party/gn/abseil-cpp:flat_hash_set",
+      "${dawn_root}/third_party/gn/abseil-cpp:inlined_vector",
+    ]
+  }
+}
+
 # This GN file is discovered by all Chromium builds, but common doesn't support
 # all of Chromium's OSes so we explicitly make the target visible only on
 # systems we know Dawn is able to compile on.
@@ -239,12 +253,13 @@ if (is_win || is_linux || is_chromeos || is_mac || is_fuchsia || is_android ||
     is_ios) {
   static_library("common") {
     sources = [
+      "AlignedAlloc.cpp",
+      "AlignedAlloc.h",
       "Alloc.h",
       "Assert.cpp",
       "Assert.h",
       "BitSetIterator.h",
       "Compiler.h",
-      "ConcurrentCache.h",
       "Constants.h",
       "ContentLessObjectCache.h",
       "ContentLessObjectCacheable.h",
@@ -252,6 +267,7 @@ if (is_win || is_linux || is_chromeos || is_mac || is_fuchsia || is_android ||
       "DynamicLib.cpp",
       "DynamicLib.h",
       "Enumerator.h",
+      "FutureUtils.cpp",
       "FutureUtils.h",
       "GPUInfo.cpp",
       "GPUInfo.h",
@@ -260,6 +276,7 @@ if (is_win || is_linux || is_chromeos || is_mac || is_fuchsia || is_android ||
       "LinkedList.h",
       "Log.cpp",
       "Log.h",
+      "MatchVariant.h",
       "Math.cpp",
       "Math.h",
       "Mutex.cpp",
@@ -267,6 +284,7 @@ if (is_win || is_linux || is_chromeos || is_mac || is_fuchsia || is_android ||
       "MutexProtected.h",
       "NSRef.h",
       "NonCopyable.h",
+      "NonMovable.h",
       "Numeric.h",
       "PlacementAllocated.h",
       "Platform.h",
@@ -276,6 +294,7 @@ if (is_win || is_linux || is_chromeos || is_mac || is_fuchsia || is_android ||
       "RefBase.h",
       "RefCounted.cpp",
       "RefCounted.h",
+      "RefCountedWithExternalCount.h",
       "Result.cpp",
       "Result.h",
       "SerialMap.h",
@@ -283,15 +302,17 @@ if (is_win || is_linux || is_chromeos || is_mac || is_fuchsia || is_android ||
       "SerialStorage.h",
       "SlabAllocator.cpp",
       "SlabAllocator.h",
-      "StackContainer.h",
+      "StackAllocated.h",
       "SystemUtils.cpp",
       "SystemUtils.h",
       "TypeTraits.h",
       "TypedInteger.h",
       "UnderlyingType.h",
+      "WGSLFeatureMapping.h",
       "WeakRef.h",
       "WeakRefSupport.cpp",
       "WeakRefSupport.h",
+      "egl_platform.h",
       "ityp_array.h",
       "ityp_bitset.h",
       "ityp_span.h",
@@ -303,9 +324,11 @@ if (is_win || is_linux || is_chromeos || is_mac || is_fuchsia || is_android ||
     sources += get_target_outputs(":dawn_gpu_info_gen")
 
     public_deps = [
+      ":abseil",
       ":dawn_gpu_info_gen",
       ":dawn_version_gen",
       "${dawn_root}/src/dawn/partition_alloc:raw_ptr",
+      "${dawn_root}/src/utils:utils",
     ]
 
     if (is_apple) {

@@ -14,6 +14,7 @@
 #include "base/mac/mac_util.h"
 #include "base/no_destructor.h"
 #include "cc/paint/paint_shader.h"
+#include "ui/base/cocoa/defaults_utils.h"
 #include "ui/base/ui_base_features.h"
 #include "ui/base/ui_base_switches.h"
 #include "ui/color/color_provider.h"
@@ -23,7 +24,7 @@
 #include "ui/gfx/geometry/insets.h"
 #include "ui/gfx/geometry/rect.h"
 #include "ui/gfx/geometry/skia_conversions.h"
-#include "ui/native_theme/common_theme.h"
+#include "ui/native_theme/native_theme.h"
 #include "ui/native_theme/native_theme_aura.h"
 #include "ui/native_theme/native_theme_features.h"
 
@@ -139,7 +140,8 @@ void NativeThemeMac::Paint(cc::PaintCanvas* canvas,
                            const gfx::Rect& rect,
                            const ExtraParams& extra,
                            ColorScheme color_scheme,
-                           const absl::optional<SkColor>& accent_color) const {
+                           bool in_forced_colors,
+                           const std::optional<SkColor>& accent_color) const {
   ColorScheme color_scheme_updated = color_scheme;
   if (color_scheme_updated == ColorScheme::kDefault)
     color_scheme_updated = GetDefaultSystemColorScheme();
@@ -167,7 +169,7 @@ void NativeThemeMac::Paint(cc::PaintCanvas* canvas,
       break;
     default:
       NativeThemeBase::Paint(canvas, color_provider, part, state, rect, extra,
-                             color_scheme, accent_color);
+                             color_scheme, in_forced_colors, accent_color);
       break;
   }
 }
@@ -280,7 +282,7 @@ void NativeThemeMac::PaintScrollBarTrackGradient(
 
   // And draw.
   cc::PaintFlags flags;
-  absl::optional<SkColor> track_color =
+  std::optional<SkColor> track_color =
       GetScrollbarColor(ScrollbarPart::kTrack, color_scheme, extra_params);
   if (track_color.has_value()) {
     flags.setAntiAlias(true);
@@ -364,7 +366,7 @@ void NativeThemeMac::PaintScrollbarTrackOuterBorder(
   }
 }
 
-gfx::Size NativeThemeMac::GetThumbMinSize(bool vertical, float scale) const {
+gfx::Size NativeThemeMac::GetThumbMinSize(bool vertical, float scale) {
   const int kLength = 18 * scale;
   const int kGirth = 6 * scale;
 
@@ -418,7 +420,7 @@ void NativeThemeMac::PaintMacScrollbarThumb(
   paint_canvas.DrawRoundRect(bounds, radius, flags);
 }
 
-absl::optional<SkColor> NativeThemeMac::GetScrollbarColor(
+std::optional<SkColor> NativeThemeMac::GetScrollbarColor(
     ScrollbarPart part,
     ColorScheme color_scheme,
     const ScrollbarExtraParams& extra_params) const {
@@ -467,7 +469,7 @@ absl::optional<SkColor> NativeThemeMac::GetScrollbarColor(
     }
   }
 
-  return absl::nullopt;
+  return std::nullopt;
 }
 
 SkColor NativeThemeMac::GetSystemButtonPressedColor(SkColor base_color) const {
@@ -510,7 +512,7 @@ void NativeThemeMac::PaintMenuItemBackground(
       PaintSelectedMenuItem(canvas, color_provider, rect, menu_item);
       break;
     default:
-      NOTREACHED();
+      NOTREACHED_IN_MIGRATION();
       break;
   }
 }
@@ -559,6 +561,13 @@ NativeThemeMac::NativeThemeMac(bool configure_web_instance,
 NativeThemeMac::~NativeThemeMac() {
   [NSNotificationCenter.defaultCenter
       removeObserver:display_accessibility_notification_token_];
+}
+
+std::optional<base::TimeDelta> NativeThemeMac::GetPlatformCaretBlinkInterval()
+    const {
+  // If there's insertion point flash rate info in NSUserDefaults, use the
+  // blink period derived from that.
+  return ui::TextInsertionCaretBlinkPeriodFromDefaults();
 }
 
 void NativeThemeMac::PaintSelectedMenuItem(

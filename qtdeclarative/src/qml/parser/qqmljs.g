@@ -188,6 +188,7 @@ public:
       AST::Finally *Finally;
       AST::FormalParameterList *FormalParameterList;
       AST::FunctionDeclaration *FunctionDeclaration;
+      AST::FunctionExpression *FunctionExpression;
       AST::Node *Node;
       AST::PropertyName *PropertyName;
       AST::Statement *Statement;
@@ -434,6 +435,7 @@ protected:
 #define UNIMPLEMENTED syntaxError(loc(1), "Unimplemented"); return false
 
 using namespace QQmlJS;
+using namespace Qt::StringLiterals;
 
 QT_BEGIN_NAMESPACE
 
@@ -544,6 +546,10 @@ int Parser::lookaheadToken(Lexer *lexer)
 
 bool Parser::ensureNoFunctionTypeAnnotations(AST::TypeAnnotation *returnValueAnnotation, AST::FormalParameterList *formals)
 {
+    // Type annotations are allowed everywhere in QML code.
+    if (driver->lexer()->qmlMode())
+        return true;
+
     for (auto formal = formals; formal; formal = formal->next) {
         if (formal->element && formal->element->typeAnnotation) {
             syntaxError(formal->element->typeAnnotation->firstSourceLocation(), "Type annotations are not permitted in function parameters in JavaScript functions");
@@ -562,6 +568,12 @@ bool Parser::ensureNoFunctionTypeAnnotations(AST::TypeAnnotation *returnValueAnn
 bool Parser::parse(int startToken)
 {
     Lexer *lexer = driver->lexer();
+
+    if (auto diagnosticMessage = lexer->illegalFileLengthError()) {
+        diagnostic_messages.append(*diagnosticMessage);
+        return false;
+    }
+
     bool hadErrors = false;
     yytoken = -1;
     int action = 0;
@@ -1252,7 +1264,9 @@ UiObjectMember: T_SIGNAL T_IDENTIFIER T_LPAREN UiParameterListOpt T_RPAREN Semic
         node->setPropertyToken(loc(1));
         node->typeToken = loc(2);
         node->identifierToken = loc(2);
+        node->lparenToken = loc(3);
         node->parameters = sym(4).UiParameterList;
+        node->rparenToken = loc(5);
         node->semicolonToken = loc(6);
         sym(1).Node = node;
     } break;
@@ -1585,6 +1599,7 @@ EnumMemberList: EnumMemberList T_COMMA T_IDENTIFIER;
 /.
     case $rule_number: {
         AST::UiEnumMemberList *node = new (pool) AST::UiEnumMemberList(sym(1).UiEnumMemberList, stringRef(3));
+        node->commaToken = loc(2);
         node->memberToken = loc(3);
         sym(1).Node = node;
         break;
@@ -1595,7 +1610,9 @@ EnumMemberList: EnumMemberList T_COMMA T_IDENTIFIER T_EQ T_NUMERIC_LITERAL;
 /.
     case $rule_number: {
         AST::UiEnumMemberList *node = new (pool) AST::UiEnumMemberList(sym(1).UiEnumMemberList, stringRef(3), sym(5).dval);
+        node->commaToken = loc(2);
         node->memberToken = loc(3);
+        node->equalToken = loc(4);
         node->valueToken = loc(5);
         sym(1).Node = node;
         break;
@@ -1607,7 +1624,9 @@ EnumMemberList: EnumMemberList T_COMMA T_IDENTIFIER T_EQ T_MINUS T_NUMERIC_LITER
 /.
     case $rule_number: {
         AST::UiEnumMemberList *node = new (pool) AST::UiEnumMemberList(sym(1).UiEnumMemberList, stringRef(3), -sym(6).dval);
+        node->commaToken = loc(2);
         node->memberToken = loc(3);
+        node->equalToken = loc(4);
         node->valueToken = combine(loc(5), loc(6));
         sym(1).Node = node;
         break;
@@ -1756,7 +1775,11 @@ CoverParenthesizedExpressionAndArrowParameterList: T_LPAREN Expression_In T_RPAR
 CoverParenthesizedExpressionAndArrowParameterList: T_LPAREN T_RPAREN;
 /.
     case $rule_number: {
-        sym(1).Node = nullptr;
+        AST::FunctionExpression *f = new (pool) AST::FunctionExpression(QStringView(), nullptr, nullptr);
+        f->functionToken = loc(1).startZeroLengthLocation();
+        f->lparenToken = loc(1);
+        f->rparenToken = loc(2);
+        sym(1).Node = f;
         coverExpressionErrorLocation = loc(2);
         coverExpressionType = CE_FormalParameterList;
     } break;
@@ -1765,8 +1788,12 @@ CoverParenthesizedExpressionAndArrowParameterList: T_LPAREN T_RPAREN;
 CoverParenthesizedExpressionAndArrowParameterList: T_LPAREN BindingRestElement T_RPAREN;
 /.
     case $rule_number: {
-        AST::FormalParameterList *node = (new (pool) AST::FormalParameterList(nullptr, sym(2).PatternElement))->finish(pool);
-        sym(1).Node = node;
+        AST::FormalParameterList *list = (new (pool) AST::FormalParameterList(nullptr, sym(2).PatternElement))->finish(pool);
+        AST::FunctionExpression *f = new (pool) AST::FunctionExpression(QStringView(), list, nullptr);
+        f->functionToken = loc(1).startZeroLengthLocation();
+        f->lparenToken = loc(1);
+        f->rparenToken = loc(3);
+        sym(1).FunctionExpression = f;
         coverExpressionErrorLocation = loc(2);
         coverExpressionType = CE_FormalParameterList;
     } break;
@@ -1780,12 +1807,18 @@ CoverParenthesizedExpressionAndArrowParameterList: T_LPAREN Expression_In T_COMM
             syntaxError(loc(1), "Invalid Arrow parameter list.");
             return false;
         }
+        list->commaToken = loc(3);
         if (sym(4).Node) {
             list = new (pool) AST::FormalParameterList(list, sym(4).PatternElement);
         }
+
+        AST::FunctionExpression *f = new (pool) AST::FunctionExpression(QStringView(), list->finish(pool), nullptr);
+        f->functionToken = loc(1).startZeroLengthLocation();
+        f->lparenToken = loc(1);
+        f->rparenToken = loc(5);
         coverExpressionErrorLocation = loc(4);
         coverExpressionType = CE_FormalParameterList;
-        sym(1).Node = list->finish(pool);
+        sym(1).FunctionExpression = f;
     } break;
 ./
 
@@ -3055,7 +3088,8 @@ Expression: Expression T_COMMA AssignmentExpression;
 Expression_In: Expression_In T_COMMA AssignmentExpression_In;
 /.
     case $rule_number: {
-          AST::Expression *node = new (pool) AST::Expression(sym(1).Expression, sym(3).Expression);
+          AST::CommaExpression *node
+                = new (pool) AST::CommaExpression(sym(1).Expression, sym(3).Expression);
           node->commaToken = loc(2);
           sym(1).Node = node;
     } break;
@@ -4054,6 +4088,7 @@ FormalParameterList: BindingElement;
 FormalParameterList: FormalParameterList T_COMMA BindingElement;
 /.
     case $rule_number: {
+        sym(1).FormalParameterList->commaToken = loc(2);
         AST::FormalParameterList *node = new (pool) AST::FormalParameterList(sym(1).FormalParameterList, sym(3).PatternElement);
         sym(1).Node = node;
     } break;
@@ -4087,9 +4122,9 @@ ArrowFunction_In: ArrowParameters T_ARROW ConciseBodyLookahead AssignmentExpress
         ret->returnToken = sym(4).Node->firstSourceLocation().startZeroLengthLocation();
         ret->semicolonToken = sym(4).Node->lastSourceLocation().endZeroLengthLocation(driver->code());
         AST::StatementList *statements = (new (pool) AST::StatementList(ret))->finish();
-        AST::FunctionExpression *f = new (pool) AST::FunctionExpression(QStringView(), sym(1).FormalParameterList, statements);
+        AST::FunctionExpression *f = sym(1).FunctionExpression;
+        f->body = statements;
         f->isArrowFunction = true;
-        f->functionToken = sym(1).Node ? sym(1).Node->firstSourceLocation().startZeroLengthLocation() : loc(1).startZeroLengthLocation();
         f->lbraceToken = sym(4).Node->firstSourceLocation().startZeroLengthLocation();
         f->rbraceToken = sym(4).Node->lastSourceLocation().endZeroLengthLocation(driver->code());
         sym(1).Node = f;
@@ -4101,9 +4136,9 @@ ArrowFunction: ArrowParameters T_ARROW ConciseBodyLookahead T_FORCE_BLOCK Functi
 ArrowFunction_In: ArrowParameters T_ARROW ConciseBodyLookahead T_FORCE_BLOCK FunctionLBrace FunctionBody FunctionRBrace;
 /.
     case $rule_number: {
-        AST::FunctionExpression *f = new (pool) AST::FunctionExpression(QStringView(), sym(1).FormalParameterList, sym(6).StatementList);
+        AST::FunctionExpression *f = sym(1).FunctionExpression;
+        f->body = sym(6).StatementList;
         f->isArrowFunction = true;
-        f->functionToken = sym(1).Node ? sym(1).Node->firstSourceLocation().startZeroLengthLocation() : loc(1).startZeroLengthLocation();
         f->lbraceToken = loc(5);
         f->rbraceToken = loc(7);
         sym(1).Node = f;
@@ -4115,7 +4150,10 @@ ArrowParameters: BindingIdentifier;
     case $rule_number: {
         AST::PatternElement *e = new (pool) AST::PatternElement(stringRef(1), /*type annotation*/nullptr, nullptr, AST::PatternElement::Binding);
         e->identifierToken = loc(1);
-        sym(1).FormalParameterList = (new (pool) AST::FormalParameterList(nullptr, e))->finish(pool);
+        AST::FormalParameterList *list = (new (pool) AST::FormalParameterList(nullptr, e))->finish(pool);
+        AST::FunctionExpression *f = new (pool) AST::FunctionExpression(QStringView(), list, nullptr);
+        f->functionToken = loc(1).startZeroLengthLocation();
+        sym(1).FunctionExpression = f;
     } break;
 ./
 
@@ -4131,7 +4169,11 @@ ArrowParameters: CoverParenthesizedExpressionAndArrowParameterList;
                 syntaxError(loc(1), "Invalid Arrow parameter list.");
                 return false;
             }
-            sym(1).Node = list->finish(pool);
+            AST::FunctionExpression *f = new (pool) AST::FunctionExpression(QStringView(), list->finish(pool), nullptr);
+            f->functionToken = loc(1).startZeroLengthLocation();
+            f->lparenToken = ne->lparenToken;
+            f->rparenToken = ne->rparenToken;
+            sym(1).FunctionExpression = f;
         }
     } break;
 ./

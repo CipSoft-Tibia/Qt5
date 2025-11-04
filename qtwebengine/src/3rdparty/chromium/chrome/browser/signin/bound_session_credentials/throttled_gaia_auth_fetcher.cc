@@ -4,8 +4,11 @@
 
 #include "chrome/browser/signin/bound_session_credentials/throttled_gaia_auth_fetcher.h"
 
+#include <vector>
+
 #include "chrome/common/bound_session_request_throttled_handler.h"
 #include "chrome/common/google_url_loader_throttle.h"
+#include "chrome/common/renderer_configuration.mojom-shared.h"
 #include "google_apis/gaia/gaia_auth_consumer.h"
 #include "google_apis/gaia/gaia_auth_fetcher.h"
 #include "net/base/net_errors.h"
@@ -17,7 +20,7 @@ ThrottledGaiaAuthFetcher::ThrottledGaiaAuthFetcher(
     GaiaAuthConsumer* consumer,
     gaia::GaiaSource source,
     scoped_refptr<network::SharedURLLoaderFactory> url_loader_factory,
-    chrome::mojom::BoundSessionThrottlerParamsPtr
+    std::vector<chrome::mojom::BoundSessionThrottlerParamsPtr>
         bound_session_throttler_params,
     std::unique_ptr<BoundSessionRequestThrottledHandler>
         bound_session_request_throttled_handler)
@@ -40,9 +43,12 @@ void ThrottledGaiaAuthFetcher::CreateAndStartGaiaFetcher(
     const net::NetworkTrafficAnnotationTag& traffic_annotation) {
   if ((IsListAccountsUrl(gaia_gurl) || IsMultiloginUrl(gaia_gurl)) &&
       credentials_mode == network::mojom::CredentialsMode::kInclude &&
-      GoogleURLLoaderThrottle::ShouldDeferRequestForBoundSession(
-          gaia_gurl, bound_session_throttler_params_.get())) {
+      GoogleURLLoaderThrottle::GetRequestBoundSessionStatus(
+          gaia_gurl, bound_session_throttler_params_) ==
+          GoogleURLLoaderThrottle::RequestBoundSessionStatus::
+              kCoveredWithMissingCookie) {
     bound_session_request_throttled_handler_->HandleRequestBlockedOnCookie(
+        gaia_gurl,
         base::BindOnce(
             &ThrottledGaiaAuthFetcher::OnGaiaFetcherResumedOrCancelled,
             weak_ptr_factory_.GetWeakPtr(), body, body_content_type, headers,
@@ -62,7 +68,8 @@ void ThrottledGaiaAuthFetcher::OnGaiaFetcherResumedOrCancelled(
     const GURL& gaia_gurl,
     network::mojom::CredentialsMode credentials_mode,
     const net::NetworkTrafficAnnotationTag& traffic_annotation,
-    BoundSessionRequestThrottledHandler::UnblockAction unblock_action) {
+    BoundSessionRequestThrottledHandler::UnblockAction unblock_action,
+    chrome::mojom::ResumeBlockedRequestsTrigger resume_trigger) {
   switch (unblock_action) {
     case BoundSessionRequestThrottledHandler::UnblockAction::kResume:
       GaiaAuthFetcher::CreateAndStartGaiaFetcher(

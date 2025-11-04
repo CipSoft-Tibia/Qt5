@@ -26,6 +26,7 @@
 #include <cstdlib>
 
 #include "absl/base/const_init.h"
+#include "absl/base/nullability.h"
 #include "absl/numeric/bits.h"
 #include "./centipede/byte_array_mutator.h"
 #include "./centipede/callstack.h"
@@ -92,6 +93,10 @@ struct ThreadLocalRunnerState {
   void OnThreadStart();
   void OnThreadStop();
 
+  // Whether OnThreadStart() is called on this thread. This is used as a proxy
+  // of the readiness of the lower-level runtime.
+  bool started;
+
   // Paths are thread-local, so we maintain the current bounded path here.
   // We allow paths of up to 100, controlled at run-time via the "path_level".
   static constexpr size_t kBoundedPathLength = 100;
@@ -124,6 +129,10 @@ struct ThreadLocalRunnerState {
 // All data members will be initialized to zero, unless they have initializers.
 // Accesses to the subobjects should be fast, so we are trying to avoid
 // extra memory references where possible.
+//
+// This class has a non-trivial destructor to work with targets that do not use
+// the runner or LLVM fuzzer API at all.
+//
 // TODO(kcc): use a CTOR with absl::kConstInit (will require refactoring).
 struct GlobalRunnerState {
   // Used by LLVMFuzzerMutate and initialized in main().
@@ -169,7 +178,8 @@ struct GlobalRunnerState {
 
   // Returns true iff `flag` is present.
   // Typical usage: pass ":some_flag:", i.e. the flag name surrounded with ':'.
-  bool HasFlag(const char *flag) const {
+  // TODO(ussuri): Refactor `char *` into a `string_view`.
+  bool HasFlag(absl::Nonnull<const char *> flag) const {
     if (!centipede_runner_flags) return false;
     return strstr(centipede_runner_flags, flag) != nullptr;
   }
@@ -177,7 +187,9 @@ struct GlobalRunnerState {
   // If a flag=value pair is present, returns value,
   // otherwise returns `default_value`.
   // Typical usage: pass ":some_flag=".
-  uint64_t HasIntFlag(const char *flag, uint64_t default_value) const {
+  // TODO(ussuri): Refactor `char *` into a `string_view`.
+  uint64_t HasIntFlag(absl::Nonnull<const char *> flag,
+                      uint64_t default_value) const {
     if (!centipede_runner_flags) return default_value;
     const char *beg = strstr(centipede_runner_flags, flag);
     if (!beg) return default_value;
@@ -188,7 +200,9 @@ struct GlobalRunnerState {
   // The result is obtained by calling strndup, so make sure to save
   // it in `this` to avoid a leak.
   // Typical usage: pass ":some_flag=".
-  const char *GetStringFlag(const char *flag) const {
+  // TODO(ussuri): Refactor `char *` into a `string_view`.
+  absl::Nullable<const char *> GetStringFlag(
+      absl::Nonnull<const char *> flag) const {
     if (!centipede_runner_flags) return nullptr;
     // Extract "value" from ":flag=value:" inside centipede_runner_flags.
     const char *beg = strstr(centipede_runner_flags, flag);
@@ -198,6 +212,14 @@ struct GlobalRunnerState {
     if (!end) return nullptr;
     return strndup(value_beg, end - value_beg);
   }
+
+  pthread_mutex_t execution_result_override_mu;
+  // If not nullptr, it points to a batch result with either zero or one
+  // execution. When an execution result present, it will be passed as the
+  // execution result of the current test input. The object is owned and cleaned
+  // up by the state, protected by execution_result_override_mu, and set by
+  // `CentipedeSetExecutionResult()`.
+  BatchResult *execution_result_override;
 
   // Doubly linked list of TLSs of all live threads.
   ThreadLocalRunnerState *tls_list;

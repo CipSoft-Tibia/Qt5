@@ -47,7 +47,7 @@ MediaControlsProgressView::MediaControlsProgressView(
   progress_bar_ = AddChildView(std::make_unique<views::ProgressBar>());
   progress_bar_->SetPreferredHeight(
       is_modern_notification_ ? kModernProgressBarHeight : kProgressBarHeight);
-  progress_bar_->SetPreferredCornerRadii(absl::nullopt);
+  progress_bar_->SetPreferredCornerRadii(std::nullopt);
 
   // Font list for text views.
   gfx::Font default_font;
@@ -192,8 +192,9 @@ void MediaControlsProgressView::OnGestureEvent(ui::GestureEvent* event) {
   if (is_live_)
     return;
 
-  if (event->type() != ui::ET_GESTURE_TAP)
+  if (event->type() != ui::EventType::kGestureTap) {
     return;
+  }
 
   if (!is_modern_notification_ &&
       (event->y() < kMinClickHeight || event->y() > kMaxClickHeight)) {
@@ -243,7 +244,7 @@ void MediaControlsProgressView::HandleSeeking(const gfx::Point& location) {
   seek_callback_.Run(seek_to_progress);
 }
 
-BEGIN_METADATA(MediaControlsProgressView, views::View)
+BEGIN_METADATA(MediaControlsProgressView)
 END_METADATA
 
 }  // namespace media_message_center

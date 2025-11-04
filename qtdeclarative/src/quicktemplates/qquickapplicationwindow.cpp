@@ -2,14 +2,11 @@
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qquickapplicationwindow_p.h"
-#include "qquickcontentitem_p.h"
+#include "qquickapplicationwindow_p_p.h"
 #include "qquickpopup_p_p.h"
 #include "qquickcontrol_p_p.h"
 #include "qquicktemplatesutils_p.h"
-#include "qquicktextarea_p.h"
-#include "qquicktextfield_p.h"
 #include "qquicktoolbar_p.h"
-#include "qquicktooltip_p.h"
 #include <private/qtquicktemplates2-config_p.h>
 #if QT_CONFIG(quicktemplates2_container)
 #include "qquicktabbar_p.h"
@@ -20,11 +17,15 @@
 
 #include <QtCore/private/qobject_p.h>
 #include <QtCore/qscopedvaluerollback.h>
+#include <QtQml/private/qqmlpropertytopropertybinding_p.h>
 #include <QtQuick/private/qquickitem_p.h>
+#include <QtQuick/private/qquicksafearea_p.h>
 #include <QtQuick/private/qquickitemchangelistener_p.h>
 #include <QtQuick/private/qquickwindowmodule_p_p.h>
 
 QT_BEGIN_NAMESPACE
+
+using namespace Qt::StringLiterals;
 
 /*!
     \qmltype ApplicationWindow
@@ -85,81 +86,32 @@ QT_BEGIN_NAMESPACE
     certain window \c id. A QML component that uses the ApplicationWindow
     attached properties works in any window regardless of its \c id.
 
+    \section2 Safe Areas
+
+    Since Qt 6.9 ApplicationWindow will automatically add padding to the
+    contentItem for any \l{SafeArea} {safe area margins} reported by the
+    window. This ensures that the contentItem stays inside the safe area
+    of the window, while the background item covers the entire window.
+
+    If you are manually handing safe area margins in the window's contentItem
+    you can override the default via the topPadding, leftPadding, rightPadding
+    and bottomPadding properties:
+
+    \snippet qtquickcontrols-appwindow-safeareas.qml 0
+    \snippet qtquickcontrols-appwindow-safeareas.qml 1
+    \snippet qtquickcontrols-appwindow-safeareas.qml 2
+
+    The \l{header}, \l{footer}, and \l{menuBar} properties do not receive
+    any automatic padding for the safe area margins. However, depending on
+    the style in use, the style may take safe areas into account in its
+    implementation of ToolBar, TabBar, and MenuBar.
+
     \sa {Customizing ApplicationWindow}, Overlay, Page, {Container Controls},
         {Focus Management in Qt Quick Controls}
 */
 
 static const QQuickItemPrivate::ChangeTypes ItemChanges = QQuickItemPrivate::Visibility
         | QQuickItemPrivate::Geometry | QQuickItemPrivate::ImplicitWidth | QQuickItemPrivate::ImplicitHeight;
-
-class Q_QUICKTEMPLATES2_EXPORT QQuickApplicationWindowPrivate
-    : public QQuickWindowQmlImplPrivate
-    , public QQuickItemChangeListener
-{
-    Q_DECLARE_PUBLIC(QQuickApplicationWindow)
-
-public:
-    static QQuickApplicationWindowPrivate *get(QQuickApplicationWindow *window)
-    {
-        return window->d_func();
-    }
-
-    QQmlListProperty<QObject> contentData();
-
-    void updateHasBackgroundFlags();
-    void relayout();
-
-    void itemGeometryChanged(QQuickItem *item, QQuickGeometryChange change, const QRectF &diff) override;
-    void itemVisibilityChanged(QQuickItem *item) override;
-    void itemImplicitWidthChanged(QQuickItem *item) override;
-    void itemImplicitHeightChanged(QQuickItem *item) override;
-    QPalette windowPalette() const override { return defaultPalette(); }
-
-    void updateFont(const QFont &f);
-    inline void setFont_helper(const QFont &f) {
-        if (font.resolveMask() == f.resolveMask() && font == f)
-            return;
-        updateFont(f);
-    }
-    void resolveFont();
-
-    void _q_updateActiveFocus();
-    void setActiveFocusControl(QQuickItem *item);
-
-    static void contentData_append(QQmlListProperty<QObject> *prop, QObject *obj);
-
-    void cancelBackground();
-    void executeBackground(bool complete = false);
-
-    QPalette defaultPalette() const override { return QQuickTheme::palette(QQuickTheme::System); }
-    void updateChildrenPalettes(const QPalette &parentPalette) override
-    {
-        // Update regular children
-        QQuickWindowPrivate::updateChildrenPalettes(parentPalette);
-
-        // And cover special cases
-        for (auto &&child : q_func()->findChildren<QObject *>()) {
-            if (auto *popup = qobject_cast<QQuickPopup *>(child))
-                QQuickPopupPrivate::get(popup)->updateContentPalettes(parentPalette);
-            else if (auto *toolTipAttached = qobject_cast<QQuickToolTipAttached *>(child)) {
-                if (auto *toolTip = toolTipAttached->toolTip())
-                    QQuickPopupPrivate::get(toolTip)->updateContentPalettes(parentPalette);
-            }
-        }
-    }
-
-    QQuickDeferredPointer<QQuickItem> background;
-    QQuickItem *appWindowContentItem = nullptr;
-    QQuickItem *menuBar = nullptr;
-    QQuickItem *header = nullptr;
-    QQuickItem *footer = nullptr;
-    QFont font;
-    QLocale locale;
-    QQuickItem *activeFocusControl = nullptr;
-    bool insideRelayout = false;
-    bool hasBackgroundWidth = false;
-    bool hasBackgroundHeight = false;
-};
 
 static void layoutItem(QQuickItem *item, qreal y, qreal width)
 {
@@ -191,18 +143,16 @@ void QQuickApplicationWindowPrivate::relayout()
         return;
 
     QScopedValueRollback<bool> guard(insideRelayout, true);
-    QQuickItem *content = q->contentItem();
-    qreal hh = header && header->isVisible() ? header->height() : 0;
-    qreal fh = footer && footer->isVisible() ? footer->height() : 0;
-    qreal mbh = menuBar && menuBar->isVisible() ? menuBar->height() : 0;
 
-    content->setY(mbh + hh);
-    content->setWidth(q->width());
-    content->setHeight(q->height() - mbh - hh - fh);
+    qreal menuBarHeight = menuBar && menuBar->isVisible() ? menuBar->height() : 0;
+    qreal headerheight = header && header->isVisible() ? header->height() : 0;
+    qreal footerHeight = footer && footer->isVisible() ? footer->height() : 0;
 
-    layoutItem(menuBar, -mbh - hh, q->width());
-    layoutItem(header, -hh, q->width());
-    layoutItem(footer, content->height(), q->width());
+    control->setSize(q->size());
+
+    layoutItem(menuBar, 0, q->width());
+    layoutItem(header, menuBarHeight, q->width());
+    layoutItem(footer, control->height() - footerHeight, q->width());
 
     if (background) {
         if (!hasBackgroundWidth && qFuzzyIsNull(background->x()))
@@ -210,6 +160,16 @@ void QQuickApplicationWindowPrivate::relayout()
         if (!hasBackgroundHeight && qFuzzyIsNull(background->y()))
             background->setHeight(q->height());
     }
+
+    // Install additional margins on the control, which get reflected
+    // to the content item, but not to the header/footer/menuBar, as
+    // these are siblings of the control
+    auto *controlSafeArea = static_cast<QQuickSafeArea*>(qmlAttachedPropertiesObject<QQuickSafeArea>(control));
+    auto *windowSafeArea = static_cast<QQuickSafeArea*>(qmlAttachedPropertiesObject<QQuickSafeArea>(q));
+    const auto inheritedMargins = windowSafeArea->margins();
+    controlSafeArea->setAdditionalMargins(QMarginsF(
+        0, (menuBarHeight + headerheight) - inheritedMargins.top(),
+        0, footerHeight - inheritedMargins.bottom()));
 }
 
 void QQuickApplicationWindowPrivate::itemGeometryChanged(QQuickItem *item, QQuickGeometryChange change, const QRectF &diff)
@@ -267,8 +227,15 @@ void QQuickApplicationWindowPrivate::resolveFont()
 
 static QQuickItem *findActiveFocusControl(QQuickWindow *window)
 {
+    auto *appWindow = qobject_cast<QQuickApplicationWindow *>(window);
+    auto *appWindowPriv = appWindow ? QQuickApplicationWindowPrivate::get(appWindow) : nullptr;
+
     QQuickItem *item = window->activeFocusItem();
     while (item) {
+        // The content control is an implementation detail and if
+        // we hit it we've hit the root item, so no controls can exist
+        if (appWindow && item == appWindowPriv->control)
+            return nullptr;
         if (QQuickTemplatesUtils::isInteractiveControlType(item))
             return item;
         item = item->parentItem();
@@ -448,7 +415,7 @@ void QQuickApplicationWindow::setHeader(QQuickItem *header)
     }
     d->header = header;
     if (header) {
-        header->setParentItem(contentItem());
+        header->setParentItem(QQuickWindow::contentItem());
         QQuickItemPrivate *p = QQuickItemPrivate::get(header);
         p->addItemChangeListener(d, ItemChanges);
         if (qFuzzyIsNull(header->z()))
@@ -461,6 +428,8 @@ void QQuickApplicationWindow::setHeader(QQuickItem *header)
         else if (QQuickDialogButtonBox *buttonBox = qobject_cast<QQuickDialogButtonBox *>(header))
             buttonBox->setPosition(QQuickDialogButtonBox::Header);
 #endif
+
+        header->stackBefore(d->control);
     }
     if (isComponentComplete())
         d->relayout();
@@ -505,7 +474,7 @@ void QQuickApplicationWindow::setFooter(QQuickItem *footer)
     }
     d->footer = footer;
     if (footer) {
-        footer->setParentItem(contentItem());
+        footer->setParentItem(QQuickWindow::contentItem());
         QQuickItemPrivate *p = QQuickItemPrivate::get(footer);
         p->addItemChangeListener(d, ItemChanges);
         if (qFuzzyIsNull(footer->z()))
@@ -517,6 +486,8 @@ void QQuickApplicationWindow::setFooter(QQuickItem *footer)
             tabBar->setPosition(QQuickTabBar::Footer);
         else if (QQuickDialogButtonBox *buttonBox = qobject_cast<QQuickDialogButtonBox *>(footer))
             buttonBox->setPosition(QQuickDialogButtonBox::Footer);
+
+        footer->stackAfter(d->control);
 #endif
     }
     if (isComponentComplete())
@@ -563,19 +534,62 @@ QQmlListProperty<QObject> QQuickApplicationWindowPrivate::contentData()
     The content item is stacked above the \l background item, and under the
     \l menuBar, \l header, and \l footer items.
 
-    \sa background, menuBar, header, footer
+    Since Qt 6.9 ApplicationWindow will automatically add padding to the
+    contentItem for any \l{SafeArea} {safe area margins} reported by the
+    window. To override the padding use the individual padding properties.
+
+    \sa background, menuBar, header, footer,
+    topPadding, bottomPadding, leftPadding, rightPadding
 */
 QQuickItem *QQuickApplicationWindow::contentItem() const
 {
-    QQuickApplicationWindowPrivate *d = const_cast<QQuickApplicationWindowPrivate *>(d_func());
-    if (!d->appWindowContentItem) {
-        d->appWindowContentItem = new QQuickContentItem(this, QQuickWindow::contentItem());
-        d->appWindowContentItem->setFlag(QQuickItem::ItemIsFocusScope);
-        d->appWindowContentItem->setFocus(true);
-        d->relayout();
-    }
-    return d->appWindowContentItem;
+    Q_D(const QQuickApplicationWindow);
+    return d->control->contentItem();
 }
+
+/*!
+    \qmlproperty real QtQuick.Controls::ApplicationWindow::topPadding
+    \since 6.9
+
+    This property holds the top padding of the window's content item.
+    Unless explicitly set, the value reflects the window's \l{SafeArea}
+    {safe area margins}.
+
+    \sa bottomPadding, leftPadding, rightPadding
+*/
+
+/*!
+    \qmlproperty real QtQuick.Controls::ApplicationWindow::leftPadding
+    \since 6.9
+
+    This property holds the left padding of the window's content item.
+    Unless explicitly set, the value reflects the window's \l{SafeArea}
+    {safe area margins}.
+
+    \sa bottomPadding, topPadding, rightPadding
+*/
+
+/*!
+    \qmlproperty real QtQuick.Controls::ApplicationWindow::rightPadding
+    \since 6.9
+
+    This property holds the right padding of the window's content item.
+    Unless explicitly set, the value reflects the window's \l{SafeArea}
+    {safe area margins}.
+
+    \sa bottomPadding, leftPadding, topPadding
+*/
+
+/*!
+    \qmlproperty real QtQuick.Controls::ApplicationWindow::bottomPadding
+    \since 6.9
+
+    This property holds the bottom padding of the window's content item.
+    Unless explicitly set, the value reflects the window's \l{SafeArea}
+    {safe area margins}.
+
+    \sa topPadding, leftPadding, rightPadding
+*/
 
 /*!
     \qmlproperty Control QtQuick.Controls::ApplicationWindow::activeFocusControl
@@ -712,11 +726,16 @@ void QQuickApplicationWindow::setMenuBar(QQuickItem *menuBar)
     }
     d->menuBar = menuBar;
     if (menuBar) {
-        menuBar->setParentItem(contentItem());
+        menuBar->setParentItem(QQuickWindow::contentItem());
         QQuickItemPrivate *p = QQuickItemPrivate::get(menuBar);
         p->addItemChangeListener(d, ItemChanges);
         if (qFuzzyIsNull(menuBar->z()))
             menuBar->setZ(2);
+
+        if (header())
+            menuBar->stackBefore(header());
+        else
+            menuBar->stackBefore(d->control);
     }
     if (isComponentComplete())
         d->relayout();
@@ -735,12 +754,68 @@ void QQuickApplicationWindow::classBegin()
     d->componentComplete = false;
     QQuickWindowQmlImpl::classBegin();
     d->resolveFont();
+
+    /*
+        Create the control up front, rather than lazily, as we have
+        to set the default padding before any user-bindings override
+        them.
+
+        The hierarchy is:
+
+            contentItem (QQuickRootItem)
+            ├── menuBar
+            ├── header
+            ├── control (QQuickControl)
+            │   └── control->contentItem() (QQuickContentItem)
+            ├── footer
+            └── background
+     */
+    d->control = new QQuickControl(QQuickWindow::contentItem());
+    d->control->setObjectName("ApplicationWindowContentControl");
+    auto *contentItem = new QQuickContentItem(this, d->control);
+    // The content item can't be its own focus scope here, as that
+    // will detach focus of items inside the content item from focus
+    // in the menubar, header and footer. Nor can set set the content
+    // item as focused, as that will prevent child items of the content
+    // item from getting the initial focus when they are reparented
+    // into the content item.
+    d->control->setContentItem(contentItem);
+
+    auto *context = qmlContext(this);
+    auto installPropertyBinding = [&](QObject *targetObject, const QString &targetPropertyName,
+                                      QObject *sourceObject, const QString &sourcePropertyName) {
+        QQmlProperty targetProperty(targetObject, targetPropertyName);
+        QQmlProperty sourceProperty(sourceObject, sourcePropertyName);
+        QQmlAnyBinding binding;
+        binding = new QQmlPropertyToPropertyBinding(context->engine(),
+                sourceObject, QQmlPropertyPrivate::get(sourceProperty)->encodedIndex(),
+                targetObject, targetProperty.index());
+        binding.installOn(targetProperty);
+    };
+
+    // Pick up safe area margins from the control, which reflects both
+    // margins coming from the QWindow, additional margins added by the
+    // user to the QQuickWindow's content item, as well the additional
+    // margins we add to the control directly to account for the header,
+    // footer and menu bar.
+    auto *controlSafeArea = qmlAttachedPropertiesObject<QQuickSafeArea>(d->control);
+    installPropertyBinding(this, "leftPadding"_L1, controlSafeArea, "margins.left"_L1);
+    installPropertyBinding(this, "topPadding"_L1, controlSafeArea, "margins.top"_L1);
+    installPropertyBinding(this, "rightPadding"_L1, controlSafeArea, "margins.right"_L1);
+    installPropertyBinding(this, "bottomPadding"_L1, controlSafeArea, "margins.bottom"_L1);
+
+    // The additional margins for our header, footer and menu bar depend on the window margins
+    auto *windowSafeArea = static_cast<QQuickSafeArea*>(qmlAttachedPropertiesObject<QQuickSafeArea>(this));
+    QObject::connect(windowSafeArea, &QQuickSafeArea::marginsChanged, this, [d]{
+        d->relayout();
+    });
 }
 
 void QQuickApplicationWindow::componentComplete()
 {
     Q_D(QQuickApplicationWindow);
     d->componentComplete = true;
+    QQuickWindow::contentItem()->setObjectName(QQmlMetaType::prettyTypeName(this));
     d->executeBackground(true);
     QQuickWindowQmlImpl::componentComplete();
     d->relayout();

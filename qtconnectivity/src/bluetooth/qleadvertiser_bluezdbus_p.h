@@ -22,8 +22,12 @@ QT_REQUIRE_CONFIG(bluez);
 
 #include <QtCore/QObject>
 
+namespace QtBluetoothPrivate {
+
 class OrgBluezLEAdvertisement1Adaptor;
 class OrgBluezLEAdvertisingManager1Interface;
+
+} // namespace QtBluetoothPrivate
 
 QT_BEGIN_NAMESPACE
 
@@ -56,8 +60,8 @@ private:
     const QLowEnergyAdvertisingParameters m_advParams;
     QLowEnergyAdvertisingData m_advData;
     const QString m_advObjectPath;
-    OrgBluezLEAdvertisement1Adaptor* const m_advDataDBus;
-    OrgBluezLEAdvertisingManager1Interface* const m_advManager;
+    QtBluetoothPrivate::OrgBluezLEAdvertisement1Adaptor* const m_advDataDBus;
+    QtBluetoothPrivate::OrgBluezLEAdvertisingManager1Interface* const m_advManager;
     bool m_advertising = false;
 };
 

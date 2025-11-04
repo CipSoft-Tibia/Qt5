@@ -3,12 +3,13 @@ name = "np_adv"
 version.workspace = true
 edition.workspace = true
 publish.workspace = true
+license.workspace = true
 
 [lints]
 workspace = true
 
 [dependencies]
-array_view = { path = "../array_view" }
+array_view.workspace = true
 ldt_np_adv.workspace = true
 ldt.workspace = true
 np_hkdf.workspace = true
@@ -17,16 +18,19 @@ xts_aes.workspace = true
 crypto_provider.workspace = true
 strum.workspace = true
 strum_macros.workspace = true
-nom = { version = "7.1.3", default-features = false }
+nom.workspace = true
 lazy_static.workspace = true
 sink.workspace = true
 tinyvec.workspace = true
+itertools = { workspace = true, default-features = false }
 
 [features]
-default = []
+default = ["alloc"]
 devtools = []
 testing = []
 alloc = ["crypto_provider/alloc"]
+# adds std::error::Error impls
+std = ["alloc"]
 
 [dev-dependencies]
 hex.workspace = true
@@ -36,6 +40,7 @@ serde_json = { workspace = true, features = ["std"] }
 serde.workspace = true
 anyhow.workspace = true
 test_helper = { path = "../test_helper" }
+test_vector_hkdf.workspace = true
 criterion.workspace = true
 crypto_provider_default = { workspace = true, features = ["std", "rustcrypto"] }
 np_ed25519 = { workspace = true, features = ["std"] }

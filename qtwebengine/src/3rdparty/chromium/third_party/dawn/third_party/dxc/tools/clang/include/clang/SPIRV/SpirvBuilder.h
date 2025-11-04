@@ -238,17 +238,10 @@ public:
 
   /// \brief Creates an operation with the given OpGroupNonUniform* SPIR-V
   /// opcode.
-  SpirvNonUniformElect *createGroupNonUniformElect(spv::Op op,
-                                                   QualType resultType,
-                                                   spv::Scope execScope,
-                                                   SourceLocation);
-  SpirvNonUniformUnaryOp *createGroupNonUniformUnaryOp(
-      SourceLocation, spv::Op op, QualType resultType, spv::Scope execScope,
-      SpirvInstruction *operand,
-      llvm::Optional<spv::GroupOperation> groupOp = llvm::None);
-  SpirvNonUniformBinaryOp *createGroupNonUniformBinaryOp(
+  SpirvGroupNonUniformOp *createGroupNonUniformOp(
       spv::Op op, QualType resultType, spv::Scope execScope,
-      SpirvInstruction *operand1, SpirvInstruction *operand2, SourceLocation);
+      llvm::ArrayRef<SpirvInstruction *> operands, SourceLocation,
+      llvm::Optional<spv::GroupOperation> groupOp = llvm::None);
 
   /// \brief Creates an atomic instruction with the given parameters and returns
   /// its pointer.
@@ -443,18 +436,18 @@ public:
 
   /// \brief Creates an OpBitFieldInsert SPIR-V instruction for the given
   /// arguments.
-  SpirvBitFieldInsert *
-  createBitFieldInsert(QualType resultType, SpirvInstruction *base,
-                       SpirvInstruction *insert, SpirvInstruction *offset,
-                       SpirvInstruction *count, SourceLocation);
+  SpirvInstruction *createBitFieldInsert(QualType resultType,
+                                         SpirvInstruction *base,
+                                         SpirvInstruction *insert,
+                                         unsigned bitOffset, unsigned bitCount,
+                                         SourceLocation, SourceRange);
 
   /// \brief Creates an OpBitFieldUExtract or OpBitFieldSExtract SPIR-V
   /// instruction for the given arguments.
-  SpirvBitFieldExtract *createBitFieldExtract(QualType resultType,
-                                              SpirvInstruction *base,
-                                              SpirvInstruction *offset,
-                                              SpirvInstruction *count,
-                                              bool isSigned, SourceLocation);
+  SpirvInstruction *createBitFieldExtract(QualType resultType,
+                                          SpirvInstruction *base,
+                                          unsigned bitOffset, unsigned bitCount,
+                                          SourceLocation, SourceRange);
 
   /// \brief Creates an OpEmitVertex instruction.
   void createEmitVertex(SourceLocation, SourceRange range = {});
@@ -755,6 +748,7 @@ public:
                        llvm::ArrayRef<SpirvConstant *> constituents,
                        bool specConst = false);
   SpirvConstant *getConstantNull(QualType);
+  SpirvUndef *getUndef(QualType);
 
   SpirvString *createString(llvm::StringRef str);
   SpirvString *getString(llvm::StringRef str);
@@ -770,16 +764,14 @@ public:
                                         SpirvInstruction *v);
   SpirvInstruction *getPerVertexStgInput(SpirvInstruction *k);
 
-public:
   std::vector<uint32_t> takeModule();
-
-protected:
-  /// Only friend classes are allowed to add capability/extension to the module
-  /// under construction.
 
   /// \brief Adds the given capability to the module under construction due to
   /// the feature used at the given source location.
   inline void requireCapability(spv::Capability, SourceLocation loc = {});
+
+  /// \brief Returns true if the module requires the given capability.
+  inline bool hasCapability(spv::Capability cap);
 
   /// \brief Adds an extension to the module under construction for translating
   /// the given target at the given source location.
@@ -830,6 +822,20 @@ private:
   SpirvVariable *createCloneVarForFxcCTBuffer(QualType astType,
                                               const SpirvType *spvType,
                                               SpirvInstruction *var);
+
+  /// \brief Emulates OpBitFieldInsert SPIR-V instruction for the given
+  /// arguments.
+  SpirvInstruction *
+  createEmulatedBitFieldInsert(QualType resultType, uint32_t baseTypeBitwidth,
+                               SpirvInstruction *base, SpirvInstruction *insert,
+                               unsigned bitOffset, unsigned bitCount,
+                               SourceLocation, SourceRange);
+
+  SpirvInstruction *
+  createEmulatedBitFieldExtract(QualType resultType, uint32_t baseTypeBitwidth,
+                                SpirvInstruction *base, unsigned bitOffset,
+                                unsigned bitCount, SourceLocation loc,
+                                SourceRange range);
 
 private:
   ASTContext &astContext;
@@ -891,6 +897,11 @@ void SpirvBuilder::requireCapability(spv::Capability cap, SourceLocation loc) {
   } else {
     capability->releaseMemory();
   }
+}
+
+bool SpirvBuilder::hasCapability(spv::Capability cap) {
+  SpirvCapability capability({}, cap);
+  return mod->hasCapability(capability);
 }
 
 void SpirvBuilder::requireExtension(llvm::StringRef ext, SourceLocation loc) {

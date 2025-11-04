@@ -28,6 +28,10 @@ export function getRemoteBase(location: string = self.location.toString()): {
   return {base: `devtools://devtools/remote/serve_file/${version[1]}/`, version: version[1]};
 }
 
+export function getPathName(): string {
+  return window.location.pathname;
+}
+
 export class Runtime {
   private constructor() {
   }
@@ -59,10 +63,11 @@ export class Runtime {
     [x: string]: boolean,
   } {
     try {
-      return JSON.parse(
-                 self.localStorage && self.localStorage['experiments'] ? self.localStorage['experiments'] : '{}') as {
-        [x: string]: boolean,
-      };
+      return Platform.StringUtilities.toKebabCaseKeys(
+          JSON.parse(self.localStorage && self.localStorage['experiments'] ? self.localStorage['experiments'] : '{}') as
+          {
+            [x: string]: boolean,
+          });
     } catch (e) {
       console.error('Failed to parse localStorage[\'experiments\']');
       return {};
@@ -77,29 +82,24 @@ export class Runtime {
     return runtimePlatform;
   }
 
-  static isDescriptorEnabled(descriptor: {
-    experiment: ((string | undefined)|null),
-    condition: ((string | undefined)|null),
-  }): boolean {
-    const activatorExperiment = descriptor['experiment'];
-    if (activatorExperiment === '*') {
+  static isDescriptorEnabled(
+      descriptor: {
+        experiment: ((string | undefined)|null),
+        condition?: Condition,
+      },
+      config?: HostConfig): boolean {
+    const {experiment} = descriptor;
+    if (experiment === '*') {
       return true;
     }
-    if (activatorExperiment && activatorExperiment.startsWith('!') &&
-        experiments.isEnabled(activatorExperiment.substring(1))) {
+    if (experiment && experiment.startsWith('!') && experiments.isEnabled(experiment.substring(1))) {
       return false;
     }
-    if (activatorExperiment && !activatorExperiment.startsWith('!') && !experiments.isEnabled(activatorExperiment)) {
+    if (experiment && !experiment.startsWith('!') && !experiments.isEnabled(experiment)) {
       return false;
     }
-    const condition = descriptor['condition'];
-    if (condition && !condition.startsWith('!') && !Runtime.queryParam(condition)) {
-      return false;
-    }
-    if (condition && condition.startsWith('!') && Runtime.queryParam(condition.substring(1))) {
-      return false;
-    }
-    return true;
+    const {condition} = descriptor;
+    return condition ? condition(config) : true;
   }
 
   loadLegacyModule(modulePath: string): Promise<void> {
@@ -148,8 +148,9 @@ export class ExperimentsSupport {
   register(
       experimentName: string, experimentTitle: string, unstable?: boolean, docLink?: string,
       feedbackLink?: string): void {
-    Platform.DCHECK(
-        () => !this.#experimentNames.has(experimentName), 'Duplicate registration of experiment ' + experimentName);
+    if (this.#experimentNames.has(experimentName)) {
+      throw new Error(`Duplicate registraction of experiment '${experimentName}'`);
+    }
     this.#experimentNames.add(experimentName);
     this.#experiments.push(new Experiment(
         this, experimentName, experimentTitle, Boolean(unstable),
@@ -237,7 +238,9 @@ export class ExperimentsSupport {
   }
 
   private checkExperiment(experimentName: string): void {
-    Platform.DCHECK(() => this.#experimentNames.has(experimentName), 'Unknown experiment ' + experimentName);
+    if (!this.#experimentNames.has(experimentName)) {
+      throw new Error(`Unknown experiment '${experimentName}'`);
+    }
   }
 }
 
@@ -272,35 +275,95 @@ export class Experiment {
 export const experiments = new ExperimentsSupport();
 
 export const enum ExperimentName {
-  CAPTURE_NODE_CREATION_STACKS = 'captureNodeCreationStacks',
-  CSS_OVERVIEW = 'cssOverview',
-  LIVE_HEAP_PROFILE = 'liveHeapProfile',
+  CAPTURE_NODE_CREATION_STACKS = 'capture-node-creation-stacks',
+  CSS_OVERVIEW = 'css-overview',
+  LIVE_HEAP_PROFILE = 'live-heap-profile',
   ALL = '*',
-  PROTOCOL_MONITOR = 'protocolMonitor',
-  FULL_ACCESSIBILITY_TREE = 'fullAccessibilityTree',
-  STYLES_PANE_CSS_CHANGES = 'stylesPaneCSSChanges',
-  HEADER_OVERRIDES = 'headerOverrides',
-  INSTRUMENTATION_BREAKPOINTS = 'instrumentationBreakpoints',
-  AUTHORED_DEPLOYED_GROUPING = 'authoredDeployedGrouping',
-  IMPORTANT_DOM_PROPERTIES = 'importantDOMProperties',
-  JUST_MY_CODE = 'justMyCode',
-  PRELOADING_STATUS_PANEL = 'preloadingStatusPanel',
-  TIMELINE_AS_CONSOLE_PROFILE_RESULT_PANEL = 'timelineAsConsoleProfileResultPanel',
-  OUTERMOST_TARGET_SELECTOR = 'outermostTargetSelector',
-  JS_PROFILER_TEMP_ENABLE = 'jsProfilerTemporarilyEnable',
-  HIGHLIGHT_ERRORS_ELEMENTS_PANEL = 'highlightErrorsElementsPanel',
-  SET_ALL_BREAKPOINTS_EAGERLY = 'setAllBreakpointsEagerly',
-  SELF_XSS_WARNING = 'selfXssWarning',
-  USE_SOURCE_MAP_SCOPES = 'useSourceMapScopes',
-  STORAGE_BUCKETS_TREE = 'storageBucketsTree',
-  NETWORK_PANEL_FILTER_BAR_REDESIGN = 'networkPanelFilterBarRedesign',
-  TRACK_CONTEXT_MENU = 'trackContextMenu',
-  AUTOFILL_VIEW = 'autofillView',
-  INDENTATION_MARKERS_TEMP_DISABLE = 'sourcesFrameIndentationMarkersTemporarilyDisable',
-  CONSOLE_INSIGHTS = 'consoleInsights',
+  PROTOCOL_MONITOR = 'protocol-monitor',
+  FULL_ACCESSIBILITY_TREE = 'full-accessibility-tree',
+  STYLES_PANE_CSS_CHANGES = 'styles-pane-css-changes',
+  HEADER_OVERRIDES = 'header-overrides',
+  INSTRUMENTATION_BREAKPOINTS = 'instrumentation-breakpoints',
+  AUTHORED_DEPLOYED_GROUPING = 'authored-deployed-grouping',
+  JUST_MY_CODE = 'just-my-code',
+  HIGHLIGHT_ERRORS_ELEMENTS_PANEL = 'highlight-errors-elements-panel',
+  USE_SOURCE_MAP_SCOPES = 'use-source-map-scopes',
+  NETWORK_PANEL_FILTER_BAR_REDESIGN = 'network-panel-filter-bar-redesign',
+  AUTOFILL_VIEW = 'autofill-view',
+  TIMELINE_SHOW_POST_MESSAGE_EVENTS = 'timeline-show-postmessage-events',
+  TIMELINE_ANNOTATIONS = 'perf-panel-annotations',
+  TIMELINE_INSIGHTS = 'timeline-rpp-sidebar',
+  TIMELINE_DEBUG_MODE = 'timeline-debug-mode',
+  TIMELINE_OBSERVATIONS = 'timeline-observations',
+  TIMELINE_ENHANCED_TRACES = 'timeline-enhanced-traces',
+  GEN_AI_SETTINGS_PANEL = 'gen-ai-settings-panel',
+  TIMELINE_SERVER_TIMINGS = 'timeline-server-timings',
+  TIMELINE_LAYOUT_SHIFT_DETAILS = 'timeline-layout-shift-details',
 }
 
-export const enum ConditionName {
-  CAN_DOCK = 'can_dock',
-  NOT_SOURCES_HIDE_ADD_FOLDER = '!sources.hide_add_folder',
+export interface AidaAvailability {
+  enabled: boolean;
+  blockedByAge: boolean;
+  blockedByEnterprisePolicy: boolean;
+  blockedByGeo: boolean;
+  disallowLogging: boolean;
 }
+
+export interface HostConfigConsoleInsights {
+  modelId: string;
+  temperature: number;
+  enabled: boolean;
+}
+
+export interface HostConfigFreestylerDogfood {
+  modelId: string;
+  temperature: number;
+  enabled: boolean;
+  userTier: string;
+}
+
+export interface HostConfigExplainThisResourceDogfood {
+  modelId: string;
+  temperature: number;
+  enabled: boolean;
+}
+
+export interface HostConfigVeLogging {
+  enabled: boolean;
+  testing: boolean;
+}
+
+export interface HostConfigPrivacyUI {
+  enabled: boolean;
+}
+
+// We use `RecursivePartial` here to enforce that DevTools code is able to
+// handle `HostConfig` objects of an unexpected shape. This can happen if
+// the implementation in the Chromium backend is changed without correctly
+// updating the DevTools frontend. Or if remote debugging a different version
+// of Chrome, resulting in the local browser window and the local DevTools
+// window being of different versions, and consequently potentially having
+// differently shaped `HostConfig`s.
+export type HostConfig = Platform.TypeScriptUtilities.RecursivePartial<{
+  aidaAvailability: AidaAvailability,
+  devToolsConsoleInsights: HostConfigConsoleInsights,
+  devToolsFreestylerDogfood: HostConfigFreestylerDogfood,
+  devToolsExplainThisResourceDogfood: HostConfigExplainThisResourceDogfood,
+  devToolsVeLogging: HostConfigVeLogging,
+  devToolsPrivacyUI: HostConfigPrivacyUI,
+  /**
+   * OffTheRecord here indicates that the user's profile is either incognito,
+   * or guest mode, rather than a "normal" profile.
+   */
+  isOffTheRecord: boolean,
+}>;
+
+/**
+ * When defining conditions make sure that objects used by the function have
+ * been instantiated.
+ */
+export type Condition = (config?: HostConfig) => boolean;
+
+export const conditions = {
+  canDock: () => Boolean(Runtime.queryParam('can_dock')),
+};

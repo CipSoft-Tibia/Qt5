@@ -64,7 +64,7 @@ Item {
     GraphsTheme {
         id: customBarsTheme
         theme: GraphsTheme.Theme.UserDefined
-        colorStyle: GraphsTheme.ColorStyle.ObjectGradient
+        colorStyle: GraphsTheme.ColorStyle.RangeGradient
         baseColors: [barColor]
         baseGradients: [customGradient]
         plotAreaBackgroundColor: "gray"
@@ -120,6 +120,7 @@ Item {
 
             Bar3DSeries {
                 id: barsSeries
+                valueColoringEnabled: graphMod.valueColoring
                 // If you want to check with series colors, uncomment these
                 // baseGradient: customGradient
                 // baseColor: barColor.color

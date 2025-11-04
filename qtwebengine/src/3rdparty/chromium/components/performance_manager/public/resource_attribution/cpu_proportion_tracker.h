@@ -14,7 +14,7 @@
 #include "components/performance_manager/public/resource_attribution/query_results.h"
 #include "components/performance_manager/public/resource_attribution/resource_contexts.h"
 
-namespace performance_manager::resource_attribution {
+namespace resource_attribution {
 
 // A class that, given a series of consecutive CPUTimeResult measurements, will
 // calculate the proportion of CPU used over a series of consecutive intervals.
@@ -22,6 +22,14 @@ namespace performance_manager::resource_attribution {
 // 0% CPU.
 class CPUProportionTracker {
  public:
+  enum class CPUProportionType {
+    // Calculate CPU proportion based on `CPUTimeResult::cumulative_cpu`.
+    kAll,
+    // Calculate CPU proportion based on
+    // `CPUTimeResult::cumulative_background_cpu`.
+    kBackground,
+  };
+
   // A callback that's called for every context in the QueryResultMap passed
   // to StartNextInterval(). If it returns false, the context is ignored.
   // This can be used when the caller only wants to calculate the proportion
@@ -31,7 +39,8 @@ class CPUProportionTracker {
       base::RepeatingCallback<bool(const ResourceContext&)>;
 
   explicit CPUProportionTracker(
-      ContextFilterCallback context_filter = base::NullCallback());
+      ContextFilterCallback context_filter = base::NullCallback(),
+      CPUProportionType cpu_proportion_type = CPUProportionType::kAll);
   ~CPUProportionTracker();
 
   CPUProportionTracker(const CPUProportionTracker&) = delete;
@@ -76,6 +85,12 @@ class CPUProportionTracker {
   bool IsTracking() const;
 
  private:
+  // Extracts the correct cumulative CPU time measurement from
+  // `cpu_time_result`, based on `cpu_proportion_type_`.
+  base::TimeDelta GetCumulativeCPU(const CPUTimeResult& cpu_time_result) const;
+
+  const CPUProportionType cpu_proportion_type_;
+
   // Last time CPU measurements were taken (for calculating the total length of
   // a measurement interval).
   std::optional<base::TimeTicks> last_measurement_time_;
@@ -87,6 +102,6 @@ class CPUProportionTracker {
   ContextFilterCallback context_filter_;
 };
 
-}  // namespace performance_manager::resource_attribution
+}  // namespace resource_attribution
 
 #endif  // COMPONENTS_PERFORMANCE_MANAGER_PUBLIC_RESOURCE_ATTRIBUTION_CPU_PROPORTION_TRACKER_H_

@@ -39,7 +39,9 @@ namespace tint::core::fluent_types {
 using f16 = tint::core::f16;
 using f32 = tint::core::f32;
 using i32 = tint::core::i32;
+using i8 = tint::core::i8;
 using u32 = tint::core::u32;
+using u8 = tint::core::u8;
 using AFloat = tint::core::AFloat;
 using AInt = tint::core::AInt;
 
@@ -50,7 +52,7 @@ struct Infer {};
 /// @tparam T the array element type
 /// @tparam N the array length. 0 represents a runtime-sized array.
 /// @see https://www.w3.org/TR/WGSL/#array-types
-template <typename T = Infer, uint32_t N = 0>
+template <typename T, uint32_t N = 0>
 struct array {
     /// the array element type
     using type = T;
@@ -70,7 +72,7 @@ struct atomic {
 /// A 'fluent' type helper used to construct an ast::Vector or type::Vector.
 /// @tparam N the vector width
 /// @tparam T the vector element type
-template <uint32_t N, typename T = Infer>
+template <uint32_t N, typename T>
 struct vec {
     /// the vector width
     static constexpr uint32_t width = N;
@@ -83,7 +85,7 @@ struct vec {
 /// @tparam R the number of rows of the matrix
 /// @tparam T the matrix element type
 /// @see https://www.w3.org/TR/WGSL/#matrix-types
-template <uint32_t C, uint32_t R, typename T = Infer>
+template <uint32_t C, uint32_t R, typename T>
 struct mat {
     /// the number of columns of the matrix
     static constexpr uint32_t columns = C;

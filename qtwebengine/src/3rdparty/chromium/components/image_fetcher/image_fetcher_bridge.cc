@@ -22,10 +22,12 @@
 #include "components/image_fetcher/core/image_fetcher_metrics_reporter.h"
 #include "components/image_fetcher/core/image_fetcher_service.h"
 #include "components/image_fetcher/image_fetcher_service_provider.h"
-#include "components/image_fetcher/jni_headers/ImageFetcherBridge_jni.h"
 #include "services/data_decoder/public/cpp/data_decoder.h"
 #include "ui/gfx/android/java_bitmap.h"
 #include "ui/gfx/image/image.h"
+
+// Must come after all headers that specialize FromJniType() / ToJniType().
+#include "components/image_fetcher/jni_headers/ImageFetcherBridge_jni.h"
 
 using base::android::JavaParamRef;
 using base::android::JavaRef;
@@ -268,10 +270,10 @@ void ImageFetcherBridge::OnImageDataFetched(
     base::android::ScopedJavaGlobalRef<jobject> callback,
     const std::string& image_data,
     const RequestMetadata& request_metadata) {
-  JNIEnv* env = base::android::AttachCurrentThread();
-  ScopedJavaLocalRef<jbyteArray> j_bytes = base::android::ToJavaByteArray(
-      env, reinterpret_cast<const uint8_t*>(image_data.data()),
-      image_data.size());
+  JNIEnv* env = jni_zero::AttachCurrentThread();
+  ScopedJavaLocalRef<jbyteArray> j_bytes =
+      base::android::ToJavaByteArray(env, image_data);
+
   base::android::RunObjectCallbackAndroid(callback, j_bytes);
 }
 

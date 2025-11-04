@@ -26,6 +26,7 @@
 #include "mojo/public/cpp/bindings/self_owned_receiver.h"
 #include "net/base/io_buffer.h"
 #include "third_party/blink/public/common/cache_storage/cache_storage_utils.h"
+#include "third_party/blink/public/common/scheme_registry.h"
 #include "url/gurl.h"
 #include "url/origin.h"
 
@@ -68,7 +69,8 @@ bool CheckSecurityForAccessingCodeCacheData(
     return process_lock.matches_scheme(content::kChromeUIScheme) ||
            process_lock.matches_scheme(content::kChromeUIUntrustedScheme);
   }
-  if (resource_url.SchemeIsHTTPOrHTTPS()) {
+  if (resource_url.SchemeIsHTTPOrHTTPS() ||
+      blink::CommonSchemeRegistry::IsExtensionScheme(resource_url.scheme())) {
     if (process_lock.matches_scheme(content::kChromeUIScheme) ||
         process_lock.matches_scheme(content::kChromeUIUntrustedScheme)) {
       // It is possible for WebUI pages to include open-web content, but such
@@ -107,6 +109,7 @@ void DidGenerateCacheableMetadataInCacheStorageOnUI(
 
   mojo::Remote<blink::mojom::CacheStorage> remote;
   network::CrossOriginEmbedderPolicy cross_origin_embedder_policy;
+  network::DocumentIsolationPolicy document_isolation_policy;
 
   storage::mojom::CacheStorageControl* cache_storage_control =
       cache_storage_control_for_testing
@@ -116,6 +119,7 @@ void DidGenerateCacheableMetadataInCacheStorageOnUI(
 
   cache_storage_control->AddReceiver(
       cross_origin_embedder_policy, mojo::NullRemote(),
+      document_isolation_policy,
       storage::BucketLocator::ForDefaultBucket(code_cache_storage_key),
       storage::mojom::CacheStorageOwner::kCacheAPI,
       remote.BindNewPipeAndPassReceiver());
@@ -398,7 +402,7 @@ std::optional<GURL> CodeCacheHostImpl::GetSecondaryKeyForCodeCache(
   // |resource_url| of the requested resource as the key. Return an empty GURL
   // as the second key.
   if (!process_lock.is_locked_to_site()) {
-    return GURL::EmptyGURL();
+    return GURL();
   }
 
   // Case 2: Don't cache the code corresponding to opaque origins. The same
@@ -422,7 +426,9 @@ std::optional<GURL> CodeCacheHostImpl::GetSecondaryKeyForCodeCache(
   if (process_lock.matches_scheme(url::kHttpScheme) ||
       process_lock.matches_scheme(url::kHttpsScheme) ||
       process_lock.matches_scheme(content::kChromeUIScheme) ||
-      process_lock.matches_scheme(content::kChromeUIUntrustedScheme)) {
+      process_lock.matches_scheme(content::kChromeUIUntrustedScheme) ||
+      blink::CommonSchemeRegistry::IsExtensionScheme(
+          process_lock.lock_url().scheme())) {
     return process_lock.lock_url();
   }
 

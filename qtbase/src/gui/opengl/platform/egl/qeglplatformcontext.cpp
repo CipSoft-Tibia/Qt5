@@ -319,7 +319,7 @@ void QEGLPlatformContext::updateFormatFromGL()
                         m_format.setOption(QSurfaceFormat::DeprecatedFunctions);
                     if (value & GL_CONTEXT_FLAG_DEBUG_BIT)
                         m_format.setOption(QSurfaceFormat::DebugContext);
-                    if (m_format.version() >= qMakePair(3, 2)) {
+                    if (m_format.version() >= std::pair(3, 2)) {
                         value = 0;
                         glGetIntegerv(GL_CONTEXT_PROFILE_MASK, &value);
                         if (value & GL_CONTEXT_CORE_PROFILE_BIT)
@@ -378,6 +378,21 @@ bool QEGLPlatformContext::makeCurrent(QPlatformSurface *surface)
             if (eglSurface != EGL_NO_SURFACE) // skip if using surfaceless context
                 eglSwapInterval(eglDisplay(), m_swapInterval);
         }
+#if defined(Q_OS_VXWORKS) && defined(Q_PROCESSOR_X86_64)
+        // Clear set of framebuffers as workaround for display artifacts found
+        // in Wind River's Mesa OpenGL implementation
+        static bool firstWindow = true;
+        if (firstWindow && (QSurface::Window == surface->surface()->surfaceClass())) {
+            glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
+            glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
+            swapBuffers(surface);
+            glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
+            swapBuffers(surface);
+            glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
+            swapBuffers(surface);
+            firstWindow = false;
+        }
+#endif
     } else {
         qWarning("QEGLPlatformContext: eglMakeCurrent failed: %x", eglGetError());
     }
@@ -416,7 +431,7 @@ QFunctionPointer QEGLPlatformContext::getProcAddress(const char *procName)
 {
     eglBindAPI(m_api);
     QFunctionPointer proc = (QFunctionPointer) eglGetProcAddress(procName);
-#if !defined(Q_OS_WIN) && !defined(Q_OS_INTEGRITY)
+#if QT_CONFIG(dlopen)
     if (!proc)
         proc = (QFunctionPointer) dlsym(RTLD_DEFAULT, procName);
 #elif !defined(QT_OPENGL_DYNAMIC)

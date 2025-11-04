@@ -2,9 +2,13 @@
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
+import("//build/config/chromeos/ui_mode.gni")
 import("//extensions/buildflags/buildflags.gni")
+import("//media/media_options.gni")
 import("//testing/libfuzzer/fuzzer_test.gni")
 import("//testing/test.gni")
+
+assert(!is_fuchsia, "Fuchsia shouldn't use anything in //chrome")
 
 declare_args() {
   # Set to true to build code that supports the Open Screen Protocol.
@@ -57,6 +61,10 @@ static_library("media_router_feature") {
     "//media",
   ]
   configs += [ "//build/config/compiler:wexit_time_destructors" ]
+
+  if (is_chromeos_ash) {
+    deps += [ "//chromeos/ash/components/browser_context_helper" ]
+  }
 }
 
 static_library("router") {
@@ -67,6 +75,7 @@ static_library("router") {
     "presentation/chrome_local_presentation_manager_factory.h",
   ]
   public_deps = [
+    "//chrome/browser:browser_public_dependencies",
     "//components/media_router/browser",
     "//components/media_router/common",
     "//components/media_router/common/mojom:media_router",
@@ -160,7 +169,7 @@ static_library("router") {
       # We can't depend on //chrome/browser/ui due to introducing a cyclic
       # dependency. Remove this target from the `allow_circular_includes_from`
       # list in chrome/browser/ui/BUILD.gn once the issues is resolved.
-      # TODO(crbug.com/1030821): Resolve circular dependencies.
+      # TODO(crbug.com/40110173): Resolve circular dependencies.
 
       ":logger_list",
       "//chrome/browser:browser_process",
@@ -211,6 +220,12 @@ static_library("router") {
       "//extensions/common",
     ]
   }
+
+  if (enable_webrtc) {
+    public_deps += [
+      "//chrome/browser/media/webrtc",
+    ]
+  }
 }
 
 if (!is_android && enable_extensions) {
@@ -244,8 +259,6 @@ if (!is_android && enable_extensions) {
       "test/mock_dns_sd_registry.h",
       "test/mock_mojo_media_router.cc",
       "test/mock_mojo_media_router.h",
-      "test/noop_dual_media_sink_service.cc",
-      "test/noop_dual_media_sink_service.h",
       "test/provider_test_helpers.cc",
       "test/provider_test_helpers.h",
     ]
@@ -342,16 +355,21 @@ source_set("unittests") {
       "providers/dial/dial_media_route_provider_unittest.cc",
       "providers/wired_display/wired_display_media_route_provider_unittest.cc",
     ]
+    if (is_win) {
+      sources += [ "discovery/discovery_network_list_win_unittest.cc" ]
+    }
     deps += [
       ":logger_list",
       ":test_support",
       "//chrome/browser/media/router/discovery",
+      "//chrome/browser/media/router/discovery:test_support",
       "//chrome/browser/media/router/discovery/access_code:access_code_cast_feature",
       "//chrome/browser/media/router/discovery/access_code:access_code_sink_service",
       "//chrome/browser/media/router/discovery/access_code:discovery_resources_proto",
       "//chrome/test:test_support",
       "//components/sync_preferences:test_support",
       "//content/test:test_support",
+      "//media/cast:common",
       "//services/preferences/public/cpp",
       "//third_party/openscreen/src/cast/common:public",
     ]
@@ -377,10 +395,9 @@ source_set("unittests") {
   }
 }
 
-# TODO(crbug.com/1290541): Fails to link on Fuchsia builds.
-# TODO(https://issuetracker.google.com/236160471): CDDL compiler doesn't build
+# TODO(issuetracker.google.com/236160471): CDDL compiler doesn't build
 # on Windows.
-if (!is_fuchsia && !is_win) {
+if (!is_win) {
   test("openscreen_unittests") {
     deps = [
       "//base/test:run_all_unittests",

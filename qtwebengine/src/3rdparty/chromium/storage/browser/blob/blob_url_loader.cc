@@ -129,11 +129,12 @@ void BlobURLLoader::Start(const std::string& method,
     return;
   }
 
-  std::string range_header;
-  if (headers.GetHeader(net::HttpRequestHeaders::kRange, &range_header)) {
+  if (std::optional<std::string> range_header =
+          headers.GetHeader(net::HttpRequestHeaders::kRange);
+      range_header) {
     // We only care about "Range" header here.
     std::vector<net::HttpByteRange> ranges;
-    if (net::HttpUtil::ParseRangeHeader(range_header, &ranges)) {
+    if (net::HttpUtil::ParseRangeHeader(range_header.value(), &ranges)) {
       if (ranges.size() == 1) {
         byte_range_set_ = true;
         byte_range_ = ranges[0];
@@ -172,7 +173,7 @@ void BlobURLLoader::FollowRedirect(
     const net::HttpRequestHeaders& modified_headers,
     const net::HttpRequestHeaders& modified_cors_exempt_headers,
     const std::optional<GURL>& new_url) {
-  NOTREACHED();
+  NOTREACHED_IN_MIGRATION();
 }
 
 MojoBlobReader::Delegate::RequestSideData BlobURLLoader::DidCalculateSize(

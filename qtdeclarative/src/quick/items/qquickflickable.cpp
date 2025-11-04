@@ -21,6 +21,7 @@
 #include <QtGui/private/qguiapplication_p.h>
 #include <QtGui/private/qeventpoint_p.h>
 #include <QtGui/qstylehints.h>
+#include <QtGui/qaccessible.h>
 #include <QtCore/qmath.h>
 #include <qpa/qplatformtheme.h>
 
@@ -29,12 +30,11 @@
 
 QT_BEGIN_NAMESPACE
 
-Q_DECLARE_LOGGING_CATEGORY(lcHandlerParent)
-Q_LOGGING_CATEGORY(lcFlickable, "qt.quick.flickable")
-Q_LOGGING_CATEGORY(lcFilter, "qt.quick.flickable.filter")
-Q_LOGGING_CATEGORY(lcReplay, "qt.quick.flickable.replay")
-Q_LOGGING_CATEGORY(lcWheel, "qt.quick.flickable.wheel")
-Q_LOGGING_CATEGORY(lcVel, "qt.quick.flickable.velocity")
+Q_STATIC_LOGGING_CATEGORY(lcFlickable, "qt.quick.flickable")
+Q_STATIC_LOGGING_CATEGORY(lcFilter, "qt.quick.flickable.filter")
+Q_STATIC_LOGGING_CATEGORY(lcReplay, "qt.quick.flickable.replay")
+Q_STATIC_LOGGING_CATEGORY(lcWheel, "qt.quick.flickable.wheel")
+Q_STATIC_LOGGING_CATEGORY(lcVel, "qt.quick.flickable.velocity")
 
 // RetainGrabVelocity is the maxmimum instantaneous velocity that
 // will ensure the Flickable retains the grab on consecutive flicks.
@@ -232,6 +232,7 @@ QQuickFlickablePrivate::QQuickFlickablePrivate()
     , scrollingPhase(false), interactive(true), calcVelocity(false)
     , pixelAligned(false)
     , syncDrag(false)
+    , acceptedButtons(Qt::LeftButton)
     , lastPosTime(-1)
     , lastPressTime(0)
     , deceleration(QGuiApplicationPrivate::platformTheme()->themeHint(QPlatformTheme::FlickDeceleration).toReal())
@@ -259,7 +260,7 @@ void QQuickFlickablePrivate::init()
                       q, QQuickFlickable, SLOT(timelineCompleted()));
     qmlobject_connect(&velocityTimeline, QQuickTimeLine, SIGNAL(completed()),
                       q, QQuickFlickable, SLOT(velocityTimelineCompleted()));
-    q->setAcceptedMouseButtons(Qt::LeftButton);
+    q->setAcceptedMouseButtons(acceptedButtons);
     q->setAcceptTouchEvents(true);
     q->setFiltersChildMouseEvents(true);
     q->setFlag(QQuickItem::ItemIsViewport);
@@ -1048,6 +1049,38 @@ void QQuickFlickable::setSynchronousDrag(bool v)
     }
 }
 
+/*!
+    \qmlproperty flags QtQuick::Flickable::acceptedButtons
+    \since 6.9
+
+    The mouse buttons that can be used to scroll this Flickable by dragging.
+
+    By default, this property is set to \l {QtQuick::MouseEvent::button} {Qt.LeftButton},
+    which provides the same behavior as in previous Qt versions; but in most
+    user interfaces, this behavior is unexpected. Users expect to flick only on
+    a touchscreen, and to use the mouse wheel, touchpad gestures or a scroll
+    bar with mouse or touchpad. Set it to \c Qt.NoButton to disable dragging.
+
+    It can be set to an OR combination of mouse buttons, and will ignore events
+    from other buttons.
+*/
+Qt::MouseButtons QQuickFlickable::acceptedButtons() const
+{
+    Q_D(const QQuickFlickable);
+    return d->acceptedButtons;
+}
+
+void QQuickFlickable::setAcceptedButtons(Qt::MouseButtons buttons)
+{
+    Q_D(QQuickFlickable);
+    if (d->acceptedButtons == buttons)
+        return;
+
+    d->acceptedButtons = buttons;
+    setAcceptedMouseButtons(buttons);
+    emit acceptedButtonsChanged();
+}
+
 /*! \internal
     Take the velocity of the first point from the given \a event and transform
     it to the local coordinate system (taking scale and rotation into account).
@@ -1110,8 +1143,8 @@ void QQuickFlickablePrivate::maybeBeginDrag(qint64 currentTimestamp, const QPoin
 {
     Q_Q(QQuickFlickable);
     clearDelayedPress();
-    // consider dragging only when event is left mouse button or touch event which has no button
-    pressed = buttons.testFlag(Qt::LeftButton) || (buttons == Qt::NoButton);
+    // consider dragging only when buttons intersect acceptedButtons, or it's a touch event which has no button
+    pressed = (buttons == Qt::NoButton) || (acceptedButtons != Qt::NoButton && (buttons & acceptedButtons) != 0);
 
     if (hData.transitionToBounds)
         hData.transitionToBounds->stopTransition();
@@ -1182,7 +1215,7 @@ void QQuickFlickablePrivate::drag(qint64 currentTimestamp, QEvent::Type eventTyp
     if (q->yflick()) {
         qreal dy = deltas.y();
         if (overThreshold || elapsedSincePress > 200) {
-            if (!vMoved)
+            if (!vMoved && !vData.dragging)
                 vData.dragStartOffset = dy;
             qreal newY = dy + vData.pressPos - (syncDrag ? 0 : vData.dragStartOffset);
             // Recalculate bounds in case margins have changed, but use the content
@@ -1258,7 +1291,7 @@ void QQuickFlickablePrivate::drag(qint64 currentTimestamp, QEvent::Type eventTyp
     if (q->xflick()) {
         qreal dx = deltas.x();
         if (overThreshold || elapsedSincePress > 200) {
-            if (!hMoved)
+            if (!hMoved && !hData.dragging)
                 hData.dragStartOffset = dx;
             qreal newX = dx + hData.pressPos - (syncDrag ? 0 : hData.dragStartOffset);
             const qreal minX = hData.dragMinBound + hData.startMargin;
@@ -1364,7 +1397,7 @@ void QQuickFlickablePrivate::handleMoveEvent(QPointerEvent *event)
 {
     Q_Q(QQuickFlickable);
     if (!interactive || lastPosTime == -1 ||
-            (event->isSinglePointEvent() && !static_cast<QSinglePointEvent *>(event)->buttons().testFlag(Qt::LeftButton)))
+            (event->isSinglePointEvent() && !buttonsAccepted(static_cast<QSinglePointEvent *>(event))))
         return;
 
     qint64 currentTimestamp = computeCurrentTime(event);
@@ -1499,10 +1532,15 @@ void QQuickFlickablePrivate::handleReleaseEvent(QPointerEvent *event)
     }
 }
 
+bool QQuickFlickablePrivate::buttonsAccepted(const QSinglePointEvent *event)
+{
+    return !((event->button() & acceptedButtons) == 0 && (event->buttons() & acceptedButtons) == 0);
+}
+
 void QQuickFlickable::mousePressEvent(QMouseEvent *event)
 {
     Q_D(QQuickFlickable);
-    if (d->interactive && !d->replayingPressEvent && d->wantsPointerEvent(event)) {
+    if (d->interactive && !d->replayingPressEvent && d->buttonsAccepted(event) && d->wantsPointerEvent(event)) {
         if (!d->pressed)
             d->handlePressEvent(event);
         event->accept();
@@ -1514,7 +1552,7 @@ void QQuickFlickable::mousePressEvent(QMouseEvent *event)
 void QQuickFlickable::mouseMoveEvent(QMouseEvent *event)
 {
     Q_D(QQuickFlickable);
-    if (d->interactive && d->wantsPointerEvent(event)) {
+    if (d->interactive && d->buttonsAccepted(event) && d->wantsPointerEvent(event)) {
         d->handleMoveEvent(event);
         event->accept();
     } else {
@@ -1525,7 +1563,7 @@ void QQuickFlickable::mouseMoveEvent(QMouseEvent *event)
 void QQuickFlickable::mouseReleaseEvent(QMouseEvent *event)
 {
     Q_D(QQuickFlickable);
-    if (d->interactive && d->wantsPointerEvent(event)) {
+    if (d->interactive && d->buttonsAccepted(event) && d->wantsPointerEvent(event)) {
         if (d->delayedPressEvent) {
             d->replayDelayedPress();
 
@@ -2696,12 +2734,16 @@ void QQuickFlickablePrivate::addPointerHandler(QQuickPointerHandler *h)
 */
 bool QQuickFlickable::filterPointerEvent(QQuickItem *receiver, QPointerEvent *event)
 {
-    const bool isTouch = QQuickDeliveryAgentPrivate::isTouchEvent(event);
-    if (!(QQuickDeliveryAgentPrivate::isMouseEvent(event) || isTouch ||
-          QQuickDeliveryAgentPrivate::isTabletEvent(event)))
-        return false; // don't filter hover events or wheel events, for example
-    Q_ASSERT_X(receiver != this, "", "Flickable received a filter event for itself");
     Q_D(QQuickFlickable);
+    const bool isTouch = QQuickDeliveryAgentPrivate::isTouchEvent(event);
+    const bool isMouse = QQuickDeliveryAgentPrivate::isMouseEvent(event);
+    if (isMouse || QQuickDeliveryAgentPrivate::isTabletEvent(event)) {
+        if (!d->buttonsAccepted(static_cast<QSinglePointEvent *>(event)))
+            return QQuickItem::childMouseEventFilter(receiver, event);
+    } else if (!isTouch) {
+        return false; // don't filter hover events or wheel events, for example
+    }
+    Q_ASSERT_X(receiver != this, "", "Flickable received a filter event for itself");
     // If a touch event contains a new press point, don't steal right away: watch the movements for a while
     if (isTouch && static_cast<QTouchEvent *>(event)->touchPointStates().testFlag(QEventPoint::State::Pressed))
         d->stealMouse = false;
@@ -2741,8 +2783,7 @@ bool QQuickFlickable::filterPointerEvent(QQuickItem *receiver, QPointerEvent *ev
             preventStealing = true;
 #endif
         if (!preventStealing && receiverKeepsGrab) {
-            receiverRelinquishGrab = !receiverDisabled
-                    || (QQuickDeliveryAgentPrivate::isMouseEvent(event)
+            receiverRelinquishGrab = !receiverDisabled || (isMouse
                         && firstPoint.state() == QEventPoint::State::Pressed
                         && (receiver->acceptedMouseButtons() & static_cast<QMouseEvent *>(event)->button()));
             if (receiverRelinquishGrab)

@@ -35,6 +35,7 @@
 #include "dawn/native/Forward.h"
 #include "dawn/native/IntegerTypes.h"
 #include "dawn/native/ObjectBase.h"
+#include "partition_alloc/pointers/raw_ptr.h"
 
 #include "dawn/native/dawn_platform.h"
 
@@ -47,9 +48,12 @@ class ProgrammableEncoder : public ApiObjectBase {
   public:
     ProgrammableEncoder(DeviceBase* device, const char* label, EncodingContext* encodingContext);
 
-    void APIInsertDebugMarker(const char* groupLabel);
+    // TODO(crbug.com/42241188): Remove const char* version of the methods.
+    void APIInsertDebugMarker(const char* groupLabel) { APIInsertDebugMarker2(groupLabel); }
+    void APIInsertDebugMarker2(std::string_view groupLabel);
     void APIPopDebugGroup();
-    void APIPushDebugGroup(const char* groupLabel);
+    void APIPushDebugGroup(const char* groupLabel) { APIPushDebugGroup2(groupLabel); }
+    void APIPushDebugGroup2(std::string_view groupLabel);
 
   protected:
     bool IsValidationEnabled() const;
@@ -73,7 +77,7 @@ class ProgrammableEncoder : public ApiObjectBase {
                         ErrorTag errorTag,
                         const char* label);
 
-    EncodingContext* mEncodingContext = nullptr;
+    raw_ptr<EncodingContext> mEncodingContext = nullptr;
 
     uint64_t mDebugGroupStackSize = 0;
 

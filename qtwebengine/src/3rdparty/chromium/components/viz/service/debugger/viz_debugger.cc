@@ -2,6 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#ifdef UNSAFE_BUFFERS_BUILD
+// TODO(crbug.com/40285824): Remove this and convert code to safer constructs.
+#pragma allow_unsafe_buffers
+#endif
+
 #include "components/viz/service/debugger/viz_debugger.h"
 
 #include <algorithm>
@@ -383,7 +388,7 @@ void VizDebugger::FilterDebugStream(base::Value::Dict json) {
       return (filter_str ? filter_str->GetString() : std::string());
     };
 
-    absl::optional<bool> enabled = filter.FindBool("enabled");
+    std::optional<bool> enabled = filter.FindBool("enabled");
     new_filters_.emplace_back(check_str(file), check_str(func), check_str(anno),
                               active->GetBool(), enabled.value_or(true));
   }

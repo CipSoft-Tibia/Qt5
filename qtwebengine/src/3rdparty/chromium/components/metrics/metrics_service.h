@@ -219,11 +219,11 @@ class MetricsService {
   //
   // See comments at MetricsServiceClient::GetCurrentUserMetricsConsent() for
   // more details.
-  absl::optional<bool> GetCurrentUserMetricsConsent() const;
+  std::optional<bool> GetCurrentUserMetricsConsent() const;
 
   // Returns the current logged in user id. See comments at
   // MetricsServiceClient::GetCurrentUserId() for more details.
-  absl::optional<std::string> GetCurrentUserId() const;
+  std::optional<std::string> GetCurrentUserId() const;
 
   // Updates the current user metrics consent. No-ops if no user has logged in.
   void UpdateCurrentUserMetricsConsent(bool user_metrics_consent);
@@ -344,8 +344,8 @@ class MetricsService {
 
   // Writes snapshots of histograms owned by the StatisticsRecorder to a log.
   // Does not take ownership of the log.
-  // TODO(crbug/1423653): Although this class takes in |required_flags| in its
-  // constructor to filter the StatisticsRecorder histograms being put into
+  // TODO(crbug.com/40897621): Although this class takes in |required_flags| in
+  // its constructor to filter the StatisticsRecorder histograms being put into
   // the log, the |histogram_snapshot_manager_| is not aware of this. So if
   // the |histogram_snapshot_manager_| is passed to some other caller, this
   // caller will need to manually filter the histograms. Re-factor the code so
@@ -383,13 +383,18 @@ class MetricsService {
       return snapshot_transaction_id_;
     }
 
+    // Notifies the histogram writer that the `log` passed in through the
+    // constructor is about to be destroyed.
+    void NotifyLogBeingFinalized();
+
    private:
     // Used to select which histograms to record when calling
     // SnapshotStatisticsRecorderHistograms() or
     // SnapshotStatisticsRecorderUnloggedSamples().
     const base::HistogramBase::Flags required_flags_;
 
-    // Used to write histograms to the log passed in the constructor.
+    // Used to write histograms to the log passed in the constructor. Null after
+    // `NotifyLogBeingFinalized()`.
     std::unique_ptr<base::HistogramFlattener> flattener_;
 
     // Used to snapshot histograms.
@@ -592,7 +597,7 @@ class MetricsService {
       std::unique_ptr<MetricsLogHistogramWriter> log_histogram_writer,
       std::unique_ptr<MetricsLog> log,
       bool truncate_events,
-      absl::optional<ChromeUserMetricsExtension::RealLocalTime> close_time,
+      std::optional<ChromeUserMetricsExtension::RealLocalTime> close_time,
       std::string&& current_app_version,
       std::string&& signing_key);
 
@@ -606,7 +611,7 @@ class MetricsService {
       MetricsLogHistogramWriter* log_histogram_writer,
       std::unique_ptr<MetricsLog> log,
       bool truncate_events,
-      absl::optional<ChromeUserMetricsExtension::RealLocalTime> close_time,
+      std::optional<ChromeUserMetricsExtension::RealLocalTime> close_time,
       std::string&& current_app_version,
       std::string&& signing_key);
 
@@ -615,7 +620,7 @@ class MetricsService {
   static FinalizedLog FinalizeLog(
       std::unique_ptr<MetricsLog> log,
       bool truncate_events,
-      absl::optional<ChromeUserMetricsExtension::RealLocalTime> close_time,
+      std::optional<ChromeUserMetricsExtension::RealLocalTime> close_time,
       const std::string& current_app_version,
       const std::string& signing_key);
 

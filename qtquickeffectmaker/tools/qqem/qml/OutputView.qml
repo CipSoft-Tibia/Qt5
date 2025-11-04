@@ -10,6 +10,7 @@ Item {
     id: rootItem
 
     property alias outputEditorView: outputEditorView
+    property alias effectPreview: effectPreview
 
     function showHelp() {
         tabBarViews.currentIndex = 2;

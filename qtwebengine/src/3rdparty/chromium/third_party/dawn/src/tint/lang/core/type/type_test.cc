@@ -58,36 +58,34 @@ struct TypeTest : public TestHelper {
     const Matrix* mat4x3_af = create<Matrix>(vec3_af, 4u);
     const Reference* ref_u32 =
         create<Reference>(core::AddressSpace::kPrivate, u32, core::Access::kReadWrite);
-    const Struct* str_f32 =
-        create<Struct>(Sym("str_f32"),
-                       tint::Vector{
-                           create<StructMember>(
-                               /* name */ Sym("x"),
-                               /* type */ f32,
-                               /* index */ 0u,
-                               /* offset */ 0u,
-                               /* align */ 4u,
-                               /* size */ 4u,
-                               /* attributes */ core::type::StructMemberAttributes{}),
-                       },
-                       /* align*/ 4u,
-                       /* size*/ 4u,
-                       /* size_no_padding*/ 4u);
-    const Struct* str_f16 =
-        create<Struct>(Sym("str_f16"),
-                       tint::Vector{
-                           create<StructMember>(
-                               /* name */ Sym("x"),
-                               /* type */ f16,
-                               /* index */ 0u,
-                               /* offset */ 0u,
-                               /* align */ 4u,
-                               /* size */ 4u,
-                               /* attributes */ core::type::StructMemberAttributes{}),
-                       },
-                       /* align*/ 4u,
-                       /* size*/ 4u,
-                       /* size_no_padding*/ 4u);
+    const Struct* str_f32 = create<Struct>(Sym("str_f32"),
+                                           tint::Vector{
+                                               create<StructMember>(
+                                                   /* name */ Sym("x"),
+                                                   /* type */ f32,
+                                                   /* index */ 0u,
+                                                   /* offset */ 0u,
+                                                   /* align */ 4u,
+                                                   /* size */ 4u,
+                                                   /* attributes */ core::IOAttributes{}),
+                                           },
+                                           /* align*/ 4u,
+                                           /* size*/ 4u,
+                                           /* size_no_padding*/ 4u);
+    const Struct* str_f16 = create<Struct>(Sym("str_f16"),
+                                           tint::Vector{
+                                               create<StructMember>(
+                                                   /* name */ Sym("x"),
+                                                   /* type */ f16,
+                                                   /* index */ 0u,
+                                                   /* offset */ 0u,
+                                                   /* align */ 4u,
+                                                   /* size */ 4u,
+                                                   /* attributes */ core::IOAttributes{}),
+                                           },
+                                           /* align*/ 4u,
+                                           /* size*/ 4u,
+                                           /* size_no_padding*/ 4u);
     Struct* str_af = create<Struct>(Sym("str_af"),
                                     tint::Vector{
                                         create<StructMember>(
@@ -97,7 +95,7 @@ struct TypeTest : public TestHelper {
                                             /* offset */ 0u,
                                             /* align */ 4u,
                                             /* size */ 4u,
-                                            /* attributes */ core::type::StructMemberAttributes{}),
+                                            /* attributes */ core::IOAttributes{}),
                                     },
                                     /* align*/ 4u,
                                     /* size*/ 4u,
@@ -526,38 +524,38 @@ TEST_F(TypeTest, Common3) {
                 arr_mat4x3_f16);
 }
 
-TEST_F(TypeTest, HoldsAbstract) {
-    EXPECT_TRUE(af->HoldsAbstract());
-    EXPECT_TRUE(ai->HoldsAbstract());
-    EXPECT_FALSE(f32->HoldsAbstract());
-    EXPECT_FALSE(f16->HoldsAbstract());
-    EXPECT_FALSE(i32->HoldsAbstract());
-    EXPECT_FALSE(u32->HoldsAbstract());
-    EXPECT_FALSE(vec2_f32->HoldsAbstract());
-    EXPECT_FALSE(vec3_f32->HoldsAbstract());
-    EXPECT_FALSE(vec3_f16->HoldsAbstract());
-    EXPECT_FALSE(vec4_f32->HoldsAbstract());
-    EXPECT_FALSE(vec3_u32->HoldsAbstract());
-    EXPECT_FALSE(vec3_i32->HoldsAbstract());
-    EXPECT_TRUE(vec3_af->HoldsAbstract());
-    EXPECT_TRUE(vec3_ai->HoldsAbstract());
-    EXPECT_FALSE(mat2x4_f32->HoldsAbstract());
-    EXPECT_FALSE(mat3x4_f32->HoldsAbstract());
-    EXPECT_FALSE(mat4x2_f32->HoldsAbstract());
-    EXPECT_FALSE(mat4x3_f32->HoldsAbstract());
-    EXPECT_FALSE(mat4x3_f16->HoldsAbstract());
-    EXPECT_TRUE(mat4x3_af->HoldsAbstract());
-    EXPECT_FALSE(str_f16->HoldsAbstract());
-    EXPECT_TRUE(str_af->HoldsAbstract());
-    EXPECT_FALSE(arr_i32->HoldsAbstract());
-    EXPECT_TRUE(arr_ai->HoldsAbstract());
-    EXPECT_FALSE(arr_vec3_i32->HoldsAbstract());
-    EXPECT_TRUE(arr_vec3_ai->HoldsAbstract());
-    EXPECT_FALSE(arr_mat4x3_f16->HoldsAbstract());
-    EXPECT_FALSE(arr_mat4x3_f32->HoldsAbstract());
-    EXPECT_TRUE(arr_mat4x3_af->HoldsAbstract());
-    EXPECT_FALSE(arr_str_f16->HoldsAbstract());
-    EXPECT_TRUE(arr_str_af->HoldsAbstract());
+TEST_F(TypeTest, IsAbstract) {
+    EXPECT_TRUE(af->IsAbstract());
+    EXPECT_TRUE(ai->IsAbstract());
+    EXPECT_FALSE(f32->IsAbstract());
+    EXPECT_FALSE(f16->IsAbstract());
+    EXPECT_FALSE(i32->IsAbstract());
+    EXPECT_FALSE(u32->IsAbstract());
+    EXPECT_FALSE(vec2_f32->IsAbstract());
+    EXPECT_FALSE(vec3_f32->IsAbstract());
+    EXPECT_FALSE(vec3_f16->IsAbstract());
+    EXPECT_FALSE(vec4_f32->IsAbstract());
+    EXPECT_FALSE(vec3_u32->IsAbstract());
+    EXPECT_FALSE(vec3_i32->IsAbstract());
+    EXPECT_TRUE(vec3_af->IsAbstract());
+    EXPECT_TRUE(vec3_ai->IsAbstract());
+    EXPECT_FALSE(mat2x4_f32->IsAbstract());
+    EXPECT_FALSE(mat3x4_f32->IsAbstract());
+    EXPECT_FALSE(mat4x2_f32->IsAbstract());
+    EXPECT_FALSE(mat4x3_f32->IsAbstract());
+    EXPECT_FALSE(mat4x3_f16->IsAbstract());
+    EXPECT_TRUE(mat4x3_af->IsAbstract());
+    EXPECT_FALSE(str_f16->IsAbstract());
+    EXPECT_TRUE(str_af->IsAbstract());
+    EXPECT_FALSE(arr_i32->IsAbstract());
+    EXPECT_TRUE(arr_ai->IsAbstract());
+    EXPECT_FALSE(arr_vec3_i32->IsAbstract());
+    EXPECT_TRUE(arr_vec3_ai->IsAbstract());
+    EXPECT_FALSE(arr_mat4x3_f16->IsAbstract());
+    EXPECT_FALSE(arr_mat4x3_f32->IsAbstract());
+    EXPECT_TRUE(arr_mat4x3_af->IsAbstract());
+    EXPECT_FALSE(arr_str_f16->IsAbstract());
+    EXPECT_TRUE(arr_str_af->IsAbstract());
 }
 
 }  // namespace

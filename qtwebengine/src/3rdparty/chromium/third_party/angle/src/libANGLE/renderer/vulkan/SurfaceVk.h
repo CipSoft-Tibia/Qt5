@@ -11,6 +11,7 @@
 #define LIBANGLE_RENDERER_VULKAN_SURFACEVK_H_
 
 #include "common/CircularBuffer.h"
+#include "common/SimpleMutex.h"
 #include "common/vulkan/vk_headers.h"
 #include "libANGLE/renderer/SurfaceImpl.h"
 #include "libANGLE/renderer/vulkan/CommandProcessor.h"
@@ -19,8 +20,6 @@
 
 namespace rx
 {
-class RendererVk;
-
 class SurfaceVk : public SurfaceImpl, public angle::ObserverInterface, public vk::Resource
 {
   public:
@@ -38,6 +37,13 @@ class SurfaceVk : public SurfaceImpl, public angle::ObserverInterface, public vk
     // We monitor the staging buffer for changes. This handles staged data from outside this class.
     void onSubjectStateChange(angle::SubjectIndex index, angle::SubjectMessage message) override;
 
+    // width and height can change with client window resizing
+    EGLint getWidth() const override;
+    EGLint getHeight() const override;
+
+    EGLint mWidth;
+    EGLint mHeight;
+
     RenderTargetVk mColorRenderTarget;
     RenderTargetVk mDepthStencilRenderTarget;
 };
@@ -45,7 +51,7 @@ class SurfaceVk : public SurfaceImpl, public angle::ObserverInterface, public vk
 class OffscreenSurfaceVk : public SurfaceVk
 {
   public:
-    OffscreenSurfaceVk(const egl::SurfaceState &surfaceState, RendererVk *renderer);
+    OffscreenSurfaceVk(const egl::SurfaceState &surfaceState, vk::Renderer *renderer);
     ~OffscreenSurfaceVk() override;
 
     egl::Error initialize(const egl::Display *display) override;
@@ -67,11 +73,7 @@ class OffscreenSurfaceVk : public SurfaceVk
     egl::Error releaseTexImage(const gl::Context *context, EGLint buffer) override;
     egl::Error getSyncValues(EGLuint64KHR *ust, EGLuint64KHR *msc, EGLuint64KHR *sbc) override;
     egl::Error getMscRate(EGLint *numerator, EGLint *denominator) override;
-    void setSwapInterval(EGLint interval) override;
-
-    // width and height can change with client window resizing
-    EGLint getWidth() const override;
-    EGLint getHeight() const override;
+    void setSwapInterval(const egl::Display *display, EGLint interval) override;
 
     EGLint isPostSubBufferSupported() const override;
     EGLint getSwapBehavior() const override;
@@ -117,9 +119,6 @@ class OffscreenSurfaceVk : public SurfaceVk
     };
 
     virtual angle::Result initializeImpl(DisplayVk *displayVk);
-
-    EGLint mWidth;
-    EGLint mHeight;
 
     AttachmentImage mColorAttachment;
     AttachmentImage mDepthStencilAttachment;
@@ -200,7 +199,6 @@ struct SwapchainImage : angle::NonCopyable
     vk::ImageViewHelper imageViews;
     vk::Framebuffer framebuffer;
     vk::Framebuffer fetchFramebuffer;
-    vk::Framebuffer framebufferResolveMS;
 
     uint64_t frameNumber = 0;
 };
@@ -210,7 +208,7 @@ struct SwapchainImage : angle::NonCopyable
 struct UnlockedTryAcquireData : angle::NonCopyable
 {
     // A mutex to protect against concurrent attempts to call vkAcquireNextImageKHR.
-    std::mutex mutex;
+    angle::SimpleMutex mutex;
 
     // Given that the CPU is throttled after a number of swaps, there is an upper bound to the
     // number of semaphores that are used to acquire swapchain images, and that is
@@ -278,12 +276,6 @@ enum class FramebufferFetchMode
     Enabled,
 };
 
-enum class SwapchainResolveMode
-{
-    Disabled,
-    Enabled,
-};
-
 class WindowSurfaceVk : public SurfaceVk
 {
   public:
@@ -318,13 +310,8 @@ class WindowSurfaceVk : public SurfaceVk
     egl::Error releaseTexImage(const gl::Context *context, EGLint buffer) override;
     egl::Error getSyncValues(EGLuint64KHR *ust, EGLuint64KHR *msc, EGLuint64KHR *sbc) override;
     egl::Error getMscRate(EGLint *numerator, EGLint *denominator) override;
-    void setSwapInterval(EGLint interval) override;
+    void setSwapInterval(const egl::Display *display, EGLint interval) override;
 
-    // width and height can change with client window resizing
-    EGLint getWidth() const override;
-    EGLint getHeight() const override;
-    EGLint getRotatedWidth() const;
-    EGLint getRotatedHeight() const;
     // Note: windows cannot be resized on Android.  The approach requires
     // calling vkGetPhysicalDeviceSurfaceCapabilitiesKHR.  However, that is
     // expensive; and there are troublesome timing issues for other parts of
@@ -344,13 +331,12 @@ class WindowSurfaceVk : public SurfaceVk
                                      GLenum binding,
                                      const gl::ImageIndex &imageIndex) override;
 
-    vk::Framebuffer &chooseFramebuffer(const SwapchainResolveMode swapchainResolveMode);
+    vk::Framebuffer &chooseFramebuffer();
 
     angle::Result getCurrentFramebuffer(ContextVk *context,
                                         FramebufferFetchMode fetchMode,
                                         const vk::RenderPass &compatibleRenderPass,
-                                        const SwapchainResolveMode swapchainResolveMode,
-                                        vk::MaybeImagelessFramebuffer *framebufferOut);
+                                        vk::Framebuffer *framebufferOut);
 
     VkSurfaceTransformFlagBitsKHR getPreTransform() const
     {
@@ -424,6 +410,8 @@ class WindowSurfaceVk : public SurfaceVk
     virtual angle::Result createSurfaceVk(vk::Context *context, gl::Extents *extentsOut)      = 0;
     virtual angle::Result getCurrentWindowSize(vk::Context *context, gl::Extents *extentsOut) = 0;
 
+    void setSwapInterval(DisplayVk *displayVk, EGLint interval);
+
     angle::Result initializeImpl(DisplayVk *displayVk, bool *anyMatchesOut);
     angle::Result recreateSwapchain(ContextVk *contextVk, const gl::Extents &extents);
     angle::Result createSwapChain(vk::Context *context,
@@ -431,15 +419,12 @@ class WindowSurfaceVk : public SurfaceVk
                                   VkSwapchainKHR oldSwapchain);
     angle::Result queryAndAdjustSurfaceCaps(ContextVk *contextVk,
                                             VkSurfaceCapabilitiesKHR *surfaceCaps);
-    angle::Result checkForOutOfDateSwapchain(ContextVk *contextVk,
-                                             bool presentOutOfDate,
-                                             bool *swapchainRecreatedOut);
+    angle::Result checkForOutOfDateSwapchain(ContextVk *contextVk, bool presentOutOfDate);
     angle::Result resizeSwapchainImages(vk::Context *context, uint32_t imageCount);
     void releaseSwapchainImages(ContextVk *contextVk);
     void destroySwapChainImages(DisplayVk *displayVk);
     angle::Result prepareForAcquireNextSwapchainImage(const gl::Context *context,
-                                                      bool presentOutOfDate,
-                                                      bool *swapchainRecreatedOut);
+                                                      bool presentOutOfDate);
     // This method calls vkAcquireNextImageKHR() to acquire the next swapchain image.  It is called
     // when the swapchain is initially created and when present() finds the swapchain out of date.
     // Otherwise, it is scheduled to be called later by deferAcquireNextImage().
@@ -471,7 +456,7 @@ class WindowSurfaceVk : public SurfaceVk
     // than two frame ahead of the frame being rendered (and three frames ahead of the one being
     // presented).  This is a failsafe, as the application should ensure command buffer recording is
     // not ahead of the frame being rendered by *one* frame.
-    angle::Result throttleCPU(DisplayVk *displayVk, const QueueSerial &currentSubmitSerial);
+    angle::Result throttleCPU(vk::Context *context, const QueueSerial &currentSubmitSerial);
 
     // Finish all GPU operations on the surface
     angle::Result finish(vk::Context *context);
@@ -486,8 +471,8 @@ class WindowSurfaceVk : public SurfaceVk
 
     bool updateColorSpace(DisplayVk *displayVk);
 
-    angle::FormatID getIntendedFormatID(RendererVk *renderer);
-    angle::FormatID getActualFormatID(RendererVk *renderer);
+    angle::FormatID getIntendedFormatID(vk::Renderer *renderer);
+    angle::FormatID getActualFormatID(vk::Renderer *renderer);
 
     std::vector<vk::PresentMode> mPresentModes;
 

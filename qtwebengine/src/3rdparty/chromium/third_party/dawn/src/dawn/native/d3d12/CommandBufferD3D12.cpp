@@ -51,6 +51,8 @@
 #include "dawn/native/d3d12/ShaderVisibleDescriptorAllocatorD3D12.h"
 #include "dawn/native/d3d12/StagingDescriptorAllocatorD3D12.h"
 #include "dawn/native/d3d12/UtilsD3D12.h"
+#include "partition_alloc/pointers/raw_ptr.h"
+#include "partition_alloc/pointers/raw_ptr_exclusion.h"
 
 namespace dawn::native::d3d12 {
 
@@ -522,8 +524,7 @@ class BindGroupStateTracker : public BindGroupTrackerBase<false, uint64_t> {
                 D3D12_GPU_VIRTUAL_ADDRESS bufferLocation =
                     ToBackend(binding.buffer)->GetVA() + offset;
 
-                DAWN_ASSERT(bindingInfo.bindingType == BindingInfoType::Buffer);
-                switch (bindingInfo.buffer.type) {
+                switch (std::get<BufferBindingInfo>(bindingInfo.bindingLayout).type) {
                     case wgpu::BufferBindingType::Uniform:
                         if (mInCompute) {
                             commandList->SetComputeRootConstantBufferView(parameterIndex,
@@ -612,15 +613,17 @@ class BindGroupStateTracker : public BindGroupTrackerBase<false, uint64_t> {
         }
     }
 
-    Device* mDevice;
-    DescriptorHeapState* mHeapState;
+    raw_ptr<Device> mDevice;
+    raw_ptr<DescriptorHeapState> mHeapState;
 
     bool mInCompute = false;
 
     PerBindGroup<D3D12_GPU_DESCRIPTOR_HANDLE> mBoundRootSamplerTables = {};
 
-    MutexProtected<ShaderVisibleDescriptorAllocator>& mViewAllocator;
-    MutexProtected<ShaderVisibleDescriptorAllocator>& mSamplerAllocator;
+    // TODO(https://crbug.com/dawn/2361): Rewrite those members with raw_ref<T>.
+    // This is currently failing with MSVC cl.exe compiler.
+    RAW_PTR_EXCLUSION MutexProtected<ShaderVisibleDescriptorAllocator>& mViewAllocator;
+    RAW_PTR_EXCLUSION MutexProtected<ShaderVisibleDescriptorAllocator>& mSamplerAllocator;
 };
 
 class DescriptorHeapState {
@@ -651,7 +654,7 @@ class DescriptorHeapState {
     BindGroupStateTracker* GetGraphicsBindingTracker() { return &mGraphicsBindingTracker; }
 
   private:
-    Device* mDevice;
+    raw_ptr<Device> mDevice;
     BindGroupStateTracker mComputeBindingTracker;
     BindGroupStateTracker mGraphicsBindingTracker;
 };
@@ -714,7 +717,7 @@ class VertexBufferTracker {
     // If there are multiple calls to SetVertexBuffer, the start and end
     // represent the union of the dirty ranges (the union may have non-dirty
     // data in the middle of the range).
-    const RenderPipeline* mLastAppliedRenderPipeline = nullptr;
+    raw_ptr<const RenderPipeline> mLastAppliedRenderPipeline = nullptr;
     VertexBufferSlot mStartSlot{kMaxVertexBuffers};
     VertexBufferSlot mEndSlot{};
     PerVertexBuffer<D3D12_VERTEX_BUFFER_VIEW> mD3D12BufferViews = {};
@@ -819,10 +822,9 @@ MaybeError CommandBuffer::RecordCommands(CommandRecordingContext* commandContext
                 Buffer* dstBuffer = ToBackend(copy->destination.Get());
 
                 DAWN_TRY(srcBuffer->EnsureDataInitialized(commandContext));
-                bool cleared;
+                [[maybe_unused]] bool cleared;
                 DAWN_TRY_ASSIGN(cleared, dstBuffer->EnsureDataInitializedAsDestination(
                                              commandContext, copy->destinationOffset, copy->size));
-                DAWN_UNUSED(cleared);
 
                 srcBuffer->TrackUsageAndTransitionNow(commandContext, wgpu::BufferUsage::CopySrc);
                 dstBuffer->TrackUsageAndTransitionNow(commandContext, wgpu::BufferUsage::CopyDst);
@@ -1062,11 +1064,10 @@ MaybeError CommandBuffer::RecordCommands(CommandRecordingContext* commandContext
                 Buffer* destination = ToBackend(cmd->destination.Get());
                 uint64_t destinationOffset = cmd->destinationOffset;
 
-                bool cleared;
+                [[maybe_unused]] bool cleared;
                 DAWN_TRY_ASSIGN(
                     cleared, destination->EnsureDataInitializedAsDestination(
                                  commandContext, destinationOffset, queryCount * sizeof(uint64_t)));
-                DAWN_UNUSED(cleared);
 
                 // Resolving unavailable queries is undefined behaviour on D3D12, we only can
                 // resolve the available part of sparse queries. In order to resolve the
@@ -1157,10 +1158,10 @@ MaybeError CommandBuffer::RecordCommands(CommandRecordingContext* commandContext
                 DAWN_ASSERT(uploadHandle.mappedBuffer != nullptr);
                 memcpy(uploadHandle.mappedBuffer, data, size);
 
-                bool cleared;
+                [[maybe_unused]] bool cleared;
                 DAWN_TRY_ASSIGN(cleared, dstBuffer->EnsureDataInitializedAsDestination(
                                              commandContext, offset, size));
-                DAWN_UNUSED(cleared);
+
                 dstBuffer->TrackUsageAndTransitionNow(commandContext, wgpu::BufferUsage::CopyDst);
                 commandList->CopyBufferRegion(
                     dstBuffer->GetD3D12Resource(), offset,
@@ -1590,6 +1591,56 @@ MaybeError CommandBuffer::RecordRenderPass(CommandRecordingContext* commandConte
                     lastPipeline->GetDrawIndexedIndirectCommandSignature();
                 commandList->ExecuteIndirect(signature.Get(), 1, buffer->GetD3D12Resource(),
                                              draw->indirectOffset, nullptr, 0);
+                break;
+            }
+
+            case Command::MultiDrawIndirect: {
+                MultiDrawIndirectCmd* draw = iter->NextCommand<MultiDrawIndirectCmd>();
+
+                DAWN_TRY(bindingTracker->Apply(commandContext));
+                vertexBufferTracker.Apply(commandList, lastPipeline);
+
+                Buffer* indirectBuffer = ToBackend(draw->indirectBuffer.Get());
+                DAWN_ASSERT(indirectBuffer != nullptr);
+
+                Buffer* countBuffer = ToBackend(draw->drawCountBuffer.Get());
+
+                // There is no distinction between DrawIndirect and MultiDrawIndirect in D3D12.
+                // This is why we can use the same command signature for both.
+                ComPtr<ID3D12CommandSignature> signature =
+                    lastPipeline->GetDrawIndirectCommandSignature();
+
+                commandList->ExecuteIndirect(
+                    signature.Get(), draw->maxDrawCount, indirectBuffer->GetD3D12Resource(),
+                    draw->indirectOffset,
+                    countBuffer != nullptr ? countBuffer->GetD3D12Resource() : nullptr,
+                    countBuffer != nullptr ? draw->drawCountOffset : 0);
+
+                break;
+            }
+
+            case Command::MultiDrawIndexedIndirect: {
+                MultiDrawIndexedIndirectCmd* draw =
+                    iter->NextCommand<MultiDrawIndexedIndirectCmd>();
+
+                DAWN_TRY(bindingTracker->Apply(commandContext));
+                vertexBufferTracker.Apply(commandList, lastPipeline);
+
+                Buffer* indirectBuffer = ToBackend(draw->indirectBuffer.Get());
+                DAWN_ASSERT(indirectBuffer != nullptr);
+
+                Buffer* countBuffer = ToBackend(draw->drawCountBuffer.Get());
+
+                // There is no distinction between DrawIndexedIndirect and MultiDrawIndexedIndirect
+                // in D3D12. This is why we can use the same command signature for both.
+                ComPtr<ID3D12CommandSignature> signature =
+                    lastPipeline->GetDrawIndexedIndirectCommandSignature();
+
+                commandList->ExecuteIndirect(
+                    signature.Get(), draw->maxDrawCount, indirectBuffer->GetD3D12Resource(),
+                    draw->indirectOffset,
+                    countBuffer != nullptr ? countBuffer->GetD3D12Resource() : nullptr,
+                    countBuffer != nullptr ? draw->drawCountOffset : 0);
                 break;
             }
 

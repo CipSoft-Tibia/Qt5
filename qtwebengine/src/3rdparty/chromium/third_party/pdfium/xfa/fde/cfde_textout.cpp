@@ -10,9 +10,13 @@
 #include <utility>
 
 #include "build/build_config.h"
+#include "core/fxcrt/check.h"
+#include "core/fxcrt/check_op.h"
+#include "core/fxcrt/compiler_specific.h"
 #include "core/fxcrt/fx_coordinates.h"
 #include "core/fxcrt/fx_extension.h"
 #include "core/fxcrt/fx_system.h"
+#include "core/fxcrt/numerics/safe_conversions.h"
 #include "core/fxcrt/stl_util.h"
 #include "core/fxge/cfx_font.h"
 #include "core/fxge/cfx_path.h"
@@ -21,11 +25,10 @@
 #include "core/fxge/cfx_textrenderoptions.h"
 #include "core/fxge/fx_font.h"
 #include "core/fxge/text_char_pos.h"
-#include "third_party/base/check.h"
-#include "third_party/base/check_op.h"
-#include "third_party/base/numerics/safe_conversions.h"
 #include "xfa/fgas/font/cfgas_gefont.h"
 #include "xfa/fgas/layout/cfgas_txtbreak.h"
+
+namespace pdfium {
 
 namespace {
 
@@ -45,7 +48,7 @@ bool IsTextAlignmentTop(const FDE_TextAlignment align) {
 bool CFDE_TextOut::DrawString(CFX_RenderDevice* device,
                               FX_ARGB color,
                               const RetainPtr<CFGAS_GEFont>& pFont,
-                              pdfium::span<TextCharPos> pCharPos,
+                              span<TextCharPos> pCharPos,
                               float fFontSize,
                               const CFX_Matrix& matrix) {
   DCHECK(pFont);
@@ -92,8 +95,7 @@ bool CFDE_TextOut::DrawString(CFX_RenderDevice* device,
 #else
         font = pFxFont;
 #endif
-
-        device->DrawNormalText(pdfium::make_span(pCurCP, count), font,
+        device->DrawNormalText(UNSAFE_TODO(make_span(pCurCP, count)), font,
                                -fFontSize, matrix, color, kOptions);
       }
       pCurFont = pSTFont;
@@ -103,8 +105,6 @@ bool CFDE_TextOut::DrawString(CFX_RenderDevice* device,
       ++count;
     }
   }
-
-  bool bRet = true;
   if (pCurFont && count) {
     pFxFont = pCurFont->GetDevFont();
     CFX_Font* font;
@@ -115,12 +115,10 @@ bool CFDE_TextOut::DrawString(CFX_RenderDevice* device,
 #else
     font = pFxFont;
 #endif
-
-    bRet = device->DrawNormalText(pdfium::make_span(pCurCP, count), font,
+    return device->DrawNormalText(UNSAFE_TODO(make_span(pCurCP, count)), font,
                                   -fFontSize, matrix, color, kOptions);
   }
-
-  return bRet;
+  return true;
 }
 
 CFDE_TextOut::Piece::Piece() = default;
@@ -303,11 +301,11 @@ void CFDE_TextOut::DrawLogicText(CFX_RenderDevice* device,
     for (size_t i = 0; i < line.GetSize(); ++i) {
       const Piece* pPiece = line.GetPieceAtIndex(i);
       size_t szCount = GetDisplayPos(pPiece);
-      if (szCount == 0)
+      if (szCount == 0) {
         continue;
-
+      }
       CFDE_TextOut::DrawString(device, m_TxtColor, m_pFont,
-                               {m_CharPos.data(), szCount}, m_fFontSize,
+                               make_span(m_CharPos).first(szCount), m_fFontSize,
                                m_Matrix);
     }
   }
@@ -459,7 +457,7 @@ void CFDE_TextOut::Reload(const CFX_RectF& rect) {
 }
 
 void CFDE_TextOut::ReloadLinePiece(Line* line, const CFX_RectF& rect) {
-  pdfium::span<const wchar_t> text_span = m_wsText.span();
+  span<const wchar_t> text_span = m_wsText.span();
   size_t start_char = 0;
   size_t piece_count = line->GetSize();
   int32_t piece_widths = 0;
@@ -514,15 +512,15 @@ size_t CFDE_TextOut::GetDisplayPos(const Piece* pPiece) {
 
   CFGAS_TxtBreak::Run tr;
   tr.wsStr = m_wsText.Substr(pPiece->start_char);
-  tr.pWidths = &m_CharWidths[pPiece->start_char];
-  tr.iLength = pdfium::base::checked_cast<int32_t>(pPiece->char_count);
+  tr.pWidths = make_span(m_CharWidths).subspan(pPiece->start_char);
+  tr.iLength = checked_cast<int32_t>(pPiece->char_count);
   tr.pFont = m_pFont;
   tr.fFontSize = m_fFontSize;
   tr.dwStyles = m_dwTxtBkStyles;
   tr.dwCharStyles = pPiece->char_styles;
   tr.pRect = &pPiece->bounds;
 
-  return m_pTxtBreak->GetDisplayPos(tr, m_CharPos.data());
+  return m_pTxtBreak->GetDisplayPos(tr, m_CharPos);
 }
 
 CFDE_TextOut::Line::Line() = default;
@@ -558,3 +556,5 @@ CFDE_TextOut::Piece* CFDE_TextOut::Line::GetPieceAtIndex(size_t index) {
 void CFDE_TextOut::Line::RemoveLast(size_t count) {
   pieces_.erase(pieces_.end() - std::min(count, pieces_.size()), pieces_.end());
 }
+
+}  // namespace pdfium

@@ -89,12 +89,6 @@ struct ControllerServiceWorkerInfo {
   // Type of the service worker fetch handler.
   ServiceWorkerFetchHandlerType fetch_handler_type =
       ServiceWorkerFetchHandlerType.kNoHandler;
-  // Effective type of the service worker fetch handler.
-  // This value will be kNotSkippable if the feature flag does not allow
-  // to skip the fetch handler type. The value will be different from
-  // `fetch_handler_type` above in that case.
-  ServiceWorkerFetchHandlerType effective_fetch_handler_type =
-      ServiceWorkerFetchHandlerType.kNoHandler;
 
   // Experimental feature (crbug.com/1371756). Not followed by the spec.
   //
@@ -108,6 +102,9 @@ struct ControllerServiceWorkerInfo {
   // renderer-side decides whether it involves fetch handlers or not based on
   // this value.
   string? sha256_script_checksum;
+
+  // Indicates if the router has to be evaluated in a renderer-side.
+  bool need_router_evaluate;
 
   // Experimental feature (crbug.com/1371756).
   // A field to keep ServiceWorker static routing API data.

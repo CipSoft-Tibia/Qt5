@@ -62,7 +62,7 @@ Section {
             visible: shadowCheckBox.checked
             ComboBox {
                 scope: "Light"
-                model: ["ShadowMapQualityLow", "ShadowMapQualityMedium", "ShadowMapQualityHigh", "ShadowMapQualityVeryHigh"]
+                model: ["ShadowMapQualityLow", "ShadowMapQualityMedium", "ShadowMapQualityHigh", "ShadowMapQualityVeryHigh", "ShadowMapQualityUltra"]
                 backendValue: backendValues.shadowMapQuality
                 enabled: shadowCheckBox.backendValue.value === true
                 implicitWidth: StudioTheme.Values.singleControlColumnWidth
@@ -152,6 +152,24 @@ Section {
                 backendValue: backendValues.shadowMapFar
                 enabled: shadowCheckBox.backendValue.value === true
                 implicitWidth: StudioTheme.Values.singleControlColumnWidth
+                               + StudioTheme.Values.actionIndicatorWidth
+            }
+
+            ExpandingSpacer {}
+        }
+
+        PropertyLabel {
+            visible: shadowCheckBox.checked
+            text: qsTr("Use 32-bit Shadowmap")
+            tooltip: qsTr("Enables a 32-bit shadowmap texture for this light.")
+        }
+
+        SecondColumnLayout {
+            visible: shadowCheckBox.checked
+            CheckBox {
+                text: backendValues.use32BitShadowmap.valueToString
+                backendValue: backendValues.use32BitShadowmap
+                implicitWidth: StudioTheme.Values.twoControlColumnWidth
                                + StudioTheme.Values.actionIndicatorWidth
             }
 

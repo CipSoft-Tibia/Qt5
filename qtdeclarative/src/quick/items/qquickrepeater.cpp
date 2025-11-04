@@ -9,6 +9,7 @@
 #include <private/qqmldelegatemodel_p.h>
 
 #include <QtQml/QQmlInfo>
+#include <QtQml/qqmlcomponent.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -17,6 +18,7 @@ QQuickRepeaterPrivate::QQuickRepeaterPrivate()
     , ownModel(false)
     , dataSourceIsObject(false)
     , delegateValidated(false)
+    , explicitDelegate(false)
     , itemCount(0)
 {
     setTransparentForPositioner(true);
@@ -172,24 +174,51 @@ void QQuickRepeater::setModel(const QVariant &m)
                 this, QQuickRepeater, SLOT(createdItem(int,QObject*)));
         qmlobject_disconnect(d->model, QQmlInstanceModel, SIGNAL(initItem(int,QObject*)),
                 this, QQuickRepeater, SLOT(initItem(int,QObject*)));
+        if (QQmlDelegateModel *delegateModel = qobject_cast<QQmlDelegateModel*>(d->model)) {
+            QObjectPrivate::disconnect(
+                    delegateModel, &QQmlDelegateModel::delegateChanged,
+                    d, &QQuickRepeaterPrivate::applyDelegateChange);
+        }
     }
+
+    QQmlInstanceModel *oldModel = d->model;
+    d->model = nullptr;
     d->dataSource = model;
     QObject *object = qvariant_cast<QObject*>(model);
     d->dataSourceAsObject = object;
     d->dataSourceIsObject = object != nullptr;
     QQmlInstanceModel *vim = nullptr;
     if (object && (vim = qobject_cast<QQmlInstanceModel *>(object))) {
+        if (d->explicitDelegate) {
+            QQmlComponent *delegate = nullptr;
+            if (QQmlDelegateModel *old = qobject_cast<QQmlDelegateModel *>(oldModel))
+                delegate = old->delegate();
+
+            if (QQmlDelegateModel *delegateModel = qobject_cast<QQmlDelegateModel *>(vim)) {
+                delegateModel->setDelegate(delegate);
+            } else if (delegate) {
+                qmlWarning(this) << "Cannot retain explicitly set delegate on non-DelegateModel";
+                d->explicitDelegate = false;
+            }
+        }
+
         if (d->ownModel) {
-            delete d->model;
+            delete oldModel;
             d->ownModel = false;
         }
         d->model = vim;
     } else {
-        if (!d->ownModel) {
-            d->model = new QQmlDelegateModel(qmlContext(this));
-            d->ownModel = true;
-            if (isComponentComplete())
-                static_cast<QQmlDelegateModel *>(d->model.data())->componentComplete();
+        if (d->ownModel) {
+            d->model = oldModel;
+        } else {
+            if (d->explicitDelegate) {
+                QQmlComponent *delegate = nullptr;
+                if (QQmlDelegateModel *old = qobject_cast<QQmlDelegateModel *>(oldModel))
+                    delegate = old->delegate();
+                QQmlDelegateModel::createForView(this, d)->setDelegate(delegate);
+            } else {
+                QQmlDelegateModel::createForView(this, d);
+            }
         }
         if (QQmlDelegateModel *dataModel = qobject_cast<QQmlDelegateModel*>(d->model))
             dataModel->setModel(model);
@@ -201,6 +230,11 @@ void QQuickRepeater::setModel(const QVariant &m)
                 this, QQuickRepeater, SLOT(createdItem(int,QObject*)));
         qmlobject_connect(d->model, QQmlInstanceModel, SIGNAL(initItem(int,QObject*)),
                 this, QQuickRepeater, SLOT(initItem(int,QObject*)));
+        if (QQmlDelegateModel *dataModel = qobject_cast<QQmlDelegateModel *>(d->model)) {
+            QObjectPrivate::connect(
+                    dataModel, &QQmlDelegateModel::delegateChanged,
+                    d, &QQuickRepeaterPrivate::applyDelegateChange);
+        }
         regenerate();
     }
     emit modelChanged();
@@ -254,31 +288,75 @@ QQmlComponent *QQuickRepeater::delegate() const
 void QQuickRepeater::setDelegate(QQmlComponent *delegate)
 {
     Q_D(QQuickRepeater);
-    if (QQmlDelegateModel *dataModel = qobject_cast<QQmlDelegateModel*>(d->model))
-       if (delegate == dataModel->delegate())
-           return;
+    const auto setExplicitDelegate = [&](QQmlDelegateModel *delegateModel) {
+        if (delegateModel->delegate() == delegate) {
+            d->explicitDelegate = true;
+            return;
+        }
 
-    if (!d->ownModel) {
-        d->model = new QQmlDelegateModel(qmlContext(this));
-        d->ownModel = true;
-    }
-
-    if (QQmlDelegateModel *dataModel = qobject_cast<QQmlDelegateModel*>(d->model)) {
-        dataModel->setDelegate(delegate);
+        const int oldCount = delegateModel->count();
+        delegateModel->setDelegate(delegate);
         regenerate();
-        emit delegateChanged();
+        if (oldCount != delegateModel->count())
+            emit countChanged();
+        d->explicitDelegate = true;
         d->delegateValidated = false;
+    };
+
+    if (!d->model) {
+        if (!delegate) {
+            // Explicitly set a null delegate. We can do this without model.
+            d->explicitDelegate = true;
+            return;
+        }
+
+        setExplicitDelegate(QQmlDelegateModel::createForView(this, d));
+        // The new model is not connected to applyDelegateChange, yet. We only do this once
+        // there is actual data, via an explicit setModel(). So we have to manually emit the
+        // delegateChanged() here.
+        emit delegateChanged();
+        return;
     }
+
+    if (QQmlDelegateModel *delegateModel = qobject_cast<QQmlDelegateModel *>(d->model)) {
+        // Disable the warning in applyDelegateChange since the new delegate is also explicit.
+        d->explicitDelegate = false;
+        setExplicitDelegate(delegateModel);
+        return;
+    }
+
+    if (delegate)
+        qmlWarning(this) << "Cannot set a delegate on an explicitly provided non-DelegateModel";
+    else
+        d->explicitDelegate = true; // Explicitly set null delegate always works
 }
 
 /*!
     \qmlproperty int QtQuick::Repeater::count
 
-    This property holds the number of items in the model.
+    This property holds the number of items in the \l model.
 
-    \note The number of items in the model as reported by count may differ from
-    the number of created delegates if the Repeater is in the process of
-    instantiating delegates or is incorrectly set up.
+    The value of \c count does not always match the number of instantiated
+    \l {delegate}{delegates}; use \l itemAt() to check if a delegate at a given
+    index exists. It returns \c null if the delegate is not instantiated.
+
+    \list
+    \li While the Repeater is in the process of instantiating delegates (at
+        startup, or because of \c model changes), the \l itemAdded signal is
+        emitted for each delegate created, and the \c count property changes
+        afterwards.
+    \li If the Repeater is not part of a completed
+        \l {Concepts - Visual Parent in Qt Quick}{visual hierarchy},
+        \c count reflects the model size, but no delegates are created.
+    \li If the Repeater destroys delegates because of \c model changes,
+        the \l itemRemoved() signal is emitted for each, and the \c count
+        property changes afterwards.
+    \li If the Repeater is taken out of the visual hierarchy (for example by
+        setting \c {parent = null}), delegates are destroyed, the \l itemRemoved()
+        signal is emitted for each, but \c count does not change.
+    \endlist
+
+    \sa itemAt(), itemAdded(), itemRemoved()
 */
 int QQuickRepeater::count() const
 {

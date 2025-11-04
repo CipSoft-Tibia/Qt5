@@ -38,11 +38,12 @@
 
 #if QT_CONFIG(accessibility)
 
+#include <QtGui/private/qaccessiblehelper_p.h>
+
 QT_BEGIN_NAMESPACE
 
 using namespace Qt::StringLiterals;
 
-QString qt_accStripAmp(const QString &text);
 QString qt_accHotKey(const QString &text);
 
 #if QT_CONFIG(tabbar)
@@ -441,7 +442,7 @@ QAccessible::State QAccessibleComboBox::state() const
 
     if (QComboBox *cBox = comboBox()) {
         s.expandable = true;
-        s.expanded = isValid() && cBox->view()->isVisible();
+        s.expanded = isValid() && cBox->view() && cBox->view()->isVisible();
         s.editable = cBox->isEditable();
     }
     return s;

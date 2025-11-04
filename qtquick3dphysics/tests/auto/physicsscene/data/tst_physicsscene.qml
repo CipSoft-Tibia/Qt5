@@ -303,6 +303,7 @@ Item {
         }
         function test_falling_box() {
             verify(fallingBox.y > 0)
+            compare(fallingBox.isSleeping, false)
         }
         function test_spawn() {
             var obj = spawnComponent.createObject(dynamicCreationNode)
@@ -318,6 +319,7 @@ Item {
             fuzzyCompare(fallingBox.y, 0, 0.0001)
             fuzzyCompare(fallingBox.eulerRotation.x, 0, 1)
             fuzzyCompare(fallingBox.eulerRotation.z, 0, 1)
+            compare(fallingBox.isSleeping, true)
         }
     }
 

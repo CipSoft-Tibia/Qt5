@@ -13,8 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#include "perfetto/trace_processor/trace_blob_view.h"
-#include "src/trace_processor/importers/proto/proto_trace_parser.h"
+#include "src/trace_processor/sorter/trace_sorter.h"
 
 #include <map>
 #include <random>
@@ -22,9 +21,10 @@
 
 #include "perfetto/trace_processor/basic_types.h"
 #include "perfetto/trace_processor/trace_blob.h"
+#include "perfetto/trace_processor/trace_blob_view.h"
 #include "src/trace_processor/importers/common/parser_types.h"
-#include "src/trace_processor/importers/proto/packet_sequence_state.h"
-#include "src/trace_processor/sorter/trace_sorter.h"
+#include "src/trace_processor/importers/proto/packet_sequence_state_generation.h"
+#include "src/trace_processor/importers/proto/proto_trace_parser_impl.h"
 #include "src/trace_processor/types/trace_processor_context.h"
 #include "test/gtest_and_gmock.h"
 
@@ -38,20 +38,26 @@ using ::testing::Invoke;
 using ::testing::MockFunction;
 using ::testing::NiceMock;
 
-class MockTraceParser : public ProtoTraceParser {
- public:
-  MockTraceParser(TraceProcessorContext* context) : ProtoTraceParser(context) {}
+constexpr std::optional<MachineId> kNullMachineId = std::nullopt;
 
-  MOCK_METHOD(
-      void,
-      MOCK_ParseFtracePacket,
-      (uint32_t cpu, int64_t timestamp, const uint8_t* data, size_t length));
+class MockTraceParser : public ProtoTraceParserImpl {
+ public:
+  explicit MockTraceParser(TraceProcessorContext* context)
+      : ProtoTraceParserImpl(context), machine_id_(context->machine_id()) {}
+
+  MOCK_METHOD(void,
+              MOCK_ParseFtracePacket,
+              (uint32_t cpu,
+               int64_t timestamp,
+               const uint8_t* data,
+               size_t length,
+               std::optional<MachineId>));
 
   void ParseFtraceEvent(uint32_t cpu,
                         int64_t timestamp,
                         TracePacketData data) override {
     MOCK_ParseFtracePacket(cpu, timestamp, data.packet.data(),
-                           data.packet.length());
+                           data.packet.length(), machine_id_);
   }
 
   MOCK_METHOD(void,
@@ -64,6 +70,8 @@ class MockTraceParser : public ProtoTraceParser {
     TraceBlobView& tbv = data.packet;
     MOCK_ParseTracePacket(ts, tbv.data(), tbv.length());
   }
+
+  std::optional<MachineId> machine_id_;
 };
 
 class MockTraceStorage : public TraceStorage {
@@ -82,12 +90,11 @@ class TraceSorterTest : public ::testing::Test {
   }
 
   void CreateSorter(bool full_sort = true) {
-    std::unique_ptr<MockTraceParser> parser(new MockTraceParser(&context_));
-    parser_ = parser.get();
+    parser_ = new MockTraceParser(&context_);
+    context_.proto_trace_parser.reset(parser_);
     auto sorting_mode = full_sort ? TraceSorter::SortingMode::kFullSort
                                   : TraceSorter::SortingMode::kDefault;
-    context_.sorter.reset(
-        new TraceSorter(&context_, std::move(parser), sorting_mode));
+    context_.sorter.reset(new TraceSorter(&context_, sorting_mode));
   }
 
  protected:
@@ -98,25 +105,25 @@ class TraceSorterTest : public ::testing::Test {
 };
 
 TEST_F(TraceSorterTest, TestFtrace) {
-  PacketSequenceState state(&context_);
+  auto state = PacketSequenceStateGeneration::CreateFirst(&context_);
   TraceBlobView view = test_buffer_.slice_off(0, 1);
-  EXPECT_CALL(*parser_, MOCK_ParseFtracePacket(0, 1000, view.data(), 1));
+  EXPECT_CALL(*parser_,
+              MOCK_ParseFtracePacket(0, 1000, view.data(), 1, kNullMachineId));
   context_.sorter->PushFtraceEvent(0 /*cpu*/, 1000 /*timestamp*/,
-                                   std::move(view), state.current_generation());
+                                   std::move(view), state);
   context_.sorter->ExtractEventsForced();
 }
 
 TEST_F(TraceSorterTest, TestTracePacket) {
-  PacketSequenceState state(&context_);
+  auto state = PacketSequenceStateGeneration::CreateFirst(&context_);
   TraceBlobView view = test_buffer_.slice_off(0, 1);
   EXPECT_CALL(*parser_, MOCK_ParseTracePacket(1000, view.data(), 1));
-  context_.sorter->PushTracePacket(1000, state.current_generation(),
-                                   std::move(view));
+  context_.sorter->PushTracePacket(1000, state, std::move(view));
   context_.sorter->ExtractEventsForced();
 }
 
 TEST_F(TraceSorterTest, Ordering) {
-  PacketSequenceState state(&context_);
+  auto state = PacketSequenceStateGeneration::CreateFirst(&context_);
   TraceBlobView view_1 = test_buffer_.slice_off(0, 1);
   TraceBlobView view_2 = test_buffer_.slice_off(0, 2);
   TraceBlobView view_3 = test_buffer_.slice_off(0, 3);
@@ -124,28 +131,26 @@ TEST_F(TraceSorterTest, Ordering) {
 
   InSequence s;
 
-  EXPECT_CALL(*parser_, MOCK_ParseFtracePacket(0, 1000, view_1.data(), 1));
+  EXPECT_CALL(*parser_, MOCK_ParseFtracePacket(0, 1000, view_1.data(), 1,
+                                               kNullMachineId));
   EXPECT_CALL(*parser_, MOCK_ParseTracePacket(1001, view_2.data(), 2));
   EXPECT_CALL(*parser_, MOCK_ParseTracePacket(1100, view_3.data(), 3));
-  EXPECT_CALL(*parser_, MOCK_ParseFtracePacket(2, 1200, view_4.data(), 4));
+  EXPECT_CALL(*parser_, MOCK_ParseFtracePacket(2, 1200, view_4.data(), 4,
+                                               kNullMachineId));
 
   context_.sorter->PushFtraceEvent(2 /*cpu*/, 1200 /*timestamp*/,
-                                   std::move(view_4),
-                                   state.current_generation());
-  context_.sorter->PushTracePacket(1001, state.current_generation(),
-                                   std::move(view_2));
-  context_.sorter->PushTracePacket(1100, state.current_generation(),
-                                   std::move(view_3));
+                                   std::move(view_4), state);
+  context_.sorter->PushTracePacket(1001, state, std::move(view_2));
+  context_.sorter->PushTracePacket(1100, state, std::move(view_3));
   context_.sorter->PushFtraceEvent(0 /*cpu*/, 1000 /*timestamp*/,
-                                   std::move(view_1),
-                                   state.current_generation());
+                                   std::move(view_1), state);
   context_.sorter->ExtractEventsForced();
 }
 
 TEST_F(TraceSorterTest, IncrementalExtraction) {
   CreateSorter(false);
 
-  PacketSequenceState state(&context_);
+  auto state = PacketSequenceStateGeneration::CreateFirst(&context_);
 
   TraceBlobView view_1 = test_buffer_.slice_off(0, 1);
   TraceBlobView view_2 = test_buffer_.slice_off(0, 2);
@@ -156,10 +161,8 @@ TEST_F(TraceSorterTest, IncrementalExtraction) {
   // Flush at the start of packet sequence to match behavior of the
   // service.
   context_.sorter->NotifyFlushEvent();
-  context_.sorter->PushTracePacket(1200, state.current_generation(),
-                                   std::move(view_2));
-  context_.sorter->PushTracePacket(1100, state.current_generation(),
-                                   std::move(view_1));
+  context_.sorter->PushTracePacket(1200, state, std::move(view_2));
+  context_.sorter->PushTracePacket(1100, state, std::move(view_1));
 
   // No data should be exttracted at this point because we haven't
   // seen two flushes yet.
@@ -172,10 +175,8 @@ TEST_F(TraceSorterTest, IncrementalExtraction) {
 
   context_.sorter->NotifyFlushEvent();
   context_.sorter->NotifyFlushEvent();
-  context_.sorter->PushTracePacket(1400, state.current_generation(),
-                                   std::move(view_4));
-  context_.sorter->PushTracePacket(1300, state.current_generation(),
-                                   std::move(view_3));
+  context_.sorter->PushTracePacket(1400, state, std::move(view_4));
+  context_.sorter->PushTracePacket(1300, state, std::move(view_3));
 
   // This ReadBuffer call should finally extract until the first OnReadBuffer
   // call.
@@ -187,8 +188,7 @@ TEST_F(TraceSorterTest, IncrementalExtraction) {
   context_.sorter->NotifyReadBufferEvent();
 
   context_.sorter->NotifyFlushEvent();
-  context_.sorter->PushTracePacket(1500, state.current_generation(),
-                                   std::move(view_5));
+  context_.sorter->PushTracePacket(1500, state, std::move(view_5));
 
   // Nothing should be extracted as we haven't seen the second flush.
   context_.sorter->NotifyReadBufferEvent();
@@ -212,7 +212,7 @@ TEST_F(TraceSorterTest, IncrementalExtraction) {
 TEST_F(TraceSorterTest, OutOfOrder) {
   CreateSorter(false);
 
-  PacketSequenceState state(&context_);
+  auto state = PacketSequenceStateGeneration::CreateFirst(&context_);
 
   TraceBlobView view_1 = test_buffer_.slice_off(0, 1);
   TraceBlobView view_2 = test_buffer_.slice_off(0, 2);
@@ -221,10 +221,8 @@ TEST_F(TraceSorterTest, OutOfOrder) {
 
   context_.sorter->NotifyFlushEvent();
   context_.sorter->NotifyFlushEvent();
-  context_.sorter->PushTracePacket(1200, state.current_generation(),
-                                   std::move(view_2));
-  context_.sorter->PushTracePacket(1100, state.current_generation(),
-                                   std::move(view_1));
+  context_.sorter->PushTracePacket(1200, state, std::move(view_2));
+  context_.sorter->PushTracePacket(1100, state, std::move(view_1));
   context_.sorter->NotifyReadBufferEvent();
 
   // Both of the packets should have been pushed through.
@@ -240,8 +238,7 @@ TEST_F(TraceSorterTest, OutOfOrder) {
   // Now, pass the third packet out of order.
   context_.sorter->NotifyFlushEvent();
   context_.sorter->NotifyFlushEvent();
-  context_.sorter->PushTracePacket(1150, state.current_generation(),
-                                   std::move(view_3));
+  context_.sorter->PushTracePacket(1150, state, std::move(view_3));
   context_.sorter->NotifyReadBufferEvent();
 
   // The third packet should still be pushed through.
@@ -258,8 +255,7 @@ TEST_F(TraceSorterTest, OutOfOrder) {
   // Push the fourth packet also out of order but after third.
   context_.sorter->NotifyFlushEvent();
   context_.sorter->NotifyFlushEvent();
-  context_.sorter->PushTracePacket(1170, state.current_generation(),
-                                   std::move(view_4));
+  context_.sorter->PushTracePacket(1170, state, std::move(view_4));
   context_.sorter->NotifyReadBufferEvent();
 
   // The fourt packet should still be pushed through.
@@ -276,13 +272,14 @@ TEST_F(TraceSorterTest, OutOfOrder) {
 // Tests that the output of the TraceSorter matches the timestamp order
 // (% events happening at the same time on different CPUs).
 TEST_F(TraceSorterTest, MultiQueueSorting) {
-  PacketSequenceState state(&context_);
+  auto state = PacketSequenceStateGeneration::CreateFirst(&context_);
   std::minstd_rand0 rnd_engine(0);
   std::map<int64_t /*ts*/, std::vector<uint32_t /*cpu*/>> expectations;
 
-  EXPECT_CALL(*parser_, MOCK_ParseFtracePacket(_, _, _, _))
+  EXPECT_CALL(*parser_, MOCK_ParseFtracePacket(_, _, _, _, _))
       .WillRepeatedly(Invoke([&expectations](uint32_t cpu, int64_t timestamp,
-                                             const uint8_t*, size_t) {
+                                             const uint8_t*, size_t,
+                                             std::optional<MachineId>) {
         EXPECT_EQ(expectations.begin()->first, timestamp);
         auto& cpus = expectations.begin()->second;
         bool cpu_found = false;
@@ -309,8 +306,114 @@ TEST_F(TraceSorterTest, MultiQueueSorting) {
     for (uint8_t j = 0; j < num_cpus; j++) {
       uint32_t cpu = static_cast<uint32_t>(rnd_engine() % 32);
       expectations[ts].push_back(cpu);
-      context_.sorter->PushFtraceEvent(cpu, ts, tbv.slice_off(i, 1),
-                                       state.current_generation());
+      context_.sorter->PushFtraceEvent(cpu, ts, tbv.slice_off(i, 1), state);
+    }
+  }
+
+  context_.sorter->ExtractEventsForced();
+  EXPECT_TRUE(expectations.empty());
+}
+
+// An generalized version of MultiQueueSorting with multiple machines.
+TEST_F(TraceSorterTest, MultiMachineSorting) {
+  auto state = PacketSequenceStateGeneration::CreateFirst(&context_);
+  std::minstd_rand0 rnd_engine(0);
+
+  struct ExpectedMachineAndCpu {
+    std::optional<MachineId> machine_id;
+    uint32_t cpu;
+
+    bool operator==(const ExpectedMachineAndCpu& other) const {
+      return std::tie(machine_id, cpu) == std::tie(other.machine_id, other.cpu);
+    }
+    bool operator!=(const ExpectedMachineAndCpu& other) const {
+      return !operator==(other);
+    }
+  };
+  std::map<int64_t /*ts*/, std::vector<ExpectedMachineAndCpu>> expectations;
+
+  // The total number of machines (including the default one).
+  constexpr size_t num_machines = 5;
+  std::vector<MockTraceParser*> extra_parsers;
+  std::vector<std::unique_ptr<TraceProcessorContext>> extra_contexts;
+  // Set up extra machines and add to the sorter.
+  // MachineIdValue are 1..(num_machines-1).
+  for (auto i = 1u; i < num_machines; i++) {
+    TraceProcessorContext::InitArgs args{context_.config, context_.storage, i};
+    auto ctx = std::make_unique<TraceProcessorContext>(args);
+    auto parser = std::make_unique<MockTraceParser>(ctx.get());
+    extra_parsers.push_back(parser.get());
+    ctx->proto_trace_parser = std::move(parser);
+    extra_contexts.push_back(std::move(ctx));
+    context_.sorter->AddMachineContext(extra_contexts.back().get());
+  }
+
+  // Set up the expectation for the default machine.
+  EXPECT_CALL(*parser_, MOCK_ParseFtracePacket(_, _, _, _, _))
+      .WillRepeatedly(Invoke([&expectations](uint32_t cpu, int64_t timestamp,
+                                             const uint8_t*, size_t,
+                                             std::optional<MachineId>) {
+        EXPECT_EQ(expectations.begin()->first, timestamp);
+        auto& machines_and_cpus = expectations.begin()->second;
+        bool found = false;
+        for (auto it = machines_and_cpus.begin(); it < machines_and_cpus.end();
+             it++) {
+          // The default machine is called machine ID == std::nullopt.
+          if (*it != ExpectedMachineAndCpu{kNullMachineId, cpu})
+            continue;
+          found = true;
+          machines_and_cpus.erase(it);
+          break;
+        }
+        if (machines_and_cpus.empty())
+          expectations.erase(expectations.begin());
+        EXPECT_TRUE(found);
+      }));
+  // Set up expectations for remote machines.
+  for (auto* parser : extra_parsers) {
+    EXPECT_CALL(*parser, MOCK_ParseFtracePacket(_, _, _, _, _))
+        .WillRepeatedly(Invoke(
+            [&expectations](uint32_t cpu, int64_t timestamp, const uint8_t*,
+                            size_t, std::optional<MachineId> machine_id) {
+              EXPECT_TRUE(machine_id.has_value());
+              EXPECT_EQ(expectations.begin()->first, timestamp);
+              auto& machines_and_cpus = expectations.begin()->second;
+              bool found = false;
+              for (auto it = machines_and_cpus.begin();
+                   it < machines_and_cpus.end(); it++) {
+                // Remote machines are called with non-null machine_id.
+                if (*it != ExpectedMachineAndCpu{machine_id, cpu})
+                  continue;
+                found = true;
+                machines_and_cpus.erase(it);
+                break;
+              }
+              if (machines_and_cpus.empty())
+                expectations.erase(expectations.begin());
+              EXPECT_TRUE(found);
+            }));
+  }
+
+  // Allocate a 1000 byte trace blob (per-machine) and push one byte chunks to
+  // be sorted with random timestamps.
+  constexpr size_t alloc_size = 1000;
+  TraceBlobView tbv(TraceBlob::Allocate(alloc_size * num_machines));
+  for (size_t m = 0; m < num_machines; m++) {
+    // TraceProcessorContext::machine_id is nullopt for the default machine or a
+    // monotonic counter starting from 1. 0 is a reserved value that isn't used.
+    std::optional<MachineId> machine;
+    if (m)
+      machine = extra_contexts[m - 1]->machine_id();
+
+    for (uint16_t i = 0; i < alloc_size; i++) {
+      int64_t ts = abs(static_cast<int64_t>(rnd_engine()));
+      uint8_t num_cpus = rnd_engine() % 3;
+      for (uint8_t j = 0; j < num_cpus; j++) {
+        uint32_t cpu = static_cast<uint32_t>(rnd_engine() % 32);
+        expectations[ts].push_back(ExpectedMachineAndCpu{machine, cpu});
+        context_.sorter->PushFtraceEvent(
+            cpu, ts, tbv.slice_off(m * alloc_size + i, 1), state, machine);
+      }
     }
   }
 

@@ -6,7 +6,31 @@
 
 #include <utility>
 
+#include "base/check_op.h"
+
 namespace ui {
+
+namespace {
+
+AXPlatformForTest* g_instance = nullptr;
+
+}  // namespace
+
+// static
+AXPlatformForTest& AXPlatformForTest::GetInstance() {
+  CHECK_NE(g_instance, nullptr);
+  return *g_instance;
+}
+
+AXPlatformForTest::AXPlatformForTest() {
+  CHECK_EQ(g_instance, nullptr);
+  g_instance = this;
+}
+
+AXPlatformForTest::~AXPlatformForTest() {
+  CHECK_EQ(g_instance, this);
+  g_instance = nullptr;
+}
 
 AXMode AXPlatformForTest::GetProcessMode() {
   return mode_;
@@ -20,5 +44,13 @@ void AXPlatformForTest::SetProcessMode(AXMode new_mode) {
     ax_platform_.NotifyModeAdded(additions);
   }
 }
+
+void AXPlatformForTest::OnAccessibilityApiUsage() {}
+
+#if BUILDFLAG(IS_WIN)
+AXPlatform::ProductStrings AXPlatformForTest::GetProductStrings() {
+  return {{}, {}, {}};
+}
+#endif
 
 }  // namespace ui

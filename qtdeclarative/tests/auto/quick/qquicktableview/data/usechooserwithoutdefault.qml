@@ -3,7 +3,7 @@
 
 import QtQuick 2.12
 import QtQuick.Window 2.3
-import Qt.labs.qmlmodels 1.0
+import QtQml.Models
 
 Item {
     width: 640

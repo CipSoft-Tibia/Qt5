@@ -40,6 +40,17 @@ TEST_F(SpirvWriterTest, ModuleHeader) {
     EXPECT_INST("OpMemoryModel Logical GLSL450");
 }
 
+TEST_F(SpirvWriterTest, ModuleHeader_VulkanMemoryModel) {
+    Options opts;
+    opts.use_vulkan_memory_model = true;
+
+    ASSERT_TRUE(Generate(opts)) << Error() << output_;
+    EXPECT_INST("OpExtension \"SPV_KHR_vulkan_memory_model\"");
+    EXPECT_INST("OpCapability VulkanMemoryModel");
+    EXPECT_INST("OpCapability VulkanMemoryModelDeviceScope");
+    EXPECT_INST("OpMemoryModel Logical Vulkan");
+}
+
 TEST_F(SpirvWriterTest, Unreachable) {
     auto* func = b.Function("foo", ty.void_());
     b.Append(func->Block(), [&] {
@@ -84,6 +95,25 @@ TEST_F(SpirvWriterTest, Unreachable) {
                OpReturn
                OpFunctionEnd
 )");
+}
+
+// Test that we fail gracefully when a function has too many parameters.
+// See crbug.com/354748060.
+TEST_F(SpirvWriterTest, TooManyFunctionParameters) {
+    Vector<core::ir::FunctionParam*, 256> params;
+    for (uint32_t i = 0; i < 256; i++) {
+        params.Push(b.FunctionParam(ty.i32()));
+    }
+    auto* func = b.Function("foo", ty.void_());
+    func->SetParams(std::move(params));
+    b.Append(func->Block(), [&] {  //
+        b.Return(func);
+    });
+
+    EXPECT_FALSE(Generate());
+    EXPECT_THAT(Error(),
+                testing::HasSubstr(
+                    "Function 'foo' has more than 255 parameters after running Tint transforms"));
 }
 
 }  // namespace

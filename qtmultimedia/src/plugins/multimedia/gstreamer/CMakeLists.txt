@@ -50,9 +50,12 @@ qt_internal_add_module(GstreamerMediaPluginImplPrivate
     NO_GENERATE_CPP_EXPORTS
     DEFINES
         GLIB_VERSION_MIN_REQUIRED=GLIB_VERSION_2_26
+        QT_NO_CAST_FROM_ASCII
+        QT_NO_CAST_TO_ASCII
     PUBLIC_LIBRARIES
         Qt::MultimediaPrivate
         Qt::CorePrivate
+        Qt::Concurrent
         GStreamer::GStreamer
         GStreamer::App
         GStreamer::Play

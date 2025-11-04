@@ -2,6 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#ifdef UNSAFE_BUFFERS_BUILD
+// TODO(crbug.com/40285824): Remove this and convert code to safer constructs.
+#pragma allow_unsafe_buffers
+#endif
+
 #include "media/mojo/mojom/stable/stable_video_decoder_types_mojom_traits.h"
 #include "testing/gtest/include/gtest/gtest.h"
 
@@ -46,7 +51,7 @@ TEST(StableVideoDecoderTypesMojomTraitsTest, ValidNonEOSDecoderBuffer) {
             mojom_decoder_buffer->timestamp);
   EXPECT_EQ(deserialized_decoder_buffer->duration(),
             mojom_decoder_buffer->duration);
-  EXPECT_EQ(deserialized_decoder_buffer->data_size(),
+  EXPECT_EQ(deserialized_decoder_buffer->size(),
             base::strict_cast<size_t>(mojom_decoder_buffer->data_size));
   EXPECT_EQ(deserialized_decoder_buffer->is_key_frame(),
             mojom_decoder_buffer->is_key_frame);
@@ -380,7 +385,7 @@ TEST(StableVideoDecoderTypesMojomTraitsTest, StatusDataWithAbortedCause) {
       stable::mojom::StatusData::New();
   mojom_status_data->group = std::string(DecoderStatusTraits::Group());
   mojom_status_data->code = stable::mojom::StatusCode::kError;
-  mojom_status_data->cause = absl::make_optional<internal::StatusData>(
+  mojom_status_data->cause = std::make_optional<internal::StatusData>(
       DecoderStatusTraits::Group(),
       static_cast<StatusCodeType>(DecoderStatus::Codes::kAborted),
       /*message=*/"",
@@ -415,7 +420,7 @@ TEST(StableVideoDecoderTypesMojomTraitsTest, ValidCENCDecryptConfig) {
   mojom_decrypt_config->subsamples = {
       SubsampleEntry(/*clear_bytes=*/4u, /*cypher_bytes=*/10u),
       SubsampleEntry(/*clear_bytes=*/90u, /*cypher_bytes=*/2u)};
-  mojom_decrypt_config->encryption_pattern = absl::nullopt;
+  mojom_decrypt_config->encryption_pattern = std::nullopt;
 
   std::vector<uint8_t> serialized_decrypt_config =
       stable::mojom::DecryptConfig::Serialize(&mojom_decrypt_config);

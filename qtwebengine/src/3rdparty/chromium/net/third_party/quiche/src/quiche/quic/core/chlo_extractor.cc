@@ -4,6 +4,9 @@
 
 #include "quiche/quic/core/chlo_extractor.h"
 
+#include <memory>
+#include <optional>
+
 #include "absl/strings/match.h"
 #include "absl/strings/string_view.h"
 #include "quiche/quic/core/crypto/crypto_framer.h"
@@ -12,6 +15,7 @@
 #include "quiche/quic/core/crypto/quic_decrypter.h"
 #include "quiche/quic/core/crypto/quic_encrypter.h"
 #include "quiche/quic/core/frames/quic_ack_frequency_frame.h"
+#include "quiche/quic/core/frames/quic_reset_stream_at_frame.h"
 #include "quiche/quic/core/quic_framer.h"
 #include "quiche/quic/core/quic_types.h"
 #include "quiche/quic/core/quic_utils.h"
@@ -78,6 +82,7 @@ class ChloFramerVisitor : public QuicFramerVisitorInterface,
   bool OnMessageFrame(const QuicMessageFrame& frame) override;
   bool OnHandshakeDoneFrame(const QuicHandshakeDoneFrame& frame) override;
   bool OnAckFrequencyFrame(const QuicAckFrequencyFrame& farme) override;
+  bool OnResetStreamAtFrame(const QuicResetStreamAtFrame& frame) override;
   void OnPacketComplete() override {}
   bool IsValidStatelessResetToken(
       const StatelessResetToken& token) const override;
@@ -204,6 +209,11 @@ bool ChloFramerVisitor::OnHandshakeData(absl::string_view data) {
 
 bool ChloFramerVisitor::OnAckFrameStart(QuicPacketNumber /*largest_acked*/,
                                         QuicTime::Delta /*ack_delay_time*/) {
+  return true;
+}
+
+bool ChloFramerVisitor::OnResetStreamAtFrame(
+    const QuicResetStreamAtFrame& /*frame*/) {
   return true;
 }
 

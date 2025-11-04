@@ -27,12 +27,36 @@ from typing import Dict, Tuple, List
 ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(os.path.join(ROOT_DIR))
 
-from python.generators.sql_processing.utils import check_banned_create_table_as
 from python.generators.sql_processing.utils import check_banned_create_view_as
 from python.generators.sql_processing.utils import check_banned_words
 from python.generators.sql_processing.utils import match_pattern
 from python.generators.sql_processing.utils import DROP_TABLE_VIEW_PATTERN
 from python.generators.sql_processing.utils import CREATE_TABLE_VIEW_PATTERN
+from python.generators.sql_processing.utils import CREATE_TABLE_AS_PATTERN
+
+
+def check_if_create_table_allowlisted(
+    sql: str, filename: str, stdlib_path: str,
+    allowlist: Dict[str, List[str]]) -> List[str]:
+  errors = []
+  for _, matches in match_pattern(CREATE_TABLE_AS_PATTERN, sql).items():
+    name = matches[0]
+    # Normalize paths before checking presence in the allowlist so it will
+    # work on Windows for the Chrome stdlib presubmit.
+    allowlist_normpath = dict(
+        (os.path.normpath(path), tables) for path, tables in allowlist.items())
+    allowlist_key = os.path.normpath(filename[len(stdlib_path):])
+    if allowlist_key not in allowlist_normpath:
+      errors.append(f"CREATE TABLE '{name}' is deprecated. "
+                    "Use CREATE PERFETTO TABLE instead.\n"
+                    f"Offending file: {filename}\n")
+      continue
+    if name not in allowlist_normpath[allowlist_key]:
+      errors.append(
+          f"Table '{name}' uses CREATE TABLE which is deprecated "
+          "and this table is not allowlisted. Use CREATE PERFETTO TABLE.\n"
+          f"Offending file: {filename}\n")
+  return errors
 
 # Allowlist path are relative to the metrics root.
 CREATE_TABLE_ALLOWLIST = {
@@ -41,6 +65,11 @@ CREATE_TABLE_ALLOWLIST = {
         'android_cujs', 'relevant_binder_calls_with_names',
         'android_blocking_calls_cuj_calls'
     ],
+    ('/android'
+     '/android_blocking_calls_unagg.sql'): [
+        'filtered_processes_with_non_zero_blocking_calls', 'process_info',
+        'android_blocking_calls_unagg_calls'
+    ],
     '/android/jank/cujs.sql': ['android_jank_cuj'],
     '/chrome/gesture_flow_event.sql': [
         '{{prefix}}_latency_info_flow_step_filtered'
@@ -48,7 +77,7 @@ CREATE_TABLE_ALLOWLIST = {
     '/chrome/gesture_jank.sql': [
         '{{prefix}}_jank_maybe_null_prev_and_next_without_precompute'
     ],
-    '/experimental/frame_times.sql': ['DisplayCompositorPresentationEvents']
+    '/experimental/frame_times.sql': ['DisplayCompositorPresentationEvents'],
 }
 
 
@@ -69,19 +98,36 @@ def match_drop_view_pattern_to_dict(sql: str,
 
 
 def check(path: str, metrics_sources: str) -> List[str]:
+  errors = []
   with open(path) as f:
     sql = f.read()
+
+  # Check that each function/macro is using "CREATE OR REPLACE"
+  lines = [l.strip() for l in sql.split('\n')]
+  for line in lines:
+    if line.startswith('--'):
+      continue
+    if 'create perfetto function' in line.casefold():
+      errors.append(
+          f'Use "CREATE OR REPLACE PERFETTO FUNCTION" in Perfetto metrics, '
+          f'to prevent the file from crashing if the metric is rerun.\n'
+          f'Offending file: {path}\n')
+    if 'create perfetto macro' in line.casefold():
+      errors.append(
+          f'Use "CREATE OR REPLACE PERFETTO MACRO" in Perfetto metrics, to '
+          f'prevent the file from crashing if the metric is rerun.\n'
+          f'Offending file: {path}\n')
 
   # Check that CREATE VIEW/TABLE has a matching DROP VIEW/TABLE before it.
   create_table_view_dir = match_create_table_pattern_to_dict(
       sql, CREATE_TABLE_VIEW_PATTERN)
   drop_table_view_dir = match_drop_view_pattern_to_dict(
       sql, DROP_TABLE_VIEW_PATTERN)
-  errors = check_banned_create_table_as(sql,
-                                        path.split(ROOT_DIR)[1],
-                                        metrics_sources.split(ROOT_DIR)[1],
-                                        CREATE_TABLE_ALLOWLIST)
-  errors += check_banned_create_view_as(sql, path.split(ROOT_DIR)[1])
+  errors += check_if_create_table_allowlisted(
+      sql,
+      path.split(ROOT_DIR)[1],
+      metrics_sources.split(ROOT_DIR)[1], CREATE_TABLE_ALLOWLIST)
+  errors += check_banned_create_view_as(sql)
   for name, [line, type] in create_table_view_dir.items():
     if name not in drop_table_view_dir:
       errors.append(f'Missing DROP before CREATE {type.upper()} "{name}"\n'
@@ -96,7 +142,7 @@ def check(path: str, metrics_sources: str) -> List[str]:
       errors.append(f'DROP type doesnt match CREATE {type.upper()} "{name}"\n'
                     f'Offending file: {path}\n')
 
-  errors += check_banned_words(sql, path)
+  errors += check_banned_words(sql)
   return errors
 
 

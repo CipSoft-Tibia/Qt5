@@ -14,9 +14,14 @@
 
 #include "mediapipe/framework/tool/template_parser.h"
 
+#include <cstddef>
+#include <cstdint>
+#include <cstdlib>
 #include <limits>
+#include <map>
 #include <memory>
 #include <set>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -24,18 +29,28 @@
 #include "absl/log/absl_check.h"
 #include "absl/log/absl_log.h"
 #include "absl/memory/memory.h"
+#include "absl/status/status.h"
 #include "absl/strings/ascii.h"
+#include "absl/strings/match.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/str_split.h"
+#include "absl/strings/string_view.h"
+#include "google/protobuf/descriptor.h"
+#include "google/protobuf/dynamic_message.h"
+#include "google/protobuf/io/coded_stream.h"
+#include "google/protobuf/io/tokenizer.h"
+#include "google/protobuf/io/zero_copy_stream.h"
+#include "google/protobuf/io/zero_copy_stream_impl_lite.h"
+#include "google/protobuf/text_format.h"
+#include "google/protobuf/wire_format_lite.h"
 #include "mediapipe/framework/calculator.pb.h"
 #include "mediapipe/framework/deps/proto_descriptor.pb.h"
-#include "mediapipe/framework/port/canonical_errors.h"
-#include "mediapipe/framework/port/integral_types.h"
 #include "mediapipe/framework/port/map_util.h"
 #include "mediapipe/framework/port/ret_check.h"
 #include "mediapipe/framework/port/status.h"
+#include "mediapipe/framework/port/status_macros.h"
 #include "mediapipe/framework/tool/calculator_graph_template.pb.h"
 #include "mediapipe/framework/tool/proto_util_lite.h"
 
@@ -769,28 +784,30 @@ class TemplateParser::Parser::ParserImpl {
     switch (field->cpp_type()) {
       case FieldDescriptor::CPPTYPE_INT32: {
         int64_t value;
-        DO(ConsumeSignedInteger(&value, kint32max));
+        DO(ConsumeSignedInteger(&value, std::numeric_limits<int32_t>::max()));
         SET_FIELD(Int32, static_cast<int32_t>(value));
         break;
       }
 
       case FieldDescriptor::CPPTYPE_UINT32: {
         uint64_t value;
-        DO(ConsumeUnsignedInteger(&value, kuint32max));
+        DO(ConsumeUnsignedInteger(&value,
+                                  std::numeric_limits<uint32_t>::max()));
         SET_FIELD(UInt32, static_cast<uint32_t>(value));
         break;
       }
 
       case FieldDescriptor::CPPTYPE_INT64: {
         int64_t value;
-        DO(ConsumeSignedInteger(&value, kint64max));
+        DO(ConsumeSignedInteger(&value, std::numeric_limits<int64_t>::max()));
         SET_FIELD(Int64, value);
         break;
       }
 
       case FieldDescriptor::CPPTYPE_UINT64: {
         uint64_t value;
-        DO(ConsumeUnsignedInteger(&value, kuint64max));
+        DO(ConsumeUnsignedInteger(&value,
+                                  std::numeric_limits<uint64_t>::max()));
         SET_FIELD(UInt64, value);
         break;
       }
@@ -839,7 +856,7 @@ class TemplateParser::Parser::ParserImpl {
 
       case FieldDescriptor::CPPTYPE_ENUM: {
         std::string value;
-        int64_t int_value = kint64max;
+        int64_t int_value = std::numeric_limits<int64_t>::max();
         const EnumDescriptor* enum_type = field->enum_type();
         const EnumValueDescriptor* enum_value = NULL;
 
@@ -850,7 +867,8 @@ class TemplateParser::Parser::ParserImpl {
 
         } else if (LookingAt("-") ||
                    LookingAtType(io::Tokenizer::TYPE_INTEGER)) {
-          DO(ConsumeSignedInteger(&int_value, kint32max));
+          DO(ConsumeSignedInteger(&int_value,
+                                  std::numeric_limits<int32_t>::max()));
           value = absl::StrCat(int_value);  // for error reporting
           enum_value = enum_type->FindValueByNumber(int_value);
         } else {
@@ -860,7 +878,7 @@ class TemplateParser::Parser::ParserImpl {
         }
 
         if (enum_value == NULL) {
-          if (int_value != kint64max &&
+          if (int_value != std::numeric_limits<int64_t>::max() &&
               reflection->SupportsUnknownEnumValues()) {
             SET_FIELD(EnumValue, int_value);
             return true;
@@ -1083,8 +1101,9 @@ class TemplateParser::Parser::ParserImpl {
     DO(ConsumeUnsignedInteger(&unsigned_value, max_value));
 
     if (negative) {
-      if ((static_cast<uint64_t>(kint64max) + 1) == unsigned_value) {
-        *value = kint64min;
+      if ((static_cast<uint64_t>(std::numeric_limits<int64_t>::max()) + 1) ==
+          unsigned_value) {
+        *value = std::numeric_limits<int64_t>::min();
       } else {
         *value = -static_cast<int64_t>(unsigned_value);
       }
@@ -1135,7 +1154,8 @@ class TemplateParser::Parser::ParserImpl {
     if (LookingAtType(io::Tokenizer::TYPE_INTEGER)) {
       // We have found an integer value for the double.
       uint64_t integer_value;
-      DO(ConsumeUnsignedDecimalInteger(&integer_value, kuint64max));
+      DO(ConsumeUnsignedDecimalInteger(&integer_value,
+                                       std::numeric_limits<uint64_t>::max()));
 
       *value = static_cast<double>(integer_value);
     } else if (LookingAtType(io::Tokenizer::TYPE_FLOAT)) {
@@ -1207,8 +1227,7 @@ class TemplateParser::Parser::ParserImpl {
       parse_info_tree_ = parent->CreateNested(field);
     }
 
-    DynamicMessageFactory factory;
-    const Message* value_prototype = factory.GetPrototype(value_descriptor);
+    const Message* value_prototype = factory_.GetPrototype(value_descriptor);
     if (value_prototype == NULL) {
       return false;
     }
@@ -1305,6 +1324,10 @@ class TemplateParser::Parser::ParserImpl {
     TemplateParser::Parser::ParserImpl* parser_;
   };
 
+  // Factory is stored as a class member to ensure that any Messages generated
+  // from this factory is destroyed before the factory is destroyed, including
+  // any member objects of the derived classes (e.g. stowed_messages_).
+  DynamicMessageFactory factory_;
   io::ErrorCollector* error_collector_;
   const TextFormat::Finder* finder_;
   ParseInfoTree* parse_info_tree_;

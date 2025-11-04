@@ -26,6 +26,7 @@ qt_internal_add_test(tst_qmlcachegen
     LIBRARIES
         Qt::CorePrivate
         Qt::Gui
+        Qt::Qml
         Qt::QmlPrivate
         Qt::QuickTestUtilsPrivate
         Qt::QmlCompilerPrivate
@@ -37,6 +38,20 @@ qt6_add_qml_module(tst_qmlcachegen
     RESOURCE_PREFIX "/"
     NO_GENERATE_EXTRA_QMLDIRS
 )
+
+qt_add_library(tst_qmlcachegen_aotstats STATIC)
+qt_autogen_tools_initial_setup(tst_qmlcachegen_aotstats)
+qt_add_qml_module(tst_qmlcachegen_aotstats
+    URI Aotstats
+    QML_FILES
+        AotstatsClean.qml
+        AotstatsMixed.qml
+    SOURCES
+        scriptstringprops.h
+    OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/Aotstats"
+)
+qt_autogen_tools_initial_setup(tst_qmlcachegen_aotstatsplugin)
+add_dependencies(tst_qmlcachegen tst_qmlcachegen_aotstats)
 
 set(qmake_workerscripts_test_qml_files
     "data/worker.js"
@@ -168,4 +183,9 @@ qt_internal_extend_target(tst_qmlcachegen CONDITION NOT ANDROID AND NOT IOS
 qt_internal_extend_target(tst_qmlcachegen CONDITION CMAKE_CROSSCOMPILING
     DEFINES
         QTEST_CROSS_COMPILED
+)
+
+qt_internal_extend_target(tst_qmlcachegen
+    DEFINES
+        AOTSTATS_MODULE_RCC_QMLCACHE_FOLDER="${CMAKE_CURRENT_BINARY_DIR}/.rcc/qmlcache"
 )

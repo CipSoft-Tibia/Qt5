@@ -8,7 +8,6 @@ macro(qt_ir_include_all_helpers)
     include(QtIROptionsHelpers)
     include(QtIRParsingHelpers)
     include(QtIRProcessHelpers)
-    include(QtIRTestHelpers)
     include(QtTopLevelHelpers)
 endmacro()
 

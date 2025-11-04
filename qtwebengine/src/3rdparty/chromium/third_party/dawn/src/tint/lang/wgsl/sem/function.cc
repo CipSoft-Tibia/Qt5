@@ -164,7 +164,7 @@ Function::VariableBindings Function::TransitivelyReferencedSamplerVariablesImpl(
     for (auto* global : TransitivelyReferencedGlobals()) {
         auto* unwrapped_type = global->Type()->UnwrapRef();
         auto* sampler = unwrapped_type->As<core::type::Sampler>();
-        if (sampler == nullptr || sampler->kind() != kind) {
+        if (sampler == nullptr || sampler->Kind() != kind) {
             continue;
         }
 
@@ -199,6 +199,10 @@ Function::VariableBindings Function::TransitivelyReferencedSampledTextureVariabl
     }
 
     return ret;
+}
+
+void Function::SetDiagnosticSeverity(wgsl::DiagnosticRule rule, wgsl::DiagnosticSeverity severity) {
+    diagnostic_severities_.Add(rule, severity);
 }
 
 }  // namespace tint::sem

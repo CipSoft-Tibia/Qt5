@@ -8,7 +8,9 @@
 #include <QtCore/qmath.h>
 #include <QtGraphs/qgraphstheme.h>
 #include <QtGraphs/qvalue3daxis.h>
+
 #include <QtGui/qimage.h>
+#include <QtGui/qquaternion.h>
 
 using namespace Qt::StringLiterals;
 
@@ -28,6 +30,7 @@ SurfaceGraphModifier::SurfaceGraphModifier(Q3DSurfaceWidgetItem *surface, QLabel
     : QObject(parent)
     , m_graph(surface)
     , m_textField(label)
+    , m_aspectRatio(aspectRatio)
 {
     m_graph->setCameraZoomLevel(85.f);
     m_graph->setCameraPreset(QtGraphs3D::CameraPreset::IsometricRight);
@@ -153,7 +156,6 @@ SurfaceGraphModifier::SurfaceGraphModifier(Q3DSurfaceWidgetItem *surface, QLabel
     m_axisZMaxValue = m_areaMaxValue;
     m_axisXMinRange = minRange;
     m_axisZMinRange = minRange;
-    m_aspectRatio = aspectRatio;
 
     QObject::connect(m_graph,
                      &Q3DGraphsWidgetItem::dragged,
@@ -163,7 +165,7 @@ SurfaceGraphModifier::SurfaceGraphModifier(Q3DSurfaceWidgetItem *surface, QLabel
     QObject::connect(m_graph, &Q3DGraphsWidgetItem::wheel, this, &SurfaceGraphModifier::onWheel);
 }
 
-SurfaceGraphModifier::~SurfaceGraphModifier() {}
+SurfaceGraphModifier::~SurfaceGraphModifier() = default;
 
 void SurfaceGraphModifier::fillSqrtSinProxy()
 {
@@ -499,7 +501,7 @@ void SurfaceGraphModifier::toggleItemOne(bool show)
         //! [11]
         auto *item = new QCustom3DItem(":/data/oilrig.mesh",
                                        positionOne,
-                                       QVector3D(0.025f, 0.025f, 0.025f),
+                                       QVector3D(0.0125f, 0.0125f, 0.0125f),
                                        QQuaternion::fromAxisAndAngle(0.f, 1.f, 0.f, 45.f),
                                        color);
         //! [11]
@@ -508,7 +510,7 @@ void SurfaceGraphModifier::toggleItemOne(bool show)
         //! [12]
         item = new QCustom3DItem(":/data/pipe.mesh",
                                  positionOnePipe,
-                                 QVector3D(0.005f, 0.5f, 0.005f),
+                                 QVector3D(0.0025f, 0.25f, 0.0025f),
                                  QQuaternion(),
                                  color);
         item->setShadowCasting(false);
@@ -542,13 +544,13 @@ void SurfaceGraphModifier::toggleItemTwo(bool show)
         auto *item = new QCustom3DItem();
         item->setMeshFile(":/data/oilrig.mesh");
         item->setPosition(positionTwo);
-        item->setScaling(QVector3D(0.025f, 0.025f, 0.025f));
+        item->setScaling(QVector3D(0.0125f, 0.0125f, 0.0125f));
         item->setRotation(QQuaternion::fromAxisAndAngle(0.f, 1.f, 0.f, 25.f));
         item->setTextureImage(color);
         m_graph->addCustomItem(item);
         item = new QCustom3DItem(":/data/pipe.mesh",
                                  positionTwoPipe,
-                                 QVector3D(0.005f, 0.5f, 0.005f),
+                                 QVector3D(0.0025f, 0.25f, 0.0025f),
                                  QQuaternion(),
                                  color);
         item->setShadowCasting(false);
@@ -577,7 +579,7 @@ void SurfaceGraphModifier::toggleItemThree(bool show)
         auto *item = new QCustom3DItem();
         item->setMeshFile(":/data/refinery.mesh");
         item->setPosition(positionThree);
-        item->setScaling(QVector3D(0.04f, 0.04f, 0.04f));
+        item->setScaling(QVector3D(0.02f, 0.02f, 0.02f));
         item->setRotation(QQuaternion::fromAxisAndAngle(0.f, 1.f, 0.f, 75.f));
         item->setTextureImage(color);
         m_graph->addCustomItem(item);

@@ -12,6 +12,9 @@ Item {
     width: 1280
     height: 720
 
+    property real maxSegmentCount: 10
+    property real minSegmentCount: 1
+
     Data {
         id: graphData
     }
@@ -198,6 +201,91 @@ Item {
             Layout.minimumWidth: parent.width / 3
             text: "Quit"
             onClicked: Qt.quit();
+        }
+    }
+
+    RowLayout {
+        id: sliderLayout
+        width: buttonLayout.width / 3
+        anchors.top: buttonLayout.bottom
+        anchors.left: parent.left
+        spacing: 10
+
+        Column {
+            id: xColumn
+            Label {
+                text: "X Axis Segment Sliders"
+            }
+
+            Slider {
+                id: xSegmentCountSlider
+                snapMode: Slider.SnapAlways
+                from: mainView.minSegmentCount
+                to: mainView.maxSegmentCount
+                value: 5
+
+                onValueChanged: scatterGraph.axisX.segmentCount = value
+            }
+
+            Slider {
+                id: xSubSegmentCountSlider
+                from: mainView.minSegmentCount
+                to: mainView.maxSegmentCount
+                value: 1
+
+                onValueChanged: scatterGraph.axisX.subSegmentCount = value
+            }
+        }
+
+        Column {
+            id: yColumn
+            Label {
+                text: "Y Axis Segment Sliders"
+            }
+
+            Slider {
+                id: ySegmentCountSlider
+                clip: true
+                from: mainView.minSegmentCount
+                to: mainView.maxSegmentCount
+                value: 5
+
+                onValueChanged: scatterGraph.axisY.segmentCount = value
+            }
+
+            Slider {
+                id: ySubSegmentCountSlider
+                from: mainView.minSegmentCount
+                to: mainView.maxSegmentCount
+                value: 1
+
+                onValueChanged: scatterGraph.axisY.subSegmentCount = value
+            }
+        }
+
+        Column {
+            id: zColumn
+            Label {
+                text: "Z Axis Segment Sliders"
+            }
+
+            Slider {
+                id: zSegmentCountSlider
+                from: mainView.minSegmentCount
+                to: mainView.maxSegmentCount
+                value: 5
+
+                onValueChanged: scatterGraph.axisZ.segmentCount = value
+            }
+
+            Slider {
+                id: zSubSegmentCountSlider
+                from: mainView.minSegmentCount
+                to: mainView.maxSegmentCount
+                value: 1
+
+                onValueChanged: scatterGraph.axisZ.subSegmentCount = value
+            }
         }
     }
 }

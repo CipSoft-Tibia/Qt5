@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QtQuick/private/qquickrectangle_p.h>
+#include <QtQuick/private/qquicktaphandler_p.h>
 #include <QtGraphs/qbarseries.h>
 #include <QtGraphs/qbarset.h>
 #include <private/barsrenderer_p.h>
@@ -17,6 +18,7 @@ static const char* TAG_BAR_BORDER_WIDTH = "barBorderWidth";
 static const char* TAG_BAR_SELECTED = "barSelected";
 static const char* TAG_BAR_VALUE = "barValue";
 static const char* TAG_BAR_LABEL = "barLabel";
+static const char* TAG_BAR_INDEX = "barIndex";
 
 BarsRenderer::BarsRenderer(QGraphsView *graph)
     : QQuickItem(graph)
@@ -24,6 +26,11 @@ BarsRenderer::BarsRenderer(QGraphsView *graph)
 {
     setFlag(QQuickItem::ItemHasContents);
     setClip(true);
+
+    m_tapHandler = new QQuickTapHandler(this);
+    connect(m_tapHandler, &QQuickTapHandler::singleTapped, this, &BarsRenderer::onSingleTapped);
+    connect(m_tapHandler, &QQuickTapHandler::doubleTapped, this, &BarsRenderer::onDoubleTapped);
+    connect(m_tapHandler, &QQuickTapHandler::pressedChanged, this, &BarsRenderer::onPressedChanged);
 }
 
 BarsRenderer::~BarsRenderer() {}
@@ -179,6 +186,8 @@ void BarsRenderer::updateComponents(QBarSeries *series)
                     barItem->setProperty(TAG_BAR_VALUE, d.value);
                 if (barItem->property(TAG_BAR_LABEL).isValid())
                     barItem->setProperty(TAG_BAR_LABEL, d.label);
+                if (barItem->property(TAG_BAR_INDEX).isValid())
+                    barItem->setProperty(TAG_BAR_INDEX, barIndex);
             } else {
                 // Set default rectangle bars
                 auto barItem = qobject_cast<QQuickRectangle *>(barItems[barIndex]);
@@ -245,10 +254,11 @@ void BarsRenderer::updateValueLabels(QBarSeries *series)
 void calculateCategoryTotalValues(QBarSeries *series, QList<float> &totalValues, qsizetype valuesPerSet)
 {
     totalValues.fill(0, valuesPerSet);
-    for (auto s : series->barSets()) {
+    auto barsets = series->barSets();
+    for (auto s : std::as_const(barsets)) {
         QVariantList v = s->values();
         int setIndex = 0;
-        for (auto variantValue : std::as_const(v)) {
+        for (const auto &variantValue : std::as_const(v)) {
             if (setIndex < totalValues.size())
                 totalValues[setIndex] += variantValue.toReal();
             setIndex++;
@@ -294,7 +304,8 @@ void BarsRenderer::updateVerticalBars(QBarSeries *series, qsizetype setCount, qs
     int barIndexInSet = 0;
     int barSeriesIndex = 0;
     QList<QLegendData> legendDataList;
-    for (auto s : series->barSets()) {
+    auto barsets = series->barSets();
+    for (auto s : std::as_const(barsets)) {
         QVariantList v = s->values();
         qsizetype valuesCount = v.size();
         if (valuesCount == 0)
@@ -323,7 +334,7 @@ void BarsRenderer::updateVerticalBars(QBarSeries *series, qsizetype setCount, qs
         color.setAlpha(color.alpha() * series->opacity());
         borderColor.setAlpha(borderColor.alpha() * series->opacity());
         const auto selectedBars = s->selectedBars();
-        for (auto variantValue : std::as_const(v)) {
+        for (const auto &variantValue : std::as_const(v)) {
             const float realValue = variantValue.toReal();
             float value = (realValue - m_graph->m_axisRenderer->m_axisVerticalMinValue) * series->valuesMultiplier();
             if (percent) {
@@ -404,7 +415,8 @@ void BarsRenderer::updateHorizontalBars(QBarSeries *series, qsizetype setCount, 
     int barIndexInSet = 0;
     int barSerieIndex = 0;
     QList<QLegendData> legendDataList;
-    for (auto s : series->barSets()) {
+    auto barsets = series->barSets();
+    for (auto s : std::as_const(barsets)) {
         QVariantList v = s->values();
         qsizetype valuesCount = v.size();
         if (valuesCount == 0)
@@ -432,7 +444,7 @@ void BarsRenderer::updateHorizontalBars(QBarSeries *series, qsizetype setCount, 
         color.setAlpha(color.alpha() * series->opacity());
         borderColor.setAlpha(borderColor.alpha() * series->opacity());
         const auto selectedBars = s->selectedBars();
-        for (auto variantValue : std::as_const(v)) {
+        for (const auto &variantValue : std::as_const(v)) {
             const float realValue = variantValue.toReal();
             float value = (realValue - m_graph->m_axisRenderer->m_axisHorizontalMinValue) * series->valuesMultiplier();
             if (percent) {
@@ -562,28 +574,6 @@ void BarsRenderer::afterPolish(QList<QAbstractSeries *> &cleanupSeries)
     }
 }
 
-bool BarsRenderer::handleMousePress(QMouseEvent *event)
-{
-    bool handled = false;
-    for (auto &rectNodesInputRects : m_rectNodesInputRects) {
-        for (auto &barSelection : rectNodesInputRects) {
-            if (!barSelection.series->isSelectable())
-                continue;
-            qsizetype indexInSet = 0;
-            for (auto &rect : barSelection.rects) {
-                if (rect.contains(event->pos())) {
-                    // TODO: Currently just toggling selection
-                    QList<qsizetype> indexList = {indexInSet};
-                    barSelection.barSet->toggleSelection(indexList);
-                    handled = true;
-                }
-                indexInSet++;
-            }
-        }
-    }
-    return handled;
-}
-
 bool BarsRenderer::handleHoverMove(QHoverEvent *event)
 {
     bool handled = false;
@@ -619,6 +609,70 @@ bool BarsRenderer::handleHoverMove(QHoverEvent *event)
         handled = true;
     }
     return handled;
+}
+
+void BarsRenderer::onSingleTapped(QEventPoint eventPoint, Qt::MouseButton button)
+{
+    Q_UNUSED(button)
+
+    for (auto &rectNodesInputRects : m_rectNodesInputRects) {
+        for (auto &barSelection : rectNodesInputRects) {
+            if (!barSelection.series->isSelectable())
+                continue;
+            qsizetype indexInSet = 0;
+            for (auto &rect : barSelection.rects) {
+                if (rect.contains(eventPoint.position())) {
+                    emit barSelection.series->clicked(indexInSet, barSelection.barSet);
+                    return;
+                }
+                indexInSet++;
+            }
+        }
+    }
+}
+
+void BarsRenderer::onDoubleTapped(QEventPoint eventPoint, Qt::MouseButton button)
+{
+    Q_UNUSED(button)
+
+    for (auto &rectNodesInputRects : m_rectNodesInputRects) {
+        for (auto &barSelection : rectNodesInputRects) {
+            if (!barSelection.series->isSelectable())
+                continue;
+            qsizetype indexInSet = 0;
+            for (auto &rect : barSelection.rects) {
+                if (rect.contains(eventPoint.position())) {
+                    emit barSelection.series->doubleClicked(indexInSet, barSelection.barSet);
+                    return;
+                }
+                indexInSet++;
+            }
+        }
+    }
+}
+
+void BarsRenderer::onPressedChanged()
+{
+    for (auto &rectNodesInputRects : m_rectNodesInputRects) {
+        for (auto &barSelection : rectNodesInputRects) {
+            if (!barSelection.series->isSelectable())
+                continue;
+            qsizetype indexInSet = 0;
+            for (auto &rect : barSelection.rects) {
+                if (rect.contains(m_tapHandler->point().position())) {
+                    // TODO: Currently just toggling selection
+                    if (m_tapHandler->isPressed()) {
+                        QList<qsizetype> indexList = {indexInSet};
+                        barSelection.barSet->toggleSelection(indexList);
+                        emit barSelection.series->pressed(indexInSet, barSelection.barSet);
+                    } else {
+                        emit barSelection.series->released(indexInSet, barSelection.barSet);
+                    }
+                }
+                indexInSet++;
+            }
+        }
+    }
 }
 
 QT_END_NAMESPACE

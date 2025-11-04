@@ -18,6 +18,7 @@
 #include <private/qqmlimport_p.h>
 #include <private/qqmljsdiagnosticmessage_p.h>
 #include <private/qqmlpropertycache_p.h>
+#include <private/qqmlpropertyresolver_p.h>
 #include <private/qv4compileddata_p.h>
 
 #include <QtCore/qcoreapplication.h>
@@ -42,7 +43,9 @@ public:
 private:
     QVector<QQmlError> validateObject(
             int objectIndex, const QV4::CompiledData::Binding *instantiatingBinding,
-            bool populatingValueTypeGroupProperty = false) const;
+            bool populatingValueTypeGroupProperty = false,
+            QQmlPropertyResolver::RevisionCheck checkRevision
+                    = QQmlPropertyResolver::CheckRevision) const;
     QQmlError validateLiteralBinding(
             const QQmlPropertyCache::ConstPtr &propertyCache, const QQmlPropertyData *property,
             const QV4::CompiledData::Binding *binding) const;

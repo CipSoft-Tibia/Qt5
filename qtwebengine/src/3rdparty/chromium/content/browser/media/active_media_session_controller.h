@@ -22,7 +22,7 @@ namespace content {
 
 // Intakes media events (such as media key presses) and controls the active
 // media session.
-// TODO(crbug.com/1502989) Consider renaming this class in the world of
+// TODO(crbug.com/40943396) Consider renaming this class in the world of
 // instanced system media controls.
 class CONTENT_EXPORT ActiveMediaSessionController
     : public media_session::mojom::MediaControllerObserver,
@@ -43,7 +43,7 @@ class CONTENT_EXPORT ActiveMediaSessionController
   // |actions_| may not get switched off causing a previously available button
   // to stay available when it is not available in the current media context.
   // Currently used only by browser system media controls when
-  // kWebAppSystemMediaControlsWin is enabled.
+  // kWebAppSystemMediaControls is enabled.
   void RebindMojoForNewID(base::UnguessableToken request_id);
 
   // media_session::mojom::MediaControllerObserver:

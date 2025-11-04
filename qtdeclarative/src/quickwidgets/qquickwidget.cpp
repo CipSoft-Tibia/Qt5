@@ -19,6 +19,7 @@
 #include <private/qqmldebugserviceinterfaces_p.h>
 
 #include <QtQml/qqmlengine.h>
+#include <QtQml/qqmlcomponent.h>
 #include <private/qqmlengine_p.h>
 #include <QtCore/qbasictimer.h>
 #include <QtGui/QOffscreenSurface>
@@ -173,8 +174,10 @@ void QQuickWidgetPrivate::ensureBackingScene()
     Q_Q(QQuickWidget);
     if (!renderControl)
         renderControl = new QQuickWidgetRenderControl(q);
-    if (!offscreenWindow)
+    if (!offscreenWindow) {
         offscreenWindow = new QQuickWidgetOffscreenWindow(*new QQuickWidgetOffscreenWindowPrivate(), renderControl);
+        offscreenWindow->setProperty("_q_parentWidget", QVariant::fromValue(q));
+    }
 
     // Check if the Software Adaptation is being used
     auto sgRendererInterface = offscreenWindow->rendererInterface();
@@ -303,6 +306,20 @@ QQuickWidgetPrivate::QQuickWidgetPrivate()
 {
 }
 
+void QQuickWidgetPrivate::executeHelper()
+{
+    ensureEngine();
+
+    if (root) {
+        delete root;
+        root = nullptr;
+    }
+    if (component) {
+        delete component;
+        component = nullptr;
+    }
+}
+
 void QQuickWidgetPrivate::destroy()
 {
     Q_Q(QQuickWidget);
@@ -316,16 +333,8 @@ void QQuickWidgetPrivate::destroy()
 void QQuickWidgetPrivate::execute()
 {
     Q_Q(QQuickWidget);
-    ensureEngine();
+    executeHelper();
 
-    if (root) {
-        delete root;
-        root = nullptr;
-    }
-    if (component) {
-        delete component;
-        component = nullptr;
-    }
     if (!source.isEmpty()) {
         component = new QQmlComponent(engine.data(), source, q);
         if (!component->isLoading()) {
@@ -334,6 +343,20 @@ void QQuickWidgetPrivate::execute()
             QObject::connect(component, SIGNAL(statusChanged(QQmlComponent::Status)),
                              q, SLOT(continueExecute()));
         }
+    }
+}
+
+void QQuickWidgetPrivate::execute(QAnyStringView uri, QAnyStringView typeName)
+{
+    Q_Q(QQuickWidget);
+    executeHelper();
+
+    component = new QQmlComponent(engine.data(), uri, typeName, q);
+    if (!component->isLoading()) {
+        q->continueExecute();
+    } else {
+        QObject::connect(component, SIGNAL(statusChanged(QQmlComponent::Status)),
+                         q, SLOT(continueExecute()));
     }
 }
 
@@ -459,7 +482,7 @@ QImage QQuickWidgetPrivate::grabFramebuffer()
                                 readResult.pixelSize.width(), readResult.pixelSize.height(),
                                 QImage::Format_RGBA8888_Premultiplied);
             if (rhi->isYUpInFramebuffer())
-                return wrapperImage.mirrored();
+                return wrapperImage.flipped();
             else
                 return wrapperImage.copy();
         }
@@ -649,6 +672,19 @@ QQuickWidget::QQuickWidget(const QUrl &source, QWidget *parent)
 }
 
 /*!
+  \since 6.9
+  Constructs a QQuickWidget with the element specified by \a uri and \a typeName
+  and parent \a parent.
+  The default value of \a parent is \c{nullptr}.
+  \sa loadFromModule
+ */
+QQuickWidget::QQuickWidget(QAnyStringView uri, QAnyStringView typeName, QWidget *parent)
+    : QQuickWidget(parent)
+{
+    loadFromModule(uri, typeName);
+}
+
+/*!
   Constructs a QQuickWidget with the given QML \a engine as a child of \a parent.
 
   \note The QQuickWidget does not take ownership of the given \a engine object;
@@ -733,6 +769,42 @@ void QQuickWidget::setContent(const QUrl& url, QQmlComponent *component, QObject
 
     d->setRootObject(item);
     emit statusChanged(status());
+}
+/*!
+   Sets the initial properties \a initialProperties with which the QML
+   component gets initialized after calling \l QQuickWidget::setSource().
+
+   \note You can only use this function to initialize top-level properties.
+   \note This function should always be called before setSource, as it has
+   no effect once the component has become \c Ready.
+
+   \sa QQmlComponent::createWithInitialProperties()
+   \since 6.9
+*/
+void QQuickWidget::setInitialProperties(const QVariantMap &initialProperties)
+{
+    Q_D(QQuickWidget);
+    d->initialProperties = initialProperties;
+}
+
+/*!
+    \since 6.9
+    Loads the QML component identified by \a uri and \a typeName. If the component
+    is backed by a QML file, \l{source} will be set accordingly. For types defined
+    in \c{C++}, \c{source} will be empty.
+
+    If any \l{source} was set before this method was called, it will be cleared.
+
+    Calling this method multiple times with the same \a uri and \a typeName will result
+    in the QML component being reinstantiated.
+
+    \sa setSource, QQmlComponent::loadFromModule, QQmlApplicationEngine::loadFromModule
+ */
+void QQuickWidget::loadFromModule(QAnyStringView uri, QAnyStringView typeName)
+{
+    Q_D(QQuickWidget);
+    d->source = {}; // clear URL
+    d->execute(uri, typeName);
 }
 
 /*!
@@ -1250,7 +1322,9 @@ void QQuickWidget::continueExecute()
         return;
     }
 
-    QObject *obj = d->component->create();
+    std::unique_ptr<QObject> obj(d->initialProperties.empty()
+                                     ? d->component->create()
+                                     : d->component->createWithInitialProperties(d->initialProperties));
 
     if (d->component->isError()) {
         const QList<QQmlError> errorList = d->component->errors();
@@ -1262,7 +1336,13 @@ void QQuickWidget::continueExecute()
         return;
     }
 
-    d->setRootObject(obj);
+    // If we used loadFromModule, we might not have a URL so far.
+    // Thus, query the component to retrieve the associated URL, if any
+    if (d->source.isEmpty())
+        d->source = d->component->url();
+
+    if (d->setRootObject(obj.get()))
+        Q_UNUSED(obj.release());
     emit statusChanged(status());
 }
 
@@ -1270,11 +1350,12 @@ void QQuickWidget::continueExecute()
 /*!
   \internal
 */
-void QQuickWidgetPrivate::setRootObject(QObject *obj)
+bool QQuickWidgetPrivate::setRootObject(QObject *obj)
 {
     Q_Q(QQuickWidget);
     if (root == obj)
-        return;
+        return true;
+
     if (QQuickItem *sgItem = qobject_cast<QQuickItem *>(obj)) {
         root = sgItem;
         sgItem->setParentItem(offscreenWindow->contentItem());
@@ -1298,7 +1379,10 @@ void QQuickWidgetPrivate::setRootObject(QObject *obj)
             q->resize(initialSize);
         }
         initResize();
+        return true;
     }
+
+    return false;
 }
 
 QPlatformBackingStoreRhiConfig QQuickWidgetPrivate::rhiConfig() const

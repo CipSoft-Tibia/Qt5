@@ -1,11 +1,5 @@
 # Copyright (C) 2022 The Qt Company Ltd.
 # SPDX-License-Identifier: BSD-3-Clause
-
-qt_find_package(WrapgRPC
-    PROVIDED_TARGETS WrapgRPC::WrapLibgRPC
-    MODULE_NAME global
-)
-
 qt_feature("grpc" PUBLIC
     SECTION "Utilities"
     LABEL "gRPC support"
@@ -18,7 +12,7 @@ qt_feature("qtgrpcgen" PRIVATE
     LABEL "Qt GRPC generator"
     PURPOSE "Provides support for generating Qt-based gRPC services."
     DISABLE NOT QT_FEATURE_grpc
-    CONDITION TARGET WrapProtobuf::WrapLibProtoc AND TARGET WrapProtobuf::WrapLibProtobuf AND
+    CONDITION TARGET protobuf::libprotoc AND TARGET protobuf::libprotobuf AND
         TARGET WrapProtoc::WrapProtoc AND TEST_libprotobuf AND TEST_libprotoc
 )
 

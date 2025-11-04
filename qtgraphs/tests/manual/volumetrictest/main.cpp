@@ -102,6 +102,9 @@ int main(int argc, char **argv)
     rangeZSlider->setValue(512);
     rangeZSlider->setEnabled(true);
 
+    QPushButton *reverseAxes = new QPushButton(widget);
+    reverseAxes->setText(QStringLiteral("Reverse axes"));
+
     QPushButton *testBoundsSetting = new QPushButton(widget);
     testBoundsSetting->setText(QStringLiteral("Test data bounds"));
 
@@ -119,6 +122,7 @@ int main(int argc, char **argv)
     vLayout->addWidget(rangeXSlider);
     vLayout->addWidget(rangeYSlider);
     vLayout->addWidget(rangeZSlider);
+    vLayout->addWidget(reverseAxes);
     vLayout->addWidget(testBoundsSetting);
     vLayout->addWidget(testSubTextureSetting, 1, Qt::AlignTop);
 
@@ -146,6 +150,8 @@ int main(int argc, char **argv)
                      &VolumetricModifier::adjustRangeY);
     QObject::connect(rangeZSlider, &QSlider::valueChanged, modifier,
                      &VolumetricModifier::adjustRangeZ);
+    QObject::connect(reverseAxes, &QPushButton::clicked, modifier,
+                     &VolumetricModifier::reverseAxes);
     QObject::connect(testBoundsSetting, &QPushButton::clicked, modifier,
                      &VolumetricModifier::testBoundsSetting);
 

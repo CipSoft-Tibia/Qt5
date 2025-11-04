@@ -5,6 +5,11 @@
  */
 import type {Protocol} from 'devtools-protocol';
 
+import type {ProtocolError} from '../common/Errors.js';
+import {debugError, isString} from '../common/util.js';
+import {assert} from '../util/assert.js';
+import {typedArrayToBase64} from '../util/encoding.js';
+
 import type {CDPSession} from './CDPSession.js';
 import type {Frame} from './Frame.js';
 import type {HTTPResponse} from './HTTPResponse.js';
@@ -42,7 +47,7 @@ export interface ResponseForRequest {
    */
   headers: Record<string, unknown>;
   contentType: string;
-  body: string | Buffer;
+  body: string | Uint8Array;
 }
 
 /**
@@ -94,7 +99,8 @@ export abstract class HTTPRequest {
   /**
    * @internal
    */
-  _requestId = '';
+  abstract get id(): string;
+
   /**
    * @internal
    */
@@ -115,6 +121,29 @@ export abstract class HTTPRequest {
    * @internal
    */
   _redirectChain: HTTPRequest[] = [];
+
+  /**
+   * @internal
+   */
+  protected interception: {
+    enabled: boolean;
+    handled: boolean;
+    handlers: Array<() => void | PromiseLike<any>>;
+    resolutionState: InterceptResolutionState;
+    requestOverrides: ContinueRequestOverrides;
+    response: Partial<ResponseForRequest> | null;
+    abortReason: Protocol.Network.ErrorReason | null;
+  } = {
+    enabled: false,
+    handled: false,
+    handlers: [],
+    resolutionState: {
+      action: InterceptResolutionAction.None,
+    },
+    requestOverrides: {},
+    response: null,
+    abortReason: null,
+  };
 
   /**
    * Warning! Using this client can break Puppeteer. Use with caution.
@@ -138,18 +167,27 @@ export abstract class HTTPRequest {
    * if the interception is allowed to continue (ie, `abort()` and
    * `respond()` aren't called).
    */
-  abstract continueRequestOverrides(): ContinueRequestOverrides;
+  continueRequestOverrides(): ContinueRequestOverrides {
+    assert(this.interception.enabled, 'Request Interception is not enabled!');
+    return this.interception.requestOverrides;
+  }
 
   /**
    * The `ResponseForRequest` that gets used if the
    * interception is allowed to respond (ie, `abort()` is not called).
    */
-  abstract responseForRequest(): Partial<ResponseForRequest> | null;
+  responseForRequest(): Partial<ResponseForRequest> | null {
+    assert(this.interception.enabled, 'Request Interception is not enabled!');
+    return this.interception.response;
+  }
 
   /**
    * The most recent reason for aborting the request
    */
-  abstract abortErrorReason(): Protocol.Network.ErrorReason | null;
+  abortErrorReason(): Protocol.Network.ErrorReason | null {
+    assert(this.interception.enabled, 'Request Interception is not enabled!');
+    return this.interception.abortReason;
+  }
 
   /**
    * An InterceptResolutionState object describing the current resolution
@@ -162,13 +200,23 @@ export abstract class HTTPRequest {
    * InterceptResolutionAction is one of: `abort`, `respond`, `continue`,
    * `disabled`, `none`, or `already-handled`.
    */
-  abstract interceptResolutionState(): InterceptResolutionState;
+  interceptResolutionState(): InterceptResolutionState {
+    if (!this.interception.enabled) {
+      return {action: InterceptResolutionAction.Disabled};
+    }
+    if (this.interception.handled) {
+      return {action: InterceptResolutionAction.AlreadyHandled};
+    }
+    return {...this.interception.resolutionState};
+  }
 
   /**
    * Is `true` if the intercept resolution has already been handled,
    * `false` otherwise.
    */
-  abstract isInterceptResolutionHandled(): boolean;
+  isInterceptResolutionHandled(): boolean {
+    return this.interception.handled;
+  }
 
   /**
    * Adds an async request handler to the processing queue.
@@ -176,15 +224,51 @@ export abstract class HTTPRequest {
    * but they are guaranteed to resolve before the request interception
    * is finalized.
    */
-  abstract enqueueInterceptAction(
+  enqueueInterceptAction(
     pendingHandler: () => void | PromiseLike<unknown>
-  ): void;
+  ): void {
+    this.interception.handlers.push(pendingHandler);
+  }
+
+  /**
+   * @internal
+   */
+  abstract _abort(
+    errorReason: Protocol.Network.ErrorReason | null
+  ): Promise<void>;
+
+  /**
+   * @internal
+   */
+  abstract _respond(response: Partial<ResponseForRequest>): Promise<void>;
+
+  /**
+   * @internal
+   */
+  abstract _continue(overrides: ContinueRequestOverrides): Promise<void>;
 
   /**
    * Awaits pending interception handlers and then decides how to fulfill
    * the request interception.
    */
-  abstract finalizeInterceptions(): Promise<void>;
+  async finalizeInterceptions(): Promise<void> {
+    await this.interception.handlers.reduce((promiseChain, interceptAction) => {
+      return promiseChain.then(interceptAction);
+    }, Promise.resolve());
+    this.interception.handlers = [];
+    const {action} = this.interceptResolutionState();
+    switch (action) {
+      case 'abort':
+        return await this._abort(this.interception.abortReason);
+      case 'respond':
+        if (this.interception.response === null) {
+          throw new Error('Response is missing for the interception');
+        }
+        return await this._respond(this.interception.response);
+      case 'continue':
+        return await this._continue(this.interception.requestOverrides);
+    }
+  }
 
   /**
    * Contains the request's resource type as it was perceived by the rendering
@@ -322,10 +406,42 @@ export abstract class HTTPRequest {
    *
    * Exception is immediately thrown if the request interception is not enabled.
    */
-  abstract continue(
-    overrides?: ContinueRequestOverrides,
+  async continue(
+    overrides: ContinueRequestOverrides = {},
     priority?: number
-  ): Promise<void>;
+  ): Promise<void> {
+    // Request interception is not supported for data: urls.
+    if (this.url().startsWith('data:')) {
+      return;
+    }
+    assert(this.interception.enabled, 'Request Interception is not enabled!');
+    assert(!this.interception.handled, 'Request is already handled!');
+    if (priority === undefined) {
+      return await this._continue(overrides);
+    }
+    this.interception.requestOverrides = overrides;
+    if (
+      this.interception.resolutionState.priority === undefined ||
+      priority > this.interception.resolutionState.priority
+    ) {
+      this.interception.resolutionState = {
+        action: InterceptResolutionAction.Continue,
+        priority,
+      };
+      return;
+    }
+    if (priority === this.interception.resolutionState.priority) {
+      if (
+        this.interception.resolutionState.action === 'abort' ||
+        this.interception.resolutionState.action === 'respond'
+      ) {
+        return;
+      }
+      this.interception.resolutionState.action =
+        InterceptResolutionAction.Continue;
+    }
+    return;
+  }
 
   /**
    * Fulfills a request with the given response.
@@ -359,10 +475,38 @@ export abstract class HTTPRequest {
    *
    * Exception is immediately thrown if the request interception is not enabled.
    */
-  abstract respond(
+  async respond(
     response: Partial<ResponseForRequest>,
     priority?: number
-  ): Promise<void>;
+  ): Promise<void> {
+    // Mocking responses for dataURL requests is not currently supported.
+    if (this.url().startsWith('data:')) {
+      return;
+    }
+    assert(this.interception.enabled, 'Request Interception is not enabled!');
+    assert(!this.interception.handled, 'Request is already handled!');
+    if (priority === undefined) {
+      return await this._respond(response);
+    }
+    this.interception.response = response;
+    if (
+      this.interception.resolutionState.priority === undefined ||
+      priority > this.interception.resolutionState.priority
+    ) {
+      this.interception.resolutionState = {
+        action: InterceptResolutionAction.Respond,
+        priority,
+      };
+      return;
+    }
+    if (priority === this.interception.resolutionState.priority) {
+      if (this.interception.resolutionState.action === 'abort') {
+        return;
+      }
+      this.interception.resolutionState.action =
+        InterceptResolutionAction.Respond;
+    }
+  }
 
   /**
    * Aborts a request.
@@ -378,7 +522,51 @@ export abstract class HTTPRequest {
    * {@link Page.setRequestInterception}. If it is not enabled, this method will
    * throw an exception immediately.
    */
-  abstract abort(errorCode?: ErrorCode, priority?: number): Promise<void>;
+  async abort(
+    errorCode: ErrorCode = 'failed',
+    priority?: number
+  ): Promise<void> {
+    // Request interception is not supported for data: urls.
+    if (this.url().startsWith('data:')) {
+      return;
+    }
+    const errorReason = errorReasons[errorCode];
+    assert(errorReason, 'Unknown error code: ' + errorCode);
+    assert(this.interception.enabled, 'Request Interception is not enabled!');
+    assert(!this.interception.handled, 'Request is already handled!');
+    if (priority === undefined) {
+      return await this._abort(errorReason);
+    }
+    this.interception.abortReason = errorReason;
+    if (
+      this.interception.resolutionState.priority === undefined ||
+      priority >= this.interception.resolutionState.priority
+    ) {
+      this.interception.resolutionState = {
+        action: InterceptResolutionAction.Abort,
+        priority,
+      };
+      return;
+    }
+  }
+
+  /**
+   * @internal
+   */
+  static getResponse(body: string | Uint8Array): {
+    contentLength: number;
+    base64: string;
+  } {
+    // Needed to get the correct byteLength
+    const byteBody: Uint8Array = isString(body)
+      ? new TextEncoder().encode(body)
+      : body;
+
+    return {
+      contentLength: byteBody.byteLength,
+      base64: typedArrayToBase64(byteBody),
+    };
+  }
 }
 
 /**
@@ -392,13 +580,6 @@ export enum InterceptResolutionAction {
   None = 'none',
   AlreadyHandled = 'already-handled',
 }
-
-/**
- * @public
- *
- * @deprecated please use {@link InterceptResolutionAction} instead.
- */
-export type InterceptResolutionStrategy = InterceptResolutionAction;
 
 /**
  * @public
@@ -519,3 +700,40 @@ export const STATUS_TEXTS: Record<string, string> = {
   '510': 'Not Extended',
   '511': 'Network Authentication Required',
 } as const;
+
+const errorReasons: Record<ErrorCode, Protocol.Network.ErrorReason> = {
+  aborted: 'Aborted',
+  accessdenied: 'AccessDenied',
+  addressunreachable: 'AddressUnreachable',
+  blockedbyclient: 'BlockedByClient',
+  blockedbyresponse: 'BlockedByResponse',
+  connectionaborted: 'ConnectionAborted',
+  connectionclosed: 'ConnectionClosed',
+  connectionfailed: 'ConnectionFailed',
+  connectionrefused: 'ConnectionRefused',
+  connectionreset: 'ConnectionReset',
+  internetdisconnected: 'InternetDisconnected',
+  namenotresolved: 'NameNotResolved',
+  timedout: 'TimedOut',
+  failed: 'Failed',
+} as const;
+
+/**
+ * @internal
+ */
+export function handleError(error: ProtocolError): void {
+  // Firefox throws an invalid argument error with a message starting with
+  // 'Expected "header" [...]'.
+  if (
+    error.originalMessage.includes('Invalid header') ||
+    error.originalMessage.includes('Expected "header"') ||
+    // WebDriver BiDi error for invalid values, for example, headers.
+    error.originalMessage.includes('invalid argument')
+  ) {
+    throw error;
+  }
+  // In certain cases, protocol will return error if the request was
+  // already canceled or the page was closed. We should tolerate these
+  // errors.
+  debugError(error);
+}

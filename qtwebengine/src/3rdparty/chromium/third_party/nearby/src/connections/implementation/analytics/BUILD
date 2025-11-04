@@ -43,6 +43,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/time",
+        "@com_google_protobuf//:protobuf_lite",
     ],
 )
 
@@ -56,9 +57,8 @@ cc_test(
     shard_count = 16,
     deps = [
         ":analytics",
-        "//internal/analytics:event_logger",
+        "//internal/analytics:mock_event_logger",
         "//internal/platform:base",
-        "//internal/platform:comm",
         "//internal/platform:error_code_recorder",
         "//internal/platform:types",
         "//internal/platform/implementation/g3",  # build_cleaner: keep
@@ -68,6 +68,5 @@ cc_test(
         "@com_github_protobuf_matchers//protobuf-matchers",
         "@com_google_absl//absl/time",
         "@com_google_googletest//:gtest_main",
-        "@com_google_protobuf//:protobuf_lite",
     ],
 )

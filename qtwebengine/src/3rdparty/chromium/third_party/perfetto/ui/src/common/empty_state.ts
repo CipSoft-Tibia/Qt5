@@ -15,32 +15,26 @@
 import {Time} from '../base/time';
 import {createEmptyRecordConfig} from '../controller/record_config_types';
 import {featureFlags} from '../core/feature_flags';
-import {
-  Aggregation,
-} from '../frontend/pivot_table_types';
+import {Aggregation} from '../frontend/pivot_table_types';
 import {
   autosaveConfigStore,
   recordTargetStore,
 } from '../frontend/record_config';
-import {SqlTables} from '../frontend/sql_table/well_known_tables';
-
-import {
-  defaultTraceTime,
-  NonSerializableState,
-  State,
-  STATE_VERSION,
-} from './state';
+import {NonSerializableState, State, STATE_VERSION} from './state';
 
 const AUTOLOAD_STARTED_CONFIG_FLAG = featureFlags.register({
   id: 'autoloadStartedConfig',
   name: 'Auto-load last used recording config',
-  description: 'Starting a recording automatically saves its configuration. ' +
-      'This flag controls whether this config is automatically loaded.',
+  description:
+    'Starting a recording automatically saves its configuration. ' +
+    'This flag controls whether this config is automatically loaded.',
   defaultValue: true,
 });
 
 export function keyedMap<T>(
-    keyFn: (key: T) => string, ...values: T[]): Map<string, T> {
+  keyFn: (key: T) => string,
+  ...values: T[]
+): Map<string, T> {
   const result = new Map<string, T>();
 
   for (const value of values) {
@@ -61,19 +55,28 @@ export function createEmptyNonSerializableState(): NonSerializableState {
   return {
     pivotTable: {
       queryResult: null,
-      selectedPivots:
-          [{kind: 'regular', table: SqlTables.slice.name, column: 'name'}],
+      selectedPivots: [
+        {
+          kind: 'regular',
+          table: '_slice_with_thread_and_process_info',
+          column: 'name',
+        },
+      ],
       selectedAggregations: [
         {
           aggregationFunction: 'SUM',
-          column: {kind: 'regular', table: SqlTables.slice.name, column: 'dur'},
+          column: {
+            kind: 'regular',
+            table: '_slice_with_thread_and_process_info',
+            column: 'dur',
+          },
           sortDirection: 'DESC',
         },
         {
           aggregationFunction: 'SUM',
           column: {
             kind: 'regular',
-            table: SqlTables.slice.name,
+            table: '_slice_with_thread_and_process_info',
             column: 'thread_dur',
           },
         },
@@ -81,7 +84,6 @@ export function createEmptyNonSerializableState(): NonSerializableState {
       ],
       constrainToArea: true,
       queryRequested: false,
-      argumentNames: [],
     },
   };
 }
@@ -91,55 +93,16 @@ export function createEmptyState(): State {
     version: STATE_VERSION,
     nextId: '-1',
     newEngineMode: 'USE_HTTP_RPC_IF_AVAILABLE',
-    traceTime: {...defaultTraceTime},
-    tracks: {},
-    trackKeyByTrackId: {},
-    utidToThreadSortKey: {},
     aggregatePreferences: {},
-    trackGroups: {},
-    pinnedTracks: [],
-    scrollingTracks: [],
-    areas: {},
     queries: {},
-    permalink: {},
-    notes: {},
 
-    recordConfig: AUTOLOAD_STARTED_CONFIG_FLAG.get() ?
-        autosaveConfigStore.get() :
-        createEmptyRecordConfig(),
+    recordConfig: AUTOLOAD_STARTED_CONFIG_FLAG.get()
+      ? autosaveConfigStore.get()
+      : createEmptyRecordConfig(),
     displayConfigAsPbtxt: false,
     lastLoadedConfig: {type: 'NONE'},
 
-    frontendLocalState: {
-      visibleState: {
-        ...defaultTraceTime,
-        lastUpdate: 0,
-        resolution: 0n,
-      },
-    },
-
-    omniboxState: {
-      omnibox: '',
-      mode: 'SEARCH',
-    },
-
-    logsPagination: {
-      offset: 0,
-      count: 0,
-    },
-
-    ftracePagination: {
-      offset: 0,
-      count: 0,
-    },
-
-    ftraceFilter: {
-      excludedNames: [],
-    },
-
     status: {msg: '', timestamp: 0},
-    currentSelection: null,
-    currentFlamegraphState: null,
     traceConversionInProgress: false,
 
     perfDebug: false,
@@ -151,7 +114,6 @@ export function createEmptyState(): State {
     highlightedSliceId: -1,
     focusedFlowIdLeft: -1,
     focusedFlowIdRight: -1,
-    searchIndex: -1,
 
     recordingInProgress: false,
     recordingCancelled: false,
@@ -164,15 +126,10 @@ export function createEmptyState(): State {
     chromeCategories: undefined,
     nonSerializableState: createEmptyNonSerializableState(),
 
-    logFilteringCriteria: {
-      // The first two log priorities are ignored.
-      minimumLevel: 2,
-      tags: [],
-      textEntry: '',
-      hideNonMatching: true,
-    },
-
     // Somewhere to store plugins' persistent state.
     plugins: {},
+
+    trackFilterTerm: undefined,
+    forceRunControllers: 0,
   };
 }

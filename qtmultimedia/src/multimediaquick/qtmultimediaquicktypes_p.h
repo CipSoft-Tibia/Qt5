@@ -15,9 +15,24 @@
 // We mean it.
 //
 
-#include <QtQml/qqml.h>
-#include <QtMultimedia/QtMultimedia>
-#include <private/qtmultimediaquickglobal_p.h>
+#include <QtMultimediaQuick/private/qtmultimediaquickglobal_p.h>
+
+#include <QtMultimedia/qaudiodevice.h>
+#include <QtMultimedia/qaudioinput.h>
+#include <QtMultimedia/qaudiooutput.h>
+#include <QtMultimedia/qcamera.h>
+#include <QtMultimedia/qcameradevice.h>
+#include <QtMultimedia/qcapturablewindow.h>
+#include <QtMultimedia/qimagecapture.h>
+#include <QtMultimedia/qmediacapturesession.h>
+#include <QtMultimedia/qmediadevices.h>
+#include <QtMultimedia/qmediaformat.h>
+#include <QtMultimedia/qmediametadata.h>
+#include <QtMultimedia/qmediarecorder.h>
+#include <QtMultimedia/qscreencapture.h>
+#include <QtMultimedia/qwindowcapture.h>
+
+#include <QtQml/qqmlregistration.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -67,7 +82,7 @@ struct QMediaMetaDataForeign
 {
     Q_GADGET
     QML_FOREIGN(QMediaMetaData)
-    QML_NAMED_ELEMENT(mediaMetaData)
+    QML_VALUE_TYPE(mediaMetaData)
 };
 
 // To prevent the same type from being exported twice into qmltypes
@@ -82,7 +97,7 @@ namespace QMediaMetaDataNamespaceForeign
     Q_NAMESPACE
     QML_FOREIGN_NAMESPACE(QMediaMetaDataDerived)
     QML_NAMED_ELEMENT(MediaMetaData)
-};
+} // namespace QMediaMetaDataNamespaceForeign
 
 struct QMediaDevicesForeign
 {
@@ -109,7 +124,7 @@ struct QAudioDeviceForeign
 {
     Q_GADGET
     QML_FOREIGN(QAudioDevice)
-    QML_NAMED_ELEMENT(audioDevice)
+    QML_VALUE_TYPE(audioDevice)
 };
 
 // To prevent the same type from being exported twice into qmltypes
@@ -124,13 +139,13 @@ namespace QAudioDeviceNamespaceForeign
     Q_NAMESPACE
     QML_FOREIGN_NAMESPACE(QAudioDeviceDerived)
     QML_NAMED_ELEMENT(AudioDevice)
-};
+} // namespace QAudioDeviceNamespaceForeign
 
 struct QCameraDeviceForeign
 {
     Q_GADGET
     QML_FOREIGN(QCameraDevice)
-    QML_NAMED_ELEMENT(cameraDevice)
+    QML_VALUE_TYPE(cameraDevice)
 };
 
 // To prevent the same type from being exported twice into qmltypes
@@ -145,13 +160,13 @@ namespace QCameraDeviceNamespaceForeign
     Q_NAMESPACE
     QML_FOREIGN_NAMESPACE(QCameraDeviceDerived)
     QML_NAMED_ELEMENT(CameraDevice)
-};
+} // namespace QCameraDeviceNamespaceForeign
 
 struct QMediaFormatForeign
 {
     Q_GADGET
     QML_FOREIGN(QMediaFormat)
-    QML_NAMED_ELEMENT(mediaFormat)
+    QML_VALUE_TYPE(mediaFormat)
 };
 
 // To prevent the same type from being exported twice into qmltypes
@@ -166,20 +181,20 @@ namespace QMediaFormatNamespaceForeign
     Q_NAMESPACE
     QML_FOREIGN_NAMESPACE(QMediaFormatDerived)
     QML_NAMED_ELEMENT(MediaFormat)
-};
+} // namespace QMediaFormatNamespaceForeign
 
 struct QCameraFormatForeign
 {
     Q_GADGET
     QML_FOREIGN(QCameraFormat)
-    QML_NAMED_ELEMENT(cameraFormat)
+    QML_VALUE_TYPE(cameraFormat)
 };
 
 struct QCapturableWindowForeign
 {
     Q_GADGET
     QML_FOREIGN(QCapturableWindow)
-    QML_NAMED_ELEMENT(capturableWindow)
+    QML_VALUE_TYPE(capturableWindow)
 };
 
 struct QWindowCaptureForeign

@@ -56,7 +56,7 @@ namespace ABI {
 #include <atomic>
 #include <cstdint>
 
-#include "build/build_config.h"
+#include "partition_alloc/build_config.h"
 #include "partition_alloc/partition_alloc_base/bit_cast.h"
 #include "partition_alloc/partition_alloc_base/check.h"
 #include "partition_alloc/partition_alloc_base/cpu.h"
@@ -425,7 +425,7 @@ ThreadTicks ThreadTicks::GetForThread(
     const PlatformThreadHandle& thread_handle) {
   PA_BASE_DCHECK(IsSupported());
 
-#if defined(ARCH_CPU_ARM64)
+#if PA_BUILDFLAG(PA_ARCH_CPU_ARM64)
   // QueryThreadCycleTime versus TSCTicksPerSecond doesn't have much relation to
   // actual elapsed time on Windows on Arm, because QueryThreadCycleTime is
   // backed by the actual number of CPU cycles executed, rather than a
@@ -459,7 +459,7 @@ ThreadTicks ThreadTicks::GetForThread(
 
 // static
 bool ThreadTicks::IsSupportedWin() {
-#if defined(ARCH_CPU_ARM64)
+#if PA_BUILDFLAG(PA_ARCH_CPU_ARM64)
   // The Arm implementation does not use QueryThreadCycleTime and therefore does
   // not care about the time stamp counter.
   return true;
@@ -470,7 +470,7 @@ bool ThreadTicks::IsSupportedWin() {
 
 // static
 void ThreadTicks::WaitUntilInitializedWin() {
-#if !defined(ARCH_CPU_ARM64)
+#if !PA_BUILDFLAG(PA_ARCH_CPU_ARM64)
   while (time_internal::TSCTicksPerSecond() == 0) {
     ::Sleep(10);
   }
@@ -506,7 +506,7 @@ ABI::Windows::Foundation::DateTime TimeDelta::ToWinrtDateTime() const {
   return date_time;
 }
 
-#if !defined(ARCH_CPU_ARM64)
+#if !PA_BUILDFLAG(PA_ARCH_CPU_ARM64)
 namespace time_internal {
 
 bool HasConstantRateTSC() {
@@ -575,6 +575,6 @@ double TSCTicksPerSecond() {
 }
 
 }  // namespace time_internal
-#endif  // defined(ARCH_CPU_ARM64)
+#endif  // PA_BUILDFLAG(PA_ARCH_CPU_ARM64)
 
 }  // namespace partition_alloc::internal::base

@@ -242,6 +242,7 @@ int TPpContext::CPPundef(TPpToken* ppToken)
 */
 int TPpContext::CPPelse(int matchelse, TPpToken* ppToken)
 {
+    inElseSkip = true;
     int depth = 0;
     int token = scanToken(ppToken);
 
@@ -298,7 +299,7 @@ int TPpContext::CPPelse(int matchelse, TPpToken* ppToken)
                     elseSeen[elsetracker] = false;
                     --elsetracker;
                 }
-
+                inElseSkip = false;
                 return CPPif(ppToken);
             }
         } else if (nextAtom == PpAtomElse) {
@@ -312,7 +313,8 @@ int TPpContext::CPPelse(int matchelse, TPpToken* ppToken)
                 parseContext.ppError(ppToken->loc, "#elif after #else", "#elif", "");
         }
     }
-
+    
+    inElseSkip = false;
     return token;
 }
 
@@ -375,11 +377,9 @@ namespace {
     int op_div(int a, int b) { return a == INT_MIN && b == -1 ? 0 : a / b; }
     int op_mod(int a, int b) { return a == INT_MIN && b == -1 ? 0 : a % b; }
     int op_pos(int a) { return a; }
-    int op_neg(int a) { return -a; }
+    int op_neg(int a) { return a == INT_MIN ? INT_MIN : -a; }
     int op_cmpl(int a) { return ~a; }
     int op_not(int a) { return !a; }
-
-};
 
 struct TBinop {
     int token, precedence, (*op)(int, int);
@@ -412,6 +412,8 @@ struct TUnop {
     { '~', op_cmpl },
     { '!', op_not },
 };
+
+} // anonymous namespace
 
 #define NUM_ELEMENTS(A) (sizeof(A) / sizeof(A[0]))
 

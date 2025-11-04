@@ -9,6 +9,8 @@
     QtModelIndex class.
     \ingroup qtquickexamples
 
+    \include running-qtquick-for-android-examples.qdocinc
+
     \section1 Overview
 
     \image qtabstractitemmodel_portrait.png
@@ -38,23 +40,28 @@
 
     \snippet android/models/qtabstractitemmodel/Main.qml 0
 
-    \l [QML] {TableView} displays our data model. On the \c delegate property, the example
-    defines each cell item of the model with \l [QML] {Text}.
+    \l [QML]{TableView} displays our data model.
 
     \snippet android/models/qtabstractitemmodel/Main.qml 1
 
-    In the delegate, the example sets the \c row and \c column properties through the
-    \l {QAbstractItemModel}{QHash<int, QByteArray> QAbstractItemModel::roleNames() const}
-    and \l {QAbstractItemModel}{QtModelIndex index(int row, int column, QtModelIndex parent)}
-    and \l {QAbstractItemModel}{Object data(QtModelIndex qtModelIndex, int role) }
-    methods of the model.
+    On the \c delegate property, each cell item of the model is defined with a
+    \l [QML]{Rectangle} containing a \l [QML]{TextEdit}.
+    The text property of the \c TextEdit is set using the
+    \l QAbstractItemModel::data()
+    which returns a value based on the given role and index.
 
     Calling these methods from QML means the execution takes place in the Qt qtMainLoopThread
     thread context.
 
-    See \l {QAbstractItemModel}{QAbstractItemModel} for a detailed description.
+    \snippet android/models/qtabstractitemmodel/Main.qml 2
 
-    \snippet android/models/qtabstractitemmodel/Main.qml 1
+    In the case of editing the \l {TextEdit} field, \c onEditingFinished() handler
+    sets the model's \c edit role value to the edited text. This calls the
+    \l QAbstractItemModel::setData()
+    method, where the edited text of the cell is updated to the corresponding
+    index of the model.
+
+    For more information see \l {QAbstractItemModel}.
 
     \section1 Android Studio project
 
@@ -63,7 +70,7 @@
 
     \section2 Data Model
 
-    The data model, c\ MyDataModel, extends \c QtAbstractItemModel class.
+    The data model, \c MyDataModel, extends \c QtAbstractItemModel class.
     The \c QtAbstractItemModel is a wrapper for \l {QAbstractItemModel}.
 
     As the methods of \c MyDataModel class are called from both, QML and Android sides, the
@@ -94,6 +101,12 @@
 
     \snippet android/models/qtabstractitemmodel_java/app/src/main/java/com/example/qtabstractitemmodel_java/MyDataModel.java 3
 
+    The example overrides the \l QAbstractItemModel::setData()
+    method, which is called when model's data at \c index is set from the QML
+    side of the application.
+
+    \snippet android/models/qtabstractitemmodel_java/app/src/main/java/com/example/qtabstractitemmodel_java/MyDataModel.java 4
+
     The example implements methods on the model side for \c MainActivity UI interaction to add
     and remove rows and columns. Calls begin, end, insert, and remove rows to update model
     indexes, like beginInsertRow().
@@ -102,14 +115,14 @@
     As the methods are called from the Android side, the execution takes place in the Android
     main thread context.
 
-    \snippet android/models/qtabstractitemmodel_java/app/src/main/java/com/example/qtabstractitemmodel_java/MyDataModel.java 4
+    \snippet android/models/qtabstractitemmodel_java/app/src/main/java/com/example/qtabstractitemmodel_java/MyDataModel.java 5
 
     The example implements methods on the model side for \c MainActivity UI interaction to add
     and remove columns.  Calls begin, end, insert, and remove columns to update model indexes,
     like beginRemoveColumn(). The same context awareness applies as with the add and remove row
     methods.
 
-    \snippet android/models/qtabstractitemmodel_java/app/src/main/java/com/example/qtabstractitemmodel_java/MyDataModel.java 5
+    \snippet android/models/qtabstractitemmodel_java/app/src/main/java/com/example/qtabstractitemmodel_java/MyDataModel.java 6
 
     \section2 Main Activity
 

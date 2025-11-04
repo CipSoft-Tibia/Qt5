@@ -23,16 +23,24 @@ QT_BEGIN_NAMESPACE
 
 using namespace Qt::StringLiterals;
 
-QSvgTinyDocument::QSvgTinyDocument(QtSvg::Options options)
+QSvgTinyDocument::QSvgTinyDocument(QtSvg::Options options, QtSvg::AnimatorType type)
     : QSvgStructureNode(0)
     , m_widthPercent(false)
     , m_heightPercent(false)
-    , m_time(0)
     , m_animated(false)
-    , m_animationDuration(0)
     , m_fps(30)
     , m_options(options)
 {
+    bool animationEnabled = !m_options.testFlag(QtSvg::DisableAnimations);
+    switch (type) {
+        case QtSvg::AnimatorType::Automatic:
+            if (animationEnabled)
+                m_animator.reset(new QSvgAnimator);
+            break;
+        case QtSvg::AnimatorType::Controlled:
+            if (animationEnabled)
+                m_animator.reset(new QSvgAnimationController);
+    }
 }
 
 QSvgTinyDocument::~QSvgTinyDocument()
@@ -167,7 +175,8 @@ static QByteArray qt_inflateSvgzDataFrom(QIODevice *)
 }
 #endif
 
-QSvgTinyDocument *QSvgTinyDocument::load(const QString &fileName, QtSvg::Options options)
+QSvgTinyDocument *QSvgTinyDocument::load(const QString &fileName, QtSvg::Options options,
+                                         QtSvg::AnimatorType type)
 {
     QFile file(fileName);
     if (!file.open(QFile::ReadOnly)) {
@@ -182,10 +191,10 @@ QSvgTinyDocument *QSvgTinyDocument::load(const QString &fileName, QtSvg::Options
     }
 
     QSvgTinyDocument *doc = nullptr;
-    QSvgHandler handler(&file, options);
+    QSvgHandler handler(&file, options, type);
     if (handler.ok()) {
         doc = handler.document();
-        doc->m_animationDuration = handler.animationDuration();
+        doc->m_animator->setAnimationDuration(handler.animationDuration());
     } else {
         qCWarning(lcSvgHandler, "Cannot read file '%s', because: %s (line %d)",
                  qPrintable(fileName), qPrintable(handler.errorString()), handler.lineNumber());
@@ -194,7 +203,8 @@ QSvgTinyDocument *QSvgTinyDocument::load(const QString &fileName, QtSvg::Options
     return doc;
 }
 
-QSvgTinyDocument *QSvgTinyDocument::load(const QByteArray &contents, QtSvg::Options options)
+QSvgTinyDocument *QSvgTinyDocument::load(const QByteArray &contents, QtSvg::Options options,
+                                         QtSvg::AnimatorType type)
 {
     QByteArray svg;
     // Check for gzip magic number and inflate if appropriate
@@ -211,26 +221,27 @@ QSvgTinyDocument *QSvgTinyDocument::load(const QByteArray &contents, QtSvg::Opti
     QBuffer buffer;
     buffer.setData(svg);
     buffer.open(QIODevice::ReadOnly);
-    QSvgHandler handler(&buffer, options);
+    QSvgHandler handler(&buffer, options, type);
 
     QSvgTinyDocument *doc = nullptr;
     if (handler.ok()) {
         doc = handler.document();
-        doc->m_animationDuration = handler.animationDuration();
+        doc->m_animator->setAnimationDuration(handler.animationDuration());
     } else {
         delete handler.document();
     }
     return doc;
 }
 
-QSvgTinyDocument *QSvgTinyDocument::load(QXmlStreamReader *contents, QtSvg::Options options)
+QSvgTinyDocument *QSvgTinyDocument::load(QXmlStreamReader *contents, QtSvg::Options options,
+                                         QtSvg::AnimatorType type)
 {
-    QSvgHandler handler(contents, options);
+    QSvgHandler handler(contents, options, type);
 
     QSvgTinyDocument *doc = nullptr;
     if (handler.ok()) {
         doc = handler.document();
-        doc->m_animationDuration = handler.animationDuration();
+        doc->m_animator->setAnimationDuration(handler.animationDuration());
     } else {
         delete handler.document();
     }
@@ -239,9 +250,6 @@ QSvgTinyDocument *QSvgTinyDocument::load(QXmlStreamReader *contents, QtSvg::Opti
 
 void QSvgTinyDocument::draw(QPainter *p, const QRectF &bounds)
 {
-    if (m_time == 0)
-        m_time = QDateTime::currentMSecsSinceEpoch();
-
     if (displayMode() == QSvgNode::NoneMode)
         return;
 
@@ -272,8 +280,6 @@ void QSvgTinyDocument::draw(QPainter *p, const QString &id,
         qCDebug(lcSvgHandler, "Couldn't find node %s. Skipping rendering.", qPrintable(id));
         return;
     }
-    if (m_time == 0)
-        m_time = QDateTime::currentMSecsSinceEpoch();
 
     if (node->displayMode() == QSvgNode::NoneMode)
         return;
@@ -388,7 +394,7 @@ QSvgPaintStyleProperty *QSvgTinyDocument::namedStyle(const QString &id) const
 
 void QSvgTinyDocument::restartAnimation()
 {
-    m_time = QDateTime::currentMSecsSinceEpoch();
+    m_animator->restartAnimation();
 }
 
 bool QSvgTinyDocument::animated() const
@@ -513,26 +519,27 @@ QTransform QSvgTinyDocument::transformForElement(const QString &id) const
 
 int QSvgTinyDocument::currentFrame() const
 {
-    double runningPercentage = qMin(currentElapsed() / double(m_animationDuration), 1.);
-
-    int totalFrames = m_fps * m_animationDuration;
-
+    const double runningPercentage = qMin(currentElapsed() / double(animationDuration()), 1.);
+    const int totalFrames = m_fps * animationDuration() / 1000;
     return int(runningPercentage * totalFrames);
 }
 
 void QSvgTinyDocument::setCurrentFrame(int frame)
 {
-    int totalFrames = m_fps * m_animationDuration;
-    double framePercentage = frame/double(totalFrames);
-    double timeForFrame = m_animationDuration * framePercentage; //in S
-    timeForFrame *= 1000; //in ms
-    int timeToAdd = int(timeForFrame - currentElapsed());
-    m_time += timeToAdd;
+    const int totalFrames = m_fps * animationDuration() / 1000;
+    const int timeForFrame = frame * animationDuration() / totalFrames; //in ms
+    const int timeToAdd = timeForFrame - currentElapsed();
+    m_animator->setAnimatorTime(timeToAdd);
 }
 
 void QSvgTinyDocument::setFramesPerSecond(int num)
 {
     m_fps = num;
+}
+
+QSharedPointer<QSvgAbstractAnimator> QSvgTinyDocument::animator() const
+{
+    return m_animator;
 }
 
 bool QSvgTinyDocument::isLikelySvg(QIODevice *device, bool *isCompressed)

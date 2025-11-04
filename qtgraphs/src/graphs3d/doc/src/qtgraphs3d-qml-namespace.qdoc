@@ -176,7 +176,29 @@
            Indicates the graph will be first rendered to an offscreen surface
     that is then drawn during normal QML item rendering. The rendered image is
     antialiased using the multisampling method if it is supported in the current
-    environment and the msaaSamples property value is greater than zero.
-    This rendering mode offers good quality and normal QML item behavior at the
-    expense of performance.
+    environment and the \l {GraphsItem3D::msaaSamples}{msaaSamples} property
+    value is greater than zero. This rendering mode offers good quality and normal
+    QML item behavior at the expense of performance.
+
+    \section1 Graphs3D.TransparencyTechnique
+
+    \value Default
+           Indicates that order-independent transparency techniques are not used.
+           Offers the best performance. Use when graphs don't contain
+           transparency or when a bar or scatter graph is also using instancing,
+           that is \l optimizationHint is {QtGraphs3D::OptimizationHint::Default}.
+
+    \value Approximate
+           Indicates that a graph attempts an approximation of order-independent
+           transparency. This method is faster than \c Accurate and works on older
+           hardware but may yield inaccurate results. Use when the order-independent
+           transparency is needed, but the performance cost has to be lower than
+           when using accurate order-independent transparency.
+
+    \value Accurate
+           Indicates that accurate order-independent transparency is used.
+           Use when perfect transparency rendering is needed.
+           \note Accurate transparency is not yet implemented
+               and will be enabled when the required functionality
+               is added to QtQuick3D.
  */

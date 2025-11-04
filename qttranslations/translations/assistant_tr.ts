@@ -16,18 +16,18 @@
     </message>
     <message>
         <source>Unable to launch external application.</source>
-        <translation>Harici uygulama başlatılamıyor.</translation>
+        <translation>Dış uygulama başlatılamıyor.</translation>
     </message>
     <message>
         <source>OK</source>
-        <translation>Tamam</translation>
+        <translation type="vanished">Tamam</translation>
     </message>
 </context>
 <context>
     <name>Assistant</name>
     <message>
         <source>Error registering documentation file &apos;%1&apos;: %2</source>
-        <translation>&apos;%1&apos; belgeleme dosyası kaydedilirken hata oluştu: %2</translation>
+        <translation>“%1” belgelendirme dosyasının kaydı yapılırken hata: %2</translation>
     </message>
     <message>
         <source>Could not register documentation file
@@ -35,15 +35,14 @@
 
 Reason:
 %2</source>
-        <translation>Belgeleme dosyası kaydedilemedi
+        <translation>Belgelendirme dosyasının kaydı yapılamadı.
 %1
-
-Neden:
+Gerekçe:
 %2</translation>
     </message>
     <message>
         <source>Documentation successfully registered.</source>
-        <translation>Belgeleme başarıyla kaydedildi.</translation>
+        <translation>Belgelendirme kaydı başarıyla yapıldı.</translation>
     </message>
     <message>
         <source>Could not unregister documentation file
@@ -51,23 +50,23 @@ Neden:
 
 Reason:
 %2</source>
-        <translation>Belgeleme dosyasının kaydı silinemedi
+        <translation>Belgelendirme dosyasının kaydı silinemedi.
 %1
 
-Neden:
+Gerekçe:
 %2</translation>
     </message>
     <message>
         <source>Documentation successfully unregistered.</source>
-        <translation>Belgeleme dosyasının kaydı başarıyla silindi.</translation>
+        <translation>Belgelendirme dosyasının kaydı başarıyla silindi.</translation>
     </message>
     <message>
         <source>Error reading collection file &apos;%1&apos;: %2.</source>
-        <translation>&apos;%1&apos; koleksiyon dosyası okunurken hata oluştu: %2.</translation>
+        <translation>“%1” koleksiyon dosyası okunurken hata: %2.</translation>
     </message>
     <message>
         <source>Error creating collection file &apos;%1&apos;: %2.</source>
-        <translation>&apos;%1&apos; koleksiyon dosyası oluşturulurken hata oluştu: %2.</translation>
+        <translation>“%1” koleksiyon dosyası oluşturulurken hata: %2.</translation>
     </message>
     <message>
         <source>Cannot load sqlite database driver!</source>
@@ -78,15 +77,15 @@ Neden:
     <name>BookmarkDialog</name>
     <message>
         <source>Add Bookmark</source>
-        <translation>Yer İmi Ekle</translation>
+        <translation>Yer İmi Koy</translation>
     </message>
     <message>
         <source>Bookmark:</source>
-        <translation>Yer İmi:</translation>
+        <translation>Yer imi:</translation>
     </message>
     <message>
         <source>Add in Folder:</source>
-        <translation>Klasöre Ekle:</translation>
+        <translation>Klasöre ekle:</translation>
     </message>
     <message>
         <source>+</source>
@@ -124,19 +123,19 @@ Neden:
     </message>
     <message>
         <source>You are going to delete a Folder, this will also&lt;br&gt;remove it&apos;s content. Are you sure to continue?</source>
-        <translation>Bir Klasörü sileceksiniz, bu da içeriğini kaldıracak.&lt;be&gt;Devam etmek istediğinizden emin misiniz?</translation>
+        <translation>Bir klasörü sileceksiniz, bu da içeriğini kaldıracak.&lt;br&gt;Sürdürmek istediğinizden emin misiniz?</translation>
     </message>
     <message>
         <source>Manage Bookmarks...</source>
-        <translation>Yer İmlerini Yönet...</translation>
+        <translation>Yer İmlerini Yönet…</translation>
     </message>
     <message>
         <source>Add Bookmark...</source>
-        <translation>Yer İmi Ekle...</translation>
+        <translation>Yer İmi Koy…</translation>
     </message>
     <message>
         <source>Ctrl+D</source>
-        <translation>Ctrl+D</translation>
+        <translation>Kontrol+D</translation>
     </message>
     <message>
         <source>Delete Folder</source>
@@ -187,11 +186,11 @@ Neden:
     </message>
     <message>
         <source>Import...</source>
-        <translation>İçe Aktar...</translation>
+        <translation>İçe Aktar…</translation>
     </message>
     <message>
         <source>Export...</source>
-        <translation>Dışa Aktar...</translation>
+        <translation>Dışa Aktar…</translation>
     </message>
     <message>
         <source>Open File</source>
@@ -215,7 +214,7 @@ Neden:
     </message>
     <message>
         <source>You are goingto delete a Folder, this will also&lt;br&gt; remove it&apos;s content. Are you sure to continue?</source>
-        <translation>Bir Klasörü sileceksiniz, bu da içeriğini kaldıracak.&lt;be&gt;Devam etmek istediğinizden emin misiniz?</translation>
+        <translation>Bir klasörü sileceksiniz, bu da içeriğini kaldıracak.&lt;br&gt;Sürdürmek istediğinizden emin misiniz?</translation>
     </message>
     <message>
         <source>Delete Folder</source>
@@ -269,7 +268,7 @@ Neden:
     </message>
     <message>
         <source>Filter:</source>
-        <translation>Süzgeç:</translation>
+        <translation>Süz:</translation>
     </message>
     <message>
         <source>Add</source>
@@ -324,35 +323,36 @@ Neden:
 </source>
         <translation>Kullanım: assistant [Seçenekler]
 
--collectionFile dosya       Varsayılan yerine belirtilen
-                           koleksiyon dosyasını kullanır
+-collectionFile dosya      Öntanımlı yerine belirtilen
+                             koleksiyon dosyasını kullanır.
 -showUrl url               Belgeyi url ile gösterir
--enableRemoteControl       Asistanın uzaktan kontrol
-                           edilmesini sağlar.
--show widget               &quot;İçindekiler&quot;, &quot;dizin&quot;, &quot;yer imleri&quot;
-                           veya &quot;arama&quot; olabilen belirtilen
-                           rıhtım widget&apos;ını gösterir.
--activate widget           &quot;İçindekiler&quot;, &quot;dizin&quot;, &quot;yer imleri&quot;
-                           veya &quot;arama&quot; olabilen belirtilen
-                           rıhtım widget&apos;ını etkinleştirir.
--hide widget               &quot;İçindekiler&quot;, &quot;dizin&quot;, &quot;yer imleri&quot;
-                           veya &quot;arama&quot; olabilen belirtilen
-                           rıhtım widget&apos;ını gizler.
--register helpFile         Belirtilen yardım dosyasını(.qch)
+-enableRemoteControl       Assistant’ın uzaktan
+                             denetlenebilmesini sağlar.
+-show araç-takımı          “İçindekiler”, “Dizin”, “Yer İmleri”
+                             veya “Arama” olabilen belirtilen
+                             rıhtım araç takımını gösterir.
+-activate araç-takımı      “İçindekiler”, “Dizin”, “Yer İmleri”
+                             veya “Arama” olabilen belirtilen
+                             rıhtım araç takımını etkinleştirir.
+-hide araç-takımı          “İçindekiler”, “Dizin”, “Yer İmleri”
+                             veya “Arama” olabilen belirtilen
+                             rıhtım araç takımını gizler.
+-register yardım-dosyası   Belirtilen yardım dosyasını(.qch)
                             verilen koleksiyon dosyasına
-                            kaydeder.
--unregister helpFile       Belirtilen yardım dosyasının(.qch)
-                           verilen koleksiyon dosyasından
-                           kaydını siler
--setCurrentFilter süzgeç   Süzgeci etkin süzgeç olarak ayarlayın.
+                            kaydını yapar.
+-unregister yardım-dosyası Belirtilen yardım dosyasının(.qch)
+                             verilen koleksiyon dosyasından
+                             kaydını siler
+-setCurrentFilter süzgeç   Süzgeci etkin süzgeç olarak ayarla.
 -remove-search-index       Tam metin arama dizinini kaldırır.
--rebuild-search-index      Eski. Bunun yerine-remove-search-index kullanın.
+-rebuild-search-index      Eski. Bunun yerine-remove-search-index.
+                             kullan.
                            Tam metin arama dizinini kaldırır.
-                           Bir sonraki asistan çalıştırmada yeniden inşa edilecek.
+                             Bir sonraki Assistant çalıştırmasında
+                             yeniden yapılır.
 -quiet                     Herhangi bir hata veya durum
-                            iletisi görüntülemez.
--help                      Bu yardım görüntüler.
-</translation>
+                             iletisi görüntülemez.
+-help                      Bu yardım görüntüler.</translation>
     </message>
     <message>
         <source>Unknown option: %1</source>
@@ -360,31 +360,31 @@ Neden:
     </message>
     <message>
         <source>The collection file &apos;%1&apos; does not exist.</source>
-        <translation>&apos;%1&apos; koleksiyon dosyası yok.</translation>
+        <translation>“%1” koleksiyon dosyası yok.</translation>
     </message>
     <message>
         <source>Missing collection file.</source>
-        <translation>Koleksiyon dosyası eksik.</translation>
+        <translation>Eksik koleksiyon dosyası.</translation>
     </message>
     <message>
         <source>Invalid URL &apos;%1&apos;.</source>
-        <translation>Geçersiz URL &apos;%1&apos;.</translation>
+        <translation>Geçersiz URL “%1”.</translation>
     </message>
     <message>
         <source>Missing URL.</source>
-        <translation>Eksik URL.</translation>
+        <translation>URL eksik.</translation>
     </message>
     <message>
         <source>Unknown widget: %1</source>
-        <translation>Bilinmeyen widget: %1</translation>
+        <translation>Bilinmeyen araç takımı: %1</translation>
     </message>
     <message>
         <source>Missing widget.</source>
-        <translation>Widget eksik.</translation>
+        <translation>Araç takımı eksik.</translation>
     </message>
     <message>
         <source>The Qt help file &apos;%1&apos; does not exist.</source>
-        <translation>&apos;%1&apos; Qt yardım dosyası yok.</translation>
+        <translation>“%1” Qt yardım dosyası yok.</translation>
     </message>
     <message>
         <source>Missing help file.</source>
@@ -392,7 +392,7 @@ Neden:
     </message>
     <message>
         <source>Missing filter argument.</source>
-        <translation>Süzgeç değişkeni eksik.</translation>
+        <translation>Süzgeç argümanı eksik.</translation>
     </message>
     <message>
         <source>Error</source>
@@ -400,7 +400,7 @@ Neden:
     </message>
     <message>
         <source>Notice</source>
-        <translation>Bildirim</translation>
+        <translation>Bildiri</translation>
     </message>
 </context>
 <context>
@@ -418,11 +418,11 @@ Neden:
     <name>FilterNameDialogClass</name>
     <message>
         <source>Add Filter</source>
-        <translation>Süzgeç Ekle</translation>
+        <translation type="vanished">Süzgeç Ekle</translation>
     </message>
     <message>
         <source>Filter Name:</source>
-        <translation>Süzgeç Adı:</translation>
+        <translation type="vanished">Süzgeç adı:</translation>
     </message>
 </context>
 <context>
@@ -437,7 +437,7 @@ Neden:
     </message>
     <message>
         <source>Case Sensitive</source>
-        <translation>Büyük/Küçük Harfe Duyarlı</translation>
+        <translation>BÜYÜK/küçük Harfe Duyarlı</translation>
     </message>
     <message>
         <source>&lt;img src=&quot;:/qt-project.org/assistant/images/wrap.png&quot;&gt;&amp;nbsp;Search wrapped</source>
@@ -448,7 +448,7 @@ Neden:
     <name>FontPanel</name>
     <message>
         <source>Font</source>
-        <translation>Yazı Tipi</translation>
+        <translation>Yazıtipi</translation>
     </message>
     <message>
         <source>&amp;Writing system</source>
@@ -460,7 +460,7 @@ Neden:
     </message>
     <message>
         <source>&amp;Style</source>
-        <translation>&amp;Tarz</translation>
+        <translation>&amp;Biçem</translation>
     </message>
     <message>
         <source>&amp;Point size</source>
@@ -475,7 +475,7 @@ Neden:
     </message>
     <message>
         <source>&amp;Forward</source>
-        <translation>&amp;İleri</translation>
+        <translation>İ&amp;leri</translation>
     </message>
     <message>
         <source>&amp;Home</source>
@@ -483,7 +483,7 @@ Neden:
     </message>
     <message>
         <source>ALT+Home</source>
-        <translation>ALT+Home</translation>
+        <translation>Seçenek+Baş</translation>
     </message>
     <message>
         <source>Zoom &amp;in</source>
@@ -495,15 +495,15 @@ Neden:
     </message>
     <message>
         <source>&amp;Copy selected Text</source>
-        <translation>&amp;Seçili Metni kopyala</translation>
+        <translation>&amp;Seçili Metni Kopyala</translation>
     </message>
     <message>
         <source>&amp;Print...</source>
-        <translation>&amp;Yazdır...</translation>
+        <translation>&amp;Yazdır…</translation>
     </message>
     <message>
         <source>&amp;Find in Text...</source>
-        <translation>&amp;Metin içinde Bul...</translation>
+        <translation>&amp;Metinde Bul…</translation>
     </message>
     <message>
         <source>&amp;Find</source>
@@ -514,7 +514,7 @@ Neden:
     <name>HelpViewer</name>
     <message>
         <source>Error 404...</source>
-        <translation>Hata 404...</translation>
+        <translation>404 Hatası…</translation>
     </message>
     <message>
         <source>The page could not be found</source>
@@ -522,7 +522,7 @@ Neden:
     </message>
     <message>
         <source>Please make sure that you have all documentation sets installed.</source>
-        <translation>Lütfen tüm belge kümelerinin yüklü olduğundan emin olun.</translation>
+        <translation>Lütfen tüm belgelendirme kümelerinin kurulu olduğundan emin olun.</translation>
     </message>
     <message>
         <source>Error loading: %1</source>
@@ -530,35 +530,35 @@ Neden:
     </message>
     <message>
         <source>&lt;title&gt;about:blank&lt;/title&gt;</source>
-        <translation>&lt;title&gt;hakkında:boş&lt;/title&gt;</translation>
+        <translation>&lt;title&gt;about:blank&lt;/title&gt;</translation>
     </message>
     <message>
         <source>&lt;title&gt;Error 404...&lt;/title&gt;&lt;div align=&quot;center&quot;&gt;&lt;br&gt;&lt;br&gt;&lt;h1&gt;The page could not be found.&lt;/h1&gt;&lt;br&gt;&lt;h3&gt;&apos;%1&apos;&lt;/h3&gt;&lt;/div&gt;</source>
-        <translation>&lt;title&gt;Hata 404...&lt;/title&gt;&lt;div align=&quot;center&quot;&gt;&lt;br&gt;&lt;br&gt;&lt;h1&gt;Sayfa bulunamadı.&lt;/h1&gt;&lt;br&gt;&lt;h3&gt;&apos;%1&apos;&lt;/h3&gt;&lt;/div&gt;</translation>
+        <translation>&lt;title&gt;404 Hatası…&lt;/title&gt;&lt;div align=&quot;center&quot;&gt;&lt;br&gt;&lt;br&gt;&lt;h1&gt;Sayfa bulunamadı.&lt;/h1&gt;&lt;br&gt;&lt;h3&gt;“%1”&lt;/h3&gt;&lt;/div&gt;</translation>
     </message>
     <message>
         <source>Open Link</source>
-        <translation>Bağlantıyı Aç</translation>
+        <translation type="vanished">Bağlantıyı Aç</translation>
     </message>
     <message>
         <source>Open Link in New Tab	Ctrl+LMB</source>
-        <translation>Bağlantıyı Yeni Sekmede Aç	Ctrl+LMB</translation>
+        <translation type="vanished">Bağlantıyı Yeni Sekmede Aç	Kontrol+Sol Fare Düğmesi</translation>
     </message>
     <message>
         <source>Copy &amp;Link Location</source>
-        <translation>Bağ&amp;lantı Konumunu Kopyala</translation>
+        <translation type="vanished">Bağ&amp;lantı Konumunu Kopyala</translation>
     </message>
     <message>
         <source>Copy</source>
-        <translation>Kopyala</translation>
+        <translation type="vanished">Kopyala</translation>
     </message>
     <message>
         <source>Reload</source>
-        <translation>Yeniden Yükle</translation>
+        <translation type="vanished">Yeniden Yükle</translation>
     </message>
     <message>
         <source>Open Link in New Page</source>
-        <translation>Bağlantıyı Yeni Sayfada Aç</translation>
+        <translation type="vanished">Bağlantıyı Yeni Sayfada Aç</translation>
     </message>
 </context>
 <context>
@@ -608,7 +608,7 @@ Neden:
     </message>
     <message>
         <source>Looking for Qt Documentation...</source>
-        <translation>Qt Belgeleri Aranıyor...</translation>
+        <translation>Qt belgelendirmesi aranıyor…</translation>
     </message>
     <message>
         <source>&amp;File</source>
@@ -624,11 +624,11 @@ Neden:
     </message>
     <message>
         <source>Page Set&amp;up...</source>
-        <translation>Sayfa &amp;Ayarı...</translation>
+        <translation>Sayfa &amp;Düzeni…</translation>
     </message>
     <message>
         <source>Print Preview...</source>
-        <translation>Baskı Önizleme...</translation>
+        <translation>Baskı Önizleme…</translation>
     </message>
     <message>
         <source>E&amp;xit</source>
@@ -636,7 +636,7 @@ Neden:
     </message>
     <message>
         <source>CTRL+Q</source>
-        <translation>CTRL+Q</translation>
+        <translation>Kontrol+Q</translation>
     </message>
     <message>
         <source>&amp;Quit</source>
@@ -644,7 +644,7 @@ Neden:
     </message>
     <message>
         <source>&amp;Edit</source>
-        <translation>Düz&amp;enle</translation>
+        <translation>Dü&amp;zen</translation>
     </message>
     <message>
         <source>Find &amp;Next</source>
@@ -656,7 +656,7 @@ Neden:
     </message>
     <message>
         <source>Preferences...</source>
-        <translation>Tercihler...</translation>
+        <translation>Tercihler…</translation>
     </message>
     <message>
         <source>&amp;View</source>
@@ -668,39 +668,39 @@ Neden:
     </message>
     <message>
         <source>Ctrl+0</source>
-        <translation>Ctrl+0</translation>
+        <translation>Kontrol+0</translation>
     </message>
     <message>
         <source>ALT+C</source>
-        <translation>ALT+C</translation>
+        <translation>Seçenek+C</translation>
     </message>
     <message>
         <source>ALT+I</source>
-        <translation>ALT+I</translation>
+        <translation>Seçenek+I</translation>
     </message>
     <message>
         <source>ALT+O</source>
-        <translation>ALT+O</translation>
+        <translation>Seçenek+O</translation>
     </message>
     <message>
         <source>ALT+S</source>
-        <translation>ALT+S</translation>
+        <translation>Seçenek+S</translation>
     </message>
     <message>
         <source>ALT+P</source>
-        <translation>ALT+P</translation>
+        <translation>Seçenek+P</translation>
     </message>
     <message>
         <source>&amp;Go</source>
-        <translation>&amp;Git</translation>
+        <translation>G&amp;it</translation>
     </message>
     <message>
         <source>Sync with Table of Contents</source>
-        <translation>İçindekiler Tablosu ile eşitle</translation>
+        <translation>İçindekiler Tablosuyla Eşzamanla</translation>
     </message>
     <message>
         <source>Sync</source>
-        <translation>Eşitle</translation>
+        <translation>Eşzamanla</translation>
     </message>
     <message>
         <source>Next Page</source>
@@ -708,7 +708,7 @@ Neden:
     </message>
     <message>
         <source>Ctrl+Alt+Right</source>
-        <translation>Ctrl+Alt+Right</translation>
+        <translation>Kontrol+Seçenek+Sağ Ok</translation>
     </message>
     <message>
         <source>Previous Page</source>
@@ -716,7 +716,7 @@ Neden:
     </message>
     <message>
         <source>Ctrl+Alt+Left</source>
-        <translation>Ctrl+Alt+Left</translation>
+        <translation>Kontrol+Seçenek+Sol Ok</translation>
     </message>
     <message>
         <source>&amp;Bookmarks</source>
@@ -728,11 +728,11 @@ Neden:
     </message>
     <message>
         <source>About...</source>
-        <translation>Hakkında...</translation>
+        <translation>Hakkında…</translation>
     </message>
     <message>
         <source>Navigation Toolbar</source>
-        <translation>Gezinme Araç Çubuğu</translation>
+        <translation>Dolaşım Araç Çubuğu</translation>
     </message>
     <message>
         <source>&amp;Window</source>
@@ -740,15 +740,15 @@ Neden:
     </message>
     <message>
         <source>Zoom</source>
-        <translation>Yakınlaştırma</translation>
+        <translation>Yakınlaştır</translation>
     </message>
     <message>
         <source>Minimize</source>
-        <translation>Küçült</translation>
+        <translation>Simge Durumuna Küçült</translation>
     </message>
     <message>
         <source>Ctrl+M</source>
-        <translation>Ctrl+M</translation>
+        <translation>Kontrol+M</translation>
     </message>
     <message>
         <source>Toolbars</source>
@@ -772,11 +772,15 @@ Neden:
     </message>
     <message>
         <source>Could not find the associated content item.</source>
-        <translation>İlişkili içerik öğesi bulunamadı.</translation>
+        <translation>İlişkili içerik ögesi bulunamadı.</translation>
+    </message>
+    <message>
+        <source>&lt;center&gt;&lt;h3&gt;%1&lt;/h3&gt;&lt;p&gt;Version %2&lt;/p&gt;&lt;p&gt;Browser: %3&lt;/p&gt;&lt;/center&gt;&lt;p&gt;Copyright (C) The Qt Company Ltd. and other contributors.&lt;/p&gt;</source>
+        <translation>&lt;center&gt;&lt;h3&gt;%1&lt;/h3&gt;&lt;p&gt;Sürüm %2&lt;/p&gt;&lt;p&gt;Tarayıcı: %3&lt;/p&gt;&lt;/center&gt;&lt;p&gt;Telif hakkı © The Qt Company Ltd. and other contributors.&lt;/p&gt;</translation>
     </message>
     <message>
         <source>&lt;center&gt;&lt;h3&gt;%1&lt;/h3&gt;&lt;p&gt;Version %2&lt;/p&gt;&lt;p&gt;Browser: %3&lt;/p&gt;&lt;/center&gt;&lt;p&gt;Copyright (C) %4 The Qt Company Ltd.&lt;/p&gt;</source>
-        <translation>&lt;center&gt;&lt;h3&gt;%1&lt;/h3&gt;&lt;p&gt;Sürüm %2&lt;/p&gt;&lt;p&gt;Tarayıcı: %3&lt;/p&gt;&lt;/center&gt;&lt;p&gt;Telif Hakkı (C) %4 Qt Company Ltd.&lt;/p&gt;</translation>
+        <translation type="vanished">&lt;center&gt;&lt;h3&gt;%1&lt;/h3&gt;&lt;p&gt;Sürüm %2&lt;/p&gt;&lt;p&gt;Tarayıcı: %3&lt;/p&gt;&lt;/center&gt;&lt;p&gt;Telif hakkı © %4 Qt Company Ltd.&lt;/p&gt;</translation>
     </message>
     <message>
         <source>About %1</source>
@@ -788,18 +792,18 @@ Neden:
     </message>
     <message>
         <source>Updating search index</source>
-        <translation>Arama dizini güncellemesi</translation>
+        <translation>Arama dizini güncelleniyor…</translation>
     </message>
     <message>
         <source>Could not register file &apos;%1&apos;: %2</source>
-        <translation>&apos;%1&apos; dosyası kayıt edilemedi: %2</translation>
+        <translation>“%1” dosyasının kaydı yapılamadı: %2</translation>
     </message>
 </context>
 <context>
     <name>OpenPagesWidget</name>
     <message>
         <source>Close %1</source>
-        <translation>%1&apos;i Kapat</translation>
+        <translation>Kapat: %1</translation>
     </message>
     <message>
         <source>Close All Except %1</source>
@@ -810,66 +814,66 @@ Neden:
     <name>OptionsWidget</name>
     <message>
         <source>No Option</source>
-        <translation>Seçenek Yok</translation>
+        <translation type="vanished">Seçenek Yok</translation>
     </message>
     <message>
         <source>Invalid Option</source>
-        <translation>Geçersiz Seçenek</translation>
+        <translation type="vanished">Geçersiz Seçenek</translation>
     </message>
 </context>
 <context>
     <name>PreferencesDialog</name>
     <message>
         <source>No Component</source>
-        <translation>Bileşen Yok</translation>
+        <translation type="vanished">Bileşen Yok</translation>
     </message>
     <message>
         <source>Invalid Component</source>
-        <translation>Geçersiz Bileşen</translation>
+        <translation type="vanished">Geçersiz Bileşen</translation>
     </message>
     <message>
         <source>No Version</source>
-        <translation>Sürüm Yok</translation>
+        <translation type="vanished">Sürüm Yok</translation>
     </message>
     <message>
         <source>Invalid Version</source>
-        <translation>Geçersiz Sürüm</translation>
+        <translation type="vanished">Geçersiz Sürüm</translation>
     </message>
     <message>
         <source>Filter Exists</source>
-        <translation>Süzgeç Var</translation>
+        <translation type="vanished">Süzgeç Var</translation>
     </message>
     <message>
         <source>The filter &quot;%1&quot; already exists.</source>
-        <translation>&quot;%1&quot; süzgeci zaten var.</translation>
+        <translation type="vanished">“%1” süzgeci halihazırda var.</translation>
     </message>
     <message>
         <source>Add Filter</source>
-        <translation>Süzgeç Ekle</translation>
+        <translation type="vanished">Süzgeç Ekle</translation>
     </message>
     <message>
         <source>New Filter</source>
-        <translation>Yeni Süzgeç</translation>
+        <translation type="vanished">Yeni Süzgeç</translation>
     </message>
     <message>
         <source>Rename Filter</source>
-        <translation>Süzgeci Yeniden Adlandır</translation>
+        <translation type="vanished">Süzgeci Yeniden Adlandır</translation>
     </message>
     <message>
         <source>Remove Filter</source>
-        <translation>Süzgeci Kaldır</translation>
+        <translation type="vanished">Süzgeci Kaldır</translation>
     </message>
     <message>
         <source>Are you sure you want to remove the &quot;%1&quot; filter?</source>
-        <translation>&quot;%1&quot; süzgecini kaldırmak istediğinizden emin misiniz?</translation>
+        <translation type="vanished">“%1” süzgecini kaldırmak istediğinizden emin misiniz?</translation>
     </message>
     <message>
         <source>Add Documentation</source>
-        <translation>Belge Ekle</translation>
+        <translation type="vanished">Belgelendirme Ekle</translation>
     </message>
     <message>
         <source>Qt Compressed Help Files (*.qch)</source>
-        <translation>Qt Sıkıştırılmış Yardım Dosyaları (*.qch)</translation>
+        <translation type="vanished">Qt sıkıştırılmış yardım dosyaları (*.qch)</translation>
     </message>
     <message>
         <source>Use custom settings</source>
@@ -884,11 +888,11 @@ Neden:
     </message>
     <message>
         <source>Fonts</source>
-        <translation>Yazı Tipleri</translation>
+        <translation>Yazıtipleri</translation>
     </message>
     <message>
         <source>Font settings:</source>
-        <translation>Yazı tipi ayarları:</translation>
+        <translation>Yazıtipi ayarları:</translation>
     </message>
     <message>
         <source>Browser</source>
@@ -904,39 +908,39 @@ Neden:
     </message>
     <message>
         <source>Components:</source>
-        <translation>Bileşenler:</translation>
+        <translation type="vanished">Bileşenler:</translation>
     </message>
     <message>
         <source>Versions:</source>
-        <translation>Sürümler:</translation>
+        <translation type="vanished">Sürümler:</translation>
     </message>
     <message>
         <source>Add...</source>
-        <translation>Ekle...</translation>
+        <translation type="vanished">Ekle…</translation>
     </message>
     <message>
         <source>Rename...</source>
-        <translation>Yeniden Adlandır...</translation>
+        <translation type="vanished">Yeniden Adlandır…</translation>
     </message>
     <message>
         <source>Remove</source>
-        <translation>Kaldır</translation>
+        <translation type="vanished">Kaldır</translation>
     </message>
     <message>
         <source>Filter:</source>
-        <translation>Süzgeç:</translation>
+        <translation type="vanished">Süzgeç:</translation>
     </message>
     <message>
         <source>Documentation</source>
-        <translation>Belge</translation>
+        <translation>Belgelendirme</translation>
     </message>
     <message>
         <source>Registered Documentation:</source>
-        <translation>Kayıtlı Belgeler:</translation>
+        <translation type="vanished">Kayıtlı belgeler:</translation>
     </message>
     <message>
         <source>&lt;Filter&gt;</source>
-        <translation>&lt;Süzgeç&gt;</translation>
+        <translation type="vanished">&lt;Süzgeç&gt;</translation>
     </message>
     <message>
         <source>Options</source>
@@ -964,19 +968,19 @@ Neden:
     </message>
     <message>
         <source>Current Page</source>
-        <translation>Geçerli Sayfa</translation>
+        <translation>Geçerli sayfa</translation>
     </message>
     <message>
         <source>Blank Page</source>
-        <translation>Boş Sayfa</translation>
+        <translation>Boş sayfa</translation>
     </message>
     <message>
         <source>Restore to default</source>
-        <translation>Varsayılana sıfırla</translation>
+        <translation>Öntanımlılara sıfırla</translation>
     </message>
     <message>
         <source>Appearance</source>
-        <translation>Görünüm</translation>
+        <translation>Görünüş</translation>
     </message>
     <message>
         <source>Show tabs for each individual page</source>
@@ -987,18 +991,18 @@ Neden:
     <name>RemoteControl</name>
     <message>
         <source>Debugging Remote Control</source>
-        <translation>Hata Ayıklama Uzaktan Kontrolü</translation>
+        <translation>Hata Ayıklama Uzaktan Denetimi</translation>
     </message>
     <message>
         <source>Received Command: %1 %2</source>
-        <translation>Alınan Komut: %1 %2</translation>
+        <translation>Alınan komut: %1 %2</translation>
     </message>
 </context>
 <context>
     <name>SearchWidget</name>
     <message>
         <source>&amp;Copy</source>
-        <translation>&amp;Kopyala</translation>
+        <translation>Ko&amp;pyala</translation>
     </message>
     <message>
         <source>Copy &amp;Link Location</source>
@@ -1033,7 +1037,7 @@ Neden:
     </message>
     <message>
         <source>Add Bookmark for this Page...</source>
-        <translation>Bu sayfa için Yer İmi ekle...</translation>
+        <translation>Bu Sayfa için Yer İmi Ekle…</translation>
     </message>
 </context>
 <context>
@@ -1048,7 +1052,7 @@ Neden:
     </message>
     <message>
         <source>&amp;Display</source>
-        <translation>&amp;Görüntüle</translation>
+        <translation>&amp;Görüntü</translation>
     </message>
     <message>
         <source>&amp;Close</source>
@@ -1061,6 +1065,64 @@ Neden:
     <message>
         <source>Choose a topic for &lt;b&gt;%1&lt;/b&gt;:</source>
         <translation>&lt;b&gt;%1&lt;/b&gt;için bir konu seçin:</translation>
+    </message>
+</context>
+<context>
+    <name>HelpDocSettingsWidget</name>
+    <message>
+        <source>Form</source>
+        <translation>Form</translation>
+    </message>
+    <message>
+        <source>Registered Documentation</source>
+        <translation>Kayıtlı Belgelendirme</translation>
+    </message>
+    <message>
+        <source>&lt;Filter&gt;</source>
+        <translation>&lt;Süzgeç&gt;</translation>
+    </message>
+    <message>
+        <source>Add...</source>
+        <translation>Ekle…</translation>
+    </message>
+    <message>
+        <source>Remove</source>
+        <translation>Kaldır</translation>
+    </message>
+    <message>
+        <source>Add Documentation</source>
+        <translation>Belgelendirme Ekle</translation>
+    </message>
+    <message>
+        <source>Qt Compressed Help Files (*.qch)</source>
+        <translation>Qt sıkıştırılmış yardım dosyaları (*.qch)</translation>
+    </message>
+</context>
+<context>
+    <name>HelpViewerImpl</name>
+    <message>
+        <source>Open Link</source>
+        <translation>Bağlantıyı Aç</translation>
+    </message>
+    <message>
+        <source>Open Link in New Tab	Ctrl+LMB</source>
+        <translation>Bağlantıyı Yeni Sekmede Aç	Kontrol+Sol Fare Düğmesi</translation>
+    </message>
+    <message>
+        <source>Copy &amp;Link Location</source>
+        <translation>Bağ&amp;lantı Konumunu Kopyala</translation>
+    </message>
+    <message>
+        <source>Copy</source>
+        <translation>Kopyala</translation>
+    </message>
+    <message>
+        <source>Reload</source>
+        <translation>Yeniden Yükle</translation>
+    </message>
+    <message>
+        <source>Open Link in New Page</source>
+        <translation>Bağlantıyı Yeni Sayfada Aç</translation>
     </message>
 </context>
 </TS>

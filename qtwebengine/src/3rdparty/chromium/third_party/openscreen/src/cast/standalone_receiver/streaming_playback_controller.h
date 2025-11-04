@@ -8,8 +8,8 @@
 #include <memory>
 
 #include "cast/standalone_receiver/simple_remoting_receiver.h"
-#include "cast/streaming/receiver_session.h"
-#include "platform/impl/task_runner.h"
+#include "cast/streaming/public/receiver_session.h"
+#include "platform/api/task_runner.h"
 
 #if defined(CAST_STANDALONE_RECEIVER_HAVE_EXTERNAL_LIBS)
 #include "cast/standalone_receiver/sdl_audio_player.h"  // nogncheck
@@ -26,7 +26,7 @@ class StreamingPlaybackController final : public ReceiverSession::Client {
   class Client {
    public:
     virtual void OnPlaybackError(StreamingPlaybackController* controller,
-                                 Error error) = 0;
+                                 const Error& error) = 0;
 
    protected:
     virtual ~Client();
@@ -48,7 +48,7 @@ class StreamingPlaybackController final : public ReceiverSession::Client {
       ReceiverSession::RemotingNegotiation negotiation) override;
   void OnReceiversDestroying(const ReceiverSession* session,
                              ReceiversDestroyingReason reason) override;
-  void OnError(const ReceiverSession* session, Error error) override;
+  void OnError(const ReceiverSession* session, const Error& error) override;
 
  private:
   StreamingPlaybackController::Client* client_;

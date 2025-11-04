@@ -83,6 +83,15 @@ macro(qt_examples_build_begin)
         if(NOT QT_BUILD_EXAMPLES_BY_DEFAULT)
             set_directory_properties(PROPERTIES EXCLUDE_FROM_ALL TRUE)
         endif()
+
+        # Add active linker flags to all targets created below this subdirectory.
+        qt_internal_get_active_linker_flags(active_linker_flags)
+        if(active_linker_flags)
+            add_link_options(${active_linker_flags})
+        endif()
+
+        # Marker for warnings_as_errors.
+        set(QT_INTERNAL_IS_EXAMPLE_IN_TREE_BUILD ON)
     endif()
 
     # TODO: Change this to TRUE when all examples in all repos are ported to use
@@ -224,7 +233,7 @@ function(qt_internal_get_example_install_prefix out_var)
     # Allow customizing the installation path of the examples. Will be used in CI.
     if(QT_INTERNAL_EXAMPLES_INSTALL_PREFIX)
         set(qt_example_install_prefix "${QT_INTERNAL_EXAMPLES_INSTALL_PREFIX}")
-    elseif(QT_BUILD_STANDALONE_EXAMPLES)
+    elseif(QT_BUILD_STANDALONE_EXAMPLES AND NOT QT_NO_FAKE_STANDALONE_EXAMPLE_INSTALL_PREFIX)
         # TODO: We might need to reset and pipe through an empty CMAKE_STAGING_PREFIX if we ever
         # try to run standalone examples in the CI when cross-compiling, similar how it's done in
         # qt_internal_set_up_fake_standalone_parts_install_prefix.
@@ -461,6 +470,8 @@ function(qt_internal_add_example_external_project subdir)
         QT_ADDITIONAL_PACKAGES_PREFIX_PATH:STRING
         QT_ADDITIONAL_QML_PLUGIN_GLOB_PREFIXES:STRING
         QT_INTERNAL_SKIP_DEPLOYMENT:BOOL
+        QT_REPO_EXAMPLES_WARNINGS_CLEAN:BOOL
+        WARNINGS_ARE_ERRORS:BOOL
         CMAKE_FIND_ROOT_PATH:STRING
         CMAKE_MODULE_PATH:STRING
         BUILD_SHARED_LIBS:BOOL
@@ -498,6 +509,15 @@ function(qt_internal_add_example_external_project subdir)
     if(QT_INTERNAL_VERBOSE_EXAMPLES)
         list(APPEND var_defs -DCMAKE_MESSAGE_LOG_LEVEL:STRING=DEBUG)
         list(APPEND var_defs -DCMAKE_AUTOGEN_VERBOSE:BOOL=TRUE)
+    endif()
+
+    # Pass active linker flags.
+    qt_internal_get_active_linker_flags(active_linker_flags)
+    if(active_linker_flags)
+        foreach(item_type EXE MODULE SHARED)
+            list(APPEND var_defs
+                "-DCMAKE_${item_type}_LINKER_FLAGS_INIT:STRING=${active_linker_flags}")
+        endforeach()
     endif()
 
     set(deps "")
@@ -593,6 +613,7 @@ function(qt_internal_add_example_external_project subdir)
         TEST_COMMAND     ""
         DEPENDS          ${deps}
         CMAKE_CACHE_ARGS ${var_defs}
+                         -DQT_INTERNAL_IS_EXAMPLE_EP_BUILD:BOOL=TRUE
                          -DCMAKE_INSTALL_PREFIX:STRING=<INSTALL_DIR>
                          -DQT_INTERNAL_SET_EXAMPLE_INSTALL_DIR_TO_DOT:BOOL=TRUE
         ${terminal_args}

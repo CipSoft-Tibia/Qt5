@@ -7,11 +7,11 @@
 
 #include <array>
 #include <memory>
+#include <optional>
 #include <vector>
 
 #include "device/vr/openxr/openxr_controller.h"
 #include "device/vr/openxr/openxr_interaction_profiles.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "third_party/openxr/src/include/openxr/openxr.h"
 
 namespace device {
@@ -37,6 +37,8 @@ class OpenXRInputHelper {
   OpenXRInputHelper& operator=(const OpenXRInputHelper&) = delete;
 
   ~OpenXRInputHelper();
+
+  bool IsHandTrackingEnabled() const;
 
   std::vector<mojom::XRInputSourceStatePtr> GetInputState(
       XrTime predicted_display_time);

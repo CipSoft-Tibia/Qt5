@@ -4,7 +4,7 @@
 #include "avfvideorenderercontrol_p.h"
 #include "avfdisplaylink_p.h"
 #include <avfvideobuffer_p.h>
-#include "qavfhelpers_p.h"
+#include <QtMultimedia/private/qavfhelpers_p.h>
 #include "private/qvideoframe_p.h"
 
 #include <QtMultimedia/qvideoframeformat.h>
@@ -65,7 +65,8 @@ AVFVideoRendererControl::AVFVideoRendererControl(QObject *parent)
     : QObject(parent)
 {
     m_displayLink = new AVFDisplayLink(this);
-    connect(m_displayLink, SIGNAL(tick(CVTimeStamp)), SLOT(updateVideoFrame(CVTimeStamp)));
+
+    connect(m_displayLink, &AVFDisplayLink::tick, this, &AVFVideoRendererControl::updateVideoFrame);
 }
 
 AVFVideoRendererControl::~AVFVideoRendererControl()
@@ -74,6 +75,7 @@ AVFVideoRendererControl::~AVFVideoRendererControl()
     qDebug() << Q_FUNC_INFO;
 #endif
     m_displayLink->stop();
+    m_displayLink->disconnect(this);
     if (m_videoOutput)
         [m_videoOutput release];
     if (m_subtitleOutput)
@@ -146,13 +148,12 @@ void AVFVideoRendererControl::updateVideoFrame(const CVTimeStamp &ts)
 
     QVideoFrame frame;
     size_t width, height;
-    CVPixelBufferRef pixelBuffer = copyPixelBufferFromLayer(width, height);
+    QCFType<CVPixelBufferRef> pixelBuffer = copyPixelBufferFromLayer(width, height);
     if (!pixelBuffer)
         return;
-    auto buffer = std::make_unique<AVFVideoBuffer>(this, pixelBuffer);
     //    qDebug() << "Got pixelbuffer with format" << fmt << Qt::hex <<
     //    CVPixelBufferGetPixelFormatType(pixelBuffer);
-    CVPixelBufferRelease(pixelBuffer);
+    auto buffer = std::make_unique<AVFVideoBuffer>(this, std::move(pixelBuffer));
 
     const auto format = buffer->videoFormat();
     frame = QVideoFramePrivate::createFrame(std::move(buffer), format);
@@ -161,7 +162,8 @@ void AVFVideoRendererControl::updateVideoFrame(const CVTimeStamp &ts)
     m_sink->setVideoFrame(frame);
 }
 
-CVPixelBufferRef AVFVideoRendererControl::copyPixelBufferFromLayer(size_t& width, size_t& height)
+QCFType<CVPixelBufferRef> AVFVideoRendererControl::copyPixelBufferFromLayer(size_t &width,
+                                                                            size_t &height)
 {
     AVPlayerLayer *layer = playerLayer();
     //Is layer valid
@@ -217,7 +219,7 @@ CVPixelBufferRef AVFVideoRendererControl::copyPixelBufferFromLayer(size_t& width
 //    memcpy(fmt, &f, 4);
 //    fmt[4] = 0;
 //    qDebug() << "copyPixelBuffer" << f << fmt << width << height;
-    return pixelBuffer;
+    return QCFType<CVPixelBufferRef>{ pixelBuffer };
 }
 
 #include "moc_avfvideorenderercontrol_p.cpp"

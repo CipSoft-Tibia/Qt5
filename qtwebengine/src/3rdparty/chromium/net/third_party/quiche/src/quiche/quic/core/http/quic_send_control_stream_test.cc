@@ -4,7 +4,12 @@
 
 #include "quiche/quic/core/http/quic_send_control_stream.h"
 
+#include <memory>
+#include <optional>
+#include <ostream>
+#include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/strings/escaping.h"
 #include "absl/strings/string_view.h"
@@ -115,85 +120,90 @@ TEST_P(QuicSendControlStreamTest, WriteSettings) {
   Initialize();
   testing::InSequence s;
 
-  std::string expected_write_data = absl::HexStringToBytes(
-      "00"    // stream type: control stream
-      "04"    // frame type: SETTINGS frame
-      "0b"    // frame length
-      "01"    // SETTINGS_QPACK_MAX_TABLE_CAPACITY
-      "40ff"  // 255
-      "06"    // SETTINGS_MAX_HEADER_LIST_SIZE
-      "4400"  // 1024
-      "07"    // SETTINGS_QPACK_BLOCKED_STREAMS
-      "10"    // 16
-      "4040"  // 0x40 as the reserved settings id
-      "14"    // 20
-      "4040"  // 0x40 as the reserved frame type
-      "01"    // 1 byte frame length
-      "61");  //  payload "a"
+  std::string expected_write_data;
+  ASSERT_TRUE(
+      absl::HexStringToBytes("00"    // stream type: control stream
+                             "04"    // frame type: SETTINGS frame
+                             "0b"    // frame length
+                             "01"    // SETTINGS_QPACK_MAX_TABLE_CAPACITY
+                             "40ff"  // 255
+                             "06"    // SETTINGS_MAX_HEADER_LIST_SIZE
+                             "4400"  // 1024
+                             "07"    // SETTINGS_QPACK_BLOCKED_STREAMS
+                             "10"    // 16
+                             "4040"  // 0x40 as the reserved settings id
+                             "14"    // 20
+                             "4040"  // 0x40 as the reserved frame type
+                             "01"    // 1 byte frame length
+                             "61",   //  payload "a"
+                             &expected_write_data));
   if (perspective() == Perspective::IS_CLIENT &&
       QuicSpdySessionPeer::LocalHttpDatagramSupport(&session_) !=
           HttpDatagramSupport::kNone) {
-    expected_write_data = absl::HexStringToBytes(
-        "00"    // stream type: control stream
-        "04"    // frame type: SETTINGS frame
-        "0d"    // frame length
-        "01"    // SETTINGS_QPACK_MAX_TABLE_CAPACITY
-        "40ff"  // 255
-        "06"    // SETTINGS_MAX_HEADER_LIST_SIZE
-        "4400"  // 1024
-        "07"    // SETTINGS_QPACK_BLOCKED_STREAMS
-        "10"    // 16
-        "33"    // SETTINGS_H3_DATAGRAM
-        "01"    // 1
-        "4040"  // 0x40 as the reserved settings id
-        "14"    // 20
-        "4040"  // 0x40 as the reserved frame type
-        "01"    // 1 byte frame length
-        "61");  //  payload "a"
+    ASSERT_TRUE(
+        absl::HexStringToBytes("00"    // stream type: control stream
+                               "04"    // frame type: SETTINGS frame
+                               "0d"    // frame length
+                               "01"    // SETTINGS_QPACK_MAX_TABLE_CAPACITY
+                               "40ff"  // 255
+                               "06"    // SETTINGS_MAX_HEADER_LIST_SIZE
+                               "4400"  // 1024
+                               "07"    // SETTINGS_QPACK_BLOCKED_STREAMS
+                               "10"    // 16
+                               "33"    // SETTINGS_H3_DATAGRAM
+                               "01"    // 1
+                               "4040"  // 0x40 as the reserved settings id
+                               "14"    // 20
+                               "4040"  // 0x40 as the reserved frame type
+                               "01"    // 1 byte frame length
+                               "61",   //  payload "a"
+                               &expected_write_data));
   }
   if (perspective() == Perspective::IS_SERVER &&
       QuicSpdySessionPeer::LocalHttpDatagramSupport(&session_) ==
           HttpDatagramSupport::kNone) {
-    expected_write_data = absl::HexStringToBytes(
-        "00"    // stream type: control stream
-        "04"    // frame type: SETTINGS frame
-        "0d"    // frame length
-        "01"    // SETTINGS_QPACK_MAX_TABLE_CAPACITY
-        "40ff"  // 255
-        "06"    // SETTINGS_MAX_HEADER_LIST_SIZE
-        "4400"  // 1024
-        "07"    // SETTINGS_QPACK_BLOCKED_STREAMS
-        "10"    // 16
-        "08"    // SETTINGS_ENABLE_CONNECT_PROTOCOL
-        "01"    // 1
-        "4040"  // 0x40 as the reserved settings id
-        "14"    // 20
-        "4040"  // 0x40 as the reserved frame type
-        "01"    // 1 byte frame length
-        "61");  //  payload "a"
+    ASSERT_TRUE(
+        absl::HexStringToBytes("00"    // stream type: control stream
+                               "04"    // frame type: SETTINGS frame
+                               "0d"    // frame length
+                               "01"    // SETTINGS_QPACK_MAX_TABLE_CAPACITY
+                               "40ff"  // 255
+                               "06"    // SETTINGS_MAX_HEADER_LIST_SIZE
+                               "4400"  // 1024
+                               "07"    // SETTINGS_QPACK_BLOCKED_STREAMS
+                               "10"    // 16
+                               "08"    // SETTINGS_ENABLE_CONNECT_PROTOCOL
+                               "01"    // 1
+                               "4040"  // 0x40 as the reserved settings id
+                               "14"    // 20
+                               "4040"  // 0x40 as the reserved frame type
+                               "01"    // 1 byte frame length
+                               "61",   //  payload "a"
+                               &expected_write_data));
   }
   if (perspective() == Perspective::IS_SERVER &&
       QuicSpdySessionPeer::LocalHttpDatagramSupport(&session_) !=
           HttpDatagramSupport::kNone) {
-    expected_write_data = absl::HexStringToBytes(
-        "00"    // stream type: control stream
-        "04"    // frame type: SETTINGS frame
-        "0f"    // frame length
-        "01"    // SETTINGS_QPACK_MAX_TABLE_CAPACITY
-        "40ff"  // 255
-        "06"    // SETTINGS_MAX_HEADER_LIST_SIZE
-        "4400"  // 1024
-        "07"    // SETTINGS_QPACK_BLOCKED_STREAMS
-        "10"    // 16
-        "08"    // SETTINGS_ENABLE_CONNECT_PROTOCOL
-        "01"    // 1
-        "33"    // SETTINGS_H3_DATAGRAM
-        "01"    // 1
-        "4040"  // 0x40 as the reserved settings id
-        "14"    // 20
-        "4040"  // 0x40 as the reserved frame type
-        "01"    // 1 byte frame length
-        "61");  //  payload "a"
+    ASSERT_TRUE(
+        absl::HexStringToBytes("00"    // stream type: control stream
+                               "04"    // frame type: SETTINGS frame
+                               "0f"    // frame length
+                               "01"    // SETTINGS_QPACK_MAX_TABLE_CAPACITY
+                               "40ff"  // 255
+                               "06"    // SETTINGS_MAX_HEADER_LIST_SIZE
+                               "4400"  // 1024
+                               "07"    // SETTINGS_QPACK_BLOCKED_STREAMS
+                               "10"    // 16
+                               "08"    // SETTINGS_ENABLE_CONNECT_PROTOCOL
+                               "01"    // 1
+                               "33"    // SETTINGS_H3_DATAGRAM
+                               "01"    // 1
+                               "4040"  // 0x40 as the reserved settings id
+                               "14"    // 20
+                               "4040"  // 0x40 as the reserved frame type
+                               "01"    // 1 byte frame length
+                               "61",   //  payload "a"
+                               &expected_write_data));
   }
 
   char buffer[1000] = {};
@@ -233,6 +243,16 @@ TEST_P(QuicSendControlStreamTest, WriteSettingsOnlyOnce) {
   // No data should be written the second time MaybeSendSettingsFrame() is
   // called.
   send_control_stream_->MaybeSendSettingsFrame();
+}
+
+TEST_P(QuicSendControlStreamTest, SendOriginFrameOnce) {
+  Initialize();
+  std::vector<std::string> origins = {"a", "b", "c"};
+
+  EXPECT_CALL(session_, WritevData(send_control_stream_->id(), _, _, _, _, _))
+      .Times(1);
+  send_control_stream_->MaybeSendOriginFrame(origins);
+  send_control_stream_->MaybeSendOriginFrame(origins);
 }
 
 // Send stream type and SETTINGS frame if WritePriorityUpdate() is called first.

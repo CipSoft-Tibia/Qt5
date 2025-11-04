@@ -8,7 +8,9 @@
 #include <QtTest/qtest.h>
 #include <QtTest/qsignalspy.h>
 
+#if QT_CONFIG(concurrent)
 #include <QtConcurrent/qtconcurrentrun.h>
+#endif
 
 #include <QtCore/qurl.h>
 #include <QtCore/qstring.h>
@@ -19,6 +21,7 @@
 #include <QtCore/qjsonobject.h>
 #include <QtCore/qjsonvalue.h>
 #include <QtCore/qjsonarray.h>
+#include <QtCore/qsemaphore.h>
 #include <QtCore/qtimer.h>
 
 #include <QtNetwork/qnetworkaccessmanager.h>
@@ -136,6 +139,7 @@ NQZlAZc2w1Ha9lqisaWWpt42QVhQM64=
 #endif // QT_CONFIG(ssl)
 
 using namespace Qt::StringLiterals;
+using namespace std::chrono_literals;
 
 using RouterHandler = std::function<void(const QRegularExpressionMatch &,
                                          const QHttpServerRequest &, QHttpServerResponder &)>;
@@ -231,8 +235,13 @@ private slots:
     void pipelinedRequests();
     void missingHandler();
     void pipelinedFutureRequests();
+    void requestNotOverwritten();
     void multipleResponses();
     void contextObjectInOtherThreadWarning();
+    void writeSequentialDevice();
+    void writeMuchToSequentialDevice();
+    void writeFromEmptySequentialDevice();
+    void concurrentRequestsToSequentialDevice();
 
 #if QT_CONFIG(localserver)
     void localSocket();
@@ -247,6 +256,7 @@ private:
     QString sslUrlBase;
     QNetworkAccessManager networkAccessManager;
     ReplyObject replyObject;
+    std::optional<QSemaphore> readySem, routeSem;
 };
 
 struct CustomArg {
@@ -292,6 +302,79 @@ void tst_QHttpServer::initTestCase_data()
     }
 #endif
 }
+
+class SequentialIODevice : public QIODevice
+{
+    Q_OBJECT
+
+public:
+    SequentialIODevice() : SequentialIODevice(QByteArray(), 0, 1) { }
+
+    SequentialIODevice(const QByteArray &data, int times, int repetitions)
+        : message(data.repeated(repetitions)), times(times)
+    {
+        setOpenMode(QIODeviceBase::ReadWrite);
+        timer.callOnTimeout(this, &SequentialIODevice::onTimeout);
+        timer.setSingleShot(false);
+        timer.setInterval(50ms);
+        timer.start();
+    }
+
+    bool isSequential() const override { return true; }
+    qint64 bytesAvailable() const override { return buffer.size() - readPos; }
+    qint64 bytesToWrite() const override { return 0; }
+    qint64 pos() const override { return readPos; }
+
+    bool seek(qint64 pos) override
+    {
+        Q_UNUSED(pos);
+        return false; // No random accesss on sequential devices
+    }
+
+    qint64 readData(char *data, qint64 maxSize) override
+    {
+        qint64 length = qMin(maxSize, buffer.size() - readPos);
+        if (length == 0)
+            return finishedReading ? -1 : 0;
+        memcpy(data, buffer.constData() + readPos, length);
+        readPos += length;
+
+        if (readPos == buffer.size()) {
+            readPos = 0;
+            buffer.clear();
+        }
+
+        return length;
+    }
+
+    qint64 writeData(const char *data, qint64 maxSize) override
+    {
+        buffer.append(data, maxSize);
+        emit bytesWritten(maxSize);
+        emit readyRead();
+        return maxSize;
+    }
+
+    void onTimeout()
+    {
+        if (times > 0)
+            write(message);
+
+        if (--times <= 0) {
+            timer.stop();
+            finishedReading = true;
+            emit readChannelFinished();
+        }
+    }
+
+private:
+    QTimer timer;
+    QByteArray message;
+    QByteArray buffer;
+    qsizetype readPos = 0;
+    int times;
+    bool finishedReading = false;
+};
 
 void tst_QHttpServer::initTestCase()
 {
@@ -479,6 +562,26 @@ void tst_QHttpServer::initTestCase()
             return user;
         });
     });
+
+    httpserver.route("/wait-and-return-body/", [this](const QHttpServerRequest &request) {
+        auto body = request.body();
+        return QtConcurrent::run([body, this]() {
+            Q_ASSERT(readySem);
+            readySem->release();
+            Q_ASSERT(routeSem);
+            routeSem->acquire();
+            return QHttpServerResponse("text/plain", body);
+        });
+    });
+
+    httpserver.addAfterRequestHandler(
+            this, [](const QHttpServerRequest &request, QHttpServerResponse &response) {
+                if (request.url().path().startsWith("/wait-and-return-body/")) {
+                    auto h = response.headers();
+                    h.append("X-REQUEST-BODY-SIZE", QString::number(request.body().size()));
+                    response.setHeaders(std::move(h));
+                }
+            });
 #endif
 
 #if QT_CONFIG(localserver)
@@ -535,6 +638,16 @@ void tst_QHttpServer::initTestCase()
                 });
     }
 #endif
+    httpserver.route("/sequential-iodevice/<arg>/<arg>/<arg>", this,
+                     [](QString message, int times, int repeats, QHttpServerResponder &responder) {
+                         auto device = new SequentialIODevice(message.toUtf8(), times, repeats);
+                         responder.write(device, "text/plain");
+                     });
+
+    httpserver.route("/empty-sequential-iodevice/", this, [](QHttpServerResponder &responder) {
+        auto device = new SequentialIODevice;
+        responder.write(device, "text/plain");
+    });
 }
 
 void tst_QHttpServer::init()
@@ -979,19 +1092,16 @@ void tst_QHttpServer::routeDelete_data()
     QTest::addColumn<QString>("url");
     QTest::addColumn<int>("code");
     QTest::addColumn<QString>("type");
-    QTest::addColumn<QString>("data");
 
     QTest::addRow("post-and-get, delete")
         << "/post-and-get"
         << 404
-        << "application/x-empty"
-        << "";
+        << "application/x-empty";
 
     QTest::addRow("any, delete")
         << "/any"
         << 200
-        << "text/plain"
-        << "Delete";
+        << "text/plain";
 }
 
 void tst_QHttpServer::routeDelete()
@@ -1001,7 +1111,6 @@ void tst_QHttpServer::routeDelete()
     QFETCH(QString, url);
     QFETCH(int, code);
     QFETCH(QString, type);
-    QFETCH(QString, data);
     QString urlBase = useSsl ? sslUrlBase : clearUrlBase;
     QNetworkRequest request(urlBase.arg(url));
     request.setAttribute(QNetworkRequest::Http2AllowedAttribute, useHttp2);
@@ -1332,10 +1441,10 @@ void tst_QHttpServer::missingHandler()
     QCOMPARE(sslUsed.toBool(), useSsl);
 }
 
-#if QT_CONFIG(concurrent)
 // Test that responses to pipelined requests come in correct order, see also: QTBUG-105202
 void tst_QHttpServer::pipelinedFutureRequests()
 {
+#if QT_CONFIG(concurrent)
     QFETCH_GLOBAL(bool, useSsl);
     QFETCH_GLOBAL(bool, useHttp2);
     QString urlBase = useSsl ? sslUrlBase : clearUrlBase;
@@ -1355,8 +1464,84 @@ void tst_QHttpServer::pipelinedFutureRequests()
 
     for (std::size_t i = 0; i < replies.size(); i++)
         checkReply(replies[i], QString::number(i));
-}
+#else
+    QSKIP("QtConcurrent is not available, skipping test");
 #endif // QT_CONFIG(concurrent)
+}
+
+void tst_QHttpServer::requestNotOverwritten()
+{
+#if QT_CONFIG(concurrent)
+    using namespace std::chrono_literals;
+    readySem.emplace();
+    routeSem.emplace();
+
+    auto cleanup = qScopeGuard([this] {
+        readySem.reset();
+        routeSem.reset();
+    });
+
+    QFETCH_GLOBAL(bool, useSsl);
+    QFETCH_GLOBAL(bool, useHttp2);
+    QString urlBase = useSsl ? sslUrlBase : clearUrlBase;
+
+    constexpr qsizetype NumberProcessed = 6;
+    std::array<QNetworkReply *, NumberProcessed> replies;
+    QThreadPool::globalInstance()->setMaxThreadCount(static_cast<int>(NumberProcessed));
+
+    for (std::size_t i = 0; i < NumberProcessed; i++) {
+        auto bodySize = i + 1; // All requests have different body sizes
+        QByteArray body(bodySize, 'a');
+        QString path = u"/wait-and-return-body/"_s;
+        QNetworkRequest req(QUrl(urlBase.arg(path)));
+        req.setAttribute(QNetworkRequest::HttpPipeliningAllowedAttribute, true);
+        req.setAttribute(QNetworkRequest::Http2AllowedAttribute, useHttp2);
+        req.setHeader(QNetworkRequest::ContentTypeHeader, "text/plain");
+        replies[i] = networkAccessManager.post(req, body);
+    }
+
+    auto waitUntilFuturesStarted = [this, &replies] {
+        if (QTest::qWaitFor([this]() { return readySem->available() == NumberProcessed; })) {
+            return true;
+        } else {
+            routeSem->release(NumberProcessed);
+            for (std::size_t i = 0; i < NumberProcessed; i++) {
+                if (replies[i] != nullptr) {
+                    std::unique_ptr<QNetworkReply> replyPtr(replies[i]);
+                    replyPtr->abort();
+                }
+            }
+            return false;
+        }
+    };
+
+    QVERIFY(waitUntilFuturesStarted());
+    readySem->acquire(NumberProcessed);
+    routeSem->release(NumberProcessed); // Let them complete and execute the afterrequest handlers
+
+    QSet<int> bodySizes;
+    for (std::size_t i = 0; i < NumberProcessed; i++) {
+        QVERIFY(replies[i] != nullptr);
+        std::unique_ptr<QNetworkReply> replyPtr(replies[i]);
+        QTRY_VERIFY(replyPtr->isFinished());
+        QVERIFY(replyPtr->hasRawHeader("X-REQUEST-BODY-SIZE"));
+        QByteArray header = replyPtr->rawHeader("X-REQUEST-BODY-SIZE");
+        bool ok;
+        int bodySize = header.toInt(&ok);
+        QVERIFY(ok);
+        bodySizes.insert(bodySize);
+    }
+    if (useHttp2) {
+        QEXPECT_FAIL("", "QTBUG-133519: QHttpServerRequest overwritten during concurrent handling",
+                     Continue);
+    }
+    QCOMPARE(bodySizes.size(), NumberProcessed);
+    QCOMPARE(readySem->available(), 0);
+    QCOMPARE(routeSem->available(), 0);
+#else
+    QSKIP("QtConcurrent is not available, skipping test");
+#endif // QT_CONFIG(concurrent)
+}
 
 void tst_QHttpServer::multipleResponses()
 {
@@ -1420,6 +1605,94 @@ void tst_QHttpServer::localSocket()
     }
 }
 #endif
+
+void tst_QHttpServer::writeSequentialDevice()
+{
+    QFETCH_GLOBAL(bool, useSsl);
+    QFETCH_GLOBAL(bool, useHttp2);
+
+    QString urlBase = useSsl ? sslUrlBase : clearUrlBase;
+    const QUrl requestUrl(urlBase.arg("/sequential-iodevice/Go/3/1"));
+    QNetworkRequest req(requestUrl);
+    req.setAttribute(QNetworkRequest::Http2AllowedAttribute, useHttp2);
+    std::unique_ptr<QNetworkReply> reply(networkAccessManager.get(req));
+
+    QSignalSpy spy(reply.get(), &QNetworkReply::finished);
+    spy.wait(2s);
+
+    QCOMPARE(spy.count(), 1);
+    checkReply(reply.release(), "GoGoGo");
+}
+
+void tst_QHttpServer::writeMuchToSequentialDevice()
+{
+    QFETCH_GLOBAL(bool, useSsl);
+    QFETCH_GLOBAL(bool, useHttp2);
+
+    QString urlBase = useSsl ? sslUrlBase : clearUrlBase;
+    constexpr qsizetype bufferSize = 129 * 1024; // More than the HTTP1 write buffer
+    const QUrl requestUrl(
+            urlBase.arg(u"/sequential-iodevice/a/2/"_s + QString::number(bufferSize)));
+    QNetworkRequest req(requestUrl);
+    req.setAttribute(QNetworkRequest::Http2AllowedAttribute, useHttp2);
+    std::unique_ptr<QNetworkReply> reply(networkAccessManager.get(req));
+
+    QSignalSpy spy(reply.get(), &QNetworkReply::finished);
+    spy.wait(2s);
+
+    QCOMPARE(spy.count(), 1);
+    checkReply(reply.release(), u"a"_s.repeated(bufferSize * 2));
+}
+
+
+void tst_QHttpServer::writeFromEmptySequentialDevice()
+{
+    QFETCH_GLOBAL(bool, useSsl);
+    QFETCH_GLOBAL(bool, useHttp2);
+
+    QString urlBase = useSsl ? sslUrlBase : clearUrlBase;
+    const QUrl requestUrl(urlBase.arg("/empty-sequential-iodevice/"));
+    QNetworkRequest req(requestUrl);
+    req.setAttribute(QNetworkRequest::Http2AllowedAttribute, useHttp2);
+    std::unique_ptr<QNetworkReply> reply(networkAccessManager.get(req));
+
+    QSignalSpy spy(reply.get(), &QNetworkReply::finished);
+    spy.wait(2s);
+
+    QCOMPARE(spy.count(), 1);
+    checkReply(reply.release(), "");
+}
+
+void tst_QHttpServer::concurrentRequestsToSequentialDevice()
+{
+#if QT_CONFIG(concurrent)
+    QFETCH_GLOBAL(bool, useSsl);
+    QFETCH_GLOBAL(bool, useHttp2);
+    QString urlBase = useSsl ? sslUrlBase : clearUrlBase;
+    constexpr qsizetype NumberOfTasks = 10;
+    constexpr qsizetype NumberOfRepeats = 3;
+    std::array<std::unique_ptr<QNetworkReply>, NumberOfTasks> replies;
+    QThreadPool::globalInstance()->setMaxThreadCount(NumberOfTasks);
+    for (qsizetype i = 0; i < NumberOfTasks; ++i) {
+        QString path =
+                u"/sequential-iodevice/%1/%2/1"_s.arg(QChar('a' + (char)i)).arg(NumberOfRepeats);
+        QNetworkRequest req(QUrl(urlBase.arg(path)));
+        req.setAttribute(QNetworkRequest::HttpPipeliningAllowedAttribute, true);
+        req.setAttribute(QNetworkRequest::Http2AllowedAttribute, useHttp2);
+        replies[i].reset(networkAccessManager.get(req));
+    }
+
+    QSignalSpy spy(replies[NumberOfTasks - 1].get(), &QNetworkReply::finished);
+    spy.wait(5s); // Wait for reply to last outgoing request
+
+    for (qsizetype i = 0; i < NumberOfTasks; i++) {
+        QTRY_VERIFY(replies[i]->isFinished());
+        QCOMPARE(replies[i]->readAll(), QString(QChar('a' + (char)i)).repeated(NumberOfRepeats));
+    }
+#else
+    QSKIP("QtConcurrent is not available, skipping test");
+#endif // QT_CONFIG(concurrent)
+}
 
 QT_END_NAMESPACE
 

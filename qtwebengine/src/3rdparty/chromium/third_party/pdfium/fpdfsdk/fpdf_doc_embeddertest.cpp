@@ -2,11 +2,16 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#include <array>
 #include <set>
+#include <string>
 #include <vector>
 
+#include "core/fpdfapi/parser/cpdf_dictionary.h"
 #include "core/fpdfapi/parser/cpdf_document.h"
+#include "core/fpdfapi/parser/cpdf_reference.h"
 #include "core/fxcrt/bytestring.h"
+#include "core/fxcrt/fx_safe_types.h"
 #include "core/fxge/cfx_defaultrenderdevice.h"
 #include "fpdfsdk/cpdfsdk_helpers.h"
 #include "public/cpp/fpdf_scopers.h"
@@ -16,6 +21,57 @@
 #include "testing/embedder_test.h"
 #include "testing/fx_string_testhelpers.h"
 #include "testing/gtest/include/gtest/gtest.h"
+
+namespace {
+
+// Look for "/Type/Page" but ignore "/Type/Pages".
+int CountPageEntries(const std::string& data) {
+  static constexpr char kNeedle[] = "/Type/Page";
+  static constexpr size_t kNeedleLen = std::size(kNeedle) - 1;
+
+  size_t pos = 0;
+  int count = 0;
+  while (pos < data.size()) {
+    const size_t found_pos = data.find(kNeedle, pos);
+    if (found_pos == std::string::npos) {
+      break;
+    }
+
+    FX_SAFE_SIZE_T next_pos = found_pos;
+    next_pos += kNeedleLen;
+    pos = next_pos.ValueOrDefault(std::string::npos);
+    if (pos < data.size() && data[pos] == 's') {
+      // Ignore "/Type/Pages".
+      ++pos;
+    } else {
+      ++count;
+    }
+  }
+  return count;
+}
+
+// Look for ">stream\r\n".
+int CountStreamEntries(const std::string& data) {
+  static constexpr char kNeedle[] = ">stream\r\n";
+  static constexpr size_t kNeedleLen = std::size(kNeedle) - 1;
+
+  size_t pos = 0;
+  int count = 0;
+  while (pos < data.size()) {
+    const size_t found_pos = data.find(kNeedle, pos);
+    if (found_pos == std::string::npos) {
+      break;
+    }
+
+    FX_SAFE_SIZE_T next_pos = found_pos;
+    next_pos += kNeedleLen;
+    pos = next_pos.ValueOrDefault(std::string::npos);
+    ++count;
+  }
+  return count;
+}
+
+}  // namespace
 
 class FPDFDocEmbedderTest : public EmbedderTest {};
 
@@ -153,7 +209,7 @@ TEST_F(FPDFDocEmbedderTest, DestGetLocationInPage) {
   EXPECT_EQ(1, zoom);
 }
 
-TEST_F(FPDFDocEmbedderTest, BUG_1506_1) {
+TEST_F(FPDFDocEmbedderTest, Bug1506First) {
   ASSERT_TRUE(OpenDocument("bug_1506.pdf"));
 
   FPDF_DEST dest = FPDF_GetNamedDestByName(document(), "First");
@@ -161,7 +217,7 @@ TEST_F(FPDFDocEmbedderTest, BUG_1506_1) {
   EXPECT_EQ(3, FPDFDest_GetDestPageIndex(document(), dest));
 }
 
-TEST_F(FPDFDocEmbedderTest, BUG_1506_2) {
+TEST_F(FPDFDocEmbedderTest, Bug1506Second) {
   ASSERT_TRUE(OpenDocument("bug_1506.pdf"));
 
   std::vector<FPDF_PAGE> pages;
@@ -176,7 +232,7 @@ TEST_F(FPDFDocEmbedderTest, BUG_1506_2) {
     UnloadPage(page);
 }
 
-TEST_F(FPDFDocEmbedderTest, BUG_1506_3) {
+TEST_F(FPDFDocEmbedderTest, Bug1506Third) {
   ASSERT_TRUE(OpenDocument("bug_1506.pdf"));
 
   std::vector<FPDF_PAGE> pages;
@@ -191,7 +247,7 @@ TEST_F(FPDFDocEmbedderTest, BUG_1506_3) {
     UnloadPage(page);
 }
 
-TEST_F(FPDFDocEmbedderTest, BUG_680376) {
+TEST_F(FPDFDocEmbedderTest, Bug680376) {
   ASSERT_TRUE(OpenDocument("bug_680376.pdf"));
 
   // Page number directly in item from Dests NameTree.
@@ -200,7 +256,7 @@ TEST_F(FPDFDocEmbedderTest, BUG_680376) {
   EXPECT_EQ(-1, FPDFDest_GetDestPageIndex(document(), dest));
 }
 
-TEST_F(FPDFDocEmbedderTest, BUG_821454) {
+TEST_F(FPDFDocEmbedderTest, Bug821454) {
   ASSERT_TRUE(OpenDocument("bug_821454.pdf"));
 
   FPDF_PAGE page = LoadPage(0);
@@ -567,7 +623,7 @@ TEST_F(FPDFDocEmbedderTest, FindBookmarks) {
 }
 
 // Check circular bookmarks will not cause infinite loop.
-TEST_F(FPDFDocEmbedderTest, FindBookmarks_bug420) {
+TEST_F(FPDFDocEmbedderTest, FindBookmarksBug420) {
   // Open a file with circular bookmarks.
   ASSERT_TRUE(OpenDocument("bookmarks_circular.pdf"));
 
@@ -598,7 +654,7 @@ TEST_F(FPDFDocEmbedderTest, DeletePageAndRender) {
     int height;
     const char* checksum;
   };
-  const PageData expected_page_data[5] = {
+  const std::array<const PageData, 5> expected_page_data = {{
       {200, 250,
        []() {
          return CFX_DefaultRenderDevice::UseSkiaRenderer()
@@ -623,11 +679,13 @@ TEST_F(FPDFDocEmbedderTest, DeletePageAndRender) {
                     ? "a8c5b3e626f665eddf593c6d4c32ae9e"
                     : "dcd768be15efb9c6e5093cf74508752c";
        }()},
-      {200, 250, []() {
+      {200, 250,
+       []() {
          return CFX_DefaultRenderDevice::UseSkiaRenderer()
                     ? "72eb157853ae2d19b70ea62e3f5ac202"
                     : "7a3f8f79ebcb350854c0d69607729ec5";
-       }()}};
+       }()},
+  }};
 
   // Render the original document. (page indices 0-4)
   ASSERT_TRUE(OpenDocument("rectangles_multi_pages.pdf"));
@@ -681,6 +739,84 @@ TEST_F(FPDFDocEmbedderTest, DeletePageAndRender) {
                   expected.checksum);
     UnloadPage(page);
   }
+}
+
+TEST_F(FPDFDocEmbedderTest, DeletePageAndSaveWithBookmarks) {
+  // The bookmarks reference the deleted page.
+  ASSERT_TRUE(OpenDocument("bookmarks.pdf"));
+
+  EXPECT_EQ(2, FPDF_GetPageCount(document()));
+  FPDFPage_Delete(document(), 0);
+  EXPECT_EQ(1, FPDF_GetPageCount(document()));
+
+  ASSERT_TRUE(FPDF_SaveAsCopy(document(), this, 0));
+  EXPECT_EQ(1, CountPageEntries(GetString()));
+  EXPECT_EQ(1, CountStreamEntries(GetString()));
+}
+
+TEST_F(FPDFDocEmbedderTest, DeletePageAndSaveWithCustomObject) {
+  // There exists a non-standard object that references the deleted page.
+  ASSERT_TRUE(OpenDocument("hello_world_2_pages_custom_object.pdf"));
+
+  EXPECT_EQ(2, FPDF_GetPageCount(document()));
+  FPDFPage_Delete(document(), 0);
+  EXPECT_EQ(1, FPDF_GetPageCount(document()));
+
+  ASSERT_TRUE(FPDF_SaveAsCopy(document(), this, 0));
+  EXPECT_EQ(1, CountPageEntries(GetString()));
+  EXPECT_EQ(1, CountStreamEntries(GetString()));
+}
+
+TEST_F(FPDFDocEmbedderTest, DeletePageAndSaveWithCustomObjectForNewPage) {
+  ASSERT_TRUE(OpenDocument("hello_world.pdf"));
+
+  EXPECT_EQ(1, FPDF_GetPageCount(document()));
+
+  {
+    ScopedFPDFPage new_page(FPDFPage_New(document(), 1, 300, 200));
+    ASSERT_TRUE(new_page);
+    EXPECT_EQ(2, FPDF_GetPageCount(document()));
+
+    // Add a non-standard object that references the newly created page.
+    CPDF_Document* doc = CPDFDocumentFromFPDFDocument(document());
+    ASSERT_TRUE(doc);
+
+    CPDF_Page* page = CPDFPageFromFPDFPage(new_page.get());
+    ASSERT_TRUE(page);
+
+    RetainPtr<CPDF_Dictionary> root_dict = doc->GetMutableRoot();
+    ASSERT_TRUE(root_dict);
+    root_dict->SetNewFor<CPDF_Reference>("CustomField", doc,
+                                         page->GetDict()->GetObjNum());
+  }
+
+  FPDFPage_Delete(document(), 1);
+  EXPECT_EQ(1, FPDF_GetPageCount(document()));
+
+  ASSERT_TRUE(FPDF_SaveAsCopy(document(), this, 0));
+  EXPECT_EQ(1, CountPageEntries(GetString()));
+  EXPECT_EQ(1, CountStreamEntries(GetString()));
+}
+
+TEST_F(FPDFDocEmbedderTest, DeletePageAndSaveForPageWithMultipleUses) {
+  // The deleted pages both use the same /Page object.
+  ASSERT_TRUE(OpenDocument("bug_1229106.pdf"));
+
+  EXPECT_EQ(4, FPDF_GetPageCount(document()));
+  FPDFPage_Delete(document(), 0);
+  EXPECT_EQ(3, FPDF_GetPageCount(document()));
+
+  ASSERT_TRUE(FPDF_SaveAsCopy(document(), this, 0));
+  EXPECT_EQ(2, CountPageEntries(GetString()));
+  EXPECT_EQ(2, CountStreamEntries(GetString()));
+
+  ClearString();
+  FPDFPage_Delete(document(), 0);
+  EXPECT_EQ(2, FPDF_GetPageCount(document()));
+
+  ASSERT_TRUE(FPDF_SaveAsCopy(document(), this, 0));
+  EXPECT_EQ(1, CountPageEntries(GetString()));
+  EXPECT_EQ(1, CountStreamEntries(GetString()));
 }
 
 TEST_F(FPDFDocEmbedderTest, GetFileIdentifier) {
@@ -776,7 +912,7 @@ TEST_F(FPDFDocEmbedderTest, Utf8Metadata) {
   EXPECT_EQ(L"Titlè 1", GetPlatformWString(buf));
 }
 
-TEST_F(FPDFDocEmbedderTest, Bug_182) {
+TEST_F(FPDFDocEmbedderTest, Bug182) {
   ASSERT_TRUE(OpenDocument("bug_182.pdf"));
 
   unsigned short buf[128];

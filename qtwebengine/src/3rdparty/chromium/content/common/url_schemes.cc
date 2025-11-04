@@ -130,18 +130,24 @@ void RegisterContentSchemes(bool should_lock_registry) {
   // url::CustomScheme is not significantly increased (since the functionality
   // is needed anyway).
   for (auto& cs : url::CustomScheme::GetSchemes()) {
-    if (cs.type != url::SCHEME_WITHOUT_AUTHORITY)
+    if (cs.type != url::SCHEME_WITHOUT_AUTHORITY) {
       url::AddStandardScheme(cs.name.c_str(), cs.type);
-    if (cs.flags & url::CustomScheme::Secure)
+    }
+    if (cs.flags & url::CustomScheme::Secure) {
       url::AddSecureScheme(cs.name.c_str());
-    if (cs.flags & url::CustomScheme::Local)
+    }
+    if (cs.flags & url::CustomScheme::Local) {
       url::AddLocalScheme(cs.name.c_str());
-    if (cs.flags & url::CustomScheme::NoAccessAllowed)
+    }
+    if (cs.flags & url::CustomScheme::NoAccessAllowed) {
       url::AddNoAccessScheme(cs.name.c_str());
-    if (cs.flags & url::CustomScheme::ContentSecurityPolicyIgnored)
+    }
+    if (cs.flags & url::CustomScheme::ContentSecurityPolicyIgnored) {
       url::AddCSPBypassingScheme(cs.name.c_str());
-    if (cs.flags & url::CustomScheme::CorsEnabled)
+    }
+    if (cs.flags & url::CustomScheme::CorsEnabled) {
       url::AddCorsEnabledScheme(cs.name.c_str());
+    }
   }
 
   // Prevent future modification of the scheme lists. This is to prevent
@@ -166,8 +172,9 @@ void RegisterContentSchemes(bool should_lock_registry) {
   // This list only applies to Chromium proper whereas Blink uses it's own
   // hardcoded list (see blink::URLSchemesRegistry).
   for (auto& cs : url::CustomScheme::GetSchemes()) {
-    if (cs.flags & url::CustomScheme::ServiceWorkersAllowed)
+    if (cs.flags & url::CustomScheme::ServiceWorkersAllowed) {
       GetMutableServiceWorkerSchemes().push_back(cs.name);
+    }
   }
 }
 

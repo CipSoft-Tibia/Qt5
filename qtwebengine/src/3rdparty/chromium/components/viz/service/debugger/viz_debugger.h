@@ -285,7 +285,7 @@ class VIZ_SERVICE_EXPORT VizDebugger {
                                                 __func__);                \
       if (dcs.IsActive()) {                                               \
         viz::VizDebugger::GetInstance()->AddLogMessage(                   \
-            base::StringPrintf(format, __VA_ARGS__), &dcs, option);       \
+            base::StringPrintf(format, ##__VA_ARGS__), &dcs, option);     \
       }                                                                   \
     }                                                                     \
   } while (0)
@@ -367,23 +367,11 @@ DrawRectToTraceValue(const gfx::Vector2dF& pos,
 
 #define DBG_DEFAULT_UV 0
 
-#define DBG_VIZ_DEBUGGER_TRACE_IMPL(anno, pos, size, text)                \
-  BASE_CONCAT(DBG_VIZ_DEBUGGER_TRACE_IMPL_, DBG_USE_VIZ_DEBUGGER_TRACE()) \
-  (anno, pos, size, text)
-
-// Allow definition of DBG_USE_VIZ_DEBUGGER_TRACE() just before callsite
-// (instead of before inclusion of this header).
-#define DBG_VIZ_DEBUGGER_TRACE_IMPL_DBG_USE_VIZ_DEBUGGER_TRACE() \
-  DBG_VIZ_DEBUGGER_TRACE_IMPL_0
-
-#define DBG_VIZ_DEBUGGER_TRACE_IMPL_0(anno, pos, size, text) \
-  std::ignore = anno;                                        \
-  std::ignore = pos;                                         \
-  std::ignore = size;
-
-#define DBG_VIZ_DEBUGGER_TRACE_IMPL_1(anno, pos, size, text)                   \
-  TRACE_EVENT1(TRACE_DISABLED_BY_DEFAULT(VIZ_DEBUGGER_TRACING_CATEGORY), anno, \
-               "args", viz::DrawRectToTraceValue(pos, size, text))
+#define DBG_VIZ_DEBUGGER_TRACE_IMPL(anno, pos, size, text)            \
+  TRACE_EVENT_INSTANT1(                                               \
+      TRACE_DISABLED_BY_DEFAULT(VIZ_DEBUGGER_TRACING_CATEGORY), anno, \
+      TRACE_EVENT_FLAG_NONE, "args",                                  \
+      viz::DrawRectToTraceValue(pos, size, text))
 
 #define DBG_DRAW_RECTANGLE_OPT_BUFF_UV_TEXT(anno, option, pos, size, id, uv, \
                                             text)                            \
@@ -402,20 +390,6 @@ DrawRectToTraceValue(const gfx::Vector2dF& pos,
   std::ignore = format;
 
 #define DBG_CONNECTED_OR_TRACING(enabled)                             \
-  BASE_CONCAT(DBG_VIZ_CATEGORY_ENABLE_, DBG_USE_VIZ_DEBUGGER_TRACE()) \
-  (enabled)
-
-// Allow definition of DBG_USE_VIZ_DEBUGGER_TRACE() just before callsite
-// (instead of before inclusion of this header).
-#define DBG_VIZ_CATEGORY_ENABLE_DBG_USE_VIZ_DEBUGGER_TRACE() \
-  DBG_VIZ_CATEGORY_ENABLE_0
-
-#define DBG_VIZ_CATEGORY_ENABLE_0(enabled) \
-  do {                                     \
-    enabled = false;                       \
-  } while (0)
-
-#define DBG_VIZ_CATEGORY_ENABLE_1(enabled) \
   TRACE_EVENT_CATEGORY_GROUP_ENABLED(      \
       TRACE_DISABLED_BY_DEFAULT(VIZ_DEBUGGER_TRACING_CATEGORY), (&enabled))
 
@@ -465,7 +439,7 @@ DrawRectToTraceValue(const gfx::Vector2dF& pos,
   DBG_DRAW_TEXT_OPT(anno, DBG_OPT_BLACK, pos, text)
 
 #define DBG_LOG(anno, format, ...) \
-  DBG_LOG_OPT(anno, DBG_OPT_BLACK, format, __VA_ARGS__)
+  DBG_LOG_OPT(anno, DBG_OPT_BLACK, format, ##__VA_ARGS__)
 
 #define DBG_DRAW_RECT_OPT_BUFF_UV(anno, option, rect, id, uv)             \
   DBG_DRAW_RECTANGLE_OPT_BUFF_UV(                                         \

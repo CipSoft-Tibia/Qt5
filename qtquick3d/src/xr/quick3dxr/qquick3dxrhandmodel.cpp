@@ -19,7 +19,7 @@ QT_BEGIN_NAMESPACE
     \inqmlmodule QtQuick3D.Xr
     \brief Represents a 3D model for a hand.
 
-    Contains an animated 3D model that tracks the user's hands
+    Contains an animated 3D model that tracks the user's hands.
 
     XrHandModel is only visible when hand tracking is active.
 

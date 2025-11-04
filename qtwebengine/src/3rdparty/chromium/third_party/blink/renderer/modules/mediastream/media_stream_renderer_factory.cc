@@ -6,6 +6,7 @@
 
 #include <utility>
 
+#include "base/memory/scoped_refptr.h"
 #include "base/task/sequenced_task_runner.h"
 #include "base/task/single_thread_task_runner.h"
 #include "media/media_buildflags.h"
@@ -61,10 +62,10 @@ MediaStreamRendererFactory::MediaStreamRendererFactory() {}
 
 MediaStreamRendererFactory::~MediaStreamRendererFactory() {}
 
-scoped_refptr<WebMediaStreamVideoRenderer>
+scoped_refptr<MediaStreamVideoRenderer>
 MediaStreamRendererFactory::GetVideoRenderer(
     const WebMediaStream& web_stream,
-    const WebMediaStreamVideoRenderer::RepaintCB& repaint_cb,
+    const MediaStreamVideoRenderer::RepaintCB& repaint_cb,
     scoped_refptr<base::SequencedTaskRunner> video_task_runner,
     scoped_refptr<base::SingleThreadTaskRunner> main_render_task_runner) {
 #if BUILDFLAG(ENABLE_WEBRTC)
@@ -81,16 +82,16 @@ MediaStreamRendererFactory::GetVideoRenderer(
     return nullptr;
   }
 
-  return new MediaStreamVideoRendererSink(video_components[0].Get(), repaint_cb,
-                                          std::move(video_task_runner),
-                                          std::move(main_render_task_runner));
+  return base::MakeRefCounted<MediaStreamVideoRendererSink>(
+      video_components[0].Get(), repaint_cb, std::move(video_task_runner),
+      std::move(main_render_task_runner));
 #else
   WebRtcLogMessage("Error: No WebRTC support.");
   return nullptr;
 #endif
 }
 
-scoped_refptr<WebMediaStreamAudioRenderer>
+scoped_refptr<MediaStreamAudioRenderer>
 MediaStreamRendererFactory::GetAudioRenderer(
     const WebMediaStream& web_stream,
     WebLocalFrame* web_frame,
@@ -146,9 +147,9 @@ MediaStreamRendererFactory::GetAudioRenderer(
         "%s => (creating TrackAudioRenderer for %s audio track)", __func__,
         audio_track->is_local_track() ? "local" : "remote"));
 
-    return new TrackAudioRenderer(audio_components[0].Get(), *frame,
-                                  String(device_id),
-                                  std::move(on_render_error_callback));
+    return base::MakeRefCounted<TrackAudioRenderer>(
+        audio_components[0].Get(), *frame, String(device_id),
+        std::move(on_render_error_callback));
   }
 
   // Get the AudioDevice associated with the frame where this track was created,
@@ -181,7 +182,7 @@ MediaStreamRendererFactory::GetAudioRenderer(
         "%s => (creating new WebRtcAudioRenderer for remote stream)",
         __func__));
 
-    renderer = new WebRtcAudioRenderer(
+    renderer = base::MakeRefCounted<WebRtcAudioRenderer>(
         PeerConnectionDependencyFactory::From(*frame->DomWindow())
             .GetWebRtcSignalingTaskRunner(),
         web_stream, *web_frame,

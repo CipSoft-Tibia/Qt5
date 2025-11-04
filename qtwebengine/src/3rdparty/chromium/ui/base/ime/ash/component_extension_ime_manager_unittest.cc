@@ -6,11 +6,12 @@
 
 #include <stddef.h>
 
+#include <optional>
+
 #include "base/memory/ptr_util.h"
 #include "base/memory/raw_ptr.h"
 #include "testing/gmock/include/gmock/gmock.h"
 #include "testing/gtest/include/gtest/gtest.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "ui/base/ime/ash/extension_ime_util.h"
 #include "ui/base/ime/ash/mock_component_extension_ime_manager_delegate.h"
 
@@ -97,7 +98,7 @@ class ComponentExtensionIMEManagerTest : public testing::Test {
     ext3.id = "ext3_id_xxxxxxxxxxxxxxxxxxxxxxxx";
     ext3.description = "ext3_description";
     ext3.options_page_url =
-    GURL("chrome-extension://" + ext3.id + "/options.html");
+        GURL("chrome-extension://" + ext3.id + "/options.html");
     ext3.path = base::FilePath("ext3_file_path");
 
     ComponentExtensionEngine ext3_engine1;
@@ -143,8 +144,7 @@ TEST_F(ComponentExtensionIMEManagerTest, LoadComponentExtensionIMETest) {
     for (size_t j = 0; j < ime_list_[i].engines.size(); ++j) {
       const std::string input_method_id =
           extension_ime_util::GetComponentInputMethodID(
-              ime_list_[i].id,
-              ime_list_[i].engines[j].engine_id);
+              ime_list_[i].id, ime_list_[i].engines[j].engine_id);
       component_ext_mgr_->LoadComponentExtensionIME(nullptr /* profile */,
                                                     input_method_id);
       EXPECT_EQ(ime_list_[i].id, mock_delegate_->last_loaded_extension_id());
@@ -239,7 +239,7 @@ TEST_F(ComponentExtensionIMEManagerTest,
                           Property(&InputMethodDescriptor::handwriting_language,
                                    Optional(Eq(""))),
                           Property(&InputMethodDescriptor::handwriting_language,
-                                   absl::nullopt)));
+                                   std::nullopt)));
 }
 
 }  // namespace

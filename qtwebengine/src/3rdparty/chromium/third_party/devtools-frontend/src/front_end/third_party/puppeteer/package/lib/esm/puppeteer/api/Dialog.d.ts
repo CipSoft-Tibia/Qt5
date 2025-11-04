@@ -33,6 +33,10 @@ export declare abstract class Dialog {
     /**
      * @internal
      */
+    protected handled: boolean;
+    /**
+     * @internal
+     */
     constructor(type: Protocol.Page.DialogType, message: string, defaultValue?: string);
     /**
      * The type of the dialog.
@@ -50,7 +54,7 @@ export declare abstract class Dialog {
     /**
      * @internal
      */
-    protected abstract sendCommand(options: {
+    protected abstract handle(options: {
         accept: boolean;
         text?: string;
     }): Promise<void>;

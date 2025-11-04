@@ -8,7 +8,7 @@
 qt_get_tool_target_name(target_name qopcuaxmldatatypes2cpp)
 qt_internal_add_tool(${target_name}
     TOOLS_TARGET
-        QtOpcUa
+        OpcUa
     SOURCES
         main.cpp
         util.cpp util.h
@@ -19,6 +19,7 @@ qt_internal_add_tool(${target_name}
         field.cpp field.h
         import.cpp import.h
         mappingfilegenerator.cpp mappingfilegenerator.h
+        nodeidgenerator.cpp nodeidgenerator.h
         recursivedescentparser.cpp recursivedescentparser.h
         stringidentifier.cpp stringidentifier.h
         structuredtype.cpp structuredtype.h
@@ -26,4 +27,5 @@ qt_internal_add_tool(${target_name}
         visitor.h
         xmlelement.cpp xmlelement.h
 )
+
 qt_internal_return_unless_building_tools()

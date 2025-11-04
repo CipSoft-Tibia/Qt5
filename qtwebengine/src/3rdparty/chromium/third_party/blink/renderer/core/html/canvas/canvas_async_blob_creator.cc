@@ -2,6 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#ifdef UNSAFE_BUFFERS_BUILD
+// TODO(crbug.com/351564777): Remove this and convert code to safer constructs.
+#pragma allow_unsafe_buffers
+#endif
+
 #include "third_party/blink/renderer/core/html/canvas/canvas_async_blob_creator.h"
 
 #include "base/location.h"
@@ -147,7 +152,7 @@ CanvasAsyncBlobCreator::CanvasAsyncBlobCreator(
     base::TimeTicks start_time,
     ExecutionContext* context,
     const IdentifiableToken& input_digest,
-    ScriptPromiseResolver* resolver)
+    ScriptPromiseResolver<Blob>* resolver)
     : CanvasAsyncBlobCreator(image,
                              options,
                              function_type,
@@ -165,7 +170,7 @@ CanvasAsyncBlobCreator::CanvasAsyncBlobCreator(
     base::TimeTicks start_time,
     ExecutionContext* context,
     const IdentifiableToken& input_digest,
-    ScriptPromiseResolver* resolver)
+    ScriptPromiseResolver<Blob>* resolver)
     : fail_encoder_initialization_for_test_(false),
       enforce_idle_encoding_for_test_(false),
       context_(context),
@@ -194,8 +199,12 @@ CanvasAsyncBlobCreator::CanvasAsyncBlobCreator(
     // If image is lazy decoded, call readPixels() to trigger decoding.
     if (skia_image_->isLazyGenerated()) {
       SkImageInfo info = SkImageInfo::MakeN32Premul(1, 1);
-      std::vector<uint8_t> pixel(info.bytesPerPixel());
-      skia_image_->readPixels(info, pixel.data(), info.minRowBytes(), 0, 0);
+      // MakeN32Premul uses the kN32_SkColorType, which has 8 bytes per pixel.
+      // Sadly the compiler can't determine that automatically.
+      constexpr int kMaxBytesPerPixel = 16;
+      CHECK_LE(info.bytesPerPixel(), kMaxBytesPerPixel);
+      uint8_t pixel[kMaxBytesPerPixel];
+      skia_image_->readPixels(info, pixel, info.minRowBytes(), 0, 0);
     }
 
     if (skia_image_->peekPixels(&src_data_)) {
@@ -444,8 +453,8 @@ void CanvasAsyncBlobCreator::CreateBlobAndReturnResult(
     Vector<unsigned char> encoded_image) {
   RecordIdleTaskStatusHistogram(idle_task_status_);
 
-  Blob* result_blob = Blob::Create(encoded_image.data(), encoded_image.size(),
-                                   ImageEncodingMimeTypeName(mime_type_));
+  Blob* result_blob =
+      Blob::Create(encoded_image, ImageEncodingMimeTypeName(mime_type_));
   if (function_type_ == kHTMLCanvasToBlobCallback) {
     context_->GetTaskRunner(TaskType::kCanvasBlobSerialization)
         ->PostTask(FROM_HERE,
@@ -455,7 +464,7 @@ void CanvasAsyncBlobCreator::CreateBlobAndReturnResult(
   } else {
     context_->GetTaskRunner(TaskType::kCanvasBlobSerialization)
         ->PostTask(FROM_HERE,
-                   WTF::BindOnce(&ScriptPromiseResolver::Resolve<Blob, Blob*>,
+                   WTF::BindOnce(&ScriptPromiseResolver<Blob>::Resolve<Blob*>,
                                  WrapPersistent(script_promise_resolver_.Get()),
                                  WrapPersistent(result_blob)));
   }
@@ -535,7 +544,7 @@ void CanvasAsyncBlobCreator::CreateNullAndReturnResult() {
         ->PostTask(
             FROM_HERE,
             WTF::BindOnce(
-                &ScriptPromiseResolver::Reject<DOMException, DOMException*>,
+                &ScriptPromiseResolverBase::Reject<DOMException, DOMException*>,
                 WrapPersistent(script_promise_resolver_.Get()),
                 WrapPersistent(MakeGarbageCollected<DOMException>(
                     DOMExceptionCode::kEncodingError,

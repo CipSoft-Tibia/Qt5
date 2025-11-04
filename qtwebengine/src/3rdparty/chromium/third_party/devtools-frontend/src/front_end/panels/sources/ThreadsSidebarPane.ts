@@ -30,7 +30,7 @@ export class ThreadsSidebarPane extends UI.Widget.VBox implements
   constructor() {
     super(true);
 
-    this.contentElement.setAttribute('jslog', `${VisualLogging.pane().context('debugger-threads')}`);
+    this.contentElement.setAttribute('jslog', `${VisualLogging.section('sources.threads')}`);
     this.items = new UI.ListModel.ListModel();
     this.list = new UI.ListControl.ListControl(this.items, this, UI.ListControl.ListMode.NonViewport);
     const currentTarget = UI.Context.Context.instance().flavor(SDK.Target.Target);
@@ -89,7 +89,7 @@ export class ThreadsSidebarPane extends UI.Widget.VBox implements
     debuggerModel.addEventListener(SDK.DebuggerModel.Events.DebuggerResumed, updatePausedState);
     debuggerModel.runtimeModel().addEventListener(SDK.RuntimeModel.Events.ExecutionContextChanged, updateTitle);
     SDK.TargetManager.TargetManager.instance().addEventListener(
-        SDK.TargetManager.Events.NameChanged, targetNameChanged);
+        SDK.TargetManager.Events.NAME_CHANGED, targetNameChanged);
 
     updatePausedState();
     updateTitle();

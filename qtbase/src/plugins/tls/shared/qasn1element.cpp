@@ -1,5 +1,6 @@
 // Copyright (C) 2014 Jeremy Lainé <jeremy.laine@m4x.org>
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:data-parser
 
 
 #include "qasn1element_p.h"
@@ -337,15 +338,15 @@ QByteArray QAsn1Element::toObjectName() const
 QString QAsn1Element::toString() const
 {
     // Detect embedded NULs and reject
-    if (qstrlen(mValue) < uint(mValue.size()))
+    if (mValue.contains('\0'))
         return QString();
 
     if (mType == PrintableStringType || mType == TeletexStringType
         || mType == Rfc822NameType || mType == DnsNameType
         || mType == UniformResourceIdentifierType)
-        return QString::fromLatin1(mValue, mValue.size());
+        return QString::fromLatin1(mValue);
     if (mType == Utf8StringType)
-        return QString::fromUtf8(mValue, mValue.size());
+        return QString::fromUtf8(mValue);
 
     return QString();
 }

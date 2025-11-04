@@ -22,7 +22,7 @@ using namespace Qt::StringLiterals;
 // Probably, might be increased. To be investigated and tested on Android implementation
 static constexpr int MaxPendingImagesCount = 1;
 
-static Q_LOGGING_CATEGORY(qLcImageCapture, "qt.multimedia.imageCapture")
+Q_STATIC_LOGGING_CATEGORY(qLcImageCapture, "qt.multimedia.imageCapture")
 
 QFFmpegImageCapture::QFFmpegImageCapture(QImageCapture *parent)
   : QPlatformImageCapture(parent)
@@ -133,6 +133,22 @@ void QFFmpegImageCapture::setCaptureSession(QPlatformMediaCaptureSession *sessio
                 &QFFmpegImageCapture::onVideoSourceChanged);
 
     onVideoSourceChanged();
+}
+
+void QFFmpegImageCapture::cancelPendingImage(QImageCapture::Error error, const QString &errorMsg)
+{
+    if (m_pendingImages.empty()) {
+        qCDebug(qLcImageCapture) <<
+            "QImageCapture backend received an event to cancel a pending capture, "
+            "but no captures are pending. Most likely an internal Qt bug.";
+        return;
+    }
+
+    PendingImage cancelledImage = m_pendingImages.dequeue();
+
+    emit QPlatformImageCapture::error(cancelledImage.id, error, errorMsg);
+
+    updateReadyForCapture();
 }
 
 void QFFmpegImageCapture::updateReadyForCapture()

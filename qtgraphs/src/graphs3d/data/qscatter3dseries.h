@@ -21,6 +21,9 @@ class Q_GRAPHS_EXPORT QScatter3DSeries : public QAbstract3DSeries
     Q_PROPERTY(float itemSize READ itemSize WRITE setItemSize NOTIFY itemSizeChanged FINAL)
     Q_PROPERTY(QScatterDataArray dataArray READ dataArray WRITE setDataArray NOTIFY dataArrayChanged FINAL)
 
+    QML_ELEMENT
+    QML_UNCREATABLE("Trying to create uncreatable: QScatter3DSeries, use Scatter3DSeries instead.")
+
 public:
     explicit QScatter3DSeries(QObject *parent = nullptr);
     explicit QScatter3DSeries(QScatterDataProxy *dataProxy, QObject *parent = nullptr);

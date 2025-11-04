@@ -27,9 +27,9 @@ qt_internal_add_module(Multimedia
         audio/qaudiosource.cpp audio/qaudiosource.h
         audio/qaudiosink.cpp audio/qaudiosink.h
         audio/qaudiosystem.cpp audio/qaudiosystem_p.h
-        audio/qaudiostatemachine.cpp audio/qaudiostatemachine_p.h
-        audio/qaudiostatemachineutils_p.h
+        audio/qaudiosystem_platform_stream_support.cpp audio/qaudiosystem_platform_stream_support_p.h
         audio/qaudio_alignment_support_p.h
+        audio/qaudio_platform_implementation_support_p.h
         audio/qaudio_qiodevice_support_p.h
         audio/qaudio_qspan_support_p.h
         audio/qaudio_rtsan_support_p.h
@@ -69,8 +69,10 @@ qt_internal_add_module(Multimedia
         qmediastoragelocation.cpp qmediastoragelocation_p.h
         qmediatimerange.cpp qmediatimerange.h
         qmultimediautils.cpp qmultimediautils_p.h
+        qmultimedia_ranges_p.h
         qvideotransformation.cpp qvideotransformation_p.h
         qmediaframeinput.cpp qmediaframeinput_p.h
+        qmultimedia_assume_p.h
         qmaybe_p.h
         qtmultimediaglobal.h qtmultimediaglobal_p.h
         qerrorinfo_p.h
@@ -110,6 +112,9 @@ qt_internal_add_module(Multimedia
         playback
         recording
         video
+    DEFINES
+        QT_NO_CAST_FROM_ASCII
+        QT_NO_CAST_TO_ASCII
     LIBRARIES
         Qt::CorePrivate
         Qt::GuiPrivate
@@ -159,8 +164,6 @@ qt_internal_extend_target(Multimedia CONDITION QT_FEATURE_alsa
         alsa/qalsaaudiosource.cpp alsa/qalsaaudiosource_p.h
         alsa/qalsaaudiosink.cpp alsa/qalsaaudiosink_p.h
         alsa/qalsaaudiodevices.cpp alsa/qalsaaudiodevices_p.h
-    INCLUDE_DIRECTORIES
-        alsa
     LIBRARIES
         ALSA::ALSA
 )
@@ -206,8 +209,7 @@ qt_internal_extend_target(Multimedia CONDITION QT_FEATURE_pulseaudio
         pulseaudio/qpulseaudiosink.cpp pulseaudio/qpulseaudiosink_p.h
         pulseaudio/qpulsehelpers.cpp pulseaudio/qpulsehelpers_p.h
         pulseaudio/qpulseaudiodevices.cpp pulseaudio/qpulseaudiodevices_p.h
-    INCLUDE_DIRECTORIES
-        pulseaudio
+        pulseaudio/qpulseaudiodevice_p.h
     LIBRARIES
         WrapPulseAudio::WrapPulseAudio
 )
@@ -219,8 +221,6 @@ qt_internal_extend_target(Multimedia CONDITION ANDROID
         android/qandroidaudiodevice.cpp android/qandroidaudiodevice_p.h
         android/qopenslesengine.cpp android/qopenslesengine_p.h
         android/qandroidaudiodevices.cpp android/qandroidaudiodevices_p.h
-    INCLUDE_DIRECTORIES
-        android
     LIBRARIES
         OpenSLES
 )
@@ -255,17 +255,27 @@ qt_internal_extend_target(Multimedia CONDITION WIN32
 
 qt_internal_extend_target(Multimedia CONDITION APPLE
     SOURCES
-        darwin/qdarwinaudiounit_p.h
         darwin/qdarwinaudiodevice.cpp darwin/qdarwinaudiodevice_p.h
         darwin/qdarwinaudiosource.mm darwin/qdarwinaudiosource_p.h
         darwin/qdarwinaudiosink.mm darwin/qdarwinaudiosink_p.h
         darwin/qcoreaudioutils.cpp darwin/qcoreaudioutils_p.h
         darwin/qdarwinaudiodevices.mm darwin/qdarwinaudiodevices_p.h
-    INCLUDE_DIRECTORIES
-        darwin
+        darwin/qavfhelpers.mm darwin/qavfhelpers_p.h
     LIBRARIES
         ${FWCoreAudio}
         ${FWAudioToolbox}
+        ${FWCoreVideo}
+)
+
+qt_internal_extend_target(Multimedia CONDITION MACOS OR IOS
+    SOURCES
+        darwin/qavfcameradebug_p.h
+        darwin/qavfcamerautility_p.h darwin/qavfcamerautility.mm
+        darwin/qavfvideodevices.mm darwin/qavfvideodevices_p.h
+        darwin/qavfcamerabase.mm darwin/qavfcamerabase_p.h
+    LIBRARIES
+        ${FWCoreMedia}
+        ${FWAVFoundation}
 )
 
 qt_internal_extend_target(Multimedia CONDITION MACOS
@@ -273,7 +283,7 @@ qt_internal_extend_target(Multimedia CONDITION MACOS
         darwin/qmacosaudiodatautils_p.h darwin/qmacosaudiodatautils.cpp
 )
 
-qt_internal_extend_target(Multimedia CONDITION IOS OR TVOS
+qt_internal_extend_target(Multimedia CONDITION IOS OR TVOS OR VISIONOS
     SOURCES
         darwin/qcoreaudiosessionmanager.mm darwin/qcoreaudiosessionmanager_p.h
     LIBRARIES
@@ -294,41 +304,49 @@ qt_internal_extend_target(Multimedia CONDITION QNX
         asound
 )
 
-qt_internal_extend_target(Multimedia CONDITION QT_FEATURE_wmf
+qt_internal_extend_target(Multimedia CONDITION WIN32
     SOURCES
-        windows/qwindowsaudiodevice.cpp windows/qwindowsaudiodevice_p.h
-        windows/qwindowsaudiosource.cpp windows/qwindowsaudiosource_p.h
-        windows/qwindowsaudiosink.cpp windows/qwindowsaudiosink_p.h
-        windows/qwindowsaudioutils.cpp windows/qwindowsaudioutils_p.h
-        windows/qwindowsaudiodevices.cpp windows/qwindowsaudiodevices_p.h
-        windows/qwindowsmediafoundation.cpp windows/qwindowsmediafoundation_p.h
-        windows/qwindowsresampler.cpp windows/qwindowsresampler_p.h
-        windows/qwindowsmultimediautils.cpp windows/qwindowsmultimediautils_p.h
-        windows/qwindowsmfdefs.cpp windows/qwindowsmfdefs_p.h
         windows/qcominitializer.cpp windows/qcominitializer_p.h
         windows/qcomtaskresource_p.h
-    INCLUDE_DIRECTORIES
-        windows
-    LIBRARIES
-        winmm
-        ksuser
-)
-
-# Only on Windows' MinGW/LLVM build, symbols from `strmif.h` and `ddraw.h` conflicts
-# with symbols defined in `ksmedia.h`.
-qt_internal_extend_target(Multimedia CONDITION QT_FEATURE_wmf AND MINGW
-    NO_UNITY_BUILD_SOURCES
+        windows/qwindows_propertystore.cpp windows/qwindows_propertystore_p.h
+        windows/qwindows_wasapi_warmup_client.cpp windows/qwindows_wasapi_warmup_client_p.h
         windows/qwindowsaudiodevice.cpp windows/qwindowsaudiodevice_p.h
-        windows/qwindowsaudiosource.cpp windows/qwindowsaudiosource_p.h
-        windows/qwindowsaudiosink.cpp windows/qwindowsaudiosink_p.h
-        windows/qwindowsaudioutils.cpp windows/qwindowsaudioutils_p.h
         windows/qwindowsaudiodevices.cpp windows/qwindowsaudiodevices_p.h
+        windows/qwindowsaudiosink.cpp windows/qwindowsaudiosink_p.h
+        windows/qwindowsaudiosource.cpp windows/qwindowsaudiosource_p.h
+        windows/qwindowsaudioutils.cpp windows/qwindowsaudioutils_p.h
         windows/qwindowsmediafoundation.cpp windows/qwindowsmediafoundation_p.h
-        windows/qwindowsresampler.cpp windows/qwindowsresampler_p.h
         windows/qwindowsmultimediautils.cpp windows/qwindowsmultimediautils_p.h
-        windows/qwindowsmfdefs.cpp windows/qwindowsmfdefs_p.h
-        windows/qcomtaskresource_p.h
+        windows/qwindowsresampler.cpp windows/qwindowsresampler_p.h
+        windows/qwindowsvideodevices.cpp windows/qwindowsvideodevices_p.h
+        windows/qwmf_support.cpp windows/qwmf_support_p.h
+    LIBRARIES
+        avrt
+        ksuser
+        propsys
+        uuid
+    NO_UNITY_BUILD_SOURCES
+        # audioclient.h causes problems with mingw
+        windows/qwindows_wasapi_warmup_client.cpp
+        windows/qwindowsaudiodevice.cpp
+        windows/qwindowsaudiodevices.cpp
+        windows/qwindowsaudiosink.cpp
+        windows/qwindowsaudiosource.cpp
+        windows/qwindowsaudioutils.cpp
+    )
+
+set(source_with_init_guid
+    windows/qwindows_wasapi_warmup_client.cpp
+    windows/qwindowsmuldimediautils.cpp
+    windows/qwindowsvideodevices.cpp
 )
+if(MINGW)
+    # mingw's uuid.lib does not contain PKEY_Device_FriendlyName and friends
+    list(APPEND source_with_init_guid windows/qwindowsaudiodevices.cpp)
+endif()
+
+set_source_files_properties(${source_with_init_guid} PROPERTIES COMPILE_DEFINITIONS INITGUID)
+
 
 qt_internal_extend_target(Multimedia CONDITION WASM
     SOURCES
@@ -450,3 +468,10 @@ if(DEFINED QT_DEFAULT_MEDIA_BACKEND)
     target_compile_definitions(Multimedia
         PRIVATE QT_DEFAULT_MEDIA_BACKEND="${QT_DEFAULT_MEDIA_BACKEND}")
 endif()
+
+# Install public QMake support files.
+qt_path_join(ios_prf_install_dir "${QT_INSTALL_DIR}" "${INSTALL_MKSPECSDIR}" features ios)
+qt_copy_or_install(FILES
+    "${CMAKE_CURRENT_SOURCE_DIR}/../../mkspecs/features/ios/add_ios_ffmpeg_libraries.prf"
+    DESTINATION ${ios_prf_install_dir}
+)

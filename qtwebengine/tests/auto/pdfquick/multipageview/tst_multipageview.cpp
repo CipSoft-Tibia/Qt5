@@ -8,6 +8,7 @@
 #include <QtGui/QPointingDevice>
 #include <QtGui/QStyleHints>
 #include <QtQuick/QQuickView>
+#include <QtPdf/private/qtpdfglobal_p.h>
 #include <QtPdfQuick/private/qquickpdflinkmodel_p.h>
 #include <QtPdfQuick/private/qquickpdfsearchmodel_p.h>
 #include <QtPdfQuick/private/qquickpdfpageimage_p.h>
@@ -15,7 +16,7 @@
 
 using namespace Qt::StringLiterals;
 
-Q_LOGGING_CATEGORY(lcTests, "qt.pdf.tests")
+Q_PDF_LOGGING_CATEGORY(lcTests, "qt.pdf.tests")
 
 class tst_MultiPageView : public QQuickDataTest
 {

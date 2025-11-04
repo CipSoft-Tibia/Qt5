@@ -8,6 +8,19 @@
 
 #include <QThread>
 
+#ifdef Q_OS_UNIX
+#include <private/qcore_unix_p.h>
+#include <termios.h>
+#elif defined(Q_OS_WIN)
+#include <QtCore/qt_windows.h>
+#endif
+
+#ifdef Q_OS_QNX
+#  ifdef open
+#    undef open
+#  endif
+#endif
+
 Q_DECLARE_METATYPE(QSerialPort::SerialPortError);
 Q_DECLARE_METATYPE(QSerialPort::BaudRate);
 Q_DECLARE_METATYPE(QSerialPort::DataBits);
@@ -113,6 +126,8 @@ private slots:
 
     void bindingsAndProperties();
 
+    void restoreSettingsOnClose();
+
     void readyReadNotRecursive();
 
 protected slots:
@@ -184,6 +199,7 @@ void tst_QSerialPort::defaultConstruct()
     QCOMPARE(serialPort.pinoutSignals(), QSerialPort::NoSignal);
     QCOMPARE(serialPort.isRequestToSend(), false);
     QCOMPARE(serialPort.isDataTerminalReady(), false);
+    QCOMPARE(serialPort.settingsRestoredOnClose(), true);
 
     // QIODevice
     QCOMPARE(serialPort.openMode(), QIODevice::NotOpen);
@@ -1399,6 +1415,185 @@ void tst_QSerialPort::bindingsAndProperties()
         sp.setBreakEnabled(true);
         QCOMPARE(sp.error(), QSerialPort::SerialPortError::NotOpenError);
     }
+}
+
+class PlatformSettings
+{
+public:
+    explicit PlatformSettings(const QString &portName) : portInfo(portName) {}
+
+    void getPortSettings();
+    void restorePortSettings();
+private:
+    friend bool operator==(const PlatformSettings &lhs, const PlatformSettings &rhs);
+    friend bool operator!=(const PlatformSettings &lhs, const PlatformSettings &rhs)
+    { return !operator==(lhs, rhs); }
+
+
+    QSerialPortInfo portInfo;
+#ifdef Q_OS_UNIX
+    termios tio;
+#elif defined(Q_OS_WIN)
+    DCB dcb;
+    COMMTIMEOUTS commTimeouts;
+#endif
+};
+
+void PlatformSettings::getPortSettings()
+{
+#ifdef Q_OS_UNIX
+    const int flags = O_NOCTTY | O_NONBLOCK | O_RDONLY;
+    int descriptor = qt_safe_open(portInfo.systemLocation().toLocal8Bit().constData(), flags);
+    ::memset(&tio, 0, sizeof(termios));
+    ::tcgetattr(descriptor, &tio);
+    qt_safe_close(descriptor);
+#elif defined(Q_OS_WIN)
+    auto handle = ::CreateFile(reinterpret_cast<const wchar_t*>(portInfo.systemLocation().utf16()),
+                               GENERIC_READ, 0, nullptr, OPEN_EXISTING, FILE_FLAG_OVERLAPPED,
+                               nullptr);
+    ::ZeroMemory(&dcb, sizeof(DCB));
+    dcb.DCBlength = sizeof(DCB);
+    ::GetCommState(handle, &dcb);
+    ::GetCommTimeouts(handle, &commTimeouts);
+    CloseHandle(handle);
+#endif
+}
+
+void PlatformSettings::restorePortSettings()
+{
+#ifdef Q_OS_UNIX
+    const int flags = O_NOCTTY | O_NONBLOCK | O_RDONLY;
+    int descriptor = qt_safe_open(portInfo.systemLocation().toLocal8Bit().constData(), flags);
+    ::tcsetattr(descriptor, TCSANOW, &tio);
+    qt_safe_close(descriptor);
+#elif defined(Q_OS_WIN)
+    auto handle = ::CreateFile(reinterpret_cast<const wchar_t*>(portInfo.systemLocation().utf16()),
+                               GENERIC_READ, 0, nullptr, OPEN_EXISTING, FILE_FLAG_OVERLAPPED,
+                               nullptr);
+    ::SetCommState(handle, &dcb);
+    ::SetCommTimeouts(handle, &commTimeouts);
+    CloseHandle(handle);
+#endif
+}
+
+bool operator==(const PlatformSettings &lhs, const PlatformSettings &rhs)
+{
+#ifdef Q_OS_UNIX
+    // compare only the minimal subset
+    const bool tioEqual =
+            lhs.tio.c_iflag == rhs.tio.c_iflag
+            && lhs.tio.c_oflag == rhs.tio.c_oflag
+            && lhs.tio.c_cflag == rhs.tio.c_cflag
+            && lhs.tio.c_lflag == rhs.tio.c_lflag;
+
+    if (tioEqual) {
+        const auto lhsISpeed = ::cfgetispeed(&lhs.tio);
+        const auto lhsOSpeed = ::cfgetospeed(&lhs.tio);
+
+        const auto rhsISpeed = ::cfgetispeed(&rhs.tio);
+        const auto rhsOSpeed = ::cfgetospeed(&rhs.tio);
+
+        return lhsISpeed == rhsISpeed && lhsOSpeed == rhsOSpeed;
+    }
+    return tioEqual;
+#elif defined(Q_OS_WIN)
+    const bool timeoutsEqual =
+        lhs.commTimeouts.ReadIntervalTimeout == rhs.commTimeouts.ReadIntervalTimeout
+        && lhs.commTimeouts.ReadTotalTimeoutMultiplier == rhs.commTimeouts.ReadTotalTimeoutMultiplier
+        && lhs.commTimeouts.ReadTotalTimeoutConstant == rhs.commTimeouts.ReadTotalTimeoutConstant
+        && lhs.commTimeouts.WriteTotalTimeoutMultiplier == rhs.commTimeouts.WriteTotalTimeoutMultiplier
+        && lhs.commTimeouts.WriteTotalTimeoutConstant == rhs.commTimeouts.WriteTotalTimeoutConstant;
+
+    const bool dcbEqual =
+        lhs.dcb.DCBlength == rhs.dcb.DCBlength
+        && lhs.dcb.BaudRate == rhs.dcb.BaudRate
+        && lhs.dcb.fBinary == rhs.dcb.fBinary
+        && lhs.dcb.fParity == rhs.dcb.fParity
+        && lhs.dcb.fOutxCtsFlow == rhs.dcb.fOutxCtsFlow
+        && lhs.dcb.fOutxDsrFlow == rhs.dcb.fOutxDsrFlow
+        && lhs.dcb.fDtrControl == rhs.dcb.fDtrControl
+        && lhs.dcb.fDsrSensitivity == rhs.dcb.fDsrSensitivity
+        && lhs.dcb.fTXContinueOnXoff == rhs.dcb.fTXContinueOnXoff
+        && lhs.dcb.fOutX == rhs.dcb.fOutX
+        && lhs.dcb.fInX == rhs.dcb.fInX
+        && lhs.dcb.fErrorChar == rhs.dcb.fErrorChar
+        && lhs.dcb.fNull == rhs.dcb.fNull
+        && lhs.dcb.fRtsControl == rhs.dcb.fRtsControl
+        && lhs.dcb.fAbortOnError == rhs.dcb.fAbortOnError
+        && lhs.dcb.wReserved == rhs.dcb.wReserved
+        && lhs.dcb.XonLim == rhs.dcb.XonLim
+        && lhs.dcb.XoffLim == rhs.dcb.XoffLim
+        && lhs.dcb.ByteSize == rhs.dcb.ByteSize
+        && lhs.dcb.Parity == rhs.dcb.Parity
+        && lhs.dcb.StopBits == rhs.dcb.StopBits
+        && lhs.dcb.XonChar == rhs.dcb.XonChar
+        && lhs.dcb.XoffChar == rhs.dcb.XoffChar
+        && lhs.dcb.ErrorChar == rhs.dcb.ErrorChar
+        && lhs.dcb.EofChar == rhs.dcb.EofChar
+        && lhs.dcb.EvtChar == rhs.dcb.EvtChar;
+
+    return timeoutsEqual && dcbEqual;
+#endif
+    // general case
+    return false;
+}
+
+void tst_QSerialPort::restoreSettingsOnClose()
+{
+#ifndef Q_OS_APPLE
+    PlatformSettings initialSettings(m_senderPortName);
+    initialSettings.getPortSettings();
+
+    QSerialPort port(m_senderPortName);
+    QVERIFY(port.settingsRestoredOnClose());
+    QSignalSpy restoreOnCloseSpy(&port, &QSerialPort::settingsRestoredOnCloseChanged);
+
+    port.setSettingsRestoredOnClose(false);
+    QVERIFY(!port.settingsRestoredOnClose());
+    QCOMPARE(restoreOnCloseSpy.size(), 1);
+    QCOMPARE(qvariant_cast<bool>(restoreOnCloseSpy.at(0).at(0)), false);
+
+    port.setBaudRate(QSerialPort::Baud115200);
+    port.setDataBits(QSerialPort::Data7);
+    port.setStopBits(QSerialPort::OneStop);
+    port.setParity(QSerialPort::OddParity);
+    port.setFlowControl(QSerialPort::HardwareControl);
+
+    // Open the port - new settings should be applied
+    QVERIFY(port.open(QIODevice::ReadOnly));
+    // Close the port - the same new settings should be kept
+    port.close();
+
+    PlatformSettings settingsAfterClose(m_senderPortName);
+    settingsAfterClose.getPortSettings();
+
+    QCOMPARE_NE(settingsAfterClose, initialSettings);
+
+    port.setSettingsRestoredOnClose(true);
+    QVERIFY(port.settingsRestoredOnClose());
+    QCOMPARE(restoreOnCloseSpy.size(), 2);
+    QCOMPARE(qvariant_cast<bool>(restoreOnCloseSpy.at(1).at(0)), true);
+
+    port.setBaudRate(QSerialPort::Baud57600);
+    port.setDataBits(QSerialPort::Data8);
+    port.setParity(QSerialPort::NoParity);
+    port.setFlowControl(QSerialPort::NoFlowControl);
+
+    // Open the port - new settings should be applied
+    QVERIFY(port.open(QIODevice::ReadOnly));
+    // Close the port - the old settings should be restored
+    port.close();
+
+    PlatformSettings settingsAfterSecondClose(m_senderPortName);
+    settingsAfterSecondClose.getPortSettings();
+    QCOMPARE(settingsAfterSecondClose, settingsAfterClose);
+    QCOMPARE_NE(settingsAfterSecondClose, initialSettings);
+
+    // restore the original settings
+    initialSettings.restorePortSettings();
+#else
+    QSKIP("macOS always resets the port on close.");
+#endif
 }
 
 // The reader connects to readyRead() and then calls waitForReadyRead()

@@ -161,14 +161,16 @@ struct GlobalVariableAttributes {
     /// @note a GlobalVariable generally doesn't have a `location` in WGSL, as it isn't allowed by
     /// the spec. The location maybe attached by transforms such as CanonicalizeEntryPointIO.
     std::optional<uint32_t> location;
-    /// The `index` attribute value for the variable, if set
-    /// @note a GlobalVariable generally doesn't have a `index` in WGSL, as it isn't allowed by
+    /// The `blend_src` attribute value for the variable, if set
+    /// @note a GlobalVariable generally doesn't have a `blend_src` in WGSL, as it isn't allowed by
     /// the spec. The location maybe attached by transforms such as CanonicalizeEntryPointIO.
-    std::optional<uint32_t> index;
+    std::optional<uint32_t> blend_src;
     /// The `color` attribute value for the variable, if set
     /// @note a GlobalVariable generally doesn't have a `color` in WGSL, as it isn't allowed by
     /// the spec. The location maybe attached by transforms such as CanonicalizeEntryPointIO.
     std::optional<uint32_t> color;
+    /// The `input_attachment_index` attribute value for the variable, if set
+    std::optional<uint32_t> input_attachment_index;
 };
 
 /// GlobalVariable is a module-scope variable
@@ -197,7 +199,6 @@ class GlobalVariable final : public Castable<GlobalVariable, Variable> {
     const GlobalVariableAttributes& Attributes() const { return attributes_; }
 
   private:
-    std::optional<tint::BindingPoint> binding_point_;
     tint::OverrideId override_id_;
     UniqueVector<const GlobalVariable*, 4> transitively_referenced_overrides_;
     GlobalVariableAttributes attributes_;
@@ -212,8 +213,8 @@ struct ParameterAttributes {
     std::optional<tint::BindingPoint> binding_point;
     /// The `location` attribute value for the variable, if set
     std::optional<uint32_t> location;
-    /// The `index` attribute value for the variable, if set
-    std::optional<uint32_t> index;
+    /// The `blend_src` attribute value for the variable, if set
+    std::optional<uint32_t> blend_src;
     /// The `color` attribute value for the variable, if set
     std::optional<uint32_t> color;
 };
@@ -291,6 +292,9 @@ class VariableUser final : public Castable<VariableUser, ValueExpression> {
                  const core::constant::Value* constant,
                  sem::Variable* variable);
     ~VariableUser() override;
+
+    /// @returns the AST node
+    const ast::IdentifierExpression* Declaration() const;
 
     /// @returns the variable that this expression refers to
     const sem::Variable* Variable() const { return variable_; }

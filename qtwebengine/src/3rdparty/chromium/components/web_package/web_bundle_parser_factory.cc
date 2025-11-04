@@ -4,12 +4,14 @@
 
 #include "components/web_package/web_bundle_parser_factory.h"
 
+#include <optional>
+
+#include "base/compiler_specific.h"
 #include "base/functional/callback_helpers.h"
 #include "components/web_package/web_bundle_parser.h"
 #include "mojo/public/cpp/bindings/remote.h"
 #include "mojo/public/cpp/bindings/self_owned_receiver.h"
 #include "net/http/http_util.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "url/gurl.h"
 
 namespace web_package {
@@ -27,12 +29,13 @@ class FileDataSource final : public mojom::BundleDataSource {
   // Implements mojom::BundleDataSource.
   void Read(uint64_t offset, uint64_t length, ReadCallback callback) override {
     std::vector<uint8_t> buf(length);
-    int bytes = file_.Read(offset, reinterpret_cast<char*>(buf.data()), length);
+    int bytes = UNSAFE_TODO(
+        file_.Read(offset, reinterpret_cast<char*>(buf.data()), length));
     if (bytes > 0) {
       buf.resize(bytes);
       std::move(callback).Run(std::move(buf));
     } else {
-      std::move(callback).Run(absl::nullopt);
+      std::move(callback).Run(std::nullopt);
     }
   }
 
@@ -66,10 +69,10 @@ WebBundleParserFactory::CreateFileDataSourceForTesting(base::File file) {
 
 void WebBundleParserFactory::GetParserForDataSource(
     mojo::PendingReceiver<mojom::WebBundleParser> receiver,
-    const absl::optional<GURL>& base_url,
+    const std::optional<GURL>& base_url,
     mojo::PendingRemote<mojom::BundleDataSource> data_source) {
-  // TODO(crbug.com/1247939): WebBundleParserFactory doesn't support |base_url|.
-  // For features::kWebBundlesFromNetwork should support |base_url|.
+  // TODO(crbug.com/40197063): WebBundleParserFactory doesn't support
+  // |base_url|. For features::kWebBundlesFromNetwork should support |base_url|.
   mojo::MakeSelfOwnedReceiver(
       std::make_unique<WebBundleParser>(std::move(data_source),
                                         base_url.value_or(GURL())),

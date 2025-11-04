@@ -11,7 +11,7 @@
 
 QT_BEGIN_NAMESPACE
 
-static Q_LOGGING_CATEGORY(qLcV4L2MemoryTransfer, "qt.multimedia.ffmpeg.v4l2camera.memorytransfer");
+Q_STATIC_LOGGING_CATEGORY(qLcV4L2MemoryTransfer, "qt.multimedia.ffmpeg.v4l2camera.memorytransfer");
 
 namespace {
 
@@ -48,9 +48,15 @@ public:
             return {};
 
         Q_ASSERT(v4l2Buffer.index < m_byteArrays.size());
-        Q_ASSERT(!m_byteArrays[v4l2Buffer.index].isEmpty());
 
-        return Buffer{ v4l2Buffer, std::move(m_byteArrays[v4l2Buffer.index]) };
+        auto &byteArray = m_byteArrays[v4l2Buffer.index];
+
+        Q_ASSERT(!byteArray.isEmpty());
+        Q_ASSERT(qsizetype(v4l2Buffer.bytesused) <= byteArray.size());
+
+        // truncate jpeg
+        byteArray.resize(v4l2Buffer.bytesused);
+        return Buffer{ v4l2Buffer, std::move(byteArray) };
     }
 
     bool enqueueBuffer(quint32 index) override
@@ -161,8 +167,12 @@ public:
         Q_ASSERT(span.inQueue);
         span.inQueue = false;
 
-        return Buffer{ v4l2Buffer,
-                       QByteArray(reinterpret_cast<const char *>(span.data), span.size) };
+        Q_ASSERT(v4l2Buffer.bytesused <= span.size);
+
+        // truncate jpeg
+        QByteArray byteArray(reinterpret_cast<const char *>(span.data), v4l2Buffer.bytesused);
+
+        return Buffer{ v4l2Buffer, std::move(byteArray) };
     }
 
     bool enqueueBuffer(quint32 index) override

@@ -12,6 +12,7 @@ qt_internal_add_cmake_library(moduleWithQmlSingleton
     OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/../imports/org/qtproject/ModuleWithQmlSingleton"
     SOURCES
         plugin.cpp
+    MOC_OPTIONS "-Muri=org.qtproject.ModuleWithQmlSingleton"
     LIBRARIES
         Qt::Core
         Qt::CorePrivate
@@ -19,6 +20,11 @@ qt_internal_add_cmake_library(moduleWithQmlSingleton
         Qt::Qml
         Qt::QmlPrivate
 )
+
+get_target_property(target_type moduleWithQmlSingleton TYPE)
+if(target_type STREQUAL STATIC_LIBRARY)
+    target_compile_definitions(moduleWithQmlSingleton PRIVATE QT_STATICPLUGIN)
+endif()
 
 #### Keys ignored in scope 1:.:.:moduleWithQmlSingleton.pro:<TRUE>:
 # COPIES = "importfiles" "subfiles"

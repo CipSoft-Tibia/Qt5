@@ -46,7 +46,7 @@ enum FileDialogChoice {
 #endif
 };
 
-FileDialogChoice dialog_choice_ = kUnknown;
+FileDialogChoice dialog_choice_ = FileDialogChoice::kUnknown;
 
 std::string& KDialogVersion() {
   static base::NoDestructor<std::string> version;
@@ -88,7 +88,7 @@ FileDialogChoice GetFileDialogChoice() {
 SelectFileDialog* CreateSelectFileDialog(
     SelectFileDialog::Listener* listener,
     std::unique_ptr<SelectFilePolicy> policy) {
-  if (dialog_choice_ == kUnknown)
+  if (dialog_choice_ == FileDialogChoice::kUnknown)
     dialog_choice_ = GetFileDialogChoice();
 
   const LinuxUi* linux_ui = LinuxUi::instance();
@@ -108,8 +108,8 @@ SelectFileDialog* CreateSelectFileDialog(
       return NewSelectFileDialogLinuxKde(listener, std::move(policy), desktop,
                                          KDialogVersion());
     }
-    case kUnknown:
-      NOTREACHED();
+    case FileDialogChoice::kUnknown:
+      NOTREACHED_IN_MIGRATION();
   }
   return nullptr;
 }

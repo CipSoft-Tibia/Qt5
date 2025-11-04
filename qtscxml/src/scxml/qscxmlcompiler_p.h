@@ -544,7 +544,7 @@ public:
     QList<QScxmlError> errors() const;
 
     void addError(const QString &msg);
-    void addError(const DocumentModel::XmlLocation &location, const QString &msg);
+    void addError(const QString &fileName, const DocumentModel::XmlLocation &location, const QString &msg);
     QScxmlStateMachine *instantiateStateMachine() const;
     void instantiateDataModel(QScxmlStateMachine *stateMachine) const;
 

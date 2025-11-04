@@ -30,6 +30,7 @@
 #include "absl/container/flat_hash_set.h"
 #include "absl/random/bit_gen_ref.h"
 #include "absl/random/random.h"
+#include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
@@ -37,10 +38,9 @@
 #include "./fuzztest/internal/any.h"
 #include "./fuzztest/internal/domains/arbitrary_impl.h"
 #include "./fuzztest/internal/domains/container_of_impl.h"
+#include "./fuzztest/internal/domains/domain.h"
 #include "./fuzztest/internal/domains/domain_base.h"
 #include "./fuzztest/internal/domains/element_of_impl.h"
-#include "./fuzztest/internal/domains/in_range_impl.h"
-#include "./fuzztest/internal/domains/map_impl.h"
 #include "./fuzztest/internal/domains/optional_of_impl.h"
 #include "./fuzztest/internal/logging.h"
 #include "./fuzztest/internal/meta.h"
@@ -419,9 +419,9 @@ class PrototypePtr {
 // constructor argument.
 template <typename Message>
 class ProtobufDomainUntypedImpl
-    : public DomainBase<ProtobufDomainUntypedImpl<Message>,
-                        std::unique_ptr<Message>,
-                        absl::flat_hash_map<int, GenericDomainCorpusType>> {
+    : public domain_implementor::DomainBase<
+          ProtobufDomainUntypedImpl<Message>, std::unique_ptr<Message>,
+          absl::flat_hash_map<int, GenericDomainCorpusType>> {
   using Descriptor = ProtobufDescriptor<Message>;
   using FieldDescriptor = ProtobufFieldDescriptor<Message>;
   using OneofDescriptor = ProtobufOneofDescriptor<Message>;
@@ -438,7 +438,7 @@ class ProtobufDomainUntypedImpl
         customized_fields_(),
         always_set_oneofs_(),
         uncustomizable_oneofs_(),
-        oneof_fields_policies_() {}
+        unset_oneof_fields_() {}
 
   ProtobufDomainUntypedImpl(const ProtobufDomainUntypedImpl& other)
       : prototype_(other.prototype_),
@@ -449,7 +449,7 @@ class ProtobufDomainUntypedImpl
     customized_fields_ = other.customized_fields_;
     always_set_oneofs_ = other.always_set_oneofs_;
     uncustomizable_oneofs_ = other.uncustomizable_oneofs_;
-    oneof_fields_policies_ = other.oneof_fields_policies_;
+    unset_oneof_fields_ = other.unset_oneof_fields_;
   }
 
   template <typename T>
@@ -505,26 +505,12 @@ class ProtobufDomainUntypedImpl
     return oneof->field(fields[selected])->index();
   }
 
-  void SetOneofFieldsPoliciesToWithoutNullWhereNeeded(
-      const ProtobufDescriptor<Message>* descriptor) {
-    for (int i = 0; i < descriptor->oneof_decl_count(); ++i) {
-      auto* oneof = descriptor->oneof_decl(i);
-      if (!always_set_oneofs_.contains(oneof->index())) continue;
-      for (int j = 0; j < oneof->field_count(); ++j) {
-        if (GetOneofFieldPolicy(oneof->field(j)) == OptionalPolicy::kWithNull) {
-          SetOneofFieldPolicy(oneof->field(j), OptionalPolicy::kWithoutNull);
-        }
-      }
-    }
-  }
-
   corpus_type Init(absl::BitGenRef prng) {
     if (auto seed = this->MaybeGetRandomSeed(prng)) return *seed;
     FUZZTEST_INTERNAL_CHECK(
         !customized_fields_.empty() || !IsNonTerminatingRecursive(),
         "Cannot set recursive fields by default.");
     const auto* descriptor = prototype_.Get()->GetDescriptor();
-    SetOneofFieldsPoliciesToWithoutNullWhereNeeded(descriptor);
     corpus_type val;
     absl::flat_hash_map<int, int> oneof_to_field;
 
@@ -847,6 +833,8 @@ class ProtobufDomainUntypedImpl
     auto subs = obj.Subs();
     if (!subs) return std::nullopt;
     absl::flat_hash_set<int> present_fields;
+    present_fields.reserve(subs->size());
+    out.reserve(subs->size());
     for (const auto& sub : *subs) {
       auto pair_subs = sub.Subs();
       if (!pair_subs || pair_subs->size() != 2) return std::nullopt;
@@ -899,11 +887,13 @@ class ProtobufDomainUntypedImpl
   IRObject SerializeCorpus(const corpus_type& v) const {
     IRObject out;
     auto& subs = out.MutableSubs();
+    subs.reserve(v.size());
     for (auto& [number, inner] : v) {
       auto* field = GetField(number);
       FUZZTEST_INTERNAL_CHECK(field, "Field not found by number: ", number);
       IRObject& pair = subs.emplace_back();
       auto& pair_subs = pair.MutableSubs();
+      pair_subs.reserve(2);
       pair_subs.emplace_back(GetFieldName(field));
       VisitProtobufField(
           field, SerializeVisitor{*this, inner, pair_subs.emplace_back()});
@@ -913,43 +903,83 @@ class ProtobufDomainUntypedImpl
 
   struct ValidateVisitor {
     const ProtobufDomainUntypedImpl& self;
-    // nullopt indicates that the field is not set.
-    const std::optional<GenericDomainCorpusType>& corpus_value;
+    // nullptr indicates that the field is not set.
+    const GenericDomainCorpusType* corpus_value;
     absl::Status& out;
 
     template <typename T>
     void VisitSingular(const FieldDescriptor* field) {
-      const GenericDomainCorpusType value =
-          corpus_value.has_value()
-              ? *corpus_value
-              : *self.GetSubDomain<T, /*is_repeated=*/false>(field).FromValue(
-                    std::nullopt);
-      absl::Status s = self.GetSubDomain<T, /*is_repeated=*/false>(field)
-                           .ValidateCorpusValue(value);
-      out = Prefix(s, absl::StrCat("Invalid value for field ", field->name()));
+      if (corpus_value) {
+        out = self.GetSubDomain<T, /*is_repeated=*/false>(field)
+                  .ValidateCorpusValue(*corpus_value);
+      } else {
+        out = self.GetSubDomain<T, /*is_repeated=*/false>(field)
+                  .ValidateCorpusValue(
+                      *self.GetSubDomain<T, /*is_repeated=*/false>(field)
+                           .FromValue(std::nullopt));
+      }
+      if (out.ok()) return;
+      out =
+          Prefix(out, absl::StrCat("Invalid value for field ", field->name()));
     }
 
     template <typename T>
     void VisitRepeated(const FieldDescriptor* field) {
-      const GenericDomainCorpusType value =
-          corpus_value.has_value()
-              ? *corpus_value
-              : *self.GetSubDomain<T, /*is_repeated=*/true>(field).FromValue(
-                    {});
-      absl::Status s =
-          self.GetSubDomain<T, /*is_repeated=*/true>(field).ValidateCorpusValue(
-              value);
-      out = Prefix(s, absl::StrCat("Invalid value for field ", field->name()));
+      if (corpus_value) {
+        out = self.GetSubDomain<T, /*is_repeated=*/true>(field)
+                  .ValidateCorpusValue(*corpus_value);
+      } else {
+        out = self.GetSubDomain<T, /*is_repeated=*/true>(field)
+                  .ValidateCorpusValue(
+                      *self.GetSubDomain<T, /*is_repeated=*/true>(field)
+                           .FromValue({}));
+      }
+      if (out.ok()) return;
+      out =
+          Prefix(out, absl::StrCat("Invalid value for field ", field->name()));
     }
   };
 
+  absl::Status ValidateOneof(const corpus_type& corpus_value,
+                             const OneofDescriptor* oneof) const {
+    int set_fields_count = 0;
+    for (int i = 0; i < oneof->field_count(); ++i) {
+      auto field_number_value = corpus_value.find(oneof->field(i)->number());
+      if (field_number_value == corpus_value.end()) continue;
+      const GenericDomainCorpusType* inner_corpus_value =
+          &field_number_value->second;
+      absl::Status status;
+      VisitProtobufField(oneof->field(i),
+                         ValidateVisitor{*this, inner_corpus_value, status});
+      if (!status.ok()) return status;
+      ++set_fields_count;
+    }
+    if (set_fields_count == 0 && IsOneofAlwaysSet(oneof->index())) {
+      return absl::InvalidArgumentError(
+          absl::StrCat("Oneof ", oneof->name(), " is not set"));
+    }
+    if (set_fields_count > 1) {
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Oneof ", oneof->name(), " has been set multiple times"));
+    }
+    return absl::OkStatus();
+  }
+
   absl::Status ValidateCorpusValue(const corpus_type& corpus_value) const {
+    auto* descriptor = prototype_.Get()->GetDescriptor();
+    for (int i = 0; i < descriptor->oneof_decl_count(); ++i) {
+      auto oneof = descriptor->oneof_decl(i);
+      absl::Status status = ValidateOneof(corpus_value, oneof);
+      if (!status.ok()) return status;
+    }
     for (const FieldDescriptor* field :
          GetProtobufFields(prototype_.Get()->GetDescriptor())) {
+      if (field->containing_oneof()) continue;
       auto field_number_value = corpus_value.find(field->number());
-      auto inner_corpus_value = (field_number_value != corpus_value.end())
-                                    ? std::optional(field_number_value->second)
-                                    : std::nullopt;
+      const GenericDomainCorpusType* inner_corpus_value =
+          (field_number_value != corpus_value.end())
+              ? &field_number_value->second
+              : nullptr;
       absl::Status result;
       VisitProtobufField(field,
                          ValidateVisitor{*this, inner_corpus_value, result});
@@ -1092,7 +1122,7 @@ class ProtobufDomainUntypedImpl
         "Cannot always set oneof field ", field_name,
         " (try using WithOneofAlwaysSet).");
     if (policy == OptionalPolicy::kAlwaysNull) {
-      SetOneofFieldPolicy(field, policy);
+      MarkOneofFieldAsUnset(field);
     }
   }
 
@@ -1102,9 +1132,6 @@ class ProtobufDomainUntypedImpl
     auto* oneof = field->containing_oneof();
     if (!oneof) return;
     uncustomizable_oneofs_.insert(oneof->index());
-    if (always_set_oneofs_.contains(oneof->index())) {
-      SetOneofFieldPolicy(field, OptionalPolicy::kWithoutNull);
-    }
   }
 
   void WithOneofAlwaysSet(absl::string_view oneof_name) {
@@ -1122,7 +1149,7 @@ class ProtobufDomainUntypedImpl
     always_set_oneofs_.insert(oneof->index());
   }
 
-  bool IsOneofAlwaysSet(int oneof_index) {
+  bool IsOneofAlwaysSet(int oneof_index) const {
     return always_set_oneofs_.contains(oneof_index);
   }
 
@@ -1236,9 +1263,8 @@ class ProtobufDomainUntypedImpl
     }
   }
 
-  void SetOneofFieldPolicy(const FieldDescriptor* field,
-                           OptionalPolicy policy) {
-    oneof_fields_policies_.insert({field->index(), policy});
+  void MarkOneofFieldAsUnset(const FieldDescriptor* field) {
+    unset_oneof_fields_.insert(field->index());
   }
 
   OptionalPolicy GetOneofFieldPolicy(const FieldDescriptor* field) const {
@@ -1246,11 +1272,26 @@ class ProtobufDomainUntypedImpl
         field->containing_oneof(),
         "GetOneofFieldPolicy should apply to oneof fields only! ",
         field->full_name());
-    auto result = oneof_fields_policies_.find(field->index());
-    if (result != oneof_fields_policies_.end()) {
-      return result->second;
+    auto field_policy = policy_.GetOptionalPolicy(field);
+    // Field being unset via a policy overwrites the oneof policy.
+    if (field_policy == OptionalPolicy::kAlwaysNull) return field_policy;
+    auto result = unset_oneof_fields_.find(field->index());
+    // Field being unset via field customization overwrites the oneof policy.
+    if (result != unset_oneof_fields_.end()) return OptionalPolicy::kAlwaysNull;
+    // Policy is set at oneof level.
+    if (IsOneofAlwaysSet(field->containing_oneof()->index())) {
+      return OptionalPolicy::kWithoutNull;
     }
-    return policy_.GetOptionalPolicy(field);
+    return field_policy;
+  }
+
+  // TODO(b/285926381): Allow other customizations for the untyped protos.
+  ProtobufDomainUntypedImpl&& WithProtobufFieldsTransformed(
+      std::function<Domain<std::unique_ptr<Message>>(
+          Domain<std::unique_ptr<Message>>)>&& transformer) && {
+    GetPolicy().SetDomainTransformerForProtobufs(IncludeAll<FieldDescriptor>(),
+                                                 std::move(transformer));
+    return std::move(*this);
   }
 
  private:
@@ -1298,7 +1339,7 @@ class ProtobufDomainUntypedImpl
   template <typename T>
   static auto ModifyDomainForOptionalFieldRule(const Domain<T>& d,
                                                OptionalPolicy optional_policy) {
-    auto result = OptionalOfImpl<std::optional<T>, Domain<T>>(d);
+    auto result = OptionalOfImpl<std::optional<T>>(d);
     if (optional_policy == OptionalPolicy::kWithoutNull) {
       result.SetWithoutNull();
     } else if (optional_policy == OptionalPolicy::kAlwaysNull) {
@@ -1309,7 +1350,7 @@ class ProtobufDomainUntypedImpl
 
   template <typename T>
   static auto ModifyDomainForRequiredFieldRule(const Domain<T>& d) {
-    return OptionalOfImpl<std::optional<T>, Domain<T>>(d).SetWithoutNull();
+    return OptionalOfImpl<std::optional<T>>(d).SetWithoutNull();
   }
 
   // Returns the default "base domain" for a `field` solely based on its type
@@ -1521,7 +1562,7 @@ class ProtobufDomainUntypedImpl
   absl::flat_hash_set<int> customized_fields_;
   absl::flat_hash_set<int> always_set_oneofs_;
   absl::flat_hash_set<int> uncustomizable_oneofs_;
-  absl::flat_hash_map<int, OptionalPolicy> oneof_fields_policies_;
+  absl::flat_hash_set<int> unset_oneof_fields_;
 };
 
 // Domain for `T` where `T` is a Protobuf message type.
@@ -1530,7 +1571,8 @@ class ProtobufDomainUntypedImpl
 template <typename T,
           typename UntypedImpl = ProtobufDomainUntypedImpl<typename T::Message>>
 class ProtobufDomainImpl
-    : public DomainBase<ProtobufDomainImpl<T>, T, corpus_type_t<UntypedImpl>> {
+    : public domain_implementor::DomainBase<ProtobufDomainImpl<T>, T,
+                                            corpus_type_t<UntypedImpl>> {
  public:
   using typename ProtobufDomainImpl::DomainBase::corpus_type;
   using typename ProtobufDomainImpl::DomainBase::value_type;
@@ -1737,8 +1779,7 @@ class ProtobufDomainImpl
     } else {                                                                   \
       inner_.WithOneofField(field, OptionalPolicy::kWithoutNull);              \
       inner_.WithField(                                                        \
-          field, OptionalOfImpl<std::optional<Camel##type>, decltype(domain)>( \
-                     std::move(domain))                                        \
+          field, OptionalOfImpl<std::optional<Camel##type>>(std::move(domain)) \
                      .SetWithoutNull());                                       \
     }                                                                          \
     return std::move(*this);                                                   \
@@ -1749,11 +1790,9 @@ class ProtobufDomainImpl
     auto default_domain =                                                      \
         inner_.template GetFieldTypeDefaultDomain<TAG>(field);                 \
     inner_.WithOneofField(field, OptionalPolicy::kAlwaysNull);                 \
-    inner_.WithField(                                                          \
-        field,                                                                 \
-        OptionalOfImpl<std::optional<Camel##type>, decltype(default_domain)>(  \
-            std::move(default_domain))                                         \
-            .SetAlwaysNull());                                                 \
+    inner_.WithField(field, OptionalOfImpl<std::optional<Camel##type>>(        \
+                                std::move(default_domain))                     \
+                                .SetAlwaysNull());                             \
     return std::move(*this);                                                   \
   }                                                                            \
   ProtobufDomainImpl&& With##Camel##FieldAlwaysSet(                            \
@@ -2001,7 +2040,7 @@ class ArbitraryImpl<T, std::enable_if_t<is_protocol_buffer_v<T>>>
 
 template <typename T>
 class ArbitraryImpl<T, std::enable_if_t<is_protocol_buffer_enum_v<T>>>
-    : public DomainBase<ArbitraryImpl<T>> {
+    : public domain_implementor::DomainBase<ArbitraryImpl<T>> {
  public:
   using typename ArbitraryImpl::DomainBase::value_type;
 

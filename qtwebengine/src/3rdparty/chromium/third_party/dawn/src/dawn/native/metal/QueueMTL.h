@@ -37,11 +37,11 @@
 #include "dawn/native/Queue.h"
 #include "dawn/native/SystemEvent.h"
 #include "dawn/native/metal/CommandRecordingContext.h"
+#include "dawn/native/metal/SharedFenceMTL.h"
 
 namespace dawn::native::metal {
 
 class Device;
-struct ExternalImageMTLSharedEventDescriptor;
 
 class Queue final : public QueueBase {
   public:
@@ -50,7 +50,8 @@ class Queue final : public QueueBase {
     CommandRecordingContext* GetPendingCommandContext(SubmitMode submitMode = SubmitMode::Normal);
     MaybeError SubmitPendingCommandBuffer();
     void WaitForCommandsToBeScheduled();
-    void ExportLastSignaledEvent(ExternalImageMTLSharedEventDescriptor* desc);
+    id<MTLSharedEvent> GetMTLSharedEvent() const API_AVAILABLE(macos(10.14), ios(12.0));
+    ResultOrError<Ref<SharedFence>> GetOrCreateSharedFence();
 
     Ref<SystemEvent> CreateWorkDoneSystemEvent(ExecutionSerial serial);
     ResultOrError<bool> WaitForQueueSerial(ExecutionSerial serial, Nanoseconds timeout) override;
@@ -64,13 +65,14 @@ class Queue final : public QueueBase {
 
     MaybeError SubmitImpl(uint32_t commandCount, CommandBufferBase* const* commands) override;
     bool HasPendingCommands() const override;
+    MaybeError SubmitPendingCommands() override;
     ResultOrError<ExecutionSerial> CheckAndUpdateCompletedSerials() override;
     void ForceEventualFlushOfCommands() override;
     MaybeError WaitForIdleForDestruction() override;
     void DestroyImpl() override;
 
     NSPRef<id<MTLCommandQueue>> mCommandQueue;
-    CommandRecordingContext mCommandContext;
+    CommandRecordingContext mCommandContext{this};
 
     // mLastSubmittedCommands will be accessed in a Metal schedule handler that can be fired on
     // a different thread so we guard access to it with a mutex.
@@ -90,7 +92,9 @@ class Queue final : public QueueBase {
 
     // A shared event that can be exported for synchronization with other users of Metal.
     // MTLSharedEvent is not available until macOS 10.14+ so use just `id`.
-    NSPRef<id> mMtlSharedEvent = nullptr;
+    NSPRef<id> mMtlSharedEvent;
+    // The shared event wrapped as a SharedFence object.
+    Ref<SharedFence> mSharedFence;
 };
 
 }  // namespace dawn::native::metal

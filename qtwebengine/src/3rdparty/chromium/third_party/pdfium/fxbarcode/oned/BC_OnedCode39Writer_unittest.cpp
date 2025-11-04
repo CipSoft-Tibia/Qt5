@@ -6,6 +6,7 @@
 
 #include <string.h>
 
+#include "core/fxcrt/compiler_specific.h"
 #include "core/fxcrt/data_vector.h"
 #include "testing/gtest/include/gtest/gtest.h"
 
@@ -38,9 +39,9 @@ TEST(OnedCode39WriterTest, SetWideNarrowRatio) {
       "#   # ### ### #";  // * End
   DataVector<uint8_t> encoded = writer.Encode("PDFIUM");
   ASSERT_EQ(strlen(kExpected1), encoded.size());
-  for (size_t i = 0; i < strlen(kExpected1); i++)
-    EXPECT_EQ(kExpected1[i] != ' ', !!encoded[i]) << i;
-
+  for (size_t i = 0; i < strlen(kExpected1); i++) {
+    UNSAFE_TODO(EXPECT_EQ(kExpected1[i] != ' ', !!encoded[i])) << i;
+  }
   writer.SetWideNarrowRatio(2);
 
   static const char kExpected2[] =
@@ -54,8 +55,9 @@ TEST(OnedCode39WriterTest, SetWideNarrowRatio) {
       "#  # ## ## #";  // * End
   encoded = writer.Encode("PDFIUM");
   ASSERT_EQ(strlen(kExpected2), encoded.size());
-  for (size_t i = 0; i < strlen(kExpected2); i++)
-    EXPECT_EQ(kExpected2[i] != ' ', !!encoded[i]) << i;
+  for (size_t i = 0; i < strlen(kExpected2); i++) {
+    UNSAFE_TODO(EXPECT_EQ(kExpected2[i] != ' ', !!encoded[i])) << i;
+  }
 }
 
 TEST(OnedCode39WriterTest, Encode) {
@@ -66,8 +68,9 @@ TEST(OnedCode39WriterTest, Encode) {
       "#   # ### ### #";  // * End
   DataVector<uint8_t> encoded = writer.Encode("");
   ASSERT_EQ(strlen(kExpected1), encoded.size());
-  for (size_t i = 0; i < strlen(kExpected1); i++)
-    EXPECT_EQ(kExpected1[i] != ' ', !!encoded[i]) << i;
+  for (size_t i = 0; i < strlen(kExpected1); i++) {
+    UNSAFE_TODO(EXPECT_EQ(kExpected1[i] != ' ', !!encoded[i])) << i;
+  }
 
   static const char kExpected2[] =
       "#   # ### ### # "  // * Start
@@ -77,8 +80,9 @@ TEST(OnedCode39WriterTest, Encode) {
       "#   # ### ### #";  // * End
   encoded = writer.Encode("123");
   ASSERT_EQ(strlen(kExpected2), encoded.size());
-  for (size_t i = 0; i < strlen(kExpected2); i++)
-    EXPECT_EQ(kExpected2[i] != ' ', !!encoded[i]) << i;
+  for (size_t i = 0; i < strlen(kExpected2); i++) {
+    UNSAFE_TODO(EXPECT_EQ(kExpected2[i] != ' ', !!encoded[i])) << i;
+  }
 
   static const char kExpected3[] =
       "#   # ### ### # "  // * Start
@@ -91,8 +95,9 @@ TEST(OnedCode39WriterTest, Encode) {
       "#   # ### ### #";  // * End
   encoded = writer.Encode("PDFIUM");
   ASSERT_EQ(strlen(kExpected3), encoded.size());
-  for (size_t i = 0; i < strlen(kExpected3); i++)
-    EXPECT_EQ(kExpected3[i] != ' ', !!encoded[i]) << i;
+  for (size_t i = 0; i < strlen(kExpected3); i++) {
+    UNSAFE_TODO(EXPECT_EQ(kExpected3[i] != ' ', !!encoded[i])) << i;
+  }
 
   static const char kExpected4[] =
       "#   # ### ### # "  // * Start
@@ -108,8 +113,9 @@ TEST(OnedCode39WriterTest, Encode) {
       "#   # ### ### #";  // * End
   encoded = writer.Encode("A -$%./+Z");
   ASSERT_EQ(strlen(kExpected4), encoded.size());
-  for (size_t i = 0; i < strlen(kExpected4); i++)
-    EXPECT_EQ(kExpected4[i] != ' ', !!encoded[i]) << i;
+  for (size_t i = 0; i < strlen(kExpected4); i++) {
+    UNSAFE_TODO(EXPECT_EQ(kExpected4[i] != ' ', !!encoded[i])) << i;
+  }
 }
 
 TEST(OnedCode39WriterTest, Checksum) {
@@ -126,7 +132,7 @@ TEST(OnedCode39WriterTest, Checksum) {
   DataVector<uint8_t> encoded = writer.Encode("123");
   ASSERT_EQ(strlen(kExpected1), encoded.size());
   for (size_t i = 0; i < strlen(kExpected1); i++)
-    EXPECT_EQ(kExpected1[i] != ' ', !!encoded[i]) << i;
+    UNSAFE_TODO(EXPECT_EQ(kExpected1[i] != ' ', !!encoded[i])) << i;
 
   static const char kExpected2[] =
       "#   # ### ### # "  // * Start
@@ -140,8 +146,9 @@ TEST(OnedCode39WriterTest, Checksum) {
       "#   # ### ### #";  // * End
   encoded = writer.Encode("PDFIUM");
   ASSERT_EQ(strlen(kExpected2), encoded.size());
-  for (size_t i = 0; i < strlen(kExpected2); i++)
-    EXPECT_EQ(kExpected2[i] != ' ', !!encoded[i]) << i;
+  for (size_t i = 0; i < strlen(kExpected2); i++) {
+    UNSAFE_TODO(EXPECT_EQ(kExpected2[i] != ' ', !!encoded[i])) << i;
+  }
 }
 
 }  // namespace

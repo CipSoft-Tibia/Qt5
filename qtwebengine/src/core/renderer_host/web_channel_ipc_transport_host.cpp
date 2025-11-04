@@ -1,7 +1,9 @@
 // Copyright (C) 2018 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "web_channel_ipc_transport_host.h"
+#include "qtwebenginecoreglobal_p.h"
 
 #include "content/public/browser/render_frame_host.h"
 #include "content/public/browser/render_process_host.h"
@@ -17,7 +19,7 @@
 
 namespace QtWebEngineCore {
 
-Q_LOGGING_CATEGORY(log, "qt.webengine.webchanneltransport")
+Q_WEBENGINE_LOGGING_CATEGORY(log, "qt.webengine.webchanneltransport")
 
 inline QDebug operator<<(QDebug stream, content::RenderFrameHost *frame)
 {

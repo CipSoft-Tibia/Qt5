@@ -709,17 +709,19 @@
 
     \QWE supports touch devices for navigating and interacting with web pages.
 
-    Applications can prohibit the use of touch events in the following ways:
+    The touch event support in JavaScript API depends on the presence of a touch screen
+    (meaning \c ontouchstart and related handlers will be present in the \c document.window object
+    if a capable touch device is connected to the system).
 
-    \list
-        \li Passing the flag \c --touch-events=disabled on the command line will disable touch event
-        support in JavaScript API (meaning \c ontouchstart and related handlers will not be present
-        in the \c document.window object). Touch events will still be delivered to web pages.
+    Some websites use this API to decide whether they run on a mobile device or on desktop and base their design on it.
+    This can cause unwanted results on touchscreen laptops or other setups that emulate a fake touch device.
 
-       \li Installing an event filter object using \l {QObject::installEventFilter} on the WebEngine
-       view focus proxy object, and filtering out all touch events.
+    Applications can set this feature explicitly with \l {QWebEngineSettings::TouchEventsApiEnabled}.
 
-    \endlist
+    Note that touch events will still be delivered to web pages even if the API is disabled.
+    Dispatching touch events to web pages can be prohibited by installing an event filter object
+    using \l {QObject::installEventFilter} on the WebEngine view focus proxy object,
+    and filtering out all touch events.
 
     \section1 View Source
 

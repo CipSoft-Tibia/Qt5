@@ -11,9 +11,9 @@
 #include <algorithm>
 #include <utility>
 
+#include "core/fxcrt/notreached.h"
+#include "core/fxcrt/numerics/safe_conversions.h"
 #include "fxjs/xfa/cjx_object.h"
-#include "third_party/base/notreached.h"
-#include "third_party/base/numerics/safe_conversions.h"
 #include "xfa/fgas/graphics/cfgas_gegraphics.h"
 #include "xfa/fgas/graphics/cfgas_gepath.h"
 #include "xfa/fgas/graphics/cfgas_gepattern.h"
@@ -97,10 +97,10 @@ size_t CXFA_Box::CountEdges() {
 CXFA_Edge* CXFA_Box::GetEdgeIfExists(size_t nIndex) {
   if (nIndex == 0) {
     return JSObject()->GetOrCreateProperty<CXFA_Edge>(
-        pdfium::base::checked_cast<int32_t>(nIndex), XFA_Element::Edge);
+        pdfium::checked_cast<int32_t>(nIndex), XFA_Element::Edge);
   }
   return JSObject()->GetProperty<CXFA_Edge>(
-      pdfium::base::checked_cast<int32_t>(nIndex), XFA_Element::Edge);
+      pdfium::checked_cast<int32_t>(nIndex), XFA_Element::Edge);
 }
 
 std::vector<CXFA_Stroke*> CXFA_Box::GetStrokes() {
@@ -111,11 +111,11 @@ bool CXFA_Box::IsCircular() {
   return JSObject()->GetBoolean(XFA_Attribute::Circular);
 }
 
-absl::optional<int32_t> CXFA_Box::GetStartAngle() {
+std::optional<int32_t> CXFA_Box::GetStartAngle() {
   return JSObject()->TryInteger(XFA_Attribute::StartAngle, false);
 }
 
-absl::optional<int32_t> CXFA_Box::GetSweepAngle() {
+std::optional<int32_t> CXFA_Box::GetSweepAngle() {
   return JSObject()->TryInteger(XFA_Attribute::SweepAngle, false);
 }
 
@@ -124,16 +124,15 @@ CXFA_Fill* CXFA_Box::GetOrCreateFillIfPossible() {
 }
 
 std::tuple<XFA_AttributeValue, bool, float> CXFA_Box::Get3DStyle() {
-  if (GetElementType() == XFA_Element::Arc)
+  if (GetElementType() == XFA_Element::Arc) {
     return {XFA_AttributeValue::Unknown, false, 0.0f};
+  }
 
   std::vector<CXFA_Stroke*> strokes = GetStrokesInternal(true);
-  CXFA_Stroke* stroke;
-  XFA_AttributeValue iType;
-
-  std::tie(iType, stroke) = Style3D(strokes);
-  if (iType == XFA_AttributeValue::Unknown)
+  auto [iType, stroke] = Style3D(strokes);
+  if (iType == XFA_AttributeValue::Unknown) {
     return {XFA_AttributeValue::Unknown, false, 0.0f};
+  }
 
   return {iType, stroke->IsVisible(), stroke->GetThickness()};
 }
@@ -256,8 +255,8 @@ void CXFA_Box::GetPathArcOrRounded(CFX_RectF rtDraw,
   rtDraw.top = center.y - b;
   rtDraw.width = a + a;
   rtDraw.height = b + b;
-  absl::optional<int32_t> startAngle = GetStartAngle();
-  absl::optional<int32_t> sweepAngle = GetSweepAngle();
+  std::optional<int32_t> startAngle = GetStartAngle();
+  std::optional<int32_t> sweepAngle = GetSweepAngle();
   if (!startAngle.has_value() && !sweepAngle.has_value()) {
     fillPath->AddEllipse(rtDraw);
     return;
@@ -276,10 +275,7 @@ void CXFA_Box::StrokeArcOrRounded(CFGAS_GEGraphics* pGS,
   if (!edge || !edge->IsVisible())
     return;
 
-  bool bVisible;
-  float fThickness;
-  XFA_AttributeValue i3DType;
-  std::tie(i3DType, bVisible, fThickness) = Get3DStyle();
+  auto [i3DType, bVisible, fThickness] = Get3DStyle();
   bool lowered3d = false;
   if (i3DType != XFA_AttributeValue::Unknown) {
     if (bVisible && fThickness >= 0.001f)

@@ -9,6 +9,7 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.view.Window;
 
+import androidx.annotation.NonNull;
 import androidx.annotation.VisibleForTesting;
 
 import org.chromium.base.Callback;
@@ -60,7 +61,7 @@ class BottomSheetControllerImpl implements ManagedBottomSheetController {
 
     /**
      * A list of observers maintained by this controller until the bottom sheet is created, at which
-     * point they will be added to the bottom  sheet.
+     * point they will be added to the bottom sheet.
      */
     private List<BottomSheetObserver> mPendingSheetObservers;
 
@@ -99,15 +100,21 @@ class BottomSheetControllerImpl implements ManagedBottomSheetController {
      */
     private Callback<Boolean> mContentBackPressStateChangedObserver;
 
+    private Supplier<Integer> mEdgeToEdgeBottomInsetSupplier;
+
+    private KeyboardVisibilityDelegate mKeyboardVisibilityDelegate;
+
     /**
      * Build a new controller of the bottom sheet.
+     *
      * @param scrim A supplier of the scrim that shows when the bottom sheet is opened.
      * @param initializedCallback A callback for the sheet being created (as the sheet is not
-     *                            initialized until first use.
+     *     initialized until first use.
      * @param window A means of accessing the screen size.
      * @param keyboardDelegate A means of hiding the keyboard.
      * @param root The view that should contain the sheet.
      * @param alwaysFullWidth Whether bottom sheet is full-width.
+     * @param edgeToEdgeBottomInsetSupplier The supplier of bottom inset when e2e is on.
      */
     public BottomSheetControllerImpl(
             final Supplier<ScrimCoordinator> scrim,
@@ -115,11 +122,14 @@ class BottomSheetControllerImpl implements ManagedBottomSheetController {
             Window window,
             KeyboardVisibilityDelegate keyboardDelegate,
             Supplier<ViewGroup> root,
-            boolean alwaysFullWidth) {
+            boolean alwaysFullWidth,
+            @NonNull Supplier<Integer> edgeToEdgeBottomInsetSupplier) {
         mScrimCoordinatorSupplier = scrim;
         mPendingSheetObservers = new ArrayList<>();
         mSuppressionTokens = new TokenHolder(() -> onSuppressionTokensChanged());
         mAlwaysFullWidth = alwaysFullWidth;
+        mEdgeToEdgeBottomInsetSupplier = edgeToEdgeBottomInsetSupplier;
+        mKeyboardVisibilityDelegate = keyboardDelegate;
         mSheetInitializer =
                 () -> {
                     initializeSheet(initializedCallback, window, keyboardDelegate, root);
@@ -177,7 +187,8 @@ class BottomSheetControllerImpl implements ManagedBottomSheetController {
         mBottomSheet = (BottomSheet) root.get().findViewById(R.id.bottom_sheet);
         initializedCallback.onResult(mBottomSheet);
 
-        mBottomSheet.init(window, keyboardDelegate, mAlwaysFullWidth);
+        mBottomSheet.init(
+                window, keyboardDelegate, mAlwaysFullWidth, mEdgeToEdgeBottomInsetSupplier);
 
         // Initialize the queue with a comparator that checks content priority.
         mContentQueue =
@@ -589,6 +600,7 @@ class BottomSheetControllerImpl implements ManagedBottomSheetController {
                     .removeObserver(mContentBackPressStateChangedObserver);
         }
         if (nextContent != null) {
+            mKeyboardVisibilityDelegate.hideKeyboard(mBottomSheetContainer);
             mContentBackPressStateChangedObserver =
                     (contentWillHandleBackPress) -> updateBackPressStateChangedSupplier();
             nextContent
@@ -611,6 +623,11 @@ class BottomSheetControllerImpl implements ManagedBottomSheetController {
         }
         mContentWhenSuppressed = null;
         mSheetStateBeforeSuppress = SheetState.NONE;
+    }
+
+    @Override
+    public boolean isFullWidth() {
+        return mBottomSheet.isFullWidth();
     }
 
     @Override

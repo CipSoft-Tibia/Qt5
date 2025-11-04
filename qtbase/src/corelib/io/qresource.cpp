@@ -1,6 +1,7 @@
 // Copyright (C) 2019 The Qt Company Ltd.
 // Copyright (C) 2020 Intel Corporation.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:data-parser
 
 #include "qresource.h"
 #include "qresource_p.h"
@@ -1399,6 +1400,9 @@ private:
     // minimum size for which we'll try to re-open ourselves in mapUncompressed()
     static constexpr qsizetype RemapCompressedThreshold = 16384;
 protected:
+    QResourceFileEnginePrivate(QAbstractFileEngine *q) :
+        QAbstractFileEnginePrivate(q) {}
+
     ~QResourceFileEnginePrivate()
     {
         if (mustUnmap)
@@ -1412,7 +1416,7 @@ bool QResourceFileEngine::caseSensitive() const
 }
 
 QResourceFileEngine::QResourceFileEngine(const QString &file) :
-    QAbstractFileEngine(*new QResourceFileEnginePrivate)
+    QAbstractFileEngine(*new QResourceFileEnginePrivate(this))
 {
     Q_D(QResourceFileEngine);
     d->resource.setFileName(file);

@@ -5,6 +5,8 @@
 
 #include <QLoggingCategory>
 
+#include <algorithm>
+
 using namespace Qt::StringLiterals;
 
 MainWindow::MainWindow(QWidget *parent)
@@ -86,6 +88,11 @@ void MainWindow::engineSelected(int index)
     }
 }
 
+static bool localeLessThan(const QLocale &l1, const QLocale &l2)
+{
+    return l1.name().compare(l2.name()) < 0;
+}
+
 void MainWindow::onEngineReady()
 {
     if (m_speech->state() != QTextToSpeech::Ready) {
@@ -102,9 +109,11 @@ void MainWindow::onEngineReady()
     QSignalBlocker blocker(ui.language);
 
     ui.language->clear();
-    const QList<QLocale> locales = m_speech->availableLocales();
+    QList<QLocale> locales = m_speech->availableLocales();
+    std::stable_sort(locales.begin(), locales.end(), localeLessThan);
+
     QLocale current = m_speech->locale();
-    for (const QLocale &locale : locales) {
+    for (const QLocale &locale : std::as_const(locales)) {
         QString name(u"%1 (%2)"_s
                      .arg(QLocale::languageToString(locale.language()),
                           QLocale::territoryToString(locale.territory())));
@@ -172,4 +181,9 @@ void MainWindow::localeChanged(const QLocale &locale)
         if (voice.name() == currentVoice.name())
             ui.voice->setCurrentIndex(ui.voice->count() - 1);
     }
+}
+
+MainWindow::~MainWindow()
+{
+    m_speech->disconnect(this);
 }

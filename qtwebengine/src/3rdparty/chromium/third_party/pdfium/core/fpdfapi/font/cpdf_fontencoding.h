@@ -7,12 +7,14 @@
 #ifndef CORE_FPDFAPI_FONT_CPDF_FONTENCODING_H_
 #define CORE_FPDFAPI_FONT_CPDF_FONTENCODING_H_
 
+#include <array>
+
 #include "core/fxcrt/bytestring.h"
 #include "core/fxcrt/retain_ptr.h"
+#include "core/fxcrt/span.h"
 #include "core/fxcrt/string_pool_template.h"
 #include "core/fxcrt/weak_ptr.h"
 #include "core/fxge/fx_fontencoding.h"
-#include "third_party/base/containers/span.h"
 
 enum class FontEncoding {
   kBuiltin = 0,
@@ -58,7 +60,7 @@ class CPDF_FontEncoding {
   RetainPtr<CPDF_Object> Realize(WeakPtr<ByteStringPool> pPool) const;
 
  private:
-  wchar_t m_Unicodes[kEncodingTableSize] = {};
+  std::array<wchar_t, kEncodingTableSize> m_Unicodes = {};
 };
 
 #endif  // CORE_FPDFAPI_FONT_CPDF_FONTENCODING_H_

@@ -971,7 +971,7 @@
     \section1 \\printline
 
     The \\printline command expands to the line from the current
-    position to the next non-blank line of the current source file.
+    position.
 
     To ensure that the documentation remains synchronized with the
     source file, a substring of the line must be specified as an
@@ -1849,21 +1849,33 @@
     argument, and renders it centered as a separate paragraph.
 
     The command takes two arguments. The first argument is the name of
-    the image file. The second argument is optional and is a simple
-    description of the image, equivalent to the HTML alt="" in an image
-    tag. The description is used for tooltips and for browsers that don't
-    support images, like the Lynx text browser.
+    the image file. The second argument is a description of what
+    the image contains, and is used for the HTML \c alt attribute.
+    Its contents is read aloud by screen readers, and its use is therefore
+    strongly recommended for accessibility purposes. It may also be used by
+    browsers that don't support images, like the Lynx text browser. You
+    can also set the \l {usealttextastitle-variable} {usealttextastitle}
+    variable to make QDoc generate a \e title attribute for the image, which
+    commonly is rendered by graphical text browsers as a tooltip when the user
+    hovers the mouse over the image.
 
-    The remaining text \e{after} the file name is the optional,
-    description argument. Be sure to follow the file name or the
-    description with a line break. Curly brackets are required if the
-    description argument spans multiple lines.
+    While QDoc is quite forgiving, you should wrap both the file name and the
+    description in curly braces, like so:
+    \badcode
+    \image {Bandit.png} {A Golden Retriever holding a bag of coffee in its mouth}
+    \endcode
+    This syntax is the most explicit and should always give the expected result.
+    If not, be sure to follow the file name or the description with a line break.
+    Curly brackets are required if the description argument spans multiple lines.
+    If the description is wrapped in double quotes, QDoc will remove them before
+    generating output. Special characters may be replaced with the corresponding
+    HTML entity code in QDoc's HTML output.
 
     \badcode *
     /\1!
         Qt is a C++ toolkit for cross-platform GUI application development.
 
-        \image happyguy.jpg "Happy guy"
+        \image {happyguy.jpg} {Happy guy}
 
         Qt provides single-source portability across Microsoft
         Windows, macOS, Linux, and all major commercial Unix
@@ -2626,6 +2638,112 @@
     and \qdoccmd generatelist support also custom sorting.
 
     See also \qdoccmd generatelist and \l {Sorting group members}.
+
+    \target cmakepackage-command
+    \section1 \\cmakepackage
+
+    Use the \\cmakepackage command to add CMake package information to classes
+    and namespaces. This information will then appear in a table at the top of
+    the class or namespace documentation page. For example:
+
+    \badcode *
+    /*!
+        \namespace Foo
+        \inheaderfile Bar
+        \cmakepackage Baz
+        \brief A namespace.
+
+        ...
+    \1/
+    \endcode
+
+    QDoc will output this as
+
+    \quotation
+        \raw HTML
+            <h1 class="title">Foo Namespace</h1>
+            <p>A namespace. <a>More...</a></p>
+            <div class="table"><table class="alignedsummary">
+            <tr><td class="memItemLeft rightAlign topAlign"> Header:</td><td class="memItemRight bottomAlign"> <span class="preprocessor">#include &lt;Bar&gt;</span></td></tr>
+            <tr><td class="memItemLeft rightAlign topAlign"> CMake:</td><td class="memItemRight bottomAlign"> find_package(Baz REQUIRED)<br/>target_link_libraries(mytarget PRIVATE Baz::Baz)</td></tr>
+            </table></div>
+        \endraw
+    \endquotation
+
+    \e{See also} \l{module-command}{\\module} and
+    \l{cmakecomponent}{\\cmakecomponent}}
+
+    \target cmakecomponent-command
+    \section1 \\cmakecomponent
+
+    Use the \\cmakecomponent command to add CMake component information to classes
+    and namespaces. This information will then appear in a table at the top of
+    the class or namespace documentation page. For example:
+
+    \badcode *
+    /*!
+        \namespace Foo
+        \inheaderfile Bar
+        \cmakecomponent Baz
+        \brief A namespace.
+
+        ...
+    \1/
+    \endcode
+
+    QDoc will output this as
+
+    \quotation
+        \raw HTML
+            <h1 class="title">Foo Namespace</h1>
+            <p>A namespace. <a>More...</a></p>
+            <div class="table"><table class="alignedsummary">
+            <tr><td class="memItemLeft rightAlign topAlign"> Header:</td><td class="memItemRight bottomAlign"> <span class="preprocessor">#include &lt;Bar&gt;</span></td></tr>
+            <tr><td class="memItemLeft rightAlign topAlign"> CMake:</td><td class="memItemRight bottomAlign"> find_package(Qt6 REQUIRED COMPONENTS Baz)<br/>target_link_libraries(mytarget PRIVATE Qt6::Baz)</td></tr>
+            </table></div>
+        \endraw
+    \endquotation
+
+    \e{See also} \l{module-command}{\\module} and
+    \l{cmakepackage}{\\cmakepackage}}
+
+    \target cmaketargetitem-command
+    \section1 \\cmaketargetitem
+
+    Use the \\cmaketargetitem command to override the \e {item} part of the
+    CMake \c{target_link_libraries} information that's added to classes and
+    namespaces. The command must be used in conjunction with the
+    \l{module-command}{\\module} and \l{cmakecomponent}{\\cmakecomponent}}
+    commands. For example:
+
+    \badcode *
+    /*!
+        \namespace Foo
+        \inheaderfile Bar
+        \cmakecomponent Baz
+        \cmaketargetitem Qt6::BazPrivate
+        \brief A namespace.
+
+        ...
+    \1/
+    \endcode
+
+    QDoc will output this as
+
+    \quotation
+        \raw HTML
+            <h1 class="title">Foo Namespace</h1>
+            <p>A namespace. <a>More...</a></p>
+            <div class="table"><table class="alignedsummary">
+            <tr><td class="memItemLeft rightAlign topAlign"> Header:</td><td class="memItemRight bottomAlign"> <span class="preprocessor">#include &lt;Bar&gt;</span></td></tr>
+            <tr><td class="memItemLeft rightAlign topAlign"> CMake:</td><td class="memItemRight bottomAlign"> find_package(Qt6 REQUIRED COMPONENTS Baz)<br/>target_link_libraries(mytarget PRIVATE Qt6::BazPrivate)</td></tr>
+            </table></div>
+        \endraw
+    \endquotation
+
+    \e{See also} \l{module-command}{\\module} and
+    \l{cmakecomponent}{\\cmakecomponent}}
+
 
     \target qtcmakepackage-command
     \section1 \\qtcmakepackage

@@ -122,7 +122,7 @@ class AXFuchsiaSemanticProviderTest
 
     delegate_ = std::make_unique<AXFuchsiaSemanticProviderDelegate>();
 
-    semantic_provider_ = std::make_unique<ui::AXFuchsiaSemanticProviderImpl>(
+    semantic_provider_ = std::make_unique<AXFuchsiaSemanticProviderImpl>(
         fidl::HLCPPToNatural(std::move(view_ref)), delegate_.get());
 
     // Spin the loop to allow registration with the SemanticsManager to be
@@ -200,11 +200,11 @@ class AXFuchsiaSemanticProviderTest
       semantic_listener_;
   base::FidlErrorEventHandler<fuchsia_accessibility_semantics::SemanticListener>
       semantic_listener_error_handler_;
-  absl::optional<
+  std::optional<
       fidl::ServerBinding<fuchsia_accessibility_semantics::SemanticTree>>
       semantic_tree_binding_;
   std::unique_ptr<AXFuchsiaSemanticProviderDelegate> delegate_;
-  std::unique_ptr<ui::AXFuchsiaSemanticProviderImpl> semantic_provider_;
+  std::unique_ptr<AXFuchsiaSemanticProviderImpl> semantic_provider_;
 
   // Node updates batched per API call to UpdateSemanticNodes().
   std::vector<std::vector<fuchsia_accessibility_semantics::Node>> node_updates_;

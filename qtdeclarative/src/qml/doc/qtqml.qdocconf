@@ -15,16 +15,20 @@ qhp.QtQml.virtualFolder       = qtqml
 qhp.QtQml.indexTitle          = Qt Qml
 qhp.QtQml.indexRoot           =
 
-qhp.QtQml.subprojects         = qmltypes classes
-qhp.QtQml.subprojects.classes.title = C++ Classes
-qhp.QtQml.subprojects.classes.indexTitle = Qt Qml C++ Classes
-qhp.QtQml.subprojects.classes.selectors = class headerfile
-qhp.QtQml.subprojects.classes.sortPages = true
+qhp.QtQml.subprojects = manual qmltypes classes
+qhp.QtQml.subprojects.manual.title = Qt Qml
+qhp.QtQml.subprojects.manual.indexTitle = Qt Qml module topics
+qhp.QtQml.subprojects.manual.type = manual
+
 qhp.QtQml.subprojects.qmltypes.title = QML Types
 qhp.QtQml.subprojects.qmltypes.indexTitle = Qt Qml QML Types
 qhp.QtQml.subprojects.qmltypes.selectors = qmlclass
 qhp.QtQml.subprojects.qmltypes.sortPages = true
 
+qhp.QtQml.subprojects.classes.title = C++ Classes
+qhp.QtQml.subprojects.classes.indexTitle = Qt Qml C++ Classes
+qhp.QtQml.subprojects.classes.selectors = class headerfile
+qhp.QtQml.subprojects.classes.sortPages = true
 
 tagfile                 = ../../../doc/qtqml/qtqml.tags
 
@@ -56,7 +60,8 @@ imagedirs   += images
 
 # Exclude documentation for the compiler category: these are not mature enough to be documented
 excludefiles += src/qmllint/compiler.qdoc \
-                src/qmllint/deferred-property-id.qdoc
+                src/qmllint/deferred-property-id.qdoc \
+                src/qmllint/prefixed-import-type.qdoc
 
 # Add a thumbnail for examples that do not have images
 manifestmeta.thumbnail.names += "QtQml/Chapter 4*" \
@@ -66,10 +71,10 @@ manifestmeta.thumbnail.names += "QtQml/Chapter 4*" \
 navigation.landingpage = "Qt Qml"
 navigation.cppclassespage = "Qt Qml C++ Classes"
 navigation.qmltypespage = "Qt Qml QML Types"
-# Auto-generate navigation linking based on the \list structures on the following:
-navigation.toctitles = "Qt Quick Compiler"
+# Autogenerate navigation linking based on the \list structures on the following:
+navigation.toctitles = "Qt Qml module topics"
+navigation.toctitles.inclusive = false
 
-navigation.toctitles.inclusive = true
 # suppress qdoc warnings for \instantiates entries
 spurious += "C\\+\\+ class .*\\\\instantiates .*"
 

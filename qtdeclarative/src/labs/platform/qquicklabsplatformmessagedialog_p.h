@@ -18,6 +18,8 @@
 #include "qquicklabsplatformdialog_p.h"
 #include <QtQml/qqml.h>
 
+#if QT_DEPRECATED_SINCE(6, 9)
+
 QT_BEGIN_NAMESPACE
 
 class QQuickLabsPlatformMessageDialog : public QQuickLabsPlatformDialog
@@ -83,5 +85,7 @@ private:
 };
 
 QT_END_NAMESPACE
+
+#endif // QT_DEPRECATED_SINCE(6, 9)
 
 #endif // QQUICKLABSPLATFORMMESSAGEDIALOG_P_H

@@ -25,14 +25,20 @@
 
 #include <cmath>
 #include <cstring>
+#include <optional>
 
 #include "base/check_op.h"
+#include "base/memory/stack_allocated.h"
 #include "base/notreached.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
+#include "third_party/blink/renderer/platform/geometry/evaluation_input.h"
 #include "third_party/blink/renderer/platform/geometry/layout_unit.h"
 #include "third_party/blink/renderer/platform/platform_export.h"
 #include "third_party/blink/renderer/platform/wtf/allocator/allocator.h"
 #include "third_party/blink/renderer/platform/wtf/math_extras.h"
+
+namespace WTF {
+class String;
+}  // namespace WTF
 
 namespace blink {
 
@@ -83,13 +89,15 @@ struct PixelsAndPercent {
   bool has_explicit_percent;
 };
 
-class CalculationExpressionNode;
 class CalculationValue;
 class Length;
 
 PLATFORM_EXPORT extern const Length& g_auto_length;
-PLATFORM_EXPORT extern const Length& g_none_length;
-PLATFORM_EXPORT extern const Length& g_fixed_zero_length;
+PLATFORM_EXPORT extern const Length& g_fill_available_length;
+PLATFORM_EXPORT extern const Length& g_fit_content_length;
+PLATFORM_EXPORT extern const Length& g_max_content_length;
+PLATFORM_EXPORT extern const Length& g_min_content_length;
+PLATFORM_EXPORT extern const Length& g_min_intrinsic_length;
 
 class PLATFORM_EXPORT Length {
   DISALLOW_NEW();
@@ -181,23 +189,25 @@ class PLATFORM_EXPORT Length {
   }
   bool operator!=(const Length& o) const { return !(*this == o); }
 
+  static const Length& Auto() { return g_auto_length; }
+  static const Length& FillAvailable() { return g_fill_available_length; }
+  static const Length& FitContent() { return g_fit_content_length; }
+  static const Length& MaxContent() { return g_max_content_length; }
+  static const Length& MinContent() { return g_min_content_length; }
+  static const Length& MinIntrinsic() { return g_min_intrinsic_length; }
+
+  static Length Content() { return Length(kContent); }
+  static Length Fixed() { return Length(kFixed); }
+  static Length None() { return Length(kNone); }
+
+  static Length ExtendToZoom() { return Length(kExtendToZoom); }
+  static Length DeviceWidth() { return Length(kDeviceWidth); }
+  static Length DeviceHeight() { return Length(kDeviceHeight); }
+
   template <typename NUMBER_TYPE>
   static Length Fixed(NUMBER_TYPE number) {
     return Length(number, kFixed);
   }
-  static Length Fixed() { return Length(kFixed); }
-  static const Length& FixedZero() { return g_fixed_zero_length; }
-  static const Length& Auto() { return g_auto_length; }
-  static Length FillAvailable() { return Length(kFillAvailable); }
-  static Length MinContent() { return Length(kMinContent); }
-  static Length MaxContent() { return Length(kMaxContent); }
-  static Length MinIntrinsic() { return Length(kMinIntrinsic); }
-  static Length ExtendToZoom() { return Length(kExtendToZoom); }
-  static Length DeviceWidth() { return Length(kDeviceWidth); }
-  static Length DeviceHeight() { return Length(kDeviceHeight); }
-  static const Length& None() { return g_none_length; }
-  static Length FitContent() { return Length(kFitContent); }
-  static Length Content() { return Length(kContent); }
   template <typename NUMBER_TYPE>
   static Length Percent(NUMBER_TYPE number) {
     return Length(number, kPercent);
@@ -213,7 +223,7 @@ class PLATFORM_EXPORT Length {
 
   int IntValue() const {
     if (IsCalculated()) {
-      NOTREACHED();
+      NOTREACHED_IN_MIGRATION();
       return 0;
     }
     DCHECK(!IsNone());
@@ -257,36 +267,31 @@ class PLATFORM_EXPORT Length {
 
     return !value_;
   }
-  bool IsPositive() const {
-    if (IsNone())
-      return false;
-    if (IsCalculated())
-      return true;
 
-    return GetFloatValue() > 0;
-  }
-  bool IsNegative() const {
-    if (IsNone() || IsCalculated())
-      return false;
-
-    return GetFloatValue() < 0;
-  }
-
-  // For the layout purposes, if this |Length| is a block-axis size, see
-  // |IsAutoOrContentOrIntrinsic()|, it is usually a better choice.
+  // If this is a length in a property that accepts calc-size(), use
+  // |HasAuto()|.  If this |Length| is a block-axis size
+  // |HasAutoOrContentOrIntrinsic()| is usually a better choice.
   bool IsAuto() const { return GetType() == kAuto; }
   bool IsFixed() const { return GetType() == kFixed; }
 
   // For the block axis, intrinsic sizes such as `min-content` behave the same
   // as `auto`. https://www.w3.org/TR/css-sizing-3/#valdef-width-min-content
-  bool IsContentOrIntrinsic() const {
-    return GetType() == kMinContent || GetType() == kMaxContent ||
-           GetType() == kFitContent || GetType() == kMinIntrinsic ||
-           GetType() == kContent;
-  }
-  bool IsAutoOrContentOrIntrinsic() const {
-    return GetType() == kAuto || IsContentOrIntrinsic();
-  }
+  // This includes content-based sizes in calc-size().
+  bool HasAuto() const;
+  bool HasContentOrIntrinsic() const;
+  bool HasAutoOrContentOrIntrinsic() const;
+  // HasPercent and HasPercentOrStretch refer to whether the toplevel value
+  // should be treated as a percentage type for web-exposed behavior
+  // decisions.  However, a value can still depend on a percentage when
+  // HasPercent() is false:  for example, calc-size(any, 20%).
+  bool HasPercent() const;
+  bool HasPercentOrStretch() const;
+  bool HasStretch() const;
+
+  bool HasMinContent() const;
+  bool HasMaxContent() const;
+  bool HasMinIntrinsic() const { return IsMinIntrinsic(); }
+  bool HasFitContent() const;
 
   bool IsSpecified() const {
     return GetType() == kFixed || GetType() == kPercent ||
@@ -295,26 +300,41 @@ class PLATFORM_EXPORT Length {
 
   bool IsCalculated() const { return GetType() == kCalculated; }
   bool IsCalculatedEqual(const Length&) const;
+
+  // These type checking methods should be used with extreme caution;
+  // many uses probably want the Has* methods above to work correctly
+  // with calc-size().
   bool IsMinContent() const { return GetType() == kMinContent; }
   bool IsMaxContent() const { return GetType() == kMaxContent; }
-  bool IsContent() const { return GetType() == kContent; }
   bool IsMinIntrinsic() const { return GetType() == kMinIntrinsic; }
   bool IsFillAvailable() const { return GetType() == kFillAvailable; }
   bool IsFitContent() const { return GetType() == kFitContent; }
   bool IsPercent() const { return GetType() == kPercent; }
-  bool IsPercentOrCalc() const {
+  // MayHavePercentDependence should be used to decide whether to optimize
+  // away computing the value on which percentages depend or optimize away
+  // recomputation that results from changes to that value.  It is intended to
+  // be used *only* in cases where the implementation could be changed to one
+  // that returns true only if there are percentage values somewhere in the
+  // expression (that is, one that still returns true for calc-size(any, 30%)
+  // for which HasPercent() is false, but is false for calc-size(any, 30px)).
+  //
+  // We could (if we want) make this exact and remove "May" from the name.
+  // But this would require looking into the calculation value like HasPercent
+  // does.  However, it needs to be different from HasPercent because of cases
+  // where calc-size() erases percentage-ness from the type, like
+  // calc-size(any, 20%).
+  //
+  // For properties that cannot have calc-size in them, we currently use
+  // HasPercent() rather than MayHavePercentDependence() since it's a
+  // shorter/simpler function name, and the two functions are equivalent in
+  // that case.
+  bool MayHavePercentDependence() const {
     return GetType() == kPercent || GetType() == kCalculated;
-  }
-  bool IsPercentOrCalcOrStretch() const {
-    return GetType() == kPercent || GetType() == kCalculated ||
-           GetType() == kFillAvailable;
   }
   bool IsFlex() const { return GetType() == kFlex; }
   bool IsExtendToZoom() const { return GetType() == kExtendToZoom; }
   bool IsDeviceWidth() const { return GetType() == kDeviceWidth; }
   bool IsDeviceHeight() const { return GetType() == kDeviceHeight; }
-  bool HasAnchorQueries() const;
-  bool HasAutoAnchorPositioning() const;
 
   Length Blend(const Length& from, double progress, ValueRange range) const {
     DCHECK(IsSpecified());
@@ -344,16 +364,7 @@ class PLATFORM_EXPORT Length {
     return value_;
   }
 
-  class PLATFORM_EXPORT AnchorEvaluator {
-   public:
-    // Evaluates an anchor() or anchor-size() function given by the
-    // CalculationExpressionNode. Returns |nullopt| if the query is invalid
-    // (e.g., no targets or wrong axis.)
-    virtual absl::optional<LayoutUnit> Evaluate(
-        const CalculationExpressionNode&) const = 0;
-  };
-  float NonNanCalculatedValue(float max_value,
-                              const AnchorEvaluator* = nullptr) const;
+  float NonNanCalculatedValue(float max_value, const EvaluationInput&) const;
 
   Length SubtractFromOneHundredPercent() const;
 
@@ -361,7 +372,7 @@ class PLATFORM_EXPORT Length {
 
   Length Zoom(double factor) const;
 
-  String ToString() const;
+  WTF::String ToString() const;
 
  private:
   Length BlendMixedTypes(const Length& from, double progress, ValueRange) const;

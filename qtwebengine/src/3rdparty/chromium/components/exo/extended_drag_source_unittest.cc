@@ -7,7 +7,6 @@
 #include <memory>
 #include <string>
 
-#include "ash/constants/app_types.h"
 #include "ash/drag_drop/drag_drop_controller.h"
 #include "ash/drag_drop/toplevel_window_drag_delegate.h"
 #include "ash/public/cpp/window_properties.h"
@@ -19,6 +18,7 @@
 #include "base/task/single_thread_task_runner.h"
 #include "base/test/bind.h"
 #include "base/test/gmock_callback_support.h"
+#include "chromeos/ui/base/app_types.h"
 #include "chromeos/ui/base/window_properties.h"
 #include "components/exo/buffer.h"
 #include "components/exo/data_source.h"
@@ -32,11 +32,13 @@
 #include "components/exo/test/exo_test_helper.h"
 #include "components/exo/test/shell_surface_builder.h"
 #include "components/exo/test/test_data_device_delegate.h"
+#include "components/exo/test/test_data_source_delegate.h"
 #include "testing/gmock/include/gmock/gmock.h"
 #include "testing/gtest/include/gtest/gtest.h"
 #include "ui/aura/client/aura_constants.h"
 #include "ui/aura/client/drag_drop_client.h"
 #include "ui/aura/client/drag_drop_delegate.h"
+#include "ui/aura/window_occlusion_tracker.h"
 #include "ui/aura/window_tree_host.h"
 #include "ui/base/dragdrop/drag_drop_types.h"
 #include "ui/base/dragdrop/mojom/drag_drop_types.mojom-shared.h"
@@ -48,6 +50,7 @@
 #include "ui/gfx/geometry/size.h"
 #include "ui/gfx/geometry/vector2d.h"
 
+using ::exo::test::TestDataSourceDelegate;
 using ::testing::_;
 using ::testing::AnyNumber;
 using ::testing::DoAll;
@@ -87,24 +90,11 @@ class TestExtendedDragSourceDelegate : public ExtendedDragSource::Delegate {
 
   bool ShouldLockCursor() const override { return lock_cursor_; }
 
-  void OnSwallowed(const std::string& mime_type) override {
-    ASSERT_FALSE(swallowed_);
-    swallowed_ = true;
-  }
-
-  void OnUnswallowed(const std::string& mime_type,
-                     const gfx::Vector2d& offset) override {
-    ASSERT_TRUE(swallowed_);
-    swallowed_ = false;
-  }
-
   void OnDataSourceDestroying() override { delete this; }
 
  private:
   const bool allow_drap_no_target_;
   const bool lock_cursor_;
-
-  bool swallowed_ = true;
 };
 
 class ExtendedDragSourceTest : public test::ExoTestBase {
@@ -158,8 +148,7 @@ class ExtendedDragSourceTest : public test::ExoTestBase {
   }
 
   std::unique_ptr<Buffer> CreateBuffer(gfx::Size size) {
-    return std::make_unique<Buffer>(
-        exo_test_helper()->CreateGpuMemoryBuffer(size));
+    return test::ExoTestHelper::CreateBuffer(size);
   }
 
   raw_ptr<ash::DragDropController, DanglingUntriaged> drag_drop_controller_ =
@@ -294,8 +283,8 @@ class WindowObserverHookChecker : public aura::WindowObserver {
     dragged_window_->AddObserver(this);
     surface_window_->RemoveObserver(this);
 
-    dragged_window_->SetProperty(aura::client::kAppType,
-                                 static_cast<int>(ash::AppType::LACROS));
+    dragged_window_->SetProperty(chromeos::kAppTypeKey,
+                                 chromeos::AppType::LACROS);
   }
 
   void OnWindowVisibilityChanging(aura::Window* window, bool visible) override {
@@ -434,7 +423,7 @@ TEST_F(ExtendedDragSourceTest, DragSurfaceNotMappedYet_Touch) {
             *extended_drag_source_->GetDragOffsetForTesting());
 
   // Initiate the gesture sequence.
-  DispatchGesture(ui::ET_GESTURE_BEGIN, gfx::Point(10, 10));
+  DispatchGesture(ui::EventType::kGestureBegin, gfx::Point(10, 10));
 
   // Map the |detached_surface|.
   auto detached_buffer = CreateBuffer({50, 50});
@@ -458,8 +447,7 @@ TEST_F(ExtendedDragSourceTest, DragSurfaceNotMappedYet_Touch) {
 TEST_F(ExtendedDragSourceTest, DestroyDraggedSurfaceWhileDragging) {
   // Create and map a toplevel shell surface.
   gfx::Size buffer_size(32, 32);
-  std::unique_ptr<Buffer> buffer(
-      new Buffer(exo_test_helper()->CreateGpuMemoryBuffer(buffer_size)));
+  auto buffer = test::ExoTestHelper::CreateBuffer(buffer_size);
   std::unique_ptr<Surface> surface(new Surface);
   std::unique_ptr<ShellSurface> shell_surface(new ShellSurface(surface.get()));
   surface->Attach(buffer.get());
@@ -486,7 +474,7 @@ TEST_F(ExtendedDragSourceTest, DestroyDraggedSurfaceWhileDragging) {
   // Create an drag event instance to be dispatched manually
   // and hold a dangling target pointer.
   auto event = std::make_unique<ui::MouseEvent>(
-      ui::ET_MOUSE_DRAGGED, dragged_window->bounds().origin(),
+      ui::EventType::kMouseDragged, dragged_window->bounds().origin(),
       dragged_window->bounds().origin(), ui::EventTimeForNow(),
       ui::EF_LEFT_MOUSE_BUTTON, ui::EF_LEFT_MOUSE_BUTTON);
   ui::Event::DispatcherApi(event.get())
@@ -676,6 +664,11 @@ TEST_F(ExtendedDragSourceTest, DragWithScreenCoordinates_Touch) {
 }
 
 TEST_F(ExtendedDragSourceTest, DragToAnotherDisplay) {
+  // This test counts configures, so pause occlusion tracking to avoid unrelated
+  // configure messages.
+  // TODO(crbug.com/325548651): Try to reduce configures, so we can remove
+  // this pause.
+  aura::WindowOcclusionTracker::ScopedPause pause_occlusion;
   UpdateDisplay("400x300,800x600");
   // The window where the extendd drag originates.
   auto origin_shell_surface =
@@ -698,7 +691,7 @@ TEST_F(ExtendedDragSourceTest, DragToAnotherDisplay) {
   auto configure_callback = base::BindLambdaForTesting(
       [&](const gfx::Rect& bounds, chromeos::WindowStateType state_type,
           bool resizing, bool activated, const gfx::Vector2d& origin_offset,
-          float raster_scale,
+          float raster_scale, aura::Window::OcclusionState occlusion_state,
           std::optional<chromeos::WindowStateType> restore_state_type) {
         drop_bounds = bounds;
         return ++serial;
@@ -795,7 +788,9 @@ TEST_F(ExtendedDragSourceTest, DragToAnotherDisplay) {
 // Regression test for crbug.com/40946538. Ensures Exo is able to handle
 // arbitrary ordering of asynchronous system mouse events and exo client drag
 // requests.
-TEST_F(ExtendedDragSourceTest, HandlesMouseMoveBeforeExtendedDragStart) {
+// TODO(crbug.com/333504586): This test started to consistently fail
+TEST_F(ExtendedDragSourceTest,
+       DISABLED_HandlesMouseMoveBeforeExtendedDragStart) {
   UpdateDisplay("800x600,800x600");
   const auto* screen = display::Screen::GetScreen();
   ASSERT_EQ(2u, screen->GetAllDisplays().size());

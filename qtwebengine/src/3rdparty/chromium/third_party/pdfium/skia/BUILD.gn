@@ -9,6 +9,7 @@ import("//testing/test.gni")
 import("//third_party/skia/gn/codec.gni")
 import("//third_party/skia/gn/shared_sources.gni")
 import("//third_party/skia/modules/skcms/skcms.gni")
+import("../pdfium.gni")
 import("features.gni")
 
 if (current_cpu == "arm") {
@@ -18,8 +19,36 @@ if (current_cpu == "mipsel" || current_cpu == "mips64el") {
   import("//build/config/mips.gni")
 }
 
+if (pdf_enable_fontations) {
+  import("//build/rust/rust_static_library.gni")
+}
+
 skia_use_ganesh_backend = !is_ios
 skia_support_pdf = false
+
+if (pdf_enable_fontations) {
+  source_set("path_bridge") {
+    sources = [ "//third_party/skia/src/ports/fontations/src/skpath_bridge.h" ]
+  }
+
+  rust_static_library("bridge_rust_side") {
+    allow_unsafe = true
+    crate_root = "//third_party/skia/src/ports/fontations/src/ffi.rs"
+    sources = [ "//third_party/skia/src/ports/fontations/src/ffi.rs" ]
+    cxx_bindings = [ "//third_party/skia/src/ports/fontations/src/ffi.rs" ]
+    deps = [
+      ":path_bridge",
+      "//third_party/rust/font_types/v0_6:lib",
+      "//third_party/rust/read_fonts/v0_20:lib",
+      "//third_party/rust/skrifa/v0_20:lib",
+    ]
+    configs -= [ "//build/config/compiler:chromium_code" ]
+    configs += [
+      ":skia_config",
+      "//build/config/compiler:no_chromium_code",
+    ]
+  }
+}
 
 # External-facing config for dependent code.
 config("skia_config") {
@@ -80,6 +109,10 @@ config("skia_config") {
 
   if (is_win) {
     defines += [ "GR_GL_FUNCTION_TYPE=__stdcall" ]
+  }
+
+  if (pdf_enable_fontations) {
+    include_dirs += [ "$root_gen_dir/third_party/skia" ]
   }
 }
 
@@ -182,20 +215,20 @@ component("skia") {
 
   # The skia sources values are relative to the skia_dir, so we need to rebase.
   sources += skia_core_public
-  sources += skia_sksl_gpu_sources
-  sources += skia_sksl_sources
+  sources += skia_sksl_pipeline_sources
+  sources += skia_sksl_codegen_sources
+  sources += skia_sksl_core_sources
+  sources += skia_sksl_default_module_sources
   sources += skia_utils_private
   sources += skia_xps_sources
-  sources += skia_codec_core
   sources += skia_codec_decode_bmp
+  sources += skia_codec_png
+  sources += skia_codec_shared
   sources += skia_encode_srcs
   sources += skia_encode_png_srcs
+  sources += skia_ports_sources
   sources += [
-    "//third_party/skia/src/fonts/SkFontMgr_indirect.cpp",
-    "//third_party/skia/src/fonts/SkRemotableFontMgr.cpp",
-    "//third_party/skia/src/ports/SkGlobalInitialization_default.cpp",
     "//third_party/skia/src/ports/SkImageGenerator_none.cpp",
-    "//third_party/skia/src/ports/SkOSFile_stdio.cpp",
     "//third_party/skia/src/sfnt/SkOTTable_name.cpp",
     "//third_party/skia/src/sfnt/SkOTUtils.cpp",
 
@@ -251,14 +284,8 @@ component("skia") {
 
   if (is_win) {
     # See SK_TYPEFACE_FACTORY_DIRECTWRITE
-    sources += [
-      "//third_party/skia/src/ports/SkFontMgr_win_dw.cpp",
-      "//third_party/skia/src/ports/SkFontMgr_win_dw_factory.cpp",
-      "//third_party/skia/src/ports/SkOSFile_win.cpp",
-      "//third_party/skia/src/ports/SkRemotableFontMgr_win_dw.cpp",
-      "//third_party/skia/src/ports/SkScalerContext_win_dw.cpp",
-      "//third_party/skia/src/ports/SkTypeface_win_dw.cpp",
-    ]
+    sources += skia_ports_windows_fonts_sources
+    sources += skia_ports_windows_sources
   } else {
     sources += [ "//third_party/skia/src/ports/SkOSFile_posix.cpp" ]
   }
@@ -269,7 +296,6 @@ component("skia") {
     sources += [
       "//third_party/skia/include/ports/SkFontMgr_mac_ct.h",
       "//third_party/skia/src/ports/SkFontMgr_mac_ct.cpp",
-      "//third_party/skia/src/ports/SkFontMgr_mac_ct_factory.cpp",
       "//third_party/skia/src/ports/SkScalerContext_mac_ct.cpp",
       "//third_party/skia/src/ports/SkScalerContext_mac_ct.h",
       "//third_party/skia/src/ports/SkTypeface_mac_ct.cpp",
@@ -290,7 +316,6 @@ component("skia") {
       "//third_party/skia/src/ports/SkFontMgr_FontConfigInterface.cpp",
       "//third_party/skia/src/ports/SkFontMgr_custom.cpp",
       "//third_party/skia/src/ports/SkFontMgr_custom_empty.cpp",
-      "//third_party/skia/src/ports/SkFontMgr_custom_empty_factory.cpp",
     ]
   }
 
@@ -305,29 +330,24 @@ component("skia") {
     ]
   }
 
-  if (is_fuchsia) {
-    sources += [
-      # TODO(crbug.com/pdfium/2019): Consider using SkFontMgr_fuchsia.cpp
-      # instead of SkFontMgr_custom_empty.cpp.
-      "//third_party/skia/src/ports/SkFontMgr_custom.cpp",
-      "//third_party/skia/src/ports/SkFontMgr_custom_empty.cpp",
-      "//third_party/skia/src/ports/SkFontMgr_custom_empty_factory.cpp",
-    ]
-    deps += [
-      "//third_party/fuchsia-sdk/sdk/fidl/fuchsia.fonts:fuchsia.fonts_hlcpp",
-      "//third_party/fuchsia-sdk/sdk/fidl/fuchsia.io:fuchsia.io_hlcpp",
-      "//third_party/fuchsia-sdk/sdk/fidl/fuchsia.sys:fuchsia.sys_hlcpp",
-      "//third_party/fuchsia-sdk/sdk/pkg/sys_cpp",
-      "//third_party/fuchsia-sdk/sdk/pkg/zx",
-      "//third_party/icu:icuuc",
-    ]
-  }
-
   if (is_win || (is_apple && use_blink)) {
     sources += [
       # Add the FreeType custom font manager as a fallback backend for variable fonts.
       "//third_party/skia/src/ports/SkFontMgr_custom.cpp",
       "//third_party/skia/src/ports/SkFontMgr_custom_empty.cpp",
+    ]
+  }
+
+  if (pdf_enable_fontations) {
+    sources += [
+      "//third_party/skia/src/ports/SkTypeface_fontations.cpp",
+      "//third_party/skia/src/ports/SkTypeface_fontations_priv.h",
+    ]
+
+    # Fontations Rust/C++ bridge interfaces.
+    deps += [
+      ":bridge_rust_side",
+      ":path_bridge",
     ]
   }
 
@@ -379,7 +399,6 @@ component("skia") {
   }
 
   if (skia_support_pdf) {
-    deps += [ "//third_party/sfntly" ]
     sources += skia_pdf_sources
   } else {
     sources += [ "//third_party/skia/src/pdf/SkDocument_PDF_None.cpp" ]

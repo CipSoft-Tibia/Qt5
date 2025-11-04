@@ -3,6 +3,7 @@
 # found in the LICENSE file.
 
 import("//build_overrides/build.gni")
+import("../gni/openscreen.gni")
 
 visibility = [ "../*" ]
 
@@ -18,7 +19,7 @@ config("trace_logging_config") {
   }
 }
 
-source_set("util") {
+openscreen_source_set("util") {
   public = [
     "alarm.h",
     "base64.h",
@@ -40,13 +41,15 @@ source_set("util") {
     "json/json_serialization.h",
     "json/json_value.h",
     "osp_logging.h",
+    "read_file.h",
     "saturate_cast.h",
     "serial_delete_ptr.h",
     "simple_fraction.h",
     "span_util.h",
     "std_util.h",
+    "string_parse.h",
+    "string_util.h",
     "stringprintf.h",
-    "stringutil.h",
     "trace_logging.h",
     "url.h",
     "weak_ptr.h",
@@ -67,12 +70,13 @@ source_set("util") {
     "crypto/sha2.cc",
     "json/json_serialization.cc",
     "json/json_value.cc",
+    "read_file.cc",
     "scoped_wake_lock.cc",
     "simple_fraction.cc",
     "span_util.cc",
     "std_util.cc",
+    "string_util.cc",
     "stringprintf.cc",
-    "stringutil.cc",
     "trace_logging/macro_support.h",
     "trace_logging/scoped_trace_operations.cc",
     "trace_logging/scoped_trace_operations.h",
@@ -98,10 +102,7 @@ source_set("util") {
     "//third_party/modp_b64",
   ]
 
-  public_configs = [
-    "../build:openscreen_include_dirs",
-    ":trace_logging_config",
-  ]
+  public_configs = [ ":trace_logging_config" ]
 
   if (is_mac) {
     frameworks = [
@@ -112,7 +113,7 @@ source_set("util") {
   }
 }
 
-source_set("unittests") {
+openscreen_source_set("unittests") {
   testonly = true
 
   sources = [
@@ -134,8 +135,9 @@ source_set("unittests") {
     "serial_delete_ptr_unittest.cc",
     "simple_fraction_unittest.cc",
     "std_util_unittest.cc",
+    "string_parse_unittest.cc",
+    "string_util_unittest.cc",
     "stringprintf_unittest.cc",
-    "stringutil_unittest.cc",
     "trace_logging/scoped_trace_operations_unittest.cc",
     "url_unittest.cc",
     "weak_ptr_unittest.cc",

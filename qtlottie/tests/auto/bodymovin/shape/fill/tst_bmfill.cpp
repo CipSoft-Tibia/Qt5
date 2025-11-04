@@ -43,7 +43,7 @@ private slots:
     void testHidden();
 
 private:
-    void loadTestData(const QByteArray &filename);
+    void loadTestData(const QString &filename);
     void updateProperty(int frame);
 
     BMFill *m_fill = nullptr;
@@ -158,7 +158,7 @@ void tst_BMFill::testHidden()
     QVERIFY(m_fill->hidden() == true);
 }
 
-void tst_BMFill::loadTestData(const QByteArray &filename)
+void tst_BMFill::loadTestData(const QString &filename)
 {
     if (m_fill) {
         delete m_fill;

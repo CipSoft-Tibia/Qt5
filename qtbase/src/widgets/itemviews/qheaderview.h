@@ -6,8 +6,11 @@
 
 #include <QtWidgets/qtwidgetsglobal.h>
 #include <QtWidgets/qabstractitemview.h>
+#include <QtCore/qlist.h>
 
 QT_REQUIRE_CONFIG(itemviews);
+
+class tst_QHeaderView;
 
 QT_BEGIN_NAMESPACE
 
@@ -209,6 +212,7 @@ protected:
 
     friend class QTableView;
     friend class QTreeView;
+    friend class ::tst_QHeaderView;
 
 private:
     void initStyleOption(QStyleOptionFrame *option) const override;

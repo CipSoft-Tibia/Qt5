@@ -9,11 +9,12 @@ import "."
 
 Item {
     id: mainview
-    width: 1280
-    height: 720
+    width: 1920
+    height: 1080
 
     property real fontSize: 12
     property real windowRatio: 4
+    property real maxAxisSegmentCount: 20
 
     Item {
         id: surfaceView
@@ -219,6 +220,93 @@ Item {
             }
         }
         //! [5]
+
+        GroupBox {
+            Layout.fillWidth: true
+            background: Rectangle {
+                anchors.fill: parent
+                color: "white"
+            }
+
+            Column {
+                padding :10
+                spacing: 10
+                Label {
+                    font.pointSize: fontSize
+                    font.bold: true
+                    text: "Axis Segments"
+                }
+
+                Column {
+                    Label {
+                        text: "X Axis Segments"
+                    }
+                    Slider {
+                        id: axisSegmentX
+                        from: 1
+                        to: maxAxisSegmentCount
+                        value: surfaceLayers.axisX.segmentCount
+
+                        onValueChanged: surfaceLayers.axisX.segmentCount = value
+                    }
+
+                    Slider {
+                        id: subAxisSegmentX
+                        from: 1
+                        to: maxAxisSegmentCount
+                        value: surfaceLayers.axisX.subSegmentCount
+
+                        onValueChanged: surfaceLayers.axisX.subSegmentCount = value
+                    }
+                }
+
+                Column {
+                    Label {
+                        text: "Y Axis Segments"
+                    }
+                    Slider {
+                        id: axisSegmentY
+                        from: 1
+                        to: maxAxisSegmentCount
+                        value: surfaceLayers.axisY.segmentCount
+
+                        onValueChanged: surfaceLayers.axisY.segmentCount = value
+                    }
+
+                    Slider {
+                        id: subAxisSegmentY
+                        from: 1
+                        to: maxAxisSegmentCount
+                        value: surfaceLayers.axisY.subSegmentCount
+
+                        onValueChanged: surfaceLayers.axisY.subSegmentCount = value
+                    }
+                }
+
+                Column {
+                    Label {
+                        text: "Z Axis Segments"
+                    }
+                    Slider {
+                        id: axisSegmentZ
+                        from: 1
+                        to: maxAxisSegmentCount
+                        value: surfaceLayers.axisZ.segmentCount
+
+                        onValueChanged: surfaceLayers.axisZ.segmentCount = value
+                    }
+
+                    Slider {
+                        id: subAxisSegmentZ
+                        from: 1
+                        to: maxAxisSegmentCount
+                        value: surfaceLayers.axisZ.subSegmentCount
+
+                        onValueChanged: surfaceLayers.axisZ.subSegmentCount = value
+                    }
+                }
+            }
+        }
 
         //! [6]
         Button {

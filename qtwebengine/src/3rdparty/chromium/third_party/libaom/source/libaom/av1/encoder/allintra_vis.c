@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021, Alliance for Open Media. All rights reserved
+ * Copyright (c) 2021, Alliance for Open Media. All rights reserved.
  *
  * This source code is subject to the terms of the BSD 2 Clause License and
  * the Alliance for Open Media Patent License 1.0. If the BSD 2 Clause License
@@ -12,6 +12,8 @@
 #include <assert.h>
 
 #include "config/aom_config.h"
+
+#include "aom_util/aom_pthread.h"
 
 #if CONFIG_TFLITE
 #include "tensorflow/lite/c/c_api.h"
@@ -588,7 +590,7 @@ void av1_set_mb_wiener_variance(AV1_COMP *cpi) {
           &cm->cur_frame->buf, cm->width, cm->height, seq_params->subsampling_x,
           seq_params->subsampling_y, seq_params->use_highbitdepth,
           cpi->oxcf.border_in_pixels, cm->features.byte_alignment, NULL, NULL,
-          NULL, cpi->image_pyramid_levels, 0))
+          NULL, cpi->alloc_pyramid, 0))
     aom_internal_error(cm->error, AOM_CODEC_MEM_ERROR,
                        "Failed to allocate frame buffer");
   av1_alloc_mb_wiener_var_pred_buf(&cpi->common, &cpi->td);

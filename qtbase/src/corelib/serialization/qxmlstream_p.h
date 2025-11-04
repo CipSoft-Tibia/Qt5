@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:data-parser
 
 //
 //  W A R N I N G
@@ -139,8 +140,8 @@ public:
         if (tos + extraCapacity + 1 > cap) {
             cap = qMax(tos + extraCapacity + 1, cap << 1 );
             void *ptr = realloc(static_cast<void *>(data), cap * sizeof(T));
+            Q_CHECK_PTR(ptr);
             data = reinterpret_cast<T *>(ptr);
-            Q_CHECK_PTR(data);
         }
     }
 
@@ -225,7 +226,7 @@ public:
     }
 };
 
-
+#if QT_CONFIG(xmlstreamreader)
 class QXmlStreamEntityResolver;
 class QXmlStreamReaderPrivate : public QXmlStreamGrammar, public QXmlStreamPrivateTagStack
 {
@@ -535,6 +536,7 @@ private:
             type = t;
     }
 };
+#endif // feature xmlstreamreader
 
 QT_END_NAMESPACE
 

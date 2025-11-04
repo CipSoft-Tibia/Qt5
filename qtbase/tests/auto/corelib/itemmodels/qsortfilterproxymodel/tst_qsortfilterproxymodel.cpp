@@ -3663,6 +3663,18 @@ void tst_QSortFilterProxyModel::resetInvalidate()
     QCOMPARE(ok, works);
 }
 
+void tst_QSortFilterProxyModel::sourceModelInReset()
+{
+    QTest::failOnWarning();
+    QStandardItemModel m1;
+    QSortFilterProxyModel sfpm;
+    connect(&m1, &QAbstractItemModel::modelAboutToBeReset, &sfpm, [&]() {
+        sfpm.setSourceModel(&m1);
+    });
+    m1.clear();
+    QCOMPARE_EQ(sfpm.sourceModel(), &m1);
+}
+
 /**
  * A proxy which changes the background color for items ending in 'y' or 'r'
  */
@@ -5495,6 +5507,65 @@ void tst_QSortFilterProxyModel::createPersistentOnLayoutAboutToBeChanged() // QT
     proxy.sort(0);
     QCOMPARE(layoutAboutToBeChangedSpy.size(), 1);
     QCOMPARE(layoutChangedSpy.size(), 1);
+}
+
+void tst_QSortFilterProxyModel::filterChangeEmitsModelChangedSignals()
+{
+    QStringListModel model({"1", "2", "3", "4", "5"});
+
+    class FilterModel : public QSortFilterProxyModel
+    {
+        QString m_matchString;
+    public:
+        void setFilter(const QString &s)
+        {
+            if (m_matchString == s)
+                return;
+
+            beginFilterChange();
+            m_matchString = s;
+            invalidateFilter();
+        }
+
+        bool filterAcceptsRow(int sourceRow, const QModelIndex &sourceParent) const override
+        {
+            const auto index = sourceModel()->index(sourceRow, 0, sourceParent);
+            if (!index.isValid())
+                return false;
+
+            return index.data().value<QString>() == m_matchString;
+        }
+    };
+
+    FilterModel filterModel;
+
+     // Reject all source data at the start
+    filterModel.setFilter("X");
+     // Trigger an evaluation
+    filterModel.sort(0, Qt::AscendingOrder);
+    filterModel.setSourceModel(&model);
+    QCOMPARE(filterModel.rowCount(), 0);
+    filterModel.invalidate();
+
+    QSignalSpy rowsInsertedSpy(&filterModel, &QSortFilterProxyModel::rowsInserted);
+    QSignalSpy rowsRemovedSpy(&filterModel, &QSortFilterProxyModel::rowsRemoved);
+
+    filterModel.setFilter("3");
+    QCOMPARE(filterModel.rowCount(), 1);
+    QCOMPARE(rowsInsertedSpy.count(), 1);
+    rowsInsertedSpy.clear();
+
+    filterModel.setFilter("2");
+    QCOMPARE(filterModel.rowCount(), 1);
+    QCOMPARE(rowsInsertedSpy.count(), 1);
+    QCOMPARE(rowsRemovedSpy.count(), 1);
+    rowsInsertedSpy.clear();
+    rowsRemovedSpy.clear();
+
+    filterModel.setFilter("X");
+    QCOMPARE(filterModel.rowCount(), 0);
+    QCOMPARE(rowsInsertedSpy.count(), 0);
+    QCOMPARE(rowsRemovedSpy.count(), 1);
 }
 
 QTEST_MAIN(tst_QSortFilterProxyModel)

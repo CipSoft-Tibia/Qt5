@@ -38,6 +38,7 @@
 #include "dawn/native/Device.h"
 #include "dawn/native/ObjectType_autogen.h"
 #include "dawn/native/ValidationUtils_autogen.h"
+#include "dawn/native/utils/WGPUHelpers.h"
 
 namespace dawn::native {
 
@@ -67,16 +68,15 @@ MaybeError ProgrammableEncoder::ValidateProgrammableEncoderEnd() const {
     return {};
 }
 
-void ProgrammableEncoder::APIInsertDebugMarker(const char* groupLabel) {
+void ProgrammableEncoder::APIInsertDebugMarker2(std::string_view groupLabel) {
+    groupLabel = utils::NormalizeLabel(groupLabel);
     mEncodingContext->TryEncode(
         this,
         [&](CommandAllocator* allocator) -> MaybeError {
             InsertDebugMarkerCmd* cmd =
                 allocator->Allocate<InsertDebugMarkerCmd>(Command::InsertDebugMarker);
-            cmd->length = strlen(groupLabel);
-
-            char* label = allocator->AllocateData<char>(cmd->length + 1);
-            memcpy(label, groupLabel, cmd->length + 1);
+            cmd->length = groupLabel.length();
+            allocator->CopyAsNullTerminatedString(groupLabel);
 
             return {};
         },
@@ -100,19 +100,18 @@ void ProgrammableEncoder::APIPopDebugGroup() {
         "encoding %s.PopDebugGroup().", this);
 }
 
-void ProgrammableEncoder::APIPushDebugGroup(const char* groupLabel) {
+void ProgrammableEncoder::APIPushDebugGroup2(std::string_view groupLabel) {
+    groupLabel = utils::NormalizeLabel(groupLabel);
     mEncodingContext->TryEncode(
         this,
         [&](CommandAllocator* allocator) -> MaybeError {
             PushDebugGroupCmd* cmd =
                 allocator->Allocate<PushDebugGroupCmd>(Command::PushDebugGroup);
-            cmd->length = strlen(groupLabel);
-
-            char* label = allocator->AllocateData<char>(cmd->length + 1);
-            memcpy(label, groupLabel, cmd->length + 1);
+            cmd->length = groupLabel.length();
+            const char* label = allocator->CopyAsNullTerminatedString(groupLabel);
 
             mDebugGroupStackSize++;
-            mEncodingContext->PushDebugGroupLabel(groupLabel);
+            mEncodingContext->PushDebugGroupLabel(std::string_view(label, cmd->length));
 
             return {};
         },
@@ -149,12 +148,12 @@ MaybeError ProgrammableEncoder::ValidateSetBindGroup(BindGroupIndex index,
         const BindingInfo& bindingInfo = layout->GetBindingInfo(i);
 
         // BGL creation sorts bindings such that the dynamic buffer bindings are first.
-        // DAWN_ASSERT that this true.
-        DAWN_ASSERT(bindingInfo.bindingType == BindingInfoType::Buffer);
-        DAWN_ASSERT(bindingInfo.buffer.hasDynamicOffset);
+        const BufferBindingInfo& bindingLayout =
+            std::get<BufferBindingInfo>(bindingInfo.bindingLayout);
+        DAWN_ASSERT(bindingLayout.hasDynamicOffset);
 
         uint64_t requiredAlignment;
-        switch (bindingInfo.buffer.type) {
+        switch (bindingLayout.type) {
             case wgpu::BufferBindingType::Uniform:
                 requiredAlignment = GetDevice()->GetLimits().v1.minUniformBufferOffsetAlignment;
                 break;

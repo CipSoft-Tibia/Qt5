@@ -67,7 +67,7 @@ bool QQmlSA::SourceLocation::isValid() const
  */
 quint32 QQmlSA::SourceLocation::begin() const
 {
-    return QQmlSA::SourceLocationPrivate::sourceLocation(*this).begin();
+    return offset();
 }
 
 /*!
@@ -75,7 +75,7 @@ quint32 QQmlSA::SourceLocation::begin() const
  */
 quint32 QQmlSA::SourceLocation::end() const
 {
-    return QQmlSA::SourceLocationPrivate::sourceLocation(*this).end();
+    return offset() + length();
 }
 
 /*!

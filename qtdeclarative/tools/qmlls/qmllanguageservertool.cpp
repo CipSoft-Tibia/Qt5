@@ -120,7 +120,7 @@ public slots:
             qsizetype readNow = std::cin.readsome(m_buffer + m_bytesInBuf + 1, s_bufSize) + 1;
             QByteArray toAdd(m_buffer + m_bytesInBuf, readNow);
             m_bytesInBuf += readNow;
-            m_streamReader.receiveData(toAdd);
+            m_streamReader.receiveData(std::move(toAdd));
 
             m_shouldSendData |= m_bytesInBuf >= s_bufSize;
             if (std::exchange(m_shouldSendData, false))
@@ -128,6 +128,47 @@ public slots:
         }
     }
 };
+
+static QStringList collectImportPaths(const QCommandLineParser &parser,
+                                      const QCommandLineOption &qmlImportPathOption,
+                                      const QCommandLineOption &environmentOption,
+                                      const QCommandLineOption &qmlImportNoDefault)
+{
+    QStringList importPaths;
+    if (parser.isSet(qmlImportPathOption)) {
+        const QStringList pathsFromOption =
+                QQmlToolingUtils::getAndWarnForInvalidDirsFromOption(parser, qmlImportPathOption);
+        qInfo().nospace().noquote() << "Using import directories passed by -I: \""
+                                    << pathsFromOption.join(u"\", \""_s) << "\".";
+        importPaths << pathsFromOption;
+    }
+    if (parser.isSet(environmentOption)) {
+        if (const QStringList dirsFromEnv =
+                    QQmlToolingUtils::getAndWarnForInvalidDirsFromEnv(u"QML_IMPORT_PATH"_s);
+            !dirsFromEnv.isEmpty()) {
+            qInfo().nospace().noquote()
+                    << "Using import directories passed from environment variable "
+                       "\"QML_IMPORT_PATH\": \""
+                    << dirsFromEnv.join(u"\", \""_s) << "\".";
+            importPaths << dirsFromEnv;
+        }
+
+        if (const QStringList dirsFromEnv2 =
+                    QQmlToolingUtils::getAndWarnForInvalidDirsFromEnv(u"QML2_IMPORT_PATH"_s);
+            !dirsFromEnv2.isEmpty()) {
+            qInfo().nospace().noquote()
+                    << "Using import directories passed from the deprecated environment variable "
+                       "\"QML2_IMPORT_PATH\": \""
+                    << dirsFromEnv2.join(u"\", \""_s) << "\".";
+            importPaths << dirsFromEnv2;
+        }
+    }
+
+    // add as default fallback at the end
+    if (!parser.isSet(qmlImportNoDefault))
+        importPaths << QLibraryInfo::path(QLibraryInfo::QmlImportsPath);
+    return importPaths;
+}
 
 // To debug:
 //
@@ -238,6 +279,14 @@ int main(int argv, char *argc[])
     parser.addOption(docDir);
     settings.addOption("docDir");
 
+    QCommandLineOption qmlImportNoDefault(
+                QStringList() << "bare",
+                QLatin1String("Do not include default import directories. "
+                              "This may be used to run qmlls on a Boot2Qt project."));
+    parser.addOption(qmlImportNoDefault);
+    const QString qmlImportNoDefaultSetting = QLatin1String("DisableDefaultImports");
+    settings.addOption(qmlImportNoDefaultSetting, false);
+
     parser.process(app);
 
     if (parser.isSet(writeDefaultsOption)) {
@@ -315,36 +364,9 @@ int main(int argv, char *argc[])
                    "might not be found if no .qmlls.ini files are present in the root source "
                    "folder.";
     }
-    QStringList importPaths{ QLibraryInfo::path(QLibraryInfo::QmlImportsPath) };
-    if (parser.isSet(qmlImportPathOption)) {
-        const QStringList pathsFromOption =
-                QQmlToolingUtils::getAndWarnForInvalidDirsFromOption(parser, qmlImportPathOption);
-        qInfo().nospace().noquote() << "Using import directories passed by -I: \""
-                                    << pathsFromOption.join(u"\", \""_s) << "\".";
-        importPaths << pathsFromOption;
-    }
-    if (parser.isSet(environmentOption)) {
-        if (const QStringList dirsFromEnv =
-                    QQmlToolingUtils::getAndWarnForInvalidDirsFromEnv(u"QML_IMPORT_PATH"_s);
-            !dirsFromEnv.isEmpty()) {
-            qInfo().nospace().noquote()
-                    << "Using import directories passed from environment variable "
-                       "\"QML_IMPORT_PATH\": \""
-                    << dirsFromEnv.join(u"\", \""_s) << "\".";
-            importPaths << dirsFromEnv;
-        }
 
-        if (const QStringList dirsFromEnv2 =
-                    QQmlToolingUtils::getAndWarnForInvalidDirsFromEnv(u"QML2_IMPORT_PATH"_s);
-            !dirsFromEnv2.isEmpty()) {
-            qInfo().nospace().noquote()
-                    << "Using import directories passed from the deprecated environment variable "
-                       "\"QML2_IMPORT_PATH\": \""
-                    << dirsFromEnv2.join(u"\", \""_s) << "\".";
-            importPaths << dirsFromEnv2;
-        }
-    }
-    qmlServer.codeModel()->setImportPaths(importPaths);
+    qmlServer.codeModel()->setImportPaths(
+            collectImportPaths(parser, qmlImportPathOption, environmentOption, qmlImportNoDefault));
 
     StdinReader r;
     QThread workerThread;

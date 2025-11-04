@@ -77,9 +77,57 @@ cc_library(
     "//src/tint/utils/symbol",
     "//src/tint/utils/text",
     "//src/tint/utils/traits",
+    "//src/utils",
   ] + select({
     ":tint_build_wgsl_writer": [
       "//src/tint/lang/wgsl/writer/ast_printer",
+    ],
+    "//conditions:default": [],
+  }),
+  copts = COPTS,
+  visibility = ["//visibility:public"],
+)
+cc_library(
+  name = "test",
+  alwayslink = True,
+  srcs = [
+    "options_test.cc",
+    "writer_test.cc",
+  ],
+  deps = [
+    "//src/tint/api/common",
+    "//src/tint/lang/core",
+    "//src/tint/lang/core/constant",
+    "//src/tint/lang/core/intrinsic",
+    "//src/tint/lang/core/ir",
+    "//src/tint/lang/core/ir:test",
+    "//src/tint/lang/core/type",
+    "//src/tint/lang/wgsl",
+    "//src/tint/lang/wgsl/ast",
+    "//src/tint/lang/wgsl/common",
+    "//src/tint/lang/wgsl/features",
+    "//src/tint/lang/wgsl/program",
+    "//src/tint/lang/wgsl/sem",
+    "//src/tint/lang/wgsl/writer/ir_to_program",
+    "//src/tint/lang/wgsl/writer/raise",
+    "//src/tint/utils/containers",
+    "//src/tint/utils/diagnostic",
+    "//src/tint/utils/ice",
+    "//src/tint/utils/id",
+    "//src/tint/utils/macros",
+    "//src/tint/utils/math",
+    "//src/tint/utils/memory",
+    "//src/tint/utils/reflection",
+    "//src/tint/utils/result",
+    "//src/tint/utils/rtti",
+    "//src/tint/utils/symbol",
+    "//src/tint/utils/text",
+    "//src/tint/utils/traits",
+    "@gtest",
+    "//src/utils",
+  ] + select({
+    ":tint_build_wgsl_writer": [
+      "//src/tint/lang/wgsl/writer",
     ],
     "//conditions:default": [],
   }),
@@ -93,7 +141,6 @@ cc_library(
     "writer_bench.cc",
   ],
   deps = [
-    "//src/tint/cmd/bench:bench",
     "//src/tint/lang/core",
     "//src/tint/lang/core/constant",
     "//src/tint/lang/core/type",
@@ -118,7 +165,13 @@ cc_library(
     "//src/tint/utils/text",
     "//src/tint/utils/traits",
     "@benchmark",
+    "//src/utils",
   ] + select({
+    ":tint_build_wgsl_reader": [
+      "//src/tint/cmd/bench:bench",
+    ],
+    "//conditions:default": [],
+  }) + select({
     ":tint_build_wgsl_writer": [
       "//src/tint/lang/wgsl/writer",
     ],
@@ -136,5 +189,13 @@ alias(
 alias(
   name = "tint_build_wgsl_writer",
   actual = "//src/tint:tint_build_wgsl_writer_true",
+)
+
+selects.config_setting_group(
+    name = "tint_build_wgsl_writer_and_tint_build_wgsl_reader",
+    match_all = [
+        ":tint_build_wgsl_writer",
+        ":tint_build_wgsl_reader",
+    ],
 )
 

@@ -9,6 +9,7 @@
 #include "components/paint_preview/common/paint_preview_tracker.h"
 #include "printing/buildflags/buildflags.h"
 #include "third_party/blink/public/common/frame/frame_owner_element_type.h"
+#include "third_party/blink/public/common/page/page_zoom.h"
 #include "third_party/blink/renderer/core/dom/document.h"
 #include "third_party/blink/renderer/core/frame/local_frame.h"
 #include "third_party/blink/renderer/core/frame/local_frame_view.h"
@@ -98,7 +99,7 @@ void RemoteFrameView::DetachFromLayout() {
 
 bool RemoteFrameView::UpdateViewportIntersectionsForSubtree(
     unsigned parent_flags,
-    absl::optional<base::TimeTicks>&) {
+    ComputeIntersectionsContext&) {
   UpdateViewportIntersection(parent_flags, needs_occlusion_tracking_);
   return needs_occlusion_tracking_;
 }
@@ -227,7 +228,7 @@ void RemoteFrameView::UpdateCompositingScaleFactor() {
   float frame_to_local_root_scale_factor = 1.0f;
   gfx::Transform local_root_transform =
       local_root_transform_state.AccumulatedTransform();
-  absl::optional<gfx::Vector2dF> scale_components =
+  std::optional<gfx::Vector2dF> scale_components =
       gfx::TryComputeTransform2dScaleComponents(local_root_transform);
   if (!scale_components) {
     frame_to_local_root_scale_factor =
@@ -280,7 +281,7 @@ void RemoteFrameView::UpdateFrozenSize() {
   auto* layout_embedded_content = GetLayoutEmbeddedContent();
   if (!layout_embedded_content)
     return;
-  absl::optional<PhysicalSize> frozen_phys_size =
+  std::optional<PhysicalSize> frozen_phys_size =
       layout_embedded_content->FrozenFrameSize();
   if (!frozen_phys_size)
     return;
@@ -288,6 +289,10 @@ void RemoteFrameView::UpdateFrozenSize() {
                                       frozen_phys_size->height.Ceil());
   frozen_size_ = rounded_frozen_size;
   needs_frame_rect_propagation_ = true;
+}
+
+void RemoteFrameView::ZoomFactorChanged(float zoom_factor) {
+  remote_frame_->ZoomFactorChanged(zoom_factor);
 }
 
 void RemoteFrameView::PropagateFrameRects() {
@@ -437,7 +442,7 @@ uint32_t RemoteFrameView::CapturePaintPreview(const gfx::Rect& rect,
   // to this HTMLFrameOwnerElement yet (over IPC). If the token is null the
   // failure can be handled gracefully by simply ignoring the subframe in the
   // result.
-  absl::optional<base::UnguessableToken> maybe_embedding_token =
+  std::optional<base::UnguessableToken> maybe_embedding_token =
       remote_frame_->GetEmbeddingToken();
   if (!maybe_embedding_token.has_value())
     return 0;

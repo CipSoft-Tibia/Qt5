@@ -4,6 +4,8 @@
 
 #include "core/fpdftext/cpdf_linkextract.h"
 
+#include <utility>
+
 #include "testing/gtest/include/gtest/gtest.h"
 
 // Class to help test functions in CPDF_LinkExtract class.
@@ -35,9 +37,13 @@ TEST(CPDF_LinkExtractTest, CheckMailLink) {
     EXPECT_FALSE(extractor.CheckMailLink(&text_str)) << input;
   }
 
+  // A struct of {input_string, expected_extracted_email_address}.
+  struct IOPair {
+    const wchar_t* input;
+    const wchar_t* expected_output;
+  };
   // Check cases that can extract valid mail link.
-  // An array of {input_string, expected_extracted_email_address}.
-  const wchar_t* const kValidStrings[][2] = {
+  constexpr IOPair kValidStrings[] = {
       {L"peter@abc.d", L"peter@abc.d"},
       {L"red.teddy.b@abc.com", L"red.teddy.b@abc.com"},
       {L"abc_@gmail.com", L"abc_@gmail.com"},  // '_' is ok before '@'.
@@ -51,12 +57,11 @@ TEST(CPDF_LinkExtractTest, CheckMailLink) {
       {L"CAP.cap@Gmail.Com", L"CAP.cap@Gmail.Com"},  // Keep the original case.
   };
   for (const auto& it : kValidStrings) {
-    const wchar_t* const input = it[0];
-    WideString text_str(input);
+    WideString text_str(it.input);
     WideString expected_str(L"mailto:");
-    expected_str += it[1];
-    EXPECT_TRUE(extractor.CheckMailLink(&text_str)) << input;
-    EXPECT_STREQ(expected_str.c_str(), text_str.c_str());
+    expected_str += it.expected_output;
+    EXPECT_TRUE(extractor.CheckMailLink(&text_str)) << it.input;
+    EXPECT_EQ(expected_str.c_str(), text_str);
   }
 }
 
@@ -170,7 +175,7 @@ TEST(CPDF_LinkExtractTest, CheckWebLink) {
   for (const auto& it : kValidCases) {
     auto maybe_link = extractor.CheckWebLink(it.input_string);
     ASSERT_TRUE(maybe_link.has_value()) << it.input_string;
-    EXPECT_STREQ(it.url_extracted, maybe_link.value().m_strUrl.c_str());
+    EXPECT_EQ(it.url_extracted, maybe_link.value().m_strUrl);
     EXPECT_EQ(it.start_offset, maybe_link.value().m_Start) << it.input_string;
     EXPECT_EQ(it.count, maybe_link.value().m_Count) << it.input_string;
   }

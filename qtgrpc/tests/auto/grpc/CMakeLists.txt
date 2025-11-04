@@ -4,7 +4,7 @@
 # Set the default message latency for the gRPC tests in milliseconds.
 add_compile_definitions(QT_GRPC_TEST_MESSAGE_LATENCY=${QT_INTERNAL_GRPC_TEST_MESSAGE_LATENCY_MSEC})
 
-if(TARGET WrapgRPC::WrapLibgRPC)
+if(TARGET gRPC::grpc++)
     add_subdirectory(client)
     add_subdirectory(server)
     add_subdirectory(qgrpchttp2channel)

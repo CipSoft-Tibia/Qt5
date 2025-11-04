@@ -41,7 +41,8 @@ private:
 };
 
 class QQmlContext;
-class QQuickLoaderPrivate : public QQuickImplicitSizeItemPrivate, public QQuickItemChangeListener
+class QQuickLoaderPrivate : public QQuickImplicitSizeItemPrivate,
+                            public QSafeQuickItemChangeListener<QQuickLoaderPrivate>
 {
     Q_DECLARE_PUBLIC(QQuickLoader)
 

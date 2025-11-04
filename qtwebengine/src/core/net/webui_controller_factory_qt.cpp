@@ -1,5 +1,6 @@
 // Copyright (C) 2017 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 // Based on chrome/browser/ui/webui/chrome_web_ui_controller_factory.cc:
 // Copyright (c) 2012 The Chromium Authors. All rights reserved.
@@ -12,8 +13,8 @@
 #include "devtools_frontend_qt.h"
 #include "base/functional/bind.h"
 #include "build/build_config.h"
-#include "chrome/browser/accessibility/accessibility_ui.h"
 #include "chrome/browser/profiles/profile.h"
+#include "chrome/browser/ui/webui/accessibility/accessibility_ui.h"
 #include "chrome/browser/ui/webui/device_log/device_log_ui.h"
 #include "chrome/browser/ui/webui/devtools/devtools_ui.h"
 #include "chrome/browser/ui/webui/net_internals/net_internals_ui.h"

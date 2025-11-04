@@ -1,5 +1,6 @@
 // Copyright (C) 2020 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qnetworkaccessbackend_p.h"
 #include "qnetworkreplyimpl_p.h"
@@ -258,7 +259,10 @@ QNetworkAccessBackend::QNetworkAccessBackend(TargetTypes targetTypes, IOFeatures
 /*!
     Destructs the QNetworkAccessBackend base class.
 */
-QNetworkAccessBackend::~QNetworkAccessBackend() { }
+QNetworkAccessBackend::~QNetworkAccessBackend()
+{
+    delete d_func()->wrappedUploadByteDevice;
+}
 
 /*!
     Returns the security related features that the backend claims to

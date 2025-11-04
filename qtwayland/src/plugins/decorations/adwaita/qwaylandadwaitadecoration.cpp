@@ -339,7 +339,7 @@ void QWaylandAdwaitaDecoration::loadConfiguration()
 
     QDBusConnection::sessionBus().connect(QString(), "/org/freedesktop/portal/desktop"_L1,
                                           "org.freedesktop.portal.Settings"_L1, "SettingChanged"_L1, this,
-                                          SLOT(settingChanged(QString, QString, QDBusVariant)));
+                                          SLOT(settingChanged(QString,QString,QDBusVariant)));
 
     // Load SVG icons
     for (auto mapIt = buttonMap.constBegin(); mapIt != buttonMap.constEnd(); mapIt++) {

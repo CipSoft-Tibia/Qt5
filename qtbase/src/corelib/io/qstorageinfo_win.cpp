@@ -1,5 +1,6 @@
 // Copyright (C) 2014 Ivan Komissarov <ABBAPOH@gmail.com>
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qstorageinfo_p.h"
 
@@ -7,6 +8,7 @@
 #include <QtCore/qfileinfo.h>
 #include <QtCore/qmutex.h>
 #include <QtCore/qvarlengtharray.h>
+#include <QtCore/private/wcharhelpers_win_p.h>
 
 #include "qfilesystementry_p.h"
 #include "private/qsystemlibrary_p.h"
@@ -176,7 +178,7 @@ bool QStorageInfoPrivate::queryStorageProperty()
     if (path.endsWith(u'\\'))
         path.chop(1);
 
-    HANDLE handle = CreateFile(reinterpret_cast<const wchar_t *>(path.utf16()),
+    HANDLE handle = CreateFile(qt_castToWchar(path),
                                0, // no access to the drive
                                FILE_SHARE_READ | FILE_SHARE_WRITE,
                                nullptr,
@@ -276,7 +278,7 @@ void QStorageInfoPrivate::queryFileFsSectorSizeInformation()
         path.append(u'\\');
 
     UNICODE_STRING name;
-    qtRtlInitUnicodeString(&name, reinterpret_cast<const wchar_t *>(path.utf16()));
+    qtRtlInitUnicodeString(&name, qt_castToWchar(path));
 
     InitializeObjectAttributes(&attrs, &name, 0, nullptr, nullptr);
 

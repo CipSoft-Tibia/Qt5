@@ -36,13 +36,13 @@ public:
     void shutdown();
     bool isShutdown() const;
 
-    QMutex &mutex();
     void lock();
     void unlock();
     void wakeOne();
     void wait();
 
     QThread *thread() const;
+    QObject *threadObject() const;
     bool isThisThread() const;
 
     // Synchronously invoke a method in the thread

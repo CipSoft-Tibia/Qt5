@@ -1,5 +1,6 @@
 // Copyright (C) 2020 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qfileinfogatherer_p.h"
 #include <qcoreapplication.h>
@@ -149,6 +150,8 @@ void QFileInfoGatherer::fetchExtendedInformation(const QString &path, const QStr
     while ((loc = this->path.lastIndexOf(path, loc - 1)) != -1) {
         if (this->files.at(loc) == files)
             return;
+        if (loc == 0)
+            break;
     }
 
 #if QT_CONFIG(thread)

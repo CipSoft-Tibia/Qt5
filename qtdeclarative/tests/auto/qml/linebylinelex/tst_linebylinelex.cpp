@@ -1,7 +1,7 @@
 // Copyright (C) 2022 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
-#include <QtTest/QtTest>
+#include <QtTest/QTest>
 #include <QtQuickTestUtils/private/qmlutils_p.h>
 #include <QtCore/qplugin.h>
 #include <QtQml/private/qqmljslexer_p.h>

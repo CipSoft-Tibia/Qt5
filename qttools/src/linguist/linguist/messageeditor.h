@@ -17,6 +17,7 @@ QT_BEGIN_NAMESPACE
 class QBoxLayout;
 class QMainWindow;
 class QTextEdit;
+class QCheckBox;
 
 class MessageEditor;
 class FormatTextEdit;
@@ -89,6 +90,7 @@ private slots:
     void editorCreated(QTextEdit *);
     void editorDestroyed();
     void selectionChanged(QTextEdit *);
+    void toggleNcrMode();
     void resetHoverSelection();
     void emitTranslationChanged(QTextEdit *);
     void emitTranslatorCommentChanged(QTextEdit *);
@@ -151,6 +153,7 @@ private:
     FormWidget *m_source;
     FormWidget *m_pluralSource;
     FormWidget *m_commentText;
+    QCheckBox *m_ncrModeBox;
     QList<MessageEditorData> m_editors;
 
     QTimer m_tabOrderTimer;

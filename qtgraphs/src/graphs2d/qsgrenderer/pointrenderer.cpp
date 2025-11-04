@@ -1,11 +1,19 @@
 // Copyright (C) 2023 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
+#ifdef USE_LINEGRAPH
 #include <QtGraphs/qlineseries.h>
+#endif
+#ifdef USE_SCATTERGRAPH
 #include <QtGraphs/qscatterseries.h>
+#endif
+#ifdef USE_SPLINEGRAPH
 #include <QtGraphs/qsplineseries.h>
-#include <private/pointrenderer_p.h>
+#endif
+#include <QtQuick/private/qquickdraghandler_p.h>
+#include <QtQuick/private/qquicktaphandler_p.h>
 #include <private/axisrenderer_p.h>
+#include <private/pointrenderer_p.h>
 #include <private/qabstractseries_p.h>
 #include <private/qgraphsview_p.h>
 #include <private/qxyseries_p.h>
@@ -19,6 +27,7 @@ static const char *TAG_POINT_SELECTED_COLOR = "pointSelectedColor";
 static const char *TAG_POINT_SELECTED = "pointSelected";
 static const char *TAG_POINT_VALUE_X = "pointValueX";
 static const char *TAG_POINT_VALUE_Y = "pointValueY";
+static const char *TAG_POINT_INDEX = "pointIndex";
 
 PointRenderer::PointRenderer(QGraphsView *graph)
     : QQuickItem(graph)
@@ -47,6 +56,14 @@ PointRenderer::PointRenderer(QGraphsView *graph)
     )QML").arg(QString::number((int) defaultSize()));
     m_tempMarker = new QQmlComponent(qmlEngine(m_graph), this);
     m_tempMarker->setData(qmlData.toUtf8(), QUrl());
+
+    m_tapHandler = new QQuickTapHandler(this);
+    connect(m_tapHandler, &QQuickTapHandler::singleTapped,
+            this, &PointRenderer::onSingleTapped);
+    connect(m_tapHandler, &QQuickTapHandler::doubleTapped,
+            this, &PointRenderer::onDoubleTapped);
+    connect(m_tapHandler, &QQuickTapHandler::pressedChanged,
+            this, &PointRenderer::onPressedChanged);
 }
 
 PointRenderer::~PointRenderer()
@@ -58,10 +75,17 @@ qreal PointRenderer::defaultSize(QXYSeries *series)
 {
     qreal size = 16.0;
     if (series != nullptr) {
+#ifdef USE_LINEGRAPH
         if (auto line = qobject_cast<QLineSeries *>(series))
             size = qMax(size, line->width());
-        else if (auto spline = qobject_cast<QSplineSeries *>(series))
+#endif
+#if defined(USE_LINEGRAPH) && defined(USE_SPLINEGRAPH)
+        else
+#endif
+#ifdef USE_SPLINEGRAPH
+            if (auto spline = qobject_cast<QSplineSeries *>(series))
             size = qMax(size, spline->width());
+#endif
     }
     return size;
 }
@@ -103,13 +127,16 @@ PointRenderer::SeriesStyle PointRenderer::getSeriesStyle(PointGroup *group)
 
     qsizetype index = group->colorIndex % seriesColors.size();
     QColor color = group->series->color().alpha() != 0 ? group->series->color() : seriesColors.at(index);
+    color.setAlpha(color.alpha() * group->series->opacity());
 
     QColor selectedColor = group->series->selectedColor().alpha() != 0
                                ? group->series->selectedColor()
                                : m_graph->theme()->singleHighlightColor();
+    selectedColor.setAlpha(selectedColor.alpha() * group->series->opacity());
 
     index = group->colorIndex % borderColors.size();
     QColor borderColor = borderColors.at(index);
+    borderColor.setAlpha(borderColor.alpha() * group->series->opacity());
     qreal borderWidth = theme->borderWidth();
 
     return {
@@ -143,6 +170,8 @@ void PointRenderer::updatePointDelegate(
         marker->setProperty(TAG_POINT_VALUE_X, point.x());
     if (marker->property(TAG_POINT_VALUE_Y).isValid())
         marker->setProperty(TAG_POINT_VALUE_Y, point.y());
+    if (marker->property(TAG_POINT_INDEX).isValid())
+        marker->setProperty(TAG_POINT_INDEX, pointIndex);
 
     marker->setX(x - marker->width() / 2.0);
     marker->setY(y - marker->height() / 2.0);
@@ -172,6 +201,89 @@ void PointRenderer::updateLegendData(QXYSeries *series, QLegendData &legendData)
     series->d_func()->setLegendData(legendDataList);
 }
 
+void PointRenderer::onSingleTapped(QEventPoint eventPoint, Qt::MouseButton button)
+{
+    Q_UNUSED(button)
+
+    for (auto &&group : m_groups) {
+        if (!group->series->isVisible())
+            continue;
+
+        if (!group->series->isSelectable() && !group->series->isDraggable())
+            continue;
+
+        int index = 0;
+        for (auto &&rect : group->rects) {
+            if (rect.contains(eventPoint.position())) {
+                emit group->series->clicked(group->series->at(index).toPoint());
+                return;
+            }
+            index++;
+        }
+    }
+}
+
+void PointRenderer::onDoubleTapped(QEventPoint eventPoint, Qt::MouseButton button)
+{
+    Q_UNUSED(button)
+
+    for (auto &&group : m_groups) {
+        if (!group->series->isVisible())
+            continue;
+
+        if (!group->series->isSelectable() && !group->series->isDraggable())
+            continue;
+
+        int index = 0;
+        for (auto &&rect : group->rects) {
+            if (rect.contains(eventPoint.position())) {
+                emit group->series->doubleClicked(group->series->at(index).toPoint());
+                return;
+            }
+            index++;
+        }
+    }
+}
+
+void PointRenderer::onPressedChanged()
+{
+    if (m_tapHandler->isPressed()) {
+        for (auto &&group : m_groups) {
+            if (!group->series->isVisible())
+                continue;
+
+            if (!group->series->isSelectable() && !group->series->isDraggable())
+                continue;
+
+            int index = 0;
+            for (auto &&rect : group->rects) {
+                if (rect.contains(m_tapHandler->point().position())) {
+                    m_pressedGroup = group;
+                    m_pressedPointIndex = index;
+                    emit group->series->pressed(m_pressedGroup->series->at(index).toPoint());
+                }
+                index++;
+            }
+        }
+    } else {
+        if (m_pressedGroup
+            && m_pressedGroup->series->isSelectable()
+            && m_pressedGroup->series->isVisible()) {
+            if (m_pressedGroup->rects[m_pressedPointIndex].contains(
+                    m_tapHandler->point().position())) {
+                if (m_pressedGroup->series->isPointSelected(m_pressedPointIndex))
+                    m_pressedGroup->series->deselectPoint(m_pressedPointIndex);
+                else
+                    m_pressedGroup->series->selectPoint(m_pressedPointIndex);
+                m_previousDelta = QPoint(0, 0);
+                emit m_pressedGroup->series->released(
+                    m_pressedGroup->series->at(m_pressedPointIndex).toPoint());
+            }
+        }
+    }
+}
+
+#ifdef USE_SCATTERGRAPH
 void PointRenderer::updateScatterSeries(QScatterSeries *series, QLegendData &legendData)
 {
     auto group = m_groups.value(series);
@@ -198,7 +310,9 @@ void PointRenderer::updateScatterSeries(QScatterSeries *series, QLegendData &leg
 
     legendData = { style.color, style.borderColor, series->name() };
 }
+#endif
 
+#ifdef USE_LINEGRAPH
 void PointRenderer::updateLineSeries(QLineSeries *series, QLegendData &legendData)
 {
     auto group = m_groups.value(series);
@@ -245,7 +359,9 @@ void PointRenderer::updateLineSeries(QLineSeries *series, QLegendData &legendDat
     group->shapePath->setPath(painterPath);
     legendData = { style.color, style.borderColor, series->name() };
 }
+#endif
 
+#ifdef USE_SPLINEGRAPH
 void PointRenderer::updateSplineSeries(QSplineSeries *series, QLegendData &legendData)
 {
     auto group = m_groups.value(series);
@@ -313,6 +429,7 @@ void PointRenderer::updateSplineSeries(QSplineSeries *series, QLegendData &legen
     group->shapePath->setPath(painterPath);
     legendData = { style.color, style.borderColor, series->name() };
 }
+#endif
 
 void PointRenderer::handlePolish(QXYSeries *series)
 {
@@ -333,7 +450,7 @@ void PointRenderer::handlePolish(QXYSeries *series)
                 group->shapePath->setPath(painterPath);
             }
 
-            for (auto m : group->markers)
+            for (auto m : std::as_const(group->markers))
                 m->deleteLater();
 
             group->markers.clear();
@@ -406,7 +523,50 @@ void PointRenderer::handlePolish(QXYSeries *series)
                     group->currentMarker->create(group->currentMarker->creationContext()));
                 item->setParent(this);
                 item->setParentItem(this);
+                QQuickDragHandler *handler = new QQuickDragHandler(item);
+                handler->setEnabled(series->isDraggable());
+                connect(series, &QXYSeries::draggableChanged, this, [handler, series]() {
+                    handler->setEnabled(series->isDraggable());
+                });
                 group->markers << item;
+                group->dragHandlers << handler;
+
+                connect(handler, &QQuickDragHandler::translationChanged, this, [&]() {
+                    if (m_pressedGroup) {
+                        float w = width();
+                        float h = height();
+                        double maxVertical
+                            = m_graph->m_axisRenderer->m_axisVerticalValueRange > 0
+                                  ? 1.0 / m_graph->m_axisRenderer->m_axisVerticalValueRange
+                                  : 100.0;
+                        double maxHorizontal
+                            = m_graph->m_axisRenderer->m_axisHorizontalValueRange > 0
+                                  ? 1.0 / m_graph->m_axisRenderer->m_axisHorizontalValueRange
+                                  : 100.0;
+
+                        QPoint currentDelta =
+                            m_pressedGroup->dragHandlers.at(m_pressedPointIndex)
+                                ->activeTranslation().toPoint();
+                        QPoint delta = currentDelta - m_previousDelta;
+                        m_previousDelta = currentDelta;
+
+                        qreal deltaX = delta.x() / w / maxHorizontal;
+                        qreal deltaY = -delta.y() / h / maxVertical;
+
+                        QPointF point = m_pressedGroup->series->at(m_pressedPointIndex)
+                                        + QPointF(deltaX, deltaY);
+                        m_pressedGroup->series->replace(m_pressedPointIndex, point);
+                    }
+                });
+                connect(handler, &QQuickDragHandler::grabChanged, this,
+                        [&](QPointingDevice::GrabTransition transition, QEventPoint point) {
+                            Q_UNUSED(point)
+
+                            if (transition == QPointingDevice::UngrabExclusive ||
+                                transition == QPointingDevice::UngrabPassive) {
+                                m_previousDelta = QPoint(0, 0);
+                            }
+                        });
             }
         } else if (markerCount > pointCount) {
             for (qsizetype i = pointCount; i < markerCount; ++i)
@@ -425,12 +585,24 @@ void PointRenderer::handlePolish(QXYSeries *series)
     }
 
     QLegendData legendData;
+#ifdef USE_SCATTERGRAPH
     if (auto scatter = qobject_cast<QScatterSeries *>(series))
         updateScatterSeries(scatter, legendData);
-    else if (auto line = qobject_cast<QLineSeries *>(series))
+#endif
+#if defined(USE_SCATTERGRAPH) && defined(USE_LINEGRAPH)
+    else
+#endif
+#ifdef USE_LINEGRAPH
+        if (auto line = qobject_cast<QLineSeries *>(series))
         updateLineSeries(line, legendData);
-    else if (auto spline = qobject_cast<QSplineSeries *>(series))
+#endif
+#if defined(USE_LINEGRAPH) && defined(USE_SPLINEGRAPH)
+    else
+#endif
+#ifdef USE_SPLINEGRAPH
+        if (auto spline = qobject_cast<QSplineSeries *>(series))
         updateSplineSeries(spline, legendData);
+#endif
 
     updateLegendData(series, legendData);
 }
@@ -442,7 +614,7 @@ void PointRenderer::afterPolish(QList<QAbstractSeries *> &cleanupSeries)
         if (xySeries && m_groups.contains(xySeries)) {
             auto group = m_groups.value(xySeries);
 
-            for (auto marker : group->markers)
+            for (auto marker : std::as_const(group->markers))
                 marker->deleteLater();
 
             if (group->shapePath) {
@@ -465,81 +637,6 @@ void PointRenderer::updateSeries(QXYSeries *series)
 void PointRenderer::afterUpdate(QList<QAbstractSeries *> &cleanupSeries)
 {
     Q_UNUSED(cleanupSeries);
-}
-
-bool PointRenderer::handleMouseMove(QMouseEvent *event)
-{
-    if (!m_pressedGroup || !m_pressedGroup->series->isVisible())
-        return false;
-
-    if (m_pointPressed && m_pressedGroup->series->isDraggable()) {
-        float w = width();
-        float h = height();
-        double maxVertical = m_graph->m_axisRenderer->m_axisVerticalValueRange > 0
-                                 ? 1.0 / m_graph->m_axisRenderer->m_axisVerticalValueRange
-                                 : 100.0;
-        double maxHorizontal = m_graph->m_axisRenderer->m_axisHorizontalValueRange > 0
-                                   ? 1.0 / m_graph->m_axisRenderer->m_axisHorizontalValueRange
-                                   : 100.0;
-
-        QPoint delta = m_pressStart - event->pos();
-
-        qreal deltaX = -delta.x() / w / maxHorizontal;
-        qreal deltaY = delta.y() / h / maxVertical;
-
-        QPointF point = m_pressedGroup->series->at(m_pressedPointIndex) + QPointF(deltaX, deltaY);
-        m_pressedGroup->series->replace(m_pressedPointIndex, point);
-
-        m_pressStart = event->pos();
-        m_pointDragging = true;
-
-        return true;
-    }
-    return false;
-}
-
-bool PointRenderer::handleMousePress(QMouseEvent *event)
-{
-    bool handled = false;
-    for (auto &&group : m_groups) {
-        if (!group->series->isVisible())
-            continue;
-
-        if (!group->series->isSelectable() && !group->series->isDraggable())
-            continue;
-
-        int index = 0;
-        for (auto &&rect : group->rects) {
-            if (rect.contains(event->pos())) {
-                m_pointPressed = true;
-                m_pressStart = event->pos();
-                m_pressedGroup = group;
-                m_pressedPointIndex = index;
-                handled = true;
-            }
-            index++;
-        }
-    }
-    return handled;
-}
-
-bool PointRenderer::handleMouseRelease(QMouseEvent *event)
-{
-    bool handled = false;
-    if (!m_pointDragging && m_pointPressed && m_pressedGroup
-        && m_pressedGroup->series->isSelectable() && m_pressedGroup->series->isVisible()) {
-        if (m_pressedGroup->rects[m_pressedPointIndex].contains(event->pos())) {
-            if (m_pressedGroup->series->isPointSelected(m_pressedPointIndex)) {
-                m_pressedGroup->series->deselectPoint(m_pressedPointIndex);
-            } else {
-                m_pressedGroup->series->selectPoint(m_pressedPointIndex);
-            }
-            handled = true;
-        }
-    }
-    m_pointPressed = false;
-    m_pointDragging = false;
-    return handled;
 }
 
 bool PointRenderer::handleHoverMove(QHoverEvent *event)

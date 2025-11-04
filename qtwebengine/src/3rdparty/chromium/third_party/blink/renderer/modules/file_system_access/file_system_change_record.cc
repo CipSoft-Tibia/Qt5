@@ -4,8 +4,8 @@
 
 #include "third_party/blink/renderer/modules/file_system_access/file_system_change_record.h"
 
-#include "third_party/abseil-cpp/absl/types/optional.h"
-#include "third_party/blink/renderer/bindings/modules/v8/v8_file_system_change_type.h"
+#include <optional>
+
 #include "third_party/blink/renderer/modules/file_system_access/file_system_handle.h"
 
 namespace blink {
@@ -24,11 +24,11 @@ constexpr V8FileSystemChangeType::Enum ToChangeTypeEnum(
 
   switch (tag) {
     case mojom::blink::FileSystemAccessChangeType::Data_::
-        FileSystemAccessChangeType_Tag::kCreated:
-      return V8FileSystemChangeType::Enum::kCreated;
+        FileSystemAccessChangeType_Tag::kAppeared:
+      return V8FileSystemChangeType::Enum::kAppeared;
     case mojom::blink::FileSystemAccessChangeType::Data_::
-        FileSystemAccessChangeType_Tag::kDeleted:
-      return V8FileSystemChangeType::Enum::kDeleted;
+        FileSystemAccessChangeType_Tag::kDisappeared:
+      return V8FileSystemChangeType::Enum::kDisappeared;
     case mojom::blink::FileSystemAccessChangeType::Data_::
         FileSystemAccessChangeType_Tag::kErrored:
       return V8FileSystemChangeType::Enum::kErrored;
@@ -39,8 +39,8 @@ constexpr V8FileSystemChangeType::Enum ToChangeTypeEnum(
         FileSystemAccessChangeType_Tag::kMoved:
       return V8FileSystemChangeType::Enum::kMoved;
     case mojom::blink::FileSystemAccessChangeType::Data_::
-        FileSystemAccessChangeType_Tag::kUnsupported:
-      return V8FileSystemChangeType::Enum::kUnsupported;
+        FileSystemAccessChangeType_Tag::kUnknown:
+      return V8FileSystemChangeType::Enum::kUnknown;
   }
 }
 
@@ -56,14 +56,14 @@ FileSystemChangeRecord::FileSystemChangeRecord(
       relative_path_components_(relative_path),
       type_(std::move(type)) {}
 
-const char* FileSystemChangeRecord::type() const {
-  return V8FileSystemChangeType(ToChangeTypeEnum(type_->which())).AsCStr();
+V8FileSystemChangeType FileSystemChangeRecord::type() const {
+  return V8FileSystemChangeType(ToChangeTypeEnum(type_->which()));
 }
 
-absl::optional<Vector<String>> FileSystemChangeRecord::relativePathMovedFrom()
+std::optional<Vector<String>> FileSystemChangeRecord::relativePathMovedFrom()
     const {
   return type_->is_moved() ? type_->get_moved()->former_relative_path
-                           : absl::nullopt;
+                           : std::nullopt;
 }
 
 void FileSystemChangeRecord::Trace(Visitor* visitor) const {

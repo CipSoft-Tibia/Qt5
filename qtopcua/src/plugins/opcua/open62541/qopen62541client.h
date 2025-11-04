@@ -4,7 +4,12 @@
 #ifndef QOPEN62541CLIENT_H
 #define QOPEN62541CLIENT_H
 
+#ifdef USE_SYSTEM_OPEN62541
+#include <open62541/config.h>
+#else
 #include "qopen62541.h"
+#endif
+
 #include <private/qopcuaclientimpl_p.h>
 
 #include <QtCore/qtimer.h>

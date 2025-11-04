@@ -25,11 +25,14 @@
 #include "core/fpdfapi/parser/fpdf_parser_utility.h"
 #include "core/fxcrt/autorestorer.h"
 #include "core/fxcrt/cfx_read_only_vector_stream.h"
+#include "core/fxcrt/check.h"
+#include "core/fxcrt/check_op.h"
+#include "core/fxcrt/data_vector.h"
 #include "core/fxcrt/fixed_size_data_vector.h"
 #include "core/fxcrt/fx_extension.h"
+#include "core/fxcrt/fx_memcpy_wrappers.h"
 #include "core/fxcrt/fx_safe_types.h"
-#include "third_party/base/check.h"
-#include "third_party/base/check_op.h"
+#include "core/fxcrt/stl_util.h"
 
 namespace {
 
@@ -319,12 +322,13 @@ ByteString CPDF_SyntaxParser::ReadString() {
   return buf;
 }
 
-ByteString CPDF_SyntaxParser::ReadHexString() {
+DataVector<uint8_t> CPDF_SyntaxParser::ReadHexString() {
   uint8_t ch;
-  if (!GetNextChar(ch))
-    return ByteString();
+  if (!GetNextChar(ch)) {
+    return DataVector<uint8_t>();
+  }
 
-  ByteString buf;
+  DataVector<uint8_t> buf;
   bool bFirst = true;
   uint8_t code = 0;
   while (true) {
@@ -337,16 +341,18 @@ ByteString CPDF_SyntaxParser::ReadHexString() {
         code = val * 16;
       } else {
         code += val;
-        buf += static_cast<char>(code);
+        buf.push_back(code);
       }
       bFirst = !bFirst;
     }
 
-    if (!GetNextChar(ch))
+    if (!GetNextChar(ch)) {
       break;
+    }
   }
-  if (!bFirst)
-    buf += static_cast<char>(code);
+  if (!bFirst) {
+    buf.push_back(code);
+  }
 
   return buf;
 }
@@ -463,10 +469,11 @@ void CPDF_SyntaxParser::RecordingToNextWord() {
 CPDF_SyntaxParser::WordResult CPDF_SyntaxParser::GetNextWord() {
   CPDF_ReadValidator::ScopedSession read_session(GetValidator());
   WordType word_type = GetNextWordInternal();
-  ByteString word;
-  if (!GetValidator()->has_read_problems())
-    word = ByteString(m_WordBuffer, m_WordSize);
-  return {word, word_type == WordType::kNumber};
+  ByteStringView word;
+  if (!GetValidator()->has_read_problems()) {
+    word = ByteStringView(pdfium::make_span(m_WordBuffer).first(m_WordSize));
+  }
+  return {ByteString(word), word_type == WordType::kNumber};
 }
 
 ByteString CPDF_SyntaxParser::PeekNextWord() {
@@ -530,27 +537,29 @@ RetainPtr<CPDF_Object> CPDF_SyntaxParser::GetObjectBodyInternal(
     return pdfium::MakeRetain<CPDF_Null>();
 
   if (word == "(") {
-    ByteString str = ReadString();
-    return pdfium::MakeRetain<CPDF_String>(m_pPool, str, false);
+    return pdfium::MakeRetain<CPDF_String>(m_pPool, ReadString());
   }
   if (word == "<") {
-    ByteString str = ReadHexString();
-    return pdfium::MakeRetain<CPDF_String>(m_pPool, str, true);
+    return pdfium::MakeRetain<CPDF_String>(m_pPool, ReadHexString(),
+                                           CPDF_String::DataType::kIsHex);
   }
   if (word == "[") {
     auto pArray = pdfium::MakeRetain<CPDF_Array>();
     while (RetainPtr<CPDF_Object> pObj =
                GetObjectBodyInternal(pObjList, ParseType::kLoose)) {
-      pArray->Append(std::move(pObj));
+      // `pObj` cannot be a stream, per ISO 32000-1:2008 section 7.3.8.1.
+      if (!pObj->IsStream()) {
+        pArray->Append(std::move(pObj));
+      }
     }
     return (parse_type == ParseType::kLoose || m_WordBuffer[0] == ']')
                ? std::move(pArray)
                : nullptr;
   }
   if (word[0] == '/') {
+    auto word_span = pdfium::make_span(m_WordBuffer).first(m_WordSize);
     return pdfium::MakeRetain<CPDF_Name>(
-        m_pPool,
-        PDF_NameDecode(ByteStringView(m_WordBuffer + 1, m_WordSize - 1)));
+        m_pPool, PDF_NameDecode(ByteStringView(word_span).Substr(1)));
   }
   if (word == "<<") {
     RetainPtr<CPDF_Dictionary> pDict =
@@ -637,7 +646,7 @@ RetainPtr<CPDF_Object> CPDF_SyntaxParser::GetIndirectObject(
     pObj->SetGenNum(parser_gennum);
   }
 
-  return GetValidator()->has_read_problems() ? nullptr : std::move(pObj);
+  return GetValidator()->has_read_problems() ? nullptr : pObj;
 }
 
 unsigned int CPDF_SyntaxParser::ReadEOLMarkers(FX_FILESIZE pos) {
@@ -745,7 +754,8 @@ RetainPtr<CPDF_Stream> CPDF_SyntaxParser::ReadStream(
   if (len >= 0) {
     CPDF_ReadValidator::ScopedSession read_session(GetValidator());
     m_Pos += ReadEOLMarkers(GetPos());
-    memset(m_WordBuffer, 0, kEndStreamStr.GetLength() + 1);
+    const size_t zap_length = kEndStreamStr.GetLength() + 1;
+    fxcrt::Fill(pdfium::make_span(m_WordBuffer).first(zap_length), 0);
     GetNextWordInternal();
     if (GetValidator()->has_read_problems())
       return nullptr;
@@ -753,7 +763,7 @@ RetainPtr<CPDF_Stream> CPDF_SyntaxParser::ReadStream(
     // Earlier version of PDF specification doesn't require EOL marker before
     // 'endstream' keyword. If keyword 'endstream' follows the bytes in
     // specified length, it signals the end of stream.
-    if (memcmp(m_WordBuffer, kEndStreamStr.raw_str(),
+    if (memcmp(m_WordBuffer.data(), kEndStreamStr.unterminated_unsigned_str(),
                kEndStreamStr.GetLength()) != 0) {
       substream.Reset();
       len = -1;
@@ -785,11 +795,11 @@ RetainPtr<CPDF_Stream> CPDF_SyntaxParser::ReadStream(
     }
   }
 
-  RetainPtr<CPDF_Stream> pStream;
+  RetainPtr<CPDF_Stream> stream;
   if (substream) {
     // It is unclear from CPDF_SyntaxParser's perspective what object
     // `substream` is ultimately holding references to. To avoid unexpectedly
-    // changing object lifetimes by handing `substream` to `pStream`, make a
+    // changing object lifetimes by handing `substream` to `stream`, make a
     // copy of the data here.
     auto data = FixedSizeDataVector<uint8_t>::Uninit(substream->GetSize());
     bool did_read = substream->ReadBlockAtOffset(data.span(), 0);
@@ -797,14 +807,15 @@ RetainPtr<CPDF_Stream> CPDF_SyntaxParser::ReadStream(
     auto data_as_stream =
         pdfium::MakeRetain<CFX_ReadOnlyVectorStream>(std::move(data));
 
-    pStream = pdfium::MakeRetain<CPDF_Stream>();
-    pStream->InitStreamFromFile(std::move(data_as_stream), std::move(pDict));
+    stream = pdfium::MakeRetain<CPDF_Stream>(std::move(data_as_stream),
+                                             std::move(pDict));
   } else {
     DCHECK(!len);
-    pStream = pdfium::MakeRetain<CPDF_Stream>(std::move(pDict));
+    stream = pdfium::MakeRetain<CPDF_Stream>(std::move(pDict));
   }
   const FX_FILESIZE end_stream_offset = GetPos();
-  memset(m_WordBuffer, 0, kEndObjStr.GetLength() + 1);
+  const size_t zap_length = kEndObjStr.GetLength() + 1;
+  fxcrt::Fill(pdfium::make_span(m_WordBuffer).first(zap_length), 0);
   GetNextWordInternal();
 
   // Allow whitespace after endstream and before a newline.
@@ -818,10 +829,11 @@ RetainPtr<CPDF_Stream> CPDF_SyntaxParser::ReadStream(
   int numMarkers = ReadEOLMarkers(GetPos());
   if (m_WordSize == static_cast<unsigned int>(kEndObjStr.GetLength()) &&
       numMarkers != 0 &&
-      memcmp(m_WordBuffer, kEndObjStr.raw_str(), kEndObjStr.GetLength()) == 0) {
+      memcmp(m_WordBuffer.data(), kEndObjStr.unterminated_unsigned_str(),
+             kEndObjStr.GetLength()) == 0) {
     SetPos(end_stream_offset);
   }
-  return pStream;
+  return stream;
 }
 
 uint32_t CPDF_SyntaxParser::GetDirectNum() {
@@ -829,7 +841,7 @@ uint32_t CPDF_SyntaxParser::GetDirectNum() {
     return 0;
 
   m_WordBuffer[m_WordSize] = 0;
-  return FXSYS_atoui(reinterpret_cast<const char*>(m_WordBuffer));
+  return FXSYS_atoui(pdfium::as_chars(pdfium::make_span(m_WordBuffer)).data());
 }
 
 RetainPtr<CPDF_ReadValidator> CPDF_SyntaxParser::GetValidator() const {

@@ -104,6 +104,7 @@ QImage toQImage(const SkBitmap &bitmap)
     case kBGR_101010x_SkColorType:
     case kBGR_101010x_XR_SkColorType:
     case kBGRA_1010102_SkColorType:
+    case kBGRA_10101010_XR_SkColorType:
         switch (bitmap.alphaType()) {
         case kUnknown_SkAlphaType:
             break;
@@ -136,6 +137,7 @@ QImage toQImage(const SkBitmap &bitmap)
         }
         break;
     case kRGBA_F16_SkColorType:
+    case kRGB_F16F16F16x_SkColorType:
         switch (bitmap.alphaType()) {
         case kUnknown_SkAlphaType:
             break;

@@ -3,6 +3,7 @@ name = "np_hkdf"
 version.workspace = true
 edition.workspace = true
 publish.workspace = true
+license.workspace = true
 
 [lints]
 workspace = true
@@ -17,9 +18,10 @@ ldt.workspace = true
 xts_aes.workspace = true
 
 [dev-dependencies]
-crypto_provider_default.workspace = true
+crypto_provider_default = { workspace = true, features = ["rustcrypto"] }
 rand_ext.workspace = true
 test_helper.workspace = true
+test_vector_hkdf.workspace = true
 
 anyhow.workspace = true
 criterion.workspace = true

@@ -9,7 +9,7 @@
 #include "content/public/browser/web_ui_controller.h"
 #include "ui/base/interaction/element_identifier.h"
 #include "ui/base/resource/resource_scale_factor.h"
-#include "ui/webui/mojo_bubble_web_ui_controller.h"
+#include "ui/webui/mojo_web_ui_controller.h"
 #include "ui/webui/resources/cr_components/help_bubble/help_bubble.mojom.h"
 
 namespace base {
@@ -20,7 +20,7 @@ namespace extensions {
 class PasswordsPrivateDelegate;
 }
 
-class PasswordManagerUI : public ui::MojoBubbleWebUIController,
+class PasswordManagerUI : public ui::MojoWebUIController,
                           public help_bubble::mojom::HelpBubbleHandlerFactory {
  public:
   explicit PasswordManagerUI(content::WebUI* web_ui);
@@ -36,6 +36,7 @@ class PasswordManagerUI : public ui::MojoBubbleWebUIController,
   DECLARE_CLASS_ELEMENT_IDENTIFIER_VALUE(kAddShortcutElementId);
   DECLARE_CLASS_ELEMENT_IDENTIFIER_VALUE(kOverflowMenuElementId);
   DECLARE_CLASS_ELEMENT_IDENTIFIER_VALUE(kSharePasswordElementId);
+  DECLARE_CLASS_ELEMENT_IDENTIFIER_VALUE(kAccountStoreToggleElementId);
   DECLARE_CLASS_CUSTOM_ELEMENT_EVENT_TYPE(kAddShortcutCustomEventId);
 
   void BindInterface(

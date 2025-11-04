@@ -4,6 +4,7 @@
 
 import("../../../scripts/build/ninja/devtools_entrypoint.gni")
 import("../../../scripts/build/ninja/devtools_module.gni")
+import("../../../scripts/build/typescript/typescript.gni")
 import("../visibility.gni")
 
 devtools_module("main") {
@@ -45,12 +46,12 @@ devtools_entrypoint("bundle") {
 
   visibility = [
     ":*",
-    "../../../test/unittests/front_end/entrypoints/missing_entrypoints/*",
-    "../../../test/unittests/front_end/helpers/*",
+    "../../testing/*",
     "../devtools_app:*",
     "../js_app:*",
     "../ndb_app:*",
     "../node_app:*",
+    "../rehydrated_devtools_app:*",
     "../worker_app:*",
   ]
 
@@ -71,5 +72,27 @@ devtools_entrypoint("meta") {
     "../../ui/legacy/components/utils:bundle",
   ]
 
-  visibility = [ "../shell/*" ]
+  visibility = [
+    "../rehydrated_devtools_app:*",
+    "../shell/*",
+  ]
+}
+
+ts_library("unittests") {
+  testonly = true
+
+  sources = [
+    "ExecutionContextSelector.test.ts",
+    "MainImpl.test.ts",
+  ]
+
+  deps = [
+    ":bundle",
+    "../../core/common:bundle",
+    "../../core/protocol_client:bundle",
+    "../../core/sdk:bundle",
+    "../../generated:protocol",
+    "../../testing",
+    "../../ui/legacy:bundle",
+  ]
 }

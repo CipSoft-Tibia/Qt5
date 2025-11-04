@@ -1,5 +1,6 @@
 // Copyright (C) 2022 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QHTTPSERVERREQUEST_P_H
 #define QHTTPSERVERREQUEST_P_H
@@ -71,6 +72,8 @@ public:
     quint16 remotePort;
     QHostAddress localAddress;
     quint16 localPort;
+    int majorVersion;
+    int minorVersion;
 #if QT_CONFIG(ssl)
     QSslConfiguration sslConfiguration;
 #endif

@@ -8,37 +8,63 @@ import argparse
 import datetime as dt
 import json
 import logging
-import pathlib
 import sys
 import tempfile
+import textwrap
 import traceback
 from typing import (TYPE_CHECKING, Any, Dict, List, Optional, Sequence, Tuple,
                     Type, Union)
 
-from tabulate import tabulate
+import tabulate as tbl
 
 import crossbench.benchmarks.all as benchmarks
-from crossbench import cli_helper, helper, plt
+import crossbench.cli.config as cli_config
+from crossbench import __version__, cli_helper
+from crossbench import path as pth
+from crossbench import plt
 from crossbench.benchmarks.base import Benchmark
 from crossbench.browsers import splash_screen, viewport
 from crossbench.browsers.browser_helper import BROWSERS_CACHE
+from crossbench.browsers.secrets import SecretsConfig
+from crossbench.cli import ui
+from crossbench.cli.parser import CrossBenchArgumentParser
+from crossbench.cli.subcommand.devtools_recorder_proxy.default import \
+    CrossbenchDevToolsRecorderProxy
 from crossbench.env import (HostEnvironment, HostEnvironmentConfig,
                             ValidationMode)
 from crossbench.probes.all import GENERAL_PURPOSE_PROBES, DebuggerProbe
 from crossbench.probes.internal import ErrorsProbe
 from crossbench.runner.runner import Runner
 from crossbench.runner.timing import Timing
-from . import config as cli_config
-from .devtools_recorder_proxy import CrossbenchDevToolsRecorderProxy
 
 if TYPE_CHECKING:
   from crossbench.browsers.browser import Browser
   from crossbench.probes.probe import Probe
   from crossbench.runner.run import Run
   BenchmarkClsT = Type[Benchmark]
-  BrowserLookupTableT = Dict[str, Tuple[Type[Browser], pathlib.Path]]
+  BrowserLookupTableT = Dict[str, Tuple[Type[Browser], pth.LocalPath]]
 
-argparse.ArgumentError = cli_helper.CrossBenchArgumentError
+
+class CrossBenchArgumentError(argparse.ArgumentError):
+  """Custom class that also prints the argument.help if available.
+  """
+
+  def __init__(self, argument: Any, message: str) -> None:
+    self.help: str = ""
+    super().__init__(argument, message)
+    if self.argument_name:
+      self.help = getattr(argument, "help", "")
+
+  def __str__(self) -> str:
+    formatted = super().__str__()
+    if not self.help:
+      return formatted
+    return (f"argument error {self.argument_name}:\n\n"
+            f"Help {self.argument_name}:\n{self.help}\n\n"
+            f"{formatted}")
+
+
+argparse.ArgumentError = CrossBenchArgumentError
 
 
 class EnableDebuggingAction(argparse.Action):
@@ -89,17 +115,52 @@ class AppendDebuggerProbeAction(argparse.Action):
       setattr(namespace, "timeout_unit", dt.timedelta.max)
 
 
+class MainCrossBenchArgumentParser(CrossBenchArgumentParser):
+
+  def print_help(self, file=None) -> None:
+    super().print_help(file=file)
+    self.print_probes(file=file)
+
+  def print_probes(self, file=None) -> None:
+    lines = [
+        "Probes can be added and configured for each benchmark.",
+        f"Use `{sys.argv[0]} describe probe $PROBE` for the full help.",
+        "",
+        "Usage: --probe=v8.log --probe=video ...",
+        "Usage: --probe=v8.log:{log_all:false} ...",
+        "Usage: --probe-config=configs/probe/perfetto/default.config.hjson",
+        "",
+    ]
+    table = []
+    for probe_cls in GENERAL_PURPOSE_PROBES:
+      table.append((probe_cls.NAME, probe_cls.summary_text()))
+    lines.append(tbl.tabulate(table, tablefmt="plain"))
+    contents = "\n".join(lines)
+    file = file or sys.stdout
+    file.write("\n")
+    file.write("Available Probes for all Benchmarks:\n")
+    file.write(textwrap.indent(contents, "    "))
+    file.write("\n")
+
+
 class CrossBenchCLI:
   BENCHMARKS: Tuple[BenchmarkClsT, ...] = (
-      benchmarks.Speedometer30Benchmark,
-      benchmarks.Speedometer21Benchmark,
-      benchmarks.Speedometer20Benchmark,
-      benchmarks.JetStream21Benchmark,
       benchmarks.JetStream20Benchmark,
-      benchmarks.MotionMark12Benchmark,
-      benchmarks.PageLoadBenchmark,
-      benchmarks.PowerBenchmark,
+      benchmarks.JetStream21Benchmark,
+      benchmarks.JetStream22Benchmark,
+      benchmarks.JetStream30Benchmark,
       benchmarks.ManualBenchmark,
+      benchmarks.MotionMark10Benchmark,
+      benchmarks.MotionMark11Benchmark,
+      benchmarks.MotionMark12Benchmark,
+      benchmarks.MotionMark13Benchmark,
+      benchmarks.PageLoadBenchmark,
+      benchmarks.PageLoadPhoneBenchmark,
+      benchmarks.PageLoadTabletBenchmark,
+      benchmarks.PowerBenchmark,
+      benchmarks.Speedometer20Benchmark,
+      benchmarks.Speedometer21Benchmark,
+      benchmarks.Speedometer30Benchmark,
   )
 
   RUNNER_CLS: Type[Runner] = Runner
@@ -107,14 +168,12 @@ class CrossBenchCLI:
   def __init__(self, enable_logging: bool = True) -> None:
     self._enable_logging = enable_logging
     self._console_handler: Optional[logging.StreamHandler] = None
-    self._subparsers: Dict[BenchmarkClsT,
-                           cli_helper.CrossBenchArgumentParser] = {}
-    self.parser = cli_helper.CrossBenchArgumentParser(
+    self._subparsers: Dict[BenchmarkClsT, CrossBenchArgumentParser] = {}
+    self.parser = MainCrossBenchArgumentParser(
         description=("A cross browser and cross benchmark runner "
                      "with configurable measurement probes."))
-    self.help_parser = cli_helper.CrossBenchArgumentParser()
-    self.describe_parser = cli_helper.CrossBenchArgumentParser()
-    self.recorder_parser = cli_helper.CrossBenchArgumentParser()
+    self.describe_parser = CrossBenchArgumentParser()
+    self.recorder_parser = CrossBenchArgumentParser()
     self.args = argparse.Namespace()
     self._setup_parser()
     self._setup_subparser()
@@ -129,6 +188,8 @@ class CrossBenchCLI:
         action="store_false",
         default=has_color,
         help="Disable colored output")
+    self.parser.add_argument(
+        "--version", action="version", version=f"%(prog)s {__version__}")
 
   def _add_verbosity_argument(self, parser: argparse.ArgumentParser) -> None:
     debug_group = parser.add_argument_group("Verbosity / Debugging Options")
@@ -183,7 +244,7 @@ class CrossBenchCLI:
         title="Subcommands",
         dest="subcommand",
         required=True,
-        parser_class=cli_helper.CrossBenchArgumentParser)
+        parser_class=CrossBenchArgumentParser)
     for benchmark_cls in self.BENCHMARKS:
       self._setup_benchmark_subparser(benchmark_cls)
     self._setup_help_subparser()
@@ -193,13 +254,13 @@ class CrossBenchCLI:
   def _setup_recorder_subparser(self) -> None:
     self.recorder_parser = CrossbenchDevToolsRecorderProxy.add_subcommand(
         self.subparsers)
-    assert isinstance(self.recorder_parser, cli_helper.CrossBenchArgumentParser)
+    assert isinstance(self.recorder_parser, CrossBenchArgumentParser)
     self._add_verbosity_argument(self.recorder_parser)
 
   def _setup_describe_subparser(self) -> None:
     self.describe_parser = self.subparsers.add_parser(
         "describe", aliases=["desc"], help="Print all benchmarks and stories")
-    assert isinstance(self.describe_parser, cli_helper.CrossBenchArgumentParser)
+    assert isinstance(self.describe_parser, CrossBenchArgumentParser)
     self.describe_parser.add_argument(
         "category",
         nargs="?",
@@ -222,10 +283,14 @@ class CrossBenchCLI:
 
   def _setup_help_subparser(self) -> None:
     # Just for completeness we want to support "--help" and "help"
-    self.help_parser = self.subparsers.add_parser(
-        "help", help="Print the top-level --help")
-    assert isinstance(self.describe_parser, cli_helper.CrossBenchArgumentParser)
-    self.help_parser.set_defaults(subcommand_fn=self.help_subcommand)
+    help_parser = self.subparsers.add_parser(
+        "help", help="Print the top-level, same as --help")
+    help_parser.set_defaults(subcommand_fn=self.help_subcommand)
+    version_parser = self.subparsers.add_parser(
+        "version",
+        help="Show program's version number and exit, same as --version")
+    version_parser.set_defaults(subcommand_fn=self.version_subcommand)
+    assert isinstance(self.describe_parser, CrossBenchArgumentParser)
     self._add_verbosity_argument(self.describe_parser)
 
   def describe_subcommand(self, args: argparse.Namespace) -> None:
@@ -278,14 +343,14 @@ class CrossBenchCLI:
               value = "[]"
             else:
               kwargs = {"maxcolwidths": 60}
-              value = tabulate(value.items(), tablefmt="plain", **kwargs)
+              value = tbl.tabulate(value.items(), tablefmt="plain", **kwargs)
           table.append([None, name, value])
       if len(table) <= 1:
         if args.category != "all":
           self.error(f"No matching benchmark found: '{args.filter}'")
       else:
         printed_any = True
-        print(tabulate(table, tablefmt="grid"))
+        print(tbl.tabulate(table, tablefmt="grid"))
 
     if args.category in ("all", "probe", "probes"):
       table = [["Probe", "Help"]]
@@ -296,7 +361,7 @@ class CrossBenchCLI:
           self.error(f"No matching probe found: '{args.filter}'")
       else:
         printed_any = True
-        print(tabulate(table, tablefmt="grid"))
+        print(tbl.tabulate(table, tablefmt="grid"))
 
     if not printed_any:
       self.error(f"No matching benchmarks or probes found: '{args.filter}'")
@@ -304,6 +369,11 @@ class CrossBenchCLI:
   def help_subcommand(self, args: argparse.Namespace) -> None:
     del args
     self.parser.print_help()
+    sys.exit(0)
+
+  def version_subcommand(self, args: argparse.Namespace) -> None:
+    del args
+    print(f"{sys.argv[0]} {__version__}")
     sys.exit(0)
 
   def _setup_benchmark_subparser(self, benchmark_cls: Type[Benchmark]) -> None:
@@ -318,10 +388,10 @@ class CrossBenchCLI:
     runner_group = subparser.add_argument_group("Runner Options", "")
     runner_group.add_argument(
         "--cache-dir",
-        type=pathlib.Path,
+        type=pth.LocalPath,
         default=BROWSERS_CACHE,
-        help="Used for caching browser binaries and archives. "
-        "Defaults to binary_cache")
+        help=("Used for caching browser binaries and archives. "
+              "Defaults to binary_cache"))
 
     cooldown_group = runner_group.add_mutually_exclusive_group()
     cooldown_group.add_argument(
@@ -329,71 +399,95 @@ class CrossBenchCLI:
         "--cool-down",
         type=cli_helper.Duration.parse_zero,
         default=dt.timedelta(seconds=2),
-        help="Time the runner waits between different runs or repetitions. "
-        "Increase this to let the CPU cool down between runs. "
-        f"Format: {cli_helper.Duration.help()}")
+        help=("Time the runner waits between different runs or repetitions. "
+              "Increase this to let the CPU cool down between runs. "
+              f"Format: {cli_helper.Duration.help()}"))
     cooldown_group.add_argument(
         "--no-cool-down",
         action="store_const",
         dest="cool_down_time",
         const=dt.timedelta(seconds=0),
-        help="Disable cool-down between runs (might cause CPU throttling), "
-        "equivalent to --cool-down=0.")
+        help=("Disable cool-down between runs (might cause CPU throttling), "
+              "equivalent to --cool-down=0."))
     cooldown_group.add_argument(
         "--fast",
         action=EnableFastAction,
         nargs=0,
-        help="Switch to a fast run mode "
-        "which might yield unstable performance results. "
-        "Equivalent to --cool-down=0 --no-splash --env-validation=skip.")
+        help=("Switch to a fast run mode "
+              "which might yield unstable performance results. "
+              "Equivalent to --cool-down=0 --no-splash --env-validation=skip."))
 
     runner_group.add_argument(
         "--time-unit",
         type=cli_helper.Duration.parse,
         default=dt.timedelta(seconds=1),
-        help="Absolute duration of 1 time unit in the runner. "
-        "Increase this for slow builds or machines. "
-        f"Format: {cli_helper.Duration.help()}")
+        help=("Absolute duration of 1 time unit in the runner. "
+              "Increase this for slow builds or machines. "
+              f"Format: {cli_helper.Duration.help()}"))
     runner_group.add_argument(
         "--timeout-unit",
         type=cli_helper.Duration.parse,
         default=dt.timedelta(),
-        help="Absolute duration of 1 time unit for timeouts in the runner. "
-        "Unlike --time-unit, this does only apply for timeouts, "
-        "as opposed to say initial wait times or sleeps."
-        f"Format: {cli_helper.Duration.help()}")
+        help=("Absolute duration of 1 time unit for timeouts in the runner. "
+              "Unlike --time-unit, this does only apply for timeouts, "
+              "as opposed to say initial wait times or sleeps."
+              f"Format: {cli_helper.Duration.help()}"))
     runner_group.add_argument(
         "--run-timeout",
         type=cli_helper.Duration.parse_zero,
         default=dt.timedelta(),
-        help="Sets the same timeout per run on all browsers. "
-        "Runs will be aborted after the given timeout. "
-        f"Format: {cli_helper.Duration.help()}")
+        help=("Sets the same timeout per run on all browsers. "
+              "Runs will be aborted after the given timeout. "
+              f"Format: {cli_helper.Duration.help()}"))
 
     network_group = subparser.add_argument_group("Network Options", "")
     network_settings_group = network_group.add_mutually_exclusive_group()
     network_settings_group.add_argument(
-        "--network", "--network-config",
+        "--network",
         type=cli_config.NetworkConfig.parse,
-        default=cli_config.NetworkConfig.default(),
+        help=("Either an inline network config or an file path to full "
+              "network config hjson file (see --network-config)."))
+    network_settings_group.add_argument(
+        "--network-config",
+        metavar="DIR",
+        type=cli_config.NetworkConfig.parse_config_path,
         help=cli_config.NetworkConfig.help())
+    network_settings_group.add_argument(
+        "--local-file-server",
+        "--local-fileserver",
+        "--file-server",
+        "--fileserver",
+        type=cli_config.NetworkConfig.parse_local,
+        metavar="DIR",
+        dest="network",
+        help="Start a local http file server at the given directory.")
+    network_settings_group.add_argument(
+        "--wpr",
+        "--web-page-replay",
+        type=cli_config.NetworkConfig.parse_wpr,
+        metavar="WPR_ARCHIVE",
+        dest="network",
+        help=("Use wpr.archive to replay network requests "
+              "via a local proxy server. "
+              "Archives can be recorded with --probe=wpr. "
+              "WPR_ARCHIVE can be a local file or a gs:// google storage url."))
 
     env_group = subparser.add_argument_group("Environment Options", "")
     env_settings_group = env_group.add_mutually_exclusive_group()
     env_settings_group.add_argument(
         "--env",
         type=cli_config.parse_inline_env_config,
-        help="Set default runner environment settings. "
-        f"Possible values: {', '.join(HostEnvironment.CONFIGS)}"
-        "or an inline hjson configuration (see --env-config). "
-        "Mutually exclusive with --env-config")
+        help=("Set default runner environment settings. "
+              f"Possible values: {', '.join(HostEnvironment.CONFIGS)}"
+              "or an inline hjson configuration (see --env-config). "
+              "Mutually exclusive with --env-config"))
     env_settings_group.add_argument(
         "--env-config",
         type=cli_config.parse_env_config_file,
-        help="Path to an env.config.hjson file that specifies detailed "
-        "runner environment settings and requirements. "
-        "See config/env.config.hjson for more details."
-        "Mutually exclusive with --env")
+        help=("Path to an env.config.hjson file that specifies detailed "
+              "runner environment settings and requirements. "
+              "See config/env.config.hjson for more details."
+              "Mutually exclusive with --env"))
 
     env_group.add_argument(
         "--env-validation",
@@ -415,49 +509,57 @@ class CrossBenchCLI:
     browser_config_group.add_argument(
         "--browser",
         "-b",
-        type=cli_config.BrowserConfig.parse,
-        action="append",
+        type=cli_config.BrowserConfig.parse_with_range,
+        action="extend",
         default=[],
-        help="Browser binary, defaults to 'chrome-stable'."
-        "Use this to test a simple browser variant. "
-        "Use [chrome, chrome-stable, chrome-dev, chrome-canary, "
-        "safari, safari-tp, "
-        "firefox, firefox-stable, firefox-dev, firefox-nightly, "
-        "edge, edge-stable, edge-beta, edge-dev, edge-canary] "
-        "for system default browsers or a full path. \n"
-        "* Use --browser=chrome-M107 to download the latest version for a "
-        "specific milestone\n"
-        "* Use --browser=chrome-100.0.4896.168 to download a specific chrome version "
-        "(macOS and linux for googlers and chrome only). \n"
-        "* Use --browser=path/to/archive.dmg on macOS or "
-        "--browser=path/to/archive.rpm on linux "
-        "for locally cached versions (chrome only).\n"
-        "* Use --browser=\"${ADB_SERIAL}:chrome\" "
-        "(e.g. --browser='0a388e93:chrome') for specific "
-        "android devices or --browser='adb:chrome' if only once device is "
-        "attached.\n"
-        "Repeat for adding multiple browsers. "
-        "The browser result dir's name is '${BROWSER}_${PLATFORM}_${INDEX}' "
-        "$INDEX corresponds to the order on the command line."
-        "Cannot be used together with --browser-config")
+        help=(
+            "Browser binary, defaults to 'chrome-stable'."
+            "Use this to test a simple browser variant. "
+            "Use [chrome, chrome-stable, chrome-dev, chrome-canary, "
+            "safari, safari-tp, "
+            "firefox, firefox-stable, firefox-dev, firefox-nightly, "
+            "edge, edge-stable, edge-beta, edge-dev, edge-canary] "
+            "for system default browsers or a full path. \n"
+            "* Use --browser=chrome-M107 to download the latest version for a "
+            "specific milestone\n"
+            "* Use ... to test milestone ranges --browser=chr-M100...M125"
+            "* Use --browser=chrome-100.0.4896.168 to download a specific "
+            "chrome version (macOS and linux for googlers and chrome only). \n"
+            "* Use --browser=path/to/archive.dmg on macOS or "
+            "--browser=path/to/archive.rpm on linux "
+            "for locally cached versions (chrome only).\n"
+            "* Use --browser=\"${ADB_SERIAL}:chrome\" "
+            "(e.g. --browser='0a388e93:chrome') for specific "
+            "android devices or --browser='adb:chrome' if only once device is "
+            "attached.\n"
+            "Repeat for adding multiple browsers. "
+            "The browser result dir's name is '${BROWSER}_${PLATFORM}_${INDEX}' "
+            "$INDEX corresponds to the order on the command line."
+            "Cannot be used together with --browser-config"))
     browser_config_group.add_argument(
         "--browser-config",
         type=cli_helper.parse_hjson_file_path,
-        help="Browser configuration.json file. "
-        "Use this to run multiple browsers and/or multiple flag configurations."
-        "See config/browser.config.example.hjson on how to set up a complex "
-        "configuration file. "
-        "Cannot be used together with --browser.")
+        help=("Browser configuration.json file. "
+              "Use this to run multiple browsers and/or multiple "
+              "flag configurations. "
+              "See config/doc/browser.config.hjson on how to set up a complex "
+              "configuration file. "
+              "Cannot be used together with --browser."))
     browser_group.add_argument(
         "--driver-path",
         type=cli_helper.parse_file_path,
-        help="Use the same custom driver path for all specified browsers. "
-        "Version mismatches might cause crashes.")
+        help=("Use the same custom driver path for all specified browsers. "
+              "Version mismatches might cause crashes."))
     browser_group.add_argument(
         "--config",
         type=cli_helper.parse_hjson_file_path,
-        help="Specify a common config for "
-        "--probe-config, --browser-config, --network-config and --env-config.")
+        help=("Specify a common config for --probe-config, --browser-config, "
+              "--network-config and --env-config."))
+    browser_group.add_argument(
+        "--secrets",
+        dest="secrets",
+        type=SecretsConfig.parse,
+        help="Path to file containing login secrets")
 
     splashscreen_group = browser_group.add_mutually_exclusive_group()
     splashscreen_group.add_argument(
@@ -485,7 +587,7 @@ class CrossBenchCLI:
         type=viewport.Viewport.parse,
         help=("Set the browser window position."
               "Options: size and position, "
-              f"{', '.join(str(e.value) for e in viewport.ViewportMode)}. "
+              f"{', '.join(str(e) for e in viewport.ViewportMode)}. "
               "Examples: --viewport=1550x300 --viewport=fullscreen. "
               f"Default: {viewport.Viewport.DEFAULT}"))
     # pytype: enable=missing-parameter
@@ -494,14 +596,15 @@ class CrossBenchCLI:
         dest="viewport",
         const=viewport.Viewport.HEADLESS,
         action="store_const",
-        help="Start the browser in headless if supported. "
-        "Equivalent to --viewport=headless.")
+        help=("Start the browser in headless if supported. "
+              "Equivalent to --viewport=headless."))
 
     chrome_args = subparser.add_argument_group(
         "Browsers Options: Chrome/Chromium",
         "For convenience these arguments are directly are forwarded "
         "directly to chrome. ")
-    chrome_args.add_argument("--js-flags", dest="js_flags")
+    chrome_args.add_argument(
+        "--js-flags", dest="js_flags", action="append", default=[])
 
     doc_str = "See chrome's base/feature_list.h source file for more details"
     chrome_args.add_argument(
@@ -537,24 +640,26 @@ class CrossBenchCLI:
         action="append",
         type=cli_config.ProbeConfig.parse,
         default=[],
-        help="Enable general purpose probes to measure data on all cb.stories. "
-        "This argument can be specified multiple times to add more probes. "
-        "Use inline hjson (e.g. --probe=\"$NAME{$CONFIG}\") "
-        "to configure probes. "
-        "Individual probe configs can be specified in files as well: "
-        "--probe='path/to/config.hjson'."
-        "Use 'describe probes' or 'describe probe $NAME' for probe "
-        "configuration details."
-        "Cannot be used together with --probe-config."
-        f"\n\nChoices: {', '.join(cli_config.PROBE_LOOKUP.keys())}")
+        help=(
+            "Enable general purpose probes to measure data on all cb.stories. "
+            "This argument can be specified multiple times to add more probes. "
+            "Use inline hjson (e.g. --probe=\"$NAME{$CONFIG}\") "
+            "to configure probes. "
+            "Individual probe configs can be specified in files as well: "
+            "--probe='path/to/config.hjson'."
+            "Use 'describe probes' or 'describe probe $NAME' for probe "
+            "configuration details."
+            "Cannot be used together with --probe-config."
+            f"\n\nChoices: {', '.join(cli_config.PROBE_LOOKUP.keys())}"))
     probe_config_group.add_argument(
         "--probe-config",
         type=cli_helper.parse_hjson_file_path,
-        help="Browser configuration.json file. "
-        "Use this config file to specify more complex Probe settings."
-        "See config/probe.config.example.hjson on how to set up a complex "
-        "configuration file. "
-        "Cannot be used together with --probe.")
+        default=benchmark_cls.default_probe_config_path(),
+        help=("Browser configuration.json file. "
+              "Use this config file to specify more complex Probe settings."
+              "See config/doc/probe.config.hjson on how to set up a complex "
+              "configuration file. "
+              "Cannot be used together with --probe."))
     subparser.set_defaults(
         subcommand_fn=self.benchmark_subcommand, benchmark_cls=benchmark_cls)
     self._add_verbosity_argument(subparser)
@@ -569,7 +674,7 @@ class CrossBenchCLI:
       benchmark = self._get_benchmark(args)
       with tempfile.TemporaryDirectory(prefix="crossbench") as tmp_dirname:
         if args.dry_run:
-          args.out_dir = pathlib.Path(tmp_dirname) / "results"
+          args.out_dir = pth.LocalPath(tmp_dirname) / "results"
         args.browser = self._get_browsers(args)
         probes = self._get_probes(args)
         env_config = self._get_env_config(args)
@@ -634,47 +739,81 @@ class CrossBenchCLI:
       self.describe_subcommand(args)
       sys.exit(0)
 
+  def _process_network_args(self, args) -> None:
+    # The order of preference of flags is as follows:
+    # Explicitly specified network config > explicitly specified network >
+    # benchmark-specific network config > default network.
+    if network_config := args.network_config:
+      args.network = network_config
+    elif args.network:
+      pass
+    elif network_config := args.benchmark_cls.default_network_config_path():
+      args.network = network_config
+    else:
+      args.network = cli_config.NetworkConfig.default()
+
   def _benchmark_subcommand_process_args(self, args) -> None:
     if args.config:
-      if args.env_config:
-        raise argparse.ArgumentTypeError(
-            "--config cannot be used together with --env-config")
-      if args.browser_config:
-        raise argparse.ArgumentTypeError(
-            "--config cannot be used together with --browser-config")
-      if args.probe_config:
-        raise argparse.ArgumentTypeError(
-            "--config cannot be used together with --probe-config")
+      self._process_config_args(args)
+    else:
+      # We keep separate *_config args so we can throw in case they conflict
+      # with --config. Since we don't use argparse's dest, we have to manually
+      # copy the args.*_config back.
+      self._process_network_args(args)
 
-      config_file = args.config
-      config_data = cli_helper.parse_hjson_file(config_file)
-      found_any_config = False
+  def _process_config_args(self, args) -> None:
+    if args.env_config:
+      raise argparse.ArgumentTypeError(
+          "--config cannot be used together with --env-config")
+    if args.network_config:
+      raise argparse.ArgumentTypeError(
+          "--config cannot be used together with --network-config")
+    if args.browser_config:
+      raise argparse.ArgumentTypeError(
+          "--config cannot be used together with --browser-config")
+    if args.probe_config:
+      raise argparse.ArgumentTypeError(
+          "--config cannot be used together with --probe-config")
 
-      if config_data.get("env"):
-        args.env_config = cli_config.parse_env_config_file(config_file)
-        found_any_config = True
-      else:
-        logging.warning("Skipping env config: no 'env' property in %s",
-                        config_file)
+    config_file = args.config
+    config_data = cli_helper.parse_hjson_file(config_file)
+    found_any_config = False
 
-      if config_data.get("browsers"):
-        args.browser_config = config_file
-        found_any_config = True
-      else:
-        logging.warning(
-            "Skipping browsers config: No 'browsers' property in %s",
-            config_file)
+    if config_data.get("env"):
+      args.env_config = cli_config.parse_env_config_file(config_file)
+      found_any_config = True
+    else:
+      logging.warning("Skipping env config: no 'env' property in %s",
+                      config_file)
 
-      if config_data.get("probes"):
-        args.probe_config = config_file
-        found_any_config = True
-      else:
-        logging.warning("Skipping probes config: no 'probes' property in %s",
-                        config_file)
+    if network_config_data := config_data.get("network"):
+      # TODO: migrate all --config helper to this format
+      args.network = cli_config.NetworkConfig.parse(network_config_data)
+      found_any_config = True
+    else:
+      logging.warning("Skipping network config: no 'network' property in %s",
+                      config_file)
+    if not args.network:
+      args.network = cli_config.NetworkConfig.default()
 
-      if not found_any_config:
-        raise argparse.ArgumentTypeError(
-            f"--config: config file has no config properties {config_file}")
+    if config_data.get("browsers"):
+      args.browser_config = config_file
+      found_any_config = True
+    else:
+      logging.warning("Skipping browsers config: No 'browsers' property in %s",
+                      config_file)
+
+    if config_data.get("probes"):
+      args.probe_config = config_file
+      found_any_config = True
+    else:
+      logging.warning("Skipping probes config: no 'probes' property in %s",
+                      config_file)
+
+    if not found_any_config:
+      raise argparse.ArgumentTypeError(
+          f"--config: config file has no config properties {config_file}")
+
 
   def _log_benchmark_subcommand_failure(self, benchmark: Optional[Benchmark],
                                         runner: Optional[Runner],
@@ -717,7 +856,7 @@ class CrossBenchCLI:
     failed_runs = [run for run in runner.runs if not run.is_success]
     if not failed_runs:
       return
-    candidates: List[pathlib.Path] = [
+    candidates: List[pth.LocalPath] = [
         *runner.out_dir.glob(f"{ErrorsProbe.NAME}*"),
     ]
     for failed_run in failed_runs:
@@ -730,8 +869,8 @@ class CrossBenchCLI:
     limit = 3
     for log_file in candidates[:limit]:
       try:
-        log_file = log_file.relative_to(pathlib.Path.cwd())
-      except Exception as e:
+        log_file = log_file.relative_to(pth.LocalPath.cwd())
+      except Exception as e:  # pylint: disable=broad-except
         logging.debug("Could not create relative log_file: %s", e)
       logging.error("  - %s", log_file)
     if (pending := len(candidates) - limit) > 0:
@@ -743,13 +882,16 @@ class CrossBenchCLI:
       runner.run(is_dry_run=args.dry_run)
       logging.info("")
       self._log_results(args, runner, is_success=runner.is_success)
-    except:  # pylint disable=broad-except
+    except:  # pylint: disable=broad-except
       self._log_results(args, runner, is_success=False)
       raise
     finally:
       self._update_symlinks(args, runner)
 
   def _update_symlinks(self, args: argparse.Namespace, runner: Runner) -> None:
+    if not args.create_symlinks:
+      logging.debug("Symlink disabled by command line option")
+      return
     if plt.PLATFORM.is_win:
       logging.debug("Skipping session_dir symlink on windows.")
       return
@@ -770,7 +912,7 @@ class CrossBenchCLI:
 
   def _create_runs_results_symlinks(self, runner: Runner) -> None:
     results_root = runner.out_dir.parent
-    runs: Tuple[Run, ...] = runner.runs
+    runs: Tuple[Run, ...] = runner.all_runs
     if not runs:
       logging.debug("Skip creating result symlinks in '%s': no runs produced.",
                     results_root)
@@ -792,13 +934,13 @@ class CrossBenchCLI:
     for run in runs:
       if not run.out_dir.exists():
         continue
-      relative = pathlib.Path("..") / run.out_dir.relative_to(out_dir)
+      relative = pth.LocalPath("..") / run.out_dir.relative_to(out_dir)
       (runs_dir / str(run.index)).symlink_to(relative)
 
     sessions_dir = out_dir / "sessions"
     sessions_dir.mkdir()
     for session in set(run.browser_session for run in runs):
-      relative = pathlib.Path("..") / session.path.relative_to(out_dir)
+      relative = pth.LocalPath("..") / session.path.relative_to(out_dir)
       (sessions_dir / str(session.index)).symlink_to(relative)
 
   def _log_results(self, args: argparse.Namespace, runner: Runner,
@@ -816,16 +958,20 @@ class CrossBenchCLI:
     for probe in runner.probes:
       try:
         probe.log_browsers_result(browser_group)
-      except Exception as e:  # pylint disable=broad-except
+      except Exception as e:  # pylint: disable=broad-except
         if args.throw:
           raise
-        logging.debug("log_result_summary failed: %s", e)
+        logging.warning("log_result_summary failed: %s", e)
 
   def _get_browsers(self, args: argparse.Namespace) -> Sequence[Browser]:
+    # TODO: move browser instance create to separate method.
+    # TODO: move --browser-config parsing to BrowserVariantsConfig
     args.browser_config = cli_config.BrowserVariantsConfig.from_cli_args(args)
     return args.browser_config.variants
 
   def _get_probes(self, args: argparse.Namespace) -> Sequence[Probe]:
+    # TODO: move probe creation to separate method
+    # TODO: move --probe-config parsing to ProbeListConfig
     args.probe_config = cli_config.ProbeListConfig.from_cli_args(args)
     return args.probe_config.probes
 
@@ -843,6 +989,7 @@ class CrossBenchCLI:
     return args.env_validation
 
   def _get_env_config(self, args: argparse.Namespace) -> HostEnvironmentConfig:
+    # TODO: move env_config to args.env and use ConfigObject
     if args.env:
       return args.env
     if args.env_config:
@@ -893,7 +1040,7 @@ class CrossBenchCLI:
     self.error(f"error argument {e.flag}: {e.message}")
 
   def error(self, message: str) -> None:
-    parser: cli_helper.CrossBenchArgumentParser = self.parser
+    parser: CrossBenchArgumentParser = self.parser
     # Try to use the subparser to print nicer usage help on errors.
     # ArgumentParser tends to default to the toplevel parser instead of the
     # current subcommand, which in turn prints the wrong usage text.
@@ -924,6 +1071,10 @@ class CrossBenchCLI:
     if "-v" in argv or "-vv" in argv or "-vvv" in argv:
       self._console_handler.setLevel(logging.DEBUG)
       logging.getLogger().setLevel(logging.DEBUG)
+    # TODO: move to ui helpers
+    ui.COLOR_LOGGING = "--no-color" not in argv
+    if ui.COLOR_LOGGING:
+      self._console_handler.setFormatter(ui.ColoredLogFormatter())
 
   def _setup_logging(self) -> None:
     if not self._enable_logging:
@@ -936,8 +1087,11 @@ class CrossBenchCLI:
     elif self.args.verbosity >= 1:
       self._console_handler.setLevel(logging.DEBUG)
       logging.getLogger().setLevel(logging.DEBUG)
-    if self.args.color:
-      self._console_handler.setFormatter(helper.ColoredLogFormatter())
+    ui.COLOR_LOGGING = self.args.color
+    if ui.COLOR_LOGGING:
+      self._console_handler.setFormatter(ui.ColoredLogFormatter())
+    else:
+      self._console_handler.setFormatter(None)
 
   def _teardown_logging(self) -> None:
     if not self._enable_logging:

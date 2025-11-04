@@ -61,8 +61,8 @@ Window {
             Model {
                 source: "#Rectangle"
                 scale: Qt.vector3d(500, 500, 1)
-                materials: DefaultMaterial {
-                    diffuseColor: "green"
+                materials: PrincipledMaterial {
+                    baseColor: "green"
                 }
                 castsShadows: false
                 receivesShadows: true

@@ -23,7 +23,6 @@
 
 namespace tracing {
 
-#if BUILDFLAG(USE_PERFETTO_CLIENT_LIBRARY)
 // Set the track descriptor for the current process.
 void SetProcessTrackDescriptor(int64_t process_start_timestamp) {
   using perfetto::protos::gen::ChromeProcessDescriptor;
@@ -57,7 +56,7 @@ void SetProcessTrackDescriptor(int64_t process_start_timestamp) {
   // periodically to ensure it is present in the traces when the process
   // crashes. Metadata can go missing if process crashes. So, record this in
   // process descriptor.
-  static const absl::optional<uint64_t> crash_trace_id = GetTraceCrashId();
+  static const std::optional<uint64_t> crash_trace_id = GetTraceCrashId();
   if (crash_trace_id) {
     chrome_process->set_crash_trace_id(*crash_trace_id);
   }
@@ -120,20 +119,17 @@ void SetThreadTrackDescriptors() {
 }
 }  // namespace
 
-#endif  // BUILDFLAG(USE_PERFETTO_CLIENT_LIBRARY)
-
-absl::optional<uint64_t> GetTraceCrashId() {
+std::optional<uint64_t> GetTraceCrashId() {
   static base::debug::CrashKeyString* key = base::debug::AllocateCrashKeyString(
       "chrome-trace-id", base::debug::CrashKeySize::Size32);
   if (!key) {
-    return absl::nullopt;
+    return std::nullopt;
   }
   uint64_t id = base::RandUint64();
   base::debug::SetCrashKeyString(key, base::NumberToString(id));
   return id;
 }
 
-#if BUILDFLAG(USE_PERFETTO_CLIENT_LIBRARY)
 TrackNameRecorder::TrackNameRecorder()
     : process_start_timestamp_(
           TRACE_TIME_TICKS_NOW().since_origin().InNanoseconds()) {
@@ -165,6 +161,4 @@ void TrackNameRecorder::OnThreadNameChanged(const char* name) {
     FillThreadTrack(perfetto::ThreadTrack::Current(), name);
   }
 }
-#endif  // BUILDFLAG(USE_PERFETTO_CLIENT_LIBRARY)
-
 }  // namespace tracing

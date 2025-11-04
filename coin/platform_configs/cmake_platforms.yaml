@@ -9,17 +9,17 @@ Include: [
 Configurations:
 # Build on Ubuntu 22.04 and test on both X11 and Wayland later
 -
-    Id: 'ubuntu-22.04-documentation'
+    Id: 'ubuntu-22.04-developer-build'
     Template: 'qtci-linux-Ubuntu-22.04-x86_64-51'
     Compiler: 'GCC'
-    Features: ['Sccache', 'Documentation', 'UseConfigure', 'DoNotRunTests', 'DocsGenerationV2']
+    Features: ['Sccache', 'UseConfigure', 'DoNotRunTests', 'StandaloneExamples']
     Configure arguments: '-make examples -developer-build -c++std c++20 -linker gold -qtlibinfix TestInfix -qtnamespace TestNamespace'
     Environment variables: ['NON_QTBASE_CMAKE_ARGS=-DFFMPEG_DIR={{.Env.FFMPEG_DIR}} -DQT_DEPLOY_FFMPEG=TRUE']
 -
     Id: 'ubuntu-22.04'
     Template: 'qtci-linux-Ubuntu-22.04-x86_64-51'
     Compiler: 'GCC'
-    Features: ['Sccache', 'UseConfigure', 'DoNotRunTests', 'GenerateSBOM', 'VerifySBOM']
+    Features: ['Sccache', 'UseConfigure', 'DoNotRunTests', 'GenerateSBOM', 'VerifySBOM', 'DocsGenerationV2']
     Configure arguments: '-nomake examples -release -force-debug-info -separate-debug-info -headersclean -qt-libjpeg -qt-libpng -qt-pcre -qt-harfbuzz -qt-doubleconversion -no-libudev -bundled-xcb-xinput'
     Environment variables: [
         'CMAKE_ARGS=-DOpenGL_GL_PREFERENCE=LEGACY',
@@ -27,11 +27,11 @@ Configurations:
     ]
 # Test on Ubuntu 22.04 X11
 -
-    Id: 'ubuntu-22.04-documentation-x11-tests'
+    Id: 'ubuntu-22.04-developer-build-x11-tests'
     Template: 'qtci-linux-Ubuntu-22.04-x86_64-51'
     Compiler: 'GCC'
-    Features: ['Sccache', 'TestDocs', 'TestOnly', 'DocsGenerationV2']
-    Platform dependency: 'ubuntu-22.04-documentation'
+    Features: ['Sccache', 'TestOnly']
+    Platform dependency: 'ubuntu-22.04-developer-build'
 -
     Id: 'ubuntu-22.04-x11-tests'
     Template: 'qtci-linux-Ubuntu-22.04-x86_64-51'
@@ -40,10 +40,10 @@ Configurations:
     Platform dependency: 'ubuntu-22.04'
 # Build on Ubuntu 24.04 ARM64 Wayland and test on offscreen and Wayland later
 -
-    Id: 'ubuntu-24.04-arm64-documentation'
+    Id: 'ubuntu-24.04-arm64-developer-build'
     Template: 'qtci-linux-Ubuntu-24.04-aarch64-50'
     Compiler: 'GCC'
-    Features: ['Sccache', 'Documentation', 'UseConfigure', 'DoNotRunTests']
+    Features: ['Sccache', 'UseConfigure', 'DoNotRunTests', 'StandaloneExamples']
     Configure arguments: '-make examples -developer-build -c++std c++20 -linker lld -qtlibinfix TestInfix -qtnamespace TestNamespace -qpa offscreen\;xcb'
     Environment variables: [
         'COMMON_TEST_CMAKE_ARGS=-DQT_SKIP_DOCKER_COMPOSE=ON',
@@ -74,10 +74,10 @@ Configurations:
     Platform dependency: 'ubuntu-24.04-arm64'
 # Build on Ubuntu 24.04 x64 Wayland and test on both X11 and Wayland (Wayland=default)
 -
-    Id: 'ubuntu-24.04-x64-documentation'
+    Id: 'ubuntu-24.04-x64-developer-build'
     Template: 'qtci-linux-Ubuntu-24.04-x86_64-50'
     Compiler: 'GCC'
-    Features: ['Sccache', 'Documentation', 'UseConfigure', 'DoNotRunTests']
+    Features: ['Sccache', 'UseConfigure', 'DoNotRunTests', 'StandaloneExamples']
     Configure arguments: '-make examples -developer-build -c++std c++20 -linker gold -qtlibinfix TestInfix -qtnamespace TestNamespace'
     Environment variables: [
         'COMMON_TEST_CMAKE_ARGS=-DQT_SKIP_DOCKER_COMPOSE=ON',
@@ -87,7 +87,7 @@ Configurations:
     Id: 'ubuntu-24.04-x64'
     Template: 'qtci-linux-Ubuntu-24.04-x86_64-50'
     Compiler: 'GCC'
-    Features: ['Sccache', 'UseConfigure', 'DoNotRunTests']
+    Features: ['Sccache', 'UseConfigure', 'DoNotRunTests', 'GenerateSBOM', 'VerifySBOM', 'DocsGenerationV2']
     Configure arguments: '-nomake examples -release -force-debug-info -separate-debug-info -headersclean -qt-libjpeg -qt-libpng -qt-pcre -qt-harfbuzz -qt-doubleconversion -no-libudev -bundled-xcb-xinput'
     Environment variables: [
         'CMAKE_ARGS=-DOpenGL_GL_PREFERENCE=LEGACY',
@@ -96,11 +96,11 @@ Configurations:
     ]
 # Test on Ubuntu 24.04 x64 X11
 -
-    Id: 'ubuntu-24.04-x64-documentation-x11-tests'
+    Id: 'ubuntu-24.04-x64-developer-build-x11-tests'
     Template: 'qtci-linux-Ubuntu-24.04-x86_64-51'
     Compiler: 'GCC'
     Features: ['Sccache', 'TestOnly', 'InsignificantTests']
-    Platform dependency: 'ubuntu-24.04-x64-documentation'
+    Platform dependency: 'ubuntu-24.04-x64-developer-build'
 -
     Id: 'ubuntu-24.04-x64-x11-tests'
     Template: 'qtci-linux-Ubuntu-24.04-x86_64-51'
@@ -108,8 +108,8 @@ Configurations:
     Features: ['Sccache', 'TestOnly', 'InsignificantTests']
     Platform dependency: 'ubuntu-24.04-x64'
 -
-    Id: 'opensuse-15.5-developer-build'
-    Template: 'qtci-linux-openSUSE-15.5-x86_64-52'
+    Id: 'opensuse-15.6-developer-build'
+    Template: 'qtci-linux-openSUSE-15.6-x86_64-51'
     Compiler: 'GCC'
     Features: ['Sccache', 'WarningsAreErrors', 'UseConfigure']
     Configure arguments: '-nomake examples -developer-build'
@@ -119,11 +119,11 @@ Configurations:
         'NON_QTBASE_CMAKE_ARGS=-DFFMPEG_DIR={{.Env.FFMPEG_DIR}} -DQT_DEPLOY_FFMPEG=TRUE'
     ]
 -
-    Id: 'sles-15_sp5-static'
-    Template: 'qtci-linux-SLES-15_SP5-x86_64-50'
+    Id: 'sles-15_sp6-static'
+    Template: 'qtci-linux-SLES-15_SP6-x86_64-52'
     Compiler: 'GCC'
     Features: ['Sccache', 'DisableTests', 'UseConfigure', 'GenerateSBOM', 'VerifySBOM']
-    Configure arguments: '-nomake examples -static -no-sql-mysql'
+    Configure arguments: '-nomake examples -static -no-sql-db2 -no-sql-ibase -no-sql-mysql -no-sql-oci -no-sql-psql -no-sql-mimer'
     Environment variables: [
         'CMAKE_ARGS=-DOPENSSL_ROOT_DIR={{.Env.OPENSSL_HOME}}',
         'NON_QTBASE_CMAKE_ARGS=-DFFMPEG_DIR={{.Env.FFMPEG_DIR}}'
@@ -142,7 +142,7 @@ Configurations:
     ]
 -
     Id: 'windows-11_23H2-msvc2022'
-    Template: 'qtci-windows-11_23H2-x86_64-53'
+    Template: 'qtci-windows-11_23H2-x86_64-54'
     Compiler: 'MSVC2022'
     Features: ['Sccache', "DebugAndRelease", 'UseConfigure', 'Packaging', 'GenerateSBOM', 'VerifySBOM']
     Configure arguments: '-debug-and-release -force-debug-info -headersclean -nomake examples -qt-zlib'
@@ -154,10 +154,21 @@ Configurations:
     ]
 -
     Id: 'windows-11_22h2-arm64-msvc2022'
-    Template: 'qtci-windows-11_22H2-aarch64-54'
+    Template: 'qtci-windows-11_22H2-aarch64-55'
     Compiler: 'MSVC2022'
     Features: ['Packaging', 'DebugAndRelease', 'UseConfigure', 'GenerateSBOM', 'VerifySBOM']
-    Configure arguments: '-debug-and-release -force-debug-info -headersclean -nomake examples -qt-zlib -no-sql-psql -no-opengl'
+    Configure arguments: '-debug-and-release -force-debug-info -headersclean -nomake examples -qt-zlib -no-opengl -no-sql-db2 -no-sql-ibase -no-sql-mysql -no-sql-oci -no-sql-psql -no-sql-mimer'
+    Environment variables: [
+        'CMAKE_ARGS=-DFEATURE_msvc_obj_debug_info=ON -DOPENSSL_ROOT_DIR={{.Env.OPENSSL_INCLUDE_arm64}}\..',
+        'NON_QTBASE_CMAKE_ARGS= -DFEATURE_clangcpp=OFF -DFFMPEG_DIR={{.Env.FFMPEG_DIR_MSVC_ARM64}} -DQT_DEPLOY_FFMPEG=TRUE',
+        'Protobuf_ROOT={{.Env.Protobuf_ROOT_msvc}}',
+    ]
+-
+    Id: 'windows-11_23h2-arm64-msvc2022'
+    Template: 'qtci-windows-11_23H2-aarch64-53'
+    Compiler: 'MSVC2022'
+    Features: ['Packaging', 'DebugAndRelease', 'UseConfigure', 'GenerateSBOM', 'VerifySBOM', 'InsignificantTests', 'DoNotAbortTestingOnFirstFailure']
+    Configure arguments: '-debug-and-release -force-debug-info -headersclean -nomake examples -qt-zlib -no-sql-db2 -no-sql-ibase -no-sql-mysql -no-sql-oci -no-sql-psql -no-sql-mimer'
     Environment variables: [
         'CMAKE_ARGS=-DFEATURE_msvc_obj_debug_info=ON -DOPENSSL_ROOT_DIR={{.Env.OPENSSL_INCLUDE_arm64}}\..',
         'NON_QTBASE_CMAKE_ARGS= -DFEATURE_clangcpp=OFF -DFFMPEG_DIR={{.Env.FFMPEG_DIR_MSVC_ARM64}} -DQT_DEPLOY_FFMPEG=TRUE',
@@ -165,13 +176,32 @@ Configurations:
     ]
 -
     Id: 'windows-11_23H2-msvc2022-arm64'
-    Template: 'qtci-windows-11_23H2-x86_64-53'
+    Template: 'qtci-windows-11_23H2-x86_64-54'
     Compiler: 'MSVC2022'
     Target arch: 'arm64'
-    Features: ['Sccache', 'DisableTests', 'TargetBuildOnly', 'Packaging', 'UseConfigure', 'GenerateSBOM', 'VerifySBOM']
-    Platform dependency: 'windows-11_23H2-msvc2022'
+    Features: ['Sccache', 'DoNotRunTests', 'TargetBuildOnly', 'UseConfigure', 'GenerateSBOM', 'VerifySBOM']
+    Platform dependency: 'windows-10_22h2-mingw13'
     Environment variables: [
-        'TARGET_CONFIGURE_ARGS=-debug-and-release -force-debug-info -platform win32-arm64-msvc',
+        'Path={{.Env.MINGW_PATH}}\bin;{{.Env.Path}}',
+        'TARGET_CONFIGURE_ARGS=-debug-and-release -force-debug-info -platform win32-arm64-msvc -no-sql-db2 -no-sql-ibase -no-sql-mysql -no-sql-oci -no-sql-psql -no-sql-mimer -no-feature-run-opengl-tests',
+        'TARGET_CMAKE_ARGS=-DFEATURE_msvc_obj_debug_info=ON -DOPENSSL_ROOT_DIR={{.Env.OPENSSL_ROOT_DIR_x64_arm64}} -DQT_FORCE_BUILD_TOOLS=ON',
+        'NON_QTBASE_TARGET_CMAKE_ARGS=-DFEATURE_native_grpc=OFF -DFFMPEG_DIR={{.Env.FFMPEG_DIR_MSVC_ARM64}} -DQT_DEPLOY_FFMPEG=TRUE',
+        'OPENSSL_CONF_x64={{.Env.OPENSSL_CONF_x64_arm64}}',
+        'OPENSSL_INCLUDE_x64={{.Env.OPENSSL_INCLUDE_x64_arm64}}',
+        'OPENSSL_LIB_x64={{.Env.OPENSSL_LIB_x64_arm64}}',
+        'LLVM_INSTALL_DIR={{.Env.LLVM_INSTALL_DIR_msvc_arm64}}',
+        'Protobuf_ROOT={{.Env.Protobuf_ROOT_msvc}}',
+    ]
+-
+    Id: 'windows-11_23H2-msvc2022-arm64-23H2'
+    Template: 'qtci-windows-11_23H2-x86_64-54'
+    Compiler: 'MSVC2022'
+    Target arch: 'arm64'
+    Features: ['Sccache', 'Packaging', 'DoNotRunTests', 'TargetBuildOnly', 'UseConfigure', 'GenerateSBOM', 'VerifySBOM']
+    Platform dependency: 'windows-10_22h2-mingw13'
+    Environment variables: [
+        'Path={{.Env.MINGW_PATH}}\bin;{{.Env.Path}}',
+        'TARGET_CONFIGURE_ARGS=-debug-and-release -force-debug-info -platform win32-arm64-msvc -no-sql-db2 -no-sql-ibase -no-sql-mysql -no-sql-oci -no-sql-psql -no-sql-mimer',
         'TARGET_CMAKE_ARGS=-DFEATURE_msvc_obj_debug_info=ON -DOPENSSL_ROOT_DIR={{.Env.OPENSSL_ROOT_DIR_x64_arm64}}',
         'NON_QTBASE_TARGET_CMAKE_ARGS=-DFEATURE_native_grpc=OFF -DFFMPEG_DIR={{.Env.FFMPEG_DIR_MSVC_ARM64}} -DQT_DEPLOY_FFMPEG=TRUE',
         'OPENSSL_CONF_x64={{.Env.OPENSSL_CONF_x64_arm64}}',
@@ -180,11 +210,25 @@ Configurations:
         'Protobuf_ROOT={{.Env.Protobuf_ROOT_msvc}}',
     ]
 -
+    Id: 'windows-11-x86_64-arm64-tests'
+    Template: 'qtci-windows-11_22H2-aarch64-55'
+    Compiler: 'MSVC2022'
+    Features: ['TestOnly']
+    Configure arguments: '-no-opengl -cross-compiled'
+    Platform dependency: 'windows-11_23H2-msvc2022-arm64'
+-
+    Id: 'windows-11-x86_64-arm64-tests-23H2'
+    Template: 'qtci-windows-11_23H2-aarch64-53'
+    Compiler: 'MSVC2022'
+    Features: ['TestOnly', 'InsignificantTests', 'DoNotAbortTestingOnFirstFailure']
+    Configure arguments: '-cross-compiled'
+    Platform dependency: 'windows-11_23H2-msvc2022-arm64-23H2'
+-
     Id: 'windows-11_23H2-msvc2022-developer-build'
-    Template: 'qtci-windows-11_23H2-x86_64-53'
+    Template: 'qtci-windows-11_23H2-x86_64-54'
     Compiler: 'MSVC2022'
     Features: ['Sccache', 'DebugAndRelease', 'WarningsAreErrors', 'UseConfigure', 'StandaloneExamples']
-    Configure arguments: '-debug-and-release -make examples -developer-build -force-debug-info -qt-zlib -c++std c++20'
+    Configure arguments: '-debug-and-release -force-asserts -make examples -developer-build -force-debug-info -qt-zlib -c++std c++20'
     Environment variables: [
         'CMAKE_ARGS=-DFEATURE_msvc_obj_debug_info=ON -DOPENSSL_ROOT_DIR={{.Env.OPENSSL_INCLUDE_x64}}\.. -DMySQL_ROOT={{.Env.ENV_MySQL_ROOT}} -DMySQL_LIBRARY_DIR={{.Env.ENV_MySQL_LIBRARY_DIR}}',
         'NON_QTBASE_CMAKE_ARGS=-DFFMPEG_DIR={{.Env.FFMPEG_DIR_MSVC}} -DQT_DEPLOY_FFMPEG=TRUE',
@@ -239,7 +283,7 @@ Configurations:
     ]
 -
     Id: 'windows-11_23H2-llvm'
-    Template: 'qtci-windows-11_23H2-x86_64-53'
+    Template: 'qtci-windows-11_23H2-x86_64-54'
     Compiler: 'Clang'
     Features: ['Packaging','Sccache', 'UseConfigure', 'GenerateSBOM', 'VerifySBOM']
     Configure arguments: '-release -force-debug-info -separate-debug-info -nomake examples'
@@ -252,9 +296,9 @@ Configurations:
     ]
 -
     Id: 'windows-11_23H2-mingw13-developer-build'
-    Template: 'qtci-windows-11_23H2-x86_64-53'
+    Template: 'qtci-windows-11_23H2-x86_64-54'
     Compiler: 'Mingw'
-    Features: ['Sccache', 'WarningsAreErrors', 'UseConfigure']
+    Features: ['Sccache', 'WarningsAreErrors', 'UseConfigure', 'StandaloneExamples']
     Configure arguments: '-developer-build -release -force-asserts -force-debug-info -separate-debug-info -make examples'
     Environment variables: [
         'Path={{.Env.MINGW_PATH}}\bin;{{.Env.Path}}',
@@ -269,7 +313,7 @@ Configurations:
     Compiler: 'GCC'
     Features: ['Packaging','DebianPackaging','DisableTests', 'Insignificant']
     Environment variables: [
-        'DEBIAN_RULES_REF=6.8_dev',
+        'DEBIAN_RULES_REF=6.9_dev',
         'COIN_TARGET_DIST=tqtc-jammy',
         'COIN_EXTRA_DEBIAN_PACKAGES={{.Env.HOME}}/debian_packages/',
         'COIN_SBUILD_CHROOT=jammy-arm64-sbuild',
@@ -282,7 +326,7 @@ Configurations:
     Compiler: 'GCC'
     Features: ['Packaging','DebianPackaging','DisableTests', 'Insignificant']
     Environment variables: [
-        'DEBIAN_RULES_REF=6.8_dev',
+        'DEBIAN_RULES_REF=6.9_dev',
         'COIN_TARGET_DIST=tqtc-jammy',
         'COIN_EXTRA_DEBIAN_PACKAGES={{.Env.HOME}}/debian_packages/',
         'COIN_SBUILD_CHROOT=jammy-amd64-sbuild',
@@ -295,10 +339,22 @@ Configurations:
     Compiler: 'GCC'
     Features: ['Packaging','DebianPackaging','DisableTests', 'Insignificant']
     Environment variables: [
-        'DEBIAN_RULES_REF=6.8_gles',
+        'DEBIAN_RULES_REF=6.9_gles',
         'COIN_TARGET_DIST=tqtc-bookworm',
         'COIN_EXTRA_DEBIAN_PACKAGES={{.Env.HOME}}/debian_packages/',
-        'COIN_SBUILD_CHROOT=stable-arm64-sbuild',
+        'COIN_SBUILD_CHROOT=bookworm-arm64-sbuild',
         'COIN_EXTRA_DEBIAN_REPO=deb http://deb.debian.org/debian/ bookworm main',
         'COIN_SKIP_DEBIAN_MODULES=qt5 qtqa qtactiveqt qtdoc qtwebengine qtwebview',
     ]
+-
+    # This configuration runs for every submodule, using externally
+    # built qdoc and qattributionscanner binaries, to ensure that no
+    # new qdoc warnings are introduced. The resulting documentation
+    # is not used for anything (neither online or offline docs). See
+    # qt5.yaml for a config that builds offline docs.
+    Id: 'documentation-warnings'
+    Template: 'qtci-linux-Ubuntu-22.04-x86_64-51'
+    Compiler: 'GCC'
+    Features: ['Sccache', 'TestOnly', 'TestDocs', 'DoNotRunTestsButCreateTestWorkItem', 'DocsGenerationV2']
+    Platform dependency: 'ubuntu-22.04'
+

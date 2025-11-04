@@ -4,7 +4,7 @@
  *
  *   Arithmetic computations (specification).
  *
- * Copyright (C) 1996-2023 by
+ * Copyright (C) 1996-2024 by
  * David Turner, Robert Wilhelm, and Werner Lemberg.
  *
  * This file is part of the FreeType project, and may only be used,
@@ -415,7 +415,7 @@ FT_BEGIN_HEADER
 
 #define FT_MSB( x )  ( 31 - _CountLeadingZeros( x ) )
 
-#elif defined( _M_ARM64 ) || defined( _M_ARM )
+#elif defined( _M_ARM64 ) || defined( _M_ARM ) || defined( _M_ARM64EC )
 
 #include <intrin.h>
 #pragma intrinsic( _CountLeadingZeros )
@@ -511,8 +511,8 @@ FT_BEGIN_HEADER
    *   The result of 'sqrt(x)'.
    *
    * @note:
-   *   This function is slow and should be avoided.  Consider `FT_Hypot` or
-   *   `FT_Vector_NormLen' instead.
+   *   This function is slow and should be avoided.  Consider @FT_Hypot or
+   *   @FT_Vector_NormLen instead.
    */
   FT_BASE( FT_UInt32 )
   FT_SqrtFixed( FT_UInt32  x );

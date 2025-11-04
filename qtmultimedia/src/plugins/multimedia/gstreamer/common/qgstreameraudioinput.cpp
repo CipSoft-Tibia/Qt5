@@ -15,7 +15,7 @@ QT_BEGIN_NAMESPACE
 
 namespace {
 
-Q_LOGGING_CATEGORY(qLcMediaAudioInput, "qt.multimedia.audioinput")
+Q_STATIC_LOGGING_CATEGORY(qLcMediaAudioInput, "qt.multimedia.audioinput")
 
 constexpr QLatin1String defaultSrcName = [] {
     using namespace Qt::Literals;
@@ -49,7 +49,7 @@ QMaybe<QPlatformAudioInput *> QGstreamerAudioInput::create(QAudioInput *parent)
 {
     static const auto error = qGstErrorMessageIfElementsNotAvailable("autoaudiosrc", "volume");
     if (error)
-        return *error;
+        return QUnexpected{ *error };
 
     return new QGstreamerAudioInput(parent);
 }
@@ -73,21 +73,19 @@ QGstreamerAudioInput::QGstreamerAudioInput(QAudioInput *parent)
 
 QGstElement QGstreamerAudioInput::createGstElement()
 {
-    const auto *customDeviceInfo =
-            dynamic_cast<const QGStreamerCustomAudioDeviceInfo *>(m_audioDevice.handle());
+    const auto *customDevice =
+            QAudioDevicePrivate::handle<QGStreamerCustomAudioDeviceInfo>(m_audioDevice);
 
-    if (customDeviceInfo) {
-        qCDebug(qLcMediaAudioInput)
-                << "requesting custom audio src element: " << customDeviceInfo->id;
+    if (customDevice) {
+        qCDebug(qLcMediaAudioInput) << "requesting custom audio src element: " << customDevice->id;
 
-        QGstElement element = QGstBin::createFromPipelineDescription(customDeviceInfo->id,
+        QGstElement element = QGstBin::createFromPipelineDescription(customDevice->id,
                                                                      /*name=*/nullptr,
                                                                      /*ghostUnlinkedPads=*/true);
         if (element)
             return element;
 
-        qCWarning(qLcMediaAudioInput)
-                << "Cannot create audio source element:" << customDeviceInfo->id;
+        qCWarning(qLcMediaAudioInput) << "Cannot create audio source element:" << customDevice->id;
     }
 
     const QByteArray &id = m_audioDevice.id();

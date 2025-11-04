@@ -298,7 +298,9 @@ function(_qt_internal_deploy_qml_imports_for_target)
                     if(__QT_DEPLOY_VERBOSE)
                         message(STATUS "runtime dependency for QML plugin '${entry_PLUGIN}':")
                     endif()
-                    file(INSTALL ${file} DESTINATION "${QT_DEPLOY_PREFIX}/${QT_DEPLOY_BIN_DIR}")
+                    # Use CMAKE_INSTALL_PREFIX here instead of QT_DEPLOY_PREFIX, to avoid
+                    # $ENV{DESTDIR} appearing twice in the path, because file(INSTALL) prepends it.
+                    file(INSTALL ${file} DESTINATION "${CMAKE_INSTALL_PREFIX}/${QT_DEPLOY_BIN_DIR}")
                 endforeach()
             endif()
 

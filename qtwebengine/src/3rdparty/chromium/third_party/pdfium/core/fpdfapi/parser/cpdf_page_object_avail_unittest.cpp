@@ -14,10 +14,10 @@
 #include "core/fpdfapi/parser/cpdf_read_validator.h"
 #include "core/fpdfapi/parser/cpdf_reference.h"
 #include "core/fpdfapi/parser/cpdf_string.h"
+#include "core/fxcrt/check.h"
 #include "core/fxcrt/fx_stream.h"
 #include "testing/gtest/include/gtest/gtest.h"
 #include "testing/invalid_seekable_read_stream.h"
-#include "third_party/base/check.h"
 
 namespace {
 
@@ -112,9 +112,9 @@ TEST(PageObjectAvailTest, ExcludePages) {
   holder.GetTestObject(3)->GetMutableDict()->SetNewFor<CPDF_Reference>(
       "OtherPageData", &holder, 4);
   // Add unavailable object related to other page.
-  holder.AddObject(
-      4, pdfium::MakeRetain<CPDF_String>(nullptr, "Other page data", false),
-      TestHolder::ObjectState::Unavailable);
+  holder.AddObject(4,
+                   pdfium::MakeRetain<CPDF_String>(nullptr, "Other page data"),
+                   TestHolder::ObjectState::Unavailable);
 
   CPDF_PageObjectAvail avail(holder.GetValidator(), &holder, 1);
   // Now object should be available, although the object '4' is not available,

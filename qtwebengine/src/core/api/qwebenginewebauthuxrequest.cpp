@@ -1,5 +1,6 @@
 // Copyright (C) 2023 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qwebenginewebauthuxrequest.h"
 #include "qwebenginewebauthuxrequest_p.h"
@@ -12,7 +13,7 @@
     \since QtWebEngine 6.7
     \brief Encapsulates the data of a WebAuth UX request.
 
-    Web engine's WebAuth UX requests are passed to the user in the
+    WebEngine's WebAuth UX requests are passed to the user in the
     \l WebEngineView::webAuthUxRequested() signal.
 
     For more information about how to handle web engine authenticator requests, see the
@@ -209,7 +210,7 @@
     \value StorageFull The resident credential could not be created because the
            authenticator has insufficient storage.
     \value UserConsentDenied User consent denied.
-    \value WinUserCancelled The user clicked \uicontrol Cancel in the native windows UI.
+    \value WinUserCancelled The user clicked \uicontrol Cancel in the native Windows UI.
 */
 
 /*!

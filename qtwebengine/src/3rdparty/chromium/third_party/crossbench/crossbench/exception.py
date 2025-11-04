@@ -3,17 +3,18 @@
 # found in the LICENSE file.
 
 from __future__ import annotations
+
 import argparse
 import contextlib
-
 import logging
 import sys
 import traceback as tb
 from dataclasses import dataclass
 from types import TracebackType
-from typing import TYPE_CHECKING, Dict, List, Optional, Tuple, Type
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Type
 
 from crossbench import helper
+from crossbench.types import JsonList
 
 if TYPE_CHECKING:
   from crossbench.types import JsonDict
@@ -40,6 +41,12 @@ class MultiException(ValueError):
     super().__init__(message)
     self.exceptions = exceptions
 
+  def __len__(self) -> int:
+    return len(self.exceptions)
+
+  def matching(self, *args: Type[BaseException]) -> List[BaseException]:
+    return self.exceptions.matching(*args)
+
   @property
   def annotator(self) -> ExceptionAnnotator:
     return self.exceptions
@@ -63,6 +70,8 @@ class ExceptionAnnotationScope:
     logging.debug("ExceptionAnnotationScope: %s", entries)
     self._annotator = annotator
     self._exception_types = exception_types
+    self._ignore_exception_types = ignore_exception_types + (
+        StopIteration, GeneratorExit, StopAsyncIteration)
     self._ignore_exception_types = ignore_exception_types
     self._added_info_stack_entries = entries
     self._throw_cls: Optional[Type[BaseException]] = throw_cls
@@ -142,8 +151,21 @@ class ExceptionAnnotator:
   def exceptions(self) -> List[Entry]:
     return self._exceptions
 
+  def __getitem__(self, key: Any) -> Entry:
+    if not isinstance(key, int):
+      raise TypeError(f"Expected int key, but got: {key}")
+    return self._exceptions[key]
+
   def __len__(self) -> int:
     return len(self._exceptions)
+
+  def matching(self, *args: Type[BaseException]) -> List[BaseException]:
+    result = []
+    for entry in self._exceptions:
+      excption = entry.exception
+      if isinstance(excption, *args):
+        result.append(excption)
+    return result
 
   def assert_success(self,
                      message: Optional[str] = None,
@@ -158,8 +180,6 @@ class ExceptionAnnotator:
     message = message.format(self)
     if issubclass(exception_cls, MultiException):
       exception = exception_cls(message, self)
-      if len(self.exceptions) == 1:
-        raise exception from self.exceptions[0].exception
       raise exception
     raise exception_cls(message)
 
@@ -173,7 +193,10 @@ class ExceptionAnnotator:
       exceptions: TExceptionTypes = (Exception,),
       ignore: TExceptionTypes = tuple(),
   ) -> ExceptionAnnotationScope:
-    """Sets info stack entries and captures exceptions."""
+    """Sets info stack entries and captures exceptions.
+    - Does not rethrow captured exceptions
+    - Does not directly throw a MultiExceptions, unless assert_success()
+      is called. """
     return ExceptionAnnotationScope(self, exceptions, ignore, stack_entries,
                                     self._throw_cls)
 
@@ -182,7 +205,8 @@ class ExceptionAnnotator:
                *stack_entries,
                exceptions: TExceptionTypes = (Exception,),
                ignore: TExceptionTypes = tuple()):
-    """Sets info stack entries and rethrows an annotated MultiException by default ."""
+    """Sets info stack entries and rethrows an annotated
+      MultiException by default ."""
     with self.capture(*stack_entries, exceptions=exceptions, ignore=ignore):
       yield self
     self.assert_success()
@@ -254,7 +278,7 @@ class ExceptionAnnotator:
   def error_messages(self) -> List[str]:
     return [self.format_exception(entry) for entry in self._exceptions]
 
-  def to_json(self) -> List[JsonDict]:
+  def to_json(self) -> JsonList:
     return [{
         "info_stack": entry.info_stack,
         "type": helper.type_name(type(entry.exception)),
@@ -289,7 +313,7 @@ def annotate(
     throw_cls: Optional[Type[BaseException]] = MultiException
 ) -> ExceptionAnnotationScope:
   """Use to annotate an exception.
-  By default this will throw a MultiException which can keep track of 
+  By default this will throw a MultiException which can keep track of
   more annotations."""
   return ExceptionAnnotator(throw_cls=throw_cls).capture(
       *stack_entries, exceptions=exceptions, ignore=ignore)
@@ -309,5 +333,15 @@ def annotate_argparsing(*stack_entries: str,
   return annotate(
       *stack_entries,
       exceptions=exceptions,
-      ignore=(argparse.ArgumentTypeError,),
       throw_cls=ArgumentTypeMultiException)
+
+
+class UnreachableError(RuntimeError):
+  """Used for making checker tools happy in places where it's not directly
+  obvious that we always return, for instance due to using one of the above
+  exception annotations that could in theory mute exceptions and create an
+  additional return path.
+  """
+
+  def __init__(self) -> None:
+    super().__init__("Unreachable Code")

@@ -27,11 +27,12 @@
 #ifndef THIRD_PARTY_BLINK_RENDERER_PLATFORM_IMAGE_DECODERS_IMAGE_FRAME_H_
 #define THIRD_PARTY_BLINK_RENDERER_PLATFORM_IMAGE_DECODERS_IMAGE_FRAME_H_
 
+#include <optional>
+
 #include "base/check_op.h"
 #include "base/memory/raw_ptr.h"
 #include "base/notreached.h"
 #include "base/time/time.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "third_party/blink/renderer/platform/platform_export.h"
 #include "third_party/blink/renderer/platform/wtf/allocator/allocator.h"
 #include "third_party/blink/renderer/platform/wtf/wtf_size_t.h"
@@ -129,13 +130,15 @@ class PLATFORM_EXPORT ImageFrame final {
   // written, and should only be called once. The specified color space may be
   // null if and only if color correct rendering is enabled. Returns true if the
   // allocation succeeded.
-  bool AllocatePixelData(int new_width, int new_height, sk_sp<SkColorSpace>);
+  [[nodiscard]] bool AllocatePixelData(int new_width,
+                                       int new_height,
+                                       sk_sp<SkColorSpace>);
 
   bool HasAlpha() const { return has_alpha_; }
   PixelFormat GetPixelFormat() const { return pixel_format_; }
   const gfx::Rect& OriginalFrameRect() const { return original_frame_rect_; }
   Status GetStatus() const { return status_; }
-  absl::optional<base::TimeDelta> Timestamp() const { return timestamp_; }
+  std::optional<base::TimeDelta> Timestamp() const { return timestamp_; }
   base::TimeDelta Duration() const { return duration_; }
   DisposalMethod GetDisposalMethod() const { return disposal_method_; }
   AlphaBlendSource GetAlphaBlendSource() const { return alpha_blend_source_; }
@@ -193,7 +196,7 @@ class PLATFORM_EXPORT ImageFrame final {
     DCHECK(pixel_format_ == kRGBA_F16);
     SkPixmap pixmap;
     if (!bitmap_.peekPixels(&pixmap)) {
-      NOTREACHED();
+      NOTREACHED_IN_MIGRATION();
     }
     return pixmap.writable_addr64(x, y);
   }
@@ -217,7 +220,7 @@ class PLATFORM_EXPORT ImageFrame final {
     if (premultiply_alpha_) {
       SetRGBAPremultiply(dest, r, g, b, a);
     } else {
-      *dest = SkPackARGB32NoCheck(a, r, g, b);
+      *dest = SkPackARGB32(a, r, g, b);
     }
   }
 
@@ -235,7 +238,7 @@ class PLATFORM_EXPORT ImageFrame final {
       b = (b * alpha + kRoundFractionControl) >> 16;
     }
 
-    *dest = SkPackARGB32NoCheck(a, r, g, b);
+    *dest = SkPackARGB32(a, r, g, b);
   }
 
   static inline void SetRGBARaw(PixelData* dest,
@@ -243,7 +246,7 @@ class PLATFORM_EXPORT ImageFrame final {
                                 unsigned g,
                                 unsigned b,
                                 unsigned a) {
-    *dest = SkPackARGB32NoCheck(a, r, g, b);
+    *dest = SkPackARGB32(a, r, g, b);
   }
 
   // Blend the RGBA pixel provided by |red|, |green|, |blue| and |alpha| over
@@ -322,7 +325,7 @@ class PLATFORM_EXPORT ImageFrame final {
   // frames whose original rect was smaller than the overall image size.
   gfx::Rect original_frame_rect_;
   Status status_ = kFrameEmpty;
-  absl::optional<base::TimeDelta> timestamp_;
+  std::optional<base::TimeDelta> timestamp_;
   base::TimeDelta duration_;
   DisposalMethod disposal_method_ = kDisposeNotSpecified;
   AlphaBlendSource alpha_blend_source_ = kBlendAtopPreviousFrame;

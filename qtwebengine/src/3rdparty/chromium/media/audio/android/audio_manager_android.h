@@ -8,6 +8,7 @@
 #include <set>
 
 #include "base/android/jni_android.h"
+#include "base/memory/raw_ptr.h"
 #include "base/synchronization/lock.h"
 #include "base/synchronization/waitable_event.h"
 #include "media/audio/audio_manager_base.h"
@@ -16,7 +17,7 @@ namespace media {
 
 class MuteableAudioOutputStream;
 
-// Android implemention of AudioManager.
+// Android implementation of AudioManager.
 class MEDIA_EXPORT AudioManagerAndroid : public AudioManagerBase {
  public:
   AudioManagerAndroid(std::unique_ptr<AudioThread> audio_thread,
@@ -115,7 +116,8 @@ class MEDIA_EXPORT AudioManagerAndroid : public AudioManagerBase {
   // Java AudioManager instance.
   base::android::ScopedJavaGlobalRef<jobject> j_audio_manager_;
 
-  typedef std::set<MuteableAudioOutputStream*> OutputStreams;
+  typedef std::set<raw_ptr<MuteableAudioOutputStream, SetExperimental>>
+      OutputStreams;
   OutputStreams streams_;
 
   // Enabled when first input stream is created and set to false when last

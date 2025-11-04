@@ -20,6 +20,10 @@
 #include <qelapsedtimer.h>
 #include <qproperty.h>
 
+#if defined(Q_OS_WIN32)
+#include <qt_windows.h>
+#endif
+
 #if defined Q_OS_UNIX
 #include <unistd.h>
 #endif
@@ -57,6 +61,7 @@ private slots:
     void recurringTimer();
     void deleteLaterOnQChronoTimer(); // long name, don't want to shadow QObject::deleteLater()
     void moveToThread();
+    void newTimerFiresTooSoon();
     void restartedTimerFiresTooSoon();
     void timerFiresOnlyOncePerProcessEvents_data();
     void timerFiresOnlyOncePerProcessEvents();
@@ -386,9 +391,9 @@ public:
     LiveLockTester(std::chrono::nanoseconds i)
         : interval(i)
     {
-        firstTimerId = startTimer(interval);
-        extraTimerId = startTimer(interval + 80ms);
-        secondTimerId = -1; // started later
+        firstTimerId = Qt::TimerId{startTimer(interval)};
+        extraTimerId = Qt::TimerId{startTimer(interval + 80ms)};
+        secondTimerId = Qt::TimerId::Invalid; // started later
     }
 
     bool event(QEvent *e) override
@@ -404,28 +409,28 @@ public:
 
     void timerEvent(QTimerEvent *te) override
     {
-        if (te->timerId() == firstTimerId) {
+        if (te->id() == firstTimerId) {
             if (++timeoutsForFirst == 1) {
                 killTimer(extraTimerId);
-                extraTimerId = -1;
+                extraTimerId = Qt::TimerId::Invalid;
                 QCoreApplication::postEvent(this, new QEvent(PostEventType));
-                secondTimerId = startTimer(interval);
+                secondTimerId = Qt::TimerId{startTimer(interval)};
             }
-        } else if (te->timerId() == secondTimerId) {
+        } else if (te->id() == secondTimerId) {
             ++timeoutsForSecond;
-        } else if (te->timerId() == extraTimerId) {
+        } else if (te->id() == extraTimerId) {
             ++timeoutsForExtra;
         }
 
         // sleep for 2ms
         QTest::qSleep(2);
-        killTimer(te->timerId());
+        killTimer(te->id());
     }
 
     const std::chrono::nanoseconds interval;
-    int firstTimerId = -1;
-    int secondTimerId = -1;
-    int extraTimerId = -1;
+    Qt::TimerId firstTimerId = Qt::TimerId::Invalid;
+    Qt::TimerId secondTimerId = Qt::TimerId::Invalid;
+    Qt::TimerId extraTimerId = Qt::TimerId::Invalid;
     int timeoutsForFirst = 0;
     int timeoutsForExtra = 0;
     int timeoutsForSecond = 0;
@@ -619,6 +624,50 @@ void tst_QChronoTimer::moveToThread()
     QVERIFY((ti3.id() & 0xffffff) != (timer1.id() & 0xffffff));
 }
 
+class TimerListener : public QObject
+{
+    Q_OBJECT
+public:
+    void timerEvent(QTimerEvent *) override
+    {
+        m_timerElapsed = true;
+    }
+
+    bool m_timerElapsed = false;
+};
+
+void tst_QChronoTimer::newTimerFiresTooSoon()
+{
+#ifndef Q_OS_WIN32
+    QSKIP("Only relevant on Windows");
+#else
+    // Arrange - Create timer and make sure it ticked
+    {
+        QTest::qWait(0 /*ms*/); // Clean up event queue from previous tests
+
+        TimerListener listener;
+        const auto timerId = Qt::TimerId{listener.startTimer(50ms, Qt::CoarseTimer)};
+        QThread::sleep(100ms);
+
+        // Force WM_TIMER events on Windows event queue
+        MSG msg{};
+        PeekMessage(&msg, nullptr, WM_TIMER, WM_TIMER, PM_NOREMOVE);
+
+        listener.killTimer(timerId);
+    }
+
+    // Act - Create new timer with long interval and make sure it does not immediately tick
+    TimerListener listener;
+    const auto timerId = Qt::TimerId{listener.startTimer(60s, Qt::CoarseTimer)};
+
+    QTest::qWait(0 /*ms*/); // Process event queue - Should not call timerEvent
+    listener.killTimer(timerId);
+
+    // Assert
+    QVERIFY(!listener.m_timerElapsed);
+#endif
+}
+
 class RestartedTimerFiresTooSoonObject : public QObject
 {
     Q_OBJECT
@@ -646,7 +695,7 @@ public:
 
     void timerEvent(QTimerEvent* ev) override
     {
-        if (ev->timerId() != m_timer.timerId())
+        if (!ev->matches(m_timer))
             return;
 
         m_timer.stop();
@@ -756,7 +805,7 @@ void tst_QChronoTimer::timerIdPersistsAfterThreadExit()
     // even though the thread has exited, and the event dispatcher destroyed, the timer is still
     // "active", meaning the timer id should NOT be reused (i.e. the event dispatcher should not
     // have unregistered it)
-    int timerId = thread.startTimer(100ms);
+    Qt::TimerId timerId = Qt::TimerId{thread.startTimer(100ms)};
     QVERIFY((timerId & 0xffffff) != (thread.timerId & 0xffffff));
 }
 
@@ -887,7 +936,7 @@ DontBlockEvents::DontBlockEvents()
 
 void DontBlockEvents::timerEvent(QTimerEvent* event)
 {
-    if (event->timerId() == m_timer.timerId()) {
+    if (event->id() == m_timer.id()) {
         QMetaObject::invokeMethod(this, &DontBlockEvents::paintEvent, Qt::QueuedConnection);
         m_timer.start(0ms, this);
         count++;

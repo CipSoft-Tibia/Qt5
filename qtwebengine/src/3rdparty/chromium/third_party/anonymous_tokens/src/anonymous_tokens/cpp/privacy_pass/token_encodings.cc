@@ -379,6 +379,12 @@ absl::StatusOr<ServiceType> ServiceType::FromExtension(const Extension& ext) {
     case kChromeIpBlinding:
       st.service_type = "chromeipblinding";
       break;
+    case kCronetIpBlinding:
+      st.service_type = "cronetipblinding";
+      break;
+    case kWebviewIpBlinding:
+      st.service_type = "webviewipblinding";
+      break;
     default:
       return absl::InvalidArgumentError(
           "[ServiceType] unknown service_type_id");
@@ -675,7 +681,7 @@ absl::Status ValidateExtensionsOrderAndValues(
         absl::StrFormat("Expected %d type, got %d", expected_types.size(),
                         extensions.extensions.size()));
   }
-  for (int i = 0; i < expected_types.size(); i++) {
+  for (size_t i = 0; i < expected_types.size(); i++) {
     if (expected_types[i] != extensions.extensions[i].extension_type) {
       return absl::InvalidArgumentError(absl::StrFormat(
           "Expected %x type at index %d, got %x", expected_types[i], i,

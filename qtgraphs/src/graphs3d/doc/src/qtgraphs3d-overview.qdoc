@@ -64,11 +64,11 @@
 
     \section2 3D Scatter Graphs
 
-    3D scatter graphs present data as a collection of points. The
+    3D scatter graphs present data as a collection of points or a spline. The
     \l Q3DScatterWidgetItem class is used to create a graph. The
-    \l QScatter3DSeries and \l QScatterDataProxy classes are used to set data to
+    \l QScatter3DSeries or \l QSpline3DSeries and \l QScatterDataProxy classes are used to set data to
     the graph and to control the visual properties of the graph. In QML, the
-    corresponding types are \l Scatter3D, \l Scatter3DSeries, and
+    corresponding types are \l Scatter3D, \l Scatter3DSeries, \l Spline3DSeries, and
     \l ScatterDataProxy.
 
     \image q3dscatter-minimal.png

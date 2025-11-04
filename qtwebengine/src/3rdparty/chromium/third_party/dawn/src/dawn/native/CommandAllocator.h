@@ -31,11 +31,14 @@
 #include <cstddef>
 #include <cstdint>
 #include <limits>
+#include <memory>
+#include <string_view>
 #include <vector>
 
 #include "dawn/common/Assert.h"
 #include "dawn/common/Math.h"
 #include "dawn/common/NonCopyable.h"
+#include "partition_alloc/pointers/raw_ptr_exclusion.h"
 
 namespace dawn::native {
 
@@ -70,7 +73,7 @@ namespace dawn::native {
 // and CommandIterator
 struct BlockDef {
     size_t size;
-    uint8_t* block;
+    std::unique_ptr<char[]> block;
 };
 using CommandBlocks = std::vector<BlockDef>;
 
@@ -119,9 +122,10 @@ class CommandIterator : public NonCopyable {
     bool IsEmpty() const;
 
     DAWN_FORCE_INLINE bool NextCommandId(uint32_t* commandId) {
-        uint8_t* idPtr = AlignPtr(mCurrentPtr, alignof(uint32_t));
-        DAWN_ASSERT(idPtr + sizeof(uint32_t) <=
-                    mBlocks[mCurrentBlock].block + mBlocks[mCurrentBlock].size);
+        char* idPtr = AlignPtr(mCurrentPtr, alignof(uint32_t));
+        DAWN_ASSERT(idPtr == reinterpret_cast<char*>(&mEndOfBlock) ||
+                    idPtr + sizeof(uint32_t) <=
+                        mBlocks[mCurrentBlock].block.get() + mBlocks[mCurrentBlock].size);
 
         uint32_t id = *reinterpret_cast<uint32_t*>(idPtr);
 
@@ -136,9 +140,9 @@ class CommandIterator : public NonCopyable {
     bool NextCommandIdInNewBlock(uint32_t* commandId);
 
     DAWN_FORCE_INLINE void* NextCommand(size_t commandSize, size_t commandAlignment) {
-        uint8_t* commandPtr = AlignPtr(mCurrentPtr, commandAlignment);
+        char* commandPtr = AlignPtr(mCurrentPtr, commandAlignment);
         DAWN_ASSERT(commandPtr + sizeof(commandSize) <=
-                    mBlocks[mCurrentBlock].block + mBlocks[mCurrentBlock].size);
+                    mBlocks[mCurrentBlock].block.get() + mBlocks[mCurrentBlock].size);
 
         mCurrentPtr = commandPtr + commandSize;
         return commandPtr;
@@ -154,7 +158,9 @@ class CommandIterator : public NonCopyable {
     }
 
     CommandBlocks mBlocks;
-    uint8_t* mCurrentPtr = nullptr;
+    // RAW_PTR_EXCLUSION: This is an extremely hot pointer during command iteration, but always
+    // points to at least a valid uint32_t, either inside a block, or at mEndOfBlock.
+    RAW_PTR_EXCLUSION char* mCurrentPtr = nullptr;
     size_t mCurrentBlock = 0;
     // Used to avoid a special case for empty iterators.
     uint32_t mEndOfBlock = detail::kEndOfBlock;
@@ -201,6 +207,10 @@ class CommandAllocator : public NonCopyable {
         return result;
     }
 
+    const char* CopyAsNullTerminatedString(std::string_view in);
+
+    size_t GetCommandBlocksCount() const;
+
   private:
     // This is used for some internal computations and can be any power of two as long as code
     // using the CommandAllocator passes the static_asserts.
@@ -217,9 +227,9 @@ class CommandAllocator : public NonCopyable {
     friend CommandIterator;
     CommandBlocks&& AcquireBlocks();
 
-    DAWN_FORCE_INLINE uint8_t* Allocate(uint32_t commandId,
-                                        size_t commandSize,
-                                        size_t commandAlignment) {
+    DAWN_FORCE_INLINE char* Allocate(uint32_t commandId,
+                                     size_t commandSize,
+                                     size_t commandAlignment) {
         DAWN_ASSERT(mCurrentPtr != nullptr);
         DAWN_ASSERT(mEndPtr != nullptr);
         DAWN_ASSERT(commandId != detail::kEndOfBlock);
@@ -247,7 +257,7 @@ class CommandAllocator : public NonCopyable {
             uint32_t* idAlloc = reinterpret_cast<uint32_t*>(mCurrentPtr);
             *idAlloc = commandId;
 
-            uint8_t* commandAlloc = AlignPtr(mCurrentPtr + sizeof(uint32_t), commandAlignment);
+            char* commandAlloc = AlignPtr(mCurrentPtr + sizeof(uint32_t), commandAlignment);
             mCurrentPtr = AlignPtr(commandAlloc + commandSize, alignof(uint32_t));
 
             return commandAlloc;
@@ -255,9 +265,9 @@ class CommandAllocator : public NonCopyable {
         return AllocateInNewBlock(commandId, commandSize, commandAlignment);
     }
 
-    uint8_t* AllocateInNewBlock(uint32_t commandId, size_t commandSize, size_t commandAlignment);
+    char* AllocateInNewBlock(uint32_t commandId, size_t commandSize, size_t commandAlignment);
 
-    DAWN_FORCE_INLINE uint8_t* AllocateData(size_t commandSize, size_t commandAlignment) {
+    DAWN_FORCE_INLINE char* AllocateData(size_t commandSize, size_t commandAlignment) {
         return Allocate(detail::kAdditionalData, commandSize, commandAlignment);
     }
 
@@ -271,13 +281,15 @@ class CommandAllocator : public NonCopyable {
     // Data used for the block range at initialization so that the first call to Allocate sees
     // there is not enough space and calls GetNewBlock. This avoids having to special case the
     // initialization in Allocate.
-    uint32_t mPlaceholderEnum[1] = {0};
+    uint32_t mPlaceholderSpace[1] = {0};
 
     // Pointers to the current range of allocation in the block. Guaranteed to allow for at
     // least one uint32_t if not nullptr, so that the special kEndOfBlock command id can always
     // be written. Nullptr iff the blocks were moved out.
-    uint8_t* mCurrentPtr = nullptr;
-    uint8_t* mEndPtr = nullptr;
+    // RAW_PTR_EXCLUSION: These are extremely hot pointers during command allocation, but always
+    // set to a valid slice (either the placeholder space, or a real allocated block).
+    RAW_PTR_EXCLUSION char* mCurrentPtr = nullptr;
+    RAW_PTR_EXCLUSION char* mEndPtr = nullptr;
 };
 
 }  // namespace dawn::native

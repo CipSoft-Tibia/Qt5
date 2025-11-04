@@ -6,6 +6,7 @@
 #include <QtMultimedia/qmediadevices.h>
 #include <QtMultimedia/private/qcameradevice_p.h>
 #include <QtCore/qloggingcategory.h>
+#include <QtCore/qset.h>
 #include <QtCore/private/quniquehandle_types_p.h>
 
 #include <common/qgst_p.h>
@@ -20,7 +21,7 @@
 
 QT_BEGIN_NAMESPACE
 
-static Q_LOGGING_CATEGORY(ltVideoDevices, "qt.multimedia.gstreamer.videodevices");
+Q_STATIC_LOGGING_CATEGORY(ltVideoDevices, "qt.multimedia.gstreamer.videodevices");
 
 QGstreamerVideoDevices::QGstreamerVideoDevices(QPlatformMediaIntegration *integration)
     : QPlatformVideoDevices(integration),
@@ -157,8 +158,13 @@ void QGstreamerVideoDevices::addDevice(QGstDeviceHandle device)
             qCDebug(ltVideoDevices) << "V4L2_CAP_META_CAPTURE device detected" << p;
             return;
         }
-        if (!(cap.capabilities & V4L2_CAP_VIDEO_CAPTURE)) {
-            qCDebug(ltVideoDevices) << "not a V4L2_CAP_VIDEO_CAPTURE device" << p;
+
+        constexpr uint32_t videoCaptureCapabilities =
+                V4L2_CAP_VIDEO_CAPTURE | V4L2_CAP_VIDEO_CAPTURE_MPLANE;
+
+        if (!(cap.capabilities & videoCaptureCapabilities)) {
+            qCDebug(ltVideoDevices)
+                    << "not a V4L2_CAP_VIDEO_CAPTURE or V4L2_CAP_VIDEO_CAPTURE_MPLANE device" << p;
             return;
         }
         if (!(cap.capabilities & V4L2_CAP_STREAMING)) {

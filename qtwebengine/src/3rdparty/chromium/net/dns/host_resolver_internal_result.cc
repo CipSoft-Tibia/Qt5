@@ -9,13 +9,13 @@
 #include <optional>
 #include <ostream>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
 #include "base/check_op.h"
 #include "base/json/values_util.h"
 #include "base/memory/ptr_util.h"
-#include "base/strings/string_piece.h"
 #include "base/time/time.h"
 #include "base/values.h"
 #include "net/base/connection_endpoint_metadata.h"
@@ -32,19 +32,19 @@ namespace net {
 namespace {
 
 // base::Value keys
-constexpr base::StringPiece kValueDomainNameKey = "domain_name";
-constexpr base::StringPiece kValueQueryTypeKey = "query_type";
-constexpr base::StringPiece kValueTypeKey = "type";
-constexpr base::StringPiece kValueSourceKey = "source";
-constexpr base::StringPiece kValueTimedExpirationKey = "timed_expiration";
-constexpr base::StringPiece kValueEndpointsKey = "endpoints";
-constexpr base::StringPiece kValueStringsKey = "strings";
-constexpr base::StringPiece kValueHostsKey = "hosts";
-constexpr base::StringPiece kValueMetadatasKey = "metadatas";
-constexpr base::StringPiece kValueMetadataWeightKey = "metadata_weight";
-constexpr base::StringPiece kValueMetadataValueKey = "metadata_value";
-constexpr base::StringPiece kValueErrorKey = "error";
-constexpr base::StringPiece kValueAliasTargetKey = "alias_target";
+constexpr std::string_view kValueDomainNameKey = "domain_name";
+constexpr std::string_view kValueQueryTypeKey = "query_type";
+constexpr std::string_view kValueTypeKey = "type";
+constexpr std::string_view kValueSourceKey = "source";
+constexpr std::string_view kValueTimedExpirationKey = "timed_expiration";
+constexpr std::string_view kValueEndpointsKey = "endpoints";
+constexpr std::string_view kValueStringsKey = "strings";
+constexpr std::string_view kValueHostsKey = "hosts";
+constexpr std::string_view kValueMetadatasKey = "metadatas";
+constexpr std::string_view kValueMetadataWeightKey = "metadata_weight";
+constexpr std::string_view kValueMetadataValueKey = "metadata_value";
+constexpr std::string_view kValueErrorKey = "error";
+constexpr std::string_view kValueAliasTargetKey = "alias_target";
 
 // Returns `domain_name` as-is if it could not be canonicalized.
 std::string MaybeCanonicalizeName(std::string domain_name) {
@@ -92,8 +92,8 @@ EndpointMetadataPairFromValue(const base::Value& value) {
   if (!metadata)
     return std::nullopt;
 
-  return std::make_pair(base::checked_cast<HttpsRecordPriority>(weight.value()),
-                        std::move(metadata).value());
+  return std::pair(base::checked_cast<HttpsRecordPriority>(weight.value()),
+                   std::move(metadata).value());
 }
 
 std::optional<DnsQueryType> QueryTypeFromValue(const base::Value& value) {
@@ -203,10 +203,20 @@ const HostResolverInternalDataResult& HostResolverInternalResult::AsData()
   return *static_cast<const HostResolverInternalDataResult*>(this);
 }
 
+HostResolverInternalDataResult& HostResolverInternalResult::AsData() {
+  CHECK_EQ(type_, Type::kData);
+  return *static_cast<HostResolverInternalDataResult*>(this);
+}
+
 const HostResolverInternalMetadataResult&
 HostResolverInternalResult::AsMetadata() const {
   CHECK_EQ(type_, Type::kMetadata);
   return *static_cast<const HostResolverInternalMetadataResult*>(this);
+}
+
+HostResolverInternalMetadataResult& HostResolverInternalResult::AsMetadata() {
+  CHECK_EQ(type_, Type::kMetadata);
+  return *static_cast<HostResolverInternalMetadataResult*>(this);
 }
 
 const HostResolverInternalErrorResult& HostResolverInternalResult::AsError()
@@ -215,10 +225,20 @@ const HostResolverInternalErrorResult& HostResolverInternalResult::AsError()
   return *static_cast<const HostResolverInternalErrorResult*>(this);
 }
 
+HostResolverInternalErrorResult& HostResolverInternalResult::AsError() {
+  CHECK_EQ(type_, Type::kError);
+  return *static_cast<HostResolverInternalErrorResult*>(this);
+}
+
 const HostResolverInternalAliasResult& HostResolverInternalResult::AsAlias()
     const {
   CHECK_EQ(type_, Type::kAlias);
   return *static_cast<const HostResolverInternalAliasResult*>(this);
+}
+
+HostResolverInternalAliasResult& HostResolverInternalResult::AsAlias() {
+  CHECK_EQ(type_, Type::kAlias);
+  return *static_cast<HostResolverInternalAliasResult*>(this);
 }
 
 HostResolverInternalResult::HostResolverInternalResult(
@@ -390,6 +410,14 @@ HostResolverInternalDataResult::HostResolverInternalDataResult(
 
 HostResolverInternalDataResult::~HostResolverInternalDataResult() = default;
 
+std::unique_ptr<HostResolverInternalResult>
+HostResolverInternalDataResult::Clone() const {
+  CHECK(timed_expiration().has_value());
+  return std::make_unique<HostResolverInternalDataResult>(
+      domain_name(), query_type(), expiration(), timed_expiration().value(),
+      source(), endpoints(), strings(), hosts());
+}
+
 base::Value HostResolverInternalDataResult::ToValue() const {
   base::Value::Dict dict = ToValueBaseDict();
 
@@ -470,6 +498,14 @@ HostResolverInternalMetadataResult::HostResolverInternalMetadataResult(
 HostResolverInternalMetadataResult::~HostResolverInternalMetadataResult() =
     default;
 
+std::unique_ptr<HostResolverInternalResult>
+HostResolverInternalMetadataResult::Clone() const {
+  CHECK(timed_expiration().has_value());
+  return std::make_unique<HostResolverInternalMetadataResult>(
+      domain_name(), query_type(), expiration(), timed_expiration().value(),
+      source(), metadatas());
+}
+
 base::Value HostResolverInternalMetadataResult::ToValue() const {
   base::Value::Dict dict = ToValueBaseDict();
 
@@ -522,6 +558,13 @@ HostResolverInternalErrorResult::HostResolverInternalErrorResult(
                                  source),
       error_(error) {}
 
+std::unique_ptr<HostResolverInternalResult>
+HostResolverInternalErrorResult::Clone() const {
+  return std::make_unique<HostResolverInternalErrorResult>(
+      domain_name(), query_type(), expiration(), timed_expiration(), source(),
+      error());
+}
+
 base::Value HostResolverInternalErrorResult::ToValue() const {
   base::Value::Dict dict = ToValueBaseDict();
 
@@ -567,6 +610,14 @@ HostResolverInternalAliasResult::HostResolverInternalAliasResult(
                                  source),
       alias_target_(MaybeCanonicalizeName(std::move(alias_target))) {
   DCHECK(!alias_target_.empty());
+}
+
+std::unique_ptr<HostResolverInternalResult>
+HostResolverInternalAliasResult::Clone() const {
+  CHECK(timed_expiration().has_value());
+  return std::make_unique<HostResolverInternalAliasResult>(
+      domain_name(), query_type(), expiration(), timed_expiration().value(),
+      source(), alias_target());
 }
 
 base::Value HostResolverInternalAliasResult::ToValue() const {

@@ -116,7 +116,7 @@ void PopupBlockerTabHelper::ShowBlockedPopup(
 
   BlockedRequest* popup = it->second.get();
 
-  absl::optional<WindowOpenDisposition> updated_disposition;
+  std::optional<WindowOpenDisposition> updated_disposition;
   if (disposition != WindowOpenDisposition::CURRENT_TAB)
     updated_disposition = disposition;
 
@@ -132,7 +132,7 @@ void PopupBlockerTabHelper::ShowBlockedPopup(
 
   switch (popup->block_type) {
     case PopupBlockType::kNotBlocked:
-      NOTREACHED();
+      NOTREACHED_IN_MIGRATION();
       break;
     case PopupBlockType::kNoGesture:
       LogAction(Action::kClickedThroughNoGesture);

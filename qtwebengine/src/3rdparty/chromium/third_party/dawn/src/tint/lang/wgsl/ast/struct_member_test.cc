@@ -25,7 +25,6 @@
 // OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-#include "gtest/gtest-spi.h"
 #include "src/tint/lang/wgsl/ast/helper_test.h"
 
 namespace tint::ast {
@@ -33,6 +32,7 @@ namespace {
 
 using namespace tint::core::number_suffixes;  // NOLINT
 using StructMemberTest = TestHelper;
+using StructMemberDeathTest = StructMemberTest;
 
 TEST_F(StructMemberTest, Creation) {
     auto* st = Member("a", ty.i32(), tint::Vector{MemberSize(4_a)});
@@ -58,8 +58,8 @@ TEST_F(StructMemberTest, CreationWithSource) {
     EXPECT_EQ(st->source.range.end.column, 8u);
 }
 
-TEST_F(StructMemberTest, Assert_Null_Name) {
-    EXPECT_FATAL_FAILURE(
+TEST_F(StructMemberDeathTest, Assert_Null_Name) {
+    EXPECT_DEATH_IF_SUPPORTED(
         {
             ProgramBuilder b;
             b.Member(static_cast<Identifier*>(nullptr), b.ty.i32());
@@ -67,8 +67,8 @@ TEST_F(StructMemberTest, Assert_Null_Name) {
         "internal compiler error");
 }
 
-TEST_F(StructMemberTest, Assert_Null_Type) {
-    EXPECT_FATAL_FAILURE(
+TEST_F(StructMemberDeathTest, Assert_Null_Type) {
+    EXPECT_DEATH_IF_SUPPORTED(
         {
             ProgramBuilder b;
             b.Member("a", Type{});
@@ -76,8 +76,8 @@ TEST_F(StructMemberTest, Assert_Null_Type) {
         "internal compiler error");
 }
 
-TEST_F(StructMemberTest, Assert_Null_Attribute) {
-    EXPECT_FATAL_FAILURE(
+TEST_F(StructMemberDeathTest, Assert_Null_Attribute) {
+    EXPECT_DEATH_IF_SUPPORTED(
         {
             ProgramBuilder b;
             b.Member("a", b.ty.i32(), tint::Vector{b.MemberSize(4_a), nullptr});
@@ -85,8 +85,8 @@ TEST_F(StructMemberTest, Assert_Null_Attribute) {
         "internal compiler error");
 }
 
-TEST_F(StructMemberTest, Assert_DifferentGenerationID_Symbol) {
-    EXPECT_FATAL_FAILURE(
+TEST_F(StructMemberDeathTest, Assert_DifferentGenerationID_Symbol) {
+    EXPECT_DEATH_IF_SUPPORTED(
         {
             ProgramBuilder b1;
             ProgramBuilder b2;
@@ -95,8 +95,8 @@ TEST_F(StructMemberTest, Assert_DifferentGenerationID_Symbol) {
         "internal compiler error");
 }
 
-TEST_F(StructMemberTest, Assert_DifferentGenerationID_Attribute) {
-    EXPECT_FATAL_FAILURE(
+TEST_F(StructMemberDeathTest, Assert_DifferentGenerationID_Attribute) {
+    EXPECT_DEATH_IF_SUPPORTED(
         {
             ProgramBuilder b1;
             ProgramBuilder b2;

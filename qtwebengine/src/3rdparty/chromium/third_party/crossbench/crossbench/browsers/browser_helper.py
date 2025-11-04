@@ -4,11 +4,12 @@
 
 from __future__ import annotations
 
-import pathlib
 import re
 from typing import Optional
 
-BROWSERS_CACHE = pathlib.Path(__file__).parents[2] / "binary_cache"
+from crossbench import path as pth
+
+BROWSERS_CACHE = pth.LocalPath(__file__).parents[2] / "binary_cache"
 
 _FLAG_TO_PATH_RE = re.compile(r"[-/\\:.]")
 

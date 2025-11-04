@@ -280,10 +280,78 @@ struct Rgba64OperationsNEON : public Rgba64OperationsBase
 };
 #endif
 
+#if defined(__loongarch_sx)
+struct Rgba64OperationsLSX : public Rgba64OperationsBase
+{
+    typedef __m128i OptimalType;
+    typedef __m128i OptimalScalar;
+    static OptimalType load(const Type *ptr)
+    {
+        return __lsx_vilvl_d(__lsx_vldi(0), __lsx_vldrepl_d(reinterpret_cast<const __m128i *>(ptr), 0));
+    }
+    static OptimalType convert(const Type &value)
+    {
+        return __lsx_vinsgr2vr_d(__lsx_vldi(0), value, 0);
+    }
+    static void store(Type *ptr, OptimalType value)
+    {
+        __lsx_vstelm_d(value, reinterpret_cast<const __m128i *>(ptr), 0, 0);
+    }
+    static OptimalType add(OptimalType a, OptimalType b)
+    {
+        return __lsx_vadd_h(a, b);
+    }
+//    same as above:
+//    static OptimalScalar add(OptimalScalar a, OptimalScalar b)
+    static OptimalType plus(OptimalType a, OptimalType b)
+    {
+        return __lsx_vsadd_hu(a, b);
+    }
+    static OptimalScalar alpha(OptimalType c)
+    {
+        const __m128i shuffleMask = (__m128i)(v8i16){3, 3, 3, 3, 4, 5, 6, 7};
+        return __lsx_vshuf_h(shuffleMask, __lsx_vldi(0), c);
+    }
+    static OptimalScalar invAlpha(Scalar c)
+    {
+        return scalar(65535 - c);
+    }
+    static OptimalScalar invAlpha(OptimalType c)
+    {
+        return __lsx_vxor_v(__lsx_vreplgr2vr_h(-1), alpha(c));
+    }
+    static OptimalScalar scalar(Scalar n)
+    {
+        const __m128i shuffleMask = (__m128i)(v8i16){0, 0, 0, 0, 4, 5, 6, 7};
+        return __lsx_vshuf_h(shuffleMask, __lsx_vldi(0), __lsx_vinsgr2vr_w(__lsx_vldi(0), n, 0));
+    }
+    static OptimalType multiplyAlpha8bit(OptimalType val, uint8_t a)
+    {
+        return multiplyAlpha255(val, a);
+    }
+//    same as above:
+//    static OptimalScalar multiplyAlpha8bit(OptimalScalar a, uint8_t a)
+    static OptimalType interpolate8bit(OptimalType x, uint8_t a1, OptimalType y, uint8_t a2)
+    {
+        return interpolate255(x, a1, y, a2);
+    }
+    static OptimalType multiplyAlpha(OptimalType val, OptimalScalar a)
+    {
+        return multiplyAlpha65535(val, a);
+    }
+    static OptimalType interpolate(OptimalType x, OptimalScalar a1, OptimalType y, const OptimalScalar &a2)
+    {
+        return interpolate65535(x, a1, y, a2);
+    }
+};
+#endif
+
 #if defined(__SSE2__)
 typedef Rgba64OperationsSSE2 Rgba64Operations;
 #elif defined(__ARM_NEON__)
 typedef Rgba64OperationsNEON Rgba64Operations;
+#elif defined(__loongarch_sx)
+typedef Rgba64OperationsLSX Rgba64Operations;
 #else
 typedef Rgba64OperationsC Rgba64Operations;
 #endif
@@ -4182,6 +4250,8 @@ CompositionFunctionSolid qt_functionForModeSolid_C[] = {
         rasterop_solid_NotDestination
 };
 
+static_assert(std::size(qt_functionForModeSolid_C) == QPainter::NCompositionModes);
+
 CompositionFunctionSolid64 qt_functionForModeSolid64_C[] = {
 #if QT_CONFIG(raster_64bit)
         comp_func_solid_SourceOver_rgb64,
@@ -4217,6 +4287,8 @@ CompositionFunctionSolid64 qt_functionForModeSolid64_C[] = {
         nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr
 };
 
+static_assert(std::size(qt_functionForModeSolid64_C) == QPainter::NCompositionModes);
+
 CompositionFunctionSolidFP qt_functionForModeSolidFP_C[] = {
 #if QT_CONFIG(raster_fp)
         comp_func_solid_SourceOver_rgbafp,
@@ -4244,12 +4316,14 @@ CompositionFunctionSolidFP qt_functionForModeSolidFP_C[] = {
         comp_func_solid_Difference_rgbafp,
         comp_func_solid_Exclusion_rgbafp,
 #else
-        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
+        nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
 #endif
-        0, 0, 0, 0, 0, 0,
-        0, 0, 0, 0, 0, 0, 0, 0
+        nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
+        nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr
 };
+
+static_assert(std::size(qt_functionForModeSolidFP_C) == QPainter::NCompositionModes);
 
 CompositionFunction qt_functionForMode_C[] = {
         comp_func_SourceOver,
@@ -4292,6 +4366,8 @@ CompositionFunction qt_functionForMode_C[] = {
         rasterop_NotDestination
 };
 
+static_assert(std::size(qt_functionForMode_C) == QPainter::NCompositionModes);
+
 CompositionFunction64 qt_functionForMode64_C[] = {
 #if QT_CONFIG(raster_64bit)
         comp_func_SourceOver_rgb64,
@@ -4327,6 +4403,8 @@ CompositionFunction64 qt_functionForMode64_C[] = {
         nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr
 };
 
+static_assert(std::size(qt_functionForMode64_C) == QPainter::NCompositionModes);
+
 CompositionFunctionFP qt_functionForModeFP_C[] = {
 #if QT_CONFIG(raster_fp)
         comp_func_SourceOver_rgbafp,
@@ -4354,11 +4432,13 @@ CompositionFunctionFP qt_functionForModeFP_C[] = {
         comp_func_Difference_rgbafp,
         comp_func_Exclusion_rgbafp,
 #else
-        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
+        nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
 #endif
-        0, 0, 0, 0, 0, 0,
-        0, 0, 0, 0, 0, 0, 0, 0
+        nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
+        nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr
 };
+
+static_assert(std::size(qt_functionForModeFP_C) == QPainter::NCompositionModes);
 
 QT_END_NAMESPACE

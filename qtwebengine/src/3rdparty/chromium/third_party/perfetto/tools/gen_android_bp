@@ -57,6 +57,7 @@ default_targets = [
     '//:perfetto_integrationtests',
     '//:perfetto_unittests',
     '//protos/perfetto/trace:perfetto_trace_protos',
+    '//protos/perfetto/trace/android:perfetto_winscope_extensions_zero',
     '//src/android_internal:libperfetto_android_internal',
     '//src/base:perfetto_base_default_platform',
     '//src/shared_lib:libperfetto_c',
@@ -70,7 +71,9 @@ default_targets = [
     '//src/profiling/perf:traced_perf',
     '//src/traced/probes:traced_probes',
     '//src/traced/service:traced',
+    '//src/traced_relay:traced_relay',
     '//src/trace_processor:trace_processor_shell',
+    '//src/trace_redaction:trace_redactor',
     '//test/cts:perfetto_cts_deps',
     '//test/cts:perfetto_cts_jni_deps',
     '//test:perfetto_gtest_logcat_printer',
@@ -103,6 +106,7 @@ target_host_supported = [
     '//:libperfetto',
     '//:libperfetto_client_experimental',
     '//protos/perfetto/trace:perfetto_trace_protos',
+    '//protos/perfetto/trace/android:perfetto_winscope_extensions_zero',
     '//src/shared_lib:libperfetto_c',
     '//src/trace_processor:demangle',
     '//src/trace_processor:trace_processor_shell',
@@ -120,10 +124,32 @@ target_product_available = [
 
 # Proto target groups which will be made public.
 proto_groups = {
-    'trace': [
-        '//protos/perfetto/trace:non_minimal_source_set',
-        '//protos/perfetto/trace:minimal_source_set'
-    ],
+    'trace': {
+        'types': ['lite'],
+        'targets': [
+            '//protos/perfetto/trace:non_minimal_source_set',
+            '//protos/perfetto/trace:minimal_source_set',
+        ]
+    },
+    'winscope': {
+        'types': ['filegroup'],
+        'targets': [
+            '//protos/perfetto/trace:non_minimal_source_set',
+            '//protos/perfetto/trace/android:winscope_extensions_source_set',
+        ]
+    },
+    'config': {
+        'types': ['lite', 'filegroup'],
+        'targets': [
+            '//protos/perfetto/config:source_set',
+        ]
+    },
+    'metrics': {
+        'types': ['python'],
+        'targets': [
+            '//protos/perfetto/metrics:source_set',
+        ]
+    },
 }
 
 needs_libfts = [
@@ -242,10 +268,6 @@ additional_args = {
         ('test_suites', {'general-tests'}),
         ('test_config', 'PerfettoIntegrationTests.xml'),
     ],
-    'traced_probes': [('required', {
-        'libperfetto_android_internal', 'trigger_perfetto', 'traced_perf',
-        'mm_events'
-    }),],
     'libperfetto_android_internal': [('static_libs', {'libhealthhalutils'}),],
     'trace_processor_shell': [
         ('strip', {
@@ -264,6 +286,7 @@ additional_args = {
         }),
         ('min_sdk_version', '30'),
         ('shared_libs', {'liblog'}),
+        ('export_shared_lib_headers', {'liblog'}),
         ('export_include_dirs', {'include', buildflags_dir}),
     ],
     'libperfetto_c': [
@@ -279,6 +302,7 @@ additional_args = {
         ('min_sdk_version', 'S'),
     ],
     'libperfetto': [('export_include_dirs', {'include', buildflags_dir}),],
+    'perfetto': [('required', {'perfetto_persistent_cfg.pbtxt'}),],
 }
 
 
@@ -326,6 +350,7 @@ def enable_libunwindstack(module):
     module.static_libs.add('liblzma')
     module.static_libs.add('libdexfile_support')
     module.runtime_libs.add('libdexfile')  # libdexfile_support dependency
+    module.shared_libs.add('libz') # libunwindstack dependency
 
 
 def enable_libunwind(module):
@@ -364,6 +389,16 @@ def enable_zlib(module):
     module.shared_libs.add('libz')
 
 
+def enable_expat(module):
+  if module.type == 'cc_binary_host':
+    module.static_libs.add('libexpat')
+  elif module.host_supported:
+    module.android.shared_libs.add('libexpat')
+    module.host.static_libs.add('libexpat')
+  else:
+    module.shared_libs.add('libexpat')
+
+
 def enable_uapi_headers(module):
   module.include_dirs.add('bionic/libc/kernel')
 
@@ -399,6 +434,8 @@ builtin_deps = {
         enable_sqlite,
     '//gn:zlib':
         enable_zlib,
+    '//gn:expat':
+        enable_expat,
     '//gn:bionic_kernel_uapi_headers':
         enable_uapi_headers,
     '//src/profiling/memory:bionic_libc_platform_headers_on_android':
@@ -505,6 +542,7 @@ class Module(object):
     self.main: Optional[str] = None
     self.comment = 'GN: ' + gn_utils.label_without_toolchain(gn_target)
     self.shared_libs = set()
+    self.export_shared_lib_headers = set()
     self.static_libs = set()
     self.whole_static_libs = set()
     self.runtime_libs = set()
@@ -554,6 +592,7 @@ class Module(object):
     self._output_field(output, 'name')
     self._output_field(output, 'srcs')
     self._output_field(output, 'shared_libs')
+    self._output_field(output, 'export_shared_lib_headers')
     self._output_field(output, 'static_libs')
     self._output_field(output, 'whole_static_libs')
     self._output_field(output, 'runtime_libs')
@@ -761,7 +800,6 @@ def create_proto_modules(blueprint: Blueprint, gn: GnParser,
   # The .proto filegroup will be added to `tool_files` of rdeps so that the
   # genrules can be sandboxed.
 
-  tool_files = set()
   for proto_dep in target.proto_deps().union(target.transitive_proto_deps()):
     tool_files.add(":" + label_to_module_name(proto_dep.name))
 
@@ -955,23 +993,41 @@ def create_gen_version_module(blueprint: Blueprint, target: GnParser.Target,
 
 
 def create_proto_group_modules(blueprint, gn: GnParser, module_name: str,
-                               target_names):
-  # TODO(lalitm): today, we're only adding a Java lite module because that's
-  # the only one used in practice. In the future, if we need other target types
-  # (e.g. C++, Java full etc.) add them here.
-  bp_module_name = label_to_module_name(module_name) + '_java_protos'
-  module = Module('java_library', bp_module_name, bp_module_name)
-  module.comment = f'''GN: [{', '.join(target_names)}]'''
-  module.proto = {'type': 'lite', 'canonical_path_from_root': False}
+                               group):
+  target_names = group['targets']
+  module_types = group['types']
+  module_sources = set()
 
   for name in target_names:
     target = gn.get_target(name)
-    module.srcs.update(gn_utils.label_to_path(src) for src in target.sources)
+    module_sources.update(gn_utils.label_to_path(src) for src in target.sources)
     for dep_label in target.transitive_proto_deps():
       dep = gn.get_target(dep_label.name)
-      module.srcs.update(gn_utils.label_to_path(src) for src in dep.sources)
+      module_sources.update(gn_utils.label_to_path(src) for src in dep.sources)
 
-  blueprint.add_module(module)
+  for type in module_types:
+    if type == 'filegroup':
+      name = label_to_module_name(module_name) + '_filegroup_proto'
+      module = Module('filegroup', name, name)
+      module.comment = f'''GN: [{', '.join(target_names)}]'''
+      module.srcs = module_sources
+      blueprint.add_module(module)
+    elif type == 'lite':
+      name = label_to_module_name(module_name) + '_java_protos'
+      module = Module('java_library', name, name)
+      module.comment = f'''GN: [{', '.join(target_names)}]'''
+      module.proto = {'type': 'lite', 'canonical_path_from_root': False}
+      module.srcs = module_sources
+      blueprint.add_module(module)
+    elif type == 'python':
+      name = label_to_module_name(module_name) + '_python_protos'
+      module = Module('python_library_host', name, name)
+      module.comment = f'''GN: [{', '.join(target_names)}]'''
+      module.proto = {'canonical_path_from_root': False}
+      module.srcs = module_sources
+      blueprint.add_module(module)
+    else:
+      raise Error('Unhandled proto group type: {}'.format(group.type))
 
 
 def _get_cflags(target: GnParser.Target):
@@ -1227,8 +1283,8 @@ def main():
   # checker = gn_utils.ODRChecker(gn, target_name)
 
   # Add any proto groups to the blueprint.
-  for l_name, t_names in proto_groups.items():
-    create_proto_group_modules(blueprint, gn, l_name, t_names)
+  for name, group in proto_groups.items():
+    create_proto_group_modules(blueprint, gn, name, group)
 
   output = [
       """// Copyright (C) 2017 The Android Open Source Project

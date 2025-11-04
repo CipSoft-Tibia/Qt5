@@ -36,13 +36,27 @@ PermissionPromptAndroid::GetTabSwitchingBehavior() {
   return TabSwitchingBehavior::kKeepPromptAlive;
 }
 
-absl::optional<gfx::Rect> PermissionPromptAndroid::GetViewBoundsInScreen()
+std::optional<gfx::Rect> PermissionPromptAndroid::GetViewBoundsInScreen()
     const {
-  return absl::nullopt;
+  return std::nullopt;
 }
 
 bool PermissionPromptAndroid::ShouldFinalizeRequestAfterDecided() const {
   return true;
+}
+
+std::vector<permissions::ElementAnchoredBubbleVariant>
+PermissionPromptAndroid::GetPromptVariants() const {
+  return {};
+}
+
+bool PermissionPromptAndroid::IsAskPrompt() const {
+  return true;
+}
+
+std::optional<permissions::feature_params::PermissionElementPromptPosition>
+PermissionPromptAndroid::GetPromptPosition() const {
+  return std::nullopt;
 }
 
 void PermissionPromptAndroid::Closing() {
@@ -73,7 +87,7 @@ bool PermissionPromptAndroid::ShouldCurrentRequestUseQuietUI() {
   return delegate_->ShouldCurrentRequestUseQuietUI();
 }
 
-absl::optional<PermissionUiSelector::QuietUiReason>
+std::optional<PermissionUiSelector::QuietUiReason>
 PermissionPromptAndroid::ReasonForUsingQuietUi() const {
   return delegate_->ReasonForUsingQuietUi();
 }
@@ -113,9 +127,7 @@ int PermissionPromptAndroid::GetIconId() const {
   const std::vector<raw_ptr<PermissionRequest, VectorExperimental>>& requests =
       delegate_->Requests();
   if (requests.size() == 1) {
-    if (requests[0]->request_type() == RequestType::kStorageAccess &&
-        base::FeatureList::IsEnabled(
-            permissions::features::kPermissionStorageAccessAPI)) {
+    if (requests[0]->request_type() == RequestType::kStorageAccess) {
       return IDR_ANDROID_GLOBE;
     }
     return permissions::GetIconId(requests[0]->request_type());
@@ -152,9 +164,7 @@ bool PermissionPromptAndroid::ShouldUseRequestingOriginFavicon() const {
       delegate_->Requests();
   CHECK_GT(requests.size(), 0U);
 
-  return requests[0]->request_type() == RequestType::kStorageAccess &&
-         base::FeatureList::IsEnabled(
-             permissions::features::kPermissionStorageAccessAPI);
+  return requests[0]->request_type() == RequestType::kStorageAccess;
 }
 
 GURL PermissionPromptAndroid::GetRequestingOrigin() const {

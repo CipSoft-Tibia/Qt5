@@ -15,15 +15,21 @@
 // We mean it.
 //
 
-#include <QtFFmpegMediaPluginImpl/private/qffmpeghwaccel_p.h>
 #include <QtMultimedia/private/qplatformcamera_p.h>
-#include <QObject>
-#include <QJniObject>
+
+#include <QtCore/qjniobject.h>
+#include <QtCore/qobject.h>
+
+#include <QtMultimedia/qimagecapture.h>
+
+#include <QtFFmpegMediaPluginImpl/private/qffmpeghwaccel_p.h>
 
 QT_BEGIN_NAMESPACE
 
 class QVideoFrame;
 class QAndroidVideoFrameFactory;
+
+namespace QFFmpeg {
 
 class QAndroidCamera : public QPlatformCamera
 {
@@ -77,9 +83,11 @@ public slots:
     void onCaptureSessionFailed(int reason, long frameNumber);
     void onSessionActive();
     void onSessionClosed();
+    void onStillPhotoCaptureFailed();
 
-Q_SIGNALS:
-    void onCaptured(const QVideoFrame&);
+signals:
+    void onStillPhotoCaptured(const QVideoFrame&);
+    void onImageCaptureFailed(QImageCapture::Error error, const QString &errMsg);
 
 private:
     bool isActivating() const { return m_state != State::Closed; }
@@ -106,6 +114,8 @@ private:
 
     bool m_waitingForFirstFrame = false;
 };
+
+} // namespace QFFmpeg
 
 QT_END_NAMESPACE
 

@@ -6,21 +6,21 @@ VARYING vec2 UV;
 
 void MAIN()
 {
-    if (any(greaterThan(UV, vec2(1.01))) || abs(VAR_WORLD_POSITION.y) > graphHeight)
+    if (any(greaterThan(UV, vec2(1.01))) || abs(pos.y) > graphHeight)
         discard;
-    vec3 color;
+    vec4 color;
     vec2 gradientUV;
     switch (colorStyle) {
     case 0: //Object gradient
         gradientUV = vec2(gradientMin + pos.y * gradientHeight, 0.0);
-        color = texture(custex, gradientUV).xyz;
+        color = texture(custex, gradientUV);
         break;
     case 1: //Range gradient
-        gradientUV = vec2((VAR_WORLD_POSITION.y + 1.0) / 2.0, 0.0);
-        color = texture(custex, gradientUV).xyz;
+        gradientUV = vec2(((VAR_WORLD_POSITION.y + rootScale) / 2.0) / rootScale, 0.0);
+        color = texture(custex, gradientUV);
         break;
     case 2: // Uniform color
-        color = uniformColor.rgb;
+        color = uniformColor;
         break;
     case 3: // Textured model
         vec2 offsetNormalized = uvOffset * (1 / (vertCount - 1));
@@ -29,7 +29,7 @@ void MAIN()
             texUV.x = 1 - texUV.x;
         if (flipV)
             texUV.y = 1 - texUV.y;
-        color = texture(baseColor, texUV).xyz;
+        color = texture(baseColor, texUV);
         break;
     }
 
@@ -41,7 +41,7 @@ void MAIN()
             n = normalize(cross(dpdx,dpdy));
         NORMAL = n;
     }
-    diffuse = vec4(color, 1.0);
+    diffuse = vec4(color);
     BASE_COLOR = diffuse;
 }
 

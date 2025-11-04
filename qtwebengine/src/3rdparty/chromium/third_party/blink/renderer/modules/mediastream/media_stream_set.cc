@@ -23,12 +23,12 @@ namespace {
 
 ScreenDetailed* FindScreenDetailedByDisplayId(
     ScreenDetails* screen_details,
-    absl::optional<int64_t> display_id) {
+    std::optional<int64_t> display_id) {
   if (display_id == display::kInvalidDisplayId) {
     return nullptr;
   }
 
-  auto* const screen_iterator = base::ranges::find_if(
+  auto screen_iterator = base::ranges::find_if(
       screen_details->screens(),
       [display_id](const ScreenDetailed* screen_detailed) {
         return *display_id == screen_detailed->DisplayId();

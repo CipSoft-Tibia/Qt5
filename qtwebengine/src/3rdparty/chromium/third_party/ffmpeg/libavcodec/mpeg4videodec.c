@@ -597,6 +597,8 @@ static int mpeg4_decode_sprite_trajectory(Mpeg4DecContext *ctx, GetBitContext *g
         ctx->sprite_shift[0]  = alpha + beta + rho - min_ab;
         ctx->sprite_shift[1]  = alpha + beta + rho - min_ab + 2;
         break;
+    default:
+        av_assert0(0);
     }
     /* try to simplify the situation */
     if (sprite_delta[0][0] == a << ctx->sprite_shift[0] &&
@@ -735,10 +737,8 @@ int ff_mpeg4_decode_video_packet_header(Mpeg4DecContext *ctx)
         header_extension = get_bits1(&s->gb);
 
     if (header_extension) {
-        int time_incr = 0;
-
         while (get_bits1(&s->gb) != 0)
-            time_incr++;
+            ;
 
         check_marker(s->avctx, &s->gb, "before time_increment in video packed header");
         skip_bits(&s->gb, ctx->time_increment_bits);      /* time_increment */
@@ -3863,11 +3863,9 @@ const FFCodec ff_mpeg4_decoder = {
     FF_CODEC_DECODE_CB(ff_h263_decode_frame),
     .p.capabilities        = AV_CODEC_CAP_DRAW_HORIZ_BAND | AV_CODEC_CAP_DR1 |
                              AV_CODEC_CAP_DELAY | AV_CODEC_CAP_FRAME_THREADS,
-    .caps_internal         = FF_CODEC_CAP_SKIP_FRAME_FILL_PARAM |
-                             FF_CODEC_CAP_ALLOCATE_PROGRESS,
+    .caps_internal         = FF_CODEC_CAP_SKIP_FRAME_FILL_PARAM,
     .flush                 = ff_mpeg_flush,
     .p.max_lowres          = 3,
-    .p.pix_fmts            = ff_h263_hwaccel_pixfmt_list_420,
     .p.profiles            = NULL_IF_CONFIG_SMALL(ff_mpeg4_video_profiles),
     UPDATE_THREAD_CONTEXT(mpeg4_update_thread_context),
     UPDATE_THREAD_CONTEXT_FOR_USER(mpeg4_update_thread_context_for_user),

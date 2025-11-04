@@ -132,8 +132,6 @@ static_library("cardboard") {
     "src/sdk/util/vectorutils.cc",
     "src/sdk/util/vectorutils.h",
     "src_overrides/sdk/jni_utils/android/jni_utils.cc",
-
-    # TODO(crbug.com/1497732): Remove override once changes have been upstreamed.
     "src_overrides/sdk/sensors/android/device_accelerometer_sensor.cc",
     "src_overrides/sdk/sensors/android/device_gyroscope_sensor.cc",
   ]

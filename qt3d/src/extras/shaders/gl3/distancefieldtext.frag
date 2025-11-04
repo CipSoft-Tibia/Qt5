@@ -3,7 +3,7 @@
 uniform sampler2D distanceFieldTexture;
 uniform float minAlpha;
 uniform float maxAlpha;
-uniform float textureSize;
+uniform float textureWidth;
 uniform vec4 color;
 
 in vec2 texCoord;
@@ -17,7 +17,7 @@ void main()
     // (that is, how many pixels are drawn for each texel)
     vec2 texelDeltaX = abs(dFdx(texCoord));
     vec2 texelDeltaY = abs(dFdy(texCoord));
-    float avgTexelDelta = textureSize * 0.5 * (texelDeltaX.x + texelDeltaX.y + texelDeltaY.x + texelDeltaY.y);
+    float avgTexelDelta = textureWidth * 0.5 * (texelDeltaX.x + texelDeltaX.y + texelDeltaY.x + texelDeltaY.y);
     float texScale = 1.0 / avgTexelDelta;
 
     // scaled to interval [0.0, 0.15]

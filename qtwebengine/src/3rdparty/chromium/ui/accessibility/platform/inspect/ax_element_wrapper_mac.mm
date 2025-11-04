@@ -93,7 +93,7 @@ NSArray* AXElementWrapper::Children() const {
     return nil;
   }
 
-  NOTREACHED()
+  NOTREACHED_IN_MIGRATION()
       << "Only AXUIElementRef and BrowserAccessibilityCocoa are supported.";
   return nil;
 }
@@ -104,7 +104,7 @@ NSSize AXElementWrapper::Size() const {
   }
 
   if (!IsAXUIElement()) {
-    NOTREACHED()
+    NOTREACHED_IN_MIGRATION()
         << "Only AXUIElementRef and BrowserAccessibilityCocoa are supported.";
     return NSMakeSize(0, 0);
   }
@@ -138,9 +138,10 @@ NSPoint AXElementWrapper::Position() const {
         }
       }
     }
+    return NSMakePoint(0, 0);
   }
 
-  NOTREACHED()
+  NOTREACHED_IN_MIGRATION()
       << "Only AXUIElementRef and BrowserAccessibilityCocoa are supported.";
   return NSMakePoint(0, 0);
 }
@@ -160,7 +161,7 @@ NSArray* AXElementWrapper::AttributeNames() const {
     return nil;
   }
 
-  NOTREACHED()
+  NOTREACHED_IN_MIGRATION()
       << "Only AXUIElementRef and BrowserAccessibilityCocoa are supported.";
   return nil;
 }
@@ -180,7 +181,7 @@ NSArray* AXElementWrapper::ParameterizedAttributeNames() const {
     return nil;
   }
 
-  NOTREACHED()
+  NOTREACHED_IN_MIGRATION()
       << "Only AXUIElementRef and BrowserAccessibilityCocoa are supported.";
   return nil;
 }
@@ -234,24 +235,24 @@ AXOptionalNSObject AXElementWrapper::GetParameterizedAttributeValue(
   return AXOptionalNSObject::Error(kUnsupportedObject);
 }
 
-absl::optional<id> AXElementWrapper::PerformSelector(
+std::optional<id> AXElementWrapper::PerformSelector(
     const std::string& selector_string) const {
   if (![node_ conformsToProtocol:@protocol(NSAccessibility)])
-    return absl::nullopt;
+    return std::nullopt;
 
   NSString* selector_nsstring = base::SysUTF8ToNSString(selector_string);
   SEL selector = NSSelectorFromString(selector_nsstring);
 
   if ([node_ respondsToSelector:selector])
     return [node_ valueForKey:selector_nsstring];
-  return absl::nullopt;
+  return std::nullopt;
 }
 
-absl::optional<id> AXElementWrapper::PerformSelector(
+std::optional<id> AXElementWrapper::PerformSelector(
     const std::string& selector_string,
     const std::string& argument_string) const {
   if (![node_ conformsToProtocol:@protocol(NSAccessibility)])
-    return absl::nullopt;
+    return std::nullopt;
 
   SEL selector =
       NSSelectorFromString(base::SysUTF8ToNSString(selector_string + ":"));
@@ -262,7 +263,7 @@ absl::optional<id> AXElementWrapper::PerformSelector(
   if ([node_ respondsToSelector:selector])
     return [node_ performSelector:selector withObject:argument];
 #pragma clang diagnostic pop
-  return absl::nullopt;
+  return std::nullopt;
 }
 
 void AXElementWrapper::SetAttributeValue(NSString* attribute, id value) const {
@@ -278,7 +279,7 @@ void AXElementWrapper::SetAttributeValue(NSString* attribute, id value) const {
     return;
   }
 
-  NOTREACHED()
+  NOTREACHED_IN_MIGRATION()
       << "Only AXUIElementRef and BrowserAccessibilityCocoa are supported.";
 }
 
@@ -296,7 +297,7 @@ NSArray* AXElementWrapper::ActionNames() const {
     return nil;
   }
 
-  NOTREACHED()
+  NOTREACHED_IN_MIGRATION()
       << "Only AXUIElementRef and BrowserAccessibilityCocoa are supported.";
   return nil;
 }
@@ -313,7 +314,7 @@ void AXElementWrapper::PerformAction(NSString* action) const {
     return;
   }
 
-  NOTREACHED()
+  NOTREACHED_IN_MIGRATION()
       << "Only AXUIElementRef and BrowserAccessibilityCocoa are supported.";
 }
 
@@ -325,26 +326,51 @@ std::string AXElementWrapper::AXErrorMessage(AXError result,
 
   std::string error;
   switch (result) {
+    case kAXErrorAPIDisabled:
+      error = "API disabled; you may need to add terminal and/or this binary "
+              "to System Settings -> Privacy & Security -> Accessibility";
+      break;
+    case kAXErrorActionUnsupported:
+      error = "action unsupported";
+      break;
     case kAXErrorAttributeUnsupported:
       error = "attribute unsupported";
       break;
-    case kAXErrorParameterizedAttributeUnsupported:
-      error = "parameterized attribute unsupported";
+    case kAXErrorCannotComplete:
+      error = "cannot complete";
       break;
-    case kAXErrorNoValue:
-      error = "no value";
+    case kAXErrorFailure:
+      error = "failure";
       break;
     case kAXErrorIllegalArgument:
       error = "illegal argument";
       break;
     case kAXErrorInvalidUIElement:
-      error = "invalid UIElement";
+      error = "invalid UI element";
       break;
-    case kAXErrorCannotComplete:
-      error = "cannot complete";
+    case kAXErrorInvalidUIElementObserver:
+      error = "illegal UI element observer";
+      break;
+    case kAXErrorNoValue:
+      error = "no value";
+      break;
+    case kAXErrorNotEnoughPrecision:
+      error = "not enough precision";
       break;
     case kAXErrorNotImplemented:
       error = "not implemented";
+      break;
+    case kAXErrorNotificationAlreadyRegistered:
+      error = "notification already registered";
+      break;
+    case kAXErrorNotificationNotRegistered:
+      error = "notification not registered";
+      break;
+    case kAXErrorNotificationUnsupported:
+      error = "notification unsupported";
+      break;
+    case kAXErrorParameterizedAttributeUnsupported:
+      error = "parameterized attribute unsupported";
       break;
     default:
       error = "unknown error";

@@ -8,17 +8,18 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include <optional>
 #include <string>
 #include <vector>
 
 #include "base/android/jni_android.h"
 #include "base/android/scoped_java_ref.h"
+#include "base/containers/span.h"
 #include "base/time/time.h"
 #include "media/base/encryption_pattern.h"
 #include "media/base/encryption_scheme.h"
 #include "media/base/media_export.h"
 #include "media/base/status.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "ui/gfx/color_space.h"
 #include "ui/gfx/geometry/size.h"
 
@@ -138,6 +139,12 @@ class MEDIA_EXPORT MediaCodecBridge {
       size_t data_size,
       base::TimeDelta presentation_time) = 0;
 
+  // Submits a byte array to the given input buffer, using LinearBlock.
+  virtual MediaCodecResult QueueInputBlock(int index,
+                                           base::span<const uint8_t> data,
+                                           base::TimeDelta presentation_time,
+                                           bool is_eos) = 0;
+
   // As above but for encrypted buffers. NULL |subsamples| indicates the
   // whole buffer is encrypted.
   virtual MediaCodecResult QueueSecureInputBuffer(
@@ -148,7 +155,7 @@ class MEDIA_EXPORT MediaCodecBridge {
       const std::string& iv,
       const std::vector<SubsampleEntry>& subsamples,
       EncryptionScheme encryption_scheme,
-      absl::optional<EncryptionPattern> encryption_pattern,
+      std::optional<EncryptionPattern> encryption_pattern,
       base::TimeDelta presentation_time) = 0;
 
   // Submits an empty buffer with the END_OF_STREAM flag set.

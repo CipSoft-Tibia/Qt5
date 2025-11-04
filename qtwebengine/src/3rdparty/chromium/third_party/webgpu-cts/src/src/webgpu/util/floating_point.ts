@@ -12,7 +12,7 @@ import {
   f16,
   f32,
   isFloatType,
-  Scalar,
+  ScalarValue,
   ScalarType,
   toMatrix,
   toVector,
@@ -634,6 +634,7 @@ interface FPConstants {
       sixth: number;
     };
   };
+  bias: number;
   unboundedInterval: FPInterval;
   zeroInterval: FPInterval;
   negPiToPiInterval: FPInterval;
@@ -1047,14 +1048,14 @@ export abstract class FPTraits {
     unreachable(`'refract' is not yet implemented for '${this.kind}'`);
   }
 
-  /** Version of absoluteErrorInterval that always returns the unboundedInterval */
-  protected unboundedAbsoluteErrorInterval(_n: number, _error_range: number): FPInterval {
-    return this.constants().unboundedInterval;
+  /** Stub for absolute errors */
+  protected unimplementedAbsoluteErrorInterval(_n: number, _error_range: number): FPInterval {
+    unreachable(`Absolute Error is not implement for '${this.kind}'`);
   }
 
-  /** Version of ulpInterval that always returns the unboundedInterval */
-  protected unboundedUlpInterval(_n: number, _numULP: number): FPInterval {
-    return this.constants().unboundedInterval;
+  /** Stub for ULP errors */
+  protected unimplementedUlpInterval(_n: number, _numULP: number): FPInterval {
+    unreachable(`ULP Error is not implement for '${this.kind}'`);
   }
 
   // Utilities - Defined by subclass
@@ -1073,8 +1074,8 @@ export abstract class FPTraits {
   public abstract readonly flushSubnormal: (n: number) => number;
   /** @returns 1 * ULP: (number) */
   public abstract readonly oneULP: (target: number, mode?: FlushMode) => number;
-  /** @returns a builder for converting numbers to Scalars */
-  public abstract readonly scalarBuilder: (n: number) => Scalar;
+  /** @returns a builder for converting numbers to ScalarsValues */
+  public abstract readonly scalarBuilder: (n: number) => ScalarValue;
   /** @returns a range of scalars for testing */
   public abstract scalarRange(): readonly number[];
   /** @returns a reduced range of scalars for testing */
@@ -1713,7 +1714,6 @@ export abstract class FPTraits {
   ): Case | undefined {
     param0 = map2DArray(param0, this.quantize);
     param1 = map2DArray(param1, this.quantize);
-
     const results = ops.map(o => o(param0, param1));
     if (filter === 'finite' && results.some(m => m.some(c => c.some(r => !r.isFinite())))) {
       return undefined;
@@ -2527,9 +2527,10 @@ export abstract class FPTraits {
   protected runMatrixToMatrixOp(m: FPMatrix, op: MatrixToMatrixOp): FPMatrix {
     const num_cols = m.length;
     const num_rows = m[0].length;
-    if (m.some(c => c.some(r => !r.isFinite()))) {
-      return this.constants().unboundedMatrix[num_cols][num_rows];
-    }
+
+    // Do not check for OOB inputs and exit early here, because the shape of
+    // the output matrix may be determined by the operation being run,
+    // i.e. transpose.
 
     const m_flat: readonly FPInterval[] = flatten2DArray(m);
     const m_values: ROArrayArray<number> = cartesianProduct<number>(
@@ -2725,12 +2726,12 @@ export abstract class FPTraits {
     },
   };
 
-  protected absIntervalImpl(n: number): FPInterval {
+  protected absIntervalImpl(n: number | FPInterval): FPInterval {
     return this.runScalarToIntervalOp(this.toInterval(n), this.AbsIntervalOp);
   }
 
   /** Calculate an acceptance interval for abs(n) */
-  public abstract readonly absInterval: (n: number) => FPInterval;
+  public abstract readonly absInterval: (n: number | FPInterval) => FPInterval;
 
   // This op is implemented differently for f32 and f16.
   private readonly AcosIntervalOp: ScalarToIntervalOp = {
@@ -2834,7 +2835,7 @@ export abstract class FPTraits {
       assert(this.kind === 'f32' || this.kind === 'f16');
       // asin(n) = atan2(n, sqrt(1.0 - n * n)) or a polynomial approximation with absolute error
       const x = this.sqrtInterval(this.subtractionInterval(1, this.multiplicationInterval(n, n)));
-      const approx_abs_error = this.kind === 'f32' ? 6.77e-5 : 3.91e-3;
+      const approx_abs_error = this.kind === 'f32' ? 6.81e-5 : 3.91e-3;
       return this.spanIntervals(
         this.atan2Interval(n, x),
         this.absoluteErrorInterval(Math.asin(n), approx_abs_error)
@@ -3411,7 +3412,10 @@ export abstract class FPTraits {
     x: readonly number[] | readonly FPInterval[],
     y: readonly number[] | readonly FPInterval[]
   ): FPInterval {
-    assert(x.length === y.length, `dot not defined for vectors with different lengths`);
+    assert(
+      x.length === y.length,
+      `dot not defined for vectors with different lengths, x = ${x}, y = ${y}`
+    );
     return this.runVectorPairToIntervalOp(this.toVector(x), this.toVector(y), this.DotIntervalOp);
   }
 
@@ -3599,11 +3603,9 @@ export abstract class FPTraits {
 
   private readonly LdexpIntervalOp: ScalarPairToIntervalOp = {
     impl: (e1: number, e2: number) => {
-      assert(this.kind === 'f32' || this.kind === 'f16');
       assert(Number.isInteger(e2), 'the second param of ldexp must be an integer');
-      const bias = this.kind === 'f32' ? 127 : 15;
       // Spec explicitly calls indeterminate value if e2 > bias + 1
-      if (e2 > bias + 1) {
+      if (e2 > this.constants().bias + 1) {
         return this.constants().unboundedInterval;
       }
       // The spec says the result of ldexp(e1, e2) = e1 * 2 ^ e2, and the
@@ -3613,7 +3615,7 @@ export abstract class FPTraits {
       // correctlyRoundedInterval.
       const result = e1 * 2 ** e2;
       if (!Number.isFinite(result)) {
-        // Overflowed TS's number type, so definitely out of bounds for f32/f16
+        // Overflowed TS's number type, so definitely out of bounds
         return this.constants().unboundedInterval;
       }
       // The result may be zero if e2 + bias <= 0, but we can't simply span the interval to 0.0.
@@ -4459,6 +4461,7 @@ class F32Traits extends FPTraits {
         sixth: kValue.f32.negative.pi.sixth,
       },
     },
+    bias: 127,
     unboundedInterval: kF32UnboundedInterval,
     zeroInterval: kF32ZeroInterval,
     // Have to use the constants.ts values here, because values defined in the
@@ -4926,6 +4929,7 @@ class FPAbstractTraits extends FPTraits {
         sixth: kValue.f64.negative.pi.sixth,
       },
     },
+    bias: 1023,
     unboundedInterval: kAbstractUnboundedInterval,
     zeroInterval: kAbstractZeroInterval,
     // Have to use the constants.ts values here, because values defined in the
@@ -5091,12 +5095,10 @@ class FPAbstractTraits extends FPTraits {
   public readonly sparseMatrixRange = sparseMatrixF64Range;
 
   // Framework - Fundamental Error Intervals - Overrides
-  public readonly absoluteErrorInterval = this.unboundedAbsoluteErrorInterval.bind(this);
+  public readonly absoluteErrorInterval = this.unimplementedAbsoluteErrorInterval.bind(this); // Should use FP.f32 instead
   public readonly correctlyRoundedInterval = this.correctlyRoundedIntervalImpl.bind(this);
   public readonly correctlyRoundedMatrix = this.correctlyRoundedMatrixImpl.bind(this);
-  public readonly ulpInterval = (n: number, numULP: number): FPInterval => {
-    return this.toInterval(kF32Traits.ulpInterval(n, numULP));
-  };
+  public readonly ulpInterval = this.unimplementedUlpInterval.bind(this); // Should use FP.f32 instead
 
   // Framework - API - Overrides
   public readonly absInterval = this.absIntervalImpl.bind(this);
@@ -5110,8 +5112,14 @@ class FPAbstractTraits extends FPTraits {
     'acoshPrimaryInterval'
   );
   public readonly acoshIntervals = [this.acoshAlternativeInterval, this.acoshPrimaryInterval];
-  public readonly additionInterval = this.additionIntervalImpl.bind(this);
-  public readonly additionMatrixMatrixInterval = this.additionMatrixMatrixIntervalImpl.bind(this);
+  public readonly additionInterval = this.unimplementedScalarPairToInterval.bind(
+    this,
+    'additionInterval'
+  );
+  public readonly additionMatrixMatrixInterval = this.unimplementedMatrixPairToMatrix.bind(
+    this,
+    'additionMatrixMatrixInterval'
+  );
   public readonly asinInterval = this.unimplementedScalarToInterval.bind(this, 'asinInterval');
   public readonly asinhInterval = this.unimplementedScalarToInterval.bind(this, 'asinhInterval');
   public readonly atanInterval = this.unimplementedScalarToInterval.bind(this, 'atanInterval');
@@ -5120,50 +5128,57 @@ class FPAbstractTraits extends FPTraits {
     'atan2Interval'
   );
   public readonly atanhInterval = this.unimplementedScalarToInterval.bind(this, 'atanhInterval');
-  public readonly ceilInterval = this.unimplementedScalarToInterval.bind(this, 'ceilInterval');
+  public readonly ceilInterval = this.ceilIntervalImpl.bind(this);
   public readonly clampMedianInterval = this.clampMedianIntervalImpl.bind(this);
   public readonly clampMinMaxInterval = this.clampMinMaxIntervalImpl.bind(this);
   public readonly clampIntervals = [this.clampMedianInterval, this.clampMinMaxInterval];
   public readonly cosInterval = this.unimplementedScalarToInterval.bind(this, 'cosInterval');
   public readonly coshInterval = this.unimplementedScalarToInterval.bind(this, 'coshInterval');
-  public readonly crossInterval = this.crossIntervalImpl.bind(this);
-  public readonly degreesInterval = this.degreesIntervalImpl.bind(this);
+  public readonly crossInterval = this.unimplementedVectorPairToVector.bind(this, 'crossInterval');
+  public readonly degreesInterval = this.unimplementedScalarToInterval.bind(
+    this,
+    'degreesInterval'
+  );
   public readonly determinantInterval = this.unimplementedMatrixToInterval.bind(
     this,
-    'determinantInterval'
+    'determinant'
   );
   public readonly distanceInterval = this.unimplementedDistance.bind(this);
-  public readonly divisionInterval = (
-    x: number | FPInterval,
-    y: number | FPInterval
-  ): FPInterval => {
-    return this.toInterval(kF32Traits.divisionInterval(x, y));
-  };
+  public readonly divisionInterval = this.unimplementedScalarPairToInterval.bind(
+    this,
+    'divisionInterval'
+  );
   public readonly dotInterval = this.unimplementedVectorPairToInterval.bind(this, 'dotInterval');
   public readonly expInterval = this.unimplementedScalarToInterval.bind(this, 'expInterval');
   public readonly exp2Interval = this.unimplementedScalarToInterval.bind(this, 'exp2Interval');
   public readonly faceForwardIntervals = this.unimplementedFaceForward.bind(this);
   public readonly floorInterval = this.floorIntervalImpl.bind(this);
-  public readonly fmaInterval = this.fmaIntervalImpl.bind(this);
+  public readonly fmaInterval = this.unimplementedScalarTripleToInterval.bind(this, 'fmaInterval');
   public readonly fractInterval = this.unimplementedScalarToInterval.bind(this, 'fractInterval');
   public readonly inverseSqrtInterval = this.unimplementedScalarToInterval.bind(
     this,
     'inverseSqrtInterval'
   );
-  public readonly ldexpInterval = this.unimplementedScalarPairToInterval.bind(
-    this,
-    'ldexpInterval'
-  );
+  public readonly ldexpInterval = this.ldexpIntervalImpl.bind(this);
   public readonly lengthInterval = this.unimplementedLength.bind(this);
   public readonly logInterval = this.unimplementedScalarToInterval.bind(this, 'logInterval');
   public readonly log2Interval = this.unimplementedScalarToInterval.bind(this, 'log2Interval');
   public readonly maxInterval = this.maxIntervalImpl.bind(this);
   public readonly minInterval = this.minIntervalImpl.bind(this);
-  public readonly mixImpreciseInterval = this.mixImpreciseIntervalImpl.bind(this);
-  public readonly mixPreciseInterval = this.mixPreciseIntervalImpl.bind(this);
+  public readonly mixImpreciseInterval = this.unimplementedScalarTripleToInterval.bind(
+    this,
+    'mixImpreciseInterval'
+  );
+  public readonly mixPreciseInterval = this.unimplementedScalarTripleToInterval.bind(
+    this,
+    'mixPreciseInterval'
+  );
   public readonly mixIntervals = [this.mixImpreciseInterval, this.mixPreciseInterval];
   public readonly modfInterval = this.modfIntervalImpl.bind(this);
-  public readonly multiplicationInterval = this.multiplicationIntervalImpl.bind(this);
+  public readonly multiplicationInterval = this.unimplementedScalarPairToInterval.bind(
+    this,
+    'multiplicationInterval'
+  );
   public readonly multiplicationMatrixMatrixInterval = this.unimplementedMatrixPairToMatrix.bind(
     this,
     'multiplicationMatrixMatrixInterval'
@@ -5190,15 +5205,16 @@ class FPAbstractTraits extends FPTraits {
     'normalizeInterval'
   );
   public readonly powInterval = this.unimplementedScalarPairToInterval.bind(this, 'powInterval');
-  public readonly radiansInterval = this.radiansIntervalImpl.bind(this);
+  public readonly radiansInterval = this.unimplementedScalarToInterval.bind(this, 'radiansImpl');
   public readonly reflectInterval = this.unimplementedVectorPairToVector.bind(
     this,
     'reflectInterval'
   );
   public readonly refractInterval = this.unimplementedRefract.bind(this);
-  public readonly remainderInterval = (x: number, y: number): FPInterval => {
-    return this.toInterval(kF32Traits.remainderInterval(x, y));
-  };
+  public readonly remainderInterval = this.unimplementedScalarPairToInterval.bind(
+    this,
+    'remainderInterval'
+  );
   public readonly roundInterval = this.roundIntervalImpl.bind(this);
   public readonly saturateInterval = this.saturateIntervalImpl.bind(this);
   public readonly signInterval = this.signIntervalImpl.bind(this);
@@ -5209,10 +5225,15 @@ class FPAbstractTraits extends FPTraits {
     'smoothStepInterval'
   );
   public readonly sqrtInterval = this.unimplementedScalarToInterval.bind(this, 'sqrtInterval');
-  public readonly stepInterval = this.unimplementedScalarPairToInterval.bind(this, 'stepInterval');
-  public readonly subtractionInterval = this.subtractionIntervalImpl.bind(this);
-  public readonly subtractionMatrixMatrixInterval =
-    this.subtractionMatrixMatrixIntervalImpl.bind(this);
+  public readonly stepInterval = this.stepIntervalImpl.bind(this);
+  public readonly subtractionInterval = this.unimplementedScalarPairToInterval.bind(
+    this,
+    'subtractionInterval'
+  );
+  public readonly subtractionMatrixMatrixInterval = this.unimplementedMatrixPairToMatrix.bind(
+    this,
+    'subtractionMatrixMatrixInterval'
+  );
   public readonly tanInterval = this.unimplementedScalarToInterval.bind(this, 'tanInterval');
   public readonly tanhInterval = this.unimplementedScalarToInterval.bind(this, 'tanhInterval');
   public readonly transposeInterval = this.transposeIntervalImpl.bind(this);
@@ -5270,6 +5291,7 @@ class F16Traits extends FPTraits {
         sixth: kValue.f16.negative.pi.sixth,
       },
     },
+    bias: 15,
     unboundedInterval: kF16UnboundedInterval,
     zeroInterval: kF16ZeroInterval,
     // Have to use the constants.ts values here, because values defined in the
@@ -5535,5 +5557,6 @@ export function isRepresentable(value: number, type: ScalarType) {
     const constants = fpTraitsFor(type).constants();
     return value >= constants.negative.min && value <= constants.positive.max;
   }
+
   assert(false, `isRepresentable() is not yet implemented for type ${type}`);
 }

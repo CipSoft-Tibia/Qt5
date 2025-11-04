@@ -73,7 +73,7 @@ class Handle {
     operator HANDLE() { return handle_; }
 
     /// @returns true if the handle is not invalid
-    operator bool() { return handle_ != nullptr; }
+    explicit operator bool() { return handle_ != nullptr; }
 
   private:
     Handle(const Handle&) = delete;
@@ -106,7 +106,7 @@ class Pipe {
     }
 
     /// @returns true if the pipe has an open read or write file
-    operator bool() { return read || write; }
+    explicit operator bool() { return read || write; }
 
     /// The reader end of the pipe
     Handle read;
@@ -145,7 +145,20 @@ bool ExecutableExists(const std::string& path) {
     return false;
 }
 
+std::string GetCWD() {
+    char cwd[MAX_PATH] = "";
+    GetCurrentDirectoryA(sizeof(cwd), cwd);
+    return cwd;
+}
+
 std::string FindExecutable(const std::string& name) {
+    auto in_cwd = GetCWD() + "/" + name;
+    if (ExecutableExists(in_cwd)) {
+        return in_cwd;
+    }
+    if (ExecutableExists(in_cwd + ".exe")) {
+        return in_cwd + ".exe";
+    }
     if (ExecutableExists(name)) {
         return name;
     }

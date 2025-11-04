@@ -54,11 +54,12 @@ bool PermissionsClient::IsCookieDeletionDisabled(
   return false;
 }
 
-void PermissionsClient::GetUkmSourceId(content::BrowserContext* browser_context,
+void PermissionsClient::GetUkmSourceId(ContentSettingsType permission_type,
+                                       content::BrowserContext* browser_context,
                                        content::WebContents* web_contents,
                                        const GURL& requesting_origin,
                                        GetUkmSourceIdCallback callback) {
-  std::move(callback).Run(absl::nullopt);
+  std::move(callback).Run(std::nullopt);
 }
 
 IconId PermissionsClient::GetOverrideIconId(RequestType request_type) {
@@ -78,13 +79,16 @@ PermissionsClient::CreatePermissionUiSelectors(
 void PermissionsClient::TriggerPromptHatsSurveyIfEnabled(
     content::WebContents* web_contents,
     permissions::RequestType request_type,
-    absl::optional<permissions::PermissionAction> action,
+    std::optional<permissions::PermissionAction> action,
     permissions::PermissionPromptDisposition prompt_disposition,
     permissions::PermissionPromptDispositionReason prompt_disposition_reason,
     permissions::PermissionRequestGestureType gesture_type,
-    absl::optional<base::TimeDelta> prompt_display_duration,
+    std::optional<base::TimeDelta> prompt_display_duration,
     bool is_post_prompt,
     const GURL& gurl,
+    std::optional<permissions::feature_params::PermissionElementPromptPosition>
+        pepc_prompt_position,
+    ContentSetting initial_permission_status,
     base::OnceCallback<void()> hats_shown_callback_) {}
 
 void PermissionsClient::OnPromptResolved(
@@ -94,25 +98,35 @@ void PermissionsClient::OnPromptResolved(
     PermissionPromptDisposition prompt_disposition,
     PermissionPromptDispositionReason prompt_disposition_reason,
     PermissionRequestGestureType gesture_type,
-    absl::optional<QuietUiReason> quiet_ui_reason,
+    std::optional<QuietUiReason> quiet_ui_reason,
     base::TimeDelta prompt_display_duration,
+    std::optional<permissions::feature_params::PermissionElementPromptPosition>
+        pepc_prompt_position,
+    ContentSetting initial_permission_status,
     content::WebContents* web_contents) {}
 
-absl::optional<bool>
+std::optional<bool>
 PermissionsClient::HadThreeConsecutiveNotificationPermissionDenies(
     content::BrowserContext* browser_context) {
-  return absl::nullopt;
+  return std::nullopt;
 }
 
-absl::optional<url::Origin> PermissionsClient::GetAutoApprovalOrigin() {
-  return absl::nullopt;
+std::optional<url::Origin> PermissionsClient::GetAutoApprovalOrigin(
+    content::BrowserContext* browser_context) {
+  return std::nullopt;
 }
 
-absl::optional<bool> PermissionsClient::HasPreviouslyAutoRevokedPermission(
+std::optional<PermissionAction> PermissionsClient::GetAutoApprovalStatus(
+    content::BrowserContext* browser_context,
+    const GURL& origin) {
+  return std::nullopt;
+}
+
+std::optional<bool> PermissionsClient::HasPreviouslyAutoRevokedPermission(
     content::BrowserContext* browser_context,
     const GURL& origin,
     ContentSettingsType permission) {
-  return absl::nullopt;
+  return std::nullopt;
 }
 
 bool PermissionsClient::CanBypassEmbeddingOriginCheck(
@@ -121,10 +135,10 @@ bool PermissionsClient::CanBypassEmbeddingOriginCheck(
   return false;
 }
 
-absl::optional<GURL> PermissionsClient::OverrideCanonicalOrigin(
+std::optional<GURL> PermissionsClient::OverrideCanonicalOrigin(
     const GURL& requesting_origin,
     const GURL& embedding_origin) {
-  return absl::nullopt;
+  return std::nullopt;
 }
 
 bool PermissionsClient::DoURLsMatchNewTabPage(const GURL& requesting_origin,

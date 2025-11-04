@@ -15,6 +15,7 @@ QT_BEGIN_NAMESPACE
     \inqmlmodule QtOpcUa
     \brief Contains result data after writing to the server.
     \since QtOpcUa 5.13
+    \deprecated [6.9]
 
     This type is used to pass the results after writing to the server using the function
     \l Connection::writeNodeAttributes.

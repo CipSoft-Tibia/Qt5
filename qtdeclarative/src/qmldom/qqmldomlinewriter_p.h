@@ -79,14 +79,10 @@ public:
     Q_ENUM(LineEndings)
     enum class TrailingSpace { Preserve, Remove };
     Q_ENUM(TrailingSpace)
-    enum class Update { None = 0, Expressions = 0x1, Locations = 0x2, All = 0x3, Default = All };
-    Q_ENUM(Update)
-    Q_DECLARE_FLAGS(Updates, Update)
     enum class AttributesSequence { Normalize, Preserve };
     Q_ENUM(AttributesSequence)
 
-    int maxLineLength = -1;
-    int strongMaxLineExtra = 20;
+    int maxLineLength = -1; // -1 means no limit
     int minContentLength = 10;
 #if defined (Q_OS_WIN)
     LineEndings lineEndings = LineEndings::Windows;
@@ -97,12 +93,10 @@ public:
     TrailingSpace commentTrailingSpace = TrailingSpace::Remove;
     TrailingSpace stringTrailingSpace = TrailingSpace::Preserve;
     FormatOptions formatOptions;
-    Updates updateOptions = Update::Default;
     AttributesSequence attributesSequence = AttributesSequence::Normalize;
     bool objectsSpacing = false;
     bool functionsSpacing = false;
 };
-Q_DECLARE_OPERATORS_FOR_FLAGS(LineWriterOptions::Updates)
 
 using PendingSourceLocationId = int;
 using PendingSourceLocationIdAtomic = QAtomicInt;

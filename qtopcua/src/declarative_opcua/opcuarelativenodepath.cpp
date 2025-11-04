@@ -15,6 +15,7 @@ QT_BEGIN_NAMESPACE
     \inqmlmodule QtOpcUa
     \brief Specifies a relative node path element.
     \since QtOpcUa 5.12
+    \deprecated [6.9]
 
     \code
     import QtOpcUa as QtOpcUa

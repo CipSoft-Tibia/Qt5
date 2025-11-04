@@ -41,14 +41,14 @@ export class OutermostTargetSelector implements SDK.TargetManager.Observer, UI.S
     this.#toolbarItem = new UI.Toolbar.ToolbarItem(this.#dropDown.element);
     this.#toolbarItem.setTitle(i18nString(UIStrings.targetNotSelected));
     this.listItems.addEventListener(
-        UI.ListModel.Events.ItemsReplaced, () => this.#toolbarItem.setEnabled(Boolean(this.listItems.length)));
+        UI.ListModel.Events.ITEMS_REPLACED, () => this.#toolbarItem.setEnabled(Boolean(this.listItems.length)));
 
     this.#toolbarItem.element.classList.add('toolbar-has-dropdown');
     const targetManager = SDK.TargetManager.TargetManager.instance();
     targetManager.addModelListener(
-        SDK.ChildTargetManager.ChildTargetManager, SDK.ChildTargetManager.Events.TargetInfoChanged,
+        SDK.ChildTargetManager.ChildTargetManager, SDK.ChildTargetManager.Events.TARGET_INFO_CHANGED,
         this.#onTargetInfoChanged, this);
-    targetManager.addEventListener(SDK.TargetManager.Events.NameChanged, this.#onInspectedURLChanged, this);
+    targetManager.addEventListener(SDK.TargetManager.Events.NAME_CHANGED, this.#onInspectedURLChanged, this);
     targetManager.observeTargets(this);
 
     UI.Context.Context.instance().addFlavorChangeListener(SDK.Target.Target, this.#targetChanged, this);
@@ -106,7 +106,7 @@ export class OutermostTargetSelector implements SDK.TargetManager.Observer, UI.S
   }
 
   #targetComparator() {
-    return (a: SDK.Target.Target, b: SDK.Target.Target): number => {
+    return (a: SDK.Target.Target, b: SDK.Target.Target) => {
       const aTargetInfo = a.targetInfo();
       const bTargetInfo = b.targetInfo();
       if (!aTargetInfo || !bTargetInfo) {
@@ -151,7 +151,7 @@ export class OutermostTargetSelector implements SDK.TargetManager.Observer, UI.S
   createElementForItem(item: SDK.Target.Target): Element {
     const element = document.createElement('div');
     element.classList.add('target');
-    const shadowRoot = UI.Utils.createShadowRootWithCoreStyles(
+    const shadowRoot = UI.UIUtils.createShadowRootWithCoreStyles(
         element, {cssFile: [outermostTargetSelectorStyles], delegatesFocus: undefined});
     const title = shadowRoot.createChild('div', 'title');
     UI.UIUtils.createTextChild(title, Platform.StringUtilities.trimEndWithMaxLength(this.titleFor(item), 100));

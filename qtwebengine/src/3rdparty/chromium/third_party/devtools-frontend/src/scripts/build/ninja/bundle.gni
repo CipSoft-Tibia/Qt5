@@ -2,7 +2,7 @@
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
-import("../../../third_party/typescript/typescript.gni")
+import("../../../scripts/build/typescript/typescript.gni")
 import("./node.gni")
 import("./vars.gni")
 
@@ -97,10 +97,6 @@ template("bundle") {
         "--file",
         rebase_path(invoker.output_file_location, root_build_dir),
       ]
-
-      if (!devtools_dcheck_always_on) {
-        args += [ "--configDCHECK" ]
-      }
 
       if (devtools_release_sourcemaps) {
         args += [ "--configSourcemaps" ]

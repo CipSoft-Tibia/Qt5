@@ -5,6 +5,7 @@
 #ifndef QMAP_H
 #define QMAP_H
 
+#include <QtCore/qcompare.h>
 #include <QtCore/qhashfunctions.h>
 #include <QtCore/qiterator.h>
 #include <QtCore/qlist.h>
@@ -243,8 +244,10 @@ public:
     }
 
 #ifndef Q_QDOC
-    template <typename AKey = Key, typename AT = T> friend
-    QTypeTraits::compare_eq_result_container<QMap, AKey, AT> operator==(const QMap &lhs, const QMap &rhs)
+private:
+    template <typename AKey = Key, typename AT = T,
+              QTypeTraits::compare_eq_result_container<QMap, AKey, AT> = true>
+    friend bool comparesEqual(const QMap &lhs, const QMap &rhs)
     {
         if (lhs.d == rhs.d)
             return true;
@@ -253,13 +256,11 @@ public:
         Q_ASSERT(lhs.d);
         return rhs.d ? (lhs.d->m == rhs.d->m) : lhs.d->m.empty();
     }
-
-    template <typename AKey = Key, typename AT = T> friend
-    QTypeTraits::compare_eq_result_container<QMap, AKey, AT> operator!=(const QMap &lhs, const QMap &rhs)
-    {
-        return !(lhs == rhs);
-    }
+    QT_DECLARE_EQUALITY_OPERATORS_HELPER(QMap, QMap, /* non-constexpr */, noexcept(false),
+                        template <typename AKey = Key, typename AT = T,
+                                  QTypeTraits::compare_eq_result_container<QMap, AKey, AT> = true>)
     // TODO: add the other comparison operators; std::map has them.
+public:
 #else
     friend bool operator==(const QMap &lhs, const QMap &rhs);
     friend bool operator!=(const QMap &lhs, const QMap &rhs);
@@ -331,12 +332,18 @@ public:
         // elements (the one to be removed can be skipped).
         detach();
 
+#ifdef __cpp_lib_node_extract
+        if (const auto node = d->m.extract(key))
+            return std::move(node.mapped());
+#else
         auto i = d->m.find(key);
         if (i != d->m.end()) {
+            // ### breaks RVO on most compilers (but only on old-fashioned ones, so who cares?)
             T result(std::move(i->second));
             d->m.erase(i);
             return result;
         }
+#endif
         return T();
     }
 
@@ -916,8 +923,10 @@ public:
     }
 
 #ifndef Q_QDOC
-    template <typename AKey = Key, typename AT = T> friend
-    QTypeTraits::compare_eq_result_container<QMultiMap, AKey, AT> operator==(const QMultiMap &lhs, const QMultiMap &rhs)
+private:
+    template <typename AKey = Key, typename AT = T,
+              QTypeTraits::compare_eq_result_container<QMultiMap, AKey, AT> = true>
+    friend bool comparesEqual(const QMultiMap &lhs, const QMultiMap &rhs)
     {
         if (lhs.d == rhs.d)
             return true;
@@ -926,13 +935,11 @@ public:
         Q_ASSERT(lhs.d);
         return rhs.d ? (lhs.d->m == rhs.d->m) : lhs.d->m.empty();
     }
-
-    template <typename AKey = Key, typename AT = T> friend
-    QTypeTraits::compare_eq_result_container<QMultiMap, AKey, AT> operator!=(const QMultiMap &lhs, const QMultiMap &rhs)
-    {
-        return !(lhs == rhs);
-    }
+    QT_DECLARE_EQUALITY_OPERATORS_HELPER(QMultiMap, QMultiMap, /* non-constexpr */, noexcept(false),
+                 template <typename AKey = Key, typename AT = T,
+                           QTypeTraits::compare_eq_result_container<QMultiMap, AKey, AT> = true>)
     // TODO: add the other comparison operators; std::multimap has them.
+public:
 #else
     friend bool operator==(const QMultiMap &lhs, const QMultiMap &rhs);
     friend bool operator!=(const QMultiMap &lhs, const QMultiMap &rhs);
@@ -1037,12 +1044,18 @@ public:
         // elements (the one to be removed can be skipped).
         detach();
 
+#ifdef __cpp_lib_node_extract
+        if (const auto node = d->m.extract(key))
+            return std::move(node.mapped());
+#else
         auto i = d->m.find(key);
         if (i != d->m.end()) {
+            // ### breaks RVO on most compilers (but only on old-fashioned ones, so who cares?)
             T result(std::move(i->second));
             d->m.erase(i);
             return result;
         }
+#endif
         return T();
     }
 

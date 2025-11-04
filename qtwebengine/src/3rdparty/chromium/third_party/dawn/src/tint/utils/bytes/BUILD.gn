@@ -34,6 +34,7 @@
 #                       Do not modify this file directly
 ################################################################################
 
+import("../../../../scripts/dawn_overrides_with_defaults.gni")
 import("../../../../scripts/tint_overrides_with_defaults.gni")
 
 import("${tint_src_dir}/tint.gni")
@@ -44,6 +45,8 @@ if (tint_build_unittests || tint_build_benchmarks) {
 
 libtint_source_set("bytes") {
   sources = [
+    "buffer_reader.cc",
+    "buffer_reader.h",
     "buffer_writer.h",
     "bytes.cc",
     "decoder.h",
@@ -55,6 +58,7 @@ libtint_source_set("bytes") {
     "writer.h",
   ]
   deps = [
+    "${dawn_root}/src/utils:utils",
     "${tint_src_dir}/utils/containers",
     "${tint_src_dir}/utils/diagnostic",
     "${tint_src_dir}/utils/ice",
@@ -71,12 +75,13 @@ libtint_source_set("bytes") {
 if (tint_build_unittests) {
   tint_unittests_source_set("unittests") {
     sources = [
+      "buffer_reader_test.cc",
       "buffer_writer_test.cc",
       "decoder_test.cc",
-      "reader_test.cc",
       "swap_test.cc",
     ]
     deps = [
+      "${dawn_root}/src/utils:utils",
       "${tint_src_dir}:gmock_and_gtest",
       "${tint_src_dir}/utils/bytes",
       "${tint_src_dir}/utils/containers",

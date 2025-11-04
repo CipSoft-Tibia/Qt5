@@ -100,13 +100,16 @@ public:
         bool hasInlineSourceCode = false;
     };
 
+    bool isTypeLoaderThread() const;
+    bool isEngineThread() const;
+
 protected:
     // Can be called from within callbacks
     void setError(const QQmlError &);
     void setError(const QList<QQmlError> &errors);
     void setError(const QQmlJS::DiagnosticMessage &error);
     void setError(const QString &description);
-    void addDependency(QQmlDataBlob *);
+    void addDependency(const QQmlDataBlob::Ptr &);
 
     // Callbacks made in load thread
     virtual void dataReceived(const SourceCodeData &) = 0;
@@ -115,8 +118,8 @@ protected:
 #if QT_CONFIG(qml_network)
     virtual void networkError(QNetworkReply::NetworkError);
 #endif
-    virtual void dependencyError(QQmlDataBlob *);
-    virtual void dependencyComplete(QQmlDataBlob *);
+    virtual void dependencyError(const QQmlDataBlob::Ptr &);
+    virtual void dependencyComplete(const QQmlDataBlob::Ptr &);
     virtual void allDependenciesDone();
 
     // Callbacks made in main thread
@@ -134,7 +137,7 @@ private:
     void tryDone();
     void cancelAllWaitingFor();
     void notifyAllWaitingOnMe();
-    void notifyComplete(QQmlDataBlob *);
+    void notifyComplete(const QQmlDataBlob::Ptr &);
 
     struct ThreadData {
     private:

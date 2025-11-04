@@ -1,5 +1,6 @@
 // Copyright (C) 2021 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qwebenginecertificateerror.h"
 
@@ -42,6 +43,7 @@ QWebEngineCertificateError::~QWebEngineCertificateError() = default;
     QSslError::SslError values are not used directly, because the Qt error
     categories cannot be mapped to the Chromium error categories.
 
+    \value Ok There was no actual certificate error.
     \value SslPinnedKeyNotInCertificateChain The certificate did not match the built-in public keys
             pinned for the host name.
     \value CertificateCommonNameInvalid The certificate's common name did not match the host name.
@@ -74,7 +76,9 @@ QWebEngineCertificateError::~QWebEngineCertificateError() = default;
 */
 bool QWebEngineCertificateError::isOverridable() const
 {
-    return d->overridable();
+    if (Q_LIKELY(d))
+        return d->overridable();
+    return false;
 }
 
 /*!
@@ -84,7 +88,9 @@ bool QWebEngineCertificateError::isOverridable() const
 */
 QUrl QWebEngineCertificateError::url() const
 {
-    return d->url();
+    if (Q_LIKELY(d))
+        return d->url();
+    return QUrl();
 }
 
 /*!
@@ -97,7 +103,9 @@ QUrl QWebEngineCertificateError::url() const
 */
 bool QWebEngineCertificateError::isMainFrame() const
 {
-    return d->isMainFrame();
+    if (Q_LIKELY(d))
+        return d->isMainFrame();
+    return false;
 }
 
 /*!
@@ -107,7 +115,9 @@ bool QWebEngineCertificateError::isMainFrame() const
 */
 QWebEngineCertificateError::Type QWebEngineCertificateError::type() const
 {
-    return d->error();
+    if (Q_LIKELY(d))
+        return d->error();
+    return Ok;
 }
 
 /*!
@@ -117,7 +127,9 @@ QWebEngineCertificateError::Type QWebEngineCertificateError::type() const
 */
 QString QWebEngineCertificateError::description() const
 {
-    return d->errorString();
+    if (Q_LIKELY(d))
+        return d->errorString();
+    return QString();
 }
 
 /*!
@@ -135,7 +147,8 @@ QString QWebEngineCertificateError::description() const
 */
 void QWebEngineCertificateError::defer()
 {
-    d->defer();
+    if (Q_LIKELY(d))
+        d->defer();
 }
 
 /*!
@@ -145,7 +158,8 @@ void QWebEngineCertificateError::defer()
 */
 void QWebEngineCertificateError::acceptCertificate()
 {
-    d->ignoreCertificateError();
+    if (Q_LIKELY(d))
+        d->ignoreCertificateError();
 }
 
 /*!
@@ -155,7 +169,8 @@ void QWebEngineCertificateError::acceptCertificate()
 */
 void QWebEngineCertificateError::rejectCertificate()
 {
-    d->rejectCertificate();
+    if (Q_LIKELY(d))
+        d->rejectCertificate();
 }
 
 /*!
@@ -167,7 +182,9 @@ void QWebEngineCertificateError::rejectCertificate()
 */
 QList<QSslCertificate> QWebEngineCertificateError::certificateChain() const
 {
-    return d->certificateChain();
+    if (Q_LIKELY(d))
+        return d->certificateChain();
+    return QList<QSslCertificate>();
 }
 
 QT_END_NAMESPACE

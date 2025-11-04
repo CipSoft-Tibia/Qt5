@@ -18,6 +18,7 @@ QT_BEGIN_NAMESPACE
     \inqmlmodule QtOpcUa
     \brief The OPC UA ApplicationDescription.
     \since QtOpcUa 5.13
+    \deprecated [6.9]
 
     The user token policy contains information about an user token accepted by the server.
 */
@@ -94,6 +95,10 @@ QOpcUaUserTokenPolicy::~QOpcUaUserTokenPolicy()
 
 /*!
     Returns the URI of the security policy required when encrypting or signing the token for ActivateSession.
+
+    The Basic128Rsa15 and Basic256 security policies are deprecated and should only be used
+    for backward compatibility if the server doesn't support any of the policies currently
+    considered as secure.
 */
 QString QOpcUaUserTokenPolicy::securityPolicy() const
 {
@@ -102,6 +107,10 @@ QString QOpcUaUserTokenPolicy::securityPolicy() const
 
 /*!
     Sets the URI of the security policy to \a securityPolicy.
+
+    The Basic128Rsa15 and Basic256 security policies are deprecated and should only be used
+    for backward compatibility if the server doesn't support any of the policies currently
+    considered as secure.
 */
 void QOpcUaUserTokenPolicy::setSecurityPolicy(const QString &securityPolicy)
 {

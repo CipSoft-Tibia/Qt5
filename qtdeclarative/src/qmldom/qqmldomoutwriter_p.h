@@ -17,8 +17,9 @@
 
 #include "qqmldom_global.h"
 #include "qqmldom_fwd_p.h"
-#include "qqmldomattachedinfo_p.h"
+#include "qqmldomfilelocations_p.h"
 #include "qqmldomlinewriter_p.h"
+#include "qqmldomcomments_p.h"
 
 #include <QtCore/QLoggingCategory>
 
@@ -53,13 +54,10 @@ public:
     Path currentPath;
     FileLocations::Tree topLocation;
     QString writtenStr;
-    UpdatedScriptExpression::Tree reformattedScriptExpressions;
     QList<OutWriterState> states;
 
     explicit OutWriter(LineWriter &lw)
-        : lineWriter(lw),
-          topLocation(FileLocations::createTree(Path())),
-          reformattedScriptExpressions(UpdatedScriptExpression::createTree(Path()))
+        : lineWriter(lw), topLocation(FileLocations::createTree(Path()))
     {
         lineWriter.addInnerSink([this](QStringView s) { writtenStr.append(s); });
         indenterId =
@@ -140,21 +138,7 @@ public:
         return lineWriter.addTextAddCallback(callback);
     }
     bool removeTextAddCallback(int i) { return lineWriter.removeTextAddCallback(i); }
-    void addReformattedScriptExpression(const Path &p, const std::shared_ptr<ScriptExpression> &exp)
-    {
-        if (auto updExp = UpdatedScriptExpression::ensure(reformattedScriptExpressions, p,
-                                                          AttachedInfo::PathType::Canonical)) {
-            updExp->info().expr = exp;
-        }
-    }
-    DomItem restoreWrittenFileItem(const DomItem &fileItem);
 
-private:
-    DomItem writtenQmlFileItem(const DomItem &fileItem, const Path &filePath);
-    DomItem writtenJsFileItem(const DomItem &fileItem, const Path &filePath);
-    static void logScriptExprUpdateSkipped(
-            const DomItem &exprItem, const Path &exprPath,
-            const std::shared_ptr<ScriptExpression> &formattedExpr);
 };
 
 } // end namespace Dom

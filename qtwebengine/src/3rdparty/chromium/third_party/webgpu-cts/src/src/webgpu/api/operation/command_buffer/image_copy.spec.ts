@@ -23,8 +23,9 @@ export const description = `writeTexture + copyBufferToTexture + copyTextureToBu
 * copy_with_no_image_or_slice_padding_and_undefined_values: test that when copying a single row we can set any bytesPerRow value and when copying a single\
  slice we can set rowsPerImage to 0. Also test setting offset, rowsPerImage, mipLevel, origin, origin.{x,y,z} to undefined.
 
+Note: more coverage of memory synchronization for different read and write texture methods are in same_subresource.spec.ts.
+
 * TODO:
-  - add another initMethod which renders the texture [3]
   - test copyT2B with buffer size not divisible by 4 (not done because expectContents 4-byte alignment)
   - Convert the float32 values in initialData into the ones compatible to the depth aspect of
     depthFormats when depth16unorm is supported by the browsers in
@@ -59,7 +60,6 @@ import {
   isCompressedTextureFormat,
 } from '../../../format_info.js';
 import { GPUTest, TextureTestMixin } from '../../../gpu_test.js';
-import { makeBufferWithContents } from '../../../util/buffer.js';
 import { checkElementsEqual } from '../../../util/check_contents.js';
 import { align } from '../../../util/math.js';
 import { physicalMipSizeFromTexture } from '../../../util/texture/base.js';
@@ -86,7 +86,7 @@ type InitMethod = 'WriteTexture' | 'CopyB2T';
  * - PartialCopyT2B: do CopyT2B to check that the part of the texture we copied to with InitMethod
  *   matches the data we were copying and that we don't overwrite any data in the target buffer that
  *   we're not supposed to - that's primarily for testing CopyT2B functionality.
- * - FullCopyT2B: do CopyT2B on the whole texture and check wether the part we copied to matches
+ * - FullCopyT2B: do CopyT2B on the whole texture and check whether the part we copied to matches
  *   the data we were copying and that the nothing else was modified - that's primarily for testing
  *   WriteTexture and CopyB2T.
  *
@@ -439,7 +439,7 @@ class ImageCopyTest extends TextureTestMixin(GPUTest) {
       actualTexture.height,
       actualTexture.depthOrArrayLayers,
     ] as const;
-    const expectedTexture = this.device.createTexture({
+    const expectedTexture = this.createTextureTracked({
       label: 'expectedTexture',
       size,
       dimension: actualTexture.dimension,
@@ -447,7 +447,6 @@ class ImageCopyTest extends TextureTestMixin(GPUTest) {
       mipLevelCount: actualTexture.mipLevelCount,
       usage: actualTexture.usage,
     });
-    this.trackForCleanup(expectedTexture);
 
     const mipLevel = mipLevelOrUndefined || 0;
     const fullMipLevelTextureCopyLayout = getTextureCopyLayout(
@@ -645,14 +644,13 @@ class ImageCopyTest extends TextureTestMixin(GPUTest) {
     checkMethod: CheckMethod;
     changeBeforePass?: ChangeBeforePass;
   }): void {
-    const texture = this.device.createTexture({
+    const texture = this.createTextureTracked({
       size: textureSize as [number, number, number],
       format,
       dimension,
       mipLevelCount: mipLevel + 1,
       usage: GPUTextureUsage.COPY_SRC | GPUTextureUsage.COPY_DST | GPUTextureUsage.TEXTURE_BINDING,
     });
-    this.trackForCleanup(texture);
 
     const data = dataGenerator.generateView(dataSize);
 
@@ -744,14 +742,13 @@ class ImageCopyTest extends TextureTestMixin(GPUTest) {
     initialDataOffset: number,
     mipLevel: number
   ): void {
-    const srcTexture = this.device.createTexture({
+    const srcTexture = this.createTextureTracked({
       size: textureSize,
       usage:
         GPUTextureUsage.COPY_DST | GPUTextureUsage.COPY_SRC | GPUTextureUsage.RENDER_ATTACHMENT,
       format,
       mipLevelCount: mipLevel + 1,
     });
-    this.trackForCleanup(srcTexture);
 
     const copySize = [textureSize[0] >> mipLevel, textureSize[1] >> mipLevel, textureSize[2]];
     const initialData = dataGenerator.generateView(
@@ -774,11 +771,7 @@ class ImageCopyTest extends TextureTestMixin(GPUTest) {
         break;
       case 'CopyB2T':
         {
-          const stagingBuffer = makeBufferWithContents(
-            this.device,
-            initialData,
-            GPUBufferUsage.COPY_SRC
-          );
+          const stagingBuffer = this.makeBufferWithContents(initialData, GPUBufferUsage.COPY_SRC);
           const encoder = this.device.createCommandEncoder();
           encoder.copyBufferToTexture(
             { buffer: stagingBuffer, offset: initialDataOffset, bytesPerRow, rowsPerImage },
@@ -812,14 +805,13 @@ class ImageCopyTest extends TextureTestMixin(GPUTest) {
     offset: number,
     mipLevel: number
   ): void {
-    const srcTexture = this.device.createTexture({
+    const srcTexture = this.createTextureTracked({
       size: textureSize,
       usage:
         GPUTextureUsage.COPY_DST | GPUTextureUsage.COPY_SRC | GPUTextureUsage.RENDER_ATTACHMENT,
       format,
       mipLevelCount: mipLevel + 1,
     });
-    this.trackForCleanup(srcTexture);
 
     // Initialize srcTexture with queue.writeTexture()
     const copySize = [textureSize[0] >> mipLevel, textureSize[1] >> mipLevel, textureSize[2]];
@@ -844,11 +836,10 @@ class ImageCopyTest extends TextureTestMixin(GPUTest) {
         }),
       kBufferSizeAlignment
     );
-    const outputBuffer = this.device.createBuffer({
+    const outputBuffer = this.createBufferTracked({
       size: outputBufferSize,
       usage: GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST,
     });
-    this.trackForCleanup(outputBuffer);
     const encoder = this.device.createCommandEncoder();
     encoder.copyTextureToBuffer(
       { texture: srcTexture, aspect: 'stencil-only', mipLevel },
@@ -896,8 +887,7 @@ class ImageCopyTest extends TextureTestMixin(GPUTest) {
     for (let i = 1; i < stencilBitCount; ++i) {
       uniformBufferData[(kMinDynamicBufferOffsetAlignment / 4) * i] = i;
     }
-    const uniformBuffer = makeBufferWithContents(
-      this.device,
+    const uniformBuffer = this.makeBufferWithContents(
       uniformBufferData,
       GPUBufferUsage.COPY_DST | GPUBufferUsage.UNIFORM
     );
@@ -1010,12 +1000,11 @@ class ImageCopyTest extends TextureTestMixin(GPUTest) {
       copyFromOutputTextureLayout.mipSize[1],
       1,
     ];
-    const outputTexture = this.device.createTexture({
+    const outputTexture = this.createTextureTracked({
       format: 'r8unorm',
       size: outputTextureSize,
       usage: GPUTextureUsage.COPY_SRC | GPUTextureUsage.RENDER_ATTACHMENT,
     });
-    this.trackForCleanup(outputTexture);
 
     for (
       let stencilTextureLayer = 0;
@@ -1067,11 +1056,10 @@ class ImageCopyTest extends TextureTestMixin(GPUTest) {
 
       // Check outputTexture by copying the content of outputTexture into outputStagingBuffer and
       // checking all the data in outputStagingBuffer.
-      const outputStagingBuffer = this.device.createBuffer({
+      const outputStagingBuffer = this.createBufferTracked({
         size: copyFromOutputTextureLayout.byteLength,
         usage: GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST,
       });
-      this.trackForCleanup(outputStagingBuffer);
       encoder.copyTextureToBuffer(
         {
           texture: outputTexture,
@@ -1116,12 +1104,11 @@ class ImageCopyTest extends TextureTestMixin(GPUTest) {
   ): void {
     assert(!!kTextureFormatInfo[depthFormat].depth);
 
-    const inputTexture = this.device.createTexture({
+    const inputTexture = this.createTextureTracked({
       size: copySize,
       usage: GPUTextureUsage.COPY_DST | GPUTextureUsage.TEXTURE_BINDING,
       format: 'r32float',
     });
-    this.trackForCleanup(inputTexture);
     this.queue.writeTexture(
       { texture: inputTexture },
       initialData,
@@ -1236,12 +1223,11 @@ class ImageCopyTest extends TextureTestMixin(GPUTest) {
   }
 
   createUniformBufferAndBindGroupEntryForBaseArrayLayer(z: number) {
-    const buffer = this.device.createBuffer({
+    const buffer = this.createBufferTracked({
       usage: GPUBufferUsage.UNIFORM,
       size: 4,
       mappedAtCreation: true,
     });
-    this.trackForCleanup(buffer);
     new Uint32Array(buffer.getMappedRange()).set([z]);
     buffer.unmap();
     return {
@@ -1289,13 +1275,12 @@ class ImageCopyTest extends TextureTestMixin(GPUTest) {
     }
 
     // Initialize the depth aspect of the source texture
-    const depthTexture = this.device.createTexture({
+    const depthTexture = this.createTextureTracked({
       format,
       size: [copySize[0] << mipLevel, copySize[1] << mipLevel, copySize[2]] as const,
       usage: GPUTextureUsage.COPY_SRC | GPUTextureUsage.RENDER_ATTACHMENT,
       mipLevelCount: mipLevel + 1,
     });
-    this.trackForCleanup(depthTexture);
     this.initializeDepthAspectWithRendering(depthTexture, format, copySize, mipLevel, initialData);
 
     // Copy the depth aspect of the texture into the destination buffer.
@@ -1313,11 +1298,10 @@ class ImageCopyTest extends TextureTestMixin(GPUTest) {
         dataPaddingInBytes,
       kBufferSizeAlignment
     );
-    const destinationBuffer = this.device.createBuffer({
+    const destinationBuffer = this.createBufferTracked({
       usage: GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST,
       size: destinationBufferSize,
     });
-    this.trackForCleanup(destinationBuffer);
     const copyEncoder = this.device.createCommandEncoder();
     copyEncoder.copyTextureToBuffer(
       {
@@ -1357,8 +1341,6 @@ class ImageCopyTest extends TextureTestMixin(GPUTest) {
 
 /**
  * This is a helper function used for filtering test parameters
- *
- * [3]: Modify this after introducing tests with rendering.
  */
 function formatCanBeTested({ format }: { format: ColorTextureFormat }): boolean {
   return kTextureFormatInfo[format].color.copyDst && kTextureFormatInfo[format].color.copySrc;
@@ -1596,7 +1578,7 @@ works for every format with 2d and 2d-array textures.
     };
     let textureHeight = 4 * info.blockHeight;
     let rowsPerImage = rowsPerImageEqualsCopyHeight ? copyHeight : copyHeight + 1;
-    const bytesPerRow = align(copyWidth * info.bytesPerBlock, 256);
+    const bytesPerRow = align(copyWidth * info.color.bytes, 256);
 
     if (dimension === '1d') {
       copySize.height = 1;

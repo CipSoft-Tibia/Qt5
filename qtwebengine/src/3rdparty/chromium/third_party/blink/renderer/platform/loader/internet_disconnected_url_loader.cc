@@ -46,14 +46,14 @@ void InternetDisconnectedURLLoader::LoadSynchronously(
     base::TimeDelta timeout_interval,
     URLLoaderClient*,
     WebURLResponse&,
-    absl::optional<WebURLError>&,
+    std::optional<WebURLError>&,
     scoped_refptr<SharedBuffer>&,
     int64_t& encoded_data_length,
     uint64_t& encoded_body_length,
     scoped_refptr<BlobDataHandle>& downloaded_blob,
     std::unique_ptr<blink::ResourceLoadInfoNotifierWrapper>
         resource_load_info_notifier_wrapper) {
-  NOTREACHED();
+  NOTREACHED_IN_MIGRATION();
 }
 
 void InternetDisconnectedURLLoader::LoadAsynchronously(

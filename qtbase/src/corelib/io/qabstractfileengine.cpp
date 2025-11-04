@@ -1,5 +1,6 @@
 // Copyright (C) 2022 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:data-parser
 
 #include "private/qabstractfileengine_p.h"
 #include "private/qfsfileengine_p.h"
@@ -321,9 +322,8 @@ std::unique_ptr<QAbstractFileEngine> QAbstractFileEngine::create(const QString &
 
    \sa setFileName()
  */
-QAbstractFileEngine::QAbstractFileEngine() : d_ptr(new QAbstractFileEnginePrivate)
+QAbstractFileEngine::QAbstractFileEngine() : d_ptr(new QAbstractFileEnginePrivate(this))
 {
-    d_ptr->q_ptr = this;
 }
 
 /*!
@@ -333,7 +333,7 @@ QAbstractFileEngine::QAbstractFileEngine() : d_ptr(new QAbstractFileEnginePrivat
  */
 QAbstractFileEngine::QAbstractFileEngine(QAbstractFileEnginePrivate &dd) : d_ptr(&dd)
 {
-    d_ptr->q_ptr = this;
+    Q_ASSERT(d_ptr->q_ptr == this);
 }
 
 /*!

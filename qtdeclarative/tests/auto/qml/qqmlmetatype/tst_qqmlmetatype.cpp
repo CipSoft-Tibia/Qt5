@@ -54,6 +54,8 @@ private slots:
 
     void clearPropertyCaches();
     void builtins();
+
+    void renameMetaType();
 };
 
 class TestType : public QObject
@@ -672,9 +674,13 @@ void tst_qqmlmetatype::revisionedGroupedProperties()
     }
 
     {
+        // This is _not_ invalid. The grouped property is clearly qualified and so the
+        // version shall be ignored. It's the same as retrieving a versioned property from an
+        // object identified by ID, for example.
+
         QQmlEngine engine;
-        QQmlComponent invalid(&engine, testFileUrl("revisionedGroupedPropertiesInvalid.qml"));
-        QVERIFY(invalid.isError());
+        QQmlComponent valid2(&engine, testFileUrl("revisionedGroupedPropertiesValid2.qml"));
+        QVERIFY2(!valid2.isError(), qPrintable(valid2.errorString()));
     }
 
     {
@@ -834,6 +840,55 @@ void tst_qqmlmetatype::builtins()
 
     checkObjectBuiltin<QObject>("QtObject");
     checkObjectBuiltin<QQmlComponent>("Component");
+}
+
+void tst_qqmlmetatype::renameMetaType()
+{
+    QByteArray metaTypeName;
+    QMetaType metaType;
+
+    {
+        QQmlEngine engine;
+        QQmlComponent c(&engine, testFileUrl("testRenameMetaType.qml"));
+        QScopedPointer<QObject> obj(c.create());
+        QVERIFY(obj.data());
+        QVariant stringVal = obj->property("text");
+        QCOMPARE(stringVal.typeId(), QMetaType::QString);
+        QCOMPARE(stringVal.toString(), QStringLiteral("yes"));
+        const QQmlData *ddata = QQmlData::get(obj.data());
+        QVERIFY(ddata->compilationUnit);
+
+        metaType =  ddata->compilationUnit->baseCompilationUnit()->qmlType.typeId();
+        QVERIFY(metaType.isValid());
+        metaTypeName = metaType.name();
+        QVERIFY(!metaTypeName.isEmpty());
+    }
+    {
+        QQmlEngine engine;
+        QQmlComponent c(&engine, testFileUrl("testRenameMetaType.qml"));
+        QScopedPointer<QObject> obj(c.create());
+        QVERIFY(obj.data());
+        QVariant stringVal = obj->property("text");
+        QCOMPARE(stringVal.typeId(), QMetaType::QString);
+        QCOMPARE(stringVal.toString(), QStringLiteral("yes"));
+        const QQmlData *ddata = QQmlData::get(obj.data());
+        QVERIFY(ddata->compilationUnit);
+
+        const QMetaType newType = ddata->compilationUnit->baseCompilationUnit()->qmlType.typeId();
+        QVERIFY(newType.isValid());
+        const QByteArray newTypeName = newType.name();
+        QVERIFY(!newTypeName.isEmpty());
+
+        // The type is still the same
+        QCOMPARE(newType, metaType);
+
+        // But the name is different
+        QCOMPARE_NE(newTypeName, metaTypeName);
+
+        // The QMetaType registry has been updated
+        QCOMPARE(QMetaType::fromName(newTypeName), metaType);
+        QVERIFY(!QMetaType::fromName(metaTypeName).isValid());
+    }
 }
 
 QTEST_MAIN(tst_qqmlmetatype)

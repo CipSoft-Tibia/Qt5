@@ -38,7 +38,7 @@ Item {
             Model {
                 source: "#Cube"
                 scale: Qt.vector3d(0.5, 0.5, 0.5)
-                materials: DefaultMaterial {
+                materials: PrincipledMaterial {
                 }
             }
         }
@@ -48,8 +48,8 @@ Item {
             Model {
                 source: "#Rectangle"
                 scale: Qt.vector3d(0.1, 0.1, 0.0)
-                materials: DefaultMaterial {
-                    diffuseMap: Texture {
+                materials: PrincipledMaterial {
+                    baseColorMap: Texture {
                         source: "images/star2.png"
                     }
                 }

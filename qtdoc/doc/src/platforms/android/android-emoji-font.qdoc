@@ -143,7 +143,7 @@
     \section3 Customizing the Android packages template
 
     First, it is necessary to customize the Android package templates.
-    For that, in Qt Creator, go to the Projects tab, and then search in the
+    For that, in \QC, go to the Projects tab, and then search in the
     Build Settings for "Build Android APK". It should be inside "Build Steps",
     expand the details and a button called "Create Templates" will appear.
 
@@ -289,7 +289,7 @@
     to load the font into Qt.
 
     To get a deeper understanding of how communication between C++ and Java
-    works in Qt 6 check the \l{Qt Android Notifier} example.
+    works in Qt 6 check the \l{Qt for Android Notifier} example.
 
     After obtaining the file descriptor from Java code, wrap the file descriptor
     into a QFile class and load the font file using QFontDatabase:

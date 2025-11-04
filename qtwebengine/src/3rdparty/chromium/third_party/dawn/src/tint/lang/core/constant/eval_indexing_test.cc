@@ -64,6 +64,26 @@ TEST_F(ConstEvalTest, Vec3_Index_OOB_Low) {
     EXPECT_EQ(r()->error(), "12:34 error: index -3 out of bounds [0..2]");
 }
 
+TEST_F(ConstEvalTest, Vec3_Index_Via_Ptr_OOB_High) {
+    auto* a = Var("a", ty.vec3(ty.i32()));
+    auto* p = Let("p", ty.ptr(function, ty.vec3(ty.i32())), AddressOf(a));
+    auto* expr = IndexAccessor("p", Expr(Source{{12, 34}}, 12_i));
+    WrapInFunction(a, p, expr);
+
+    EXPECT_FALSE(r()->Resolve()) << r()->error();
+    EXPECT_EQ(r()->error(), "12:34 error: index 12 out of bounds [0..2]");
+}
+
+TEST_F(ConstEvalTest, Vec3_Index_Via_Ptr_OOB_Low) {
+    auto* a = Var("a", ty.vec3(ty.i32()));
+    auto* p = Let("p", ty.ptr(function, ty.vec3(ty.i32())), AddressOf(a));
+    auto* expr = IndexAccessor("p", Expr(Source{{12, 34}}, -3_i));
+    WrapInFunction(a, p, expr);
+
+    EXPECT_FALSE(r()->Resolve()) << r()->error();
+    EXPECT_EQ(r()->error(), "12:34 error: index -3 out of bounds [0..2]");
+}
+
 namespace Swizzle {
 struct Case {
     Value input;
@@ -250,7 +270,7 @@ TEST_F(ConstEvalTest, Array_vec3_f32_Index) {
     ASSERT_NE(sem, nullptr);
     auto* vec = sem->Type()->As<core::type::Vector>();
     ASSERT_NE(vec, nullptr);
-    EXPECT_TRUE(vec->type()->Is<core::type::F32>());
+    EXPECT_TRUE(vec->Type()->Is<core::type::F32>());
     EXPECT_EQ(vec->Width(), 3u);
     EXPECT_TYPE(sem->ConstantValue()->Type(), sem->Type());
 
@@ -319,8 +339,8 @@ TEST_F(ConstEvalTest, ChainedIndex) {
         auto* ty = mat->Type()->As<core::type::Matrix>();
         ASSERT_NE(mat->Type(), nullptr);
         EXPECT_TRUE(ty->ColumnType()->Is<core::type::Vector>());
-        EXPECT_EQ(ty->columns(), 2u);
-        EXPECT_EQ(ty->rows(), 3u);
+        EXPECT_EQ(ty->Columns(), 2u);
+        EXPECT_EQ(ty->Rows(), 3u);
         EXPECT_EQ(mat->ConstantValue()->Type(), mat->Type());
         EXPECT_TRUE(mat->ConstantValue()->AnyZero());
         EXPECT_FALSE(mat->ConstantValue()->AllZero());
@@ -354,7 +374,7 @@ TEST_F(ConstEvalTest, ChainedIndex) {
         EXPECT_NE(vec, nullptr);
         auto* ty = vec->Type()->As<core::type::Vector>();
         ASSERT_NE(vec->Type(), nullptr);
-        EXPECT_TRUE(ty->type()->Is<core::type::F32>());
+        EXPECT_TRUE(ty->Type()->Is<core::type::F32>());
         EXPECT_EQ(ty->Width(), 3u);
         EXPECT_EQ(vec->ConstantValue()->Type(), vec->Type());
         EXPECT_TRUE(vec->ConstantValue()->AnyZero());

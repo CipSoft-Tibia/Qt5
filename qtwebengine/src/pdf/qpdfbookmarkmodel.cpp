@@ -5,11 +5,11 @@
 
 #include "qpdfdocument.h"
 #include "qpdfdocument_p.h"
+#include "qtpdfglobal_p.h"
 
 #include "third_party/pdfium/public/fpdf_doc.h"
 #include "third_party/pdfium/public/fpdfview.h"
 
-#include <QLoggingCategory>
 #include <QMetaEnum>
 #include <QPointer>
 #include <QScopedPointer>
@@ -17,7 +17,7 @@
 
 QT_BEGIN_NAMESPACE
 
-Q_LOGGING_CATEGORY(qLcBM, "qt.pdf.bookmarks")
+Q_PDF_LOGGING_CATEGORY(qLcBM, "qt.pdf.bookmarks")
 
 class BookmarkNode
 {
@@ -219,7 +219,7 @@ struct QPdfBookmarkModelPrivate
     \inmodule QtPdf
     \inherits QAbstractItemModel
 
-    \brief The QPdfBookmarkModel class holds a tree of of links (anchors)
+    \brief The QPdfBookmarkModel class holds a tree of links (anchors)
     within a PDF document, such as the table of contents.
 
     This is used in the \l {Model/View Programming} paradigm to display a

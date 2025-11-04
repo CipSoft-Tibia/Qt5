@@ -38,9 +38,10 @@ export class AggregatedIssue extends IssuesManager.Issue.Issue {
   #corsIssues = new Set<IssuesManager.CorsIssue.CorsIssue>();
   #cspIssues = new Set<IssuesManager.ContentSecurityPolicyIssue.ContentSecurityPolicyIssue>();
   #deprecationIssues = new Set<IssuesManager.DeprecationIssue.DeprecationIssue>();
-  #issueKind = IssuesManager.Issue.IssueKind.Improvement;
+  #issueKind = IssuesManager.Issue.IssueKind.IMPROVEMENT;
   #lowContrastIssues = new Set<IssuesManager.LowTextContrastIssue.LowTextContrastIssue>();
-  #metadataAllowedSites = new Set<string>();
+  #cookieDeprecationMetadataIssues =
+      new Set<IssuesManager.CookieDeprecationMetadataIssue.CookieDeprecationMetadataIssue>();
   #mixedContentIssues = new Set<IssuesManager.MixedContentIssue.MixedContentIssue>();
   #sharedArrayBufferIssues = new Set<IssuesManager.SharedArrayBufferIssue.SharedArrayBufferIssue>();
   #quirksModeIssues = new Set<IssuesManager.QuirksModeIssue.QuirksModeIssue>();
@@ -94,8 +95,9 @@ export class AggregatedIssue extends IssuesManager.Issue.Issue {
     return this.#heavyAdIssues;
   }
 
-  getMetadataAllowedSites(): Iterable<string> {
-    return this.#metadataAllowedSites.values();
+  getCookieDeprecationMetadataIssues():
+      Iterable<IssuesManager.CookieDeprecationMetadataIssue.CookieDeprecationMetadataIssue> {
+    return this.#cookieDeprecationMetadataIssues;
   }
 
   getMixedContentIssues(): Iterable<IssuesManager.MixedContentIssue.MixedContentIssue> {
@@ -149,7 +151,7 @@ export class AggregatedIssue extends IssuesManager.Issue.Issue {
     if (this.#representative) {
       return this.#representative.getCategory();
     }
-    return IssuesManager.Issue.IssueCategory.Other;
+    return IssuesManager.Issue.IssueCategory.OTHER;
   }
 
   getAggregatedIssuesCount(): number {
@@ -200,10 +202,8 @@ export class AggregatedIssue extends IssuesManager.Issue.Issue {
         this.#affectedLocations.set(key, location);
       }
     }
-    for (const site of issue.metadataAllowedSites()) {
-      if (!this.#metadataAllowedSites.has(site)) {
-        this.#metadataAllowedSites.add(site);
-      }
+    if (issue instanceof IssuesManager.CookieDeprecationMetadataIssue.CookieDeprecationMetadataIssue) {
+      this.#cookieDeprecationMetadataIssues.add(issue);
     }
     if (issue instanceof IssuesManager.MixedContentIssue.MixedContentIssue) {
       this.#mixedContentIssues.add(issue);
@@ -259,9 +259,9 @@ export class IssueAggregator extends Common.ObjectWrapper.ObjectWrapper<EventTyp
   readonly #hiddenAggregatedIssuesByKey = new Map<AggregationKey, AggregatedIssue>();
   constructor(private readonly issuesManager: IssuesManager.IssuesManager.IssuesManager) {
     super();
-    this.issuesManager.addEventListener(IssuesManager.IssuesManager.Events.IssueAdded, this.#onIssueAdded, this);
+    this.issuesManager.addEventListener(IssuesManager.IssuesManager.Events.ISSUE_ADDED, this.#onIssueAdded, this);
     this.issuesManager.addEventListener(
-        IssuesManager.IssuesManager.Events.FullUpdateRequired, this.#onFullUpdateRequired, this);
+        IssuesManager.IssuesManager.Events.FULL_UPDATE_REQUIRED, this.#onFullUpdateRequired, this);
     for (const issue of this.issuesManager.issues()) {
       this.#aggregateIssue(issue);
     }
@@ -277,13 +277,13 @@ export class IssueAggregator extends Common.ObjectWrapper.ObjectWrapper<EventTyp
     for (const issue of this.issuesManager.issues()) {
       this.#aggregateIssue(issue);
     }
-    this.dispatchEventToListeners(Events.FullUpdateRequired);
+    this.dispatchEventToListeners(Events.FULL_UPDATE_REQUIRED);
   }
 
   #aggregateIssue(issue: IssuesManager.Issue.Issue): AggregatedIssue {
     const map = issue.isHidden() ? this.#hiddenAggregatedIssuesByKey : this.#aggregatedIssuesByKey;
     const aggregatedIssue = this.#aggregateIssueByStatus(map, issue);
-    this.dispatchEventToListeners(Events.AggregatedIssueUpdated, aggregatedIssue);
+    this.dispatchEventToListeners(Events.AGGREGATED_ISSUE_UPDATED, aggregatedIssue);
     return aggregatedIssue;
   }
 
@@ -341,11 +341,11 @@ export class IssueAggregator extends Common.ObjectWrapper.ObjectWrapper<EventTyp
 }
 
 export const enum Events {
-  AggregatedIssueUpdated = 'AggregatedIssueUpdated',
-  FullUpdateRequired = 'FullUpdateRequired',
+  AGGREGATED_ISSUE_UPDATED = 'AggregatedIssueUpdated',
+  FULL_UPDATE_REQUIRED = 'FullUpdateRequired',
 }
 
 export type EventTypes = {
-  [Events.AggregatedIssueUpdated]: AggregatedIssue,
-  [Events.FullUpdateRequired]: void,
+  [Events.AGGREGATED_ISSUE_UPDATED]: AggregatedIssue,
+  [Events.FULL_UPDATE_REQUIRED]: void,
 };

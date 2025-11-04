@@ -5,9 +5,15 @@
 #ifndef CONTENT_BROWSER_RENDERER_HOST_SPARE_RENDER_PROCESS_HOST_MANAGER_H_
 #define CONTENT_BROWSER_RENDERER_HOST_SPARE_RENDER_PROCESS_HOST_MANAGER_H_
 
+#include <optional>
+
 #include "base/callback_list.h"
 #include "base/functional/callback.h"
 #include "base/memory/raw_ptr.h"
+#include "base/time/time.h"
+#include "base/timer/elapsed_timer.h"
+#include "base/timer/timer.h"
+#include "content/common/content_export.h"
 #include "content/public/browser/render_process_host_observer.h"
 
 namespace content {
@@ -35,7 +41,8 @@ class RenderProcessHost;
 // It is safe to call WarmupSpareRenderProcessHost multiple times, although if
 // called in a context where the spare renderer is not likely to be used
 // performance may suffer due to the unnecessary RPH creation.
-class SpareRenderProcessHostManager : public RenderProcessHostObserver {
+class CONTENT_EXPORT SpareRenderProcessHostManager
+    : public RenderProcessHostObserver {
  public:
   SpareRenderProcessHostManager();
   ~SpareRenderProcessHostManager() override;
@@ -47,7 +54,25 @@ class SpareRenderProcessHostManager : public RenderProcessHostObserver {
 
   static SpareRenderProcessHostManager& GetInstance();
 
-  void WarmupSpareRenderProcessHost(BrowserContext* browser_context);
+  // Start a spare renderer immediately if there isn't one.
+  // If the timeout is given, the spare render process will not be created
+  // if there is a delayed creation which indicates no timeout.
+  //
+  // The created spare render process will be destroyed after the timeout
+  // if it is given and accepted. Otherwise, the spare renderer will be kept
+  // until used by some navigation or cleared for memory pressure.
+  //
+  // The general rule for the timeout update is to always keep the value with
+  // a larger timeout. The timeout will be accepted when:
+  // * There is no spare render process or the spare render process was created
+  //   for a different browser context.
+  // * The current timeout will be fired before the specified timeout.
+  // If the function is called again without a timeout, the current timeout will
+  // be cancelled. If the function is called again with a timeout firing after
+  // the current timeout, the timeout will be updated.
+  void WarmupSpareRenderProcessHost(
+      BrowserContext* browser_context,
+      std::optional<base::TimeDelta> timeout = std::nullopt);
 
   RenderProcessHost* MaybeTakeSpareRenderProcessHost(
       BrowserContext* browser_context,
@@ -59,7 +84,12 @@ class SpareRenderProcessHostManager : public RenderProcessHostObserver {
   // Note that depending on the caller PrepareForFutureRequests can be called
   // after the spare_render_process_host_ has either been 1) matched and taken
   // or 2) mismatched and ignored or 3) matched and ignored.
-  void PrepareForFutureRequests(BrowserContext* browser_context);
+  //
+  // The creation of new spare renderer will be delayed by `delay` if present.
+  // This is used to mitigate resource contention.
+  void PrepareForFutureRequests(
+      BrowserContext* browser_context,
+      std::optional<base::TimeDelta> delay = std::nullopt);
 
   // Gracefully remove and cleanup a spare RenderProcessHost if it exists.
   void CleanupSpareRenderProcessHost();
@@ -70,6 +100,9 @@ class SpareRenderProcessHostManager : public RenderProcessHostObserver {
 
   base::CallbackListSubscription RegisterSpareRenderProcessHostChangedCallback(
       const base::RepeatingCallback<void(RenderProcessHost*)>& cb);
+
+  void SetDeferTimerTaskRunnerForTesting(
+      scoped_refptr<base::SequencedTaskRunner> task_runner);
 
  private:
   // Release ownership of the spare renderer. Called when the spare has either
@@ -82,6 +115,18 @@ class SpareRenderProcessHostManager : public RenderProcessHostObserver {
                            const ChildProcessTerminationInfo& info) override;
   void RenderProcessHostDestroyed(RenderProcessHost* host) override;
 
+  // Start a spare renderer at a later time if there isn't one.
+  // This is to avoid resource contention between existing renderers and a
+  // new spare renderer.
+  void DeferredWarmupSpareRenderProcessHost(
+      BrowserContext* browser_context,
+      base::TimeDelta delay,
+      std::optional<base::TimeDelta> timeout);
+
+  void StartDestroyTimer(std::optional<base::TimeDelta> timeout);
+
+  bool DestroyTimerWillFireBefore(base::TimeDelta timeout);
+
   // The clients who want to know when the spare render process host has
   // changed.
   base::RepeatingCallbackList<void(RenderProcessHost*)>
@@ -90,6 +135,14 @@ class SpareRenderProcessHostManager : public RenderProcessHostObserver {
   // This is a bare pointer, because RenderProcessHost manages the lifetime of
   // all its instances; see GetAllHosts().
   raw_ptr<RenderProcessHost> spare_render_process_host_ = nullptr;
+
+  // The timer used to track the startup time of the spare renderer process.
+  std::unique_ptr<base::ElapsedTimer> process_startup_timer_;
+  // The timer used to track the delay of spare renderer creation.
+  std::unique_ptr<base::ElapsedTimer> delay_timer_;
+
+  base::OneShotTimer deferred_warmup_timer_;
+  base::OneShotTimer deferred_destroy_timer_;
 };
 
 }  // namespace content

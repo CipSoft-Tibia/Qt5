@@ -5,6 +5,7 @@
 #ifndef NET_COOKIES_COOKIE_UTIL_H_
 #define NET_COOKIES_COOKIE_UTIL_H_
 
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -18,7 +19,6 @@
 #include "net/cookies/site_for_cookies.h"
 #include "net/first_party_sets/first_party_set_metadata.h"
 #include "net/first_party_sets/first_party_sets_cache_filter.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "url/origin.h"
 
 class GURL;
@@ -29,6 +29,7 @@ class IsolationInfo;
 class SchemefulSite;
 class CookieAccessDelegate;
 class CookieInclusionStatus;
+class ParsedCookie;
 
 namespace cookie_util {
 
@@ -49,41 +50,29 @@ enum class StorageAccessResult {
   ACCESS_ALLOWED_3PCD_TRIAL = 5,
   ACCESS_ALLOWED_3PCD_METADATA_GRANT = 6,
   ACCESS_ALLOWED_3PCD_HEURISTICS_GRANT = 7,
-  ACCESS_ALLOWED_CORS_EXCEPTION = 8,
+  // ACCESS_ALLOWED_CORS_EXCEPTION = 8,  // Deprecated
   ACCESS_ALLOWED_TOP_LEVEL_3PCD_TRIAL = 9,
-  kMaxValue = ACCESS_ALLOWED_TOP_LEVEL_3PCD_TRIAL,
+  ACCESS_ALLOWED_SCHEME = 10,
+  kMaxValue = ACCESS_ALLOWED_SCHEME,
 };
-// This enum must match the numbering for BreakageIndicatorType in
-// histograms/enums.xml. Do not reorder or remove items, only add new items
-// at the end.
-enum class BreakageIndicatorType {
-  USER_RELOAD = 0,
-  HTTP_ERROR = 1,
-  UNCAUGHT_JS_ERROR = 2,
-  kMaxValue = UNCAUGHT_JS_ERROR,
+
+// This enum's values correspond to the values of the HTTP request header
+// `Sec-Fetch-Storage-Access`, which is applied to cross-site requests.
+enum class StorageAccessStatus {
+  // Applies to context that does not have unpartitioned cookie access, and does
+  // not have the `storage-access` permission.
+  kNone = 0,
+  // Applies to context that has `storage-access` permission, but has not opted
+  // into using it; the context also does not have unpartitioned cookie access
+  // through some other means.
+  kInactive = 1,
+  // Applies to context that has unpartitioned cookie access.
+  kActive = 2
 };
+
 // Helper to fire telemetry indicating if a given request for storage was
 // allowed or not by the provided |result|.
 NET_EXPORT void FireStorageAccessHistogram(StorageAccessResult result);
-
-// This enum must match the numbering for StorageAccessInputState in
-// histograms/enums.xml. Do not reorder or remove items, only add new items at
-// the end.
-enum class StorageAccessInputState {
-  // The frame-level opt-in was provided, and a permission grant exists.
-  kOptInWithGrant = 0,
-  // The frame-level opt-in was provided, but no permission grant exists.
-  kOptInWithoutGrant = 1,
-  // No frame-level opt-in was provided, but a permission grant exists.
-  kGrantWithoutOptIn = 2,
-  // No frame-level opt-in was provided, and no permission grant exists.
-  kNoOptInNoGrant = 3,
-  kMaxValue = kNoOptInNoGrant,
-};
-// Helper to record a histogram sample for relevant Storage Access API state
-// when cookie settings queries consult the Storage Access API grants.
-NET_EXPORT void FireStorageAccessInputHistogram(bool has_opt_in,
-                                                bool has_grant);
 
 // Returns the effective TLD+1 for a given host. This only makes sense for http
 // and https schemes. For other schemes, the host will be returned unchanged
@@ -121,6 +110,12 @@ NET_EXPORT std::string CookieDomainAsHost(const std::string& cookie_domain);
 // supported by Time::FromUTCExplodeded(), then this will return Time(1) or
 // Time::Max(), respectively.
 NET_EXPORT base::Time ParseCookieExpirationTime(const std::string& time_string);
+
+// Returns the canonical path based on the specified url and path attribute
+// value. Note that this method does not enforce character set or size
+// checks on `path_string`.
+NET_EXPORT std::string CanonPathWithString(const GURL& url,
+                                           const std::string& path_string);
 
 // Get a cookie's URL from it's domain, path, and source scheme.
 // The first field can be the combined domain-and-host-only-flag (e.g. the
@@ -169,6 +164,36 @@ NET_EXPORT bool IsDomainMatch(const std::string& domain,
 NET_EXPORT bool IsOnPath(const std::string& cookie_path,
                          const std::string& url_path);
 
+// Returns the CookiePrefix (or COOKIE_PREFIX_NONE if none) that
+// applies to the given cookie |name|.
+CookiePrefix GetCookiePrefix(const std::string& name);
+
+// Returns true if the cookie does not violate any constraints imposed
+// by the cookie name's prefix, as described in
+// https://datatracker.ietf.org/doc/html/draft-ietf-httpbis-rfc6265bis-13#name-cookie-name-prefixes
+bool IsCookiePrefixValid(CookiePrefix prefix,
+                         const GURL& url,
+                         const ParsedCookie& parsed_cookie);
+// As above. `secure`, `domain`, and `path` are the raw attribute values (i.e.
+// as taken from a ParsedCookie), NOT in normalized form as represented in
+// CookieBase.
+bool IsCookiePrefixValid(CookiePrefix prefix,
+                         const GURL& url,
+                         bool secure,
+                         const std::string& domain,
+                         const std::string& path);
+
+// Returns true iff the cookie is a partitioned cookie with a nonce or that
+// does not violate the semantics of the Partitioned attribute:
+// - Must have the Secure attribute OR the cookie partition contains a nonce.
+bool IsCookiePartitionedValid(const GURL& url,
+                              const ParsedCookie& parsed_cookie,
+                              bool partition_has_nonce);
+bool IsCookiePartitionedValid(const GURL& url,
+                              bool secure,
+                              bool is_partitioned,
+                              bool partition_has_nonce);
+
 // A ParsedRequestCookie consists of the key and value of the cookie.
 using ParsedRequestCookie = std::pair<std::string, std::string>;
 using ParsedRequestCookies = std::vector<ParsedRequestCookie>;
@@ -206,7 +231,7 @@ NET_EXPORT std::string SerializeRequestCookieLine(
 // `initiator` is the origin ultimately responsible for getting the request
 // issued. It may be different from `site_for_cookies`.
 //
-// absl::nullopt for `initiator` denotes that the navigation was initiated by
+// std::nullopt for `initiator` denotes that the navigation was initiated by
 // the user directly interacting with the browser UI, e.g. entering a URL
 // or selecting a bookmark.
 //
@@ -231,7 +256,7 @@ NET_EXPORT CookieOptions::SameSiteCookieContext
 ComputeSameSiteContextForRequest(const std::string& http_method,
                                  const std::vector<GURL>& url_chain,
                                  const SiteForCookies& site_for_cookies,
-                                 const absl::optional<url::Origin>& initiator,
+                                 const std::optional<url::Origin>& initiator,
                                  bool is_main_frame_navigation,
                                  bool force_ignore_site_for_cookies);
 
@@ -241,7 +266,7 @@ ComputeSameSiteContextForRequest(const std::string& http_method,
 NET_EXPORT CookieOptions::SameSiteCookieContext
 ComputeSameSiteContextForScriptGet(const GURL& url,
                                    const SiteForCookies& site_for_cookies,
-                                   const absl::optional<url::Origin>& initiator,
+                                   const std::optional<url::Origin>& initiator,
                                    bool force_ignore_site_for_cookies);
 
 // Determines which of the cookies for the request URL can be set from a network
@@ -259,7 +284,7 @@ ComputeSameSiteContextForScriptGet(const GURL& url,
 NET_EXPORT CookieOptions::SameSiteCookieContext
 ComputeSameSiteContextForResponse(const std::vector<GURL>& url_chain,
                                   const SiteForCookies& site_for_cookies,
-                                  const absl::optional<url::Origin>& initiator,
+                                  const std::optional<url::Origin>& initiator,
                                   bool is_main_frame_navigation,
                                   bool force_ignore_site_for_cookies);
 
@@ -286,6 +311,9 @@ NET_EXPORT bool IsPortBoundCookiesEnabled();
 
 NET_EXPORT bool IsSchemeBoundCookiesEnabled();
 
+// Returns true if either portion of OBC is enabled.
+NET_EXPORT bool IsOriginBoundCookiesPartiallyEnabled();
+
 NET_EXPORT bool IsTimeLimitedInsecureCookiesEnabled();
 
 // Returns whether the respective feature is enabled.
@@ -298,7 +326,7 @@ NET_EXPORT bool IsSchemefulSameSiteEnabled();
 // asynchronously with the result. The callback will be invoked iff the return
 // value is nullopt; i.e. a result will be provided via return value or
 // callback, but not both, and not neither.
-[[nodiscard]] NET_EXPORT absl::optional<
+[[nodiscard]] NET_EXPORT std::optional<
     std::pair<FirstPartySetMetadata, FirstPartySetsCacheFilter::MatchInfo>>
 ComputeFirstPartySetMetadataMaybeAsync(
     const SchemefulSite& request_site,
@@ -342,6 +370,8 @@ NET_EXPORT void DCheckIncludedAndExcludedCookieLists(
 // unless you enable ForceThirdPartyCookieBlocking with the command line switch
 // --test-third-party-cookie-phaseout.
 NET_EXPORT bool IsForceThirdPartyCookieBlockingEnabled();
+
+NET_EXPORT bool PartitionedCookiesDisabledByCommandLine();
 
 }  // namespace cookie_util
 

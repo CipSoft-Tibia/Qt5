@@ -56,6 +56,7 @@ const CDPSession_js_1 = require("../api/CDPSession.js");
 const Page_js_1 = require("../api/Page.js");
 const ConsoleMessage_js_1 = require("../common/ConsoleMessage.js");
 const Errors_js_1 = require("../common/Errors.js");
+const EventEmitter_js_1 = require("../common/EventEmitter.js");
 const FileChooser_js_1 = require("../common/FileChooser.js");
 const NetworkManagerEvents_js_1 = require("../common/NetworkManagerEvents.js");
 const util_js_1 = require("../common/util.js");
@@ -63,14 +64,12 @@ const assert_js_1 = require("../util/assert.js");
 const Deferred_js_1 = require("../util/Deferred.js");
 const disposable_js_1 = require("../util/disposable.js");
 const ErrorLike_js_1 = require("../util/ErrorLike.js");
-const Accessibility_js_1 = require("./Accessibility.js");
 const Binding_js_1 = require("./Binding.js");
 const CDPSession_js_2 = require("./CDPSession.js");
 const Connection_js_1 = require("./Connection.js");
 const Coverage_js_1 = require("./Coverage.js");
 const Dialog_js_1 = require("./Dialog.js");
 const EmulationManager_js_1 = require("./EmulationManager.js");
-const ExecutionContext_js_1 = require("./ExecutionContext.js");
 const FirefoxTargetManager_js_1 = require("./FirefoxTargetManager.js");
 const FrameManager_js_1 = require("./FrameManager.js");
 const FrameManagerEvents_js_1 = require("./FrameManagerEvents.js");
@@ -78,13 +77,22 @@ const Input_js_1 = require("./Input.js");
 const IsolatedWorlds_js_1 = require("./IsolatedWorlds.js");
 const JSHandle_js_1 = require("./JSHandle.js");
 const Tracing_js_1 = require("./Tracing.js");
+const utils_js_1 = require("./utils.js");
 const WebWorker_js_1 = require("./WebWorker.js");
+function convertConsoleMessageLevel(method) {
+    switch (method) {
+        case 'warning':
+            return 'warn';
+        default:
+            return method;
+    }
+}
 /**
  * @internal
  */
 class CdpPage extends Page_js_1.Page {
-    static async _create(client, target, ignoreHTTPSErrors, defaultViewport) {
-        const page = new CdpPage(client, target, ignoreHTTPSErrors);
+    static async _create(client, target, defaultViewport) {
+        const page = new CdpPage(client, target);
         await page.#initialize();
         if (defaultViewport) {
             try {
@@ -110,7 +118,6 @@ class CdpPage extends Page_js_1.Page {
     #keyboard;
     #mouse;
     #touchscreen;
-    #accessibility;
     #frameManager;
     #emulationManager;
     #tracing;
@@ -123,87 +130,7 @@ class CdpPage extends Page_js_1.Page {
     #sessionCloseDeferred = Deferred_js_1.Deferred.create();
     #serviceWorkerBypassed = false;
     #userDragInterceptionEnabled = false;
-    #frameManagerHandlers = [
-        [
-            FrameManagerEvents_js_1.FrameManagerEvent.FrameAttached,
-            (frame) => {
-                this.emit("frameattached" /* PageEvent.FrameAttached */, frame);
-            },
-        ],
-        [
-            FrameManagerEvents_js_1.FrameManagerEvent.FrameDetached,
-            (frame) => {
-                this.emit("framedetached" /* PageEvent.FrameDetached */, frame);
-            },
-        ],
-        [
-            FrameManagerEvents_js_1.FrameManagerEvent.FrameNavigated,
-            (frame) => {
-                this.emit("framenavigated" /* PageEvent.FrameNavigated */, frame);
-            },
-        ],
-    ];
-    #networkManagerHandlers = [
-        [
-            NetworkManagerEvents_js_1.NetworkManagerEvent.Request,
-            (request) => {
-                this.emit("request" /* PageEvent.Request */, request);
-            },
-        ],
-        [
-            NetworkManagerEvents_js_1.NetworkManagerEvent.RequestServedFromCache,
-            (request) => {
-                this.emit("requestservedfromcache" /* PageEvent.RequestServedFromCache */, request);
-            },
-        ],
-        [
-            NetworkManagerEvents_js_1.NetworkManagerEvent.Response,
-            (response) => {
-                this.emit("response" /* PageEvent.Response */, response);
-            },
-        ],
-        [
-            NetworkManagerEvents_js_1.NetworkManagerEvent.RequestFailed,
-            (request) => {
-                this.emit("requestfailed" /* PageEvent.RequestFailed */, request);
-            },
-        ],
-        [
-            NetworkManagerEvents_js_1.NetworkManagerEvent.RequestFinished,
-            (request) => {
-                this.emit("requestfinished" /* PageEvent.RequestFinished */, request);
-            },
-        ],
-    ];
-    #sessionHandlers = [
-        [
-            CDPSession_js_1.CDPSessionEvent.Disconnected,
-            () => {
-                this.#sessionCloseDeferred.reject(new Errors_js_1.TargetCloseError('Target closed'));
-            },
-        ],
-        [
-            'Page.domContentEventFired',
-            () => {
-                return this.emit("domcontentloaded" /* PageEvent.DOMContentLoaded */, undefined);
-            },
-        ],
-        [
-            'Page.loadEventFired',
-            () => {
-                return this.emit("load" /* PageEvent.Load */, undefined);
-            },
-        ],
-        ['Runtime.consoleAPICalled', this.#onConsoleAPI.bind(this)],
-        ['Runtime.bindingCalled', this.#onBindingCalled.bind(this)],
-        ['Page.javascriptDialogOpening', this.#onDialog.bind(this)],
-        ['Runtime.exceptionThrown', this.#handleException.bind(this)],
-        ['Inspector.targetCrashed', this.#onTargetCrashed.bind(this)],
-        ['Performance.metrics', this.#emitMetrics.bind(this)],
-        ['Log.entryAdded', this.#onLogEntryAdded.bind(this)],
-        ['Page.fileChooserOpened', this.#onFileChooser.bind(this)],
-    ];
-    constructor(client, target, ignoreHTTPSErrors) {
+    constructor(client, target) {
         super();
         this.#primaryTargetClient = client;
         this.#tabTargetClient = client.parentSession();
@@ -215,19 +142,43 @@ class CdpPage extends Page_js_1.Page {
         this.#keyboard = new Input_js_1.CdpKeyboard(client);
         this.#mouse = new Input_js_1.CdpMouse(client, this.#keyboard);
         this.#touchscreen = new Input_js_1.CdpTouchscreen(client, this.#keyboard);
-        this.#accessibility = new Accessibility_js_1.Accessibility(client);
-        this.#frameManager = new FrameManager_js_1.FrameManager(client, this, ignoreHTTPSErrors, this._timeoutSettings);
+        this.#frameManager = new FrameManager_js_1.FrameManager(client, this, this._timeoutSettings);
         this.#emulationManager = new EmulationManager_js_1.EmulationManager(client);
         this.#tracing = new Tracing_js_1.Tracing(client);
         this.#coverage = new Coverage_js_1.Coverage(client);
         this.#viewport = null;
-        for (const [eventName, handler] of this.#frameManagerHandlers) {
-            this.#frameManager.on(eventName, handler);
-        }
-        for (const [eventName, handler] of this.#networkManagerHandlers) {
-            // TODO: Remove any.
-            this.#frameManager.networkManager.on(eventName, handler);
-        }
+        const frameManagerEmitter = new EventEmitter_js_1.EventEmitter(this.#frameManager);
+        frameManagerEmitter.on(FrameManagerEvents_js_1.FrameManagerEvent.FrameAttached, frame => {
+            this.emit("frameattached" /* PageEvent.FrameAttached */, frame);
+        });
+        frameManagerEmitter.on(FrameManagerEvents_js_1.FrameManagerEvent.FrameDetached, frame => {
+            this.emit("framedetached" /* PageEvent.FrameDetached */, frame);
+        });
+        frameManagerEmitter.on(FrameManagerEvents_js_1.FrameManagerEvent.FrameNavigated, frame => {
+            this.emit("framenavigated" /* PageEvent.FrameNavigated */, frame);
+        });
+        frameManagerEmitter.on(FrameManagerEvents_js_1.FrameManagerEvent.ConsoleApiCalled, ([world, event]) => {
+            this.#onConsoleAPI(world, event);
+        });
+        frameManagerEmitter.on(FrameManagerEvents_js_1.FrameManagerEvent.BindingCalled, ([world, event]) => {
+            void this.#onBindingCalled(world, event);
+        });
+        const networkManagerEmitter = new EventEmitter_js_1.EventEmitter(this.#frameManager.networkManager);
+        networkManagerEmitter.on(NetworkManagerEvents_js_1.NetworkManagerEvent.Request, request => {
+            this.emit("request" /* PageEvent.Request */, request);
+        });
+        networkManagerEmitter.on(NetworkManagerEvents_js_1.NetworkManagerEvent.RequestServedFromCache, request => {
+            this.emit("requestservedfromcache" /* PageEvent.RequestServedFromCache */, request);
+        });
+        networkManagerEmitter.on(NetworkManagerEvents_js_1.NetworkManagerEvent.Response, response => {
+            this.emit("response" /* PageEvent.Response */, response);
+        });
+        networkManagerEmitter.on(NetworkManagerEvents_js_1.NetworkManagerEvent.RequestFailed, request => {
+            this.emit("requestfailed" /* PageEvent.RequestFailed */, request);
+        });
+        networkManagerEmitter.on(NetworkManagerEvents_js_1.NetworkManagerEvent.RequestFinished, request => {
+            this.emit("requestfinished" /* PageEvent.RequestFinished */, request);
+        });
         this.#tabTargetClient.on(CDPSession_js_1.CDPSessionEvent.Swapped, this.#onActivation.bind(this));
         this.#tabTargetClient.on(CDPSession_js_1.CDPSessionEvent.Ready, this.#onSecondaryTarget.bind(this));
         this.#targetManager.on("targetGone" /* TargetManagerEvent.TargetGone */, this.#onDetachedFromTarget);
@@ -240,6 +191,25 @@ class CdpPage extends Page_js_1.Page {
         })
             .catch(util_js_1.debugError);
         this.#setupPrimaryTargetListeners();
+        this.#attachExistingTargets();
+    }
+    #attachExistingTargets() {
+        const queue = [];
+        for (const childTarget of this.#targetManager.getChildTargets(this.#primaryTarget)) {
+            queue.push(childTarget);
+        }
+        let idx = 0;
+        while (idx < queue.length) {
+            const next = queue[idx];
+            idx++;
+            const session = next._session();
+            if (session) {
+                this.#onAttachedToTarget(session);
+            }
+            for (const childTarget of this.#targetManager.getChildTargets(next)) {
+                queue.push(childTarget);
+            }
+        }
     }
     async #onActivation(newSession) {
         this.#primaryTargetClient = newSession;
@@ -249,7 +219,6 @@ class CdpPage extends Page_js_1.Page {
         this.#keyboard.updateClient(newSession);
         this.#mouse.updateClient(newSession);
         this.#touchscreen.updateClient(newSession);
-        this.#accessibility.updateClient(newSession);
         this.#emulationManager.updateClient(newSession);
         this.#tracing.updateClient(newSession);
         this.#coverage.updateClient(newSession);
@@ -271,11 +240,23 @@ class CdpPage extends Page_js_1.Page {
      * during a navigation to a prerended page.
      */
     #setupPrimaryTargetListeners() {
-        this.#primaryTargetClient.on(CDPSession_js_1.CDPSessionEvent.Ready, this.#onAttachedToTarget);
-        for (const [eventName, handler] of this.#sessionHandlers) {
-            // TODO: Remove any.
-            this.#primaryTargetClient.on(eventName, handler);
-        }
+        const clientEmitter = new EventEmitter_js_1.EventEmitter(this.#primaryTargetClient);
+        clientEmitter.on(CDPSession_js_1.CDPSessionEvent.Ready, this.#onAttachedToTarget);
+        clientEmitter.on(CDPSession_js_1.CDPSessionEvent.Disconnected, () => {
+            this.#sessionCloseDeferred.reject(new Errors_js_1.TargetCloseError('Target closed'));
+        });
+        clientEmitter.on('Page.domContentEventFired', () => {
+            this.emit("domcontentloaded" /* PageEvent.DOMContentLoaded */, undefined);
+        });
+        clientEmitter.on('Page.loadEventFired', () => {
+            this.emit("load" /* PageEvent.Load */, undefined);
+        });
+        clientEmitter.on('Page.javascriptDialogOpening', this.#onDialog.bind(this));
+        clientEmitter.on('Runtime.exceptionThrown', this.#handleException.bind(this));
+        clientEmitter.on('Inspector.targetCrashed', this.#onTargetCrashed.bind(this));
+        clientEmitter.on('Performance.metrics', this.#emitMetrics.bind(this));
+        clientEmitter.on('Log.entryAdded', this.#onLogEntryAdded.bind(this));
+        clientEmitter.on('Page.fileChooserOpened', this.#onFileChooser.bind(this));
     }
     #onDetachedFromTarget = (target) => {
         const sessionId = target._session()?.id();
@@ -290,7 +271,7 @@ class CdpPage extends Page_js_1.Page {
         (0, assert_js_1.assert)(session instanceof CDPSession_js_2.CdpCDPSession);
         this.#frameManager.onAttachedToTarget(session._target());
         if (session._target()._getTargetInfo().type === 'worker') {
-            const worker = new WebWorker_js_1.CdpWebWorker(session, session._target().url(), this.#addConsoleMessage.bind(this), this.#handleException.bind(this));
+            const worker = new WebWorker_js_1.CdpWebWorker(session, session._target().url(), session._target()._targetId, session._target().type(), this.#addConsoleMessage.bind(this), this.#handleException.bind(this));
             this.#workers.set(session.id(), worker);
             this.emit("workercreated" /* PageEvent.WorkerCreated */, worker);
         }
@@ -356,6 +337,11 @@ class CdpPage extends Page_js_1.Page {
             message: `Waiting for \`FileChooser\` failed: ${timeout}ms exceeded`,
             timeout,
         });
+        if (options.signal) {
+            options.signal.addEventListener('abort', () => {
+                deferred.reject(options.signal?.reason);
+            }, { once: true });
+        }
         this.#fileChooserDeferreds.add(deferred);
         let enablePromise;
         if (needsEnable) {
@@ -398,7 +384,7 @@ class CdpPage extends Page_js_1.Page {
             });
         }
         if (source !== 'worker') {
-            this.emit("console" /* PageEvent.Console */, new ConsoleMessage_js_1.ConsoleMessage(level, text, [], [{ url, lineNumber }]));
+            this.emit("console" /* PageEvent.Console */, new ConsoleMessage_js_1.ConsoleMessage(convertConsoleMessageLevel(level), text, [], [{ url, lineNumber }]));
         }
     }
     mainFrame() {
@@ -415,9 +401,6 @@ class CdpPage extends Page_js_1.Page {
     }
     get tracing() {
         return this.#tracing;
-    }
-    get accessibility() {
-        return this.#accessibility;
     }
     frames() {
         return this.#frameManager.frames();
@@ -459,29 +442,58 @@ class CdpPage extends Page_js_1.Page {
         const response = await this.mainFrame().client.send('Runtime.queryObjects', {
             prototypeObjectId: prototypeHandle.id,
         });
-        return (0, ExecutionContext_js_1.createCdpHandle)(this.mainFrame().mainRealm(), response.objects);
+        return this.mainFrame()
+            .mainRealm()
+            .createCdpHandle(response.objects);
     }
     async cookies(...urls) {
         const originalCookies = (await this.#primaryTargetClient.send('Network.getCookies', {
             urls: urls.length ? urls : [this.url()],
         })).cookies;
-        const unsupportedCookieAttributes = ['priority'];
+        const unsupportedCookieAttributes = ['sourcePort'];
         const filterUnsupportedAttributes = (cookie) => {
             for (const attr of unsupportedCookieAttributes) {
                 delete cookie[attr];
             }
             return cookie;
         };
-        return originalCookies.map(filterUnsupportedAttributes);
+        return originalCookies.map(filterUnsupportedAttributes).map(cookie => {
+            return {
+                ...cookie,
+                // TODO: a breaking change is needed in Puppeteer types to support other
+                // partition keys.
+                partitionKey: cookie.partitionKey
+                    ? cookie.partitionKey.topLevelSite
+                    : undefined,
+            };
+        });
     }
     async deleteCookie(...cookies) {
         const pageURL = this.url();
         for (const cookie of cookies) {
-            const item = Object.assign({}, cookie);
+            const item = {
+                ...cookie,
+                // TODO: a breaking change neeeded to change the partition key
+                // type in Puppeteer.
+                partitionKey: cookie.partitionKey
+                    ? { topLevelSite: cookie.partitionKey, hasCrossSiteAncestor: false }
+                    : undefined,
+            };
             if (!cookie.url && pageURL.startsWith('http')) {
                 item.url = pageURL;
             }
             await this.#primaryTargetClient.send('Network.deleteCookies', item);
+            if (pageURL.startsWith('http') && !item.partitionKey) {
+                const url = new URL(pageURL);
+                // Delete also cookies from the page's partition.
+                await this.#primaryTargetClient.send('Network.deleteCookies', {
+                    ...item,
+                    partitionKey: {
+                        topLevelSite: url.origin.replace(`:${url.port}`, ''),
+                        hasCrossSiteAncestor: false,
+                    },
+                });
+            }
         }
     }
     async setCookie(...cookies) {
@@ -499,7 +511,19 @@ class CdpPage extends Page_js_1.Page {
         await this.deleteCookie(...items);
         if (items.length) {
             await this.#primaryTargetClient.send('Network.setCookies', {
-                cookies: items,
+                cookies: items.map(cookieParam => {
+                    return {
+                        ...cookieParam,
+                        partitionKey: cookieParam.partitionKey
+                            ? {
+                                // TODO: a breaking change neeeded to change the partition key
+                                // type in Puppeteer.
+                                topLevelSite: cookieParam.partitionKey,
+                                hasCrossSiteAncestor: false,
+                            }
+                            : undefined,
+                    };
+                }),
             });
         }
     }
@@ -507,57 +531,36 @@ class CdpPage extends Page_js_1.Page {
         if (this.#bindings.has(name)) {
             throw new Error(`Failed to add page binding with name ${name}: window['${name}'] already exists!`);
         }
+        const source = (0, utils_js_1.pageBindingInitString)('exposedFun', name);
         let binding;
         switch (typeof pptrFunction) {
             case 'function':
-                binding = new Binding_js_1.Binding(name, pptrFunction);
+                binding = new Binding_js_1.Binding(name, pptrFunction, source);
                 break;
             default:
-                binding = new Binding_js_1.Binding(name, pptrFunction.default);
+                binding = new Binding_js_1.Binding(name, pptrFunction.default, source);
                 break;
         }
         this.#bindings.set(name, binding);
-        const expression = (0, util_js_1.pageBindingInitString)('exposedFun', name);
-        await this.#primaryTargetClient.send('Runtime.addBinding', { name });
-        // TODO: investigate this as it appears to only apply to the main frame and
-        // local subframes instead of the entire frame tree (including future
-        // frame).
-        const { identifier } = await this.#primaryTargetClient.send('Page.addScriptToEvaluateOnNewDocument', {
-            source: expression,
-        });
+        const [{ identifier }] = await Promise.all([
+            this.#frameManager.evaluateOnNewDocument(source),
+            this.#frameManager.addExposedFunctionBinding(binding),
+        ]);
         this.#exposedFunctions.set(name, identifier);
-        await Promise.all(this.frames().map(frame => {
-            // If a frame has not started loading, it might never start. Rely on
-            // addScriptToEvaluateOnNewDocument in that case.
-            if (frame !== this.mainFrame() && !frame._hasStartedLoading) {
-                return;
-            }
-            return frame.evaluate(expression).catch(util_js_1.debugError);
-        }));
     }
     async removeExposedFunction(name) {
-        const exposedFun = this.#exposedFunctions.get(name);
-        if (!exposedFun) {
-            throw new Error(`Failed to remove page binding with name ${name}: window['${name}'] does not exists!`);
+        const exposedFunctionId = this.#exposedFunctions.get(name);
+        if (!exposedFunctionId) {
+            throw new Error(`Function with name "${name}" does not exist`);
         }
-        await this.#primaryTargetClient.send('Runtime.removeBinding', { name });
-        await this.removeScriptToEvaluateOnNewDocument(exposedFun);
-        await Promise.all(this.frames().map(frame => {
-            // If a frame has not started loading, it might never start. Rely on
-            // addScriptToEvaluateOnNewDocument in that case.
-            if (frame !== this.mainFrame() && !frame._hasStartedLoading) {
-                return;
-            }
-            return frame
-                .evaluate(name => {
-                // Removes the dangling Puppeteer binding wrapper.
-                // @ts-expect-error: In a different context.
-                globalThis[name] = undefined;
-            }, name)
-                .catch(util_js_1.debugError);
-        }));
+        // #bindings must be updated together with #exposedFunctions.
+        const binding = this.#bindings.get(name);
         this.#exposedFunctions.delete(name);
         this.#bindings.delete(name);
+        await Promise.all([
+            this.#frameManager.removeScriptToEvaluateOnNewDocument(exposedFunctionId),
+            this.#frameManager.removeExposedFunctionBinding(binding),
+        ]);
     }
     async authenticate(credentials) {
         return await this.#frameManager.networkManager.authenticate(credentials);
@@ -588,36 +591,15 @@ class CdpPage extends Page_js_1.Page {
         return result;
     }
     #handleException(exception) {
-        this.emit("pageerror" /* PageEvent.PageError */, (0, util_js_1.createClientError)(exception.exceptionDetails));
+        this.emit("pageerror" /* PageEvent.PageError */, (0, utils_js_1.createClientError)(exception.exceptionDetails));
     }
-    async #onConsoleAPI(event) {
-        if (event.executionContextId === 0) {
-            // DevTools protocol stores the last 1000 console messages. These
-            // messages are always reported even for removed execution contexts. In
-            // this case, they are marked with executionContextId = 0 and are
-            // reported upon enabling Runtime agent.
-            //
-            // Ignore these messages since:
-            // - there's no execution context we can use to operate with message
-            //   arguments
-            // - these messages are reported before Puppeteer clients can subscribe
-            //   to the 'console'
-            //   page event.
-            //
-            // @see https://github.com/puppeteer/puppeteer/issues/3865
-            return;
-        }
-        const context = this.#frameManager.getExecutionContextById(event.executionContextId, this.#primaryTargetClient);
-        if (!context) {
-            (0, util_js_1.debugError)(new Error(`ExecutionContext not found for a console message: ${JSON.stringify(event)}`));
-            return;
-        }
+    #onConsoleAPI(world, event) {
         const values = event.args.map(arg => {
-            return (0, ExecutionContext_js_1.createCdpHandle)(context._world, arg);
+            return world.createCdpHandle(arg);
         });
-        this.#addConsoleMessage(event.type, values, event.stackTrace);
+        this.#addConsoleMessage(convertConsoleMessageLevel(event.type), values, event.stackTrace);
     }
-    async #onBindingCalled(event) {
+    async #onBindingCalled(world, event) {
         let payload;
         try {
             payload = JSON.parse(event.payload);
@@ -631,7 +613,7 @@ class CdpPage extends Page_js_1.Page {
         if (type !== 'exposedFun') {
             return;
         }
-        const context = this.#frameManager.executionContextById(event.executionContextId, this.#primaryTargetClient);
+        const context = world.context;
         if (!context) {
             return;
         }
@@ -654,7 +636,7 @@ class CdpPage extends Page_js_1.Page {
                 textTokens.push(arg.toString());
             }
             else {
-                textTokens.push((0, util_js_1.valueFromRemoteObject)(remoteObject));
+                textTokens.push((0, utils_js_1.valueFromRemoteObject)(remoteObject));
             }
         }
         const stackTraceLocations = [];
@@ -667,7 +649,7 @@ class CdpPage extends Page_js_1.Page {
                 });
             }
         }
-        const message = new ConsoleMessage_js_1.ConsoleMessage(eventType, textTokens.join(' '), args, stackTraceLocations);
+        const message = new ConsoleMessage_js_1.ConsoleMessage(convertConsoleMessageLevel(eventType), textTokens.join(' '), args, stackTraceLocations);
         this.emit("console" /* PageEvent.Console */, message);
     }
     #onDialog(event) {
@@ -677,25 +659,16 @@ class CdpPage extends Page_js_1.Page {
     }
     async reload(options) {
         const [result] = await Promise.all([
-            this.waitForNavigation(options),
+            this.waitForNavigation({
+                ...options,
+                ignoreSameDocumentNavigation: true,
+            }),
             this.#primaryTargetClient.send('Page.reload'),
         ]);
         return result;
     }
     async createCDPSession() {
         return await this.target().createCDPSession();
-    }
-    async waitForRequest(urlOrPredicate, options = {}) {
-        const { timeout = this._timeoutSettings.timeout() } = options;
-        return await (0, util_js_1.waitForHTTP)(this.#frameManager.networkManager, NetworkManagerEvents_js_1.NetworkManagerEvent.Request, urlOrPredicate, timeout, this.#sessionCloseDeferred);
-    }
-    async waitForResponse(urlOrPredicate, options = {}) {
-        const { timeout = this._timeoutSettings.timeout() } = options;
-        return await (0, util_js_1.waitForHTTP)(this.#frameManager.networkManager, NetworkManagerEvents_js_1.NetworkManagerEvent.Response, urlOrPredicate, timeout, this.#sessionCloseDeferred);
-    }
-    async waitForNetworkIdle(options = {}) {
-        const { idleTime = util_js_1.NETWORK_IDLE_TIME, timeout: ms = this._timeoutSettings.timeout(), } = options;
-        await (0, rxjs_js_1.firstValueFrom)(this._waitForNetworkIdle(this.#frameManager.networkManager, idleTime).pipe((0, rxjs_js_1.raceWith)((0, util_js_1.timeout)(ms), (0, rxjs_js_1.from)(this.#sessionCloseDeferred.valueOrThrow()))));
     }
     async goBack(options = {}) {
         return await this.#go(-1, options);
@@ -756,15 +729,10 @@ class CdpPage extends Page_js_1.Page {
     }
     async evaluateOnNewDocument(pageFunction, ...args) {
         const source = (0, util_js_1.evaluationString)(pageFunction, ...args);
-        const { identifier } = await this.#primaryTargetClient.send('Page.addScriptToEvaluateOnNewDocument', {
-            source,
-        });
-        return { identifier };
+        return await this.#frameManager.evaluateOnNewDocument(source);
     }
     async removeScriptToEvaluateOnNewDocument(identifier) {
-        await this.#primaryTargetClient.send('Page.removeScriptToEvaluateOnNewDocument', {
-            identifier,
-        });
+        return await this.#frameManager.removeScriptToEvaluateOnNewDocument(identifier);
     }
     async setCacheEnabled(enabled = true) {
         await this.#frameManager.networkManager.setCacheEnabled(enabled);
@@ -816,9 +784,17 @@ class CdpPage extends Page_js_1.Page {
         }
     }
     async createPDFStream(options = {}) {
-        const { landscape, displayHeaderFooter, headerTemplate, footerTemplate, printBackground, scale, width: paperWidth, height: paperHeight, margin, pageRanges, preferCSSPageSize, omitBackground, timeout: ms, tagged: generateTaggedPDF, } = this._getPDFOptions(options);
+        const { timeout: ms = this._timeoutSettings.timeout() } = options;
+        const { landscape, displayHeaderFooter, headerTemplate, footerTemplate, printBackground, scale, width: paperWidth, height: paperHeight, margin, pageRanges, preferCSSPageSize, omitBackground, tagged: generateTaggedPDF, outline: generateDocumentOutline, waitForFonts, } = (0, util_js_1.parsePDFOptions)(options);
         if (omitBackground) {
             await this.#emulationManager.setTransparentBackgroundColor();
+        }
+        if (waitForFonts) {
+            await (0, rxjs_js_1.firstValueFrom)((0, rxjs_js_1.from)(this.mainFrame()
+                .isolatedRealm()
+                .evaluate(() => {
+                return document.fonts.ready;
+            })).pipe((0, rxjs_js_1.raceWith)((0, util_js_1.timeout)(ms))));
         }
         const printCommandPromise = this.#primaryTargetClient.send('Page.printToPDF', {
             transferMode: 'ReturnAsStream',
@@ -837,6 +813,7 @@ class CdpPage extends Page_js_1.Page {
             pageRanges,
             preferCSSPageSize,
             generateTaggedPDF,
+            generateDocumentOutline,
         });
         const result = await (0, rxjs_js_1.firstValueFrom)((0, rxjs_js_1.from)(printCommandPromise).pipe((0, rxjs_js_1.raceWith)((0, util_js_1.timeout)(ms))));
         if (omitBackground) {
@@ -848,22 +825,33 @@ class CdpPage extends Page_js_1.Page {
     async pdf(options = {}) {
         const { path = undefined } = options;
         const readable = await this.createPDFStream(options);
-        const buffer = await (0, util_js_1.getReadableAsBuffer)(readable, path);
-        (0, assert_js_1.assert)(buffer, 'Could not create buffer');
-        return buffer;
+        const typedArray = await (0, util_js_1.getReadableAsTypedArray)(readable, path);
+        (0, assert_js_1.assert)(typedArray, 'Could not create typed array');
+        return typedArray;
     }
     async close(options = { runBeforeUnload: undefined }) {
-        const connection = this.#primaryTargetClient.connection();
-        (0, assert_js_1.assert)(connection, 'Protocol error: Connection closed. Most likely the page has been closed.');
-        const runBeforeUnload = !!options.runBeforeUnload;
-        if (runBeforeUnload) {
-            await this.#primaryTargetClient.send('Page.close');
+        const env_3 = { stack: [], error: void 0, hasError: false };
+        try {
+            const _guard = __addDisposableResource(env_3, await this.browserContext().waitForScreenshotOperations(), false);
+            const connection = this.#primaryTargetClient.connection();
+            (0, assert_js_1.assert)(connection, 'Protocol error: Connection closed. Most likely the page has been closed.');
+            const runBeforeUnload = !!options.runBeforeUnload;
+            if (runBeforeUnload) {
+                await this.#primaryTargetClient.send('Page.close');
+            }
+            else {
+                await connection.send('Target.closeTarget', {
+                    targetId: this.#primaryTarget._targetId,
+                });
+                await this.#tabTarget._isClosedDeferred.valueOrThrow();
+            }
         }
-        else {
-            await connection.send('Target.closeTarget', {
-                targetId: this.#primaryTarget._targetId,
-            });
-            await this.#tabTarget._isClosedDeferred.valueOrThrow();
+        catch (e_3) {
+            env_3.error = e_3;
+            env_3.hasError = true;
+        }
+        finally {
+            __disposeResources(env_3);
         }
     }
     isClosed() {

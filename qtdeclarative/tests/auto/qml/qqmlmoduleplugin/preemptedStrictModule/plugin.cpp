@@ -5,26 +5,21 @@
 #include <QtQml/qqml.h>
 #include <QDebug>
 
-class MyPluginType : public QObject
+class MyPluginTypePreemptedStrict : public QObject
 {
     Q_OBJECT
-public:
-    MyPluginType(QObject *parent=nullptr) : QObject(parent) {}
 };
 
-
-class MyPlugin : public QQmlExtensionPlugin
+class MyPluginPreemptedStrict : public QQmlExtensionPlugin
 {
     Q_OBJECT
     Q_PLUGIN_METADATA(IID QQmlExtensionInterface_iid)
 
 public:
-    MyPlugin() {}
-
     void registerTypes(const char *uri) override
     {
         Q_ASSERT(QLatin1String(uri) == "org.qtproject.PreemptedStrictModule");
-        qmlRegisterType<MyPluginType>(uri, 1, 0, "MyPluginType");
+        qmlRegisterType<MyPluginTypePreemptedStrict>(uri, 1, 0, "MyPluginType");
     }
 };
 

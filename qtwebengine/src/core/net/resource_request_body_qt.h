@@ -1,5 +1,6 @@
 // Copyright (C) 2023 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:data-parser
 
 #ifndef RESOURCEREQUESTBODY_QT_H
 #define RESOURCEREQUESTBODY_QT_H
@@ -43,8 +44,6 @@ public:
     qint64 writeData(const char *data, qint64 maxSize) override;
     bool isSequential() const override;
 
-    void appendFilesForTest(const QString &path);
-
 private:
     network::ResourceRequestBody *const m_requestBody;
 
@@ -61,7 +60,7 @@ private:
     getConsumerHandleFromPipeGetter(mojo::Remote<network::mojom::DataPipeGetter> &pipeGetter);
     void
     readDataElementPipe(const mojo::ScopedHandleBase<mojo::DataPipeConsumerHandle> &consumerHandle,
-                        qint64 &bytesRead, const qint64 &maxSize, char **data);
+                        qint64 &bytesRead, qint64 maxSize, char **data);
     void pipeGetterOnReadComplete(int32_t status, uint64_t size);
 };
 

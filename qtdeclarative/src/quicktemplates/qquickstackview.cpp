@@ -12,6 +12,7 @@
 #include <QtQml/qjsvalue.h>
 #include <QtQml/qqmlengine.h>
 #include <QtQml/qqmlinfo.h>
+#include <QtQml/qqmlcomponent.h>
 
 #include <private/qv4qobjectwrapper_p.h>
 #include <private/qqmlengine_p.h>
@@ -62,7 +63,7 @@ QDebug operator<<(QDebug debug, const QQuickStackViewArg &arg)
     \ingroup qtquickcontrols-focusscopes
     \brief Provides a stack-based navigation model.
 
-    \image qtquickcontrols-stackview-wireframe.png
+    \image qtquickcontrols-stackview-wireframe.webp
 
     StackView can be used with a set of inter-linked information pages. For
     example, an email application with separate views to list the latest emails,
@@ -1696,7 +1697,7 @@ QQuickStackViewAttached::QQuickStackViewAttached(QObject *parent)
         QQuickItemPrivate::get(item)->addItemChangeListener(d, QQuickItemPrivate::Parent);
         d->itemParentChanged(item, item->parentItem());
     } else if (parent) {
-        qmlWarning(parent) << "StackView must be attached to an Item";
+        qmlWarning(parent) << "StackView attached property must be attached to an object deriving from Item";
     }
 }
 

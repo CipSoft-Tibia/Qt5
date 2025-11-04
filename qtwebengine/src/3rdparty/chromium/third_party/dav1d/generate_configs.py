@@ -115,7 +115,8 @@ def CopyConfigs(src_dir, dest_dir):
 
 def GenerateConfig(config_dir, env, special_args=[]):
     temp_dir = tempfile.mkdtemp()
-    PrintAndCheckCall(MESON + DEFAULT_BUILD_ARGS + special_args + [temp_dir],
+    PrintAndCheckCall(MESON + ['setup'] + DEFAULT_BUILD_ARGS + special_args +
+                      [temp_dir],
                       cwd='libdav1d',
                       env=env)
 
@@ -147,6 +148,17 @@ def GenerateConfig(config_dir, env, special_args=[]):
     CopyConfigs(temp_dir, config_dir)
 
     shutil.rmtree(temp_dir)
+
+
+def GenerateAppleConfig(src_dir, dest_dir):
+    if not os.path.exists(dest_dir):
+        os.makedirs(dest_dir)
+
+    shutil.copy(os.path.join(src_dir, 'config.h'), dest_dir)
+
+    # Apple doesn't have the <sys/auxv.h> header.
+    RewriteFile(os.path.join(dest_dir, 'config.h'),
+                [(r'#define HAVE_GETAUXVAL 1', r'')])
 
 
 def GenerateWindowsArm64Config(src_dir):
@@ -187,7 +199,7 @@ def CopyVersions(src_dir, dest_dir):
 
 def GenerateVersion(version_dir, env):
     temp_dir = tempfile.mkdtemp()
-    PrintAndCheckCall(MESON + DEFAULT_BUILD_ARGS + [temp_dir],
+    PrintAndCheckCall(MESON + ['setup'] + DEFAULT_BUILD_ARGS + [temp_dir],
                       cwd='libdav1d',
                       env=env)
     PrintAndCheckCall(['ninja', '-C', temp_dir, 'include/vcs_version.h'],
@@ -234,6 +246,11 @@ def main():
     # Sadly meson doesn't support arm64 + clang-cl, so we need to create the
     # Windows arm64 config from the Windows x64 config.
     GenerateWindowsArm64Config(win_x64_dir)
+
+    # Create the Apple arm and arm64 configs from the Linux arm and arm64
+    # configs.
+    GenerateAppleConfig('config/linux/arm', 'config/apple/arm')
+    GenerateAppleConfig('config/linux/arm64', 'config/apple/arm64')
 
     GenerateVersion('version', linux_env)
 

@@ -1,7 +1,7 @@
 // Copyright (C) 2020 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
-#include <QtTest/QtTest>
+#include <QtTest/QTest>
 #include <QtCore/QStringListModel>
 #include <QtCore/QSortFilterProxyModel>
 #include <QtGui/QStandardItemModel>
@@ -51,7 +51,6 @@ class tst_QQuickListView : public QQmlDataTest
     Q_OBJECT
 public:
     tst_QQuickListView();
-    ~tst_QQuickListView() { delete touchDevice; }
 
 private slots:
     // WARNING: please add new tests to tst_qquicklistview2; this file is too slow to work with.
@@ -123,6 +122,7 @@ private slots:
     void sectionPropertyChange();
     void sectionDelegateChange();
     void sectionsItemInsertion();
+    void removeSectionsOnNonvisibleItems();
     void cacheBuffer();
     void positionViewAtBeginningEnd();
     void positionViewAtIndex();
@@ -343,12 +343,12 @@ private:
 
     QQuickView *m_view;
     QString testForView;
-    QPointingDevice *touchDevice = QTest::createTouchDevice();
+    std::unique_ptr<QPointingDevice> touchscreen{QTest::createTouchDevice()};
 #if QT_CONFIG(tabletevent)
-    QScopedPointer<const QPointingDevice> tabletStylusDevice = QScopedPointer<const QPointingDevice>(
+    std::unique_ptr<const QPointingDevice> tabletStylusDevice{
             QPointingDevicePrivate::tabletDevice(QInputDevice::DeviceType::Stylus,
                                                  QPointingDevice::PointerType::Pen,
-                                                 QPointingDeviceUniqueId::fromNumericId(1234567890)));
+                                                 QPointingDeviceUniqueId::fromNumericId(1234567890))};
 #endif
 };
 
@@ -2020,6 +2020,7 @@ void tst_QQuickListView::enforceRange_withoutHighlight()
     QTRY_COMPARE(listview->contentY(), expectedPos);
 
     expectedPos += 20 + 10;     // scroll past 1st section and section delegate of 2nd section
+    QTRY_VERIFY(window.data()->isActive());
     QTest::keyClick(window.data(), Qt::Key_Down);
 
     QTRY_COMPARE(listview->contentY(), expectedPos);
@@ -2781,6 +2782,52 @@ void tst_QQuickListView::sectionsSnap()
     QQuickTest::pointerFlick(device, window.data(), 0, point, QPoint(100, 100), duration);
     QTRY_VERIFY(!listview->isMovingVertically());
     QCOMPARE(listview->contentY(), qreal(-50));
+}
+
+void tst_QQuickListView::removeSectionsOnNonvisibleItems()
+{
+    QScopedPointer<QQuickView> window(createView());
+    window->setSource(testFileUrl("removeSectionsOnNonVisibleItems.qml"));
+    window->show();
+    QVERIFY(QTest::qWaitForWindowExposed(window.data()));
+
+    auto verifySectionData = [](QObject *object, int sectionId) {
+        auto sectionList = object->property("sectionItems").value<QQmlListProperty<QQuickItem>>();
+        const int length = sectionList.count(&sectionList);
+        for (int index = 0; index < length; index++) {
+            QQuickItem *currentItem = sectionList.at(&sectionList, index);
+            QString sectionData = currentItem->property("sectionData").value<QString>();
+            QStringList sectionDataList = sectionData.split(":");
+            QVERIFY(sectionDataList.at(0).toInt() == sectionId);
+        }
+    };
+
+    auto *listView = qobject_cast<QQuickListView*>(window->rootObject());
+    QTRY_VERIFY(listView != nullptr);
+    QVERIFY(listView->contentItem());
+
+    auto device = QPointingDevice::primaryPointingDevice();
+    const int stopFlickCount = 15;
+    int flickIndex = 0;
+    // The issue is more apparent when the list view used in this test case
+    // been flicked to the contentY: 965.
+    const float contentYThreadhold = 965.;
+    do {
+        QQuickTest::pointerFlick(device, window.data(), 0, QPoint(100, 100), QPoint(100, 50), 125);
+        QTRY_VERIFY(listView->isMovingVertically());
+        QVERIFY(listView->contentY() != qreal(0));
+        if (listView->contentY() >= contentYThreadhold) {
+            listView->cancelFlick();
+            break;
+        }
+    } while (++flickIndex <= stopFlickCount);
+
+    int verifySectionId = 0;
+    verifySectionData(listView, ++verifySectionId);
+    // Refresh the section item with the new model data
+    QMetaObject::invokeMethod(listView, "reloadModel");
+    QVERIFY(QQuickTest::qWaitForPolish(listView));
+    verifySectionData(listView, ++verifySectionId);
 }
 
 void tst_QQuickListView::currentIndex_delayedItemCreation()
@@ -9772,13 +9819,13 @@ void tst_QQuickListView::touchCancel() // QTBUG-74679
     QVERIFY(mouseArea);
 
     QPoint p1(300, 300);
-    QTest::touchEvent(window.data(), touchDevice).press(0, p1, window.data());
+    QTest::touchEvent(window.data(), touchscreen.get()).press(0, p1, window.data());
     QQuickTouchUtils::flush(window.data());
     QTRY_VERIFY(mouseArea->isPressed());
     // and because Flickable filtered it, QQuickFlickablePrivate::pressed
     // should be true, but it's not easily tested here
 
-    QTouchEvent cancelEvent(QEvent::TouchCancel, touchDevice);
+    QTouchEvent cancelEvent(QEvent::TouchCancel, touchscreen.get());
     QCoreApplication::sendEvent(window.data(), &cancelEvent);
     // now QQuickWindowPrivate::sendUngrabEvent() will be called, Flickable will filter it,
     // QQuickFlickablePrivate::pressed will be set to false, and that will allow setCurrentIndex() to make it move
@@ -9794,7 +9841,7 @@ void tst_QQuickListView::cancelDelegatePastDragThreshold_data()
     QTest::addColumn<const QPointingDevice *>("device");
 
     QTest::newRow("primary") << QPointingDevice::primaryPointingDevice();
-    QTest::newRow("touch") << static_cast<const QPointingDevice*>(touchDevice); // TODO QTBUG-107864
+    QTest::newRow("touch") << static_cast<const QPointingDevice*>(touchscreen.get()); // TODO QTBUG-107864
 #if QT_CONFIG(tabletevent) && !defined(Q_OS_QNX)
     QTest::newRow("stylus") << tabletStylusDevice.get();
 #endif

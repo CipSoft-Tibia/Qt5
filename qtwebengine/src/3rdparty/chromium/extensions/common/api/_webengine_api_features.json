@@ -16,7 +16,7 @@
   },
   "resourcesPrivate": [{
     "dependencies": ["permission:resourcesPrivate"],
-    "contexts": ["blessed_extension", "content_script"]
+    "contexts": ["privileged_extension", "content_script"]
   }, {
     "channel": "stable",
     "contexts": ["webui"],
@@ -26,20 +26,20 @@
   }],
   "enterprise.hardwarePlatform": {
     "dependencies": ["permission:enterprise.hardwarePlatform"],
-    "contexts": ["blessed_extension"]
+    "contexts": ["privileged_extension"]
   },
   "tabs": {
     "channel": "stable",
     "extension_types": ["extension", "legacy_packaged_app"],
-    "contexts": ["blessed_extension"],
+    "contexts": ["privileged_extension"],
     "default_parent": true
   },
   "webrtcDesktopCapturePrivate": {
     "dependencies": ["permission:webrtcDesktopCapturePrivate"],
-    "contexts": ["blessed_extension"]
+    "contexts": ["privileged_extension"]
   },
   "webrtcLoggingPrivate": {
     "dependencies": ["permission:webrtcLoggingPrivate"],
-    "contexts": ["blessed_extension"]
+    "contexts": ["privileged_extension"]
   }
 }

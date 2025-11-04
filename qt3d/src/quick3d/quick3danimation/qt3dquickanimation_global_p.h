@@ -23,6 +23,8 @@
 
 QT_BEGIN_NAMESPACE
 
+void Q_3DQUICKANIMATIONSHARED_PRIVATE_EXPORT qml_register_types_Qt3D_Animation();
+
 namespace Qt3DAnimation {
 namespace Quick {
 

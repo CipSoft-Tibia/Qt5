@@ -9,6 +9,7 @@
 #include <rhi/qrhi.h>
 
 #include <QtQuickTestUtils/private/qmlutils_p.h>
+#include <QtQuickTestUtils/private/visualtestutils_p.h>
 
 #if QT_CONFIG(opengl)
 #include <QOpenGLContext>
@@ -231,6 +232,14 @@ public:
         QVERIFY(QOpenGLContext::currentContext());
         QOpenGLFunctions *f = QOpenGLContext::currentContext()->functions();
         QVERIFY(f);
+
+        GLint viewport[4];
+        f->glGetIntegerv(GL_VIEWPORT, viewport);
+        QCOMPARE(viewport[0], 0);
+        QCOMPARE(viewport[1], 0);
+        QCOMPARE(viewport[2], 320);
+        QCOMPARE(viewport[3], 200);
+
         f->glClearColor(0.0f, 1.0f, 0.0f, 1.0f);
         f->glClear(GL_COLOR_BUFFER_BIT);
     }
@@ -279,9 +288,7 @@ void tst_rendernode::test_data()
 
 void tst_rendernode::test()
 {
-    if ((QGuiApplication::platformName() == QLatin1String("offscreen"))
-        || (QGuiApplication::platformName() == QLatin1String("minimal")))
-        QSKIP("Skipping due to grabWindow not functional on offscreen/minimal platforms");
+    SKIP_IF_NO_WINDOW_GRAB;
 
     if (!isRunningOnRhi())
         QSKIP("Skipping QSGRenderNode test due to not running with QRhi");
@@ -338,13 +345,12 @@ void tst_rendernode::gltest_data()
     QTest::addColumn<QString>("file");
 
     QTest::newRow("simple") << QStringLiteral("glsimple.qml");
+    QTest::newRow("rendernode only") << QStringLiteral("glsimple_only.qml");
 }
 
 void tst_rendernode::gltest()
 {
-    if ((QGuiApplication::platformName() == QLatin1String("offscreen"))
-        || (QGuiApplication::platformName() == QLatin1String("minimal")))
-        QSKIP("Skipping due to grabWindow not functional on offscreen/minimal platforms");
+    SKIP_IF_NO_WINDOW_GRAB;
 
     if (!isRunningOnRhi())
         QSKIP("Skipping QSGRenderNode test due to not running with QRhi");

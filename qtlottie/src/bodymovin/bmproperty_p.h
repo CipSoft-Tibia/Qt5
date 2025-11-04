@@ -61,7 +61,7 @@ public:
             QJsonArray keyframes = definition.value(QLatin1String("k")).toArray();
             QJsonArray::const_iterator it = keyframes.constBegin();
 
-            bool schemaChanged = (version >= QVersionNumber(5, 5, 0));
+            bool schemaChanged = (version >= QVersionNumber(5, 4, 0));
 
             if (!schemaChanged) {
                 while (it != keyframes.constEnd()) {

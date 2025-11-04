@@ -3,6 +3,7 @@
 
 #include "qpdfdocument.h"
 #include "qpdfdocument_p.h"
+#include "qtpdfglobal_p.h"
 
 #include "third_party/pdfium/public/fpdf_doc.h"
 #include "third_party/pdfium/public/fpdf_text.h"
@@ -25,7 +26,7 @@ QT_BEGIN_NAMESPACE
 Q_GLOBAL_STATIC(QRecursiveMutex, pdfMutex)
 static int libraryRefCount;
 static const double CharacterHitTolerance = 16.0;
-Q_LOGGING_CATEGORY(qLcDoc, "qt.pdf.document")
+Q_PDF_LOGGING_CATEGORY(qLcDoc, "qt.pdf.document")
 
 QPdfMutexLocker::QPdfMutexLocker()
     : std::unique_lock<QRecursiveMutex>(*pdfMutex())

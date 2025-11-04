@@ -7,6 +7,7 @@
 #include <QtGui/qwindow.h>
 #include <QtQml/qqmlcontext.h>
 #include <QtQml/qqmlinfo.h>
+#include <QtQml/qqmlcomponent.h>
 #include <QtQuick/qquickwindow.h>
 #include <QtQuickDialogs2Utils/private/qquickfilenamefilter_p.h>
 #include <QtQuickTemplates2/private/qquickdialog_p.h>
@@ -17,7 +18,7 @@
 
 QT_BEGIN_NAMESPACE
 
-Q_LOGGING_CATEGORY(lcQuickPlatformFileDialog, "qt.quick.dialogs.quickplatformfiledialog")
+Q_STATIC_LOGGING_CATEGORY(lcQuickPlatformFileDialog, "qt.quick.dialogs.quickplatformfiledialog")
 
 /*!
     \class QQuickPlatformFileDialog

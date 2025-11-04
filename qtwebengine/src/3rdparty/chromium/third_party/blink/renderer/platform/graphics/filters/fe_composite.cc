@@ -164,7 +164,7 @@ SkBlendMode ToBlendMode(CompositeOperationType mode) {
     case FECOMPOSITE_OPERATOR_LIGHTER:
       return SkBlendMode::kPlus;
     default:
-      NOTREACHED();
+      NOTREACHED_IN_MIGRATION();
       return SkBlendMode::kSrcOver;
   }
 }
@@ -185,7 +185,7 @@ sk_sp<PaintFilter> FEComposite::CreateImageFilterInternal(
   sk_sp<PaintFilter> background(
       paint_filter_builder::Build(InputEffect(1), OperatingInterpolationSpace(),
                                   !MayProduceInvalidPreMultipliedPixels()));
-  absl::optional<PaintFilter::CropRect> crop_rect = GetCropRect();
+  std::optional<PaintFilter::CropRect> crop_rect = GetCropRect();
 
   if (type_ == FECOMPOSITE_OPERATOR_ARITHMETIC) {
     return sk_make_sp<ArithmeticPaintFilter>(

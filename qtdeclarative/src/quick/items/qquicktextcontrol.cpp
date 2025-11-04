@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:data-parser
 
 #include "qquicktextcontrol_p.h"
 #include "qquicktextcontrol_p_p.h"
@@ -42,7 +43,6 @@
 const int textCursorWidth = 1;
 
 QT_BEGIN_NAMESPACE
-Q_DECLARE_LOGGING_CATEGORY(lcHoverTrace)
 
 // could go into QTextCursor...
 static QTextLine currentTextLine(const QTextCursor &cursor)
@@ -82,6 +82,7 @@ QQuickTextControlPrivate::QQuickTextControlPrivate()
       hoveredMarker(false),
       selectByTouchDrag(false),
       imSelectionAfterPress(false),
+      beingEdited(false),
       lastSelectionStart(-1),
       lastSelectionEnd(-1)
 {}
@@ -755,7 +756,7 @@ void QQuickTextControl::processEvent(QEvent *e, const QTransform &transform)
 
         case QEvent::ShortcutOverride:
             if (d->interactionFlags & Qt::TextEditable) {
-                QKeyEvent* ke = static_cast<QKeyEvent *>(e);
+                QKeyEvent *ke = static_cast<QKeyEvent *>(e);
                 ke->setAccepted(isCommonTextEditShortcut(ke));
             }
             break;
@@ -767,6 +768,12 @@ void QQuickTextControl::processEvent(QEvent *e, const QTransform &transform)
 bool QQuickTextControl::event(QEvent *e)
 {
     return QObject::event(e);
+}
+
+bool QQuickTextControl::isBeingEdited()
+{
+    Q_D(QQuickTextControl);
+    return d->beingEdited;
 }
 
 void QQuickTextControl::timerEvent(QTimerEvent *e)
@@ -807,6 +814,7 @@ void QQuickTextControlPrivate::keyPressEvent(QKeyEvent *e)
 {
     Q_Q(QQuickTextControl);
 
+    QScopedValueRollback<bool> rollbackBeingEdited(beingEdited, true);
     if (e->key() == Qt::Key_Back) {
          e->ignore();
          return;
@@ -905,9 +913,12 @@ void QQuickTextControlPrivate::keyPressEvent(QKeyEvent *e)
         cursor.removeSelectedText();
     }
     else if (e == QKeySequence::DeleteStartOfWord) {
+        const int oldCursorPos = cursor.position();
         if (!cursor.hasSelection())
             cursor.movePosition(QTextCursor::PreviousWord, QTextCursor::KeepAnchor);
         cursor.removeSelectedText();
+        if (cursor.position() != oldCursorPos)
+            emit q->cursorPositionChanged();
     }
     else if (e == QKeySequence::DeleteEndOfLine) {
         QTextBlock block = cursor.block();

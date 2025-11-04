@@ -14,7 +14,7 @@
 #include "base/notreached.h"
 #include "base/numerics/safe_conversions.h"
 #include "base/process/memory.h"
-#include "base/strings/string_piece.h"
+
 #include "base/strings/utf_string_conversions.h"
 
 namespace base {
@@ -49,11 +49,10 @@ ScopedHString ScopedHString::Create(std::wstring_view str) {
   // This should not happen at runtime. Otherwise we could silently pass nullptr
   // or an empty string to downstream code.
   NOTREACHED() << "Failed to create HSTRING: " << std::hex << hr;
-  return ScopedHString(nullptr);
 }
 
 // static
-ScopedHString ScopedHString::Create(StringPiece str) {
+ScopedHString ScopedHString::Create(std::string_view str) {
   return Create(UTF8ToWide(str));
 }
 

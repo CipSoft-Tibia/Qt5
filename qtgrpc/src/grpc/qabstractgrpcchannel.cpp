@@ -168,7 +168,7 @@ std::unique_ptr<QGrpcCallReply> QAbstractGrpcChannel::call(QLatin1StringView met
                      });
 
     auto reply = std::make_unique<QGrpcCallReply>(operationContext);
-    call(operationContext);
+    call(std::move(operationContext));
 
     return reply;
 }
@@ -194,7 +194,7 @@ QAbstractGrpcChannel::serverStream(QLatin1StringView method, QLatin1StringView s
                      });
 
     auto stream = std::make_unique<QGrpcServerStream>(operationContext);
-    serverStream(operationContext);
+    serverStream(std::move(operationContext));
 
     return stream;
 }
@@ -212,7 +212,7 @@ QAbstractGrpcChannel::clientStream(QLatin1StringView method, QLatin1StringView s
                                QGrpcOperationContext::PrivateConstructor());
 
     auto stream = std::make_unique<QGrpcClientStream>(operationContext);
-    clientStream(operationContext);
+    clientStream(std::move(operationContext));
 
     return stream;
 }
@@ -231,7 +231,7 @@ std::unique_ptr<QGrpcBidiStream> QAbstractGrpcChannel::bidiStream(QLatin1StringV
                                QGrpcOperationContext::PrivateConstructor());
 
     auto stream = std::make_unique<QGrpcBidiStream>(operationContext);
-    bidiStream(operationContext);
+    bidiStream(std::move(operationContext));
 
     return stream;
 }

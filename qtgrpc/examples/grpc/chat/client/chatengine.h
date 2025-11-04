@@ -52,6 +52,7 @@ public:
 
     Q_INVOKABLE static void openUrl(const QByteArray &url);
     Q_INVOKABLE static QList<QString> findLocalIps();
+    Q_INVOKABLE static QList<QString> displayServerPorts();
     Q_INVOKABLE QString getSchemeSymbol();
 
     UserStatusModel *userStatusModel() noexcept { return m_userStatusModel.get(); }

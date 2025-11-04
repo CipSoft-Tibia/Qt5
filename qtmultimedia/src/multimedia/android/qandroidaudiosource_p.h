@@ -40,7 +40,7 @@ class QAndroidAudioSource : public QPlatformAudioSource
     Q_OBJECT
 
 public:
-    QAndroidAudioSource(const QByteArray &device, QObject *parent);
+    QAndroidAudioSource(QAudioDevice device, const QAudioFormat &, QObject *parent);
     ~QAndroidAudioSource();
 
     void start(QIODevice *device);
@@ -53,13 +53,7 @@ public:
     void setBufferSize(qsizetype value);
     qsizetype bufferSize() const;
     qint64 processedUSecs() const;
-    QAudio::Error error() const;
     QAudio::State state() const;
-    void setFormat(const QAudioFormat &format);
-    QAudioFormat format() const;
-
-    void setVolume(qreal volume);
-    qreal volume() const;
 
 public Q_SLOTS:
     void processBuffer();
@@ -70,7 +64,6 @@ private:
     void writeDataToDevice(const char *data, int size);
     void flushBuffers();
 
-    QByteArray m_device;
     QOpenSLESEngine *m_engine;
     SLObjectItf m_recorderObject;
     SLRecordItf m_recorder;
@@ -86,11 +79,8 @@ private:
     QIODevice *m_audioSource;
     QBuffer *m_bufferIODevice;
     QByteArray m_pushBuffer;
-    QAudioFormat m_format;
-    QAudio::Error m_errorState;
     QAudio::State m_deviceState;
     qint64 m_lastNotifyTime;
-    qreal m_volume;
     int m_bufferSize;
     QByteArray *m_buffers;
     int m_currentBuffer;

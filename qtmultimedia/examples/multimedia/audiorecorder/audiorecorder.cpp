@@ -164,6 +164,12 @@ static QVariant boxValue(const QComboBox *box)
 
 void AudioRecorder::toggleRecord()
 {
+    if (!m_audioRecorder) {
+        ui->statusbar->showMessage(QStringLiteral("AudioRecorder not set. "
+                                                  "Microphone permission was not granted!"));
+        return;
+    }
+
     if (m_audioRecorder->recorderState() == QMediaRecorder::StoppedState) {
         m_captureSession.audioInput()->setDevice(
                 boxValue(ui->audioDeviceBox).value<QAudioDevice>());
@@ -193,10 +199,20 @@ void AudioRecorder::togglePause()
 
 void AudioRecorder::setOutputLocation()
 {
+    if (!m_audioRecorder) {
+        ui->statusbar->showMessage(QStringLiteral("AudioRecorder not set. "
+                                                  "Microphone permission was not granted!"));
+        return;
+    }
+
 #ifdef Q_OS_ANDROID
+    QMediaFormat format = selectedMediaFormat();
+    if (format.fileFormat() == QMediaFormat::UnspecifiedFormat)
+        format.resolveForEncoding(QMediaFormat::NoFlags);
+
     QString fileName = QFileDialog::getSaveFileName(
             this, tr("Save Recording"),
-            "output." + selectedMediaFormat().mimeType().preferredSuffix());
+            "output." + format.mimeType().preferredSuffix());
 #else
     QString fileName = QFileDialog::getSaveFileName();
 #endif

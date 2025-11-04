@@ -22,5 +22,5 @@ appPrefix=""
 
 InstallAppFromCompressedFileFromURL "$PrimaryUrl" "$AltUrl" "$SHA1" "$appPrefix"
 
-SetEnvVar "POSTGRESQLBINPATH" "/Applications/Postgres.app/Contents/Versions/9.6/bin"
+SetEnvVar "PostgreSQL_ROOT" "/Applications/Postgres.app/Contents/Versions/9.6"
 echo "PostgreSQL = $psqlVersion" >> ~/versions.txt

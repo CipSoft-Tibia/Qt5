@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:network-protocol
 
 //#define QNETWORKACCESSHTTPBACKEND_DEBUG
 
@@ -469,6 +470,8 @@ QNetworkReplyHttpImplPrivate::QNetworkReplyHttpImplPrivate()
 
 QNetworkReplyHttpImplPrivate::~QNetworkReplyHttpImplPrivate()
 {
+    if (cacheSaveDevice)
+        managerPrivate->networkCache->remove(url);
 }
 
 /*
@@ -623,6 +626,53 @@ QHttpNetworkRequest::Priority QNetworkReplyHttpImplPrivate::convert(QNetworkRequ
     Q_UNREACHABLE_RETURN(QHttpNetworkRequest::NormalPriority);
 }
 
+void QNetworkReplyHttpImplPrivate::maybeDropUploadDevice(const QNetworkRequest &newHttpRequest)
+{
+    // Check for 0-length upload device. Following RFC9110, we are discouraged
+    // from sending "content-length: 0" for methods where a content-length would
+    // not normally be expected. E.g. get, connect, head, delete
+    // https://www.rfc-editor.org/rfc/rfc9110.html#section-8.6-5
+    auto contentLength0Allowed = [&]{
+        switch (operation) {
+        case QNetworkAccessManager::CustomOperation: {
+            const QByteArray customVerb = newHttpRequest.attribute(QNetworkRequest::CustomVerbAttribute)
+                                                .toByteArray();
+            if (customVerb.compare("get", Qt::CaseInsensitive) != 0
+                && customVerb.compare("head", Qt::CaseInsensitive) != 0
+                && customVerb.compare("connect", Qt::CaseInsensitive) != 0
+                && customVerb.compare("delete", Qt::CaseInsensitive) != 0) {
+                return true; // Trust user => content-length 0 is presumably okay!
+            }
+            // else:
+            [[fallthrough]];
+        }
+        case QNetworkAccessManager::HeadOperation:
+        case QNetworkAccessManager::GetOperation:
+        case QNetworkAccessManager::DeleteOperation:
+            // no content-length 0
+            return false;
+        case QNetworkAccessManager::PutOperation:
+        case QNetworkAccessManager::PostOperation:
+        case QNetworkAccessManager::UnknownOperation:
+            // yes content-length 0
+            return true;
+        }
+        Q_UNREACHABLE_RETURN(false);
+    };
+
+    const auto hasEmptyOutgoingPayload = [&]() {
+        if (!outgoingData)
+            return false;
+        if (outgoingDataBuffer)
+            return outgoingDataBuffer->isEmpty();
+        return outgoingData->size() == 0;
+    };
+    if (Q_UNLIKELY(hasEmptyOutgoingPayload()) && !contentLength0Allowed()) {
+        outgoingData = nullptr;
+        outgoingDataBuffer.reset();
+    }
+}
+
 void QNetworkReplyHttpImplPrivate::postRequest(const QNetworkRequest &newHttpRequest)
 {
     Q_Q(QNetworkReplyHttpImpl);
@@ -694,6 +744,10 @@ void QNetworkReplyHttpImplPrivate::postRequest(const QNetworkRequest &newHttpReq
         redirectPolicy = qvariant_cast<QNetworkRequest::RedirectPolicy>(value);
 
     httpRequest.setRedirectPolicy(redirectPolicy);
+
+    // If, for some reason, it turns out we won't use the upload device we drop
+    // it in the following call:
+    maybeDropUploadDevice(newHttpRequest);
 
     httpRequest.setPriority(convert(newHttpRequest.priority()));
     loadingFromCache = false;
@@ -1046,7 +1100,7 @@ void QNetworkReplyHttpImplPrivate::initCacheSaveDevice()
     if (cacheSaveDevice)
         q->connect(cacheSaveDevice, SIGNAL(aboutToClose()), SLOT(_q_cacheSaveDeviceAboutToClose()));
 
-    if (!cacheSaveDevice || (cacheSaveDevice && !cacheSaveDevice->isOpen())) {
+    if (!cacheSaveDevice || !cacheSaveDevice->isOpen()) {
         if (Q_UNLIKELY(cacheSaveDevice && !cacheSaveDevice->isOpen()))
             qCritical("QNetworkReplyImpl: network cache returned a device that is not open -- "
                   "class %s probably needs to be fixed",
@@ -1167,9 +1221,10 @@ void QNetworkReplyHttpImplPrivate::replyDownloadData(QByteArray d)
     emit q->readyRead();
     // emit readyRead before downloadProgress in case this will cause events to be
     // processed and we get into a recursive call (as in QProgressDialog).
-    if (downloadProgressSignalChoke.elapsed() >= progressSignalInterval
+    if (downloadProgressSignalChoke.isValid() &&
+        downloadProgressSignalChoke.elapsed() >= progressSignalInterval
         && (!decompressHelper.isValid() || decompressHelper.isCountingBytes())) {
-        downloadProgressSignalChoke.restart();
+        downloadProgressSignalChoke.start();
         emit q->downloadProgress(bytesDownloaded, totalSizeOpt.value_or(-1));
     }
 }
@@ -1500,8 +1555,9 @@ void QNetworkReplyHttpImplPrivate::replyDownloadProgressSlot(qint64 bytesReceive
     // processed and we get into a recursive call (as in QProgressDialog).
     if (bytesDownloaded > 0)
         emit q->readyRead();
-    if (downloadProgressSignalChoke.elapsed() >= progressSignalInterval) {
-        downloadProgressSignalChoke.restart();
+    if (downloadProgressSignalChoke.isValid() &&
+        downloadProgressSignalChoke.elapsed() >= progressSignalInterval) {
+        downloadProgressSignalChoke.start();
         emit q->downloadProgress(bytesDownloaded, bytesTotal);
     }
 }
@@ -1937,8 +1993,9 @@ void QNetworkReplyHttpImplPrivate::_q_cacheLoadReadyRead()
         // This readyRead() goes to the user. The user then may or may not read() anything.
         emit q->readyRead();
 
-        if (downloadProgressSignalChoke.elapsed() >= progressSignalInterval) {
-            downloadProgressSignalChoke.restart();
+        if (downloadProgressSignalChoke.isValid() &&
+            downloadProgressSignalChoke.elapsed() >= progressSignalInterval) {
+            downloadProgressSignalChoke.start();
             emit q->downloadProgress(bytesDownloaded, totalSizeOpt.value_or(-1));
         }
     }
@@ -2084,10 +2141,8 @@ void QNetworkReplyHttpImplPrivate::emitReplyUploadProgress(qint64 bytesSent, qin
             if (bytesSent != bytesTotal && uploadProgressSignalChoke.elapsed() < progressSignalInterval) {
                 return;
             }
-            uploadProgressSignalChoke.restart();
-        } else {
-            uploadProgressSignalChoke.start();
         }
+        uploadProgressSignalChoke.start();
     }
     emit q->uploadProgress(bytesSent, bytesTotal);
 }

@@ -12,9 +12,11 @@
 #include "base/android/jni_string.h"
 #include "base/functional/bind.h"
 #include "base/values.h"
-#include "chrome/android/chrome_jni_headers/LensDebugBridge_jni.h"
 #include "chrome/browser/profiles/profile.h"
 #include "content/public/browser/web_ui.h"
+
+// Must come after all headers that specialize FromJniType() / ToJniType().
+#include "chrome/android/chrome_jni_headers/LensDebugBridge_jni.h"
 
 LensInternalsUIMessageHandler::LensInternalsUIMessageHandler(Profile* profile) {
 }
@@ -41,7 +43,7 @@ void LensInternalsUIMessageHandler::RegisterMessages() {
 
 void LensInternalsUIMessageHandler::HandleStartDebugMode(
     const base::Value::List& args) {
-  JNIEnv* env = base::android::AttachCurrentThread();
+  JNIEnv* env = jni_zero::AttachCurrentThread();
 
   Java_LensDebugBridge_startProactiveDebugMode(env);
 
@@ -53,7 +55,7 @@ void LensInternalsUIMessageHandler::HandleRefreshDebugData(
     const base::Value::List& args) {
   // Only needs to be called once.
   AllowJavascript();
-  JNIEnv* env = base::android::AttachCurrentThread();
+  JNIEnv* env = jni_zero::AttachCurrentThread();
 
   base::android::ScopedJavaLocalRef<jobjectArray> j_debug_data =
       Java_LensDebugBridge_refreshDebugData(env);
@@ -77,7 +79,7 @@ void LensInternalsUIMessageHandler::HandleRefreshDebugData(
 
 void LensInternalsUIMessageHandler::HandleStopDebugMode(
     const base::Value::List& args) {
-  JNIEnv* env = base::android::AttachCurrentThread();
+  JNIEnv* env = jni_zero::AttachCurrentThread();
 
   Java_LensDebugBridge_stopProactiveDebugMode(env);
 

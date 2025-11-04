@@ -3,10 +3,10 @@
 // found in the LICENSE file.
 
 import * as SDK from '../../../core/sdk/sdk.js';
-import * as ComponentHelpers from '../../../ui/components/helpers/helpers.js';
 import * as IconButton from '../../../ui/components/icon_button/icon_button.js';
 import * as NodeText from '../../../ui/components/node_text/node_text.js';
 import * as LitHtml from '../../../ui/lit-html/lit-html.js';
+import * as VisualLogging from '../../../ui/visual_logging/visual_logging.js';
 
 import {type DOMNode} from './Helper.js';
 import queryContainerStyles from './queryContainer.css.js';
@@ -86,6 +86,7 @@ export class QueryContainer extends HTMLElement {
       <a href="#"
         draggable=false
         class="container-link"
+        jslog=${VisualLogging.cssRuleHeader('container-query').track({click: true})}
         @click=${this.#onContainerLinkClick}
         @mouseenter=${this.#onContainerLinkMouseEnter}
         @mouseleave=${this.#onContainerLinkMouseLeave}
@@ -104,16 +105,16 @@ export class QueryContainer extends HTMLElement {
   }
 
   #renderQueriedSizeDetails(): LitHtml.LitTemplate {
-    if (!this.#queriedSizeDetails || this.#queriedSizeDetails.queryAxis === QueryAxis.None) {
+    if (!this.#queriedSizeDetails || this.#queriedSizeDetails.queryAxis === QueryAxis.NONE) {
       return LitHtml.nothing;
     }
 
-    const areBothAxesQueried = this.#queriedSizeDetails.queryAxis === QueryAxis.Both;
+    const areBothAxesQueried = this.#queriedSizeDetails.queryAxis === QueryAxis.BOTH;
 
     const axisIconClasses = LitHtml.Directives.classMap({
       'axis-icon': true,
-      'hidden': areBothAxesQueried,
-      'vertical': this.#queriedSizeDetails.physicalAxis === PhysicalAxis.Vertical,
+      hidden: areBothAxesQueried,
+      vertical: this.#queriedSizeDetails.physicalAxis === PhysicalAxis.VERTICAL,
     });
 
     // Disabled until https://crbug.com/1079231 is fixed.
@@ -135,10 +136,9 @@ export class QueryContainer extends HTMLElement {
   }
 }
 
-ComponentHelpers.CustomElements.defineComponent('devtools-query-container', QueryContainer);
+customElements.define('devtools-query-container', QueryContainer);
 
 declare global {
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   interface HTMLElementTagNameMap {
     'devtools-query-container': QueryContainer;
   }

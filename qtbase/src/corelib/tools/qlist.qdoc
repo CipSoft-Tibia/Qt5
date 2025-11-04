@@ -307,11 +307,11 @@
 
     Constructs a list with the contents in the iterator range [\a first, \a last).
 
-    \note This constructor only participates in overload resolution if
+    The value type of \c InputIterator must be convertible to \c T.
+
+    \constraints
     \c InputIterator meets the requirements of a
     \l {https://en.cppreference.com/w/cpp/named_req/InputIterator} {LegacyInputIterator}.
-
-    The value type of \c InputIterator must be convertible to \c T.
 */
 
 /*! \fn template <typename T> QList<T>::~QList()
@@ -424,6 +424,21 @@
 
     This function requires the value type to have an implementation
     of \c operator<().
+*/
+
+/*!
+    \fn template <typename T> auto QList<T>::operator<=>(const QList<T> &lhs, const QList<T> &rhs)
+    \since 6.9
+
+    Compares the contents of \a lhs and \a rhs
+    \l {https://en.cppreference.com/w/cpp/algorithm/lexicographical_compare_three_way}
+    {lexicographically}. Returns the result of the strongest applicable category
+    type, that is \c {decltype(lhs[0] <=> rhs[0])} if \c {operator<=>()} is
+    available for type \c {T}; otherwise \c {std::weak_ordering}.
+
+    \note This operator is only available in C++20 mode, and when the underlying
+    type \c T models the \c {std::three_way_comparable} concept
+    or provides \c {operator<()}.
 */
 
 /*!
@@ -893,6 +908,15 @@
     \since 5.6
 
     Moves the item at index position \a from to index position \a to.
+
+    \c from and \c to must be within bounds.
+
+    For example, to move the first item to the end of the list:
+    \code
+    QList<int> list = {1, 2, 3};
+    list.move(0, list.size() - 1);
+    qDebug() << list; // Prints "QList(2, 3, 1)"
+    \endcode
 */
 
 /*! \fn template <typename T> void QList<T>::removeFirst()
@@ -1603,12 +1627,12 @@
     This function will only allocate memory if the number of elements in the
     range exceeds the capacity of this list or this list is shared.
 
-    \note This function overload only participates in overload resolution if
-    \c InputIterator meets the requirements of a
-    \l {https://en.cppreference.com/w/cpp/named_req/InputIterator} {LegacyInputIterator}.
-
     \note The behavior is undefined if either argument is an iterator into
     *this.
+
+    \constraints
+    \c InputIterator meets the requirements of a
+    \l {https://en.cppreference.com/w/cpp/named_req/InputIterator} {LegacyInputIterator}.
 */
 
 /*! \fn template <typename T> QList<T>& QList<T>::assign(std::initializer_list<T> l)

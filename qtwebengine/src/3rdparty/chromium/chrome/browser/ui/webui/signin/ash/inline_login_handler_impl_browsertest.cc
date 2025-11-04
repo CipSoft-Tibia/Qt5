@@ -7,11 +7,13 @@
 #include <optional>
 
 #include "ash/constants/ash_features.h"
+#include "ash/constants/ash_switches.h"
 #include "base/functional/bind.h"
 #include "base/run_loop.h"
 #include "base/scoped_observation.h"
 #include "base/test/bind.h"
 #include "base/test/gmock_callback_support.h"
+#include "base/test/scoped_command_line.h"
 #include "base/test/scoped_feature_list.h"
 #include "base/test/test_future.h"
 #include "base/values.h"
@@ -104,7 +106,7 @@ std::ostream& operator<<(std::ostream& stream,
 DeviceAccountInfo GetGaiaDeviceAccountInfo() {
   return {signin::GetTestGaiaIdForEmail("primary@gmail.com") /*id*/,
           "primary@gmail.com" /*email*/,
-          user_manager::USER_TYPE_REGULAR /*user_type*/,
+          user_manager::UserType::kRegular /*user_type*/,
           account_manager::AccountType::kGaia /*account_type*/,
           "device-account-token" /*token*/};
 }
@@ -112,7 +114,7 @@ DeviceAccountInfo GetGaiaDeviceAccountInfo() {
 DeviceAccountInfo GetChildDeviceAccountInfo() {
   return {supervised_user::kChildAccountSUID /*id*/,
           "child@gmail.com" /*email*/,
-          user_manager::USER_TYPE_CHILD /*user_type*/,
+          user_manager::UserType::kChild /*user_type*/,
           account_manager::AccountType::kGaia /*account_type*/,
           "device-account-token" /*token*/};
 }
@@ -186,9 +188,10 @@ class InlineLoginHandlerTest
   void SetUpCommandLine(base::CommandLine* command_line) override {
     // Configure embedded test server.
     const GURL& base_url = embedded_test_server_.base_url();
-    command_line->AppendSwitchASCII(switches::kGaiaUrl, base_url.spec());
-    command_line->AppendSwitchASCII(switches::kLsoUrl, base_url.spec());
-    command_line->AppendSwitchASCII(switches::kGoogleApisUrl, base_url.spec());
+    command_line->AppendSwitchASCII(::switches::kGaiaUrl, base_url.spec());
+    command_line->AppendSwitchASCII(::switches::kLsoUrl, base_url.spec());
+    command_line->AppendSwitchASCII(::switches::kGoogleApisUrl,
+                                    base_url.spec());
     fake_gaia_.Initialize();
   }
 
@@ -208,8 +211,7 @@ class InlineLoginHandlerTest
     // Setup user.
     auto user_manager = std::make_unique<FakeChromeUserManager>();
     const user_manager::User* user;
-    if (GetDeviceAccountInfo().user_type ==
-        user_manager::UserType::USER_TYPE_CHILD) {
+    if (GetDeviceAccountInfo().user_type == user_manager::UserType::kChild) {
       user = user_manager->AddChildUser(AccountId::FromUserEmailGaiaId(
           GetDeviceAccountInfo().email, GetDeviceAccountInfo().id));
       profile()->GetPrefs()->SetString(prefs::kSupervisedUserId,
@@ -242,10 +244,9 @@ class InlineLoginHandlerTest
     options.set_same_site_cookie_context(
         net::CookieOptions::SameSiteCookieContext::MakeInclusive());
     auto url = GaiaUrls::GetInstance()->gaia_url();
-    auto cookie_obj = net::CanonicalCookie::Create(
+    auto cookie_obj = net::CanonicalCookie::CreateForTesting(
         url, std::string("oauth_code=") + kSecondaryAccountOAuthCode,
-        base::Time::Now(), std::nullopt /* server_time */,
-        std::nullopt /* cookie_partition_key */);
+        base::Time::Now());
     content::StoragePartition* partition =
         signin::GetSigninPartition(web_contents()->GetBrowserContext());
     base::test::TestFuture<net::CookieAccessResult> future;
@@ -362,8 +363,7 @@ IN_PROC_BROWSER_TEST_P(InlineLoginHandlerTest, NewAccountAdditionSuccess) {
   args.Append(GetCompleteLoginArgs(kSecondaryAccount1Email));
   web_ui()->HandleReceivedMessage(kCompleteLoginMessage, args);
 
-  if (GetDeviceAccountInfo().user_type ==
-      user_manager::UserType::USER_TYPE_CHILD) {
+  if (GetDeviceAccountInfo().user_type == user_manager::UserType::kChild) {
     // Consent logging is required for secondary accounts.
     CompleteConsentLogForChildUser(kSecondaryAccount1Email);
   }
@@ -450,8 +450,7 @@ IN_PROC_BROWSER_TEST_P(InlineLoginHandlerTest,
 
 IN_PROC_BROWSER_TEST_P(InlineLoginHandlerTest,
                        FlowNameForRegularSecondaryAccountAddition) {
-  if (GetDeviceAccountInfo().user_type ==
-      user_manager::UserType::USER_TYPE_CHILD) {
+  if (GetDeviceAccountInfo().user_type == user_manager::UserType::kChild) {
     return;
   }
 
@@ -465,8 +464,7 @@ IN_PROC_BROWSER_TEST_P(InlineLoginHandlerTest,
 
 IN_PROC_BROWSER_TEST_P(InlineLoginHandlerTest,
                        FlowNameForRegularSecondaryAccountReauthentication) {
-  if (GetDeviceAccountInfo().user_type ==
-      user_manager::UserType::USER_TYPE_CHILD) {
+  if (GetDeviceAccountInfo().user_type == user_manager::UserType::kChild) {
     return;
   }
 
@@ -481,8 +479,7 @@ IN_PROC_BROWSER_TEST_P(InlineLoginHandlerTest,
 
 IN_PROC_BROWSER_TEST_P(InlineLoginHandlerTest,
                        FlowNameForChildEduAccountAddition) {
-  if (GetDeviceAccountInfo().user_type !=
-      user_manager::UserType::USER_TYPE_CHILD) {
+  if (GetDeviceAccountInfo().user_type != user_manager::UserType::kChild) {
     return;
   }
 
@@ -496,8 +493,7 @@ IN_PROC_BROWSER_TEST_P(InlineLoginHandlerTest,
 
 IN_PROC_BROWSER_TEST_P(InlineLoginHandlerTest,
                        FlowNameForChildEduAccountReauthentication) {
-  if (GetDeviceAccountInfo().user_type !=
-      user_manager::UserType::USER_TYPE_CHILD) {
+  if (GetDeviceAccountInfo().user_type != user_manager::UserType::kChild) {
     return;
   }
 
@@ -523,6 +519,8 @@ class InlineLoginHandlerTestWithArcRestrictions
     lacros.push_back(
         ash::standalone_browser::features::kLacrosForSupervisedUsers);
     feature_list_.InitWithFeatures(/*enabled=*/lacros, /*disabled=*/{});
+    scoped_command_line_.GetProcessCommandLine()->AppendSwitch(
+        ash::switches::kEnableLacrosForTesting);
   }
 
   ~InlineLoginHandlerTestWithArcRestrictions() override = default;
@@ -531,7 +529,7 @@ class InlineLoginHandlerTestWithArcRestrictions
     if (browser() == nullptr) {
       // Create a new Ash browser window so test code using browser() can work
       // even when Lacros is the only browser.
-      // TODO(crbug.com/1450158): Remove uses of browser() from such tests.
+      // TODO(crbug.com/40270051): Remove uses of browser() from such tests.
       chrome::NewEmptyWindow(ProfileManager::GetActiveUserProfile());
       SelectFirstBrowser();
     }
@@ -601,6 +599,7 @@ class InlineLoginHandlerTestWithArcRestrictions
 
  private:
   base::test::ScopedFeatureList feature_list_;
+  base::test::ScopedCommandLine scoped_command_line_;
 };
 
 IN_PROC_BROWSER_TEST_P(InlineLoginHandlerTestWithArcRestrictions,
@@ -624,8 +623,7 @@ IN_PROC_BROWSER_TEST_P(InlineLoginHandlerTestWithArcRestrictions,
   args.Append(GetCompleteLoginArgs(kSecondaryAccount1Email));
   web_ui()->HandleReceivedMessage(kCompleteLoginMessage, args);
 
-  if (GetDeviceAccountInfo().user_type ==
-      user_manager::UserType::USER_TYPE_CHILD) {
+  if (GetDeviceAccountInfo().user_type == user_manager::UserType::kChild) {
     // Consent logging is required for secondary accounts.
     CompleteConsentLogForChildUser(kSecondaryAccount1Email);
   }

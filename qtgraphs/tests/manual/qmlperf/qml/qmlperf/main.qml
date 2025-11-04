@@ -191,9 +191,8 @@ Item {
 
             ColumnLayout {
                 id: transparencyContainer
-                visible: tabBar.currentIndex !== 0
                 Layout.fillWidth: true
-                Layout.preferredHeight: 30
+                Layout.preferredHeight: 60
                 Layout.margins: 10
                 Layout.alignment: Qt.AlignCenter
 
@@ -209,6 +208,10 @@ Item {
                     value: 1.0
                     onValueChanged: {
                         // change scattergradient alpha
+
+                        surfaceRedStop.color.a = value
+                        surfaceSeries.baseColor.a = value
+
                         scatterYGreenstop.color.a = value
                         scatterYBluestop.color.a = value
                         scatterYRedstop.color.a = value
@@ -221,6 +224,29 @@ Item {
                         // change bar series baseColor alpha
                         barSeries.baseColor.a = value
                     }
+                }
+                Text {
+                    text: "Transparency Technique"
+                    Layout.fillWidth: true
+                    horizontalAlignment: Text.AlignHCenter
+                }
+
+                ComboBox {
+                    Layout.fillWidth: true
+                    textRole: "text"
+                    valueRole: "value"
+
+                    onActivated: {
+                        surfaceGraph.transparencyTechnique = currentValue
+                        scatterGraph.transparencyTechnique = currentValue
+                        barGraph.transparencyTechnique = currentValue
+                    }
+
+                    model : [
+                        { value: Graphs3D.TransparencyTechnique.Default, text: qsTr("Default") },
+                        { value: Graphs3D.TransparencyTechnique.Approximate, text: qsTr("Approximate") },
+                        { value: Graphs3D.TransparencyTechnique.Accurate, text: qsTr("Accurate") }
+                    ]
                 }
             }
 
@@ -424,7 +450,6 @@ Item {
                 axisY.max: 1
                 horizontalAspectRatio: 1.0
 
-
                 theme : GraphsTheme {
                     theme: GraphsTheme.Theme.QtGreen
                     colorStyle: GraphsTheme.ColorStyle.RangeGradient
@@ -432,8 +457,8 @@ Item {
 
                     Gradient {
                         id: surfaceGradient
-                        GradientStop { position: 1.0; color: "red" }
-                        GradientStop { position: 0.0; color: "blue" }
+                        GradientStop {id: surfaceRedStop; position: 1.0; color: "red" }
+                        GradientStop {id: surfaceBlueStop; position: 0.0; color: "blue" }
                     }
                 }
 

@@ -2,6 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#ifdef UNSAFE_BUFFERS_BUILD
+// TODO(crbug.com/350788890): Remove this and spanify to fix the errors.
+#pragma allow_unsafe_buffers
+#endif
+
 #include "url/gurl.h"
 
 #include <stddef.h>
@@ -160,18 +165,10 @@ const std::string& GURL::spec() const {
   if (is_valid_ || spec_.empty())
     return spec_;
 
-  // TODO(crbug.com/851128): Make sure this no longer hits before making
-  // NOTREACHED_NORETURN();
-  NOTREACHED() << "Trying to get the spec of an invalid URL!";
+  // TODO(crbug.com/40580068): Make sure this no longer hits before making
+  // NOTREACHED();
+  DUMP_WILL_BE_NOTREACHED() << "Trying to get the spec of an invalid URL!";
   return base::EmptyString();
-}
-
-bool GURL::operator<(const GURL& other) const {
-  return spec_ < other.spec_;
-}
-
-bool GURL::operator>(const GURL& other) const {
-  return spec_ > other.spec_;
 }
 
 // Note: code duplicated below (it's inconvenient to use a template here).
@@ -277,8 +274,9 @@ void GURL::ProcessFileSystemURLAfterReplaceComponents() {
 GURL GURL::DeprecatedGetOriginAsURL() const {
   // This doesn't make sense for invalid or nonstandard URLs, so return
   // the empty URL.
-  if (!is_valid_ || (!IsStandard() && !IsCustom()))
+  if (!is_valid_ || (!IsStandard() && !IsCustom())) {
     return GURL();
+  }
 
   if (SchemeIsFileSystem())
     return inner_url_->DeprecatedGetOriginAsURL();
@@ -310,8 +308,9 @@ GURL GURL::GetAsReferrer() const {
 GURL GURL::GetWithEmptyPath() const {
   // This doesn't make sense for invalid or nonstandard URLs, so return
   // the empty URL.
-  if (!is_valid_ || (!IsStandard() && !IsCustom()))
+  if (!is_valid_ || (!IsStandard() && !IsCustom())) {
     return GURL();
+  }
 
   // We could optimize this since we know that the URL is canonical, and we are
   // appending a canonical path, so avoiding re-parsing.
@@ -407,8 +406,8 @@ int GURL::IntPort() const {
 int GURL::EffectiveIntPort() const {
   int int_port = IntPort();
   if (int_port == url::PORT_UNSPECIFIED && IsStandard())
-    return url::DefaultPortForScheme(spec_.data() + parsed_.scheme.begin,
-                                     parsed_.scheme.len);
+    return url::DefaultPortForScheme(std::string_view(
+        spec_.data() + parsed_.scheme.begin, parsed_.scheme.len));
   return int_port;
 }
 
@@ -550,27 +549,11 @@ bool operator==(const GURL& x, const GURL& y) {
   return x.possibly_invalid_spec() == y.possibly_invalid_spec();
 }
 
-bool operator!=(const GURL& x, const GURL& y) {
-  return !(x == y);
-}
-
 bool operator==(const GURL& x, std::string_view spec) {
   DCHECK_EQ(GURL(spec).possibly_invalid_spec(), spec)
       << "Comparisons of GURLs and strings must ensure as a precondition that "
          "the string is fully canonicalized.";
   return x.possibly_invalid_spec() == spec;
-}
-
-bool operator==(std::string_view spec, const GURL& x) {
-  return x == spec;
-}
-
-bool operator!=(const GURL& x, std::string_view spec) {
-  return !(x == spec);
-}
-
-bool operator!=(std::string_view spec, const GURL& x) {
-  return !(x == spec);
 }
 
 namespace url::debug {

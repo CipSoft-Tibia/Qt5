@@ -36,7 +36,6 @@ class MenuModelBase : public ui::MenuModel {
   ~MenuModelBase() override = default;
 
   // ui::MenuModel implementation:
-
   size_t GetItemCount() const override { return items_.size(); }
 
   ItemType GetTypeAt(size_t index) const override { return items_[index].type; }
@@ -134,8 +133,8 @@ class MenuModelBase : public ui::MenuModel {
   const Item& GetItemDefinition(size_t index) { return items_[index]; }
 
   // Access index argument to ActivatedAt().
-  absl::optional<size_t> last_activation() const { return last_activation_; }
-  void set_last_activation(absl::optional<size_t> last_activation) {
+  std::optional<size_t> last_activation() const { return last_activation_; }
+  void set_last_activation(std::optional<size_t> last_activation) {
     last_activation_ = last_activation;
   }
 
@@ -144,10 +143,10 @@ class MenuModelBase : public ui::MenuModel {
 
  private:
   int command_id_base_;
-  absl::optional<size_t> last_activation_;
+  std::optional<size_t> last_activation_;
 };
 
-class SubmenuModel : public MenuModelBase {
+class SubmenuModel final : public MenuModelBase {
  public:
   SubmenuModel() : MenuModelBase(kSubmenuIdBase) {
     items_.emplace_back(TYPE_COMMAND, "submenu item 0", nullptr, false, true);
@@ -159,9 +158,16 @@ class SubmenuModel : public MenuModelBase {
   SubmenuModel& operator=(const SubmenuModel&) = delete;
 
   ~SubmenuModel() override = default;
+
+  base::WeakPtr<ui::MenuModel> AsWeakPtr() override {
+    return weak_ptr_factory_.GetWeakPtr();
+  }
+
+ private:
+  base::WeakPtrFactory<SubmenuModel> weak_ptr_factory_{this};
 };
 
-class ActionableSubmenuModel : public MenuModelBase {
+class ActionableSubmenuModel final : public MenuModelBase {
  public:
   ActionableSubmenuModel() : MenuModelBase(kActionableSubmenuIdBase) {
     items_.emplace_back(TYPE_COMMAND, "actionable submenu item 0", nullptr);
@@ -173,9 +179,16 @@ class ActionableSubmenuModel : public MenuModelBase {
   ActionableSubmenuModel& operator=(const ActionableSubmenuModel&) = delete;
 
   ~ActionableSubmenuModel() override = default;
+
+  base::WeakPtr<ui::MenuModel> AsWeakPtr() override {
+    return weak_ptr_factory_.GetWeakPtr();
+  }
+
+ private:
+  base::WeakPtrFactory<ActionableSubmenuModel> weak_ptr_factory_{this};
 };
 
-class RootModel : public MenuModelBase {
+class RootModel final : public MenuModelBase {
  public:
   RootModel() : MenuModelBase(kRootIdBase) {
     submenu_model_ = std::make_unique<SubmenuModel>();
@@ -198,9 +211,14 @@ class RootModel : public MenuModelBase {
     items_.clear();
   }
 
+  base::WeakPtr<ui::MenuModel> AsWeakPtr() override {
+    return weak_ptr_factory_.GetWeakPtr();
+  }
+
  private:
   std::unique_ptr<MenuModel> submenu_model_;
   std::unique_ptr<MenuModel> actionable_submenu_model_;
+  base::WeakPtrFactory<RootModel> weak_ptr_factory_{this};
 };
 
 void CheckSubmenu(const RootModel& model,
@@ -272,7 +290,7 @@ void CheckSubmenu(const RootModel& model,
     // Check activation.
     static_cast<views::MenuDelegate*>(delegate)->ExecuteCommand(id);
     EXPECT_EQ(i, submodel->last_activation());
-    submodel->set_last_activation(absl::nullopt);
+    submodel->set_last_activation(std::nullopt);
   }
 }
 
@@ -356,7 +374,7 @@ TEST_F(MenuModelAdapterTest, BasicTest) {
     // Check activation.
     static_cast<views::MenuDelegate*>(&delegate)->ExecuteCommand(id);
     EXPECT_EQ(i, model.last_activation());
-    model.set_last_activation(absl::nullopt);
+    model.set_last_activation(std::nullopt);
   }
 
   // Check the submenu.

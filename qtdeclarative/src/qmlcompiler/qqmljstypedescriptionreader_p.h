@@ -77,6 +77,7 @@ private:
     QList<QQmlJSExportedScope> *m_objects = nullptr;
     QStringList *m_dependencies = nullptr;
     int m_currentCtorIndex = 0;
+    int m_currentMethodIndex = 0;
 };
 
 QT_END_NAMESPACE

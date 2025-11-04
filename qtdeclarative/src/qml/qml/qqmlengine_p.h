@@ -391,25 +391,40 @@ T QQmlEnginePrivate::singletonInstance(const QQmlType &type) {
     return qobject_cast<T>(singletonInstance<QJSValue>(type).toQObject());
 }
 
+class QQmlComponentPrivate;
 struct LoadHelper final : QQmlTypeLoader::Blob
 {
-    LoadHelper(QQmlTypeLoader *loader, QAnyStringView uri);
-
-    struct ResolveTypeResult
-    {
-        enum Status { NoSuchModule, ModuleFound } status;
-        QQmlType type;
+public:
+    enum class ResolveTypeResult {
+        NoSuchModule,
+        ModuleFound
     };
 
-    ResolveTypeResult resolveType(QAnyStringView typeName);
+    LoadHelper(
+            QQmlTypeLoader *loader, QAnyStringView uri, QAnyStringView typeName,
+            QQmlTypeLoader::Mode mode);
+
+    QQmlType type() const { return m_type; }
+    QQmlTypeLoader::Mode mode() const { return m_mode; }
+    ResolveTypeResult resolveTypeResult() const { return m_resolveTypeResult; }
+
+    void registerCallback(QQmlComponentPrivate *callback);
+    void unregisterCallback(QQmlComponentPrivate *callback);
 
 protected:
-    void dataReceived(const SourceCodeData &) final { Q_UNREACHABLE(); }
+    void done() final;
+    void completed() final;
+    void dataReceived(const SourceCodeData &) final;
     void initializeFromCachedUnit(const QQmlPrivate::CachedQmlUnit *) final { Q_UNREACHABLE(); }
 
 private:
     bool couldFindModule() const;
     QString m_uri;
+    QString m_typeName;
+    QQmlType m_type;
+    QQmlComponentPrivate *m_callback = nullptr;
+    QQmlTypeLoader::Mode m_mode = QQmlTypeLoader::Synchronous;
+    ResolveTypeResult m_resolveTypeResult = ResolveTypeResult::NoSuchModule;
 };
 
 

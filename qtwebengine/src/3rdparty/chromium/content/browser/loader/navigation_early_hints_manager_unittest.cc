@@ -24,6 +24,7 @@
 #include "services/network/public/mojom/parsed_headers.mojom.h"
 #include "services/network/test/test_network_context.h"
 #include "services/network/test/test_url_loader_factory.h"
+#include "testing/gmock/include/gmock/gmock.h"
 #include "testing/gtest/include/gtest/gtest.h"
 
 namespace content {
@@ -58,10 +59,13 @@ class FakeNetworkContext : public network::TestNetworkContext {
   void PreconnectSockets(
       uint32_t num_streams,
       const GURL& url,
-      bool allow_credentials,
+      network::mojom::CredentialsMode credentials_mode,
       const net::NetworkAnonymizationKey& network_anonymization_key) override {
-    preconnect_requests_.emplace_back(url, allow_credentials,
-                                      network_anonymization_key);
+    preconnect_requests_.emplace_back(
+        url,
+        credentials_mode == network::mojom::CredentialsMode::kInclude ? true
+                                                                      : false,
+        network_anonymization_key);
   }
 
   std::vector<PreconnectRequest>& preconnect_requests() {
@@ -86,8 +90,7 @@ class NavigationEarlyHintsManagerTest : public testing::Test {
     mojo::Remote<network::mojom::URLLoaderFactory> remote;
     loader_factory_.Clone(remote.BindNewPipeAndPassReceiver());
     early_hints_manager_ = std::make_unique<NavigationEarlyHintsManager>(
-        browser_context_, storage_partition_,
-        FrameTreeNode::kFrameTreeNodeInvalidId,
+        browser_context_, storage_partition_, FrameTreeNodeId(),
         NavigationEarlyHintsManagerParams(origin, std::move(isolation_info),
                                           std::move(remote)));
   }
@@ -183,10 +186,10 @@ TEST_F(NavigationEarlyHintsManagerTest, SimpleResponse) {
 
   loader_factory().SetInterceptor(base::BindLambdaForTesting(
       [&](const network::ResourceRequest& resource_request) {
-        std::string accept_value;
-        ASSERT_TRUE(resource_request.headers.GetHeader(
-            net::HttpRequestHeaders::kAccept, &accept_value));
-        EXPECT_EQ(accept_value, network::kDefaultAcceptHeaderValue);
+        EXPECT_THAT(
+            resource_request.headers.GetHeader(
+                net::HttpRequestHeaders::kAccept),
+            testing::Optional(std::string(network::kDefaultAcceptHeaderValue)));
       }));
 
   early_hints_manager().HandleEarlyHints(CreateEarlyHintWithPreload(),

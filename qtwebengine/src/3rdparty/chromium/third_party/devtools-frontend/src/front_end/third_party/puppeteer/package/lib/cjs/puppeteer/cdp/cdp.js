@@ -33,6 +33,7 @@ __exportStar(require("./Dialog.js"), exports);
 __exportStar(require("./ElementHandle.js"), exports);
 __exportStar(require("./EmulationManager.js"), exports);
 __exportStar(require("./ExecutionContext.js"), exports);
+__exportStar(require("./ExtensionTransport.js"), exports);
 __exportStar(require("./FirefoxTargetManager.js"), exports);
 __exportStar(require("./Frame.js"), exports);
 __exportStar(require("./FrameManager.js"), exports);
@@ -52,6 +53,6 @@ __exportStar(require("./PredefinedNetworkConditions.js"), exports);
 __exportStar(require("./Target.js"), exports);
 __exportStar(require("./TargetManager.js"), exports);
 __exportStar(require("./Tracing.js"), exports);
+__exportStar(require("./utils.js"), exports);
 __exportStar(require("./WebWorker.js"), exports);
-__exportStar(require("./cdp.js"), exports);
 //# sourceMappingURL=cdp.js.map

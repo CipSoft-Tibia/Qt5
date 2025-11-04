@@ -180,12 +180,18 @@ TEST_F(VisitAnnotationsDatabaseTest,
           {VisitContextAnnotations::BrowserType::kCustomTab,
            SessionID::FromSerializedValue(14),
            SessionID::FromSerializedValue(15), 107, 108, 109, 404},
-          false, true, true, false, true, false)};
+          false, true, true, false, true, false),
+      MakeContextAnnotations(
+          {VisitContextAnnotations::BrowserType::kAuthTab,
+           SessionID::FromSerializedValue(16),
+           SessionID::FromSerializedValue(17), 110, 111, 112, 404},
+          false, false, false, false, false, false)};
 
   // Verify `AddContextAnnotationsForVisit()` and `GetAnnotatedVisits()`.
   AddContextAnnotationsForVisit(1, visit_context_annotations_list[0]);
   AddContextAnnotationsForVisit(2, visit_context_annotations_list[1]);
   AddContextAnnotationsForVisit(3, visit_context_annotations_list[2]);
+  AddContextAnnotationsForVisit(4, visit_context_annotations_list[3]);
 
   for (size_t i = 0; i < std::size(visit_context_annotations_list); ++i) {
     SCOPED_TRACE(testing::Message() << "i: " << i);
@@ -349,8 +355,7 @@ TEST_F(
       {11, {visit_1, visit_2}, {}, false, u"label", u"raw_label", {}, {}, .6});
 
   // Empty or `nullopt` labels should both be retrieved as `nullopt`.
-  clusters.push_back(
-      {11, {visit_2}, {}, false, u"", absl::nullopt, {}, {}, .6});
+  clusters.push_back({11, {visit_2}, {}, false, u"", std::nullopt, {}, {}, .6});
   AddClusters(clusters);
 
   // Test `GetCluster()`.
@@ -369,8 +374,8 @@ TEST_F(
 
   const auto cluster_2 = GetCluster(2);
   EXPECT_EQ(cluster_2.cluster_id, 2);
-  EXPECT_EQ(cluster_2.label, absl::nullopt);
-  EXPECT_EQ(cluster_2.raw_label, absl::nullopt);
+  EXPECT_EQ(cluster_2.label, std::nullopt);
+  EXPECT_EQ(cluster_2.raw_label, std::nullopt);
   EXPECT_THAT(GetVisitIdsInCluster(2), UnorderedElementsAre(21));
 
   // There should be no other cluster.

@@ -4,9 +4,10 @@
 // LICENSE file in the root directory of this source tree.
 
 #include <assert.h>
+#include <stddef.h>
 
-#include <xnnpack/math.h>
-#include <xnnpack/microkernel-utils.h>
+#include "xnnpack/math.h"
+#include "xnnpack/microkernel-utils.h"
 
 static size_t dwconv_num_middle_pass(
   size_t kernel_size,

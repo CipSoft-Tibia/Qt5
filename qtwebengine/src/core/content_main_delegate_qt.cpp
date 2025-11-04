@@ -46,7 +46,6 @@
 #if BUILDFLAG(IS_MAC)
 #include "base/trace_event/trace_event.h"
 #include "content/public/common/content_features.h"
-#include "media/gpu/mac/vt_video_decode_accelerator_mac.h"
 #endif
 
 #include <QtCore/qcoreapplication.h>
@@ -171,13 +170,6 @@ void ContentMainDelegateQt::PreSandboxStartup()
 #if BUILDFLAG(IS_WIN)
         media::PreSandboxMediaFoundationInitialization();
 #endif
-
-#if BUILDFLAG(IS_MAC)
-        {
-            TRACE_EVENT0("gpu", "Initialize VideoToolbox");
-            media::InitializeVideoToolbox();
-        }
-#endif
     }
 
     if (parsedCommandLine->HasSwitch(switches::kApplicationName)) {
@@ -200,14 +192,6 @@ content::ContentBrowserClient *ContentMainDelegateQt::CreateContentBrowserClient
     m_browserClient.reset(new ContentBrowserClientQt);
     return m_browserClient.get();
 }
-
-#if defined(USE_OZONE) || BUILDFLAG(IS_WIN)
-content::ContentGpuClient *ContentMainDelegateQt::CreateContentGpuClient()
-{
-    m_gpuClient.reset(new ContentGpuClientQt);
-    return m_gpuClient.get();
-}
-#endif
 
 content::ContentRendererClient *ContentMainDelegateQt::CreateContentRendererClient()
 {
@@ -253,7 +237,7 @@ static void SafeOverridePathImpl(const char *keyName, int key, const base::FileP
 
 #define SafeOverridePath(KEY, PATH) SafeOverridePathImpl(#KEY, KEY, PATH)
 
-absl::optional<int> ContentMainDelegateQt::BasicStartupComplete()
+std::optional<int> ContentMainDelegateQt::BasicStartupComplete()
 {
     SafeOverridePath(base::FILE_EXE, WebEngineLibraryInfo::getPath(base::FILE_EXE));
     SafeOverridePath(base::DIR_QT_LIBRARY_DATA, WebEngineLibraryInfo::getPath(base::DIR_QT_LIBRARY_DATA));
@@ -266,7 +250,7 @@ absl::optional<int> ContentMainDelegateQt::BasicStartupComplete()
 
     url::CustomScheme::LoadSchemes(base::CommandLine::ForCurrentProcess());
 
-    return absl::nullopt;
+    return std::nullopt;
 }
 
 } // namespace QtWebEngineCore

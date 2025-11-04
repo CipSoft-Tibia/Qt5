@@ -19,7 +19,11 @@ class QQuickGradient;
 class QGraphsThemePrivate;
 struct QGraphsLinePrivate;
 
+#if QT_VERSION < QT_VERSION_CHECK(7, 0, 0)
 QT_DECLARE_QESDP_SPECIALIZATION_DTOR_WITH_EXPORT(QGraphsLinePrivate, Q_GRAPHS_EXPORT)
+#else
+QT_DECLARE_QESDP_SPECIALIZATION_DTOR(QGraphsLinePrivate)
+#endif
 
 struct QGraphsThemeDirtyBitField
 {

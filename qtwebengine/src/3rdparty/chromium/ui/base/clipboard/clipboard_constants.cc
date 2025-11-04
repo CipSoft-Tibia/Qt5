@@ -29,6 +29,7 @@ const char kMimeTypeWindowDrag[] = "chromium/x-window-drag";
 const char kMimeTypeLinuxUtf8String[] = "UTF8_STRING";
 const char kMimeTypeLinuxString[] = "STRING";
 const char kMimeTypeLinuxText[] = "TEXT";
+const char kMimeTypeLinuxSourceUrl[] = "chromium/x-source-url";
 #endif  // BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS) ||
         // BUILDFLAG(IS_FUCHSIA)
 
@@ -38,10 +39,10 @@ const char kMimeTypeDataTransferEndpoint[] =
     "chromium/x-data-transfer-endpoint";
 #endif  // BUILDFLAG(IS_CHROMEOS)
 
-#if !BUILDFLAG(IS_APPLE) || defined(TOOLKIT_QT)
-const char kMimeTypeWebCustomData[] = "chromium/x-web-custom-data";
+#if !BUILDFLAG(IS_APPLE) || BUILDFLAG(IS_QTWEBENGINE)
+const char kMimeTypeDataTransferCustomData[] = "chromium/x-web-custom-data";
 const char kMimeTypeWebkitSmartPaste[] = "chromium/x-webkit-paste";
-#endif  // BUILDFLAG(IS_APPLE)
+#endif  // BUILDFLAG(IS_APPLE) || BUILDFLAG(IS_QTWEBENGINE)
 
 #if BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_IOS)
 const char kMimeTypeImageURI[] = "image-uri";

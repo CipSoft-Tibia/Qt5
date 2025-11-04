@@ -13,5 +13,18 @@ public interface QtQmlStatusChangeListener
      * @param status The current status. The status can be QtQmlStatus.NULL,
      *               QtQmlStatus.READY, QtQmlStatus.LOADING, or QtQmlStatus.ERROR.
      **/
-    void onStatusChanged(QtQmlStatus status);
+    default void onStatusChanged(QtQmlStatus status) {};
+
+    /**
+     * Called on the Android UI thread when the QML component status has changed.
+     * This is called only when a QtQuickViewContent is loaded using QtQuickView.loadContent().
+     *
+     * @param status The current status. The status can be QtQmlStatus.NULL,
+     *               QtQmlStatus.READY, QtQmlStatus.LOADING, or QtQmlStatus.ERROR.
+     * @param content The content of the Qt Quick view, {@code content} cannot be null.
+     **/
+    default void onStatusChanged(QtQmlStatus status, QtQuickViewContent content)
+    {
+        onStatusChanged(status);
+    };
 }

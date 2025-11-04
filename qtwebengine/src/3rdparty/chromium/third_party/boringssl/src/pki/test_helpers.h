@@ -19,12 +19,12 @@
 #include "trust_store.h"
 #include "verify_certificate_chain.h"
 
-namespace bssl {
+BSSL_NAMESPACE_BEGIN
 
 namespace der {
 
 // This function is used by GTest to support EXPECT_EQ() for der::Input.
-void PrintTo(const Input &data, ::std::ostream *os);
+void PrintTo(Input data, ::std::ostream *os);
 
 }  // namespace der
 
@@ -162,6 +162,6 @@ void VerifyUserConstrainedPolicySet(
     const std::set<der::Input> &actual_user_constrained_policy_set,
     const std::string &errors_file_path);
 
-}  // namespace bssl
+BSSL_NAMESPACE_END
 
 #endif  // BSSL_PKI_TEST_HELPERS_H_

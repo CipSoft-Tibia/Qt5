@@ -1,5 +1,6 @@
 // Copyright (C) 2020 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant
 
 #include "qqmldomitem_p.h"
 #include "qqmldomtop_p.h"
@@ -1910,7 +1911,7 @@ void DomEnvironment::addQmlFile(const std::shared_ptr<QmlFile> &file, AddOption 
         // force reset the outdated qqmljsscope in case it was already populated
         QDeferredFactory<QQmlJSScope> newFactory(semanticAnalysis().m_importer.get(),
                                                  file->canonicalFilePath(),
-                                                 TypeReader{ weak_from_this() });
+                                                 TypeReader{ weak_from_this(), m_loadPaths });
         file->setHandleForPopulation(handle);
         handle.resetFactory(std::move(newFactory));
     }
@@ -1966,7 +1967,13 @@ DomEnvironment::TypeReader::operator()(QQmlJSImporter *importer, const QString &
                 SourceLocation{} } };
     }
     const DomItem qmlFile = it.value()->currentItem(DomItem(envPtr));
+
+    // workaround for QTBUG-137705 while waiting for qmlls to use separate DomEnvironments for files
+    // requiring different importpaths (QTBUG-134308).
+    const QStringList oldImportPaths = envPtr->loadPaths();
+    envPtr->setLoadPaths(m_importPaths);
     envPtr->populateFromQmlFile(MutableDomItem(qmlFile));
+    envPtr->setLoadPaths(oldImportPaths);
     return {};
 }
 
@@ -2077,7 +2084,8 @@ bool DomEnvironment::commitToBase(
             continue;
 
         const QDeferredFactory<QQmlJSScope> newFactory(
-                oldFactory->importer(), oldFactory->filePath(), TypeReader{ newBaseForPopulation });
+                oldFactory->importer(), oldFactory->filePath(),
+                TypeReader{ newBaseForPopulation, m_loadPaths });
         handle.resetFactory(newFactory);
     }
     return true;

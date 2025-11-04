@@ -8,7 +8,7 @@
 #include <cstring>
 #include <mutex>
 
-#include <xnnpack/common.h>
+#include "xnnpack/common.h"
 
 #ifdef __linux__
   #include <sched.h>
@@ -24,9 +24,9 @@
   #include <cpuinfo.h>
 #endif  // XNN_ENABLE_CPUINFO
 
-#include <xnnpack.h>
-#include <xnnpack/allocator.h>
-#include <xnnpack/config.h>
+#include "xnnpack.h"
+#include "xnnpack/allocator.h"
+#include "xnnpack/hardware-config.h"
 
 #include "bench/utils.h"
 
@@ -323,7 +323,18 @@ void MultiThreadingParameters(benchmark::internal::Benchmark* benchmark) {
   bool CheckRVV(benchmark::State& state) {
     const xnn_hardware_config* hardware_config = xnn_init_hardware_config();
     if (hardware_config == nullptr || !hardware_config->use_riscv_vector) {
-      state.SkipWithError("no V extension");
+      state.SkipWithError("no RVV extension");
+      return false;
+    }
+    return true;
+  }
+#endif  // XNN_ARCH_RISCV
+
+#if XNN_ARCH_RISCV
+  bool CheckRVVFP16ARITH(benchmark::State& state) {
+    const xnn_hardware_config* hardware_config = xnn_init_hardware_config();
+    if (hardware_config == nullptr || !hardware_config->use_riscv_vector_fp16_arith) {
+      state.SkipWithError("no RVV-FP16-ARITH extension");
       return false;
     }
     return true;
@@ -368,17 +379,6 @@ void MultiThreadingParameters(benchmark::internal::Benchmark* benchmark) {
     const xnn_hardware_config* hardware_config = xnn_init_hardware_config();
     if (hardware_config == nullptr || !hardware_config->use_x86_f16c) {
       state.SkipWithError("no F16C extension");
-      return false;
-    }
-    return true;
-  }
-#endif  // XNN_ARCH_X86 || XNN_ARCH_X86_64
-
-#if XNN_ARCH_X86 || XNN_ARCH_X86_64
-  bool CheckXOP(benchmark::State& state) {
-    const xnn_hardware_config* hardware_config = xnn_init_hardware_config();
-    if (hardware_config == nullptr || !hardware_config->use_x86_xop) {
-      state.SkipWithError("no XOP extension");
       return false;
     }
     return true;
@@ -452,6 +452,39 @@ void MultiThreadingParameters(benchmark::internal::Benchmark* benchmark) {
 #endif  // XNN_ARCH_X86 || XNN_ARCH_X86_64
 
 #if XNN_ARCH_X86 || XNN_ARCH_X86_64
+  bool CheckAVX512AMX(benchmark::State& state) {
+    const xnn_hardware_config* hardware_config = xnn_init_hardware_config();
+    if (hardware_config == nullptr || !hardware_config->use_x86_avx512amx) {
+      state.SkipWithError("no AVX512 AMX extension");
+      return false;
+    }
+    return true;
+  }
+#endif  // XNN_ARCH_X86 || XNN_ARCH_X86_64
+
+#if XNN_ARCH_X86 || XNN_ARCH_X86_64
+  bool CheckAVX512FP16(benchmark::State& state) {
+    const xnn_hardware_config* hardware_config = xnn_init_hardware_config();
+    if (hardware_config == nullptr || !hardware_config->use_x86_avx512fp16) {
+      state.SkipWithError("no AVX512 FP16 extension");
+      return false;
+    }
+    return true;
+  }
+#endif  // XNN_ARCH_X86 || XNN_ARCH_X86_64
+
+#if XNN_ARCH_X86 || XNN_ARCH_X86_64
+  bool CheckAVX512VNNIGFNI(benchmark::State& state) {
+    const xnn_hardware_config* hardware_config = xnn_init_hardware_config();
+    if (hardware_config == nullptr || !hardware_config->use_x86_avx512vnnigfni) {
+      state.SkipWithError("no GFNI extension");
+      return false;
+    }
+    return true;
+  }
+#endif  // XNN_ARCH_X86 || XNN_ARCH_X86_64
+
+#if XNN_ARCH_X86 || XNN_ARCH_X86_64
   bool CheckAVXVNNI(benchmark::State& state) {
     const xnn_hardware_config* hardware_config = xnn_init_hardware_config();
     if (hardware_config == nullptr || !hardware_config->use_x86_avxvnni) {
@@ -461,6 +494,50 @@ void MultiThreadingParameters(benchmark::internal::Benchmark* benchmark) {
     return true;
   }
 #endif  // XNN_ARCH_X86 || XNN_ARCH_X86_64
+
+#if XNN_ARCH_X86 || XNN_ARCH_X86_64
+  bool CheckAVX256SKX(benchmark::State& state) {
+    const xnn_hardware_config* hardware_config = xnn_init_hardware_config();
+    if (hardware_config == nullptr || !hardware_config->use_x86_avx256skx) {
+      state.SkipWithError("no AVX256SKX extension");
+      return false;
+    }
+    return true;
+  }
+#endif  // XNN_ARCH_X86 || XNN_ARCH_X86_64
+
+#if XNN_ARCH_X86 || XNN_ARCH_X86_64
+  bool CheckAVX256VNNI(benchmark::State& state) {
+    const xnn_hardware_config* hardware_config = xnn_init_hardware_config();
+    if (hardware_config == nullptr || !hardware_config->use_x86_avx256vnni) {
+      state.SkipWithError("no AVX256VNNI extension");
+      return false;
+    }
+    return true;
+  }
+#endif  // XNN_ARCH_X86 || XNN_ARCH_X86_64
+
+#if XNN_ARCH_X86 || XNN_ARCH_X86_64
+  bool CheckAVX256VNNIGFNI(benchmark::State& state) {
+    const xnn_hardware_config* hardware_config = xnn_init_hardware_config();
+    if (hardware_config == nullptr || !hardware_config->use_x86_avx256vnnigfni) {
+      state.SkipWithError("no AVX256VNNIGFNI extension");
+      return false;
+    }
+    return true;
+  }
+#endif  // XNN_ARCH_X86 || XNN_ARCH_X86_64
+
+#if XNN_ARCH_HEXAGON
+  bool CheckHVX(benchmark::State& state) {
+    const xnn_hardware_config* hardware_config = xnn_init_hardware_config();
+    if (hardware_config == nullptr || !hardware_config->use_hvx) {
+      state.SkipWithError("no HVX extension");
+      return false;
+    }
+    return true;
+  }
+#endif  // XNN_ARCH_HEXAGON
 
 #if XNN_ARCH_WASMRELAXEDSIMD
   bool CheckWAsmPSHUFB(benchmark::State& state) {
@@ -478,6 +555,15 @@ void MultiThreadingParameters(benchmark::internal::Benchmark* benchmark) {
     const xnn_hardware_config* hardware_config = xnn_init_hardware_config();
     if (hardware_config == nullptr || !hardware_config->use_wasm_sdot) {
       state.SkipWithError("no WAsm SDOT support");
+      return false;
+    }
+    return true;
+  }
+
+  bool CheckWAsmUSDOT(benchmark::State& state) {
+    const xnn_hardware_config* hardware_config = xnn_init_hardware_config();
+    if (hardware_config == nullptr || !hardware_config->use_wasm_usdot) {
+      state.SkipWithError("no WAsm USDOT support");
       return false;
     }
     return true;

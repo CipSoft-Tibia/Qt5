@@ -11,11 +11,12 @@ import 'chrome://resources/cr_elements/cr_checkbox/cr_checkbox.js';
 import 'chrome://resources/cr_elements/cr_toast/cr_toast.js';
 import 'chrome://resources/polymer/v3_0/iron-list/iron-list.js';
 
-import {CrToastElement} from 'chrome://resources/cr_elements/cr_toast/cr_toast.js';
+import type {CrToastElement} from 'chrome://resources/cr_elements/cr_toast/cr_toast.js';
 import {I18nMixin} from 'chrome://resources/cr_elements/i18n_mixin.js';
 import {PolymerElement} from 'chrome://resources/polymer/v3_0/polymer/polymer_bundled.min.js';
 
-import {BrowserProxy, BrowserProxyImpl, DataCollectorItem, SupportTokenGenerationResult} from './browser_proxy.js';
+import type {BrowserProxy, DataCollectorItem, SupportTokenGenerationResult} from './browser_proxy.js';
+import {BrowserProxyImpl} from './browser_proxy.js';
 import {getTemplate} from './url_generator.html.js';
 
 export interface UrlGeneratorElement {
@@ -65,6 +66,8 @@ export class UrlGeneratorElement extends UrlGeneratorElementBase {
       selectAll_: {
         type: Boolean,
         value: false,
+        notify: true,
+        observer: 'onAllSelectedChanged_',
       },
     };
   }
@@ -119,14 +122,6 @@ export class UrlGeneratorElement extends UrlGeneratorElementBase {
     }
   }
 
-  private getSelectAllButtonLabel_(selectAllClicked: boolean): string {
-    if (selectAllClicked) {
-      return this.i18n('selectNone');
-    } else {
-      return this.i18n('selectAll');
-    }
-  }
-
   private onUrlGenerationResult_(result: SupportTokenGenerationResult) {
     this.showGenerationResult(result, this.i18n('linkCopied'));
   }
@@ -149,8 +144,7 @@ export class UrlGeneratorElement extends UrlGeneratorElementBase {
     this.$.errorMessageToast.hide();
   }
 
-  private onSelectAllClick_() {
-    this.selectAll_ = !this.selectAll_;
+  private onAllSelectedChanged_() {
     // Update this.dataCollectors_ to reflect the selection choice.
     for (let index = 0; index < this.dataCollectors_.length; index++) {
       // Mutate the array observably. See:

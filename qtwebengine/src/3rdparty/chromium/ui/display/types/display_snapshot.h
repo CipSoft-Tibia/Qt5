@@ -8,13 +8,13 @@
 #include <stdint.h>
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
 #include "base/files/file_path.h"
 #include "base/memory/raw_ptr.h"
 #include "skia/ext/skcolorspace_primaries.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "ui/display/types/display_constants.h"
 #include "ui/display/types/display_mode.h"
 #include "ui/gfx/buffer_types.h"
@@ -34,16 +34,16 @@ class DISPLAY_TYPES_EXPORT DisplaySnapshot {
 
   struct ColorInfo {
     // The color space of the display.
-    // TODO(https://crbug.com/1505062): This should be derived from other
+    // TODO(crbug.com/40945652): This should be derived from other
     // members.
     gfx::ColorSpace color_space = gfx::ColorSpace::CreateSRGB();
 
-    // Primaries and gamma indicicated by the EDID.
+    // Primaries and gamma indicated by the EDID.
     SkColorSpacePrimaries edid_primaries = SkNamedPrimariesExt::kSRGB;
     float edid_gamma = 2.2;
 
     // HDR static metadata, if available.
-    absl::optional<gfx::HDRStaticMetadata> hdr_static_metadata;
+    std::optional<gfx::HDRStaticMetadata> hdr_static_metadata;
 
     // True if the display's color management is capable of applying color
     // temperature adjustment. If not, then color temperature adjustment
@@ -79,7 +79,6 @@ class DISPLAY_TYPES_EXPORT DisplaySnapshot {
                   int32_t year_of_manufacture,
                   const gfx::Size& maximum_cursor_size,
                   VariableRefreshRateState variable_refresh_rate_state,
-                  const absl::optional<uint16_t>& vsync_rate_min,
                   const DrmFormatsAndModifiers& drm_formats_and_modifiers_);
 
   DisplaySnapshot(const DisplaySnapshot&) = delete;
@@ -118,7 +117,7 @@ class DISPLAY_TYPES_EXPORT DisplaySnapshot {
   const ColorInfo& color_info() const { return color_info_; }
   const gfx::ColorSpace& color_space() const { return color_info_.color_space; }
   uint32_t bits_per_channel() const { return color_info_.bits_per_channel; }
-  const absl::optional<gfx::HDRStaticMetadata>& hdr_static_metadata() const {
+  const std::optional<gfx::HDRStaticMetadata>& hdr_static_metadata() const {
     return color_info_.hdr_static_metadata;
   }
   const std::string& display_name() const { return display_name_; }
@@ -127,7 +126,7 @@ class DISPLAY_TYPES_EXPORT DisplaySnapshot {
   PanelOrientation panel_orientation() const { return panel_orientation_; }
   const std::vector<uint8_t>& edid() const { return edid_; }
   const DisplayMode* current_mode() const { return current_mode_; }
-  void set_current_mode(const DisplayMode* mode) { current_mode_ = mode; }
+  void set_current_mode(const DisplayMode* mode);
   const DisplayMode* native_mode() const { return native_mode_; }
   int64_t product_code() const { return product_code_; }
   int32_t year_of_manufacture() const { return year_of_manufacture_; }
@@ -139,14 +138,9 @@ class DISPLAY_TYPES_EXPORT DisplaySnapshot {
       VariableRefreshRateState variable_refresh_rate_state) {
     variable_refresh_rate_state_ = variable_refresh_rate_state;
   }
-  const absl::optional<uint16_t>& vsync_rate_min() const {
-    return vsync_rate_min_;
-  }
   const DrmFormatsAndModifiers& GetDRMFormatsAndModifiers() const {
     return drm_formats_and_modifiers_;
   }
-
-  void add_mode(const DisplayMode* mode) { modes_.push_back(mode->Clone()); }
 
   // Clones display state.
   std::unique_ptr<DisplaySnapshot> Clone() const;
@@ -250,7 +244,14 @@ class DISPLAY_TYPES_EXPORT DisplaySnapshot {
 
   const base::FilePath sys_path_;
 
+  // List of modes which natively exist on the display (i.e. have been extracted
+  // from the display's EDID blob).
   DisplayModeList modes_;
+  // List of modes which do not natively exist on the display. Modes are added
+  // to this list as-needed due to either panel fitting from other displays or
+  // from creating virtual modes. Once added, modes are not removed from this
+  // list for the lifetime of the snapshot.
+  DisplayModeList nonnative_modes_;
 
   // The orientation of the panel in respect to the natural device orientation.
   PanelOrientation panel_orientation_;
@@ -275,8 +276,6 @@ class DISPLAY_TYPES_EXPORT DisplaySnapshot {
 
   // Whether VRR is enabled, disabled, or not capable on this display.
   VariableRefreshRateState variable_refresh_rate_state_;
-  // The minimum supported vsync rate for this display in Hz.
-  const absl::optional<uint16_t> vsync_rate_min_;
 
   // A list of supported Linux DRM formats and corresponding lists of modifiers
   // for each one.

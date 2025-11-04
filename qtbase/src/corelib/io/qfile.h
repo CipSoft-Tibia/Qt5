@@ -1,6 +1,7 @@
 // Copyright (C) 2020 The Qt Company Ltd.
 // Copyright (C) 2016 Intel Corporation.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QFILE_H
 #define QFILE_H
@@ -210,6 +211,7 @@ public:
     }
 #endif // QT_CONFIG(cxx17_filesystem)
 
+    static bool supportsMoveToTrash() Q_DECL_PURE_FUNCTION;
     bool moveToTrash();
     static bool moveToTrash(const QString &fileName, QString *pathInTrash = nullptr);
 #ifdef Q_QDOC

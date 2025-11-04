@@ -1,5 +1,6 @@
 // Copyright (C) 2023 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include <QtCore/qfile.h>
 #include <QtNetwork/qsslcipher.h>
@@ -134,6 +135,7 @@ void QQmlSslConfiguration::setPrivateKey(const QQmlSslKey &privateKey)
 
 void QQmlSslConfiguration::setSslOptionsList(const QSslConfiguration &configuration)
 {
+    Q_ASSERT(m_sslOptions.isEmpty());
     for (QSsl::SslOption option: SslOptions) {
         if (configuration.testSslOption(option))
             m_sslOptions.append(option);
@@ -142,6 +144,7 @@ void QQmlSslConfiguration::setSslOptionsList(const QSslConfiguration &configurat
 
 void QQmlSslConfiguration::setCiphersList(const QSslConfiguration &configuration)
 {
+    Q_ASSERT(m_ciphers.isEmpty());
     QList<QSslCipher> ciphers = configuration.ciphers();
     for (int i = 0; i < ciphers.size(); ++i) {
         if (i != 0) {

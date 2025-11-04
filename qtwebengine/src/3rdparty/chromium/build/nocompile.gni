@@ -50,12 +50,12 @@
 #   http://dev.chromium.org/developers/testing/no-compile-tests
 #
 import("//build/config/clang/clang.gni")
-if (is_win && !is_mingw && !is_robolectric) {
+if (is_win && !is_qtwebengine) {
   import("//build/toolchain/win/win_toolchain_data.gni")
 }
 
 declare_args() {
-  enable_nocompile_tests = is_clang && !is_nacl && !is_mingw && !is_robolectric
+  enable_nocompile_tests = is_clang && !is_nacl
 }
 
 if (enable_nocompile_tests) {
@@ -65,10 +65,16 @@ if (enable_nocompile_tests) {
 
       script = "//tools/nocompile/wrapper.py"
       sources = invoker.sources
-      deps = invoker.deps
+      if (defined(invoker.deps)) {
+        deps = invoker.deps
+      }
 
-      # An action is not a compiler, so configs is empty until it is explicitly set.
+      # An action is not a compiler, so configs is empty until it is explicitly
+      # set.
       configs = default_compiler_configs
+      if (defined(invoker.configs)) {
+        configs += invoker.configs
+      }
 
       # Disable the checks that the Chrome style plugin normally enforces to
       # reduce the amount of boilerplate needed in nocompile tests.

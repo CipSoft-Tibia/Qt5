@@ -9,6 +9,8 @@
 
 #include "base/functional/bind.h"
 #include "base/functional/callback.h"
+#include "base/memory/raw_ptr.h"
+#include "base/not_fatal_until.h"
 #include "base/timer/timer.h"
 #include "components/domain_reliability/util.h"
 
@@ -77,10 +79,10 @@ void DomainReliabilityDispatcher::RunEligibleTasks() {
   // RunAndDeleteTask won't erase elements out from under the iterator.  (Also
   // keeps RunEligibleTasks from running forever if a task adds a new, already-
   // eligible task that does the same, and so on.)
-  std::set<Task*> tasks;
+  std::set<raw_ptr<Task, SetExperimental>> tasks;
   tasks.swap(eligible_tasks_);
 
-  for (auto* task : tasks) {
+  for (Task* task : tasks) {
     DCHECK(task);
     DCHECK(task->eligible);
     RunAndDeleteTask(task);
@@ -128,7 +130,7 @@ void DomainReliabilityDispatcher::RunAndDeleteTask(Task* task) {
     eligible_tasks_.erase(task);
 
   auto it = tasks_.find(task);
-  DCHECK(it != tasks_.end());
+  CHECK(it != tasks_.end(), base::NotFatalUntil::M130);
   tasks_.erase(it);
 }
 

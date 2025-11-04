@@ -73,6 +73,9 @@ class VIZ_SERVICE_EXPORT DisplayDamageTracker : public SurfaceObserver {
   // Called after a frame finishes (may or may not result in a draw).
   void DidFinishFrame();
 
+  // Returns true if damage to this Surface could affect the display.
+  bool CheckForDisplayDamage(const SurfaceId& surface_id);
+
   bool root_frame_missing() const { return root_frame_missing_; }
   bool IsRootSurfaceValid() const;
 
@@ -125,7 +128,7 @@ class VIZ_SERVICE_EXPORT DisplayDamageTracker : public SurfaceObserver {
   const raw_ptr<SurfaceManager> surface_manager_;
   const raw_ptr<SurfaceAggregator> aggregator_;
 
-  absl::optional<uint64_t> begin_frame_source_id_;
+  std::optional<uint64_t> begin_frame_source_id_;
   bool root_frame_missing_ = true;
 
   bool expecting_root_surface_damage_because_of_resize_ = false;

@@ -1,29 +1,41 @@
 /**
- * Copyright 2020 Google Inc. All rights reserved.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * @license
+ * Copyright 2020 Google Inc.
+ * SPDX-License-Identifier: Apache-2.0
  */
+
+import type FS from 'fs';
+import type Path from 'path';
+
+import type {ScreenRecorder} from './node/ScreenRecorder.js';
 
 /**
  * @internal
  */
 export const isNode = !!(typeof process !== 'undefined' && process.version);
 
+export interface EnvironmentDependencies {
+  fs: typeof FS;
+  path: typeof Path;
+  ScreenRecorder: typeof ScreenRecorder;
+}
+
 /**
- * @internal
+ * Holder for environment dependencies. These dependencies cannot
+ * be used during the module instantiation.
  */
-export const DEFERRED_PROMISE_DEBUG_TIMEOUT =
-  typeof process !== 'undefined' &&
-  typeof process.env['PUPPETEER_DEFERRED_PROMISE_DEBUG_TIMEOUT'] !== 'undefined'
-    ? Number(process.env['PUPPETEER_DEFERRED_PROMISE_DEBUG_TIMEOUT'])
-    : -1;
+export const environment: {
+  value: EnvironmentDependencies;
+} = {
+  value: {
+    get fs(): typeof FS {
+      throw new Error('fs is not available in this environment');
+    },
+    get path(): typeof Path {
+      throw new Error('path is not available in this environment');
+    },
+    get ScreenRecorder(): typeof ScreenRecorder {
+      throw new Error('ScreenRecorder is not available in this environment');
+    },
+  },
+};

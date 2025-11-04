@@ -68,6 +68,7 @@ Item {
                                          ambientLightStrength: 0.5
                                          lightStrength: 10.0
                                          shadowStrength: 50.0
+                                         transparencyTechnique: Graphs3D.TransparencyTechnique.Accurate
                                          }`, top)
         top.common_init.anchors.fill = top
     }
@@ -145,6 +146,8 @@ Item {
             compare(top.common.ambientLightStrength, 0.25, "ambientLightStrength")
             compare(top.common.lightStrength, 5.0, "lightStrength")
             compare(top.common.shadowStrength, 25.0, "shadowStrength")
+            compare(top.common.transparencyTechnique, Graphs3D.TransparencyTechnique.Default,
+                    "transparencyTechnique")
         }
 
         function test_2_change_common() {
@@ -172,6 +175,7 @@ Item {
             top.common.ambientLightStrength = 0.5
             top.common.lightStrength = 10.0
             top.common.shadowStrength = 50.0
+            top.common.transparencyTechnique = Graphs3D.TransparencyTechnique.Accurate
             compare(top.common.selectionMode,
                     Graphs3D.SelectionFlag.Item | Graphs3D.SelectionFlag.Row
                     | Graphs3D.SelectionFlag.Slice, "selectionMode")
@@ -195,6 +199,8 @@ Item {
             compare(top.common.ambientLightStrength, 0.5, "ambientLightStrength")
             compare(top.common.lightStrength, 10.0, "lightStrength")
             compare(top.common.shadowStrength, 50.0, "shadowStrength")
+            compare(top.common.transparencyTechnique, Graphs3D.TransparencyTechnique.Accurate,
+                    "transparencyTechnique")
         }
 
         function test_3_change_invalid_common() {
@@ -260,6 +266,8 @@ Item {
                     "ambientLightStrength")
             compare(top.common_init.lightStrength, 10.0, "lightStrength")
             compare(top.common_init.shadowStrength, 50.0, "shadowStrength")
+            compare(top.common_init.transparencyTechnique, Graphs3D.TransparencyTechnique.Accurate,
+                    "transparencyTechnique")
         }
     }
 }

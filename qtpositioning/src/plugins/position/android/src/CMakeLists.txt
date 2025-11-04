@@ -16,6 +16,8 @@ qt_internal_add_plugin(QGeoPositionInfoSourceFactoryAndroidPlugin
         positionfactory_android.cpp positionfactory_android.h
         qgeopositioninfosource_android.cpp qgeopositioninfosource_android_p.h
         qgeosatelliteinfosource_android.cpp qgeosatelliteinfosource_android_p.h
+    NO_UNITY_BUILD_SOURCES
+        qgeosatelliteinfosource_android.cpp # explicit specialization of 'QMetaTypeId<QList<QGeoSatelliteInfo>>' after instantiation
     LIBRARIES
         Qt::Core
         Qt::CorePrivate

@@ -7,9 +7,10 @@ import java.util.HashMap;
 
 /**
  * QtAbstractItemModel is a base class for implementing custom models in Java,
- * similar to the C++ QAbstractItemModel.
+ * similar to the <a href="https://doc.qt.io/qt-6/qabstractitemmodel.html">QAbstractItemModel</a>
+ * class.
  *
- * The QAbstractItemModel class defines the standard interface that item
+ * The QtAbstractItemModel class defines the standard interface that item
  * models must use to be able to interoperate with other components in the
  * model/view architecture. It is not supposed to be instantiated directly.
  * Instead, you should extend it to create new models.
@@ -24,7 +25,6 @@ import java.util.HashMap;
  * of tables. If you do not use the hierarchy, the model is a simple table of
  * rows and columns. Each item has a unique index specified by a {@link QtModelIndex}.
  *
- * @image modelindex-no-parent.png
  *
  * Every item of data that can be accessed via a model has an associated model
  * index. You can obtain this model index using the {@link #index(int, int, QtModelIndex)} method.
@@ -75,18 +75,20 @@ public abstract class QtAbstractItemModel
     /**
      * Constructs a new QtAbstractItemModel.
      */
-    public QtAbstractItemModel(){};
+    public QtAbstractItemModel(){}
+
     /**
      * Returns the number of columns for the children of the given parent.
      * In most subclasses, the number of columns is independent of the parent.
      *
      * For example:
-     * @Override
+     * <pre>
+     * &#64;Override
      * int columnCount(const QtModelIndex parent)
      * {
      *   return 3;
      * }
-     *
+     * </pre>
      * When implementing a table-based model, columnCount() should return 0,
      * when the parent is valid.
      *
@@ -218,6 +220,69 @@ public abstract class QtAbstractItemModel
     public QtModelIndex sibling(int row, int column, QtModelIndex parent)
     {
         return (QtModelIndex)jni_sibling(row, column, parent);
+    }
+    /**
+     * Sets the role data for the item at {@code index} to value.
+     *
+     * Returns {@code true} if successful; otherwise returns false.
+     *
+     * The {@link #dataChanged(QtModelIndex, QtModelIndex, int[])} method should be called
+     * if the data was successfully set.
+     *
+     * The base class implementation returns {@code false}. This method and
+     * {@link #data(QtModelIndex, int)} must be reimplemented for editable models.
+     *
+     * @param index The index of the item
+     * @param value The data value
+     * @param role The role
+     * @return True if successful, otherwise return false.
+     */
+    public boolean setData(QtModelIndex index, Object value, int role) {
+        return jni_setData(index, value, role);
+    }
+    /**
+     * This method must be called whenever the data in an existing item changes.
+     *
+     * If the items have the same parent, the affected ones are inclusively those between
+     * {@code topLeft} and {@code bottomRight}. If the items do not have the same
+     * parent, the behavior is undefined.
+     *
+     * When reimplementing the {@link #setData(QtModelIndex, Object, int)} method, this method
+     * must be called explicitly.
+     *
+     * The {@code roles} argument specifies which data roles have actually
+     * been modified. An empty array in the roles argument means that all roles should be
+     * considered modified. The order of elements in the {@code roles} argument does not have any
+     * relevance.
+     *
+     * @param topLeft The top-left index of changed items
+     * @param bottomRight The bottom-right index of changed items
+     * @param roles Changed roles; Empty array indicates all roles
+     * @see #setData(QtModelIndex index, Object value, int role)
+     */
+    public void dataChanged(QtModelIndex topLeft, QtModelIndex bottomRight, int[] roles) {
+        jni_dataChanged(topLeft, bottomRight, roles);
+    }
+    /**
+     * Interface for a callback to be invoked when the data in an existing item changes.
+     */
+    public interface OnDataChangedListener {
+        /**
+         * Called when the data in an existing item changes.
+         *
+         * @param topLeft The top-left index of changed items
+         * @param bottomRight The bottom-right index of changed items
+         * @param roles Changed roles; Empty array indicates all roles
+         */
+        void onDataChanged(QtModelIndex topLeft, QtModelIndex bottomRight, int[] roles);
+    }
+    /**
+     * Register a callback to be invoked when the data in an existing item changes.
+     *
+     * @param listener The data change listener
+     */
+    public void setOnDataChangedListener(OnDataChangedListener listener) {
+        m_OnDataChangedListener = listener;
     }
     /**
      * Begins a column insertion operation.
@@ -458,6 +523,15 @@ public abstract class QtAbstractItemModel
     */
     protected final void endResetModel() { jni_endResetModel(); }
 
+    private void handleDataChanged(QtModelIndex topLeft, QtModelIndex bottomRight, int[] roles)
+    {
+        if (m_OnDataChangedListener != null) {
+            QtNative.runAction(() -> {
+                if (m_OnDataChangedListener != null)
+                    m_OnDataChangedListener.onDataChanged(topLeft, bottomRight, roles);
+            });
+        }
+    }
     private native void jni_beginInsertColumns(QtModelIndex parent, int first, int last);
     private native void jni_beginInsertRows(QtModelIndex parent, int first, int last);
     private native boolean jni_beginMoveColumns(QtModelIndex sourceParent, int sourceFirst,
@@ -479,10 +553,15 @@ public abstract class QtAbstractItemModel
     private native void jni_endResetModel();
     private native Object jni_roleNames();
     private native Object jni_sibling(int row, int column, QtModelIndex parent);
+    private native boolean jni_setData(QtModelIndex index, Object value, int role);
+    private native void jni_dataChanged(QtModelIndex topLeft, QtModelIndex bottomRight,
+                                        int[] roles);
 
     private long m_nativeReference = 0;
+    private OnDataChangedListener m_OnDataChangedListener;
     private QtAbstractItemModel(long nativeReference) { m_nativeReference = nativeReference; }
-    private void detachFromNative() { m_nativeReference = 0; };
+    private void detachFromNative() { m_nativeReference = 0; }
+
     private long nativeReference() { return m_nativeReference; }
     private void setNativeReference(long nativeReference) { m_nativeReference = nativeReference; }
     private static boolean instanceOf(Object obj) { return (obj instanceof QtAbstractItemModel); }

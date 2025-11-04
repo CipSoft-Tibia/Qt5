@@ -47,7 +47,7 @@ static std::tuple<int, int, bool> parseBufferLevel(const QString &value)
     if (value.isEmpty())
         return {};
 
-    const int slashPos = value.indexOf('/');
+    const int slashPos = value.indexOf(QChar(u'/'));
     if (slashPos <= 0)
         return {};
 
@@ -836,13 +836,13 @@ void QQnxMediaPlayer::emitMmError(const QString &msg)
 {
     int errorCode = MMR_ERROR_NONE;
     const QString errorMessage = mmErrorMessage(msg, m_context, &errorCode);
-    emit error(errorCode, errorMessage);
+    emit error(QMediaPlayer::ResourceError, errorMessage);
 }
 
 void QQnxMediaPlayer::emitPError(const QString &msg)
 {
     const QString errorMessage = QString::fromLatin1("%1: %2").arg(msg).arg(QString::fromUtf8(strerror(errno)));
-    emit error(errno, errorMessage);
+    emit error(QMediaPlayer::ResourceError, errorMessage);
 }
 
 

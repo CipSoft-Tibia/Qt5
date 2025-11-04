@@ -19,6 +19,8 @@
 #include <QtGui/qfont.h>
 #include <QtQml/qqml.h>
 
+#if QT_DEPRECATED_SINCE(6, 9)
+
 QT_BEGIN_NAMESPACE
 
 class QQuickLabsPlatformFontDialog : public QQuickLabsPlatformDialog
@@ -60,5 +62,7 @@ private:
 };
 
 QT_END_NAMESPACE
+
+#endif // QT_DEPRECATED_SINCE(6, 9)
 
 #endif // QQUICKLABSPLATFORMFONTDIALOG_P_H

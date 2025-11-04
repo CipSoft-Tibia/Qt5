@@ -7,7 +7,6 @@
     \brief Information about the Sensorfw sensor backend
 
     The Sensorfw sensor backend requires the Sensorfw and sensor daemon. Sensorfw
-    was originally used in MeeGo, and is available on :
-    https://github.com/mer-packages/sensorfw
+    was originally used in MeeGo, and is available on:
+    \l{https://github.com/sailfishos/sensorfw}.
 */
-

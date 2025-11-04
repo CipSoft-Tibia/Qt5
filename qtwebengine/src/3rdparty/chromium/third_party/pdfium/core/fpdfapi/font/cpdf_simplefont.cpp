@@ -15,6 +15,7 @@
 #include "core/fpdfapi/parser/cpdf_dictionary.h"
 #include "core/fpdfapi/parser/cpdf_name.h"
 #include "core/fxcrt/fx_codepage.h"
+#include "core/fxcrt/stl_util.h"
 #include "core/fxge/freetype/fx_freetype.h"
 #include "core/fxge/fx_font.h"
 
@@ -36,10 +37,9 @@ void GetPredefinedEncoding(const ByteString& value, FontEncoding* basemap) {
 CPDF_SimpleFont::CPDF_SimpleFont(CPDF_Document* pDocument,
                                  RetainPtr<CPDF_Dictionary> pFontDict)
     : CPDF_Font(pDocument, std::move(pFontDict)) {
-  memset(m_CharWidth, 0xff, sizeof(m_CharWidth));
-  memset(m_GlyphIndex, 0xff, sizeof(m_GlyphIndex));
-  for (size_t i = 0; i < std::size(m_CharBBox); ++i)
-    m_CharBBox[i] = FX_RECT(-1, -1, -1, -1);
+  m_CharWidth.fill(0xffff);
+  m_GlyphIndex.fill(0xffff);
+  m_CharBBox.fill(FX_RECT(-1, -1, -1, -1));
 }
 
 CPDF_SimpleFont::~CPDF_SimpleFont() = default;
@@ -88,10 +88,11 @@ void CPDF_SimpleFont::LoadCharMetrics(int charcode) {
   if (err)
     return;
 
-  m_CharBBox[charcode] = GetCharBBoxForFace(face);
+  m_CharBBox[charcode] = face->GetGlyphBBox();
 
   if (m_bUseFontWidth) {
-    int TT_Width = TT2PDF(FXFT_Get_Glyph_HoriAdvance(face_rec), face);
+    int TT_Width = NormalizeFontMetric(FXFT_Get_Glyph_HoriAdvance(face_rec),
+                                       face->GetUnitsPerEm());
     if (m_CharWidth[charcode] == 0xffff) {
       m_CharWidth[charcode] = TT_Width;
     } else if (TT_Width && !IsEmbedded()) {
@@ -242,14 +243,14 @@ bool CPDF_SimpleFont::LoadCommon() {
   }
 
   if (FontStyleIsAllCaps(m_Flags)) {
-    static const unsigned char kLowercases[][2] = {
-        {'a', 'z'}, {0xe0, 0xf6}, {0xf8, 0xfd}};
-    for (size_t range = 0; range < std::size(kLowercases); ++range) {
-      const auto& lower = kLowercases[range];
-      for (int i = lower[0]; i <= lower[1]; ++i) {
-        if (m_GlyphIndex[i] != 0xffff && m_pFontFile)
+    static const auto kLowercases =
+        fxcrt::ToArray<std::pair<const uint8_t, const uint8_t>>(
+            {{'a', 'z'}, {0xe0, 0xf6}, {0xf8, 0xfd}});
+    for (const auto& lower : kLowercases) {
+      for (int i = lower.first; i <= lower.second; ++i) {
+        if (m_GlyphIndex[i] != 0xffff && m_pFontFile) {
           continue;
-
+        }
         int j = i - 32;
         m_GlyphIndex[i] = m_GlyphIndex[j];
         if (m_CharWidth[j]) {

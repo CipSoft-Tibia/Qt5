@@ -2,6 +2,10 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#include <d3d11.h>
+#include <dxgi1_2.h>
+#include <wrl/client.h>
+
 #include "base/run_loop.h"
 #include "base/task/single_thread_task_runner.h"
 #include "base/test/mock_callback.h"
@@ -11,14 +15,11 @@
 #include "gpu/command_buffer/client/client_shared_image.h"
 #include "gpu/ipc/client/client_shared_image_interface.h"
 #include "gpu/ipc/client/gpu_channel_host.h"
+#include "gpu/ipc/common/gpu_memory_buffer_handle_info.h"
 #include "media/base/mock_filters.h"
 #include "media/base/test_helpers.h"
 #include "media/base/win/test_utils.h"
 #include "testing/gtest/include/gtest/gtest.h"
-
-#include <d3d11.h>
-#include <dxgi1_2.h>
-#include <wrl/client.h>
 
 using base::RunLoop;
 using Microsoft::WRL::ComPtr;
@@ -31,18 +32,34 @@ class StubClientSharedImageInterface : public gpu::ClientSharedImageInterface {
       : gpu::ClientSharedImageInterface(nullptr, nullptr) {}
   gpu::SyncToken GenVerifiedSyncToken() override { return gpu::SyncToken(); }
 
+  // TODO(crbug.com/40263579): Remove this implementation when MappableSI is
+  // fully launched for DcomTextureWrapperImpl. Eventually look into refactoring
+  // code to use TestSharedImageInterface instead of
+  // StubClientSharedImageInterface.
   scoped_refptr<gpu::ClientSharedImage> CreateSharedImage(
-      viz::SharedImageFormat format,
-      const gfx::Size& size,
-      const gfx::ColorSpace& color_space,
-      GrSurfaceOrigin surface_origin,
-      SkAlphaType alpha_type,
-      uint32_t usage,
-      base::StringPiece debug_label,
+      const gpu::SharedImageInfo& si_info,
       gfx::GpuMemoryBufferHandle handle) override {
     return base::MakeRefCounted<gpu::ClientSharedImage>(
-        gpu::Mailbox::GenerateForSharedImage());
+        gpu::Mailbox::Generate(), si_info.meta, gpu::SyncToken(), holder_,
+        handle.type);
   }
+
+  // This implementation is used for test when MappableSI is enabled.
+  scoped_refptr<gpu::ClientSharedImage> CreateSharedImage(
+      const gpu::SharedImageInfo& si_info,
+      gpu::SurfaceHandle surface_handle,
+      gfx::BufferUsage buffer_usage,
+      gfx::GpuMemoryBufferHandle buffer_handle) override {
+    return base::MakeRefCounted<gpu::ClientSharedImage>(
+        gpu::Mailbox::Generate(), si_info.meta, gpu::SyncToken(),
+        gpu::GpuMemoryBufferHandleInfo(std::move(buffer_handle),
+                                       si_info.meta.format, si_info.meta.size,
+                                       buffer_usage),
+        holder_);
+  }
+
+ protected:
+  ~StubClientSharedImageInterface() override = default;
 };
 
 class TestGpuChannelHost : public gpu::GpuChannelHost {
@@ -56,9 +73,9 @@ class TestGpuChannelHost : public gpu::GpuChannelHost {
             mojo::ScopedMessagePipeHandle(
                 mojo::MessagePipeHandle(mojo::kInvalidHandleValue))) {}
 
-  std::unique_ptr<gpu::ClientSharedImageInterface>
+  scoped_refptr<gpu::ClientSharedImageInterface>
   CreateClientSharedImageInterface() override {
-    return std::make_unique<StubClientSharedImageInterface>();
+    return base::MakeRefCounted<StubClientSharedImageInterface>();
   }
 
  protected:

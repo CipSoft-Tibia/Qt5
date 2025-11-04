@@ -38,6 +38,7 @@ QT_BEGIN_NAMESPACE
 
 class QFontEngineFTRawFont;
 class QFontconfigDatabase;
+class QColrPaintGraphRenderer;
 
 #if defined(FT_COLOR_H) && (FREETYPE_MAJOR*10000 + FREETYPE_MINOR*100 + FREETYPE_PATCH) >= 21300
 #  define QFONTENGINE_FT_SUPPORT_COLRV1
@@ -90,6 +91,11 @@ public:
     static void addGlyphToPath(FT_Face face, FT_GlyphSlot g, const QFixedPoint &point, QPainterPath *path, FT_Fixed x_scale, FT_Fixed y_scale);
     static void addBitmapToPath(FT_GlyphSlot slot, const QFixedPoint &point, QPainterPath *path);
 
+    inline QList<QFontVariableAxis> variableAxes() const
+    {
+        return variableAxisList;
+    }
+
 private:
     friend class QFontEngineFT;
     friend class QtFreetypeData;
@@ -101,6 +107,7 @@ private:
     QByteArray fontData;
 
     QFontEngine::Holder hbFace;
+    QList<QFontVariableAxis> variableAxisList;
 };
 
 class Q_GUI_EXPORT QFontEngineFT : public QFontEngine
@@ -160,9 +167,8 @@ private:
     QFixed emSquareSize() const override;
     bool supportsHorizontalSubPixelPositions() const override
     {
-        return !isColorFont()
-                && (default_hint_style == HintLight ||
-                    default_hint_style == HintNone);
+        return default_hint_style == HintLight ||
+               default_hint_style == HintNone;
     }
 
     bool supportsVerticalSubPixelPositions() const override
@@ -183,6 +189,7 @@ private:
     QFixed underlinePosition() const override;
 
     glyph_t glyphIndex(uint ucs4) const override;
+    QString glyphName(glyph_t index) const override;
     void doKerning(QGlyphLayout *, ShaperFlags) const override;
 
     void getUnscaledGlyph(glyph_t glyph, QPainterPath *path, glyph_metrics_t *metrics) override;
@@ -221,6 +228,8 @@ private:
     int glyphMargin(QFontEngine::GlyphFormat /* format */) override { return 0; }
 
     int glyphCount() const override;
+
+    QList<QFontVariableAxis> variableAxes() const override;
 
     enum Scaling {
         Scaled,
@@ -323,20 +332,12 @@ private:
                            const QColor &color,
                            bool fetchMetricsOnly) const;
 
-    struct Colr1PaintInfo {
-        QTransform transform;
-        QPainterPath currentPath;
-        QPainter *painter = nullptr;
-        FT_Color *palette = nullptr;
-        ushort paletteCount = 0;
-        QRect boundingRect;
-        QRect designCoordinateBoundingRect;
-        QSet<QPair<FT_Byte *, FT_Bool> > loops;
-        QColor foregroundColor;
-    };
-
     bool traverseColr1(FT_OpaquePaint paint,
-                       Colr1PaintInfo *paintInfo) const;
+                       QSet<QPair<FT_Byte *, FT_Bool> > *loops,
+                       QColor foregroundColor,
+                       FT_Color *palette,
+                       ushort paletteCount,
+                       QColrPaintGraphRenderer *paintGraphRenderer) const;
     mutable glyph_t colrv1_bounds_cache_id = 0;
     mutable QRect colrv1_bounds_cache;
 #endif // QFONTENGINE_FT_SUPPORT_COLRV1

@@ -5,6 +5,7 @@
 #include "components/segmentation_platform/embedder/default_model/device_switcher_result_dispatcher.h"
 
 #include "base/feature_list.h"
+#include "base/task/sequenced_task_runner.h"
 #include "base/values.h"
 #include "components/prefs/pref_registry_simple.h"
 #include "components/prefs/scoped_user_pref_update.h"
@@ -48,13 +49,14 @@ DeviceSwitcherResultDispatcher::~DeviceSwitcherResultDispatcher() = default;
 
 ClassificationResult
 DeviceSwitcherResultDispatcher::GetCachedClassificationResult() {
-  absl::optional<ClassificationResult> result =
+  std::optional<ClassificationResult> result =
       latest_result_ ? latest_result_ : ReadResultFromPref();
   return result.has_value() ? result.value()
                             : ClassificationResult(PredictionStatus::kNotReady);
 }
 
 void DeviceSwitcherResultDispatcher::WaitForClassificationResult(
+    base::TimeDelta timeout,
     ClassificationResultCallback callback) {
   if (latest_result_) {
     std::move(callback).Run(std::move(*latest_result_));
@@ -64,6 +66,12 @@ void DeviceSwitcherResultDispatcher::WaitForClassificationResult(
   // This class does not support waiting for multiple requests.
   DCHECK(waiting_callback_.is_null());
   waiting_callback_ = std::move(callback);
+
+  base::SequencedTaskRunner::GetCurrentDefault()->PostDelayedTask(
+      FROM_HERE,
+      base::BindOnce(&DeviceSwitcherResultDispatcher::OnWaitTimeout,
+                     weak_ptr_factory_.GetWeakPtr()),
+      timeout);
 }
 
 // static
@@ -109,6 +117,13 @@ void DeviceSwitcherResultDispatcher::OnGotResult(
   }
 }
 
+void DeviceSwitcherResultDispatcher::OnWaitTimeout() {
+  if (!waiting_callback_.is_null()) {
+    std::move(waiting_callback_)
+        .Run(ClassificationResult(PredictionStatus::kNotReady));
+  }
+}
+
 void DeviceSwitcherResultDispatcher::RegisterFieldTrials() {
   if (!field_trial_register_ || !latest_result_) {
     return;
@@ -140,20 +155,20 @@ void DeviceSwitcherResultDispatcher::SaveResultToPref(
   dictionary.Set("result", std::move(segmentation_result));
 }
 
-absl::optional<ClassificationResult>
+std::optional<ClassificationResult>
 DeviceSwitcherResultDispatcher::ReadResultFromPref() const {
   ClassificationResult result(PredictionStatus::kNotReady);
   const base::Value::Dict& dictionary =
       prefs_->GetDict(kDeviceSwitcherUserSegmentPrefKey);
   const base::Value* value = dictionary.Find("result");
   if (!value) {
-    return absl::nullopt;
+    return std::nullopt;
   }
   const base::Value::Dict& segmentation_result = value->GetDict();
   const base::Value::List* labels_value =
       segmentation_result.FindList("labels");
   if (!labels_value) {
-    return absl::nullopt;
+    return std::nullopt;
   }
   for (const auto& label : *labels_value) {
     result.ordered_labels.push_back(label.GetString());

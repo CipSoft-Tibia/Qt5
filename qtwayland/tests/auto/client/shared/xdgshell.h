@@ -85,6 +85,11 @@ protected:
     void xdg_surface_ack_configure(Resource *resource, uint32_t serial) override;
 };
 
+class XdgToplevelRole : public SurfaceRole
+{
+    Q_OBJECT
+};
+
 class XdgToplevel : public QObject, public QtWaylandServer::xdg_toplevel
 {
     Q_OBJECT
@@ -104,6 +109,11 @@ public:
 protected:
     void xdg_toplevel_set_max_size(Resource *resource, int32_t width, int32_t height) override;
     void xdg_toplevel_set_min_size(Resource *resource, int32_t width, int32_t height) override;
+};
+
+class XdgPopupRole : public SurfaceRole
+{
+    Q_OBJECT
 };
 
 class XdgPopup : public QObject, public QtWaylandServer::xdg_popup

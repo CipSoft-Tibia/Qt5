@@ -33,19 +33,23 @@
 
 #ifdef _WIN32
 #include <windows.h>
-#elif defined(__APPLE__)
+#endif
+#ifdef __APPLE__
 #include <sys/sysctl.h>
 #include <sys/types.h>
-#else
-#include <pthread.h>
+#endif
+#ifdef HAVE_UNISTD_H
 #include <unistd.h>
 #endif
 
+#ifdef HAVE_PTHREAD_GETAFFINITY_NP
+#include <pthread.h>
 #ifdef HAVE_PTHREAD_NP_H
 #include <pthread_np.h>
 #endif
 #if defined(__FreeBSD__)
 #define cpu_set_t cpuset_t
+#endif
 #endif
 
 unsigned dav1d_cpu_flags = 0U;
@@ -56,8 +60,12 @@ COLD void dav1d_init_cpu(void) {
 // memory sanitizer is inherently incompatible with asm
 #if ARCH_AARCH64 || ARCH_ARM
     dav1d_cpu_flags = dav1d_get_cpu_flags_arm();
+#elif ARCH_LOONGARCH
+    dav1d_cpu_flags = dav1d_get_cpu_flags_loongarch();
 #elif ARCH_PPC64LE
     dav1d_cpu_flags = dav1d_get_cpu_flags_ppc();
+#elif ARCH_RISCV
+    dav1d_cpu_flags = dav1d_get_cpu_flags_riscv();
 #elif ARCH_X86
     dav1d_cpu_flags = dav1d_get_cpu_flags_x86();
 #endif

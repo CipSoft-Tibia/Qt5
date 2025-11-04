@@ -25,5 +25,5 @@ qt_internal_extend_target(LabsQmlModels CONDITION QT_FEATURE_qml_table_model
 
 qt_internal_extend_target(LabsQmlModels CONDITION QT_FEATURE_qml_delegate_model
     SOURCES
-        qqmldelegatecomponent.cpp qqmldelegatecomponent_p.h
+        qqmldelegatechooser.cpp qqmldelegatechooser_p.h
 )

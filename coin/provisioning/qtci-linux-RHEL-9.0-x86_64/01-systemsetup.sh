@@ -17,13 +17,10 @@ export DISPLAY=:0
 
 # Set timezone to UTC.
 sudo timedatectl set-timezone Etc/UTC
-# disable Automatic screen lock
-gsettings set org.gnome.desktop.screensaver lock-enabled false
-# disable blank screen power saving
-gsettings set org.gnome.desktop.session idle-delay 0
-# Disable hot corner feature
-gsettings set org.gnome.desktop.interface enable-hot-corners false
-# Disable windows key from showing the GNOME Shell Activities overlay
+
+"$BASEDIR/../common/linux/configure-gnome-shell.sh"
+
+echo "Disable windows key from showing the GNOME Shell Activities overlay"
 gsettings set org.gnome.mutter overlay-key ""
 
 # Set Wayland enable as false.

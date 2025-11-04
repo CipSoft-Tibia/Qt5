@@ -2,8 +2,10 @@
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qqmldomfilewriter_p.h"
-#include <QtCore/QRandomGenerator>
-#include <QtCore/QScopeGuard>
+
+#include <QtCore/qrandom.h>
+#include <QtCore/qscopeguard.h>
+#include <QtCore/qtextstream.h>
 
 QT_BEGIN_NAMESPACE
 namespace QQmlJS {

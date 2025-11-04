@@ -6,9 +6,9 @@
 
 #include "fpdfsdk/fpdfxfa/cpdfxfa_widget.h"
 
+#include "core/fxcrt/check.h"
 #include "fpdfsdk/cpdfsdk_formfillenvironment.h"
 #include "fpdfsdk/cpdfsdk_pageview.h"
-#include "third_party/base/check.h"
 #include "xfa/fgas/graphics/cfgas_gegraphics.h"
 #include "xfa/fxfa/cxfa_ffdocview.h"
 #include "xfa/fxfa/cxfa_ffpageview.h"
@@ -16,9 +16,10 @@
 #include "xfa/fxfa/cxfa_ffwidgethandler.h"
 #include "xfa/fxfa/parser/cxfa_node.h"
 
-#define CHECK_FWL_VKEY_ENUM____(name)                                   \
-  static_assert(static_cast<int>(name) == static_cast<int>(XFA_##name), \
-                "FWL_VKEYCODE enum mismatch")
+#define CHECK_FWL_VKEY_ENUM____(name)                                 \
+  static_assert(                                                      \
+      static_cast<int>(name) == static_cast<int>(pdfium::XFA_##name), \
+      "FWL_VKEYCODE enum mismatch")
 
 CHECK_FWL_VKEY_ENUM____(FWL_VKEY_Back);
 CHECK_FWL_VKEY_ENUM____(FWL_VKEY_Tab);

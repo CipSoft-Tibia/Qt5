@@ -30,6 +30,11 @@ public:
     };
     Q_DECLARE_FLAGS(SpirvOptions, SpirvOption)
 
+    enum class GlslOption {
+        GlslEsFragDefaultFloatPrecisionMedium = 0x01
+    };
+    Q_DECLARE_FLAGS(GlslOptions, GlslOption)
+
     QShaderBaker();
     ~QShaderBaker();
 
@@ -55,6 +60,7 @@ public:
     void setMultiViewCount(int count);
 
     void setSpirvOptions(SpirvOptions options);
+    void setGlslOptions(GlslOptions options);
 
     QShader bake();
 
@@ -66,6 +72,7 @@ private:
 };
 
 Q_DECLARE_OPERATORS_FOR_FLAGS(QShaderBaker::SpirvOptions)
+Q_DECLARE_OPERATORS_FOR_FLAGS(QShaderBaker::GlslOptions)
 
 QT_END_NAMESPACE
 

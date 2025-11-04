@@ -819,6 +819,13 @@ void QWaylandQtShellSurfacePrivate::zqt_shell_surface_v1_request_activate(Resour
     Q_UNUSED(resource);
     Q_Q(QWaylandQtShellSurface);
     q->setActive(true);
+
+    if (m_surface) {
+        auto view = m_surface->primaryView();
+        auto item = view ? qobject_cast<QWaylandQuickItem *>(view->renderObject()) : nullptr;
+        if (item)
+            item->forceActiveFocus();
+    }
 }
 
 void QWaylandQtShellSurfacePrivate::updateFrameMargins()

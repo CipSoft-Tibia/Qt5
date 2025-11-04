@@ -4,12 +4,12 @@
 
 #include "ui/accessibility/ax_assistant_structure.h"
 
+#include <optional>
 #include <utility>
 
 #include "base/logging.h"
 #include "base/strings/stringprintf.h"
 #include "base/strings/utf_string_conversions.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "ui/accessibility/ax_enums.mojom.h"
 #include "ui/accessibility/ax_node.h"
 #include "ui/accessibility/ax_role_properties.h"
@@ -111,7 +111,7 @@ std::u16string GetText(const AXNode* node) {
 
   ax::mojom::NameFrom name_from = node->GetNameFrom();
 
-  if (!ui::IsLeaf(node) && name_from == ax::mojom::NameFrom::kContents) {
+  if (!IsLeaf(node) && name_from == ax::mojom::NameFrom::kContents) {
     return std::u16string();
   }
 
@@ -168,8 +168,8 @@ std::u16string GetText(const AXNode* node) {
     }
   }
 
-  if (text.empty() && (ui::IsLink(node->GetRole()) ||
-                       node->GetRole() == ax::mojom::Role::kImage)) {
+  if (text.empty() &&
+      (IsLink(node->GetRole()) || node->GetRole() == ax::mojom::Role::kImage)) {
     std::u16string url =
         node->GetString16Attribute(ax::mojom::StringAttribute::kUrl);
     text = AXUrlBaseText(url);
@@ -181,44 +181,44 @@ std::u16string GetText(const AXNode* node) {
 // Get string representation of ax::mojom::Role. We are not using ToString() in
 // ax_enums.h since the names are subject to change in the future and
 // we are only interested in a subset of the roles.
-absl::optional<std::string> AXRoleToString(ax::mojom::Role role) {
+std::optional<std::string> AXRoleToString(ax::mojom::Role role) {
   switch (role) {
     case ax::mojom::Role::kArticle:
-      return absl::optional<std::string>("article");
+      return std::optional<std::string>("article");
     case ax::mojom::Role::kBanner:
-      return absl::optional<std::string>("banner");
+      return std::optional<std::string>("banner");
     case ax::mojom::Role::kCaption:
-      return absl::optional<std::string>("caption");
+      return std::optional<std::string>("caption");
     case ax::mojom::Role::kComplementary:
-      return absl::optional<std::string>("complementary");
+      return std::optional<std::string>("complementary");
     case ax::mojom::Role::kDate:
-      return absl::optional<std::string>("date");
+      return std::optional<std::string>("date");
     case ax::mojom::Role::kDateTime:
-      return absl::optional<std::string>("date_time");
+      return std::optional<std::string>("date_time");
     case ax::mojom::Role::kDefinition:
-      return absl::optional<std::string>("definition");
+      return std::optional<std::string>("definition");
     case ax::mojom::Role::kDetails:
-      return absl::optional<std::string>("details");
+      return std::optional<std::string>("details");
     case ax::mojom::Role::kDocument:
-      return absl::optional<std::string>("document");
+      return std::optional<std::string>("document");
     case ax::mojom::Role::kFeed:
-      return absl::optional<std::string>("feed");
+      return std::optional<std::string>("feed");
     case ax::mojom::Role::kHeading:
-      return absl::optional<std::string>("heading");
+      return std::optional<std::string>("heading");
     case ax::mojom::Role::kIframe:
-      return absl::optional<std::string>("iframe");
+      return std::optional<std::string>("iframe");
     case ax::mojom::Role::kIframePresentational:
-      return absl::optional<std::string>("iframe_presentational");
+      return std::optional<std::string>("iframe_presentational");
     case ax::mojom::Role::kList:
-      return absl::optional<std::string>("list");
+      return std::optional<std::string>("list");
     case ax::mojom::Role::kListItem:
-      return absl::optional<std::string>("list_item");
+      return std::optional<std::string>("list_item");
     case ax::mojom::Role::kMain:
-      return absl::optional<std::string>("main");
+      return std::optional<std::string>("main");
     case ax::mojom::Role::kParagraph:
-      return absl::optional<std::string>("paragraph");
+      return std::optional<std::string>("paragraph");
     default:
-      return absl::optional<std::string>();
+      return std::optional<std::string>();
   }
 }
 
@@ -318,7 +318,7 @@ void WalkAXTreeDepthFirst(const AXNode* node,
     }
     if (end_selection > 0)
       result->selection =
-          absl::make_optional<gfx::Range>(start_selection, end_selection);
+          std::make_optional<gfx::Range>(start_selection, end_selection);
   }
 
   result->html_tag =
@@ -334,7 +334,7 @@ void WalkAXTreeDepthFirst(const AXNode* node,
   std::string class_name =
       node->GetStringAttribute(ax::mojom::StringAttribute::kClassName);
   if (!class_name.empty())
-    result->html_attributes.push_back({"class", class_name});
+    result->html_attributes.emplace_back("class", class_name);
 
   for (auto iter = node->UnignoredChildrenBegin();
        iter != node->UnignoredChildrenEnd(); ++iter) {
@@ -442,7 +442,6 @@ const char* AXRoleToAndroidClassName(ax::mojom::Role role, bool has_parent) {
     case ax::mojom::Role::kList:
     case ax::mojom::Role::kListBox:
     case ax::mojom::Role::kDescriptionList:
-    case ax::mojom::Role::kDirectory:
       return kAXListViewClassname;
     case ax::mojom::Role::kDialog:
       return kAXDialogClassname;
@@ -454,8 +453,9 @@ const char* AXRoleToAndroidClassName(ax::mojom::Role role, bool has_parent) {
       return kAXMenuItemClassname;
     case ax::mojom::Role::kStaticText:
       return kAXTextViewClassname;
+    case ax::mojom::Role::kDirectoryDeprecated:
     case ax::mojom::Role::kPreDeprecated:
-      NOTREACHED_NORETURN();
+      NOTREACHED();
     default:
       return kAXViewClassname;
   }

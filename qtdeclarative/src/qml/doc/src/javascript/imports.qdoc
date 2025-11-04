@@ -55,9 +55,9 @@ qualifications apply).
 Due to the ability of a JavaScript resource to import another script or QML
 module in this fashion in \c {QtQuick 2.0}, some extra semantics are defined:
 \list
-\li a script with imports will not inherit imports from the QML document which imported it (so accessing Component.errorString will fail, for example)
-\li a script without imports will inherit imports from the QML document which imported it (so accessing Component.errorString will succeed, for example)
-\li a shared script (i.e., defined as .pragma library) does not inherit imports from any QML document even if it imports no other scripts or modules
+\li a script with import statements will not inherit the imports from the QML document that imported it (accessing Component.errorString will fail, for example)
+\li a script without import statements will inherit the imports from the QML document that imported it (accessing Component.errorString will succeed, for example)
+\li a shared script (defined as .pragma library) will not inherit the imports from QML documents even if the script does not import other scripts or modules
 \endlist
 
 The first semantic is conceptually correct, given that a particular script

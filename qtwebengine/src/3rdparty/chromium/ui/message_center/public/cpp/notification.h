@@ -15,8 +15,8 @@
 #include "base/memory/scoped_refptr.h"
 #include "base/time/time.h"
 #include "build/chromeos_buildflags.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "third_party/skia/include/core/SkColor.h"
+#include "ui/base/interaction/element_identifier.h"
 #include "ui/base/models/image_model.h"
 #include "ui/gfx/color_palette.h"
 #include "ui/gfx/geometry/skia_conversions.h"
@@ -40,9 +40,27 @@ class ColorProvider;
 namespace message_center {
 
 // Represents an individual item in NOTIFICATION_TYPE_MULTIPLE notifications.
-struct MESSAGE_CENTER_PUBLIC_EXPORT NotificationItem {
-  std::u16string title;
-  std::u16string message;
+class MESSAGE_CENTER_PUBLIC_EXPORT NotificationItem {
+ public:
+  NotificationItem(const std::u16string& title,
+                   const std::u16string& message,
+                   ui::ImageModel icon = ui::ImageModel());
+
+  NotificationItem();
+  NotificationItem(const NotificationItem& other);
+  NotificationItem(NotificationItem&& other);
+  NotificationItem& operator=(const NotificationItem& other);
+  NotificationItem& operator=(NotificationItem&& other);
+  ~NotificationItem();
+
+  const std::u16string& title() const { return title_; }
+  const std::u16string& message() const { return message_; }
+  const std::optional<ui::ImageModel>& icon() const { return icon_; }
+
+ private:
+  std::u16string title_;
+  std::u16string message_;
+  std::optional<ui::ImageModel> icon_;
 };
 
 enum class SettingsButtonHandler {
@@ -72,24 +90,37 @@ enum class ButtonType {
 // Represents a button to be shown as part of a notification.
 struct MESSAGE_CENTER_PUBLIC_EXPORT ButtonInfo {
   explicit ButtonInfo(const std::u16string& title);
-  ButtonInfo(const ButtonInfo& other);
+  ButtonInfo(const gfx::VectorIcon* vector_icon,
+             const std::u16string& accessible_name);
   ButtonInfo();
-  ~ButtonInfo();
+  ButtonInfo(const ButtonInfo& other);
+  ButtonInfo(ButtonInfo&& other);
   ButtonInfo& operator=(const ButtonInfo& other);
+  ButtonInfo& operator=(ButtonInfo&& other);
+  ~ButtonInfo();
 
   // Title that should be displayed on the notification button.
   std::u16string title;
 
+  // TODO(b/324953777): Consider removing this member variable in favor of
+  // replacing it with `vector_icon`.
   // Icon that should be displayed on the notification button. Optional. On some
   // platforms, a mask will be applied to the icon, to match the visual
   // requirements of the notification. As with Android, MD notifications don't
   // display this icon.
   gfx::Image icon;
 
+  // Vector icon to that's used for icon-only notification buttons.
+  raw_ptr<const gfx::VectorIcon> vector_icon = &gfx::kNoneIcon;
+
+  // Accessible name to be used for the button's tooltip. Required when creating
+  // an icon-only notification button.
+  std::u16string accessible_name;
+
   // The placeholder string that should be displayed in the input field for
   // text input type buttons until the user has entered a response themselves.
   // If the value is null, there is no input field associated with the button.
-  absl::optional<std::u16string> placeholder;
+  std::optional<std::u16string> placeholder;
 
   // Describes the button intended usage. This is used by the underlying
   // platform to take behavioral and stylistic decisions.
@@ -129,7 +160,7 @@ class MESSAGE_CENTER_PUBLIC_EXPORT RichNotificationData {
 
 #if BUILDFLAG(IS_CHROMEOS)
   // The path to the file that backs `image`. Set if `image` is file backed.
-  absl::optional<base::FilePath> image_path;
+  std::optional<base::FilePath> image_path;
 #endif  // BUILDFLAG(IS_CHROMEOS)
 
   // Small badge to display on the notification to illustrate the source of the
@@ -220,13 +251,13 @@ class MESSAGE_CENTER_PUBLIC_EXPORT RichNotificationData {
   // Usually, it should not be set directly.
   // For system notification, ash::CreateSystemNotification with
   // SystemNotificationWarningLevel should be used.
-  absl::optional<SkColor> accent_color;
+  std::optional<SkColor> accent_color;
 
   // Similar to `accent_color`, but store a ColorId instead of SkColor so that
   // the notification view can use this id to correctly handle theme change. In
   // CrOS notification, if `accent_color_id` is provided, `accent_color` will
   // not be used.
-  absl::optional<ui::ColorId> accent_color_id;
+  std::optional<ui::ColorId> accent_color_id;
 
   // Controls whether a settings button should appear on the notification. See
   // enum definition. TODO(estade): turn this into a boolean. See
@@ -296,7 +327,9 @@ class MESSAGE_CENTER_PUBLIC_EXPORT Notification {
   // identical for both the Notification instances.
   Notification(const Notification& other);
 
+  Notification(Notification&& other);
   Notification& operator=(const Notification& other);
+  Notification& operator=(Notification&& other);
 
   virtual ~Notification();
 
@@ -414,7 +447,7 @@ class MESSAGE_CENTER_PUBLIC_EXPORT Notification {
   void set_icon(const ui::ImageModel& icon) { icon_ = icon; }
 
   const gfx::Image& image() const { return optional_fields_.image; }
-  void set_image(const gfx::Image& image) { optional_fields_.image = image; }
+  void SetImage(const gfx::Image& image);
 
 #if BUILDFLAG(IS_CHROMEOS)
   void set_image_path(const base::FilePath& image_path) {
@@ -423,9 +456,7 @@ class MESSAGE_CENTER_PUBLIC_EXPORT Notification {
 #endif
 
   const gfx::Image& small_image() const { return optional_fields_.small_image; }
-  void set_small_image(const gfx::Image& image) {
-    optional_fields_.small_image = image;
-  }
+  void SetSmallImage(const gfx::Image& image);
 
   bool small_image_needs_additional_masking() const {
     return optional_fields_.small_image_needs_additional_masking;
@@ -501,14 +532,14 @@ class MESSAGE_CENTER_PUBLIC_EXPORT Notification {
     return optional_fields_.accessible_name;
   }
 
-  absl::optional<SkColor> accent_color() const {
+  std::optional<SkColor> accent_color() const {
     return optional_fields_.accent_color;
   }
   void set_accent_color(SkColor accent_color) {
     optional_fields_.accent_color = accent_color;
   }
 
-  absl::optional<ui::ColorId> accent_color_id() const {
+  std::optional<ui::ColorId> accent_color_id() const {
     return optional_fields_.accent_color_id;
   }
   void set_accent_color_id(ui::ColorId accent_color_id) {
@@ -589,6 +620,16 @@ class MESSAGE_CENTER_PUBLIC_EXPORT Notification {
     custom_view_type_ = custom_view_type;
   }
 
+  // Gets the element ID that should be used for the view that hosts this
+  // notification.
+  ui::ElementIdentifier host_view_element_id() const {
+    return host_view_element_id_;
+  }
+  void set_host_view_element_id(
+      const ui::ElementIdentifier host_view_element_id) {
+    host_view_element_id_ = host_view_element_id;
+  }
+
  protected:
   // The type of notification we'd like displayed.
   NotificationType type_;
@@ -637,6 +678,10 @@ class MESSAGE_CENTER_PUBLIC_EXPORT Notification {
   // creating the view for this notification. The type should match the type
   // used to register the factory in MessageViewFactory.
   std::string custom_view_type_;
+
+  // The value that should be used for the element ID of the view that hosts
+  // this notification.
+  ui::ElementIdentifier host_view_element_id_;
 
 #if BUILDFLAG(IS_CHROMEOS_ASH)
   // The warning level of a system notification.

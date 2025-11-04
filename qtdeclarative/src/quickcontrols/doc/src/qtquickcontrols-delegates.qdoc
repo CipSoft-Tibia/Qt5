@@ -58,6 +58,15 @@
 
     \b {See also} \l {Switch Control}.
 
+    \section1 TableViewDelegate Control
+
+    \image qtquickcontrols-tableviewdelegate.png
+
+    A \l TableViewDelegate is a delegate that can be assigned to the
+    \l [QML]{TableView::}{delegate} property of a TableView.
+
+    \b {See also} \l {TableView}
+
     \section1 TreeViewDelegate Control
 
     \image qtquickcontrols-treeviewdelegate.png

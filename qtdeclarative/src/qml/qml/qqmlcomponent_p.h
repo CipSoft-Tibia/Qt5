@@ -46,6 +46,8 @@ public:
 
     void loadUrl(const QUrl &newUrl, QQmlComponent::CompilationMode mode = QQmlComponent::PreferSynchronous);
 
+    QQmlType loadedType() const { return loadHelper ? loadHelper->type() : QQmlType(); }
+
     QObject *beginCreate(QQmlRefPointer<QQmlContextData>);
     void completeCreate();
     void initializeObjectWithInitialProperties(QV4::QmlContext *qmlContext, const QV4::Value &valuemap, QObject *toCreate, RequiredProperties *requiredProperties);
@@ -63,6 +65,8 @@ public:
             const QQmlRefPointer<QQmlContextData> &forContext);
 
     QQmlRefPointer<QQmlTypeData> typeData;
+    QQmlRefPointer<LoadHelper> loadHelper;
+
     void typeDataReady(QQmlTypeData *) override;
     void typeDataProgress(QQmlTypeData *, qreal) override;
 
@@ -77,9 +81,7 @@ public:
     int start;
 
     bool hadTopLevelRequiredProperties() const;
-    // TODO: merge compilation unit and type
     QQmlRefPointer<QV4::ExecutableCompilationUnit> compilationUnit;
-    QQmlType loadedType;
 
     struct AnnotatedQmlError
     {
@@ -185,11 +187,10 @@ public:
                                   bool createFromQml = false);
 
     bool isBound() const { return compilationUnit && (compilationUnit->componentsAreBound()); }
-    LoadHelper::ResolveTypeResult prepareLoadFromModule(QAnyStringView uri,
-                                                        QAnyStringView typeName);
-    void completeLoadFromModule(QAnyStringView uri, QAnyStringView typeName, QQmlType type,
-                                LoadHelper::ResolveTypeResult::Status moduleStatus,
-                                QQmlComponent::CompilationMode mode = QQmlComponent::PreferSynchronous);
+    void prepareLoadFromModule(
+            QAnyStringView uri, QAnyStringView typeName, QQmlTypeLoader::Mode mode);
+    void completeLoadFromModule(
+            QAnyStringView uri, QAnyStringView typeName);
 };
 
 QQmlComponentPrivate::ConstructionState::~ConstructionState()

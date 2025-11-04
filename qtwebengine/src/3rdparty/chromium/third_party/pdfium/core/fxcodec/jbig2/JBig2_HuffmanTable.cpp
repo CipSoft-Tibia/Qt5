@@ -11,9 +11,10 @@
 
 #include "core/fxcodec/jbig2/JBig2_BitStream.h"
 #include "core/fxcodec/jbig2/JBig2_Context.h"
+#include "core/fxcrt/check.h"
+#include "core/fxcrt/compiler_specific.h"
 #include "core/fxcrt/fx_safe_types.h"
 #include "core/fxcrt/unowned_ptr_exclusion.h"
-#include "third_party/base/check.h"
 
 namespace {
 
@@ -106,7 +107,7 @@ constexpr JBig2TableLine kTableLine15[] = {
     {1, 0, 0},   {3, 0, 1},    {4, 0, 2},  {5, 1, 3},  {6, 2, 5},
     {7, 4, 9},   {7, 32, -25}, {7, 32, 25}};
 
-constexpr HuffmanTable kHuffmanTables[16] = {
+constexpr std::array<const HuffmanTable, 16> kHuffmanTables = {{
     {false, nullptr, 0},  // Zero dummy to preserve indexing.
     {false, kTableLine1, std::size(kTableLine1)},
     {true, kTableLine2, std::size(kTableLine2)},
@@ -122,7 +123,8 @@ constexpr HuffmanTable kHuffmanTables[16] = {
     {false, kTableLine12, std::size(kTableLine12)},
     {false, kTableLine13, std::size(kTableLine13)},
     {false, kTableLine14, std::size(kTableLine14)},
-    {false, kTableLine15, std::size(kTableLine15)}};
+    {false, kTableLine15, std::size(kTableLine15)},
+}};
 
 static_assert(CJBig2_HuffmanTable::kNumHuffmanTables ==
                   std::size(kHuffmanTables),
@@ -135,7 +137,7 @@ CJBig2_HuffmanTable::CJBig2_HuffmanTable(size_t idx) {
   DCHECK(idx < kNumHuffmanTables);
   const HuffmanTable& table = kHuffmanTables[idx];
   HTOOB = table.HTOOB;
-  NTEMP = pdfium::base::checked_cast<uint32_t>(table.size);
+  NTEMP = pdfium::checked_cast<uint32_t>(table.size);
   m_bOK = ParseFromStandardTable(idx);
   DCHECK(m_bOK);
 }
@@ -152,12 +154,14 @@ bool CJBig2_HuffmanTable::ParseFromStandardTable(size_t idx) {
   CODES.resize(NTEMP);
   RANGELEN.resize(NTEMP);
   RANGELOW.resize(NTEMP);
-  for (uint32_t i = 0; i < NTEMP; ++i) {
-    CODES[i].codelen = pTable[i].PREFLEN;
-    RANGELEN[i] = pTable[i].RANDELEN;
-    RANGELOW[i] = pTable[i].RANGELOW;
-  }
-  return CJBig2_Context::HuffmanAssignCode(CODES.data(), NTEMP);
+  UNSAFE_TODO({
+    for (uint32_t i = 0; i < NTEMP; ++i) {
+      CODES[i].codelen = pTable[i].PREFLEN;
+      RANGELEN[i] = pTable[i].RANDELEN;
+      RANGELOW[i] = pTable[i].RANGELOW;
+    }
+  });
+  return CJBig2_Context::HuffmanAssignCode(CODES);
 }
 
 bool CJBig2_HuffmanTable::ParseFromCodedBuffer(CJBig2_BitStream* pStream) {
@@ -223,7 +227,8 @@ bool CJBig2_HuffmanTable::ParseFromCodedBuffer(CJBig2_BitStream* pStream) {
     ++NTEMP;
   }
 
-  return CJBig2_Context::HuffmanAssignCode(CODES.data(), NTEMP);
+  return CJBig2_Context::HuffmanAssignCode(
+      pdfium::make_span(CODES).first(NTEMP));
 }
 
 void CJBig2_HuffmanTable::ExtendBuffers(bool increment) {

@@ -2,8 +2,9 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-import * as ComponentHelpers from '../../../ui/components/helpers/helpers.js';
+import * as UI from '../../../ui/legacy/legacy.js';
 import * as LitHtml from '../../../ui/lit-html/lit-html.js';
+
 import computedStyleTraceStyles from './computedStyleTrace.css.js';
 
 const {render, html} = LitHtml;
@@ -26,6 +27,7 @@ export class ComputedStyleTrace extends HTMLElement {
 
   connectedCallback(): void {
     this.#shadow.adoptedStyleSheets = [computedStyleTraceStyles];
+    UI.UIUtils.injectCoreStyles(this.#shadow);
   }
 
   set data(data: ComputedStyleTraceData) {
@@ -53,10 +55,9 @@ export class ComputedStyleTrace extends HTMLElement {
   }
 }
 
-ComponentHelpers.CustomElements.defineComponent('devtools-computed-style-trace', ComputedStyleTrace);
+customElements.define('devtools-computed-style-trace', ComputedStyleTrace);
 
 declare global {
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   interface HTMLElementTagNameMap {
     'devtools-computed-style-trace': ComputedStyleTrace;
   }

@@ -16,12 +16,12 @@
 #include <stdint.h>
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
 #include "absl/functional/any_invocable.h"
 #include "absl/strings/string_view.h"
-#include "absl/types/optional.h"
 #include "rtc_base/buffer.h"
 #ifdef OPENSSL_IS_BORINGSSL
 #include "rtc_base/boringssl_identity.h"
@@ -90,7 +90,7 @@ class OpenSSLStreamAdapter final : public SSLStreamAdapter,
   // Goes from state SSL_NONE to either SSL_CONNECTING or SSL_WAIT, depending
   // on whether the underlying stream is already open or not.
   int StartSSL() override;
-  void SetMode(SSLMode mode) override;
+  [[deprecated]] void SetMode(SSLMode mode) override;
   void SetMaxProtocolVersion(SSLProtocolVersion version) override;
   void SetInitialRetransmissionTimeout(int timeout_ms) override;
 
@@ -107,8 +107,8 @@ class OpenSSLStreamAdapter final : public SSLStreamAdapter,
   static std::string SslCipherSuiteToName(int crypto_suite);
 
   bool GetSslCipherSuite(int* cipher) override;
-
-  SSLProtocolVersion GetSslVersion() const override;
+  [[deprecated("Use GetSslVersionBytes")]] SSLProtocolVersion GetSslVersion()
+      const override;
   bool GetSslVersionBytes(int* version) const override;
   // Key Extractor interface
   bool ExportKeyingMaterial(absl::string_view label,
@@ -148,7 +148,7 @@ class OpenSSLStreamAdapter final : public SSLStreamAdapter,
     SSL_CLOSED       // Clean close
   };
 
-  void OnEvent(StreamInterface* stream, int events, int err);
+  void OnEvent(int events, int err);
 
   void PostEvent(int events, int err);
   void SetTimeout(int delay_ms);
@@ -223,6 +223,10 @@ class OpenSSLStreamAdapter final : public SSLStreamAdapter,
   // Our key and certificate.
 #ifdef OPENSSL_IS_BORINGSSL
   std::unique_ptr<BoringSSLIdentity> identity_;
+  // We check and store the `WebRTC-PermuteTlsClientHello` field trial config in
+  // the constructor for convenience to allow tests to apply different
+  // configurations across instances.
+  const bool permute_extension_;
 #else
   std::unique_ptr<OpenSSLIdentity> identity_;
 #endif

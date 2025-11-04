@@ -43,13 +43,17 @@ export const UIStrings = {
    */
   CrossOriginWindowConfirm: "Triggering window.confirm from cross origin iframes has been deprecated and will be removed in the future.",
   /**
+   * @description Warning displayed to developers when their website uses `:--customstatename` in CSS. They can simply switch their CSS to `:state(customstatename)` and it will be the same.
+   */
+  CSSCustomStateDeprecatedSyntax: "`:--customstatename` is deprecated. Please use the `:state(customstatename)` syntax instead.",
+  /**
+   * @description Warning displayed to developers when their website uses `inset-area` in CSS. They can simply switch their CSS to `position-area` and it will function in the same way.
+   */
+  CSSInsetAreaProperty: "The `inset-area` property is deprecated. Please use the `position-area` property instead.",
+  /**
    * @description Warning displayed to developers when they hide the Cast button on a video element using the deprecated CSS selector instead of using the disableRemotePlayback attribute on the element.
    */
   CSSSelectorInternalMediaControlsOverlayCastButton: "The `disableRemotePlayback` attribute should be used in order to disable the default Cast integration instead of using `-internal-media-controls-overlay-cast-button` selector.",
-  /**
-   * @description Warning displayed to developers to let them know the CSS appearance property values they used are deprecated and will be removed.
-   */
-  CSSValueAppearanceNonStandard: "CSS appearance values  `inner-spin-button`, `media-slider`, `media-sliderthumb`, `media-volume-slider`, `media-volume-sliderthumb`, `push-button`, `searchfield-cancel-button`, `slider-horizontal`, `sliderthumb-horizontal`, `sliderthumb-vertical`, `square-button` are not standardized and will be removed.",
   /**
    * @description Warning displayed to developers to let them know the CSS appearance property value they used is not standard and will be removed.
    */
@@ -58,10 +62,6 @@ export const UIStrings = {
    * @description Warning displayed to developers when a data: URL is assigned to SVGUseElement to let them know that the support is deprecated.
    */
   DataUrlInSvgUse: "Support for data: URLs in SVGUseElement is deprecated and it will be removed in the future.",
-  /**
-   * @description This warning occurs when a script modifies `document.domain` without having set on `Origin-Agent-Cluster` http header. In other words, when a script relies on the default behaviour of `Origin-Agent-Cluster` when setting document.domain.
-   */
-  DocumentDomainSettingWithoutOriginAgentClusterHeader: "Relaxing the same-origin policy by setting `document.domain` is deprecated, and will be disabled by default. To continue using this feature, please opt-out of origin-keyed agent clusters by sending an `Origin-Agent-Cluster: ?0` header along with the HTTP response for the document and frames. See https://developer.chrome.com/blog/immutable-document-domain/ for more details.",
   /**
    * @description Warning displayed to developers when non-standard Mutation Events are used. These are deprecated and will be removed.
    */
@@ -74,6 +74,10 @@ export const UIStrings = {
    * @description Warning displayed to developers when the Geolocation API is used from an insecure origin (one that isn't localhost or doesn't use HTTPS) to notify them that this use is deprecated.
    */
   GeolocationInsecureOriginDeprecatedNotRemoved: "`getCurrentPosition()` and `watchPosition()` are deprecated on insecure origins. To use this feature, you should consider switching your application to a secure origin, such as HTTPS. See https://goo.gle/chrome-insecure-origins for more details.",
+  /**
+   * @description Warning displayed to developers when non-standard getInnerHTML function is called. This function is deprecated and will be removed.
+   */
+  GetInnerHTML: "The getInnerHTML() function is deprecated, and will be removed from this browser very soon. Please use getHTML() instead.",
   /**
    * @description This warning occurs when the `getUserMedia()` API is invoked on an insecure (e.g., HTTP) site. This is only permitted on secure sites (e.g., HTTPS).
    */
@@ -219,6 +223,10 @@ export const UIStrings = {
    */
   UnloadHandler: "Unload event listeners are deprecated and will be removed.",
   /**
+   * @description This warning occurs when the website attempts to invoke the deprecated GPUAdapter `requestAdapterInfo()` method.
+   */
+  V8GPUAdapter_RequestAdapterInfo_Method: "The GPUAdapter `requestAdapterInfo()` method is deprecated, instead use the GPUAdapter `info` attribute.",
+  /**
    * @description A deprecation warning shown in the DevTools Issues tab. The placeholder is always the noun 'SharedArrayBuffer' which refers to a JavaScript construct. 'Extensions' refers to Chrome extensions. The warning is shown when Chrome Extensions attempt to use 'SharedArrayBuffer's under insecure circumstances.
    */
   V8SharedArrayBufferConstructedInExtensionWithoutIsolation: "Extensions should opt into cross-origin isolation to continue using `SharedArrayBuffer`. See https://developer.chrome.com/docs/extensions/mv3/cross-origin-isolation/.",
@@ -226,14 +234,6 @@ export const UIStrings = {
    * @description Warning displayed to developers when the Web SQL API is used to let them know this API is deprecated.
    */
   WebSQL: "Web SQL is deprecated. Please use SQLite WebAssembly or Indexed Database",
-  /**
-   * @description A deprecation warning shown in the DevTools Issues tab. 'window-placement' and 'window-management' are the name of the javascript descriptors (do not translate). The warning is shown when web pages attempt to use 'window-placement' in permission APIs (e.g. navigator.permissions.query(...))
-   */
-  WindowPlacementPermissionDescriptorUsed: "The permission descriptor `window-placement` is deprecated. Use `window-management` instead. For more help, check https://bit.ly/window-placement-rename.",
-  /**
-   * @description A deprecation warning shown in the DevTools Issues tab. 'window-placement' and 'window-management' are the name of the policy descriptors (do not translate). The warning is shown when web pages attempt to use 'window-placement' as a permission policy (parsed in iframe or header).
-   */
-  WindowPlacementPermissionPolicyParsed: "The permission policy `window-placement` is deprecated. Use `window-management` instead. For more help, check https://bit.ly/window-placement-rename.",
   /**
    * @description Warning displayed to developers that they are using `XMLHttpRequest` API in a way that they expect an unsupported character encoding `UTF-16` could be used in the server reply.
    */
@@ -257,11 +257,16 @@ export const DEPRECATIONS_METADATA: Partial<Record<string, DeprecationDescriptor
   "AuthorizationCoveredByWildcard": {
     "milestone": 97
   },
+  "CSSCustomStateDeprecatedSyntax": {
+    "chromeStatusFeature": 5140610730426368,
+    "milestone": 122
+  },
+  "CSSInsetAreaProperty": {
+    "chromeStatusFeature": 5142143019253760,
+    "milestone": 129
+  },
   "CSSSelectorInternalMediaControlsOverlayCastButton": {
     "chromeStatusFeature": 5714245488476160
-  },
-  "CSSValueAppearanceNonStandard": {
-    "chromeStatusFeature": 5066630972833792
   },
   "CSSValueAppearanceSliderVertical": {
     "chromeStatusFeature": 6001359429566464
@@ -292,8 +297,8 @@ export const DEPRECATIONS_METADATA: Partial<Record<string, DeprecationDescriptor
     "chromeStatusFeature": 5128825141198848,
     "milestone": 119
   },
-  "DocumentDomainSettingWithoutOriginAgentClusterHeader": {
-    "milestone": 115
+  "GetInnerHTML": {
+    "chromeStatusFeature": 5081733588582400
   },
   "IdentityInCanMakePaymentEvent": {
     "chromeStatusFeature": 5190978431352832
@@ -365,20 +370,15 @@ export const DEPRECATIONS_METADATA: Partial<Record<string, DeprecationDescriptor
   "UnloadHandler": {
     "chromeStatusFeature": 5579556305502208
   },
+  "V8GPUAdapter_RequestAdapterInfo_Method": {
+    "chromeStatusFeature": 5140787340509184
+  },
   "V8SharedArrayBufferConstructedInExtensionWithoutIsolation": {
     "milestone": 96
   },
   "WebSQL": {
     "chromeStatusFeature": 5134293578285056,
     "milestone": 115
-  },
-  "WindowPlacementPermissionDescriptorUsed": {
-    "chromeStatusFeature": 5137018030391296,
-    "milestone": 112
-  },
-  "WindowPlacementPermissionPolicyParsed": {
-    "chromeStatusFeature": 5137018030391296,
-    "milestone": 112
   },
   "XHRJSONEncodingDetection": {
     "milestone": 93

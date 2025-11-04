@@ -5,6 +5,7 @@
 #include "quiche/quic/core/quic_utils.h"
 
 #include <string>
+#include <vector>
 
 #include "absl/base/macros.h"
 #include "absl/numeric/int128.h"
@@ -206,11 +207,7 @@ TEST_F(QuicUtilsTest, VariableLengthConnectionId) {
   EXPECT_FALSE(VersionAllowsVariableLengthConnectionIds(QUIC_VERSION_46));
   EXPECT_TRUE(QuicUtils::IsConnectionIdValidForVersion(
       QuicUtils::CreateZeroConnectionId(QUIC_VERSION_46), QUIC_VERSION_46));
-  EXPECT_TRUE(QuicUtils::IsConnectionIdValidForVersion(
-      QuicUtils::CreateZeroConnectionId(QUIC_VERSION_50), QUIC_VERSION_50));
   EXPECT_NE(QuicUtils::CreateZeroConnectionId(QUIC_VERSION_46),
-            EmptyQuicConnectionId());
-  EXPECT_EQ(QuicUtils::CreateZeroConnectionId(QUIC_VERSION_50),
             EmptyQuicConnectionId());
   EXPECT_FALSE(QuicUtils::IsConnectionIdValidForVersion(EmptyQuicConnectionId(),
                                                         QUIC_VERSION_46));

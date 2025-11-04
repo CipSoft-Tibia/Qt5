@@ -2,25 +2,26 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#include "device/fido/mac/credential_store.h"
-
 #include <CoreFoundation/CoreFoundation.h>
 #include <Foundation/Foundation.h>
 #include <Security/Security.h>
 
+#include "base/apple/bridging.h"
 #include "base/apple/foundation_util.h"
 #include "base/apple/osstatus_logging.h"
 #include "base/apple/scoped_cftyperef.h"
 #include "base/strings/sys_string_conversions.h"
 #include "base/test/task_environment.h"
+#include "base/test/test_future.h"
+#include "crypto/apple_keychain_v2.h"
+#include "crypto/fake_apple_keychain_v2.h"
 #include "device/base/features.h"
 #include "device/fido/ctap_make_credential_request.h"
 #include "device/fido/fido_constants.h"
 #include "device/fido/fido_test_data.h"
 #include "device/fido/mac/authenticator.h"
 #include "device/fido/mac/authenticator_config.h"
-#include "device/fido/mac/keychain.h"
-#include "device/fido/test_callback_receiver.h"
+#include "device/fido/mac/credential_store.h"
 #include "testing/gmock/include/gmock/gmock.h"
 #include "testing/gtest/include/gtest/gtest.h"
 
@@ -34,9 +35,12 @@ extern "C" {
 extern const CFStringRef kSecAttrNoLegacy;
 }
 
+using base::apple::CFToNSPtrCast;
+using base::apple::NSToCFPtrCast;
+
 namespace device {
 
-using test::TestCallbackReceiver;
+using base::test::TestFuture;
 
 namespace fido::mac {
 namespace {
@@ -52,20 +56,15 @@ const std::vector<uint8_t> kUserId = {10, 11, 12, 13, 14, 15};
 // Returns a query to use with Keychain instance methods that returns all
 // credentials in the non-legacy keychain that are tagged with the keychain
 // access group used in this test.
-base::apple::ScopedCFTypeRef<CFMutableDictionaryRef> BaseQuery() {
-  base::apple::ScopedCFTypeRef<CFMutableDictionaryRef> query(
-      CFDictionaryCreateMutable(kCFAllocatorDefault, 0,
-                                &kCFTypeDictionaryKeyCallBacks,
-                                &kCFTypeDictionaryValueCallBacks));
-  CFDictionarySetValue(query.get(), kSecClass, kSecClassKey);
-  base::apple::ScopedCFTypeRef<CFStringRef> access_group_ref(
-      base::SysUTF8ToCFStringRef(kKeychainAccessGroup));
-  CFDictionarySetValue(query.get(), kSecAttrAccessGroup,
-                       access_group_ref.get());
-  CFDictionarySetValue(query.get(), kSecAttrNoLegacy, kCFBooleanTrue);
-  CFDictionarySetValue(query.get(), kSecReturnAttributes, kCFBooleanTrue);
-  CFDictionarySetValue(query.get(), kSecMatchLimit, kSecMatchLimitAll);
-  return query;
+NSDictionary* BaseQuery() {
+  return @{
+    CFToNSPtrCast(kSecClass) : CFToNSPtrCast(kSecClassKey),
+    CFToNSPtrCast(kSecAttrAccessGroup) :
+        base::SysUTF8ToNSString(kKeychainAccessGroup),
+    CFToNSPtrCast(kSecAttrNoLegacy) : @YES,
+    CFToNSPtrCast(kSecReturnAttributes) : @YES,
+    CFToNSPtrCast(kSecMatchLimit) : CFToNSPtrCast(kSecMatchLimitAll),
+  };
 }
 
 // Returns all WebAuthn credentials stored in the keychain, regardless of which
@@ -73,8 +72,9 @@ base::apple::ScopedCFTypeRef<CFMutableDictionaryRef> BaseQuery() {
 // occurred.
 base::apple::ScopedCFTypeRef<CFArrayRef> QueryAllCredentials() {
   base::apple::ScopedCFTypeRef<CFArrayRef> items;
-  OSStatus status = Keychain::GetInstance().ItemCopyMatching(
-      BaseQuery().get(), reinterpret_cast<CFTypeRef*>(items.InitializeInto()));
+  OSStatus status = crypto::AppleKeychainV2::GetInstance().ItemCopyMatching(
+      NSToCFPtrCast(BaseQuery()),
+      reinterpret_cast<CFTypeRef*>(items.InitializeInto()));
   if (status == errSecItemNotFound) {
     // The API returns null, but we should return an empty array instead to
     // distinguish from real errors.
@@ -94,7 +94,8 @@ ssize_t KeychainItemCount() {
 }
 
 bool ResetKeychain() {
-  OSStatus status = Keychain::GetInstance().ItemDelete(BaseQuery().get());
+  OSStatus status = crypto::AppleKeychainV2::GetInstance().ItemDelete(
+      NSToCFPtrCast(BaseQuery()));
   if (status != errSecSuccess && status != errSecItemNotFound) {
     OSSTATUS_DLOG(ERROR, status);
     return false;
@@ -131,14 +132,14 @@ class BrowsingDataDeletionTest : public testing::Test {
   bool MakeCredential() { return MakeCredential(authenticator_.get()); }
 
   bool MakeCredential(TouchIdAuthenticator* authenticator) {
-    TestCallbackReceiver<CtapDeviceResponseCode,
-                         absl::optional<AuthenticatorMakeCredentialResponse>>
-        callback_receiver;
+    TestFuture<MakeCredentialStatus,
+               std::optional<AuthenticatorMakeCredentialResponse>>
+        future;
     authenticator->MakeCredential(MakeRequest(), MakeCredentialOptions(),
-                                  callback_receiver.callback());
-    callback_receiver.WaitForCallback();
-    auto result = callback_receiver.TakeResult();
-    return std::get<0>(result) == CtapDeviceResponseCode::kSuccess;
+                                  future.GetCallback());
+    EXPECT_TRUE(future.Wait());
+    auto result = future.Take();
+    return std::get<0>(result) == MakeCredentialStatus::kSuccess;
   }
 
   bool DeleteCredentials() { return DeleteCredentials(kMetadataSecret); }

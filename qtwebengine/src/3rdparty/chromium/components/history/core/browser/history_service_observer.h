@@ -45,7 +45,7 @@ class HistoryServiceObserver {
       HistoryService* history_service,
       const URLRow& url_row,
       const VisitRow& new_visit,
-      absl::optional<int64_t> local_navigation_id) {}
+      std::optional<int64_t> local_navigation_id) {}
 
   // Called when a URL has a metadata-only update. In situations where a URL has
   // a metadata-only update AND new visits, both `OnURLsModified` and
@@ -63,11 +63,10 @@ class HistoryServiceObserver {
   virtual void OnURLsModified(HistoryService* history_service,
                               const URLRows& changed_urls) {}
 
-  // Called when one or more URLs are deleted.
-  //
-  // `deletion_info` describes the urls that have been removed from history.
-  virtual void OnURLsDeleted(HistoryService* history_service,
-                             const DeletionInfo& deletion_info) {}
+  // Called when one or more URLs and/or Visits are deleted.
+  // `deletion_info` describes all the deletions that have occurred.
+  virtual void OnHistoryDeletions(HistoryService* history_service,
+                                  const DeletionInfo& deletion_info) {}
 
   // Is called to notify when `history_service` has finished loading.
   virtual void OnHistoryServiceLoaded(HistoryService* history_service) {}

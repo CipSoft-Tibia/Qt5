@@ -6,15 +6,15 @@
 #define COMPONENTS_SEND_TAB_TO_SELF_SEND_TAB_TO_SELF_SYNC_SERVICE_H_
 
 #include <memory>
+#include <optional>
 
 #include "base/memory/raw_ptr.h"
 #include "base/memory/weak_ptr.h"
 #include "components/keyed_service/core/keyed_service.h"
 #include "components/send_tab_to_self/entry_point_display_reason.h"
-#include "components/sync/model/model_type_store_service.h"
+#include "components/sync/model/data_type_store_service.h"
 #include "components/sync/service/sync_service_observer.h"
 #include "components/version_info/channel.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 
 class GURL;
 class PrefService;
@@ -25,7 +25,7 @@ class HistoryService;
 
 namespace syncer {
 class DeviceInfoTracker;
-class ModelTypeControllerDelegate;
+class DataTypeControllerDelegate;
 class SyncService;
 }  // namespace syncer
 
@@ -39,7 +39,7 @@ class SendTabToSelfSyncService : public KeyedService,
  public:
   SendTabToSelfSyncService(
       version_info::Channel channel,
-      syncer::OnceModelTypeStoreFactory create_store_callback,
+      syncer::OnceDataTypeStoreFactory create_store_callback,
       history::HistoryService* history_service,
       PrefService* pref_service,
       syncer::DeviceInfoTracker* device_info_tracker);
@@ -53,13 +53,13 @@ class SendTabToSelfSyncService : public KeyedService,
   void OnSyncServiceInitialized(syncer::SyncService* sync_service);
 
   // See EntryPointDisplayReason definition. Virtual for testing.
-  virtual absl::optional<EntryPointDisplayReason> GetEntryPointDisplayReason(
+  virtual std::optional<EntryPointDisplayReason> GetEntryPointDisplayReason(
       const GURL& url_to_share);
 
   // Never returns null.
   virtual SendTabToSelfModel* GetSendTabToSelfModel();
 
-  virtual base::WeakPtr<syncer::ModelTypeControllerDelegate>
+  virtual base::WeakPtr<syncer::DataTypeControllerDelegate>
   GetControllerDelegate();
 
  protected:

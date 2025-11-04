@@ -23,6 +23,7 @@ QQmlPreviewServiceImpl::QQmlPreviewServiceImpl(QObject *parent) :
     QQmlDebugService(s_key, 1.0f, parent)
 {
     connect(this, &QQmlPreviewServiceImpl::load, &m_handler, &QQmlPreviewHandler::loadUrl);
+    connect(this, &QQmlPreviewServiceImpl::drop, &m_handler, &QQmlPreviewHandler::dropCU);
     connect(this, &QQmlPreviewServiceImpl::rerun, &m_handler, &QQmlPreviewHandler::rerun);
     connect(this, &QQmlPreviewServiceImpl::zoom, &m_handler, &QQmlPreviewHandler::zoom);
     connect(&m_handler, &QQmlPreviewHandler::error, this, &QQmlPreviewServiceImpl::forwardError,
@@ -46,16 +47,19 @@ void QQmlPreviewServiceImpl::messageReceived(const QByteArray &data)
         QString path;
         QByteArray contents;
         packet >> path >> contents;
+
+        const QUrl url = path.startsWith(QLatin1Char(':'))
+                ? QUrl(QLatin1String("qrc") + path)
+                : QUrl::fromLocalFile(path);
+
+        emit drop(url);
         emit file(path, contents);
 
         // Replace the whole scene with the first file successfully loaded over the debug
         // connection. This is an OK approximation of the root component, and if the client wants
         // something specific, it will send an explicit Load anyway.
         if (m_currentUrl.isEmpty() && path.endsWith(".qml")) {
-            if (path.startsWith(':'))
-                m_currentUrl = QUrl("qrc" + path);
-            else
-                m_currentUrl = QUrl::fromLocalFile(path);
+            m_currentUrl = url;
             emit load(m_currentUrl);
         }
         break;

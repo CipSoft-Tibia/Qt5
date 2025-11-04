@@ -1,5 +1,6 @@
 // Copyright (C) 2019 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QHTTPSERVERROUTERRULE_H
 #define QHTTPSERVERROUTERRULE_H
@@ -125,12 +126,12 @@ protected:
         };
     }
 
-    template<typename ViewHandler, typename ViewTraits, int... Cx>
+    template<typename ViewHandler, typename ViewTraits, size_t... Cx>
     static typename ViewTraits::BindableType bindCapturedImpl(
                 const typename QtPrivate::ContextTypeForFunctor<ViewHandler>::ContextType *context,
                 ViewHandler &&handler,
                 const QRegularExpressionMatch &match,
-                QtPrivate::IndexesList<Cx...>)
+                std::index_sequence<Cx...>)
     {
         if constexpr (std::is_member_function_pointer_v<ViewHandler>) {
             return bind_front(

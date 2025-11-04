@@ -13,8 +13,8 @@
 #include <vector>
 
 #include "core/fxcrt/bytestring.h"
+#include "core/fxcrt/span.h"
 #include "core/fxcrt/widestring.h"
-#include "third_party/base/containers/span.h"
 
 constexpr uint32_t FXBSTR_ID(uint8_t c1, uint8_t c2, uint8_t c3, uint8_t c4) {
   return static_cast<uint32_t>(c1) << 24 | static_cast<uint32_t>(c2) << 16 |
@@ -26,11 +26,9 @@ std::u16string FX_UTF16Encode(WideStringView wsStr);
 
 float StringToFloat(ByteStringView str);
 float StringToFloat(WideStringView wsStr);
-size_t FloatToString(float f, pdfium::span<char> buf);
 
 double StringToDouble(ByteStringView str);
 double StringToDouble(WideStringView wsStr);
-size_t DoubleToString(double d, pdfium::span<char> buf);
 
 namespace fxcrt {
 
@@ -39,7 +37,7 @@ std::vector<StrType> Split(const StrType& that, typename StrType::CharType ch) {
   std::vector<StrType> result;
   StringViewTemplate<typename StrType::CharType> remaining(that.span());
   while (true) {
-    absl::optional<size_t> index = remaining.Find(ch);
+    std::optional<size_t> index = remaining.Find(ch);
     if (!index.has_value())
       break;
     result.emplace_back(remaining.First(index.value()));

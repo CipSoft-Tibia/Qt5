@@ -5,6 +5,7 @@
 #include "media/mojo/services/mojo_video_decoder_service.h"
 
 #include <memory>
+#include <optional>
 #include <utility>
 
 #include "base/functional/bind.h"
@@ -30,7 +31,6 @@
 #include "mojo/public/cpp/bindings/message.h"
 #include "mojo/public/cpp/system/buffer.h"
 #include "mojo/public/cpp/system/handle.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 
 namespace media {
 
@@ -67,7 +67,7 @@ class VideoFrameHandleReleaserImpl final
 
   ~VideoFrameHandleReleaserImpl() final { DVLOG(3) << __func__; }
 
-  // Register a VideoFrame to recieve release callbacks. A reference to |frame|
+  // Register a VideoFrame to receive release callbacks. A reference to |frame|
   // will be held until the remote client calls ReleaseVideoFrame() or is
   // disconnected.
   //
@@ -83,7 +83,7 @@ class VideoFrameHandleReleaserImpl final
   // mojom::MojoVideoFrameHandleReleaser implementation
   void ReleaseVideoFrame(
       const base::UnguessableToken& release_token,
-      const absl::optional<gpu::SyncToken>& release_sync_token) final {
+      const std::optional<gpu::SyncToken>& release_sync_token) final {
     DVLOG(3) << __func__ << "(" << release_token.ToString() << ")";
     TRACE_EVENT2("media", "VideoFrameHandleReleaserImpl::ReleaseVideoFrame",
                  "release_token", release_token.ToString(),
@@ -212,7 +212,7 @@ void MojoVideoDecoderService::Construct(
 void MojoVideoDecoderService::Initialize(
     const VideoDecoderConfig& config,
     bool low_delay,
-    const absl::optional<base::UnguessableToken>& cdm_id,
+    const std::optional<base::UnguessableToken>& cdm_id,
     InitializeCallback callback) {
   DVLOG(1) << __func__ << " config = " << config.AsHumanReadableString()
            << ", cdm_id = "
@@ -252,7 +252,7 @@ void MojoVideoDecoderService::Initialize(
           mojo_cdm_service_context_->GetCdmContextRef(cdm_id.value());
     } else if (cdm_id != cdm_id_) {
       // TODO(xhwang): Replace with mojo::ReportBadMessage().
-      NOTREACHED() << "The caller should not switch CDM";
+      NOTREACHED_IN_MIGRATION() << "The caller should not switch CDM";
       OnDecoderInitialized(DecoderStatus::Codes::kUnsupportedEncryptionMode);
       return;
     }
@@ -423,11 +423,11 @@ void MojoVideoDecoderService::OnDecoderOutput(scoped_refptr<VideoFrame> frame) {
                "video_frame", frame->AsHumanReadableString());
 
   // All MojoVideoDecoder-based decoders are hardware decoders. If you're the
-  // first to implement an out-of-process decoder that is not power efficent,
+  // first to implement an out-of-process decoder that is not power efficient,
   // you can remove this DCHECK.
   DCHECK(frame->metadata().power_efficient);
 
-  absl::optional<base::UnguessableToken> release_token;
+  std::optional<base::UnguessableToken> release_token;
   if ((decoder_->FramesHoldExternalResources() ||
        frame->HasReleaseMailboxCB()) &&
       video_frame_handle_releaser_) {

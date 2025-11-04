@@ -120,23 +120,18 @@ IntersectionObserver& DisplayLockDocumentState::EnsureIntersectionObserver() {
     // Paint containment requires using the overflow clip edge. To do otherwise
     // results in overflow-clip-margin not being painted in certain scenarios.
     intersection_observer_ = IntersectionObserver::Create(
-        /* (root) margin */ {Length::Percent(kViewportMarginPercentage)},
-        /* scroll_margin */ Vector<Length>(),
-        /* thresholds */ {std::numeric_limits<float>::min()},
-        /* document */ document_,
-        /* callback */
+        *document_,
         WTF::BindRepeating(
             &DisplayLockDocumentState::ProcessDisplayLockActivationObservation,
             WrapWeakPersistent(this)),
-        /* ukm_metric_id */
         LocalFrameUkmAggregator::kDisplayLockIntersectionObserver,
-        /* behavior */ IntersectionObserver::kDeliverDuringPostLayoutSteps,
-        /* semantics */ IntersectionObserver::kFractionOfTarget,
-        /* delay */ 0,
-        /* track_visibility */ false,
-        /* always report_root_bounds */ false,
-        /* margin_target */ IntersectionObserver::kApplyMarginToTarget,
-        /* use_overflow_clip_edge */ true);
+        IntersectionObserver::Params{
+            .margin = {Length::Percent(kViewportMarginPercentage)},
+            .margin_target = IntersectionObserver::kApplyMarginToTarget,
+            .thresholds = {std::numeric_limits<float>::min()},
+            .behavior = IntersectionObserver::kDeliverDuringPostLayoutSteps,
+            .use_overflow_clip_edge = true,
+        });
   }
   return *intersection_observer_;
 }
@@ -321,7 +316,7 @@ void DisplayLockDocumentState::EndForcedScope(
     }
   }
   // We should always find a scope to erase.
-  NOTREACHED();
+  NOTREACHED_IN_MIGRATION();
 }
 
 void DisplayLockDocumentState::EnsureMinimumForcedPhase(
@@ -401,7 +396,9 @@ DisplayLockDocumentState::ScopedForceActivatableDisplayLocks::
       if (context->HasElement()) {
         context->DidForceActivatableDisplayLocks();
       } else {
-        DUMP_WILL_BE_NOTREACHED_NORETURN()
+        // This used to be a DUMP_WILL_BE_NOTREACHED(), but the crash volume was
+        // too high. See crbug.com/41494130
+        DCHECK(false)
             << "The DisplayLockContext's element has been garbage collected or"
             << " otherwise deleted, but the DisplayLockContext is still alive!"
             << " This shouldn't happen and could cause a crash. See"
@@ -458,12 +455,10 @@ void DisplayLockDocumentState::IssueForcedRenderWarning(Element* element) {
         RuntimeEnabledFeatures::WarnOnContentVisibilityRenderAccessEnabled()
             ? mojom::blink::ConsoleMessageLevel::kWarning
             : mojom::blink::ConsoleMessageLevel::kVerbose;
-    auto* console_message = MakeGarbageCollected<ConsoleMessage>(
+    element->AddConsoleMessage(
         mojom::blink::ConsoleMessageSource::kJavaScript, level,
         forced_render_warnings_ == kMaxConsoleMessages ? kForcedRenderingMax
                                                        : kForcedRendering);
-    console_message->SetNodes(document_->GetFrame(), {element->GetDomNodeId()});
-    document_->AddConsoleMessage(console_message);
   }
 }
 

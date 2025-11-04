@@ -15,7 +15,7 @@ namespace blink {
 using OutlinePainterTest = RenderingTest;
 
 TEST_F(OutlinePainterTest, FocusRingOutset) {
-  const auto* initial_style = ComputedStyle::CreateInitialStyleSingleton();
+  const auto* initial_style = ComputedStyle::GetInitialStyleSingleton();
   ComputedStyleBuilder builder(*initial_style);
   builder.SetOutlineStyle(EBorderStyle::kSolid);
   builder.SetOutlineStyleIsAuto(true);
@@ -72,8 +72,9 @@ TEST_F(OutlinePainterTest, IterateCollapsedPath) {
   path.close();
   // Collapsed contour should not cause crash and should be ignored.
   OutlinePainter::IterateRightAnglePathForTesting(
-      path, WTF::BindRepeating(
-                [](const Vector<OutlinePainter::Line>&) { NOTREACHED(); }));
+      path, WTF::BindRepeating([](const Vector<OutlinePainter::Line>&) {
+        NOTREACHED_IN_MIGRATION();
+      }));
 }
 
 }  // namespace blink

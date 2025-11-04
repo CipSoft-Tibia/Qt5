@@ -36,7 +36,7 @@ class QQnxAudioSink : public QPlatformAudioSink
     Q_OBJECT
 
 public:
-    explicit QQnxAudioSink(const QAudioDevice &deviceInfo, QObject *parent);
+    explicit QQnxAudioSink(QAudioDevice deviceInfo, const QAudioFormat &, QObject *parent);
     ~QQnxAudioSink();
 
     void start(QIODevice *source) override;
@@ -49,12 +49,7 @@ public:
     void setBufferSize(qsizetype) override;
     qsizetype bufferSize() const override;
     qint64 processedUSecs() const override;
-    QAudio::Error error() const override;
     QAudio::State state() const override;
-    void setFormat(const QAudioFormat &format);
-    QAudioFormat format() const override;
-    void setVolume(qreal volume) override;
-    qreal volume() const override;
     qint64 pushData(const char *data, qint64 len);
 
 private slots:
@@ -81,19 +76,14 @@ private:
     bool m_pushSource;
     QTimer *m_timer;
 
-    QAudio::Error m_error;
     QAudio::State m_state;
     QAudio::State m_suspendedInState;
-    QAudioFormat m_format;
-    qreal m_volume;
     int m_periodSize;
 
     QnxAudioUtils::HandleUniquePtr m_pcmHandle;
     qint64 m_bytesWritten;
 
     int m_requestedBufferSize;
-
-    QAudioDevice m_deviceInfo;
 
     QSocketNotifier *m_pcmNotifier;
 };

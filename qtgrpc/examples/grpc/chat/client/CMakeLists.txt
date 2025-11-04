@@ -27,7 +27,7 @@ find_package(Qt6 REQUIRED
         Grpc
         GrpcQuick
 )
-qt_standard_project_setup(REQUIRES 6.8)
+qt_standard_project_setup(REQUIRES 6.9)
 
 qt_add_executable(qtgrpc_chat_client WIN32 MACOSX_BUNDLE main.cpp)
 qt_add_qml_module(qtgrpc_chat_client

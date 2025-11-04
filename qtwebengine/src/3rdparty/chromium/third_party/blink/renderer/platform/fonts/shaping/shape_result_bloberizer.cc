@@ -2,6 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#ifdef UNSAFE_BUFFERS_BUILD
+// TODO(crbug.com/351564777): Remove this and convert code to safer constructs.
+#pragma allow_unsafe_buffers
+#endif
+
 #include "third_party/blink/renderer/platform/fonts/shaping/shape_result_bloberizer.h"
 
 #include <hb.h>
@@ -17,17 +22,6 @@
 #include "third_party/blink/renderer/platform/text/text_run.h"
 
 namespace blink {
-
-namespace {
-template <typename T, size_t E>
-std::ostream& operator<<(std::ostream& out, const base::span<T, E>& c) {
-#if DCHECK_IS_ON()
-  for (auto&& e : c)
-    out << e << " ";
-#endif
-  return out;
-}
-}  // namespace
 
 ShapeResultBloberizer::ShapeResultBloberizer(
     const FontDescription& font_description,
@@ -142,13 +136,11 @@ void ShapeResultBloberizer::CommitText() {
 
   DVLOG(4) << "  CommitText appended UTF-8: \""
            << std::string(&pending_utf8_[pending_utf8_original_size],
-                          pending_utf8_.end())
+                          pending_utf8_.data() + pending_utf8_.size())
            << "\"";
   DVLOG(4) << "  CommitText UTF-8 indexes: "
-           << base::make_span(
-                  &pending_utf8_character_indexes_
-                      [pending_utf8_character_indexes_original_size],
-                  pending_utf8_character_indexes_.end());
+           << base::span(pending_utf8_character_indexes_)
+                  .subspan(pending_utf8_character_indexes_original_size);
 }
 
 void ShapeResultBloberizer::CommitPendingRun() {
@@ -162,8 +154,9 @@ void ShapeResultBloberizer::CommitPendingRun() {
     builder_rotation_ = pending_canvas_rotation_;
   }
 
-  if (UNLIKELY(!current_character_indexes_.empty()))
+  if (!current_character_indexes_.empty()) [[unlikely]] {
     CommitText();
+  }
 
   SkFont run_font =
       pending_font_data_->PlatformData().CreateSkFont(&font_description_);
@@ -450,7 +443,7 @@ ShapeResultBloberizer::FillGlyphs::FillGlyphs(
   float advance = 0;
   auto results = result_buffer.results_;
 
-  if (UNLIKELY(type_ == Type::kEmitText)) {
+  if (type_ == Type::kEmitText) [[unlikely]] {
     unsigned word_offset = 0;
     ClusterStarts cluster_starts;
     for (const auto& word_result : results) {
@@ -468,15 +461,14 @@ ShapeResultBloberizer::FillGlyphs::FillGlyphs(
     unsigned word_offset = run_info.run.length();
     for (unsigned j = 0; j < results.size(); j++) {
       unsigned resolved_index = results.size() - 1 - j;
-      const scoped_refptr<const ShapeResult>& word_result =
-          results[resolved_index];
+      const Member<const ShapeResult>& word_result = results[resolved_index];
       unsigned word_characters = word_result->NumCharacters();
       word_offset -= word_characters;
       DVLOG(4) << " FillGlyphs RTL run from: " << run_info.from
                << " to: " << run_info.to << " offset: " << word_offset
                << " length: " << word_characters;
       advance =
-          FillGlyphsForResult(word_result.get(), run_info.run.ToStringView(),
+          FillGlyphsForResult(word_result.Get(), run_info.run.ToStringView(),
                               run_info.from, run_info.to, advance, word_offset);
     }
   } else {
@@ -487,14 +479,15 @@ ShapeResultBloberizer::FillGlyphs::FillGlyphs(
                << " to: " << run_info.to << " offset: " << word_offset
                << " length: " << word_characters;
       advance =
-          FillGlyphsForResult(word_result.get(), run_info.run.ToStringView(),
+          FillGlyphsForResult(word_result.Get(), run_info.run.ToStringView(),
                               run_info.from, run_info.to, advance, word_offset);
       word_offset += word_characters;
     }
   }
 
-  if (UNLIKELY(type_ == Type::kEmitText))
+  if (type_ == Type::kEmitText) [[unlikely]] {
     CommitText();
+  }
 
   advance_ = advance;
 }
@@ -523,7 +516,7 @@ ShapeResultBloberizer::FillGlyphsNG::FillGlyphsNG(
 
   DVLOG(4) << "FillGlyphsNG slow path";
   unsigned run_offset = 0;
-  if (UNLIKELY(type_ == Type::kEmitText)) {
+  if (type_ == Type::kEmitText) [[unlikely]] {
     ClusterStarts cluster_starts;
     result->ForEachGlyph(initial_advance, from, to, run_offset,
                          ClusterStarts::Accumulate,
@@ -537,8 +530,9 @@ ShapeResultBloberizer::FillGlyphsNG::FillGlyphsNG(
       result->ForEachGlyph(initial_advance, from, to, run_offset,
                            AddGlyphToBloberizer, static_cast<void*>(&context));
 
-  if (UNLIKELY(type_ == Type::kEmitText))
+  if (type_ == Type::kEmitText) [[unlikely]] {
     CommitText();
+  }
 }
 
 ShapeResultBloberizer::FillTextEmphasisGlyphs::FillTextEmphasisGlyphs(
@@ -557,8 +551,7 @@ ShapeResultBloberizer::FillTextEmphasisGlyphs::FillTextEmphasisGlyphs(
     unsigned word_offset = run_info.run.length();
     for (unsigned j = 0; j < results.size(); j++) {
       unsigned resolved_index = results.size() - 1 - j;
-      const scoped_refptr<const ShapeResult>& word_result =
-          results[resolved_index];
+      const Member<const ShapeResult>& word_result = results[resolved_index];
       word_offset -= word_result->NumCharacters();
       StringView text = run_info.run.ToStringView();
       ClusterCallbackContext context = {this, text, emphasis, glyph_center};
@@ -630,7 +623,7 @@ float ShapeResultBloberizer::FillFastHorizontalGlyphs(
   for (unsigned i = 0; i < results.size(); ++i) {
     const auto& word_result =
         IsLtr(text_direction) ? results[i] : results[results.size() - 1 - i];
-    advance = FillFastHorizontalGlyphs(word_result.get(), advance);
+    advance = FillFastHorizontalGlyphs(word_result.Get(), advance);
   }
 
   return advance;

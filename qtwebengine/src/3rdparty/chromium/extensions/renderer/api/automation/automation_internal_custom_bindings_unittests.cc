@@ -9,7 +9,6 @@
 #include "base/test/bind.h"
 #include "extensions/common/constants.h"
 #include "extensions/common/extension_builder.h"
-#include "extensions/common/extension_messages.h"
 #include "extensions/common/features/feature_provider.h"
 #include "extensions/renderer/bindings/api_binding_test_util.h"
 #include "extensions/renderer/native_extension_bindings_system.h"
@@ -39,7 +38,7 @@ class AutomationInternalCustomBindingsTest
     script_context->set_url(extension->url());
     bindings_system()->UpdateBindingsForContext(script_context);
 
-    // TODO(crbug/1487002) Add tests for service worker.
+    // TODO(crbug.com/40283128) Add tests for service worker.
     auto automation_internal_bindings =
         std::make_unique<AutomationInternalCustomBindings>(script_context,
                                                            bindings_system());

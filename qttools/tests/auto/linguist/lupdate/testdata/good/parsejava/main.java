@@ -74,6 +74,8 @@ public class I18N extends QDialog {
         /*: with extra comment! */
         QCoreApplication.translate("Plurals, QCoreApplication", "%n house(s)", "Plurals and identifier", n);
 
+        tr("");
+
         // FIXME: This will fail.
         //QApplication.tr("QT_LAYOUT_DIRECTION", "scoped to qapp");
 

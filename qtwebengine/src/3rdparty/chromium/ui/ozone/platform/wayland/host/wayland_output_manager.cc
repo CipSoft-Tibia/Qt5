@@ -12,7 +12,7 @@
 #include "ui/ozone/platform/wayland/host/wayland_connection.h"
 #include "ui/ozone/platform/wayland/host/wayland_output.h"
 #include "ui/ozone/platform/wayland/host/wayland_window.h"
-#include "ui/ozone/platform/wayland/host/wayland_zaura_output_manager.h"
+#include "ui/ozone/platform/wayland/host/wayland_zaura_output_manager_v2.h"
 #include "ui/ozone/platform/wayland/host/wayland_zaura_shell.h"
 
 namespace ui {
@@ -47,17 +47,13 @@ void WaylandOutputManager::AddWaylandOutput(WaylandOutput::Id output_id,
   // geometry and the scaling factor from the Wayland Compositor.
   wayland_output->Initialize(this);
 
-  // If supported, the zaura_output_manager will have have been bound by this
-  // client before the any wl_output objects. zaura_output_manager subsumes the
-  // responsibilities of xdg_output and aura_output, so avoid unnecessarily
+  // If supported, the aura output manager will have have been bound by this
+  // client before the any wl_output objects. The aura output manager subsumes
+  // the responsibilities of xdg_output and aura_output, so avoid unnecessarily
   // creating the output extensions if present.
-  if (!connection_->zaura_output_manager()) {
+  if (!connection_->IsUsingZAuraOutputManager()) {
     if (connection_->xdg_output_manager_v1()) {
       wayland_output->InitializeXdgOutput(connection_->xdg_output_manager_v1());
-    }
-    if (connection_->zaura_shell()) {
-      wayland_output->InitializeZAuraOutput(
-          connection_->zaura_shell()->wl_object());
     }
   }
 
@@ -90,11 +86,6 @@ void WaylandOutputManager::RemoveWaylandOutput(WaylandOutput::Id output_id) {
     wayland_screen_->OnOutputRemoved(output_id);
   DCHECK(output_list_.find(output_id) != output_list_.end());
 
-  if (auto* output_manager = connection_->zaura_output_manager()) {
-    output_manager->RemoveOutputMetrics(output_id);
-    DCHECK(!output_manager->GetOutputMetrics(output_id));
-  }
-
   output_list_.erase(output_id);
 }
 
@@ -102,14 +93,6 @@ void WaylandOutputManager::InitializeAllXdgOutputs() {
   DCHECK(connection_->xdg_output_manager_v1());
   for (const auto& output : output_list_)
     output.second->InitializeXdgOutput(connection_->xdg_output_manager_v1());
-}
-
-void WaylandOutputManager::InitializeAllZAuraOutputs() {
-  DCHECK(connection_->zaura_shell());
-  for (const auto& output : output_list_) {
-    output.second->InitializeZAuraOutput(
-        connection_->zaura_shell()->wl_object());
-  }
 }
 
 void WaylandOutputManager::InitializeAllColorManagementOutputs() {
@@ -200,8 +183,10 @@ void WaylandOutputManager::OnOutputHandleMetrics(
       metrics.display_id == wayland_screen_->GetPrimaryDisplay().id();
   for (auto* window : connection_->window_manager()->GetAllWindows()) {
     auto entered_output = window->GetPreferredEnteredOutputId();
-    if (entered_output == metrics.output_id || (!entered_output && is_primary))
-      window->UpdateWindowScale(true);
+    if (entered_output == metrics.output_id ||
+        (!entered_output && is_primary)) {
+      window->OnEnteredOutputScaleChanged();
+    }
   }
 }
 

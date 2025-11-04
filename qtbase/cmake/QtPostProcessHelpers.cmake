@@ -29,7 +29,7 @@ macro(qt_collect_third_party_deps target)
     endif()
     unset(_target_is_static)
 
-    foreach(dep ${${depends_var}} ${optional_public_depends} ${extra_third_party_deps})
+    foreach(dep ${${depends_var}} ${extra_third_party_deps})
         # Gather third party packages that should be found when using the Qt module.
         # Also handle nolink target dependencies.
         string(REGEX REPLACE "_nolink$" "" base_dep "${dep}")
@@ -48,9 +48,6 @@ macro(qt_collect_third_party_deps target)
             if(dep_seen EQUAL -1 AND package_name)
                 list(APPEND third_party_deps_seen ${dep})
                 get_target_property(package_is_optional ${dep} INTERFACE_QT_PACKAGE_IS_OPTIONAL)
-                if(NOT package_is_optional AND dep IN_LIST optional_public_depends)
-                    set(package_is_optional TRUE)
-                endif()
                 get_target_property(package_version ${dep} INTERFACE_QT_PACKAGE_VERSION)
                 if(NOT package_version)
                     set(package_version "")
@@ -143,6 +140,13 @@ function(qt_internal_remove_qt_dependency_duplicates out_deps deps)
 endfunction()
 
 function(qt_internal_create_module_depends_file target)
+    set(no_value_options "")
+    set(single_value_options "")
+    set(multi_value_options "")
+    cmake_parse_arguments(PARSE_ARGV 1 arg
+        "${no_value_options}" "${single_value_options}" "${multi_value_options}"
+    )
+
     get_target_property(target_type "${target}" TYPE)
     set(is_interface_lib FALSE)
     if(target_type STREQUAL "INTERFACE_LIBRARY")
@@ -156,11 +160,6 @@ function(qt_internal_create_module_depends_file target)
 
     get_target_property(public_depends "${target}" INTERFACE_LINK_LIBRARIES)
 
-    unset(optional_public_depends)
-    if(TARGET "${target}Private")
-        get_target_property(optional_public_depends "${target}Private" INTERFACE_LINK_LIBRARIES)
-    endif()
-
     # Used for collecting Qt module dependencies that should be find_package()'d in
     # ModuleDependencies.cmake.
     get_target_property(target_deps "${target}" _qt_target_deps)
@@ -168,8 +167,11 @@ function(qt_internal_create_module_depends_file target)
     set(qt_module_dependencies "")
 
     if(NOT is_interface_lib)
+        # TODO: deprecated code path. QT_EXTRA_PACKAGE_DEPENDENCIES shouldn't be used for the Qt
+        # packages.
         get_target_property(extra_depends "${target}" QT_EXTRA_PACKAGE_DEPENDENCIES)
     endif()
+
     if(NOT extra_depends MATCHES "-NOTFOUND$")
         list(APPEND target_deps "${extra_depends}")
     endif()
@@ -337,7 +339,6 @@ function(qt_internal_create_plugin_depends_file target)
     get_target_property(depends "${target}" LINK_LIBRARIES)
     get_target_property(public_depends "${target}" INTERFACE_LINK_LIBRARIES)
     get_target_property(target_deps "${target}" _qt_target_deps)
-    unset(optional_public_depends)
     set(target_deps_seen "")
 
 
@@ -398,7 +399,6 @@ function(qt_internal_create_qt6_dependencies_file)
     set(actual_target Platform)
     get_target_property(public_depends "${actual_target}" INTERFACE_LINK_LIBRARIES)
     unset(depends)
-    unset(optional_public_depends)
 
     set(third_party_deps "")
     set(third_party_deps_seen "")
@@ -432,7 +432,7 @@ endif()")
         # to the target CMAKE_INSTALL_DIR, if at all possible to do so in a reliable way.
         get_filename_component(qt_host_path_absolute "${QT_HOST_PATH}" ABSOLUTE)
         get_filename_component(qt_host_path_cmake_dir_absolute
-            "${Qt${PROJECT_VERSION_MAJOR}HostInfo_DIR}/.." ABSOLUTE)
+            "${${INSTALL_CMAKE_NAMESPACE}HostInfo_DIR}/.." ABSOLUTE)
     endif()
 
     if(third_party_deps OR platform_requires_host_info_package)
@@ -467,6 +467,9 @@ function(qt_internal_create_depends_files)
 
     foreach (target ${repo_known_modules})
         qt_internal_create_module_depends_file(${target})
+        if(TARGET "${target}Private")
+            qt_internal_create_module_depends_file(${target}Private)
+        endif()
     endforeach()
 
     foreach (target ${QT_KNOWN_PLUGINS})
@@ -563,7 +566,15 @@ function(qt_create_hostinfo_package)
         INSTALL_DESTINATION "${install_destination}"
         NO_SET_AND_CHECK_MACRO
         NO_CHECK_REQUIRED_COMPONENTS_MACRO)
-    qt_install(FILES "${config_file_path}" DESTINATION "${install_destination}")
+
+    set(version_file "${QT_CONFIG_BUILD_DIR}/${package}/${package}ConfigVersion.cmake")
+    write_basic_package_version_file(
+        "${version_file}"
+        VERSION ${PROJECT_VERSION}
+        COMPATIBILITY AnyNewerVersion
+        ARCH_INDEPENDENT
+    )
+    qt_install(FILES "${config_file_path}" "${version_file}" DESTINATION "${install_destination}")
 endfunction()
 
 function(qt_generate_build_internals_extra_cmake_code)

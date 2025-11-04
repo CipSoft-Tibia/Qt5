@@ -11,7 +11,7 @@
 
 #include "input.h"
 
-namespace bssl {
+BSSL_NAMESPACE_BEGIN
 
 // The arc for the anyExtendedKeyUsage OID is found under the id-ce arc,
 // defined in section 4.2.1 of RFC 5280:
@@ -75,9 +75,9 @@ inline constexpr uint8_t kOCSPSigning[] = {0x2b, 0x06, 0x01, 0x05,
 //
 // Note: The returned OIDs are only as valid as long as the data pointed to by
 // |extension_value| is valid.
-OPENSSL_EXPORT bool ParseEKUExtension(const der::Input &extension_value,
+OPENSSL_EXPORT bool ParseEKUExtension(der::Input extension_value,
                                       std::vector<der::Input> *eku_oids);
 
-}  // namespace bssl
+BSSL_NAMESPACE_END
 
 #endif  // BSSL_PKI_EXTENDED_KEY_USAGE_H_

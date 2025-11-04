@@ -240,7 +240,7 @@ void Renderer::draw(const vk::GraphicsPipeline *pipeline, const vk::DynamicState
 			setupRoutine = setupProcessor.routine(setupState);
 
 			pixelState = pixelProcessor.update(pipelineState, fragmentShader, vertexShader, attachments, hasOcclusionQuery());
-			pixelRoutine = pixelProcessor.routine(pixelState, fragmentState->getPipelineLayout(), fragmentShader, inputs.getDescriptorSets());
+			pixelRoutine = pixelProcessor.routine(pixelState, fragmentState->getPipelineLayout(), fragmentShader, attachments, inputs.getDescriptorSets());
 		}
 	}
 
@@ -278,18 +278,14 @@ void Renderer::draw(const vk::GraphicsPipeline *pipeline, const vk::DynamicState
 		const sw::Stream &stream = inputs.getStream(i);
 		data->input[i] = stream.buffer;
 		data->robustnessSize[i] = stream.robustnessSize;
-		data->stride[i] = inputs.getVertexStride(i, vertexInputInterfaceState.hasDynamicVertexStride());
+		data->stride[i] = inputs.getVertexStride(i);
 	}
 
 	data->indices = indexBuffer;
 	data->layer = layer;
 	data->instanceID = instanceID;
 	data->baseVertex = baseVertex;
-
-	if(indexBuffer)
-	{
-		draw->indexType = pipeline->getIndexBuffer().getIndexType();
-	}
+	draw->indexType = indexBuffer ? pipeline->getIndexBuffer().getIndexType() : VK_INDEX_TYPE_UINT16;
 
 	draw->vertexRoutine = vertexRoutine;
 

@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qqmldomoutwriter_p.h"
-#include "qqmldomattachedinfo_p.h"
 #include "qqmldomlinewriter_p.h"
 #include "qqmldomitem_p.h"
 #include "qqmldomcomments_p.h"
@@ -26,8 +25,6 @@ OutWriterState::OutWriterState(
 
 void OutWriterState::closeState(OutWriter &w)
 {
-    if (w.lineWriter.options().updateOptions & LineWriterOptions::Update::Locations)
-        w.lineWriter.endSourceLocation(fullRegionId);
     if (!pendingRegions.isEmpty()) {
         qCWarning(writeOutLog) << "PendingRegions non empty when closing item"
                                << pendingRegions.keys();
@@ -53,26 +50,11 @@ void OutWriter::itemStart(const DomItem &it)
 {
     if (!topLocation->path())
         topLocation->setPath(it.canonicalPath());
-    bool updateLocs = lineWriter.options().updateOptions & LineWriterOptions::Update::Locations;
     FileLocations::Tree newFLoc = topLocation;
     Path itP = it.canonicalPath();
-    if (updateLocs) {
-        if (!states.isEmpty()
-            && states.last().itemCanonicalPath
-                    == itP.mid(0, states.last().itemCanonicalPath.length())) {
-            int oldL = states.last().itemCanonicalPath.length();
-            newFLoc = FileLocations::ensure(states.last().currentMap,
-                                            itP.mid(oldL, itP.length() - oldL),
-                                            AttachedInfo::PathType::Relative);
 
-        } else {
-            newFLoc = FileLocations::ensure(topLocation, itP, AttachedInfo::PathType::Canonical);
-        }
-    }
     states.append(OutWriterState(itP, it, newFLoc));
-    if (updateLocs)
-        state().fullRegionId = lineWriter.startSourceLocation(
-                [newFLoc](SourceLocation l) { FileLocations::updateFullLocation(newFLoc, l); });
+
     regionStart(MainRegion);
 }
 
@@ -90,10 +72,7 @@ void OutWriter::regionStart(FileLocationRegion region)
     Q_ASSERT(!state().pendingRegions.contains(region));
     FileLocations::Tree fMap = state().currentMap;
     if (!skipComments && state().pendingComments.contains(region)) {
-        bool updateLocs = lineWriter.options().updateOptions & LineWriterOptions::Update::Locations;
-        QList<SourceLocation> *cLocs =
-                (updateLocs ? &(fMap->info().preCommentLocations[region]) : nullptr);
-        state().pendingComments[region].writePre(*this, cLocs);
+        state().pendingComments[region].writePre(*this, nullptr);
     }
     state().pendingRegions[region] = lineWriter.startSourceLocation(
             [region, fMap](SourceLocation l) { FileLocations::addRegion(fMap, region, l); });
@@ -107,11 +86,7 @@ void OutWriter::regionEnd(FileLocationRegion region)
     state().pendingRegions.remove(region);
     if (state().pendingComments.contains(region)) {
         if (!skipComments) {
-            bool updateLocs =
-                    lineWriter.options().updateOptions & LineWriterOptions::Update::Locations;
-            QList<SourceLocation> *cLocs =
-                    (updateLocs ? &(fMap->info().postCommentLocations[region]) : nullptr);
-            state().pendingComments[region].writePost(*this, cLocs);
+            state().pendingComments[region].writePost(*this, nullptr);
         }
         state().pendingComments.remove(region);
     }
@@ -248,9 +223,6 @@ OutWriter &OutWriter::writeRegion(FileLocationRegion region)
     case YieldKeywordRegion:
         codeForRegion = u"yield"_s;
         break;
-    case StarTokenRegion:
-        codeForRegion = u"*"_s;
-        break;
     case NewKeywordRegion:
         codeForRegion = u"new"_s;
         break;
@@ -259,6 +231,9 @@ OutWriter &OutWriter::writeRegion(FileLocationRegion region)
         break;
     case SuperKeywordRegion:
         codeForRegion = u"super"_s;
+        break;
+    case StarTokenRegion:
+        codeForRegion = u"*"_s;
         break;
     case DollarLeftBraceTokenRegion:
         codeForRegion = u"${"_s;
@@ -296,101 +271,7 @@ OutWriter &OutWriter::writeRegion(FileLocationRegion region, QStringView toWrite
     regionEnd(region);
     return *this;
 }
-/*!
-   \internal
-    Restores written out FileItem using intermediate information saved during DOM traversal.
-    It enables verifying DOM consistency of the written item later.
 
-    At the moment of writing, intermediate information consisting only of UpdatedScriptExpression,
-    however this is subject for change. The process of restoration is the following:
-    1. Creating copy of the initial fileItem
-    2. Updating relevant data/subitems modified during the WriteOut
-    3. Returning an item containing updates.
- */
-DomItem OutWriter::restoreWrittenFileItem(const DomItem &fileItem)
-{
-    switch (fileItem.internalKind()) {
-    case DomType::QmlFile:
-        return writtenQmlFileItem(fileItem, fileItem.canonicalPath());
-    case DomType::JsFile:
-        return writtenJsFileItem(fileItem, fileItem.canonicalPath());
-    default:
-        qCWarning(writeOutLog) << fileItem.internalKind() << " is not supported";
-        return DomItem{};
-    }
-}
-
-DomItem OutWriter::writtenQmlFileItem(const DomItem &fileItem, const Path &filePath)
-{
-    Q_ASSERT(fileItem.internalKind() == DomType::QmlFile);
-    auto mutableFile = fileItem.makeCopy(DomItem::CopyOption::EnvDisconnected);
-    // QmlFile specific visitor for reformattedScriptExpressions tree
-    // lambda function responsible for the update of the initial expression by the formatted one
-    auto exprUpdater = [&mutableFile, filePath](
-                               const Path &p, const UpdatedScriptExpression::Tree &t) {
-        if (std::shared_ptr<ScriptExpression> formattedExpr = t->info().expr) {
-            Q_ASSERT(p.mid(0, filePath.length()) == filePath);
-            MutableDomItem originalExprItem = mutableFile.path(p.mid(filePath.length()));
-            if (!originalExprItem)
-                qCWarning(writeOutLog) << "failed to get" << p.mid(filePath.length()) << "from"
-                                       << mutableFile.canonicalPath();
-            // Verifying originalExprItem.as<ScriptExpression>() == false is handy
-            // because we can't call setScript on the ScriptExpression itself and it needs to
-            // be called on the container / parent item. See setScript for details
-            else if (formattedExpr->ast()
-                     || (!originalExprItem.as<ScriptExpression>()
-                         || !originalExprItem.as<ScriptExpression>()->ast()))
-                originalExprItem.setScript(formattedExpr);
-            else {
-                logScriptExprUpdateSkipped(originalExprItem.item(),
-                                           originalExprItem.canonicalPath(), formattedExpr);
-            }
-        }
-        return true;
-    };
-    // update relevant formatted expressions
-    UpdatedScriptExpression::visitTree(reformattedScriptExpressions, exprUpdater);
-    return mutableFile.item();
-}
-
-DomItem OutWriter::writtenJsFileItem(const DomItem &fileItem, const Path &filePath)
-{
-    Q_ASSERT(fileItem.internalKind() == DomType::JsFile);
-    auto mutableFile = fileItem.makeCopy(DomItem::CopyOption::EnvDisconnected);
-    UpdatedScriptExpression::visitTree(
-            reformattedScriptExpressions,
-            [&mutableFile, filePath](const Path &p, const UpdatedScriptExpression::Tree &t) {
-                if (std::shared_ptr<ScriptExpression> formattedExpr = t->info().expr) {
-                    Q_ASSERT(p.mid(0, filePath.length()) == filePath);
-                    mutableFile.mutableAs<JsFile>()->setExpression(formattedExpr);
-                }
-                return true;
-            });
-    return mutableFile.item();
-}
-
-void OutWriter::logScriptExprUpdateSkipped(
-        const DomItem &exprItem, const Path &exprPath,
-        const std::shared_ptr<ScriptExpression> &formattedExpr)
-{
-    qCWarning(writeOutLog).noquote() << "Skipped update of reformatted ScriptExpression with "
-                                        "code:\n---------------\n"
-                                     << formattedExpr->code() << "\n---------------\n preCode:" <<
-            [&formattedExpr](Sink s) { sinkEscaped(s, formattedExpr->preCode()); }
-                                     << "\n postCode: " <<
-            [&formattedExpr](Sink s) { sinkEscaped(s, formattedExpr->postCode()); }
-                                     << "\n as it failed standalone reparse with errors:" <<
-            [&exprItem, &exprPath, &formattedExpr](Sink s) {
-                exprItem.copy(formattedExpr, exprPath)
-                        .iterateErrors(
-                                [s](const DomItem &, const ErrorMessage &msg) {
-                                    s(u"\n  ");
-                                    msg.dump(s);
-                                    return true;
-                                },
-                                true);
-            } << "\n";
-}
 } // namespace Dom
 } // namespace QQmlJS
 QT_END_NAMESPACE

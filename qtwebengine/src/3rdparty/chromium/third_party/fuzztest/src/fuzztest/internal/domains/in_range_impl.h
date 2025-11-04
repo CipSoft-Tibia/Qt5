@@ -19,23 +19,29 @@
 #include <cstddef>
 #include <limits>
 #include <optional>
+#include <string>
 #include <type_traits>
+#include <utility>
+#include <vector>
 
 #include "absl/random/bit_gen_ref.h"
 #include "absl/random/distributions.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "./fuzztest/internal/coverage.h"
 #include "./fuzztest/internal/domains/domain_base.h"
+#include "./fuzztest/internal/domains/special_values.h"
 #include "./fuzztest/internal/domains/value_mutation_helpers.h"
 #include "./fuzztest/internal/logging.h"
-#include "./fuzztest/internal/serialization.h"
+#include "./fuzztest/internal/printer.h"
 #include "./fuzztest/internal/table_of_recent_compares.h"
 #include "./fuzztest/internal/type_support.h"
 
 namespace fuzztest::internal {
 
 template <typename T>
-class InRangeImpl : public DomainBase<InRangeImpl<T>> {
+class InRangeImpl : public domain_implementor::DomainBase<InRangeImpl<T>> {
  public:
   using typename InRangeImpl::DomainBase::value_type;
 
@@ -85,8 +91,16 @@ class InRangeImpl : public DomainBase<InRangeImpl<T>> {
 
   value_type Init(absl::BitGenRef prng) {
     if (auto seed = this->MaybeGetRandomSeed(prng)) return *seed;
-    // TODO(sbenzaquen): Add more interesting points in the range.
-    const T special[] = {min_, max_};
+
+    const auto default_specials = SpecialValues<T>::Get();
+
+    std::vector<value_type> special = {min_, max_};
+    std::copy_if(std::begin(default_specials), std::end(default_specials),
+                 std::back_inserter(special), [&](const value_type& val) {
+                   // Strict inequality so we don't double-count the endpoints.
+                   return min_ < val && val < max_;
+                 });
+
     return ChooseOneOr(special, prng, [&] {
       return absl::Uniform(absl::IntervalClosedClosed, prng, min_, max_);
     });
@@ -156,17 +170,22 @@ class InRangeImpl : public DomainBase<InRangeImpl<T>> {
     } while (val == prev);  // Make sure Mutate really mutates.
   }
 
+  value_type GetRandomCorpusValue(absl::BitGenRef prng) { return Init(prng); }
+
   absl::Status ValidateCorpusValue(const value_type& corpus_value) const {
     if (min_ <= corpus_value && corpus_value <= max_) return absl::OkStatus();
     // We cannot just absl::StrCat() the error message, because it doesn't
     // accept some types (like char).
     std::string error_message;
     absl::Format(&error_message, "The value ");
-    PrintValue(*this, corpus_value, &error_message, PrintMode::kSourceCode);
+    domain_implementor::PrintValue(*this, corpus_value, &error_message,
+                                   domain_implementor::PrintMode::kSourceCode);
     absl::Format(&error_message, " is not InRange(");
-    PrintValue(*this, min_, &error_message, PrintMode::kSourceCode);
+    domain_implementor::PrintValue(*this, min_, &error_message,
+                                   domain_implementor::PrintMode::kSourceCode);
     absl::Format(&error_message, ", ");
-    PrintValue(*this, max_, &error_message, PrintMode::kSourceCode);
+    domain_implementor::PrintValue(*this, max_, &error_message,
+                                   domain_implementor::PrintMode::kSourceCode);
     absl::Format(&error_message, ")");
     return absl::InvalidArgumentError(error_message);
   }

@@ -510,6 +510,7 @@ private Q_SLOTS:
 #endif
 
     void dontInsertPartialContentIntoTheCache();
+    void removeIncompleteCacheObjects();
 
     void httpUserAgent();
 #if QT_CONFIG(networkproxy)
@@ -593,12 +594,16 @@ private Q_SLOTS:
 #if QT_CONFIG(http)
     void qhttpPartDebug_data();
     void qhttpPartDebug();
-
+#if QT_CONFIG(networkproxy)
     void qtbug68821proxyError_data();
     void qtbug68821proxyError();
 #endif
+#endif
 
     void abortAndError();
+
+    void resendRequest_data();
+    void resendRequest();
 
     // NOTE: This test must be last!
     void parentingRepliesToTheApp();
@@ -678,6 +683,7 @@ public:
     QByteArray receivedData;
     QSemaphore ready;
     bool doClose;
+    bool earlyClose = false; // close connection after request has been received
     bool doSsl;
     bool ipv6;
     bool multiple;
@@ -805,6 +811,9 @@ private slots:
         qDebug() << "slotError" << err << currentClient->errorString();
     }
 
+signals:
+    void requestReceived() const;
+
 public slots:
 
     void readyReadSlot()
@@ -830,10 +839,16 @@ public slots:
             if (contentRead < contentLength)
                 return;
 
+            emit requestReceived();
+
             // multiple requests incoming. remove the bytes of the current one
             if (multiple)
                 receivedData.remove(0, endOfHeader);
 
+            if (earlyClose) {
+                client->disconnectFromHost();
+                return;
+            }
             reply();
         }
     }
@@ -960,6 +975,7 @@ public:
 
     QHash<QUrl, QIODevice*> m_buffers;
     QList<QUrl> m_insertedUrls;
+    QList<QUrl> m_removedUrls;
 
     QNetworkCacheMetaData metaData(const QUrl &) override
     {
@@ -984,6 +1000,7 @@ public:
     bool remove(const QUrl &url) override
     {
         delete m_buffers.take(url);
+        m_removedUrls.append(url);
         return m_insertedUrls.removeAll(url) > 0;
     }
 
@@ -5131,7 +5148,7 @@ void tst_QNetworkReply::ioPutToFileFromProcess_data()
 void tst_QNetworkReply::ioPutToFileFromProcess()
 {
 #if !QT_CONFIG(process)
-    QSKIP("No qprocess support", SkipAll);
+    QSKIP("No qprocess support");
 #else
 
 #ifdef Q_OS_WIN
@@ -6731,7 +6748,6 @@ void tst_QNetworkReply::httpConnectionCount()
 
     int pendingConnectionCount = 0;
 
-    using namespace std::chrono_literals;
     const auto newPendingConnection = [&server]() { return server->hasPendingConnections(); };
     // If we have http2 enabled then the second connection will take a little
     // longer to be established because we will wait for the first one to finish
@@ -8724,6 +8740,39 @@ void tst_QNetworkReply::dontInsertPartialContentIntoTheCache()
     QCOMPARE(memoryCache->m_insertedUrls.size(), 0);
 }
 
+void tst_QNetworkReply::removeIncompleteCacheObjects()
+{
+    const auto compressedHelloWorld = QByteArray::fromBase64("H4sIAAAAAAAAA8tIzcnJVyjPL8pJAQCFEUoNCwAAAA==");
+    const QByteArray reply404CompressedHelloWorld =
+            "HTTP/1.1 404\r\n"
+            "Content-Type: text/plain\r\n"
+            "Content-length: "_ba + QByteArray::number(compressedHelloWorld.size()) + "\r\n"
+            "Content-Encoding: gzip\r\n"
+            "\r\n"_ba +
+            compressedHelloWorld;
+
+    MiniHttpServer server(reply404CompressedHelloWorld);
+    server.doClose = false;
+
+    MySpyMemoryCache *memoryCache = new MySpyMemoryCache(&manager);
+    manager.setCache(memoryCache);
+
+    QUrl url = "http://localhost:" + QString::number(server.serverPort());
+    QNetworkRequest request(url);
+
+    QNetworkReplyPtr reply(manager.get(request));
+
+    QVERIFY2(waitForFinish(reply) == Failure, msgWaitForFinished(reply));
+    QCOMPARE(reply->error(), QNetworkReply::ContentNotFoundError);
+
+    QVERIFY(server.totalConnections > 0);
+    // We don't read the data, just delete the reply:
+    reply.reset();
+    QCOMPARE(memoryCache->m_insertedUrls.size(), 0);
+    QCOMPARE(memoryCache->m_removedUrls.size(), 1);
+    QCOMPARE(memoryCache->m_removedUrls[0], url);
+}
+
 void tst_QNetworkReply::httpUserAgent()
 {
     QByteArray response("HTTP/1.0 200 OK\r\n\r\n");
@@ -10658,6 +10707,7 @@ void tst_QNetworkReply::qhttpPartDebug()
         QVERIFY2(msg.contains(value), "Missing header value: " + value);
 }
 
+#if QT_CONFIG(networkproxy)
 void tst_QNetworkReply::qtbug68821proxyError_data()
 {
     QTest::addColumn<QString>("proxyHost");
@@ -10706,7 +10756,8 @@ void tst_QNetworkReply::qtbug68821proxyError()
     QCOMPARE(spy.count(), 1);
     QCOMPARE(spy.at(0).at(0), error);
 }
-#endif
+#endif // QT_CONFIG(networkproxy)
+#endif // QT_CONFIG(http)
 
 void tst_QNetworkReply::abortAndError()
 {
@@ -10739,6 +10790,56 @@ Hello World!)"_ba;
     QCOMPARE(finishedSignal.count(), 1);
     QCOMPARE(errorSignal.count(), 1);
     QCOMPARE(reply->error(), QNetworkReply::OperationCanceledError);
+}
+
+void tst_QNetworkReply::resendRequest_data(){
+    QTest::addColumn<QString>("method");
+    QTest::addColumn<bool>("shouldResend");
+
+    for (auto &method : { "get", "head", "put" })
+        QTest::addRow("%s", method) << method << true;
+    QTest::addRow("post") << "post" << false;
+    QTest::addRow("mycustom") << "mycustom" << false;
+
+}
+
+void tst_QNetworkReply::resendRequest()
+{
+    QFETCH(const QString, method);
+    QFETCH(const bool, shouldResend);
+
+    MiniHttpServer server("");
+    server.earlyClose = true;
+
+    QSignalSpy requestReceived(&server, &MiniHttpServer::requestReceived);
+
+    QUrl url("http://127.0.0.1");
+    url.setPort(server.serverPort());
+    const QByteArray data(4096, 'a');
+    QNetworkReplyPtr reply([&]() {
+        QNetworkRequest req(url);
+        if (method == "get")
+            return manager.get(req, data);
+        else if (method == "head")
+            return manager.head(req);
+        else if (method == "put")
+            return manager.put(req, data);
+        else
+            return manager.sendCustomRequest(req, method.toUtf8(), data);
+    }());
+
+    // We send one request and will get no response from the server:
+    QVERIFY(requestReceived.wait());
+    requestReceived.clear();
+    // Then, for idempotent requests, we send the request again. For
+    // non-idempotent requests we error out and don't try to resend.
+    QCOMPARE(requestReceived.wait(2s), shouldResend);
+    if (!shouldResend) {
+        QCOMPARE(reply->error(), QNetworkReply::RemoteHostClosedError);
+    } else {
+        // No error yet, still can resend another
+        QCOMPARE(reply->error(), QNetworkReply::NoError);
+    }
 }
 
 // NOTE: This test must be last testcase in tst_qnetworkreply!

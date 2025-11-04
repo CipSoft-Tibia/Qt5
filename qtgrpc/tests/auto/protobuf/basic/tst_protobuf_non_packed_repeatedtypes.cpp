@@ -25,6 +25,7 @@ private Q_SLOTS:
     void repeatedFloatNonPackedMessageSerializerTest();
     void repeatedDoubleNonPackedMessageSerializerTest();
     void repeatedBoolNonPackedMessageSerializerTest();
+    void repeatedEnumNonPackedMessageSerializerTest();
 
     void repeatedIntNonPackedMessageDeserializerTest();
     void nonPackedIntWithInterleavedExtra();
@@ -40,6 +41,7 @@ private Q_SLOTS:
     void repeatedFloatNonPackedMessageDeserializerTest();
     void repeatedDoubleNonPackedMessageDeserializerTest();
     void repeatedBoolNonPackedMessageDeserializerTest();
+    void repeatedEnumNonPackedMessageDeserializerTest();
 
 private:
     std::unique_ptr<QProtobufSerializer> m_serializer;
@@ -235,6 +237,17 @@ void QtProtobufNonPackedRepeatedTypesTest::repeatedBoolNonPackedMessageSerialize
     QCOMPARE(result.toHex(), expectedResult);
 }
 
+void QtProtobufNonPackedRepeatedTypesTest::repeatedEnumNonPackedMessageSerializerTest()
+{
+    RepeatedNonPackedEnumMessage enumMsg;
+    enumMsg.setField({ RepeatedNonPackedEnumMessage::TestEnum::ENUM_VALUE0,
+                       RepeatedNonPackedEnumMessage::TestEnum::ENUM_VALUE3,
+                       RepeatedNonPackedEnumMessage::TestEnum::ENUM_VALUE2 });
+    QByteArray result = enumMsg.serialize(m_serializer.get());
+    QString expectedResult = QString("080008030802");
+    QCOMPARE(result.toHex(), expectedResult);
+}
+
 void QtProtobufNonPackedRepeatedTypesTest::repeatedIntNonPackedMessageDeserializerTest()
 {
     RepeatedNonPackedIntMessage test;
@@ -420,5 +433,16 @@ void QtProtobufNonPackedRepeatedTypesTest::repeatedBoolNonPackedMessageDeseriali
                                     false, false, false, true }));
 }
 
+void QtProtobufNonPackedRepeatedTypesTest::repeatedEnumNonPackedMessageDeserializerTest()
+{
+    RepeatedNonPackedEnumMessage test;
+    test.deserialize(m_serializer.get(), QByteArray::fromHex("080308000802"));
+    QCOMPARE(test.field().count(), 3);
+    QCOMPARE(test.field(),
+             QList<RepeatedNonPackedEnumMessage::
+                       TestEnum>({ RepeatedNonPackedEnumMessage::TestEnum::ENUM_VALUE3,
+                                   RepeatedNonPackedEnumMessage::TestEnum::ENUM_VALUE0,
+                                   RepeatedNonPackedEnumMessage::TestEnum::ENUM_VALUE2 }));
+}
 QTEST_MAIN(QtProtobufNonPackedRepeatedTypesTest)
 #include "tst_protobuf_non_packed_repeatedtypes.moc"

@@ -12,6 +12,7 @@
 #include "third_party/blink/renderer/core/html/html_frame_owner_element.h"
 #include "third_party/blink/renderer/core/intersection_observer/intersection_observer_entry.h"
 #include "third_party/blink/renderer/core/layout/adjust_for_absolute_zoom.h"
+#include "third_party/blink/renderer/core/layout/hit_test_result.h"
 #include "third_party/blink/renderer/core/layout/layout_box.h"
 #include "third_party/blink/renderer/core/layout/layout_embedded_content.h"
 #include "third_party/blink/renderer/core/layout/layout_inline.h"
@@ -52,15 +53,6 @@ PhysicalBoxStrut ResolveMargin(const Vector<Length>& margin,
 }
 
 // Expand rect by the given margin values.
-void ApplyMargin(PhysicalRect& expand_rect,
-                 const Vector<Length>& margin,
-                 float zoom,
-                 const gfx::SizeF& reference_size) {
-  if (margin.empty())
-    return;
-  expand_rect.Expand(ResolveMargin(margin, reference_size, zoom));
-}
-
 void ApplyMargin(gfx::RectF& expand_rect,
                  const Vector<Length>& margin,
                  float zoom,
@@ -72,13 +64,11 @@ void ApplyMargin(gfx::RectF& expand_rect,
       gfx::OutsetsF(ResolveMargin(margin, reference_size, zoom)));
 }
 
-// Returns the root intersect rect for the given root object, with the given
-// margins applied, in the coordinate system of the root object.
+// Returns the root intersect rect for the given root object, before applying
+// margins, in the coordinate system of the root object.
 //
-//   https://w3c.github.io/IntersectionObserver/#intersectionobserver-root-intersection-rectangle
-gfx::RectF InitializeRootRect(const LayoutObject* root,
-                              const Vector<Length>& margin) {
-  DCHECK(margin.empty() || margin.size() == 4);
+// https://w3c.github.io/IntersectionObserver/#intersectionobserver-root-intersection-rectangle
+gfx::RectF InitializeRootRect(const LayoutObject* root) {
   PhysicalRect result;
   auto* layout_view = DynamicTo<LayoutView>(root);
   if (layout_view && root->GetDocument().GetFrame()->IsOutermostMainFrame()) {
@@ -104,8 +94,6 @@ gfx::RectF InitializeRootRect(const LayoutObject* root,
   } else {
     result = To<LayoutInline>(root)->PhysicalLinesBoundingBox();
   }
-  ApplyMargin(result, margin, root->StyleRef().EffectiveZoom(),
-              gfx::SizeF(result.size));
   return gfx::RectF(result);
 }
 
@@ -170,8 +158,8 @@ bool ComputeIsVisible(const LayoutObject* target, const PhysicalRect& rect) {
 // multiple block fragments.
 gfx::Transform ObjectToViewTransform(const LayoutObject& object) {
   // Use faster GeometryMapper when possible.
-  PropertyTreeStateOrAlias container_properties =
-      PropertyTreeState::Uninitialized();
+  PropertyTreeStateOrAlias container_properties(
+      PropertyTreeState::kUninitialized);
   const LayoutObject* property_container =
       IntersectionGeometry::CanUseGeometryMapper(object)
           ? object.GetPropertyContainer(nullptr, &container_properties)
@@ -197,6 +185,23 @@ void ScrollingContentsToBorderBoxSpace(const LayoutBox* box, gfx::RectF& rect) {
   rect.Offset(-scrollable_area->ScrollPosition().OffsetFromOrigin());
 }
 
+bool ClipsSelf(const LayoutObject& object) {
+  return object.HasClip() || object.HasClipPath() || object.HasMask() ||
+         // For simplicity, assume all SVG children clip self (with e.g.
+         // SVG mask).
+         object.IsSVGChild();
+}
+
+bool ClipsContents(const LayoutObject& object) {
+  // An objects that clips itself also clips contents.
+  if (ClipsSelf(object)) {
+    return true;
+  }
+  // TODO(wangxianzhu): Ideally we should ignore clippers that don't have
+  // a scrollable overflow, but that caused crbug.com/41492283. Investigate.
+  return object.ShouldClipOverflowAlongEitherAxis();
+}
+
 static const unsigned kConstructorFlagsMask =
     IntersectionGeometry::kShouldReportRootBounds |
     IntersectionGeometry::kShouldComputeVisibility |
@@ -204,7 +209,8 @@ static const unsigned kConstructorFlagsMask =
     IntersectionGeometry::kForFrameViewportIntersection |
     IntersectionGeometry::kShouldConvertToCSSPixels |
     IntersectionGeometry::kUseOverflowClipEdge |
-    IntersectionGeometry::kRespectFilters;
+    IntersectionGeometry::kRespectFilters |
+    IntersectionGeometry::kScrollAndVisibilityOnly;
 
 }  // namespace
 
@@ -216,7 +222,8 @@ IntersectionGeometry::RootGeometry::RootGeometry(const LayoutObject* root,
     return;
   }
   zoom = root->StyleRef().EffectiveZoom();
-  local_root_rect = InitializeRootRect(root, margin);
+  pre_margin_local_root_rect = InitializeRootRect(root);
+  UpdateMargin(margin);
   if (RuntimeEnabledFeatures::IntersectionOptimizationEnabled()) {
     root_to_view_transform = ObjectToViewTransform(*root);
   } else {
@@ -224,6 +231,12 @@ IntersectionGeometry::RootGeometry::RootGeometry(const LayoutObject* root,
     root->MapLocalToAncestor(nullptr, transform_state, 0);
     root_to_view_transform = transform_state.AccumulatedTransform();
   }
+}
+
+void IntersectionGeometry::RootGeometry::UpdateMargin(
+    const Vector<Length>& margin) {
+  local_root_rect = pre_margin_local_root_rect;
+  ApplyMargin(local_root_rect, margin, zoom, pre_margin_local_root_rect.size());
 }
 
 bool IntersectionGeometry::RootGeometry::operator==(
@@ -251,7 +264,7 @@ IntersectionGeometry::IntersectionGeometry(
     const Vector<Length>& target_margin,
     const Vector<Length>& scroll_margin,
     unsigned flags,
-    absl::optional<RootGeometry>& root_geometry,
+    std::optional<RootGeometry>& root_geometry,
     CachedRects* cached_rects)
     : flags_(flags & kConstructorFlagsMask) {
   // Only one of root_margin or target_margin can be specified.
@@ -303,9 +316,9 @@ const LayoutObject* IntersectionGeometry::GetTargetLayoutObject(
     return nullptr;
   }
   // If the target is inside a locked subtree, it isn't ever visible.
-  if (UNLIKELY(target->GetFrameView()->IsDisplayLocked() ||
-               DisplayLockUtilities::IsInLockedSubtreeCrossingFrames(
-                   target_element))) {
+  if (target->GetFrameView()->IsDisplayLocked() ||
+      DisplayLockUtilities::IsInLockedSubtreeCrossingFrames(target_element))
+      [[unlikely]] {
     return nullptr;
   }
 
@@ -371,13 +384,17 @@ void IntersectionGeometry::RootAndTarget::ComputeRelationship(
     } else {
       root_scrolls_target = true;
     }
-    return;
+
+    if (!has_scroll_margin) {
+      // When scroll margins are defined intermediate_scrollers still needs to
+      // get populated.
+      return;
+    }
   }
 
-  if (target->GetFrame() != root->GetFrame()) {
+  if (target->GetFrame() != root->GetFrame() && !root_is_implicit) {
     // The case of different frame with implicit root has been covered by the
     // previous condition.
-    DCHECK(!root_is_implicit);
     // The target and the explicit root are required to be in the same frame.
     relationship = kInvalid;
     return;
@@ -386,26 +403,60 @@ void IntersectionGeometry::RootAndTarget::ComputeRelationship(
   bool has_intermediate_clippers = false;
   const LayoutObject* previous_container = nullptr;
   const LayoutObject* container = target;
+  bool have_crossed_frame_boundary = false;
+  if (ClipsSelf(*target)) {
+    has_intermediate_clippers = true;
+  }
   while (container != root) {
-    has_filter |= container->HasFilterInducingProperty();
+    has_filter |=
+        !have_crossed_frame_boundary && container->HasFilterInducingProperty();
+
     // Don't check for filters if we've already found one.
     LayoutObject::AncestorSkipInfo skip_info(root, !has_filter);
     previous_container = container;
     container = container->Container(&skip_info);
-    if (!has_filter) {
+    if (!has_filter && !have_crossed_frame_boundary) {
       has_filter = skip_info.FilterSkipped();
     }
-    if (!container || skip_info.AncestorSkipped()) {
+
+    if (skip_info.AncestorSkipped()) {
+      DCHECK(!have_crossed_frame_boundary);
+
       // The root is not in the containing block chain of the target.
       relationship = kInvalid;
       return;
     }
-    if (container != root && container->ShouldClipOverflowAlongEitherAxis() &&
-        // Clippers that don't actually clip anything are ignored.
-        (To<LayoutBox>(container)->HasScrollableOverflow() ||
-         has_target_margin)) {
+
+    if (!container) {
+      if (!root_is_implicit) {
+        relationship = kInvalid;
+        return;
+      }
+
+      // We need to jump up the frame tree
+      DCHECK(previous_container->IsLayoutView());
+
+      // previous_container is the layout view of the iframe.
+      // OwnerLayoutObject jumps the iframe boundary.
+      // owner is the iframe element node.
+      auto* owner =
+          previous_container->GetFrameView()->GetFrame().OwnerLayoutObject();
+      if (!owner) {
+        return;
+      }
+
+      container = owner;
+      have_crossed_frame_boundary = true;
+
+      // We can continue to top of loop since iframe element is not a scroller.
+      continue;
+    }
+
+    if (!has_intermediate_clippers && !have_crossed_frame_boundary &&
+        container != root && ClipsContents(*container)) {
       has_intermediate_clippers = true;
     }
+
     if (container != root && has_scroll_margin &&
         container->IsScrollContainer()) {
       intermediate_scrollers.push_back(To<LayoutBox>(container));
@@ -422,7 +473,9 @@ void IntersectionGeometry::RootAndTarget::ComputeRelationship(
     root_scrolls_target = root->IsScrollContainer();
   }
 
-  if (has_intermediate_clippers) {
+  if (have_crossed_frame_boundary) {
+    DCHECK_EQ(relationship, kTargetInSubFrame);
+  } else if (has_intermediate_clippers) {
     relationship = kHasIntermediateClippers;
   } else if (root_scrolls_target) {
     relationship = kScrollableByRootOnly;
@@ -460,6 +513,9 @@ void IntersectionGeometry::UpdateShouldUseCachedRects(
   }
 
   if (RuntimeEnabledFeatures::IntersectionOptimizationEnabled()) {
+    if (!(flags_ & kScrollAndVisibilityOnly)) {
+      return;
+    }
     // Cached rects can only be used if there are no scrollable objects in the
     // hierarchy between target and root (a scrollable root is ok). The reason
     // is that a scroll change in an intermediate scroller would change the
@@ -527,7 +583,7 @@ void IntersectionGeometry::ComputeGeometry(const RootGeometry& root_geometry,
     target_rect_ = InitializeTargetRect(target, flags_);
     pre_margin_target_rect_is_empty = target_rect_.IsEmpty();
     ApplyMargin(target_rect_, target_margin, root_geometry.zoom,
-                InitializeRootRect(root, {} /* margin */).size());
+                root_geometry.pre_margin_local_root_rect.size());
 
     // We have to map/clip target_rect_ up to the root, so we begin with the
     // intersection rect in target's coordinate system. After ClipToRoot, it
@@ -634,19 +690,20 @@ void IntersectionGeometry::ComputeGeometry(const RootGeometry& root_geometry,
     flags_ |= kIsVisible;
   }
 
+  if (cached_rects) {
+    cached_rects->min_scroll_delta_to_update = ComputeMinScrollDeltaToUpdate(
+        root_and_target, target_to_view_transform,
+        root_geometry.root_to_view_transform, thresholds, scroll_margin);
+    cached_rects->valid = true;
+  }
+
+  // This must be the last step after all calculations in zoomed coordinates.
   if (flags_ & kShouldConvertToCSSPixels) {
     AdjustForAbsoluteZoom::AdjustRectMaybeExcludingCSSZoom(target_rect_,
                                                            *target);
     AdjustForAbsoluteZoom::AdjustRectMaybeExcludingCSSZoom(intersection_rect_,
                                                            *target);
     AdjustForAbsoluteZoom::AdjustRectMaybeExcludingCSSZoom(root_rect_, *root);
-  }
-
-  if (cached_rects) {
-    cached_rects->min_scroll_delta_to_update = ComputeMinScrollDeltaToUpdate(
-        root_and_target, target_to_view_transform,
-        root_geometry.root_to_view_transform, thresholds, scroll_margin);
-    cached_rects->valid = true;
   }
 }
 
@@ -656,24 +713,35 @@ bool IntersectionGeometry::ClipToRoot(const RootAndTarget& root_and_target,
                                       gfx::RectF& intersection_rect,
                                       const Vector<Length>& scroll_margin,
                                       CachedRects* cached_rects) {
+  const LayoutObject* root = root_and_target.root;
+  // TODO(crbug.com/1456208): Support inline root.
+  if (!root->IsBox()) {
+    return false;
+  }
+
   const LayoutObject* target = root_and_target.target;
+
+  const LayoutBox* local_ancestor = nullptr;
+
   bool ignore_local_clip_path = false;
   if (!scroll_margin.empty()) {
     // Apply clip and scroll margin for each intermediate scroller.
-    // TODO(tcaptan): investigate iframe scenarios.
     for (const LayoutBox* scroller : root_and_target.intermediate_scrollers) {
       gfx::RectF scroller_rect =
           gfx::RectF(scroller->OverflowClipRect(PhysicalOffset()));
-      if (absl::optional<gfx::RectF> clip_path_box =
+      if (std::optional<gfx::RectF> clip_path_box =
               ClipPathClipper::LocalClipPathBoundingBox(*scroller)) {
         scroller_rect.Intersect(*clip_path_box);
       }
-      if (!ApplyClip(scroller, target, scroller_rect,
+
+      local_ancestor = To<LayoutBox>(scroller);
+      if (!ApplyClip(target, local_ancestor, scroller, scroller_rect,
                      unclipped_intersection_rect, intersection_rect,
                      scroll_margin, ignore_local_clip_path,
                      /*root_scrolls_target=*/true, cached_rects)) {
         return false;
       }
+
       unclipped_intersection_rect = intersection_rect;
       target = scroller;
       // We have already applied clip-path on scroller (now target) above, so
@@ -681,14 +749,22 @@ bool IntersectionGeometry::ClipToRoot(const RootAndTarget& root_and_target,
       ignore_local_clip_path = true;
     }
   }
-  return ApplyClip(root_and_target.root, target, root_rect,
+
+  // Map and clip rect into root element coordinates.
+  if (!RootIsImplicit() ||
+      root->GetDocument().GetFrame()->IsOutermostMainFrame()) {
+    local_ancestor = To<LayoutBox>(root);
+  }
+
+  return ApplyClip(target, local_ancestor, root_and_target.root, root_rect,
                    unclipped_intersection_rect, intersection_rect,
                    scroll_margin, ignore_local_clip_path,
                    root_and_target.root_scrolls_target, cached_rects);
 }
 
-bool IntersectionGeometry::ApplyClip(const LayoutObject* root,
-                                     const LayoutObject* target,
+bool IntersectionGeometry::ApplyClip(const LayoutObject* target,
+                                     const LayoutBox* local_ancestor,
+                                     const LayoutObject* root,
                                      const gfx::RectF& root_rect,
                                      gfx::RectF& unclipped_intersection_rect,
                                      gfx::RectF& intersection_rect,
@@ -696,17 +772,6 @@ bool IntersectionGeometry::ApplyClip(const LayoutObject* root,
                                      bool ignore_local_clip_path,
                                      bool root_scrolls_target,
                                      CachedRects* cached_rects) {
-  // TODO(crbug.com/1456208): Support inline root.
-  if (!root->IsBox()) {
-    return false;
-  }
-  // Map and clip rect into root element coordinates.
-  const LayoutBox* local_ancestor = nullptr;
-  if (!RootIsImplicit() ||
-      root->GetDocument().GetFrame()->IsOutermostMainFrame()) {
-    local_ancestor = To<LayoutBox>(root);
-  }
-
   unsigned flags = kDefaultVisualRectFlags | kEdgeInclusive |
                    kDontApplyMainFrameOverflowClip;
   if (!ShouldRespectFilters()) {

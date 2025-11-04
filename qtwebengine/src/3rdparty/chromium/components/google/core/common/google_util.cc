@@ -2,12 +2,18 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#ifdef UNSAFE_BUFFERS_BUILD
+// TODO(crbug.com/40285824): Remove this and convert code to safer constructs.
+#pragma allow_unsafe_buffers
+#endif
+
 #include "components/google/core/common/google_util.h"
 
 #include <stddef.h>
 
 #include <set>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "base/command_line.h"
@@ -15,7 +21,6 @@
 #include "base/no_destructor.h"
 #include "base/strings/strcat.h"
 #include "base/strings/string_number_conversions.h"
-#include "base/strings/string_piece.h"
 #include "base/strings/string_split.h"
 #include "base/strings/string_util.h"
 #include "base/strings/utf_string_conversions.h"
@@ -32,12 +37,12 @@ namespace google_util {
 
 namespace {
 
-bool IsPathHomePageBase(base::StringPiece path) {
+bool IsPathHomePageBase(std::string_view path) {
   return (path == "/") || (path == "/webhp");
 }
 
 // Removes a single trailing dot if present in |host|.
-void StripTrailingDot(base::StringPiece* host) {
+void StripTrailingDot(std::string_view* host) {
   if (base::EndsWith(*host, "."))
     host->remove_suffix(1);
 }
@@ -47,13 +52,14 @@ void StripTrailingDot(base::StringPiece* host) {
 // ALLOW_SUBDOMAIN, we check against host "*.<domain_in_lower_case>.<TLD>"
 // instead.
 template <typename Container>
-bool IsValidHostName(base::StringPiece host,
-                     base::StringPiece domain_in_lower_case,
+bool IsValidHostName(std::string_view host,
+                     std::string_view domain_in_lower_case,
                      SubdomainPermission subdomain_permission,
                      const Container& allowed_tlds) {
   // Fast path to avoid searching the registry set.
-  if (host.find(domain_in_lower_case) == base::StringPiece::npos)
+  if (host.find(domain_in_lower_case) == std::string_view::npos) {
     return false;
+  }
 
   size_t tld_length =
       net::registry_controlled_domains::GetCanonicalHostRegistryLength(
@@ -63,14 +69,14 @@ bool IsValidHostName(base::StringPiece host,
     return false;
 
   // Removes the tld and the preceding dot.
-  base::StringPiece host_minus_tld =
+  std::string_view host_minus_tld =
       host.substr(0, host.length() - tld_length - 1);
 
-  base::StringPiece tld = host.substr(host.length() - tld_length);
+  std::string_view tld = host.substr(host.length() - tld_length);
   // Remove the trailing dot from tld if present, as for Google domains it's the
   // same page.
   StripTrailingDot(&tld);
-  if (allowed_tlds->find(std::string(tld)) == allowed_tlds->end())
+  if (allowed_tlds.find(std::string(tld)) == allowed_tlds.end())
     return false;
 
   if (base::EqualsCaseInsensitiveASCII(host_minus_tld, domain_in_lower_case))
@@ -98,22 +104,22 @@ bool IsValidURL(const GURL& url, PortPermission port_permission) {
           (port_permission == ALLOW_NON_STANDARD_PORTS));
 }
 
-bool IsCanonicalHostGoogleHostname(base::StringPiece canonical_host,
+bool IsCanonicalHostGoogleHostname(std::string_view canonical_host,
                                    SubdomainPermission subdomain_permission) {
   const GURL& base_url(CommandLineGoogleBaseURL());
   if (base_url.is_valid() && (canonical_host == base_url.host_piece()))
     return true;
 
-  static base::NoDestructor<std::set<std::string>> google_tlds(
-      std::move(std::set<std::string>{GOOGLE_TLD_LIST}));
+  static constexpr auto google_tlds =
+      base::MakeFixedFlatSet<std::string_view>({GOOGLE_TLD_LIST});
   return IsValidHostName(canonical_host, "google", subdomain_permission,
                          google_tlds);
 }
 
-bool IsCanonicalHostYoutubeHostname(base::StringPiece canonical_host,
+bool IsCanonicalHostYoutubeHostname(std::string_view canonical_host,
                                     SubdomainPermission subdomain_permission) {
-  static base::NoDestructor<std::set<std::string>> youtube_tlds(
-      std::move(std::set<std::string>{YOUTUBE_TLD_LIST}));
+  static constexpr auto youtube_tlds =
+      base::MakeFixedFlatSet<std::string_view>({YOUTUBE_TLD_LIST});
 
   return IsValidHostName(canonical_host, "youtube", subdomain_permission,
                          youtube_tlds);
@@ -126,11 +132,11 @@ bool IsGoogleSearchSubdomainUrl(const GURL& url) {
   if (!IsValidURL(url, PortPermission::DISALLOW_NON_STANDARD_PORTS))
     return false;
 
-  base::StringPiece host(url.host_piece());
+  std::string_view host(url.host_piece());
   StripTrailingDot(&host);
 
   static constexpr auto google_subdomains =
-      base::MakeFixedFlatSet<base::StringPiece>(
+      base::MakeFixedFlatSet<std::string_view>(
           {"ipv4.google.com", "ipv6.google.com"});
 
   return google_subdomains.contains(host);
@@ -142,10 +148,10 @@ bool IsGoogleSearchSubdomainUrl(const GURL& url) {
 
 const char kGoogleHomepageURL[] = "https://www.google.com/";
 
-bool HasGoogleSearchQueryParam(base::StringPiece str) {
+bool HasGoogleSearchQueryParam(std::string_view str) {
   url::Component query(0, static_cast<int>(str.length())), key, value;
-  while (url::ExtractQueryKeyValue(str.data(), &query, &key, &value)) {
-    base::StringPiece key_str = str.substr(key.begin, key.len);
+  while (url::ExtractQueryKeyValue(str, &query, &key, &value)) {
+    std::string_view key_str = str.substr(key.begin, key.len);
     if (key_str == "q" || key_str == "as_q" || key_str == "imgurl")
       return true;
   }
@@ -164,13 +170,13 @@ GURL AppendGoogleLocaleParam(const GURL& url,
 }
 
 std::string GetGoogleCountryCode(const GURL& google_homepage_url) {
-  base::StringPiece google_hostname = google_homepage_url.host_piece();
+  std::string_view google_hostname = google_homepage_url.host_piece();
   // TODO(igorcov): This needs a fix for case when the host has a trailing dot,
   // like "google.com./". https://crbug.com/720295.
   const size_t last_dot = google_hostname.find_last_of('.');
   if (last_dot == std::string::npos)
     return std::string();
-  base::StringPiece country_code = google_hostname.substr(last_dot + 1);
+  std::string_view country_code = google_hostname.substr(last_dot + 1);
   // Assume the com TLD implies the US.
   if (country_code == "com")
     return "us";
@@ -226,7 +232,7 @@ bool IsGoogleDomainUrl(const GURL& url,
          IsCanonicalHostGoogleHostname(url.host_piece(), subdomain_permission);
 }
 
-bool IsGoogleHostname(base::StringPiece host,
+bool IsGoogleHostname(std::string_view host,
                       SubdomainPermission subdomain_permission) {
   url::CanonHostInfo host_info;
   return IsCanonicalHostGoogleHostname(net::CanonicalizeHost(host, &host_info),
@@ -242,7 +248,7 @@ bool IsGoogleHomePageUrl(const GURL& url) {
   }
 
   // Make sure the path is a known home page path.
-  base::StringPiece path(url.path_piece());
+  std::string_view path(url.path_piece());
   return IsPathHomePageBase(path) ||
          base::StartsWith(path, "/ig", base::CompareCase::INSENSITIVE_ASCII);
 }
@@ -256,7 +262,7 @@ bool IsGoogleSearchUrl(const GURL& url) {
   }
 
   // Make sure the path is a known search path.
-  base::StringPiece path(url.path_piece());
+  std::string_view path(url.path_piece());
   bool is_home_page_base = IsPathHomePageBase(path);
   if (!is_home_page_base && path != "/search" && path != "/imgres")
     return false;
@@ -350,13 +356,12 @@ GURL AppendToAsyncQueryParam(const GURL& url,
   const std::string param_name = "async";
   const std::string key_value = key + ":" + value;
   bool replaced = false;
-  const base::StringPiece input = url.query_piece();
+  const std::string_view input = url.query_piece();
   url::Component cursor(0, input.size());
   std::string output;
   url::Component key_range, value_range;
-  while (url::ExtractQueryKeyValue(input.data(), &cursor, &key_range,
-                                   &value_range)) {
-    const base::StringPiece input_key =
+  while (url::ExtractQueryKeyValue(input, &cursor, &key_range, &value_range)) {
+    const std::string_view input_key =
         input.substr(key_range.begin, key_range.len);
     std::string key_value_pair(
         input.substr(key_range.begin, value_range.end() - key_range.begin));
@@ -388,12 +393,12 @@ GoogleSearchMode GoogleSearchModeFromUrl(const GURL& url) {
                 "This function should be updated if new values are added to "
                 "GoogleSearchMode");
 
-  base::StringPiece query_str = url.query_piece();
+  std::string_view query_str = url.query_piece();
   url::Component query(0, static_cast<int>(url.query_piece().length()));
   url::Component key, value;
   GoogleSearchMode mode = GoogleSearchMode::kUnspecified;
-  while (url::ExtractQueryKeyValue(query_str.data(), &query, &key, &value)) {
-    base::StringPiece key_str = query_str.substr(key.begin, key.len);
+  while (url::ExtractQueryKeyValue(query_str, &query, &key, &value)) {
+    std::string_view key_str = query_str.substr(key.begin, key.len);
     if (key_str != "tbm") {
       continue;
     }
@@ -402,7 +407,7 @@ GoogleSearchMode GoogleSearchModeFromUrl(const GURL& url) {
       // kUnknown to signify the result can't be trusted.
       return GoogleSearchMode::kUnknown;
     }
-    base::StringPiece value_str = query_str.substr(value.begin, value.len);
+    std::string_view value_str = query_str.substr(value.begin, value.len);
     if (value_str == "isch") {
       mode = GoogleSearchMode::kImages;
     } else if (value_str == "web") {

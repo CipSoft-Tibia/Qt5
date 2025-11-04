@@ -127,7 +127,7 @@ QGrpcChannelOptions &QGrpcChannelOptions::setDeadlineTimeout(std::chrono::millis
     Sets the client \a metadata for the channel and returns a reference to the
     updated object.
 
-    \include qgrpccalloptions.cpp set-metadata-desc
+    \include qtgrpc-shared.qdocinc http2-metadata-note
 
     \note The metadata set via the channel options applies to all RPCs that
     operate on the channel, except those overridden by
@@ -189,6 +189,8 @@ std::optional<std::chrono::milliseconds> QGrpcChannelOptions::deadlineTimeout() 
     Returns the client metadata for the channel.
 
     If this field is unset, returns empty metadata.
+
+    \include qtgrpc-shared.qdocinc http2-metadata-note
 */
 const QHash<QByteArray, QByteArray> &QGrpcChannelOptions::metadata() const & noexcept
 {

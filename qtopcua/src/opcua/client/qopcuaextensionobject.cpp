@@ -55,6 +55,17 @@ QOpcUaExtensionObject::QOpcUaExtensionObject(const QOpcUaExtensionObject &rhs)
 }
 
 /*!
+    \since 6.9
+    Constructs an extension object with encoding type id \a typeId and body type \a encoding.
+*/
+QOpcUaExtensionObject::QOpcUaExtensionObject(const QString &typeId, Encoding encoding)
+    : data(new QOpcUaExtensionObjectData)
+{
+    data->encodingTypeId = typeId;
+    data->encoding = encoding;
+}
+
+/*!
     Sets the values from \a rhs in this extension object.
 */
 QOpcUaExtensionObject &QOpcUaExtensionObject::operator=(const QOpcUaExtensionObject &rhs)

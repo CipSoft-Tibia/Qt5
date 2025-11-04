@@ -32,14 +32,16 @@
 namespace dawn::wire::server {
 
 WireResult Server::DoShaderModuleGetCompilationInfo(Known<WGPUShaderModule> shaderModule,
-                                                    uint64_t requestSerial) {
+                                                    ObjectHandle eventManager,
+                                                    WGPUFuture future) {
     auto userdata = MakeUserdata<ShaderModuleGetCompilationInfoUserdata>();
-    userdata->shaderModule = shaderModule.AsHandle();
-    userdata->requestSerial = requestSerial;
+    userdata->eventManager = eventManager;
+    userdata->future = future;
 
-    mProcs.shaderModuleGetCompilationInfo(
-        shaderModule->handle, ForwardToServer<&Server::OnShaderModuleGetCompilationInfo>,
-        userdata.release());
+    mProcs.shaderModuleGetCompilationInfo2(
+        shaderModule->handle,
+        {nullptr, WGPUCallbackMode_AllowProcessEvents,
+         ForwardToServer2<&Server::OnShaderModuleGetCompilationInfo>, userdata.release(), nullptr});
     return WireResult::Success;
 }
 
@@ -47,8 +49,8 @@ void Server::OnShaderModuleGetCompilationInfo(ShaderModuleGetCompilationInfoUser
                                               WGPUCompilationInfoRequestStatus status,
                                               const WGPUCompilationInfo* info) {
     ReturnShaderModuleGetCompilationInfoCallbackCmd cmd;
-    cmd.shaderModule = data->shaderModule;
-    cmd.requestSerial = data->requestSerial;
+    cmd.eventManager = data->eventManager;
+    cmd.future = data->future;
     cmd.status = status;
     cmd.info = info;
 

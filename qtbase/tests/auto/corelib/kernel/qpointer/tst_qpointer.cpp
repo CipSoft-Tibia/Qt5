@@ -3,13 +3,35 @@
 
 #include <QTest>
 #include <QtTest/private/qcomparisontesthelper_p.h>
+
+#include <QtCore/private/qobject_p.h>
 #include <QRunnable>
+#include <QSemaphore>
 #include <QThreadPool>
 
 #include <QPointer>
 #ifndef QT_NO_WIDGETS
 #include <QWidget>
 #endif
+
+using namespace std::chrono_literals;
+
+class Interface
+{
+public:
+    virtual ~Interface() = default;
+    virtual void meep() const = 0;
+};
+
+class ObjectImplementingInterface : public QObject, public Interface
+{
+    Q_OBJECT
+public:
+    using QObject::QObject;
+
+public Q_SLOTS:
+    void meep() const override {}
+};
 
 class tst_QPointer : public QObject
 {
@@ -26,12 +48,14 @@ private slots:
     void assignment_operators();
     void compareCompiles();
     void equality_operators();
+    void equality_operators_interface();
     void swap();
     void isNull();
     void dereference_operators();
     void disconnect();
     void castDuringDestruction();
     void threadSafety();
+    void raceCondition();
 
     void qvariantCast();
     void constPointer();
@@ -212,6 +236,7 @@ void tst_QPointer::compareCompiles()
     QTestPrivate::testEqualityOperatorsCompile<QPointer<QObject>, QWidget*>();
     QTestPrivate::testEqualityOperatorsCompile<QPointer<QObject>, QPointer<QWidget>>();
     QTestPrivate::testEqualityOperatorsCompile<QPointer<QObject>, std::nullptr_t>();
+    QTestPrivate::testEqualityOperatorsCompile<QPointer<ObjectImplementingInterface>, Interface*>();
 }
 
 void tst_QPointer::equality_operators()
@@ -251,6 +276,25 @@ void tst_QPointer::equality_operators()
     QT_TEST_EQUALITY_OPS(p1, widget, true);
     QT_TEST_EQUALITY_OPS(p2, widget, false);
 #endif
+}
+
+void tst_QPointer::equality_operators_interface()
+{
+    QObject reaper;
+    QPointer<ObjectImplementingInterface> p(new ObjectImplementingInterface(&reaper));
+    Interface *i = p.get();
+
+    ObjectImplementingInterface otherP;
+    Interface *otherI = &otherP;
+
+    // things that are equal
+    QT_TEST_EQUALITY_OPS(p, p, true);
+    QT_TEST_EQUALITY_OPS(p, i, true);
+
+    // things that are not equal
+    QT_TEST_EQUALITY_OPS(p, nullptr, false);
+    QT_TEST_EQUALITY_OPS(p, &otherP, false);
+    QT_TEST_EQUALITY_OPS(p, otherI, false);
 }
 
 void tst_QPointer::swap()
@@ -365,6 +409,7 @@ class DerivedChild : public QObject
 {
     Q_OBJECT
 
+protected:
     DerivedParent *parentPointer;
     QPointer<DerivedParent> guardedParentPointer;
 
@@ -383,13 +428,90 @@ DerivedParent::DerivedParent()
 
 DerivedParent::~DerivedParent()
 {
-    delete derivedChild;
+    QObjectPrivate::get(this)->deleteChildren(); // like ~QWidget() does
 }
 
 DerivedChild::~DerivedChild()
 {
     QCOMPARE(static_cast<DerivedParent *>(guardedParentPointer), parentPointer);
     QCOMPARE(qobject_cast<DerivedParent *>(guardedParentPointer), parentPointer);
+}
+
+//
+// The FurtherDerived... hierarchiy mimicks QWidget subclasses:
+// Like ~QWidget(), ~DerivedParent() deletes its children before ~QObject() would do it,
+// which would have first set QPointers to nullptr. In this situation, therefore,
+// guardedParentPointers are _not_ nullptr, yet, and the object they point to is already
+// demoted from FurtherDerivedParent to DerivedParent, potentially making some operations
+// UB (invalid downcasts).
+//
+
+class FurtherDerivedParent;
+class FurtherDerivedChild : public DerivedChild
+{
+    Q_OBJECT
+
+    FurtherDerivedParent *parentPointer;
+    QPointer<FurtherDerivedParent> guardedParentPointer;
+public:
+    FurtherDerivedChild(FurtherDerivedParent *);
+    ~FurtherDerivedChild() override;
+};
+
+class FurtherDerivedParent : public DerivedParent
+{
+    Q_OBJECT
+public:
+    FurtherDerivedParent() : DerivedParent()
+    {
+        new FurtherDerivedChild(this);
+    }
+};
+
+FurtherDerivedChild::FurtherDerivedChild(FurtherDerivedParent *parent)
+    : DerivedChild(parent),
+      parentPointer(parent),
+      guardedParentPointer(parent)
+{
+}
+
+FurtherDerivedChild::~FurtherDerivedChild()
+{
+    // isNull()
+    QVERIFY(!guardedParentPointer.isNull());
+
+    // operator bool()
+    QVERIFY(guardedParentPointer);
+    QVERIFY(!!guardedParentPointer);
+
+    // Don't use QCOMPARE in these, it may call .data(), which could be UB at this point:
+    #define CHECK_NE(lhs, rhs) do { \
+        QVERIFY(!(lhs == rhs)); \
+        QVERIFY(!(rhs == lhs)); \
+        QVERIFY(lhs != rhs); \
+        QVERIFY(rhs != lhs); \
+    } while (false)
+
+    #define CHECK_EQ(lhs, rhs) do { \
+        QVERIFY(!(lhs != rhs)); \
+        QVERIFY(!(rhs != lhs)); \
+        QVERIFY(lhs == rhs); \
+        QVERIFY(rhs == lhs); \
+    } while (false)
+
+    // operator==/!= against nullptr
+    CHECK_NE(guardedParentPointer, nullptr);
+
+    // operator==/!= against QObject*/DerivedParent*/FutherDerivedParent*
+    CHECK_EQ(parentPointer, parentPointer); // verify it's not UB for raw pointers
+    // UB after this point!
+    return;
+    const QObject *parentPointerAsQObject = parentPointer;
+    CHECK_EQ(guardedParentPointer, parentPointerAsQObject);
+    const DerivedParent *parentPointerAsDerived = parentPointer;
+    CHECK_EQ(guardedParentPointer, parentPointerAsDerived);
+    CHECK_EQ(guardedParentPointer, DerivedChild::guardedParentPointer);
+    CHECK_EQ(guardedParentPointer, parentPointer);
 }
 
 void tst_QPointer::castDuringDestruction()
@@ -410,6 +532,11 @@ void tst_QPointer::castDuringDestruction()
 
     {
         delete new DerivedParent();
+    }
+
+    {
+        [[maybe_unused]]
+        FurtherDerivedParent obj;
     }
 }
 
@@ -442,6 +569,41 @@ void tst_QPointer::threadSafety()
 
     owner.quit();
     owner.wait();
+}
+
+void tst_QPointer::raceCondition()
+{
+    constexpr int NUM_THREADS = 20;
+    constexpr int ITERATIONS_PER_THREAD = 10;
+
+    QSemaphore startSemaphore;
+
+    QObject targetObject;
+
+    std::array<std::unique_ptr<QThread>, NUM_THREADS> threads;
+
+    for (auto &thread : threads) {
+        thread.reset(
+                QThread::create([&] {
+                    startSemaphore.acquire();
+
+                    for (int j = 0; j < ITERATIONS_PER_THREAD; ++j) {
+                        QPointer<QObject> pointer(&targetObject);
+                        Q_UNUSED(pointer);
+                    }
+                }));
+
+        thread->start();
+    }
+
+    QTest::qWait(100ms);
+    startSemaphore.release(threads.size());
+
+    bool allJoined = true;
+    for (const auto &thread : threads) {
+        allJoined = thread->wait(30s) && allJoined;
+    }
+    QVERIFY(allJoined);
 }
 
 void tst_QPointer::qvariantCast()

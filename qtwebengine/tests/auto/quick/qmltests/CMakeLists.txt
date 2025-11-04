@@ -62,6 +62,7 @@ set(testList
     tst_userScriptCollection.qml
     tst_viewSource.qml
     tst_save.qml
+    tst_profilePrototype.qml
 )
 
 # QTBUG-128652

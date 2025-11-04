@@ -2,6 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#ifdef UNSAFE_BUFFERS_BUILD
+// TODO(crbug.com/40285824): Remove this and convert code to safer constructs.
+#pragma allow_unsafe_buffers
+#endif
+
 #include "components/js_injection/renderer/js_binding.h"
 
 #include <memory>
@@ -52,7 +57,7 @@ class V8ArrayBufferPayload : public blink::WebMessageArrayBufferPayload {
 
   size_t GetLength() const override { return array_buffer_->ByteLength(); }
 
-  absl::optional<base::span<const uint8_t>> GetAsSpanIfPossible()
+  std::optional<base::span<const uint8_t>> GetAsSpanIfPossible()
       const override {
     return base::make_span(static_cast<const uint8_t*>(array_buffer_->Data()),
                            array_buffer_->ByteLength());
@@ -77,18 +82,26 @@ gin::WrapperInfo JsBinding::kWrapperInfo = {gin::kEmbedderNativeGin};
 base::WeakPtr<JsBinding> JsBinding::Install(
     content::RenderFrame* render_frame,
     const std::u16string& js_object_name,
-    base::WeakPtr<JsCommunication> js_communication) {
+    base::WeakPtr<JsCommunication> js_communication,
+    v8::Isolate* isolate,
+    v8::Local<v8::Context> context) {
   CHECK(!js_object_name.empty())
       << "JavaScript wrapper name shouldn't be empty";
 
-  blink::WebLocalFrame* web_frame = render_frame->GetWebFrame();
-  v8::Isolate* isolate = web_frame->GetAgentGroupScheduler()->Isolate();
-  v8::HandleScope handle_scope(isolate);
-  v8::Local<v8::Context> context = web_frame->MainWorldScriptContext();
-  if (context.IsEmpty())
-    return nullptr;
+  std::optional<v8::HandleScope> handle_scope;
+  std::optional<v8::Context::Scope> context_scope;
+  // The scopes may have already been setup outside this method.
+  if (!isolate) {
+    blink::WebLocalFrame* web_frame = render_frame->GetWebFrame();
+    isolate = web_frame->GetAgentGroupScheduler()->Isolate();
+    handle_scope.emplace(isolate);
+    context = web_frame->MainWorldScriptContext();
+    if (context.IsEmpty()) {
+      return nullptr;
+    }
 
-  v8::Context::Scope context_scope(context);
+    context_scope.emplace(context);
+  }
   // The call to CreateHandle() takes ownership of `js_binding` (but only on
   // success).
   JsBinding* js_binding =
@@ -115,12 +128,6 @@ JsBinding::JsBinding(content::RenderFrame* render_frame,
     : render_frame_(render_frame),
       js_object_name_(js_object_name),
       js_communication_(js_communication) {
-  mojom::JsToBrowserMessaging* js_to_java_messaging =
-      js_communication_->GetJsToJavaMessage(js_object_name_);
-  if (js_to_java_messaging) {
-    js_to_java_messaging->SetBrowserToJsMessaging(
-        receiver_.BindNewEndpointAndPassRemote());
-  }
 }
 
 JsBinding::~JsBinding() = default;
@@ -196,6 +203,12 @@ void JsBinding::ReleaseV8GlobalObjects() {
   on_message_.Reset();
 }
 
+void JsBinding::Bind(
+    mojo::PendingAssociatedReceiver<mojom::BrowserToJsMessaging> receiver) {
+  receiver_.reset();
+  return receiver_.Bind(std::move(receiver));
+}
+
 gin::ObjectTemplateBuilder JsBinding::GetObjectTemplateBuilder(
     v8::Isolate* isolate) {
   return gin::Wrappable<JsBinding>::GetObjectTemplateBuilder(isolate)
@@ -236,7 +249,7 @@ void JsBinding::PostMessage(gin::Arguments* args) {
   }
 
   for (auto& obj : objs) {
-    absl::optional<blink::MessagePortChannel> port =
+    std::optional<blink::MessagePortChannel> port =
         blink::WebMessagePortConverter::DisentangleAndExtractMessagePortChannel(
             args->isolate(), obj);
     // If the port is null we should throw an exception.

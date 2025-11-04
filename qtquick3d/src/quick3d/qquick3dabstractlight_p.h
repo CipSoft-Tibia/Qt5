@@ -37,6 +37,7 @@ class Q_QUICK3D_EXPORT QQuick3DAbstractLight : public QQuick3DNode
     Q_PROPERTY(QSSGBakeMode bakeMode READ bakeMode WRITE setBakeMode NOTIFY bakeModeChanged)
     Q_PROPERTY(QSSGSoftShadowQuality softShadowQuality READ softShadowQuality WRITE setSoftShadowQuality NOTIFY softShadowQualityChanged FINAL REVISION(6, 8))
     Q_PROPERTY(float pcfFactor READ pcfFactor WRITE setPcfFactor NOTIFY pcfFactorChanged FINAL REVISION(6, 8))
+    Q_PROPERTY(bool use32BitShadowmap READ use32BitShadowmap WRITE setUse32BitShadowmap NOTIFY use32BitShadowmapChanged FINAL REVISION(6, 9))
 
     QML_NAMED_ELEMENT(Light)
     QML_UNCREATABLE("Light is Abstract")
@@ -48,6 +49,7 @@ public:
         ShadowMapQualityMedium,
         ShadowMapQualityHigh,
         ShadowMapQualityVeryHigh,
+        ShadowMapQualityUltra,
     };
     Q_ENUM(QSSGShadowMapQuality)
 
@@ -81,6 +83,7 @@ public:
     QSSGBakeMode bakeMode() const;
     Q_REVISION(6, 8) QSSGSoftShadowQuality softShadowQuality() const;
     Q_REVISION(6, 8) float pcfFactor() const;
+    Q_REVISION(6, 9) bool use32BitShadowmap() const;
 
 public Q_SLOTS:
     void setColor(const QColor &color);
@@ -96,6 +99,7 @@ public Q_SLOTS:
     void setBakeMode(QQuick3DAbstractLight::QSSGBakeMode bakeMode);
     Q_REVISION(6, 8) void setSoftShadowQuality(QQuick3DAbstractLight::QSSGSoftShadowQuality softShadowQuality);
     Q_REVISION(6, 8) void setPcfFactor(float pcfFactor);
+    Q_REVISION(6, 9) void setUse32BitShadowmap(bool use32BitShadowmap);
 
 Q_SIGNALS:
     void colorChanged();
@@ -111,6 +115,7 @@ Q_SIGNALS:
     void bakeModeChanged();
     Q_REVISION(6, 8) void softShadowQualityChanged();
     Q_REVISION(6, 8) void pcfFactorChanged();
+    Q_REVISION(6, 9) void use32BitShadowmapChanged();
 
 protected:
     explicit QQuick3DAbstractLight(QQuick3DNodePrivate &dd, QQuick3DNode *parent = nullptr);
@@ -149,6 +154,7 @@ private:
     float m_shadowFilter = 5.0f;
     float m_pcfFactor = 2.0f;
     QSSGBakeMode m_bakeMode = QSSGBakeMode::BakeModeDisabled;
+    bool m_use32BitShadowmap = false;
 };
 
 QT_END_NAMESPACE

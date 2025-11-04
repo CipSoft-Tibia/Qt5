@@ -3,8 +3,10 @@
 // found in the LICENSE file.
 
 #include <stdint.h>
+
 #include <memory>
 
+#include "base/containers/span.h"
 #include "base/files/file_path.h"
 #include "base/files/file_util.h"
 #include "base/files/scoped_temp_dir.h"
@@ -44,6 +46,7 @@
 #include "net/test/embedded_test_server/embedded_test_server.h"
 #include "testing/gmock/include/gmock/gmock.h"
 #include "testing/gtest/include/gtest/gtest.h"
+#include "third_party/abseil-cpp/absl/cleanup/cleanup.h"
 #include "third_party/blink/public/common/associated_interfaces/associated_interface_provider.h"
 #include "third_party/blink/public/mojom/frame/find_in_page.mojom.h"
 
@@ -79,7 +82,7 @@ class FindTrackingDelegate : public WebContentsDelegate {
     options->match_case = false;
 
     web_contents->Find(global_request_id++, base::UTF8ToUTF16(search_),
-                       std::move(options));
+                       std::move(options), /*skip_delay=*/false);
     run_loop_.Run();
 
     web_contents->SetDelegate(old_delegate);
@@ -110,7 +113,7 @@ class FindTrackingDelegate : public WebContentsDelegate {
 // static
 int FindTrackingDelegate::global_request_id = 0;
 
-const char kTestData[] =
+const std::string_view kTestData =
     "Sample Text to write on a generated MHTML "
     "file for tests to validate whether the implementation is able to access "
     "and write to the file.";
@@ -137,15 +140,16 @@ class MockWriterBase : public mojom::MhtmlFileWriter {
 
   void WriteDataToDestinationFile(base::File& destination_file) {
     base::ScopedAllowBlockingForTesting allow_blocking;
-    destination_file.WriteAtCurrentPos(kTestData, strlen(kTestData));
+    destination_file.WriteAtCurrentPos(base::as_byte_span(kTestData));
     destination_file.Close();
   }
 
   void WriteDataToProducerPipe(
       mojo::ScopedDataPipeProducerHandle producer_pipe) {
     base::ScopedAllowBlockingForTesting allow_blocking;
-    uint32_t size = strlen(kTestData);
-    producer_pipe->WriteData(kTestData, &size, MOJO_WRITE_DATA_FLAG_NONE);
+    size_t actually_written_bytes = 0;
+    producer_pipe->WriteData(base::as_byte_span(kTestData),
+                             MOJO_WRITE_DATA_FLAG_NONE, actually_written_bytes);
     producer_pipe.reset();
   }
 
@@ -345,9 +349,9 @@ class MHTMLGenerationTest : public ContentBrowserTest,
     ASSERT_TRUE(has_mhtml_callback_run())
         << "Unexpected error generating MHTML file";
 
-    // TODO(crbug.com/997408): Add tests which will let MHTMLGeneration manager
-    // fail during file write operation. This will allow us to actually test if
-    // we receive a bogus hash instead of a std::nullopt.
+    // TODO(crbug.com/40641976): Add tests which will let MHTMLGeneration
+    // manager fail during file write operation. This will allow us to actually
+    // test if we receive a bogus hash instead of a std::nullopt.
     EXPECT_EQ(std::nullopt, file_digest());
 
     // Skip well formedness check if explicitly disabled or there was a
@@ -540,10 +544,10 @@ IN_PROC_BROWSER_TEST_P(MHTMLGenerationTest, GenerateMHTMLInNonTempDir) {
     EXPECT_TRUE(base::CreateTemporaryDirInDir(
         local_app_data, FILE_PATH_LITERAL("MHTMLGenerationTest"), &new_dir));
   }
-  base::ScopedClosureRunner delete_dir(base::BindLambdaForTesting([new_dir]() {
+  absl::Cleanup delete_dir = [new_dir] {
     base::ScopedAllowBlockingForTesting allow_blocking;
     base::DeletePathRecursively(new_dir);
-  }));
+  };
 
   base::FilePath path = new_dir.Append(FILE_PATH_LITERAL("test.mht"));
 
@@ -565,7 +569,7 @@ IN_PROC_BROWSER_TEST_P(MHTMLGenerationTest, GenerateMHTMLInNonTempDir) {
 
 // Regression test for the crash/race from https://crbug.com/612098.
 //
-// TODO(crbug.com/959435): Flaky on Android.
+// TODO(crbug.com/41456635): Flaky on Android.
 #if BUILDFLAG(IS_ANDROID)
 #define MAYBE_GenerateMHTMLAndCloseConnection \
   DISABLED_GenerateMHTMLAndCloseConnection
@@ -594,7 +598,7 @@ IN_PROC_BROWSER_TEST_P(MHTMLGenerationTest,
   EXPECT_EQ(ReadFileSizeFromDisk(path), file_size());
 }
 
-// TODO(crbug.com/672313): Flaky on Windows.
+// TODO(crbug.com/41290169): Flaky on Windows.
 #if BUILDFLAG(IS_WIN)
 #define MAYBE_InvalidPath DISABLED_InvalidPath
 #else
@@ -681,7 +685,7 @@ IN_PROC_BROWSER_TEST_P(MHTMLGenerationTest, GenerateMHTMLIgnoreNoStore) {
   EXPECT_THAT(mhtml, ContainsRegex("Content-Location:.*/nostore.html"));
 }
 
-// TODO(crbug.com/615291): These fail on Android under some circumstances.
+// TODO(crbug.com/40470937): These fail on Android under some circumstances.
 #if BUILDFLAG(IS_ANDROID)
 #define MAYBE_ViewedMHTMLContainsNoStoreContent \
   DISABLED_ViewedMHTMLContainsNoStoreContent

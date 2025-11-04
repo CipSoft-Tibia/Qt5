@@ -12,6 +12,7 @@
 #include "include/core/SkCanvas.h"
 #include "include/core/SkStream.h"
 #include "modules/skresources/include/SkResources.h"
+#include "modules/skshaper/utils/FactoryHelpers.h"
 #include "modules/svg/include/SkSVGDOM.h"
 #include "modules/svg/include/SkSVGNode.h"
 #include "src/utils/SkOSPath.h"
@@ -32,12 +33,17 @@ void SvgSlide::load(SkScalar w, SkScalar h) {
         return;
     }
 
+    // Viewer should have already registered the codecs necessary for DataURIResourceProviderProxy
     auto predecode = skresources::ImageDecodeStrategy::kPreDecode;
     auto rp = skresources::DataURIResourceProviderProxy::Make(
             skresources::FileResourceProvider::Make(SkOSPath::Dirname(fPath.c_str()), predecode),
             predecode, ToolUtils::TestFontMgr());
 
-    fDom = SkSVGDOM::Builder().setFontManager(ToolUtils::TestFontMgr()).setResourceProvider(std::move(rp)).make(*stream);
+    fDom = SkSVGDOM::Builder()
+                   .setFontManager(ToolUtils::TestFontMgr())
+                   .setResourceProvider(std::move(rp))
+                   .setTextShapingFactory(SkShapers::BestAvailable())
+                   .make(*stream);
 
     if (fDom) {
         fDom->setContainerSize(SkSize::Make(w, h));

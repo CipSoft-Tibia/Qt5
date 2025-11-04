@@ -2,16 +2,19 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-import {CloseReason, ComposeClientPageHandlerRemote, ComposeDialogCallbackRouter, ComposeSessionPageHandlerFactory, ComposeSessionPageHandlerRemote, ComposeState, OpenMetadata, StyleModifiers, UserFeedback} from './compose.mojom-webui.js';
+import type { CloseReason, ComposeState, OpenMetadata, StyleModifier, UserFeedback } from './compose.mojom-webui.js';
+import {ComposeClientUntrustedPageHandlerRemote, ComposeSessionUntrustedPageHandlerFactory, ComposeSessionUntrustedPageHandlerRemote, ComposeUntrustedDialogCallbackRouter} from './compose.mojom-webui.js';
 
 /** @interface */
 export interface ComposeApiProxy {
   acceptComposeResult(): Promise<boolean>;
+  logCancelEdit(): void;
   completeFirstRun(): void;
   closeUi(reason: CloseReason): void;
   compose(input: string, edited: boolean): void;
-  rewrite(style: StyleModifiers|null): void;
-  getRouter(): ComposeDialogCallbackRouter;
+  rewrite(style: StyleModifier | null): void;
+  logEditInput(): void;
+  getRouter(): ComposeUntrustedDialogCallbackRouter;
   openBugReportingLink(): void;
   openComposeLearnMorePage(): void;
   openComposeSettings(): void;
@@ -21,19 +24,22 @@ export interface ComposeApiProxy {
   requestInitialState(): Promise<OpenMetadata>;
   saveWebuiState(state: string): void;
   showUi(): void;
+  recoverFromErrorState(): Promise<(ComposeState | null)>;
   undo(): Promise<(ComposeState | null)>;
+  redo(): Promise<(ComposeState | null)>;
+  editResult(newText: string): Promise<boolean>;
 }
 
 export class ComposeApiProxyImpl implements ComposeApiProxy {
   static instance: ComposeApiProxy|null = null;
 
-  composeSessionPageHandler = new ComposeSessionPageHandlerRemote();
-  composeClientPageHandler = new ComposeClientPageHandlerRemote();
-  router = new ComposeDialogCallbackRouter();
+  composeSessionPageHandler = new ComposeSessionUntrustedPageHandlerRemote();
+  composeClientPageHandler = new ComposeClientUntrustedPageHandlerRemote();
+  router = new ComposeUntrustedDialogCallbackRouter();
 
   constructor() {
-    const factoryRemote = ComposeSessionPageHandlerFactory.getRemote();
-    factoryRemote.createComposeSessionPageHandler(
+    const factoryRemote = ComposeSessionUntrustedPageHandlerFactory.getRemote();
+    factoryRemote.createComposeSessionUntrustedPageHandler(
         this.composeClientPageHandler.$.bindNewPipeAndPassReceiver(),
         this.composeSessionPageHandler.$.bindNewPipeAndPassReceiver(),
         this.router.$.bindNewPipeAndPassRemote());
@@ -53,6 +59,10 @@ export class ComposeApiProxyImpl implements ComposeApiProxy {
         res => res.success);
   }
 
+  logCancelEdit(): void {
+    this.composeSessionPageHandler.logCancelEdit();
+  }
+
   completeFirstRun(): void {
     this.composeClientPageHandler.completeFirstRun();
   }
@@ -69,8 +79,12 @@ export class ComposeApiProxyImpl implements ComposeApiProxy {
     this.composeSessionPageHandler.compose(input, edited);
   }
 
-  rewrite(style: StyleModifiers|null): void {
+  rewrite(style: StyleModifier): void {
     this.composeSessionPageHandler.rewrite(style);
+  }
+
+  logEditInput(): void {
+    this.composeSessionPageHandler.logEditInput();
   }
 
   getRouter() {
@@ -113,5 +127,20 @@ export class ComposeApiProxyImpl implements ComposeApiProxy {
   undo(): Promise<(ComposeState | null)> {
     return this.composeSessionPageHandler.undo().then(
         composeState => composeState.lastState);
+  }
+
+  recoverFromErrorState(): Promise<(ComposeState | null)> {
+    return this.composeSessionPageHandler.recoverFromErrorState().then(
+        composeState => composeState.stateBeforeError);
+  }
+
+  editResult(newResult: string): Promise<boolean> {
+    return this.composeSessionPageHandler.editResult(newResult).then(
+        res => res.isEdited);
+  }
+
+  redo(): Promise<(ComposeState | null)> {
+    return this.composeSessionPageHandler.redo().then(
+        composeState => composeState.nextState);
   }
 }

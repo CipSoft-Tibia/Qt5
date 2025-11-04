@@ -23,7 +23,7 @@
 
 QT_BEGIN_NAMESPACE
 
-Q_LOGGING_CATEGORY(lcQmlConnections, "qt.qml.connections")
+Q_STATIC_LOGGING_CATEGORY(lcQmlConnections, "qt.qml.connections")
 
 // This is the equivalent of QQmlBoundSignal for C++ methods as as slots.
 // If a type derived from QQmlConnnections is compiled using qmltc, the
@@ -142,7 +142,6 @@ public:
 
 /*!
     \qmltype Connections
-    \nativetype QQmlConnections
     \inqmlmodule QtQml
     \ingroup qtquick-interceptors
     \brief Describes generalized connections to signals.

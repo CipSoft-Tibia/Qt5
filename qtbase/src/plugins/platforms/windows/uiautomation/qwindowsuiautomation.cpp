@@ -6,7 +6,7 @@
 
 #include "qwindowsuiautomation.h"
 
-#if defined(__MINGW32__) || defined(__MINGW64__)
+#ifndef Q_CC_MSVC
 
 template<typename T, typename... TArg>
 struct winapi_func
@@ -15,6 +15,7 @@ struct winapi_func
     const func_t func;
     const T error_value;
 #ifdef __GNUC__
+#   pragma GCC diagnostic push
 #   pragma GCC diagnostic ignored "-Wcast-function-type"
 #endif
     winapi_func(const char *lib_name, const char *func_name, func_t func_proto,
@@ -77,6 +78,6 @@ HRESULT WINAPI UiaRaiseNotificationEvent(
     return func.invoke(pProvider, notificationKind, notificationProcessing, displayString, activityId);
 }
 
-#endif // defined(__MINGW32__) || defined(__MINGW64__)
+#endif // !Q_CC_MSVC
 
 #endif // QT_CONFIG(accessibility)

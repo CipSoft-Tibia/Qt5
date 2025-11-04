@@ -12,11 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import '../gen/all_tracks';
 import '../common/recordingV2/target_factories';
-
 import {assertExists, assertTrue} from '../base/logging';
-
 import {AppController} from './app_controller';
 import {ControllerAny} from './controller';
 

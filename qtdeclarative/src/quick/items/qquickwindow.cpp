@@ -9,6 +9,7 @@
 #include "qquickevents_p_p.h"
 #include "qquickgraphicsdevice_p.h"
 #include "qquickwindowcontainer_p.h"
+#include "qquicksafearea_p.h"
 
 #include <QtQuick/private/qsgrenderer_p.h>
 #include <QtQuick/private/qsgplaintexture_p.h>
@@ -60,13 +61,8 @@
 
 QT_BEGIN_NAMESPACE
 
-Q_DECLARE_LOGGING_CATEGORY(lcHoverTrace)
-Q_DECLARE_LOGGING_CATEGORY(lcMouse)
-Q_DECLARE_LOGGING_CATEGORY(lcTouch)
-Q_DECLARE_LOGGING_CATEGORY(lcPtr)
-Q_LOGGING_CATEGORY(lcDirty, "qt.quick.dirty")
+Q_STATIC_LOGGING_CATEGORY(lcDirty, "qt.quick.dirty")
 Q_LOGGING_CATEGORY(lcQuickWindow, "qt.quick.window")
-Q_LOGGING_CATEGORY(lcTransient, "qt.quick.window.transient")
 
 bool QQuickWindowPrivate::defaultAlphaBuffer = false;
 
@@ -1553,6 +1549,12 @@ bool QQuickWindow::event(QEvent *event)
 
         d->deliveryAgentPrivate()->clearGrabbers(pe);
 
+        if (pe->type() == QEvent::MouseButtonPress || pe->type() == QEvent::MouseButtonRelease) {
+            // Ensure that we synthesize a context menu event as QWindow::event does, if necessary.
+            // We only send the context menu event if the pointer event wasn't accepted (ret == false).
+            d->maybeSynthesizeContextMenuEvent(static_cast<QMouseEvent *>(pe));
+        }
+
         if (ret)
             return true;
     } else if (event->isInputEvent()) {
@@ -1611,6 +1613,9 @@ bool QQuickWindow::event(QEvent *event)
     case QEvent::DevicePixelRatioChange:
         physicalDpiChanged();
         break;
+    case QEvent::SafeAreaMarginsChange:
+        QQuickSafeArea::updateSafeAreasRecursively(d->contentItem);
+        break;
     case QEvent::ChildWindowAdded: {
         auto *childEvent = static_cast<QChildWindowEvent*>(event);
         auto *childWindow = childEvent->child();
@@ -1641,6 +1646,21 @@ bool QQuickWindow::event(QEvent *event)
         return true;
     else
         return QWindow::event(event);
+}
+
+void QQuickWindowPrivate::maybeSynthesizeContextMenuEvent(QMouseEvent *event)
+{
+    // See comment in QQuickWindow::event; we need to follow that pattern here,
+    // otherwise the context menu event will be sent before the press (since
+    // QQuickWindow::mousePressEvent returns early if windowEventDispatch is true).
+    // If we don't do this, the incorrect order will cause the menu to
+    // immediately close when the press is delivered.
+    // Also, don't send QContextMenuEvent if a menu has already been opened while
+    // handling a QMouseEvent in which the right button was pressed or released.
+    if (windowEventDispatch || !rmbContextMenuEventEnabled)
+        return;
+
+    QWindowPrivate::maybeSynthesizeContextMenuEvent(event);
 }
 
 void QQuickWindowPrivate::updateChildWindowStackingOrder(QQuickItem *item)
@@ -1843,7 +1863,7 @@ void QQuickWindowPrivate::setFocusToTarget(FocusTarget target, Qt::FocusReason r
         if (newFocusItem) {
             const auto *itemPriv = QQuickItemPrivate::get(newFocusItem);
             if (itemPriv->subFocusItem && itemPriv->flags & QQuickItem::ItemIsFocusScope)
-                clearFocusInScope(newFocusItem, itemPriv->subFocusItem, reason);
+                deliveryAgentPrivate()->clearFocusInScope(newFocusItem, itemPriv->subFocusItem, reason);
         }
         break;
     }
@@ -3592,8 +3612,10 @@ void QQuickWindow::endExternalCommands()
     visibility property you will always get the actual state, never
     \c AutomaticVisibility.
 
-    When a window is not visible, its visibility is \c Hidden, and setting
-    visibility to \l {QWindow::}{Hidden} is the same as setting \l visible to \c false.
+    When a window is not \l visible, its visibility is \c Hidden.
+    Setting visibility to \l {QWindow::}{Hidden} is the same as setting \l visible to \c false.
+
+    The default value is \l {QWindow::}{Hidden}
 
     \snippet qml/windowVisibility.qml entire
 

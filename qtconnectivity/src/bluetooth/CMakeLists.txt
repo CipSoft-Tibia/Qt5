@@ -46,6 +46,9 @@ qt_internal_add_module(Bluetooth
     PRIVATE_MODULE_INTERFACE
         Qt::CorePrivate
         Qt::NetworkPrivate
+    NO_UNITY_BUILD_SOURCES
+        qbluetoothservicediscoveryagent_winrt.cpp
+        qlowenergycontroller_winrt.cpp
 )
 
 #### Keys ignored in scope 1:.:.:bluetooth.pro:<TRUE>:
@@ -75,7 +78,7 @@ if(QT_FEATURE_bluez)
             bluez/remotedevicemanager.cpp bluez/remotedevicemanager_p.h
             bluez/servicemap.cpp bluez/servicemap_p.h
             bluez/gattmanager1.cpp bluez/gattmanager1_p.h
-            bluez/leadvertisement1.cpp bluez/leadvertisement1_p.h
+            bluez/leadvertisement1adaptor.cpp bluez/leadvertisement1adaptor_p.h
             bluez/leadvertisingmanager1.cpp bluez/leadvertisingmanager1_p.h
             bluez/objectmanageradaptor.cpp bluez/objectmanageradaptor_p.h
             bluez/propertiesadaptor.cpp bluez/propertiesadaptor_p.h
@@ -255,6 +258,8 @@ elseif(QT_FEATURE_winrt_bt)
             qbluetoothdevicediscoveryagent_winrt.cpp
             qbluetoothdevicewatcher_winrt.cpp
             qbluetoothlocaldevice_winrt.cpp
+            qbluetoothservicediscoveryagent_winrt.cpp
+            qlowenergycontroller_winrt.cpp
         DEFINES
             QT_WINRT_BLUETOOTH
         LIBRARIES

@@ -158,7 +158,7 @@ void MediaControlsOrientationLockDelegate::MaybeListenToDeviceOrientation() {
   if (!RuntimeEnabledFeatures::VideoRotateToFullscreenEnabled())
     return;
 
-  if (is_auto_rotate_enabled_by_user_override_for_testing_ != absl::nullopt) {
+  if (is_auto_rotate_enabled_by_user_override_for_testing_ != std::nullopt) {
     GotIsAutoRotateEnabledByUser(
         is_auto_rotate_enabled_by_user_override_for_testing_.value());
     return;
@@ -244,7 +244,7 @@ void MediaControlsOrientationLockDelegate::Invoke(
     return;
   }
 
-  NOTREACHED();
+  NOTREACHED_IN_MIGRATION();
 }
 
 device::mojom::blink::ScreenOrientationLockType
@@ -281,7 +281,7 @@ MediaControlsOrientationLockDelegate::ComputeOrientationLock() const {
       return device::mojom::blink::ScreenOrientationLockType::LANDSCAPE;
   }
 
-  NOTREACHED();
+  NOTREACHED_IN_MIGRATION();
   return device::mojom::blink::ScreenOrientationLockType::LANDSCAPE;
 }
 

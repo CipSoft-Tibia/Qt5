@@ -7,7 +7,10 @@
 #include <stdint.h>
 
 #include "core/fxcrt/data_vector.h"
+#include "testing/gmock/include/gmock/gmock.h"
 #include "testing/gtest/include/gtest/gtest.h"
+
+using ::testing::ElementsAreArray;
 
 class CBC_PDF417WriterTest : public testing::Test {
  public:
@@ -21,8 +24,6 @@ class CBC_PDF417WriterTest : public testing::Test {
 
 TEST_F(CBC_PDF417WriterTest, Encode) {
   CBC_PDF417Writer writer;
-  int32_t width;
-  int32_t height;
 
   {
     static constexpr int kExpectedWidth = 579;
@@ -414,12 +415,10 @@ TEST_F(CBC_PDF417WriterTest, Encode) {
         1, 0, 0, 1, 0, 1, 1, 0, 1, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 1, 1,
         0, 0, 1, 1, 1, 1, 0, 0, 0, 1, 1, 1, 0, 1, 1, 1, 0, 1, 1, 0, 1, 0, 0, 1,
         1, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 0, 1, 0, 0, 0, 1, 0, 1, 0, 0, 1};
-    DataVector<uint8_t> data = writer.Encode(L"", &width, &height);
-    ASSERT_EQ(std::size(kExpectedData), data.size());
-    ASSERT_EQ(kExpectedWidth, width);
-    ASSERT_EQ(kExpectedHeight, height);
-    for (size_t i = 0; i < std::size(kExpectedData); ++i)
-      EXPECT_EQ(kExpectedData[i], data[i]) << i;
+    CBC_PDF417Writer::EncodeResult result = writer.Encode(L"");
+    ASSERT_EQ(kExpectedWidth, result.width);
+    ASSERT_EQ(kExpectedHeight, result.height);
+    EXPECT_THAT(result.data, ElementsAreArray(kExpectedData));
   }
   {
     static constexpr int kExpectedWidth = 579;
@@ -811,11 +810,10 @@ TEST_F(CBC_PDF417WriterTest, Encode) {
         1, 0, 0, 1, 1, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1, 1, 0, 0, 1, 1, 1, 0,
         0, 0, 1, 1, 0, 0, 1, 0, 0, 0, 1, 1, 0, 1, 1, 1, 0, 1, 1, 0, 1, 0, 0, 1,
         1, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 0, 1, 0, 0, 0, 1, 0, 1, 0, 0, 1};
-    DataVector<uint8_t> data = writer.Encode(L"hello world", &width, &height);
-    ASSERT_EQ(std::size(kExpectedData), data.size());
-    ASSERT_EQ(kExpectedWidth, width);
-    ASSERT_EQ(kExpectedHeight, height);
-    for (size_t i = 0; i < std::size(kExpectedData); ++i)
-      EXPECT_EQ(kExpectedData[i], data[i]) << i;
+    CBC_PDF417Writer::EncodeResult result = writer.Encode(L"hello world");
+    ASSERT_EQ(std::size(kExpectedData), result.data.size());
+    ASSERT_EQ(kExpectedWidth, result.width);
+    ASSERT_EQ(kExpectedHeight, result.height);
+    EXPECT_THAT(result.data, ElementsAreArray(kExpectedData));
   }
 }

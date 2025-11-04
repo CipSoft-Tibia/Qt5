@@ -54,7 +54,7 @@ qt_feature("quickcontrols2-macos" PRIVATE
     SECTION "Quick Controls 2"
     LABEL "macOS"
     PURPOSE "Provides a native macOS desktop style."
-    CONDITION QT_FEATURE_quickcontrols2_basic AND MACOS
+    CONDITION QT_FEATURE_quickcontrols2_fusion AND MACOS
 )
 qt_feature("quickcontrols2-ios" PRIVATE
     SECTION "Quick Controls 2"

@@ -40,7 +40,7 @@ class Backend;
 class PhysicalDevice : public d3d::PhysicalDevice {
   public:
     PhysicalDevice(Backend* backend,
-                   ComPtr<IDXGIAdapter3> hardwareAdapter,
+                   ComPtr<IDXGIAdapter4> hardwareAdapter,
                    ComPtr<ID3D11Device> d3d11Device);
     ~PhysicalDevice() override;
 
@@ -50,7 +50,7 @@ class PhysicalDevice : public d3d::PhysicalDevice {
     bool SupportsFeatureLevel(FeatureLevel featureLevel) const override;
 
     const DeviceInfo& GetDeviceInfo() const;
-    ResultOrError<ComPtr<ID3D11Device>> CreateD3D11Device();
+    ResultOrError<ComPtr<ID3D11Device>> CreateD3D11Device(bool enableDebugLayer);
 
     uint32_t GetUAVSlotCount() const { return mUAVSlotCount; }
     bool IsSharedD3D11Device() const { return mIsSharedD3D11Device; }
@@ -58,12 +58,16 @@ class PhysicalDevice : public d3d::PhysicalDevice {
   private:
     using Base = d3d::PhysicalDevice;
 
-    void SetupBackendAdapterToggles(TogglesState* adapterToggles) const override;
-    void SetupBackendDeviceToggles(TogglesState* deviceToggles) const override;
+    void SetupBackendAdapterToggles(dawn::platform::Platform* platform,
+                                    TogglesState* adapterToggles) const override;
+    void SetupBackendDeviceToggles(dawn::platform::Platform* platform,
+                                   TogglesState* deviceToggles) const override;
 
-    ResultOrError<Ref<DeviceBase>> CreateDeviceImpl(AdapterBase* adapter,
-                                                    const UnpackedPtr<DeviceDescriptor>& descriptor,
-                                                    const TogglesState& deviceToggles) override;
+    ResultOrError<Ref<DeviceBase>> CreateDeviceImpl(
+        AdapterBase* adapter,
+        const UnpackedPtr<DeviceDescriptor>& descriptor,
+        const TogglesState& deviceToggles,
+        Ref<DeviceBase::DeviceLostEvent>&& lostEvent) override;
 
     MaybeError ResetInternalDeviceForTestingImpl() override;
 
@@ -75,7 +79,7 @@ class PhysicalDevice : public d3d::PhysicalDevice {
         wgpu::FeatureName feature,
         const TogglesState& toggles) const override;
 
-    void PopulateBackendProperties(UnpackedPtr<AdapterProperties>& properties) const override;
+    void PopulateBackendProperties(UnpackedPtr<AdapterInfo>& info) const override;
 
     const bool mIsSharedD3D11Device;
     ComPtr<ID3D11Device> mD3D11Device;

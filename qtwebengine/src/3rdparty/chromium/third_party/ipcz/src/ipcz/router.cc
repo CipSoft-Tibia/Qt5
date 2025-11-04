@@ -7,12 +7,12 @@
 #include <algorithm>
 #include <cstddef>
 #include <cstring>
+#include <optional>
 #include <utility>
 
 #include "ipcz/ipcz.h"
 #include "ipcz/local_router_link.h"
 #include "ipcz/node_link.h"
-#include "ipcz/operation_context.h"
 #include "ipcz/parcel_wrapper.h"
 #include "ipcz/remote_router_link.h"
 #include "ipcz/sequence_number.h"
@@ -98,11 +98,10 @@ Router::Pair Router::CreatePair() {
   DVLOG(5) << "Created new portal pair " << routers.first.get() << " and "
            << routers.second.get();
 
-  const OperationContext context{OperationContext::kAPICall};
   auto links = LocalRouterLink::CreatePair(LinkType::kCentral, routers,
                                            LocalRouterLink::kStable);
-  routers.first->SetOutwardLink(context, std::move(links.first));
-  routers.second->SetOutwardLink(context, std::move(links.second));
+  routers.first->SetOutwardLink(std::move(links.first));
+  routers.second->SetOutwardLink(std::move(links.second));
   return routers;
 }
 
@@ -192,32 +191,29 @@ IpczResult Router::SendOutboundParcel(std::unique_ptr<Parcel> parcel) {
     }
   }
 
-  const OperationContext context{OperationContext::kAPICall};
   if (link) {
     // NOTE: This cannot be a use-after-move because `link` is always null in
     // the case where `parcel` is moved above.
-    link->AcceptParcel(context, std::move(parcel));
+    link->AcceptParcel(std::move(parcel));
   } else {
-    Flush(context);
+    Flush();
   }
   return IPCZ_RESULT_OK;
 }
 
 void Router::CloseRoute() {
-  const OperationContext context{OperationContext::kAPICall};
   TrapEventDispatcher dispatcher;
   Ref<RouterLink> link;
   {
     absl::MutexLock lock(&mutex_);
     outbound_parcels_.SetFinalSequenceLength(
         outbound_parcels_.GetCurrentSequenceLength());
-    traps_.RemoveAll(context, dispatcher);
+    traps_.RemoveAll(dispatcher);
   }
-  Flush(context);
+  Flush();
 }
 
-void Router::SetOutwardLink(const OperationContext& context,
-                            Ref<RouterLink> link) {
+void Router::SetOutwardLink(Ref<RouterLink> link) {
   ABSL_ASSERT(link);
 
   {
@@ -237,16 +233,15 @@ void Router::SetOutwardLink(const OperationContext& context,
 
   if (link) {
     // If the link wasn't adopted, this Router has already been disconnected.
-    link->AcceptRouteDisconnected(context);
+    link->AcceptRouteDisconnected();
     link->Deactivate();
     return;
   }
 
-  Flush(context, kForceProxyBypassAttempt);
+  Flush(kForceProxyBypassAttempt);
 }
 
-bool Router::AcceptInboundParcel(const OperationContext& context,
-                                 std::unique_ptr<Parcel> parcel) {
+bool Router::AcceptInboundParcel(std::unique_ptr<Parcel> parcel) {
   TrapEventDispatcher dispatcher;
   {
     absl::MutexLock lock(&mutex_);
@@ -263,18 +258,17 @@ bool Router::AcceptInboundParcel(const OperationContext& context,
         // Only notify traps if the new parcel is actually available for
         // reading, which may not be the case if some preceding parcels have yet
         // to be received.
-        traps_.NotifyNewLocalParcel(context, status_flags_, inbound_parcels_,
+        traps_.NotifyNewLocalParcel(status_flags_, inbound_parcels_,
                                     dispatcher);
       }
     }
   }
 
-  Flush(context);
+  Flush();
   return true;
 }
 
-bool Router::AcceptOutboundParcel(const OperationContext& context,
-                                  std::unique_ptr<Parcel> parcel) {
+bool Router::AcceptOutboundParcel(std::unique_ptr<Parcel> parcel) {
   {
     absl::MutexLock lock(&mutex_);
 
@@ -295,12 +289,11 @@ bool Router::AcceptOutboundParcel(const OperationContext& context,
     }
   }
 
-  Flush(context);
+  Flush();
   return true;
 }
 
-bool Router::AcceptRouteClosureFrom(const OperationContext& context,
-                                    LinkType link_type,
+bool Router::AcceptRouteClosureFrom(LinkType link_type,
                                     SequenceNumber sequence_length) {
   TrapEventDispatcher dispatcher;
   {
@@ -319,8 +312,7 @@ bool Router::AcceptRouteClosureFrom(const OperationContext& context,
           status_flags_ |=
               IPCZ_PORTAL_STATUS_PEER_CLOSED | IPCZ_PORTAL_STATUS_DEAD;
         }
-        traps_.NotifyPeerClosed(context, status_flags_, inbound_parcels_,
-                                dispatcher);
+        traps_.NotifyPeerClosed(status_flags_, inbound_parcels_, dispatcher);
       }
     } else if (link_type.is_peripheral_inward()) {
       if (!outbound_parcels_.SetFinalSequenceLength(sequence_length)) {
@@ -337,12 +329,11 @@ bool Router::AcceptRouteClosureFrom(const OperationContext& context,
     }
   }
 
-  Flush(context);
+  Flush();
   return true;
 }
 
-bool Router::AcceptRouteDisconnectedFrom(const OperationContext& context,
-                                         LinkType link_type) {
+bool Router::AcceptRouteDisconnectedFrom(LinkType link_type) {
   TrapEventDispatcher dispatcher;
   absl::InlinedVector<Ref<RouterLink>, 4> forwarding_links;
   {
@@ -374,20 +365,19 @@ bool Router::AcceptRouteDisconnectedFrom(const OperationContext& context,
         status_flags_ |=
             IPCZ_PORTAL_STATUS_PEER_CLOSED | IPCZ_PORTAL_STATUS_DEAD;
       }
-      traps_.NotifyPeerClosed(context, status_flags_, inbound_parcels_,
-                              dispatcher);
+      traps_.NotifyPeerClosed(status_flags_, inbound_parcels_, dispatcher);
     }
   }
 
   for (const Ref<RouterLink>& link : forwarding_links) {
     if (link) {
       DVLOG(4) << "Forwarding disconnection over " << link->Describe();
-      link->AcceptRouteDisconnected(context);
+      link->AcceptRouteDisconnected();
       link->Deactivate();
     }
   }
 
-  Flush(context);
+  Flush();
   return true;
 }
 
@@ -496,7 +486,6 @@ IpczResult Router::Get(IpczGetFlags flags,
                        IpczHandle* handles,
                        size_t* num_handles,
                        IpczHandle* parcel) {
-  const OperationContext context{OperationContext::kAPICall};
   TrapEventDispatcher dispatcher;
   std::unique_ptr<Parcel> consumed_parcel;
   {
@@ -550,7 +539,7 @@ IpczResult Router::Get(IpczGetFlags flags,
     if (inbound_parcels_.IsSequenceFullyConsumed()) {
       status_flags_ |= IPCZ_PORTAL_STATUS_PEER_CLOSED | IPCZ_PORTAL_STATUS_DEAD;
     }
-    traps_.NotifyLocalParcelConsumed(context, status_flags_, inbound_parcels_,
+    traps_.NotifyLocalParcelConsumed(status_flags_, inbound_parcels_,
                                      dispatcher);
   }
 
@@ -568,7 +557,6 @@ IpczResult Router::BeginGet(IpczBeginGetFlags flags,
                             IpczHandle* handles,
                             size_t* num_handles,
                             IpczTransaction* transaction) {
-  const OperationContext context{OperationContext::kAPICall};
   TrapEventDispatcher dispatcher;
   absl::MutexLock lock(&mutex_);
   if (!transaction || inward_edge_) {
@@ -620,8 +608,7 @@ IpczResult Router::BeginGet(IpczBeginGetFlags flags,
   }
 
   if (overlapped) {
-    *transaction =
-        pending_gets_->Add(TakeNextInboundParcel(context, dispatcher));
+    *transaction = pending_gets_->Add(TakeNextInboundParcel(dispatcher));
   } else {
     *transaction = pending_gets_->Add(std::move(p));
     is_pending_get_exclusive_ = true;
@@ -632,7 +619,6 @@ IpczResult Router::BeginGet(IpczBeginGetFlags flags,
 IpczResult Router::EndGet(IpczTransaction transaction,
                           IpczEndGetFlags flags,
                           IpczHandle* parcel_handle) {
-  const OperationContext context{OperationContext::kAPICall};
   TrapEventDispatcher dispatcher;
   absl::MutexLock lock(&mutex_);
   if (!pending_gets_) {
@@ -651,7 +637,7 @@ IpczResult Router::EndGet(IpczTransaction transaction,
                           parcel->sequence_number());
     inbound_parcels_.NextElement() = std::move(parcel);
     if (!aborted) {
-      parcel = TakeNextInboundParcel(context, dispatcher);
+      parcel = TakeNextInboundParcel(dispatcher);
     }
     is_pending_get_exclusive_ = false;
   }
@@ -705,18 +691,13 @@ IpczResult Router::MergeRoute(const Ref<Router>& other) {
     other->bridge_->SetPrimaryLink(std::move(links.second));
   }
 
-  const OperationContext context{OperationContext::kAPICall};
-  Flush(context);
+  Flush();
   return IPCZ_RESULT_OK;
 }
 
 // static
 Ref<Router> Router::Deserialize(const RouterDescriptor& descriptor,
                                 NodeLink& from_node_link) {
-  // All Router deserialization occurs as a direct result of some transport
-  // notification.
-  const OperationContext context{OperationContext::kTransportNotification};
-
   bool disconnected = false;
   auto router = MakeRefCounted<Router>();
   Ref<RemoteRouterLink> new_outward_link;
@@ -750,7 +731,7 @@ Ref<Router> Router::Deserialize(const RouterDescriptor& descriptor,
       // to our counterpart back on the peer's node.
       Ref<RemoteRouterLink> new_decaying_link =
           from_node_link.AddRemoteRouterLink(
-              context, descriptor.new_decaying_sublink, nullptr,
+              descriptor.new_decaying_sublink, nullptr,
               LinkType::kPeripheralOutward, LinkSide::kB, router);
       if (!new_decaying_link) {
         return nullptr;
@@ -772,8 +753,7 @@ Ref<Router> Router::Deserialize(const RouterDescriptor& descriptor,
         return nullptr;
       }
       new_outward_link = from_node_link.AddRemoteRouterLink(
-          context, descriptor.new_sublink,
-          std::move(link_state), LinkType::kCentral,
+          descriptor.new_sublink, std::move(link_state), LinkType::kCentral,
           LinkSide::kB, router);
       if (!new_outward_link) {
         return nullptr;
@@ -792,8 +772,8 @@ Ref<Router> Router::Deserialize(const RouterDescriptor& descriptor,
         return nullptr;
       }
       new_outward_link = from_node_link.AddRemoteRouterLink(
-          context, descriptor.new_sublink, nullptr,
-          LinkType::kPeripheralOutward, LinkSide::kB, router);
+          descriptor.new_sublink, nullptr, LinkType::kPeripheralOutward,
+          LinkSide::kB, router);
       if (new_outward_link) {
         router->outward_edge_.SetPrimaryLink(new_outward_link);
 
@@ -813,29 +793,27 @@ Ref<Router> Router::Deserialize(const RouterDescriptor& descriptor,
 
   if (disconnected) {
     DVLOG(4) << "Disconnected new Router immediately after deserialization";
-    router->AcceptRouteDisconnectedFrom(context, LinkType::kPeripheralOutward);
+    router->AcceptRouteDisconnectedFrom(LinkType::kPeripheralOutward);
   } else if (descriptor.proxy_peer_node_name.is_valid()) {
     // The source router rolled some peer bypass details into our descriptor to
     // avoid some IPC overhead. We can begin bypassing the proxy now.
     ABSL_ASSERT(new_outward_link);
-    router->BypassPeer(context, *new_outward_link,
-                       descriptor.proxy_peer_node_name,
+    router->BypassPeer(*new_outward_link, descriptor.proxy_peer_node_name,
                        descriptor.proxy_peer_sublink);
   }
 
-  router->Flush(context, kForceProxyBypassAttempt);
+  router->Flush(kForceProxyBypassAttempt);
   return router;
 }
 
-void Router::SerializeNewRouter(const OperationContext& context,
-                                NodeLink& to_node_link,
+void Router::SerializeNewRouter(NodeLink& to_node_link,
                                 RouterDescriptor& descriptor) {
   TrapEventDispatcher dispatcher;
   Ref<Router> local_peer;
   bool initiate_proxy_bypass = false;
   {
     absl::MutexLock lock(&mutex_);
-    traps_.RemoveAll(context, dispatcher);
+    traps_.RemoveAll(dispatcher);
     local_peer = outward_edge_.GetLocalPeer();
     initiate_proxy_bypass = outward_edge_.primary_link() &&
                             outward_edge_.primary_link()->TryLockForBypass(
@@ -843,17 +821,15 @@ void Router::SerializeNewRouter(const OperationContext& context,
   }
 
   if (local_peer && initiate_proxy_bypass &&
-      SerializeNewRouterWithLocalPeer(context, to_node_link, descriptor,
-                                      local_peer)) {
+      SerializeNewRouterWithLocalPeer(to_node_link, descriptor, local_peer)) {
     return;
   }
 
-  SerializeNewRouterAndConfigureProxy(context, to_node_link, descriptor,
+  SerializeNewRouterAndConfigureProxy(to_node_link, descriptor,
                                       initiate_proxy_bypass);
 }
 
-bool Router::SerializeNewRouterWithLocalPeer(const OperationContext& context,
-                                             NodeLink& to_node_link,
+bool Router::SerializeNewRouterWithLocalPeer(NodeLink& to_node_link,
                                              RouterDescriptor& descriptor,
                                              Ref<Router> local_peer) {
   MultiMutexLock lock(&mutex_, &local_peer->mutex_);
@@ -892,10 +868,10 @@ bool Router::SerializeNewRouterWithLocalPeer(const OperationContext& context,
   // descriptor is transmitted to its destination node. The links will be
   // adopted after transmission in BeginProxyingToNewRouter().
   Ref<RouterLink> new_link = to_node_link.AddRemoteRouterLink(
-      context, new_sublink, new_link_state, LinkType::kCentral, LinkSide::kA,
+      new_sublink, new_link_state, LinkType::kCentral, LinkSide::kA,
       local_peer);
 
-  to_node_link.AddRemoteRouterLink(context, decaying_sublink, nullptr,
+  to_node_link.AddRemoteRouterLink(decaying_sublink, nullptr,
                                    LinkType::kPeripheralInward, LinkSide::kA,
                                    WrapRefCounted(this));
 
@@ -931,7 +907,6 @@ bool Router::SerializeNewRouterWithLocalPeer(const OperationContext& context,
 }
 
 void Router::SerializeNewRouterAndConfigureProxy(
-    const OperationContext& context,
     NodeLink& to_node_link,
     RouterDescriptor& descriptor,
     bool initiate_proxy_bypass) {
@@ -995,14 +970,13 @@ void Router::SerializeNewRouterAndConfigureProxy(
   // the remote node regarding `new_sublink`. `descriptor` must be transmitted
   // first.
   Ref<RemoteRouterLink> new_link = to_node_link.AddRemoteRouterLink(
-      context, new_sublink, nullptr, LinkType::kPeripheralInward, LinkSide::kA,
+      new_sublink, nullptr, LinkType::kPeripheralInward, LinkSide::kA,
       WrapRefCounted(this));
   DVLOG(4) << "Router " << this << " extending route with tentative new "
            << new_link->Describe();
 }
 
-void Router::BeginProxyingToNewRouter(const OperationContext& context,
-                                      NodeLink& to_node_link,
+void Router::BeginProxyingToNewRouter(NodeLink& to_node_link,
                                       const RouterDescriptor& descriptor) {
   Ref<RouterLink> peer_link;
   Ref<Router> local_peer;
@@ -1014,7 +988,7 @@ void Router::BeginProxyingToNewRouter(const OperationContext& context,
   auto new_decaying_sublink =
       to_node_link.GetSublink(descriptor.new_decaying_sublink);
   if (!new_sublink) {
-    Flush(context, kForceProxyBypassAttempt);
+    Flush(kForceProxyBypassAttempt);
     return;
   }
 
@@ -1055,32 +1029,31 @@ void Router::BeginProxyingToNewRouter(const OperationContext& context,
     // link was successfully adopted for our own inward edge; and the primary
     // link is therefore meant to serve as our local peer's new outward link
     // directly to the new remote router.
-    local_peer->SetOutwardLink(context, std::move(new_primary_link));
+    local_peer->SetOutwardLink(std::move(new_primary_link));
   }
 
   // New links were not adopted, implying that the new router has already been
   // closed or disconnected.
   if (new_primary_link) {
     DVLOG(4) << "Dropping link to new router " << new_primary_link->Describe();
-    new_primary_link->AcceptRouteDisconnected(context);
+    new_primary_link->AcceptRouteDisconnected();
     new_primary_link->Deactivate();
   }
   if (new_decaying_link) {
     DVLOG(4) << "Dropping link to new router " << new_decaying_link->Describe();
-    new_decaying_link->AcceptRouteDisconnected(context);
+    new_decaying_link->AcceptRouteDisconnected();
     new_decaying_link->Deactivate();
   }
 
   // We may have inbound parcels queued which need to be forwarded to the new
   // Router, so give them a chance to be flushed out.
-  Flush(context, kForceProxyBypassAttempt);
+  Flush(kForceProxyBypassAttempt);
   if (local_peer) {
-    local_peer->Flush(context, kForceProxyBypassAttempt);
+    local_peer->Flush(kForceProxyBypassAttempt);
   }
 }
 
-bool Router::BypassPeer(const OperationContext& context,
-                        RemoteRouterLink& requestor,
+bool Router::BypassPeer(RemoteRouterLink& requestor,
                         const NodeName& bypass_target_node,
                         SublinkId bypass_target_sublink) {
   NodeLink& from_node_link = *requestor.node_link();
@@ -1112,7 +1085,7 @@ bool Router::BypassPeer(const OperationContext& context,
         from_node_link.node()->GetLink(bypass_target_node);
     if (link_to_bypass_target) {
       return BypassPeerWithNewRemoteLink(
-          context, requestor, *link_to_bypass_target, bypass_target_sublink,
+          requestor, *link_to_bypass_target, bypass_target_sublink,
           link_to_bypass_target->memory().TryAllocateRouterLinkState());
     }
 
@@ -1120,28 +1093,25 @@ bool Router::BypassPeer(const OperationContext& context,
     from_node_link.node()->EstablishLink(
         bypass_target_node,
         [router = WrapRefCounted(this), requestor = WrapRefCounted(&requestor),
-         bypass_target_sublink, context](NodeLink* link_to_bypass_target) {
+         bypass_target_sublink](NodeLink* link_to_bypass_target) {
           if (!link_to_bypass_target) {
             DLOG(ERROR) << "Disconnecting Router due to failed introduction";
-            router->AcceptRouteDisconnectedFrom(context,
-                                                LinkType::kPeripheralOutward);
+            router->AcceptRouteDisconnectedFrom(LinkType::kPeripheralOutward);
             return;
           }
 
           router->BypassPeerWithNewRemoteLink(
-              context, *requestor, *link_to_bypass_target,
-              bypass_target_sublink,
+              *requestor, *link_to_bypass_target, bypass_target_sublink,
               link_to_bypass_target->memory().TryAllocateRouterLinkState());
         });
     return true;
   }
 
   // The second case is when the proxy's outward peer lives on our own node.
-  return BypassPeerWithNewLocalLink(context, requestor, bypass_target_sublink);
+  return BypassPeerWithNewLocalLink(requestor, bypass_target_sublink);
 }
 
 bool Router::AcceptBypassLink(
-    const OperationContext& context,
     NodeLink& new_node_link,
     SublinkId new_sublink,
     FragmentRef<RouterLinkState> new_link_state,
@@ -1184,7 +1154,7 @@ bool Router::AcceptBypassLink(
     // By convention the initiator of a bypass assumes side A of the bypass
     // link, so we assume side B.
     new_link = new_node_link.AddRemoteRouterLink(
-        context, new_sublink, std::move(new_link_state), LinkType::kCentral,
+        new_sublink, std::move(new_link_state), LinkType::kCentral,
         LinkSide::kB, WrapRefCounted(this));
 
     if (new_link) {
@@ -1202,7 +1172,7 @@ bool Router::AcceptBypassLink(
   }
 
   if (!new_link) {
-    AcceptRouteDisconnectedFrom(context, LinkType::kCentral);
+    AcceptRouteDisconnectedFrom(LinkType::kCentral);
     return true;
   }
 
@@ -1210,21 +1180,20 @@ bool Router::AcceptBypassLink(
     // If the new link goes to the same place as the old link, we only need
     // to tell the proxy there to stop proxying. It has already conspired with
     // its local outward peer.
-    old_link->StopProxyingToLocalPeer(context, length_to_proxy_from_us);
+    old_link->StopProxyingToLocalPeer(length_to_proxy_from_us);
   } else {
     // Otherwise, tell the proxy to stop proxying and let its inward peer (our
     // new outward peer) know that the proxy will stop.
-    old_link->StopProxying(context, length_to_proxy_from_us,
+    old_link->StopProxying(length_to_proxy_from_us,
                            inbound_sequence_length_from_bypassed_link);
-    new_link->ProxyWillStop(context, length_to_proxy_from_us);
+    new_link->ProxyWillStop(length_to_proxy_from_us);
   }
 
-  Flush(context);
+  Flush();
   return true;
 }
 
-bool Router::StopProxying(const OperationContext& context,
-                          SequenceNumber inbound_sequence_length,
+bool Router::StopProxying(SequenceNumber inbound_sequence_length,
                           SequenceNumber outbound_sequence_length) {
   Ref<Router> bridge_peer;
   {
@@ -1277,15 +1246,14 @@ bool Router::StopProxying(const OperationContext& context,
         outbound_sequence_length);
   }
 
-  Flush(context);
+  Flush();
   if (bridge_peer) {
-    bridge_peer->Flush(context);
+    bridge_peer->Flush();
   }
   return true;
 }
 
-bool Router::NotifyProxyWillStop(const OperationContext& context,
-                                 SequenceNumber inbound_sequence_length) {
+bool Router::NotifyProxyWillStop(SequenceNumber inbound_sequence_length) {
   {
     absl::MutexLock lock(&mutex_);
     if (outward_edge_.is_stable()) {
@@ -1301,12 +1269,11 @@ bool Router::NotifyProxyWillStop(const OperationContext& context,
     outward_edge_.set_length_from_decaying_link(inbound_sequence_length);
   }
 
-  Flush(context);
+  Flush();
   return true;
 }
 
-bool Router::StopProxyingToLocalPeer(const OperationContext& context,
-                                     SequenceNumber outbound_sequence_length) {
+bool Router::StopProxyingToLocalPeer(SequenceNumber outbound_sequence_length) {
   Ref<Router> local_peer;
   Ref<Router> bridge_peer;
   {
@@ -1385,16 +1352,15 @@ bool Router::StopProxyingToLocalPeer(const OperationContext& context,
     return false;
   }
 
-  Flush(context);
-  local_peer->Flush(context);
+  Flush();
+  local_peer->Flush();
   if (bridge_peer) {
-    bridge_peer->Flush(context);
+    bridge_peer->Flush();
   }
   return true;
 }
 
-void Router::NotifyLinkDisconnected(const OperationContext& context,
-                                    RemoteRouterLink& link) {
+void Router::NotifyLinkDisconnected(RemoteRouterLink& link) {
   {
     absl::MutexLock lock(&mutex_);
     if (outward_edge_.primary_link() == &link) {
@@ -1413,13 +1379,13 @@ void Router::NotifyLinkDisconnected(const OperationContext& context,
   }
 
   if (link.GetType().is_outward()) {
-    AcceptRouteDisconnectedFrom(context, LinkType::kPeripheralOutward);
+    AcceptRouteDisconnectedFrom(LinkType::kPeripheralOutward);
   } else {
-    AcceptRouteDisconnectedFrom(context, LinkType::kPeripheralInward);
+    AcceptRouteDisconnectedFrom(LinkType::kPeripheralInward);
   }
 }
 
-void Router::Flush(const OperationContext& context, FlushBehavior behavior) {
+void Router::Flush(FlushBehavior behavior) {
   Ref<RouterLink> outward_link;
   Ref<RouterLink> inward_link;
   Ref<RouterLink> bridge_link;
@@ -1428,8 +1394,8 @@ void Router::Flush(const OperationContext& context, FlushBehavior behavior) {
   Ref<RouterLink> dead_inward_link;
   Ref<RouterLink> dead_outward_link;
   Ref<RouterLink> dead_bridge_link;
-  absl::optional<SequenceNumber> final_inward_sequence_length;
-  absl::optional<SequenceNumber> final_outward_sequence_length;
+  std::optional<SequenceNumber> final_inward_sequence_length;
+  std::optional<SequenceNumber> final_outward_sequence_length;
   bool on_central_link = false;
   bool inward_link_decayed = false;
   bool outward_link_decayed = false;
@@ -1507,8 +1473,7 @@ void Router::Flush(const OperationContext& context, FlushBehavior behavior) {
       // the peer is actually closed and there are no more inbound parcels in
       // flight towards us.
       status_flags_ |= IPCZ_PORTAL_STATUS_PEER_CLOSED;
-      traps_.NotifyPeerClosed(context, status_flags_, inbound_parcels_,
-                              dispatcher);
+      traps_.NotifyPeerClosed(status_flags_, inbound_parcels_, dispatcher);
     }
 
     // If we're dropping the last of our decaying links, our outward link may
@@ -1560,7 +1525,7 @@ void Router::Flush(const OperationContext& context, FlushBehavior behavior) {
   }
 
   for (ParcelToFlush& parcel : parcels_to_flush) {
-    parcel.link->AcceptParcel(context, std::move(parcel.parcel));
+    parcel.link->AcceptParcel(std::move(parcel.parcel));
   }
 
   if (outward_link_decayed) {
@@ -1586,29 +1551,26 @@ void Router::Flush(const OperationContext& context, FlushBehavior behavior) {
   // Bridge bypass is only possible with no inward links and a stable outward
   // link.
   if (bridge_link && has_stable_outward_link && has_no_inward_links) {
-    MaybeStartBridgeBypass(context);
+    MaybeStartBridgeBypass();
   }
 
   if (dead_outward_link) {
     if (final_outward_sequence_length) {
-      dead_outward_link->AcceptRouteClosure(context,
-                                            *final_outward_sequence_length);
+      dead_outward_link->AcceptRouteClosure(*final_outward_sequence_length);
     }
     dead_outward_link->Deactivate();
   }
 
   if (dead_inward_link) {
     if (final_inward_sequence_length) {
-      dead_inward_link->AcceptRouteClosure(context,
-                                           *final_inward_sequence_length);
+      dead_inward_link->AcceptRouteClosure(*final_inward_sequence_length);
     }
     dead_inward_link->Deactivate();
   }
 
   if (dead_bridge_link) {
     if (final_inward_sequence_length) {
-      dead_bridge_link->AcceptRouteClosure(context,
-                                           *final_inward_sequence_length);
+      dead_bridge_link->AcceptRouteClosure(*final_inward_sequence_length);
     }
   }
 
@@ -1622,16 +1584,16 @@ void Router::Flush(const OperationContext& context, FlushBehavior behavior) {
     return;
   }
 
-  if (inward_link && MaybeStartSelfBypass(context)) {
+  if (inward_link && MaybeStartSelfBypass()) {
     return;
   }
 
   if (outward_link) {
-    outward_link->FlushOtherSideIfWaiting(context);
+    outward_link->FlushOtherSideIfWaiting();
   }
 }
 
-bool Router::MaybeStartSelfBypass(const OperationContext& context) {
+bool Router::MaybeStartSelfBypass() {
   Ref<RemoteRouterLink> remote_inward_link;
   Ref<RemoteRouterLink> remote_outward_link;
   Ref<Router> local_outward_peer;
@@ -1686,7 +1648,7 @@ bool Router::MaybeStartSelfBypass(const OperationContext& context) {
              << remote_outward_link->Describe();
 
     remote_inward_link->BypassPeer(
-        context, remote_outward_link->node_link()->remote_node_name(),
+        remote_outward_link->node_link()->remote_node_name(),
         remote_outward_link->sublink());
     return true;
   }
@@ -1695,19 +1657,18 @@ bool Router::MaybeStartSelfBypass(const OperationContext& context) {
   // establish the bypass link immediately and send it to the remote inward
   // peer.
   return StartSelfBypassToLocalPeer(
-      context, *local_outward_peer, *remote_inward_link,
+      *local_outward_peer, *remote_inward_link,
       remote_inward_link->node_link()->memory().TryAllocateRouterLinkState());
 }
 
 bool Router::StartSelfBypassToLocalPeer(
-    const OperationContext& context,
     Router& local_outward_peer,
     RemoteRouterLink& inward_link,
     FragmentRef<RouterLinkState> new_link_state) {
   if (new_link_state.is_null()) {
     NodeLinkMemory& memory = inward_link.node_link()->memory();
     memory.AllocateRouterLinkState(
-        [router = WrapRefCounted(this), context,
+        [router = WrapRefCounted(this),
          local_outward_peer = WrapRefCounted(&local_outward_peer),
          inward_link = WrapRefCounted(&inward_link)](
             FragmentRef<RouterLinkState> new_link_state) {
@@ -1716,8 +1677,7 @@ bool Router::StartSelfBypassToLocalPeer(
             return;
           }
 
-          router->StartSelfBypassToLocalPeer(context, *local_outward_peer,
-                                             *inward_link,
+          router->StartSelfBypassToLocalPeer(*local_outward_peer, *inward_link,
                                              std::move(new_link_state));
         });
     return true;
@@ -1758,26 +1718,25 @@ bool Router::StartSelfBypassToLocalPeer(
     inward_edge_->set_length_to_decaying_link(length_from_outward_peer);
 
     new_link = inward_link.node_link()->AddRemoteRouterLink(
-        context, new_sublink, new_link_state, LinkType::kCentral, LinkSide::kA,
+        new_sublink, new_link_state, LinkType::kCentral, LinkSide::kA,
         WrapRefCounted(&local_outward_peer));
   }
 
   if (!new_link) {
-    AcceptRouteDisconnectedFrom(context, LinkType::kCentral);
+    AcceptRouteDisconnectedFrom(LinkType::kCentral);
     return false;
   }
 
   // Inform our inward peer on another node that they can bypass us using the
   // new link we just created to our own outward local peer. Once that message
   // is sent, it's safe for that local peer to adopt the new link.
-  inward_link.BypassPeerWithLink(context, new_sublink,
-                                 std::move(new_link_state),
+  inward_link.BypassPeerWithLink(new_sublink, std::move(new_link_state),
                                  length_from_outward_peer);
-  local_outward_peer.SetOutwardLink(context, std::move(new_link));
+  local_outward_peer.SetOutwardLink(std::move(new_link));
   return true;
 }
 
-void Router::MaybeStartBridgeBypass(const OperationContext& context) {
+void Router::MaybeStartBridgeBypass() {
   Ref<Router> first_bridge = WrapRefCounted(this);
   Ref<Router> second_bridge;
   {
@@ -1857,7 +1816,7 @@ void Router::MaybeStartBridgeBypass(const OperationContext& context) {
       second_bridge->bridge_->BeginPrimaryLinkDecay();
     }
     second_remote_link->BypassPeer(
-        context, first_remote_link->node_link()->remote_node_name(),
+        first_remote_link->node_link()->remote_node_name(),
         first_remote_link->sublink());
     return;
   }
@@ -1868,12 +1827,10 @@ void Router::MaybeStartBridgeBypass(const OperationContext& context) {
   // it's a bit more complex than the cases above and below.
   if (!second_local_peer) {
     StartBridgeBypassFromLocalPeer(
-        context,
         second_remote_link->node_link()->memory().TryAllocateRouterLinkState());
     return;
   } else if (!first_local_peer) {
     second_bridge->StartBridgeBypassFromLocalPeer(
-        context,
         first_remote_link->node_link()->memory().TryAllocateRouterLinkState());
     return;
   }
@@ -1931,14 +1888,13 @@ void Router::MaybeStartBridgeBypass(const OperationContext& context) {
     second_local_peer->outward_edge_.SetPrimaryLink(std::move(links.second));
   }
 
-  first_bridge->Flush(context);
-  second_bridge->Flush(context);
-  first_local_peer->Flush(context);
-  second_local_peer->Flush(context);
+  first_bridge->Flush();
+  second_bridge->Flush();
+  first_local_peer->Flush();
+  second_local_peer->Flush();
 }
 
 void Router::StartBridgeBypassFromLocalPeer(
-    const OperationContext& context,
     FragmentRef<RouterLinkState> link_state) {
   Ref<Router> local_peer;
   Ref<Router> other_bridge;
@@ -1973,10 +1929,9 @@ void Router::StartBridgeBypassFromLocalPeer(
     // We need a new RouterLinkState on the remote link before we can complete
     // this operation.
     remote_link->node_link()->memory().AllocateRouterLinkState(
-        [router = WrapRefCounted(this),
-         context](FragmentRef<RouterLinkState> state) {
+        [router = WrapRefCounted(this)](FragmentRef<RouterLinkState> state) {
           if (!state.is_null()) {
-            router->StartBridgeBypassFromLocalPeer(context, std::move(state));
+            router->StartBridgeBypassFromLocalPeer(std::move(state));
           }
         });
     return;
@@ -1992,8 +1947,7 @@ void Router::StartBridgeBypassFromLocalPeer(
   const SublinkId bypass_sublink =
       node_link_to_peer->memory().AllocateSublinkIds(1);
   Ref<RemoteRouterLink> new_link = node_link_to_peer->AddRemoteRouterLink(
-      context, bypass_sublink, link_state, LinkType::kCentral, LinkSide::kA,
-      local_peer);
+      bypass_sublink, link_state, LinkType::kCentral, LinkSide::kA, local_peer);
   {
     MultiMutexLock lock(&mutex_, &other_bridge->mutex_, &local_peer->mutex_);
     if (!bridge_ || !other_bridge->bridge_) {
@@ -2023,16 +1977,15 @@ void Router::StartBridgeBypassFromLocalPeer(
     other_bridge_edge.set_length_from_decaying_link(length_from_local_peer);
   }
 
-  remote_link->BypassPeerWithLink(
-      context, bypass_sublink, std::move(link_state), length_from_local_peer);
-  local_peer->SetOutwardLink(context, std::move(new_link));
-  Flush(context);
-  other_bridge->Flush(context);
-  local_peer->Flush(context);
+  remote_link->BypassPeerWithLink(bypass_sublink, std::move(link_state),
+                                  length_from_local_peer);
+  local_peer->SetOutwardLink(std::move(new_link));
+  Flush();
+  other_bridge->Flush();
+  local_peer->Flush();
 }
 
 bool Router::BypassPeerWithNewRemoteLink(
-    const OperationContext& context,
     RemoteRouterLink& requestor,
     NodeLink& node_link,
     SublinkId bypass_target_sublink,
@@ -2042,13 +1995,14 @@ bool Router::BypassPeerWithNewRemoteLink(
     // RouterLinkState.
     node_link.memory().AllocateRouterLinkState(
         [router = WrapRefCounted(this), requestor = WrapRefCounted(&requestor),
-         node_link = WrapRefCounted(&node_link), context,
+         node_link = WrapRefCounted(&node_link),
          bypass_target_sublink](FragmentRef<RouterLinkState> new_link_state) {
           if (new_link_state.is_null()) {
             // If this fails once, it's unlikely to succeed afterwards.
             return;
           }
-          router->BypassPeerWithNewRemoteLink(context, *requestor, *node_link,
+
+          router->BypassPeerWithNewRemoteLink(*requestor, *node_link,
                                               bypass_target_sublink,
                                               std::move(new_link_state));
         });
@@ -2075,16 +2029,16 @@ bool Router::BypassPeerWithNewRemoteLink(
 
     length_to_decaying_link = outbound_parcels_.current_sequence_number();
     outward_edge_.set_length_to_decaying_link(length_to_decaying_link);
-    new_link = node_link.AddRemoteRouterLink(
-        context, new_sublink, new_link_state, LinkType::kCentral, LinkSide::kA,
-        WrapRefCounted(this));
+    new_link = node_link.AddRemoteRouterLink(new_sublink, new_link_state,
+                                             LinkType::kCentral, LinkSide::kA,
+                                             WrapRefCounted(this));
   }
 
   if (!new_link) {
     // The NodeLink was disconnected before we could create a new link for
     // this Router. This is not the requestor's fault, so it's not treated as
     // an error.
-    AcceptRouteDisconnectedFrom(context, LinkType::kCentral);
+    AcceptRouteDisconnectedFrom(LinkType::kCentral);
     return true;
   }
 
@@ -2104,12 +2058,11 @@ bool Router::BypassPeerWithNewRemoteLink(
   // above message. Otherwise the router might race on another thread to send
   // messages via `new_sublink`, and the remote node would have no idea where
   // to route them.
-  SetOutwardLink(context, std::move(new_link));
+  SetOutwardLink(std::move(new_link));
   return true;
 }
 
-bool Router::BypassPeerWithNewLocalLink(const OperationContext& context,
-                                        RemoteRouterLink& requestor,
+bool Router::BypassPeerWithNewLocalLink(RemoteRouterLink& requestor,
                                         SublinkId bypass_target_sublink) {
   NodeLink& from_node_link = *requestor.node_link();
   const Ref<Router> new_local_peer =
@@ -2117,7 +2070,7 @@ bool Router::BypassPeerWithNewLocalLink(const OperationContext& context,
   if (!new_local_peer) {
     // The peer may have already been destroyed or disconnected from the proxy
     // by the time we get here.
-    AcceptRouteDisconnectedFrom(context, LinkType::kPeripheralOutward);
+    AcceptRouteDisconnectedFrom(LinkType::kPeripheralOutward);
     return true;
   }
 
@@ -2165,24 +2118,22 @@ bool Router::BypassPeerWithNewLocalLink(const OperationContext& context,
     new_local_peer->outward_edge_.SetPrimaryLink(std::move(links.second));
   }
 
-  link_from_new_local_peer_to_proxy->StopProxying(
-      context, length_from_proxy_to_us, length_to_proxy_from_us);
+  link_from_new_local_peer_to_proxy->StopProxying(length_from_proxy_to_us,
+                                                  length_to_proxy_from_us);
 
-  Flush(context);
-  new_local_peer->Flush(context);
+  Flush();
+  new_local_peer->Flush();
   return true;
 }
 
 std::unique_ptr<Parcel> Router::TakeNextInboundParcel(
-    const OperationContext& context,
     TrapEventDispatcher& dispatcher) {
   std::unique_ptr<Parcel> parcel;
   inbound_parcels_.Pop(parcel);
   if (inbound_parcels_.IsSequenceFullyConsumed()) {
     status_flags_ |= IPCZ_PORTAL_STATUS_PEER_CLOSED | IPCZ_PORTAL_STATUS_DEAD;
   }
-  traps_.NotifyLocalParcelConsumed(context, status_flags_, inbound_parcels_,
-                                   dispatcher);
+  traps_.NotifyLocalParcelConsumed(status_flags_, inbound_parcels_, dispatcher);
   return parcel;
 }
 

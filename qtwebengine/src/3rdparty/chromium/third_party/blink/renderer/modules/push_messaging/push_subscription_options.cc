@@ -2,6 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#ifdef UNSAFE_BUFFERS_BUILD
+// TODO(crbug.com/351564777): Remove this and convert code to safer constructs.
+#pragma allow_unsafe_buffers
+#endif
+
 #include "third_party/blink/renderer/modules/push_messaging/push_subscription_options.h"
 
 #include "base/numerics/safe_conversions.h"
@@ -98,9 +103,7 @@ PushSubscriptionOptions::PushSubscriptionOptions(
     bool user_visible_only,
     const Vector<uint8_t>& application_server_key)
     : user_visible_only_(user_visible_only),
-      application_server_key_(DOMArrayBuffer::Create(
-          application_server_key.data(),
-          base::checked_cast<unsigned>(application_server_key.size()))) {}
+      application_server_key_(DOMArrayBuffer::Create(application_server_key)) {}
 
 void PushSubscriptionOptions::Trace(Visitor* visitor) const {
   visitor->Trace(application_server_key_);

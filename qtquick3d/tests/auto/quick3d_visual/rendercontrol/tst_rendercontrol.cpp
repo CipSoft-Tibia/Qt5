@@ -461,6 +461,19 @@ void tst_RenderControl::dynamicLights()
         QVERIFY(comparePixelNormPos(result, 0.5, 0.8, QColor::fromRgb(255, 255, 255), FUZZ));
     }
 
+    // Case: make half of the lights 32 bit
+    {
+        for (int i = 0; i < 10; i += 2)
+            directionalLights[i]->setProperty("use32BitShadowmap", true);
+
+        renderNextFrame(&renderer, &readCompleted, &readResult, &result);
+        QVERIFY(readCompleted);
+        QCOMPARE(result.size(), QSize(640, 480));
+
+        QVERIFY(comparePixelNormPos(result, 0.5, 0.5, QColor::fromRgb(255, 255, 255), FUZZ));
+        QVERIFY(comparePixelNormPos(result, 0.5, 0.8, QColor::fromRgb(255, 255, 255), FUZZ));
+    }
+
     // Case: make some invisible and destroy some
     {
         result = QImage();

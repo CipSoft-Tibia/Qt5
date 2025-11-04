@@ -80,6 +80,10 @@ Empty &Empty::operator =(const Empty &other)
 }
 Empty::Empty(Empty &&other) noexcept
     = default;
+Empty::operator QVariant() const
+{
+    return QVariant::fromValue(*this);
+}
 bool comparesEqual(const Empty &lhs, const Empty &rhs) noexcept
 {
     return operator ==(static_cast<const QProtobufMessage&>(lhs),

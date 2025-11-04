@@ -2,6 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#ifdef UNSAFE_BUFFERS_BUILD
+// TODO(crbug.com/40285824): Remove this and convert code to safer constructs.
+#pragma allow_unsafe_buffers
+#endif
+
 #include "components/site_engagement/content/site_engagement_score.h"
 
 #include <algorithm>
@@ -320,6 +325,14 @@ void SiteEngagementScore::Reset(double points,
   last_engagement_time_ = last_engagement_time;
 }
 
+void SiteEngagementScore::SetLastEngagementTime(const base::Time& time) {
+  if (!last_engagement_time_.is_null() &&
+      time.LocalMidnight() != last_engagement_time_.LocalMidnight()) {
+    points_added_today_ = 0;
+  }
+  last_engagement_time_ = time;
+}
+
 bool SiteEngagementScore::UpdateScoreDict(base::Value::Dict& score_dict) {
   double raw_score_orig = score_dict.FindDouble(kRawScoreKey).value_or(0);
   double points_added_today_orig =
@@ -357,7 +370,7 @@ bool SiteEngagementScore::UpdateScoreDict(base::Value::Dict& score_dict) {
 SiteEngagementScore::SiteEngagementScore(
     base::Clock* clock,
     const GURL& origin,
-    absl::optional<base::Value::Dict> score_dict)
+    std::optional<base::Value::Dict> score_dict)
     : clock_(clock),
       raw_score_(0),
       points_added_today_(0),
@@ -373,13 +386,13 @@ SiteEngagementScore::SiteEngagementScore(
   points_added_today_ =
       score_dict_->FindDouble(kPointsAddedTodayKey).value_or(0);
 
-  absl::optional<double> maybe_last_engagement_time =
+  std::optional<double> maybe_last_engagement_time =
       score_dict_->FindDouble(kLastEngagementTimeKey);
   if (maybe_last_engagement_time.has_value())
     last_engagement_time_ =
         base::Time::FromInternalValue(maybe_last_engagement_time.value());
 
-  absl::optional<double> maybe_last_shortcut_launch_time =
+  std::optional<double> maybe_last_shortcut_launch_time =
       score_dict_->FindDouble(kLastShortcutLaunchTimeKey);
   if (maybe_last_shortcut_launch_time.has_value())
     last_shortcut_launch_time_ =

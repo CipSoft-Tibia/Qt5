@@ -1,14 +1,14 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
-
-#include "qaudio.h"
-#include "qaudiodevice.h"
-#include "qaudiosystem_p.h"
 #include "qaudiosource.h"
 
-#include <private/qplatformaudiodevices_p.h>
-#include <private/qplatformmediaintegration_p.h>
+#include <QtMultimedia/qaudio.h>
+#include <QtMultimedia/qaudiodevice.h>
+#include <QtMultimedia/private/qaudiosystem_p.h>
+#include <QtMultimedia/private/qaudiohelpers_p.h>
+#include <QtMultimedia/private/qplatformaudiodevices_p.h>
+#include <QtMultimedia/private/qplatformmediaintegration_p.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -96,18 +96,12 @@ QAudioSource::QAudioSource(const QAudioFormat &format, QObject *parent)
 QAudioSource::QAudioSource(const QAudioDevice &audioDevice, const QAudioFormat &format, QObject *parent):
     QObject(parent)
 {
-    d = QPlatformMediaIntegration::instance()->audioDevices()->audioInputDevice(format, audioDevice, parent);
-    if (d) {
-        connect(d, &QPlatformAudioSource::stateChanged, this, [this](QAudio::State state) {
-            // if the signal has been emitted from another thread,
-            // the state may be already changed by main one
-            if (state == d->state())
-                emit stateChanged(state);
-        });
-    }
+    d = QPlatformMediaIntegration::instance()->audioDevices()->audioInputDevice(format, audioDevice,
+                                                                                this);
+    if (d)
+        connect(d, &QPlatformAudioSource::stateChanged, this, &QAudioSource::stateChanged);
     else
-        qWarning() << ("No audio device detected");
-
+        qWarning("No audio device detected");
 }
 
 /*!
@@ -124,6 +118,22 @@ QAudioSource::~QAudioSource()
 {
     delete d;
 }
+
+static bool validateFormatAtStart(QPlatformAudioSource *d)
+{
+    if (!d->format().isValid()) {
+        qWarning() << "QAudioSource::start: QAudioFormat not valid";
+        d->setError(QAudio::OpenError);
+        return false;
+    }
+
+    if (!d->isFormatSupported(d->format())) {
+        qWarning() << "QAudioSource::start: QAudioFormat not supported by QAudioDevice";
+        d->setError(QAudio::OpenError);
+        return false;
+    }
+    return true;
+};
 
 /*!
     Starts transferring audio data from the system's audio input to the \a device.
@@ -144,11 +154,17 @@ void QAudioSource::start(QIODevice* device)
 {
     if (!d)
         return;
+
+    d->setError(QAudio::NoError);
+
     if (!device->isWritable()) {
         qWarning() << "QAudioSource::start: QIODevice is not writable";
         d->setError(QAudio::OpenError);
         return;
     }
+
+    if (!validateFormatAtStart(d))
+        return;
 
     d->elapsedTime.start();
     d->start(device);
@@ -176,6 +192,12 @@ QIODevice* QAudioSource::start()
 {
     if (!d)
         return nullptr;
+
+    d->setError(QAudio::NoError);
+
+    if (!validateFormatAtStart(d))
+        return nullptr;
+
     d->elapsedTime.start();
     return d->start();
 }
@@ -243,7 +265,7 @@ void QAudioSource::resume()
 /*!
     Sets the audio buffer size to \a value bytes.
 
-    Note: This function can be called anytime before start(), calls to this
+    \note This function can be called anytime before start(), calls to this
     are ignored after start(). It should not be assumed that the buffer size
     set is the actual buffer size used, calling bufferSize() anytime after start()
     will return the actual buffer size being used.
@@ -274,7 +296,7 @@ qsizetype QAudioSource::bufferSize() const
 /*!
     Returns the amount of audio data available to read in bytes.
 
-    Note: returned value is only valid while in QtAudio::ActiveState or QtAudio::IdleState
+    \note returned value is only valid while in QtAudio::ActiveState or QtAudio::IdleState
     state, otherwise returns zero.
 */
 
@@ -299,14 +321,17 @@ qsizetype QAudioSource::bytesAvailable() const
 
     The default volume is \c 1.0.
 
-    Note: Adjustments to the volume will change the volume of this audio stream, not the global volume.
+    \note Adjustments to the volume will change the volume of this audio stream, not the global
+    volume.
 */
 void QAudioSource::setVolume(qreal volume)
 {
     if (!d)
         return;
-    qreal v = qBound(qreal(0.0), volume, qreal(1.0));
-    d->setVolume(v);
+
+    std::optional<float> newVolume = QAudioHelperInternal::sanitizeVolume(volume, this->volume());
+    if (newVolume)
+        d->setVolume(*newVolume);
 }
 
 /*!

@@ -7,6 +7,7 @@
 #include "base/functional/bind.h"
 #include "base/logging.h"
 #include "base/memory/raw_ptr.h"
+#include "base/not_fatal_until.h"
 #include "base/task/bind_post_task.h"
 #include "base/task/single_thread_task_runner.h"
 #include "components/viz/common/features.h"
@@ -28,7 +29,7 @@ class ArCoreHostDisplayClient : public viz::HostDisplayClient {
   explicit ArCoreHostDisplayClient(ui::WindowAndroid* root_window)
       : HostDisplayClient(gfx::kNullAcceleratedWidget),
         root_window_(root_window) {
-    // TODO(https://crbug.com/1194775): Ideally, we'd DCHECK here, but the UTs
+    // TODO(crbug.com/40758616): Ideally, we'd DCHECK here, but the UTs
     // don't create a root_window.
   }
 
@@ -163,7 +164,7 @@ void ArCompositorFrameSink::OnRootCompositorFrameSinkReady(
     // If the frame sink client doesn't have a valid SurfaceId at this point,
     // then the compositor hierarchy did not get set up, which means that we'll
     // be unable to composite DOM content.
-    absl::optional<viz::SurfaceId> dom_surface =
+    std::optional<viz::SurfaceId> dom_surface =
         xr_frame_sink_client_->GetDOMSurface();
     if (dom_surface && dom_surface->is_valid()) {
       should_composite_dom_overlay_ = true;
@@ -213,7 +214,7 @@ void ArCompositorFrameSink::SubmitFrame(WebXrFrame* xr_frame,
   DCHECK(xr_frame);
   sink_remote_->SubmitCompositorFrame(allocator_.GetCurrentLocalSurfaceId(),
                                       CreateFrame(xr_frame, frame_type),
-                                      absl::optional<viz::HitTestRegionList>(),
+                                      std::optional<viz::HitTestRegionList>(),
                                       /*trace_time=*/0);
 }
 
@@ -253,7 +254,7 @@ void ArCompositorFrameSink::ReclaimResources(
       continue;
 
     auto it = id_to_frame_map_.find(resource.id);
-    DCHECK(it != id_to_frame_map_.end());
+    CHECK(it != id_to_frame_map_.end(), base::NotFatalUntil::M130);
     auto* rendering_frame = it->second;
 
     // While we now know that this resource is associated with this frame, we
@@ -297,7 +298,7 @@ void ArCompositorFrameSink::OnBeginFrame(
     const viz::FrameTimingDetailsMap& timing_details,
     bool frame_ack,
     std::vector<viz::ReturnedResource> resources) {
-  // TODO(crbug.com/1401032): Determine why the timing of this Ack leads to
+  // TODO(crbug.com/40250552): Determine why the timing of this Ack leads to
   // frame production stopping in tests.
   if (features::IsOnBeginFrameAcksEnabled()) {
     if (frame_ack) {
@@ -387,7 +388,7 @@ viz::CompositorFrame ArCompositorFrameSink::CreateFrame(WebXrFrame* xr_frame,
           gfx::Transform(),
           /*quad_layer_rect=*/output_rect,
           /*visible_layer_rect=*/output_rect, gfx::MaskFilterInfo(),
-          /*clip_rect=*/absl::nullopt, /*are_contents_opaque=*/false,
+          /*clip_rect=*/std::nullopt, /*are_contents_opaque=*/false,
           /*opacity=*/1.f, SkBlendMode::kSrcOver, /*sorting_context_id=*/0,
           /*layer_id=*/0u, /*fast_rounded_corner=*/false);
 
@@ -415,7 +416,7 @@ viz::CompositorFrame ArCompositorFrameSink::CreateFrame(WebXrFrame* xr_frame,
         gfx::Transform(),
         /*quad_layer_rect=*/output_rect,
         /*visible_layer_rect=*/output_rect, gfx::MaskFilterInfo(),
-        /*clip_rect=*/absl::nullopt, /*are_contents_opaque=*/false,
+        /*clip_rect=*/std::nullopt, /*are_contents_opaque=*/false,
         /*opacity=*/1.f, SkBlendMode::kSrcOver, /*sorting_context_id=*/0,
         /*layer_id=*/0u, /*fast_rounded_corner=*/false);
 
@@ -435,7 +436,8 @@ viz::CompositorFrame ArCompositorFrameSink::CreateFrame(WebXrFrame* xr_frame,
         /*secure_output_only=*/false, gfx::ProtectedVideoType::kClear);
 
     auto renderer_resource = viz::TransferableResource::MakeGpu(
-        renderer_buffer->shared_image, renderer_buffer->texture_target(),
+        renderer_buffer->shared_image,
+        renderer_buffer->shared_image->GetTextureTarget(),
         renderer_buffer->sync_token, renderer_buffer->size,
         viz::SinglePlaneFormat::kRGBA_8888,
         /*is_overlay_candidate=*/false,
@@ -456,7 +458,7 @@ viz::CompositorFrame ArCompositorFrameSink::CreateFrame(WebXrFrame* xr_frame,
       gfx::Transform(),
       /*quad_layer_rect=*/output_rect,
       /*visible_layer_rect=*/output_rect, gfx::MaskFilterInfo(),
-      /*clip_rect=*/absl::nullopt, /*are_contents_opaque=*/true,
+      /*clip_rect=*/std::nullopt, /*are_contents_opaque=*/true,
       /*opacity=*/1.f, SkBlendMode::kSrcOver, /*sorting_context_id=*/0,
       /*layer_id=*/0u, /*fast_rounded_corner=*/false);
 
@@ -478,7 +480,8 @@ viz::CompositorFrame ArCompositorFrameSink::CreateFrame(WebXrFrame* xr_frame,
 
   // Additionally append to the resource_list
   auto camera_resource = viz::TransferableResource::MakeGpu(
-      camera_buffer->shared_image, camera_buffer->texture_target(),
+      camera_buffer->shared_image,
+      camera_buffer->shared_image->GetTextureTarget(),
       camera_buffer->sync_token, camera_buffer->size,
       viz::SinglePlaneFormat::kRGBA_8888,
       /*is_overlay_candidate=*/false,

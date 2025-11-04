@@ -1,6 +1,13 @@
 // Copyright (C) 2017 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
+#ifdef USE_SYSTEM_OPEN62541
+#include <open62541/client.h>
+#include <open62541/client_config_default.h>
+#else
+#include "qopen62541.h"
+#endif
+
 #include "qopen62541backend.h"
 #include "qopen62541client.h"
 #include "qopen62541node.h"
@@ -200,13 +207,14 @@ QStringList QOpen62541Client::supportedSecurityPolicies() const
         "http://opcfoundation.org/UA/SecurityPolicy#None"
     };
 #ifdef UA_ENABLE_ENCRYPTION
+    // Sort by strength
     if (m_hasSha1SignatureSupport) {
         result.append("http://opcfoundation.org/UA/SecurityPolicy#Basic128Rsa15");
         result.append("http://opcfoundation.org/UA/SecurityPolicy#Basic256");
     }
-
-     result.append("http://opcfoundation.org/UA/SecurityPolicy#Basic256Sha256");
     result.append("http://opcfoundation.org/UA/SecurityPolicy#Aes128_Sha256_RsaOaep");
+    result.append("http://opcfoundation.org/UA/SecurityPolicy#Basic256Sha256");
+    result.append("http://opcfoundation.org/UA/SecurityPolicy#Aes256_Sha256_RsaPss");
 #endif
 
     return result;

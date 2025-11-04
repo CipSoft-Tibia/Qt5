@@ -32,11 +32,15 @@
 #include "src/tint/lang/wgsl/program/program.h"
 #include "src/tint/lang/wgsl/reader/options.h"
 
+namespace tint::ast {
+class Enable;
+}  // namespace tint::ast
+
 namespace tint::wgsl::reader {
 
 /// Parses the WGSL source, returning the parsed program.
 /// If the source fails to parse then the returned
-/// `program.Diagnostics.contains_errors()` will be true, and the
+/// `program.Diagnostics.ContainsErrors()` will be true, and the
 /// `program.Diagnostics()` will describe the error.
 /// @param file the source file
 /// @param options the configuration options to use when parsing WGSL
@@ -57,6 +61,10 @@ Result<core::ir::Module> WgslToIR(const Source::File* file, const Options& optio
 /// any abstract values have been calculated and converted into the relevant
 /// concrete types.
 tint::Result<core::ir::Module> ProgramToLoweredIR(const Program& program);
+
+/// Allows for checking if an extension is currently supported/unsupported by IR
+/// before trying to convert to it.
+bool IsUnsupportedByIR(const ast::Enable* enable);
 
 }  // namespace tint::wgsl::reader
 

@@ -1,5 +1,6 @@
 // Copyright (C) 2021 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant
 
 #ifndef QQMLDOMCOMMENTS_P_H
 #define QQMLDOMCOMMENTS_P_H
@@ -18,7 +19,7 @@
 #include "qqmldom_fwd_p.h"
 #include "qqmldomconstants_p.h"
 #include "qqmldomitem_p.h"
-#include "qqmldomattachedinfo_p.h"
+#include "qqmldomfilelocations_p.h"
 
 #include <QtQml/private/qqmljsast_p.h>
 #include <QtQml/private/qqmljsengine_p.h>
@@ -71,6 +72,29 @@ public:
     QStringList warnings;
     QQmlJS::SourceLocation commentLocation;
 };
+
+/*!
+\internal
+Anchor comments at an AST::Node* (DefaultLocation) or at an QQmlJS::SourceLocation inside of the
+AST::Node*. In the latter case, the member location takes the value of the anchor's
+QQmlJS::SourceLocation::offset, so that the formatter can differentiate between multiple anchors
+inside the same AST::Node*.
+*/
+struct CommentAnchor
+{
+    qsizetype location = -1;
+    static CommentAnchor from(const SourceLocation &sl) { return CommentAnchor{ sl.begin() }; }
+    friend bool comparesEqual(const CommentAnchor &a, const CommentAnchor &b) noexcept
+    {
+        return a.location == b.location;
+    }
+    Q_DECLARE_EQUALITY_COMPARABLE(CommentAnchor)
+};
+
+inline size_t qHash(const CommentAnchor &key, size_t seed = 0) noexcept
+{
+    return qHashMulti(seed, key.location);
+}
 
 class QMLDOM_EXPORT Comment
 {
@@ -140,8 +164,8 @@ public:
             m_postComments.append(comment);
     }
 
-    const QList<Comment> &preComments() const { return m_preComments;}
-    const QList<Comment> &postComments() const { return m_postComments;}
+    QList<Comment> preComments() const { return m_preComments; }
+    QList<Comment> postComments() const { return m_postComments; }
 
 private:
     QList<Comment> m_preComments;
@@ -177,7 +201,7 @@ public:
 private:
     Path addPreComment(const Comment &comment, FileLocationRegion region)
     {
-        auto &preList = m_regionComments[region].preComments();
+        const auto preList = m_regionComments[region].preComments();
         index_type idx = preList.size();
         m_regionComments[region].addComment(comment);
         return Path::Field(Fields::regionComments)
@@ -188,7 +212,7 @@ private:
 
     Path addPostComment(const Comment &comment, FileLocationRegion region)
     {
-        auto &postList = m_regionComments[region].postComments();
+        const auto postList = m_regionComments[region].postComments();
         index_type idx = postList.size();
         m_regionComments[region].addComment(comment);
         return Path::Field(Fields::regionComments)
@@ -208,6 +232,8 @@ protected:
         return std::make_shared<AstComments>(*this);
     }
 
+    using CommentKey = std::pair<AST::Node *, CommentAnchor>;
+
 public:
     constexpr static DomType kindValue = DomType::AstComments;
     DomType kind() const override { return kindValue; }
@@ -224,27 +250,34 @@ public:
     {
     }
 
-    const QHash<AST::Node *, CommentedElement> &commentedElements() const
+    const CommentedElement *commentForNode(AST::Node *n, CommentAnchor location) const
     {
-        return m_commentedElements;
+        const auto it = m_commentedElements.constFind(CommentKey{ n, location });
+        return it == m_commentedElements.end() ? nullptr : &*it;
     }
 
-    QHash<AST::Node *, CommentedElement> &commentedElements()
+    std::pair<QList<Comment>, QList<Comment>> collectPreAndPostComments() const
     {
-        return m_commentedElements;
+        QList<Comment> pre;
+        QList<Comment> post;
+        for (const auto &element : m_commentedElements) {
+            pre.append(element.preComments());
+            post.append(element.postComments());
+        }
+        return std::make_pair(pre, post);
     }
 
-    CommentedElement *commentForNode(AST::Node *n)
+    CommentedElement *ensureCommentForNode(AST::Node *n, CommentAnchor location)
     {
-        if (m_commentedElements.contains(n))
-            return &(m_commentedElements[n]);
-        return nullptr;
+        const CommentKey key{ n, location };
+        return &m_commentedElements[key];
     }
+
     QMultiMap<quint32, const QList<Comment> *> allCommentsInNode(AST::Node *n);
 
 private:
     std::shared_ptr<Engine> m_engine;
-    QHash<AST::Node *, CommentedElement> m_commentedElements;
+    QHash<CommentKey, CommentedElement> m_commentedElements;
 };
 
 class CommentCollector

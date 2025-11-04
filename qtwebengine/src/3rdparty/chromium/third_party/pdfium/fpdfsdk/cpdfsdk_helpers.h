@@ -12,8 +12,12 @@
 #include "build/build_config.h"
 #include "core/fpdfapi/page/cpdf_page.h"
 #include "core/fpdfapi/parser/cpdf_parser.h"
+#include "core/fxcrt/compiler_specific.h"
+#include "core/fxcrt/numerics/safe_conversions.h"
 #include "core/fxcrt/retain_ptr.h"
+#include "core/fxcrt/span.h"
 #include "core/fxge/cfx_path.h"
+#include "core/fxge/dib/fx_dib.h"
 #include "public/fpdf_doc.h"
 #include "public/fpdf_ext.h"
 #include "public/fpdfview.h"
@@ -22,6 +26,7 @@
 #include "core/fxcrt/fx_stream.h"
 #endif  // PDF_ENABLE_XFA
 
+class CFX_DIBitmap;
 class CPDF_Annot;
 class CPDF_AnnotContext;
 class CPDF_ClipPath;
@@ -38,9 +43,12 @@ class CPDF_TextPage;
 class CPDF_TextPageFind;
 class CPDFSDK_FormFillEnvironment;
 class CPDFSDK_InteractiveForm;
-class CFX_DIBitmap;
 struct CPDF_JavaScript;
 struct XObjectContext;
+
+#if defined(PDF_USE_SKIA)
+class SkCanvas;
+#endif
 
 // Conversions to/from underlying types.
 IPDF_Page* IPDFPageFromFPDFPage(FPDF_PAGE page);
@@ -79,6 +87,15 @@ inline FPDF_BITMAP FPDFBitmapFromCFXDIBitmap(CFX_DIBitmap* bitmap) {
 inline CFX_DIBitmap* CFXDIBitmapFromFPDFBitmap(FPDF_BITMAP bitmap) {
   return reinterpret_cast<CFX_DIBitmap*>(bitmap);
 }
+
+#if defined(PDF_USE_SKIA)
+inline FPDF_SKIA_CANVAS FPDFSkiaCanvasFromSkCanvas(SkCanvas* canvas) {
+  return reinterpret_cast<FPDF_SKIA_CANVAS>(canvas);
+}
+inline SkCanvas* SkCanvasFromFPDFSkiaCanvas(FPDF_SKIA_CANVAS canvas) {
+  return reinterpret_cast<SkCanvas*>(canvas);
+}
+#endif
 
 inline FPDF_BOOKMARK FPDFBookmarkFromCPDFDictionary(
     const CPDF_Dictionary* bookmark) {
@@ -194,6 +211,15 @@ inline const CPDF_Dictionary* CPDFDictionaryFromFPDFStructElementAttr(
   return reinterpret_cast<const CPDF_Dictionary*>(struct_element_attr);
 }
 
+inline FPDF_STRUCTELEMENT_ATTR_VALUE FPDFStructElementAttrValueFromCPDFObject(
+    const CPDF_Object* object) {
+  return reinterpret_cast<FPDF_STRUCTELEMENT_ATTR_VALUE>(object);
+}
+inline const CPDF_Object* CPDFObjectFromFPDFStructElementAttrValue(
+    FPDF_STRUCTELEMENT_ATTR_VALUE struct_element_attr_value) {
+  return reinterpret_cast<const CPDF_Object*>(struct_element_attr_value);
+}
+
 inline FPDF_TEXTPAGE FPDFTextPageFromCPDFTextPage(CPDF_TextPage* page) {
   return reinterpret_cast<FPDF_TEXTPAGE>(page);
 }
@@ -236,10 +262,22 @@ inline XObjectContext* XObjectContextFromFPDFXObject(FPDF_XOBJECT xobject) {
   return reinterpret_cast<XObjectContext*>(xobject);
 }
 
+FXDIB_Format FXDIBFormatFromFPDFFormat(int format);
+
 CPDFSDK_InteractiveForm* FormHandleToInteractiveForm(FPDF_FORMHANDLE hHandle);
 
-ByteString ByteStringFromFPDFWideString(FPDF_WIDESTRING wide_string);
-WideString WideStringFromFPDFWideString(FPDF_WIDESTRING wide_string);
+UNSAFE_BUFFER_USAGE ByteString
+ByteStringFromFPDFWideString(FPDF_WIDESTRING wide_string);
+
+UNSAFE_BUFFER_USAGE WideString
+WideStringFromFPDFWideString(FPDF_WIDESTRING wide_string);
+
+// Public APIs are not consistent w.r.t. the type used to represent buffer
+// length, while internal code generally expects size_t. Use StrictNumeric here
+// to make sure the length types fit in a size_t.
+UNSAFE_BUFFER_USAGE pdfium::span<char> SpanFromFPDFApiArgs(
+    void* buffer,
+    pdfium::StrictNumeric<size_t> buflen);
 
 #ifdef PDF_ENABLE_XFA
 // Layering prevents fxcrt from knowing about FPDF_FILEHANDLER, so this can't
@@ -266,13 +304,13 @@ FS_RECTF FSRectFFromCFXFloatRect(const CFX_FloatRect& rect);
 CFX_Matrix CFXMatrixFromFSMatrix(const FS_MATRIX& matrix);
 FS_MATRIX FSMatrixFromCFXMatrix(const CFX_Matrix& matrix);
 
-unsigned long NulTerminateMaybeCopyAndReturnLength(const ByteString& text,
-                                                   void* buffer,
-                                                   unsigned long buflen);
+unsigned long NulTerminateMaybeCopyAndReturnLength(
+    const ByteString& text,
+    pdfium::span<char> result_span);
 
-unsigned long Utf16EncodeMaybeCopyAndReturnLength(const WideString& text,
-                                                  void* buffer,
-                                                  unsigned long buflen);
+unsigned long Utf16EncodeMaybeCopyAndReturnLength(
+    const WideString& text,
+    pdfium::span<char> result_span);
 
 // Returns the length of the raw stream data from |stream|. The raw data is the
 // stream's data as stored in the PDF without applying any filters. If |buffer|

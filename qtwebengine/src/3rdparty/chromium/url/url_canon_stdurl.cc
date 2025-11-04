@@ -2,6 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#ifdef UNSAFE_BUFFERS_BUILD
+// TODO(crbug.com/350788890): Remove this and spanify to fix the errors.
+#pragma allow_unsafe_buffers
+#endif
+
 // Functions to canonicalize "standard" URLs, which are ones that have an
 // authority section including a host name.
 
@@ -66,8 +71,8 @@ bool DoCanonicalizeStandardURL(const URLComponentSource<CHAR>& source,
 
     // Port: the port canonicalizer will handle the colon.
     if (scheme_supports_ports) {
-      int default_port = DefaultPortForScheme(
-          &output->data()[new_parsed->scheme.begin], new_parsed->scheme.len);
+      int default_port = DefaultPortForScheme(std::string_view(
+          &output->data()[new_parsed->scheme.begin], new_parsed->scheme.len));
       success &= CanonicalizePort(source.port, parsed.port, default_port,
                                   output, &new_parsed->port);
     } else {
@@ -120,35 +125,38 @@ bool DoCanonicalizeStandardURL(const URLComponentSource<CHAR>& source,
 //
 // Please keep blink::DefaultPortForProtocol and url::DefaultPortForProtocol in
 // sync.
-int DefaultPortForScheme(const char* scheme, int scheme_len) {
-  int default_port = PORT_UNSPECIFIED;
-  switch (scheme_len) {
+int DefaultPortForScheme(std::string_view scheme) {
+  switch (scheme.length()) {
     case 4:
-      if (!strncmp(scheme, kHttpScheme, scheme_len))
-        default_port = 80;
+      if (scheme == kHttpScheme) {
+        return 80;
+      }
       break;
     case 5:
-      if (!strncmp(scheme, kHttpsScheme, scheme_len))
-        default_port = 443;
+      if (scheme == kHttpsScheme) {
+        return 443;
+      }
       break;
     case 3:
-      if (!strncmp(scheme, kFtpScheme, scheme_len))
-        default_port = 21;
-      else if (!strncmp(scheme, kWssScheme, scheme_len))
-        default_port = 443;
+      if (scheme == kFtpScheme) {
+        return 21;
+      } else if (scheme == kWssScheme) {
+        return 443;
+      }
       break;
     case 2:
-      if (!strncmp(scheme, kWsScheme, scheme_len))
-        default_port = 80;
+      if (scheme == kWsScheme) {
+        return 80;
+      }
       break;
   }
+  if (const CustomScheme* cs = CustomScheme::FindScheme(scheme)) {
+    if (cs->has_port_component()) {
+      return cs->default_port;
+    }
+  }
 
-  if (default_port == PORT_UNSPECIFIED)
-    if (const CustomScheme* cs = CustomScheme::FindScheme(base::StringPiece(scheme, scheme_len)))
-      if (cs->has_port_component())
-        return cs->default_port;
-
-  return default_port;
+  return PORT_UNSPECIFIED;
 }
 
 bool CanonicalizeStandardURL(const char* spec,

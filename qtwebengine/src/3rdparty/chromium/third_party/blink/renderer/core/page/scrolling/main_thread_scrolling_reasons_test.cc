@@ -22,6 +22,7 @@
 #include "third_party/blink/renderer/platform/graphics/compositing/paint_artifact_compositor.h"
 #include "third_party/blink/renderer/platform/testing/find_cc_layer.h"
 #include "third_party/blink/renderer/platform/testing/paint_test_configurations.h"
+#include "third_party/blink/renderer/platform/testing/task_environment.h"
 #include "third_party/blink/renderer/platform/testing/unit_test_helpers.h"
 #include "third_party/blink/renderer/platform/testing/url_loader_mock_factory.h"
 #include "third_party/blink/renderer/platform/testing/url_test_helpers.h"
@@ -91,10 +92,6 @@ class MainThreadScrollingReasonsTest : public PaintTestConfigurations,
         .FindNodeFromElementId(scrollable_area.GetScrollElementId());
   }
 
-  bool IsScrollable(const cc::Layer* layer) const {
-    return GetScrollNode(layer)->scrollable;
-  }
-
   uint32_t GetMainThreadScrollingReasons(const cc::Layer* layer) const {
     return GetScrollNode(layer)->main_thread_scrolling_reasons;
   }
@@ -127,6 +124,7 @@ class MainThreadScrollingReasonsTest : public PaintTestConfigurations,
   }
 
  protected:
+  test::TaskEnvironment task_environment_;
   String base_url_;
   frame_test_helpers::WebViewHelper helper_;
 };
@@ -164,7 +162,6 @@ TEST_P(MainThreadScrollingReasonsTest,
   const cc::Layer* inner_scroll_layer = CcLayerByCcElementId(
       root_layer, inner_scroll_node->GetCompositorElementId());
   ASSERT_TRUE(inner_scroll_layer);
-  ASSERT_TRUE(IsScrollable(inner_scroll_layer));
   EXPECT_MAIN_THREAD_SCROLLING_REASON(
       cc::MainThreadScrollingReason::kHasBackgroundAttachmentFixedObjects,
       GetMainThreadScrollingReasons(inner_scroll_layer));
@@ -182,7 +179,6 @@ TEST_P(MainThreadScrollingReasonsTest,
   const cc::Layer* outer_scroll_layer = CcLayerByCcElementId(
       root_layer, outer_scroll_node->GetCompositorElementId());
   ASSERT_TRUE(outer_scroll_layer);
-  ASSERT_TRUE(IsScrollable(outer_scroll_layer));
   EXPECT_NO_MAIN_THREAD_SCROLLING_REASON(
       GetMainThreadScrollingReasons(outer_scroll_layer));
 
@@ -201,7 +197,6 @@ TEST_P(MainThreadScrollingReasonsTest,
   ASSERT_EQ(inner_scroll_layer,
             CcLayerByCcElementId(root_layer,
                                  inner_scroll_node->GetCompositorElementId()));
-  ASSERT_TRUE(IsScrollable(inner_scroll_layer));
   EXPECT_NO_MAIN_THREAD_SCROLLING_REASON(
       GetMainThreadScrollingReasons(inner_scroll_layer));
 
@@ -212,7 +207,6 @@ TEST_P(MainThreadScrollingReasonsTest,
   ASSERT_EQ(outer_scroll_layer,
             CcLayerByCcElementId(root_layer,
                                  outer_scroll_node->GetCompositorElementId()));
-  ASSERT_TRUE(IsScrollable(outer_scroll_layer));
   EXPECT_NO_MAIN_THREAD_SCROLLING_REASON(
       GetMainThreadScrollingReasons(outer_scroll_layer));
 
@@ -237,7 +231,6 @@ TEST_P(MainThreadScrollingReasonsTest,
   ASSERT_EQ(inner_scroll_layer,
             CcLayerByCcElementId(root_layer,
                                  inner_scroll_node->GetCompositorElementId()));
-  ASSERT_TRUE(IsScrollable(inner_scroll_layer));
   EXPECT_MAIN_THREAD_SCROLLING_REASON(
       cc::MainThreadScrollingReason::kHasBackgroundAttachmentFixedObjects,
       GetMainThreadScrollingReasons(inner_scroll_layer));
@@ -250,7 +243,6 @@ TEST_P(MainThreadScrollingReasonsTest,
   ASSERT_EQ(outer_scroll_layer,
             CcLayerByCcElementId(root_layer,
                                  outer_scroll_node->GetCompositorElementId()));
-  ASSERT_TRUE(IsScrollable(outer_scroll_layer));
   EXPECT_MAIN_THREAD_SCROLLING_REASON(
       cc::MainThreadScrollingReason::kHasBackgroundAttachmentFixedObjects,
       GetMainThreadScrollingReasons(outer_scroll_layer));
@@ -379,7 +371,6 @@ TEST_P(MainThreadScrollingReasonsTest, FastScrollingByDefault) {
 
   const cc::Layer* visual_viewport_scroll_layer =
       GetFrame()->GetPage()->GetVisualViewport().LayerForScrolling();
-  ASSERT_TRUE(IsScrollable(visual_viewport_scroll_layer));
   EXPECT_FALSE(GetMainThreadScrollingReasons(visual_viewport_scroll_layer));
 }
 
@@ -466,15 +457,19 @@ TEST_P(NonCompositedMainThreadScrollingReasonsTest, TransformTest) {
 TEST_P(NonCompositedMainThreadScrollingReasonsTest, BackgroundNotOpaqueTest) {
   TestNonCompositedReasons(
       "background-not-opaque",
-      cc::MainThreadScrollingReason::kNotOpaqueForTextAndLCDText);
+      RuntimeEnabledFeatures::RasterInducingScrollEnabled()
+          ? cc::MainThreadScrollingReason::kNotScrollingOnMain
+          : cc::MainThreadScrollingReason::kNotOpaqueForTextAndLCDText);
 }
 
 TEST_P(NonCompositedMainThreadScrollingReasonsTest,
        CantPaintScrollingBackgroundTest) {
   TestNonCompositedReasons(
       "cant-paint-scrolling-background",
-      cc::MainThreadScrollingReason::kBackgroundNeedsRepaintOnScroll |
-          cc::MainThreadScrollingReason::kNotOpaqueForTextAndLCDText);
+      RuntimeEnabledFeatures::RasterInducingScrollEnabled()
+          ? cc::MainThreadScrollingReason::kBackgroundNeedsRepaintOnScroll
+          : cc::MainThreadScrollingReason::kBackgroundNeedsRepaintOnScroll |
+                cc::MainThreadScrollingReason::kNotOpaqueForTextAndLCDText);
 }
 
 TEST_P(NonCompositedMainThreadScrollingReasonsTest,
@@ -502,7 +497,9 @@ TEST_P(NonCompositedMainThreadScrollingReasonsTest, BoxShadowTest) {
 TEST_P(NonCompositedMainThreadScrollingReasonsTest, InsetBoxShadowTest) {
   TestNonCompositedReasons(
       "inset-box-shadow",
-      cc::MainThreadScrollingReason::kNotOpaqueForTextAndLCDText);
+      RuntimeEnabledFeatures::RasterInducingScrollEnabled()
+          ? cc::MainThreadScrollingReason::kNotScrollingOnMain
+          : cc::MainThreadScrollingReason::kNotOpaqueForTextAndLCDText);
 }
 
 TEST_P(NonCompositedMainThreadScrollingReasonsTest, StackingContextTest) {

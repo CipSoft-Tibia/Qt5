@@ -4,12 +4,14 @@
 
 from __future__ import annotations
 
+import enum
 from argparse import ArgumentTypeError
-from typing import Tuple
+from typing import Any, Tuple
 
 from crossbench import compat
 
 
+@enum.unique
 class ViewportMode(compat.StrEnum):
   SIZE = "size"
   MAXIMIZED = "maximized"
@@ -22,6 +24,19 @@ class Viewport:
   MAXIMIZED: Viewport
   FULLSCREEN: Viewport
   HEADLESS: Viewport
+
+  @classmethod
+  def parse_sized(cls, value: Any) -> Viewport:
+    if isinstance(value, Viewport):
+      viewport = value
+    elif isinstance(value, str):
+      viewport = cls.parse(value)
+    else:
+      raise ArgumentTypeError(f"Expected str, but got '{type(value)}': {value}")
+    if not viewport.has_size:
+      raise ArgumentTypeError("Expected viewport with explicit size, "
+                              f"but got {viewport}")
+    return viewport
 
   @classmethod
   def parse(cls, value: str) -> Viewport:

@@ -8,12 +8,16 @@ import("../../testing/test.gni")
 
 source_set("fxge") {
   sources = [
-    "agg/fx_agg_driver.cpp",
-    "agg/fx_agg_driver.h",
+    "agg/cfx_agg_bitmapcomposer.cpp",
+    "agg/cfx_agg_bitmapcomposer.h",
+    "agg/cfx_agg_cliprgn.cpp",
+    "agg/cfx_agg_cliprgn.h",
+    "agg/cfx_agg_devicedriver.cpp",
+    "agg/cfx_agg_devicedriver.h",
+    "agg/cfx_agg_imagerenderer.cpp",
+    "agg/cfx_agg_imagerenderer.h",
     "calculate_pitch.cpp",
     "calculate_pitch.h",
-    "cfx_cliprgn.cpp",
-    "cfx_cliprgn.h",
     "cfx_color.cpp",
     "cfx_color.h",
     "cfx_defaultrenderdevice.cpp",
@@ -54,8 +58,6 @@ source_set("fxge") {
     "cfx_unicodeencoding.h",
     "dib/blend.cpp",
     "dib/blend.h",
-    "dib/cfx_bitmapcomposer.cpp",
-    "dib/cfx_bitmapcomposer.h",
     "dib/cfx_bitmapstorer.cpp",
     "dib/cfx_bitmapstorer.h",
     "dib/cfx_cmyk_to_srgb.cpp",
@@ -64,8 +66,6 @@ source_set("fxge") {
     "dib/cfx_dibbase.h",
     "dib/cfx_dibitmap.cpp",
     "dib/cfx_dibitmap.h",
-    "dib/cfx_imagerenderer.cpp",
-    "dib/cfx_imagerenderer.h",
     "dib/cfx_imagestretcher.cpp",
     "dib/cfx_imagestretcher.h",
     "dib/cfx_imagetransformer.cpp",
@@ -160,7 +160,7 @@ source_set("fxge") {
     ]
   }
 
-  if (is_linux || is_chromeos || is_fuchsia) {
+  if (is_linux || is_chromeos) {
     sources += [ "linux/fx_linux_impl.cpp" ]
   }
 
@@ -216,7 +216,9 @@ pdfium_unittest_source_set("unittests") {
     "dib/cfx_cmyk_to_srgb_unittest.cpp",
     "dib/cfx_dibbase_unittest.cpp",
     "dib/cfx_dibitmap_unittest.cpp",
+    "dib/cfx_scanlinecompositor_unittest.cpp",
     "dib/cstretchengine_unittest.cpp",
+    "dib/fx_dib_unittest.cpp",
     "fx_font_unittest.cpp",
   ]
   deps = [

@@ -76,11 +76,11 @@ MessageDemuxer::MessageWatch::MessageWatch() = default;
 
 MessageDemuxer::MessageWatch::MessageWatch(MessageDemuxer* parent,
                                            bool is_default,
-                                           uint64_t endpoint_id,
+                                           uint64_t instance_id,
                                            msgs::Type message_type)
     : parent_(parent),
       is_default_(is_default),
-      endpoint_id_(endpoint_id),
+      instance_id_(instance_id),
       message_type_(message_type) {}
 
 MessageDemuxer::MessageWatch::MessageWatch(
@@ -90,7 +90,33 @@ MessageDemuxer::MessageWatch::MessageWatch(
   *this = std::move(other);
 }
 
+MessageDemuxer::MessageWatch& MessageDemuxer::MessageWatch::operator=(
+    MessageWatch&& other) noexcept {
+  // Although all fields are POD, this does not use the default `operator=`
+  // implementation because it is important that we should stop current watch
+  // for `parent_` before taking values from `other` and make `other` invalid.
+  StopWatching();
+  parent_ = other.parent_;
+  is_default_ = other.is_default_;
+  instance_id_ = other.instance_id_;
+  message_type_ = other.message_type_;
+  other.parent_ = nullptr;
+  return *this;
+}
+
 MessageDemuxer::MessageWatch::~MessageWatch() {
+  StopWatching();
+}
+
+void MessageDemuxer::MessageWatch::Reset() {
+  StopWatching();
+  parent_ = nullptr;
+  is_default_ = false;
+  instance_id_ = 0u;
+  message_type_ = msgs::Type::kUnknown;
+}
+
+void MessageDemuxer::MessageWatch::StopWatching() {
   if (parent_) {
     if (is_default_) {
       OSP_VLOG << "dropping default handler for type: "
@@ -99,77 +125,68 @@ MessageDemuxer::MessageWatch::~MessageWatch() {
     } else {
       OSP_VLOG << "dropping handler for type: "
                << static_cast<int>(message_type_);
-      parent_->StopWatchingMessageType(endpoint_id_, message_type_);
+      parent_->StopWatchingMessageType(instance_id_, message_type_);
     }
   }
-}
-
-MessageDemuxer::MessageWatch& MessageDemuxer::MessageWatch::operator=(
-    MessageWatch&& other) noexcept {
-  // Although all fields are POD, this does not use the default `operator=`
-  // implementation because it is important that exactly one of `this` or
-  // `other` refers to `parent_`, so that the destructor behaves correctly.
-  using std::swap;
-  swap(parent_, other.parent_);
-  swap(is_default_, other.is_default_);
-  swap(endpoint_id_, other.endpoint_id_);
-  swap(message_type_, other.message_type_);
-  return *this;
 }
 
 MessageDemuxer::MessageDemuxer(ClockNowFunctionPtr now_function,
                                size_t buffer_limit = kDefaultBufferLimit)
     : now_function_(now_function), buffer_limit_(buffer_limit) {
-  OSP_DCHECK(now_function_);
+  OSP_CHECK(now_function_);
 }
 
 MessageDemuxer::~MessageDemuxer() = default;
 
 MessageDemuxer::MessageWatch MessageDemuxer::WatchMessageType(
-    uint64_t endpoint_id,
+    uint64_t instance_id,
     msgs::Type message_type,
     MessageCallback* callback) {
-  auto callbacks_entry = message_callbacks_.find(endpoint_id);
+  auto callbacks_entry = message_callbacks_.find(instance_id);
   if (callbacks_entry == message_callbacks_.end()) {
     callbacks_entry =
         message_callbacks_
-            .emplace(endpoint_id, std::map<msgs::Type, MessageCallback*>{})
+            .emplace(instance_id, std::map<msgs::Type, MessageCallback*>{})
             .first;
   }
   auto emplace_result = callbacks_entry->second.emplace(message_type, callback);
-  if (!emplace_result.second)
+  if (!emplace_result.second) {
     return MessageWatch();
-  auto endpoint_entry = buffers_.find(endpoint_id);
-  if (endpoint_entry != buffers_.end()) {
-    for (auto& buffer : endpoint_entry->second) {
-      if (buffer.second.empty())
+  }
+  auto instance_entry = buffers_.find(instance_id);
+  if (instance_entry != buffers_.end()) {
+    for (auto& buffer : instance_entry->second) {
+      if (buffer.second.empty()) {
         continue;
+      }
       auto buffered_type = static_cast<msgs::Type>(buffer.second[0]);
       if (message_type == buffered_type) {
-        HandleStreamBufferLoop(endpoint_id, buffer.first, callbacks_entry,
+        HandleStreamBufferLoop(instance_id, buffer.first, callbacks_entry,
                                &buffer.second);
       }
     }
   }
-  return MessageWatch(this, false, endpoint_id, message_type);
+  return MessageWatch(this, false, instance_id, message_type);
 }
 
 MessageDemuxer::MessageWatch MessageDemuxer::SetDefaultMessageTypeWatch(
     msgs::Type message_type,
     MessageCallback* callback) {
   auto emplace_result = default_callbacks_.emplace(message_type, callback);
-  if (!emplace_result.second)
+  if (!emplace_result.second) {
     return MessageWatch();
-  for (auto& endpoint_buffers : buffers_) {
-    auto endpoint_id = endpoint_buffers.first;
-    for (auto& stream_map : endpoint_buffers.second) {
-      if (stream_map.second.empty())
+  }
+  for (auto& instance_buffers : buffers_) {
+    auto instance_id = instance_buffers.first;
+    for (auto& stream_map : instance_buffers.second) {
+      if (stream_map.second.empty()) {
         continue;
+      }
       auto buffered_type = static_cast<msgs::Type>(stream_map.second[0]);
       if (message_type == buffered_type) {
         auto connection_id = stream_map.first;
-        auto callbacks_entry = message_callbacks_.find(endpoint_id);
-        HandleStreamBufferLoop(endpoint_id, connection_id, callbacks_entry,
+        auto callbacks_entry = message_callbacks_.find(instance_id);
+        HandleStreamBufferLoop(instance_id, connection_id, callbacks_entry,
                                &stream_map.second);
       }
     }
@@ -177,32 +194,37 @@ MessageDemuxer::MessageWatch MessageDemuxer::SetDefaultMessageTypeWatch(
   return MessageWatch(this, true, 0, message_type);
 }
 
-void MessageDemuxer::OnStreamData(uint64_t endpoint_id,
+void MessageDemuxer::OnStreamData(uint64_t instance_id,
                                   uint64_t connection_id,
                                   const uint8_t* data,
                                   size_t data_size) {
-  OSP_VLOG << __func__ << ": [" << endpoint_id << ", " << connection_id
+  OSP_CHECK(data_size);
+  OSP_VLOG << __func__ << ": [" << instance_id << ", " << connection_id
            << "] - (" << data_size << ")";
-  auto& stream_map = buffers_[endpoint_id];
-  if (!data_size) {
-    stream_map.erase(connection_id);
-    if (stream_map.empty())
-      buffers_.erase(endpoint_id);
-    return;
-  }
+  auto& stream_map = buffers_[instance_id];
   std::vector<uint8_t>& buffer = stream_map[connection_id];
   buffer.insert(buffer.end(), data, data + data_size);
 
-  auto callbacks_entry = message_callbacks_.find(endpoint_id);
-  HandleStreamBufferLoop(endpoint_id, connection_id, callbacks_entry, &buffer);
+  auto callbacks_entry = message_callbacks_.find(instance_id);
+  HandleStreamBufferLoop(instance_id, connection_id, callbacks_entry, &buffer);
 
-  if (buffer.size() > buffer_limit_)
+  if (buffer.size() > buffer_limit_) {
     stream_map.erase(connection_id);
+  }
 }
 
-void MessageDemuxer::StopWatchingMessageType(uint64_t endpoint_id,
+void MessageDemuxer::OnStreamClose(uint64_t instance_id,
+                                   uint64_t connection_id) {
+  auto& stream_map = buffers_[instance_id];
+  stream_map.erase(connection_id);
+  if (stream_map.empty()) {
+    buffers_.erase(instance_id);
+  }
+}
+
+void MessageDemuxer::StopWatchingMessageType(uint64_t instance_id,
                                              msgs::Type message_type) {
-  auto& message_map = message_callbacks_[endpoint_id];
+  auto& message_map = message_callbacks_[instance_id];
   auto it = message_map.find(message_type);
   message_map.erase(it);
 }
@@ -212,7 +234,7 @@ void MessageDemuxer::StopDefaultMessageTypeWatch(msgs::Type message_type) {
 }
 
 MessageDemuxer::HandleStreamBufferResult MessageDemuxer::HandleStreamBufferLoop(
-    uint64_t endpoint_id,
+    uint64_t instance_id,
     uint64_t connection_id,
     std::map<uint64_t, std::map<msgs::Type, MessageCallback*>>::iterator
         callbacks_entry,
@@ -222,68 +244,78 @@ MessageDemuxer::HandleStreamBufferResult MessageDemuxer::HandleStreamBufferLoop(
     result = {false, 0};
     if (callbacks_entry != message_callbacks_.end()) {
       OSP_VLOG << "attempting endpoint-specific handling";
-      result = HandleStreamBuffer(endpoint_id, connection_id,
+      // There are several cases for `result`:
+      // case 1: `handled` is true and `consumed` is greater than 0.
+      //   This is the normal case and it means that we have successfully
+      //   processed a message. If `buffer` is not empty, we can continue
+      //   processing the next message. Otherwise, stop the do-while loop.
+      // case 2: `handled` is true and `consumed` is 0, `buffer` isn't cleared.
+      //   This means that we have a specific message callback to process
+      //   message but the message is incomplete now.
+      // case 3: `handled` is true and `consumed` is 0, `buffer` is cleared.
+      // case 4: `handled` is false and `consumed` is 0, `buffer` is cleared.
+      //   Both mean the message is invalid.
+      // case 5: `handled` is false and `consumed` is 0, `buffer` isn't cleared.
+      //   This means we don't a specific message callback to process message,
+      //   we should try to use the default one.
+      result = HandleStreamBuffer(instance_id, connection_id,
                                   &callbacks_entry->second, buffer);
     }
-    if (!result.handled) {
-      if (!default_callbacks_.empty()) {
-        OSP_VLOG << "attempting generic message handling";
-        result = HandleStreamBuffer(endpoint_id, connection_id,
-                                    &default_callbacks_, buffer);
-      }
+
+    if (!result.handled && !buffer->empty() && !default_callbacks_.empty()) {
+      OSP_VLOG << "attempting generic message handling";
+      result = HandleStreamBuffer(instance_id, connection_id,
+                                  &default_callbacks_, buffer);
     }
     OSP_VLOG_IF(!result.handled) << "no message handler matched";
   } while (result.consumed && !buffer->empty());
+
   return result;
 }
 
 // TODO(issuetracker.google.com/281741443): Use openscreen::Span for the
 // |buffer|.
 MessageDemuxer::HandleStreamBufferResult MessageDemuxer::HandleStreamBuffer(
-    uint64_t endpoint_id,
+    uint64_t instance_id,
     uint64_t connection_id,
     std::map<msgs::Type, MessageCallback*>* message_callbacks,
     std::vector<uint8_t>* buffer) {
-  size_t consumed = 0;
-  size_t total_consumed = 0;
-  bool handled = false;
-  do {
-    consumed = 0;
-    size_t msg_type_byte_length;
-    ErrorOr<msgs::Type> message_type =
-        MessageTypeDecoder::DecodeType(*buffer, &msg_type_byte_length);
-    if (message_type.is_error()) {
-      buffer->clear();
-      break;
-    }
-    auto callback_entry = message_callbacks->find(message_type.value());
-    if (callback_entry == message_callbacks->end())
-      break;
-    handled = true;
-    OSP_VLOG << "handling message type "
-             << static_cast<int>(message_type.value());
-    auto consumed_or_error = callback_entry->second->OnStreamMessage(
-        endpoint_id, connection_id, message_type.value(),
-        buffer->data() + msg_type_byte_length,
-        buffer->size() - msg_type_byte_length, now_function_());
-    if (!consumed_or_error) {
-      if (consumed_or_error.error().code() !=
-          Error::Code::kCborIncompleteMessage) {
-        buffer->clear();
-        break;
-      }
-    } else {
-      consumed = consumed_or_error.value();
-      buffer->erase(buffer->begin(),
-                    buffer->begin() + consumed + msg_type_byte_length);
-    }
-    total_consumed += consumed;
-  } while (consumed && !buffer->empty());
-  return HandleStreamBufferResult{handled, total_consumed};
-}
+  size_t msg_type_byte_length;
+  ErrorOr<msgs::Type> message_type =
+      MessageTypeDecoder::DecodeType(*buffer, &msg_type_byte_length);
+  if (message_type.is_error()) {
+    buffer->clear();
+    return HandleStreamBufferResult{.handled = false, .consumed = 0};
+  }
 
-void StopWatching(MessageDemuxer::MessageWatch* watch) {
-  *watch = MessageDemuxer::MessageWatch();
+  auto callback_entry = message_callbacks->find(message_type.value());
+  if (callback_entry == message_callbacks->end()) {
+    return HandleStreamBufferResult{.handled = false, .consumed = 0};
+  }
+
+  OSP_VLOG << "handling message type "
+           << static_cast<int>(message_type.value());
+  auto consumed_or_error = callback_entry->second->OnStreamMessage(
+      instance_id, connection_id, message_type.value(),
+      buffer->data() + msg_type_byte_length,
+      buffer->size() - msg_type_byte_length, now_function_());
+  if (!consumed_or_error) {
+    // A message may be split into multiple QUIC packets when sent.
+    // `kCborIncompleteMessage` means that we are trying to process an
+    // incomplete message. We don't need to clear the `buffer` in this case and
+    // the message can be processed successfully when all its parts are received
+    // later. Other error codes mean that we are trying to process an invalid
+    // message. We should clear the `buffer` in this case.
+    if (consumed_or_error.error().code() !=
+        Error::Code::kCborIncompleteMessage) {
+      buffer->clear();
+    }
+    return HandleStreamBufferResult{.handled = true, .consumed = 0};
+  } else {
+    size_t consumed_size = consumed_or_error.value() + msg_type_byte_length;
+    buffer->erase(buffer->begin(), buffer->begin() + consumed_size);
+    return HandleStreamBufferResult{.handled = true, .consumed = consumed_size};
+  }
 }
 
 }  // namespace openscreen::osp

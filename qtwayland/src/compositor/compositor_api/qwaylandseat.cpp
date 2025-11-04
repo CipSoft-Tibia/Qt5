@@ -161,8 +161,10 @@ QWaylandSeat::QWaylandSeat(QWaylandCompositor *compositor, CapabilityFlags capab
     if (compositor->isCreated())
         initialize();
 
+#if QT_DEPRECATED_SINCE(6, 1)
     // Support deprecated signal for backward compatibility
     connect(this, &QWaylandSeat::cursorSurfaceRequested, this, &QWaylandSeat::cursorSurfaceRequest);
+#endif
 }
 
 /*!

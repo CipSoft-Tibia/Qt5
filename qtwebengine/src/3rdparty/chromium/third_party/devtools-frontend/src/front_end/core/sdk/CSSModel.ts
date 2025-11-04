@@ -56,6 +56,11 @@ import {SDKModel} from './SDKModel.js';
 import {SourceMapManager} from './SourceMapManager.js';
 import {Capability, type Target} from './Target.js';
 
+export const enum ColorScheme {
+  LIGHT = 'light',
+  DARK = 'dark',
+}
+
 export class CSSModel extends SDKModel<EventTypes> {
   readonly agent: ProtocolProxyApi.CSSApi;
   readonly #domModel: DOMModel;
@@ -74,6 +79,7 @@ export class CSSModel extends SDKModel<EventTypes> {
   #isEnabled: boolean;
   #isRuleUsageTrackingEnabled: boolean;
   #isTrackingRequestPending: boolean;
+  #colorScheme: ColorScheme|undefined;
 
   constructor(target: Target) {
     super(target);
@@ -107,10 +113,22 @@ export class CSSModel extends SDKModel<EventTypes> {
     this.#isTrackingRequestPending = false;
     this.#stylePollingThrottler = new Common.Throttler.Throttler(StylePollingInterval);
 
-    this.#sourceMapManager.setEnabled(Common.Settings.Settings.instance().moduleSetting('cssSourceMapsEnabled').get());
+    this.#sourceMapManager.setEnabled(
+        Common.Settings.Settings.instance().moduleSetting('css-source-maps-enabled').get());
     Common.Settings.Settings.instance()
-        .moduleSetting('cssSourceMapsEnabled')
+        .moduleSetting('css-source-maps-enabled')
         .addChangeListener(event => this.#sourceMapManager.setEnabled((event.data as boolean)));
+  }
+
+  async colorScheme(): Promise<ColorScheme|undefined> {
+    if (!this.#colorScheme) {
+      const colorSchemeResponse = await this.domModel()?.target().runtimeAgent().invoke_evaluate(
+          {expression: 'window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches'});
+      if (colorSchemeResponse && !colorSchemeResponse.exceptionDetails && !colorSchemeResponse.getError()) {
+        this.#colorScheme = colorSchemeResponse.result.value ? ColorScheme.DARK : ColorScheme.LIGHT;
+      }
+    }
+    return this.#colorScheme;
   }
 
   headersForSourceURL(sourceURL: Platform.DevToolsPath.UrlString): CSSStyleSheetHeader[] {
@@ -171,7 +189,7 @@ export class CSSModel extends SDKModel<EventTypes> {
       return text;
     }
     const sourceURLLine = text.substr(sourceURLLineIndex + 1).split('\n', 1)[0];
-    const sourceURLRegex = /[\040\t]*\/\*[#@] sourceURL=[\040\t]*([^\s]*)[\040\t]*\*\/[\040\t]*$/;
+    const sourceURLRegex = /[\x20\t]*\/\*[#@] sourceURL=[\x20\t]*([^\s]*)[\x20\t]*\*\/[\x20\t]*$/;
     if (sourceURLLine.search(sourceURLRegex) === -1) {
       return text;
     }
@@ -188,8 +206,8 @@ export class CSSModel extends SDKModel<EventTypes> {
     try {
       await this.ensureOriginalStyleSheetText(styleSheetId);
 
-      const {styles} = await this.agent.invoke_setStyleTexts(
-          {edits: [{styleSheetId: styleSheetId, range: range.serializeToObject(), text}]});
+      const {styles} =
+          await this.agent.invoke_setStyleTexts({edits: [{styleSheetId, range: range.serializeToObject(), text}]});
       if (!styles || styles.length !== 1) {
         return false;
       }
@@ -340,7 +358,7 @@ export class CSSModel extends SDKModel<EventTypes> {
       inheritedPseudoPayload: response.inheritedPseudoElements || [],
       animationsPayload: response.cssKeyframesRules || [],
       parentLayoutNodeId: response.parentLayoutNodeId,
-      positionFallbackRules: response.cssPositionFallbackRules || [],
+      positionTryRules: response.cssPositionTryRules || [],
       propertyRules: response.cssPropertyRules ?? [],
       cssPropertyRegistrations: response.cssPropertyRegistrations ?? [],
       fontPaletteValuesRule: response.cssFontPaletteValuesRule,
@@ -431,7 +449,7 @@ export class CSSModel extends SDKModel<EventTypes> {
       return false;
     }
     void this.agent.invoke_forcePseudoState({nodeId: node.id, forcedPseudoClasses});
-    this.dispatchEventToListeners(Events.PseudoStateForced, {node: node, pseudoClass: pseudoClass, enable: enable});
+    this.dispatchEventToListeners(Events.PseudoStateForced, {node, pseudoClass, enable});
     return true;
   }
 
@@ -547,8 +565,8 @@ export class CSSModel extends SDKModel<EventTypes> {
     }
   }
 
-  async requestViaInspectorStylesheet(node: DOMNode): Promise<CSSStyleSheetHeader|null> {
-    const frameId = node.frameId() ||
+  async requestViaInspectorStylesheet(maybeFrameId?: Protocol.Page.FrameId|null): Promise<CSSStyleSheetHeader|null> {
+    const frameId = maybeFrameId ||
         (this.#resourceTreeModel && this.#resourceTreeModel.mainFrame ? this.#resourceTreeModel.mainFrame.id : null);
     const headers = [...this.#styleSheetIdToHeader.values()];
     const styleSheetHeader = headers.find(header => header.frameId === frameId && header.isViaInspector());
@@ -560,18 +578,23 @@ export class CSSModel extends SDKModel<EventTypes> {
     }
 
     try {
-      const {styleSheetId} = await this.agent.invoke_createStyleSheet({frameId});
-      if (!styleSheetId) {
-        return null;
-      }
-      return this.#styleSheetIdToHeader.get(styleSheetId) || null;
+      return await this.createInspectorStylesheet(frameId);
     } catch (e) {
       console.error(e);
       return null;
     }
   }
 
+  async createInspectorStylesheet(frameId: Protocol.Page.FrameId): Promise<CSSStyleSheetHeader|null> {
+    const result = await this.agent.invoke_createStyleSheet({frameId});
+    if (result.getError()) {
+      throw new Error(result.getError());
+    }
+    return this.#styleSheetIdToHeader.get(result.styleSheetId) || null;
+  }
+
   mediaQueryResultChanged(): void {
+    this.#colorScheme = undefined;
     this.dispatchEventToListeners(Events.MediaQueryResultChanged);
   }
 
@@ -599,7 +622,7 @@ export class CSSModel extends SDKModel<EventTypes> {
   }
 
   fireStyleSheetChanged(styleSheetId: Protocol.CSS.StyleSheetId, edit?: Edit): void {
-    this.dispatchEventToListeners(Events.StyleSheetChanged, {styleSheetId: styleSheetId, edit: edit});
+    this.dispatchEventToListeners(Events.StyleSheetChanged, {styleSheetId, edit});
   }
 
   private ensureOriginalStyleSheetText(styleSheetId: Protocol.CSS.StyleSheetId): Promise<string|null> {
@@ -729,12 +752,12 @@ export class CSSModel extends SDKModel<EventTypes> {
   }
 
   async getStyleSheetText(styleSheetId: Protocol.CSS.StyleSheetId): Promise<string|null> {
-    try {
-      const {text} = await this.agent.invoke_getStyleSheetText({styleSheetId});
-      return text && CSSModel.trimSourceURL(text);
-    } catch (e) {
+    const response = await this.agent.invoke_getStyleSheetText({styleSheetId});
+    if (response.getError()) {
       return null;
     }
+    const {text} = response;
+    return text && CSSModel.trimSourceURL(text);
   }
 
   private async onPrimaryPageChanged(
@@ -749,7 +772,7 @@ export class CSSModel extends SDKModel<EventTypes> {
     if (event.data.frame.backForwardCacheDetails.restoredFromCache) {
       await this.suspendModel();
       await this.resumeModel();
-    } else if (event.data.type !== PrimaryPageChangeType.Activation) {
+    } else if (event.data.type !== PrimaryPageChangeType.ACTIVATION) {
       this.resetStyleSheets();
       this.resetFontFaces();
     }
@@ -845,7 +868,7 @@ export class CSSModel extends SDKModel<EventTypes> {
 
       if (this.#cssPropertyTracker) {
         this.#cssPropertyTracker.dispatchEventToListeners(
-            CSSPropertyTrackerEvents.TrackedCSSPropertiesUpdated,
+            CSSPropertyTrackerEvents.TRACKED_CSS_PROPERTIES_UPDATED,
             result.nodeIds.map(nodeId => this.#domModel.nodeForId(nodeId)));
       }
     }
@@ -858,7 +881,7 @@ export class CSSModel extends SDKModel<EventTypes> {
   override dispose(): void {
     this.disableCSSPropertyTracker();
     super.dispose();
-    this.#sourceMapManager.dispose();
+    this.dispatchEventToListeners(Events.ModelDisposed, this);
   }
 
   getAgent(): ProtocolProxyApi.CSSApi {
@@ -867,13 +890,16 @@ export class CSSModel extends SDKModel<EventTypes> {
 }
 
 export enum Events {
+  /* eslint-disable @typescript-eslint/naming-convention -- Used by web_tests. */
   FontsUpdated = 'FontsUpdated',
   MediaQueryResultChanged = 'MediaQueryResultChanged',
   ModelWasEnabled = 'ModelWasEnabled',
+  ModelDisposed = 'ModelDisposed',
   PseudoStateForced = 'PseudoStateForced',
   StyleSheetAdded = 'StyleSheetAdded',
   StyleSheetChanged = 'StyleSheetChanged',
   StyleSheetRemoved = 'StyleSheetRemoved',
+  /* eslint-enable @typescript-eslint/naming-convention */
 }
 
 export interface StyleSheetChangedEvent {
@@ -891,6 +917,7 @@ export type EventTypes = {
   [Events.FontsUpdated]: void,
   [Events.MediaQueryResultChanged]: void,
   [Events.ModelWasEnabled]: void,
+  [Events.ModelDisposed]: CSSModel,
   [Events.PseudoStateForced]: PseudoStateForcedEvent,
   [Events.StyleSheetAdded]: CSSStyleSheetHeader,
   [Events.StyleSheetChanged]: StyleSheetChangedEvent,
@@ -1027,11 +1054,11 @@ export class CSSPropertyTracker extends Common.ObjectWrapper.ObjectWrapper<CSSPr
 const StylePollingInterval = 1000;  // throttling interval for style polling, in milliseconds
 
 export const enum CSSPropertyTrackerEvents {
-  TrackedCSSPropertiesUpdated = 'TrackedCSSPropertiesUpdated',
+  TRACKED_CSS_PROPERTIES_UPDATED = 'TrackedCSSPropertiesUpdated',
 }
 
 export type CSSPropertyTrackerEventTypes = {
-  [CSSPropertyTrackerEvents.TrackedCSSPropertiesUpdated]: (DOMNode|null)[],
+  [CSSPropertyTrackerEvents.TRACKED_CSS_PROPERTIES_UPDATED]: (DOMNode|null)[],
 };
 
 SDKModel.register(CSSModel, {capabilities: Capability.DOM, autostart: true});

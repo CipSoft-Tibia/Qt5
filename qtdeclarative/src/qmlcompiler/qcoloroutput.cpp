@@ -20,13 +20,14 @@ public:
         m_coloringEnabled = isColoringPossible();
     }
 
+    ~QColorOutputPrivate() { fflush(stderr); }
+
     static const char *const foregrounds[];
     static const char *const backgrounds[];
 
     inline void write(const QString &msg)
     {
-        const QByteArray encodedMsg = msg.toLocal8Bit();
-        fwrite(encodedMsg.constData(), size_t(1), size_t(encodedMsg.size()), stderr);
+        m_buffer.append(msg.toLocal8Bit());
     }
 
     static QString escapeCode(const QString &in)
@@ -51,8 +52,19 @@ public:
 
     bool coloringEnabled() const { return m_coloringEnabled; }
 
+    void flushBuffer()
+    {
+        fwrite(m_buffer.constData(), size_t(1), size_t(m_buffer.size()), stderr);
+        m_buffer.clear();
+    }
+
+    void discardBuffer()
+    {
+        m_buffer.clear();
+    }
+
 private:
-    QFile                       m_out;
+    QByteArray                  m_buffer;
     QColorOutput::ColorMapping  m_colorMapping;
     int                         m_currentColorID = -1;
     bool                        m_coloringEnabled = false;
@@ -311,6 +323,16 @@ QString QColorOutput::colorify(const QStringView message, int colorID) const
     }
 
     return message.toString();
+}
+
+void QColorOutput::flushBuffer()
+{
+    d->flushBuffer();
+}
+
+void QColorOutput::discardBuffer()
+{
+    d->discardBuffer();
 }
 
 /*!

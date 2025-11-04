@@ -18,6 +18,7 @@ InputPanel {
 
     property var testcase
     property var virtualKeyPressPoint: null
+    property bool noAnimations: true
     readonly property int cursorPosition: InputContext.cursorPosition
     readonly property string preeditText: InputContext.preeditText
     readonly property string surroundingText: InputContext.surroundingText
@@ -56,6 +57,7 @@ InputPanel {
     property alias dragSymbolModeSpy: dragSymbolModeSpy
     property alias styleSpy: styleSpy
     property alias soundEffectSpy: soundEffectSpy
+    property alias keySoundVolumeSpy: keySoundVolumeSpy
     property alias inputMethodResultSpy: inputMethodResultSpy
     property alias wordCandidateListChangedSpy: wordCandidateListChangedSpy
     property alias wordCandidateListItemSelectedSpy: wordCandidateListItemSelectedSpy
@@ -65,7 +67,6 @@ InputPanel {
     property alias shiftStateSpy: shiftStateSpy
     property alias shadowInputControlVisibleSpy: shadowInputControlVisibleSpy
     property alias externalLanguageSwitchSpy: externalLanguageSwitchSpy
-
     signal inputMethodResult(var text)
 
     LayoutMirroring.childrenInherit: true
@@ -138,6 +139,12 @@ InputPanel {
     }
 
     SignalSpy {
+        id: keySoundVolumeSpy
+        target: VirtualKeyboardSettings
+        signalName: "keySoundVolumeChanged"
+    }
+
+    SignalSpy {
         id: inputMethodResultSpy
         target: inputPanel
         signalName: "inputMethodResult"
@@ -201,7 +208,7 @@ InputPanel {
     Binding {
         target: keyboard
         property: "noAnimations"
-        value: true
+        value: inputPanel.noAnimations
     }
 
     // Reduce press and hold delay to avoid unnecessary wait during tests
@@ -320,6 +327,8 @@ InputPanel {
             return InputEngine.InputMode.Stroke
         else if (inputModeName === "Romaji")
             return InputEngine.InputMode.Romaji
+        else if (inputModeName === "HiraganaFlick")
+            return InputEngine.InputMode.HiraganaFlick
         else
             return -1
     }
@@ -360,6 +369,7 @@ InputPanel {
         testcase.verify(InputEngine.InputMode.Thai !== undefined)
         testcase.verify(InputEngine.InputMode.Stroke !== undefined)
         testcase.verify(InputEngine.InputMode.Romaji !== undefined)
+        testcase.verify(InputEngine.InputMode.HiraganaFlick !== undefined)
         testcase.verify(InputEngine.PatternRecognitionMode.None !== undefined)
         testcase.verify(InputEngine.PatternRecognitionMode.PatternRecognitionDisabled !== undefined)
         testcase.verify(InputEngine.PatternRecognitionMode.Handwriting !== undefined)
@@ -435,10 +445,22 @@ InputPanel {
             testcase.mousePress(inputPanel, virtualKeyPressPoint.x, virtualKeyPressPoint.y)
             testcase.wait(1)
             if (alternativeKey) {
-                alternativeKeysSpy.wait()
-                var keyIndex = keyObj.effectiveAlternativeKeys.indexOf(key.toLowerCase())
-                var itemX = keyIndex * keyboard.style.alternateKeysListItemWidth + keyboard.style.alternateKeysListItemWidth / 2
-                virtualKeyPressPoint.x = inputPanel.mapFromItem(alternativeKeys.listView, itemX, 0).x
+                if (keyObj.keyType === QtVirtualKeyboard.KeyType.FlickKey) {
+                    const flickRadius = (keyObj.width / 2 + 1)
+                    if (key === keyObj.flickLeft)
+                        virtualKeyPressPoint.x -= flickRadius
+                    else if (key === keyObj.flickRight)
+                        virtualKeyPressPoint.x += flickRadius
+                    else if (key === keyObj.flickTop)
+                        virtualKeyPressPoint.y -= flickRadius
+                    else if (key === keyObj.flickBottom)
+                        virtualKeyPressPoint.y += flickRadius
+                } else {
+                    alternativeKeysSpy.wait()
+                    var keyIndex = keyObj.effectiveAlternativeKeys.indexOf(key.toLowerCase())
+                    var itemX = keyIndex * keyboard.style.alternateKeysListItemWidth + keyboard.style.alternateKeysListItemWidth / 2
+                    virtualKeyPressPoint.x = inputPanel.mapFromItem(alternativeKeys.listView, itemX, 0).x
+                }
                 testcase.mouseMove(inputPanel, virtualKeyPressPoint.x, virtualKeyPressPoint.y)
                 testcase.wait(1)
             }
@@ -768,5 +790,13 @@ InputPanel {
 
     function setCloseOnReturn(enabled) {
         VirtualKeyboardSettings.closeOnReturn = enabled
+    }
+
+    function keySoundVolume() {
+        return VirtualKeyboardSettings.keySoundVolume
+    }
+
+    function setKeySoundVolume(volume) {
+        VirtualKeyboardSettings.keySoundVolume = volume
     }
 }

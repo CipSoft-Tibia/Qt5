@@ -25,6 +25,7 @@ import {MixedContentIssue} from './MixedContentIssue.js';
 import {PropertyRuleIssue} from './PropertyRuleIssue.js';
 import {QuirksModeIssue} from './QuirksModeIssue.js';
 import {SharedArrayBufferIssue} from './SharedArrayBufferIssue.js';
+import {SharedDictionaryIssue} from './SharedDictionaryIssue.js';
 import {SourceFrameIssuesManager} from './SourceFrameIssuesManager.js';
 import {StylesheetLoadingIssue} from './StylesheetLoadingIssue.js';
 
@@ -69,6 +70,10 @@ const issueCodeHandlers = new Map<
   [
     Protocol.Audits.InspectorIssueCode.SharedArrayBufferIssue,
     SharedArrayBufferIssue.fromInspectorIssue,
+  ],
+  [
+    Protocol.Audits.InspectorIssueCode.SharedDictionaryIssue,
+    SharedDictionaryIssue.fromInspectorIssue,
   ],
   [
     Protocol.Audits.InspectorIssueCode.LowTextContrastIssue,
@@ -147,8 +152,8 @@ export type HideIssueMenuSetting = {
 };
 
 export const enum IssueStatus {
-  Hidden = 'Hidden',
-  Unhidden = 'Unhidden',
+  HIDDEN = 'Hidden',
+  UNHIDDEN = 'Unhidden',
 }
 
 export function defaultHideIssueByCodeSetting(): HideIssueMenuSetting {
@@ -158,7 +163,7 @@ export function defaultHideIssueByCodeSetting(): HideIssueMenuSetting {
 
 export function getHideIssueByCodeSetting(): Common.Settings.Setting<HideIssueMenuSetting> {
   return Common.Settings.Settings.instance().createSetting(
-      'HideIssueByCodeSetting-Experiment-2021', defaultHideIssueByCodeSetting());
+      'hide-issue-by-code-setting-experiment-2021', defaultHideIssueByCodeSetting());
 }
 
 /**
@@ -193,9 +198,9 @@ export class IssuesManager extends Common.ObjectWrapper.ObjectWrapper<EventTypes
         SDK.ResourceTreeModel.ResourceTreeModel, SDK.ResourceTreeModel.Events.PrimaryPageChanged,
         this.#onPrimaryPageChanged, this);
     SDK.FrameManager.FrameManager.instance().addEventListener(
-        SDK.FrameManager.Events.FrameAddedToTarget, this.#onFrameAddedToTarget, this);
+        SDK.FrameManager.Events.FRAME_ADDED_TO_TARGET, this.#onFrameAddedToTarget, this);
 
-    // issueFilter uses the 'showThirdPartyIssues' setting. Clients of IssuesManager need
+    // issueFilter uses the 'show-third-party-issues' setting. Clients of IssuesManager need
     // a full update when the setting changes to get an up-to-date issues list.
     this.showThirdPartyIssuesSetting?.addChangeListener(() => this.#updateFilteredIssues());
     this.hideIssueSetting?.addChangeListener(() => this.#updateFilteredIssues());
@@ -251,7 +256,7 @@ export class IssuesManager extends Common.ObjectWrapper.ObjectWrapper<EventTypes
         keptIssues.set(key, issue);
         // Keep issues for prerendered target alive in case of prerender-activation.
       } else if (
-          (type === SDK.ResourceTreeModel.PrimaryPageChangeType.Activation) &&
+          (type === SDK.ResourceTreeModel.PrimaryPageChangeType.ACTIVATION) &&
           (frame.resourceTreeModel().target() === issue.model()?.target())) {
         keptIssues.set(key, issue);
         // Keep BounceTrackingIssues alive for non-user-initiated navigations.
@@ -283,7 +288,7 @@ export class IssuesManager extends Common.ObjectWrapper.ObjectWrapper<EventTypes
   }
 
   modelAdded(issuesModel: SDK.IssuesModel.IssuesModel): void {
-    const listener = issuesModel.addEventListener(SDK.IssuesModel.Events.IssueAdded, this.#onIssueAddedEvent, this);
+    const listener = issuesModel.addEventListener(SDK.IssuesModel.Events.ISSUE_ADDED, this.#onIssueAddedEvent, this);
     this.#eventListeners.set(issuesModel, listener);
   }
 
@@ -338,11 +343,11 @@ export class IssuesManager extends Common.ObjectWrapper.ObjectWrapper<EventTypes
       if (issue.isHidden()) {
         this.#hiddenIssueCount.set(issue.getKind(), 1 + (this.#hiddenIssueCount.get(issue.getKind()) || 0));
       }
-      this.dispatchEventToListeners(Events.IssueAdded, {issuesModel, issue});
+      this.dispatchEventToListeners(Events.ISSUE_ADDED, {issuesModel, issue});
     }
     // Always fire the "count" event even if the issue was filtered out.
     // The result of `hasOnlyThirdPartyIssues` could still change.
-    this.dispatchEventToListeners(Events.IssuesCountUpdated);
+    this.dispatchEventToListeners(Events.ISSUES_COUNT_UPDATED);
   }
 
   issues(): Iterable<Issue> {
@@ -391,7 +396,7 @@ export class IssuesManager extends Common.ObjectWrapper.ObjectWrapper<EventTypes
     // In case a user wants to hide a specific issue, the issue code is added to "code" section
     // of our setting and its value is set to IssueStatus.Hidden. Then issue then gets hidden.
     if (values && values[code]) {
-      if (values[code] === IssueStatus.Hidden) {
+      if (values[code] === IssueStatus.HIDDEN) {
         issue.setHidden(true);
         return;
       }
@@ -420,8 +425,8 @@ export class IssuesManager extends Common.ObjectWrapper.ObjectWrapper<EventTypes
         }
       }
     }
-    this.dispatchEventToListeners(Events.FullUpdateRequired);
-    this.dispatchEventToListeners(Events.IssuesCountUpdated);
+    this.dispatchEventToListeners(Events.FULL_UPDATE_REQUIRED);
+    this.dispatchEventToListeners(Events.ISSUES_COUNT_UPDATED);
   }
 
   unhideAllIssues(): void {
@@ -442,13 +447,13 @@ export interface IssueAddedEvent {
 }
 
 export type EventTypes = {
-  [Events.IssuesCountUpdated]: void,
-  [Events.FullUpdateRequired]: void,
-  [Events.IssueAdded]: IssueAddedEvent,
+  [Events.ISSUES_COUNT_UPDATED]: void,
+  [Events.FULL_UPDATE_REQUIRED]: void,
+  [Events.ISSUE_ADDED]: IssueAddedEvent,
 };
 
 // @ts-ignore
-globalThis.addIssueForTest = (issue: Protocol.Audits.InspectorIssue): void => {
+globalThis.addIssueForTest = (issue: Protocol.Audits.InspectorIssue) => {
   const mainTarget = SDK.TargetManager.TargetManager.instance().primaryPageTarget();
   const issuesModel = mainTarget?.model(SDK.IssuesModel.IssuesModel);
   issuesModel?.issueAdded({issue});

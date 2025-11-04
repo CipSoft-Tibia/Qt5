@@ -60,3 +60,14 @@ message NonPackedIntMessageWithExtraMember {
     repeated int32 testRepeatedInt = 1 [packed = false];
     string extra = 2;
 }
+
+message RepeatedNonPackedEnumMessage {
+    enum TestEnum {
+        ENUM_VALUE0 = 0;
+        ENUM_VALUE1 = 1;
+        ENUM_VALUE2 = 2;
+        ENUM_VALUE3 = 3;
+    }
+
+    repeated TestEnum field = 1 [packed = false];
+}

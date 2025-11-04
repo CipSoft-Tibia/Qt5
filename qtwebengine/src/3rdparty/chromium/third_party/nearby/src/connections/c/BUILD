@@ -12,9 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-load("//third_party/lexan/build_defs:lexan.bzl", "lexan")
-load("expand_version_template.bzl", "expand_version_template")
 load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
+load("//third_party/cpptoolchains/windows_llvm/build_defs:windows.bzl", "windows")
+load("expand_version_template.bzl", "expand_version_template")
 
 package(default_visibility = [
     "//connections:__subpackages__",
@@ -53,7 +53,7 @@ expand_version_template(
     version = varref("VERSION"),
 )
 
-lexan.resource_files(
+windows.resource_files(
     name = "resources",
     rc_files = [
         ":version_expanded",
@@ -93,19 +93,67 @@ cc_library(
         "//internal/platform:base",
         "//internal/platform:types",
         "//proto:connections_enums_cc_proto",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+# Build with --config=windows
+windows.cc_windows_dll(
+    name = "nearby_connections",
+    tags = ["windows-dll"],
+    deps = [
+        ":c",
+        ":types",
+        "//internal/platform/implementation/windows",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "nc_types",
+    hdrs = [
+        "nc.h",
+        "nc_def.h",
+        "nc_types.h",
+    ],
+    compatible_with = ["//buildenv/target:non_prod"],
+)
+
+cc_library(
+    name = "nc",
+    srcs = [
+        "nc.cc",
+    ],
+    compatible_with = ["//buildenv/target:non_prod"],
+    copts = ["-DNC_DLL"],
+    deps = [
+        ":nc_types",
+        "//connections:core",
+        "//connections:core_types",
+        "//connections/implementation/flags:connections_flags",
+        "//internal/flags:nearby_flags",
+        "//internal/platform:base",
+        "//internal/platform:types",
+        "//proto:connections_enums_cc_proto",
+        "@com_google_absl//absl/base:no_destructor",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:span",
     ],
 )
 
-# Build with --config=lexan
-lexan.cc_windows_dll(
-    name = "nearby_connections",
+windows.cc_windows_dll(
+    name = "nc_windows",
+    srcs = [],
+    compatible_with = ["//buildenv/target:non_prod"],
+    copts = ["-DNC_DLL"],
     tags = ["windows-dll"],
     deps = [
-        ":c",
-        ":types",
+        ":nc",
         "//internal/platform/implementation/windows",
         "@com_google_absl//absl/strings",
     ],

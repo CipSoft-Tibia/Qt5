@@ -1,9 +1,9 @@
 // Copyright (C) 2021 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
-#include <QtTest/QtTest>
-#include <QDebug>
-#include "qaudiodecoder.h"
+#include <QtTest/qtest.h>
+#include <QtCore/qdebug.h>
+#include <QtMultimedia/qaudiodecoder.h>
 
 #include <private/mediafileselector_p.h>
 #include <private/mediabackendutils_p.h>
@@ -66,7 +66,7 @@ private:
 #endif
 
     MediaFileSelector m_mediaSelector;
-    MaybeUrl m_wavFile = QUnexpect{};
+    MaybeUrl m_wavFile = MaybeUrl{ QUnexpect{} };
 };
 
 void tst_QAudioDecoderBackend::init()
@@ -474,7 +474,7 @@ void tst_QAudioDecoderBackend::fileTest()
     positionSpy.clear();
 
 #ifdef Q_OS_ANDROID
-    QSKIP("Setting a desired audio format is not yet supported on Android", QTest::SkipSingle);
+    QSKIP("Setting a desired audio format is not yet supported on Android");
 #endif
     // change output audio format
     QAudioFormat format;
@@ -904,7 +904,7 @@ void tst_QAudioDecoderBackend::deviceTest()
     positionSpy.clear();
 
 #ifdef Q_OS_ANDROID
-    QSKIP("Setting a desired audio format is not yet supported on Android", QTest::SkipSingle);
+    QSKIP("Setting a desired audio format is not yet supported on Android");
 #endif
     // Now try changing formats
     QAudioFormat format;

@@ -42,7 +42,7 @@ void QSGCurveGlyphAtlas::populate(const QList<glyph_t> &glyphs)
                                              [&glyph](const std::array<QVector2D, 3> &s,
                                                       const std::array<QVector2D, 3> &p,
                                                       const std::array<QVector2D, 3> &n,
-                                                      bool isLine) {
+                                                      QSGCurveStrokeNode::TriangleFlags f) {
                 glyph.strokeVertices.append(s.at(0));
                 glyph.strokeVertices.append(s.at(1));
                 glyph.strokeVertices.append(s.at(2));
@@ -55,7 +55,7 @@ void QSGCurveGlyphAtlas::populate(const QList<glyph_t> &glyphs)
                 glyph.strokeNormals.append(n.at(1));
                 glyph.strokeNormals.append(n.at(2));
 
-                glyph.strokeElementIsLine.append(isLine);
+                glyph.strokeElementIsLine.append(f.testFlag(QSGCurveStrokeNode::TriangleFlag::Line));
             });
 
             quadPath = quadPath.subPathsClosed();

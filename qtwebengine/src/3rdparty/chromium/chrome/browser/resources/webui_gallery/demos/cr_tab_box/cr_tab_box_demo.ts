@@ -4,7 +4,7 @@
 
 import '//resources/cr_elements/cr_tab_box/cr_tab_box.js';
 
-import {CrTabBoxElement} from '//resources/cr_elements/cr_tab_box/cr_tab_box.js';
+import type {CrTabBoxElement} from '//resources/cr_elements/cr_tab_box/cr_tab_box.js';
 import {assert} from '//resources/js/assert.js';
 import {CustomElement} from '//resources/js/custom_element.js';
 
@@ -19,7 +19,7 @@ class CrTabBoxDemoElement extends CustomElement {
     return getTemplate();
   }
 
-  private tabBox_: CrTabBoxElement|null;
+  private tabBox_: CrTabBoxElement|null = null;
 
   async connectedCallback() {
     this.tabBox_ = this.shadowRoot!.querySelector('cr-tab-box');

@@ -1,5 +1,12 @@
 // Copyright (C) 2017 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:network-protocol
+
+#ifdef USE_SYSTEM_OPEN62541
+#include <open62541/client_config_default.h>
+#include <open62541/plugin/securitypolicy_default.h>
+#include <open62541/plugin/pki_default.h>
+#endif
 
 #include "qopen62541backend.h"
 #include "qopen62541node.h"
@@ -24,27 +31,35 @@ QT_BEGIN_NAMESPACE
 
 Q_DECLARE_LOGGING_CATEGORY(QT_OPCUA_PLUGINS_OPEN62541)
 
+#ifdef UA_ENABLE_ENCRYPTION
+using namespace Qt::Literals::StringLiterals;
+static constexpr QLatin1StringView NonePolicy = "http://opcfoundation.org/UA/SecurityPolicy#None"_L1;
+static constexpr QLatin1StringView Basic128Rsa15Policy = "http://opcfoundation.org/UA/SecurityPolicy#Basic128Rsa15"_L1;
+static constexpr QLatin1StringView Basic256Policy = "http://opcfoundation.org/UA/SecurityPolicy#Basic256"_L1;
+static constexpr QLatin1StringView Aes256Sha256RsaPssPolicy = "http://opcfoundation.org/UA/SecurityPolicy#Aes256_Sha256_RsaPss"_L1;
+static constexpr QLatin1StringView Basic256Sha256Policy = "http://opcfoundation.org/UA/SecurityPolicy#Basic256Sha256"_L1;
+static constexpr QLatin1StringView Aes128Sha256RsaOaepPolicy = "http://opcfoundation.org/UA/SecurityPolicy#Aes128_Sha256_RsaOaep"_L1;
+#endif
+
 Open62541AsyncBackend::Open62541AsyncBackend(QOpen62541Client *parent)
     : QOpcUaBackend()
     , m_uaclient(nullptr)
     , m_clientImpl(parent)
-    , m_useStateCallback(false)
     , m_clientIterateInterval(50)
     , m_asyncRequestTimeout(15000)
     , m_clientIterateTimer(this)
-    , m_disconnectAfterStateChangeTimer(this)
+    , m_clientIterateOnDemandTimer(this)
     , m_minPublishingInterval(0)
 {
     QObject::connect(&m_clientIterateTimer, &QTimer::timeout,
                      this, &Open62541AsyncBackend::iterateClient);
 
-    m_disconnectAfterStateChangeTimer.setSingleShot(true);
-    m_disconnectAfterStateChangeTimer.setInterval(0);
+    m_clientIterateOnDemandTimer.setSingleShot(true);
+    QObject::connect(&m_clientIterateOnDemandTimer, &QTimer::timeout,
+                     this, &Open62541AsyncBackend::iterateClient);
 
-    QObject::connect(&m_disconnectAfterStateChangeTimer, &QTimer::timeout,
-                     this, [this]() {
-        disconnectInternal(QOpcUaClient::ConnectionError);
-    });
+    QObject::connect(parent, &QOpcUaClientImpl::connectionSettingsChanged,
+                     this, &Open62541AsyncBackend::handleConnectionSettingsChanged);
 }
 
 Open62541AsyncBackend::~Open62541AsyncBackend()
@@ -72,6 +87,7 @@ void Open62541AsyncBackend::readAttributes(quint64 handle, UA_NodeId id, QOpcUa:
 
     UA_ReadRequest req;
     UA_ReadRequest_init(&req);
+    req.requestHeader.timeoutHint = m_asyncRequestTimeout;
     UaDeleter<UA_ReadRequest> requestDeleter(&req, UA_ReadRequest_clear);
     req.timestampsToReturn = UA_TIMESTAMPSTORETURN_BOTH;
 
@@ -99,9 +115,9 @@ void Open62541AsyncBackend::readAttributes(quint64 handle, UA_NodeId id, QOpcUa:
     });
 
     quint32 requestId = 0;
-    UA_StatusCode result = __UA_Client_AsyncServiceEx(m_uaclient, &req, &UA_TYPES[UA_TYPES_READREQUEST],
-                                                      &asyncReadCallback, &UA_TYPES[UA_TYPES_READRESPONSE], this,
-                                                      &requestId, m_asyncRequestTimeout);
+    UA_StatusCode result = __UA_Client_AsyncService(m_uaclient, &req, &UA_TYPES[UA_TYPES_READREQUEST],
+                                                    &asyncReadCallback, &UA_TYPES[UA_TYPES_READRESPONSE], this,
+                                                    &requestId);
 
     if (result != UA_STATUSCODE_GOOD) {
         const auto statusCode = static_cast<QOpcUa::UaStatusCode>(result);
@@ -113,6 +129,8 @@ void Open62541AsyncBackend::readAttributes(quint64 handle, UA_NodeId id, QOpcUa:
     }
 
     m_asyncReadContext[requestId] = { handle, resultMetadata };
+
+    triggerIterateClient();
 }
 
 void Open62541AsyncBackend::writeAttribute(quint64 handle, UA_NodeId id, QOpcUa::NodeAttribute attrId, QVariant value, QOpcUa::Types type, QString indexRange)
@@ -128,6 +146,7 @@ void Open62541AsyncBackend::writeAttribute(quint64 handle, UA_NodeId id, QOpcUa:
 
     UA_WriteRequest req;
     UA_WriteRequest_init(&req);
+    req.requestHeader.timeoutHint = m_asyncRequestTimeout;
     UaDeleter<UA_WriteRequest> requestDeleter(&req, UA_WriteRequest_clear);
     req.nodesToWriteSize = 1;
     req.nodesToWrite = UA_WriteValue_new();
@@ -141,9 +160,9 @@ void Open62541AsyncBackend::writeAttribute(quint64 handle, UA_NodeId id, QOpcUa:
         QOpen62541ValueConverter::scalarFromQt<UA_String, QString>(indexRange, &req.nodesToWrite->indexRange);
 
     quint32 requestId = 0;
-    UA_StatusCode result = __UA_Client_AsyncServiceEx(m_uaclient, &req, &UA_TYPES[UA_TYPES_WRITEREQUEST],
-                                                      &asyncWriteAttributesCallback, &UA_TYPES[UA_TYPES_WRITERESPONSE], this,
-                                                      &requestId, m_asyncRequestTimeout);
+    UA_StatusCode result = __UA_Client_AsyncService(m_uaclient, &req, &UA_TYPES[UA_TYPES_WRITEREQUEST],
+                                                    &asyncWriteAttributesCallback, &UA_TYPES[UA_TYPES_WRITERESPONSE], this,
+                                                    &requestId);
 
     if (result != UA_STATUSCODE_GOOD) {
         emit attributeWritten(handle, attrId, value, static_cast<QOpcUa::UaStatusCode>(result));
@@ -151,6 +170,7 @@ void Open62541AsyncBackend::writeAttribute(quint64 handle, UA_NodeId id, QOpcUa:
     }
 
     m_asyncWriteAttributesContext[requestId] = { handle, {{attrId, value}} };
+    triggerIterateClient();
 }
 
 void Open62541AsyncBackend::writeAttributes(quint64 handle, UA_NodeId id, QOpcUaNode::AttributeMap toWrite, QOpcUa::Types valueAttributeType)
@@ -170,6 +190,7 @@ void Open62541AsyncBackend::writeAttributes(quint64 handle, UA_NodeId id, QOpcUa
 
     UA_WriteRequest req;
     UA_WriteRequest_init(&req);
+    req.requestHeader.timeoutHint = m_asyncRequestTimeout;
     UaDeleter<UA_WriteRequest> requestDeleter(&req, UA_WriteRequest_clear);
     req.nodesToWriteSize = toWrite.size();
     req.nodesToWrite = static_cast<UA_WriteValue *>(UA_Array_new(req.nodesToWriteSize, &UA_TYPES[UA_TYPES_WRITEVALUE]));
@@ -183,9 +204,9 @@ void Open62541AsyncBackend::writeAttributes(quint64 handle, UA_NodeId id, QOpcUa
     }
 
     quint32 requestId = 0;
-    UA_StatusCode result = __UA_Client_AsyncServiceEx(m_uaclient, &req, &UA_TYPES[UA_TYPES_WRITEREQUEST],
+    UA_StatusCode result = __UA_Client_AsyncService(m_uaclient, &req, &UA_TYPES[UA_TYPES_WRITEREQUEST],
                                                       &asyncWriteAttributesCallback, &UA_TYPES[UA_TYPES_WRITERESPONSE], this,
-                                                      &requestId, m_asyncRequestTimeout);
+                                                      &requestId);
 
     if (result != UA_STATUSCODE_GOOD) {
         for (auto it = toWrite.begin(); it != toWrite.end(); ++it) {
@@ -195,6 +216,7 @@ void Open62541AsyncBackend::writeAttributes(quint64 handle, UA_NodeId id, QOpcUa
     }
 
     m_asyncWriteAttributesContext[requestId] = { handle, toWrite };
+    triggerIterateClient();
 }
 
 void Open62541AsyncBackend::enableMonitoring(quint64 handle, UA_NodeId id, QOpcUa::NodeAttributes attr, const QOpcUaMonitoringParameters &settings)
@@ -363,6 +385,7 @@ void Open62541AsyncBackend::callMethod(quint64 handle, UA_NodeId objectId, UA_No
 
     UA_CallRequest request;
     UA_CallRequest_init(&request);
+    request.requestHeader.timeoutHint = m_asyncRequestTimeout;
     UaDeleter<UA_CallRequest> requestDeleter(&request, UA_CallRequest_clear);
 
     request.methodsToCallSize = 1;
@@ -372,15 +395,16 @@ void Open62541AsyncBackend::callMethod(quint64 handle, UA_NodeId objectId, UA_No
     request.methodsToCall->inputArguments = inputArgs;
     request.methodsToCall->inputArgumentsSize = args.size();
 
-    UA_StatusCode result = __UA_Client_AsyncServiceEx(m_uaclient, &request, &UA_TYPES[UA_TYPES_CALLREQUEST],
+    UA_StatusCode result = __UA_Client_AsyncService(m_uaclient, &request, &UA_TYPES[UA_TYPES_CALLREQUEST],
                                                       &asyncMethodCallback,
                                                       &UA_TYPES[UA_TYPES_CALLRESPONSE],
-                                                      this, &requestId, m_asyncRequestTimeout);
+                                                      this, &requestId);
     if (result != UA_STATUSCODE_GOOD)
         emit methodCallFinished(handle, Open62541Utils::nodeIdToQString(methodId), QVariant(),
                                 static_cast<QOpcUa::UaStatusCode>(result));
 
     m_asyncCallContext[requestId] = { handle, Open62541Utils::nodeIdToQString(methodId) };
+    triggerIterateClient();
 }
 
 void Open62541AsyncBackend::resolveBrowsePath(quint64 handle, UA_NodeId startNode, const QList<QOpcUaRelativePathElement> &path)
@@ -393,6 +417,7 @@ void Open62541AsyncBackend::resolveBrowsePath(quint64 handle, UA_NodeId startNod
 
     UA_TranslateBrowsePathsToNodeIdsRequest req;
     UA_TranslateBrowsePathsToNodeIdsRequest_init(&req);
+    req.requestHeader.timeoutHint = m_asyncRequestTimeout;
     UaDeleter<UA_TranslateBrowsePathsToNodeIdsRequest> requestDeleter(
                 &req,UA_TranslateBrowsePathsToNodeIdsRequest_clear);
 
@@ -412,10 +437,10 @@ void Open62541AsyncBackend::resolveBrowsePath(quint64 handle, UA_NodeId startNod
     }
 
     quint32 requestId = 0;
-    UA_StatusCode result = __UA_Client_AsyncServiceEx(m_uaclient, &req, &UA_TYPES[UA_TYPES_TRANSLATEBROWSEPATHSTONODEIDSREQUEST],
+    UA_StatusCode result = __UA_Client_AsyncService(m_uaclient, &req, &UA_TYPES[UA_TYPES_TRANSLATEBROWSEPATHSTONODEIDSREQUEST],
                                                       &asyncTranslateBrowsePathCallback,
                                                       &UA_TYPES[UA_TYPES_TRANSLATEBROWSEPATHSTONODEIDSRESPONSE],
-                                                      this, &requestId, m_asyncRequestTimeout);
+                                                      this, &requestId);
 
     if (result != UA_STATUSCODE_GOOD) {
         qCWarning(QT_OPCUA_PLUGINS_OPEN62541) << "Translate browse path failed:" << UA_StatusCode_name(result);
@@ -425,6 +450,7 @@ void Open62541AsyncBackend::resolveBrowsePath(quint64 handle, UA_NodeId startNod
     }
 
     m_asyncTranslateContext[requestId] = { handle, path };
+    triggerIterateClient();
 }
 
 void Open62541AsyncBackend::open62541LogHandler (void *logContext, UA_LogLevel level, UA_LogCategory category,
@@ -439,8 +465,11 @@ void Open62541AsyncBackend::open62541LogHandler (void *logContext, UA_LogLevel l
     Q_STATIC_ASSERT(UA_LOGCATEGORY_CLIENT == 4);
     Q_STATIC_ASSERT(UA_LOGCATEGORY_USERLAND == 5);
     Q_STATIC_ASSERT(UA_LOGCATEGORY_SECURITYPOLICY == 6);
+    Q_STATIC_ASSERT(UA_LOGCATEGORY_EVENTLOOP == 7);
+    Q_STATIC_ASSERT(UA_LOGCATEGORY_PUBSUB == 8);
+    Q_STATIC_ASSERT(UA_LOGCATEGORY_DISCOVERY == 9);
 
-    Q_ASSERT(category <= UA_LOGCATEGORY_SECURITYPOLICY);
+    Q_ASSERT(category <= UA_LOGCATEGORY_DISCOVERY);
 
     const auto logMessage = QString::vasprintf(msg, args);
 
@@ -451,26 +480,29 @@ void Open62541AsyncBackend::open62541LogHandler (void *logContext, UA_LogLevel l
         QLoggingCategory("qt.opcua.plugins.open62541.sdk.server"),
         QLoggingCategory("qt.opcua.plugins.open62541.sdk.client"),
         QLoggingCategory("qt.opcua.plugins.open62541.sdk.userland"),
-        QLoggingCategory("qt.opcua.plugins.open62541.sdk.securitypolicy")
+        QLoggingCategory("qt.opcua.plugins.open62541.sdk.securitypolicy"),
+        QLoggingCategory("qt.opcua.plugins.open62541.sdk.eventloop"),
+        QLoggingCategory("qt.opcua.plugins.open62541.sdk.pubsub"),
+        QLoggingCategory("qt.opcua.plugins.open62541.sdk.discovery")
     };
 
     switch (level) {
     case UA_LOGLEVEL_TRACE:
     case UA_LOGLEVEL_DEBUG:
-        qCDebug(loggingCategories[category]) << logMessage;
+        qCDebug(loggingCategories[category]).noquote() << logMessage;
         break;
     case UA_LOGLEVEL_INFO:
-        qCInfo(loggingCategories[category]) << logMessage;
+        qCInfo(loggingCategories[category]).noquote() << logMessage;
         break;
     case UA_LOGLEVEL_WARNING:
-        qCWarning(loggingCategories[category]) << logMessage;
+        qCWarning(loggingCategories[category]).noquote() << logMessage;
         break;
     case UA_LOGLEVEL_ERROR:
     case UA_LOGLEVEL_FATAL:
-        qCCritical(loggingCategories[category]) << logMessage;
+        qCCritical(loggingCategories[category]).noquote() << logMessage;
         break;
     default:
-        qCCritical(loggingCategories[category]) << "Unknown UA_LOGLEVEL" << logMessage;
+        qCCritical(loggingCategories[category]).noquote() << "Unknown UA_LOGLEVEL" << logMessage;
         break;
     }
 }
@@ -478,8 +510,9 @@ void Open62541AsyncBackend::open62541LogHandler (void *logContext, UA_LogLevel l
 void Open62541AsyncBackend::findServers(const QUrl &url, const QStringList &localeIds, const QStringList &serverUris)
 {
     UA_ClientConfig initialConfig {};
-    initialConfig.logger = m_open62541Logger;
+    initialConfig.logging = &m_open62541Logger;
     UA_ClientConfig_setDefault(&initialConfig);
+
     UA_Client *tmpClient = UA_Client_newWithConfig(&initialConfig);
 
     UaDeleter<UA_Client> clientDeleter(tmpClient, UA_Client_delete);
@@ -535,6 +568,7 @@ void Open62541AsyncBackend::readNodeAttributes(const QList<QOpcUaReadItem> &node
 
     UA_ReadRequest req;
     UA_ReadRequest_init(&req);
+    req.requestHeader.timeoutHint = m_asyncRequestTimeout;
     UaDeleter<UA_ReadRequest> requestDeleter(&req, UA_ReadRequest_clear);
 
     req.nodesToReadSize = nodesToRead.size();
@@ -551,8 +585,8 @@ void Open62541AsyncBackend::readNodeAttributes(const QList<QOpcUaReadItem> &node
     }
 
     quint32 requestId = 0;
-    UA_StatusCode result = __UA_Client_AsyncServiceEx(m_uaclient, &req, &UA_TYPES[UA_TYPES_READREQUEST], &asyncBatchReadCallback,
-                                                      &UA_TYPES[UA_TYPES_READRESPONSE], this, &requestId, m_asyncRequestTimeout);
+    UA_StatusCode result = __UA_Client_AsyncService(m_uaclient, &req, &UA_TYPES[UA_TYPES_READREQUEST], &asyncBatchReadCallback,
+                                                      &UA_TYPES[UA_TYPES_READRESPONSE], this, &requestId);
 
     if (result != UA_STATUSCODE_GOOD) {
         qCWarning(QT_OPCUA_PLUGINS_OPEN62541) << "Batch read failed:" << result;
@@ -561,6 +595,7 @@ void Open62541AsyncBackend::readNodeAttributes(const QList<QOpcUaReadItem> &node
     }
 
     m_asyncBatchReadContext[requestId] = { nodesToRead };
+    triggerIterateClient();
 }
 
 void Open62541AsyncBackend::writeNodeAttributes(const QList<QOpcUaWriteItem> &nodesToWrite)
@@ -577,6 +612,7 @@ void Open62541AsyncBackend::writeNodeAttributes(const QList<QOpcUaWriteItem> &no
 
     UA_WriteRequest req;
     UA_WriteRequest_init(&req);
+    req.requestHeader.timeoutHint = m_asyncRequestTimeout;
     UaDeleter<UA_WriteRequest> requestDeleter(&req, UA_WriteRequest_clear);
 
     req.nodesToWriteSize = nodesToWrite.size();
@@ -610,8 +646,8 @@ void Open62541AsyncBackend::writeNodeAttributes(const QList<QOpcUaWriteItem> &no
     }
 
     quint32 requestId = 0;
-    UA_StatusCode result = __UA_Client_AsyncServiceEx(m_uaclient, &req, &UA_TYPES[UA_TYPES_WRITEREQUEST], &asyncBatchWriteCallback,
-                                                      &UA_TYPES[UA_TYPES_WRITERESPONSE], this, &requestId, m_asyncRequestTimeout);
+    UA_StatusCode result = __UA_Client_AsyncService(m_uaclient, &req, &UA_TYPES[UA_TYPES_WRITEREQUEST], &asyncBatchWriteCallback,
+                                                      &UA_TYPES[UA_TYPES_WRITERESPONSE], this, &requestId);
 
     if (result != UA_STATUSCODE_GOOD) {
         qCWarning(QT_OPCUA_PLUGINS_OPEN62541) << "Batch write failed:" << result;
@@ -620,6 +656,7 @@ void Open62541AsyncBackend::writeNodeAttributes(const QList<QOpcUaWriteItem> &no
     }
 
     m_asyncBatchWriteContext[requestId] = { nodesToWrite };
+    triggerIterateClient();
 }
 
 void Open62541AsyncBackend::readHistoryRaw(QOpcUaHistoryReadRawRequest request, QList<QByteArray> continuationPoints, bool releaseContinuationPoints, quint64 handle)
@@ -636,6 +673,7 @@ void Open62541AsyncBackend::readHistoryRaw(QOpcUaHistoryReadRawRequest request, 
 
     UA_HistoryReadRequest uarequest;
     UA_HistoryReadRequest_init(&uarequest);
+    uarequest.requestHeader.timeoutHint = m_asyncRequestTimeout;
     uarequest.nodesToReadSize = request.nodesToRead().size();
     uarequest.nodesToRead = static_cast<UA_HistoryReadValueId*>(UA_Array_new(uarequest.nodesToReadSize, &UA_TYPES[UA_TYPES_HISTORYREADVALUEID]));
     for (size_t i = 0; i < uarequest.nodesToReadSize; ++i) {
@@ -661,8 +699,8 @@ void Open62541AsyncBackend::readHistoryRaw(QOpcUaHistoryReadRawRequest request, 
     details->numValuesPerNode = request.numValuesPerNode();
 
     quint32 requestId = 0;
-    UA_StatusCode resultCode = __UA_Client_AsyncServiceEx(m_uaclient, &uarequest, &UA_TYPES[UA_TYPES_HISTORYREADREQUEST], &asyncReadHistoryDataCallBack,
-                                                      &UA_TYPES[UA_TYPES_HISTORYREADRESPONSE], this, &requestId, m_asyncRequestTimeout);
+    UA_StatusCode resultCode = __UA_Client_AsyncService(m_uaclient, &uarequest, &UA_TYPES[UA_TYPES_HISTORYREADREQUEST], &asyncReadHistoryDataCallBack,
+                                                      &UA_TYPES[UA_TYPES_HISTORYREADRESPONSE], this, &requestId);
 
     UA_HistoryReadRequest_clear(&uarequest);
 
@@ -673,6 +711,7 @@ void Open62541AsyncBackend::readHistoryRaw(QOpcUaHistoryReadRawRequest request, 
     }
 
     m_asyncReadHistoryDataContext[requestId] = {handle, request};
+    triggerIterateClient();
 }
 
 void Open62541AsyncBackend::readHistoryEvents(const QOpcUaHistoryReadEventRequest &request, const QList<QByteArray> &continuationPoints,
@@ -730,6 +769,7 @@ void Open62541AsyncBackend::readHistoryEvents(const QOpcUaHistoryReadEventReques
     }
 
     m_asyncReadHistoryEventsContext[requestId] = {handle, request};
+    triggerIterateClient();
 }
 
 void Open62541AsyncBackend::addNode(const QOpcUaAddNodeItem &nodeToAdd)
@@ -741,6 +781,7 @@ void Open62541AsyncBackend::addNode(const QOpcUaAddNodeItem &nodeToAdd)
 
     UA_AddNodesRequest req;
     UA_AddNodesRequest_init(&req);
+    req.requestHeader.timeoutHint = m_asyncRequestTimeout;
     UaDeleter<UA_AddNodesRequest> requestDeleter(&req, UA_AddNodesRequest_clear);
     req.nodesToAddSize = 1;
     req.nodesToAdd = UA_AddNodesItem_new();
@@ -767,10 +808,10 @@ void Open62541AsyncBackend::addNode(const QOpcUaAddNodeItem &nodeToAdd)
                     nodeToAdd.typeDefinition(), &req.nodesToAdd->typeDefinition);
 
     quint32 requestId = 0;
-    UA_StatusCode result = __UA_Client_AsyncServiceEx(m_uaclient, &req, &UA_TYPES[UA_TYPES_ADDNODESREQUEST],
+    UA_StatusCode result = __UA_Client_AsyncService(m_uaclient, &req, &UA_TYPES[UA_TYPES_ADDNODESREQUEST],
                                                       &asyncAddNodeCallback,
                                                       &UA_TYPES[UA_TYPES_ADDNODESRESPONSE],
-                                                      this, &requestId, m_asyncRequestTimeout);
+                                                      this, &requestId);
 
     if (result != UA_STATUSCODE_GOOD) {
         qCDebug(QT_OPCUA_PLUGINS_OPEN62541) << "Failed to add node:" << result;
@@ -779,6 +820,7 @@ void Open62541AsyncBackend::addNode(const QOpcUaAddNodeItem &nodeToAdd)
     }
 
     m_asyncAddNodeContext[requestId] = { nodeToAdd.requestedNewNodeId() };
+    triggerIterateClient();
 }
 
 void Open62541AsyncBackend::deleteNode(const QString &nodeId, bool deleteTargetReferences)
@@ -790,6 +832,7 @@ void Open62541AsyncBackend::deleteNode(const QString &nodeId, bool deleteTargetR
 
     UA_DeleteNodesRequest request;
     UA_DeleteNodesRequest_init(&request);
+    request.requestHeader.timeoutHint = m_asyncRequestTimeout;
     UaDeleter<UA_DeleteNodesRequest> requestDeleter(&request, UA_DeleteNodesRequest_clear);
 
     request.nodesToDeleteSize = 1;
@@ -799,10 +842,10 @@ void Open62541AsyncBackend::deleteNode(const QString &nodeId, bool deleteTargetR
     request.nodesToDelete->deleteTargetReferences = deleteTargetReferences;
 
     quint32 requestId = 0;
-    UA_StatusCode result = __UA_Client_AsyncServiceEx(m_uaclient, &request, &UA_TYPES[UA_TYPES_DELETENODESREQUEST],
+    UA_StatusCode result = __UA_Client_AsyncService(m_uaclient, &request, &UA_TYPES[UA_TYPES_DELETENODESREQUEST],
                                                       &asyncDeleteNodeCallback,
                                                       &UA_TYPES[UA_TYPES_DELETENODESRESPONSE],
-                                                      this, &requestId, m_asyncRequestTimeout);
+                                                      this, &requestId);
 
     QOpcUa::UaStatusCode resultStatus = static_cast<QOpcUa::UaStatusCode>(result);
 
@@ -813,6 +856,7 @@ void Open62541AsyncBackend::deleteNode(const QString &nodeId, bool deleteTargetR
     }
 
     m_asyncDeleteNodeContext[requestId] = { nodeId };
+    triggerIterateClient();
 }
 
 void Open62541AsyncBackend::addReference(const QOpcUaAddReferenceItem &referenceToAdd)
@@ -826,6 +870,7 @@ void Open62541AsyncBackend::addReference(const QOpcUaAddReferenceItem &reference
 
     UA_AddReferencesRequest request;
     UA_AddReferencesRequest_init(&request);
+    request.requestHeader.timeoutHint = m_asyncRequestTimeout;
     UaDeleter<UA_AddReferencesRequest> requestDeleter(&request, UA_AddReferencesRequest_clear);
 
     request.referencesToAddSize = 1;
@@ -843,10 +888,10 @@ void Open62541AsyncBackend::addReference(const QOpcUaAddReferenceItem &reference
                                                                &request.referencesToAdd->targetServerUri);
 
     quint32 requestId = 0;
-    UA_StatusCode result = __UA_Client_AsyncServiceEx(m_uaclient, &request, &UA_TYPES[UA_TYPES_ADDREFERENCESREQUEST],
+    UA_StatusCode result = __UA_Client_AsyncService(m_uaclient, &request, &UA_TYPES[UA_TYPES_ADDREFERENCESREQUEST],
                                                       &asyncAddReferenceCallback,
                                                       &UA_TYPES[UA_TYPES_ADDREFERENCESRESPONSE],
-                                                      this, &requestId, m_asyncRequestTimeout);
+                                                      this, &requestId);
 
     QOpcUa::UaStatusCode statusCode = static_cast<QOpcUa::UaStatusCode>(result);
     if (result != UA_STATUSCODE_GOOD) {
@@ -859,6 +904,7 @@ void Open62541AsyncBackend::addReference(const QOpcUaAddReferenceItem &reference
 
     m_asyncAddReferenceContext[requestId] = { referenceToAdd.sourceNodeId(), referenceToAdd.referenceTypeId(),
                                               referenceToAdd.targetNodeId(), referenceToAdd.isForwardReference() };
+    triggerIterateClient();
 }
 
 void Open62541AsyncBackend::deleteReference(const QOpcUaDeleteReferenceItem &referenceToDelete)
@@ -872,6 +918,7 @@ void Open62541AsyncBackend::deleteReference(const QOpcUaDeleteReferenceItem &ref
 
     UA_DeleteReferencesRequest request;
     UA_DeleteReferencesRequest_init(&request);
+    request.requestHeader.timeoutHint = m_asyncRequestTimeout;
     UaDeleter<UA_DeleteReferencesRequest> requestDeleter(&request, UA_DeleteReferencesRequest_clear);
 
     request.referencesToDeleteSize = 1;
@@ -886,10 +933,10 @@ void Open62541AsyncBackend::deleteReference(const QOpcUaDeleteReferenceItem &ref
     request.referencesToDelete->deleteBidirectional = referenceToDelete.deleteBidirectional();
 
     quint32 requestId = 0;
-    UA_StatusCode result = __UA_Client_AsyncServiceEx(m_uaclient, &request, &UA_TYPES[UA_TYPES_DELETEREFERENCESREQUEST],
+    UA_StatusCode result = __UA_Client_AsyncService(m_uaclient, &request, &UA_TYPES[UA_TYPES_DELETEREFERENCESREQUEST],
                                                       &asyncDeleteReferenceCallback,
                                                       &UA_TYPES[UA_TYPES_DELETEREFERENCESRESPONSE],
-                                                      this, &requestId, m_asyncRequestTimeout);
+                                                      this, &requestId);
 
     QOpcUa::UaStatusCode statusCode = static_cast<QOpcUa::UaStatusCode>(result);
     if (result != UA_STATUSCODE_GOOD) {
@@ -904,6 +951,7 @@ void Open62541AsyncBackend::deleteReference(const QOpcUaDeleteReferenceItem &ref
 
     m_asyncDeleteReferenceContext[requestId] = { referenceToDelete.sourceNodeId(), referenceToDelete.referenceTypeId(),
                                                referenceToDelete.targetNodeId(), referenceToDelete.isForwardReference()};
+    triggerIterateClient();
 }
 
 static void convertBrowseResult(UA_BrowseResult *src, size_t referencesSize, QList<QOpcUaReferenceDescription> &dst)
@@ -933,6 +981,7 @@ void Open62541AsyncBackend::browse(quint64 handle, UA_NodeId id, const QOpcUaBro
 
     UA_BrowseRequest uaRequest;
     UA_BrowseRequest_init(&uaRequest);
+    uaRequest.requestHeader.timeoutHint = m_asyncRequestTimeout;
     UaDeleter<UA_BrowseRequest> requestDeleter(&uaRequest, UA_BrowseRequest_clear);
 
     uaRequest.nodesToBrowse = UA_BrowseDescription_new();
@@ -946,8 +995,8 @@ void Open62541AsyncBackend::browse(quint64 handle, UA_NodeId id, const QOpcUaBro
     uaRequest.requestedMaxReferencesPerNode = 0; // Let the server choose a maximum value
 
     quint32 requestId = 0;
-    UA_StatusCode result = __UA_Client_AsyncServiceEx(m_uaclient, &uaRequest, &UA_TYPES[UA_TYPES_BROWSEREQUEST], &asyncBrowseCallback,
-                                                      &UA_TYPES[UA_TYPES_BROWSERESPONSE], this, &requestId, m_asyncRequestTimeout);
+    UA_StatusCode result = __UA_Client_AsyncService(m_uaclient, &uaRequest, &UA_TYPES[UA_TYPES_BROWSEREQUEST], &asyncBrowseCallback,
+                                                      &UA_TYPES[UA_TYPES_BROWSERESPONSE], this, &requestId);
 
     if (result != UA_STATUSCODE_GOOD) {
         emit browseFinished(handle, QList<QOpcUaReferenceDescription>(), static_cast<QOpcUa::UaStatusCode>(result));
@@ -955,6 +1004,7 @@ void Open62541AsyncBackend::browse(quint64 handle, UA_NodeId id, const QOpcUaBro
     }
 
     m_asyncBrowseContext[requestId] = { handle, false, QList<QOpcUaReferenceDescription>() };
+    triggerIterateClient();
 }
 
 void Open62541AsyncBackend::clientStateCallback(UA_Client *client,
@@ -967,14 +1017,17 @@ void Open62541AsyncBackend::clientStateCallback(UA_Client *client,
     Q_UNUSED(connectStatus)
 
     Open62541AsyncBackend *backend = static_cast<Open62541AsyncBackend *>(UA_Client_getContext(client));
-    if (!backend || !backend->m_useStateCallback)
+    if (!backend)
         return;
 
-    backend->m_useStateCallback = false;
+    // The connection is gone, no need to keep iterating
     backend->m_clientIterateTimer.stop();
+    backend->m_clientIterateOnDemandTimer.stop();
 
-    // UA_Client_disconnect() must be called from outside this callback or open62541 will crash
-    backend->m_disconnectAfterStateChangeTimer.start();
+    // UA_Client_disconnect() must be called from outside this callback
+    QMetaObject::invokeMethod(backend, [backend]() {
+        backend->disconnectInternal(QOpcUaClient::ConnectionError);
+    }, Qt::QueuedConnection);
 }
 
 void Open62541AsyncBackend::inactivityCallback(UA_Client *client)
@@ -987,6 +1040,8 @@ void Open62541AsyncBackend::inactivityCallback(UA_Client *client)
 void Open62541AsyncBackend::connectToEndpoint(const QOpcUaEndpointDescription &endpoint)
 {
     disconnectInternal();
+
+    emit stateAndOrErrorChanged(QOpcUaClient::Connecting, QOpcUaClient::NoError);
 
     QString errorMessage;
     if (!verifyEndpointDescription(endpoint, &errorMessage)) {
@@ -1007,22 +1062,43 @@ void Open62541AsyncBackend::connectToEndpoint(const QOpcUaEndpointDescription &e
     emit stateAndOrErrorChanged(QOpcUaClient::Connecting, QOpcUaClient::NoError);
 
     UA_ClientConfig initialConfig {};
-    initialConfig.logger = m_open62541Logger;
+    initialConfig.logging = &m_open62541Logger;
     m_uaclient = UA_Client_newWithConfig(&initialConfig);
 
     auto conf = UA_Client_getConfig(m_uaclient);
 
     const auto identity = m_clientImpl->m_client->applicationIdentity();
     const auto authInfo = m_clientImpl->m_client->authenticationInformation();
-    const auto connectionSettings = m_clientImpl->m_client->connectionSettings();
+    m_currentConnectionSettings = m_clientImpl->m_client->connectionSettings();
 #ifdef UA_ENABLE_ENCRYPTION
     const auto pkiConfig = m_clientImpl->m_client->pkiConfiguration();
 #endif
 
+#ifndef UA_ENABLE_ENCRYPTION
+    if (authInfo.authenticationType() == QOpcUaUserTokenPolicy::TokenType::Certificate) {
+        qCWarning(QT_OPCUA_PLUGINS_OPEN62541) << "The open62541 plugin has been built without encryption support,"
+                                                 "certificate auth is not supported";
+        emit stateAndOrErrorChanged(QOpcUaClient::Disconnected,
+                                    QOpcUaClient::ClientError::UnsupportedAuthenticationInformation);
+        return;
+    }
+#else
+    if (authInfo.authenticationType() == QOpcUaUserTokenPolicy::TokenType::Certificate) {
+        if (!authInfo.authenticationData().isValid() && !pkiConfig.isKeyAndCertificateFileSet()) {
+            qCWarning(QT_OPCUA_PLUGINS_OPEN62541) << "Unable to do certificate auth when no certificate is set";
+            emit stateAndOrErrorChanged(QOpcUaClient::Disconnected,
+                                        QOpcUaClient::ClientError::UnsupportedAuthenticationInformation);
+            return;
+        }
+    }
+#endif
+
 #ifdef UA_ENABLE_ENCRYPTION
+    UA_ByteString privateKey = UA_BYTESTRING_NULL;
+    UaDeleter<UA_ByteString> privateKeyDeleter(&privateKey, &UA_ByteString_clear);
+
     if (pkiConfig.isPkiValid()) {
         UA_ByteString localCertificate;
-        UA_ByteString privateKey;
         UA_ByteString *trustList = nullptr;
         qsizetype trustListSize = 0;
         UA_ByteString *revocationList = nullptr;
@@ -1040,7 +1116,7 @@ void Open62541AsyncBackend::connectToEndpoint(const QOpcUaEndpointDescription &e
 
         UaDeleter<UA_ByteString> clientCertDeleter(&localCertificate, &UA_ByteString_clear);
 
-        success = loadFileToByteString(pkiConfig.privateKeyFile(), &privateKey);
+        success = loadPrivateKeyWithPotentialPassword(pkiConfig.privateKeyFile(), privateKey);
 
         if (!success) {
             qCWarning(QT_OPCUA_PLUGINS_OPEN62541) << "Failed to load private key";
@@ -1049,8 +1125,6 @@ void Open62541AsyncBackend::connectToEndpoint(const QOpcUaEndpointDescription &e
             m_uaclient = nullptr;
             return;
         }
-
-        UaDeleter<UA_ByteString> privateKeyDeleter(&privateKey, &UA_ByteString_clear);
 
         success = loadAllFilesInDirectory(pkiConfig.trustListDirectory(), &trustList, &trustListSize);
 
@@ -1076,11 +1150,48 @@ void Open62541AsyncBackend::connectToEndpoint(const QOpcUaEndpointDescription &e
 
         UaArrayDeleter<UA_TYPES_BYTESTRING> revocationListDeleter(revocationList, revocationListSize);
 
-        UA_StatusCode result = UA_ClientConfig_setDefaultEncryption(conf, localCertificate, privateKey, trustList,
-                                                                    trustListSize, revocationList, revocationListSize);
+        // UA_ClientConfig_setDefaultEncryption() no longer adds Basic128Rsa15 and Basic256 to the security policies in v1.4.7
+        // This must be done manually (for now).
+        UA_StatusCode result = UA_ClientConfig_setDefault(conf);
 
         if (result != UA_STATUSCODE_GOOD) {
-            qCWarning(QT_OPCUA_PLUGINS_OPEN62541) << "Failed to initialize PKI:" << static_cast<QOpcUa::UaStatusCode>(result);
+            qCWarning(QT_OPCUA_PLUGINS_OPEN62541) << "Failed to set client config defaults:" << static_cast<QOpcUa::UaStatusCode>(result);
+            emit stateAndOrErrorChanged(QOpcUaClient::Disconnected, QOpcUaClient::AccessDenied);
+            UA_Client_delete(m_uaclient);
+            m_uaclient = nullptr;
+            return;
+        }
+
+        if (conf->certificateVerification.clear)
+            conf->certificateVerification.clear(&conf->certificateVerification);
+        result = UA_CertificateVerification_Trustlist(&conf->certificateVerification,
+                                                      trustList, trustListSize,
+                                                      nullptr, 0,
+                                                      revocationList, revocationListSize);
+
+        if (result != UA_STATUSCODE_GOOD) {
+            qCWarning(QT_OPCUA_PLUGINS_OPEN62541) << "Failed to set up certificate verification:" << static_cast<QOpcUa::UaStatusCode>(result);
+            emit stateAndOrErrorChanged(QOpcUaClient::Disconnected, QOpcUaClient::AccessDenied);
+            UA_Client_delete(m_uaclient);
+            m_uaclient = nullptr;
+            return;
+        }
+
+        QString usedAuthSecurityPolicy;
+        result = setAuthSecurityPolicyInClientConfig(conf, localCertificate, privateKey, endpoint, authInfo.authenticationType(), &usedAuthSecurityPolicy);
+
+        if (result != UA_STATUSCODE_GOOD) {
+            qCWarning(QT_OPCUA_PLUGINS_OPEN62541) << "Failed to set up auth security policies:" << static_cast<QOpcUa::UaStatusCode>(result);
+            emit stateAndOrErrorChanged(QOpcUaClient::Disconnected, QOpcUaClient::AccessDenied);
+            UA_Client_delete(m_uaclient);
+            m_uaclient = nullptr;
+            return;
+        }
+
+        result = setSecurityPolicyInClientConfig(conf, localCertificate, privateKey, endpoint, usedAuthSecurityPolicy);
+
+        if (result != UA_STATUSCODE_GOOD) {
+            qCWarning(QT_OPCUA_PLUGINS_OPEN62541) << "Failed to set up security policies:" << static_cast<QOpcUa::UaStatusCode>(result);
             emit stateAndOrErrorChanged(QOpcUaClient::Disconnected, QOpcUaClient::AccessDenied);
             UA_Client_delete(m_uaclient);
             m_uaclient = nullptr;
@@ -1094,11 +1205,11 @@ void Open62541AsyncBackend::connectToEndpoint(const QOpcUaEndpointDescription &e
     }
 
     using Timeout_t = decltype(conf->timeout);
-    conf->timeout = qt_saturate<Timeout_t>(connectionSettings.connectTimeout().count());
-    conf->secureChannelLifeTime = qt_saturate<Timeout_t>(connectionSettings.secureChannelLifeTime().count());
-    conf->requestedSessionTimeout = qt_saturate<Timeout_t>(connectionSettings.sessionTimeout().count());
+    conf->timeout = qt_saturate<Timeout_t>(m_currentConnectionSettings.connectTimeout().count());
+    conf->secureChannelLifeTime = qt_saturate<Timeout_t>(m_currentConnectionSettings.secureChannelLifeTime().count());
+    conf->requestedSessionTimeout = qt_saturate<Timeout_t>(m_currentConnectionSettings.sessionTimeout().count());
 
-    const auto sessionLocaleIds = connectionSettings.sessionLocaleIds();
+    const auto sessionLocaleIds = m_currentConnectionSettings.sessionLocaleIds();
     if (!sessionLocaleIds.isEmpty()) {
         conf->sessionLocaleIds = static_cast<UA_String *>(UA_Array_new(sessionLocaleIds.size(), &UA_TYPES[UA_TYPES_STRING]));
         for (qsizetype i = 0; i < sessionLocaleIds.size(); ++i)
@@ -1111,7 +1222,6 @@ void Open62541AsyncBackend::connectToEndpoint(const QOpcUaEndpointDescription &e
     UA_String_clear(&conf->clientDescription.productUri);
 
     conf->clientContext = this;
-    conf->stateCallback = clientStateCallback;
 
     // Send periodic read requests as keepalive
     conf->connectivityCheckInterval = 60000;
@@ -1125,46 +1235,140 @@ void Open62541AsyncBackend::connectToEndpoint(const QOpcUaEndpointDescription &e
     conf->securityPolicyUri = UA_STRING_ALLOC(endpoint.securityPolicy().toUtf8().constData());
     conf->securityMode = static_cast<UA_MessageSecurityMode>(endpoint.securityMode());
 
-    UA_StatusCode ret;
+    UA_StatusCode ret = UA_STATUSCODE_BADINTERNALERROR;
+    bool retry = false;
 
-    if (authInfo.authenticationType() == QOpcUaUserTokenPolicy::TokenType::Anonymous) {
-        ret = UA_Client_connect(m_uaclient, endpoint.endpointUrl().toUtf8().constData());
-    } else if (authInfo.authenticationType() == QOpcUaUserTokenPolicy::TokenType::Username) {
+    do {
+        retry = false;
 
-        bool suitableTokenFound = false;
-        const auto userIdentityTokens = endpoint.userIdentityTokens();
-        for (const auto &token : userIdentityTokens) {
-            if (token.tokenType() == QOpcUaUserTokenPolicy::Username &&
-                    m_clientImpl->supportedSecurityPolicies().contains(token.securityPolicy())) {
-                suitableTokenFound = true;
-                break;
+        if (authInfo.authenticationType() == QOpcUaUserTokenPolicy::TokenType::Anonymous) {
+            ret = UA_Client_connect(m_uaclient, endpoint.endpointUrl().toUtf8().constData());
+        } else if (authInfo.authenticationType() == QOpcUaUserTokenPolicy::TokenType::Username) {
+
+            bool suitableTokenFound = false;
+            const auto userIdentityTokens = endpoint.userIdentityTokens();
+            for (const auto &token : userIdentityTokens) {
+                if (token.tokenType() == QOpcUaUserTokenPolicy::Username &&
+                    (token.securityPolicy().isEmpty() || m_clientImpl->supportedSecurityPolicies().contains(token.securityPolicy()))) {
+                    suitableTokenFound = true;
+                    break;
+                }
             }
-        }
 
-        if (!suitableTokenFound) {
-            qCWarning(QT_OPCUA_PLUGINS_OPEN62541) << "No suitable user token policy found";
-            emit stateAndOrErrorChanged(QOpcUaClient::Disconnected, QOpcUaClient::ClientError::NoError);
+            if (!suitableTokenFound) {
+                qCWarning(QT_OPCUA_PLUGINS_OPEN62541) << "No suitable user token policy found";
+                emit stateAndOrErrorChanged(QOpcUaClient::Disconnected, QOpcUaClient::ClientError::NoError);
+                UA_Client_delete(m_uaclient);
+                m_uaclient = nullptr;
+                return;
+            }
+
+            const auto credentials = authInfo.authenticationData().value<QPair<QString, QString>>();
+            ret = UA_Client_connectUsername(m_uaclient, endpoint.endpointUrl().toUtf8().constData(),
+                                             credentials.first.toUtf8().constData(), credentials.second.toUtf8().constData());
+        } else if (authInfo.authenticationType() == QOpcUaUserTokenPolicy::TokenType::Certificate) {
+#ifdef UA_ENABLE_ENCRYPTION
+            QString certPath;
+            QString keyPath;
+
+            if (authInfo.authenticationData().canConvert<QPair<QString, QString>>()) {
+                const auto authPaths = authInfo.authenticationData().value<QPair<QString, QString>>();
+
+                if (authPaths.first.isEmpty() || authPaths.second.isEmpty()) {
+                    qCWarning(QT_OPCUA_PLUGINS_OPEN62541) << "Certificate and private key path must be set for certificate auth";
+                    emit stateAndOrErrorChanged(QOpcUaClient::Disconnected, QOpcUaClient::ClientError::UnsupportedAuthenticationInformation);
+                    UA_Client_delete(m_uaclient);
+                    m_uaclient = nullptr;
+                    return;
+                }
+
+                certPath = authPaths.first;
+                keyPath = authPaths.second;
+            } else {
+                certPath = pkiConfig.clientCertificateFile();
+                keyPath = pkiConfig.privateKeyFile();
+            }
+
+            UA_ByteString cert = UA_BYTESTRING_NULL;
+            UA_ByteString key = UA_BYTESTRING_NULL;
+
+            if (!loadFileToByteString(certPath, &cert)) {
+                qCWarning(QT_OPCUA_PLUGINS_OPEN62541) << "Failed to load certificate for certificate auth";
+                emit stateAndOrErrorChanged(QOpcUaClient::Disconnected, QOpcUaClient::ClientError::UnsupportedAuthenticationInformation);
+                UA_Client_delete(m_uaclient);
+                m_uaclient = nullptr;
+                return;
+            }
+
+            UaDeleter<UA_ByteString> certDeleter(&cert, &UA_ByteString_clear);
+
+            if (keyPath == pkiConfig.privateKeyFile()) {
+                UA_ByteString_copy(&privateKey, &key);
+            } else if (!loadPrivateKeyWithPotentialPassword(keyPath, key)) {
+                qCWarning(QT_OPCUA_PLUGINS_OPEN62541) << "Failed to load private key for certificate auth";
+                emit stateAndOrErrorChanged(QOpcUaClient::Disconnected, QOpcUaClient::ClientError::UnsupportedAuthenticationInformation);
+                UA_Client_delete(m_uaclient);
+                m_uaclient = nullptr;
+                return;
+            }
+
+            UaDeleter<UA_ByteString> keyDeleter(&key, &UA_ByteString_clear);
+
+
+            // UA_ClientConfig_setAuthenticationCert() overwrites the auth security policies,
+            // so we must call our custom implementation
+
+            UA_X509IdentityToken *token = UA_X509IdentityToken_new();
+            UA_StatusCode result = UA_ByteString_copy(&cert, &token->certificateData);
+            UA_ExtensionObject_clear(&conf->userIdentityToken);
+            conf->userIdentityToken.encoding = UA_EXTENSIONOBJECT_DECODED;
+            conf->userIdentityToken.content.decoded.type = &UA_TYPES[UA_TYPES_X509IDENTITYTOKEN];
+            conf->userIdentityToken.content.decoded.data = token;
+
+            if (result == UA_STATUSCODE_GOOD)
+                result = setAuthSecurityPolicyInClientConfig(conf, cert, key, endpoint, authInfo.authenticationType(), nullptr);
+
+            if (result != UA_STATUSCODE_GOOD) {
+                qCWarning(QT_OPCUA_PLUGINS_OPEN62541) << "Failed to initialize certificate auth:" << UA_StatusCode_name(result);
+                emit stateAndOrErrorChanged(QOpcUaClient::Disconnected, QOpcUaClient::ClientError::UnsupportedAuthenticationInformation);
+                UA_Client_delete(m_uaclient);
+                m_uaclient = nullptr;
+                return;
+            }
+
+            ret = UA_Client_connect(m_uaclient, endpoint.endpointUrl().toUtf8().constData());
+#endif
+        } else {
+            emit stateAndOrErrorChanged(QOpcUaClient::Disconnected, QOpcUaClient::UnsupportedAuthenticationInformation);
+            qCWarning(QT_OPCUA_PLUGINS_OPEN62541) << "Failed to connect: Selected authentication type"
+                                              << authInfo.authenticationType() << "is not supported.";
             UA_Client_delete(m_uaclient);
             m_uaclient = nullptr;
             return;
         }
 
-        const auto credentials = authInfo.authenticationData().value<QPair<QString, QString>>();
-        ret = UA_Client_connectUsername(m_uaclient, endpoint.endpointUrl().toUtf8().constData(),
-                                         credentials.first.toUtf8().constData(), credentials.second.toUtf8().constData());
-    } else {
-        emit stateAndOrErrorChanged(QOpcUaClient::Disconnected, QOpcUaClient::UnsupportedAuthenticationInformation);
-        qCWarning(QT_OPCUA_PLUGINS_OPEN62541) << "Failed to connect: Selected authentication type"
-                                          << authInfo.authenticationType() << "is not supported.";
-        UA_Client_delete(m_uaclient);
-        m_uaclient = nullptr;
-        return;
-    }
+#ifdef UA_ENABLE_ENCRYPTION
+        if (ret == UA_STATUSCODE_BADCERTIFICATEUNTRUSTED) {
+            QOpcUaErrorState errorState;
+            errorState.setClientSideError(true);
+            errorState.setConnectionStep(QOpcUaErrorState::ConnectionStep::CertificateValidation);
+            errorState.setErrorCode(QOpcUa::UaStatusCode::BadCertificateUntrusted);
+
+            emit QOpcUaBackend::connectError(&errorState);
+
+            if (errorState.ignoreError()) {
+                // Use the AcceptAll certificate verification
+                UA_CertificateVerification_AcceptAll(&conf->certificateVerification);
+                retry = true;
+            }
+        }
+#endif
+    } while (retry);
 
     if (ret != UA_STATUSCODE_GOOD) {
         UA_Client_delete(m_uaclient);
         m_uaclient = nullptr;
-        QOpcUaClient::ClientError error = ret == UA_STATUSCODE_BADUSERACCESSDENIED ? QOpcUaClient::AccessDenied : QOpcUaClient::UnknownError;
+        QOpcUaClient::ClientError error = ret == UA_STATUSCODE_BADUSERACCESSDENIED || ret == UA_STATUSCODE_BADIDENTITYTOKENINVALID ? QOpcUaClient::AccessDenied : QOpcUaClient::UnknownError;
 
         QOpcUaErrorState errorState;
         errorState.setConnectionStep(QOpcUaErrorState::ConnectionStep::Unknown);
@@ -1181,9 +1385,12 @@ void Open62541AsyncBackend::connectToEndpoint(const QOpcUaEndpointDescription &e
         return;
     }
 
-    conf->timeout = qt_saturate<Timeout_t>(connectionSettings.requestTimeout().count());
+    conf->timeout = qt_saturate<Timeout_t>(m_currentConnectionSettings.requestTimeout().count());
 
-    m_useStateCallback = true;
+    // Attach the client state callback after the successful connect
+    conf->stateCallback = clientStateCallback;
+    conf->noReconnect = true;
+
     m_clientIterateTimer.start(m_clientIterateInterval);
     emit stateAndOrErrorChanged(QOpcUaClient::Connected, QOpcUaClient::NoError);
 }
@@ -1196,8 +1403,9 @@ void Open62541AsyncBackend::disconnectFromEndpoint()
 void Open62541AsyncBackend::requestEndpoints(const QUrl &url)
 {
     UA_ClientConfig initialConfig {};
-    initialConfig.logger = m_open62541Logger;
+    initialConfig.logging = &m_open62541Logger;
     UA_ClientConfig_setDefault(&initialConfig);
+
     UA_Client *tmpClient = UA_Client_newWithConfig(&initialConfig);
 
     size_t numEndpoints = 0;
@@ -1254,6 +1462,58 @@ void Open62541AsyncBackend::requestEndpoints(const QUrl &url)
     UA_Client_delete(tmpClient);
 }
 
+void Open62541AsyncBackend::handleConnectionSettingsChanged(const QOpcUaConnectionSettings &settings)
+{
+    // If there is no client, the settings will be applied during the next connectToEndpoint() call
+    if (m_uaclient) {
+        if (m_currentConnectionSettings.requestTimeout() != settings.requestTimeout()) {
+            qCWarning(QT_OPCUA_PLUGINS_OPEN62541) << "Changing the request timeout for an established connection is not supported."
+                                                  << "The change will be active after the next connectToEndpoint() call.";
+        }
+
+        if (m_currentConnectionSettings.secureChannelLifeTime() != settings.secureChannelLifeTime()) {
+            qCWarning(QT_OPCUA_PLUGINS_OPEN62541) << "Changing the secure channel lifetime for an established connection is not supported."
+                                                  << "The change will be active after the next connectToEndpoint() call.";
+        }
+
+        if (m_currentConnectionSettings.sessionTimeout() != settings.sessionTimeout()) {
+            qCWarning(QT_OPCUA_PLUGINS_OPEN62541) << "Changing the session timeout for an established connection is not supported."
+                                                  << "The change will be active after the next connectToEndpoint() call.";
+        }
+
+        if (m_currentConnectionSettings.connectTimeout() != settings.connectTimeout()) {
+            qCWarning(QT_OPCUA_PLUGINS_OPEN62541) << "Changing the connect timeout for an established connection is not supported."
+                                                  << "The change will be active after the next connectToEndpoint() call.";
+        }
+
+        if (m_currentConnectionSettings.sessionLocaleIds() != settings.sessionLocaleIds()) {
+            const auto conf = UA_Client_getConfig(m_uaclient);
+
+            if (conf->sessionLocaleIdsSize) {
+                UA_Array_delete(conf->sessionLocaleIds, conf->sessionLocaleIdsSize, &UA_TYPES[UA_TYPES_LOCALEID]);
+                conf->sessionLocaleIdsSize = 0;
+            }
+
+            if (!settings.sessionLocaleIds().isEmpty()) {
+                const auto sessionLocaleIds = settings.sessionLocaleIds();
+                conf->sessionLocaleIds = static_cast<UA_String *>(UA_Array_new(sessionLocaleIds.size(), &UA_TYPES[UA_TYPES_STRING]));
+                for (qsizetype i = 0; i < sessionLocaleIds.size(); ++i)
+                    conf->sessionLocaleIds[i] = UA_STRING_ALLOC(sessionLocaleIds[i].toUtf8().constData());
+                conf->sessionLocaleIdsSize = sessionLocaleIds.size();
+            }
+
+            const auto result = UA_Client_activateCurrentSession(m_uaclient);
+            if (result != UA_STATUSCODE_GOOD) {
+                qCWarning(QT_OPCUA_PLUGINS_OPEN62541) << "Changing the session locale Ids failed with" << UA_StatusCode_name(result);
+            } else {
+                qCInfo(QT_OPCUA_PLUGINS_OPEN62541) << "The session locale ids were updated to" << settings.sessionLocaleIds().join(QChar::fromLatin1(' '));
+            }
+        }
+
+        m_currentConnectionSettings = settings;
+    }
+}
+
 void Open62541AsyncBackend::iterateClient()
 {
     if (!m_uaclient)
@@ -1264,6 +1524,18 @@ void Open62541AsyncBackend::iterateClient()
                               std::max<quint32>(1, m_clientIterateInterval / 2)) == UA_STATUSCODE_BADSERVERNOTCONNECTED) {
         qCWarning(QT_OPCUA_PLUGINS_OPEN62541) << "Unable to send publish request";
         cleanupSubscriptions();
+    }
+}
+
+void Open62541AsyncBackend::triggerIterateClient()
+{
+    // This is 5 seconds faster over all client tests compared to just
+    // calling QTimer::singleShot() every time
+    if (!m_clientIterateOnDemandTimer.isActive()) {
+        // Restart the normal iterate timer, no need to have more invocations
+        if (m_clientIterateTimer.isActive())
+            m_clientIterateTimer.start(m_clientIterateInterval);
+        m_clientIterateOnDemandTimer.start(0);
     }
 }
 
@@ -1328,6 +1600,7 @@ void Open62541AsyncBackend::registerNodes(const QStringList &nodesToRegister)
 
     UA_RegisterNodesRequest req;
     UA_RegisterNodesRequest_init(&req);
+    req.requestHeader.timeoutHint = m_asyncRequestTimeout;
 
     req.nodesToRegisterSize = nodesToRegister.size();
     req.nodesToRegister = static_cast<UA_NodeId *>(UA_Array_new(nodesToRegister.size(), &UA_TYPES[UA_TYPES_NODEID]));
@@ -1336,17 +1609,19 @@ void Open62541AsyncBackend::registerNodes(const QStringList &nodesToRegister)
         QOpen62541ValueConverter::scalarFromQt<UA_NodeId, QString>(nodesToRegister.at(i), &req.nodesToRegister[i]);
 
     quint32 requestId = 0;
-    UA_StatusCode result = __UA_Client_AsyncServiceEx(m_uaclient, &req, &UA_TYPES[UA_TYPES_REGISTERNODESREQUEST],
+    UA_StatusCode result = __UA_Client_AsyncService(m_uaclient, &req, &UA_TYPES[UA_TYPES_REGISTERNODESREQUEST],
                                                       &asyncRegisterNodesCallback,
                                                       &UA_TYPES[UA_TYPES_REGISTERNODESRESPONSE],
-                                                      this, &requestId, m_asyncRequestTimeout);
+                                                      this, &requestId);
 
     UA_RegisterNodesRequest_clear(&req);
 
-    if (result != UA_STATUSCODE_GOOD)
+    if (result != UA_STATUSCODE_GOOD)  {
         emit registerNodesFinished(nodesToRegister, {}, QOpcUa::UaStatusCode(result));
-    else
+    } else {
         m_asyncRegisterUnregisterNodesContext[requestId] = { nodesToRegister };
+        triggerIterateClient();
+    }
 }
 
 void Open62541AsyncBackend::unregisterNodes(const QStringList &nodesToUnregister)
@@ -1358,6 +1633,7 @@ void Open62541AsyncBackend::unregisterNodes(const QStringList &nodesToUnregister
 
     UA_UnregisterNodesRequest req;
     UA_UnregisterNodesRequest_init(&req);
+    req.requestHeader.timeoutHint = m_asyncRequestTimeout;
 
     req.nodesToUnregisterSize = nodesToUnregister.size();
     req.nodesToUnregister = static_cast<UA_NodeId *>(UA_Array_new(nodesToUnregister.size(), &UA_TYPES[UA_TYPES_NODEID]));
@@ -1366,17 +1642,19 @@ void Open62541AsyncBackend::unregisterNodes(const QStringList &nodesToUnregister
         QOpen62541ValueConverter::scalarFromQt<UA_NodeId, QString>(nodesToUnregister.at(i), &req.nodesToUnregister[i]);
 
     quint32 requestId = 0;
-    UA_StatusCode result = __UA_Client_AsyncServiceEx(m_uaclient, &req, &UA_TYPES[UA_TYPES_UNREGISTERNODESREQUEST],
-                                                      &asyncUnregisterNodesCallback,
-                                                      &UA_TYPES[UA_TYPES_UNREGISTERNODESRESPONSE],
-                                                      this, &requestId, m_asyncRequestTimeout);
+    UA_StatusCode result = __UA_Client_AsyncService(m_uaclient, &req, &UA_TYPES[UA_TYPES_UNREGISTERNODESREQUEST],
+                                                    &asyncUnregisterNodesCallback,
+                                                    &UA_TYPES[UA_TYPES_UNREGISTERNODESRESPONSE],
+                                                    this, &requestId);
 
     UA_UnregisterNodesRequest_clear(&req);
 
-    if (result != UA_STATUSCODE_GOOD)
+    if (result != UA_STATUSCODE_GOOD) {
         emit unregisterNodesFinished(nodesToUnregister, QOpcUa::UaStatusCode(result));
-    else
+    } else {
         m_asyncRegisterUnregisterNodesContext[requestId] = { nodesToUnregister };
+        triggerIterateClient();
+    }
 }
 
 void Open62541AsyncBackend::asyncMethodCallback(UA_Client *client, void *userdata, UA_UInt32 requestId, void *response)
@@ -1585,6 +1863,7 @@ void Open62541AsyncBackend::asyncBrowseCallback(UA_Client *client, void *userdat
     if (statusCode == UA_STATUSCODE_GOOD && continuationPoint && continuationPoint->length) {
         UA_BrowseNextRequest request;
         UA_BrowseNextRequest_init(&request);
+        request.requestHeader.timeoutHint = backend->m_asyncRequestTimeout;
         UaDeleter<UA_BrowseNextRequest> requestDeleter(&request, UA_BrowseNextRequest_clear);
 
         request.continuationPointsSize = 1;
@@ -1592,12 +1871,13 @@ void Open62541AsyncBackend::asyncBrowseCallback(UA_Client *client, void *userdat
         UA_ByteString_copy(continuationPoint, request.continuationPoints);
 
         quint32 requestId = 0;
-        statusCode =__UA_Client_AsyncServiceEx(client, &request, &UA_TYPES[UA_TYPES_BROWSENEXTREQUEST], &asyncBrowseCallback,
-                                   &UA_TYPES[UA_TYPES_BROWSENEXTRESPONSE], backend, &requestId, backend->m_asyncRequestTimeout);
+        statusCode =__UA_Client_AsyncService(client, &request, &UA_TYPES[UA_TYPES_BROWSENEXTREQUEST], &asyncBrowseCallback,
+                                   &UA_TYPES[UA_TYPES_BROWSENEXTRESPONSE], backend, &requestId);
 
         if (statusCode == UA_STATUSCODE_GOOD) {
             context.isBrowseNext = true;
             backend->m_asyncBrowseContext[requestId] = context;
+            backend->triggerIterateClient();
             return;
         }
     } else if (statusCode != UA_STATUSCODE_GOOD) {
@@ -1900,8 +2180,15 @@ bool Open62541AsyncBackend::loadAllFilesInDirectory(const QString &location, UA_
 
 void Open62541AsyncBackend::disconnectInternal(QOpcUaClient::ClientError error)
 {
-    m_useStateCallback = false;
     m_clientIterateTimer.stop();
+    m_clientIterateOnDemandTimer.stop();
+
+    if (m_uaclient) {
+        // Disable the state callback, we will emit stateAndOrErrorChanged() here
+        UA_Client_getConfig(m_uaclient)->stateCallback = nullptr;
+        UA_Client_getConfig(m_uaclient)->inactivityCallback = nullptr;
+    }
+
     cleanupSubscriptions();
 
     if (m_uaclient) {
@@ -1911,6 +2198,181 @@ void Open62541AsyncBackend::disconnectInternal(QOpcUaClient::ClientError error)
         emit stateAndOrErrorChanged(QOpcUaClient::Disconnected, error);
     }
 }
+
+#ifdef UA_ENABLE_ENCRYPTION
+bool Open62541AsyncBackend::loadPrivateKeyWithPotentialPassword(const QString &privateKeyPath, UA_ByteString &privateKey)
+{
+    UA_ByteString privateKeyData = UA_BYTESTRING_NULL;
+    const auto guard = qScopeGuard([&privateKeyData]() {
+        UA_ByteString_clear(&privateKeyData);
+    });
+
+    const auto success = loadFileToByteString(privateKeyPath, &privateKeyData);
+
+    if (!success)
+        return false;
+
+    UA_StatusCode decryptResult = UA_STATUSCODE_BADINTERNALERROR;
+    QString password;
+    bool previousTryWasInvalid = false;
+    do {
+        auto uaPassword = UA_STRING_ALLOC(password.toUtf8().constData());
+        decryptResult = UA_PKI_decryptPrivateKey(privateKeyData, uaPassword, &privateKey);
+        UA_String_clear(&uaPassword);
+
+        // The key was already DER or had no password
+        if (decryptResult == UA_STATUSCODE_GOOD)
+            return true;
+
+        // Decoding failed, a password may be required or the given password was invalid
+        if (decryptResult == UA_STATUSCODE_BADSECURITYCHECKSFAILED) {
+            emit passwordForPrivateKeyRequired(privateKeyPath, &password, previousTryWasInvalid);
+
+            // No further attempt requested
+            if (password.isEmpty())
+                return false;
+
+            previousTryWasInvalid = true;
+        }
+    } while (decryptResult == UA_STATUSCODE_BADSECURITYCHECKSFAILED);
+
+    return false;
+}
+
+// Only add the security policy the requested endpoint requires
+UA_StatusCode Open62541AsyncBackend::setSecurityPolicyInClientConfig(UA_ClientConfig *conf, const UA_ByteString &cert, const UA_ByteString &key,
+                                                                     const QOpcUaEndpointDescription &desc, const QString &additionalAuthSecurityPolicy)
+{
+    QStringList policiesToAdd;
+    if (desc.securityPolicy() != NonePolicy)
+        policiesToAdd.push_back(desc.securityPolicy());
+
+    if (!policiesToAdd.contains(additionalAuthSecurityPolicy))
+        policiesToAdd.append(additionalAuthSecurityPolicy);
+
+    if (policiesToAdd.isEmpty())
+        return UA_STATUSCODE_GOOD;
+
+    const size_t numPolicies = conf->securityPoliciesSize + policiesToAdd.size();
+    conf->securityPolicies = static_cast<UA_SecurityPolicy *>(UA_realloc(conf->securityPolicies, sizeof(UA_SecurityPolicy) * numPolicies));
+
+    UA_StatusCode result = UA_STATUSCODE_GOOD;
+
+    for (const auto &policy : policiesToAdd) {
+        if (policy == Basic128Rsa15Policy)
+            result = UA_SecurityPolicy_Basic128Rsa15(&conf->securityPolicies[conf->securityPoliciesSize++],
+                                                     cert, key, conf->logging);
+        else if (policy == Basic256Policy)
+            result = UA_SecurityPolicy_Basic256(&conf->securityPolicies[conf->securityPoliciesSize++],
+                                                cert, key, conf->logging);
+        else if (policy == Aes256Sha256RsaPssPolicy)
+            result = UA_SecurityPolicy_Aes256Sha256RsaPss(&conf->securityPolicies[conf->securityPoliciesSize++],
+                                                          cert, key, conf->logging);
+        else if (policy == Basic256Sha256Policy)
+            result = UA_SecurityPolicy_Basic256Sha256(&conf->securityPolicies[conf->securityPoliciesSize++],
+                                                      cert, key, conf->logging);
+        else if (policy == Aes128Sha256RsaOaepPolicy)
+            result = UA_SecurityPolicy_Aes128Sha256RsaOaep(&conf->securityPolicies[conf->securityPoliciesSize++],
+                                                           cert, key, conf->logging);
+
+        if (result != UA_STATUSCODE_GOOD) {
+            // UA_ClientConfig_clear() doesn't check for a valid clear() pointer on the policy
+            --conf->securityPoliciesSize;
+            return result;
+        }
+    }
+
+    return result;
+}
+
+// Find the most secure security policy a token of the required type supports
+UA_StatusCode Open62541AsyncBackend::setAuthSecurityPolicyInClientConfig(UA_ClientConfig *conf, const UA_ByteString &cert,
+                                                                         const UA_ByteString &key,
+                                                                         const QOpcUaEndpointDescription &desc,
+                                                                         QOpcUaUserTokenPolicy::TokenType tokenType,
+                                                                         QString *addedSecurityPolicyUri)
+{
+    // Open62541 now also demands the endpoint's security policy for anonymous tokens
+    // if the policy uri in the token is empty.
+
+    // Due to a bug in open62541 1.4, config->securityPolicies must also contain the
+    // policy used for authentication, even if the token is encrypted using the policy
+    // from config->authSecurityPolicies.
+    // Until this is fixed, the addedSecurityPolicyUri parameter provides the used
+    // policy to setSecurityPolicyInClientConfig().
+
+    // No None policy for auth, but all encrypting policies
+    const size_t numPolicies = 1;
+
+    if (addedSecurityPolicyUri)
+        addedSecurityPolicyUri->clear();
+
+    for (size_t i = 0; i < conf->authSecurityPoliciesSize; i++) {
+        conf->authSecurityPolicies[i].clear(&conf->authSecurityPolicies[i]);
+    }
+    UA_free(conf->authSecurityPolicies);
+    conf->authSecurityPolicies = nullptr;
+    conf->authSecurityPoliciesSize = 0;
+
+    UA_StatusCode result = UA_STATUSCODE_BADINVALIDARGUMENT;
+
+    QString selectedPolicy;
+    int lastIndex = -1;
+    for (const auto &token : desc.userIdentityTokens()) {
+        if (token.tokenType() != tokenType)
+            continue;
+
+        auto currentPolicy = token.securityPolicy();
+        if (currentPolicy.isEmpty())
+            currentPolicy = desc.securityPolicy();
+
+        // Assumes that supportedSecurityPolicies() is sorted by strength
+        // The supportedSecurityPolicies() has been modified accordingly.
+        const auto index = m_clientImpl->supportedSecurityPolicies().indexOf(currentPolicy);
+        if (index > lastIndex) {
+            lastIndex = index;
+            selectedPolicy = currentPolicy;
+        }
+    }
+
+    if (!selectedPolicy.isEmpty()) {
+        if (selectedPolicy == NonePolicy)
+            return UA_STATUSCODE_GOOD;
+
+        conf->authSecurityPolicies = static_cast<UA_SecurityPolicy*>(UA_realloc(conf->authSecurityPolicies,
+                                                                                sizeof(UA_SecurityPolicy) * numPolicies));
+        conf->authSecurityPoliciesSize = numPolicies;
+
+        if (selectedPolicy == Basic128Rsa15Policy)
+            result = UA_SecurityPolicy_Basic128Rsa15(&conf->authSecurityPolicies[0],
+                                                     cert, key, conf->logging);
+        else if (selectedPolicy == Basic256Policy)
+            result = UA_SecurityPolicy_Basic256(&conf->authSecurityPolicies[0],
+                                                cert, key, conf->logging);
+        else if (selectedPolicy == Aes256Sha256RsaPssPolicy)
+            result = UA_SecurityPolicy_Aes256Sha256RsaPss(&conf->authSecurityPolicies[0],
+                                                          cert, key, conf->logging);
+        else if (selectedPolicy == Basic256Sha256Policy)
+            result = UA_SecurityPolicy_Basic256Sha256(&conf->authSecurityPolicies[0],
+                                                      cert, key, conf->logging);
+        else if (selectedPolicy == Aes128Sha256RsaOaepPolicy)
+            result = UA_SecurityPolicy_Aes128Sha256RsaOaep(&conf->authSecurityPolicies[0],
+                                                           cert, key, conf->logging);
+
+        if (result != UA_STATUSCODE_GOOD) {
+            // UA_ClientConfig_clear() doesn't check for a valid clear() pointer on the policy
+            conf->authSecurityPoliciesSize = 0;
+            UA_free(conf->authSecurityPolicies);
+            conf->authSecurityPolicies = nullptr;
+        }
+
+        if (addedSecurityPolicyUri)
+            *addedSecurityPolicyUri = selectedPolicy;
+    }
+
+    return result;
+}
+#endif
 
 UA_ExtensionObject Open62541AsyncBackend::assembleNodeAttributes(const QOpcUaNodeCreationAttributes &nodeAttributes,
                                                                  QOpcUa::NodeClass nodeClass)

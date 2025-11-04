@@ -89,15 +89,17 @@ struct COMPONENT_EXPORT(VARIATIONS) ClientFilterableState {
   // ChromeOS, and Mac.
   bool IsEnterprise() const;
 
-  // The list of Google groups that one of more signed-in syncing users are a
-  // a member of.
-  // Each value is the Gaia ID of the google group.
+  // The list of Google groups that one or more signed-in syncing users are a
+  // a member of. Each value is the Gaia ID of the Google group.
   base::flat_set<uint64_t> GoogleGroups() const;
 
   static Study::Platform GetCurrentPlatform();
 
   // base::Version used in {min,max}_os_version filtering.
   static base::Version GetOSVersion();
+
+  // Returns the hardware class string used for hardware_class filtering.
+  static std::string GetHardwareClass();
 
  private:
   // Evaluating enterprise status negatively affects performance, so we only

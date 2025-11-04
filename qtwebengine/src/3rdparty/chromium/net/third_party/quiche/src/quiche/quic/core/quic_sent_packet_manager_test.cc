@@ -4,8 +4,11 @@
 
 #include "quiche/quic/core/quic_sent_packet_manager.h"
 
+#include <algorithm>
 #include <memory>
+#include <optional>
 #include <utility>
+#include <vector>
 
 #include "absl/base/macros.h"
 #include "absl/strings/string_view.h"
@@ -1847,7 +1850,7 @@ TEST_F(QuicSentPacketManagerTest, ComputingProbeTimeout) {
   // Verify PTO is correctly set.
   QuicTime::Delta expected_pto_delay =
       srtt + kPtoRttvarMultiplier * rtt_stats->mean_deviation() +
-      QuicTime::Delta::FromMilliseconds(kDefaultDelayedAckTimeMs);
+      QuicTime::Delta::FromMilliseconds(GetDefaultDelayedAckTimeMs());
   QuicTime packet1_sent_time = clock_.Now();
   EXPECT_EQ(clock_.Now() + expected_pto_delay,
             manager_.GetRetransmissionTime());
@@ -1889,7 +1892,7 @@ TEST_F(QuicSentPacketManagerTest, ComputingProbeTimeout) {
       rtt_stats->SmoothedOrInitialRtt() +
       std::max(kPtoRttvarMultiplier * rtt_stats->mean_deviation(),
                QuicTime::Delta::FromMilliseconds(1)) +
-      QuicTime::Delta::FromMilliseconds(kDefaultDelayedAckTimeMs);
+      QuicTime::Delta::FromMilliseconds(GetDefaultDelayedAckTimeMs());
 
   // Verify PTO is correctly re-armed based on sent time of packet 4.
   EXPECT_EQ(sent_time + expected_pto_delay, manager_.GetRetransmissionTime());
@@ -1914,7 +1917,7 @@ TEST_F(QuicSentPacketManagerTest, SendOneProbePacket) {
   // Verify PTO period is correctly set.
   QuicTime::Delta expected_pto_delay =
       srtt + kPtoRttvarMultiplier * rtt_stats->mean_deviation() +
-      QuicTime::Delta::FromMilliseconds(kDefaultDelayedAckTimeMs);
+      QuicTime::Delta::FromMilliseconds(GetDefaultDelayedAckTimeMs());
   // Verify PTO is set based on left edge.
   QuicTime deadline = packet1_sent_time + expected_pto_delay;
   EXPECT_EQ(deadline, manager_.GetRetransmissionTime());
@@ -2001,7 +2004,7 @@ TEST_F(QuicSentPacketManagerTest, PtoTimeoutRttVarMultiple) {
   // Verify PTO is correctly set based on 2 times rtt var.
   QuicTime::Delta expected_pto_delay =
       srtt + kPtoRttvarMultiplier * rtt_stats->mean_deviation() +
-      QuicTime::Delta::FromMilliseconds(kDefaultDelayedAckTimeMs);
+      QuicTime::Delta::FromMilliseconds(GetDefaultDelayedAckTimeMs());
   EXPECT_EQ(clock_.Now() + expected_pto_delay,
             manager_.GetRetransmissionTime());
 }
@@ -2109,7 +2112,7 @@ TEST_F(QuicSentPacketManagerTest, ClientMultiplePacketNumberSpacePtoTimeout) {
   // is armed by left edge.
   expected_pto_delay =
       srtt + kPtoRttvarMultiplier * rtt_stats->mean_deviation() +
-      QuicTime::Delta::FromMilliseconds(kDefaultDelayedAckTimeMs);
+      QuicTime::Delta::FromMilliseconds(GetDefaultDelayedAckTimeMs());
   EXPECT_EQ(packet4_sent_time + expected_pto_delay,
             manager_.GetRetransmissionTime());
 }
@@ -2166,7 +2169,7 @@ TEST_F(QuicSentPacketManagerTest, ServerMultiplePacketNumberSpacePtoTimeout) {
   manager_.SetHandshakeConfirmed();
   expected_pto_delay =
       srtt + kPtoRttvarMultiplier * rtt_stats->mean_deviation() +
-      QuicTime::Delta::FromMilliseconds(kDefaultDelayedAckTimeMs);
+      QuicTime::Delta::FromMilliseconds(GetDefaultDelayedAckTimeMs());
   // Verify PTO timeout is now based on packet 3 as handshake is
   // complete/confirmed.
   EXPECT_EQ(packet3_sent_time + expected_pto_delay,
@@ -2188,7 +2191,7 @@ TEST_F(QuicSentPacketManagerTest, ComputingProbeTimeoutByLeftEdge) {
   // Verify PTO is correctly set.
   QuicTime::Delta expected_pto_delay =
       srtt + kPtoRttvarMultiplier * rtt_stats->mean_deviation() +
-      QuicTime::Delta::FromMilliseconds(kDefaultDelayedAckTimeMs);
+      QuicTime::Delta::FromMilliseconds(GetDefaultDelayedAckTimeMs());
   const QuicTime packet1_sent_time = clock_.Now();
   EXPECT_EQ(packet1_sent_time + expected_pto_delay,
             manager_.GetRetransmissionTime());
@@ -2229,7 +2232,7 @@ TEST_F(QuicSentPacketManagerTest, ComputingProbeTimeoutByLeftEdge) {
       rtt_stats->SmoothedOrInitialRtt() +
       std::max(kPtoRttvarMultiplier * rtt_stats->mean_deviation(),
                QuicTime::Delta::FromMilliseconds(1)) +
-      QuicTime::Delta::FromMilliseconds(kDefaultDelayedAckTimeMs);
+      QuicTime::Delta::FromMilliseconds(GetDefaultDelayedAckTimeMs());
 
   // Verify PTO is correctly re-armed based on sent time of packet 4.
   EXPECT_EQ(packet3_sent_time + expected_pto_delay,
@@ -2251,7 +2254,7 @@ TEST_F(QuicSentPacketManagerTest, ComputingProbeTimeoutByLeftEdge2) {
   // Verify PTO is correctly set.
   QuicTime::Delta expected_pto_delay =
       srtt + kPtoRttvarMultiplier * rtt_stats->mean_deviation() +
-      QuicTime::Delta::FromMilliseconds(kDefaultDelayedAckTimeMs);
+      QuicTime::Delta::FromMilliseconds(GetDefaultDelayedAckTimeMs());
   const QuicTime packet1_sent_time = clock_.Now();
   EXPECT_EQ(packet1_sent_time + expected_pto_delay,
             manager_.GetRetransmissionTime());
@@ -2281,7 +2284,7 @@ TEST_F(QuicSentPacketManagerTest, ComputingProbeTimeoutByLeftEdge2) {
   // packet3 (right edge).
   expected_pto_delay =
       srtt + kPtoRttvarMultiplier * rtt_stats->mean_deviation() +
-      QuicTime::Delta::FromMilliseconds(kDefaultDelayedAckTimeMs);
+      QuicTime::Delta::FromMilliseconds(GetDefaultDelayedAckTimeMs());
   QuicTime packet3_sent_time = clock_.Now();
   EXPECT_EQ(packet3_sent_time + expected_pto_delay * 2,
             manager_.GetRetransmissionTime());
@@ -2299,7 +2302,7 @@ TEST_F(QuicSentPacketManagerTest, ComputingProbeTimeoutByLeftEdge2) {
       rtt_stats->SmoothedOrInitialRtt() +
       std::max(kPtoRttvarMultiplier * rtt_stats->mean_deviation(),
                QuicTime::Delta::FromMilliseconds(1)) +
-      QuicTime::Delta::FromMilliseconds(kDefaultDelayedAckTimeMs);
+      QuicTime::Delta::FromMilliseconds(GetDefaultDelayedAckTimeMs());
 
   // Verify PTO is correctly re-armed based on sent time of packet 3 (left
   // edge).
@@ -2363,7 +2366,7 @@ TEST_F(QuicSentPacketManagerTest,
   // complete/confirmed.
   expected_pto_delay =
       srtt + kPtoRttvarMultiplier * rtt_stats->mean_deviation() +
-      QuicTime::Delta::FromMilliseconds(kDefaultDelayedAckTimeMs);
+      QuicTime::Delta::FromMilliseconds(GetDefaultDelayedAckTimeMs());
   EXPECT_EQ(packet3_sent_time + expected_pto_delay,
             manager_.GetRetransmissionTime());
 
@@ -2430,7 +2433,7 @@ TEST_F(QuicSentPacketManagerTest,
   // complete/confirmed.
   expected_pto_delay =
       srtt + kPtoRttvarMultiplier * rtt_stats->mean_deviation() +
-      QuicTime::Delta::FromMilliseconds(kDefaultDelayedAckTimeMs);
+      QuicTime::Delta::FromMilliseconds(GetDefaultDelayedAckTimeMs());
   EXPECT_EQ(packet3_sent_time + expected_pto_delay,
             manager_.GetRetransmissionTime());
 

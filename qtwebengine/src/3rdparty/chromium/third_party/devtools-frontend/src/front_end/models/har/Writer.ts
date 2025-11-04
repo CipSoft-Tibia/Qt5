@@ -35,9 +35,10 @@
 import * as Common from '../../core/common/common.js';
 import * as i18n from '../../core/i18n/i18n.js';
 import * as Platform from '../../core/platform/platform.js';
-import * as SDK from '../../core/sdk/sdk.js';
+import type * as SDK from '../../core/sdk/sdk.js';
+import * as TextUtils from '../text_utils/text_utils.js';
 
-import {type EntryDTO, Log} from './Log.js';
+import {type BuildOptions, type EntryDTO, Log} from './Log.js';
 
 const UIStrings = {
   /**
@@ -54,10 +55,10 @@ const i18nString = i18n.i18n.getLocalizedString.bind(undefined, str_);
 export class Writer {
   static async write(
       stream: Common.StringOutputStream.OutputStream, requests: SDK.NetworkRequest.NetworkRequest[],
-      progress: Common.Progress.Progress): Promise<void> {
+      options: BuildOptions, progress: Common.Progress.Progress): Promise<void> {
     const compositeProgress = new Common.Progress.CompositeProgress(progress);
 
-    const content = await Writer.harStringForRequests(requests, compositeProgress);
+    const content = await Writer.harStringForRequests(requests, options, compositeProgress);
     if (progress.isCanceled()) {
       return;
     }
@@ -65,7 +66,7 @@ export class Writer {
   }
 
   static async harStringForRequests(
-      requests: SDK.NetworkRequest.NetworkRequest[],
+      requests: SDK.NetworkRequest.NetworkRequest[], options: BuildOptions,
       compositeProgress: Common.Progress.CompositeProgress): Promise<string> {
     const progress = compositeProgress.createSubProgress();
     progress.setTitle(i18nString(UIStrings.collectingContent));
@@ -73,10 +74,10 @@ export class Writer {
 
     // Sort by issueTime because this is recorded as startedDateTime in HAR logs.
     requests.sort((reqA, reqB) => reqA.issueTime() - reqB.issueTime());
-    const harLog = await Log.build(requests);
+    const harLog = await Log.build(requests, options);
     const promises = [];
     for (let i = 0; i < requests.length; i++) {
-      const promise = requests[i].contentData();
+      const promise = requests[i].requestContentData();
       promises.push(promise.then(contentLoaded.bind(null, harLog.entries[i])));
     }
 
@@ -104,10 +105,10 @@ export class Writer {
       return false;
     }
 
-    function contentLoaded(entry: EntryDTO, contentDataOrError: SDK.ContentData.ContentDataOrError): void {
+    function contentLoaded(entry: EntryDTO, contentDataOrError: TextUtils.ContentData.ContentDataOrError): void {
       progress.incrementWorked();
-      const contentData = SDK.ContentData.ContentData.asLegacyContentData(contentDataOrError);
-      let encoded: true|boolean = contentData.encoded;
+      const contentData = TextUtils.ContentData.ContentData.asDeferredContent(contentDataOrError);
+      let encoded: true|boolean = contentData.isEncoded;
       if (contentData.content !== null) {
         let content: string = contentData.content;
         if (content && !encoded && needsEncoding(content)) {

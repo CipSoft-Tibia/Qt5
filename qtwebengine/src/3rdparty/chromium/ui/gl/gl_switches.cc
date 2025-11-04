@@ -19,8 +19,6 @@
 
 namespace gl {
 
-const char kGLImplementationDesktopName[] = "desktop";
-const char kGLImplementationAppleName[] = "apple";
 const char kGLImplementationEGLName[] = "egl";
 const char kGLImplementationANGLEName[] = "angle";
 const char kGLImplementationMockName[] = "mock";
@@ -144,6 +142,9 @@ const char kEnableDirectCompositionVideoOverlays[] =
 // only used on Windows, as LUID is a Windows specific structure.
 const char kUseAdapterLuid[] = "use-adapter-luid";
 
+// Allow usage of SwiftShader for WebGL
+const char kEnableUnsafeSwiftShader[] = "enable-unsafe-swiftshader";
+
 // Used for overriding the swap chain format for direct composition SDR video
 // overlays.
 const char kDirectCompositionVideoSwapChainFormat[] =
@@ -165,12 +166,22 @@ const char* const kGLSwitchesCopiedFromGpuProcessHost[] = {
     kEnableSwapBuffersWithBounds,
     kEnableDirectCompositionVideoOverlays,
     kDirectCompositionVideoSwapChainFormat,
+    kEnableUnsafeSwiftShader,
 };
 const size_t kGLSwitchesCopiedFromGpuProcessHostNumSwitches =
     std::size(kGLSwitchesCopiedFromGpuProcessHost);
 
-const char kCreateDefaultGLContext[] = "create-default-gl-context";
-
+#if BUILDFLAG(IS_ANDROID)
+// On some Android emulators with software GL, ANGLE
+// is exposing the native fence sync extension but it doesn't
+// actually work. This switch is used to disable the Android native fence sync
+// during test to avoid crashes.
+//
+// TODO(https://crbug.com/337886037): Remove this flag once the upstream ANGLE
+// is fixed.
+const char kDisableAndroidNativeFenceSyncForTesting[] =
+    "disable-android-native-fence-sync-for-testing";
+#endif
 }  // namespace switches
 
 namespace features {
@@ -194,16 +205,6 @@ BASE_FEATURE(kDCompTripleBufferVideoSwapChain,
              "DCompTripleBufferVideoSwapChain",
              base::FEATURE_DISABLED_BY_DEFAULT);
 
-// Enables incremental update of dcomp visual tree.
-BASE_FEATURE(kDCompVisualTreeOptimization,
-             "DCompVisualTreeOptimization",
-             base::FEATURE_ENABLED_BY_DEFAULT);
-
-// Use presentation feedback event queries (must be enabled) to limit latency.
-BASE_FEATURE(kDirectCompositionLowLatencyPresentation,
-             "DirectCompositionLowLatencyPresentation",
-             base::FEATURE_DISABLED_BY_DEFAULT);
-
 // Allow overlay swapchain to present on all GPUs even if they only support
 // software overlays. GPU deny lists limit it to NVIDIA only at the moment.
 BASE_FEATURE(kDirectCompositionSoftwareOverlays,
@@ -214,7 +215,7 @@ BASE_FEATURE(kDirectCompositionSoftwareOverlays,
 // that DWM power optimization can be turned on.
 BASE_FEATURE(kDirectCompositionLetterboxVideoOptimization,
              "DirectCompositionLetterboxVideoOptimization",
-             base::FEATURE_ENABLED_BY_DEFAULT);
+             base::FEATURE_DISABLED_BY_DEFAULT);
 
 // Do not consider hardware YUV overlay count when promoting quads to DComp
 // visuals. If there are more videos than hardware overlay planes, there may be
@@ -258,15 +259,9 @@ BASE_FEATURE(kDefaultANGLEOpenGL,
              base::FEATURE_DISABLED_BY_DEFAULT);
 
 // Default to using ANGLE's Metal backend.
-#if BUILDFLAG(IS_IOS)
 BASE_FEATURE(kDefaultANGLEMetal,
              "DefaultANGLEMetal",
              base::FEATURE_ENABLED_BY_DEFAULT);
-#else
-BASE_FEATURE(kDefaultANGLEMetal,
-             "DefaultANGLEMetal",
-             base::FEATURE_DISABLED_BY_DEFAULT);
-#endif
 
 // Default to using ANGLE's Vulkan backend.
 BASE_FEATURE(kDefaultANGLEVulkan,
@@ -283,11 +278,6 @@ BASE_FEATURE(kTrackCurrentShaders,
 // Enable sharing Vulkan device queue with ANGLE's Vulkan backend.
 BASE_FEATURE(kVulkanFromANGLE,
              "VulkanFromANGLE",
-             base::FEATURE_DISABLED_BY_DEFAULT);
-
-// Enable ANGLE's debug layer.
-BASE_FEATURE(kANGLEDebugLayer,
-             "ANGLEDebugLayer",
              base::FEATURE_DISABLED_BY_DEFAULT);
 
 bool IsDefaultANGLEVulkan() {
@@ -351,18 +341,12 @@ BASE_FEATURE(kDXGISwapChainPresentInterval0,
              "DXGISwapChainPresentInterval0",
              base::FEATURE_DISABLED_BY_DEFAULT);
 
-// Kill switch using floating point based rounding adjustments in
-// SwapChainPresenter::Adjust* functions.
-BASE_FEATURE(kUseSwapChainPresenterFloatingPointAdjustments,
-             "UseSwapChainPresenterFloatingPointAdjustments",
-             base::FEATURE_ENABLED_BY_DEFAULT);
-
 bool SupportsEGLDualGPURendering() {
-#if defined(USE_EGL) && (BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC))
+#if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC)
   return base::FeatureList::IsEnabled(kEGLDualGPURendering);
 #else
   return false;
-#endif  // USE_EGL && (IS_WIN || IS_MAC)
+#endif  // IS_WIN || IS_MAC
 }
 
 }  // namespace features

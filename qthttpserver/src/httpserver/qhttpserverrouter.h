@@ -1,5 +1,6 @@
 // Copyright (C) 2019 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QHTTPSERVERROUTER_H
 #define QHTTPSERVERROUTER_H
@@ -65,9 +66,9 @@ public:
                                            QHttpServerResponder &responder) const;
 
 private:
-    template<typename ViewTraits, int ... Idx>
+    template<typename ViewTraits, size_t ... Idx>
     QHttpServerRouterRule *addRuleHelper(std::unique_ptr<QHttpServerRouterRule> rule,
-                       QtPrivate::IndexesList<Idx...>)
+                       std::index_sequence<Idx...>)
     {
         return addRuleImpl(std::move(rule), {ViewTraits::Arguments::template metaType<Idx>()...});
     }

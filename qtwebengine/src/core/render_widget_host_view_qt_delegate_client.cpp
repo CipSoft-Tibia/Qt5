@@ -10,8 +10,8 @@
 #include "web_contents_adapter_client.h"
 #include "web_event_factory.h"
 
+#include "components/input/render_widget_host_input_event_router.h"
 #include "content/browser/renderer_host/render_view_host_impl.h"
-#include "content/browser/renderer_host/render_widget_host_input_event_router.h"
 #include "ui/touch_selection/touch_selection_controller.h"
 
 #include <QDebug>
@@ -227,7 +227,7 @@ void RenderWidgetHostViewQtDelegateClient::visualPropertiesChanged()
     }
 
     if (m_viewRectInDips.size() != oldViewRect.size() || screenInfoChanged)
-        m_rwhv->synchronizeVisualProperties(absl::nullopt);
+        m_rwhv->synchronizeVisualProperties(std::nullopt);
 }
 
 bool RenderWidgetHostViewQtDelegateClient::forwardEvent(QEvent *event)
@@ -440,7 +440,7 @@ void RenderWidgetHostViewQtDelegateClient::handlePointerEvent(T *event)
     webEvent.movement_y = event->globalPosition().y() - m_previousMousePosition.y();
     webEvent.is_raw_movement_event = true;
 
-    if (m_rwhv->IsMouseLocked())
+    if (m_rwhv->IsPointerLocked())
         QCursor::setPos(m_previousMousePosition);
     else
         m_previousMousePosition = event->globalPosition().toPoint();
@@ -474,9 +474,9 @@ void RenderWidgetHostViewQtDelegateClient::handleMouseEvent(QMouseEvent *event)
 
 void RenderWidgetHostViewQtDelegateClient::handleKeyEvent(QKeyEvent *event)
 {
-    if (m_rwhv->IsMouseLocked() && event->key() == Qt::Key_Escape
+    if (m_rwhv->IsPointerLocked() && event->key() == Qt::Key_Escape
         && event->type() == QEvent::KeyRelease)
-        m_rwhv->UnlockMouse();
+        m_rwhv->UnlockPointer();
 
     if (m_receivedEmptyImeEvent) {
         // IME composition was not finished with a valid commit string.
@@ -508,10 +508,9 @@ void RenderWidgetHostViewQtDelegateClient::handleKeyEvent(QKeyEvent *event)
     if (!m_rwhv->GetFocusedWidget())
         return;
 
-    content::NativeWebKeyboardEvent webEvent = WebEventFactory::toWebKeyboardEvent(event);
+    input::NativeWebKeyboardEvent webEvent = WebEventFactory::toWebKeyboardEvent(event);
     if (webEvent.GetType() == blink::WebInputEvent::Type::kRawKeyDown && !m_editCommand.empty()) {
         ui::LatencyInfo latency;
-        latency.set_source_event_type(ui::SourceEventType::KEY_PRESS);
         std::vector<blink::mojom::EditCommandPtr> commands;
         commands.emplace_back(blink::mojom::EditCommand::New(m_editCommand, ""));
         m_editCommand.clear();
@@ -676,8 +675,10 @@ void RenderWidgetHostViewQtDelegateClient::handleTouchEvent(QTouchEvent *event)
         case QEvent::TouchUpdate:
             for (; lastPressIndex >= 0; --lastPressIndex) {
                 Q_ASSERT(touchPoints[lastPressIndex].second.state() == QEventPoint::Pressed);
-                MotionEventQt me(touchPoints.mid(lastPressIndex), eventTimestamp, ui::MotionEvent::Action::POINTER_DOWN, event->modifiers(), 0);
-                m_rwhv->processMotionEvent(me);
+                MotionEventQt updateMe(touchPoints.mid(lastPressIndex), eventTimestamp,
+                                       ui::MotionEvent::Action::POINTER_DOWN, event->modifiers(),
+                                       0);
+                m_rwhv->processMotionEvent(updateMe);
             }
 
             if (event->touchPointStates() & Qt::TouchPointMoved)
@@ -687,9 +688,13 @@ void RenderWidgetHostViewQtDelegateClient::handleTouchEvent(QTouchEvent *event)
 
         case QEvent::TouchEnd:
             while (!touchPoints.isEmpty() && touchPoints.back().second.state() == QEventPoint::Released) {
-                auto action = touchPoints.size() > 1 ? ui::MotionEvent::Action::POINTER_UP : ui::MotionEvent::Action::UP;
-                int index = action == ui::MotionEvent::Action::POINTER_UP ? touchPoints.size() - 1 : -1;
-                m_rwhv->processMotionEvent(MotionEventQt(touchPoints, eventTimestamp, action, event->modifiers(), index));
+                auto endAction = touchPoints.size() > 1 ? ui::MotionEvent::Action::POINTER_UP
+                                                        : ui::MotionEvent::Action::UP;
+                int index = endAction == ui::MotionEvent::Action::POINTER_UP
+                        ? touchPoints.size() - 1
+                        : -1;
+                m_rwhv->processMotionEvent(MotionEventQt(touchPoints, eventTimestamp, endAction,
+                                                         event->modifiers(), index));
                 touchPoints.pop_back();
             }
             break;

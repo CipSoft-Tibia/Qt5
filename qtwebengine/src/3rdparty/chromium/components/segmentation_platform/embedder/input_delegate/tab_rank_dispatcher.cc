@@ -119,7 +119,7 @@ void TabRankDispatcher::GetNextResult(const std::string& segmentation_key,
     return;
   }
 
-  const RankedTab tab = std::move(candidate_tabs.front());
+  RankedTab tab = std::move(candidate_tabs.front());
   // Fetch tab every time from the `tab_fetcher_` for accessing the tab data
   // since the tab could have been destroyed.
   TabFetcher::Tab fetched_tab = tab_fetcher_->FindTab(tab.tab);
@@ -174,7 +174,7 @@ void TabRankDispatcher::OnForeignSessionUpdated() {
   RecordTabCountAtSyncUpdate(
       tab_fetcher_->GetRemoteTabsCountAfterTime(base::Time()));
 
-  absl::optional<base::Time> sync_session_modified_timestamp =
+  std::optional<base::Time> sync_session_modified_timestamp =
       tab_fetcher_->GetLatestRemoteSessionModifiedTime();
 
   if (!sync_session_modified_timestamp.has_value()) {

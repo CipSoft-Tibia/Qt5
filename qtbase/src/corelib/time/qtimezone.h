@@ -81,6 +81,9 @@ class Q_CORE_EXPORT QTimeZone
         ShortData s;
     };
     QTimeZone(ShortData sd) : d(sd) {}
+    QTimeZone(Qt::TimeSpec) Q_DECL_EQ_DELETE_X(
+        "Would be treated as int offsetSeconds. "
+        "Use QTimeZone::UTC or QTimeZone::LocalTime instead.");
 
 public:
     // Sane UTC offsets range from -16 to +16 hours:
@@ -175,11 +178,9 @@ public:
 #  endif
     QString comment() const;
 
-    QString displayName(const QDateTime &atDateTime,
-                        QTimeZone::NameType nameType = QTimeZone::DefaultName,
+    QString displayName(const QDateTime &atDateTime, NameType nameType = DefaultName,
                         const QLocale &locale = QLocale()) const;
-    QString displayName(QTimeZone::TimeType timeType,
-                        QTimeZone::NameType nameType = QTimeZone::DefaultName,
+    QString displayName(TimeType timeType, NameType nameType = DefaultName,
                         const QLocale &locale = QLocale()) const;
     QString abbreviation(const QDateTime &atDateTime) const;
 

@@ -3,13 +3,17 @@
 dita.metadata.default.author      = Qt Project
 dita.metadata.default.permissions = all
 dita.metadata.default.publisher   = Qt Project
-dita.metadata.default.copyryear = 2024
+dita.metadata.default.copyryear = 2025
 dita.metadata.default.copyrholder = The Qt Company Ltd
 dita.metadata.default.audience = programmer
 
+# Define `productname` such that `\since` prepends version numbers with `Qt`.
+# Required from Qt 6.9 onwards.
+productname = Qt
+
 #Set the main Qt index.html
 navigation.homepage = index.html
-navigation.hometitle = "Qt $QT_VER"
+navigation.hometitle = "$productname $QT_VER"
 
 # Set trademarks page (located in qt/qtdoc)
 navigation.trademarkspage = Trademarks

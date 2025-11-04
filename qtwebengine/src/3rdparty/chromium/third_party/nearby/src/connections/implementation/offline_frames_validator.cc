@@ -21,6 +21,7 @@
 #include "connections/implementation/internal_payload.h"
 #include "connections/implementation/offline_frames.h"
 #include "connections/implementation/proto/offline_wire_formats.pb.h"
+#include "internal/platform/exception.h"
 #include "internal/platform/implementation/platform.h"
 #include "internal/platform/logging.h"
 
@@ -72,8 +73,8 @@ inline bool WithinRange(int value, int min, int max) {
 
 Exception EnsureValidConnectionRequestFrame(
     const ConnectionRequestFrame& frame) {
-  if (!frame.has_endpoint_id()) return {Exception::kInvalidProtocolBuffer};
-  if (!frame.has_endpoint_name()) return {Exception::kInvalidProtocolBuffer};
+  if (frame.endpoint_id().empty()) return {Exception::kInvalidProtocolBuffer};
+  if (frame.endpoint_name().empty()) return {Exception::kInvalidProtocolBuffer};
 
   // For backwards compatibility reasons, no other fields should be
   // null-checked for this frame. Parameter checking (eg. must be within this
@@ -126,6 +127,11 @@ Exception EnsureValidPayloadTransferControlFrame(
 
 Exception EnsureValidPayloadTransferFrame(const PayloadTransferFrame& frame) {
   if (!frame.has_payload_header()) return {Exception::kInvalidProtocolBuffer};
+  if (frame.packet_type() == PayloadTransferFrame::PAYLOAD_ACK) {
+    // Phone side code doesn't set "total_size" for "payload_header", so skip
+    // checking it.
+    return {Exception::kSuccess};
+  }
   if (!frame.payload_header().has_total_size() ||
       (frame.payload_header().total_size() < 0 &&
        frame.payload_header().total_size() !=

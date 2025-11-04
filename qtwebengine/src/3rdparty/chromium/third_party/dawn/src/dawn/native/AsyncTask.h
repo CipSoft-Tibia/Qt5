@@ -35,6 +35,7 @@
 #include "absl/container/flat_hash_map.h"
 #include "dawn/common/Ref.h"
 #include "dawn/common/RefCounted.h"
+#include "partition_alloc/pointers/raw_ptr.h"
 
 namespace dawn::platform {
 class WaitableEvent;
@@ -65,7 +66,7 @@ class AsyncTaskManager {
         ~WaitableTask() override;
 
         AsyncTask asyncTask;
-        AsyncTaskManager* taskManager;
+        raw_ptr<AsyncTaskManager> taskManager;
         std::unique_ptr<dawn::platform::WaitableEvent> waitableEvent;
     };
 
@@ -74,7 +75,7 @@ class AsyncTaskManager {
 
     std::mutex mPendingTasksMutex;
     absl::flat_hash_map<WaitableTask*, Ref<WaitableTask>> mPendingTasks;
-    dawn::platform::WorkerTaskPool* mWorkerTaskPool;
+    raw_ptr<dawn::platform::WorkerTaskPool> mWorkerTaskPool;
 };
 
 }  // namespace dawn::native

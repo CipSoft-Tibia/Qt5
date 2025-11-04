@@ -9,6 +9,7 @@
 
 #include <stdint.h>
 
+#include <array>
 #include <memory>
 #include <vector>
 
@@ -26,6 +27,16 @@ enum CIDSet : uint8_t {
   CIDSET_KOREA1,
   CIDSET_UNICODE,
   CIDSET_NUM_SETS
+};
+
+struct CIDTransform {
+  uint16_t cid;
+  uint8_t a;
+  uint8_t b;
+  uint8_t c;
+  uint8_t d;
+  uint8_t e;
+  uint8_t f;
 };
 
 class CFX_CTTGSUBTable;
@@ -49,7 +60,7 @@ class CPDF_CIDFont final : public CPDF_Font {
   FX_RECT GetCharBBox(uint32_t charcode) override;
   uint32_t GetNextChar(ByteStringView pString, size_t* pOffset) const override;
   size_t CountChar(ByteStringView pString) const override;
-  int AppendChar(char* str, uint32_t charcode) const override;
+  void AppendChar(ByteString* str, uint32_t charcode) const override;
   bool IsVertWriting() const override;
   bool IsUnicodeCompatible() const override;
   bool Load() override;
@@ -57,7 +68,7 @@ class CPDF_CIDFont final : public CPDF_Font {
   uint32_t CharCodeFromUnicode(wchar_t Unicode) const override;
 
   uint16_t CIDFromCharCode(uint32_t charcode) const;
-  const uint8_t* GetCIDTransform(uint16_t cid) const;
+  const CIDTransform* GetCIDTransform(uint16_t cid) const;
   int16_t GetVertWidth(uint16_t cid) const;
   CFX_Point16 GetVertOrigin(uint16_t cid) const;
   int GetCharSize(uint32_t charcode) const;
@@ -90,7 +101,7 @@ class CPDF_CIDFont final : public CPDF_Font {
   int16_t m_DefaultW1 = -1000;
   std::vector<int> m_WidthList;
   std::vector<int> m_VertMetrics;
-  FX_RECT m_CharBBox[256];
+  std::array<FX_RECT, 256> m_CharBBox;
 };
 
 #endif  // CORE_FPDFAPI_FONT_CPDF_CIDFONT_H_

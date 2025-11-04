@@ -40,7 +40,7 @@ namespace tint::ast::transform {
 class AddBlockAttribute final : public Castable<AddBlockAttribute, Transform> {
   public:
     /// BlockAttribute is an InternalAttribute that is used to decorate a
-    // structure that is used as a buffer in SPIR-V or GLSL.
+    /// structure that is used as a buffer in SPIR-V or GLSL.
     class BlockAttribute final : public Castable<BlockAttribute, InternalAttribute> {
       public:
         /// Constructor
@@ -65,19 +65,6 @@ class AddBlockAttribute final : public Castable<AddBlockAttribute, Transform> {
 
     /// Destructor
     ~AddBlockAttribute() override;
-
-    /// Transform configuration options
-    struct Config final : public Castable<Config, ast::transform::Data> {
-        /// Constructor
-        /// @param skip_push_const whether to skip push constants
-        explicit Config(bool skip_push_const);
-
-        /// Destructor
-        ~Config() override;
-
-        /// Whether to skip push constants
-        bool skip_push_constants;
-    };
 
     /// @copydoc Transform::Apply
     ApplyResult Apply(const Program& program,

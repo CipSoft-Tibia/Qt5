@@ -9,8 +9,9 @@
 #include <QtQuickControlsTestUtils/private/controlstestutils_p.h>
 #include <QtQuickControlsTestUtils/private/dialogstestutils_p.h>
 #include <QtQuickDialogs2/private/qquickcolordialog_p.h>
-#include <QtQuickDialogs2QuickImpl/private/qquickcolordialogimpl_p.h>
 #include <QtQuickDialogs2QuickImpl/private/qquickabstractcolorpicker_p.h>
+#include <QtQuickDialogs2QuickImpl/private/qquickcolordialogimpl_p.h>
+#include <QtQuickDialogs2QuickImpl/private/qquickcolorinputs_p.h>
 #include <QtQuickTemplates2/private/qquickapplicationwindow_p.h>
 #include <QtQuickTemplates2/private/qquickcombobox_p.h>
 #include <QtQuickTemplates2/private/qquicktextfield_p.h>
@@ -112,6 +113,7 @@ void tst_QQuickColorDialogImpl::defaults()
     // Open the dialog.
     QVERIFY(dialogHelper.openDialog());
     QTRY_VERIFY(dialogHelper.isQuickDialogOpen());
+    QVERIFY(dialogHelper.waitForPopupWindowActiveAndPolished());
 
     QQuickAbstractColorPicker *colorPicker =
             dialogHelper.quickDialog->findChild<QQuickAbstractColorPicker *>("colorPicker");
@@ -131,6 +133,8 @@ void tst_QQuickColorDialogImpl::defaults()
     QTRY_VERIFY(!dialogHelper.isQuickDialogOpen());
     dialogHelper.dialog->setOptions(QColorDialogOptions::ShowAlphaChannel);
     QVERIFY(dialogHelper.openDialog());
+    QTRY_VERIFY(dialogHelper.isQuickDialogOpen());
+    QVERIFY(dialogHelper.waitForPopupWindowActiveAndPolished());
     QVERIFY(alphaSlider->isVisible());
 
     const bool wayland = QGuiApplication::platformName().compare(QLatin1String("wayland"), Qt::CaseInsensitive) == 0;
@@ -147,6 +151,8 @@ void tst_QQuickColorDialogImpl::defaults()
         QTRY_VERIFY(!dialogHelper.isQuickDialogOpen());
         dialogHelper.dialog->setOptions(QColorDialogOptions::NoEyeDropperButton);
         QVERIFY(dialogHelper.openDialog());
+        QTRY_VERIFY(dialogHelper.isQuickDialogOpen());
+        QVERIFY(dialogHelper.waitForPopupWindowActiveAndPolished());
         QVERIFY(!eyeDropperButton->isVisible());
     }
 
@@ -409,10 +415,10 @@ void tst_QQuickColorDialogImpl::alphaChannel()
     QQuickSlider *alphaSlider = dialogHelper.quickDialog->findChild<QQuickSlider *>("alphaSlider");
     QVERIFY(alphaSlider);
 
-    QQuickItem *colorParameters = dialogHelper.quickDialog->findChild<QQuickItem *>("colorParameters");
-    QVERIFY(colorParameters);
+    QQuickColorInputs *colorInputs = dialogHelper.quickDialog->findChild<QQuickColorInputs *>();
+    QVERIFY(colorInputs);
 
-    QQuickTextField *colorTextField = qobject_cast<QQuickTextField *>(colorParameters->children().at(0));
+    QQuickTextField *colorTextField = qobject_cast<QQuickTextField *>(colorInputs->itemAt(0));
     QVERIFY(colorTextField);
 
     QVERIFY2(alphaSlider->isVisible(), "alphaSlider should be visible when the ShowAlphaChannel option is set, but it isn't");
@@ -445,9 +451,9 @@ void tst_QQuickColorDialogImpl::changeHex()
     QTRY_VERIFY(dialogHelper.isQuickDialogOpen());
     QVERIFY(dialogHelper.waitForPopupWindowActiveAndPolished());
 
-    QQuickItem *colorParameters = dialogHelper.quickDialog->findChild<QQuickItem *>("colorParameters");
-    QVERIFY(colorParameters);
-    QQuickTextField *colorTextField = qobject_cast<QQuickTextField *>(colorParameters->children().at(0));
+    QQuickColorInputs *colorInputs = dialogHelper.quickDialog->findChild<QQuickColorInputs *>();
+    QVERIFY(colorInputs);
+    QQuickTextField *colorTextField = qobject_cast<QQuickTextField *>(colorInputs->itemAt(0));
     QVERIFY(colorTextField);
     QCOMPARE(colorTextField->text(), QStringLiteral("#ffffff"));
 
@@ -472,45 +478,44 @@ void tst_QQuickColorDialogImpl::changeHex()
     CLOSE_DIALOG("Ok");
 }
 
-enum class ColorSpec {
-    Rgb = 1,
-    Hsv,
-    Hsl
-};
-
 void tst_QQuickColorDialogImpl::changeColorFromTextFields_data()
 {
-    QTest::addColumn<ColorSpec>("spec");
+    QTest::addColumn<QQuickColorInputs::Mode>("colorMode");
     QTest::addColumn<QString>("expectedDefaultValue");
     QTest::addColumn<QString>("newValue");
     QTest::addColumn<QColor>("expectedNewColor");
+    QTest::addColumn<int>("index");
 
-    QTest::newRow("rgbRed") << ColorSpec::Rgb << "255" << "100" << QColor(100, 255, 255);
-    QTest::newRow("rgbGreen") << ColorSpec::Rgb << "255" << "0" << QColorConstants::Magenta;
-    QTest::newRow("rgbBlue") << ColorSpec::Rgb << "255" << "200" << QColor(255, 255, 200);
-    QTest::newRow("rgbAlpha") << ColorSpec::Rgb << "100%" << "50%" << QColor::fromRgbF(1.0f, 1.0f, 1.0f, 0.5f);
+    QTest::newRow("rgbRed") << QQuickColorInputs::Rgb << "255" << "100" << QColor(100, 255, 255) << 0;
+    QTest::newRow("rgbGreen") << QQuickColorInputs::Rgb << "255" << "0" << QColorConstants::Magenta << 1;
+    QTest::newRow("rgbBlue") << QQuickColorInputs::Rgb << "255" << "200" << QColor(255, 255, 200) << 2;
+    QTest::newRow("rgbAlpha") << QQuickColorInputs::Rgb << "100%" << "50%" << QColor::fromRgbF(1.0f, 1.0f, 1.0f, 0.5f) << 3;
 
-    QTest::newRow("hsvHue") << ColorSpec::Hsv << "0°" << "60°" << QColor::fromHsvF(.2f, 0.0f, 1.0f);
-    QTest::newRow("hsvSaturation") << ColorSpec::Hsv << "0%" << "50%" << QColor::fromHsvF(0.0f, 0.5f, 1.0f);
-    QTest::newRow("hsvValue") << ColorSpec::Hsv << "100%" << "90%" << QColor::fromHsvF(0.0f, 0.0f, 0.9f, 1.0f);
-    QTest::newRow("hsvAlpha") << ColorSpec::Hsv << "100%" << "40%" << QColor::fromHsvF(0.0f, 0.0f, 1.0f, 0.4f);
+    QTest::newRow("hsvHue") << QQuickColorInputs::Hsv << "0°" << "60°" << QColor::fromHsvF(.2f, 0.0f, 1.0f) << 0;
+    QTest::newRow("hsvSaturation") << QQuickColorInputs::Hsv << "0%" << "50%" << QColor::fromHsvF(0.0f, 0.5f, 1.0f) << 1;
+    QTest::newRow("hsvValue") << QQuickColorInputs::Hsv << "100%" << "90%" << QColor::fromHsvF(0.0f, 0.0f, 0.9f, 1.0f) << 2;
+    QTest::newRow("hsvAlpha") << QQuickColorInputs::Hsv << "100%" << "40%" << QColor::fromHsvF(0.0f, 0.0f, 1.0f, 0.4f) << 3;
 
-    QTest::newRow("hslHue") << ColorSpec::Hsl << "0°" << "90°" << QColor::fromHslF(.25f, 1.0f, 1.0f);
-    QTest::newRow("hslSaturation") << ColorSpec::Hsl << "0%" << "40%" << QColor::fromHslF(0.0f, 0.4f, 1.0f);
-    QTest::newRow("hslLightness") << ColorSpec::Hsl << "100%" << "80%" << QColor::fromHslF(0.0f, 0.0f, 0.8f, 1.0f);
-    QTest::newRow("hslAlpha") << ColorSpec::Hsl << "100%" << "60%" << QColor::fromHslF(0.0f, 0.0f, 1.0f, 0.6f);
+    QTest::newRow("hslHue") << QQuickColorInputs::Hsl << "0°" << "90°" << QColor::fromHslF(.25f, 1.0f, 1.0f) << 0;
+    QTest::newRow("hslSaturation") << QQuickColorInputs::Hsl << "0%" << "40%" << QColor::fromHslF(0.0f, 0.4f, 1.0f) << 1;
+    QTest::newRow("hslLightness") << QQuickColorInputs::Hsl << "100%" << "80%" << QColor::fromHslF(0.0f, 0.0f, 0.8f, 1.0f) << 2;
+    QTest::newRow("hslAlpha") << QQuickColorInputs::Hsl << "100%" << "60%" << QColor::fromHslF(0.0f, 0.0f, 1.0f, 0.6f) << 3;
 }
 
 void tst_QQuickColorDialogImpl::changeColorFromTextFields()
 {
-    QFETCH(ColorSpec, spec);
+    QFETCH(QQuickColorInputs::Mode, colorMode);
     QFETCH(QString, expectedDefaultValue);
     QFETCH(QString, newValue);
     QFETCH(QColor, expectedNewColor);
+    QFETCH(int, index);
 
     DialogTestHelper<QQuickColorDialog, QQuickColorDialogImpl> dialogHelper(this, "colorDialog.qml");
     QVERIFY2(dialogHelper.isWindowInitialized(), dialogHelper.failureMessage());
     QVERIFY(dialogHelper.waitForWindowActive());
+
+    if (QString::fromUtf8(QTest::currentDataTag()).endsWith("Alpha"))
+        dialogHelper.dialog->setOptions(dialogHelper.dialog->options() | QColorDialogOptions::ShowAlphaChannel);
 
     // Open the dialog.
     QVERIFY(dialogHelper.openDialog());
@@ -530,16 +535,18 @@ void tst_QQuickColorDialogImpl::changeColorFromTextFields()
     QVERIFY(comboBoxPopupListView);
 
     // Find the relevant color system delegate.
-    auto delegate = qobject_cast<QQuickAbstractButton *>(findViewDelegateItem(comboBoxPopupListView, static_cast<int>(spec)));
+    auto delegate = qobject_cast<QQuickAbstractButton *>(findViewDelegateItem(comboBoxPopupListView, static_cast<int>(colorMode)));
     QVERIFY(delegate);
     QVERIFY(clickButton(delegate));
     QTRY_VERIFY(!colorSystemComboBox->popup()->isVisible());
 
-    auto textField = dialogHelper.quickDialog->findChild<QQuickTextField *>(QTest::currentDataTag());
+    QQuickColorInputs *colorInputs = dialogHelper.quickDialog->findChild<QQuickColorInputs *>();
+    QVERIFY(colorInputs);
+    QQuickTextField *textField = qobject_cast<QQuickTextField *>(colorInputs->itemAt(index));
     QVERIFY(textField);
     QCOMPARE(textField->text(), expectedDefaultValue);
 
-    if (spec == ColorSpec::Hsv)
+    if (colorMode == QQuickColorInputs::Hsv)
         dialogHelper.quickDialog->setHsl(false);
 
     textField->forceActiveFocus();
@@ -578,6 +585,7 @@ void tst_QQuickColorDialogImpl::windowTitle()
     // Open the dialog.
     QVERIFY(dialogHelper.openDialog());
     QTRY_VERIFY(dialogHelper.isQuickDialogOpen());
+    QVERIFY(dialogHelper.waitForPopupWindowActiveAndPolished());
 
     QCOMPARE(dialogHelper.dialog->title(), title);
 
@@ -635,10 +643,10 @@ void tst_QQuickColorDialogImpl::dialogCanMoveBetweenWindows()
 
     // Confirm that the dialog can swap to different windows
     QMetaObject::invokeMethod(dialogHelper.window(), "goToSubWindow1");
-    QCOMPARE(dialogHelper.dialog->parentWindow(), qvariant_cast<QQuickWindow *>(subWindow1));
+    QTRY_COMPARE(dialogHelper.dialog->parentWindow(), qvariant_cast<QQuickWindow *>(subWindow1));
 
     QMetaObject::invokeMethod(dialogHelper.window(), "goToSubWindow2");
-    QCOMPARE(dialogHelper.dialog->parentWindow(), qvariant_cast<QQuickWindow *>(subWindow2));
+    QTRY_COMPARE(dialogHelper.dialog->parentWindow(), qvariant_cast<QQuickWindow *>(subWindow2));
 
     QMetaObject::invokeMethod(dialogHelper.window(), "resetParentWindow");
     QTRY_COMPARE(dialogHelper.quickDialog->parent(), dialogHelper.window());

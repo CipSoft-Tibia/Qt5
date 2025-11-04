@@ -62,6 +62,10 @@ enum class NodeAttribute {
     UserExecutable = (1 << 21), // Method attributes, see OPC UA 1.05 part 3, 5.7
     // Data type attributes
     DataTypeDefinition = (1 << 22),
+    RolePermissions = (1 << 23),
+    UserRolePermissions = (1 << 24),
+    AccessRestrictions = (1 << 25),
+    AccessLevelEx = (1 << 26),
 };
 Q_ENUM_NS(NodeAttribute)
 Q_DECLARE_FLAGS(NodeAttributes, NodeAttribute)
@@ -91,6 +95,10 @@ enum class WriteMaskBit : quint32 {
     ValueRank = (1 << 19),
     WriteMask = (1 << 20),
     ValueForVariableType = (1 << 21),
+    DataTypeDefinition = (1 << 22),
+    RolePermissions = (1 << 23),
+    AccessRestrictions = (1 << 24),
+    AccessLevelEx = (1 << 25),
 };
 Q_ENUM_NS(WriteMaskBit)
 Q_DECLARE_FLAGS(WriteMask, WriteMaskBit)
@@ -108,6 +116,27 @@ enum class AccessLevelBit : quint8 {
 };
 Q_ENUM_NS(AccessLevelBit)
 Q_DECLARE_FLAGS(AccessLevel, AccessLevelBit)
+
+// Defined in OPC UA 1.05 part 3, 8.58.
+enum class AccessLevelExBit : quint32 {
+    None = 0,
+    CurrentRead = (1 << 0),
+    CurrentWrite = (1 << 1),
+    HistoryRead = (1 << 2),
+    HistoryWrite = (1 << 3),
+    SemanticChange = (1 << 4),
+    StatusWrite = (1 << 5),
+    TimestampWrite = (1 << 6),
+    // Bit #7 is marked as reserved
+    NonatomicRead = (1 << 8),
+    NonatomicWrite = (1 << 9),
+    WriteFullArrayOnly = (1 << 10),
+    NoSubDataTypes = (1 << 11),
+    NonVolatile = (1 << 12),
+    Constant = (1 << 13),
+};
+Q_ENUM_NS(AccessLevelExBit)
+Q_DECLARE_FLAGS(AccessLevelEx, AccessLevelExBit)
 
 // Defined in OPC UA 1.05 part 3, 8.59.
 enum class EventNotifierBit : quint8 {
@@ -206,6 +235,8 @@ enum class ReferenceTypeId : quint32 {
     HasAttachedComponent = 25264,
     IsExecutingOn = 25265,
     HasPushedSecurityGroup = 25345,
+    AlarmSuppressionGroupMember = 32059,
+    HasReferenceDescription = 32679,
 };
 Q_ENUM_NS(ReferenceTypeId)
 
@@ -475,8 +506,10 @@ enum UaStatusCode : quint32
     GoodDataIgnored = 0x00D90000,
     BadRequestNotAllowed = 0x80E40000,
     BadRequestNotComplete = 0x81130000,
+    BadTransactionPending = 0x80E80000,
     BadTicketRequired = 0x811F0000,
     BadTicketInvalid = 0x81200000,
+    BadLocked = 0x80E90000,
     GoodEdited = 0x00DC0000,
     GoodPostActionFailed = 0x00DD0000,
     UncertainDominantValueChanged = 0x40DE0000,

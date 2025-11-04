@@ -28,13 +28,13 @@
 
 #include <cstddef>
 #include <memory>
+#include <optional>
 
 #include "base/gtest_prod_util.h"
 #include "base/unguessable_token.h"
 #include "services/network/public/cpp/content_security_policy/content_security_policy.h"
 #include "services/network/public/mojom/content_security_policy.mojom-blink.h"
 #include "services/network/public/mojom/web_sandbox_flags.mojom-blink-forward.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "third_party/blink/public/mojom/devtools/console_message.mojom-blink.h"
 #include "third_party/blink/public/mojom/devtools/inspector_issue.mojom-blink-forward.h"
 #include "third_party/blink/public/mojom/fetch/fetch_api_request.mojom-blink-forward.h"
@@ -105,7 +105,7 @@ class CORE_EXPORT ContentSecurityPolicyDelegate : public GarbageCollectedMixin {
   // See https://w3c.github.io/webappsec-csp/#create-violation-for-global.
   // These functions are used to create the violation object.
   virtual std::unique_ptr<SourceLocation> GetSourceLocation() = 0;
-  virtual absl::optional<uint16_t> GetStatusCode() = 0;
+  virtual std::optional<uint16_t> GetStatusCode() = 0;
   // If the Delegate is not bound to a document, a null string should be
   // returned as the referrer.
   virtual String GetDocumentReferrer() = 0;
@@ -232,7 +232,7 @@ class CORE_EXPORT ContentSecurityPolicy final
       const String& policy_name,
       bool is_duplicate,
       AllowTrustedTypePolicyDetails& violation_details,
-      absl::optional<base::UnguessableToken> issue_id = absl::nullopt);
+      std::optional<base::UnguessableToken> issue_id = std::nullopt);
 
   // Passing 'String()' into the |nonce| arguments in the following methods
   // represents an unnonced resource load.
@@ -285,7 +285,7 @@ class CORE_EXPORT ContentSecurityPolicy final
       const String& message,
       const String& sample = String(),
       const String& sample_prefix = String(),
-      absl::optional<base::UnguessableToken> issue_id = absl::nullopt);
+      std::optional<base::UnguessableToken> issue_id = std::nullopt);
 
   void UsesScriptHashAlgorithms(uint8_t content_security_policy_hash_algorithm);
   void UsesStyleHashAlgorithms(uint8_t content_security_policy_hash_algorithm);
@@ -328,7 +328,7 @@ class CORE_EXPORT ContentSecurityPolicy final
       Element* = nullptr,
       const String& source = g_empty_string,
       const String& source_prefix = g_empty_string,
-      absl::optional<base::UnguessableToken> issue_id = absl::nullopt);
+      std::optional<base::UnguessableToken> issue_id = std::nullopt);
 
   // Called when mixed content is detected on a page; will trigger a violation
   // report if the 'block-all-mixed-content' directive is specified for a
@@ -356,6 +356,16 @@ class CORE_EXPORT ContentSecurityPolicy final
   }
 
   bool ExperimentalFeaturesEnabled() const;
+
+  // CSP can be set from multiple sources; if a directive is set by multiple
+  // sources, the strictest one will be used. A CSP can be considered strict
+  // if the `base-uri`, `object-src`, and `script-src` directives are all
+  // strict enough (even if the strictest directives come from different CSP
+  // sources).
+  bool IsStrictPolicyEnforced() const { return enforces_strict_policy_; }
+
+  // Returns true if trusted types are required.
+  bool RequiresTrustedTypes() const;
 
   // Whether the main world's CSP should be bypassed based on the current
   // javascript world we are in.
@@ -396,6 +406,18 @@ class CORE_EXPORT ContentSecurityPolicy final
   }
 
   bool HasPolicyFromSource(network::mojom::ContentSecurityPolicySource) const;
+
+  // Whether policies allow loading an opaque URL in a <fencedframe>.
+  //
+  // The document is not allowed to retrieve data about the URL, so the only
+  // allowed `fenced-frame-src` are the one allowing every HTTPs url:
+  // - '*'
+  // - https:
+  // - https://*:*
+  bool AllowFencedFrameOpaqueURL() const;
+
+  // Returns whether enforcing frame-ancestors CSP directives are present.
+  bool HasEnforceFrameAncestorsDirectives();
 
   void Count(WebFeature feature) const;
 
@@ -481,6 +503,8 @@ class CORE_EXPORT ContentSecurityPolicy final
   mojom::blink::InsecureRequestPolicy insecure_request_policy_;
 
   bool supports_wasm_eval_ = false;
+
+  bool enforces_strict_policy_{false};
 };
 
 }  // namespace blink

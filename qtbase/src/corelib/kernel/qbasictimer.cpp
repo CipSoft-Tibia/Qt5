@@ -5,6 +5,10 @@
 #include "qabstracteventdispatcher.h"
 #include "qabstracteventdispatcher_p.h"
 
+#include <private/qthread_p.h>
+
+using namespace std::chrono_literals;
+
 QT_BEGIN_NAMESPACE
 
 /*!
@@ -124,6 +128,17 @@ QT_BEGIN_NAMESPACE
 */
 
 /*!
+    \typedef QBasicTimer::Duration
+
+    A \c{std::chrono::duration} type that is used in various API in this class.
+    This type exists to facilitate a possible transition to a higher or lower
+    granularity.
+
+    In all current platforms, it is \c nanoseconds.
+*/
+
+/*!
+    \fn void QBasicTimer::start(Duration duration, QObject *object)
     \since 6.5
 
     Starts (or restarts) the timer with a \a duration timeout. The
@@ -132,12 +147,14 @@ QT_BEGIN_NAMESPACE
 
     The given \a object will receive timer events.
 
+//! [start-nanoseconds-note]
+    \note Starting from Qt 6.9 this method takes std::chrono::nanoseconds,
+          before that it took std::chrono::milliseconds. This change is
+          backwards compatible.
+//! [start-nanoseconds-note]
+
     \sa stop(), isActive(), QObject::timerEvent(), Qt::CoarseTimer
  */
-void QBasicTimer::start(std::chrono::milliseconds duration, QObject *object)
-{
-    start(duration, Qt::CoarseTimer, object);
-}
 
 /*!
     \fn QBasicTimer::start(int msec, Qt::TimerType timerType, QObject *obj)
@@ -149,6 +166,7 @@ void QBasicTimer::start(std::chrono::milliseconds duration, QObject *object)
 
 /*!
     \since 6.5
+    \overload
 
     Starts (or restarts) the timer with a \a duration timeout and the
     given \a timerType. See Qt::TimerType for information on the different
@@ -156,12 +174,14 @@ void QBasicTimer::start(std::chrono::milliseconds duration, QObject *object)
 
     \a obj will receive timer events.
 
+    \include qbasictimer.cpp start-nanoseconds-note
+
     \sa stop(), isActive(), QObject::timerEvent(), Qt::TimerType
  */
-void QBasicTimer::start(std::chrono::milliseconds duration, Qt::TimerType timerType, QObject *obj)
+void QBasicTimer::start(Duration duration, Qt::TimerType timerType, QObject *obj)
 {
     QAbstractEventDispatcher *eventDispatcher = QAbstractEventDispatcher::instance();
-    if (Q_UNLIKELY(duration.count() < 0)) {
+    if (Q_UNLIKELY(duration < 0ns)) {
         qWarning("QBasicTimer::start: Timers cannot have negative timeouts");
         return;
     }
@@ -186,7 +206,12 @@ void QBasicTimer::start(std::chrono::milliseconds duration, Qt::TimerType timerT
 void QBasicTimer::stop()
 {
     if (isActive()) {
-        QAbstractEventDispatcher *eventDispatcher = QAbstractEventDispatcher::instance();
+        QAbstractEventDispatcher *eventDispatcher = nullptr;
+
+        // don't create the current thread data if it's already been destroyed
+        if (QThreadData *data = QThreadData::currentThreadData())
+            eventDispatcher = data->eventDispatcher.loadRelaxed();
+
         if (eventDispatcher && !eventDispatcher->unregisterTimer(m_id)) {
             qWarning("QBasicTimer::stop: Failed. Possibly trying to stop from a different thread");
             return;

@@ -1,7 +1,6 @@
 // Copyright (C) 2017 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
-
-#if defined(USE_OZONE)
+// Qt-Security score:significant reason:default
 
 #include "base/functional/bind.h"
 #include "ozone/platform_window_qt.h"
@@ -73,5 +72,3 @@ void PlatformWindowQt::PrepareForShutdown()
 }
 
 } // namespace ui
-
-#endif // defined(USE_OZONE)

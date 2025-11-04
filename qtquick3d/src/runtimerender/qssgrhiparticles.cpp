@@ -64,6 +64,9 @@ void QSSGParticleRenderer::updateUniformsForParticles(QSSGRhiShaderPipeline &sha
     const QMatrix4x4 &modelMatrix = renderable.globalTransform;
     shaders.setUniform(ubufData, "qt_modelMatrix", modelMatrix.constData(), 16 * sizeof(float), &cui.modelMatrixIdx);
 
+    const QVector2D camProperties(cameras[0]->clipNear, cameras[0]->clipFar);
+    shaders.setUniform(ubufData, "qt_cameraProperties", &camProperties, 2 * sizeof(float), &cui.cameraPropertiesIdx);
+
     QVector2D oneOverSize = QVector2D(1.0f, 1.0f);
     auto &particleBuffer = renderable.particles.m_particleBuffer;
     const quint32 particlesPerSlice = particleBuffer.particlesPerSlice();
@@ -411,10 +414,13 @@ void QSSGParticleRenderer::rhiPrepareRenderable(QSSGRhiShaderPipeline &shaderPip
     ps->samples = samples;
     ps->viewCount = viewCount;
     ps->cullMode = QRhiGraphicsPipeline::None;
-    if (renderable.renderableFlags.hasTransparency())
-        fillTargetBlend(ps->targetBlend, renderable.particles.m_blendMode);
-    else
-        ps->targetBlend = QRhiGraphicsPipeline::TargetBlend();
+
+    if (inData.orderIndependentTransparencyEnabled == false) {
+        if (renderable.renderableFlags.hasTransparency())
+            fillTargetBlend(ps->targetBlend[0], renderable.particles.m_blendMode);
+        else
+            ps->targetBlend[0] = QRhiGraphicsPipeline::TargetBlend();
+    }
 
     QSSGRhiShaderResourceBindingList bindings;
     bindings.addUniformBuffer(0, VISIBILITY_ALL, dcd.ubuf, 0, shaderPipeline.ub0Size());

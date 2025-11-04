@@ -22,6 +22,7 @@
 #include <stdint.h>
 
 #include "libavutil/intmath.h"
+#include "libavutil/mem.h"
 
 #include "avcodec.h"
 #include "bytestream.h"
@@ -666,8 +667,6 @@ static int pixlet_decode_frame(AVCodecContext *avctx, AVFrame *p,
 
     bytestream2_skip(&ctx->gb, 8);
 
-    p->pict_type = AV_PICTURE_TYPE_I;
-    p->flags |= AV_FRAME_FLAG_KEY;
     p->color_range = AVCOL_RANGE_JPEG;
 
     ret = ff_thread_get_buffer(avctx, p, 0);

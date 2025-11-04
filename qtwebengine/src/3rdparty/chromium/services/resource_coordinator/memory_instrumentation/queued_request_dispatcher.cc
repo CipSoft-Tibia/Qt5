@@ -68,7 +68,7 @@ uint32_t CalculatePrivateFootprintKb(const mojom::RawOSMemDump& os_dump,
   return base::saturated_cast<int32_t>(
       os_dump.platform_private_footprint->private_bytes / 1024);
 #else
-  // TODO(crbug.com/1506552): Implement for iOS.
+  // TODO(crbug.com/40947218): Implement for iOS.
   return 0;
 #endif
 }
@@ -603,7 +603,7 @@ QueuedRequestDispatcher::ClientInfo::ClientInfo(
     mojom::ClientProcess* client,
     base::ProcessId pid,
     mojom::ProcessType process_type,
-    absl::optional<std::string> service_name)
+    std::optional<std::string> service_name)
     : client(client),
       pid(pid),
       process_type(process_type),

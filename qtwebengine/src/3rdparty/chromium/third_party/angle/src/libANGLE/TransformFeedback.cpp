@@ -140,7 +140,7 @@ angle::Result TransformFeedback::begin(const Context *context,
                                        PrimitiveMode primitiveMode,
                                        Program *program)
 {
-    // TODO: http://anglebug.com/5486: This method should take in as parameter a
+    // TODO: http://anglebug.com/42264023: This method should take in as parameter a
     // ProgramExecutable instead of a Program.
 
     ANGLE_TRY(mImplementation->begin(context, primitiveMode));
@@ -327,6 +327,18 @@ bool TransformFeedback::buffersBoundForOtherUseInWebGL() const
 rx::TransformFeedbackImpl *TransformFeedback::getImplementation() const
 {
     return mImplementation;
+}
+
+bool TransformFeedback::isBufferBound(BufferID bufferID) const
+{
+    for (const auto &buffer : mState.mIndexedBuffers)
+    {
+        if (buffer.id() == bufferID)
+        {
+            return true;
+        }
+    }
+    return false;
 }
 
 void TransformFeedback::onBindingChanged(const Context *context, bool bound)

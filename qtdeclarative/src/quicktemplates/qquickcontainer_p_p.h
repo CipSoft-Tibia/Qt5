@@ -62,6 +62,9 @@ public:
     void updateContentWidth();
     void updateContentHeight();
 
+    qreal getContentWidth() const override;
+    qreal getContentHeight() const override;
+
     bool hasContentWidth = false;
     bool hasContentHeight = false;
     qreal contentWidth = 0;

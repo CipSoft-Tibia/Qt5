@@ -4,6 +4,8 @@
 
 #include "third_party/blink/renderer/modules/cache_storage/inspector_cache_storage_agent.h"
 
+#include <sys/types.h>
+
 #include <algorithm>
 #include <memory>
 #include <utility>
@@ -14,10 +16,10 @@
 #include "mojo/public/cpp/bindings/associated_remote.h"
 #include "mojo/public/cpp/bindings/pending_associated_remote.h"
 #include "services/network/public/mojom/fetch_api.mojom-blink.h"
-#include "third_party/blink/public/common/browser_interface_broker_proxy.h"
 #include "third_party/blink/public/common/cache_storage/cache_storage_utils.h"
 #include "third_party/blink/public/common/storage_key/storage_key.h"
 #include "third_party/blink/public/mojom/cache_storage/cache_storage.mojom-blink.h"
+#include "third_party/blink/public/platform/browser_interface_broker_proxy.h"
 #include "third_party/blink/public/platform/platform.h"
 #include "third_party/blink/renderer/core/execution_context/execution_context.h"
 #include "third_party/blink/renderer/core/fileapi/file_reader_client.h"
@@ -72,7 +74,7 @@ namespace blink {
 namespace {
 
 String BuildCacheId(const String& storage_key,
-                    const absl::optional<String>& storage_bucket_name,
+                    const std::optional<String>& storage_bucket_name,
                     const String& cache_name) {
   DCHECK(storage_key.find('|') == WTF::kNotFound);
   StringBuilder id;
@@ -88,13 +90,13 @@ String BuildCacheId(const String& storage_key,
 
 ProtocolResponse ParseCacheId(const String& id,
                               String* storage_key,
-                              absl::optional<String>* storage_bucket_name,
+                              std::optional<String>* storage_bucket_name,
                               String* cache_name) {
   Vector<String> id_parts;
   id.Split('|', true, id_parts);
   if (id_parts.size() == 2) {
     *storage_key = id_parts[0];
-    *storage_bucket_name = absl::nullopt;
+    *storage_bucket_name = std::nullopt;
     *cache_name = id_parts[1];
   } else if (id_parts.size() == 3) {
     *storage_key = id_parts[0];
@@ -104,8 +106,8 @@ ProtocolResponse ParseCacheId(const String& id,
     return ProtocolResponse::ServerError("Invalid cache id");
   }
 
-  absl::optional<StorageKey> key =
-      StorageKey::Deserialize(StringUTF8Adaptor(*storage_key).AsStringPiece());
+  std::optional<StorageKey> key =
+      StorageKey::Deserialize(StringUTF8Adaptor(*storage_key).AsStringView());
   if (!key.has_value()) {
     return ProtocolResponse::ServerError("Not able to deserialize storage key");
   }
@@ -143,7 +145,7 @@ const char* CacheStorageErrorString(mojom::blink::CacheStorageError error) {
       // This function should only be called upon error.
       break;
   }
-  NOTREACHED();
+  NOTREACHED_IN_MIGRATION();
   return "";
 }
 
@@ -163,7 +165,7 @@ CachedResponseType ResponseTypeToString(
     case network::mojom::FetchResponseType::kOpaqueRedirect:
       return protocol::CacheStorage::CachedResponseTypeEnum::OpaqueRedirect;
   }
-  NOTREACHED();
+  NOTREACHED_IN_MIGRATION();
   return "";
 }
 
@@ -291,7 +293,8 @@ class ResponsesAccumulator : public RefCounted<ResponsesAccumulator> {
           request->is_history_navigation, request->devtools_stack_id,
           request->trust_token_params.Clone(), request->target_address_space,
           request->attribution_reporting_eligibility,
-          /*service_worker_race_network_request_token=*/absl::nullopt);
+          request->attribution_reporting_support,
+          /*service_worker_race_network_request_token=*/std::nullopt);
       cache_remote_->Match(
           std::move(request), mojom::blink::CacheQueryOptions::New(),
           /*in_related_fetch_event=*/false, /*in_range_fetch_event=*/false,
@@ -490,7 +493,8 @@ class CachedResponseFileReaderLoaderClient final
   void DidFinishLoading() override {
     std::unique_ptr<CachedResponse> response =
         CachedResponse::create()
-            .setBody(protocol::Binary::fromSharedBuffer(data_))
+            .setBody(protocol::Binary::fromVector(
+                std::move(data_).CopyAs<Vector<uint8_t>>()))
             .build();
     callback_wrapper_->SendSuccess(std::move(response));
     dispose();
@@ -504,9 +508,8 @@ class CachedResponseFileReaderLoaderClient final
     dispose();
   }
 
-  FileErrorCode DidReceiveData(const char* data,
-                               unsigned data_length) override {
-    data_->Append(data, data_length);
+  FileErrorCode DidReceiveData(base::span<const uint8_t> data) override {
+    data_.Append(data);
     return FileErrorCode::kOK;
   }
 
@@ -523,7 +526,6 @@ class CachedResponseFileReaderLoaderClient final
       : loader_(MakeGarbageCollected<FileReaderLoader>(this,
                                                        std::move(task_runner))),
         callback_wrapper_(callback_wrapper),
-        data_(SharedBuffer::Create()),
         keep_alive_(this) {
     loader_->Start(std::move(blob));
   }
@@ -539,7 +541,7 @@ class CachedResponseFileReaderLoaderClient final
   Member<FileReaderLoader> loader_;
   scoped_refptr<RequestCallbackWrapper<RequestCachedResponseCallback>>
       callback_wrapper_;
-  scoped_refptr<SharedBuffer> data_;
+  SegmentedBuffer data_;
   SelfKeepAlive<CachedResponseFileReaderLoaderClient> keep_alive_;
 };
 
@@ -562,7 +564,7 @@ void InspectorCacheStorageAgent::Trace(Visitor* visitor) const {
 base::expected<mojom::blink::CacheStorage*, protocol::Response>
 InspectorCacheStorageAgent::GetCacheStorageRemote(
     const String& storage_key,
-    const absl::optional<String>& storage_bucket_name,
+    const std::optional<String>& storage_bucket_name,
     base::OnceCallback<void(ProtocolResponse)> on_failure_callback) {
   LocalFrame* frame = frames_->FrameWithStorageKey(storage_key);
   if (!frame) {
@@ -619,7 +621,7 @@ InspectorCacheStorageAgent::GetCacheStorageRemoteForId(
     String& cache_name,
     base::OnceCallback<void(ProtocolResponse)> on_failure_callback) {
   String storage_key;
-  absl::optional<String> storage_bucket_name;
+  std::optional<String> storage_bucket_name;
   ProtocolResponse response =
       ParseCacheId(cache_id, &storage_key, &storage_bucket_name, &cache_name);
 
@@ -652,8 +654,8 @@ void InspectorCacheStorageAgent::requestCacheNames(
     storage_key = maybe_storage_key.has_value()
                       ? maybe_storage_key.value()
                       : maybe_storage_bucket.value().getStorageKey();
-    absl::optional<StorageKey> key =
-        StorageKey::Deserialize(StringUTF8Adaptor(storage_key).AsStringPiece());
+    std::optional<StorageKey> key =
+        StorageKey::Deserialize(StringUTF8Adaptor(storage_key).AsStringView());
     if (!key.has_value()) {
       callback->sendFailure(ProtocolResponse::InvalidParams(
           "Not able to deserialize storage key"));
@@ -676,7 +678,7 @@ void InspectorCacheStorageAgent::requestCacheNames(
         StorageKey::CreateFirstParty(sec_origin->ToUrlOrigin()).Serialize());
   }
 
-  absl::optional<WTF::String> bucket_name;
+  std::optional<WTF::String> bucket_name;
   if (maybe_storage_bucket.has_value() && maybe_storage_bucket->hasName()) {
     bucket_name = maybe_storage_bucket->getName("");
   }
@@ -696,7 +698,7 @@ void InspectorCacheStorageAgent::requestCacheNames(
       trace_id,
       WTF::BindOnce(
           [](String security_origin, String storage_key,
-             absl::optional<WTF::String> bucket_name,
+             std::optional<WTF::String> bucket_name,
              protocol::Maybe<protocol::Storage::StorageBucket>
                  maybe_storage_bucket,
              int64_t trace_id,

@@ -34,7 +34,7 @@ const UIStrings = {
   /**
    *@description Text in Coverage View of the Coverage tab
    */
-  urlFilter: 'URL filter',
+  filterByUrl: 'Filter by URL',
   /**
    *@description Label for the type filter in the Converage Panel
    */
@@ -131,12 +131,13 @@ export class CoverageView extends UI.Widget.VBox {
   constructor() {
     super(true);
 
-    this.element.setAttribute('jslog', `${VisualLogging.panel().context('coverage')}`);
+    this.element.setAttribute('jslog', `${VisualLogging.panel('coverage').track({resize: true})}`);
 
     this.model = null;
     this.decorationManager = null;
 
     const toolbarContainer = this.contentElement.createChild('div', 'coverage-toolbar-container');
+    toolbarContainer.setAttribute('jslog', `${VisualLogging.toolbar()}`);
     const toolbar = new UI.Toolbar.Toolbar('coverage-toolbar', toolbarContainer);
     toolbar.makeWrappable(true);
 
@@ -146,17 +147,18 @@ export class CoverageView extends UI.Widget.VBox {
     const coverageTypes = [
       {
         label: i18nString(UIStrings.perFunction),
-        value: CoverageType.JavaScript | CoverageType.JavaScriptPerFunction,
+        value: CoverageType.JAVA_SCRIPT | CoverageType.JAVA_SCRIPT_PER_FUNCTION,
       },
       {
         label: i18nString(UIStrings.perBlock),
-        value: CoverageType.JavaScript,
+        value: CoverageType.JAVA_SCRIPT,
       },
     ];
     for (const type of coverageTypes) {
       this.coverageTypeComboBox.addOption(this.coverageTypeComboBox.createOption(type.label, `${type.value}`));
     }
-    this.coverageTypeComboBoxSetting = Common.Settings.Settings.instance().createSetting('coverageViewCoverageType', 0);
+    this.coverageTypeComboBoxSetting =
+        Common.Settings.Settings.instance().createSetting('coverage-view-coverage-type', 0);
     this.coverageTypeComboBox.setSelectedIndex(this.coverageTypeComboBoxSetting.get());
     this.coverageTypeComboBox.setEnabled(true);
     toolbar.appendToolbarItem(this.coverageTypeComboBox);
@@ -184,9 +186,9 @@ export class CoverageView extends UI.Widget.VBox {
 
     this.textFilterRegExp = null;
     toolbar.appendSeparator();
-    this.filterInput = new UI.Toolbar.ToolbarInput(i18nString(UIStrings.urlFilter), '', 0.4, 1);
+    this.filterInput = new UI.Toolbar.ToolbarFilter(i18nString(UIStrings.filterByUrl), 0.4, 1);
     this.filterInput.setEnabled(false);
-    this.filterInput.addEventListener(UI.Toolbar.ToolbarInput.Event.TextChanged, this.onFilterChanged, this);
+    this.filterInput.addEventListener(UI.Toolbar.ToolbarInput.Event.TEXT_CHANGED, this.onFilterChanged, this);
     toolbar.appendToolbarItem(this.filterInput);
 
     toolbar.appendSeparator();
@@ -206,7 +208,7 @@ export class CoverageView extends UI.Widget.VBox {
       },
       {
         label: i18nString(UIStrings.javascript),
-        value: CoverageType.JavaScript | CoverageType.JavaScriptPerFunction,
+        value: CoverageType.JAVA_SCRIPT | CoverageType.JAVA_SCRIPT_PER_FUNCTION,
       },
     ];
     for (const option of options) {
@@ -218,7 +220,7 @@ export class CoverageView extends UI.Widget.VBox {
     toolbar.appendToolbarItem(this.filterByTypeComboBox);
 
     toolbar.appendSeparator();
-    this.showContentScriptsSetting = Common.Settings.Settings.instance().createSetting('showContentScripts', false);
+    this.showContentScriptsSetting = Common.Settings.Settings.instance().createSetting('show-content-scripts', false);
     this.showContentScriptsSetting.addChangeListener(this.onFilterChanged, this);
     this.contentScriptsCheckbox = new UI.Toolbar.ToolbarSettingCheckbox(
         this.showContentScriptsSetting, i18nString(UIStrings.includeExtensionContentScripts),
@@ -320,7 +322,7 @@ export class CoverageView extends UI.Widget.VBox {
     const option = this.coverageTypeComboBox.selectedOption();
     const coverageType = Number(option ? option.value : Number.NaN);
     // Check that Coverage.CoverageType.JavaScriptPerFunction is not present.
-    return coverageType === CoverageType.JavaScript;
+    return coverageType === CoverageType.JAVA_SCRIPT;
   }
 
   private selectCoverageType(jsCoveragePerBlock: boolean): void {
@@ -490,7 +492,7 @@ export class CoverageView extends UI.Widget.VBox {
       this.listView.detach();
       this.bfcacheReloadPromptPage.show(this.coverageResultsElement);
     }
-    if (event.data.type === SDK.ResourceTreeModel.PrimaryPageChangeType.Activation) {
+    if (event.data.type === SDK.ResourceTreeModel.PrimaryPageChangeType.ACTIVATION) {
       this.listView.detach();
       this.activationReloadPromptPage.show(this.coverageResultsElement);
     }
@@ -511,16 +513,24 @@ export class CoverageView extends UI.Widget.VBox {
   private updateStats(): void {
     const all = {total: 0, unused: 0};
     const filtered = {total: 0, unused: 0};
-    let filterApplied = false;
+    const filterApplied = this.textFilterRegExp !== null;
     if (this.model) {
       for (const info of this.model.entries()) {
         all.total += info.size();
         all.unused += info.unusedSize();
         if (this.isVisible(false, info)) {
-          filtered.total += info.size();
-          filtered.unused += info.unusedSize();
-        } else {
-          filterApplied = true;
+          if (this.textFilterRegExp?.test(info.url())) {
+            filtered.total += info.size();
+            filtered.unused += info.unusedSize();
+          } else {
+            // If it doesn't match the filter, calculate the stats from visible children if there are any
+            for (const childInfo of info.sourcesURLCoverageInfo.values()) {
+              if (this.isVisible(false, childInfo)) {
+                filtered.total += childInfo.size();
+                filtered.unused += childInfo.unusedSize();
+              }
+            }
+          }
         }
       }
     }

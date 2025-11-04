@@ -12,6 +12,11 @@
  the same class names.
 #endif
 
+#ifdef QTCHARTS_HEADERS
+#error Mixing QtCharts and QtGraphs in the same TU is unsupported since they use\
+ the same class names.
+#endif
+
 #define QTGRAPHS_HEADERS
 
 #endif

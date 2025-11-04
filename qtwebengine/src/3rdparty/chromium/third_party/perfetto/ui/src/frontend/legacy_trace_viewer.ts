@@ -14,12 +14,12 @@
 
 import m from 'mithril';
 import {inflate} from 'pako';
-
 import {assertTrue} from '../base/logging';
 import {isString} from '../base/object_utils';
 import {showModal} from '../widgets/modal';
-
 import {globals} from './globals';
+import {utf8Decode} from '../base/string_utils';
+import {convertToJson} from './trace_converter';
 
 const CTRACE_HEADER = 'TRACE:\n';
 
@@ -59,8 +59,12 @@ function readText(blob: Blob): Promise<string> {
 
 export async function isLegacyTrace(file: File): Promise<boolean> {
   const fileName = file.name.toLowerCase();
-  if (fileName.endsWith('.json') || fileName.endsWith('.json.gz') ||
-      fileName.endsWith('.zip') || fileName.endsWith('.html')) {
+  if (
+    fileName.endsWith('.json') ||
+    fileName.endsWith('.json.gz') ||
+    fileName.endsWith('.zip') ||
+    fileName.endsWith('.html')
+  ) {
     return true;
   }
 
@@ -94,7 +98,10 @@ export async function openFileWithLegacyTraceViewer(file: File) {
   reader.onload = () => {
     if (reader.result instanceof ArrayBuffer) {
       return openBufferWithLegacyTraceViewer(
-          file.name, reader.result, reader.result.byteLength);
+        file.name,
+        reader.result,
+        reader.result.byteLength,
+      );
     } else {
       const str = reader.result as string;
       return openBufferWithLegacyTraceViewer(file.name, str, str.length);
@@ -103,16 +110,22 @@ export async function openFileWithLegacyTraceViewer(file: File) {
   reader.onerror = (err) => {
     console.error(err);
   };
-  if (file.name.endsWith('.gz') || file.name.endsWith('.zip') ||
-      await isCtrace(file)) {
+  if (
+    file.name.endsWith('.gz') ||
+    file.name.endsWith('.zip') ||
+    (await isCtrace(file))
+  ) {
     reader.readAsArrayBuffer(file);
   } else {
     reader.readAsText(file);
   }
 }
 
-export function openBufferWithLegacyTraceViewer(
-    name: string, data: ArrayBuffer|string, size: number) {
+function openBufferWithLegacyTraceViewer(
+  name: string,
+  data: ArrayBuffer | string,
+  size: number,
+) {
   if (data instanceof ArrayBuffer) {
     assertTrue(size <= data.byteLength);
     if (size !== data.byteLength) {
@@ -120,8 +133,7 @@ export function openBufferWithLegacyTraceViewer(
     }
 
     // Handle .ctrace files.
-    const enc = new TextDecoder('utf-8');
-    const header = enc.decode(data.slice(0, 128));
+    const header = utf8Decode(data.slice(0, 128));
     if (header.includes(CTRACE_HEADER)) {
       const offset = header.indexOf(CTRACE_HEADER) + CTRACE_HEADER.length;
       data = inflate(new Uint8Array(data.slice(offset)), {to: 'string'});
@@ -135,7 +147,7 @@ export function openBufferWithLegacyTraceViewer(
   if (newWin) {
     // Popup succeedeed.
     newWin.addEventListener('load', (e: Event) => {
-      const doc = (e.target as Document);
+      const doc = e.target as Document;
       const ctl = doc.querySelector('x-profiling-view') as TraceViewerAPI;
       ctl.setActiveTrace(name, data);
     });
@@ -146,18 +158,81 @@ export function openBufferWithLegacyTraceViewer(
   showModal({
     title: 'Open trace in the legacy Catapult Trace Viewer',
     content: m(
-        'div',
-        m('div', 'You are seeing this interstitial because popups are blocked'),
-        m('div', 'Enable popups to skip this dialog next time.')),
-    buttons: [{
-      text: 'Open legacy UI',
-      primary: true,
-      action: () => openBufferWithLegacyTraceViewer(name, data, size),
-    }],
+      'div',
+      m('div', 'You are seeing this interstitial because popups are blocked'),
+      m('div', 'Enable popups to skip this dialog next time.'),
+    ),
+    buttons: [
+      {
+        text: 'Open legacy UI',
+        primary: true,
+        action: () => openBufferWithLegacyTraceViewer(name, data, size),
+      },
+    ],
   });
+}
+
+export function openInOldUIWithSizeCheck(trace: Blob) {
+  // Perfetto traces smaller than 50mb can be safely opened in the legacy UI.
+  if (trace.size < 1024 * 1024 * 50) {
+    convertToJson(trace, openBufferWithLegacyTraceViewer);
+    return;
+  }
+
+  // Give the user the option to truncate larger perfetto traces.
+  const size = Math.round(trace.size / (1024 * 1024));
+  showModal({
+    title: 'Legacy UI may fail to open this trace',
+    content: m(
+      'div',
+      m(
+        'p',
+        `This trace is ${size}mb, opening it in the legacy UI ` + `may fail.`,
+      ),
+      m(
+        'p',
+        'More options can be found at ',
+        m(
+          'a',
+          {
+            href: 'https://goto.google.com/opening-large-traces',
+            target: '_blank',
+          },
+          'go/opening-large-traces',
+        ),
+        '.',
+      ),
+    ),
+    buttons: [
+      {
+        text: 'Open full trace (not recommended)',
+        action: () => convertToJson(trace, openBufferWithLegacyTraceViewer),
+      },
+      {
+        text: 'Open beginning of trace',
+        action: () =>
+          convertToJson(
+            trace,
+            openBufferWithLegacyTraceViewer,
+            /* truncate*/ 'start',
+          ),
+      },
+      {
+        text: 'Open end of trace',
+        primary: true,
+        action: () =>
+          convertToJson(
+            trace,
+            openBufferWithLegacyTraceViewer,
+            /* truncate*/ 'end',
+          ),
+      },
+    ],
+  });
+  return;
 }
 
 // TraceViewer method that we wire up to trigger the file load.
 interface TraceViewerAPI extends Element {
-  setActiveTrace(name: string, data: ArrayBuffer|string): void;
+  setActiveTrace(name: string, data: ArrayBuffer | string): void;
 }

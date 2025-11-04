@@ -1,7 +1,7 @@
 // Copyright (C) 2024 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
-#include <QtTest/QtTest>
+#include <QtTest/qtest.h>
 #include <qmediaplayer.h>
 #include <qvideoframe.h>
 #include <qdebug.h>
@@ -47,8 +47,8 @@ private:
     void addMediaPlayerFrameTestData(F &&f);
 
 private:
-    MaybeUrl m_oneRedFrameVideo = QUnexpect{};
-    MaybeUrl m_colorsVideo = QUnexpect{};
+    MaybeUrl m_oneRedFrameVideo{ QUnexpect{} };
+    MaybeUrl m_colorsVideo{ QUnexpect{} };
     MediaFileSelector m_mediaSelector;
 };
 

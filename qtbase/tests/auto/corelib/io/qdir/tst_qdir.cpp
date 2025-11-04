@@ -14,6 +14,7 @@
 #include <qdir.h>
 #include <qfileinfo.h>
 #include <qstringlist.h>
+#include <QDirIterator>
 
 #if defined(Q_OS_WIN)
 #include <QtCore/private/qfsfileengine_p.h>
@@ -260,7 +261,11 @@ void tst_QDir::init()
 void tst_QDir::initTestCase()
 {
 #ifdef BUILTIN_TESTDATA
+#ifdef Q_OS_WASM
+    m_dataDir = QEXTRACTTESTDATA("/tst_qdir");
+#else
     m_dataDir = QEXTRACTTESTDATA("/");
+#endif
     QVERIFY2(!m_dataDir.isNull(), qPrintable("Did not find testdata. Is this builtin?"));
     m_dataPath = m_dataDir->path();
 #elif QT_CONFIG(cxx17_filesystem) // This code doesn't work in QNX on the CI
@@ -359,10 +364,11 @@ void tst_QDir::mkdirRmdir_data()
     const struct {
         const char *name; // shall have a prefix added
         const char *path; // relative
-        bool recurse;
+        bool recurse; // QDir::rmpath() vs. QDir::rmdir()
     } cases[] = {
         { "plain", "testdir/one", false },
         { "recursive", "testdir/two/three/four", true },
+        { "recursive-name-length-1", "a/b/c", true },
         { "with-..", "testdir/../testdir/three", false },
     };
 
@@ -378,6 +384,8 @@ void tst_QDir::mkdirRmdir()
     QFETCH(QString, path);
     QFETCH(bool, recurse);
 
+    QTest::ThrowOnFailEnabler thrower;
+
     QDir dir;
     dir.rmdir(path);
     if (recurse)
@@ -389,10 +397,24 @@ void tst_QDir::mkdirRmdir()
     QFileInfo fi(path);
     QVERIFY2(fi.exists() && fi.isDir(), msgDoesNotExist(path).constData());
 
-    if (recurse)
-        QVERIFY(dir.rmpath(path));
-    else
+    if (recurse) {
+        // Check that rmpath() removed all empty parent dirs
+        auto verifyRmPath = [&dir, &path](QLatin1StringView subdir) {
+            QFileInfo fi(QDir::currentPath() + subdir);
+            QVERIFY(fi.exists());
+            QVERIFY(dir.rmpath(path));
+            fi.refresh();
+            QVERIFY(!fi.exists());
+        };
+        if (path.contains("testdir/two/three/four"_L1))
+            verifyRmPath("/testdir/two"_L1);
+        else if (path.contains("a/b/c"_L1))
+            verifyRmPath("/a"_L1);
+        else
+            QVERIFY(dir.rmpath(path));
+    } else {
         QVERIFY(dir.rmdir(path));
+    }
 
     //make sure it really doesn't exist (ie that rmdir returns the right value)
     fi.refresh();
@@ -447,6 +469,9 @@ void tst_QDir::mkdirOnSymlink()
     fi.setFile(path);
 #if defined(Q_OS_QNX)
     QSKIP("Fails on QNX QTBUG-98561");
+#endif
+#if defined (Q_OS_WASM)
+    QEXPECT_FAIL("", "fails on wasm, see bug: QTBUG-127766", Continue);
 #endif
     QVERIFY2(fi.exists() && fi.isDir(), msgDoesNotExist(path).constData());
 #endif
@@ -614,10 +639,8 @@ void tst_QDir::removeRecursivelySymlink()
     QVERIFY(QFile("testfile").open(QIODevice::WriteOnly));
     const QString link = tmpdir + "linkToDir.lnk";
     const QString linkToFile = tmpdir + "linkToFile.lnk";
-#ifndef Q_NO_SYMLINKS_TO_DIRS
     QVERIFY(QFile::link("../myDir", link));
     QVERIFY(QFile::link("../testfile", linkToFile));
-#endif
 
     QDir dir(tmpdir);
     QVERIFY(dir.removeRecursively());
@@ -812,7 +835,7 @@ void tst_QDir::entryListWithTestFiles_data()
                               << filterLinks(QString(".,..,directory,file,linktodirectory.lnk,linktofile.lnk,writable").split(','));
     // Tests an assert in QDirSortItemComparator, when QDir::LocaleAware is set
     // a QCollator is used
-    QTest::newRow("QDir::AllEntries")
+    QTest::newRow("QDir::AllEntries-LocaleAware")
         << (m_dataPath + "/entrylist/") << QStringList("*")
         << int(QDir::AllEntries) << int(QDir::Name | QDir::LocaleAware)
         << filterLinks(QString(".,..,directory,file,linktodirectory.lnk,linktofile.lnk,writable").split(','));
@@ -987,7 +1010,7 @@ void tst_QDir::entryListWithTestFiles()
         QVERIFY2(QFile::remove(testFiles.at(i)), qPrintable(testFiles.at(i)));
 
     if (doContentCheck)
-        QCOMPARE(actual, expected);
+        QCOMPARE_EQ(actual, expected);
 }
 
 void tst_QDir::entryListTimedSort()
@@ -1071,33 +1094,25 @@ void tst_QDir::entryListSimple()
 void tst_QDir::entryListWithSymLinks()
 {
 #ifndef Q_NO_SYMLINKS
-#  ifndef Q_NO_SYMLINKS_TO_DIRS
     QFile::remove("myLinkToDir.lnk");
-#  endif
     QFile::remove("myLinkToFile.lnk");
     QFile::remove("testfile.cpp");
     QDir dir;
     dir.mkdir("myDir");
     QVERIFY(QFile("testfile.cpp").open(QIODevice::WriteOnly));
-#  ifndef Q_NO_SYMLINKS_TO_DIRS
     QVERIFY(QFile::link("myDir", "myLinkToDir.lnk"));
-#  endif
     QVERIFY(QFile::link("testfile.cpp", "myLinkToFile.lnk"));
 
     {
         QStringList entryList = QDir().entryList();
         QVERIFY(entryList.contains("myDir"));
-#  ifndef Q_NO_SYMLINKS_TO_DIRS
         QVERIFY(entryList.contains("myLinkToDir.lnk"));
-#endif
         QVERIFY(entryList.contains("myLinkToFile.lnk"));
     }
     {
         QStringList entryList = QDir().entryList(QDir::Dirs);
         QVERIFY(entryList.contains("myDir"));
-#  ifndef Q_NO_SYMLINKS_TO_DIRS
         QVERIFY(entryList.contains("myLinkToDir.lnk"));
-#endif
         QVERIFY(!entryList.contains("myLinkToFile.lnk"));
     }
     {
@@ -1198,7 +1213,8 @@ void tst_QDir::current()
 #if defined(Q_OS_WIN)
     QCOMPARE(newCurrent.absolutePath().toLower(), currentDir.toLower());
 #else
-    QCOMPARE(newCurrent.absolutePath(), currentDir);
+        // getcwd(2) on Unix returns the canonical path
+        QCOMPARE(newCurrent.absolutePath(), QDir(currentDir).canonicalPath());
 #endif
     }
 
@@ -1212,21 +1228,25 @@ void tst_QDir::cd_data()
     QTest::addColumn<bool>("successExpected");
     QTest::addColumn<QString>("newDir");
 
-    int index = m_dataPath.lastIndexOf(QLatin1Char('/'));
-    QTest::newRow("cdUp") << m_dataPath << ".." << true << m_dataPath.left(index==0?1:index);
+    // use the canonical path for m_dataPath here, because if TMPDIR points to
+    // a symlink like what happens on Apple systems (/tmp -> /private/tmp),
+    // then /tmp/.. will not be the same as / (it's /private).
+    QString canonicalPath = QDir(m_dataPath).canonicalPath();
+    int index = canonicalPath.lastIndexOf(QLatin1Char('/'));
+    QTest::newRow("cdUp") << canonicalPath << ".." << true << canonicalPath.left(index==0?1:index);
     QTest::newRow("cdUp non existent (relative dir)") << "anonexistingDir" << ".."
-                                                      << true << m_dataPath;
-    QTest::newRow("cdUp non existent (absolute dir)") << m_dataPath + "/anonexistingDir" << ".."
-                                                      << true << m_dataPath;
-    QTest::newRow("noChange") << m_dataPath << "." << true << m_dataPath;
+                                                      << true << canonicalPath;
+    QTest::newRow("cdUp non existent (absolute dir)") << canonicalPath + "/anonexistingDir" << ".."
+                                                      << true << canonicalPath;
+    QTest::newRow("noChange") << canonicalPath << "." << true << canonicalPath;
 #if defined(Q_OS_WIN)  // on windows QDir::root() is usually c:/ but cd "/" will not force it to be root
-    QTest::newRow("absolute") << m_dataPath << "/" << true << "/";
+    QTest::newRow("absolute") << canonicalPath << "/" << true << "/";
 #else
-    QTest::newRow("absolute") << m_dataPath << "/" << true << QDir::root().absolutePath();
+    QTest::newRow("absolute") << canonicalPath << "/" << true << QDir::root().absolutePath();
 #endif
-    QTest::newRow("non existant") << "." << "../anonexistingdir" << false << m_dataPath;
-    QTest::newRow("self") << "." << (QString("../") + QFileInfo(m_dataPath).fileName()) << true << m_dataPath;
-    QTest::newRow("file") << "." << "qdir.pro" << false << m_dataPath;
+    QTest::newRow("non existant") << "." << "../anonexistingdir" << false << canonicalPath;
+    QTest::newRow("self") << "." << (QString("../") + QFileInfo(canonicalPath).fileName()) << true << canonicalPath;
+    QTest::newRow("file") << "." << "qdir.pro" << false << canonicalPath;
 }
 
 void tst_QDir::cd()
@@ -1944,11 +1964,13 @@ void tst_QDir::longFileName_data()
     QTest::addColumn<int>("length");
 
     QTest::newRow("128") << 128;
+#ifndef Q_OS_WASM
     QTest::newRow("256") << 256;
     QTest::newRow("512") << 512;
     QTest::newRow("1024") << 1024;
     QTest::newRow("2048") << 2048;
     QTest::newRow("4096") << 4096;
+#endif
 }
 
 void tst_QDir::longFileName()
@@ -2297,6 +2319,8 @@ void tst_QDir::equalityOperator_data()
 #elif defined(Q_OS_HAIKU)
     QString pathinroot("/boot/..");
 #elif defined(Q_OS_VXWORKS)
+    QString pathinroot("/tmp/..");
+#elif defined(Q_OS_WASM)
     QString pathinroot("/tmp/..");
 #else
     QString pathinroot("/usr/..");

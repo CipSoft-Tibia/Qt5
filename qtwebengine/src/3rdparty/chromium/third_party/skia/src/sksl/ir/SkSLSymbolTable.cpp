@@ -10,6 +10,7 @@
 #include "src/sksl/SkSLContext.h"
 #include "src/sksl/SkSLErrorReporter.h"
 #include "src/sksl/SkSLPosition.h"
+#include "src/sksl/SkSLProgramSettings.h"
 #include "src/sksl/ir/SkSLExpression.h"
 #include "src/sksl/ir/SkSLFunctionDeclaration.h"
 #include "src/sksl/ir/SkSLType.h"
@@ -169,23 +170,31 @@ void SymbolTable::injectWithoutOwnership(Symbol* symbol) {
     fSymbols[key] = symbol;
 }
 
-const Type* SymbolTable::addArrayDimension(const Type* type, int arraySize) {
+const Type* SymbolTable::addArrayDimension(const Context& context,
+                                           const Type* type,
+                                           int arraySize) {
     if (arraySize == 0) {
         return type;
     }
-    // If this is a builtin type, we add it as high as possible in the symbol table tree (at the
-    // module boundary), to enable additional reuse of the array-type.
-    if (type->isInBuiltinTypes() && fParent && !fAtModuleBoundary) {
-        return fParent->addArrayDimension(type, arraySize);
+    // If we are making an array of a builtin type, we add it as high as possible in the symbol
+    // table tree (at the module boundary), to enable additional reuse of the array-type.
+    if (fParent && !fAtModuleBoundary && !context.fConfig->isBuiltinCode() && type->isBuiltin()) {
+        return fParent->addArrayDimension(context, type, arraySize);
     }
     // Reuse an existing array type with this name if one already exists in our symbol table.
     std::string arrayName = type->getArrayName(arraySize);
-    if (const Symbol* existingType = this->find(arrayName)) {
-        return &existingType->as<Type>();
+    if (const Symbol* existingSymbol = this->find(arrayName)) {
+        // We would expect an existing symbol named `Type[123]` to match our `Type[123]`. However,
+        // we might be compiling invalid code that contains duplicate symbols, and so we need to
+        // verify that these two types actually match before reusing the existing type.
+        const Type* existingType = &existingSymbol->as<Type>();
+        if (existingType->isArray() && type->matches(existingType->componentType())) {
+            return existingType;
+        }
     }
     // Add a new array type to the symbol table.
     const std::string* arrayNamePtr = this->takeOwnershipOfString(std::move(arrayName));
-    return this->addOrDie(Type::MakeArrayType(*arrayNamePtr, *type, arraySize));
+    return this->add(context, Type::MakeArrayType(context, *arrayNamePtr, *type, arraySize));
 }
 
 std::unique_ptr<Expression> SymbolTable::instantiateSymbolRef(const Context& context,

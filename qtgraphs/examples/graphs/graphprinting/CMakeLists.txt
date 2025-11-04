@@ -40,6 +40,7 @@ target_link_libraries(graphprinting PRIVATE
     Qt::Quick3D
     Qt::Graphs
     Qt::PrintSupport
+    Qt::GuiPrivate
 )
 
 qt6_add_qml_module(graphprinting

@@ -5,9 +5,11 @@
 #ifndef THIRD_PARTY_BLINK_RENDERER_CORE_LAYOUT_INLINE_FRAGMENT_ITEMS_BUILDER_H_
 #define THIRD_PARTY_BLINK_RENDERER_CORE_LAYOUT_INLINE_FRAGMENT_ITEMS_BUILDER_H_
 
-#include "third_party/abseil-cpp/absl/types/optional.h"
+#include <optional>
+
 #include "third_party/blink/renderer/core/core_export.h"
 #include "third_party/blink/renderer/core/layout/inline/fragment_item.h"
+#include "third_party/blink/renderer/core/layout/inline/logical_line_container.h"
 #include "third_party/blink/renderer/core/layout/inline/logical_line_item.h"
 #include "third_party/blink/renderer/platform/heap/collection_support/heap_hash_map.h"
 #include "third_party/blink/renderer/platform/text/writing_direction_mode.h"
@@ -42,35 +44,38 @@ class CORE_EXPORT FragmentItemsBuilder {
   wtf_size_t Size() const { return items_.size(); }
 
   const String& TextContent(bool first_line) const {
-    return UNLIKELY(first_line && first_line_text_content_)
-               ? first_line_text_content_
-               : text_content_;
+    if (first_line && first_line_text_content_) [[unlikely]] {
+      return first_line_text_content_;
+    }
+    return text_content_;
   }
 
   // Adding a line is a three-pass operation, because |InlineLayoutAlgorithm|
   // creates and positions children within a line box, but its parent algorithm
   // positions the line box.
   //
-  // 1. |AcquireLogicalLineItems| to get an instance of |LogicalLineItems|.
-  // 2. Add items to |LogicalLineItems| and create |PhysicalFragment|,
-  //    then associate them by |AssociateLogicalLineItems|.
+  // 1. |AcquireLogicalLineContainer| to get an instance of
+  //    |LogicalLineContainer|.
+  // 2. Add items to |LogicalLineContainer::BaseLine()| and create
+  //    |PhysicalFragment|, then associate them by
+  //    |AssociateLogicalLineContainer|.
   // 3. |AddLine| adds the |PhysicalLineBoxFragment|.
   //
   // |BlockLayoutAlgorithm| runs these phases in the order for each line. In
-  // this case, one instance of |LogicalLineItems| is reused for all lines to
-  // reduce memory allocations.
+  // this case, one instance of |LogicalLineContainer| is reused for all lines
+  // to reduce memory allocations.
   //
   // Custom layout produces all line boxes first by running only 1 and 2 (in
   // |InlineLayoutAlgorithm|). Then after worklet determined the position and
   // the order of line boxes, it runs 3 for each line. In this case,
   // |FragmentItemsBuilder| allocates new instance for each line, and keeps
   // them alive until |AddLine|.
-  LogicalLineItems* AcquireLogicalLineItems();
-  void ReleaseCurrentLogicalLineItems();
+  LogicalLineContainer* AcquireLogicalLineContainer();
+  void ReleaseCurrentLogicalLineContainer();
   const LogicalLineItems& GetLogicalLineItems(
       const PhysicalLineBoxFragment&) const;
-  void AssociateLogicalLineItems(LogicalLineItems* line_items,
-                                 const PhysicalFragment& line_fragment);
+  void AssociateLogicalLineContainer(LogicalLineContainer* line_container,
+                                     const PhysicalFragment& line_fragment);
   void AddLine(const PhysicalLineBoxFragment& line,
                const LogicalOffset& offset);
 
@@ -121,9 +126,6 @@ class CORE_EXPORT FragmentItemsBuilder {
   // heuristic. Usually 10-40, some wikipedia pages have >64 items.
   using ItemWithOffsetList = HeapVector<ItemWithOffset, 128>;
 
-  // Find |LogicalOffset| of the first |FragmentItem| for |LayoutObject|.
-  absl::optional<LogicalOffset> LogicalOffsetFor(const LayoutObject&) const;
-
   // Moves all the |FragmentItem|s by |offset| in the block-direction.
   void MoveChildrenInBlockDirection(LayoutUnit offset);
 
@@ -139,13 +141,13 @@ class CORE_EXPORT FragmentItemsBuilder {
   //
   // This function returns new size of the container if the container is an
   // SVG <text>.
-  absl::optional<PhysicalSize> ToFragmentItems(const PhysicalSize& outer_size,
-                                               void* data);
+  std::optional<PhysicalSize> ToFragmentItems(const PhysicalSize& outer_size,
+                                              void* data);
 
  private:
   void MoveCurrentLogicalLineItemsToMap();
 
-  void AddItems(LogicalLineItem* child_begin, LogicalLineItem* child_end);
+  void AddItems(base::span<LogicalLineItem> child_span);
 
   void ConvertToPhysical(const PhysicalSize& outer_size);
 
@@ -154,13 +156,13 @@ class CORE_EXPORT FragmentItemsBuilder {
   String first_line_text_content_;
 
   // Keeps children of a line until the offset is determined. See |AddLine|.
-  LogicalLineItems* current_line_items_ = nullptr;
+  LogicalLineContainer* current_line_container_ = nullptr;
   const PhysicalFragment* current_line_fragment_ = nullptr;
 
-  HeapHashMap<Member<const PhysicalFragment>, Member<LogicalLineItems>>
-      line_items_map_;
-  LogicalLineItems* const line_items_pool_ =
-      MakeGarbageCollected<LogicalLineItems>();
+  HeapHashMap<Member<const PhysicalFragment>, Member<LogicalLineContainer>>
+      line_container_map_;
+  LogicalLineContainer* const line_container_pool_ =
+      MakeGarbageCollected<LogicalLineContainer>();
 
   InlineNode node_;
 

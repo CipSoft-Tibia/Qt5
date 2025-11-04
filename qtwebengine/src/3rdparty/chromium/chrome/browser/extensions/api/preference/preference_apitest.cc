@@ -78,7 +78,7 @@ class ExtensionPreferenceApiTest
     EXPECT_TRUE(prefs->GetBoolean(autofill::prefs::kAutofillEnabledDeprecated));
     EXPECT_TRUE(prefs->GetBoolean(autofill::prefs::kAutofillCreditCardEnabled));
     EXPECT_TRUE(prefs->GetBoolean(autofill::prefs::kAutofillProfileEnabled));
-    EXPECT_EQ(CookieControlsMode::kOff, GetCookieControlsMode(prefs));
+    EXPECT_EQ(GetCookieControlsMode(prefs), CookieControlsMode::kOff);
     EXPECT_TRUE(prefs->GetBoolean(prefs::kEnableHyperlinkAuditing));
     EXPECT_TRUE(prefs->GetBoolean(prefs::kEnableReferrers));
     EXPECT_TRUE(prefs->GetBoolean(translate::prefs::kOfferTranslateEnabled));
@@ -115,8 +115,8 @@ class ExtensionPreferenceApiTest
     EXPECT_FALSE(
         prefs->GetBoolean(autofill::prefs::kAutofillCreditCardEnabled));
     EXPECT_FALSE(prefs->GetBoolean(autofill::prefs::kAutofillProfileEnabled));
-    EXPECT_EQ(CookieControlsMode::kBlockThirdParty,
-              GetCookieControlsMode(prefs));
+    EXPECT_EQ(GetCookieControlsMode(prefs),
+              CookieControlsMode::kBlockThirdParty);
     EXPECT_FALSE(prefs->GetBoolean(prefs::kEnableHyperlinkAuditing));
     EXPECT_FALSE(prefs->GetBoolean(prefs::kEnableReferrers));
     EXPECT_FALSE(prefs->GetBoolean(translate::prefs::kOfferTranslateEnabled));
@@ -220,11 +220,12 @@ IN_PROC_BROWSER_TEST_P(ExtensionPreferenceApiTest, Standard) {
   prefs->SetBoolean(prefs::kPrivacySandboxM1AdMeasurementEnabled, true);
   prefs->SetBoolean(prefs::kPrivacySandboxRelatedWebsiteSetsEnabled, true);
 
-  // The 'protectedContentEnabled' pref is only available on ChromeOS and
-  // Windows, so pass a JSON array object with any unsupported prefs into
-  // the test , so it can skip those.
+  // The 'protectedContentEnabled' pref is only available as browser pref
+  // associated with browser profile on ChromeOS and Windows, so pass a JSON
+  // array object with any unsupported prefs into the test , so it can skip
+  // those.
   static constexpr char kMissingPrefs[] =
-#if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_CHROMEOS_ASH)
+#if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_CHROMEOS)
       "[ ]";
 #else
       "[ \"protectedContentEnabled\" ]";
@@ -408,15 +409,15 @@ IN_PROC_BROWSER_TEST_P(ExtensionPreferenceApiTest, OnChangeSplit) {
   ASSERT_TRUE(LoadExtension(extension_data_dir, {.allow_in_incognito = true}));
 
   // Test 1 - changeDefault
-  EXPECT_TRUE(listener1.WaitUntilSatisfied()); // Regular ready
-  EXPECT_TRUE(listener_incognito1.WaitUntilSatisfied()); // Incognito ready
+  EXPECT_TRUE(listener1.WaitUntilSatisfied());            // Regular ready
+  EXPECT_TRUE(listener_incognito1.WaitUntilSatisfied());  // Incognito ready
   listener1.Reply("ok");
   listener_incognito1.Reply("ok");
 
   // Test 2 - changeIncognitoOnly
-  EXPECT_TRUE(listener2.WaitUntilSatisfied()); // Regular ready
-  EXPECT_TRUE(listener_incognito2.WaitUntilSatisfied()); // Incognito ready
-  EXPECT_TRUE(listener3.WaitUntilSatisfied()); // Regular listening
+  EXPECT_TRUE(listener2.WaitUntilSatisfied());            // Regular ready
+  EXPECT_TRUE(listener_incognito2.WaitUntilSatisfied());  // Incognito ready
+  EXPECT_TRUE(listener3.WaitUntilSatisfied());            // Regular listening
   listener2.Reply("ok");
   listener_incognito2.Reply("ok");
   // Incognito preference set -- notify the regular listener
@@ -424,9 +425,9 @@ IN_PROC_BROWSER_TEST_P(ExtensionPreferenceApiTest, OnChangeSplit) {
   listener3.Reply("ok");
 
   // Test 3 - changeDefaultOnly
-  EXPECT_TRUE(listener4.WaitUntilSatisfied()); // Regular ready
-  EXPECT_TRUE(listener_incognito4.WaitUntilSatisfied()); // Incognito ready
-  EXPECT_TRUE(listener_incognito5.WaitUntilSatisfied()); // Incognito listening
+  EXPECT_TRUE(listener4.WaitUntilSatisfied());            // Regular ready
+  EXPECT_TRUE(listener_incognito4.WaitUntilSatisfied());  // Incognito ready
+  EXPECT_TRUE(listener_incognito5.WaitUntilSatisfied());  // Incognito listening
   listener4.Reply("ok");
   listener_incognito4.Reply("ok");
   // Regular preference set - notify the incognito listener
@@ -434,9 +435,9 @@ IN_PROC_BROWSER_TEST_P(ExtensionPreferenceApiTest, OnChangeSplit) {
   listener_incognito5.Reply("ok");
 
   // Test 4 - changeIncognitoOnlyBack
-  EXPECT_TRUE(listener6.WaitUntilSatisfied()); // Regular ready
-  EXPECT_TRUE(listener_incognito6.WaitUntilSatisfied()); // Incognito ready
-  EXPECT_TRUE(listener7.WaitUntilSatisfied()); // Regular listening
+  EXPECT_TRUE(listener6.WaitUntilSatisfied());            // Regular ready
+  EXPECT_TRUE(listener_incognito6.WaitUntilSatisfied());  // Incognito ready
+  EXPECT_TRUE(listener7.WaitUntilSatisfied());            // Regular listening
   listener6.Reply("ok");
   listener_incognito6.Reply("ok");
   // Incognito preference set -- notify the regular listener
@@ -444,9 +445,9 @@ IN_PROC_BROWSER_TEST_P(ExtensionPreferenceApiTest, OnChangeSplit) {
   listener7.Reply("ok");
 
   // Test 5 - clearIncognito
-  EXPECT_TRUE(listener8.WaitUntilSatisfied()); // Regular ready
-  EXPECT_TRUE(listener_incognito8.WaitUntilSatisfied()); // Incognito ready
-  EXPECT_TRUE(listener9.WaitUntilSatisfied()); // Regular listening
+  EXPECT_TRUE(listener8.WaitUntilSatisfied());            // Regular ready
+  EXPECT_TRUE(listener_incognito8.WaitUntilSatisfied());  // Incognito ready
+  EXPECT_TRUE(listener9.WaitUntilSatisfied());            // Regular listening
   listener8.Reply("ok");
   listener_incognito8.Reply("ok");
   // Incognito preference cleared -- notify the regular listener
@@ -454,8 +455,8 @@ IN_PROC_BROWSER_TEST_P(ExtensionPreferenceApiTest, OnChangeSplit) {
   listener9.Reply("ok");
 
   // Test 6 - clearDefault
-  EXPECT_TRUE(listener10.WaitUntilSatisfied()); // Regular ready
-  EXPECT_TRUE(listener_incognito10.WaitUntilSatisfied()); // Incognito ready
+  EXPECT_TRUE(listener10.WaitUntilSatisfied());            // Regular ready
+  EXPECT_TRUE(listener_incognito10.WaitUntilSatisfied());  // Incognito ready
   listener10.Reply("ok");
   listener_incognito10.Reply("ok");
 

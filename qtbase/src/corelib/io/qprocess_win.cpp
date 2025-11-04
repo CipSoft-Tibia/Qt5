@@ -1,6 +1,7 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // Copyright (C) 2017 Intel Corporation.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:execute-external-code
 
 //#define QPROCESS_DEBUG
 #include <qdebug.h>
@@ -544,7 +545,7 @@ void QProcessPrivate::startProcess()
         return;
     }
 
-    const QString args = qt_create_commandline(program, arguments, nativeArguments);
+    QString args = qt_create_commandline(program, arguments, nativeArguments);
     QByteArray envlist;
     if (!environment.inheritsFromParent())
         envlist = qt_create_environment(environment.d.constData()->vars);
@@ -566,7 +567,7 @@ void QProcessPrivate::startProcess()
     STARTUPINFOW startupInfo = createStartupInfo();
     const QString nativeWorkingDirectory = QDir::toNativeSeparators(workingDirectory);
     QProcess::CreateProcessArguments cpargs = {
-        nullptr, reinterpret_cast<wchar_t *>(const_cast<ushort *>(args.utf16())),
+        nullptr, reinterpret_cast<wchar_t *>(args.data_ptr().data()),
         nullptr, nullptr, true, dwCreationFlags,
         environment.inheritsFromParent() ? nullptr : envlist.data(),
         nativeWorkingDirectory.isEmpty()
@@ -920,7 +921,7 @@ bool QProcessPrivate::startDetached(qint64 *pid)
     dwCreationFlags |= CREATE_UNICODE_ENVIRONMENT;
     STARTUPINFOW startupInfo = createStartupInfo();
     QProcess::CreateProcessArguments cpargs = {
-        nullptr, reinterpret_cast<wchar_t *>(const_cast<ushort *>(args.utf16())),
+        nullptr, reinterpret_cast<wchar_t *>(args.data_ptr().data()),
         nullptr, nullptr, true, dwCreationFlags, envPtr,
         workingDirectory.isEmpty()
             ? nullptr : reinterpret_cast<const wchar_t *>(workingDirectory.utf16()),

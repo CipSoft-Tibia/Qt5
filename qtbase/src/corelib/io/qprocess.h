@@ -1,6 +1,7 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // Copyright (C) 2023 Intel Corporation.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:execute-external-code
 
 #ifndef QPROCESS_H
 #define QPROCESS_H
@@ -191,6 +192,7 @@ public:
         CreateNewSession                    = 0x0040, // like POSIX_SPAWN_SETSID
         DisconnectControllingTerminal       = 0x0080,
         ResetIds                            = 0x0100, // like POSIX_SPAWN_RESETIDS
+        DisableCoreDumps                    = 0x0200,
     };
     Q_DECLARE_FLAGS(UnixProcessFlags, UnixProcessFlag)
     struct UnixProcessParameters

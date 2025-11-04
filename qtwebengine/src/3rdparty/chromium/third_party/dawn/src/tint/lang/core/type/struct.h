@@ -31,16 +31,18 @@
 #include <cstdint>
 #include <optional>
 #include <string>
-#include <unordered_set>
 #include <utility>
 
 #include "src/tint/lang/core/address_space.h"
 #include "src/tint/lang/core/builtin_value.h"
 #include "src/tint/lang/core/interpolation.h"
+#include "src/tint/lang/core/io_attributes.h"
 #include "src/tint/lang/core/type/node.h"
 #include "src/tint/lang/core/type/type.h"
+#include "src/tint/utils/containers/hashset.h"
 #include "src/tint/utils/containers/vector.h"
 #include "src/tint/utils/symbol/symbol.h"
+#include "src/tint/utils/text/styled_text.h"
 
 // Forward declarations
 namespace tint::core::type {
@@ -71,6 +73,12 @@ using StructFlags = tint::EnumSet<StructFlag>;
 /// Struct holds the Type information for structures.
 class Struct : public Castable<Struct, Type> {
   public:
+    /// Constructor
+    /// Note: this constructs an empty structure, which should only be used find a struct with the
+    /// same name in a type::Manager.
+    /// @param name the name of the structure
+    explicit Struct(Symbol name);
+
     /// Constructor
     /// @param name the name of the structure
     /// @param members the structure members
@@ -130,21 +138,19 @@ class Struct : public Castable<Struct, Type> {
 
     /// Adds the AddressSpace usage to the structure.
     /// @param usage the storage usage
-    void AddUsage(core::AddressSpace usage) { address_space_usage_.emplace(usage); }
+    void AddUsage(core::AddressSpace usage) { address_space_usage_.Add(usage); }
 
     /// @returns the set of address space uses of this structure
-    const std::unordered_set<core::AddressSpace>& AddressSpaceUsage() const {
-        return address_space_usage_;
-    }
+    const Hashset<core::AddressSpace, 1>& AddressSpaceUsage() const { return address_space_usage_; }
 
     /// @param usage the AddressSpace usage type to query
     /// @returns true iff this structure has been used as the given address space
-    bool UsedAs(core::AddressSpace usage) const { return address_space_usage_.count(usage) > 0; }
+    bool UsedAs(core::AddressSpace usage) const { return address_space_usage_.Contains(usage); }
 
     /// @returns true iff this structure has been used by address space that's
     /// host-shareable.
     bool IsHostShareable() const {
-        for (auto sc : address_space_usage_) {
+        for (auto& sc : address_space_usage_) {
             if (core::IsHostShareable(sc)) {
                 return true;
             }
@@ -154,12 +160,10 @@ class Struct : public Castable<Struct, Type> {
 
     /// Adds the pipeline stage usage to the structure.
     /// @param usage the storage usage
-    void AddUsage(PipelineStageUsage usage) { pipeline_stage_uses_.emplace(usage); }
+    void AddUsage(PipelineStageUsage usage) { pipeline_stage_uses_.Add(usage); }
 
     /// @returns the set of entry point uses of this structure
-    const std::unordered_set<PipelineStageUsage>& PipelineStageUses() const {
-        return pipeline_stage_uses_;
-    }
+    const Hashset<PipelineStageUsage, 1>& PipelineStageUses() const { return pipeline_stage_uses_; }
 
     /// @returns the name for this type that closely resembles how it would be
     /// declared in WGSL.
@@ -167,7 +171,7 @@ class Struct : public Castable<Struct, Type> {
 
     /// @returns a multiline string that describes the layout of this struct,
     /// including size and alignment information.
-    std::string Layout() const;
+    StyledText Layout() const;
 
     /// @param concrete the conversion-rank ordered concrete versions of this abstract structure.
     void SetConcreteTypes(VectorRef<const Struct*> concrete) { concrete_types_ = concrete; }
@@ -195,25 +199,9 @@ class Struct : public Castable<Struct, Type> {
     const uint32_t size_;
     const uint32_t size_no_padding_;
     core::type::StructFlags struct_flags_;
-    std::unordered_set<core::AddressSpace> address_space_usage_;
-    std::unordered_set<PipelineStageUsage> pipeline_stage_uses_;
+    Hashset<core::AddressSpace, 1> address_space_usage_;
+    Hashset<PipelineStageUsage, 1> pipeline_stage_uses_;
     tint::Vector<const Struct*, 2> concrete_types_;
-};
-
-/// Attributes that can be applied to the StructMember
-struct StructMemberAttributes {
-    /// The value of a `@location` attribute
-    std::optional<uint32_t> location;
-    /// The value of a `@index` attribute
-    std::optional<uint32_t> index;
-    /// The value of a `@color` attribute
-    std::optional<uint32_t> color;
-    /// The value of a `@builtin` attribute
-    std::optional<core::BuiltinValue> builtin;
-    /// The values of a `@interpolate` attribute
-    std::optional<core::Interpolation> interpolation;
-    /// True if the member was annotated with `@invariant`
-    bool invariant = false;
 };
 
 /// StructMember holds the type information for structure members.
@@ -233,7 +221,7 @@ class StructMember : public Castable<StructMember, Node> {
                  uint32_t offset,
                  uint32_t align,
                  uint32_t size,
-                 const StructMemberAttributes& attributes);
+                 const IOAttributes& attributes);
 
     /// Destructor
     ~StructMember() override;
@@ -264,11 +252,11 @@ class StructMember : public Castable<StructMember, Node> {
     uint32_t Size() const { return size_; }
 
     /// @returns the optional attributes
-    const StructMemberAttributes& Attributes() const { return attributes_; }
+    const IOAttributes& Attributes() const { return attributes_; }
 
     /// Set the attributes of the struct member.
     /// @param attributes the new attributes
-    void SetAttributes(StructMemberAttributes&& attributes) { attributes_ = std::move(attributes); }
+    void SetAttributes(IOAttributes&& attributes) { attributes_ = std::move(attributes); }
 
     /// @param ctx the clone context
     /// @returns a clone of this struct member
@@ -282,7 +270,7 @@ class StructMember : public Castable<StructMember, Node> {
     const uint32_t offset_;
     const uint32_t align_;
     const uint32_t size_;
-    StructMemberAttributes attributes_;
+    IOAttributes attributes_;
 };
 
 }  // namespace tint::core::type

@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include <QtNetwork/private/qtnetworkglobal_p.h>
 
@@ -638,7 +639,7 @@ QByteArray QNetworkReply::rawHeader(QAnyStringView headerName) const
 
 /*! \typedef QNetworkReply::RawHeaderPair
 
-  RawHeaderPair is a QPair<QByteArray, QByteArray> where the first
+  RawHeaderPair is a std::pair<QByteArray, QByteArray> where the first
   QByteArray is the header name and the second is the header.
  */
 

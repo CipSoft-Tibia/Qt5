@@ -193,6 +193,16 @@ FUNC    .endfunc
         .text
         .align          \align
     .if \export
+#if defined(_WIN32)
+        .global \name
+ELF     .type   \name, %function
+// Chromium patch to ensure symbols are correctly hidden.
+ELF     .hidden \name
+MACH    .private_extern \name
+FUNC    .func   \name
+\name:
+        AARCH64_VALID_CALL_TARGET
+#else
         .global EXTERN_ASM\name
 ELF     .type   EXTERN_ASM\name, %function
 // Chromium patch to ensure symbols are correctly hidden.
@@ -201,6 +211,7 @@ MACH    .private_extern EXTERN_ASM\name
 FUNC    .func   EXTERN_ASM\name
 EXTERN_ASM\name:
         AARCH64_VALID_CALL_TARGET
+#endif
     .else
 ELF     .type   \name, %function
 FUNC    .func   \name

@@ -11,10 +11,10 @@
 
 #include <assert.h>
 
-#include <xnnpack/common.h>
-#include <xnnpack/math.h>
-#include <xnnpack/transpose.h>
-#include <xnnpack/unaligned.h>
+#include "xnnpack/common.h"
+#include "xnnpack/math.h"
+#include "xnnpack/transpose.h"
+#include "xnnpack/unaligned.h"
 
 
 void xnn_x32_transposec_ukernel__4x4_multi_switch_sse2(
@@ -26,8 +26,8 @@ void xnn_x32_transposec_ukernel__4x4_multi_switch_sse2(
     size_t block_height,
     const union xnn_x32_transpose_params params[restrict XNN_MIN_ELEMENTS(1)]) XNN_OOB_READS
 {
-  assert(output_stride >= block_height * sizeof(uint32_t));
-  assert(input_stride >= block_width * sizeof(uint32_t));
+  assert(block_width == 1 || output_stride >= block_height * sizeof(uint32_t));
+  assert(block_height == 1 || input_stride >= block_width * sizeof(uint32_t));
 
   const size_t tile_height = 4;
   const size_t tile_width = 4;
@@ -75,11 +75,14 @@ void xnn_x32_transposec_ukernel__4x4_multi_switch_sse2(
         case 3:
           _mm_storeu_si128((__m128i*) oN, v0_3);
           oN = (uint32_t*) ((uintptr_t) oN + minus_output_stride);
+          XNN_FALLTHROUGH
         case 2:
           _mm_storeu_si128((__m128i*) oN, v0_2);
           oN = (uint32_t*) ((uintptr_t) oN + minus_output_stride);
+          XNN_FALLTHROUGH
         case 1:
           _mm_storeu_si128((__m128i*) oN, v0_1);
+          XNN_FALLTHROUGH
         case 0:
           _mm_storeu_si128((__m128i*) o, v0_0);
           o = (uint32_t*) ((uintptr_t) o + tile_hbytes);
@@ -118,11 +121,14 @@ void xnn_x32_transposec_ukernel__4x4_multi_switch_sse2(
           case 3:
             _mm_storel_epi64((__m128i*) oN, v0_3);
             oN = (uint32_t*) ((uintptr_t) oN + minus_output_stride);
+            XNN_FALLTHROUGH
           case 2:
             _mm_storel_epi64((__m128i*) oN, v0_2);
             oN = (uint32_t*) ((uintptr_t) oN + minus_output_stride);
+            XNN_FALLTHROUGH
           case 1:
             _mm_storel_epi64((__m128i*) oN, v0_1);
+            XNN_FALLTHROUGH
           case 0:
             _mm_storel_epi64((__m128i*) o, v0_0);
             break;
@@ -142,11 +148,14 @@ void xnn_x32_transposec_ukernel__4x4_multi_switch_sse2(
           case 3:
             unaligned_store_u32(oN, (uint32_t) _mm_cvtsi128_si32(v0_3));
             oN = (uint32_t*) ((uintptr_t) oN + minus_output_stride);
+            XNN_FALLTHROUGH
           case 2:
             unaligned_store_u32(oN, (uint32_t) _mm_cvtsi128_si32(v0_2));
             oN = (uint32_t*) ((uintptr_t) oN + minus_output_stride);
+            XNN_FALLTHROUGH
           case 1:
             unaligned_store_u32(oN, (uint32_t) _mm_cvtsi128_si32(v0_1));
+            XNN_FALLTHROUGH
           case 0:
             unaligned_store_u32(o, (uint32_t) _mm_cvtsi128_si32(v0_0));
             break;

@@ -74,7 +74,7 @@ void ExecutableCompilationUnit::populate()
 {
     /* In general, we should use QV4::Scope whenever we allocate heap objects, and employ write barriers
        for member variables pointing to heap objects. However, ExecutableCompilationUnit is special, as it
-       is always part of the root set. So instead of using scopde allocations and write barriers, we use a
+       is always part of the root set. So instead of using scoped allocations and write barriers, we use a
        slightly different approach: We temporarily block the gc from running. Afterwards, at the end of the
        function we check whether the gc was already running, and mark the ExecutableCompilationUnit. This
        ensures that all the newly allocated objects of the compilation unit will be marked in turn.
@@ -112,13 +112,13 @@ void ExecutableCompilationUnit::populate()
             CompiledData::Lookup::Type type
                     = CompiledData::Lookup::Type(uint(compiledLookups[i].type()));
             if (type == CompiledData::Lookup::Type_Getter)
-                l->getter = QV4::Lookup::getterGeneric;
+                l->call = Lookup::Call::GetterGeneric;
             else if (type == CompiledData::Lookup::Type_Setter)
-                l->setter = QV4::Lookup::setterGeneric;
+                l->call = Lookup::Call::SetterGeneric;
             else if (type == CompiledData::Lookup::Type_GlobalGetter)
-                l->globalGetter = QV4::Lookup::globalGetterGeneric;
+                l->call = Lookup::Call::GlobalGetterGeneric;
             else if (type == CompiledData::Lookup::Type_QmlContextPropertyGetter)
-                l->qmlContextPropertyGetter = QQmlContextWrapper::resolveQmlContextPropertyLookupGetter;
+                l->call = Lookup::Call::ContextGetterGeneric;
             l->forCall = compiledLookups[i].mode() == CompiledData::Lookup::Mode_ForCall;
             l->nameIndex = compiledLookups[i].nameIndex();
         }
@@ -263,6 +263,10 @@ void ExecutableCompilationUnit::clear()
     runtimeRegularExpressions = nullptr;
     free(runtimeClasses);
     runtimeClasses = nullptr;
+
+    static QQmlRefPointer<CompiledData::CompilationUnit> nullUnit
+            = QQml::makeRefPointer<CompiledData::CompilationUnit>();
+    m_compilationUnit = nullUnit;
 }
 
 void ExecutableCompilationUnit::markObjects(QV4::MarkStack *markStack) const

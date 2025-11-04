@@ -42,7 +42,7 @@ class StyleRuleImport : public StyleRuleBase {
   StyleRuleImport(const String& href,
                   LayerName&& layer,
                   bool supported,
-                  String&& supports,
+                  String supports,
                   const MediaQuerySet*,
                   OriginClean origin_clean);
   ~StyleRuleImport();
@@ -129,7 +129,7 @@ class StyleRuleImport : public StyleRuleBase {
   // If set, this holds the position of the import rule (start of the `@import`)
   // in the stylesheet text. The position is used to encode accurate initiator
   // info on the stylesheet request in order to report accurate failures.
-  absl::optional<TextPosition> position_hint_;
+  std::optional<TextPosition> position_hint_;
 };
 
 template <>

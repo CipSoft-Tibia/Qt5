@@ -8,9 +8,10 @@
 #include <windows.h>
 
 #include <stddef.h>
+
+#include <optional>
 #include <string>
 
-#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "ui/base/ui_base_types.h"
 #include "ui/gfx/geometry/rect.h"
 #include "ui/gfx/geometry/size.h"
@@ -106,16 +107,17 @@ class VIEWS_EXPORT HWNDMessageHandlerHeadless : public HWNDMessageHandler {
   bool is_visible_ = false;
   bool is_active_ = false;
   bool is_always_on_top_ = false;
+  bool was_active_before_minimize_ = false;
 
-  enum WindowState {
+  enum class WindowState {
     kNormal,
     kMinimized,
     kMaximized,
     kFullscreen,
-  } window_state_ = kNormal;
+  } window_state_ = WindowState::kNormal;
 
   gfx::Rect bounds_;
-  absl::optional<gfx::Rect> restored_bounds_;
+  std::optional<gfx::Rect> restored_bounds_;
 };
 
 }  // namespace views

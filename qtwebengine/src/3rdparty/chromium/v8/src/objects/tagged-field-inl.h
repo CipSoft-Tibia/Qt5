@@ -6,6 +6,7 @@
 #define V8_OBJECTS_TAGGED_FIELD_INL_H_
 
 #include "src/common/ptr-compr-inl.h"
+#include "src/heap/heap-write-barrier-inl.h"
 #include "src/objects/tagged-field.h"
 #include "src/objects/tagged.h"
 
@@ -18,6 +19,7 @@ Address TaggedMember<T, CompressionScheme>::tagged_to_full(
     Tagged_t tagged_value) {
 #ifdef V8_COMPRESS_POINTERS
   if constexpr (std::is_same_v<Smi, T>) {
+    V8_ASSUME(HAS_SMI_TAG(tagged_value));
     return CompressionScheme::DecompressTaggedSigned(tagged_value);
   } else {
     return CompressionScheme::DecompressTagged(GetPtrComprCageBase(),
@@ -55,7 +57,7 @@ void TaggedMember<T, CompressionScheme>::store(HeapObjectLayout* host,
     mode = UPDATE_WRITE_BARRIER;
 #endif
     DCHECK_NOT_NULL(GetHeapFromWritableObject(Tagged(host)));
-    CombinedWriteBarrier(host, this, value, mode);
+    WriteBarrier::ForValue(host, this, value, mode);
   }
 #endif
 }
@@ -103,10 +105,9 @@ template <typename TOnHeapAddress>
 Address TaggedField<T, kFieldOffset, CompressionScheme>::tagged_to_full(
     TOnHeapAddress on_heap_addr, Tagged_t tagged_value) {
 #ifdef V8_COMPRESS_POINTERS
-  if (kIsSmi) {
+  if constexpr (kIsSmi) {
+    V8_ASSUME(HAS_SMI_TAG(tagged_value));
     return CompressionScheme::DecompressTaggedSigned(tagged_value);
-  } else if (kIsHeapObject) {
-    return CompressionScheme::DecompressTagged(on_heap_addr, tagged_value);
   } else {
     return CompressionScheme::DecompressTagged(on_heap_addr, tagged_value);
   }
@@ -120,6 +121,7 @@ template <typename T, int kFieldOffset, typename CompressionScheme>
 Tagged_t TaggedField<T, kFieldOffset, CompressionScheme>::full_to_tagged(
     Address value) {
 #ifdef V8_COMPRESS_POINTERS
+  if constexpr (kIsSmi) V8_ASSUME(HAS_SMI_TAG(value));
   return CompressionScheme::CompressObject(value);
 #else
   return value;

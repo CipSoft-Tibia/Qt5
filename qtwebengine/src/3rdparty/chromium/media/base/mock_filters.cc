@@ -168,12 +168,12 @@ MockCdmContext::MockCdmContext() = default;
 
 MockCdmContext::~MockCdmContext() = default;
 
-absl::optional<base::UnguessableToken> MockCdmContext::GetCdmId() const {
+std::optional<base::UnguessableToken> MockCdmContext::GetCdmId() const {
   return cdm_id_;
 }
 
 void MockCdmContext::set_cdm_id(const base::UnguessableToken& cdm_id) {
-  cdm_id_ = absl::make_optional(cdm_id);
+  cdm_id_ = std::make_optional(cdm_id);
 }
 
 MockCdmPromise::MockCdmPromise(bool expect_success) {
@@ -294,7 +294,8 @@ void MockCdmFactory::Create(
     CdmCreatedCB cdm_created_cb) {
   // If no key system specified, notify that Create() failed.
   if (cdm_config.key_system.empty()) {
-    std::move(cdm_created_cb).Run(nullptr, "CDM creation failed");
+    std::move(cdm_created_cb)
+        .Run(nullptr, CreateCdmStatus::kUnsupportedKeySystem);
     return;
   }
 
@@ -304,7 +305,7 @@ void MockCdmFactory::Create(
 
   mock_cdm_->Initialize(cdm_config, session_message_cb, session_closed_cb,
                         session_keys_change_cb, session_expiration_update_cb);
-  std::move(cdm_created_cb).Run(mock_cdm_, "");
+  std::move(cdm_created_cb).Run(mock_cdm_, CreateCdmStatus::kSuccess);
 }
 
 void MockCdmFactory::SetBeforeCreationCB(

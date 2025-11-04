@@ -5,7 +5,12 @@
 #define QDOM_H
 
 #include <QtXml/qtxmlglobal.h>
+
+#include <QtCore/qcompare.h>
+#include <QtCore/qcontainertools_impl.h>
 #include <QtCore/qstring.h>
+
+#include <iterator>
 
 #if QT_CONFIG(dom)
 
@@ -215,8 +220,10 @@ public:
     QDomNodeList();
     QDomNodeList(const QDomNodeList &nodeList);
     QDomNodeList& operator=(const QDomNodeList &other);
+#if QT_XML_REMOVED_SINCE(6, 9)
     bool operator==(const QDomNodeList &other) const;
     bool operator!=(const QDomNodeList &other) const;
+#endif
     ~QDomNodeList();
 
     // DOM functions
@@ -230,12 +237,80 @@ public:
     inline bool isEmpty() const { return length() == 0; } // Qt API consistency
 
 private:
+    Q_XML_EXPORT friend bool comparesEqual(const QDomNodeList &lhs, const QDomNodeList &rhs) noexcept;
+    Q_DECLARE_EQUALITY_COMPARABLE(QDomNodeList)
+
+    int noexceptLength() const noexcept;
+
+    class It
+    {
+        const QDomNodeListPrivate *parent;
+        QDomNodePrivate *current;
+
+        friend class QDomNodeList;
+        friend class QDomNodeListPrivate;
+        Q_XML_EXPORT It(const QDomNodeListPrivate *lp, bool start) noexcept;
+
+        friend constexpr bool comparesEqual(const It &lhs, const It &rhs)
+        { Q_ASSERT(lhs.parent == rhs.parent); return lhs.current == rhs.current; }
+        Q_DECLARE_EQUALITY_COMPARABLE_NON_NOEXCEPT(It);
+
+        Q_XML_EXPORT static QDomNodePrivate *findNextInOrder(const QDomNodeListPrivate *parent, QDomNodePrivate *current);
+        Q_XML_EXPORT static QDomNodePrivate *findPrevInOrder(const QDomNodeListPrivate *parent, QDomNodePrivate *current);
+
+    public:
+        // Rule Of Zero applies
+        It() = default;
+
+        using iterator_category = std::bidirectional_iterator_tag;
+        using value_type = QDomNode;
+        using element_type = const QDomNode;
+        using difference_type = qptrdiff; // difference to [container.reqmts]
+        using reference = value_type;     // difference to [container.reqmts]
+        using pointer = QtPrivate::ArrowProxy<reference>;
+
+        reference operator*() const { return QDomNode(current); }
+        pointer operator->() const { return { **this }; }
+
+        It &operator++() { current = findNextInOrder(parent, current); return *this; }
+        It operator++(int) { auto copy = *this; ++*this; return copy; }
+
+        It &operator--() { current = findPrevInOrder(parent, current); return *this; }
+        It operator--(int) { auto copy = *this; --*this; return copy; }
+    };
+
+public:
+    using const_iterator = It;
+    using const_reverse_iterator = std::reverse_iterator<const_iterator>;
+
+    using value_type = It::value_type;
+    using difference_type = It::difference_type;
+    using reference = It::reference;
+    using const_reference = reference;
+    using pointer = It::pointer;
+    using const_pointer = pointer;
+
+    [[nodiscard]] const_iterator begin()  const noexcept { return It{impl, true}; }
+    [[nodiscard]] const_iterator end()    const noexcept { return It{impl, false}; }
+    [[nodiscard]] const_iterator cbegin() const noexcept { return begin(); }
+    [[nodiscard]] const_iterator cend()   const noexcept { return end(); }
+
+    [[nodiscard]] const_reverse_iterator rbegin()  const noexcept { return const_reverse_iterator{end()}; }
+    [[nodiscard]] const_reverse_iterator rend()    const noexcept { return const_reverse_iterator{begin()}; }
+    [[nodiscard]] const_reverse_iterator crbegin() const noexcept { return rbegin(); }
+    [[nodiscard]] const_reverse_iterator crend()   const noexcept { return rend(); }
+
+    [[nodiscard]] const_iterator constBegin() const noexcept { return begin(); }
+    [[nodiscard]] const_iterator constEnd()   const noexcept { return end(); }
+
+private:
     QDomNodeListPrivate* impl;
     QDomNodeList(QDomNodeListPrivate*);
 
     friend class QDomNode;
     friend class QDomElement;
     friend class QDomDocument;
+    friend class ::tst_QDom;
 };
 
 class Q_XML_EXPORT QDomDocumentType : public QDomNode
@@ -262,6 +337,7 @@ private:
     friend class QDomImplementation;
     friend class QDomDocument;
     friend class QDomNode;
+    friend class ::tst_QDom;
 };
 
 class Q_XML_EXPORT QDomDocument : public QDomNode

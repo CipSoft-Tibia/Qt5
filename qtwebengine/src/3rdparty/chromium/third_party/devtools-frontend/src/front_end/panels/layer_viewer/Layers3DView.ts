@@ -137,7 +137,7 @@ export class Layers3DView extends Common.ObjectWrapper.eventMixin<EventTypes, ty
 
   constructor(layerViewHost: LayerViewHost) {
     super(true);
-    this.element.setAttribute('jslog', `${VisualLogging.pane().context('layers-3d-view')}`);
+    this.element.setAttribute('jslog', `${VisualLogging.pane('layers-3d-view')}`);
 
     this.contentElement.classList.add('layers-3d-view');
     this.failBanner = new UI.Widget.VBox();
@@ -147,7 +147,8 @@ export class Layers3DView extends Common.ObjectWrapper.eventMixin<EventTypes, ty
     this.layerViewHost = layerViewHost;
     this.layerViewHost.registerView(this);
     this.transformController = new TransformController(this.contentElement as HTMLElement);
-    this.transformController.addEventListener(TransformControllerEvents.TransformChanged, this.update, this);
+    this.transformController.addEventListener(TransformControllerEvents.TRANSFORM_CHANGED, this.update, this);
+
     this.initToolbar();
     this.canvasElement = this.contentElement.createChild('canvas') as HTMLCanvasElement;
     this.canvasElement.tabIndex = 0;
@@ -157,8 +158,7 @@ export class Layers3DView extends Common.ObjectWrapper.eventMixin<EventTypes, ty
     this.canvasElement.addEventListener('mouseleave', this.onMouseMove.bind(this), false);
     this.canvasElement.addEventListener('mousemove', this.onMouseMove.bind(this), false);
     this.canvasElement.addEventListener('contextmenu', this.onContextMenu.bind(this), false);
-    this.canvasElement.setAttribute(
-        'jslog', `${VisualLogging.canvas().track({click: true, drag: true}).context('layers-canvas')}`);
+    this.canvasElement.setAttribute('jslog', `${VisualLogging.canvas('layers').track({click: true, drag: true})}`);
     UI.ARIAUtils.setLabel(this.canvasElement, i18nString(UIStrings.dLayersView));
 
     this.lastSelection = {};
@@ -195,7 +195,7 @@ export class Layers3DView extends Common.ObjectWrapper.eventMixin<EventTypes, ty
     }
     void UI.UIUtils.loadImage(imageURL).then(image => {
       const texture = image && LayerTextureManager.createTextureForImage(this.gl || null, image);
-      this.layerTexture = texture ? {layer: layer, texture: texture} : null;
+      this.layerTexture = texture ? {layer, texture} : null;
       this.update();
     });
   }
@@ -238,7 +238,7 @@ export class Layers3DView extends Common.ObjectWrapper.eventMixin<EventTypes, ty
   }
 
   snapshotForSelection(selection: Selection): Promise<SDK.PaintProfiler.SnapshotWithRect|null> {
-    if (selection.type() === Type.Snapshot) {
+    if (selection.type() === Type.SNAPSHOT) {
       const snapshotWithRect = (selection as SnapshotSelection).snapshot();
       snapshotWithRect.snapshot.addReference();
       return Promise.resolve(snapshotWithRect);
@@ -342,7 +342,7 @@ export class Layers3DView extends Common.ObjectWrapper.eventMixin<EventTypes, ty
     if (textureScale !== this.oldTextureScale) {
       this.oldTextureScale = textureScale;
       this.textureManager.setScale(textureScale);
-      this.dispatchEventToListeners(Events.ScaleChanged, textureScale);
+      this.dispatchEventToListeners(Events.SCALE_CHANGED, textureScale);
     }
     const scaleAndRotationMatrix = new WebKitCSSMatrix()
                                        .scale(scale, scale, scale)
@@ -421,9 +421,9 @@ export class Layers3DView extends Common.ObjectWrapper.eventMixin<EventTypes, ty
             image && LayerTextureManager.createTextureForImage(this.gl || null, image) || undefined;
       });
     }
-    loadChromeTexture.call(this, ChromeTexture.Left, 'Images/chromeLeft.avif');
-    loadChromeTexture.call(this, ChromeTexture.Middle, 'Images/chromeMiddle.avif');
-    loadChromeTexture.call(this, ChromeTexture.Right, 'Images/chromeRight.avif');
+    loadChromeTexture.call(this, ChromeTexture.LEFT, 'Images/chromeLeft.avif');
+    loadChromeTexture.call(this, ChromeTexture.MIDDLE, 'Images/chromeMiddle.avif');
+    loadChromeTexture.call(this, ChromeTexture.RIGHT, 'Images/chromeRight.avif');
   }
 
   private initGLIfNecessary(): WebGLRenderingContext|null {
@@ -667,7 +667,7 @@ export class Layers3DView extends Common.ObjectWrapper.eventMixin<EventTypes, ty
       return;
     }
 
-    const drawChrome = !Common.Settings.Settings.instance().moduleSetting('frameViewerHideChromeWindow').get() &&
+    const drawChrome = !Common.Settings.Settings.instance().moduleSetting('frame-viewer-hide-chrome-window').get() &&
         this.chromeTextures.length >= 3 && this.chromeTextures.indexOf(undefined) < 0;
     const z = (this.maxDepth + 1) * LayerSpacing;
     const borderWidth = Math.ceil(ViewportBorderWidth * this.scale);
@@ -710,7 +710,7 @@ export class Layers3DView extends Common.ObjectWrapper.eventMixin<EventTypes, ty
         if (!image) {
           continue;
         }
-        const width = i === ChromeTexture.Middle ? middleFragmentWidth : image.naturalWidth;
+        const width = i === ChromeTexture.MIDDLE ? middleFragmentWidth : image.naturalWidth;
         if (width < 0 || x + width > viewportWidth) {
           break;
         }
@@ -832,13 +832,13 @@ export class Layers3DView extends Common.ObjectWrapper.eventMixin<EventTypes, ty
   private initToolbar(): void {
     this.panelToolbar = this.transformController.toolbar();
     this.contentElement.appendChild(this.panelToolbar.element);
-    this.showPaintsSetting =
-        this.createVisibilitySetting(i18nString(UIStrings.paints), 'frameViewerShowPaints', false, this.panelToolbar);
+    this.showPaintsSetting = this.createVisibilitySetting(
+        i18nString(UIStrings.paints), 'frame-viewer-show-paints', false, this.panelToolbar);
     this.showSlowScrollRectsSetting = this.createVisibilitySetting(
-        i18nString(UIStrings.slowScrollRects), 'frameViewerShowSlowScrollRects', true, this.panelToolbar);
+        i18nString(UIStrings.slowScrollRects), 'frame-viewer-show-slow-scroll-rects', true, this.panelToolbar);
     this.showPaintsSetting.addChangeListener(this.updatePaints, this);
     Common.Settings.Settings.instance()
-        .moduleSetting('frameViewerHideChromeWindow')
+        .moduleSetting('frame-viewer-hide-chrome-window')
         .addChangeListener(this.update, this);
   }
 
@@ -849,10 +849,10 @@ export class Layers3DView extends Common.ObjectWrapper.eventMixin<EventTypes, ty
           jslogContext: 'layers.3d-center',
         });
     const selection = this.selectionFromEventPoint(event);
-    if (selection && selection.type() === Type.Snapshot) {
+    if (selection && selection.type() === Type.SNAPSHOT) {
       contextMenu.defaultSection().appendItem(
           i18nString(UIStrings.showPaintProfiler),
-          () => this.dispatchEventToListeners(Events.PaintProfilerRequested, selection), {
+          () => this.dispatchEventToListeners(Events.PAINT_PROFILER_REQUESTED, selection), {
             jslogContext: 'layers.paint-profiler',
           });
     }
@@ -887,8 +887,8 @@ export class Layers3DView extends Common.ObjectWrapper.eventMixin<EventTypes, ty
 
   private onDoubleClick(event: Event): void {
     const selection = this.selectionFromEventPoint(event);
-    if (selection && (selection.type() === Type.Snapshot || selection.layer())) {
-      this.dispatchEventToListeners(Events.PaintProfilerRequested, selection);
+    if (selection && (selection.type() === Type.SNAPSHOT || selection.layer())) {
+      this.dispatchEventToListeners(Events.PAINT_PROFILER_REQUESTED, selection);
     }
     event.stopPropagation();
   }
@@ -909,24 +909,26 @@ export class Layers3DView extends Common.ObjectWrapper.eventMixin<EventTypes, ty
 }
 
 export enum OutlineType {
+  /* eslint-disable @typescript-eslint/naming-convention -- Used by web_tests. */
   Hovered = 'hovered',
   Selected = 'selected',
+  /* eslint-enable @typescript-eslint/naming-convention */
 }
 
 export const enum Events {
-  PaintProfilerRequested = 'PaintProfilerRequested',
-  ScaleChanged = 'ScaleChanged',
+  PAINT_PROFILER_REQUESTED = 'PaintProfilerRequested',
+  SCALE_CHANGED = 'ScaleChanged',
 }
 
 export type EventTypes = {
-  [Events.PaintProfilerRequested]: Selection,
-  [Events.ScaleChanged]: number,
+  [Events.PAINT_PROFILER_REQUESTED]: Selection,
+  [Events.SCALE_CHANGED]: number,
 };
 
 export const enum ChromeTexture {
-  Left = 0,
-  Middle = 1,
-  Right = 2,
+  LEFT = 0,
+  MIDDLE = 1,
+  RIGHT = 2,
 }
 
 export const FragmentShader = '' +

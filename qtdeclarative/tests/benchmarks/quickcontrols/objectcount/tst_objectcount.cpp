@@ -1,7 +1,7 @@
 // Copyright (C) 2017 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
-#include <QtTest>
+#include <QTest>
 #include <QtQuick>
 #include <QtCore/private/qhooks_p.h>
 #include <iostream>
@@ -64,8 +64,9 @@ static void initTestRows(QQmlEngine *engine)
 {
     // Calendar is excluded because it's a singleton and can't be created.
     // TreeViewDelegate is excluded since it's a delegate that can only be created by TreeView.
+    // TableViewDelegate is excluded since it's a delegate that can only be created by TableView.
     addTestRowForEachControl(engine, QQC2_IMPORT_PATH, "basic", "QtQuick/Controls/Basic",
-        QStringList() << "Calendar" << "TreeViewDelegate");
+        QStringList() << "Calendar" << "TreeViewDelegate" << "TableViewDelegate");
     addTestRowForEachControl(engine, QQC2_IMPORT_PATH, "fusion", "QtQuick/Controls/Fusion",
         QStringList() << "ButtonPanel" << "CheckIndicator" << "RadioIndicator" << "SliderGroove"
                              << "SliderHandle" << "SwitchIndicator" << "TreeViewDelegate");

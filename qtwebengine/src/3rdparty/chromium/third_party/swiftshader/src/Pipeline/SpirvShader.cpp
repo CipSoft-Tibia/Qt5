@@ -17,6 +17,7 @@
 #include "SpirvProfiler.hpp"
 #include "SpirvShaderDebug.hpp"
 
+#include "Device/Context.hpp"
 #include "System/Debug.hpp"
 #include "Vulkan/VkPipelineLayout.hpp"
 #include "Vulkan/VkRenderPass.hpp"
@@ -1750,6 +1751,37 @@ OutOfBoundsBehavior SpirvShader::getOutOfBoundsBehavior(Object::ID pointerId, co
 	return OutOfBoundsBehavior::Nullify;
 }
 
+vk::Format SpirvShader::getInputAttachmentFormat(const vk::Attachments &attachments, int32_t index) const
+{
+	if(isUsedWithDynamicRendering)
+	{
+		// If no index is given in the shader, it refers to the depth/stencil
+		// attachment.
+		if(index < 0 || index == depthInputIndex || index == stencilInputIndex)
+		{
+			return attachments.depthFormat();
+		}
+
+		// See if the input index is mapped to an attachment.  If it isn't, the
+		// mapping is identity.
+		int32_t attachmentIndex = index;
+		if(inputIndexToColorIndex.count(index) > 0)
+		{
+			attachmentIndex = inputIndexToColorIndex.at(index);
+		}
+
+		// Map the index to its location.  This is where read-only input attachments
+		// that aren't mapped to any color attachment cannot be supported the way
+		// SwiftShader currently works (see comment above `inputIndexToColorIndex`).
+		ASSERT(attachmentIndex >= 0 && attachmentIndex < sw::MAX_COLOR_BUFFERS);
+		const int32_t location = attachments.indexToLocation[attachmentIndex];
+
+		return attachments.colorFormat(location);
+	}
+
+	return inputAttachmentFormats[index];
+}
+
 // emit-time
 
 void SpirvShader::emitProlog(SpirvRoutine *routine) const
@@ -1797,9 +1829,9 @@ void SpirvShader::emitProlog(SpirvRoutine *routine) const
 	}
 }
 
-void SpirvShader::emit(SpirvRoutine *routine, const RValue<SIMD::Int> &activeLaneMask, const RValue<SIMD::Int> &storesAndAtomicsMask, const vk::DescriptorSet::Bindings &descriptorSets, unsigned int multiSampleCount) const
+void SpirvShader::emit(SpirvRoutine *routine, const RValue<SIMD::Int> &activeLaneMask, const RValue<SIMD::Int> &storesAndAtomicsMask, const vk::DescriptorSet::Bindings &descriptorSets, const vk::Attachments *attachments, unsigned int multiSampleCount) const
 {
-	SpirvEmitter::emit(*this, routine, entryPoint, activeLaneMask, storesAndAtomicsMask, descriptorSets, multiSampleCount);
+	SpirvEmitter::emit(*this, routine, entryPoint, activeLaneMask, storesAndAtomicsMask, attachments, descriptorSets, multiSampleCount);
 }
 
 SpirvShader::SpirvShader(VkShaderStageFlagBits stage,
@@ -1807,9 +1839,11 @@ SpirvShader::SpirvShader(VkShaderStageFlagBits stage,
                          const SpirvBinary &insns,
                          const vk::RenderPass *renderPass,
                          uint32_t subpassIndex,
+                         const VkRenderingInputAttachmentIndexInfoKHR *inputAttachmentMapping,
                          bool robustBufferAccess)
     : Spirv(stage, entryPointName, insns)
     , robustBufferAccess(robustBufferAccess)
+    , isUsedWithDynamicRendering(renderPass == nullptr)
 {
 	if(renderPass)
 	{
@@ -1824,6 +1858,35 @@ SpirvShader::SpirvShader(VkShaderStageFlagBits stage,
 			                                     : VK_FORMAT_UNDEFINED);
 		}
 	}
+	else if(inputAttachmentMapping)
+	{
+		for(auto i = 0u; i < inputAttachmentMapping->colorAttachmentCount; i++)
+		{
+			auto inputIndex = inputAttachmentMapping->pColorAttachmentInputIndices[i];
+			if(inputIndex != VK_ATTACHMENT_UNUSED)
+			{
+				inputIndexToColorIndex[inputIndex] = i;
+			}
+		}
+
+		if(inputAttachmentMapping->pDepthInputAttachmentIndex)
+		{
+			auto attachmentIndex = *inputAttachmentMapping->pDepthInputAttachmentIndex;
+			if(attachmentIndex != VK_ATTACHMENT_UNUSED)
+			{
+				depthInputIndex = attachmentIndex;
+			}
+		}
+
+		if(inputAttachmentMapping->pStencilInputAttachmentIndex)
+		{
+			auto attachmentIndex = *inputAttachmentMapping->pStencilInputAttachmentIndex;
+			if(attachmentIndex != VK_ATTACHMENT_UNUSED)
+			{
+				stencilInputIndex = attachmentIndex;
+			}
+		}
+	}
 }
 
 SpirvShader::~SpirvShader()
@@ -1835,6 +1898,7 @@ SpirvEmitter::SpirvEmitter(const SpirvShader &shader,
                            Spirv::Function::ID entryPoint,
                            RValue<SIMD::Int> activeLaneMask,
                            RValue<SIMD::Int> storesAndAtomicsMask,
+                           const vk::Attachments *attachments,
                            const vk::DescriptorSet::Bindings &descriptorSets,
                            unsigned int multiSampleCount)
     : shader(shader)
@@ -1842,6 +1906,7 @@ SpirvEmitter::SpirvEmitter(const SpirvShader &shader,
     , function(entryPoint)
     , activeLaneMaskValue(activeLaneMask.value())
     , storesAndAtomicsMaskValue(storesAndAtomicsMask.value())
+    , attachments(attachments)
     , descriptorSets(descriptorSets)
     , multiSampleCount(multiSampleCount)
 {
@@ -1852,10 +1917,11 @@ void SpirvEmitter::emit(const SpirvShader &shader,
                         Spirv::Function::ID entryPoint,
                         RValue<SIMD::Int> activeLaneMask,
                         RValue<SIMD::Int> storesAndAtomicsMask,
+                        const vk::Attachments *attachments,
                         const vk::DescriptorSet::Bindings &descriptorSets,
                         unsigned int multiSampleCount)
 {
-	SpirvEmitter state(shader, routine, entryPoint, activeLaneMask, storesAndAtomicsMask, descriptorSets, multiSampleCount);
+	SpirvEmitter state(shader, routine, entryPoint, activeLaneMask, storesAndAtomicsMask, attachments, descriptorSets, multiSampleCount);
 
 	// Create phi variables
 	for(auto insn : shader)

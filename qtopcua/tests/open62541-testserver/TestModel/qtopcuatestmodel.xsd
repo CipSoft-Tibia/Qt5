@@ -27,7 +27,7 @@
     <xs:element type="tns:ListOfQtAbstractBaseStruct" name="ListOfQtAbstractBaseStruct" nillable="true"/>
     <xs:complexType name="QtInnerTestStructType">
         <xs:complexContent mixed="false">
-            <xs:extension base="tns:QtAbstractBaseStruct">
+            <xs:extension base="ua:ExtensionObject">
                 <xs:sequence>
                     <xs:element minOccurs="0" maxOccurs="1" type="xs:double" name="DoubleSubtypeMember"/>
                 </xs:sequence>
@@ -41,6 +41,23 @@
         </xs:sequence>
     </xs:complexType>
     <xs:element type="tns:ListOfQtInnerTestStructType" name="ListOfQtInnerTestStructType" nillable="true"/>
+    <xs:complexType name="QtRecursiveTestStruct">
+        <xs:complexContent mixed="false">
+            <xs:extension base="ua:ExtensionObject">
+                <xs:sequence>
+                    <xs:element minOccurs="0" maxOccurs="1" type="xs:string" name="StringMember"/>
+                    <xs:element minOccurs="0" maxOccurs="1" type="tns:ListOfQtRecursiveTestStruct" name="RecursiveArrayMember"/>
+                </xs:sequence>
+            </xs:extension>
+        </xs:complexContent>
+    </xs:complexType>
+    <xs:element type="tns:QtRecursiveTestStruct" name="QtRecursiveTestStruct"/>
+    <xs:complexType name="ListOfQtRecursiveTestStruct">
+        <xs:sequence>
+            <xs:element minOccurs="0" maxOccurs="unbounded" type="tns:QtRecursiveTestStruct" name="QtRecursiveTestStruct" nillable="true"/>
+        </xs:sequence>
+    </xs:complexType>
+    <xs:element type="tns:ListOfQtRecursiveTestStruct" name="ListOfQtRecursiveTestStruct" nillable="true"/>
     <xs:complexType name="QtStructWithOptionalFieldType">
         <xs:sequence>
             <xs:element minOccurs="0" type="xs:unsignedInt" name="EncodingMask"/>
@@ -57,7 +74,7 @@
     <xs:element type="tns:ListOfQtStructWithOptionalFieldType" name="ListOfQtStructWithOptionalFieldType" nillable="true"/>
     <xs:complexType name="QtTestStructType">
         <xs:complexContent mixed="false">
-            <xs:extension base="tns:QtAbstractBaseStruct">
+            <xs:extension base="ua:ExtensionObject">
                 <xs:sequence>
                     <xs:element minOccurs="0" maxOccurs="1" type="xs:string" name="StringMember"/>
                     <xs:element minOccurs="0" maxOccurs="1" type="ua:LocalizedText" name="LocalizedTextMember"/>
@@ -79,7 +96,7 @@
     <xs:element type="tns:ListOfQtTestStructType" name="ListOfQtTestStructType" nillable="true"/>
     <xs:complexType name="QtTestStructWithDataValue">
         <xs:complexContent mixed="false">
-            <xs:extension base="tns:QtAbstractBaseStruct">
+            <xs:extension base="ua:ExtensionObject">
                 <xs:sequence>
                     <xs:element minOccurs="0" maxOccurs="1" type="ua:DataValue" name="DataValueMember"/>
                     <xs:element minOccurs="0" maxOccurs="1" type="ua:Variant" name="VariantMember"/>
@@ -96,7 +113,7 @@
     <xs:element type="tns:ListOfQtTestStructWithDataValue" name="ListOfQtTestStructWithDataValue" nillable="true"/>
     <xs:complexType name="QtTestStructWithDiagnosticInfo">
         <xs:complexContent mixed="false">
-            <xs:extension base="tns:QtAbstractBaseStruct">
+            <xs:extension base="ua:ExtensionObject">
                 <xs:sequence>
                     <xs:element minOccurs="0" maxOccurs="1" type="ua:DiagnosticInfo" name="DiagnosticInfoMember"/>
                     <xs:element minOccurs="0" maxOccurs="1" type="ua:ListOfDiagnosticInfo" name="DiagnosticInfoArrayMember"/>

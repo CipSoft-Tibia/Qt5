@@ -59,7 +59,7 @@ export class InterestGroupStorageModel extends SDK.SDKModel.SDKModel<EventTypes>
   }
 
   interestGroupAccessed(event: Protocol.Storage.InterestGroupAccessedEvent): void {
-    this.dispatchEventToListeners(Events.InterestGroupAccess, event);
+    this.dispatchEventToListeners(Events.INTEREST_GROUP_ACCESS, event);
   }
 
   attributionReportingTriggerRegistered(_event: Protocol.Storage.AttributionReportingTriggerRegisteredEvent): void {
@@ -72,6 +72,10 @@ export class InterestGroupStorageModel extends SDK.SDKModel.SDKModel<EventTypes>
   }
 
   interestGroupAuctionEventOccurred(_event: Protocol.Storage.InterestGroupAuctionEventOccurredEvent): void {
+  }
+
+  interestGroupAuctionNetworkRequestCreated(_event: Protocol.Storage.InterestGroupAuctionNetworkRequestCreatedEvent):
+      void {
   }
 
   cacheStorageListUpdated(_event: Protocol.Storage.CacheStorageListUpdatedEvent): void {
@@ -94,12 +98,12 @@ export class InterestGroupStorageModel extends SDK.SDKModel.SDKModel<EventTypes>
 }
 
 SDK.SDKModel.SDKModel.register(
-    InterestGroupStorageModel, {capabilities: SDK.Target.Capability.Storage, autostart: false});
+    InterestGroupStorageModel, {capabilities: SDK.Target.Capability.STORAGE, autostart: false});
 
 export const enum Events {
-  InterestGroupAccess = 'InterestGroupAccess',
+  INTEREST_GROUP_ACCESS = 'InterestGroupAccess',
 }
 
 export type EventTypes = {
-  [Events.InterestGroupAccess]: Protocol.Storage.InterestGroupAccessedEvent,
+  [Events.INTEREST_GROUP_ACCESS]: Protocol.Storage.InterestGroupAccessedEvent,
 };

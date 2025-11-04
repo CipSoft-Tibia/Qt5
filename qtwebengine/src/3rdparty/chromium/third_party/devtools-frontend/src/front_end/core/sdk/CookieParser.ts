@@ -35,7 +35,7 @@
 // which is in a format slightly different from Set-Cookie and is normally
 // only required on the server side.
 
-import {Cookie, Type} from './Cookie.js';
+import {Attribute, Cookie, Type} from './Cookie.js';
 
 export class CookieParser {
   readonly #domain: string|undefined;
@@ -61,6 +61,44 @@ export class CookieParser {
     return (new CookieParser(domain)).parseSetCookie(header);
   }
 
+  getCookieAttribute(header: string|undefined): Attribute|null {
+    if (!header) {
+      return null;
+    }
+
+    switch (header.toLowerCase()) {
+      case 'domain':
+        return Attribute.DOMAIN;
+      case 'expires':
+        return Attribute.EXPIRES;
+      case 'max-age':
+        return Attribute.MAX_AGE;
+      case 'httponly':
+        return Attribute.HTTP_ONLY;
+      case 'name':
+        return Attribute.NAME;
+      case 'path':
+        return Attribute.PATH;
+      case 'samesite':
+        return Attribute.SAME_SITE;
+      case 'secure':
+        return Attribute.SECURE;
+      case 'value':
+        return Attribute.VALUE;
+      case 'priority':
+        return Attribute.PRIORITY;
+      case 'sourceport':
+        return Attribute.SOURCE_PORT;
+      case 'sourcescheme':
+        return Attribute.SOURCE_SCHEME;
+      case 'partitioned':
+        return Attribute.PARTITIONED;
+      default:
+        console.error('Failed getting cookie attribute: ' + header);
+        return null;
+    }
+  }
+
   cookies(): Cookie[] {
     return this.#cookiesInternal;
   }
@@ -71,9 +109,9 @@ export class CookieParser {
     }
     for (let kv = this.extractKeyValue(); kv; kv = this.extractKeyValue()) {
       if (this.#lastCookie) {
-        this.#lastCookie.addAttribute(kv.key, kv.value);
+        this.#lastCookie.addAttribute(this.getCookieAttribute(kv.key), kv.value);
       } else {
-        this.addCookie(kv, Type.Response);
+        this.addCookie(kv, Type.RESPONSE);
       }
       if (this.advanceAndCheckCookieDelimiter()) {
         this.flushCookie();
@@ -117,7 +155,7 @@ export class CookieParser {
     // and http://crbug.com/12361). The logic below matches latest versions of IE, Firefox,
     // Chrome and Safari on some old platforms. The latest version of Safari supports quoted
     // cookie values, though.
-    const keyValueMatch = /^[ \t]*([^=;]+)[ \t]*(?:=[ \t]*([^;\n]*))?/.exec(this.#input);
+    const keyValueMatch = /^[ \t]*([^=;\n]+)[ \t]*(?:=[ \t]*([^;\n]*))?/.exec(this.#input);
     if (!keyValueMatch) {
       console.error('Failed parsing cookie header before: ' + this.#input);
       return null;
@@ -155,7 +193,7 @@ export class CookieParser {
     this.#lastCookie = typeof keyValue.value === 'string' ? new Cookie(keyValue.key, keyValue.value, type) :
                                                             new Cookie('', keyValue.key, type);
     if (this.#domain) {
-      this.#lastCookie.addAttribute('domain', this.#domain);
+      this.#lastCookie.addAttribute(Attribute.DOMAIN, this.#domain);
     }
     this.#lastCookiePosition = keyValue.position;
     this.#cookiesInternal.push(this.#lastCookie);

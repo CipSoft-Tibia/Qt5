@@ -20,8 +20,8 @@ class AppCapabilityAccessCacheTest
 
   static apps::CapabilityAccessPtr MakeCapabilityAccess(
       const char* app_id,
-      absl::optional<bool> camera,
-      absl::optional<bool> microphone) {
+      std::optional<bool> camera,
+      std::optional<bool> microphone) {
     apps::CapabilityAccessPtr access =
         std::make_unique<apps::CapabilityAccess>(app_id);
     access->camera = camera;
@@ -57,7 +57,7 @@ class AppCapabilityAccessCacheTest
   void OnAppCapabilityAccessCacheWillBeDestroyed(
       apps::AppCapabilityAccessCache* cache) override {
     // The test code explicitly calls both AddObserver and RemoveObserver.
-    NOTREACHED();
+    NOTREACHED_IN_MIGRATION();
   }
 
   const AccountId& account_id() const { return account_id_; }

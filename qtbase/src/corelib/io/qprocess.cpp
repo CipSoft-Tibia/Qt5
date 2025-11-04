@@ -1,6 +1,7 @@
 // Copyright (C) 2021 The Qt Company Ltd.
 // Copyright (C) 2022 Intel Corporation.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:execute-external-code
 
 //#define QPROCESS_DEBUG
 
@@ -14,7 +15,6 @@
 #include <qbytearray.h>
 #include <qdeadlinetimer.h>
 #include <qcoreapplication.h>
-#include <qtimer.h>
 
 #if __has_include(<paths.h>)
 #include <paths.h>
@@ -894,6 +894,16 @@ void QProcessPrivate::Channel::clear()
            to communicate with the parent process. It is implementation-defined
            if QProcess will actually use \c{vfork(2)} and if \c{vfork(2)} is
            different from standard \c{fork(2)}.
+
+    \value [since 6.9] DisableCoreDumps     Requests that QProcess disable core
+           dumps in the child process. This is useful if the executable being
+           run is likely to crash but users and maintainers are going to be
+           uninterested in generating bug reports for those conditions (for
+           example, the executable is a test process). This setting does not
+           affect the exitStatus() of the crashed process. It is implemented
+           by setting the core dump size resource soft limit to zero, meaning
+           the application can still reverse this change by raising it to a
+           value up to the hard limit.
 
     \sa setUnixProcessParameters(), unixProcessParameters()
 */

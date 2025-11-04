@@ -10,19 +10,18 @@
 
 #include <map>
 #include <memory>
+#include <optional>
 #include <set>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "base/containers/circular_deque.h"
-#include "base/feature_list.h"
 #include "base/gtest_prod_util.h"
 #include "base/memory/raw_ptr.h"
 #include "base/memory/ref_counted.h"
 #include "base/memory/scoped_refptr.h"
 #include "base/memory/weak_ptr.h"
-#include "base/metrics/field_trial_params.h"
-#include "base/strings/string_piece.h"
 #include "base/time/time.h"
 #include "base/timer/timer.h"
 #include "base/values.h"
@@ -40,6 +39,7 @@
 #include "net/socket/next_proto.h"
 #include "net/socket/ssl_client_socket.h"
 #include "net/socket/stream_socket.h"
+#include "net/socket/stream_socket_handle.h"
 #include "net/spdy/buffered_spdy_framer.h"
 #include "net/spdy/http2_priority_dependencies.h"
 #include "net/spdy/multiplexed_session.h"
@@ -48,12 +48,11 @@
 #include "net/spdy/spdy_stream.h"
 #include "net/spdy/spdy_write_queue.h"
 #include "net/ssl/ssl_config_service.h"
-#include "net/third_party/quiche/src/quiche/spdy/core/http2_header_block.h"
+#include "net/third_party/quiche/src/quiche/common/http/http_header_block.h"
 #include "net/third_party/quiche/src/quiche/spdy/core/spdy_alt_svc_wire_format.h"
 #include "net/third_party/quiche/src/quiche/spdy/core/spdy_framer.h"
 #include "net/third_party/quiche/src/quiche/spdy/core/spdy_protocol.h"
 #include "net/traffic_annotation/network_traffic_annotation.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "url/gurl.h"
 #include "url/origin.h"
 #include "url/scheme_host_port.h"
@@ -77,13 +76,9 @@ const int kMaxSpdyFrameChunkSize = (16 * 1024) - 9;
 // specification. A session is always created with this initial window size.
 const int32_t kDefaultInitialWindowSize = 65535;
 
-// The default maximum number of concurrent streams we will create, unless the
-// server sends a SETTINGS frame with a different value.
-const size_t kDefaultInitialMaxConcurrentStreams = 100;
-
-// Used to override kDefaultInitialMaxConcurrentStreams.
-NET_EXPORT BASE_DECLARE_FEATURE(kH2InitialMaxConcurrentStreamsOverride);
-NET_EXPORT extern const base::FeatureParam<int> kH2InitialMaxConcurrentStreams;
+// Maximum number of concurrent streams we will create, unless the server
+// sends a SETTINGS frame with a different value.
+const size_t kInitialMaxConcurrentStreams = 100;
 
 // If more than this many bytes have been read or more than that many
 // milliseconds have passed, return ERR_IO_PENDING from ReadLoop.
@@ -318,8 +313,8 @@ class NET_EXPORT SpdySession
   static bool CanPool(TransportSecurityState* transport_security_state,
                       const SSLInfo& ssl_info,
                       const SSLConfigService& ssl_config_service,
-                      const std::string& old_hostname,
-                      const std::string& new_hostname);
+                      std::string_view old_hostname,
+                      std::string_view new_hostname);
 
   // Create a new SpdySession.
   // |spdy_session_key| is the host/port that this session connects to, privacy
@@ -338,7 +333,7 @@ class NET_EXPORT SpdySession
               int session_max_queued_capped_frames,
               const spdy::SettingsMap& initial_settings,
               bool enable_http2_settings_grease,
-              const absl::optional<SpdySessionPool::GreasedHttp2Frame>&
+              const std::optional<SpdySessionPool::GreasedHttp2Frame>&
                   greased_http2_frame,
               bool http2_end_stream_with_data_frame,
               bool enable_priority_update,
@@ -361,11 +356,11 @@ class NET_EXPORT SpdySession
   // |pool| is the SpdySessionPool that owns us.  Its lifetime must
   // strictly be greater than |this|.
   //
-  // The session begins reading from |client_socket_handle| on a subsequent
+  // The session begins reading from |stream_socket_handle| on a subsequent
   // event loop iteration, so the SpdySession may close immediately afterwards
-  // if the first read of |client_socket_handle| fails.
+  // if the first read of |stream_socket_handle| fails.
   void InitializeWithSocketHandle(
-      std::unique_ptr<ClientSocketHandle> client_socket_handle,
+      std::unique_ptr<StreamSocketHandle> stream_socket_handle,
       SpdySessionPool* pool);
 
   // Just like InitializeWithSocketHandle(), but for use when the session is not
@@ -391,7 +386,7 @@ class NET_EXPORT SpdySession
   // TODO(wtc): rename this function and the Net.SpdyIPPoolDomainMatch
   // histogram because this function does more than verifying domain
   // authentication now.
-  bool VerifyDomainAuthentication(const std::string& domain) const;
+  bool VerifyDomainAuthentication(std::string_view domain) const;
 
   // Pushes the given producer into the write queue for
   // |stream|. |stream| is guaranteed to be activated before the
@@ -441,7 +436,7 @@ class NET_EXPORT SpdySession
       spdy::SpdyStreamId stream_id,
       RequestPriority priority,
       spdy::SpdyControlFlags flags,
-      spdy::Http2HeaderBlock headers,
+      quiche::HttpHeaderBlock headers,
       NetLogSource source_dependency);
 
   // Creates and returns a SpdyBuffer holding a data frame with the given data.
@@ -487,7 +482,7 @@ class NET_EXPORT SpdySession
   // MultiplexedSession methods:
   int GetRemoteEndpoint(IPEndPoint* endpoint) override;
   bool GetSSLInfo(SSLInfo* ssl_info) const override;
-  base::StringPiece GetAcceptChViaAlps(
+  std::string_view GetAcceptChViaAlps(
       const url::SchemeHostPort& scheme_host_port) const override;
 
   // Returns the protocol negotiated via ALPN for the underlying socket.
@@ -626,7 +621,7 @@ class NET_EXPORT SpdySession
   using PendingStreamRequestQueue =
       base::circular_deque<base::WeakPtr<SpdyStreamRequest>>;
   using ActiveStreamMap = std::map<spdy::SpdyStreamId, SpdyStream*>;
-  using CreatedStreamSet = std::set<SpdyStream*>;
+  using CreatedStreamSet = std::set<raw_ptr<SpdyStream>>;
 
   enum AvailabilityState {
     // The session is available in its socket pool and can be used
@@ -872,7 +867,7 @@ class NET_EXPORT SpdySession
                    spdy::SpdyErrorCode error_code) override;
   void OnGoAway(spdy::SpdyStreamId last_accepted_stream_id,
                 spdy::SpdyErrorCode error_code,
-                base::StringPiece debug_data) override;
+                std::string_view debug_data) override;
   void OnDataFrameHeader(spdy::SpdyStreamId stream_id,
                          size_t length,
                          bool fin) override;
@@ -889,17 +884,17 @@ class NET_EXPORT SpdySession
                       int delta_window_size) override;
   void OnPushPromise(spdy::SpdyStreamId stream_id,
                      spdy::SpdyStreamId promised_stream_id,
-                     spdy::Http2HeaderBlock headers) override;
+                     quiche::HttpHeaderBlock headers) override;
   void OnHeaders(spdy::SpdyStreamId stream_id,
                  bool has_priority,
                  int weight,
                  spdy::SpdyStreamId parent_stream_id,
                  bool exclusive,
                  bool fin,
-                 spdy::Http2HeaderBlock headers,
+                 quiche::HttpHeaderBlock headers,
                  base::TimeTicks recv_first_byte_time) override;
   void OnAltSvc(spdy::SpdyStreamId stream_id,
-                base::StringPiece origin,
+                std::string_view origin,
                 const spdy::SpdyAltSvcWireFormat::AlternativeServiceVector&
                     altsvc_vector) override;
   bool OnUnknownFrame(spdy::SpdyStreamId stream_id,
@@ -1021,10 +1016,10 @@ class NET_EXPORT SpdySession
   raw_ptr<SSLConfigService> ssl_config_service_;
 
   // One of these two owns the socket for this session, which is stored in
-  // |socket_|. If |client_socket_handle_| is non-null, this session is on top
+  // |socket_|. If |stream_socket_handle_| is non-null, this session is on top
   // of a socket in a socket pool. If |owned_stream_socket_| is non-null, this
   // session is directly on top of a socket, which is not in a socket pool.
-  std::unique_ptr<ClientSocketHandle> client_socket_handle_;
+  std::unique_ptr<StreamSocketHandle> stream_socket_handle_;
   std::unique_ptr<StreamSocket> owned_stream_socket_;
 
   // This is non-null only if |owned_stream_socket_| is non-null.
@@ -1109,7 +1104,7 @@ class NET_EXPORT SpdySession
   // If set, an HTTP/2 frame with a reserved frame type will be sent after
   // every HTTP/2 SETTINGS frame and before every HTTP/2 DATA frame. See
   // https://tools.ietf.org/html/draft-bishop-httpbis-grease-00.
-  const absl::optional<SpdySessionPool::GreasedHttp2Frame> greased_http2_frame_;
+  const std::optional<SpdySessionPool::GreasedHttp2Frame> greased_http2_frame_;
 
   // If set, the HEADERS frame carrying a request without body will not have the
   // END_STREAM flag set.  The stream will be closed by a subsequent empty DATA

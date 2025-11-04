@@ -27,17 +27,14 @@ class CallbackRegistry {
         catch (error) {
             // We still throw sync errors synchronously and clean up the scheduled
             // callback.
-            callback.promise
-                .valueOrThrow()
-                .catch(util_js_1.debugError)
-                .finally(() => {
+            callback.promise.catch(util_js_1.debugError).finally(() => {
                 this.#callbacks.delete(callback.id);
             });
             callback.reject(error);
             throw error;
         }
         // Must only have sync code up until here.
-        return callback.promise.valueOrThrow().finally(() => {
+        return callback.promise.finally(() => {
             this.#callbacks.delete(callback.id);
         });
     }
@@ -76,6 +73,16 @@ class CallbackRegistry {
         }
         this.#callbacks.clear();
     }
+    /**
+     * @internal
+     */
+    getPendingProtocolErrors() {
+        const result = [];
+        for (const callback of this.#callbacks.values()) {
+            result.push(new Error(`${callback.label} timed out. Trace: ${callback.error.stack}`));
+        }
+        return result;
+    }
 }
 exports.CallbackRegistry = CallbackRegistry;
 /**
@@ -108,7 +115,7 @@ class Callback {
         return this.#id;
     }
     get promise() {
-        return this.#deferred;
+        return this.#deferred.valueOrThrow();
     }
     get error() {
         return this.#error;

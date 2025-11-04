@@ -104,6 +104,12 @@
     /* GL_EXT_buffer_storage */                                                                    \
     void bufferStorage(BufferBinding targetPacked, GLsizeiptr size, const void *data,              \
                        GLbitfield flags);                                                          \
+    /* GL_EXT_clear_texture */                                                                     \
+    void clearTexImage(TextureID texturePacked, GLint level, GLenum format, GLenum type,           \
+                       const void *data);                                                          \
+    void clearTexSubImage(TextureID texturePacked, GLint level, GLint xoffset, GLint yoffset,      \
+                          GLint zoffset, GLsizei width, GLsizei height, GLsizei depth,             \
+                          GLenum format, GLenum type, const void *data);                           \
     /* GL_EXT_clip_control */                                                                      \
     /* GL_EXT_clip_cull_distance */                                                                \
     /* GL_EXT_color_buffer_float */                                                                \
@@ -209,6 +215,7 @@
                        const TextureID *texturesPacked, const GLenum *srcLayouts);                 \
     /* GL_EXT_semaphore_fd */                                                                      \
     void importSemaphoreFd(SemaphoreID semaphorePacked, HandleType handleTypePacked, GLint fd);    \
+    /* GL_EXT_separate_depth_stencil */                                                            \
     /* GL_EXT_separate_shader_objects */                                                           \
     /* GL_EXT_shader_framebuffer_fetch */                                                          \
     /* GL_EXT_shader_framebuffer_fetch_non_coherent */                                             \
@@ -238,6 +245,7 @@
     /* GL_EXT_texture_sRGB_R8 */                                                                   \
     /* GL_EXT_texture_sRGB_RG8 */                                                                  \
     /* GL_EXT_texture_sRGB_decode */                                                               \
+    /* GL_EXT_texture_shadow_lod */                                                                \
     /* GL_EXT_texture_storage */                                                                   \
     void texStorage1D(GLenum target, GLsizei levels, GLenum internalformat, GLsizei width);        \
     /* GL_EXT_texture_type_2_10_10_10_REV */                                                       \
@@ -245,11 +253,13 @@
     /* GL_IMG_texture_compression_pvrtc */                                                         \
     /* GL_IMG_texture_compression_pvrtc2 */                                                        \
     /* GL_KHR_blend_equation_advanced */                                                           \
+    /* GL_KHR_blend_equation_advanced_coherent */                                                  \
     /* GL_KHR_debug */                                                                             \
     /* GL_KHR_no_error */                                                                          \
     /* GL_KHR_parallel_shader_compile */                                                           \
     void maxShaderCompilerThreads(GLuint count);                                                   \
     /* GL_KHR_robust_buffer_access_behavior */                                                     \
+    /* GL_KHR_robustness */                                                                        \
     /* GL_KHR_texture_compression_astc_hdr */                                                      \
     /* GL_KHR_texture_compression_astc_ldr */                                                      \
     /* GL_KHR_texture_compression_astc_sliced_3d */                                                \
@@ -306,6 +316,7 @@
     /* GL_OES_fbo_render_mipmap */                                                                 \
     /* GL_OES_geometry_shader */                                                                   \
     /* GL_OES_get_program_binary */                                                                \
+    /* GL_OES_gpu_shader5 */                                                                       \
     /* GL_OES_mapbuffer */                                                                         \
     void *mapBuffer(BufferBinding targetPacked, GLenum access);                                    \
     /* GL_OES_packed_depth_stencil */                                                              \
@@ -318,6 +329,7 @@
     /* GL_OES_shader_multisample_interpolation */                                                  \
     /* GL_OES_standard_derivatives */                                                              \
     /* GL_OES_surfaceless_context */                                                               \
+    /* GL_OES_tessellation_shader */                                                               \
     /* GL_OES_texture_3D */                                                                        \
     void framebufferTexture3D(GLenum target, GLenum attachment, TextureTarget textargetPacked,     \
                               TextureID texturePacked, GLint level, GLint zoffset);                \
@@ -340,18 +352,21 @@
                                      GLint level, GLint baseViewIndex, GLsizei numViews);          \
     /* GL_OVR_multiview2 */                                                                        \
     /* GL_QCOM_framebuffer_foveated */                                                             \
-    void framebufferFoveationConfig(GLuint framebuffer, GLuint numLayers,                          \
+    void framebufferFoveationConfig(FramebufferID framebufferPacked, GLuint numLayers,             \
                                     GLuint focalPointsPerLayer, GLuint requestedFeatures,          \
                                     GLuint *providedFeatures);                                     \
-    void framebufferFoveationParameters(GLuint framebuffer, GLuint layer, GLuint focalPoint,       \
-                                        GLfloat focalX, GLfloat focalY, GLfloat gainX,             \
-                                        GLfloat gainY, GLfloat foveaArea);                         \
+    void framebufferFoveationParameters(FramebufferID framebufferPacked, GLuint layer,             \
+                                        GLuint focalPoint, GLfloat focalX, GLfloat focalY,         \
+                                        GLfloat gainX, GLfloat gainY, GLfloat foveaArea);          \
     /* GL_QCOM_render_shared_exponent */                                                           \
     /* GL_QCOM_shading_rate */                                                                     \
     /* GL_QCOM_texture_foveated */                                                                 \
-    void textureFoveationParameters(GLuint texture, GLuint layer, GLuint focalPoint,               \
+    void textureFoveationParameters(TextureID texturePacked, GLuint layer, GLuint focalPoint,      \
                                     GLfloat focalX, GLfloat focalY, GLfloat gainX, GLfloat gainY,  \
                                     GLfloat foveaArea);                                            \
+    /* GL_QCOM_tiled_rendering */                                                                  \
+    void endTiling(GLbitfield preserveMask);                                                       \
+    void startTiling(GLuint x, GLuint y, GLuint width, GLuint height, GLbitfield preserveMask);    \
     /* GL_WEBGL_video_texture */                                                                   \
                                                                                                    \
     /* ANGLE Extensions */                                                                         \
@@ -432,6 +447,7 @@
     /* GL_ANGLE_multiview_multisample */                                                           \
     /* GL_ANGLE_polygon_mode */                                                                    \
     /* GL_ANGLE_program_binary */                                                                  \
+    /* GL_ANGLE_program_binary_readiness_query */                                                  \
     /* GL_ANGLE_program_cache_control */                                                           \
     /* GL_ANGLE_provoking_vertex */                                                                \
     /* GL_ANGLE_read_only_depth_stencil_feedback_loops */                                          \

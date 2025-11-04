@@ -7,6 +7,7 @@ import * as i18n from '../../core/i18n/i18n.js';
 import * as Platform from '../../core/platform/platform.js';
 import * as SDK from '../../core/sdk/sdk.js';
 import * as Logs from '../../models/logs/logs.js';
+import * as Buttons from '../../ui/components/buttons/buttons.js';
 import * as UI from '../../ui/legacy/legacy.js';
 import * as VisualLogging from '../../ui/visual_logging/visual_logging.js';
 
@@ -67,11 +68,11 @@ export class BlockedURLsPane extends UI.Widget.VBox implements
   constructor() {
     super(true);
 
-    this.element.setAttribute('jslog', `${VisualLogging.panel().context('network.blocked-urls')}`);
+    this.element.setAttribute('jslog', `${VisualLogging.panel('network.blocked-urls').track({resize: true})}`);
 
     this.manager = SDK.NetworkManager.MultitargetNetworkManager.instance();
     this.manager.addEventListener(
-        SDK.NetworkManager.MultitargetNetworkManager.Events.BlockedPatternsChanged, this.update, this);
+        SDK.NetworkManager.MultitargetNetworkManager.Events.BLOCKED_PATTERNS_CHANGED, this.update, this);
 
     this.toolbar = new UI.Toolbar.Toolbar('', this.contentElement);
     this.enabledCheckbox = new UI.Toolbar.ToolbarCheckbox(
@@ -83,6 +84,7 @@ export class BlockedURLsPane extends UI.Widget.VBox implements
         UI.Toolbar.Toolbar.createActionButtonForId('network.add-network-request-blocking-pattern'));
     this.toolbar.appendToolbarItem(
         UI.Toolbar.Toolbar.createActionButtonForId('network.remove-all-network-request-blocking-patterns'));
+    this.toolbar.element.setAttribute('jslog', `${VisualLogging.toolbar()}`);
 
     this.list = new UI.ListWidget.ListWidget(this);
     this.list.element.classList.add('blocked-urls');
@@ -103,9 +105,11 @@ export class BlockedURLsPane extends UI.Widget.VBox implements
 
   private createEmptyPlaceholder(): Element {
     const element = this.contentElement.createChild('div', 'no-blocked-urls');
-    const addButton = UI.UIUtils.createTextButton(
-        i18nString(UIStrings.addPattern), this.addPattern.bind(this),
-        {className: 'add-button', jslogContext: 'network.add-network-request-blocking-pattern', primary: true});
+    const addButton = UI.UIUtils.createTextButton(i18nString(UIStrings.addPattern), this.addPattern.bind(this), {
+      className: 'add-button',
+      jslogContext: 'network.add-network-request-blocking-pattern',
+      variant: Buttons.Button.Variant.PRIMARY,
+    });
     UI.ARIAUtils.setLabel(addButton, i18nString(UIStrings.addNetworkRequestBlockingPattern));
     element.appendChild(
         i18n.i18n.getFormatLocalizedString(str_, UIStrings.networkRequestsAreNotBlockedS, {PH1: addButton}));
@@ -170,9 +174,9 @@ export class BlockedURLsPane extends UI.Widget.VBox implements
     const url = editor.control('url').value as Platform.DevToolsPath.UrlString;
     const patterns = this.manager.blockedPatterns();
     if (isNew) {
-      patterns.push({enabled: true, url: url});
+      patterns.push({enabled: true, url});
     } else {
-      patterns.splice(patterns.indexOf(item), 1, {enabled: true, url: url});
+      patterns.splice(patterns.indexOf(item), 1, {enabled: true, url});
     }
 
     this.manager.setBlockedPatterns(patterns);

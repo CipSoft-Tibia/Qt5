@@ -27,6 +27,8 @@
 
 #include "dawn/wire/client/SwapChain.h"
 
+#include <utility>
+
 #include "dawn/wire/client/Client.h"
 #include "dawn/wire/client/Device.h"
 #include "dawn/wire/client/Texture.h"
@@ -48,9 +50,13 @@ SwapChain::SwapChain(const ObjectBaseParams& params,
 
 SwapChain::~SwapChain() = default;
 
+ObjectType SwapChain::GetObjectType() const {
+    return ObjectType::SwapChain;
+}
+
 WGPUTexture SwapChain::GetCurrentTexture() {
     Client* wireClient = GetClient();
-    Texture* texture = wireClient->Make<Texture>(&mTextureDescriptor);
+    Ref<Texture> texture = wireClient->Make<Texture>(&mTextureDescriptor);
 
     SwapChainGetCurrentTextureCmd cmd;
     cmd.self = ToAPI(this);
@@ -58,7 +64,7 @@ WGPUTexture SwapChain::GetCurrentTexture() {
     cmd.result = texture->GetWireHandle();
     wireClient->SerializeCommand(cmd);
 
-    return ToAPI(texture);
+    return ReturnToAPI(std::move(texture));
 }
 
 }  // namespace dawn::wire::client

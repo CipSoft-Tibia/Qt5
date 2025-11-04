@@ -84,8 +84,6 @@ jumbo_source_set("common") {
     "content_constants_internal.h",
     "content_export.h",
     "content_ipc_logging.cc",
-    "content_message_generator.cc",
-    "content_message_generator.h",
     "content_navigation_policy.cc",
     "content_navigation_policy.h",
     "content_param_traits.cc",
@@ -109,33 +107,12 @@ jumbo_source_set("common") {
     "font_list.cc",
     "font_list.h",
     "font_list_fontconfig.cc",
-    "gin_java_bridge_messages.h",
     "in_process_child_thread_params.cc",
     "in_process_child_thread_params.h",
     "input/actions_parser.cc",
     "input/actions_parser.h",
-    "input/event_with_latency_info.h",
-    "input/fling_controller.cc",
-    "input/fling_controller.h",
-    "input/fling_scheduler_base.h",
-    "input/gesture_event_queue.cc",
-    "input/gesture_event_queue.h",
-    "input/gesture_event_stream_validator.cc",
-    "input/gesture_event_stream_validator.h",
-    "input/input_disposition_handler.h",
-    "input/input_event_ack_state.cc",
-    "input/input_event_stream_validator.cc",
-    "input/input_event_stream_validator.h",
-    "input/input_router.h",
-    "input/input_router_client.h",
-    "input/input_router_config_helper.cc",
-    "input/input_router_config_helper.h",
-    "input/input_router_impl.cc",
-    "input/input_router_impl.h",
-    "input/mouse_wheel_event_queue.cc",
-    "input/mouse_wheel_event_queue.h",
-    "input/passthrough_touch_event_queue.cc",
-    "input/passthrough_touch_event_queue.h",
+    "input/events_helper.cc",
+    "input/events_helper.h",
     "input/synthetic_gesture.cc",
     "input/synthetic_gesture.h",
     "input/synthetic_gesture_controller.cc",
@@ -179,31 +156,12 @@ jumbo_source_set("common") {
     "input/synthetic_touchpad_pinch_gesture.h",
     "input/synthetic_touchscreen_pinch_gesture.cc",
     "input/synthetic_touchscreen_pinch_gesture.h",
-    "input/tap_suppression_controller.cc",
-    "input/tap_suppression_controller.h",
-    "input/timeout_monitor.cc",
-    "input/timeout_monitor.h",
-    "input/touch_action_filter.cc",
-    "input/touch_action_filter.h",
-    "input/touch_event_stream_validator.cc",
-    "input/touch_event_stream_validator.h",
-    "input/touch_timeout_handler.cc",
-    "input/touch_timeout_handler.h",
-    "input/touchpad_pinch_event_queue.cc",
-    "input/touchpad_pinch_event_queue.h",
-    "input/touchpad_tap_suppression_controller.cc",
-    "input/touchpad_tap_suppression_controller.h",
-    "input/touchscreen_tap_suppression_controller.cc",
-    "input/touchscreen_tap_suppression_controller.h",
-    "input/web_touch_event_traits.cc",
-    "input/web_touch_event_traits.h",
     "media/cdm_info.cc",
-    "mojo_core_library_support.cc",
-    "mojo_core_library_support.h",
-    "native_web_keyboard_event_aura.cc",
     "navigation_gesture.h",
     "navigation_params_utils.h",
     "origin_util.cc",
+    "peak_gpu_memory_callback.cc",
+    "peak_gpu_memory_callback.h",
     "process_type.cc",
     "process_visibility_tracker.cc",
     "process_visibility_tracker.h",
@@ -211,6 +169,8 @@ jumbo_source_set("common") {
     "pseudonymization_salt.h",
     "service_worker/forwarded_race_network_request_url_loader_factory.cc",
     "service_worker/forwarded_race_network_request_url_loader_factory.h",
+    "service_worker/race_network_request_read_buffer_manager.cc",
+    "service_worker/race_network_request_read_buffer_manager.h",
     "service_worker/race_network_request_url_loader_client.cc",
     "service_worker/race_network_request_url_loader_client.h",
     "service_worker/race_network_request_write_buffer_manager.cc",
@@ -219,8 +179,6 @@ jumbo_source_set("common") {
     "service_worker/service_worker_resource_loader.h",
     "service_worker/service_worker_router_evaluator.cc",
     "service_worker/service_worker_router_evaluator.h",
-    "set_process_title.cc",
-    "set_process_title.h",
     "skia_utils.cc",
     "skia_utils.h",
     "thread_pool_util.cc",
@@ -238,7 +196,6 @@ jumbo_source_set("common") {
   ]
   jumbo_excluded_sources = [
     "common_param_traits.cc",
-    "content_message_generator.cc",
     "content_param_traits.cc",
   ]
 
@@ -262,18 +219,17 @@ jumbo_source_set("common") {
     "//ui/accessibility",
     "//ui/accessibility/mojom",
     "//ui/base/cursor",
-    "//ui/events/gestures/blink",
     "//ui/events/ipc",
   ]
   deps = [
     ":buildflags",
     "//base",
     "//base/allocator:buildflags",
-    "//base/third_party/dynamic_annotations",
     "//build:branding_buildflags",
     "//build:chromeos_buildflags",
     "//build/util:chromium_git_revision",
     "//components/discardable_memory/common",
+    "//components/input",
     "//components/services/filesystem/public/mojom",
     "//components/tracing:startup_tracing",
     "//content:content_resources",
@@ -373,9 +329,6 @@ jumbo_source_set("common") {
       "android/sync_compositor_statics.h",
       "cursors/webcursor_android.cc",
       "font_list_android.cc",
-      "input/web_input_event_builders_android.cc",
-      "input/web_input_event_builders_android.h",
-      "native_web_keyboard_event_android.cc",
     ]
 
     if (use_seccomp_bpf) {
@@ -385,23 +338,15 @@ jumbo_source_set("common") {
 
   if (is_ios) {
     # TOOD: Create ios file instead of stealing android
-    sources += [
-      "cursors/webcursor_android.cc",
-      "input/web_input_event_builders_ios.h",
-      "input/web_input_event_builders_ios.mm",
-      "native_web_keyboard_event_ios.mm",
-    ]
+    sources += [ "cursors/webcursor_android.cc" ]
   }
 
   if (is_mac) {
     sources += [
-      "input/web_input_event_builders_mac.h",
-      "input/web_input_event_builders_mac.mm",
       "mac/attributed_string_type_converters.h",
       "mac/attributed_string_type_converters.mm",
       "mac/task_port_policy.cc",
       "mac/task_port_policy.h",
-      "native_web_keyboard_event_mac.mm",
     ]
     deps += [ "//sandbox/mac:seatbelt" ]
   }
@@ -421,7 +366,8 @@ jumbo_source_set("common") {
   if (is_android) {
     deps += [
       "//content/public/android:common_aidl",
-      "//content/public/android:jni",
+      "//content/public/android:common_jni",
+      "//content/public/android:jar_jni",
     ]
 
     libs += [ "android" ]
@@ -451,6 +397,10 @@ jumbo_source_set("common") {
     deps += [ "//ui/wm" ]
   }
 
+  if (is_qtwebengine) {
+     sources -= [ "cursors/webcursor_aura.cc" ]
+  }
+  
   if (is_linux || is_chromeos) {
     sources += [
       "gpu_pre_sandbox_hook_linux.cc",
@@ -459,7 +409,6 @@ jumbo_source_set("common") {
     public_deps += [ "//sandbox/policy" ]
     deps += [
       ":sandbox_support_linux",
-      ":set_process_title_linux",
       "//media/gpu:buildflags",
       "//sandbox/linux:sandbox_services",
       "//sandbox/linux:seccomp_bpf",
@@ -518,13 +467,6 @@ jumbo_source_set("common") {
   if (use_clang_profiling_inside_sandbox) {
     sources += [ "profiling_utils.cc" ]
   }
-
-  if (is_qtwebengine) {
-    sources -= [ "cursors/webcursor_aura.cc", "native_web_keyboard_event_aura.cc" ]
-    if (is_mac) {
-      sources -= [ "native_web_keyboard_event_mac.mm" ]
-    }
-  }
 }
 
 # This is used by content/shell as well, which we don't want to depend on the
@@ -536,14 +478,6 @@ component("main_frame_counter") {
     "main_frame_counter.h",
   ]
   deps = [ "//base:base" ]
-}
-
-if (is_linux || is_chromeos) {
-  source_set("set_process_title_linux") {
-    public = [ "set_process_title_linux.h" ]
-    sources = [ "set_process_title_linux.cc" ]
-    deps = [ "//base" ]
-  }
 }
 
 # See comment at the top of //content/BUILD.gn for how this works.
@@ -573,7 +507,6 @@ mojom("mojo_bindings") {
     "field_trial_recorder.mojom",
     "frame.mojom",
     "frame_messages.mojom",
-    "histogram_fetcher.mojom",
     "input/input_injector.mojom",
     "media/media_log_records.mojom",
     "native_types.mojom",
@@ -723,6 +656,7 @@ mojom("mojo_bindings") {
   public_deps = [
     "//cc/mojom",
     "//components/attribution_reporting:mojom",
+    "//components/metrics/public/mojom:histogram_fetcher_mojo_bindings",
     "//components/variations:variations_mojom",
     "//content/public/common:interfaces",
     "//ipc:mojom",
@@ -744,7 +678,6 @@ mojom("mojo_bindings") {
     "//ui/accessibility/mojom",
     "//ui/base/ime/mojom",
     "//ui/base/mojom",
-    "//ui/color:mojom",
     "//ui/display/mojom",
     "//ui/events/mojom",
     "//ui/events/mojom:event_latency_metadata_mojom",

@@ -23,7 +23,8 @@
 #ifndef THIRD_PARTY_BLINK_RENDERER_CORE_HTML_HTML_ELEMENT_H_
 #define THIRD_PARTY_BLINK_RENDERER_CORE_HTML_HTML_ELEMENT_H_
 
-#include "third_party/abseil-cpp/absl/types/optional.h"
+#include <optional>
+
 #include "third_party/blink/renderer/bindings/core/v8/v8_union_boolean_string_unrestricteddouble.h"
 #include "third_party/blink/renderer/core/core_export.h"
 #include "third_party/blink/renderer/core/dom/element.h"
@@ -47,6 +48,8 @@ class HTMLSelectListElement;
 class KeyboardEvent;
 class TextControlElement;
 class V8UnionStringLegacyNullToEmptyStringOrTrustedScript;
+class V8UnionBooleanOrTogglePopoverOptions;
+class ShowPopoverOptions;
 
 enum TranslateAttributeMode {
   kTranslateAttributeYes,
@@ -95,6 +98,12 @@ enum class HidePopoverTransitionBehavior {
   kNoEventsNoWaiting,
 };
 
+enum class TopLayerElementType {
+  kPopover,
+  kDialog,
+  kFullscreen,
+};
+
 class CORE_EXPORT HTMLElement : public Element {
   DEFINE_WRAPPERTYPEINFO();
 
@@ -105,6 +114,8 @@ class CORE_EXPORT HTMLElement : public Element {
   bool HasTagName(const HTMLQualifiedName& name) const {
     return HasLocalName(name.LocalName());
   }
+
+  const char* NameInHeapSnapshot() const override;
 
   String title() const final;
 
@@ -155,7 +166,10 @@ class CORE_EXPORT HTMLElement : public Element {
 
   static bool IsValidDirAttribute(const AtomicString& value);
   static bool ElementAffectsDirectionality(const Node* node);
-  static bool ElementInheritsDirectionality(const Node* node);
+  static bool ElementInheritsDirectionality(const Node* node) {
+    return !HTMLElement::ElementAffectsDirectionality(node);
+  }
+
   static const TextControlElement*
   ElementIfAutoDirectionalityFormAssociatedOrNull(const Element* element);
   static TextControlElement* ElementIfAutoDirectionalityFormAssociatedOrNull(
@@ -170,6 +184,7 @@ class CORE_EXPORT HTMLElement : public Element {
   // origin trial is over.
   virtual bool IsHTMLFencedFrameElement() const { return false; }
   virtual bool IsHTMLFrameSetElement() const { return false; }
+  virtual bool IsHTMLPermissionElement() const { return false; }
   virtual bool IsHTMLUnknownElement() const { return false; }
   virtual bool IsPluginElement() const { return false; }
 
@@ -177,6 +192,7 @@ class CORE_EXPORT HTMLElement : public Element {
   virtual bool IsLabelable() const;
   // |labels| IDL attribute implementation for IsLabelable()==true elements.
   LabelsNodeList* labels();
+  bool HasActiveLabel() const;
 
   // https://html.spec.whatwg.org/C/#interactive-content
   virtual bool IsInteractiveContent() const;
@@ -214,14 +230,11 @@ class CORE_EXPORT HTMLElement : public Element {
   virtual FormAssociated* ToFormAssociatedOrNull() { return nullptr; }
   bool IsFormAssociatedCustomElement() const;
 
-  static void AdjustCandidateDirectionalityForSlot(
-      HeapHashSet<Member<Node>> candidate_set);
   void UpdateDescendantDirectionality(TextDirection direction);
   void UpdateDirectionalityAfterInputTypeChange(const AtomicString& old_value,
                                                 const AtomicString& new_value);
-  void AdjustDirectionalityIfNeededAfterShadowRootChanged();
   void AdjustDirectionAutoAfterRecalcAssignedNodes();
-  bool CalculateAndAdjustAutoDirectionality(Node* stay_within);
+  virtual bool CalculateAndAdjustAutoDirectionality();
 
   V8UnionBooleanOrStringOrUnrestrictedDouble* hidden() const;
   void setHidden(const V8UnionBooleanOrStringOrUnrestrictedDouble*);
@@ -249,26 +262,31 @@ class CORE_EXPORT HTMLElement : public Element {
                       bool include_event_handler_text,
                       Document* expected_document) const;
   bool togglePopover(ExceptionState& exception_state);
-  bool togglePopover(bool force, ExceptionState& exception_state);
+  bool togglePopover(V8UnionBooleanOrTogglePopoverOptions* options_or_force,
+                     ExceptionState& exception_state);
   void showPopover(ExceptionState& exception_state);
+  void showPopover(ShowPopoverOptions* options,
+                   ExceptionState& exception_state);
   void hidePopover(ExceptionState& exception_state);
   // |exception_state| can be nullptr when exceptions can't be thrown, such as
   // when the browser hides a popover during light dismiss or shows a popover in
   // response to clicking a button with popovershowtarget.
-  void ShowPopoverInternal(Element* invoker, ExceptionState* exception_state);
-  void HidePopoverInternal(HidePopoverFocusBehavior focus_behavior,
-                           HidePopoverTransitionBehavior event_firing,
-                           ExceptionState* exception_state);
+  virtual void ShowPopoverInternal(Element* invoker,
+                                   ExceptionState* exception_state);
+  virtual void HidePopoverInternal(HidePopoverFocusBehavior focus_behavior,
+                                   HidePopoverTransitionBehavior event_firing,
+                                   ExceptionState* exception_state);
   void PopoverHideFinishIfNeeded(bool immediate);
   static const HTMLElement* FindTopmostPopoverAncestor(
-      HTMLElement& new_popover,
+      Element& new_popover_or_top_layer_element,
       HeapVector<Member<HTMLElement>>& stack_to_check,
-      Element* new_popovers_invoker);
+      Element* new_popovers_invoker,
+      TopLayerElementType top_layer_element_type =
+          TopLayerElementType::kPopover);
+  static const HTMLElement* TopLayerElementPopoverAncestor(
+      Element& top_layer_element,
+      TopLayerElementType top_layer_element_type);
 
-  // Retrieves the element pointed to by this element's 'anchor' content
-  // attribute, if that element exists.
-  Element* anchorElement();
-  void setAnchorElement(Element*);
   static void HandlePopoverLightDismiss(const Event& event, const Node& node);
   void InvokePopover(Element& invoker);
   void SetPopoverFocusOnShow();
@@ -283,30 +301,38 @@ class CORE_EXPORT HTMLElement : public Element {
   void MaybeQueuePopoverHideEvent();
   static void HoveredElementChanged(Element* old_element, Element* new_element);
 
-  void SetPopoverOwnerSelectListElement(HTMLSelectListElement* element);
-  HTMLSelectListElement* popoverOwnerSelectListElement() const;
+  void SetInternalImplicitAnchor(HTMLElement* element);
+  HTMLElement* internalImplicitAnchor() const;
 
   bool DispatchFocusEvent(
       Element* old_focused_element,
       mojom::blink::FocusType,
       InputDeviceCapabilities* source_capabilities) override;
 
-  // This allows customization of how Invokes are handled, per element.
-  // The default HTMLElement behavior handles popovers, and specific
+  // This allows customization of how Invoker Commands are handled, per
+  // element. The default HTMLElement behavior handles popovers, and specific
   // element subclasses - such as HTMLDialogElement - can handle
-  // other invocation actions such as showModal. Implementations should return
+  // other commands such as showModal. Implementations should return
   // `true` if they have handled, so that overrides can exit early.
   // Additionally, override implementations should not execute their own
-  // behavior before calling `HTMLElement::HandleInvokeInternal` as that
+  // behavior before calling `HTMLElement::HandleCommandInternal` as that
   // override governs the logic for global attributes such as `popover`;
   // for example a `<dialog popover>` should run `popover` invocation steps
   // before `<dialog>` invocation steps.
   // See: crbug.com/1490919, https://open-ui.org/components/invokers.explainer/
-  virtual bool HandleInvokeInternal(HTMLElement& invoker, AtomicString& action);
+  bool IsValidCommand(HTMLElement& invoker, CommandEventType command) override;
+  bool HandleCommandInternal(HTMLElement& invoker,
+                             CommandEventType command) override;
+
+  // This allows developers to enable or disable browser-provided writing
+  // suggestions. If the attribute is not explicitly set on an element, it
+  // inherits its value from ancestor elements; otherwise, it defaults to
+  // "true". Spec: https://github.com/whatwg/html/pull/10018.
+  AtomicString writingSuggestions() const;
+  void setWritingSuggestions(const AtomicString& value);
 
  protected:
-  bool SupportsFocus(UpdateBehavior update_behavior =
-                         UpdateBehavior::kStyleAndLayout) const override;
+  FocusableState SupportsFocus(UpdateBehavior update_behavior) const override;
 
   enum AllowPercentage { kDontAllowPercentageValues, kAllowPercentageValues };
   enum AllowZero { kDontAllowZeroValues, kAllowZeroValues };
@@ -353,8 +379,6 @@ class CORE_EXPORT HTMLElement : public Element {
       MutableCSSPropertyValueSet*) override;
   unsigned ParseBorderWidthAttribute(const AtomicString&) const;
 
-  void ChildrenChanged(const ChildrenChange&) override;
-
   InsertionNotificationRequest InsertedInto(ContainerNode&) override;
   void RemovedFrom(ContainerNode& insertion_point) override;
   void DidMoveToNewDocument(Document& old_document) override;
@@ -374,10 +398,6 @@ class CORE_EXPORT HTMLElement : public Element {
 
   DocumentFragment* TextToFragment(const String&, ExceptionState&);
 
-  void AdjustDirectionalityIfNeededAfterChildAttributeChanged(Element* child);
-
-  void AdjustDirectionalityIfNeededAfterInsert(Node& node);
-
   TranslateAttributeMode GetTranslateAttributeMode() const;
 
   void HandleKeypressEvent(KeyboardEvent&);
@@ -396,26 +416,16 @@ class CORE_EXPORT HTMLElement : public Element {
   void OnNonceAttrChanged(const AttributeModificationParams&);
   void OnPopoverChanged(const AttributeModificationParams&);
 
-  // Delegate ParseAttribute to base class
-  void ReparseAttribute(const AttributeModificationParams&);
-
   int AdjustedOffsetForZoom(LayoutUnit);
   int OffsetTopOrLeft(bool top);
 };
 
-template <typename T>
-bool IsElementOfType(const HTMLElement&);
-template <>
-inline bool IsElementOfType<const HTMLElement>(const HTMLElement&) {
-  return true;
-}
-template <>
-inline bool IsElementOfType<const HTMLElement>(const Node& node) {
-  return IsA<HTMLElement>(node);
-}
 template <>
 struct DowncastTraits<HTMLElement> {
   static bool AllowFrom(const Node& node) { return node.IsHTMLElement(); }
+  static bool AllowFrom(const Element& element) {
+    return element.IsHTMLElement();
+  }
 };
 
 inline HTMLElement::HTMLElement(const QualifiedName& tag_name,

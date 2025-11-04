@@ -5,12 +5,22 @@
     \module QtGraphs
     \qtcmakepackage Graphs
     \qtvariable graphs
+    \title Qt Graphs Module
+
+    \brief C++ classes for the Qt Graphs API.
+
 */
 
 /*!
     \module QtGraphsWidgets
     \qtcmakepackage GraphsWidgets
     \qtvariable graphswidgets
+    \title Qt Graphs for Widgets
+
+    \brief C++ classes for the Qt Graphs for 3D API used with widgets.
+
+    Widget support is included in its own module to avoid a hard dependency on
+    QtWidgets when building only QML applications.
 */
 
 /*!
@@ -64,6 +74,11 @@
 
 /*!
     \qmlmodule QtGraphs
+    \title Qt Graphs for QML
+    \brief QML types for the Qt Graphs API.
+
+    The Qt Graphs functionality can be accessed via these QML types.
+
 */
 
 /*!
@@ -156,34 +171,84 @@
     \page qtgraphs_configure_options.html
     \title Qt Graphs Configure Options
 
+    This topic lists the configuration options that you can use to configure the
+    Qt Graphs module build.
+
     \section1 Main Features
 
-    When toggling main features, disabling both will result in the module not being built at all.
+    If you disable both of these main features, the module will not be built at
+    all.
 
     \list
-        \li QT_FEATURE_graphs_2d enables building the 2D graph support into the Qt Graphs module.
-        It is \c ON by default. This can be disabled by passing \c{-DFEATURE_graphs_2d=OFF}
+        \li \c QT_FEATURE_graphs_2d enables building the 2D graph support into
+        the Qt Graphs module. It is \c ON by default.
+
+        To disable, pass \c{-DFEATURE_graphs_2d=OFF} to CMake.
+        \li \c QT_FEATURE_graphs_3d enables building the 3D graph support into
+        the Qt Graphs module. It is \c ON by default.
+
+        To disable, pass \c{-DFEATURE_graphs_3d=OFF}
         to CMake.
-        \li QT_FEATURE_graphs_3d enables building the 3D graph support into the Qt Graphs module.
-        It is \c ON by default. This can be disabled by passing \c{-DFEATURE_graphs_3d=OFF}
-        to CMake.
+    \endlist
+
+    \section1 Qt Graphs for 2D Features
+
+    If you disable all of these features, the Qt Graphs for 2D module will not
+    be usable for anything. These options are not in effect if
+    \c QT_FEATURE_graphs_2d is disabled.
+
+    \list
+        \li \c QT_FEATURE_graphs_2d_area enables building the area graph support
+            into the Qt Graphs module. It is \c ON by default.
+
+            To disable, pass \c{-DFEATURE_graphs_2d_area=OFF} to CMake.
+
+            Enabling area graph will also enable \l LineSeries support, as that
+            is the minimum requirement for creating area graphs. If
+            \l SplineSeries is required for the \c upperSeries or
+            \c{lowerSeries}, the \c QT_FEATURE_graphs_2d_spline option should
+            also be enabled.
+        \li \c QT_FEATURE_graphs_2d_bar enables building the bar graph support
+            into the Qt Graphs module. It is \c ON by default.
+
+            To disable, pass \c{-DFEATURE_graphs_2d_bar=OFF} to CMake.
+        \li \c QT_FEATURE_graphs_2d_donut_pie enables building the donut and pie
+            graph support into the Qt Graphs module. It is \c ON by default.
+
+            To disable, pass \c{-DFEATURE_graphs_2d_donut_pie=OFF} to CMake.
+        \li \c QT_FEATURE_graphs_2d_line enables building the line graph support
+            into the Qt Graphs module. It is \c ON by default.
+
+            To disable, pass \c{-DFEATURE_graphs_2d_line=OFF} to CMake.
+        \li \c QT_FEATURE_graphs_2d_scatter enables building the scatter graph
+            support into the Qt Graphs module. It is \c ON by default.
+
+            To disable, pass \c{-DFEATURE_graphs_2d_scatter=OFF} to CMake.
+        \li \c QT_FEATURE_graphs_2d_spline enables building the spline graph
+            support into the Qt Graphs module. It is \c ON by default.
+
+            To disable, pass \c{-DFEATURE_graphs_2d_spline=OFF} to CMake.
     \endlist
 
     \section1 Qt Graphs for 3D Features
 
-    When toggling 3D features, disabling all will result in a module that is not usable for
-    anything. These do not have any effect if \c QT_FEATURE_graphs_3d is disabled.
+    If you disable all of these features, the Qt Graphs for 3D module will not
+    be usable for anything. These options are not in effect if
+    \c QT_FEATURE_graphs_3d is disabled.
 
     \list
-        \li QT_FEATURE_graphs_3d_bars3d enables building the Bars3D graph support into the
-        Qt Graphs module. It is \c ON by default. This can be disabled by passing
-        \c{-DFEATURE_graphs_3d_bars3d=OFF} to CMake.
-        \li QT_FEATURE_graphs_3d_scatter3d enables building the Scatter3D graph support into the
-        Qt Graphs module. It is \c ON by default. This can be disabled by passing
-        \c{-DFEATURE_graphs_3d_scatter3d=OFF} to CMake.
-        \li QT_FEATURE_graphs_3d_surface3d enables building the Surface3D graph support into the
-        Qt Graphs module. It is \c ON by default. This can be disabled by passing
-        \c{-DFEATURE_graphs_3d_surface3d=OFF} to CMake.
+        \li \c QT_FEATURE_graphs_3d_bars3d enables building the Bars3D graph
+            support into the Qt Graphs module. It is \c ON by default.
+
+            To disable, pass \c{-DFEATURE_graphs_3d_bars3d=OFF} to CMake.
+        \li \c QT_FEATURE_graphs_3d_scatter3d enables building the Scatter3D
+            graph support into the Qt Graphs module. It is \c ON by default.
+
+            To disable, pass \c{-DFEATURE_graphs_3d_scatter3d=OFF} to CMake.
+        \li \c QT_FEATURE_graphs_3d_surface3d enables building the Surface3D
+            graph support into the Qt Graphs module. It is \c ON by default.
+
+            To disable, pass \c{-DFEATURE_graphs_3d_surface3d=OFF} to CMake.
     \endlist
 */
 

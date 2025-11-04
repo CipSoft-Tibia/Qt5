@@ -2,6 +2,7 @@ import { HTTPResponse } from '../api/HTTPResponse.js';
 import { ProtocolError } from '../common/Errors.js';
 import { SecurityDetails } from '../common/SecurityDetails.js';
 import { Deferred } from '../util/Deferred.js';
+import { stringToTypedArray } from '../util/encoding.js';
 /**
  * @internal
  */
@@ -88,16 +89,16 @@ export class CdpHTTPResponse extends HTTPResponse {
     timing() {
         return this.#timing;
     }
-    buffer() {
+    content() {
         if (!this.#contentPromise) {
             this.#contentPromise = this.#bodyLoadedDeferred
                 .valueOrThrow()
                 .then(async () => {
                 try {
                     const response = await this.#client.send('Network.getResponseBody', {
-                        requestId: this.#request._requestId,
+                        requestId: this.#request.id,
                     });
-                    return Buffer.from(response.body, response.base64Encoded ? 'base64' : 'utf8');
+                    return stringToTypedArray(response.body, response.base64Encoded);
                 }
                 catch (error) {
                     if (error instanceof ProtocolError &&

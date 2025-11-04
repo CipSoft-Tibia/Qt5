@@ -2,6 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#ifdef UNSAFE_BUFFERS_BUILD
+// TODO(crbug.com/40284755): Remove this and spanify to fix the errors.
+#pragma allow_unsafe_buffers
+#endif
+
 #include "net/filter/gzip_source_stream.h"
 
 #include <algorithm>
@@ -21,8 +26,8 @@ namespace net {
 
 namespace {
 
-const char kDeflate[] = "DEFLATE";
-const char kGzip[] = "GZIP";
+const char kDeflateGSS[] = "DEFLATE";
+const char kGzipGSS[] = "GZIP";
 
 // For deflate streams, if more than this many bytes have been received without
 // an error and without adding a Zlib header, assume the original stream had a
@@ -74,11 +79,11 @@ bool GzipSourceStream::Init() {
 std::string GzipSourceStream::GetTypeAsString() const {
   switch (type()) {
     case TYPE_GZIP:
-      return kGzip;
+      return kGzipGSS;
     case TYPE_DEFLATE:
-      return kDeflate;
+      return kDeflateGSS;
     default:
-      NOTREACHED();
+      NOTREACHED_IN_MIGRATION();
       return "";
   }
 }

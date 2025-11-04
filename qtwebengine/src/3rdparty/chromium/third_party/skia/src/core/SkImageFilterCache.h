@@ -13,12 +13,12 @@
 #include "include/core/SkRefCnt.h"
 #include "include/private/base/SkAssert.h"
 #include "include/private/base/SkDebug.h"
-#include "src/core/SkImageFilterTypes.h"
 
 #include <cstddef>
 #include <cstdint>
 
 class SkImageFilter;
+namespace skif { class FilterResult; }
 
 struct SkImageFilterCacheKey {
     SkImageFilterCacheKey(const uint32_t uniqueID, const SkMatrix& matrix,
@@ -60,7 +60,10 @@ public:
 
     ~SkImageFilterCache() override {}
     static sk_sp<SkImageFilterCache> Create(size_t maxBytes);
-    static sk_sp<SkImageFilterCache> Get();
+
+    // Whether to create the cache if it doesn't yet exist.
+    enum class CreateIfNecessary : bool { kNo, kYes };
+    static sk_sp<SkImageFilterCache> Get(CreateIfNecessary = CreateIfNecessary::kYes);
 
     // Returns true on cache hit and updates 'result' to be the cached result. Returns false when
     // not in the cache, in which case 'result' is not modified.

@@ -1294,6 +1294,8 @@ static void setModelProperties(QSSGSceneDesc::Model &target, const aiNode &sourc
                                                       sceneInfo.opt.generateMeshLODs,
                                                       sceneInfo.opt.lodNormalMergeAngle,
                                                       sceneInfo.opt.lodNormalSplitAngle,
+                                                      sceneInfo.opt.generateLightmapUV,
+                                                      sceneInfo.opt.lightmapBaseResolution,
                                                       errorString);
         meshStorage.push_back(std::move(meshData));
 
@@ -1516,7 +1518,6 @@ static qreal getRealOption(const QString &optionName, const QJsonObject &options
 
 #define demonPostProcessPresets ( \
     aiProcess_CalcTangentSpace              |  \
-    aiProcess_GenSmoothNormals              |  \
     aiProcess_JoinIdenticalVertices         |  \
     aiProcess_ImproveCacheLocality          |  \
     aiProcess_RemoveRedundantMaterials      |  \

@@ -5,6 +5,8 @@
 #ifndef THIRD_PARTY_BLINK_RENDERER_CORE_FETCH_FETCH_REQUEST_DATA_H_
 #define THIRD_PARTY_BLINK_RENDERER_CORE_FETCH_FETCH_REQUEST_DATA_H_
 
+#include <optional>
+
 #include "base/memory/scoped_refptr.h"
 #include "base/unguessable_token.h"
 #include "mojo/public/cpp/bindings/pending_remote.h"
@@ -13,7 +15,6 @@
 #include "services/network/public/mojom/referrer_policy.mojom-blink-forward.h"
 #include "services/network/public/mojom/trust_tokens.mojom-blink.h"
 #include "services/network/public/mojom/url_loader_factory.mojom-blink.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "third_party/blink/public/mojom/fetch/fetch_api_request.mojom-blink.h"
 #include "third_party/blink/public/platform/web_url_request.h"
 #include "third_party/blink/renderer/core/core_export.h"
@@ -169,12 +170,12 @@ class CORE_EXPORT FetchRequestData final
   const base::UnguessableToken& WindowId() const { return window_id_; }
   void SetWindowId(const base::UnguessableToken& id) { window_id_ = id; }
 
-  const absl::optional<network::mojom::blink::TrustTokenParams>&
+  const std::optional<network::mojom::blink::TrustTokenParams>&
   TrustTokenParams() const {
     return trust_token_params_;
   }
   void SetTrustTokenParams(
-      absl::optional<network::mojom::blink::TrustTokenParams>
+      std::optional<network::mojom::blink::TrustTokenParams>
           trust_token_params) {
     trust_token_params_ = std::move(trust_token_params);
   }
@@ -186,6 +187,14 @@ class CORE_EXPORT FetchRequestData final
   void SetAttributionReportingEligibility(
       network::mojom::AttributionReportingEligibility eligibility) {
     attribution_reporting_eligibility_ = eligibility;
+  }
+
+  network::mojom::AttributionSupport AttributionSupport() const {
+    return attribution_reporting_support_;
+  }
+  void SetAttributionReportingSupport(
+      network::mojom::AttributionSupport support) {
+    attribution_reporting_support_ = support;
   }
 
   base::UnguessableToken ServiceWorkerRaceNetworkRequestToken() const {
@@ -231,7 +240,7 @@ class CORE_EXPORT FetchRequestData final
       network::mojom::RedirectMode::kFollow;
   mojom::blink::FetchPriorityHint fetch_priority_hint_ =
       mojom::blink::FetchPriorityHint::kAuto;
-  absl::optional<network::mojom::blink::TrustTokenParams> trust_token_params_;
+  std::optional<network::mojom::blink::TrustTokenParams> trust_token_params_;
   // FIXME: Support m_useURLCredentialsFlag;
   // FIXME: Support m_redirectCount;
   Member<BodyStreamBuffer> buffer_;
@@ -249,6 +258,8 @@ class CORE_EXPORT FetchRequestData final
   network::mojom::AttributionReportingEligibility
       attribution_reporting_eligibility_ =
           network::mojom::AttributionReportingEligibility::kUnset;
+  network::mojom::AttributionSupport attribution_reporting_support_ =
+      network::mojom::AttributionSupport::kUnset;
   // A specific factory that should be used for this request instead of whatever
   // the system would otherwise decide to use to load this request.
   // Currently used for blob: URLs, to ensure they can still be loaded even if

@@ -6,10 +6,11 @@
 #define THIRD_PARTY_BLINK_RENDERER_PLATFORM_GEOMETRY_MATH_FUNCTIONS_H_
 
 #include <cfloat>
+#include <cmath>
+#include <optional>
 #include <utility>
 
 #include "base/notreached.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 
 namespace blink {
 
@@ -47,9 +48,9 @@ std::pair<ValueType, ValueType> GetNearestMultiples(ValueType a, ValueType b) {
 }
 
 template <class OperatorType, typename ValueType>
-absl::optional<ValueType> PreCheckSteppedValueFunctionArguments(OperatorType op,
-                                                                ValueType a,
-                                                                ValueType b) {
+std::optional<ValueType> PreCheckSteppedValueFunctionArguments(OperatorType op,
+                                                               ValueType a,
+                                                               ValueType b) {
   // In round(A, B), if B is 0, the result is NaN.
   // In mod(A, B) or rem(A, B), if B is 0, the result is NaN.
   // If A and B are both infinite, the result is NaN.
@@ -77,7 +78,7 @@ ValueType EvaluateSteppedValueFunction(OperatorType op,
                                        ValueType a,
                                        ValueType b) {
   // https://drafts.csswg.org/css-values/#round-infinities
-  absl::optional<ValueType> pre_check =
+  std::optional<ValueType> pre_check =
       PreCheckSteppedValueFunctionArguments(op, a, b);
   if (pre_check.has_value()) {
     return pre_check.value();
@@ -97,14 +98,22 @@ ValueType EvaluateSteppedValueFunction(OperatorType op,
       if (!std::isinf(a) && std::isinf(b)) {
         return std::signbit(a) ? -0.0 : +0.0;
       } else {
-        // In the negative case we need to swap lower and upper
-        // for the nearest rounding.
-        if (a < 0.0) {
+        // In the negative case we need to swap lower and upper for the nearest
+        // rounding. This also means tie-breaking should pick the lower rather
+        // than upper,
+        const bool a_is_negative = a < 0.0;
+        if (a_is_negative) {
           using std::swap;
           swap(lower, upper);
         }
-        return std::abs(std::fmod(a, b)) < std::abs(b) / 2 ? lower : upper;
-      };
+        const ValueType distance = std::abs(std::fmod(a, b));
+        const ValueType half_b = std::abs(b) / 2;
+        if (distance < half_b || (a_is_negative && distance == half_b)) {
+          return lower;
+        } else {
+          return upper;
+        }
+      }
     }
     case OperatorType::kRoundUp: {
       if (!std::isinf(a) && std::isinf(b)) {
@@ -153,11 +162,18 @@ ValueType EvaluateSteppedValueFunction(OperatorType op,
       // std::fmod - the returned value has the same sign as A
       // and is less than B in magnitude.
       ValueType result = std::fmod(a, b);
-      // If the result is on opposite side of zero from B,
-      // put it between 0 and B. As the result of std::fmod is less
-      // than B in magnitude, adding B would perform a correct shift.
       if (std::signbit(result) != std::signbit(b)) {
-        result += b;
+        // When the absolute values of arguments are the same, but they
+        // appear on different sides from zero, the result of std::fmod will be
+        // either -0 (e.g. mod(-1, 1)), or +0 (e.g. mod(1, -1)), we need to swap
+        // the sign of the resulting zero to match the sign of the B.
+        if (std::abs(a) == std::abs(b)) {
+          return -result;
+        }
+        // If the result is on opposite side of zero from B,
+        // put it between 0 and B. As the result of std::fmod is less
+        // than B in magnitude, adding B would perform a correct shift.
+        return result + b;
       }
       return result;
     }
@@ -175,7 +191,7 @@ ValueType EvaluateSteppedValueFunction(OperatorType op,
       return std::fmod(a, b);
     }
     default:
-      NOTREACHED_NORETURN();
+      NOTREACHED();
   }
 }
 

@@ -36,6 +36,8 @@
 #include <exception>
 #endif
 
+#include <thread>
+
 #include <QtTest/private/qemulationdetector_p.h>
 
 using namespace std::chrono_literals;
@@ -105,6 +107,8 @@ private slots:
     void terminateSelfStressTest();
 
     void bindingListCleanupAfterDelete();
+
+    void qualityOfService();
 };
 
 enum { one_minute = 60 * 1000, five_minutes = 5 * one_minute };
@@ -1216,6 +1220,12 @@ void tst_QThread::multiThreadWait_data()
         QTest::newRow(name.join('-').constData()) << deadlines;
     };
 
+    // control
+    addRow(-1);
+    addRow(0);
+    addRow(25);
+    addRow(250);
+
     addRow(0, 0);
     addRow(0, 0, 0, 0, 0);
     addRow(-1, -1);
@@ -1224,21 +1234,28 @@ void tst_QThread::multiThreadWait_data()
     // this is probably too fast and the Forever gets in too quickly
     addRow(0, -1);
 
-    addRow(100, -1);
-    addRow(100, 200, -1);
-    addRow(200, 100, -1);
-    addRow(-1, 100, 100, 100);
+    // any time below 100ms (see below) is expected to timeout
+    addRow(25, -1);
+    addRow(25, 50, -1);
+    addRow(50, 25, -1);
+    addRow(-1, 25, 25, 25);
+    addRow(25, 2000);
+    addRow(25, 2000, 25, -1);
 }
 
 void tst_QThread::multiThreadWait()
 {
+    static constexpr auto TimeoutThreshold = 100ms;
+    auto isExpectedToTimeout = [](unsigned value) {
+        return value < TimeoutThreshold.count();
+    };
+
     class TargetThread : public QThread {
     public:
         QSemaphore sync;
         void run() override
         {
             sync.acquire();
-            msleep(Waiting_Thread::WaitTime);
         }
     };
 
@@ -1263,43 +1280,57 @@ void tst_QThread::multiThreadWait()
     QFETCH(QList<int>, deadlines);
     TargetThread target;
     target.start();
+    QElapsedTimer elapsedTimer;
+    elapsedTimer.start();
 
-    QSemaphore startSema, endSema;
+    // we use a QSemaphore to wait on the WaiterThread::run() instead of
+    // QThread::wait() so it's easier to debug when the latter has a problem
+    QSemaphore startSema, timeoutSema, successSema;
     std::array<std::unique_ptr<WaiterThread>, 5> threads;   // 5 threads is enough
+    int expectedTimeoutCount = 0;
     for (int i = 0; i < deadlines.size(); ++i) {
         threads[i] = std::make_unique<WaiterThread>();
         threads[i]->startSema = &startSema;
-        threads[i]->endSema = &endSema;
+        if (isExpectedToTimeout(deadlines.at(i))) {
+            ++expectedTimeoutCount;
+            threads[i]->endSema = &timeoutSema;
+        } else {
+            threads[i]->endSema = &successSema;
+        }
         threads[i]->target = &target;
         threads[i]->deadline = QDeadlineTimer(deadlines.at(i));
         threads[i]->start();
     }
 
-    // release the waiting threads first, then the target thread they're waiting on
+    // release the waiting threads first, so they begin waiting
     startSema.release(deadlines.size());
-    target.sync.release();
 
-    // wait for our waiting threads on a semaphore instead of QThread::wait()
-    // to make debugging easier
-    QVERIFY(endSema.tryAcquire(deadlines.size(), QDeadlineTimer::Forever));
+    // then wait for the threads that are expected to timeout to do so
+    QVERIFY(timeoutSema.tryAcquire(expectedTimeoutCount, QDeadlineTimer::Forever));
+
+    // compute the elapsed time for timing comparisons
+    std::this_thread::sleep_for(5ms);   // short, but long enough to avoid rounding errors
+    auto elapsed = elapsedTimer.durationElapsed();
+    std::this_thread::sleep_for(5ms);
+
+    // cause the target thread to exit, so the successful threads do succeed
+    target.sync.release();
+    int expectedSuccessCount = deadlines.size() - expectedTimeoutCount;
+    QVERIFY(successSema.tryAcquire(expectedSuccessCount, QDeadlineTimer::Forever));
 
     // wait for all the threads to end, before QVERIFY/QCOMPAREs
     for (int i = 0; i < deadlines.size(); ++i)
         threads[i]->wait();
     target.wait();
 
-    std::chrono::milliseconds expectedDuration{Waiting_Thread::WaitTime};
     for (int i = 0; i < deadlines.size(); ++i) {
         auto printI = qScopeGuard([i] { qWarning("i = %i", i); });
-        if (unsigned(deadlines.at(i)) < Waiting_Thread::WaitTime / 2) {
+        if (isExpectedToTimeout(deadlines.at(i))) {
+            QCOMPARE_LT(threads[i]->waitedDuration, elapsed);
             QCOMPARE(threads[i]->result, false);
-            QCOMPARE_LT(threads[i]->waitedDuration, expectedDuration);
-        } else if (unsigned(deadlines.at(i)) > Waiting_Thread::WaitTime * 3 / 2) {
-            QCOMPARE(threads[i]->result, true);
-            QCOMPARE_GE(threads[i]->waitedDuration, expectedDuration);
         } else {
-            qWarning("Wait time %i (index %i) is too close to the target time; test would be flaky",
-                     deadlines.at(i), i);
+            QCOMPARE_GE(threads[i]->waitedDuration, elapsed);
+            QCOMPARE(threads[i]->result, true);
         }
         printI.dismiss();
         threads[i].reset();
@@ -2102,6 +2133,34 @@ void tst_QThread::bindingListCleanupAfterDelete()
     QVERIFY(list);
     optr.reset();
     QVERIFY(list->empty());
+}
+
+void tst_QThread::qualityOfService()
+{
+    QThread th;
+    QThread::currentThread()->setObjectName("Main thread");
+    th.setObjectName("test thread");
+    auto guard = qScopeGuard([&th](){ th.quit(); th.wait(); });
+    QCOMPARE(th.serviceLevel(), QThread::QualityOfService::Auto);
+    th.setServiceLevel(QThread::QualityOfService::High);
+    QCOMPARE(th.serviceLevel(), QThread::QualityOfService::High);
+    th.setServiceLevel(QThread::QualityOfService::Eco);
+    QCOMPARE(th.serviceLevel(), QThread::QualityOfService::Eco);
+
+    th.start();
+    auto obj = std::make_unique<QObject>();
+    obj->moveToThread(&th);
+
+    QThread::QualityOfService launchedThreadServiceLevel = {};
+    QMetaObject::invokeMethod(obj.get(), [](){
+        return QThread::currentThread()->serviceLevel();
+    }, Qt::BlockingQueuedConnection, qReturnArg(launchedThreadServiceLevel));
+
+    QCOMPARE(launchedThreadServiceLevel, QThread::QualityOfService::Eco);
+
+    QMetaObject::invokeMethod(obj.get(), [](){
+        QThread::currentThread()->setServiceLevel(QThread::QualityOfService::High);
+    }, Qt::BlockingQueuedConnection);
 }
 
 QTEST_MAIN(tst_QThread)

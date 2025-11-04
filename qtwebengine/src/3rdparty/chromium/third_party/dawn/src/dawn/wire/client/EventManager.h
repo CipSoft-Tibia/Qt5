@@ -28,6 +28,8 @@
 #ifndef SRC_DAWN_WIRE_CLIENT_EVENTMANAGER_H_
 #define SRC_DAWN_WIRE_CLIENT_EVENTMANAGER_H_
 
+#include <webgpu/webgpu.h>
+
 #include <cstddef>
 #include <functional>
 #include <map>
@@ -37,7 +39,6 @@
 #include "dawn/common/FutureUtils.h"
 #include "dawn/common/MutexProtected.h"
 #include "dawn/common/NonCopyable.h"
-#include "dawn/webgpu.h"
 #include "dawn/wire/WireResult.h"
 #include "partition_alloc/pointers/raw_ptr.h"
 
@@ -46,7 +47,12 @@ namespace dawn::wire::client {
 class Client;
 
 enum class EventType {
+    CompilationInfo,
+    CreateComputePipeline,
+    CreateRenderPipeline,
+    DeviceLost,
     MapAsync,
+    PopErrorScope,
     RequestAdapter,
     RequestDevice,
     WorkDone,

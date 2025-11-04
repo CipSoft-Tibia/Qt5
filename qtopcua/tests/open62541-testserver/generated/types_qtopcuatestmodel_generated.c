@@ -14,6 +14,23 @@ static UA_DataTypeMember QtInnerTestStructType_members[1] = {
     false  /* .isOptional */
 },};
 
+/* QtRecursiveTestStruct */
+static UA_DataTypeMember QtRecursiveTestStruct_members[2] = {
+{
+    UA_TYPENAME("StringMember") /* .memberName */
+    &UA_TYPES[UA_TYPES_STRING], /* .memberType */
+    0, /* .padding */
+    false, /* .isArray */
+    false  /* .isOptional */
+},
+{
+    UA_TYPENAME("RecursiveArrayMember") /* .memberName */
+    &UA_TYPES_QTOPCUATESTMODEL[UA_TYPES_QTOPCUATESTMODEL_QTRECURSIVETESTSTRUCT], /* .memberType */
+    offsetof(UA_QtRecursiveTestStruct, recursiveArrayMemberSize) - offsetof(UA_QtRecursiveTestStruct, stringMember) - sizeof(UA_String), /* .padding */
+    true, /* .isArray */
+    false  /* .isOptional */
+},};
+
 /* QtStructWithOptionalFieldType */
 static UA_DataTypeMember QtStructWithOptionalFieldType_members[2] = {
 {
@@ -136,12 +153,12 @@ static UA_DataTypeMember QtTestStructType_members[7] = {
     true, /* .isArray */
     false  /* .isOptional */
 },};
-const UA_DataType UA_TYPES_QTOPCUATESTMODEL[UA_TYPES_QTOPCUATESTMODEL_COUNT] = {
+UA_DataType UA_TYPES_QTOPCUATESTMODEL[UA_TYPES_QTOPCUATESTMODEL_COUNT] = {
 /* QtInnerTestStructType */
 {
     UA_TYPENAME("QtInnerTestStructType") /* .typeName */
-    {4, UA_NODEIDTYPE_NUMERIC, {3004LU}}, /* .typeId */
-    {4, UA_NODEIDTYPE_NUMERIC, {5004LU}}, /* .binaryEncodingId */
+    {0, UA_NODEIDTYPE_NUMERIC, {3004LU}}, /* .typeId */
+    {0, UA_NODEIDTYPE_NUMERIC, {5004LU}}, /* .binaryEncodingId */
     sizeof(UA_QtInnerTestStructType), /* .memSize */
     UA_DATATYPEKIND_STRUCTURE, /* .typeKind */
     true, /* .pointerFree */
@@ -149,11 +166,23 @@ const UA_DataType UA_TYPES_QTOPCUATESTMODEL[UA_TYPES_QTOPCUATESTMODEL_COUNT] = {
     1, /* .membersSize */
     QtInnerTestStructType_members  /* .members */
 },
+/* QtRecursiveTestStruct */
+{
+    UA_TYPENAME("QtRecursiveTestStruct") /* .typeName */
+    {0, UA_NODEIDTYPE_NUMERIC, {3012LU}}, /* .typeId */
+    {0, UA_NODEIDTYPE_NUMERIC, {5016LU}}, /* .binaryEncodingId */
+    sizeof(UA_QtRecursiveTestStruct), /* .memSize */
+    UA_DATATYPEKIND_STRUCTURE, /* .typeKind */
+    false, /* .pointerFree */
+    false, /* .overlayable */
+    2, /* .membersSize */
+    QtRecursiveTestStruct_members  /* .members */
+},
 /* QtStructWithOptionalFieldType */
 {
     UA_TYPENAME("QtStructWithOptionalFieldType") /* .typeName */
-    {4, UA_NODEIDTYPE_NUMERIC, {3006LU}}, /* .typeId */
-    {4, UA_NODEIDTYPE_NUMERIC, {5010LU}}, /* .binaryEncodingId */
+    {0, UA_NODEIDTYPE_NUMERIC, {3006LU}}, /* .typeId */
+    {0, UA_NODEIDTYPE_NUMERIC, {5010LU}}, /* .binaryEncodingId */
     sizeof(UA_QtStructWithOptionalFieldType), /* .memSize */
     UA_DATATYPEKIND_OPTSTRUCT, /* .typeKind */
     false, /* .pointerFree */
@@ -164,8 +193,8 @@ const UA_DataType UA_TYPES_QTOPCUATESTMODEL[UA_TYPES_QTOPCUATESTMODEL_COUNT] = {
 /* QtTestStructWithDataValue */
 {
     UA_TYPENAME("QtTestStructWithDataValue") /* .typeName */
-    {4, UA_NODEIDTYPE_NUMERIC, {3010LU}}, /* .typeId */
-    {4, UA_NODEIDTYPE_NUMERIC, {5014LU}}, /* .binaryEncodingId */
+    {0, UA_NODEIDTYPE_NUMERIC, {3010LU}}, /* .typeId */
+    {0, UA_NODEIDTYPE_NUMERIC, {5014LU}}, /* .binaryEncodingId */
     sizeof(UA_QtTestStructWithDataValue), /* .memSize */
     UA_DATATYPEKIND_STRUCTURE, /* .typeKind */
     false, /* .pointerFree */
@@ -176,8 +205,8 @@ const UA_DataType UA_TYPES_QTOPCUATESTMODEL[UA_TYPES_QTOPCUATESTMODEL_COUNT] = {
 /* QtTestStructWithDiagnosticInfo */
 {
     UA_TYPENAME("QtTestStructWithDiagnosticInfo") /* .typeName */
-    {4, UA_NODEIDTYPE_NUMERIC, {3009LU}}, /* .typeId */
-    {4, UA_NODEIDTYPE_NUMERIC, {5003LU}}, /* .binaryEncodingId */
+    {0, UA_NODEIDTYPE_NUMERIC, {3009LU}}, /* .typeId */
+    {0, UA_NODEIDTYPE_NUMERIC, {5003LU}}, /* .binaryEncodingId */
     sizeof(UA_QtTestStructWithDiagnosticInfo), /* .memSize */
     UA_DATATYPEKIND_STRUCTURE, /* .typeKind */
     false, /* .pointerFree */
@@ -188,8 +217,8 @@ const UA_DataType UA_TYPES_QTOPCUATESTMODEL[UA_TYPES_QTOPCUATESTMODEL_COUNT] = {
 /* QtTestUnionType */
 {
     UA_TYPENAME("QtTestUnionType") /* .typeName */
-    {4, UA_NODEIDTYPE_NUMERIC, {3005LU}}, /* .typeId */
-    {4, UA_NODEIDTYPE_NUMERIC, {5007LU}}, /* .binaryEncodingId */
+    {0, UA_NODEIDTYPE_NUMERIC, {3005LU}}, /* .typeId */
+    {0, UA_NODEIDTYPE_NUMERIC, {5007LU}}, /* .binaryEncodingId */
     sizeof(UA_QtTestUnionType), /* .memSize */
     UA_DATATYPEKIND_UNION, /* .typeKind */
     true, /* .pointerFree */
@@ -200,8 +229,8 @@ const UA_DataType UA_TYPES_QTOPCUATESTMODEL[UA_TYPES_QTOPCUATESTMODEL_COUNT] = {
 /* QtTestEnumeration */
 {
     UA_TYPENAME("QtTestEnumeration") /* .typeName */
-    {4, UA_NODEIDTYPE_NUMERIC, {3002LU}}, /* .typeId */
-    {4, UA_NODEIDTYPE_NUMERIC, {0}}, /* .binaryEncodingId */
+    {0, UA_NODEIDTYPE_NUMERIC, {3002LU}}, /* .typeId */
+    {0, UA_NODEIDTYPE_NUMERIC, {0}}, /* .binaryEncodingId */
     sizeof(UA_QtTestEnumeration), /* .memSize */
     UA_DATATYPEKIND_ENUM, /* .typeKind */
     true, /* .pointerFree */
@@ -212,8 +241,8 @@ const UA_DataType UA_TYPES_QTOPCUATESTMODEL[UA_TYPES_QTOPCUATESTMODEL_COUNT] = {
 /* QtTestStructType */
 {
     UA_TYPENAME("QtTestStructType") /* .typeName */
-    {4, UA_NODEIDTYPE_NUMERIC, {3003LU}}, /* .typeId */
-    {4, UA_NODEIDTYPE_NUMERIC, {5001LU}}, /* .binaryEncodingId */
+    {0, UA_NODEIDTYPE_NUMERIC, {3003LU}}, /* .typeId */
+    {0, UA_NODEIDTYPE_NUMERIC, {5001LU}}, /* .binaryEncodingId */
     sizeof(UA_QtTestStructType), /* .memSize */
     UA_DATATYPEKIND_STRUCTURE, /* .typeKind */
     false, /* .pointerFree */

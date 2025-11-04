@@ -45,7 +45,7 @@ SensorTypeToPermissionsPolicyFeatures(SensorType type) {
       return {blink::mojom::PermissionsPolicyFeature::kAccelerometer,
               blink::mojom::PermissionsPolicyFeature::kGyroscope};
     default:
-      NOTREACHED_NORETURN() << "Unknown sensor type " << type;
+      NOTREACHED() << "Unknown sensor type " << type;
   }
 }
 
@@ -103,7 +103,7 @@ void FrameSensorProviderProxy::OnPermissionRequestCompleted(
 
   // Unblock the orientation sensors as these are tested to play well with
   // back-forward cache. This is conservative.
-  // TODO(crbug.com/1027985): Test and unblock all of the sensors to work with
+  // TODO(crbug.com/40660549): Test and unblock all of the sensors to work with
   // back-forward cache.
   switch (type) {
     case SensorType::ABSOLUTE_ORIENTATION_EULER_ANGLES:

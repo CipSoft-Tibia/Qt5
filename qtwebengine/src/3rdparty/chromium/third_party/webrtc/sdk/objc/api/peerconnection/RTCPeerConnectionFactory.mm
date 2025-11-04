@@ -13,6 +13,7 @@
 #import "RTCPeerConnectionFactory+Native.h"
 #import "RTCPeerConnectionFactory+Private.h"
 #import "RTCPeerConnectionFactoryOptions+Private.h"
+#import "RTCRtpCapabilities+Private.h"
 
 #import "RTCAudioSource+Private.h"
 #import "RTCAudioTrack+Private.h"
@@ -30,6 +31,8 @@
 #include "sdk/objc/native/api/ssl_certificate_verifier.h"
 #include "system_wrappers/include/field_trial.h"
 
+#include "api/audio/audio_device.h"
+#include "api/audio/audio_processing.h"
 #include "api/audio_codecs/builtin_audio_decoder_factory.h"
 #include "api/audio_codecs/builtin_audio_encoder_factory.h"
 #include "api/enable_media.h"
@@ -38,8 +41,7 @@
 #include "api/transport/field_trial_based_config.h"
 #import "components/video_codec/RTCVideoDecoderFactoryH264.h"
 #import "components/video_codec/RTCVideoEncoderFactoryH264.h"
-#include "modules/audio_device/include/audio_device.h"
-#include "modules/audio_processing/include/audio_processing.h"
+#include "media/base/media_constants.h"
 
 #include "sdk/objc/native/api/objc_audio_device_module.h"
 #include "sdk/objc/native/api/video_decoder_factory.h"
@@ -117,7 +119,8 @@
 }
 
 - (instancetype)initNative {
-  if (self = [super init]) {
+  self = [super init];
+  if (self) {
     _networkThread = rtc::Thread::CreateWithSocketServer();
     _networkThread->SetName("network_thread", _networkThread.get());
     BOOL result = _networkThread->Start();
@@ -137,7 +140,8 @@
 }
 
 - (instancetype)initWithNoMedia {
-  if (self = [self initNative]) {
+  self = [self initNative];
+  if (self) {
     webrtc::PeerConnectionFactoryDependencies dependencies;
     dependencies.network_thread = _networkThread.get();
     dependencies.worker_thread = _workerThread.get();
@@ -184,7 +188,8 @@
                          networkControllerFactory:
                              (std::unique_ptr<webrtc::NetworkControllerFactoryInterface>)
                                  networkControllerFactory {
-  if (self = [self initNative]) {
+  self = [self initNative];
+  if (self) {
     webrtc::PeerConnectionFactoryDependencies dependencies;
     dependencies.network_thread = _networkThread.get();
     dependencies.worker_thread = _workerThread.get();
@@ -212,6 +217,20 @@
     NSAssert(_nativeFactory, @"Failed to initialize PeerConnectionFactory!");
   }
   return self;
+}
+
+- (RTC_OBJC_TYPE(RTCRtpCapabilities) *)rtpSenderCapabilitiesForKind:(NSString *)kind {
+  cricket::MediaType mediaType = [[self class] mediaTypeForKind:kind];
+
+  webrtc::RtpCapabilities rtpCapabilities = _nativeFactory->GetRtpSenderCapabilities(mediaType);
+  return [[RTC_OBJC_TYPE(RTCRtpCapabilities) alloc] initWithNativeRtpCapabilities:rtpCapabilities];
+}
+
+- (RTC_OBJC_TYPE(RTCRtpCapabilities) *)rtpReceiverCapabilitiesForKind:(NSString *)kind {
+  cricket::MediaType mediaType = [[self class] mediaTypeForKind:kind];
+
+  webrtc::RtpCapabilities rtpCapabilities = _nativeFactory->GetRtpReceiverCapabilities(mediaType);
+  return [[RTC_OBJC_TYPE(RTCRtpCapabilities) alloc] initWithNativeRtpCapabilities:rtpCapabilities];
 }
 
 - (RTC_OBJC_TYPE(RTCAudioSource) *)audioSourceWithConstraints:
@@ -336,6 +355,19 @@
 
 - (rtc::Thread *)networkThread {
   return _networkThread.get();
+}
+
+#pragma mark - Private
+
++ (cricket::MediaType)mediaTypeForKind:(NSString *)kind {
+  if (kind == kRTCMediaStreamTrackKindAudio) {
+    return cricket::MEDIA_TYPE_AUDIO;
+  } else if (kind == kRTCMediaStreamTrackKindVideo) {
+    return cricket::MEDIA_TYPE_VIDEO;
+  } else {
+    RTC_DCHECK_NOTREACHED();
+    return cricket::MEDIA_TYPE_UNSUPPORTED;
+  }
 }
 
 @end

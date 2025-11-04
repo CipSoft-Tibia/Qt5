@@ -27,7 +27,7 @@ namespace openscreen::discovery {
 
 class MockMdnsSender : public MdnsSender {
  public:
-  explicit MockMdnsSender(UdpSocket* socket) : MdnsSender(socket) {}
+  explicit MockMdnsSender(UdpSocket& socket) : MdnsSender(socket) {}
   MOCK_METHOD1(SendMulticast, Error(const MdnsMessage& message));
   MOCK_METHOD2(SendMessage,
                Error(const MdnsMessage& message, const IPEndpoint& endpoint));
@@ -43,8 +43,8 @@ class MdnsProbeTests : public testing::Test {
  public:
   MdnsProbeTests()
       : clock_(Clock::now()),
-        task_runner_(&clock_),
-        sender_(&socket_),
+        task_runner_(clock_),
+        sender_(socket_),
         receiver_(config_) {
     EXPECT_EQ(task_runner_.delayed_task_count(), 0);
     probe_ = CreateProbe();
@@ -53,9 +53,9 @@ class MdnsProbeTests : public testing::Test {
 
  protected:
   std::unique_ptr<MdnsProbeImpl> CreateProbe() {
-    return std::make_unique<MdnsProbeImpl>(&sender_, &receiver_, &random_,
+    return std::make_unique<MdnsProbeImpl>(sender_, receiver_, random_,
                                            task_runner_, FakeClock::now,
-                                           &observer_, name_, address_v4_);
+                                           observer_, name_, address_v4_);
   }
 
   MdnsMessage CreateMessage(const DomainName& domain) {
@@ -90,7 +90,7 @@ class MdnsProbeTests : public testing::Test {
   const IPEndpoint endpoint_v4_{address_v4_, 80};
 };
 
-// TODO(issuetracker.google.com/issues/243611087): Occasionally flaky in bots.
+// TODO(issuetracker.google.com/243611087): Occasionally flaky in bots.
 TEST_F(MdnsProbeTests, DISABLED_TestNoCancelationFlow) {
   EXPECT_CALL(sender_, SendMulticast(_));
   clock_.Advance(kDelayBetweenProbeQueries);
@@ -117,7 +117,7 @@ TEST_F(MdnsProbeTests, CancelationWhenMatchingMessageReceived) {
   OnMessageReceived(CreateMessage(name_));
 }
 
-// TODO(issuetracker.google.com/issues/243611087): Occasionally flaky in bots.
+// TODO(issuetracker.google.com/243611087): Occasionally flaky in bots.
 TEST_F(MdnsProbeTests, DISABLED_TestNoCancelationOnUnrelatedMessages) {
   OnMessageReceived(CreateMessage(name2_));
 

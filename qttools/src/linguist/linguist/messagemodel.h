@@ -26,24 +26,24 @@ public:
 
     bool danger() const { return m_danger; }
     void setDanger(bool danger) { m_danger = danger; }
+    bool ncrMode() const { return m_ncrMode; }
+    void setNcrMode(bool mode) { m_ncrMode = mode; }
 
-    void setTranslation(const QString &translation)
-        { m_message.setTranslation(translation); }
+    void setTranslation(const QString &translation);
 
     QString id() const { return m_message.id(); }
     QString context() const { return m_message.context(); }
-    QString text() const { return m_message.sourceText(); }
-    QString pluralText() const { return m_message.extra(QLatin1String("po-msgid_plural")); }
+    QString text() const;
+    QString pluralText() const;
     QString comment() const { return m_message.comment(); }
     QString fileName() const { return m_message.fileName(); }
     QString extraComment() const { return m_message.extraComment(); }
     QString translatorComment() const { return m_message.translatorComment(); }
     void setTranslatorComment(const QString &cmt) { m_message.setTranslatorComment(cmt); }
     int lineNumber() const { return m_message.lineNumber(); }
-    QString translation() const { return m_message.translation(); }
-    QStringList translations() const { return m_message.translations(); }
-    void setTranslations(const QStringList &translations)
-        { m_message.setTranslations(translations); }
+    QString translation() const;
+    QStringList translations() const;
+    void setTranslations(const QStringList &translations);
 
     TranslatorMessage::Type type() const { return m_message.type(); }
     void setType(TranslatorMessage::Type type) { m_message.setType(type); }
@@ -60,6 +60,7 @@ public:
 private:
     TranslatorMessage m_message;
     bool m_danger;
+    bool m_ncrMode;
 };
 
 
@@ -415,6 +416,7 @@ public:
     static QStringList prettifyFileNames(const QStringList &names);
 
     QBrush brushForModel(int model) const;
+    void updateColors();
 
 signals:
     void modelAppended();
@@ -457,7 +459,7 @@ private:
 
     MessageModel *m_msgModel;
 
-    QColor m_colors[7];
+    QColor const *m_colors;
     QBitmap m_bitmap;
 };
 

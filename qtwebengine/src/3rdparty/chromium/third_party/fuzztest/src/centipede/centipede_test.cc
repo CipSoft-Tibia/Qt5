@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #include <algorithm>
+#include <cstddef>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
@@ -22,29 +23,28 @@
 #include <set>
 #include <string>
 #include <string_view>
+#include <thread>  // NOLINT: For thread::get_id() only.
 #include <vector>
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
+#include "absl/base/nullability.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/strings/str_cat.h"
-#include "./centipede/blob_file.h"
 #include "./centipede/centipede_callbacks.h"
 #include "./centipede/centipede_default_callbacks.h"
 #include "./centipede/centipede_interface.h"
-#include "./centipede/corpus.h"
-#include "./centipede/defs.h"
 #include "./centipede/environment.h"
 #include "./centipede/feature.h"
-#include "./centipede/logging.h"
 #include "./centipede/mutation_input.h"
 #include "./centipede/runner_result.h"
-#include "./centipede/shard_reader.h"
-#include "./centipede/test_util.h"
-#include "./centipede/util.h"
 #include "./centipede/workdir.h"
+#include "./common/defs.h"
+#include "./common/hash.h"
+#include "./common/logging.h"
+#include "./common/test_util.h"
 
 namespace centipede {
 
@@ -124,7 +124,9 @@ class CentipedeMock : public CentipedeCallbacks {
 class MockFactory : public CentipedeCallbacksFactory {
  public:
   explicit MockFactory(CentipedeCallbacks &cb) : cb_(cb) {}
-  CentipedeCallbacks *create(const Environment &env) override { return &cb_; }
+  absl::Nonnull<CentipedeCallbacks *> create(const Environment &env) override {
+    return &cb_;
+  }
   void destroy(CentipedeCallbacks *cb) override { EXPECT_EQ(cb, &cb_); }
 
  private:
@@ -148,8 +150,7 @@ TEST(Centipede, MockTest) {
   EXPECT_EQ(mock.num_mutations_, env.num_runs);
   EXPECT_EQ(mock.max_batch_size_, env.batch_size);
   EXPECT_EQ(mock.min_batch_size_, 1);  // 1 for dummy.
-  EXPECT_EQ(tmp_dir.CountElementsInCorpusFile(0),
-            511);  // except for the seed input {0}.
+  EXPECT_EQ(tmp_dir.CountElementsInCorpusFile(0), 512);
   EXPECT_EQ(mock.observed_1byte_inputs_.size(), 256);    // all 1-byte seqs.
   EXPECT_EQ(mock.observed_2byte_inputs_.size(), 65536);  // all 2-byte seqs.
 }
@@ -289,21 +290,22 @@ TEST(Centipede, ShardsAndDistillTest) {
   MockFactory factory(mock);
   CentipedeMain(env, factory);  // Run distilling in shard `shard_index`.
   EXPECT_EQ(CountFilesInDir(env.corpus_dir[0]), 0);
+  size_t distilled_size = 0;
   for (size_t shard_index = 0; shard_index < env.total_shards; shard_index++) {
     SCOPED_TRACE(absl::StrCat("Shard ", shard_index));
-    auto distilled_size =
+    const auto shard_distilled_size =
         tmp_dir.CountElementsInCorpusFile(shard_index, "distilled-.");
     if (shard_index == env.total_shards - 1) {
       // Didn't distill in the last shard.
-      EXPECT_EQ(distilled_size, 0);
-    } else {
-      // Distillation is expected to find more inputs than any individual shard.
-      EXPECT_GT(distilled_size, max_shard_size);
-      // And since we are expecting 512 features, with 2-byte inputs,
-      // we get at least 512/2 corpus elements after distillation.
-      EXPECT_GT(distilled_size, 256);
+      EXPECT_EQ(shard_distilled_size, 0);
     }
+    distilled_size += shard_distilled_size;
   }
+  // Distillation is expected to find more inputs than any individual shard.
+  EXPECT_GT(distilled_size, max_shard_size);
+  // And since we are expecting 512 features, with 2-byte inputs,
+  // we get at least 512/2 corpus elements after distillation.
+  EXPECT_GT(distilled_size, 256);
 }
 
 // Tests --input_filter. test_input_filter filters out inputs with 'b' in them.
@@ -463,7 +465,8 @@ class MergeMock : public CentipedeCallbacks {
 TEST(Centipede, MergeFromOtherCorpus) {
   using Corpus = std::vector<ByteArray>;
 
-  // Set up the workdir, create a 2-shard corpus with 3 inputs each.
+  // Set up the workdir, create a 2-shard corpus with 3 inputs plus the seed {0}
+  // each.
   TempCorpusDir work_tmp_dir{test_info_->name(), "workdir"};
   Environment env;
   env.workdir = work_tmp_dir.path();
@@ -475,10 +478,11 @@ TEST(Centipede, MergeFromOtherCorpus) {
     CentipedeMain(env, factory);
   }
   CentipedeMain(env, factory);
-  EXPECT_EQ(work_tmp_dir.GetCorpus(0), Corpus({{1}, {2}, {3}}));
-  EXPECT_EQ(work_tmp_dir.GetCorpus(1), Corpus({{4}, {5}, {6}}));
+  EXPECT_EQ(work_tmp_dir.GetCorpus(0), Corpus({{0}, {1}, {2}, {3}}));
+  EXPECT_EQ(work_tmp_dir.GetCorpus(1), Corpus({{0}, {4}, {5}, {6}}));
 
-  // Set up another workdir, create a 2-shard corpus there, with 4 inputs each.
+  // Set up another workdir, create a 2-shard corpus there, with 4 inputs plus
+  // the seed {0} each.
   TempCorpusDir merge_tmp_dir(test_info_->name(), "merge_from");
   Environment merge_env;
   merge_env.workdir = merge_tmp_dir.path();
@@ -490,8 +494,8 @@ TEST(Centipede, MergeFromOtherCorpus) {
        ++merge_env.my_shard_index) {
     CentipedeMain(merge_env, factory);
   }
-  EXPECT_EQ(merge_tmp_dir.GetCorpus(0), Corpus({{1}, {2}, {3}, {4}}));
-  EXPECT_EQ(merge_tmp_dir.GetCorpus(1), Corpus({{5}, {6}, {7}, {8}}));
+  EXPECT_EQ(merge_tmp_dir.GetCorpus(0), Corpus({{0}, {1}, {2}, {3}, {4}}));
+  EXPECT_EQ(merge_tmp_dir.GetCorpus(1), Corpus({{0}, {5}, {6}, {7}, {8}}));
 
   // Merge shards of `merge_env` into shards of `env`.
   // Shard 0 will receive one extra input: {4}
@@ -501,8 +505,8 @@ TEST(Centipede, MergeFromOtherCorpus) {
   for (env.my_shard_index = 0; env.my_shard_index < 2; ++env.my_shard_index) {
     CentipedeMain(env, factory);
   }
-  EXPECT_EQ(work_tmp_dir.GetCorpus(0), Corpus({{1}, {2}, {3}, {4}}));
-  EXPECT_EQ(work_tmp_dir.GetCorpus(1), Corpus({{4}, {5}, {6}, {7}, {8}}));
+  EXPECT_EQ(work_tmp_dir.GetCorpus(0), Corpus({{0}, {1}, {2}, {3}, {4}}));
+  EXPECT_EQ(work_tmp_dir.GetCorpus(1), Corpus({{0}, {4}, {5}, {6}, {7}, {8}}));
 }
 
 // A mock for FunctionFilter test.
@@ -609,6 +613,14 @@ TEST(Centipede, FunctionFilter) {
   }
 }
 
+TEST(Centipede, SkipsFuzzingWhenNoFuzzIfNoConfigIsSet) {
+  TempDir tmp_dir{test_info_->name(), "no_config"};
+  setenv("CENTIPEDE_NO_FUZZ_IF_NO_CONFIG", "true", /*replace=*/1);
+  auto observed_no_config = RunWithFunctionFilter("", tmp_dir);
+  EXPECT_TRUE(observed_no_config.empty());
+  unsetenv("CENTIPEDE_NO_FUZZ_IF_NO_CONFIG");
+}
+
 namespace {
 
 // A mock for ExtraBinaries test.
@@ -692,11 +704,15 @@ class UndetectedCrashingInputMock : public CentipedeCallbacks {
   }
 
   // Doesn't execute anything.
-  // Crash when 0th char of input to binary b1 equals 10, but only on 1st exec.
+  // Crash when 0th char of input to binary b1 equals `crashing_input_idx_`, but
+  // only on 1st exec.
   bool Execute(std::string_view binary, const std::vector<ByteArray> &inputs,
                BatchResult &batch_result) override {
     batch_result.ClearAndResize(inputs.size());
     bool res = true;
+    if (!first_pass_) {
+      num_inputs_triaged_ += inputs.size();
+    }
     for (const auto &input : inputs) {
       CHECK_EQ(input.size(), 1);  // By construction in `Mutate()`.
       // The contents of each mutant is its sequential number.
@@ -735,9 +751,12 @@ class UndetectedCrashingInputMock : public CentipedeCallbacks {
   // Gets the input that triggered the crash.
   ByteArray crashing_input() const { return crashing_input_; }
 
+  size_t num_inputs_triaged() const { return num_inputs_triaged_; }
+
  private:
   const size_t crashing_input_idx_;
   size_t curr_input_idx_ = 0;
+  size_t num_inputs_triaged_ = 0;
   ByteArray crashing_input_ = {};
   bool first_pass_ = true;
 };
@@ -764,6 +783,7 @@ TEST(Centipede, UndetectedCrashingInput) {
   env.batch_size = kBatchSize;
   // No real binary: prevent attempts by Centipede to read a PCtable from it.
   env.require_pc_table = false;
+  env.exit_on_crash = true;
 
   UndetectedCrashingInputMock mock(env, kCrashingInputIdx);
   MockFactory factory(mock);
@@ -779,72 +799,28 @@ TEST(Centipede, UndetectedCrashingInput) {
                                     .append("crashes")
                                     .append("crashing_batch-")
                                     .concat(crashing_input_hash);
-  ASSERT_TRUE(std::filesystem::exists(crashes_dir_path)) << crashes_dir_path;
+  EXPECT_TRUE(std::filesystem::exists(crashes_dir_path)) << crashes_dir_path;
   std::vector<std::string> found_crash_file_names;
   for (auto const &dir_ent :
        std::filesystem::directory_iterator(crashes_dir_path)) {
     found_crash_file_names.push_back(dir_ent.path().filename());
   }
   // TODO(ussuri): Verify exact names/contents of the files, not just count.
-  ASSERT_EQ(found_crash_file_names.size(), kCrashingInputIdxInBatch + 1);
-}
+  EXPECT_EQ(found_crash_file_names.size(), kCrashingInputIdxInBatch + 1);
+  // Suspected input first, then every input in the batch (including the
+  // suspected input again).
+  EXPECT_EQ(mock.num_inputs_triaged(), kBatchSize + 1);
 
-static void WriteBlobsToFile(const std::vector<ByteArray> &blobs,
-                             const std::string_view path) {
-  auto appender = DefaultBlobFileWriterFactory();
-  CHECK_OK(appender->Open(path, "a"));
-  for (const auto &blob : blobs) {
-    CHECK_OK(appender->Write(blob));
-  }
-}
+  // Verify that when `env.batch_triage_suspect_only` is set, only triage the
+  // suspect.
+  TempDir suspect_only_temp_dir{test_info_->name()};
+  env.workdir = suspect_only_temp_dir.path();
+  env.batch_triage_suspect_only = true;
+  UndetectedCrashingInputMock suspect_only_mock(env, kCrashingInputIdx);
+  MockFactory suspect_only_factory(suspect_only_mock);
+  CentipedeMain(env, suspect_only_factory);
 
-TEST(Centipede, ShardReader) {
-  ByteArray data1 = {1, 2, 3};
-  ByteArray data2 = {3, 4, 5, 6};
-  ByteArray data3 = {7, 8, 9, 10, 11};
-  ByteArray data4 = {12, 13, 14};
-  ByteArray data5 = {15, 16};
-  FeatureVec fv1 = {100, 200, 300};
-  FeatureVec fv2 = {300, 400, 500, 600};
-  FeatureVec fv3 = {700, 800, 900, 1000, 1100};
-  FeatureVec fv4 = {};  // empty.
-
-  std::vector<ByteArray> corpus_blobs;
-  corpus_blobs.push_back(data1);
-  corpus_blobs.push_back(data2);
-  corpus_blobs.push_back(data3);
-  corpus_blobs.push_back(data4);
-  corpus_blobs.push_back(data5);
-
-  std::vector<ByteArray> features_blobs;
-  features_blobs.push_back(PackFeaturesAndHash(data1, fv1));
-  features_blobs.push_back(PackFeaturesAndHash(data2, fv2));
-  features_blobs.push_back(PackFeaturesAndHash(data3, fv3));
-  features_blobs.push_back(PackFeaturesAndHash(data4, fv4));
-
-  TempDir tmp_dir{test_info_->name()};
-  std::string corpus_path = tmp_dir.GetFilePath("corpus");
-  std::string features_path = tmp_dir.GetFilePath("features");
-  WriteBlobsToFile(corpus_blobs, corpus_path);
-  WriteBlobsToFile(features_blobs, features_path);
-
-  std::vector<CorpusRecord> res;
-  ReadShard(corpus_path, features_path,
-            [&res](const ByteArray &input, const FeatureVec &features) {
-              res.push_back(CorpusRecord{input, features});
-            });
-
-  EXPECT_EQ(res.size(), 5UL);
-  EXPECT_EQ(res[0].data, data1);
-  EXPECT_EQ(res[1].data, data2);
-  EXPECT_EQ(res[2].data, data3);
-  EXPECT_EQ(res[3].data, data4);
-  EXPECT_EQ(res[4].data, data5);
-  EXPECT_EQ(res[0].features, fv1);
-  EXPECT_EQ(res[1].features, fv2);
-  EXPECT_EQ(res[2].features, fv3);
-  EXPECT_EQ(res[3].features, FeatureVec{feature_domains::kNoFeature});
-  EXPECT_EQ(res[4].features, FeatureVec());
+  EXPECT_EQ(suspect_only_mock.num_inputs_triaged(), 1);
 }
 
 TEST(Centipede, GetsSeedInputs) {
@@ -864,6 +840,14 @@ TEST(Centipede, GetsSeedInputs) {
                          {0}, {1}, {2}, {3}, {4}, {5}, {6}, {7}, {8}, {9}}));
 }
 
+TEST(Centipede, GetsSerializedTargetConfig) {
+  Environment env;
+  env.binary =
+      GetDataDependencyFilepath("centipede/testing/fuzz_target_with_config");
+  CentipedeDefaultCallbacks callbacks(env);
+  EXPECT_EQ(callbacks.GetSerializedTargetConfig(), "fake serialized config");
+}
+
 TEST(Centipede, CleansUpMetadataAfterStartup) {
   Environment env;
   env.binary = GetDataDependencyFilepath(
@@ -880,6 +864,52 @@ TEST(Centipede, CleansUpMetadataAfterStartup) {
         if (b == ByteArray{'F', 'u', 'z', 'z'}) found_startup_cmp_entry = true;
       });
   EXPECT_FALSE(found_startup_cmp_entry);
+}
+
+namespace {
+
+class FakeCentipedeCallbacksForThreadChecking : public CentipedeCallbacks {
+ public:
+  FakeCentipedeCallbacksForThreadChecking(const Environment &env,
+                                          std::thread::id execute_thread_id)
+      : CentipedeCallbacks(env), execute_thread_id_(execute_thread_id) {}
+
+  bool Execute(std::string_view binary, const std::vector<ByteArray> &inputs,
+               BatchResult &batch_result) override {
+    batch_result.ClearAndResize(inputs.size());
+    thread_check_passed_ = thread_check_passed_ &&
+                           std::this_thread::get_id() == execute_thread_id_;
+    return true;
+  }
+
+  void Mutate(const std::vector<MutationInputRef> &inputs, size_t num_mutants,
+              std::vector<ByteArray> &mutants) override {
+    mutants.resize(num_mutants, {0});
+  }
+
+  bool thread_check_passed() { return thread_check_passed_; }
+
+ private:
+  std::thread::id execute_thread_id_;
+  bool thread_check_passed_ = true;
+};
+
+}  // namespace
+
+TEST(Centipede, RunsExecuteCallbackInTheCurrentThreadWhenFuzzingWithOneThread) {
+  TempDir temp_dir{test_info_->name()};
+  Environment env;
+  env.workdir = temp_dir.path();
+  env.require_pc_table = false;
+  ASSERT_EQ(env.num_threads, 1);
+  FakeCentipedeCallbacksForThreadChecking callbacks(env,
+                                                    std::this_thread::get_id());
+  BatchResult batch_result;
+  const std::vector<ByteArray> inputs = {{0}};
+  env.num_runs = 100;
+  MockFactory factory(callbacks);
+  EXPECT_EQ(CentipedeMain(env, factory), EXIT_SUCCESS);
+  EXPECT_TRUE(callbacks.thread_check_passed());
 }
 
 }  // namespace centipede

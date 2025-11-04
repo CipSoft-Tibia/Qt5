@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QtCore/qregularexpression.h>
-#include <QtTest/QtTest>
+#include <QtTest/QTest>
 #include <QtQml/qqmlapplicationengine.h>
 #include <QtQuick/qquickitem.h>
 #include <QtQuick/qquickwindow.h>
@@ -41,7 +41,7 @@ private slots:
     void timePicker();
 
 private:
-    QScopedPointer<QPointingDevice> touchScreen = QScopedPointer<QPointingDevice>(QTest::createTouchDevice());
+    std::unique_ptr<QPointingDevice> touchscreen{QTest::createTouchDevice()};
 };
 
 tst_HowToQml::tst_HowToQml()
@@ -197,8 +197,8 @@ void tst_HowToQml::timePicker()
     auto *openDialogLabel = window->findChild<QQuickLabel *>(QString(), Qt::FindDirectChildrenOnly);
     QVERIFY(openDialogLabel);
     QCOMPARE(openDialogLabel->text(), "12:00");
-    QTest::touchEvent(window, touchScreen.data()).press(0, mapCenterToWindow(openDialogLabel));
-    QTest::touchEvent(window, touchScreen.data()).release(0, mapCenterToWindow(openDialogLabel));
+    QTest::touchEvent(window, touchscreen.get()).press(0, mapCenterToWindow(openDialogLabel));
+    QTest::touchEvent(window, touchscreen.get()).release(0, mapCenterToWindow(openDialogLabel));
     QTRY_COMPARE(dialog->property("opened").toBool(), true);
     // It should show hours.
     RETURN_IF_FAILED(verifyLabels(Hours, TwelveHour, __LINE__));
@@ -211,10 +211,10 @@ void tst_HowToQml::timePicker()
 
     // Select the 3rd hour.
     const QPoint thirdHourPos = labelCenterPosForValue(valueForHour(3));
-    QTest::touchEvent(parentWindow, touchScreen.data()).press(0, mapToWindow(contentContainer, thirdHourPos));
+    QTest::touchEvent(parentWindow, touchscreen.get()).press(0, mapToWindow(contentContainer, thirdHourPos));
     RETURN_IF_FAILED(verifySelectionIndicator(valueForHour(3), TwelveHour, __LINE__));
     QCOMPARE(timePicker->property("mode").toInt(), Hours);
-    QTest::touchEvent(parentWindow, touchScreen.data()).release(0, mapToWindow(contentContainer, thirdHourPos));
+    QTest::touchEvent(parentWindow, touchscreen.get()).release(0, mapToWindow(contentContainer, thirdHourPos));
     QCOMPARE(timePicker->property("hours").toInt(), 3);
     QCOMPARE(timePicker->property("minutes").toInt(), 0);
     // The dialog's values shouldn't change until the dialog has been accepted.
@@ -230,9 +230,9 @@ void tst_HowToQml::timePicker()
 
     // Select the 59th minute.
     const QPoint fiftyNinthMinutePos = labelCenterPosForValue(59);
-    QTest::touchEvent(parentWindow, touchScreen.data()).press(0, mapToWindow(contentContainer, fiftyNinthMinutePos));
+    QTest::touchEvent(parentWindow, touchscreen.get()).press(0, mapToWindow(contentContainer, fiftyNinthMinutePos));
     RETURN_IF_FAILED(verifySelectionIndicator(59, TwelveHour, __LINE__));
-    QTest::touchEvent(parentWindow, touchScreen.data()).release(0, mapToWindow(contentContainer, fiftyNinthMinutePos));
+    QTest::touchEvent(parentWindow, touchscreen.get()).release(0, mapToWindow(contentContainer, fiftyNinthMinutePos));
     QCOMPARE(timePicker->property("hours").toInt(), 3);
     QCOMPARE(timePicker->property("minutes").toInt(), 59);
     QCOMPARE(dialog->property("hours").toInt(), 12);
@@ -252,8 +252,8 @@ void tst_HowToQml::timePicker()
     QCOMPARE(openDialogLabel->text(), "03:59");
 
     // Open it again.
-    QTest::touchEvent(window, touchScreen.data()).press(0, mapCenterToWindow(openDialogLabel));
-    QTest::touchEvent(window, touchScreen.data()).release(0, mapCenterToWindow(openDialogLabel));
+    QTest::touchEvent(window, touchscreen.get()).press(0, mapCenterToWindow(openDialogLabel));
+    QTest::touchEvent(window, touchscreen.get()).release(0, mapCenterToWindow(openDialogLabel));
     QTRY_COMPARE(dialog->property("opened"), true);
     RETURN_IF_FAILED(verifyLabels(Hours, TwelveHour, __LINE__));
     RETURN_IF_FAILED(verifySelectionIndicator(valueForHour(3), TwelveHour, __LINE__));
@@ -261,16 +261,16 @@ void tst_HowToQml::timePicker()
     QCOMPARE(openDialogLabel->text(), "03:59");
 
     // Switch from hours to minutes by clicking on the minutes label.
-    QTest::touchEvent(parentWindow, touchScreen.data()).press(0, mapCenterToWindow(minutesLabel));
-    QTest::touchEvent(parentWindow, touchScreen.data()).release(0, mapCenterToWindow(minutesLabel));
+    QTest::touchEvent(parentWindow, touchscreen.get()).press(0, mapCenterToWindow(minutesLabel));
+    QTest::touchEvent(parentWindow, touchscreen.get()).release(0, mapCenterToWindow(minutesLabel));
     RETURN_IF_FAILED(verifyLabels(Minutes, TwelveHour, __LINE__));
     RETURN_IF_FAILED(verifySelectionIndicator(59, TwelveHour, __LINE__));
 
     // Select the 1st minute.
     const QPoint firstMinutePos = labelCenterPosForValue(1);
-    QTest::touchEvent(parentWindow, touchScreen.data()).press(0, mapToWindow(contentContainer, firstMinutePos));
+    QTest::touchEvent(parentWindow, touchscreen.get()).press(0, mapToWindow(contentContainer, firstMinutePos));
     RETURN_IF_FAILED(verifySelectionIndicator(1, TwelveHour, __LINE__));
-    QTest::touchEvent(parentWindow, touchScreen.data()).release(0, mapToWindow(contentContainer, firstMinutePos));
+    QTest::touchEvent(parentWindow, touchscreen.get()).release(0, mapToWindow(contentContainer, firstMinutePos));
     QCOMPARE(timePicker->property("hours").toInt(), 3);
     QCOMPARE(timePicker->property("minutes").toInt(), 1);
     // It shouldn't be closed until the OK or Cancel buttons are clicked.
@@ -289,8 +289,8 @@ void tst_HowToQml::timePicker()
     QVERIFY(dialog->setProperty("minutes", QVariant::fromValue(8)));
     QCOMPARE(openDialogLabel->text(), "07:08");
     // Open the picker to hours mode by clicking on the label.
-    QTest::touchEvent(window, touchScreen.data()).press(0, mapCenterToWindow(openDialogLabel));
-    QTest::touchEvent(window, touchScreen.data()).release(0, mapCenterToWindow(openDialogLabel));
+    QTest::touchEvent(window, touchscreen.get()).press(0, mapCenterToWindow(openDialogLabel));
+    QTest::touchEvent(window, touchscreen.get()).release(0, mapCenterToWindow(openDialogLabel));
     QTRY_COMPARE(dialog->property("opened").toBool(), true);
     RETURN_IF_FAILED(verifyLabels(Hours, TwelveHour, __LINE__));
     RETURN_IF_FAILED(verifySelectionIndicator(valueForHour(7), TwelveHour, __LINE__));
@@ -300,9 +300,9 @@ void tst_HowToQml::timePicker()
     // Check that cancelling the dialog cancels any changes.
     // Select the fourth hour.
     const QPoint fourthHourPos = labelCenterPosForValue(20);
-    QTest::touchEvent(parentWindow, touchScreen.data()).press(0, mapToWindow(contentContainer, fourthHourPos));
+    QTest::touchEvent(parentWindow, touchscreen.get()).press(0, mapToWindow(contentContainer, fourthHourPos));
     RETURN_IF_FAILED(verifySelectionIndicator(valueForHour(4), TwelveHour, __LINE__));
-    QTest::touchEvent(parentWindow, touchScreen.data()).release(0, mapToWindow(contentContainer, fourthHourPos));
+    QTest::touchEvent(parentWindow, touchscreen.get()).release(0, mapToWindow(contentContainer, fourthHourPos));
     QCOMPARE(timePicker->property("hours").toInt(), 4);
     QCOMPARE(timePicker->property("minutes").toInt(), 8);
     auto *cancelButton = findDialogButton(dialogButtonBox, "Cancel");
@@ -313,8 +313,8 @@ void tst_HowToQml::timePicker()
 
     // Test that the 24 hour mode works.
     QVERIFY(dialog->setProperty("is24Hour", QVariant::fromValue(true)));
-    QTest::touchEvent(window, touchScreen.data()).press(0, mapCenterToWindow(openDialogLabel));
-    QTest::touchEvent(window, touchScreen.data()).release(0, mapCenterToWindow(openDialogLabel));
+    QTest::touchEvent(window, touchscreen.get()).press(0, mapCenterToWindow(openDialogLabel));
+    QTest::touchEvent(window, touchscreen.get()).release(0, mapCenterToWindow(openDialogLabel));
     QTRY_COMPARE(dialog->property("opened").toBool(), true);
     QCOMPARE(timePicker->property("mode").toInt(), Hours);
     RETURN_IF_FAILED(verifyLabels(Hours, TwentyFourHour, __LINE__));
@@ -328,9 +328,9 @@ void tst_HowToQml::timePicker()
 
     // Select the 23rd hour.
     const QPoint twentyThirdHourPos = labelCenterPosForValue(valueForHour(11), TwentyFourHour);
-    QTest::touchEvent(parentWindow, touchScreen.data()).press(0, mapToWindow(contentContainer, twentyThirdHourPos));
+    QTest::touchEvent(parentWindow, touchscreen.get()).press(0, mapToWindow(contentContainer, twentyThirdHourPos));
     RETURN_IF_FAILED(verifySelectionIndicator(valueForHour(23), TwentyFourHour, __LINE__));
-    QTest::touchEvent(parentWindow, touchScreen.data()).release(0, mapToWindow(contentContainer, twentyThirdHourPos));
+    QTest::touchEvent(parentWindow, touchscreen.get()).release(0, mapToWindow(contentContainer, twentyThirdHourPos));
     QCOMPARE(timePicker->property("hours").toInt(), 23);
     QCOMPARE(timePicker->property("minutes").toInt(), 8);
     QCOMPARE(dialog->property("hours").toInt(), 7);
@@ -340,17 +340,17 @@ void tst_HowToQml::timePicker()
 
     // Select the 20th minute.
     const QPoint twentiethMinutePos = labelCenterPosForValue(20);
-    QTest::touchEvent(parentWindow, touchScreen.data()).press(0, mapToWindow(contentContainer, twentiethMinutePos));
+    QTest::touchEvent(parentWindow, touchscreen.get()).press(0, mapToWindow(contentContainer, twentiethMinutePos));
     RETURN_IF_FAILED(verifySelectionIndicator(20, TwelveHour, __LINE__));
-    QTest::touchEvent(parentWindow, touchScreen.data()).release(0, mapToWindow(contentContainer, twentiethMinutePos));
+    QTest::touchEvent(parentWindow, touchscreen.get()).release(0, mapToWindow(contentContainer, twentiethMinutePos));
     QCOMPARE(timePicker->property("hours").toInt(), 23);
     QCOMPARE(timePicker->property("minutes").toInt(), 20);
 
     // Go back to hours and make sure that the selection indicator is correct.
     auto *hoursLabel = dialog->findChild<QQuickLabel *>("hoursLabel");
     QVERIFY(hoursLabel);
-    QTest::touchEvent(parentWindow, touchScreen.data()).press(0, mapCenterToWindow(hoursLabel));
-    QTest::touchEvent(parentWindow, touchScreen.data()).release(0, mapCenterToWindow(hoursLabel));
+    QTest::touchEvent(parentWindow, touchscreen.get()).press(0, mapCenterToWindow(hoursLabel));
+    QTest::touchEvent(parentWindow, touchscreen.get()).release(0, mapCenterToWindow(hoursLabel));
     RETURN_IF_FAILED(verifyLabels(Hours, TwentyFourHour, __LINE__));
     RETURN_IF_FAILED(verifySelectionIndicator(valueForHour(23), TwentyFourHour, __LINE__));
 

@@ -45,20 +45,18 @@ base::Value::Dict SerializeFillData(const GURL& origin,
                                     const std::u16string& password_value) {
   base::Value::Dict root_dict;
   root_dict.Set("origin", origin.spec());
-  root_dict.Set("unique_renderer_id",
-                FormRendererIdToJsParameter(form_renderer_id));
+  root_dict.Set("renderer_id", FormRendererIdToJsParameter(form_renderer_id));
 
   base::Value::List fieldList;
 
   base::Value::Dict usernameField;
-  usernameField.Set("unique_renderer_id",
+  usernameField.Set("renderer_id",
                     FieldRendererIdToJsParameter(username_element));
   usernameField.Set("value", username_value);
   fieldList.Append(std::move(usernameField));
 
   base::Value::Dict passwordField;
-  passwordField.Set("unique_renderer_id",
-                    static_cast<int>(password_element.value()));
+  passwordField.Set("renderer_id", static_cast<int>(password_element.value()));
   passwordField.Set("value", password_value);
   fieldList.Append(std::move(passwordField));
 
@@ -130,7 +128,7 @@ void PasswordManagerJavaScriptFeature::FillPasswordForm(
     BOOL fill_username,
     const std::string& username,
     const std::string& password,
-    base::OnceCallback<void(BOOL)> callback) {
+    base::OnceCallback<void(const base::Value*)> callback) {
   DCHECK(!callback.is_null());
 
   base::Value::Dict form_value = SerializeFillData(fill_data, fill_username);
@@ -139,7 +137,7 @@ void PasswordManagerJavaScriptFeature::FillPasswordForm(
                              .Append(std::move(form_value))
                              .Append(username)
                              .Append(password),
-                         CreateBoolCallback(std::move(callback)),
+                         std::move(callback),
                          base::Seconds(kJavaScriptExecutionTimeoutInSeconds));
 }
 

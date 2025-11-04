@@ -13,7 +13,7 @@
 #include <QtQuickTemplates2/private/qquickabstractbutton_p.h>
 #include <QtQuickTemplates2/private/qquickapplicationwindow_p.h>
 #include <QtQuickTemplates2/private/qquickdialogbuttonbox_p.h>
-#if QT_CONFIG(quick_listview)
+#if QT_CONFIG(quick_listview) && QT_CONFIG(quick_draganddrop)
 #include <QtQuickDialogs2QuickImpl/private/qquickfiledialogdelegate_p.h>
 #include <QtQuickDialogs2QuickImpl/private/qquickfolderbreadcrumbbar_p.h>
 #include <QtQuickDialogs2QuickImpl/private/qquickfolderbreadcrumbbar_p_p.h>
@@ -21,7 +21,7 @@
 
 QT_BEGIN_NAMESPACE
 
-#if QT_CONFIG(quick_listview)
+#if QT_CONFIG(quick_listview) && QT_CONFIG(quick_draganddrop)
 bool QQuickDialogTestUtils::verifyFileDialogDelegates(QQuickListView *fileDialogListView,
     const QStringList &expectedFiles, QString &failureMessage)
 {
@@ -41,8 +41,8 @@ bool QQuickDialogTestUtils::verifyFileDialogDelegates(QQuickListView *fileDialog
             return false;
         }
 
-        // Need to call absoluteFilePath on Windows; see comment in dialogtestutil.h.
-        actualFiles.append(QFileInfo(delegate->file().toLocalFile()).absoluteFilePath());
+        // Need to call canonicalFilePath on Windows; see comment in dialogstestutils_p.h.
+        actualFiles.append(QFileInfo(delegate->file().toLocalFile()).canonicalFilePath());
     }
 
     if (actualFiles != expectedFiles) {
@@ -111,7 +111,7 @@ bool QQuickDialogTestUtils::verifyBreadcrumbDelegates(QQuickFolderBreadcrumbBar 
 
     return true;
 }
-#endif
+#endif // QT_CONFIG(quick_listview) && QT_CONFIG(quick_draganddrop)
 
 QQuickAbstractButton *QQuickDialogTestUtils::findDialogButton(QQuickDialogButtonBox *box, const QString &buttonText)
 {

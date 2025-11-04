@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qqmlpropertytopropertybinding_p.h"
+
+#include <private/qqmlengine_p.h>
 #include <private/qqmlvmemetaobject_p.h>
 
 QT_BEGIN_NAMESPACE
@@ -14,10 +16,12 @@ QT_BEGIN_NAMESPACE
  * a target property, without going through QQmlJavaScriptExpression and
  * QV4::Function. In particular you don't need a compilation unit or byte code
  * to set this up.
+ *
+ * \note The target cannot be a group property, but the source can.
  */
 
 QQmlPropertyToPropertyBinding::QQmlPropertyToPropertyBinding(
-        QQmlEngine *engine, QObject *sourceObject, int sourcePropertyIndex,
+        QQmlEngine *engine, QObject *sourceObject, QQmlPropertyIndex sourcePropertyIndex,
         QObject *targetObject, int targetPropertyIndex)
     : QQmlNotifierEndpoint(QQmlPropertyGuard)
     , m_engine(engine)
@@ -59,7 +63,8 @@ void QQmlPropertyToPropertyBinding::captureProperty(
         QUntypedBindable bindable;
         void *argv[] = { &bindable };
         sourceMetaObject->metacall(
-                    m_sourceObject, QMetaObject::BindableProperty, m_sourcePropertyIndex, argv);
+                m_sourceObject, QMetaObject::BindableProperty,
+                m_sourcePropertyIndex.coreIndex(), argv);
         bindable.observe(observer.get());
         return;
     }
@@ -101,15 +106,25 @@ void QQmlPropertyToPropertyBinding::update(QQmlPropertyData::WriteFlags flags)
         flags.setFlag(QQmlPropertyData::BypassInterceptor);
 
     const QMetaObject *sourceMetaObject = m_sourceObject->metaObject();
-    const QMetaProperty property = sourceMetaObject->property(m_sourcePropertyIndex);
+    const QMetaProperty property = sourceMetaObject->property(m_sourcePropertyIndex.coreIndex());
     if (!property.isConstant()) {
         captureProperty(sourceMetaObject, QMetaObjectPrivate::signalIndex(property.notifySignal()),
-                        property.isBindable(), !vtd.isValid() && d->isBindable());
+                        property.isBindable(), !vtd.isValid() && d->acceptsQBinding());
     }
 
-    QQmlPropertyPrivate::writeValueProperty(
-            target, *d, vtd, property.read(m_sourceObject), {}, flags);
+    QVariant value;
 
+    const int valueTypeIndex = m_sourcePropertyIndex.valueTypeIndex();
+    if (valueTypeIndex == -1) {
+        value = property.read(m_sourceObject);
+    } else {
+        QQmlGadgetPtrWrapper *wrapper
+                = QQmlEnginePrivate::get(m_engine)->valueTypeInstance(property.metaType());
+        wrapper->read(m_sourceObject, m_sourcePropertyIndex.coreIndex());
+        value = wrapper->readOnGadget(wrapper->property(valueTypeIndex));
+    }
+
+    QQmlPropertyPrivate::writeValueProperty(target, *d, vtd, value, {}, flags);
     setUpdatingFlag(false);
 }
 

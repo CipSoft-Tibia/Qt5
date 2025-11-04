@@ -12,9 +12,171 @@
 #include "bench/bgemm.h"
 #include "bench/packw-benchmark.h"
 #include "bench/utils.h"
+#include "xnnpack/common.h"
+#include "xnnpack/hardware-config.h"
+#include "xnnpack/packw.h"
 
-#include <xnnpack/common.h>
-#include <xnnpack/packw.h>
+
+#if XNN_ENABLE_RISCV_VECTOR && XNN_ARCH_RISCV
+  static void x32_packw_gemm_goi_ukernel_x1v__rvv_u2(benchmark::State& state, const char* net) {
+    x32_packw(state,
+      xnn_x32_packw_gemm_goi_ukernel_x1v__rvv_u2,
+      /*nr=*/1 * xnn_init_hardware_config()->vlenb / sizeof(uint32_t), /*kr=*/1, /*sr=*/1,
+      benchmark::utils::CheckRVV);
+  }
+  BENCHMARK_BGEMM(x32_packw_gemm_goi_ukernel_x1v__rvv_u2)
+#endif  // XNN_ENABLE_RISCV_VECTOR && XNN_ARCH_RISCV
+
+
+#if XNN_ENABLE_RISCV_VECTOR && XNN_ARCH_RISCV
+  static void x32_packw_gemm_goi_ukernel_x1v__rvv_u4(benchmark::State& state, const char* net) {
+    x32_packw(state,
+      xnn_x32_packw_gemm_goi_ukernel_x1v__rvv_u4,
+      /*nr=*/1 * xnn_init_hardware_config()->vlenb / sizeof(uint32_t), /*kr=*/1, /*sr=*/1,
+      benchmark::utils::CheckRVV);
+  }
+  BENCHMARK_BGEMM(x32_packw_gemm_goi_ukernel_x1v__rvv_u4)
+#endif  // XNN_ENABLE_RISCV_VECTOR && XNN_ARCH_RISCV
+
+
+#if XNN_ENABLE_RISCV_VECTOR && XNN_ARCH_RISCV
+  static void x32_packw_gemm_goi_ukernel_x1v__rvv_u8(benchmark::State& state, const char* net) {
+    x32_packw(state,
+      xnn_x32_packw_gemm_goi_ukernel_x1v__rvv_u8,
+      /*nr=*/1 * xnn_init_hardware_config()->vlenb / sizeof(uint32_t), /*kr=*/1, /*sr=*/1,
+      benchmark::utils::CheckRVV);
+  }
+  BENCHMARK_BGEMM(x32_packw_gemm_goi_ukernel_x1v__rvv_u8)
+#endif  // XNN_ENABLE_RISCV_VECTOR && XNN_ARCH_RISCV
+
+
+#if XNN_ENABLE_RISCV_VECTOR && XNN_ARCH_RISCV
+  static void x32_packw_gemm_goi_ukernel_x2v__rvv_u2(benchmark::State& state, const char* net) {
+    x32_packw(state,
+      xnn_x32_packw_gemm_goi_ukernel_x2v__rvv_u2,
+      /*nr=*/2 * xnn_init_hardware_config()->vlenb / sizeof(uint32_t), /*kr=*/1, /*sr=*/1,
+      benchmark::utils::CheckRVV);
+  }
+  BENCHMARK_BGEMM(x32_packw_gemm_goi_ukernel_x2v__rvv_u2)
+#endif  // XNN_ENABLE_RISCV_VECTOR && XNN_ARCH_RISCV
+
+
+#if XNN_ENABLE_RISCV_VECTOR && XNN_ARCH_RISCV
+  static void x32_packw_gemm_goi_ukernel_x2v__rvv_u4(benchmark::State& state, const char* net) {
+    x32_packw(state,
+      xnn_x32_packw_gemm_goi_ukernel_x2v__rvv_u4,
+      /*nr=*/2 * xnn_init_hardware_config()->vlenb / sizeof(uint32_t), /*kr=*/1, /*sr=*/1,
+      benchmark::utils::CheckRVV);
+  }
+  BENCHMARK_BGEMM(x32_packw_gemm_goi_ukernel_x2v__rvv_u4)
+#endif  // XNN_ENABLE_RISCV_VECTOR && XNN_ARCH_RISCV
+
+
+#if XNN_ENABLE_RISCV_VECTOR && XNN_ARCH_RISCV
+  static void x32_packw_gemm_goi_ukernel_x2v__rvv_u8(benchmark::State& state, const char* net) {
+    x32_packw(state,
+      xnn_x32_packw_gemm_goi_ukernel_x2v__rvv_u8,
+      /*nr=*/2 * xnn_init_hardware_config()->vlenb / sizeof(uint32_t), /*kr=*/1, /*sr=*/1,
+      benchmark::utils::CheckRVV);
+  }
+  BENCHMARK_BGEMM(x32_packw_gemm_goi_ukernel_x2v__rvv_u8)
+#endif  // XNN_ENABLE_RISCV_VECTOR && XNN_ARCH_RISCV
+
+
+#if XNN_ENABLE_RISCV_VECTOR && XNN_ARCH_RISCV
+  static void x32_packw_gemm_goi_ukernel_x4v__rvv_u2(benchmark::State& state, const char* net) {
+    x32_packw(state,
+      xnn_x32_packw_gemm_goi_ukernel_x4v__rvv_u2,
+      /*nr=*/4 * xnn_init_hardware_config()->vlenb / sizeof(uint32_t), /*kr=*/1, /*sr=*/1,
+      benchmark::utils::CheckRVV);
+  }
+  BENCHMARK_BGEMM(x32_packw_gemm_goi_ukernel_x4v__rvv_u2)
+#endif  // XNN_ENABLE_RISCV_VECTOR && XNN_ARCH_RISCV
+
+
+#if XNN_ENABLE_RISCV_VECTOR && XNN_ARCH_RISCV
+  static void x32_packw_gemm_goi_ukernel_x4v__rvv_u4(benchmark::State& state, const char* net) {
+    x32_packw(state,
+      xnn_x32_packw_gemm_goi_ukernel_x4v__rvv_u4,
+      /*nr=*/4 * xnn_init_hardware_config()->vlenb / sizeof(uint32_t), /*kr=*/1, /*sr=*/1,
+      benchmark::utils::CheckRVV);
+  }
+  BENCHMARK_BGEMM(x32_packw_gemm_goi_ukernel_x4v__rvv_u4)
+#endif  // XNN_ENABLE_RISCV_VECTOR && XNN_ARCH_RISCV
+
+
+#if XNN_ENABLE_RISCV_VECTOR && XNN_ARCH_RISCV
+  static void x32_packw_gemm_goi_ukernel_x4v__rvv_u8(benchmark::State& state, const char* net) {
+    x32_packw(state,
+      xnn_x32_packw_gemm_goi_ukernel_x4v__rvv_u8,
+      /*nr=*/4 * xnn_init_hardware_config()->vlenb / sizeof(uint32_t), /*kr=*/1, /*sr=*/1,
+      benchmark::utils::CheckRVV);
+  }
+  BENCHMARK_BGEMM(x32_packw_gemm_goi_ukernel_x4v__rvv_u8)
+#endif  // XNN_ENABLE_RISCV_VECTOR && XNN_ARCH_RISCV
+
+
+#if XNN_ENABLE_RISCV_VECTOR && XNN_ARCH_RISCV
+  static void x32_packw_gemm_goi_ukernel_x8v__rvv_u2(benchmark::State& state, const char* net) {
+    x32_packw(state,
+      xnn_x32_packw_gemm_goi_ukernel_x8v__rvv_u2,
+      /*nr=*/8 * xnn_init_hardware_config()->vlenb / sizeof(uint32_t), /*kr=*/1, /*sr=*/1,
+      benchmark::utils::CheckRVV);
+  }
+  BENCHMARK_BGEMM(x32_packw_gemm_goi_ukernel_x8v__rvv_u2)
+#endif  // XNN_ENABLE_RISCV_VECTOR && XNN_ARCH_RISCV
+
+
+#if XNN_ENABLE_RISCV_VECTOR && XNN_ARCH_RISCV
+  static void x32_packw_gemm_goi_ukernel_x8v__rvv_u4(benchmark::State& state, const char* net) {
+    x32_packw(state,
+      xnn_x32_packw_gemm_goi_ukernel_x8v__rvv_u4,
+      /*nr=*/8 * xnn_init_hardware_config()->vlenb / sizeof(uint32_t), /*kr=*/1, /*sr=*/1,
+      benchmark::utils::CheckRVV);
+  }
+  BENCHMARK_BGEMM(x32_packw_gemm_goi_ukernel_x8v__rvv_u4)
+#endif  // XNN_ENABLE_RISCV_VECTOR && XNN_ARCH_RISCV
+
+
+#if XNN_ENABLE_RISCV_VECTOR && XNN_ARCH_RISCV
+  static void x32_packw_gemm_goi_ukernel_x8v__rvv_u8(benchmark::State& state, const char* net) {
+    x32_packw(state,
+      xnn_x32_packw_gemm_goi_ukernel_x8v__rvv_u8,
+      /*nr=*/8 * xnn_init_hardware_config()->vlenb / sizeof(uint32_t), /*kr=*/1, /*sr=*/1,
+      benchmark::utils::CheckRVV);
+  }
+  BENCHMARK_BGEMM(x32_packw_gemm_goi_ukernel_x8v__rvv_u8)
+#endif  // XNN_ENABLE_RISCV_VECTOR && XNN_ARCH_RISCV
+
+
+#if XNN_ARCH_WASMSIMD || XNN_ARCH_WASMRELAXEDSIMD
+  static void x32_packw_gemm_goi_ukernel_x2c4__wasmsimd_u4(benchmark::State& state, const char* net) {
+    x32_packw(state,
+      xnn_x32_packw_gemm_goi_ukernel_x2c4__wasmsimd_u4,
+      /*nr=*/2, /*kr=*/4, /*sr=*/1);
+  }
+  BENCHMARK_BGEMM(x32_packw_gemm_goi_ukernel_x2c4__wasmsimd_u4)
+#endif  // XNN_ARCH_WASMSIMD || XNN_ARCH_WASMRELAXEDSIMD
+
+
+#if XNN_ARCH_WASMSIMD || XNN_ARCH_WASMRELAXEDSIMD
+  static void x32_packw_gemm_goi_ukernel_x8__wasmsimd_u4(benchmark::State& state, const char* net) {
+    x32_packw(state,
+      xnn_x32_packw_gemm_goi_ukernel_x8__wasmsimd_u4,
+      /*nr=*/8, /*kr=*/1, /*sr=*/1);
+  }
+  BENCHMARK_BGEMM(x32_packw_gemm_goi_ukernel_x8__wasmsimd_u4)
+#endif  // XNN_ARCH_WASMSIMD || XNN_ARCH_WASMRELAXEDSIMD
+
+
+#if XNN_ARCH_WASMSIMD || XNN_ARCH_WASMRELAXEDSIMD
+  static void x32_packw_gemm_goi_ukernel_x8s4__wasmsimd_u4(benchmark::State& state, const char* net) {
+    x32_packw(state,
+      xnn_x32_packw_gemm_goi_ukernel_x8s4__wasmsimd_u4,
+      /*nr=*/8, /*kr=*/1, /*sr=*/4);
+  }
+  BENCHMARK_BGEMM(x32_packw_gemm_goi_ukernel_x8s4__wasmsimd_u4)
+#endif  // XNN_ARCH_WASMSIMD || XNN_ARCH_WASMRELAXEDSIMD
 
 
 #if XNN_ARCH_ARM || XNN_ARCH_ARM64
@@ -503,36 +665,6 @@
   }
   BENCHMARK_BGEMM(x32_packw_gemm_goi_ukernel_x16s4__sse2_u8_prfm)
 #endif  // XNN_ARCH_X86 || XNN_ARCH_X86_64
-
-
-#if XNN_ARCH_WASMSIMD || XNN_ARCH_WASMRELAXEDSIMD
-  static void x32_packw_gemm_goi_ukernel_x2c4__wasmsimd_u4(benchmark::State& state, const char* net) {
-    x32_packw(state,
-      xnn_x32_packw_gemm_goi_ukernel_x2c4__wasmsimd_u4,
-      /*nr=*/2, /*kr=*/4, /*sr=*/1);
-  }
-  BENCHMARK_BGEMM(x32_packw_gemm_goi_ukernel_x2c4__wasmsimd_u4)
-#endif  // XNN_ARCH_WASMSIMD || XNN_ARCH_WASMRELAXEDSIMD
-
-
-#if XNN_ARCH_WASMSIMD || XNN_ARCH_WASMRELAXEDSIMD
-  static void x32_packw_gemm_goi_ukernel_x8__wasmsimd_u4(benchmark::State& state, const char* net) {
-    x32_packw(state,
-      xnn_x32_packw_gemm_goi_ukernel_x8__wasmsimd_u4,
-      /*nr=*/8, /*kr=*/1, /*sr=*/1);
-  }
-  BENCHMARK_BGEMM(x32_packw_gemm_goi_ukernel_x8__wasmsimd_u4)
-#endif  // XNN_ARCH_WASMSIMD || XNN_ARCH_WASMRELAXEDSIMD
-
-
-#if XNN_ARCH_WASMSIMD || XNN_ARCH_WASMRELAXEDSIMD
-  static void x32_packw_gemm_goi_ukernel_x8s4__wasmsimd_u4(benchmark::State& state, const char* net) {
-    x32_packw(state,
-      xnn_x32_packw_gemm_goi_ukernel_x8s4__wasmsimd_u4,
-      /*nr=*/8, /*kr=*/1, /*sr=*/4);
-  }
-  BENCHMARK_BGEMM(x32_packw_gemm_goi_ukernel_x8s4__wasmsimd_u4)
-#endif  // XNN_ARCH_WASMSIMD || XNN_ARCH_WASMRELAXEDSIMD
 
 
 static void x32_packw_gemm_goi_ukernel_x2__scalar_float_u4(benchmark::State& state, const char* net) {

@@ -6,6 +6,7 @@
 
 #include <QtCore/qfile.h>
 #include <QtTest/QtTest>
+#include <QtWebEngineCore/private/qtwebenginecoreglobal_p.h>
 #include <QtWebEngineCore/qwebengineurlrequestinterceptor.h>
 #include <QtWebEngineCore/qwebengineurlrequestjob.h>
 #include <QtWebEngineCore/qwebengineurlscheme.h>
@@ -25,7 +26,7 @@
 #define QSL QStringLiteral
 #define QBAL QByteArrayLiteral
 
-Q_LOGGING_CATEGORY(lc, "qt.webengine.tests")
+Q_WEBENGINE_LOGGING_CATEGORY(lc, "qt.webengine.tests")
 
 void registerSchemes()
 {

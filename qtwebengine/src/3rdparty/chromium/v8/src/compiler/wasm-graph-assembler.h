@@ -75,7 +75,7 @@ class WasmGraphAssembler : public GraphAssembler {
   }
 
   Node* SmiConstant(Tagged_t value) {
-    Address tagged_value = Internals::IntToSmi(static_cast<int>(value));
+    Address tagged_value = Internals::IntegralToSmi(static_cast<int>(value));
     return kTaggedSize == kInt32Size
                ? Int32Constant(static_cast<int32_t>(tagged_value))
                : Int64Constant(static_cast<int64_t>(tagged_value));
@@ -122,6 +122,17 @@ class WasmGraphAssembler : public GraphAssembler {
     return LoadFromObject(type, base, IntPtrConstant(offset));
   }
 
+  Node* LoadProtectedPointerFromObject(Node* object, Node* offset);
+  Node* LoadProtectedPointerFromObject(Node* object, int offset) {
+    return LoadProtectedPointerFromObject(object, IntPtrConstant(offset));
+  }
+
+  Node* LoadImmutableProtectedPointerFromObject(Node* object, Node* offset);
+  Node* LoadImmutableProtectedPointerFromObject(Node* object, int offset) {
+    return LoadImmutableProtectedPointerFromObject(object,
+                                                   IntPtrConstant(offset));
+  }
+
   Node* LoadImmutableFromObject(MachineType type, Node* base, Node* offset);
 
   Node* LoadImmutableFromObject(MachineType type, Node* base, int offset) {
@@ -164,6 +175,12 @@ class WasmGraphAssembler : public GraphAssembler {
 
   Node* LoadImmutableTrustedPointerFromObject(Node* object, int offset,
                                               IndirectPointerTag tag);
+  Node* LoadTrustedPointerFromObject(Node* object, int offset,
+                                     IndirectPointerTag tag);
+  // Returns the load node (where the source position for the trap needs to be
+  // set by the caller) and the result.
+  std::pair<Node*, Node*> LoadTrustedPointerFromObjectTrapOnNull(
+      Node* object, int offset, IndirectPointerTag tag);
   Node* BuildDecodeTrustedPointer(Node* handle, IndirectPointerTag tag);
 
   Node* IsSmi(Node* object);
@@ -203,12 +220,11 @@ class WasmGraphAssembler : public GraphAssembler {
     return LoadFixedArrayElement(array, index, MachineType::AnyTagged());
   }
 
+  Node* LoadProtectedFixedArrayElement(Node* array, int index);
+  Node* LoadProtectedFixedArrayElement(Node* array, Node* index_intptr);
+
   Node* LoadByteArrayElement(Node* byte_array, Node* index_intptr,
                              MachineType type);
-
-  Node* LoadExternalPointerArrayElement(Node* array, Node* index_intptr,
-                                        ExternalPointerTag tag,
-                                        Node* isolate_root);
 
   Node* StoreFixedArrayElement(Node* array, int index, Node* value,
                                ObjectAccess access);
@@ -225,8 +241,7 @@ class WasmGraphAssembler : public GraphAssembler {
         ObjectAccess(MachineType::AnyTagged(), kFullWriteBarrier));
   }
 
-  Node* LoadWeakArrayListElement(Node* fixed_array, Node* index_intptr,
-                                 MachineType type = MachineType::AnyTagged());
+  Node* LoadWeakFixedArrayElement(Node* fixed_array, Node* index_intptr);
 
   // Functions, SharedFunctionInfos, FunctionData.
 
@@ -238,7 +253,7 @@ class WasmGraphAssembler : public GraphAssembler {
 
   Node* LoadExportedFunctionIndexAsSmi(Node* exported_function_data);
 
-  Node* LoadExportedFunctionInstance(Node* exported_function_data);
+  Node* LoadExportedFunctionInstanceData(Node* exported_function_data);
 
   // JavaScript objects.
 
@@ -310,10 +325,6 @@ class WasmGraphAssembler : public GraphAssembler {
     AddNode(graph()->NewNode(
         mcgraph()->common()->TrapUnless(reason, has_frame_state), condition,
         effect(), control()));
-  }
-
-  Node* LoadRootRegister() {
-    return AddNode(graph()->NewNode(mcgraph()->machine()->LoadRootRegister()));
   }
 
   Node* LoadTrustedDataFromInstanceObject(Node* instance_object);

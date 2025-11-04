@@ -72,9 +72,9 @@ class WebContentsContext : public WebContentsFrameTracker::Context {
   }
 
   void IncrementCapturerCount(const gfx::Size& capture_size) override {
-    capture_handle_ =
-        contents_->IncrementCapturerCount(capture_size, /*stay_hidden=*/false,
-                                          /*stay_awake=*/true);
+    capture_handle_ = contents_->IncrementCapturerCount(
+        capture_size, /*stay_hidden=*/false,
+        /*stay_awake=*/true, /*is_activity=*/true);
   }
 
   void DecrementCapturerCount() override { capture_handle_.RunAndReset(); }
@@ -502,7 +502,7 @@ void WebContentsFrameTracker::OnPossibleTargetChange() {
       context_ ? context_->GetCaptureTarget()
                : WebContentsImpl::CaptureTarget{};
 
-  // TODO(crbug.com/1264849): Clear |sub_capture_target_| when
+  // TODO(crbug.com/40203554): Clear |sub_capture_target_| when
   // share-this-tab-instead is clicked.
   if (capture_target.sink_id != target_frame_sink_id_) {
     target_frame_sink_id_ = capture_target.sink_id;
@@ -627,7 +627,7 @@ viz::VideoCaptureSubTarget WebContentsFrameTracker::DeriveSubTarget() const {
       return viz::SubtreeCaptureId(sub_capture_target.token);
   }
 
-  NOTREACHED_NORETURN();
+  NOTREACHED();
 }
 
 }  // namespace content

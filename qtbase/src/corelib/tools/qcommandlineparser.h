@@ -67,6 +67,12 @@ public:
     Q_NORETURN void showHelp(int exitCode = 0);
     QString helpText() const;
 
+    enum class MessageType {
+        Information,
+        Error,
+    };
+    [[noreturn]] static void showMessageAndExit(MessageType type, const QString &message, int exitCode = 0);
+
 private:
     Q_DISABLE_COPY(QCommandLineParser)
 

@@ -4,6 +4,8 @@
 
 #include "content/browser/direct_sockets/direct_sockets_test_utils.h"
 
+#include <string_view>
+
 #include "base/functional/bind.h"
 #include "base/json/json_reader.h"
 #include "base/strings/stringprintf.h"
@@ -74,7 +76,7 @@ MockRestrictedUDPSocket::~MockRestrictedUDPSocket() = default;
 MockNetworkContext::MockNetworkContext()
     : MockNetworkContext(/*host_mapping_rules=*/"") {}
 
-MockNetworkContext::MockNetworkContext(base::StringPiece host_mapping_rules)
+MockNetworkContext::MockNetworkContext(std::string_view host_mapping_rules)
     : network::TestNetworkContextWithHostResolver(
           net::HostResolver::CreateStandaloneResolver(
               net::NetLog::Get(),
@@ -170,7 +172,7 @@ bool IsolatedWebAppContentBrowserClient::ShouldUrlUseApplicationIsolationLevel(
 
 std::optional<blink::ParsedPermissionsPolicy>
 IsolatedWebAppContentBrowserClient::GetPermissionsPolicyForIsolatedWebApp(
-    content::BrowserContext* browser_context,
+    WebContents* web_contents,
     const url::Origin& app_origin) {
   blink::ParsedPermissionsPolicyDeclaration coi_decl(
       blink::mojom::PermissionsPolicyFeature::kCrossOriginIsolated,

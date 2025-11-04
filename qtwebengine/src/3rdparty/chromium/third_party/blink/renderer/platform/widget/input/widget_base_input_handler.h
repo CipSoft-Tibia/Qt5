@@ -6,10 +6,10 @@
 #define THIRD_PARTY_BLINK_RENDERER_PLATFORM_WIDGET_INPUT_WIDGET_BASE_INPUT_HANDLER_H_
 
 #include <memory>
+#include <optional>
 
 #include "base/memory/raw_ptr.h"
 #include "base/memory/weak_ptr.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "third_party/blink/public/common/input/web_coalesced_input_event.h"
 #include "third_party/blink/public/common/input/web_gesture_event.h"
 #include "third_party/blink/public/mojom/input/input_event_result.mojom-blink.h"
@@ -23,7 +23,6 @@
 namespace cc {
 struct ElementId;
 class EventMetrics;
-struct OverscrollBehavior;
 }  // namespace cc
 
 namespace ui {
@@ -54,7 +53,7 @@ class PLATFORM_EXPORT WidgetBaseInputHandler {
       mojom::InputEventResultState ack_state,
       const ui::LatencyInfo& latency_info,
       std::unique_ptr<InputHandlerProxy::DidOverscrollParams>,
-      absl::optional<WebTouchAction>)>;
+      std::optional<WebTouchAction>)>;
 
   // Handle input events from the input event provider. `metrics` contains
   // information used in reporting latency metrics in case the event causes
@@ -62,15 +61,6 @@ class PLATFORM_EXPORT WidgetBaseInputHandler {
   void HandleInputEvent(const blink::WebCoalescedInputEvent& coalesced_event,
                         std::unique_ptr<cc::EventMetrics> metrics,
                         HandledEventCallback callback);
-
-  // Handle overscroll from Blink. Returns whether the should be sent to the
-  // browser. This will return false if an event is currently being processed
-  // and will be returned part of the input ack.
-  bool DidOverscrollFromBlink(const gfx::Vector2dF& overscrollDelta,
-                              const gfx::Vector2dF& accumulatedOverscroll,
-                              const gfx::PointF& position,
-                              const gfx::Vector2dF& velocity,
-                              const cc::OverscrollBehavior& behavior);
 
   void InjectScrollbarGestureScroll(const gfx::Vector2dF& delta,
                                     ui::ScrollGranularity granularity,
@@ -120,18 +110,18 @@ class PLATFORM_EXPORT WidgetBaseInputHandler {
       const ui::LatencyInfo& original_latency_info,
       const cc::EventMetrics* original_metrics);
 
-  raw_ptr<WidgetBase, ExperimentalRenderer> widget_;
+  raw_ptr<WidgetBase> widget_;
 
   // Are we currently handling an input event?
   bool handling_input_event_ = false;
 
   // Current state from HandleInputEvent. This variable is stack allocated
   // and is not owned.
-  raw_ptr<HandlingState, ExperimentalRenderer> handling_input_state_ = nullptr;
+  raw_ptr<HandlingState> handling_input_state_ = nullptr;
 
   // We store the current cursor object so we can avoid spamming SetCursor
   // messages.
-  absl::optional<ui::Cursor> current_cursor_;
+  std::optional<ui::Cursor> current_cursor_;
 
   // Indicates if the next sequence of Char events should be suppressed or not.
   bool suppress_next_char_events_ = false;

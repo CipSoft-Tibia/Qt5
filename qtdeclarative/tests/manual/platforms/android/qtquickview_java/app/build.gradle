@@ -26,12 +26,12 @@ android {
         }
     }
     namespace 'com.example.qtquickview_java'
-    compileSdk 34
+    compileSdk 35
 
     defaultConfig {
         applicationId "com.example.qtquickview_java"
         minSdk 28
-        targetSdk 34
+        targetSdk 35
         versionCode 1
         versionName "1.0"
 
@@ -49,15 +49,12 @@ android {
             signingConfig signingConfigs.debug
         }
     }
+
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_1_8
         targetCompatibility JavaVersion.VERSION_1_8
     }
-    packagingOptions {
-        jniLibs {
-            useLegacyPackaging true
-        }
-    }
+
     sourceSets {
         main {
             assets {

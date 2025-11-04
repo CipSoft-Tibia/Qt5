@@ -3,3 +3,4 @@ class Person {
         this._name = name;
     }
 }
+class /**/ C {}/**/ /**/ class C /**/ {}

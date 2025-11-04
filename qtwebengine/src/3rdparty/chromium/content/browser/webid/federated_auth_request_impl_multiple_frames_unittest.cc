@@ -69,15 +69,7 @@ constexpr char kNonce[] = "nonce123";
 constexpr char kAccountId[] = "1234";
 constexpr char kToken[] = "[not a real token]";
 
-static const std::vector<IdentityRequestAccount> kAccounts{{
-    kAccountId,                  // id
-    "ken@idp.example",           // email
-    "Ken R. Example",            // name
-    "Ken",                       // given_name
-    GURL(),                      // picture
-    std::vector<std::string>(),  // login_hints
-    std::vector<std::string>()   // domain_hints
-}};
+static std::vector<IdentityRequestAccountPtr> kAccounts;
 
 // IdpNetworkRequestManager which returns valid data from IdP.
 class TestIdpNetworkRequestManager : public MockIdpNetworkRequestManager {
@@ -104,6 +96,7 @@ class TestIdpNetworkRequestManager : public MockIdpNetworkRequestManager {
 
     IdentityProviderMetadata idp_metadata;
     idp_metadata.idp_login_url = GURL(kLoginUrl);
+    idp_metadata.config_url = provider;
 
     base::SequencedTaskRunner::GetCurrentDefault()->PostTask(
         FROM_HERE, base::BindOnce(std::move(callback), kFetchStatusSuccess,
@@ -142,8 +135,7 @@ class TestDialogController
  public:
   struct State {
     bool did_show_accounts_dialog{false};
-    std::string top_frame_for_display;
-    std::optional<std::string> iframe_for_display;
+    std::string rp_for_display;
   };
 
   enum class AccountsDialogAction {
@@ -160,24 +152,25 @@ class TestDialogController
   TestDialogController(TestDialogController&) = delete;
   TestDialogController& operator=(TestDialogController&) = delete;
 
-  void ShowAccountsDialog(
-      const std::string& top_frame_for_display,
-      const std::optional<std::string>& iframe_for_display,
-      const std::vector<IdentityProviderData>& identity_provider_data,
+  bool ShowAccountsDialog(
+      const std::string& rp_for_display,
+      const std::vector<IdentityProviderDataPtr>& idp_list,
+      const std::vector<IdentityRequestAccountPtr>& accounts,
       IdentityRequestAccount::SignInMode sign_in_mode,
       blink::mojom::RpMode rp_mode,
-      bool show_auto_reauthn_checkbox,
+      const std::vector<IdentityRequestAccountPtr>& new_accounts,
       IdentityRequestDialogController::AccountSelectionCallback on_selected,
       IdentityRequestDialogController::LoginToIdPCallback on_add_account,
-      IdentityRequestDialogController::DismissCallback dismiss_callback)
-      override {
+      IdentityRequestDialogController::DismissCallback dismiss_callback,
+      IdentityRequestDialogController::AccountsDisplayedCallback
+          accounts_displayed_callback) override {
     state_->did_show_accounts_dialog = true;
-    state_->top_frame_for_display = top_frame_for_display;
-    state_->iframe_for_display = iframe_for_display;
+    state_->rp_for_display = rp_for_display;
     if (accounts_dialog_action_ == AccountsDialogAction::kSelectAccount) {
       std::move(on_selected)
           .Run(GURL(kProviderUrlFull), kAccountId, /*is_sign_in=*/true);
     }
+    return true;
   }
 
  private:
@@ -215,6 +208,18 @@ class FederatedAuthRequestImplMultipleFramesTest
 
   void SetUp() override {
     RenderViewHostImplTestHarness::SetUp();
+    // Initialize `kAccounts` on SetUp() to ensure it is initialized correctly
+    // in every test.
+    kAccounts = {base::MakeRefCounted<IdentityRequestAccount>(
+        kAccountId,                  // id
+        "ken@idp.example",           // email
+        "Ken R. Example",            // name
+        "Ken",                       // given_name
+        GURL(),                      // picture
+        std::vector<std::string>(),  // login_hints
+        std::vector<std::string>(),  // domain_hints
+        std::vector<std::string>()   // labels
+        )};
     test_api_permission_delegate_ =
         std::make_unique<TestApiPermissionDelegate>();
     mock_auto_reauthn_permission_delegate_ =
@@ -225,7 +230,7 @@ class FederatedAuthRequestImplMultipleFramesTest
         std::make_unique<TestFederatedIdentityModalDialogViewDelegate>();
     mock_identity_registry_ = std::make_unique<NiceMock<MockIdentityRegistry>>(
         web_contents(), test_modal_dialog_view_delegate_->GetWeakPtr(),
-        url::Origin::Create(GURL(kIdpUrl)));
+        GURL(kIdpUrl));
 
     static_cast<TestWebContents*>(web_contents())
         ->NavigateAndCommit(GURL(kTopFrameUrl), ui::PAGE_TRANSITION_LINK);
@@ -278,10 +283,8 @@ class FederatedAuthRequestImplMultipleFramesTest
     auto federated = blink::mojom::IdentityProviderRequestOptions::New();
     federated->config = std::move(config_ptr);
     federated->nonce = kNonce;
-    std::vector<blink::mojom::IdentityProviderPtr> idp_ptrs;
-    blink::mojom::IdentityProviderPtr idp_ptr =
-        blink::mojom::IdentityProvider::NewFederated(std::move(federated));
-    idp_ptrs.push_back(std::move(idp_ptr));
+    std::vector<blink::mojom::IdentityProviderRequestOptionsPtr> idp_ptrs;
+    idp_ptrs.push_back(std::move(federated));
     auto get_params = blink::mojom::IdentityProviderGetParameters::New(
         std::move(idp_ptrs),
         /*rp_context=*/blink::mojom::RpContext::kSignIn,
@@ -373,8 +376,7 @@ TEST_F(FederatedAuthRequestImplMultipleFramesTest, SameOriginIframe) {
   DoRequestTokenAndWait(iframe_request_remote, iframe_callback_helper);
   EXPECT_EQ(RequestTokenStatus::kSuccess, iframe_callback_helper.status());
   EXPECT_TRUE(iframe_dialog_state.did_show_accounts_dialog);
-  EXPECT_EQ("top-frame.example", iframe_dialog_state.top_frame_for_display);
-  EXPECT_EQ(std::nullopt, iframe_dialog_state.iframe_for_display);
+  EXPECT_EQ("top-frame.example", iframe_dialog_state.rp_for_display);
 }
 
 // Test that only top frame URL is available for display when FedCM is called
@@ -399,8 +401,7 @@ TEST_F(FederatedAuthRequestImplMultipleFramesTest, SameSiteIframe) {
   DoRequestTokenAndWait(iframe_request_remote, iframe_callback_helper);
   EXPECT_EQ(RequestTokenStatus::kSuccess, iframe_callback_helper.status());
   EXPECT_TRUE(iframe_dialog_state.did_show_accounts_dialog);
-  EXPECT_EQ("top-frame.example", iframe_dialog_state.top_frame_for_display);
-  EXPECT_EQ(std::nullopt, iframe_dialog_state.iframe_for_display);
+  EXPECT_EQ("top-frame.example", iframe_dialog_state.rp_for_display);
 }
 
 // Test that both top frame and iframe URLs are available for display when FedCM
@@ -424,7 +425,7 @@ TEST_F(FederatedAuthRequestImplMultipleFramesTest, CrossSiteIframe) {
   DoRequestTokenAndWait(iframe_request_remote, iframe_callback_helper);
   EXPECT_EQ(RequestTokenStatus::kSuccess, iframe_callback_helper.status());
   EXPECT_TRUE(iframe_dialog_state.did_show_accounts_dialog);
-  EXPECT_EQ("top-frame.example", iframe_dialog_state.top_frame_for_display);
+  EXPECT_EQ("top-frame.example", iframe_dialog_state.rp_for_display);
 }
 
 // Tests that preventSilentAccess UKM is not recorded if the embedder does not

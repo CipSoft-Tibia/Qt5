@@ -309,6 +309,11 @@ ResultOrError<VulkanDeviceInfo> GatherDeviceInfo(const PhysicalDevice& device) {
                               VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ROBUSTNESS_2_FEATURES_EXT);
         }
 
+        if (info.extensions[DeviceExt::SamplerYCbCrConversion]) {
+            featuresChain.Add(&info.samplerYCbCrConversionFeatures,
+                              VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SAMPLER_YCBCR_CONVERSION_FEATURES);
+        }
+
         // Check subgroup features and properties
         propertiesChain.Add(&info.subgroupProperties,
                             VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SUBGROUP_PROPERTIES);
@@ -316,6 +321,11 @@ ResultOrError<VulkanDeviceInfo> GatherDeviceInfo(const PhysicalDevice& device) {
             featuresChain.Add(
                 &info.shaderSubgroupUniformControlFlowFeatures,
                 VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_SUBGROUP_UNIFORM_CONTROL_FLOW_FEATURES_KHR);
+        }
+        if (info.extensions[DeviceExt::ShaderSubgroupExtendedTypes]) {
+            featuresChain.Add(
+                &info.shaderSubgroupExtendedTypes,
+                VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_SUBGROUP_EXTENDED_TYPES_FEATURES);
         }
 
         if (info.extensions[DeviceExt::ExternalMemoryHost]) {

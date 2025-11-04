@@ -5,11 +5,12 @@
 #include "components/download/internal/background_service/controller_impl.h"
 
 #include <inttypes.h>
+
 #include <algorithm>
+#include <optional>
 #include <utility>
 
 #include "base/functional/bind.h"
-#include "base/functional/callback_helpers.h"
 #include "base/strings/stringprintf.h"
 #include "base/task/single_thread_task_runner.h"
 #include "base/time/time.h"
@@ -33,7 +34,7 @@
 #include "components/download/public/background_service/navigation_monitor.h"
 #include "net/traffic_annotation/network_traffic_annotation.h"
 #include "services/network/public/cpp/resource_request_body.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
+#include "third_party/abseil-cpp/absl/cleanup/cleanup.h"
 
 namespace download {
 namespace {
@@ -76,7 +77,7 @@ Client::FailureReason FailureReasonFromCompletionType(CompletionType type) {
     case CompletionType::CANCEL:
       return Client::FailureReason::CANCELLED;
     default:
-      NOTREACHED();
+      NOTREACHED_IN_MIGRATION();
   }
 
   return Client::FailureReason::UNKNOWN;
@@ -447,7 +448,7 @@ void ControllerImpl::HandleTaskFinished(DownloadTaskType task_type,
     case DownloadTaskType::DOWNLOAD_AUTO_RESUMPTION_UNMETERED_TASK:
     case DownloadTaskType::DOWNLOAD_AUTO_RESUMPTION_ANY_NETWORK_TASK:
     case DownloadTaskType::DOWNLOAD_LATER_TASK:
-      NOTREACHED();
+      NOTREACHED_IN_MIGRATION();
   }
 }
 
@@ -656,15 +657,15 @@ LogSource::EntryDetailsList ControllerImpl::GetServiceDownloads() {
   return list;
 }
 
-absl::optional<LogSource::EntryDetails> ControllerImpl::GetServiceDownload(
+std::optional<LogSource::EntryDetails> ControllerImpl::GetServiceDownload(
     const std::string& guid) {
   if (controller_state_ != State::READY)
-    return absl::nullopt;
+    return std::nullopt;
 
   auto* entry = model_->Get(guid);
   auto driver_entry = driver_->Find(guid);
 
-  return absl::optional<LogSource::EntryDetails>(
+  return std::optional<LogSource::EntryDetails>(
       std::make_pair(entry, driver_entry));
 }
 
@@ -698,8 +699,9 @@ void ControllerImpl::AttemptToFinalizeSetup() {
          controller_state_ == State::RECOVERING);
 
   // Always notify the LogSink no matter what path this function takes.
-  base::ScopedClosureRunner state_notifier(base::BindOnce(
-      &LogSink::OnServiceStatusChanged, base::Unretained(log_sink_)));
+  absl::Cleanup state_notifier = [this] {
+    log_sink_->OnServiceStatusChanged();
+  };
 
   if (!startup_status_.Complete())
     return;
@@ -804,7 +806,7 @@ void ControllerImpl::CleanupUnknownFiles() {
   auto entries = model_->PeekEntries();
   std::vector<DriverEntry> driver_entries;
   for (auto* entry : entries) {
-    absl::optional<DriverEntry> driver_entry = driver_->Find(entry->guid);
+    std::optional<DriverEntry> driver_entry = driver_->Find(entry->guid);
     if (driver_entry.has_value())
       driver_entries.push_back(driver_entry.value());
   }
@@ -821,7 +823,7 @@ void ControllerImpl::ResolveInitialRequestStates() {
     // Pull the initial Entry::State and DriverEntry::State.
     Entry::State state = entry->state;
     auto driver_entry = driver_->Find(entry->guid);
-    absl::optional<DriverEntry::State> driver_state;
+    std::optional<DriverEntry::State> driver_state;
     if (driver_entry.has_value()) {
       DCHECK_NE(DriverEntry::State::UNKNOWN, driver_entry->state);
       driver_state = driver_entry->state;
@@ -886,13 +888,13 @@ void ControllerImpl::ResolveInitialRequestStates() {
             new_state = Entry::State::COMPLETE;
             break;
           default:
-            NOTREACHED();
+            NOTREACHED_IN_MIGRATION();
             break;
         }
         break;
       }
       default:
-        NOTREACHED();
+        NOTREACHED_IN_MIGRATION();
         break;
     }
 
@@ -936,7 +938,7 @@ void ControllerImpl::ResolveInitialRequestStates() {
         }
         break;
       case Entry::State::COUNT:
-        NOTREACHED();
+        NOTREACHED_IN_MIGRATION();
         break;
     }
   }
@@ -964,7 +966,7 @@ void ControllerImpl::UpdateDriverState(Entry* entry) {
     return;
   }
 
-  absl::optional<DriverEntry> driver_entry = driver_->Find(entry->guid);
+  std::optional<DriverEntry> driver_entry = driver_->Find(entry->guid);
 
   // Check if the DriverEntry is in a finished state already.  If so we need to
   // clean up our Entry and finish the download.
@@ -1369,7 +1371,7 @@ bool ControllerImpl::ShouldBlockDownloadOnNavigation(Entry* entry) {
   bool pausable_priority =
       entry->scheduling_params.priority <= SchedulingParams::Priority::NORMAL;
 
-  absl::optional<DriverEntry> driver_entry = driver_->Find(entry->guid);
+  std::optional<DriverEntry> driver_entry = driver_->Find(entry->guid);
   bool new_download = !driver_entry.has_value();
   bool resumable_download =
       driver_entry.has_value() && driver_entry->can_resume;

@@ -9,6 +9,7 @@
 #include <stdint.h>
 
 #include <memory>
+#include <optional>
 #include <set>
 #include <string>
 #include <utility>
@@ -19,7 +20,6 @@
 #include "base/timer/timer.h"
 #include "build/build_config.h"
 #include "build/chromeos_buildflags.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "third_party/skia/include/core/SkColor.h"
 #include "ui/base/ime/text_edit_commands.h"
 #include "ui/base/ime/text_input_client.h"
@@ -44,6 +44,7 @@
 #include "ui/views/selection_controller_delegate.h"
 #include "ui/views/touchui/touch_selection_controller.h"
 #include "ui/views/view.h"
+#include "ui/views/view_observer.h"
 #include "ui/views/word_lookup_client.h"
 
 #if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS)
@@ -74,7 +75,8 @@ class VIEWS_EXPORT Textfield : public View,
                                public WordLookupClient,
                                public SelectionControllerDelegate,
                                public ui::TouchEditable,
-                               public ui::TextInputClient {
+                               public ui::TextInputClient,
+                               public views::ViewObserver {
   METADATA_HEADER(Textfield, View)
 
  public:
@@ -207,6 +209,11 @@ class VIEWS_EXPORT Textfield : public View,
   SkColor GetBackgroundColor() const;
   void SetBackgroundColor(SkColor color);
 
+  // Getter/Setter methods for `is_background_enabled_` which controls
+  // whether a background is drawn for this view.
+  bool GetBackgroundEnabled() const;
+  void SetBackgroundEnabled(bool enabled);
+
   // Gets/sets the selection text color to be used when painting the Textfield.
   SkColor GetSelectionTextColor() const;
   void SetSelectionTextColor(SkColor color);
@@ -309,7 +316,7 @@ class VIEWS_EXPORT Textfield : public View,
   // Set extra spacing placed between glyphs; used for obscured text styling.
   void SetObscuredGlyphSpacing(int spacing);
 
-  absl::optional<size_t> GetPasswordCharRevealIndex() const {
+  std::optional<size_t> GetPasswordCharRevealIndex() const {
     return password_char_reveal_index_;
   }
 
@@ -319,7 +326,7 @@ class VIEWS_EXPORT Textfield : public View,
   // updating the cursor position and visibility.
   void FitToLocalBounds();
 
-  // Getter/Setter methods for |use_default_border_|.
+  // Getter/Setter methods for `use_default_border_`.
   bool GetUseDefaultBorder() const;
   void SetUseDefaultBorder(bool use_default_border);
 
@@ -328,7 +335,8 @@ class VIEWS_EXPORT Textfield : public View,
 
   // View overrides:
   int GetBaseline() const override;
-  gfx::Size CalculatePreferredSize() const override;
+  gfx::Size CalculatePreferredSize(
+      const SizeBounds& available_size) const override;
   gfx::Size GetMinimumSize() const override;
   void SetBorder(std::unique_ptr<Border> b) override;
   ui::Cursor GetCursor(const ui::MouseEvent& event) override;
@@ -413,6 +421,7 @@ class VIEWS_EXPORT Textfield : public View,
   void ExecuteCommand(int command_id, int event_flags) override;
 
   // ui::TextInputClient overrides:
+  base::WeakPtr<ui::TextInputClient> AsWeakPtr() override;
   void SetCompositionText(const ui::CompositionText& composition) override;
   size_t ConfirmCompositionText(bool keep_selection) override;
   void ClearCompositionText() override;
@@ -470,8 +479,8 @@ class VIEWS_EXPORT Textfield : public View,
 
 #if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_CHROMEOS)
   void GetActiveTextInputControlLayoutBounds(
-      absl::optional<gfx::Rect>* control_bounds,
-      absl::optional<gfx::Rect>* selection_bounds) override;
+      std::optional<gfx::Rect>* control_bounds,
+      std::optional<gfx::Rect>* selection_bounds) override;
 #endif
 
 #if BUILDFLAG(IS_WIN)
@@ -480,6 +489,9 @@ class VIEWS_EXPORT Textfield : public View,
       const std::u16string& active_composition_text,
       bool is_composition_committed) override;
 #endif
+
+  // ViewObserver overrides:
+  void OnViewFocused(views::View* observed_view) override;
 
   [[nodiscard]] base::CallbackListSubscription AddTextChangedCallback(
       views::PropertyChangedCallback callback);
@@ -535,11 +547,24 @@ class VIEWS_EXPORT Textfield : public View,
   // Get the default command for a given key |event|.
   virtual ui::TextEditCommand GetCommandForKeyEvent(const ui::KeyEvent& event);
 
+#if BUILDFLAG(SUPPORTS_AX_TEXT_OFFSETS)
+  // Called when the accessible text offsets for the textfield need to be
+  // recomputed on the next pass.
+  virtual void SetNeedsAccessibleTextOffsetsUpdate();
+#endif  // BUILDFLAG(SUPPORTS_AX_TEXT_OFFSETS)
+
   // Update the cursor position in the text field.
   void UpdateCursorViewPosition();
 
   // A callback function to periodically update the cursor node_data.
   void UpdateCursorVisibility();
+
+  // Returns true if a context menu for this view is showing.
+  bool IsMenuShowing() const;
+
+  virtual void UpdateAccessibleTextSelection() {}
+
+  void AddedToWidget() override;
 
  private:
   friend class TextfieldTestApi;
@@ -588,7 +613,13 @@ class VIEWS_EXPORT Textfield : public View,
   void UpdateAfterChange(
       TextChangeType text_change_type,
       bool cursor_changed,
-      absl::optional<bool> notify_caret_bounds_changed = absl::nullopt);
+      std::optional<bool> notify_caret_bounds_changed = std::nullopt);
+
+  virtual void UpdateAccessibilityTextDirection();
+
+  // Subclass OmniboxViewViews is overriding this method to update the
+  // accessible value.
+  virtual void UpdateAccessibleValue();
 
   // Updates cursor visibility and blinks the cursor if needed.
   void ShowCursor();
@@ -632,7 +663,7 @@ class VIEWS_EXPORT Textfield : public View,
   // Reveals the password character at |index| for a set duration.
   // If |index| is nullopt, the existing revealed character will be reset.
   // |duration| is the time to remain the password char to be visible.
-  void RevealPasswordChar(absl::optional<size_t> index,
+  void RevealPasswordChar(std::optional<size_t> index,
                           base::TimeDelta duration);
 
   void CreateTouchSelectionControllerAndNotifyIt();
@@ -689,6 +720,8 @@ class VIEWS_EXPORT Textfield : public View,
 
   void StopSelectionDragging();
 
+  void UpdateAccessibleDefaultActionVerb();
+
 #if BUILDFLAG(SUPPORTS_AX_TEXT_OFFSETS)
   // Calculate widths for each grapheme and word starts and ends. Used for
   // accessibility. Currently only on Windows when UIA is enabled.
@@ -699,7 +732,7 @@ class VIEWS_EXPORT Textfield : public View,
   std::unique_ptr<TextfieldModel> model_;
 
   // This is the current listener for events from this Textfield.
-  raw_ptr<TextfieldController, DanglingUntriaged> controller_ = nullptr;
+  raw_ptr<TextfieldController> controller_ = nullptr;
 
   // An edit command to execute on the next key event. When set to a valid
   // value, the key event is still passed to |controller_|, but otherwise
@@ -725,10 +758,10 @@ class VIEWS_EXPORT Textfield : public View,
 
   // Colors which override default system colors.
   // TODO(tluk): These should be updated to be ColorIds instead of SkColors.
-  absl::optional<SkColor> text_color_;
-  absl::optional<SkColor> background_color_;
-  absl::optional<SkColor> selection_text_color_;
-  absl::optional<SkColor> selection_background_color_;
+  std::optional<SkColor> text_color_;
+  std::optional<SkColor> background_color_;
+  std::optional<SkColor> selection_text_color_;
+  std::optional<SkColor> selection_background_color_;
 
   // Text to display when empty.
   std::u16string placeholder_text_;
@@ -737,14 +770,14 @@ class VIEWS_EXPORT Textfield : public View,
   // TODO(newcomer): Use NativeTheme to define different default placeholder
   // text colors for chrome/CrOS when harmony is enabled by default
   // (https://crbug.com/803279).
-  absl::optional<SkColor> placeholder_text_color_;
+  std::optional<SkColor> placeholder_text_color_;
 
   // The draw flags specified for |placeholder_text_|.
   int placeholder_text_draw_flags_;
 
   // The font used for the placeholder text. If this value is null, the
   // placeholder text uses the same font list as the underlying RenderText.
-  absl::optional<gfx::FontList> placeholder_font_list_;
+  std::optional<gfx::FontList> placeholder_font_list_;
 
   // True when the contents are deemed unacceptable and should be indicated as
   // such.
@@ -806,7 +839,7 @@ class VIEWS_EXPORT Textfield : public View,
       SelectionDraggingState::kNone;
 
   // Tracks the type of the current or pending selection drag gesture.
-  absl::optional<ui::TouchSelectionDragType> selection_drag_type_;
+  std::optional<ui::TouchSelectionDragType> selection_drag_type_;
 
   // The offset applied to the touch drag location when determining selection
   // updates.
@@ -844,12 +877,15 @@ class VIEWS_EXPORT Textfield : public View,
   bool show_rejection_ui_if_any_ = false;
 
   // Whether the text should be used to improve typing suggestions.
-  absl::optional<bool> should_do_learning_;
+  std::optional<bool> should_do_learning_;
 
 #if BUILDFLAG(SUPPORTS_AX_TEXT_OFFSETS)
   // The string used to compute the text offsets for accessibility. This is used
   // to determine if the offsets need to be recomputed.
   std::u16string ax_value_used_to_compute_offsets_;
+
+  // Whether the last computed text offsets are still valid.
+  bool needs_ax_text_offsets_update_;
 #endif  // BUILDFLAG(SUPPORTS_AX_TEXT_OFFSETS)
 
   // Context menu related members.
@@ -870,7 +906,7 @@ class VIEWS_EXPORT Textfield : public View,
       ui::TextInputClient::FOCUS_REASON_NONE;
 
   // The password char reveal index, for testing only.
-  absl::optional<size_t> password_char_reveal_index_;
+  std::optional<size_t> password_char_reveal_index_;
 
   // Extra insets, useful to make room for a button for example.
   gfx::Insets extra_insets_ = gfx::Insets();
@@ -884,13 +920,17 @@ class VIEWS_EXPORT Textfield : public View,
   // border.
   bool use_default_border_ = true;
 
+  // Flag to set whether a background is created for this view.
+  bool is_background_enabled_ = true;
+
+  bool is_processing_focus_ = false;
+
   // Holds the subscription object for the enabled changed callback.
   base::CallbackListSubscription enabled_changed_subscription_ =
       AddEnabledChangedCallback(
           base::BindRepeating(&Textfield::OnEnabledChanged,
                               base::Unretained(this)));
 
-  // Used to bind callback functions to this object.
   base::WeakPtrFactory<Textfield> weak_ptr_factory_{this};
 
   // Used to bind drop callback functions to this object.
@@ -899,9 +939,11 @@ class VIEWS_EXPORT Textfield : public View,
 
 BEGIN_VIEW_BUILDER(VIEWS_EXPORT, Textfield, View)
 VIEW_BUILDER_PROPERTY(SkColor, BackgroundColor)
+VIEW_BUILDER_PROPERTY(bool, BackgroundEnabled)
 VIEW_BUILDER_PROPERTY(TextfieldController*, Controller)
 VIEW_BUILDER_PROPERTY(bool, CursorEnabled)
 VIEW_BUILDER_PROPERTY(int, DefaultWidthInChars)
+VIEW_BUILDER_PROPERTY(gfx::FontList, FontList)
 VIEW_BUILDER_PROPERTY(gfx::HorizontalAlignment, HorizontalAlignment)
 VIEW_BUILDER_PROPERTY(bool, Invalid)
 VIEW_BUILDER_PROPERTY(int, MinimumWidthInChars)

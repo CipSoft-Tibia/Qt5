@@ -11,11 +11,23 @@ qhp.QtQmlModels.file                = qtqmlmodels.qhp
 qhp.QtQmlModels.namespace           = org.qt-project.qtqmlmodels.$QT_VERSION_TAG
 qhp.QtQmlModels.virtualFolder       = qtqmlmodels
 qhp.QtQmlModels.indexRoot           =
+qhp.QtQmlModels.indexTitle          = Qt Qml Models
 
-qhp.QtQmlModels.title      = QML Types
-qhp.QtQmlModels.indexTitle = Qt QML Models QML Types
-qhp.QtQmlModels.selectors  = qmlclass
-qhp.QtQmlModels.sortPages  = true
+qhp.QtQmlModels.subprojects = manual qmltypes qmllabtypes
+
+qhp.QtQmlModels.subprojects.manual.title          = QModelIndex and related classes
+qhp.QtQmlModels.subprojects.manual.indexTitle     = QModelIndex and related Classes in QML
+qhp.QtQmlModels.subprojects.manual.selectors      = group:none
+
+qhp.QtQmlModels.subprojects.qmltypes.title          = QML Types
+qhp.QtQmlModels.subprojects.qmltypes.indexTitle     = Qt QML Models QML Types
+qhp.QtQmlModels.subprojects.qmltypes.selectors      = qmlmodule:QtQml.Models
+qhp.QtQmlModels.subprojects.qmltypes.sortPages      = true
+
+qhp.QtQmlModels.subprojects.qmllabtypes.title      = Experimental QML Types
+qhp.QtQmlModels.subprojects.qmllabtypes.indexTitle = Qt QML Models experimental QML Types
+qhp.QtQmlModels.subprojects.qmllabtypes.selectors  = qmlmodule:Qt.labs.qmlmodels
+qhp.QtQmlModels.subprojects.qmllabtypes.sortPages  = true
 
 tagfile      = qtqmlmodels.tags
 

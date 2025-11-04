@@ -1,19 +1,13 @@
 // Copyright (C) 2021 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
-#if defined(WINVER) && WINVER < _WIN32_WINNT_WIN10
-#  undef WINVER
-#endif
-#if !defined(WINVER)
-#  define WINVER _WIN32_WINNT_WIN10  // Enables newer audio formats.
-#endif
+#include <QtCore/qt_windows.h>
+static_assert(WINVER >= _WIN32_WINNT_WIN10, "Win10 required for newer audio formats.");
 
 #include "qwindowsmultimediautils_p.h"
 
-#include <initguid.h>
 #include <mfapi.h>
 #include <mfidl.h>
-#include <qwindowsmfdefs_p.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -174,13 +168,13 @@ GUID QWindowsMultimediaUtils::containerForVideoFileFormat(QMediaFormat::FileForm
 {
     switch (format) {
     case QMediaFormat::FileFormat::MPEG4:
-        return QMM_MFTranscodeContainerType_MPEG4;
+        return MFTranscodeContainerType_MPEG4;
     case QMediaFormat::FileFormat::WMV:
-        return QMM_MFTranscodeContainerType_ASF;
+        return MFTranscodeContainerType_ASF;
     case QMediaFormat::FileFormat::AVI:
-        return QMM_MFTranscodeContainerType_AVI;
+        return MFTranscodeContainerType_AVI;
     default:
-        return QMM_MFTranscodeContainerType_MPEG4;
+        return MFTranscodeContainerType_MPEG4;
     }
 }
 
@@ -188,19 +182,19 @@ GUID QWindowsMultimediaUtils::containerForAudioFileFormat(QMediaFormat::FileForm
 {
     switch (format) {
     case QMediaFormat::FileFormat::MP3:
-        return QMM_MFTranscodeContainerType_MP3;
+        return MFTranscodeContainerType_MP3;
     case QMediaFormat::FileFormat::AAC:
-        return QMM_MFTranscodeContainerType_ADTS;
+        return MFTranscodeContainerType_ADTS;
     case QMediaFormat::FileFormat::Mpeg4Audio:
-        return QMM_MFTranscodeContainerType_MPEG4;
+        return MFTranscodeContainerType_MPEG4;
     case QMediaFormat::FileFormat::WMA:
-        return QMM_MFTranscodeContainerType_ASF;
+        return MFTranscodeContainerType_ASF;
     case QMediaFormat::FileFormat::FLAC:
-        return QMM_MFTranscodeContainerType_FLAC;
+        return MFTranscodeContainerType_FLAC;
     case QMediaFormat::FileFormat::Wave:
-        return QMM_MFTranscodeContainerType_WAVE;
+        return MFTranscodeContainerType_WAVE;
     default:
-        return QMM_MFTranscodeContainerType_MPEG4;
+        return MFTranscodeContainerType_MPEG4;
     }
 }
 

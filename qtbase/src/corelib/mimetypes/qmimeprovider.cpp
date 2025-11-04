@@ -2,6 +2,7 @@
 // Copyright (C) 2018 Klaralvdalens Datakonsult AB, a KDAB Group company, info@kdab.com, author David Faure <david.faure@kdab.com>
 // Copyright (C) 2019 Intel Corporation.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:data-parser
 
 #include "qmimeprovider_p.h"
 
@@ -275,6 +276,8 @@ bool QMimeBinaryProvider::matchSuffixTree(QMimeGlobMatchResult &result,
                                           qsizetype charPos, bool caseSensitiveCheck)
 {
     QChar fileChar = fileName[charPos];
+    if (fileChar.isNull())
+        return false;
     int min = 0;
     int max = numEntries - 1;
     while (min <= max) {
@@ -458,8 +461,8 @@ void QMimeBinaryProvider::loadMimeTypeList()
         // So we have to parse the plain-text files called "types".
         QFile file(m_directory + QStringView(u"/types"));
         if (file.open(QIODevice::ReadOnly)) {
-            while (!file.atEnd()) {
-                const QByteArray line = file.readLine();
+            QByteArray line;
+            while (file.readLineInto(&line)) {
                 auto lineView = QByteArrayView(line);
                 if (lineView.endsWith('\n'))
                     lineView.chop(1);
@@ -717,10 +720,24 @@ void QMimeXMLProvider::findByMagic(const QByteArray &data, QMimeMagicResult &res
     for (const QMimeMagicRuleMatcher &matcher : std::as_const(m_magicMatchers)) {
         if (matcher.matches(data)) {
             const int priority = matcher.priority();
-            if (priority > result.accuracy) {
-                result.accuracy = priority;
-                result.candidate = matcher.mimetype();
+            if (priority < result.accuracy)
+                continue;
+            if (priority == result.accuracy) {
+                if (m_db->inherits(result.candidate, matcher.mimetype()))
+                    continue;
+
+                if (!m_db->inherits(matcher.mimetype(), result.candidate)) {
+                    // Two or more magic rules matching, both with the same priority but not
+                    // connected with one another should not happen:
+                    qWarning("QMimeXMLProvider: MimeType is ambiguous between %ls and %ls",
+                             qUtf16Printable(result.candidate),
+                             qUtf16Printable(matcher.mimetype()));
+                    continue;
+                }
             }
+
+            result.accuracy = priority;
+            result.candidate = matcher.mimetype();
         }
     }
 }
@@ -729,11 +746,9 @@ void QMimeXMLProvider::ensureLoaded()
 {
     QStringList allFiles;
     const QString packageDir = m_directory + QStringView(u"/packages");
-    QDir dir(packageDir);
-    const QStringList files = dir.entryList(QDir::Files | QDir::NoDotAndDotDot);
-    allFiles.reserve(files.size());
-    for (const QString &xmlFile : files)
-        allFiles.append(packageDir + u'/' + xmlFile);
+    for (const auto &entry : QDirListing(packageDir, QDirListing::IteratorFlag::FilesOnly
+                                         | QDirListing::IteratorFlag::ResolveSymlinks))
+        allFiles.emplace_back(packageDir + u'/' + entry.fileName());
 
     if (m_allFiles == allFiles)
         return;

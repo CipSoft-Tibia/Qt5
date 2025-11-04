@@ -2,11 +2,17 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#ifdef UNSAFE_BUFFERS_BUILD
+// TODO(crbug.com/351564777): Remove this and convert code to safer constructs.
+#pragma allow_unsafe_buffers
+#endif
+
 #include "third_party/blink/renderer/core/timing/time_clamper.h"
 
-#include "testing/gtest/include/gtest/gtest.h"
-
 #include <cmath>
+
+#include "testing/gtest/include/gtest/gtest.h"
+#include "third_party/blink/renderer/platform/testing/task_environment.h"
 
 namespace blink {
 namespace {
@@ -14,7 +20,12 @@ const int64_t kIntervalInMicroseconds =
     TimeClamper::kFineResolutionMicroseconds;
 }
 
-TEST(TimeClamperTest, TimeStampsAreNonNegative) {
+class TimeClamperTest : public testing::Test {
+ protected:
+  test::TaskEnvironment task_environment_;
+};
+
+TEST_F(TimeClamperTest, TimeStampsAreNonNegative) {
   TimeClamper clamper;
   EXPECT_GE(
       clamper.ClampTimeResolution(base::TimeDelta(), true).InMicroseconds(),
@@ -28,7 +39,7 @@ TEST(TimeClamperTest, TimeStampsAreNonNegative) {
       0.f);
 }
 
-TEST(TimeClamperTest, TimeStampsIncreaseByFixedAmount) {
+TEST_F(TimeClamperTest, TimeStampsIncreaseByFixedAmount) {
   TimeClamper clamper;
   int64_t prev =
       clamper.ClampTimeResolution(base::TimeDelta(), true).InMicroseconds();
@@ -47,7 +58,7 @@ TEST(TimeClamperTest, TimeStampsIncreaseByFixedAmount) {
   }
 }
 
-TEST(TimeClamperTest, ClampingIsDeterministic) {
+TEST_F(TimeClamperTest, ClampingIsDeterministic) {
   TimeClamper clamper;
   for (int64_t time_microseconds = 0;
        time_microseconds < kIntervalInMicroseconds * 100;
@@ -62,7 +73,7 @@ TEST(TimeClamperTest, ClampingIsDeterministic) {
   }
 }
 
-TEST(TimeClamperTest, ClampingNegativeNumbersIsConsistent) {
+TEST_F(TimeClamperTest, ClampingNegativeNumbersIsConsistent) {
   TimeClamper clamper;
   for (int64_t time_microseconds = -kIntervalInMicroseconds * 100;
        time_microseconds < kIntervalInMicroseconds * 100;
@@ -77,7 +88,7 @@ TEST(TimeClamperTest, ClampingNegativeNumbersIsConsistent) {
   }
 }
 
-TEST(TimeClamperTest, ClampingIsPerInstance) {
+TEST_F(TimeClamperTest, ClampingIsPerInstance) {
   TimeClamper clamper1;
   TimeClamper clamper2;
   int64_t time_microseconds = kIntervalInMicroseconds / 2;
@@ -143,7 +154,7 @@ void UniformityTest(int64_t time_microseconds,
   EXPECT_LT(chi_squared, 24.322);
 }
 
-TEST(TimeClamperTest, ClampingIsUniform) {
+TEST_F(TimeClamperTest, ClampingIsUniform) {
   UniformityTest(299792458238, 5, true);
   UniformityTest(29979245823800, 5, true);
   UniformityTest(1616533323846260, 5, true);

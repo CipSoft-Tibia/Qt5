@@ -2,63 +2,114 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#ifdef UNSAFE_BUFFERS_BUILD
+// TODO(crbug.com/351564777): Remove this and convert code to safer constructs.
+#pragma allow_unsafe_buffers
+#endif
+
 #include "third_party/blink/renderer/modules/canvas/canvas2d/canvas_rendering_context_2d.h"
 
-#include <memory>
+#include <stddef.h>
+#include <stdint.h>
 
+#include <array>
+#include <memory>
+#include <optional>
+#include <unordered_set>
+#include <utility>
+
+#include "base/check.h"
+#include "base/check_op.h"
 #include "base/functional/callback.h"
-#include "base/memory/raw_ptr.h"
+#include "base/location.h"
+#include "base/memory/weak_ptr.h"
+#include "base/metrics/field_trial_params.h"
+#include "base/metrics/histogram_base.h"
+#include "base/notreached.h"
+#include "base/pending_task.h"
+#include "base/strings/string_number_conversions.h"
 #include "base/test/metrics/histogram_tester.h"
 #include "base/test/scoped_feature_list.h"
-#include "build/build_config.h"
+#include "base/time/time.h"
+#include "cc/paint/paint_flags.h"
+#include "cc/paint/paint_image.h"
+#include "cc/paint/paint_op.h"
 #include "cc/test/paint_op_matchers.h"
+#include "components/viz/common/resources/release_callback.h"
+#include "components/viz/common/resources/transferable_resource.h"
 #include "components/viz/test/test_context_provider.h"
 #include "components/viz/test/test_gles2_interface.h"
+#include "gpu/command_buffer/client/test_shared_image_interface.h"
+#include "gpu/command_buffer/common/shared_image_capabilities.h"
+#include "media/base/video_frame.h"
+#include "media/base/video_types.h"
 #include "testing/gmock/include/gmock/gmock.h"
 #include "testing/gtest/include/gtest/gtest.h"
 #include "third_party/blink/public/common/features.h"
+#include "third_party/blink/public/common/metrics/document_update_reason.h"
+#include "third_party/blink/public/mojom/page/page_visibility_state.mojom-blink.h"
 #include "third_party/blink/public/platform/scheduler/test/renderer_scheduler_test_support.h"
-#include "third_party/blink/renderer/bindings/core/v8/to_v8_traits.h"
 #include "third_party/blink/renderer/bindings/core/v8/v8_binding_for_core.h"
 #include "third_party/blink/renderer/bindings/core/v8/v8_binding_for_testing.h"
 #include "third_party/blink/renderer/bindings/core/v8/v8_image_bitmap_options.h"
-#include "third_party/blink/renderer/bindings/core/v8/v8_union_float32array_uint16array_uint8clampedarray.h"
+#include "third_party/blink/renderer/bindings/core/v8/v8_image_data_settings.h"
+#include "third_party/blink/renderer/bindings/core/v8/v8_typedefs.h"
+#include "third_party/blink/renderer/bindings/core/v8/v8_union_float32array_uint16array_uint8clampedarray.h"  // IWYU pragma: keep (https://github.com/clangd/clangd/issues/2043)
 #include "third_party/blink/renderer/bindings/modules/v8/v8_begin_layer_options.h"
+#include "third_party/blink/renderer/bindings/modules/v8/v8_canvas_rendering_context_2d_settings.h"
 #include "third_party/blink/renderer/bindings/modules/v8/v8_canvas_will_read_frequently.h"
+#include "third_party/blink/renderer/bindings/modules/v8/v8_typedefs.h"
 #include "third_party/blink/renderer/bindings/modules/v8/v8_union_canvasfilter_string.h"
 #include "third_party/blink/renderer/bindings/modules/v8/v8_union_cssimagevalue_htmlcanvaselement_htmlimageelement_htmlvideoelement_imagebitmap_offscreencanvas_svgimageelement_videoframe.h"
 #include "third_party/blink/renderer/core/dom/document.h"
+#include "third_party/blink/renderer/core/dom/element.h"
 #include "third_party/blink/renderer/core/frame/frame_test_helpers.h"
 #include "third_party/blink/renderer/core/frame/local_dom_window.h"
+#include "third_party/blink/renderer/core/frame/local_frame.h"
 #include "third_party/blink/renderer/core/frame/local_frame_view.h"
 #include "third_party/blink/renderer/core/frame/settings.h"
 #include "third_party/blink/renderer/core/frame/web_local_frame_impl.h"
 #include "third_party/blink/renderer/core/html/canvas/canvas_context_creation_attributes_core.h"
+#include "third_party/blink/renderer/core/html/canvas/canvas_image_source.h"
 #include "third_party/blink/renderer/core/html/canvas/html_canvas_element.h"
 #include "third_party/blink/renderer/core/html/canvas/image_data.h"
+#include "third_party/blink/renderer/core/html/canvas/recording_test_utils.h"
 #include "third_party/blink/renderer/core/html/html_image_element.h"
+#include "third_party/blink/renderer/core/html_names.h"
 #include "third_party/blink/renderer/core/imagebitmap/image_bitmap.h"
 #include "third_party/blink/renderer/core/layout/layout_box_model_object.h"
 #include "third_party/blink/renderer/core/loader/resource/image_resource_content.h"
+#include "third_party/blink/renderer/core/page/page.h"
 #include "third_party/blink/renderer/core/paint/paint_layer.h"
+#include "third_party/blink/renderer/core/typed_arrays/array_buffer_view_helpers.h"
+#include "third_party/blink/renderer/core/typed_arrays/dom_array_buffer_view.h"
+#include "third_party/blink/renderer/core/typed_arrays/dom_typed_array.h"
+#include "third_party/blink/renderer/modules/canvas/canvas2d/base_rendering_context_2d.h"
 #include "third_party/blink/renderer/modules/canvas/canvas2d/canvas_gradient.h"
-#include "third_party/blink/renderer/modules/canvas/canvas2d/canvas_pattern.h"
 #include "third_party/blink/renderer/modules/canvas/canvas2d/canvas_style_test_utils.h"
-#include "third_party/blink/renderer/modules/canvas/canvas2d/recording_test_utils.h"
 #include "third_party/blink/renderer/modules/webcodecs/video_frame.h"
-#include "third_party/blink/renderer/modules/webgl/webgl_rendering_context.h"
+#include "third_party/blink/renderer/platform/bindings/exception_state.h"
+#include "third_party/blink/renderer/platform/bindings/script_state.h"
 #include "third_party/blink/renderer/platform/graphics/canvas_2d_layer_bridge.h"
 #include "third_party/blink/renderer/platform/graphics/canvas_color_params.h"
+#include "third_party/blink/renderer/platform/graphics/canvas_resource.h"
+#include "third_party/blink/renderer/platform/graphics/canvas_resource_provider.h"
 #include "third_party/blink/renderer/platform/graphics/color_correction_test_utils.h"
 #include "third_party/blink/renderer/platform/graphics/gpu/shared_gpu_context.h"
 #include "third_party/blink/renderer/platform/graphics/graphics_types.h"
+#include "third_party/blink/renderer/platform/graphics/graphics_types_3d.h"
+#include "third_party/blink/renderer/platform/graphics/image.h"
+#include "third_party/blink/renderer/platform/graphics/image_orientation.h"
 #include "third_party/blink/renderer/platform/graphics/memory_managed_paint_recorder.h"
-#include "third_party/blink/renderer/platform/graphics/test/fake_canvas_resource_host.h"
 #include "third_party/blink/renderer/platform/graphics/test/gpu_memory_buffer_test_platform.h"
 #include "third_party/blink/renderer/platform/graphics/test/gpu_test_utils.h"
 #include "third_party/blink/renderer/platform/graphics/unaccelerated_static_bitmap_image.h"
 #include "third_party/blink/renderer/platform/heap/garbage_collected.h"
+#include "third_party/blink/renderer/platform/heap/member.h"
+#include "third_party/blink/renderer/platform/heap/persistent.h"
+#include "third_party/blink/renderer/platform/heap/thread_state.h"
 #include "third_party/blink/renderer/platform/loader/fetch/memory_cache.h"
+#include "third_party/blink/renderer/platform/loader/fetch/resource_status.h"
 #include "third_party/blink/renderer/platform/scheduler/public/main_thread_scheduler.h"
 #include "third_party/blink/renderer/platform/scheduler/public/thread_scheduler.h"
 #include "third_party/blink/renderer/platform/testing/paint_test_configurations.h"
@@ -66,15 +117,51 @@
 #include "third_party/blink/renderer/platform/testing/task_environment.h"
 #include "third_party/blink/renderer/platform/testing/testing_platform_support.h"
 #include "third_party/blink/renderer/platform/testing/unit_test_helpers.h"
-#include "third_party/blink/renderer/platform/testing/url_test_helpers.h"
+#include "third_party/blink/renderer/platform/wtf/casting.h"
+#include "third_party/blink/renderer/platform/wtf/forward.h"
 #include "third_party/blink/renderer/platform/wtf/functional.h"
 #include "third_party/blink/renderer/platform/wtf/shared_buffer.h"
+#include "third_party/blink/renderer/platform/wtf/text/atomic_string.h"
+#include "third_party/blink/renderer/platform/wtf/text/string_builder.h"
+#include "third_party/blink/renderer/platform/wtf/text/wtf_string.h"
+#include "third_party/blink/renderer/platform/wtf/vector.h"
+#include "third_party/skia/include/core/SkAlphaType.h"
+#include "third_party/skia/include/core/SkBitmap.h"
+#include "third_party/skia/include/core/SkCanvas.h"
+#include "third_party/skia/include/core/SkColor.h"
+#include "third_party/skia/include/core/SkColorType.h"
 #include "third_party/skia/include/core/SkImage.h"
+#include "third_party/skia/include/core/SkM44.h"
+#include "third_party/skia/include/core/SkPixmap.h"
+#include "third_party/skia/include/core/SkRect.h"
+#include "third_party/skia/include/core/SkRefCnt.h"
 #include "third_party/skia/include/core/SkSurface.h"
-#include "third_party/skia/modules/skcms/skcms.h"
+#include "ui/gfx/buffer_types.h"
+#include "ui/gfx/geometry/point_f.h"
+#include "ui/gfx/geometry/rect.h"
+#include "ui/gfx/geometry/size.h"
+#include "ui/gfx/geometry/size_f.h"
+#include "ui/gfx/skia_util.h"
 
+// Including "base/time/time.h" triggers a bug in IWYU:
+// https://github.com/include-what-you-use/include-what-you-use/issues/1122
+// IWYU pragma: no_include "base/numerics/clamped_math.h"
+
+// GoogleTest expectation macros trigger a bug in IWYU:
+// https://github.com/include-what-you-use/include-what-you-use/issues/1546
+// IWYU pragma: no_include <string>
+
+class GrDirectContext;
+
+namespace blink {
+class CanvasResourceHost;
+class ExecutionContext;
+}  // namespace blink
+
+using ::base::test::ScopedFeatureList;
+using ::blink_testing::ClearRectFlags;
+using ::blink_testing::FillFlags;
 using ::blink_testing::RecordedOpsAre;
-using ::blink_testing::RecordedOpsView;
 using ::cc::ClipRectOp;
 using ::cc::DrawColorOp;
 using ::cc::DrawImageRectOp;
@@ -83,6 +170,7 @@ using ::cc::DrawRectOp;
 using ::cc::PaintOpEq;
 using ::cc::PaintOpIs;
 using ::cc::RestoreOp;
+using ::cc::SaveLayerAlphaOp;
 using ::cc::SaveLayerOp;
 using ::cc::SaveOp;
 using ::cc::SetMatrixOp;
@@ -93,10 +181,17 @@ using ::testing::InSequence;
 using ::testing::Message;
 using ::testing::Mock;
 using ::testing::Optional;
+using ::testing::SaveArg;
 
 namespace blink {
 
 enum BitmapOpacity { kOpaqueBitmap, kTransparentBitmap };
+
+class AcceleratedCompositingTestPlatform
+    : public blink::TestingPlatformSupport {
+ public:
+  bool IsGpuCompositingDisabled() const override { return false; }
+};
 
 class FakeImageSource : public CanvasImageSource {
  public:
@@ -149,7 +244,7 @@ scoped_refptr<Image> FakeImageSource::GetSourceImageForCanvas(
 
 class CanvasRenderingContext2DTest : public ::testing::Test,
                                      public PaintTestConfigurations {
- protected:
+ public:
   CanvasRenderingContext2DTest();
   void SetUp() override;
   virtual bool AllowsAcceleration() { return false; }
@@ -159,8 +254,8 @@ class CanvasRenderingContext2DTest : public ::testing::Test,
   }
 
   HTMLCanvasElement& CanvasElement() const { return *canvas_element_; }
-  bool IsCanvasResourceHostSet(Canvas2DLayerBridge* bridge) {
-    return !!bridge->resource_host_;
+  cc::PaintCanvas& Canvas() {
+    return CanvasElement().ResourceProvider()->Canvas();
   }
   CanvasRenderingContext2D* Context2D() const {
     return static_cast<CanvasRenderingContext2D*>(
@@ -343,7 +438,7 @@ void CanvasRenderingContext2DTest::TearDown() {
 
   // Must be torn down after WebViewHelper since its destructor can create a
   // fresh context provider otherwise.
-  SharedGpuContext::ResetForTesting();
+  SharedGpuContext::Reset();
 
   // Prevent CanvasPerformanceMonitor state from leaking between tests.
   CanvasRenderingContext::GetCanvasPerformanceMonitor().ResetForTesting();
@@ -356,11 +451,11 @@ class FakeCanvasResourceProvider : public CanvasResourceProvider {
   FakeCanvasResourceProvider(const SkImageInfo& info,
                              RasterModeHint hint,
                              CanvasResourceHost* resource_host)
-      : CanvasResourceProvider(CanvasResourceProvider::kBitmap,
+      : CanvasResourceProvider(CanvasResourceProvider::kSharedImage,
                                info,
                                cc::PaintFlags::FilterQuality::kLow,
                                /*is_origin_top_left=*/false,
-                               /*context_provider_wrapper=*/nullptr,
+                               SharedGpuContext::ContextProviderWrapper(),
                                /*resource_dispatcher=*/nullptr,
                                resource_host),
         is_accelerated_(hint != RasterModeHint::kPreferCPU) {
@@ -373,9 +468,14 @@ class FakeCanvasResourceProvider : public CanvasResourceProvider {
   ~FakeCanvasResourceProvider() override = default;
   bool IsAccelerated() const override { return is_accelerated_; }
   scoped_refptr<CanvasResource> ProduceCanvasResource(FlushReason) override {
-    return scoped_refptr<CanvasResource>();
+    return scoped_refptr<CanvasResource>(CanvasResourceSharedImage::Create(
+        GetSkImageInfo(), SharedGpuContext::ContextProviderWrapper(),
+        CreateWeakPtr(), cc::PaintFlags::FilterQuality::kLow,
+        /*is_origin_top_left=*/true, IsAccelerated(),
+        gpu::SHARED_IMAGE_USAGE_DISPLAY_READ |
+            gpu::SHARED_IMAGE_USAGE_RASTER_WRITE));
   }
-  bool SupportsDirectCompositing() const override { return false; }
+  bool SupportsDirectCompositing() const override { return true; }
   bool IsValid() const override { return true; }
   sk_sp<SkSurface> CreateSkSurface() const override {
     return SkSurfaces::Raster(GetSkImageInfo());
@@ -420,17 +520,60 @@ testing::Matcher<base::HistogramTester> OverdrawOpAre(Args... args) {
       std::unordered_set<BaseRenderingContext2D::OverdrawOp>{args...});
 }
 
-cc::PaintFlags DrawRectFlags() {
-  cc::PaintFlags rect_flags;
-  rect_flags.setAntiAlias(true);
-  rect_flags.setFilterQuality(cc::PaintFlags::FilterQuality::kLow);
-  return rect_flags;
-}
+TEST_P(CanvasRenderingContext2DTest,
+       PrepareMailboxWhenContextIsLostWithFailedRestore) {
+  // Gpu compositing must be supported for this test to be able to create
+  // a CanvasResourceSharedBitmap instance.
+  ScopedTestingPlatformSupport<AcceleratedCompositingTestPlatform>
+      accelerated_compositing_scope;
 
-cc::PaintFlags ClearRectFlags() {
-  cc::PaintFlags clear_flags;
-  clear_flags.setBlendMode(SkBlendMode::kClear);
-  return clear_flags;
+  CreateContext(kNonOpaque);
+
+  // Do initial setup to ensure that CanvasResourceHost will check for the GPU
+  // context being lost as part of checking resource validity:
+
+  // * Install a CanvasResourceProvider that is accelerated and supports direct
+  //   compositing. The former is necessary to ensure that
+  //   CanvasResourceHost::IsResourceValid() checks for context loss, while the
+  //   latter is necessary for GetOrCreateCcLayerIfNeeded() to succeed.
+  gfx::Size size = CanvasElement().Size();
+  auto provider = std::make_unique<FakeCanvasResourceProvider>(
+      SkImageInfo::MakeN32Premul(size.width(), size.height()),
+      RasterModeHint::kPreferGPU, &CanvasElement());
+  CanvasElement().SetResourceProviderForTesting(
+      std::move(provider), std::make_unique<Canvas2DLayerBridge>(), size);
+
+  // * The host must also be in GPU compositing mode for IsResourceValid()
+  //   to check for context loss.
+  CanvasElement().SetPreferred2DRasterMode(RasterModeHint::kPreferGPU);
+
+  // * Finally, IsResourceValid() always returns true in the absence of a CC
+  //   layer.
+  EXPECT_TRUE(CanvasElement().GetOrCreateCcLayerIfNeeded());
+
+  // The resource should start off valid.
+  EXPECT_TRUE(CanvasElement().IsResourceValid());
+
+  viz::TransferableResource resource;
+  viz::ReleaseCallback release_callback;
+  EXPECT_TRUE(CanvasElement().PrepareTransferableResource(nullptr, &resource,
+                                                          &release_callback));
+
+  // Losing the context should result in the resource becoming invalid and the
+  // host being unable to produce a TransferableResource from it.
+  test_context_provider_->TestContextGL()->set_context_lost(true);
+  EXPECT_FALSE(CanvasElement().IsResourceValid());
+  EXPECT_FALSE(CanvasElement().PrepareTransferableResource(nullptr, &resource,
+                                                           &release_callback));
+
+  // Restoration of the context should fail because
+  // Platform::createSharedOffscreenGraphicsContext3DProvider() is stubbed in
+  // unit tests. This simulates what would happen when attempting to restore
+  // while the GPU process is down.
+  Context2D()->TryRestoreContextEvent(/*timer=*/nullptr);
+  EXPECT_FALSE(CanvasElement().IsResourceValid());
+  EXPECT_FALSE(CanvasElement().PrepareTransferableResource(nullptr, &resource,
+                                                           &release_callback));
 }
 
 TEST_P(CanvasRenderingContext2DTest, FillRect_FullCoverage) {
@@ -446,9 +589,9 @@ TEST_P(CanvasRenderingContext2DTest, FillRect_FullCoverage) {
   EXPECT_THAT(
       Context2D()->FlushCanvas(FlushReason::kTesting),
       Optional(RecordedOpsAre(
-          PaintOpEq<DrawRectOp>(SkRect::MakeXYWH(3, 3, 1, 1), DrawRectFlags()),
+          PaintOpEq<DrawRectOp>(SkRect::MakeXYWH(3, 3, 1, 1), FillFlags()),
           PaintOpEq<DrawRectOp>(SkRect::MakeXYWH(-1, -1, 12, 12),
-                                DrawRectFlags()))));
+                                FillFlags()))));
   EXPECT_THAT(histogram_tester, OverdrawOpAre());
 }
 
@@ -465,7 +608,7 @@ TEST_P(CanvasRenderingContext2DTest, DisableOverdrawOptimization) {
   EXPECT_THAT(
       Context2D()->FlushCanvas(FlushReason::kTesting),
       Optional(RecordedOpsAre(
-          PaintOpEq<DrawRectOp>(SkRect::MakeXYWH(3, 3, 1, 1), DrawRectFlags()),
+          PaintOpEq<DrawRectOp>(SkRect::MakeXYWH(3, 3, 1, 1), FillFlags()),
           PaintOpEq<DrawRectOp>(SkRect::MakeXYWH(0, 0, 10, 10),
                                 ClearRectFlags()))));
   EXPECT_THAT(histogram_tester, OverdrawOpAre());
@@ -498,9 +641,75 @@ TEST_P(CanvasRenderingContext2DTest, ClearRect_PartialCoverage) {
   EXPECT_THAT(
       Context2D()->FlushCanvas(FlushReason::kTesting),
       Optional(RecordedOpsAre(
-          PaintOpEq<DrawRectOp>(SkRect::MakeXYWH(3, 3, 1, 1), DrawRectFlags()),
+          PaintOpEq<DrawRectOp>(SkRect::MakeXYWH(3, 3, 1, 1), FillFlags()),
           PaintOpEq<DrawRectOp>(SkRect::MakeXYWH(0, 0, 9, 9),
                                 ClearRectFlags()))));
+  EXPECT_THAT(histogram_tester, OverdrawOpAre());
+}
+
+TEST_P(CanvasRenderingContext2DTest, ClearRect_InsideLayer) {
+  // Overdraw is not currently implemented when layers are opened.
+  ScopedCanvas2dLayersForTest layer_feature(/*enabled=*/true);
+  base::HistogramTester histogram_tester;
+  CreateContext(kNonOpaque);
+  CanvasElement().SetSize(gfx::Size(10, 10));
+
+  NonThrowableExceptionState no_exception;
+  Context2D()->fillRect(1, 1, 1, 1);
+  Context2D()->beginLayer(GetScriptState(), BeginLayerOptions::Create(),
+                          no_exception);
+  Context2D()->fillRect(2, 2, 2, 2);
+  Context2D()->clearRect(0, 0, 10, 10);
+  Context2D()->fillRect(3, 3, 3, 3);
+  Context2D()->endLayer(no_exception);
+
+  EXPECT_THAT(
+      Context2D()->FlushCanvas(FlushReason::kTesting),
+      Optional(RecordedOpsAre(
+          PaintOpEq<DrawRectOp>(SkRect::MakeXYWH(1, 1, 1, 1), FillFlags()),
+          DrawRecordOpEq(
+              PaintOpEq<SaveLayerAlphaOp>(1.0f),
+              PaintOpEq<DrawRectOp>(SkRect::MakeXYWH(2, 2, 2, 2), FillFlags()),
+              PaintOpEq<DrawRectOp>(SkRect::MakeXYWH(0, 0, 10, 10),
+                                    ClearRectFlags()),
+              PaintOpEq<DrawRectOp>(SkRect::MakeXYWH(3, 3, 3, 3), FillFlags()),
+              PaintOpEq<RestoreOp>()))));
+  EXPECT_THAT(histogram_tester, OverdrawOpAre());
+}
+
+TEST_P(CanvasRenderingContext2DTest, ClearRect_InsideNestedLayer) {
+  // Overdraw is not currently implemented when layers are opened.
+  ScopedCanvas2dLayersForTest layer_feature(/*enabled=*/true);
+  base::HistogramTester histogram_tester;
+  CreateContext(kNonOpaque);
+  CanvasElement().SetSize(gfx::Size(10, 10));
+
+  NonThrowableExceptionState no_exception;
+  Context2D()->fillRect(1, 1, 1, 1);
+  Context2D()->beginLayer(GetScriptState(), BeginLayerOptions::Create(),
+                          no_exception);
+  Context2D()->fillRect(2, 2, 2, 2);
+  Context2D()->beginLayer(GetScriptState(), BeginLayerOptions::Create(),
+                          no_exception);
+  Context2D()->fillRect(3, 3, 3, 3);
+  Context2D()->clearRect(0, 0, 10, 10);
+  Context2D()->fillRect(4, 4, 4, 4);
+  Context2D()->endLayer(no_exception);
+  Context2D()->endLayer(no_exception);
+
+  EXPECT_THAT(
+      Context2D()->FlushCanvas(FlushReason::kTesting),
+      Optional(RecordedOpsAre(
+          PaintOpEq<DrawRectOp>(SkRect::MakeXYWH(1, 1, 1, 1), FillFlags()),
+          DrawRecordOpEq(
+              PaintOpEq<SaveLayerAlphaOp>(1.0f),
+              PaintOpEq<DrawRectOp>(SkRect::MakeXYWH(2, 2, 2, 2), FillFlags()),
+              PaintOpEq<SaveLayerAlphaOp>(1.0f),
+              PaintOpEq<DrawRectOp>(SkRect::MakeXYWH(3, 3, 3, 3), FillFlags()),
+              PaintOpEq<DrawRectOp>(SkRect::MakeXYWH(0, 0, 10, 10),
+                                    ClearRectFlags()),
+              PaintOpEq<DrawRectOp>(SkRect::MakeXYWH(4, 4, 4, 4), FillFlags()),
+              PaintOpEq<RestoreOp>(), PaintOpEq<RestoreOp>()))));
   EXPECT_THAT(histogram_tester, OverdrawOpAre());
 }
 
@@ -573,7 +782,7 @@ TEST_P(CanvasRenderingContext2DTest, ClearRect_TransformPartialCoverage) {
       Context2D()->FlushCanvas(FlushReason::kTesting),
       Optional(RecordedOpsAre(
           PaintOpIs<TranslateOp>(),
-          PaintOpEq<DrawRectOp>(SkRect::MakeXYWH(3, 3, 1, 1), DrawRectFlags()),
+          PaintOpEq<DrawRectOp>(SkRect::MakeXYWH(3, 3, 1, 1), FillFlags()),
           PaintOpEq<DrawRectOp>(SkRect::MakeXYWH(0, 0, 10, 10),
                                 ClearRectFlags()))));
   EXPECT_THAT(histogram_tester, OverdrawOpAre());
@@ -633,7 +842,7 @@ TEST_P(CanvasRenderingContext2DTest, ClearRect_Clipped) {
       Context2D()->FlushCanvas(FlushReason::kTesting),
       Optional(RecordedOpsAre(
           PaintOpIs<ClipRectOp>(),
-          PaintOpEq<DrawRectOp>(SkRect::MakeXYWH(3, 3, 1, 1), DrawRectFlags()),
+          PaintOpEq<DrawRectOp>(SkRect::MakeXYWH(3, 3, 1, 1), FillFlags()),
           PaintOpEq<DrawRectOp>(SkRect::MakeXYWH(0, 0, 10, 10),
                                 ClearRectFlags()))));
   EXPECT_THAT(histogram_tester, OverdrawOpAre());
@@ -948,7 +1157,7 @@ TEST_P(CanvasRenderingContext2DTest, PutImageData_FullCoverage) {
 
   // `putImageData` isn't included in the recording, keeping it empty.
   EXPECT_THAT(Context2D()->FlushCanvas(FlushReason::kTesting),
-              Eq(absl::nullopt));
+              Eq(std::nullopt));
 
   // `putImageData` overdraw isn't handled by
   // `BaseRenderingContext2D::CheckOverdraw` like other draw operations, so the
@@ -983,7 +1192,7 @@ TEST_P(CanvasRenderingContext2DTest, PutImageData_PartialCoverage) {
 
   // `putImageData` isn't included in the recording, keeping it empty.
   EXPECT_THAT(Context2D()->FlushCanvas(FlushReason::kTesting),
-              Eq(absl::nullopt));
+              Eq(std::nullopt));
 
   // `putImageData` overdraw isn't handled by
   // `BaseRenderingContext2D::CheckOverdraw` like other draw operations, so the
@@ -1017,7 +1226,7 @@ TEST_P(CanvasRenderingContext2DTest, ImageResourceLifetime) {
   ImageBitmap* image_bitmap_derived = nullptr;
   {
     const ImageBitmapOptions* default_options = ImageBitmapOptions::Create();
-    absl::optional<gfx::Rect> crop_rect =
+    std::optional<gfx::Rect> crop_rect =
         gfx::Rect(0, 0, canvas->width(), canvas->height());
     auto* image_bitmap_from_canvas =
         MakeGarbageCollected<ImageBitmap>(canvas, crop_rect, default_options);
@@ -1131,8 +1340,10 @@ static void TestDrawSingleHighBitDepthPNGOnCanvas(
     Document& document,
     ImageDataSettings* color_setting,
     ScriptState* script_state) {
-  scoped_refptr<SharedBuffer> pixel_buffer = test::ReadFromFile(filepath);
-  ASSERT_EQ(false, pixel_buffer->empty());
+  std::optional<Vector<char>> pixel_buffer_data = test::ReadFromFile(filepath);
+  ASSERT_TRUE(pixel_buffer_data);
+  scoped_refptr<SharedBuffer> pixel_buffer =
+      SharedBuffer::Create(std::move(*pixel_buffer_data));
 
   ImageResourceContent* resource_content =
       ImageResourceContent::CreateNotStarted();
@@ -1284,26 +1495,24 @@ void TestPutImageDataOnCanvasWithColorSpaceSettings(
                          0,   0,   0,   0,    // Transparent
                          255, 192, 128, 64,   // Decreasing values
                          93,  117, 205, 41};  // Random values
-  size_t data_length = 16;
+  constexpr size_t data_length = std::size(u8_pixels);
 
-  uint16_t* u16_pixels = new uint16_t[data_length];
+  std::array<uint16_t, data_length> u16_pixels;
   for (size_t i = 0; i < data_length; i++)
     u16_pixels[i] = u8_pixels[i] * 257;
 
-  float* f32_pixels = new float[data_length];
+  std::array<float, data_length> f32_pixels;
   for (size_t i = 0; i < data_length; i++)
     f32_pixels[i] = u8_pixels[i] / 255.0;
 
   NotShared<DOMUint8ClampedArray> data_u8(
-      DOMUint8ClampedArray::Create(u8_pixels, data_length));
+      DOMUint8ClampedArray::Create(u8_pixels));
   DCHECK(data_u8);
   EXPECT_EQ(data_length, data_u8->length());
-  NotShared<DOMUint16Array> data_u16(
-      DOMUint16Array::Create(u16_pixels, data_length));
+  NotShared<DOMUint16Array> data_u16(DOMUint16Array::Create(u16_pixels));
   DCHECK(data_u16);
   EXPECT_EQ(data_length, data_u16->length());
-  NotShared<DOMFloat32Array> data_f32(
-      DOMFloat32Array::Create(f32_pixels, data_length));
+  NotShared<DOMFloat32Array> data_f32(DOMFloat32Array::Create(f32_pixels));
   DCHECK(data_f32);
   EXPECT_EQ(data_length, data_f32->length());
 
@@ -1330,7 +1539,7 @@ void TestPutImageDataOnCanvasWithColorSpaceSettings(
           data_array = data_f32;
           break;
         default:
-          NOTREACHED();
+          NOTREACHED_IN_MIGRATION();
       }
 
       image_data = ImageData::CreateForTest(gfx::Size(2, 2), data_array,
@@ -1350,7 +1559,7 @@ void TestPutImageDataOnCanvasWithColorSpaceSettings(
               ImageDataStorageFormatName(ImageDataStorageFormat::kFloat32));
           break;
         default:
-          NOTREACHED();
+          NOTREACHED_IN_MIGRATION();
       }
 
       // Convert the original data used to create ImageData to the
@@ -1389,8 +1598,6 @@ void TestPutImageDataOnCanvasWithColorSpaceSettings(
           kAlphaUnmultiplied, kUnpremulRoundTripTolerance);
     }
   }
-  delete[] u16_pixels;
-  delete[] f32_pixels;
 }
 
 // Test disabled due to crbug.com/780925
@@ -1472,7 +1679,8 @@ TEST_P(CanvasRenderingContext2DTest, AutoFlush) {
   Context2D()->fillRect(0, 0, 1, 1);  // Ensure resource provider is created.
   const size_t initial_op_count = Context2D()->Recorder()->TotalOpCount();
 
-  while (Context2D()->Recorder()->OpBytesUsed() <= kMaxRecordedOpKB * 1024) {
+  while (Context2D()->Recorder()->TotalOpBytesUsed() <=
+         kMaxRecordedOpKB * 1024) {
     Context2D()->fillRect(0, 0, 1, 1);
     // Verify that auto-flush did not happen
     ASSERT_GT(Context2D()->Recorder()->TotalOpCount(), initial_op_count);
@@ -1532,11 +1740,12 @@ TEST_P(CanvasRenderingContext2DTest, OverdrawResetsPinnedImageBytes) {
   Context2D()->drawImage(&unique_image, 0, 0, 10, 10, 0, 0, 10, 10,
                          exception_state);
   size_t initial_op_count = Context2D()->Recorder()->TotalOpCount();
-  ASSERT_EQ(Context2D()->Recorder()->ImageBytesUsed(), kBytesPerImage);
+  ASSERT_EQ(Context2D()->Recorder()->ReleasableImageBytesUsed(),
+            kBytesPerImage);
 
   Context2D()->clearRect(0, 0, 10, 10);  // Overdraw
   ASSERT_EQ(Context2D()->Recorder()->TotalOpCount(), initial_op_count);
-  ASSERT_EQ(Context2D()->Recorder()->ImageBytesUsed(), 0u);
+  ASSERT_EQ(Context2D()->Recorder()->ReleasableImageBytesUsed(), 0u);
 }
 
 TEST_P(CanvasRenderingContext2DTest, AutoFlushSameImage) {
@@ -1575,7 +1784,7 @@ TEST_P(CanvasRenderingContext2DTest, AutoFlushDelayedByLayer) {
   Context2D()->beginLayer(ToScriptStateForMainWorld(GetDocument().GetFrame()),
                           BeginLayerOptions::Create(), exception_state);
   const size_t initial_op_count = Context2D()->Recorder()->TotalOpCount();
-  while (Context2D()->Recorder()->OpBytesUsed() <=
+  while (Context2D()->Recorder()->TotalOpBytesUsed() <=
          kMaxRecordedOpKB * 1024 * 2) {
     Context2D()->fillRect(0, 0, 1, 1);
     ASSERT_GT(Context2D()->Recorder()->TotalOpCount(), initial_op_count);
@@ -1669,9 +1878,9 @@ TEST_P(CanvasRenderingContext2DTestAccelerated,
   blink::test::RunPendingTasks();
   // If enabled, hibernation should cause repaint of the painting layer.
   EXPECT_FALSE(box->NeedsPaintPropertyUpdate());
-  EXPECT_EQ(Canvas2DLayerBridge::IsHibernationEnabled(),
+  EXPECT_EQ(features::IsCanvas2DHibernationEnabled(),
             painting_layer->SelfNeedsRepaint());
-  EXPECT_EQ(Canvas2DLayerBridge::IsHibernationEnabled(),
+  EXPECT_EQ(features::IsCanvas2DHibernationEnabled(),
             !CanvasElement().ResourceProvider());
 
   // The page is hidden so it doesn't make sense to paint, and doing so will
@@ -1684,8 +1893,117 @@ TEST_P(CanvasRenderingContext2DTestAccelerated,
       mojom::blink::PageVisibilityState::kVisible,
       /*is_initial_state=*/false);
   EXPECT_FALSE(box->NeedsPaintPropertyUpdate());
-  EXPECT_EQ(Canvas2DLayerBridge::IsHibernationEnabled(),
+  EXPECT_EQ(features::IsCanvas2DHibernationEnabled(),
             painting_layer->SelfNeedsRepaint());
+}
+
+sk_sp<SkImage> CreateSkImage(int width, int height, SkColor color) {
+  sk_sp<SkSurface> surface =
+      SkSurfaces::Raster(SkImageInfo::MakeN32Premul(width, height));
+  surface->getCanvas()->clear(color);
+  return surface->makeImageSnapshot();
+}
+
+ImageBitmap* CreateImageBitmap(int width, int height, SkColor color) {
+  return MakeGarbageCollected<ImageBitmap>(
+      UnacceleratedStaticBitmapImage::Create(
+          CreateSkImage(width, height, color)));
+}
+
+MATCHER_P(DrawImageRectOpIs, sk_image, "") {
+  if (!ExplainMatchResult(PaintOpIs<DrawImageRectOp>(), arg, result_listener)) {
+    return false;
+  }
+  const auto& draw_op = static_cast<const DrawImageRectOp&>(arg);
+  SkBitmap lhs, rhs;
+  draw_op.image.GetSwSkImage()->asLegacyBitmap(&lhs);
+  sk_image->asLegacyBitmap(&rhs);
+  if (!gfx::BitmapsAreEqual(lhs, rhs)) {
+    *result_listener << "DrawImageRectOp has an unexpected image content";
+    return false;
+  }
+  return true;
+}
+
+TEST_P(CanvasRenderingContext2DTestAccelerated, HibernationWithUnclosedLayer) {
+  ScopedCanvas2dLayersForTest layer_feature{/*enabled=*/true};
+  ScopedFeatureList scoped_feature_list(features::kCanvas2DHibernation);
+  CreateContext(kNonOpaque);
+  CanvasElement().SetPreferred2DRasterMode(RasterModeHint::kPreferGPU);
+
+  gfx::Size size(100, 100);
+  auto provider = std::make_unique<FakeCanvasResourceProvider>(
+      SkImageInfo::MakeN32Premul(size.width(), size.height()),
+      RasterModeHint::kPreferGPU, &CanvasElement());
+
+  // Recorded draw ops are resterized on hibernation. The provider gets replaced
+  // when getting out of hibernation, so this mock will not see the later calls
+  // to `RasterRecord`.
+  cc::PaintRecord hibernation_raster;
+  EXPECT_CALL(*provider, Snapshot(FlushReason::kHibernating, _)).Times(1);
+  EXPECT_CALL(*provider, RasterRecord)
+      .Times(1)
+      .WillOnce(SaveArg<0>(&hibernation_raster));
+
+  CanvasElement().SetResourceProviderForTesting(
+      std::move(provider), std::make_unique<Canvas2DLayerBridge>(), size);
+
+  ThreadScheduler::Current()->PostIdleTask(
+      FROM_HERE, WTF::BindOnce(
+                     [](CanvasRenderingContext2DTestAccelerated* fixture,
+                        base::TimeTicks /*idleDeadline*/) {
+                       NonThrowableExceptionState exception_state;
+
+                       // Will be rasterized on hibernation.
+                       fixture->Context2D()->fillRect(0, 0, 1, 1);
+
+                       fixture->Context2D()->beginLayer(
+                           fixture->GetScriptState(),
+                           BeginLayerOptions::Create(), exception_state);
+
+                       // Will be preserved as a paint op in hibernation.
+                       fixture->Context2D()->fillRect(1, 1, 1, 1);
+
+                       // Referred image should survive hibernation.
+                       fixture->Context2D()->drawImage(
+                           CreateImageBitmap(/*width=*/1, /*height=*/1,
+                                             SK_ColorRED),          //
+                           /*sx=*/0, /*sy=*/0, /*sw=*/1, /*sh*/ 1,  //
+                           /*dx=*/0, /*dy=*/0, /*dw=*/1, /*dh=*/1,  //
+                           exception_state);
+                     },
+                     WTF::Unretained(this)));
+  blink::test::RunPendingTasks();
+
+  // Hibernate the canvas. Hibernation is handled in a idle task.
+  GetDocument().GetPage()->SetVisibilityState(
+      mojom::blink::PageVisibilityState::kHidden, /*is_initial_state=*/false);
+  ThreadScheduler::Current()
+      ->ToMainThreadScheduler()
+      ->StartIdlePeriodForTesting();
+  blink::test::RunPendingTasks();
+
+  // Hibernating should have rastered paint ops preceding `beginLayer`.
+  EXPECT_THAT(hibernation_raster,
+              RecordedOpsAre(PaintOpEq<DrawRectOp>(SkRect::MakeXYWH(0, 0, 1, 1),
+                                                   FillFlags())));
+
+  // Wake up from hibernation.
+  GetDocument().GetPage()->SetVisibilityState(
+      mojom::blink::PageVisibilityState::kVisible, /*is_initial_state=*/false);
+
+  NonThrowableExceptionState exception_state;
+  Context2D()->endLayer(exception_state);
+
+  // Post hibernation recording now holds the layer content.
+  EXPECT_THAT(
+      Context2D()->FlushCanvas(FlushReason::kTesting),
+      Optional(RecordedOpsAre(DrawRecordOpEq(
+          PaintOpEq<SaveLayerAlphaOp>(1.0f),
+          PaintOpEq<DrawRectOp>(SkRect::MakeXYWH(1, 1, 1, 1), FillFlags()),
+          DrawImageRectOpIs(
+              CreateSkImage(/*width=*/1, /*height=*/1, SK_ColorRED)),
+          PaintOpEq<RestoreOp>()))));
 }
 
 TEST_P(CanvasRenderingContext2DTestAccelerated,
@@ -1771,6 +2089,45 @@ TEST_P(CanvasRenderingContext2DTestAccelerated, DrawImage_Video_Flush) {
       CanvasElement().ResourceProvider()->Recorder().HasRecordedDrawOps());
 }
 
+TEST_P(CanvasRenderingContext2DTest, FlushRestoresClipStack) {
+  CreateContext(kNonOpaque);
+
+  // Ensure that the ResourceProvider and canvas are created.
+  CanvasElement().GetOrCreateCanvasResourceProvider(RasterModeHint::kPreferCPU);
+
+  // Set a transform.
+  Context2D()->translate(5, 0);
+  EXPECT_EQ(Canvas().getLocalToDevice().rc(0, 3), 5);
+
+  // Draw something so that there is something to flush.
+  cc::PaintFlags flags;
+  Canvas().drawLine(0, 0, 2, 2, flags);
+
+  // Flush the canvas and verify that a new drawing canvas is created that has
+  // the transform restored.
+  EXPECT_TRUE(Context2D()->FlushCanvas(FlushReason::kTesting));
+  EXPECT_EQ(Canvas().getLocalToDevice().rc(0, 3), 5);
+}
+
+TEST_P(CanvasRenderingContext2DTest, PutImageDataRestoresClipStack) {
+  CreateContext(kNonOpaque);
+
+  // Ensure that the ResourceProvider and canvas are created.
+  CanvasElement().GetOrCreateCanvasResourceProvider(RasterModeHint::kPreferCPU);
+
+  // Set a transform.
+  Context2D()->translate(5, 0);
+  EXPECT_EQ(Canvas().getLocalToDevice().rc(0, 3), 5);
+
+  // Invoke putImageData(). This forces a flush, after which the transform
+  // should be restored.
+  NonThrowableExceptionState exception_state;
+  Context2D()->fillRect(3, 3, 1, 1);
+  Context2D()->putImageData(full_image_data_.Get(), 0, 0, exception_state);
+
+  EXPECT_EQ(Canvas().getLocalToDevice().rc(0, 3), 5);
+}
+
 TEST_P(CanvasRenderingContext2DTestAccelerated,
        DISABLED_DisableAcceleration_UpdateGPUMemoryUsage) {
   CreateContext(kNonOpaque);
@@ -1794,10 +2151,11 @@ TEST_P(CanvasRenderingContext2DTestAccelerated,
 }
 
 TEST_P(CanvasRenderingContext2DTestAccelerated,
-       DisableAccelerationPreservesRaster) {
+       DisableAccelerationPreservesRasterAndRecording) {
+  ScopedCanvas2dLayersForTest layer_feature{/*enabled=*/true};
   CreateContext(kNonOpaque);
 
-  gfx::Size size(10, 10);
+  gfx::Size size(100, 100);
   auto gpu_provider = std::make_unique<FakeCanvasResourceProvider>(
       SkImageInfo::MakeN32Premul(size.width(), size.height()),
       RasterModeHint::kPreferGPU, &CanvasElement());
@@ -1816,27 +2174,38 @@ TEST_P(CanvasRenderingContext2DTestAccelerated,
   CanvasElement().SetResourceProviderForTesting(
       std::move(gpu_provider), std::make_unique<Canvas2DLayerBridge>(), size);
 
+  NonThrowableExceptionState exception_state;
+  Context2D()->fillRect(10, 10, 20, 20);
+  Context2D()->save();
+  Context2D()->beginLayer(GetScriptState(), BeginLayerOptions::Create(),
+                          exception_state);
+  Context2D()->fillRect(10, 20, 30, 40);
+
   EXPECT_EQ(CanvasElement().GetRasterMode(), RasterMode::kGPU);
   CanvasElement().DisableAcceleration(std::move(cpu_provider));
   EXPECT_EQ(CanvasElement().GetRasterMode(), RasterMode::kCPU);
+
+  Context2D()->endLayer(exception_state);
+  Context2D()->restore(exception_state);
+
+  EXPECT_THAT(
+      Context2D()->FlushCanvas(FlushReason::kTesting),
+      Optional(RecordedOpsAre(
+          PaintOpEq<SaveOp>(),
+          DrawRecordOpEq(PaintOpEq<SaveLayerAlphaOp>(1.0f),
+                         PaintOpEq<DrawRectOp>(SkRect::MakeXYWH(10, 20, 30, 40),
+                                               FillFlags()),
+                         PaintOpEq<RestoreOp>()),
+          PaintOpEq<RestoreOp>())));
 }
 
 class CanvasRenderingContext2DTestAcceleratedMultipleDisables
     : public CanvasRenderingContext2DTest {
  protected:
-  void SetUp() override {
-    base::FieldTrialParams params;
-    params["canvas-disable-acceleration-threshold"] = "10";
-    params["canvas-disable-acceleration-percent"] = "80";
-    feature_list_.InitAndEnableFeatureWithParameters(
-        kStartCanvasWithAccelerationDisabled, params);
-    CanvasRenderingContext2DTest::SetUp();
-  }
-
   bool AllowsAcceleration() override { return true; }
 
   void CreateAlotOfCanvasesWithAccelerationExplicitlyDisabled() {
-    for (int i = 0; i < 10; ++i) {
+    for (int i = 0; i < 100; ++i) {
       auto* canvas = MakeGarbageCollected<HTMLCanvasElement>(GetDocument());
       CreateContext(
           kNonOpaque, kNormalLatency,
@@ -1849,7 +2218,6 @@ class CanvasRenderingContext2DTestAcceleratedMultipleDisables
   }
 
  private:
-  base::test::ScopedFeatureList feature_list_;
   ScopedTestingPlatformSupport<GpuMemoryBufferTestPlatform> platform_;
 };
 

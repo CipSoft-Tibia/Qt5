@@ -55,19 +55,22 @@ class Queue final : public QueueBase {
                                size_t size) override;
     MaybeError WriteTextureImpl(const ImageCopyTexture& destination,
                                 const void* data,
+                                size_t dataSize,
                                 const TextureDataLayout& dataLayout,
                                 const Extent3D& writeSizePixel) override;
 
-    GLenum ClientWaitSync(GLsync sync, Nanoseconds timeout);
+    GLenum ClientWaitSync(EGLSyncKHR sync, Nanoseconds timeout);
 
     ResultOrError<bool> WaitForQueueSerial(ExecutionSerial serial, Nanoseconds timeout) override;
 
     bool HasPendingCommands() const override;
+    MaybeError SubmitPendingCommands() override;
     ResultOrError<ExecutionSerial> CheckAndUpdateCompletedSerials() override;
     void ForceEventualFlushOfCommands() override;
     MaybeError WaitForIdleForDestruction() override;
 
-    std::deque<std::pair<GLsync, ExecutionSerial>> mFencesInFlight;
+    uint32_t mEGLSyncType;
+    MutexProtected<std::deque<std::pair<EGLSyncKHR, ExecutionSerial>>> mFencesInFlight;
 
     // Has pending GL commands which are not associated with a fence.
     bool mHasPendingCommands = false;

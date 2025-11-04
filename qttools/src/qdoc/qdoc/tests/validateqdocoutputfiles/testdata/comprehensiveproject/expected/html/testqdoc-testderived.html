@@ -4,7 +4,7 @@
   <meta charset="utf-8">
 <!-- testcpp.cpp -->
   <meta name="description" content="A class in a namespace, derived from Test.">
-  <title>TestDerived Class | Test 6.2.11</title>
+  <title>TestQDoc::TestDerived Class | Qt 6.2.11</title>
 </head>
 <body>
 <li><a href="testcpp-module.html" translate="no">C++ Classes</a></li>
@@ -23,7 +23,7 @@
 </ul>
 </div>
 <div class="sidebar-content" id="sidebar-content"></div></div>
-<h1 class="title" translate="no">TestDerived Class</h1>
+<h1 class="title" translate="no">TestQDoc::TestDerived Class</h1>
 <span class="small-subtitle" translate="no">class <a href="testqdoc.html" translate="no">TestQDoc</a>::TestDerived</span>
 <!-- $$$TestDerived-brief -->
 <p>A class in a namespace, derived from <a href="testqdoc-test.html" translate="no">Test</a>. <a href="#details">More...</a></p>
@@ -109,6 +109,15 @@
 <h3 class="fn" translate="no" id="bindableProp-prop"><code class="details extra" translate="no">[bindable]</code> <span class="name">bindableProp</span> : <span class="type">QString</span></h3>
 <div class="admonition note"><p><b>Note: </b>This property supports <a href="https://wiki.qt.io/QProperty">QProperty</a> bindings.</p>
 </div><p>Some property.</p>
+<p><b>Access functions:</b></p>
+<div class="table"><table class="alignedsummary" translate="no">
+<tr><td class="memItemLeft topAlign rightAlign"> QBindable&lt;QString&gt; </td><td class="memItemRight bottomAlign"><span class="name"><b>bindableProp</b></span>()</td></tr>
+<tr><td class="memItemLeft topAlign rightAlign"> void </td><td class="memItemRight bottomAlign"><span class="name"><b>setBindableProp</b></span>(const QString &amp;<i>s</i>)</td></tr>
+</table></div>
+<p><b>Notifier signal:</b></p>
+<div class="table"><table class="alignedsummary" translate="no">
+<tr><td class="memItemLeft topAlign rightAlign"> void </td><td class="memItemRight bottomAlign"><span class="name"><b>bindablePropChanged</b></span>()</td></tr>
+</table></div>
 <p><b>See also </b><a href="testqdoc-testderived.html#someProp-prop" translate="no">someProp</a>.</p>
 <!-- @@@bindableProp -->
 <!-- $$$boolProp-prop$$$boolProp$$$setBoolPropbool$$$resetBoolProp$$$boolPropChanged -->
@@ -157,6 +166,10 @@
 <h3 class="fn" translate="no" id="someProp-prop"><code class="details extra" translate="no">[bindable read-only]</code> <span class="name">someProp</span> : <span class="type">QString</span></h3>
 <div class="admonition note"><p><b>Note: </b>This property supports <a href="https://wiki.qt.io/QProperty">QProperty</a> bindings.</p>
 </div><p>Another property.</p>
+<p><b>Access functions:</b></p>
+<div class="table"><table class="alignedsummary" translate="no">
+<tr><td class="memItemLeft topAlign rightAlign"> const QString &amp;</td><td class="memItemRight bottomAlign"><span class="name"><b>someProp</b></span>()</td></tr>
+</table></div>
 <!-- @@@someProp -->
 </div>
 <div class="func">

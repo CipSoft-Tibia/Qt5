@@ -4,9 +4,11 @@
         "Name": "Godot Engine: Fog",
         "QDocModule": "qtquick3d",
         "QtUsage": "Used in the Qt Quick 3D module.",
+        "Files": "res/effectlib/fog.glsllib",
 
         "Description": "Simple fog support.",
         "Homepage": "https://godotengine.org/",
+        "Comment": "no relevant PURL or CPE found",
         "License": "MIT License",
         "LicenseId": "MIT",
         "LicenseFile": "LICENSE.GODOT.txt",

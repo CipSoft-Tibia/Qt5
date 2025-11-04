@@ -62,7 +62,7 @@ void WriteNumberAttribute(dbus::MessageWriter* writer,
         writer->AppendVariantOfUint32(static_cast<uint32_t>(value));
       break;
     default:
-      NOTREACHED();
+      NOTREACHED_IN_MIGRATION();
   }
 }
 
@@ -100,7 +100,7 @@ void WriteAttribute(dbus::MessageWriter* writer,
     }
     case bluez::BluetoothServiceAttributeValueBlueZ::NULLTYPE:
     default:
-      NOTREACHED();
+      NOTREACHED_IN_MIGRATION();
   }
   writer->CloseContainer(&struct_writer);
 }
@@ -121,7 +121,7 @@ BluetoothAdapterClient::Error ErrorResponseToError(
 void OnResponseAdapter(
     base::OnceClosure callback,
     BluetoothAdapterClient::ErrorCallback error_callback,
-    const absl::optional<BluetoothAdapterClient::Error>& error) {
+    const std::optional<BluetoothAdapterClient::Error>& error) {
   if (!error) {
     std::move(callback).Run();
     return;
@@ -187,6 +187,7 @@ BluetoothAdapterClient::Properties::Properties(
   RegisterProperty(bluetooth_adapter::kDiscoveringProperty, &discovering);
   RegisterProperty(bluetooth_adapter::kUUIDsProperty, &uuids);
   RegisterProperty(bluetooth_adapter::kModaliasProperty, &modalias);
+  RegisterProperty(bluetooth_adapter::kRolesProperty, &roles);
 }
 
 BluetoothAdapterClient::Properties::~Properties() = default;
@@ -457,7 +458,7 @@ class BluetoothAdapterClientImpl : public BluetoothAdapterClient,
   // BluetoothAdapterClient override.
   void ConnectDevice(const dbus::ObjectPath& object_path,
                      const std::string& address,
-                     const absl::optional<AddressType>& address_type,
+                     const std::optional<AddressType>& address_type,
                      ConnectDeviceCallback callback,
                      ErrorCallback error_callback) override {
     dbus::MethodCall method_call(bluetooth_adapter::kBluetoothAdapterInterface,
@@ -476,7 +477,7 @@ class BluetoothAdapterClientImpl : public BluetoothAdapterClient,
           address_type_value = kBluezAddressTypeRandom;
           break;
         default:
-          NOTREACHED();
+          NOTREACHED_IN_MIGRATION();
           break;
       };
       dict.Set(bluetooth_device::kAddressTypeProperty, address_type_value);
@@ -563,7 +564,7 @@ class BluetoothAdapterClientImpl : public BluetoothAdapterClient,
                   dbus::Response* response,
                   dbus::ErrorResponse* error_response) {
     if (response) {
-      std::move(callback).Run(absl::nullopt);
+      std::move(callback).Run(std::nullopt);
       return;
     }
 

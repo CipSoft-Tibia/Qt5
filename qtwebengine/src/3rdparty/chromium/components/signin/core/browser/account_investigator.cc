@@ -76,7 +76,7 @@ void AccountInvestigator::Initialize() {
   previously_authenticated_ =
       identity_manager_->HasPrimaryAccount(signin::ConsentLevel::kSync);
 
-  // TODO(crbug.com/1121923): Refactor to use signin::PersistentRepeatingTimer
+  // TODO(crbug.com/40715763): Refactor to use signin::PersistentRepeatingTimer
   // instead.
   Time previous = Time::FromSecondsSinceUnixEpoch(
       pref_service_->GetDouble(prefs::kGaiaCookiePeriodicReportTime));
@@ -173,9 +173,7 @@ std::string AccountInvestigator::HashAccounts(
 
   // PrefService will slightly mangle some undisplayable characters, by encoding
   // in Base64 we are sure to have all safe characters that PrefService likes.
-  std::string encoded;
-  base::Base64Encode(base::SHA1HashString(stream.str()), &encoded);
-  return encoded;
+  return base::Base64Encode(base::SHA1HashString(stream.str()));
 }
 
 // static

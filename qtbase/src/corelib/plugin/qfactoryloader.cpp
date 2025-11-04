@@ -265,6 +265,7 @@ public:
     QString suffix;
     QString extraSearchPath;
     Qt::CaseSensitivity cs;
+    QLibrary::LoadHints loadHints;
 
     void updateSinglePath(const QString &pluginDir);
 #endif
@@ -272,7 +273,7 @@ public:
 
 #if QT_CONFIG(library)
 
-static Q_LOGGING_CATEGORY_WITH_ENV_OVERRIDE(lcFactoryLoader, "QT_DEBUG_PLUGINS",
+Q_STATIC_LOGGING_CATEGORY_WITH_ENV_OVERRIDE(lcFactoryLoader, "QT_DEBUG_PLUGINS",
                                             "qt.core.plugin.factoryloader")
 
 namespace {
@@ -374,8 +375,12 @@ inline void QFactoryLoaderPrivate::updateSinglePath(const QString &path)
                 // whereas the one we're considering has a Qt version that fits
                 // better, we prioritize the better match.
                 int existingVersion = existingLibrary->metaData.value(QtPluginMetaDataKeys::QtVersion).toInteger();
-                if (!(existingVersion > QtVersionNoPatch && thisVersion <= QtVersionNoPatch))
-                    continue; // Existing version is a better match
+                if (existingVersion == QtVersionNoPatch)
+                    continue; // Prefer exact Qt version match
+                if (existingVersion < QtVersionNoPatch && thisVersion > QtVersionNoPatch)
+                    continue; // Better too old than too new
+                if (existingVersion < QtVersionNoPatch && thisVersion < existingVersion)
+                    continue; // Otherwise prefer newest
             }
 
             keyMapEntry = library.get();
@@ -387,6 +392,12 @@ inline void QFactoryLoaderPrivate::updateSinglePath(const QString &path)
             libraries.push_back(std::move(library));
         }
     };
+}
+
+void QFactoryLoader::setLoadHints(QLibrary::LoadHints loadHints)
+{
+    Q_D(QFactoryLoader);
+    d->loadHints = loadHints;
 }
 
 void QFactoryLoader::update()
@@ -501,8 +512,10 @@ QFactoryLoader::MetaDataList QFactoryLoader::metaData() const
     QList<QPluginParsedMetaData> metaData;
 #if QT_CONFIG(library)
     QMutexLocker locker(&d->mutex);
+    metaData.reserve(qsizetype(d->libraries.size()));
     for (const auto &library : d->libraries)
         metaData.append(library->metaData);
+    locker.unlock();
 #endif
 
     QLatin1StringView iid(d->iid.constData(), d->iid.size());
@@ -526,10 +539,12 @@ QList<QCborArray> QFactoryLoader::metaDataKeys() const
     QList<QCborArray> metaData;
 #if QT_CONFIG(library)
     QMutexLocker locker(&d->mutex);
+    metaData.reserve(qsizetype(d->libraries.size()));
     for (const auto &library : d->libraries) {
         const QCborValue md = library->metaData.value(QtPluginMetaDataKeys::MetaData);
         metaData.append(md["Keys"_L1].toArray());
     }
+    locker.unlock();
 #endif
 
     QLatin1StringView iid(d->iid.constData(), d->iid.size());
@@ -558,6 +573,7 @@ QObject *QFactoryLoader::instance(int index) const
     QMutexLocker lock(&d->mutex);
     if (size_t(index) < d->libraries.size()) {
         QLibraryPrivate *library = d->libraries[index].get();
+        library->setLoadHints(d->loadHints);
         if (QObject *obj = library->pluginInstance()) {
             if (!obj->parent())
                 obj->moveToThread(QCoreApplicationPrivate::mainThread());

@@ -53,7 +53,8 @@ ByteArray ForConnectionRequestPresence(
     const location::nearby::connections::PresenceDevice& proto_presence_device,
     const ConnectionInfo& connection_info);
 ByteArray ForConnectionResponse(
-    std::int32_t status, const location::nearby::connections::OsInfo& os_info);
+    std::int32_t status, const location::nearby::connections::OsInfo& os_info,
+    std::int32_t multiplex_socket_bitmask);
 
 // Builds Payload transfer messages.
 ByteArray ForDataPayloadTransfer(
@@ -66,6 +67,7 @@ ByteArray ForControlPayloadTransfer(
         header,
     const location::nearby::connections::PayloadTransferFrame::ControlMessage&
         control);
+ByteArray ForPayloadAckPayloadTransfer(std::int64_t payload_id);
 
 // Builds Bandwidth Upgrade [BWU] messages.
 ByteArray ForBwuIntroduction(const std::string& endpoint_id,

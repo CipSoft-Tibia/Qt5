@@ -91,6 +91,37 @@ void ProcessPrimitiveRestart(T *indexBuffer,
 	}
 }
 
+vk::InputsDynamicStateFlags ParseInputsDynamicStateFlags(const VkPipelineDynamicStateCreateInfo *dynamicStateCreateInfo)
+{
+	vk::InputsDynamicStateFlags dynamicStateFlags = {};
+
+	if(dynamicStateCreateInfo == nullptr)
+	{
+		return dynamicStateFlags;
+	}
+
+	for(uint32_t i = 0; i < dynamicStateCreateInfo->dynamicStateCount; i++)
+	{
+		VkDynamicState dynamicState = dynamicStateCreateInfo->pDynamicStates[i];
+		switch(dynamicState)
+		{
+		case VK_DYNAMIC_STATE_VERTEX_INPUT_BINDING_STRIDE:
+			dynamicStateFlags.dynamicVertexInputBindingStride = true;
+			break;
+		case VK_DYNAMIC_STATE_VERTEX_INPUT_EXT:
+			dynamicStateFlags.dynamicVertexInput = true;
+			dynamicStateFlags.dynamicVertexInputBindingStride = true;
+			break;
+
+		default:
+			// The rest of the dynamic state is handled by ParseDynamicStateFlags.
+			break;
+		}
+	}
+
+	return dynamicStateFlags;
+}
+
 vk::DynamicStateFlags ParseDynamicStateFlags(const VkPipelineDynamicStateCreateInfo *dynamicStateCreateInfo)
 {
 	vk::DynamicStateFlags dynamicStateFlags = {};
@@ -119,7 +150,8 @@ vk::DynamicStateFlags ParseDynamicStateFlags(const VkPipelineDynamicStateCreateI
 			dynamicStateFlags.vertexInputInterface.dynamicPrimitiveTopology = true;
 			break;
 		case VK_DYNAMIC_STATE_VERTEX_INPUT_BINDING_STRIDE:
-			dynamicStateFlags.vertexInputInterface.dynamicVertexInputBindingStride = true;
+		case VK_DYNAMIC_STATE_VERTEX_INPUT_EXT:
+			// Handled by ParseInputsDynamicStateFlags
 			break;
 
 		// Pre-rasterization:
@@ -255,13 +287,13 @@ void IndexBuffer::getIndexBuffers(VkPrimitiveTopology topology, uint32_t count, 
 	}
 }
 
-VkFormat Attachments::colorFormat(int index) const
+VkFormat Attachments::colorFormat(int location) const
 {
-	ASSERT((index >= 0) && (index < sw::MAX_COLOR_BUFFERS));
+	ASSERT((location >= 0) && (location < sw::MAX_COLOR_BUFFERS));
 
-	if(colorBuffer[index])
+	if(colorBuffer[location])
 	{
-		return colorBuffer[index]->getFormat();
+		return colorBuffer[location]->getFormat();
 	}
 	else
 	{
@@ -281,8 +313,15 @@ VkFormat Attachments::depthFormat() const
 	}
 }
 
-void Inputs::initialize(const VkPipelineVertexInputStateCreateInfo *vertexInputState)
+void Inputs::initialize(const VkPipelineVertexInputStateCreateInfo *vertexInputState, const VkPipelineDynamicStateCreateInfo *dynamicStateCreateInfo)
 {
+	dynamicStateFlags = ParseInputsDynamicStateFlags(dynamicStateCreateInfo);
+
+	if(dynamicStateFlags.dynamicVertexInput)
+	{
+		return;
+	}
+
 	if(vertexInputState->flags != 0)
 	{
 		// Vulkan 1.2: "flags is reserved for future use." "flags must be 0"
@@ -310,8 +349,14 @@ void Inputs::initialize(const VkPipelineVertexInputStateCreateInfo *vertexInputS
 		input.offset = desc.offset;
 		input.binding = desc.binding;
 		input.inputRate = inputRates[desc.binding];
-		input.vertexStride = vertexStrides[desc.binding];
-		input.instanceStride = instanceStrides[desc.binding];
+		if(!dynamicStateFlags.dynamicVertexInputBindingStride)
+		{
+			// The following gets overriden with dynamic state anyway and setting it is
+			// harmless.  But it is not done to be able to catch bugs with this dynamic
+			// state easier.
+			input.vertexStride = vertexStrides[desc.binding];
+			input.instanceStride = instanceStrides[desc.binding];
+		}
 	}
 }
 
@@ -324,7 +369,7 @@ void Inputs::updateDescriptorSets(const DescriptorSet::Array &dso,
 	descriptorDynamicOffsets = ddo;
 }
 
-void Inputs::bindVertexInputs(int firstInstance, bool dynamicInstanceStride)
+void Inputs::bindVertexInputs(int firstInstance)
 {
 	for(uint32_t i = 0; i < MAX_VERTEX_INPUT_BINDINGS; i++)
 	{
@@ -333,7 +378,7 @@ void Inputs::bindVertexInputs(int firstInstance, bool dynamicInstanceStride)
 		{
 			const auto &vertexInput = vertexInputBindings[attrib.binding];
 			VkDeviceSize offset = attrib.offset + vertexInput.offset +
-			                      getInstanceStride(i, dynamicInstanceStride) * firstInstance;
+			                      getInstanceStride(i) * firstInstance;
 			attrib.buffer = vertexInput.buffer ? vertexInput.buffer->getOffsetPointer(offset) : nullptr;
 
 			VkDeviceSize size = vertexInput.buffer ? vertexInput.buffer->getSize() : 0;
@@ -342,21 +387,50 @@ void Inputs::bindVertexInputs(int firstInstance, bool dynamicInstanceStride)
 	}
 }
 
-void Inputs::setVertexInputBinding(const VertexInputBinding bindings[])
+void Inputs::setVertexInputBinding(const VertexInputBinding bindings[], const DynamicState &dynamicState)
 {
 	for(uint32_t i = 0; i < MAX_VERTEX_INPUT_BINDINGS; ++i)
 	{
 		vertexInputBindings[i] = bindings[i];
 	}
+
+	if(dynamicStateFlags.dynamicVertexInput)
+	{
+		// If the entire vertex input state is dynamic, recalculate the contents of `stream`.
+		// This is similar to Inputs::initialize.
+		for(uint32_t i = 0; i < sw::MAX_INTERFACE_COMPONENTS / 4; i++)
+		{
+			const auto &desc = dynamicState.vertexInputAttributes[i];
+			const auto &bindingDesc = dynamicState.vertexInputBindings[desc.binding];
+			sw::Stream &input = stream[i];
+			input.format = desc.format;
+			input.offset = desc.offset;
+			input.binding = desc.binding;
+			input.inputRate = bindingDesc.inputRate;
+		}
+	}
+
+	// Stride may come from two different dynamic states
+	if(dynamicStateFlags.dynamicVertexInput || dynamicStateFlags.dynamicVertexInputBindingStride)
+	{
+		for(uint32_t i = 0; i < sw::MAX_INTERFACE_COMPONENTS / 4; i++)
+		{
+			sw::Stream &input = stream[i];
+			const VkDeviceSize stride = dynamicState.vertexInputBindings[input.binding].stride;
+
+			input.vertexStride = input.inputRate == VK_VERTEX_INPUT_RATE_VERTEX ? stride : 0;
+			input.instanceStride = input.inputRate == VK_VERTEX_INPUT_RATE_INSTANCE ? stride : 0;
+		}
+	}
 }
 
-void Inputs::advanceInstanceAttributes(bool dynamicInstanceStride)
+void Inputs::advanceInstanceAttributes()
 {
 	for(uint32_t i = 0; i < vk::MAX_VERTEX_INPUT_BINDINGS; i++)
 	{
 		auto &attrib = stream[i];
 
-		VkDeviceSize instanceStride = getInstanceStride(i, dynamicInstanceStride);
+		VkDeviceSize instanceStride = getInstanceStride(i);
 		if((attrib.format != VK_FORMAT_UNDEFINED) && instanceStride && (instanceStride < attrib.robustnessSize))
 		{
 			// Under the casts: attrib.buffer += instanceStride
@@ -366,37 +440,23 @@ void Inputs::advanceInstanceAttributes(bool dynamicInstanceStride)
 	}
 }
 
-VkDeviceSize Inputs::getVertexStride(uint32_t i, bool dynamicVertexStride) const
+VkDeviceSize Inputs::getVertexStride(uint32_t i) const
 {
 	auto &attrib = stream[i];
-	if(attrib.format != VK_FORMAT_UNDEFINED && attrib.inputRate == VK_VERTEX_INPUT_RATE_VERTEX)
+	if(attrib.format != VK_FORMAT_UNDEFINED)
 	{
-		if(dynamicVertexStride)
-		{
-			return vertexInputBindings[attrib.binding].stride;
-		}
-		else
-		{
-			return attrib.vertexStride;
-		}
+		return attrib.vertexStride;
 	}
 
 	return 0;
 }
 
-VkDeviceSize Inputs::getInstanceStride(uint32_t i, bool dynamicInstanceStride) const
+VkDeviceSize Inputs::getInstanceStride(uint32_t i) const
 {
 	auto &attrib = stream[i];
-	if(attrib.format != VK_FORMAT_UNDEFINED && attrib.inputRate == VK_VERTEX_INPUT_RATE_INSTANCE)
+	if(attrib.format != VK_FORMAT_UNDEFINED)
 	{
-		if(dynamicInstanceStride)
-		{
-			return vertexInputBindings[attrib.binding].stride;
-		}
-		else
-		{
-			return attrib.instanceStride;
-		}
+		return attrib.instanceStride;
 	}
 
 	return 0;
@@ -453,7 +513,7 @@ void VertexInputInterfaceState::initialize(const VkPipelineVertexInputStateCreat
 {
 	dynamicStateFlags = allDynamicStateFlags.vertexInputInterface;
 
-	if(vertexInputState->flags != 0)
+	if(vertexInputState && vertexInputState->flags != 0)
 	{
 		// Vulkan 1.2: "flags is reserved for future use." "flags must be 0"
 		UNSUPPORTED("vertexInputState->flags");
@@ -713,10 +773,7 @@ void PreRasterizationState::applyState(const DynamicState &dynamicState)
 
 	if(dynamicStateFlags.dynamicViewportWithCount && dynamicState.viewportCount > 0)
 	{
-		viewport.width = static_cast<float>(dynamicState.viewports[0].extent.width);
-		viewport.height = static_cast<float>(dynamicState.viewports[0].extent.height);
-		viewport.x = static_cast<float>(dynamicState.viewports[0].offset.x);
-		viewport.y = static_cast<float>(dynamicState.viewports[0].offset.y);
+		viewport = dynamicState.viewports[0];
 	}
 
 	if(dynamicStateFlags.dynamicScissorWithCount && dynamicState.scissorCount > 0)
@@ -1010,17 +1067,24 @@ void FragmentOutputInterfaceState::setColorBlendState(const VkPipelineColorBlend
 	}
 }
 
-BlendState FragmentOutputInterfaceState::getBlendState(int index, const Attachments &attachments, bool fragmentContainsKill) const
+BlendState FragmentOutputInterfaceState::getBlendState(int location, const Attachments &attachments, bool fragmentContainsKill) const
 {
+	ASSERT((location >= 0) && (location < sw::MAX_COLOR_BUFFERS));
+	const uint32_t index = attachments.locationToIndex[location];
+	if(index == VK_ATTACHMENT_UNUSED)
+	{
+		return {};
+	}
+
 	ASSERT((index >= 0) && (index < sw::MAX_COLOR_BUFFERS));
 	auto &state = blendState[index];
 
 	BlendState activeBlendState = {};
-	activeBlendState.alphaBlendEnable = alphaBlendActive(index, attachments, fragmentContainsKill);
+	activeBlendState.alphaBlendEnable = alphaBlendActive(location, attachments, fragmentContainsKill);
 
 	if(activeBlendState.alphaBlendEnable)
 	{
-		vk::Format format = attachments.colorBuffer[index]->getFormat(VK_IMAGE_ASPECT_COLOR_BIT);
+		vk::Format format = attachments.colorBuffer[location]->getFormat(VK_IMAGE_ASPECT_COLOR_BIT);
 
 		activeBlendState.sourceBlendFactor = blendFactor(state.blendOperation, state.sourceBlendFactor);
 		activeBlendState.destBlendFactor = blendFactor(state.blendOperation, state.destBlendFactor);
@@ -1033,12 +1097,19 @@ BlendState FragmentOutputInterfaceState::getBlendState(int index, const Attachme
 	return activeBlendState;
 }
 
-bool FragmentOutputInterfaceState::alphaBlendActive(int index, const Attachments &attachments, bool fragmentContainsKill) const
+bool FragmentOutputInterfaceState::alphaBlendActive(int location, const Attachments &attachments, bool fragmentContainsKill) const
 {
+	ASSERT((location >= 0) && (location < sw::MAX_COLOR_BUFFERS));
+	const uint32_t index = attachments.locationToIndex[location];
+	if(index == VK_ATTACHMENT_UNUSED)
+	{
+		return false;
+	}
+
 	ASSERT((index >= 0) && (index < sw::MAX_COLOR_BUFFERS));
 	auto &state = blendState[index];
 
-	if(!attachments.colorBuffer[index] || !blendState[index].alphaBlendEnable)
+	if(!attachments.colorBuffer[location] || !blendState[index].alphaBlendEnable)
 	{
 		return false;
 	}
@@ -1048,7 +1119,7 @@ bool FragmentOutputInterfaceState::alphaBlendActive(int index, const Attachments
 		return false;
 	}
 
-	vk::Format format = attachments.colorBuffer[index]->getFormat(VK_IMAGE_ASPECT_COLOR_BIT);
+	vk::Format format = attachments.colorBuffer[location]->getFormat(VK_IMAGE_ASPECT_COLOR_BIT);
 	bool colorBlend = blendOperation(state.blendOperation, state.sourceBlendFactor, state.destBlendFactor, format) != VK_BLEND_OP_SRC_EXT;
 	bool alphaBlend = blendOperation(state.blendOperationAlpha, state.sourceBlendFactorAlpha, state.destBlendFactorAlpha, format) != VK_BLEND_OP_SRC_EXT;
 
@@ -1191,17 +1262,24 @@ bool FragmentOutputInterfaceState::colorWriteActive(const Attachments &attachmen
 	return false;
 }
 
-int FragmentOutputInterfaceState::colorWriteActive(int index, const Attachments &attachments) const
+int FragmentOutputInterfaceState::colorWriteActive(int location, const Attachments &attachments) const
 {
-	ASSERT((index >= 0) && (index < sw::MAX_COLOR_BUFFERS));
-	auto &state = blendState[index];
-
-	if(!attachments.colorBuffer[index] || attachments.colorBuffer[index]->getFormat() == VK_FORMAT_UNDEFINED)
+	ASSERT((location >= 0) && (location < sw::MAX_COLOR_BUFFERS));
+	const uint32_t index = attachments.locationToIndex[location];
+	if(index == VK_ATTACHMENT_UNUSED)
 	{
 		return 0;
 	}
 
-	vk::Format format = attachments.colorBuffer[index]->getFormat(VK_IMAGE_ASPECT_COLOR_BIT);
+	ASSERT((index >= 0) && (index < sw::MAX_COLOR_BUFFERS));
+	auto &state = blendState[index];
+
+	if(!attachments.colorBuffer[location] || attachments.colorBuffer[location]->getFormat() == VK_FORMAT_UNDEFINED)
+	{
+		return 0;
+	}
+
+	vk::Format format = attachments.colorBuffer[location]->getFormat(VK_IMAGE_ASPECT_COLOR_BIT);
 
 	if(blendOperation(state.blendOperation, state.sourceBlendFactor, state.destBlendFactor, format) == VK_BLEND_OP_DST_EXT &&
 	   blendOperation(state.blendOperationAlpha, state.sourceBlendFactorAlpha, state.destBlendFactorAlpha, format) == VK_BLEND_OP_DST_EXT)

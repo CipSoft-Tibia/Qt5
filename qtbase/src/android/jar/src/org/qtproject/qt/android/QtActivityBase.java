@@ -25,6 +25,8 @@ import android.view.View;
 import android.view.Window;
 import java.lang.IllegalArgumentException;
 
+import android.widget.Toast;
+
 public class QtActivityBase extends Activity
 {
     public static final String EXTRA_SOURCE_INFO = "org.qtproject.qt.android.sourceInfo";
@@ -34,6 +36,7 @@ public class QtActivityBase extends Activity
     private boolean m_retainNonConfigurationInstance = false;
     private Configuration m_prevConfig;
     private final QtActivityDelegate m_delegate;
+    private boolean m_onCreateSucceeded = false;
 
     private void addReferrer(Intent intent)
     {
@@ -54,9 +57,14 @@ public class QtActivityBase extends Activity
         }
     }
 
-    // Append any parameters to your application.
-    // Either a whitespace or a tab is accepted as a separator between parameters.
-    /** @noinspection unused*/
+    /**
+     * Adds parameters to the list of arguments that will be passed to the
+     * native Qt application's main() function.
+     *
+     * Either a whitespace or a tab is accepted as a separator.
+     */
+    /**unused*/
+    @SuppressWarnings("unused")
     public void appendApplicationParameters(String params)
     {
         if (params == null || params.isEmpty())
@@ -112,31 +120,32 @@ public class QtActivityBase extends Activity
             loader.appendApplicationParameters(m_applicationParams);
 
             QtLoader.LoadingResult result = loader.loadQtLibraries();
-
             if (result == QtLoader.LoadingResult.Succeeded) {
                 m_delegate.startNativeApplication(loader.getApplicationParameters(),
                         loader.getMainLibraryPath());
             } else if (result == QtLoader.LoadingResult.Failed) {
-                showErrorDialog();
+                showFatalFinishingToast();
+                return;
             }
         } catch (IllegalArgumentException e) {
             e.printStackTrace();
-            showErrorDialog();
+            showFatalFinishingToast();
+            return;
         }
 
         m_prevConfig = new Configuration(getResources().getConfiguration());
+        m_onCreateSucceeded = true;
     }
 
-    @Override
-    protected void onStart()
-    {
-        super.onStart();
-    }
+    private void showFatalFinishingToast() {
+        Resources resources = getResources();
+        String packageName = getPackageName();
+        @SuppressLint("DiscouragedApi") int id = resources.getIdentifier(
+                "fatal_error_msg", "string", packageName);
+        String message = resources.getString(id);
+        Toast.makeText(this, message, Toast.LENGTH_LONG).show();
 
-    @Override
-    protected void onRestart()
-    {
-        super.onRestart();
+        finish();
     }
 
     @Override
@@ -155,7 +164,7 @@ public class QtActivityBase extends Activity
         QtNative.setApplicationState(QtNative.ApplicationState.ApplicationActive);
         if (QtNative.getStateDetails().isStarted) {
             m_delegate.displayManager().registerDisplayListener();
-            QtNative.updateWindow();
+            QtWindow.updateWindows();
             // Suspending the app clears the immersive mode, so we need to set it again.
             m_delegate.displayManager().reinstateFullScreen();
         }
@@ -172,6 +181,10 @@ public class QtActivityBase extends Activity
     protected void onDestroy()
     {
         super.onDestroy();
+
+        if (!m_onCreateSucceeded)
+            System.exit(-1);
+
         if (!m_retainNonConfigurationInstance) {
             QtNative.unregisterAppStateListener(m_delegate);
             QtNative.terminateQt();
@@ -289,6 +302,11 @@ public class QtActivityBase extends Activity
     protected void onRestoreInstanceState(Bundle savedInstanceState)
     {
         super.onRestoreInstanceState(savedInstanceState);
+
+        // only restore when this Activity is being recreated for a config change
+        if (getLastNonConfigurationInstance() == null)
+            return;
+
         QtNative.setStarted(savedInstanceState.getBoolean("Started"));
         boolean isFullScreen = savedInstanceState.getBoolean("isFullScreen");
         boolean expandedToCutout = savedInstanceState.getBoolean("expandedToCutout");
@@ -338,30 +356,12 @@ public class QtActivityBase extends Activity
     @Override
     public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults)
     {
-        QtNative.sendRequestPermissionsResult(requestCode, permissions, grantResults);
+        QtNative.sendRequestPermissionsResult(requestCode, grantResults);
     }
 
     @UsedFromNativeCode
     public void hideSplashScreen(final int duration)
     {
         m_delegate.hideSplashScreen(duration);
-    }
-
-    @UsedFromNativeCode
-    QtActivityDelegateBase getActivityDelegate()
-    {
-        return m_delegate;
-    }
-
-    private void showErrorDialog() {
-        Resources resources = getResources();
-        String packageName = getPackageName();
-        AlertDialog errorDialog = new AlertDialog.Builder(this).create();
-        @SuppressLint("DiscouragedApi") int id = resources.getIdentifier(
-                "fatal_error_msg", "string", packageName);
-        errorDialog.setMessage(resources.getString(id));
-        errorDialog.setButton(Dialog.BUTTON_POSITIVE, resources.getString(android.R.string.ok),
-                (dialog, which) -> finish());
-        errorDialog.show();
     }
 }

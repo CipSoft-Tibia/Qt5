@@ -62,17 +62,10 @@ void ProfileIODataQt::shutdownOnUIThread()
 
     bool posted = content::BrowserThread::DeleteSoon(content::BrowserThread::IO, FROM_HERE, this);
     if (!posted) {
-        qWarning() << "Could not delete ProfileIODataQt on io thread !";
+        qWarning("Could not delete ProfileIODataQt on io thread !");
         delete this;
     }
 }
-
-#if BUILDFLAG(ENABLE_EXTENSIONS)
-extensions::ExtensionSystemQt* ProfileIODataQt::GetExtensionSystem()
-{
-    return m_profile->GetExtensionSystem();
-}
-#endif // BUILDFLAG(ENABLE_EXTENSIONS)
 
 base::WeakPtr<ProfileIODataQt> ProfileIODataQt::getWeakPtrOnIOThread()
 {
@@ -213,6 +206,8 @@ void ProfileIODataQt::ConfigureNetworkContextParams(bool in_memory,
     network_context_params->enable_referrers = true;
     // Encrypted cookies requires os_crypt, which currently has issues for us on Linux.
     network_context_params->enable_encrypted_cookies = false;
+    network_context_params->enable_zstd =
+            base::FeatureList::IsEnabled(net::features::kZstdContentEncoding);
 
     network_context_params->http_cache_enabled = m_httpCacheType != ProfileAdapter::NoCache;
     network_context_params->http_cache_max_size = m_httpCacheMaxSize;

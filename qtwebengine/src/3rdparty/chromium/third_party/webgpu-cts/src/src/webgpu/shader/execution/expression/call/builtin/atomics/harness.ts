@@ -25,15 +25,14 @@ export const kMapId = {
   },
 };
 
-export function typedArrayCtor(scalarType: string): TypedArrayBufferViewConstructor {
+export function typedArrayCtor(
+  scalarType: 'u32' | 'i32'
+): TypedArrayBufferViewConstructor<Uint32Array | Int32Array> {
   switch (scalarType) {
     case 'u32':
       return Uint32Array;
     case 'i32':
       return Int32Array;
-    default:
-      assert(false, 'Atomic variables can only by u32 or i32');
-      return Uint8Array;
   }
 }
 
@@ -85,13 +84,12 @@ export function runStorageVariableTest({
     },
   });
 
-  const outputBuffer = t.device.createBuffer({
+  const outputBuffer = t.createBufferTracked({
     size: bufferNumElements * arrayType.BYTES_PER_ELEMENT,
     usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC,
     mappedAtCreation: true,
   });
   // Fill with initial value
-  t.trackForCleanup(outputBuffer);
   const data = new arrayType(outputBuffer.getMappedRange());
   data.fill(initValue);
   outputBuffer.unmap();
@@ -185,7 +183,7 @@ export function runWorkgroupVariableTest({
     },
   });
 
-  const outputBuffer = t.device.createBuffer({
+  const outputBuffer = t.createBufferTracked({
     size: wgNumElements * dispatchSize * arrayType.BYTES_PER_ELEMENT,
     usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC,
   });

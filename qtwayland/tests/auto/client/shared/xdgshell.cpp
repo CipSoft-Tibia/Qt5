@@ -59,13 +59,23 @@ XdgSurface::XdgSurface(XdgWmBase *xdgWmBase, Surface *surface, wl_client *client
     QVERIFY(!surface->m_pending.buffer);
     QVERIFY(!surface->m_committed.buffer);
     connect(this, &XdgSurface::toplevelCreated, xdgWmBase, &XdgWmBase::toplevelCreated, Qt::DirectConnection);
-    connect(surface, &Surface::attach, this, &XdgSurface::verifyConfigured);
+    connect(surface, &Surface::attach, this, [this]  (void *buffer) {
+        if (buffer)
+            verifyConfigured();
+    });
     connect(surface, &Surface::commit, this, [this] {
         m_committed = m_pending;
 
         if (m_ackedConfigureSerial != m_committedConfigureSerial) {
             m_committedConfigureSerial = m_ackedConfigureSerial;
             emit configureCommitted(m_committedConfigureSerial);
+        }
+    });
+    connect(surface, &Surface::bufferCommitted, this, [this] {
+        if (m_surface->m_committed.buffer && (m_toplevel || m_popup)) {
+            m_surface->map();
+        } else {
+            m_surface->unmap();
         }
     });
 }
@@ -89,6 +99,12 @@ void XdgSurface::xdg_surface_get_toplevel(Resource *resource, uint32_t id)
 {
     QVERIFY(!m_toplevel);
     QVERIFY(!m_popup);
+    if (!m_surface->m_role) {
+        m_surface->m_role = new XdgToplevelRole;
+    } else if (!qobject_cast<XdgToplevelRole *>(m_surface->m_role)) {
+        QFAIL(QByteArrayLiteral("surface already has role") + m_surface->m_role->metaObject()->className());
+        return;
+    }
     m_toplevel = new XdgToplevel(this, id, resource->version());
     emit toplevelCreated(m_toplevel);
 }
@@ -98,6 +114,12 @@ void XdgSurface::xdg_surface_get_popup(Resource *resource, uint32_t id, wl_resou
     Q_UNUSED(positioner);
     QVERIFY(!m_toplevel);
     QVERIFY(!m_popup);
+    if (!m_surface->m_role) {
+        m_surface->m_role = new SubSurfaceRole;
+    } else if (!qobject_cast<SubSurfaceRole *>(m_surface->m_role)) {
+        qWarning() << "surface already has role" << m_surface->m_role->metaObject()->className();
+        return;
+    }
     auto *p = fromResource<XdgSurface>(parent);
     m_popup = new XdgPopup(this, p, id, resource->version());
 }

@@ -157,8 +157,10 @@ def isInChromiumBlacklist(file_path):
             or file_path.startswith('third_party/chromevox')
             or file_path.startswith('third_party/chromite')
             or file_path.startswith('third_party/colorama')
+            or file_path.startswith('third_party/dawn/third_party/gn/webgpu-cts/test_list.txt')
             or file_path.startswith('third_party/depot_tools')
             or file_path.startswith('third_party/devtools-frontend/src/third_party/image_diff')
+            or file_path.startswith('third_party/devtools-frontend/src/front_end/panels/timeline/fixtures/traces/web-dev-with-advanced-instrumentation.json.gz')
             or (file_path.startswith('third_party/node/node_modules/')
               and not file_path.startswith('third_party/node/node_modules/@babel/')
               and not file_path.startswith('third_party/node/node_modules/@types/d3')
@@ -200,7 +202,7 @@ def isInChromiumBlacklist(file_path):
               and not file_path.startswith('third_party/node/node_modules/polymer-analyzer/')
               and not file_path.startswith('third_party/node/node_modules/polymer-css-build/')
               and not file_path.startswith('third_party/node/node_modules/resolve/')
-              and not file_path.startswith('third_party/node/node_modules/rollup/')
+              and not file_path.startswith('third_party/node/node_modules/@rollup/')
               and not file_path.startswith('third_party/node/node_modules/shady-css-parser/')
               and not file_path.startswith('third_party/node/node_modules/source-map/')
               and not file_path.startswith('third_party/node/node_modules/stable/')
@@ -271,6 +273,8 @@ def isInChromiumBlacklist(file_path):
         ))
         or '/android/java/' in file_path
         or ('/fuzz' in file_path
+          and not file_path.startswith('third_party/blink/renderer/modules/fuzzing')
+          and not file_path.startswith('v8/src/wasm/fuzzing')
           and ('/fuzz/' in file_path
             or '/fuzzer/' in file_path
             or '/fuzzers/' in file_path
@@ -279,7 +283,7 @@ def isInChromiumBlacklist(file_path):
         ))
         or ('/test' in file_path
          and ('/testdata/' in file_path
-           or '/tests/' in file_path
+           or ('/tests/' in file_path and not file_path.startswith('third_party/rust/'))
            or ('/test/' in file_path
              and not '/webrtc/' in file_path
              and not file_path.startswith('net/test/')

@@ -1,5 +1,6 @@
 // Copyright (C) 2021 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant
 
 #ifndef QQMLDOMASTCREATOR_P_H
 #define QQMLDOMASTCREATOR_P_H
@@ -461,8 +462,8 @@ public:
     bool visit(AST::BreakStatement *) override;
     void endVisit(AST::BreakStatement *) override;
 
-    bool visit(AST::Expression *) override;
-    void endVisit(AST::Expression *) override;
+    bool visit(AST::CommaExpression *) override;
+    void endVisit(AST::CommaExpression *) override;
 
     bool visit(AST::ConditionalExpression *) override;
     void endVisit(AST::ConditionalExpression *) override;

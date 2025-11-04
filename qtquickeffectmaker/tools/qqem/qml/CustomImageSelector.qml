@@ -12,6 +12,9 @@ Item {
     property int currentIndex: 0
     property var imagesModel: null
     property bool open: false
+    property bool showAddButton: false
+
+    signal addPressed
 
     height: parent.height - 20
     width: height
@@ -78,6 +81,30 @@ Item {
                         rootItem.currentIndex = index;
                         rootItem.open = false;
                     }
+                }
+            }
+        }
+        // Optionally show add button as the last item
+        Rectangle {
+            width: rootItem.width
+            height: rootItem.height
+            visible: rootItem.showAddButton
+            color: mainView.backgroundColor1
+            border.color: mainView.foregroundColor2
+            border.width: 1
+            radius: 4
+            Image {
+                anchors.fill: parent
+                anchors.margins: 6
+                source: "images/icon_add.png"
+                fillMode: Image.PreserveAspectFit
+                mipmap: true
+            }
+            MouseArea {
+                anchors.fill: parent
+                onClicked: {
+                    rootItem.addPressed();
+                    rootItem.open = false;
                 }
             }
         }

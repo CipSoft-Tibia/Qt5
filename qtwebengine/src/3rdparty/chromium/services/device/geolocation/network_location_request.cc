@@ -8,6 +8,7 @@
 
 #include <iterator>
 #include <limits>
+#include <optional>
 #include <set>
 #include <string>
 #include <string_view>
@@ -32,7 +33,6 @@
 #include "net/base/net_errors.h"
 #include "net/http/http_status_code.h"
 #include "net/traffic_annotation/network_traffic_annotation.h"
-#include "services/device/geolocation/location_arbitrator.h"
 #include "services/device/public/cpp/device_features.h"
 #include "services/device/public/cpp/geolocation/geoposition.h"
 #include "services/device/public/mojom/geolocation_internals.mojom.h"
@@ -40,7 +40,6 @@
 #include "services/network/public/cpp/shared_url_loader_factory.h"
 #include "services/network/public/cpp/simple_url_loader.h"
 #include "services/network/public/mojom/url_response_head.mojom.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 
 namespace device {
 namespace {
@@ -94,6 +93,12 @@ void RecordUmaRequestInterval(base::TimeDelta time_delta) {
   UMA_HISTOGRAM_CUSTOM_COUNTS(
       "Geolocation.NetworkLocationRequest.RequestInterval",
       time_delta.InMinutes(), kMin, kMax, kBuckets);
+}
+
+void RecordUmaNetworkLocationRequestSource(
+    NetworkLocationRequestSource network_location_request_source) {
+  base::UmaHistogramEnumeration("Geolocation.NetworkLocationRequest.Source",
+                                network_location_request_source);
 }
 
 // Local functions
@@ -190,7 +195,8 @@ NetworkLocationRequest::~NetworkLocationRequest() = default;
 void NetworkLocationRequest::MakeRequest(
     const WifiData& wifi_data,
     const base::Time& wifi_timestamp,
-    const net::PartialNetworkTrafficAnnotationTag& partial_traffic_annotation) {
+    const net::PartialNetworkTrafficAnnotationTag& partial_traffic_annotation,
+    NetworkLocationRequestSource network_location_request_source) {
   GEOLOCATION_LOG(DEBUG)
       << "Sending a network location request: Number of Wi-Fi APs="
       << wifi_data.access_point_data.size();
@@ -249,6 +255,7 @@ void NetworkLocationRequest::MakeRequest(
       base::BindOnce(&NetworkLocationRequest::OnRequestComplete,
                      base::Unretained(this)),
       1024 * 1024 /* 1 MiB */);
+  RecordUmaNetworkLocationRequestSource(network_location_request_source);
 }
 
 void NetworkLocationRequest::OnRequestComplete(
@@ -496,9 +503,8 @@ mojom::GeopositionPtr CreateGeoposition(const base::Value::Dict& response_body,
   }
 
   // latitude and longitude fields are always required.
-  absl::optional<double> latitude =
-      location_object->FindDouble(kLatitudeString);
-  absl::optional<double> longitude =
+  std::optional<double> latitude = location_object->FindDouble(kLatitudeString);
+  std::optional<double> longitude =
       location_object->FindDouble(kLongitudeString);
   if (!latitude || !longitude) {
     VLOG(1) << "CreateGeoposition() : location lacks lat and/or long.";
@@ -511,7 +517,7 @@ mojom::GeopositionPtr CreateGeoposition(const base::Value::Dict& response_body,
   position->timestamp = wifi_timestamp;
 
   // Other fields are optional.
-  absl::optional<double> accuracy = response_body.FindDouble(kAccuracyString);
+  std::optional<double> accuracy = response_body.FindDouble(kAccuracyString);
   if (accuracy) {
     position->accuracy = *accuracy;
   }

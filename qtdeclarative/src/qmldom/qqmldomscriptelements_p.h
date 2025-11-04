@@ -1,5 +1,6 @@
 // Copyright (C) 2023 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant
 
 #ifndef QQMLDOMSCRIPTELEMENTS_P_H
 #define QQMLDOMSCRIPTELEMENTS_P_H
@@ -17,7 +18,7 @@
 
 #include "qqmldomitem_p.h"
 #include "qqmldomelements_p.h"
-#include "qqmldomattachedinfo_p.h"
+#include "qqmldomfilelocations_p.h"
 #include "qqmldompath_p.h"
 #include <algorithm>
 #include <limits>
@@ -53,8 +54,7 @@ public:
 
     void createFileLocations(const FileLocations::Tree &base) override
     {
-        FileLocations::Tree res =
-                FileLocations::ensure(base, pathFromOwner(), AttachedInfo::PathType::Relative);
+        FileLocations::Tree res = FileLocations::ensure(base, pathFromOwner());
         for (auto location: m_locations) {
             FileLocations::addRegion(res, location.first, location.second);
         }
@@ -158,7 +158,7 @@ public:
     void append(const ScriptList &list) { m_list.append(list.m_list); }
     void reverse() { std::reverse(m_list.begin(), m_list.end()); }
     void replaceKindForGenericChildren(DomType oldType, DomType newType);
-    const QList<ScriptElementVariant> &qList() { return std::as_const(m_list); };
+    const QList<ScriptElementVariant> &qList() const { return std::as_const(m_list); };
 
 private:
     QList<ScriptElementVariant> m_list;

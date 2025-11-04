@@ -104,8 +104,6 @@ jumbo_component("events_base") {
     "event_switches.cc",
     "event_switches.h",
     "events_base_export.h",
-    "events_features.cc",
-    "events_features.h",
     "gesture_curve.h",
     "gesture_event_details.cc",
     "gesture_event_details.h",
@@ -145,7 +143,6 @@ jumbo_component("events_base") {
 
   deps = [
     ":dom_keycode_converter",
-    "//base/third_party/dynamic_annotations",
     "//build:chromeos_buildflags",
   ]
 
@@ -178,7 +175,7 @@ jumbo_component("events_base") {
   if (ozone_platform_x11) {
     public_deps += [ "//ui/events/keycodes:x11" ]
 
-    # TODO(https://crbug.com/1076277): This dependency on //ui/gfx/x
+    # TODO(crbug.com/40688148): This dependency on //ui/gfx/x
     # is unnecessary and should be removed.  It is included for now
     # to work around a bug in lld that introduces unnecessary
     # nondeterminism in the DSO (see c#6 on the bug for an
@@ -286,7 +283,6 @@ jumbo_component("events") {
   deps = [
     ":dom_keycode_converter",
     ":gesture_detection",
-    "//base/third_party/dynamic_annotations",
     "//skia",
     "//ui/base:features",
     "//ui/gfx",
@@ -361,7 +357,7 @@ jumbo_component("events") {
       "android/key_event_utils.h",
       "android/motion_event_android.h",
 
-      # TODO(crbug.com/1413521): Move this outside is_android block when
+      # TODO(crbug.com/40255699): Move this outside is_android block when
       # consuming cross-platform code which uses it lands.
       "back_gesture_event.h",
     ]
@@ -487,7 +483,6 @@ jumbo_component("gesture_detection") {
   deps = [
     ":events_base",
     "//base",
-    "//base/third_party/dynamic_annotations",
     "//build:chromeos_buildflags",
     "//ui/base:features",
     "//ui/display",
@@ -516,8 +511,6 @@ jumbo_component("velocity_tracker") {
     "velocity_tracker/bitset_32.h",
     "velocity_tracker/motion_event.cc",
     "velocity_tracker/motion_event.h",
-    "velocity_tracker/motion_event_buffer.cc",
-    "velocity_tracker/motion_event_buffer.h",
     "velocity_tracker/motion_event_generic.cc",
     "velocity_tracker/motion_event_generic.h",
     "velocity_tracker/velocity_tracker.cc",
@@ -665,7 +658,6 @@ if (use_blink) {
       "scoped_target_handler_unittest.cc",
       "test/scoped_event_waiter_unittest.cc",
       "velocity_tracker/bitset_32_unittest.cc",
-      "velocity_tracker/motion_event_buffer_unittest.cc",
       "velocity_tracker/motion_event_generic_unittest.cc",
       "velocity_tracker/velocity_tracker_unittest.cc",
     ]
@@ -712,7 +704,7 @@ if (use_blink) {
       sources += [ "android/motion_event_android_unittest.cc" ]
       deps += [ "//ui/android:ui_full_java" ]
     } else {
-      data_deps = [ "//third_party/mesa_headers" ]
+      data_deps = [ "//third_party/angle:includes" ]
     }
 
     if (use_ozone) {

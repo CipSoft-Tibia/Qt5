@@ -3,7 +3,7 @@
 Open Asset Import Library (assimp)
 ---------------------------------------------------------------------------
 
-Copyright (c) 2006-2024, assimp team
+Copyright (c) 2006-2025, assimp team
 
 All rights reserved.
 
@@ -45,7 +45,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #ifndef ASSIMP_BUILD_NO_LWS_IMPORTER
 
-#include "AssetLib/LWS/LWSLoader.h"
+#include "LWSLoader.h"
 #include "Common/Importer.h"
 #include "PostProcessing/ConvertToLHProcess.h"
 
@@ -78,7 +78,15 @@ static constexpr aiImporterDesc desc = {
 
 // ------------------------------------------------------------------------------------------------
 // Recursive parsing of LWS files
-void LWS::Element::Parse(const char *&buffer, const char *end) {
+namespace {
+    constexpr int MAX_DEPTH = 1000; // Define the maximum depth allowed
+}
+
+void LWS::Element::Parse(const char *&buffer, const char *end, int depth) {
+    if (depth > MAX_DEPTH) {
+        throw std::runtime_error("Maximum recursion depth exceeded in LWS::Element::Parse");
+    }
+
     for (; SkipSpacesAndLineEnd(&buffer, end); SkipLine(&buffer, end)) {
 
         // begin of a new element with children
@@ -121,7 +129,7 @@ void LWS::Element::Parse(const char *&buffer, const char *end) {
 
         // parse more elements recursively
         if (sub) {
-            children.back().Parse(buffer, end);
+            children.back().Parse(buffer, end, depth + 1);
         }
     }
 }
@@ -141,7 +149,7 @@ LWSImporter::LWSImporter() :
 // ------------------------------------------------------------------------------------------------
 // Returns whether the class can handle the format of the given file.
 bool LWSImporter::CanRead(const std::string &pFile, IOSystem *pIOHandler, bool /*checkSig*/) const {
-    static const uint32_t tokens[] = {
+    static constexpr uint32_t tokens[] = {
         AI_MAKE_MAGIC("LWSC"),
         AI_MAKE_MAGIC("LWMO")
     };
@@ -247,7 +255,7 @@ void LWSImporter::ReadEnvelope(const LWS::Element &dad, LWO::Envelope &fill) {
 
 // ------------------------------------------------------------------------------------------------
 // Read animation channels in the old LightWave animation format
-void LWSImporter::ReadEnvelope_Old(std::list<LWS::Element>::const_iterator &it,const std::list<LWS::Element>::const_iterator &endIt, 
+void LWSImporter::ReadEnvelope_Old(std::list<LWS::Element>::const_iterator &it,const std::list<LWS::Element>::const_iterator &endIt,
         LWS::NodeDesc &nodes, unsigned int) {
     if (++it == endIt) {
         ASSIMP_LOG_ERROR("LWS: Encountered unexpected end of file while parsing object motion");
@@ -266,7 +274,7 @@ void LWSImporter::ReadEnvelope_Old(std::list<LWS::Element>::const_iterator &it,c
             ASSIMP_LOG_ERROR("LWS: Encountered unexpected end of file while parsing object motion");
             return;
         }
-        
+
         const unsigned int sub_num = strtoul10((*it).tokens[0].c_str());
         for (unsigned int n = 0; n < sub_num; ++n) {
             if (++it == endIt) {
@@ -577,6 +585,15 @@ void LWSImporter::InternReadFile(const std::string &pFile, aiScene *pScene, IOSy
             // and add the file to the import list
             SkipSpaces(&c, end);
             std::string path = FindLWOFile(c);
+
+            if (path.empty()) {
+                throw DeadlyImportError("LWS: Invalid LoadObjectLayer: empty path.");
+            }
+
+            if (path == pFile) {
+                throw DeadlyImportError("LWS: Invalid LoadObjectLayer: self reference.");
+            }
+
             d.path = path;
             d.id = batch.AddLoadRequest(path, 0, &props);
 
@@ -594,6 +611,15 @@ void LWSImporter::InternReadFile(const std::string &pFile, aiScene *pScene, IOSy
                 d.number = cur_object++;
             }
             std::string path = FindLWOFile(c);
+
+            if (path.empty()) {
+                throw DeadlyImportError("LWS: Invalid LoadObject: empty path.");
+            }
+
+            if (path == pFile) {
+                throw DeadlyImportError("LWS: Invalid LoadObject: self reference.");
+            }
+
             d.id = batch.AddLoadRequest(path, 0, nullptr);
 
             d.path = path;

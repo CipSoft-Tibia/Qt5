@@ -6,18 +6,9 @@
 #include <QtQml>
 #include <QtQuick/qquickview.h>
 
-#ifdef QMAKE_BUILD
-#include "customformatter.h"
-Q_DECLARE_METATYPE(CustomFormatter *)
-#endif
-
 int main(int argc, char *argv[])
 {
     QGuiApplication app(argc, argv);
-
-#ifdef QMAKE_BUILD
-    qmlRegisterType<CustomFormatter>("AxisHandling", 1, 0, "CustomFormatter");
-#endif
 
     QQuickView viewer;
 

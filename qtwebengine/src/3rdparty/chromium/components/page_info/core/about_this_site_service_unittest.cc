@@ -3,14 +3,20 @@
 // found in the LICENSE file.
 
 #include "components/page_info/core/about_this_site_service.h"
+
 #include <memory>
+#include <string_view>
+
 #include "base/memory/raw_ptr.h"
 #include "base/test/metrics/histogram_tester.h"
+#include "base/test/scoped_feature_list.h"
 #include "components/optimization_guide/core/optimization_guide_decision.h"
 #include "components/optimization_guide/proto/common_types.pb.h"
 #include "components/page_info/core/about_this_site_validation.h"
 #include "components/page_info/core/features.h"
 #include "components/page_info/core/proto/about_this_site_metadata.pb.h"
+#include "components/search_engines/prepopulated_engines.h"
+#include "components/search_engines/search_engines_test_environment.h"
 #include "components/search_engines/template_url_service.h"
 #include "services/metrics/public/cpp/ukm_recorder.h"
 #include "services/metrics/public/cpp/ukm_source_id.h"
@@ -29,13 +35,16 @@ using DecisionWithMetadata = AboutThisSiteService::DecisionAndMetadata;
 using optimization_guide::OptimizationGuideDecision;
 using optimization_guide::OptimizationMetadata;
 
-class MockAboutThisSiteServiceClient : public AboutThisSiteService::Client {
+class MockAboutThisSiteService : public AboutThisSiteService {
  public:
-  MockAboutThisSiteServiceClient() = default;
+  MockAboutThisSiteService(TemplateURLService* template_url_service)
+      : AboutThisSiteService(nullptr, false, nullptr, template_url_service) {}
 
-  MOCK_METHOD0(IsOptimizationGuideAllowed, bool());
-  MOCK_METHOD2(CanApplyOptimization,
-               OptimizationGuideDecision(const GURL&, OptimizationMetadata*));
+  MOCK_METHOD(bool, IsOptimizationGuideAllowed, (), (const, override));
+  MOCK_METHOD(optimization_guide::OptimizationGuideDecision,
+              CanApplyOptimization,
+              (const GURL&, OptimizationMetadata*),
+              (const, override));
 };
 
 class MockTabHelper : public AboutThisSiteService::TabHelper {
@@ -100,38 +109,31 @@ OptimizationGuideDecision ReturnUnknown(const GURL& url,
 class AboutThisSiteServiceTest : public ::testing::TestWithParam<bool> {
  public:
   void SetUp() override {
-    auto client_mock =
-        std::make_unique<testing::StrictMock<MockAboutThisSiteServiceClient>>();
-
     // Parameterize test until kAboutThisSiteAsyncFetching is enabled by
     // default.
     if (GetParam()) {
       tab_helper_mock_ = std::make_unique<testing::StrictMock<MockTabHelper>>();
     }
 
-    client_ = client_mock.get();
+    service_ = std::make_unique<testing::StrictMock<MockAboutThisSiteService>>(
+        search_engines_test_environment_.template_url_service());
     SetOptimizationGuideAllowed(true);
-
-    template_url_service_ = std::make_unique<TemplateURLService>(nullptr, 0);
-
-    service_ = std::make_unique<AboutThisSiteService>(
-        std::move(client_mock), template_url_service_.get());
   }
 
   void SetOptimizationGuideAllowed(bool allowed) {
-    EXPECT_CALL(*client(), IsOptimizationGuideAllowed())
+    EXPECT_CALL(*service(), IsOptimizationGuideAllowed())
         .WillRepeatedly(Return(allowed));
   }
 
-  MockAboutThisSiteServiceClient* client() { return client_; }
   MockTabHelper* tab_helper() { return tab_helper_mock_.get(); }
-  TemplateURLService* templateService() { return template_url_service_.get(); }
-  AboutThisSiteService* service() { return service_.get(); }
+  TemplateURLService* templateService() {
+    return search_engines_test_environment_.template_url_service();
+  }
+  MockAboutThisSiteService* service() { return service_.get(); }
 
  private:
-  std::unique_ptr<TemplateURLService> template_url_service_;
-  std::unique_ptr<AboutThisSiteService> service_;
-  raw_ptr<MockAboutThisSiteServiceClient> client_;
+  search_engines::SearchEnginesTestEnvironment search_engines_test_environment_;
+  std::unique_ptr<MockAboutThisSiteService> service_;
   std::unique_ptr<MockTabHelper> tab_helper_mock_;
 };
 
@@ -143,7 +145,7 @@ TEST_P(AboutThisSiteServiceTest, ValidResponse) {
         .WillOnce(Return(DecisionWithMetadata{OptimizationGuideDecision::kTrue,
                                               CreateValidMetadata()}));
   } else {
-    EXPECT_CALL(*client(), CanApplyOptimization(_, _))
+    EXPECT_CALL(*service(), CanApplyOptimization(_, _))
         .WillOnce(Invoke(&ReturnDescription));
   }
 
@@ -161,10 +163,13 @@ TEST_P(AboutThisSiteServiceTest, ValidResponse) {
 
 // Tests the language specific feature check.
 TEST_P(AboutThisSiteServiceTest, FeatureCheck) {
-  const char* enabled[]{"en-US", "en-UK", "en",    "pt",    "pt-BR",
-                        "pt-PT", "fr",    "fr-CA", "it",    "nl",
-                        "de",    "de-DE", "es",    "es-419"};
-  const char* disabled[]{"da", "id", "zh-TW", "ja"};
+  base::test::ScopedFeatureList feature_list;
+  feature_list.InitAndEnableFeature(kPageInfoAboutThisSite);
+
+  const char* enabled[]{"en-US", "en-UK",  "en", "pt", "pt-BR", "pt-PT",
+                        "fr",    "fr-CA",  "it", "nl", "de",    "de-DE",
+                        "es",    "es-419", "da", "id", "zh-TW", "ja"};
+  const char* disabled[]{"gl", "si"};
 
   for (const char* lang : enabled) {
     EXPECT_TRUE(page_info::IsAboutThisSiteFeatureEnabled(lang));
@@ -182,7 +187,7 @@ TEST_P(AboutThisSiteServiceTest, InvalidResponse) {
         .WillOnce(Return(DecisionWithMetadata{OptimizationGuideDecision::kTrue,
                                               CreateInvalidDescription()}));
   } else {
-    EXPECT_CALL(*client(), CanApplyOptimization(_, _))
+    EXPECT_CALL(*service(), CanApplyOptimization(_, _))
         .WillOnce(Invoke(&ReturnInvalidDescription));
   }
 
@@ -199,13 +204,13 @@ TEST_P(AboutThisSiteServiceTest, InvalidResponse) {
 // Tests that no response is handled.
 TEST_P(AboutThisSiteServiceTest, NoResponse) {
   base::HistogramTester t;
-  absl::optional<proto::AboutThisSiteMetadata> expected;
+  std::optional<proto::AboutThisSiteMetadata> expected;
   if (GetParam()) {
     EXPECT_CALL(*tab_helper(), GetAboutThisSiteMetadata())
         .WillOnce(Return(DecisionWithMetadata{OptimizationGuideDecision::kFalse,
-                                              absl::nullopt}));
+                                              std::nullopt}));
   } else {
-    EXPECT_CALL(*client(), CanApplyOptimization(_, _))
+    EXPECT_CALL(*service(), CanApplyOptimization(_, _))
         .WillOnce(Invoke(&ReturnNoResult));
   }
 
@@ -225,9 +230,9 @@ TEST_P(AboutThisSiteServiceTest, Unknown) {
   if (GetParam()) {
     EXPECT_CALL(*tab_helper(), GetAboutThisSiteMetadata())
         .WillOnce(Return(DecisionWithMetadata{
-            OptimizationGuideDecision::kUnknown, absl::nullopt}));
+            OptimizationGuideDecision::kUnknown, std::nullopt}));
   } else {
-    EXPECT_CALL(*client(), CanApplyOptimization(_, _))
+    EXPECT_CALL(*service(), CanApplyOptimization(_, _))
         .WillOnce(Invoke(&ReturnUnknown));
   }
 
@@ -249,13 +254,14 @@ TEST_P(AboutThisSiteServiceTest, NotShownWhenNoGoogleDSE) {
   TemplateURL* template_url =
       templateService()->Add(std::make_unique<TemplateURL>(TemplateURLData(
           u"shortname", u"keyword", "https://cs.chromium.org",
-          base::StringPiece(), base::StringPiece(), base::StringPiece(),
-          base::StringPiece(), base::StringPiece(), base::StringPiece(),
-          base::StringPiece(), base::StringPiece(), base::StringPiece(),
-          base::StringPiece(), base::StringPiece(), base::StringPiece(),
-          base::StringPiece(), base::StringPiece(), std::vector<std::string>(),
-          base::StringPiece(), base::StringPiece(), base::StringPiece16(),
-          base::Value::List(), false, false, 0)));
+          std::string_view(), std::string_view(), std::string_view(),
+          std::string_view(), std::string_view(), std::string_view(),
+          std::string_view(), std::string_view(), std::string_view(),
+          std::string_view(), std::string_view(), std::string_view(),
+          std::string_view(), std::string_view(), std::vector<std::string>(),
+          std::string_view(), std::string_view(), std::u16string_view(),
+          base::Value::List(), false, false, 0,
+          base::span<TemplateURLData::RegulatoryExtension>())));
   templateService()->SetUserSelectedDefaultSearchProvider(template_url);
 
   auto info = service()->GetAboutThisSiteInfo(

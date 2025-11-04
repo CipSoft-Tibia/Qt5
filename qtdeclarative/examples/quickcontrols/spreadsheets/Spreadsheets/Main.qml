@@ -4,7 +4,6 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
-import Qt.labs.qmlmodels
 
 import Spreadsheets
 
@@ -223,20 +222,23 @@ ApplicationWindow {
                         return implicitColumnWidth(column)
                     }
 
-                    delegate: TableCell {
-                        required property var model
-
+                    delegate: TableViewDelegate {
                         implicitWidth: 90
                         implicitHeight: 36
-                        text: model.display ?? ""
-                        // We don't create data for empty cells to reduce
-                        // the memory usage in case of huge model.
-                        // If a cell does not have data and it's not highlighted neither
-                        // the model.highlight is undefined which is replaced with false value.
-                        highlight: model.highlight ?? false
-                        edit: model.edit ?? ""
+                        leftPadding: 4
+                        topPadding: 4
 
-                        onCommit: text => model.edit = text
+                        // This binding is used to avoid reimplementing whole background and
+                        // updates only the background.color when the color scheme has changed
+                        // for the target cells of drop event.
+                        Binding {
+                            target: background
+                            property: "color"
+                            value: Qt.styleHints.colorScheme === Qt.Dark
+                                   ? palette.highlight.darker(1.9)
+                                   : palette.highlight.lighter(1.9)
+                            when: model.highlight ?? false
+                        }
                     }
 
                     Keys.onPressed: function (event) {

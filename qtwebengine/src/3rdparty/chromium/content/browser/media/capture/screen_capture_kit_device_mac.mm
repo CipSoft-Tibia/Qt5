@@ -16,6 +16,7 @@
 #include "base/timer/timer.h"
 #include "content/browser/media/capture/io_surface_capture_device_base_mac.h"
 #include "content/browser/media/capture/screen_capture_kit_fullscreen_module.h"
+#include "content/public/common/content_features.h"
 #include "third_party/webrtc/modules/desktop_capture/desktop_capture_types.h"
 #include "ui/gfx/native_widget_types.h"
 
@@ -134,19 +135,25 @@ namespace content {
 
 namespace {
 
+BASE_FEATURE(kScreenCaptureKitFullDesktopFallback,
+             "ScreenCaptureKitFullDesktopFallback",
+             base::FEATURE_ENABLED_BY_DEFAULT);
+
 class API_AVAILABLE(macos(12.3)) ScreenCaptureKitDeviceMac
     : public IOSurfaceCaptureDeviceBase,
       public ScreenCaptureKitResetStreamInterface {
  public:
-  explicit ScreenCaptureKitDeviceMac(const DesktopMediaID& source)
+  explicit ScreenCaptureKitDeviceMac(const DesktopMediaID& source,
+                                     SCContentFilter* filter)
       : source_(source),
+        filter_(filter),
         device_task_runner_(base::SingleThreadTaskRunner::GetCurrentDefault()) {
     SampleCallback sample_callback = base::BindPostTask(
-        base::SingleThreadTaskRunner::GetCurrentDefault(),
+        device_task_runner_,
         base::BindRepeating(&ScreenCaptureKitDeviceMac::OnStreamSample,
                             weak_factory_.GetWeakPtr()));
     ErrorCallback error_callback = base::BindPostTask(
-        base::SingleThreadTaskRunner::GetCurrentDefault(),
+        device_task_runner_,
         base::BindRepeating(&ScreenCaptureKitDeviceMac::OnStreamError,
                             weak_factory_.GetWeakPtr()));
     helper_ = [[ScreenCaptureKitDeviceHelper alloc]
@@ -159,6 +166,8 @@ class API_AVAILABLE(macos(12.3)) ScreenCaptureKitDeviceMac
   ~ScreenCaptureKitDeviceMac() override = default;
 
   void OnShareableContentCreated(SCShareableContent* content) {
+    DCHECK(device_task_runner_->RunsTasksInCurrentSequence());
+
     if (!content) {
       client()->OnError(
           media::VideoCaptureError::kScreenCaptureKitFailedGetShareableContent,
@@ -170,10 +179,13 @@ class API_AVAILABLE(macos(12.3)) ScreenCaptureKitDeviceMac
     switch (source_.type) {
       case DesktopMediaID::TYPE_SCREEN:
         for (SCDisplay* display in content.displays) {
-          if (source_.id == display.displayID) {
-            NSArray<SCWindow*>* exclude_windows = nil;
+          // There's currently no support for stitching desktops together as
+          // requested by kFullDesktopScreenId. Capture the first display as a
+          // fallback. See https://crbug.com/325530044.
+          if (source_.id == display.displayID ||
+              source_.id == webrtc::kFullDesktopScreenId) {
             filter = [[SCContentFilter alloc] initWithDisplay:display
-                                             excludingWindows:exclude_windows];
+                                             excludingWindows:@[]];
             stream_config_content_size_ =
                 gfx::Size(display.width, display.height);
             break;
@@ -191,19 +203,33 @@ class API_AVAILABLE(macos(12.3)) ScreenCaptureKitDeviceMac
               fullscreen_module_ = MaybeCreateScreenCaptureKitFullscreenModule(
                   device_task_runner_, *this, window);
             }
-            break;
           }
         }
         break;
       default:
-        NOTREACHED();
+        NOTREACHED_IN_MIGRATION();
         break;
     }
+
+    CreateStream(filter);
+  }
+
+  void CreateStream(SCContentFilter* filter) {
+    DCHECK(device_task_runner_->RunsTasksInCurrentSequence());
     if (!filter) {
       client()->OnError(
           media::VideoCaptureError::kScreenCaptureKitFailedToFindSCDisplay,
           FROM_HERE, "Failed to find SCDisplay");
       return;
+    }
+
+    if (@available(macOS 14.0, *)) {
+      // Update the content size. This step is neccessary when used together
+      // with SCContentSharingPicker. If the Chrome picker is used, it will
+      // change to retina resolution if applicable.
+      stream_config_content_size_ =
+          gfx::Size(filter.contentRect.size.width * filter.pointPixelScale,
+                    filter.contentRect.size.height * filter.pointPixelScale);
     }
 
     gfx::RectF dest_rect_in_frame;
@@ -245,6 +271,8 @@ class API_AVAILABLE(macos(12.3)) ScreenCaptureKitDeviceMac
     [stream_ startCaptureWithCompletionHandler:handler];
   }
   void OnStreamStarted(bool error) {
+    DCHECK(device_task_runner_->RunsTasksInCurrentSequence());
+
     if (error) {
       client()->OnError(
           media::VideoCaptureError::kScreenCaptureKitFailedStartCapture,
@@ -258,6 +286,8 @@ class API_AVAILABLE(macos(12.3)) ScreenCaptureKitDeviceMac
     }
   }
   void OnStreamStopped(bool error) {
+    DCHECK(device_task_runner_->RunsTasksInCurrentSequence());
+
     if (error) {
       client()->OnError(
           media::VideoCaptureError::kScreenCaptureKitFailedStopCapture,
@@ -268,6 +298,8 @@ class API_AVAILABLE(macos(12.3)) ScreenCaptureKitDeviceMac
   void OnStreamSample(gfx::ScopedInUseIOSurface io_surface,
                       std::optional<gfx::Size> content_size,
                       std::optional<gfx::Rect> visible_rect) {
+    DCHECK(device_task_runner_->RunsTasksInCurrentSequence());
+
     if (requested_capture_format_) {
       // Does the size of io_surface match the requested format?
       size_t io_surface_width = IOSurfaceGetWidth(io_surface.get());
@@ -342,6 +374,8 @@ class API_AVAILABLE(macos(12.3)) ScreenCaptureKitDeviceMac
         visible_rect.value_or(gfx::Rect(actual_capture_format_.frame_size)));
   }
   void OnStreamError() {
+    DCHECK(device_task_runner_->RunsTasksInCurrentSequence());
+
     if (is_resetting_ || (fullscreen_module_ &&
                           fullscreen_module_->is_fullscreen_window_active())) {
       // Clear `is_resetting_` because the completion handler in ResetStreamTo()
@@ -376,24 +410,33 @@ class API_AVAILABLE(macos(12.3)) ScreenCaptureKitDeviceMac
 
   // IOSurfaceCaptureDeviceBase:
   void OnStart() override {
-    auto content_callback = base::BindPostTask(
-        device_task_runner_,
-        base::BindRepeating(
-            &ScreenCaptureKitDeviceMac::OnShareableContentCreated,
-            weak_factory_.GetWeakPtr()));
-    auto handler = ^(SCShareableContent* content, NSError* error) {
-      content_callback.Run(content);
-    };
-    [SCShareableContent getShareableContentWithCompletionHandler:handler];
+    DCHECK(device_task_runner_->RunsTasksInCurrentSequence());
+    if (filter_) {
+      // SCContentSharingPicker is used where filter_ is set on creation.
+      CreateStream(filter_);
+    } else {
+      // Chrome picker is used.
+      auto content_callback = base::BindPostTask(
+          device_task_runner_,
+          base::BindRepeating(
+              &ScreenCaptureKitDeviceMac::OnShareableContentCreated,
+              weak_factory_.GetWeakPtr()));
+      auto handler = ^(SCShareableContent* content, NSError* error) {
+        content_callback.Run(content);
+      };
+      [SCShareableContent getShareableContentWithCompletionHandler:handler];
+    }
   }
   void OnStop() override {
+    DCHECK(device_task_runner_->RunsTasksInCurrentSequence());
+
     if (stream_) {
-      auto stream_started_callback = base::BindPostTask(
+      auto stream_stopped_callback = base::BindPostTask(
           device_task_runner_,
           base::BindRepeating(&ScreenCaptureKitDeviceMac::OnStreamStopped,
                               weak_factory_.GetWeakPtr()));
       auto handler = ^(NSError* error) {
-        stream_started_callback.Run(!!error);
+        stream_stopped_callback.Run(!!error);
       };
       [stream_ stopCaptureWithCompletionHandler:handler];
 
@@ -402,8 +445,9 @@ class API_AVAILABLE(macos(12.3)) ScreenCaptureKitDeviceMac
           [stream_ removeStreamOutput:helper_
                                  type:SCStreamOutputTypeScreen
                                 error:&error];
-      if (!remove_stream_output_result)
+      if (!remove_stream_output_result) {
         DLOG(ERROR) << "Failed removeStreamOutput";
+      }
     }
 
     weak_factory_.InvalidateWeakPtrs();
@@ -412,6 +456,8 @@ class API_AVAILABLE(macos(12.3)) ScreenCaptureKitDeviceMac
 
   // ScreenCaptureKitResetStreamInterface.
   void ResetStreamTo(SCWindow* window) override {
+    DCHECK(device_task_runner_->RunsTasksInCurrentSequence());
+
     if (!window || is_resetting_) {
       client()->OnError(
           media::VideoCaptureError::kScreenCaptureKitResetStreamError,
@@ -438,6 +484,7 @@ class API_AVAILABLE(macos(12.3)) ScreenCaptureKitDeviceMac
 
  private:
   const DesktopMediaID source_;
+  SCContentFilter* const filter_;
   const scoped_refptr<base::SingleThreadTaskRunner> device_task_runner_;
 
   // The actual format of the video frames that are sent to `client`.
@@ -467,36 +514,41 @@ class API_AVAILABLE(macos(12.3)) ScreenCaptureKitDeviceMac
 
 }  // namespace
 
+// Although ScreenCaptureKit is available in 12.3 there were some bugs that
+// were not fixed until 13.2.
+API_AVAILABLE(macos(13.2))
 std::unique_ptr<media::VideoCaptureDevice> CreateScreenCaptureKitDeviceMac(
-    const DesktopMediaID& source) {
-  // Although ScreenCaptureKit is available in 12.3 there were some bugs that
-  // were not fixed until 13.2.
-  if (@available(macOS 13.2, *)) {
-    switch (source.type) {
-      case DesktopMediaID::TYPE_SCREEN:
-        // ScreenCaptureKitDeviceMac only supports a single display at a time.
-        // It will not stitch desktops together. https://crbug.com/1178360
-        if (source.id == webrtc::kFullDesktopScreenId ||
-            source.id == webrtc::kInvalidScreenId) {
-          return nullptr;
-        }
-        break;
-      case DesktopMediaID::TYPE_WINDOW:
-        break;
-      default:
-        // ScreenCaptureKitDeviceMac supports only TYPE_SCREEN and TYPE_WINDOW.
-        // https://crbug.com/1176900
+    const DesktopMediaID& source,
+    SCContentFilter* filter) {
+  switch (source.type) {
+    case DesktopMediaID::TYPE_SCREEN:
+      // ScreenCaptureKitDeviceMac only supports a single display at a time.
+      // It will not stitch desktops together. If
+      // kScreenCaptureKitFullDesktopFallback is enabled, we will fallback to
+      // capturing the first display in the list returned from
+      // getShareableContent. https://crbug.com/1178360 and
+      // https://crbug.com/325530044
+      if ((source.id == webrtc::kFullDesktopScreenId &&
+           !base::FeatureList::IsEnabled(
+               kScreenCaptureKitFullDesktopFallback)) ||
+          source.id == webrtc::kInvalidScreenId) {
         return nullptr;
-    }
-
-    IncrementDesktopCaptureCounter(SCREEN_CAPTURER_CREATED);
-    IncrementDesktopCaptureCounter(source.audio_share
-                                       ? SCREEN_CAPTURER_CREATED_WITH_AUDIO
-                                       : SCREEN_CAPTURER_CREATED_WITHOUT_AUDIO);
-
-    return std::make_unique<ScreenCaptureKitDeviceMac>(source);
+      }
+      break;
+    case DesktopMediaID::TYPE_WINDOW:
+      break;
+    default:
+      // ScreenCaptureKitDeviceMac supports only TYPE_SCREEN and TYPE_WINDOW.
+      // https://crbug.com/1176900
+      return nullptr;
   }
-  return nullptr;
+
+  IncrementDesktopCaptureCounter(SCREEN_CAPTURER_CREATED);
+  IncrementDesktopCaptureCounter(source.audio_share
+                                     ? SCREEN_CAPTURER_CREATED_WITH_AUDIO
+                                     : SCREEN_CAPTURER_CREATED_WITHOUT_AUDIO);
+
+  return std::make_unique<ScreenCaptureKitDeviceMac>(source, filter);
 }
 
 }  // namespace content

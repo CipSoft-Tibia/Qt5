@@ -20,13 +20,11 @@
 
 #include <QtGui/QIcon>
 #include <QtGui/QIconEngine>
-#include <QtGui/QPixmapCache>
-#include <private/qicon_p.h>
-#include <private/qiconengine_p.h>
-#include <private/qfactoryloader_p.h>
-#include <QtCore/QHash>
 #include <QtCore/QList>
-#include <QtCore/QTypeInfo>
+#include <QtCore/QSharedPointer>
+#include <QtCore/QVarLengthArray>
+#include <private/qflatmap_p.h>
+#include <private/qiconengine_p.h>
 
 #include <vector>
 #include <memory>
@@ -38,8 +36,8 @@ class QIconLoader;
 
 struct QIconDirInfo
 {
-    enum Type { Fixed, Scalable, Threshold, Fallback };
-    enum Context { UnknownContext, Applications, MimeTypes };
+    enum Type : uint8_t { Fixed, Scalable, Threshold, Fallback };
+    enum Context : uint8_t { UnknownContext, Applications, MimeTypes };
     QIconDirInfo(const QString &_path = QString()) :
             path(_path),
             size(0),
@@ -61,9 +59,9 @@ struct QIconDirInfo
 Q_DECLARE_TYPEINFO(QIconDirInfo, Q_RELOCATABLE_TYPE);
 
 class QIconLoaderEngineEntry
- {
+{
 public:
-    virtual ~QIconLoaderEngineEntry() {}
+    virtual ~QIconLoaderEngineEntry() = default;
     virtual QPixmap pixmap(const QSize &size,
                            QIcon::Mode mode,
                            QIcon::State state,
@@ -72,13 +70,13 @@ public:
     QIconDirInfo dir;
 };
 
-struct ScalableEntry : public QIconLoaderEngineEntry
+struct ScalableEntry final : public QIconLoaderEngineEntry
 {
     QPixmap pixmap(const QSize &size, QIcon::Mode mode, QIcon::State state, qreal scale) override;
     QIcon svgIcon;
 };
 
-struct PixmapEntry : public QIconLoaderEngineEntry
+struct PixmapEntry final : public QIconLoaderEngineEntry
 {
     QPixmap pixmap(const QSize &size, QIcon::Mode mode, QIcon::State state, qreal scale) override;
     QPixmap basePixmap;
@@ -148,17 +146,17 @@ class QIconCacheGtkReader;
 class QIconTheme
 {
 public:
+    QIconTheme() = default;
     QIconTheme(const QString &name);
-    QIconTheme() : m_valid(false) {}
     QStringList parents() const;
-    QList<QIconDirInfo> keyList() { return m_keyList; }
-    QStringList contentDirs() { return m_contentDirs; }
-    bool isValid() { return m_valid; }
+    QList<QIconDirInfo> keyList() const { return m_keyList; }
+    QStringList contentDirs() const { return m_contentDirs; }
+    bool isValid() const { return m_valid; }
 private:
     QStringList m_contentDirs;
     QList<QIconDirInfo> m_keyList;
     QStringList m_parents;
-    bool m_valid;
+    bool m_valid = false;
 public:
     QList<QSharedPointer<QIconCacheGtkReader>> m_gtkCaches;
 };
@@ -207,7 +205,7 @@ private:
     mutable QString m_userFallbackTheme;
     mutable QString m_systemTheme;
     mutable QStringList m_iconDirs;
-    mutable QHash <QString, QIconTheme> themeList;
+    mutable QVarLengthFlatMap <QString, QIconTheme, 5> themeList;
     mutable QStringList m_fallbackDirs;
     mutable QString m_iconName;
 };

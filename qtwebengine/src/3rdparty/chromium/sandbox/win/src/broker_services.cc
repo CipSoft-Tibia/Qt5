@@ -207,7 +207,7 @@ DWORD WINAPI TargetEventsThread(PVOID param) {
         }
 
         default: {
-          NOTREACHED();
+          NOTREACHED_IN_MIGRATION();
           break;
         }
       }
@@ -239,11 +239,11 @@ DWORD WINAPI TargetEventsThread(PVOID param) {
       return 0;
     } else {
       // We have not implemented more commands.
-      NOTREACHED();
+      NOTREACHED_IN_MIGRATION();
     }
   }
 
-  NOTREACHED();
+  NOTREACHED_IN_MIGRATION();
   return 0;
 }
 
@@ -327,7 +327,7 @@ BrokerServicesBase::~BrokerServicesBase() {
   if (job_thread_.is_valid() &&
       WAIT_TIMEOUT == ::WaitForSingleObject(job_thread_.get(), 5000)) {
     // Cannot clean broker services.
-    NOTREACHED();
+    NOTREACHED_IN_MIGRATION();
     return;
   }
 }
@@ -373,7 +373,9 @@ ResultCode BrokerServicesBase::SpawnTarget(const wchar_t* exe_path,
   // This code should only be called from the exe, ensure that this is always
   // the case.
   HMODULE exe_module = nullptr;
-  CHECK(::GetModuleHandleEx(NULL, exe_path, &exe_module));
+  CHECK(::GetModuleHandleEx(
+      /*dwFlags=*/GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT, nullptr,
+      &exe_module));
   if (CURRENT_MODULE() != exe_module)
     return SBOX_ERROR_INVALID_LINK_STATE;
 #endif
@@ -451,9 +453,10 @@ ResultCode BrokerServicesBase::SpawnTarget(const wchar_t* exe_path,
   for (HANDLE handle : policy_handle_list)
     startup_info->AddInheritedHandle(handle);
 
-  scoped_refptr<AppContainer> container = config_base->GetAppContainer();
-  if (container)
+  AppContainer* container = config_base->GetAppContainer();
+  if (container) {
     startup_info->SetAppContainer(container);
+  }
 
   startup_info->AddJobToAssociate(policy_base->GetJobHandle());
 

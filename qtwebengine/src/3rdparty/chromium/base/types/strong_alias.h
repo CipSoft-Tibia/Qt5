@@ -79,7 +79,7 @@ class StrongAlias {
  public:
   using underlying_type = UnderlyingType;
 
-  constexpr StrongAlias() = default;
+  StrongAlias() = default;
   constexpr explicit StrongAlias(const UnderlyingType& v) : value_(v) {}
   constexpr explicit StrongAlias(UnderlyingType&& v) noexcept
       : value_(std::move(v)) {}
@@ -153,7 +153,7 @@ class StrongAlias {
 
 // Stream operator for convenience, streams the UnderlyingType.
 template <typename TagType, typename UnderlyingType>
-  requires(internal::SupportsOstreamOperator<UnderlyingType>)
+  requires(::base::internal::SupportsOstreamOperator<UnderlyingType>)
 std::ostream& operator<<(std::ostream& stream,
                          const StrongAlias<TagType, UnderlyingType>& alias) {
   return stream << alias.value();

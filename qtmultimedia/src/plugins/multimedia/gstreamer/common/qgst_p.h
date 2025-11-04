@@ -652,6 +652,7 @@ public:
     QGstElement getParent() const;
     QGstBin getParentBin() const;
     QGstPipeline getPipeline() const;
+    QGstBin getRootBin() const;
 
     void removeFromParent();
     void dumpPipelineGraph(const char *filename) const;
@@ -850,7 +851,7 @@ public:
 
     bool syncChildrenState();
 
-    void dumpGraph(const char *fileNamePrefix) const;
+    void dumpGraph(const char *fileNamePrefix, bool includeTimestamp = true) const;
 
     QGstElement findByName(const char *);
 

@@ -1,4 +1,4 @@
-/* eslint no-console: "off" */
+/* eslint-disable no-console, n/no-restricted-import */
 
 import * as fs from 'fs';
 
@@ -67,7 +67,6 @@ Colors.enabled = false;
 let verbose = false;
 let emitCoverage = false;
 let listMode: listModes = 'none';
-let debug = false;
 let printJSON = false;
 let quiet = false;
 let loadWebGPUExpectations: Promise<unknown> | undefined = undefined;
@@ -89,7 +88,7 @@ for (let i = 0; i < sys.args.length; ++i) {
     } else if (a === '--list-unimplemented') {
       listMode = 'unimplemented';
     } else if (a === '--debug') {
-      debug = true;
+      globalTestConfig.enableDebugLogs = true;
     } else if (a === '--print-json') {
       printJSON = true;
     } else if (a === '--expectations') {
@@ -106,6 +105,10 @@ for (let i = 0; i < sys.args.length; ++i) {
       globalTestConfig.unrollConstEvalLoops = true;
     } else if (a === '--compat') {
       globalTestConfig.compatibility = true;
+    } else if (a === '--force-fallback-adapter') {
+      globalTestConfig.forceFallbackAdapter = true;
+    } else if (a === '--log-to-websocket') {
+      globalTestConfig.logToWebSocket = true;
     } else {
       console.log('unrecognized flag: ', a);
       usage(1);
@@ -117,9 +120,12 @@ for (let i = 0; i < sys.args.length; ++i) {
 
 let codeCoverage: CodeCoverageProvider | undefined = undefined;
 
-if (globalTestConfig.compatibility) {
+if (globalTestConfig.compatibility || globalTestConfig.forceFallbackAdapter) {
   // MAINTENANCE_TODO: remove the cast once compatibilityMode is officially added
-  setDefaultRequestAdapterOptions({ compatibilityMode: true } as GPURequestAdapterOptions);
+  setDefaultRequestAdapterOptions({
+    compatibilityMode: globalTestConfig.compatibility,
+    forceFallbackAdapter: globalTestConfig.forceFallbackAdapter,
+  } as GPURequestAdapterOptions);
 }
 
 if (gpuProviderModule) {
@@ -169,7 +175,6 @@ if (queries.length === 0) {
     filterQuery
   );
 
-  Logger.globalDebugMode = debug;
   const log = new Logger();
 
   const failed: Array<[string, LiveTestCaseResult]> = [];

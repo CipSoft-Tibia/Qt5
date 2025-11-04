@@ -32,7 +32,7 @@
 
 QT_BEGIN_NAMESPACE
 
-Q_LOGGING_CATEGORY(lcScroller, "qt.widgets.scroller")
+Q_STATIC_LOGGING_CATEGORY(lcScroller, "qt.widgets.scroller")
 
 bool qt_sendSpontaneousEvent(QObject *receiver, QEvent *event);
 
@@ -1300,14 +1300,11 @@ void QScrollerPrivate::createScrollingSegments(qreal v, qreal startPos,
 
         qCDebug(lcScroller) << "Overshoot: delta:" << (stopPos - startPos);
 
-        qreal stopProgress = progressForValue(sp->scrollingCurve, qAbs((stopPos - startPos) / deltaPos));
-
         if (!canOvershoot) {
-            qCDebug(lcScroller) << "Overshoot stopp:" << stopProgress;
-
-            pushSegment(ScrollTypeFlick, deltaTime, stopProgress, startPos, endPos, stopPos,
+            pushSegment(ScrollTypeFlick, deltaTime, qreal(1), startPos, deltaPos, stopPos,
                         sp->scrollingCurve.type(), orientation);
         } else {
+            qreal stopProgress = progressForValue(sp->scrollingCurve, qAbs((stopPos - startPos) / deltaPos));
             qreal oDeltaTime = sp->overshootScrollTime;
             qreal oStopProgress = qMin(stopProgress + oDeltaTime * qreal(0.3) / deltaTime, qreal(1));
             qreal oDistance = startPos + deltaPos * sp->scrollingCurve.valueForProgress(oStopProgress) - stopPos;

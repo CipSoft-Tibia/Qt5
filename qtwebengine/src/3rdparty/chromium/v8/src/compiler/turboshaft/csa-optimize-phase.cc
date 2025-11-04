@@ -22,36 +22,34 @@
 
 namespace v8::internal::compiler::turboshaft {
 
-void CsaLoadEliminationPhase::Run(Zone* temp_zone) {
-  CopyingPhase<VariableReducer, MachineOptimizationReducer,
-               RequiredOptimizationReducer,
-               ValueNumberingReducer>::Run(temp_zone);
-
-  CopyingPhase<VariableReducer, LateLoadEliminationReducer,
-               MachineOptimizationReducer, RequiredOptimizationReducer,
-               ValueNumberingReducer>::Run(temp_zone);
+void CsaEarlyMachineOptimizationPhase::Run(PipelineData* data,
+                                           Zone* temp_zone) {
+  CopyingPhase<MachineOptimizationReducer, ValueNumberingReducer>::Run(
+      data, temp_zone);
 }
 
-void CsaLateEscapeAnalysisPhase::Run(Zone* temp_zone) {
-  CopyingPhase<VariableReducer, LateEscapeAnalysisReducer,
-               MachineOptimizationReducer, RequiredOptimizationReducer,
-               ValueNumberingReducer>::Run(temp_zone);
+void CsaLoadEliminationPhase::Run(PipelineData* data, Zone* temp_zone) {
+  CopyingPhase<LateLoadEliminationReducer, MachineOptimizationReducer,
+               ValueNumberingReducer>::Run(data, temp_zone);
 }
 
-void CsaBranchEliminationPhase::Run(Zone* temp_zone) {
-  CopyingPhase<VariableReducer, MachineOptimizationReducer,
-               BranchEliminationReducer, RequiredOptimizationReducer,
-               ValueNumberingReducer>::Run(temp_zone);
+void CsaLateEscapeAnalysisPhase::Run(PipelineData* data, Zone* temp_zone) {
+  CopyingPhase<LateEscapeAnalysisReducer, MachineOptimizationReducer,
+               ValueNumberingReducer>::Run(data, temp_zone);
 }
 
-void CsaOptimizePhase::Run(Zone* temp_zone) {
-  UnparkedScopeIfNeeded scope(PipelineData::Get().broker(),
+void CsaBranchEliminationPhase::Run(PipelineData* data, Zone* temp_zone) {
+  CopyingPhase<MachineOptimizationReducer, BranchEliminationReducer,
+               ValueNumberingReducer>::Run(data, temp_zone);
+}
+
+void CsaOptimizePhase::Run(PipelineData* data, Zone* temp_zone) {
+  UnparkedScopeIfNeeded scope(data->broker(),
                               v8_flags.turboshaft_trace_reduction);
 
-  CopyingPhase<VariableReducer, PretenuringPropagationReducer,
-               MachineOptimizationReducer, MemoryOptimizationReducer,
-               RequiredOptimizationReducer,
-               ValueNumberingReducer>::Run(temp_zone);
+  CopyingPhase<PretenuringPropagationReducer, MachineOptimizationReducer,
+               MemoryOptimizationReducer,
+               ValueNumberingReducer>::Run(data, temp_zone);
 }
 
 }  // namespace v8::internal::compiler::turboshaft

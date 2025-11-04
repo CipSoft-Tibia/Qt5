@@ -11,8 +11,8 @@
 
 #include <immintrin.h>
 
-#include <xnnpack/common.h>
-#include <xnnpack/reduce.h>
+#include "xnnpack/common.h"
+#include "xnnpack/reduce.h"
 
 
 void xnn_f32_rsum_ukernel__avx512f_u48_acc3(
@@ -53,7 +53,7 @@ void xnn_f32_rsum_ukernel__avx512f_u48_acc3(
 
     // Prepare mask for valid elements (depends on batch).
     batch >>= XNN_LOG2_SIZEOF_FLOAT;
-    const __mmask16 vmask = _cvtu32_mask16((uint16_t) ((uint32_t) (UINT32_C(1) << batch) - UINT32_C(1)));
+    const __mmask16 vmask = _cvtu32_mask16((uint32_t) ((UINT32_C(1) << batch) - UINT32_C(1)));
 
     const __m512 vt = _mm512_maskz_loadu_ps(vmask, input);
     vacc0 = _mm512_add_ps(vacc0, vt);
@@ -64,5 +64,5 @@ void xnn_f32_rsum_ukernel__avx512f_u48_acc3(
   vacc = _mm_add_ps(vacc, _mm_movehl_ps(vacc, vacc));
   vacc = _mm_add_ss(vacc, _mm_movehdup_ps(vacc));
   vacc = _mm_mul_ss(vacc, _mm_load_ss(&params->scalar.scale));
-  _mm_store_ss(output, vacc);
+  *output += _mm_cvtss_f32(vacc);
 }

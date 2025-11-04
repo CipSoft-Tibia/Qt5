@@ -142,7 +142,7 @@ void SensorProviderImpl::SensorCreated(
 
   init_params->memory = std::move(cloned_region);
   init_params->buffer_offset =
-      SensorReadingSharedBuffer::GetOffset(sensor->GetType());
+      GetSensorReadingSharedBufferOffset(sensor->GetType());
   init_params->mode = sensor->GetReportingMode();
 
   double maximum_frequency = sensor->GetMaximumSupportedFrequency();
@@ -217,10 +217,7 @@ void SensorProviderImpl::UpdateVirtualSensor(
     return;
   }
 
-  if (auto virtual_sensor = virtual_provider->GetSensor(type)) {
-    static_cast<VirtualPlatformSensor*>(virtual_sensor.get())
-        ->AddReading(reading);
-  }
+  virtual_provider->AddReading(type, reading);
   std::move(callback).Run(mojom::UpdateVirtualSensorResult::kSuccess);
 }
 

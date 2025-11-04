@@ -27,6 +27,7 @@
 
 #include "src/tint/lang/core/constant/eval_test.h"
 
+#include "src/tint/lang/wgsl/builtin_fn.h"
 #include "src/tint/utils/result/result.h"
 
 #if TINT_BUILD_WGSL_READER
@@ -453,9 +454,9 @@ std::vector<Case> OpDivIntCases() {
         C(T{0}, T::Highest(), T{0}),
 
         // Divide by zero
-        E(T{123}, T{0}, error_msg(T{123}, T{0})),
-        E(T::Highest(), T{0}, error_msg(T::Highest(), T{0})),
-        E(T::Lowest(), T{0}, error_msg(T::Lowest(), T{0})),
+        E(T{123}, T{0}, "12:34 error: integer division by zero is invalid"),
+        E(T::Highest(), T{0}, "12:34 error: integer division by zero is invalid"),
+        E(T::Lowest(), T{0}, "12:34 error: integer division by zero is invalid"),
     };
 
     // Error on most negative divided by -1
@@ -525,9 +526,15 @@ std::vector<Case> OpModCases() {
         C(T{10}, T{10}, T{0}),  //
 
         // Error on divide by zero
-        E(T{123}, T{0}, error_msg(T{123}, T{0})),
-        E(T::Highest(), T{0}, error_msg(T::Highest(), T{0})),
-        E(T::Lowest(), T{0}, error_msg(T::Lowest(), T{0})),
+        E(T{123}, T{0},
+          IsIntegral<T> ? "12:34 error: integer division by zero is invalid"
+                        : error_msg(T{123}, T{0})),
+        E(T::Highest(), T{0},
+          IsIntegral<T> ? "12:34 error: integer division by zero is invalid"
+                        : error_msg(T::Highest(), T{0})),
+        E(T::Lowest(), T{0},
+          IsIntegral<T> ? "12:34 error: integer division by zero is invalid"
+                        : error_msg(T::Lowest(), T{0})),
     };
 
     if constexpr (IsIntegral<T>) {
@@ -1399,7 +1406,8 @@ std::vector<Case> ShiftRightCases() {
 
     // Test shift right by bit width or more
     if constexpr (IsAbstract<T>) {
-        // For abstract int, no error, result is 0
+        // For abstract int, no error, result is replaced with all msb (-1 for negative, 0 for
+        // non-negative)
         ConcatInto(  //
             r, std::vector<Case>{
                    C(T{0}, u32{B::NumBits}, T{0}),
@@ -1408,6 +1416,8 @@ std::vector<Case> ShiftRightCases() {
                    C(T{42}, u32{B::NumBits}, T{0}),
                    C(T{42}, u32{B::NumBits + 1}, T{0}),
                    C(T{42}, u32{B::NumBits + 1000}, T{0}),
+                   C(T{-42}, u32{B::NumBits + 1}, T{-1}),
+                   C(T{-42}, u32{B::NumBits + 1000}, T{-1}),
                });
     } else {
         // For concretes, error
@@ -1508,11 +1518,11 @@ TEST_F(ConstEvalTest, ShortCircuit_And_Error_Unary) {
     GlobalConst("result", LogicalAnd(lhs, rhs));
 
     EXPECT_FALSE(r()->Resolve());
-    EXPECT_EQ(r()->error(), R"(12:34 error: no matching overload for operator ! (abstract-int)
+    EXPECT_EQ(r()->error(), R"(12:34 error: no matching overload for 'operator ! (abstract-int)'
 
 2 candidate operators:
-  operator ! (bool) -> bool
-  operator ! (vecN<bool>) -> vecN<bool>
+ • 'operator ! (bool  ✗ ) -> bool'
+ • 'operator ! (vecN<bool>  ✗ ) -> vecN<bool>'
 )");
 }
 
@@ -1525,11 +1535,11 @@ TEST_F(ConstEvalTest, ShortCircuit_Or_Error_Unary) {
     GlobalConst("result", LogicalOr(lhs, rhs));
 
     EXPECT_FALSE(r()->Resolve());
-    EXPECT_EQ(r()->error(), R"(12:34 error: no matching overload for operator ! (abstract-int)
+    EXPECT_EQ(r()->error(), R"(12:34 error: no matching overload for 'operator ! (abstract-int)'
 
 2 candidate operators:
-  operator ! (bool) -> bool
-  operator ! (vecN<bool>) -> vecN<bool>
+ • 'operator ! (bool  ✗ ) -> bool'
+ • 'operator ! (vecN<bool>  ✗ ) -> vecN<bool>'
 )");
 }
 
@@ -1560,7 +1570,7 @@ TEST_F(ConstEvalTest, NonShortCircuit_And_Invalid_Binary) {
     GlobalConst("result", binary);
 
     EXPECT_FALSE(r()->Resolve());
-    EXPECT_EQ(r()->error(), "12:34 error: '2 / 0' cannot be represented as 'abstract-int'");
+    EXPECT_EQ(r()->error(), "12:34 error: integer division by zero is invalid");
 }
 
 TEST_F(ConstEvalTest, ShortCircuit_And_Error_Binary) {
@@ -1574,10 +1584,10 @@ TEST_F(ConstEvalTest, ShortCircuit_And_Error_Binary) {
 
     EXPECT_FALSE(r()->Resolve());
     EXPECT_EQ(r()->error(),
-              R"(12:34 error: no matching overload for operator && (bool, abstract-int)
+              R"(12:34 error: no matching overload for 'operator && (bool, abstract-int)'
 
 1 candidate operator:
-  operator && (bool, bool) -> bool
+ • 'operator && (bool  ✓ , bool  ✗ ) -> bool'
 )");
 }
 
@@ -1604,7 +1614,7 @@ TEST_F(ConstEvalTest, NonShortCircuit_Or_Invalid_Binary) {
     GlobalConst("result", binary);
 
     EXPECT_FALSE(r()->Resolve());
-    EXPECT_EQ(r()->error(), "12:34 error: '2 / 0' cannot be represented as 'abstract-int'");
+    EXPECT_EQ(r()->error(), "12:34 error: integer division by zero is invalid");
 }
 
 TEST_F(ConstEvalTest, ShortCircuit_Or_Error_Binary) {
@@ -1618,10 +1628,10 @@ TEST_F(ConstEvalTest, ShortCircuit_Or_Error_Binary) {
 
     EXPECT_FALSE(r()->Resolve());
     EXPECT_EQ(r()->error(),
-              R"(12:34 error: no matching overload for operator || (bool, abstract-int)
+              R"(12:34 error: no matching overload for 'operator || (bool, abstract-int)'
 
 1 candidate operator:
-  operator || (bool, bool) -> bool
+ • 'operator || (bool  ✓ , bool  ✗ ) -> bool'
 )");
 }
 
@@ -1672,11 +1682,13 @@ TEST_F(ConstEvalTest, ShortCircuit_And_Error_Materialize) {
 
     EXPECT_FALSE(r()->Resolve());
     EXPECT_EQ(r()->error(),
-              R"(12:34 error: no matching overload for operator == (abstract-float, i32)
+              R"(12:34 error: no matching overload for 'operator == (abstract-float, i32)'
 
 2 candidate operators:
-  operator == (T, T) -> bool  where: T is abstract-int, abstract-float, f32, f16, i32, u32 or bool
-  operator == (vecN<T>, vecN<T>) -> vecN<bool>  where: T is abstract-int, abstract-float, f32, f16, i32, u32 or bool
+ • 'operator == (T  ✓ , T  ✗ ) -> bool' where:
+      ✓  'T' is 'abstract-int', 'abstract-float', 'f32', 'f16', 'i32', 'u32' or 'bool'
+ • 'operator == (vecN<T>  ✗ , vecN<T>  ✗ ) -> vecN<bool>' where:
+      ✗  'T' is 'abstract-int', 'abstract-float', 'f32', 'f16', 'i32', 'u32' or 'bool'
 )");
 }
 
@@ -1723,11 +1735,13 @@ TEST_F(ConstEvalTest, ShortCircuit_Or_Error_Materialize) {
 
     EXPECT_FALSE(r()->Resolve());
     EXPECT_EQ(r()->error(),
-              R"(12:34 error: no matching overload for operator == (abstract-float, i32)
+              R"(12:34 error: no matching overload for 'operator == (abstract-float, i32)'
 
 2 candidate operators:
-  operator == (T, T) -> bool  where: T is abstract-int, abstract-float, f32, f16, i32, u32 or bool
-  operator == (vecN<T>, vecN<T>) -> vecN<bool>  where: T is abstract-int, abstract-float, f32, f16, i32, u32 or bool
+ • 'operator == (T  ✓ , T  ✗ ) -> bool' where:
+      ✓  'T' is 'abstract-int', 'abstract-float', 'f32', 'f16', 'i32', 'u32' or 'bool'
+ • 'operator == (vecN<T>  ✗ , vecN<T>  ✗ ) -> vecN<bool>' where:
+      ✗  'T' is 'abstract-int', 'abstract-float', 'f32', 'f16', 'i32', 'u32' or 'bool'
 )");
 }
 
@@ -1784,11 +1798,13 @@ TEST_F(ConstEvalTest, ShortCircuit_And_Error_Index) {
 
     EXPECT_FALSE(r()->Resolve());
     EXPECT_EQ(r()->error(),
-              R"(12:34 error: no matching overload for operator == (i32, f32)
+              R"(12:34 error: no matching overload for 'operator == (i32, f32)'
 
 2 candidate operators:
-  operator == (T, T) -> bool  where: T is abstract-int, abstract-float, f32, f16, i32, u32 or bool
-  operator == (vecN<T>, vecN<T>) -> vecN<bool>  where: T is abstract-int, abstract-float, f32, f16, i32, u32 or bool
+ • 'operator == (T  ✓ , T  ✗ ) -> bool' where:
+      ✓  'T' is 'abstract-int', 'abstract-float', 'f32', 'f16', 'i32', 'u32' or 'bool'
+ • 'operator == (vecN<T>  ✗ , vecN<T>  ✗ ) -> vecN<bool>' where:
+      ✗  'T' is 'abstract-int', 'abstract-float', 'f32', 'f16', 'i32', 'u32' or 'bool'
 )");
 }
 
@@ -1841,11 +1857,13 @@ TEST_F(ConstEvalTest, ShortCircuit_Or_Error_Index) {
 
     EXPECT_FALSE(r()->Resolve());
     EXPECT_EQ(r()->error(),
-              R"(12:34 error: no matching overload for operator == (i32, f32)
+              R"(12:34 error: no matching overload for 'operator == (i32, f32)'
 
 2 candidate operators:
-  operator == (T, T) -> bool  where: T is abstract-int, abstract-float, f32, f16, i32, u32 or bool
-  operator == (vecN<T>, vecN<T>) -> vecN<bool>  where: T is abstract-int, abstract-float, f32, f16, i32, u32 or bool
+ • 'operator == (T  ✓ , T  ✗ ) -> bool' where:
+      ✓  'T' is 'abstract-int', 'abstract-float', 'f32', 'f16', 'i32', 'u32' or 'bool'
+ • 'operator == (vecN<T>  ✗ , vecN<T>  ✗ ) -> vecN<bool>' where:
+      ✗  'T' is 'abstract-int', 'abstract-float', 'f32', 'f16', 'i32', 'u32' or 'bool'
 )");
 }
 
@@ -1895,11 +1913,13 @@ TEST_F(ConstEvalTest, ShortCircuit_And_Error_Bitcast) {
     GlobalConst("result", binary);
 
     EXPECT_FALSE(r()->Resolve());
-    EXPECT_EQ(r()->error(), R"(12:34 error: no matching overload for operator == (f32, i32)
+    EXPECT_EQ(r()->error(), R"(12:34 error: no matching overload for 'operator == (f32, i32)'
 
 2 candidate operators:
-  operator == (T, T) -> bool  where: T is abstract-int, abstract-float, f32, f16, i32, u32 or bool
-  operator == (vecN<T>, vecN<T>) -> vecN<bool>  where: T is abstract-int, abstract-float, f32, f16, i32, u32 or bool
+ • 'operator == (T  ✓ , T  ✗ ) -> bool' where:
+      ✓  'T' is 'abstract-int', 'abstract-float', 'f32', 'f16', 'i32', 'u32' or 'bool'
+ • 'operator == (vecN<T>  ✗ , vecN<T>  ✗ ) -> vecN<bool>' where:
+      ✗  'T' is 'abstract-int', 'abstract-float', 'f32', 'f16', 'i32', 'u32' or 'bool'
 )");
 }
 
@@ -1945,11 +1965,13 @@ TEST_F(ConstEvalTest, ShortCircuit_Or_Error_Bitcast) {
     GlobalConst("result", binary);
 
     EXPECT_FALSE(r()->Resolve());
-    EXPECT_EQ(r()->error(), R"(12:34 error: no matching overload for operator == (f32, i32)
+    EXPECT_EQ(r()->error(), R"(12:34 error: no matching overload for 'operator == (f32, i32)'
 
 2 candidate operators:
-  operator == (T, T) -> bool  where: T is abstract-int, abstract-float, f32, f16, i32, u32 or bool
-  operator == (vecN<T>, vecN<T>) -> vecN<bool>  where: T is abstract-int, abstract-float, f32, f16, i32, u32 or bool
+ • 'operator == (T  ✓ , T  ✗ ) -> bool' where:
+      ✓  'T' is 'abstract-int', 'abstract-float', 'f32', 'f16', 'i32', 'u32' or 'bool'
+ • 'operator == (vecN<T>  ✗ , vecN<T>  ✗ ) -> vecN<bool>' where:
+      ✗  'T' is 'abstract-int', 'abstract-float', 'f32', 'f16', 'i32', 'u32' or 'bool'
 )");
 }
 
@@ -1971,21 +1993,47 @@ TEST_F(ConstEvalTest, ShortCircuit_And_Error_Init) {
 
     EXPECT_FALSE(r()->Resolve());
     EXPECT_EQ(r()->error(),
-              R"(12:34 error: no matching constructor for vec2<f32>(abstract-float, bool)
+              R"(12:34 error: no matching constructor for 'vec2<f32>(abstract-float, bool)'
 
-5 candidate constructors:
-  vec2(x: T, y: T) -> vec2<T>  where: T is abstract-int, abstract-float, f32, f16, i32, u32 or bool
-  vec2(T) -> vec2<T>  where: T is abstract-int, abstract-float, f32, f16, i32, u32 or bool
-  vec2(vec2<T>) -> vec2<T>  where: T is abstract-int, abstract-float, f32, f16, i32, u32 or bool
-  vec2() -> vec2<abstract-int>
-  vec2<T>() -> vec2<T>  where: T is f32, f16, i32, u32 or bool
+8 candidate constructors:
+ • 'vec2<T  ✓ >(x: T  ✓ , y: T  ✗ ) -> vec2<T>' where:
+      ✓  'T' is 'f32', 'f16', 'i32', 'u32' or 'bool'
+ • 'vec2<T  ✓ >(T  ✓ ) -> vec2<T>' where:
+      ✗  overload expects 1 argument, call passed 2 arguments
+      ✓  'T' is 'f32', 'f16', 'i32', 'u32' or 'bool'
+ • 'vec2<T  ✓ >(vec2<T>  ✗ ) -> vec2<T>' where:
+      ✓  'T' is 'f32', 'f16', 'i32', 'u32' or 'bool'
+ • 'vec2<T  ✓ >() -> vec2<T>' where:
+      ✗  overload expects 0 arguments, call passed 2 arguments
+      ✓  'T' is 'f32', 'f16', 'i32', 'u32' or 'bool'
+ • 'vec2(x: T  ✓ , y: T  ✗ ) -> vec2<T>' where:
+      ✓  'T' is 'abstract-int', 'abstract-float', 'f32', 'f16', 'i32', 'u32' or 'bool'
+ • 'vec2(T  ✓ ) -> vec2<T>' where:
+      ✗  overload expects 1 argument, call passed 2 arguments
+      ✗  overload expects 0 template arguments, call passed 1 argument
+      ✓  'T' is 'abstract-int', 'abstract-float', 'f32', 'f16', 'i32', 'u32' or 'bool'
+ • 'vec2() -> vec2<abstract-int>' where:
+      ✗  overload expects 0 arguments, call passed 2 arguments
+      ✗  overload expects 0 template arguments, call passed 1 argument
+ • 'vec2(vec2<T>  ✗ ) -> vec2<T>' where:
+      ✗  'T' is 'abstract-int', 'abstract-float', 'f32', 'f16', 'i32', 'u32' or 'bool'
 
 5 candidate conversions:
-  vec2<T>(vec2<U>) -> vec2<f32>  where: T is f32, U is abstract-int, abstract-float, i32, f16, u32 or bool
-  vec2<T>(vec2<U>) -> vec2<f16>  where: T is f16, U is abstract-int, abstract-float, f32, i32, u32 or bool
-  vec2<T>(vec2<U>) -> vec2<i32>  where: T is i32, U is abstract-int, abstract-float, f32, f16, u32 or bool
-  vec2<T>(vec2<U>) -> vec2<u32>  where: T is u32, U is abstract-int, abstract-float, f32, f16, i32 or bool
-  vec2<T>(vec2<U>) -> vec2<bool>  where: T is bool, U is abstract-int, abstract-float, f32, f16, i32 or u32
+ • 'vec2<T  ✓ >(vec2<U>  ✗ ) -> vec2<T>' where:
+      ✓  'T' is 'f32'
+      ✗  'U' is 'abstract-int', 'abstract-float', 'i32', 'f16', 'u32' or 'bool'
+ • 'vec2<T  ✗ >(vec2<U>  ✗ ) -> vec2<T>' where:
+      ✗  'T' is 'f16'
+      ✗  'U' is 'abstract-int', 'abstract-float', 'f32', 'i32', 'u32' or 'bool'
+ • 'vec2<T  ✗ >(vec2<U>  ✗ ) -> vec2<T>' where:
+      ✗  'T' is 'i32'
+      ✗  'U' is 'abstract-int', 'abstract-float', 'f32', 'f16', 'u32' or 'bool'
+ • 'vec2<T  ✗ >(vec2<U>  ✗ ) -> vec2<T>' where:
+      ✗  'T' is 'u32'
+      ✗  'U' is 'abstract-int', 'abstract-float', 'f32', 'f16', 'i32' or 'bool'
+ • 'vec2<T  ✗ >(vec2<U>  ✗ ) -> vec2<T>' where:
+      ✗  'T' is 'bool'
+      ✗  'U' is 'abstract-int', 'abstract-float', 'f32', 'f16', 'i32' or 'u32'
 )");
 }
 
@@ -2000,21 +2048,47 @@ TEST_F(ConstEvalTest, ShortCircuit_Or_Error_Init) {
 
     EXPECT_FALSE(r()->Resolve());
     EXPECT_EQ(r()->error(),
-              R"(12:34 error: no matching constructor for vec2<f32>(abstract-float, bool)
+              R"(12:34 error: no matching constructor for 'vec2<f32>(abstract-float, bool)'
 
-5 candidate constructors:
-  vec2(x: T, y: T) -> vec2<T>  where: T is abstract-int, abstract-float, f32, f16, i32, u32 or bool
-  vec2(T) -> vec2<T>  where: T is abstract-int, abstract-float, f32, f16, i32, u32 or bool
-  vec2(vec2<T>) -> vec2<T>  where: T is abstract-int, abstract-float, f32, f16, i32, u32 or bool
-  vec2() -> vec2<abstract-int>
-  vec2<T>() -> vec2<T>  where: T is f32, f16, i32, u32 or bool
+8 candidate constructors:
+ • 'vec2<T  ✓ >(x: T  ✓ , y: T  ✗ ) -> vec2<T>' where:
+      ✓  'T' is 'f32', 'f16', 'i32', 'u32' or 'bool'
+ • 'vec2<T  ✓ >(T  ✓ ) -> vec2<T>' where:
+      ✗  overload expects 1 argument, call passed 2 arguments
+      ✓  'T' is 'f32', 'f16', 'i32', 'u32' or 'bool'
+ • 'vec2<T  ✓ >(vec2<T>  ✗ ) -> vec2<T>' where:
+      ✓  'T' is 'f32', 'f16', 'i32', 'u32' or 'bool'
+ • 'vec2<T  ✓ >() -> vec2<T>' where:
+      ✗  overload expects 0 arguments, call passed 2 arguments
+      ✓  'T' is 'f32', 'f16', 'i32', 'u32' or 'bool'
+ • 'vec2(x: T  ✓ , y: T  ✗ ) -> vec2<T>' where:
+      ✓  'T' is 'abstract-int', 'abstract-float', 'f32', 'f16', 'i32', 'u32' or 'bool'
+ • 'vec2(T  ✓ ) -> vec2<T>' where:
+      ✗  overload expects 1 argument, call passed 2 arguments
+      ✗  overload expects 0 template arguments, call passed 1 argument
+      ✓  'T' is 'abstract-int', 'abstract-float', 'f32', 'f16', 'i32', 'u32' or 'bool'
+ • 'vec2() -> vec2<abstract-int>' where:
+      ✗  overload expects 0 arguments, call passed 2 arguments
+      ✗  overload expects 0 template arguments, call passed 1 argument
+ • 'vec2(vec2<T>  ✗ ) -> vec2<T>' where:
+      ✗  'T' is 'abstract-int', 'abstract-float', 'f32', 'f16', 'i32', 'u32' or 'bool'
 
 5 candidate conversions:
-  vec2<T>(vec2<U>) -> vec2<f32>  where: T is f32, U is abstract-int, abstract-float, i32, f16, u32 or bool
-  vec2<T>(vec2<U>) -> vec2<f16>  where: T is f16, U is abstract-int, abstract-float, f32, i32, u32 or bool
-  vec2<T>(vec2<U>) -> vec2<i32>  where: T is i32, U is abstract-int, abstract-float, f32, f16, u32 or bool
-  vec2<T>(vec2<U>) -> vec2<u32>  where: T is u32, U is abstract-int, abstract-float, f32, f16, i32 or bool
-  vec2<T>(vec2<U>) -> vec2<bool>  where: T is bool, U is abstract-int, abstract-float, f32, f16, i32 or u32
+ • 'vec2<T  ✓ >(vec2<U>  ✗ ) -> vec2<T>' where:
+      ✓  'T' is 'f32'
+      ✗  'U' is 'abstract-int', 'abstract-float', 'i32', 'f16', 'u32' or 'bool'
+ • 'vec2<T  ✗ >(vec2<U>  ✗ ) -> vec2<T>' where:
+      ✗  'T' is 'f16'
+      ✗  'U' is 'abstract-int', 'abstract-float', 'f32', 'i32', 'u32' or 'bool'
+ • 'vec2<T  ✗ >(vec2<U>  ✗ ) -> vec2<T>' where:
+      ✗  'T' is 'i32'
+      ✗  'U' is 'abstract-int', 'abstract-float', 'f32', 'f16', 'u32' or 'bool'
+ • 'vec2<T  ✗ >(vec2<U>  ✗ ) -> vec2<T>' where:
+      ✗  'T' is 'u32'
+      ✗  'U' is 'abstract-int', 'abstract-float', 'f32', 'f16', 'i32' or 'bool'
+ • 'vec2<T  ✗ >(vec2<U>  ✗ ) -> vec2<T>' where:
+      ✗  'T' is 'bool'
+      ✗  'U' is 'abstract-int', 'abstract-float', 'f32', 'f16', 'i32' or 'u32'
 )");
 }
 
@@ -2072,12 +2146,15 @@ TEST_F(ConstEvalTest, ShortCircuit_And_Error_ArrayInit) {
     GlobalConst("result", LogicalAnd(lhs, rhs));
 
     EXPECT_FALSE(r()->Resolve());
-    EXPECT_EQ(r()->error(),
-              R"(error: no matching overload for operator == (array<abstract-int, 1>, abstract-int)
+    EXPECT_EQ(
+        r()->error(),
+        R"(error: no matching overload for 'operator == (array<abstract-int, 1>, abstract-int)'
 
 2 candidate operators:
-  operator == (T, T) -> bool  where: T is abstract-int, abstract-float, f32, f16, i32, u32 or bool
-  operator == (vecN<T>, vecN<T>) -> vecN<bool>  where: T is abstract-int, abstract-float, f32, f16, i32, u32 or bool
+ • 'operator == (T  ✗ , T  ✗ ) -> bool' where:
+      ✗  'T' is 'abstract-int', 'abstract-float', 'f32', 'f16', 'i32', 'u32' or 'bool'
+ • 'operator == (vecN<T>  ✗ , vecN<T>  ✗ ) -> vecN<bool>' where:
+      ✗  'T' is 'abstract-int', 'abstract-float', 'f32', 'f16', 'i32', 'u32' or 'bool'
 )");
 }
 
@@ -2090,12 +2167,15 @@ TEST_F(ConstEvalTest, ShortCircuit_Or_Error_ArrayInit) {
     GlobalConst("result", LogicalOr(lhs, rhs));
 
     EXPECT_FALSE(r()->Resolve());
-    EXPECT_EQ(r()->error(),
-              R"(error: no matching overload for operator == (array<abstract-int, 1>, abstract-int)
+    EXPECT_EQ(
+        r()->error(),
+        R"(error: no matching overload for 'operator == (array<abstract-int, 1>, abstract-int)'
 
 2 candidate operators:
-  operator == (T, T) -> bool  where: T is abstract-int, abstract-float, f32, f16, i32, u32 or bool
-  operator == (vecN<T>, vecN<T>) -> vecN<bool>  where: T is abstract-int, abstract-float, f32, f16, i32, u32 or bool
+ • 'operator == (T  ✗ , T  ✗ ) -> bool' where:
+      ✗  'T' is 'abstract-int', 'abstract-float', 'f32', 'f16', 'i32', 'u32' or 'bool'
+ • 'operator == (vecN<T>  ✗ , vecN<T>  ✗ ) -> vecN<bool>' where:
+      ✗  'T' is 'abstract-int', 'abstract-float', 'f32', 'f16', 'i32', 'u32' or 'bool'
 )");
 }
 
@@ -2127,7 +2207,7 @@ TEST_F(ConstEvalTest, NonShortCircuit_And_Invalid_BuiltinCall) {
 
     EXPECT_FALSE(r()->Resolve());
     EXPECT_EQ(r()->error(),
-              "12:34 error: 'offset + 'count' must be less than or equal to the bit width of 'e'");
+              "12:34 error: 'offset' + 'count' must be less than or equal to the bit width of 'e'");
 }
 
 TEST_F(ConstEvalTest, ShortCircuit_And_Error_BuiltinCall) {
@@ -2141,11 +2221,13 @@ TEST_F(ConstEvalTest, ShortCircuit_And_Error_BuiltinCall) {
 
     EXPECT_FALSE(r()->Resolve());
     EXPECT_EQ(r()->error(),
-              R"(12:34 error: no matching overload for operator == (i32, abstract-float)
+              R"(12:34 error: no matching overload for 'operator == (i32, abstract-float)'
 
 2 candidate operators:
-  operator == (T, T) -> bool  where: T is abstract-int, abstract-float, f32, f16, i32, u32 or bool
-  operator == (vecN<T>, vecN<T>) -> vecN<bool>  where: T is abstract-int, abstract-float, f32, f16, i32, u32 or bool
+ • 'operator == (T  ✓ , T  ✗ ) -> bool' where:
+      ✓  'T' is 'abstract-int', 'abstract-float', 'f32', 'f16', 'i32', 'u32' or 'bool'
+ • 'operator == (vecN<T>  ✗ , vecN<T>  ✗ ) -> vecN<bool>' where:
+      ✗  'T' is 'abstract-int', 'abstract-float', 'f32', 'f16', 'i32', 'u32' or 'bool'
 )");
 }
 
@@ -2173,7 +2255,7 @@ TEST_F(ConstEvalTest, NonShortCircuit_Or_Invalid_BuiltinCall) {
 
     EXPECT_FALSE(r()->Resolve());
     EXPECT_EQ(r()->error(),
-              "12:34 error: 'offset + 'count' must be less than or equal to the bit width of 'e'");
+              "12:34 error: 'offset' + 'count' must be less than or equal to the bit width of 'e'");
 }
 
 TEST_F(ConstEvalTest, ShortCircuit_Or_Error_BuiltinCall) {
@@ -2187,11 +2269,13 @@ TEST_F(ConstEvalTest, ShortCircuit_Or_Error_BuiltinCall) {
 
     EXPECT_FALSE(r()->Resolve());
     EXPECT_EQ(r()->error(),
-              R"(12:34 error: no matching overload for operator == (i32, abstract-float)
+              R"(12:34 error: no matching overload for 'operator == (i32, abstract-float)'
 
 2 candidate operators:
-  operator == (T, T) -> bool  where: T is abstract-int, abstract-float, f32, f16, i32, u32 or bool
-  operator == (vecN<T>, vecN<T>) -> vecN<bool>  where: T is abstract-int, abstract-float, f32, f16, i32, u32 or bool
+ • 'operator == (T  ✓ , T  ✗ ) -> bool' where:
+      ✓  'T' is 'abstract-int', 'abstract-float', 'f32', 'f16', 'i32', 'u32' or 'bool'
+ • 'operator == (vecN<T>  ✗ , vecN<T>  ✗ ) -> vecN<bool>' where:
+      ✗  'T' is 'abstract-int', 'abstract-float', 'f32', 'f16', 'i32', 'u32' or 'bool'
 )");
 }
 
@@ -2215,7 +2299,7 @@ const result = (one == 0) && (1111111111111111111111111111111i == 0);
     auto program = wgsl::reader::Parse(file.get());
     EXPECT_FALSE(program.IsValid());
 
-    auto error = program.Diagnostics().str();
+    auto error = program.Diagnostics().Str();
     EXPECT_EQ(error, R"(test:3:31 error: value cannot be represented as 'i32'
 const result = (one == 0) && (1111111111111111111111111111111i == 0);
                               ^
@@ -2234,7 +2318,7 @@ const result = (one == 1) || (1111111111111111111111111111111i == 0);
     auto program = wgsl::reader::Parse(file.get());
     EXPECT_FALSE(program.IsValid());
 
-    auto error = program.Diagnostics().str();
+    auto error = program.Diagnostics().Str();
     EXPECT_EQ(error, R"(test:3:31 error: value cannot be represented as 'i32'
 const result = (one == 1) || (1111111111111111111111111111111i == 0);
                               ^
@@ -2346,9 +2430,10 @@ TEST_F(ConstEvalTest, ShortCircuit_And_RHSVarDecl) {
     WrapInFunction(Decl(Var("b", Expr(false))), binary);
 
     EXPECT_TRUE(r()->Resolve()) << r()->error();
-    EXPECT_EQ(Sem().Get(binary)->Stage(), core::EvaluationStage::kRuntime);
+    ASSERT_EQ(Sem().Get(binary)->Stage(), core::EvaluationStage::kConstant);
+    EXPECT_EQ(Sem().Get(binary)->ConstantValue()->ValueAs<bool>(), false);
     EXPECT_EQ(Sem().GetVal(binary->lhs)->Stage(), core::EvaluationStage::kConstant);
-    EXPECT_EQ(Sem().GetVal(binary->rhs)->Stage(), core::EvaluationStage::kRuntime);
+    EXPECT_EQ(Sem().GetVal(binary->rhs)->Stage(), core::EvaluationStage::kNotEvaluated);
 }
 
 TEST_F(ConstEvalTest, ShortCircuit_Or_RHSVarDecl) {
@@ -2360,9 +2445,40 @@ TEST_F(ConstEvalTest, ShortCircuit_Or_RHSVarDecl) {
     WrapInFunction(Decl(Var("b", Expr(false))), binary);
 
     EXPECT_TRUE(r()->Resolve()) << r()->error();
-    EXPECT_EQ(Sem().Get(binary)->Stage(), core::EvaluationStage::kRuntime);
+    ASSERT_EQ(Sem().Get(binary)->Stage(), core::EvaluationStage::kConstant);
+    EXPECT_EQ(Sem().Get(binary)->ConstantValue()->ValueAs<bool>(), true);
     EXPECT_EQ(Sem().GetVal(binary->lhs)->Stage(), core::EvaluationStage::kConstant);
-    EXPECT_EQ(Sem().GetVal(binary->rhs)->Stage(), core::EvaluationStage::kRuntime);
+    EXPECT_EQ(Sem().GetVal(binary->rhs)->Stage(), core::EvaluationStage::kNotEvaluated);
+}
+
+TEST_F(ConstEvalTest, ShortCircuit_And_RHSRuntimeBuiltin) {
+    // fn f() {
+    //   var b = false;
+    //   let result = false && any(b);
+    // }
+    auto* binary = LogicalAnd(false, Call(wgsl::BuiltinFn::kAny, "b"));
+    WrapInFunction(Decl(Var("b", Expr(false))), binary);
+
+    EXPECT_TRUE(r()->Resolve()) << r()->error();
+    ASSERT_EQ(Sem().Get(binary)->Stage(), core::EvaluationStage::kConstant);
+    EXPECT_EQ(Sem().Get(binary)->ConstantValue()->ValueAs<bool>(), false);
+    EXPECT_EQ(Sem().GetVal(binary->lhs)->Stage(), core::EvaluationStage::kConstant);
+    EXPECT_EQ(Sem().GetVal(binary->rhs)->Stage(), core::EvaluationStage::kNotEvaluated);
+}
+
+TEST_F(ConstEvalTest, ShortCircuit_Or_RHSRuntimeBuiltin) {
+    // fn f() {
+    //   var b = false;
+    //   let result = true || any(b);
+    // }
+    auto* binary = LogicalOr(true, Call(wgsl::BuiltinFn::kAny, "b"));
+    WrapInFunction(Decl(Var("b", Expr(false))), binary);
+
+    EXPECT_TRUE(r()->Resolve()) << r()->error();
+    ASSERT_EQ(Sem().Get(binary)->Stage(), core::EvaluationStage::kConstant);
+    EXPECT_EQ(Sem().Get(binary)->ConstantValue()->ValueAs<bool>(), true);
+    EXPECT_EQ(Sem().GetVal(binary->lhs)->Stage(), core::EvaluationStage::kConstant);
+    EXPECT_EQ(Sem().GetVal(binary->rhs)->Stage(), core::EvaluationStage::kNotEvaluated);
 }
 
 ////////////////////////////////////////////////
@@ -2425,6 +2541,66 @@ TEST_F(ConstEvalTest, ShortCircuit_Or_MixedConstantAndRuntime) {
 }
 
 ////////////////////////////////////////////////
+// Short-Circuit templated identifier arguments
+////////////////////////////////////////////////
+
+TEST_F(ConstEvalTest, ShortCircuit_And_ArrayElementCountTooSmall) {
+    // const one = 1;
+    // const result = (one == 0) && array<bool, 3-4>()[0];
+    GlobalConst("one", Expr(1_a));
+    auto* lhs = Equal("one", 0_a);
+    auto* count = Sub(3_a, 4_a);
+    auto* rhs = IndexAccessor(Call(ty.array(ty.bool_(), count)), 0_a);
+    auto* binary = LogicalAnd(lhs, rhs);
+    GlobalConst("result", binary);
+
+    EXPECT_FALSE(r()->Resolve());
+    EXPECT_EQ(r()->error(), "error: array count (-1) must be greater than 0");
+}
+
+TEST_F(ConstEvalTest, ShortCircuit_Or_ArrayElementCountTooSmall) {
+    // const one = 1;
+    // const result = (one == 1) || array<bool, 3-4>()[0];
+    GlobalConst("one", Expr(1_a));
+    auto* lhs = Equal("one", 1_a);
+    auto* count = Sub(3_a, 4_a);
+    auto* rhs = IndexAccessor(Call(ty.array(ty.bool_(), count)), 0_a);
+    auto* binary = LogicalOr(lhs, rhs);
+    GlobalConst("result", binary);
+
+    EXPECT_FALSE(r()->Resolve());
+    EXPECT_EQ(r()->error(), "error: array count (-1) must be greater than 0");
+}
+
+TEST_F(ConstEvalTest, ShortCircuit_And_InvalidArrayElementCount) {
+    // const one = 1;
+    // const result = (one == 0) && array<bool, u32(sqrt(-1))>()[0];
+    GlobalConst("one", Expr(1_a));
+    auto* lhs = Equal("one", 0_a);
+    auto* count = Call("u32", Call("sqrt", -1_a));
+    auto* rhs = IndexAccessor(Call(ty.array(ty.bool_(), count)), 0_a);
+    auto* binary = LogicalAnd(lhs, rhs);
+    GlobalConst("result", binary);
+
+    EXPECT_FALSE(r()->Resolve());
+    EXPECT_EQ(r()->error(), "error: sqrt must be called with a value >= 0");
+}
+
+TEST_F(ConstEvalTest, ShortCircuit_Or_InvalidArrayElementCount) {
+    // const one = 1;
+    // const result = (one == 1) || array<bool, u32(sqrt(-1))>()[0];
+    GlobalConst("one", Expr(1_a));
+    auto* lhs = Equal("one", 1_a);
+    auto* count = Call("u32", Call("sqrt", -1_a));
+    auto* rhs = IndexAccessor(Call(ty.array(ty.bool_(), count)), 0_a);
+    auto* binary = LogicalOr(lhs, rhs);
+    GlobalConst("result", binary);
+
+    EXPECT_FALSE(r()->Resolve());
+    EXPECT_EQ(r()->error(), "error: sqrt must be called with a value >= 0");
+}
+
+////////////////////////////////////////////////
 // Short-Circuit Nested
 ////////////////////////////////////////////////
 
@@ -2442,7 +2618,7 @@ const result = )");
     auto program = wgsl::reader::Parse(file.get());
 
     if (should_pass) {
-        auto error = program.Diagnostics().str();
+        auto error = program.Diagnostics().Str();
 
         EXPECT_TRUE(program.IsValid()) << error;
     } else {

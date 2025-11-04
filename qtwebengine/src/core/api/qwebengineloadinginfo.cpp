@@ -1,5 +1,6 @@
 // Copyright (C) 2021 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include <qwebengineloadinginfo.h>
 
@@ -23,7 +24,8 @@ class QWebEngineLoadingInfo::QWebEngineLoadingInfoPrivate : public QSharedData {
 public:
     QWebEngineLoadingInfoPrivate(const QUrl& url, LoadStatus status, bool isErrorPage,
                                  const QString& errorString, int errorCode, ErrorDomain errorDomain,
-                                 const QMultiMap<QByteArray,QByteArray>& responseHeaders)
+                                 const QMultiMap<QByteArray,QByteArray>& responseHeaders,
+                                 bool isDownload)
         : url(url)
         , status(status)
         , isErrorPage(isErrorPage)
@@ -31,6 +33,7 @@ public:
         , errorCode(errorCode)
         , errorDomain(errorDomain)
         , responseHeaders(responseHeaders)
+        , isDownload(isDownload)
     {
     }
 
@@ -41,6 +44,7 @@ public:
     int errorCode;
     ErrorDomain errorDomain;
     QMultiMap<QByteArray,QByteArray> responseHeaders;
+    bool isDownload;
 };
 
 /*!
@@ -56,9 +60,10 @@ public:
 */
 QWebEngineLoadingInfo::QWebEngineLoadingInfo(const QUrl& url, LoadStatus status, bool isErrorPage,
                                              const QString& errorString, int errorCode, ErrorDomain errorDomain,
-                                             const QMultiMap<QByteArray,QByteArray>& responseHeaders)
+                                             const QMultiMap<QByteArray,QByteArray>& responseHeaders,
+                                             bool isDownload)
     : d_ptr(new QWebEngineLoadingInfoPrivate(url, status, isErrorPage, errorString, errorCode, errorDomain,
-                                             responseHeaders))
+                                             responseHeaders, isDownload))
 {
 }
 
@@ -173,6 +178,20 @@ QMultiMap<QByteArray,QByteArray> QWebEngineLoadingInfo::responseHeaders() const
 {
     Q_D(const QWebEngineLoadingInfo);
     return d->responseHeaders;
+}
+
+/*!
+    \property QWebEngineLoadingInfo::isDownload
+    \since 6.9
+    \brief Indicates if the page load was internally stopped
+           (\c QWebEngineLoadingInfo::status() is equal to
+           \c QWebEngineLoadingInfo::LoadStoppedStatus) and will be continued as
+           a download request.
+*/
+bool QWebEngineLoadingInfo::isDownload() const
+{
+    Q_D(const QWebEngineLoadingInfo);
+    return d->isDownload;
 }
 
 QT_END_NAMESPACE

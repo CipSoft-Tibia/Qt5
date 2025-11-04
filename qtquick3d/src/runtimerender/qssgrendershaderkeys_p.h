@@ -604,6 +604,7 @@ struct QSSGShaderDefaultMaterialKeyProperties
     QSSGShaderKeyBoolean m_fogEnabled;
     QSSGShaderKeyUnsigned<3> m_viewCount;
     QSSGShaderKeyBoolean m_usesViewIndex;
+    QSSGShaderKeyUnsigned<3> m_orderIndependentTransparency;
 
     QSSGShaderDefaultMaterialKeyProperties()
         : m_hasLighting("hasLighting")
@@ -651,6 +652,7 @@ struct QSSGShaderDefaultMaterialKeyProperties
         , m_fogEnabled("fogEnabled")
         , m_viewCount("viewCount")
         , m_usesViewIndex("usesViewIndex")
+        , m_orderIndependentTransparency("orderIndependentTransparency")
     {
         m_lightFlags[0].name = "light0HasPosition";
         m_lightFlags[1].name = "light1HasPosition";
@@ -859,6 +861,7 @@ struct QSSGShaderDefaultMaterialKeyProperties
         inVisitor.visit(m_fogEnabled);
         inVisitor.visit(m_viewCount);
         inVisitor.visit(m_usesViewIndex);
+        inVisitor.visit(m_orderIndependentTransparency);
     }
 
     struct OffsetVisitor
@@ -911,7 +914,7 @@ struct QSSGShaderDefaultMaterialKeyProperties
         visitProperties(visitor);
 
         // If this assert fires, then the default material key needs more bits.
-        Q_ASSERT(visitor.offsetVisitor.m_offset < 736);
+        Q_ASSERT(visitor.offsetVisitor.m_offset < 768);
         // This is so we can do some guestimate of how big the string buffer needs
         // to be to avoid doing a lot of allocations when concatenating the strings.
         m_stringBufferSizeHint = visitor.stringSizeVisitor.size;
@@ -921,9 +924,9 @@ struct QSSGShaderDefaultMaterialKeyProperties
 struct QSSGShaderDefaultMaterialKey
 {
     enum {
-        DataBufferSize = 23,
+        DataBufferSize = 24,
     };
-    quint32 m_dataBuffer[DataBufferSize]; // 23 * 4 * 8 = 736 bits
+    quint32 m_dataBuffer[DataBufferSize]; // 24 * 4 * 8 = 768 bits
     size_t m_featureSetHash;
 
     explicit QSSGShaderDefaultMaterialKey(size_t inFeatureSetHash) : m_featureSetHash(inFeatureSetHash)

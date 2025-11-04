@@ -1,5 +1,6 @@
 // Copyright (C) 2017 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
+// Qt-Security score:critical reason:authorization-protocol
 
 #include "qoauth1signature.h"
 #include "qoauth1signature_p.h"
@@ -12,7 +13,7 @@
 
 QT_BEGIN_NAMESPACE
 
-Q_LOGGING_CATEGORY(loggingCategory, "qt.networkauth.oauth1.signature")
+Q_STATIC_LOGGING_CATEGORY(loggingCategory, "qt.networkauth.oauth1.signature")
 
 /*!
     \class QOAuth1Signature

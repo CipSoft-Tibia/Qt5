@@ -5,8 +5,12 @@
 #ifndef COMPONENTS_SEGMENTATION_PLATFORM_INTERNAL_DATABASE_CONFIG_HOLDER_H_
 #define COMPONENTS_SEGMENTATION_PLATFORM_INTERNAL_DATABASE_CONFIG_HOLDER_H_
 
+#include <map>
 #include <memory>
+#include <set>
+#include <string>
 #include <vector>
+
 #include "base/containers/flat_set.h"
 #include "components/segmentation_platform/public/config.h"
 #include "components/segmentation_platform/public/proto/segmentation_platform.pb.h"
@@ -40,7 +44,7 @@ class ConfigHolder {
 
   // Returns segmentation key for the given `segment_id`. Only if the Config
   // supports output configs in metadata.
-  absl::optional<std::string> GetKeyForSegmentId(
+  std::optional<std::string> GetKeyForSegmentId(
       proto::SegmentId segment_id) const;
 
   // Returns config for the given `segment id`.

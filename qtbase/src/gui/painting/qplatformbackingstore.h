@@ -23,7 +23,7 @@
 
 QT_BEGIN_NAMESPACE
 
-Q_DECLARE_EXPORTED_LOGGING_CATEGORY(lcQpaBackingStore, Q_GUI_EXPORT)
+QT_DECLARE_EXPORTED_QT_LOGGING_CATEGORY(lcQpaBackingStore, Q_GUI_EXPORT)
 
 class QRegion;
 class QRect;
@@ -151,7 +151,8 @@ public:
                                  const QRegion &region,
                                  const QPoint &offset,
                                  QPlatformTextureList *textures,
-                                 bool translucentBackground);
+                                 bool translucentBackground,
+                                 qreal sourceTransformFactor = 0);
 
     virtual QImage toImage() const;
 

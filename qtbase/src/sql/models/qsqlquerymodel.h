@@ -40,12 +40,13 @@ public:
     bool insertColumns(int column, int count, const QModelIndex &parent = QModelIndex()) override;
     bool removeColumns(int column, int count, const QModelIndex &parent = QModelIndex()) override;
 
-#if QT_DEPRECATED_SINCE(6, 2)
+#if QT_REMOVAL_QT7_DEPRECATED_SINCE(6, 2)
     QT_DEPRECATED_VERSION_X_6_2("QSqlQuery is not meant to be copied. Pass it by move instead.")
     void setQuery(const QSqlQuery &query);
 #endif
     void setQuery(QSqlQuery &&query);
     void setQuery(const QString &query, const QSqlDatabase &db = QSqlDatabase());
+    void refresh();
 #if QT_SQL_REMOVED_SINCE(6, 5)
     QSqlQuery query() const;
 #endif

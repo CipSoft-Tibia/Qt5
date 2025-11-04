@@ -111,10 +111,16 @@ void QMediaCaptureSessionPrivate::setVideoSink(QVideoSink *sink)
             id: recorder
         }
         videoOutput: preview
+
+        Component.onCompleted: {
+            camera.start()
+        }
     }
 \endqml
 
     \sa Camera, MediaDevices, MediaRecorder, ImageCapture, ScreenCapture, WindowCapture, AudioInput, VideoOutput
+    \note To ensure the camera starts capturing video frames on all platforms, explicitly call camera.start(),
+    typically in the Component.onCompleted handler.
 */
 
 /*!
@@ -123,8 +129,6 @@ void QMediaCaptureSessionPrivate::setVideoSink(QVideoSink *sink)
 QMediaCaptureSession::QMediaCaptureSession(QObject *parent)
     : QObject{ *new QMediaCaptureSessionPrivate, parent }
 {
-    QT6_ONLY(Q_UNUSED(unused))
-
     Q_D(QMediaCaptureSession);
 
     auto maybeCaptureSession = QPlatformMediaIntegration::instance()->createCaptureSession();

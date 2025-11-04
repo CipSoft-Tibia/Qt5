@@ -176,4 +176,39 @@ TestCase {
         mouseClick(control)
         compare(control.pressCount, 1)
     }
+
+    Component {
+        id: contentSizePane
+        Pane {
+            contentWidth: 150
+            contentHeight: 50
+
+            Item {
+                implicitWidth: 100
+                implicitHeight: 30
+            }
+        }
+    }
+
+    function test_contentSize() {
+        let control = createTemporaryObject(contentSizePane, testCase)
+        verify(control)
+
+        compare(control.contentWidth, 150)
+        compare(control.contentHeight, 50)
+        compare(control.implicitContentWidth, 150)
+        compare(control.implicitContentHeight, 50)
+        verify(control.implicitWidth > 150)
+        verify(control.implicitHeight > 50)
+
+        control.contentWidth = undefined;
+        control.contentHeight = undefined;
+
+        compare(control.contentWidth, 100)
+        compare(control.contentHeight, 30)
+        compare(control.implicitContentWidth, 100)
+        compare(control.implicitContentHeight, 30)
+        verify(control.implicitWidth > 100)
+        verify(control.implicitHeight > 30)
+    }
 }

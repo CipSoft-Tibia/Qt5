@@ -1,5 +1,6 @@
 // Copyright (C) 2017 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
+// Qt-Security score:critical reason:authorization-protocol
 
 #include <qabstractoauth.h>
 #include <qoauthhttpserverreplyhandler.h>
@@ -13,6 +14,11 @@
 #include <QtCore/qloggingcategory.h>
 #include <QtCore/private/qlocale_p.h>
 
+#ifndef QT_NO_SSL
+#include <QtNetwork/qsslconfiguration.h>
+#include <QtNetwork/qsslserver.h>
+#include <QtNetwork/qsslsocket.h>
+#endif
 #include <QtNetwork/qtcpsocket.h>
 #include <QtNetwork/qnetworkreply.h>
 
@@ -50,10 +56,12 @@ using namespace Qt::StringLiterals;
 
     The following code illustrates the usage. First, the needed variables:
 
-    \snippet src_oauth_replyhandlers.cpp httpserver-variables
+    \snippet src_oauth_replyhandlers_p.h httpserver-variables
 
     Followed up by the OAuth setup (error handling omitted for brevity):
 
+    \snippet src_oauth_replyhandlers.cpp httpserver-service-configuration
+    \codeline
     \snippet src_oauth_replyhandlers.cpp httpserver-oauth-setup
 
     Finally, we then set up the URI scheme reply-handler:
@@ -76,25 +84,75 @@ using namespace Qt::StringLiterals;
     For specific IP addresses the provided IP literal is used directly,
     for instance:
     \e {http://192.168.0.123:{port}/{path}} in the case of an IPv4 address.
+
+    It's also possible to specify the host part of the callback
+    URL manually with \l {setCallbackHost()}. For instance you can
+    specify the callback to be \c {localhost.localnet}.
+    Naturally you need to ensure that such address is reachable upon
+    redirection.
+
+    \code
+    auto replyHandler = new QOAuthHttpServerReplyHandler(QHostAddress::LocalHost, 1337, this);
+    replyHandler->setCallbackHost("localhost.localnet"_L1);
+    \endcode
+
+    \section1 HTTP and HTTPS Callbacks
+
+    Since Qt 6.9 it's possible to configure the handler to use
+    \c {https} URI scheme instead of \c {http}. This is done by
+    providing an appropriate \l QSslConfiguration when calling
+    \l {listen(const QSslConfiguration &, const QHostAddress &, quint16)}{listen()}.
+    Internally the handler will then use \l QSslServer, and the callback
+    (redirect URL) will be of the form \e {https://{host}:{port}/{path}}.
+
+    Following example illustrates this:
+    \snippet src_oauth_replyhandlers.cpp localhost-https-scheme-setup
+
+    When possible, it is recommended to use other redirect URI
+    options, see \l {Choosing A Reply Handler} and
+    \l {Qt OAuth2 Browser Support}.
+
+    The primary use cases for a localhost \c {https} handler
+    should be limited to development-time, or tightly controlled
+    and provisioned environments. For example, some Authorization
+    Servers won't allow plain \c {http} redirect URIs at all, in which
+    case this can add to development convenience.
+
+    From security perspective,
+    while using SSL/TLS does encrypt the localhost traffic, OAuth2
+    has also other security mechanisms in place such as
+    \l {QOAuth2AuthorizationCodeFlow::PkceMethod}{PKCE}.
+    Under no circumstances you should distribute private certificate
+    keys along with the application.
+
+    \note Browsers will issue severe warnings
+    if the certificate is not trusted. This is typical with
+    self-signed certificates, whose use should be limited to
+    development-time.
 */
 QOAuthHttpServerReplyHandlerPrivate::QOAuthHttpServerReplyHandlerPrivate(
         QOAuthHttpServerReplyHandler *p) :
     text(QObject::tr("Callback received. Feel free to close this page.")), path(u'/'), q_ptr(p)
 {
-    QObject::connect(&httpServer, &QTcpServer::newConnection, q_ptr,
-                     [this]() { _q_clientConnected(); });
 }
 
 QOAuthHttpServerReplyHandlerPrivate::~QOAuthHttpServerReplyHandlerPrivate()
 {
-    if (httpServer.isListening())
-        httpServer.close();
+    if (httpServer->isListening())
+        httpServer->close();
 }
 
 QString QOAuthHttpServerReplyHandlerPrivate::callback() const
 {
     QUrl url;
+#ifndef QT_NO_SSL
+    if (qobject_cast<QSslServer*>(httpServer))
+        url.setScheme(u"https"_s);
+    else
+        url.setScheme(u"http"_s);
+#else
     url.setScheme(u"http"_s);
+#endif
     url.setPort(callbackPort);
     url.setPath(path);
     url.setHost(callbackHost());
@@ -105,7 +163,10 @@ QString QOAuthHttpServerReplyHandlerPrivate::callback() const
 QString QOAuthHttpServerReplyHandlerPrivate::callbackHost() const
 {
     QString host;
-    if (callbackAddress == QHostAddress::AnyIPv4 || callbackAddress == QHostAddress::Any
+    if (!callbackHostname.isEmpty()) {
+        // Use application-provided hostname
+        host = callbackHostname;
+    } else if (callbackAddress == QHostAddress::AnyIPv4 || callbackAddress == QHostAddress::Any
                || callbackAddress == QHostAddress::AnyIPv6) {
         // Convert Any addresses to "localhost"
         host = u"localhost"_s;
@@ -120,7 +181,7 @@ QString QOAuthHttpServerReplyHandlerPrivate::callbackHost() const
 
 void QOAuthHttpServerReplyHandlerPrivate::_q_clientConnected()
 {
-    QTcpSocket *socket = httpServer.nextPendingConnection();
+    QTcpSocket *socket = httpServer->nextPendingConnection();
 
     QObject::connect(socket, &QTcpSocket::disconnected, socket, &QTcpSocket::deleteLater);
     QObject::connect(socket, &QTcpSocket::readyRead, q_ptr,
@@ -132,7 +193,7 @@ void QOAuthHttpServerReplyHandlerPrivate::_q_readData(QTcpSocket *socket)
     QHttpRequest *request = nullptr;
     if (auto it = clients.find(socket); it == clients.end()) {
         request = &clients[socket];     // insert it
-        request->port = httpServer.serverPort();
+        request->port = httpServer->serverPort();
     } else {
         request = &*it;
     }
@@ -171,6 +232,8 @@ void QOAuthHttpServerReplyHandlerPrivate::_q_answerClient(QTcpSocket *socket, co
     if (url.path() != path) {
         qCWarning(lcReplyHandler, "Invalid request: %s", qPrintable(url.toString()));
     } else {
+        Q_EMIT q->callbackDataReceived(QUrl(callback()).resolved(url).toEncoded());
+
         QVariantMap receivedData;
         const QUrlQuery query(url.query());
         const auto items = query.queryItems();
@@ -195,6 +258,36 @@ void QOAuthHttpServerReplyHandlerPrivate::_q_answerClient(QTcpSocket *socket, co
         socket->write(replyMessage);
     }
     socket->disconnectFromHost();
+}
+
+void QOAuthHttpServerReplyHandlerPrivate::initializeLocalServer()
+{
+    Q_Q(QOAuthHttpServerReplyHandler);
+    QObject::connect(httpServer, &QTcpServer::pendingConnectionAvailable, q, [this]() {
+        _q_clientConnected();
+    });
+}
+
+bool QOAuthHttpServerReplyHandlerPrivate::listen(const QHostAddress &address, quint16 port)
+{
+    Q_ASSERT(httpServer);
+    bool success = false;
+
+    if (address.isNull()) {
+        // try IPv4 first, for greatest compatibility
+        success = httpServer->listen(QHostAddress::LocalHost, port);
+        if (!success)
+            success = httpServer->listen(QHostAddress::LocalHostIPv6, port);
+    }
+    if (!success)
+        success = httpServer->listen(address, port);
+
+    if (success) {
+        // Callback ('redirect_uri') value may be needed after this handler is closed
+        callbackAddress = httpServer->serverAddress();
+        callbackPort = httpServer->serverPort();
+    }
+    return success;
 }
 
 bool QOAuthHttpServerReplyHandlerPrivate::QHttpRequest::readMethod(QTcpSocket *socket)
@@ -342,7 +435,10 @@ QOAuthHttpServerReplyHandler::QOAuthHttpServerReplyHandler(const QHostAddress &a
     QOAuthOobReplyHandler(parent),
     d_ptr(new QOAuthHttpServerReplyHandlerPrivate(this))
 {
-    listen(address, port);
+    Q_D(QOAuthHttpServerReplyHandler);
+    d->httpServer = new QTcpServer(this);
+    d->initializeLocalServer();
+    d->listen(address, port);
 }
 
 /*!
@@ -391,6 +487,36 @@ void QOAuthHttpServerReplyHandler::setCallbackPath(const QString &path)
 }
 
 /*!
+    \since 6.9
+
+    Returns the name that is used as the host component of the
+    \l callback() / \l{https://datatracker.ietf.org/doc/html/rfc6749#section-3.1.2}
+    {OAuth2 redirect_uri parameter}.
+
+    \sa setCallbackHost()
+*/
+QString QOAuthHttpServerReplyHandler::callbackHost() const
+{
+    Q_D(const QOAuthHttpServerReplyHandler);
+    return d->callbackHost();
+}
+
+/*!
+    \since 6.9
+
+    Sets \a host to be used as the hostname component of the
+    \l callback(). Providing a non-empty \a host overrides the
+    default behavior, see \l {IPv4 and IPv6}.
+
+    \sa callbackHost()
+*/
+void QOAuthHttpServerReplyHandler::setCallbackHost(const QString &host)
+{
+    Q_D(QOAuthHttpServerReplyHandler);
+    d->callbackHostname = host;
+}
+
+/*!
     Returns the text that is used in response to the
     redirection at the end of the authorization stage.
 
@@ -431,7 +557,7 @@ void QOAuthHttpServerReplyHandler::setCallbackText(const QString &text)
 quint16 QOAuthHttpServerReplyHandler::port() const
 {
     Q_D(const QOAuthHttpServerReplyHandler);
-    return d->httpServer.serverPort();
+    return d->httpServer->serverPort();
 }
 
 /*!
@@ -460,25 +586,57 @@ quint16 QOAuthHttpServerReplyHandler::port() const
 bool QOAuthHttpServerReplyHandler::listen(const QHostAddress &address, quint16 port)
 {
     Q_D(QOAuthHttpServerReplyHandler);
-    bool success = false;
-
-    if (address.isNull()) {
-        // try IPv4 first, for greatest compatibility
-        success = d->httpServer.listen(QHostAddress::LocalHost, port);
-        if (!success)
-            success = d->httpServer.listen(QHostAddress::LocalHostIPv6, port);
+#ifndef QT_NO_SSL
+    if (qobject_cast<QSslServer*>(d->httpServer)) {
+        d->httpServer->close();
+        delete d->httpServer;
+        d->httpServer = new QTcpServer(this);
+        d->initializeLocalServer();
     }
-    if (!success)
-        success = d->httpServer.listen(address, port);
-
-    if (success) {
-        // Callback ('redirect_uri') value may be needed after this handler is closed
-        d->callbackAddress = d->httpServer.serverAddress();
-        d->callbackPort = d->httpServer.serverPort();
-    }
-
-    return success;
+#endif
+    return d->listen(address, port);
 }
+
+#ifndef QT_NO_SSL
+/*!
+    Tells this handler to listen for incoming \c https
+    connections / redirections on \a address and \a port. Returns
+    \c true if listening is successful, and \c false otherwise.
+
+    See \l {HTTP and HTTPS Callbacks} for further information.
+
+    \sa listen(const QHostAddress &, quint16), close(),
+        isListening(), QSslServer, QTcpServer::listen()
+*/
+bool QOAuthHttpServerReplyHandler::listen(const QSslConfiguration &configuration,
+                                          const QHostAddress &address, quint16 port)
+{
+    Q_D(QOAuthHttpServerReplyHandler);
+
+    if (!QSslSocket::supportsSsl()) {
+        qCWarning(lcReplyHandler, "SSL not supported, cannot listen");
+        d->httpServer->close();
+        return false;
+    }
+
+    if (configuration.isNull()) {
+        qCWarning(lcReplyHandler, "QSslConfiguration is null, cannot listen");
+        d->httpServer->close();
+        return false;
+    }
+
+    if (!qobject_cast<QSslServer*>(d->httpServer)) {
+        d->httpServer->close();
+        delete d->httpServer;
+        d->httpServer = new QSslServer(this);
+        d->initializeLocalServer();
+    }
+
+    auto sslServer = qobject_cast<QSslServer*>(d->httpServer);
+    sslServer->setSslConfiguration(configuration);
+    return d->listen(address, port);
+}
+#endif
 
 /*!
     Tells this handler to stop listening for connections / redirections.
@@ -488,7 +646,7 @@ bool QOAuthHttpServerReplyHandler::listen(const QHostAddress &address, quint16 p
 void QOAuthHttpServerReplyHandler::close()
 {
     Q_D(QOAuthHttpServerReplyHandler);
-    return d->httpServer.close();
+    d->httpServer->close();
 }
 
 /*!
@@ -500,7 +658,7 @@ void QOAuthHttpServerReplyHandler::close()
 bool QOAuthHttpServerReplyHandler::isListening() const
 {
     Q_D(const QOAuthHttpServerReplyHandler);
-    return d->httpServer.isListening();
+    return d->httpServer->isListening();
 }
 
 QT_END_NAMESPACE

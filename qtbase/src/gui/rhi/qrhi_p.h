@@ -29,6 +29,7 @@ QT_BEGIN_NAMESPACE
 #define QRHI_RES_RHI(t) t *rhiD = static_cast<t *>(m_rhi)
 
 Q_DECLARE_LOGGING_CATEGORY(QRHI_LOG_INFO)
+Q_DECLARE_LOGGING_CATEGORY(QRHI_LOG_RUB)
 
 class QRhiImplementation
 {
@@ -65,6 +66,8 @@ public:
     virtual QRhiTextureRenderTarget *createTextureRenderTarget(const QRhiTextureRenderTargetDescription &desc,
                                                                QRhiTextureRenderTarget::Flags flags) = 0;
 
+    virtual QRhiShadingRateMap *createShadingRateMap() = 0;
+
     virtual QRhiSwapChain *createSwapChain() = 0;
     virtual QRhi::FrameOpResult beginFrame(QRhiSwapChain *swapChain, QRhi::BeginFrameFlags flags) = 0;
     virtual QRhi::FrameOpResult endFrame(QRhiSwapChain *swapChain, QRhi::EndFrameFlags flags) = 0;
@@ -99,6 +102,7 @@ public:
     virtual void setScissor(QRhiCommandBuffer *cb, const QRhiScissor &scissor) = 0;
     virtual void setBlendConstants(QRhiCommandBuffer *cb, const QColor &c) = 0;
     virtual void setStencilRef(QRhiCommandBuffer *cb, quint32 refValue) = 0;
+    virtual void setShadingRate(QRhiCommandBuffer *cb, const QSize &coarsePixelSize) = 0;
 
     virtual void draw(QRhiCommandBuffer *cb, quint32 vertexCount,
                       quint32 instanceCount, quint32 firstVertex, quint32 firstInstance) = 0;
@@ -124,6 +128,7 @@ public:
 
     virtual QList<int> supportedSampleCounts() const = 0;
     virtual int ubufAlignment() const = 0;
+    virtual QList<QSize> supportedShadingRates(int sampleCount) const = 0;
     virtual bool isYUpInFramebuffer() const = 0;
     virtual bool isYUpInNDC() const = 0;
     virtual bool isClipDepthZeroToOne() const = 0;
@@ -135,6 +140,7 @@ public:
     virtual QRhiDriverInfo driverInfo() const = 0;
     virtual QRhiStats statistics() = 0;
     virtual bool makeThreadLocalNativeContextCurrent() = 0;
+    virtual void setQueueSubmitParams(QRhiNativeHandles *params) = 0;
     virtual void releaseCachedResources() = 0;
     virtual bool isDeviceLost() const = 0;
 
@@ -254,7 +260,6 @@ private:
     QHash<const void *, QRhi::CleanupCallback> keyedCleanupCallbacks;
     QElapsedTimer pipelineCreationTimer;
     qint64 accumulatedPipelineCreationTime = 0;
-    static bool rubLogEnabled;
 
     friend class QRhi;
     friend class QRhiResourceUpdateBatchPrivate;
@@ -369,7 +374,7 @@ public:
         if (!d) {
             d = new QRhiBufferDataPrivate;
         } else if (d->ref != 1) {
-            if (QRhiImplementation::rubLogEnabled)
+            if (QRHI_LOG_RUB().isDebugEnabled())
                 qDebug("[rub] QRhiBufferData %p/%p new backing due to no-copy detach, ref was %d", this, d, d->ref);
             d->ref -= 1;
             d = new QRhiBufferDataPrivate;
@@ -379,7 +384,7 @@ public:
             memcpy(d->data, s, size);
         } else {
             if (d->largeAlloc < size) {
-                if (QRhiImplementation::rubLogEnabled)
+                if (QRHI_LOG_RUB().isDebugEnabled())
                     qDebug("[rub] QRhiBufferData %p/%p new large data allocation %u -> %u", this, d, d->largeAlloc, size);
                 delete[] d->largeData;
                 d->largeAlloc = size;
@@ -668,7 +673,8 @@ public:
         TexDepthOutput,
         TexStorageLoad,
         TexStorageStore,
-        TexStorageLoadStore
+        TexStorageLoadStore,
+        TexShadingRate
     };
 
     void registerTexture(QRhiTexture *tex, TextureAccess *access, TextureStage *stage,

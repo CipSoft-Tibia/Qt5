@@ -15,7 +15,6 @@
 #if QT_CONFIG(accessibility)
 
 #include <QtCore/qcoreapplication.h>
-#include <QtCore/qdebug.h>
 #include <QtCore/qglobal.h>
 #include <QtCore/qlist.h>
 #include <QtCore/qobject.h>
@@ -28,6 +27,7 @@
 
 QT_BEGIN_NAMESPACE
 
+class QDebug;
 class QAccessibleInterface;
 class QAccessibleEvent;
 class QWindow;
@@ -58,7 +58,7 @@ public:
     virtual QWindow *window() const;
 
     // relations
-    virtual QList<QPair<QAccessibleInterface *, QAccessible::Relation>>
+    virtual QList<std::pair<QAccessibleInterface *, QAccessible::Relation>>
     relations(QAccessible::Relation match = QAccessible::AllRelations) const;
     virtual QAccessibleInterface *focusChild() const;
 

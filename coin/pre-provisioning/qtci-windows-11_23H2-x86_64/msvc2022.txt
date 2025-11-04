@@ -57,6 +57,10 @@ Windows 11 SDK (10.0.22000.0)
 Windows 11 SDK (10.0.22621.0)
 Windows Universal C Runtime
 
+Windows SDK (10.0.26100.1742) was later downloaded and installed from:
+https://developer.microsoft.com/en-us/windows/downloads/windows-sdk/
+# COIN-1206
+
 # NOTE! Work loads were added during installation!
 
 ############################################################

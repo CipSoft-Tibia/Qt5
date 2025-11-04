@@ -8,12 +8,12 @@
 #include <stdint.h>
 
 #include <iosfwd>
+#include <optional>
 #include <string>
 
 #include "base/gtest_prod_util.h"
 #include "build/build_config.h"
 #include "skia/ext/skcolorspace_trfn.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "third_party/skia/include/core/SkRefCnt.h"
 #include "ui/gfx/color_space_export.h"
 
@@ -62,6 +62,8 @@ class ColorSpaceDataView;
 class COLOR_SPACE_EXPORT ColorSpace {
  public:
   enum class PrimaryID : uint8_t {
+    // Used as an enum for metrics. DO NOT reorder or delete values. Rather,
+    // add them at the end and increment kMaxValue.
     INVALID,
     // BT709 is also the primaries for SRGB.
     BT709,
@@ -83,10 +85,13 @@ class COLOR_SPACE_EXPORT ColorSpace {
     WIDE_GAMUT_COLOR_SPIN,
     // Primaries defined by the primary matrix |custom_primary_matrix_|.
     CUSTOM,
-    kMaxValue = CUSTOM,
+    EBU_3213_E,
+    kMaxValue = EBU_3213_E,
   };
 
   enum class TransferID : uint8_t {
+    // Used as an enum for metrics. DO NOT reorder or delete values. Rather,
+    // add them at the end and increment kMaxValue.
     INVALID,
     BT709,
     // On macOS, BT709 hardware decoded video frames, when displayed as
@@ -140,7 +145,6 @@ class COLOR_SPACE_EXPORT ColorSpace {
     SMPTE240M,
     YCOCG,
     BT2020_NCL,
-    BT2020_CL,
     YDZDX,
     GBR,
     kMaxValue = GBR,
@@ -329,7 +333,7 @@ class COLOR_SPACE_EXPORT ColorSpace {
   // range, unspecified spaces, and spaces that require but are not provided
   // and SDR white level.
   sk_sp<SkColorSpace> ToSkColorSpace(
-      absl::optional<float> sdr_white_level = absl::nullopt) const;
+      std::optional<float> sdr_white_level = std::nullopt) const;
 
   // Return a GLcolorSpace value that is valid for the lifetime of |this|. This
   // function is used to serialize ColorSpace objects across the GPU command
@@ -356,10 +360,10 @@ class COLOR_SPACE_EXPORT ColorSpace {
   // not specified.
   bool GetTransferFunction(
       skcms_TransferFunction* fn,
-      absl::optional<float> sdr_white_level = absl::nullopt) const;
+      std::optional<float> sdr_white_level = std::nullopt) const;
   bool GetInverseTransferFunction(
       skcms_TransferFunction* fn,
-      absl::optional<float> sdr_white_level = absl::nullopt) const;
+      std::optional<float> sdr_white_level = std::nullopt) const;
 
   // Returns the parameters for a PIECEWISE_HDR transfer function. See
   // CreatePiecewiseHDR for parameter meanings.

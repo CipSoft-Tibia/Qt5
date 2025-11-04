@@ -15,24 +15,59 @@
  */
 
 #include "src/trace_processor/db/column/fake_storage.h"
+
+#include <algorithm>
+#include <cstdint>
+#include <iterator>
+#include <memory>
+#include <optional>
+#include <utility>
+
+#include "perfetto/base/logging.h"
+#include "perfetto/trace_processor/basic_types.h"
 #include "src/trace_processor/containers/bit_vector.h"
-#include "src/trace_processor/containers/row_map.h"
-#include "src/trace_processor/db/column/column.h"
+#include "src/trace_processor/db/column/data_layer.h"
 #include "src/trace_processor/db/column/types.h"
 
-namespace perfetto {
-namespace trace_processor {
-namespace column {
+namespace perfetto::trace_processor::column {
 
-FakeStorage::FakeStorage(uint32_t size, SearchStrategy strategy)
-    : size_(size), strategy_(strategy) {}
+FakeStorageChain::FakeStorageChain(uint32_t size,
+                                   SearchStrategy strategy,
+                                   Range range,
+                                   BitVector bv)
+    : size_(size),
+      strategy_(strategy),
+      range_(range),
+      bit_vector_(std::move(bv)) {}
 
-SearchValidationResult FakeStorage::ValidateSearchConstraints(SqlValue,
-                                                              FilterOp) const {
+SingleSearchResult FakeStorageChain::SingleSearch(FilterOp,
+                                                  SqlValue,
+                                                  uint32_t i) const {
+  PERFETTO_CHECK(i < size_);
+  switch (strategy_) {
+    case kAll:
+      return SingleSearchResult::kMatch;
+    case kNone:
+      return SingleSearchResult::kNoMatch;
+    case kBitVector:
+      return bit_vector_.IsSet(i) ? SingleSearchResult::kMatch
+                                  : SingleSearchResult::kNoMatch;
+    case kRange:
+      return range_.Contains(i) ? SingleSearchResult::kMatch
+                                : SingleSearchResult::kNoMatch;
+  }
+  PERFETTO_FATAL("For GCC");
+}
+
+SearchValidationResult FakeStorageChain::ValidateSearchConstraints(
+    FilterOp,
+    SqlValue) const {
   return SearchValidationResult::kOk;
 }
 
-RangeOrBitVector FakeStorage::Search(FilterOp, SqlValue, Range in) const {
+RangeOrBitVector FakeStorageChain::SearchValidated(FilterOp,
+                                                   SqlValue,
+                                                   Range in) const {
   switch (strategy_) {
     case kAll:
       return RangeOrBitVector(in);
@@ -41,51 +76,63 @@ RangeOrBitVector FakeStorage::Search(FilterOp, SqlValue, Range in) const {
     case kRange:
       return RangeOrBitVector(Range(std::max(in.start, range_.start),
                                     std::min(in.end, range_.end)));
-    case kBitVector:
-      return RangeOrBitVector{bit_vector_.IntersectRange(in.start, in.end)};
-  }
-  PERFETTO_FATAL("For GCC");
-}
-
-RangeOrBitVector FakeStorage::IndexSearch(FilterOp,
-                                          SqlValue,
-                                          uint32_t* indices,
-                                          uint32_t indices_size,
-                                          bool) const {
-  switch (strategy_) {
-    case kAll:
-      return RangeOrBitVector(Range(0, indices_size));
-    case kNone:
-      return RangeOrBitVector(Range());
-    case kRange:
     case kBitVector: {
-      BitVector::Builder builder(indices_size);
-      for (uint32_t* it = indices; it != indices + indices_size; ++it) {
-        bool in_range = strategy_ == kRange && range_.Contains(*it);
-        bool in_bv = strategy_ == kBitVector && bit_vector_.IsSet(*it);
-        builder.Append(in_range || in_bv);
-      }
-      return RangeOrBitVector(std::move(builder).Build());
+      BitVector intersection = bit_vector_.IntersectRange(in.start, in.end);
+      intersection.Resize(in.end, false);
+      return RangeOrBitVector(std::move(intersection));
     }
   }
   PERFETTO_FATAL("For GCC");
 }
 
-void FakeStorage::StableSort(uint32_t*, uint32_t) const {
-  // TODO(b/307482437): Implement.
+void FakeStorageChain::IndexSearchValidated(FilterOp,
+                                            SqlValue,
+                                            Indices& indices) const {
+  switch (strategy_) {
+    case kAll:
+      return;
+    case kNone:
+      indices.tokens.clear();
+      return;
+    case kRange:
+      indices.tokens.erase(
+          std::remove_if(indices.tokens.begin(), indices.tokens.end(),
+                         [this](const Token& token) {
+                           return !range_.Contains(token.index);
+                         }),
+          indices.tokens.end());
+      return;
+    case kBitVector:
+      indices.tokens.erase(
+          std::remove_if(indices.tokens.begin(), indices.tokens.end(),
+                         [this](const Token& token) {
+                           return !bit_vector_.IsSet(token.index);
+                         }),
+          indices.tokens.end());
+      return;
+  }
+  PERFETTO_FATAL("For GCC");
+}
+
+void FakeStorageChain::Distinct(Indices&) const {
+  // Fake storage shouldn't implement Distinct as it's not a binary (this index
+  // passes or not) operation on a column.
   PERFETTO_FATAL("Not implemented");
 }
 
-void FakeStorage::Sort(uint32_t*, uint32_t) const {
-  // TODO(b/307482437): Implement.
+std::optional<Token> FakeStorageChain::MaxElement(Indices&) const {
+  PERFETTO_FATAL("Not implemented");
+}
+std::optional<Token> FakeStorageChain::MinElement(Indices&) const {
   PERFETTO_FATAL("Not implemented");
 }
 
-void FakeStorage::Serialize(StorageProto*) const {
-  // FakeStorage doesn't really make sense to serialize.
+void FakeStorageChain::StableSort(Token*, Token*, SortDirection) const {
   PERFETTO_FATAL("Not implemented");
 }
 
-}  // namespace column
-}  // namespace trace_processor
-}  // namespace perfetto
+SqlValue FakeStorageChain::Get_AvoidUsingBecauseSlow(uint32_t) const {
+  PERFETTO_FATAL("Not implemented");
+}
+
+}  // namespace perfetto::trace_processor::column

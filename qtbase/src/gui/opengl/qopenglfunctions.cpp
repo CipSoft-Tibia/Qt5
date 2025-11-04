@@ -239,12 +239,8 @@ static int qt_gl_resolve_features()
         if (extensions.match("GL_OES_texture_npot"))
             features |= QOpenGLFunctions::NPOTTextures |
                 QOpenGLFunctions::NPOTTextureRepeat;
-        if (ctx->format().majorVersion() >= 3 || extensions.match("GL_EXT_texture_rg")) {
-            // Mesa's GLES implementation (as of 10.6.0) is unable to handle this, even though it provides 3.0.
-            const char *renderer = reinterpret_cast<const char *>(ctx->functions()->glGetString(GL_RENDERER));
-            if (!(renderer && strstr(renderer, "Mesa")))
-                features |= QOpenGLFunctions::TextureRGFormats;
-        }
+        if (ctx->format().majorVersion() >= 3 || extensions.match("GL_EXT_texture_rg"))
+            features |= QOpenGLFunctions::TextureRGFormats;
         if (ctx->format().majorVersion() >= 3) {
             features |= QOpenGLFunctions::MultipleRenderTargets;
             if (ctx->format().minorVersion() >= 2 && extensions.match("GL_KHR_blend_equation_advanced_coherent")) {
@@ -300,11 +296,11 @@ static int qt_gl_resolve_features()
                     QOpenGLFunctions::NPOTTextureRepeat;
         }
 
-        const QPair<int, int> version = format.version();
-        if (version < qMakePair(3, 0)
-            || (version == qMakePair(3, 0) && format.testOption(QSurfaceFormat::DeprecatedFunctions))
-            || (version == qMakePair(3, 1) && extensions.match("GL_ARB_compatibility"))
-            || (version >= qMakePair(3, 2) && format.profile() == QSurfaceFormat::CompatibilityProfile)) {
+        const std::pair<int, int> version = format.version();
+        if (version < std::pair(3, 0)
+            || (version == std::pair(3, 0) && format.testOption(QSurfaceFormat::DeprecatedFunctions))
+            || (version == std::pair(3, 1) && extensions.match("GL_ARB_compatibility"))
+            || (version >= std::pair(3, 2) && format.profile() == QSurfaceFormat::CompatibilityProfile)) {
             features |= QOpenGLFunctions::FixedFunctionPipeline;
         }
         return features;
@@ -421,10 +417,10 @@ static int qt_gl_resolve_extensions()
             | QOpenGLExtensions::MapBuffer
             | QOpenGLExtensions::Sized16Formats;
 
-        if (format.version() >= qMakePair(1, 2))
+        if (format.version() >= std::pair(1, 2))
             extensions |= QOpenGLExtensions::BGRATextureFormat;
 
-        if (format.version() >= qMakePair(1, 4) || extensionMatcher.match("GL_SGIS_generate_mipmap"))
+        if (format.version() >= std::pair(1, 4) || extensionMatcher.match("GL_SGIS_generate_mipmap"))
             extensions |= QOpenGLExtensions::GenerateMipmap;
 
         if (format.majorVersion() >= 2)
@@ -445,13 +441,13 @@ static int qt_gl_resolve_extensions()
                 extensions |= QOpenGLExtensions::PackedDepthStencil;
         }
 
-        if (format.version() >= qMakePair(3, 2) || extensionMatcher.match("GL_ARB_geometry_shader4"))
+        if (format.version() >= std::pair(3, 2) || extensionMatcher.match("GL_ARB_geometry_shader4"))
             extensions |= QOpenGLExtensions::GeometryShaders;
 
-        if (format.version() >= qMakePair(3, 3))
+        if (format.version() >= std::pair(3, 3))
             extensions |= QOpenGLExtensions::TextureSwizzle;
 
-        if (format.version() >= qMakePair(4, 3) || extensionMatcher.match("GL_ARB_invalidate_subdata"))
+        if (format.version() >= std::pair(4, 3) || extensionMatcher.match("GL_ARB_invalidate_subdata"))
             extensions |= QOpenGLExtensions::DiscardFramebuffer;
 
         if (extensionMatcher.match("GL_ARB_map_buffer_range"))

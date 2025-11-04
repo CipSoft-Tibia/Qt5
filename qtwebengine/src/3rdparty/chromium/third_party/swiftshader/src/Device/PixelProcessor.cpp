@@ -139,11 +139,12 @@ const PixelProcessor::State PixelProcessor::update(const vk::GraphicsState &pipe
 	state.occlusionEnabled = occlusionEnabled;
 
 	bool fragmentContainsDiscard = (fragmentShader && fragmentShader->getAnalysis().ContainsDiscard);
-	for(int i = 0; i < MAX_COLOR_BUFFERS; i++)
+	for(uint32_t location = 0; location < MAX_COLOR_BUFFERS; location++)
 	{
-		state.colorWriteMask |= fragmentOutputInterfaceState.colorWriteActive(i, attachments) << (4 * i);
-		state.colorFormat[i] = attachments.colorFormat(i);
-		state.blendState[i] = fragmentOutputInterfaceState.getBlendState(i, attachments, fragmentContainsDiscard);
+		state.colorFormat[location] = attachments.colorFormat(location);
+
+		state.colorWriteMask |= fragmentOutputInterfaceState.colorWriteActive(location, attachments) << (4 * location);
+		state.blendState[location] = fragmentOutputInterfaceState.getBlendState(location, attachments, fragmentContainsDiscard);
 	}
 
 	const bool isBresenhamLine = vertexInputInterfaceState.isDrawLine(true, preRasterizationState.getPolygonMode()) &&
@@ -188,13 +189,14 @@ const PixelProcessor::State PixelProcessor::update(const vk::GraphicsState &pipe
 PixelProcessor::RoutineType PixelProcessor::routine(const State &state,
                                                     const vk::PipelineLayout *pipelineLayout,
                                                     const SpirvShader *pixelShader,
+                                                    const vk::Attachments &attachments,
                                                     const vk::DescriptorSet::Bindings &descriptorSets)
 {
 	auto routine = routineCache->lookup(state);
 
 	if(!routine)
 	{
-		QuadRasterizer *generator = new PixelProgram(state, pipelineLayout, pixelShader, descriptorSets);
+		QuadRasterizer *generator = new PixelProgram(state, pipelineLayout, pixelShader, attachments, descriptorSets);
 		generator->generate();
 		routine = (*generator)("PixelRoutine_%0.8X", state.shaderID);
 		delete generator;

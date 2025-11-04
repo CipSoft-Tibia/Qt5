@@ -1,5 +1,6 @@
 // Copyright (C) 2019 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include <QtHttpServer/qhttpserverresponse.h>
 
@@ -209,9 +210,9 @@ QHttpServerResponse::StatusCode QHttpServerResponse::statusCode() const
 }
 
 /*!
-    Returns the value of the HTTP "Content-Type" header.
+    Returns the value of the HTTP \c "Content-Type" header.
 
-    \note Default value is "text/html"
+    \note Default value is \c{"text/html"}.
 */
 QByteArray QHttpServerResponse::mimeType() const
 {

@@ -71,7 +71,10 @@ public:
 
         OAuthTokenNotFoundError,
         OAuthTokenSecretNotFoundError,
-        OAuthCallbackNotVerified
+        OAuthCallbackNotVerified,
+
+        ClientError,
+        ExpiredError,
     };
 
     enum class ContentType {

@@ -4,21 +4,21 @@
 
 from __future__ import annotations
 
-import pathlib
 import shlex
-from typing import TYPE_CHECKING, Dict, Iterable, Tuple
-from crossbench import cli_helper, plt
-from crossbench.browsers.browser import Browser
-from crossbench.browsers.chromium import chromium
+from typing import TYPE_CHECKING, Dict, Iterable
 
+from crossbench import cli_helper, plt
+from crossbench.browsers.attributes import BrowserAttributes
 from crossbench.probes.probe import (Probe, ProbeConfigParser, ProbeContext,
-                                     ProbeValidationError, ResultLocation)
+                                     ProbeKeyT, ProbeValidationError,
+                                     ResultLocation)
 from crossbench.probes.results import EmptyProbeResult, ProbeResult
 
 if TYPE_CHECKING:
   from crossbench.browsers.browser import Browser
-  from crossbench.runner.run import Run
   from crossbench.env import HostEnvironment
+  from crossbench.path import LocalPath
+  from crossbench.runner.run import Run
 
 _DEBUGGER_LOOKUP: Dict[str, str] = {
     "macos": "lldb",
@@ -74,7 +74,7 @@ class DebuggerProbe(Probe):
 
   def __init__(
       self,
-      debugger: pathlib.Path,
+      debugger: LocalPath,
       auto_run: bool = True,
       spare_renderer_process: bool = False,
       geometry: str = DEFAULT_GEOMETRY,
@@ -87,7 +87,7 @@ class DebuggerProbe(Probe):
     self._spare_renderer_process = spare_renderer_process
 
   @property
-  def key(self) -> Tuple[Tuple, ...]:
+  def key(self) -> ProbeKeyT:
     return super().key + (
         ("debugger", str(self._debugger_bin)),
         ("debugger_args", tuple(self._debugger_args)),
@@ -98,7 +98,7 @@ class DebuggerProbe(Probe):
 
   def validate_browser(self, env: HostEnvironment, browser: Browser) -> None:
     super().validate_browser(env, browser)
-    self.expect_browser(browser, chromium.Chromium)
+    self.expect_browser(browser, BrowserAttributes.CHROMIUM_BASED)
     # TODO: support more platforms
     if not (browser.platform.is_macos or browser.platform.is_linux):
       raise ValueError(f"Only supported on linux and macOS, but got {browser}")
@@ -110,7 +110,7 @@ class DebuggerProbe(Probe):
 
   def attach(self, browser: Browser) -> None:
     super().attach(browser)
-    assert isinstance(browser, chromium.Chromium)
+    assert browser.attributes.is_chromium_based
     flags = browser.flags
     flags.set("--no-sandbox")
     flags.set("--disable-hang-monitor")
@@ -157,5 +157,5 @@ class DebuggerContext(ProbeContext[DebuggerProbe]):
   def stop(self) -> None:
     pass
 
-  def tear_down(self) -> ProbeResult:
+  def teardown(self) -> ProbeResult:
     return EmptyProbeResult()

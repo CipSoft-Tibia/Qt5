@@ -41,10 +41,11 @@ class WorkDoneEvent : public TrackedEvent {
   public:
     static constexpr EventType kType = EventType::WorkDone;
 
-    explicit WorkDoneEvent(const WGPUQueueWorkDoneCallbackInfo& callbackInfo)
+    explicit WorkDoneEvent(const WGPUQueueWorkDoneCallbackInfo2& callbackInfo)
         : TrackedEvent(callbackInfo.mode),
           mCallback(callbackInfo.callback),
-          mUserdata(callbackInfo.userdata) {}
+          mUserdata1(callbackInfo.userdata1),
+          mUserdata2(callbackInfo.userdata2) {}
 
     EventType GetType() override { return kType; }
 
@@ -55,17 +56,22 @@ class WorkDoneEvent : public TrackedEvent {
 
   private:
     void CompleteImpl(FutureID futureID, EventCompletionType completionType) override {
+        if (completionType == EventCompletionType::Shutdown) {
+            mStatus = WGPUQueueWorkDoneStatus_InstanceDropped;
+        }
         if (mStatus == WGPUQueueWorkDoneStatus_DeviceLost) {
             mStatus = WGPUQueueWorkDoneStatus_Success;
         }
+        void* userdata1 = mUserdata1.ExtractAsDangling();
+        void* userdata2 = mUserdata2.ExtractAsDangling();
         if (mCallback) {
-            mCallback(mStatus, mUserdata);
+            mCallback(mStatus, userdata1, userdata2);
         }
     }
 
-    WGPUQueueWorkDoneCallback mCallback;
-    // TODO(https://crbug.com/dawn/2345): Investigate `DanglingUntriaged` in dawn/wire.
-    raw_ptr<void, DanglingUntriaged> mUserdata;
+    WGPUQueueWorkDoneCallback2 mCallback;
+    raw_ptr<void> mUserdata1;
+    raw_ptr<void> mUserdata2;
 
     WGPUQueueWorkDoneStatus mStatus = WGPUQueueWorkDoneStatus_Success;
 };
@@ -74,22 +80,51 @@ class WorkDoneEvent : public TrackedEvent {
 
 Queue::~Queue() = default;
 
-bool Client::DoQueueWorkDoneCallback(ObjectHandle eventManager,
-                                     WGPUFuture future,
-                                     WGPUQueueWorkDoneStatus status) {
-    return GetEventManager(eventManager).SetFutureReady<WorkDoneEvent>(future.id, status) ==
-           WireResult::Success;
+ObjectType Queue::GetObjectType() const {
+    return ObjectType::Queue;
+}
+
+WireResult Client::DoQueueWorkDoneCallback(ObjectHandle eventManager,
+                                           WGPUFuture future,
+                                           WGPUQueueWorkDoneStatus status) {
+    return GetEventManager(eventManager).SetFutureReady<WorkDoneEvent>(future.id, status);
 }
 
 void Queue::OnSubmittedWorkDone(WGPUQueueWorkDoneCallback callback, void* userdata) {
-    WGPUQueueWorkDoneCallbackInfo callbackInfo = {};
-    callbackInfo.mode = WGPUCallbackMode_AllowSpontaneous;
-    callbackInfo.callback = callback;
-    callbackInfo.userdata = userdata;
-    OnSubmittedWorkDoneF(callbackInfo);
+    OnSubmittedWorkDoneF({nullptr, WGPUCallbackMode_AllowSpontaneous, callback, userdata});
 }
 
 WGPUFuture Queue::OnSubmittedWorkDoneF(const WGPUQueueWorkDoneCallbackInfo& callbackInfo) {
+    // TODO(crbug.com/dawn/2052): Once we always return a future, change this to log to the instance
+    // (note, not raise a validation error to the device) and return the null future.
+    DAWN_ASSERT(callbackInfo.nextInChain == nullptr);
+
+    Client* client = GetClient();
+    auto [futureIDInternal, tracked] =
+        GetEventManager().TrackEvent(std::make_unique<WorkDoneEvent>(WGPUQueueWorkDoneCallbackInfo2{
+            callbackInfo.nextInChain, callbackInfo.mode,
+            [](WGPUQueueWorkDoneStatus status, void* callback, void* userdata) {
+                auto cb = reinterpret_cast<WGPUQueueWorkDoneCallback>(callback);
+                cb(status, userdata);
+            },
+            reinterpret_cast<void*>(callbackInfo.callback != nullptr ? callbackInfo.callback
+                                                                     : nullptr),
+            callbackInfo.userdata}));
+    if (!tracked) {
+        return {futureIDInternal};
+    }
+
+    QueueOnSubmittedWorkDoneCmd cmd;
+    cmd.queueId = GetWireId();
+    cmd.eventManagerHandle = GetEventManagerHandle();
+    cmd.future = {futureIDInternal};
+    cmd.userdataCount = 1;
+
+    client->SerializeCommand(cmd);
+    return {futureIDInternal};
+}
+
+WGPUFuture Queue::OnSubmittedWorkDone2(const WGPUQueueWorkDoneCallbackInfo2& callbackInfo) {
     // TODO(crbug.com/dawn/2052): Once we always return a future, change this to log to the instance
     // (note, not raise a validation error to the device) and return the null future.
     DAWN_ASSERT(callbackInfo.nextInChain == nullptr);
@@ -105,6 +140,7 @@ WGPUFuture Queue::OnSubmittedWorkDoneF(const WGPUQueueWorkDoneCallbackInfo& call
     cmd.queueId = GetWireId();
     cmd.eventManagerHandle = GetEventManagerHandle();
     cmd.future = {futureIDInternal};
+    cmd.userdataCount = 2;
 
     client->SerializeCommand(cmd);
     return {futureIDInternal};

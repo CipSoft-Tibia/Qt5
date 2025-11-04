@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:data-parser
 
 #ifndef QJSONVALUE_H
 #define QJSONVALUE_H
@@ -7,6 +8,10 @@
 #include <QtCore/qcborvalue.h>
 #include <QtCore/qcompare.h>
 #include <QtCore/qglobal.h>
+#if (QT_VERSION < QT_VERSION_CHECK(7, 0, 0)) && !defined(QT_BOOTSTRAPPED)
+#include <QtCore/qjsondocument.h>
+#endif
+#include <QtCore/qjsonparseerror.h>
 #include <QtCore/qstring.h>
 #include <QtCore/qshareddata.h>
 
@@ -33,6 +38,15 @@ public:
         Object = 0x5,
         Undefined = 0x80
     };
+
+#if (QT_VERSION < QT_VERSION_CHECK(7, 0, 0)) && !defined(QT_BOOTSTRAPPED)
+    using JsonFormat = QJsonDocument::JsonFormat;
+#else
+    enum class JsonFormat {
+        Indented,
+        Compact,
+    };
+#endif
 
     QJsonValue(Type = Null);
     QJsonValue(bool b);
@@ -67,6 +81,10 @@ public:
 
     static QJsonValue fromVariant(const QVariant &variant);
     QVariant toVariant() const;
+
+    static QJsonValue fromJson(QByteArrayView json, QJsonParseError *error = nullptr);
+
+    QByteArray toJson(JsonFormat format = JsonFormat::Indented) const;
 
     Type type() const;
     inline bool isNull() const { return type() == Null; }
@@ -314,7 +332,7 @@ inline QJsonValue QCborValueConstRef::toJsonValue() const
 
 Q_CORE_EXPORT size_t qHash(const QJsonValue &value, size_t seed = 0);
 
-#if !defined(QT_NO_DEBUG_STREAM) && !defined(QT_JSON_READONLY)
+#if !defined(QT_NO_DEBUG_STREAM)
 Q_CORE_EXPORT QDebug operator<<(QDebug, const QJsonValue &);
 #endif
 

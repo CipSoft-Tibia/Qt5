@@ -24,3 +24,9 @@ PasswordManagerInternalsUI::PasswordManagerInternalsUI(content::WebUI* web_ui)
 }
 
 PasswordManagerInternalsUI::~PasswordManagerInternalsUI() = default;
+
+PasswordManagerInternalsUIConfig::PasswordManagerInternalsUIConfig()
+    : DefaultWebUIConfig(content::kChromeUIScheme,
+                         chrome::kChromeUIPasswordManagerInternalsHost) {}
+
+PasswordManagerInternalsUIConfig::~PasswordManagerInternalsUIConfig() = default;

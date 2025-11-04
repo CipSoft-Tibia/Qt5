@@ -1,3 +1,8 @@
+/**
+ * @license
+ * Copyright 2024 Google Inc.
+ * SPDX-License-Identifier: Apache-2.0
+ */
 import {JSHandle} from '../api/JSHandle.js';
 import {debugError} from '../common/util.js';
 import {DisposableStack} from '../util/disposable.js';
@@ -11,13 +16,23 @@ import type {ExecutionContext} from './ExecutionContext.js';
 export class Binding {
   #name: string;
   #fn: (...args: unknown[]) => unknown;
-  constructor(name: string, fn: (...args: unknown[]) => unknown) {
+  #initSource: string;
+  constructor(
+    name: string,
+    fn: (...args: unknown[]) => unknown,
+    initSource: string
+  ) {
     this.#name = name;
     this.#fn = fn;
+    this.#initSource = initSource;
   }
 
   get name(): string {
     return this.#name;
+  }
+
+  get initSource(): string {
+    return this.#initSource;
   }
 
   /**

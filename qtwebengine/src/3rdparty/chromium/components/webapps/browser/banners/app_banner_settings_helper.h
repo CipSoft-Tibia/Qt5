@@ -5,12 +5,12 @@
 #ifndef COMPONENTS_WEBAPPS_BROWSER_BANNERS_APP_BANNER_SETTINGS_HELPER_H_
 #define COMPONENTS_WEBAPPS_BROWSER_BANNERS_APP_BANNER_SETTINGS_HELPER_H_
 
+#include <optional>
 #include <set>
 #include <string>
 
 #include "base/auto_reset.h"
 #include "base/time/time.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 
 namespace content {
 class BrowserContext;
@@ -20,6 +20,7 @@ class WebContents;
 class GURL;
 
 namespace webapps {
+struct InstallBannerConfig;
 
 // Utility class to record banner events for the given package or start url.
 //
@@ -48,7 +49,8 @@ class AppBannerSettingsHelper {
     APP_MENU_OPTION_MIN = APP_MENU_OPTION_UNKNOWN,
     APP_MENU_OPTION_ADD_TO_HOMESCREEN = 1,
     APP_MENU_OPTION_INSTALL = 2,
-    APP_MENU_OPTION_MAX = APP_MENU_OPTION_INSTALL,
+    APP_MENU_OPTION_UNIVERSAL_INSTALL = 3,
+    APP_MENU_OPTION_MAX = APP_MENU_OPTION_UNIVERSAL_INSTALL,
   };
 
   // The various types of banner events recorded as timestamps in the app banner
@@ -98,8 +100,12 @@ class AppBannerSettingsHelper {
 
   // Record a banner event specified by |event|.
   static void RecordBannerEvent(content::WebContents* web_contents,
-                                const GURL& origin_url,
-                                const std::string& package_name_or_start_url,
+                                const GURL& url,
+                                const std::string& identifier,
+                                AppBannerEvent event,
+                                base::Time time);
+  static void RecordBannerEvent(content::WebContents* web_contents,
+                                const InstallBannerConfig& config,
                                 AppBannerEvent event,
                                 base::Time time);
 
@@ -123,7 +129,7 @@ class AppBannerSettingsHelper {
 
   // Get the time that |event| was recorded, or a nullopt if it no dict to
   // record yet(such as exceed max num per site) . Exposed for testing.
-  static absl::optional<base::Time> GetSingleBannerEvent(
+  static std::optional<base::Time> GetSingleBannerEvent(
       content::WebContents* web_contents,
       const GURL& origin_url,
       const std::string& package_name_or_start_url,

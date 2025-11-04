@@ -6,6 +6,10 @@ import("//build/config/features.gni")
 import("//build/config/jumbo.gni")
 import("//third_party/protobuf/proto_library.gni")
 
+proto_library("autofill_shared_storage_proto") {
+  sources = [ "autofill_shared_storage.proto" ]
+}
+
 jumbo_static_library("browser") {
   sources = [
     "autofill_log_router_factory.cc",
@@ -18,6 +22,8 @@ jumbo_static_library("browser") {
     "content_autofill_driver.h",
     "content_autofill_driver_factory.cc",
     "content_autofill_driver_factory.h",
+    "content_autofill_shared_storage_handler.cc",
+    "content_autofill_shared_storage_handler.h",
     "renderer_forms_with_server_predictions.cc",
     "renderer_forms_with_server_predictions.h",
     "risk/fingerprint.cc",
@@ -33,13 +39,16 @@ jumbo_static_library("browser") {
     "//components/autofill/core/browser",
     "//components/autofill/core/common",
     "//components/keyed_service/content",
+    "//components/services/storage",
     "//content/public/common",
     "//mojo/public/cpp/bindings",
     "//skia",
     "//third_party/abseil-cpp:absl",
   ]
   deps = [
+    ":autofill_shared_storage_proto",
     "//base:i18n",
+    "//components/autofill/content/common:features",
     "//components/os_crypt/sync",
     "//components/prefs",
     "//components/profile_metrics",
@@ -73,6 +82,8 @@ jumbo_static_library("browser") {
     sources -= [
       "autofill_log_router_factory.cc",
       "autofill_log_router_factory.h",
+      "content_autofill_shared_storage_handler.cc",
+      "content_autofill_shared_storage_handler.h",
       "renderer_forms_with_server_predictions.cc",
       "renderer_forms_with_server_predictions.h",
     ]
@@ -93,6 +104,8 @@ proto_library("risk_proto") {
 source_set("test_support") {
   testonly = true
   sources = [
+    "autofill_test_utils.cc",
+    "autofill_test_utils.h",
     "content_autofill_driver_factory_test_api.cc",
     "content_autofill_driver_factory_test_api.h",
     "content_autofill_driver_test_api.h",
@@ -143,5 +156,26 @@ source_set("unit_tests") {
     "//services/service_manager/public/cpp",
     "//testing/gmock",
     "//testing/gtest",
+  ]
+}
+source_set("browser_tests") {
+  testonly = true
+  sources = [ "risk/fingerprint_browsertest.cc" ]
+
+  defines = [ "HAS_OUT_OF_PROC_TEST_RUNNER" ]
+
+  deps = [
+    ":test_support",
+    "//base",
+    "//components/autofill/content/common:features",
+    "//content/public/browser",
+    "//content/test:browsertest_support",
+    "//content/test:test_support",
+    "//services/device/public/cpp:test_support",
+    "//services/device/public/cpp/geolocation",
+    "//services/device/public/mojom",
+    "//testing/gmock",
+    "//testing/gtest",
+    "//ui/gfx/geometry",
   ]
 }

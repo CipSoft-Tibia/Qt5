@@ -10,7 +10,7 @@
             "builder_id": {
               "bucket": "try",
               "builder": "win_optional_gpu_tests_rel",
-              "project": "chromium-m122"
+              "project": "chromium-m130"
             },
             "builder_spec": {
               "build_gs_bucket": "chromium-gpu-fyi-archive",
@@ -26,9 +26,6 @@
                 "target_platform": "win"
               },
               "legacy_gclient_config": {
-                "apply_configs": [
-                  "angle_internal"
-                ],
                 "config": "chromium"
               }
             }
@@ -39,7 +36,7 @@
         {
           "bucket": "try",
           "builder": "win_optional_gpu_tests_rel",
-          "project": "chromium-m122"
+          "project": "chromium-m130"
         }
       ],
       "retry_failed_shards": false
@@ -51,9 +48,18 @@
   },
   "$build/reclient": {
     "instance": "rbe-chromium-untrusted",
-    "jobs": 150,
     "metrics_project": "chromium-reclient-metrics",
     "scandeps_server": true
+  },
+  "$build/siso": {
+    "configs": [
+      "builder"
+    ],
+    "enable_cloud_profiler": true,
+    "enable_cloud_trace": true,
+    "experiments": [],
+    "project": "rbe-chromium-untrusted",
+    "remote_jobs": 150
   },
   "$recipe_engine/resultdb/test_presentation": {
     "column_keys": [],

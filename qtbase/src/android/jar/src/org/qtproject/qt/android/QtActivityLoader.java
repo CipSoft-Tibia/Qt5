@@ -9,15 +9,12 @@ import android.content.Context;
 import android.content.ContextWrapper;
 import android.content.Intent;
 import android.content.pm.ApplicationInfo;
-import android.content.pm.PackageManager;
 import android.os.Bundle;
 import android.util.Base64;
 import android.util.DisplayMetrics;
 import android.util.Log;
 
 import java.lang.IllegalArgumentException;
-import java.lang.reflect.InvocationTargetException;
-import java.lang.reflect.Method;
 import java.nio.charset.StandardCharsets;
 
 class QtActivityLoader extends QtLoader {
@@ -88,10 +85,6 @@ class QtActivityLoader extends QtLoader {
             Log.w(QtTAG, "Null Intent from the current Activity.");
             return;
         }
-
-        String intentArgs = intent.getStringExtra("applicationArguments");
-        if (intentArgs != null)
-            appendApplicationParameters(intentArgs);
 
         Bundle extras = intent.getExtras();
         if (extras == null) {

@@ -11,12 +11,15 @@
 #include <optional>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/strings/string_view.h"
 #include "quiche/quic/core/connection_id_generator.h"
 #include "quiche/quic/core/crypto/transport_parameters.h"
 #include "quiche/quic/core/quic_connection_id.h"
 #include "quiche/quic/core/quic_constants.h"
+#include "quiche/quic/core/quic_dispatcher.h"
+#include "quiche/quic/core/quic_dispatcher_stats.h"
 #include "quiche/quic/core/quic_error_codes.h"
 #include "quiche/quic/core/quic_framer.h"
 #include "quiche/quic/core/quic_packets.h"
@@ -55,6 +58,22 @@ using ::testing::Ne;
 using ::testing::SizeIs;
 using ::testing::Truly;
 
+EnqueuePacketResult EnqueuePacketToStore(
+    QuicBufferedPacketStore& store, QuicConnectionId connection_id,
+    PacketHeaderFormat form, QuicLongHeaderType long_packet_type,
+    const QuicReceivedPacket& packet, QuicSocketAddress self_address,
+    QuicSocketAddress peer_address, const ParsedQuicVersion& version,
+    std::optional<ParsedClientHello> parsed_chlo,
+    ConnectionIdGeneratorInterface& connection_id_generator) {
+  ReceivedPacketInfo packet_info(self_address, peer_address, packet);
+  packet_info.destination_connection_id = connection_id;
+  packet_info.form = form;
+  packet_info.long_packet_type = long_packet_type;
+  packet_info.version = version;
+  return store.EnqueuePacket(packet_info, std::move(parsed_chlo),
+                             connection_id_generator);
+}
+
 class QuicBufferedPacketStoreVisitor
     : public QuicBufferedPacketStore::VisitorInterface {
  public:
@@ -67,6 +86,15 @@ class QuicBufferedPacketStoreVisitor
     last_expired_packet_queue_ = std::move(early_arrived_packets);
   }
 
+  HandleCidCollisionResult HandleConnectionIdCollision(
+      const QuicConnectionId& /*original_connection_id*/,
+      const QuicConnectionId& /*replaced_connection_id*/,
+      const QuicSocketAddress& /*self_address*/,
+      const QuicSocketAddress& /*peer_address*/, ParsedQuicVersion /*version*/,
+      const ParsedClientHello* /*parsed_chlo*/) override {
+    return HandleCidCollisionResult::kOk;
+  }
+
   // The packets queue for most recently expirect connection.
   BufferedPacketList last_expired_packet_queue_;
 };
@@ -74,7 +102,7 @@ class QuicBufferedPacketStoreVisitor
 class QuicBufferedPacketStoreTest : public QuicTest {
  public:
   QuicBufferedPacketStoreTest()
-      : store_(&visitor_, &clock_, &alarm_factory_),
+      : store_(&visitor_, &clock_, &alarm_factory_, stats_),
         self_address_(QuicIpAddress::Any6(), 65535),
         peer_address_(QuicIpAddress::Any6(), 65535),
         packet_content_("some encrypted content"),
@@ -84,6 +112,7 @@ class QuicBufferedPacketStoreTest : public QuicTest {
         valid_version_(CurrentSupportedVersions().front()) {}
 
  protected:
+  QuicDispatcherStats stats_;
   QuicBufferedPacketStoreVisitor visitor_;
   MockClock clock_;
   MockAlarmFactory alarm_factory_;
@@ -100,8 +129,10 @@ class QuicBufferedPacketStoreTest : public QuicTest {
 
 TEST_F(QuicBufferedPacketStoreTest, SimpleEnqueueAndDeliverPacket) {
   QuicConnectionId connection_id = TestConnectionId(1);
-  store_.EnqueuePacket(connection_id, false, packet_, self_address_,
-                       peer_address_, invalid_version_, kNoParsedChlo, nullptr);
+  EnqueuePacketToStore(store_, connection_id, GOOGLE_QUIC_PACKET,
+                       INVALID_PACKET_TYPE, packet_, self_address_,
+                       peer_address_, invalid_version_, kNoParsedChlo,
+                       connection_id_generator_);
   EXPECT_TRUE(store_.HasBufferedPackets(connection_id));
   auto packets = store_.DeliverPackets(connection_id);
   const std::list<BufferedPacket>& queue = packets.buffered_packets;
@@ -122,11 +153,14 @@ TEST_F(QuicBufferedPacketStoreTest, SimpleEnqueueAndDeliverPacket) {
 TEST_F(QuicBufferedPacketStoreTest, DifferentPacketAddressOnOneConnection) {
   QuicSocketAddress addr_with_new_port(QuicIpAddress::Any4(), 256);
   QuicConnectionId connection_id = TestConnectionId(1);
-  store_.EnqueuePacket(connection_id, false, packet_, self_address_,
-                       peer_address_, invalid_version_, kNoParsedChlo, nullptr);
-  store_.EnqueuePacket(connection_id, false, packet_, self_address_,
+  EnqueuePacketToStore(store_, connection_id, GOOGLE_QUIC_PACKET,
+                       INVALID_PACKET_TYPE, packet_, self_address_,
+                       peer_address_, invalid_version_, kNoParsedChlo,
+                       connection_id_generator_);
+  EnqueuePacketToStore(store_, connection_id, GOOGLE_QUIC_PACKET,
+                       INVALID_PACKET_TYPE, packet_, self_address_,
                        addr_with_new_port, invalid_version_, kNoParsedChlo,
-                       nullptr);
+                       connection_id_generator_);
   std::list<BufferedPacket> queue =
       store_.DeliverPackets(connection_id).buffered_packets;
   ASSERT_EQ(2u, queue.size());
@@ -140,12 +174,14 @@ TEST_F(QuicBufferedPacketStoreTest,
   size_t num_connections = 10;
   for (uint64_t conn_id = 1; conn_id <= num_connections; ++conn_id) {
     QuicConnectionId connection_id = TestConnectionId(conn_id);
-    store_.EnqueuePacket(connection_id, false, packet_, self_address_,
+    EnqueuePacketToStore(store_, connection_id, GOOGLE_QUIC_PACKET,
+                         INVALID_PACKET_TYPE, packet_, self_address_,
                          peer_address_, invalid_version_, kNoParsedChlo,
-                         nullptr);
-    store_.EnqueuePacket(connection_id, false, packet_, self_address_,
+                         connection_id_generator_);
+    EnqueuePacketToStore(store_, connection_id, GOOGLE_QUIC_PACKET,
+                         INVALID_PACKET_TYPE, packet_, self_address_,
                          peer_address_, invalid_version_, kNoParsedChlo,
-                         nullptr);
+                         connection_id_generator_);
   }
 
   // Deliver packets in reversed order.
@@ -157,34 +193,37 @@ TEST_F(QuicBufferedPacketStoreTest,
   }
 }
 
+// Tests that for one connection, only limited number of packets can be
+// buffered.
 TEST_F(QuicBufferedPacketStoreTest,
        FailToBufferTooManyPacketsOnExistingConnection) {
-  // Tests that for one connection, only limited number of packets can be
-  // buffered.
-  size_t num_packets = kDefaultMaxUndecryptablePackets + 1;
+  // Max number of packets that can be buffered per connection.
+  const size_t kMaxPacketsPerConnection =
+      store_.replace_cid_on_first_packet()
+          ? kDefaultMaxUndecryptablePackets
+          : kDefaultMaxUndecryptablePackets + 1;
   QuicConnectionId connection_id = TestConnectionId(1);
-  // Arrived CHLO packet shouldn't affect how many non-CHLO pacekts store can
-  // keep.
   EXPECT_EQ(QuicBufferedPacketStore::SUCCESS,
-            store_.EnqueuePacket(connection_id, false, packet_, self_address_,
-                                 peer_address_, valid_version_,
-                                 kDefaultParsedChlo, nullptr));
-  for (size_t i = 1; i <= num_packets; ++i) {
-    // Only first |kDefaultMaxUndecryptablePackets packets| will be buffered.
-    EnqueuePacketResult result = store_.EnqueuePacket(
-        connection_id, false, packet_, self_address_, peer_address_,
-        invalid_version_, kNoParsedChlo, nullptr);
-    if (i <= kDefaultMaxUndecryptablePackets) {
+            EnqueuePacketToStore(store_, connection_id,
+                                 IETF_QUIC_LONG_HEADER_PACKET, INITIAL, packet_,
+                                 self_address_, peer_address_, valid_version_,
+                                 kDefaultParsedChlo, connection_id_generator_));
+  for (size_t i = 1; i <= kMaxPacketsPerConnection; ++i) {
+    // All packets will be buffered except the last one.
+    EnqueuePacketResult result = EnqueuePacketToStore(
+        store_, connection_id, GOOGLE_QUIC_PACKET, INVALID_PACKET_TYPE, packet_,
+        self_address_, peer_address_, invalid_version_, kNoParsedChlo,
+        connection_id_generator_);
+    if (i != kMaxPacketsPerConnection) {
       EXPECT_EQ(EnqueuePacketResult::SUCCESS, result);
     } else {
       EXPECT_EQ(EnqueuePacketResult::TOO_MANY_PACKETS, result);
     }
   }
 
-  // Only first |kDefaultMaxUndecryptablePackets| non-CHLO packets and CHLO are
-  // buffered.
-  EXPECT_EQ(kDefaultMaxUndecryptablePackets + 1,
-            store_.DeliverPackets(connection_id).buffered_packets.size());
+  // Verify |kMaxPacketsPerConnection| packets are buffered.
+  EXPECT_EQ(store_.DeliverPackets(connection_id).buffered_packets.size(),
+            kMaxPacketsPerConnection);
 }
 
 TEST_F(QuicBufferedPacketStoreTest, ReachNonChloConnectionUpperLimit) {
@@ -193,9 +232,10 @@ TEST_F(QuicBufferedPacketStoreTest, ReachNonChloConnectionUpperLimit) {
   const size_t kNumConnections = kMaxConnectionsWithoutCHLO + 1;
   for (uint64_t conn_id = 1; conn_id <= kNumConnections; ++conn_id) {
     QuicConnectionId connection_id = TestConnectionId(conn_id);
-    EnqueuePacketResult result = store_.EnqueuePacket(
-        connection_id, false, packet_, self_address_, peer_address_,
-        invalid_version_, kNoParsedChlo, nullptr);
+    EnqueuePacketResult result = EnqueuePacketToStore(
+        store_, connection_id, GOOGLE_QUIC_PACKET, INVALID_PACKET_TYPE, packet_,
+        self_address_, peer_address_, invalid_version_, kNoParsedChlo,
+        connection_id_generator_);
     if (conn_id <= kMaxConnectionsWithoutCHLO) {
       EXPECT_EQ(EnqueuePacketResult::SUCCESS, result);
     } else {
@@ -222,10 +262,12 @@ TEST_F(QuicBufferedPacketStoreTest,
   size_t num_chlos =
       kDefaultMaxConnectionsInStore - kMaxConnectionsWithoutCHLO + 1;
   for (uint64_t conn_id = 1; conn_id <= num_chlos; ++conn_id) {
-    EXPECT_EQ(EnqueuePacketResult::SUCCESS,
-              store_.EnqueuePacket(TestConnectionId(conn_id), false, packet_,
-                                   self_address_, peer_address_, valid_version_,
-                                   kDefaultParsedChlo, nullptr));
+    EXPECT_EQ(
+        EnqueuePacketResult::SUCCESS,
+        EnqueuePacketToStore(store_, TestConnectionId(conn_id),
+                             GOOGLE_QUIC_PACKET, INVALID_PACKET_TYPE, packet_,
+                             self_address_, peer_address_, valid_version_,
+                             kDefaultParsedChlo, connection_id_generator_));
   }
 
   // Send data packets on another |kMaxConnectionsWithoutCHLO| connections.
@@ -233,9 +275,10 @@ TEST_F(QuicBufferedPacketStoreTest,
   for (uint64_t conn_id = num_chlos + 1;
        conn_id <= (kDefaultMaxConnectionsInStore + 1); ++conn_id) {
     QuicConnectionId connection_id = TestConnectionId(conn_id);
-    EnqueuePacketResult result = store_.EnqueuePacket(
-        connection_id, false, packet_, self_address_, peer_address_,
-        valid_version_, kDefaultParsedChlo, nullptr);
+    EnqueuePacketResult result = EnqueuePacketToStore(
+        store_, connection_id, GOOGLE_QUIC_PACKET, INVALID_PACKET_TYPE, packet_,
+        self_address_, peer_address_, valid_version_, kDefaultParsedChlo,
+        connection_id_generator_);
     if (conn_id <= kDefaultMaxConnectionsInStore) {
       EXPECT_EQ(EnqueuePacketResult::SUCCESS, result);
     } else {
@@ -245,49 +288,45 @@ TEST_F(QuicBufferedPacketStoreTest,
 }
 
 TEST_F(QuicBufferedPacketStoreTest, BasicGeneratorBuffering) {
-  EXPECT_EQ(
-      EnqueuePacketResult::SUCCESS,
-      store_.EnqueuePacket(TestConnectionId(1), false, packet_, self_address_,
-                           peer_address_, valid_version_, kDefaultParsedChlo,
-                           &connection_id_generator_));
-  QuicConnectionId delivered_conn_id;
-  BufferedPacketList packet_list =
-      store_.DeliverPacketsForNextConnection(&delivered_conn_id);
-  EXPECT_EQ(1u, packet_list.buffered_packets.size());
-  EXPECT_EQ(delivered_conn_id, TestConnectionId(1));
-  EXPECT_EQ(&connection_id_generator_, packet_list.connection_id_generator);
-}
-
-TEST_F(QuicBufferedPacketStoreTest, NullGeneratorOk) {
   EXPECT_EQ(EnqueuePacketResult::SUCCESS,
-            store_.EnqueuePacket(TestConnectionId(1), false, packet_,
-                                 self_address_, peer_address_, valid_version_,
-                                 kDefaultParsedChlo, nullptr));
+            EnqueuePacketToStore(
+                store_, TestConnectionId(1), GOOGLE_QUIC_PACKET,
+                INVALID_PACKET_TYPE, packet_, self_address_, peer_address_,
+                valid_version_, kDefaultParsedChlo, connection_id_generator_));
   QuicConnectionId delivered_conn_id;
   BufferedPacketList packet_list =
       store_.DeliverPacketsForNextConnection(&delivered_conn_id);
   EXPECT_EQ(1u, packet_list.buffered_packets.size());
   EXPECT_EQ(delivered_conn_id, TestConnectionId(1));
-  EXPECT_EQ(packet_list.connection_id_generator, nullptr);
+  if (GetQuicRestartFlag(quic_dispatcher_replace_cid_on_first_packet)) {
+    EXPECT_EQ(packet_list.connection_id_generator, nullptr);
+  } else {
+    EXPECT_EQ(packet_list.connection_id_generator, &connection_id_generator_);
+  }
 }
 
 TEST_F(QuicBufferedPacketStoreTest, GeneratorIgnoredForNonChlo) {
   MockConnectionIdGenerator generator2;
-  EXPECT_EQ(
-      EnqueuePacketResult::SUCCESS,
-      store_.EnqueuePacket(TestConnectionId(1), false, packet_, self_address_,
-                           peer_address_, valid_version_, kDefaultParsedChlo,
-                           &connection_id_generator_));
   EXPECT_EQ(EnqueuePacketResult::SUCCESS,
-            store_.EnqueuePacket(TestConnectionId(1), false, packet_,
-                                 self_address_, peer_address_, valid_version_,
-                                 kNoParsedChlo, &generator2));
+            EnqueuePacketToStore(
+                store_, TestConnectionId(1), GOOGLE_QUIC_PACKET,
+                INVALID_PACKET_TYPE, packet_, self_address_, peer_address_,
+                valid_version_, kDefaultParsedChlo, connection_id_generator_));
+  EXPECT_EQ(EnqueuePacketResult::SUCCESS,
+            EnqueuePacketToStore(store_, TestConnectionId(1),
+                                 GOOGLE_QUIC_PACKET, INVALID_PACKET_TYPE,
+                                 packet_, self_address_, peer_address_,
+                                 valid_version_, kNoParsedChlo, generator2));
   QuicConnectionId delivered_conn_id;
   BufferedPacketList packet_list =
       store_.DeliverPacketsForNextConnection(&delivered_conn_id);
   EXPECT_EQ(2u, packet_list.buffered_packets.size());
   EXPECT_EQ(delivered_conn_id, TestConnectionId(1));
-  EXPECT_EQ(packet_list.connection_id_generator, &connection_id_generator_);
+  if (GetQuicRestartFlag(quic_dispatcher_replace_cid_on_first_packet)) {
+    EXPECT_EQ(packet_list.connection_id_generator, nullptr);
+  } else {
+    EXPECT_EQ(packet_list.connection_id_generator, &connection_id_generator_);
+  }
 }
 
 TEST_F(QuicBufferedPacketStoreTest, EnqueueChloOnTooManyDifferentConnections) {
@@ -297,18 +336,20 @@ TEST_F(QuicBufferedPacketStoreTest, EnqueueChloOnTooManyDifferentConnections) {
     EXPECT_EQ(EnqueuePacketResult::SUCCESS,
               // connection_id_generator_ will be ignored because the chlo has
               // not been parsed.
-              store_.EnqueuePacket(connection_id, false, packet_, self_address_,
+              EnqueuePacketToStore(store_, connection_id, GOOGLE_QUIC_PACKET,
+                                   INVALID_PACKET_TYPE, packet_, self_address_,
                                    peer_address_, invalid_version_,
-                                   kNoParsedChlo, &connection_id_generator_));
+                                   kNoParsedChlo, connection_id_generator_));
   }
 
   // Buffer CHLOs on other connections till store is full.
   for (size_t i = kMaxConnectionsWithoutCHLO + 1;
        i <= kDefaultMaxConnectionsInStore + 1; ++i) {
     QuicConnectionId connection_id = TestConnectionId(i);
-    EnqueuePacketResult rs = store_.EnqueuePacket(
-        connection_id, false, packet_, self_address_, peer_address_,
-        valid_version_, kDefaultParsedChlo, &connection_id_generator_);
+    EnqueuePacketResult rs = EnqueuePacketToStore(
+        store_, connection_id, GOOGLE_QUIC_PACKET, INVALID_PACKET_TYPE, packet_,
+        self_address_, peer_address_, valid_version_, kDefaultParsedChlo,
+        connection_id_generator_);
     if (i <= kDefaultMaxConnectionsInStore) {
       EXPECT_EQ(EnqueuePacketResult::SUCCESS, rs);
       EXPECT_TRUE(store_.HasChloForConnection(connection_id));
@@ -323,12 +364,11 @@ TEST_F(QuicBufferedPacketStoreTest, EnqueueChloOnTooManyDifferentConnections) {
   // buffered in the store should success. This is the connection should be
   // delivered at last.
   EXPECT_EQ(EnqueuePacketResult::SUCCESS,
-            store_.EnqueuePacket(
-                /*connection_id=*/TestConnectionId(1), false, packet_,
-                self_address_, peer_address_, valid_version_,
-                kDefaultParsedChlo, &connection_id_generator_));
-  EXPECT_TRUE(store_.HasChloForConnection(
-      /*connection_id=*/TestConnectionId(1)));
+            EnqueuePacketToStore(
+                store_, TestConnectionId(1), GOOGLE_QUIC_PACKET,
+                INVALID_PACKET_TYPE, packet_, self_address_, peer_address_,
+                valid_version_, kDefaultParsedChlo, connection_id_generator_));
+  EXPECT_TRUE(store_.HasChloForConnection(TestConnectionId(1)));
 
   QuicConnectionId delivered_conn_id;
   for (size_t i = 0;
@@ -345,7 +385,11 @@ TEST_F(QuicBufferedPacketStoreTest, EnqueueChloOnTooManyDifferentConnections) {
       EXPECT_EQ(2u, packet_list.buffered_packets.size());
       EXPECT_EQ(TestConnectionId(1u), delivered_conn_id);
     }
-    EXPECT_EQ(packet_list.connection_id_generator, &connection_id_generator_);
+    if (GetQuicRestartFlag(quic_dispatcher_replace_cid_on_first_packet)) {
+      EXPECT_EQ(packet_list.connection_id_generator, nullptr);
+    } else {
+      EXPECT_EQ(packet_list.connection_id_generator, &connection_id_generator_);
+    }
   }
   EXPECT_FALSE(store_.HasChlosBuffered());
 }
@@ -354,18 +398,21 @@ TEST_F(QuicBufferedPacketStoreTest, EnqueueChloOnTooManyDifferentConnections) {
 // connections both with and without CHLOs.
 TEST_F(QuicBufferedPacketStoreTest, PacketQueueExpiredBeforeDelivery) {
   QuicConnectionId connection_id = TestConnectionId(1);
-  store_.EnqueuePacket(connection_id, false, packet_, self_address_,
+  EnqueuePacketToStore(store_, connection_id, GOOGLE_QUIC_PACKET,
+                       INVALID_PACKET_TYPE, packet_, self_address_,
                        peer_address_, invalid_version_, kNoParsedChlo,
-                       &connection_id_generator_);
+                       connection_id_generator_);
   EXPECT_EQ(EnqueuePacketResult::SUCCESS,
-            store_.EnqueuePacket(
-                connection_id, false, packet_, self_address_, peer_address_,
-                valid_version_, kDefaultParsedChlo, &connection_id_generator_));
+            EnqueuePacketToStore(store_, connection_id, GOOGLE_QUIC_PACKET,
+                                 INVALID_PACKET_TYPE, packet_, self_address_,
+                                 peer_address_, valid_version_,
+                                 kDefaultParsedChlo, connection_id_generator_));
   QuicConnectionId connection_id2 = TestConnectionId(2);
   EXPECT_EQ(EnqueuePacketResult::SUCCESS,
-            store_.EnqueuePacket(connection_id2, false, packet_, self_address_,
+            EnqueuePacketToStore(store_, connection_id2, GOOGLE_QUIC_PACKET,
+                                 INVALID_PACKET_TYPE, packet_, self_address_,
                                  peer_address_, invalid_version_, kNoParsedChlo,
-                                 &connection_id_generator_));
+                                 connection_id_generator_));
 
   // CHLO on connection 3 arrives 1ms later.
   clock_.AdvanceTime(QuicTime::Delta::FromMilliseconds(1));
@@ -373,9 +420,10 @@ TEST_F(QuicBufferedPacketStoreTest, PacketQueueExpiredBeforeDelivery) {
   // Use different client address to differentiate packets from different
   // connections.
   QuicSocketAddress another_client_address(QuicIpAddress::Any4(), 255);
-  store_.EnqueuePacket(connection_id3, false, packet_, self_address_,
+  EnqueuePacketToStore(store_, connection_id3, GOOGLE_QUIC_PACKET,
+                       INVALID_PACKET_TYPE, packet_, self_address_,
                        another_client_address, valid_version_,
-                       kDefaultParsedChlo, &connection_id_generator_);
+                       kDefaultParsedChlo, connection_id_generator_);
 
   // Advance clock to the time when connection 1 and 2 expires.
   clock_.AdvanceTime(
@@ -400,7 +448,11 @@ TEST_F(QuicBufferedPacketStoreTest, PacketQueueExpiredBeforeDelivery) {
 
   // Connection 3 is the next to be delivered as connection 1 already expired.
   EXPECT_EQ(connection_id3, delivered_conn_id);
-  EXPECT_EQ(packet_list.connection_id_generator, &connection_id_generator_);
+  if (GetQuicRestartFlag(quic_dispatcher_replace_cid_on_first_packet)) {
+    EXPECT_EQ(packet_list.connection_id_generator, nullptr);
+  } else {
+    EXPECT_EQ(packet_list.connection_id_generator, &connection_id_generator_);
+  }
   ASSERT_EQ(1u, packet_list.buffered_packets.size());
   // Packets in connection 3 should use another peer address.
   EXPECT_EQ(another_client_address,
@@ -409,10 +461,14 @@ TEST_F(QuicBufferedPacketStoreTest, PacketQueueExpiredBeforeDelivery) {
   // Test the alarm is reset by enqueueing 2 packets for 4th connection and wait
   // for them to expire.
   QuicConnectionId connection_id4 = TestConnectionId(4);
-  store_.EnqueuePacket(connection_id4, false, packet_, self_address_,
-                       peer_address_, invalid_version_, kNoParsedChlo, nullptr);
-  store_.EnqueuePacket(connection_id4, false, packet_, self_address_,
-                       peer_address_, invalid_version_, kNoParsedChlo, nullptr);
+  EnqueuePacketToStore(store_, connection_id4, GOOGLE_QUIC_PACKET,
+                       INVALID_PACKET_TYPE, packet_, self_address_,
+                       peer_address_, invalid_version_, kNoParsedChlo,
+                       connection_id_generator_);
+  EnqueuePacketToStore(store_, connection_id4, GOOGLE_QUIC_PACKET,
+                       INVALID_PACKET_TYPE, packet_, self_address_,
+                       peer_address_, invalid_version_, kNoParsedChlo,
+                       connection_id_generator_);
   clock_.AdvanceTime(
       QuicBufferedPacketStorePeer::expiration_alarm(&store_)->deadline() -
       clock_.ApproximateNow());
@@ -426,10 +482,14 @@ TEST_F(QuicBufferedPacketStoreTest, SimpleDiscardPackets) {
   QuicConnectionId connection_id = TestConnectionId(1);
 
   // Enqueue some packets
-  store_.EnqueuePacket(connection_id, false, packet_, self_address_,
-                       peer_address_, invalid_version_, kNoParsedChlo, nullptr);
-  store_.EnqueuePacket(connection_id, false, packet_, self_address_,
-                       peer_address_, invalid_version_, kNoParsedChlo, nullptr);
+  EnqueuePacketToStore(store_, connection_id, GOOGLE_QUIC_PACKET,
+                       INVALID_PACKET_TYPE, packet_, self_address_,
+                       peer_address_, invalid_version_, kNoParsedChlo,
+                       connection_id_generator_);
+  EnqueuePacketToStore(store_, connection_id, GOOGLE_QUIC_PACKET,
+                       INVALID_PACKET_TYPE, packet_, self_address_,
+                       peer_address_, invalid_version_, kNoParsedChlo,
+                       connection_id_generator_);
   EXPECT_TRUE(store_.HasBufferedPackets(connection_id));
   EXPECT_FALSE(store_.HasChlosBuffered());
 
@@ -452,13 +512,18 @@ TEST_F(QuicBufferedPacketStoreTest, DiscardWithCHLOs) {
   QuicConnectionId connection_id = TestConnectionId(1);
 
   // Enqueue some packets, which include a CHLO
-  store_.EnqueuePacket(connection_id, false, packet_, self_address_,
-                       peer_address_, invalid_version_, kNoParsedChlo, nullptr);
-  store_.EnqueuePacket(connection_id, false, packet_, self_address_,
+  EnqueuePacketToStore(store_, connection_id, GOOGLE_QUIC_PACKET,
+                       INVALID_PACKET_TYPE, packet_, self_address_,
+                       peer_address_, invalid_version_, kNoParsedChlo,
+                       connection_id_generator_);
+  EnqueuePacketToStore(store_, connection_id, GOOGLE_QUIC_PACKET,
+                       INVALID_PACKET_TYPE, packet_, self_address_,
                        peer_address_, valid_version_, kDefaultParsedChlo,
-                       nullptr);
-  store_.EnqueuePacket(connection_id, false, packet_, self_address_,
-                       peer_address_, invalid_version_, kNoParsedChlo, nullptr);
+                       connection_id_generator_);
+  EnqueuePacketToStore(store_, connection_id, GOOGLE_QUIC_PACKET,
+                       INVALID_PACKET_TYPE, packet_, self_address_,
+                       peer_address_, invalid_version_, kNoParsedChlo,
+                       connection_id_generator_);
   EXPECT_TRUE(store_.HasBufferedPackets(connection_id));
   EXPECT_TRUE(store_.HasChlosBuffered());
 
@@ -482,16 +547,21 @@ TEST_F(QuicBufferedPacketStoreTest, MultipleDiscardPackets) {
   QuicConnectionId connection_id_2 = TestConnectionId(2);
 
   // Enqueue some packets for two connection IDs
-  store_.EnqueuePacket(connection_id_1, false, packet_, self_address_,
-                       peer_address_, invalid_version_, kNoParsedChlo, nullptr);
-  store_.EnqueuePacket(connection_id_1, false, packet_, self_address_,
-                       peer_address_, invalid_version_, kNoParsedChlo, nullptr);
+  EnqueuePacketToStore(store_, connection_id_1, GOOGLE_QUIC_PACKET,
+                       INVALID_PACKET_TYPE, packet_, self_address_,
+                       peer_address_, invalid_version_, kNoParsedChlo,
+                       connection_id_generator_);
+  EnqueuePacketToStore(store_, connection_id_1, GOOGLE_QUIC_PACKET,
+                       INVALID_PACKET_TYPE, packet_, self_address_,
+                       peer_address_, invalid_version_, kNoParsedChlo,
+                       connection_id_generator_);
 
   ParsedClientHello parsed_chlo;
   parsed_chlo.alpns.push_back("h3");
   parsed_chlo.sni = TestHostname();
-  store_.EnqueuePacket(connection_id_2, false, packet_, self_address_,
-                       peer_address_, valid_version_, parsed_chlo, nullptr);
+  EnqueuePacketToStore(store_, connection_id_2, IETF_QUIC_LONG_HEADER_PACKET,
+                       INITIAL, packet_, self_address_, peer_address_,
+                       valid_version_, parsed_chlo, connection_id_generator_);
   EXPECT_TRUE(store_.HasBufferedPackets(connection_id_1));
   EXPECT_TRUE(store_.HasBufferedPackets(connection_id_2));
   EXPECT_TRUE(store_.HasChlosBuffered());
@@ -513,8 +583,12 @@ TEST_F(QuicBufferedPacketStoreTest, MultipleDiscardPackets) {
   EXPECT_EQ(TestHostname(), packets.parsed_chlo->sni);
   // Since connection_id_2's chlo arrives, verify version is set.
   EXPECT_EQ(valid_version_, packets.version);
-  EXPECT_TRUE(store_.HasChlosBuffered());
 
+  if (store_.replace_cid_on_first_packet()) {
+    EXPECT_FALSE(store_.HasChlosBuffered());
+  } else {
+    EXPECT_TRUE(store_.HasChlosBuffered());
+  }
   // Discard the packets for connection 2
   store_.DiscardPackets(connection_id_2);
   EXPECT_FALSE(store_.HasChlosBuffered());
@@ -535,6 +609,7 @@ TEST_F(QuicBufferedPacketStoreTest, IngestPacketForTlsChloExtraction) {
   QuicConnectionId connection_id = TestConnectionId(1);
   std::vector<std::string> alpns;
   std::vector<uint16_t> supported_groups;
+  std::vector<uint16_t> cert_compression_algos;
   std::string sni;
   bool resumption_attempted = false;
   bool early_data_attempted = false;
@@ -542,14 +617,17 @@ TEST_F(QuicBufferedPacketStoreTest, IngestPacketForTlsChloExtraction) {
   std::optional<uint8_t> tls_alert;
 
   EXPECT_FALSE(store_.HasBufferedPackets(connection_id));
-  store_.EnqueuePacket(connection_id, false, packet_, self_address_,
-                       peer_address_, valid_version_, kNoParsedChlo, nullptr);
+  EnqueuePacketToStore(store_, connection_id, GOOGLE_QUIC_PACKET,
+                       INVALID_PACKET_TYPE, packet_, self_address_,
+                       peer_address_, valid_version_, kNoParsedChlo,
+                       connection_id_generator_);
   EXPECT_TRUE(store_.HasBufferedPackets(connection_id));
 
   // The packet in 'packet_' is not a TLS CHLO packet.
   EXPECT_FALSE(store_.IngestPacketForTlsChloExtraction(
-      connection_id, valid_version_, packet_, &supported_groups, &alpns, &sni,
-      &resumption_attempted, &early_data_attempted, &tls_alert));
+      connection_id, valid_version_, packet_, &supported_groups,
+      &cert_compression_algos, &alpns, &sni, &resumption_attempted,
+      &early_data_attempted, &tls_alert));
 
   store_.DiscardPackets(connection_id);
 
@@ -562,18 +640,24 @@ TEST_F(QuicBufferedPacketStoreTest, IngestPacketForTlsChloExtraction) {
   auto packets = GetFirstFlightOfPackets(valid_version_, config);
   ASSERT_EQ(packets.size(), 2u);
 
-  store_.EnqueuePacket(connection_id, false, *packets[0], self_address_,
-                       peer_address_, valid_version_, kNoParsedChlo, nullptr);
-  store_.EnqueuePacket(connection_id, false, *packets[1], self_address_,
-                       peer_address_, valid_version_, kNoParsedChlo, nullptr);
+  EnqueuePacketToStore(store_, connection_id, GOOGLE_QUIC_PACKET,
+                       INVALID_PACKET_TYPE, *packets[0], self_address_,
+                       peer_address_, valid_version_, kNoParsedChlo,
+                       connection_id_generator_);
+  EnqueuePacketToStore(store_, connection_id, GOOGLE_QUIC_PACKET,
+                       INVALID_PACKET_TYPE, *packets[1], self_address_,
+                       peer_address_, valid_version_, kNoParsedChlo,
+                       connection_id_generator_);
 
   EXPECT_TRUE(store_.HasBufferedPackets(connection_id));
   EXPECT_FALSE(store_.IngestPacketForTlsChloExtraction(
-      connection_id, valid_version_, *packets[0], &supported_groups, &alpns,
-      &sni, &resumption_attempted, &early_data_attempted, &tls_alert));
+      connection_id, valid_version_, *packets[0], &supported_groups,
+      &cert_compression_algos, &alpns, &sni, &resumption_attempted,
+      &early_data_attempted, &tls_alert));
   EXPECT_TRUE(store_.IngestPacketForTlsChloExtraction(
-      connection_id, valid_version_, *packets[1], &supported_groups, &alpns,
-      &sni, &resumption_attempted, &early_data_attempted, &tls_alert));
+      connection_id, valid_version_, *packets[1], &supported_groups,
+      &cert_compression_algos, &alpns, &sni, &resumption_attempted,
+      &early_data_attempted, &tls_alert));
 
   EXPECT_THAT(alpns, ElementsAre(AlpnForVersion(valid_version_)));
   EXPECT_FALSE(supported_groups.empty());
@@ -620,7 +704,7 @@ TEST_F(QuicBufferedPacketStoreTest, DeliverInitialPacketsFirst) {
       })));
 
   QuicLongHeaderType long_packet_type = INVALID_PACKET_TYPE;
-  PacketHeaderFormat unused_format;
+  PacketHeaderFormat packet_format;
   bool unused_version_flag;
   bool unused_use_length_prefix;
   QuicVersionLabel unused_version_label;
@@ -633,7 +717,7 @@ TEST_F(QuicBufferedPacketStoreTest, DeliverInitialPacketsFirst) {
 
   // Verify that packet_ is not an INITIAL packet.
   error_code = QuicFramer::ParsePublicHeaderDispatcher(
-      packet_, kQuicDefaultConnectionIdLength, &unused_format,
+      packet_, kQuicDefaultConnectionIdLength, &packet_format,
       &long_packet_type, &unused_version_flag, &unused_use_length_prefix,
       &unused_version_label, &unused_parsed_version,
       &unused_destination_connection_id, &unused_source_connection_id,
@@ -641,12 +725,17 @@ TEST_F(QuicBufferedPacketStoreTest, DeliverInitialPacketsFirst) {
   EXPECT_THAT(error_code, IsQuicNoError());
   EXPECT_NE(long_packet_type, INITIAL);
 
-  store_.EnqueuePacket(connection_id, false, packet_, self_address_,
-                       peer_address_, valid_version_, kNoParsedChlo, nullptr);
-  store_.EnqueuePacket(connection_id, false, *initial_packets[0], self_address_,
-                       peer_address_, valid_version_, kNoParsedChlo, nullptr);
-  store_.EnqueuePacket(connection_id, false, *initial_packets[1], self_address_,
-                       peer_address_, valid_version_, kNoParsedChlo, nullptr);
+  EnqueuePacketToStore(store_, connection_id, packet_format, long_packet_type,
+                       packet_, self_address_, peer_address_, valid_version_,
+                       kNoParsedChlo, connection_id_generator_);
+  EnqueuePacketToStore(store_, connection_id, IETF_QUIC_LONG_HEADER_PACKET,
+                       INITIAL, *initial_packets[0], self_address_,
+                       peer_address_, valid_version_, kNoParsedChlo,
+                       connection_id_generator_);
+  EnqueuePacketToStore(store_, connection_id, IETF_QUIC_LONG_HEADER_PACKET,
+                       INITIAL, *initial_packets[1], self_address_,
+                       peer_address_, valid_version_, kNoParsedChlo,
+                       connection_id_generator_);
 
   BufferedPacketList delivered_packets = store_.DeliverPackets(connection_id);
   EXPECT_THAT(delivered_packets.buffered_packets, SizeIs(3));
@@ -654,7 +743,7 @@ TEST_F(QuicBufferedPacketStoreTest, DeliverInitialPacketsFirst) {
   QuicLongHeaderType previous_packet_type = INITIAL;
   for (const auto& packet : delivered_packets.buffered_packets) {
     error_code = QuicFramer::ParsePublicHeaderDispatcher(
-        *packet.packet, kQuicDefaultConnectionIdLength, &unused_format,
+        *packet.packet, kQuicDefaultConnectionIdLength, &packet_format,
         &long_packet_type, &unused_version_flag, &unused_use_length_prefix,
         &unused_version_label, &unused_parsed_version,
         &unused_destination_connection_id, &unused_source_connection_id,
@@ -671,18 +760,28 @@ TEST_F(QuicBufferedPacketStoreTest, DeliverInitialPacketsFirst) {
 
 // Test for b/316633326.
 TEST_F(QuicBufferedPacketStoreTest, BufferedPacketRetainsEcn) {
-  SetQuicReloadableFlag(quic_clone_ecn, true);
   QuicConnectionId connection_id = TestConnectionId(1);
   QuicReceivedPacket ect1_packet(packet_content_.data(), packet_content_.size(),
                                  packet_time_, false, 0, true, nullptr, 0,
                                  false, ECN_ECT1);
-  store_.EnqueuePacket(connection_id, false, ect1_packet, self_address_,
-                       peer_address_, valid_version_, kNoParsedChlo, nullptr);
+  EnqueuePacketToStore(store_, connection_id, GOOGLE_QUIC_PACKET,
+                       INVALID_PACKET_TYPE, ect1_packet, self_address_,
+                       peer_address_, valid_version_, kNoParsedChlo,
+                       connection_id_generator_);
   BufferedPacketList delivered_packets = store_.DeliverPackets(connection_id);
   EXPECT_THAT(delivered_packets.buffered_packets, SizeIs(1));
   for (const auto& packet : delivered_packets.buffered_packets) {
     EXPECT_EQ(packet.packet->ecn_codepoint(), ECN_ECT1);
   }
+}
+
+TEST_F(QuicBufferedPacketStoreTest, EmptyBufferedPacketList) {
+  BufferedPacketList packet_list;
+  EXPECT_TRUE(packet_list.buffered_packets.empty());
+  EXPECT_FALSE(packet_list.parsed_chlo.has_value());
+  EXPECT_FALSE(packet_list.version.IsKnown());
+  EXPECT_TRUE(packet_list.original_connection_id.IsEmpty());
+  EXPECT_FALSE(packet_list.replaced_connection_id.has_value());
 }
 
 }  // namespace

@@ -10,7 +10,7 @@
 
 #include <QtCore/qloggingcategory.h>
 
-Q_LOGGING_CATEGORY(lcQuick3D, "qt.quick3d.general")
+Q_STATIC_LOGGING_CATEGORY(lcQuick3D, "qt.quick3d.general")
 
 /*!
     \class QQuick3D
@@ -62,6 +62,8 @@ Q_LOGGING_CATEGORY(lcQuick3D, "qt.quick3d.general")
         return app.exec();
     }
     \endcode
+
+    \sa {Qt Quick 3D Graphics Requirements} {OpenGL specifics}
 */
 
 QT_BEGIN_NAMESPACE

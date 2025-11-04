@@ -5,14 +5,15 @@
 #ifndef COMPONENTS_FEED_CORE_V2_FEEDSTORE_UTIL_H_
 #define COMPONENTS_FEED_CORE_V2_FEEDSTORE_UTIL_H_
 
+#include <optional>
 #include <string>
+#include <string_view>
+
 #include "base/containers/flat_set.h"
-#include "base/strings/string_piece.h"
 #include "base/time/time.h"
 #include "components/feed/core/proto/v2/store.pb.h"
 #include "components/feed/core/v2/public/stream_type.h"
 #include "components/feed/core/v2/types.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 
 namespace feedwire {
 class ConsistencyToken;
@@ -24,14 +25,14 @@ class Metadata;
 const char kForYouStreamKey[] = "i";
 const char kFollowStreamKey[] = "w";
 const char kSupervisedUserStreamKey[] = "s";
-constexpr base::StringPiece kSingleWebFeedStreamKeyPrefix = "c";
-constexpr base::StringPiece kSingleWebFeedMenuStreamKeyPrefix = "m/";
-constexpr base::StringPiece kSingleWebFeedOtherStreamKeyPrefix = "o/";
+constexpr std::string_view kSingleWebFeedStreamKeyPrefix = "c";
+constexpr std::string_view kSingleWebFeedMenuStreamKeyPrefix = "m/";
+constexpr std::string_view kSingleWebFeedOtherStreamKeyPrefix = "o/";
 
 std::string StreamKey(const feed::StreamType& stream_type);
-feed::StreamType StreamTypeFromKey(base::StringPiece key);
+feed::StreamType StreamTypeFromKey(std::string_view key);
 
-base::StringPiece StreamPrefix(feed::StreamKind stream_type);
+std::string_view StreamPrefix(feed::StreamKind stream_type);
 
 ///////////////////////////////////////////////////
 // Functions that operate on feedstore proto types.
@@ -71,8 +72,8 @@ void SetContentLifetime(
     const feed::StreamType& stream_type,
     feedstore::Metadata::StreamMetadata::ContentLifetime content_lifetime);
 void MaybeUpdateSessionId(feedstore::Metadata& metadata,
-                          absl::optional<std::string> token);
-absl::optional<Metadata> MaybeUpdateConsistencyToken(
+                          std::optional<std::string> token);
+std::optional<Metadata> MaybeUpdateConsistencyToken(
     const feedstore::Metadata& metadata,
     const feedwire::ConsistencyToken& token);
 feed::LocalActionId GetNextActionId(feedstore::Metadata& metadata);
@@ -82,7 +83,7 @@ const Metadata::StreamMetadata* FindMetadataForStream(
 Metadata::StreamMetadata& MetadataForStream(
     Metadata& metadata,
     const feed::StreamType& stream_type);
-absl::optional<Metadata> SetStreamViewContentHashes(
+std::optional<Metadata> SetStreamViewContentHashes(
     const Metadata& metadata,
     const feed::StreamType& stream_type,
     const feed::ContentHashSet& content_hashes);

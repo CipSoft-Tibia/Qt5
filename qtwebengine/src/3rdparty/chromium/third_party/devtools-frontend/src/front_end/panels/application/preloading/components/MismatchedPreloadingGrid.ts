@@ -3,13 +3,12 @@
 // found in the LICENSE file.
 
 import * as i18n from '../../../../core/i18n/i18n.js';
-import * as Platform from '../../../../core/platform/platform.js';
+import type * as Platform from '../../../../core/platform/platform.js';
 import {assertNotNullOrUndefined} from '../../../../core/platform/platform.js';
 import * as SDK from '../../../../core/sdk/sdk.js';
 import type * as Protocol from '../../../../generated/protocol.js';
 import * as Diff from '../../../../third_party/diff/diff.js';
 import * as DataGrid from '../../../../ui/components/data_grid/data_grid.js';
-import * as ComponentHelpers from '../../../../ui/components/helpers/helpers.js';
 import * as LegacyWrapper from '../../../../ui/components/legacy_wrapper/legacy_wrapper.js';
 import type * as UI from '../../../../ui/legacy/legacy.js';
 import * as LitHtml from '../../../../ui/lit-html/lit-html.js';
@@ -62,24 +61,24 @@ class PreloadingUIUtils {
   static status(status: SDK.PreloadingModel.PreloadingStatus): string {
     // See content/public/browser/preloading.h PreloadingAttemptOutcome.
     switch (status) {
-      case SDK.PreloadingModel.PreloadingStatus.NotTriggered:
+      case SDK.PreloadingModel.PreloadingStatus.NOT_TRIGGERED:
         return i18nString(UIStrings.statusNotTriggered);
-      case SDK.PreloadingModel.PreloadingStatus.Pending:
+      case SDK.PreloadingModel.PreloadingStatus.PENDING:
         return i18nString(UIStrings.statusPending);
-      case SDK.PreloadingModel.PreloadingStatus.Running:
+      case SDK.PreloadingModel.PreloadingStatus.RUNNING:
         return i18nString(UIStrings.statusRunning);
-      case SDK.PreloadingModel.PreloadingStatus.Ready:
+      case SDK.PreloadingModel.PreloadingStatus.READY:
         return i18nString(UIStrings.statusReady);
-      case SDK.PreloadingModel.PreloadingStatus.Success:
+      case SDK.PreloadingModel.PreloadingStatus.SUCCESS:
         return i18nString(UIStrings.statusSuccess);
-      case SDK.PreloadingModel.PreloadingStatus.Failure:
+      case SDK.PreloadingModel.PreloadingStatus.FAILURE:
         return i18nString(UIStrings.statusFailure);
       // NotSupported is used to handle unreachable case. For example,
       // there is no code path for
       // PreloadingTriggeringOutcome::kTriggeredButPending in prefetch,
       // which is mapped to NotSupported. So, we regard it as an
       // internal error.
-      case SDK.PreloadingModel.PreloadingStatus.NotSupported:
+      case SDK.PreloadingModel.PreloadingStatus.NOT_SUPPORTED:
         return i18n.i18n.lockedString('Internal error');
     }
   }
@@ -120,11 +119,10 @@ export class MismatchedPreloadingGrid extends LegacyWrapper.LegacyWrapper.Wrappa
       return;
     }
 
-    const k = Platform.StringUtilities.kebab;
     const reportsGridData: DataGrid.DataGridController.DataGridControllerData = {
       columns: [
         {
-          id: k('url'),
+          id: 'url',
           title: i18nString(UIStrings.url),
           widthWeighting: 40,
           hideable: false,
@@ -132,7 +130,7 @@ export class MismatchedPreloadingGrid extends LegacyWrapper.LegacyWrapper.Wrappa
           sortable: true,
         },
         {
-          id: k('action'),
+          id: 'action',
           title: i18nString(UIStrings.action),
           widthWeighting: 15,
           hideable: false,
@@ -140,7 +138,7 @@ export class MismatchedPreloadingGrid extends LegacyWrapper.LegacyWrapper.Wrappa
           sortable: true,
         },
         {
-          id: k('status'),
+          id: 'status',
           title: i18nString(UIStrings.status),
           widthWeighting: 15,
           hideable: false,
@@ -179,11 +177,11 @@ export class MismatchedPreloadingGrid extends LegacyWrapper.LegacyWrapper.Wrappa
           case Diff.Diff.Operation.Equal:
             return span({}, s);
           case Diff.Diff.Operation.Insert:
-            return span({'color': 'var(--sys-color-green)', 'text-decoration': 'line-through'}, s);
+            return span({color: 'var(--sys-color-green)', 'text-decoration': 'line-through'}, s);
           case Diff.Diff.Operation.Delete:
-            return span({'color': 'var(--sys-color-error)'}, s);
+            return span({color: 'var(--sys-color-error)'}, s);
           case Diff.Diff.Operation.Edit:
-            return span({'color': 'var(--sys-color-green)', 'text-decoration': 'line-through'}, s);
+            return span({color: 'var(--sys-color-green)', 'text-decoration': 'line-through'}, s);
           default:
             throw new Error('unreachable');
         }
@@ -216,8 +214,7 @@ export class MismatchedPreloadingGrid extends LegacyWrapper.LegacyWrapper.Wrappa
   }
 }
 
-ComponentHelpers.CustomElements.defineComponent(
-    'devtools-resources-mismatched-preloading-grid', MismatchedPreloadingGrid);
+customElements.define('devtools-resources-mismatched-preloading-grid', MismatchedPreloadingGrid);
 
 declare global {
   interface HTMLElementTagNameMap {

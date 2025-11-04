@@ -11,6 +11,7 @@ CustomMaterial {
     property color uColor
     property bool usePoint
     property bool transparency: false
+    property real rootScale
 
     property real specularBrightness: 0.25
     readonly property real shininess: (1.0 - specularBrightness) * 100

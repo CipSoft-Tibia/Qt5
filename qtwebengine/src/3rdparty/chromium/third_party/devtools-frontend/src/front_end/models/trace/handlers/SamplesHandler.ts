@@ -14,7 +14,7 @@ const events =
     new Map<Types.TraceEvents.ProcessID, Map<Types.TraceEvents.ThreadID, Types.TraceEvents.TraceEventComplete[]>>();
 
 const profilesInProcess = new Map<Types.TraceEvents.ProcessID, Map<Types.TraceEvents.ThreadID, ProfileData>>();
-const entryToNode = new Map<Types.TraceEvents.SyntheticTraceEntry, Helpers.TreeHelpers.TraceEntryNode>();
+const entryToNode = new Map<Types.TraceEvents.TraceEventData, Helpers.TreeHelpers.TraceEntryNode>();
 
 // The profile head, containing its metadata like its start
 // time, comes in a "Profile" event. The sample data comes in
@@ -42,22 +42,28 @@ function buildProfileCalls(): void {
       const profileTree = Helpers.TreeHelpers.makeEmptyTraceEntryTree();
       profileTree.maxDepth = profileModel.maxDepth;
 
-      const finalizedData: ProfileData =
-          {rawProfile: preProcessedData.rawProfile, parsedProfile: profileModel, profileCalls: [], profileTree};
+      const finalizedData: ProfileData = {
+        rawProfile: preProcessedData.rawProfile,
+        parsedProfile: profileModel,
+        profileCalls: [],
+        profileTree,
+        profileId,
+      };
 
       const dataByThread = Platform.MapUtilities.getWithDefault(profilesInProcess, processId, () => new Map());
       profileModel.forEachFrame(openFrameCallback, closeFrameCallback);
       dataByThread.set(threadId, finalizedData);
 
       function openFrameCallback(
-          depth: number, node: CPUProfile.ProfileTreeModel.ProfileNode, timeStampMs: number): void {
+          depth: number, node: CPUProfile.ProfileTreeModel.ProfileNode, sampleIndex: number,
+          timeStampMilliseconds: number): void {
         if (threadId === undefined) {
           return;
         }
-        const ts = Helpers.Timing.millisecondsToMicroseconds(Types.Timing.MilliSeconds(timeStampMs));
+        const ts = Helpers.Timing.millisecondsToMicroseconds(Types.Timing.MilliSeconds(timeStampMilliseconds));
         const nodeId = node.id as Helpers.TreeHelpers.TraceEntryNodeId;
 
-        const profileCall = Helpers.Trace.makeProfileCall(node, ts, processId, threadId);
+        const profileCall = Helpers.Trace.makeProfileCall(node, profileId, sampleIndex, ts, processId, threadId);
         finalizedData.profileCalls.push(profileCall);
         indexStack.push(finalizedData.profileCalls.length - 1);
         const traceEntryNode = Helpers.TreeHelpers.makeEmptyTraceEntryNode(profileCall, nodeId);
@@ -69,8 +75,8 @@ function buildProfileCalls(): void {
         }
       }
       function closeFrameCallback(
-          _depth: number, node: CPUProfile.ProfileTreeModel.ProfileNode, _timeStamp: number, durMs: number,
-          selfTimeMs: number): void {
+          _depth: number, _node: CPUProfile.ProfileTreeModel.ProfileNode, _sampleIndex: number,
+          _timeStampMillis: number, durMs: number, selfTimeMs: number): void {
         const profileCallIndex = indexStack.pop();
         const profileCall = profileCallIndex !== undefined && finalizedData.profileCalls[profileCallIndex];
         if (!profileCall) {
@@ -85,7 +91,7 @@ function buildProfileCalls(): void {
         const dur = Helpers.Timing.millisecondsToMicroseconds(Types.Timing.MilliSeconds(durMs));
         const selfTime = Helpers.Timing.millisecondsToMicroseconds(Types.Timing.MilliSeconds(selfTimeMs));
         profileCall.dur = dur;
-        profileCall.selfTime = selfTime;
+        traceEntryNode.selfTime = selfTime;
 
         const parentIndex = indexStack.at(-1);
         const parent = parentIndex !== undefined && finalizedData.profileCalls.at(parentIndex);
@@ -211,8 +217,8 @@ export function data(): SamplesHandlerData {
   }
 
   return {
-    profilesInProcess: new Map(profilesInProcess),
-    entryToNode: new Map(entryToNode),
+    profilesInProcess,
+    entryToNode,
   };
 }
 
@@ -239,6 +245,7 @@ export interface SamplesHandlerData {
 }
 
 export type ProfileData = {
+  profileId: Types.TraceEvents.ProfileID,
   rawProfile: CPUProfile.CPUProfileDataModel.ExtendedProfile,
   parsedProfile: CPUProfile.CPUProfileDataModel.CPUProfileDataModel,
   /**
@@ -263,7 +270,8 @@ export type ProfileData = {
 
 type PreprocessedData = {
   rawProfile: CPUProfile.CPUProfileDataModel.ExtendedProfile,
-  threadId?: Types.TraceEvents.ThreadID, profileId: Types.TraceEvents.ProfileID,
+  profileId: Types.TraceEvents.ProfileID,
+  threadId?: Types.TraceEvents.ThreadID,
 };
 
 /**

@@ -31,13 +31,14 @@
 #ifndef THIRD_PARTY_BLINK_PUBLIC_PLATFORM_WEB_MEDIA_PLAYER_H_
 #define THIRD_PARTY_BLINK_PUBLIC_PLATFORM_WEB_MEDIA_PLAYER_H_
 
+#include <optional>
+
 #include "base/memory/scoped_refptr.h"
 #include "base/memory/weak_ptr.h"
 #include "base/time/time.h"
 #include "components/viz/common/surfaces/surface_id.h"
 #include "media/base/video_frame.h"
 #include "media/base/video_frame_metadata.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "third_party/blink/public/common/media/display_type.h"
 #include "third_party/blink/public/platform/web_audio_source_provider_impl.h"
 #include "third_party/blink/public/platform/web_content_decryption_module.h"
@@ -158,9 +159,15 @@ class WebMediaPlayer {
   virtual void SetPreservesPitch(bool preserves_pitch) = 0;
 
   // Sets a flag indicating whether the audio stream was played with user
-  // activation.
-  virtual void SetWasPlayedWithUserActivation(
-      bool was_played_with_user_activation) = 0;
+  // activation and high media engagement.
+  virtual void SetWasPlayedWithUserActivationAndHighMediaEngagement(
+      bool was_played_with_user_activation_and_high_media_engagement) = 0;
+
+  // Sets a flag indicating whether media playback should be paused when the
+  // the iframe is hidden.
+  virtual void SetShouldPauseWhenFrameIsHidden(
+      bool should_pause_when_frame_is_hidden) = 0;
+  virtual bool GetShouldPauseWhenFrameIsHidden() { return false; }
 
   // The associated media element is going to enter Picture-in-Picture. This
   // method should make sure the player is set up for this and has a SurfaceId
@@ -280,9 +287,9 @@ class WebMediaPlayer {
   virtual scoped_refptr<media::VideoFrame> GetCurrentFrameThenUpdate() = 0;
 
   // Return current video frame unique id from compositor. The query is readonly
-  // and should avoid any extra ops. Function returns absl::nullopt if current
+  // and should avoid any extra ops. Function returns std::nullopt if current
   // frame is invalid or fails to access current frame.
-  virtual absl::optional<media::VideoFrame::ID> CurrentFrameId() const = 0;
+  virtual std::optional<media::VideoFrame::ID> CurrentFrameId() const = 0;
 
   // Provides a PaintCanvasVideoRenderer instance owned by this WebMediaPlayer.
   // Useful for ensuring that the paint/texturing operation for current frame is
@@ -327,8 +334,8 @@ class WebMediaPlayer {
 
   virtual void EnabledAudioTracksChanged(
       const WebVector<TrackId>& enabled_track_ids) {}
-  // |selected_track_id| is null if no track is selected.
-  virtual void SelectedVideoTrackChanged(TrackId* selected_track_id) {}
+  virtual void SelectedVideoTrackChanged(
+      std::optional<TrackId> selected_track_id) {}
 
   // Callback called whenever the media element may have received or last native
   // controls. It might be called twice with the same value: the caller has to
@@ -356,11 +363,9 @@ class WebMediaPlayer {
   virtual int GetDelegateId() { return -1; }
 
   // Returns the SurfaceId the video element is currently using.
-  // Returns absl::nullopt if the element isn't a video or doesn't have a
+  // Returns std::nullopt if the element isn't a video or doesn't have a
   // SurfaceId associated to it.
-  virtual absl::optional<viz::SurfaceId> GetSurfaceId() {
-    return absl::nullopt;
-  }
+  virtual std::optional<viz::SurfaceId> GetSurfaceId() { return std::nullopt; }
 
   // Provide the media URL, after any redirects are applied.  May return an
   // empty GURL, which will be interpreted as "use the original URL".
@@ -387,6 +392,11 @@ class WebMediaPlayer {
   // Adjusts the frame sink hierarchy for the media frame sink.
   virtual void RegisterFrameSinkHierarchy() {}
   virtual void UnregisterFrameSinkHierarchy() {}
+
+  // Records the `MediaVideoVisibilityTracker` occlusion state, at the time that
+  // HTMLVideoElement visibility is reported. The state is recorded using
+  // `MediaLogEvent` s.
+  virtual void RecordVideoOcclusionState(std::string_view occlusion_state) {}
 };
 
 }  // namespace blink

@@ -17,12 +17,13 @@
 #ifndef SRC_PERFETTO_CMD_PERFETTO_CMD_H_
 #define SRC_PERFETTO_CMD_PERFETTO_CMD_H_
 
+#include <cstdint>
+#include <functional>
+#include <list>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
-
-#include <time.h>
-#include <optional>
 
 #include "perfetto/base/build_config.h"
 #include "perfetto/ext/base/event_fd.h"
@@ -30,9 +31,12 @@
 #include "perfetto/ext/base/scoped_file.h"
 #include "perfetto/ext/base/thread_task_runner.h"
 #include "perfetto/ext/base/unix_task_runner.h"
+#include "perfetto/ext/base/uuid.h"
 #include "perfetto/ext/base/weak_ptr.h"
+#include "perfetto/ext/tracing/core/basic_types.h"
 #include "perfetto/ext/tracing/core/consumer.h"
 #include "perfetto/ext/tracing/ipc/consumer_ipc_client.h"
+#include "perfetto/tracing/core/forward_decls.h"
 #include "src/android_stats/perfetto_atoms.h"
 #include "src/perfetto_cmd/packet_writer.h"
 
@@ -73,11 +77,19 @@ class PerfettoCmd : public Consumer {
   void SignalCtrlC() { ctrl_c_evt_.Notify(); }
 
  private:
+  enum CloneThreadMode { kSingleExtraThread, kNewThreadPerRequest };
+
   bool OpenOutputFile();
   void SetupCtrlCSignalHandler();
   void FinalizeTraceAndExit();
   void PrintUsage(const char* argv0);
   void PrintServiceState(bool success, const TracingServiceState&);
+  void CloneAllBugreportTraces(bool success, const TracingServiceState&);
+  void CloneSessionOnThread(TracingSessionID,
+                            const std::string& cmdline,  // \0 separated.
+                            CloneThreadMode,
+                            std::string clone_trigger_name,
+                            std::function<void()> on_clone_callback);
   void OnTimeout();
   bool is_detach() const { return !detach_key_.empty(); }
   bool is_attach() const { return !attach_key_.empty(); }
@@ -117,7 +129,8 @@ class PerfettoCmd : public Consumer {
   // will have no effect.
   void NotifyBgProcessPipe(BgProcessStatus status);
 
-  void OnCloneSnapshotTriggerReceived(TracingSessionID);
+  void OnCloneSnapshotTriggerReceived(TracingSessionID,
+                                      std::string trigger_name);
 
 #if PERFETTO_BUILDFLAG(PERFETTO_OS_ANDROID)
   static base::ScopedFile CreateUnlinkedTmpFile();
@@ -126,6 +139,7 @@ class PerfettoCmd : public Consumer {
   void ReportTraceToAndroidFrameworkOrCrash();
 #endif
   void LogUploadEvent(PerfettoStatsdAtom atom);
+  void LogUploadEvent(PerfettoStatsdAtom atom, const std::string& trigger_name);
   void LogTriggerEvents(PerfettoTriggerAtom atom,
                         const std::vector<std::string>& trigger_names);
 
@@ -145,7 +159,7 @@ class PerfettoCmd : public Consumer {
   bool save_to_incidentd_ = false;
   bool report_to_android_framework_ = false;
   bool statsd_logging_ = false;
-  bool update_guardrail_state_ = false;
+  bool tracing_succeeded_ = false;
   uint64_t bytes_written_ = 0;
   std::string detach_key_;
   std::string attach_key_;
@@ -154,6 +168,7 @@ class PerfettoCmd : public Consumer {
   bool query_service_ = false;
   bool query_service_output_raw_ = false;
   bool query_service_long_ = false;
+  bool clone_all_bugreport_traces_ = false;
   bool bugreport_ = false;
   bool background_ = false;
   bool background_wait_ = false;
@@ -162,17 +177,20 @@ class PerfettoCmd : public Consumer {
   bool connected_ = false;
   std::string uuid_;
   std::optional<TracingSessionID> clone_tsid_{};
+  bool clone_for_bugreport_ = false;
+  std::function<void()> on_session_cloned_;
 
   // How long we expect to trace for or 0 if the trace is indefinite.
   uint32_t expected_duration_ms_ = 0;
   bool trace_data_timeout_armed_ = false;
 
-  // The aux thread that is used to invoke secondary instances of PerfettoCmd
-  // to create snapshots. This is used only when the trace config involves a
-  // CLONE_SNAPSHOT trigger.
-  std::unique_ptr<base::ThreadTaskRunner> snapshot_thread_;
+  // The aux threads used to invoke secondary instances of PerfettoCmd to create
+  // snapshots. This is used only when the trace config involves a
+  // CLONE_SNAPSHOT trigger or when using --save-all-for-bugreport.
+  std::list<base::ThreadTaskRunner> snapshot_threads_;
   int snapshot_count_ = 0;
   std::string snapshot_config_;
+  std::string snapshot_trigger_name_;
 
   base::WeakPtrFactory<PerfettoCmd> weak_factory_{this};
 };

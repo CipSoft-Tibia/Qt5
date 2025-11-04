@@ -6,13 +6,13 @@
 #define UI_ACCESSIBILITY_AX_RANGE_H_
 
 #include <memory>
+#include <optional>
 #include <ostream>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include "base/strings/utf_string_conversions.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "ui/accessibility/ax_clipping_behavior.h"
 #include "ui/accessibility/ax_node.h"
 #include "ui/accessibility/ax_node_position.h"
@@ -41,7 +41,7 @@ class AXRangeRectDelegate {
       AXNodeID node_id,
       int start_offset,
       int end_offset,
-      ui::AXClippingBehavior clipping_behavior,
+      AXClippingBehavior clipping_behavior,
       AXOffscreenResult* offscreen_result) = 0;
   virtual gfx::Rect GetBoundsRect(AXTreeID tree_id,
                                   AXNodeID node_id,
@@ -128,11 +128,11 @@ class AXRange {
   //        <0 - If the first position would come BEFORE the second.
   //        >0 - If the first position would come AFTER the second.
   //   nullopt - If positions are not comparable (see AXPosition::CompareTo).
-  static absl::optional<int> CompareEndpoints(const AXPositionType* first,
-                                              const AXPositionType* second) {
+  static std::optional<int> CompareEndpoints(const AXPositionType* first,
+                                             const AXPositionType* second) {
     DCHECK(first->IsValid());
     DCHECK(second->IsValid());
-    absl::optional<int> tree_position_comparison =
+    std::optional<int> tree_position_comparison =
         first->AsTreePosition()->CompareTo(*second->AsTreePosition());
 
     // When the tree comparison is nullopt, using value_or(1) forces a default
@@ -308,7 +308,7 @@ class AXRange {
     if (max_count == 0 || IsNull())
       return std::u16string();
 
-    absl::optional<int> endpoint_comparison =
+    std::optional<int> endpoint_comparison =
         CompareEndpoints(anchor(), focus());
     if (!endpoint_comparison)
       return std::u16string();
@@ -441,7 +441,7 @@ class AXRange {
       gfx::Rect degenerate_range_rect = delegate->GetInnerTextRangeBoundsRect(
           range_start->tree_id(), range_start->anchor_id(),
           range_start->text_offset(), range_end->text_offset(),
-          ui::AXClippingBehavior::kUnclipped, &offscreen_result);
+          AXClippingBehavior::kUnclipped, &offscreen_result);
       if (offscreen_result == AXOffscreenResult::kOnscreen) {
         DCHECK(degenerate_range_rect.width() == 0);
         degenerate_range_rect.set_width(1);
@@ -474,7 +474,7 @@ class AXRange {
         current_rect = delegate->GetInnerTextRangeBoundsRect(
             current_line_start->tree_id(), current_line_start->anchor_id(),
             current_line_start->text_offset(), current_line_end->text_offset(),
-            ui::AXClippingBehavior::kClipped, &offscreen_result);
+            AXClippingBehavior::kClipped, &offscreen_result);
       } else {
         current_rect = delegate->GetBoundsRect(current_line_start->tree_id(),
                                                current_line_start->anchor_id(),

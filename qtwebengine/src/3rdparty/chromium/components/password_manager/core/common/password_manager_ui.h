@@ -5,9 +5,7 @@
 #ifndef COMPONENTS_PASSWORD_MANAGER_CORE_COMMON_PASSWORD_MANAGER_UI_H_
 #define COMPONENTS_PASSWORD_MANAGER_CORE_COMMON_PASSWORD_MANAGER_UI_H_
 
-namespace password_manager {
-
-namespace ui {
+namespace password_manager::ui {
 
 // The current state of the password manager's UI.
 enum State {
@@ -45,7 +43,7 @@ enum State {
 
   // The user used a profile credential to log in successfully and should see a
   // prompt that allows them to move the credential to their account store.
-  CAN_MOVE_PASSWORD_TO_ACCOUNT_STATE,
+  MOVE_CREDENTIAL_AFTER_LOG_IN_STATE,
 
   // Last compromised password was updated and the user is safe.
   PASSWORD_UPDATED_SAFE_STATE,
@@ -75,10 +73,28 @@ enum State {
   // the sign-in form until the user explicitly interacts with the notification
   // bubble.
   NOTIFY_RECEIVED_SHARED_CREDENTIALS,
+
+  // Move credential bubble opened from the footer in manage bubble.
+  MOVE_CREDENTIAL_FROM_MANAGE_BUBBLE_STATE,
+
+  // DefaultStoreChanged bubble opened before showing save/update bubble, since
+  // the password store was changed without user interaction.
+  PASSWORD_STORE_CHANGED_BUBBLE_STATE,
+
+  // Passkey was successfully created and saved.
+  PASSKEY_SAVED_CONFIRMATION_STATE,
+
+  // Passkey was successfully deleted.
+  PASSKEY_DELETED_CONFIRMATION_STATE,
+
+  // Passkey was successfully updated.
+  PASSKEY_UPDATED_CONFIRMATION_STATE,
+
+  // Passkey was successfully deleted because it was not present on an all
+  // accepted credentials report.
+  PASSKEY_NOT_ACCEPTED_STATE,
 };
 
-}  // namespace ui
-
-}  // namespace password_manager
+}  // namespace password_manager::ui
 
 #endif  // COMPONENTS_PASSWORD_MANAGER_CORE_COMMON_PASSWORD_MANAGER_UI_H_

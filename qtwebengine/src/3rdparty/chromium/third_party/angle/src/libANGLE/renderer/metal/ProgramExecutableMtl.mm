@@ -250,16 +250,6 @@ void InitArgumentBufferEncoder(mtl::Context *context,
     }
 }
 
-bool DisableFastMathForShaderCompilation(mtl::Context *context)
-{
-    return context->getDisplay()->getFeatures().intelDisableFastMath.enabled;
-}
-
-bool UsesInvariance(const mtl::TranslatedShaderInfo *translatedMslInfo)
-{
-    return translatedMslInfo->hasInvariant;
-}
-
 template <typename T>
 void UpdateDefaultUniformBlockWithElementSize(GLsizei count,
                                               uint32_t arrayIndex,
@@ -351,7 +341,7 @@ class StdMTLBLockLayoutEncoderFactory : public gl::CustomBlockLayoutEncoderFacto
 };
 }  // anonymous namespace
 
-angle::Result CreateMslShaderLib(ContextMtl *context,
+angle::Result CreateMslShaderLib(mtl::Context *context,
                                  gl::InfoLog &infoLog,
                                  mtl::TranslatedShaderInfo *translatedMslInfo,
                                  const std::map<std::string, std::string> &substitutionMacros)
@@ -362,11 +352,13 @@ angle::Result CreateMslShaderLib(ContextMtl *context,
 
         // Convert to actual binary shader
         mtl::AutoObjCPtr<NSError *> err = nil;
-        bool disableFastMath            = DisableFastMathForShaderCompilation(context);
-        bool usesInvariance             = UsesInvariance(translatedMslInfo);
+        const bool disableFastMath =
+            context->getDisplay()->getFeatures().intelDisableFastMath.enabled ||
+            translatedMslInfo->hasIsnanOrIsinf;
+        const bool usesInvariance       = translatedMslInfo->hasInvariant;
         translatedMslInfo->metalLibrary = libraryCache.getOrCompileShaderLibrary(
-            context, translatedMslInfo->metalShaderSource, substitutionMacros, disableFastMath,
-            usesInvariance, &err);
+            context->getDisplay(), translatedMslInfo->metalShaderSource, substitutionMacros,
+            disableFastMath, usesInvariance, &err);
         if (err && !translatedMslInfo->metalLibrary)
         {
             std::ostringstream ss;
@@ -921,7 +913,7 @@ angle::Result ProgramExecutableMtl::setupDraw(const gl::Context *glContext,
         mCurrentShaderVariants[gl::ShaderType::Vertex] =
             &mVertexShaderVariants[pipelineDesc.rasterizationType];
 
-        const bool multisampledRendering = pipelineDesc.outputDescriptor.sampleCount > 1;
+        const bool multisampledRendering = pipelineDesc.outputDescriptor.rasterSampleCount > 1;
         const bool allowFragDepthWrite =
             pipelineDesc.outputDescriptor.depthAttachmentPixelFormat != 0;
         mCurrentShaderVariants[gl::ShaderType::Fragment] =
@@ -1004,7 +996,8 @@ angle::Result ProgramExecutableMtl::getSpecializedShader(
     {
         // For fragment shader, we need to create 4 variants,
         // combining multisampled rendering and depth write enabled states.
-        const bool multisampledRendering = renderPipelineDesc.outputDescriptor.sampleCount > 1;
+        const bool multisampledRendering =
+            renderPipelineDesc.outputDescriptor.rasterSampleCount > 1;
         const bool allowFragDepthWrite =
             renderPipelineDesc.outputDescriptor.depthAttachmentPixelFormat != 0;
         shaderVariant = &mFragmentShaderVariants[PipelineParametersToFragmentShaderVariantIndex(
@@ -1217,6 +1210,11 @@ angle::Result ProgramExecutableMtl::updateTextures(const gl::Context *glContext,
 
             const gl::ImageUnit &imageUnit = glState.getImageUnit(glslImageBinding);
             TextureMtl *textureMtl         = mtl::GetImpl(imageUnit.texture.get());
+            if (imageUnit.layered)
+            {
+                UNIMPLEMENTED();
+                continue;
+            }
             ANGLE_TRY(textureMtl->bindToShaderImage(
                 glContext, cmdEncoder, shaderType, static_cast<uint32_t>(mtlRWTextureBinding),
                 imageUnit.level, imageUnit.layer, imageUnit.format));
@@ -1244,7 +1242,7 @@ angle::Result ProgramExecutableMtl::updateUniformBuffers(
     mArgumentBufferRenderStageUsages.resize(blocks.size());
     mLegalizedOffsetedUniformBuffers.resize(blocks.size());
 
-    ANGLE_TRY(legalizeUniformBufferOffsets(context, blocks));
+    ANGLE_TRY(legalizeUniformBufferOffsets(context));
 
     const gl::State &glState = context->getState();
 
@@ -1257,12 +1255,11 @@ angle::Result ProgramExecutableMtl::updateUniformBuffers(
 
         if (mCurrentShaderVariants[shaderType]->translatedSrcInfo->hasUBOArgumentBuffer)
         {
-            ANGLE_TRY(
-                encodeUniformBuffersInfoArgumentBuffer(context, cmdEncoder, blocks, shaderType));
+            ANGLE_TRY(encodeUniformBuffersInfoArgumentBuffer(context, cmdEncoder, shaderType));
         }
         else
         {
-            ANGLE_TRY(bindUniformBuffersToDiscreteSlots(context, cmdEncoder, blocks, shaderType));
+            ANGLE_TRY(bindUniformBuffersToDiscreteSlots(context, cmdEncoder, shaderType));
         }
     }  // for shader types
 
@@ -1270,9 +1267,9 @@ angle::Result ProgramExecutableMtl::updateUniformBuffers(
     // the buffers are being used by what shader stages.
     for (uint32_t bufferIndex = 0; bufferIndex < blocks.size(); ++bufferIndex)
     {
-        const gl::InterfaceBlock &block = blocks[bufferIndex];
+        const GLuint binding = mExecutable->getUniformBlockBinding(bufferIndex);
         const gl::OffsetBindingPointer<gl::Buffer> &bufferBinding =
-            glState.getIndexedUniformBuffer(block.pod.binding);
+            glState.getIndexedUniformBuffer(binding);
         if (bufferBinding.get() == nullptr)
         {
             continue;
@@ -1280,7 +1277,7 @@ angle::Result ProgramExecutableMtl::updateUniformBuffers(
 
         // Remove any other stages other than vertex and fragment.
         uint32_t stages = mArgumentBufferRenderStageUsages[bufferIndex] &
-                          (mtl::kRenderStageVertex | mtl::kRenderStageFragment);
+                          (MTLRenderStageVertex | MTLRenderStageFragment);
 
         if (stages == 0)
         {
@@ -1288,23 +1285,23 @@ angle::Result ProgramExecutableMtl::updateUniformBuffers(
         }
 
         cmdEncoder->useResource(mLegalizedOffsetedUniformBuffers[bufferIndex].first,
-                                MTLResourceUsageRead, static_cast<mtl::RenderStages>(stages));
+                                MTLResourceUsageRead, static_cast<MTLRenderStages>(stages));
     }
 
     return angle::Result::Continue;
 }
 
-angle::Result ProgramExecutableMtl::legalizeUniformBufferOffsets(
-    ContextMtl *context,
-    const std::vector<gl::InterfaceBlock> &blocks)
+angle::Result ProgramExecutableMtl::legalizeUniformBufferOffsets(ContextMtl *context)
 {
-    const gl::State &glState = context->getState();
+    const gl::State &glState                      = context->getState();
+    const std::vector<gl::InterfaceBlock> &blocks = mExecutable->getUniformBlocks();
 
     for (uint32_t bufferIndex = 0; bufferIndex < blocks.size(); ++bufferIndex)
     {
         const gl::InterfaceBlock &block = blocks[bufferIndex];
+        const GLuint binding            = mExecutable->getUniformBlockBinding(bufferIndex);
         const gl::OffsetBindingPointer<gl::Buffer> &bufferBinding =
-            glState.getIndexedUniformBuffer(block.pod.binding);
+            glState.getIndexedUniformBuffer(binding);
 
         if (bufferBinding.get() == nullptr)
         {
@@ -1315,7 +1312,10 @@ angle::Result ProgramExecutableMtl::legalizeUniformBufferOffsets(
         size_t srcOffset     = std::min<size_t>(bufferBinding.getOffset(), bufferMtl->size());
         ASSERT(mUniformBlockConversions.find(block.name) != mUniformBlockConversions.end());
         const UBOConversionInfo &conversionInfo = mUniformBlockConversions.at(block.name);
-        if (conversionInfo.needsConversion())
+
+        size_t spaceAvailable  = bufferMtl->size() - srcOffset;
+        bool haveSpaceInBuffer = conversionInfo.metalSize() <= spaceAvailable;
+        if (conversionInfo.needsConversion() || !haveSpaceInBuffer)
         {
 
             UniformConversionBufferMtl *conversion =
@@ -1362,18 +1362,19 @@ angle::Result ProgramExecutableMtl::legalizeUniformBufferOffsets(
 angle::Result ProgramExecutableMtl::bindUniformBuffersToDiscreteSlots(
     ContextMtl *context,
     mtl::RenderCommandEncoder *cmdEncoder,
-    const std::vector<gl::InterfaceBlock> &blocks,
     gl::ShaderType shaderType)
 {
-    const gl::State &glState = context->getState();
+    const gl::State &glState                      = context->getState();
+    const std::vector<gl::InterfaceBlock> &blocks = mExecutable->getUniformBlocks();
     const mtl::TranslatedShaderInfo &shaderInfo =
         *mCurrentShaderVariants[shaderType]->translatedSrcInfo;
 
     for (uint32_t bufferIndex = 0; bufferIndex < blocks.size(); ++bufferIndex)
     {
         const gl::InterfaceBlock &block = blocks[bufferIndex];
+        const GLuint binding            = mExecutable->getUniformBlockBinding(bufferIndex);
         const gl::OffsetBindingPointer<gl::Buffer> &bufferBinding =
-            glState.getIndexedUniformBuffer(block.pod.binding);
+            glState.getIndexedUniformBuffer(binding);
 
         if (bufferBinding.get() == nullptr || !block.activeShaders().test(shaderType))
         {
@@ -1397,10 +1398,10 @@ angle::Result ProgramExecutableMtl::bindUniformBuffersToDiscreteSlots(
 angle::Result ProgramExecutableMtl::encodeUniformBuffersInfoArgumentBuffer(
     ContextMtl *context,
     mtl::RenderCommandEncoder *cmdEncoder,
-    const std::vector<gl::InterfaceBlock> &blocks,
     gl::ShaderType shaderType)
 {
-    const gl::State &glState = context->getState();
+    const gl::State &glState                      = context->getState();
+    const std::vector<gl::InterfaceBlock> &blocks = mExecutable->getUniformBlocks();
 
     ASSERT(mCurrentShaderVariants[shaderType]->translatedSrcInfo);
     const mtl::TranslatedShaderInfo &shaderInfo =
@@ -1425,8 +1426,8 @@ angle::Result ProgramExecutableMtl::encodeUniformBuffersInfoArgumentBuffer(
                                                     offset:argumentBufferOffset];
 
     constexpr gl::ShaderMap<MTLRenderStages> kShaderStageMap = {
-        {gl::ShaderType::Vertex, mtl::kRenderStageVertex},
-        {gl::ShaderType::Fragment, mtl::kRenderStageFragment},
+        {gl::ShaderType::Vertex, MTLRenderStageVertex},
+        {gl::ShaderType::Fragment, MTLRenderStageFragment},
     };
 
     auto mtlRenderStage = kShaderStageMap[shaderType];
@@ -1434,8 +1435,9 @@ angle::Result ProgramExecutableMtl::encodeUniformBuffersInfoArgumentBuffer(
     for (uint32_t bufferIndex = 0; bufferIndex < blocks.size(); ++bufferIndex)
     {
         const gl::InterfaceBlock &block = blocks[bufferIndex];
+        const GLuint binding            = mExecutable->getUniformBlockBinding(bufferIndex);
         const gl::OffsetBindingPointer<gl::Buffer> &bufferBinding =
-            glState.getIndexedUniformBuffer(block.pod.binding);
+            glState.getIndexedUniformBuffer(binding);
 
         if (bufferBinding.get() == nullptr || !block.activeShaders().test(shaderType))
         {
@@ -1530,7 +1532,7 @@ void ProgramExecutableMtl::setUniformImpl(GLint location,
         return;
     }
 
-    if (linkedUniform.pod.type == entryPointType)
+    if (linkedUniform.getType() == entryPointType)
     {
         for (gl::ShaderType shaderType : gl::kAllGLES2ShaderTypes)
         {
@@ -1545,7 +1547,7 @@ void ProgramExecutableMtl::setUniformImpl(GLint location,
 
             const GLint componentCount    = (GLint)linkedUniform.getElementComponents();
             const GLint baseComponentSize = (GLint)mtl::GetMetalSizeForGLType(
-                gl::VariableComponentType(linkedUniform.pod.type));
+                gl::VariableComponentType(linkedUniform.getType()));
             UpdateDefaultUniformBlockWithElementSize(count, locationInfo.arrayIndex, componentCount,
                                                      v, baseComponentSize, layoutInfo,
                                                      &uniformBlock.uniformData);
@@ -1567,7 +1569,7 @@ void ProgramExecutableMtl::setUniformImpl(GLint location,
 
             const GLint componentCount = linkedUniform.getElementComponents();
 
-            ASSERT(linkedUniform.pod.type == gl::VariableBoolVectorType(entryPointType));
+            ASSERT(linkedUniform.getType() == gl::VariableBoolVectorType(entryPointType));
 
             GLint initialArrayOffset =
                 locationInfo.arrayIndex * layoutInfo.arrayStride + layoutInfo.offset;
@@ -1603,11 +1605,11 @@ void ProgramExecutableMtl::getUniformImpl(GLint location, T *v, GLenum entryPoin
     const DefaultUniformBlockMtl &uniformBlock = mDefaultUniformBlocks[shaderType];
     const sh::BlockMemberInfo &layoutInfo      = uniformBlock.uniformLayout[location];
 
-    ASSERT(gl::GetUniformTypeInfo(linkedUniform.pod.type).componentType == entryPointType ||
-           gl::GetUniformTypeInfo(linkedUniform.pod.type).componentType ==
+    ASSERT(linkedUniform.getUniformTypeInfo().componentType == entryPointType ||
+           linkedUniform.getUniformTypeInfo().componentType ==
                gl::VariableBoolVectorType(entryPointType));
     const GLint baseComponentSize =
-        (GLint)mtl::GetMetalSizeForGLType(gl::VariableComponentType(linkedUniform.pod.type));
+        (GLint)mtl::GetMetalSizeForGLType(gl::VariableComponentType(linkedUniform.getType()));
 
     if (gl::IsMatrixType(linkedUniform.getType()))
     {

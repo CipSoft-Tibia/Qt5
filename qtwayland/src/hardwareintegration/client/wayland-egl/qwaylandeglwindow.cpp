@@ -64,16 +64,6 @@ void QWaylandEglWindow::ensureSize()
     updateSurface(false);
 }
 
-void QWaylandEglWindow::setGeometry(const QRect &rect)
-{
-    QWaylandWindow::setGeometry(rect);
-    // If the surface was invalidated through invalidateSurface() and
-    // we're now getting a resize we don't want to create it again.
-    // Just resize the wl_egl_window, the EGLSurface will be created
-    // the next time makeCurrent is called.
-    ensureSize();
-}
-
 void QWaylandEglWindow::updateSurface(bool create)
 {
     // eglSurfaceLock should be locked before calling this method

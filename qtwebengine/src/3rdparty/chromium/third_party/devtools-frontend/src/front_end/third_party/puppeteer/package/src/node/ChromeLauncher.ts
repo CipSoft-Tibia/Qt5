@@ -18,43 +18,24 @@ import type {Browser} from '../api/Browser.js';
 import {debugError} from '../common/util.js';
 import {assert} from '../util/assert.js';
 
+import {BrowserLauncher, type ResolvedLaunchArgs} from './BrowserLauncher.js';
 import type {
   BrowserLaunchArgumentOptions,
   ChromeReleaseChannel,
   PuppeteerNodeLaunchOptions,
 } from './LaunchOptions.js';
-import {ProductLauncher, type ResolvedLaunchArgs} from './ProductLauncher.js';
 import type {PuppeteerNode} from './PuppeteerNode.js';
 import {rm} from './util/fs.js';
 
 /**
  * @internal
  */
-export class ChromeLauncher extends ProductLauncher {
+export class ChromeLauncher extends BrowserLauncher {
   constructor(puppeteer: PuppeteerNode) {
     super(puppeteer, 'chrome');
   }
 
   override launch(options: PuppeteerNodeLaunchOptions = {}): Promise<Browser> {
-    const headless = options.headless ?? true;
-    if (
-      headless === true &&
-      this.puppeteer.configuration.logLevel === 'warn' &&
-      !Boolean(process.env['PUPPETEER_DISABLE_HEADLESS_WARNING'])
-    ) {
-      console.warn(
-        [
-          '\x1B[1m\x1B[43m\x1B[30m',
-          'Puppeteer old Headless deprecation warning:\x1B[0m\x1B[33m',
-          '  In the near future `headless: true` will default to the new Headless mode',
-          '  for Chrome instead of the old Headless implementation. For more',
-          '  information, please see https://developer.chrome.com/articles/new-headless/.',
-          '  Consider opting in early by passing `headless: "new"` to `puppeteer.launch()`',
-          '  If you encounter any bugs, please report them to https://github.com/puppeteer/puppeteer/issues/new/choose.\x1B[0m\n',
-        ].join('\n  ')
-      );
-    }
-
     if (
       this.puppeteer.configuration.logLevel === 'warn' &&
       process.platform === 'darwin' &&
@@ -146,7 +127,7 @@ export class ChromeLauncher extends ProductLauncher {
         channel || !this.puppeteer._isPuppeteerCore,
         `An \`executablePath\` or \`channel\` must be specified for \`puppeteer-core\``
       );
-      chromeExecutable = this.executablePath(channel);
+      chromeExecutable = this.executablePath(channel, options.headless ?? true);
     }
 
     return {
@@ -185,6 +166,9 @@ export class ChromeLauncher extends ProductLauncher {
       removeMatchingFlags(options.args, '--disable-features');
     }
 
+    const turnOnExperimentalFeaturesForTesting =
+      process.env['PUPPETEER_TEST_EXPERIMENTAL_CHROME_FEATURES'] === 'true';
+
     // Merge default disabled features with user-provided ones, if any.
     const disabledFeatures = [
       'Translate',
@@ -192,10 +176,19 @@ export class ChromeLauncher extends ProductLauncher {
       'AcceptCHFrame',
       'MediaRouter',
       'OptimizationHints',
-      // https://crbug.com/1492053
-      'ProcessPerSiteUpToMainFrameThreshold',
+
+      ...(turnOnExperimentalFeaturesForTesting
+        ? []
+        : [
+            // https://crbug.com/1492053
+            'ProcessPerSiteUpToMainFrameThreshold',
+            // https://github.com/puppeteer/puppeteer/issues/10715
+            'IsolateSandboxedIframes',
+          ]),
       ...userDisabledFeatures,
-    ];
+    ].filter(feature => {
+      return feature !== '';
+    });
 
     const userEnabledFeatures = getFeatures('--enable-features', options.args);
     if (options.args && userEnabledFeatures.length > 0) {
@@ -204,9 +197,12 @@ export class ChromeLauncher extends ProductLauncher {
 
     // Merge default enabled features with user-provided ones, if any.
     const enabledFeatures = [
-      'NetworkServiceInProcess2',
+      'PdfOopif',
+      // Add features to enable by default here.
       ...userEnabledFeatures,
-    ];
+    ].filter(feature => {
+      return feature !== '';
+    });
 
     const chromeArguments = [
       '--allow-pre-commit-input',
@@ -220,7 +216,6 @@ export class ChromeLauncher extends ProductLauncher {
       '--disable-default-apps',
       '--disable-dev-shm-usage',
       '--disable-extensions',
-      '--disable-field-trial-config', // https://source.chromium.org/chromium/chromium/src/+/main:testing/variations/README.md
       '--disable-hang-monitor',
       '--disable-infobars',
       '--disable-ipc-flooding-protection',
@@ -231,6 +226,7 @@ export class ChromeLauncher extends ProductLauncher {
       '--disable-sync',
       '--enable-automation',
       '--export-tagged-pdf',
+      '--generate-pdf-document-outline',
       '--force-color-profile=srgb',
       '--metrics-recording-only',
       '--no-first-run',
@@ -238,7 +234,9 @@ export class ChromeLauncher extends ProductLauncher {
       '--use-mock-keychain',
       `--disable-features=${disabledFeatures.join(',')}`,
       `--enable-features=${enabledFeatures.join(',')}`,
-    ];
+    ].filter(arg => {
+      return arg !== '';
+    });
     const {
       devtools = false,
       headless = !devtools,
@@ -253,7 +251,7 @@ export class ChromeLauncher extends ProductLauncher {
     }
     if (headless) {
       chromeArguments.push(
-        headless === 'new' ? '--headless=new' : '--headless',
+        headless === 'shell' ? '--headless' : '--headless=new',
         '--hide-scrollbars',
         '--mute-audio'
       );
@@ -269,14 +267,17 @@ export class ChromeLauncher extends ProductLauncher {
     return chromeArguments;
   }
 
-  override executablePath(channel?: ChromeReleaseChannel): string {
+  override executablePath(
+    channel?: ChromeReleaseChannel,
+    headless?: boolean | 'shell'
+  ): string {
     if (channel) {
       return computeSystemExecutablePath({
         browser: SupportedBrowsers.CHROME,
         channel: convertPuppeteerChannelToBrowsersChannel(channel),
       });
     } else {
-      return this.resolveExecutablePath();
+      return this.resolveExecutablePath(headless);
     }
   }
 }

@@ -49,6 +49,10 @@ QT_BEGIN_NAMESPACE
     \since 4.0
     \reentrant
 
+    \compares strong
+    \compareswith strong T* std::nullptr_t
+    \endcompareswith
+
     QSharedDataPointer\<T\> makes writing your own \l {implicitly
     shared} classes easy. QSharedDataPointer implements \l {thread-safe}
     reference counting, ensuring that adding QSharedDataPointers to your
@@ -330,13 +334,13 @@ QT_BEGIN_NAMESPACE
     \e{d pointer}. This function does \e not call detach().
 */
 
-/*! \fn template <class T> bool QSharedDataPointer<T>::operator==(const T *ptr, const QSharedDataPointer<T>& rhs)
-    Returns \c true if the \e{d pointer} of \a rhs is \a ptr.
+/*! \fn template <class T> bool QSharedDataPointer<T>::operator==(T* const &lhs, const QSharedDataPointer<T>& rhs)
+    Returns \c true if the \e{d pointer} of \a rhs is \a lhs.
     This function does \e not call detach().
 */
 
-/*! \fn template <class T> bool QSharedDataPointer<T>::operator!=(const T *ptr, const QSharedDataPointer<T>& rhs)
-    Returns \c true if the \e{d pointer} of \a rhs is \e not \a ptr.
+/*! \fn template <class T> bool QSharedDataPointer<T>::operator!=(T* const &lhs, const QSharedDataPointer<T>& rhs)
+    Returns \c true if the \e{d pointer} of \a rhs is \e not \a lhs.
     \e{d pointer}. This function does \e not call detach().
 */
 
@@ -438,6 +442,10 @@ QT_BEGIN_NAMESPACE
     \since 4.4
     \reentrant
 
+    \compares strong
+    \compareswith strong T* std::nullptr_t
+    \endcompareswith
+
     QExplicitlySharedDataPointer\<T\> makes writing your own explicitly
     shared classes easy. QExplicitlySharedDataPointer implements
     \l {thread-safe} reference counting, ensuring that adding
@@ -514,8 +522,8 @@ QT_BEGIN_NAMESPACE
     \since 5.2
 */
 
-/*! \fn template <class T> bool QExplicitlySharedDataPointer<T>::operator==(const T* ptr, const QExplicitlySharedDataPointer<T>& rhs)
-    Returns \c true if the \e{d pointer} of \a rhs is \a ptr.
+/*! \fn template <class T> bool QExplicitlySharedDataPointer<T>::operator==(const T* const &lhs, const QExplicitlySharedDataPointer<T>& rhs)
+    Returns \c true if the \e{d pointer} of \a rhs is \a lhs.
  */
 
 /*! \fn template <class T> bool QExplicitlySharedDataPointer<T>::operator!=(const QExplicitlySharedDataPointer<T>& lhs, const QExplicitlySharedDataPointer<T>& rhs)
@@ -523,8 +531,8 @@ QT_BEGIN_NAMESPACE
     \e{d pointer}.
 */
 
-/*! \fn template <class T> bool QExplicitlySharedDataPointer<T>::operator!=(const T* ptr, const QExplicitlySharedDataPointer<T>& rhs)
-    Returns \c true if the \e{d pointer} of \a rhs is \e not \a ptr.
+/*! \fn template <class T> bool QExplicitlySharedDataPointer<T>::operator!=(const T* const &lhs, const QExplicitlySharedDataPointer<T>& rhs)
+    Returns \c true if the \e{d pointer} of \a rhs is \e not \a lhs.
  */
 
 /*! \fn template <class T> QExplicitlySharedDataPointer<T>::QExplicitlySharedDataPointer()
@@ -568,29 +576,6 @@ QT_BEGIN_NAMESPACE
     implicitly converted to the type \c{T *}; the result of this
     conversion is set as the \e{d pointer} of \e{this}, and the
     reference count of the shared data object is incremented.
-
-    However, if the macro
-    \c{QT_ENABLE_QEXPLICITLYSHAREDDATAPOINTER_STATICCAST} is defined
-    before including the \c{QExplicitlySharedDataPointer} header, then
-    the \e{d pointer} of \a o undergoes a \c{static_cast} to the
-    type \c{T *}. The result of the cast is then set as the
-    \e{d pointer} of \e{this}, and the reference count of the shared data
-    object is incremented.
-
-    \warning relying on such \c{static_cast} is potentially dangerous,
-    because it allows code like this to compile:
-
-    \snippet code/src_corelib_tools_qshareddata.cpp 2
-
-    Starting from Qt 5.4 the cast is disabled by default. It is
-    possible to enable it back by defining the
-    \c{QT_ENABLE_QEXPLICITLYSHAREDDATAPOINTER_STATICCAST} macro, and
-    therefore to allow old code (that relied on this feature) to
-    compile without modifications.
-
-    \note Usage of the
-    \c{QT_ENABLE_QEXPLICITLYSHAREDDATAPOINTER_STATICCAST} macro is
-    deprecated. The macro will be removed in a future version of Qt.
 */
 
 /*! \fn template <class T> QExplicitlySharedDataPointer<T>& QExplicitlySharedDataPointer<T>::operator=(const QExplicitlySharedDataPointer<T>& o)

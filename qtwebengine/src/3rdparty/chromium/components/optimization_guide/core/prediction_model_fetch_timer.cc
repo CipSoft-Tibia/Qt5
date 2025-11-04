@@ -89,15 +89,10 @@ void PredictionModelFetchTimer::ScheduleFetchOnModelRegistration() {
       MaybeScheduleFirstModelFetch();
       break;
     case PredictionModelFetchTimerState::kPeriodicFetch:
-      if (features::IsInstallWideModelStoreEnabled() &&
-          features::IsPredictionModelNewRegistrationFetchEnabled()) {
-        state_ = PredictionModelFetchTimerState::kNewRegistrationFetch;
-        fetch_timer_.Start(
-            FROM_HERE,
-            features::PredictionModelNewRegistrationFetchDelay() +
-                RandomFetchDelay(),
-            this, &PredictionModelFetchTimer::OnFetchTimerFired);
-      }
+      state_ = PredictionModelFetchTimerState::kNewRegistrationFetch;
+      fetch_timer_.Start(
+          FROM_HERE, features::PredictionModelNewRegistrationFetchRandomDelay(),
+          this, &PredictionModelFetchTimer::OnFetchTimerFired);
       break;
     case PredictionModelFetchTimerState::kFirstFetch:
     case PredictionModelFetchTimerState::kNewRegistrationFetch:

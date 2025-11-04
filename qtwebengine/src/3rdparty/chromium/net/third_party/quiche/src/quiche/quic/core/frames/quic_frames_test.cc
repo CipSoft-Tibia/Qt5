@@ -2,6 +2,9 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#include <sstream>
+#include <vector>
+
 #include "quiche/quic/core/frames/quic_ack_frame.h"
 #include "quiche/quic/core/frames/quic_blocked_frame.h"
 #include "quiche/quic/core/frames/quic_connection_close_frame.h"
@@ -615,6 +618,9 @@ TEST_F(QuicFramesTest, CopyQuicFrames) {
         break;
       case ACK_FREQUENCY_FRAME:
         frames.push_back(QuicFrame(new QuicAckFrequencyFrame()));
+        break;
+      case RESET_STREAM_AT_FRAME:
+        frames.push_back(QuicFrame(new QuicResetStreamAtFrame()));
         break;
       default:
         ASSERT_TRUE(false)

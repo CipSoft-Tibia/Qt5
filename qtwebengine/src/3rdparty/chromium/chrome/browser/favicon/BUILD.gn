@@ -17,11 +17,13 @@ source_set("favicon") {
     "large_icon_service_factory.cc",
     "large_icon_service_factory.h",
   ]
+  public_deps = [ "//chrome/browser:browser_public_dependencies" ]
   deps = [
     "//chrome/app/resources:platform_locale_settings",
     "//chrome/browser/image_fetcher",
     "//chrome/browser/profiles",
     "//chrome/browser/profiles:profile",
+    "//chrome/browser/sync:factories",
     "//chrome/common",
     "//components/bookmarks/browser",
     "//components/favicon/content",
@@ -30,6 +32,7 @@ source_set("favicon") {
     "//components/image_fetcher/core",
     "//components/keyed_service/content",
     "//components/password_manager/content/common",
+    "//components/search_engines",
     "//components/sync",
     "//content/public/browser",
     "//ui/gfx",

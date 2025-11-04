@@ -38,6 +38,8 @@ static const QLatin1StringView wasNotFound
 static const QLatin1StringView didYouAddAllImports
         = "Did you add all imports and dependencies?"_L1;
 
+Q_STATIC_LOGGING_CATEGORY(lcImportVisitor, "qt.qml.importVisitor", QtWarningMsg);
+
 /*!
     \internal
     Returns if assigning \a assignedType to \a property would require an
@@ -82,16 +84,61 @@ static bool causesImplicitComponentWrapping(const QQmlJSMetaProperty &property,
 
 /*!
   \internal
+  A guarded version of insertJSIdentifier. If the scope is a QML scope,
+  it will log a syntax error instead.
+  Returns true if insertion was successful, otherwise false
+ */
+bool QQmlJSImportVisitor::safeInsertJSIdentifier(QQmlJSScope::Ptr &scope, const QString &name,
+                                   const QQmlJSScope::JavaScriptIdentifier &identifier)
+{
+  /* The grammar currently allows putting a variable declaration into a UiObjectMember
+     and we only complain about it in the IRBbuilder. It is unclear whether we should change
+     the grammar, as the linter would need to handle invalid programs anyway, so we'd need
+     to add some recovery rule to the grammar in any case.
+     We use this method instead to avoid an assertion in insertJSIdentifier
+  */
+    if (scope->scopeType() != QQmlSA::ScopeType::QMLScope) {
+        scope->insertJSIdentifier(name, identifier);
+        return true;
+    } else {
+        const QQmlJSScope *scopePtr = scope.get();
+        std::pair<const QQmlJSScope*, QString> misplaced { scopePtr, name };
+        if (misplacedJSIdentifiers.contains(misplaced))
+            return false; // we only want to warn once
+        misplacedJSIdentifiers.insert(misplaced);
+        m_logger->log(u"JavaScript declarations are not allowed in QML elements"_s, qmlSyntax,
+                      identifier.location);
+        return false;
+    }
+}
+
+/*!
+  \internal
   Sets the name of \a scope to \a name based on \a type.
 */
-inline void setScopeName(QQmlJSScope::Ptr &scope, QQmlJSScope::ScopeType type, const QString &name)
+void QQmlJSImportVisitor::setScopeName(QQmlJSScope::Ptr &scope, QQmlJSScope::ScopeType type,
+                                       const QString &name)
 {
     Q_ASSERT(scope);
-    if (type == QQmlSA::ScopeType::GroupedPropertyScope
-        || type == QQmlSA::ScopeType::AttachedPropertyScope)
+    switch (type) {
+    case QQmlSA::ScopeType::GroupedPropertyScope:
         scope->setInternalName(name);
-    else
+        return;
+    case QQmlSA::ScopeType::AttachedPropertyScope:
+        scope->setInternalName(name);
         scope->setBaseTypeName(name);
+        QQmlJSScope::resolveTypes(scope, m_rootScopeImports.contextualTypes(), &m_usedTypes);
+        return;
+    case QQmlSA::ScopeType::QMLScope:
+        scope->setBaseTypeName(name);
+        QQmlJSScope::resolveTypes(scope, m_rootScopeImports.contextualTypes(), &m_usedTypes);
+        return;
+    case QQmlSA::ScopeType::JSFunctionScope:
+    case QQmlSA::ScopeType::JSLexicalScope:
+    case QQmlSA::ScopeType::EnumScope:
+        scope->setBaseTypeName(name);
+        return;
+    };
 }
 
 /*!
@@ -104,6 +151,12 @@ inline QString getScopeName(const QQmlJSScope::ConstPtr &scope, QQmlJSScope::Sco
     if (type == QQmlSA::ScopeType::GroupedPropertyScope
         || type == QQmlSA::ScopeType::AttachedPropertyScope)
         return scope->internalName();
+
+    if (!scope->isComposite())
+        return scope->internalName();
+
+    if (scope->isInlineComponent() && scope->inlineComponentName().has_value())
+        return scope->inlineComponentName().value();
 
     return scope->baseTypeName();
 }
@@ -118,6 +171,32 @@ QString buildName(const Node *node)
         result += segment->name;
     }
     return result;
+}
+
+/*!
+   \internal
+   Make sure that the importer does not recreate the target scope when trying to import it via
+   implicit directory import.
+*/
+void QQmlJSImportVisitor::registerTargetIntoImporter(const QQmlJSScope::Ptr &target)
+{
+    target->setScopeType(QQmlSA::ScopeType::QMLScope);
+    target->setBaseTypeName("$InProcess$"_L1);
+    target->setFilePath(m_logger->filePath());
+    target->setIsComposite(true);
+    if (!m_importer->registerScope(target)) {
+        qCDebug(lcImportVisitor)
+                << "Couldn't register scope into importer: scope will be created multiple times.";
+    }
+}
+
+static void prepareTargetForVisit(const QQmlJSScope::Ptr &target)
+{
+    // rootScopeIsValid() assumes target to be a scope that only contains an internal name and a
+    // moduleName
+    const QString moduleName = target->moduleName();
+    *target = QQmlJSScope{ target->internalName() };
+    target->setOwnModuleName(moduleName);
 }
 
 QQmlJSImportVisitor::QQmlJSImportVisitor(
@@ -135,6 +214,9 @@ QQmlJSImportVisitor::QQmlJSImportVisitor(
                       importer->builtinInternalNames().contextualTypes().arrayType()),
               {})
 {
+    prepareTargetForVisit(target);
+    registerTargetIntoImporter(target);
+
     m_currentScope->setScopeType(QQmlSA::ScopeType::JSFunctionScope);
     Q_ASSERT(logger); // must be valid
 
@@ -174,10 +256,10 @@ void QQmlJSImportVisitor::populateCurrentScope(
         QQmlJSScope::ScopeType type, const QString &name, const QQmlJS::SourceLocation &location)
 {
     m_currentScope->setScopeType(type);
-    setScopeName(m_currentScope, type, name);
     m_currentScope->setIsComposite(true);
     m_currentScope->setFilePath(m_logger->filePath());
     m_currentScope->setSourceLocation(location);
+    setScopeName(m_currentScope, type, name);
     m_scopesByIrLocation.insert({ location.startLine, location.startColumn }, m_currentScope);
 }
 
@@ -185,6 +267,7 @@ void QQmlJSImportVisitor::enterRootScope(QQmlJSScope::ScopeType type, const QStr
 {
     QQmlJSScope::reparent(m_currentScope, m_exportedRootScope);
     m_currentScope = m_exportedRootScope;
+    m_currentScope->setIsRootFileComponentFlag(true);
     populateCurrentScope(type, name, location);
 }
 
@@ -324,10 +407,15 @@ void QQmlJSImportVisitor::resolveAliases()
                 newProperty.setIsWritable(targetProperty.isWritable());
                 newProperty.setIsPointer(targetProperty.isPointer());
 
-                if (!typeScope.isNull() && !object->isPropertyLocallyRequired(property.propertyName())) {
-                    object->setPropertyLocallyRequired(
-                            newProperty.propertyName(),
-                            typeScope->isPropertyRequired(targetProperty.propertyName()));
+                const bool onlyId = !property.aliasExpression().contains(u'.');
+                if (onlyId) {
+                    newProperty.setAliasTargetScope(type);
+                    newProperty.setAliasTargetName(QStringLiteral("id-only-alias"));
+                } else {
+                    const auto &ownerScope = QQmlJSScope::ownerOfProperty(
+                                                     typeScope, targetProperty.propertyName()).scope;
+                    newProperty.setAliasTargetScope(ownerScope);
+                    newProperty.setAliasTargetName(targetProperty.propertyName());
                 }
 
                 if (const QString internalName = type->internalName(); !internalName.isEmpty())
@@ -335,6 +423,7 @@ void QQmlJSImportVisitor::resolveAliases()
 
                 Q_ASSERT(newProperty.index() >= 0); // this property is already in object
                 object->addOwnProperty(newProperty);
+                m_aliasDefinitions.append({ object, property.propertyName() });
             }
         }
 
@@ -586,7 +675,7 @@ void QQmlJSImportVisitor::processDefaultProperties()
         QQmlJSScope::ConstPtr parentScope = it.key();
 
         // We can't expect custom parser default properties to be sensible, discard them for now.
-        if (parentScope->isInCustomParserParent())
+        if (checkCustomParser(parentScope))
             continue;
 
         /* consider:
@@ -699,10 +788,40 @@ void QQmlJSImportVisitor::processPropertyTypes()
 
 void QQmlJSImportVisitor::processMethodTypes()
 {
-    for (const auto &method : m_pendingMethodTypeAnnotations) {
+    const auto isEnumUsedAsType = [&](QStringView typeName, const QQmlJS::SourceLocation &loc) {
+        if (typeName == "enum"_L1) {
+            m_logger->log("QML does not have an `enum` type. Use the enum's underlying type "
+                          "(int or double)."_L1,
+                          qmlEnumsAreNotTypes, loc);
+            return true;
+        }
+
+        const auto split = typeName.tokenize(u'.').toContainer<QVarLengthArray<QStringView, 4>>();
+        if (split.size() != 2)
+            return false;
+
+        const QStringView scopeName = split[0];
+        const QStringView enumName = split[1];
+
+        if (auto scope = QQmlJSScope::findType(scopeName.toString(),
+                                               m_rootScopeImports.contextualTypes()).scope) {
+            if (scope->enumeration(enumName.toString()).isValid()) {
+                m_logger->log("QML enumerations are not types. Use underlying type "
+                              "(int or double) instead."_L1,
+                              qmlEnumsAreNotTypes, loc);
+                return true;
+            }
+        }
+        return false;
+    };
+
+    for (const auto &method : std::as_const(m_pendingMethodTypeAnnotations)) {
         for (auto [it, end] = method.scope->mutableOwnMethodsRange(method.methodName); it != end; ++it) {
             const auto [parameterBegin, parameterEnd] = it->mutableParametersRange();
             for (auto parameter = parameterBegin; parameter != parameterEnd; ++parameter) {
+                const int parameterIndex = parameter - parameterBegin;
+                if (isEnumUsedAsType(parameter->typeName(), method.locations[parameterIndex]))
+                    continue;
                 if (const auto parameterType = QQmlJSScope::findType(
                             parameter->typeName(), m_rootScopeImports.contextualTypes()).scope) {
                     parameter->setType({ parameterType });
@@ -714,6 +833,8 @@ void QQmlJSImportVisitor::processMethodTypes()
                 }
             }
 
+            if (isEnumUsedAsType(it->returnTypeName(), method.locations.last()))
+                continue;
             if (const auto returnType = QQmlJSScope::findType(
                         it->returnTypeName(), m_rootScopeImports.contextualTypes()).scope) {
                 it->setReturnType({ returnType });
@@ -863,9 +984,50 @@ void QQmlJSImportVisitor::processPropertyBindingObjects()
     }
 }
 
+static QList<QQmlJSScope::ConstPtr> qmlScopeDescendants(const QQmlJSScope::ConstPtr &scope)
+{
+    QList<QQmlJSScope::ConstPtr> descendants;
+    std::vector<QQmlJSScope::ConstPtr> toVisit;
+
+    toVisit.push_back(scope);
+    while (!toVisit.empty()) {
+        const QQmlJSScope::ConstPtr s = toVisit.back();
+        toVisit.pop_back();
+        if (s->scopeType() == QQmlSA::ScopeType::QMLScope) {
+            if (s != scope)
+                descendants << s;
+
+            toVisit.insert(toVisit.end(), s->childScopesBegin(), s->childScopesEnd());
+        }
+    }
+
+    return descendants;
+}
+
+void QQmlJSImportVisitor::populatePropertyAliases()
+{
+    for (const auto &alias : std::as_const(m_aliasDefinitions)) {
+        const auto &[aliasScope, aliasName] = alias;
+        if (aliasScope.isNull())
+            continue;
+
+        auto property = aliasScope->ownProperty(aliasName);
+        if (!property.isValid() || !property.aliasTargetScope())
+            continue;
+
+        Property target(property.aliasTargetScope(), property.aliasTargetName());
+
+        do {
+            m_propertyAliases[target].append(alias);
+            property = target.scope->property(target.name);
+            target = Property(property.aliasTargetScope(), property.aliasTargetName());
+        } while (property.isAlias());
+    }
+}
+
 void QQmlJSImportVisitor::checkRequiredProperties()
 {
-    for (const auto &required : m_requiredProperties) {
+    for (const auto &required : std::as_const(m_requiredProperties)) {
         if (!required.scope->hasProperty(required.name)) {
             m_logger->log(
                     QStringLiteral("Property \"%1\" was marked as required but does not exist.")
@@ -874,97 +1036,155 @@ void QQmlJSImportVisitor::checkRequiredProperties()
         }
     }
 
-    for (const auto &defScope : m_objectDefinitionScopes) {
-        if (defScope->parentScope() == m_globalScope || defScope->isInlineComponent()
-                || defScope->componentRootStatus() != QQmlJSScope::IsComponentRoot::No) {
+    const auto compType = m_rootScopeImports.type(u"Component"_s).scope;
+    const auto isInComponent = [&](const QQmlJSScope::ConstPtr &requiredScope) {
+        for (auto s = requiredScope; s; s = s->parentScope()) {
+            if (s->isWrappedInImplicitComponent() || s->baseType() == compType)
+                return true;
+        }
+        return false;
+    };
+
+    const auto requiredHasBinding = [](const QList<QQmlJSScope::ConstPtr> &scopesToSearch,
+                                       const QQmlJSScope::ConstPtr &owner,
+                                       const QString &propName) {
+        for (const auto &scope : scopesToSearch) {
+            if (scope->property(propName).isAlias())
+                continue;
+            const auto &[begin, end] = scope->ownPropertyBindings(propName);
+            for (auto it = begin; it != end; ++it) {
+                if (!QQmlSA::isRegularBindingType(it->bindingType()))
+                    continue;
+                if (QQmlJSScope::ownerOfProperty(scope, propName).scope == owner)
+                    return true;
+            }
+        }
+
+        return false;
+    };
+
+    const auto requiredUsedInRootAlias = [&](const QQmlJSScope::ConstPtr &defScope,
+                                             const QQmlJSScope::ConstPtr &requiredScope,
+                                             const QString &propName) {
+        if (defScope->filePath() == requiredScope->filePath()) {
+            QQmlJSScope::ConstPtr fileRootScope = requiredScope;
+            while (fileRootScope->parentScope() != m_globalScope)
+                fileRootScope = fileRootScope->parentScope();
+
+            const auto &rootProperties = fileRootScope->ownProperties();
+            for (const auto &p : rootProperties) {
+                if (p.isAlias() && p.aliasTargetScope() == requiredScope
+                    && p.aliasTargetName() == propName) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    };
+
+    const auto requiredSetThroughAlias = [&](const QList<QQmlJSScope::ConstPtr> &scopesToSearch,
+                                             const QQmlJSScope::ConstPtr &requiredScope,
+                                             const QString &propName) {
+        const auto &propertyDefScope = QQmlJSScope::ownerOfProperty(requiredScope, propName);
+        const auto &propertyAliases = m_propertyAliases[{ propertyDefScope.scope, propName }];
+        for (const auto &alias : propertyAliases) {
+            for (const auto &s : scopesToSearch) {
+                if (s->hasOwnPropertyBindings(alias.name))
+                    return true;
+            }
+        }
+        return false;
+    };
+
+    const auto warn = [this](QQmlJSScope::ConstPtr prevRequiredScope,
+                             const QString &propName,
+                             QQmlJSScope::ConstPtr defScope,
+                             QQmlJSScope::ConstPtr requiredScope,
+                             QQmlJSScope::ConstPtr descendant) {
+        const auto &propertyScope = QQmlJSScope::ownerOfProperty(requiredScope, propName).scope;
+        const QString propertyScopeName = !propertyScope.isNull()
+                ? getScopeName(propertyScope, QQmlSA::ScopeType::QMLScope)
+                : u"here"_s;
+
+        std::optional<QQmlJSFixSuggestion> suggestion;
+
+        QString message = QStringLiteral("Component is missing required property %1 from %2")
+                                  .arg(propName)
+                                  .arg(propertyScopeName);
+        if (requiredScope != descendant) {
+            const QString requiredScopeName = prevRequiredScope
+                    ? getScopeName(prevRequiredScope, QQmlSA::ScopeType::QMLScope)
+                    : u"here"_s;
+
+            if (!prevRequiredScope.isNull()) {
+                if (auto sourceScope = prevRequiredScope->baseType()) {
+                    suggestion = QQmlJSFixSuggestion{
+                        "%1:%2:%3: Property marked as required in %4."_L1
+                                .arg(sourceScope->filePath())
+                                .arg(sourceScope->sourceLocation().startLine)
+                                .arg(sourceScope->sourceLocation().startColumn)
+                                .arg(requiredScopeName),
+                        sourceScope->sourceLocation()
+                    };
+                    suggestion->setFilename(sourceScope->filePath());
+                }
+            } else {
+                message += " (marked as required by %1)"_L1.arg(requiredScopeName);
+            }
+        }
+
+        m_logger->log(message, qmlRequired, defScope->sourceLocation(), true, true, suggestion);
+    };
+
+    populatePropertyAliases();
+
+    for (const auto &[_, defScope] : m_scopesByIrLocation.asKeyValueRange()) {
+        if (defScope->isFileRootComponent() || defScope->isInlineComponent()
+                || defScope->componentRootStatus() != QQmlJSScope::IsComponentRoot::No
+            || defScope->scopeType() != QQmlSA::ScopeType::QMLScope) {
             continue;
         }
 
         QVector<QQmlJSScope::ConstPtr> scopesToSearch;
         for (QQmlJSScope::ConstPtr scope = defScope; scope; scope = scope->baseType()) {
-            scopesToSearch << scope;
-            const auto ownProperties = scope->ownProperties();
-            for (auto propertyIt = ownProperties.constBegin();
-                 propertyIt != ownProperties.constEnd(); ++propertyIt) {
-                const QString propName = propertyIt.key();
+            const auto descendants = QList<QQmlJSScope::ConstPtr>()
+                    << scope << qmlScopeDescendants(scope);
+            for (QQmlJSScope::ConstPtr descendant : std::as_const(descendants)) {
+                // Ignore inline components of children. Base types need to be always checked for
+                // required properties, even if they are defined in an inline component.
+                if (descendant != scope && descendant->isInlineComponent())
+                    continue;
+                scopesToSearch << descendant;
+                const auto ownProperties = descendant->ownProperties();
+                for (auto propertyIt = ownProperties.constBegin();
+                     propertyIt != ownProperties.constEnd(); ++propertyIt) {
+                    const QString propName = propertyIt.key();
+                    if (descendant->hasOwnPropertyBindings(propName))
+                        continue;
 
-                QQmlJSScope::ConstPtr prevRequiredScope;
-                for (QQmlJSScope::ConstPtr requiredScope : scopesToSearch) {
-                    if (requiredScope->isPropertyLocallyRequired(propName)) {
-                        bool found =
-                                std::find_if(scopesToSearch.constBegin(), scopesToSearch.constEnd(),
-                                             [&](QQmlJSScope::ConstPtr scope) {
-                                                 return scope->hasPropertyBindings(propName);
-                                             })
-                                != scopesToSearch.constEnd();
+                    QQmlJSScope::ConstPtr prevRequiredScope;
+                    for (QQmlJSScope::ConstPtr requiredScope : std::as_const(scopesToSearch)) {
+                        if (isInComponent(requiredScope))
+                            continue;
 
-                        if (!found) {
-                            const QString scopeId = m_scopesById.id(defScope, scope);
-                            bool propertyUsedInRootAlias = false;
-                            if (!scopeId.isEmpty()) {
-                                for (const QQmlJSMetaProperty &property :
-                                     m_exportedRootScope->ownProperties()) {
-                                    if (!property.isAlias())
-                                        continue;
-
-                                    QStringList aliasExpression =
-                                            property.aliasExpression().split(u'.');
-
-                                    if (aliasExpression.size() != 2)
-                                        continue;
-                                    if (aliasExpression[0] == scopeId
-                                        && aliasExpression[1] == propName) {
-                                        propertyUsedInRootAlias = true;
-                                        break;
-                                    }
-                                }
-                            }
-
-                            if (propertyUsedInRootAlias)
-                                continue;
-
-                            const QQmlJSScope::ConstPtr propertyScope = scopesToSearch.size() > 1
-                                    ? scopesToSearch.at(scopesToSearch.size() - 2)
-                                    : QQmlJSScope::ConstPtr();
-
-                            const QString propertyScopeName = !propertyScope.isNull()
-                                    ? getScopeName(propertyScope, QQmlSA::ScopeType::QMLScope)
-                                    : u"here"_s;
-
-                            const QString requiredScopeName = prevRequiredScope
-                                    ? getScopeName(prevRequiredScope, QQmlSA::ScopeType::QMLScope)
-                                    : u"here"_s;
-
-                            std::optional<QQmlJSFixSuggestion> suggestion;
-
-                            QString message =
-                                    QStringLiteral(
-                                            "Component is missing required property %1 from %2")
-                                            .arg(propName)
-                                            .arg(propertyScopeName);
-                            if (requiredScope != scope) {
-                                if (!prevRequiredScope.isNull()) {
-                                    auto sourceScope = prevRequiredScope->baseType();
-                                    suggestion = QQmlJSFixSuggestion{
-                                        "%1:%2:%3: Property marked as required in %4."_L1
-                                                .arg(sourceScope->filePath())
-                                                .arg(sourceScope->sourceLocation().startLine)
-                                                .arg(sourceScope->sourceLocation().startColumn)
-                                                .arg(requiredScopeName),
-                                        sourceScope->sourceLocation()
-                                    };
-                                    suggestion->setFilename(sourceScope->filePath());
-                                } else {
-                                    message += QStringLiteral(" (marked as required by %1)")
-                                                       .arg(requiredScopeName);
-                                }
-                            }
-
-                            m_logger->log(message, qmlRequired, defScope->sourceLocation(), true,
-                                          true, suggestion);
+                        if (!requiredScope->isPropertyLocallyRequired(propName)) {
+                            prevRequiredScope = requiredScope;
+                            continue;
                         }
+
+                        if (requiredHasBinding(scopesToSearch, descendant, propName))
+                            continue;
+
+                        if (requiredUsedInRootAlias(defScope, requiredScope, propName))
+                            continue;
+
+                        if (requiredSetThroughAlias(scopesToSearch, requiredScope, propName))
+                            continue;
+
+                        warn(prevRequiredScope, propName, defScope, requiredScope, descendant);
+                        prevRequiredScope = requiredScope;
                     }
-                    prevRequiredScope = requiredScope;
                 }
             }
         }
@@ -980,7 +1200,7 @@ void QQmlJSImportVisitor::processPropertyBindings()
                 // These warnings do not apply for custom parsers and their children and need to be
                 // handled on a case by case basis
 
-                if (scope->isInCustomParserParent())
+                if (checkCustomParser(scope))
                     continue;
 
                 // TODO: Can this be in a better suited category?
@@ -1182,7 +1402,7 @@ void QQmlJSImportVisitor::addDefaultProperties()
 
     m_pendingDefaultProperties[m_currentScope->parentScope()] << m_currentScope;
 
-    if (parentScope->isInCustomParserParent())
+    if (checkCustomParser(parentScope))
         return;
 
     /* consider:
@@ -1278,7 +1498,7 @@ void QQmlJSImportVisitor::checkGroupedAndAttachedScopes(QQmlJSScope::ConstPtr sc
 {
     // These warnings do not apply for custom parsers and their children and need to be handled on a
     // case by case basis
-    if (scope->isInCustomParserParent())
+    if (checkCustomParser(scope))
         return;
 
     auto children = scope->childScopes();
@@ -1304,13 +1524,18 @@ void QQmlJSImportVisitor::checkGroupedAndAttachedScopes(QQmlJSScope::ConstPtr sc
     }
 }
 
+bool QQmlJSImportVisitor::checkCustomParser(const QQmlJSScope::ConstPtr &scope)
+{
+    return scope->isInCustomParserParent();
+}
+
 void QQmlJSImportVisitor::flushPendingSignalParameters()
 {
     const QQmlJSMetaSignalHandler handler = m_signalHandlers[m_pendingSignalHandler];
     for (const QString &parameter : handler.signalParameters) {
-        m_currentScope->insertJSIdentifier(parameter,
-                                           { QQmlJSScope::JavaScriptIdentifier::Injected,
-                                             m_pendingSignalHandler, std::nullopt, false });
+        safeInsertJSIdentifier(m_currentScope, parameter,
+                               { QQmlJSScope::JavaScriptIdentifier::Injected,
+                                 m_pendingSignalHandler, std::nullopt, false });
     }
     m_pendingSignalHandler = QQmlJS::SourceLocation();
 }
@@ -1526,8 +1751,7 @@ bool QQmlJSImportVisitor::visit(UiObjectDefinition *definition)
             m_currentScope->setIsSingleton(m_rootIsSingleton);
         }
 
-        const QTypeRevision revision = QQmlJSScope::resolveTypes(
-                    m_currentScope, m_rootScopeImports.contextualTypes(), &m_usedTypes);
+        const QTypeRevision revision = m_currentScope->baseTypeRevision();
         if (auto base = m_currentScope->baseType(); base) {
             if (isRoot && base->internalName() == u"QQmlComponent") {
                 m_logger->log(u"Qml top level type cannot be 'Component'."_s, qmlTopLevelComponent,
@@ -1616,6 +1840,7 @@ bool QQmlJSImportVisitor::visit(UiPublicMember *publicMember)
         UiParameterList *param = publicMember->parameters;
         QQmlJSMetaMethod method;
         method.setMethodType(QQmlJSMetaMethodType::Signal);
+        method.setReturnTypeName(QStringLiteral("void"));
         method.setMethodName(publicMember->name.toString());
         method.setSourceLocation(combine(publicMember->firstSourceLocation(),
                                          publicMember->lastSourceLocation()));
@@ -1647,7 +1872,7 @@ bool QQmlJSImportVisitor::visit(UiPublicMember *publicMember)
             auto tryParseAlias = [&]() {
             typeName.clear(); // type name is useless for alias here, so keep it empty
             if (!publicMember->statement) {
-                m_logger->log(QStringLiteral("Invalid alias expression – an initalizer is needed."),
+                m_logger->log(QStringLiteral("Invalid alias expression - an initalizer is needed."),
                               qmlSyntax, publicMember->memberType->firstSourceLocation()); // TODO: extend warning to cover until endSourceLocation
                 return;
             }
@@ -1769,6 +1994,17 @@ void QQmlJSImportVisitor::visitFunctionExpressionHelper(QQmlJS::AST::FunctionExp
         bool anyFormalTyped = false;
         PendingMethodTypeAnnotations pending{ m_currentScope, name, {} };
 
+        // We potentially iterate twice over formals
+        for (auto formals = fexpr->formals; formals; formals = formals->next) {
+            PatternElement *e = formals->element;
+            if (!e)
+                continue;
+            if (e->typeAnnotation && (e->bindingTarget || e->initializer))
+                m_logger->log("Type annotations on default parameters are not supported"_L1,
+                              qmlSyntax,
+                              combine(e->firstSourceLocation(), e->lastSourceLocation()));
+        }
+
         if (const auto *formals = parseTypes ? fexpr->formals : nullptr) {
             const auto parameters = formals->formals();
             for (const auto &parameter : parameters) {
@@ -1814,10 +2050,10 @@ void QQmlJSImportVisitor::visitFunctionExpressionHelper(QQmlJS::AST::FunctionExp
         m_currentScope->addOwnMethod(method);
 
         if (m_currentScope->scopeType() != QQmlSA::ScopeType::QMLScope) {
-            m_currentScope->insertJSIdentifier(name,
-                                               { QQmlJSScope::JavaScriptIdentifier::LexicalScoped,
-                                                 fexpr->firstSourceLocation(),
-                                                 method.returnTypeName(), false });
+            safeInsertJSIdentifier(m_currentScope, name,
+                                   { QQmlJSScope::JavaScriptIdentifier::LexicalScoped,
+                                     fexpr->firstSourceLocation(),
+                                             method.returnTypeName(), false });
         }
         enterEnvironment(QQmlSA::ScopeType::JSFunctionScope, name, fexpr->firstSourceLocation());
     } else {
@@ -2260,7 +2496,7 @@ void QQmlJSImportVisitor::endVisit(UiArrayBinding *arrayBinding)
     const auto propertyName = getScopeName(m_currentScope, QQmlSA::ScopeType::QMLScope);
     leaveEnvironment();
 
-    if (m_currentScope->isInCustomParserParent()) {
+    if (checkCustomParser(m_currentScope)) {
         // These warnings do not apply for custom parsers and their children and need to be handled
         // on a case by case basis
         return;
@@ -2364,10 +2600,10 @@ QList<QQmlJS::DiagnosticMessage> QQmlJSImportVisitor::importFromQrc(
     if (!mapper)
         return {};
 
-    const auto pathNoColon = path.mid(1);
+    const auto pathNoColon = QStringView(path).mid(1);
     if (mapper->isFile(pathNoColon)) {
         const auto entry = m_importer->resourceFileMapper()->entry(
-                QQmlJSResourceFileMapper::resourceFileFilter(pathNoColon));
+                QQmlJSResourceFileMapper::resourceFileFilter(pathNoColon.toString()));
         const auto scope = m_importer->importFile(entry.filePath);
         const QString actualPrefix =
                 prefix.isEmpty() ? QFileInfo(entry.resourcePath).baseName() : prefix;
@@ -2602,7 +2838,7 @@ bool QQmlJSImportVisitor::visit(QQmlJS::AST::Catch *catchStatement)
 {
     enterEnvironment(QQmlSA::ScopeType::JSLexicalScope, QStringLiteral("catch"),
                      catchStatement->firstSourceLocation());
-    m_currentScope->insertJSIdentifier(
+    safeInsertJSIdentifier(m_currentScope,
             catchStatement->patternElement->bindingIdentifier.toString(),
             { QQmlJSScope::JavaScriptIdentifier::LexicalScoped,
               catchStatement->patternElement->firstSourceLocation(), std::nullopt,
@@ -2641,13 +2877,25 @@ bool QQmlJSImportVisitor::visit(QQmlJS::AST::VariableDeclarationList *vdl)
             if (Type *type = annotation->type)
                 typeName = type->toString();
 
-        m_currentScope->insertJSIdentifier(
-                vdl->declaration->bindingIdentifier.toString(),
-                { (vdl->declaration->scope == QQmlJS::AST::VariableScope::Var)
-                          ? QQmlJSScope::JavaScriptIdentifier::FunctionScoped
-                          : QQmlJSScope::JavaScriptIdentifier::LexicalScoped,
-                  vdl->declaration->firstSourceLocation(), typeName,
-                  vdl->declaration->scope == QQmlJS::AST::VariableScope::Const });
+        using Kind = QQmlJSScope::JavaScriptIdentifier::Kind;
+        const Kind kind = (vdl->declaration->scope == QQmlJS::AST::VariableScope::Var)
+                ? Kind::FunctionScoped
+                : Kind::LexicalScoped;
+        const QString name = vdl->declaration->bindingIdentifier.toString();
+        const QQmlJS::SourceLocation location = vdl->declaration->firstSourceLocation();
+        if (kind == Kind::LexicalScoped) {
+            if (auto previousDeclaration = m_currentScope->ownJSIdentifier(name)) {
+                m_logger->log("Identifier '%1' has already been declared"_L1.arg(name), qmlSyntax,
+                              location);
+                m_logger->log("Note: previous declaration of '%1' here"_L1.arg(name), qmlSyntax,
+                              previousDeclaration->location);
+            }
+        }
+
+        const bool isConst = vdl->declaration->scope == QQmlJS::AST::VariableScope::Const;
+        // Break if insertion failed to avoid multiple warnings at the same location
+        if (!safeInsertJSIdentifier(m_currentScope, name,  { kind, location, typeName, isConst }))
+            break;
         vdl = vdl->next;
     }
     return true;
@@ -2661,7 +2909,7 @@ bool QQmlJSImportVisitor::visit(QQmlJS::AST::FormalParameterList *fpl)
         if (TypeAnnotation *annotation = boundName.typeAnnotation.data())
             if (Type *type = annotation->type)
                 typeName = type->toString();
-        m_currentScope->insertJSIdentifier(boundName.id,
+        safeInsertJSIdentifier(m_currentScope, boundName.id,
                                            { QQmlJSScope::JavaScriptIdentifier::Parameter,
                                              boundName.location, typeName, false });
     }
@@ -2721,7 +2969,6 @@ bool QQmlJSImportVisitor::visit(QQmlJS::AST::UiObjectBinding *uiob)
 
     enterEnvironment(QQmlSA::ScopeType::QMLScope, typeName,
                      uiob->qualifiedTypeNameId->identifierToken);
-    QQmlJSScope::resolveTypes(m_currentScope, m_rootScopeImports.contextualTypes(), &m_usedTypes);
 
     m_qmlTypes.append(m_currentScope); // new QMLScope is created here, so add it
     m_objectBindingScopes << m_currentScope;
@@ -2788,7 +3035,7 @@ void QQmlJSImportVisitor::endVisit(QQmlJS::AST::UiObjectBinding *uiob)
         }
     }
 
-    if (m_currentScope->isInCustomParserParent()) {
+    if (checkCustomParser(m_currentScope)) {
         // These warnings do not apply for custom parsers and their children and need to be handled
         // on a case by case basis
     } else {
@@ -2904,13 +3151,15 @@ bool QQmlJSImportVisitor::visit(QQmlJS::AST::PatternElement *element)
             if (TypeAnnotation *annotation = name.typeAnnotation.data())
                 if (Type *type = annotation->type)
                     typeName = type->toString();
-            m_currentScope->insertJSIdentifier(
+            const bool couldInsert = safeInsertJSIdentifier(m_currentScope,
                     name.id,
                     { (element->scope == QQmlJS::AST::VariableScope::Var)
                               ? QQmlJSScope::JavaScriptIdentifier::FunctionScoped
                               : QQmlJSScope::JavaScriptIdentifier::LexicalScoped,
                       name.location, typeName,
                       element->scope == QQmlJS::AST::VariableScope::Const });
+            if (!couldInsert)
+                break;
         }
     }
 

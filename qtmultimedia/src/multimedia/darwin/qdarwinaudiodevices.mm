@@ -12,7 +12,7 @@
 
 #include <qdebug.h>
 
-#if defined(Q_OS_IOS)
+#if defined(QT_PLATFORM_UIKIT)
 #include "qcoreaudiosessionmanager_p.h"
 #import <AVFoundation/AVFoundation.h>
 #else
@@ -20,7 +20,7 @@
 #endif
 
 #if defined(Q_OS_MACOS)
-static Q_LOGGING_CATEGORY(qLcDarwinMediaDevices, "qt.multimedia.darwin.mediaDevices")
+Q_STATIC_LOGGING_CATEGORY(qLcDarwinMediaDevices, "qt.multimedia.darwin.mediaDevices");
 #endif
 
 QT_BEGIN_NAMESPACE
@@ -28,9 +28,9 @@ QT_BEGIN_NAMESPACE
 template<typename... Args>
 QAudioDevice createAudioDevice(bool isDefault, Args &&...args)
 {
-    auto *dev = new QCoreAudioDeviceInfo(std::forward<Args>(args)...);
+    auto dev = std::make_unique<QCoreAudioDeviceInfo>(std::forward<Args>(args)...);
     dev->isDefault = isDefault;
-    return dev->create();
+    return QAudioDevicePrivate::createQAudioDevice(std::move(dev));
 }
 
 #if defined(Q_OS_MACOS)
@@ -157,7 +157,7 @@ static void removeAudioListeners(QDarwinAudioDevices &instance)
     }
 }
 
-#elif defined(Q_OS_IOS)
+#elif defined(QT_PLATFORM_UIKIT)
 
 static QList<QAudioDevice> availableAudioDevices(QAudioDevice::Mode mode)
 {
@@ -166,6 +166,7 @@ static QList<QAudioDevice> availableAudioDevices(QAudioDevice::Mode mode)
     if (mode == QAudioDevice::Output) {
         devices.append(createAudioDevice(true, "default", QAudioDevice::Output));
     } else {
+#if !defined(Q_OS_VISIONOS)
         AVCaptureDevice *defaultDevice =
                 [AVCaptureDevice defaultDeviceWithMediaType:AVMediaTypeAudio];
 
@@ -184,6 +185,7 @@ static QList<QAudioDevice> availableAudioDevices(QAudioDevice::Mode mode)
                                              QString::fromNSString(device.uniqueID).toUtf8(),
                                              QAudioDevice::Input));
         }
+#endif
     }
 
     return devices;

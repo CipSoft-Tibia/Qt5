@@ -5,6 +5,7 @@
 #ifndef DEVICE_FIDO_ENCLAVE_TRANSACT_H_
 #define DEVICE_FIDO_ENCLAVE_TRANSACT_H_
 
+#include <optional>
 #include <string>
 
 #include "base/component_export.h"
@@ -13,7 +14,6 @@
 #include "device/fido/enclave/types.h"
 #include "device/fido/network_context_factory.h"
 #include "services/network/public/mojom/network_context.mojom-forward.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 
 namespace cbor {
 class Value;
@@ -29,9 +29,10 @@ COMPONENT_EXPORT(DEVICE_FIDO)
 void Transact(NetworkContextFactory network_context_factory,
               const EnclaveIdentity& enclave,
               std::string access_token,
+              std::optional<std::string> reauthentication_token,
               cbor::Value request,
               SigningCallback signing_callback,
-              base::OnceCallback<void(absl::optional<cbor::Value>)> callback);
+              base::OnceCallback<void(std::optional<cbor::Value>)> callback);
 
 }  // namespace device::enclave
 

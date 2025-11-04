@@ -13,31 +13,20 @@
 // limitations under the License.
 
 import m from 'mithril';
-
-import {
-  duration,
-  Span,
-  time,
-  Time,
-  TimeSpan,
-} from '../base/time';
-import {timestampFormat, TimestampFormat} from '../common/timestamp_format';
-
+import {time, Time} from '../base/time';
+import {timestampFormat, TimestampFormat} from '../core/timestamp_format';
 import {
   BACKGROUND_COLOR,
   FOREGROUND_COLOR,
   TRACK_SHELL_WIDTH,
 } from './css_constants';
 import {globals} from './globals';
-import {
-  getMaxMajorTicks,
-  TickGenerator,
-  TickType,
-  timeScaleForVisibleWindow,
-} from './gridline_helper';
-import {PanelSize} from './panel';
+import {getMaxMajorTicks, generateTicks, TickType} from './gridline_helper';
+import {Size2D} from '../base/geom';
 import {Panel} from './panel_container';
 import {renderDuration} from './widgets/duration';
+import {canvasClip} from '../base/canvas_utils';
+import {TimeScale} from '../base/time_scale';
 
 export interface BBox {
   x: number;
@@ -53,7 +42,11 @@ export interface BBox {
 // The |bounds| bounding box gives the visible region, this is used to adjust
 // the positioning of the label to ensure it is on screen.
 function drawHBar(
-    ctx: CanvasRenderingContext2D, target: BBox, bounds: BBox, label: string) {
+  ctx: CanvasRenderingContext2D,
+  target: BBox,
+  bounds: BBox,
+  label: string,
+) {
   ctx.fillStyle = FOREGROUND_COLOR;
 
   const xLeft = Math.floor(target.x);
@@ -79,8 +72,11 @@ function drawHBar(
   // By default put the label in the middle of the H:
   let labelXLeft = Math.floor(xWidth / 2 - labelWidth / 2 + xLeft);
 
-  if (labelWidth > target.width || labelXLeft < bounds.x ||
-      (labelXLeft + labelWidth) > (bounds.x + bounds.width)) {
+  if (
+    labelWidth > target.width ||
+    labelXLeft < bounds.x ||
+    labelXLeft + labelWidth > bounds.x + bounds.width
+  ) {
     // It won't fit in the middle or would be at least partly out of bounds
     // so put it either to the left or right:
     if (xRight > bounds.x + bounds.width) {
@@ -103,7 +99,11 @@ function drawHBar(
 }
 
 function drawIBar(
-    ctx: CanvasRenderingContext2D, xPos: number, bounds: BBox, label: string) {
+  ctx: CanvasRenderingContext2D,
+  xPos: number,
+  bounds: BBox,
+  label: string,
+) {
   if (xPos < bounds.x) return;
 
   ctx.fillStyle = FOREGROUND_COLOR;
@@ -134,32 +134,38 @@ function drawIBar(
 export class TimeSelectionPanel implements Panel {
   readonly kind = 'panel';
   readonly selectable = false;
-  readonly trackKey = undefined;
 
-  constructor(readonly key: string) {}
-
-  get mithril(): m.Children {
+  render(): m.Children {
     return m('.time-selection-panel');
   }
 
-  renderCanvas(ctx: CanvasRenderingContext2D, size: PanelSize) {
+  renderCanvas(ctx: CanvasRenderingContext2D, size: Size2D) {
     ctx.fillStyle = '#999';
     ctx.fillRect(TRACK_SHELL_WIDTH - 2, 0, 2, size.height);
 
+    const trackSize = {...size, width: size.width - TRACK_SHELL_WIDTH};
+
     ctx.save();
-    ctx.beginPath();
-    ctx.rect(TRACK_SHELL_WIDTH, 0, size.width - TRACK_SHELL_WIDTH, size.height);
-    ctx.clip();
+    ctx.translate(TRACK_SHELL_WIDTH, 0);
+    canvasClip(ctx, 0, 0, trackSize.width, trackSize.height);
+    this.renderPanel(ctx, trackSize);
+    ctx.restore();
+  }
 
-    const span = globals.timeline.visibleTimeSpan;
-    if (size.width > TRACK_SHELL_WIDTH && span.duration > 0n) {
-      const maxMajorTicks = getMaxMajorTicks(size.width - TRACK_SHELL_WIDTH);
-      const map = timeScaleForVisibleWindow(TRACK_SHELL_WIDTH, size.width);
+  private renderPanel(ctx: CanvasRenderingContext2D, size: Size2D): void {
+    const visibleWindow = globals.timeline.visibleWindow;
+    const timescale = new TimeScale(visibleWindow, {
+      left: 0,
+      right: size.width,
+    });
+    const timespan = visibleWindow.toTimeSpan();
 
+    if (size.width > 0 && timespan.duration > 0n) {
+      const maxMajorTicks = getMaxMajorTicks(size.width);
       const offset = globals.timestampOffset();
-      const tickGen = new TickGenerator(span, maxMajorTicks, offset);
+      const tickGen = generateTicks(timespan, maxMajorTicks, offset);
       for (const {type, time} of tickGen) {
-        const px = Math.floor(map.timeToPx(time));
+        const px = Math.floor(timescale.timeToPx(time));
         if (type === TickType.MAJOR) {
           ctx.fillRect(px, 0, 1, size.height);
         }
@@ -167,67 +173,77 @@ export class TimeSelectionPanel implements Panel {
     }
 
     const localArea = globals.timeline.selectedArea;
-    const selection = globals.state.currentSelection;
+    const selection = globals.selectionManager.selection;
     if (localArea !== undefined) {
       const start = Time.min(localArea.start, localArea.end);
       const end = Time.max(localArea.start, localArea.end);
-      this.renderSpan(ctx, size, new TimeSpan(start, end));
-    } else if (selection !== null && selection.kind === 'AREA') {
-      const selectedArea = globals.state.areas[selection.areaId];
-      const start = Time.min(selectedArea.start, selectedArea.end);
-      const end = Time.max(selectedArea.start, selectedArea.end);
-      this.renderSpan(ctx, size, new TimeSpan(start, end));
+      this.renderSpan(ctx, timescale, size, start, end);
+    } else if (selection.kind === 'area') {
+      const start = Time.min(selection.start, selection.end);
+      const end = Time.max(selection.start, selection.end);
+      this.renderSpan(ctx, timescale, size, start, end);
     }
 
     if (globals.state.hoverCursorTimestamp !== -1n) {
-      this.renderHover(ctx, size, globals.state.hoverCursorTimestamp);
+      this.renderHover(
+        ctx,
+        timescale,
+        size,
+        globals.state.hoverCursorTimestamp,
+      );
     }
 
-    for (const note of Object.values(globals.state.notes)) {
-      const noteIsSelected = selection !== null && selection.kind === 'AREA' &&
-          selection.noteId === note.id;
-      if (note.noteType === 'AREA' && !noteIsSelected) {
-        const selectedArea = globals.state.areas[note.areaId];
-        this.renderSpan(
-            ctx, size, new TimeSpan(selectedArea.start, selectedArea.end));
+    for (const note of globals.noteManager.notes.values()) {
+      const noteIsSelected =
+        selection.kind === 'note' && selection.id === note.id;
+      if (note.noteType === 'SPAN' && !noteIsSelected) {
+        this.renderSpan(ctx, timescale, size, note.start, note.end);
       }
     }
 
     ctx.restore();
   }
 
-  renderHover(ctx: CanvasRenderingContext2D, size: PanelSize, ts: time) {
-    const {visibleTimeScale} = globals.timeline;
-    const xPos = TRACK_SHELL_WIDTH + Math.floor(visibleTimeScale.timeToPx(ts));
+  renderHover(
+    ctx: CanvasRenderingContext2D,
+    timescale: TimeScale,
+    size: Size2D,
+    ts: time,
+  ) {
+    const xPos = Math.floor(timescale.timeToPx(ts));
     const domainTime = globals.toDomainTime(ts);
     const label = stringifyTimestamp(domainTime);
-    drawIBar(ctx, xPos, this.bounds(size), label);
+    drawIBar(ctx, xPos, this.getBBoxFromSize(size), label);
   }
 
   renderSpan(
-      ctx: CanvasRenderingContext2D, size: PanelSize,
-      span: Span<time, duration>) {
-    const {visibleTimeScale} = globals.timeline;
-    const xLeft = visibleTimeScale.timeToPx(span.start);
-    const xRight = visibleTimeScale.timeToPx(span.end);
-    const label = renderDuration(span.duration);
+    ctx: CanvasRenderingContext2D,
+    timescale: TimeScale,
+    trackSize: Size2D,
+    start: time,
+    end: time,
+  ) {
+    const xLeft = timescale.timeToPx(start);
+    const xRight = timescale.timeToPx(end);
+    const label = renderDuration(end - start);
     drawHBar(
-        ctx,
-        {
-          x: TRACK_SHELL_WIDTH + xLeft,
-          y: 0,
-          width: xRight - xLeft,
-          height: size.height,
-        },
-        this.bounds(size),
-        label);
+      ctx,
+      {
+        x: xLeft,
+        y: 0,
+        width: xRight - xLeft,
+        height: trackSize.height,
+      },
+      this.getBBoxFromSize(trackSize),
+      label,
+    );
   }
 
-  private bounds(size: PanelSize): BBox {
+  private getBBoxFromSize(size: Size2D): BBox {
     return {
-      x: TRACK_SHELL_WIDTH,
+      x: 0,
       y: 0,
-      width: size.width - TRACK_SHELL_WIDTH,
+      width: size.width,
       height: size.height,
     };
   }
@@ -241,12 +257,16 @@ function stringifyTimestamp(time: time): string {
     case TimestampFormat.Timecode:
       const THIN_SPACE = '\u2009';
       return Time.toTimecode(time).toString(THIN_SPACE);
-    case TimestampFormat.Raw:
+    case TimestampFormat.TraceNs:
       return time.toString();
-    case TimestampFormat.RawLocale:
+    case TimestampFormat.TraceNsLocale:
       return time.toLocaleString();
     case TimestampFormat.Seconds:
       return Time.formatSeconds(time);
+    case TimestampFormat.Milliseoncds:
+      return Time.formatMilliseconds(time);
+    case TimestampFormat.Microseconds:
+      return Time.formatMicroseconds(time);
     default:
       const z: never = fmt;
       throw new Error(`Invalid timestamp ${z}`);

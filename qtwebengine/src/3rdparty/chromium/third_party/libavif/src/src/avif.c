@@ -103,10 +103,15 @@ const char * avifResultToString(avifResult result)
         case AVIF_RESULT_OUT_OF_MEMORY:                 return "Out of memory";
         case AVIF_RESULT_CANNOT_CHANGE_SETTING:         return "Cannot change some setting during encoding";
         case AVIF_RESULT_INCOMPATIBLE_IMAGE:            return "The image is incompatible with already encoded images";
+        case AVIF_RESULT_INTERNAL_ERROR:                return "Internal error";
 #if defined(AVIF_ENABLE_EXPERIMENTAL_GAIN_MAP)
         case AVIF_RESULT_ENCODE_GAIN_MAP_FAILED:        return "Encoding of gain map planes failed";
         case AVIF_RESULT_DECODE_GAIN_MAP_FAILED:        return "Decoding of gain map planes failed";
         case AVIF_RESULT_INVALID_TONE_MAPPED_IMAGE:     return "Invalid tone mapped image item";
+#endif
+#if defined(AVIF_ENABLE_EXPERIMENTAL_SAMPLE_TRANSFORM)
+        case AVIF_RESULT_ENCODE_SAMPLE_TRANSFORM_FAILED: return "Encoding of sample transformed image failed";
+        case AVIF_RESULT_DECODE_SAMPLE_TRANSFORM_FAILED: return "Decoding of sample transformed image failed";
 #endif
         case AVIF_RESULT_UNKNOWN_ERROR:
         default:
@@ -347,15 +352,15 @@ avifResult avifImageAllocatePlanes(avifImage * image, avifPlanesFlags planes)
     if (image->width == 0 || image->height == 0) {
         return AVIF_RESULT_INVALID_ARGUMENT;
     }
-    const size_t channelSize = avifImageUsesU16(image) ? 2 : 1;
-    if (image->width > SIZE_MAX / channelSize) {
+    const uint32_t channelSize = avifImageUsesU16(image) ? 2 : 1;
+    if (image->width > UINT32_MAX / channelSize) {
         return AVIF_RESULT_INVALID_ARGUMENT;
     }
-    const size_t fullRowBytes = channelSize * image->width;
-    if ((fullRowBytes > UINT32_MAX) || (image->height > SIZE_MAX / fullRowBytes)) {
+    const uint32_t fullRowBytes = channelSize * image->width;
+    if (image->height > PTRDIFF_MAX / fullRowBytes) {
         return AVIF_RESULT_INVALID_ARGUMENT;
     }
-    const size_t fullSize = fullRowBytes * image->height;
+    const size_t fullSize = (size_t)fullRowBytes * image->height;
 
     if ((planes & AVIF_PLANES_YUV) && (image->yuvFormat != AVIF_PIXEL_FORMAT_NONE)) {
         avifPixelFormatInfo info;
@@ -363,11 +368,11 @@ avifResult avifImageAllocatePlanes(avifImage * image, avifPlanesFlags planes)
 
         image->imageOwnsYUVPlanes = AVIF_TRUE;
         if (!image->yuvPlanes[AVIF_CHAN_Y]) {
-            image->yuvRowBytes[AVIF_CHAN_Y] = (uint32_t)fullRowBytes;
-            image->yuvPlanes[AVIF_CHAN_Y] = avifAlloc(fullSize);
+            image->yuvPlanes[AVIF_CHAN_Y] = (uint8_t *)avifAlloc(fullSize);
             if (!image->yuvPlanes[AVIF_CHAN_Y]) {
                 return AVIF_RESULT_OUT_OF_MEMORY;
             }
+            image->yuvRowBytes[AVIF_CHAN_Y] = fullRowBytes;
         }
 
         if (!info.monochrome) {
@@ -376,16 +381,16 @@ avifResult avifImageAllocatePlanes(avifImage * image, avifPlanesFlags planes)
             const uint32_t shiftedH = (uint32_t)(((uint64_t)image->height + info.chromaShiftY) >> info.chromaShiftY);
 
             // These are less than or equal to fullRowBytes/fullSize. No need to check overflows.
-            const size_t uvRowBytes = channelSize * shiftedW;
-            const size_t uvSize = uvRowBytes * shiftedH;
+            const uint32_t uvRowBytes = channelSize * shiftedW;
+            const size_t uvSize = (size_t)uvRowBytes * shiftedH;
 
             for (int uvPlane = AVIF_CHAN_U; uvPlane <= AVIF_CHAN_V; ++uvPlane) {
                 if (!image->yuvPlanes[uvPlane]) {
-                    image->yuvRowBytes[uvPlane] = (uint32_t)uvRowBytes;
-                    image->yuvPlanes[uvPlane] = avifAlloc(uvSize);
+                    image->yuvPlanes[uvPlane] = (uint8_t *)avifAlloc(uvSize);
                     if (!image->yuvPlanes[uvPlane]) {
                         return AVIF_RESULT_OUT_OF_MEMORY;
                     }
+                    image->yuvRowBytes[uvPlane] = uvRowBytes;
                 }
             }
         }
@@ -393,11 +398,11 @@ avifResult avifImageAllocatePlanes(avifImage * image, avifPlanesFlags planes)
     if (planes & AVIF_PLANES_A) {
         image->imageOwnsAlphaPlane = AVIF_TRUE;
         if (!image->alphaPlane) {
-            image->alphaRowBytes = (uint32_t)fullRowBytes;
-            image->alphaPlane = avifAlloc(fullSize);
+            image->alphaPlane = (uint8_t *)avifAlloc(fullSize);
             if (!image->alphaPlane) {
                 return AVIF_RESULT_OUT_OF_MEMORY;
             }
+            image->alphaRowBytes = fullRowBytes;
         }
     }
     return AVIF_RESULT_OK;
@@ -621,8 +626,15 @@ void avifRGBImageSetDefaults(avifRGBImage * rgb, const avifImage * image)
 avifResult avifRGBImageAllocatePixels(avifRGBImage * rgb)
 {
     avifRGBImageFreePixels(rgb);
-    const uint32_t rowBytes = rgb->width * avifRGBImagePixelSize(rgb);
-    rgb->pixels = avifAlloc((size_t)rowBytes * rgb->height);
+    const uint32_t pixelSize = avifRGBImagePixelSize(rgb);
+    if (rgb->width > UINT32_MAX / pixelSize) {
+        return AVIF_RESULT_INVALID_ARGUMENT;
+    }
+    const uint32_t rowBytes = rgb->width * pixelSize;
+    if (rgb->height > PTRDIFF_MAX / rowBytes) {
+        return AVIF_RESULT_INVALID_ARGUMENT;
+    }
+    rgb->pixels = (uint8_t *)avifAlloc((size_t)rowBytes * rgb->height);
     AVIF_CHECKERR(rgb->pixels, AVIF_RESULT_OUT_OF_MEMORY);
     rgb->rowBytes = rowBytes;
     return AVIF_RESULT_OK;
@@ -867,6 +879,22 @@ avifBool avifCleanApertureBoxConvertCropRect(avifCleanApertureBox * clap,
 
 // ---------------------------------------------------------------------------
 
+avifBool avifIsAlpha(avifItemCategory itemCategory)
+{
+    if (itemCategory == AVIF_ITEM_ALPHA) {
+        return AVIF_TRUE;
+    }
+#if defined(AVIF_ENABLE_EXPERIMENTAL_SAMPLE_TRANSFORM)
+    if (itemCategory >= AVIF_ITEM_SAMPLE_TRANSFORM_INPUT_0_ALPHA &&
+        itemCategory < AVIF_ITEM_SAMPLE_TRANSFORM_INPUT_0_ALPHA + AVIF_SAMPLE_TRANSFORM_MAX_NUM_EXTRA_INPUT_IMAGE_ITEMS) {
+        return AVIF_TRUE;
+    }
+#endif
+    return AVIF_FALSE;
+}
+
+// ---------------------------------------------------------------------------
+
 avifBool avifAreGridDimensionsValid(avifPixelFormat yuvFormat, uint32_t imageW, uint32_t imageH, uint32_t tileW, uint32_t tileH, avifDiagnostics * diag)
 {
     // ISO/IEC 23000-22:2019, Section 7.3.11.4.2:
@@ -917,7 +945,7 @@ avifBool avifAreGridDimensionsValid(avifPixelFormat yuvFormat, uint32_t imageW, 
 static char * avifStrdup(const char * str)
 {
     size_t len = strlen(str);
-    char * dup = avifAlloc(len + 1);
+    char * dup = (char *)avifAlloc(len + 1);
     if (!dup) {
         return NULL;
     }
@@ -927,7 +955,7 @@ static char * avifStrdup(const char * str)
 
 avifCodecSpecificOptions * avifCodecSpecificOptionsCreate(void)
 {
-    avifCodecSpecificOptions * ava = avifAlloc(sizeof(avifCodecSpecificOptions));
+    avifCodecSpecificOptions * ava = (avifCodecSpecificOptions *)avifAlloc(sizeof(avifCodecSpecificOptions));
     if (!ava || !avifArrayCreate(ava, sizeof(avifCodecSpecificOption), 4)) {
         goto error;
     }
@@ -1144,7 +1172,7 @@ void avifCodecVersions(char outBuffer[256])
 }
 
 #if defined(AVIF_ENABLE_EXPERIMENTAL_GAIN_MAP)
-avifGainMap * avifGainMapCreate()
+avifGainMap * avifGainMapCreate(void)
 {
     avifGainMap * gainMap = (avifGainMap *)avifAlloc(sizeof(avifGainMap));
     if (!gainMap) {

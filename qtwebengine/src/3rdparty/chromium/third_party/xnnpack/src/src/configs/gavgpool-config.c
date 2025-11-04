@@ -12,11 +12,11 @@
   #include <pthread.h>
 #endif
 
-#include <xnnpack/common.h>
-#include <xnnpack/config.h>
-#include <xnnpack/microparams-init.h>
-#include <xnnpack/gavgpool.h>
-
+#include "xnnpack/common.h"
+#include "xnnpack/config.h"
+#include "xnnpack/gavgpool.h"
+#include "xnnpack/microfnptr.h"
+#include "xnnpack/microparams-init.h"
 
 static struct xnn_gavgpool_config f16_gavgpool_config = {0};
 static struct xnn_gavgpool_config f32_gavgpool_config = {0};
@@ -61,7 +61,7 @@ static void init_f16_gavgpool_config(void) {
   #elif (XNN_ARCH_X86 || XNN_ARCH_X86_64) && !XNN_PLATFORM_MOBILE
     const struct xnn_hardware_config* hardware_config = xnn_init_hardware_config();
     assert(hardware_config != NULL);
-    if (hardware_config->use_x86_avx2) {
+    if (hardware_config->use_x86_f16c) {
       f16_gavgpool_config.unipass = (xnn_gavgpool_unipass_ukernel_fn) xnn_f16_gavgpool_minmax_ukernel_7x__f16c_c8;
       f16_gavgpool_config.multipass = (xnn_gavgpool_multipass_ukernel_fn) xnn_f16_gavgpool_minmax_ukernel_7p7x__f16c_c8;
       f16_gavgpool_config.init.f16 = xnn_init_f16_scaleminmax_avx_params;
@@ -130,14 +130,14 @@ static void init_f32_gavgpool_config(void) {
     f32_gavgpool_config.update.f32 = xnn_update_f32_scaleminmax_scalar_params;
     f32_gavgpool_config.row_tile = 7;
     f32_gavgpool_config.channel_tile = 1;
-  #elif XNN_ARCH_RISCV
-    f32_gavgpool_config.unipass = (xnn_gavgpool_unipass_ukernel_fn) xnn_f32_gavgpool_minmax_ukernel_7x__scalar_c1;
-    f32_gavgpool_config.multipass = (xnn_gavgpool_multipass_ukernel_fn) xnn_f32_gavgpool_minmax_ukernel_7p7x__scalar_c1;
+  #elif XNN_ARCH_RISCV && XNN_ENABLE_RISCV_VECTOR
+    f32_gavgpool_config.unipass = (xnn_gavgpool_unipass_ukernel_fn) xnn_f32_gavgpool_minmax_ukernel_7x__rvv_c2v;
+    f32_gavgpool_config.multipass = (xnn_gavgpool_multipass_ukernel_fn) xnn_f32_gavgpool_minmax_ukernel_7p7x__rvv_c2v;
     f32_gavgpool_config.init.f32 = xnn_init_f32_scaleminmax_scalar_params;
     f32_gavgpool_config.update.f32 = xnn_update_f32_scaleminmax_scalar_params;
     f32_gavgpool_config.row_tile = 7;
-    f32_gavgpool_config.channel_tile = 1;
-  #elif XNN_ARCH_PPC64
+    f32_gavgpool_config.channel_tile = 16;
+  #else
     f32_gavgpool_config.unipass = (xnn_gavgpool_unipass_ukernel_fn) xnn_f32_gavgpool_minmax_ukernel_7x__scalar_c1;
     f32_gavgpool_config.multipass = (xnn_gavgpool_multipass_ukernel_fn) xnn_f32_gavgpool_minmax_ukernel_7p7x__scalar_c1;
     f32_gavgpool_config.init.f32 = xnn_init_f32_scaleminmax_scalar_params;
@@ -205,14 +205,7 @@ static void init_qs8_gavgpool_config(void) {
     qs8_gavgpool_config.update.qs8 = xnn_update_qs8_avgpool_minmax_fp32_scalar_imagic_params;
     qs8_gavgpool_config.row_tile = 7;
     qs8_gavgpool_config.channel_tile = 4;
-  #elif XNN_ARCH_RISCV
-    qs8_gavgpool_config.unipass = (xnn_gavgpool_unipass_ukernel_fn) xnn_qs8_gavgpool_minmax_fp32_ukernel_7x__scalar_imagic_c1;
-    qs8_gavgpool_config.multipass = (xnn_gavgpool_multipass_ukernel_fn) xnn_qs8_gavgpool_minmax_fp32_ukernel_7p7x__scalar_imagic_c1;
-    qs8_gavgpool_config.init.qs8 = xnn_init_qs8_avgpool_minmax_fp32_scalar_imagic_params;
-    qs8_gavgpool_config.update.qs8 = xnn_update_qs8_avgpool_minmax_fp32_scalar_imagic_params;
-    qs8_gavgpool_config.row_tile = 7;
-    qs8_gavgpool_config.channel_tile = 1;
-  #elif XNN_ARCH_PPC64
+  #else
     qs8_gavgpool_config.unipass = (xnn_gavgpool_unipass_ukernel_fn) xnn_qs8_gavgpool_minmax_fp32_ukernel_7x__scalar_imagic_c1;
     qs8_gavgpool_config.multipass = (xnn_gavgpool_multipass_ukernel_fn) xnn_qs8_gavgpool_minmax_fp32_ukernel_7p7x__scalar_imagic_c1;
     qs8_gavgpool_config.init.qs8 = xnn_init_qs8_avgpool_minmax_fp32_scalar_imagic_params;
@@ -280,14 +273,7 @@ static void init_qu8_gavgpool_config(void) {
     qu8_gavgpool_config.update.qu8 = xnn_update_qu8_avgpool_minmax_fp32_scalar_imagic_params;
     qu8_gavgpool_config.row_tile = 7;
     qu8_gavgpool_config.channel_tile = 4;
-  #elif XNN_ARCH_RISCV
-    qu8_gavgpool_config.unipass = (xnn_gavgpool_unipass_ukernel_fn) xnn_qu8_gavgpool_minmax_fp32_ukernel_7x__scalar_imagic_c1;
-    qu8_gavgpool_config.multipass = (xnn_gavgpool_multipass_ukernel_fn) xnn_qu8_gavgpool_minmax_fp32_ukernel_7p7x__scalar_imagic_c1;
-    qu8_gavgpool_config.init.qu8 = xnn_init_qu8_avgpool_minmax_fp32_scalar_imagic_params;
-    qu8_gavgpool_config.update.qu8 = xnn_update_qu8_avgpool_minmax_fp32_scalar_imagic_params;
-    qu8_gavgpool_config.row_tile = 7;
-    qu8_gavgpool_config.channel_tile = 1;
-  #elif XNN_ARCH_PPC64
+  #else
     qu8_gavgpool_config.unipass = (xnn_gavgpool_unipass_ukernel_fn) xnn_qu8_gavgpool_minmax_fp32_ukernel_7x__scalar_imagic_c1;
     qu8_gavgpool_config.multipass = (xnn_gavgpool_multipass_ukernel_fn) xnn_qu8_gavgpool_minmax_fp32_ukernel_7p7x__scalar_imagic_c1;
     qu8_gavgpool_config.init.qu8 = xnn_init_qu8_avgpool_minmax_fp32_scalar_imagic_params;

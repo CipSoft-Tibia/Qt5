@@ -2,6 +2,7 @@
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
+import("//build/config/chrome_build.gni")
 import("//build/config/chromeos/ui_mode.gni")
 
 assert(is_chromeos_ash, "Non-ChromeOS builds cannot depend on //ash")
@@ -29,10 +30,17 @@ static_library("shortcut_input_key_strings") {
   ]
 
   deps = [
+    "//ash",
+    "//build:branding_buildflags",
     "//chromeos/strings/",
     "//content/public/browser",
     "//ui/base",
+    "//ui/events/ash:ash",
   ]
+
+  if (is_chrome_branded) {
+    deps += [ "//chromeos/ash/resources/internal/strings:strings_grit" ]
+  }
 }
 
 source_set("sea_pen") {
@@ -40,6 +48,8 @@ source_set("sea_pen") {
     "sea_pen_provider.h",
     "sea_pen_resources.cc",
     "sea_pen_resources.h",
+    "sea_pen_resources_generated.cc",
+    "sea_pen_resources_generated.h",
   ]
 
   deps = [

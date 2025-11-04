@@ -19,6 +19,47 @@ Please see the examples in the "examples" directory. If you're already building
 `libavif`, enable the CMake option `AVIF_BUILD_EXAMPLES` in order to build and
 run the examples too.
 
+## Installation
+
+`libavif` is a package in most major OSs.
+
+### Windows
+
+```sh
+vcpkg install libavif
+```
+You can also download the official windows binaries on the
+[release](https://github.com/AOMediaCodec/libavif/releases) page.
+
+### macOS
+
+Homebrew:
+```sh
+brew install libavif
+```
+MacPorts:
+```sh
+sudo port install libavif
+```
+
+### Linux
+
+Debian-based distributions:
+```sh
+sudo apt install libavif-dev
+```
+Red Hat-based distributions:
+```sh
+sudo yum -y install libavif
+```
+
+### MinGW
+
+For the "default" MSYS2 UCRT64 environment:
+```sh
+pacman -S mingw-w64-ucrt-x86_64-libavif
+```
+
 ## Build Notes
 
 Building libavif requires [CMake](https://cmake.org/).
@@ -99,7 +140,7 @@ cd libavif/ext
 ./libjpeg.cmd
 ./zlibpng.cmd
 cd ..
-cmake -S . -B build -DBUILD_SHARED_LIBS=OFF -DAVIF_CODEC_AOM=ON -DAVIF_LOCAL_AOM=ON -DAVIF_LOCAL_LIBYUV=ON -DAVIF_LOCAL_LIBSHARPYUV=ON -DAVIF_LOCAL_JPEG=ON -DAVIF_LOCAL_ZLIBPNG=ON -DAVIF_BUILD_APPS=ON
+cmake -S . -B build -DBUILD_SHARED_LIBS=OFF -DAVIF_CODEC_AOM=LOCAL -DAVIF_LIBYUV=LOCAL -DAVIF_LIBSHARPYUV=LOCAL -DAVIF_JPEG=LOCAL -DAVIF_ZLIBPNG=LOCAL -DAVIF_BUILD_APPS=ON
 cmake --build build --parallel
 ```
 
@@ -112,12 +153,15 @@ Debug and Release are available on
 
 ## Development Notes
 
-libavif is written in C99.
+Please check the [wiki](https://github.com/AOMediaCodec/libavif/wiki) for extra
+resources on libavif, such as the Release Checklist.
+
+The libavif library is written in C99. Most of the tests are written in C++14.
 
 ### Formatting
 
 Use [clang-format](https://clang.llvm.org/docs/ClangFormat.html) to format the C
-sources from the top-level folder:
+sources from the top-level folder (`clang-format-16` preferred):
 
 ```sh
 clang-format -style=file -i \
@@ -133,7 +177,7 @@ CMakeLists.txt files from the top-level folder:
 cmake-format -i \
   CMakeLists.txt \
   tests/CMakeLists.txt \
-  cmake/Modules/Find*.cmake \
+  cmake/Modules/*.cmake \
   contrib/CMakeLists.txt \
   contrib/gdk-pixbuf/CMakeLists.txt \
   android_jni/avifandroidjni/src/main/jni/CMakeLists.txt

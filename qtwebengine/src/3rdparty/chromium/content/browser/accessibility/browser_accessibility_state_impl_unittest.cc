@@ -3,18 +3,24 @@
 // found in the LICENSE file.
 
 #include "content/browser/accessibility/browser_accessibility_state_impl.h"
+
 #include "base/memory/raw_ptr.h"
 #include "base/test/metrics/histogram_tester.h"
 #include "base/test/scoped_feature_list.h"
-#include "content/browser/accessibility/browser_accessibility_manager.h"
-#include "content/browser/accessibility/test_browser_accessibility_delegate.h"
 #include "content/public/test/browser_task_environment.h"
 #include "testing/gmock/include/gmock/gmock.h"
 #include "testing/gtest/include/gtest/gtest.h"
 #include "ui/accessibility/accessibility_features.h"
 #include "ui/accessibility/ax_mode_observer.h"
-#include "ui/accessibility/platform/ax_platform_node.h"
+#include "ui/accessibility/platform/ax_platform.h"
+#include "ui/accessibility/platform/browser_accessibility_manager.h"
+#include "ui/accessibility/platform/test_ax_node_id_delegate.h"
+#include "ui/accessibility/platform/test_ax_platform_tree_manager_delegate.h"
 #include "ui/events/base_event_utils.h"
+
+#if BUILDFLAG(IS_ANDROID)
+#include "content/browser/accessibility/browser_accessibility_manager_android.h"
+#endif
 
 namespace content {
 
@@ -43,8 +49,9 @@ class BrowserAccessibilityStateImplTest : public ::testing::Test {
   raw_ptr<BrowserAccessibilityStateImpl> state_;
   BrowserTaskEnvironment task_environment_{
       base::test::TaskEnvironment::TimeSource::MOCK_TIME};
-  std::unique_ptr<TestBrowserAccessibilityDelegate>
+  std::unique_ptr<ui::TestAXPlatformTreeManagerDelegate>
       test_browser_accessibility_delegate_;
+  ui::TestAXNodeIdDelegate node_id_delegate_;
 };
 
 TEST_F(BrowserAccessibilityStateImplTest,
@@ -53,12 +60,12 @@ TEST_F(BrowserAccessibilityStateImplTest,
 
   // Initially, accessibility should be disabled.
   EXPECT_FALSE(state_->IsAccessibleBrowser());
-  EXPECT_EQ(ui::AXPlatformNode::GetAccessibilityMode(), ui::AXMode());
+  EXPECT_EQ(ui::AXPlatform::GetInstance().GetMode(), ui::AXMode());
 
   // Enable accessibility based on usage of accessibility APIs.
   state_->OnScreenReaderDetected();
   EXPECT_TRUE(state_->IsAccessibleBrowser());
-  EXPECT_EQ(ui::AXPlatformNode::GetAccessibilityMode(), ui::kAXModeComplete);
+  EXPECT_EQ(ui::AXPlatform::GetInstance().GetMode(), ui::kAXModeComplete);
 
   // Send user input, wait 31 seconds, then send another user input event.
   // Don't simulate any accessibility APIs in that time.
@@ -69,7 +76,7 @@ TEST_F(BrowserAccessibilityStateImplTest,
 
   // Accessibility should now be disabled.
   EXPECT_FALSE(state_->IsAccessibleBrowser());
-  EXPECT_EQ(ui::AXPlatformNode::GetAccessibilityMode(), ui::AXMode());
+  EXPECT_EQ(ui::AXPlatform::GetInstance().GetMode(), ui::AXMode());
 
   // A histogram should record that accessibility was disabled with
   // 3 input events.
@@ -85,12 +92,12 @@ TEST_F(BrowserAccessibilityStateImplTest,
        AccessibilityApiUsagePreventsAutoDisableAccessibility) {
   // Initially, accessibility should be disabled.
   EXPECT_FALSE(state_->IsAccessibleBrowser());
-  EXPECT_EQ(ui::AXPlatformNode::GetAccessibilityMode(), ui::AXMode());
+  EXPECT_EQ(ui::AXPlatform::GetInstance().GetMode(), ui::AXMode());
 
   // Enable accessibility based on usage of accessibility APIs.
   state_->OnScreenReaderDetected();
   EXPECT_TRUE(state_->IsAccessibleBrowser());
-  EXPECT_EQ(ui::AXPlatformNode::GetAccessibilityMode(), ui::kAXModeComplete);
+  EXPECT_EQ(ui::AXPlatform::GetInstance().GetMode(), ui::kAXModeComplete);
 
   // Send user input, wait 31 seconds, then send another user input event -
   // but simulate accessibility APIs in that time.
@@ -102,7 +109,7 @@ TEST_F(BrowserAccessibilityStateImplTest,
 
   // Accessibility should still be enabled.
   EXPECT_TRUE(state_->IsAccessibleBrowser());
-  EXPECT_EQ(ui::AXPlatformNode::GetAccessibilityMode(), ui::kAXModeComplete);
+  EXPECT_EQ(ui::AXPlatform::GetInstance().GetMode(), ui::kAXModeComplete);
 
   // Same test, but simulate accessibility API usage after the first
   // user input event, before the delay.
@@ -114,26 +121,26 @@ TEST_F(BrowserAccessibilityStateImplTest,
 
   // Accessibility should still be enabled.
   EXPECT_TRUE(state_->IsAccessibleBrowser());
-  EXPECT_EQ(ui::AXPlatformNode::GetAccessibilityMode(), ui::kAXModeComplete);
+  EXPECT_EQ(ui::AXPlatform::GetInstance().GetMode(), ui::kAXModeComplete);
 
   // Advance another 31 seconds and simulate another user input event;
   // now accessibility should be disabled.
   task_environment_.FastForwardBy(base::Seconds(31));
   state_->OnUserInputEvent();
   EXPECT_FALSE(state_->IsAccessibleBrowser());
-  EXPECT_EQ(ui::AXPlatformNode::GetAccessibilityMode(), ui::AXMode());
+  EXPECT_EQ(ui::AXPlatform::GetInstance().GetMode(), ui::AXMode());
 }
 
 TEST_F(BrowserAccessibilityStateImplTest,
        AddAccessibilityModeFlagsPreventsAutoDisableAccessibility) {
   // Initially, accessibility should be disabled.
   EXPECT_FALSE(state_->IsAccessibleBrowser());
-  EXPECT_EQ(ui::AXPlatformNode::GetAccessibilityMode(), ui::AXMode());
+  EXPECT_EQ(ui::AXPlatform::GetInstance().GetMode(), ui::AXMode());
 
   // Enable accessibility.
   state_->OnScreenReaderDetected();
   EXPECT_TRUE(state_->IsAccessibleBrowser());
-  EXPECT_EQ(ui::AXPlatformNode::GetAccessibilityMode(), ui::kAXModeComplete);
+  EXPECT_EQ(ui::AXPlatform::GetInstance().GetMode(), ui::kAXModeComplete);
 
   // Send user input, wait 31 seconds, then send another user input event -
   // but add a new accessibility mode flag.
@@ -145,7 +152,7 @@ TEST_F(BrowserAccessibilityStateImplTest,
 
   // Accessibility should still be enabled.
   EXPECT_TRUE(state_->IsAccessibleBrowser());
-  EXPECT_EQ(ui::AXPlatformNode::GetAccessibilityMode(), ui::kAXModeComplete);
+  EXPECT_EQ(ui::AXPlatform::GetInstance().GetMode(), ui::kAXModeComplete);
 }
 
 TEST_F(BrowserAccessibilityStateImplTest,
@@ -154,23 +161,32 @@ TEST_F(BrowserAccessibilityStateImplTest,
   ui::AXNodeData root;
   root.id = 1;
   root.role = ax::mojom::Role::kRootWebArea;
-  std::unique_ptr<BrowserAccessibilityManager> browser_accessibility_manager(
-      BrowserAccessibilityManager::Create(
-          MakeAXTreeUpdateForTesting(root),
-          test_browser_accessibility_delegate_.get()));
 
-  BrowserAccessibility* ax_root =
+  ui::BrowserAccessibilityManager* manager;
+#if BUILDFLAG(IS_ANDROID)
+  manager = BrowserAccessibilityManagerAndroid::Create(
+      MakeAXTreeUpdateForTesting(root), node_id_delegate_,
+      test_browser_accessibility_delegate_.get());
+#else
+  manager = ui::BrowserAccessibilityManager::Create(
+      MakeAXTreeUpdateForTesting(root), node_id_delegate_,
+      test_browser_accessibility_delegate_.get());
+#endif
+  std::unique_ptr<ui::BrowserAccessibilityManager>
+      browser_accessibility_manager(manager);
+
+  ui::BrowserAccessibility* ax_root =
       browser_accessibility_manager->GetBrowserAccessibilityRoot();
   ASSERT_NE(nullptr, ax_root);
 
   // Initially, accessibility should be disabled.
   EXPECT_FALSE(state_->IsAccessibleBrowser());
-  EXPECT_EQ(ui::AXPlatformNode::GetAccessibilityMode(), ui::AXMode());
+  EXPECT_EQ(ui::AXPlatform::GetInstance().GetMode(), ui::AXMode());
 
   // Enable accessibility.
   state_->OnScreenReaderDetected();
   EXPECT_TRUE(state_->IsAccessibleBrowser());
-  EXPECT_EQ(ui::AXPlatformNode::GetAccessibilityMode(), ui::kAXModeComplete);
+  EXPECT_EQ(ui::AXPlatform::GetInstance().GetMode(), ui::kAXModeComplete);
 
   // Send user input, wait 31 seconds, then send another user input event after
   // checking the role, which should register accessibility API usage.
@@ -182,7 +198,7 @@ TEST_F(BrowserAccessibilityStateImplTest,
 
   // Accessibility should still be enabled due to GetRole() being called.
   EXPECT_TRUE(state_->IsAccessibleBrowser());
-  EXPECT_EQ(ui::AXPlatformNode::GetAccessibilityMode(), ui::kAXModeComplete);
+  EXPECT_EQ(ui::AXPlatform::GetInstance().GetMode(), ui::kAXModeComplete);
 }
 
 TEST_F(BrowserAccessibilityStateImplTest, DisableAccessibilityHasADelay) {

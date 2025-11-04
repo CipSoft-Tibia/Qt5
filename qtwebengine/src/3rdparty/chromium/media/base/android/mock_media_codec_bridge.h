@@ -45,6 +45,11 @@ class MockMediaCodecBridge : public MediaCodecBridge,
                                 const uint8_t* data,
                                 size_t data_size,
                                 base::TimeDelta presentation_time));
+  MOCK_METHOD4(QueueInputBlock,
+               MediaCodecResult(int index,
+                                base::span<const uint8_t> data,
+                                base::TimeDelta presentation_time,
+                                bool is_eos));
   MOCK_METHOD9(
       QueueSecureInputBuffer,
       MediaCodecResult(int index,
@@ -54,7 +59,7 @@ class MockMediaCodecBridge : public MediaCodecBridge,
                        const std::string& iv,
                        const std::vector<SubsampleEntry>& subsamples,
                        EncryptionScheme encryption_scheme,
-                       absl::optional<EncryptionPattern> encryption_pattern,
+                       std::optional<EncryptionPattern> encryption_pattern,
                        base::TimeDelta presentation_time));
   MOCK_METHOD1(QueueEOS, void(int input_buffer_index));
   MOCK_METHOD2(DequeueInputBuffer,

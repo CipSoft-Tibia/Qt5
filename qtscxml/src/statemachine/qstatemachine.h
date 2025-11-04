@@ -16,8 +16,6 @@
 #    include <chrono>
 #endif
 
-QT_REQUIRE_CONFIG(statemachine);
-
 QT_BEGIN_NAMESPACE
 
 class QStateMachinePrivate;
@@ -114,9 +112,7 @@ public:
 
     QSet<QAbstractState*> configuration() const;
 
-#if QT_CONFIG(qeventtransition)
     bool eventFilter(QObject *watched, QEvent *event) override;
-#endif
 
 #if __has_include(<chrono>) || defined(Q_QDOC)
     int postDelayedEvent(QEvent *event, std::chrono::milliseconds delay)

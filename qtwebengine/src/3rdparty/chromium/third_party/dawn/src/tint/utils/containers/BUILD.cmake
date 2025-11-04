@@ -43,6 +43,7 @@ tint_add_target(tint_utils_containers lib
   utils/containers/const_propagating_ptr.h
   utils/containers/containers.cc
   utils/containers/enum_set.h
+  utils/containers/filtered_iterator.h
   utils/containers/hashmap.h
   utils/containers/hashmap_base.h
   utils/containers/hashset.h
@@ -66,6 +67,10 @@ tint_target_add_dependencies(tint_utils_containers lib
   tint_utils_traits
 )
 
+tint_target_add_external_dependencies(tint_utils_containers lib
+  "src_utils"
+)
+
 ################################################################################
 # Target:    tint_utils_containers_test
 # Kind:      test
@@ -73,6 +78,7 @@ tint_target_add_dependencies(tint_utils_containers lib
 tint_add_target(tint_utils_containers_test test
   utils/containers/bitset_test.cc
   utils/containers/enum_set_test.cc
+  utils/containers/filtered_iterator_test.cc
   utils/containers/hashmap_test.cc
   utils/containers/hashset_test.cc
   utils/containers/map_test.cc
@@ -113,4 +119,5 @@ tint_target_add_dependencies(tint_utils_containers_test test
 
 tint_target_add_external_dependencies(tint_utils_containers_test test
   "gtest"
+  "src_utils"
 )

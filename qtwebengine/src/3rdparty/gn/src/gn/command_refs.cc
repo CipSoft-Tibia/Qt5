@@ -226,6 +226,70 @@ size_t DoDirectListOutput(
   return results.size();
 }
 
+size_t RecursivePrintTargetDepsMatch(const DepMap& dep_map,
+                                     const Target* target,
+                                     const Target* match,
+                                     TargetSet* seen_targets,
+                                     int indent_level);
+
+size_t RecursivePrintTargetMatch(const DepMap& dep_map,
+                                 const Target* target,
+                                 const Target* match,
+                                 TargetSet* seen_targets,
+                                 int indent_level) {
+  size_t count = 0;
+
+  if (seen_targets->add(target)) {
+    count += RecursivePrintTargetDepsMatch(dep_map, target, match, seen_targets,
+                                           indent_level + 1);
+  }
+  if (target == match) {
+    count = 1;
+  }
+  if (count > 0) {
+    std::string indent(indent_level * 2, ' ');
+    OutputString(indent);
+    if (target == match)
+      OutputString(">>> ");
+    OutputString(
+        target->label().GetUserVisibleName(!target->settings()->is_default()));
+    OutputString("\n");
+  }
+  return count;
+}
+
+size_t RecursivePrintTargetDepsMatch(const DepMap& dep_map,
+                                     const Target* target,
+                                     const Target* match,
+                                     TargetSet* seen_targets,
+                                     int indent_level) {
+  DepMap::const_iterator dep_begin = dep_map.lower_bound(target);
+  DepMap::const_iterator dep_end = dep_map.upper_bound(target);
+  size_t count = 0;
+  for (DepMap::const_iterator cur_dep = dep_begin; cur_dep != dep_end;
+       cur_dep++) {
+    count += RecursivePrintTargetMatch(dep_map, cur_dep->second, match,
+                                       seen_targets, indent_level);
+  }
+  return count;
+}
+
+size_t DoFilteredTreeOutput(
+    const DepMap& dep_map,
+    const Target* match,
+    const UniqueVector<const Target*>& implicit_target_matches,
+    const UniqueVector<const Target*>& explicit_target_matches) {
+  TargetSet seen_targets;
+  size_t count = 0;
+  for (const Target* target : implicit_target_matches) {
+    if (target == match)
+      continue;
+    count +=
+        RecursivePrintTargetMatch(dep_map, target, match, &seen_targets, 0);
+  }
+  return count;
+}
+
 }  // namespace
 
 const char kRefs[] = "refs";
@@ -349,6 +413,7 @@ int RunRefs(const std::vector<std::string>& args) {
   const base::CommandLine* cmdline = base::CommandLine::ForCurrentProcess();
   bool tree = cmdline->HasSwitch("tree");
   bool all = cmdline->HasSwitch("all");
+  bool tree_match = cmdline->HasSwitch("tree-match");
   bool default_toolchain_only = cmdline->HasSwitch(switches::kDefaultToolchain);
 
   // Deliberately leaked to avoid expensive process teardown.
@@ -431,13 +496,17 @@ int RunRefs(const std::vector<std::string>& args) {
   FillDepMap(setup, &dep_map);
 
   size_t cnt = 0;
-  if (tree)
+  if (tree_match) {
+    const Target* target = target_matches[0];
+    cnt = DoFilteredTreeOutput(dep_map, target, target_matches,
+                               explicit_target_matches);
+  } else if (tree) {
     cnt = DoTreeOutput(dep_map, target_matches, explicit_target_matches, all);
-  else if (all)
+  } else if (all) {
     cnt = DoAllListOutput(dep_map, target_matches, explicit_target_matches);
-  else
+  } else {
     cnt = DoDirectListOutput(dep_map, target_matches, explicit_target_matches);
-
+  }
   // If you ask for the references of a valid target, but that target has
   // nothing referencing it, we'll get here without having printed anything.
   if (!quiet && cnt == 0)

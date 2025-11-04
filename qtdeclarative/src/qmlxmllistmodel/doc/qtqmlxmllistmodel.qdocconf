@@ -11,11 +11,15 @@ qhp.QtQmlXmlListModel.file                = qtqmlxmllistmodel.qhp
 qhp.QtQmlXmlListModel.namespace           = org.qt-project.qtqmlxmllistmodel.$QT_VERSION_TAG
 qhp.QtQmlXmlListModel.virtualFolder       = qtqmlxmllistmodel
 qhp.QtQmlXmlListModel.indexRoot           =
+qhp.QtQmlXmlListModel.indexTitle = Qt XmlListModel
 
-qhp.QtQmlXmlListModel.title      = QML Types
-qhp.QtQmlXmlListModel.indexTitle = Qt XmlListModel QML Types
-qhp.QtQmlXmlListModel.selectors  = qmlclass
-qhp.QtQmlXmlListModel.sortPages  = true
+qhp.QtQmlXmlListModel.subprojects         = qmltypes
+
+qhp.QtQmlXmlListModel.subprojects.qmltypes.title = QML Types
+qhp.QtQmlXmlListModel.subprojects.qmltypes.indexTitle = Qt XmlListModel QML Types
+qhp.QtQmlXmlListModel.subprojects.qmltypes.selectors = qmltype
+qhp.QtQmlXmlListModel.subprojects.qmltypes.sortPages = true
+
 
 tagfile      = qtqmlxmllistmodel.tags
 

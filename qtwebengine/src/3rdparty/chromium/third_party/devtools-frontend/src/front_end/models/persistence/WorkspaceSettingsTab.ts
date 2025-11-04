@@ -49,7 +49,7 @@ export class WorkspaceSettingsTab extends UI.Widget.VBox {
   constructor() {
     super();
 
-    this.element.setAttribute('jslog', `${VisualLogging.pane().context('workspace')}`);
+    this.element.setAttribute('jslog', `${VisualLogging.pane('workspace')}`);
 
     this.element.classList.add('workspace-settings-tab');
     const header = this.element.createChild('header');
@@ -159,7 +159,7 @@ export class WorkspaceSettingsTab extends UI.Widget.VBox {
     const toolbar = new UI.Toolbar.Toolbar('');
     const button =
         new UI.Toolbar.ToolbarButton(i18nString(UIStrings.remove), 'cross', undefined, 'settings.remove-file-system');
-    button.addEventListener(UI.Toolbar.ToolbarButton.Events.Click, this.removeFileSystemClicked.bind(this, fileSystem));
+    button.addEventListener(UI.Toolbar.ToolbarButton.Events.CLICK, this.removeFileSystemClicked.bind(this, fileSystem));
     toolbar.appendToolbarItem(button);
     header.appendChild(toolbar.element);
 

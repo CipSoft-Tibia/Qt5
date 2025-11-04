@@ -15,6 +15,7 @@
 #include "third_party/blink/renderer/core/script/modulator.h"
 #include "third_party/blink/renderer/core/script/value_wrapper_synthetic_module_script.h"
 #include "third_party/blink/renderer/platform/loader/fetch/fetch_client_settings_object_snapshot.h"
+#include "third_party/blink/renderer/platform/loader/fetch/fetch_initiator_type_names.h"
 #include "third_party/blink/renderer/platform/loader/fetch/resource.h"
 #include "third_party/blink/renderer/platform/loader/fetch/resource_fetcher.h"
 #include "third_party/blink/renderer/platform/loader/fetch/resource_fetcher_properties.h"
@@ -51,7 +52,7 @@ const char* ModuleScriptLoader::StateToString(ModuleScriptLoader::State state) {
     case State::kFinished:
       return "Finished";
   }
-  NOTREACHED();
+  NOTREACHED_IN_MIGRATION();
   return "";
 }
 #endif
@@ -65,7 +66,7 @@ void ModuleScriptLoader::AdvanceState(ModuleScriptLoader::State new_state) {
       DCHECK_EQ(new_state, State::kFinished);
       break;
     case State::kFinished:
-      NOTREACHED();
+      NOTREACHED_IN_MIGRATION();
       break;
   }
 
@@ -129,7 +130,7 @@ void SetFetchDestinationFromModuleType(
     case ModuleType::kInvalid:
       // ModuleTreeLinker checks that the module type is valid
       // before creating ModuleScriptFetchRequest objects.
-      NOTREACHED_NORETURN();
+      NOTREACHED();
   }
 }
 
@@ -153,6 +154,7 @@ void ModuleScriptLoader::FetchInternal(
 #endif
 
   DOMWrapperWorld& request_world = modulator_->GetScriptState()->World();
+
   // Prevents web service workers from intercepting isolated world dynamic
   // script imports requests and responding with different contents.
   // TODO(crbug.com/1296102): Link to documentation that describes the criteria
@@ -166,6 +168,9 @@ void ModuleScriptLoader::FetchInternal(
 
   ResourceLoaderOptions options(&request_world);
 
+  // <spec step="11">Set request's initiator type to "script".</spec>
+  options.initiator_info.name = fetch_initiator_type_names::kScript;
+
   // <spec step="12">Set up the module script request given request and
   // options.</spec>
   //
@@ -175,11 +180,6 @@ void ModuleScriptLoader::FetchInternal(
   // <spec label="SMSR">... its parser metadata to options's parser metadata,
   // ...</spec>
   options.parser_disposition = options_.ParserState();
-
-  // As initiator for module script fetch is not specified in HTML spec,
-  // we specify "" as initiator per:
-  // https://fetch.spec.whatwg.org/#concept-request-initiator
-  options.initiator_info.name = g_empty_atom;
 
   // TODO(crbug.com/1064920): Remove this once PlzDedicatedWorker ships.
   options.reject_coep_unsafe_none = options_.GetRejectCoepUnsafeNone();
@@ -343,7 +343,7 @@ void ModuleScriptLoader::NotifyFetchFinishedSuccess(
       module_script_ = JSModuleScript::Create(params, modulator_, options_);
       break;
     case ModuleType::kInvalid:
-      NOTREACHED();
+      NOTREACHED_IN_MIGRATION();
   }
 
   AdvanceState(State::kFinished);

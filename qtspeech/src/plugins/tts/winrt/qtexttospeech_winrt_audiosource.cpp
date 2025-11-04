@@ -1,5 +1,6 @@
 // Copyright (C) 2022 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:data-parser
 
 #include "qtexttospeech_winrt_audiosource.h"
 
@@ -159,31 +160,39 @@ qint64 AudioSource::readData(char *data, qint64 maxlen)
         const int silenceDuration = audioFormat.sampleRate() / 50;
         const short *sample = reinterpret_cast<short*>(pbyte);
         const qsizetype sampleCount = maxlen / sizeof(short);
-        if (sampleCount < silenceDuration)
-            break;
-        qint64 silenceCount = 0;
+
+        const bool isInitialPauseRequest = !m_pauseDetectionSilenceCount.has_value();
+        if (isInitialPauseRequest)
+            m_pauseDetectionSilenceCount = 0;
+
         for (qint64 index = 0; index < sampleCount; ++index) {
             if (qAbs(sample[index]) < 10) {
-                ++silenceCount;
-            } else if (silenceCount > silenceDuration) {
-                // long enough silence found, only provide the data until we are in the
-                // silence. If the silence is at the beginning of our buffer, start from
-                // there, otherwise play a bit of silence now.
-                if (index != silenceCount)
-                    silenceCount /= 2;
+                *m_pauseDetectionSilenceCount += 1;
+            } else {
+                *m_pauseDetectionSilenceCount = 0;
+                continue;
+            }
 
-                maxlen = (index - silenceCount) * 2;
-                // The next attempt to pull data will return nothing, and the audio sink
-                // will move to idle state.
+            if (*m_pauseDetectionSilenceCount > silenceDuration) {
+                // long enough silence found, only provide the data until we are in the silence.
+
+                // we will still try to play at least half of the silent part
+                const int silentSamplesToPlay = silenceDuration / 2;
+                maxlen = index > silentSamplesToPlay ? (index - silentSamplesToPlay) * sizeof(short)
+                                                     : index * sizeof(short);
+
                 m_pause = Paused;
+                m_pauseDetectionSilenceCount = std::nullopt;
                 break;
             } else {
-                silenceCount = 0;
+                *m_pauseDetectionSilenceCount = 0;
             }
         }
         // no silence found - stop after this chunk
-        if (m_pause != Paused)
+        if (m_pause != Paused) {
+            m_pauseDetectionSilenceCount = std::nullopt;
             m_pause = Paused;
+        }
         break;
     }
     case Paused:
@@ -199,7 +208,7 @@ qint64 AudioSource::readData(char *data, qint64 maxlen)
 
     // We emptied the buffer, so schedule fetching more
     if (available <= maxlen)
-        QTimer::singleShot(0, this, &AudioSource::fetchMore);
+        fetchMore();
     else
         m_bufferOffset += maxlen;
 

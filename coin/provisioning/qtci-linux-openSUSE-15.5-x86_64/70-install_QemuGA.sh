@@ -5,5 +5,6 @@
 # This script installs QEMU Guest Agent
 
 set -ex
-
+sudo zypper addrepo --no-gpgcheck https://download.opensuse.org/repositories/Virtualization/15.5/Virtualization.repo
+sudo zypper ref -f
 sudo zypper -nq install qemu-guest-agent

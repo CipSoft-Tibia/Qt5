@@ -47,9 +47,9 @@ public:
 protected:
     BMProperty<qreal> m_skew;
     BMProperty<qreal> m_skewAxis;
-    qreal m_shearX;
-    qreal m_shearY;
-    qreal m_shearAngle;
+    qreal m_shearX = 0;
+    qreal m_shearY = 0;
+    qreal m_shearAngle = 0;
 };
 
 QT_END_NAMESPACE

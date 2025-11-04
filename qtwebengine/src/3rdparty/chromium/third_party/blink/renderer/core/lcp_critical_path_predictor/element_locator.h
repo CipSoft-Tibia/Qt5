@@ -5,7 +5,8 @@
 #ifndef THIRD_PARTY_BLINK_RENDERER_CORE_LCP_CRITICAL_PATH_PREDICTOR_ELEMENT_LOCATOR_H_
 #define THIRD_PARTY_BLINK_RENDERER_CORE_LCP_CRITICAL_PATH_PREDICTOR_ELEMENT_LOCATOR_H_
 
-#include "third_party/abseil-cpp/absl/types/optional.h"
+#include <optional>
+
 #include "third_party/blink/renderer/core/core_export.h"
 #include "third_party/blink/renderer/core/lcp_critical_path_predictor/element_locator.pb.h"
 #include "third_party/blink/renderer/platform/wtf/hash_map.h"
@@ -48,8 +49,7 @@ struct HTMLStackItem {
 
 class CORE_EXPORT TokenStreamMatcher {
  public:
-  explicit TokenStreamMatcher(Vector<ElementLocator>,
-                              bool enable_perf_optimizations = false);
+  explicit TokenStreamMatcher(Vector<ElementLocator>);
   ~TokenStreamMatcher();
 
   static void InitSets();
@@ -69,7 +69,6 @@ class CORE_EXPORT TokenStreamMatcher {
 #endif
 
   const Vector<ElementLocator> locators_;
-  bool enable_perf_optimizations_ = false;
 
   // https://html.spec.whatwg.org/multipage/parsing.html#stack-of-open-elements
   Vector<HTMLStackItem> html_stack_{
@@ -80,4 +79,4 @@ class CORE_EXPORT TokenStreamMatcher {
 
 }  // namespace blink
 
-#endif  // THIRD_PARTY_BLINK_RENDERER_CORE_LCP_CRITICAL_PATH_PREDICTOR_LCP_CRITICAL_PATH_PREDICTOR_H_
+#endif  // THIRD_PARTY_BLINK_RENDERER_CORE_LCP_CRITICAL_PATH_PREDICTOR_ELEMENT_LOCATOR_H_

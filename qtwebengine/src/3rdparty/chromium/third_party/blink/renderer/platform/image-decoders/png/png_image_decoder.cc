@@ -36,6 +36,11 @@
  * version of this file under any of the LGPL, the MPL or the GPL.
  */
 
+#ifdef UNSAFE_BUFFERS_BUILD
+// TODO(crbug.com/351564777): Remove this and convert code to safer constructs.
+#pragma allow_unsafe_buffers
+#endif
+
 #include "third_party/blink/renderer/platform/image-decoders/png/png_image_decoder.h"
 
 #include <memory>
@@ -61,6 +66,7 @@ PNGImageDecoder::PNGImageDecoder(
     : ImageDecoder(alpha_option,
                    high_bit_depth_decoding_option,
                    color_behavior,
+                   cc::AuxImage::kDefault,
                    max_decoded_bytes),
       offset_(offset),
       current_frame_(0),
@@ -262,7 +268,7 @@ static inline std::unique_ptr<ColorProfile> ReadColorProfile(png_structp png,
   png_bytep buffer;
   png_uint_32 length;
   if (png_get_iCCP(png, info, &name, &compression, &buffer, &length)) {
-    return ColorProfile::Create(buffer, length);
+    return ColorProfile::Create(base::as_bytes(base::span(buffer, length)));
   }
 
   png_fixed_point chrm[8];
@@ -317,9 +323,9 @@ static inline std::unique_ptr<ColorProfile> ReadColorProfile(png_structp png,
 static inline void ReadHDRMetadata(
     png_structp png,
     png_infop info,
-    absl::optional<gfx::HDRMetadata>* hdr_metadata) {
-  absl::optional<gfx::HdrMetadataCta861_3> clli;
-  absl::optional<gfx::HdrMetadataSmpteSt2086> mdcv;
+    std::optional<gfx::HDRMetadata>* hdr_metadata) {
+  std::optional<gfx::HdrMetadataCta861_3> clli;
+  std::optional<gfx::HdrMetadataSmpteSt2086> mdcv;
   png_unknown_chunkp unknown_chunks;
   size_t num_unknown_chunks =
       png_get_unknown_chunks(png, info, &unknown_chunks);
@@ -424,7 +430,7 @@ bool PNGImageDecoder::ImageIsHighBitDepth() {
          repetition_count_ == kAnimationNone;
 }
 
-absl::optional<gfx::HDRMetadata> PNGImageDecoder::GetHDRMetadata() const {
+std::optional<gfx::HDRMetadata> PNGImageDecoder::GetHDRMetadata() const {
   return hdr_metadata_;
 }
 
@@ -481,6 +487,17 @@ void PNGImageDecoder::HeaderAvailable() {
       png_set_gamma(png, kDefaultGamma, gamma);
     } else {
       png_set_gamma(png, kDefaultGamma, kInverseGamma);
+    }
+  }
+
+  // process eXIf chunk
+  png_uint_32 exif_size = 0;
+  png_bytep exif_buffer = nullptr;
+  if (png_get_eXIf_1(png, info, &exif_size, &exif_buffer) != 0) {
+    // exif data exists
+    if (exif_size != 0 && exif_buffer) {
+      ApplyExifMetadata(SkData::MakeWithoutCopy(exif_buffer, exif_size).get(),
+                        gfx::Size(width, height));
     }
   }
 

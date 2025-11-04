@@ -7,8 +7,9 @@
 #include "base/functional/bind.h"
 #include "base/metrics/histogram_macros.h"
 #include "base/trace_event/optional_trace_event.h"
+#include "components/input/cursor_manager.h"
+#include "components/input/render_widget_host_input_event_router.h"
 #include "components/viz/common/features.h"
-#include "content/browser/renderer_host/cursor_manager.h"
 #include "content/browser/renderer_host/frame_tree.h"
 #include "content/browser/renderer_host/frame_tree_node.h"
 #include "content/browser/renderer_host/render_frame_host_delegate.h"
@@ -17,7 +18,6 @@
 #include "content/browser/renderer_host/render_view_host_impl.h"
 #include "content/browser/renderer_host/render_widget_host_delegate.h"
 #include "content/browser/renderer_host/render_widget_host_impl.h"
-#include "content/browser/renderer_host/render_widget_host_input_event_router.h"
 #include "content/browser/renderer_host/render_widget_host_view_base.h"
 #include "content/browser/renderer_host/render_widget_host_view_child_frame.h"
 #include "content/common/features.h"
@@ -189,6 +189,7 @@ void CrossProcessFrameConnector::SynchronizeVisualProperties(
     const blink::FrameVisualProperties& visual_properties,
     bool propagate) {
   last_received_zoom_level_ = visual_properties.zoom_level;
+  last_received_css_zoom_factor_ = visual_properties.css_zoom_factor;
   last_received_local_frame_size_ = visual_properties.local_frame_size;
   screen_infos_ = visual_properties.screen_infos;
   local_surface_id_ = visual_properties.local_surface_id;
@@ -215,7 +216,7 @@ void CrossProcessFrameConnector::SynchronizeVisualProperties(
       visual_properties.is_pinch_gesture_active,
       visual_properties.visible_viewport_size,
       visual_properties.compositor_viewport,
-      visual_properties.root_widget_window_segments);
+      visual_properties.root_widget_viewport_segments);
 
   render_widget_host->UpdateVisualProperties(propagate);
 }
@@ -239,7 +240,7 @@ gfx::PointF CrossProcessFrameConnector::TransformPointToRootCoordSpace(
 
 bool CrossProcessFrameConnector::TransformPointToCoordSpaceForView(
     const gfx::PointF& point,
-    RenderWidgetHostViewBase* target_view,
+    input::RenderWidgetHostViewInput* target_view,
     const viz::SurfaceId& local_surface_id,
     gfx::PointF* transformed_point) {
   RenderWidgetHostViewBase* root_view = GetRootRenderWidgetHostView();
@@ -263,6 +264,7 @@ bool CrossProcessFrameConnector::TransformPointToCoordSpaceForView(
 
 void CrossProcessFrameConnector::ForwardAckedTouchpadZoomEvent(
     const blink::WebGestureEvent& event,
+    blink::mojom::InputEventResultSource ack_source,
     blink::mojom::InputEventResultState ack_result) {
   auto* root_view = GetRootRenderWidgetHostView();
   if (!root_view)
@@ -272,11 +274,13 @@ void CrossProcessFrameConnector::ForwardAckedTouchpadZoomEvent(
   const gfx::PointF root_point =
       view_->TransformPointToRootCoordSpaceF(event.PositionInWidget());
   root_event.SetPositionInWidget(root_point);
-  root_view->GestureEventAck(root_event, ack_result);
+  root_view->GestureEventAck(root_event, ack_source, ack_result);
 }
 
 bool CrossProcessFrameConnector::BubbleScrollEvent(
     const blink::WebGestureEvent& event) {
+  TRACE_EVENT1("input", "CrossProcessFrameConnector::BubbleScrollEvent", "type",
+               blink::WebInputEvent::GetName(event.GetType()));
   DCHECK(event.GetType() == blink::WebInputEvent::Type::kGestureScrollBegin ||
          event.GetType() == blink::WebInputEvent::Type::kGestureScrollUpdate ||
          event.GetType() == blink::WebInputEvent::Type::kGestureScrollEnd);
@@ -299,15 +303,20 @@ bool CrossProcessFrameConnector::BubbleScrollEvent(
   // action of the parent frame to Auto so that this gesture event is allowed.
   parent_view->host()->input_router()->ForceSetTouchActionAuto();
 
+  TRACE_EVENT_INSTANT0("input", "Did_Bubble_To_InputEventRouter",
+                       TRACE_EVENT_SCOPE_THREAD);
   return event_router->BubbleScrollEvent(parent_view, view_,
                                          resent_gesture_event);
 }
 
-bool CrossProcessFrameConnector::HasFocus() {
+CrossProcessFrameConnector::RootViewFocusState
+CrossProcessFrameConnector::HasFocus() {
   RenderWidgetHostViewBase* root_view = GetRootRenderWidgetHostView();
-  if (root_view)
-    return root_view->HasFocus();
-  return false;
+  if (!root_view) {
+    return RootViewFocusState::kNullView;
+  }
+  return root_view->HasFocus() ? RootViewFocusState::kFocused
+                               : RootViewFocusState::kNotFocused;
 }
 
 void CrossProcessFrameConnector::FocusRootView() {
@@ -316,26 +325,26 @@ void CrossProcessFrameConnector::FocusRootView() {
     root_view->Focus();
 }
 
-blink::mojom::PointerLockResult CrossProcessFrameConnector::LockMouse(
+blink::mojom::PointerLockResult CrossProcessFrameConnector::LockPointer(
     bool request_unadjusted_movement) {
   RenderWidgetHostViewBase* root_view = GetRootRenderWidgetHostView();
   if (root_view)
-    return root_view->LockMouse(request_unadjusted_movement);
+    return root_view->LockPointer(request_unadjusted_movement);
   return blink::mojom::PointerLockResult::kWrongDocument;
 }
 
-blink::mojom::PointerLockResult CrossProcessFrameConnector::ChangeMouseLock(
+blink::mojom::PointerLockResult CrossProcessFrameConnector::ChangePointerLock(
     bool request_unadjusted_movement) {
   RenderWidgetHostViewBase* root_view = GetRootRenderWidgetHostView();
   if (root_view)
-    return root_view->ChangeMouseLock(request_unadjusted_movement);
+    return root_view->ChangePointerLock(request_unadjusted_movement);
   return blink::mojom::PointerLockResult::kWrongDocument;
 }
 
-void CrossProcessFrameConnector::UnlockMouse() {
+void CrossProcessFrameConnector::UnlockPointer() {
   RenderWidgetHostViewBase* root_view = GetRootRenderWidgetHostView();
   if (root_view)
-    root_view->UnlockMouse();
+    root_view->UnlockPointer();
 }
 
 void CrossProcessFrameConnector::OnSynchronizeVisualProperties(
@@ -353,7 +362,8 @@ void CrossProcessFrameConnector::OnSynchronizeVisualProperties(
   if ((last_received_local_frame_size_ != visual_properties.local_frame_size ||
        screen_infos_.current() != visual_properties.screen_infos.current() ||
        capture_sequence_number() != visual_properties.capture_sequence_number ||
-       last_received_zoom_level_ != visual_properties.zoom_level) &&
+       last_received_zoom_level_ != visual_properties.zoom_level ||
+       last_received_css_zoom_factor_ != visual_properties.css_zoom_factor) &&
       local_surface_id_ == visual_properties.local_surface_id) {
     bad_message::ReceivedBadMessage(
         frame_proxy_in_parent_renderer_->GetProcess(),
@@ -375,8 +385,8 @@ void CrossProcessFrameConnector::UpdateViewportIntersection(
     if (visual_properties.has_value()) {
       // Subtlety: RenderWidgetHostViewChildFrame::UpdateViewportIntersection()
       // will quietly fail to propagate the new intersection state for main
-      // frames, including portals and fenced frames. For those cases, we need
-      // to ensure that the updated VisualProperties are still propagated.
+      // frames, including fenced frames. For those cases, we need to ensure
+      // that the updated VisualProperties are still propagated.
       std::optional<blink::VisualProperties> last_properties;
       if (host && !main_frame)
         last_properties = host->LastComputedVisualProperties();
@@ -398,6 +408,12 @@ void CrossProcessFrameConnector::UpdateViewportIntersectionInternal(
     bool include_visual_properties) {
   intersection_state_ = intersection_state;
   if (view_) {
+    CHECK(current_child_frame_host());
+    current_child_frame_host()
+        ->delegate()
+        ->OnRemoteSubframeViewportIntersectionStateChanged(
+            current_child_frame_host(), intersection_state);
+
     // Only ship over the visual properties if they were included in the update
     // viewport intersection message.
     view_->UpdateViewportIntersection(
@@ -426,7 +442,7 @@ void CrossProcessFrameConnector::OnVisibilityChanged(
   if (!view_)
     return;
 
-  // TODO(https://crbug.com/1014212) Remove this CHECK when the bug is fixed.
+  // TODO(crbug.com/40103184) Remove this CHECK when the bug is fixed.
   CHECK(current_child_frame_host());
   current_child_frame_host()->VisibilityChanged(visibility_);
 

@@ -37,7 +37,8 @@ if (metal_internal_shader_compilation_supported) {
     sources = [ _metal_internal_shaders_metal_source ]
 
     args = [
-      mac_bin_path + "metal",
+      "xcrun",
+      "metal",
       "-c",
       rebase_path(_metal_internal_shaders_metal_source, root_build_dir),
       "-o",
@@ -70,7 +71,8 @@ if (metal_internal_shader_compilation_supported) {
     deps = [ ":angle_metal_internal_shaders_to_air" ]
 
     args = [
-      mac_bin_path + "metallib",
+      "xcrun",
+      "metallib",
       rebase_path(_metal_internal_shaders_air_file, root_build_dir),
       "-o",
       rebase_path(_metal_internal_shaders_metallib_file, root_build_dir),

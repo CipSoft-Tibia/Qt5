@@ -4,6 +4,7 @@
 #include "qquickloader_p_p.h"
 
 #include <QtQml/qqmlinfo.h>
+#include <QtQml/qqmlcomponent.h>
 
 #include <private/qqmlengine_p.h>
 #include <private/qqmlglobal_p.h>
@@ -12,8 +13,6 @@
 #include <private/qqmlincubator_p.h>
 
 QT_BEGIN_NAMESPACE
-
-Q_DECLARE_LOGGING_CATEGORY(lcTransient)
 
 static const QQuickItemPrivate::ChangeTypes watchedChanges
     = QQuickItemPrivate::Geometry | QQuickItemPrivate::ImplicitWidth | QQuickItemPrivate::ImplicitHeight;

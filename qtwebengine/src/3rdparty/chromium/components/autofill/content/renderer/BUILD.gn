@@ -20,7 +20,6 @@ jumbo_static_library("renderer") {
     "form_tracker.h",
     "html_based_username_detector.cc",
     "html_based_username_detector.h",
-    "html_based_username_detector_vocabulary.cc",
     "html_based_username_detector_vocabulary.h",
     "page_form_analyser_logger.cc",
     "page_form_analyser_logger.h",
@@ -38,6 +37,8 @@ jumbo_static_library("renderer") {
     "renderer_save_password_progress_logger.h",
     "suggestion_properties.cc",
     "suggestion_properties.h",
+    "timing.cc",
+    "timing.h",
   ]
 
   jumbo_excluded_sources = [
@@ -48,7 +49,7 @@ jumbo_static_library("renderer") {
     "//base",
     "//base:i18n",
     "//components/autofill/content/common/mojom",
-    "//components/autofill/core/common",
+    "//components/autofill/core/common:autofill_regex",
     "//components/password_manager/core/common:common",
     "//components/safe_browsing:buildflags",
     "//components/strings",
@@ -115,5 +116,34 @@ source_set("unit_tests") {
     "//components/autofill/content/common/mojom",
     "//components/autofill/core/common",
     "//testing/gtest",
+  ]
+}
+
+source_set("browser_tests") {
+  testonly = true
+  sources = [
+    "a11y_utils_browsertest.cc",
+    "autofill_agent_browsertest.cc",
+    "autofill_agent_form_interaction_browsertest.cc",
+    "form_autofill_issues_browsertest.cc",
+    "form_autofill_util_browsertest.cc",
+    "form_cache_browsertest.cc",
+    "form_tracker_browsertest.cc",
+    "html_based_username_detector_browsertest.cc",
+    "password_form_conversion_utils_browsertest.cc",
+  ]
+
+  deps = [
+    ":test_support",
+    "//base",
+    "//base/test:test_support",
+    "//components/autofill/content/common/mojom",
+    "//components/autofill/core/common",
+    "//components/autofill/core/common:test_support",
+    "//content/public/renderer",
+    "//google_apis:google_apis",
+    "//testing/gmock",
+    "//testing/gtest",
+    "//third_party/blink/public:blink",
   ]
 }

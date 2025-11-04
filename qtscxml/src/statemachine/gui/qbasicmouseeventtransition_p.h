@@ -18,6 +18,7 @@
 #include <QtGui/qevent.h>
 #include <QtStateMachine/qabstracttransition.h>
 #include <QtCore/private/qglobal_p.h>
+#include <private/qstatemachineglobal_p.h>
 
 QT_REQUIRE_CONFIG(qeventtransition);
 

@@ -155,6 +155,10 @@ protected:
 
     void throwRecursionDepthError() override;
 
+    virtual bool checkCustomParser(const QQmlJSScope::ConstPtr &scope);
+
+    void setScopeName(QQmlJSScope::Ptr &scope, QQmlJSScope::ScopeType type, const QString &name);
+
     QString m_implicitImportDirectory;
     QStringList m_qmldirFiles;
     QQmlJSScope::Ptr m_currentScope;
@@ -189,30 +193,53 @@ protected:
     QSet<QString> m_usedTypes;
 
     QList<UnfinishedBinding> m_bindings;
+    QSet<std::pair<const QQmlJSScope *, QString>> misplacedJSIdentifiers;
 
     // stores JS functions and Script bindings per scope (only the name). mimics
     // the content of QmlIR::Object::functionsAndExpressions
     QHash<QQmlJSScope::ConstPtr, QList<QString>> m_functionsAndExpressions;
 
-    struct FunctionOrExpressionIdentifier
+    template <bool scopeIsConst = true>
+    struct ScopeAndNameT
     {
-        QQmlJSScope::ConstPtr scope;
+        using Scope = std::conditional_t<scopeIsConst, QQmlJSScope::ConstPtr, QQmlJSScope::Ptr>;
+
+        ScopeAndNameT() = default;
+        ScopeAndNameT(const Scope &scope, const QString &name) : scope(scope), name(name) { }
+        ScopeAndNameT(const ScopeAndNameT &) = default;
+        ScopeAndNameT(ScopeAndNameT &&) = default;
+        ScopeAndNameT &operator=(const ScopeAndNameT &) = default;
+        ScopeAndNameT &operator=(ScopeAndNameT &&) = default;
+        ~ScopeAndNameT() = default;
+
+        // Create const from non-const
+        ScopeAndNameT(typename std::enable_if<scopeIsConst, ScopeAndNameT<false>>::type &nonConst)
+            : scope(nonConst.scope), name(nonConst.name)
+        {
+        }
+
+        friend bool operator==(const ScopeAndNameT &lhs, const ScopeAndNameT &rhs)
+        {
+            return lhs.scope == rhs.scope && lhs.name == rhs.name;
+        }
+        friend bool operator!=(const ScopeAndNameT &lhs, const ScopeAndNameT &rhs)
+        {
+            return !(lhs == rhs);
+        }
+        friend size_t qHash(const ScopeAndNameT &san, size_t seed = 0)
+        {
+            return qHashMulti(seed, san.scope, san.name);
+        }
+
+        Scope scope;
         QString name;
-        friend bool operator==(const FunctionOrExpressionIdentifier &x,
-                               const FunctionOrExpressionIdentifier &y)
-        {
-            return x.scope == y.scope && x.name == y.name;
-        }
-        friend bool operator!=(const FunctionOrExpressionIdentifier &x,
-                               const FunctionOrExpressionIdentifier &y)
-        {
-            return !(x == y);
-        }
-        friend size_t qHash(const FunctionOrExpressionIdentifier &x, size_t seed = 0)
-        {
-            return qHashMulti(seed, x.scope, x.name);
-        }
     };
+    using ConstScopeAndName = ScopeAndNameT<true>;
+    using ScopeAndName = ScopeAndNameT<false>;
+
+    using FunctionOrExpressionIdentifier = ConstScopeAndName;
+    using Property = ConstScopeAndName;
+    using Alias = ConstScopeAndName;
 
     // tells whether last-processed UiScriptBinding is truly a script binding
     bool m_thisScriptBindingIsJavaScript = false;
@@ -240,7 +267,7 @@ protected:
     template<typename ErrorHandler>
     bool checkTypeResolved(const QQmlJSScope::ConstPtr &type, ErrorHandler handle)
     {
-        if (type->isFullyResolved() || type->isInCustomParserParent())
+        if (type->isFullyResolved() || checkCustomParser(type))
             return true;
 
         // Note: ignore duplicates, but only after we are certain that the type
@@ -349,6 +376,8 @@ protected:
     QVector<QQmlJSScope::Ptr> m_objectDefinitionScopes;
 
     QHash<QQmlJSScope::Ptr, QVector<WithVisibilityScope<QString>>> m_propertyBindings;
+    QVector<Alias> m_aliasDefinitions;
+    QHash<Property, QList<Alias>> m_propertyAliases;
 
     QHash<QQmlJS::SourceLocation, QQmlJSMetaSignalHandler> m_signalHandlers;
     QSet<QQmlJSScope::ConstPtr> m_literalScopesToCheck;
@@ -356,11 +385,13 @@ protected:
     QStringList m_seenModuleQualifiers;
 
 private:
+    void registerTargetIntoImporter(const QQmlJSScope::Ptr &target);
     void checkSignal(
             const QQmlJSScope::ConstPtr &signalScope, const QQmlJS::SourceLocation &location,
             const QString &handlerName, const QStringList &handlerParameters);
     void importBaseModules();
     void resolveAliases();
+    void populatePropertyAliases();
     void resolveGroupProperties();
     void handleIdDeclaration(QQmlJS::AST::UiScriptBinding *scriptBinding);
 
@@ -374,6 +405,9 @@ private:
                               const QQmlJS::SourceLocation &location);
     void enterRootScope(QQmlJSScope::ScopeType type, const QString &name,
                            const QQmlJS::SourceLocation &location);
+
+    bool safeInsertJSIdentifier(QQmlJSScope::Ptr &scope, const QString &name,
+                                const QQmlJSScope::JavaScriptIdentifier &identifier);
 
     QList<QQmlJS::DiagnosticMessage> importFromHost(
             const QString &path, const QString &prefix, const QQmlJS::SourceLocation &location);

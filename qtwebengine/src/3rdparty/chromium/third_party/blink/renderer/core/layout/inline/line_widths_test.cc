@@ -27,12 +27,13 @@ LayoutUnit FragmentWidth(const InlineNode& node) {
 
 class LineWidthsTest : public RenderingTest {
  public:
-  absl::optional<LineWidths> ComputeLineWidths(InlineNode node) {
+  std::optional<LineWidths> ComputeLineWidths(InlineNode node) {
     const LayoutUnit width = FragmentWidth(node);
     ConstraintSpace space = ConstraintSpaceForAvailableSize(width);
     const ComputedStyle& style = node.Style();
     BoxFragmentBuilder container_builder(node, &style, space,
-                                         style.GetWritingDirection());
+                                         style.GetWritingDirection(),
+                                         /*previous_break_token=*/nullptr);
     SimpleInlineChildLayoutContext context(node, &container_builder);
     InlineLayoutAlgorithm algorithm(node, space, /*break_token*/ nullptr,
                                     /*column_spanner_path*/ nullptr, &context);
@@ -48,7 +49,7 @@ class LineWidthsTest : public RenderingTest {
     if (line_width.Set(node, opportunities)) {
       return line_width;
     }
-    return absl::nullopt;
+    return std::nullopt;
   }
 
  protected:
@@ -197,7 +198,7 @@ TEST_P(LineWidthsDataTest, Data) {
   )HTML",
                                   data.html));
   const InlineNode target = GetInlineNodeByElementId("target");
-  const absl::optional<LineWidths> line_widths = ComputeLineWidths(target);
+  const std::optional<LineWidths> line_widths = ComputeLineWidths(target);
   std::vector<int> actual_widths;
   if (line_widths) {
     const size_t size = data.widths.size() ? data.widths.size() : 3;

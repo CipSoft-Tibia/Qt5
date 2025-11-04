@@ -1,6 +1,6 @@
 // Copyright (C) 2023 The Qt Company Ltd.
 
-#include <QtTest>
+#include <QTest>
 #include <QtCore/qobject.h>
 #include <QtCore/qdir.h>
 #include <QtCore/qfile.h>

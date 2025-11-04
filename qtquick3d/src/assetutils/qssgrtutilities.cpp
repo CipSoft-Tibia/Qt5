@@ -234,7 +234,7 @@ QQuick3DTextureData *createRuntimeObject<QQuick3DTextureData>(QSSGSceneDesc::Tex
                 }
 
                 image.convertTo(targetFormat); // convert to a format mappable to QRhiTexture::Format
-                image.mirror(); // Flip vertically to the conventional Y-up orientation
+                image.flip(); // Flip vertically to the conventional Y-up orientation
 
                 const auto bytes = image.sizeInBytes();
                 obj->setSize(image.size());

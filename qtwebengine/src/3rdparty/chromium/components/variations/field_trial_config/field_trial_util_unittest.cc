@@ -2,6 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#ifdef UNSAFE_BUFFERS_BUILD
+// TODO: crbug.com/352691908 - Remove this and spanify to fix the errors.
+#pragma allow_unsafe_buffers
+#endif
+
 #include "components/variations/field_trial_config/field_trial_util.h"
 
 #include <map>
@@ -10,6 +15,8 @@
 #include <utility>
 
 #include "base/command_line.h"
+#include "base/containers/span.h"
+#include "base/memory/raw_span.h"
 #include "base/metrics/field_trial.h"
 #include "base/metrics/field_trial_params.h"
 #include "base/strings/utf_string_conversions.h"
@@ -25,6 +32,49 @@
 
 namespace variations {
 namespace {
+
+class ExperimentBuilder {
+ public:
+  ExperimentBuilder() {}
+
+  FieldTrialTestingExperiment Build() const {
+    return {
+        name,
+        platforms.data(),
+        platforms.size(),
+        form_factors.data(),
+        form_factors.size(),
+        is_low_end_device,
+        min_os_version,
+        params.data(),
+        params.size(),
+        enable_features.data(),
+        enable_features.size(),
+        disable_features.data(),
+        disable_features.size(),
+        forcing_flag,
+        override_ui_string.data(),
+        override_ui_string.size(),
+        hardware_classes.data(),
+        hardware_classes.size(),
+        exclude_hardware_classes.data(),
+        exclude_hardware_classes.size(),
+    };
+  }
+
+  const char* name = nullptr;
+  base::raw_span<const Study::Platform> platforms = {};
+  base::raw_span<const Study::FormFactor> form_factors = {};
+  std::optional<bool> is_low_end_device = std::nullopt;
+  const char* min_os_version = nullptr;
+  base::raw_span<const FieldTrialTestingExperimentParams> params = {};
+  base::raw_span<const char*> enable_features = {};
+  base::raw_span<const char*> disable_features = {};
+  const char* forcing_flag = nullptr;
+  base::raw_span<const OverrideUIString> override_ui_string = {};
+  base::raw_span<const char*> hardware_classes = {};
+  base::raw_span<const char*> exclude_hardware_classes = {};
+};
 
 class TestOverrideStringCallback {
  public:
@@ -55,7 +105,7 @@ class TestOverrideStringCallback {
   OverrideMap overrides_;
 };
 
-// TODO(crbug.com/1167566): Remove when fake VariationsServiceClient created.
+// TODO(crbug.com/40742801): Remove when fake VariationsServiceClient created.
 class TestVariationsServiceClient : public VariationsServiceClient {
  public:
   TestVariationsServiceClient() = default;
@@ -136,59 +186,26 @@ TEST_F(FieldTrialUtilTest, AssociateParamsFromFieldTrialConfig) {
   const Study::Platform platform = Study::PLATFORM_LINUX;
   const FieldTrialTestingExperimentParams array_kFieldTrialConfig_params_0[] =
       {{"x", "1"}, {"y", "2"}};
+  ExperimentBuilder study_0_experiment_0_builder;
+  study_0_experiment_0_builder.name = "TestGroup1";
+  study_0_experiment_0_builder.platforms = base::span_from_ref(platform);
+  study_0_experiment_0_builder.params = array_kFieldTrialConfig_params_0;
   const FieldTrialTestingExperiment array_kFieldTrialConfig_experiments_0[] = {
-      {"TestGroup1",
-       &platform,
-       1,
-       {},
-       0,
-       std::nullopt,
-       nullptr,
-       array_kFieldTrialConfig_params_0,
-       2,
-       nullptr,
-       0,
-       nullptr,
-       0,
-       nullptr,
-       nullptr,
-       0},
+      study_0_experiment_0_builder.Build(),
   };
   const FieldTrialTestingExperimentParams array_kFieldTrialConfig_params_1[] =
       {{"x", "3"}, {"y", "4"}};
+  ExperimentBuilder study_1_experiment_0_builder;
+  study_1_experiment_0_builder.name = "TestGroup2";
+  study_1_experiment_0_builder.platforms = base::span_from_ref(platform);
+  study_1_experiment_0_builder.params = array_kFieldTrialConfig_params_0;
+  ExperimentBuilder study_1_experiment_1_builder;
+  study_1_experiment_1_builder.name = "TestGroup2-2";
+  study_1_experiment_1_builder.platforms = base::span_from_ref(platform);
+  study_1_experiment_1_builder.params = array_kFieldTrialConfig_params_1;
   const FieldTrialTestingExperiment array_kFieldTrialConfig_experiments_1[] = {
-      {"TestGroup2",
-       &platform,
-       1,
-       {},
-       0,
-       std::nullopt,
-       nullptr,
-       array_kFieldTrialConfig_params_0,
-       2,
-       nullptr,
-       0,
-       nullptr,
-       0,
-       nullptr,
-       nullptr,
-       0},
-      {"TestGroup2-2",
-       &platform,
-       1,
-       {},
-       0,
-       std::nullopt,
-       nullptr,
-       array_kFieldTrialConfig_params_1,
-       2,
-       nullptr,
-       0,
-       nullptr,
-       0,
-       nullptr,
-       nullptr,
-       0},
+      study_1_experiment_0_builder.Build(),
+      study_1_experiment_1_builder.Build(),
   };
   const FieldTrialTestingStudy array_kFieldTrialConfig_studies[] = {
       {"TestTrial1", array_kFieldTrialConfig_experiments_0, 1},
@@ -259,64 +276,32 @@ TEST_F(FieldTrialUtilTest, FieldTrialConfigSkipOverridden) {
   const Study::Platform platform = Study::PLATFORM_LINUX;
 
   const char* enable_features_0[] = {"A"};
+  ExperimentBuilder experiment_0_builder;
+  experiment_0_builder.name = "TestGroup0";
+  experiment_0_builder.platforms = base::span_from_ref(platform);
+  experiment_0_builder.enable_features = enable_features_0;
   const FieldTrialTestingExperiment array_kFieldTrialConfig_experiments_0[] = {
-      {/*name=*/"TestGroup0",
-       /*platforms=*/&platform,
-       /*platforms_size=*/1,
-       /*form_factors=*/{},
-       /*form_factors_size=*/0,
-       /*is_low_end_device=*/std::nullopt,
-       /*min_os_version=*/nullptr,
-       /*params=*/nullptr,
-       /*params_size=*/0,
-       /*enable_features=*/enable_features_0,
-       /*enable_features_size=*/1,
-       /*disable_features=*/nullptr,
-       /*disable_features_size=*/0,
-       /*forcing_flag=*/nullptr,
-       /*override_ui_string=*/nullptr,
-       /*override_ui_string_size=*/0},
+      experiment_0_builder.Build(),
   };
 
   const char* disable_features_1[] = {"B"};
+  ExperimentBuilder experiment_1_builder;
+  experiment_1_builder.name = "TestGroup1";
+  experiment_1_builder.platforms = base::span_from_ref(platform);
+  experiment_1_builder.disable_features = disable_features_1;
   const FieldTrialTestingExperiment array_kFieldTrialConfig_experiments_1[] = {
-      {/*name=*/"TestGroup1",
-       /*platforms=*/&platform,
-       /*platforms_size=*/1,
-       /*form_factors=*/{},
-       /*form_factors_size=*/0,
-       /*is_low_end_device=*/std::nullopt,
-       /*min_os_version=*/nullptr,
-       /*params=*/nullptr,
-       /*params_size=*/0,
-       /*enable_features=*/nullptr,
-       /*enable_features_size=*/0,
-       /*disable_features=*/disable_features_1,
-       /*disable_features_size=*/1,
-       /*forcing_flag=*/nullptr,
-       /*override_ui_string=*/nullptr,
-       /*override_ui_string_size=*/0},
+      experiment_1_builder.Build(),
   };
 
   const char* enable_features2[] = {"C"};
   const char* disable_features_2[] = {"D"};
+  ExperimentBuilder experiment_2_builder;
+  experiment_2_builder.name = "TestGroup2";
+  experiment_2_builder.platforms = base::span_from_ref(platform);
+  experiment_0_builder.enable_features = enable_features2;
+  experiment_2_builder.disable_features = disable_features_2;
   const FieldTrialTestingExperiment array_kFieldTrialConfig_experiments_2[] = {
-      {/*name=*/"TestGroup2",
-       /*platforms=*/&platform,
-       /*platforms_size=*/1,
-       /*form_factors=*/{},
-       /*form_factors_size=*/0,
-       /*is_low_end_device=*/std::nullopt,
-       /*min_os_version=*/nullptr,
-       /*params=*/nullptr,
-       /*params_size=*/0,
-       /*enable_features=*/enable_features2,
-       /*enable_features_size=*/1,
-       /*disable_features=*/disable_features_2,
-       /*disable_features_size=*/1,
-       /*forcing_flag=*/nullptr,
-       /*override_ui_string=*/nullptr,
-       /*override_ui_string_size=*/0},
+      experiment_2_builder.Build(),
   };
 
   const FieldTrialTestingStudy array_kFieldTrialConfig_studies[] = {
@@ -377,23 +362,12 @@ TEST_F(FieldTrialUtilTest,
 
   for (size_t i = 0; i < std::size(all_platforms); ++i) {
     const Study::Platform platform = all_platforms[i];
+    ExperimentBuilder experiment_builder;
+    experiment_builder.name = "TestGroup";
+    experiment_builder.platforms = base::span_from_ref(platform);
+    experiment_builder.params = array_kFieldTrialConfig_params;
     const FieldTrialTestingExperiment array_kFieldTrialConfig_experiments[] = {
-        {"TestGroup",
-         &platform,
-         1,
-         {},
-         0,
-         std::nullopt,
-         nullptr,
-         array_kFieldTrialConfig_params,
-         2,
-         nullptr,
-         0,
-         nullptr,
-         0,
-         nullptr,
-         nullptr,
-         0},
+        experiment_builder.Build(),
     };
     const FieldTrialTestingStudy array_kFieldTrialConfig_studies[] = {
         {"TestTrial", array_kFieldTrialConfig_experiments, 1}
@@ -425,23 +399,12 @@ TEST_F(FieldTrialUtilTest,
   const Study::Platform platform = Study::PLATFORM_ANDROID;
   const FieldTrialTestingExperimentParams array_kFieldTrialConfig_params[] =
       {{"x", "1"}, {"y", "2"}};
+  ExperimentBuilder experiment_builder;
+  experiment_builder.name = "TestGroup";
+  experiment_builder.platforms = base::span_from_ref(platform);
+  experiment_builder.params = array_kFieldTrialConfig_params;
   const FieldTrialTestingExperiment array_kFieldTrialConfig_experiments[] = {
-      {"TestGroup",
-       &platform,
-       1,
-       {},
-       0,
-       std::nullopt,
-       nullptr,
-       array_kFieldTrialConfig_params,
-       2,
-       nullptr,
-       0,
-       nullptr,
-       0,
-       nullptr,
-       nullptr,
-       0},
+      experiment_builder.Build(),
   };
   const FieldTrialTestingStudy array_kFieldTrialConfig_studies[] =
       {{"TestTrial", array_kFieldTrialConfig_experiments, 1}};
@@ -469,23 +432,12 @@ TEST_F(FieldTrialUtilTest,
       {Study::PLATFORM_ANDROID, Study::PLATFORM_ANDROID_WEBVIEW};
   const FieldTrialTestingExperimentParams array_kFieldTrialConfig_params[] =
       {{"x", "1"}, {"y", "2"}};
+  ExperimentBuilder experiment_builder;
+  experiment_builder.name = "TestGroup";
+  experiment_builder.platforms = platforms;
+  experiment_builder.params = array_kFieldTrialConfig_params;
   const FieldTrialTestingExperiment array_kFieldTrialConfig_experiments[] = {
-      {"TestGroup",
-       platforms,
-       2,
-       {},
-       0,
-       std::nullopt,
-       nullptr,
-       array_kFieldTrialConfig_params,
-       2,
-       nullptr,
-       0,
-       nullptr,
-       0,
-       nullptr,
-       nullptr,
-       0},
+      experiment_builder.Build(),
   };
   const FieldTrialTestingStudy array_kFieldTrialConfig_studies[] =
       {{"TestTrial", array_kFieldTrialConfig_experiments, 1}};
@@ -522,10 +474,13 @@ TEST_F(FieldTrialUtilTest,
   };
   const FieldTrialTestingExperimentParams array_kFieldTrialConfig_params[] =
       {{"x", "1"}, {"y", "2"}};
+  ExperimentBuilder experiment_builder;
+  experiment_builder.name = "TestGroup";
+  experiment_builder.platforms = base::span_from_ref(platform);
+  experiment_builder.form_factors = form_factors;
+  experiment_builder.params = array_kFieldTrialConfig_params;
   const FieldTrialTestingExperiment array_kFieldTrialConfig_experiments[] = {
-      {"TestGroup", &platform, 1, form_factors, std::size(form_factors),
-       std::nullopt, nullptr, array_kFieldTrialConfig_params, 2, nullptr, 0,
-       nullptr, 0, nullptr, nullptr, 0},
+      experiment_builder.Build(),
   };
   const FieldTrialTestingStudy array_kFieldTrialConfig_studies[] =
       {{"TestTrial", array_kFieldTrialConfig_experiments, 1}};
@@ -557,10 +512,13 @@ TEST_F(FieldTrialUtilTest,
       variation_service_client_.GetCurrentFormFactor();
   const FieldTrialTestingExperimentParams array_kFieldTrialConfig_params[] =
         {{"x", "1"}, {"y", "2"}};
+  ExperimentBuilder experiment_builder;
+  experiment_builder.name = "TestGroup";
+  experiment_builder.platforms = base::span_from_ref(platform);
+  experiment_builder.form_factors = base::span_from_ref(form_factor);
+  experiment_builder.params = array_kFieldTrialConfig_params;
   const FieldTrialTestingExperiment array_kFieldTrialConfig_experiments[] = {
-      {"TestGroup", &platform, 1, &form_factor, 1, std::nullopt, nullptr,
-       array_kFieldTrialConfig_params, 2, nullptr, 0, nullptr, 0, nullptr,
-       nullptr, 0},
+      experiment_builder.Build(),
   };
   const FieldTrialTestingStudy array_kFieldTrialConfig_studies[] = {
       {"TestTrial", array_kFieldTrialConfig_experiments, 1}
@@ -603,10 +561,13 @@ TEST_F(FieldTrialUtilTest,
       continue;
     const FieldTrialTestingExperimentParams array_kFieldTrialConfig_params[] =
         {{"x", "1"}, {"y", "2"}};
+    ExperimentBuilder experiment_builder;
+    experiment_builder.name = "TestGroup";
+    experiment_builder.platforms = base::span_from_ref(platform);
+    experiment_builder.form_factors = base::span_from_ref(form_factor);
+    experiment_builder.params = array_kFieldTrialConfig_params;
     const FieldTrialTestingExperiment array_kFieldTrialConfig_experiments[] = {
-        {"TestGroup", &platform, 1, &form_factor, 1, std::nullopt, nullptr,
-         array_kFieldTrialConfig_params, 2, nullptr, 0, nullptr, 0, nullptr,
-         nullptr, 0},
+        experiment_builder.Build(),
     };
     const FieldTrialTestingStudy array_kFieldTrialConfig_studies[] =
         {{"TestTrial", array_kFieldTrialConfig_experiments, 1}};
@@ -639,57 +600,23 @@ TEST_F(FieldTrialUtilTest, AssociateFeaturesFromFieldTrialConfig) {
   const char* disable_features[] = {"C", "D"};
 
   const Study::Platform platform = Study::PLATFORM_LINUX;
+  ExperimentBuilder study_0_experiment_0_builder;
+  study_0_experiment_0_builder.name = "TestGroup1";
+  study_0_experiment_0_builder.platforms = base::span_from_ref(platform);
+  study_0_experiment_0_builder.enable_features = enable_features;
   const FieldTrialTestingExperiment array_kFieldTrialConfig_experiments_0[] = {
-      {"TestGroup1",
-       &platform,
-       1,
-       {},
-       0,
-       std::nullopt,
-       nullptr,
-       nullptr,
-       0,
-       enable_features,
-       2,
-       nullptr,
-       0,
-       nullptr,
-       nullptr,
-       0},
+      study_0_experiment_0_builder.Build(),
   };
+  ExperimentBuilder study_1_experiment_0_builder;
+  study_1_experiment_0_builder.name = "TestGroup2";
+  study_1_experiment_0_builder.platforms = base::span_from_ref(platform);
+  study_1_experiment_0_builder.disable_features = disable_features;
+  ExperimentBuilder study_1_experiment_1_builder;
+  study_1_experiment_1_builder.name = "TestGroup2-2";
+  study_1_experiment_1_builder.platforms = base::span_from_ref(platform);
   const FieldTrialTestingExperiment array_kFieldTrialConfig_experiments_1[] = {
-      {"TestGroup2",
-       &platform,
-       1,
-       {},
-       0,
-       std::nullopt,
-       nullptr,
-       nullptr,
-       0,
-       nullptr,
-       0,
-       disable_features,
-       2,
-       nullptr,
-       nullptr,
-       0},
-      {"TestGroup2-2",
-       &platform,
-       1,
-       {},
-       0,
-       std::nullopt,
-       nullptr,
-       nullptr,
-       0,
-       nullptr,
-       0,
-       nullptr,
-       0,
-       nullptr,
-       nullptr,
-       0},
+      study_1_experiment_0_builder.Build(),
+      study_1_experiment_1_builder.Build(),
   };
 
   const FieldTrialTestingStudy array_kFieldTrialConfig_studies[] = {
@@ -723,106 +650,38 @@ TEST_F(FieldTrialUtilTest, AssociateFeaturesFromFieldTrialConfig) {
 
 TEST_F(FieldTrialUtilTest, AssociateForcingFlagsFromFieldTrialConfig) {
   const Study::Platform platform = Study::PLATFORM_LINUX;
+  ExperimentBuilder study_0_experiment_0_builder;
+  study_0_experiment_0_builder.name = "TestGroup1";
+  study_0_experiment_0_builder.platforms = base::span_from_ref(platform);
   const FieldTrialTestingExperiment array_kFieldTrialConfig_experiments_0[] = {
-      {"TestGroup1",
-       &platform,
-       1,
-       {},
-       0,
-       std::nullopt,
-       nullptr,
-       nullptr,
-       0,
-       nullptr,
-       0,
-       nullptr,
-       0,
-       nullptr,
-       nullptr,
-       0}};
-  const FieldTrialTestingExperiment array_kFieldTrialConfig_experiments_1[] = {
-      {"TestGroup2",
-       &platform,
-       1,
-       {},
-       0,
-       std::nullopt,
-       nullptr,
-       nullptr,
-       0,
-       nullptr,
-       0,
-       nullptr,
-       0,
-       nullptr,
-       nullptr,
-       0},
-      {"ForcedGroup2",
-       &platform,
-       1,
-       {},
-       0,
-       std::nullopt,
-       nullptr,
-       nullptr,
-       0,
-       nullptr,
-       0,
-       nullptr,
-       0,
-       "flag-2",
-       nullptr,
-       0},
+      study_0_experiment_0_builder.Build(),
   };
+  ExperimentBuilder study_1_experiment_0_builder;
+  study_1_experiment_0_builder.name = "TestGroup2";
+  study_1_experiment_0_builder.platforms = base::span_from_ref(platform);
+  ExperimentBuilder study_1_experiment_1_builder;
+  study_1_experiment_1_builder.name = "ForcedGroup2";
+  study_1_experiment_1_builder.platforms = base::span_from_ref(platform);
+  study_1_experiment_1_builder.forcing_flag = "flag-2";
+  const FieldTrialTestingExperiment array_kFieldTrialConfig_experiments_1[] = {
+      study_1_experiment_0_builder.Build(),
+      study_1_experiment_1_builder.Build(),
+  };
+  ExperimentBuilder study_2_experiment_0_builder;
+  study_2_experiment_0_builder.name = "TestGroup3";
+  study_2_experiment_0_builder.platforms = base::span_from_ref(platform);
+  ExperimentBuilder study_2_experiment_1_builder;
+  study_2_experiment_1_builder.name = "ForcedGroup3";
+  study_2_experiment_1_builder.platforms = base::span_from_ref(platform);
+  study_2_experiment_1_builder.forcing_flag = "flag-3";
+  ExperimentBuilder study_2_experiment_2_builder;
+  study_2_experiment_2_builder.name = "ForcedGroup3-2";
+  study_2_experiment_2_builder.platforms = base::span_from_ref(platform);
+  study_2_experiment_2_builder.forcing_flag = "flag-3-2";
   const FieldTrialTestingExperiment array_kFieldTrialConfig_experiments_2[] = {
-      {"TestGroup3",
-       &platform,
-       1,
-       {},
-       0,
-       std::nullopt,
-       nullptr,
-       nullptr,
-       0,
-       nullptr,
-       0,
-       nullptr,
-       0,
-       nullptr,
-       nullptr,
-       0},
-      {"ForcedGroup3",
-       &platform,
-       1,
-       {},
-       0,
-       std::nullopt,
-       nullptr,
-       nullptr,
-       0,
-       nullptr,
-       0,
-       nullptr,
-       0,
-       "flag-3",
-       nullptr,
-       0},
-      {"ForcedGroup3-2",
-       &platform,
-       1,
-       {},
-       0,
-       std::nullopt,
-       nullptr,
-       nullptr,
-       0,
-       nullptr,
-       0,
-       nullptr,
-       0,
-       "flag-3-2",
-       nullptr,
-       0},
+      study_2_experiment_0_builder.Build(),
+      study_2_experiment_1_builder.Build(),
+      study_2_experiment_2_builder.Build(),
   };
   const FieldTrialTestingStudy array_kFieldTrialConfig_studies[] = {
       {"TestTrial1", array_kFieldTrialConfig_experiments_0, 1},
@@ -853,10 +712,14 @@ TEST_F(FieldTrialUtilTest,
         {{"x", "1"}, {"y", "2"}};
   const OverrideUIString array_kFieldTrialConfig_override_ui_string[] =
         {{1234, "test1"}, {5678, "test2"}};
+  ExperimentBuilder experiment_builder;
+  experiment_builder.name = "TestGroup";
+  experiment_builder.platforms = base::span_from_ref(platform);
+  experiment_builder.params = array_kFieldTrialConfig_params;
+  experiment_builder.override_ui_string =
+      array_kFieldTrialConfig_override_ui_string;
   const FieldTrialTestingExperiment array_kFieldTrialConfig_experiments[] = {
-      {"TestGroup", &platform, 1, nullptr, 0, std::nullopt, nullptr,
-       array_kFieldTrialConfig_params, 2, nullptr, 0, nullptr, 0, nullptr,
-       array_kFieldTrialConfig_override_ui_string, 2},
+      experiment_builder.Build(),
   };
   const FieldTrialTestingStudy array_kFieldTrialConfig_studies[] = {
       {"TestTrial", array_kFieldTrialConfig_experiments, 1}
@@ -895,21 +758,13 @@ TEST_F(FieldTrialUtilTest,
   const Study::Platform platform = Study::PLATFORM_WINDOWS;
   const FieldTrialTestingExperimentParams array_kFieldTrialConfig_params[] = {
       {"x", "1"}, {"y", "2"}};
+  ExperimentBuilder experiment_builder;
+  experiment_builder.name = "TestGroup";
+  experiment_builder.platforms = base::span_from_ref(platform);
+  experiment_builder.params = array_kFieldTrialConfig_params;
+  experiment_builder.is_low_end_device = base::SysInfo::IsLowEndDevice();
   const FieldTrialTestingExperiment array_kFieldTrialConfig_experiments[] = {
-      {"TestGroup",
-       &platform,
-       1,
-       {},
-       0,
-       base::SysInfo::IsLowEndDevice(),
-       nullptr,
-       array_kFieldTrialConfig_params,
-       2,
-       nullptr,
-       0,
-       nullptr,
-       0,
-       nullptr},
+      experiment_builder.Build(),
   };
   const FieldTrialTestingStudy array_kFieldTrialConfig_studies[] = {
       {"TestTrial", array_kFieldTrialConfig_experiments, 1}};
@@ -938,21 +793,13 @@ TEST_F(FieldTrialUtilTest,
   const Study::Platform platform = Study::PLATFORM_WINDOWS;
   const FieldTrialTestingExperimentParams array_kFieldTrialConfig_params[] = {
       {"x", "1"}, {"y", "2"}};
+  ExperimentBuilder experiment_builder;
+  experiment_builder.name = "TestGroup";
+  experiment_builder.platforms = base::span_from_ref(platform);
+  experiment_builder.params = array_kFieldTrialConfig_params;
+  experiment_builder.is_low_end_device = !base::SysInfo::IsLowEndDevice();
   const FieldTrialTestingExperiment array_kFieldTrialConfig_experiments[] = {
-      {"TestGroup",
-       &platform,
-       1,
-       {},
-       0,
-       !base::SysInfo::IsLowEndDevice(),
-       nullptr,
-       array_kFieldTrialConfig_params,
-       2,
-       nullptr,
-       0,
-       nullptr,
-       0,
-       nullptr},
+      experiment_builder.Build(),
   };
   const FieldTrialTestingStudy array_kFieldTrialConfig_studies[] = {
       {"TestTrial", array_kFieldTrialConfig_experiments, 1}};
@@ -980,21 +827,13 @@ TEST_F(FieldTrialUtilTest,
   const Study::Platform platform = Study::PLATFORM_WINDOWS;
   const FieldTrialTestingExperimentParams array_kFieldTrialConfig_params[] = {
       {"x", "1"}, {"y", "2"}};
+  ExperimentBuilder experiment_builder;
+  experiment_builder.name = "TestGroup";
+  experiment_builder.platforms = base::span_from_ref(platform);
+  experiment_builder.params = array_kFieldTrialConfig_params;
+  experiment_builder.min_os_version = min_os_version.c_str();
   const FieldTrialTestingExperiment array_kFieldTrialConfig_experiments[] = {
-      {"TestGroup",
-       &platform,
-       1,
-       {},
-       0,
-       std::nullopt,
-       min_os_version.c_str(),
-       array_kFieldTrialConfig_params,
-       2,
-       nullptr,
-       0,
-       nullptr,
-       0,
-       nullptr},
+      experiment_builder.Build(),
   };
   const FieldTrialTestingStudy array_kFieldTrialConfig_studies[] = {
       {"TestTrial", array_kFieldTrialConfig_experiments, 1}};
@@ -1027,21 +866,13 @@ TEST_F(FieldTrialUtilTest,
   const Study::Platform platform = Study::PLATFORM_WINDOWS;
   const FieldTrialTestingExperimentParams array_kFieldTrialConfig_params[] = {
       {"x", "1"}, {"y", "2"}};
+  ExperimentBuilder experiment_builder;
+  experiment_builder.name = "TestGroup";
+  experiment_builder.platforms = base::span_from_ref(platform);
+  experiment_builder.params = array_kFieldTrialConfig_params;
+  experiment_builder.min_os_version = min_os_version.c_str();
   const FieldTrialTestingExperiment array_kFieldTrialConfig_experiments[] = {
-      {"TestGroup",
-       &platform,
-       1,
-       {},
-       0,
-       std::nullopt,
-       min_os_version.c_str(),
-       array_kFieldTrialConfig_params,
-       2,
-       nullptr,
-       0,
-       nullptr,
-       0,
-       nullptr},
+      experiment_builder.Build(),
   };
   const FieldTrialTestingStudy array_kFieldTrialConfig_studies[] = {
       {"TestTrial", array_kFieldTrialConfig_experiments, 1}};
@@ -1074,4 +905,145 @@ TEST_F(FieldTrialUtilTest, TestEscapeValue) {
   // Make sure the EscapeValue function is the inverse of base::UnescapeValue.
   EXPECT_EQ(str, base::UnescapeValue(escaped_str));
 }
+
+#if BUILDFLAG(IS_CHROMEOS_ASH) || BUILDFLAG(IS_ANDROID)
+TEST_F(FieldTrialUtilTest,
+       AssociateParamsFromFieldTrialConfigWithHardwareClassMatch) {
+  std::string hardware_class = ClientFilterableState::GetHardwareClass();
+  std::string unmatched_hardware_class = hardware_class + "foo";
+  const char* classes[] = {
+      hardware_class.c_str(),
+      unmatched_hardware_class.c_str(),
+  };
+
+  Study::Platform platform = Study::PLATFORM_CHROMEOS;
+  ExperimentBuilder experiment_builder;
+  experiment_builder.name = "TestGroup";
+  experiment_builder.platforms = base::span_from_ref(platform);
+  experiment_builder.hardware_classes = classes;
+  FieldTrialTestingExperiment experiment = experiment_builder.Build();
+
+  FieldTrialTestingStudy study = {
+      /*name=*/"TestTrial",
+      /*experiments=*/&experiment,
+      /*experiments_size=*/1,
+  };
+
+  FieldTrialTestingConfig config = {
+      /*studies=*/&study,
+      /*studies_size=*/1,
+  };
+
+  base::FeatureList feature_list;
+  AssociateParamsFromFieldTrialConfig(
+      config, override_callback_.callback(), platform,
+      variation_service_client_.GetCurrentFormFactor(), &feature_list);
+
+  EXPECT_EQ("TestGroup", base::FieldTrialList::FindFullName("TestTrial"));
+}
+
+TEST_F(FieldTrialUtilTest,
+       AssociateParamsFromFieldTrialConfigWithHardwareClassMismatch) {
+  std::string hardware_class = ClientFilterableState::GetHardwareClass();
+  std::string unmatched_hardware_class = hardware_class + "foo";
+  const char* classes[] = {
+      unmatched_hardware_class.c_str(),
+  };
+
+  Study::Platform platform = Study::PLATFORM_CHROMEOS;
+  ExperimentBuilder experiment_builder;
+  experiment_builder.name = "TestGroup";
+  experiment_builder.platforms = base::span_from_ref(platform);
+  experiment_builder.hardware_classes = classes;
+  FieldTrialTestingExperiment experiment = experiment_builder.Build();
+
+  FieldTrialTestingStudy study = {
+      /*name=*/"TestTrial",
+      /*experiments=*/&experiment,
+      /*experiments_size=*/1,
+  };
+
+  FieldTrialTestingConfig config = {
+      /*studies=*/&study,
+      /*studies_size=*/1,
+  };
+
+  base::FeatureList feature_list;
+  AssociateParamsFromFieldTrialConfig(
+      config, override_callback_.callback(), platform,
+      variation_service_client_.GetCurrentFormFactor(), &feature_list);
+
+  EXPECT_EQ("", base::FieldTrialList::FindFullName("TestTrial"));
+}
+
+TEST_F(FieldTrialUtilTest,
+       AssociateParamsFromFieldTrialConfigWithExcludHardwareClassMatch) {
+  std::string hardware_class = ClientFilterableState::GetHardwareClass();
+  std::string unmatched_hardware_class = hardware_class + "foo";
+  const char* classes[] = {
+      hardware_class.c_str(),
+      unmatched_hardware_class.c_str(),
+  };
+
+  Study::Platform platform = Study::PLATFORM_CHROMEOS;
+  ExperimentBuilder experiment_builder;
+  experiment_builder.name = "TestGroup";
+  experiment_builder.platforms = base::span_from_ref(platform);
+  experiment_builder.exclude_hardware_classes = classes;
+  FieldTrialTestingExperiment experiment = experiment_builder.Build();
+
+  FieldTrialTestingStudy study = {
+      /*name=*/"TestTrial",
+      /*experiments=*/&experiment,
+      /*experiments_size=*/1,
+  };
+
+  FieldTrialTestingConfig config = {
+      /*studies=*/&study,
+      /*studies_size=*/1,
+  };
+
+  base::FeatureList feature_list;
+  AssociateParamsFromFieldTrialConfig(
+      config, override_callback_.callback(), platform,
+      variation_service_client_.GetCurrentFormFactor(), &feature_list);
+
+  EXPECT_EQ("", base::FieldTrialList::FindFullName("TestTrial"));
+}
+
+TEST_F(FieldTrialUtilTest,
+       AssociateParamsFromFieldTrialConfigWithExcludHardwareClassMismatch) {
+  std::string hardware_class = ClientFilterableState::GetHardwareClass();
+  std::string unmatched_hardware_class = hardware_class + "foo";
+  const char* classes[] = {
+      unmatched_hardware_class.c_str(),
+  };
+
+  Study::Platform platform = Study::PLATFORM_CHROMEOS;
+  ExperimentBuilder experiment_builder;
+  experiment_builder.name = "TestGroup";
+  experiment_builder.platforms = base::span_from_ref(platform);
+  experiment_builder.exclude_hardware_classes = classes;
+  FieldTrialTestingExperiment experiment = experiment_builder.Build();
+
+  FieldTrialTestingStudy study = {
+      /*name=*/"TestTrial",
+      /*experiments=*/&experiment,
+      /*experiments_size=*/1,
+  };
+
+  FieldTrialTestingConfig config = {
+      /*studies=*/&study,
+      /*studies_size=*/1,
+  };
+
+  base::FeatureList feature_list;
+  AssociateParamsFromFieldTrialConfig(
+      config, override_callback_.callback(), platform,
+      variation_service_client_.GetCurrentFormFactor(), &feature_list);
+
+  EXPECT_EQ("TestGroup", base::FieldTrialList::FindFullName("TestTrial"));
+}
+#endif  // BUILDFLAG(IS_CHROMEOS_ASH) || BUILDFLAG(IS_ANDROID)
+
 }  // namespace variations

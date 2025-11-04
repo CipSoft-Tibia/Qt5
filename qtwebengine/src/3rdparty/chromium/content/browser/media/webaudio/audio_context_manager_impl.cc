@@ -51,6 +51,7 @@ AudioContextManagerImpl::AudioContextManagerImpl(
       clock_(base::DefaultTickClock::GetInstance()) {}
 
 AudioContextManagerImpl::~AudioContextManagerImpl() {
+#if !BUILDFLAG(IS_QTWEBENGINE)
   // Takes care pending "audible start" times.
   base::TimeTicks now = clock_->NowTicks();
   for (const auto& entry : pending_audible_durations_) {
@@ -58,14 +59,17 @@ AudioContextManagerImpl::~AudioContextManagerImpl() {
       RecordAudibleTime(now - entry.second);
   }
   pending_audible_durations_.clear();
+#endif  // !BUILDFLAG(IS_QTWEBENGINE)
 }
 
 void AudioContextManagerImpl::AudioContextAudiblePlaybackStarted(
     int32_t audio_context_id) {
+#if !BUILDFLAG(IS_QTWEBENGINE)
   DCHECK(pending_audible_durations_[audio_context_id].is_null());
 
   // Keeps track of the start audible time for this context.
   pending_audible_durations_[audio_context_id] = clock_->NowTicks();
+#endif  // !BUILDFLAG(IS_QTWEBENGINE)
 
   static_cast<RenderFrameHostImpl&>(render_frame_host())
       .AudioContextPlaybackStarted(audio_context_id);
@@ -73,6 +77,7 @@ void AudioContextManagerImpl::AudioContextAudiblePlaybackStarted(
 
 void AudioContextManagerImpl::AudioContextAudiblePlaybackStopped(
     int32_t audio_context_id) {
+#if !BUILDFLAG(IS_QTWEBENGINE)
   base::TimeTicks then = pending_audible_durations_[audio_context_id];
   DCHECK(!then.is_null());
 
@@ -80,11 +85,13 @@ void AudioContextManagerImpl::AudioContextAudiblePlaybackStopped(
 
   // Resets the context slot because the context is not audible.
   pending_audible_durations_[audio_context_id] = base::TimeTicks();
+#endif  // !BUILDFLAG(IS_QTWEBENGINE)
 
   static_cast<RenderFrameHostImpl&>(render_frame_host())
       .AudioContextPlaybackStopped(audio_context_id);
 }
 
+#if !BUILDFLAG(IS_QTWEBENGINE)
 void AudioContextManagerImpl::RecordAudibleTime(base::TimeDelta audible_time) {
   DCHECK(!audible_time.is_zero());
 
@@ -104,5 +111,6 @@ void AudioContextManagerImpl::RecordAudibleTime(base::TimeDelta audible_time) {
       .SetAudibleTime(GetBucketedTimeInMilliseconds(audible_time))
       .Record(ukm_recorder);
 }
+#endif  // !BUILDFLAG(IS_QTWEBENGINE)
 
 }  // namespace content

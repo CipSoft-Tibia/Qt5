@@ -28,7 +28,6 @@
 #include "src/tint/lang/core/ir/swizzle.h"
 
 #include "gmock/gmock.h"
-#include "gtest/gtest-spi.h"
 #include "src/tint/lang/core/ir/ir_helper_test.h"
 
 using namespace tint::core::fluent_types;  // NOLINT
@@ -37,12 +36,13 @@ namespace tint::core::ir {
 namespace {
 
 using IR_SwizzleTest = IRTestHelper;
+using IR_SwizzleDeathTest = IR_SwizzleTest;
 
 TEST_F(IR_SwizzleTest, SetsUsage) {
     auto* var = b.Var(ty.ptr<function, i32>());
     auto* a = b.Swizzle(mod.Types().i32(), var, {1u});
 
-    EXPECT_THAT(var->Result(0)->Usages(), testing::UnorderedElementsAre(Usage{a, 0u}));
+    EXPECT_THAT(var->Result(0)->UsagesUnsorted(), testing::UnorderedElementsAre(Usage{a, 0u}));
 }
 
 TEST_F(IR_SwizzleTest, Results) {
@@ -54,48 +54,48 @@ TEST_F(IR_SwizzleTest, Results) {
     EXPECT_EQ(a->Result(0)->Instruction(), a);
 }
 
-TEST_F(IR_SwizzleTest, Fail_NullType) {
-    EXPECT_FATAL_FAILURE(
+TEST_F(IR_SwizzleDeathTest, Fail_NullType) {
+    EXPECT_DEATH_IF_SUPPORTED(
         {
             Module mod;
             Builder b{mod};
             auto* var = b.Var(mod.Types().ptr<function, i32>());
             b.Swizzle(nullptr, var, {1u});
         },
-        "");
+        "internal compiler error");
 }
 
-TEST_F(IR_SwizzleTest, Fail_EmptyIndices) {
-    EXPECT_FATAL_FAILURE(
+TEST_F(IR_SwizzleDeathTest, Fail_EmptyIndices) {
+    EXPECT_DEATH_IF_SUPPORTED(
         {
             Module mod;
             Builder b{mod};
             auto* var = b.Var(mod.Types().ptr<function, i32>());
             b.Swizzle(mod.Types().i32(), var, tint::Empty);
         },
-        "");
+        "internal compiler error");
 }
 
-TEST_F(IR_SwizzleTest, Fail_TooManyIndices) {
-    EXPECT_FATAL_FAILURE(
+TEST_F(IR_SwizzleDeathTest, Fail_TooManyIndices) {
+    EXPECT_DEATH_IF_SUPPORTED(
         {
             Module mod;
             Builder b{mod};
             auto* var = b.Var(mod.Types().ptr<function, i32>());
             b.Swizzle(mod.Types().i32(), var, {1u, 1u, 1u, 1u, 1u});
         },
-        "");
+        "internal compiler error");
 }
 
-TEST_F(IR_SwizzleTest, Fail_IndexOutOfRange) {
-    EXPECT_FATAL_FAILURE(
+TEST_F(IR_SwizzleDeathTest, Fail_IndexOutOfRange) {
+    EXPECT_DEATH_IF_SUPPORTED(
         {
             Module mod;
             Builder b{mod};
             auto* var = b.Var(mod.Types().ptr<function, i32>());
             b.Swizzle(mod.Types().i32(), var, {4u});
         },
-        "");
+        "internal compiler error");
 }
 
 TEST_F(IR_SwizzleTest, Clone) {

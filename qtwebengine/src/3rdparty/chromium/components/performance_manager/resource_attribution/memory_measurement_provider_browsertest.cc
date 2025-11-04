@@ -15,6 +15,7 @@
 #include "components/performance_manager/public/graph/graph.h"
 #include "components/performance_manager/public/resource_attribution/query_results.h"
 #include "components/performance_manager/public/resource_attribution/resource_contexts.h"
+#include "components/performance_manager/resource_attribution/performance_manager_aliases.h"
 #include "components/performance_manager/test_support/performance_manager_browsertest_harness.h"
 #include "components/performance_manager/test_support/resource_attribution/gtest_util.h"
 #include "components/performance_manager/test_support/run_in_graph.h"
@@ -31,7 +32,7 @@
 #include "testing/gtest/include/gtest/gtest.h"
 #include "url/gurl.h"
 
-namespace performance_manager::resource_attribution {
+namespace resource_attribution {
 
 namespace {
 
@@ -46,9 +47,9 @@ using ::testing::Lt;
 using ::testing::Pair;
 
 class ResourceAttrMemoryMeasurementProviderBrowserTest
-    : public PerformanceManagerBrowserTestHarness {
+    : public performance_manager::PerformanceManagerBrowserTestHarness {
  protected:
-  using Super = PerformanceManagerBrowserTestHarness;
+  using Super = performance_manager::PerformanceManagerBrowserTestHarness;
 
   void OnGraphCreated(Graph* graph) override {
     memory_provider_ = std::make_unique<MemoryMeasurementProvider>(graph);
@@ -58,7 +59,7 @@ class ResourceAttrMemoryMeasurementProviderBrowserTest
   void TearDownOnMainThread() override {
     // Delete MemoryMeasurementProvider before tearing down the graph to avoid
     // dangling pointers.
-    RunInGraph([&] { memory_provider_.reset(); });
+    performance_manager::RunInGraph([&] { memory_provider_.reset(); });
     Super::TearDownOnMainThread();
   }
 
@@ -68,7 +69,7 @@ class ResourceAttrMemoryMeasurementProviderBrowserTest
     base::test::TestFuture<QueryResultMap> results_future;
     base::OnceCallback<void(QueryResultMap)> results_callback =
         results_future.GetSequenceBoundCallback();
-    RunInGraph([&](base::OnceClosure quit_closure) {
+    performance_manager::RunInGraph([&](base::OnceClosure quit_closure) {
       memory_provider_->RequestMemorySummary(
           std::move(results_callback).Then(std::move(quit_closure)));
     });
@@ -88,7 +89,7 @@ auto MemorySummaryResultIsPositive(MeasurementAlgorithm expected_algorithm) {
       AllOf(Gt(base::TimeTicks()), Lt(base::TimeTicks::Now()));
   return QueryResultsMatch<MemorySummaryResult>(AllOf(
 #if BUILDFLAG(IS_IOS)
-      // TODO(crbug.com/1506552): iOS doesn't support private_memory_footprint,
+      // TODO(crbug.com/40947218): iOS doesn't support private_memory_footprint,
       // so it's always 0.
       Field("private_footprint_kb", &MemorySummaryResult::private_footprint_kb,
             Eq(0u)),
@@ -250,4 +251,4 @@ IN_PROC_BROWSER_TEST_F(ResourceAttrMemoryMeasurementProviderBrowserTest,
 
 }  // namespace
 
-}  // namespace performance_manager::resource_attribution
+}  // namespace resource_attribution

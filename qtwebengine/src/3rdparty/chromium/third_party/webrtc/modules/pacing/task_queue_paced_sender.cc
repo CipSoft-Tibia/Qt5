@@ -11,12 +11,27 @@
 #include "modules/pacing/task_queue_paced_sender.h"
 
 #include <algorithm>
+#include <cstddef>
+#include <cstdint>
+#include <memory>
+#include <optional>
 #include <utility>
+#include <vector>
 
 #include "absl/cleanup/cleanup.h"
+#include "api/field_trials_view.h"
+#include "api/sequence_checker.h"
 #include "api/task_queue/pending_task_safety_flag.h"
+#include "api/task_queue/task_queue_base.h"
 #include "api/transport/network_types.h"
+#include "api/units/data_rate.h"
+#include "api/units/data_size.h"
+#include "api/units/time_delta.h"
+#include "api/units/timestamp.h"
+#include "modules/pacing/pacing_controller.h"
+#include "modules/rtp_rtcp/source/rtp_packet_to_send.h"
 #include "rtc_base/checks.h"
+#include "rtc_base/numerics/exp_filter.h"
 #include "rtc_base/trace_event.h"
 
 namespace webrtc {
@@ -50,6 +65,11 @@ TaskQueuePacedSender::~TaskQueuePacedSender() {
 void TaskQueuePacedSender::SetSendBurstInterval(TimeDelta burst_interval) {
   RTC_DCHECK_RUN_ON(task_queue_);
   pacing_controller_.SetSendBurstInterval(burst_interval);
+}
+
+void TaskQueuePacedSender::SetAllowProbeWithoutMediaPacket(bool allow) {
+  RTC_DCHECK_RUN_ON(task_queue_);
+  pacing_controller_.SetAllowProbeWithoutMediaPacket(allow);
 }
 
 void TaskQueuePacedSender::EnsureStarted() {
@@ -94,8 +114,10 @@ void TaskQueuePacedSender::EnqueuePackets(
   task_queue_->PostTask(
       SafeTask(safety_.flag(), [this, packets = std::move(packets)]() mutable {
         RTC_DCHECK_RUN_ON(task_queue_);
+        { //msvc22 complains about class redefinition, put it in own scope
         TRACE_EVENT0(TRACE_DISABLED_BY_DEFAULT("webrtc"),
                      "TaskQueuePacedSender::EnqueuePackets");
+        }
         for (auto& packet : packets) {
           TRACE_EVENT2(TRACE_DISABLED_BY_DEFAULT("webrtc"),
                        "TaskQueuePacedSender::EnqueuePackets::Loop",
@@ -155,7 +177,7 @@ DataSize TaskQueuePacedSender::QueueSizeData() const {
   return GetStats().queue_size;
 }
 
-absl::optional<Timestamp> TaskQueuePacedSender::FirstSentPacketTime() const {
+std::optional<Timestamp> TaskQueuePacedSender::FirstSentPacketTime() const {
   return GetStats().first_sent_packet_time;
 }
 

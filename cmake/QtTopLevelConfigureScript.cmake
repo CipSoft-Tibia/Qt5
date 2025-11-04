@@ -7,7 +7,6 @@ cmake_minimum_required(VERSION 3.16)
 macro(qt_tl_setup_include_paths)
     list(APPEND CMAKE_MODULE_PATH
         "${CMAKE_CURRENT_LIST_DIR}"
-        "${CMAKE_CURRENT_LIST_DIR}/3rdparty/cmake"
     )
     include(QtTopLevelHelpers)
 endmacro()

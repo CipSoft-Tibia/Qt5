@@ -90,7 +90,7 @@ public:
 
 class QQuickStackViewAttachedPrivate : public QObjectPrivate
 //#if QT_CONFIG(quick_viewtransitions)
-        , public QQuickItemChangeListener
+        , public QSafeQuickItemChangeListener<QQuickStackViewAttachedPrivate>
 //#endif
 {
     Q_DECLARE_PUBLIC(QQuickStackViewAttached)

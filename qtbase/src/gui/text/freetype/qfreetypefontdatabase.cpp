@@ -26,8 +26,6 @@
 
 QT_BEGIN_NAMESPACE
 
-Q_DECLARE_LOGGING_CATEGORY(lcFontDb)
-
 using namespace Qt::StringLiterals;
 
 void QFreeTypeFontDatabase::populateFontDatabase()
@@ -103,6 +101,7 @@ void QFreeTypeFontDatabase::addNamedInstancesForFace(void *face_,
                                                      QFont::Stretch stretch,
                                                      QFont::Style style,
                                                      bool fixedPitch,
+                                                     bool isColor,
                                                      const QSupportedWritingSystems &writingSystems,
                                                      const QByteArray &fileName,
                                                      const QByteArray &fontData)
@@ -183,6 +182,7 @@ void QFreeTypeFontDatabase::addNamedInstancesForFace(void *face_,
                                 true,
                                 0,
                                 fixedPitch,
+                                isColor,
                                 writingSystems,
                                 variantFontFile);
                }
@@ -223,6 +223,12 @@ QStringList QFreeTypeFontDatabase::addTTFile(const QByteArray &fontData, const Q
             break;
         }
         numFaces = face->num_faces;
+
+#if (FREETYPE_MAJOR*10000 + FREETYPE_MINOR*100 + FREETYPE_PATCH) >= 20501
+        bool isColor = FT_HAS_COLOR(face);
+#else
+        bool isColor = false;
+#endif
 
         QFont::Weight weight = QFont::Normal;
 
@@ -337,9 +343,9 @@ QStringList QFreeTypeFontDatabase::addTTFile(const QByteArray &fontData, const Q
             applicationFont->properties.append(properties);
         }
 
-        registerFont(family, styleName, QString(), weight, style, stretch, true, true, 0, fixedPitch, writingSystems, fontFile);
+        registerFont(family, styleName, QString(), weight, style, stretch, true, true, 0, fixedPitch, isColor, writingSystems, fontFile);
 
-        addNamedInstancesForFace(face, index, family, styleName, weight, stretch, style, fixedPitch, writingSystems, file, fontData);
+        addNamedInstancesForFace(face, index, family, styleName, weight, stretch, style, fixedPitch, isColor, writingSystems, file, fontData);
 
         families.append(family);
 
@@ -347,6 +353,15 @@ QStringList QFreeTypeFontDatabase::addTTFile(const QByteArray &fontData, const Q
         ++index;
     } while (index < numFaces);
     return families;
+}
+
+bool QFreeTypeFontDatabase::supportsColrv0Fonts() const
+{
+#if (FREETYPE_MAJOR*10000 + FREETYPE_MINOR*100 + FREETYPE_PATCH) >= 21000
+    return true;
+#else
+    return false;
+#endif
 }
 
 bool QFreeTypeFontDatabase::supportsVariableApplicationFonts() const

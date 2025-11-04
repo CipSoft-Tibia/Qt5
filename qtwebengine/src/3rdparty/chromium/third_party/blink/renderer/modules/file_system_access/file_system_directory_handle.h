@@ -8,13 +8,16 @@
 #include "mojo/public/cpp/bindings/pending_remote.h"
 #include "third_party/blink/public/mojom/file_system_access/file_system_access_directory_handle.mojom-blink.h"
 #include "third_party/blink/renderer/bindings/core/v8/async_iterable.h"
+#include "third_party/blink/renderer/bindings/core/v8/script_promise.h"
 #include "third_party/blink/renderer/bindings/modules/v8/v8_async_iterator_file_system_directory_handle.h"
 #include "third_party/blink/renderer/modules/file_system_access/file_system_handle.h"
 #include "third_party/blink/renderer/platform/bindings/exception_state.h"
 #include "third_party/blink/renderer/platform/mojo/heap_mojo_remote.h"
+#include "third_party/blink/renderer/platform/wtf/casting.h"
 
 namespace blink {
-
+class FileSystemDirectoryHandle;
+class FileSystemFileHandle;
 class FileSystemGetDirectoryOptions;
 class FileSystemGetFileOptions;
 class FileSystemRemoveOptions;
@@ -32,22 +35,23 @@ class FileSystemDirectoryHandle final
 
   bool isDirectory() const override { return true; }
 
-  ScriptPromise getFileHandle(ScriptState*,
-                              const String& name,
-                              const FileSystemGetFileOptions*,
-                              ExceptionState&);
-  ScriptPromise getDirectoryHandle(ScriptState*,
-                                   const String& name,
-                                   const FileSystemGetDirectoryOptions*,
-                                   ExceptionState&);
-  ScriptPromise removeEntry(ScriptState*,
-                            const String& name,
-                            const FileSystemRemoveOptions*,
-                            ExceptionState&);
+  ScriptPromise<FileSystemFileHandle> getFileHandle(
+      ScriptState*,
+      const String& name,
+      const FileSystemGetFileOptions*,
+      ExceptionState&);
+  ScriptPromise<FileSystemDirectoryHandle> getDirectoryHandle(
+      ScriptState*,
+      const String& name,
+      const FileSystemGetDirectoryOptions*,
+      ExceptionState&);
+  ScriptPromise<IDLUndefined> removeEntry(ScriptState*,
+                                          const String& name,
+                                          const FileSystemRemoveOptions*,
+                                          ExceptionState&);
 
-  ScriptPromise resolve(ScriptState*,
-                        FileSystemHandle* possible_child,
-                        ExceptionState&);
+  ScriptPromise<IDLNullable<IDLSequence<IDLUSVString>>>
+  resolve(ScriptState*, FileSystemHandle* possible_child, ExceptionState&);
 
   mojo::PendingRemote<mojom::blink::FileSystemAccessTransferToken> Transfer()
       override;
@@ -99,6 +103,13 @@ class FileSystemDirectoryHandle final
       ExceptionState& exception_state) override;
 
   HeapMojoRemote<mojom::blink::FileSystemAccessDirectoryHandle> mojo_ptr_;
+};
+
+template <>
+struct DowncastTraits<FileSystemDirectoryHandle> {
+  static bool AllowFrom(const FileSystemHandle& handle) {
+    return handle.isDirectory();
+  }
 };
 
 }  // namespace blink

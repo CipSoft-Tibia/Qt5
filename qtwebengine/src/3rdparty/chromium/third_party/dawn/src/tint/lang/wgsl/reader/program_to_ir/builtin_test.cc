@@ -25,11 +25,8 @@
 // OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-#include "gmock/gmock.h"
-#include "src/tint/lang/core/constant/scalar.h"
-#include "src/tint/lang/wgsl/ast/case_selector.h"
-#include "src/tint/lang/wgsl/ast/int_literal_expression.h"
-#include "src/tint/lang/wgsl/helpers/ir_program_test.h"
+#include "src/tint/lang/core/ir/disassembler.h"
+#include "src/tint/lang/wgsl/reader/program_to_ir/ir_program_test.h"
 
 namespace tint::wgsl::reader {
 namespace {
@@ -46,12 +43,12 @@ TEST_F(ProgramToIRBuiltinTest, EmitExpression_Builtin) {
     auto m = Build();
     ASSERT_EQ(m, Success);
 
-    EXPECT_EQ(Disassemble(m.Get()), R"(%b1 = block {  # root
+    EXPECT_EQ(core::ir::Disassembler(m.Get()).Plain(), R"($B1: {  # root
   %i:ptr<private, f32, read_write> = var, 1.0f
 }
 
-%test_function = @compute @workgroup_size(1, 1, 1) func():void -> %b2 {
-  %b2 = block {
+%test_function = @compute @workgroup_size(1, 1, 1) func():void {
+  $B2: {
     %3:f32 = load %i
     %4:f32 = asin %3
     %tint_symbol:f32 = let %4

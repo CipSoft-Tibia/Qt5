@@ -4,24 +4,26 @@
 
 from __future__ import annotations
 
-import logging
+import functools
 import os
-import pathlib
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Tuple
 
-from .posix import PosixPlatform
+from crossbench import path as pth
+from crossbench.plt.base import SubprocessError
+from crossbench.plt.posix import PosixPlatform
+from crossbench.plt.remote import RemotePlatformMixin
 
 
 class LinuxPlatform(PosixPlatform):
-  SEARCH_PATHS = (
-      pathlib.Path("."),
-      pathlib.Path("/usr/local/sbin"),
-      pathlib.Path("/usr/local/bin"),
-      pathlib.Path("/usr/sbin"),
-      pathlib.Path("/usr/bin"),
-      pathlib.Path("/sbin"),
-      pathlib.Path("/bin"),
-      pathlib.Path("/opt/google"),
+  SEARCH_PATHS: Tuple[pth.RemotePath, ...] = (
+      pth.RemotePath("."),
+      pth.RemotePath("/usr/local/sbin"),
+      pth.RemotePath("/usr/local/bin"),
+      pth.RemotePath("/usr/sbin"),
+      pth.RemotePath("/usr/bin"),
+      pth.RemotePath("/sbin"),
+      pth.RemotePath("/bin"),
+      pth.RemotePath("/opt/google"),
   )
 
   @property
@@ -35,31 +37,26 @@ class LinuxPlatform(PosixPlatform):
   def check_system_monitoring(self, disable: bool = False) -> bool:
     return True
 
-  @property
-  def device(self) -> str:
-    if not self._device:
-      vendor = self.cat("/sys/devices/virtual/dmi/id/sys_vendor").strip()
-      product = self.cat("/sys/devices/virtual/dmi/id/product_name").strip()
-      self._device = f"{vendor} {product}"
-    return self._device
-
-  @property
-  def cpu(self) -> str:
-    if self._cpu:
-      return self._cpu
-
-    for line in self.cat("/proc/cpuinfo").splitlines():
-      if line.startswith("model name"):
-        _, self._cpu = line.split(":", maxsplit=2)
-        break
+  @functools.cached_property
+  def device(self) -> str:  #pylint: disable=invalid-overridden-method
     try:
-      _, max_core = self.cat("/sys/devices/system/cpu/possible").strip().split(
-          "-", maxsplit=1)
-      cores = int(max_core) + 1
-      self._cpu = f"{self._cpu} {cores} cores"
-    except Exception as e:
-      logging.debug("Failed to get detailed CPU stats: %s", e)
-    return self._cpu
+      id_dir = self.path("/sys/devices/virtual/dmi/id")
+      vendor = self.cat(id_dir / "sys_vendor").strip()
+      product = self.cat(id_dir / "product_name").strip()
+      return f"{vendor} {product}"
+    except (FileNotFoundError, SubprocessError):
+      return "UNKNOWN"
+
+  @functools.cached_property
+  def cpu(self) -> str:  #pylint: disable=invalid-overridden-method
+    cpu_str = "UNKNOWN"
+    for line in self.cat(self.path("/proc/cpuinfo")).splitlines():
+      if line.startswith("model name"):
+        _, cpu_str = line.split(":", maxsplit=2)
+        break
+    if cores_info := self._get_cpu_cores_info():
+      cpu_str = f"{cpu_str} {cores_info}"
+    return cpu_str
 
   @property
   def has_display(self) -> bool:
@@ -67,7 +64,7 @@ class LinuxPlatform(PosixPlatform):
 
   @property
   def is_battery_powered(self) -> bool:
-    if not self.is_remote:
+    if self.is_local:
       return super().is_battery_powered
     if self.which("on_ac_power"):
       return self.sh("on_ac_power", check=False).returncode == 1
@@ -80,15 +77,26 @@ class LinuxPlatform(PosixPlatform):
         details[info_bin] = self.sh_stdout(info_bin)
     return details
 
-  def search_binary(self, app_or_bin: pathlib.Path) -> Optional[pathlib.Path]:
-    if not app_or_bin.parts:
+  def search_binary(self,
+                    app_or_bin: pth.RemotePathLike) -> Optional[pth.RemotePath]:
+    app_or_bin_path: pth.RemotePath = self.path(app_or_bin)
+    if not app_or_bin_path.parts:
       raise ValueError("Got empty path")
-    if result_path := self.which(str(app_or_bin)):
-      assert self.exists(result_path), f"{result_path} does not exist."
+    if result_path := self.which(app_or_bin_path):
+      if not self.exists(result_path):
+        raise RuntimeError(f"{result_path} does not exist.")
       return result_path
     for path in self.SEARCH_PATHS:
       # Recreate Path object for easier pyfakefs testing
-      result_path = pathlib.Path(path) / app_or_bin
+      result_path = self.path(path) / app_or_bin_path
       if self.exists(result_path):
         return result_path
     return None
+
+  def screenshot(self, result_path: pth.RemotePath) -> None:
+    # TODO: maybe use imagemagick's 'import' as more portable alternative
+    self.sh("gnome-screenshot", "--file", result_path)
+
+
+class RemoteLinuxPlatform(RemotePlatformMixin, LinuxPlatform):
+  pass

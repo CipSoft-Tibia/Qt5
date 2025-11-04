@@ -1,5 +1,6 @@
 // Copyright (C) 2023 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef NATIVE_SKIA_OUTPUT_DEVICE_H
 #define NATIVE_SKIA_OUTPUT_DEVICE_H
@@ -60,12 +61,8 @@ public:
 
     // Overridden from SkiaOutputDevice.
     void SetFrameSinkId(const viz::FrameSinkId &frame_sink_id) override;
-    bool Reshape(const SkImageInfo &image_info,
-                 const gfx::ColorSpace &color_space,
-                 int sample_count,
-                 float device_scale_factor,
-                 gfx::OverlayTransform transform) override;
-    void Present(const absl::optional<gfx::Rect>& update_rect,
+    bool Reshape(const ReshapeParams &params) override;
+    void Present(const std::optional<gfx::Rect>& update_rect,
                  BufferPresentedCallback feedback,
                  viz::OutputSurfaceFrame frame) override;
     void EnsureBackbuffer() override;
@@ -77,6 +74,7 @@ public:
     void swapFrame() override;
     void waitForTexture() override;
     void releaseTexture() override;
+    bool hasResources() override;
     void releaseResources() override;
     bool textureIsFlipped() override;
     QSize size() override;
@@ -118,10 +116,10 @@ protected:
         void consumeFence();
 
         sk_sp<SkImage> skImage();
-#if defined(USE_OZONE)
+#if BUILDFLAG(IS_OZONE)
         scoped_refptr<gfx::NativePixmap> nativePixmap();
 #elif defined(Q_OS_WIN)
-        absl::optional<gl::DCLayerOverlayImage> overlayImage() const;
+        std::optional<gl::DCLayerOverlayImage> overlayImage() const;
 #elif defined(Q_OS_MACOS)
         gfx::ScopedIOSurface ioSurface() const;
 #endif

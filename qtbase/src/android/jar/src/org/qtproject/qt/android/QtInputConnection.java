@@ -70,6 +70,7 @@ class QtInputConnection extends BaseInputConnection
 
     private static final String QtTAG = "QtInputConnection";
 
+    private boolean m_duringBatchEdit = false;
     private final QtInputConnectionListener m_qtInputConnectionListener;
 
     class HideKeyboardRunnable implements Runnable {
@@ -109,10 +110,12 @@ class QtInputConnection extends BaseInputConnection
 
     private void setClosing(boolean closing)
     {
-        if (closing)
-            m_view.postDelayed(new HideKeyboardRunnable(), KEYBOARD_CHECK_DELAY_MS);
-        else if (m_qtInputConnectionListener != null)
-            m_qtInputConnectionListener.onSetClosing(false);
+        if (android.os.Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
+            if (closing)
+                m_view.postDelayed(new HideKeyboardRunnable(), KEYBOARD_CHECK_DELAY_MS);
+            else if (m_qtInputConnectionListener != null)
+                m_qtInputConnectionListener.onSetClosing(false);
+        }
     }
 
     QtInputConnection(QtEditText targetView, QtInputConnectionListener listener)
@@ -126,7 +129,7 @@ class QtInputConnection extends BaseInputConnection
 
     void restartImmInput()
     {
-        if (QtNativeInputConnection.fullscreenMode()) {
+        if (QtNativeInputConnection.fullscreenMode() && !m_duringBatchEdit) {
             if (m_imm != null)
                 m_imm.restartInput(m_view);
         }
@@ -137,6 +140,7 @@ class QtInputConnection extends BaseInputConnection
     public boolean beginBatchEdit()
     {
         setClosing(false);
+        m_duringBatchEdit = true;
         return QtNativeInputConnection.beginBatchEdit();
     }
 
@@ -146,17 +150,19 @@ class QtInputConnection extends BaseInputConnection
         QtNativeInputConnection.reportFullscreenMode(enabled);
         // Always ignored on calling editor.
         // Always false on Android 8 and later, true with earlier.
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
-            return false;
-
-        return true;
+        return Build.VERSION.SDK_INT < Build.VERSION_CODES.O;
     }
 
     @Override
     public boolean endBatchEdit()
     {
         setClosing(false);
-        return QtNativeInputConnection.endBatchEdit();
+        boolean ret = QtNativeInputConnection.endBatchEdit();
+        if (m_duringBatchEdit) {
+            m_duringBatchEdit = false;
+            restartImmInput();
+        }
+        return ret;
     }
 
     @Override
@@ -170,15 +176,18 @@ class QtInputConnection extends BaseInputConnection
     public boolean commitText(CharSequence text, int newCursorPosition)
     {
         setClosing(false);
+        boolean result = QtNativeInputConnection.commitText(text.toString(), newCursorPosition);
         restartImmInput();
-        return QtNativeInputConnection.commitText(text.toString(), newCursorPosition);
+        return result;
     }
 
     @Override
     public boolean deleteSurroundingText(int leftLength, int rightLength)
     {
         setClosing(false);
-        return QtNativeInputConnection.deleteSurroundingText(leftLength, rightLength);
+        boolean result = QtNativeInputConnection.deleteSurroundingText(leftLength, rightLength);
+        restartImmInput();
+        return result;
     }
 
     @Override
@@ -311,7 +320,9 @@ class QtInputConnection extends BaseInputConnection
     public boolean setComposingText(CharSequence text, int newCursorPosition)
     {
         setClosing(false);
-        return QtNativeInputConnection.setComposingText(text.toString(), newCursorPosition);
+        boolean result = QtNativeInputConnection.setComposingText(text.toString(), newCursorPosition);
+        restartImmInput();
+        return result;
     }
 
     @TargetApi(33)
@@ -354,6 +365,8 @@ class QtInputConnection extends BaseInputConnection
     public boolean setSelection(int start, int end)
     {
         setClosing(false);
-        return QtNativeInputConnection.setSelection(start, end);
+        boolean result = QtNativeInputConnection.setSelection(start, end);
+        restartImmInput();
+        return result;
     }
 }

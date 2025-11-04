@@ -5,10 +5,10 @@
 #ifndef UI_OZONE_PUBLIC_OVERLAY_SURFACE_CANDIDATE_H_
 #define UI_OZONE_PUBLIC_OVERLAY_SURFACE_CANDIDATE_H_
 
+#include <optional>
 #include <vector>
 
 #include "base/component_export.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "third_party/abseil-cpp/absl/types/variant.h"
 #include "third_party/skia/include/core/SkColor.h"
 #include "ui/gfx/buffer_types.h"
@@ -21,6 +21,7 @@
 #include "ui/gfx/native_pixmap.h"
 #include "ui/gfx/overlay_priority_hint.h"
 #include "ui/gfx/overlay_transform.h"
+#include "ui/gfx/overlay_type.h"
 
 namespace ui {
 
@@ -65,7 +66,7 @@ class COMPONENT_EXPORT(OZONE_BASE) OverlaySurfaceCandidate {
   gfx::RectF crop_rect;
   // If the quad is clipped, the clip rect in the target content space after
   // composition.
-  absl::optional<gfx::Rect> clip_rect;
+  std::optional<gfx::Rect> clip_rect;
   // If the quad doesn't require blending.
   bool is_opaque = false;
   // Opacity of the overlay independent of buffer alpha. When rendered:
@@ -89,7 +90,10 @@ class COMPONENT_EXPORT(OZONE_BASE) OverlaySurfaceCandidate {
   // Specifies the rounded corners of overlay in radii.
   gfx::RRectF rounded_corners;
   // Specifies the background color of the overlay.
-  absl::optional<SkColor> background_color;
+  std::optional<SkColor> background_color;
+  // Specifies the type of of the overlay, which is proposed by a similarly
+  // named strategy.
+  gfx::OverlayType overlay_type = gfx::OverlayType::kSimple;
 };
 
 using OverlaySurfaceCandidateList = std::vector<OverlaySurfaceCandidate>;

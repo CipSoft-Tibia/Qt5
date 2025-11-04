@@ -29,6 +29,7 @@ class CdpTarget extends Target_js_1.Target {
     #targetInfo;
     #targetManager;
     #sessionFactory;
+    #childTargets = new Set();
     _initializedDeferred = Deferred_js_1.Deferred.create();
     _isClosedDeferred = Deferred_js_1.Deferred.create();
     _targetId;
@@ -53,16 +54,25 @@ class CdpTarget extends Target_js_1.Target {
         const session = this._session();
         if (!session) {
             return await this.createCDPSession().then(client => {
-                return Page_js_1.CdpPage._create(client, this, false, null);
+                return Page_js_1.CdpPage._create(client, this, null);
             });
         }
-        return await Page_js_1.CdpPage._create(session, this, false, null);
+        return await Page_js_1.CdpPage._create(session, this, null);
     }
     _subtype() {
         return this.#targetInfo.subtype;
     }
     _session() {
         return this.#session;
+    }
+    _addChildTarget(target) {
+        this.#childTargets.add(target);
+    }
+    _removeChildTarget(target) {
+        this.#childTargets.delete(target);
+    }
+    _childTargets() {
+        return this.#childTargets;
     }
     _sessionFactory() {
         if (!this.#sessionFactory) {
@@ -114,13 +124,13 @@ class CdpTarget extends Target_js_1.Target {
     }
     browser() {
         if (!this.#browserContext) {
-            throw new Error('browserContext is not initialised');
+            throw new Error('browserContext is not initialized');
         }
         return this.#browserContext.browser();
     }
     browserContext() {
         if (!this.#browserContext) {
-            throw new Error('browserContext is not initialised');
+            throw new Error('browserContext is not initialized');
         }
         return this.#browserContext;
     }
@@ -158,10 +168,8 @@ exports.CdpTarget = CdpTarget;
 class PageTarget extends CdpTarget {
     #defaultViewport;
     pagePromise;
-    #ignoreHTTPSErrors;
-    constructor(targetInfo, session, browserContext, targetManager, sessionFactory, ignoreHTTPSErrors, defaultViewport) {
+    constructor(targetInfo, session, browserContext, targetManager, sessionFactory, defaultViewport) {
         super(targetInfo, session, browserContext, targetManager, sessionFactory);
-        this.#ignoreHTTPSErrors = ignoreHTTPSErrors;
         this.#defaultViewport = defaultViewport ?? undefined;
     }
     _initialize() {
@@ -195,7 +203,7 @@ class PageTarget extends CdpTarget {
             this.pagePromise = (session
                 ? Promise.resolve(session)
                 : this._sessionFactory()(/* isAutoAttachEmulated=*/ false)).then(client => {
-                return Page_js_1.CdpPage._create(client, this, this.#ignoreHTTPSErrors, this.#defaultViewport ?? null);
+                return Page_js_1.CdpPage._create(client, this, this.#defaultViewport ?? null);
             });
         }
         return (await this.pagePromise) ?? null;
@@ -228,7 +236,7 @@ class WorkerTarget extends CdpTarget {
             this.#workerPromise = (session
                 ? Promise.resolve(session)
                 : this._sessionFactory()(/* isAutoAttachEmulated=*/ false)).then(client => {
-                return new WebWorker_js_1.CdpWebWorker(client, this._getTargetInfo().url, () => { } /* consoleAPICalled */, () => { } /* exceptionThrown */);
+                return new WebWorker_js_1.CdpWebWorker(client, this._getTargetInfo().url, this._targetId, this.type(), () => { } /* consoleAPICalled */, () => { } /* exceptionThrown */);
             });
         }
         return await this.#workerPromise;

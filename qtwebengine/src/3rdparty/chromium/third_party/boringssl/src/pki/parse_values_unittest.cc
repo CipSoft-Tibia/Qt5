@@ -8,7 +8,8 @@
 
 #include <gtest/gtest.h>
 
-namespace bssl::der::test {
+BSSL_NAMESPACE_BEGIN
+namespace der::test {
 
 namespace {
 
@@ -317,7 +318,7 @@ TEST(ParseValuesTest, ParseBitStringEmptyNoUnusedBits) {
   ASSERT_TRUE(bit_string.has_value());
 
   EXPECT_EQ(0u, bit_string->unused_bits());
-  EXPECT_EQ(0u, bit_string->bytes().Length());
+  EXPECT_EQ(0u, bit_string->bytes().size());
 
   EXPECT_FALSE(bit_string->AssertsBit(0));
   EXPECT_FALSE(bit_string->AssertsBit(1));
@@ -349,7 +350,7 @@ TEST(ParseValuesTest, ParseBitStringSevenOneBits) {
   ASSERT_TRUE(bit_string.has_value());
 
   EXPECT_EQ(1u, bit_string->unused_bits());
-  EXPECT_EQ(1u, bit_string->bytes().Length());
+  EXPECT_EQ(1u, bit_string->bytes().size());
   EXPECT_EQ(0xFE, bit_string->bytes()[0]);
 
   EXPECT_TRUE(bit_string->AssertsBit(0));
@@ -461,4 +462,5 @@ TEST(ParseValuesTest, ParseUniversalString) {
       ParseUniversalString(der::Input(invalid_non_4_multiple_der), &s));
 }
 
-}  // namespace bssl::der::test
+}  // namespace der::test
+BSSL_NAMESPACE_END

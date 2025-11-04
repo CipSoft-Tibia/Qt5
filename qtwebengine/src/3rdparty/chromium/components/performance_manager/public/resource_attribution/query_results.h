@@ -13,7 +13,7 @@
 #include "components/performance_manager/public/resource_attribution/resource_contexts.h"
 #include "components/performance_manager/public/resource_attribution/resource_types.h"
 
-namespace performance_manager::resource_attribution {
+namespace resource_attribution {
 
 // The Resource Attribution result and metadata structs described in
 // https://bit.ly/resource-attribution-api#heading=h.k8fjwkwxxdj6.
@@ -42,6 +42,16 @@ struct ResultMetadata {
   // Method used to assign measurement results to the resource context.
   MeasurementAlgorithm algorithm;
 
+  // Constructor ensures both `measurement_time` and `algorithm` are set.
+  //
+  // Since there's no default constructor, any ResultType class containing
+  // metadata also can't be default-constructed. This ensures none of them have
+  // an invalid or uninitialized state. Use std::optional<ResultType> when
+  // default-construction is needed.
+  ResultMetadata(base::TimeTicks measurement_time,
+                 MeasurementAlgorithm algorithm)
+      : measurement_time(measurement_time), algorithm(algorithm) {}
+
   friend constexpr auto operator<=>(const ResultMetadata&,
                                     const ResultMetadata&) = default;
   friend constexpr bool operator==(const ResultMetadata&,
@@ -64,6 +74,12 @@ struct CPUTimeResult {
   // SysInfo::NumberOfProcessors(), the same as
   // ProcessMetrics::GetPlatformIndependentCPUUsage().
   base::TimeDelta cumulative_cpu;
+
+  // Total time the context spent on CPU in a background process between
+  // `start_time` and `metadata.measurement_time`. Time spent on CPU in a
+  // foreground process doesn't affect this, even if the context itself was
+  // backgrounded.
+  base::TimeDelta cumulative_background_cpu;
 
   friend constexpr auto operator<=>(const CPUTimeResult&,
                                     const CPUTimeResult&) = default;
@@ -98,6 +114,6 @@ struct QueryResults {
 // A map from a ResourceContext to all query results received for that context.
 using QueryResultMap = std::map<ResourceContext, QueryResults>;
 
-}  // namespace performance_manager::resource_attribution
+}  // namespace resource_attribution
 
 #endif  // COMPONENTS_PERFORMANCE_MANAGER_PUBLIC_RESOURCE_ATTRIBUTION_QUERY_RESULTS_H_

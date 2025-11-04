@@ -37,7 +37,8 @@ QT_BEGIN_NAMESPACE
 
 class QQmlOpenMetaObjectType;
 class QQuickPathViewAttached;
-class QQuickPathViewPrivate : public QQuickItemPrivate, public QQuickItemChangeListener
+class QQuickPathViewPrivate : public QQuickItemPrivate,
+                              public QSafeQuickItemChangeListener<QQuickPathViewPrivate>
 {
     Q_DECLARE_PUBLIC(QQuickPathView)
 

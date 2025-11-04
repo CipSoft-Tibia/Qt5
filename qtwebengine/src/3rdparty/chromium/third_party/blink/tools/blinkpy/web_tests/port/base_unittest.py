@@ -26,13 +26,16 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+import hashlib
 import json
-import mock
 import operator
 import optparse
 import time
+import textwrap
 import unittest
+from unittest import mock
 
+from blinkpy.common.checkout.git import FileStatus, FileStatusType
 from blinkpy.common.host_mock import MockHost
 from blinkpy.common.system.executive_mock import MockExecutive
 from blinkpy.common.system.log_testing import LoggingTestCase
@@ -139,6 +142,91 @@ class PortTest(LoggingTestCase):
         self.assertEqual(
             port.output_filename(test_file, '-actual', '.png'),
             'fast/test_include=HTML._-actual.png')
+
+    def test_parse_output_filename(self):
+        port = self.make_port()
+
+        location, base_path = port.parse_output_filename('passes/text.html')
+        self.assertEqual(location.platform, '')
+        self.assertEqual(location.flag_specific, '')
+        self.assertEqual(location.virtual_suite, '')
+        self.assertEqual(base_path, 'passes/text.html')
+
+        location, base_path = port.parse_output_filename(
+            '/mock-checkout/third_party/blink/web_tests/'
+            'flag-specific/fake-flag')
+        self.assertEqual(location.platform, '')
+        self.assertEqual(location.flag_specific, 'fake-flag')
+        self.assertEqual(location.virtual_suite, '')
+        self.assertEqual(base_path, '')
+
+        location, base_path = port.parse_output_filename(
+            'platform/mac/virtual/fake-vts/passes/text.html')
+        self.assertEqual(location.platform, 'mac')
+        self.assertEqual(location.flag_specific, '')
+        self.assertEqual(location.virtual_suite, 'fake-vts')
+        self.assertEqual(base_path, 'passes/text.html')
+
+        with self.assertRaises(ValueError):
+            port.parse_output_filename('/mock-checkout/not/web_tests')
+
+    def test_test_from_output_filename_html(self):
+        port = self.make_port()
+        virtual_suite = {
+            'prefix': 'fake-vts',
+            'platforms': [],
+            'bases': ['fast'],
+            'args': ['--fake-flag'],
+        }
+        fs = port.host.filesystem
+        fs.write_text_file(MOCK_WEB_TESTS + 'fast/test.html', '')
+        fs.write_text_file(MOCK_WEB_TESTS + 'VirtualTestSuites',
+                           json.dumps([virtual_suite]))
+
+        self.assertEqual(
+            port.test_from_output_filename('fast/test-expected.txt'),
+            'fast/test.html')
+        self.assertEqual(
+            port.test_from_output_filename('fast/test-expected.png'),
+            'fast/test.html')
+        self.assertEqual(
+            port.test_from_output_filename(
+                'virtual/fake-vts/fast/test-expected.png'),
+            'virtual/fake-vts/fast/test.html')
+        self.assertIsNone(
+            port.test_from_output_filename('fast/does-not-exist-expected.txt'))
+
+    def test_test_from_output_filename_wpt_variants(self):
+        port = self.make_port()
+        port.set_option_default('manifest_update', False)
+        manifest = {
+            'items': {
+                'testharness': {
+                    'has-variants.html': [
+                        '0123abcd',
+                        ['has-variants.html?a', {}],
+                        ['has-variants.html?b', {}],
+                    ],
+                },
+            },
+        }
+        fs = port.host.filesystem
+        fs.write_text_file(MOCK_WEB_TESTS + 'external/wpt/MANIFEST.json',
+                           json.dumps(manifest))
+        fs.write_text_file(MOCK_WEB_TESTS + 'VirtualTestSuites',
+                           json.dumps([]))
+
+        self.assertEqual(
+            port.test_from_output_filename(
+                'external/wpt/has-variants_a-expected.txt'),
+            'external/wpt/has-variants.html?a')
+        self.assertEqual(
+            port.test_from_output_filename(
+                'external/wpt/has-variants_b-expected.txt'),
+            'external/wpt/has-variants.html?b')
+        self.assertIsNone(
+            port.test_from_output_filename(
+                'external/wpt/has-variants-expected.txt'))
 
     def test_expected_baselines_basic(self):
         port = self.make_port(port_name='foo')
@@ -538,18 +626,6 @@ class PortTest(LoggingTestCase):
         self.assertEqual(list(port.expectations_dict().values()),
                          ['content1\n', 'content2\n'])
 
-    def test_additional_driver_flags_for_chrome(self):
-        port = self.make_port()
-        port.set_option_default('driver_name', 'chrome')
-        flags = port.additional_driver_flags()
-        self.assertNotIn('--run-web-tests', flags)
-        self.assertIn('--enable-blink-test-features', flags)
-        ignore_certs_flags = [
-            flag for flag in flags
-            if flag.startswith('--ignore-certificate-errors-spki-list=')
-        ]
-        self.assertEqual(len(ignore_certs_flags), 1)
-
     def test_flag_specific_expectations(self):
         port = self.make_port(port_name='foo')
         port.host.filesystem.remove(MOCK_WEB_TESTS + 'TestExpectations')
@@ -766,6 +842,119 @@ class PortTest(LoggingTestCase):
         self.assertEqual(len(port.host.filesystem.written_files), 1)
         self.assertEqual(len(port.host.executive.calls), 1)
 
+    def test_should_update_manifest_no_cached_digest(self):
+        port = self.make_port(with_tests=True)
+        fs = port.host.filesystem
+        fs.write_text_file(f'{MOCK_WEB_TESTS}external/wpt/MANIFEST.json', '{}')
+
+        mock_git = mock.Mock()
+        mock_git.run.side_effect = lambda command: {
+            'rev-parse': '012345\n',
+            'ls-files': '',
+        }[command[0]]
+        mock_git.changed_files.return_value = {
+            'third_party/blink/web_tests/external/wpt/deleted.html':
+            FileStatus(FileStatusType.DELETE),
+        }
+
+        with mock.patch.object(port.host, 'git', return_value=mock_git):
+            self.assertTrue(port.should_update_manifest('external/wpt'))
+        digest_path = ('/mock-checkout/third_party/wpt_tools/wpt/'
+                       '.wptcache/external/wpt/digest')
+        digest = self._wpt_digest(f"""\
+            012345
+            {MOCK_WEB_TESTS}external/wpt/deleted.html:
+            """)
+        self.assertEqual(fs.read_text_file(digest_path), digest,
+                         'cached digest should be updated')
+
+    def test_should_update_manifest_cached_digest_same(self):
+        port = self.make_port(with_tests=True)
+        fs = port.host.filesystem
+        digest_path = ('/mock-checkout/third_party/wpt_tools/wpt/'
+                       '.wptcache/external/wpt/digest')
+        digest = self._wpt_digest(f"""\
+            012345
+            {MOCK_WEB_TESTS}external/wpt/uncommitted.html:3f786850e387550fdab836ed7e6dc881de23001b
+            {MOCK_WEB_TESTS}external/wpt/untracked.html:89e6c98d92887913cadf06b2adb97f26cde4849b
+            """)
+        fs.write_text_file(digest_path, digest)
+        fs.write_text_file(f'{MOCK_WEB_TESTS}external/wpt/MANIFEST.json', '{}')
+        fs.write_text_file(f'{MOCK_WEB_TESTS}external/wpt/uncommitted.html',
+                           'a\n')
+        fs.write_text_file(f'{MOCK_WEB_TESTS}external/wpt/untracked.html',
+                           'b\n')
+
+        mock_git = mock.Mock()
+        mock_git.run.side_effect = lambda command: {
+            'rev-parse':
+            '012345\n',
+            'ls-files':
+            'third_party/blink/web_tests/external/wpt/untracked.html\x00',
+        }[command[0]]
+        mock_git.changed_files.return_value = {
+            'third_party/blink/web_tests/external/wpt/uncommitted.html':
+            FileStatus(FileStatusType.ADD),
+        }
+
+        with mock.patch.object(port.host, 'git', return_value=mock_git):
+            self.assertFalse(port.should_update_manifest('external/wpt'))
+        self.assertEqual(fs.read_text_file(digest_path), digest,
+                         'cached digest should be the same')
+        mock_git.run.assert_has_calls([
+            mock.call([
+                'rev-parse',
+                'HEAD:third_party/blink/web_tests/external/wpt',
+            ]),
+            mock.call([
+                'ls-files',
+                '--other',
+                '--exclude-standard',
+                '-z',
+                'HEAD',
+                f'{MOCK_WEB_TESTS}external/wpt',
+            ]),
+        ])
+        mock_git.changed_files.assert_called_once_with(
+            path=f'{MOCK_WEB_TESTS}external/wpt')
+
+    def test_should_update_manifest_cached_digest_different(self):
+        port = self.make_port(with_tests=True)
+        fs = port.host.filesystem
+        digest_path = ('/mock-checkout/third_party/wpt_tools/wpt/'
+                       '.wptcache/wpt_internal/digest')
+        digest = self._wpt_digest(f"""\
+            012345
+            {MOCK_WEB_TESTS}wpt_internal/changed.html:3f786850e387550fdab836ed7e6dc881de23001b
+            """)
+        fs.write_text_file(digest_path, digest)
+        fs.write_text_file(f'{MOCK_WEB_TESTS}wpt_internal/MANIFEST.json', '{}')
+        # `changed.html` had contents 'a\n'.
+        fs.write_text_file(f'{MOCK_WEB_TESTS}wpt_internal/changed.html', 'b\n')
+
+        mock_git = mock.Mock()
+        mock_git.run.side_effect = lambda command: {
+            'rev-parse': '012345\n',
+            'ls-files': '',
+        }[command[0]]
+        mock_git.changed_files.return_value = {
+            'third_party/blink/web_tests/wpt_internal/changed.html':
+            FileStatus(FileStatusType.MODIFY),
+        }
+
+        with mock.patch.object(port.host, 'git', return_value=mock_git):
+            self.assertTrue(port.should_update_manifest('wpt_internal'))
+        digest = self._wpt_digest(f"""\
+            012345
+            {MOCK_WEB_TESTS}wpt_internal/changed.html:89e6c98d92887913cadf06b2adb97f26cde4849b
+            """)
+        self.assertEqual(fs.read_text_file(digest_path), digest,
+                         'cached digest should be updated')
+
+    def _wpt_digest(self, raw_preimage: str) -> str:
+        return hashlib.sha256(
+            textwrap.dedent(raw_preimage).encode()).hexdigest()
+
     def test_find_none_if_not_in_manifest(self):
         port = self.make_port(with_tests=True)
         add_manifest_to_mock_filesystem(port)
@@ -902,6 +1091,24 @@ class PortTest(LoggingTestCase):
             'virtual/virtual_console/external/wpt/console/console-is-a-namespace.any.worker.html'
         ])
         self.assertLessEqual(all_virtual_console, set(port.tests()))
+
+    def test_virtual_wpt_tests_paths_with_generated_bases(self):
+        port = self.make_port(with_tests=True)
+        add_manifest_to_mock_filesystem(port)
+
+        self.assertEqual(
+            {
+                'virtual/generated_wpt/external/wpt/html/parse.html?run_type=uri',
+                'virtual/generated_wpt/external/wpt/console/console-is-a-namespace.any.html',
+            }, set(port.tests(['virtual/generated_wpt/'])))
+
+        all_tests = port.tests()
+        self.assertIn(
+            'virtual/generated_wpt/external/wpt/html/parse.html?run_type=uri',
+            all_tests)
+        self.assertIn(
+            'virtual/generated_wpt/external/wpt/console/console-is-a-namespace.any.html',
+            all_tests)
 
     def test_virtual_test_paths(self):
         port = self.make_port(with_tests=True)
@@ -1129,6 +1336,30 @@ class PortTest(LoggingTestCase):
         self.assertFalse(
             port.is_slow_wpt_test('/dom/ranges/Range-attributes-slow.html'))
 
+    def test_is_testharness_test_wpt(self):
+        port = self.make_port(with_tests=True)
+        add_manifest_to_mock_filesystem(port)
+        self.assertTrue(
+            port.is_testharness_test(
+                'external/wpt/dom/ranges/Range-attributes.html'))
+        self.assertFalse(
+            port.is_testharness_test(
+                'external/wpt/portals/portals-no-frame-crash.html'))
+
+    def test_is_testhanress_test_legacy(self):
+        port = self.make_port(with_tests=True)
+        fs = port.host.filesystem
+        fs.write_text_file(
+            fs.join(port.web_tests_dir(), 'testharness.html'),
+            '<html><script src="../../resources/testharness.js"></script>')
+        fs.write_text_file(
+            fs.join(port.web_tests_dir(), 'not-testharness.html'),
+            '<html><script src="../../resources/js-test.js"></script>')
+
+        self.assertTrue(port.is_testharness_test('testharness.html'))
+        self.assertFalse(port.is_testharness_test('not-testharness.html'))
+        self.assertFalse(port.is_testharness_test('does-not-exist.html'))
+
     def test_get_wpt_fuzzy_metadata_for_non_wpt_test(self):
         port = self.make_port(with_tests=True)
 
@@ -1255,6 +1486,7 @@ class PortTest(LoggingTestCase):
 
     def test_reference_files(self):
         port = self.make_port(with_tests=True)
+        port.set_option_default('manifest_update', False)
         port.host.filesystem.write_text_file(
             MOCK_WEB_TESTS + 'external/wpt/MANIFEST.json',
             json.dumps({
@@ -1622,39 +1854,42 @@ class PortTest(LoggingTestCase):
 
     def test_args_for_test(self):
         port = self.make_port(with_tests=True)
-        self.assertEqual(
-            ['--disable-threaded-compositing', '--disable-threaded-animation'],
-            port.args_for_test('non/virtual'))
-        self.assertEqual(
-            ['--disable-threaded-compositing', '--disable-threaded-animation'],
-            port.args_for_test('passes/text.html'))
-        self.assertEqual(
-            ['--disable-threaded-compositing', '--disable-threaded-animation'],
-            port.args_for_test('virtual/non-existing/test.html'))
+        self.assertEqual([
+            '--disable-threaded-compositing', '--disable-threaded-animation',
+            '--enable-unsafe-swiftshader'
+        ], port.args_for_test('non/virtual'))
+        self.assertEqual([
+            '--disable-threaded-compositing', '--disable-threaded-animation',
+            '--enable-unsafe-swiftshader'
+        ], port.args_for_test('passes/text.html'))
+        self.assertEqual([
+            '--disable-threaded-compositing', '--disable-threaded-animation',
+            '--enable-unsafe-swiftshader'
+        ], port.args_for_test('virtual/non-existing/test.html'))
 
         self.assertEqual([
             '--virtual-arg', '--disable-threaded-compositing',
-            '--disable-threaded-animation'
+            '--disable-threaded-animation', '--enable-unsafe-swiftshader'
         ], port.args_for_test('virtual/virtual_passes/passes/text.html'))
         self.assertEqual([
             '--virtual-arg', '--disable-threaded-compositing',
-            '--disable-threaded-animation'
+            '--disable-threaded-animation', '--enable-unsafe-swiftshader'
         ], port.args_for_test('virtual/virtual_passes/passes/any.html'))
         self.assertEqual([
             '--virtual-arg', '--disable-threaded-compositing',
-            '--disable-threaded-animation'
+            '--disable-threaded-animation', '--enable-unsafe-swiftshader'
         ], port.args_for_test('virtual/virtual_passes/passes/'))
         self.assertEqual([
             '--virtual-arg', '--disable-threaded-compositing',
-            '--disable-threaded-animation'
+            '--disable-threaded-animation', '--enable-unsafe-swiftshader'
         ], port.args_for_test('virtual/virtual_passes/passes'))
         self.assertEqual([
             '--virtual-arg', '--disable-threaded-compositing',
-            '--disable-threaded-animation'
+            '--disable-threaded-animation', '--enable-unsafe-swiftshader'
         ], port.args_for_test('virtual/virtual_passes/'))
         self.assertEqual([
             '--virtual-arg', '--disable-threaded-compositing',
-            '--disable-threaded-animation'
+            '--disable-threaded-animation', '--enable-unsafe-swiftshader'
         ], port.args_for_test('virtual/virtual_passes'))
 
     def test_missing_virtual_test_suite_file(self):
@@ -1733,6 +1968,72 @@ class PortTest(LoggingTestCase):
         self.assertTrue(
             port.skipped_due_to_exclusive_virtual_tests(
                 'virtual/v2/b2/test2.html'))
+
+    def test_virtual_exclusive_tests_with_generated_tests(self):
+        port = self.make_port()
+        fs = port.host.filesystem
+        web_tests_dir = port.web_tests_dir()
+        fs.write_text_file(
+            fs.join(web_tests_dir, 'VirtualTestSuites'), '['
+            '{"prefix": "v1", "platforms": ["Linux"], "bases": ["external/wpt/console/b1.any.js"],'
+            ' "exclusive_tests": "ALL", '
+            '"args": ["-a"], "expires": "never"},'
+            '{"prefix": "v2", "platforms": ["Linux"], "bases": ["external/wpt/console/b1.any.js",'
+            '                                                   "external/wpt/console/b2.any.js"],'
+            ' "exclusive_tests": ["external/wpt/console/b2.any.js"], '
+            '"args": ["-b"], "expires": "never"}'
+            ']')
+        fs.write_text_file(
+            fs.join(web_tests_dir, 'external/wpt/console', 'b1.any.js'), '')
+        fs.write_text_file(
+            fs.join(web_tests_dir, 'external/wpt/console', 'b2.any.js'), '')
+
+        self.assertTrue(
+            port.skipped_due_to_exclusive_virtual_tests(
+                'external/wpt/console/b1.any.html'))
+        self.assertTrue(
+            port.skipped_due_to_exclusive_virtual_tests(
+                'external/wpt/console/b1.any.sharedworker.html'))
+        self.assertTrue(
+            port.skipped_due_to_exclusive_virtual_tests(
+                'external/wpt/console/b1.any.worker.html'))
+        self.assertFalse(
+            port.skipped_due_to_exclusive_virtual_tests(
+                'virtual/v1/external/wpt/console/b1.any.html'))
+        self.assertFalse(
+            port.skipped_due_to_exclusive_virtual_tests(
+                'virtual/v1/external/wpt/console/b1.any.sharedworker.html'))
+        self.assertFalse(
+            port.skipped_due_to_exclusive_virtual_tests(
+                'virtual/v1/external/wpt/console/b1.any.worker.html'))
+
+        self.assertTrue(
+            port.skipped_due_to_exclusive_virtual_tests(
+                'external/wpt/console/b2.any.html'))
+        self.assertTrue(
+            port.skipped_due_to_exclusive_virtual_tests(
+                'external/wpt/console/b2.any.sharedworker.html'))
+        self.assertTrue(
+            port.skipped_due_to_exclusive_virtual_tests(
+                'external/wpt/console/b2.any.worker.html'))
+        self.assertTrue(
+            port.skipped_due_to_exclusive_virtual_tests(
+                'virtual/v2/external/wpt/console/b1.any.html'))
+        self.assertTrue(
+            port.skipped_due_to_exclusive_virtual_tests(
+                'virtual/v2/external/wpt/console/b1.any.sharedworker.html'))
+        self.assertTrue(
+            port.skipped_due_to_exclusive_virtual_tests(
+                'virtual/v2/external/wpt/console/b1.any.worker.html'))
+        self.assertFalse(
+            port.skipped_due_to_exclusive_virtual_tests(
+                'virtual/v2/external/wpt/console/b2.any.html'))
+        self.assertFalse(
+            port.skipped_due_to_exclusive_virtual_tests(
+                'virtual/v2/external/wpt/console/b2.any.sharedworker.html'))
+        self.assertFalse(
+            port.skipped_due_to_exclusive_virtual_tests(
+                'virtual/v2/external/wpt/console/b2.any.worker.html'))
 
     def test_virtual_skip_base_tests(self):
         port = self.make_port()
@@ -1916,15 +2217,6 @@ class PortTest(LoggingTestCase):
             '# results: [ Skip ]\nfailures/expected/image.html [ Skip ]\n')
         self.assertTrue(port.skips_test('failures/expected/image.html'))
 
-    def test_disable_system_font_check_and_nocheck_sys_deps(self):
-        port = self.make_port()
-        self.assertNotIn('--disable-system-font-check',
-                         port.additional_driver_flags())
-        port = self.make_port(
-            options=optparse.Values({'nocheck_sys_deps': True}))
-        self.assertIn('--disable-system-font-check',
-                      port.additional_driver_flags())
-
     def test_enable_tracing(self):
         options, _ = optparse.OptionParser().parse_args([])
         options.enable_tracing = '*,-blink'
@@ -1933,6 +2225,7 @@ class PortTest(LoggingTestCase):
             self.assertEqual([
                 '--disable-threaded-compositing',
                 '--disable-threaded-animation',
+                '--enable-unsafe-swiftshader',
                 '--trace-startup=*,-blink',
                 '--trace-startup-duration=0',
                 '--trace-startup-file=trace_layout_test_non_virtual_TIME.pftrace',

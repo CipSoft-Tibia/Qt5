@@ -365,7 +365,7 @@ In addition, for repeated fields, you can customize its size with
 ```c++
 FUZZ_TEST(MySuite, DoingStuffDoesNotCrashWithCustomProto).
   WithDomains(Arbitrary<MyProto>()
-      .WithRepeatedFieldSize("size1", 1)
+      .WithRepeatedFieldSize("size1", 1, 2)
       .WithRepeatedFieldMinSize("size_ge_2", 2)
       .WithRepeatedFieldMaxSize("size_le_3", 3));
 ```
@@ -1080,6 +1080,13 @@ This leads to more efficient fuzzing, as no values will be dropped and no cycles
 will be wasted.
 
 ### Recursive Domains
+
+**WARNING**: Recursion limit for recursive domains is not implemented yet
+. If the probability of recursion is high in the domain, the initial input
+generation might "blow up", leading to resource exhaustion. Note that this is
+not an issue in case of protobuf domains (when there's recursion in the protobuf
+definition), because recursion is avoided during the initial input generation
+and only happens during mutating the inputs.
 
 Recursive data structures need recursive domains. We can use the `DomainBuilder`
 to build such domains. Here are some examples:

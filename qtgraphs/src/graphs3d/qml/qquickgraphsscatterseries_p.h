@@ -14,9 +14,9 @@
 #ifndef QQUICKGRAPHSSCATTERSERIES_P_H
 #define QQUICKGRAPHSSCATTERSERIES_P_H
 
-#include "common/theme/qquickgraphscolor_p.h"
 #include "gradientholder_p.h"
 #include "qscatter3dseries.h"
+#include "theme/qquickgraphscolor_p.h"
 
 #include <QtQml/qqml.h>
 #include <QtQuick/private/qquickrectangle_p.h>

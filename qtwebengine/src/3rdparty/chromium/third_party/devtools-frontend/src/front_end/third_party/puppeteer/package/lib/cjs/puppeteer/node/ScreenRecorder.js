@@ -81,7 +81,7 @@ let ScreenRecorder = (() => {
             __esDecorate(this, null, _stop_decorators, { kind: "method", name: "stop", static: false, private: false, access: { has: obj => "stop" in obj, get: obj => obj.stop }, metadata: _metadata }, null, _instanceExtraInitializers);
             if (_metadata) Object.defineProperty(this, Symbol.metadata, { enumerable: true, configurable: true, writable: true, value: _metadata });
         }
-        #page = (__runInitializers(this, _instanceExtraInitializers), void 0);
+        #page = __runInitializers(this, _instanceExtraInitializers);
         #process;
         #controller = new AbortController();
         #lastFrame;
@@ -143,7 +143,7 @@ let ScreenRecorder = (() => {
             client.once(CDPSession_js_1.CDPSessionEvent.Disconnected, () => {
                 void this.stop().catch(util_js_1.debugError);
             });
-            this.#lastFrame = (0, rxjs_js_1.lastValueFrom)((0, rxjs_js_1.fromEvent)(client, 'Page.screencastFrame').pipe((0, rxjs_js_1.tap)(event => {
+            this.#lastFrame = (0, rxjs_js_1.lastValueFrom)((0, util_js_1.fromEmitterEvent)(client, 'Page.screencastFrame').pipe((0, rxjs_js_1.tap)(event => {
                 void client.send('Page.screencastFrameAck', {
                     sessionId: event.sessionId,
                 });

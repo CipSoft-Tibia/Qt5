@@ -36,7 +36,8 @@ public:
         Group,
         Defs,
         Switch,
-        Animation,
+        AnimateColor,
+        AnimateTransform,
         Circle,
         Ellipse,
         Image,
@@ -62,6 +63,7 @@ public:
         FeOffset,
         FeComposite,
         FeFlood,
+        FeBlend,
         FeUnsupported
     };
     enum DisplayMode {
@@ -105,6 +107,8 @@ public:
     void applyStyleRecursive(QPainter *p, QSvgExtraStates &states) const;
     void revertStyle(QPainter *p, QSvgExtraStates &states) const;
     void revertStyleRecursive(QPainter *p, QSvgExtraStates &states) const;
+    void applyAnimatedStyle(QPainter *p, QSvgExtraStates &states) const;
+    void revertAnimatedStyle(QPainter *p, QSvgExtraStates &states) const;
     QSvgStyleProperty *styleProperty(QSvgStyleProperty::Type type) const;
     QSvgPaintStyleProperty *styleProperty(const QString &id) const;
 
@@ -171,9 +175,10 @@ public:
     virtual bool requiresGroupRendering() const;
 
     virtual bool shouldDrawNode(QPainter *p, QSvgExtraStates &states) const;
-    const QSvgStyle &style() const { return m_style; }
+    const QSvgStaticStyle &style() const { return m_style; }
 protected:
-    mutable QSvgStyle m_style;
+    mutable QSvgStaticStyle m_style;
+    mutable QSvgAnimatedStyle m_animatedStyle;
 
     QRectF filterRegion(QRectF bounds) const;
 

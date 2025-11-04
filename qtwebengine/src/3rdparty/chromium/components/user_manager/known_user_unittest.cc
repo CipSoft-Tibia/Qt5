@@ -5,6 +5,7 @@
 #include "components/user_manager/known_user.h"
 
 #include <memory>
+#include <optional>
 #include <utility>
 
 #include "base/json/values_util.h"
@@ -19,18 +20,17 @@
 #include "components/user_manager/user_manager_base.h"
 #include "testing/gmock/include/gmock/gmock.h"
 #include "testing/gtest/include/gtest/gtest.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 
 namespace user_manager {
 namespace {
-absl::optional<std::string> GetStringPrefValue(KnownUser* known_user,
-                                               const AccountId& account_id,
-                                               const char* pref_name) {
+std::optional<std::string> GetStringPrefValue(KnownUser* known_user,
+                                              const AccountId& account_id,
+                                              const char* pref_name) {
   if (const std::string* value =
           known_user->FindStringPath(account_id, pref_name)) {
     return *value;
   }
-  return absl::nullopt;
+  return std::nullopt;
 }
 }  // namespace
 
@@ -198,9 +198,9 @@ TEST_F(KnownUserTest, UpdatePrefsWithoutClear) {
   known_user.SetPath(kDefaultAccountId, kPrefName2,
                      base::Value("pref2_value1"));
 
-  EXPECT_EQ(absl::make_optional(std::string("pref1_value2")),
+  EXPECT_EQ(std::make_optional(std::string("pref1_value2")),
             GetStringPrefValue(&known_user, kDefaultAccountId, kPrefName1));
-  EXPECT_EQ(absl::make_optional(std::string("pref2_value1")),
+  EXPECT_EQ(std::make_optional(std::string("pref2_value1")),
             GetStringPrefValue(&known_user, kDefaultAccountId, kPrefName2));
 }
 
@@ -215,11 +215,11 @@ TEST_F(KnownUserTest, UpdatePrefsWithClear) {
   known_user.SetPath(kDefaultAccountId, kPrefName2,
                      base::Value("pref2_value1"));
 
-  known_user.SetPath(kDefaultAccountId, kPrefName1, absl::nullopt);
+  known_user.SetPath(kDefaultAccountId, kPrefName1, std::nullopt);
 
-  EXPECT_EQ(absl::nullopt,
+  EXPECT_EQ(std::nullopt,
             GetStringPrefValue(&known_user, kDefaultAccountId, kPrefName1));
-  EXPECT_EQ(absl::make_optional(std::string("pref2_value1")),
+  EXPECT_EQ(std::make_optional(std::string("pref2_value1")),
             GetStringPrefValue(&known_user, kDefaultAccountId, kPrefName2));
 }
 
@@ -330,7 +330,7 @@ TEST_F(KnownUserTest, FindGaiaIdForAdAccount) {
   EXPECT_FALSE(known_user.FindGaiaID(kAccountIdAd));
 }
 
-// TODO(https://crbug.com/1148457): Add tests for GetAccountId.
+// TODO(crbug.com/40731309): Add tests for GetAccountId.
 
 TEST_F(KnownUserTest, RemovePrefOnCustomPref) {
   KnownUser known_user(local_state());
@@ -560,7 +560,7 @@ TEST_F(KnownUserTest, CleanObsoletePrefs) {
   EXPECT_FALSE(known_user.FindBoolPath(kDefaultAccountId, kObsoletePrefName)
                    .has_value());
 
-  absl::optional<bool> custom_pref_value =
+  std::optional<bool> custom_pref_value =
       known_user.FindBoolPath(kDefaultAccountId, kCustomPrefName);
 
   EXPECT_TRUE(custom_pref_value.has_value());
@@ -571,10 +571,11 @@ TEST_F(KnownUserTest, CleanObsoletePrefs) {
 
 //
 // =============================================================================
-// Type-parametrized unittests for Set{String,Boolean,Integer,}Pref and
-// Get{String,Boolean,Integer,}Pref.
-// For every type (string, boolean, integer, raw base::Value) a PrefTypeInfo
-// struct is declared which is then referenced in the generic test code.
+// Type-parametrized unittests for Set{String,Boolean,Integer,Double,}Pref and
+// Get{String,Boolean,Integer,Double}Pref.
+// For every type (string, boolean, integer, double, raw base::Value) a
+// PrefTypeInfo struct is declared which is then referenced in the generic test
+// code.
 
 // Test type holder for known_user string prefs.
 struct PrefTypeInfoString {
@@ -607,6 +608,23 @@ struct PrefTypeInfoInteger {
   }
   static bool CheckPrefValueAsBaseValue(const base::Value& read_value) {
     return read_value.is_int() && read_value.GetInt() == 7;
+  }
+};
+
+// Test type holder for known_user double prefs.
+struct PrefTypeInfoDouble {
+  using PrefType = double;
+  using PrefTypeForReading = double;
+
+  static constexpr auto SetFunc = &KnownUser::SetDoublePref;
+  static constexpr auto GetFunc = &KnownUser::GetDoublePrefForTest;
+
+  static PrefType CreatePrefValue() { return 5.25; }
+  static bool CheckPrefValue(PrefTypeForReading read_value) {
+    return read_value == 5.25;
+  }
+  static bool CheckPrefValueAsBaseValue(const base::Value& read_value) {
+    return read_value.is_double() && read_value.GetDouble() == 5.25;
   }
 };
 
@@ -693,7 +711,7 @@ TYPED_TEST_P(KnownUserWithPrefTypeTest, ReadExistingPref) {
   bool read_success =
       (known_user.*TypeParam::GetFunc)(kUser, kPrefName, &read_result);
   EXPECT_TRUE(read_success);
-  TypeParam::CheckPrefValue(read_result);
+  EXPECT_TRUE(TypeParam::CheckPrefValue(read_result));
 }
 
 TYPED_TEST_P(KnownUserWithPrefTypeTest, ReadExistingPrefAsValue) {
@@ -710,7 +728,7 @@ TYPED_TEST_P(KnownUserWithPrefTypeTest, ReadExistingPrefAsValue) {
   bool read_success = known_user.GetPrefForTest(kUser, kPrefName, &read_result);
   EXPECT_TRUE(read_success);
   ASSERT_TRUE(read_result);
-  TypeParam::CheckPrefValueAsBaseValue(*read_result);
+  EXPECT_TRUE(TypeParam::CheckPrefValueAsBaseValue(*read_result));
 }
 
 REGISTER_TYPED_TEST_SUITE_P(KnownUserWithPrefTypeTest,
@@ -725,6 +743,7 @@ REGISTER_TYPED_TEST_SUITE_P(KnownUserWithPrefTypeTest,
 // prepocessor would be confused on the comma.
 using AllTypeInfos = testing::Types<PrefTypeInfoString,
                                     PrefTypeInfoInteger,
+                                    PrefTypeInfoDouble,
                                     PrefTypeInfoBoolean,
                                     PrefTypeInfoValue>;
 

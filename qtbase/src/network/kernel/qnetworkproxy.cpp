@@ -1,5 +1,6 @@
 // Copyright (C) 2019 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 
 /*!
@@ -450,8 +451,8 @@ template<> void QSharedDataPointer<QNetworkProxyPrivate>::detach()
                                : new QNetworkProxyPrivate);
     x->ref.ref();
     if (d && !d->ref.deref())
-        delete d;
-    d = x;
+        delete d.get();
+    d.reset(x);
 }
 
 /*!
@@ -935,8 +936,8 @@ template<> void QSharedDataPointer<QNetworkProxyQueryPrivate>::detach()
                                     : new QNetworkProxyQueryPrivate);
     x->ref.ref();
     if (d && !d->ref.deref())
-        delete d;
-    d = x;
+        delete d.get();
+    d.reset(x);
 }
 
 /*!

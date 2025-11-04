@@ -9,6 +9,24 @@
             "name": "test",
             "settingsName": "TestWarning",
             "description": "A warning type used in tests"
+        },
+        {
+            "name": "TestDefaultValue",
+            "settingsName": "TestDefaultValue",
+            "description": "A warning to test defaults",
+            "defaultLevel": "disable"
+        },
+        {
+            "name": "TestDefaultValue2",
+            "settingsName": "TestDefaultValue2",
+            "description": "A warning to test defaults",
+            "defaultLevel": "info"
+        },
+        {
+            "name": "TestDefaultValue3",
+            "settingsName": "TestDefaultValue3",
+            "description": "A warning to test defaults",
+            "defaultLevel": "warning"
         }
     ]
 }

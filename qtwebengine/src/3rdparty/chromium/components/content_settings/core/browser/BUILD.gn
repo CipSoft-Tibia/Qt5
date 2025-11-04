@@ -38,8 +38,6 @@ jumbo_static_library("browser") {
     "content_settings_uma_util.h",
     "content_settings_utils.cc",
     "content_settings_utils.h",
-    "cookie_settings.cc",
-    "cookie_settings.h",
     "host_content_settings_map.cc",
     "host_content_settings_map.h",
     "private_network_settings.cc",
@@ -60,8 +58,9 @@ jumbo_static_library("browser") {
     "//components/keyed_service/core",
     "//components/pref_registry:pref_registry",
     "//components/prefs",
+    "//components/privacy_sandbox:features",
     "//components/privacy_sandbox:tracking_protection_prefs",
-    "//components/privacy_sandbox:tracking_protection_settings",
+    "//components/tpcd/metadata/browser",
     "//components/url_formatter",
     "//extensions/buildflags",
     "//net",
@@ -71,18 +70,15 @@ jumbo_static_library("browser") {
     "//url",
   ]
 
-  if (!is_ios) {
+  if (!is_ios && !is_qtwebengine) {
     sources += [
-      "cookie_settings_policy_handler.cc",
-      "cookie_settings_policy_handler.h",
       "insecure_private_network_policy_handler.cc",
       "insecure_private_network_policy_handler.h",
     ]
   }
 
-  if (use_blink) {
+  if (use_blink && !is_qtwebengine) {
     deps += [
-      "//components/permissions:permissions_common",
       "//components/policy:generated",
       "//components/policy/core/browser",
       "//components/privacy_sandbox:privacy_sandbox_prefs",
@@ -90,6 +86,39 @@ jumbo_static_library("browser") {
   }
 
   configs += [ "//build/config/compiler:wexit_time_destructors" ]
+}
+
+jumbo_source_set("cookie_settings") {
+  sources = [
+    "cookie_settings.cc",
+    "cookie_settings.h",
+  ]
+
+  if (!is_ios) {
+    sources += [
+      "cookie_settings_policy_handler.cc",
+      "cookie_settings_policy_handler.h",
+    ]
+  }
+  public_deps = [ "//base" ]
+
+  deps = [
+    ":browser",
+    "//build:blink_buildflags",
+    "//build:chromeos_buildflags",
+    "//components/content_settings/core/common",
+    "//components/keyed_service/core",
+    "//components/policy/core/browser",
+    "//components/pref_registry:pref_registry",
+    "//components/prefs",
+    "//components/privacy_sandbox:features",
+    "//components/privacy_sandbox:tracking_protection_prefs",
+    "//components/privacy_sandbox:tracking_protection_settings",
+    "//components/tpcd/metadata/browser",
+    "//extensions/buildflags",
+    "//net",
+    "//url",
+  ]
 }
 
 jumbo_source_set("unit_tests") {
@@ -123,6 +152,7 @@ jumbo_source_set("unit_tests") {
     "//components/privacy_sandbox:tracking_protection_prefs",
     "//components/privacy_sandbox:tracking_protection_settings",
     "//components/sync_preferences:test_support",
+    "//components/tpcd/metadata/browser",
     "//extensions/buildflags",
     "//net",
     "//ppapi/buildflags:buildflags",

@@ -1,7 +1,13 @@
 // Copyright (C) 2017 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:data-parser
 
+#ifdef USE_SYSTEM_OPEN62541
+#include <open62541/types.h>
+#else
 #include "qopen62541.h"
+#endif
+
 #include "qopen62541utils.h"
 #include "qopen62541valueconverter.h"
 
@@ -1147,6 +1153,8 @@ void scalarFromQt<UA_SimpleAttributeOperand, QOpcUaSimpleAttributeOperand>(const
         ptr->browsePath = static_cast<UA_QualifiedName *>(UA_Array_new(value.browsePath().size(), &UA_TYPES[UA_TYPES_QUALIFIEDNAME]));
         for (size_t i = 0; i < ptr->browsePathSize; ++i)
             scalarFromQt<UA_QualifiedName, QOpcUaQualifiedName>(value.browsePath().at(i), &ptr->browsePath[i]);
+    } else {
+        ptr->browsePath = static_cast<UA_QualifiedName *>(UA_EMPTY_ARRAY_SENTINEL);
     }
 }
 
@@ -1329,12 +1337,30 @@ QVariant uaVariantToQtExtensionObject(const UA_Variant &var)
         return {};
     } else if (var.arrayLength == 0 && var.data == UA_EMPTY_ARRAY_SENTINEL) {
         return QVariantList(); // Return empty QVariantList for empty array
+    } else if (var.arrayLength > 0) {
+        QVariantList values;
+        values.reserve(var.arrayLength);
+        for (size_t i = 0; i < var.arrayLength; ++i) {
+            bool success = false;
+            values.push_back(encodeAsBinaryExtensionObject(static_cast<quint8 *>(var.data) + (i * var.type->memSize), var.type, &success));
+
+            if (!success)
+                return {};
+        }
+
+        if (var.arrayDimensionsSize > 0) {
+            QOpcUaMultiDimensionalArray arr;
+            arr.setValueArray(values);
+            QList<quint32> arrayDimensions(var.arrayDimensionsSize);
+            for (size_t i = 0; i < var.arrayDimensionsSize; ++i)
+                arrayDimensions[i] = var.arrayDimensions[i];
+            arr.setArrayDimensions(arrayDimensions);
+            return arr;
+        }
+
+        return values;
     }
 
-    // The array case is not handled here because open62541 always decodes arrays of types
-    // we need to re-encode to extension objects which are handled by a different code path.
-    // If this behavior should change with an update to open62541, it will be indicated by
-    // a failing test (Tst_QOpcUaClient::readReencodedExtensionObject).
     return QVariant();
 }
 

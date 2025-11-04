@@ -99,23 +99,19 @@ class SourcePosition final {
   }
   void SetExternalLine(int line) {
     DCHECK(IsExternal());
-    DCHECK(line <= ExternalLineField::kMax - 1);
     value_ = ExternalLineField::update(value_, line);
   }
   void SetExternalFileId(int file_id) {
     DCHECK(IsExternal());
-    DCHECK(file_id <= ExternalFileIdField::kMax - 1);
     value_ = ExternalFileIdField::update(value_, file_id);
   }
 
   void SetScriptOffset(int script_offset) {
     DCHECK(IsJavaScript());
-    DCHECK(script_offset <= ScriptOffsetField::kMax - 2);
     DCHECK_GE(script_offset, kNoSourcePosition);
     value_ = ScriptOffsetField::update(value_, script_offset + 1);
   }
   void SetInliningId(int inlining_id) {
-    DCHECK(inlining_id <= InliningIdField::kMax - 2);
     DCHECK_GE(inlining_id, kNotInlined);
     value_ = InliningIdField::update(value_, inlining_id + 1);
   }
@@ -178,6 +174,8 @@ struct InliningPosition {
 struct WasmInliningPosition {
   // Non-canonicalized (module-specific) index of the inlined function.
   int inlinee_func_index;
+  // Whether the call was a tail call.
+  bool was_tail_call;
   // Source location of the caller.
   SourcePosition caller_pos;
 };

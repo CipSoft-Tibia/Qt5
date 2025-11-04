@@ -21,17 +21,18 @@
 #include <string_view>
 #include <vector>
 
+#include "absl/base/nullability.h"
 #include "absl/log/check.h"
 #include "./centipede/binary_info.h"
 #include "./centipede/byte_array_mutator.h"
 #include "./centipede/command.h"
-#include "./centipede/defs.h"
 #include "./centipede/environment.h"
 #include "./centipede/fuzztest_mutator.h"
 #include "./centipede/mutation_input.h"
 #include "./centipede/runner_result.h"
 #include "./centipede/shared_memory_blob_sequence.h"
 #include "./centipede/util.h"
+#include "./common/defs.h"
 
 namespace centipede {
 
@@ -90,6 +91,10 @@ class CentipedeCallbacks {
     return 1;
   }
 
+  // Returns the configuration from the test target in the serialized form.
+  // Returns an empty string if the test target doesn't provide configuration.
+  virtual std::string GetSerializedTargetConfig() { return ""; }
+
  protected:
   // Helpers that the user-defined class may use if needed.
 
@@ -118,6 +123,17 @@ class CentipedeCallbacks {
   bool GetSeedsViaExternalBinary(std::string_view binary,
                                  size_t &num_avail_seeds,
                                  std::vector<ByteArray> &seeds);
+
+  // Uses an external binary `binary` to get the serialized test target
+  // configuration. The binary should be linked against :centipede_runner and
+  // implement the RunnerCallbacks interface as described in runner_interface.h.
+  //
+  // If the binary returns with success and doesn't provide the configuration,
+  // sets `serialized_config` to empty string.
+  //
+  // Returns true on success.
+  bool GetSerializedTargetConfigViaExternalBinary(
+      std::string_view binary, std::string &serialized_config);
 
   // Uses an external binary `binary` to mutate `inputs`. The binary
   // should be linked against :centipede_runner and implement the
@@ -198,7 +214,7 @@ class ScopedCentipedeCallbacks {
                            const Environment &env)
       : factory_(factory), callbacks_(factory_.create(env)) {}
   ~ScopedCentipedeCallbacks() { factory_.destroy(callbacks_); }
-  CentipedeCallbacks *callbacks() { return callbacks_; }
+  absl::Nonnull<CentipedeCallbacks *> callbacks() { return callbacks_; }
 
  private:
   CentipedeCallbacksFactory &factory_;

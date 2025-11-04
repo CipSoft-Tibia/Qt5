@@ -7,7 +7,9 @@
 #ifndef CORE_FXGE_CFX_FONTMAPPER_H_
 #define CORE_FXGE_CFX_FONTMAPPER_H_
 
+#include <array>
 #include <memory>
+#include <optional>
 #include <utility>
 #include <vector>
 
@@ -17,7 +19,6 @@
 #include "core/fxcrt/retain_ptr.h"
 #include "core/fxcrt/unowned_ptr.h"
 #include "core/fxge/cfx_face.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 
 #ifdef PDF_ENABLE_XFA
 #include "core/fxcrt/fixed_size_data_vector.h"
@@ -51,7 +52,7 @@ class CFX_FontMapper {
   explicit CFX_FontMapper(CFX_FontMgr* mgr);
   ~CFX_FontMapper();
 
-  static absl::optional<StandardFont> GetStandardFontName(ByteString* name);
+  static std::optional<StandardFont> GetStandardFontName(ByteString* name);
   static bool IsStandardFontName(const ByteString& name);
   static bool IsSymbolicFont(StandardFont font);
   static bool IsFixedFont(StandardFont font);
@@ -80,9 +81,9 @@ class CFX_FontMapper {
   bool HasLocalizedFont(ByteStringView name) const;
 
 #if BUILDFLAG(IS_WIN)
-  absl::optional<ByteString> InstalledFontNameStartingWith(
+  std::optional<ByteString> InstalledFontNameStartingWith(
       const ByteString& name) const;
-  absl::optional<ByteString> LocalizedFontNameStartingWith(
+  std::optional<ByteString> LocalizedFontNameStartingWith(
       const ByteString& name) const;
 #endif  // BUILDFLAG(IS_WIN)
 
@@ -130,7 +131,7 @@ class CFX_FontMapper {
   UnownedPtr<CFX_FontMgr> const m_pFontMgr;
   std::vector<ByteString> m_InstalledTTFonts;
   std::vector<std::pair<ByteString, ByteString>> m_LocalizedTTFonts;
-  RetainPtr<CFX_Face> m_StandardFaces[kNumStandardFonts];
+  std::array<RetainPtr<CFX_Face>, kNumStandardFonts> m_StandardFaces;
   RetainPtr<CFX_Face> m_GenericSansFace;
   RetainPtr<CFX_Face> m_GenericSerifFace;
 };

@@ -166,8 +166,8 @@ class FPDFViewEmbedderTest : public EmbedderTest {
                                       const FS_RECTF& rect,
                                       const char* expected_checksum) {
     ScopedFPDFBitmap bitmap(FPDFBitmap_Create(bitmap_width, bitmap_height, 0));
-    FPDFBitmap_FillRect(bitmap.get(), 0, 0, bitmap_width, bitmap_height,
-                        0xFFFFFFFF);
+    ASSERT_TRUE(FPDFBitmap_FillRect(bitmap.get(), 0, 0, bitmap_width,
+                                    bitmap_height, 0xFFFFFFFF));
     FPDF_RenderPageBitmapWithMatrix(bitmap.get(), page, &matrix, &rect, 0);
     CompareBitmap(bitmap.get(), bitmap_width, bitmap_height, expected_checksum);
   }
@@ -178,8 +178,8 @@ class FPDFViewEmbedderTest : public EmbedderTest {
     int bitmap_width = static_cast<int>(FPDF_GetPageWidth(page));
     int bitmap_height = static_cast<int>(FPDF_GetPageHeight(page));
     ScopedFPDFBitmap bitmap(FPDFBitmap_Create(bitmap_width, bitmap_height, 0));
-    FPDFBitmap_FillRect(bitmap.get(), 0, 0, bitmap_width, bitmap_height,
-                        0xFFFFFFFF);
+    ASSERT_TRUE(FPDFBitmap_FillRect(bitmap.get(), 0, 0, bitmap_width,
+                                    bitmap_height, 0xFFFFFFFF));
     FPDF_RenderPageBitmap(bitmap.get(), page, 0, 0, bitmap_width, bitmap_height,
                           0, flags);
     CompareBitmap(bitmap.get(), bitmap_width, bitmap_height, expected_checksum);
@@ -238,8 +238,8 @@ class FPDFViewEmbedderTest : public EmbedderTest {
       recorder->beginRecording(width, height);
 
       FPDF_RenderPageSkia(
-          reinterpret_cast<FPDF_SKIA_CANVAS>(recorder->getRecordingCanvas()),
-          page, width, height);
+          FPDFSkiaCanvasFromSkCanvas(recorder->getRecordingCanvas()), page,
+          width, height);
       picture = recorder->finishRecordingAsPicture();
       ASSERT_TRUE(picture);
     }
@@ -273,9 +273,10 @@ class FPDFViewEmbedderTest : public EmbedderTest {
     int bitmap_height = FPDFBitmap_GetHeight(bitmap);
     EXPECT_EQ(bitmap_width, static_cast<int>(FPDF_GetPageWidth(page)));
     EXPECT_EQ(bitmap_height, static_cast<int>(FPDF_GetPageHeight(page)));
-    FPDFBitmap_FillRect(bitmap, 0, 0, bitmap_width, bitmap_height, 0xFFFFFFFF);
+    ASSERT_TRUE(FPDFBitmap_FillRect(bitmap, 0, 0, bitmap_width, bitmap_height,
+                                    0xFFFFFFFF));
     FPDF_RenderPageBitmap(bitmap, page, 0, 0, bitmap_width, bitmap_height, 0,
-                          0);
+                          FPDF_ANNOT);
     CompareBitmap(bitmap, bitmap_width, bitmap_height, expected_checksum);
   }
 };
@@ -283,7 +284,7 @@ class FPDFViewEmbedderTest : public EmbedderTest {
 // Test for conversion of a point in device coordinates to page coordinates
 TEST_F(FPDFViewEmbedderTest, DeviceCoordinatesToPageCoordinates) {
   ASSERT_TRUE(OpenDocument("about_blank.pdf"));
-  FPDF_PAGE page = LoadPage(0);
+  ScopedEmbedderTestPage page = LoadScopedPage(0);
   EXPECT_TRUE(page);
 
   // Error tolerance for floating point comparison
@@ -304,29 +305,29 @@ TEST_F(FPDFViewEmbedderTest, DeviceCoordinatesToPageCoordinates) {
 
   double page_x = 0.0;
   double page_y = 0.0;
-  EXPECT_TRUE(FPDF_DeviceToPage(page, start_x, start_y, size_x, size_y, rotate,
-                                device_x, device_y, &page_x, &page_y));
+  EXPECT_TRUE(FPDF_DeviceToPage(page.get(), start_x, start_y, size_x, size_y,
+                                rotate, device_x, device_y, &page_x, &page_y));
   EXPECT_NEAR(9.5625, page_x, kTolerance);
   EXPECT_NEAR(775.5, page_y, kTolerance);
 
   // Rotate 90 degrees clockwise
   rotate = 1;
-  EXPECT_TRUE(FPDF_DeviceToPage(page, start_x, start_y, size_x, size_y, rotate,
-                                device_x, device_y, &page_x, &page_y));
+  EXPECT_TRUE(FPDF_DeviceToPage(page.get(), start_x, start_y, size_x, size_y,
+                                rotate, device_x, device_y, &page_x, &page_y));
   EXPECT_NEAR(12.75, page_x, kTolerance);
   EXPECT_NEAR(12.375, page_y, kTolerance);
 
   // Rotate 180 degrees
   rotate = 2;
-  EXPECT_TRUE(FPDF_DeviceToPage(page, start_x, start_y, size_x, size_y, rotate,
-                                device_x, device_y, &page_x, &page_y));
+  EXPECT_TRUE(FPDF_DeviceToPage(page.get(), start_x, start_y, size_x, size_y,
+                                rotate, device_x, device_y, &page_x, &page_y));
   EXPECT_NEAR(602.4374, page_x, kTolerance);
   EXPECT_NEAR(16.5, page_y, kTolerance);
 
   // Rotate 90 degrees counter-clockwise
   rotate = 3;
-  EXPECT_TRUE(FPDF_DeviceToPage(page, start_x, start_y, size_x, size_y, rotate,
-                                device_x, device_y, &page_x, &page_y));
+  EXPECT_TRUE(FPDF_DeviceToPage(page.get(), start_x, start_y, size_x, size_y,
+                                rotate, device_x, device_y, &page_x, &page_y));
   EXPECT_NEAR(599.25, page_x, kTolerance);
   EXPECT_NEAR(779.625, page_y, kTolerance);
 
@@ -334,16 +335,16 @@ TEST_F(FPDFViewEmbedderTest, DeviceCoordinatesToPageCoordinates) {
   // modulo by 4. A value of 4 is expected to be converted into 0 (normal
   // rotation)
   rotate = 4;
-  EXPECT_TRUE(FPDF_DeviceToPage(page, start_x, start_y, size_x, size_y, rotate,
-                                device_x, device_y, &page_x, &page_y));
+  EXPECT_TRUE(FPDF_DeviceToPage(page.get(), start_x, start_y, size_x, size_y,
+                                rotate, device_x, device_y, &page_x, &page_y));
   EXPECT_NEAR(9.5625, page_x, kTolerance);
   EXPECT_NEAR(775.5, page_y, kTolerance);
 
   // FPDF_DeviceToPage returns untransformed coordinates if |rotate| % 4 is
   // negative.
   rotate = -1;
-  EXPECT_TRUE(FPDF_DeviceToPage(page, start_x, start_y, size_x, size_y, rotate,
-                                device_x, device_y, &page_x, &page_y));
+  EXPECT_TRUE(FPDF_DeviceToPage(page.get(), start_x, start_y, size_x, size_y,
+                                rotate, device_x, device_y, &page_x, &page_y));
   EXPECT_NEAR(device_x, page_x, kTolerance);
   EXPECT_NEAR(device_y, page_y, kTolerance);
 
@@ -357,10 +358,8 @@ TEST_F(FPDFViewEmbedderTest, DeviceCoordinatesToPageCoordinates) {
   EXPECT_NEAR(5678.0, page_y, kTolerance);
 
   // Negative case - invalid output parameters
-  EXPECT_FALSE(FPDF_DeviceToPage(page, start_x, start_y, size_x, size_y, rotate,
-                                 device_x, device_y, nullptr, nullptr));
-
-  UnloadPage(page);
+  EXPECT_FALSE(FPDF_DeviceToPage(page.get(), start_x, start_y, size_x, size_y,
+                                 rotate, device_x, device_y, nullptr, nullptr));
 }
 
 // Test for conversion of a point in page coordinates to device coordinates.
@@ -693,8 +692,7 @@ TEST_F(FPDFViewEmbedderTest, ViewerRef) {
   EXPECT_STREQ("ABCD", buf);
 
   // Note "Foo" is a different key from "foo".
-  EXPECT_EQ(4U,
-            FPDF_VIEWERREF_GetName(document(), "Foo", nullptr, sizeof(buf)));
+  EXPECT_EQ(4U, FPDF_VIEWERREF_GetName(document(), "Foo", nullptr, 0));
   ASSERT_EQ(4U, FPDF_VIEWERREF_GetName(document(), "Foo", buf, sizeof(buf)));
   EXPECT_STREQ("foo", buf);
 
@@ -900,43 +898,42 @@ TEST_F(FPDFViewEmbedderTest, NamedDestsOldStyle) {
 }
 
 // The following tests pass if the document opens without crashing.
-TEST_F(FPDFViewEmbedderTest, Crasher_113) {
+TEST_F(FPDFViewEmbedderTest, Crasher113) {
   ASSERT_TRUE(OpenDocument("bug_113.pdf"));
 }
 
-TEST_F(FPDFViewEmbedderTest, Crasher_451830) {
+TEST_F(FPDFViewEmbedderTest, Crasher451830) {
   // Document is damaged and can't be opened.
   EXPECT_FALSE(OpenDocument("bug_451830.pdf"));
 }
 
-TEST_F(FPDFViewEmbedderTest, Crasher_452455) {
+TEST_F(FPDFViewEmbedderTest, Crasher452455) {
   ASSERT_TRUE(OpenDocument("bug_452455.pdf"));
-  FPDF_PAGE page = LoadPage(0);
+  ScopedEmbedderTestPage page = LoadScopedPage(0);
   EXPECT_TRUE(page);
-  UnloadPage(page);
 }
 
-TEST_F(FPDFViewEmbedderTest, Crasher_454695) {
+TEST_F(FPDFViewEmbedderTest, Crasher454695) {
   // Document is damaged and can't be opened.
   EXPECT_FALSE(OpenDocument("bug_454695.pdf"));
 }
 
-TEST_F(FPDFViewEmbedderTest, Crasher_572871) {
+TEST_F(FPDFViewEmbedderTest, Crasher572871) {
   ASSERT_TRUE(OpenDocument("bug_572871.pdf"));
 }
 
 // It tests that document can still be loaded even the trailer has no 'Size'
 // field if other information is right.
-TEST_F(FPDFViewEmbedderTest, Failed_213) {
+TEST_F(FPDFViewEmbedderTest, Failed213) {
   ASSERT_TRUE(OpenDocument("bug_213.pdf"));
 }
 
 // The following tests pass if the document opens without infinite looping.
-TEST_F(FPDFViewEmbedderTest, Hang_298) {
+TEST_F(FPDFViewEmbedderTest, Hang298) {
   EXPECT_FALSE(OpenDocument("bug_298.pdf"));
 }
 
-TEST_F(FPDFViewEmbedderTest, Crasher_773229) {
+TEST_F(FPDFViewEmbedderTest, Crasher773229) {
   ASSERT_TRUE(OpenDocument("bug_773229.pdf"));
 }
 
@@ -958,36 +955,36 @@ TEST_F(FPDFViewEmbedderTest, CrossRefV4Loop) {
 
 // The test should pass when circular references to ParseIndirectObject will not
 // cause infinite loop.
-TEST_F(FPDFViewEmbedderTest, Hang_343) {
+TEST_F(FPDFViewEmbedderTest, Hang343) {
   EXPECT_FALSE(OpenDocument("bug_343.pdf"));
 }
 
 // The test should pass when the absence of 'Contents' field in a signature
 // dictionary will not cause an infinite loop in CPDF_SyntaxParser::GetObject().
-TEST_F(FPDFViewEmbedderTest, Hang_344) {
+TEST_F(FPDFViewEmbedderTest, Hang344) {
   EXPECT_FALSE(OpenDocument("bug_344.pdf"));
 }
 
 // The test should pass when there is no infinite recursion in
 // CPDF_SyntaxParser::GetString().
-TEST_F(FPDFViewEmbedderTest, Hang_355) {
+TEST_F(FPDFViewEmbedderTest, Hang355) {
   EXPECT_FALSE(OpenDocument("bug_355.pdf"));
 }
 // The test should pass even when the file has circular references to pages.
-TEST_F(FPDFViewEmbedderTest, Hang_360) {
+TEST_F(FPDFViewEmbedderTest, Hang360) {
   EXPECT_FALSE(OpenDocument("bug_360.pdf"));
 }
 
 // Deliberately damaged version of linearized.pdf with bad data in the shared
 // object hint table.
-TEST_F(FPDFViewEmbedderTest, Hang_1055) {
+TEST_F(FPDFViewEmbedderTest, Hang1055) {
   ASSERT_TRUE(OpenDocumentLinearized("linearized_bug_1055.pdf"));
   int version;
   EXPECT_TRUE(FPDF_GetFileVersion(document(), &version));
   EXPECT_EQ(16, version);
 }
 
-TEST_F(FPDFViewEmbedderTest, FPDF_RenderPageBitmapWithMatrix) {
+TEST_F(FPDFViewEmbedderTest, FPDFRenderPageBitmapWithMatrix) {
   const char* clipped_checksum = []() {
     if (CFX_DefaultRenderDevice::UseSkiaRenderer()) {
       return "d2929fae285593cd1c1d446750d47d60";
@@ -999,12 +996,6 @@ TEST_F(FPDFViewEmbedderTest, FPDF_RenderPageBitmapWithMatrix) {
       return "31d24d8c6a2bac380b2f5c393e77ecc9";
     }
     return "f11a11137c8834389e31cf555a4a6979";
-  }();
-  const char* hori_stretched_checksum = []() {
-    if (CFX_DefaultRenderDevice::UseSkiaRenderer()) {
-      return "6d3776d7bb21cbb7195126b8e95dfba2";
-    }
-    return "48ef9205941ed19691ccfa00d717187e";
   }();
   const char* rotated_90_clockwise_checksum = []() {
     if (CFX_DefaultRenderDevice::UseSkiaRenderer()) {
@@ -1044,7 +1035,7 @@ TEST_F(FPDFViewEmbedderTest, FPDF_RenderPageBitmapWithMatrix) {
   }();
   const char* larger_rotated_diagonal_checksum = []() {
     if (CFX_DefaultRenderDevice::UseSkiaRenderer()) {
-      return "85c41bb892c1a09882f432aa2f4a5ef6";
+      return "a7179bc24e329341a1a1f6d6be20a1e9";
     }
     return "3d62417468bdaff0eb14391a0c30a3b1";
   }();
@@ -1054,6 +1045,7 @@ TEST_F(FPDFViewEmbedderTest, FPDF_RenderPageBitmapWithMatrix) {
     }
     return "0a190003c97220bf8877684c8d7e89cf";
   }();
+  const char kHoriStretchedChecksum[] = "48ef9205941ed19691ccfa00d717187e";
   const char kLargerChecksum[] = "c806145641c3e6fc4e022c7065343749";
   const char kLargerClippedChecksum[] = "091d3b1c7933c8f6945eb2cb41e588e9";
   const char kLargerRotatedChecksum[] = "115f13353ebfc82ddb392d1f0059eb12";
@@ -1097,7 +1089,7 @@ TEST_F(FPDFViewEmbedderTest, FPDF_RenderPageBitmapWithMatrix) {
   FS_MATRIX stretch_x_matrix{2, 0, 0, 1, 0, 0};
   TestRenderPageBitmapWithMatrix(page, page_width, page_height,
                                  stretch_x_matrix, page_rect,
-                                 hori_stretched_checksum);
+                                 kHoriStretchedChecksum);
 
   // Try a 90 degree rotation clockwise but with the same bitmap size, so part
   // will be clipped.
@@ -1208,7 +1200,7 @@ TEST_F(FPDFViewEmbedderTest, FPDF_RenderPageBitmapWithMatrix) {
   UnloadPage(page);
 }
 
-TEST_F(FPDFViewEmbedderTest, FPDF_GetPageSizeByIndexF) {
+TEST_F(FPDFViewEmbedderTest, FPDFGetPageSizeByIndexF) {
   ASSERT_TRUE(OpenDocument("rectangles.pdf"));
 
   FS_SIZEF size;
@@ -1243,7 +1235,7 @@ TEST_F(FPDFViewEmbedderTest, FPDF_GetPageSizeByIndexF) {
   UnloadPage(page);
 }
 
-TEST_F(FPDFViewEmbedderTest, FPDF_GetPageSizeByIndex) {
+TEST_F(FPDFViewEmbedderTest, FPDFGetPageSizeByIndex) {
   ASSERT_TRUE(OpenDocument("rectangles.pdf"));
 
   double width = 0;
@@ -1282,40 +1274,42 @@ TEST_F(FPDFViewEmbedderTest, FPDF_GetPageSizeByIndex) {
 }
 
 TEST_F(FPDFViewEmbedderTest, GetXFAArrayData) {
-  ASSERT_TRUE(OpenDocument("simple_xfa.pdf"));
-
   static constexpr struct {
+    int index;
     const char* name;
     size_t content_length;
     const char* content_checksum;
-  } kExpectedResults[]{
-      {"preamble", 124u, "71be364e53292596412242bfcdb46eab"},
-      {"config", 642u, "bcd1ca1d420ee31a561273a54a06435f"},
-      {"template", 541u, "0f48cb2fa1bb9cbf9eee802d66e81bf4"},
-      {"localeSet", 3455u, "bb1f253d3e5c719ac0da87d055bc164e"},
-      {"postamble", 11u, "6b79e25da35d86634ea27c38f64cf243"},
+  } kTestCases[]{
+      {0, "preamble", 124u, "71be364e53292596412242bfcdb46eab"},
+      {1, "config", 642u, "bcd1ca1d420ee31a561273a54a06435f"},
+      {2, "template", 541u, "0f48cb2fa1bb9cbf9eee802d66e81bf4"},
+      {3, "localeSet", 3455u, "bb1f253d3e5c719ac0da87d055bc164e"},
+      {4, "postamble", 11u, "6b79e25da35d86634ea27c38f64cf243"},
   };
 
-  ASSERT_EQ(static_cast<int>(std::size(kExpectedResults)),
+  ASSERT_TRUE(OpenDocument("simple_xfa.pdf"));
+  ASSERT_EQ(static_cast<int>(std::size(kTestCases)),
             FPDF_GetXFAPacketCount(document()));
-  for (size_t i = 0; i < std::size(kExpectedResults); ++i) {
+
+  for (const auto& testcase : kTestCases) {
     char name_buffer[20] = {};
-    ASSERT_EQ(strlen(kExpectedResults[i].name) + 1,
-              FPDF_GetXFAPacketName(document(), i, nullptr, 0));
-    EXPECT_EQ(
-        strlen(kExpectedResults[i].name) + 1,
-        FPDF_GetXFAPacketName(document(), i, name_buffer, sizeof(name_buffer)));
-    EXPECT_STREQ(kExpectedResults[i].name, name_buffer);
+    ASSERT_EQ(strlen(testcase.name) + 1,
+              FPDF_GetXFAPacketName(document(), testcase.index, nullptr, 0));
+    EXPECT_EQ(strlen(testcase.name) + 1,
+              FPDF_GetXFAPacketName(document(), testcase.index, name_buffer,
+                                    sizeof(name_buffer)));
+    EXPECT_STREQ(testcase.name, name_buffer);
 
     unsigned long buflen;
-    ASSERT_TRUE(FPDF_GetXFAPacketContent(document(), i, nullptr, 0, &buflen));
-    ASSERT_EQ(kExpectedResults[i].content_length, buflen);
+    ASSERT_TRUE(FPDF_GetXFAPacketContent(document(), testcase.index, nullptr, 0,
+                                         &buflen));
+    ASSERT_EQ(testcase.content_length, buflen);
     std::vector<uint8_t> data_buffer(buflen);
-    EXPECT_TRUE(FPDF_GetXFAPacketContent(document(), i, data_buffer.data(),
-                                         data_buffer.size(), &buflen));
-    EXPECT_EQ(kExpectedResults[i].content_length, buflen);
-    EXPECT_STREQ(kExpectedResults[i].content_checksum,
-                 GenerateMD5Base16(data_buffer).c_str());
+    EXPECT_TRUE(FPDF_GetXFAPacketContent(document(), testcase.index,
+                                         data_buffer.data(), data_buffer.size(),
+                                         &buflen));
+    EXPECT_EQ(testcase.content_length, buflen);
+    EXPECT_EQ(testcase.content_checksum, GenerateMD5Base16(data_buffer));
   }
 
   // Test bad parameters.
@@ -1323,15 +1317,15 @@ TEST_F(FPDFViewEmbedderTest, GetXFAArrayData) {
 
   EXPECT_EQ(0u, FPDF_GetXFAPacketName(nullptr, 0, nullptr, 0));
   EXPECT_EQ(0u, FPDF_GetXFAPacketName(document(), -1, nullptr, 0));
-  EXPECT_EQ(0u, FPDF_GetXFAPacketName(document(), std::size(kExpectedResults),
-                                      nullptr, 0));
+  EXPECT_EQ(
+      0u, FPDF_GetXFAPacketName(document(), std::size(kTestCases), nullptr, 0));
 
   unsigned long buflen = 123;
   EXPECT_FALSE(FPDF_GetXFAPacketContent(nullptr, 0, nullptr, 0, &buflen));
   EXPECT_EQ(123u, buflen);
   EXPECT_FALSE(FPDF_GetXFAPacketContent(document(), -1, nullptr, 0, &buflen));
   EXPECT_EQ(123u, buflen);
-  EXPECT_FALSE(FPDF_GetXFAPacketContent(document(), std::size(kExpectedResults),
+  EXPECT_FALSE(FPDF_GetXFAPacketContent(document(), std::size(kTestCases),
                                         nullptr, 0, &buflen));
   EXPECT_EQ(123u, buflen);
   EXPECT_FALSE(FPDF_GetXFAPacketContent(document(), 0, nullptr, 0, nullptr));
@@ -1355,8 +1349,7 @@ TEST_F(FPDFViewEmbedderTest, GetXFAStreamData) {
   EXPECT_TRUE(FPDF_GetXFAPacketContent(document(), 0, data_buffer.data(),
                                        data_buffer.size(), &buflen));
   EXPECT_EQ(121u, buflen);
-  EXPECT_STREQ("8f912eaa1e66c9341cb3032ede71e147",
-               GenerateMD5Base16(data_buffer).c_str());
+  EXPECT_EQ("8f912eaa1e66c9341cb3032ede71e147", GenerateMD5Base16(data_buffer));
 }
 
 TEST_F(FPDFViewEmbedderTest, GetXFADataForNoForm) {
@@ -1381,7 +1374,7 @@ class RecordUnsupportedErrorDelegate final : public EmbedderTest::Delegate {
   int type_ = -1;
 };
 
-TEST_F(FPDFViewEmbedderTest, UnSupportedOperations_NotFound) {
+TEST_F(FPDFViewEmbedderTest, UnSupportedOperationsNotFound) {
   RecordUnsupportedErrorDelegate delegate;
   SetDelegate(&delegate);
   ASSERT_TRUE(OpenDocument("hello_world.pdf"));
@@ -1389,7 +1382,7 @@ TEST_F(FPDFViewEmbedderTest, UnSupportedOperations_NotFound) {
   SetDelegate(nullptr);
 }
 
-TEST_F(FPDFViewEmbedderTest, UnSupportedOperations_LoadCustomDocument) {
+TEST_F(FPDFViewEmbedderTest, UnSupportedOperationsLoadCustomDocument) {
   RecordUnsupportedErrorDelegate delegate;
   SetDelegate(&delegate);
   ASSERT_TRUE(OpenDocument("unsupported_feature.pdf"));
@@ -1397,7 +1390,7 @@ TEST_F(FPDFViewEmbedderTest, UnSupportedOperations_LoadCustomDocument) {
   SetDelegate(nullptr);
 }
 
-TEST_F(FPDFViewEmbedderTest, UnSupportedOperations_LoadDocument) {
+TEST_F(FPDFViewEmbedderTest, UnSupportedOperationsLoadDocument) {
   std::string file_path =
       PathService::GetTestFilePath("unsupported_feature.pdf");
   ASSERT_FALSE(file_path.empty());
@@ -1795,7 +1788,7 @@ TEST_F(PostScriptLevel2EmbedderTest, Rectangles) {
 
   std::vector<uint8_t> emf_normal = RenderPageWithFlagsToEmf(page, 0);
   std::string ps_data = GetPostScriptFromEmf(emf_normal);
-  EXPECT_STREQ(kExpectedRectanglePostScript, ps_data.c_str());
+  EXPECT_EQ(kExpectedRectanglePostScript, ps_data);
 
   // FPDF_REVERSE_BYTE_ORDER is ignored since PostScript is not bitmap-based.
   std::vector<uint8_t> emf_reverse_byte_order =
@@ -1812,7 +1805,7 @@ TEST_F(PostScriptLevel3EmbedderTest, Rectangles) {
 
   std::vector<uint8_t> emf_normal = RenderPageWithFlagsToEmf(page, 0);
   std::string ps_data = GetPostScriptFromEmf(emf_normal);
-  EXPECT_STREQ(kExpectedRectanglePostScript, ps_data.c_str());
+  EXPECT_EQ(kExpectedRectanglePostScript, ps_data);
 
   // FPDF_REVERSE_BYTE_ORDER is ignored since PostScript is not bitmap-based.
   std::vector<uint8_t> emf_reverse_byte_order =
@@ -1890,7 +1883,7 @@ TEST_F(PostScriptLevel2EmbedderTest, Image) {
 
   std::vector<uint8_t> emf = RenderPageWithFlagsToEmf(page, 0);
   std::string ps_data = GetPostScriptFromEmf(emf);
-  EXPECT_STREQ(kExpected, ps_data.c_str());
+  EXPECT_EQ(kExpected, ps_data);
 
   UnloadPage(page);
 }
@@ -1934,7 +1927,7 @@ restore
 
   std::vector<uint8_t> emf = RenderPageWithFlagsToEmf(page, 0);
   std::string ps_data = GetPostScriptFromEmf(emf);
-  EXPECT_STREQ(kExpected, ps_data.c_str());
+  EXPECT_EQ(kExpected, ps_data);
 
   UnloadPage(page);
 }
@@ -2089,36 +2082,34 @@ TEST_F(FPDFViewEmbedderTest, Bug2087) {
   FPDF_DestroyLibrary();
 
   std::string agg_checksum;
+  const FPDF_LIBRARY_CONFIG kAggConfig = {
+      .version = 4,
+      .m_pUserFontPaths = nullptr,
+      .m_pIsolate = nullptr,
+      .m_v8EmbedderSlot = 0,
+      .m_pPlatform = nullptr,
+      .m_RendererType = FPDF_RENDERERTYPE_AGG,
+  };
+  FPDF_InitLibraryWithConfig(&kAggConfig);
   {
-    FPDF_LIBRARY_CONFIG config = {
-        .version = 4,
-        .m_pUserFontPaths = nullptr,
-        .m_pIsolate = nullptr,
-        .m_v8EmbedderSlot = 0,
-        .m_pPlatform = nullptr,
-        .m_RendererType = FPDF_RENDERERTYPE_AGG,
-    };
-    FPDF_InitLibraryWithConfig(&config);
-
     ASSERT_TRUE(OpenDocument("rectangles.pdf"));
     FPDF_PAGE page = LoadPage(0);
     ScopedFPDFBitmap bitmap = RenderPage(page);
     agg_checksum = HashBitmap(bitmap.get());
     UnloadPage(page);
     CloseDocument();
-    FPDF_DestroyLibrary();
   }
+  FPDF_DestroyLibrary();
 
   std::string skia_checksum;
+  const FPDF_LIBRARY_CONFIG kSkiaConfig = {
+      .version = 2,
+      .m_pUserFontPaths = nullptr,
+      .m_pIsolate = nullptr,
+      .m_v8EmbedderSlot = 0,
+  };
+  FPDF_InitLibraryWithConfig(&kSkiaConfig);
   {
-    FPDF_LIBRARY_CONFIG config = {
-        .version = 2,
-        .m_pUserFontPaths = nullptr,
-        .m_pIsolate = nullptr,
-        .m_v8EmbedderSlot = 0,
-    };
-    FPDF_InitLibraryWithConfig(&config);
-
     ASSERT_TRUE(OpenDocument("rectangles.pdf"));
     FPDF_PAGE page = LoadPage(0);
     ScopedFPDFBitmap bitmap = RenderPage(page);
@@ -2158,22 +2149,22 @@ TEST_F(FPDFViewEmbedderTest, NoSmoothTextItalicOverlappingGlyphs) {
 
 TEST_F(FPDFViewEmbedderTest, RenderTransparencyOnWhiteBackground) {
   ASSERT_TRUE(OpenDocument("bug_1302355.pdf"));
-  FPDF_PAGE page = LoadPage(0);
+  ScopedEmbedderTestPage page = LoadScopedPage(0);
   ASSERT_TRUE(page);
 
   constexpr int kWidth = 200;
   constexpr int kHeight = 200;
-  EXPECT_EQ(kWidth, static_cast<int>(FPDF_GetPageWidthF(page)));
-  EXPECT_EQ(kHeight, static_cast<int>(FPDF_GetPageHeightF(page)));
-  EXPECT_TRUE(FPDFPage_HasTransparency(page));
+  EXPECT_EQ(kWidth, static_cast<int>(FPDF_GetPageWidthF(page.get())));
+  EXPECT_EQ(kHeight, static_cast<int>(FPDF_GetPageHeightF(page.get())));
+  EXPECT_TRUE(FPDFPage_HasTransparency(page.get()));
   ScopedFPDFBitmap bitmap(FPDFBitmap_Create(kWidth, kHeight, /*alpha=*/true));
-  FPDFBitmap_FillRect(bitmap.get(), 0, 0, kWidth, kHeight, 0xFFFFFFFF);
-  FPDF_RenderPageBitmap(bitmap.get(), page, /*start_x=*/0, /*start_y=*/0,
-                        kWidth, kHeight, /*rotate=*/0, /*flags=*/0);
+  ASSERT_TRUE(
+      FPDFBitmap_FillRect(bitmap.get(), 0, 0, kWidth, kHeight, 0xFFFFFFFF));
+  FPDF_RenderPageBitmap(bitmap.get(), page.get(), /*start_x=*/0,
+                        /*start_y=*/0, kWidth, kHeight, /*rotate=*/0,
+                        /*flags=*/0);
   // TODO(crbug.com/1302355): This page should not render blank.
   EXPECT_EQ("eee4600ac08b458ac7ac2320e225674c", HashBitmap(bitmap.get()));
-
-  UnloadPage(page);
 }
 
 TEST_F(FPDFViewEmbedderTest, Bug2112) {
@@ -2184,4 +2175,59 @@ TEST_F(FPDFViewEmbedderTest, Bug2112) {
   ScopedFPDFBitmap bitmap(FPDFBitmap_CreateEx(kWidth, kHeight, FPDFBitmap_BGR,
                                               vec.data(), kStride));
   EXPECT_EQ(FPDFBitmap_BGR, FPDFBitmap_GetFormat(bitmap.get()));
+}
+
+TEST_F(FPDFViewEmbedderTest, RenderAnnotsGrayScale) {
+  ASSERT_TRUE(OpenDocument("annotation_highlight_square_with_ap.pdf"));
+  ScopedEmbedderTestPage page = LoadScopedPage(0);
+  ASSERT_TRUE(page);
+
+  const char* const gray_checksum = []() {
+    if (CFX_DefaultRenderDevice::UseSkiaRenderer()) {
+#if BUILDFLAG(IS_WIN)
+      return "c18c1b7ee995f16dfb18e6da73a3c2d3";
+#elif BUILDFLAG(IS_APPLE)
+      return "92e96cad5e6b93fee3e2017ea27e2497";
+#else
+      return "b73df08d5252615ad6ed2fe7d6c73883";
+#endif
+    }
+    return "c02f449666bf2633d06b909c76bc1c1d";
+  }();
+
+  TestRenderPageBitmapWithInternalMemory(page.get(), FPDFBitmap_Gray,
+                                         gray_checksum);
+}
+
+TEST_F(FPDFViewEmbedderTest, BadFillRectInput) {
+  constexpr int kWidth = 200;
+  constexpr int kHeight = 200;
+  constexpr char kExpectedChecksum[] = "acc736435c9f84aa82941ba561bc5dbc";
+  ScopedFPDFBitmap bitmap(FPDFBitmap_Create(200, 200, /*alpha=*/true));
+  ASSERT_TRUE(FPDFBitmap_FillRect(bitmap.get(), /*left=*/0, /*top=*/0,
+                                  /*width=*/kWidth,
+                                  /*height=*/kHeight, 0xFFFF0000));
+  EXPECT_EQ(kExpectedChecksum, HashBitmap(bitmap.get()));
+
+  // Empty rect dimensions is a no-op.
+  ASSERT_TRUE(FPDFBitmap_FillRect(bitmap.get(), /*left=*/0, /*top=*/0,
+                                  /*width=*/0,
+                                  /*height=*/0, 0xFF0000FF));
+  EXPECT_EQ(kExpectedChecksum, HashBitmap(bitmap.get()));
+
+  // Rect dimension overflows are also no-ops.
+  ASSERT_FALSE(FPDFBitmap_FillRect(
+      bitmap.get(), /*left=*/std::numeric_limits<int>::max(),
+      /*top=*/0, /*width=*/std::numeric_limits<int>::max(),
+      /*height=*/kHeight, 0xFF0000FF));
+  EXPECT_EQ(kExpectedChecksum, HashBitmap(bitmap.get()));
+
+  ASSERT_FALSE(FPDFBitmap_FillRect(
+      bitmap.get(), /*left=*/0,
+      /*top=*/std::numeric_limits<int>::max(), /*width=*/kWidth,
+      /*height=*/std::numeric_limits<int>::max(), 0xFF0000FF));
+  EXPECT_EQ(kExpectedChecksum, HashBitmap(bitmap.get()));
+
+  // Make sure null bitmap handle does not trigger a crash.
+  ASSERT_FALSE(FPDFBitmap_FillRect(nullptr, 0, 0, kWidth, kHeight, 0xFF0000FF));
 }

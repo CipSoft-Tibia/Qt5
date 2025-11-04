@@ -39,8 +39,8 @@ class PrivacySandboxServiceTestInterface {
   virtual base::Time TopicsConsentLastUpdateTime() const = 0;
   virtual std::string TopicsConsentLastUpdateText() const = 0;
   virtual void ForceChromeBuildForTests(bool force_chrome_build) const = 0;
-  virtual int GetRequiredPromptType() const = 0;
-  virtual void PromptActionOccurred(int action) const = 0;
+  virtual int GetRequiredPromptType(int surface_type) const = 0;
+  virtual void PromptActionOccurred(int action, int surface_type) const = 0;
 };
 
 class MockPrivacySandboxObserver
@@ -123,6 +123,7 @@ class MockPrivacySandboxSettingsDelegate
   MOCK_METHOD(bool, IsIncognitoProfile, (), (const, override));
   MOCK_METHOD(bool, HasAppropriateTopicsConsent, (), (const, override));
   MOCK_METHOD(bool, IsSubjectToM1NoticeRestricted, (), (const, override));
+  MOCK_METHOD(bool, IsRestrictedNoticeEnabled, (), (const, override));
   MOCK_METHOD(bool,
               IsCookieDeprecationExperimentEligible,
               (),
@@ -169,6 +170,8 @@ enum class StateKey {
   kM1RestrictedNoticePreviouslyAcknowledged = 25,
   kAttestationsMap = 26,
   kBlockFledgeJoiningForEtldplus1 = 27,
+  kBlockAll3pcToggleEnabledUserPrefValue = 28,
+  kTrackingProtection3pcdEnabledUserPrefValue = 29,
 };
 
 // Defines the input to the functions under test.
@@ -184,6 +187,11 @@ enum class InputKey {
   kForceChromeBuild = 9,
   kPromptAction = 10,
   kEventReportingDestinationOrigin = 11,
+  kOutSharedStorageDebugMessage = 12,
+  kOutSharedStorageSelectURLDebugMessage = 13,
+  kOutSharedStorageBlockIsSiteSettingSpecific = 14,
+  kOutSharedStorageSelectURLBlockIsSiteSettingSpecific = 15,
+  kOutPrivateAggregationBlockIsSiteSettingSpecific = 16,
 };
 
 // Defines the expected output of the functions under test, when the profile is
@@ -234,6 +242,13 @@ enum class OutputKey {
   kIsFledgeBuyAllowedMetric = 45,
   kIsCookieDeprecationLabelAllowedForContext = 46,
   kIsPrivateAggregationDebugModeAllowed = 47,
+  kIsSharedStorageAllowedDebugMessage = 48,
+  kIsSharedStorageSelectURLAllowedDebugMessage = 49,
+  kIsSharedStorageBlockSiteSettingSpecific = 50,
+  kIsSharedStorageSelectURLBlockSiteSettingSpecific = 51,
+  kIsPrivateAggregationBlockSiteSettingSpecific = 52,
+  kIsLocalUnpartitionedDataAccessAllowed = 53,
+  kIsLocalUnpartitionedDataAccessAllowedMetric = 54,
 };
 
 // To allow multiple input keys to map to the same value, without having to
@@ -259,7 +274,9 @@ using SiteDataExceptions = std::vector<SiteDataException>;
 // a particular value type, and will error otherwise.
 using TestCaseItemValue = absl::variant<
     bool,
+    bool*,
     std::string,
+    std::string*,
     url::Origin,
     GURL,
     content_settings::CookieControlsMode,
@@ -270,7 +287,7 @@ using TestCaseItemValue = absl::variant<
     base::TimeDelta,
     privacy_sandbox::TopicsConsentUpdateSource,
     std::vector<int>,
-    absl::optional<privacy_sandbox::PrivacySandboxAttestationsMap>>;
+    std::optional<privacy_sandbox::PrivacySandboxAttestationsMap>>;
 
 using TestState = std::map<TestKey<StateKey>, TestCaseItemValue>;
 using TestInput = std::map<TestKey<InputKey>, TestCaseItemValue>;

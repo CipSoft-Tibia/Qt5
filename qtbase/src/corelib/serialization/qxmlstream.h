@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:data-parser
 
 #ifndef QXMLSTREAM_H
 #define QXMLSTREAM_H
@@ -12,6 +13,8 @@
 #include <QtCore/qlist.h>
 #include <QtCore/qscopedpointer.h>
 #include <QtCore/qstring.h>
+
+#include <memory>
 
 QT_BEGIN_NAMESPACE
 
@@ -361,7 +364,7 @@ private:
 
     Q_DISABLE_COPY(QXmlStreamReader)
     Q_DECLARE_PRIVATE(QXmlStreamReader)
-    QScopedPointer<QXmlStreamReaderPrivate> d_ptr;
+    std::unique_ptr<QXmlStreamReaderPrivate> d_ptr;
 
 };
 #endif // feature xmlstreamreader
@@ -461,7 +464,7 @@ public:
 private:
     Q_DISABLE_COPY(QXmlStreamWriter)
     Q_DECLARE_PRIVATE(QXmlStreamWriter)
-    QScopedPointer<QXmlStreamWriterPrivate> d_ptr;
+    std::unique_ptr<QXmlStreamWriterPrivate> d_ptr;
 };
 #endif // feature xmlstreamwriter
 

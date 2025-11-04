@@ -3,11 +3,13 @@
 # found in the LICENSE file.
 
 import("//build/config/chrome_build.gni")
+import("//build/config/chromeos/args.gni")
 import("//build/config/chromeos/ui_mode.gni")
 import("//build/config/compiler/compiler.gni")
 import("//build/config/compiler/pgo/pgo.gni")
 import("//build/config/features.gni")
 import("//build/config/locales.gni")
+import("//build/config/ozone.gni")
 import("//build/config/python.gni")
 import("//build/config/sanitizers/sanitizers.gni")
 import("//build/config/ui.gni")
@@ -31,6 +33,8 @@ import("//tools/v8_context_snapshot/v8_context_snapshot.gni")
 import("//ui/gl/features.gni")
 import("//v8/gni/v8.gni")
 
+assert(!is_fuchsia, "Fuchsia shouldn't use anything in //chrome")
+
 if (is_android) {
   import("//build/config/android/rules.gni")
 } else if (is_linux || is_chromeos) {
@@ -52,6 +56,14 @@ if (is_android) {
   import("//media/cdm/library_cdm/cdm_paths.gni")
   import("//services/on_device_model/on_device_model.gni")
   import("//third_party/icu/config.gni")
+}
+
+# b/365489014: CrOS' chrome.sections_embedded target breaks on component builds;
+# there's no clear value of supporting it there, so disable it.
+_cros_generate_embed_section_target = is_chromeos_ash && !is_component_build
+
+if (_cros_generate_embed_section_target) {
+  import("//build/chromeos/embed_sections.gni")
 }
 
 declare_args() {
@@ -101,7 +113,7 @@ group("assert_no_deps") {
 
   if (is_android) {
     deps += [ "//chrome/android:chrome_public_apk" ]
-  } else if (!is_fuchsia) {
+  } else {
     deps += [ ":chrome" ]
   }
 
@@ -113,18 +125,9 @@ group("assert_no_deps") {
   # for no reason and is easy to mess up. See the comment at the top of
   # //chrome/installer/util/BUILD.gn.
   assert_no_deps = [ "//chrome/installer/util:strings" ]
-
-  if (is_fuchsia) {
-    assert_no_deps += [
-      # Chrome should use Perfetto instead of libtrace. Vulkan depends on
-      # trace-engine, but there should be no dependencies on trace-provider.
-      "//third_party/fuchsia-sdk/sdk/pkg/trace",
-      "//third_party/fuchsia-sdk/sdk/pkg/trace-provider-so",
-    ]
-  }
 }
 
-if (!is_android && !is_mac && !is_fuchsia) {
+if (!is_android && !is_mac) {
   group("chrome") {
     public_deps = [ ":chrome_initial" ]
     data_deps = [ ":chrome_initial" ]
@@ -176,7 +179,13 @@ if (!is_android && !is_mac && !is_fuchsia) {
           "//components/variations/cros_evaluate_seed:evaluate_seed",
           "//sandbox/linux:chrome_sandbox",
         ]
-        deps += [ "//components/exo/wayland:ui_controls_protocol_stub" ]
+        if (build_mojo_proxy) {
+          data_deps += [ "//mojo/proxy:mojo_proxy" ]
+        }
+        deps += [
+          "//components/exo/wayland:test_controller_stub",
+          "//components/exo/wayland:ui_controls_protocol_stub",
+        ]
       }
 
       if (also_build_lacros_chrome_for_architecture != "") {
@@ -233,6 +242,7 @@ if (!is_android && !is_mac && !is_fuchsia) {
           "//third_party/crashpad/crashpad/util",
           "//ui/gl",
         ]
+
         data_deps = [
           "//chrome/app/version_assembly:version_assembly_manifest",
           "//chrome/browser/web_applications/chrome_pwa_launcher",
@@ -240,6 +250,11 @@ if (!is_android && !is_mac && !is_fuchsia) {
           "//chrome/elevation_service",
           "//chrome/notification_helper",
         ]
+
+        if (enable_platform_experience) {
+          data_deps +=
+              [ "//chrome/browser/platform_experience/win:os_update_handler" ]
+        }
 
         defines += [ "CHROME_EXE_MAIN" ]
 
@@ -274,12 +289,13 @@ if (!is_android && !is_mac && !is_fuchsia) {
         sources += [ "app/chrome_exe_main_aura.cc" ]
       }
 
-      if (is_linux || is_chromeos || is_fuchsia) {
+      if (is_linux || is_chromeos) {
         sources += [
           "app/chrome_dll_resource.h",
           "app/chrome_main.cc",
           "app/chrome_main_delegate.cc",
           "app/chrome_main_delegate.h",
+          "app/startup_timestamps.h",
         ]
 
         deps += [
@@ -299,15 +315,12 @@ if (!is_android && !is_mac && !is_fuchsia) {
           "//headless:headless_shell_lib",
         ]
 
-        public_deps = [ "//chrome/common:buildflags" ]
+        public_deps = [
+          ":xdg_mime",  # Needs to be public for installer to consume files.
+          "//chrome/common:buildflags",
+        ]
 
-        if (!is_fuchsia) {
-          public_deps += [
-            ":xdg_mime",  # Needs to be public for installer to consume files.
-          ]
-
-          data_deps += [ "//components/crash/core/app:chrome_crashpad_handler" ]
-        }
+        data_deps += [ "//components/crash/core/app:chrome_crashpad_handler" ]
 
         ldflags = []
 
@@ -321,7 +334,6 @@ if (!is_android && !is_mac && !is_fuchsia) {
         # On Chrome OS builds (for both ash-chrome and lacros-chrome), put
         # a metadata.json file in root directory containing Chrome version.
         if (is_chromeos) {
-          deps += [ "//ui/gfx/linux:gbm" ]
           data_deps += [ "//build:version_metadata" ]
         }
 
@@ -341,6 +353,10 @@ if (!is_android && !is_mac && !is_fuchsia) {
 
         if (is_chromeos_ash) {
           public_deps += [ "//ui/lottie" ]
+          deps += [
+            "//chrome/browser/ash/locale",
+            "//chrome/browser/ash/schedqos",
+          ]
         }
 
         if (is_chromeos_lacros) {
@@ -352,10 +368,13 @@ if (!is_android && !is_mac && !is_fuchsia) {
             "//ui/base",
           ]
         }
-      }
 
-      if (is_chromeos_ash || is_win) {
-        data_deps += [ "//mojo/core:shared_library" ]
+        if (use_ozone) {
+          deps += [ "//ui/ozone" ]
+          if (is_linux) {
+            deps += [ "//ui/linux:display_server_utils" ]
+          }
+        }
       }
 
       # These files are used by the installer so we need a public dep.
@@ -376,6 +395,7 @@ if (!is_android && !is_mac && !is_fuchsia) {
 
       data_deps += [
         "//chrome/browser/resources/media/mei_preload:component",
+        "//components/privacy_sandbox/privacy_sandbox_attestations/preload:component",
         "//third_party/widevine/cdm",
       ]
       if (invoker.collect_inputs_only) {
@@ -418,6 +438,7 @@ if (is_win) {
       "app/chrome_main.cc",
       "app/chrome_main_delegate.cc",
       "app/chrome_main_delegate.h",
+      "app/startup_timestamps.h",
     ]
 
     output_name = "chrome"
@@ -455,6 +476,10 @@ if (is_win) {
     if (use_aura) {
       deps += [ "//ui/compositor" ]
     }
+
+    if (is_chromeos_ash) {
+      deps += [ "//chrome/browser/ash/schedqos" ]
+    }
   }
 
   copy("copy_first_run") {
@@ -466,8 +491,7 @@ if (is_win) {
   chrome_framework_name = chrome_product_full_name + " Framework"
   chrome_framework_version = chrome_version_full
 
-  verify_dynamic_libraries = !is_component_build && !is_asan && !is_ubsan &&
-                             !is_ubsan_vptr && !is_ubsan_security
+  verify_dynamic_libraries = !is_component_build && !is_asan && !is_ubsan_any
   if (host_os == "mac") {
     objdump_path = mac_bin_path
   } else {
@@ -646,7 +670,7 @@ if (is_win) {
 
   bundle_data("chrome_resources") {
     sources = [
-      "$root_out_dir/$chrome_mac_bundle_id.manifest",
+     # "$root_out_dir/$chrome_mac_bundle_id.manifest",
       "app/theme/$branding_path_component/mac/document.icns",
       "browser/ui/cocoa/applescript/scripting.sdef",
     ]
@@ -654,7 +678,7 @@ if (is_win) {
     public_deps = [
       ":chrome_app_icon",
       ":chrome_app_strings",
-      "//components/policy:chrome_manifest_bundle",
+     # "//components/policy:chrome_manifest_bundle",
     ]
   }
 
@@ -845,7 +869,7 @@ if (is_win) {
   }
 
   # Create and bundle an InfoPlist.strings for the alert helper app.
-  # TODO(crbug.com/1182393): Disambiguate and localize alert helper app name.
+  # TODO(crbug.com/40751430): Disambiguate and localize alert helper app name.
   compile_plist("chrome_helper_app_alerts_plist_strings") {
     format = "binary1"
     plist_templates = [ "app/helper-alerts-InfoPlist.strings" ]
@@ -902,12 +926,14 @@ if (is_win) {
     sources = [
       "$root_out_dir/app_mode_loader",
       "$root_out_dir/chrome_crashpad_handler",
+      "$root_out_dir/web_app_shortcut_copier",
     ]
 
     outputs = [ "{{bundle_contents_dir}}/Helpers/{{source_file_part}}" ]
 
     public_deps = [
       "//chrome/app_shim:app_mode_loader",
+      "//chrome/browser/web_applications/os_integration/mac:web_app_shortcut_copier",
       "//components/crash/core/app:chrome_crashpad_handler",
     ]
 
@@ -923,7 +949,7 @@ if (is_win) {
 
     if (enable_updater) {
       if (is_chrome_branded) {
-        sources += [ "//third_party/updater/chrome_mac_universal_prod/${updater_product_full_name}.app" ]
+        sources += [ "//third_party/updater/chrome_mac_universal_prod/cipd/${updater_product_full_name}.app" ]
       } else {
         sources += [ "$root_out_dir/${updater_product_full_name}.app" ]
 
@@ -969,7 +995,8 @@ if (is_win) {
       if (use_v8_context_snapshot) {
         sources += [ "$root_out_dir/$v8_context_snapshot_filename" ]
         public_deps += [ "//tools/v8_context_snapshot" ]
-      } else {
+      }
+      if (!use_v8_context_snapshot || include_both_v8_snapshots) {
         sources += [ "$root_out_dir/snapshot_blob.bin" ]
       }
     }
@@ -996,42 +1023,25 @@ if (is_win) {
     }
   }
 
-  # EGL on MacOS ships with official chrome
-  bundle_egl_libraries = use_egl
+  # Add the ANGLE .dylibs in the MODULE_DIR of Chromium.app
+  bundle_data("angle_binaries") {
+    sources = [
+      "$root_out_dir/egl_intermediates/libEGL.dylib",
+      "$root_out_dir/egl_intermediates/libGLESv2.dylib",
+    ]
+    outputs = [ "{{bundle_contents_dir}}/Libraries/{{source_file_part}}" ]
+    public_deps = [ "//ui/gl:angle_library_copy" ]
+  }
 
-  if (bundle_egl_libraries) {
-    # Add the ANGLE .dylibs in the MODULE_DIR of Chromium.app
-    bundle_data("angle_binaries") {
+  if (enable_swiftshader) {
+    # Add the SwiftShader .dylibs in the MODULE_DIR of Chromium.app
+    bundle_data("swiftshader_binaries") {
       sources = [
-        "$root_out_dir/egl_intermediates/libEGL.dylib",
-        "$root_out_dir/egl_intermediates/libGLESv2.dylib",
+        "$root_out_dir/vk_intermediates/libvk_swiftshader.dylib",
+        "$root_out_dir/vk_intermediates/vk_swiftshader_icd.json",
       ]
       outputs = [ "{{bundle_contents_dir}}/Libraries/{{source_file_part}}" ]
-      public_deps = [ "//ui/gl:angle_library_copy" ]
-    }
-
-    # Add the SwiftShader .dylibs in the MODULE_DIR of Chromium.app
-    if (enable_swiftshader) {
-      bundle_data("swiftshader_binaries") {
-        sources = [
-          "$root_out_dir/vk_intermediates/libvk_swiftshader.dylib",
-          "$root_out_dir/vk_intermediates/vk_swiftshader_icd.json",
-        ]
-        outputs = [ "{{bundle_contents_dir}}/Libraries/{{source_file_part}}" ]
-        public_deps = [ "//ui/gl:swiftshader_vk_library_copy" ]
-      }
-    }
-  }
-
-  group("angle_library") {
-    if (bundle_egl_libraries) {
-      deps = [ ":angle_binaries" ]
-    }
-  }
-
-  group("swiftshader_library") {
-    if (bundle_egl_libraries && enable_swiftshader) {
-      deps = [ ":swiftshader_binaries" ]
+      public_deps = [ "//ui/gl:swiftshader_vk_library_copy" ]
     }
   }
 
@@ -1153,13 +1163,13 @@ if (is_win) {
       "app/chrome_main_delegate.h",
       "app/chrome_main_mac.h",
       "app/chrome_main_mac.mm",
+      "app/startup_timestamps.h",
     ]
 
     deps = [
       ":dependencies",
       "//build:chromeos_buildflags",
       "//chrome/app:command_ids",
-      "//chrome/app:notification_metrics",
       "//chrome/common:buildflags",
       "//chrome/common:version_header",
       "//chrome/common/profiler",
@@ -1170,6 +1180,10 @@ if (is_win) {
       "//headless:headless_shell_lib",
       "//third_party/cld_3/src/src:cld_3",
     ]
+
+    if (is_chromeos_ash) {
+      deps += [ "//chrome/browser/ash/schedqos" ]
+    }
 
     if (is_component_build) {
       frameworks = [ "Carbon.framework" ]
@@ -1217,15 +1231,17 @@ if (is_win) {
     public_deps = [ ":chrome_dll" ]
 
     bundle_deps = [
-      ":angle_library",
+      ":angle_binaries",
       ":chrome_framework_helpers",
       ":chrome_framework_plugins",
       ":chrome_framework_resources",
       ":optimization_guide_library",
-      ":swiftshader_library",
       ":widevine_cdm_library",
-      "//chrome/browser/resources/media/mei_preload:component_bundle",
     ]
+
+    if (enable_swiftshader) {
+       bundle_deps += [ ":swiftshader_binaries" ]
+    }
 
     if (is_chrome_branded) {
       bundle_deps += [ ":preinstalled_apps" ]
@@ -1334,7 +1350,8 @@ if (is_win) {
       outputs =
           [ "$root_out_dir/{{source_file_part}}-$chrome_version_full.breakpad" ]
 
-      dump_syms = "//third_party/breakpad:dump_syms($host_toolchain)"
+      dump_syms =
+          "//third_party/breakpad:dump_syms($host_system_allocator_toolchain)"
       args = rebase_path(outputs, root_build_dir) + [
                rebase_path(get_label_info(dump_syms, "root_out_dir") + "/" +
                                get_label_info(dump_syms, "name"),
@@ -1433,6 +1450,7 @@ group("dependencies") {
     "//chrome/renderer",
     "//chrome/utility",
     "//components/about_ui",
+    "//components/crash/core/app",
     "//components/devtools/devtools_pipe",
     "//components/memory_system",
     "//components/startup_metric_utils",
@@ -1476,13 +1494,11 @@ group("dependencies") {
     public_deps += [
       "//ash/constants",
       "//chrome/browser/ash",
+      "//chrome/browser/ash/boot_times_recorder",
+      "//chrome/browser/ash/schedqos",
       "//chromeos",
       "//chromeos/ash/components/memory",
     ]
-  }
-
-  if (!is_fuchsia) {
-    public_deps += [ "//components/crash/core/app" ]
   }
 }
 
@@ -1650,11 +1666,6 @@ if (is_android) {
     ]
   }
 
-  java_cpp_enum("context_menu_image_format_enum_javagen") {
-    sources =
-        [ "browser/android/context_menu/context_menu_native_delegate_impl.h" ]
-  }
-
   source_set("chrome_android_core") {
     sources = [
       "app/android/chrome_jni_onload.cc",
@@ -1663,6 +1674,7 @@ if (is_android) {
       "app/android/chrome_main_delegate_android.h",
       "app/chrome_main_delegate.cc",
       "app/chrome_main_delegate.h",
+      "app/startup_timestamps.h",
     ]
 
     libs = [
@@ -1688,6 +1700,7 @@ if (is_android) {
       "//components/safe_browsing:buildflags",
       "//components/safe_browsing/android:safe_browsing_api_handler",
       "//components/safe_browsing/android:safe_browsing_mobile",
+      "//components/stylus_handwriting/android",
       "//content/public/app",
     ]
 
@@ -1710,6 +1723,7 @@ if (is_android) {
 
     if (is_chromeos_ash) {
       public_deps += [ "//ui/lottie" ]
+      deps += [ "//chrome/browser/ash/schedqos" ]
     }
   }
 }
@@ -1814,7 +1828,7 @@ if (is_linux || is_chromeos) {
           symbol_file = "$root_out_dir/angle_libvulkan.breakpad.$current_cpu"
         }
 
-        deps = [ "//third_party/vulkan-deps/vulkan-loader/src:libvulkan" ]
+        deps = [ "//third_party/vulkan-loader/src:libvulkan" ]
       }
     }
     if (build_with_internal_optimization_guide) {
@@ -1842,14 +1856,22 @@ if (is_linux || is_chromeos) {
       "//third_party/xdg-utils/scripts/xdg-settings",
     ]
     if (is_linux) {
-      sources +=
-          [ "//chrome/app/theme/$branding_path_component/product_logo_48.png" ]
-    } else {
       sources += [
         "//chrome/app/theme/$branding_path_component/linux/product_logo_48.png",
       ]
+    } else {
+      sources +=
+          [ "//chrome/app/theme/$branding_path_component/product_logo_48.png" ]
     }
     outputs = [ "$root_out_dir/{{source_file_part}}" ]
+  }
+}
+
+if (_cros_generate_embed_section_target) {
+  embed_sections("section_embedded_chrome_binary") {
+    binary_input = "$root_out_dir/chrome"
+    sections_embedded_binary_output = "$root_out_dir/chrome.sections_embedded"
+    deps = [ ":chrome" ]
   }
 }
 

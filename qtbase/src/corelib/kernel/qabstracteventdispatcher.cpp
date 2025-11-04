@@ -175,7 +175,12 @@ QAbstractEventDispatcher::QAbstractEventDispatcher(QAbstractEventDispatcherPriva
     Destroys the event dispatcher.
 */
 QAbstractEventDispatcher::~QAbstractEventDispatcher()
-{ }
+{
+    // don't recreate the QThreadData if it has already been destroyed
+    QThreadData *data = QThreadData::currentThreadData();
+    if (data && data->eventDispatcher.loadRelaxed() == this)
+        data->eventDispatcher.storeRelaxed(nullptr);
+}
 
 /*!
     Returns a pointer to the event dispatcher object for the specified
@@ -188,6 +193,7 @@ QAbstractEventDispatcher::~QAbstractEventDispatcher()
  */
 QAbstractEventDispatcher *QAbstractEventDispatcher::instance(QThread *thread)
 {
+    // do create a QThreadData, in case this is very early in an adopted thread
     QThreadData *data = thread ? QThreadData::get2(thread) : QThreadData::current();
     return data->eventDispatcher.loadRelaxed();
 }

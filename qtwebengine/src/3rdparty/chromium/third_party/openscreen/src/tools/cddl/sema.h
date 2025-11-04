@@ -15,7 +15,6 @@
 #include <utility>
 #include <vector>
 
-#include "absl/algorithm/container.h"
 #include "tools/cddl/parse.h"
 
 struct CddlGroup;
@@ -206,6 +205,10 @@ struct CppType {
   // Data type for this C++ type.
   enum class Which {
     kUninitialized = 0,
+    kBool,
+    kFloat,
+    kFloat64,
+    kInt64,
     kUint64,
     kString,
     kBytes,
@@ -319,6 +322,18 @@ struct CppType {
 // lead to a compilation failure because an enum class is used.
 inline std::ostream& operator<<(std::ostream& os, const CppType::Which& which) {
   switch (which) {
+    case CppType::Which::kBool:
+      os << "kBool";
+      break;
+    case CppType::Which::kFloat:
+      os << "kFloat";
+      break;
+    case CppType::Which::kFloat64:
+      os << "kFloat64";
+      break;
+    case CppType::Which::kInt64:
+      os << "kInt64";
+      break;
     case CppType::Which::kUint64:
       os << "kUint64";
       break;

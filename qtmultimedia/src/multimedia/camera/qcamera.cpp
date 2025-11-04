@@ -63,6 +63,10 @@ QT_BEGIN_NAMESPACE
     \l {camera_image_processing}{Camera Image Processing}.
 
     See the \l{Camera Overview}{camera overview} for more information.
+
+    \note On WebAssembly platform, due to it's asynchronous nature,
+    QMediaDevices::videoInputsChanged() signal is emitted when the list of
+    video inputs is ready. User permissions are required. Works only on secure https contexts.
 */
 
 /*!
@@ -567,14 +571,14 @@ void QCamera::setCameraFormat(const QCameraFormat &format)
     \value Camera.FocusModeManual The lens focus distance is set to a value specified by \l focusDistance.
 
     To check whether the camera device supports a particular focus mode, pass the corresponding
-    \l FocusMode value to the \l isFocusModeSupported function as a parameter. The function
-    returns false if the focus mode value is not supported. Assigning this mode to the
-    \l focusMode property has no effect.
+    \c focusMode value to the \l isFocusModeSupported() function as a parameter. The function
+    returns \c false if the focus mode value is not supported. Assigning an unsupported mode to
+    this property has no effect.
 
-    If you set the focusMode property to \l Camera.FocusModeManual, the lens
+    If you set the focusMode property to \c Camera.FocusModeManual, the lens
     locks to the focus according to \l focusDistance.
 
-    \sa isFocusModeSupported
+    \sa isFocusModeSupported()
 */
 
 /*!
@@ -586,13 +590,13 @@ void QCamera::setCameraFormat(const QCameraFormat &format)
 
     To check whether the camera device supports a particular focus mode, pass the corresponding
     \l FocusMode value to the \l isFocusModeSupported function as a parameter. The function
-    returns false if the focus mode value is not supported. Assigning this mode to the
-    \l focusMode property has no effect.
+    returns false if the focus mode value is not supported. Assigning an unsupported mode to
+    this property has no effect.
 
-    If you set the focusMode property to \l Camera.FocusModeManual, the lens
+    If you set the focusMode property to \l QCamera::FocusModeManual, the lens
     locks to the focus according to \l focusDistance.
 
-    \sa isFocusModeSupported
+    \sa isFocusModeSupported()
 */
 QCamera::FocusMode QCamera::focusMode() const
 {
@@ -616,14 +620,15 @@ void QCamera::setFocusMode(QCamera::FocusMode mode)
 /*!
     \qmlmethod bool Camera::isFocusModeSupported(FocusMode mode)
 
-    Returns true if the focus \a mode is supported by the camera.
+    Returns \c true if the focus \a mode is supported by the camera.
 
-    If \l FocusModeManual is reported as supported, the feature
-    \l Feature::FocusDistance is implied to be supported as well.
+    If \l {focusMode}{Camera.FocusModeManual} is reported as supported,
+    the feature \l {supportedFeatures}{Camera.FocusDistance} is implied
+    to be supported as well.
 */
 
 /*!
-    Returns true if the focus \a mode is supported by the camera.
+    Returns \c true if the focus \a mode is supported by the camera.
 
     If \l FocusModeManual is reported as supported, the feature
     \l Feature::FocusDistance is implied to be supported as well.
@@ -697,16 +702,16 @@ void QCamera::setCustomFocusPoint(const QPointF &point)
     typically at infinity, but this may not be the case for all devices.
 
     This property is applied to the device only when \l focusMode is set to
-    \l Camera.FocusModeManual, and \l supportedFeatures includes the
-    \l Camera.FocusDistance flag.
+    \l {focusMode}{Camera.FocusModeManual}, and \l supportedFeatures includes the
+    \c Camera.FocusDistance flag.
 
     If you assign a value to this property while \l focusMode is not
-    set to \l Camera.FocusModeManual, the property stores the value but does
-    not affect the device until \l Camera.FocusModeManual is active.
+    set to \c Camera.FocusModeManual, the property stores the value but does
+    not affect the device until \c Camera.FocusModeManual is active.
 
     Assigning a value outside the valid range [0, 1] has no effect on this property.
 
-    If \l supportedFeatures does not include the \l Camera.FocusDistance flag,
+    If \l supportedFeatures does not include the \c Camera.FocusDistance flag,
     any attempt to set this property is ignored.
 
     This property will not be updated by the camera when it is in an automatic focus mode.
@@ -727,8 +732,8 @@ void QCamera::setCustomFocusPoint(const QPointF &point)
     \l Feature::FocusDistance flag.
 
     If you assign a value to this property while \l focusMode is not
-    set to \l Camera.FocusModeManual, the property stores the value but does
-    not affect the device until \l Camera.FocusModeManual is active.
+    set to \c QCamera::FocusModeManual, the property stores the value but does
+    not affect the device until \c QCamera::FocusModeManual is active.
 
     Assigning a value outside the valid range [0, 1] has no effect on this property.
 
@@ -877,6 +882,11 @@ void QCamera::zoomTo(float factor, float rate)
 
     Gets or sets a certain flash mode if the camera has a flash.
 
+    Assigning an unsupported mode to this property has no effect.
+
+    This property only has an effect when capturing images using
+    \l ImageCapture
+
     \value Camera.FlashOff      Flash is Off.
     \value Camera.FlashOn       Flash is On.
     \value Camera.FlashAuto     Automatic flash.
@@ -889,6 +899,11 @@ void QCamera::zoomTo(float factor, float rate)
     \brief The flash mode being used.
 
     Enables a certain flash mode if the camera has a flash.
+
+    Assigning an unsupported mode to this property has no effect.
+
+    This property only has an effect when capturing images using
+    \l QImageCapture
 
     \sa QCamera::FlashMode, QCamera::isFlashModeSupported, QCamera::isFlashReady
 */

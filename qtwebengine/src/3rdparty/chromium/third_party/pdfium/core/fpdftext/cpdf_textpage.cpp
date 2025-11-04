@@ -23,22 +23,24 @@
 #include "core/fpdfapi/parser/cpdf_dictionary.h"
 #include "core/fpdfapi/parser/cpdf_string.h"
 #include "core/fpdftext/unicodenormalizationdata.h"
+#include "core/fxcrt/check.h"
+#include "core/fxcrt/check_op.h"
+#include "core/fxcrt/compiler_specific.h"
 #include "core/fxcrt/data_vector.h"
 #include "core/fxcrt/fx_bidi.h"
 #include "core/fxcrt/fx_extension.h"
 #include "core/fxcrt/fx_unicode.h"
+#include "core/fxcrt/span.h"
 #include "core/fxcrt/stl_util.h"
-#include "third_party/base/check.h"
-#include "third_party/base/check_op.h"
 
 namespace {
 
 constexpr float kDefaultFontSize = 1.0f;
 constexpr float kSizeEpsilon = 0.01f;
-
-const uint16_t* const kUnicodeDataNormalizationMaps[] = {
-    kUnicodeDataNormalizationMap2, kUnicodeDataNormalizationMap3,
-    kUnicodeDataNormalizationMap4};
+constexpr std::array<pdfium::span<const uint16_t>, 3>
+    kUnicodeDataNormalizationMaps = {{kUnicodeDataNormalizationMap2,
+                                      kUnicodeDataNormalizationMap3,
+                                      kUnicodeDataNormalizationMap4}};
 
 float NormalizeThreshold(float threshold, int t1, int t2, int t3) {
   DCHECK(t1 < t2);
@@ -81,21 +83,22 @@ float CalculateBaseSpace(const CPDF_TextObject* pTextObj,
 DataVector<wchar_t> GetUnicodeNormalization(wchar_t wch) {
   wch = wch & 0xFFFF;
   wchar_t wFind = kUnicodeDataNormalization[wch];
-  if (!wFind)
+  if (!wFind) {
     return DataVector<wchar_t>(1, wch);
-
+  }
   if (wFind >= 0x8000) {
     return DataVector<wchar_t>(1,
                                kUnicodeDataNormalizationMap1[wFind - 0x8000]);
   }
-
   wch = wFind & 0x0FFF;
   wFind >>= 12;
-  const uint16_t* pMap = kUnicodeDataNormalizationMaps[wFind - 2] + wch;
-  if (wFind == 4)
-    wFind = static_cast<wchar_t>(*pMap++);
-
-  return DataVector<wchar_t>(pMap, pMap + wFind);
+  auto pMap = kUnicodeDataNormalizationMaps[wFind - 2].subspan(wch);
+  if (wFind == 4) {
+    wFind = pMap.front();
+    pMap = pMap.subspan(1);
+  }
+  const auto range = pMap.first(wFind);
+  return DataVector<wchar_t>(range.begin(), range.end());
 }
 
 float MaskPercentFilled(const std::vector<bool>& mask,
@@ -470,12 +473,17 @@ WideString CPDF_TextPage::GetTextByObject(
 }
 
 const CPDF_TextPage::CharInfo& CPDF_TextPage::GetCharInfo(size_t index) const {
-  CHECK(index < m_CharList.size());
+  CHECK_LT(index, m_CharList.size());
+  return m_CharList[index];
+}
+
+CPDF_TextPage::CharInfo& CPDF_TextPage::GetCharInfo(size_t index) {
+  CHECK_LT(index, m_CharList.size());
   return m_CharList[index];
 }
 
 float CPDF_TextPage::GetCharFontSize(size_t index) const {
-  CHECK(index < m_CharList.size());
+  CHECK_LT(index, m_CharList.size());
   return GetFontSize(m_CharList[index].m_pTextObj);
 }
 
@@ -606,7 +614,7 @@ CPDF_TextPage::TextOrientation CPDF_TextPage::FindTextlineFlowOrientation()
 
 void CPDF_TextPage::AppendGeneratedCharacter(wchar_t unicode,
                                              const CFX_Matrix& formMatrix) {
-  absl::optional<CharInfo> pGenerateChar = GenerateCharInfo(unicode);
+  std::optional<CharInfo> pGenerateChar = GenerateCharInfo(unicode);
   if (!pGenerateChar.has_value())
     return;
 
@@ -623,14 +631,11 @@ void CPDF_TextPage::ProcessObject() {
   m_TextlineDir = FindTextlineFlowOrientation();
   for (auto it = m_pPage->begin(); it != m_pPage->end(); ++it) {
     CPDF_PageObject* pObj = it->get();
-    if (!pObj)
-      continue;
-
-    CFX_Matrix matrix;
-    if (pObj->IsText())
-      ProcessTextObject(pObj->AsText(), matrix, m_pPage, it);
-    else if (pObj->IsForm())
-      ProcessFormObject(pObj->AsForm(), matrix);
+    if (pObj->IsText()) {
+      ProcessTextObject(pObj->AsText(), CFX_Matrix(), m_pPage, it);
+    } else if (pObj->IsForm()) {
+      ProcessFormObject(pObj->AsForm(), CFX_Matrix());
+    }
   }
   for (const auto& obj : mTextObjects)
     ProcessTextObject(obj);
@@ -645,13 +650,11 @@ void CPDF_TextPage::ProcessFormObject(CPDF_FormObject* pFormObj,
   const CPDF_PageObjectHolder* pHolder = pFormObj->form();
   for (auto it = pHolder->begin(); it != pHolder->end(); ++it) {
     CPDF_PageObject* pPageObj = it->get();
-    if (!pPageObj)
-      continue;
-
-    if (pPageObj->IsText())
+    if (pPageObj->IsText()) {
       ProcessTextObject(pPageObj->AsText(), curFormMatrix, pHolder, it);
-    else if (pPageObj->IsForm())
+    } else if (pPageObj->IsForm()) {
       ProcessFormObject(pPageObj->AsForm(), curFormMatrix);
+    }
   }
 }
 
@@ -874,7 +877,7 @@ CPDF_TextPage::MarkedContentState CPDF_TextPage::PreMarkedContent(
 }
 
 void CPDF_TextPage::ProcessMarkedContent(const TransformedTextObject& obj) {
-  const CPDF_TextObject* pTextObj = obj.m_pTextObj;
+  CPDF_TextObject* pTextObj = obj.m_pTextObj;
   const CPDF_ContentMarks* pMarks = pTextObj->GetContentMarks();
   const size_t nContentMarks = pMarks->CountItems();
   WideString actText;
@@ -946,12 +949,13 @@ void CPDF_TextPage::SwapTempTextBuf(size_t iCharListStartAppend,
   pdfium::span<wchar_t> temp_span = m_TempTextBuf.GetWideSpan();
   DCHECK(!temp_span.empty());
   if (iBufStartAppend < temp_span.size()) {
-    std::reverse(temp_span.begin() + iBufStartAppend, temp_span.end());
+    pdfium::span<wchar_t> reverse_span = temp_span.subspan(iBufStartAppend);
+    std::reverse(reverse_span.begin(), reverse_span.end());
   }
 }
 
 void CPDF_TextPage::ProcessTextObject(const TransformedTextObject& obj) {
-  const CPDF_TextObject* pTextObj = obj.m_pTextObj;
+  CPDF_TextObject* pTextObj = obj.m_pTextObj;
   if (fabs(pTextObj->GetRect().Width()) < kSizeEpsilon)
     return;
 
@@ -976,7 +980,7 @@ void CPDF_TextPage::ProcessTextObject(const TransformedTextObject& obj) {
       case GenerateCharacter::kNone:
         break;
       case GenerateCharacter::kSpace: {
-        absl::optional<CharInfo> pGenerateChar = GenerateCharInfo(L' ');
+        std::optional<CharInfo> pGenerateChar = GenerateCharInfo(L' ');
         if (pGenerateChar.has_value()) {
           if (!form_matrix.IsIdentity())
             pGenerateChar->m_Matrix = form_matrix;
@@ -1417,11 +1421,11 @@ bool CPDF_TextPage::IsSameAsPreTextObject(
   return false;
 }
 
-absl::optional<CPDF_TextPage::CharInfo> CPDF_TextPage::GenerateCharInfo(
+std::optional<CPDF_TextPage::CharInfo> CPDF_TextPage::GenerateCharInfo(
     wchar_t unicode) {
   const CharInfo* pPrevCharInfo = GetPrevCharInfo();
   if (!pPrevCharInfo)
-    return absl::nullopt;
+    return std::nullopt;
 
   CharInfo info;
   info.m_Index = m_TextBuf.GetLength();

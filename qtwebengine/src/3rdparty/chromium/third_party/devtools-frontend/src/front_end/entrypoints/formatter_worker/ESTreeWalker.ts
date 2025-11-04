@@ -4,29 +4,13 @@
 
 import type * as Acorn from '../../third_party/acorn/acorn.js';
 
-const SkipSubTreeObject: Object = {};
-
 export class ESTreeWalker {
-  readonly #beforeVisit: (arg0: Acorn.ESTree.Node) => (Object | undefined);
-  readonly #afterVisit: Function;
-  #walkNulls: boolean;
+  readonly #beforeVisit: (arg0: Acorn.ESTree.Node) => unknown;
+  readonly #afterVisit: (arg0: Acorn.ESTree.Node) => unknown;
 
-  constructor(
-      beforeVisit: (arg0: Acorn.ESTree.Node) => (Object | undefined),
-      afterVisit?: ((arg0: Acorn.ESTree.Node) => void)) {
+  constructor(beforeVisit: (arg0: Acorn.ESTree.Node) => unknown, afterVisit: ((arg0: Acorn.ESTree.Node) => unknown)) {
     this.#beforeVisit = beforeVisit;
-    this.#afterVisit = afterVisit || function(): void {};
-    this.#walkNulls = false;
-  }
-
-  // TODO(crbug.com/1172300) Ignored during the jsdoc to ts migration
-  // eslint-disable-next-line @typescript-eslint/naming-convention
-  static get SkipSubtree(): Object {
-    return SkipSubTreeObject;
-  }
-
-  setWalkNulls(value: boolean): void {
-    this.#walkNulls = value;
+    this.#afterVisit = afterVisit;
   }
 
   walk(ast: Acorn.ESTree.Node): void {
@@ -34,25 +18,14 @@ export class ESTreeWalker {
   }
 
   #innerWalk(node: Acorn.ESTree.Node, parent: Acorn.ESTree.Node|null): void {
-    if (!node && parent && this.#walkNulls) {
-      const result = ({raw: 'null', value: null, parent: null} as Acorn.ESTree.SimpleLiteral);
-      // Otherwise Closure can't handle the definition
-      result.type = 'Literal';
-
-      node = result;
-    }
-
     if (!node) {
       return;
     }
     node.parent = parent;
 
-    if (this.#beforeVisit.call(null, node) === ESTreeWalker.SkipSubtree) {
-      this.#afterVisit.call(null, node);
-      return;
-    }
+    this.#beforeVisit.call(null, node);
 
-    const walkOrder = _walkOrder[node.type];
+    const walkOrder = WALK_ORDER[node.type];
     if (!walkOrder) {
       console.error('Walk order not defined for ' + node.type);
       return;
@@ -92,79 +65,77 @@ export class ESTreeWalker {
   }
 }
 
-// TODO(crbug.com/1172300) Ignored during the jsdoc to ts migration
-// eslint-disable-next-line @typescript-eslint/naming-convention
-const _walkOrder = {
-  'AwaitExpression': ['argument'],
-  'ArrayExpression': ['elements'],
-  'ArrayPattern': ['elements'],
-  'ArrowFunctionExpression': ['params', 'body'],
-  'AssignmentExpression': ['left', 'right'],
-  'AssignmentPattern': ['left', 'right'],
-  'BinaryExpression': ['left', 'right'],
-  'BlockStatement': ['body'],
-  'BreakStatement': ['label'],
-  'CallExpression': ['callee', 'arguments'],
-  'CatchClause': ['param', 'body'],
-  'ClassBody': ['body'],
-  'ClassDeclaration': ['id', 'superClass', 'body'],
-  'ClassExpression': ['id', 'superClass', 'body'],
-  'ChainExpression': ['expression'],
-  'ConditionalExpression': ['test', 'consequent', 'alternate'],
-  'ContinueStatement': ['label'],
-  'DebuggerStatement': [],
-  'DoWhileStatement': ['body', 'test'],
-  'EmptyStatement': [],
-  'ExpressionStatement': ['expression'],
-  'ForInStatement': ['left', 'right', 'body'],
-  'ForOfStatement': ['left', 'right', 'body'],
-  'ForStatement': ['init', 'test', 'update', 'body'],
-  'FunctionDeclaration': ['id', 'params', 'body'],
-  'FunctionExpression': ['id', 'params', 'body'],
-  'Identifier': [],
-  'ImportDeclaration': ['specifiers', 'source'],
-  'ImportDefaultSpecifier': ['local'],
-  'ImportNamespaceSpecifier': ['local'],
-  'ImportSpecifier': ['imported', 'local'],
-  'ImportExpression': ['source'],
-  'ExportAllDeclaration': ['source'],
-  'ExportDefaultDeclaration': ['declaration'],
-  'ExportNamedDeclaration': ['specifiers', 'source', 'declaration'],
-  'ExportSpecifier': ['exported', 'local'],
-  'IfStatement': ['test', 'consequent', 'alternate'],
-  'LabeledStatement': ['label', 'body'],
-  'Literal': [],
-  'LogicalExpression': ['left', 'right'],
-  'MemberExpression': ['object', 'property'],
-  'MetaProperty': ['meta', 'property'],
-  'MethodDefinition': ['key', 'value'],
-  'NewExpression': ['callee', 'arguments'],
-  'ObjectExpression': ['properties'],
-  'ObjectPattern': ['properties'],
-  'ParenthesizedExpression': ['expression'],
-  'PrivateIdentifier': [],
-  'PropertyDefinition': ['key', 'value'],
-  'Program': ['body'],
-  'Property': ['key', 'value'],
-  'RestElement': ['argument'],
-  'ReturnStatement': ['argument'],
-  'SequenceExpression': ['expressions'],
-  'SpreadElement': ['argument'],
-  'StaticBlock': ['body'],
-  'Super': [],
-  'SwitchCase': ['test', 'consequent'],
-  'SwitchStatement': ['discriminant', 'cases'],
-  'TaggedTemplateExpression': ['tag', 'quasi'],
-  'TemplateElement': [],
-  'TemplateLiteral': ['quasis', 'expressions'],
-  'ThisExpression': [],
-  'ThrowStatement': ['argument'],
-  'TryStatement': ['block', 'handler', 'finalizer'],
-  'UnaryExpression': ['argument'],
-  'UpdateExpression': ['argument'],
-  'VariableDeclaration': ['declarations'],
-  'VariableDeclarator': ['id', 'init'],
-  'WhileStatement': ['test', 'body'],
-  'WithStatement': ['object', 'body'],
-  'YieldExpression': ['argument'],
+const WALK_ORDER = {
+  AwaitExpression: ['argument'],
+  ArrayExpression: ['elements'],
+  ArrayPattern: ['elements'],
+  ArrowFunctionExpression: ['params', 'body'],
+  AssignmentExpression: ['left', 'right'],
+  AssignmentPattern: ['left', 'right'],
+  BinaryExpression: ['left', 'right'],
+  BlockStatement: ['body'],
+  BreakStatement: ['label'],
+  CallExpression: ['callee', 'arguments'],
+  CatchClause: ['param', 'body'],
+  ClassBody: ['body'],
+  ClassDeclaration: ['id', 'superClass', 'body'],
+  ClassExpression: ['id', 'superClass', 'body'],
+  ChainExpression: ['expression'],
+  ConditionalExpression: ['test', 'consequent', 'alternate'],
+  ContinueStatement: ['label'],
+  DebuggerStatement: [],
+  DoWhileStatement: ['body', 'test'],
+  EmptyStatement: [],
+  ExpressionStatement: ['expression'],
+  ForInStatement: ['left', 'right', 'body'],
+  ForOfStatement: ['left', 'right', 'body'],
+  ForStatement: ['init', 'test', 'update', 'body'],
+  FunctionDeclaration: ['id', 'params', 'body'],
+  FunctionExpression: ['id', 'params', 'body'],
+  Identifier: [],
+  ImportDeclaration: ['specifiers', 'source'],
+  ImportDefaultSpecifier: ['local'],
+  ImportNamespaceSpecifier: ['local'],
+  ImportSpecifier: ['imported', 'local'],
+  ImportExpression: ['source'],
+  ExportAllDeclaration: ['source'],
+  ExportDefaultDeclaration: ['declaration'],
+  ExportNamedDeclaration: ['specifiers', 'source', 'declaration'],
+  ExportSpecifier: ['exported', 'local'],
+  IfStatement: ['test', 'consequent', 'alternate'],
+  LabeledStatement: ['label', 'body'],
+  Literal: [],
+  LogicalExpression: ['left', 'right'],
+  MemberExpression: ['object', 'property'],
+  MetaProperty: ['meta', 'property'],
+  MethodDefinition: ['key', 'value'],
+  NewExpression: ['callee', 'arguments'],
+  ObjectExpression: ['properties'],
+  ObjectPattern: ['properties'],
+  ParenthesizedExpression: ['expression'],
+  PrivateIdentifier: [],
+  PropertyDefinition: ['key', 'value'],
+  Program: ['body'],
+  Property: ['key', 'value'],
+  RestElement: ['argument'],
+  ReturnStatement: ['argument'],
+  SequenceExpression: ['expressions'],
+  SpreadElement: ['argument'],
+  StaticBlock: ['body'],
+  Super: [],
+  SwitchCase: ['test', 'consequent'],
+  SwitchStatement: ['discriminant', 'cases'],
+  TaggedTemplateExpression: ['tag', 'quasi'],
+  TemplateElement: [],
+  TemplateLiteral: ['quasis', 'expressions'],
+  ThisExpression: [],
+  ThrowStatement: ['argument'],
+  TryStatement: ['block', 'handler', 'finalizer'],
+  UnaryExpression: ['argument'],
+  UpdateExpression: ['argument'],
+  VariableDeclaration: ['declarations'],
+  VariableDeclarator: ['id', 'init'],
+  WhileStatement: ['test', 'body'],
+  WithStatement: ['object', 'body'],
+  YieldExpression: ['argument'],
 };

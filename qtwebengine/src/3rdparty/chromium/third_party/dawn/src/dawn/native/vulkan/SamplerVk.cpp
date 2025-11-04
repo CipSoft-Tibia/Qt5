@@ -29,6 +29,7 @@
 
 #include <algorithm>
 
+#include "dawn/native/ChainUtils.h"
 #include "dawn/native/vulkan/DeviceVk.h"
 #include "dawn/native/vulkan/FencedDeleter.h"
 #include "dawn/native/vulkan/UtilsVulkan.h"
@@ -46,18 +47,6 @@ VkSamplerAddressMode VulkanSamplerAddressMode(wgpu::AddressMode mode) {
         case wgpu::AddressMode::ClampToEdge:
             return VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
         case wgpu::AddressMode::Undefined:
-            break;
-    }
-    DAWN_UNREACHABLE();
-}
-
-VkFilter VulkanSamplerFilter(wgpu::FilterMode filter) {
-    switch (filter) {
-        case wgpu::FilterMode::Linear:
-            return VK_FILTER_LINEAR;
-        case wgpu::FilterMode::Nearest:
-            return VK_FILTER_NEAREST;
-        case wgpu::FilterMode::Undefined:
             break;
     }
     DAWN_UNREACHABLE();
@@ -88,8 +77,8 @@ MaybeError Sampler::Initialize(const SamplerDescriptor* descriptor) {
     createInfo.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
     createInfo.pNext = nullptr;
     createInfo.flags = 0;
-    createInfo.magFilter = VulkanSamplerFilter(descriptor->magFilter);
-    createInfo.minFilter = VulkanSamplerFilter(descriptor->minFilter);
+    createInfo.magFilter = ToVulkanSamplerFilter(descriptor->magFilter);
+    createInfo.minFilter = ToVulkanSamplerFilter(descriptor->minFilter);
     createInfo.mipmapMode = VulkanMipMapMode(descriptor->mipmapFilter);
     createInfo.addressModeU = VulkanSamplerAddressMode(descriptor->addressModeU);
     createInfo.addressModeV = VulkanSamplerAddressMode(descriptor->addressModeV);
@@ -120,6 +109,18 @@ MaybeError Sampler::Initialize(const SamplerDescriptor* descriptor) {
         createInfo.maxAnisotropy = 1;
     }
 
+    VkSamplerYcbcrConversionInfo samplerYCbCrInfo = {};
+    if (IsYCbCr()) {
+        DAWN_TRY_ASSIGN(mSamplerYCbCrConversion,
+                        CreateSamplerYCbCrConversionCreateInfo(GetYCbCrVkDescriptor(), device));
+
+        samplerYCbCrInfo.sType = VK_STRUCTURE_TYPE_SAMPLER_YCBCR_CONVERSION_INFO;
+        samplerYCbCrInfo.pNext = nullptr;
+        samplerYCbCrInfo.conversion = mSamplerYCbCrConversion;
+
+        createInfo.pNext = &samplerYCbCrInfo;
+    }
+
     DAWN_TRY(CheckVkSuccess(
         device->fn.CreateSampler(device->GetVkDevice(), &createInfo, nullptr, &*mHandle),
         "CreateSampler"));
@@ -133,13 +134,17 @@ Sampler::~Sampler() = default;
 
 void Sampler::DestroyImpl() {
     SamplerBase::DestroyImpl();
+    if (mSamplerYCbCrConversion != VK_NULL_HANDLE) {
+        ToBackend(GetDevice())->GetFencedDeleter()->DeleteWhenUnused(mSamplerYCbCrConversion);
+        mSamplerYCbCrConversion = VK_NULL_HANDLE;
+    }
     if (mHandle != VK_NULL_HANDLE) {
         ToBackend(GetDevice())->GetFencedDeleter()->DeleteWhenUnused(mHandle);
         mHandle = VK_NULL_HANDLE;
     }
 }
 
-VkSampler Sampler::GetHandle() const {
+const VkSampler& Sampler::GetHandle() const {
     return mHandle;
 }
 

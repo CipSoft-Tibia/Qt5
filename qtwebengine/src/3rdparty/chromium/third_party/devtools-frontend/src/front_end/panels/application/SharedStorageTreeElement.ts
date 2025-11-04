@@ -14,14 +14,14 @@ export class SharedStorageTreeElement extends ApplicationPanelTreeElement {
   view!: SharedStorageItemsView;
 
   constructor(resourcesPanel: ResourcesPanel, sharedStorage: SharedStorageForOrigin) {
-    super(resourcesPanel, sharedStorage.securityOrigin, false);
+    super(resourcesPanel, sharedStorage.securityOrigin, false, 'shared-storage-instance');
   }
 
   static async createElement(resourcesPanel: ResourcesPanel, sharedStorage: SharedStorageForOrigin):
       Promise<SharedStorageTreeElement> {
     const treeElement = new SharedStorageTreeElement(resourcesPanel, sharedStorage);
     treeElement.view = await SharedStorageItemsView.createView(sharedStorage);
-    treeElement.view.element.setAttribute('jslog', `${VisualLogging.pane().context('shared-storage-data')}`);
+    treeElement.view.element.setAttribute('jslog', `${VisualLogging.pane('shared-storage-data')}`);
     return treeElement;
   }
 

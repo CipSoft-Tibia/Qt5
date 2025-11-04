@@ -14,13 +14,17 @@ Client::~Client() = default;
 
 std::unique_ptr<QGrpcCallReply> Client::Get(const Empty &arg)
 {
-    return call("Get"_L1, arg, {});
+    return Get(arg, {});
 }
 
 
 std::unique_ptr<QGrpcCallReply> Client::Get(const Empty &arg, const QGrpcCallOptions &options)
 {
-    return call("Get"_L1, arg, options);
+    auto reply = call("Get"_L1, arg, options);
+    if (auto *replyPtr = reply.get(); replyPtr != nullptr) {
+        setOperationResponseMetaType(replyPtr, QMetaType::fromType<Empty>());
+    }
+    return reply;
 }
 
 } // namespace InvalidService

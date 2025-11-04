@@ -91,7 +91,11 @@ const QQmlValueType *QQmlGadgetPtrWrapper::valueType() const
     return static_cast<const QQmlValueType *>(d->metaObject);
 }
 
+#if QT_VERSION >= QT_VERSION_CHECK(7, 0, 0)
+const QMetaObject *QQmlValueType::toDynamicMetaObject(QObject *) const
+#else
 QMetaObject *QQmlValueType::toDynamicMetaObject(QObject *)
+#endif
 {
     if (!m_dynamicMetaObject) {
         QMetaObjectBuilder builder(m_staticMetaObject);
@@ -116,370 +120,376 @@ int QQmlValueType::metaCall(QObject *object, QMetaObject::Call type, int _id, vo
 
 QString QQmlPointFValueType::toString() const
 {
-    return QString::asprintf("QPointF(%g, %g)", v.x(), v.y());
+    return QString::asprintf("QPointF(%g, %g)", QPointF::x(), QPointF::y());
 }
 
 qreal QQmlPointFValueType::x() const
 {
-    return v.x();
+    return QPointF::x();
 }
 
 qreal QQmlPointFValueType::y() const
 {
-    return v.y();
+    return QPointF::y();
 }
 
 void QQmlPointFValueType::setX(qreal x)
 {
-    v.setX(x);
+    QPointF::setX(x);
 }
 
 void QQmlPointFValueType::setY(qreal y)
 {
-    v.setY(y);
+    QPointF::setY(y);
 }
 
 
 QString QQmlPointValueType::toString() const
 {
-    return QString::asprintf("QPoint(%d, %d)", v.x(), v.y());
+    return QString::asprintf("QPoint(%d, %d)", QPoint::x(), QPoint::y());
 }
 
 int QQmlPointValueType::x() const
 {
-    return v.x();
+    return QPoint::x();
 }
 
 int QQmlPointValueType::y() const
 {
-    return v.y();
+    return QPoint::y();
 }
 
 void QQmlPointValueType::setX(int x)
 {
-    v.setX(x);
+    QPoint::setX(x);
 }
 
 void QQmlPointValueType::setY(int y)
 {
-    v.setY(y);
+    QPoint::setY(y);
 }
 
 
 QString QQmlSizeFValueType::toString() const
 {
-    return QString::asprintf("QSizeF(%g, %g)", v.width(), v.height());
+    return QString::asprintf("QSizeF(%g, %g)", QSizeF::width(), QSizeF::height());
 }
 
 qreal QQmlSizeFValueType::width() const
 {
-    return v.width();
+    return QSizeF::width();
 }
 
 qreal QQmlSizeFValueType::height() const
 {
-    return v.height();
+    return QSizeF::height();
 }
 
 void QQmlSizeFValueType::setWidth(qreal w)
 {
-    v.setWidth(w);
+    QSizeF::setWidth(w);
 }
 
 void QQmlSizeFValueType::setHeight(qreal h)
 {
-    v.setHeight(h);
+    QSizeF::setHeight(h);
 }
 
 
 QString QQmlSizeValueType::toString() const
 {
-    return QString::asprintf("QSize(%d, %d)", v.width(), v.height());
+    return QString::asprintf("QSize(%d, %d)", QSize::width(), QSize::height());
 }
 
 int QQmlSizeValueType::width() const
 {
-    return v.width();
+    return QSize::width();
 }
 
 int QQmlSizeValueType::height() const
 {
-    return v.height();
+    return QSize::height();
 }
 
 void QQmlSizeValueType::setWidth(int w)
 {
-    v.setWidth(w);
+    QSize::setWidth(w);
 }
 
 void QQmlSizeValueType::setHeight(int h)
 {
-    v.setHeight(h);
+    QSize::setHeight(h);
 }
 
 QString QQmlRectFValueType::toString() const
 {
-    return QString::asprintf("QRectF(%g, %g, %g, %g)", v.x(), v.y(), v.width(), v.height());
+    return QString::asprintf(
+            "QRectF(%g, %g, %g, %g)", QRectF::x(), QRectF::y(), QRectF::width(), QRectF::height());
 }
 
 qreal QQmlRectFValueType::x() const
 {
-    return v.x();
+    return QRectF::x();
 }
 
 qreal QQmlRectFValueType::y() const
 {
-    return v.y();
+    return QRectF::y();
 }
 
 void QQmlRectFValueType::setX(qreal x)
 {
-    v.moveLeft(x);
+    QRectF::moveLeft(x);
 }
 
 void QQmlRectFValueType::setY(qreal y)
 {
-    v.moveTop(y);
+    QRectF::moveTop(y);
 }
 
 qreal QQmlRectFValueType::width() const
 {
-    return v.width();
+    return QRectF::width();
 }
 
 qreal QQmlRectFValueType::height() const
 {
-    return v.height();
+    return QRectF::height();
 }
 
 void QQmlRectFValueType::setWidth(qreal w)
 {
-    v.setWidth(w);
+    QRectF::setWidth(w);
 }
 
 void QQmlRectFValueType::setHeight(qreal h)
 {
-    v.setHeight(h);
+    QRectF::setHeight(h);
 }
 
 qreal QQmlRectFValueType::left() const
 {
-    return v.left();
+    return QRectF::left();
 }
 
 qreal QQmlRectFValueType::right() const
 {
-    return v.right();
+    return QRectF::right();
 }
 
 qreal QQmlRectFValueType::top() const
 {
-    return v.top();
+    return QRectF::top();
 }
 
 qreal QQmlRectFValueType::bottom() const
 {
-    return v.bottom();
+    return QRectF::bottom();
 }
 
 
 QString QQmlRectValueType::toString() const
 {
-    return QString::asprintf("QRect(%d, %d, %d, %d)", v.x(), v.y(), v.width(), v.height());
+    return QString::asprintf(
+            "QRect(%d, %d, %d, %d)", QRect::x(), QRect::y(), QRect::width(), QRect::height());
 }
 
 int QQmlRectValueType::x() const
 {
-    return v.x();
+    return QRect::x();
 }
 
 int QQmlRectValueType::y() const
 {
-    return v.y();
+    return QRect::y();
 }
 
 void QQmlRectValueType::setX(int x)
 {
-    v.moveLeft(x);
+    QRect::moveLeft(x);
 }
 
 void QQmlRectValueType::setY(int y)
 {
-    v.moveTop(y);
+    QRect::moveTop(y);
 }
 
 int QQmlRectValueType::width() const
 {
-    return v.width();
+    return QRect::width();
 }
 
 int QQmlRectValueType::height() const
 {
-    return v.height();
+    return QRect::height();
 }
 
 void QQmlRectValueType::setWidth(int w)
 {
-    v.setWidth(w);
+    QRect::setWidth(w);
 }
 
 void QQmlRectValueType::setHeight(int h)
 {
-    v.setHeight(h);
+    QRect::setHeight(h);
 }
 
 int QQmlRectValueType::left() const
 {
-    return v.left();
+    return QRect::left();
 }
 
 int QQmlRectValueType::right() const
 {
-    return v.right();
+    return QRect::right();
 }
 
 int QQmlRectValueType::top() const
 {
-    return v.top();
+    return QRect::top();
 }
 
 int QQmlRectValueType::bottom() const
 {
-    return v.bottom();
+    return QRect::bottom();
 }
 
 QString QQmlMarginsFValueType::toString() const
 {
-    return QString::asprintf("QMarginsF(%g, %g, %g, %g)", m.left(), m.top(), m.right(), m.bottom());
+    return QString::asprintf(
+            "QMarginsF(%g, %g, %g, %g)",
+            QMarginsF::left(), QMarginsF::top(), QMarginsF::right(), QMarginsF::bottom());
 }
 
 qreal QQmlMarginsFValueType::left() const
 {
-    return m.left();
+    return QMarginsF::left();
 }
 
 qreal QQmlMarginsFValueType::top() const
 {
-    return m.top();
+    return QMarginsF::top();
 }
 
 qreal QQmlMarginsFValueType::right() const
 {
-    return m.right();
+    return QMarginsF::right();
 }
 
 qreal QQmlMarginsFValueType::bottom() const
 {
-    return m.bottom();
+    return QMarginsF::bottom();
 }
 
 void QQmlMarginsFValueType::setLeft(qreal left)
 {
-    m.setLeft(left);
+    QMarginsF::setLeft(left);
 }
 
 void QQmlMarginsFValueType::setTop(qreal top)
 {
-    m.setTop(top);
+    QMarginsF::setTop(top);
 }
 
 void QQmlMarginsFValueType::setRight(qreal right)
 {
-    m.setRight(right);
+    QMarginsF::setRight(right);
 }
 
 void QQmlMarginsFValueType::setBottom(qreal bottom)
 {
-    m.setBottom(bottom);
+    QMarginsF::setBottom(bottom);
 }
 
 QString QQmlMarginsValueType::toString() const
 {
-    return QString::asprintf("QMargins(%d, %d, %d, %d)", m.left(), m.top(), m.right(), m.bottom());
+    return QString::asprintf(
+            "QMargins(%d, %d, %d, %d)",
+            QMargins::left(), QMargins::top(), QMargins::right(), QMargins::bottom());
 }
 
 int QQmlMarginsValueType::left() const
 {
-    return m.left();
+    return QMargins::left();
 }
 
 int QQmlMarginsValueType::top() const
 {
-    return m.top();
+    return QMargins::top();
 }
 
 int QQmlMarginsValueType::right() const
 {
-    return m.right();
+    return QMargins::right();
 }
 
 int QQmlMarginsValueType::bottom() const
 {
-    return m.bottom();
+    return QMargins::bottom();
 }
 
 void QQmlMarginsValueType::setLeft(int left)
 {
-    m.setLeft(left);
+    QMargins::setLeft(left);
 }
 
 void QQmlMarginsValueType::setTop(int top)
 {
-    m.setTop(top);
+    QMargins::setTop(top);
 }
 
 void QQmlMarginsValueType::setRight(int right)
 {
-    m.setRight(right);
+    QMargins::setRight(right);
 }
 
 void QQmlMarginsValueType::setBottom(int bottom)
 {
-    m.setBottom(bottom);
+    QMargins::setBottom(bottom);
 }
 
 #if QT_CONFIG(easingcurve)
 QQmlEasingEnums::Type QQmlEasingValueType::type() const
 {
-    return (QQmlEasingEnums::Type)v.type();
+    return (QQmlEasingEnums::Type)QEasingCurve::type();
 }
 
 qreal QQmlEasingValueType::amplitude() const
 {
-    return v.amplitude();
+    return QEasingCurve::amplitude();
 }
 
 qreal QQmlEasingValueType::overshoot() const
 {
-    return v.overshoot();
+    return QEasingCurve::overshoot();
 }
 
 qreal QQmlEasingValueType::period() const
 {
-    return v.period();
+    return QEasingCurve::period();
 }
 
 void QQmlEasingValueType::setType(QQmlEasingEnums::Type type)
 {
-    v.setType((QEasingCurve::Type)type);
+    QEasingCurve::setType((QEasingCurve::Type)type);
 }
 
 void QQmlEasingValueType::setAmplitude(qreal amplitude)
 {
-    v.setAmplitude(amplitude);
+    QEasingCurve::setAmplitude(amplitude);
 }
 
 void QQmlEasingValueType::setOvershoot(qreal overshoot)
 {
-    v.setOvershoot(overshoot);
+    QEasingCurve::setOvershoot(overshoot);
 }
 
 void QQmlEasingValueType::setPeriod(qreal period)
 {
-    v.setPeriod(period);
+    QEasingCurve::setPeriod(period);
 }
 
-void QQmlEasingValueType::setBezierCurve(const QVariantList &customCurveVariant)
+void QQmlEasingValueType::setBezierCurve(const QList<qreal> &customCurveVariant)
 {
     if (customCurveVariant.isEmpty())
         return;
@@ -487,21 +497,14 @@ void QQmlEasingValueType::setBezierCurve(const QVariantList &customCurveVariant)
     if ((customCurveVariant.size() % 6) != 0)
         return;
 
-    auto convert = [](const QVariant &v, qreal &r) {
-        bool ok;
-        r = v.toReal(&ok);
-        return ok;
-    };
-
     QEasingCurve newEasingCurve(QEasingCurve::BezierSpline);
     for (int i = 0, ei = customCurveVariant.size(); i < ei; i += 6) {
-        qreal c1x, c1y, c2x, c2y, c3x, c3y;
-        if (!convert(customCurveVariant.at(i    ), c1x)) return;
-        if (!convert(customCurveVariant.at(i + 1), c1y)) return;
-        if (!convert(customCurveVariant.at(i + 2), c2x)) return;
-        if (!convert(customCurveVariant.at(i + 3), c2y)) return;
-        if (!convert(customCurveVariant.at(i + 4), c3x)) return;
-        if (!convert(customCurveVariant.at(i + 5), c3y)) return;
+        const qreal c1x = customCurveVariant.at(i    );
+        const qreal c1y = customCurveVariant.at(i + 1);
+        const qreal c2x = customCurveVariant.at(i + 2);
+        const qreal c2y = customCurveVariant.at(i + 3);
+        const qreal c3x = customCurveVariant.at(i + 4);
+        const qreal c3y = customCurveVariant.at(i + 5);
 
         const QPointF c1(c1x, c1y);
         const QPointF c2(c2x, c2y);
@@ -510,16 +513,16 @@ void QQmlEasingValueType::setBezierCurve(const QVariantList &customCurveVariant)
         newEasingCurve.addCubicBezierSegment(c1, c2, c3);
     }
 
-    v = newEasingCurve;
+    *this = newEasingCurve;
 }
 
-QVariantList QQmlEasingValueType::bezierCurve() const
+QList<qreal> QQmlEasingValueType::bezierCurve() const
 {
-    QVariantList rv;
-    const QVector<QPointF> points = v.toCubicSpline();
+    QList<qreal> rv;
+    const QVector<QPointF> points = QEasingCurve::toCubicSpline();
     rv.reserve(points.size() * 2);
     for (const auto &point : points)
-        rv << QVariant(point.x()) << QVariant(point.y());
+        rv << point.x() << point.y();
     return rv;
 }
 #endif // easingcurve

@@ -51,6 +51,8 @@ constexpr VARTYPE ValueType()
         return VT_R8 | maybeByref;
     else if constexpr (std::is_same_v<const ValueType *, const wchar_t *>)
         return VT_BSTR;
+    else if constexpr (std::is_base_of_v<VARIANT, ValueType>)
+        return VT_VARIANT;
     else if constexpr (std::is_base_of_v<IDispatch, ValueType>)
         return VT_DISPATCH;
     else if constexpr (std::is_base_of_v<IUnknown, ValueType>)
@@ -234,6 +236,52 @@ private:
         }
         return ::VarCmp(lhs, rhs, lcid, flags);
     }
+};
+
+struct SafeArray
+{
+    explicit SafeArray(SAFEARRAY *array) noexcept
+    {
+        HRESULT hr = SafeArrayCopy(array, &m_array);
+        Q_ASSERT(hr == S_OK);
+        hr = SafeArrayLock(m_array);
+        Q_ASSERT(hr == S_OK);
+    }
+
+    ~SafeArray() noexcept
+    {
+        if (!m_array)
+            return;
+
+        HRESULT hr = SafeArrayUnlock(m_array);
+        Q_ASSERT(hr == S_OK);
+        hr = SafeArrayDestroy(m_array);
+        Q_ASSERT(hr == S_OK);
+    }
+
+    std::optional<VARTYPE> itemType() const noexcept
+    {
+        VARTYPE vt{};
+        if (SafeArrayGetVartype(m_array, &vt) == S_OK)
+            return vt;
+
+        return {};
+    }
+
+    template <typename T>
+    std::optional<QSpan<T>> data() const noexcept
+    {
+        constexpr VARTYPE vt = ValueType<T>();
+        static_assert(vt != VT_EMPTY, "Unsupported type");
+
+        if (vt != itemType())
+            return {};
+
+        auto data = static_cast<T *>(m_array->pvData);
+        return QSpan{ data, m_array->rgsabound->cElements };
+    }
+
+    SAFEARRAY *m_array = nullptr;
 };
 
 #endif

@@ -1,6 +1,7 @@
 // Copyright (C) 2022 The Qt Company Ltd.
 // Copyright (C) 2021 Intel Corporation.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:data-parser
 
 #include "qdatetime.h"
 
@@ -2209,13 +2210,13 @@ QString QTime::toString(Qt::DateFormat format) const
          \li The timezone's offset from UTC with a colon between the hours and
              minutes (for example "+02:00").
     \row \li tttt
-         \li The timezone name (for example "Europe/Berlin"). Note that this
-             gives no indication of whether the datetime was in daylight-saving
-             time or standard time, which may lead to ambiguity if the datetime
-             falls in an hour repeated by a transition between the two. The name
-             used is the one provided by \l QTimeZone::displayName() with the \l
-             QTimeZone::LongName type. This may depend on the operating system
-             in use.
+         \li The timezone name, as provided by \l QTimeZone::displayName() with
+             the \l QTimeZone::LongName type. This may depend on the operating
+             system in use. If no such name is available, the IANA ID of the
+             zone (such as "Europe/Berlin") may be used.  It may give no
+             indication of whether the datetime was in daylight-saving time or
+             standard time, which may lead to ambiguity if the datetime falls in
+             an hour repeated by a transition between the two.
     \endtable
 
     \note To get localized forms of AM or PM (the \c{AP}, \c{ap}, \c{A}, \c{a},
@@ -2829,11 +2830,13 @@ QDateTimePrivate::ZoneState QDateTimePrivate::expressUtcAsLocal(qint64 utcMSecs)
 #if QT_CONFIG(timezone) // Use the system time-zone.
     if (const auto sys = QTimeZone::systemTimeZone(); sys.isValid()) {
         result.offset = sys.d->offsetFromUtc(utcMSecs);
-        if (qAddOverflow(utcMSecs, result.offset * MSECS_PER_SEC, &result.when))
+        if (result.offset != QTimeZonePrivate::invalidSeconds()) {
+            if (qAddOverflow(utcMSecs, result.offset * MSECS_PER_SEC, &result.when))
+                return result;
+            result.dst = sys.d->isDaylightTime(utcMSecs) ? DaylightTime : StandardTime;
+            result.valid = true;
             return result;
-        result.dst = sys.d->isDaylightTime(utcMSecs) ? DaylightTime : StandardTime;
-        result.valid = true;
-        return result;
+        }
     }
 #endif // timezone
 
@@ -3652,16 +3655,16 @@ QDateTime::Data QDateTimePrivate::create(QDate toDate, QTime toTime, const QTime
 
     \section1 Remarks
 
-    \note QDateTime does not account for leap seconds.
+    QDateTime does not account for leap seconds.
 
-    \note All conversion to and from string formats is done using the C locale.
+    All conversions  to and from string formats are done using the C locale.
     For localized conversions, see QLocale.
 
-    \note There is no year 0 in the Gregorian calendar. Dates in that year are
+    There is no year 0 in the Gregorian calendar. Dates in that year are
     considered invalid. The year -1 is the year "1 before Christ" or "1 before
     common era." The day before 1 January 1 CE is 31 December 1 BCE.
 
-    \note Using local time (the default) or a specified time zone implies a need
+    Using local time (the default) or a specified time zone implies a need
     to resolve any issues around \l {Timezone transitions}{transitions}. As a
     result, operations on such QDateTime instances (notably including
     constructing them) may be more expensive than the equivalent when using UTC
@@ -4144,7 +4147,7 @@ QTime QDateTime::time() const
     details of that time zone). Equivalent to
     \c{timeRepresentation().timeSpec()}.
 
-    \sa setTimeSpec(), timeRepresentation(), date(), time()
+    \sa setTimeZone(), timeRepresentation(), date(), time()
 */
 
 Qt::TimeSpec QDateTime::timeSpec() const
@@ -4212,7 +4215,7 @@ QTimeZone QDateTime::timeZone() const
     time-zones ahead of UTC (East of The Prime Meridian), negative for those
     behind UTC (West of The Prime Meridian).
 
-    \sa setOffsetFromUtc()
+    \sa setTimeZone()
 */
 
 int QDateTime::offsetFromUtc() const
@@ -4274,6 +4277,12 @@ QString QDateTime::timeZoneAbbreviation() const
         return d->m_timeZone.abbreviation(*this);
 #endif // timezone
     case Qt::LocalTime:
+#if defined(Q_OS_WIN) && QT_CONFIG(timezone)
+        // MS's tzname is a full MS-name, not an abbreviation:
+        if (QString sys = QTimeZone::systemTimeZone().abbreviation(*this); !sys.isEmpty())
+            return sys;
+        // ... but, even so, a full name isn't as bad as empty.
+#endif
         return QDateTimePrivate::localNameAtMillis(getMSecs(d),
                                                    extractDaylightStatus(getStatus(d)));
     }
@@ -5127,7 +5136,7 @@ QDateTime QDateTime::toTimeSpec(Qt::TimeSpec spec) const
 
     The result represents the same moment in time as, and is equal to, this datetime.
 
-    \sa setOffsetFromUtc(), offsetFromUtc(), toTimeZone()
+    \sa offsetFromUtc(), toTimeZone()
 */
 
 QDateTime QDateTime::toOffsetFromUtc(int offsetSeconds) const
@@ -5321,7 +5330,7 @@ Qt::weak_ordering compareThreeWay(const QDateTime &lhs, const QDateTime &rhs)
     Returns the system clock's current datetime, using the time representation
     described by \a zone. If \a zone is omitted, local time is used.
 
-    \sa currentDateTimeUtc(), QDate::currentDate(), QTime::currentTime(), toTimeSpec()
+    \sa currentDateTimeUtc(), QDate::currentDate(), QTime::currentTime(), toTimeZone()
 */
 
 /*!
@@ -5340,7 +5349,7 @@ QDateTime QDateTime::currentDateTime()
 
     Equivalent to \c{currentDateTime(QTimeZone::UTC)}.
 
-    \sa currentDateTime(), QDate::currentDate(), QTime::currentTime(), toTimeSpec()
+    \sa currentDateTime(), QDate::currentDate(), QTime::currentTime(), toTimeZone()
 */
 
 QDateTime QDateTime::currentDateTimeUtc()
@@ -5357,7 +5366,7 @@ QDateTime QDateTime::currentDateTimeUtc()
     This number is like the POSIX time_t variable, but expressed in milliseconds
     instead of seconds.
 
-    \sa currentDateTime(), currentDateTimeUtc(), toTimeSpec()
+    \sa currentDateTime(), currentDateTimeUtc(), toTimeZone()
 */
 
 /*!
@@ -5503,13 +5512,14 @@ QDateTime QDateTime::currentDateTime(const QTimeZone &zone)
     // convert, which is most efficiently done from UTC.
     const Qt::TimeSpec spec = zone.timeSpec();
     SYSTEMTIME st = {};
-    // GetSystemTime()'s page links to its partner page for GetLocalTime().
     // https://docs.microsoft.com/en-us/windows/win32/api/sysinfoapi/nf-sysinfoapi-getsystemtime
-    (spec == Qt::LocalTime ? GetLocalTime : GetSystemTime)(&st);
+    // We previously used GetLocalTime for spec == LocalTime but it didn't provide enough
+    // information to differentiate between repeated hours of a tradition and would report the same
+    // timezone (eg always CEST, never CET) for both. But toTimeZone handles it correctly, given
+    // the UTC time.
+    GetSystemTime(&st);
     QDate d(st.wYear, st.wMonth, st.wDay);
     QTime t(msecsFromDecomposed(st.wHour, st.wMinute, st.wSecond, st.wMilliseconds));
-    if (spec == Qt::LocalTime)
-        return QDateTime(d, t);
     QDateTime utc(d, t, QTimeZone::UTC);
     return spec == Qt::UTC ? utc : utc.toTimeZone(zone);
 }
@@ -5870,9 +5880,10 @@ QDateTime QDateTime::fromString(QStringView string, Qt::DateFormat format)
          \li the timezone in offset format with a colon between hours and
              minutes (for example "+02:00")
     \row \li tttt
-         \li the timezone name (for example "Europe/Berlin").  The name
-             recognized are those known to \l QTimeZone, which may depend on the
-             operating system in use.
+         \li the timezone name, either what \l QTimeZone::displayName() reports
+             for \l QTimeZone::LongName or the IANA ID of the zone (for example
+             "Europe/Berlin"). The names recognized are those known to \l
+             QTimeZone, which may depend on the operating system in use.
     \endtable
 
     If no 't' format specifier is present, the system's local time-zone is used.

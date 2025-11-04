@@ -62,7 +62,7 @@ void LsanVirtualAddressSpace::FreeSharedPages(Address address, size_t size) {
 #endif  // defined(LEAK_SANITIZER)
 }
 
-std::unique_ptr<VirtualAddressSpace> LsanVirtualAddressSpace::AllocateSubspace(
+std::unique_ptr<v8::VirtualAddressSpace> LsanVirtualAddressSpace::AllocateSubspace(
     Address hint, size_t size, size_t alignment,
     PagePermissions max_page_permissions) {
   auto subspace =

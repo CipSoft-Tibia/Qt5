@@ -5,12 +5,12 @@
 #include "ui/views/controls/native/native_view_host_aura.h"
 
 #include <memory>
+#include <optional>
 #include <utility>
 
 #include "base/check.h"
 #include "base/memory/raw_ptr.h"
 #include "build/build_config.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "ui/aura/client/aura_constants.h"
 #include "ui/aura/client/focus_client.h"
 #include "ui/aura/window.h"
@@ -103,7 +103,6 @@ void NativeViewHostAura::AttachNativeView() {
   original_transform_ = host_->native_view()->transform();
   original_transform_changed_ = false;
   AddClippingWindow();
-  InstallMask();
   ApplyRoundedCorners();
 }
 
@@ -118,11 +117,15 @@ gfx::NativeViewAccessible NativeViewHostAura::GetParentAccessible() {
       aura::client::kParentNativeViewAccessibleKey);
 }
 
+ui::Layer* NativeViewHostAura::GetUILayer() {
+  return host_->native_view()->layer();
+}
+
 void NativeViewHostAura::NativeViewDetaching(bool destroyed) {
   // This method causes a succession of window tree changes. ScopedPause ensures
   // that occlusion is recomputed at the end of the method instead of after each
   // change.
-  absl::optional<aura::WindowOcclusionTracker::ScopedPause> pause_occlusion;
+  std::optional<aura::WindowOcclusionTracker::ScopedPause> pause_occlusion;
   if (clipping_window_)
     pause_occlusion.emplace();
 
@@ -172,15 +175,6 @@ bool NativeViewHostAura::SetCornerRadii(
     const gfx::RoundedCornersF& corner_radii) {
   corner_radii_ = corner_radii;
   ApplyRoundedCorners();
-  return true;
-}
-
-bool NativeViewHostAura::SetCustomMask(std::unique_ptr<ui::LayerOwner> mask) {
-  UninstallMask();
-  mask_ = std::move(mask);
-  if (mask_)
-    mask_->layer()->SetFillsBoundsOpaquely(false);
-  InstallMask();
   return true;
 }
 
@@ -274,15 +268,6 @@ void NativeViewHostAura::SetVisible(bool visible) {
     host_->native_view()->Show();
 }
 
-void NativeViewHostAura::OnWindowBoundsChanged(
-    aura::Window* window,
-    const gfx::Rect& old_bounds,
-    const gfx::Rect& new_bounds,
-    ui::PropertyChangeReason reason) {
-  if (mask_)
-    mask_->layer()->SetBounds(gfx::Rect(host_->native_view()->bounds().size()));
-}
-
 void NativeViewHostAura::OnWindowDestroying(aura::Window* window) {
   DCHECK(window == host_->native_view());
   clipping_window_delegate_->set_native_view(nullptr);
@@ -351,23 +336,6 @@ void NativeViewHostAura::ApplyRoundedCorners() {
     layer->SetRoundedCornerRadius(corner_radii_);
     layer->SetIsFastRoundedCorner(true);
   }
-}
-
-void NativeViewHostAura::InstallMask() {
-  if (!mask_)
-    return;
-  if (host_->native_view()) {
-    mask_->layer()->SetBounds(gfx::Rect(host_->native_view()->bounds().size()));
-    host_->native_view()->layer()->SetMaskLayer(mask_->layer());
-  }
-}
-
-void NativeViewHostAura::UninstallMask() {
-  if (!host_->native_view() || !mask_)
-    return;
-
-  host_->native_view()->layer()->SetMaskLayer(nullptr);
-  mask_.reset();
 }
 
 void NativeViewHostAura::UpdateInsets() {

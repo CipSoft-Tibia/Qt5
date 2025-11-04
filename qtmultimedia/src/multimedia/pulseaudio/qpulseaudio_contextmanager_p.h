@@ -39,29 +39,40 @@ public:
     pa_threaded_mainloop *mainloop() { return m_mainLoop.get(); }
     pa_context *context() { return m_context.get(); }
 
-    inline void lock()
+    void lock()
     {
         if (m_mainLoop)
             pa_threaded_mainloop_lock(m_mainLoop.get());
     }
 
-    inline void unlock()
+    void unlock()
     {
         if (m_mainLoop)
             pa_threaded_mainloop_unlock(m_mainLoop.get());
     }
 
-    inline void wait(const PAOperationHandle &op)
+    void wait(const PAOperationHandle &op)
     {
         while (m_mainLoop && pa_operation_get_state(op.get()) == PA_OPERATION_RUNNING)
             pa_threaded_mainloop_wait(m_mainLoop.get());
     }
 
+    bool waitForAsyncOperation(pa_operation *op);
+
+    bool isInMainLoop() const
+    {
+        return m_mainLoop && pa_threaded_mainloop_in_thread(m_mainLoop.get());
+    }
+
     QList<QAudioDevice> availableDevices(QAudioDevice::Mode mode) const;
     QByteArray defaultDevice(QAudioDevice::Mode mode) const;
 
+    pa_context_state_t getContextState();
+    bool contextIsGood();
+
+    QString serverName();
+
 Q_SIGNALS:
-    void contextFailed();
     void audioInputsChanged();
     void audioOutputsChanged();
 
@@ -97,6 +108,8 @@ private:
     std::unique_ptr<pa_threaded_mainloop, QPulseAudioInternal::PaMainLoopDeleter> m_mainLoop;
     PAContextHandle m_context;
     bool m_prepared{};
+
+    QString m_serverName;
  };
 
 QT_END_NAMESPACE

@@ -36,7 +36,6 @@ using qinternaluint128 = std::_Unsigned128;
 enum StrayCharacterMode {
     TrailingJunkProhibited,
     TrailingJunkAllowed,
-    WhitespacesAllowed
 };
 
 // API note: this function can't process a number with more than 2.1 billion digits
@@ -63,10 +62,13 @@ void qt_doubleToAscii(double d, QLocaleData::DoubleForm form, int precision,
                                                         int base = 10);
 #endif
 
+#if QT_VERSION < QT_VERSION_CHECK(6, 12, 0)
+[[deprecated("Use qIsNull(double) instead.")]]
 [[nodiscard]] constexpr inline bool isZero(double d)
 {
     return qIsNull(d);
 }
+#endif
 
 // Enough space for the digits before the decimal separator:
 [[nodiscard]] inline int wholePartSpace(double d)
@@ -81,7 +83,7 @@ void qt_doubleToAscii(double d, QLocaleData::DoubleForm form, int precision,
 template <typename UcsInt>
 [[nodiscard]] inline UcsInt unicodeForDigit(uint digit, UcsInt zero)
 {
-    // Must match qlocale.cpp's NumberTokenizer's digit-digestion.
+    // Must match qlocale.cpp's NumericTokenizer's digit-digestion.
     Q_ASSERT(digit < 10);
     if (!digit)
         return zero;

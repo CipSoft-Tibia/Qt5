@@ -4,9 +4,9 @@
 
 #include "third_party/blink/renderer/platform/mojo/heap_mojo_receiver_set.h"
 
+#include <string>
 #include <utility>
 
-#include <string>
 #include "base/memory/raw_ptr.h"
 #include "base/test/null_task_runner.h"
 #include "mojo/public/cpp/bindings/receiver_set.h"
@@ -16,7 +16,7 @@
 #include "third_party/blink/renderer/platform/context_lifecycle_notifier.h"
 #include "third_party/blink/renderer/platform/heap/heap_test_utilities.h"
 #include "third_party/blink/renderer/platform/heap/persistent.h"
-#include "third_party/blink/renderer/platform/heap_observer_set.h"
+#include "third_party/blink/renderer/platform/heap_observer_list.h"
 #include "third_party/blink/renderer/platform/mojo/heap_mojo_wrapper_mode.h"
 #include "third_party/blink/renderer/platform/mojo/mojo_binding_context.h"
 #include "third_party/blink/renderer/platform/testing/mock_context_lifecycle_notifier.h"
@@ -55,9 +55,7 @@ class GCOwner final : public GarbageCollected<GCOwner<Mode, ContextType>>,
  private:
   HeapMojoReceiverSet<sample::blink::Service, GCOwner, Mode, ContextType>
       receiver_set_;
-  raw_ptr<HeapMojoReceiverSetGCBaseTest<Mode, ContextType>,
-          ExperimentalRenderer>
-      test_;
+  raw_ptr<HeapMojoReceiverSetGCBaseTest<Mode, ContextType>> test_;
 };
 
 template <HeapMojoWrapperMode Mode, typename ContextType>
@@ -123,10 +121,10 @@ template <HeapMojoWrapperMode Mode, typename ContextType>
 class HeapMojoReceiverSetDisconnectWithReasonHandlerBaseTest
     : public HeapMojoReceiverSetDisconnectHandlerBaseTest<Mode, ContextType> {
  public:
-  absl::optional<uint32_t>& disconnected_reason_code() {
+  std::optional<uint32_t>& disconnected_reason_code() {
     return disconnected_reason_code_;
   }
-  absl::optional<std::string>& disconnected_description() {
+  std::optional<std::string>& disconnected_description() {
     return disconnected_description_;
   }
 
@@ -151,8 +149,8 @@ class HeapMojoReceiverSetDisconnectWithReasonHandlerBaseTest
         WTF::Unretained(this)));
   }
 
-  absl::optional<uint32_t> disconnected_reason_code_;
-  absl::optional<std::string> disconnected_description_;
+  std::optional<uint32_t> disconnected_reason_code_;
+  std::optional<std::string> disconnected_description_;
 };
 
 }  // namespace

@@ -16,11 +16,6 @@ QT_BEGIN_NAMESPACE
     \brief The QRhiWidget class is a widget for rendering 3D graphics via an
     accelerated grapics API, such as Vulkan, Metal, or Direct 3D.
 
-    \preliminary
-
-    \note QRhiWidget is in tech preview in Qt 6.7. \b {The API is under
-    development and subject to change.}
-
     QRhiWidget provides functionality for displaying 3D content rendered
     through the \l QRhi APIs within a QWidget-based application. In many ways
     it is the portable equivalent of \l QOpenGLWidget that is not tied to a
@@ -174,18 +169,36 @@ QRhiWidget::QRhiWidget(QWidget *parent, Qt::WindowFlags f)
     : QWidget(*(new QRhiWidgetPrivate), parent, f)
 {
     Q_D(QRhiWidget);
+    d->init();
+}
+
+/*!
+ *  \internal
+ */
+QRhiWidget::QRhiWidget(QRhiWidgetPrivate &dd, QWidget *parent, Qt::WindowFlags f)
+    : QWidget(dd, parent, f)
+{
+    Q_D(QRhiWidget);
+    d->init();
+}
+
+/*!
+ *  \internal
+ */
+void QRhiWidgetPrivate::init()
+{
     if (Q_UNLIKELY(!QGuiApplicationPrivate::platformIntegration()->hasCapability(QPlatformIntegration::RhiBasedRendering)))
         qWarning("QRhiWidget: QRhi is not supported on this platform.");
     else
-        d->setRenderToTexture();
+        setRenderToTexture();
 
-    d->config.setEnabled(true);
+    config.setEnabled(true);
 #if defined(Q_OS_DARWIN)
-    d->config.setApi(QPlatformBackingStoreRhiConfig::Metal);
+    config.setApi(QPlatformBackingStoreRhiConfig::Metal);
 #elif defined(Q_OS_WIN)
-    d->config.setApi(QPlatformBackingStoreRhiConfig::D3D11);
+    config.setApi(QPlatformBackingStoreRhiConfig::D3D11);
 #else
-    d->config.setApi(QPlatformBackingStoreRhiConfig::OpenGL);
+    config.setApi(QPlatformBackingStoreRhiConfig::OpenGL);
 #endif
 }
 
@@ -420,7 +433,7 @@ QImage QRhiWidgetPrivate::grabFramebuffer()
                             imageFormat);
         QImage result;
         if (rhi->isYUpInFramebuffer())
-            result = wrapperImage.mirrored();
+            result = wrapperImage.flipped();
         else
             result = wrapperImage.copy();
         result.setDevicePixelRatio(q->devicePixelRatio());

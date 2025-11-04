@@ -98,6 +98,7 @@ class CORE_EXPORT SelectorChecker {
       : scrollbar_(style_request.scrollbar),
         part_names_(part_names),
         pseudo_argument_(style_request.pseudo_argument),
+        pseudo_ident_list_(style_request.pseudo_ident_list),
         scrollbar_part_(style_request.scrollbar_part),
         mode_(mode),
         is_ua_rule_(is_ua_rule) {}
@@ -159,6 +160,9 @@ class CORE_EXPORT SelectorChecker {
     bool in_rightmost_compound = true;
     bool has_scrollbar_pseudo = false;
     bool has_selection_pseudo = false;
+    bool has_search_text_pseudo = false;
+    bool has_scroll_marker_pseudo = false;
+    bool has_column_pseudo = false;
     bool treat_shadow_host_as_normal_scope = false;
     bool in_nested_complex_selector = false;
     // If true, elements that are links will match :visited. Otherwise,
@@ -173,6 +177,8 @@ class CORE_EXPORT SelectorChecker {
     bool had_match_visited = false;
     bool pseudo_has_in_rightmost_compound = true;
     bool is_inside_has_pseudo_class = false;
+    // Affects whether or not :current matches after a ::search-text.
+    bool search_text_request_is_current = false;
   };
 
   struct MatchResult {
@@ -282,7 +288,8 @@ class CORE_EXPORT SelectorChecker {
     return Match(context, ignore_result);
   }
 
-  static bool MatchesFocusPseudoClass(const Element&);
+  static bool MatchesFocusPseudoClass(const Element&,
+                                      bool has_scroll_marker_pseudo);
   static bool MatchesFocusVisiblePseudoClass(const Element&);
   static bool MatchesSelectorFragmentAnchorPseudoClass(const Element&);
 
@@ -320,6 +327,8 @@ class CORE_EXPORT SelectorChecker {
   MatchStatus MatchSelector(const SelectorCheckingContext&, MatchResult&) const;
   MatchStatus MatchForSubSelector(const SelectorCheckingContext&,
                                   MatchResult&) const;
+  MatchStatus MatchForScopeActivation(const SelectorCheckingContext&,
+                                      MatchResult&) const;
   MatchStatus MatchForRelation(const SelectorCheckingContext&,
                                MatchResult&) const;
   MatchStatus MatchForPseudoContent(const SelectorCheckingContext&,
@@ -364,6 +373,7 @@ class CORE_EXPORT SelectorChecker {
   CustomScrollbar* scrollbar_;
   PartNames* part_names_;
   const String pseudo_argument_;
+  const Vector<AtomicString> pseudo_ident_list_;
   ScrollbarPart scrollbar_part_;
   Mode mode_;
   bool is_ua_rule_;

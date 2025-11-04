@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qnoncontiguousbytedevice_p.h"
 #include <qbuffer.h>
@@ -101,51 +102,15 @@ QNonContiguousByteDevice::~QNonContiguousByteDevice()
 {
 }
 
-// FIXME we should scrap this whole implementation and instead change the ByteArrayImpl to be able to cope with sub-arrays?
-QNonContiguousByteDeviceBufferImpl::QNonContiguousByteDeviceBufferImpl(QBuffer *b)
-    : QNonContiguousByteDevice(),
-      byteArray(QByteArray::fromRawData(b->buffer().constData() + b->pos(),
-                                        b->buffer().size() - b->pos())),
-      arrayImpl(new QNonContiguousByteDeviceByteArrayImpl(b->buffer().sliced(b->pos())))
-{
-    arrayImpl->setParent(this);
-    connect(arrayImpl, &QNonContiguousByteDevice::readyRead, this,
-            &QNonContiguousByteDevice::readyRead);
-    connect(arrayImpl, &QNonContiguousByteDevice::readProgress, this,
-            &QNonContiguousByteDevice::readProgress);
-}
-
-QNonContiguousByteDeviceBufferImpl::~QNonContiguousByteDeviceBufferImpl()
-{
-}
-
-const char* QNonContiguousByteDeviceBufferImpl::readPointer(qint64 maximumLength, qint64 &len)
-{
-    return arrayImpl->readPointer(maximumLength, len);
-}
-
-bool QNonContiguousByteDeviceBufferImpl::advanceReadPointer(qint64 amount)
-{
-    return arrayImpl->advanceReadPointer(amount);
-}
-
-bool QNonContiguousByteDeviceBufferImpl::atEnd() const
-{
-    return arrayImpl->atEnd();
-}
-
-bool QNonContiguousByteDeviceBufferImpl::reset()
-{
-    return arrayImpl->reset();
-}
-
-qint64 QNonContiguousByteDeviceBufferImpl::size() const
-{
-    return arrayImpl->size();
-}
-
 QNonContiguousByteDeviceByteArrayImpl::QNonContiguousByteDeviceByteArrayImpl(QByteArray ba)
-    : QNonContiguousByteDevice(), byteArray(std::move(ba)), currentPosition(0)
+    : QNonContiguousByteDevice(), byteArray(std::move(ba)), view(byteArray)
+{
+}
+
+QNonContiguousByteDeviceByteArrayImpl::QNonContiguousByteDeviceByteArrayImpl(QBuffer *buffer)
+    : QNonContiguousByteDevice(),
+      byteArray(buffer->buffer()),
+      view(QByteArrayView(byteArray).sliced(buffer->pos(), buffer->size() - buffer->pos()))
 {
 }
 
@@ -165,7 +130,7 @@ const char* QNonContiguousByteDeviceByteArrayImpl::readPointer(qint64 maximumLen
     else
         len = size() - currentPosition;
 
-    return byteArray.constData() + currentPosition;
+    return view.data() + currentPosition;
 }
 
 bool QNonContiguousByteDeviceByteArrayImpl::advanceReadPointer(qint64 amount)
@@ -188,7 +153,7 @@ bool QNonContiguousByteDeviceByteArrayImpl::reset()
 
 qint64 QNonContiguousByteDeviceByteArrayImpl::size() const
 {
-    return byteArray.size();
+    return view.size();
 }
 
 qint64 QNonContiguousByteDeviceByteArrayImpl::pos() const
@@ -456,7 +421,7 @@ QNonContiguousByteDevice *QNonContiguousByteDeviceFactory::create(QIODevice *dev
 {
     // shortcut if it is a QBuffer
     if (QBuffer *buffer = qobject_cast<QBuffer *>(device)) {
-        return new QNonContiguousByteDeviceBufferImpl(buffer);
+        return new QNonContiguousByteDeviceByteArrayImpl(buffer);
     }
 
     // ### FIXME special case if device is a QFile that supports map()
@@ -476,7 +441,7 @@ std::shared_ptr<QNonContiguousByteDevice> QNonContiguousByteDeviceFactory::creat
 {
     // shortcut if it is a QBuffer
     if (QBuffer *buffer = qobject_cast<QBuffer*>(device))
-        return std::make_shared<QNonContiguousByteDeviceBufferImpl>(buffer);
+        return std::make_shared<QNonContiguousByteDeviceByteArrayImpl>(buffer);
 
     // ### FIXME special case if device is a QFile that supports map()
     // then we can actually deal with the file without using read/peek

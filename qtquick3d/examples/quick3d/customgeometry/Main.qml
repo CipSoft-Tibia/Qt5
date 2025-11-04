@@ -63,7 +63,7 @@ ApplicationWindow {
                 verticalLines: 20
             }
             materials: [
-                DefaultMaterial {
+                PrincipledMaterial {
                     lineWidth: sliderLineWidth.value
                 }
             ]
@@ -81,13 +81,13 @@ ApplicationWindow {
                 uvAdjust: sliderUV.value
             }
             materials: [
-                DefaultMaterial {
+                PrincipledMaterial {
                     Texture {
                         id: baseColorMap
                         source: "qt_logo_rect.png"
                     }
-                    cullMode: DefaultMaterial.NoCulling
-                    diffuseMap: cbTexture.checked ? baseColorMap : null
+                    cullMode: PrincipledMaterial.NoCulling
+                    baseColorMap: cbTexture.checked ? baseColorMap : null
                     specularAmount: 0.5
                 }
             ]
@@ -100,10 +100,10 @@ ApplicationWindow {
             scale: Qt.vector3d(100, 100, 100)
             geometry: ExamplePointGeometry { }
             materials: [
-                DefaultMaterial {
-                    lighting: DefaultMaterial.NoLighting
-                    cullMode: DefaultMaterial.NoCulling
-                    diffuseColor: "yellow"
+                PrincipledMaterial {
+                    lighting: PrincipledMaterial.NoLighting
+                    cullMode: PrincipledMaterial.NoCulling
+                    baseColor: "yellow"
                     pointSize: sliderPointSize.value
                 }
             ]

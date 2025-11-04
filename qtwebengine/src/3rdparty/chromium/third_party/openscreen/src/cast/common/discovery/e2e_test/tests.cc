@@ -106,12 +106,12 @@ class ServiceReceiver : public discovery::DnsSdServiceWatcher<ReceiverInfo> {
 };
 
 class FailOnErrorReporting : public discovery::ReportingClient {
-  void OnFatalError(Error error) override {
+  void OnFatalError(const Error& error) override {
     OSP_LOG_FATAL << "Fatal error received: '" << error << "'";
     OSP_NOTREACHED();
   }
 
-  void OnRecoverableError(Error error) override {
+  void OnRecoverableError(const Error& error) override {
     // Pending resolution of openscreen:105, logging recoverable errors is
     // disabled, as this will end up polluting the output with logs related to
     // mDNS messages received from non-loopback network interfaces over which
@@ -153,11 +153,11 @@ class DiscoveryE2ETest : public testing::Test {
   }
 
   void SetUpService(const discovery::Config& config) {
-    OSP_DCHECK(!dnssd_service_.get());
+    OSP_CHECK(!dnssd_service_);
     std::atomic_bool done{false};
     task_runner_->PostTask([this, &config, &done]() {
-      dnssd_service_ = discovery::CreateDnsSdService(
-          *task_runner_, &reporting_client_, config);
+      dnssd_service_ = discovery::CreateDnsSdService(*task_runner_,
+                                                     reporting_client_, config);
       receiver_ = std::make_unique<ServiceReceiver>(dnssd_service_.get());
       publisher_ = std::make_unique<Publisher>(dnssd_service_.get());
       done = true;
@@ -168,14 +168,14 @@ class DiscoveryE2ETest : public testing::Test {
   }
 
   void StartDiscovery() {
-    OSP_DCHECK(dnssd_service_.get());
+    OSP_CHECK(dnssd_service_);
     task_runner_->PostTask([this]() { receiver_->StartDiscovery(); });
   }
 
   template <typename... RecordTypes>
   void UpdateRecords(RecordTypes... records) {
-    OSP_DCHECK(dnssd_service_.get());
-    OSP_DCHECK(publisher_.get());
+    OSP_CHECK(dnssd_service_);
+    OSP_CHECK(publisher_);
 
     std::vector<ReceiverInfo> record_set{std::move(records)...};
     for (ReceiverInfo& record : record_set) {
@@ -189,8 +189,8 @@ class DiscoveryE2ETest : public testing::Test {
 
   template <typename... RecordTypes>
   void PublishRecords(RecordTypes... records) {
-    OSP_DCHECK(dnssd_service_.get());
-    OSP_DCHECK(publisher_.get());
+    OSP_CHECK(dnssd_service_);
+    OSP_CHECK(publisher_);
 
     std::vector<ReceiverInfo> record_set{std::move(records)...};
     for (ReceiverInfo& record : record_set) {
@@ -204,7 +204,7 @@ class DiscoveryE2ETest : public testing::Test {
 
   template <typename... AtomicBoolPtrs>
   void WaitUntilSeen(bool should_be_seen, AtomicBoolPtrs... bools) {
-    OSP_DCHECK(dnssd_service_.get());
+    OSP_CHECK(dnssd_service_);
     std::vector<std::atomic_bool*> atomic_bools{bools...};
 
     int waiting_on = atomic_bools.size();
@@ -230,7 +230,7 @@ class DiscoveryE2ETest : public testing::Test {
 
   void CheckForClaimedIds(ReceiverInfo receiver_info,
                           std::atomic_bool* has_been_seen) {
-    OSP_DCHECK(dnssd_service_.get());
+    OSP_CHECK(dnssd_service_);
     task_runner_->PostTask(
         [this, info = std::move(receiver_info), has_been_seen]() mutable {
           CheckForClaimedIds(std::move(info), has_been_seen, 0);
@@ -239,7 +239,7 @@ class DiscoveryE2ETest : public testing::Test {
 
   void CheckForPublishedService(ReceiverInfo receiver_info,
                                 std::atomic_bool* has_been_seen) {
-    OSP_DCHECK(dnssd_service_.get());
+    OSP_CHECK(dnssd_service_);
     task_runner_->PostTask(
         [this, info = std::move(receiver_info), has_been_seen]() mutable {
           CheckForPublishedService(std::move(info), has_been_seen, 0, true);
@@ -251,7 +251,7 @@ class DiscoveryE2ETest : public testing::Test {
   // if it exists, so waits throughout this file can be removed.
   void CheckNotPublishedService(ReceiverInfo receiver_info,
                                 std::atomic_bool* has_been_seen) {
-    OSP_DCHECK(dnssd_service_.get());
+    OSP_CHECK(dnssd_service_.get());
     task_runner_->PostTask(
         [this, info = std::move(receiver_info), has_been_seen]() mutable {
           CheckForPublishedService(std::move(info), has_been_seen, 0, false);

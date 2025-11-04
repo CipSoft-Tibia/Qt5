@@ -5,7 +5,7 @@
  */
 
 import type {BrowserConnectOptions} from '../common/ConnectOptions.js';
-import type {Product} from '../common/Product.js';
+import type {SupportedBrowser} from '../common/SupportedBrowser.js';
 
 /**
  * Launcher options that only apply to Chrome.
@@ -17,13 +17,18 @@ export interface BrowserLaunchArgumentOptions {
    * Whether to run the browser in headless mode.
    *
    * @remarks
-   * In the future `headless: true` will be equivalent to `headless: 'new'`.
-   * You can read more about the change {@link https://developer.chrome.com/articles/new-headless/ | here}.
-   * Consider opting in early by setting the value to `"new"`.
+   *
+   * - `true` launches the browser in the
+   *   {@link https://developer.chrome.com/articles/new-headless/ | new headless}
+   *   mode.
+   *
+   * - `'shell'` launches
+   *   {@link https://developer.chrome.com/blog/chrome-headless-shell | shell}
+   *   known as the old headless mode.
    *
    * @defaultValue `true`
    */
-  headless?: boolean | 'new';
+  headless?: boolean | 'shell';
   /**
    * Path to a user data directory.
    * {@link https://chromium.googlesource.com/chromium/src/+/refs/heads/main/docs/user_data_dir.md | see the Chromium docs}
@@ -109,7 +114,9 @@ export interface LaunchOptions {
    */
   env?: Record<string, string | undefined>;
   /**
-   * Connect to a browser over a pipe instead of a WebSocket.
+   * Connect to a browser over a pipe instead of a WebSocket. Only supported
+   * with Chrome.
+   *
    * @defaultValue `false`
    */
   pipe?: boolean;
@@ -117,7 +124,7 @@ export interface LaunchOptions {
    * Which browser to launch.
    * @defaultValue `chrome`
    */
-  product?: Product;
+  browser?: SupportedBrowser;
   /**
    * {@link https://searchfox.org/mozilla-release/source/modules/libpref/init/all.js | Additional preferences } that can be passed when launching with Firefox.
    */

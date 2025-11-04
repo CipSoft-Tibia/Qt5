@@ -53,7 +53,8 @@ public:
     ParsingError skipKnownElement(QXmlStreamReader &xmlStreamReader);
     ParsingError generateInputFiles(const QString &path,
                                     const QString &prefix,
-                                    const QString &header);
+                                    const QString &header,
+                                    bool generateBundleFiles);
 
     ParsingError dependencyCheck();
     bool isKnownElement(const QXmlStreamReader &xmlStreamReader);

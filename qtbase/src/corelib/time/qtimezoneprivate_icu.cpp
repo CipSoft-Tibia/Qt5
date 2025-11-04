@@ -325,7 +325,7 @@ bool QIcuTimeZonePrivate::isDaylightTime(qint64 atMSecsSinceEpoch) const
 QTimeZonePrivate::Data QIcuTimeZonePrivate::data(qint64 forMSecsSinceEpoch) const
 {
     // Available in ICU C++ api, and draft C api in v50
-    QTimeZonePrivate::Data data;
+    Data data;
 #if U_ICU_VERSION_MAJOR_NUM >= 50
     data = ucalTimeZoneTransition(m_ucal, UCAL_TZ_TRANSITION_PREVIOUS_INCLUSIVE,
                                   forMSecsSinceEpoch);
@@ -387,30 +387,17 @@ QByteArray QIcuTimeZonePrivate::systemTimeZoneId() const
 
 bool QIcuTimeZonePrivate::isTimeZoneIdAvailable(const QByteArray &ianaId) const
 {
-    const QString ianaStr = QString::fromUtf8(ianaId);
-    const UChar *const name = reinterpret_cast<const UChar *>(ianaStr.constData());
-    // We are not interested in the value, but we have to pass something.
-    // No known IANA zone name is (up to 2023) longer than 30 characters.
-    constexpr size_t size = 64;
-    UChar buffer[size];
-
-    // TODO: convert to ucal_getIanaTimeZoneID(), new draft in ICU 74, once we
-    // can rely on its availability, assuming it works the same once not draft.
-    UErrorCode status = U_ZERO_ERROR;
-    UBool isSys = false;
-    // Returns the length of the IANA zone name (but we don't care):
-    ucal_getCanonicalTimeZoneID(name, ianaStr.size(), buffer, size, &isSys, &status);
-    // We're only interested if the result is a "system" (i.e. IANA) ID:
-    return isSys;
+    return QtTimeZoneLocale::ucalKnownTimeZoneId(QString::fromUtf8(ianaId));
 }
 
 QList<QByteArray> QIcuTimeZonePrivate::availableTimeZoneIds() const
 {
     UErrorCode status = U_ZERO_ERROR;
     UEnumeration *uenum = ucal_openTimeZones(&status);
+    // Does not document order of entries.
     QList<QByteArray> result;
     if (U_SUCCESS(status))
-        result = uenumToIdList(uenum);
+        result = uenumToIdList(uenum); // Ensures sorted, unique.
     uenum_close(uenum);
     return result;
 }

@@ -44,8 +44,8 @@ QT_BEGIN_NAMESPACE
             model: customModel
             labelsSection: 1
             valuesSection: 2
-            firstRow: 1
-            rowCount: 4
+            first: 1
+            count: 4
             orientation: Qt.Vertical
         }
     \endcode

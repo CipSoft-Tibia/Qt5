@@ -32,7 +32,7 @@
     position between the second and third item, and returns the second
     item; and so on.
 
-    \image javaiterators1.png
+    \image {javaiterators1.png} {Illustraction of Java-style iterator usage in Qt}
 
     Here's how to iterate over the elements in reverse order:
 
@@ -81,7 +81,7 @@
     position between the second and third item, returning the second
     item; and so on.
 
-    \image javaiterators1.png
+    \image {javaiterators1.png} {Illustraction of Java-style iterator usage in Qt}
 
     Here's how to iterate over the elements in reverse order:
 

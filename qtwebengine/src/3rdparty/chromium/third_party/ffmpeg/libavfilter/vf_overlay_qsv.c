@@ -21,19 +21,17 @@
  * A hardware accelerated overlay filter based on Intel Quick Sync Video VPP
  */
 
+#include "libavutil/mem.h"
 #include "libavutil/opt.h"
 #include "libavutil/common.h"
 #include "libavutil/pixdesc.h"
 #include "libavutil/eval.h"
 #include "libavutil/hwcontext.h"
-#include "libavutil/avstring.h"
-#include "libavutil/imgutils.h"
 #include "libavutil/mathematics.h"
 
 #include "internal.h"
 #include "avfilter.h"
 #include "formats.h"
-#include "video.h"
 
 #include "framesync.h"
 #include "qsvvpp.h"
@@ -89,10 +87,10 @@ static const AVOption overlay_qsv_options[] = {
     { "alpha", "Overlay global alpha", OFFSET(overlay_alpha), AV_OPT_TYPE_INT, { .i64 = 255}, 0, 255, .flags = FLAGS},
     { "eof_action", "Action to take when encountering EOF from secondary input ",
         OFFSET(fs.opt_eof_action), AV_OPT_TYPE_INT, { .i64 = EOF_ACTION_REPEAT },
-        EOF_ACTION_REPEAT, EOF_ACTION_PASS, .flags = FLAGS, "eof_action" },
-        { "repeat", "Repeat the previous frame.",   0, AV_OPT_TYPE_CONST, { .i64 = EOF_ACTION_REPEAT }, .flags = FLAGS, "eof_action" },
-        { "endall", "End both streams.",            0, AV_OPT_TYPE_CONST, { .i64 = EOF_ACTION_ENDALL }, .flags = FLAGS, "eof_action" },
-        { "pass",   "Pass through the main input.", 0, AV_OPT_TYPE_CONST, { .i64 = EOF_ACTION_PASS },   .flags = FLAGS, "eof_action" },
+        EOF_ACTION_REPEAT, EOF_ACTION_PASS, .flags = FLAGS, .unit = "eof_action" },
+        { "repeat", "Repeat the previous frame.",   0, AV_OPT_TYPE_CONST, { .i64 = EOF_ACTION_REPEAT }, .flags = FLAGS, .unit = "eof_action" },
+        { "endall", "End both streams.",            0, AV_OPT_TYPE_CONST, { .i64 = EOF_ACTION_ENDALL }, .flags = FLAGS, .unit = "eof_action" },
+        { "pass",   "Pass through the main input.", 0, AV_OPT_TYPE_CONST, { .i64 = EOF_ACTION_PASS },   .flags = FLAGS, .unit = "eof_action" },
     { "shortest", "force termination when the shortest input terminates", OFFSET(fs.opt_shortest), AV_OPT_TYPE_BOOL, { .i64 = 0 }, 0, 1, FLAGS },
     { "repeatlast", "repeat overlay of the last overlay frame", OFFSET(fs.opt_repeatlast), AV_OPT_TYPE_BOOL, {.i64=1}, 0, 1, FLAGS },
     { NULL }
@@ -230,13 +228,16 @@ static int process_frame(FFFrameSync *fs)
 {
     AVFilterContext  *ctx = fs->parent;
     QSVVPPContext    *qsv = fs->opaque;
-    AVFrame        *frame = NULL;
+    AVFrame        *frame = NULL, *propref = NULL;
     int               ret = 0, i;
 
     for (i = 0; i < ctx->nb_inputs; i++) {
         ret = ff_framesync_get_frame(fs, i, &frame, 0);
-        if (ret == 0)
-            ret = ff_qsvvpp_filter_frame(qsv, ctx->inputs[i], frame);
+        if (ret == 0) {
+            if (i == 0)
+                propref = frame;
+            ret = ff_qsvvpp_filter_frame(qsv, ctx->inputs[i], frame, propref);
+        }
         if (ret < 0 && ret != AVERROR(EAGAIN))
             break;
     }

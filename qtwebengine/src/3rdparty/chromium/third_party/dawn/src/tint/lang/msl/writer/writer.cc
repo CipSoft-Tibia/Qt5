@@ -35,11 +35,6 @@
 #include "src/tint/lang/msl/writer/printer/printer.h"
 #include "src/tint/lang/msl/writer/raise/raise.h"
 
-#if TINT_BUILD_WGSL_READER
-#include "src/tint/lang/wgsl/reader/lower/lower.h"
-#include "src/tint/lang/wgsl/reader/program_to_ir/program_to_ir.h"
-#endif
-
 namespace tint::msl::writer {
 
 Result<Output> Generate(core::ir::Module& ir, const Options& options) {
@@ -53,8 +48,9 @@ Result<Output> Generate(core::ir::Module& ir, const Options& options) {
     Output output;
 
     // Raise from core-dialect to MSL-dialect.
-    if (auto res = Raise(ir, options); res != Success) {
-        return res.Failure();
+    auto raise_result = Raise(ir, options);
+    if (raise_result != Success) {
+        return raise_result.Failure();
     }
 
     // Generate the MSL code.
@@ -62,7 +58,10 @@ Result<Output> Generate(core::ir::Module& ir, const Options& options) {
     if (result != Success) {
         return result.Failure();
     }
-    output.msl = result.Get();
+    output.msl = result->msl;
+    output.workgroup_allocations = std::move(result->workgroup_allocations);
+    output.needs_storage_buffer_sizes = raise_result->needs_storage_buffer_sizes;
+    output.has_invariant_attribute = result->has_invariant_attribute;
     return output;
 }
 
@@ -86,8 +85,6 @@ Result<Output> Generate(const Program& program, const Options& options) {
         return Failure{sanitized_result.program.Diagnostics()};
     }
     output.needs_storage_buffer_sizes = sanitized_result.needs_storage_buffer_sizes;
-    output.used_array_length_from_uniform_indices =
-        std::move(sanitized_result.used_array_length_from_uniform_indices);
 
     // Generate the MSL code.
     auto impl = std::make_unique<ASTPrinter>(sanitized_result.program);

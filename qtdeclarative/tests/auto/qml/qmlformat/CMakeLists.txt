@@ -29,6 +29,7 @@ qt_internal_add_test(tst_qmlformat
         Qt::QmlDomPrivate
         Qt::TestPrivate
         Qt::QuickTestUtilsPrivate
+        Qt::QmlFormatPrivate
     TESTDATA ${test_data}
     TIMEOUT 3000
 )

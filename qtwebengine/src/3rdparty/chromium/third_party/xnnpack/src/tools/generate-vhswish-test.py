@@ -27,7 +27,7 @@ parser.set_defaults(defines=list())
 
 
 def split_ukernel_name(name):
-  match = re.fullmatch(r"xnn_(qs8|qu8)_vhswish_ukernel__(.+)_u(\d+)", name)
+  match = re.fullmatch(r"xnn_(qs8|qu8)_vhswish_ukernel__(.+)_u(\d+)(v)?", name)
   if match is None:
     raise ValueError("Unexpected microkernel name: " + name)
 
@@ -201,14 +201,13 @@ def main(args):
 //   Generator: {generator}
 
 
-#include <gtest/gtest.h>
-
 #include <vector>
 
-#include <xnnpack/common.h>
-#include <xnnpack/isa-checks.h>
-#include <xnnpack/vhswish.h>
-
+#include <gtest/gtest.h>
+#include "xnnpack/common.h"
+#include "xnnpack/isa-checks.h"
+#include "xnnpack/microparams-init.h"
+#include "xnnpack/vhswish.h"
 #include "vhswish-microkernel-tester.h"
 """.format(specification=options.spec, generator=sys.argv[0])
 

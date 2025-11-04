@@ -32,12 +32,14 @@
 #include <utility>
 
 #include "dawn/common/Mutex.h"
+#include "dawn/common/NonMovable.h"
 #include "dawn/common/Ref.h"
-#include "partition_alloc/pointers/raw_ptr.h"
+#include "dawn/common/StackAllocated.h"
+#include "partition_alloc/pointers/raw_ptr_exclusion.h"
 
 namespace dawn {
 
-template <typename T>
+template <typename T, template <typename, typename> class Guard>
 class MutexProtected;
 
 namespace detail {
@@ -45,7 +47,7 @@ namespace detail {
 template <typename T>
 struct MutexProtectedTraits {
     using MutexType = std::mutex;
-    using LockType = std::lock_guard<std::mutex>;
+    using LockType = std::unique_lock<std::mutex>;
     using ObjectType = T;
 
     static MutexType CreateMutex() { return std::mutex(); }
@@ -69,24 +71,33 @@ struct MutexProtectedTraits<Ref<T>> {
 // Guard class is a wrapping class that gives access to a protected resource after acquiring the
 // lock related to it. For the lifetime of this class, the lock is held.
 template <typename T, typename Traits>
-class Guard {
+class Guard : public NonMovable, StackAllocated {
   public:
-    using ReturnType = typename UnwrapRef<T>::type;
-
     // It's the programmer's burden to not save the pointer/reference and reuse it without the lock.
-    ReturnType* operator->() { return Traits::GetObj(mObj.get()); }
-    ReturnType& operator*() { return *Traits::GetObj(mObj.get()); }
-    const ReturnType* operator->() const { return Traits::GetObj(mObj); }
-    const ReturnType& operator*() const { return *Traits::GetObj(mObj); }
+    auto* operator->() const { return Get(); }
+    auto& operator*() const { return *Get(); }
+
+  protected:
+    Guard(T* obj, typename Traits::MutexType& mutex) : mLock(Traits::GetMutex(mutex)), mObj(obj) {}
+    Guard(Guard&& other) : mLock(std::move(other.mLock)), mObj(std::move(other.mObj)) {
+        other.mObj = nullptr;
+    }
+
+    Guard(const Guard& other) = delete;
+    Guard& operator=(const Guard& other) = delete;
+    Guard& operator=(Guard&& other) = delete;
+
+    auto* Get() const { return Traits::GetObj(mObj); }
 
   private:
     using NonConstT = typename std::remove_const<T>::type;
-    friend class MutexProtected<NonConstT>;
-
-    Guard(T* obj, typename Traits::MutexType& mutex) : mLock(Traits::GetMutex(mutex)), mObj(obj) {}
+    friend class MutexProtected<NonConstT, Guard>;
 
     typename Traits::LockType mLock;
-    const raw_ptr<T> mObj;
+    // RAW_PTR_EXCLUSION: This pointer is created/destroyed on each access to a MutexProtected.
+    // The pointer is always transiently used while the MutexProtected is in scope so it is
+    // unlikely to be used after it is freed.
+    RAW_PTR_EXCLUSION T* mObj = nullptr;
 };
 
 }  // namespace detail
@@ -123,12 +134,12 @@ class Guard {
 //       private:
 //         MutexProtected<Allocator> mAllocator;
 //     };
-template <typename T>
+template <typename T, template <typename, typename> class Guard = detail::Guard>
 class MutexProtected {
   public:
     using Traits = detail::MutexProtectedTraits<T>;
-    using Usage = detail::Guard<T, Traits>;
-    using ConstUsage = detail::Guard<const T, Traits>;
+    using Usage = Guard<T, Traits>;
+    using ConstUsage = Guard<const T, Traits>;
 
     MutexProtected() : mMutex(Traits::CreateMutex()) {}
 

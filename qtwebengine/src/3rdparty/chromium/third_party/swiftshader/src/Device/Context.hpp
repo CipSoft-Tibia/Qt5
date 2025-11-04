@@ -32,12 +32,68 @@ class ImageView;
 class PipelineLayout;
 class RenderPass;
 
+struct InputsDynamicStateFlags
+{
+	bool dynamicVertexInputBindingStride : 1;
+        bool dynamicVertexInput : 1;
+};
+
+// Note: The split between Inputs and VertexInputInterfaceState is mostly superficial.  The state
+// (be it dynamic or static) in Inputs should have been mostly a part of VertexInputInterfaceState.
+// Changing that requires some surgery.
+struct VertexInputInterfaceDynamicStateFlags
+{
+	bool dynamicPrimitiveRestartEnable : 1;
+	bool dynamicPrimitiveTopology : 1;
+};
+
+struct PreRasterizationDynamicStateFlags
+{
+	bool dynamicLineWidth : 1;
+	bool dynamicDepthBias : 1;
+	bool dynamicDepthBiasEnable : 1;
+	bool dynamicCullMode : 1;
+	bool dynamicFrontFace : 1;
+	bool dynamicViewport : 1;
+	bool dynamicScissor : 1;
+	bool dynamicViewportWithCount : 1;
+	bool dynamicScissorWithCount : 1;
+	bool dynamicRasterizerDiscardEnable : 1;
+};
+
+struct FragmentDynamicStateFlags
+{
+	bool dynamicDepthTestEnable : 1;
+	bool dynamicDepthWriteEnable : 1;
+	bool dynamicDepthBoundsTestEnable : 1;
+	bool dynamicDepthBounds : 1;
+	bool dynamicDepthCompareOp : 1;
+	bool dynamicStencilTestEnable : 1;
+	bool dynamicStencilOp : 1;
+	bool dynamicStencilCompareMask : 1;
+	bool dynamicStencilWriteMask : 1;
+	bool dynamicStencilReference : 1;
+};
+
+struct FragmentOutputInterfaceDynamicStateFlags
+{
+	bool dynamicBlendConstants : 1;
+};
+
+struct DynamicStateFlags
+{
+    // Note: InputsDynamicStateFlags is kept local to Inputs
+	VertexInputInterfaceDynamicStateFlags vertexInputInterface;
+	PreRasterizationDynamicStateFlags preRasterization;
+	FragmentDynamicStateFlags fragment;
+	FragmentOutputInterfaceDynamicStateFlags fragmentOutputInterface;
+};
+
 struct VertexInputBinding
 {
 	Buffer *buffer = nullptr;
 	VkDeviceSize offset = 0;
 	VkDeviceSize size = 0;
-	VkDeviceSize stride = 0;
 };
 
 struct IndexBuffer
@@ -59,13 +115,22 @@ struct Attachments
 	ImageView *depthBuffer = nullptr;
 	ImageView *stencilBuffer = nullptr;
 
-	VkFormat colorFormat(int index) const;
+	// VK_KHR_dynamic_rendering_local_read allows color locations to be mapped to the render
+	// pass attachments, but blend and other state is not affected by this map.  The image views
+	// placed in colorBuffer are indexed by "location" (i.e the decoration in the shader), and
+	// the following maps facilitate the association between the attachment-specific state and
+	// the location-indexed color buffers.
+	uint32_t indexToLocation[sw::MAX_COLOR_BUFFERS] = {};
+	uint32_t locationToIndex[sw::MAX_COLOR_BUFFERS] = {};
+
+	VkFormat colorFormat(int location) const;
 	VkFormat depthFormat() const;
 };
 
+struct DynamicState;
 struct Inputs
 {
-	void initialize(const VkPipelineVertexInputStateCreateInfo *vertexInputState);
+	void initialize(const VkPipelineVertexInputStateCreateInfo *vertexInputState, const VkPipelineDynamicStateCreateInfo *dynamicStateCreateInfo);
 
 	void updateDescriptorSets(const DescriptorSet::Array &dso,
 	                          const DescriptorSet::Bindings &ds,
@@ -75,13 +140,14 @@ struct Inputs
 	inline const DescriptorSet::DynamicOffsets &getDescriptorDynamicOffsets() const { return descriptorDynamicOffsets; }
 	inline const sw::Stream &getStream(uint32_t i) const { return stream[i]; }
 
-	void bindVertexInputs(int firstInstance, bool dynamicInstanceStride);
-	void setVertexInputBinding(const VertexInputBinding vertexInputBindings[]);
-	void advanceInstanceAttributes(bool dynamicInstanceStride);
-	VkDeviceSize getVertexStride(uint32_t i, bool dynamicVertexStride) const;
-	VkDeviceSize getInstanceStride(uint32_t i, bool dynamicVertexStride) const;
+	void bindVertexInputs(int firstInstance);
+	void setVertexInputBinding(const VertexInputBinding vertexInputBindings[], const DynamicState &dynamicState);
+	void advanceInstanceAttributes();
+	VkDeviceSize getVertexStride(uint32_t i) const;
+	VkDeviceSize getInstanceStride(uint32_t i) const;
 
 private:
+	InputsDynamicStateFlags dynamicStateFlags = {};
 	VertexInputBinding vertexInputBindings[MAX_VERTEX_INPUT_BINDINGS] = {};
 	DescriptorSet::Array descriptorSetObjects = {};
 	DescriptorSet::Bindings descriptorSets = {};
@@ -133,6 +199,20 @@ struct BlendState : sw::Memset<BlendState>
 	VkBlendOp blendOperationAlpha;
 };
 
+struct DynamicVertexInputBindingState
+{
+	VkVertexInputRate inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+	VkDeviceSize stride = 0;
+	unsigned int divisor = 0;
+};
+
+struct DynamicVertexInputAttributeState
+{
+	VkFormat format = VK_FORMAT_UNDEFINED;
+	unsigned int offset = 0;
+	unsigned int binding = 0;
+};
+
 struct DynamicState
 {
 	VkViewport viewport = {};
@@ -159,58 +239,12 @@ struct DynamicState
 	VkStencilOpState backStencil = {};
 	VkBool32 stencilTestEnable = VK_FALSE;
 	uint32_t viewportCount = 0;
-	VkRect2D viewports[vk::MAX_VIEWPORTS] = {};
+	VkViewport viewports[vk::MAX_VIEWPORTS] = {};
 	VkBool32 rasterizerDiscardEnable = VK_FALSE;
 	VkBool32 depthBiasEnable = VK_FALSE;
 	VkBool32 primitiveRestartEnable = VK_FALSE;
-};
-
-struct VertexInputInterfaceDynamicStateFlags
-{
-	bool dynamicPrimitiveRestartEnable : 1;
-	bool dynamicPrimitiveTopology : 1;
-	bool dynamicVertexInputBindingStride : 1;
-};
-
-struct PreRasterizationDynamicStateFlags
-{
-	bool dynamicLineWidth : 1;
-	bool dynamicDepthBias : 1;
-	bool dynamicDepthBiasEnable : 1;
-	bool dynamicCullMode : 1;
-	bool dynamicFrontFace : 1;
-	bool dynamicViewport : 1;
-	bool dynamicScissor : 1;
-	bool dynamicViewportWithCount : 1;
-	bool dynamicScissorWithCount : 1;
-	bool dynamicRasterizerDiscardEnable : 1;
-};
-
-struct FragmentDynamicStateFlags
-{
-	bool dynamicDepthTestEnable : 1;
-	bool dynamicDepthWriteEnable : 1;
-	bool dynamicDepthBoundsTestEnable : 1;
-	bool dynamicDepthBounds : 1;
-	bool dynamicDepthCompareOp : 1;
-	bool dynamicStencilTestEnable : 1;
-	bool dynamicStencilOp : 1;
-	bool dynamicStencilCompareMask : 1;
-	bool dynamicStencilWriteMask : 1;
-	bool dynamicStencilReference : 1;
-};
-
-struct FragmentOutputInterfaceDynamicStateFlags
-{
-	bool dynamicBlendConstants : 1;
-};
-
-struct DynamicStateFlags
-{
-	VertexInputInterfaceDynamicStateFlags vertexInputInterface;
-	PreRasterizationDynamicStateFlags preRasterization;
-	FragmentDynamicStateFlags fragment;
-	FragmentOutputInterfaceDynamicStateFlags fragmentOutputInterface;
+	DynamicVertexInputBindingState vertexInputBindings[MAX_VERTEX_INPUT_BINDINGS];
+	DynamicVertexInputAttributeState vertexInputAttributes[sw::MAX_INTERFACE_COMPONENTS / 4];
 };
 
 struct VertexInputInterfaceState
@@ -224,7 +258,6 @@ struct VertexInputInterfaceState
 	inline VkPrimitiveTopology getTopology() const { return topology; }
 	inline bool hasPrimitiveRestartEnable() const { return primitiveRestartEnable; }
 
-	inline bool hasDynamicVertexStride() const { return dynamicStateFlags.dynamicVertexInputBindingStride; }
 	inline bool hasDynamicTopology() const { return dynamicStateFlags.dynamicPrimitiveTopology; }
 	inline bool hasDynamicPrimitiveRestartEnable() const { return dynamicStateFlags.dynamicPrimitiveRestartEnable; }
 
@@ -382,9 +415,10 @@ struct FragmentOutputInterfaceState
 
 	inline const sw::float4 &getBlendConstants() const { return blendConstants; }
 
-	BlendState getBlendState(int index, const Attachments &attachments, bool fragmentContainsKill) const;
-
-	int colorWriteActive(int index, const Attachments &attachments) const;
+	// The following take the attachment "location", which may not be the same as the index in
+	// the attachment list with VK_KHR_dynamic_rendering_local_read.
+	BlendState getBlendState(int location, const Attachments &attachments, bool fragmentContainsKill) const;
+	int colorWriteActive(int location, const Attachments &attachments) const;
 
 private:
 	void setColorBlendState(const VkPipelineColorBlendStateCreateInfo *colorBlendState);
@@ -392,7 +426,7 @@ private:
 	VkBlendFactor blendFactor(VkBlendOp blendOperation, VkBlendFactor blendFactor) const;
 	VkBlendOp blendOperation(VkBlendOp blendOperation, VkBlendFactor sourceBlendFactor, VkBlendFactor destBlendFactor, vk::Format format) const;
 
-	bool alphaBlendActive(int index, const Attachments &attachments, bool fragmentContainsKill) const;
+	bool alphaBlendActive(int location, const Attachments &attachments, bool fragmentContainsKill) const;
 	bool colorWriteActive(const Attachments &attachments) const;
 
 	int colorWriteMask[sw::MAX_COLOR_BUFFERS] = {};  // RGBA

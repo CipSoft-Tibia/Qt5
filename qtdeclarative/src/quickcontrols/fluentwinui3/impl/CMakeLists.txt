@@ -9,6 +9,8 @@ set(qml_files
     "CheckIndicator.qml"
     "RadioIndicator.qml"
     "SwitchIndicator.qml"
+    "FocusFrame.qml"
+    "StyleImage.qml"
 )
 
 qt_internal_add_qml_module(QuickControls2FluentWinUI3StyleImpl
@@ -21,9 +23,12 @@ qt_internal_add_qml_module(QuickControls2FluentWinUI3StyleImpl
     PLUGIN_TARGET qtquickcontrols2fluentwinui3styleimplplugin
     SOURCES
         qquickfluentwinui3focusstroke_p.h qquickfluentwinui3focusstroke.cpp
+        qquickfluentwinui3focusframe_p.h qquickfluentwinui3focusframe.cpp
+        qquickfluentwinui3styleimplglobal_p.h
     QML_FILES
         ${qml_files}
     DEFINES
+        QT_BUILD_QUICKCONTROLS2FLUENTWINUI3STYLEIMPL_LIB
         QT_NO_CAST_FROM_ASCII
         QT_NO_CAST_TO_ASCII
     LIBRARIES
@@ -33,4 +38,5 @@ qt_internal_add_qml_module(QuickControls2FluentWinUI3StyleImpl
         Qt::QmlPrivate
         Qt::Quick
         Qt::QuickPrivate
+        Qt::QuickTemplates2Private
 )

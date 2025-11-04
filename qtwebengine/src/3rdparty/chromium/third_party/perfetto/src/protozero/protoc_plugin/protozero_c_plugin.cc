@@ -94,6 +94,8 @@ class GeneratorJob {
       GenerateEnumDescriptor(enumeration);
     for (const Descriptor* message : messages_)
       GenerateMessageDescriptor(message);
+    for (const auto& [name, descriptors] : extensions_)
+      GenerateExtension(name, descriptors);
     GenerateEpilogue();
     return error_.empty();
   }
@@ -117,7 +119,7 @@ class GeneratorJob {
   }
 
   // If generator fails to produce stubs for a particular proto definitions
-  // it finishes with undefined output and writes the first error occured.
+  // it finishes with undefined output and writes the first error occurred.
   const std::string& GetFirstError() const { return error_; }
 
  private:
@@ -127,24 +129,12 @@ class GeneratorJob {
       error_ = reason;
   }
 
-  // Get full name (including outer descriptors) of proto descriptor.
-  template <class T>
-  inline std::string GetDescriptorName(const T* descriptor) {
-    if (!package_.empty()) {
-      return StripPrefix(descriptor->full_name(), package_ + ".");
-    }
-    return descriptor->full_name();
-  }
-
   // Get C++ class name corresponding to proto descriptor.
   // Nested names are splitted by underscores. Underscores in type names aren't
   // prohibited but not recommended in order to avoid name collisions.
   template <class T>
-  inline std::string GetCppClassName(const T* descriptor, bool full = false) {
-    std::string name = StripChars(GetDescriptorName(descriptor), ".", '_');
-    if (full)
-      name = full_namespace_prefix_ + "_" + name;
-    return name;
+  inline std::string GetCppClassName(const T* descriptor) {
+    return StripChars(descriptor->full_name(), ".", '_');
   }
 
   const char* FieldTypeToPackedBufferType(FieldDescriptor::Type type) {
@@ -213,7 +203,7 @@ class GeneratorJob {
       case FieldDescriptor::TYPE_DOUBLE:
         return "double";
       case FieldDescriptor::TYPE_ENUM:
-        return "enum " + GetCppClassName(field->enum_type(), true);
+        return "enum " + GetCppClassName(field->enum_type());
       case FieldDescriptor::TYPE_STRING:
       case FieldDescriptor::TYPE_BYTES:
         return "const char*";
@@ -252,7 +242,8 @@ class GeneratorJob {
           // As the support for extensions in protozero is limited, the code
           // assumes that extend blocks are located inside a wrapper message and
           // name of this message is used to group them.
-          std::string extension_name = extension->extension_scope()->name();
+          std::string extension_name =
+              GetCppClassName(extension->extension_scope());
           extensions_[extension_name].push_back(extension);
         }
       } else {
@@ -270,8 +261,9 @@ class GeneratorJob {
     for (int i = 0; i < source_->enum_type_count(); ++i)
       enums_.push_back(source_->enum_type(i));
 
-    if (source_->extension_count() > 0)
-      Abort("top-level extension blocks are not supported");
+    if (source_->extension_count() > 0) {
+      // TODO(b/336524288): emit field numbers
+    }
 
     for (const Descriptor* message : messages_) {
       for (int i = 0; i < message->enum_type_count(); ++i) {
@@ -305,11 +297,6 @@ class GeneratorJob {
     while (!stack.empty()) {
       const FileDescriptor* imp = stack.back();
       stack.pop_back();
-      // Having imports under different packages leads to unnecessary
-      // complexity with namespaces.
-      if (imp->package() != package_)
-        Abort("Imported proto must be in the same package.");
-
       for (int i = 0; i < imp->public_dependency_count(); ++i) {
         stack.push_back(imp->public_dependency(i));
       }
@@ -427,7 +414,7 @@ class GeneratorJob {
     // Print forward declarations.
     for (const Descriptor* message : referenced_messages_) {
       stub_h_->Print("PERFETTO_PB_MSG_DECL($class$);\n", "class",
-                     GetCppClassName(message, true));
+                     GetCppClassName(message));
     }
 
     stub_h_->Print("\n");
@@ -436,11 +423,11 @@ class GeneratorJob {
   void GenerateEnumDescriptor(const EnumDescriptor* enumeration) {
     if (enumeration->containing_type()) {
       stub_h_->Print("PERFETTO_PB_ENUM_IN_MSG($msg$, $class$){\n", "msg",
-                     GetCppClassName(enumeration->containing_type(), true),
-                     "class", enumeration->name());
+                     GetCppClassName(enumeration->containing_type()), "class",
+                     enumeration->name());
     } else {
       stub_h_->Print("PERFETTO_PB_ENUM($class$){\n", "class",
-                     GetCppClassName(enumeration, true));
+                     GetCppClassName(enumeration));
     }
     stub_h_->Indent();
 
@@ -451,8 +438,8 @@ class GeneratorJob {
       if (enumeration->containing_type()) {
         stub_h_->Print(
             "PERFETTO_PB_ENUM_IN_MSG_ENTRY($msg$, $val$) = $number$,\n", "msg",
-            GetCppClassName(enumeration->containing_type(), true), "val",
-            value_name, "number", std::to_string(value->number()));
+            GetCppClassName(enumeration->containing_type()), "val", value_name,
+            "number", std::to_string(value->number()));
       } else {
         stub_h_->Print("PERFETTO_PB_ENUM_ENTRY($val$) = $number$, \n", "val",
                        full_namespace_prefix_ + "_" + value_name, "number",
@@ -465,7 +452,7 @@ class GeneratorJob {
 
   // Packed repeated fields are encoded as a length-delimited field on the wire,
   // where the payload is the concatenation of invidually encoded elements.
-  void GeneratePackedRepeatedFieldDescriptor(
+  void GeneratePackedRepeatedFieldDescriptorArgs(
       const std::string& message_cpp_type,
       const FieldDescriptor* field) {
     std::map<std::string, std::string> setter;
@@ -473,13 +460,29 @@ class GeneratorJob {
     setter["name"] = field->lowercase_name();
     setter["class"] = message_cpp_type;
     setter["buffer_type"] = FieldTypeToPackedBufferType(field->type());
-    stub_h_->Print(
-        setter,
-        "PERFETTO_PB_FIELD($class$, PACKED, $buffer_type$, $name$, $id$);\n");
+    stub_h_->Print(setter, "$class$, PACKED, $buffer_type$, $name$, $id$\n");
   }
 
-  void GenerateSimpleFieldDescriptor(const std::string& message_cpp_type,
-                                     const FieldDescriptor* field) {
+  void GeneratePackedRepeatedFieldDescriptor(
+      const std::string& message_cpp_type,
+      const FieldDescriptor* field) {
+    stub_h_->Print("PERFETTO_PB_FIELD(");
+    GeneratePackedRepeatedFieldDescriptorArgs(message_cpp_type, field);
+    stub_h_->Print(");\n");
+  }
+
+  void GeneratePackedRepeatedFieldDescriptorForExtension(
+      const std::string& field_cpp_prefix,
+      const std::string& message_cpp_type,
+      const FieldDescriptor* field) {
+    stub_h_->Print("PERFETTO_PB_EXTENSION_FIELD($prefix$, ", "prefix",
+                   field_cpp_prefix);
+    GeneratePackedRepeatedFieldDescriptorArgs(message_cpp_type, field);
+    stub_h_->Print(");\n");
+  }
+
+  void GenerateSimpleFieldDescriptorArgs(const std::string& message_cpp_type,
+                                         const FieldDescriptor* field) {
     std::map<std::string, std::string> setter;
     setter["id"] = std::to_string(field->number());
     setter["name"] = field->lowercase_name();
@@ -489,9 +492,7 @@ class GeneratorJob {
     switch (field->type()) {
       case FieldDescriptor::TYPE_BYTES:
       case FieldDescriptor::TYPE_STRING:
-        stub_h_->Print(
-            setter,
-            "PERFETTO_PB_FIELD($class$, STRING, const char*, $name$, $id$);\n");
+        stub_h_->Print(setter, "$class$, STRING, const char*, $name$, $id$");
         break;
       case FieldDescriptor::TYPE_UINT64:
       case FieldDescriptor::TYPE_UINT32:
@@ -499,29 +500,21 @@ class GeneratorJob {
       case FieldDescriptor::TYPE_INT32:
       case FieldDescriptor::TYPE_BOOL:
       case FieldDescriptor::TYPE_ENUM:
-        stub_h_->Print(
-            setter,
-            "PERFETTO_PB_FIELD($class$, VARINT, $ctype$, $name$, $id$);\n");
+        stub_h_->Print(setter, "$class$, VARINT, $ctype$, $name$, $id$");
         break;
       case FieldDescriptor::TYPE_SINT64:
       case FieldDescriptor::TYPE_SINT32:
-        stub_h_->Print(
-            setter,
-            "PERFETTO_PB_FIELD($class$, ZIGZAG, $ctype$, $name$, $id$);\n");
+        stub_h_->Print(setter, "$class$, ZIGZAG, $ctype$, $name$, $id$");
         break;
       case FieldDescriptor::TYPE_SFIXED32:
       case FieldDescriptor::TYPE_FIXED32:
       case FieldDescriptor::TYPE_FLOAT:
-        stub_h_->Print(
-            setter,
-            "PERFETTO_PB_FIELD($class$, FIXED32, $ctype$, $name$, $id$);\n");
+        stub_h_->Print(setter, "$class$, FIXED32, $ctype$, $name$, $id$");
         break;
       case FieldDescriptor::TYPE_SFIXED64:
       case FieldDescriptor::TYPE_FIXED64:
       case FieldDescriptor::TYPE_DOUBLE:
-        stub_h_->Print(
-            setter,
-            "PERFETTO_PB_FIELD($class$, FIXED64, $ctype$, $name$, $id$);\n");
+        stub_h_->Print(setter, "$class$, FIXED64, $ctype$, $name$, $id$");
         break;
       case FieldDescriptor::TYPE_MESSAGE:
       case FieldDescriptor::TYPE_GROUP:
@@ -530,24 +523,52 @@ class GeneratorJob {
     }
   }
 
+  void GenerateSimpleFieldDescriptor(const std::string& message_cpp_type,
+                                     const FieldDescriptor* field) {
+    stub_h_->Print("PERFETTO_PB_FIELD(");
+    GenerateSimpleFieldDescriptorArgs(message_cpp_type, field);
+    stub_h_->Print(");\n");
+  }
+
+  void GenerateSimpleFieldDescriptorForExtension(
+      const std::string& field_cpp_prefix,
+      const std::string& message_cpp_type,
+      const FieldDescriptor* field) {
+    stub_h_->Print("PERFETTO_PB_EXTENSION_FIELD($prefix$, ", "prefix",
+                   field_cpp_prefix);
+    GenerateSimpleFieldDescriptorArgs(message_cpp_type, field);
+    stub_h_->Print(");\n");
+  }
+
   void GenerateNestedMessageFieldDescriptor(const std::string& message_cpp_type,
                                             const FieldDescriptor* field) {
-    std::string inner_class =
-        full_namespace_prefix_ + "_" + GetCppClassName(field->message_type());
+    std::string inner_class = GetCppClassName(field->message_type());
     stub_h_->Print(
         "PERFETTO_PB_FIELD($class$, MSG, $inner_class$, $name$, $id$);\n",
         "class", message_cpp_type, "id", std::to_string(field->number()),
         "name", field->lowercase_name(), "inner_class", inner_class);
   }
 
+  void GenerateNestedMessageFieldDescriptorForExtension(
+      const std::string& field_cpp_prefix,
+      const std::string& message_cpp_type,
+      const FieldDescriptor* field) {
+    std::string inner_class = GetCppClassName(field->message_type());
+    stub_h_->Print(
+        "PERFETTO_PB_EXTENSION_FIELD($prefix$, $class$, MSG, $inner_class$, "
+        "$name$, $id$);\n",
+        "prefix", field_cpp_prefix, "class", message_cpp_type, "id",
+        std::to_string(field->number()), "name", field->lowercase_name(),
+        "inner_class", inner_class);
+  }
+
   void GenerateMessageDescriptor(const Descriptor* message) {
     stub_h_->Print("PERFETTO_PB_MSG($name$);\n", "name",
-                   GetCppClassName(message, true));
+                   GetCppClassName(message));
 
     // Field descriptors.
     for (int i = 0; i < message->field_count(); ++i) {
-      GenerateFieldDescriptor(GetCppClassName(message, true),
-                              message->field(i));
+      GenerateFieldDescriptor(GetCppClassName(message), message->field(i));
     }
     stub_h_->Print("\n");
   }
@@ -561,6 +582,60 @@ class GeneratorJob {
       GenerateSimpleFieldDescriptor(message_cpp_type, field);
     } else {
       GenerateNestedMessageFieldDescriptor(message_cpp_type, field);
+    }
+  }
+
+  void GenerateExtensionFieldDescriptor(const std::string& field_cpp_prefix,
+                                        const std::string& message_cpp_type,
+                                        const FieldDescriptor* field) {
+    // GenerateFieldMetadata(message_cpp_type, field);
+    if (field->is_packed()) {
+      GeneratePackedRepeatedFieldDescriptorForExtension(
+          field_cpp_prefix, message_cpp_type, field);
+    } else if (field->type() != FieldDescriptor::TYPE_MESSAGE) {
+      GenerateSimpleFieldDescriptorForExtension(field_cpp_prefix,
+                                                message_cpp_type, field);
+    } else {
+      GenerateNestedMessageFieldDescriptorForExtension(field_cpp_prefix,
+                                                       message_cpp_type, field);
+    }
+  }
+
+  // Generate extension class for a group of FieldDescriptor instances
+  // representing one "extend" block in proto definition. For example:
+  //
+  //   message SpecificExtension {
+  //     extend GeneralThing {
+  //       optional Fizz fizz = 101;
+  //       optional Buzz buzz = 102;
+  //     }
+  //   }
+  //
+  // This is going to be passed as a vector of two elements, "fizz" and
+  // "buzz". Wrapping message is used to provide a name for generated
+  // extension class.
+  //
+  // In the example above, generated code is going to look like:
+  //
+  //   class SpecificExtension : public GeneralThing {
+  //     Fizz* set_fizz();
+  //     Buzz* set_buzz();
+  //   }
+  void GenerateExtension(
+      const std::string& extension_name,
+      const std::vector<const FieldDescriptor*>& descriptors) {
+    // Use an arbitrary descriptor in order to get generic information not
+    // specific to any of them.
+    const FieldDescriptor* descriptor = descriptors[0];
+    const Descriptor* base_message = descriptor->containing_type();
+
+    for (const FieldDescriptor* field : descriptors) {
+      if (field->containing_type() != base_message) {
+        Abort("one wrapper should extend only one message");
+        return;
+      }
+      GenerateExtensionFieldDescriptor(extension_name,
+                                       GetCppClassName(base_message), field);
     }
   }
 

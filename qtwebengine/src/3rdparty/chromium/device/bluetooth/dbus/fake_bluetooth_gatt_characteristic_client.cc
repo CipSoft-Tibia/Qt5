@@ -2,6 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#ifdef UNSAFE_BUFFERS_BUILD
+// TODO(crbug.com/351564777): Remove this and convert code to safer constructs.
+#pragma allow_unsafe_buffers
+#endif
+
 #include "device/bluetooth/dbus/fake_bluetooth_gatt_characteristic_client.h"
 
 #include <memory>
@@ -572,7 +577,7 @@ void FakeBluetoothGattCharacteristicClient::DelayedReadValueCallback(
   DCHECK(properties);
 
   properties->value.ReplaceValue(value);
-  std::move(callback).Run(/*error_code=*/absl::nullopt, value);
+  std::move(callback).Run(/*error_code=*/std::nullopt, value);
 }
 
 std::vector<uint8_t>

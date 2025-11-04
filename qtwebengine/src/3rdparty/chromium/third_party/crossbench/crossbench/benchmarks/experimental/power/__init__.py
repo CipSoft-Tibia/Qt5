@@ -4,7 +4,8 @@
 
 from __future__ import annotations
 
-from .power_benchmark import PowerBenchmark
+from crossbench.benchmarks.experimental.power.power_benchmark import \
+    PowerBenchmark
 
 __all__ = [
     "PowerBenchmark",

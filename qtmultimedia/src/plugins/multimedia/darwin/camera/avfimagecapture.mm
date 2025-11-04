@@ -1,10 +1,10 @@
 // Copyright (C) 2016 The Qt Company Ltd and/or its subsidiary(-ies).
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
-#include "avfcameradebug_p.h"
+#include <QtMultimedia/private/qavfcameradebug_p.h>
 #include "avfimagecapture_p.h"
 #include "avfcameraservice_p.h"
-#include "avfcamerautility_p.h"
+#include <QtMultimedia/private/qavfcamerautility_p.h>
 #include "avfcamera_p.h"
 #include "avfcamerasession_p.h"
 #include "avfcamerarenderer_p.h"
@@ -54,7 +54,7 @@ void AVFImageCapture::updateReadyStatus()
     }
 }
 
-int AVFImageCapture::doCapture(const QString &actualFileName)
+int AVFImageCapture::doCapture(const QString &fileName)
 {
     if (!m_session) {
         QMetaObject::invokeMethod(this, "error", Qt::QueuedConnection,
@@ -72,14 +72,12 @@ int AVFImageCapture::doCapture(const QString &actualFileName)
     }
     m_lastCaptureId++;
 
-    bool captureToBuffer = actualFileName.isEmpty();
+    bool captureToBuffer = fileName.isEmpty();
 
     CaptureRequest request = { m_lastCaptureId, QSharedPointer<QSemaphore>::create()};
     m_requestsMutex.lock();
     m_captureRequests.enqueue(request);
     m_requestsMutex.unlock();
-
-    QString fileName(actualFileName);
 
     [m_stillImageOutput captureStillImageAsynchronouslyFromConnection:m_videoConnection
                         completionHandler: ^(CMSampleBufferRef imageSampleBuffer, NSError *error) {

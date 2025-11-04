@@ -10,7 +10,6 @@
 #include "base/base64.h"
 #include "base/check.h"
 #include "base/containers/contains.h"
-#include "base/containers/cxx20_erase.h"
 #include "base/functional/bind.h"
 #include "base/functional/callback.h"
 #include "base/memory/raw_ptr.h"
@@ -203,7 +202,7 @@ class SelfDeletingServiceWorkerPaymentAppFinder
 
     installed_apps_ = std::move(apps);
 
-    // TODO(crbug.com/1421326): Once kPaymentHandlerAlwaysRefreshIcon is rolled
+    // TODO(crbug.com/40259220): Once kPaymentHandlerAlwaysRefreshIcon is rolled
     // out fully, remove the 'missing icons' path and rely on the refresh path
     // to handle any payment app that is missing an icon. This will cause fixing
     // missing icons to be async rather than synchronous, but by now this is a
@@ -314,7 +313,7 @@ class SelfDeletingServiceWorkerPaymentAppFinder
     // that mode the crawler should not suggest installable apps to us.
     DCHECK(apps_info.empty());
 
-    // TODO(crbug.com/1421326): Consider optimizing either this database write
+    // TODO(crbug.com/40259220): Consider optimizing either this database write
     // or the entire re-crawling process to avoid fetching/saving icons when
     // nothing has changed in the manifest.
     UpdatePaymentAppIcons(refetched_icons);
@@ -347,13 +346,10 @@ class SelfDeletingServiceWorkerPaymentAppFinder
     number_of_app_icons_to_update_++;
 
     DCHECK(!icon->empty());
-    std::string string_encoded_icon;
     gfx::Image decoded_image = gfx::Image::CreateFrom1xBitmap(*(icon));
     scoped_refptr<base::RefCountedMemory> raw_data =
         decoded_image.As1xPNGBytes();
-    base::Base64Encode(
-        base::StringPiece(raw_data->front_as<char>(), raw_data->size()),
-        &string_encoded_icon);
+    std::string string_encoded_icon = base::Base64Encode(*raw_data);
 
     content::PaymentAppProvider::GetOrCreateForWebContents(owner_)
         ->UpdatePaymentAppIcon(
@@ -448,7 +444,7 @@ void ServiceWorkerPaymentAppFinder::GetAllPaymentApps(
     return;
 
   // Do not look up payment handlers for ignored payment methods.
-  base::EraseIf(requested_method_data,
+  std::erase_if(requested_method_data,
                 [&](const mojom::PaymentMethodDataPtr& method_data) {
                   return base::Contains(ignored_methods_,
                                         method_data->supported_method);

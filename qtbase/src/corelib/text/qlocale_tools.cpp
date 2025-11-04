@@ -1,6 +1,7 @@
 // Copyright (C) 2021 The Qt Company Ltd.
 // Copyright (C) 2016 Intel Corporation.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:data-parser
 
 #include "qlocale_tools_p.h"
 #include "qdoublescanprint_p.h"
@@ -117,7 +118,7 @@ void qt_doubleToAscii(double d, QLocaleData::DoubleForm form, int precision,
     else if (precision == QLocale::FloatingPointShortest)
         precision = std::numeric_limits<double>::max_digits10; // snprintf lacks "shortest" mode
 
-    if (isZero(d)) {
+    if (qIsNull(d)) {
         // Negative zero is expected as simple "0", not "-0". We cannot do d < 0, though.
         sign = false;
         buf[0] = '0';
@@ -300,9 +301,6 @@ QSimpleParsedNumber<double> qt_asciiToDouble(const char *num, qsizetype numLen,
     int conv_flags = double_conversion::StringToDoubleConverter::NO_FLAGS;
     if (strayCharMode == TrailingJunkAllowed) {
         conv_flags = double_conversion::StringToDoubleConverter::ALLOW_TRAILING_JUNK;
-    } else if (strayCharMode == WhitespacesAllowed) {
-        conv_flags = double_conversion::StringToDoubleConverter::ALLOW_LEADING_SPACES
-                | double_conversion::StringToDoubleConverter::ALLOW_TRAILING_SPACES;
     }
     double_conversion::StringToDoubleConverter conv(conv_flags, 0.0, qt_qnan(), nullptr, nullptr);
     if (int(numLen) != numLen) {
@@ -356,7 +354,7 @@ QSimpleParsedNumber<double> qt_asciiToDouble(const char *num, qsizetype numLen,
     Q_ASSERT(strayCharMode == TrailingJunkAllowed || processed == numLen);
 
     // Check if underflow has occurred.
-    if (isZero(d)) {
+    if (qIsNull(d)) {
         for (int i = 0; i < processed; ++i) {
             if (num[i] >= '1' && num[i] <= '9') {
                 // if a digit before any 'e' is not 0, then a non-zero number was intended.
@@ -721,7 +719,7 @@ static T dtoString(double d, QLocaleData::DoubleForm form, int precision, bool u
     T result;
     result.reserve(total);
 
-    if (negative && !isZero(d)) // We don't return "-0"
+    if (negative && !qIsNull(d)) // We don't return "-0"
         result.append(Char('-'));
     if (!qt_is_finite(d)) {
         result.append(view);

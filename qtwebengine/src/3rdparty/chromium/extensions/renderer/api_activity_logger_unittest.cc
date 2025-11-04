@@ -9,7 +9,6 @@
 #include "base/run_loop.h"
 #include "base/values.h"
 #include "extensions/common/extension_builder.h"
-#include "extensions/common/extension_messages.h"
 #include "extensions/common/features/feature.h"
 #include "extensions/common/mojom/context_type.mojom.h"
 #include "extensions/common/utils/extension_utils.h"
@@ -62,7 +61,8 @@ TEST_F(ActivityLoggerTest, DontCrashOnUnconvertedValues) {
       mojom::ContextType::kPrivilegedExtension;
   script_context_set.AddForTesting(std::make_unique<ScriptContext>(
       context, nullptr, GenerateHostIdFromExtensionId(extension->id()),
-      extension.get(), kContextType, extension.get(), kContextType));
+      extension.get(), /*blink_isolated_world_id=*/std::nullopt, kContextType,
+      extension.get(), kContextType));
   ScriptContext* script_context = script_context_set.GetByV8Context(context);
 
   v8::LocalVector<v8::Value> args(isolate(), {v8::Undefined(isolate())});

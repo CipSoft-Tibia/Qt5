@@ -90,7 +90,7 @@ void AutomationTreeManagerOwner::SendAutomationEvent(
     AXTreeID tree_id,
     const gfx::Point& mouse_location,
     const AXEvent& event,
-    absl::optional<AXEventGenerator::Event> generated_event_type) {
+    std::optional<AXEventGenerator::Event> generated_event_type) {
   AutomationAXTreeWrapper* tree_wrapper =
       GetAutomationAXTreeWrapperFromTreeID(tree_id);
   if (!tree_wrapper)
@@ -329,19 +329,19 @@ void AutomationTreeManagerOwner::MaybeSendFocusAndBlur(
   }
 }
 
-absl::optional<gfx::Rect>
+std::optional<gfx::Rect>
 AutomationTreeManagerOwner::GetAccessibilityFocusedLocation() const {
   if (accessibility_focused_tree_id_ == AXTreeIDUnknown())
-    return absl::nullopt;
+    return std::nullopt;
 
   AutomationAXTreeWrapper* tree_wrapper =
       GetAutomationAXTreeWrapperFromTreeID(accessibility_focused_tree_id_);
   if (!tree_wrapper)
-    return absl::nullopt;
+    return std::nullopt;
 
   AXNode* node = tree_wrapper->GetAccessibilityFocusedNode();
   if (!node)
-    return absl::nullopt;
+    return std::nullopt;
 
   return ComputeGlobalNodeBounds(tree_wrapper, node);
 }
@@ -371,12 +371,7 @@ bool AutomationTreeManagerOwner::GetFocusInternal(
 
   while (true) {
     // If the focused node is the owner of a child tree, that indicates
-    // a node within the child tree is the one that actually has focus. This
-    // doesn't apply to portals: portals have a child tree, but nothing in the
-    // tree can have focus.
-    if (focus->GetRole() == ax::mojom::Role::kPortal)
-      break;
-
+    // a node within the child tree is the one that actually has focus.
     const std::string& child_tree_id_str =
         focus->GetStringAttribute(ax::mojom::StringAttribute::kChildTreeId);
     const std::string& child_tree_node_app_id_str = focus->GetStringAttribute(
@@ -772,17 +767,6 @@ bool AutomationTreeManagerOwner::GetBoundsForRange(
 }
 
 const char* AutomationTreeManagerOwner::GetName(AXNode* node) const {
-  if (node->GetRole() == ax::mojom::Role::kPortal &&
-      node->data().GetNameFrom() == ax::mojom::NameFrom::kNone) {
-    // Portals are not expected to have multiple child roots.
-    if (const auto& child_roots = GetRootsOfChildTree(node);
-        !child_roots.empty()) {
-      return child_roots[0]
-          ->GetStringAttribute(ax::mojom::StringAttribute::kName)
-          .c_str();
-    }
-  }
-
   if (node->HasStringAttribute(ax::mojom::StringAttribute::kName)) {
     return node->GetStringAttribute(ax::mojom::StringAttribute::kName).c_str();
   }
@@ -1077,15 +1061,15 @@ void AutomationTreeManagerOwner::UpdateOverallTreeChangeObserverFilter() {
 }
 
 void AutomationTreeManagerOwner::DispatchTreeDestroyedEvent(
-    const ui::AXTreeID& tree_id) {
+    const AXTreeID& tree_id) {
   GetAutomationV8Bindings()->SendTreeDestroyedEvent(tree_id);
 }
 
 void AutomationTreeManagerOwner::DispatchAccessibilityEvents(
-    const ui::AXTreeID& tree_id,
-    const std::vector<ui::AXTreeUpdate>& updates,
+    const AXTreeID& tree_id,
+    const std::vector<AXTreeUpdate>& updates,
     const gfx::Point& mouse_location,
-    const std::vector<ui::AXEvent>& events) {
+    const std::vector<AXEvent>& events) {
   AutomationAXTreeWrapper* tree_wrapper =
       GetAutomationAXTreeWrapperFromTreeID(tree_id);
   bool is_new_tree = tree_wrapper == nullptr;
@@ -1117,9 +1101,9 @@ void AutomationTreeManagerOwner::DispatchAccessibilityEvents(
 }
 
 void AutomationTreeManagerOwner::DispatchAccessibilityLocationChange(
-    const ui::AXTreeID& tree_id,
+    const AXTreeID& tree_id,
     int32_t node_id,
-    const ui::AXRelativeBounds& bounds) {
+    const AXRelativeBounds& bounds) {
   AutomationAXTreeWrapper* tree_wrapper =
       GetAutomationAXTreeWrapperFromTreeID(tree_id);
   if (!tree_wrapper) {
@@ -1131,7 +1115,7 @@ void AutomationTreeManagerOwner::DispatchAccessibilityLocationChange(
     return;
   }
 
-  absl::optional<gfx::Rect> previous_accessibility_focused_global_bounds =
+  std::optional<gfx::Rect> previous_accessibility_focused_global_bounds =
       GetAccessibilityFocusedLocation();
 
   node->SetLocation(bounds.offset_container_id, bounds.bounds,
@@ -1144,16 +1128,15 @@ void AutomationTreeManagerOwner::DispatchAccessibilityLocationChange(
   }
 }
 
-void AutomationTreeManagerOwner::DispatchActionResult(
-    const ui::AXActionData& data,
-    bool result) {
+void AutomationTreeManagerOwner::DispatchActionResult(const AXActionData& data,
+                                                      bool result) {
   GetAutomationV8Bindings()->SendActionResultEvent(data, result);
 }
 
 #if BUILDFLAG(IS_CHROMEOS_ASH)
 void AutomationTreeManagerOwner::DispatchGetTextLocationResult(
-    const ui::AXActionData& data,
-    const absl::optional<gfx::Rect>& rect) {
+    const AXActionData& data,
+    const std::optional<gfx::Rect>& rect) {
   GetAutomationV8Bindings()->SendGetTextLocationResult(data, rect);
 }
 #endif  // BUILDFLAG(IS_CHROMEOS_ASH)

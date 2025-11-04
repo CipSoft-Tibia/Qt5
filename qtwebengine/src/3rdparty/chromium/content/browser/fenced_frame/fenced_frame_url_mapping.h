@@ -15,7 +15,6 @@
 #include "base/functional/callback_forward.h"
 #include "base/memory/raw_ptr.h"
 #include "base/memory/ref_counted.h"
-#include "base/types/id_type.h"
 #include "content/browser/fenced_frame/fenced_frame_config.h"
 #include "content/browser/fenced_frame/fenced_frame_reporter.h"
 #include "content/common/content_export.h"
@@ -37,14 +36,11 @@ using SharedStorageReportingMap = base::flat_map<std::string, ::GURL>;
 // Keeps a mapping of fenced frames URN:UUID and URL. Also keeps a set of
 // pending mapped URN:UUIDs to support asynchronous mapping. See
 // https://github.com/WICG/fenced-frame/blob/master/explainer/opaque_src.md
-// TODO(crbug.com/1405477): Add methods for:
+// TODO(crbug.com/40252330): Add methods for:
 // 1. generating the pending config.
 // 2. finalizing the pending config.
 class CONTENT_EXPORT FencedFrameURLMapping {
  public:
-  // A unique id for each instance of this class.
-  using Id = base::IdTypeU64<FencedFrameURLMapping>;
-
   // The runURLSelectionOperation's url mapping result. It contains the mapped
   // url, the `SharedStorageBudgetMetadata`, and a FencedFrameReporter.
   struct CONTENT_EXPORT SharedStorageURNMappingResult {
@@ -159,6 +155,9 @@ class CONTENT_EXPORT FencedFrameURLMapping {
       const GURL& url,
       scoped_refptr<FencedFrameReporter> fenced_frame_reporter = nullptr);
 
+  // Erases the urn_uuid_to_url_map_ and the pending_urn_uuid_to_url_map_.
+  void ClearMapForTesting();
+
   // Return the `SharedStorageBudgetMetadata` associated with `urn_uuid`, or
   // nullptr if there's no metadata associated (i.e. `urn_uuid` was not
   // originated from shared storage). Precondition: `urn_uuid` exists in
@@ -177,13 +176,11 @@ class CONTENT_EXPORT FencedFrameURLMapping {
   // replacements map. The true URLs for any component ads associated with this
   // URN will also have substrings substituted. This function will be removed
   // once all FLEDGE auctions switch to using fenced frames.
-  // TODO(crbug.com/1253118): Remove this function when we remove support for
+  // TODO(crbug.com/40199055): Remove this function when we remove support for
   // showing FLEDGE ads in iframes.
   void SubstituteMappedURL(
       const GURL& urn_uuid,
       const std::vector<std::pair<std::string, std::string>>& substitutions);
-
-  Id unique_id() { return id_for_testing_.value_or(unique_id_); }
 
  private:
   friend class FencedFrameURLMappingTestPeer;
@@ -192,9 +189,6 @@ class CONTENT_EXPORT FencedFrameURLMapping {
 
   // The maximum number of urn mappings.
   static constexpr size_t kMaxUrnMappingSize = 65536;
-
-  // Generates the next unique id for instances of this class.
-  static Id GetNextId();
 
   // Adds an entry to `urn_uuid_to_url_map_` for `url`, generating a unique URN
   // as the key. Insertion fails if number of entries has reached the limit.
@@ -214,10 +208,6 @@ class CONTENT_EXPORT FencedFrameURLMapping {
   // observers to be notified when the mapping decision is made.
   std::map<GURL, std::set<raw_ptr<MappingResultObserver>>>
       pending_urn_uuid_to_url_map_;
-
-  const Id unique_id_;
-
-  std::optional<Id> id_for_testing_;
 };
 
 }  // namespace content

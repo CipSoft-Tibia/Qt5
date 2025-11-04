@@ -2,6 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#ifdef UNSAFE_BUFFERS_BUILD
+// TODO(crbug.com/351564777): Remove this and convert code to safer constructs.
+#pragma allow_unsafe_buffers
+#endif
+
 #include <stddef.h>
 #include <stdint.h>
 
@@ -47,8 +52,8 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* raw_data, size_t size) {
   const bool have_local_key = input[0] & 2;
   input = input.subspan(1);
 
-  absl::optional<base::span<const uint8_t, 65>> peer_identity;
-  absl::optional<base::span<const uint8_t, 32>> local_seed;
+  std::optional<base::span<const uint8_t, 65>> peer_identity;
+  std::optional<base::span<const uint8_t, 32>> local_seed;
   bssl::UniquePtr<EC_KEY> local_key;
   if (have_local_key) {
     local_seed = kTestLocalSeed;

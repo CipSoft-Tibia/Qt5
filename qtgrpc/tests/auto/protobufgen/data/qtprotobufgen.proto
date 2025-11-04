@@ -69,6 +69,7 @@ message ScalarRepeatedNoPackedTypes {
     repeated double field12 = 12 [packed = false];
     repeated string field13 = 13 [packed = false];
     repeated bytes field14 = 14 [packed = false];
+    repeated GlobalEnum field15 = 15 [packed = false];
 }
 message ScalarOneOfTypes {
     oneof fieldOneOf {

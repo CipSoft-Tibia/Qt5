@@ -185,14 +185,14 @@ bool AXVirtualView::Contains(const AXVirtualView* view) const {
   return false;
 }
 
-absl::optional<size_t> AXVirtualView::GetIndexOf(
+std::optional<size_t> AXVirtualView::GetIndexOf(
     const AXVirtualView* view) const {
   DCHECK(view);
   const auto iter =
       base::ranges::find(children_, view, &std::unique_ptr<AXVirtualView>::get);
-  return iter != children_.end() ? absl::make_optional(static_cast<size_t>(
-                                       iter - children_.begin()))
-                                 : absl::nullopt;
+  return iter != children_.end()
+             ? std::make_optional(static_cast<size_t>(iter - children_.begin()))
+             : std::nullopt;
 }
 
 const char* AXVirtualView::GetViewClassName() const {
@@ -247,7 +247,7 @@ const ui::AXNodeData& AXVirtualView::GetData() const {
   static ui::AXNodeData node_data;
   node_data = custom_data_;
 
-  node_data.id = GetUniqueId().Get();
+  node_data.id = GetUniqueId();
 
   if (!GetOwnerView() || !GetOwnerView()->GetEnabled())
     node_data.SetRestriction(ax::mojom::Restriction::kDisabled);
@@ -260,6 +260,10 @@ const ui::AXNodeData& AXVirtualView::GetData() const {
 
   if (populate_data_callback_ && GetOwnerView())
     populate_data_callback_.Run(&node_data);
+
+  if (pruned_) {
+    node_data.AddState(ax::mojom::State::kIgnored);
+  }
 
   // According to the ARIA spec, the node should not be ignored if it is
   // focusable. This is to ensure that the focusable node is both understandable
@@ -301,12 +305,12 @@ gfx::NativeViewAccessible AXVirtualView::ChildAtIndex(size_t index) const {
     }
   }
 
-  NOTREACHED_NORETURN() << "|index| should be less than the child count.";
+  NOTREACHED() << "|index| should be less than the child count.";
 }
 
 #if !BUILDFLAG(IS_MAC)
 gfx::NativeViewAccessible AXVirtualView::GetNSWindow() {
-  NOTREACHED_NORETURN();
+  NOTREACHED();
 }
 #endif
 
@@ -316,7 +320,7 @@ gfx::NativeViewAccessible AXVirtualView::GetNativeViewAccessible() {
 
 gfx::NativeViewAccessible AXVirtualView::GetParent() const {
   if (parent_view_) {
-    if (!parent_view_->IsIgnored())
+    if (!parent_view_->GetIsIgnored())
       return parent_view_->GetNativeObject();
     return GetDelegate()->GetParent();
   }
@@ -433,7 +437,7 @@ bool AXVirtualView::IsOffscreen() const {
   return false;
 }
 
-const ui::AXUniqueId& AXVirtualView::GetUniqueId() const {
+ui::AXPlatformNodeId AXVirtualView::GetUniqueId() const {
   return unique_id_;
 }
 
@@ -455,8 +459,8 @@ std::vector<int32_t> AXVirtualView::GetColHeaderNodeIds(int col_index) const {
   return GetDelegate()->GetColHeaderNodeIds(col_index);
 }
 
-absl::optional<int32_t> AXVirtualView::GetCellId(int row_index,
-                                                 int col_index) const {
+std::optional<int32_t> AXVirtualView::GetCellId(int row_index,
+                                                int col_index) const {
   return GetDelegate()->GetCellId(row_index, col_index);
 }
 
@@ -530,4 +534,17 @@ AXVirtualViewWrapper* AXVirtualView::GetOrCreateWrapper(
 #endif
 }
 
+void AXVirtualView::PruneVirtualSubtree() {
+  pruned_ = true;
+  for (auto& child : children()) {
+    child->PruneVirtualSubtree();
+  }
+}
+
+void AXVirtualView::UnpruneVirtualSubtree() {
+  pruned_ = false;
+  for (auto& child : children()) {
+    child->UnpruneVirtualSubtree();
+  }
+}
 }  // namespace views

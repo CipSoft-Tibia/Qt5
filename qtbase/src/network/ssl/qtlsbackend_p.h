@@ -1,5 +1,6 @@
 // Copyright (C) 2021 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QTLSBACKEND_P_H
 #define QTLSBACKEND_P_H
@@ -33,7 +34,6 @@
 #include <QtCore/qloggingcategory.h>
 #include <QtCore/qnamespace.h>
 #include <QtCore/qobject.h>
-#include <QtCore/qglobal.h>
 #include <QtCore/qstring.h>
 #include <QtCore/qlist.h>
 #include <QtCore/qmap.h>

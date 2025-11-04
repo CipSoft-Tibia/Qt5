@@ -11,17 +11,17 @@
 
 #include "base/command_line.h"
 #include "base/win/win_util.h"
-#include "content/browser/accessibility/browser_accessibility_manager_win.h"
 #include "content/browser/accessibility/browser_accessibility_state_impl.h"
-#include "content/browser/accessibility/browser_accessibility_win.h"
-#include "content/browser/accessibility/one_shot_accessibility_tree_search.h"
 #include "content/browser/renderer_host/direct_manipulation_helper_win.h"
 #include "content/browser/renderer_host/render_widget_host_impl.h"
 #include "content/browser/renderer_host/render_widget_host_view_aura.h"
 #include "content/public/common/content_switches.h"
-#include "ui/accessibility/accessibility_features.h"
 #include "ui/accessibility/platform/ax_fragment_root_win.h"
+#include "ui/accessibility/platform/ax_platform.h"
 #include "ui/accessibility/platform/ax_system_caret_win.h"
+#include "ui/accessibility/platform/browser_accessibility_manager_win.h"
+#include "ui/accessibility/platform/browser_accessibility_win.h"
+#include "ui/accessibility/platform/one_shot_accessibility_tree_search.h"
 #include "ui/aura/window.h"
 #include "ui/aura/window_tree_host.h"
 #include "ui/base/ui_base_features.h"
@@ -188,7 +188,7 @@ bool LegacyRenderWidgetHostHWND::InitOrDeleteSelf(HWND parent) {
   ::CreateStdAccessibleObject(hwnd(), OBJID_WINDOW,
                               IID_PPV_ARGS(&window_accessible_));
 
-  if (::features::IsUiaProviderEnabled()) {
+  if (::ui::AXPlatform::GetInstance().IsUiaProviderEnabled()) {
     // The usual way for UI Automation to obtain a fragment root is through
     // WM_GETOBJECT. However, if there's a relation such as "Controller For"
     // between element A in one window and element B in another window, UIA
@@ -260,7 +260,8 @@ LRESULT LegacyRenderWidgetHostHWND::OnGetObject(UINT message,
   bool is_uia_request = static_cast<DWORD>(UiaRootObjectId) == obj_id;
   bool is_msaa_request = static_cast<DWORD>(OBJID_CLIENT) == obj_id;
 
-  if ((is_uia_request && ::features::IsUiaProviderEnabled()) ||
+  if ((is_uia_request &&
+       ::ui::AXPlatform::GetInstance().IsUiaProviderEnabled()) ||
       is_msaa_request) {
     gfx::NativeViewAccessible root =
         GetOrCreateWindowRootAccessible(is_uia_request);
@@ -575,7 +576,7 @@ gfx::NativeViewAccessible
 LegacyRenderWidgetHostHWND::GetOrCreateWindowRootAccessible(
     bool is_uia_request) {
   if (is_uia_request) {
-    DCHECK(::features::IsUiaProviderEnabled());
+    DCHECK(::ui::AXPlatform::GetInstance().IsUiaProviderEnabled());
     return ax_fragment_root_->GetNativeViewAccessible();
   }
   return GetOrCreateBrowserAccessibilityRoot();
@@ -591,13 +592,13 @@ LegacyRenderWidgetHostHWND::GetOrCreateBrowserAccessibilityRoot() {
   if (!rwhi)
     return nullptr;
 
-  BrowserAccessibilityManagerWin* manager =
-      static_cast<BrowserAccessibilityManagerWin*>(
+  ui::BrowserAccessibilityManagerWin* manager =
+      static_cast<ui::BrowserAccessibilityManagerWin*>(
           rwhi->GetOrCreateRootBrowserAccessibilityManager());
   if (!manager || !manager->GetBrowserAccessibilityRoot())
     return nullptr;
 
-  BrowserAccessibility* root_node = manager->GetBrowserAccessibilityRoot();
+  ui::BrowserAccessibility* root_node = manager->GetBrowserAccessibilityRoot();
 
   // Popups with HTML content (such as <input type="date">) will create a new
   // HWND with its own fragment root, but will also inject accessible nodes into
@@ -610,7 +611,7 @@ LegacyRenderWidgetHostHWND::GetOrCreateBrowserAccessibilityRoot() {
   if (host_->GetWidgetType() == WidgetType::kPopup) {
     // Check to see if the manager has a child root (it's expected that there
     // won't be in popups without HTML-based content such as <select> controls).
-    BrowserAccessibility* child_root = manager->GetPopupRoot();
+    ui::BrowserAccessibility* child_root = manager->GetPopupRoot();
     if (child_root)
       return child_root->GetNativeViewAccessible();
   }

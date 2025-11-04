@@ -8,13 +8,13 @@ import abc
 import datetime as dt
 import json
 import logging
-import pathlib
 from typing import (TYPE_CHECKING, Any, Dict, List, Optional, Sequence, Tuple,
                     Type)
 
 import crossbench.probes.helper as probes_helper
 from crossbench import cli_helper, helper
-from crossbench.benchmarks.base import PressBenchmark, PressBenchmarkStoryFilter
+from crossbench.benchmarks.base import (BenchmarkProbeMixin, PressBenchmark,
+                                        PressBenchmarkStoryFilter)
 from crossbench.probes import metric as cb_metric
 from crossbench.probes.json import JsonResultProbe
 from crossbench.probes.results import ProbeResult, ProbeResultDict
@@ -23,34 +23,36 @@ from crossbench.stories.press_benchmark import PressBenchmarkStory
 if TYPE_CHECKING:
   import argparse
 
+  from crossbench.path import LocalPath
   from crossbench.runner.actions import Actions
   from crossbench.runner.groups import BrowsersRunGroup, StoriesRunGroup
   from crossbench.runner.run import Run
-  from crossbench.types import JSON
+  from crossbench.types import Json
 
 
 def _probe_remove_tests_segments(path: Tuple[str, ...]) -> str:
   return "/".join(segment for segment in path if segment != "tests")
 
 
-class SpeedometerProbe(JsonResultProbe, metaclass=abc.ABCMeta):
+class SpeedometerProbe(
+    BenchmarkProbeMixin, JsonResultProbe, metaclass=abc.ABCMeta):
   """
   Speedometer-specific probe (compatible with v2.X and v3.X).
   Extracts all speedometer times and scores.
   """
-  IS_GENERAL_PURPOSE: bool = False
   JS: str = "return window.suiteValues;"
+  SORT_KEYS: bool = False
 
-  def to_json(self, actions: Actions) -> JSON:
+  def to_json(self, actions: Actions) -> Json:
     return actions.js(self.JS)
 
-  def flatten_json_data(self, json_data: Sequence) -> JSON:
+  def flatten_json_data(self, json_data: Any) -> Json:
     # json_data may contain multiple iterations, merge those first
-    assert isinstance(json_data, list)
+    assert isinstance(json_data, list), f"Expected list got {type(json_data)}"
     merged = cb_metric.MetricsMerger(
         json_data, key_fn=_probe_remove_tests_segments).to_json(
-            value_fn=lambda values: values.geomean)
-    return probes_helper.Flatten(merged).data
+            value_fn=lambda values: values.geomean, sort=self.SORT_KEYS)
+    return probes_helper.Flatten(merged, sort=self.SORT_KEYS).data
 
   def merge_stories(self, group: StoriesRunGroup) -> ProbeResult:
     merged = cb_metric.MetricsMerger.merge_json_list(
@@ -72,7 +74,7 @@ class SpeedometerProbe(JsonResultProbe, metaclass=abc.ABCMeta):
                   single_result: bool) -> None:
     if self not in result_dict:
       return
-    results_json: pathlib.Path = result_dict[self].json
+    results_json: LocalPath = result_dict[self].json
     logging.info("-" * 80)
     logging.critical("Speedometer results:")
     if not single_result:
@@ -82,23 +84,23 @@ class SpeedometerProbe(JsonResultProbe, metaclass=abc.ABCMeta):
     with results_json.open(encoding="utf-8") as f:
       data = json.load(f)
       if single_result:
-        logging.critical("Score %s", data["score"])
+        score = data.get("score") or data["Score"]
+        logging.critical("Score %s", score)
       else:
         self._log_result_metrics(data)
 
   def _extract_result_metrics_table(self, metrics: Dict[str, Any],
                                     table: Dict[str, List[str]]) -> None:
     for metric_key, metric in metrics.items():
-      parts = metric_key.split("/")
-      if len(parts) != 2 or parts[-1] != "total":
+      if not self._valid_metric_key(metric_key):
         continue
       table[metric_key].append(
           cb_metric.format_metric(metric["average"], metric["stddev"]))
-      # Separate runs don't produce a score
-    if "score" in metrics:
-      metric = metrics["score"]
-      table["Score"].append(
-          cb_metric.format_metric(metric["average"], metric["stddev"]))
+
+  @abc.abstractmethod
+  def _valid_metric_key(self, metric_key: str) -> bool:
+    pass
+
 
 
 class SpeedometerStory(PressBenchmarkStory, metaclass=abc.ABCMeta):
@@ -120,6 +122,15 @@ class SpeedometerStory(PressBenchmarkStory, metaclass=abc.ABCMeta):
   @property
   def substory_duration(self) -> dt.timedelta:
     return self.iterations * dt.timedelta(seconds=0.4)
+
+  @property
+  def slow_duration(self) -> dt.timedelta:
+    """Max duration that covers run-times on slow machines and/or
+    debug-mode browsers.
+    Making this number too large might cause needless wait times on broken
+    browsers/benchmarks.
+    """
+    return dt.timedelta(seconds=60 * 20) + self.duration * 10
 
   @property
   def url_params(self) -> Dict[str, str]:

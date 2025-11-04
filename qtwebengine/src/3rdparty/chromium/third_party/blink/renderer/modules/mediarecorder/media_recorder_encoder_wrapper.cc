@@ -246,7 +246,7 @@ void MediaRecorderEncoderWrapper::EncodeDone(media::EncoderStatus status) {
 
 void MediaRecorderEncoderWrapper::OutputEncodeData(
     media::VideoEncoderOutput output,
-    absl::optional<media::VideoEncoder::CodecDescription> description) {
+    std::optional<media::VideoEncoder::CodecDescription> description) {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   TRACE_EVENT0("media", "MediaRecorderEncoderWrapper::OutputEncodeData");
   if (state_ == State::kInError) {
@@ -264,12 +264,9 @@ void MediaRecorderEncoderWrapper::OutputEncodeData(
   video_params.codec = codec_;
 
   on_encoded_video_cb_.Run(
-      video_params,
-      std::string(reinterpret_cast<const char*>(output.data.get()),
-                  output.size),
+      video_params, std::string(output.data.begin(), output.data.end()),
       encode_alpha_
-          ? std::string(reinterpret_cast<const char*>(output.alpha_data.get()),
-                        output.alpha_size)
+          ? std::string(output.alpha_data.begin(), output.alpha_data.end())
           : std::string(),
       std::move(description), capture_timestamp, output.key_frame);
 }

@@ -11,6 +11,9 @@
 #include <QtGui/QRgb>
 #include <QtGui/QImage>
 #include <QtWidgets/QLabel>
+
+#include <QtGui/qquaternion.h>
+
 #include <QtCore/QDebug>
 
 const int imageCount = 512;
@@ -255,15 +258,15 @@ void VolumetricModifier::testSubtextureSetting()
 
     // Do some visible swaps on volume 3
     QImage slice = m_volumeItem3->renderSlice(Qt::XAxis, 144);
-    slice = slice.mirrored();
+    slice.flip();
     m_volumeItem3->setSubTextureData(Qt::XAxis, 144, slice);
 
     slice = m_volumeItem3->renderSlice(Qt::YAxis, 80);
-    slice = slice.mirrored();
+    slice.flip();
     m_volumeItem3->setSubTextureData(Qt::YAxis, 80, slice);
 
     slice = m_volumeItem3->renderSlice(Qt::ZAxis, 190);
-    slice = slice.mirrored(true, false);
+    slice.flip(Qt::Horizontal);
     m_volumeItem3->setSubTextureData(Qt::ZAxis, 190, slice);
 }
 
@@ -298,6 +301,26 @@ void VolumetricModifier::adjustRangeZ(int value)
         m_surfaceGraph->axisZ()->setRange(zMiddle + adjustment - zRange, zMiddle + adjustment + zRange);
     if (m_barGraph)
         m_barGraph->rowAxis()->setRange(zMiddle + adjustment - zRange, zMiddle + adjustment + zRange);
+}
+
+void VolumetricModifier::reverseAxes()
+{
+    if (m_scatterGraph)
+        m_scatterGraph->axisX()->setReversed(!m_scatterGraph->axisX()->reversed());
+    if (m_scatterGraph)
+        m_scatterGraph->axisY()->setReversed(!m_scatterGraph->axisY()->reversed());
+    if (m_scatterGraph)
+        m_scatterGraph->axisZ()->setReversed(!m_scatterGraph->axisZ()->reversed());
+
+    if (m_surfaceGraph)
+        m_surfaceGraph->axisX()->setReversed(!m_surfaceGraph->axisX()->reversed());
+    if (m_surfaceGraph)
+        m_surfaceGraph->axisY()->setReversed(!m_surfaceGraph->axisY()->reversed());
+    if (m_surfaceGraph)
+        m_surfaceGraph->axisZ()->setReversed(!m_surfaceGraph->axisZ()->reversed());
+
+    if (m_barGraph)
+        m_barGraph->valueAxis()->setReversed(!m_barGraph->valueAxis()->reversed());
 }
 
 void VolumetricModifier::testBoundsSetting()
@@ -404,7 +427,7 @@ void VolumetricModifier::createVolume()
     uchar *p = data;
 
     // Change one picture using subtexture replacement
-    QImage flipped = logo.mirrored();
+    QImage flipped = logo.flipped();
     m_volumeItem->setSubTextureData(Qt::ZAxis, 100, flipped);
 
     // Clean up the two extra pixels
@@ -536,7 +559,7 @@ void VolumetricModifier::createAnotherVolume()
                                        zRange * 2.0f));
 
     // Change one picture using subtexture replacement
-    QImage flipped = logo.mirrored();
+    QImage flipped = logo.flipped();
     m_volumeItem2->setSubTextureData(Qt::ZAxis, 100, flipped);
     //m_volumeItem2->setAlphaMultiplier(0.2f);
     m_volumeItem2->setPreserveOpacity(false);

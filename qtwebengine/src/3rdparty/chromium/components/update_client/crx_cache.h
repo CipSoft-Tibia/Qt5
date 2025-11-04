@@ -14,7 +14,6 @@
 #include "base/task/task_runner.h"
 #include "base/task/thread_pool.h"
 #include "components/update_client/update_client_errors.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 
 namespace update_client {
 

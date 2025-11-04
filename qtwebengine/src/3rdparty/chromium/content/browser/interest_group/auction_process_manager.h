@@ -101,6 +101,7 @@ class CONTENT_EXPORT AuctionProcessManager {
         base::OnceCallback<void(base::ProcessId)> callback);
 
    private:
+    friend class ProcessHandleTestPeer;
     friend class AuctionProcessManager;
     friend class InRendererAuctionProcessManager;
     friend class DedicatedAuctionProcessManager;
@@ -109,7 +110,7 @@ class CONTENT_EXPORT AuctionProcessManager {
     // the process lifetime, it needs to call |OnBaseProcessLaunched| once the
     // process has been launched successfully in order to properly figure out
     // the PID.
-    void OnBaseProcessLaunched(const base::Process& process);
+    void OnBaseProcessLaunched(const base::Process& process) const;
 
     // Assigns `worklet_process` to `this`. If `callback_` is non-null, queues a
     // task to invoke it asynchronously, and GetService() will return nullptr
@@ -137,7 +138,8 @@ class CONTENT_EXPORT AuctionProcessManager {
 
     // Entry in the corresponding PendingRequestQueue if the handle has yet to
     // be assigned a process.
-    std::list<ProcessHandle*>::iterator queued_request_;
+    std::list<raw_ptr<ProcessHandle, CtnExperimental>>::iterator
+        queued_request_;
 
     base::WeakPtrFactory<ProcessHandle> weak_ptr_factory_{this};
   };
@@ -199,6 +201,10 @@ class CONTENT_EXPORT AuctionProcessManager {
       const ProcessHandle* process_handle,
       const std::string& display_name) = 0;
 
+  // Hook called when a new process is assigned at the end of
+  // TryCreateOrGetProcessForHandle. This function is used for testing.
+  virtual void OnNewProcessAssigned(const ProcessHandle* process_handle) {}
+
   // Used to compute the value of `site_instance_` field of ProcessHandle.
   // A subclass can return nullptr if it is not using SiteInstance to place
   // worklets in appropriate renderers, but some other mechanism implementing a
@@ -228,14 +234,16 @@ class CONTENT_EXPORT AuctionProcessManager {
   // bidder further up the queue with a matching owner receives a process).
   // ProcessHandles are owned by consumers, and destroyed when they no longer
   // need to keep their processes alive.
-  using PendingRequestQueue = std::list<ProcessHandle*>;
+  using PendingRequestQueue =
+      std::list<raw_ptr<ProcessHandle, CtnExperimental>>;
 
   // Contains ProcessHandles for bidder or seller requests which have not yet
   // been assigned processes, indexed by origin. When the request in the
   // PendingRequestQueue is assigned a process, all requests that can use the
   // same process are assigned the same process. This map is used to manage that
   // without searching through the entire queue.
-  using PendingRequestMap = std::map<url::Origin, std::set<ProcessHandle*>>;
+  using PendingRequestMap =
+      std::map<url::Origin, std::set<raw_ptr<ProcessHandle, SetExperimental>>>;
 
   // Contains running processes. Worklet processes are refcounted, and
   // automatically remove themselves from this list when destroyed.

@@ -1,9 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <db:article xmlns:db="http://docbook.org/ns/docbook" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns:its="http://www.w3.org/2005/11/its" version="5.2" xml:lang="en">
 <db:info>
-<db:title its:translate="no">Test Class</db:title>
-<db:subtitle its:translate="no">TestQDoc::Test</db:subtitle>
-<db:productname>Test</db:productname>
+<db:title its:translate="no">TestQDoc::Test Class</db:title>
+<db:productname>Qt</db:productname>
 <db:titleabbrev>A test project for QDoc build artifacts</db:titleabbrev>
 <db:abstract>
 <db:para>A class in a namespace.</db:para>
@@ -317,7 +316,7 @@
 </db:section>
 </db:section>
 <db:section xml:id="obsolete">
-<db:title>Obsolete Members for Test</db:title>
+<db:title>Obsolete Members for TestQDoc::Test</db:title>
 <db:para><db:emphasis role="bold">The following members of class <db:link xlink:href="testqdoc-test.xml">Test</db:link> are deprecated.</db:emphasis> We strongly advise against using them in new code.</db:para>
 <db:section xml:id="obsolete-member-function-documentation">
 <db:title>Obsolete Member Function Documentation</db:title>

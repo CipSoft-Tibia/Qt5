@@ -51,17 +51,9 @@ enum class Flag {
     IsListProperty = 0x400,
 };
 
-struct BindingInfo
+struct PropertyPassInvocation
 {
-    QString fullPropertyName;
-    QQmlSA::Binding binding;
-    QQmlSA::Element bindingScope;
-    bool isAttached;
-};
-
-struct PropertyPassInfo
-{
-    QStringList properties;
+    QString property;
     std::shared_ptr<QQmlSA::PropertyPass> pass;
     bool allowInheritance = true;
 };
@@ -100,14 +92,29 @@ public:
     explicit BindingPrivate(Binding *);
     BindingPrivate(Binding *, const BindingPrivate &);
 
+    static BindingPrivate *get(Binding *binding) { return binding->d_func(); }
+    static const BindingPrivate *get(const Binding *binding) { return binding->d_func(); }
+
     static QQmlSA::Binding createBinding(const QQmlJSMetaPropertyBinding &);
     static QQmlJSMetaPropertyBinding binding(QQmlSA::Binding &binding);
     static const QQmlJSMetaPropertyBinding binding(const QQmlSA::Binding &binding);
 
+    void setPropertyName(QString name) { m_binding.setPropertyName(name); }
+
+    Element bindingScope() const { return m_bindingScope; }
+    void setBindingScope(Element bindingScope) { m_bindingScope = bindingScope; }
+
+    bool isAttached() const { return m_isAttached; }
+    void setIsAttached(bool isAttached) { m_isAttached = isAttached; }
+
 private:
     QQmlJSMetaPropertyBinding m_binding;
-    Binding *q_ptr;
+    Element m_bindingScope;
+    Binding *q_ptr = nullptr;
+    bool m_isAttached = false;
 };
+
+bool isRegularBindingType(BindingType type);
 
 class MethodPrivate
 {
@@ -214,23 +221,25 @@ public:
     QSet<PropertyPass *> findPropertyUsePasses(const QQmlSA::Element &element,
                                                const QString &propertyName);
 
-    void analyzeWrite(const QQmlSA::Element &element, QString propertyName,
+    void analyzeWrite(const QQmlSA::Element &element, const QString &propertyName,
                       const QQmlSA::Element &value, const QQmlSA::Element &writeScope,
-                      QQmlSA::SourceLocation location);
-    void analyzeRead(const QQmlSA::Element &element, QString propertyName,
-                     const QQmlSA::Element &readScope, QQmlSA::SourceLocation location);
+                      const QQmlSA::SourceLocation &location);
+    void analyzeRead(const QQmlSA::Element &element, const QString &propertyName,
+                     const QQmlSA::Element &readScope, const QQmlSA::SourceLocation &location);
+    void analyzeCall(const QQmlSA::Element &element, const QString &propertyName,
+                     const QQmlSA::Element &readScope, const QQmlSA::SourceLocation &location);
     void analyzeBinding(const QQmlSA::Element &element, const QQmlSA::Element &value,
-                        QQmlSA::SourceLocation location);
+                        const QQmlSA::SourceLocation &location);
 
     void addBindingSourceLocations(const QQmlSA::Element &element,
                                    const QQmlSA::Element &scope = QQmlSA::Element(),
                                    const QString prefix = QString(), bool isAttached = false);
 
-    std::vector<std::shared_ptr<ElementPass>> m_elementPasses;
-    std::multimap<QString, PropertyPassInfo> m_propertyPasses;
-    std::unordered_map<quint32, BindingInfo> m_bindingsByLocation;
-    QQmlJSImportVisitor *m_visitor;
-    QQmlJSTypeResolver *m_typeResolver;
+    std::vector<std::unique_ptr<ElementPass>> m_elementPasses;
+    std::multimap<QString, PropertyPassInvocation> m_propertyPasses;
+    std::unordered_map<quint32, Binding> m_bindingsByLocation;
+    QQmlJSImportVisitor *m_visitor = nullptr;
+    QQmlJSTypeResolver *m_typeResolver = nullptr;
 };
 
 class FixSuggestionPrivate

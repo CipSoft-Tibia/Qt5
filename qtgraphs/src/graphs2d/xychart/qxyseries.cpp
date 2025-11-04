@@ -1,6 +1,7 @@
 // Copyright (C) 2023 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
+#include "graphs2d/qabstractseries.h"
 #include <QtGraphs/qxyseries.h>
 #include <private/qxyseries_p.h>
 #include <private/charthelpers_p.h>
@@ -50,6 +51,19 @@ QT_BEGIN_NAMESPACE
 */
 
 /*!
+    \fn void QXYSeries::pointsAdded(qsizetype start, qsizetype end)
+    This signal is emitted when a list of points is appended.
+    The indexes of the new added points are between \a start and \a end.
+    \since 6.9
+*/
+/*!
+    \qmlsignal XYSeries::pointsAdded(int start, int end)
+    This signal is emitted when a list of points is appended.
+    The indexes of the new added points are between \a start and \a end.
+    \since 6.9
+*/
+
+/*!
     \qmlsignal XYSeries::colorChanged(color color)
     This signal is emitted when the line color changes to \a color.
 */
@@ -75,11 +89,36 @@ QT_BEGIN_NAMESPACE
     becomes fixed.
 */
 
+/*!
+    \qmlsignal XYSeries::clicked(point point)
+    This signal is emitted when the user clicks or taps the \a point in the graph.
+*/
+
+/*!
+    \qmlsignal XYSeries::doubleClicked(point point)
+    This signal is emitted when the user double-clicks or double-taps the data \a point in
+    the graph. The \a point is the point where the first press was triggered.
+    This signal always occurs after \l clicked.
+*/
+
+/*!
+    \qmlsignal XYSeries::pressed(point point)
+    This signal is emitted when the user presses the data \a point in the graph
+    and holds down the mouse button or gesture.
+*/
+
+/*!
+    \qmlsignal XYSeries::released(point point)
+    This signal is emitted when the user releases the previously pressed mouse
+    button or gesture on the data \a point.
+*/
+
 QXYSeries::QXYSeries(QXYSeriesPrivate &dd, QObject *parent)
     : QAbstractSeries(dd, parent)
 {
     QObject::connect(this, &QXYSeries::selectedPointsChanged, this, &QAbstractSeries::update);
     QObject::connect(this, &QXYSeries::pointAdded, this, &QAbstractSeries::update);
+    QObject::connect(this, &QXYSeries::pointsAdded, this, &QAbstractSeries::update);
     QObject::connect(this, &QXYSeries::pointReplaced, this, &QAbstractSeries::update);
     QObject::connect(this, &QXYSeries::pointsReplaced, this, &QAbstractSeries::update);
     QObject::connect(this, &QXYSeries::pointRemoved, this, &QAbstractSeries::update);
@@ -126,14 +165,18 @@ void QXYSeries::append(QPointF point)
 /*!
     \qmlmethod XYSeries::append(list<point> points)
     Appends points with the coordinates \a points to the series.
+    \note This is much faster than appending data points one by one.
+    Emits \l pointsAdded when the points have been added.
 */
 /*!
     Appends points with the coordinates \a points to the series.
+    \note This is much faster than appending data points one by one.
+    Emits \l pointsAdded when the points have been added.
 */
 void QXYSeries::append(const QList<QPointF> &points)
 {
-    for (const QPointF &point : points)
-        append(point);
+    Q_D(QXYSeries);
+    d->append(points);
 }
 
 /*!
@@ -792,6 +835,10 @@ QColor QXYSeries::selectedColor() const
         \li qreal
         \li pointValueY
         \li The value of the \l{QXYPoint::y} at this position.
+    \row
+        \li int
+        \li pointIndex
+        \li The index of the point, from 0 to the amount of points - 1. [since 6.9]
     \endtable
 
     To use any of these, add property with the defined name into your custom component.
@@ -838,6 +885,10 @@ QColor QXYSeries::selectedColor() const
         \li real
         \li pointValueY
         \li The value of the \l{XYPoint::y} at this position.
+    \row
+        \li int
+        \li pointIndex
+        \li The index of the point, from 0 to the amount of points - 1. [since 6.9]
     \endtable
 
     To use any of these, add property with the defined name into your custom component.
@@ -898,7 +949,9 @@ QXYSeries &QXYSeries::operator<< (const QList<QPointF>& points)
     return *this;
 }
 
-QXYSeriesPrivate::QXYSeriesPrivate() {}
+QXYSeriesPrivate::QXYSeriesPrivate(QAbstractSeries::SeriesType type)
+    : QAbstractSeriesPrivate(type)
+{}
 
 void QXYSeriesPrivate::setPointSelected(qsizetype index, bool selected, bool &callSignal)
 {
@@ -942,7 +995,12 @@ void QXYSeriesPrivate::append(const QList<QPointF> &points)
             }
         }
     } else {
+        qsizetype start = m_points.size();
         m_points.append(points);
+
+        Q_Q(QXYSeries);
+        Q_EMIT q->pointsAdded(start, m_points.size() - 1);
+        Q_EMIT q->countChanged();
     }
 }
 

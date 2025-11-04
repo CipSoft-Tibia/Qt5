@@ -12,6 +12,7 @@ qt_internal_add_cmake_library(pluginWithQmlFile
     OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/../imports/org/qtproject/AutoTestPluginWithQmlFile"
     SOURCES
         plugin.cpp
+    MOC_OPTIONS "-Muri=org.qtproject.AutoTestPluginWithQmlFile"
     LIBRARIES
         Qt::Core
         Qt::CorePrivate
@@ -19,6 +20,11 @@ qt_internal_add_cmake_library(pluginWithQmlFile
         Qt::Qml
         Qt::QmlPrivate
 )
+
+get_target_property(target_type pluginWithQmlFile TYPE)
+if(target_type STREQUAL STATIC_LIBRARY)
+    target_compile_definitions(pluginWithQmlFile PRIVATE QT_STATICPLUGIN)
+endif()
 
 #### Keys ignored in scope 1:.:.:pluginWithQmlFile.pro:<TRUE>:
 # IMPORT_FILES = "qmldir" "MyQmlFile.qml"

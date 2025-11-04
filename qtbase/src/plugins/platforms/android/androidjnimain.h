@@ -53,13 +53,17 @@ namespace QtAndroid
     jobject createBitmap(int width, int height, QImage::Format format, JNIEnv *env);
     jobject createBitmapDrawable(jobject bitmap, JNIEnv *env = nullptr);
 
+#if QT_CONFIG(accessibility)
     void initializeAccessibility();
     void notifyAccessibilityLocationChange(uint accessibilityObjectId);
     void notifyObjectHide(uint accessibilityObjectId, uint parentObjectId);
     void notifyObjectShow(uint parentObjectId);
     void notifyObjectFocus(uint accessibilityObjectId);
     void notifyValueChanged(uint accessibilityObjectId, jstring value);
+    void notifyDescriptionOrNameChanged(uint accessibilityObjectId, const QString &value);
     void notifyScrolledEvent(uint accessibilityObjectId);
+    void notifyAnnouncementEvent(uint accessibilityObjectId, const QString &message);
+#endif
     void notifyNativePluginIntegrationReady(bool ready);
 
     const char *classErrorMsgFmt();

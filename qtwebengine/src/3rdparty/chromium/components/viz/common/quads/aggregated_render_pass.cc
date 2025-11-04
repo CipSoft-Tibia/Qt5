@@ -23,7 +23,6 @@
 #include "components/viz/common/quads/texture_draw_quad.h"
 #include "components/viz/common/quads/tile_draw_quad.h"
 #include "components/viz/common/quads/video_hole_draw_quad.h"
-#include "components/viz/common/quads/yuv_video_draw_quad.h"
 #include "components/viz/common/traced_value.h"
 
 namespace viz {
@@ -61,7 +60,7 @@ void AggregatedRenderPass::SetAll(
     const gfx::Transform& transform_to_root_target,
     const cc::FilterOperations& filters,
     const cc::FilterOperations& backdrop_filters,
-    const absl::optional<gfx::RRectF>& backdrop_filter_bounds,
+    const std::optional<gfx::RRectF>& backdrop_filter_bounds,
     gfx::ContentColorUsage color_usage,
     bool has_transparent_background,
     bool cache_render_pass,
@@ -136,9 +135,6 @@ DrawQuad* AggregatedRenderPass::CopyFromAndAppendDrawQuad(
       break;
     case DrawQuad::Material::kVideoHole:
       CopyFromAndAppendTypedDrawQuad<VideoHoleDrawQuad>(quad);
-      break;
-    case DrawQuad::Material::kYuvVideoContent:
-      CopyFromAndAppendTypedDrawQuad<YUVVideoDrawQuad>(quad);
       break;
     case DrawQuad::Material::kSharedElement:
       CHECK(false)
@@ -229,9 +225,13 @@ void AggregatedRenderPass::AsValueInto(
 
   value->SetInteger("content_color_usage",
                     base::to_underlying(content_color_usage));
-
   value->SetBoolean("is_color_conversion_pass", is_color_conversion_pass);
-
+  value->SetBoolean("is_from_surface_root_pass", is_from_surface_root_pass);
+#if BUILDFLAG(IS_WIN)
+  value->SetBoolean("will_backing_be_read_by_viz", will_backing_be_read_by_viz);
+  value->SetBoolean("needs_synchronous_dcomp_commit",
+                    needs_synchronous_dcomp_commit);
+#endif
   value->SetBoolean("video_capture_enabled", video_capture_enabled);
 
   TracedValue::MakeDictIntoImplicitSnapshotWithCategory(

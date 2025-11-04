@@ -25,13 +25,13 @@
 // OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-#include "gtest/gtest-spi.h"
 #include "src/tint/lang/wgsl/ast/helper_test.h"
 
 namespace tint::ast {
 namespace {
 
 using CallExpressionTest = TestHelper;
+using CallExpressionDeathTest = CallExpressionTest;
 
 TEST_F(CallExpressionTest, CreationIdentifier) {
     auto* func = Expr("func");
@@ -91,8 +91,8 @@ TEST_F(CallExpressionTest, IsCall) {
     EXPECT_TRUE(stmt->Is<CallExpression>());
 }
 
-TEST_F(CallExpressionTest, Assert_Null_Identifier) {
-    EXPECT_FATAL_FAILURE(
+TEST_F(CallExpressionDeathTest, Assert_Null_Identifier) {
+    EXPECT_DEATH_IF_SUPPORTED(
         {
             ProgramBuilder b;
             b.Call(static_cast<Identifier*>(nullptr));
@@ -100,8 +100,8 @@ TEST_F(CallExpressionTest, Assert_Null_Identifier) {
         "internal compiler error");
 }
 
-TEST_F(CallExpressionTest, Assert_Null_Param) {
-    EXPECT_FATAL_FAILURE(
+TEST_F(CallExpressionDeathTest, Assert_Null_Param) {
+    EXPECT_DEATH_IF_SUPPORTED(
         {
             ProgramBuilder b;
             b.Call(b.Ident("func"), tint::Vector{
@@ -113,8 +113,8 @@ TEST_F(CallExpressionTest, Assert_Null_Param) {
         "internal compiler error");
 }
 
-TEST_F(CallExpressionTest, Assert_DifferentGenerationID_Identifier) {
-    EXPECT_FATAL_FAILURE(
+TEST_F(CallExpressionDeathTest, Assert_DifferentGenerationID_Identifier) {
+    EXPECT_DEATH_IF_SUPPORTED(
         {
             ProgramBuilder b1;
             ProgramBuilder b2;
@@ -123,8 +123,8 @@ TEST_F(CallExpressionTest, Assert_DifferentGenerationID_Identifier) {
         "internal compiler error");
 }
 
-TEST_F(CallExpressionTest, Assert_DifferentGenerationID_Type) {
-    EXPECT_FATAL_FAILURE(
+TEST_F(CallExpressionDeathTest, Assert_DifferentGenerationID_Type) {
+    EXPECT_DEATH_IF_SUPPORTED(
         {
             ProgramBuilder b1;
             ProgramBuilder b2;
@@ -133,8 +133,8 @@ TEST_F(CallExpressionTest, Assert_DifferentGenerationID_Type) {
         "internal compiler error");
 }
 
-TEST_F(CallExpressionTest, Assert_DifferentGenerationID_Param) {
-    EXPECT_FATAL_FAILURE(
+TEST_F(CallExpressionDeathTest, Assert_DifferentGenerationID_Param) {
+    EXPECT_DEATH_IF_SUPPORTED(
         {
             ProgramBuilder b1;
             ProgramBuilder b2;

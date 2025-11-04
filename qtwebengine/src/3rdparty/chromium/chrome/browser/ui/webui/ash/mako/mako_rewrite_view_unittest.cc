@@ -6,8 +6,10 @@
 
 #include <memory>
 
+#include "ash/constants/ash_features.h"
 #include "base/memory/weak_ptr.h"
-#include "chrome/browser/ui/views/bubble/bubble_contents_wrapper.h"
+#include "base/test/scoped_feature_list.h"
+#include "chrome/browser/ui/webui/top_chrome/webui_contents_wrapper.h"
 #include "chrome/test/base/testing_profile.h"
 #include "chrome/test/views/chrome_views_test_base.h"
 #include "testing/gtest/include/gtest/gtest.h"
@@ -17,59 +19,69 @@
 namespace ash {
 namespace {
 
-class TestBubbleContentsWrapper
-    : public BubbleContentsWrapper,
-      public base::SupportsWeakPtr<TestBubbleContentsWrapper> {
+class TestWebUIContentsWrapper final : public WebUIContentsWrapper {
  public:
-  explicit TestBubbleContentsWrapper(Profile* profile)
-      : BubbleContentsWrapper(GURL(""),
-                              profile,
-                              /*task_manager_string_id=*/0,
-                              /*webui_resizes_host=*/true,
-                              /*esc_closes_ui=*/false,
-                              /*webui_name=*/"Test") {}
-  TestBubbleContentsWrapper(const TestBubbleContentsWrapper&) = delete;
-  TestBubbleContentsWrapper& operator=(const TestBubbleContentsWrapper&) =
-      delete;
-  ~TestBubbleContentsWrapper() override = default;
+  explicit TestWebUIContentsWrapper(Profile* profile)
+      : WebUIContentsWrapper(GURL(""),
+                             profile,
+                             /*task_manager_string_id=*/0,
+                             /*webui_resizes_host=*/true,
+                             /*esc_closes_ui=*/false,
+                             /*supports_draggable_regions=*/false,
+                             /*webui_name=*/"Test") {}
+  TestWebUIContentsWrapper(const TestWebUIContentsWrapper&) = delete;
+  TestWebUIContentsWrapper& operator=(const TestWebUIContentsWrapper&) = delete;
+  ~TestWebUIContentsWrapper() override = default;
 
-  // BubbleContentsWrapper:
+  // WebUIContentsWrapper:
   void ReloadWebContents() override {}
-  base::WeakPtr<BubbleContentsWrapper> GetWeakPtr() override {
-    return AsWeakPtr();
+  base::WeakPtr<WebUIContentsWrapper> GetWeakPtr() override {
+    return weak_ptr_factory_.GetWeakPtr();
   }
+
+ private:
+  base::WeakPtrFactory<TestWebUIContentsWrapper> weak_ptr_factory_{this};
 };
 
-using MakoRewriteViewTest = ChromeViewsTestBase;
+class MakoRewriteViewTest : public ChromeViewsTestBase {
+ public:
+  void SetUp() override {
+    feature_list_.InitAndEnableFeature(features::kOrcaResizingSupport);
+    ChromeViewsTestBase::SetUp();
+  }
+
+ private:
+  base::test::ScopedFeatureList feature_list_;
+};
 
 TEST_F(MakoRewriteViewTest, ResizesToWebViewSize) {
   TestingProfile profile;
-  TestBubbleContentsWrapper contents_wrapper(&profile);
+  TestWebUIContentsWrapper contents_wrapper(&profile);
 
   auto mako_rewrite_view = std::make_unique<MakoRewriteView>(
-      &contents_wrapper, /*caret_bounds=*/gfx::Rect(20, 20));
+      &contents_wrapper, /*caret_bounds=*/gfx::Rect(20, 20),
+      /*can_fallback_to_center_position=*/false);
   auto* mako_rewrite_view_ptr = mako_rewrite_view.get();
   views::BubbleDialogDelegateView::CreateBubble(std::move(mako_rewrite_view));
 
-  constexpr gfx::Size kWebViewSize(120, 200);
-  mako_rewrite_view_ptr->ResizeDueToAutoResize(/*source=*/nullptr,
-                                               kWebViewSize);
+  constexpr gfx::Size kWebViewSize(440, 343);
+  mako_rewrite_view_ptr->ShowUI();
 
   EXPECT_EQ(mako_rewrite_view_ptr->GetBoundsInScreen().size(), kWebViewSize);
 }
 
 TEST_F(MakoRewriteViewTest, DefaultBoundsAtBottomLeftOfCaret) {
   TestingProfile profile;
-  TestBubbleContentsWrapper contents_wrapper(&profile);
+  TestWebUIContentsWrapper contents_wrapper(&profile);
 
   constexpr gfx::Rect kCaretBounds(30, 40, 0, 10);
-  auto mako_rewrite_view =
-      std::make_unique<MakoRewriteView>(&contents_wrapper, kCaretBounds);
+  auto mako_rewrite_view = std::make_unique<MakoRewriteView>(
+      &contents_wrapper, kCaretBounds,
+      /*can_fallback_to_center_position=*/false);
   auto* mako_rewrite_view_ptr = mako_rewrite_view.get();
   views::BubbleDialogDelegateView::CreateBubble(std::move(mako_rewrite_view));
 
-  mako_rewrite_view_ptr->ResizeDueToAutoResize(/*source=*/nullptr,
-                                               gfx::Size(100, 200));
+  mako_rewrite_view_ptr->ShowUI();
 
   // Should be left aligned and below the caret.
   EXPECT_EQ(mako_rewrite_view_ptr->GetBoundsInScreen().x(), kCaretBounds.x());
@@ -79,18 +91,19 @@ TEST_F(MakoRewriteViewTest, DefaultBoundsAtBottomLeftOfCaret) {
 
 TEST_F(MakoRewriteViewTest, AtTopLeftOfCaretForCaretAtScreenBottom) {
   TestingProfile profile;
-  TestBubbleContentsWrapper contents_wrapper(&profile);
+  TestWebUIContentsWrapper contents_wrapper(&profile);
 
   const int screen_bottom =
       display::Screen::GetScreen()->GetPrimaryDisplay().work_area().bottom();
   const gfx::Rect caret_bounds(30, screen_bottom - 20, 0, 10);
-  auto mako_rewrite_view =
-      std::make_unique<MakoRewriteView>(&contents_wrapper, caret_bounds);
+  auto mako_rewrite_view = std::make_unique<MakoRewriteView>(
+      &contents_wrapper, caret_bounds,
+      /*can_fallback_to_center_position=*/false);
   auto* mako_rewrite_view_ptr = mako_rewrite_view.get();
   views::BubbleDialogDelegateView::CreateBubble(std::move(mako_rewrite_view));
 
-  mako_rewrite_view_ptr->ResizeDueToAutoResize(/*source=*/nullptr,
-                                               gfx::Size(100, 200));
+  mako_rewrite_view_ptr->ShowUI();
+
   // Should be left aligned and above the caret.
   EXPECT_EQ(mako_rewrite_view_ptr->GetBoundsInScreen().x(), caret_bounds.x());
   EXPECT_LE(mako_rewrite_view_ptr->GetBoundsInScreen().bottom(),
@@ -99,16 +112,16 @@ TEST_F(MakoRewriteViewTest, AtTopLeftOfCaretForCaretAtScreenBottom) {
 
 TEST_F(MakoRewriteViewTest, OnScreenWithoutOverlapForSmallSelection) {
   TestingProfile profile;
-  TestBubbleContentsWrapper contents_wrapper(&profile);
+  TestWebUIContentsWrapper contents_wrapper(&profile);
 
   constexpr gfx::Rect kSelectionBounds(100, 40, 200, 100);
-  auto mako_rewrite_view =
-      std::make_unique<MakoRewriteView>(&contents_wrapper, kSelectionBounds);
+  auto mako_rewrite_view = std::make_unique<MakoRewriteView>(
+      &contents_wrapper, kSelectionBounds,
+      /*can_fallback_to_center_position=*/false);
   auto* mako_rewrite_view_ptr = mako_rewrite_view.get();
   views::BubbleDialogDelegateView::CreateBubble(std::move(mako_rewrite_view));
 
-  mako_rewrite_view_ptr->ResizeDueToAutoResize(/*source=*/nullptr,
-                                               gfx::Size(100, 200));
+  mako_rewrite_view_ptr->ShowUI();
 
   EXPECT_TRUE(
       display::Screen::GetScreen()->GetPrimaryDisplay().work_area().Contains(
@@ -119,21 +132,64 @@ TEST_F(MakoRewriteViewTest, OnScreenWithoutOverlapForSmallSelection) {
 
 TEST_F(MakoRewriteViewTest, OnScreenForLargeSelection) {
   TestingProfile profile;
-  TestBubbleContentsWrapper contents_wrapper(&profile);
+  TestWebUIContentsWrapper contents_wrapper(&profile);
 
   const gfx::Rect selection_bounds =
       display::Screen::GetScreen()->GetPrimaryDisplay().work_area();
-  auto mako_rewrite_view =
-      std::make_unique<MakoRewriteView>(&contents_wrapper, selection_bounds);
+  auto mako_rewrite_view = std::make_unique<MakoRewriteView>(
+      &contents_wrapper, selection_bounds,
+      /*can_fallback_to_center_position=*/false);
   auto* mako_rewrite_view_ptr = mako_rewrite_view.get();
   views::BubbleDialogDelegateView::CreateBubble(std::move(mako_rewrite_view));
 
-  mako_rewrite_view_ptr->ResizeDueToAutoResize(/*source=*/nullptr,
-                                               gfx::Size(100, 200));
+  mako_rewrite_view_ptr->ShowUI();
 
   EXPECT_TRUE(
       display::Screen::GetScreen()->GetPrimaryDisplay().work_area().Contains(
           mako_rewrite_view_ptr->GetBoundsInScreen()));
+}
+
+TEST_F(MakoRewriteViewTest, FallbackToScreenCenterIfCaretBoundsAreEmpty) {
+  TestingProfile profile;
+  TestWebUIContentsWrapper contents_wrapper(&profile);
+
+  // Simulate a situation when the client fails to report selection bounds.
+  constexpr gfx::Size kWebViewSize(440, 343);
+  constexpr gfx::Rect kSelectionBounds(0, 0, 0, 0);
+  auto mako_rewrite_view = std::make_unique<MakoRewriteView>(
+      &contents_wrapper, kSelectionBounds,
+      /*can_fallback_to_center_position=*/true);
+  auto* mako_rewrite_view_ptr = mako_rewrite_view.get();
+  views::BubbleDialogDelegateView::CreateBubble(std::move(mako_rewrite_view));
+
+  mako_rewrite_view_ptr->ShowUI();
+
+  gfx::Rect work_area =
+      display::Screen::GetScreen()->GetPrimaryDisplay().work_area();
+
+  EXPECT_EQ(mako_rewrite_view_ptr->GetBoundsInScreen().x(),
+            work_area.x() + work_area.width() / 2 - kWebViewSize.width() / 2);
+}
+
+TEST_F(MakoRewriteViewTest, FallbackToScreenCenterIfCaretBoundsAreInvalid) {
+  TestingProfile profile;
+  TestWebUIContentsWrapper contents_wrapper(&profile);
+
+  // Simulate a situation when the client reports invalid bounds
+  constexpr gfx::Size kWebViewSize(440, 343);
+  constexpr gfx::Rect kSelectionBounds(0, -10000, 100, 100);
+  auto mako_rewrite_view = std::make_unique<MakoRewriteView>(
+      &contents_wrapper, kSelectionBounds,
+      /*can_fallback_to_center_position=*/true);
+  auto* mako_rewrite_view_ptr = mako_rewrite_view.get();
+  views::BubbleDialogDelegateView::CreateBubble(std::move(mako_rewrite_view));
+
+  mako_rewrite_view_ptr->ShowUI();
+
+  gfx::Rect work_area =
+      display::Screen::GetScreen()->GetPrimaryDisplay().work_area();
+  EXPECT_EQ(mako_rewrite_view_ptr->GetBoundsInScreen().x(),
+            work_area.x() + work_area.width() / 2 - kWebViewSize.width() / 2);
 }
 
 }  // namespace

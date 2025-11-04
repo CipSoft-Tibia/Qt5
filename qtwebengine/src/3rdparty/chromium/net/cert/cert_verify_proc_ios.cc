@@ -266,7 +266,7 @@ void GetCertChainInfo(CFArrayRef cert_chain, CertVerifyResult* verify_result) {
     verify_result->public_key_hashes.push_back(sha256);
   }
   if (!verified_cert.get()) {
-    NOTREACHED();
+    NOTREACHED_IN_MIGRATION();
     verify_result->cert_status |= CERT_STATUS_INVALID;
     return;
   }
@@ -390,14 +390,13 @@ CertStatus CertVerifyProcIOS::GetCertFailureStatusFromTrust(SecTrustRef trust) {
 
 CertVerifyProcIOS::~CertVerifyProcIOS() = default;
 
-int CertVerifyProcIOS::VerifyInternal(
-    X509Certificate* cert,
-    const std::string& hostname,
-    const std::string& ocsp_response,
-    const std::string& sct_list,
-    int flags,
-    CertVerifyResult* verify_result,
-    const NetLogWithSource& net_log) {
+int CertVerifyProcIOS::VerifyInternal(X509Certificate* cert,
+                                      const std::string& hostname,
+                                      const std::string& ocsp_response,
+                                      const std::string& sct_list,
+                                      int flags,
+                                      CertVerifyResult* verify_result,
+                                      const NetLogWithSource& net_log) {
   ScopedCFTypeRef<CFArrayRef> trust_policies;
   OSStatus status = CreateTrustPolicies(&trust_policies);
   if (status)
@@ -472,7 +471,7 @@ int CertVerifyProcIOS::VerifyInternal(
       switch (trust_result) {
         case kSecTrustResultUnspecified:
         case kSecTrustResultProceed:
-          NOTREACHED();
+          NOTREACHED_IN_MIGRATION();
           break;
         case kSecTrustResultDeny:
           verify_result->cert_status |= CERT_STATUS_AUTHORITY_INVALID;

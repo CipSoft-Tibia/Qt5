@@ -8,6 +8,7 @@
 
 #include "base/containers/contains.h"
 #include "base/functional/bind.h"
+#include "base/not_fatal_until.h"
 #include "base/ranges/algorithm.h"
 #include "base/sync_socket.h"
 #include "base/task/sequenced_task_runner.h"
@@ -79,7 +80,7 @@ LoopbackStream::LoopbackStream(
       socket_handle = mojo::PlatformHandle(foreign_socket.Take());
       if (socket_handle.is_valid()) {
         std::move(created_callback)
-            .Run({absl::in_place, std::move(shared_memory_region),
+            .Run({std::in_place, std::move(shared_memory_region),
                   std::move(socket_handle)});
         network_.reset(new FlowNetwork(std::move(flow_task_runner), params,
                                        std::move(writer)));
@@ -261,7 +262,7 @@ void LoopbackStream::FlowNetwork::RemoveInput(SnooperNode* node) {
 
   base::AutoLock scoped_lock(lock_);
   const auto it = base::ranges::find(inputs_, node);
-  DCHECK(it != inputs_.end());
+  CHECK(it != inputs_.end(), base::NotFatalUntil::M130);
   inputs_.erase(it);
 }
 
@@ -317,7 +318,7 @@ void LoopbackStream::FlowNetwork::GenerateMoreAudio() {
     // underruns in the inputs. http://crbug.com/934770
     delayed_capture_time = next_generate_time_ - capture_delay_;
     for (SnooperNode* node : inputs_) {
-      const absl::optional<base::TimeTicks> suggestion =
+      const std::optional<base::TimeTicks> suggestion =
           node->SuggestLatestRenderTime(mix_bus_->frames());
       if (suggestion.value_or(delayed_capture_time) < delayed_capture_time) {
         const base::TimeDelta increase = delayed_capture_time - (*suggestion);

@@ -565,17 +565,10 @@ InternalClass *InternalClass::locked()
 
 void InternalClass::addMember(QV4::Object *object, PropertyKey id, PropertyAttributes data, InternalClassEntry *entry)
 {
-    Q_ASSERT(id.isStringOrSymbol());
-    if (!data.isEmpty())
-        data.resolve();
-    PropertyHash::Entry *e = object->internalClass()->findEntry(id);
-    if (e) {
-        changeMember(object, id, data, entry);
-        return;
-    }
-
-    Heap::InternalClass *newClass = object->internalClass()->addMemberImpl(id, data, entry);
-    object->setInternalClass(newClass);
+    Heap::InternalClass *oldClass = object->internalClass();
+    Heap::InternalClass *newClass = oldClass->addMember(id, data, entry);
+    if (newClass != oldClass)
+        object->setInternalClass(newClass);
 }
 
 Heap::InternalClass *InternalClass::addMember(PropertyKey identifier, PropertyAttributes data, InternalClassEntry *entry)

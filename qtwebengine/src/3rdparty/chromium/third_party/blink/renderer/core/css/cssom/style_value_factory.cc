@@ -7,13 +7,12 @@
 #include "third_party/blink/renderer/bindings/core/v8/v8_union_cssstylevalue_string.h"
 #include "third_party/blink/renderer/core/css/css_color.h"
 #include "third_party/blink/renderer/core/css/css_custom_ident_value.h"
-#include "third_party/blink/renderer/core/css/css_custom_property_declaration.h"
 #include "third_party/blink/renderer/core/css/css_identifier_value.h"
 #include "third_party/blink/renderer/core/css/css_image_value.h"
 #include "third_party/blink/renderer/core/css/css_property_name.h"
+#include "third_party/blink/renderer/core/css/css_unparsed_declaration_value.h"
 #include "third_party/blink/renderer/core/css/css_value.h"
 #include "third_party/blink/renderer/core/css/css_value_pair.h"
-#include "third_party/blink/renderer/core/css/css_variable_reference_value.h"
 #include "third_party/blink/renderer/core/css/cssom/css_keyword_value.h"
 #include "third_party/blink/renderer/core/css/cssom/css_numeric_value.h"
 #include "third_party/blink/renderer/core/css/cssom/css_position_value.h"
@@ -43,11 +42,11 @@ CSSStyleValue* CreateStyleValueWithoutProperty(const CSSValue& value) {
     return CSSKeywordValue::FromCSSValue(value);
   }
   if (auto* variable_reference_value =
-          DynamicTo<CSSVariableReferenceValue>(value)) {
+          DynamicTo<CSSUnparsedDeclarationValue>(value)) {
     return CSSUnparsedValue::FromCSSValue(*variable_reference_value);
   }
   if (auto* custom_prop_declaration =
-          DynamicTo<CSSCustomPropertyDeclaration>(value)) {
+          DynamicTo<CSSUnparsedDeclarationValue>(value)) {
     return CSSUnparsedValue::FromCSSValue(*custom_prop_declaration);
   }
   return nullptr;
@@ -265,7 +264,7 @@ CSSStyleValue* CreateStyleValueWithProperty(CSSPropertyID property_id,
                                             const CSSValue& value) {
   DCHECK_NE(property_id, CSSPropertyID::kInvalid);
 
-  if (UNLIKELY(value.IsPendingSubstitutionValue())) {
+  if (value.IsPendingSubstitutionValue()) [[unlikely]] {
     return nullptr;
   }
 
@@ -305,15 +304,15 @@ CSSStyleValueVector StyleValueFactory::FromString(
   DCHECK_NE(property_id, CSSPropertyID::kInvalid);
   DCHECK_EQ(property_id == CSSPropertyID::kVariable,
             !custom_property_name.IsNull());
-  CSSTokenizer tokenizer(css_text);
-  const auto tokens = tokenizer.TokenizeToEOF();
-  const CSSParserTokenRange range(tokens);
+  CSSParserTokenStream stream(css_text);
+  stream.EnsureLookAhead();
+  CSSParserTokenStream::State savepoint = stream.Save();
 
   HeapVector<CSSPropertyValue, 64> parsed_properties;
   if (property_id != CSSPropertyID::kVariable &&
-      CSSPropertyParser::ParseValue(property_id, false, {range, css_text},
-                                    parser_context, parsed_properties,
-                                    StyleRule::RuleType::kStyle)) {
+      CSSPropertyParser::ParseValue(
+          property_id, /*allow_important_annotation=*/false, stream,
+          parser_context, parsed_properties, StyleRule::RuleType::kStyle)) {
     if (parsed_properties.size() == 1) {
       const auto result = StyleValueFactory::CssValueToStyleValueVector(
           CSSPropertyName(parsed_properties[0].Id()),
@@ -333,14 +332,23 @@ CSSStyleValueVector StyleValueFactory::FromString(
     return result;
   }
 
-  if ((property_id == CSSPropertyID::kVariable && !tokens.empty()) ||
-      CSSVariableParser::ContainsValidVariableReferences(range)) {
-    const auto variable_data = CSSVariableData::Create(
-        {range, StringView(css_text)}, false /* is_animation_tainted */,
-        false /* needs variable resolution */);
-    CSSStyleValueVector values;
-    values.push_back(CSSUnparsedValue::FromCSSVariableData(*variable_data));
-    return values;
+  stream.Restore(savepoint);
+  bool important_ignored;
+  const CSSVariableData* variable_data =
+      CSSVariableParser::ConsumeUnparsedDeclaration(
+          stream, /*allow_important_annotation=*/false,
+          /*is_animation_tainted=*/false,
+          /*must_contain_variable_reference=*/false,
+          /*restricted_value=*/false, /*comma_ends_declaration=*/false,
+          important_ignored, parser_context->GetExecutionContext());
+  if (variable_data) {
+    if ((property_id == CSSPropertyID::kVariable &&
+         variable_data->OriginalText().length() > 0) ||
+        variable_data->NeedsVariableResolution()) {
+      CSSStyleValueVector values;
+      values.push_back(CSSUnparsedValue::FromCSSVariableData(*variable_data));
+      return values;
+    }
   }
 
   return CSSStyleValueVector();

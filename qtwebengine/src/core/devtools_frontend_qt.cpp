@@ -26,7 +26,7 @@
 using namespace QtWebEngineCore;
 
 namespace {
-static const char kScreencastEnabled[] = "screencastEnabled";
+static const char kScreencastEnabled[] = "screencast-enabled";
 
 static std::string GetFrontendURL()
 {
@@ -175,7 +175,7 @@ void DevToolsFrontendQt::OpenInNewTab(const std::string &url)
                                   WindowOpenDisposition::NEW_FOREGROUND_TAB,
                                   ui::PAGE_TRANSITION_LINK, false);
 
-    m_inspectedContents->OpenURL(params);
+    m_inspectedContents->OpenURL(params, base::DoNothing());
 }
 
 void DevToolsFrontendQt::SetEyeDropperActive(bool active)

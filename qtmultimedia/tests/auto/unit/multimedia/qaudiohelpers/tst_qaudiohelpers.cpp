@@ -2,9 +2,10 @@
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QtCore/qbytearray.h>
-#include <QtTest/QtTest>
+#include <QtTest/qtest.h>
 
 #include <QtMultimedia/private/qaudiohelpers_p.h>
+#include <QtMultimedia/private/qaudiosystem_p.h>
 #include <QtMultimedia/private/qaudio_alignment_support_p.h>
 #include <QtMultimedia/private/qaudio_qspan_support_p.h>
 
@@ -22,6 +23,15 @@ private slots:
 
     void span_drop();
     void span_take();
+
+    void wordConverter();
+    void wordConverter_data();
+
+    void wordConverter_checkLoopUnroll();
+
+    void findBestNativeSampleFormat();
+
+    void validateAudioCallbacks();
 };
 
 namespace WordConverter {
@@ -210,6 +220,206 @@ void tst_QAudioHelpers::span_take()
 
     QSpan<int> emptySpan = {};
     QVERIFY(take(emptySpan, 3).empty());
+}
+
+using NativeSampleFormat = QAudioHelperInternal::NativeSampleFormat;
+
+void tst_QAudioHelpers::wordConverter()
+{
+    QFETCH(QByteArray, argument);
+    QFETCH(QByteArray, expected);
+    QFETCH(NativeSampleFormat, sourceFormat);
+    QFETCH(NativeSampleFormat, destinationFormat);
+
+    QByteArray destination(expected.size(), Qt::Initialization::Uninitialized);
+    QAudioHelperInternal::convertSampleFormat(as_bytes(QSpan{argument}),
+                                              sourceFormat,
+                                              as_writable_bytes(QSpan{destination}),
+                                              destinationFormat);
+
+    QCOMPARE_EQ(destination, expected);
+}
+
+void tst_QAudioHelpers::wordConverter_data()
+{
+    QTest::addColumn<QByteArray>("argument");
+    QTest::addColumn<NativeSampleFormat>("sourceFormat");
+    QTest::addColumn<QByteArray>("expected");
+    QTest::addColumn<NativeSampleFormat>("destinationFormat");
+
+    // uint8 source
+    QTest::newRow("uint8 (0) to int32")
+            << QByteArray("\x80", 1) << NativeSampleFormat::uint8_t
+            << QByteArray("\x00\x00\x00\x00", 4) << NativeSampleFormat::int32_t;
+
+    QTest::newRow("uint8 (-1.f) to int32")
+            << QByteArray("\x00", 1) << NativeSampleFormat::uint8_t
+            << QByteArray("\x00\x00\x00\x80", 4) << NativeSampleFormat::int32_t;
+
+    QTest::newRow("uint8 (1.f) to int32")
+            << QByteArray("\xff", 1) << NativeSampleFormat::uint8_t
+            << QByteArray("\x00\x00\x00\x7f", 4) << NativeSampleFormat::int32_t;
+
+    QTest::newRow("uint8 (0) to int16") << QByteArray("\x80", 1) << NativeSampleFormat::uint8_t
+                                        << QByteArray("\x00\x00", 2) << NativeSampleFormat::int16_t;
+
+    QTest::newRow("uint8 (-1.f) to int16")
+            << QByteArray("\x00", 1) << NativeSampleFormat::uint8_t << QByteArray("\x00\x80", 2)
+            << NativeSampleFormat::int16_t;
+
+    QTest::newRow("uint8 (1.f) to int16")
+            << QByteArray("\xff", 1) << NativeSampleFormat::uint8_t << QByteArray("\x00\x7f", 2)
+            << NativeSampleFormat::int16_t;
+
+    QTest::newRow("uint8 (0) to float")
+            << QByteArray("\x80", 1) << NativeSampleFormat::uint8_t
+            << QByteArray("\x00\x00\x00\x00", 4) << NativeSampleFormat::float32_t;
+
+    QTest::newRow("uint8 (-1.f) to float")
+            << QByteArray("\x00", 1) << NativeSampleFormat::uint8_t
+            << QByteArray("\x00\x00\x80\xbf", 4) << NativeSampleFormat::float32_t;
+
+    QTest::newRow("uint8 (1.f) to float")
+            << QByteArray("\xff", 1) << NativeSampleFormat::uint8_t
+            << QByteArray("\x00\x00\x7e\x3f", 4) << NativeSampleFormat::float32_t;
+
+    QTest::newRow("uint8 (0) to int24_t_3b")
+            << QByteArray("\x80", 1) << NativeSampleFormat::uint8_t << QByteArray("\x00\x00\x00", 3)
+            << NativeSampleFormat::int24_t_3b;
+
+    QTest::newRow("uint8 (-1.f) to int24_t_3b")
+            << QByteArray("\x00", 1) << NativeSampleFormat::uint8_t << QByteArray("\x00\x00\x80", 3)
+            << NativeSampleFormat::int24_t_3b;
+
+    QTest::newRow("uint8 (1.f) to int24_t_3b")
+            << QByteArray("\xff", 1) << NativeSampleFormat::uint8_t << QByteArray("\x00\x00\x7f", 3)
+            << NativeSampleFormat::int24_t_3b;
+
+    QTest::newRow("uint8 (0) to int24_t_4b_low")
+            << QByteArray("\x80", 1) << NativeSampleFormat::uint8_t
+            << QByteArray("\x00\x00\x00\x00", 4) << NativeSampleFormat::int24_t_4b_low;
+
+    QTest::newRow("uint8 (-1.f) to int24_t_4b_low")
+            << QByteArray("\x00", 1) << NativeSampleFormat::uint8_t
+            << QByteArray("\x00\x00\x80\x00", 4) << NativeSampleFormat::int24_t_4b_low;
+
+    QTest::newRow("uint8 (1.f) to int24_t_4b_low")
+            << QByteArray("\xff", 1) << NativeSampleFormat::uint8_t
+            << QByteArray("\x00\x00\x7f\x00", 4) << NativeSampleFormat::int24_t_4b_low;
+
+    // float source
+    QTest::newRow("float (0.f) to int16")
+            << QByteArray("\x00\x00\x00\x00", 4) << NativeSampleFormat::float32_t
+            << QByteArray("\x00\x00", 2) << NativeSampleFormat::int16_t;
+
+    QTest::newRow("float (1.f) to int16")
+            << QByteArray("\x00\x00\x7e\x3f", 4) << NativeSampleFormat::float32_t
+            << QByteArray("\xff\x7e", 2) << NativeSampleFormat::int16_t;
+
+    QTest::newRow("float (-1.f) to int16")
+            << QByteArray("\x00\x00\x80\xbf", 4) << NativeSampleFormat::float32_t
+            << QByteArray("\x00\x80", 2) << NativeSampleFormat::int16_t;
+}
+
+void tst_QAudioHelpers::wordConverter_checkLoopUnroll()
+{
+    auto floatData = QByteArray("\x00\x00\x00\x00" // 0
+                                "\x00\x00\x80\xbf" // -1
+                                "\x00\x00\x7e\x3f" // 1
+                                "\x00\x00\x00\x00" // 0
+                                "\x00\x00\x80\xbf" // -1
+                                "\x00\x00\x7e\x3f" // 1
+                                ,
+                                sizeof(float) * 6);
+
+    auto int16Result = QByteArray("\x00\x00" // 0
+                                  "\x00\x80" // -1
+                                  "\xff\x7e" // 1
+                                  "\x00\x00" // 0
+                                  "\x00\x80" // -1
+                                  "\xff\x7e" // 1
+                                  ,
+                                  sizeof(int16_t) * 6);
+
+    QByteArray destination(int16Result.size(), Qt::Initialization::Uninitialized);
+
+    QAudioHelperInternal::convertSampleFormat(
+            as_bytes(QSpan{ floatData }), NativeSampleFormat::float32_t,
+            as_writable_bytes(QSpan{ destination }), NativeSampleFormat::int16_t);
+
+    QCOMPARE_EQ(destination, int16Result);
+}
+
+void tst_QAudioHelpers::findBestNativeSampleFormat()
+{
+    using namespace QAudioHelperInternal;
+
+    auto makeFormat = [](QAudioFormat::SampleFormat sampleFormat) {
+        QAudioFormat fmt;
+        fmt.setSampleRate(44100);
+        fmt.setSampleFormat(sampleFormat);
+        fmt.setChannelCount(2);
+        return fmt;
+    };
+
+    QAudioFormat fmtInt16 = makeFormat(QAudioFormat::SampleFormat::Int16);
+    QAudioFormat fmtFloat = makeFormat(QAudioFormat::SampleFormat::Float);
+
+    static const QList<NativeSampleFormat> allFormats{
+        NativeSampleFormat::uint8_t,        NativeSampleFormat::int16_t,
+        NativeSampleFormat::int32_t,        NativeSampleFormat::int24_t_3b,
+        NativeSampleFormat::int24_t_4b_low, NativeSampleFormat::float32_t,
+    };
+    static const QList<NativeSampleFormat> all24_32_intFormats{
+        NativeSampleFormat::int32_t,
+        NativeSampleFormat::int24_t_3b,
+        NativeSampleFormat::int24_t_4b_low,
+    };
+    static const QList<NativeSampleFormat> telephoneFormats{
+        NativeSampleFormat::uint8_t,
+    };
+
+    QCOMPARE_EQ(bestNativeSampleFormat(fmtInt16, allFormats), NativeSampleFormat::int16_t);
+    QCOMPARE_EQ(bestNativeSampleFormat(fmtInt16, all24_32_intFormats),
+                NativeSampleFormat::int24_t_3b);
+    QCOMPARE_EQ(bestNativeSampleFormat(fmtInt16, telephoneFormats), NativeSampleFormat::uint8_t);
+
+    QCOMPARE_EQ(bestNativeSampleFormat(fmtFloat, allFormats), NativeSampleFormat::float32_t);
+    QCOMPARE_EQ(bestNativeSampleFormat(fmtFloat, all24_32_intFormats),
+                NativeSampleFormat::int24_t_3b);
+    QCOMPARE_EQ(bestNativeSampleFormat(fmtFloat, telephoneFormats), NativeSampleFormat::uint8_t);
+}
+
+static constexpr QAudioFormat fmtFloat = [] {
+    QAudioFormat fmt;
+    fmt.setSampleFormat(QAudioFormat::Float);
+    fmt.setSampleRate(44100);
+    return fmt;
+}();
+
+void tst_QAudioHelpers::validateAudioCallbacks()
+{
+    using namespace QtMultimediaPrivate;
+
+    std::function<void(QSpan<float>)> nullFunction;
+    QVERIFY(!validateAudioCallback(nullFunction, fmtFloat));
+
+    std::function<void(QSpan<float>)> trivialFunction = [](QSpan<float>) {
+    };
+    QVERIFY(validateAudioCallback(trivialFunction, fmtFloat));
+
+    QVERIFY(validateAudioCallback([](QSpan<float>) {
+    }, fmtFloat));
+    QVERIFY(!validateAudioCallback([](QSpan<int16_t>) {
+    }, fmtFloat));
+
+    static_assert(getSampleFormat<std::function<void(QSpan<float>)>>()
+                  == QAudioFormat::SampleFormat::Float);
+    static_assert(getSampleFormat<std::function<void(QSpan<int16_t>)>>()
+                  == QAudioFormat::SampleFormat::Int16);
+
+    static_assert(getSampleFormat<float>() == QAudioFormat::SampleFormat::Float);
+    static_assert(getSampleFormat<int16_t>() == QAudioFormat::SampleFormat::Int16);
 }
 
 QTEST_APPLESS_MAIN(tst_QAudioHelpers);

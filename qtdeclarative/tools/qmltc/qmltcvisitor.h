@@ -135,6 +135,9 @@ public:
     enum Mode { Import, Compile };
     void setMode(Mode mode) { m_mode = mode; }
 
+    bool checkCustomParser(const QQmlJSScope::ConstPtr &scope) override;
+    bool hasSeenCustomParsers() const { return m_seenCustomParsers; }
+
 protected:
     QStringList m_qmlTypeNames; // names of QML types arranged as a stack
     QHash<QString, int> m_qmlTypeNameCounts;
@@ -184,6 +187,8 @@ protected:
     QHash<QQmlJSScope::ConstPtr, int> m_typesWithId;
 
     Mode m_mode = Mode::Import;
+
+    bool m_seenCustomParsers = false;
 };
 
 QT_END_NAMESPACE

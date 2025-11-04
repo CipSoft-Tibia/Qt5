@@ -397,8 +397,8 @@ interface variables:
   main([[vk::location(N)]] float4 input: A) : B
   { ... }
 
-Macro for SPIR-V
-----------------
+Macros for SPIR-V
+-----------------
 
 If SPIR-V CodeGen is enabled and ``-spirv`` flag is used as one of the command
 line options (meaning that "generates SPIR-V code"), it defines an implicit
@@ -411,6 +411,12 @@ specific part of the HLSL code:
   [[vk::binding(X, Y), vk::counter_binding(Z)]]
   #endif
   RWStructuredBuffer<S> mySBuffer;
+
+When the ``-spirv`` flag is used, the ``-fspv-target-env`` option will
+implicitly define the macros ``__SPIRV_MAJOR_VERSION__`` and
+``__SPIRV_MINOR_VERSION__``, which will be integers representing the major and
+minor version of the SPIR-V being generated. This can be used to enable code that uses a feature
+only for environments where that feature is available.
 
 SPIR-V version and extension
 ----------------------------
@@ -1361,7 +1367,7 @@ placed in the ``Uniform`` or ``UniformConstant`` storage class.
   - Note that this modifier overrules ``static``; if both ``groupshared`` and
     ``static`` are applied to a variable, ``static`` will be ignored.
 
-- ``uinform``
+- ``uniform``
 
   - This does not affect codegen. Variables will be treated like normal global
     variables.
@@ -1518,6 +1524,10 @@ some system-value (SV) semantic strings will be translated into SPIR-V
 |                           |             | ``InstanceIndex - BaseInstance``       |                       |                             |
 |                           |             | with                                   |                       |                             |
 |                           |             | ``-fvk-support-nonzero-base-instance`` |                       |                             |
++---------------------------+-------------+----------------------------------------+-----------------------+-----------------------------+
+| SV_StartVertexLocation    | VSIn        | ``BaseVertex``                         | N/A                   | ``Shader``                  |
++---------------------------+-------------+----------------------------------------+-----------------------+-----------------------------+
+| SV_StartInstanceLocation  | VSIn        | ``BaseInstance``                       | N/A                   | ``Shader``                  |
 +---------------------------+-------------+----------------------------------------+-----------------------+-----------------------------+
 | SV_Depth                  | PSOut       | ``FragDepth``                          | N/A                   | ``Shader``                  |
 +---------------------------+-------------+----------------------------------------+-----------------------+-----------------------------+
@@ -1721,6 +1731,22 @@ attached to a RW/append/consume structured buffers to specify the binding number
 for the associated counter to ``Z``. Note that the set number of the counter is
 always the same as the main buffer.
 
+.. warning::
+   When a RW/append/consume structured buffer is accessed through a resource
+   heap, its associated counter is in its own binding, but shares the same
+   index in the binding as its associated resource.
+
+   Example:
+    - ResourceDescriptorHeap -> binding 0, set 0
+    - No other resources are used.
+
+    - RWStructuredBuffer buff = ResourceDescriptorHeap[3]
+    - buff.IncrementCounter()
+
+    - buff will be at index 3 of the array at binding 0, set 0.
+      buff.counter will be at index 3 of the array at binding 1, set 0
+
+
 Implicit binding number assignment
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -1922,6 +1948,81 @@ Example 3: (compiled with ``-fvk-bind-globals 2 1``)
 
 Note that if the developer chooses to use this command line option, it is their
 responsibility to provide proper numbers and avoid binding overlaps.
+
+ResourceDescriptorHeaps & SamplerDescriptorHeaps
+------------------------------------------------
+
+The SPIR-V backend supported SM6.6 resource heaps, using 2 extensions:
+- `SPV_EXT_descriptor_indexing`
+- `VK_EXT_mutable_descriptor_type`
+
+Each type loaded from a heap is considered to be an unbounded RuntimeArray
+bound to the descriptor set 0.
+
+Each heap uses at most 1 binding in that set. Meaning if 2 types are loaded
+from the same heap, DXC will generate 2 RuntimeArray, one for each type, and
+will bind them to the same binding/set.
+(This requires `VK_EXT_mutable_descriptor_type`).
+
+For resources with counters, like RW/Append/Consume structured buffers,
+DXC generates another RuntimeArray of counters, and binds it to a new
+binding in the set 0.
+
+This means Resource/Sampler heaps can use at most 3 bindings:
+    - 1 for all RuntimeArrays associated with the ResourceDescriptorHeap.
+    - 1 for all RuntimeArrays associated with the SamplerDescriptorHeaps.
+    - 1 for UAV counters.
+
+The index of a counter in the counters RuntimeArray matches the index of the
+associated ResourceDescriptorHeap RuntimeArray.
+
+The selection of the binding indices for those RuntimeArrays is done once all
+other resources are bound to their respective bindings/sets.
+DXC takes the first 3 unused bindings in the set 0, and distributes them in
+that order:
+    1. Resource heap.
+    2. Sampler heap.
+    3. Resouce heap counters.
+
+Bindings are lazily allocated: if only the sampler heap is used,
+1 binding will be used.
+
+.. code:: hlsl
+   Texture2D tex = ResourceDescriptorHeap[10];
+   // tex is in the descriptor set 0, binding 0.
+
+.. code:: hlsl
+   [[vk::binding(0, 0)]]
+   Texture2D Texture;
+   // Texture is using set=0, binding=0
+
+   Texture2D tex = ResourceDescriptorHeap[0];
+   // tex is in the descriptor set 0, binding 1.
+
+.. code:: hlsl
+   [[vk::binding(0, 0)]]
+   RWStructuredBuffer<int> buffer;
+   // Texture is using set=0, binding=0
+
+   RWStructuredBuffer<int> tmp = ResourceDescriptorHeap[0];
+   tmp.IncrementCounter();
+   // tmp is in the descriptor set 0, binding 1.
+   // tmp.counter is in the descriptor set 0, binding 2
+
+.. code:: hlsl
+   [[vk::binding(1, 0)]]
+   RWStructuredBuffer<int> buffer;
+   // Texture is using set=0, binding=1
+
+   RWStructuredBuffer<int> tmp = ResourceDescriptorHeap[0];
+   tmp.IncrementCounter();
+   // tmp is in the descriptor set 0, binding 0.
+   // tmp.counter is in the descriptor set 0, binding 2
+
+.. code:: hlsl
+   RWStructuredBuffer buffer = ResourceDescriptorHeap[2];
+   // buffer is in the descriptor set 0, binding 0.
+   // Counter not generated, because unused.
 
 HLSL Expressions
 ================
@@ -2789,6 +2890,30 @@ If an output unsigned integer ``status`` argument is present,
 ``OpImageSparseSampleDrefExplicitLod`` is used instead. The resulting SPIR-V
 ``Residency Code`` will be written to ``status``.
 
+``.SampleCmpBias(sampler, location, bias, comparator[, offset][, clamp][, Status])``
+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+Not available to ``Texture3D``, ``Texture2DMS``, and ``Texture2DMSArray``.
+
+The translation is similar to ``.SampleBias()``, but the
+``OpImageSampleDrefImplicitLod`` instruction is used.
+
+If an output unsigned integer ``status`` argument is present,
+``OpImageSparseSampleDrefImplicitLod`` is used instead. The resulting SPIR-V
+``Residency Code`` will be written to ``status``.
+
+``.SampleCmpGrad(sampler, location, ddx, ddy, comparator[, offset][, clamp][, Status])``
+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+Not available to ``Texture3D``, ``Texture2DMS``, and ``Texture2DMSArray``.
+
+The translation is similar to ``.SampleGrad()``, but the
+``OpImageSampleDrefExplicitLod`` instruction are used.
+
+If an output unsigned integer ``status`` argument is present,
+``OpImageSparseSampleDrefExplicitLod`` is used instead. The resulting SPIR-V
+``Residency Code`` will be written to ``status``.
+
 ``.Gather()``
 +++++++++++++
 
@@ -2882,10 +3007,11 @@ Not available to ``Texture2DMS`` and ``Texture2DMSArray``.
 
 Since texture types are represented as ``OpTypeImage``, the ``OpImageQueryLod``
 instruction is used for translation. An ``OpSampledImage`` is created based on
-the ``SamplerState`` passed to the function. The resulting sampled image and
-the coordinate passed to the function are used to invoke ``OpImageQueryLod``.
-The result of ``OpImageQueryLod`` is a ``float2``. The first element contains
-the mipmap array layer. The second element contains the unclamped level of detail.
+the ``SamplerState`` or ``SamplerComparisonState`` passed to the function. The
+resulting sampled image and the coordinate passed to the function are used to
+invoke ``OpImageQueryLod``. The result of ``OpImageQueryLod`` is a ``float2``.
+The first element contains the mipmap array layer. The second element contains
+the unclamped level of detail.
 
 ``Texture1D``
 ~~~~~~~~~~~~~
@@ -3588,7 +3714,7 @@ Intrinsics
 ``WorldRayOrigin()``            ``WorldRayOrigin{NV/KHR}``                 ✓             ✓          ✓       ✓
 ``WorldRayDirection()``         ``WorldRayDirection{NV/KHR}``              ✓             ✓          ✓       ✓
 ``RayTMin()``                   ``RayTmin{NV/KHR}``                        ✓             ✓          ✓       ✓
-``RayTCurrent()``               ``HitT{NV/KHR}``                           ✓             ✓          ✓       ✓
+``RayTCurrent()``               ``RayTmax{NV/KHR}``                        ✓             ✓          ✓       ✓
 ``RayFlags()``                  ``IncomingRayFlags{NV/KHR}``               ✓             ✓          ✓       ✓
 ``InstanceIndex()``             ``InstanceId``                             ✓             ✓          ✓
 ``GeometryIndex()``             ``RayGeometryIndexKHR``                    ✓             ✓          ✓
@@ -3826,8 +3952,8 @@ RayQuery Mapping to SPIR-V
 |``.WorldRayOrigin`                                 | ``OpRayQueryGetWorldRayOriginKHR``                                      |
 +---------------------------------------------------+-------------------------------------------------------------------------+
 
-Shader Model 6.0 Wave Intrinsics
-================================
+Shader Model 6.0+ Wave Intrinsics
+=================================
 
 
 Note that Wave intrinsics requires SPIR-V 1.3, which is supported by Vulkan 1.1.
@@ -3840,9 +3966,9 @@ loading from SPIR-V builtin variable ``SubgroupSize`` and
 ``SubgroupLocalInvocationId`` respectively, the rest are translated into SPIR-V
 group operations with ``Subgroup`` scope according to the following chart:
 
-============= ============================ =================================== ======================
+============= ============================ =================================== ==============================
 Wave Category       Wave Intrinsics               SPIR-V Opcode                SPIR-V Group Operation
-============= ============================ =================================== ======================
+============= ============================ =================================== ==============================
 Query         ``WaveIsFirstLane()``        ``OpGroupNonUniformElect``
 Vote          ``WaveActiveAnyTrue()``      ``OpGroupNonUniformAny``
 Vote          ``WaveActiveAllTrue()``      ``OpGroupNonUniformAll``
@@ -3865,7 +3991,13 @@ Quad          ``QuadReadAcrossX()``        ``OpGroupNonUniformQuadSwap``
 Quad          ``QuadReadAcrossY()``        ``OpGroupNonUniformQuadSwap``
 Quad          ``QuadReadAcrossDiagonal()`` ``OpGroupNonUniformQuadSwap``
 Quad          ``QuadReadLaneAt()``         ``OpGroupNonUniformQuadBroadcast``
-============= ============================ =================================== ======================
+N/A           ``WaveMatch()``              ``OpGroupNonUniformPartitionNV``
+Multiprefix   ``WaveMultiPrefixSum()``     ``OpGroupNonUniform*Add``           ``PartitionedExclusiveScanNV``
+Multiprefix   ``WaveMultiPrefixProduct()`` ``OpGroupNonUniform*Mul``           ``PartitionedExclusiveScanNV``
+Multiprefix   ``WaveMultiPrefixBitAnd()``  ``OpGroupNonUniformLogicalAnd``     ``PartitionedExclusiveScanNV``
+Multiprefix   ``WaveMultiPrefixBitOr()``   ``OpGroupNonUniformLogicalOr``      ``PartitionedExclusiveScanNV``
+Multiprefix   ``WaveMultiPrefixBitXor()``  ``OpGroupNonUniformLogicalXor``     ``PartitionedExclusiveScanNV``
+============= ============================ =================================== ==============================
 
 The Implicit ``vk`` Namespace
 =============================

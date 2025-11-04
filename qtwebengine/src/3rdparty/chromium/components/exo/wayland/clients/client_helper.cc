@@ -56,6 +56,7 @@ DEFAULT_DELETER(wp_presentation, wp_presentation_destroy)
 DEFAULT_DELETER(struct wp_presentation_feedback,
                 wp_presentation_feedback_destroy)
 DEFAULT_DELETER(zaura_output_manager, zaura_output_manager_destroy)
+DEFAULT_DELETER(zaura_output_manager_v2, zaura_output_manager_v2_destroy)
 DEFAULT_DELETER(zaura_shell, zaura_shell_destroy)
 DEFAULT_DELETER(zaura_surface, zaura_surface_destroy)
 DEFAULT_DELETER(zaura_toplevel, zaura_toplevel_destroy)
@@ -171,6 +172,42 @@ VkDevice DeleteVkDeviceTraits::InvalidValue() {
 }
 void DeleteVkDeviceTraits::Free(VkDevice device) {
   vkDestroyDevice(device, nullptr);
+}
+
+VkPipeline DeleteVkPipelineTraits::InvalidValue() {
+  return VK_NULL_HANDLE;
+}
+void DeleteVkPipelineTraits::Free(VkPipeline pipeline) {
+  vkDestroyPipeline(vk_device, pipeline, nullptr);
+}
+
+VkPipelineLayout DeleteVkPipelineLayoutTraits::InvalidValue() {
+  return VK_NULL_HANDLE;
+}
+void DeleteVkPipelineLayoutTraits::Free(VkPipelineLayout pipeline_layout) {
+  vkDestroyPipelineLayout(vk_device, pipeline_layout, nullptr);
+}
+
+VkSampler DeleteVkSamplerTraits::InvalidValue() {
+  return VK_NULL_HANDLE;
+}
+void DeleteVkSamplerTraits::Free(VkSampler sampler) {
+  vkDestroySampler(vk_device, sampler, nullptr);
+}
+
+VkDescriptorSetLayout DeleteVkDescriptorSetLayoutTraits::InvalidValue() {
+  return VK_NULL_HANDLE;
+}
+void DeleteVkDescriptorSetLayoutTraits::Free(
+    VkDescriptorSetLayout descriptor_set_layout) {
+  vkDestroyDescriptorSetLayout(vk_device, descriptor_set_layout, nullptr);
+}
+
+VkDescriptorPool DeleteVkDescriptorPoolTraits::InvalidValue() {
+  return VK_NULL_HANDLE;
+}
+void DeleteVkDescriptorPoolTraits::Free(VkDescriptorPool descriptor_pool) {
+  vkDestroyDescriptorPool(vk_device, descriptor_pool, nullptr);
 }
 
 VkCommandPool DeleteVkCommandPoolTraits::InvalidValue() {

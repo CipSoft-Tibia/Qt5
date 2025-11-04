@@ -127,6 +127,16 @@ enum DisableReason {
   kRestart,
   // Disabled because the upstream network doesn't have Internet connectivity.
   kUpstreamNoInternet,
+  // Disabled because the downstream link disconnected.
+  kDownstreamLinkDisconnect,
+  // Disabled because the downstream network disconnected.
+  kDownstreamNetworkDisconnect,
+  // Failed to start tethering within given time.
+  kStartTimeout,
+  // Upstream network not available.
+  kUpstreamNotAvailable,
+  // Received an unknown error from shill.
+  kUnknownError,
 };
 
 // Information about Hotspot feature including current state, active client

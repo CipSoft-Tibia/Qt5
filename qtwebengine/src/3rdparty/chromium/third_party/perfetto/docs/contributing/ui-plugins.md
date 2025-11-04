@@ -36,21 +36,29 @@ Notes on naming:
 - Commands should have ids with the pattern `example.com#DoSomething`
 - Command's ids should be prefixed with the id of the plugin which
   provides them.
-- Commands names should have the form "Verb something something".
-  Good: "Pin janky frame timeline tracks"
-  Bad: "Tracks are Displayed if Janky"
+- Command names should have the form "Verb something something", and should be
+  in normal sentence case. I.e. don't capitalize the first letter of each word.
+  - Good: "Pin janky frame timeline tracks"
+  - Bad: "Tracks are Displayed if Janky"
 
 ### Start the dev server
 ```sh
 ./ui/run-dev-server
 ```
-Now navigate to [](http://localhost:10000/settings)
+Now navigate to [localhost:10000](http://localhost:10000/)
+
+### Enable your plugin
+- Navigate to the plugins page: [localhost:10000/#!/plugins](http://localhost:10000/#!/plugins).
+- Ctrl-F for your plugin name and enable it.
+
+Later you can request for your plugin to be enabled by default.
+Follow the [default plugins](#default-plugins) section for this.
 
 ### Upload your plugin for review
 - Update `ui/src/plugins/<your-plugin-name>/OWNERS` to include your email.
 - Follow the [Contributing](./getting-started#contributing)
   instructions to upload your CL to the codereview tool.
-- Once uploaded add `hjd@google.com` as a reviewer for your CL.
+- Once uploaded add `stevegolton@google.com` as a reviewer for your CL.
 
 ## Plugin extension points
 Plugins can extend a handful of specific places in the UI. The sections
@@ -74,7 +82,7 @@ while a trace is loaded, whereas commands registered in `onActivate()` are
 available all the time the plugin is active.
 
 ```typescript
-class MyPlugin implements Plugin {
+class MyPlugin implements PerfettoPlugin {
   onActivate(ctx: PluginContext): void {
     ctx.registerCommand(
        {
@@ -112,7 +120,7 @@ is unloaded.
 
 Examples:
 - [dev.perfetto.ExampleSimpleCommand](https://cs.android.com/android/platform/superproject/main/+/main:external/perfetto/ui/src/plugins/dev.perfetto.ExampleSimpleCommand/index.ts).
-- [dev.perfetto.CoreCommands](https://cs.android.com/android/platform/superproject/main/+/main:external/perfetto/ui/src/plugins/dev.perfetto.CoreCommands/index.ts).
+- [perfetto.CoreCommands](https://cs.android.com/android/platform/superproject/main/+/main:external/perfetto/ui/src/core_plugins/commands/index.ts).
 - [dev.perfetto.ExampleState](https://cs.android.com/android/platform/superproject/main/+/main:external/perfetto/ui/src/plugins/dev.perfetto.ExampleState/index.ts).
 
 #### Hotkeys
@@ -174,7 +182,7 @@ class MyTrack extends NamedSliceTrack {
       depth,
       name
     from slice
-    where name like 'a%';
+    where name like 'a%'
     `;
   }
 }
@@ -185,12 +193,12 @@ Plugins may register tracks with Perfetto using
 `PluginContextTrace.registerTrack()`, usually in their `onTraceLoad` function.
 
 ```ts
-class MyPlugin implements Plugin {
+class MyPlugin implements PerfettoPlugin {
   onTraceLoad(ctx: PluginContextTrace): void {
     ctx.registerTrack({
       uri: 'dev.MyPlugin#ExampleTrack',
       displayName: 'My Example Track',
-      track: ({trackKey}) => {
+      trackFactory: ({trackKey}) => {
         return new MyTrack({engine: ctx.engine, trackKey});
       },
     });
@@ -208,7 +216,7 @@ Thus it only makes sense to add default tracks in your plugin's `onTraceLoad`
 function, as adding a default track later will have no effect.
 
 ```ts
-class MyPlugin implements Plugin {
+class MyPlugin implements PerfettoPlugin {
   onTraceLoad(ctx: PluginContextTrace): void {
     ctx.registerTrack({
       // ... as above ...
@@ -228,12 +236,12 @@ shortcut for doing both in one go: `PluginContextTrace.registerStaticTrack()`,
 which saves having to repeat the URI and display name.
 
 ```ts
-class MyPlugin implements Plugin {
+class MyPlugin implements PerfettoPlugin {
   onTraceLoad(ctx: PluginContextTrace): void {
     ctx.registerStaticTrack({
       uri: 'dev.MyPlugin#ExampleTrack',
       displayName: 'My Example Track',
-      track: ({trackKey}) => {
+      trackFactory: ({trackKey}) => {
         return new MyTrack({engine: ctx.engine, trackKey});
       },
       sortKey: PrimaryTrackSortKey.COUNTER_TRACK,
@@ -248,7 +256,7 @@ as a result of a command or on some other user action such as a button click.
 We can do this using `PluginContext.timeline.addTrack()`.
 
 ```ts
-class MyPlugin implements Plugin {
+class MyPlugin implements PerfettoPlugin {
   onTraceLoad(ctx: PluginContextTrace): void {
     ctx.registerTrack({
       // ... as above ...
@@ -270,7 +278,181 @@ class MyPlugin implements Plugin {
 ```
 
 ### Tabs
-TBD
+Tabs are a useful way to display contextual information about the trace, the
+current selection, or to show the results of an operation.
+
+To register a tab from a plugin, use the `PluginContextTrace.registerTab`
+method.
+
+```ts
+import m from 'mithril';
+import {Tab, Plugin, PluginContext, PluginContextTrace} from '../../public';
+
+class MyTab implements Tab {
+  render(): m.Children {
+    return m('div', 'Hello from my tab');
+  }
+
+  getTitle(): string {
+    return 'My Tab';
+  }
+}
+
+class MyPlugin implements PerfettoPlugin {
+  onActivate(_: PluginContext): void {}
+  async onTraceLoad(ctx: PluginContextTrace): Promise<void> {
+    ctx.registerTab({
+      uri: 'dev.MyPlugin#MyTab',
+      content: new MyTab(),
+    });
+  }
+}
+```
+
+You'll need to pass in a tab-like object, something that implements the `Tab`
+interface. Tabs only need to define their title and a render function which
+specifies how to render the tab.
+
+Registered tabs don't appear immediately - we need to show it first. All
+registered tabs are displayed in the tab dropdown menu, and can be shown or
+hidden by clicking on the entries in the drop down menu.
+
+Tabs can also be hidden by clicking the little x in the top right of their
+handle.
+
+Alternatively, tabs may be shown or hidden programmatically using the tabs API.
+
+```ts
+ctx.tabs.showTab('dev.MyPlugin#MyTab');
+ctx.tabs.hideTab('dev.MyPlugin#MyTab');
+```
+
+Tabs have the following properties:
+- Each tab has a unique URI.
+- Only once instance of the tab may be open at a time. Calling showTab multiple
+  times with the same URI will only activate the tab, not add a new instance of
+  the tab to the tab bar.
+
+#### Ephemeral Tabs
+
+By default, tabs are registered as 'permanent' tabs. These tabs have the
+following additional properties:
+- They appear in the tab dropdown.
+- They remain once closed. The plugin controls the lifetime of the tab object.
+
+Ephemeral tabs, by contrast, have the following properties:
+- They do not appear in the tab dropdown.
+- When they are hidden, they will be automatically unregistered.
+
+Ephemeral tabs can be registered by setting the `isEphemeral` flag when
+registering the tab.
+
+```ts
+ctx.registerTab({
+  isEphemeral: true,
+  uri: 'dev.MyPlugin#MyTab',
+  content: new MyEphemeralTab(),
+});
+```
+
+Ephemeral tabs are usually added as a result of some user action, such as
+running a command. Thus, it's common pattern to register a tab and show the tab
+simultaneously.
+
+Motivating example:
+```ts
+import m from 'mithril';
+import {uuidv4} from '../../base/uuid';
+import {
+  Plugin,
+  PluginContext,
+  PluginContextTrace,
+  PluginDescriptor,
+  Tab,
+} from '../../public';
+
+class MyNameTab implements Tab {
+  constructor(private name: string) {}
+  render(): m.Children {
+    return m('h1', `Hello, ${this.name}!`);
+  }
+  getTitle(): string {
+    return 'My Name Tab';
+  }
+}
+
+class MyPlugin implements PerfettoPlugin {
+  onActivate(_: PluginContext): void {}
+  async onTraceLoad(ctx: PluginContextTrace): Promise<void> {
+    ctx.registerCommand({
+      id: 'dev.MyPlugin#AddNewEphemeralTab',
+      name: 'Add new ephemeral tab',
+      callback: () => handleCommand(ctx),
+    });
+  }
+}
+
+function handleCommand(ctx: PluginContextTrace): void {
+  const name = prompt('What is your name');
+  if (name) {
+    const uri = 'dev.MyPlugin#MyName' + uuidv4();
+    // This makes the tab available to perfetto
+    ctx.registerTab({
+      isEphemeral: true,
+      uri,
+      content: new MyNameTab(name),
+    });
+
+    // This opens the tab in the tab bar
+    ctx.tabs.showTab(uri);
+  }
+}
+
+export const plugin: PluginDescriptor = {
+  pluginId: 'dev.MyPlugin',
+  plugin: MyPlugin,
+};
+```
+
+### Details Panels & The Current Selection Tab
+The "Current Selection" tab is a special tab that cannot be hidden. It remains
+permanently in the left-most tab position in the tab bar. Its purpose is to
+display details about the current selection.
+
+Plugins may register interest in providing content for this tab using the
+`PluginContentTrace.registerDetailsPanel()` method.
+
+For example:
+
+```ts
+class MyPlugin implements PerfettoPlugin {
+  onActivate(_: PluginContext): void {}
+  async onTraceLoad(ctx: PluginContextTrace): Promise<void> {
+    ctx.registerDetailsPanel({
+      render(selection: Selection) {
+        if (canHandleSelection(selection)) {
+          return m('div', 'Details for selection');
+        } else {
+          return undefined;
+        }
+      }
+    });
+  }
+}
+```
+
+This function takes an object that implements the `DetailsPanel` interface,
+which only requires a render function to be implemented that takes the current
+selection object and returns either mithril vnodes or a falsy value.
+
+Every render cycle, render is called on all registered details panels, and the
+first registered panel to return a truthy value will be used.
+
+Currently the winning details panel takes complete control over this tab. Also,
+the order that these panels are called in is not defined, so if we have multiple
+details panels competing for the same selection, the one that actually shows up
+is undefined. This is a limitation of the current approach and will be updated
+to a more democratic contribution model in the future.
 
 ### Metric Visualisations
 TBD
@@ -287,7 +469,7 @@ mechanism.
 
 Persistent plugin state works using a `Store<T>` where `T` is some JSON
 serializable object.
-`Store` is implemented [here](https://cs.android.com/android/platform/superproject/main/+/main:external/perfetto/ui/src/frontend/store.ts).
+`Store` is implemented [here](https://cs.android.com/android/platform/superproject/main/+/main:external/perfetto/ui/src/base/store.ts).
 `Store` allows for reading and writing `T`.
 Reading:
 ```typescript
@@ -330,7 +512,7 @@ interface MyState {
 To access permalink state, call `mountStore()` on your `PluginContextTrace`
 object, passing in a migration function.
 ```typescript
-class MyPlugin implements Plugin {
+class MyPlugin implements PerfettoPlugin {
   async onTraceLoad(ctx: PluginContextTrace): Promise<void> {
     const store = ctx.mountStore(migrate);
   }
@@ -399,11 +581,12 @@ Examples:
 - [dev.perfetto.ExampleState](https://cs.android.com/android/platform/superproject/main/+/main:external/perfetto/ui/src/plugins/dev.perfetto.ExampleState/index.ts).
 
 ## Guide to the plugin API
-The plugin interfaces are defined in [ui/src/public/index.ts](https://cs.android.com/android/platform/superproject/main/+/main:external/perfetto/ui/src/public/index.ts).
-
+The plugin interfaces are defined in [ui/src/public/](https://cs.android.com/android/platform/superproject/main/+/main:external/perfetto/ui/src/public).
 
 ## Default plugins
-TBD
+Some plugins are enabled by default.
+These plugins are held to a higher quality than non-default plugins since changes to those plugins effect all users of the UI.
+The list of default plugins is specified at [ui/src/core/default_plugins.ts](https://cs.android.com/android/platform/superproject/main/+/main:external/perfetto/ui/src/common/default_plugins.ts).
 
 ## Misc notes
 - Plugins must be licensed under

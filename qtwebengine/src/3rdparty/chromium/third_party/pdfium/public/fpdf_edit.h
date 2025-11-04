@@ -197,6 +197,8 @@ FPDFPage_InsertObject(FPDF_PAGE page, FPDF_PAGEOBJECT page_object);
 //
 // Ownership is transferred to the caller. Call FPDFPageObj_Destroy() to free
 // it.
+// Note that when removing a |page_object| of type FPDF_PAGEOBJ_TEXT, all
+// FPDF_TEXTPAGE handles for |page| are no longer valid.
 FPDF_EXPORT FPDF_BOOL FPDF_CALLCONV
 FPDFPage_RemoveObject(FPDF_PAGE page, FPDF_PAGEOBJECT page_object);
 
@@ -282,6 +284,21 @@ FPDFPageObj_Transform(FPDF_PAGEOBJECT page_object,
                       double f);
 
 // Experimental API.
+// Transform |page_object| by the given matrix.
+//
+//   page_object - handle to a page object.
+//   matrix      - the transform matrix.
+//
+// Returns TRUE on success.
+//
+// This can be used to scale, rotate, shear and translate the |page_object|.
+// It is an improved version of FPDFPageObj_Transform() that does not do
+// unnecessary double to float conversions, and only uses 1 parameter for the
+// matrix. It also returns whether the operation succeeded or not.
+FPDF_EXPORT FPDF_BOOL FPDF_CALLCONV
+FPDFPageObj_TransformF(FPDF_PAGEOBJECT page_object, const FS_MATRIX* matrix);
+
+// Experimental API.
 // Get the transform matrix of a page object.
 //
 //   page_object - handle to a page object.
@@ -291,6 +308,11 @@ FPDFPageObj_Transform(FPDF_PAGEOBJECT page_object,
 //   |a c e|
 //   |b d f|
 // and used to scale, rotate, shear and translate the page object.
+//
+// For page objects outside form objects, the matrix values are relative to the
+// page that contains it.
+// For page objects inside form objects, the matrix values are relative to the
+// form that contains it.
 //
 // Returns TRUE on success.
 FPDF_EXPORT FPDF_BOOL FPDF_CALLCONV
@@ -340,6 +362,15 @@ FPDF_EXPORT void FPDF_CALLCONV FPDFPage_TransformAnnots(FPDF_PAGE page,
 // Returns a handle to a new image object.
 FPDF_EXPORT FPDF_PAGEOBJECT FPDF_CALLCONV
 FPDFPageObj_NewImageObj(FPDF_DOCUMENT document);
+
+// Experimental API.
+// Get the marked content ID for the object.
+//
+//   page_object - handle to a page object.
+//
+// Returns the page object's marked content ID, or -1 on error.
+FPDF_EXPORT int FPDF_CALLCONV
+FPDFPageObj_GetMarkedContentID(FPDF_PAGEOBJECT page_object);
 
 // Experimental API.
 // Get number of content marks in |page_object|.
@@ -1183,16 +1214,16 @@ FPDFText_SetCharcodes(FPDF_PAGEOBJECT text_object,
                       size_t count);
 
 // Returns a font object loaded from a stream of data. The font is loaded
-// into the document.
+// into the document. Various font data structures, such as the ToUnicode data,
+// are auto-generated based on the inputs.
 //
-// document   - handle to the document.
-// data       - the stream of data, which will be copied by the font object.
-// size       - size of the stream, in bytes.
-// font_type  - FPDF_FONT_TYPE1 or FPDF_FONT_TRUETYPE depending on the font
-// type.
-// cid        - a boolean specifying if the font is a CID font or not.
+// document  - handle to the document.
+// data      - the stream of font data, which will be copied by the font object.
+// size      - the size of the font data, in bytes.
+// font_type - FPDF_FONT_TYPE1 or FPDF_FONT_TRUETYPE depending on the font type.
+// cid       - a boolean specifying if the font is a CID font or not.
 //
-// The loaded font can be closed using FPDFFont_Close.
+// The loaded font can be closed using FPDFFont_Close().
 //
 // Returns NULL on failure
 FPDF_EXPORT FPDF_FONT FPDF_CALLCONV FPDFText_LoadFont(FPDF_DOCUMENT document,
@@ -1209,11 +1240,35 @@ FPDF_EXPORT FPDF_FONT FPDF_CALLCONV FPDFText_LoadFont(FPDF_DOCUMENT document,
 // document   - handle to the document.
 // font       - string containing the font name, without spaces.
 //
-// The loaded font can be closed using FPDFFont_Close.
+// The loaded font can be closed using FPDFFont_Close().
 //
 // Returns NULL on failure.
 FPDF_EXPORT FPDF_FONT FPDF_CALLCONV
 FPDFText_LoadStandardFont(FPDF_DOCUMENT document, FPDF_BYTESTRING font);
+
+// Experimental API.
+// Returns a font object loaded from a stream of data for a type 2 CID font. The
+// font is loaded into the document. Unlike FPDFText_LoadFont(), the ToUnicode
+// data and the CIDToGIDMap data are caller provided, instead of auto-generated.
+//
+// document                 - handle to the document.
+// font_data                - the stream of font data, which will be copied by
+//                            the font object.
+// font_data_size           - the size of the font data, in bytes.
+// to_unicode_cmap          - the ToUnicode data.
+// cid_to_gid_map_data      - the stream of CIDToGIDMap data.
+// cid_to_gid_map_data_size - the size of the CIDToGIDMap data, in bytes.
+//
+// The loaded font can be closed using FPDFFont_Close().
+//
+// Returns NULL on failure.
+FPDF_EXPORT FPDF_FONT FPDF_CALLCONV
+FPDFText_LoadCidType2Font(FPDF_DOCUMENT document,
+                          const uint8_t* font_data,
+                          uint32_t font_data_size,
+                          FPDF_BYTESTRING to_unicode_cmap,
+                          const uint8_t* cid_to_gid_map_data,
+                          uint32_t cid_to_gid_map_data_size);
 
 // Get the font size of a text object.
 //
@@ -1310,20 +1365,39 @@ FPDFTextObj_GetRenderedBitmap(FPDF_DOCUMENT document,
 FPDF_EXPORT FPDF_FONT FPDF_CALLCONV FPDFTextObj_GetFont(FPDF_PAGEOBJECT text);
 
 // Experimental API.
-// Get the font name of a font.
+// Get the base name of a font.
+//
+// font   - the handle to the font object.
+// buffer - the address of a buffer that receives the base font name.
+// length - the size, in bytes, of |buffer|.
+//
+// Returns the number of bytes in the base name (including the trailing NUL
+// character) on success, 0 on error. The base name is typically the font's
+// PostScript name. See descriptions of "BaseFont" in ISO 32000-1:2008 spec.
+//
+// Regardless of the platform, the |buffer| is always in UTF-8 encoding.
+// If |length| is less than the returned length, or |buffer| is NULL, |buffer|
+// will not be modified.
+FPDF_EXPORT size_t FPDF_CALLCONV FPDFFont_GetBaseFontName(FPDF_FONT font,
+                                                          char* buffer,
+                                                          size_t length);
+
+// Experimental API.
+// Get the family name of a font.
 //
 // font   - the handle to the font object.
 // buffer - the address of a buffer that receives the font name.
 // length - the size, in bytes, of |buffer|.
 //
-// Returns the number of bytes in the font name (including the trailing NUL
+// Returns the number of bytes in the family name (including the trailing NUL
 // character) on success, 0 on error.
 //
 // Regardless of the platform, the |buffer| is always in UTF-8 encoding.
 // If |length| is less than the returned length, or |buffer| is NULL, |buffer|
 // will not be modified.
-FPDF_EXPORT unsigned long FPDF_CALLCONV
-FPDFFont_GetFontName(FPDF_FONT font, char* buffer, unsigned long length);
+FPDF_EXPORT size_t FPDF_CALLCONV FPDFFont_GetFamilyName(FPDF_FONT font,
+                                                        char* buffer,
+                                                        size_t length);
 
 // Experimental API.
 // Get the decoded data from the |font| object.

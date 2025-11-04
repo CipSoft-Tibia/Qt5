@@ -1,5 +1,6 @@
 // Copyright (C) 2023 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qhttpheaders.h"
 
@@ -18,7 +19,7 @@
 
 QT_BEGIN_NAMESPACE
 
-Q_LOGGING_CATEGORY(lcQHttpHeaders, "qt.network.http.headers");
+Q_STATIC_LOGGING_CATEGORY(lcQHttpHeaders, "qt.network.http.headers");
 
 /*!
     \class QHttpHeaders
@@ -483,9 +484,11 @@ static constexpr quint8 orderedHeaderNameIndexes[] = {
     171, // x-frame-options
 };
 static_assert(std::size(orderedHeaderNameIndexes) == size_t(headerNames.count()));
+#if !defined(Q_CC_GNU_ONLY) || Q_CC_GNU_ONLY >= 1000
 static_assert(q20::is_sorted(std::begin(orderedHeaderNameIndexes),
                              std::end(orderedHeaderNameIndexes),
                              ByIndirectHeaderName{}));
+#endif
 
 /*!
     \enum QHttpHeaders::WellKnownHeader
@@ -789,7 +792,7 @@ public:
     // we can define common methods which 'detach()' the private itself.
     using Self = QExplicitlySharedDataPointer<QHttpHeadersPrivate>;
     static void removeAll(Self &d, const HeaderName &name);
-    static void replaceOrAppend(Self &d, const HeaderName &name, const QByteArray &value);
+    static void replaceOrAppend(Self &d, const HeaderName &name, QByteArray value);
 
     void combinedValue(const HeaderName &name, QByteArray &result) const;
     void values(const HeaderName &name, QList<QByteArray> &result) const;
@@ -802,7 +805,7 @@ QT_DEFINE_QESDP_SPECIALIZATION_DTOR(QHttpHeadersPrivate)
 template <> void QExplicitlySharedDataPointer<QHttpHeadersPrivate>::detach()
 {
     if (!d) {
-        d = new QHttpHeadersPrivate();
+        d.reset(new QHttpHeadersPrivate());
         d->ref.ref();
     } else if (d->ref.loadRelaxed() != 1) {
         detach_helper();
@@ -853,20 +856,20 @@ QByteArrayView QHttpHeadersPrivate::value(const HeaderName &name, QByteArrayView
     return defaultValue;
 }
 
-void QHttpHeadersPrivate::replaceOrAppend(Self &d, const HeaderName &name, const QByteArray &value)
+void QHttpHeadersPrivate::replaceOrAppend(Self &d, const HeaderName &name, QByteArray value)
 {
     d.detach();
     auto it = std::find_if(d->headers.begin(), d->headers.end(), headerNameMatches(name));
     if (it != d->headers.end()) {
         // Found something to replace => replace, and then rearrange any remaining
         // matches to the end and erase them
-        it->value = value;
+        it->value = std::move(value);
         d->headers.erase(
                 std::remove_if(it + 1, d->headers.end(), headerNameMatches(name)),
                 d->headers.end());
     } else {
         // Found nothing to replace => append
-        d->headers.append(Header{name, value});
+        d->headers.append(Header{name, std::move(value)});
     }
 }
 

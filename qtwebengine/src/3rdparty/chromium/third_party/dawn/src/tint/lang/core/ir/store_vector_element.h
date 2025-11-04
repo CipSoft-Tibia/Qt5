@@ -47,36 +47,45 @@ class StoreVectorElement final : public Castable<StoreVectorElement, OperandInst
     /// The offset in Operands() for the `value` value
     static constexpr size_t kValueOperandOffset = 2;
 
+    /// The fixed number of results returned by this instruction
+    static constexpr size_t kNumResults = 0;
+
+    /// The fixed number of operands used by this instruction
+    static constexpr size_t kNumOperands = 3;
+
     /// Constructor (no operands)
-    StoreVectorElement();
+    /// @param id the instruction id
+    explicit StoreVectorElement(Id id);
 
     /// Constructor
+    /// @param id the instruction id
     /// @param to the vector pointer
     /// @param index the new vector element index
     /// @param value the new vector element value
-    StoreVectorElement(ir::Value* to, ir::Value* index, ir::Value* value);
+    StoreVectorElement(Id id, ir::Value* to, ir::Value* index, ir::Value* value);
+
     ~StoreVectorElement() override;
 
     /// @copydoc Instruction::Clone()
     StoreVectorElement* Clone(CloneContext& ctx) override;
 
     /// @returns the vector pointer value
-    ir::Value* To() { return operands_[kToOperandOffset]; }
+    ir::Value* To() { return Operand(kToOperandOffset); }
 
     /// @returns the vector pointer value
-    const ir::Value* To() const { return operands_[kToOperandOffset]; }
+    const ir::Value* To() const { return Operand(kToOperandOffset); }
 
     /// @returns the new vector element index
-    ir::Value* Index() { return operands_[kIndexOperandOffset]; }
+    ir::Value* Index() { return Operand(kIndexOperandOffset); }
 
     /// @returns the new vector element index
-    const ir::Value* Index() const { return operands_[kIndexOperandOffset]; }
+    const ir::Value* Index() const { return Operand(kIndexOperandOffset); }
 
     /// @returns the new vector element value
-    ir::Value* Value() { return operands_[kValueOperandOffset]; }
+    ir::Value* Value() { return Operand(kValueOperandOffset); }
 
     /// @returns the new vector element value
-    const ir::Value* Value() const { return operands_[kValueOperandOffset]; }
+    const ir::Value* Value() const { return Operand(kValueOperandOffset); }
 
     /// @returns the friendly name for the instruction
     std::string FriendlyName() const override { return "store_vector_element"; }

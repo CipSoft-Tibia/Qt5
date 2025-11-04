@@ -7,8 +7,6 @@
 class MyPluginType : public QObject
 {
     Q_OBJECT
-public:
-    MyPluginType(QObject *parent=nullptr) : QObject(parent) {}
 };
 
 
@@ -18,8 +16,6 @@ class MyPlugin : public QQmlExtensionPlugin
     Q_PLUGIN_METADATA(IID QQmlExtensionInterface_iid)
 
 public:
-    MyPlugin() {}
-
     void registerTypes(const char *uri) override
     {
         // Because the module is protected, this plugin should never be loaded

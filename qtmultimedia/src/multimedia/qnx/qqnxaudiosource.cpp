@@ -9,21 +9,18 @@
 
 QT_BEGIN_NAMESPACE
 
-QQnxAudioSource::QQnxAudioSource(const QAudioDevice &deviceInfo, QObject *parent)
-    : QPlatformAudioSource(parent)
-    , m_audioSource(0)
-    , m_pcmNotifier(0)
-    , m_error(QAudio::NoError)
-    , m_state(QAudio::StoppedState)
-    , m_bytesRead(0)
-    , m_elapsedTimeOffset(0)
-    , m_totalTimeValue(0)
-    , m_volume(qreal(1.0f))
-    , m_bytesAvailable(0)
-    , m_bufferSize(0)
-    , m_periodSize(0)
-    , m_deviceInfo(deviceInfo)
-    , m_pullMode(true)
+QQnxAudioSource::QQnxAudioSource(QAudioDevice device, const QAudioFormat &format, QObject *parent)
+    : QPlatformAudioSource(std::move(device), format, parent),
+      m_audioSource(0),
+      m_pcmNotifier(0),
+      m_state(QAudio::StoppedState),
+      m_bytesRead(0),
+      m_elapsedTimeOffset(0),
+      m_totalTimeValue(0),
+      m_bytesAvailable(0),
+      m_bufferSize(0),
+      m_periodSize(0),
+      m_pullMode(true)
 {
 }
 
@@ -137,35 +134,9 @@ qint64 QQnxAudioSource::processedUSecs() const
     return qint64(1000000) * m_format.framesForBytes(m_bytesRead) / m_format.sampleRate();
 }
 
-QAudio::Error QQnxAudioSource::error() const
-{
-    return m_error;
-}
-
 QAudio::State QQnxAudioSource::state() const
 {
     return m_state;
-}
-
-void QQnxAudioSource::setFormat(const QAudioFormat &format)
-{
-    if (m_state == QAudio::StoppedState)
-        m_format = format;
-}
-
-QAudioFormat QQnxAudioSource::format() const
-{
-    return m_format;
-}
-
-void QQnxAudioSource::setVolume(qreal volume)
-{
-    m_volume = qBound(qreal(0.0), volume, qreal(1.0));
-}
-
-qreal QQnxAudioSource::volume() const
-{
-    return m_volume;
 }
 
 void QQnxAudioSource::userFeed()
@@ -199,16 +170,7 @@ bool QQnxAudioSource::deviceReady()
 
 bool QQnxAudioSource::open()
 {
-    if (!m_format.isValid() || m_format.sampleRate() <= 0) {
-        if (!m_format.isValid())
-            qWarning("QQnxAudioSource: open error, invalid format.");
-        else
-            qWarning("QQnxAudioSource: open error, invalid sample rate (%d).", m_format.sampleRate());
-
-        return false;
-    }
-
-    m_pcmHandle = QnxAudioUtils::openPcmDevice(m_deviceInfo.id(), QAudioDevice::Input);
+    m_pcmHandle = QnxAudioUtils::openPcmDevice(m_audioDevice.id(), QAudioDevice::Input);
 
     if (!m_pcmHandle)
         return false;
@@ -312,8 +274,9 @@ qint64 QQnxAudioSource::read(char *data, qint64 len)
         changeState(QAudio::ActiveState, QAudio::NoError);
     }
 
-    if (m_volume < 1.0f)
-        QAudioHelperInternal::qMultiplySamples(m_volume, m_format, tempBuffer.data(), tempBuffer.data(), actualRead);
+    if (volume() < 1.0f)
+        QAudioHelperInternal::qMultiplySamples(volume(), m_format, tempBuffer.data(),
+                                               tempBuffer.data(), actualRead);
 
     m_bytesRead += actualRead;
 
@@ -335,10 +298,7 @@ void QQnxAudioSource::changeState(QAudio::State state, QAudio::Error error)
         emit stateChanged(state);
     }
 
-    if (m_error != error) {
-        m_error = error;
-        emit errorChanged(error);
-    }
+    setError(error);
 }
 
 InputPrivate::InputPrivate(QQnxAudioSource *audio)

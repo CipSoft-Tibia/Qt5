@@ -47,7 +47,7 @@ protected:
     void visitNode(const QSvgNode *) override;
     bool visitStructureNodeStart(const QSvgStructureNode *node) override;
     void visitStructureNodeEnd(const QSvgStructureNode *) override;
-    void visitAnimationNode(const QSvgAnimation *node) override;
+    void visitAnimateNode(const QSvgAnimateNode *node) override;
     void visitEllipseNode(const QSvgEllipse *node) override;
     void visitImageNode(const QSvgImage *node) override;
     void visitLineNode(const QSvgLine *node) override;
@@ -93,7 +93,7 @@ void SvgDebugVisitor::visitStructureNodeEnd(const QSvgStructureNode *node)
     debug << indent() << "END node" << node->nodeId() << Qt::endl;
 }
 
-void SvgDebugVisitor::visitAnimationNode(const QSvgAnimation *node)
+void SvgDebugVisitor::visitAnimateNode(const QSvgAnimateNode *node)
 {
     handleBaseNode(node);
     debug << Qt::endl;

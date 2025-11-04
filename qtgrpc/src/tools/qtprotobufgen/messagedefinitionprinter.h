@@ -39,6 +39,7 @@ private:
     void printInitializationList();
     void printCopyFunctionality();
     void printMoveSemantic();
+    void printQVariantOperator();
     void printComparisonOperators();
     void printGetters();
     void printDestructor();

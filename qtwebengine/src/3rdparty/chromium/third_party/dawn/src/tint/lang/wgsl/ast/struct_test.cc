@@ -26,7 +26,6 @@
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "src/tint/lang/wgsl/ast/struct.h"
-#include "gtest/gtest-spi.h"
 #include "src/tint/lang/wgsl/ast/alias.h"
 #include "src/tint/lang/wgsl/ast/helper_test.h"
 #include "src/tint/lang/wgsl/ast/transform/add_block_attribute.h"
@@ -35,6 +34,7 @@ namespace tint::ast {
 namespace {
 
 using AstStructTest = TestHelper;
+using AstStructDeathTest = AstStructTest;
 using BlockAttribute = transform::AddBlockAttribute::BlockAttribute;
 
 TEST_F(AstStructTest, Creation) {
@@ -81,8 +81,8 @@ TEST_F(AstStructTest, CreationWithSourceAndAttributes) {
     EXPECT_EQ(s->source.range.end.column, 8u);
 }
 
-TEST_F(AstStructTest, Assert_Null_StructMember) {
-    EXPECT_FATAL_FAILURE(
+TEST_F(AstStructDeathTest, Assert_Null_StructMember) {
+    EXPECT_DEATH_IF_SUPPORTED(
         {
             ProgramBuilder b;
             b.Structure(b.Sym("S"), tint::Vector{b.Member("a", b.ty.i32()), nullptr}, tint::Empty);
@@ -90,8 +90,8 @@ TEST_F(AstStructTest, Assert_Null_StructMember) {
         "internal compiler error");
 }
 
-TEST_F(AstStructTest, Assert_Null_Attribute) {
-    EXPECT_FATAL_FAILURE(
+TEST_F(AstStructDeathTest, Assert_Null_Attribute) {
+    EXPECT_DEATH_IF_SUPPORTED(
         {
             ProgramBuilder b;
             b.Structure(b.Sym("S"), tint::Vector{b.Member("a", b.ty.i32())},
@@ -100,8 +100,8 @@ TEST_F(AstStructTest, Assert_Null_Attribute) {
         "internal compiler error");
 }
 
-TEST_F(AstStructTest, Assert_DifferentGenerationID_StructMember) {
-    EXPECT_FATAL_FAILURE(
+TEST_F(AstStructDeathTest, Assert_DifferentGenerationID_StructMember) {
+    EXPECT_DEATH_IF_SUPPORTED(
         {
             ProgramBuilder b1;
             ProgramBuilder b2;
@@ -110,8 +110,8 @@ TEST_F(AstStructTest, Assert_DifferentGenerationID_StructMember) {
         "internal compiler error");
 }
 
-TEST_F(AstStructTest, Assert_DifferentGenerationID_Attribute) {
-    EXPECT_FATAL_FAILURE(
+TEST_F(AstStructDeathTest, Assert_DifferentGenerationID_Attribute) {
+    EXPECT_DEATH_IF_SUPPORTED(
         {
             ProgramBuilder b1;
             ProgramBuilder b2;

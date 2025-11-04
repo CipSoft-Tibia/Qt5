@@ -8,6 +8,8 @@
 
 #include <memory>
 
+#include "core/fxcrt/notreached.h"
+#include "core/fxcrt/ptr_util.h"
 #include "fxbarcode/cbc_codabar.h"
 #include "fxbarcode/cbc_code128.h"
 #include "fxbarcode/cbc_code39.h"
@@ -18,8 +20,6 @@
 #include "fxbarcode/cbc_pdf417i.h"
 #include "fxbarcode/cbc_qrcode.h"
 #include "fxbarcode/cbc_upca.h"
-#include "third_party/base/memory/ptr_util.h"
-#include "third_party/base/notreached.h"
 
 namespace {
 
@@ -67,11 +67,6 @@ std::unique_ptr<CFX_Barcode> CFX_Barcode::Create(BC_TYPE type) {
 
 BC_TYPE CFX_Barcode::GetType() {
   return m_pBCEngine ? m_pBCEngine->GetType() : BC_TYPE::kUnknown;
-}
-
-void CFX_Barcode::SetCharEncoding(BC_CHAR_ENCODING encoding) {
-  if (m_pBCEngine)
-    m_pBCEngine->SetCharEncoding(encoding);
 }
 
 bool CFX_Barcode::SetModuleHeight(int32_t moduleHeight) {

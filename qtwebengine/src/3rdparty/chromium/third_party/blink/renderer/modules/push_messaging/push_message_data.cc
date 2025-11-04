@@ -6,6 +6,7 @@
 
 #include <memory>
 
+#include "base/containers/span.h"
 #include "third_party/blink/renderer/bindings/core/v8/v8_binding_for_core.h"
 #include "third_party/blink/renderer/bindings/core/v8/v8_union_arraybuffer_arraybufferview_usvstring.h"
 #include "third_party/blink/renderer/core/fileapi/blob.h"
@@ -60,7 +61,7 @@ PushMessageData* PushMessageData::Create(
           static_cast<unsigned>(encoded_string.length()));
     }
   }
-  NOTREACHED();
+  NOTREACHED_IN_MIGRATION();
   return nullptr;
 }
 
@@ -71,12 +72,12 @@ PushMessageData::PushMessageData(const char* data, unsigned bytes_size) {
 PushMessageData::~PushMessageData() = default;
 
 DOMArrayBuffer* PushMessageData::arrayBuffer() const {
-  return DOMArrayBuffer::Create(data_.data(), data_.size());
+  return DOMArrayBuffer::Create(base::as_byte_span(data_));
 }
 
 Blob* PushMessageData::blob() const {
   auto blob_data = std::make_unique<BlobData>();
-  blob_data->AppendBytes(data_.data(), data_.size());
+  blob_data->AppendBytes(base::as_byte_span(data_));
 
   // Note that the content type of the Blob object is deliberately not being
   // provided, following the specification.

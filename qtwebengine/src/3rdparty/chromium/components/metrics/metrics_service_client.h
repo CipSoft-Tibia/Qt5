@@ -6,8 +6,10 @@
 #define COMPONENTS_METRICS_METRICS_SERVICE_CLIENT_H_
 
 #include <stdint.h>
+
 #include <memory>
 #include <string>
+#include <string_view>
 
 #include "base/callback_list.h"
 #include "base/functional/callback.h"
@@ -30,6 +32,8 @@ class NetworkTimeTracker;
 namespace variations {
 class SyntheticTrialRegistry;
 }
+
+class IdentifiabilityStudyState;
 
 namespace metrics {
 
@@ -63,6 +67,10 @@ class MetricsServiceClient {
 
   // Returns the UkmService instance that this client is associated with.
   virtual ukm::UkmService* GetUkmService();
+
+  // Returns the IdentifiabilityStudyState instance that this client is
+  // associated with. Might be nullptr.
+  virtual IdentifiabilityStudyState* GetIdentifiabilityStudyState();
 
   // Returns the StructuredMetricsService instance that this client is
   // associated with.
@@ -127,7 +135,7 @@ class MetricsServiceClient {
   virtual std::unique_ptr<MetricsLogUploader> CreateUploader(
       const GURL& server_url,
       const GURL& insecure_server_url,
-      base::StringPiece mime_type,
+      std::string_view mime_type,
       metrics::MetricsLogUploader::MetricServiceType service_type,
       const MetricsLogUploader::UploadCallback& on_upload_complete) = 0;
 
@@ -157,10 +165,6 @@ class MetricsServiceClient {
 
   // Return true iff the system is currently on a cellular connection.
   virtual bool IsOnCellularConnection();
-
-  // Returns whether the allowlist for external experiment ids is enabled. Some
-  // embedders like WebLayer disable it. For Chrome, it should be enabled.
-  virtual bool IsExternalExperimentAllowlistEnabled();
 
   // Returns true iff UKM is allowed for all profiles.
   // See //components/ukm/observers/ukm_consent_state_observer.h for details.
@@ -218,21 +222,21 @@ class MetricsServiceClient {
   // when a user metric consent state should not be applied (ie no logged in
   // user or managed policy).
   //
-  // Will return absl::nullopt if there is no current user or current user
+  // Will return std::nullopt if there is no current user or current user
   // metrics consent should not be applied to determine metrics reporting state.
   //
   // Not all platforms support per-user consent. If per-user consent is not
-  // supported, this function should return absl::nullopt.
-  virtual absl::optional<bool> GetCurrentUserMetricsConsent() const;
+  // supported, this function should return std::nullopt.
+  virtual std::optional<bool> GetCurrentUserMetricsConsent() const;
 
   // Returns the current user id.
   //
-  // Will return absl::nullopt if there is no current user, metrics reporting is
+  // Will return std::nullopt if there is no current user, metrics reporting is
   // disabled, or current user should not have a user id.
   //
   // Not all platforms support per-user consent. If per-user consent is not
-  // supported, this function should return absl::nullopt.
-  virtual absl::optional<std::string> GetCurrentUserId() const;
+  // supported, this function should return std::nullopt.
+  virtual std::optional<std::string> GetCurrentUserId() const;
 
  private:
   base::RepeatingClosure update_running_services_;

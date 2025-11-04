@@ -15,9 +15,8 @@
 // We mean it.
 //
 
-#include <QtCore/QObject>
-
-#include <QtGui/private/qgenericunixservices_p.h>
+#include <QtCore/QMap>
+#include <QtGui/private/qdesktopunixservices_p.h>
 
 #include <QtWaylandClient/private/qwayland-qt-windowmanager.h>
 #include <QtWaylandClient/qtwaylandclientglobal.h>
@@ -26,19 +25,26 @@ QT_BEGIN_NAMESPACE
 
 namespace QtWaylandClient {
 
+class QWaylandAppMenu;
 class QWaylandDisplay;
+class QWaylandWindow;
 
-class Q_WAYLANDCLIENT_EXPORT QWaylandPlatformServices : public QGenericUnixServices
+class Q_WAYLANDCLIENT_EXPORT QWaylandPlatformServices : public QDesktopUnixServices
 {
 public:
     explicit QWaylandPlatformServices(QWaylandDisplay *waylandDisplay);
+    ~QWaylandPlatformServices();
 
     bool openUrl(const QUrl &url) override;
     bool openDocument(const QUrl &url) override;
     QString portalWindowIdentifier(QWindow *window) override;
+    void registerDBusMenuForWindow(QWindow *window, const QString &service,
+                                   const QString &path) override;
+    void unregisterDBusMenuForWindow(QWindow *window) override;
 
 private:
     QWaylandDisplay *m_display;
+    QMap<QWindow *, QWaylandAppMenu *> m_appMenus;
 };
 
 QT_END_NAMESPACE

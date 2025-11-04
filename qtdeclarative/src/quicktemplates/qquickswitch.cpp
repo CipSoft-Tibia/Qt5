@@ -9,6 +9,8 @@
 #include <QtQuick/private/qquickwindow_p.h>
 #include <QtQuick/private/qquickevents_p_p.h>
 
+#include <algorithm>
+
 QT_BEGIN_NAMESPACE
 
 /*!
@@ -29,8 +31,9 @@ QT_BEGIN_NAMESPACE
 
     Switch inherits its API from \l AbstractButton. For instance, the state
     of the switch can be set with the \l {AbstractButton::}{checked} property.
-    The \l clicked and \l toggled signals are emitted when the switch is
-    interactively clicked by the user via touch, mouse, or keyboard.
+    The \l {AbstractButton::}{clicked} and \l {AbstractButton::toggled} signals
+    are emitted when the switch is interactively clicked by the user via touch,
+    mouse, or keyboard.
 
     \code
     ColumnLayout {
@@ -128,7 +131,7 @@ qreal QQuickSwitch::position() const
 void QQuickSwitch::setPosition(qreal position)
 {
     Q_D(QQuickSwitch);
-    position = qBound<qreal>(0.0, position, 1.0);
+    position = std::clamp(position, qreal(0.0), qreal(1.0));
     if (qFuzzyCompare(d->position, position))
         return;
 
@@ -156,8 +159,10 @@ void QQuickSwitch::mouseMoveEvent(QMouseEvent *event)
     Q_D(QQuickSwitch);
     if (!keepMouseGrab()) {
         const QPointF movePoint = event->position();
-        if (d->canDrag(movePoint))
-            setKeepMouseGrab(QQuickWindowPrivate::dragOverThreshold(movePoint.x() - d->pressPoint.x(), Qt::XAxis, event));
+        if (d->canDrag(movePoint)) {
+            setKeepMouseGrab(QQuickDeliveryAgentPrivate::dragOverThreshold(movePoint.x() - d->pressPoint.x(),
+                                                                           Qt::XAxis, event));
+        }
     }
     QQuickAbstractButton::mouseMoveEvent(event);
 }
@@ -170,8 +175,10 @@ void QQuickSwitch::touchEvent(QTouchEvent *event)
         for (const QTouchEvent::TouchPoint &point : event->points()) {
             if (point.id() != d->touchId || point.state() != QEventPoint::Updated)
                 continue;
-            if (d->canDrag(point.position()))
-                setKeepTouchGrab(QQuickWindowPrivate::dragOverThreshold(point.position().x() - d->pressPoint.x(), Qt::XAxis, &point));
+            if (d->canDrag(point.position())) {
+                setKeepTouchGrab(QQuickDeliveryAgentPrivate::dragOverThreshold(point.position().x() - d->pressPoint.x(),
+                                                                               Qt::XAxis, point));
+            }
         }
     }
     QQuickAbstractButton::touchEvent(event);

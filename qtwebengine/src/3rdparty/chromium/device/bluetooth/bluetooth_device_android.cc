@@ -9,6 +9,8 @@
 #include "base/containers/contains.h"
 #include "device/bluetooth/bluetooth_adapter_android.h"
 #include "device/bluetooth/bluetooth_remote_gatt_service_android.h"
+
+// Must come after all headers that specialize FromJniType() / ToJniType().
 #include "device/bluetooth/jni_headers/ChromeBluetoothDevice_jni.h"
 
 using base::android::AttachCurrentThread;
@@ -79,17 +81,17 @@ uint16_t BluetoothDeviceAndroid::GetDeviceID() const {
 }
 
 uint16_t BluetoothDeviceAndroid::GetAppearance() const {
-  // TODO(crbug.com/588083): Implementing GetAppearance()
+  // TODO(crbug.com/41240161): Implementing GetAppearance()
   // on mac, win, and android platforms for chrome
   NOTIMPLEMENTED();
   return 0;
 }
 
-absl::optional<std::string> BluetoothDeviceAndroid::GetName() const {
+std::optional<std::string> BluetoothDeviceAndroid::GetName() const {
   auto name =
       Java_ChromeBluetoothDevice_getName(AttachCurrentThread(), j_device_);
   if (name.is_null())
-    return absl::nullopt;
+    return std::nullopt;
   return ConvertJavaStringToUTF8(name);
 }
 
@@ -200,7 +202,7 @@ void BluetoothDeviceAndroid::OnConnectionStateChange(
     bool connected) {
   gatt_connected_ = connected;
   if (gatt_connected_) {
-    DidConnectGatt(/*error_code=*/absl::nullopt);
+    DidConnectGatt(/*error_code=*/std::nullopt);
   } else if (!create_gatt_connection_callbacks_.empty()) {
     // We assume that if there are any pending connection callbacks there
     // was a failed connection attempt.
@@ -250,7 +252,7 @@ BluetoothDeviceAndroid::BluetoothDeviceAndroid(BluetoothAdapterAndroid* adapter)
     : BluetoothDevice(adapter) {}
 
 void BluetoothDeviceAndroid::CreateGattConnectionImpl(
-    absl::optional<device::BluetoothUUID> service_uuid) {
+    std::optional<device::BluetoothUUID> service_uuid) {
   Java_ChromeBluetoothDevice_createGattConnectionImpl(AttachCurrentThread(),
                                                       j_device_);
 }

@@ -3,6 +3,9 @@
 
 #include "qquickstyleitemscrollviewcorner.h"
 
+#include <QtGui/qpainter.h>
+#include <QtGui/qpainterpath.h>
+
 StyleItemGeometry QQuickStyleItemScrollViewCorner::calculateGeometry()
 {
     QStyleOptionSlider styleOption;

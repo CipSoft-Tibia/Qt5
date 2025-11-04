@@ -2,9 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#include "third_party/blink/renderer/core/loader/anchor_element_interaction_tracker.h"
-
 #include <cstddef>
+#include <string_view>
 #include <tuple>
 
 #include "base/run_loop.h"
@@ -20,6 +19,7 @@
 #include "third_party/blink/renderer/core/frame/local_frame.h"
 #include "third_party/blink/renderer/core/html/html_anchor_element.h"
 #include "third_party/blink/renderer/core/input/event_handler.h"
+#include "third_party/blink/renderer/core/loader/anchor_element_interaction_tracker.h"
 #include "third_party/blink/renderer/core/testing/sim/sim_request.h"
 #include "third_party/blink/renderer/core/testing/sim/sim_test.h"
 #include "third_party/blink/renderer/platform/scheduler/test/fake_task_runner.h"
@@ -44,7 +44,7 @@ class MockAnchorElementInteractionHost
     receiver_.Bind(std::move(pending_receiver));
   }
 
-  absl::optional<KURL> url_received_ = absl::nullopt;
+  std::optional<KURL> url_received_ = std::nullopt;
   PointerEventType event_type_{PointerEventType::kNone};
   double mouse_velocity_{0.0};
   bool is_mouse_pointer_{false};
@@ -84,9 +84,7 @@ class AnchorElementInteractionTest : public SimTest {
 
   virtual void SetFeatureList() {
     feature_list_.InitWithFeatures(
-        {features::kAnchorElementInteraction,
-         features::kSpeculationRulesPointerHoverHeuristics},
-        {});
+        {features::kSpeculationRulesPointerHoverHeuristics}, {});
   }
 
   void TearDown() override {
@@ -129,7 +127,7 @@ TEST_F(AnchorElementInteractionTest, SingleAnchor) {
   base::RunLoop().RunUntilIdle();
   KURL expected_url = KURL("https://anchor1.com/");
   EXPECT_EQ(1u, hosts_.size());
-  absl::optional<KURL> url_received = hosts_[0]->url_received_;
+  std::optional<KURL> url_received = hosts_[0]->url_received_;
   EXPECT_TRUE(url_received.has_value());
   EXPECT_EQ(expected_url, url_received);
   EXPECT_EQ(PointerEventType::kOnPointerDown, hosts_[0]->event_type_);
@@ -147,7 +145,7 @@ TEST_F(AnchorElementInteractionTest, InvalidHref) {
   SendMouseDownEvent();
   base::RunLoop().RunUntilIdle();
   EXPECT_EQ(1u, hosts_.size());
-  absl::optional<KURL> url_received = hosts_[0]->url_received_;
+  std::optional<KURL> url_received = hosts_[0]->url_received_;
   EXPECT_FALSE(url_received.has_value());
 }
 
@@ -168,7 +166,7 @@ TEST_F(AnchorElementInteractionTest, RightClick) {
   GetDocument().GetFrame()->GetEventHandler().HandleMousePressEvent(event);
   base::RunLoop().RunUntilIdle();
   EXPECT_EQ(1u, hosts_.size());
-  absl::optional<KURL> url_received = hosts_[0]->url_received_;
+  std::optional<KURL> url_received = hosts_[0]->url_received_;
   EXPECT_FALSE(url_received.has_value());
 }
 
@@ -187,7 +185,7 @@ TEST_F(AnchorElementInteractionTest, NestedAnchorElementCheck) {
   base::RunLoop().RunUntilIdle();
   KURL expected_url = KURL("https://anchor2.com/");
   EXPECT_EQ(1u, hosts_.size());
-  absl::optional<KURL> url_received = hosts_[0]->url_received_;
+  std::optional<KURL> url_received = hosts_[0]->url_received_;
   EXPECT_TRUE(url_received.has_value());
   EXPECT_EQ(expected_url, url_received);
   EXPECT_EQ(PointerEventType::kOnPointerDown, hosts_[0]->event_type_);
@@ -209,7 +207,7 @@ TEST_F(AnchorElementInteractionTest, SiblingAnchorElements) {
   base::RunLoop().RunUntilIdle();
   KURL expected_url = KURL("https://anchor1.com/");
   EXPECT_EQ(1u, hosts_.size());
-  absl::optional<KURL> url_received = hosts_[0]->url_received_;
+  std::optional<KURL> url_received = hosts_[0]->url_received_;
   EXPECT_TRUE(url_received.has_value());
   EXPECT_EQ(expected_url, url_received);
   EXPECT_EQ(PointerEventType::kOnPointerDown, hosts_[0]->event_type_);
@@ -225,7 +223,7 @@ TEST_F(AnchorElementInteractionTest, NoAnchorElement) {
   SendMouseDownEvent();
   base::RunLoop().RunUntilIdle();
   EXPECT_EQ(1u, hosts_.size());
-  absl::optional<KURL> url_received = hosts_[0]->url_received_;
+  std::optional<KURL> url_received = hosts_[0]->url_received_;
   EXPECT_FALSE(url_received.has_value());
 }
 
@@ -252,7 +250,7 @@ TEST_F(AnchorElementInteractionTest, TouchEvent) {
   base::RunLoop().RunUntilIdle();
   KURL expected_url = KURL("https://anchor1.com/");
   EXPECT_EQ(1u, hosts_.size());
-  absl::optional<KURL> url_received = hosts_[0]->url_received_;
+  std::optional<KURL> url_received = hosts_[0]->url_received_;
   EXPECT_TRUE(url_received.has_value());
   EXPECT_EQ(expected_url, url_received);
   EXPECT_EQ(PointerEventType::kOnPointerDown, hosts_[0]->event_type_);
@@ -284,7 +282,7 @@ TEST_F(AnchorElementInteractionTest, DestroyedContext) {
   base::RunLoop().RunUntilIdle();
   KURL expected_url = KURL("https://anchor1.com/");
   EXPECT_EQ(1u, hosts_.size());
-  absl::optional<KURL> url_received = hosts_[0]->url_received_;
+  std::optional<KURL> url_received = hosts_[0]->url_received_;
   EXPECT_FALSE(url_received.has_value());
 }
 
@@ -317,7 +315,7 @@ TEST_F(AnchorElementInteractionTest, ValidMouseHover) {
 
   KURL expected_url = KURL("https://anchor1.com/");
   EXPECT_EQ(1u, hosts_.size());
-  absl::optional<KURL> url_received = hosts_[0]->url_received_;
+  std::optional<KURL> url_received = hosts_[0]->url_received_;
   EXPECT_TRUE(url_received.has_value());
   EXPECT_EQ(expected_url, url_received);
   EXPECT_EQ(PointerEventType::kOnPointerHover, hosts_[0]->event_type_);
@@ -351,7 +349,7 @@ TEST_F(AnchorElementInteractionTest, ShortMouseHover) {
   base::RunLoop().RunUntilIdle();
 
   EXPECT_EQ(1u, hosts_.size());
-  absl::optional<KURL> url_received = hosts_[0]->url_received_;
+  std::optional<KURL> url_received = hosts_[0]->url_received_;
   EXPECT_FALSE(url_received.has_value());
   EXPECT_EQ(PointerEventType::kNone, hosts_[0]->event_type_);
 }
@@ -395,7 +393,7 @@ TEST_F(AnchorElementInteractionTest, MousePointerEnterAndLeave) {
 
   base::RunLoop().RunUntilIdle();
   EXPECT_EQ(1u, hosts_.size());
-  absl::optional<KURL> url_received = hosts_[0]->url_received_;
+  std::optional<KURL> url_received = hosts_[0]->url_received_;
   EXPECT_FALSE(url_received.has_value());
   EXPECT_EQ(PointerEventType::kNone, hosts_[0]->event_type_);
 }
@@ -518,33 +516,7 @@ TEST_F(AnchorElementInteractionTest,
   }
 }
 
-class AnchorElementInteractionMouseMotionEstimatorFeatureFlagTest
-    : public AnchorElementInteractionTest,
-      public ::testing::WithParamInterface<base::StringPiece> {
- public:
-  bool IsMouseMotionEstimatorFeatureEnabled() {
-    return GetParam() == "enabled";
-  }
-
- protected:
-  void SetFeatureList() override {
-    std::vector<base::test::FeatureRef> enabled_features{
-        features::kAnchorElementInteraction,
-        features::kSpeculationRulesPointerHoverHeuristics};
-    std::vector<base::test::FeatureRef> disabled_features{};
-
-    if (IsMouseMotionEstimatorFeatureEnabled()) {
-      enabled_features.push_back(features::kAnchorElementMouseMotionEstimator);
-    } else {
-      disabled_features.push_back(features::kAnchorElementMouseMotionEstimator);
-    }
-
-    feature_list_.InitWithFeatures(enabled_features, disabled_features);
-  }
-};
-
-TEST_P(AnchorElementInteractionMouseMotionEstimatorFeatureFlagTest,
-       FeatureFlagIsEffective) {
+TEST_F(AnchorElementInteractionTest, MouseVelocitySent) {
   String source("https://example.com/p1");
   SimRequest main_resource(source, "text/html");
   LoadURL(source);
@@ -579,22 +551,13 @@ TEST_P(AnchorElementInteractionMouseMotionEstimatorFeatureFlagTest,
 
   KURL expected_url = KURL("https://anchor1.com/");
   EXPECT_EQ(1u, hosts_.size());
-  absl::optional<KURL> url_received = hosts_[0]->url_received_;
+  std::optional<KURL> url_received = hosts_[0]->url_received_;
   EXPECT_TRUE(url_received.has_value());
   EXPECT_EQ(expected_url, url_received);
   EXPECT_EQ(PointerEventType::kOnPointerHover, hosts_[0]->event_type_);
   EXPECT_TRUE(hosts_[0]->is_mouse_pointer_);
-  if (IsMouseMotionEstimatorFeatureEnabled()) {
-    EXPECT_NEAR(50.0, hosts_[0]->mouse_velocity_, 0.5);
-  } else {
-    EXPECT_EQ(0.0, hosts_[0]->mouse_velocity_);
-  }
+  EXPECT_NEAR(50.0, hosts_[0]->mouse_velocity_, 0.5);
 }
-
-INSTANTIATE_TEST_SUITE_P(
-    MouseMotionEstimatorFeatureFlagTest,
-    AnchorElementInteractionMouseMotionEstimatorFeatureFlagTest,
-    ::testing::Values("enabled", "disabled"));
 
 }  // namespace
 }  // namespace blink

@@ -1,8 +1,8 @@
 Version: 2
 Configurations:
 -
-    Id: 'ubuntu-24.04-arm64-static-qtlite'
-    Template: 'qtci-linux-Ubuntu-24.04-aarch64-50'
+    Id: 'ubuntu-24.04-x86-static-qtlite'
+    Template: 'qtci-linux-Ubuntu-24.04-x86_64-51'
     Compiler: 'GCC'
     Features: ['Sccache', 'UseConfigure', 'DoNotRunTests', 'MinimalStaticTests']
     Configure arguments: >
@@ -15,6 +15,19 @@ Configurations:
         -gc-binaries
         -feature-linuxfb
         -disable-deprecated-up-to 0x070000
+        -no-feature-wayland
+        -no-feature-exceptions
+        -no-feature-itemmodeltester
+        -no-feature-getifaddrs
+        -no-feature-ipv6ifname
+        -no-feature-libresolv
+        -no-feature-system-proxies
+        -no-feature-stack_protector
+        -no-feature-stack_clash_protection
+        -no-feature-libstdcpp_assertions
+        -no-feature-glibc_fortify_source
+        -no-feature-network
+        -no-feature-opensslv30
         -no-feature-abstractbutton
         -no-feature-abstractslider
         -no-feature-accessibility
@@ -182,6 +195,7 @@ Configurations:
         'CMAKE_ARGS=-DOpenGL_GL_PREFERENCE=LEGACY',
         'NON_QTBASE_CMAKE_ARGS=
          -DFEATURE_qdoc=off
+         -DFEATURE_qml_animation=off
          -DFEATURE_qml_debug=off
          -DFEATURE_qml_jit=off
          -DFEATURE_qml_locale=off
@@ -195,6 +209,10 @@ Configurations:
          -DFEATURE_quickcontrols2_universal=off
          -DFEATURE_quickcontrols2_windows=off
          -DFEATURE_quick_designer=off
+         -DFEATURE_quick_pathview=off
+         -DFEATURE_quick_canvas=off
+         -DFEATURE_quick_tableview=off
+         -DFEATURE_quick_treeview=off
          -DFEATURE_quick_particles=off
          -DFEATURE_quick_pixmap_cache_threaded_download=off
          -DFEATURE_quick_shadereffect=off
@@ -202,3 +220,10 @@ Configurations:
          -DFEATURE_quicktemplates2_hover=off
          -DFEATURE_quicktemplates2_multitouch=off'
     ]
+-
+    Id: 'ubuntu-24.04-x86-static-qtlite-tests'
+    Template: 'qtci-linux-Ubuntu-24.04-x86_64-51'
+    Compiler: 'GCC'
+    Features: ['Sccache', 'TestOnly','InsignificantTests']
+    Platform dependency: 'ubuntu-24.04-x86-static-qtlite'
+

@@ -196,4 +196,32 @@ QT_BEGIN_NAMESPACE
     expense of performance.
  */
 
+/*!
+    \enum QtGraphs3D::TransparencyTechnique
+    \since 6.9
+
+    \brief Specifies which transparency technique to use. The Default value is \c{Default}.
+           When rendering transparent surface graphs, use \c{Approximate} or \c{Accurate}.
+
+    \value Default
+           Indicates that order-independent transparency techniques are not used.
+           Offers the best performance. Use when graphs don't contain
+           transparency or when a bar or scatter graph is also using instancing,
+           that is \l optimizationHint is {QtGraphs3D::OptimizationHint::Default}.
+
+    \value Approximate
+           Indicates that a graph attempts an approximation of order-independent
+           transparency. This method is faster than \c Accurate and works on older
+           hardware but may yield inaccurate results. Use when the order-independent
+           transparency is needed, but the performance cost has to be lower than
+           when using accurate order-independent transparency.
+
+    \value Accurate
+           Indicates that accurate order-independent transparency is used.
+           Use when perfect transparency rendering is needed.
+           \note Accurate transparency is not yet implemented
+                and will be enabled when the required functionality
+                is added to QtQuick3D.
+ */
+
 QT_END_NAMESPACE

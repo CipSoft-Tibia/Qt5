@@ -19,26 +19,24 @@
 #include "base/memory/weak_ptr.h"
 #include "base/values.h"
 #include "build/build_config.h"
-#include "components/autofill/core/browser/autofill_client.h"
 #include "components/autofill/core/browser/data_model/autofill_profile.h"
 #include "components/autofill/core/browser/data_model/credit_card.h"
 #include "components/autofill/core/browser/payments/autofill_error_dialog_context.h"
 #include "components/autofill/core/browser/payments/card_unmask_challenge_option.h"
 #include "components/autofill/core/browser/payments/card_unmask_delegate.h"
 #include "components/autofill/core/browser/payments/client_behavior_constants.h"
+#include "components/autofill/core/browser/payments/payments_autofill_client.h"
+#include "components/autofill/core/browser/payments/payments_network_interface_base.h"
+#include "components/autofill/core/browser/payments/payments_window_manager.h"
 #include "components/autofill/core/browser/payments/virtual_card_enrollment_flow.h"
 #include "google_apis/gaia/google_service_auth_error.h"
 #include "url/origin.h"
 
 namespace signin {
-class AccessTokenFetcher;
-struct AccessTokenInfo;
 class IdentityManager;
 }  // namespace signin
 
 namespace network {
-struct ResourceRequest;
-class SimpleURLLoader;
 class SharedURLLoaderFactory;
 }  // namespace network
 
@@ -51,13 +49,19 @@ class MigratableCreditCard;
 
 namespace payments {
 
+using GetCardUploadDetailsCallback = base::OnceCallback<void(
+    PaymentsAutofillClient::PaymentsRpcResult result,
+    const std::u16string& context_token,
+    std::unique_ptr<base::Value::Dict> legal_message,
+    std::vector<std::pair<int, int>> supported_card_bin_ranges)>;
+
 #if !BUILDFLAG(IS_ANDROID) && !BUILDFLAG(IS_IOS)
 // Callback type for MigrateCards callback. |result| is the Payments Rpc result.
 // |save_result| is an unordered_map parsed from the response whose key is the
 // unique id (guid) for each card and value is the server save result string.
 // |display_text| is the returned tip from Payments to show on the UI.
 typedef base::OnceCallback<void(
-    AutofillClient::PaymentsRpcResult result,
+    PaymentsAutofillClient::PaymentsRpcResult result,
     std::unique_ptr<std::unordered_map<std::string, std::string>> save_result,
     const std::string& display_text)>
     MigrateCardsCallback;
@@ -69,14 +73,12 @@ inline constexpr int kUnmaskPaymentMethodBillableServiceNumber = 70154;
 inline constexpr int kUploadPaymentMethodBillableServiceNumber = 70073;
 inline constexpr int kMigrateCardsBillableServiceNumber = 70264;
 
-class PaymentsRequest;
-
 // PaymentsNetworkInterface issues Payments RPCs and manages responses and failure
 // conditions. Only one request may be active at a time. Initiating a new
 // request will cancel a pending request.
 // Tests are located in
 // src/components/autofill/content/browser/payments/payments_network_interface_unittest.cc.
-class PaymentsNetworkInterface {
+class PaymentsNetworkInterface : public PaymentsNetworkInterfaceBase {
  public:
   // The names of the fields used to send non-location elements as part of an
   // address. Used in the implementation and in tests which verify that these
@@ -95,13 +97,13 @@ class PaymentsNetworkInterface {
     ~UnmaskDetails();
 
     // The type of authentication method suggested for card unmask.
-    AutofillClient::UnmaskAuthMethod unmask_auth_method =
-        AutofillClient::UnmaskAuthMethod::kUnknown;
+    PaymentsAutofillClient::UnmaskAuthMethod unmask_auth_method =
+        PaymentsAutofillClient::UnmaskAuthMethod::kUnknown;
     // Set to true if the user should be offered opt-in for FIDO Authentication.
     bool offer_fido_opt_in = false;
     // Public Key Credential Request Options required for authentication.
     // https://www.w3.org/TR/webauthn/#dictdef-publickeycredentialrequestoptions
-    std::optional<base::Value::Dict> fido_request_options;
+    base::Value::Dict fido_request_options;
     // Set of credit cards ids that are eligible for FIDO Authentication.
     std::set<std::string> fido_eligible_card_ids;
   };
@@ -111,7 +113,9 @@ class PaymentsNetworkInterface {
   struct UnmaskRequestDetails {
     UnmaskRequestDetails();
     UnmaskRequestDetails(const UnmaskRequestDetails& other);
+    UnmaskRequestDetails(UnmaskRequestDetails&&);
     UnmaskRequestDetails& operator=(const UnmaskRequestDetails& other);
+    UnmaskRequestDetails& operator=(UnmaskRequestDetails&&);
     ~UnmaskRequestDetails();
 
     int64_t billing_customer_number = 0;
@@ -124,6 +128,7 @@ class PaymentsNetworkInterface {
     std::string context_token;
     // The origin of the primary main frame where the unmasking happened.
     // Should be populated when the unmasking is for a virtual-card.
+    // TODO(crbug.com/325465172): Convert this to an std::optional<url::Origin>.
     std::optional<GURL> last_committed_primary_main_frame_origin;
     // The selected challenge option. Should be populated when we are doing CVC
     // unmasking for a virtual card.
@@ -135,6 +140,9 @@ class PaymentsNetworkInterface {
     // only be populated when the client is not in incognito mode since it will
     // be used for personalization.
     std::optional<url::Origin> merchant_domain_for_footprints;
+    // The token received in the final redirect of a PaymentsWindowManager flow,
+    // which is the only scenario where this field should be populated.
+    PaymentsWindowManager::RedirectCompletionResult redirect_completion_result;
   };
 
   // Information retrieved from an UnmaskRequest.
@@ -168,7 +176,7 @@ class PaymentsNetworkInterface {
     std::string expiration_year;
     // Challenge required for authorizing user for FIDO authentication for
     // future card unmasking.
-    std::optional<base::Value::Dict> fido_request_options;
+    base::Value::Dict fido_request_options;
     // An opaque token used to logically chain consecutive UnmaskCard and
     // OptChange calls together.
     std::string card_authorization_token;
@@ -181,8 +189,8 @@ class PaymentsNetworkInterface {
     std::string flow_status;
 
     // The type of the returned credit card.
-    AutofillClient::PaymentsRpcCardType card_type =
-        AutofillClient::PaymentsRpcCardType::kUnknown;
+    PaymentsAutofillClient::PaymentsRpcCardType card_type =
+        PaymentsAutofillClient::PaymentsRpcCardType::kUnknown;
 
     // Context for the error dialog that is returned from the Payments server.
     // If present, that means this response was an error, and these fields
@@ -360,10 +368,10 @@ class PaymentsNetworkInterface {
 
   // A collection of the information required to make a credit card upload
   // request.
-  struct UploadRequestDetails {
-    UploadRequestDetails();
-    UploadRequestDetails(const UploadRequestDetails& other);
-    ~UploadRequestDetails();
+  struct UploadCardRequestDetails {
+    UploadCardRequestDetails();
+    UploadCardRequestDetails(const UploadCardRequestDetails& other);
+    ~UploadCardRequestDetails();
 
     int64_t billing_customer_number = 0;
     int detected_values;
@@ -390,7 +398,7 @@ class PaymentsNetworkInterface {
     std::u16string nickname;
   };
 
-  // An enum set in the GetUploadDetailsRequest indicating the source of the
+  // An enum set in the GetCardUploadDetailsRequest indicating the source of the
   // request when uploading a card to Google Payments. It should stay consistent
   // with the same enum in Google Payments server code.
   enum UploadCardSource {
@@ -415,6 +423,10 @@ class PaymentsNetworkInterface {
   // UploadCardRequest.
   struct UploadCardResponseDetails {
     UploadCardResponseDetails();
+    UploadCardResponseDetails(const UploadCardResponseDetails&);
+    UploadCardResponseDetails(UploadCardResponseDetails&&);
+    UploadCardResponseDetails& operator=(const UploadCardResponseDetails&);
+    UploadCardResponseDetails& operator=(UploadCardResponseDetails&&);
     ~UploadCardResponseDetails();
     // |instrument_id| is used by the server as an identifier for the card that
     // was uploaded. Currently, we have it in the UploadCardResponseDetails so
@@ -453,49 +465,47 @@ class PaymentsNetworkInterface {
   // denotes incognito mode.
   PaymentsNetworkInterface(
       scoped_refptr<network::SharedURLLoaderFactory> url_loader_factory,
-      signin::IdentityManager* const identity_manager,
-      AccountInfoGetter* const account_info_getter,
+      signin::IdentityManager* identity_manager,
+      AccountInfoGetter* account_info_getter,
       bool is_off_the_record = false);
 
   PaymentsNetworkInterface(const PaymentsNetworkInterface&) = delete;
   PaymentsNetworkInterface& operator=(const PaymentsNetworkInterface&) = delete;
 
-  virtual ~PaymentsNetworkInterface();
+  ~PaymentsNetworkInterface() override;
 
   // Starts fetching the OAuth2 token in anticipation of future Payments
-  // requests. Called as an optimization, but not strictly necessary. Should
-  // *not* be called in advance of GetUploadDetails or UploadCard because
-  // identifying information should not be sent until the user has explicitly
-  // accepted an upload prompt.
+  // requests. Called as an optimization, but not strictly necessary.
   void Prepare();
 
   // The user has interacted with a credit card form and may attempt to unmask a
   // card. This request returns what method of authentication is suggested,
   // along with any information to facilitate the authentication.
   virtual void GetUnmaskDetails(
-      base::OnceCallback<void(AutofillClient::PaymentsRpcResult,
+      base::OnceCallback<void(PaymentsAutofillClient::PaymentsRpcResult,
                               UnmaskDetails&)> callback,
       const std::string& app_locale);
 
   // The user has attempted to unmask a card with the given cvc.
   virtual void UnmaskCard(
       const UnmaskRequestDetails& request_details,
-      base::OnceCallback<void(AutofillClient::PaymentsRpcResult,
-                              UnmaskResponseDetails&)> callback);
+      base::OnceCallback<void(PaymentsAutofillClient::PaymentsRpcResult,
+                              const UnmaskResponseDetails&)> callback);
 
   // Triggers a request to the Payments server to unmask an IBAN. `callback` is
   // the callback function that is triggered when a response is received from
   // the server and the full IBAN value is returned via callback.
   virtual void UnmaskIban(
       const UnmaskIbanRequestDetails& request_details,
-      base::OnceCallback<void(AutofillClient::PaymentsRpcResult,
+      base::OnceCallback<void(PaymentsAutofillClient::PaymentsRpcResult,
                               const std::u16string&)> callback);
 
   // Opts-in or opts-out the user to use FIDO authentication for card unmasking
   // on this device.
-  void OptChange(const OptChangeRequestDetails request_details,
-                 base::OnceCallback<void(AutofillClient::PaymentsRpcResult,
-                                         OptChangeResponseDetails&)> callback);
+  void OptChange(
+      const OptChangeRequestDetails request_details,
+      base::OnceCallback<void(PaymentsAutofillClient::PaymentsRpcResult,
+                              OptChangeResponseDetails&)> callback);
 
   // Determine if the user meets the Payments service's conditions for upload.
   // The service uses |addresses| (from which names and phone numbers are
@@ -505,19 +515,16 @@ class PaymentsNetworkInterface {
   // actually available for upload in order to make more informed upload
   // decisions. |callback| is the callback function when get response from
   // server. |billable_service_number| is used to set the billable service
-  // number in the GetUploadDetails request. If the conditions are met, the
+  // number in the GetCardUploadDetails request. If the conditions are met, the
   // legal message will be returned via |callback|. |client_behavior_signals| is
   // used by Payments server to track Chrome behaviors. |upload_card_source| is
   // used by Payments server metrics to track the source of the request.
-  virtual void GetUploadDetails(
+  virtual void GetCardUploadDetails(
       const std::vector<AutofillProfile>& addresses,
       const int detected_values,
       const std::vector<ClientBehaviorConstants>& client_behavior_signals,
       const std::string& app_locale,
-      base::OnceCallback<void(AutofillClient::PaymentsRpcResult,
-                              const std::u16string&,
-                              std::unique_ptr<base::Value::Dict>,
-                              std::vector<std::pair<int, int>>)> callback,
+      GetCardUploadDetailsCallback callback,
       const int billable_service_number,
       const int64_t billing_customer_number,
       UploadCardSource upload_card_source =
@@ -525,30 +532,35 @@ class PaymentsNetworkInterface {
 
   // The user has indicated that they would like to upload a card with the given
   // cvc. This request will fail server-side if a successful call to
-  // GetUploadDetails has not already been made.
+  // GetCardUploadDetails has not already been made.
   virtual void UploadCard(
-      const UploadRequestDetails& details,
-      base::OnceCallback<void(AutofillClient::PaymentsRpcResult,
-                              const PaymentsNetworkInterface::UploadCardResponseDetails&)>
+      const UploadCardRequestDetails& details,
+      base::OnceCallback<
+          void(PaymentsAutofillClient::PaymentsRpcResult,
+               const PaymentsNetworkInterface::UploadCardResponseDetails&)>
           callback);
 
   // Determine if the user meets the Payments service conditions for upload.
   // The service uses `app_locale` and `billing_customer_number` to determine
   // which legal message to display. `billable_service_number` is defined in
   // the Payments server to distinguish different requests and is set in the
-  // GetIbanUploadDetails request. `callback` is the callback function that is
-  // triggered when a response is received from the server, and the callback is
-  // triggered with that response's result. The legal message will always be
-  // returned upon a successful response via `callback`. A successful response
-  // does not guarantee that the legal message is valid, callers should parse
-  // the legal message and use it to decide if IBAN upload save should be
-  // offered.
+  // GetIbanUploadDetails request. `country_code` is the first two characters
+  // of the IBAN, representing its country of origin. `callback` is the
+  // callback function that is triggered when a response is received from the
+  // server, and the callback is triggered with that response's result. The
+  // `validation_regex` is used to validate whether the given IBAN can be saved
+  // to the server. The legal message will always be returned upon a successful
+  // response via `callback`. A successful response does not guarantee that the
+  // legal message is valid, callers should parse the legal message and use it
+  // to decide if IBAN upload save should be offered.
   virtual void GetIbanUploadDetails(
       const std::string& app_locale,
       int64_t billing_customer_number,
       int billable_service_number,
-      base::OnceCallback<void(AutofillClient::PaymentsRpcResult,
-                              const std::u16string&,
+      const std::string& country_code,
+      base::OnceCallback<void(PaymentsAutofillClient::PaymentsRpcResult result,
+                              const std::u16string& validation_regex,
+                              const std::u16string& context_token,
                               std::unique_ptr<base::Value::Dict>)> callback);
 
   // The user has indicated that they would like to upload an IBAN. This request
@@ -558,12 +570,13 @@ class PaymentsNetworkInterface {
   // triggered when a response is received from the server.
   virtual void UploadIban(
       const UploadIbanRequestDetails& details,
-      base::OnceCallback<void(AutofillClient::PaymentsRpcResult)> callback);
+      base::OnceCallback<void(PaymentsAutofillClient::PaymentsRpcResult)>
+          callback);
 
 #if !BUILDFLAG(IS_ANDROID) && !BUILDFLAG(IS_IOS)
   // The user has indicated that they would like to migrate their local credit
   // cards. This request will fail server-side if a successful call to
-  // GetUploadDetails has not already been made.
+  // GetCardUploadDetails has not already been made.
   virtual void MigrateCards(
       const MigrationRequestDetails& details,
       const std::vector<MigratableCreditCard>& migratable_credit_cards,
@@ -574,7 +587,7 @@ class PaymentsNetworkInterface {
   // selected challenge option to server to continue the unmask flow.
   virtual void SelectChallengeOption(
       const SelectChallengeOptionRequestDetails& details,
-      base::OnceCallback<void(AutofillClient::PaymentsRpcResult,
+      base::OnceCallback<void(PaymentsAutofillClient::PaymentsRpcResult,
                               const std::string&)> callback);
 
   // Retrieve information necessary for the enrollment from the server. This is
@@ -582,7 +595,7 @@ class PaymentsNetworkInterface {
   // enrollment.
   virtual void GetVirtualCardEnrollmentDetails(
       const GetDetailsForEnrollmentRequestDetails& request_details,
-      base::OnceCallback<void(AutofillClient::PaymentsRpcResult,
+      base::OnceCallback<void(PaymentsAutofillClient::PaymentsRpcResult,
                               const PaymentsNetworkInterface::
                                   GetDetailsForEnrollmentResponseDetails&)>
           callback);
@@ -593,81 +606,11 @@ class PaymentsNetworkInterface {
   // that the server understands the context for the request.
   virtual void UpdateVirtualCardEnrollment(
       const UpdateVirtualCardEnrollmentRequestDetails& request_details,
-      base::OnceCallback<void(AutofillClient::PaymentsRpcResult)> callback);
-
-  // Cancels and clears the current |request_|.
-  void CancelRequest();
-
-  // Exposed for testing.
-  void set_url_loader_factory_for_testing(
-      scoped_refptr<network::SharedURLLoaderFactory> url_loader_factory);
-  void set_access_token_for_testing(std::string access_token);
+      base::OnceCallback<void(PaymentsAutofillClient::PaymentsRpcResult)>
+          callback);
 
  private:
   friend class PaymentsNetworkInterfaceTest;
-
-  // Initiates a Payments request using the state in `request`, ensuring that an
-  // OAuth token is available first. Takes ownership of `request`.
-  void IssueRequest(std::unique_ptr<PaymentsRequest> request);
-
-  // Creates `resource_request_` to be used later in
-  // SetOAuth2TokenAndStartRequest().
-  void InitializeResourceRequest();
-
-  // Callback from |simple_url_loader_|.
-  void OnSimpleLoaderComplete(std::unique_ptr<std::string> response_body);
-  void OnSimpleLoaderCompleteInternal(int response_code,
-                                      const std::string& data);
-
-  // Callback that handles a completed access token request.
-  void AccessTokenFetchFinished(GoogleServiceAuthError error,
-                                signin::AccessTokenInfo access_token_info);
-
-  // Handles a completed access token request in the case of failure.
-  void AccessTokenError(const GoogleServiceAuthError& error);
-
-  // Initiates a new OAuth2 token request.
-  void StartTokenFetch(bool invalidate_old);
-
-  // Creates `simple_url_loader_`, adds the token to it, and starts the request.
-  void SetOAuth2TokenAndStartRequest();
-
-  // The URL loader factory for the request.
-  scoped_refptr<network::SharedURLLoaderFactory> url_loader_factory_;
-
-  // Provided in constructor; not owned by PaymentsNetworkInterface.
-  const raw_ptr<signin::IdentityManager> identity_manager_;
-
-  // Provided in constructor; not owned by PaymentsNetworkInterface.
-  const raw_ptr<AccountInfoGetter> account_info_getter_;
-
-  // The current request.
-  std::unique_ptr<PaymentsRequest> request_;
-
-  // The resource request being used to issue the current request.
-  std::unique_ptr<network::ResourceRequest> resource_request_;
-
-  // The URL loader being used to issue the current request.
-  std::unique_ptr<network::SimpleURLLoader> simple_url_loader_;
-
-  // The OAuth2 token fetcher for any account.
-  std::unique_ptr<signin::AccessTokenFetcher> token_fetcher_;
-
-  // The OAuth2 token, or empty if not fetched.
-  std::string access_token_;
-
-  // Denotes incognito mode.
-  // TODO(crbug.com/1409158): Remove this variable, as it should not be the
-  // PaymentsNetworkInterface's responsibility to check if the user is off the record. The
-  // sole responsibility of the PaymentsNetworkInterface is to send requests to the Google
-  // Payments server.
-  bool is_off_the_record_;
-
-  // True if |request_| has already retried due to a 401 response from the
-  // server.
-  bool has_retried_authorization_;
-
-  base::WeakPtrFactory<PaymentsNetworkInterface> weak_ptr_factory_{this};
 };
 
 }  // namespace payments

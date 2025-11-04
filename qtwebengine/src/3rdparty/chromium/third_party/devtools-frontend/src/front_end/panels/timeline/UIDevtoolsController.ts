@@ -30,15 +30,16 @@
 
 import type * as SDK from '../../core/sdk/sdk.js';
 
+import * as Components from './components/components.js';
 import {type Client, TimelineController} from './TimelineController.js';
-import {TimelineUIUtils} from './TimelineUIUtils.js';
 import {UIDevtoolsUtils} from './UIDevtoolsUtils.js';
 
 export class UIDevtoolsController extends TimelineController {
   constructor(rootTarget: SDK.Target.Target, primaryPageTarget: SDK.Target.Target, client: Client) {
     super(rootTarget, primaryPageTarget, client);
-    TimelineUIUtils.setEventStylesMap(UIDevtoolsUtils.categorizeEvents());
-    TimelineUIUtils.setCategories(UIDevtoolsUtils.categories());
-    TimelineUIUtils.setTimelineMainEventCategories(UIDevtoolsUtils.getMainCategoriesList());
+    Components.EntryStyles.setEventStylesMap(UIDevtoolsUtils.categorizeEvents());
+    Components.EntryStyles.setCategories(UIDevtoolsUtils.categories());
+    Components.EntryStyles.setTimelineMainEventCategories(
+        UIDevtoolsUtils.getMainCategoriesList().filter(Components.EntryStyles.stringIsEventCategory));
   }
 }

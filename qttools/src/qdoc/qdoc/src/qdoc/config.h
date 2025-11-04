@@ -158,6 +158,7 @@ public:
     static int numParams(const QString &value);
     static void pushWorkingDir(const QString &dir);
     static void popWorkingDir();
+    bool reportMissingAltTextForImages() { return m_reportMissingAltTextForImages; }
 
     static const QString dot;
 
@@ -235,6 +236,8 @@ private:
     QDocCommandLineParser m_parser {};
 
     QDocPass m_qdocPass { Neither };
+
+    bool m_reportMissingAltTextForImages{ false };
 };
 
 struct ConfigStrings
@@ -250,6 +253,7 @@ struct ConfigStrings
     static QString DEPENDS;
     static QString DESCRIPTION;
     static QString DOCBOOKEXTENSIONS;
+    static QString DOCUMENTATIONINHEADERS;
     static QString ENDHEADER;
     static QString EXAMPLEDIRS;
     static QString EXAMPLES;
@@ -289,8 +293,10 @@ struct ConfigStrings
     static QString OUTPUTFORMATS;
     static QString OUTPUTPREFIXES;
     static QString OUTPUTSUFFIXES;
+    static QString PRODUCTNAME;
     static QString PROJECT;
     static QString REDIRECTDOCUMENTATIONTODEVNULL;
+    static QString REPORTMISSINGALTTEXTFORIMAGES;
     static QString QHP;
     static QString QUOTINGINFORMATION;
     static QString SCRIPTS;
@@ -308,12 +314,15 @@ struct ConfigStrings
     static QString TOCTITLES;
     static QString TRADEMARKSPAGE;
     static QString URL;
+    static QString USEALTTEXTASTITLE;
     static QString VERSION;
     static QString VERSIONSYM;
     static QString FILEEXTENSIONS;
     static QString IMAGEEXTENSIONS;
     static QString QMLTYPESPAGE;
     static QString QMLTYPESTITLE;
+    static QString WARNABOUTMISSINGIMAGES;
+    static QString WARNABOUTMISSINGPROJECTFILES;
     static QString WARNINGLIMIT;
 };
 
@@ -328,6 +337,7 @@ struct ConfigStrings
 #define CONFIG_DEPENDS ConfigStrings::DEPENDS
 #define CONFIG_DESCRIPTION ConfigStrings::DESCRIPTION
 #define CONFIG_DOCBOOKEXTENSIONS ConfigStrings::DOCBOOKEXTENSIONS
+#define CONFIG_DOCUMENTATIONINHEADERS ConfigStrings::DOCUMENTATIONINHEADERS
 #define CONFIG_ENDHEADER ConfigStrings::ENDHEADER
 #define CONFIG_EXAMPLEDIRS ConfigStrings::EXAMPLEDIRS
 #define CONFIG_EXAMPLES ConfigStrings::EXAMPLES
@@ -366,8 +376,10 @@ struct ConfigStrings
 #define CONFIG_OUTPUTFORMATS ConfigStrings::OUTPUTFORMATS
 #define CONFIG_OUTPUTPREFIXES ConfigStrings::OUTPUTPREFIXES
 #define CONFIG_OUTPUTSUFFIXES ConfigStrings::OUTPUTSUFFIXES
+#define CONFIG_PRODUCTNAME ConfigStrings::PRODUCTNAME
 #define CONFIG_PROJECT ConfigStrings::PROJECT
 #define CONFIG_REDIRECTDOCUMENTATIONTODEVNULL ConfigStrings::REDIRECTDOCUMENTATIONTODEVNULL
+#define CONFIG_REPORTMISSINGALTTEXTFORIMAGES ConfigStrings::REPORTMISSINGALTTEXTFORIMAGES
 #define CONFIG_QHP ConfigStrings::QHP
 #define CONFIG_QUOTINGINFORMATION ConfigStrings::QUOTINGINFORMATION
 #define CONFIG_SCRIPTS ConfigStrings::SCRIPTS
@@ -385,12 +397,15 @@ struct ConfigStrings
 #define CONFIG_TOCTITLES ConfigStrings::TOCTITLES
 #define CONFIG_TRADEMARKSPAGE ConfigStrings::TRADEMARKSPAGE
 #define CONFIG_URL ConfigStrings::URL
+#define CONFIG_USEALTTEXTASTITLE ConfigStrings::USEALTTEXTASTITLE
 #define CONFIG_VERSION ConfigStrings::VERSION
 #define CONFIG_VERSIONSYM ConfigStrings::VERSIONSYM
 #define CONFIG_FILEEXTENSIONS ConfigStrings::FILEEXTENSIONS
 #define CONFIG_IMAGEEXTENSIONS ConfigStrings::IMAGEEXTENSIONS
 #define CONFIG_QMLTYPESPAGE ConfigStrings::QMLTYPESPAGE
 #define CONFIG_QMLTYPESTITLE ConfigStrings::QMLTYPESTITLE
+#define CONFIG_WARNABOUTMISSINGIMAGES ConfigStrings::WARNABOUTMISSINGIMAGES
+#define CONFIG_WARNABOUTMISSINGPROJECTFILES ConfigStrings::WARNABOUTMISSINGPROJECTFILES
 #define CONFIG_WARNINGLIMIT ConfigStrings::WARNINGLIMIT
 
 inline bool Config::singleExec() const

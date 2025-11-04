@@ -11,6 +11,7 @@
 #include <qmenu.h>
 #include <qdebug.h>
 #include <qdatetime.h>
+#include <qscopeguard.h>
 #include <qtextformat.h>
 
 class tst_QCalendarWidget : public QObject
@@ -312,10 +313,14 @@ void tst_QCalendarWidget::showPrevNext()
 void tst_QCalendarWidget::firstDayOfWeek()
 {
     // Ensure the default locale is chosen.
+    QWidget parent;
     QCalendarWidget calendar;
     QLocale locale;
     QCOMPARE(calendar.firstDayOfWeek(), locale.firstDayOfWeek());
 
+    const auto restoreDefault = qScopeGuard([locale]() {
+        QLocale::setDefault(locale);
+    });
     QLocale germanLocale(QLocale::German);
     QLocale::setDefault(germanLocale);
     QCalendarWidget germanLocaleCalendar;
@@ -331,17 +336,16 @@ void tst_QCalendarWidget::firstDayOfWeek()
     QCOMPARE(calendar.firstDayOfWeek(), frenchLocale.firstDayOfWeek());
 
     // Ensure that setting the locale of parent widget has an effect.
-    QWidget* parent = new QWidget;
-    calendar.setParent(parent);
+    calendar.setParent(&parent);
     QLocale hausaLocale(QLocale::Hausa);
-    parent->setLocale(hausaLocale);
+    parent.setLocale(hausaLocale);
     QCOMPARE(calendar.firstDayOfWeek(), hausaLocale.firstDayOfWeek());
 
     // Ensure that widget-specific locale takes precedence over parent.
     calendar.setLocale(germanLocale);
     // Sanity check...
     QCOMPARE(calendar.locale(), germanLocale);
-    QCOMPARE(parent->locale(), hausaLocale);
+    QCOMPARE(parent.locale(), hausaLocale);
     QCOMPARE(calendar.firstDayOfWeek(), germanLocale.firstDayOfWeek());
 }
 

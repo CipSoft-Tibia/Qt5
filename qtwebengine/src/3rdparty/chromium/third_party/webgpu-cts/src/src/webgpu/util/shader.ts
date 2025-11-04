@@ -1,4 +1,4 @@
-import { unreachable } from '../../common/util/util.js';
+import { assert, unreachable } from '../../common/util/util.js';
 
 export const kDefaultVertexShaderCode = `
 @vertex fn main() -> @builtin(position) vec4<f32> {
@@ -10,6 +10,27 @@ export const kDefaultFragmentShaderCode = `
 @fragment fn main() -> @location(0) vec4<f32>  {
   return vec4<f32>(1.0, 1.0, 1.0, 1.0);
 }`;
+
+// MAINTENANCE_TODO(#3344): deduplicate fullscreen quad shader code.
+export const kFullscreenQuadVertexShaderCode = `
+  struct VertexOutput {
+    @builtin(position) Position : vec4<f32>
+  };
+
+  @vertex fn main(@builtin(vertex_index) VertexIndex : u32) -> VertexOutput {
+    var pos = array<vec2<f32>, 6>(
+        vec2<f32>( 1.0,  1.0),
+        vec2<f32>( 1.0, -1.0),
+        vec2<f32>(-1.0, -1.0),
+        vec2<f32>( 1.0,  1.0),
+        vec2<f32>(-1.0, -1.0),
+        vec2<f32>(-1.0,  1.0));
+
+    var output : VertexOutput;
+    output.Position = vec4<f32>(pos[VertexIndex], 0.0, 1.0);
+    return output;
+  }
+`;
 
 const kPlainTypeInfo = {
   i32: {
@@ -88,7 +109,8 @@ export function getFragmentShaderCodeWithOutput(
     plainType: 'i32' | 'u32' | 'f32';
     componentCount: number;
   } | null)[],
-  fragDepth: { value: number } | null = null
+  fragDepth: { value: number } | null = null,
+  dualSourceBlending: boolean = false
 ): string {
   if (outputs.length === 0) {
     if (fragDepth) {
@@ -144,10 +166,22 @@ export function getFragmentShaderCodeWithOutput(
         unreachable();
     }
 
-    outputStructString += `@location(${i}) o${i} : ${outputType},\n`;
+    if (dualSourceBlending) {
+      assert(i === 0 && outputs.length === 1);
+      outputStructString += `
+          @location(0) @blend_src(0) o0 : ${outputType},
+          @location(0) @blend_src(1) o0_blend : ${outputType},
+      `;
+      resultStrings.push(resultStrings[0]);
+      break;
+    } else {
+      outputStructString += `@location(${i}) o${i} : ${outputType},\n`;
+    }
   }
 
   return `
+    ${dualSourceBlending ? 'enable dual_source_blending;' : ''}
+
     struct Outputs {
       ${outputStructString}
     }
@@ -157,7 +191,9 @@ export function getFragmentShaderCodeWithOutput(
     }`;
 }
 
-export type TShaderStage = 'compute' | 'vertex' | 'fragment' | 'empty';
+export const kValidShaderStages = ['compute', 'vertex', 'fragment'] as const;
+export type TValidShaderStage = (typeof kValidShaderStages)[number];
+export type TShaderStage = TValidShaderStage | 'empty';
 
 /**
  * Return a foo shader of the given stage with the given entry point

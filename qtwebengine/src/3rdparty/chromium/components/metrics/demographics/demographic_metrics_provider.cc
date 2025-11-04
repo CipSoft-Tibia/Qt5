@@ -4,6 +4,8 @@
 
 #include "components/metrics/demographics/demographic_metrics_provider.h"
 
+#include <optional>
+
 #include "base/feature_list.h"
 #include "base/metrics/histogram_functions.h"
 #include "base/notreached.h"
@@ -11,7 +13,6 @@
 #include "components/sync/base/features.h"
 #include "components/sync/service/sync_service.h"
 #include "components/sync/service/sync_service_utils.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "third_party/metrics_proto/ukm/report.pb.h"
 
 namespace metrics {
@@ -28,7 +29,7 @@ bool IsValidUploadState(syncer::UploadState upload_state) {
     case syncer::UploadState::ACTIVE:
       return true;
   }
-  NOTREACHED_NORETURN();
+  NOTREACHED();
 }
 
 bool CanUploadDemographicsToGoogle(syncer::SyncService* sync_service) {
@@ -54,7 +55,7 @@ bool CanUploadDemographicsToGoogle(syncer::SyncService* sync_service) {
 
   // If `kReplaceSyncPromosWithSignInPromos` is NOT enabled, then demographics
   // may only be uploaded for users who have opted in to Sync.
-  // TODO(crbug.com/1462552): Simplify once IsSyncFeatureEnabled() is deleted
+  // TODO(crbug.com/40066949): Simplify once IsSyncFeatureEnabled() is deleted
   // from the codebase.
   if (sync_service->IsSyncFeatureEnabled()) {
     return true;
@@ -80,11 +81,11 @@ DemographicMetricsProvider::DemographicMetricsProvider(
 
 DemographicMetricsProvider::~DemographicMetricsProvider() {}
 
-absl::optional<UserDemographics>
+std::optional<UserDemographics>
 DemographicMetricsProvider::ProvideSyncedUserNoisedBirthYearAndGender() {
   // Skip if feature disabled.
   if (!base::FeatureList::IsEnabled(kDemographicMetricsReporting))
-    return absl::nullopt;
+    return std::nullopt;
 
 #if !BUILDFLAG(IS_CHROMEOS_ASH)
   // Skip if not exactly one Profile on disk. Having more than one Profile that
@@ -94,13 +95,13 @@ DemographicMetricsProvider::ProvideSyncedUserNoisedBirthYearAndGender() {
   // ChromeOS almost always has more than one profile on disk, so this check
   // doesn't work. We have a profile selection strategy for ChromeOS, so skip
   // this check for ChromeOS.
-  // TODO(crbug/1145655): LaCros will behave similarly to desktop Chrome and
-  // reduce the number of profiles on disk to one, so remove these #if guards
-  // after LaCros release.
+  // TODO(crbug.com/40729596): LaCros will behave similarly to desktop Chrome
+  // and reduce the number of profiles on disk to one, so remove these #if
+  // guards after LaCros release.
   if (profile_client_->GetNumberOfProfilesOnDisk() != 1) {
     LogUserDemographicsStatusInHistogram(
         UserDemographicsStatus::kMoreThanOneProfile);
-    return absl::nullopt;
+    return std::nullopt;
   }
 #endif  // !BUILDFLAG(IS_CHROMEOS_ASH)
 
@@ -109,13 +110,13 @@ DemographicMetricsProvider::ProvideSyncedUserNoisedBirthYearAndGender() {
   if (!sync_service) {
     LogUserDemographicsStatusInHistogram(
         UserDemographicsStatus::kNoSyncService);
-    return absl::nullopt;
+    return std::nullopt;
   }
 
   if (!CanUploadDemographicsToGoogle(sync_service)) {
     LogUserDemographicsStatusInHistogram(
         UserDemographicsStatus::kSyncNotEnabled);
-    return absl::nullopt;
+    return std::nullopt;
   }
 
   UserDemographicsResult demographics_result =
@@ -127,7 +128,7 @@ DemographicMetricsProvider::ProvideSyncedUserNoisedBirthYearAndGender() {
   if (demographics_result.IsSuccess())
     return demographics_result.value();
 
-  return absl::nullopt;
+  return std::nullopt;
 }
 
 void DemographicMetricsProvider::ProvideCurrentSessionData(
@@ -158,7 +159,7 @@ void DemographicMetricsProvider::LogUserDemographicsStatusInHistogram(
       // Structured Metrics doesn't have demographic metrics.
       return;
   }
-  NOTREACHED();
+  NOTREACHED_IN_MIGRATION();
 }
 
 }  // namespace metrics

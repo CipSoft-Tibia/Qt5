@@ -26,6 +26,7 @@
 #include "net/base/schemeful_site.h"
 #include "net/cert/x509_certificate.h"
 #include "net/cookies/cookie_setting_override.h"
+#include "net/cookies/cookie_util.h"
 #include "net/log/net_log.h"
 #include "net/log/net_log_capture_mode.h"
 #include "net/log/net_log_event_type.h"
@@ -88,9 +89,9 @@ class URLRequestJob::URLRequestJobSourceStream : public SourceStream {
 URLRequestJob::URLRequestJob(URLRequest* request)
     : request_(request),
       request_initiator_site_(request->initiator().has_value()
-                                  ? absl::make_optional(net::SchemefulSite(
+                                  ? std::make_optional(net::SchemefulSite(
                                         request->initiator().value()))
-                                  : absl::nullopt) {}
+                                  : std::nullopt) {}
 
 URLRequestJob::~URLRequestJob() = default;
 
@@ -137,6 +138,10 @@ int64_t URLRequestJob::GetTotalReceivedBytes() const {
 }
 
 int64_t URLRequestJob::GetTotalSentBytes() const {
+  return 0;
+}
+
+int64_t URLRequestJob::GetReceivedBodyBytes() const {
   return 0;
 }
 
@@ -205,45 +210,45 @@ bool URLRequestJob::NeedsAuth() {
 std::unique_ptr<AuthChallengeInfo> URLRequestJob::GetAuthChallengeInfo() {
   // This will only be called if NeedsAuth() returns true, in which
   // case the derived class should implement this!
-  NOTREACHED();
+  NOTREACHED_IN_MIGRATION();
   return nullptr;
 }
 
 void URLRequestJob::SetAuth(const AuthCredentials& credentials) {
   // This will only be called if NeedsAuth() returns true, in which
   // case the derived class should implement this!
-  NOTREACHED();
+  NOTREACHED_IN_MIGRATION();
 }
 
 void URLRequestJob::CancelAuth() {
   // This will only be called if NeedsAuth() returns true, in which
   // case the derived class should implement this!
-  NOTREACHED();
+  NOTREACHED_IN_MIGRATION();
 }
 
 void URLRequestJob::ContinueWithCertificate(
     scoped_refptr<X509Certificate> client_cert,
     scoped_refptr<SSLPrivateKey> client_private_key) {
   // The derived class should implement this!
-  NOTREACHED();
+  NOTREACHED_IN_MIGRATION();
 }
 
 void URLRequestJob::ContinueDespiteLastError() {
   // Implementations should know how to recover from errors they generate.
   // If this code was reached, we are trying to recover from an error that
   // we don't know how to recover from.
-  NOTREACHED();
+  NOTREACHED_IN_MIGRATION();
 }
 
 void URLRequestJob::FollowDeferredRedirect(
-    const absl::optional<std::vector<std::string>>& removed_headers,
-    const absl::optional<net::HttpRequestHeaders>& modified_headers) {
+    const std::optional<std::vector<std::string>>& removed_headers,
+    const std::optional<net::HttpRequestHeaders>& modified_headers) {
   // OnReceivedRedirect must have been called.
   DCHECK(deferred_redirect_info_);
 
   // It is possible that FollowRedirect will delete |this|, so it is not safe to
   // pass along a reference to |deferred_redirect_info_|.
-  absl::optional<RedirectInfo> redirect_info =
+  std::optional<RedirectInfo> redirect_info =
       std::move(deferred_redirect_info_);
   FollowRedirect(*redirect_info, removed_headers, modified_headers);
 }
@@ -275,6 +280,10 @@ ConnectionAttempts URLRequestJob::GetConnectionAttempts() const {
 }
 
 void URLRequestJob::CloseConnectionOnDestruction() {}
+
+bool URLRequestJob::NeedsRetryWithStorageAccess() {
+  return false;
+}
 
 namespace {
 
@@ -384,8 +393,12 @@ GURL URLRequestJob::ComputeReferrerForPolicy(
       return GURL();
   }
 
-  NOTREACHED();
+  NOTREACHED_IN_MIGRATION();
   return GURL();
+}
+
+cookie_util::StorageAccessStatus URLRequestJob::StorageAccessStatus() const {
+  return cookie_util::StorageAccessStatus::kNone;
 }
 
 int URLRequestJob::NotifyConnected(const TransportInfo& info,
@@ -429,8 +442,28 @@ void URLRequestJob::NotifyHeadersComplete() {
   int http_status_code;
   bool insecure_scheme_was_upgraded;
 
+  if (NeedsAuth()) {
+    CHECK(!IsRedirectResponse(&new_location, &http_status_code,
+                              &insecure_scheme_was_upgraded));
+    std::unique_ptr<AuthChallengeInfo> auth_info = GetAuthChallengeInfo();
+    // Need to check for a NULL auth_info because the server may have failed
+    // to send a challenge with the 401 response.
+    if (auth_info) {
+      request_->NotifyAuthRequired(std::move(auth_info));
+      // Wait for SetAuth or CancelAuth to be called.
+      return;
+    }
+  }
+
+  if (NeedsRetryWithStorageAccess()) {
+    DoneReadingRetryResponse();
+    request_->RetryWithStorageAccess();
+    return;
+  }
+
   if (IsRedirectResponse(&new_location, &http_status_code,
                          &insecure_scheme_was_upgraded)) {
+    CHECK(!NeedsAuth());
     // Redirect response bodies are not read. Notify the transaction
     // so it does not treat being stopped as an error.
     DoneReadingRedirectResponse();
@@ -469,21 +502,10 @@ void URLRequestJob::NotifyHeadersComplete() {
     if (defer_redirect) {
       deferred_redirect_info_ = std::move(redirect_info);
     } else {
-      FollowRedirect(redirect_info, absl::nullopt, /*  removed_headers */
-                     absl::nullopt /* modified_headers */);
+      FollowRedirect(redirect_info, std::nullopt, /*  removed_headers */
+                     std::nullopt /* modified_headers */);
     }
     return;
-  }
-
-  if (NeedsAuth()) {
-    std::unique_ptr<AuthChallengeInfo> auth_info = GetAuthChallengeInfo();
-    // Need to check for a NULL auth_info because the server may have failed
-    // to send a challenge with the 401 response.
-    if (auth_info) {
-      request_->NotifyAuthRequired(std::move(auth_info));
-      // Wait for SetAuth or CancelAuth to be called.
-      return;
-    }
   }
 
   NotifyFinalHeadersReceived();
@@ -648,6 +670,8 @@ void URLRequestJob::DoneReading() {
 void URLRequestJob::DoneReadingRedirectResponse() {
 }
 
+void URLRequestJob::DoneReadingRetryResponse() {}
+
 std::unique_ptr<SourceStream> URLRequestJob::SetUpSourceStream() {
   return std::make_unique<URLRequestJobSourceStream>(this);
 }
@@ -728,8 +752,8 @@ int URLRequestJob::CanFollowRedirect(const GURL& new_url) {
 
 void URLRequestJob::FollowRedirect(
     const RedirectInfo& redirect_info,
-    const absl::optional<std::vector<std::string>>& removed_headers,
-    const absl::optional<net::HttpRequestHeaders>& modified_headers) {
+    const std::optional<std::vector<std::string>>& removed_headers,
+    const std::optional<net::HttpRequestHeaders>& modified_headers) {
   request_->Redirect(redirect_info, removed_headers, modified_headers);
 }
 

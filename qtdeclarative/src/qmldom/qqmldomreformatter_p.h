@@ -46,6 +46,21 @@ protected:
         if (loc.length != 0)
             out(loc2Str(loc));
     }
+    enum CommentOption { NoSpace, SpaceBeforePostComment, OnlyComments };
+    void outWithComments(const SourceLocation &loc, AST::Node *node, CommentOption option = NoSpace)
+    {
+        if (!loc.isValid())
+            return;
+        const CommentedElement *c = comments->commentForNode(node, CommentAnchor::from(loc));
+        if (c)
+            c->writePre(lw, nullptr);
+        if (option != OnlyComments)
+            out(loc);
+        if (option == SpaceBeforePostComment)
+            lw.ensureSpace();
+        if (c)
+            c->writePost(lw, nullptr);
+    }
     inline void newLine(quint32 count = 1) { lw.ensureNewline(count); }
 
     inline void accept(AST::Node *node) { AST::Node::accept(node, this); }
@@ -134,6 +149,7 @@ protected:
     bool visit(AST::BreakStatement *ast) override;
 
     bool visit(AST::ReturnStatement *ast) override;
+    bool visit(AST::YieldExpression *ast) override;
     bool visit(AST::ThrowStatement *ast) override;
     bool visit(AST::WithStatement *ast) override;
 
@@ -171,7 +187,7 @@ protected:
 
     bool visit(AST::SuperLiteral *) override;
     bool visit(AST::ComputedPropertyName *) override;
-    bool visit(AST::Expression *el) override;
+    bool visit(AST::CommaExpression *el) override;
     bool visit(AST::ExpressionStatement *el) override;
 
     bool visit(AST::ClassDeclaration *ast) override;

@@ -12,9 +12,9 @@
 #include "core/fpdfapi/parser/cpdf_stream.h"
 #include "core/fpdfapi/parser/cpdf_stream_acc.h"
 #include "core/fxcrt/fx_safe_types.h"
+#include "core/fxcrt/notreached.h"
 #include "core/fxcrt/span_util.h"
 #include "core/fxcrt/stl_util.h"
-#include "third_party/base/notreached.h"
 
 CPDF_SeekableMultiStream::CPDF_SeekableMultiStream(
     std::vector<RetainPtr<const CPDF_Stream>> streams) {
@@ -49,8 +49,7 @@ bool CPDF_SeekableMultiStream::ReadBlockAtOffset(pdfium::span<uint8_t> buffer,
   while (index < iCount) {
     auto acc_span = m_Data[index]->GetSpan();
     size_t dwRead = std::min<size_t>(buffer.size(), acc_span.size() - offset);
-    fxcrt::spancpy(buffer, acc_span.subspan(offset, dwRead));
-    buffer = buffer.subspan(dwRead);
+    buffer = fxcrt::spancpy(buffer, acc_span.subspan(offset, dwRead));
     if (buffer.empty())
       return true;
 
@@ -58,10 +57,6 @@ bool CPDF_SeekableMultiStream::ReadBlockAtOffset(pdfium::span<uint8_t> buffer,
     index++;
   }
   return false;
-}
-
-size_t CPDF_SeekableMultiStream::ReadBlock(pdfium::span<uint8_t> buffer) {
-  NOTREACHED_NORETURN();
 }
 
 FX_FILESIZE CPDF_SeekableMultiStream::GetPosition() {
@@ -76,8 +71,6 @@ bool CPDF_SeekableMultiStream::Flush() {
   NOTREACHED_NORETURN();
 }
 
-bool CPDF_SeekableMultiStream::WriteBlockAtOffset(
-    pdfium::span<const uint8_t> buffer,
-    FX_FILESIZE offset) {
+bool CPDF_SeekableMultiStream::WriteBlock(pdfium::span<const uint8_t> buffer) {
   NOTREACHED_NORETURN();
 }

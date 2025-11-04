@@ -53,8 +53,8 @@ function(qt_internal_add_protobuf_module target)
     endif()
 
     if(arg_PROTO_FILES)
-        set(module_extra_properties_filename
-            "${INSTALL_CMAKE_NAMESPACE}${target}ProtobufProperties.cmake")
+        qt_internal_protobuf_get_module_properties_file_name(module_extra_properties_filename
+            ${target})
     endif()
 
     qt_internal_add_module(${target}
@@ -104,16 +104,12 @@ function(qt_internal_add_protobuf_module target)
 
         set_target_properties(${target} PROPERTIES QT_PROTO_INCLUDES "${proto_files_base_dir}")
 
-        set(proto_include_dirs "${module_install_interface_include_dir}")
+        qt_internal_protobuf_generate_properties(${target}
+            PROTO_INCLUDES "${module_install_interface_include_dir}")
 
-        set(export_name "${INSTALL_CMAKE_NAMESPACE}${target}")
-        qt_path_join(config_build_dir ${QT_CONFIG_BUILD_DIR} ${export_name})
-        qt_path_join(config_install_dir ${QT_CONFIG_INSTALL_DIR} ${export_name})
-        set(module_extra_properties_file "${config_build_dir}/${module_extra_properties_filename}")
-        configure_file("${__qt_protobuf_build_internals_base_dir}/QtProtobufProperties.cmake.in"
-            "${module_extra_properties_file}" @ONLY)
-        qt_install(FILES "${module_extra_properties_file}" DESTINATION "${config_install_dir}")
         if(generated_targets)
+            set(export_name "${INSTALL_CMAKE_NAMESPACE}${target}")
+
             list(REMOVE_DUPLICATES generated_targets)
             qt_install(TARGETS ${generated_targets}
                 EXPORT "${export_name}Targets"
@@ -146,7 +142,8 @@ QT_END_NAMESPACE\n")
             set(object_library ${target}_protobuf_module_registration)
 
             add_library(${object_library} OBJECT ${registration_file})
-            qt_internal_link_internal_platform_for_object_library(${object_library})
+            qt_internal_link_internal_platform_for_object_library(${object_library}
+                PARENT_TARGET ${target})
             _qt_internal_copy_dependency_properties(${object_library}
                 ${target} PRIVATE_ONLY)
 
@@ -167,4 +164,50 @@ QT_END_NAMESPACE\n")
             target_sources(${target} PRIVATE "${registration_file}")
         endif()
     endif()
+endfunction()
+
+# Returns name of the protobuf module extra properties file
+function(qt_internal_protobuf_get_module_properties_file_name out_var target)
+    set(${out_var} "${INSTALL_CMAKE_NAMESPACE}${target}ProtobufProperties.cmake" PARENT_SCOPE)
+endfunction()
+
+# Generates the protobuf module extra properties file
+#
+# Synopsys
+#
+#    qt_internal_protobuf_generate_properties(target
+#        [PROTO_INCLUDES path...]
+#    )
+#
+# Arguments
+#
+# `target` the protobuf module target
+#
+# `PROTO_INCLUDES` list of the protobuf include paths to be stored in properties
+#   file. All paths must be relative to the module install prefix.
+function(qt_internal_protobuf_generate_properties target)
+    cmake_parse_arguments(PARSE_ARGV 1 arg "" "" "PROTO_INCLUDES")
+
+    # Sanitize includes and ensure they only contain relative paths
+    set(PROTO_INCLUDE_DIRS "")
+    foreach(inc IN LISTS arg_PROTO_INCLUDES)
+        if(IS_ABSOLUTE "${inc}")
+            message(FATAL_ERROR "The ${target} protobuf include path is absolute, but should be"
+                " relative to the target install prefix.")
+        endif()
+        if(NOT "${inc}" IN_LIST PROTO_INCLUDE_DIRS)
+            list(APPEND PROTO_INCLUDE_DIRS "${inc}")
+        endif()
+    endforeach()
+
+    qt_internal_protobuf_get_module_properties_file_name(module_extra_properties_filename ${target})
+
+    set(export_name "${INSTALL_CMAKE_NAMESPACE}${target}")
+    qt_path_join(config_build_dir ${QT_CONFIG_BUILD_DIR} ${export_name})
+    qt_path_join(config_install_dir ${QT_CONFIG_INSTALL_DIR} ${export_name})
+    set(module_extra_properties_file "${config_build_dir}/${module_extra_properties_filename}")
+    configure_file("${__qt_protobuf_build_internals_base_dir}/QtProtobufProperties.cmake.in"
+        "${module_extra_properties_file}" @ONLY)
+
+    qt_install(FILES "${module_extra_properties_file}" DESTINATION "${config_install_dir}")
 endfunction()

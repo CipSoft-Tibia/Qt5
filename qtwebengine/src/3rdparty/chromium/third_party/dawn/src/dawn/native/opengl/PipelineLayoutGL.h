@@ -55,6 +55,13 @@ class PipelineLayout final : public PipelineLayoutBase {
 
     GLuint GetInternalUniformBinding() const;
 
+    enum PushConstantLocation {
+        FirstVertex = 0,
+        FirstInstance = 1,
+        MinDepth = 2,
+        MaxDepth = 3,
+    };
+
   private:
     ~PipelineLayout() override = default;
     BindingIndexInfo mIndexInfo;

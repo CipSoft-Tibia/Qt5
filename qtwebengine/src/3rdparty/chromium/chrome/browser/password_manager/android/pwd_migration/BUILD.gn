@@ -9,11 +9,13 @@ android_library("java") {
     ":java_resources",
     "//base:base_java",
     "//base/version_info/android:version_constants_java",
+    "//chrome/browser/flags:java",
     "//chrome/browser/password_manager/android:java",
     "//chrome/browser/password_manager/android:java_resources",
     "//chrome/browser/password_manager/android:password_manager_resource_provider_java",
     "//chrome/browser/preferences:java",
     "//chrome/browser/profiles/android:java",
+    "//chrome/browser/settings:factory_java",
     "//chrome/browser/signin/services/android:java",
     "//chrome/browser/sync/android:java",
     "//chrome/browser/ui/android/signin:java",
@@ -34,11 +36,12 @@ android_library("java") {
     "//third_party/jni_zero:jni_zero_java",
     "//ui/android:ui_java",
   ]
+  srcjar_deps = [
+    "//chrome/browser/password_manager/android/buildflags:buildflags_srcjar",
+  ]
 
   sources = [
     "java/src/org/chromium/chrome/browser/pwd_migration/ExportDeletionDialogFragment.java",
-    "java/src/org/chromium/chrome/browser/pwd_migration/ExportFlowInterface.java",
-    "java/src/org/chromium/chrome/browser/pwd_migration/NonCancelableProgressBar.java",
     "java/src/org/chromium/chrome/browser/pwd_migration/PasswordMigrationWarningCoordinator.java",
     "java/src/org/chromium/chrome/browser/pwd_migration/PasswordMigrationWarningIntroFragment.java",
     "java/src/org/chromium/chrome/browser/pwd_migration/PasswordMigrationWarningMediator.java",
@@ -48,6 +51,12 @@ android_library("java") {
     "java/src/org/chromium/chrome/browser/pwd_migration/PasswordMigrationWarningUtil.java",
     "java/src/org/chromium/chrome/browser/pwd_migration/PasswordMigrationWarningView.java",
     "java/src/org/chromium/chrome/browser/pwd_migration/PasswordMigrationWarningViewBinder.java",
+    "java/src/org/chromium/chrome/browser/pwd_migration/PostPasswordMigrationSheetCoordinator.java",
+    "java/src/org/chromium/chrome/browser/pwd_migration/PostPasswordMigrationSheetCoordinatorFactory.java",
+    "java/src/org/chromium/chrome/browser/pwd_migration/PostPasswordMigrationSheetMediator.java",
+    "java/src/org/chromium/chrome/browser/pwd_migration/PostPasswordMigrationSheetProperties.java",
+    "java/src/org/chromium/chrome/browser/pwd_migration/PostPasswordMigrationSheetView.java",
+    "java/src/org/chromium/chrome/browser/pwd_migration/PostPasswordMigrationSheetViewBinder.java",
     "java/src/org/chromium/chrome/browser/pwd_migration/ScrollablePasswordMigrationWarningContent.java",
   ]
 
@@ -57,19 +66,26 @@ android_library("java") {
 robolectric_library("junit") {
   testonly = true
 
-  sources = [ "java/src/org/chromium/chrome/browser/pwd_migration/PasswordMigrationWarningMediatorTest.java" ]
+  sources = [
+    "java/src/org/chromium/chrome/browser/pwd_migration/PasswordMigrationWarningMediatorTest.java",
+    "java/src/org/chromium/chrome/browser/pwd_migration/PostPasswordMigrationSheetCoordinatorFactoryTest.java",
+    "java/src/org/chromium/chrome/browser/pwd_migration/PostPasswordMigrationSheetMediatorTest.java",
+    "java/src/org/chromium/chrome/browser/pwd_migration/PostPasswordMigrationSheetModuleTest.java",
+  ]
 
   deps = [
     ":java",
     "//base:base_java",
     "//base:base_java_test_support",
     "//base:base_junit_test_support",
+    "//chrome/browser/flags:java",
     "//chrome/browser/password_manager/android:java",
     "//chrome/browser/preferences:java",
     "//chrome/browser/profiles/android:java",
     "//chrome/browser/signin/services/android:java",
     "//chrome/browser/sync/android:java",
     "//chrome/browser/ui/android/signin:java",
+    "//chrome/test/android:chrome_java_integration_test_support",
     "//chrome/test/android:chrome_java_test_support_common",
     "//components/browser_ui/bottomsheet/android:java",
     "//components/browser_ui/bottomsheet/android/test:java",
@@ -81,12 +97,15 @@ robolectric_library("junit") {
     "//components/user_prefs/android:java",
     "//content/public/android:content_java",
     "//third_party/androidx:androidx_fragment_fragment_java",
-    "//third_party/espresso:espresso_core_java",
+    "//third_party/androidx:androidx_test_espresso_espresso_core_java",
     "//third_party/hamcrest:hamcrest_library_java",
     "//third_party/jni_zero:jni_zero_java",
     "//third_party/junit:junit",
     "//third_party/mockito:mockito_java",
     "//ui/android:ui_java",
+  ]
+  srcjar_deps = [
+    "//chrome/browser/password_manager/android/buildflags:buildflags_srcjar",
   ]
 }
 
@@ -99,6 +118,8 @@ android_library("javatests") {
   sources = [
     "java/src/org/chromium/chrome/browser/pwd_migration/PasswordMigrationWarningRenderTest.java",
     "java/src/org/chromium/chrome/browser/pwd_migration/PasswordMigrationWarningViewTest.java",
+    "java/src/org/chromium/chrome/browser/pwd_migration/PostPasswordMigrationSheetRenderTest.java",
+    "java/src/org/chromium/chrome/browser/pwd_migration/PostPasswordMigrationSheetViewTest.java",
   ]
 
   deps = [
@@ -109,6 +130,7 @@ android_library("javatests") {
     "//chrome/android:chrome_java",
     "//chrome/browser/flags:java",
     "//chrome/browser/password_manager/android:java",
+    "//chrome/browser/password_manager/android:java_resources",
     "//chrome/browser/profiles/android:java",
     "//chrome/browser/signin/services/android:java",
     "//chrome/browser/ui/android/night_mode:night_mode_java_test_support",
@@ -139,6 +161,7 @@ android_resources("java_resources") {
     "//ui/android:ui_java_resources",
   ]
   sources = [
+    "java/res/layout/post_pwd_migration_sheet.xml",
     "java/res/layout/pwd_migration_warning.xml",
     "java/res/layout/pwd_migration_warning_intro_fragment.xml",
     "java/res/layout/pwd_migration_warning_options.xml",

@@ -58,8 +58,8 @@ static inline UBool objectEquals(const UObject* a, const UObject* b) {
     // LATER: return *a == *b;
     // TODO: Remove workaround after MSVC build is fixed:
     //       https://unicode-org.atlassian.net/browse/ICU-22401
-    //return *((const Measure*) a) == *((const Measure*) b);
-    return ((const Measure*) a)->operator==(*((const Measure*) b));
+    // return *((const Measure*) a) == *b;
+    return ((const Measure*) a)->operator==(*b);
 }
 
 // Return a clone of *a.

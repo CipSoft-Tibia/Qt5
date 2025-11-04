@@ -56,7 +56,7 @@ TlsConnectionPosix::~TlsConnectionPosix() {
 }
 
 void TlsConnectionPosix::TryReceiveMessage() {
-  OSP_DCHECK(ssl_);
+  OSP_CHECK(ssl_);
   constexpr int kMaxApplicationDataBytes = 65536;
   std::vector<uint8_t> block(kMaxApplicationDataBytes);
   ClearOpenSSLERRStack(CURRENT_LOCATION);
@@ -67,9 +67,9 @@ void TlsConnectionPosix::TryReceiveMessage() {
   // no application data available, an error occurred, or we have to take an
   // action.
   if (bytes_read <= 0) {
-    const Error error = GetSSLError(ssl_.get(), bytes_read);
+    Error error = GetSSLError(ssl_.get(), bytes_read);
     if (!error.ok() && (error != Error::Code::kAgain)) {
-      DispatchError(error);
+      DispatchError(std::move(error));
     }
     return;
   }
@@ -87,26 +87,26 @@ void TlsConnectionPosix::TryReceiveMessage() {
 }
 
 void TlsConnectionPosix::SetClient(Client* client) {
-  OSP_DCHECK(task_runner_.IsRunningOnTaskRunner());
+  OSP_CHECK(task_runner_.IsRunningOnTaskRunner());
   client_ = client;
 }
 
-bool TlsConnectionPosix::Send(const void* data, size_t len) {
-  OSP_DCHECK(task_runner_.IsRunningOnTaskRunner());
-  return buffer_.Push(data, len);
+bool TlsConnectionPosix::Send(ByteView data) {
+  OSP_CHECK(task_runner_.IsRunningOnTaskRunner());
+  return buffer_.Push(data);
 }
 
 IPEndpoint TlsConnectionPosix::GetRemoteEndpoint() const {
-  OSP_DCHECK(task_runner_.IsRunningOnTaskRunner());
+  OSP_CHECK(task_runner_.IsRunningOnTaskRunner());
 
   std::optional<IPEndpoint> endpoint = socket_->remote_address();
-  OSP_DCHECK(endpoint.has_value());
+  OSP_CHECK(endpoint.has_value());
   return endpoint.value();
 }
 
 void TlsConnectionPosix::RegisterConnectionWithDataRouter(
     PlatformClientPosix* platform_client) {
-  OSP_DCHECK(!platform_client_);
+  OSP_CHECK(!platform_client_);
   platform_client_ = platform_client;
   platform_client_->tls_data_router()->RegisterConnection(this);
 }
@@ -121,9 +121,9 @@ void TlsConnectionPosix::SendAvailableBytes() {
   const int result =
       SSL_write(ssl_.get(), sendable_bytes.data(), sendable_bytes.size());
   if (result <= 0) {
-    const Error result_error = GetSSLError(ssl_.get(), result);
+    Error result_error = GetSSLError(ssl_.get(), result);
     if (!result_error.ok() && (result_error.code() != Error::Code::kAgain)) {
-      DispatchError(result_error);
+      DispatchError(std::move(result_error));
     }
   } else {
     buffer_.Consume(static_cast<size_t>(result));

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016, Alliance for Open Media. All rights reserved
+ * Copyright (c) 2016, Alliance for Open Media. All rights reserved.
  *
  * This source code is subject to the terms of the BSD 2 Clause License and
  * the Alliance for Open Media Patent License 1.0. If the BSD 2 Clause License
@@ -1196,7 +1196,8 @@ static void build_directional_and_filter_intra_predictors(
     const int need_right = p_angle < 90;
     const int need_bottom = p_angle > 180;
     if (p_angle != 90 && p_angle != 180) {
-      const int ab_le = need_above_left ? 1 : 0;
+      assert(need_above_left);
+      const int ab_le = 1;
       if (need_above && need_left && (txwpx + txhpx >= 24)) {
         filter_intra_edge_corner(above_row, left_col);
       }
@@ -1500,7 +1501,8 @@ static void highbd_build_directional_and_filter_intra_predictors(
     const int need_right = p_angle < 90;
     const int need_bottom = p_angle > 180;
     if (p_angle != 90 && p_angle != 180) {
-      const int ab_le = need_above_left ? 1 : 0;
+      assert(need_above_left);
+      const int ab_le = 1;
       if (need_above && need_left && (txwpx + txhpx >= 24)) {
         highbd_filter_intra_edge_corner(above_row, left_col);
       }
@@ -1620,7 +1622,7 @@ static void highbd_build_non_directional_intra_predictors(
 }
 #endif  // CONFIG_AV1_HIGHBITDEPTH
 
-static INLINE BLOCK_SIZE scale_chroma_bsize(BLOCK_SIZE bsize, int subsampling_x,
+static inline BLOCK_SIZE scale_chroma_bsize(BLOCK_SIZE bsize, int subsampling_x,
                                             int subsampling_y) {
   assert(subsampling_x >= 0 && subsampling_x < 2);
   assert(subsampling_y >= 0 && subsampling_y < 2);

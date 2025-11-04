@@ -23,6 +23,11 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+#ifdef UNSAFE_BUFFERS_BUILD
+// TODO(crbug.com/351564777): Remove this and convert code to safer constructs.
+#pragma allow_unsafe_buffers
+#endif
+
 #ifndef THIRD_PARTY_BLINK_RENDERER_PLATFORM_BINDINGS_V8_PER_ISOLATE_DATA_H_
 #define THIRD_PARTY_BLINK_RENDERER_PLATFORM_BINDINGS_V8_PER_ISOLATE_DATA_H_
 
@@ -34,6 +39,7 @@
 #include "third_party/blink/renderer/platform/bindings/active_script_wrappable_manager.h"
 #include "third_party/blink/renderer/platform/bindings/dom_wrapper_world.h"
 #include "third_party/blink/renderer/platform/bindings/runtime_call_stats.h"
+#include "third_party/blink/renderer/platform/bindings/script_regexp.h"
 #include "third_party/blink/renderer/platform/heap/garbage_collected.h"
 #include "third_party/blink/renderer/platform/heap/persistent.h"
 #include "third_party/blink/renderer/platform/platform_export.h"
@@ -49,6 +55,10 @@ namespace base {
 class SingleThreadTaskRunner;
 }  // namespace base
 
+namespace blink::scheduler {
+class TaskAttributionTracker;
+}  // namespace blink::scheduler
+
 namespace blink {
 
 class DOMWrapperWorld;
@@ -57,6 +67,7 @@ class StringCache;
 class ThreadDebugger;
 class V8PrivateProperty;
 struct WrapperTypeInfo;
+class ScriptRegexp;
 
 // Used to hold data that is associated with a single v8::Isolate object, and
 // has a 1:1 relationship with v8::Isolate.
@@ -95,17 +106,8 @@ class PLATFORM_EXPORT V8PerIsolateData final {
     const bool original_use_counter_disabled_;
   };
 
-  // Pointers to core/ objects that are garbage collected. Receives callback
-  // when V8PerIsolateData will be destroyed.
-  class PLATFORM_EXPORT GarbageCollectedData
-      : public GarbageCollected<GarbageCollectedData> {
-   public:
-    virtual ~GarbageCollectedData() = default;
-    virtual void WillBeDestroyed() {}
-    virtual void Trace(Visitor*) const {}
-  };
-
   static v8::Isolate* Initialize(scoped_refptr<base::SingleThreadTaskRunner>,
+                                 scoped_refptr<base::SingleThreadTaskRunner>,
                                  scoped_refptr<base::SingleThreadTaskRunner>,
                                  V8ContextSnapshotMode,
                                  v8::CreateHistogramCallback,
@@ -123,7 +125,6 @@ class PLATFORM_EXPORT V8PerIsolateData final {
 
   static void WillBeDestroyed(v8::Isolate*);
   static void Destroy(v8::Isolate*);
-  static v8::Isolate* MainThreadIsolate();
 
   static void EnableIdleTasks(v8::Isolate*,
                               std::unique_ptr<gin::V8IdleTaskRunner>);
@@ -155,6 +156,11 @@ class PLATFORM_EXPORT V8PerIsolateData final {
                      const void* key,
                      v8::Local<v8::Template> value);
 
+  v8::MaybeLocal<v8::DictionaryTemplate> FindV8DictionaryTemplate(
+      const void* key);
+  void AddV8DictionaryTemplate(const void* key,
+                               v8::Local<v8::DictionaryTemplate> value);
+
   bool HasInstance(const WrapperTypeInfo* wrapper_type_info,
                    v8::Local<v8::Value> untrusted_value);
   bool HasInstanceOfUntrustedType(
@@ -178,26 +184,16 @@ class PLATFORM_EXPORT V8PerIsolateData final {
   // compile-time list of related names, such as IDL dictionary keys.
   const base::span<const v8::Eternal<v8::Name>> FindOrCreateEternalNameCache(
       const void* lookup_key,
-      const base::span<const char* const>& names);
+      base::span<const std::string_view> names);
 
-  ScriptState* EnsureScriptRegexpScriptState() {
-    return EnsureUtilityScriptState();
-  }
-
-  ScriptState* EnsureContinuationPreservedEmbedderDataScriptState() {
-    return EnsureUtilityScriptState();
-  }
-
-  void ClearUtilityScriptState();
+  v8::Local<v8::Context> EnsureScriptRegexpContext();
+  void ClearScriptRegexpContext();
 
   ThreadDebugger* GetThreadDebugger() const { return thread_debugger_.get(); }
   void SetThreadDebugger(std::unique_ptr<ThreadDebugger> thread_debugger);
 
-  void SetProfilerGroup(V8PerIsolateData::GarbageCollectedData*);
-  V8PerIsolateData::GarbageCollectedData* ProfilerGroup();
-
-  void SetCanvasResourceTracker(V8PerIsolateData::GarbageCollectedData*);
-  V8PerIsolateData::GarbageCollectedData* CanvasResourceTracker();
+  void SetPasswordRegexp(ScriptRegexp*);
+  ScriptRegexp* GetPasswordRegexp();
 
   ActiveScriptWrappableManager* GetActiveScriptWrappableManager() const {
     return active_script_wrappable_manager_;
@@ -216,8 +212,48 @@ class PLATFORM_EXPORT V8PerIsolateData final {
 
   void LeaveGC() { gc_callback_depth_--; }
 
+  // Set the factory function used to initialize task attribution for the
+  // isolate upon creating main thread `V8PerIsolateData`. This should be set
+  // once per process before creating any isolates.
+  using TaskAttributionTrackerFactoryPtr =
+      std::unique_ptr<scheduler::TaskAttributionTracker> (*)(v8::Isolate*);
+  static void SetTaskAttributionTrackerFactory(
+      TaskAttributionTrackerFactoryPtr factory);
+
+  // Returns the `scheduler::TaskAttributionTracker` associated with the
+  // associated `v8::Isolate`. Returns null if the
+  // TaskAttributionInfrastructureDisabledForTesting feature is enabled.
+  scheduler::TaskAttributionTracker* GetTaskAttributionTracker() {
+    return task_attribution_tracker_.get();
+  }
+
+  // Pointers to objects that are garbage collected that are logically
+  // associated with an Isolate. Receives callback when V8PerIsolateData
+  // will be destroyed.
+  class PLATFORM_EXPORT UserData : public GarbageCollected<UserData> {
+   public:
+    enum class Key : uint32_t {
+      kProfileGroup,
+      kCanvasResourceTracker,
+      kNumberOfKeys
+    };
+
+    virtual ~UserData() = default;
+    virtual void WillBeDestroyed() {}
+    virtual void Trace(Visitor*) const {}
+  };
+
+  UserData* GetUserData(UserData::Key key) const {
+    return user_data_[static_cast<size_t>(key)];
+  }
+
+  void SetUserData(UserData::Key key, UserData* data) {
+    user_data_[static_cast<size_t>(key)] = data;
+  }
+
  private:
   V8PerIsolateData(scoped_refptr<base::SingleThreadTaskRunner>,
+                   scoped_refptr<base::SingleThreadTaskRunner>,
                    scoped_refptr<base::SingleThreadTaskRunner>,
                    V8ContextSnapshotMode,
                    v8::CreateHistogramCallback,
@@ -244,15 +280,6 @@ class PLATFORM_EXPORT V8PerIsolateData final {
       v8::Local<v8::Value> untrusted_value,
       const V8TemplateMap& map);
 
-  ScriptState* EnsureUtilityScriptState() {
-    if (LIKELY(utility_script_state_)) {
-      return utility_script_state_.Get();
-    }
-    return EnsureUtilityScriptStateSlow();
-  }
-
-  ScriptState* EnsureUtilityScriptStateSlow();
-
   V8ContextSnapshotMode v8_context_snapshot_mode_;
 
   // This isolate_holder_ must be initialized before initializing some other
@@ -263,14 +290,19 @@ class PLATFORM_EXPORT V8PerIsolateData final {
   V8TemplateMap v8_template_map_for_main_world_;
   V8TemplateMap v8_template_map_for_non_main_worlds_;
 
+  using V8DictTemplateMap = HashMap<const void*,
+                                    v8::Eternal<v8::DictionaryTemplate>,
+                                    SimplePtrHashTraits>;
+
+  HashMap<const void*, v8::Eternal<v8::DictionaryTemplate>, SimplePtrHashTraits>
+      v8_dict_template_map_;
+
   // Contains lists of eternal names, such as dictionary keys.
   HashMap<const void*, Vector<v8::Eternal<v8::Name>>> eternal_name_cache_;
 
   std::unique_ptr<StringCache> string_cache_;
   std::unique_ptr<V8PrivateProperty> private_property_;
-  // ScriptState corresponding to the BlinkInternalNonJSExposed world, used
-  // for regexp and continuation preserved embedder data.
-  Persistent<ScriptState> utility_script_state_;
+  Persistent<ScriptState> script_regexp_script_state_;
 
   bool constructor_mode_;
   friend class ConstructorMode;
@@ -281,8 +313,9 @@ class PLATFORM_EXPORT V8PerIsolateData final {
   bool is_handling_recursion_level_error_ = false;
 
   std::unique_ptr<ThreadDebugger> thread_debugger_;
-  Persistent<GarbageCollectedData> profiler_group_;
-  Persistent<GarbageCollectedData> canvas_resource_tracker_;
+  Persistent<ScriptRegexp> password_regexp_;
+  Persistent<UserData>
+      user_data_[static_cast<size_t>(UserData::Key::kNumberOfKeys)];
 
   Persistent<ActiveScriptWrappableManager> active_script_wrappable_manager_;
 
@@ -292,7 +325,9 @@ class PLATFORM_EXPORT V8PerIsolateData final {
   v8::Isolate::GCCallback epilogue_callback_;
   size_t gc_callback_depth_ = 0;
 
-  scoped_refptr<DOMWrapperWorld> main_world_;
+  Persistent<DOMWrapperWorld> main_world_;
+
+  std::unique_ptr<scheduler::TaskAttributionTracker> task_attribution_tracker_;
 };
 
 // Creates a histogram for V8. The returned value is a base::Histogram, but

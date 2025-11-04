@@ -1,6 +1,6 @@
---- .upstream/moc.h	2024-08-05 12:14:28.111250492 +0200
-+++ moc.h	2024-08-05 16:00:04.715392500 +0200
-@@ -4,14 +4,12 @@
+--- .upstream/moc.h	2024-11-22 10:57:14.673629148 +0100
++++ moc.h	2024-11-29 14:50:33.988625304 +0100
+@@ -4,15 +4,13 @@
  #ifndef MOC_H
  #define MOC_H
  
@@ -10,18 +10,20 @@
 -#include <qjsondocument.h>
 -#include <qjsonarray.h>
 -#include <qjsonobject.h>
+-#include <qtmocconstants.h>
 -#include <qtyperevision.h>
 -#include <stdio.h>
 +// -- QtScxml
++#include <QtCore/qjsonarray.h>
++#include <QtCore/qjsondocument.h>
 +#include <QtCore/qmap.h>
 +#include <QtCore/qpair.h>
-+#include <QtCore/qjsondocument.h>
-+#include <QtCore/qjsonarray.h>
++#include <QtCore/qtmocconstants.h>
 +// -- QtScxml
  
  #include <private/qtools_p.h>
  
-@@ -23,16 +21,18 @@
+@@ -33,9 +31,9 @@
  {
      enum ReferenceType { NoReference, Reference, RValueReference, Pointer };
  
@@ -33,16 +35,17 @@
      QByteArray name;
      //When used as a return type, the type name may be modified to remove the references.
      // rawName is the type as found in the function signature
-     QByteArray rawName;
+@@ -43,7 +41,9 @@
      uint isVolatile : 1;
      uint isScoped : 1;
+     TypeTags typeTag;
 +#if 0 // -- QtScxml
      Token firstToken;
 +#endif // -- QtScxml
      ReferenceType referenceType;
  };
  Q_DECLARE_TYPEINFO(Type, Q_RELOCATABLE_TYPE);
-@@ -82,8 +82,9 @@
+@@ -92,8 +92,9 @@
      bool inlineCode = false;
      bool wasCloned = false;
  
@@ -53,9 +56,9 @@
      bool isCompat = false;
      bool isInvokable = false;
      bool isScriptable = false;
-@@ -97,6 +98,11 @@
+@@ -107,6 +108,11 @@
  
-     QJsonObject toJson() const;
+     QJsonObject toJson(int index) const;
      static void accessToJson(QJsonObject *obj, Access acs);
 +
 +// -- QtScxml
@@ -65,7 +68,7 @@
  };
  Q_DECLARE_TYPEINFO(FunctionDef, Q_RELOCATABLE_TYPE);
  
-@@ -124,6 +130,10 @@
+@@ -135,6 +141,10 @@
      qsizetype location = -1; // token index, used for error reporting
  
      QJsonObject toJson() const;
@@ -76,7 +79,7 @@
  };
  Q_DECLARE_TYPEINFO(PropertyDef, Q_RELOCATABLE_TYPE);
  
-@@ -205,6 +215,7 @@
+@@ -216,6 +226,7 @@
  };
  Q_DECLARE_TYPEINFO(NamespaceDef, Q_RELOCATABLE_TYPE);
  
@@ -84,7 +87,7 @@
  class Moc : public Parser
  {
  public:
-@@ -294,6 +305,7 @@
+@@ -305,6 +316,7 @@
  
      void checkListSizes(const ClassDef &def);
  };

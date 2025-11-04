@@ -12,38 +12,16 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import {time} from '../base/time';
 import {Actions} from '../common/actions';
-import {AggregateData, isEmptyData} from '../common/aggregation_data';
+import {AggregateData} from '../common/aggregation_data';
 import {ConversionJobStatusUpdate} from '../common/conversion_jobs';
-import {
-  LogBoundsKey,
-  LogEntriesKey,
-  LogExists,
-  LogExistsKey,
-} from '../common/logs';
-import {MetricResult} from '../common/metric_data';
-import {CurrentSearchResults, SearchSummary} from '../common/search_data';
 import {raf} from '../core/raf_scheduler';
 import {HttpRpcState} from '../trace_processor/http_rpc_engine';
+import {Flow, globals, QuantizedLoad, ThreadDesc} from './globals';
 
-import {
-  CounterDetails,
-  CpuProfileDetails,
-  FlamegraphDetails,
-  Flow,
-  FtracePanelData,
-  FtraceStat,
-  globals,
-  QuantizedLoad,
-  SliceDetails,
-  ThreadDesc,
-  ThreadStateDetails,
-} from './globals';
-import {findCurrentSelection} from './keyboard_event_handler';
-
-export function publishOverviewData(
-    data: {[key: string]: QuantizedLoad|QuantizedLoad[]}) {
+export function publishOverviewData(data: {
+  [key: string]: QuantizedLoad | QuantizedLoad[];
+}) {
   for (const [key, value] of Object.entries(data)) {
     if (!globals.overviewStore.has(key)) {
       globals.overviewStore.set(key, []);
@@ -62,20 +40,9 @@ export function clearOverviewData() {
   raf.scheduleRedraw();
 }
 
-export function publishTrackData(args: {id: string, data: {}}) {
+export function publishTrackData(args: {id: string; data: {}}) {
   globals.setTrackData(args.id, args.data);
-  if ([LogExistsKey, LogBoundsKey, LogEntriesKey].includes(args.id)) {
-    const trackDataStore = globals.trackDataStore;
-    const data = trackDataStore.get(LogExistsKey) as LogExists | undefined;
-    if (data && data.exists) raf.scheduleFullRedraw();
-  } else {
-    raf.scheduleRedraw();
-  }
-}
-
-export function publishMetricResult(metricResult: MetricResult) {
-  globals.setMetricResult(metricResult);
-  globals.publishRedraw();
+  raf.scheduleRedraw();
 }
 
 export function publishSelectedFlows(selectedFlows: Flow[]) {
@@ -88,36 +55,14 @@ export function publishHttpRpcState(httpRpcState: HttpRpcState) {
   raf.scheduleFullRedraw();
 }
 
-export function publishCounterDetails(click: CounterDetails) {
-  globals.counterDetails = click;
-  globals.publishRedraw();
-}
-
-export function publishFlamegraphDetails(click: FlamegraphDetails) {
-  globals.flamegraphDetails = click;
-  globals.publishRedraw();
-}
-
-export function publishCpuProfileDetails(details: CpuProfileDetails) {
-  globals.cpuProfileDetails = details;
-  globals.publishRedraw();
-}
-
-export function publishFtraceCounters(counters: FtraceStat[]) {
-  globals.ftraceCounters = counters;
-  globals.publishRedraw();
-}
-
-export function publishRealtimeOffset(
-    offset: time, utcOffset: time, traceTzOffset: time) {
-  globals.realtimeOffset = offset;
-  globals.utcOffset = utcOffset;
-  globals.traceTzOffset = traceTzOffset;
+export function publishHasFtrace(value: boolean): void {
+  globals.hasFtrace = value;
   globals.publishRedraw();
 }
 
 export function publishConversionJobStatusUpdate(
-    job: ConversionJobStatusUpdate) {
+  job: ConversionJobStatusUpdate,
+) {
   globals.setConversionJobStatus(job.jobName, job.jobStatus);
   globals.publishRedraw();
 }
@@ -131,16 +76,6 @@ export function publishLoading(numQueuedQueries: number) {
 
 export function publishBufferUsage(args: {percentage: number}) {
   globals.setBufferUsage(args.percentage);
-  globals.publishRedraw();
-}
-
-export function publishSearch(args: SearchSummary) {
-  globals.searchSummary = args;
-  globals.publishRedraw();
-}
-
-export function publishSearchResult(args: CurrentSearchResults) {
-  globals.currentSearchResults = args;
   globals.publishRedraw();
 }
 
@@ -159,18 +94,11 @@ export function publishMetricError(error: string) {
   globals.publishRedraw();
 }
 
-export function publishAggregateData(
-    args: {data: AggregateData, kind: string}) {
+export function publishAggregateData(args: {
+  data: AggregateData;
+  kind: string;
+}) {
   globals.setAggregateData(args.kind, args.data);
-  if (!isEmptyData(args.data)) {
-    globals.dispatch(Actions.setCurrentTab({tab: args.data.tabName}));
-  }
-  globals.publishRedraw();
-}
-
-export function publishQueryResult(args: {id: string, data?: {}}) {
-  globals.queryResults.set(args.id, args.data);
-  globals.dispatch(Actions.setCurrentTab({tab: `query_result_${args.id}`}));
   globals.publishRedraw();
 }
 
@@ -182,22 +110,6 @@ export function publishThreads(data: ThreadDesc[]) {
   globals.publishRedraw();
 }
 
-export function publishSliceDetails(click: SliceDetails) {
-  globals.sliceDetails = click;
-  const id = click.id;
-  if (id !== undefined && id === globals.state.pendingScrollId) {
-    findCurrentSelection();
-    globals.dispatch(Actions.setCurrentTab({tab: 'slice'}));
-    globals.dispatch(Actions.clearPendingScrollId({id: undefined}));
-  }
-  globals.publishRedraw();
-}
-
-export function publishThreadStateDetails(click: ThreadStateDetails) {
-  globals.threadStateDetails = click;
-  globals.publishRedraw();
-}
-
 export function publishConnectedFlows(connectedFlows: Flow[]) {
   globals.connectedFlows = connectedFlows;
   // If a chrome slice is selected and we have any flows in connectedFlows
@@ -205,8 +117,9 @@ export function publishConnectedFlows(connectedFlows: Flow[]) {
   // focus. In all other cases the focusedFlowId(Left|Right) will be set to -1.
   globals.dispatch(Actions.setHighlightedFlowLeftId({flowId: -1}));
   globals.dispatch(Actions.setHighlightedFlowRightId({flowId: -1}));
-  if (globals.state.currentSelection?.kind === 'CHROME_SLICE') {
-    const sliceId = globals.state.currentSelection.id;
+  const currentSelection = globals.selectionManager.legacySelection;
+  if (currentSelection?.kind === 'SLICE') {
+    const sliceId = currentSelection.id;
     for (const flow of globals.connectedFlows) {
       if (flow.begin.sliceId === sliceId) {
         globals.dispatch(Actions.setHighlightedFlowRightId({flowId: flow.id}));
@@ -220,12 +133,12 @@ export function publishConnectedFlows(connectedFlows: Flow[]) {
   globals.publishRedraw();
 }
 
-export function publishFtracePanelData(data: FtracePanelData) {
-  globals.ftracePanelData = data;
+export function publishShowPanningHint() {
+  globals.showPanningHint = true;
   globals.publishRedraw();
 }
 
-export function publishShowPanningHint() {
-  globals.showPanningHint = true;
+export function publishPermalinkHash(hash: string | undefined): void {
+  globals.permalinkHash = hash;
   globals.publishRedraw();
 }

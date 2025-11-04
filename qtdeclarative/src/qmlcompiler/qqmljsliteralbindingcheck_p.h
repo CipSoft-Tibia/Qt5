@@ -30,15 +30,13 @@ class Q_QMLCOMPILER_EXPORT LiteralBindingCheckBase : public QQmlSA::PropertyPass
 public:
     using QQmlSA::PropertyPass::PropertyPass;
 
-    void onBinding(const QQmlSA::Element &element, const QString &propertyName,
-                   const QQmlSA::Binding &binding, const QQmlSA::Element &bindingScope,
-                   const QQmlSA::Element &value) override;
-
 protected:
     virtual QQmlJSStructuredTypeError check(const QString &typeName, const QString &value) const = 0;
 
     QQmlSA::Property getProperty(const QString &propertyName, const QQmlSA::Binding &binding,
                                  const QQmlSA::Element &bindingScope) const;
+
+    void warnOnCheckedBinding(const QQmlSA::Binding &binding, const QQmlSA::Element &propertyType);
 };
 
 class Q_QMLCOMPILER_EXPORT QQmlJSLiteralBindingCheck: public LiteralBindingCheckBase

@@ -48,7 +48,14 @@ public:
 
 protected:
     int metaCall(QObject *o, QMetaObject::Call _c, int _id, void **_a) override;
-    QMetaObject *toDynamicMetaObject(QObject *) override;
+#if QT_VERSION >= QT_VERSION_CHECK(7, 0, 0)
+    const QMetaObject *toDynamicMetaObject(QObject *) const override
+#else
+    QMetaObject *toDynamicMetaObject(QObject *) override
+#endif
+    {
+        return metaObject;
+    }
     void objectDestroyed(QObject *object) override;
 
 private:

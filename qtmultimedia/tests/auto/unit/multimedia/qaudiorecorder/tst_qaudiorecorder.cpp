@@ -1,18 +1,16 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
-#include <QtTest/QtTest>
-#include <QDebug>
+#include <QtTest/qtest.h>
+#include <QtCore/qdebug.h>
 
-#include <qaudioformat.h>
+#include <QtMultimedia/qaudioformat.h>
+#include <QtMultimedia/qmediarecorder.h>
+#include <QtMultimedia/qaudiodevice.h>
+#include <QtMultimedia/qaudiosource.h>
+#include <QtMultimedia/qmediacapturesession.h>
+#include <QtMultimedia/private/qplatformmediarecorder_p.h>
 
-#include <qmediarecorder.h>
-#include <private/qplatformmediarecorder_p.h>
-#include <qaudiodevice.h>
-#include <qaudiosource.h>
-#include <qmediacapturesession.h>
-
-#include "qmockmediacapturesession.h"
 #include "qmockintegration.h"
 
 QT_USE_NAMESPACE

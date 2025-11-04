@@ -12,8 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import {Disposable} from '../base/disposable';
-
 export class DragGestureHandler implements Disposable {
   private readonly boundOnMouseDown = this.onMouseDown.bind(this);
   private readonly boundOnMouseMove = this.onMouseMove.bind(this);
@@ -23,10 +21,11 @@ export class DragGestureHandler implements Disposable {
   private _isDragging = false;
 
   constructor(
-      private element: HTMLElement,
-      private onDrag: (x: number, y: number) => void,
-      private onDragStarted: (x: number, y: number) => void = () => {},
-      private onDragFinished = () => {}) {
+    private element: HTMLElement,
+    private onDrag: (x: number, y: number) => void,
+    private onDragStarted: (x: number, y: number) => void = () => {},
+    private onDragFinished = () => {},
+  ) {
     element.addEventListener('mousedown', this.boundOnMouseDown);
   }
 
@@ -43,22 +42,28 @@ export class DragGestureHandler implements Disposable {
   private startDragGesture(e: MouseEvent) {
     this.clientRect = this.element.getBoundingClientRect();
     this.onDragStarted(
-        e.clientX - this.clientRect.left, e.clientY - this.clientRect.top);
+      e.clientX - this.clientRect.left,
+      e.clientY - this.clientRect.top,
+    );
   }
 
   private onMouseMove(e: MouseEvent) {
     if (e.buttons === 0) {
       return this.onMouseUp();
     }
-    if (this.pendingMouseDownEvent &&
-        (Math.abs(e.clientX - this.pendingMouseDownEvent.clientX) > 1 ||
-         Math.abs(e.clientY - this.pendingMouseDownEvent.clientY) > 1)) {
+    if (
+      this.pendingMouseDownEvent &&
+      (Math.abs(e.clientX - this.pendingMouseDownEvent.clientX) > 1 ||
+        Math.abs(e.clientY - this.pendingMouseDownEvent.clientY) > 1)
+    ) {
       this.startDragGesture(this.pendingMouseDownEvent);
       this.pendingMouseDownEvent = undefined;
     }
     if (!this.pendingMouseDownEvent) {
       this.onDrag(
-          e.clientX - this.clientRect!.left, e.clientY - this.clientRect!.top);
+        e.clientX - this.clientRect!.left,
+        e.clientY - this.clientRect!.top,
+      );
     }
   }
 
@@ -75,7 +80,7 @@ export class DragGestureHandler implements Disposable {
     return this._isDragging;
   }
 
-  dispose() {
+  [Symbol.dispose]() {
     if (this._isDragging) {
       this.onMouseUp();
     }

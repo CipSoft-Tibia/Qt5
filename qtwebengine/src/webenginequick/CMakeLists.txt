@@ -23,7 +23,7 @@ qt_internal_add_qml_module(WebEngineQuick
         api/qquickwebenginefaviconprovider_p_p.h
         api/qquickwebenginenewwindowrequest.cpp api/qquickwebenginenewwindowrequest_p.h
         api/qquickwebengineprofile.cpp api/qquickwebengineprofile.h api/qquickwebengineprofile_p.h
-        api/qquickwebenginescriptcollection.cpp api/qquickwebenginescriptcollection_p.h api/qquickwebenginescriptcollection_p_p.h
+        api/qquickwebenginescriptcollection.cpp api/qquickwebenginescriptcollection_p.h
         api/qquickwebenginesettings.cpp api/qquickwebenginesettings_p.h
         api/qquickwebenginesingleton.cpp api/qquickwebenginesingleton_p.h
         api/qquickwebenginetouchhandleprovider.cpp
@@ -37,6 +37,8 @@ qt_internal_add_qml_module(WebEngineQuick
         api/qquickwebengineforeigntypes_p.h
         api/qtwebenginequickglobal.cpp api/qtwebenginequickglobal.h
         api/qtwebenginequickglobal_p.h
+        api/qquickwebengineprofileprototype.cpp api/qquickwebengineprofileprototype_p.h
+        api/qquickwebengineprofileprototype_p_p.h
         render_widget_host_view_qt_delegate_quickwindow.cpp render_widget_host_view_qt_delegate_quickwindow_p.h
         ui_delegates_manager.cpp ui_delegates_manager_p.h
     DEFINES

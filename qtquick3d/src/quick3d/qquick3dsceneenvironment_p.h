@@ -75,6 +75,8 @@ class Q_QUICK3D_EXPORT QQuick3DSceneEnvironment : public QQuick3DObject
 
     Q_PROPERTY(QQuick3DFog *fog READ fog WRITE setFog NOTIFY fogChanged REVISION(6, 5))
 
+    Q_PROPERTY(QQuick3DEnvironmentOITMethod oitMethod READ oitMethod WRITE setOitMethod NOTIFY oitMethodChanged REVISION(6, 9))
+
     QML_NAMED_ELEMENT(SceneEnvironment)
 
 public:
@@ -111,6 +113,13 @@ public:
         TonemapModeFilmic
     };
     Q_ENUM(QQuick3DEnvironmentTonemapModes)
+
+    enum QQuick3DEnvironmentOITMethod
+    {
+        OITNone = 0,
+        OITWeightedBlended
+    };
+    Q_ENUM(QQuick3DEnvironmentOITMethod)
 
     explicit QQuick3DSceneEnvironment(QQuick3DObject *parent = nullptr);
     ~QQuick3DSceneEnvironment() override;
@@ -153,6 +162,8 @@ public:
     Q_REVISION(6, 5) QRect scissorRect() const;
 
     Q_REVISION(6, 5) QQuick3DFog *fog() const;
+
+    QQuick3DEnvironmentOITMethod Q_REVISION(6, 9) oitMethod() const;
 
     bool gridEnabled() const;
     void setGridEnabled(bool newGridEnabled);
@@ -200,6 +211,8 @@ public Q_SLOTS:
 
     Q_REVISION(6, 5) void setFog(QQuick3DFog *fog);
 
+    Q_REVISION(6, 9) void setOitMethod(QQuick3DSceneEnvironment::QQuick3DEnvironmentOITMethod mode);
+
 Q_SIGNALS:
     void antialiasingModeChanged();
     void antialiasingQualityChanged();
@@ -236,6 +249,8 @@ Q_SIGNALS:
     Q_REVISION(6, 5) void scissorRectChanged();
 
     Q_REVISION(6, 5) void fogChanged();
+
+    Q_REVISION(6, 9) void oitMethodChanged();
 
 protected:
     QSSGRenderGraphObject *updateSpatialNode(QSSGRenderGraphObject *node) override;
@@ -293,6 +308,7 @@ private:
     float m_gridScale = 1.0f;
     QQuick3DFog *m_fog = nullptr;
     QMetaObject::Connection m_fogSignalConnection;
+    QQuick3DEnvironmentOITMethod m_oitMethod = QQuick3DEnvironmentOITMethod::OITNone;
 };
 
 QT_END_NAMESPACE

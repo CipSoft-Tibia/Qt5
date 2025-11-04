@@ -5,6 +5,7 @@
 #include "components/optimization_guide/core/prediction_model_override.h"
 
 #include "base/files/file_util.h"
+#include "base/functional/callback_helpers.h"
 #include "base/strings/string_util.h"
 #include "base/task/sequenced_task_runner.h"
 #include "base/task/thread_pool.h"
@@ -105,22 +106,24 @@ void OnModelOverrideVerified(proto::OptimizationTarget optimization_target,
   auto unzipper = unzip::LaunchUnzipper();
 #endif
   unzip::Unzip(std::move(unzipper), passed_crx_file_path, base_model_dir,
+               unzip::mojom::UnzipOptions::New(), unzip::AllContents(),
+               base::DoNothing(),
                base::BindOnce(&OnModelOverrideUnzipped, optimization_target,
                               base_model_dir, std::move(callback)));
 }
 
 }  // namespace
 
-void BuildPredictionModelFromCommandLineForOptimizationTarget(
+bool BuildPredictionModelFromCommandLineForOptimizationTarget(
     proto::OptimizationTarget optimization_target,
     const base::FilePath& base_model_dir,
     OnPredictionModelBuiltCallback callback) {
-  absl::optional<std::pair<std::string, absl::optional<proto::Any>>>
+  std::optional<std::pair<std::string, std::optional<proto::Any>>>
       model_file_path_and_metadata =
           GetModelOverrideForOptimizationTarget(optimization_target);
   if (!model_file_path_and_metadata) {
     std::move(callback).Run(nullptr);
-    return;
+    return false;
   }
 
   if (base::EndsWith(model_file_path_and_metadata->first, ".crx3")) {
@@ -142,7 +145,7 @@ void BuildPredictionModelFromCommandLineForOptimizationTarget(
         base::BindOnce(&OnModelOverrideVerified, optimization_target,
                        *StringToFilePath(model_file_path_and_metadata->first),
                        base_model_dir, std::move(callback)));
-    return;
+    return true;
   }
 
   std::unique_ptr<proto::PredictionModel> prediction_model =
@@ -157,6 +160,7 @@ void BuildPredictionModelFromCommandLineForOptimizationTarget(
   prediction_model->mutable_model()->set_download_url(
       model_file_path_and_metadata->first);
   std::move(callback).Run(std::move(prediction_model));
+  return true;
 }
 
 }  // namespace optimization_guide

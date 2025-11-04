@@ -238,8 +238,7 @@ void WebRtcEventLogManager::OnPeerConnectionAdded(
     int lid,
     base::ProcessId pid,
     const std::string& url,
-    const std::string& rtc_configuration,
-    const std::string& constraints) {
+    const std::string& rtc_configuration) {
   OnPeerConnectionAdded(frame_id, lid, base::NullCallback());
 }
 
@@ -254,7 +253,7 @@ void WebRtcEventLogManager::OnPeerConnectionUpdated(
     int lid,
     const std::string& type,
     const std::string& value) {
-  // TODO(810383): Get rid of magic value.
+  // TODO(crbug.com/40562061): Get rid of magic value.
   if (type == "stop") {
     OnPeerConnectionStopped(frame_id, lid, base::NullCallback());
   }
@@ -483,7 +482,7 @@ void WebRtcEventLogManager::OnPeerConnectionAdded(
     base::OnceCallback<void(bool)> reply) {
   DCHECK_CURRENTLY_ON(BrowserThread::UI);
 
-  // TODO(crbug.com/1178670): Should this look at RFH shutdown instead of RPH?
+  // TODO(crbug.com/40169214): Should this look at RFH shutdown instead of RPH?
   RenderProcessHost* rph = RenderProcessHost::FromID(frame_id.child_id);
   if (!rph) {
     // RPH died before processing of this notification.

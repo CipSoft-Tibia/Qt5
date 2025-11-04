@@ -38,9 +38,9 @@
 namespace blink {
 
 DocumentLoadTiming::DocumentLoadTiming(DocumentLoader& document_loader)
-    : user_timing_mark_fully_loaded_(absl::nullopt),
-      user_timing_mark_fully_visible_(absl::nullopt),
-      user_timing_mark_interactive_(absl::nullopt),
+    : user_timing_mark_fully_loaded_(std::nullopt),
+      user_timing_mark_fully_visible_(std::nullopt),
+      user_timing_mark_interactive_(std::nullopt),
       clock_(base::DefaultClock::GetInstance()),
       tick_clock_(base::DefaultTickClock::GetInstance()),
       document_loader_(document_loader),
@@ -126,8 +126,9 @@ void DocumentLoadTiming::MarkNavigationStart() {
 void DocumentLoadTiming::WriteNavigationStartDataIntoTracedValue(
     perfetto::TracedValue context) const {
   auto dict = std::move(context).WriteDictionary();
-  dict.Add("documentLoaderURL",
-           document_loader_ ? document_loader_->Url().GetString() : "");
+  dict.Add("documentLoaderURL", document_loader_
+                                    ? document_loader_->Url().GetString()
+                                    : g_empty_string);
   dict.Add("isLoadingMainFrame",
            GetFrame() ? GetFrame()->IsMainFrame() : false);
   dict.Add("isOutermostMainFrame",
@@ -183,6 +184,14 @@ void DocumentLoadTiming::SetUserTimingMarkInteractive(
     base::TimeDelta interactive_time) {
   user_timing_mark_interactive_ = interactive_time;
   NotifyDocumentTimingChanged();
+}
+
+void DocumentLoadTiming::NotifyCustomUserTimingMarkAdded(
+    const AtomicString& mark_name,
+    const base::TimeDelta& start_time) {
+  custom_user_timing_mark_.emplace(std::make_tuple(mark_name, start_time));
+  NotifyDocumentTimingChanged();
+  custom_user_timing_mark_.reset();
 }
 
 void DocumentLoadTiming::AddRedirect(const KURL& redirecting_url,
@@ -286,8 +295,8 @@ void DocumentLoadTiming::MarkCommitNavigationEnd() {
 
 void DocumentLoadTiming::SetActivationStart(base::TimeTicks activation_start) {
   activation_start_ = activation_start;
-  TRACE_EVENT_MARK_WITH_TIMESTAMP1("blink.user_timing", "activationtart",
-                                   activation_start, "frame",
+  TRACE_EVENT_MARK_WITH_TIMESTAMP1("blink.user_timing", "activationStart",
+                                   activation_start_, "frame",
                                    GetFrameIdForTracing(GetFrame()));
   NotifyDocumentTimingChanged();
 }

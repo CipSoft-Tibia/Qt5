@@ -2,16 +2,17 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+import 'chrome://resources/cr_elements/cr_page_selector/cr_page_selector.js';
 import 'chrome://resources/cr_elements/cr_tabs/cr_tabs.js';
-import 'chrome://resources/polymer/v3_0/iron-pages/iron-pages.js';
+import '//resources/cr_elements/cr_collapse/cr_collapse.js';
 import '//resources/cr_elements/cr_expand_button/cr_expand_button.js';
-import '//resources/polymer/v3_0/iron-collapse/iron-collapse.js';
 import './strings.m.js';
 
 import {loadTimeData} from 'chrome://resources/js/load_time_data.js';
 import {PolymerElement} from 'chrome://resources/polymer/v3_0/polymer/polymer_bundled.min.js';
 
-import {ContentRestriction, DataTransferEndpoint, DlpEvent, DlpEvent_Mode, DlpEvent_Restriction, DlpEvent_UserType, EndpointType, EventDestination, FileDatabaseEntry, Level, PageHandler, PageHandlerInterface, ReportingObserverReceiver, WebContentsInfo} from './dlp_internals.mojom-webui.js';
+import type {ContentRestriction, DataTransferEndpoint, DlpEvent, DlpEvent_Mode, DlpEvent_Restriction, DlpEvent_UserType, EndpointType, EventDestination, FileDatabaseEntry, Level, PageHandlerInterface, WebContentsInfo} from './dlp_internals.mojom-webui.js';
+import {PageHandler, ReportingObserverReceiver} from './dlp_internals.mojom-webui.js';
 import {getTemplate} from './dlp_internals_ui.html.js';
 import {ContentRestrictionMap, DestinationComponentMap, EndpointTypeMap, EventModeMap, EventRestrictionMap, EventUserTypeMap, LevelMap, WebContentsElement} from './dlp_utils.js';
 
@@ -126,7 +127,7 @@ class DlpInternalsUi extends PolymerElement {
     }
 
     this.clipboardSourceType_ = `${this.endpointTypeToString(source.type)}`;
-    if (source.url === undefined) {
+    if (source.url === null) {
       this.clipboardSourceUrl_ = 'undefined';
     } else {
       this.clipboardSourceUrl_ = source.url.url;

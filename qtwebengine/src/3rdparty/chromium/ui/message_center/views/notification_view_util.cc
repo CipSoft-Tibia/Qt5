@@ -8,7 +8,6 @@
 #include "ui/views/view.h"
 
 #if BUILDFLAG(IS_CHROMEOS_ASH)
-#include "chromeos/constants/chromeos_features.h"
 #include "ui/message_center/public/cpp/message_center_constants.h"
 #endif  // BUILDFLAG(IS_CHROMEOS_ASH)
 
@@ -33,12 +32,11 @@ std::unique_ptr<ui::Event> ConvertToBoundedLocatedEvent(const ui::Event& event,
   return cloned_event;
 }
 
-absl::optional<size_t> GetLargeImageCornerRadius() {
+std::optional<size_t> GetLargeImageCornerRadius() {
 #if BUILDFLAG(IS_CHROMEOS_ASH)
-  return chromeos::features::IsJellyEnabled() ? kJellyImageCornerRadius
-                                              : kImageCornerRadius;
+  return kJellyImageCornerRadius;
 #else
-  return absl::nullopt;
+  return std::nullopt;
 #endif  // BUILDFLAG(IS_CHROMEOS_ASH)
 }
 

@@ -2,8 +2,16 @@
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 namespace Foo {
+    /*!
+        \class Foo::Bar
+        \inmodule Foo
+     */
+    class Bar {
+    };
 
-    class Bar {};
-
+    /*!
+        Create a Bar
+        \relates Foo::Bar
+     */
     Bar createBar();
 }

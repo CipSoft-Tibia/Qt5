@@ -10,6 +10,7 @@
 
 #include "sdk/objc/native/src/objc_video_encoder_factory.h"
 
+#include <optional>
 #include <string>
 
 #import "base/RTCMacros.h"
@@ -19,10 +20,11 @@
 #import "sdk/objc/api/peerconnection/RTCEncodedImage+Private.h"
 #import "sdk/objc/api/peerconnection/RTCVideoCodecInfo+Private.h"
 #import "sdk/objc/api/peerconnection/RTCVideoEncoderSettings+Private.h"
+#import "sdk/objc/api/video_codec/RTCNativeVideoEncoderBuilder+Native.h"
 #import "sdk/objc/api/video_codec/RTCVideoCodecConstants.h"
-#import "sdk/objc/api/video_codec/RTCWrappedNativeVideoEncoder.h"
 #import "sdk/objc/helpers/NSString+StdString.h"
 
+#include "api/environment/environment.h"
 #include "api/video/video_frame.h"
 #include "api/video_codecs/sdp_video_format.h"
 #include "api/video_codecs/video_encoder.h"
@@ -119,22 +121,22 @@ class ObjcVideoEncoderSelector : public VideoEncoderFactory::EncoderSelectorInte
         [[RTC_OBJC_TYPE(RTCVideoCodecInfo) alloc] initWithNativeSdpVideoFormat:format];
     [selector_ registerCurrentEncoderInfo:info];
   }
-  absl::optional<SdpVideoFormat> OnEncoderBroken() override {
+  std::optional<SdpVideoFormat> OnEncoderBroken() override {
     RTC_OBJC_TYPE(RTCVideoCodecInfo) *info = [selector_ encoderForBrokenEncoder];
     if (info) {
       return [info nativeSdpVideoFormat];
     }
-    return absl::nullopt;
+    return std::nullopt;
   }
-  absl::optional<SdpVideoFormat> OnAvailableBitrate(const DataRate &rate) override {
+  std::optional<SdpVideoFormat> OnAvailableBitrate(const DataRate &rate) override {
     RTC_OBJC_TYPE(RTCVideoCodecInfo) *info = [selector_ encoderForBitrate:rate.kbps<NSInteger>()];
     if (info) {
       return [info nativeSdpVideoFormat];
     }
-    return absl::nullopt;
+    return std::nullopt;
   }
 
-  absl::optional<SdpVideoFormat> OnResolutionChange(const RenderResolution &resolution) override {
+  std::optional<SdpVideoFormat> OnResolutionChange(const RenderResolution &resolution) override {
     if ([selector_ respondsToSelector:@selector(encoderForResolutionChangeBySize:)]) {
       RTC_OBJC_TYPE(RTCVideoCodecInfo) *info = [selector_
           encoderForResolutionChangeBySize:CGSizeMake(resolution.Width(), resolution.Height())];
@@ -142,7 +144,7 @@ class ObjcVideoEncoderSelector : public VideoEncoderFactory::EncoderSelectorInte
         return [info nativeSdpVideoFormat];
       }
     }
-    return absl::nullopt;
+    return std::nullopt;
   }
 
  private:
@@ -183,15 +185,34 @@ std::vector<SdpVideoFormat> ObjCVideoEncoderFactory::GetImplementations() const 
   return GetSupportedFormats();
 }
 
-std::unique_ptr<VideoEncoder> ObjCVideoEncoderFactory::CreateVideoEncoder(
-    const SdpVideoFormat &format) {
+VideoEncoderFactory::CodecSupport ObjCVideoEncoderFactory::QueryCodecSupport(
+    const SdpVideoFormat &format, std::optional<std::string> scalability_mode) const {
+  if ([encoder_factory_ respondsToSelector:@selector(queryCodecSupport:scalabilityMode:)]) {
+    RTC_OBJC_TYPE(RTCVideoCodecInfo) *info =
+        [[RTC_OBJC_TYPE(RTCVideoCodecInfo) alloc] initWithNativeSdpVideoFormat:format];
+    NSString *mode;
+    if (scalability_mode.has_value()) {
+      mode = [NSString stringForAbslStringView:*scalability_mode];
+    }
+
+    RTC_OBJC_TYPE(RTCVideoEncoderCodecSupport) *result = [encoder_factory_ queryCodecSupport:info
+                                                                             scalabilityMode:mode];
+    return {.is_supported = result.isSupported, .is_power_efficient = result.isPowerEfficient};
+  }
+
+  // Use default implementation.
+  return VideoEncoderFactory::QueryCodecSupport(format, scalability_mode);
+}
+
+std::unique_ptr<VideoEncoder> ObjCVideoEncoderFactory::Create(const Environment &env,
+                                                              const SdpVideoFormat &format) {
   RTC_OBJC_TYPE(RTCVideoCodecInfo) *info =
       [[RTC_OBJC_TYPE(RTCVideoCodecInfo) alloc] initWithNativeSdpVideoFormat:format];
   id<RTC_OBJC_TYPE(RTCVideoEncoder)> encoder = [encoder_factory_ createEncoder:info];
-  if ([encoder isKindOfClass:[RTC_OBJC_TYPE(RTCWrappedNativeVideoEncoder) class]]) {
-    return [(RTC_OBJC_TYPE(RTCWrappedNativeVideoEncoder) *)encoder releaseWrappedEncoder];
+  if ([encoder conformsToProtocol:@protocol(RTC_OBJC_TYPE(RTCNativeVideoEncoderBuilder))]) {
+    return [((id<RTC_OBJC_TYPE(RTCNativeVideoEncoderBuilder)>)encoder) build:env];
   } else {
-    return std::unique_ptr<ObjCVideoEncoder>(new ObjCVideoEncoder(encoder));
+    return std::make_unique<ObjCVideoEncoder>(encoder);
   }
 }
 

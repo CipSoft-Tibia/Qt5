@@ -5,6 +5,7 @@
 #include "components/permissions/prediction_service/prediction_service.h"
 
 #include <memory>
+#include <optional>
 #include <vector>
 
 #include "base/command_line.h"
@@ -27,7 +28,6 @@
 #include "services/network/public/cpp/weak_wrapper_shared_url_loader_factory.h"
 #include "services/network/public/mojom/url_response_head.mojom.h"
 #include "services/network/test/test_url_loader_factory.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "third_party/googletest/src/googletest/include/gtest/gtest.h"
 
 namespace {
@@ -42,26 +42,26 @@ permissions::PredictionRequestFeatures kFeaturesAllCountsZero = {
     {0, 0, 0, 0}};
 // A request that has all counts 5 expect for "grants" which are 6. Without user
 // gesture.
-const permissions::PredictionRequestFeatures kFeaturesCountsNeedingRounding = {
+permissions::PredictionRequestFeatures kFeaturesCountsNeedingRounding = {
     permissions::PermissionRequestGestureType::NO_GESTURE,
     permissions::RequestType::kNotifications,
     {6, 5, 5, 5},
     {6, 5, 5, 5}};
 // A request that has all counts 50. With user gesture.
-const permissions::PredictionRequestFeatures kFeaturesEvenCountsOver100 = {
+permissions::PredictionRequestFeatures kFeaturesEvenCountsOver100 = {
     permissions::PermissionRequestGestureType::GESTURE,
     permissions::RequestType::kNotifications,
     {50, 50, 50, 50},
     {50, 50, 50, 50}};
 // A request that has all counts 100. With user gesture.
-const permissions::PredictionRequestFeatures kFeaturesEvenCountsOver100Alt = {
+permissions::PredictionRequestFeatures kFeaturesEvenCountsOver100Alt = {
     permissions::PermissionRequestGestureType::GESTURE,
     permissions::RequestType::kNotifications,
     {100, 100, 100, 100},
     {100, 100, 100, 100}};
 // A request that has generic counts 50, and notification counts 0. Without user
 // gesture.
-const permissions::PredictionRequestFeatures kFeaturesDifferentCounts = {
+permissions::PredictionRequestFeatures kFeaturesDifferentCounts = {
     permissions::PermissionRequestGestureType::NO_GESTURE,
     permissions::RequestType::kNotifications,
     {0, 0, 0, 0},
@@ -101,6 +101,9 @@ void InitializeProtoHelperObjects() {
   kRequestAllCountsZero.mutable_client_features()
       ->mutable_client_stats()
       ->set_prompts_count(0);
+  kRequestAllCountsZero.mutable_client_features()
+      ->mutable_experiment_config()
+      ->set_experiment_id(0);
   kRequestAllCountsZero.mutable_client_features()->set_platform(
       permissions::GetCurrentPlatformProto());
   kRequestAllCountsZero.mutable_client_features()->set_platform_enum(
@@ -134,6 +137,9 @@ void InitializeProtoHelperObjects() {
   kRequestRoundedCounts.mutable_client_features()
       ->mutable_client_stats()
       ->set_prompts_count(20);
+  kRequestRoundedCounts.mutable_client_features()
+      ->mutable_experiment_config()
+      ->set_experiment_id(0);
   kRequestRoundedCounts.mutable_client_features()->set_platform(
       permissions::GetCurrentPlatformProto());
   kRequestRoundedCounts.mutable_client_features()->set_platform_enum(
@@ -167,6 +173,9 @@ void InitializeProtoHelperObjects() {
   kRequestEqualCountsTotal20.mutable_client_features()
       ->mutable_client_stats()
       ->set_prompts_count(20);
+  kRequestEqualCountsTotal20.mutable_client_features()
+      ->mutable_experiment_config()
+      ->set_experiment_id(0);
   kRequestEqualCountsTotal20.mutable_client_features()->set_platform(
       permissions::GetCurrentPlatformProto());
   kRequestEqualCountsTotal20.mutable_client_features()->set_platform_enum(
@@ -200,6 +209,9 @@ void InitializeProtoHelperObjects() {
   kRequestDifferentCounts.mutable_client_features()
       ->mutable_client_stats()
       ->set_prompts_count(20);
+  kRequestDifferentCounts.mutable_client_features()
+      ->mutable_experiment_config()
+      ->set_experiment_id(0);
   kRequestDifferentCounts.mutable_client_features()->set_platform(
       permissions::GetCurrentPlatformProto());
   kRequestDifferentCounts.mutable_client_features()->set_platform_enum(
@@ -297,7 +309,7 @@ class PredictionServiceTest : public testing::Test {
       base::RunLoop* response_loop,
       bool lookup_successful,
       bool response_from_cache,
-      const absl::optional<GeneratePredictionsResponse>& response) {
+      const std::optional<GeneratePredictionsResponse>& response) {
     received_responses_.emplace_back(response);
     if (response_loop)
       response_loop->Quit();
@@ -308,7 +320,7 @@ class PredictionServiceTest : public testing::Test {
 
  protected:
   std::vector<std::unique_ptr<GeneratePredictionsRequest>> received_requests_;
-  std::vector<absl::optional<GeneratePredictionsResponse>> received_responses_;
+  std::vector<std::optional<GeneratePredictionsResponse>> received_responses_;
   std::unique_ptr<PredictionService> prediction_service_;
 
   // Different paths to simulate different server behaviours.
@@ -373,27 +385,86 @@ TEST_F(PredictionServiceTest, BuiltProtoRequestIsCorrect) {
   }
 }
 
+TEST_F(PredictionServiceTest, CPSSv3BuiltProtoRequestIsCorrect) {
+  // Test origin being added correctly in the request.
+  base::test::ScopedFeatureList scoped_feature_list;
+  scoped_feature_list.InitWithFeatures(
+      {permissions::features::kPermissionPredictionsV2,
+       permissions::features::kPermissionPredictionsV3},
+      {});
+  kFeaturesAllCountsZero.url = test_requesting_url.GetWithEmptyPath();
+  kRequestAllCountsZero.mutable_site_features()->set_origin(
+      "https://www.test.example/");
+
+  kFeaturesAllCountsZero.experiment_id = 1;
+  kFeaturesCountsNeedingRounding.experiment_id = 1;
+  kFeaturesEvenCountsOver100.experiment_id = 1;
+  kFeaturesEvenCountsOver100Alt.experiment_id = 1;
+  kFeaturesDifferentCounts.experiment_id = 1;
+
+  kRequestAllCountsZero.mutable_client_features()
+      ->mutable_experiment_config()
+      ->set_experiment_id(1);
+  kRequestRoundedCounts.mutable_client_features()
+      ->mutable_experiment_config()
+      ->set_experiment_id(1);
+  kRequestEqualCountsTotal20.mutable_client_features()
+      ->mutable_experiment_config()
+      ->set_experiment_id(1);
+  kRequestEqualCountsTotal20.mutable_client_features()
+      ->mutable_experiment_config()
+      ->set_experiment_id(1);
+  kRequestDifferentCounts.mutable_client_features()
+      ->mutable_experiment_config()
+      ->set_experiment_id(1);
+
+  struct {
+    PredictionRequestFeatures entity;
+    GeneratePredictionsRequest expected_request;
+  } kTests[] = {
+      {kFeaturesAllCountsZero, kRequestAllCountsZero},
+      {kFeaturesCountsNeedingRounding, kRequestRoundedCounts},
+      {kFeaturesEvenCountsOver100, kRequestEqualCountsTotal20},
+      {kFeaturesEvenCountsOver100Alt, kRequestEqualCountsTotal20},
+      {kFeaturesDifferentCounts, kRequestDifferentCounts},
+  };
+
+  prediction_service_->set_prediction_service_url_for_testing(
+      GURL(kUrl_Likely));
+  for (const auto& kTest : kTests) {
+    base::RunLoop run_loop;
+    StartLookup(kTest.entity, &run_loop, nullptr /* response_loop */);
+    run_loop.Run();
+
+    EXPECT_EQ(1u, received_requests_.size());
+    EXPECT_EQ(kTest.expected_request.SerializeAsString(),
+              received_requests_[0]->SerializeAsString());
+
+    received_requests_.clear();
+  }
+}
+
 TEST_F(PredictionServiceTest, ResponsesAreCorrect) {
   struct {
     GURL url;
-    absl::optional<GeneratePredictionsResponse> expected_response;
+    std::optional<GeneratePredictionsResponse> expected_response;
     double delay_in_seconds;
     int err_code;
   } kTests[] = {
       // Test different responses.
       {kUrl_Likely,
-       absl::optional<GeneratePredictionsResponse>(kResponseLikely)},
+       std::optional<GeneratePredictionsResponse>(kResponseLikely)},
       {kUrl_Unlikely,
-       absl::optional<GeneratePredictionsResponse>(kResponseUnlikely)},
+       std::optional<GeneratePredictionsResponse>(kResponseUnlikely)},
 
       // Test the response's timeout.
-      {kUrl_Likely,
-       absl::optional<GeneratePredictionsResponse>(kResponseLikely), 0.5},
-      {kUrl_Likely, absl::nullopt, 2},
+      {kUrl_Likely, std::optional<GeneratePredictionsResponse>(kResponseLikely),
+       0.5},
+      {kUrl_Likely, std::nullopt, 2},
 
       // Test error code responses.
-      {kUrl_Likely, absl::nullopt, 0, net::ERR_SSL_PROTOCOL_ERROR},
-      {kUrl_Likely, absl::nullopt, 0, net::ERR_CONNECTION_FAILED},
+      {kUrl_Likely, std::nullopt, 0, net::ERR_SSL_PROTOCOL_ERROR},
+      {kUrl_Likely, std::nullopt, 0, net::ERR_CONNECTION_FAILED},
   };
 
   for (const auto& kTest : kTests) {
@@ -420,26 +491,26 @@ TEST_F(PredictionServiceTest, ResponsesAreCorrect) {
 // valid.
 TEST_F(PredictionServiceTest, FeatureParamAndCommandLineCanOverrideDefaultUrl) {
   struct {
-    absl::optional<std::string> command_line_switch_value;
-    absl::optional<std::string> url_override_param_value;
+    std::optional<std::string> command_line_switch_value;
+    std::optional<std::string> url_override_param_value;
     GURL expected_request_url;
     permissions::GeneratePredictionsResponse expected_response;
   } kTests[] = {
       // Test without any overrides.
-      {absl::nullopt, absl::nullopt, GURL(kDefaultPredictionServiceUrl),
+      {std::nullopt, std::nullopt, GURL(kDefaultPredictionServiceUrl),
        kResponseLikely},
 
       // Test only the FeatureParam override.
-      {absl::nullopt, kUrl_Unlikely.spec(), kUrl_Unlikely, kResponseUnlikely},
-      {absl::nullopt, "this is not a url", GURL(kDefaultPredictionServiceUrl),
+      {std::nullopt, kUrl_Unlikely.spec(), kUrl_Unlikely, kResponseUnlikely},
+      {std::nullopt, "this is not a url", GURL(kDefaultPredictionServiceUrl),
        kResponseLikely},
-      {absl::nullopt, "", GURL(kDefaultPredictionServiceUrl), kResponseLikely},
+      {std::nullopt, "", GURL(kDefaultPredictionServiceUrl), kResponseLikely},
 
       // Test only the command line override.
-      {kUrl_Unlikely.spec(), absl::nullopt, kUrl_Unlikely, kResponseUnlikely},
-      {"this is not a url", absl::nullopt, GURL(kDefaultPredictionServiceUrl),
+      {kUrl_Unlikely.spec(), std::nullopt, kUrl_Unlikely, kResponseUnlikely},
+      {"this is not a url", std::nullopt, GURL(kDefaultPredictionServiceUrl),
        kResponseLikely},
-      {"", absl::nullopt, GURL(kDefaultPredictionServiceUrl), kResponseLikely},
+      {"", std::nullopt, GURL(kDefaultPredictionServiceUrl), kResponseLikely},
 
       // Command line takes precedence over FeatureParam, if valid.
       {kUrl_Likely.spec(), kUrl_Unlikely.spec(), kUrl_Likely, kResponseLikely},

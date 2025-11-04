@@ -53,7 +53,7 @@ private slots:
     void testActive();
 
 private:
-    void loadTestData(const QByteArray &filename);
+    void loadTestData(const QString &filename);
     void updateProperty(int frame);
 
     BMTrimPath *m_trimpath = nullptr;
@@ -233,7 +233,7 @@ void tst_BMTrimPath::testActive()
     QVERIFY(m_trimpath->active(100) == false);
 }
 
-void tst_BMTrimPath::loadTestData(const QByteArray &filename)
+void tst_BMTrimPath::loadTestData(const QString &filename)
 {
     if (m_trimpath) {
         delete m_trimpath;

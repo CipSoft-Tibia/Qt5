@@ -60,108 +60,101 @@ Client::Client(CommandSerializer* serializer, MemoryTransferService* memoryTrans
 }
 
 Client::~Client() {
-    DestroyAllObjects();
+    // Transition all event managers to ClientDropped state.
+    for (auto& [_, eventManager] : mEventManagers) {
+        eventManager->TransitionTo(EventManager::State::ClientDropped);
+    }
+
+    UnregisterAllObjects();
 }
 
-void Client::DestroyAllObjects() {
-    // Free all devices first since they may hold references to other objects
-    // like the default queue. The Device destructor releases the default queue,
-    // which would be invalid if the queue was already freed.
-    while (!mObjects[ObjectType::Device].empty()) {
-        ObjectBase* object = mObjects[ObjectType::Device].head()->value();
-
-        DestroyObjectCmd cmd;
-        cmd.objectType = ObjectType::Device;
-        cmd.objectId = object->GetWireId();
-        SerializeCommand(cmd);
-        mObjectStores[ObjectType::Device].Free(object);
-    }
-
+void Client::UnregisterAllObjects() {
     for (auto& objectList : mObjects) {
-        ObjectType objectType = static_cast<ObjectType>(&objectList - mObjects.data());
-        if (objectType == ObjectType::Device) {
-            continue;
-        }
-        while (!objectList.empty()) {
-            ObjectBase* object = objectList.head()->value();
-
-            DestroyObjectCmd cmd;
-            cmd.objectType = objectType;
-            cmd.objectId = object->GetWireId();
-            SerializeCommand(cmd);
-            mObjectStores[objectType].Free(object);
+        for (auto object : objectList.GetAllObjects()) {
+            if (object != nullptr) {
+                object->Unregister();
+            }
         }
     }
+}
+
+ReservedBuffer Client::ReserveBuffer(WGPUDevice device, const WGPUBufferDescriptor* descriptor) {
+    Ref<Buffer> buffer =
+        Make<Buffer>(FromAPI(device)->GetEventManagerHandle(), FromAPI(device), descriptor);
+
+    ReservedBuffer result;
+    result.handle = buffer->GetWireHandle();
+    result.deviceHandle = FromAPI(device)->GetWireHandle();
+    result.buffer = ReturnToAPI(std::move(buffer));
+    return result;
 }
 
 ReservedTexture Client::ReserveTexture(WGPUDevice device, const WGPUTextureDescriptor* descriptor) {
-    Texture* texture = Make<Texture>(descriptor);
+    Ref<Texture> texture = Make<Texture>(descriptor);
 
     ReservedTexture result;
-    result.texture = ToAPI(texture);
-    result.id = texture->GetWireId();
-    result.generation = texture->GetWireGeneration();
-    result.deviceId = FromAPI(device)->GetWireId();
-    result.deviceGeneration = FromAPI(device)->GetWireGeneration();
+    result.handle = texture->GetWireHandle();
+    result.deviceHandle = FromAPI(device)->GetWireHandle();
+    result.texture = ReturnToAPI(std::move(texture));
     return result;
 }
 
 ReservedSwapChain Client::ReserveSwapChain(WGPUDevice device,
                                            const WGPUSwapChainDescriptor* descriptor) {
-    SwapChain* swapChain = Make<SwapChain>(nullptr, descriptor);
+    Ref<SwapChain> swapChain = Make<SwapChain>(nullptr, descriptor);
 
     ReservedSwapChain result;
-    result.swapchain = ToAPI(swapChain);
-    result.id = swapChain->GetWireId();
-    result.generation = swapChain->GetWireGeneration();
-    result.deviceId = FromAPI(device)->GetWireId();
-    result.deviceGeneration = FromAPI(device)->GetWireGeneration();
+    result.handle = swapChain->GetWireHandle();
+    result.deviceHandle = FromAPI(device)->GetWireHandle();
+    result.swapchain = ReturnToAPI(std::move(swapChain));
     return result;
 }
 
-ReservedDevice Client::ReserveDevice(WGPUInstance instance) {
-    Device* device = Make<Device>(FromAPI(instance)->GetEventManagerHandle(), nullptr);
+ReservedSurface Client::ReserveSurface(WGPUInstance instance,
+                                       const WGPUSurfaceCapabilities* capabilities) {
+    Ref<Surface> surface = Make<Surface>(capabilities);
 
-    ReservedDevice result;
-    result.device = ToAPI(device);
-    result.id = device->GetWireId();
-    result.generation = device->GetWireGeneration();
+    ReservedSurface result;
+    result.handle = surface->GetWireHandle();
+    result.instanceHandle = FromAPI(instance)->GetWireHandle();
+    result.surface = ReturnToAPI(std::move(surface));
     return result;
 }
 
 ReservedInstance Client::ReserveInstance(const WGPUInstanceDescriptor* descriptor) {
-    Instance* instance = Make<Instance>();
+    Ref<Instance> instance = Make<Instance>();
 
     if (instance->Initialize(descriptor) != WireResult::Success) {
-        Free(instance);
-        return {nullptr, 0, 0};
+        return {nullptr, {0, 0}};
     }
 
     // Reserve an EventManager for the given instance and make the association in the map.
-    mEventManagers.emplace(ObjectHandle(instance->GetWireId(), instance->GetWireGeneration()),
-                           std::make_unique<EventManager>());
+    mEventManagers.emplace(instance->GetWireHandle(), std::make_unique<EventManager>());
 
     ReservedInstance result;
-    result.instance = ToAPI(instance);
-    result.id = instance->GetWireId();
-    result.generation = instance->GetWireGeneration();
+    result.handle = instance->GetWireHandle();
+    result.instance = ReturnToAPI(std::move(instance));
     return result;
 }
 
+void Client::ReclaimBufferReservation(const ReservedBuffer& reservation) {
+    ReclaimReservation(FromAPI(reservation.buffer));
+}
+
 void Client::ReclaimTextureReservation(const ReservedTexture& reservation) {
-    Free(FromAPI(reservation.texture));
+    ReclaimReservation(FromAPI(reservation.texture));
 }
 
 void Client::ReclaimSwapChainReservation(const ReservedSwapChain& reservation) {
-    Free(FromAPI(reservation.swapchain));
+    ReclaimReservation(FromAPI(reservation.swapchain));
 }
 
-void Client::ReclaimDeviceReservation(const ReservedDevice& reservation) {
-    Free(FromAPI(reservation.device));
+void Client::ReclaimSurfaceReservation(const ReservedSurface& reservation) {
+    ReclaimReservation(FromAPI(reservation.surface));
 }
 
 void Client::ReclaimInstanceReservation(const ReservedInstance& reservation) {
-    Free(FromAPI(reservation.instance));
+    ReclaimReservation(FromAPI(reservation.instance));
 }
 
 EventManager& Client::GetEventManager(const ObjectHandle& instance) {
@@ -174,24 +167,26 @@ void Client::Disconnect() {
     mDisconnected = true;
     mSerializer = ChunkedCommandSerializer(NoopCommandSerializer::GetInstance());
 
-    auto& deviceList = mObjects[ObjectType::Device];
-    {
-        for (LinkNode<ObjectBase>* device = deviceList.head(); device != deviceList.end();
-             device = device->next()) {
-            static_cast<Device*>(device->value())
-                ->HandleDeviceLost(WGPUDeviceLostReason_Undefined, "GPU connection lost");
-        }
-    }
-    for (auto& objectList : mObjects) {
-        for (LinkNode<ObjectBase>* object = objectList.head(); object != objectList.end();
-             object = object->next()) {
-            object->value()->CancelCallbacksForDisconnect();
-        }
-    }
-
     // Transition all event managers to ClientDropped state.
     for (auto& [_, eventManager] : mEventManagers) {
         eventManager->TransitionTo(EventManager::State::ClientDropped);
+    }
+
+    {
+        auto& deviceList = mObjects[ObjectType::Device];
+        for (auto object : deviceList.GetAllObjects()) {
+            if (object != nullptr) {
+                static_cast<Device*>(object)->HandleDeviceLost(WGPUDeviceLostReason_Unknown,
+                                                               "GPU connection lost");
+            }
+        }
+    }
+    for (auto& objectList : mObjects) {
+        for (auto object : objectList.GetAllObjects()) {
+            if (object != nullptr) {
+                object->CancelCallbacksForDisconnect();
+            }
+        }
     }
 }
 
@@ -199,8 +194,17 @@ bool Client::IsDisconnected() const {
     return mDisconnected;
 }
 
-void Client::Free(ObjectBase* obj, ObjectType type) {
-    mObjectStores[type].Free(obj);
+void Client::Unregister(ObjectBase* obj, ObjectType type) {
+    UnregisterObjectCmd cmd;
+    cmd.objectType = type;
+    cmd.objectId = obj->GetWireId();
+    SerializeCommand(cmd);
+
+    ReclaimReservation(obj, type);
+}
+
+void Client::ReclaimReservation(ObjectBase* obj, ObjectType type) {
+    mObjects[type].Remove(obj);
 }
 
 }  // namespace dawn::wire::client

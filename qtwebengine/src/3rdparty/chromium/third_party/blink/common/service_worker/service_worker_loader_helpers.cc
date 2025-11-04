@@ -84,6 +84,23 @@ void SaveResponseHeaders(const mojom::FetchAPIResponse& response,
   // headers.
   if (out_head->content_length == -1)
     out_head->content_length = out_head->headers->GetContentLength();
+
+  // Populate |out_head|'s encoded data length by checking the response source.
+  // If the response is not from network, we store 0 since no data is
+  // transferred over network.
+  // This aligns with the behavior of when SW does not intercept, and the
+  // response is from HTTP cache. In non-SW paths, |encoded_data_length| is
+  // updated inside |URLLoader::BuildResponseHead()| using
+  // |net::URLRequest::GetTotalReceivedBytes()|. This method returns total
+  // amount of data received from network after SSL decoding and proxy handling,
+  // and returns 0 when no data is received from network.
+  if (out_head->encoded_data_length == -1) {
+    out_head->encoded_data_length =
+        response.response_source ==
+                network::mojom::FetchResponseSource::kNetwork
+            ? out_head->headers->GetContentLength()
+            : 0;
+  }
 }
 
 }  // namespace
@@ -123,13 +140,13 @@ void ServiceWorkerLoaderHelpers::SaveResponseInfo(
 }
 
 // static
-absl::optional<net::RedirectInfo>
+std::optional<net::RedirectInfo>
 ServiceWorkerLoaderHelpers::ComputeRedirectInfo(
     const network::ResourceRequest& original_request,
     const network::mojom::URLResponseHead& response_head) {
   std::string new_location;
   if (!response_head.headers->IsRedirect(&new_location))
-    return absl::nullopt;
+    return std::nullopt;
 
   // If the request is a MAIN_FRAME request, the first-party URL gets
   // updated on redirects.
@@ -199,7 +216,7 @@ const char* ServiceWorkerLoaderHelpers::FetchResponseSourceToSuffix(
     case network::mojom::FetchResponseSource::kCacheStorage:
       return "CacheStorage";
   }
-  NOTREACHED();
+  NOTREACHED_IN_MIGRATION();
   return "Unknown";
 }
 

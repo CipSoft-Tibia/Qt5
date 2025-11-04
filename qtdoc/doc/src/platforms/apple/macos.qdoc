@@ -145,8 +145,8 @@
     in \l {Qt for \macos#Build Environment}.
 
     You should always use the exact same Xcode and SDK version as listed in the
-    \l {Qt for \macos#Supported Versions}, to ensure that Qt has been tested in
-    the configuration you're building.
+    \l {Qt for \macos#Supported Configurations}{Supported Configurations}, to
+    ensure that Qt has been tested in the configuration you're building.
 
     In addition to Xcode, you will need to make sure you have the following
     dependencies in your path \c PATH.
@@ -402,8 +402,8 @@
     \section1 Dock
 
     Interaction with the dock is possible. The icon can be set by calling
-    QWindow::setWindowIcon() from the main window in your application. The
-    setWindowIcon() call can be made as often as necessary, providing an
+    \l QWindow::setIcon() from the main window in your application. The
+    setIcon() call can be made as often as necessary, providing an
     icon that can be easily updated.
 
     \section1 Accessiblity

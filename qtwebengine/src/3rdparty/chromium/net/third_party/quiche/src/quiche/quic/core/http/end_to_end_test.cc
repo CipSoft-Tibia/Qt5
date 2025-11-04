@@ -2,10 +2,13 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#include <algorithm>
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <list>
 #include <memory>
+#include <optional>
 #include <ostream>
 #include <string>
 #include <utility>
@@ -25,10 +28,12 @@
 #include "quiche/quic/core/http/web_transport_http3.h"
 #include "quiche/quic/core/io/quic_default_event_loop.h"
 #include "quiche/quic/core/io/quic_event_loop.h"
+#include "quiche/quic/core/qpack/value_splitting_header_list.h"
 #include "quiche/quic/core/quic_connection.h"
 #include "quiche/quic/core/quic_constants.h"
 #include "quiche/quic/core/quic_data_writer.h"
 #include "quiche/quic/core/quic_default_clock.h"
+#include "quiche/quic/core/quic_dispatcher.h"
 #include "quiche/quic/core/quic_error_codes.h"
 #include "quiche/quic/core/quic_framer.h"
 #include "quiche/quic/core/quic_packet_creator.h"
@@ -38,6 +43,7 @@
 #include "quiche/quic/core/quic_session.h"
 #include "quiche/quic/core/quic_types.h"
 #include "quiche/quic/core/quic_utils.h"
+#include "quiche/quic/core/quic_versions.h"
 #include "quiche/quic/platform/api/quic_expect_bug.h"
 #include "quiche/quic/platform/api/quic_flags.h"
 #include "quiche/quic/platform/api/quic_logging.h"
@@ -74,12 +80,12 @@
 #include "quiche/quic/tools/quic_server.h"
 #include "quiche/quic/tools/quic_simple_client_stream.h"
 #include "quiche/quic/tools/quic_simple_server_stream.h"
+#include "quiche/common/http/http_header_block.h"
 #include "quiche/common/platform/api/quiche_test.h"
 #include "quiche/common/quiche_stream.h"
 #include "quiche/common/test_tools/quiche_test_utils.h"
-#include "quiche/spdy/core/http2_header_block.h"
 
-using spdy::Http2HeaderBlock;
+using quiche::HttpHeaderBlock;
 using spdy::kV3LowestPriority;
 using spdy::SpdyFramer;
 using spdy::SpdySerializedFrame;
@@ -89,6 +95,14 @@ using ::testing::Assign;
 using ::testing::Invoke;
 using ::testing::NiceMock;
 using ::testing::UnorderedElementsAreArray;
+
+#ifndef NDEBUG
+// Debug build.
+#define EXPECT_DEBUG_EQ(val1, val2) EXPECT_EQ(val1, val2)
+#else
+// Release build.
+#define EXPECT_DEBUG_EQ(val1, val2)
+#endif
 
 namespace quic {
 namespace test {
@@ -162,8 +176,8 @@ std::vector<TestParams> GetTestParams() {
                                       connection_id_length));
         }
       }  // End of outer version loop.
-    }    // End of congestion_control_tag loop.
-  }      // End of connection_id_length loop.
+    }  // End of congestion_control_tag loop.
+  }  // End of connection_id_length loop.
 
   // Only run every event loop implementation for one fixed configuration.
   for (QuicEventLoopFactory* event_loop : GetAllSupportedEventLoops()) {
@@ -180,7 +194,7 @@ std::vector<TestParams> GetTestParams() {
 void WriteHeadersOnStream(QuicSpdyStream* stream) {
   // Since QuicSpdyStream uses QuicHeaderList::empty() to detect too large
   // headers, it also fails when receiving empty headers.
-  Http2HeaderBlock headers;
+  HttpHeaderBlock headers;
   headers[":authority"] = "test.example.com:443";
   headers[":path"] = "/path";
   headers[":method"] = "GET";
@@ -260,6 +274,11 @@ class EndToEndTest : public QuicTestWithParam<TestParams> {
   }
 
   QuicTestClient* CreateQuicClient(QuicPacketWriterWrapper* writer) {
+    return CreateQuicClient(writer, /*connect=*/true);
+  }
+
+  QuicTestClient* CreateQuicClient(QuicPacketWriterWrapper* writer,
+                                   bool connect) {
     QuicTestClient* client = new QuicTestClient(
         server_address_, server_hostname_, client_config_,
         client_supported_versions_,
@@ -280,8 +299,15 @@ class EndToEndTest : public QuicTestWithParam<TestParams> {
     }
     client->client()->set_connection_debug_visitor(connection_debug_visitor_);
     client->client()->set_enable_web_transport(enable_web_transport_);
-    client->Connect();
+    if (connect) {
+      client->Connect();
+    }
     return client;
+  }
+
+  bool DispatcherAckEnabled() const {
+    return GetQuicRestartFlag(quic_dispatcher_ack_buffered_initial_packets) &&
+           GetQuicRestartFlag(quic_dispatcher_replace_cid_on_first_packet);
   }
 
   void set_smaller_flow_control_receive_window() {
@@ -392,16 +418,7 @@ class EndToEndTest : public QuicTestWithParam<TestParams> {
   }
 
   QuicSpdySession* GetServerSession() {
-    if (!server_thread_) {
-      ADD_FAILURE() << "Missing server thread";
-      return nullptr;
-    }
-    QuicServer* quic_server = server_thread_->server();
-    if (quic_server == nullptr) {
-      ADD_FAILURE() << "Missing server";
-      return nullptr;
-    }
-    QuicDispatcher* dispatcher = QuicServerPeer::GetDispatcher(quic_server);
+    QuicDispatcher* dispatcher = GetDispatcher();
     if (dispatcher == nullptr) {
       ADD_FAILURE() << "Missing dispatcher";
       return nullptr;
@@ -413,6 +430,32 @@ class EndToEndTest : public QuicTestWithParam<TestParams> {
     EXPECT_EQ(1u, dispatcher->NumSessions());
     return static_cast<QuicSpdySession*>(
         QuicDispatcherPeer::GetFirstSessionIfAny(dispatcher));
+  }
+
+  // Must be called while server_thread_ is paused.
+  QuicDispatcher* GetDispatcher() {
+    if (!server_thread_) {
+      ADD_FAILURE() << "Missing server thread";
+      return nullptr;
+    }
+    QuicServer* quic_server = server_thread_->server();
+    if (quic_server == nullptr) {
+      ADD_FAILURE() << "Missing server";
+      return nullptr;
+    }
+    return QuicServerPeer::GetDispatcher(quic_server);
+  }
+
+  // Must be called while server_thread_ is paused.
+  const QuicDispatcherStats& GetDispatcherStats() {
+    return GetDispatcher()->stats();
+  }
+
+  QuicDispatcherStats GetDispatcherStatsThreadSafe() {
+    QuicDispatcherStats stats;
+    server_thread_->ScheduleAndWaitForCompletion(
+        [&] { stats = GetDispatcherStats(); });
+    return stats;
   }
 
   bool Initialize() {
@@ -467,7 +510,9 @@ class EndToEndTest : public QuicTestWithParam<TestParams> {
       server_writer_ = new PacketDroppingTestWriter();
       StartServer();
 
-      client_config_.SetConnectionOptionsToSend(QuicTagVector{kSPAD});
+      if (!GetQuicFlag(quic_always_support_server_preferred_address)) {
+        client_config_.SetConnectionOptionsToSend(QuicTagVector{kSPAD});
+      }
     }
 
     if (!connect_to_server_on_initialize_) {
@@ -510,11 +555,13 @@ class EndToEndTest : public QuicTestWithParam<TestParams> {
   void TearDown() override {
     EXPECT_TRUE(initialized_) << "You must call Initialize() in every test "
                               << "case. Otherwise, your test will leak memory.";
-    QuicConnection* client_connection = GetClientConnection();
-    if (client_connection != nullptr) {
-      client_connection->set_debug_visitor(nullptr);
-    } else {
-      ADD_FAILURE() << "Missing client connection";
+    if (connect_to_server_on_initialize_) {
+      QuicConnection* client_connection = GetClientConnection();
+      if (client_connection != nullptr) {
+        client_connection->set_debug_visitor(nullptr);
+      } else {
+        ADD_FAILURE() << "Missing client connection";
+      }
     }
     StopServer(/*will_restart=*/false);
     if (fd_ != kQuicInvalidSocketFd) {
@@ -718,7 +765,8 @@ class EndToEndTest : public QuicTestWithParam<TestParams> {
 
   bool CheckResponseHeaders(QuicTestClient* client,
                             const std::string& expected_status) {
-    const spdy::Http2HeaderBlock* response_headers = client->response_headers();
+    const quiche::HttpHeaderBlock* response_headers =
+        client->response_headers();
     auto it = response_headers->find(":status");
     if (it == response_headers->end()) {
       ADD_FAILURE() << "Did not find :status header in response";
@@ -806,7 +854,7 @@ class EndToEndTest : public QuicTestWithParam<TestParams> {
       return nullptr;
     }
 
-    spdy::Http2HeaderBlock headers;
+    quiche::HttpHeaderBlock headers;
     headers[":scheme"] = "https";
     headers[":authority"] = "localhost";
     headers[":path"] = path;
@@ -912,6 +960,36 @@ class EndToEndTest : public QuicTestWithParam<TestParams> {
                 client_connection))) {
       client_->client()->WaitForEvents();
     }
+  }
+
+  // TODO(b/154162689) Remove this method once PSK support is added for
+  // QUIC+TLS.
+  void InitializeAndCheckForTlsPskFailure(bool expect_client_failure = true) {
+    connect_to_server_on_initialize_ = false;
+    EXPECT_TRUE(Initialize());
+
+    EXPECT_QUIC_BUG(
+        CreateClientWithWriter(),
+        expect_client_failure
+            ? "QUIC client pre-shared keys not yet supported with TLS"
+            : "QUIC server pre-shared keys not yet supported with TLS");
+
+    // Reset the client and server state so that `TearDown()` can complete
+    // successfully.
+    pre_shared_key_client_ = "";
+    pre_shared_key_server_ = "";
+
+    StopServer();
+    server_writer_ = new PacketDroppingTestWriter();
+    StartServer();
+
+    if (client_) {
+      // If `client_` is populated it means that the `CreateClientWithWriter()`
+      // call above ran in-process, in which case `client_` owns
+      // `client_writer_` and we need to create a new one.
+      client_writer_ = new PacketDroppingTestWriter();
+    }
+    CreateClientWithWriter();
   }
 
   quiche::test::ScopedEnvironmentForThreads environment_;
@@ -1104,6 +1182,298 @@ TEST_P(EndToEndTest, HandshakeConfirmed) {
   client_->Disconnect();
 }
 
+// Two packet CHLO. The first one is buffered and acked by dispatcher, the
+// second one causes session to be created.
+TEST_P(EndToEndTest, TestDispatcherAckWithTwoPacketCHLO) {
+  SetQuicFlag(quic_allow_chlo_buffering, true);
+  SetQuicFlag(quic_dispatcher_max_ack_sent_per_connection, 1);
+  std::string google_handshake_message(kEthernetMTU, 'a');
+  client_config_.SetGoogleHandshakeMessageToSend(google_handshake_message);
+  ASSERT_TRUE(Initialize());
+  if (!version_.HasIetfQuicFrames()) {
+    return;
+  }
+
+  SendSynchronousFooRequestAndCheckResponse();
+  if (!version_.UsesHttp3()) {
+    QuicConnectionStats client_stats = GetClientConnection()->GetStats();
+    EXPECT_TRUE(client_stats.handshake_completion_time.IsInitialized());
+    return;
+  }
+
+  server_thread_->Pause();
+  QuicConnection* server_connection = GetServerConnection();
+  ASSERT_NE(server_connection, nullptr);
+  const QuicConnectionStats& server_stats = server_connection->GetStats();
+
+  if (DispatcherAckEnabled() && version_ != ParsedQuicVersion::RFCv2()) {
+    EXPECT_EQ(server_stats.packets_sent_by_dispatcher, 1u);
+  } else {
+    EXPECT_EQ(server_stats.packets_sent_by_dispatcher, 0u);
+  }
+
+  const QuicDispatcherStats& dispatcher_stats = GetDispatcherStats();
+  // The first CHLO packet is enqueued, the second causes session to be created.
+  EXPECT_EQ(dispatcher_stats.packets_processed_with_unknown_cid, 2u);
+  EXPECT_EQ(dispatcher_stats.packets_enqueued_early, 1u);
+  EXPECT_EQ(dispatcher_stats.packets_enqueued_chlo, 0u);
+
+  if (DispatcherAckEnabled() && version_ != ParsedQuicVersion::RFCv2()) {
+    EXPECT_EQ(dispatcher_stats.packets_sent, 1u);
+  } else {
+    EXPECT_EQ(dispatcher_stats.packets_sent, 0u);
+  }
+  server_thread_->Resume();
+}
+
+// Two packet CHLO. The first one is buffered (CHLO incomplete) and acked, the
+// second one is lost and retransmitted with a new server-chosen connection ID.
+TEST_P(EndToEndTest,
+       TestDispatcherAckWithTwoPacketCHLO_SecondPacketRetransmitted) {
+  if (!version_.HasIetfQuicFrames() ||
+      override_server_connection_id_length_ > -1) {
+    ASSERT_TRUE(Initialize());
+    return;
+  }
+
+  SetQuicFlag(quic_allow_chlo_buffering, true);
+  SetQuicFlag(quic_dispatcher_max_ack_sent_per_connection, 2);
+  std::string google_handshake_message(kEthernetMTU, 'a');
+  client_config_.SetGoogleHandshakeMessageToSend(google_handshake_message);
+  connect_to_server_on_initialize_ = false;
+  override_server_connection_id_length_ = 16;
+  ASSERT_TRUE(Initialize());
+
+  // Instruct the client to drop the second CHLO packet, but not the first.
+  client_writer_->set_passthrough_for_next_n_packets(1);
+  client_writer_->set_fake_drop_first_n_packets(2);
+
+  client_.reset(CreateQuicClient(client_writer_, /*connect=*/false));
+  client_->client()->Initialize();
+
+  SendSynchronousFooRequestAndCheckResponse();
+
+  server_thread_->ScheduleAndWaitForCompletion([&] {
+    const QuicDispatcherStats& dispatcher_stats = GetDispatcherStats();
+    EXPECT_EQ(dispatcher_stats.sessions_created, 1u);
+
+    if (DispatcherAckEnabled() && version_ != ParsedQuicVersion::RFCv2()) {
+      // 2 CHLO packets are enqueued, but only the 1st caused a dispatcher ACK.
+      EXPECT_EQ(dispatcher_stats.packets_sent, 1u);
+      EXPECT_EQ(dispatcher_stats.packets_processed_with_unknown_cid, 2u);
+      EXPECT_EQ(dispatcher_stats.packets_enqueued_early, 1u);
+      EXPECT_EQ(dispatcher_stats.packets_enqueued_chlo, 0u);
+      EXPECT_DEBUG_EQ(
+          dispatcher_stats.packets_processed_with_replaced_cid_in_store, 1u);
+    } else {
+      EXPECT_EQ(dispatcher_stats.packets_sent, 0u);
+      // 4 CHLO packets are sent by client, 1 of them is lost in client_writer_.
+      EXPECT_EQ(dispatcher_stats.packets_processed_with_unknown_cid, 3u);
+      // Packet 1 and its retransmission are enqueued early.
+      EXPECT_EQ(dispatcher_stats.packets_enqueued_early, 2u);
+      EXPECT_EQ(dispatcher_stats.packets_enqueued_chlo, 0u);
+      EXPECT_DEBUG_EQ(
+          dispatcher_stats.packets_processed_with_replaced_cid_in_store, 0u);
+    }
+  });
+}
+
+// Two packet CHLO. The first one is buffered (CHLO incomplete) and acked, the
+// second one is buffered (session creation rate limited) but not acked.
+TEST_P(EndToEndTest, TestDispatcherAckWithTwoPacketCHLO_BothBuffered) {
+  SetQuicFlag(quic_allow_chlo_buffering, true);
+  SetQuicFlag(quic_dispatcher_max_ack_sent_per_connection, 1);
+  std::string google_handshake_message(kEthernetMTU, 'a');
+  client_config_.SetGoogleHandshakeMessageToSend(google_handshake_message);
+  connect_to_server_on_initialize_ = false;
+  ASSERT_TRUE(Initialize());
+  if (!version_.HasIetfQuicFrames()) {
+    delete client_writer_;
+    return;
+  }
+
+  // This will cause all CHLO packets to be buffered and no sessions created.
+  server_thread_->ScheduleAndWaitForCompletion([&] {
+    server_thread_->server()->set_max_sessions_to_create_per_socket_event(0);
+    QuicDispatcherPeer::set_new_sessions_allowed_per_event_loop(GetDispatcher(),
+                                                                0);
+  });
+
+  client_.reset(CreateQuicClient(client_writer_, /*connect=*/false));
+  client_->client()->Initialize();
+  client_->client()->StartConnect();
+  ASSERT_TRUE(client_->connected());
+
+  while (GetDispatcherStatsThreadSafe().packets_enqueued_chlo == 0) {
+    ASSERT_TRUE(client_->connected());
+    client_->client()->WaitForEvents();
+  }
+
+  server_thread_->ScheduleAndWaitForCompletion([&] {
+    const QuicDispatcherStats& dispatcher_stats = GetDispatcherStats();
+    EXPECT_EQ(dispatcher_stats.packets_enqueued_chlo, 1u);
+    EXPECT_EQ(dispatcher_stats.packets_enqueued_early, 1u);
+    EXPECT_EQ(dispatcher_stats.packets_processed_with_unknown_cid, 2u);
+
+    if (DispatcherAckEnabled() && version_ != ParsedQuicVersion::RFCv2()) {
+      // 2 CHLO packets are enqueued, but only the 1st caused a dispatcher ACK.
+      EXPECT_EQ(dispatcher_stats.packets_sent, 1u);
+    } else {
+      EXPECT_EQ(dispatcher_stats.packets_sent, 0u);
+    }
+    EXPECT_EQ(dispatcher_stats.sessions_created, 0u);
+
+    GetDispatcher()->ProcessBufferedChlos(1);
+    EXPECT_EQ(dispatcher_stats.sessions_created, 1u);
+  });
+
+  EXPECT_TRUE(client_->client()->WaitForOneRttKeysAvailable());
+}
+
+// Three packet CHLO. The first two are buffered and acked by dispatcher, the
+// third one causes session to be created.
+TEST_P(EndToEndTest, TestDispatcherAckWithThreePacketCHLO) {
+  SetQuicFlag(quic_allow_chlo_buffering, true);
+  SetQuicFlag(quic_dispatcher_max_ack_sent_per_connection, 2);
+  std::string google_handshake_message(2 * kEthernetMTU, 'a');
+  client_config_.SetGoogleHandshakeMessageToSend(google_handshake_message);
+  ASSERT_TRUE(Initialize());
+  if (!version_.HasIetfQuicFrames()) {
+    return;
+  }
+
+  SendSynchronousFooRequestAndCheckResponse();
+  if (!version_.UsesHttp3()) {
+    QuicConnectionStats client_stats = GetClientConnection()->GetStats();
+    EXPECT_TRUE(client_stats.handshake_completion_time.IsInitialized());
+    return;
+  }
+
+  server_thread_->Pause();
+  QuicConnection* server_connection = GetServerConnection();
+  ASSERT_NE(server_connection, nullptr);
+  const QuicConnectionStats& server_stats = server_connection->GetStats();
+
+  if (DispatcherAckEnabled() && version_ != ParsedQuicVersion::RFCv2()) {
+    EXPECT_EQ(server_stats.packets_sent_by_dispatcher, 2u);
+  } else {
+    EXPECT_EQ(server_stats.packets_sent_by_dispatcher, 0u);
+  }
+
+  const QuicDispatcherStats& dispatcher_stats = GetDispatcherStats();
+  // The first and second CHLO packets are enqueued, the third causes session to
+  // be created.
+  EXPECT_EQ(dispatcher_stats.packets_processed_with_unknown_cid, 3u);
+  EXPECT_EQ(dispatcher_stats.packets_enqueued_early, 2u);
+  EXPECT_EQ(dispatcher_stats.packets_enqueued_chlo, 0u);
+
+  if (DispatcherAckEnabled() && version_ != ParsedQuicVersion::RFCv2()) {
+    EXPECT_EQ(dispatcher_stats.packets_sent, 2u);
+  } else {
+    EXPECT_EQ(dispatcher_stats.packets_sent, 0u);
+  }
+  server_thread_->Resume();
+}
+
+// Three packet CHLO. The first one is buffered and acked by dispatcher, the
+// second one is buffered but not acked due to --max_ack_sent_per_connection,
+// the third one causes session to be created.
+TEST_P(EndToEndTest,
+       TestDispatcherAckWithThreePacketCHLO_AckCountLimitedByFlag) {
+  SetQuicFlag(quic_allow_chlo_buffering, true);
+  SetQuicFlag(quic_dispatcher_max_ack_sent_per_connection, 1);
+  std::string google_handshake_message(2 * kEthernetMTU, 'a');
+  client_config_.SetGoogleHandshakeMessageToSend(google_handshake_message);
+  ASSERT_TRUE(Initialize());
+  if (!version_.HasIetfQuicFrames()) {
+    return;
+  }
+
+  SendSynchronousFooRequestAndCheckResponse();
+  if (!version_.UsesHttp3()) {
+    QuicConnectionStats client_stats = GetClientConnection()->GetStats();
+    EXPECT_TRUE(client_stats.handshake_completion_time.IsInitialized());
+    return;
+  }
+
+  server_thread_->Pause();
+  QuicConnection* server_connection = GetServerConnection();
+  ASSERT_NE(server_connection, nullptr);
+  const QuicConnectionStats& server_stats = server_connection->GetStats();
+
+  if (DispatcherAckEnabled() && version_ != ParsedQuicVersion::RFCv2()) {
+    EXPECT_EQ(server_stats.packets_sent_by_dispatcher, 1u);
+  } else {
+    EXPECT_EQ(server_stats.packets_sent_by_dispatcher, 0u);
+  }
+
+  const QuicDispatcherStats& dispatcher_stats = GetDispatcherStats();
+  // The first and second CHLO packets are enqueued, the third causes session to
+  // be created.
+  EXPECT_EQ(dispatcher_stats.packets_processed_with_unknown_cid, 3u);
+  EXPECT_EQ(dispatcher_stats.packets_enqueued_early, 2u);
+  EXPECT_EQ(dispatcher_stats.packets_enqueued_chlo, 0u);
+
+  if (DispatcherAckEnabled() && version_ != ParsedQuicVersion::RFCv2()) {
+    EXPECT_EQ(dispatcher_stats.packets_sent, 1u);
+  } else {
+    EXPECT_EQ(dispatcher_stats.packets_sent, 0u);
+  }
+  server_thread_->Resume();
+}
+
+// Three packet CHLO. The first one is buffered (CHLO incomplete) and acked, the
+// other two are lost and retransmitted with a new server-chosen connection ID.
+TEST_P(EndToEndTest,
+       TestDispatcherAckWithThreePacketCHLO_SecondAndThirdRetransmitted) {
+  if (!version_.HasIetfQuicFrames() ||
+      override_server_connection_id_length_ > -1) {
+    ASSERT_TRUE(Initialize());
+    return;
+  }
+
+  SetQuicFlag(quic_allow_chlo_buffering, true);
+  SetQuicFlag(quic_dispatcher_max_ack_sent_per_connection, 2);
+  std::string google_handshake_message(2 * kEthernetMTU, 'a');
+  client_config_.SetGoogleHandshakeMessageToSend(google_handshake_message);
+  connect_to_server_on_initialize_ = false;
+  override_server_connection_id_length_ = 16;
+  ASSERT_TRUE(Initialize());
+
+  // Instruct the client to drop the second CHLO packet, but not the first.
+  client_writer_->set_passthrough_for_next_n_packets(1);
+  client_writer_->set_fake_drop_first_n_packets(3);
+
+  client_.reset(CreateQuicClient(client_writer_, /*connect=*/false));
+  client_->client()->Initialize();
+
+  SendSynchronousFooRequestAndCheckResponse();
+
+  server_thread_->ScheduleAndWaitForCompletion([&] {
+    const QuicDispatcherStats& dispatcher_stats = GetDispatcherStats();
+    EXPECT_EQ(dispatcher_stats.sessions_created, 1u);
+
+    if (DispatcherAckEnabled() && version_ != ParsedQuicVersion::RFCv2()) {
+      // Packet 1 and Packet 2's retransmission caused dispatcher ACKs.
+      EXPECT_EQ(dispatcher_stats.packets_sent, 2u);
+      EXPECT_EQ(dispatcher_stats.packets_processed_with_unknown_cid, 3u);
+      EXPECT_EQ(dispatcher_stats.packets_enqueued_early, 2u);
+      EXPECT_EQ(dispatcher_stats.packets_enqueued_chlo, 0u);
+      EXPECT_DEBUG_EQ(
+          dispatcher_stats.packets_processed_with_replaced_cid_in_store, 2u);
+    } else {
+      EXPECT_EQ(dispatcher_stats.packets_sent, 0u);
+      // 6 CHLO packets are sent by client, 2 of them are lost in client_writer.
+      EXPECT_EQ(dispatcher_stats.packets_processed_with_unknown_cid, 4u);
+      // Packet 1 and packet 1 & 2's retransmissions are enqueued early.
+      EXPECT_EQ(dispatcher_stats.packets_enqueued_early, 3u);
+      EXPECT_EQ(dispatcher_stats.packets_enqueued_chlo, 0u);
+      EXPECT_DEBUG_EQ(
+          dispatcher_stats.packets_processed_with_replaced_cid_in_store, 0u);
+    }
+  });
+}
+
 TEST_P(EndToEndTest, SendAndReceiveCoalescedPackets) {
   ASSERT_TRUE(Initialize());
   if (!version_.CanSendCoalescedPackets()) {
@@ -1124,7 +1494,7 @@ TEST_P(EndToEndTest, SendAndReceiveCoalescedPackets) {
 // and ensure it gets to the server.
 TEST_P(EndToEndTest, SimpleRequestResponseWithAckDelayChange) {
   // Force the ACK delay to be something other than the default.
-  constexpr uint32_t kClientMaxAckDelay = kDefaultDelayedAckTimeMs + 100u;
+  const uint32_t kClientMaxAckDelay = GetDefaultDelayedAckTimeMs() + 100u;
   client_config_.SetMaxAckDelayToSendMs(kClientMaxAckDelay);
   ASSERT_TRUE(Initialize());
 
@@ -1349,7 +1719,7 @@ TEST_P(EndToEndTest, MixGoodAndBadConnectionIdLengths) {
 
   // Start client2 which will use a good connection ID length.
   std::unique_ptr<QuicTestClient> client2(CreateQuicClient(nullptr));
-  Http2HeaderBlock headers;
+  HttpHeaderBlock headers;
   headers[":method"] = "POST";
   headers[":path"] = "/foo";
   headers[":scheme"] = "https";
@@ -1450,7 +1820,7 @@ TEST_P(EndToEndTest, SeparateFinPacket) {
   ASSERT_TRUE(Initialize());
 
   // Send a request in two parts: the request and then an empty packet with FIN.
-  Http2HeaderBlock headers;
+  HttpHeaderBlock headers;
   headers[":method"] = "POST";
   headers[":path"] = "/foo";
   headers[":scheme"] = "https";
@@ -1493,7 +1863,7 @@ TEST_P(EndToEndTest, MultipleStreams) {
 
   const int kNumRequests = 10;
 
-  Http2HeaderBlock headers;
+  HttpHeaderBlock headers;
   headers[":method"] = "POST";
   headers[":path"] = "/foo";
   headers[":scheme"] = "https";
@@ -1514,7 +1884,7 @@ TEST_P(EndToEndTest, MultipleClients) {
   ASSERT_TRUE(Initialize());
   std::unique_ptr<QuicTestClient> client2(CreateQuicClient(nullptr));
 
-  Http2HeaderBlock headers;
+  HttpHeaderBlock headers;
   headers[":method"] = "POST";
   headers[":path"] = "/foo";
   headers[":scheme"] = "https";
@@ -1559,7 +1929,7 @@ TEST_P(EndToEndTest, PostMissingBytes) {
   ASSERT_TRUE(Initialize());
 
   // Add a content length header with no body.
-  Http2HeaderBlock headers;
+  HttpHeaderBlock headers;
   headers[":method"] = "POST";
   headers[":path"] = "/foo";
   headers[":scheme"] = "https";
@@ -1581,7 +1951,7 @@ TEST_P(EndToEndTest, LargePostNoPacketLoss) {
 
   // 1 MB body.
   std::string body(1024 * 1024, 'a');
-  Http2HeaderBlock headers;
+  HttpHeaderBlock headers;
   headers[":method"] = "POST";
   headers[":path"] = "/foo";
   headers[":scheme"] = "https";
@@ -1603,7 +1973,7 @@ TEST_P(EndToEndTest, QUICHE_SLOW_TEST(LargePostNoPacketLoss1sRTT)) {
 
   // 100 KB body.
   std::string body(100 * 1024, 'a');
-  Http2HeaderBlock headers;
+  HttpHeaderBlock headers;
   headers[":method"] = "POST";
   headers[":path"] = "/foo";
   headers[":scheme"] = "https";
@@ -1627,7 +1997,7 @@ TEST_P(EndToEndTest, LargePostWithPacketLoss) {
 
   // 10 KB body.
   std::string body(1024 * 10, 'a');
-  Http2HeaderBlock headers;
+  HttpHeaderBlock headers;
   headers[":method"] = "POST";
   headers[":path"] = "/foo";
   headers[":scheme"] = "https";
@@ -1671,7 +2041,7 @@ TEST_P(EndToEndTest, LargePostWithPacketLossAndAlwaysBundleWindowUpdates) {
 
   // 10 KB body.
   std::string body(1024 * 10, 'a');
-  Http2HeaderBlock headers;
+  HttpHeaderBlock headers;
   headers[":method"] = "POST";
   headers[":path"] = "/foo";
   headers[":scheme"] = "https";
@@ -1695,7 +2065,7 @@ TEST_P(EndToEndTest, LargePostWithPacketLossAndBlockedSocket) {
 
   // 10 KB body.
   std::string body(1024 * 10, 'a');
-  Http2HeaderBlock headers;
+  HttpHeaderBlock headers;
   headers[":method"] = "POST";
   headers[":path"] = "/foo";
   headers[":scheme"] = "https";
@@ -1714,7 +2084,7 @@ TEST_P(EndToEndTest, LargePostNoPacketLossWithDelayAndReordering) {
 
   // 1 MB body.
   std::string body(1024 * 1024, 'a');
-  Http2HeaderBlock headers;
+  HttpHeaderBlock headers;
   headers[":method"] = "POST";
   headers[":path"] = "/foo";
   headers[":scheme"] = "https";
@@ -1890,7 +2260,7 @@ TEST_P(EndToEndTest, LargePostZeroRTTFailure) {
   }
 
   std::string body(20480, 'a');
-  Http2HeaderBlock headers;
+  HttpHeaderBlock headers;
   headers[":method"] = "POST";
   headers[":path"] = "/foo";
   headers[":scheme"] = "https";
@@ -2042,7 +2412,7 @@ TEST_P(EndToEndTest, LargePostSynchronousRequest) {
   ASSERT_TRUE(Initialize());
 
   std::string body(20480, 'a');
-  Http2HeaderBlock headers;
+  HttpHeaderBlock headers;
   headers[":method"] = "POST";
   headers[":path"] = "/foo";
   headers[":scheme"] = "https";
@@ -2161,7 +2531,7 @@ TEST_P(EndToEndTest, PostZeroRTTRequestDuringHandshake) {
         EXPECT_TRUE(
             GetClientConnection()->framer().HasEncrypterOfEncryptionLevel(
                 ENCRYPTION_HANDSHAKE));
-        Http2HeaderBlock headers;
+        HttpHeaderBlock headers;
         headers[":method"] = "POST";
         headers[":path"] = "/foo";
         headers[":scheme"] = "https";
@@ -2286,7 +2656,7 @@ TEST_P(EndToEndTest, LargePostSmallBandwidthLargeBuffer) {
 
   // 1 MB body.
   std::string body(1024 * 1024, 'a');
-  Http2HeaderBlock headers;
+  HttpHeaderBlock headers;
   headers[":method"] = "POST";
   headers[":path"] = "/foo";
   headers[":scheme"] = "https";
@@ -2336,9 +2706,7 @@ TEST_P(EndToEndTest, DoNotSetSendAlarmIfConnectionFlowControlBlocked) {
   // connection is still flow control blocked.
   session->connection()->OnCanWrite();
 
-  QuicAlarm* send_alarm =
-      QuicConnectionPeer::GetSendAlarm(session->connection());
-  EXPECT_FALSE(send_alarm->IsSet());
+  EXPECT_FALSE(QuicConnectionPeer::GetSendAlarm(session->connection()).IsSet());
 }
 
 TEST_P(EndToEndTest, InvalidStream) {
@@ -2346,7 +2714,7 @@ TEST_P(EndToEndTest, InvalidStream) {
   EXPECT_TRUE(client_->client()->WaitForOneRttKeysAvailable());
 
   std::string body(kMaxOutgoingPacketSize, 'a');
-  Http2HeaderBlock headers;
+  HttpHeaderBlock headers;
   headers[":method"] = "POST";
   headers[":path"] = "/foo";
   headers[":scheme"] = "https";
@@ -2372,7 +2740,7 @@ TEST_P(EndToEndTest, LargeHeaders) {
   EXPECT_TRUE(client_->client()->WaitForOneRttKeysAvailable());
 
   std::string body(kMaxOutgoingPacketSize, 'a');
-  Http2HeaderBlock headers;
+  HttpHeaderBlock headers;
   headers[":method"] = "POST";
   headers[":path"] = "/foo";
   headers[":scheme"] = "https";
@@ -2401,7 +2769,7 @@ TEST_P(EndToEndTest, EarlyResponseWithQuicStreamNoError) {
   EXPECT_TRUE(client_->client()->WaitForOneRttKeysAvailable());
 
   std::string large_body(1024 * 1024, 'a');
-  Http2HeaderBlock headers;
+  HttpHeaderBlock headers;
   headers[":method"] = "POST";
   headers[":path"] = "/foo";
   headers[":scheme"] = "https";
@@ -2473,7 +2841,7 @@ TEST_P(EndToEndTest, MaxDynamicStreamsLimitRespected) {
   QuicSessionPeer::SetMaxOpenOutgoingStreams(client_session,
                                              kServerMaxStreams + 1);
 
-  Http2HeaderBlock headers;
+  HttpHeaderBlock headers;
   headers[":method"] = "POST";
   headers[":path"] = "/foo";
   headers[":scheme"] = "https";
@@ -2845,15 +3213,9 @@ TEST_P(EndToEndTest, StreamCancelErrorTest) {
       client_connection->GetStats().packets_sent;
 
   if (version_.UsesHttp3()) {
-    if (GetQuicRestartFlag(quic_opport_bundle_qpack_decoder_data3)) {
-      // QPACK decoder instructions and RESET_STREAM and STOP_SENDING frames are
-      // sent in a single packet.
-      EXPECT_EQ(packets_sent_before + 1, packets_sent_now);
-    } else {
-      // Make sure 2 packets were sent, one for QPACK instructions, another for
-      // RESET_STREAM and STOP_SENDING.
-      EXPECT_EQ(packets_sent_before + 2, packets_sent_now);
-    }
+    // QPACK decoder instructions and RESET_STREAM and STOP_SENDING frames are
+    // sent in a single packet.
+    EXPECT_EQ(packets_sent_before + 1, packets_sent_now);
   }
 
   // WaitForEvents waits 50ms and returns true if there are outstanding
@@ -3028,7 +3390,6 @@ TEST_P(EndToEndTest,
     return;
   }
   override_client_connection_id_length_ = kQuicDefaultConnectionIdLength;
-  SetQuicRestartFlag(quic_opport_bundle_qpack_decoder_data3, false);
   ASSERT_TRUE(Initialize());
   SendSynchronousFooRequestAndCheckResponse();
 
@@ -3037,6 +3398,19 @@ TEST_P(EndToEndTest,
       client_->client()->network_helper()->GetLatestClientAddress().host();
   QuicConnection* client_connection = GetClientConnection();
   ASSERT_TRUE(client_connection != nullptr);
+
+  {
+    QuicConnection::ScopedPacketFlusher flusher(client_connection);
+    if (client_connection->SupportsMultiplePacketNumberSpaces()) {
+      if (client_connection->received_packet_manager()
+              .GetEarliestAckTimeout()
+              .IsInitialized()) {
+        client_connection->SendAllPendingAcks();
+      }
+    } else {
+      client_connection->SendAck();
+    }
+  }
 
   // Migrate socket to a new IP address.
   QuicIpAddress host1 = TestLoopback(2);
@@ -3859,7 +4233,7 @@ class TestAckListener : public QuicAckListenerInterface {
 class TestResponseListener : public QuicSpdyClientBase::ResponseListener {
  public:
   void OnCompleteResponse(QuicStreamId id,
-                          const Http2HeaderBlock& response_headers,
+                          const HttpHeaderBlock& response_headers,
                           absl::string_view response_body) override {
     QUIC_DVLOG(1) << "response for stream " << id << " "
                   << response_headers.DebugString() << "\n"
@@ -3911,7 +4285,7 @@ TEST_P(EndToEndTest, AckNotifierWithPacketLossAndBlockedSocket) {
   }
 
   // Create a POST request and send the headers only.
-  Http2HeaderBlock headers;
+  HttpHeaderBlock headers;
   headers[":method"] = "POST";
   headers[":path"] = "/foo";
   headers[":scheme"] = "https";
@@ -3929,7 +4303,9 @@ TEST_P(EndToEndTest, AckNotifierWithPacketLossAndBlockedSocket) {
     // Determine size of headers after QPACK compression.
     NoopDecoderStreamErrorDelegate decoder_stream_error_delegate;
     NoopQpackStreamSenderDelegate encoder_stream_sender_delegate;
-    QpackEncoder qpack_encoder(&decoder_stream_error_delegate);
+    QpackEncoder qpack_encoder(&decoder_stream_error_delegate,
+                               HuffmanEncoding::kEnabled,
+                               CookieCrumbling::kEnabled);
     qpack_encoder.set_qpack_stream_sender_delegate(
         &encoder_stream_sender_delegate);
 
@@ -4372,7 +4748,7 @@ TEST_P(EndToEndTest, CanceledStreamDoesNotBecomeZombie) {
   EXPECT_TRUE(client_->client()->WaitForOneRttKeysAvailable());
   // Lose the request.
   SetPacketLossPercentage(100);
-  Http2HeaderBlock headers;
+  HttpHeaderBlock headers;
   headers[":method"] = "POST";
   headers[":path"] = "/foo";
   headers[":scheme"] = "https";
@@ -4404,7 +4780,7 @@ class ServerStreamWithErrorResponseBody : public QuicSimpleServerStream {
  protected:
   void SendErrorResponse() override {
     QUIC_DLOG(INFO) << "Sending error response for stream " << id();
-    Http2HeaderBlock headers;
+    HttpHeaderBlock headers;
     headers[":status"] = "500";
     headers["content-length"] = absl::StrCat(response_body_.size());
     // This method must call CloseReadSide to cause the test case, StopReading
@@ -4637,7 +5013,7 @@ TEST_P(EndToEndTest, EarlyResponseFinRecording) {
   // and before the body is received, due to invalid content-length.
   // Set an invalid content-length, so the request will receive an early 500
   // response.
-  Http2HeaderBlock headers;
+  HttpHeaderBlock headers;
   headers[":method"] = "POST";
   headers[":path"] = "/garbage";
   headers[":scheme"] = "https";
@@ -4686,11 +5062,11 @@ TEST_P(EndToEndTest, Trailers) {
   // Add a response with headers, body, and trailers.
   const std::string kBody = "body content";
 
-  Http2HeaderBlock headers;
+  HttpHeaderBlock headers;
   headers[":status"] = "200";
   headers["content-length"] = absl::StrCat(kBody.size());
 
-  Http2HeaderBlock trailers;
+  HttpHeaderBlock trailers;
   trailers["some-trailing-header"] = "trailing-header-value";
 
   memory_cache_backend_.AddResponse(server_hostname_, "/trailer_url",
@@ -4720,7 +5096,7 @@ TEST_P(EndToEndTest, DISABLED_TestHugePostWithPacketLoss) {
   ASSERT_LT(INT64_C(4294967296), request_body_size_bytes);
   std::string body(kSizeBytes, 'a');
 
-  Http2HeaderBlock headers;
+  HttpHeaderBlock headers;
   headers[":method"] = "POST";
   headers[":path"] = "/foo";
   headers[":scheme"] = "https";
@@ -4798,7 +5174,7 @@ TEST_P(EndToEndTest, ReleaseHeadersStreamBufferWhenIdle) {
 TEST_P(EndToEndTest, WayTooLongRequestHeaders) {
   ASSERT_TRUE(Initialize());
 
-  Http2HeaderBlock headers;
+  HttpHeaderBlock headers;
   headers[":method"] = "GET";
   headers[":path"] = "/foo";
   headers[":scheme"] = "https";
@@ -4848,7 +5224,7 @@ TEST_P(EndToEndTest, WindowUpdateInAck) {
   client_connection->set_debug_visitor(&observer);
   // 100KB body.
   std::string body(100 * 1024, 'a');
-  Http2HeaderBlock headers;
+  HttpHeaderBlock headers;
   headers[":method"] = "POST";
   headers[":path"] = "/foo";
   headers[":scheme"] = "https";
@@ -4967,7 +5343,7 @@ TEST_P(EndToEndTest, DoNotCrashOnPacketWriteError) {
 
   // 1 MB body.
   std::string body(1024 * 1024, 'a');
-  Http2HeaderBlock headers;
+  HttpHeaderBlock headers;
   headers[":method"] = "POST";
   headers[":path"] = "/foo";
   headers[":scheme"] = "https";
@@ -5006,8 +5382,7 @@ TEST_P(EndToEndTest, PreSharedKey) {
 
   if (version_.UsesTls()) {
     // TODO(b/154162689) add PSK support to QUIC+TLS.
-    EXPECT_QUIC_BUG(EXPECT_FALSE(Initialize()),
-                    "QUIC client pre-shared keys not yet supported with TLS");
+    InitializeAndCheckForTlsPskFailure();
     return;
   }
 
@@ -5027,8 +5402,7 @@ TEST_P(EndToEndTest, QUIC_TEST_DISABLED_IN_CHROME(PreSharedKeyMismatch)) {
 
   if (version_.UsesTls()) {
     // TODO(b/154162689) add PSK support to QUIC+TLS.
-    EXPECT_QUIC_BUG(EXPECT_FALSE(Initialize()),
-                    "QUIC client pre-shared keys not yet supported with TLS");
+    InitializeAndCheckForTlsPskFailure();
     return;
   }
 
@@ -5052,8 +5426,7 @@ TEST_P(EndToEndTest, QUIC_TEST_DISABLED_IN_CHROME(PreSharedKeyNoClient)) {
 
   if (version_.UsesTls()) {
     // TODO(b/154162689) add PSK support to QUIC+TLS.
-    EXPECT_QUIC_BUG(EXPECT_FALSE(Initialize()),
-                    "QUIC server pre-shared keys not yet supported with TLS");
+    InitializeAndCheckForTlsPskFailure(/*expect_client_failure=*/false);
     return;
   }
 
@@ -5071,8 +5444,7 @@ TEST_P(EndToEndTest, QUIC_TEST_DISABLED_IN_CHROME(PreSharedKeyNoServer)) {
 
   if (version_.UsesTls()) {
     // TODO(b/154162689) add PSK support to QUIC+TLS.
-    EXPECT_QUIC_BUG(EXPECT_FALSE(Initialize()),
-                    "QUIC client pre-shared keys not yet supported with TLS");
+    InitializeAndCheckForTlsPskFailure();
     return;
   }
 
@@ -5087,7 +5459,7 @@ TEST_P(EndToEndTest, RequestAndStreamRstInOnePacket) {
   // INCOMPLETE_RESPONSE will cause the server to not to send the trailer
   // (and the FIN) after the response body.
   std::string response_body(1305, 'a');
-  Http2HeaderBlock response_headers;
+  HttpHeaderBlock response_headers;
   response_headers[":status"] = absl::StrCat(200);
   response_headers["content-length"] = absl::StrCat(response_body.length());
   memory_cache_backend_.AddSpecialResponse(
@@ -5394,6 +5766,132 @@ TEST_P(EndToEndTest, ClientMultiPortConnection) {
   stream->Reset(QuicRstStreamErrorCode::QUIC_STREAM_NO_ERROR);
 }
 
+TEST_P(EndToEndTest, ClientPortMigrationOnPathDegrading) {
+  connect_to_server_on_initialize_ = false;
+  Initialize();
+  if (!version_.HasIetfQuicFrames()) {
+    CreateClientWithWriter();
+    return;
+  }
+
+  server_thread_->Pause();
+  QuicDispatcher* dispatcher =
+      QuicServerPeer::GetDispatcher(server_thread_->server());
+  if (dispatcher == nullptr) {
+    ADD_FAILURE() << "Missing dispatcher";
+    server_thread_->Resume();
+    return;
+  }
+  if (dispatcher->NumSessions() > 0) {
+    ADD_FAILURE() << "Dispatcher session map not empty";
+    server_thread_->Resume();
+    return;
+  }
+  auto* new_writer = new DroppingPacketsWithSpecificDestinationWriter();
+  // Note: this writer will only used by the server connection, not the time
+  // wait list.
+  QuicDispatcherPeer::UseWriter(dispatcher, new_writer);
+  server_thread_->Resume();
+
+  delete client_writer_;
+  client_.reset(EndToEndTest::CreateQuicClient(nullptr));
+  client_->client()->EnablePortMigrationUponPathDegrading(std::nullopt);
+  ASSERT_TRUE(client_->client()->WaitForHandshakeConfirmed());
+  QuicConnection* client_connection = GetClientConnection();
+  QuicSocketAddress original_self_addr = client_connection->self_address();
+  HttpHeaderBlock headers;
+  headers[":method"] = "POST";
+  headers[":path"] = "/bar";
+  headers[":scheme"] = "https";
+  headers[":authority"] = server_hostname_;
+  client_->SendMessage(headers, "aaaa", false);
+
+  // This causes the all server sent packets to the client's current address to
+  // be dropped.
+  new_writer->set_peer_address_to_drop(original_self_addr);
+  client_->SendData("bbbb", true);
+  // The response will be dropped till client migrates to a different port.
+  client_->WaitForResponse();
+  QuicSocketAddress new_self_addr1 = client_connection->self_address();
+  EXPECT_NE(original_self_addr, new_self_addr1);
+  EXPECT_EQ(1u, GetClientConnection()->GetStats().num_path_degrading);
+  EXPECT_EQ(1u, GetClientConnection()
+                    ->GetStats()
+                    .num_forward_progress_after_path_degrading);
+  EXPECT_EQ(1u, GetClientConnection()->GetStats().num_path_response_received);
+  size_t pto_count = GetClientConnection()->GetStats().pto_count;
+
+  // Wait for new connection id to be received.
+  WaitForNewConnectionIds();
+  // Use 1 PTO to detect path degrading more aggressively.
+  client_->client()->EnablePortMigrationUponPathDegrading({1});
+  new_writer->set_peer_address_to_drop(new_self_addr1);
+  client_->SendSynchronousRequest("/eep");
+  QuicSocketAddress new_self_addr2 = client_connection->self_address();
+  EXPECT_NE(new_self_addr1, new_self_addr2);
+  EXPECT_EQ(2u, GetClientConnection()->GetStats().num_path_degrading);
+  EXPECT_EQ(2u, GetClientConnection()
+                    ->GetStats()
+                    .num_forward_progress_after_path_degrading);
+  EXPECT_EQ(2u, GetClientConnection()->GetStats().num_path_response_received);
+  // It should take fewer PTOs to trigger port migration than the default(4).
+  EXPECT_GT(pto_count + 4, GetClientConnection()->GetStats().pto_count);
+}
+
+TEST_P(EndToEndTest, ClientLimitPortMigrationOnPathDegrading) {
+  connect_to_server_on_initialize_ = false;
+  Initialize();
+  if (!version_.HasIetfQuicFrames()) {
+    CreateClientWithWriter();
+    return;
+  }
+  const uint32_t max_num_path_degrading_to_mitigate =
+      GetQuicFlag(quic_max_num_path_degrading_to_mitigate);
+
+  delete client_writer_;
+  client_.reset(EndToEndTest::CreateQuicClient(nullptr));
+  client_->client()->EnablePortMigrationUponPathDegrading(std::nullopt);
+  ASSERT_TRUE(client_->client()->WaitForHandshakeConfirmed());
+  QuicConnection* client_connection = GetClientConnection();
+  HttpHeaderBlock headers;
+  headers[":method"] = "POST";
+  headers[":path"] = "/bar";
+  headers[":scheme"] = "https";
+  headers[":authority"] = server_hostname_;
+  // Manually trigger path degrading 5 times and expect they should all trigger
+  // port migration.
+  for (uint32_t i = 0; i < max_num_path_degrading_to_mitigate; ++i) {
+    client_->SendMessage(headers, "aaaa", false);
+    QuicSocketAddress original_self_addr = client_connection->self_address();
+    WaitForNewConnectionIds();
+    client_connection->OnPathDegradingDetected();
+    client_->SendData("bbbb", true);
+    client_->WaitForResponse();
+    while (client_->client()->HasPendingPathValidation()) {
+      client_->client()->WaitForEvents();
+    }
+    QuicSocketAddress new_self_addr = client_connection->self_address();
+    EXPECT_NE(original_self_addr, new_self_addr);
+  }
+
+  EXPECT_EQ(max_num_path_degrading_to_mitigate,
+            GetClientConnection()->GetStats().num_path_degrading);
+  EXPECT_EQ(max_num_path_degrading_to_mitigate,
+            GetClientConnection()->GetStats().num_path_response_received);
+
+  // The next path degrading shouldn't trigger port migration.
+  WaitForNewConnectionIds();
+  QuicSocketAddress original_self_addr = client_connection->self_address();
+  client_connection->OnPathDegradingDetected();
+  EXPECT_FALSE(client_->client()->HasPendingPathValidation());
+  client_->SendSynchronousRequest("/eep");
+  EXPECT_EQ(original_self_addr, client_connection->self_address());
+  EXPECT_EQ(max_num_path_degrading_to_mitigate + 1,
+            GetClientConnection()->GetStats().num_path_degrading);
+  EXPECT_EQ(max_num_path_degrading_to_mitigate,
+            GetClientConnection()->GetStats().num_path_response_received);
+}
+
 TEST_P(EndToEndTest, ClientMultiPortMigrationOnPathDegrading) {
   client_config_.SetClientConnectionOptions(QuicTagVector{kMPQC, kMPQM});
   ASSERT_TRUE(Initialize());
@@ -5439,6 +5937,35 @@ TEST_P(EndToEndTest, ClientMultiPortMigrationOnPathDegrading) {
 }
 
 TEST_P(EndToEndTest, SimpleServerPreferredAddressTest) {
+  use_preferred_address_ = true;
+  ASSERT_TRUE(Initialize());
+  if (!version_.HasIetfQuicFrames()) {
+    return;
+  }
+  client_.reset(CreateQuicClient(nullptr));
+  QuicConnection* client_connection = GetClientConnection();
+  EXPECT_TRUE(client_->client()->WaitForHandshakeConfirmed());
+  EXPECT_EQ(server_address_, client_connection->effective_peer_address());
+  EXPECT_EQ(server_address_, client_connection->peer_address());
+  EXPECT_TRUE(client_->client()->HasPendingPathValidation());
+  QuicConnectionId server_cid1 = client_connection->connection_id();
+
+  SendSynchronousFooRequestAndCheckResponse();
+  while (client_->client()->HasPendingPathValidation()) {
+    client_->client()->WaitForEvents();
+  }
+  EXPECT_EQ(server_preferred_address_,
+            client_connection->effective_peer_address());
+  EXPECT_EQ(server_preferred_address_, client_connection->peer_address());
+  EXPECT_NE(server_cid1, client_connection->connection_id());
+
+  const auto client_stats = GetClientConnection()->GetStats();
+  EXPECT_TRUE(client_stats.server_preferred_address_validated);
+  EXPECT_FALSE(client_stats.failed_to_validate_server_preferred_address);
+}
+
+TEST_P(EndToEndTest, SimpleServerPreferredAddressTestNoSPAD) {
+  SetQuicFlag(quic_always_support_server_preferred_address, true);
   use_preferred_address_ = true;
   ASSERT_TRUE(Initialize());
   if (!version_.HasIetfQuicFrames()) {
@@ -5807,7 +6334,7 @@ TEST_P(EndToEndPacketReorderingTest, Buffer0RttRequest) {
   client_->client()->Initialize();
 
   // Send a request before handshake finishes.
-  Http2HeaderBlock headers;
+  HttpHeaderBlock headers;
   headers[":method"] = "POST";
   headers[":path"] = "/bar";
   headers[":scheme"] = "https";
@@ -5827,7 +6354,7 @@ TEST_P(EndToEndTest, SimpleStopSendingRstStreamTest) {
   ASSERT_TRUE(Initialize());
 
   // Send a request without a fin, to keep the stream open
-  Http2HeaderBlock headers;
+  HttpHeaderBlock headers;
   headers[":method"] = "POST";
   headers[":path"] = "/foo";
   headers[":scheme"] = "https";
@@ -6002,7 +6529,7 @@ TEST_P(EndToEndTest, TooBigStreamIdClosesConnection) {
   EXPECT_TRUE(client_->client()->WaitForOneRttKeysAvailable());
 
   std::string body(kMaxOutgoingPacketSize, 'a');
-  Http2HeaderBlock headers;
+  HttpHeaderBlock headers;
   headers[":method"] = "POST";
   headers[":path"] = "/foo";
   headers[":scheme"] = "https";
@@ -6497,7 +7024,7 @@ TEST_P(EndToEndTest, WebTransportSessionSetupWithEchoWithSuffix) {
   EXPECT_TRUE(server_session->GetWebTransportSession(web_transport->id()) !=
               nullptr);
   server_thread_->Resume();
-  const spdy::Http2HeaderBlock* response_headers = client_->response_headers();
+  const quiche::HttpHeaderBlock* response_headers = client_->response_headers();
   auto it = response_headers->find("bar");
   EXPECT_NE(it, response_headers->end());
   EXPECT_EQ(it->second, "baz");
@@ -7045,7 +7572,7 @@ TEST_P(EndToEndTest, InvalidExtendedConnect) {
     return;
   }
   // Missing :path header.
-  spdy::Http2HeaderBlock headers;
+  quiche::HttpHeaderBlock headers;
   headers[":scheme"] = "https";
   headers[":authority"] = "localhost";
   headers[":method"] = "CONNECT";
@@ -7067,7 +7594,7 @@ TEST_P(EndToEndTest, RejectExtendedConnect) {
     return;
   }
   // This extended CONNECT should be rejected.
-  spdy::Http2HeaderBlock headers;
+  quiche::HttpHeaderBlock headers;
   headers[":scheme"] = "https";
   headers[":authority"] = "localhost";
   headers[":method"] = "CONNECT";
@@ -7079,7 +7606,7 @@ TEST_P(EndToEndTest, RejectExtendedConnect) {
   CheckResponseHeaders("400");
 
   // Vanilla CONNECT should be sent to backend.
-  spdy::Http2HeaderBlock headers2;
+  quiche::HttpHeaderBlock headers2;
   headers2[":authority"] = "localhost";
   headers2[":method"] = "CONNECT";
 
@@ -7094,7 +7621,7 @@ TEST_P(EndToEndTest, RejectInvalidRequestHeader) {
   SetQuicReloadableFlag(quic_act_upon_invalid_header, true);
   ASSERT_TRUE(Initialize());
 
-  spdy::Http2HeaderBlock headers;
+  quiche::HttpHeaderBlock headers;
   headers[":scheme"] = "https";
   headers[":authority"] = "localhost";
   headers[":method"] = "GET";
@@ -7112,11 +7639,11 @@ TEST_P(EndToEndTest, RejectTransferEncodingResponse) {
   ASSERT_TRUE(Initialize());
 
   // Add a response with transfer-encoding headers.
-  Http2HeaderBlock headers;
+  HttpHeaderBlock headers;
   headers[":status"] = "200";
   headers["transfer-encoding"] = "gzip";
 
-  Http2HeaderBlock trailers;
+  HttpHeaderBlock trailers;
   trailers["some-trailing-header"] = "trailing-header-value";
 
   memory_cache_backend_.AddResponse(server_hostname_, "/eep",
@@ -7131,7 +7658,7 @@ TEST_P(EndToEndTest, RejectUpperCaseRequest) {
   SetQuicReloadableFlag(quic_act_upon_invalid_header, true);
   ASSERT_TRUE(Initialize());
 
-  spdy::Http2HeaderBlock headers;
+  quiche::HttpHeaderBlock headers;
   headers[":scheme"] = "https";
   headers[":authority"] = "localhost";
   headers[":method"] = "GET";
@@ -7147,7 +7674,7 @@ TEST_P(EndToEndTest, RejectRequestWithInvalidToken) {
   SetQuicReloadableFlag(quic_act_upon_invalid_header, true);
   ASSERT_TRUE(Initialize());
 
-  spdy::Http2HeaderBlock headers;
+  quiche::HttpHeaderBlock headers;
   headers[":scheme"] = "https";
   headers[":authority"] = "localhost";
   headers[":method"] = "GET";
@@ -7231,8 +7758,7 @@ TEST_P(EndToEndTest, ServerReportsEct0) {
   EXPECT_EQ(ecn->ce, 0);
   EXPECT_TRUE(client_connection->set_ecn_codepoint(ECN_ECT0));
   client_->SendSynchronousRequest("/foo");
-  if (!GetQuicRestartFlag(quic_receive_ecn3) ||
-      !VersionHasIetfQuicFrames(version_.transport_version)) {
+  if (!VersionHasIetfQuicFrames(version_.transport_version)) {
     EXPECT_EQ(ecn->ect0, 0);
   } else {
     EXPECT_GT(ecn->ect0, 0);
@@ -7256,8 +7782,7 @@ TEST_P(EndToEndTest, ServerReportsEct1) {
   EXPECT_EQ(ecn->ce, 0);
   EXPECT_TRUE(client_connection->set_ecn_codepoint(ECN_ECT1));
   client_->SendSynchronousRequest("/foo");
-  if (!GetQuicRestartFlag(quic_receive_ecn3) ||
-      !VersionHasIetfQuicFrames(version_.transport_version)) {
+  if (!VersionHasIetfQuicFrames(version_.transport_version)) {
     EXPECT_EQ(ecn->ect1, 0);
   } else {
     EXPECT_GT(ecn->ect1, 0);
@@ -7281,8 +7806,7 @@ TEST_P(EndToEndTest, ServerReportsCe) {
   EXPECT_EQ(ecn->ce, 0);
   EXPECT_TRUE(client_connection->set_ecn_codepoint(ECN_CE));
   client_->SendSynchronousRequest("/foo");
-  if (!GetQuicRestartFlag(quic_receive_ecn3) ||
-      !VersionHasIetfQuicFrames(version_.transport_version)) {
+  if (!VersionHasIetfQuicFrames(version_.transport_version)) {
     EXPECT_EQ(ecn->ce, 0);
   } else {
     EXPECT_GT(ecn->ce, 0);
@@ -7310,8 +7834,7 @@ TEST_P(EndToEndTest, ClientReportsEct1) {
   server_thread_->Pause();
   EXPECT_EQ(ecn->ect0, 0);
   EXPECT_EQ(ecn->ce, 0);
-  if (!GetQuicRestartFlag(quic_receive_ecn3) ||
-      !VersionHasIetfQuicFrames(version_.transport_version)) {
+  if (!VersionHasIetfQuicFrames(version_.transport_version)) {
     EXPECT_EQ(ecn->ect1, 0);
   } else {
     EXPECT_GT(ecn->ect1, 0);
@@ -7516,6 +8039,45 @@ TEST_P(EndToEndTest, RequestsBurstMitigation) {
   server_thread_->Resume();
 }
 
+TEST_P(EndToEndTest, SerializeConnectionClosePacketWithLargestPacketNumber) {
+  ASSERT_TRUE(Initialize());
+  if (!version_.UsesTls()) {
+    return;
+  }
+  EXPECT_TRUE(client_->client()->WaitForHandshakeConfirmed());
+
+  std::unique_ptr<SerializedPacket> connection_close_packet =
+      GetClientConnection()->SerializeLargePacketNumberConnectionClosePacket(
+          QUIC_CLIENT_LOST_NETWORK_ACCESS, "EndToEndTest");
+  ASSERT_NE(connection_close_packet, nullptr);
+
+  // Send 50 requests to increase the packet number.
+  for (int i = 0; i < 50; ++i) {
+    EXPECT_EQ(kFooResponseBody, client_->SendSynchronousRequest("/foo"));
+  }
+
+  server_thread_->Pause();
+  QuicDispatcher* dispatcher =
+      QuicServerPeer::GetDispatcher(server_thread_->server());
+  EXPECT_EQ(dispatcher->NumSessions(), 1);
+  server_thread_->Resume();
+
+  // Send the connection close packet to the server.
+  QUIC_LOG(INFO) << "Sending close connection packet";
+  client_writer_->WritePacket(
+      connection_close_packet->encrypted_buffer,
+      connection_close_packet->encrypted_length,
+      client_->client()->network_helper()->GetLatestClientAddress().host(),
+      server_address_, nullptr, packet_writer_params_);
+
+  // Wait for the server to close the connection.
+  EXPECT_TRUE(
+      server_thread_->WaitUntil([&] { return dispatcher->NumSessions() == 0; },
+                                QuicTime::Delta::FromSeconds(5)));
+
+  EXPECT_EQ("", client_->SendSynchronousRequest("/foo"));
+  EXPECT_THAT(client_->connection_error(), IsError(QUIC_PUBLIC_RESET));
+}
 }  // namespace
 }  // namespace test
 }  // namespace quic

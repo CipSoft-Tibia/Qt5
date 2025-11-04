@@ -29,7 +29,6 @@
 
 #include <unordered_map>
 #include <unordered_set>
-#include <utility>
 
 #include "src/tint/lang/core/type/reference.h"
 #include "src/tint/lang/wgsl/ast/transform/hoist_to_decl_before.h"
@@ -40,7 +39,6 @@
 #include "src/tint/lang/wgsl/sem/call.h"
 #include "src/tint/lang/wgsl/sem/function.h"
 #include "src/tint/lang/wgsl/sem/statement.h"
-#include "src/tint/utils/containers/map.h"
 #include "src/tint/utils/rtti/switch.h"
 
 TINT_INSTANTIATE_TYPEINFO(tint::ast::transform::DemoteToHelper);
@@ -151,6 +149,14 @@ Transform::ApplyResult DemoteToHelper::Apply(const Program& src, const DataMap&,
                     default:
                         TINT_UNREACHABLE()
                             << "write to unhandled address space: " << ref->AddressSpace();
+                }
+
+                // If the RHS has side effects (which may contain derivative operations), we need to
+                // hoist it out to a separate declaration so that it does not get masked.
+                auto* rhs = sem.GetVal(assign->rhs);
+                if (rhs->HasSideEffects()) {
+                    hoist_to_decl_before.Add(rhs, assign->rhs,
+                                             HoistToDeclBefore::VariableKind::kLet);
                 }
 
                 // Mask the assignment using the invocation-discarded flag.

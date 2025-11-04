@@ -8,7 +8,6 @@ import type * as Platform from '../../../../core/platform/platform.js';
 import {assertNotNullOrUndefined} from '../../../../core/platform/platform.js';
 import * as SDK from '../../../../core/sdk/sdk.js';
 import * as Protocol from '../../../../generated/protocol.js';
-import * as ComponentHelpers from '../../../../ui/components/helpers/helpers.js';
 import * as IconButton from '../../../../ui/components/icon_button/icon_button.js';
 import * as LegacyWrapper from '../../../../ui/components/legacy_wrapper/legacy_wrapper.js';
 import * as Coordinator from '../../../../ui/components/render_coordinator/render_coordinator.js';
@@ -128,12 +127,12 @@ export interface UsedPreloadingViewData {
 }
 
 export const enum UsedKind {
-  DowngradedPrerenderToPrefetchAndUsed = 'DowngradedPrerenderToPrefetchAndUsed',
-  PrefetchUsed = 'PrefetchUsed',
-  PrerenderUsed = 'PrerenderUsed',
-  PrefetchFailed = 'PrefetchFailed',
-  PrerenderFailed = 'PrerenderFailed',
-  NoPreloads = 'NoPreloads',
+  DOWNGRADED_PRERENDER_TO_PREFETCH_AND_USED = 'DowngradedPrerenderToPrefetchAndUsed',
+  PREFETCH_USED = 'PrefetchUsed',
+  PRERENDER_USED = 'PrerenderUsed',
+  PREFETCH_FAILED = 'PrefetchFailed',
+  PRERENDER_FAILED = 'PrerenderFailed',
+  NO_PRELOADS = 'NoPreloads',
 }
 
 // TODO(kenoss): Rename this class and file once https://crrev.com/c/4933567 landed.
@@ -195,60 +194,60 @@ export class UsedPreloadingView extends LegacyWrapper.LegacyWrapper.WrappableCom
     const prerender =
         forThisPage.filter(attempt => attempt.key.action === Protocol.Preload.SpeculationAction.Prerender)[0];
 
-    let kind = UsedKind.NoPreloads;
+    let kind = UsedKind.NO_PRELOADS;
     // Prerender -> prefetch downgrade case
     //
     // This code does not handle the case SpecRules designate these preloads rather than prerenderer automatically downgrade prerendering.
     // TODO(https://crbug.com/1410709): Improve this logic once automatic downgrade implemented.
-    if (prerender?.status === SDK.PreloadingModel.PreloadingStatus.Failure &&
-        prefetch?.status === SDK.PreloadingModel.PreloadingStatus.Success) {
-      kind = UsedKind.DowngradedPrerenderToPrefetchAndUsed;
-    } else if (prefetch?.status === SDK.PreloadingModel.PreloadingStatus.Success) {
-      kind = UsedKind.PrefetchUsed;
-    } else if (prerender?.status === SDK.PreloadingModel.PreloadingStatus.Success) {
-      kind = UsedKind.PrerenderUsed;
-    } else if (prefetch?.status === SDK.PreloadingModel.PreloadingStatus.Failure) {
-      kind = UsedKind.PrefetchFailed;
-    } else if (prerender?.status === SDK.PreloadingModel.PreloadingStatus.Failure) {
-      kind = UsedKind.PrerenderFailed;
+    if (prerender?.status === SDK.PreloadingModel.PreloadingStatus.FAILURE &&
+        prefetch?.status === SDK.PreloadingModel.PreloadingStatus.SUCCESS) {
+      kind = UsedKind.DOWNGRADED_PRERENDER_TO_PREFETCH_AND_USED;
+    } else if (prefetch?.status === SDK.PreloadingModel.PreloadingStatus.SUCCESS) {
+      kind = UsedKind.PREFETCH_USED;
+    } else if (prerender?.status === SDK.PreloadingModel.PreloadingStatus.SUCCESS) {
+      kind = UsedKind.PRERENDER_USED;
+    } else if (prefetch?.status === SDK.PreloadingModel.PreloadingStatus.FAILURE) {
+      kind = UsedKind.PREFETCH_FAILED;
+    } else if (prerender?.status === SDK.PreloadingModel.PreloadingStatus.FAILURE) {
+      kind = UsedKind.PRERENDER_FAILED;
     } else {
-      kind = UsedKind.NoPreloads;
+      kind = UsedKind.NO_PRELOADS;
     }
 
     let badge;
     let basicMessage;
     switch (kind) {
-      case UsedKind.DowngradedPrerenderToPrefetchAndUsed:
+      case UsedKind.DOWNGRADED_PRERENDER_TO_PREFETCH_AND_USED:
         badge = this.#badgeSuccess();
         basicMessage = LitHtml.html`${i18nString(UIStrings.downgradedPrefetchUsed)}`;
         break;
-      case UsedKind.PrefetchUsed:
+      case UsedKind.PREFETCH_USED:
         badge = this.#badgeSuccess();
         basicMessage = LitHtml.html`${i18nString(UIStrings.prefetchUsed)}`;
         break;
-      case UsedKind.PrerenderUsed:
+      case UsedKind.PRERENDER_USED:
         badge = this.#badgeSuccess();
         basicMessage = LitHtml.html`${i18nString(UIStrings.prerenderUsed)}`;
         break;
-      case UsedKind.PrefetchFailed:
+      case UsedKind.PREFETCH_FAILED:
         badge = this.#badgeFailure();
         basicMessage = LitHtml.html`${i18nString(UIStrings.prefetchFailed)}`;
         break;
-      case UsedKind.PrerenderFailed:
+      case UsedKind.PRERENDER_FAILED:
         badge = this.#badgeFailure();
         basicMessage = LitHtml.html`${i18nString(UIStrings.prerenderFailed)}`;
         break;
-      case UsedKind.NoPreloads:
+      case UsedKind.NO_PRELOADS:
         badge = this.#badgeNeutral(i18nString(UIStrings.badgeNoSpeculativeLoads));
         basicMessage = LitHtml.html`${i18nString(UIStrings.noPreloads)}`;
         break;
     }
 
     let maybeFailureReasonMessage;
-    if (kind === UsedKind.PrefetchFailed) {
+    if (kind === UsedKind.PREFETCH_FAILED) {
       assertNotNullOrUndefined(prefetch);
       maybeFailureReasonMessage = prefetchFailureReason(prefetch as SDK.PreloadingModel.PrefetchAttempt);
-    } else if (kind === UsedKind.PrerenderFailed || kind === UsedKind.DowngradedPrerenderToPrefetchAndUsed) {
+    } else if (kind === UsedKind.PRERENDER_FAILED || kind === UsedKind.DOWNGRADED_PRERENDER_TO_PREFETCH_AND_USED) {
       assertNotNullOrUndefined(prerender);
       maybeFailureReasonMessage = prerenderFailureReason(prerender as SDK.PreloadingModel.PrerenderAttempt);
     }
@@ -292,7 +291,7 @@ export class UsedPreloadingView extends LegacyWrapper.LegacyWrapper.WrappableCom
   }
 
   #maybeMismatchedSections(kind: UsedKind): LitHtml.LitTemplate {
-    if (kind !== UsedKind.NoPreloads || this.#data.previousAttempts.length === 0) {
+    if (kind !== UsedKind.NO_PRELOADS || this.#data.previousAttempts.length === 0) {
       return LitHtml.nothing;
     }
 
@@ -320,7 +319,7 @@ export class UsedPreloadingView extends LegacyWrapper.LegacyWrapper.WrappableCom
       <${ReportView.ReportView.ReportSectionHeader.litTagName}>${i18nString(UIStrings.preloadedURLs)}</${
         ReportView.ReportView.ReportSectionHeader.litTagName}>
       <${ReportView.ReportView.ReportSection.litTagName}
-      jslog=${VisualLogging.section().context('preloaded-urls')}>
+      jslog=${VisualLogging.section('preloaded-urls')}>
         <${MismatchedPreloadingGrid.MismatchedPreloadingGrid.litTagName}
           .data=${data as MismatchedPreloadingGrid.MismatchedPreloadingGridData}></${
           MismatchedPreloadingGrid.MismatchedPreloadingGrid.litTagName}>
@@ -363,11 +362,11 @@ export class UsedPreloadingView extends LegacyWrapper.LegacyWrapper.WrappableCom
       acc.set(attempt.status, (acc.get(attempt.status) ?? 0) + 1);
       return acc;
     }, new Map());
-    const notTriggeredCount = count.get(SDK.PreloadingModel.PreloadingStatus.NotTriggered) ?? 0;
-    const readyCount = count.get(SDK.PreloadingModel.PreloadingStatus.Ready) ?? 0;
-    const failureCount = count.get(SDK.PreloadingModel.PreloadingStatus.Failure) ?? 0;
-    const inProgressCount = (count.get(SDK.PreloadingModel.PreloadingStatus.Pending) ?? 0) +
-        (count.get(SDK.PreloadingModel.PreloadingStatus.Running) ?? 0);
+    const notTriggeredCount = count.get(SDK.PreloadingModel.PreloadingStatus.NOT_TRIGGERED) ?? 0;
+    const readyCount = count.get(SDK.PreloadingModel.PreloadingStatus.READY) ?? 0;
+    const failureCount = count.get(SDK.PreloadingModel.PreloadingStatus.FAILURE) ?? 0;
+    const inProgressCount = (count.get(SDK.PreloadingModel.PreloadingStatus.PENDING) ?? 0) +
+        (count.get(SDK.PreloadingModel.PreloadingStatus.RUNNING) ?? 0);
     const badges = [];
     if (this.#data.currentAttempts.length === 0) {
       badges.push(this.#badgeNeutral(i18nString(UIStrings.badgeNoSpeculativeLoads)));
@@ -405,12 +404,12 @@ export class UsedPreloadingView extends LegacyWrapper.LegacyWrapper.WrappableCom
 
           <div class="reveal-links">
             <button class="link devtools-link" @click=${revealRuleSetView}
-            jslog=${VisualLogging.action().track({click: true}).context('view-all-rules')}>
+            jslog=${VisualLogging.action('view-all-rules').track({click: true})}>
               ${i18nString(UIStrings.viewAllRules)}
             </button>
            ・
             <button class="link devtools-link" @click=${revealAttemptViewWithFilter}
-            jslog=${VisualLogging.action().track({click: true}).context('view-all-speculations')}>
+            jslog=${VisualLogging.action('view-all-speculations').track({click: true})}>
              ${i18nString(UIStrings.viewAllSpeculations)}
             </button>
           </div>
@@ -459,10 +458,9 @@ export class UsedPreloadingView extends LegacyWrapper.LegacyWrapper.WrappableCom
   }
 }
 
-ComponentHelpers.CustomElements.defineComponent('devtools-resources-used-preloading-view', UsedPreloadingView);
+customElements.define('devtools-resources-used-preloading-view', UsedPreloadingView);
 
 declare global {
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   interface HTMLElementTagNameMap {
     'devtools-resources-used-preloading-view': UsedPreloadingView;
   }

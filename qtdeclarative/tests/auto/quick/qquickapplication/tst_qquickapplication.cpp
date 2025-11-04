@@ -91,7 +91,8 @@ void tst_qquickapplication::active()
         } else {
             // Otherwise, app activation is triggered by window activation.
             window.show();
-            window.requestActivate();
+            if (QGuiApplication::platformName().toLower() != "xcb")
+                window.requestActivate();
             QVERIFY(QTest::qWaitForWindowActive(&window));
             QTRY_COMPARE(QGuiApplication::focusWindow(), &window);
             QVERIFY(item->property("active").toBool());
@@ -164,7 +165,8 @@ void tst_qquickapplication::state()
             // Otherwise, the application can only be in two states, Active and Inactive. These are
             // triggered by window activation.
             window.show();
-            window.requestActivate();
+            if (QGuiApplication::platformName().toLower() != QLatin1String("xcb"))
+                window.requestActivate();
             QVERIFY(QTest::qWaitForWindowActive(&window));
             QTRY_COMPARE(QGuiApplication::focusWindow(), &window);
             QCOMPARE(Qt::ApplicationState(item->property("state").toInt()), Qt::ApplicationActive);

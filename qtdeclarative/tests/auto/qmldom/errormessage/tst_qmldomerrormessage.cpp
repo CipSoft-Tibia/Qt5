@@ -4,7 +4,7 @@
 #include "tst_qmldomerrormessage.h"
 #include <QtQmlDom/private/qqmldomerrormessage_p.h>
 
-#include <QtTest/QtTest>
+#include <QtTest/QTest>
 #include <QTextStream>
 #include <QDebug>
 

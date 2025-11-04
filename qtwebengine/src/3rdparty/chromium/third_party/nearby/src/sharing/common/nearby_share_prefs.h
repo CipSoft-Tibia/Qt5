@@ -23,27 +23,22 @@ namespace nearby {
 namespace sharing {
 namespace prefs {
 
-ABSL_CONST_INIT extern const char kNearbySharingAllowedContactsName[];
 ABSL_CONST_INIT extern const char kNearbySharingBackgroundVisibilityName[];
-ABSL_CONST_INIT extern const char
-    kNearbySharingBackgroundTemporarilyVisibleName[];
 ABSL_CONST_INIT extern const char
     kNearbySharingBackgroundFallbackVisibilityName[];
 ABSL_CONST_INIT extern const char
     kNearbySharingBackgroundVisibilityExpirationSeconds[];
 ABSL_CONST_INIT extern const char kNearbySharingContactUploadHashName[];
+ABSL_CONST_INIT extern const char kNearbySharingContactUploadTimeName[];
 ABSL_CONST_INIT extern const char kNearbySharingCustomSavePath[];
 ABSL_CONST_INIT extern const char kNearbySharingDataUsageName[];
 ABSL_CONST_INIT extern const char kNearbySharingDeviceIdName[];
 ABSL_CONST_INIT extern const char kNearbySharingDeviceNameName[];
-ABSL_CONST_INIT extern const char kNearbySharingEnabledName[];
 ABSL_CONST_INIT extern const char
     kNearbySharingFastInitiationNotificationStateName[];
-ABSL_CONST_INIT extern const char kNearbySharingOnboardingCompleteName[];
 ABSL_CONST_INIT extern const char kNearbySharingFullNameName[];
 ABSL_CONST_INIT extern const char kNearbySharingIconUrlName[];
 ABSL_CONST_INIT extern const char kNearbySharingIconTokenName[];
-ABSL_CONST_INIT extern const char kNearbySharingOnboardingDismissedTimeName[];
 ABSL_CONST_INIT extern const char kNearbySharingPrivateCertificateListName[];
 ABSL_CONST_INIT extern const char
     kNearbySharingPublicCertificateExpirationDictName[];
@@ -54,8 +49,6 @@ ABSL_CONST_INIT extern const char
 ABSL_CONST_INIT extern const char
     kNearbySharingSchedulerDownloadPublicCertificatesName[];
 ABSL_CONST_INIT extern const char
-    kNearbySharingSchedulerPeriodicContactUploadName[];
-ABSL_CONST_INIT extern const char
     kNearbySharingSchedulerPrivateCertificateExpirationName[];
 ABSL_CONST_INIT extern const char
     kNearbySharingSchedulerPublicCertificateExpirationName[];
@@ -63,9 +56,7 @@ ABSL_CONST_INIT extern const char kNearbySharingSchedulerUploadDeviceNameName[];
 ABSL_CONST_INIT extern const char
     kNearbySharingSchedulerUploadLocalDeviceCertificatesName[];
 ABSL_CONST_INIT extern const char kNearbySharingUsersName[];
-ABSL_CONST_INIT extern const char kNearbySharingIsReceivingName[];
 ABSL_CONST_INIT extern const char kNearbySharingIsAnalyticsEnabledName[];
-ABSL_CONST_INIT extern const char kNearbySharingIsAllContactsEnabledName[];
 ABSL_CONST_INIT extern const char kNearbySharingAutoAppStartEnabledName[];
 
 ABSL_CONST_INIT const proto::DeviceVisibility kDefaultVisibility =

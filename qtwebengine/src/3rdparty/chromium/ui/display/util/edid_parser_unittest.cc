@@ -2,6 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#ifdef UNSAFE_BUFFERS_BUILD
+// TODO(crbug.com/351564777): Remove this and convert code to safer constructs.
+#pragma allow_unsafe_buffers
+#endif
+
 #include "ui/display/util/edid_parser.h"
 
 #include <stdint.h>
@@ -372,8 +377,8 @@ struct TestParams {
   base::flat_set<EdidParser::PrimaryMatrixPair>
       supported_color_primary_matrix_ids;
   base::flat_set<gfx::ColorSpace::TransferID> supported_color_transfer_ids;
-  absl::optional<gfx::HDRStaticMetadata> hdr_static_metadata;
-  absl::optional<uint16_t> vsync_rate_min;
+  std::optional<gfx::HDRStaticMetadata> hdr_static_metadata;
+  std::optional<uint16_t> vsync_rate_min;
   bool tile_scale_to_fit;
 
   const unsigned char* edid_blob;
@@ -401,8 +406,8 @@ struct TestParams {
      .product_id_string = "286C",
      .supported_color_primary_matrix_ids = {},
      .supported_color_transfer_ids = {},
-     .hdr_static_metadata = absl::nullopt,
-     .vsync_rate_min = absl::nullopt,
+     .hdr_static_metadata = std::nullopt,
+     .vsync_rate_min = std::nullopt,
      .tile_scale_to_fit = false,
      .edid_blob = kBadDisplayName,
      .edid_blob_length = kBadDisplayNameLength},
@@ -428,8 +433,8 @@ struct TestParams {
      .product_id_string = "286C",
      .supported_color_primary_matrix_ids = {},
      .supported_color_transfer_ids = {},
-     .hdr_static_metadata = absl::nullopt,
-     .vsync_rate_min = absl::nullopt,
+     .hdr_static_metadata = std::nullopt,
+     .vsync_rate_min = std::nullopt,
      .tile_scale_to_fit = false,
      .edid_blob = kNormalDisplay,
      .edid_blob_length = kNormalDisplayLength},
@@ -455,8 +460,8 @@ struct TestParams {
      .product_id_string = "286C",
      .supported_color_primary_matrix_ids = {},
      .supported_color_transfer_ids = {},
-     .hdr_static_metadata = absl::nullopt,
-     .vsync_rate_min = absl::nullopt,
+     .hdr_static_metadata = std::nullopt,
+     .vsync_rate_min = std::nullopt,
      .tile_scale_to_fit = false,
      .edid_blob = kNoMaxImageSizeDisplay,
      .edid_blob_length = kNoMaxImageSizeDisplayLength},
@@ -481,8 +486,8 @@ struct TestParams {
      .product_id_string = "286C",
      .supported_color_primary_matrix_ids = {},
      .supported_color_transfer_ids = {},
-     .hdr_static_metadata = absl::nullopt,
-     .vsync_rate_min = absl::nullopt,
+     .hdr_static_metadata = std::nullopt,
+     .vsync_rate_min = std::nullopt,
      .tile_scale_to_fit = false,
      .edid_blob = kBlockZeroSerialNumberOnlyDisplay,
      .edid_blob_length = kBlockZeroSerialNumberOnlyDisplayLength},
@@ -507,8 +512,8 @@ struct TestParams {
      .product_id_string = "286C",
      .supported_color_primary_matrix_ids = {},
      .supported_color_transfer_ids = {},
-     .hdr_static_metadata = absl::nullopt,
-     .vsync_rate_min = absl::nullopt,
+     .hdr_static_metadata = std::nullopt,
+     .vsync_rate_min = std::nullopt,
      .tile_scale_to_fit = false,
      .edid_blob = kNoSerialNumberDisplay,
      .edid_blob_length = kNoSerialNumberDisplayLength},
@@ -534,8 +539,8 @@ struct TestParams {
      .product_id_string = "286C",
      .supported_color_primary_matrix_ids = {},
      .supported_color_transfer_ids = {},
-     .hdr_static_metadata = absl::nullopt,
-     .vsync_rate_min = absl::nullopt,
+     .hdr_static_metadata = std::nullopt,
+     .vsync_rate_min = std::nullopt,
      .tile_scale_to_fit = false,
      .edid_blob = kNoWeekOfManufactureDisplay,
      .edid_blob_length = kNoWeekOfManufactureDisplayLength},
@@ -561,8 +566,8 @@ struct TestParams {
      .product_id_string = "286C",
      .supported_color_primary_matrix_ids = {},
      .supported_color_transfer_ids = {},
-     .hdr_static_metadata = absl::nullopt,
-     .vsync_rate_min = absl::nullopt,
+     .hdr_static_metadata = std::nullopt,
+     .vsync_rate_min = std::nullopt,
      .tile_scale_to_fit = false,
      .edid_blob = kModelYearDisplay,
      .edid_blob_length = kModelYearDisplayLength},
@@ -587,8 +592,8 @@ struct TestParams {
      .product_id_string = "3142",
      .supported_color_primary_matrix_ids = {},
      .supported_color_transfer_ids = {},
-     .hdr_static_metadata = absl::nullopt,
-     .vsync_rate_min = absl::nullopt,
+     .hdr_static_metadata = std::nullopt,
+     .vsync_rate_min = std::nullopt,
      .tile_scale_to_fit = false,
      .edid_blob = kInternalDisplay,
      .edid_blob_length = kInternalDisplayLength},
@@ -613,7 +618,7 @@ struct TestParams {
      .product_id_string = "08FE",
      .supported_color_primary_matrix_ids = {},
      .supported_color_transfer_ids = {},
-     .hdr_static_metadata = absl::nullopt,
+     .hdr_static_metadata = std::nullopt,
      .vsync_rate_min = 24,
      .tile_scale_to_fit = false,
      .edid_blob = kOverscanDisplay,
@@ -643,7 +648,7 @@ struct TestParams {
           {gfx::ColorSpace::PrimaryID::SMPTE170M,
            gfx::ColorSpace::MatrixID::SMPTE170M}},
      .supported_color_transfer_ids = {},
-     .hdr_static_metadata = absl::nullopt,
+     .hdr_static_metadata = std::nullopt,
      .vsync_rate_min = 49,
      .tile_scale_to_fit = false,
      .edid_blob = kMisdetectedDisplay,
@@ -669,7 +674,7 @@ struct TestParams {
      .product_id_string = "2676",
      .supported_color_primary_matrix_ids = {},
      .supported_color_transfer_ids = {},
-     .hdr_static_metadata = absl::nullopt,
+     .hdr_static_metadata = std::nullopt,
      .vsync_rate_min = 48,
      .tile_scale_to_fit = false,
      .edid_blob = kLP2565A,
@@ -695,7 +700,7 @@ struct TestParams {
      .product_id_string = "2675",
      .supported_color_primary_matrix_ids = {},
      .supported_color_transfer_ids = {},
-     .hdr_static_metadata = absl::nullopt,
+     .hdr_static_metadata = std::nullopt,
      .vsync_rate_min = 48,
      .tile_scale_to_fit = false,
      .edid_blob = kLP2565B,
@@ -721,7 +726,7 @@ struct TestParams {
      .product_id_string = "3275",
      .supported_color_primary_matrix_ids = {},
      .supported_color_transfer_ids = {},
-     .hdr_static_metadata = absl::nullopt,
+     .hdr_static_metadata = std::nullopt,
      .vsync_rate_min = 24,
      .tile_scale_to_fit = false,
      .edid_blob = kHPz32x,
@@ -747,8 +752,8 @@ struct TestParams {
      .product_id_string = "042E",
      .supported_color_primary_matrix_ids = {},
      .supported_color_transfer_ids = {},
-     .hdr_static_metadata = absl::nullopt,
-     .vsync_rate_min = absl::nullopt,
+     .hdr_static_metadata = std::nullopt,
+     .vsync_rate_min = std::nullopt,
      .tile_scale_to_fit = false,
      .edid_blob = kSamus,
      .edid_blob_length = kSamusLength},
@@ -773,8 +778,8 @@ struct TestParams {
      .product_id_string = "148A",
      .supported_color_primary_matrix_ids = {},
      .supported_color_transfer_ids = {},
-     .hdr_static_metadata = absl::nullopt,
-     .vsync_rate_min = absl::nullopt,
+     .hdr_static_metadata = std::nullopt,
+     .vsync_rate_min = std::nullopt,
      .tile_scale_to_fit = false,
      .edid_blob = kEve,
      .edid_blob_length = kEveLength},
@@ -806,7 +811,7 @@ struct TestParams {
      .supported_color_transfer_ids = {gfx::ColorSpace::TransferID::BT709,
                                       gfx::ColorSpace::TransferID::PQ,
                                       gfx::ColorSpace::TransferID::HLG},
-     .hdr_static_metadata = absl::make_optional<gfx::HDRStaticMetadata>(
+     .hdr_static_metadata = std::make_optional<gfx::HDRStaticMetadata>(
          603.666,
          530.095,
          0.00454,
@@ -839,7 +844,7 @@ struct TestParams {
      .product_id_string = "4147",
      .supported_color_primary_matrix_ids = {},
      .supported_color_transfer_ids = {},
-     .hdr_static_metadata = absl::nullopt,
+     .hdr_static_metadata = std::nullopt,
      .vsync_rate_min = 24,
      .tile_scale_to_fit = true,
      .edid_blob = kTiledDisplay,
@@ -867,8 +872,8 @@ struct TestParams {
      .product_id_string = "0000",
      .supported_color_primary_matrix_ids = {},
      .supported_color_transfer_ids = {},
-     .hdr_static_metadata = absl::nullopt,
-     .vsync_rate_min = absl::nullopt,
+     .hdr_static_metadata = std::nullopt,
+     .vsync_rate_min = std::nullopt,
      .tile_scale_to_fit = false,
      .edid_blob = nullptr,
      .edid_blob_length = 0u},
@@ -888,6 +893,10 @@ class EDIDParserTest : public TestWithParam<TestParams> {
 };
 
 TEST_P(EDIDParserTest, ParseEdids) {
+  std::vector<uint8_t> expected_edid(
+      GetParam().edid_blob, GetParam().edid_blob + GetParam().edid_blob_length);
+  EXPECT_EQ(parser_.edid_blob(), expected_edid);
+
   EXPECT_EQ(parser_.manufacturer_id(), GetParam().manufacturer_id);
   EXPECT_EQ(parser_.product_id(), GetParam().product_id);
   EXPECT_EQ(parser_.block_zero_serial_number_hash(),
@@ -922,7 +931,7 @@ TEST_P(EDIDParserTest, ParseEdids) {
   EXPECT_EQ(GetParam().supported_color_transfer_ids,
             parser_.supported_color_transfer_ids());
 
-  const absl::optional<gfx::HDRStaticMetadata> hdr_static_metadata =
+  const std::optional<gfx::HDRStaticMetadata> hdr_static_metadata =
       parser_.hdr_static_metadata();
   EXPECT_EQ(GetParam().hdr_static_metadata.has_value(),
             hdr_static_metadata.has_value());
@@ -937,7 +946,7 @@ TEST_P(EDIDParserTest, ParseEdids) {
                 epsilon);
   }
 
-  const absl::optional<uint16_t> vsync_rate_min = parser_.vsync_rate_min();
+  const std::optional<uint16_t> vsync_rate_min = parser_.vsync_rate_min();
   EXPECT_EQ(GetParam().vsync_rate_min.has_value(), vsync_rate_min.has_value());
   if (GetParam().vsync_rate_min.has_value() && vsync_rate_min.has_value()) {
     EXPECT_EQ(vsync_rate_min.value(), GetParam().vsync_rate_min.value());

@@ -14,6 +14,7 @@ qt_internal_add_tool(${target_name}
     LIBRARIES
         Qt::Core
         Qt::Gui
+        Qt::GuiPrivate
         Qt::Qml
         Qt::Quick
         Qt::QuickVectorImageGeneratorPrivate

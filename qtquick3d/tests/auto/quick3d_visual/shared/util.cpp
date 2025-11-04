@@ -266,7 +266,7 @@ void QQuick3DTestOffscreenRenderer::enqueueReadback(bool *readCompleted, QRhiRea
             readResult->pixelSize.width(), readResult->pixelSize.height(),
             QImage::Format_RGBA8888_Premultiplied);
         if (rhi->isYUpInFramebuffer())
-            *result = wrapperImage.mirrored();
+            *result = wrapperImage.flipped();
         else
             *result = wrapperImage.copy();
         saveImageIfEnabled(*result);

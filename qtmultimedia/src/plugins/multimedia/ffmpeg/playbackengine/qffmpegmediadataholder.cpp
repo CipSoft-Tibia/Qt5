@@ -19,7 +19,7 @@ extern "C" {
 
 QT_BEGIN_NAMESPACE
 
-static Q_LOGGING_CATEGORY(qLcMediaDataHolder, "qt.multimedia.ffmpeg.mediadataholder")
+Q_STATIC_LOGGING_CATEGORY(qLcMediaDataHolder, "qt.multimedia.ffmpeg.mediadataholder")
 
 namespace QFFmpeg {
 
@@ -191,8 +191,9 @@ loadMedia(const QUrl &mediaUrl, QIODevice *stream, const std::shared_ptr<ICancel
     if (stream) {
         if (!stream->isOpen()) {
             if (!stream->open(QIODevice::ReadOnly))
-                return MediaDataHolder::ContextError{
-                    QMediaPlayer::ResourceError, QLatin1String("Could not open source device.")
+                return QUnexpected{
+                    MediaDataHolder::ContextError{ QMediaPlayer::ResourceError,
+                                                   QLatin1String("Could not open source device.") },
                 };
         }
 
@@ -242,17 +243,17 @@ loadMedia(const QUrl &mediaUrl, QIODevice *stream, const std::shared_ptr<ICancel
             code = QMediaPlayer::FormatError;
 
         qCWarning(qLcMediaDataHolder)
-                << "Could not open media. FFmpeg error description:" << err2str(ret);
+                << "Could not open media. FFmpeg error description:" << AVError(ret);
 
-        return MediaDataHolder::ContextError{ code, QMediaPlayer::tr("Could not open file") };
+        return QUnexpected{ MediaDataHolder::ContextError{
+                code, QMediaPlayer::tr("Could not open file") } };
     }
 
     ret = avformat_find_stream_info(context.get(), nullptr);
     if (ret < 0) {
-        return MediaDataHolder::ContextError{
-            QMediaPlayer::FormatError,
-            QMediaPlayer::tr("Could not find stream information for media file")
-        };
+        return QUnexpected{ MediaDataHolder::ContextError{
+                QMediaPlayer::FormatError,
+                QMediaPlayer::tr("Could not find stream information for media file") } };
     }
 
     if (qLcMediaDataHolder().isInfoEnabled())
@@ -270,9 +271,10 @@ MediaDataHolder::Maybe MediaDataHolder::create(const QUrl &url, QIODevice *strea
     QMaybe context = loadMedia(url, stream, cancelToken);
     if (context) {
         // MediaDataHolder is wrapped in a shared pointer to interop with signal/slot mechanism
-        return QSharedPointer<MediaDataHolder>{ new MediaDataHolder{ std::move(context.value()), cancelToken } };
+        return std::make_shared<MediaDataHolder>(
+                MediaDataHolder{ std::move(context.value()), cancelToken });
     }
-    return context.error();
+    return QUnexpected{ context.error() };
 }
 
 MediaDataHolder::MediaDataHolder(AVFormatContextUPtr context,

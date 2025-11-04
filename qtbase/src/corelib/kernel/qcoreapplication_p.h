@@ -51,7 +51,7 @@ class Q_CORE_EXPORT QCoreApplicationPrivate
     Q_DECLARE_PUBLIC(QCoreApplication)
 
 public:
-    enum Type {
+    enum Type : quint8 {
         Tty,
         Gui
     };
@@ -74,7 +74,10 @@ public:
     static QString infoDictionaryStringProperty(const QString &propertyName);
 #endif
 
-    void initConsole();
+#ifdef Q_OS_WINDOWS
+    void initDebuggingConsole();
+    void cleanupDebuggingConsole();
+#endif
     static void initLocale();
 
     static bool checkInstance(const char *method);
@@ -106,7 +109,6 @@ public:
     static QBasicAtomicPointer<QThread> theMainThread;
     static QBasicAtomicPointer<void> theMainThreadId;
     static QThread *mainThread();
-    static bool threadRequiresCoreApplication();
 
     static void sendPostedEvents(QObject *receiver, int event_type, QThreadData *data);
 
@@ -126,19 +128,16 @@ public:
     int &argc;
     char **argv;
 #if defined(Q_OS_WIN)
-    int origArgc;
-    char **origArgv; // store unmodified arguments for QCoreApplication::arguments()
+    // store unmodified arguments for QCoreApplication::arguments()
+    int origArgc = 0;
+    std::unique_ptr<char *[]> origArgv;
+
     bool consoleAllocated = false;
+    static void *mainInstanceHandle;    // HINSTANCE without <windows.h>
 #endif
     void appendApplicationPathToLibraryPaths(void);
 
-#ifndef QT_NO_TRANSLATION
-    QTranslatorList translators;
-    QReadWriteLock translateMutex;
-    static bool isTranslatorInstalled(QTranslator *translator);
-#endif
-
-    QCoreApplicationPrivate::Type application_type;
+    Type application_type = Tty;
 
     QString cachedApplicationDirPath;
     static QString *cachedApplicationFilePath;
@@ -148,13 +147,18 @@ public:
 #ifndef QT_NO_QOBJECT
     void execCleanup();
 
-    bool in_exec;
-    bool aboutToQuitEmitted;
-    bool threadData_clean;
+    bool in_exec = false;
+    bool aboutToQuitEmitted = false;
+    bool threadData_clean = false;
 
     static QAbstractEventDispatcher *eventDispatcher;
     static bool is_app_running;
     static bool is_app_closing;
+#endif
+#ifndef QT_NO_TRANSLATION
+    QTranslatorList translators;
+    QReadWriteLock translateMutex;
+    static bool isTranslatorInstalled(QTranslator *translator);
 #endif
 
     static bool setuidAllowed;
@@ -166,7 +170,7 @@ public:
     inline QString qmljsDebugArgumentsString() const { return qmljs_debug_arguments; }
 
 #ifdef QT_NO_QOBJECT
-    QCoreApplication *q_ptr;
+    QCoreApplication *q_ptr = nullptr;
 #endif
 };
 

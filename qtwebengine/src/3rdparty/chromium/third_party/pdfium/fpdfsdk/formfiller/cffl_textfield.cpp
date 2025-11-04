@@ -11,11 +11,11 @@
 #include "constants/ascii.h"
 #include "constants/form_flags.h"
 #include "core/fpdfdoc/cpdf_bafontmap.h"
+#include "core/fxcrt/check.h"
 #include "fpdfsdk/cpdfsdk_widget.h"
 #include "fpdfsdk/formfiller/cffl_perwindowdata.h"
 #include "fpdfsdk/pwl/cpwl_edit.h"
 #include "public/fpdf_fwlevent.h"
-#include "third_party/base/check.h"
 
 namespace {
 
@@ -97,7 +97,7 @@ std::unique_ptr<CPWL_Wnd> CFFL_TextField::NewPWLWindow(
     }
   }
   pWnd->SetText(swValue);
-  return std::move(pWnd);
+  return pWnd;
 }
 
 bool CFFL_TextField::OnChar(CPDFSDK_Widget* pWidget,
@@ -142,30 +142,30 @@ bool CFFL_TextField::IsDataChanged(const CPDFSDK_PageView* pPageView) {
 }
 
 void CFFL_TextField::SaveData(const CPDFSDK_PageView* pPageView) {
-  ObservedPtr<CPWL_Edit> observed_edit(GetPWLEdit(pPageView));
+  ObservedPtr<CFFL_TextField> observed_this(this);
+  ObservedPtr<CPWL_Edit> observed_edit(observed_this->GetPWLEdit(pPageView));
   if (!observed_edit) {
     return;
   }
-  WideString sOldValue = m_pWidget->GetValue();
+  WideString sOldValue = observed_this->m_pWidget->GetValue();
   if (!observed_edit) {
     return;
   }
   WideString sNewValue = observed_edit->GetText();
-  ObservedPtr<CPDFSDK_Widget> observed_widget(m_pWidget);
-  ObservedPtr<CFFL_TextField> observed_this(this);
-  m_pWidget->SetValue(sNewValue);
+  ObservedPtr<CPDFSDK_Widget> observed_widget(observed_this->m_pWidget);
+  observed_widget->SetValue(sNewValue);
   if (!observed_widget) {
     return;
   }
-  m_pWidget->ResetFieldAppearance();
+  observed_widget->ResetFieldAppearance();
   if (!observed_widget) {
     return;
   }
-  m_pWidget->UpdateField();
+  observed_widget->UpdateField();
   if (!observed_widget || !observed_this) {
     return;
   }
-  SetChangeMark();
+  observed_this->SetChangeMark();
 }
 
 void CFFL_TextField::GetActionData(const CPDFSDK_PageView* pPageView,

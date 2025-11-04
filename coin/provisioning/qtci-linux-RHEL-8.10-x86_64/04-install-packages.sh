@@ -12,6 +12,8 @@ sudo yum -y remove PackageKit gnome-software
 sudo yum -y update
 
 installPackages=()
+# Make sure needed ca-certificates are available
+installPackages+=(ca-certificates)
 installPackages+=(git)
 installPackages+=(zlib-devel)
 installPackages+=(glib2-devel)
@@ -67,8 +69,9 @@ installPackages+=(libva-devel)
 installPackages+=(gtk3-devel)
 # libusb1 for tqtc-boot2qt/qdb
 installPackages+=(libusbx-devel)
-# speech-dispatcher-devel for QtSpeech, otherwise it has no backend on Linux
+# speech-dispatcher-devel / flite-devel for QtSpeech
 installPackages+=(speech-dispatcher-devel)
+installPackages+=(flite-devel)
 # Python for pyside
 installPackages+=(python3.11)
 installPackages+=(python3.11-pip)
@@ -86,7 +89,6 @@ installPackages+=(libXtst-devel)
 installPackages+=(libxshmfence-devel)
 installPackages+=(nspr-devel)
 installPackages+=(nss-devel)
-installPackages+=(python3-html5lib)
 installPackages+=(libatomic)
 installPackages+=(mesa-libgbm-devel-21.3.4-1.el8.x86_64)
 # For Android builds
@@ -117,6 +119,7 @@ installPackages+=(libxkbcommon-devel)
 installPackages+=(libxkbcommon-x11-devel)
 # xcb-util-* libraries
 installPackages+=(xcb-util)
+installPackages+=(xcb-util-devel)
 installPackages+=(xcb-util-image-devel)
 installPackages+=(xcb-util-keysyms-devel)
 installPackages+=(xcb-util-wm-devel)
@@ -169,13 +172,19 @@ sudo pip config --user set global.index https://ci-files01-hki.ci.qt.io/input/py
 sudo pip config --user set global.extra-index-url https://pypi.org/simple/
 
 sudo pip3 install virtualenv wheel
-sudo python3.11 -m pip install virtualenv wheel
+sudo python3.11 -m pip install virtualenv wheel html5lib
 sudo python3.11 -m pip install -r "${BASH_SOURCE%/*}/../common/shared/sbom_requirements.txt"
 # For now we don't set QT_SBOM_PYTHON_APPS_PATH here, and rely on the build system to find the
 # system python3.11.
 
 sudo /usr/bin/pip3 install wheel
 sudo /usr/bin/pip3 install dataclasses
+
+gccVersion="$(gcc --version |grep -Eo '[0-9]+\.[0-9]+(\.[0-9]+)?' |head -n 1)"
+echo "GCC = $gccVersion" >> versions.txt
+
+glibcVersion="$(ldd --version |grep -Eo '[0-9]+\.[0-9]+(\.[0-9]+)?' |head -n 1)"
+echo "glibc = $glibcVersion" >> versions.txt
 
 OpenSSLVersion="$(openssl3 version |cut -b 9-14)"
 echo "System's OpenSSL = $OpenSSLVersion" >> ~/versions.txt

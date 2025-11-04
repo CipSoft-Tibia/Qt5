@@ -5,7 +5,8 @@
 #ifndef THIRD_PARTY_BLINK_RENDERER_CORE_PAINT_LINE_RELATIVE_RECT_H_
 #define THIRD_PARTY_BLINK_RENDERER_CORE_PAINT_LINE_RELATIVE_RECT_H_
 
-#include "third_party/abseil-cpp/absl/types/optional.h"
+#include <optional>
+
 #include "third_party/blink/renderer/core/core_export.h"
 #include "third_party/blink/renderer/core/layout/geometry/logical_size.h"
 #include "third_party/blink/renderer/core/layout/geometry/physical_rect.h"
@@ -15,6 +16,8 @@
 #include "ui/gfx/geometry/rect_f.h"
 
 namespace blink {
+
+class FragmentItem;
 
 // Type-safe geometry for line-relative coordinate spaces.
 //
@@ -70,14 +73,7 @@ struct CORE_EXPORT LineRelativeRect {
   LineRelativeOffset offset;
   LogicalSize size;
 
-  static LineRelativeRect EnclosingRect(const gfx::RectF& rect) {
-    LineRelativeOffset offset{LayoutUnit::FromFloatFloor(rect.x()),
-                              LayoutUnit::FromFloatFloor(rect.y())};
-    LogicalSize size{
-        LayoutUnit::FromFloatCeil(rect.right()) - offset.line_left,
-        LayoutUnit::FromFloatCeil(rect.bottom()) - offset.line_over};
-    return {offset, size};
-  }
+  static LineRelativeRect EnclosingRect(const gfx::RectF& rect);
 
   // Map a physical rect line box to line-relative space, by reusing the offset
   // coordinates and (if not horizontal) swapping width and height.
@@ -127,7 +123,7 @@ struct CORE_EXPORT LineRelativeRect {
   // rotation matrix (see ComputeRelativeToPhysicalTransform).
   static LineRelativeRect Create(
       const PhysicalRect& rect,
-      const absl::optional<AffineTransform>& rotation) {
+      const std::optional<AffineTransform>& rotation) {
     if (!rotation || rotation == AffineTransform()) {
       return {{rect.offset.left, rect.offset.top},
               {rect.size.width, rect.size.height}};
@@ -171,62 +167,18 @@ struct CORE_EXPORT LineRelativeRect {
   // corner of the given line box in the same place (changing the coordinate
   // while keeping the box in the same place on the page).
   AffineTransform ComputeRelativeToPhysicalTransform(
-      WritingMode writing_mode) const {
-    if (writing_mode == WritingMode::kHorizontalTb) {
-      return AffineTransform();
-    }
+      WritingMode writing_mode) const;
 
-    // Constructing the matrix: consider the kVertical* case.
-    //
-    //      kVerticalRl
-    //      kVerticalLr
-    //      kSidewaysRl           kSidewaysLr
-    //
-    //  [A]   ooooo              [A]  °o   o°
-    //       O°   °O                    °O°
-    //    oooOOoooOO               °°°°°°°°°°
-    //
-    //       o°°°°°°                   o   o
-    //       °o                       O     O
-    //       °°°°°°°                  °OoooO°
-    //       o     o                        O
-    //       OoooooO  o            °  O°°°°°O
-    //       O                        °     °
-    //                                ooooooo
-    //       oO°°°Oo                       °o
-    //       O     O                  oooooo°
-    //        °   °
-    //       oooooooooo               OO°°°OO°°°
-    //         oOo                    Oo   oO
-    //       o°   °o                   °°°°°
-    //
-    // For kVerticalRl, the line relative coordinate system has the inline
-    // direction running down the page and the block direction running left on
-    // the page. The physical space has x running right on the page and y
-    // running down. To align the inline direction with x and the block
-    // direction with y, we need the rotation of:
-    //   0 -1
-    //   1  0
-    // rotates the inline directions to physical directions.
-    // The point A is at [x,y] in the physical coordinate system, and
-    // [x, y + height] in the line relative space. Note that height is
-    // the block direction in line relative space, and the given rect is
-    // already line relative.
-    // When [x, y + height] is rotated by the matrix above, a translation of
-    // [x + y + height, y - x] is required to place it at [x,y].
-    //
-    // For the sideways cases, the rotation is
-    //   0 1
-    //  -1 0
-    // A is at [x,y] in physical and [x + width, y] in the line relative space.
+  LineRelativeRect EnclosingLineRelativeRect();
 
-    return writing_mode != WritingMode::kSidewaysLr
-               ? AffineTransform(0, 1, -1, 0,
-                                 LineLeft() + LineOver() + BlockSize(),
-                                 LineOver() - LineLeft())
-               : AffineTransform(0, -1, 1, 0, LineLeft() - LineOver(),
-                                 LineLeft() + LineOver() + InlineSize());
-  }
+  // Shift up the inline-start edge and the block-start by `d`, and shift down
+  // the inline-end edge and the block-end edge by `d`.
+  void Inflate(LayoutUnit d);
+
+  void Unite(const LineRelativeRect&);
+
+  void AdjustLineStartToInkOverflow(const FragmentItem& fragment);
+  void AdjustLineEndToInkOverflow(const FragmentItem& fragment);
 };
 
 // TODO(crbug.com/962299): These functions should upgraded to force correct

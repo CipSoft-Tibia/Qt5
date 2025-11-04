@@ -5,11 +5,11 @@
 #include "components/exo/text_input.h"
 
 #include <algorithm>
+#include <string_view>
 #include <utility>
 
 #include "base/check.h"
 #include "base/logging.h"
-#include "base/strings/string_piece.h"
 #include "base/strings/utf_offset_string_conversions.h"
 #include "components/exo/seat.h"
 #include "components/exo/shell_surface_util.h"
@@ -135,11 +135,11 @@ void TextInput::Reset() {
 }
 
 void TextInput::SetSurroundingText(
-    base::StringPiece16 text,
+    std::u16string_view text,
     uint32_t offset,
     const gfx::Range& cursor_pos,
-    const absl::optional<ui::GrammarFragment>& grammar_fragment,
-    const absl::optional<ui::AutocorrectInfo>& autocorrect_info) {
+    const std::optional<ui::GrammarFragment>& grammar_fragment,
+    const std::optional<ui::AutocorrectInfo>& autocorrect_info) {
   surrounding_text_tracker_.Update(text, offset, cursor_pos);
 
   grammar_fragment_at_cursor_ = grammar_fragment;
@@ -207,6 +207,10 @@ void TextInput::FinalizeVirtualKeyboardChanges() {
   pending_vk_finalize_ = false;
 }
 
+base::WeakPtr<ui::TextInputClient> TextInput::AsWeakPtr() {
+  return weak_ptr_factory_.GetWeakPtr();
+}
+
 void TextInput::SetCompositionText(const ui::CompositionText& composition) {
   delegate_->SetCompositionText(composition);
   surrounding_text_tracker_.OnSetCompositionText(composition);
@@ -228,7 +232,7 @@ size_t TextInput::ConfirmCompositionText(bool keep_selection) {
     }
 
     delegate_->Commit(
-        predicted_state.GetCompositionText().value_or(base::StringPiece16()));
+        predicted_state.GetCompositionText().value_or(std::u16string_view()));
   }
 
   // Preserve the result value before updating the tracker's state.
@@ -355,7 +359,7 @@ bool TextInput::GetEditableSelectionRange(gfx::Range* range) const {
 
 bool TextInput::SetEditableSelectionRange(const gfx::Range& range) {
   const auto& predicted_state = surrounding_text_tracker_.predicted_state();
-  absl::optional<base::StringPiece16> composition_text =
+  std::optional<std::u16string_view> composition_text =
       predicted_state.GetCompositionText();
   if (!range.IsBoundedBy(predicted_state.GetSurroundingTextRange()) ||
       !composition_text.has_value()) {
@@ -421,8 +425,8 @@ void TextInput::ExtendSelectionAndDelete(size_t before, size_t after) {
 void TextInput::ExtendSelectionAndReplace(
     size_t before,
     size_t after,
-    const base::StringPiece16 replacement_text) {
-  // TODO(crbug.com/1443726): Implement this using an extended Wayland API.
+    const std::u16string_view replacement_text) {
+  // TODO(crbug.com/40267455): Implement this using an extended Wayland API.
   NOTIMPLEMENTED_LOG_ONCE();
 }
 
@@ -503,7 +507,7 @@ bool TextInput::SetAutocorrectRange(const gfx::Range& range) {
   return true;
 }
 
-absl::optional<ui::GrammarFragment> TextInput::GetGrammarFragmentAtCursor()
+std::optional<ui::GrammarFragment> TextInput::GetGrammarFragmentAtCursor()
     const {
   return grammar_fragment_at_cursor_;
 }
@@ -545,8 +549,8 @@ bool TextInput::SupportsAlwaysConfirmComposition() {
 }
 
 void GetActiveTextInputControlLayoutBounds(
-    absl::optional<gfx::Rect>* control_bounds,
-    absl::optional<gfx::Rect>* selection_bounds) {
+    std::optional<gfx::Rect>* control_bounds,
+    std::optional<gfx::Rect>* selection_bounds) {
   NOTIMPLEMENTED_LOG_ONCE();
 }
 

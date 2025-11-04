@@ -6,12 +6,13 @@
 
 #include <algorithm>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 
 #include "base/check.h"
 #include "base/check_op.h"
-#include "base/feature_list.h"
+#include "base/files/file_path.h"
 #include "base/functional/bind.h"
 #include "base/functional/callback.h"
 #include "base/functional/callback_helpers.h"
@@ -25,20 +26,18 @@
 #include "components/update_client/configurator.h"
 #include "components/update_client/crx_cache.h"
 #include "components/update_client/crx_update_item.h"
-#include "components/update_client/features.h"
 #include "components/update_client/persisted_data.h"
 #include "components/update_client/protocol_parser.h"
 #include "components/update_client/update_checker.h"
 #include "components/update_client/update_client.h"
 #include "components/update_client/update_client_errors.h"
 #include "components/update_client/utils.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 
 namespace update_client {
 
 UpdateContext::UpdateContext(
     scoped_refptr<Configurator> config,
-    absl::optional<scoped_refptr<CrxCache>> crx_cache,
+    std::optional<scoped_refptr<CrxCache>> crx_cache,
     bool is_foreground,
     bool is_install,
     const std::vector<std::string>& ids,
@@ -46,7 +45,8 @@ UpdateContext::UpdateContext(
     const UpdateEngine::NotifyObserversCallback& notify_observers_callback,
     UpdateEngine::Callback callback,
     PersistedData* persisted_data,
-    bool is_update_check_only)
+    bool is_update_check_only,
+    base::RepeatingCallback<int64_t(const base::FilePath&)> get_available_space)
     : config(config),
       crx_cache_(crx_cache),
       is_foreground(is_foreground),
@@ -58,7 +58,8 @@ UpdateContext::UpdateContext(
       session_id(base::StrCat(
           {"{", base::Uuid::GenerateRandomV4().AsLowercaseString(), "}"})),
       persisted_data(persisted_data),
-      is_update_check_only(is_update_check_only) {
+      is_update_check_only(is_update_check_only),
+      get_available_space(get_available_space) {
   for (const auto& id : ids) {
     components.insert(
         std::make_pair(id, std::make_unique<Component>(*this, id)));
@@ -76,14 +77,13 @@ UpdateEngine::UpdateEngine(
       update_checker_factory_(update_checker_factory),
       ping_manager_(ping_manager),
       notify_observers_callback_(notify_observers_callback) {
-  absl::optional<base::FilePath> crx_cache_path = config->GetCrxCachePath();
-  if (base::FeatureList::IsEnabled(features::kPuffinPatches) &&
-      crx_cache_path.has_value()) {
+  std::optional<base::FilePath> crx_cache_path = config->GetCrxCachePath();
+  if (crx_cache_path.has_value()) {
     CrxCache::Options options(crx_cache_path.value());
-    crx_cache_ = absl::optional<scoped_refptr<CrxCache>>(
+    crx_cache_ = std::optional<scoped_refptr<CrxCache>>(
         base::MakeRefCounted<CrxCache>(options));
   } else {
-    crx_cache_ = absl::nullopt;
+    crx_cache_ = std::nullopt;
   }
 }
 
@@ -167,7 +167,7 @@ base::RepeatingClosure UpdateEngine::InvokeOperation(
 
 void UpdateEngine::StartOperation(
     scoped_refptr<UpdateContext> update_context,
-    const std::vector<absl::optional<CrxComponent>>& crx_components) {
+    const std::vector<std::optional<CrxComponent>>& crx_components) {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   if (crx_components.size() != update_context->ids.size()) {
     base::SequencedTaskRunner::GetCurrentDefault()->PostTask(
@@ -214,8 +214,7 @@ void UpdateEngine::DoUpdateCheck(scoped_refptr<UpdateContext> update_context) {
     update_context->components[id]->Handle(base::DoNothing());
   }
 
-  update_context->update_checker =
-      update_checker_factory_.Run(config_, config_->GetPersistedData());
+  update_context->update_checker = update_checker_factory_.Run(config_);
 
   update_context->update_checker->CheckForUpdates(
       update_context, config_->ExtraRequestParams(),
@@ -225,7 +224,7 @@ void UpdateEngine::DoUpdateCheck(scoped_refptr<UpdateContext> update_context) {
 
 void UpdateEngine::UpdateCheckResultsAvailable(
     scoped_refptr<UpdateContext> update_context,
-    const absl::optional<ProtocolParser::Results>& results,
+    const std::optional<ProtocolParser::Results>& results,
     ErrorCategory error_category,
     int error,
     int retry_after_sec) {
@@ -253,8 +252,8 @@ void UpdateEngine::UpdateCheckResultsAvailable(
     for (const auto& id : update_context->components_to_check_for_updates) {
       CHECK_EQ(1u, update_context->components.count(id));
       auto& component = update_context->components.at(id);
-      component->SetUpdateCheckResult(absl::nullopt,
-                                      ErrorCategory::kUpdateCheck, error);
+      component->SetUpdateCheckResult(std::nullopt, ErrorCategory::kUpdateCheck,
+                                      error);
     }
     base::SequencedTaskRunner::GetCurrentDefault()->PostTask(
         FROM_HERE, base::BindOnce(&UpdateEngine::UpdateCheckComplete, this,
@@ -319,7 +318,7 @@ void UpdateEngine::UpdateCheckResultsAvailable(
                                       static_cast<int>(pair.second));
     } else {
       component->SetUpdateCheckResult(
-          absl::nullopt, ErrorCategory::kUpdateCheck,
+          std::nullopt, ErrorCategory::kUpdateCheck,
           static_cast<int>(ProtocolError::UPDATE_RESPONSE_NOT_FOUND));
     }
   }
@@ -407,11 +406,10 @@ void UpdateEngine::HandleComponentComplete(
     update_context->next_update_delay = component->GetUpdateDuration();
     queue.pop();
     if (!component->events().empty()) {
-      ping_manager_->SendPing(
-          *component, *config_->GetPersistedData(),
-          base::BindOnce([](base::OnceClosure callback, int,
-                            const std::string&) { std::move(callback).Run(); },
-                         std::move(callback)));
+      CHECK(component->crx_component());
+      ping_manager_->SendPing(component->session_id(),
+                              *component->crx_component(),
+                              component->GetEvents(), std::move(callback));
       return;
     }
   }
@@ -465,10 +463,7 @@ bool UpdateEngine::IsThrottled(bool is_foreground) const {
 }
 
 void UpdateEngine::SendPing(const CrxComponent& crx_component,
-                            int event_type,
-                            int result_code,
-                            int error_code,
-                            int extra_code1,
+                            UpdateClient::PingParams ping_params,
                             Callback callback) {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
 
@@ -490,8 +485,7 @@ void UpdateEngine::SendPing(const CrxComponent& crx_component,
   CHECK_EQ(1u, update_context->components.count(id));
   const auto& component = update_context->components.at(id);
 
-  component->PingOnly(crx_component, event_type, result_code, error_code,
-                      extra_code1);
+  component->PingOnly(crx_component, ping_params);
 
   update_context->component_queue.push(id);
 

@@ -4,13 +4,14 @@
 
 #include "base/version_info/android/channel_getter.h"
 
+// Must come after all headers that specialize FromJniType() / ToJniType().
 #include "base/version_info/android/version_constants_bridge_jni/VersionConstantsBridge_jni.h"
 
 namespace version_info {
 namespace android {
 
 Channel GetChannel() {
-  JNIEnv* env = base::android::AttachCurrentThread();
+  JNIEnv* env = jni_zero::AttachCurrentThread();
   return static_cast<Channel>(Java_VersionConstantsBridge_getChannel(env));
 }
 

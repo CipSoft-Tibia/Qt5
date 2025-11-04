@@ -4,6 +4,7 @@
 
 #include "components/account_manager_core/chromeos/account_manager.h"
 
+#include <optional>
 #include <set>
 #include <string>
 #include <utility>
@@ -29,7 +30,6 @@
 #include "services/network/test/test_url_loader_factory.h"
 #include "testing/gmock/include/gmock/gmock.h"
 #include "testing/gtest/include/gtest/gtest.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 
 namespace account_manager {
 
@@ -240,9 +240,9 @@ class AccountManagerObserver : public AccountManager::Observer {
   void Reset() {
     is_token_upserted_callback_called_ = false;
     is_account_removed_callback_called_ = false;
-    last_upserted_account_key_ = absl::nullopt;
+    last_upserted_account_key_ = std::nullopt;
     last_upserted_account_email_.clear();
-    last_removed_account_key_ = absl::nullopt;
+    last_removed_account_key_ = std::nullopt;
     last_removed_account_email_.clear();
     accounts_.clear();
   }
@@ -278,9 +278,9 @@ class AccountManagerObserver : public AccountManager::Observer {
  private:
   bool is_token_upserted_callback_called_ = false;
   bool is_account_removed_callback_called_ = false;
-  absl::optional<::account_manager::AccountKey> last_upserted_account_key_;
+  std::optional<::account_manager::AccountKey> last_upserted_account_key_;
   std::string last_upserted_account_email_;
-  absl::optional<::account_manager::AccountKey> last_removed_account_key_;
+  std::optional<::account_manager::AccountKey> last_removed_account_key_;
   std::string last_removed_account_email_;
   std::set<::account_manager::AccountKey> accounts_;
 };
@@ -640,8 +640,8 @@ TEST_F(AccountManagerTest, GetTokenHashReturnsSha1Hash) {
   base::test::TestFuture<const std::string&> future;
   account_manager()->GetTokenHash(kGaiaAccountKey, future.GetCallback());
 
-  const base::SHA1Digest token_hash = base::SHA1HashSpan(
-      base::as_bytes(base::make_span(std::string(kGaiaToken))));
+  const base::SHA1Digest token_hash =
+      base::SHA1Hash(base::as_byte_span(std::string(kGaiaToken)));
   const std::string token_hash_digest = base::HexEncode(token_hash);
   EXPECT_EQ(token_hash_digest, future.Get());
 }

@@ -35,18 +35,9 @@
 #include <sstream>
 #include <vector>
 
-class TestWindowBase
-{
-public:
-    virtual ~TestWindowBase() {}
-    virtual void setBackgroundColor(int r, int g, int b) = 0;
-    virtual void setVisible(bool visible) = 0;
-    virtual void setParent(QWindow *parent) = 0;
-    virtual bool close() = 0;
-    virtual QWindow *qWindow() = 0;
-    virtual void opengl_color_at_0_0(int *r, int *g, int *b) = 0;
-};
-
+// Our dialog to test two things
+// 1) Focus logic
+// 2) spinbox context menu
 class TestWidget : public QDialog
 {
     Q_OBJECT
@@ -69,6 +60,19 @@ public:
 
         contextMenuEvent(&event);
     }
+};
+
+// Baseclass for our windows, openglwindow and raster window
+class TestWindowBase
+{
+public:
+    virtual ~TestWindowBase() {}
+    virtual void setBackgroundColor(int r, int g, int b) = 0;
+    virtual void setVisible(bool visible) = 0;
+    virtual void setParent(QWindow *parent) = 0;
+    virtual bool close() = 0;
+    virtual QWindow *qWindow() = 0;
+    virtual void opengl_color_at_0_0(int *r, int *g, int *b) = 0;
 };
 
 class TestWindow : public QRasterWindow, public TestWindowBase
@@ -384,9 +388,8 @@ public:
     static WidgetStorage *getInstance()
     {
         if (!s_instance)
-        {
             s_instance = new WidgetStorage();
-        }
+
         return s_instance;
     }
     static void clearInstance()
@@ -437,7 +440,7 @@ public:
     {
         TestSpinBox *spinBox = findSpinBox(name);
         if (spinBox)
-            QToolTip::showText(spinBox->mapToGlobal(QPoint(0, 0)), spinBox->toolTip());
+            QToolTip::showText(spinBox->mapToGlobal( QPoint( 0, 0 ) ), spinBox->toolTip());
     }
     void makeNative(const std::string &name)
     {
@@ -453,6 +456,22 @@ public:
 
         m_widgets[name] = widget;
         m_spinBoxes[name] = spinBox;
+
+        QFileSystemModel *model = new QFileSystemModel;
+        model->setRootPath(QDir::currentPath());
+
+        auto *scrollArea = new QScrollArea();
+        auto *layout = new QVBoxLayout(widget.get());
+        auto *treeView = new QTreeView(scrollArea);
+        treeView->setModel(model);
+
+        layout->addWidget(spinBox);
+        layout->addWidget(scrollArea);
+
+        treeView->setAttribute(Qt::WA_NativeWindow);
+        scrollArea->setAttribute(Qt::WA_NativeWindow);
+        spinBox->setAttribute(Qt::WA_NativeWindow);
+        widget->setAttribute(Qt::WA_NativeWindow);
     }
 
     bool closeWidget(const std::string &name)
@@ -468,10 +487,10 @@ public:
 private:
     using TestWidgetPtr = std::shared_ptr<TestWidget>;
 
-    static WidgetStorage               * s_instance;
-    std::map<std::string, TestWidgetPtr> m_widgets;
-    std::map<std::string, TestSpinBox *> m_spinBoxes;
-    int                                  m_widgetY = 0;
+    static WidgetStorage                 *s_instance;
+    std::map<std::string, TestWidgetPtr>  m_widgets;
+    std::map<std::string, TestSpinBox *>  m_spinBoxes;
+    int                                   m_widgetY = 0;
 };
 
 WidgetStorage *WidgetStorage::s_instance = nullptr;
@@ -565,6 +584,7 @@ void createWidget(const std::string &name)
 {
     WidgetStorage::getInstance()->make(name);
 }
+
 
 void createNativeWidget(const std::string &name)
 {
@@ -722,12 +742,17 @@ bool closeWindow(const std::string &title)
 
 std::string colorToJs(int r, int g, int b)
 {
-    return
-        "[{"
-        "   r: " + std::to_string(r) + ","
-        "   g: " + std::to_string(g) + ","
-        "   b: " + std::to_string(b) + ""
-        "}]";
+    return "[{"
+           "   r: "
+            + std::to_string(r)
+            + ","
+              "   g: "
+            + std::to_string(g)
+            + ","
+              "   b: "
+            + std::to_string(b)
+            + ""
+              "}]";
 }
 
 void getOpenGLColorAt_0_0(const std::string &windowTitle)

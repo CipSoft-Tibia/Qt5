@@ -1,6 +1,6 @@
 import QtQuick 2.15
 
-import Test 1.0
+import TestModule 1.0
 
 Item {
     id: root

@@ -4,6 +4,12 @@
 #ifndef QOPEN62541NODE_H
 #define QOPEN62541NODE_H
 
+#ifdef USE_SYSTEM_OPEN62541
+#include <open62541/types.h>
+#else
+#include "qopen62541.h"
+#endif
+
 #include "qopen62541client.h"
 #include <private/qopcuanodeimpl_p.h>
 

@@ -5,7 +5,9 @@ android_library("java") {
   deps = [
     "$google_play_services_package:google_play_services_auth_base_java",
     "$google_play_services_package:google_play_services_base_java",
+    "//base:base_cached_flags_java",
     "//base:base_java",
+    "//base:service_loader_java",
     "//build/android:build_java",
     "//components/externalauth/android:java",
     "//net/android:net_java",
@@ -52,7 +54,6 @@ android_library("java") {
     "java/src/org/chromium/components/signin/identitymanager/AccountInfoService.java",
     "java/src/org/chromium/components/signin/identitymanager/AccountInfoServiceImpl.java",
     "java/src/org/chromium/components/signin/identitymanager/AccountInfoServiceProvider.java",
-    "java/src/org/chromium/components/signin/identitymanager/AccountTrackerService.java",
     "java/src/org/chromium/components/signin/identitymanager/IdentityManager.java",
     "java/src/org/chromium/components/signin/identitymanager/IdentityMutator.java",
     "java/src/org/chromium/components/signin/identitymanager/PrimaryAccountChangeEvent.java",
@@ -87,7 +88,6 @@ generate_jni("jni_headers") {
     "java/src/org/chromium/components/signin/base/CoreAccountId.java",
     "java/src/org/chromium/components/signin/base/CoreAccountInfo.java",
     "java/src/org/chromium/components/signin/base/GoogleServiceAuthError.java",
-    "java/src/org/chromium/components/signin/identitymanager/AccountTrackerService.java",
     "java/src/org/chromium/components/signin/identitymanager/IdentityManager.java",
     "java/src/org/chromium/components/signin/identitymanager/IdentityMutator.java",
     "java/src/org/chromium/components/signin/identitymanager/PrimaryAccountChangeEvent.java",
@@ -143,13 +143,17 @@ android_library("signin_java_test_support") {
 android_resources("java_resources") {
   sources = [
     "java/res/drawable/account_circle.xml",
+    "java/res/drawable/account_circle_with_bg.xml",
     "java/res/drawable/logo_avatar_anonymous.xml",
   ]
 }
 
 android_resources("signin_test_resources") {
   testonly = true
-  sources = [ "javatests/res/drawable/test_profile_picture.xml" ]
+  sources = [
+    "javatests/res/drawable/test_profile_picture.xml",
+    "javatests/res/layout/test_add_account_layout.xml",
+  ]
 }
 
 android_library("unit_device_javatests") {
@@ -183,7 +187,6 @@ robolectric_library("junit") {
     "junit/src/org/chromium/components/signin/SystemAccountManagerDelegateTest.java",
     "junit/src/org/chromium/components/signin/base/AccountCapabilitiesTest.java",
     "junit/src/org/chromium/components/signin/identitymanager/AccountInfoServiceImplTest.java",
-    "junit/src/org/chromium/components/signin/identitymanager/AccountTrackerServiceTest.java",
   ]
   deps = [
     ":java",
@@ -199,6 +202,7 @@ robolectric_library("junit") {
     "//third_party/android_deps:guava_android_java",
     "//third_party/androidx:androidx_annotation_annotation_java",
     "//third_party/androidx:androidx_test_rules_java",
+    "//third_party/hamcrest:hamcrest_java",
     "//third_party/jni_zero:jni_zero_java",
     "//third_party/junit",
     "//third_party/mockito:mockito_java",

@@ -14,27 +14,24 @@
 
 QT_BEGIN_NAMESPACE
 
-QQnxAudioSink::QQnxAudioSink(const QAudioDevice &deviceInfo, QObject *parent)
-    : QPlatformAudioSink(parent)
-    , m_source(0)
-    , m_pushSource(false)
-    , m_timer(new QTimer(this))
-    , m_error(QAudio::NoError)
-    , m_state(QAudio::StoppedState)
-    , m_suspendedInState(QAudio::SuspendedState)
-    , m_volume(1.0)
-    , m_periodSize(0)
-    , m_bytesWritten(0)
-    , m_requestedBufferSize(0)
-    , m_deviceInfo(deviceInfo)
-    , m_pcmNotifier(0)
+QQnxAudioSink::QQnxAudioSink(QAudioDevice device, const QAudioFormat &format, QObject *parent)
+    : QPlatformAudioSink(std::move(device), format, parent),
+      m_source(0),
+      m_pushSource(false),
+      m_timer(new QTimer(this)),
+      m_state(QAudio::StoppedState),
+      m_suspendedInState(QAudio::SuspendedState),
+      m_periodSize(0),
+      m_bytesWritten(0),
+      m_requestedBufferSize(0),
+      m_pcmNotifier(0)
 {
     m_timer->setSingleShot(false);
     m_timer->setInterval(20);
     connect(m_timer, &QTimer::timeout, this, &QQnxAudioSink::pullData);
 
-    const std::optional<snd_pcm_channel_info_t> info = QnxAudioUtils::pcmChannelInfo(
-            m_deviceInfo.id(), QAudioDevice::Output);
+    const std::optional<snd_pcm_channel_info_t> info =
+            QnxAudioUtils::pcmChannelInfo(m_audioDevice.id(), QAudioDevice::Output);
 
     if (info)
         m_requestedBufferSize = info->max_fragment_size;
@@ -148,35 +145,9 @@ qint64 QQnxAudioSink::processedUSecs() const
     return qint64(1000000) * m_format.framesForBytes(m_bytesWritten) / m_format.sampleRate();
 }
 
-QAudio::Error QQnxAudioSink::error() const
-{
-    return m_error;
-}
-
 QAudio::State QQnxAudioSink::state() const
 {
     return m_state;
-}
-
-void QQnxAudioSink::setFormat(const QAudioFormat &format)
-{
-    if (m_state == QAudio::StoppedState)
-        m_format = format;
-}
-
-QAudioFormat QQnxAudioSink::format() const
-{
-    return m_format;
-}
-
-void QQnxAudioSink::setVolume(qreal volume)
-{
-    m_volume = qBound(qreal(0.0), volume, qreal(1.0));
-}
-
-qreal QQnxAudioSink::volume() const
-{
-    return m_volume;
 }
 
 void QQnxAudioSink::updateState()
@@ -238,17 +209,7 @@ void QQnxAudioSink::pullData()
 
 bool QQnxAudioSink::open()
 {
-    if (!m_format.isValid() || m_format.sampleRate() <= 0) {
-        if (!m_format.isValid())
-            qWarning("QQnxAudioSink: open error, invalid format.");
-        else
-            qWarning("QQnxAudioSink: open error, invalid sample rate (%d).", m_format.sampleRate());
-
-        return false;
-    }
-
-
-    m_pcmHandle = QnxAudioUtils::openPcmDevice(m_deviceInfo.id(), QAudioDevice::Output);
+    m_pcmHandle = QnxAudioUtils::openPcmDevice(m_audioDevice.id(), QAudioDevice::Output);
 
     if (!m_pcmHandle)
         return false;
@@ -337,10 +298,7 @@ void QQnxAudioSink::changeState(QAudio::State state, QAudio::Error error)
         emit stateChanged(state);
     }
 
-    if (m_error != error) {
-        m_error = error;
-        emit errorChanged(error);
-    }
+    setError(error);
 }
 
 qint64 QQnxAudioSink::pushData(const char *data, qint64 len)
@@ -396,9 +354,9 @@ qint64 QQnxAudioSink::write(const char *data, qint64 len)
 
     int written = 0;
 
-    if (m_volume < 1.0f) {
+    if (volume() < 1.0f) {
         char out[size];
-        QAudioHelperInternal::qMultiplySamples(m_volume, m_format, data, out, size);
+        QAudioHelperInternal::qMultiplySamples(volume(), m_format, data, out, size);
         written = snd_pcm_plugin_write(m_pcmHandle.get(), out, size);
     } else {
         written = snd_pcm_plugin_write(m_pcmHandle.get(), data, size);

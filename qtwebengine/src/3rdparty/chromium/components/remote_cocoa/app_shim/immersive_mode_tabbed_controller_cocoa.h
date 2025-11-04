@@ -27,16 +27,17 @@ class REMOTE_COCOA_APP_SHIM_EXPORT ImmersiveModeTabbedControllerCocoa
   ~ImmersiveModeTabbedControllerCocoa() override;
 
   // ImmersiveModeController overrides
-  // TODO(https://crbug.com/1426944): Init() does not add the controller. It
+  // TODO(crbug.com/40261565): Init() does not add the controller. It
   // will be added / removed from the view controller tree during
   // UpdateToolbarVisibility(). Remove this comment once the bug has been
   // resolved.
   void Init() override;
-  void UpdateToolbarVisibility(mojom::ToolbarVisibilityStyle style) override;
+  void UpdateToolbarVisibility(
+      std::optional<mojom::ToolbarVisibilityStyle> style) override;
   void OnTopViewBoundsChanged(const gfx::Rect& bounds) override;
-  void RevealLock() override;
-  void RevealUnlock() override;
-  void OnTitlebarFrameDidChange(NSRect frame) override;
+  void RevealLocked() override;
+  void RevealUnlocked() override;
+  void Reanchor() override;
   void OnChildWindowAdded(NSWindow* child) override;
   void OnChildWindowRemoved(NSWindow* child) override;
   bool ShouldObserveChildWindow(NSWindow* child) override;

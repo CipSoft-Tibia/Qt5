@@ -99,7 +99,7 @@ std::string StatusToString(BlobStatus status) {
       return "BlobStatus::PENDING_CONSTRUCTION: Blob construction is pending "
              "on resolving the UUIDs of refereneced blobs.";
   }
-  NOTREACHED();
+  NOTREACHED_IN_MIGRATION();
   return "Invalid blob state.";
 }
 
@@ -148,7 +148,7 @@ std::string ViewBlobInternalsJob::GenerateHTML(
                               entry->content_disposition(), entry->refcount(),
                               &out);
     }
-    // TODO(https://crbug.com/1112483): Bring back information about blob URLs.
+    // TODO(crbug.com/40709731): Bring back information about blob URLs.
   }
   EndHTML(&out);
   return out;

@@ -17,7 +17,7 @@
 #include "parse_certificate.h"
 #include "signature_algorithm.h"
 
-namespace bssl {
+BSSL_NAMESPACE_BEGIN
 
 struct GeneralNames;
 class NameConstraints;
@@ -76,15 +76,15 @@ class OPENSSL_EXPORT ParsedCertificate {
   ParsedCertificate &operator=(const ParsedCertificate &) = delete;
 
   // Returns the DER-encoded certificate data for this cert.
-  const der::Input &der_cert() const { return cert_; }
+  der::Input der_cert() const { return cert_; }
 
   // Returns the CRYPTO_BUFFER backing this object.
   CRYPTO_BUFFER *cert_buffer() const { return cert_data_.get(); }
 
   // Accessors for raw fields of the Certificate.
-  const der::Input &tbs_certificate_tlv() const { return tbs_certificate_tlv_; }
+  der::Input tbs_certificate_tlv() const { return tbs_certificate_tlv_; }
 
-  const der::Input &signature_algorithm_tlv() const {
+  der::Input signature_algorithm_tlv() const {
     return signature_algorithm_tlv_;
   }
 
@@ -245,7 +245,7 @@ class OPENSSL_EXPORT ParsedCertificate {
 
   // Gets the value for extension matching |extension_oid|. Returns false if the
   // extension is not present.
-  bool GetExtension(const der::Input &extension_oid,
+  bool GetExtension(der::Input extension_oid,
                     ParsedExtension *parsed_extension) const;
 
  private:
@@ -323,6 +323,6 @@ class OPENSSL_EXPORT ParsedCertificate {
   ExtensionsMap extensions_;
 };
 
-}  // namespace bssl
+BSSL_NAMESPACE_END
 
 #endif  // BSSL_PKI_PARSED_CERTIFICATE_H_

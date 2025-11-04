@@ -412,7 +412,7 @@ void QSSGMaterialVertexPipeline::beginVertexGeneration(const QSSGShaderDefaultMa
     } // with a custom vertex shader it is up to it to set gl_PointSize (aka POINT_SIZE)
 }
 
-void QSSGMaterialVertexPipeline::beginFragmentGeneration(QSSGShaderLibraryManager &shaderLibraryManager)
+void QSSGMaterialVertexPipeline::beginFragmentGeneration(QSSGShaderLibraryManager &shaderLibraryManager, QSSGRenderLayer::OITMethod oitMethod)
 {
     fragment().addUniform("qt_material_properties", "vec4");
     fragment().addUniform("qt_rhi_properties", "vec4");
@@ -439,7 +439,12 @@ void QSSGMaterialVertexPipeline::beginFragmentGeneration(QSSGShaderLibraryManage
         }
         fragment() << snippet;
     }
-
+    if (oitMethod != QSSGRenderLayer::OITMethod::None) {
+        if (oitMethod == QSSGRenderLayer::OITMethod::WeightedBlended) {
+            fragment().addDefinition("QSSG_OIT_METHOD", "QSSG_OIT_WEIGHTED_BLENDED");
+            fragment() << "layout(location = 1) out vec4 revealageOutput;" << "\n";
+        }
+    }
     fragment() << "void main()"
                << "\n"
                << "{"

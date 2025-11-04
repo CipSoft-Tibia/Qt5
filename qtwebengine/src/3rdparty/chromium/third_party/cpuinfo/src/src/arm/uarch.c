@@ -9,8 +9,8 @@ void cpuinfo_arm_decode_vendor_uarch(
 #if CPUINFO_ARCH_ARM
 	bool has_vfpv4,
 #endif /* CPUINFO_ARCH_ARM */
-	enum cpuinfo_vendor vendor[restrict static 1],
-	enum cpuinfo_uarch uarch[restrict static 1]) {
+	enum cpuinfo_vendor vendor[1],
+	enum cpuinfo_uarch uarch[1]) {
 	switch (midr_get_implementer(midr)) {
 		case 'A':
 			*vendor = cpuinfo_vendor_arm;

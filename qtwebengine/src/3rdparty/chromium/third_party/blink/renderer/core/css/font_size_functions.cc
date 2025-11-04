@@ -28,6 +28,11 @@
  * Boston, MA 02110-1301, USA.
  */
 
+#ifdef UNSAFE_BUFFERS_BUILD
+// TODO(crbug.com/351564777): Remove this and convert code to safer constructs.
+#pragma allow_unsafe_buffers
+#endif
+
 #include "third_party/blink/renderer/core/css/font_size_functions.h"
 
 #include "third_party/blink/renderer/core/css_value_keywords.h"
@@ -204,7 +209,7 @@ static float AspectValue(const SimpleFontData& font_data,
                          float computed_size) {
   DCHECK(computed_size);
   const FontMetrics& font_metrics = font_data.GetFontMetrics();
-  // FIXME: The behavior for missing metrics has yet to be defined.
+  // We return fallback values for missing font metrics.
   // https://github.com/w3c/csswg-drafts/issues/6384
   float aspect_value = 1.0;
   switch (metric) {
@@ -219,11 +224,18 @@ static float AspectValue(const SimpleFontData& font_data,
       }
       break;
     case FontSizeAdjust::Metric::kIcWidth:
-      if (const absl::optional<float> size =
+      if (const std::optional<float>& size =
               font_data.IdeographicAdvanceWidth()) {
         aspect_value = *size / computed_size;
       }
       break;
+    case FontSizeAdjust::Metric::kIcHeight: {
+      if (const std::optional<float>& size =
+              font_data.IdeographicAdvanceHeight()) {
+        aspect_value = *size / computed_size;
+      }
+      break;
+    }
     case FontSizeAdjust::Metric::kExHeight:
     default:
       if (font_metrics.HasXHeight()) {
@@ -233,17 +245,22 @@ static float AspectValue(const SimpleFontData& font_data,
   return aspect_value;
 }
 
-absl::optional<float> FontSizeFunctions::FontAspectValue(
+std::optional<float> FontSizeFunctions::FontAspectValue(
     const SimpleFontData* font_data,
     FontSizeAdjust::Metric metric,
     float computed_size) {
   if (!font_data || !computed_size) {
-    return absl::nullopt;
+    return std::nullopt;
   }
-  return AspectValue(*font_data, metric, computed_size);
+
+  float aspect_value = AspectValue(*font_data, metric, computed_size);
+  if (!aspect_value) {
+    return std::nullopt;
+  }
+  return aspect_value;
 }
 
-absl::optional<float> FontSizeFunctions::MetricsMultiplierAdjustedFontSize(
+std::optional<float> FontSizeFunctions::MetricsMultiplierAdjustedFontSize(
     const SimpleFontData* font_data,
     const FontDescription& font_description) {
   DCHECK(font_data);
@@ -251,13 +268,13 @@ absl::optional<float> FontSizeFunctions::MetricsMultiplierAdjustedFontSize(
   const FontSizeAdjust size_adjust = font_description.SizeAdjust();
   if (!computed_size ||
       size_adjust.Value() == FontSizeAdjust::kFontSizeAdjustNone) {
-    return absl::nullopt;
+    return std::nullopt;
   }
 
   float aspect_value =
       AspectValue(*font_data, size_adjust.GetMetric(), computed_size);
   if (!aspect_value) {
-    return absl::nullopt;
+    return std::nullopt;
   }
   return (size_adjust.Value() / aspect_value) * computed_size;
 }

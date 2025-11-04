@@ -26,7 +26,6 @@
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "gmock/gmock.h"
-#include "gtest/gtest-spi.h"
 #include "src/tint/lang/wgsl/ast/binary_expression.h"
 #include "src/tint/lang/wgsl/ast/helper_test.h"
 
@@ -36,6 +35,7 @@ namespace tint::ast {
 namespace {
 
 using ForLoopStatementTest = TestHelper;
+using ForLoopStatementDeathTest = ForLoopStatementTest;
 
 TEST_F(ForLoopStatementTest, Creation) {
     auto* init = Decl(Var("i", ty.u32()));
@@ -73,8 +73,8 @@ TEST_F(ForLoopStatementTest, Creation_WithAttributes) {
     EXPECT_THAT(l->attributes, testing::ElementsAre(attr1, attr2));
 }
 
-TEST_F(ForLoopStatementTest, Assert_Null_Body) {
-    EXPECT_FATAL_FAILURE(
+TEST_F(ForLoopStatementDeathTest, Assert_Null_Body) {
+    EXPECT_DEATH_IF_SUPPORTED(
         {
             ProgramBuilder b;
             b.For(nullptr, nullptr, nullptr, nullptr);
@@ -82,8 +82,8 @@ TEST_F(ForLoopStatementTest, Assert_Null_Body) {
         "internal compiler error");
 }
 
-TEST_F(ForLoopStatementTest, Assert_DifferentGenerationID_Initializer) {
-    EXPECT_FATAL_FAILURE(
+TEST_F(ForLoopStatementDeathTest, Assert_DifferentGenerationID_Initializer) {
+    EXPECT_DEATH_IF_SUPPORTED(
         {
             ProgramBuilder b1;
             ProgramBuilder b2;
@@ -92,8 +92,8 @@ TEST_F(ForLoopStatementTest, Assert_DifferentGenerationID_Initializer) {
         "internal compiler error");
 }
 
-TEST_F(ForLoopStatementTest, Assert_DifferentGenerationID_Condition) {
-    EXPECT_FATAL_FAILURE(
+TEST_F(ForLoopStatementDeathTest, Assert_DifferentGenerationID_Condition) {
+    EXPECT_DEATH_IF_SUPPORTED(
         {
             ProgramBuilder b1;
             ProgramBuilder b2;
@@ -102,8 +102,8 @@ TEST_F(ForLoopStatementTest, Assert_DifferentGenerationID_Condition) {
         "internal compiler error");
 }
 
-TEST_F(ForLoopStatementTest, Assert_DifferentGenerationID_Continuing) {
-    EXPECT_FATAL_FAILURE(
+TEST_F(ForLoopStatementDeathTest, Assert_DifferentGenerationID_Continuing) {
+    EXPECT_DEATH_IF_SUPPORTED(
         {
             ProgramBuilder b1;
             ProgramBuilder b2;
@@ -112,8 +112,8 @@ TEST_F(ForLoopStatementTest, Assert_DifferentGenerationID_Continuing) {
         "internal compiler error");
 }
 
-TEST_F(ForLoopStatementTest, Assert_DifferentGenerationID_Body) {
-    EXPECT_FATAL_FAILURE(
+TEST_F(ForLoopStatementDeathTest, Assert_DifferentGenerationID_Body) {
+    EXPECT_DEATH_IF_SUPPORTED(
         {
             ProgramBuilder b1;
             ProgramBuilder b2;

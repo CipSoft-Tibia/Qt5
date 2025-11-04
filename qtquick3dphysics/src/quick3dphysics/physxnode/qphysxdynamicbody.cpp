@@ -11,6 +11,8 @@
 #include "qabstractphysicsbody_p.h"
 #include "qdynamicrigidbody_p.h"
 
+#include <QtGui/qquaternion.h>
+
 QT_BEGIN_NAMESPACE
 
 static void processCommandQueue(QQueue<QPhysicsCommand *> &commandQueue,
@@ -98,9 +100,9 @@ QPhysXDynamicBody::QPhysXDynamicBody(QDynamicRigidBody *frontEnd) : QPhysXRigidB
 
 DebugDrawBodyType QPhysXDynamicBody::getDebugDrawBodyType()
 {
-    auto dynamicActor = static_cast<physx::PxRigidDynamic *>(actor);
-    return dynamicActor->isSleeping() ? DebugDrawBodyType::DynamicSleeping
-                                      : DebugDrawBodyType::DynamicAwake;
+    auto *dynamicRigidBody = static_cast<QDynamicRigidBody *>(frontendNode);
+    return dynamicRigidBody->isSleeping() ? DebugDrawBodyType::DynamicSleeping
+                                          : DebugDrawBodyType::DynamicAwake;
 }
 
 void QPhysXDynamicBody::sync(float deltaTime, QHash<QQuick3DNode *, QMatrix4x4> &transformCache)
@@ -128,6 +130,8 @@ void QPhysXDynamicBody::sync(float deltaTime, QHash<QQuick3DNode *, QMatrix4x4> 
         if (!disabled && !dynamicRigidBody->isKinematic())
             dynamicActor->wakeUp();
     }
+
+    dynamicRigidBody->setIsSleeping(dynamicActor->isSleeping());
 
     QPhysXActorBody::sync(deltaTime, transformCache);
 }
@@ -179,11 +183,16 @@ void QPhysXDynamicBody::rebuildDirtyShapes(QPhysicsWorld *world, QPhysXWorld *ph
         drb->setIsKinematic(true);
     }
 
+    const bool isKinematic = drb->isKinematic();
     auto *dynamicBody = static_cast<physx::PxRigidDynamic *>(actor);
-    dynamicBody->setRigidBodyFlag(physx::PxRigidBodyFlag::eKINEMATIC, drb->isKinematic());
+    dynamicBody->setRigidBodyFlag(physx::PxRigidBodyFlag::eKINEMATIC, isKinematic);
 
-    if (world->enableCCD() && !drb->isKinematic()) // CCD not supported for kinematic bodies
-        dynamicBody->setRigidBodyFlag(physx::PxRigidBodyFlag::eENABLE_CCD, true);
+    if (world->enableCCD()) {
+        // Regular sweep-based CCD is only available for non-kinematic bodies but speculative CCD
+        // is available for kinematic bodies so we use that.
+        dynamicBody->setRigidBodyFlag(physx::PxRigidBodyFlag::eENABLE_CCD, !isKinematic);
+        dynamicBody->setRigidBodyFlag(physx::PxRigidBodyFlag::eENABLE_SPECULATIVE_CCD, isKinematic);
+    }
 
     setShapesDirty(false);
 }

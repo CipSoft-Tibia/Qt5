@@ -37,36 +37,32 @@
 TINT_INSTANTIATE_TYPEINFO(tint::core::type::DepthMultisampledTexture);
 
 namespace tint::core::type {
-namespace {
-
-bool IsValidDepthDimension(TextureDimension dim) {
-    return dim == TextureDimension::k2d;
-}
-
-}  // namespace
 
 DepthMultisampledTexture::DepthMultisampledTexture(TextureDimension dim)
-    : Base(Hash(TypeInfo::Of<DepthMultisampledTexture>().full_hashcode, dim), dim) {
-    TINT_ASSERT(IsValidDepthDimension(dim));
+    : Base(Hash(TypeCode::Of<DepthMultisampledTexture>().bits, dim), dim) {
+    TINT_ASSERT(IsValidDimension(dim));
 }
 
 DepthMultisampledTexture::~DepthMultisampledTexture() = default;
 
 bool DepthMultisampledTexture::Equals(const UniqueNode& other) const {
     if (auto* o = other.As<DepthMultisampledTexture>()) {
-        return o->dim() == dim();
+        return o->Dim() == Dim();
     }
     return false;
 }
 
 std::string DepthMultisampledTexture::FriendlyName() const {
     StringStream out;
-    out << "texture_depth_multisampled_" << dim();
+    out << "texture_depth_multisampled_" << Dim();
     return out.str();
 }
 
 DepthMultisampledTexture* DepthMultisampledTexture::Clone(CloneContext& ctx) const {
-    return ctx.dst.mgr->Get<DepthMultisampledTexture>(dim());
+    return ctx.dst.mgr->Get<DepthMultisampledTexture>(Dim());
 }
 
+bool DepthMultisampledTexture::IsValidDimension(TextureDimension dim) {
+    return dim == TextureDimension::k2d;
+}
 }  // namespace tint::core::type

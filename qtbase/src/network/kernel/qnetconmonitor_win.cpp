@@ -1,5 +1,6 @@
 // Copyright (C) 2019 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qnetconmonitor_p.h"
 
@@ -15,7 +16,7 @@
 
 #include <objbase.h>
 #include <netlistmgr.h>
-#include <wrl/client.h>
+#include <QtCore/private/qcomptr_p.h>
 #include <wrl/wrappers/corewrappers.h>
 #include <iphlpapi.h>
 

@@ -35,12 +35,13 @@
 #include "src/tint/lang/core/fluent_types.h"
 #include "src/tint/lang/core/number.h"
 #include "src/tint/lang/core/type/atomic.h"
+#include "src/tint/lang/core/type/external_texture.h"
 #include "src/tint/lang/core/type/sampler.h"
 #include "src/tint/lang/core/type/struct.h"
+#include "src/tint/lang/core/type/subgroup_matrix.h"
 #include "src/tint/lang/core/type/type.h"
 #include "src/tint/lang/core/type/unique_node.h"
 #include "src/tint/utils/containers/unique_allocator.h"
-#include "src/tint/utils/math/hash.h"
 #include "src/tint/utils/symbol/symbol.h"
 
 // Forward declarations
@@ -51,9 +52,13 @@ class Array;
 class Bool;
 class F16;
 class F32;
+class I8;
 class I32;
+class Invalid;
 class Matrix;
 class Pointer;
+class Reference;
+class U8;
 class U32;
 class Vector;
 class Void;
@@ -109,8 +114,8 @@ class Manager final {
     /// of an existing immutable Manager.
     /// @warning As the copied types are owned by `inner`, `inner` must not be destructed or
     /// assigned while using the returned Manager.
-    /// TODO(bclayton) - Evaluate whether there are safer alternatives to this
-    /// function. See crbug.com/tint/460.
+    /// TODO(crbug.com/tint/460) - Evaluate whether there are safer alternatives to this
+    /// function.
     /// @param inner the immutable Manager to extend
     /// @return the Manager that wraps `inner`
     static Manager Wrap(const Manager& inner) {
@@ -134,8 +139,12 @@ class Manager final {
             return Get<core::type::AbstractInt>(std::forward<ARGS>(args)...);
         } else if constexpr (std::is_same_v<T, tint::core::AFloat>) {
             return Get<core::type::AbstractFloat>(std::forward<ARGS>(args)...);
+        } else if constexpr (std::is_same_v<T, tint::core::i8>) {
+            return Get<core::type::I8>(std::forward<ARGS>(args)...);
         } else if constexpr (std::is_same_v<T, tint::core::i32>) {
             return Get<core::type::I32>(std::forward<ARGS>(args)...);
+        } else if constexpr (std::is_same_v<T, tint::core::u8>) {
+            return Get<core::type::U8>(std::forward<ARGS>(args)...);
         } else if constexpr (std::is_same_v<T, tint::core::u32>) {
             return Get<core::type::U32>(std::forward<ARGS>(args)...);
         } else if constexpr (std::is_same_v<T, tint::core::f32>) {
@@ -172,8 +181,11 @@ class Manager final {
               typename _ = std::enable_if<tint::traits::IsTypeOrDerived<TYPE, Type>>,
               typename... ARGS>
     auto* Find(ARGS&&... args) const {
-        return types_.Find<ToType<TYPE>>(std::forward<ARGS>(args)...);
+        return types_.Find<TYPE>(std::forward<ARGS>(args)...);
     }
+
+    /// @returns an invalid type
+    const core::type::Invalid* invalid();
 
     /// @returns a void type
     const core::type::Void* void_();
@@ -181,8 +193,14 @@ class Manager final {
     /// @returns a bool type
     const core::type::Bool* bool_();
 
+    /// @returns an i8 type
+    const core::type::I8* i8();
+
     /// @returns an i32 type
     const core::type::I32* i32();
+
+    /// @returns a u8 type
+    const core::type::U8* u8();
 
     /// @returns a u32 type
     const core::type::U32* u32();
@@ -231,6 +249,14 @@ class Manager final {
     /// @param inner the inner type
     /// @returns a vec4 type with the element type @p inner
     const core::type::Vector* vec4(const core::type::Type* inner);
+
+    /// Return a type with element type `type` that has the same number of vector components as
+    /// `match`. If `match` is scalar just return `type`.
+    /// @param el_ty the type to extend
+    /// @param match the type to match the component count of
+    /// @returns a type with the same number of vector components as `match`
+    const core::type::Type* match_width(const core::type::Type* el_ty,
+                                        const core::type::Type* match);
 
     /// @tparam T the element type
     /// @tparam N the vector width
@@ -400,6 +426,56 @@ class Manager final {
         return mat(Get<T>(), C, R);
     }
 
+    /// @param kind the subgroup matrix kind
+    /// @param inner the inner type
+    /// @param rows the number of rows
+    /// @param cols the number of columns
+    /// @returns the subgroup_matrix type
+    const core::type::SubgroupMatrix* subgroup_matrix(SubgroupMatrixKind kind,
+                                                      const core::type::Type* inner,
+                                                      uint32_t rows,
+                                                      uint32_t cols);
+
+    /// @param inner the inner type
+    /// @param rows the number of rows
+    /// @param cols the number of columns
+    /// @returns the subgroup_matrix type
+    const core::type::SubgroupMatrix* subgroup_matrix_left(const core::type::Type* inner,
+                                                           uint32_t rows,
+                                                           uint32_t cols) {
+        return subgroup_matrix(SubgroupMatrixKind::kLeft, inner, rows, cols);
+    }
+
+    /// @param inner the inner type
+    /// @param rows the number of rows
+    /// @param cols the number of columns
+    /// @returns the subgroup_matrix type
+    const core::type::SubgroupMatrix* subgroup_matrix_right(const core::type::Type* inner,
+                                                            uint32_t rows,
+                                                            uint32_t cols) {
+        return subgroup_matrix(SubgroupMatrixKind::kRight, inner, rows, cols);
+    }
+
+    /// @param inner the inner type
+    /// @param rows the number of rows
+    /// @param cols the number of columns
+    /// @returns the subgroup_matrix type
+    const core::type::SubgroupMatrix* subgroup_matrix_result(const core::type::Type* inner,
+                                                             uint32_t rows,
+                                                             uint32_t cols) {
+        return subgroup_matrix(SubgroupMatrixKind::kResult, inner, rows, cols);
+    }
+
+    /// @tparam K the kind of the matrix
+    /// @tparam T the element type
+    /// @tparam R the number of rows in the matrix
+    /// @tparam C the number of columns in the matrix
+    /// @returns a matrix with the given number of columns and rows
+    template <SubgroupMatrixKind K, typename T, uint32_t R, uint32_t C>
+    const core::type::SubgroupMatrix* subgroup_matrix() {
+        return subgroup_matrix(K, Get<T>(), C, R);
+    }
+
     /// @param elem_ty the array element type
     /// @param count the array element count
     /// @param stride the optional array element stride
@@ -452,6 +528,32 @@ class Manager final {
         return ptr(SPACE, subtype, ACCESS);
     }
 
+    /// @param address_space the address space
+    /// @param subtype the reference subtype
+    /// @param access the access settings
+    /// @returns the reference type
+    const core::type::Reference* ref(core::AddressSpace address_space,
+                                     const core::type::Type* subtype,
+                                     core::Access access = core::Access::kReadWrite);
+
+    /// @tparam SPACE the address space
+    /// @tparam T the storage type
+    /// @tparam ACCESS the access mode
+    /// @returns the reference type with the templated address space, storage type and access.
+    template <core::AddressSpace SPACE, typename T, core::Access ACCESS = core::Access::kReadWrite>
+    const core::type::Reference* ref() {
+        return ref(SPACE, Get<T>(), ACCESS);
+    }
+
+    /// @param subtype the reference subtype
+    /// @tparam SPACE the address space
+    /// @tparam ACCESS the access mode
+    /// @returns the reference type with the templated address space, storage type and access.
+    template <core::AddressSpace SPACE, core::Access ACCESS = core::Access::kReadWrite>
+    const core::type::Reference* ref(const core::type::Type* subtype) {
+        return ref(SPACE, subtype, ACCESS);
+    }
+
     /// @returns the sampler type
     const core::type::Sampler* sampler() {
         return Get<core::type::Sampler>(core::type::SamplerKind::kSampler);
@@ -469,28 +571,34 @@ class Manager final {
         /// The type of the struct member.
         const core::type::Type* type = nullptr;
         /// The optional struct member attributes.
-        core::type::StructMemberAttributes attributes = {};
+        core::IOAttributes attributes = {};
     };
 
     /// Create a new structure declaration.
     /// @param name the name of the structure
     /// @param members the list of structure members
+    /// @note a structure must not already exist with the same name
     /// @returns the structure type
     core::type::Struct* Struct(Symbol name, VectorRef<const StructMember*> members);
 
     /// Create a new structure declaration.
     /// @param name the name of the structure
     /// @param members the list of structure member descriptors
+    /// @note a structure must not already exist with the same name
     /// @returns the structure type
     core::type::Struct* Struct(Symbol name, VectorRef<StructMemberDesc> members);
 
     /// Create a new structure declaration.
     /// @param name the name of the structure
     /// @param members the list of structure member descriptors
+    /// @note a structure must not already exist with the same name
     /// @returns the structure type
     core::type::Struct* Struct(Symbol name, std::initializer_list<StructMemberDesc> members) {
         return Struct(name, tint::Vector<StructMemberDesc, 4>(members));
     }
+
+    /// @returns the external texture type
+    core::type::ExternalTexture* external_texture() { return Get<core::type::ExternalTexture>(); }
 
     /// @returns an iterator to the beginning of the types
     TypeIterator begin() const { return types_.begin(); }
@@ -498,16 +606,6 @@ class Manager final {
     TypeIterator end() const { return types_.end(); }
 
   private:
-    /// ToType<T> is specialized for various `T` types and each specialization contains a single
-    /// `type` alias to the corresponding type deriving from `core::type::Type`.
-    template <typename T>
-    struct ToTypeImpl {
-        using type = T;
-    };
-
-    template <typename T>
-    using ToType = typename ToTypeImpl<T>::type;
-
     /// Unique types owned by the manager
     UniqueAllocator<Type> types_;
     /// Unique nodes (excluding types) owned by the manager

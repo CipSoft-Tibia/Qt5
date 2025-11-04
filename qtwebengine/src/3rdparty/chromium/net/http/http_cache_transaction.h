@@ -144,6 +144,7 @@ class NET_EXPORT_PRIVATE HttpCache::Transaction : public HttpTransaction {
   void StopCaching() override;
   int64_t GetTotalReceivedBytes() const override;
   int64_t GetTotalSentBytes() const override;
+  int64_t GetReceivedBodyBytes() const override;
   void DoneReading() override;
   const HttpResponseInfo* GetResponseInfo() const override;
   LoadState GetLoadState() const override;
@@ -162,8 +163,7 @@ class NET_EXPORT_PRIVATE HttpCache::Transaction : public HttpTransaction {
   void SetEarlyResponseHeadersCallback(
       ResponseHeadersCallback callback) override;
   void SetModifyRequestHeadersCallback(
-      base::RepeatingCallback<void(net::HttpRequestHeaders*)> callback)
-      override;
+      base::RepeatingCallback<void(HttpRequestHeaders*)> callback) override;
   void SetIsSharedDictionaryReadAllowedCallback(
       base::RepeatingCallback<bool()> callback) override;
   int ResumeNetworkStart() override;
@@ -225,6 +225,7 @@ class NET_EXPORT_PRIVATE HttpCache::Transaction : public HttpTransaction {
     std::unique_ptr<LoadTimingInfo> old_network_trans_load_timing;
     int64_t total_received_bytes = 0;
     int64_t total_sent_bytes = 0;
+    int64_t received_body_bytes = 0;
     ConnectionAttempts old_connection_attempts;
     IPEndPoint old_remote_endpoint;
     // For metrics. Can be removed when associated histograms are removed.
@@ -292,18 +293,6 @@ class NET_EXPORT_PRIVATE HttpCache::Transaction : public HttpTransaction {
     // by the network layer (skipping the cache entirely).
     STATE_NETWORK_READ,
     STATE_NETWORK_READ_COMPLETE,
-  };
-
-  // Used for categorizing validation triggers in histograms.
-  // NOTE: This enumeration is used in histograms, so please do not add entries
-  // in the middle.
-  enum ValidationCause {
-    VALIDATION_CAUSE_UNDEFINED,
-    VALIDATION_CAUSE_VARY_MISMATCH,
-    VALIDATION_CAUSE_VALIDATE_FLAG,
-    VALIDATION_CAUSE_STALE,
-    VALIDATION_CAUSE_ZERO_FRESHNESS,
-    VALIDATION_CAUSE_MAX
   };
 
   enum MemoryEntryDataHints {
@@ -587,8 +576,8 @@ class NET_EXPORT_PRIVATE HttpCache::Transaction : public HttpTransaction {
   void SaveNetworkTransactionInfo(const HttpTransaction& transaction);
 
   // Determines whether caching should be disabled for a response, given its
-  // headers.
-  bool ShouldDisableCaching(const HttpResponseHeaders& headers) const;
+  // headers. Updates the appropriate data structures.
+  bool UpdateAndReportCacheability(const HttpResponseHeaders& headers);
 
   // 304 revalidations of resources that set security headers and that get
   // forwarded might need to set these headers again to avoid being blocked.
@@ -609,7 +598,7 @@ class NET_EXPORT_PRIVATE HttpCache::Transaction : public HttpTransaction {
   // If a pending async HTTPCache transaction takes longer than the parallel
   // Network IO, this will store the result of the Network IO operation until
   // the cache transaction completes (or times out).
-  absl::optional<int> pending_io_result_ = absl::nullopt;
+  std::optional<int> pending_io_result_ = std::nullopt;
 
   // Used for tracing.
   const uint64_t trace_id_;
@@ -647,7 +636,7 @@ class NET_EXPORT_PRIVATE HttpCache::Transaction : public HttpTransaction {
   // and modifies the members for future transactions. Then,
   // WriteResponseInfoToEntry() writes |updated_prefetch_response_| to the cache
   // entry if it is populated, or |response_| otherwise. Finally,
-  // WriteResponseInfoToEntry() resets this to absl::nullopt.
+  // WriteResponseInfoToEntry() resets this to std::nullopt.
   std::unique_ptr<HttpResponseInfo> updated_prefetch_response_;
 
   raw_ptr<const HttpResponseInfo, AcrossTasksDanglingUntriaged> new_response_ =
@@ -700,7 +689,6 @@ class NET_EXPORT_PRIVATE HttpCache::Transaction : public HttpTransaction {
   // UpdateCacheEntryStatus).
   HttpResponseInfo::CacheEntryStatus cache_entry_status_ =
       HttpResponseInfo::CacheEntryStatus::ENTRY_UNDEFINED;
-  ValidationCause validation_cause_ = VALIDATION_CAUSE_UNDEFINED;
   base::TimeTicks entry_lock_waiting_since_;
   base::TimeTicks first_cache_access_since_;
   base::TimeTicks send_request_since_;

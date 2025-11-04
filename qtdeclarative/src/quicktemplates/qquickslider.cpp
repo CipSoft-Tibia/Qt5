@@ -7,6 +7,8 @@
 
 #include <QtQuick/private/qquickwindow_p.h>
 
+#include <algorithm>
+
 QT_BEGIN_NAMESPACE
 
 /*!
@@ -124,13 +126,13 @@ qreal QQuickSliderPrivate::positionAt(const QPointF &point) const
         if (!qFuzzyIsNull(extent))
             pos = (q->height() - point.y() - q->bottomPadding() - offset) / extent;
     }
-    return qBound<qreal>(0.0, pos, 1.0);
+    return std::clamp(pos, qreal(0.0), qreal(1.0));
 }
 
 void QQuickSliderPrivate::setPosition(qreal pos)
 {
     Q_Q(QQuickSlider);
-    pos = qBound<qreal>(0.0, pos, 1.0);
+    pos = std::clamp(pos, qreal(0.0), qreal(1.0));
     if (qFuzzyCompare(position, pos))
         return;
 
@@ -345,6 +347,9 @@ void QQuickSlider::setValue(qreal value)
     Q_D(QQuickSlider);
     if (isComponentComplete())
         value = d->from > d->to ? qBound(d->to, value, d->from) : qBound(d->from, value, d->to);
+
+    if (qFuzzyIsNull(value))
+        value = 0.0;
 
     if (qFuzzyCompare(d->value, value))
         return;
@@ -805,10 +810,13 @@ void QQuickSlider::touchEvent(QTouchEvent *event)
                 break;
             case QEventPoint::Updated:
                 if (!keepTouchGrab()) {
-                    if (d->orientation == Qt::Horizontal)
-                        setKeepTouchGrab(QQuickWindowPrivate::dragOverThreshold(point.position().x() - d->pressPoint.x(), Qt::XAxis, &point, qRound(d->touchDragThreshold)));
-                    else
-                        setKeepTouchGrab(QQuickWindowPrivate::dragOverThreshold(point.position().y() - d->pressPoint.y(), Qt::YAxis, &point, qRound(d->touchDragThreshold)));
+                    if (d->orientation == Qt::Horizontal) {
+                        setKeepTouchGrab(QQuickDeliveryAgentPrivate::dragOverThreshold(point.position().x() - d->pressPoint.x(),
+                                            Qt::XAxis, point, qRound(d->touchDragThreshold)));
+                    } else {
+                        setKeepTouchGrab(QQuickDeliveryAgentPrivate::dragOverThreshold(point.position().y() - d->pressPoint.y(),
+                                            Qt::YAxis, point, qRound(d->touchDragThreshold)));
+                    }
                 }
                 if (keepTouchGrab())
                     d->handleMove(point.position(), event->timestamp());

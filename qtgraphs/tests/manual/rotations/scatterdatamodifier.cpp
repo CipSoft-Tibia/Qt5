@@ -7,6 +7,9 @@
 #include <QtGraphs/q3dscene.h>
 #include <QtGraphs/qscatter3dseries.h>
 #include <QtGraphs/QCustom3DItem>
+
+#include <QtGui/qquaternion.h>
+
 #include <QtCore/qmath.h>
 
 static const float verticalRange = 8.0f;

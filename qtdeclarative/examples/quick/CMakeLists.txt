@@ -36,7 +36,7 @@ if(TARGET Qt6::QuickWidgets AND TARGET Qt6::Widgets AND (QT_FEATURE_opengl OR QT
     add_subdirectory(quickwidgets)
 endif()
 add_subdirectory(quickshapes)
-add_subdirectory(advancedtext)
+qt_internal_add_example(advancedtext)
 qt_internal_add_example(vectorimage)
 
 # qt_examples_build_end() misses at least some of these due to some
@@ -58,6 +58,7 @@ set(reused_dir_targets
     draganddrop_shared
     testbed_shared
     itemswitcher_shared
+    neumorphicpanel_shared
 )
 
 foreach(target IN LISTS reused_dir_targets)

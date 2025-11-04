@@ -14,6 +14,7 @@
 #include "components/unexportable_keys/unexportable_key_task_manager.h"
 #include "crypto/scoped_mock_unexportable_key_provider.h"
 #include "crypto/signature_verifier.h"
+#include "crypto/unexportable_key.h"
 #include "testing/gtest/include/gtest/gtest.h"
 
 namespace unexportable_keys {
@@ -30,7 +31,8 @@ constexpr BackgroundTaskPriority kTaskPriority =
 class UnexportableKeyLoaderTest : public testing::Test {
  public:
   UnexportableKeyLoaderTest()
-      : task_manager_(std::make_unique<UnexportableKeyTaskManager>()),
+      : task_manager_(std::make_unique<UnexportableKeyTaskManager>(
+            crypto::UnexportableKeyProvider::Config())),
         service_(std::make_unique<UnexportableKeyServiceImpl>(*task_manager_)) {
   }
 
@@ -39,7 +41,8 @@ class UnexportableKeyLoaderTest : public testing::Test {
   void RunBackgroundTasks() { task_environment_.RunUntilIdle(); }
 
   void ResetService() {
-    task_manager_ = std::make_unique<UnexportableKeyTaskManager>();
+    task_manager_ = std::make_unique<UnexportableKeyTaskManager>(
+        crypto::UnexportableKeyProvider::Config());
     service_ = std::make_unique<UnexportableKeyServiceImpl>(*task_manager_);
   }
 
@@ -85,12 +88,12 @@ TEST_F(UnexportableKeyLoaderTest, CreateFromWrappedKeySync) {
       service(), wrapped_key, kTaskPriority);
   EXPECT_EQ(key_loader->GetStateForTesting(),
             UnexportableKeyLoader::State::kReady);
-  EXPECT_TRUE(key_loader->GetKeyIdOrErrorForTesting().has_value());
+  EXPECT_TRUE(key_loader->GetKeyIdOrError().has_value());
 
   base::test::TestFuture<ServiceErrorOr<UnexportableKeyId>> on_load_future;
   key_loader->InvokeCallbackAfterKeyLoaded(on_load_future.GetCallback());
   EXPECT_TRUE(on_load_future.IsReady());
-  EXPECT_EQ(key_loader->GetKeyIdOrErrorForTesting(), on_load_future.Get());
+  EXPECT_EQ(key_loader->GetKeyIdOrError(), on_load_future.Get());
 }
 
 TEST_F(UnexportableKeyLoaderTest, CreateFromWrappedKeyAsync) {
@@ -103,7 +106,7 @@ TEST_F(UnexportableKeyLoaderTest, CreateFromWrappedKeyAsync) {
       service(), wrapped_key, kTaskPriority);
   EXPECT_EQ(key_loader->GetStateForTesting(),
             UnexportableKeyLoader::State::kLoading);
-  EXPECT_EQ(key_loader->GetKeyIdOrErrorForTesting(),
+  EXPECT_EQ(key_loader->GetKeyIdOrError(),
             base::unexpected(ServiceError::kKeyNotReady));
 
   base::test::TestFuture<ServiceErrorOr<UnexportableKeyId>> on_load_future;
@@ -113,9 +116,9 @@ TEST_F(UnexportableKeyLoaderTest, CreateFromWrappedKeyAsync) {
   RunBackgroundTasks();
   EXPECT_EQ(key_loader->GetStateForTesting(),
             UnexportableKeyLoader::State::kReady);
-  EXPECT_TRUE(key_loader->GetKeyIdOrErrorForTesting().has_value());
+  EXPECT_TRUE(key_loader->GetKeyIdOrError().has_value());
   EXPECT_TRUE(on_load_future.IsReady());
-  EXPECT_EQ(key_loader->GetKeyIdOrErrorForTesting(), on_load_future.Get());
+  EXPECT_EQ(key_loader->GetKeyIdOrError(), on_load_future.Get());
 }
 
 TEST_F(UnexportableKeyLoaderTest, CreateFromWrappedKeyMultipleCallbacks) {
@@ -137,10 +140,10 @@ TEST_F(UnexportableKeyLoaderTest, CreateFromWrappedKeyMultipleCallbacks) {
   RunBackgroundTasks();
   EXPECT_EQ(key_loader->GetStateForTesting(),
             UnexportableKeyLoader::State::kReady);
-  EXPECT_TRUE(key_loader->GetKeyIdOrErrorForTesting().has_value());
+  EXPECT_TRUE(key_loader->GetKeyIdOrError().has_value());
   for (auto& future : on_load_futures) {
     EXPECT_TRUE(future.IsReady());
-    EXPECT_EQ(key_loader->GetKeyIdOrErrorForTesting(), future.Get());
+    EXPECT_EQ(key_loader->GetKeyIdOrError(), future.Get());
   }
 }
 
@@ -149,7 +152,7 @@ TEST_F(UnexportableKeyLoaderTest, CreateWithNewKey) {
       service(), kAcceptableAlgorithms, kTaskPriority);
   EXPECT_EQ(key_loader->GetStateForTesting(),
             UnexportableKeyLoader::State::kLoading);
-  EXPECT_EQ(key_loader->GetKeyIdOrErrorForTesting(),
+  EXPECT_EQ(key_loader->GetKeyIdOrError(),
             base::unexpected(ServiceError::kKeyNotReady));
 
   base::test::TestFuture<ServiceErrorOr<UnexportableKeyId>> on_load_future;
@@ -159,9 +162,9 @@ TEST_F(UnexportableKeyLoaderTest, CreateWithNewKey) {
   RunBackgroundTasks();
   EXPECT_EQ(key_loader->GetStateForTesting(),
             UnexportableKeyLoader::State::kReady);
-  EXPECT_TRUE(key_loader->GetKeyIdOrErrorForTesting().has_value());
+  EXPECT_TRUE(key_loader->GetKeyIdOrError().has_value());
   EXPECT_TRUE(on_load_future.IsReady());
-  EXPECT_EQ(key_loader->GetKeyIdOrErrorForTesting(), on_load_future.Get());
+  EXPECT_EQ(key_loader->GetKeyIdOrError(), on_load_future.Get());
 }
 
 TEST_F(UnexportableKeyLoaderTest, CreateWithNewKeyFailure) {
@@ -170,7 +173,7 @@ TEST_F(UnexportableKeyLoaderTest, CreateWithNewKeyFailure) {
       service(), kAcceptableAlgorithms, kTaskPriority);
   EXPECT_EQ(key_loader->GetStateForTesting(),
             UnexportableKeyLoader::State::kReady);
-  EXPECT_EQ(key_loader->GetKeyIdOrErrorForTesting(),
+  EXPECT_EQ(key_loader->GetKeyIdOrError(),
             base::unexpected(ServiceError::kNoKeyProvider));
 }
 

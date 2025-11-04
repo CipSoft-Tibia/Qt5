@@ -326,10 +326,18 @@ void QQuickShapeCurveRenderer::endSync(bool async)
         }
 
         if (pathData.currentRunner) {
-            // Already performing async computing. New dirty flags will be handled in the next sync
-            // after the current computation is done and the item is updated
-            asyncThreadsRunning = true;
-            continue;
+            // We are in a new sync round before updateNode() has been called to commit the results
+            // of the previous sync and processing round
+            if (pathData.currentRunner->isAsync) {
+                // Already performing async processing. A new run of the runner will be started in
+                // updateNode() to take care of the new dirty flags
+                asyncThreadsRunning = true;
+                continue;
+            } else {
+                // Throw away outdated results and start a new processing
+                delete pathData.currentRunner;
+                pathData.currentRunner = nullptr;
+            }
         }
 
         pathData.currentRunner = new QQuickShapeCurveRunnable;
@@ -778,13 +786,13 @@ QQuickShapeCurveRenderer::NodeList QQuickShapeCurveRenderer::addCurveStrokeNodes
                                      [&wfVertices, &node](const std::array<QVector2D, 3> &s,
                                                           const std::array<QVector2D, 3> &p,
                                                           const std::array<QVector2D, 3> &n,
-                                                          bool isLine)
+                                                          QSGCurveStrokeNode::TriangleFlags flags)
                                     {
                                          const QVector2D &p0 = s.at(0);
                                          const QVector2D &p1 = s.at(1);
                                          const QVector2D &p2 = s.at(2);
-                                         if (isLine)
-                                             node->appendTriangle(s, std::array<QVector2D, 2>{p.at(0), p.at(2)}, n);
+                                         if (flags.testFlag(QSGCurveStrokeNode::TriangleFlag::Line))
+                                             node->appendTriangle(s, std::array<QVector2D, 2>{p.at(0), p.at(2)}, n, flags);
                                          else
                                              node->appendTriangle(s, p, n);
 

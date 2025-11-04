@@ -216,13 +216,13 @@ void tst_QAbstractHttpServer::request()
             Q_ASSERT(false);
         }
     } server;
-    auto tcpServer = new QTcpServer;
-    QVERIFY(tcpServer->listen());
-    server.bind(tcpServer);
+    QTcpServer tcpServer;
+    QVERIFY(tcpServer.listen());
+    server.bind(&tcpServer);
     QNetworkAccessManager networkAccessManager;
     QUrl url(QStringLiteral("http://%1:%2%3")
              .arg(host)
-             .arg(tcpServer->serverPort())
+             .arg(tcpServer.serverPort())
              .arg(path));
     if (!query.isEmpty())
         url.setQuery(query);
@@ -248,10 +248,10 @@ void tst_QAbstractHttpServer::checkListenWarns()
             Q_ASSERT(false);
         }
     } server;
-    auto tcpServer = new QTcpServer;
+    QTcpServer tcpServer;
     QTest::ignoreMessage(QtWarningMsg,
                          QRegularExpression(QStringLiteral("The TCP server .* is not listening.")));
-    server.bind(tcpServer);
+    server.bind(&tcpServer);
 }
 
 void tst_QAbstractHttpServer::websocket()
@@ -277,13 +277,13 @@ void tst_QAbstractHttpServer::websocket()
                 Q_UNUSED(request);
                 return QHttpServerWebSocketUpgradeResponse::accept();
             });
-    auto tcpServer = new QTcpServer;
-    tcpServer->listen();
-    server.bind(tcpServer);
-    auto makeWebSocket = [this, tcpServer]() mutable {
+    QTcpServer tcpServer;
+    tcpServer.listen();
+    server.bind(&tcpServer);
+    auto makeWebSocket = [this, &tcpServer]() mutable {
         auto s = std::make_unique<QWebSocket>(QString::fromUtf8(""),
                                               QWebSocketProtocol::VersionLatest, this);
-        const QUrl url(QString::fromLatin1("ws://localhost:%1").arg(tcpServer->serverPort()));
+        const QUrl url(QString::fromLatin1("ws://localhost:%1").arg(tcpServer.serverPort()));
         s->open(url);
         return s;
     };
@@ -560,18 +560,18 @@ void tst_QAbstractHttpServer::servers()
             Q_ASSERT(false);
         }
     } server;
-    auto tcpServer = new QTcpServer;
-    tcpServer->listen();
-    server.bind(tcpServer);
-    auto tcpServer2 = new QTcpServer;
-    tcpServer2->listen();
-    server.bind(tcpServer2);
+    QTcpServer tcpServer;
+    tcpServer.listen();
+    server.bind(&tcpServer);
+    QTcpServer tcpServer2;
+    tcpServer2.listen();
+    server.bind(&tcpServer2);
     QTRY_COMPARE(server.servers().size(), 2);
     QTRY_COMPARE(server.serverPorts().size(), 2);
-    QTRY_COMPARE(server.servers().first(), tcpServer);
-    QTRY_COMPARE(server.serverPorts().first(), tcpServer->serverPort());
-    QTRY_COMPARE(server.servers().last(), tcpServer2);
-    QTRY_COMPARE(server.serverPorts().last(), tcpServer2->serverPort());
+    QTRY_COMPARE(server.servers().first(), &tcpServer);
+    QTRY_COMPARE(server.serverPorts().first(), tcpServer.serverPort());
+    QTRY_COMPARE(server.servers().last(), &tcpServer2);
+    QTRY_COMPARE(server.serverPorts().last(), tcpServer2.serverPort());
 }
 
 void tst_QAbstractHttpServer::qtbug82053()
@@ -588,12 +588,12 @@ void tst_QAbstractHttpServer::qtbug82053()
 
         void missingHandler(const QHttpServerRequest &, QHttpServerResponder &) override { }
     } server;
-    auto tcpServer = new QTcpServer;
-    tcpServer->listen();
-    server.bind(tcpServer);
+    QTcpServer tcpServer;
+    tcpServer.listen();
+    server.bind(&tcpServer);
 
     QTcpSocket client;
-    client.connectToHost(QHostAddress::LocalHost, tcpServer->serverPort());
+    client.connectToHost(QHostAddress::LocalHost, tcpServer.serverPort());
     client.waitForConnected();
     client.write("CONNECT / HTTP/1.1\n\n");
     client.waitForBytesWritten();
@@ -852,10 +852,11 @@ void tst_QAbstractHttpServer::socketDisconnected()
     QSignalSpy settingsFrameReceivedSpy{ connection, &QHttp2Connection::settingsFrameReceived };
     connect(socket.get(), &QIODevice::readyRead, connection, &QHttp2Connection::handleReadyRead);
     connection->handleReadyRead();
-    QVERIFY(settingsFrameReceivedSpy.wait());
 
     auto stream = connection->createStream().unwrap();
     QVERIFY(stream);
+
+    QVERIFY(settingsFrameReceivedSpy.wait());
 
     // disconnect while request is being processed on server
     QTimer timer;

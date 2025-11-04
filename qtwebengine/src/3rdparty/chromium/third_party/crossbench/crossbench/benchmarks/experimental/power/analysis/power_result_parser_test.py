@@ -7,7 +7,8 @@ from __future__ import annotations
 import json
 import unittest
 
-from crossbench.benchmarks.experimental.power.analysis import power_result_parser
+from crossbench.benchmarks.experimental.power.analysis import \
+    power_result_parser
 
 
 class PowerParserTest(unittest.TestCase):

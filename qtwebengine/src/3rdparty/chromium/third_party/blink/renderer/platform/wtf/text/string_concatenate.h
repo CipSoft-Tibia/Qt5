@@ -45,7 +45,7 @@ class StringTypeAdapter<char> {
   DISALLOW_NEW();
 
  public:
-  explicit StringTypeAdapter<char>(char buffer) : buffer_(buffer) {}
+  explicit StringTypeAdapter(char buffer) : buffer_(buffer) {}
 
   unsigned length() const { return 1; }
   bool Is8Bit() const { return true; }
@@ -62,7 +62,7 @@ class StringTypeAdapter<LChar> {
   DISALLOW_NEW();
 
  public:
-  explicit StringTypeAdapter<LChar>(LChar buffer) : buffer_(buffer) {}
+  explicit StringTypeAdapter(LChar buffer) : buffer_(buffer) {}
 
   unsigned length() const { return 1; }
   bool Is8Bit() const { return true; }
@@ -79,7 +79,7 @@ class StringTypeAdapter<UChar> {
   DISALLOW_NEW();
 
  public:
-  explicit StringTypeAdapter<UChar>(UChar buffer) : buffer_(buffer) {}
+  explicit StringTypeAdapter(UChar buffer) : buffer_(buffer) {}
 
   unsigned length() const { return 1; }
   bool Is8Bit() const { return buffer_ <= 0xff; }
@@ -100,7 +100,7 @@ class WTF_EXPORT StringTypeAdapter<char*> {
   DISALLOW_NEW();
 
  public:
-  explicit StringTypeAdapter<char*>(char* buffer)
+  explicit StringTypeAdapter(char* buffer)
       : StringTypeAdapter(buffer, strlen(buffer)) {}
 
   unsigned length() const { return length_; }
@@ -121,7 +121,7 @@ class WTF_EXPORT StringTypeAdapter<LChar*> {
   DISALLOW_NEW();
 
  public:
-  explicit StringTypeAdapter<LChar*>(LChar* buffer);
+  explicit StringTypeAdapter(LChar* buffer);
 
   unsigned length() const { return length_; }
   bool Is8Bit() const { return true; }
@@ -157,7 +157,7 @@ class WTF_EXPORT StringTypeAdapter<const char*> {
   DISALLOW_NEW();
 
  public:
-  explicit StringTypeAdapter<const char*>(const char* buffer);
+  explicit StringTypeAdapter(const char* buffer);
 
   unsigned length() const { return length_; }
   bool Is8Bit() const { return true; }
@@ -175,7 +175,7 @@ class WTF_EXPORT StringTypeAdapter<const LChar*> {
   DISALLOW_NEW();
 
  public:
-  explicit StringTypeAdapter<const LChar*>(const LChar* buffer);
+  explicit StringTypeAdapter(const LChar* buffer);
 
   unsigned length() const { return length_; }
   bool Is8Bit() const { return true; }

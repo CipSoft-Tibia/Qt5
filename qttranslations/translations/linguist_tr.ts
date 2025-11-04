@@ -12,7 +12,7 @@
     <name>BatchTranslationDialog</name>
     <message>
         <source>Qt Linguist - Batch Translation</source>
-        <translation>Qt Linguist - Toplu Çeviri</translation>
+        <translation>Qt Linguist — Toplu Çeviri</translation>
     </message>
     <message>
         <source>Options</source>
@@ -20,39 +20,39 @@
     </message>
     <message>
         <source>Set translated entries to finished</source>
-        <translation>Çevrilmiş girişleri bitmiş olarak ayarla</translation>
+        <translation>Çevrilmiş girdileri bitmiş olarak ayarla</translation>
     </message>
     <message>
         <source>Retranslate entries with existing translation</source>
-        <translation>Girişleri mevcut çeviriyle yeniden çevir</translation>
+        <translation>Girdileri var olan çeviriyle yeniden çevir</translation>
     </message>
     <message>
         <source>Note that the modified entries will be reset to unfinished if &apos;Set translated entries to finished&apos; above is unchecked</source>
-        <translation>Yukarıdaki &apos;Çevrilmiş girişleri bitmiş olarak ayarla&apos; seçeneği işaretlenmezse, değiştirilen girişlerin tamamlanmamış olarak sıfırlanacağını unutmayın</translation>
+        <translation>Yukarıdaki “Çevrilmiş girdileri bitmiş olarak ayarla” seçeneği işaretlenmezse değiştirilen girdilerin tamamlanmamış olarak sıfırlanacağını unutmayın.</translation>
     </message>
     <message>
         <source>Translate also finished entries</source>
-        <translation>Tamamlanan girişleri de çevir</translation>
+        <translation>Tamamlanan girdileri de çevir</translation>
     </message>
     <message>
         <source>Phrase book preference</source>
-        <translation>Sözcük grubu kitabı tercihi</translation>
+        <translation>Deyiş kitabı tercihi</translation>
     </message>
     <message>
         <source>Move up</source>
-        <translation>Yukarı taşı</translation>
+        <translation>Yukarı Taşı</translation>
     </message>
     <message>
         <source>Move down</source>
-        <translation>Aşağı taşı</translation>
+        <translation>Aşağı Taşı</translation>
     </message>
     <message>
         <source>The batch translator will search through the selected phrase books in the order given above</source>
-        <translation>Toplu çevirmen, seçilen sözcük grubu kitaplarında yukarıda verilen sırayla arama yapar</translation>
+        <translation>Toplu çevirmen, seçili deyiş kitabı girdilerinde yukarıda verilen sırayla arama yapar.</translation>
     </message>
     <message>
         <source>&amp;Run</source>
-        <translation>&amp;Çalıştır</translation>
+        <translation>Ç&amp;alıştır</translation>
     </message>
     <message>
         <source>Cancel</source>
@@ -60,24 +60,24 @@
     </message>
     <message>
         <source>Batch Translation of &apos;%1&apos; - Qt Linguist</source>
-        <translation>&apos;%1&apos; Toplu Çevirisi - Qt Linguist</translation>
+        <translation>“%1” Toplu Çevirisi — Qt Linguist</translation>
     </message>
     <message>
         <source>Searching, please wait...</source>
-        <translation>Aranıyor, lütfen bekleyin...</translation>
+        <translation>Aranıyor, lütfen bekleyin…</translation>
     </message>
     <message>
         <source>&amp;Cancel</source>
-        <translation>&amp;İptal</translation>
+        <translation>İ&amp;ptal</translation>
     </message>
     <message>
         <source>Linguist batch translator</source>
-        <translation>Linguist toplu çevirmen</translation>
+        <translation>Linguist Toplu Çevirmen</translation>
     </message>
     <message numerus="yes">
         <source>Batch translated %n entries</source>
         <translation>
-            <numerusform>Toplu olarak çevrilen %n giriş</numerusform>
+            <numerusform>%n girdi toplu olarak çevrildi</numerusform>
         </translation>
     </message>
 </context>
@@ -85,15 +85,15 @@
     <name>DataModel</name>
     <message>
         <source>The translation file &apos;%1&apos; will not be loaded because it is empty.</source>
-        <translation>&apos;%1&apos; çeviri dosyası boş olduğu için yüklenmeyecek.</translation>
+        <translation>“%1” çeviri dosyası boş olduğu için yüklenmeyecek.</translation>
     </message>
     <message>
         <source>&lt;qt&gt;Duplicate messages found in &apos;%1&apos;:</source>
-        <translation>&lt;qt&gt;&apos;%1&apos; içinde yinelenen iletiler bulundu:</translation>
+        <translation>&lt;qt&gt;“%1” içinde yinelenmiş iletiler bulundu:</translation>
     </message>
     <message>
         <source>&lt;p&gt;[more duplicates omitted]</source>
-        <translation>&lt;p&gt;[daha fazla kopya atlandı]</translation>
+        <translation>&lt;p&gt;[daha fazla yinelenen atlandı]</translation>
     </message>
     <message>
         <source>&lt;p&gt;* ID: %1</source>
@@ -110,16 +110,16 @@
     <message>
         <source>Linguist does not know the plural rules for &apos;%1&apos;.
 Will assume a single universal form.</source>
-        <translation>Linguist &apos;%1&apos; için çoğul kuralları bilmiyor.
+        <translation>Linguist “%1” için çoğul kurallarını bilmiyor.
 Tek bir evrensel form alır.</translation>
     </message>
     <message>
         <source>Cannot create &apos;%2&apos;: %1</source>
-        <translation>&apos;%2&apos; oluşturulamıyor: %1</translation>
+        <translation>“%2” oluşturulamıyor: %1</translation>
     </message>
     <message>
         <source>%1 (%2)</source>
-        <extracomment>&lt;language&gt; (&lt;country&gt;)</extracomment>
+        <extracomment>&lt;language&gt; (&lt;territory&gt;)</extracomment>
         <translation>%1 (%2)</translation>
     </message>
     <message>
@@ -131,15 +131,15 @@ Tek bir evrensel form alır.</translation>
     <name>ErrorsView</name>
     <message>
         <source>Accelerator possibly superfluous in translation.</source>
-        <translation>Hızlandırıcı muhtemelen çeviride gereksizdir.</translation>
+        <translation>Çeviride ivmelendirici kullanımı gereksiz olabilir.</translation>
     </message>
     <message>
         <source>Accelerator possibly missing in translation.</source>
-        <translation>Hızlandırıcı muhtemelen çeviride eksik.</translation>
+        <translation>Çeviride büyük olasılıkla ivmelendirici eksik.</translation>
     </message>
     <message>
         <source>Translation does not have same leading and trailing whitespace as the source text.</source>
-        <translation>Çeviri, kaynak metinle aynı ön ve arka boşluk içermiyor.</translation>
+        <translation>Çeviri, kaynak metinle aynı ön ve arka boşluğu içermiyor.</translation>
     </message>
     <message>
         <source>Translation does not end with the same punctuation as the source text.</source>
@@ -147,15 +147,15 @@ Tek bir evrensel form alır.</translation>
     </message>
     <message>
         <source>A phrase book suggestion for &apos;%1&apos; was ignored.</source>
-        <translation>&apos;%1&apos; için bir sözcük grubu kitabı önerisi yoksayıldı.</translation>
+        <translation>“%1” için bir sözcük grubu kitabı önerisi yok sayıldı.</translation>
     </message>
     <message>
         <source>Translation does not refer to the same place markers as in the source text.</source>
-        <translation>Çeviri, kaynak metinde olduğu gibi aynı yer işaretleyicilerini ifade etmiyor.</translation>
+        <translation>Çeviri, kaynak metinde olan aynı yer imleyicilerine başvurmuyor.</translation>
     </message>
     <message>
         <source>Translation does not contain the necessary %n/%Ln place marker.</source>
-        <translation>Çeviri gerekli %n/%Ln yer işaretleyicisini içermiyor.</translation>
+        <translation>Çeviri gerekli %n/%Ln yer imleyicisini içermiyor.</translation>
     </message>
     <message>
         <source>Unknown error</source>
@@ -166,27 +166,27 @@ Tek bir evrensel form alır.</translation>
     <name>FMT</name>
     <message>
         <source>GNU Gettext localization files</source>
-        <translation>GNU Gettext yerelleştirme dosyaları</translation>
+        <translation type="vanished">GNU Gettext yerelleştirme dosyaları</translation>
     </message>
     <message>
         <source>GNU Gettext localization template files</source>
-        <translation>GNU Gettext yerelleştirme şablon dosyaları</translation>
+        <translation type="vanished">GNU Gettext yerelleştirme şablon dosyaları</translation>
     </message>
     <message>
         <source>Compiled Qt translations</source>
-        <translation>Derlenmiş Qt çevirileri</translation>
+        <translation type="vanished">Derlenmiş Qt çevirileri</translation>
     </message>
     <message>
         <source>Qt Linguist &apos;Phrase Book&apos;</source>
-        <translation>Qt Linguist &apos;Sözcük Grubu Kitabı&apos;</translation>
+        <translation type="vanished">Qt Linguist “Deyiş Kitabı”</translation>
     </message>
     <message>
         <source>Qt translation sources</source>
-        <translation>Qt çeviri kaynakları</translation>
+        <translation type="vanished">Qt çeviri kaynakları</translation>
     </message>
     <message>
         <source>XLIFF localization files</source>
-        <translation>XLIFF yerelleştirme dosyaları</translation>
+        <translation type="vanished">XLIFF yerelleştirme dosyaları</translation>
     </message>
 </context>
 <context>
@@ -213,7 +213,7 @@ Tek bir evrensel form alır.</translation>
     </message>
     <message>
         <source>Lets you use a Perl-compatible regular expression</source>
-        <translation>Perl uyumlu bir normal ifade kullanmanıza izin verir</translation>
+        <translation>Perl uyumlu bir düzenli ifade kullanmanıza izin verir.</translation>
     </message>
     <message>
         <source>Regular &amp;expression</source>
@@ -221,11 +221,11 @@ Tek bir evrensel form alır.</translation>
     </message>
     <message>
         <source>Texts such as &apos;TeX&apos; and &apos;tex&apos; are considered as different when checked.</source>
-        <translation>&apos;TeX&apos; ve &apos;tex&apos; gibi metinler işaretlendiğinde farklı kabul edilir.</translation>
+        <translation>“TeX” ve “tex” gibi metinler işaretlendiğinde farklı kabul edilir.</translation>
     </message>
     <message>
         <source>&amp;Match case</source>
-        <translation>Büyük/küçük harf &amp;eşleştir</translation>
+        <translation>BÜYÜK/küçük harf &amp;eşleştir</translation>
     </message>
     <message>
         <source>Source texts are searched when checked.</source>
@@ -253,7 +253,7 @@ Tek bir evrensel form alır.</translation>
     </message>
     <message>
         <source>Ignore &amp;accelerators</source>
-        <translation>Hızl&amp;andırıcıları yoksay</translation>
+        <translation>İ&amp;vmelendiricileri yok say</translation>
     </message>
     <message>
         <source>Translations are searched when checked.</source>
@@ -265,7 +265,7 @@ Tek bir evrensel form alır.</translation>
     </message>
     <message>
         <source>Click here to find the next occurrence of the text you typed in.</source>
-        <translation>Yazdığınız metnin bir sonraki tekrarlamasını bulmak için burayı tıklayın.</translation>
+        <translation>Yazdığınız metnin bir sonraki oluşunu bulmak için burayı tıklayın.</translation>
     </message>
     <message>
         <source>Find Next</source>
@@ -280,9 +280,24 @@ Tek bir evrensel form alır.</translation>
         <translation>İptal</translation>
     </message>
     <message>
-        <source></source>
-        <comment>Choose Edit|Find from the menu bar or press Ctrl+F to pop up the Find dialog</comment>
-        <translation></translation>
+        <source>T&amp;ranslation status:</source>
+        <translation>Ç&amp;eviri durumu:</translation>
+    </message>
+    <message>
+        <source>Lets you filter the search target by translation status</source>
+        <translation>Arama hedefini çeviri durumuna göre süzmenize olanak tanır.</translation>
+    </message>
+    <message>
+        <source>All</source>
+        <translation>Tümü</translation>
+    </message>
+    <message>
+        <source>Finished</source>
+        <translation>Bitmiş</translation>
+    </message>
+    <message>
+        <source>Unfinished</source>
+        <translation>Bitmemiş</translation>
     </message>
 </context>
 <context>
@@ -290,21 +305,21 @@ Tek bir evrensel form alır.</translation>
     <message>
         <source>Alt+Delete</source>
         <extracomment>translate, but don&apos;t change</extracomment>
-        <translation>Alt+Delete</translation>
+        <translation>Seçenek+Sil</translation>
     </message>
     <message>
         <source>Shift+Alt+Insert</source>
         <extracomment>translate, but don&apos;t change</extracomment>
-        <translation>Shift+Alt+Insert</translation>
+        <translation>Üst Karakter+Seçenek+Ekle</translation>
     </message>
     <message>
         <source>Alt+Insert</source>
         <extracomment>translate, but don&apos;t change</extracomment>
-        <translation>Alt+Insert</translation>
+        <translation>Seçenek+Ekle</translation>
     </message>
     <message>
         <source>Confirmation - Qt Linguist</source>
-        <translation>Onayla - Qt Linguist</translation>
+        <translation>Onay — Qt Linguist</translation>
     </message>
     <message>
         <source>Delete non-empty length variant?</source>
@@ -315,26 +330,26 @@ Tek bir evrensel form alır.</translation>
     <name>LRelease</name>
     <message numerus="yes">
         <source>Dropped %n message(s) which had no ID.</source>
-        <translation>
+        <translation type="vanished">
             <numerusform>Kimliği olmayan %n ileti bırakıldı.</numerusform>
         </translation>
     </message>
     <message numerus="yes">
         <source>Excess context/disambiguation dropped from %n message(s).</source>
-        <translation>
-            <numerusform>%n iletiden fazla içerik/anlam ayrımı düştü.</numerusform>
+        <translation type="vanished">
+            <numerusform>%n iletiden fazla içerik/anlam ayrımı bırakıldı.</numerusform>
         </translation>
     </message>
     <message numerus="yes">
         <source>    Generated %n translation(s) (%1 finished and %2 unfinished)</source>
-        <translation>
-            <numerusform>    Oluşturulan %n çeviri (%1 tamamlandı ve %2 tamamlanmadı)</numerusform>
+        <translation type="vanished">
+            <numerusform>    %n çeviri üretildi (%1 tamamlandı ve %2 tamamlanmadı).</numerusform>
         </translation>
     </message>
     <message numerus="yes">
         <source>    Ignored %n untranslated source text(s)</source>
-        <translation>
-            <numerusform>    %n çevrilmemiş kaynak metin yoksayıldı</numerusform>
+        <translation type="vanished">
+            <numerusform>    %n çevrilmemiş kaynak metin yok sayıldı.</numerusform>
         </translation>
     </message>
 </context>
@@ -346,19 +361,19 @@ Tek bir evrensel form alır.</translation>
     </message>
     <message>
         <source>&amp;Phrases</source>
-        <translation>&amp;Sözcük Grupları</translation>
+        <translation>&amp;Deyişler</translation>
     </message>
     <message>
         <source>&amp;Close Phrase Book</source>
-        <translation>&amp;Sözcük Grubu Kitabını Kapat</translation>
+        <translation>&amp;Deyiş Kitabını Kapat</translation>
     </message>
     <message>
         <source>&amp;Edit Phrase Book</source>
-        <translation>&amp;Sözcük Grubu Kitabını Düzenle</translation>
+        <translation>&amp;Deyiş Kitabını Düzenle</translation>
     </message>
     <message>
         <source>&amp;Print Phrase Book</source>
-        <translation>&amp;Sözcük Grubu Kitabını Yazdır</translation>
+        <translation>&amp;Deyiş Kitabını Yazdır</translation>
     </message>
     <message>
         <source>V&amp;alidation</source>
@@ -378,7 +393,7 @@ Tek bir evrensel form alır.</translation>
     </message>
     <message>
         <source>&amp;Zoom</source>
-        <translation>&amp;Yakınlaştırma</translation>
+        <translation>&amp;Yakınlaştır</translation>
     </message>
     <message>
         <source>Guesses</source>
@@ -390,7 +405,7 @@ Tek bir evrensel form alır.</translation>
     </message>
     <message>
         <source>&amp;Translation</source>
-        <translation>&amp;Çeviri</translation>
+        <translation>Ç&amp;eviri</translation>
     </message>
     <message>
         <source>&amp;File</source>
@@ -402,19 +417,19 @@ Tek bir evrensel form alır.</translation>
     </message>
     <message>
         <source>&amp;Edit</source>
-        <translation>Düz&amp;en</translation>
+        <translation>Dü&amp;zen</translation>
     </message>
     <message>
         <source>&amp;Open...</source>
-        <translation>&amp;Aç...</translation>
+        <translation>&amp;Aç…</translation>
     </message>
     <message>
         <source>Open a Qt translation source file (TS file) for editing</source>
-        <translation>Düzenlemek için bir Qt çeviri kaynak dosyası (TS dosyası) açın</translation>
+        <translation>Düzenlemek için bir Qt çeviri kaynak dosyası (TS dosyası) açın.</translation>
     </message>
     <message>
         <source>Ctrl+O</source>
-        <translation>Ctrl+O</translation>
+        <translation>Kontrol+O</translation>
     </message>
     <message>
         <source>E&amp;xit</source>
@@ -426,7 +441,7 @@ Tek bir evrensel form alır.</translation>
     </message>
     <message>
         <source>Ctrl+Q</source>
-        <translation>Ctrl+Q</translation>
+        <translation>Kontrol+Q</translation>
     </message>
     <message>
         <source>Save</source>
@@ -434,15 +449,15 @@ Tek bir evrensel form alır.</translation>
     </message>
     <message>
         <source>Save changes made to this Qt translation source file</source>
-        <translation>Bu Qt çeviri kaynak dosyasında yapılan değişiklikleri kaydet</translation>
+        <translation>Bu Qt çeviri kaynak dosyasında yapılan değişiklikleri kaydedin.</translation>
     </message>
     <message>
         <source>Save &amp;As...</source>
-        <translation>F&amp;arklı Kaydet...</translation>
+        <translation>F&amp;arklı Kaydet…</translation>
     </message>
     <message>
         <source>Save As...</source>
-        <translation>Farklı Kaydet...</translation>
+        <translation>Farklı Kaydet…</translation>
     </message>
     <message>
         <source>Save changes made to this Qt translation source file into a new file.</source>
@@ -458,7 +473,7 @@ Tek bir evrensel form alır.</translation>
     </message>
     <message>
         <source>&amp;Print...</source>
-        <translation>&amp;Yazdır...</translation>
+        <translation>&amp;Yazdır…</translation>
     </message>
     <message>
         <source>Print a list of all the translation units in the current translation source file.</source>
@@ -466,7 +481,7 @@ Tek bir evrensel form alır.</translation>
     </message>
     <message>
         <source>Ctrl+P</source>
-        <translation>Ctrl+P</translation>
+        <translation>Kontrol+P</translation>
     </message>
     <message>
         <source>&amp;Undo</source>
@@ -478,7 +493,7 @@ Tek bir evrensel form alır.</translation>
     </message>
     <message>
         <source>Ctrl+Z</source>
-        <translation>Ctrl+Z</translation>
+        <translation>Kontrol+Z</translation>
     </message>
     <message>
         <source>&amp;Redo</source>
@@ -486,15 +501,15 @@ Tek bir evrensel form alır.</translation>
     </message>
     <message>
         <source>Redo an undone editing operation performed on the translation.</source>
-        <translation>Çeviri üzerinde gerçekleştirilen geri alınmış bir düzenleme işlemini Yineleyin.</translation>
+        <translation>Çeviri üzerinde gerçekleştirilen geri alınmış bir düzenleme işlemini yineleyin.</translation>
     </message>
     <message>
         <source>Ctrl+Y</source>
-        <translation>Ctrl+Y</translation>
+        <translation>Kontrol+Y</translation>
     </message>
     <message>
         <source>Cu&amp;t</source>
-        <translation>Ke&amp;s</translation>
+        <translation>&amp;Kes</translation>
     </message>
     <message>
         <source>Copy the selected translation text to the clipboard and deletes it.</source>
@@ -502,11 +517,11 @@ Tek bir evrensel form alır.</translation>
     </message>
     <message>
         <source>Ctrl+X</source>
-        <translation>Ctrl+X</translation>
+        <translation>Kontrol+X</translation>
     </message>
     <message>
         <source>&amp;Copy</source>
-        <translation>&amp;Kopyala</translation>
+        <translation>Ko&amp;pyala</translation>
     </message>
     <message>
         <source>Copy the selected translation text to the clipboard.</source>
@@ -514,11 +529,11 @@ Tek bir evrensel form alır.</translation>
     </message>
     <message>
         <source>Ctrl+C</source>
-        <translation>Ctrl+C</translation>
+        <translation>Kontrol+C</translation>
     </message>
     <message>
         <source>&amp;Paste</source>
-        <translation>Ya&amp;pıştır</translation>
+        <translation>&amp;Yapıştır</translation>
     </message>
     <message>
         <source>Paste the clipboard text into the translation.</source>
@@ -526,7 +541,7 @@ Tek bir evrensel form alır.</translation>
     </message>
     <message>
         <source>Ctrl+V</source>
-        <translation>Ctrl+V</translation>
+        <translation>Kontrol+V</translation>
     </message>
     <message>
         <source>Select &amp;All</source>
@@ -534,15 +549,15 @@ Tek bir evrensel form alır.</translation>
     </message>
     <message>
         <source>Select the whole translation text.</source>
-        <translation>Çeviri metninin tamamını seçin.</translation>
+        <translation>Çeviri metninin tümünü seçin.</translation>
     </message>
     <message>
         <source>Ctrl+A</source>
-        <translation>Ctrl+A</translation>
+        <translation>Kontrol+A</translation>
     </message>
     <message>
         <source>&amp;Find...</source>
-        <translation>&amp;Bul...</translation>
+        <translation>&amp;Bul…</translation>
     </message>
     <message>
         <source>Search for some text in the translation source file.</source>
@@ -550,7 +565,7 @@ Tek bir evrensel form alır.</translation>
     </message>
     <message>
         <source>Ctrl+F</source>
-        <translation>Ctrl+F</translation>
+        <translation>Kontrol+F</translation>
     </message>
     <message>
         <source>Find &amp;Next</source>
@@ -558,7 +573,7 @@ Tek bir evrensel form alır.</translation>
     </message>
     <message>
         <source>Continue the search where it was left.</source>
-        <translation>Aramaya kaldığı yerden devam edin.</translation>
+        <translation>Aramayı kaldığı yerden sürdürün.</translation>
     </message>
     <message>
         <source>F3</source>
@@ -570,15 +585,15 @@ Tek bir evrensel form alır.</translation>
     </message>
     <message>
         <source>Previous unfinished item</source>
-        <translation>Önceki bitmemiş öğe</translation>
+        <translation>Önceki bitmemiş öge</translation>
     </message>
     <message>
         <source>Move to the previous unfinished item.</source>
-        <translation>Önceki bitmemiş öğeye gidin.</translation>
+        <translation>Önceki bitmemiş ögeye gidin.</translation>
     </message>
     <message>
         <source>Ctrl+K</source>
-        <translation>Ctrl+K</translation>
+        <translation>Kontrol+K</translation>
     </message>
     <message>
         <source>&amp;Next Unfinished</source>
@@ -586,31 +601,31 @@ Tek bir evrensel form alır.</translation>
     </message>
     <message>
         <source>Next unfinished item</source>
-        <translation>Sonraki bitmemiş öğe</translation>
+        <translation>Sonraki bitmemiş öge</translation>
     </message>
     <message>
         <source>Move to the next unfinished item.</source>
-        <translation>Sonraki bitmemiş öğeye gidin.</translation>
+        <translation>Sonraki bitmemiş ögeye gidin.</translation>
     </message>
     <message>
         <source>Ctrl+J</source>
-        <translation>Ctrl+J</translation>
+        <translation>Kontrol+J</translation>
     </message>
     <message>
         <source>P&amp;rev</source>
-        <translation>&amp;Önceki</translation>
+        <translation>Ö&amp;nceki</translation>
     </message>
     <message>
         <source>Move to previous item</source>
-        <translation>Önceki öğeye git</translation>
+        <translation>Önceki ögeye git</translation>
     </message>
     <message>
         <source>Move to the previous item.</source>
-        <translation>Önceki öğeye gidin.</translation>
+        <translation>Önceki ögeye gidin.</translation>
     </message>
     <message>
         <source>Ctrl+Shift+K</source>
-        <translation>Ctrl+Shift+K</translation>
+        <translation>Kontrol+Üst Karakter+K</translation>
     </message>
     <message>
         <source>Ne&amp;xt</source>
@@ -618,15 +633,15 @@ Tek bir evrensel form alır.</translation>
     </message>
     <message>
         <source>Next item</source>
-        <translation>Sonraki Öğe</translation>
+        <translation>Sonraki öge</translation>
     </message>
     <message>
         <source>Move to the next item.</source>
-        <translation>Sonraki öğeye gidin.</translation>
+        <translation>Sonraki ögeye gidin.</translation>
     </message>
     <message>
         <source>Ctrl+Shift+J</source>
-        <translation>Ctrl+Shift+J</translation>
+        <translation>Kontrol+Üst Karakter+J</translation>
     </message>
     <message>
         <source>&amp;Done and Next</source>
@@ -634,11 +649,11 @@ Tek bir evrensel form alır.</translation>
     </message>
     <message>
         <source>Mark item as done and move to the next unfinished item</source>
-        <translation>Öğeyi bitti olarak işaretleyin ve bir sonraki tamamlanmamış öğeye gidin</translation>
+        <translation>Ögeyi bitti olarak işaretle ve bir sonraki tamamlanmamış ögeye git</translation>
     </message>
     <message>
         <source>Mark this item as done and move to the next unfinished item.</source>
-        <translation>Bu öğeyi bitti olarak işaretleyin ve bir sonraki tamamlanmamış öğeye gidin.</translation>
+        <translation>Bu ögeyi bitti olarak işaretleyin ve bir sonraki tamamlanmamış ögeye gidin.</translation>
     </message>
     <message>
         <source>Copy from source text</source>
@@ -654,19 +669,19 @@ Tek bir evrensel form alır.</translation>
     </message>
     <message>
         <source>Ctrl+B</source>
-        <translation>Ctrl+B</translation>
+        <translation>Kontrol+B</translation>
     </message>
     <message>
         <source>&amp;Accelerators</source>
-        <translation>&amp;Hızlandırıcılar</translation>
+        <translation>&amp;İvmelendiriciler</translation>
     </message>
     <message>
         <source>Toggles the validity check of accelerators</source>
-        <translation>Hızlandırıcıların geçerlilik kontrolünü değiştirir</translation>
+        <translation>İvmelendiricilerin geçerlilik denetimini açar/kapatır</translation>
     </message>
     <message>
         <source>Toggles the validity check of accelerators, i.e. whether the number of ampersands in the source and translation text is the same. If the check fails, a message is shown in the warnings window.</source>
-        <translation>Hızlandırıcıların geçerlilik kontrolünü, yani kaynak ve çeviri metnindeki &quot;ve&quot; işareti sayısının aynı olup olmadığını değiştirir. Denetim başarısız olursa, uyarılar penceresinde bir ileti gösterilir.</translation>
+        <translation>İvmelendiricilerin geçerlilik denetimini, yani kaynak ve çeviri metnindeki “e” işareti sayısının aynı olup olmadığını değiştirir. Denetim başarısız olursa, uyarılar penceresinde bir ileti gösterilir.</translation>
     </message>
     <message>
         <source>Surrounding &amp;Whitespace</source>
@@ -694,19 +709,19 @@ Tek bir evrensel form alır.</translation>
     </message>
     <message>
         <source>&amp;Phrase matches</source>
-        <translation>&amp;Sözcük grubu eşleşmeleri</translation>
+        <translation>&amp;Deyiş eşleşmeleri</translation>
     </message>
     <message>
         <source>Toggles checking that phrase suggestions are used</source>
-        <translation>Sözcük grubu önerilerinin kullanıldığını denetlemeyi değiştirir</translation>
+        <translation>Deyiş önerilerinin kullanıldığını denetlemeyi değiştirir</translation>
     </message>
     <message>
         <source>Toggles checking that phrase suggestions are used. If the check fails, a message is shown in the warnings window.</source>
-        <translation>Sözcük grubu önerilerinin kullanıldığını denetlemeyi değiştirir. Denetim başarısız olursa, uyarılar penceresinde bir ileti gösterilir.</translation>
+        <translation>Deyiş önerilerinin kullanıldığını denetlemeyi değiştirir. Denetim başarısız olursa uyarılar penceresinde bir ileti gösterilir.</translation>
     </message>
     <message>
         <source>Place &amp;Marker Matches</source>
-        <translation>Yer İşaretleyici Eşleş&amp;meleri</translation>
+        <translation>Yer İmleyicisi Eşleş&amp;meleri</translation>
     </message>
     <message>
         <source>Toggles the validity check of place markers</source>
@@ -714,31 +729,31 @@ Tek bir evrensel form alır.</translation>
     </message>
     <message>
         <source>Toggles the validity check of place markers, i.e. whether %1, %2, ... are used consistently in the source text and translation text. If the check fails, a message is shown in the warnings window.</source>
-        <translation>Yer işaretleyicilerinin geçerlilik denetimini değiştirir, yani %1,%2, ... kaynak metinde ve çeviri metninde tutarlı olarak kullanılır. Denetim başarısız olursa, uyarılar penceresinde bir ileti gösterilir.</translation>
+        <translation>Yer işaretleyicilerinin geçerlilik denetimini değiştirir; yani %1, %2, … kaynak metinde ve çeviri metninde tutarlı olarak kullanılır. Denetim başarısız olursa, uyarılar penceresinde bir ileti gösterilir.</translation>
     </message>
     <message>
         <source>&amp;New Phrase Book...</source>
-        <translation>Ye&amp;ni Sözcük Grubu Kitabı...</translation>
+        <translation>Ye&amp;ni Deyiş Kitabı…</translation>
     </message>
     <message>
         <source>Create a new phrase book.</source>
-        <translation>Yeni bir sözcük grubu kitabı oluşturun.</translation>
+        <translation>Yeni bir deyiş kitabı oluşturun.</translation>
     </message>
     <message>
         <source>Ctrl+N</source>
-        <translation>Ctrl+N</translation>
+        <translation>Kontrol+N</translation>
     </message>
     <message>
         <source>&amp;Open Phrase Book...</source>
-        <translation>Sözcük Grubu Kitabı &amp;Aç...</translation>
+        <translation>Deyiş Kitabı &amp;Aç…</translation>
     </message>
     <message>
         <source>Open a phrase book to assist translation.</source>
-        <translation>Çeviriye yardımcı olmak için bir sözcük grubu kitabı açın.</translation>
+        <translation>Çeviriye yardımcı olmak için bir deyiş kitabı açın.</translation>
     </message>
     <message>
         <source>Ctrl+H</source>
-        <translation>Ctrl+H</translation>
+        <translation>Kontrol+H</translation>
     </message>
     <message>
         <source>&amp;Reset Sorting</source>
@@ -746,7 +761,7 @@ Tek bir evrensel form alır.</translation>
     </message>
     <message>
         <source>Sort the items back in the same order as in the message file.</source>
-        <translation>Öğeleri, ileti dosyasındakiyle aynı sırayla sıralayın.</translation>
+        <translation>Ögeleri, ileti dosyasındakiyle aynı sırayla sıralayın.</translation>
     </message>
     <message>
         <source>&amp;Display guesses</source>
@@ -782,7 +797,7 @@ Tek bir evrensel form alır.</translation>
     </message>
     <message>
         <source>Display information about the Qt toolkit by Digia.</source>
-        <translation>Digia&apos;nın Qt araç takımı hakkındaki bilgileri görüntüleyin.</translation>
+        <translation>Digia’nın Qt araç takımı hakkındaki bilgileri görüntüleyin.</translation>
     </message>
     <message>
         <source>&amp;What&apos;s This?</source>
@@ -794,15 +809,15 @@ Tek bir evrensel form alır.</translation>
     </message>
     <message>
         <source>Enter What&apos;s This? mode.</source>
-        <translation>Bu Nedir? moduna girin.</translation>
+        <translation>Bu Nedir? kipine girin.</translation>
     </message>
     <message>
         <source>Shift+F1</source>
-        <translation>Shift+F1</translation>
+        <translation>Üst Karakter+F1</translation>
     </message>
     <message>
         <source>&amp;Search And Translate...</source>
-        <translation>&amp;Ara Ve Çevir...</translation>
+        <translation>&amp;Ara Ve Çevir…</translation>
     </message>
     <message>
         <source>Replace the translation on all entries that matches the search source text.</source>
@@ -810,15 +825,15 @@ Tek bir evrensel form alır.</translation>
     </message>
     <message>
         <source>&amp;Batch Translation...</source>
-        <translation>&amp;Toplu Çeviri...</translation>
+        <translation>&amp;Toplu Çeviri…</translation>
     </message>
     <message>
         <source>Batch translate all entries using the information in the phrase books.</source>
-        <translation>Sözcük grubu kitaplarındaki bilgileri kullanarak tüm girdileri topluca çevirin.</translation>
+        <translation>Deyiş kitaplarındaki bilgileri kullanarak tüm girdileri topluca çevirin.</translation>
     </message>
     <message>
         <source>Release As...</source>
-        <translation>Farklı Yayınla...</translation>
+        <translation>Farklı Yayınla…</translation>
     </message>
     <message>
         <source>Create a Qt message file suitable for released applications from the current message file. The filename will automatically be determined from the name of the TS file.</source>
@@ -858,19 +873,19 @@ Tek bir evrensel form alır.</translation>
     </message>
     <message>
         <source>Translation File &amp;Settings...</source>
-        <translation>Çeviri Dosyası &amp;Ayarları...</translation>
+        <translation>Çeviri Dosyası &amp;Ayarları…</translation>
     </message>
     <message>
         <source>&amp;Add to Phrase Book</source>
-        <translation>Sözcük Grubu Kitabına &amp;Ekle</translation>
+        <translation>Deyiş Kitabına &amp;Ekle</translation>
     </message>
     <message>
         <source>Ctrl+T</source>
-        <translation>Ctrl+T</translation>
+        <translation>Kontrol+T</translation>
     </message>
     <message>
         <source>Open Read-O&amp;nly...</source>
-        <translation>Salt Oku&amp;nur Aç...</translation>
+        <translation>Saltoku&amp;nur Aç…</translation>
     </message>
     <message>
         <source>&amp;Save All</source>
@@ -878,7 +893,7 @@ Tek bir evrensel form alır.</translation>
     </message>
     <message>
         <source>Ctrl+S</source>
-        <translation>Ctrl+S</translation>
+        <translation>Kontrol+S</translation>
     </message>
     <message>
         <source>&amp;Release All</source>
@@ -894,7 +909,7 @@ Tek bir evrensel form alır.</translation>
     </message>
     <message>
         <source>Ctrl+W</source>
-        <translation>Ctrl+W</translation>
+        <translation>Kontrol+W</translation>
     </message>
     <message>
         <source>Length Variants</source>
@@ -914,7 +929,7 @@ Tek bir evrensel form alır.</translation>
     </message>
     <message>
         <source>Ctrl++</source>
-        <translation>Ctrl++</translation>
+        <translation>Kontrol++</translation>
     </message>
     <message>
         <source>Decrease</source>
@@ -922,15 +937,15 @@ Tek bir evrensel form alır.</translation>
     </message>
     <message>
         <source>Ctrl+-</source>
-        <translation>Ctrl+-</translation>
+        <translation>Kontrol+-</translation>
     </message>
     <message>
         <source>Reset to default</source>
-        <translation>Varsayılana sıfırla</translation>
+        <translation>Öntanımlılara sıfırla</translation>
     </message>
     <message>
         <source>Ctrl+0</source>
-        <translation>Ctrl+0</translation>
+        <translation>Kontrol+0</translation>
     </message>
     <message>
         <source>Show more</source>
@@ -938,7 +953,7 @@ Tek bir evrensel form alır.</translation>
     </message>
     <message>
         <source>Alt++</source>
-        <translation>Alt++</translation>
+        <translation>Seçenek++</translation>
     </message>
     <message>
         <source>Show fewer</source>
@@ -946,11 +961,11 @@ Tek bir evrensel form alır.</translation>
     </message>
     <message>
         <source>Alt+-</source>
-        <translation>Alt+-</translation>
+        <translation>Seçenek+-</translation>
     </message>
     <message>
         <source>Alt+0</source>
-        <translation>Alt+0</translation>
+        <translation>Seçenek+0</translation>
     </message>
     <message>
         <source>D&amp;one</source>
@@ -963,11 +978,6 @@ Tek bir evrensel form alır.</translation>
     <message>
         <source>Mark this item as done.</source>
         <translation>Bu öğeyi bitti olarak işaretle.</translation>
-    </message>
-    <message>
-        <source></source>
-        <comment>This is the application&apos;s main window.</comment>
-        <translation></translation>
     </message>
     <message>
         <source>Source text</source>
@@ -991,11 +1001,11 @@ Tek bir evrensel form alır.</translation>
     </message>
     <message>
         <source>Strings</source>
-        <translation>Dizeler</translation>
+        <translation>Diziler</translation>
     </message>
     <message>
         <source>Phrases and guesses</source>
-        <translation>Sözcük grupları ve tahminler</translation>
+        <translation>Deyişler ve tahminler</translation>
     </message>
     <message>
         <source>Sources and Forms</source>
@@ -1012,27 +1022,23 @@ Tek bir evrensel form alır.</translation>
     </message>
     <message>
         <source>Loading...</source>
-        <translation>Yükleniyor...</translation>
+        <translation>Yükleniyor…</translation>
     </message>
     <message>
         <source>Loading File - Qt Linguist</source>
-        <translation>Dosya Yüklemesi - Qt Linguist</translation>
+        <translation>Dosya Yüklemesi — Qt Linguist</translation>
     </message>
     <message>
         <source>The file &apos;%1&apos; does not seem to be related to the currently open file(s) &apos;%2&apos;.
 
 Close the open file(s) first?</source>
-        <translation>&apos;%1&apos; dosyası şu anda açık olan &apos;%2&apos; dosyası(ları) ile ilişkili görünmüyor.
-
-Önce açık dosya(lar) kapatılsın mı?</translation>
+        <translation>“%1” dosyası şu anda açık olan “%2” dosyaları ile ilişkili görünmüyor. Önce açık dosya(lar) kapatılsın mı?</translation>
     </message>
     <message>
         <source>The file &apos;%1&apos; does not seem to be related to the file &apos;%2&apos; which is being loaded as well.
 
 Skip loading the first named file?</source>
-        <translation>&apos;%1&apos; dosyası, yüklenen &apos;%2&apos; dosyasıyla ilişkili görünmüyor.
-
-İlk adlandırılmış dosyayı yükleme atlansın mı?</translation>
+        <translation>“%1” dosyası, yüklenen “%2” dosyasıyla ilişkili görünmüyor. İlk adlandırılmış dosyayı yükleme atlansın mı?</translation>
     </message>
     <message numerus="yes">
         <source>%n translation unit(s) loaded.</source>
@@ -1046,7 +1052,7 @@ Skip loading the first named file?</source>
     </message>
     <message>
         <source>Open Translation Files</source>
-        <translation>Çeviri Dosyalarını Aç</translation>
+        <translation>Çeviri Dosyaları Aç</translation>
     </message>
     <message>
         <source>File saved.</source>
@@ -1064,7 +1070,7 @@ Tüm dosyalar (*)</translation>
     </message>
     <message>
         <source>Printing...</source>
-        <translation>Yazdırılıyor...</translation>
+        <translation>Yazdırılıyor…</translation>
     </message>
     <message>
         <source>Context: %1</source>
@@ -1084,7 +1090,7 @@ Tüm dosyalar (*)</translation>
     </message>
     <message>
         <source>Printing... (page %1)</source>
-        <translation>Yazdırılıyor... (sayfa %1)</translation>
+        <translation>Yazdırılıyor… (sayfa %1)</translation>
     </message>
     <message>
         <source>Printing completed</source>
@@ -1104,69 +1110,69 @@ Tüm dosyalar (*)</translation>
     </message>
     <message>
         <source>Cannot find the string &apos;%1&apos;.</source>
-        <translation>&apos;%1&apos; dizesi bulunamıyor.</translation>
+        <translation>“%1” dizisi bulunamıyor.</translation>
     </message>
     <message>
         <source>Search And Translate in &apos;%1&apos; - Qt Linguist</source>
-        <translation>&apos;%1&apos; içinde Ara ve Çevir - Qt Linguist</translation>
+        <translation>“%1” içinde Ara ve Çevir — Qt Linguist</translation>
     </message>
     <message>
         <source>Translate - Qt Linguist</source>
-        <translation>Çevir - Qt Linguist</translation>
+        <translation>Çevir — Qt Linguist</translation>
     </message>
     <message numerus="yes">
         <source>Translated %n entry(s)</source>
         <translation>
-            <numerusform>%n giriş çevrildi</numerusform>
+            <numerusform>%n girdi çevrildi</numerusform>
         </translation>
     </message>
     <message>
         <source>No more occurrences of &apos;%1&apos;. Start over?</source>
-        <translation>Daha fazla &apos;%1&apos; olayı yok. Baştan başlansın mı?</translation>
+        <translation>Daha fazla “%1” oluşu yok. Baştan başlansın mı?</translation>
     </message>
     <message>
         <source>Create New Phrase Book</source>
-        <translation>Yeni Sözcük Grubu Kitabı Oluştur</translation>
+        <translation>Yeni Deyiş Kitabı Oluştur</translation>
     </message>
     <message>
         <source>Qt phrase books (*.qph)
 All files (*)</source>
-        <translation>Qt sözcük grubu kitapları (*.qph)
+        <translation>Qt deyiş kitapları (*.qph)
 Tüm dosyalar (*)</translation>
     </message>
     <message>
         <source>Phrase book created.</source>
-        <translation>Sözcük grubu kitabı oluşturuldu.</translation>
+        <translation>Deyiş kitabı oluşturuldu.</translation>
     </message>
     <message>
         <source>Open Phrase Book</source>
-        <translation>Sözcük Grubu Kitabı Aç</translation>
+        <translation>Deyiş Kitabı Aç</translation>
     </message>
     <message>
         <source>Qt phrase books (*.qph);;All files (*)</source>
-        <translation>Qt sözcük grubu kitapları (*.qph);;Tüm dosyalar (*)</translation>
+        <translation>Qt deyiş kitapları (*.qph);;Tüm dosyalar (*)</translation>
     </message>
     <message numerus="yes">
         <source>%n phrase(s) loaded.</source>
         <translation>
-            <numerusform>%n sözcük grubu yüklendi.</numerusform>
+            <numerusform>%n deyiş yüklendi.</numerusform>
         </translation>
     </message>
     <message>
         <source>Add to phrase book</source>
-        <translation>Sözcük grubu kitabına ekle</translation>
+        <translation>Deyiş kitabına ekle</translation>
     </message>
     <message>
         <source>No appropriate phrasebook found.</source>
-        <translation>Uygun sözcük grubu kitabı bulunamadı.</translation>
+        <translation>Uygun deyiş kitabı bulunamadı.</translation>
     </message>
     <message>
         <source>Adding entry to phrasebook %1</source>
-        <translation>%1 sözcük grubu kitabına  girdi ekleme</translation>
+        <translation>%1 deyiş kitabına girdi ekleniyor</translation>
     </message>
     <message>
         <source>Select phrase book to add to</source>
-        <translation>Eklenecek sözcük grubu kitabını seçin</translation>
+        <translation>Eklenecek deyiş kitabını seçin</translation>
     </message>
     <message>
         <source>Unable to launch Qt Assistant (%1)</source>
@@ -1182,7 +1188,7 @@ Tüm dosyalar (*)</translation>
     </message>
     <message>
         <source>Copyright (C) %1 The Qt Company Ltd.</source>
-        <translation>Telif Hakkı (C) %1 The Qt Company Ltd.</translation>
+        <translation type="vanished">Telif Hakkı © %1 The Qt Company Ltd.</translation>
     </message>
     <message>
         <source>Do you want to save the modified files?</source>
@@ -1190,7 +1196,7 @@ Tüm dosyalar (*)</translation>
     </message>
     <message>
         <source>Do you want to save &apos;%1&apos;?</source>
-        <translation>&apos;%1 kaydedilsin mi?</translation>
+        <translation>“%1” kaydedilsin mi?</translation>
     </message>
     <message>
         <source>Qt Linguist[*]</source>
@@ -1198,7 +1204,7 @@ Tüm dosyalar (*)</translation>
     </message>
     <message>
         <source>%1[*] - Qt Linguist</source>
-        <translation>%1[*] - Qt Linguist</translation>
+        <translation>%1[*] — Qt Linguist</translation>
     </message>
     <message>
         <source>No untranslated translation units left.</source>
@@ -1210,15 +1216,15 @@ Tüm dosyalar (*)</translation>
     </message>
     <message>
         <source>Minimize</source>
-        <translation>Küçült</translation>
+        <translation>Simge Durumuna Küçült</translation>
     </message>
     <message>
         <source>Ctrl+M</source>
-        <translation>Ctrl+M</translation>
+        <translation>Kontrol+M</translation>
     </message>
     <message>
         <source>Display the manual for %1.</source>
-        <translation>%1 için kılavuzu görüntüle.</translation>
+        <translation>%1 için kılavuzu görüntüleyin.</translation>
     </message>
     <message>
         <source>Display information about %1.</source>
@@ -1226,23 +1232,23 @@ Tüm dosyalar (*)</translation>
     </message>
     <message>
         <source>&amp;Save &apos;%1&apos;</source>
-        <translation>&apos;%1&apos; Öğesini &amp;Kaydet</translation>
+        <translation>&amp;Kaydet: “%1”</translation>
     </message>
     <message>
         <source>Save &apos;%1&apos; &amp;As...</source>
-        <translation>&apos;%1&apos; Öğesini F&amp;arklı Kaydet...</translation>
+        <translation>F&amp;arklı Kaydet: “%1”…</translation>
     </message>
     <message>
         <source>Release &apos;%1&apos;</source>
-        <translation>&apos;%1&apos; Öğesini Yayınla</translation>
+        <translation>Yayınla: “%1”</translation>
     </message>
     <message>
         <source>Release &apos;%1&apos; As...</source>
-        <translation>&apos;%1&apos; Öğesini Farklı Yayınla...</translation>
+        <translation>Farklı Yayınla: “%1”…</translation>
     </message>
     <message>
         <source>&amp;Close &apos;%1&apos;</source>
-        <translation>&apos;%1&apos; Öğesini &amp;Kapat</translation>
+        <translation>&amp;Kapat: “%1”</translation>
     </message>
     <message>
         <source>&amp;Save</source>
@@ -1266,43 +1272,43 @@ Tüm dosyalar (*)</translation>
     </message>
     <message>
         <source>Translation File &amp;Settings for &apos;%1&apos;...</source>
-        <translation>&apos;%1&apos; için Çeviri Dosyası &amp;Ayarları...</translation>
+        <translation>“%1” için Çeviri Dosyası &amp;Ayarları…</translation>
     </message>
     <message>
         <source>&amp;Batch Translation of &apos;%1&apos;...</source>
-        <translation>&apos;%1 &apos; &amp;Toplu Çevirisi...</translation>
+        <translation>“%1” &amp;Toplu Çevirisi…</translation>
     </message>
     <message>
         <source>Search And &amp;Translate in &apos;%1&apos;...</source>
-        <translation>&apos;%1 &apos; içinde Ara Ve &amp;Çevir...</translation>
+        <translation>“%1” içinde Ara Ve &amp;Çevir…</translation>
     </message>
     <message>
         <source>Search And &amp;Translate...</source>
-        <translation>Ara Ve &amp;Çevir...</translation>
+        <translation>Ara ve &amp;Çevir…</translation>
     </message>
     <message>
         <source>Cannot read from phrase book &apos;%1&apos;.</source>
-        <translation>&apos;%1&apos; sözcük grubu kitabından okunamıyor.</translation>
+        <translation>“%1” deyiş kitabından okunamıyor.</translation>
     </message>
     <message>
         <source>Close this phrase book.</source>
-        <translation>Bu sözcük grubu kitabını kapat.</translation>
+        <translation>Bu deyiş kitabını kapatın.</translation>
     </message>
     <message>
         <source>Enables you to add, modify, or delete entries in this phrase book.</source>
-        <translation>Bu sözcük grubu kitabına giriş eklemenizi, değiştirmenizi veya silmenizi sağlar.</translation>
+        <translation>Bu, deyiş kitabına giriş eklemenizi, değiştirmenizi veya silmenizi sağlar.</translation>
     </message>
     <message>
         <source>Print the entries in this phrase book.</source>
-        <translation>Bu sözcük grubu kitabındaki girişleri yazdırın.</translation>
+        <translation>Bu deyiş kitabındaki girişleri yazdırın.</translation>
     </message>
     <message>
         <source>Cannot create phrase book &apos;%1&apos;.</source>
-        <translation>&apos;%1&apos; sözcük grubu kitabı oluşturulamıyor.</translation>
+        <translation>“%1” deyiş kitabı oluşturulamıyor.</translation>
     </message>
     <message>
         <source>Do you want to save phrase book &apos;%1&apos;?</source>
-        <translation>&apos;%1&apos; sözcük grubu kitabını kaydetmek istiyor musunuz?</translation>
+        <translation>“%1” deyiş kitabını kaydetmek istiyor musunuz?</translation>
     </message>
     <message numerus="yes">
         <source>%n unfinished message(s) left.</source>
@@ -1314,14 +1320,17 @@ Tüm dosyalar (*)</translation>
         <source>All</source>
         <translation>Tümü</translation>
     </message>
+    <message>
+        <source>Find P&amp;revious</source>
+        <translation>Ö&amp;ncekini Bul</translation>
+    </message>
+    <message>
+        <source>Shift+F3</source>
+        <translation>Üst Karakter+F3</translation>
+    </message>
 </context>
 <context>
     <name>MessageEditor</name>
-    <message>
-        <source></source>
-        <comment>This is the right panel of the main window.</comment>
-        <translation></translation>
-    </message>
     <message>
         <source>This whole panel allows you to view and edit the translation of some source text.</source>
         <translation>Bu panelin tamamı, bazı kaynak metnin çevirisini görüntülemenizi ve düzenlemenizi sağlar.</translation>
@@ -1351,6 +1360,14 @@ Tüm dosyalar (*)</translation>
         <translation>Bu alan, size yol gösterebilecek bir açıklama ve metnin gerçekleştiği bağlamı gösterir.</translation>
     </message>
     <message>
+        <source>NCR mode</source>
+        <translation>NCR kipi</translation>
+    </message>
+    <message>
+        <source>Toggles Numeric Character Reference Mode for displaying the source text and the translations.</source>
+        <translation>Kaynak metin ve çeviriler için sayısal karakter başvuru kipini açar/kapatır.</translation>
+    </message>
+    <message>
         <source>Here you can enter comments for your own use. They have no effect on the translated applications.</source>
         <translation>Burada kendi kullanımınız için yorumlar girebilirsiniz. Çevrilmiş uygulamalar üzerinde hiçbir etkisi yoktur.</translation>
     </message>
@@ -1373,7 +1390,7 @@ Tüm dosyalar (*)</translation>
     <message>
         <source>&apos;%1&apos;
 Line: %2</source>
-        <translation>&apos;%1&apos;
+        <translation>“%1”
 Satır: %2</translation>
     </message>
 </context>
@@ -1385,15 +1402,15 @@ Satır: %2</translation>
     </message>
     <message>
         <source>&lt;file header&gt;</source>
-        <translation>&lt;file header&gt;</translation>
+        <translation>&lt;dosya üstbilgisi&gt;</translation>
     </message>
     <message>
         <source>&lt;context comment&gt;</source>
-        <translation>&lt;context comment&gt;</translation>
+        <translation>&lt;bağlam yorumu&gt;</translation>
     </message>
     <message>
         <source>&lt;unnamed context&gt;</source>
-        <translation>&lt;unnamed context&gt;</translation>
+        <translation>&lt;adsız bağlam&gt;</translation>
     </message>
     <message numerus="yes">
         <source>%n unfinished message(s) left.</source>
@@ -1413,11 +1430,11 @@ Satır: %2</translation>
     <name>PhraseBookBox</name>
     <message>
         <source>Edit Phrase Book</source>
-        <translation>Sözcük Grubu Kitabını Düzenle</translation>
+        <translation>Deyiş Kitabını Düzenle</translation>
     </message>
     <message>
         <source>This window allows you to add, modify, or delete entries in a phrase book.</source>
-        <translation>Bu pencere, sözcük grubu kitabındaki girişleri eklemenizi, değiştirmenizi veya silmenizi sağlar.</translation>
+        <translation>Bu pencere, deyiş kitabındaki girişleri eklemenizi, değiştirmenizi veya silmenizi sağlar.</translation>
     </message>
     <message>
         <source>&amp;Translation:</source>
@@ -1425,19 +1442,19 @@ Satır: %2</translation>
     </message>
     <message>
         <source>This is the phrase in the target language corresponding to the source phrase.</source>
-        <translation>Bu, hedef dildeki kaynak sözcük grubuna karşılık gelen sözcük grubudur.</translation>
+        <translation>Bu, hedef dildeki kaynak deyişe karşılık gelen sözcük grubudur.</translation>
     </message>
     <message>
         <source>S&amp;ource phrase:</source>
-        <translation>Kaynak &amp;sözcük grubu:</translation>
+        <translation>Kaynak &amp;deyiş:</translation>
     </message>
     <message>
         <source>This is a definition for the source phrase.</source>
-        <translation>Bu, kaynak sözcük grubunun tanımıdır.</translation>
+        <translation>Bu, kaynak deyiş için tanımdır.</translation>
     </message>
     <message>
         <source>This is the phrase in the source language.</source>
-        <translation>Bu, kaynak dildeki sözcük grubudur.</translation>
+        <translation>Bu, kaynak dildeki deyiştir.</translation>
     </message>
     <message>
         <source>&amp;Definition:</source>
@@ -1445,27 +1462,27 @@ Satır: %2</translation>
     </message>
     <message>
         <source>Click here to add the phrase to the phrase book.</source>
-        <translation>Sözcük grubunu sözcük grubu kitabına eklemek için burayı tıklayın.</translation>
+        <translation>Deyişi kitaba eklemek için buraya tıklayın.</translation>
     </message>
     <message>
         <source>&amp;New Entry</source>
-        <translation>Ye&amp;ni Giriş</translation>
+        <translation>Ye&amp;ni Girdi</translation>
     </message>
     <message>
         <source>Click here to remove the entry from the phrase book.</source>
-        <translation>Girişi sözcük grubu kitabından kaldırmak için burayı tıklayın.</translation>
+        <translation>Girdiyi deyiş kitabından kaldırmak için buraya tıklayın.</translation>
     </message>
     <message>
         <source>&amp;Remove Entry</source>
-        <translation>Girişi Kaldı&amp;r</translation>
+        <translation>Girdiyi Kaldı&amp;r</translation>
     </message>
     <message>
         <source>Settin&amp;gs...</source>
-        <translation>&amp;Ayarlar...</translation>
+        <translation>&amp;Ayarlar…</translation>
     </message>
     <message>
         <source>Click here to save the changes made.</source>
-        <translation>Yapılan değişiklikleri kaydetmek için burayı tıklayın.</translation>
+        <translation>Yapılan değişiklikleri kaydetmek için buraya tıklayın.</translation>
     </message>
     <message>
         <source>&amp;Save</source>
@@ -1480,17 +1497,12 @@ Satır: %2</translation>
         <translation>Kapat</translation>
     </message>
     <message>
-        <source></source>
-        <comment>Go to Phrase &gt; Edit Phrase Book... The dialog that pops up is a PhraseBookBox.</comment>
-        <translation></translation>
-    </message>
-    <message>
         <source>(New Entry)</source>
-        <translation>(Yeni Giriş)</translation>
+        <translation>(Yeni Girdi)</translation>
     </message>
     <message>
         <source>%1[*] - Qt Linguist</source>
-        <translation>%1[*] - Qt Linguist</translation>
+        <translation>%1[*] — Qt Linguist</translation>
     </message>
     <message>
         <source>Qt Linguist</source>
@@ -1498,14 +1510,14 @@ Satır: %2</translation>
     </message>
     <message>
         <source>Cannot save phrase book &apos;%1&apos;.</source>
-        <translation>&apos;%1&apos; sözcük grubu kitabı kaydedilemiyor.</translation>
+        <translation>“%1” deyiş kitabı kaydedilemiyor.</translation>
     </message>
 </context>
 <context>
     <name>PhraseModel</name>
     <message>
         <source>Source phrase</source>
-        <translation>Kaynak sözcük grubu</translation>
+        <translation>Kaynak deyiş</translation>
     </message>
     <message>
         <source>Translation</source>
@@ -1532,11 +1544,11 @@ Satır: %2</translation>
     </message>
     <message>
         <source>Guess from &apos;%1&apos; (%2)</source>
-        <translation>&apos;%1&apos; (%2) içinden tahmin et</translation>
+        <translation>“%1” (%2) içinden tahmin et</translation>
     </message>
     <message>
         <source>Guess from &apos;%1&apos;</source>
-        <translation>&apos;%1&apos; içinden tahmin et</translation>
+        <translation>“%1” içinden tahmin et</translation>
     </message>
 </context>
 <context>
@@ -1558,11 +1570,11 @@ Satır: %2</translation>
     <name>SourceCodeView</name>
     <message>
         <source>&lt;i&gt;Source code not available&lt;/i&gt;</source>
-        <translation>&lt;i&gt;Kaynak kodu mevcut değil&lt;/i&gt;</translation>
+        <translation>&lt;i&gt;Kaynak kodu kullanılamıyor&lt;/i&gt;</translation>
     </message>
     <message>
         <source>&lt;i&gt;File %1 not available&lt;/i&gt;</source>
-        <translation>&lt;i&gt;%1 dosyası mevcut değil&lt;/i&gt;</translation>
+        <translation>&lt;i&gt;%1 dosyası kullanılamıyor&lt;/i&gt;</translation>
     </message>
     <message>
         <source>&lt;i&gt;File %1 not readable&lt;/i&gt;</source>
@@ -1593,15 +1605,43 @@ Satır: %2</translation>
     </message>
     <message>
         <source>Words:</source>
-        <translation>Kelimeler:</translation>
+        <translation>Sözcük:</translation>
     </message>
     <message>
         <source>Characters:</source>
-        <translation>Karakterler:</translation>
+        <translation>Karakter:</translation>
     </message>
     <message>
         <source>Characters (with spaces):</source>
-        <translation>Karakterler (boşluklu):</translation>
+        <translation>Karakter (boşluklu):</translation>
+    </message>
+    <message>
+        <source>Unfinished</source>
+        <translation>Bitmemiş</translation>
+    </message>
+    <message>
+        <source>Total translatable messages:</source>
+        <translation>Toplam çevrilebilir ileti:</translation>
+    </message>
+    <message>
+        <source>Total finished:</source>
+        <translation>Toplam bitmiş:</translation>
+    </message>
+    <message>
+        <source>Without warnings:</source>
+        <translation>Uyarısız:</translation>
+    </message>
+    <message>
+        <source>With warnings:</source>
+        <translation>Uyarılı:</translation>
+    </message>
+    <message>
+        <source>Unfinished:</source>
+        <translation>Bitmemiş:</translation>
+    </message>
+    <message>
+        <source>Total messages including obsolete:</source>
+        <translation>Eskiler dahil toplam ileti:</translation>
     </message>
 </context>
 <context>
@@ -1628,11 +1668,11 @@ Satır: %2</translation>
     </message>
     <message>
         <source>Texts such as &apos;TeX&apos; and &apos;tex&apos; are considered as different when checked.</source>
-        <translation>&apos;TeX&apos; ve &apos;tex&apos; gibi metinler işaretlendiğinde farklı kabul edilir.</translation>
+        <translation>“TeX” ve “tex” gibi metinler işaretlendiğinde farklı kabul edilir.</translation>
     </message>
     <message>
         <source>Match &amp;case</source>
-        <translation>Büyük/küçük harf &amp;eşleştir</translation>
+        <translation>BÜYÜK/küçük harf &amp;eşleştir</translation>
     </message>
     <message>
         <source>Mark new translation as &amp;finished</source>
@@ -1683,16 +1723,20 @@ Satır: %2</translation>
     </message>
     <message>
         <source>%1 (%2)</source>
-        <extracomment>&lt;english&gt; (&lt;endonym&gt;) (language and country names)</extracomment>
+        <extracomment>&lt;english&gt; (&lt;endonym&gt;) (language names)</extracomment>
         <translation>%1 (%2)</translation>
     </message>
     <message>
         <source>Settings for &apos;%1&apos; - Qt Linguist</source>
-        <translation>&apos;%1&apos; için ayarlar - Qt Linguist</translation>
+        <translation>“%1” için ayarlar — Qt Linguist</translation>
+    </message>
+    <message>
+        <source>Any Territory</source>
+        <translation>Herhangi Bir Bölge</translation>
     </message>
     <message>
         <source>Any Country</source>
-        <translation>Herhengi Bir Ülke</translation>
+        <translation type="vanished">Herhangi Bir Ülke</translation>
     </message>
 </context>
 </TS>

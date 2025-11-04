@@ -23,11 +23,13 @@ class Q_QMLCOMPILER_EXPORT QQmlJSStorageGeneralizer : public QQmlJSCompilePass
 public:
     QQmlJSStorageGeneralizer(const QV4::Compiler::JSUnitGenerator *jsUnitGenerator,
                              const QQmlJSTypeResolver *typeResolver, QQmlJSLogger *logger,
-                             BasicBlocks basicBlocks, InstructionAnnotations annotations)
-        : QQmlJSCompilePass(jsUnitGenerator, typeResolver, logger, basicBlocks, annotations)
+                             QList<QQmlJS::DiagnosticMessage> *errors,
+                             const BasicBlocks &basicBlocks,
+                             const InstructionAnnotations &annotations)
+        : QQmlJSCompilePass(jsUnitGenerator, typeResolver, logger, errors, basicBlocks, annotations)
     {}
 
-    BlocksAndAnnotations run(Function *function, QQmlJS::DiagnosticMessage *error);
+    BlocksAndAnnotations run(Function *function);
 
 protected:
     // We don't have to use the byte code here. We only transform the instruction annotations.

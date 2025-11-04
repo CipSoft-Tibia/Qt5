@@ -78,12 +78,12 @@ static sk_sp<SkFontMgr> fontmgr_factory() {
 
 sk_sp<SkFontMgr> DefaultFontMgr() {
   static std::once_flag flag;
-  static sk_sp<SkFontMgr> mgr;
+  static SkFontMgr* mgr;
   std::call_once(flag, [] {
-    mgr = fontmgr_factory();
+    mgr = fontmgr_factory().release();
     g_factory_called = true;
   });
-  return mgr;
+  return sk_ref_sp(mgr);
 }
 
 void OverrideDefaultSkFontMgr(sk_sp<SkFontMgr> fontmgr) {
@@ -118,11 +118,3 @@ SkFont DefaultFont() {
 }
 
 }  // namespace skia
-
-// TODO(b/305780908) Remove this after all dependencies on the default fontmgr
-// have been removed.
-#if !defined(SK_DISABLE_LEGACY_FONTMGR_FACTORY)
-SK_API sk_sp<SkFontMgr> SkFontMgr::Factory() {
-  return skia::DefaultFontMgr();
-}
-#endif

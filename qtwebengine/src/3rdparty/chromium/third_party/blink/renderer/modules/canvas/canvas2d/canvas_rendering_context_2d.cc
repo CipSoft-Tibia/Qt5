@@ -33,58 +33,104 @@
 
 #include "third_party/blink/renderer/modules/canvas/canvas2d/canvas_rendering_context_2d.h"
 
-#include "base/metrics/histogram_functions.h"
+#include <stddef.h>
+
+#include <optional>
+#include <string_view>
+
+#include "base/check.h"
+#include "base/compiler_specific.h"
+#include "base/location.h"
+#include "base/memory/scoped_refptr.h"
+#include "base/memory/weak_ptr.h"
 #include "base/metrics/histogram_macros.h"
-#include "base/rand_util.h"
-#include "cc/paint/paint_flags.h"
-#include "third_party/blink/public/common/features.h"
-#include "third_party/blink/public/common/privacy_budget/identifiability_metric_builder.h"
-#include "third_party/blink/public/common/privacy_budget/identifiability_metrics.h"
+#include "base/time/time.h"
+#include "base/trace_event/common/trace_event_common.h"
+#include "cc/layers/texture_layer.h"  // IWYU pragma: keep (https://github.com/clangd/clangd/issues/2044)
+#include "cc/paint/paint_canvas.h"
+#include "third_party/blink/public/common/metrics/document_update_reason.h"
+#include "third_party/blink/public/common/privacy_budget/identifiable_token.h"
+#include "third_party/blink/public/mojom/frame/color_scheme.mojom-blink.h"
+#include "third_party/blink/public/mojom/scroll/scroll_enums.mojom-blink.h"
 #include "third_party/blink/public/mojom/scroll/scroll_into_view_params.mojom-blink.h"
-#include "third_party/blink/public/platform/platform.h"
 #include "third_party/blink/public/platform/task_type.h"
-#include "third_party/blink/renderer/bindings/modules/v8/v8_canvas_font_stretch.h"
-#include "third_party/blink/renderer/bindings/modules/v8/v8_canvas_text_rendering.h"
+#include "third_party/blink/renderer/bindings/modules/v8/v8_canvas_rendering_context_2d_settings.h"
 #include "third_party/blink/renderer/bindings/modules/v8/v8_canvas_will_read_frequently.h"
+#include "third_party/blink/renderer/bindings/modules/v8/v8_typedefs.h"
 #include "third_party/blink/renderer/modules/shorter_includes.h"
 #include SHORT_INCLUDE_FILE(third_party/blink/renderer/bindings/modules/v8/v8_union,canvasrenderingcontext2d_gpucanvascontext_imagebitmaprenderingcontext_webgl2renderingcontext_webglrenderingcontext)
 #include "third_party/blink/renderer/core/accessibility/ax_object_cache.h"
-#include "third_party/blink/renderer/core/css/css_font_selector.h"
 #include "third_party/blink/renderer/core/css/css_property_names.h"
 #include "third_party/blink/renderer/core/css/css_property_value_set.h"
 #include "third_party/blink/renderer/core/css/parser/css_parser.h"
 #include "third_party/blink/renderer/core/css/resolver/style_resolver.h"
 #include "third_party/blink/renderer/core/css/style_engine.h"
-#include "third_party/blink/renderer/core/dom/events/event.h"
-#include "third_party/blink/renderer/core/dom/node_computed_style.h"
-#include "third_party/blink/renderer/core/events/mouse_event.h"
+#include "third_party/blink/renderer/core/dom/document.h"
+#include "third_party/blink/renderer/core/dom/element.h"
 #include "third_party/blink/renderer/core/frame/settings.h"
-#include "third_party/blink/renderer/core/frame/web_feature.h"
 #include "third_party/blink/renderer/core/html/canvas/canvas_context_creation_attributes_core.h"
 #include "third_party/blink/renderer/core/html/canvas/canvas_font_cache.h"
-#include "third_party/blink/renderer/core/html/canvas/text_metrics.h"
-#include "third_party/blink/renderer/core/layout/hit_test_canvas_result.h"
+#include "third_party/blink/renderer/core/html/canvas/canvas_performance_monitor.h"
+#include "third_party/blink/renderer/core/html/canvas/canvas_rendering_context.h"
+#include "third_party/blink/renderer/core/layout/geometry/physical_offset.h"
+#include "third_party/blink/renderer/core/layout/geometry/physical_rect.h"
 #include "third_party/blink/renderer/core/layout/layout_box.h"
+#include "third_party/blink/renderer/core/layout/layout_box_model_object.h"
 #include "third_party/blink/renderer/core/layout/layout_theme.h"
+#include "third_party/blink/renderer/core/layout/map_coordinates_flags.h"
 #include "third_party/blink/renderer/core/scroll/scroll_alignment.h"
 #include "third_party/blink/renderer/core/scroll/scroll_into_view_util.h"
-#include "third_party/blink/renderer/core/typed_arrays/array_buffer/array_buffer_contents.h"
-#include "third_party/blink/renderer/modules/canvas/canvas2d/canvas_style.h"
+#include "third_party/blink/renderer/core/style/computed_style.h"
+#include "third_party/blink/renderer/core/style/filter_operations.h"
+#include "third_party/blink/renderer/core/svg/svg_resource_client.h"
+#include "third_party/blink/renderer/modules/canvas/canvas2d/base_rendering_context_2d.h"
+#include "third_party/blink/renderer/modules/canvas/canvas2d/canvas_rendering_context_2d_state.h"
 #include "third_party/blink/renderer/modules/canvas/canvas2d/path_2d.h"
-#include "third_party/blink/renderer/modules/formatted_text/formatted_text.h"
-#include "third_party/blink/renderer/platform/bindings/exception_state.h"
-#include "third_party/blink/renderer/platform/fonts/font_cache.h"
+#include "third_party/blink/renderer/platform/fonts/font.h"
+#include "third_party/blink/renderer/platform/geometry/layout_unit.h"
 #include "third_party/blink/renderer/platform/graphics/canvas_2d_layer_bridge.h"
 #include "third_party/blink/renderer/platform/graphics/canvas_resource_provider.h"
-#include "third_party/blink/renderer/platform/graphics/paint/paint_canvas.h"
+#include "third_party/blink/renderer/platform/graphics/gpu/shared_gpu_context.h"
+#include "third_party/blink/renderer/platform/graphics/graphics_types.h"
+#include "third_party/blink/renderer/platform/graphics/image_orientation.h"
+#include "third_party/blink/renderer/platform/graphics/memory_managed_paint_canvas.h"  // IWYU pragma: keep (https://github.com/clangd/clangd/issues/2044)
+#include "third_party/blink/renderer/platform/graphics/memory_managed_paint_recorder.h"
+#include "third_party/blink/renderer/platform/graphics/paint/paint_filter.h"
+#include "third_party/blink/renderer/platform/graphics/paint/paint_record.h"
 #include "third_party/blink/renderer/platform/graphics/skia/skia_utils.h"
 #include "third_party/blink/renderer/platform/graphics/static_bitmap_image.h"
 #include "third_party/blink/renderer/platform/graphics/stroke_data.h"
 #include "third_party/blink/renderer/platform/heap/garbage_collected.h"
-#include "third_party/blink/renderer/platform/wtf/math_extras.h"
-#include "third_party/blink/renderer/platform/wtf/text/string_builder.h"
+#include "third_party/blink/renderer/platform/runtime_enabled_features.h"
+#include "third_party/blink/renderer/platform/timer.h"
+#include "third_party/blink/renderer/platform/wtf/hash_table.h"
+#include "third_party/blink/renderer/platform/wtf/key_value_pair.h"
+#include "third_party/blink/renderer/platform/wtf/text/wtf_string.h"
+#include "third_party/skia/include/core/SkColor.h"
+#include "third_party/skia/include/core/SkRect.h"
+#include "third_party/skia/include/core/SkRefCnt.h"
+#include "ui/gfx/geometry/rect_f.h"
+#include "ui/gfx/geometry/size.h"
+
+// UMA Histogram macros trigger a bug in IWYU.
+// https://github.com/include-what-you-use/include-what-you-use/issues/1546
+// IWYU pragma: no_include <atomic>
+// IWYU pragma: no_include "base/metrics/histogram_base.h"
+
+namespace base {
+struct PendingTask;
+}  // namespace base
+namespace cc {
+class PaintFlags;
+}  // namespace cc
 
 namespace blink {
+class ExecutionContext;
+class FontSelector;
+class ImageData;
+class ImageDataSettings;
+class LayoutObject;
+class SVGResource;
 
 static mojom::blink::ColorScheme GetColorSchemeFromCanvas(
     HTMLCanvasElement* canvas) {
@@ -128,10 +174,6 @@ V8RenderingContext* CanvasRenderingContext2D::AsV8RenderingContext() {
   return MakeGarbageCollected<V8RenderingContext>(this);
 }
 
-NoAllocDirectCallHost* CanvasRenderingContext2D::AsNoAllocDirectCallHost() {
-  return this;
-}
-
 CanvasRenderingContext2D::~CanvasRenderingContext2D() = default;
 
 bool CanvasRenderingContext2D::IsOriginTopLeft() const {
@@ -151,7 +193,7 @@ bool CanvasRenderingContext2D::IsComposited() const {
 }
 
 void CanvasRenderingContext2D::Stop() {
-  if (LIKELY(!isContextLost())) {
+  if (!isContextLost()) [[likely]] {
     // Never attempt to restore the context because the page is being torn down.
     context_restorable_ = false;
     LoseContext(kSyntheticLostContext);
@@ -170,21 +212,20 @@ void CanvasRenderingContext2D::LoseContext(LostContextMode lost_mode) {
   if (context_lost_mode_ != kNotLostContext)
     return;
   context_lost_mode_ = lost_mode;
-  PostDeferrableAction(WTF::BindOnce(
-      [](BaseRenderingContext2D* context) { context->ResetInternal(); },
-      WrapPersistent(this)));
+  ResetInternal();
   HTMLCanvasElement* const element = canvas();
-  if (LIKELY(element != nullptr) &&
-      context_lost_mode_ == kSyntheticLostContext) {
-    element->DiscardResourceProvider();
-  }
+  if (element != nullptr) [[likely]] {
+    if (context_lost_mode_ == kSyntheticLostContext) {
+      element->DiscardResourceProvider();
+    }
 
-  if (LIKELY(element != nullptr) && element->IsPageVisible()) {
-    dispatch_context_lost_event_timer_.StartOneShot(base::TimeDelta(),
-                                                    FROM_HERE);
-  } else {
-    needs_context_lost_event_ = true;
+    if (element->IsPageVisible()) {
+      dispatch_context_lost_event_timer_.StartOneShot(base::TimeDelta(),
+                                                      FROM_HERE);
+      return;
+    }
   }
+  needs_context_lost_event_ = true;
 }
 
 void CanvasRenderingContext2D::DidSetSurfaceSize() {
@@ -220,18 +261,18 @@ void CanvasRenderingContext2D::TryRestoreContextEvent(TimerBase* timer) {
   // If lost mode is |kSyntheticLostContext| and |context_restorable_| is set to
   // true, it means context is forced to be lost for testing purpose. Restore
   // the context.
-  if (context_lost_mode_ == kSyntheticLostContext &&
-      canvas()->GetOrCreateCanvas2DLayerBridge() &&
-      canvas()->GetCanvas2DLayerBridge()->GetPaintCanvas()) {
-    try_restore_context_event_timer_.Stop();
-    DispatchContextRestoredEvent(nullptr);
-    return;
+  if (context_lost_mode_ == kSyntheticLostContext) {
+    Canvas2DLayerBridge* bridge = canvas()->GetOrCreateCanvas2DLayerBridge();
+    if (bridge && bridge->GetOrCreateResourceProvider()) {
+      try_restore_context_event_timer_.Stop();
+      DispatchContextRestoredEvent(nullptr);
+      return;
+    }
   }
 
   // If RealLostContext, it means the context was not lost due to surface
   // failure but rather due to a an eviction, which means image buffer exists.
-  if (context_lost_mode_ == kRealLostContext && IsPaintable() &&
-      canvas()->GetCanvas2DLayerBridge()->Restore()) {
+  if (context_lost_mode_ == kRealLostContext && IsPaintable() && Restore()) {
     try_restore_context_event_timer_.Stop();
     DispatchContextRestoredEvent(nullptr);
     return;
@@ -242,12 +283,47 @@ void CanvasRenderingContext2D::TryRestoreContextEvent(TimerBase* timer) {
     // After 4 tries, we start the final attempt, allocate a brand new image
     // buffer instead of restoring
     try_restore_context_event_timer_.Stop();
-    if (CanvasRenderingContextHost* host = Host(); LIKELY(host != nullptr)) {
+    if (CanvasRenderingContextHost* host = Host()) [[likely]] {
       host->DiscardResourceProvider();
     }
     if (CanCreateCanvas2dResourceProvider())
       DispatchContextRestoredEvent(nullptr);
   }
+}
+
+bool CanvasRenderingContext2D::Restore() {
+  CanvasRenderingContextHost* host = Host();
+  CHECK(host);
+  CHECK(host->context_lost());
+  if (host->GetRasterMode() == RasterMode::kCPU) {
+    return false;
+  }
+  DCHECK(!host->ResourceProvider());
+
+  host->ClearLayerTexture();
+
+  base::WeakPtr<WebGraphicsContext3DProviderWrapper> context_provider_wrapper =
+      SharedGpuContext::ContextProviderWrapper();
+
+  if (!context_provider_wrapper->ContextProvider()->IsContextLost()) {
+    CanvasResourceProvider* resource_provider =
+        host->GetOrCreateCanvasResourceProviderImpl(RasterModeHint::kPreferGPU);
+
+    // The current paradigm does not support switching from accelerated to
+    // non-accelerated, which would be tricky due to changes to the layer tree,
+    // which can only happen at specific times during the document lifecycle.
+    // Therefore, we can only accept the restored surface if it is accelerated.
+    if (resource_provider && host->GetRasterMode() == RasterMode::kCPU) {
+      host->ReplaceResourceProvider(nullptr);
+      // FIXME: draw sad canvas picture into new buffer crbug.com/243842
+    } else {
+      host->set_context_lost(false);
+    }
+  }
+
+  host->UpdateMemoryUsage();
+
+  return host->ResourceProvider();
 }
 
 void CanvasRenderingContext2D::WillDrawImage(CanvasImageSource* source) const {
@@ -282,16 +358,8 @@ void CanvasRenderingContext2D::SetShouldAntialias(bool do_aa) {
   GetState().SetShouldAntialias(do_aa);
 }
 
-void CanvasRenderingContext2D::scrollPathIntoView() {
-  ScrollPathIntoViewInternal(GetPath());
-}
-
-void CanvasRenderingContext2D::scrollPathIntoView(Path2D* path2d) {
-  ScrollPathIntoViewInternal(path2d->GetPath());
-}
-
 void CanvasRenderingContext2D::ScrollPathIntoViewInternal(const Path& path) {
-  if (UNLIKELY(!IsTransformInvertible() || path.IsEmpty())) {
+  if (!IsTransformInvertible() || path.IsEmpty()) [[unlikely]] {
     return;
   }
 
@@ -349,7 +417,7 @@ void CanvasRenderingContext2D::ScrollPathIntoViewInternal(const Path& path) {
   }
   scroll_into_view_util::ScrollRectToVisible(
       *renderer, path_rect,
-      ScrollAlignment::CreateScrollIntoViewParams(
+      scroll_into_view_util::CreateScrollIntoViewParams(
           horizontal_scroll_mode, vertical_scroll_mode,
           mojom::blink::ScrollType::kProgrammatic, false,
           mojom::blink::ScrollBehavior::kAuto));
@@ -368,32 +436,48 @@ sk_sp<PaintFilter> CanvasRenderingContext2D::StateGetFilter() {
 }
 
 cc::PaintCanvas* CanvasRenderingContext2D::GetOrCreatePaintCanvas() {
-  if (UNLIKELY(isContextLost()))
+  if (isContextLost()) [[unlikely]] {
     return nullptr;
+  }
 
   Canvas2DLayerBridge* bridge = canvas()->GetOrCreateCanvas2DLayerBridge();
-  if (UNLIKELY(bridge == nullptr)) {
+  if (bridge == nullptr) [[unlikely]] {
     return nullptr;
   }
 
   CanvasResourceProvider* provider = ResourceProvider();
-  if (LIKELY(provider != nullptr) && LIKELY(layer_count_ == 0)) {
-    // TODO(crbug.com/1246486): Make auto-flushing layer friendly.
-    provider->FlushIfRecordingLimitExceeded();
+  if (provider != nullptr) [[likely]] {
+    // If we already had a provider, we can check whether it recorded ops passed
+    // the autoflush limit.
+    if (layer_count_ == 0) [[likely]] {
+      // TODO(crbug.com/1246486): Make auto-flushing layer friendly.
+      provider->FlushIfRecordingLimitExceeded();
+    }
+  } else {
+    // If we have no provider, try creating one.
+    provider = bridge->GetOrCreateResourceProvider();
+    if (provider == nullptr) [[unlikely]] {
+      return nullptr;
+    }
   }
-  return bridge->GetPaintCanvas();
+
+  return &provider->Recorder().getRecordingCanvas();
 }
 
-cc::PaintCanvas* CanvasRenderingContext2D::GetPaintCanvas() {
-  if (UNLIKELY(isContextLost() || !ResourceProvider())) {
+const cc::PaintCanvas* CanvasRenderingContext2D::GetPaintCanvas() const {
+  if (isContextLost()) [[unlikely]] {
     return nullptr;
   }
-  return canvas()->GetCanvas2DLayerBridge()->GetPaintCanvas();
+  const CanvasResourceProvider* provider = ResourceProvider();
+  if (!provider) [[unlikely]] {
+    return nullptr;
+  }
+  return &provider->Recorder().getRecordingCanvas();
 }
 
-MemoryManagedPaintRecorder* CanvasRenderingContext2D::Recorder() {
-  CanvasResourceProvider* provider = ResourceProvider();
-  if (UNLIKELY(provider == nullptr)) {
+const MemoryManagedPaintRecorder* CanvasRenderingContext2D::Recorder() const {
+  const CanvasResourceProvider* provider = ResourceProvider();
+  if (provider == nullptr) [[unlikely]] {
     return nullptr;
   }
   return &provider->Recorder();
@@ -402,20 +486,25 @@ MemoryManagedPaintRecorder* CanvasRenderingContext2D::Recorder() {
 void CanvasRenderingContext2D::WillDraw(
     const SkIRect& dirty_rect,
     CanvasPerformanceMonitor::DrawType draw_type) {
-  CanvasRenderingContext::DidDraw(dirty_rect, draw_type);
+  if (ShouldAntialias()) {
+    SkIRect inflated_dirty_rect = dirty_rect.makeOutset(1, 1);
+    CanvasRenderingContext::DidDraw(inflated_dirty_rect, draw_type);
+  } else {
+    CanvasRenderingContext::DidDraw(dirty_rect, draw_type);
+  }
   // Always draw everything during printing.
   if (CanvasResourceProvider* provider = ResourceProvider();
-      LIKELY(layer_count_ == 0) && LIKELY(provider != nullptr)) {
+      layer_count_ == 0 && provider != nullptr) [[likely]] {
     // TODO(crbug.com/1246486): Make auto-flushing layer friendly.
     provider->FlushIfRecordingLimitExceeded();
   }
 }
 
-absl::optional<cc::PaintRecord> CanvasRenderingContext2D::FlushCanvas(
+std::optional<cc::PaintRecord> CanvasRenderingContext2D::FlushCanvas(
     FlushReason reason) {
   CanvasResourceProvider* provider = ResourceProvider();
-  if (UNLIKELY(provider == nullptr)) {
-    return absl::nullopt;
+  if (provider == nullptr) [[unlikely]] {
+    return std::nullopt;
   }
   return provider->FlushCanvas(reason);
 }
@@ -481,12 +570,12 @@ bool CanvasRenderingContext2D::ResolveFont(const String& new_font) {
 
       font_style_builder.SetFontDescription(element_font_description);
       const ComputedStyle* font_style = font_style_builder.TakeStyle();
-      Font font = document.GetStyleEngine().ComputeFont(*element, *font_style,
-                                                        *parsed_style);
+      const Font* font = document.GetStyleEngine().ComputeFont(
+          *element, *font_style, *parsed_style);
 
       // We need to reset Computed and Adjusted size so we skip zoom and
       // minimum font size.
-      FontDescription final_description(font.GetFontDescription());
+      FontDescription final_description(font->GetFontDescription());
       final_description.SetComputedSize(final_description.SpecifiedSize());
       final_description.SetAdjustedSize(final_description.SpecifiedSize());
 
@@ -498,15 +587,15 @@ bool CanvasRenderingContext2D::ResolveFont(const String& new_font) {
       GetState().SetFont(final_description, Host()->GetFontSelector());
     }
   } else {
-    Font resolved_font;
-    if (!canvas_font_cache->GetFontUsingDefaultStyle(*element, new_font,
-                                                     resolved_font)) {
+    const Font* resolved_font =
+        canvas_font_cache->GetFontUsingDefaultStyle(*element, new_font);
+    if (!resolved_font) {
       return false;
     }
 
     // We need to reset Computed and Adjusted size so we skip zoom and
     // minimum font size for detached canvas.
-    FontDescription final_description(resolved_font.GetFontDescription());
+    FontDescription final_description(resolved_font->GetFontDescription());
     final_description.SetComputedSize(final_description.SpecifiedSize());
     final_description.SetAdjustedSize(final_description.SpecifiedSize());
     GetState().SetFont(final_description, Host()->GetFontSelector());
@@ -525,10 +614,12 @@ void CanvasRenderingContext2D::DidProcessTask(
   // that is not traced, so didProcessTask() may be called at a time when the
   // canvas has been garbage collected but not the context.
   const HTMLCanvasElement* const element = canvas();
-  if (should_prune_local_font_cache_ && LIKELY(element != nullptr)) {
-    should_prune_local_font_cache_ = false;
-    PruneLocalFontCache(
-        element->GetDocument().GetCanvasFontCache()->MaxFonts());
+  if (should_prune_local_font_cache_) {
+    if (element != nullptr) [[likely]] {
+      should_prune_local_font_cache_ = false;
+      PruneLocalFontCache(
+          element->GetDocument().GetCanvasFontCache()->MaxFonts());
+    }
   }
 }
 
@@ -637,35 +728,6 @@ Color CanvasRenderingContext2D::GetCurrentColor() const {
   return color;
 }
 
-void CanvasRenderingContext2D::drawFormattedText(
-    FormattedText* formatted_text,
-    double x,
-    double y,
-    ExceptionState& exception_state) {
-  if (!formatted_text)
-    return;
-  // TODO(crbug.com/1234113): Instrument new canvas APIs.
-  identifiability_study_helper_.set_encountered_skipped_ops();
-
-  if (!GetState().HasRealizedFont())
-    setFont(font());
-
-  gfx::RectF bounds;
-  PaintRecord recording = formatted_text->PaintFormattedText(
-      canvas()->GetDocument(), GetState().GetFontDescription(), x, y, bounds,
-      exception_state);
-  if (recording.size()) {
-    Draw<OverdrawOp::kNone>(
-        [&recording](cc::PaintCanvas* c,
-                     const cc::PaintFlags* flags)  // draw lambda
-        { c->drawPicture(std::move(recording)); },
-        [](const SkIRect& rect) { return false; }, bounds,
-        CanvasRenderingContext2DState::PaintType::kFillPaintType,
-        CanvasRenderingContext2DState::kNoImage,
-        CanvasPerformanceMonitor::DrawType::kText);
-  }
-}
-
 void CanvasRenderingContext2D::PageVisibilityChanged() {
   HTMLCanvasElement* const element = canvas();
   if (IsPaintable()) {
@@ -727,7 +789,7 @@ void CanvasRenderingContext2D::DrawFocusIfNeededInternal(
   // element->focused(), because element->focused() isn't updated until after
   // focus events fire.
   if (element->GetDocument().FocusedElement() == element) {
-    if (UNLIKELY(identifiability_study_helper_.ShouldUpdateBuilder())) {
+    if (identifiability_study_helper_.ShouldUpdateBuilder()) [[unlikely]] {
       identifiability_study_helper_.UpdateBuilder(CanvasOps::kDrawFocusIfNeeded,
                                                   path_token);
     }
@@ -742,7 +804,7 @@ void CanvasRenderingContext2D::DrawFocusIfNeededInternal(
 bool CanvasRenderingContext2D::FocusRingCallIsValid(const Path& path,
                                                     Element* element) {
   DCHECK(element);
-  if (UNLIKELY(!IsTransformInvertible())) {
+  if (!IsTransformInvertible()) [[unlikely]] {
     return false;
   }
   if (path.IsEmpty())
@@ -764,7 +826,8 @@ void CanvasRenderingContext2D::DrawFocusRing(const Path& path,
       color_scheme = style->UsedColorScheme();
   }
 
-  SkColor color = LayoutTheme::GetTheme().FocusRingColor(color_scheme).Rgb();
+  const SkColor4f color =
+      LayoutTheme::GetTheme().FocusRingColor(color_scheme).toSkColor4f();
   const int kFocusRingWidth = 5;
   DrawPlatformFocusRing(path.GetSkPath(), GetPaintCanvas(), color,
                         /*width=*/kFocusRingWidth,
@@ -847,6 +910,10 @@ HTMLCanvasElement* CanvasRenderingContext2D::HostAsHTMLCanvasElement() const {
 
 FontSelector* CanvasRenderingContext2D::GetFontSelector() const {
   return canvas()->GetFontSelector();
+}
+
+int CanvasRenderingContext2D::LayerCount() const {
+  return BaseRenderingContext2D::LayerCount();
 }
 
 }  // namespace blink

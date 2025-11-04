@@ -26,6 +26,7 @@ private slots:
     void tooltipAndSiblingPopup();
     void switchPopups();
     void hidePopupParent();
+    void popupsWithoutParent();
     void pongs();
     void minMaxSize_data();
     void minMaxSize();
@@ -49,7 +50,6 @@ void tst_xdgshell::showMinimized()
     // between a window preview and an unminimized window.
     QWindow window;
     window.showMinimized();
-    QCOMPARE(window.windowStates(), Qt::WindowMinimized);   // should return minimized until
     QTRY_COMPARE(window.windowStates(), Qt::WindowNoState); // rejected by handleWindowStateChanged
 
     // Make sure the window on the compositor side is/was created here, and not after the test
@@ -111,11 +111,30 @@ void tst_xdgshell::configureSize()
 
     const QSize configureSize(60, 40);
 
+    int pendingSerial;
     exec([&] {
         xdgToplevel()->sendCompleteConfigure(configureSize);
+        pendingSerial = xdgSurface()->m_pendingConfigureSerials.last();
     });
 
     QTRY_COMPARE(configureSpy.size(), 1);
+    QCOMPARE(configureSpy.last()[0].toInt(), pendingSerial);
+
+    exec([&] {
+        Buffer *buffer = xdgToplevel()->surface()->m_committed.buffer;
+        QVERIFY(buffer);
+        QCOMPARE(buffer->size(), configureSize);
+    });
+
+    // clients should always respond with a new ack configure + commit
+    // even if nothing changed
+    exec([&] {
+        xdgToplevel()->sendCompleteConfigure(configureSize);
+        pendingSerial = xdgSurface()->m_pendingConfigureSerials.last();
+    });
+
+    QTRY_COMPARE(configureSpy.size(), 2);
+    QCOMPARE(configureSpy.last()[0].toInt(), pendingSerial);
 
     exec([&] {
         Buffer *buffer = xdgToplevel()->surface()->m_committed.buffer;
@@ -587,6 +606,45 @@ void tst_xdgshell::hidePopupParent()
 
     window.hide();
     QCOMPOSITOR_TRY_VERIFY(!xdgToplevel());
+}
+
+void tst_xdgshell::popupsWithoutParent()
+{
+    QRasterWindow popup;
+    QSignalSpy popupDoneSpy(&popup, &QWindow::visibilityChanged);
+    popup.setFlags(Qt::Popup);
+    popup.resize(100, 100);
+    popup.show();
+    QVERIFY(popup.isVisible());
+
+    // popup cannot be created within the spec, so it gets auto-dismissed
+    QVERIFY(popupDoneSpy.wait());
+    QVERIFY(!popup.isVisible());
+
+    QCOMPOSITOR_VERIFY(!xdgToplevel());
+
+    // now make a normal window with an input event
+    QRasterWindow window;
+    window.setTitle("main window");
+    window.resize(200, 200);
+    window.show();
+
+    QCOMPOSITOR_TRY_VERIFY(xdgToplevel());
+    exec([&] { xdgToplevel()->sendCompleteConfigure(); });
+    QCOMPOSITOR_TRY_VERIFY(xdgToplevel()->m_xdgSurface->m_committedConfigureSerial);
+    exec([&] {
+        keyboard()->sendEnter(xdgToplevel()->surface());
+        keyboard()->sendKey(client(), 72, Keyboard::key_state_pressed); // related with native scan code
+        keyboard()->sendKey(client(), 72, Keyboard::key_state_released); // related with native scan code
+    });
+    QTRY_COMPARE(qGuiApp->focusWindow(), &window);
+
+    // now re-show our popup, it should be able to guess a transient this time
+    // and correctly show as a popup
+    popup.show();
+    QCOMPOSITOR_TRY_VERIFY(xdgPopup());
+    exec([&] { xdgPopup()->sendCompleteConfigure(QRect(100, 100, 100, 100)); });
+    QCOMPOSITOR_TRY_VERIFY(xdgPopup()->m_xdgSurface->m_committedConfigureSerial);
 }
 
 void tst_xdgshell::pongs()

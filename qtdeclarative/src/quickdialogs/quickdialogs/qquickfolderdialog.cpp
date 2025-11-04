@@ -8,8 +8,6 @@
 
 QT_BEGIN_NAMESPACE
 
-Q_DECLARE_LOGGING_CATEGORY(lcDialogs)
-
 /*!
     \qmltype FolderDialog
     \inherits Dialog
@@ -20,7 +18,7 @@ Q_DECLARE_LOGGING_CATEGORY(lcDialogs)
 
     The FolderDialog type provides a QML API for native platform folder dialogs.
 
-    \image qtquickdialogs-folderdialog-gtk.png
+    \image qtquickdialogs-folderdialog-gtk.png {The folder dialog type allow dialogs to copy the native look and feel of the platform}
 
     To show a folder dialog, construct an instance of FolderDialog, set the
     desired properties, and call \l {Dialog::}{open()}. The \l currentFolder

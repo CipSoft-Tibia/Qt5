@@ -6,6 +6,7 @@
 
 #include "core/fpdfdoc/cpdf_action.h"
 
+#include <array>
 #include <iterator>
 #include <utility>
 
@@ -16,14 +17,30 @@
 #include "core/fpdfapi/parser/cpdf_name.h"
 #include "core/fpdfapi/parser/fpdf_parser_utility.h"
 #include "core/fpdfdoc/cpdf_filespec.h"
+#include "core/fxcrt/stl_util.h"
 
 namespace {
 
-const char* const kActionTypeStrings[] = {
-    "GoTo",       "GoToR",     "GoToE",      "Launch",     "Thread",
-    "URI",        "Sound",     "Movie",      "Hide",       "Named",
-    "SubmitForm", "ResetForm", "ImportData", "JavaScript", "SetOCGState",
-    "Rendition",  "Trans",     "GoTo3DView"};
+constexpr auto kActionTypeStrings = fxcrt::ToArray<const char*>({
+    "GoTo",
+    "GoToR",
+    "GoToE",
+    "Launch",
+    "Thread",
+    "URI",
+    "Sound",
+    "Movie",
+    "Hide",
+    "Named",
+    "SubmitForm",
+    "ResetForm",
+    "ImportData",
+    "JavaScript",
+    "SetOCGState",
+    "Rendition",
+    "Trans",
+    "GoTo3DView",
+});
 
 }  // namespace
 
@@ -146,10 +163,10 @@ std::vector<RetainPtr<const CPDF_Object>> CPDF_Action::GetAllFields() const {
   return result;
 }
 
-absl::optional<WideString> CPDF_Action::MaybeGetJavaScript() const {
+std::optional<WideString> CPDF_Action::MaybeGetJavaScript() const {
   RetainPtr<const CPDF_Object> pObject = GetJavaScriptObject();
   if (!pObject)
-    return absl::nullopt;
+    return std::nullopt;
   return pObject->GetUnicodeText();
 }
 

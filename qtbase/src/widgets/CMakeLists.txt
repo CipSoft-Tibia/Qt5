@@ -43,8 +43,6 @@ qt_internal_add_module(Widgets
         styles/qstyleoption.cpp styles/qstyleoption.h
         styles/qstylepainter.cpp styles/qstylepainter.h
         styles/qstyleplugin.cpp styles/qstyleplugin.h
-        styles/qstylesheetstyle.cpp styles/qstylesheetstyle_p.h
-        styles/qstylesheetstyle_default.cpp
         util/qcolormap.cpp util/qcolormap.h
         util/qsystemtrayicon.cpp util/qsystemtrayicon.h util/qsystemtrayicon_p.h
         widgets/qabstractscrollarea.cpp widgets/qabstractscrollarea.h widgets/qabstractscrollarea_p.h
@@ -169,7 +167,11 @@ set(qstyle_resource_files
     "styles/images/media-stop-16.png"
     "styles/images/media-stop-32.png"
     "styles/images/media-volume-16.png"
+    "styles/images/media-volume-32.png"
+    "styles/images/media-volume-128.png"
     "styles/images/media-volume-muted-16.png"
+    "styles/images/media-volume-muted-32.png"
+    "styles/images/media-volume-muted-128.png"
     "styles/images/networkdrive-128.png"
     "styles/images/networkdrive-16.png"
     "styles/images/networkdrive-32.png"
@@ -423,6 +425,12 @@ qt_internal_extend_target(Widgets CONDITION QT_FEATURE_whatsthis
 qt_internal_extend_target(Widgets CONDITION QT_FEATURE_animation
     SOURCES
         styles/qstyleanimation.cpp styles/qstyleanimation_p.h
+)
+
+qt_internal_extend_target(Widgets CONDITION QT_FEATURE_style_stylesheet
+    SOURCES
+        styles/qstylesheetstyle.cpp styles/qstylesheetstyle_p.h
+        styles/qstylesheetstyle_default.cpp
 )
 
 qt_internal_extend_target(Widgets CONDITION QT_FEATURE_style_windows
@@ -916,14 +924,21 @@ if(IOS)
         "${CMAKE_CURRENT_SOURCE_DIR}/platform/ios/PrivacyInfo.xcprivacy")
 endif()
 
-# include the snippet projects for developer-builds
-if(QT_FEATURE_private_tests)
+if(QT_FEATURE_doc_snippets)
     add_subdirectory(doc/snippets/customviewstyle)
-    add_subdirectory(doc/snippets/filedialogurls)
-    add_subdirectory(doc/snippets/graphicssceneadditem)
+    if (QT_FEATURE_filedialog)
+        add_subdirectory(doc/snippets/filedialogurls)
+    endif()
+    if (QT_FEATURE_graphicsview)
+        add_subdirectory(doc/snippets/graphicssceneadditem)
+    endif()
     if(QT_FEATURE_opengl AND QT_FEATURE_printdialog)
         add_subdirectory(doc/snippets/graphicsview)
     endif()
-    add_subdirectory(doc/snippets/mdiarea)
-    add_subdirectory(doc/snippets/myscrollarea)
+    if (QT_FEATURE_mdiarea)
+        add_subdirectory(doc/snippets/mdiarea)
+    endif()
+    if (QT_FEATURE_scrollarea)
+        add_subdirectory(doc/snippets/myscrollarea)
+    endif()
 endif()

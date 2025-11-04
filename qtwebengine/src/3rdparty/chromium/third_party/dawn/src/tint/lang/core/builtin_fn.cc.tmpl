@@ -65,7 +65,7 @@ bool IsTexture(BuiltinFn f) {
            f == BuiltinFn::kTextureSampleCompareLevel ||     //
            f == BuiltinFn::kTextureSampleGrad ||             //
            f == BuiltinFn::kTextureSampleLevel ||            //
-           f == BuiltinFn::kTextureStore;
+           f == BuiltinFn::kTextureStore || f == BuiltinFn::kInputAttachmentLoad;
 }
 
 bool IsImageQuery(BuiltinFn f) {
@@ -105,10 +105,6 @@ bool IsPacked4x8IntegerDotProductBuiltin(BuiltinFn f) {
            f == BuiltinFn::kPack4XI8 || f == BuiltinFn::kPack4XU8 ||
            f == BuiltinFn::kPack4XI8Clamp || f == BuiltinFn::kPack4XU8Clamp ||
            f == BuiltinFn::kUnpack4XI8 || f == BuiltinFn::kUnpack4XU8;
-}
-
-bool IsSubgroup(BuiltinFn f) {
-    return f == BuiltinFn::kSubgroupBallot || f == BuiltinFn::kSubgroupBroadcast;
 }
 
 bool HasSideEffects(BuiltinFn f) {

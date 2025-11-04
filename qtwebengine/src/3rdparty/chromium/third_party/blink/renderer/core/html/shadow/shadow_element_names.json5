@@ -58,10 +58,6 @@
       Symbol: "kIdPasswordRevealButton",
     },
     {
-      name: "password-strong-label",
-      Symbol: "kIdPasswordStrongLabel",
-    },
-    {
       name: "thumb",
       Symbol: "kIdSliderThumb",
     },
@@ -80,6 +76,30 @@
     {
       name: "optgroup-label",
       Symbol: "kIdOptGroupLabel",
+    },
+    {
+      name: "select-options",
+      Symbol: "kSelectOptions",
+    },
+    {
+      name: "select-button",
+      Symbol: "kSelectButton",
+    },
+    {
+      name: "select-popover-options",
+      Symbol: "kSelectPopoverOptions",
+    },
+    {
+      name: "select-fallback-button",
+      Symbol: "kSelectFallbackButton",
+    },
+    {
+      name: "select-fallback-button-text",
+      Symbol: "kSelectFallbackButtonText",
+    },
+    {
+      name: "picker(select)",
+      Symbol: "kPickerSelect",
     },
 
     //
@@ -105,6 +125,14 @@
     {
       name: "-internal-media-controls-segmented-track",
       Symbol: "kPseudoMediaControlsSegmentedTrack",
+    },
+    {
+      name: "-internal-select-autofill-preview",
+      Symbol: "kSelectAutofillPreview",
+    },
+    {
+      name: "-internal-select-autofill-preview-text",
+      Symbol: "kSelectAutofillPreviewText",
     },
     {
       name: "-webkit-calendar-picker-indicator",

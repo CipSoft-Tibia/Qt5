@@ -9,10 +9,11 @@
 #include <cstring>
 #include <vector>
 
+#include "core/fxcrt/fx_memcpy_wrappers.h"
+#include "core/fxcrt/numerics/safe_conversions.h"
 #include "public/fpdfview.h"
 #include "testing/utils/file_util.h"
 #include "testing/utils/path_service.h"
-#include "third_party/base/numerics/safe_conversions.h"
 #include "v8/include/libplatform/libplatform.h"
 #include "v8/include/v8-initialization.h"
 #include "v8/include/v8-snapshot.h"
@@ -58,9 +59,9 @@ bool GetExternalData(const std::string& exe_path,
 
   // `result_data` takes ownership.
   void* copy = malloc(data_buffer.size());
-  memcpy(copy, data_buffer.data(), data_buffer.size());
+  FXSYS_memcpy(copy, data_buffer.data(), data_buffer.size());
   result_data->data = static_cast<char*>(copy);
-  result_data->raw_size = pdfium::base::checked_cast<int>(data_buffer.size());
+  result_data->raw_size = pdfium::checked_cast<int>(data_buffer.size());
   return true;
 }
 #endif  // V8_USE_EXTERNAL_STARTUP_DATA

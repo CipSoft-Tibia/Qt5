@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 /*!
     \since 4.3
@@ -36,7 +37,7 @@
     access.
 
     \note This class is deprecated and may be removed in a Qt release. Use
-    QDirListing instead.
+    QDirListing instead, see \l {Porting QDirIterator to QDirListing}.
 
     \sa QDir, QDir::entryList()
 */
@@ -106,8 +107,10 @@ public:
         // Match the behavior of advance() from before porting to QDirListing,
         // that is, even if hasNext() returns false, calling next() returns an
         // empty string without crashing. QTBUG-130142
-        if (it == lister.end())
+        if (it == lister.end()) {
+            currentFileInfo = {};
             return;
+        }
         currentFileInfo = nextFileInfo;
         if (++it != lister.end()) {
             nextFileInfo = it->fileInfo();
@@ -208,8 +211,8 @@ QDirIterator::~QDirIterator()
 
 /*!
     Advances the iterator to the next entry, and returns the file path of this
-    new entry. If hasNext() returns \c false, this function does nothing, and
-    returns an empty QString.
+    new entry. You should first check hasNext() before using this method, to
+    avoid unexpected results.
 
     You can call fileName() or filePath() to get the current entry's file name
     or path, or fileInfo() to get a QFileInfo for the current entry.
@@ -228,8 +231,8 @@ QString QDirIterator::next()
     \since 6.3
 
     Advances the iterator to the next entry, and returns the file info of this
-    new entry. If hasNext() returns \c false, this function does nothing, and
-    returns an empty QFileInfo.
+    new entry. You should first check hasNext() before using this method, to
+    avoid unexpected results.
 
     You can call fileName() or filePath() to get the current entry's file name
     or path, or fileInfo() to get a QFileInfo for the current entry.

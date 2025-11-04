@@ -210,14 +210,11 @@ introduce failures as long as test owners did not choose to opt-out the failure
 notification mechanism. This includes new tests that fail in Chromium, as well
 as new failures introduced to an existing test. Test owners are encouraged to
 create an `DIR_METADATA` file in the appropriate `external/wpt/` subdirectory
-that contains at least the `monorail.component` and `buganizer_public.component_id`
-fields, which the importer will use to file bugs.
+that contains at least the `buganizer_public.component_id` field, which the
+importer will use to file bugs.
 For example, `external/wpt/css/css-grid/DIR_METADATA` looks like:
 
 ```
-monorail {
-  component: "Blink>Layout>Grid"
-}
 buganizer_public {
   component_id: 1415957
 }
@@ -225,9 +222,9 @@ team_email: "layout-dev@chromium.org"
 ```
 
 When tests under `external/wpt/css/css-grid/` newly fail in a WPT import, the
-importer will automatically file a bug against the `Blink>Layout>Grid` component
-in [crbug.com](https://crbug.com), with details of which tests failed and the
-outputs.
+importer will automatically file a bug against the `Chromium>Blink>Layout>Grid`
+component in [issues.chromium.org](https://issues.chromium.org/issues), with
+details of which tests failed and the outputs.
 The importer will also copy `layout-dev@chromium.org` (the `team_email`) and any
 `external/wpt/css/css-grid/OWNERS` on the bug.
 
@@ -240,8 +237,8 @@ For example, the following `DIR_METADATA` will suppress notification from tests
 under the located directory:
 
 ```
-monorail {
-  component: "Blink>Layout>Grid"
+buganizer_public {
+  component_id: 1415957
 }
 team_email: "layout-dev@chromium.org"
 wpt {
@@ -292,7 +289,7 @@ can fix it manually.
 
 If you upload a CL with any changes in
 [third_party/blink/web_tests/external/wpt](../../third_party/blink/web_tests/external/wpt),
-once you add reviewers the exporter will create a provisional pull request with
+once your CL is ready to submit the exporter will create a provisional pull request with
 those changes in the [upstream WPT GitHub repository](https://github.com/web-platform-tests/wpt/).
 The exporter runs on [wpt-exporter builder][wpt-exporter].
 

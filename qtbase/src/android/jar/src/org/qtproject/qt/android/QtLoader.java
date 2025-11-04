@@ -1,12 +1,14 @@
 // Copyright (C) 2023 The Qt Company Ltd.
 // Copyright (c) 2019, BogDan Vatra <bogdan@kde.org>
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:trusted-data-only
 
 package org.qtproject.qt.android;
 
 import android.annotation.SuppressLint;
 import android.app.Activity;
 import android.app.Service;
+import android.content.Intent;
 import android.content.ComponentName;
 import android.content.Context;
 import android.content.ContextWrapper;
@@ -18,17 +20,18 @@ import android.content.res.Resources;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Debug;
+import android.os.Process;
 import android.system.Os;
 import android.util.Log;
 
 import java.io.File;
 import java.lang.IllegalArgumentException;
-import java.lang.reflect.InvocationTargetException;
-import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Objects;
+import java.util.HashSet;
+import java.util.Set;
 
 import dalvik.system.DexClassLoader;
 
@@ -38,8 +41,9 @@ abstract class QtLoader {
 
     private final Resources m_resources;
     private final String m_packageName;
-    private String m_preferredAbi = null;
-    private String m_nativeLibrariesDir = null;
+    private final String m_preferredAbi;
+    private String m_extractedNativeLibsDir = null;
+    /** @noinspection FieldCanBeLocal*/
     private ClassLoader m_classLoader;
 
     protected ComponentInfo m_contextInfo;
@@ -47,7 +51,7 @@ abstract class QtLoader {
     protected String m_mainLibPath;
     protected String m_mainLibName;
     protected String m_applicationParameters = "";
-    protected HashMap<String, String> m_environmentVariables = new HashMap<>();
+    protected final HashMap<String, String> m_environmentVariables = new HashMap<>();
 
     protected static QtLoader m_instance = null;
     protected boolean m_librariesLoaded;
@@ -72,13 +76,13 @@ abstract class QtLoader {
         }
 
         initClassLoader(baseContext);
-        initStaticClasses(baseContext);
         try {
             initContextInfo(baseContext);
         } catch (NameNotFoundException e) {
             throw new IllegalArgumentException("QtLoader: No ComponentInfo found for given " +
                                                "Context", e);
         }
+        m_preferredAbi = resolvePreferredAbi();
     }
 
     /**
@@ -112,6 +116,12 @@ abstract class QtLoader {
         setEnvironmentVariable("QT_BLOCK_EVENT_LOOPS_WHEN_SUSPENDED", isBackgroundRunningBlocked());
         setEnvironmentVariable("QTRACE_LOCATION", getMetaData("android.app.trace_location"));
         appendApplicationParameters(getMetaData("android.app.arguments"));
+
+        if (context instanceof Activity) {
+            Intent intent = ((Activity) context).getIntent();
+            if (intent != null)
+                appendApplicationParameters(intent.getStringExtra("applicationArguments"));
+        }
     }
 
     private String isBackgroundRunningBlocked() {
@@ -122,69 +132,45 @@ abstract class QtLoader {
     }
 
     private ArrayList<String> preferredAbiLibs(String[] libs) {
-        HashMap<String, ArrayList<String>> abiLibs = new HashMap<>();
+        ArrayList<String> abiLibs = new ArrayList<>();
         for (String lib : libs) {
-            String[] archLib = lib.split(";", 2);
-            if (m_preferredAbi != null && !archLib[0].equals(m_preferredAbi))
+            String[] splits = lib.split(";", 2);
+            // Ensure we have both abi and lib name parts
+            if (splits == null || splits.length < 2)
                 continue;
-            if (!abiLibs.containsKey(archLib[0]))
-                abiLibs.put(archLib[0], new ArrayList<>());
-            Objects.requireNonNull(abiLibs.get(archLib[0])).add(archLib[1]);
+
+            if (!splits[0].equals(m_preferredAbi))
+                continue;
+
+            abiLibs.add(splits[1]);
         }
 
-        if (m_preferredAbi != null) {
-            if (abiLibs.containsKey(m_preferredAbi)) {
-                return abiLibs.get(m_preferredAbi);
-            }
-            return new ArrayList<>();
-        }
-
-        for (String abi : Build.SUPPORTED_ABIS) {
-            if (abiLibs.containsKey(abi)) {
-                m_preferredAbi = abi;
-                return abiLibs.get(abi);
-            }
-        }
-        return new ArrayList<>();
+        return abiLibs;
     }
 
-    private void initStaticClasses(Context context) {
-        boolean isActivity = context instanceof Activity;
-        for (String className : getStaticInitClasses()) {
-            try {
-                Class<?> initClass = m_classLoader.loadClass(className);
-                Object staticInitDataObject = initClass.newInstance(); // create an instance
+    @SuppressLint("DiscouragedApi")
+    private String resolvePreferredAbi()
+    {
+        int id = m_resources.getIdentifier("qt_libs", "array", m_packageName);
+        String[] libs = m_resources.getStringArray(id);
+        Set<String> uniqueAbis = new HashSet<>();
 
-                if (isActivity) {
-                    try {
-                        Method m = initClass.getMethod("setActivity", Activity.class, Object.class);
-                        m.invoke(staticInitDataObject, (Activity) context, this);
-                    } catch (InvocationTargetException | NoSuchMethodException e) {
-                        Log.d(QtTAG, "Class " + initClass.getName() + " does not implement " +
-                                     "setActivity method");
-                    }
-                } else {
-                    try {
-                        Method m = initClass.getMethod("setService", Service.class, Object.class);
-                        m.invoke(staticInitDataObject, (Service) context, this);
-                    } catch (InvocationTargetException | NoSuchMethodException e) {
-                        Log.d(QtTAG, "Class " + initClass.getName() + " does not implement " +
-                                     "setService method");
-                    }
-                }
+        for (String lib : libs) {
+            String[] splits = lib.split(";", 2);
+            // Ensure we have both abi and lib name parts
+            if (splits == null || splits.length < 2)
+                continue;
 
-                try {
-                    // For modules that don't need/have setActivity/setService
-                    Method m = initClass.getMethod("setContext", Context.class);
-                    m.invoke(staticInitDataObject, context);
-                } catch (InvocationTargetException | NoSuchMethodException e) {
-                    Log.d(QtTAG, "Class " + initClass.getName() + " does not implement " +
-                                 "setContext method");
-                }
-            } catch (IllegalAccessException | ClassNotFoundException | InstantiationException e) {
-                Log.d(QtTAG, "Could not instantiate class " + className + ", " + e);
-            }
+            uniqueAbis.add(splits[0]);
         }
+
+        boolean is64Bit = Process.is64Bit();
+        for (String abi : Build.SUPPORTED_ABIS) {
+            if (uniqueAbis.contains(abi) && abi.contains("64") == is64Bit)
+                return abi;
+        }
+
+        return Build.SUPPORTED_ABIS[0];
     }
 
     /**
@@ -293,7 +279,7 @@ abstract class QtLoader {
             if (nativeLibraryDir.exists()) {
                 String[] list = nativeLibraryDir.list();
                 if (nativeLibraryDir.isDirectory() && list != null && list.length > 0) {
-                    m_nativeLibrariesDir = nativeLibraryPrefix;
+                    m_extractedNativeLibsDir = nativeLibraryPrefix;
                 }
             }
         } else {
@@ -320,7 +306,7 @@ abstract class QtLoader {
             String[] list = systemLibraryDir.list();
             if (systemLibraryDir.exists()) {
                 if (systemLibraryDir.isDirectory() && list != null && list.length > 0)
-                    m_nativeLibrariesDir = systemLibsPrefix;
+                    m_extractedNativeLibsDir = systemLibsPrefix;
                 else
                     Log.e(QtTAG, "System library directory " + systemLibsPrefix + " is empty.");
             } else {
@@ -328,8 +314,8 @@ abstract class QtLoader {
             }
         }
 
-        if (m_nativeLibrariesDir != null && !m_nativeLibrariesDir.endsWith("/"))
-            m_nativeLibrariesDir += "/";
+        if (m_extractedNativeLibsDir != null && !m_extractedNativeLibsDir.endsWith("/"))
+            m_extractedNativeLibsDir += "/";
     }
 
     /**
@@ -397,22 +383,26 @@ abstract class QtLoader {
     }
 
     @SuppressLint("DiscouragedApi")
-    private ArrayList<String> getStaticInitClasses() {
-        int id = m_resources.getIdentifier("static_init_classes", "string", m_packageName);
-        String[] classes = m_resources.getString(id).split(":");
-        ArrayList<String> finalClasses = new ArrayList<>();
-        for (String element : classes) {
-            if (!element.isEmpty()) {
-                finalClasses.add(element);
-            }
-        }
-        return finalClasses;
-    }
-
-    @SuppressLint("DiscouragedApi")
     private String[] getBundledLibs() {
         int id = m_resources.getIdentifier("bundled_libs", "array", m_packageName);
         return m_resources.getStringArray(id);
+    }
+
+    /**
+     * Returns true if the app is uses native libraries stored uncompressed in the APK.
+     **/
+    private static boolean isUncompressedNativeLibs()
+    {
+        int flags = QtNative.getContext().getApplicationInfo().flags;
+        return (flags & ApplicationInfo.FLAG_EXTRACT_NATIVE_LIBS) == 0;
+    }
+
+    /**
+     * Returns the native shared libraries path inside relative to the app's APK.
+     **/
+    private String getApkNativeLibrariesDir()
+    {
+        return QtApkFileEngine.getAppApkFilePath() + "!/lib/" + m_preferredAbi + "/";
     }
 
     /**
@@ -429,16 +419,21 @@ abstract class QtLoader {
             return LoadingResult.Failed;
         }
 
-        if (m_nativeLibrariesDir == null)
+        if (m_extractedNativeLibsDir == null)
             parseNativeLibrariesDir();
 
-        if (m_nativeLibrariesDir == null || m_nativeLibrariesDir.isEmpty()) {
-            Log.e(QtTAG, "The native libraries directory is null or empty");
-            return LoadingResult.Failed;
+        if (isUncompressedNativeLibs()) {
+            String apkLibPath = getApkNativeLibrariesDir();
+            setEnvironmentVariable("QT_PLUGIN_PATH", apkLibPath);
+            setEnvironmentVariable("QML_PLUGIN_PATH", apkLibPath);
+        } else {
+            if (m_extractedNativeLibsDir == null || m_extractedNativeLibsDir.isEmpty()) {
+                Log.e(QtTAG, "The native libraries directory is null or empty");
+                return LoadingResult.Failed;
+            }
+            setEnvironmentVariable("QT_PLUGIN_PATH", m_extractedNativeLibsDir);
+            setEnvironmentVariable("QML_PLUGIN_PATH", m_extractedNativeLibsDir);
         }
-
-        setEnvironmentVariable("QT_PLUGIN_PATH", m_nativeLibrariesDir);
-        setEnvironmentVariable("QML_PLUGIN_PATH", m_nativeLibrariesDir);
 
         // Load native Qt APK libraries
         ArrayList<String> nativeLibraries = getQtLibrariesList();
@@ -487,17 +482,23 @@ abstract class QtLoader {
     }
 
     // Loading libraries using System.load() uses full lib paths
+    // or System.loadLibrary() for uncompressed libs
     @SuppressLint("UnsafeDynamicallyLoadedCode")
     private String loadLibraryHelper(String library)
     {
         String loadedLib = null;
         try {
             File libFile = new File(library);
-            if (libFile.exists()) {
-                System.load(library);
-                loadedLib = library;
+            if (library.startsWith("/")) {
+                if (libFile.exists()) {
+                    System.load(library);
+                    loadedLib = library;
+                } else {
+                    Log.e(QtTAG, "Can't find '" + library + "'");
+                }
             } else {
-                Log.e(QtTAG, "Can't find '" + library + "'");
+                System.loadLibrary(library);
+                loadedLib = library;
             }
         } catch (Exception e) {
             Log.e(QtTAG, "Can't load '" + library + "'", e);
@@ -518,13 +519,16 @@ abstract class QtLoader {
         for (String libName : libraries) {
             // Add lib and .so to the lib name only if it doesn't already end with .so,
             // this means some names don't necessarily need to have the lib prefix
-            if (!libName.endsWith(".so")) {
-                libName = libName + ".so";
-                libName = "lib" + libName;
+            if (isUncompressedNativeLibs()) {
+                if (libName.endsWith(".so"))
+                    libName = libName.substring(3, libName.length() - 3);
+                absolutePathLibraries.add(libName);
+            } else {
+                if (!libName.endsWith(".so"))
+                    libName = "lib" + libName + ".so";
+                File file = new File(m_extractedNativeLibsDir + libName);
+                absolutePathLibraries.add(file.getAbsolutePath());
             }
-
-            File file = new File(m_nativeLibrariesDir + libName);
-            absolutePathLibraries.add(file.getAbsolutePath());
         }
 
         return absolutePathLibraries;
@@ -545,6 +549,8 @@ abstract class QtLoader {
             m_mainLibPath = loadLibraryHelper(mainLibPath);
             if (m_mainLibPath == null)
                 success[0] = false;
+            else if (isUncompressedNativeLibs())
+                m_mainLibPath = getApkNativeLibrariesDir() + "lib" + m_mainLibPath + ".so";
         });
 
         return success[0];

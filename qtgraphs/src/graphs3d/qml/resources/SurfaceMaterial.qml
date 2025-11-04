@@ -15,6 +15,7 @@ CustomMaterial {
     property vector2d uvOffset
     property vector2d size
     property vector2d vertCount
+    property real rootScale
 
     property real gradientMin
     property real gradientHeight
@@ -25,10 +26,15 @@ CustomMaterial {
     property bool flipU: false
     property bool flipV: false
 
+    property bool hasTransparency
+    property real order: 0
+
     property real specularBrightness: 0.25
     readonly property real shininess: (1.0 - specularBrightness) * 100
 
     shadingMode: CustomMaterial.Shaded
     vertexShader: "qrc:/shaders/surfacevert"
     fragmentShader: "qrc:/shaders/surfacefrag"
+    sourceBlend: hasTransparency? CustomMaterial.SrcAlpha : CustomMaterial.NoBlend;
+    destinationBlend: hasTransparency? CustomMaterial.OneMinusSrcAlpha : CustomMaterial.NoBlend;
 }

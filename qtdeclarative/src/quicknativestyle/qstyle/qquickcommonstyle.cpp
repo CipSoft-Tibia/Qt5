@@ -5242,7 +5242,7 @@ QPixmap QCommonStyle::standardPixmap(StandardPixmap sp, const QStyleOption *opti
     case SP_ToolBarHorizontalExtensionButton:
         if (rtl) {
             QImage im(tb_extension_arrow_h_xpm);
-            im = std::move(im).convertToFormat(QImage::Format_ARGB32).mirrored(true, false);
+            im = std::move(im).convertToFormat(QImage::Format_ARGB32).flipped(Qt::Horizontal);
             return QPixmap::fromImage(std::move(im));
         }
         return cachedPixmapFromXPM(tb_extension_arrow_h_xpm);

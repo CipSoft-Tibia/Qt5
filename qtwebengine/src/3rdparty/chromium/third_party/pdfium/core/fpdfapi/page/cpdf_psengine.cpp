@@ -13,11 +13,10 @@
 #include <utility>
 
 #include "core/fpdfapi/parser/cpdf_simple_parser.h"
+#include "core/fxcrt/check.h"
+#include "core/fxcrt/check_op.h"
 #include "core/fxcrt/fx_safe_types.h"
 #include "core/fxcrt/fx_string.h"
-#include "third_party/base/check.h"
-#include "third_party/base/check_op.h"
-#include "third_party/base/notreached.h"
 
 namespace {
 
@@ -107,10 +106,8 @@ void CPDF_PSOP::Execute(CPDF_PSEngine* pEngine) {
 }
 
 float CPDF_PSOP::GetFloatValue() const {
-  if (m_op == PSOP_CONST)
-    return m_value;
-
-  NOTREACHED_NORETURN();
+  CHECK_EQ(m_op, PSOP_CONST);
+  return m_value;
 }
 
 bool CPDF_PSEngine::Execute() {
@@ -436,9 +433,9 @@ bool CPDF_PSEngine::DoOperator(PDF_PSOP op) {
       j %= n;
       if (j > 0)
         j -= n;
-      auto* begin_it = std::begin(m_Stack) + m_StackCount - n;
-      auto* middle_it = begin_it - j;
-      auto* end_it = std::begin(m_Stack) + m_StackCount;
+      auto begin_it = std::begin(m_Stack) + m_StackCount - n;
+      auto middle_it = begin_it - j;
+      auto end_it = std::begin(m_Stack) + m_StackCount;
       std::rotate(begin_it, middle_it, end_it);
       break;
     }

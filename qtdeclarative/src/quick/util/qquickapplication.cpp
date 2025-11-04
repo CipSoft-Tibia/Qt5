@@ -71,7 +71,7 @@ QT_BEGIN_NAMESPACE
     \qml
     Timer {
         interval: 1000; repeat: true
-        active: Application.state === Qt.Qt.ApplicationActive
+        active: Application.state === Qt.ApplicationActive
         onTriggered: imageFetcher.fetchLatestImages()
     }
     \endqml
@@ -279,31 +279,40 @@ void QQuickApplication::setDisplayName(const QString &displayName)
     return QGuiApplication::setApplicationDisplayName(displayName);
 }
 
-qsizetype screens_count(QQmlListProperty<QQuickScreenInfo> *prop)
-{
-    return static_cast<QVector<QQuickScreenInfo *> *>(prop->data)->size();
-}
-
-QQuickScreenInfo *screens_at(QQmlListProperty<QQuickScreenInfo> *prop, qsizetype idx)
-{
-    return static_cast<QVector<QQuickScreenInfo *> *>(prop->data)->at(idx);
-}
-
 QQmlListProperty<QQuickScreenInfo> QQuickApplication::screens()
 {
-    return QQmlListProperty<QQuickScreenInfo>(this,
-        const_cast<QVector<QQuickScreenInfo *> *>(&m_screens), &screens_count, &screens_at);
+    using screens_type = decltype(m_screens);
+
+    auto screens_count = [](QQmlListProperty<QQuickScreenInfo> *prop) -> qsizetype
+    {
+        return static_cast<screens_type *>(prop->data)->size();
+    };
+
+    auto screens_at = [](QQmlListProperty<QQuickScreenInfo> *prop, qsizetype idx) -> QQuickScreenInfo *
+    {
+        return static_cast<screens_type *>(prop->data)->at(idx).get();
+    };
+
+    return QQmlListProperty<QQuickScreenInfo>(this, &m_screens, screens_count, screens_at);
 }
 
 void QQuickApplication::updateScreens()
 {
     const QList<QScreen *> screenList = QGuiApplication::screens();
-    m_screens.resize(screenList.size());
-    for (int i = 0; i < screenList.size(); ++i) {
-        if (!m_screens[i])
-            m_screens[i] = new QQuickScreenInfo(this);
-        m_screens[i]->setWrappedScreen(screenList[i]);
+
+    const qsizetype oldSize = m_screens.size();
+    const qsizetype newSize = screenList.size();
+
+    m_screens.resize(newSize);
+
+    for (qsizetype i = oldSize;  i < newSize; ++i) {
+        // initialize new elements
+        m_screens[i] = std::make_unique<QQuickScreenInfo>(this);
     }
+
+    for (qsizetype i = 0; i < newSize; ++i)
+        m_screens[i]->setWrappedScreen(screenList[i]);
+
     emit screensChanged();
 }
 

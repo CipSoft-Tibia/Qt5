@@ -28,16 +28,16 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <optional>
 #include <vector>
 
 #include "base/component_export.h"
 #include "base/files/scoped_file.h"
-#include "base/memory/ref_counted_memory.h"
 #include "base/memory/scoped_refptr.h"
 #include "render.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "ui/gfx/x/error.h"
 #include "ui/gfx/x/ref_counted_fd.h"
+#include "ui/gfx/x/xproto_types.h"
 #include "xproto.h"
 
 namespace x11 {
@@ -323,13 +323,13 @@ class COMPONENT_EXPORT(X11) RandR {
       Lease lease{};
       uint8_t created{};
     };
-    absl::optional<Cc> cc{};
-    absl::optional<Oc> oc{};
-    absl::optional<Op> op{};
-    absl::optional<Pc> pc{};
-    absl::optional<Pp> pp{};
-    absl::optional<Rc> rc{};
-    absl::optional<Lc> lc{};
+    std::optional<Cc> cc{};
+    std::optional<Oc> oc{};
+    std::optional<Op> op{};
+    std::optional<Pc> pc{};
+    std::optional<Pp> pp{};
+    std::optional<Rc> rc{};
+    std::optional<Lc> lc{};
   };
 
   struct QueryVersionRequest {
@@ -1134,7 +1134,7 @@ class COMPONENT_EXPORT(X11) RandR {
     Atom type{};
     uint32_t bytes_after{};
     uint32_t num_items{};
-    scoped_refptr<base::RefCountedMemory> data{};
+    scoped_refptr<UnsizedRefCountedMemory> data{};
   };
 
   using GetProviderPropertyResponse = Response<GetProviderPropertyReply>;

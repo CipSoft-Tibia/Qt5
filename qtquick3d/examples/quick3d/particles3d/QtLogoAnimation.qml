@@ -89,8 +89,8 @@ Item {
             Model {
                 source: "#Cube"
                 scale: Qt.vector3d(0.02, 0.02, 0.02)
-                materials: DefaultMaterial {
-                    lighting: DefaultMaterial.NoLighting
+                materials: PrincipledMaterial {
+                    lighting: PrincipledMaterial.NoLighting
                 }
             }
         }
@@ -99,9 +99,9 @@ Item {
             Model {
                 source: "#Rectangle"
                 scale: Qt.vector3d(6, 6, 6)
-                materials: DefaultMaterial {
-                    diffuseMap: Texture { source: "images/smoke.png" }
-                    lighting: DefaultMaterial.NoLighting
+                materials: PrincipledMaterial {
+                    baseColorMap: Texture { source: "images/smoke.png" }
+                    lighting: PrincipledMaterial.NoLighting
                 }
                 opacity: 0.2
             }
@@ -112,10 +112,10 @@ Item {
             Model {
                 source: "#Rectangle"
                 scale: Qt.vector3d(0.5, 0.5, 0.5)
-                materials: DefaultMaterial {
-                    diffuseMap: Texture { source: "images/star.png" }
-                    lighting: DefaultMaterial.NoLighting
-                    cullMode: DefaultMaterial.NoCulling
+                materials: PrincipledMaterial {
+                    baseColorMap: Texture { source: "images/star.png" }
+                    lighting: PrincipledMaterial.NoLighting
+                    cullMode: PrincipledMaterial.NoCulling
                 }
                 opacity: 0.2
             }
@@ -129,8 +129,8 @@ Item {
                 source: "#Cube"
                 scale: Qt.vector3d(2.0, 2.0, 2.0)
                 opacity: 0
-                materials: DefaultMaterial {
-                    diffuseMap: Texture { source: "images/qt_logo.png" }
+                materials: PrincipledMaterial {
+                    baseColorMap: Texture { source: "images/qt_logo.png" }
                 }
             }
 

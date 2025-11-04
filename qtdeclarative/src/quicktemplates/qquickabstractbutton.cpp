@@ -15,6 +15,9 @@
 #if QT_CONFIG(shortcut)
 #  include <QtGui/private/qshortcutmap_p.h>
 #endif
+#if QT_CONFIG(accessibility)
+#include <QtGui/private/qaccessiblehelper_p.h>
+#endif
 #include <QtGui/private/qguiapplication_p.h>
 #include <QtGui/qpa/qplatformtheme.h>
 #include <QtQuick/private/qquickevents_p_p.h>
@@ -134,6 +137,8 @@ void QQuickAbstractButtonPrivate::setMovePoint(const QPointF &point)
 bool QQuickAbstractButtonPrivate::handlePress(const QPointF &point, ulong timestamp)
 {
     Q_Q(QQuickAbstractButton);
+    if (pressed)
+        return true;
     QQuickControlPrivate::handlePress(point, timestamp);
     setPressPoint(point);
     q->setPressed(true);
@@ -334,11 +339,11 @@ void QQuickAbstractButtonPrivate::actionTextChange()
     q->buttonChange(QQuickAbstractButton::ButtonTextChange);
 }
 
-void QQuickAbstractButtonPrivate::setText(const QString &newText, bool isExplicit)
+void QQuickAbstractButtonPrivate::setText(const QString &newText, QQml::PropertyUtils::State propertyState)
 {
     Q_Q(QQuickAbstractButton);
     const QString oldText = q->text();
-    explicitText = isExplicit;
+    explicitText = isExplicitlySet(propertyState);
     text = newText;
     if (oldText == q->text())
         return;
@@ -531,13 +536,13 @@ QString QQuickAbstractButton::text() const
 void QQuickAbstractButton::setText(const QString &text)
 {
     Q_D(QQuickAbstractButton);
-    d->setText(text, true);
+    d->setText(text, QQml::PropertyUtils::State::ExplicitlySet);
 }
 
 void QQuickAbstractButton::resetText()
 {
     Q_D(QQuickAbstractButton);
-    d->setText(QString(), false);
+    d->setText(QString(), QQml::PropertyUtils::State::ImplicitlySet);
 }
 
 /*!
@@ -1137,10 +1142,12 @@ void QQuickAbstractButton::animateClick()
         forceActiveFocus(Qt::MouseFocusReason);
 
     // If the timer was already running, kill it so we can restart it.
-    if (d->animateTimer != 0)
+    if (d->animateTimer != 0) {
         killTimer(d->animateTimer);
-    else
+        d->animateTimer = 0;
+    } else {
         d->handlePress(QPointF(d->width / 2, d->height / 2), 0);
+    }
 
     d->animateTimer = startTimer(100);
 }
@@ -1250,6 +1257,7 @@ void QQuickAbstractButton::timerEvent(QTimerEvent *event)
         if (setFocusOnRelease && focusPolicy() & Qt::ClickFocus)
             forceActiveFocus(Qt::MouseFocusReason);
         d->handleRelease(QPointF(d->width / 2, d->height / 2), 0);
+        killTimer(d->animateTimer);
         d->animateTimer = 0;
     }
 }
@@ -1281,7 +1289,9 @@ void QQuickAbstractButton::buttonChange(ButtonChange change)
         break;
     case ButtonTextChange: {
         const QString txt = text();
-        maybeSetAccessibleName(txt);
+#if QT_CONFIG(accessibility)
+        maybeSetAccessibleName(qt_accStripAmp(txt));
+#endif
 #if QT_CONFIG(shortcut)
         setShortcut(QKeySequence::mnemonic(txt));
 #endif
@@ -1320,7 +1330,7 @@ void QQuickAbstractButton::accessibilityActiveChanged(bool active)
 
     Q_D(QQuickAbstractButton);
     if (active) {
-        maybeSetAccessibleName(text());
+        maybeSetAccessibleName(qt_accStripAmp(text()));
         setAccessibleProperty("pressed", d->pressed);
         setAccessibleProperty("checked", d->checked);
         setAccessibleProperty("checkable", d->checkable);

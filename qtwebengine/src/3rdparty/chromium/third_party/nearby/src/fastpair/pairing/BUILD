@@ -24,10 +24,7 @@ cc_library(
         "pairer_broker_impl.h",
     ],
     compatible_with = ["//buildenv/target:non_prod"],
-    visibility = [
-        "//fastpair:__subpackages__",
-        "//internal:__subpackages__",
-    ],
+    visibility = ["//fastpair:__subpackages__"],
     deps = [
         "//fastpair/common",
         "//fastpair/handshake",
@@ -35,6 +32,7 @@ cc_library(
         "//fastpair/pairing/fastpair:pairing",
         "//internal/base",
         "//internal/platform:types",
+        "//internal/platform/implementation:account_manager",
         "//internal/platform/implementation:types",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/functional:bind_front",

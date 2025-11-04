@@ -39,7 +39,8 @@ class QSGSimpleRectNode;
 
 class QQuickShaderEffectSourceTextureProvider;
 
-class Q_QUICK_EXPORT QQuickShaderEffectSource : public QQuickItem, public QQuickItemChangeListener
+class Q_QUICK_EXPORT QQuickShaderEffectSource : public QQuickItem,
+                                                public QSafeQuickItemChangeListener<QQuickShaderEffectSource>
 {
     Q_OBJECT
     Q_PROPERTY(WrapMode wrapMode READ wrapMode WRITE setWrapMode NOTIFY wrapModeChanged)

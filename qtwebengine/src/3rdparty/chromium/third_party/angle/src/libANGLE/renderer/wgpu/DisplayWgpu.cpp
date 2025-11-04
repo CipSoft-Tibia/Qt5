@@ -9,11 +9,15 @@
 
 #include "libANGLE/renderer/wgpu/DisplayWgpu.h"
 
+#include <dawn/dawn_proc.h>
+
 #include "common/debug.h"
+#include "common/platform.h"
 
 #include "libANGLE/Display.h"
 #include "libANGLE/renderer/wgpu/ContextWgpu.h"
 #include "libANGLE/renderer/wgpu/DeviceWgpu.h"
+#include "libANGLE/renderer/wgpu/DisplayWgpu_api.h"
 #include "libANGLE/renderer/wgpu/ImageWgpu.h"
 #include "libANGLE/renderer/wgpu/SurfaceWgpu.h"
 
@@ -26,6 +30,14 @@ DisplayWgpu::~DisplayWgpu() {}
 
 egl::Error DisplayWgpu::initialize(egl::Display *display)
 {
+    ANGLE_TRY(createWgpuDevice());
+
+    mQueue = mDevice.GetQueue();
+    mFormatTable.initialize();
+
+    webgpu::GenerateCaps(mDevice, &mGLCaps, &mGLTextureCaps, &mGLExtensions, &mGLLimitations,
+                         &mEGLCaps, &mEGLExtensions, &mMaxSupportedClientVersion);
+
     return egl::NoError();
 }
 
@@ -46,7 +58,7 @@ egl::Error DisplayWgpu::makeCurrent(egl::Display *display,
 egl::ConfigSet DisplayWgpu::generateConfigs()
 {
     egl::Config config;
-    config.renderTargetFormat    = GL_RGBA8;
+    config.renderTargetFormat    = GL_BGRA8_EXT;
     config.depthStencilFormat    = GL_DEPTH24_STENCIL8;
     config.bufferSize            = 32;
     config.redSize               = 8;
@@ -133,7 +145,7 @@ egl::Error DisplayWgpu::waitNative(const gl::Context *context, EGLint engine)
 
 gl::Version DisplayWgpu::getMaxSupportedESVersion() const
 {
-    return gl::Version(3, 2);
+    return mMaxSupportedClientVersion;
 }
 
 Optional<gl::Version> DisplayWgpu::getMaxSupportedDesktopVersion() const
@@ -143,20 +155,20 @@ Optional<gl::Version> DisplayWgpu::getMaxSupportedDesktopVersion() const
 
 gl::Version DisplayWgpu::getMaxConformantESVersion() const
 {
-    return getMaxSupportedESVersion();
+    return mMaxSupportedClientVersion;
 }
 
 SurfaceImpl *DisplayWgpu::createWindowSurface(const egl::SurfaceState &state,
                                               EGLNativeWindowType window,
                                               const egl::AttributeMap &attribs)
 {
-    return new SurfaceWgpu(state);
+    return CreateWgpuWindowSurface(state, window);
 }
 
 SurfaceImpl *DisplayWgpu::createPbufferSurface(const egl::SurfaceState &state,
                                                const egl::AttributeMap &attribs)
 {
-    return new SurfaceWgpu(state);
+    return new OffscreenSurfaceWgpu(state);
 }
 
 SurfaceImpl *DisplayWgpu::createPbufferFromClientBuffer(const egl::SurfaceState &state,
@@ -164,14 +176,16 @@ SurfaceImpl *DisplayWgpu::createPbufferFromClientBuffer(const egl::SurfaceState 
                                                         EGLClientBuffer buffer,
                                                         const egl::AttributeMap &attribs)
 {
-    return new SurfaceWgpu(state);
+    UNIMPLEMENTED();
+    return nullptr;
 }
 
 SurfaceImpl *DisplayWgpu::createPixmapSurface(const egl::SurfaceState &state,
                                               NativePixmapType nativePixmap,
                                               const egl::AttributeMap &attribs)
 {
-    return new SurfaceWgpu(state);
+    UNIMPLEMENTED();
+    return nullptr;
 }
 
 ImageImpl *DisplayWgpu::createImage(const egl::ImageState &state,
@@ -188,7 +202,7 @@ rx::ContextImpl *DisplayWgpu::createContext(const gl::State &state,
                                             const gl::Context *shareContext,
                                             const egl::AttributeMap &attribs)
 {
-    return new ContextWgpu(state, errorSet);
+    return new ContextWgpu(state, errorSet, this);
 }
 
 StreamProducerImpl *DisplayWgpu::createStreamProducerD3DTexture(
@@ -204,36 +218,91 @@ ShareGroupImpl *DisplayWgpu::createShareGroup(const egl::ShareGroupState &state)
     return new ShareGroupWgpu(state);
 }
 
+angle::NativeWindowSystem DisplayWgpu::getWindowSystem() const
+{
+#if defined(ANGLE_PLATFORM_LINUX)
+#    if defined(ANGLE_USE_X11)
+    return angle::NativeWindowSystem::X11;
+#    elif defined(ANGLE_USE_WAYLAND)
+    return angle::NativeWindowSystem::Wayland;
+#    endif
+#else
+    return angle::NativeWindowSystem::Other;
+#endif
+}
+
 void DisplayWgpu::generateExtensions(egl::DisplayExtensions *outExtensions) const
 {
-    outExtensions->createContextRobustness            = true;
-    outExtensions->postSubBuffer                      = true;
-    outExtensions->createContext                      = true;
-    outExtensions->image                              = true;
-    outExtensions->imageBase                          = true;
-    outExtensions->glTexture2DImage                   = true;
-    outExtensions->glTextureCubemapImage              = true;
-    outExtensions->glTexture3DImage                   = true;
-    outExtensions->glRenderbufferImage                = true;
-    outExtensions->getAllProcAddresses                = true;
-    outExtensions->noConfigContext                    = true;
-    outExtensions->directComposition                  = true;
-    outExtensions->createContextNoError               = true;
-    outExtensions->createContextWebGLCompatibility    = true;
-    outExtensions->createContextBindGeneratesResource = true;
-    outExtensions->swapBuffersWithDamage              = true;
-    outExtensions->pixelFormatFloat                   = true;
-    outExtensions->surfacelessContext                 = true;
-    outExtensions->displayTextureShareGroup           = true;
-    outExtensions->displaySemaphoreShareGroup         = true;
-    outExtensions->createContextClientArrays          = true;
-    outExtensions->programCacheControlANGLE           = true;
-    outExtensions->robustResourceInitializationANGLE  = true;
+    *outExtensions = mEGLExtensions;
 }
 
 void DisplayWgpu::generateCaps(egl::Caps *outCaps) const
 {
-    outCaps->textureNPOT = true;
+    *outCaps = mEGLCaps;
+}
+
+egl::Error DisplayWgpu::createWgpuDevice()
+{
+    dawnProcSetProcs(&dawn::native::GetProcs());
+
+    dawn::native::DawnInstanceDescriptor dawnInstanceDescriptor;
+
+    wgpu::InstanceDescriptor instanceDescriptor;
+    instanceDescriptor.features.timedWaitAnyEnable = true;
+    instanceDescriptor.nextInChain                 = &dawnInstanceDescriptor;
+    mInstance                                      = wgpu::CreateInstance(&instanceDescriptor);
+
+    struct RequestAdapterResult
+    {
+        WGPURequestAdapterStatus status;
+        wgpu::Adapter adapter;
+        std::string message;
+    };
+    RequestAdapterResult adapterResult;
+
+    wgpu::RequestAdapterOptions requestAdapterOptions;
+
+    wgpu::RequestAdapterCallbackInfo callbackInfo;
+    callbackInfo.mode     = wgpu::CallbackMode::WaitAnyOnly;
+    callbackInfo.callback = [](WGPURequestAdapterStatus status, WGPUAdapter adapter,
+                               char const *message, void *userdata) {
+        RequestAdapterResult *result = reinterpret_cast<RequestAdapterResult *>(userdata);
+        result->status               = status;
+        result->adapter              = wgpu::Adapter::Acquire(adapter);
+        result->message              = message ? message : "";
+    };
+    callbackInfo.userdata = &adapterResult;
+
+    wgpu::FutureWaitInfo futureWaitInfo;
+    futureWaitInfo.future = mInstance.RequestAdapter(&requestAdapterOptions, callbackInfo);
+
+    wgpu::WaitStatus status = mInstance.WaitAny(1, &futureWaitInfo, -1);
+    if (webgpu::IsWgpuError(status))
+    {
+        return egl::EglBadAlloc() << "Failed to get WebGPU adapter: " << adapterResult.message;
+    }
+
+    mAdapter = adapterResult.adapter;
+
+    std::vector<wgpu::FeatureName> requiredFeatures;
+    requiredFeatures.push_back(wgpu::FeatureName::SurfaceCapabilities);
+
+    wgpu::DeviceDescriptor deviceDesc;
+    deviceDesc.requiredFeatureCount = requiredFeatures.size();
+    deviceDesc.requiredFeatures     = requiredFeatures.data();
+
+    mDevice = mAdapter.CreateDevice(&deviceDesc);
+    mDevice.SetUncapturedErrorCallback(
+        [](WGPUErrorType type, const char *message, void *userdata) {
+            ERR() << "Error: " << type << " - message: " << message;
+        },
+        nullptr);
+    return egl::NoError();
+}
+
+DisplayImpl *CreateWgpuDisplay(const egl::DisplayState &state)
+{
+    return new DisplayWgpu(state);
 }
 
 }  // namespace rx

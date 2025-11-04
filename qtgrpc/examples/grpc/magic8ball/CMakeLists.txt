@@ -72,4 +72,9 @@ install(TARGETS magic8ball
 add_subdirectory(server)
 if(TARGET magic8ball_server)
     add_dependencies(magic8ball magic8ball_server)
+else()
+    message(WARNING "${PROJECT_NAME} server requires gRPC. Please install the C++ libraries in your"
+        " system or use vcpkg:"
+        "\n${QT${QT_VERSION_MAJOR}_INSTALL_BINS}/qt-cmake -S ${CMAKE_CURRENT_SOURCE_DIR} \\"
+        "\n-DQT_USE_VCPKG=TRUE")
 endif()

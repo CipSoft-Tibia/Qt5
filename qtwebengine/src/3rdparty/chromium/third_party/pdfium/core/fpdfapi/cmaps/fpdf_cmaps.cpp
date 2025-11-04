@@ -8,7 +8,8 @@
 
 #include <algorithm>
 
-#include "third_party/base/check.h"
+#include "core/fxcrt/check.h"
+#include "core/fxcrt/span.h"
 
 namespace fxcmap {
 
@@ -26,7 +27,7 @@ struct RangeCmap {
 };
 
 const CMap* FindNextCMap(const CMap* pMap) {
-  return pMap->m_UseOffset ? pMap + pMap->m_UseOffset : nullptr;
+  return pMap->m_UseOffset ? UNSAFE_TODO(pMap + pMap->m_UseOffset) : nullptr;
 }
 
 }  // namespace
@@ -38,7 +39,7 @@ uint16_t CIDFromCharCode(const CMap* pMap, uint32_t charcode) {
     while (pMap) {
       if (pMap->m_pDWordMap) {
         const DWordCIDMap* begin = pMap->m_pDWordMap;
-        const auto* end = begin + pMap->m_DWordCount;
+        const auto* end = UNSAFE_TODO(begin + pMap->m_DWordCount);
         const auto* found = std::lower_bound(
             begin, end, charcode,
             [](const DWordCIDMap& element, uint32_t charcode) {
@@ -62,7 +63,7 @@ uint16_t CIDFromCharCode(const CMap* pMap, uint32_t charcode) {
       case CMap::Type::kSingle: {
         const auto* begin =
             reinterpret_cast<const SingleCmap*>(pMap->m_pWordMap);
-        const auto* end = begin + pMap->m_WordCount;
+        const auto* end = UNSAFE_TODO(begin + pMap->m_WordCount);
         const auto* found = std::lower_bound(
             begin, end, loword, [](const SingleCmap& element, uint16_t code) {
               return element.code < code;
@@ -74,7 +75,7 @@ uint16_t CIDFromCharCode(const CMap* pMap, uint32_t charcode) {
       case CMap::Type::kRange: {
         const auto* begin =
             reinterpret_cast<const RangeCmap*>(pMap->m_pWordMap);
-        const auto* end = begin + pMap->m_WordCount;
+        const auto* end = UNSAFE_TODO(begin + pMap->m_WordCount);
         const auto* found = std::lower_bound(
             begin, end, loword, [](const RangeCmap& element, uint16_t code) {
               return element.high < code;
@@ -100,23 +101,24 @@ uint32_t CharCodeFromCID(const CMap* pMap, uint16_t cid) {
   while (pMap) {
     switch (pMap->m_WordMapType) {
       case CMap::Type::kSingle: {
-        const auto* pCur =
-            reinterpret_cast<const SingleCmap*>(pMap->m_pWordMap);
-        const auto* pEnd = pCur + pMap->m_WordCount;
-        while (pCur < pEnd) {
-          if (pCur->cid == cid)
-            return pCur->code;
-          ++pCur;
+        auto single_span = UNSAFE_TODO(pdfium::make_span(
+            reinterpret_cast<const SingleCmap*>(pMap->m_pWordMap),
+            pMap->m_WordCount));
+        for (const auto& single : single_span) {
+          if (single.cid == cid) {
+            return single.code;
+          }
         }
         break;
       }
       case CMap::Type::kRange: {
-        const auto* pCur = reinterpret_cast<const RangeCmap*>(pMap->m_pWordMap);
-        const auto* pEnd = pCur + pMap->m_WordCount;
-        while (pCur < pEnd) {
-          if (cid >= pCur->cid && cid <= pCur->cid + pCur->high - pCur->low)
-            return pCur->low + cid - pCur->cid;
-          ++pCur;
+        auto range_span = UNSAFE_TODO(pdfium::make_span(
+            reinterpret_cast<const RangeCmap*>(pMap->m_pWordMap),
+            pMap->m_WordCount));
+        for (const auto& range : range_span) {
+          if (cid >= range.cid && cid <= range.cid + range.high - range.low) {
+            return range.low + cid - range.cid;
+          }
         }
         break;
       }

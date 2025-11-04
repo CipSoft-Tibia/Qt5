@@ -29,16 +29,16 @@ std::string GetFirstAppId(ApplicationAgent::Application* app) {
 
 ApplicationAgent::ApplicationAgent(
     TaskRunner& task_runner,
-    DeviceAuthNamespaceHandler::CredentialsProvider* credentials_provider)
+    DeviceAuthNamespaceHandler::CredentialsProvider& credentials_provider)
     : task_runner_(task_runner),
       auth_handler_(credentials_provider),
-      connection_handler_(&router_, this),
-      message_port_(&router_) {
+      connection_handler_(router_, *this),
+      message_port_(router_) {
   router_.AddHandlerForLocalId(kPlatformReceiverId, this);
 }
 
 ApplicationAgent::~ApplicationAgent() {
-  OSP_DCHECK(task_runner_.IsRunningOnTaskRunner());
+  OSP_CHECK(task_runner_.IsRunningOnTaskRunner());
 
   idle_screen_app_ = nullptr;  // Prevent re-launching the idle screen app.
   SwitchToApplication({}, {}, nullptr);
@@ -48,17 +48,17 @@ ApplicationAgent::~ApplicationAgent() {
 
 void ApplicationAgent::RegisterApplication(Application* app,
                                            bool auto_launch_for_idle_screen) {
-  OSP_DCHECK(app);
+  OSP_CHECK(app);
 
   for (const std::string& app_id : app->GetAppIds()) {
-    OSP_DCHECK(!app_id.empty());
+    OSP_CHECK(!app_id.empty());
     const auto insert_result = registered_applications_.insert({app_id, app});
     // The insert must not fail (prior entry for same key).
-    OSP_DCHECK(insert_result.second);
+    OSP_CHECK(insert_result.second);
   }
 
   if (auto_launch_for_idle_screen) {
-    OSP_DCHECK(!idle_screen_app_);
+    OSP_CHECK(!idle_screen_app_);
     idle_screen_app_ = app;
     // Launch the idle screen app, if no app was running.
     if (!launched_app_) {
@@ -98,17 +98,18 @@ void ApplicationAgent::OnConnected(ReceiverSocketFactory* factory,
   router_.TakeSocket(this, std::move(socket));
 }
 
-void ApplicationAgent::OnError(ReceiverSocketFactory* factory, Error error) {
+void ApplicationAgent::OnError(ReceiverSocketFactory* factory,
+                               const Error& error) {
   OSP_LOG_ERROR << "Cast agent received socket factory error: " << error;
 }
 
 void ApplicationAgent::OnMessage(VirtualConnectionRouter* router,
                                  CastSocket* socket,
-                                 ::cast::channel::CastMessage message) {
+                                 proto::CastMessage message) {
   if (message_port_.GetSocketId() == ToCastSocketId(socket) &&
       !message_port_.source_id().empty() &&
       message_port_.source_id() == message.destination_id()) {
-    OSP_DCHECK(message_port_.source_id() != kPlatformReceiverId);
+    OSP_CHECK_NE(message_port_.source_id(), kPlatformReceiverId);
     message_port_.OnMessage(router, socket, std::move(message));
     return;
   }
@@ -179,7 +180,7 @@ void ApplicationAgent::OnClose(CastSocket* socket) {
   }
 }
 
-void ApplicationAgent::OnError(CastSocket* socket, Error error) {
+void ApplicationAgent::OnError(CastSocket* socket, const Error& error) {
   if (message_port_.GetSocketId() == ToCastSocketId(socket)) {
     OSP_LOG_ERROR << "Cast agent received socket error: " << error;
     GoIdle();

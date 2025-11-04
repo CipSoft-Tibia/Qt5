@@ -9,6 +9,9 @@
 #include <QtGraphs/q3dscene.h>
 #include <QtGraphs/qgraphstheme.h>
 #include <QtGraphs/qcustom3ditem.h>
+
+#include <QtGui/qquaternion.h>
+
 #include <QtCore/QRandomGenerator>
 #include <QtCore/QElapsedTimer>
 #include <QtCore/qmath.h>
@@ -1537,6 +1540,18 @@ void GraphModifier::setFloorLevel(int value)
 {
     m_graph->setFloorLevel(float(value));
     qDebug() << "Floor level:" << value;
+
+    //adjust camera min max
+    if (value == 0) {
+        m_graph->setMinCameraYRotation(-90);
+        m_graph->setMaxCameraYRotation(90);
+    } else if (value > 0) {
+        m_graph->setMinCameraYRotation(-90);
+        m_graph->setMaxCameraYRotation(0);
+    } else {
+        m_graph->setMinCameraYRotation(0);
+        m_graph->setMaxCameraYRotation(90);
+    }
 }
 
 void GraphModifier::setGraphMargin(int value)

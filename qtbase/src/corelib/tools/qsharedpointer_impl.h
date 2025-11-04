@@ -50,13 +50,21 @@ class QVariant;
 template <class X, class T>
 QSharedPointer<X> qSharedPointerCast(const QSharedPointer<T> &ptr);
 template <class X, class T>
+QSharedPointer<X> qSharedPointerCast(QSharedPointer<T> &&ptr);
+template <class X, class T>
 QSharedPointer<X> qSharedPointerDynamicCast(const QSharedPointer<T> &ptr);
 template <class X, class T>
+QSharedPointer<X> qSharedPointerDynamicCast(QSharedPointer<T> &&ptr);
+template <class X, class T>
 QSharedPointer<X> qSharedPointerConstCast(const QSharedPointer<T> &ptr);
+template <class X, class T>
+QSharedPointer<X> qSharedPointerConstCast(QSharedPointer<T> &&ptr);
 
 #ifndef QT_NO_QOBJECT
 template <class X, class T>
 QSharedPointer<X> qSharedPointerObjectCast(const QSharedPointer<T> &ptr);
+template <class X, class T>
+QSharedPointer<X> qSharedPointerObjectCast(QSharedPointer<T> &&ptr);
 #endif
 
 namespace QtPrivate {
@@ -67,6 +75,7 @@ namespace QtSharedPointer {
     template <class T> class ExternalRefCount;
 
     template <class X, class Y> QSharedPointer<X> copyAndSetPointer(X * ptr, const QSharedPointer<Y> &src);
+    template <class X, class Y> QSharedPointer<X> movePointer(X * ptr, QSharedPointer<Y> &&src);
 
     // used in debug mode to verify the reuse of pointers
     Q_CORE_EXPORT void internalSafetyCheckAdd(const void *, const volatile void *);
@@ -271,8 +280,8 @@ public:
     typedef const value_type &const_reference;
     typedef qptrdiff difference_type;
 
-    T *data() const noexcept { return value; }
-    T *get() const noexcept { return value; }
+    T *data() const noexcept { return value.get(); }
+    T *get() const noexcept { return value.get(); }
     bool isNull() const noexcept { return !data(); }
     explicit operator bool() const noexcept { return !isNull(); }
     bool operator !() const noexcept { return isNull(); }
@@ -302,7 +311,7 @@ public:
     { internalConstruct(static_cast<T *>(nullptr), deleter); }
 
     Q_NODISCARD_CTOR
-    QSharedPointer(const QSharedPointer &other) noexcept : value(other.value), d(other.d)
+    QSharedPointer(const QSharedPointer &other) noexcept : value(other.value.get()), d(other.d)
     { if (d) ref(); }
     QSharedPointer &operator=(const QSharedPointer &other) noexcept
     {
@@ -312,7 +321,7 @@ public:
     }
     Q_NODISCARD_CTOR
     QSharedPointer(QSharedPointer &&other) noexcept
-        : value(other.value), d(other.d)
+        : value(other.value.get()), d(other.d)
     {
         other.d = nullptr;
         other.value = nullptr;
@@ -322,7 +331,7 @@ public:
     template <class X, IfCompatible<X> = true>
     Q_NODISCARD_CTOR
     QSharedPointer(QSharedPointer<X> &&other) noexcept
-        : value(other.value), d(other.d)
+        : value(other.value.get()), d(other.d)
     {
         other.d = nullptr;
         other.value = nullptr;
@@ -338,7 +347,7 @@ public:
 
     template <class X, IfCompatible<X> = true>
     Q_NODISCARD_CTOR
-    QSharedPointer(const QSharedPointer<X> &other) noexcept : value(other.value), d(other.d)
+    QSharedPointer(const QSharedPointer<X> &other) noexcept : value(other.value.get()), d(other.d)
     { if (d) ref(); }
 
     template <class X, IfCompatible<X> = true>
@@ -369,28 +378,52 @@ public:
     { QSharedPointer copy(t, deleter); swap(copy); }
 
     template <class X>
-    QSharedPointer<X> staticCast() const
+    QSharedPointer<X> staticCast() const &
     {
-        return qSharedPointerCast<X, T>(*this);
+        return qSharedPointerCast<X>(*this);
     }
 
     template <class X>
-    QSharedPointer<X> dynamicCast() const
+    QSharedPointer<X> staticCast() &&
     {
-        return qSharedPointerDynamicCast<X, T>(*this);
+        return qSharedPointerCast<X>(std::move(*this));
     }
 
     template <class X>
-    QSharedPointer<X> constCast() const
+    QSharedPointer<X> dynamicCast() const &
     {
-        return qSharedPointerConstCast<X, T>(*this);
+        return qSharedPointerDynamicCast<X>(*this);
+    }
+
+    template <class X>
+    QSharedPointer<X> dynamicCast() &&
+    {
+        return qSharedPointerDynamicCast<X>(std::move(*this));
+    }
+
+    template <class X>
+    QSharedPointer<X> constCast() const &
+    {
+        return qSharedPointerConstCast<X>(*this);
+    }
+
+    template <class X>
+    QSharedPointer<X> constCast() &&
+    {
+        return qSharedPointerConstCast<X>(std::move(*this));
     }
 
 #ifndef QT_NO_QOBJECT
     template <class X>
-    QSharedPointer<X> objectCast() const
+    QSharedPointer<X> objectCast() const &
     {
-        return qSharedPointerObjectCast<X, T>(*this);
+        return qSharedPointerObjectCast<X>(*this);
+    }
+
+    template <class X>
+    QSharedPointer<X> objectCast() &&
+    {
+        return qSharedPointerObjectCast<X>(std::move(*this));
     }
 #endif
 
@@ -414,37 +447,15 @@ public:
 
         // now initialize the data
         new (ptr) T(std::forward<Args>(arguments)...);
-        result.value = ptr;
+        result.value.reset(ptr);
         result.d->destroyer = destroy;
-        result.d->setQObjectShared(result.value, true);
+        result.d->setQObjectShared(result.value.get(), true);
 # ifdef QT_SHAREDPOINTER_TRACK_POINTERS
-        internalSafetyCheckAdd(result.d, result.value);
+        internalSafetyCheckAdd(result.d, result.value.get());
 # endif
         result.enableSharedFromThis(result.data());
         return result;
     }
-
-#define DECLARE_COMPARE_SET(T1, A1, T2, A2) \
-    friend bool operator==(T1, T2) noexcept \
-    { return A1 == A2; } \
-    friend bool operator!=(T1, T2) noexcept \
-    { return A1 != A2; }
-
-#define DECLARE_TEMPLATE_COMPARE_SET(T1, A1, T2, A2) \
-    template <typename X> \
-    friend bool operator==(T1, T2) noexcept \
-    { return A1 == A2; } \
-    template <typename X> \
-    friend bool operator!=(T1, T2) noexcept \
-    { return A1 != A2; }
-
-    DECLARE_TEMPLATE_COMPARE_SET(const QSharedPointer &p1, p1.data(), const QSharedPointer<X> &p2, p2.data())
-    DECLARE_TEMPLATE_COMPARE_SET(const QSharedPointer &p1, p1.data(), X *ptr, ptr)
-    DECLARE_TEMPLATE_COMPARE_SET(X *ptr, ptr, const QSharedPointer &p2, p2.data())
-    DECLARE_COMPARE_SET(const QSharedPointer &p1, p1.data(), std::nullptr_t, nullptr)
-    DECLARE_COMPARE_SET(std::nullptr_t, nullptr, const QSharedPointer &p2, p2.data())
-#undef DECLARE_TEMPLATE_COMPARE_SET
-#undef DECLARE_COMPARE_SET
 
     template <typename X>
     bool owner_before(const QSharedPointer<X> &other) const noexcept
@@ -464,6 +475,34 @@ public:
     { return std::hash<Data *>()(d); }
 
 private:
+    template <typename X>
+    friend bool comparesEqual(const QSharedPointer &lhs, const QSharedPointer<X> &rhs) noexcept
+    { return lhs.data() == rhs.data(); }
+    template <typename X>
+    friend Qt::strong_ordering
+    compareThreeWay(const QSharedPointer &lhs, const QSharedPointer<X> &rhs) noexcept
+    {
+        return Qt::compareThreeWay(lhs.value, rhs.data());
+    }
+    QT_DECLARE_ORDERING_OPERATORS_HELPER(STRONG, QSharedPointer<T>, QSharedPointer<X>,
+                                         /* non-constexpr */, noexcept(true),
+                                         template <typename X>)
+
+    template <typename X>
+    friend bool comparesEqual(const QSharedPointer &lhs, X *rhs) noexcept
+    { return lhs.data() == rhs; }
+    template <typename X>
+    friend Qt::strong_ordering compareThreeWay(const QSharedPointer &lhs, X *rhs) noexcept
+    { return Qt::compareThreeWay(lhs.value, rhs); }
+    Q_DECLARE_STRONGLY_ORDERED(QSharedPointer, X*, template <typename X>)
+
+    friend bool comparesEqual(const QSharedPointer &lhs, std::nullptr_t) noexcept
+    { return lhs.data() == nullptr; }
+    friend Qt::strong_ordering
+    compareThreeWay(const QSharedPointer &lhs, std::nullptr_t) noexcept
+    { return Qt::compareThreeWay(lhs.value, nullptr); }
+    Q_DECLARE_STRONGLY_ORDERED(QSharedPointer, std::nullptr_t)
+
     Q_NODISCARD_CTOR
     explicit QSharedPointer(Qt::Initialization) {}
 
@@ -513,6 +552,7 @@ private:
     template <class X> friend class QSharedPointer;
     template <class X> friend class QWeakPointer;
     template <class X, class Y> friend QSharedPointer<X> QtSharedPointer::copyAndSetPointer(X * ptr, const QSharedPointer<Y> &src);
+    template <class X, class Y> friend QSharedPointer<X> QtSharedPointer::movePointer(X * ptr, QSharedPointer<Y> &&src);
     void ref() const noexcept { d->weakref.ref(); d->strongref.ref(); }
 
     inline void internalSet(Data *o, T *actual)
@@ -535,7 +575,7 @@ private:
         }
 
         qt_ptr_swap(d, o);
-        qt_ptr_swap(this->value, actual);
+        this->value.reset(actual);
         if (!d || d->strongref.loadRelaxed() == 0)
             this->value = nullptr;
 
@@ -543,7 +583,7 @@ private:
         deref(o);
     }
 
-    Type *value;
+    Qt::totally_ordered_wrapper<Type *> value;
     Data *d;
 };
 
@@ -552,7 +592,10 @@ class QWeakPointer
 {
     typedef QtSharedPointer::ExternalRefCountData Data;
     template <typename X>
-    using IfCompatible = typename std::enable_if<std::is_convertible<X*, T*>::value, bool>::type;
+    using IfCompatible = std::enable_if_t<std::conjunction_v<
+            std::negation<std::is_same<T, X>>, // don't make accidental copy/move SMFs
+            std::is_convertible<X*, T*>
+        >, bool>;
 
     template <typename X>
     using IfVirtualBase = typename std::enable_if<qxp::is_virtual_base_of_v<T, X>, bool>::type;
@@ -632,7 +675,7 @@ public:
     { if (d) d->weakref.ref();}
     inline QWeakPointer &operator=(const QSharedPointer<T> &o)
     {
-        internalSet(o.d, o.value);
+        internalSet(o.d, o.value.get());
         return *this;
     }
 
@@ -728,6 +771,11 @@ private:
     { return *this = QWeakPointer<T>(ptr, true); }
 
 #ifndef QT_NO_QOBJECT
+    Q_NODISCARD_CTOR
+    QWeakPointer(T *ptr, bool)
+        : d{ptr ? Data::getAndRef(ptr) : nullptr}, value{ptr}
+    { }
+
     template <class X, IfCompatible<X> = true>
     Q_NODISCARD_CTOR
     inline QWeakPointer(X *ptr, bool) : d(ptr ? Data::getAndRef(ptr) : nullptr), value(ptr)
@@ -810,28 +858,6 @@ Q_INLINE_TEMPLATE typename QSharedPointer<X>::difference_type operator-(T *ptr1,
 }
 
 //
-// operator<
-//
-template <class T, class X>
-Q_INLINE_TEMPLATE bool operator<(const QSharedPointer<T> &ptr1, const QSharedPointer<X> &ptr2)
-{
-    using CT = typename std::common_type<T *, X *>::type;
-    return std::less<CT>()(ptr1.data(), ptr2.data());
-}
-template <class T, class X>
-Q_INLINE_TEMPLATE bool operator<(const QSharedPointer<T> &ptr1, X *ptr2)
-{
-    using CT = typename std::common_type<T *, X *>::type;
-    return std::less<CT>()(ptr1.data(), ptr2);
-}
-template <class T, class X>
-Q_INLINE_TEMPLATE bool operator<(T *ptr1, const QSharedPointer<X> &ptr2)
-{
-    using CT = typename std::common_type<T *, X *>::type;
-    return std::less<CT>()(ptr1, ptr2.data());
-}
-
-//
 // qHash
 //
 template <class T>
@@ -864,6 +890,16 @@ namespace QtSharedPointer {
         result.internalSet(src.d, ptr);
         return result;
     }
+
+    template <class X, class T>
+    Q_INLINE_TEMPLATE QSharedPointer<X> movePointer(X *ptr, QSharedPointer<T> &&src)
+    {
+        QSharedPointer<X> result;
+        result.d = std::exchange(src.d, nullptr);
+        result.value.reset(ptr);
+        src.value.reset(nullptr);
+        return result;
+    }
 }
 
 // cast operators
@@ -874,9 +910,15 @@ Q_INLINE_TEMPLATE QSharedPointer<X> qSharedPointerCast(const QSharedPointer<T> &
     return QtSharedPointer::copyAndSetPointer(ptr, src);
 }
 template <class X, class T>
+Q_INLINE_TEMPLATE QSharedPointer<X> qSharedPointerCast(QSharedPointer<T> &&src)
+{
+    X *ptr = static_cast<X *>(src.data()); // if you get an error in this line, the cast is invalid
+    return QtSharedPointer::movePointer(ptr, std::move(src));
+}
+template <class X, class T>
 Q_INLINE_TEMPLATE QSharedPointer<X> qSharedPointerCast(const QWeakPointer<T> &src)
 {
-    return qSharedPointerCast<X, T>(src.toStrongRef());
+    return qSharedPointerCast<X>(src.toStrongRef());
 }
 
 template <class X, class T>
@@ -888,9 +930,17 @@ Q_INLINE_TEMPLATE QSharedPointer<X> qSharedPointerDynamicCast(const QSharedPoint
     return QtSharedPointer::copyAndSetPointer(ptr, src);
 }
 template <class X, class T>
+Q_INLINE_TEMPLATE QSharedPointer<X> qSharedPointerDynamicCast(QSharedPointer<T> &&src)
+{
+    X *ptr = dynamic_cast<X *>(src.data()); // if you get an error in this line, the cast is invalid
+    if (!ptr)
+        return QSharedPointer<X>();
+    return QtSharedPointer::movePointer(ptr, std::move(src));
+}
+template <class X, class T>
 Q_INLINE_TEMPLATE QSharedPointer<X> qSharedPointerDynamicCast(const QWeakPointer<T> &src)
 {
-    return qSharedPointerDynamicCast<X, T>(src.toStrongRef());
+    return qSharedPointerDynamicCast<X>(src.toStrongRef());
 }
 
 template <class X, class T>
@@ -900,16 +950,22 @@ Q_INLINE_TEMPLATE QSharedPointer<X> qSharedPointerConstCast(const QSharedPointer
     return QtSharedPointer::copyAndSetPointer(ptr, src);
 }
 template <class X, class T>
+Q_INLINE_TEMPLATE QSharedPointer<X> qSharedPointerConstCast(QSharedPointer<T> &&src)
+{
+    X *ptr = const_cast<X *>(src.data()); // if you get an error in this line, the cast is invalid
+    return QtSharedPointer::movePointer(ptr, std::move(src));
+}
+template <class X, class T>
 Q_INLINE_TEMPLATE QSharedPointer<X> qSharedPointerConstCast(const QWeakPointer<T> &src)
 {
-    return qSharedPointerConstCast<X, T>(src.toStrongRef());
+    return qSharedPointerConstCast<X>(src.toStrongRef());
 }
 
 template <class X, class T>
 Q_INLINE_TEMPLATE
 QWeakPointer<X> qWeakPointerCast(const QSharedPointer<T> &src)
 {
-    return qSharedPointerCast<X, T>(src).toWeakRef();
+    return qSharedPointerCast<X>(src).toWeakRef();
 }
 
 #ifndef QT_NO_QOBJECT
@@ -922,6 +978,14 @@ Q_INLINE_TEMPLATE QSharedPointer<X> qSharedPointerObjectCast(const QSharedPointe
     return QtSharedPointer::copyAndSetPointer(ptr, src);
 }
 template <class X, class T>
+Q_INLINE_TEMPLATE QSharedPointer<X> qSharedPointerObjectCast(QSharedPointer<T> &&src)
+{
+    X *ptr = qobject_cast<X *>(src.data());
+    if (!ptr)
+        return QSharedPointer<X>();
+    return QtSharedPointer::movePointer(ptr, std::move(src));
+}
+template <class X, class T>
 Q_INLINE_TEMPLATE QSharedPointer<X> qSharedPointerObjectCast(const QWeakPointer<T> &src)
 {
     return qSharedPointerObjectCast<X>(src.toStrongRef());
@@ -931,13 +995,19 @@ template <class X, class T>
 inline QSharedPointer<typename QtSharedPointer::RemovePointer<X>::Type>
 qobject_cast(const QSharedPointer<T> &src)
 {
-    return qSharedPointerObjectCast<typename QtSharedPointer::RemovePointer<X>::Type, T>(src);
+    return qSharedPointerObjectCast<typename QtSharedPointer::RemovePointer<X>::Type>(src);
+}
+template <class X, class T>
+inline QSharedPointer<typename QtSharedPointer::RemovePointer<X>::Type>
+qobject_cast(QSharedPointer<T> &&src)
+{
+    return qSharedPointerObjectCast<typename QtSharedPointer::RemovePointer<X>::Type>(std::move(src));
 }
 template <class X, class T>
 inline QSharedPointer<typename QtSharedPointer::RemovePointer<X>::Type>
 qobject_cast(const QWeakPointer<T> &src)
 {
-    return qSharedPointerObjectCast<typename QtSharedPointer::RemovePointer<X>::Type, T>(src);
+    return qSharedPointerObjectCast<typename QtSharedPointer::RemovePointer<X>::Type>(src);
 }
 
 /// ### TODO - QTBUG-88102: make this use toStrongRef() (once support for

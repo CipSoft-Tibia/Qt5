@@ -47,11 +47,13 @@ void QSGCurveStrokeNode::appendTriangle(const std::array<QVector2D, 3> &v,
     m_uncookedIndexes << currentVertex << currentVertex + 1 << currentVertex + 2;
 }
 
-// Straight line from p0 to p1
+// Straight line from p[0] to p[1]
 void QSGCurveStrokeNode::appendTriangle(const std::array<QVector2D, 3> &v,
-                                           const std::array<QVector2D, 2> &p,
-                                           const std::array<QVector2D, 3> &n)
+                                        const std::array<QVector2D, 2> &p,
+                                        const std::array<QVector2D, 3> &n,
+                                        QSGCurveStrokeNode::TriangleFlags flags)
 {
+    Q_UNUSED(flags)
     // We could reduce this to a linear equation by setting A to (0,0).
     // However, then we cannot use the cubic solution and need an additional
     // code path in the shader. The following formulation looks more complicated

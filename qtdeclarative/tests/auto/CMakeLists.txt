@@ -1,7 +1,9 @@
 # Copyright (C) 2022 The Qt Company Ltd.
 # SPDX-License-Identifier: BSD-3-Clause
 
-add_subdirectory(cmake)
+if(NOT (WIN32 AND CMAKE_CROSSCOMPILING))
+    add_subdirectory(cmake)
+endif()
 
 # For now, only build a subset of CMake auto tests when QT_BUILD_MINIMAL_STATIC_TEST
 # is specified and the build is targeting iOS. QT_BUILD_MINIMAL_STATIC_TEST is used in our CI.
@@ -14,6 +16,7 @@ endif()
 if(TARGET Qt::Quick)
     add_subdirectory(qml)
     add_subdirectory(quick)
+    add_subdirectory(quickshapes)
 endif()
 
 # Limit set of tests to run for static Qt builds.
@@ -29,7 +32,7 @@ if(TARGET Qt::QuickTest)
     add_subdirectory(qmlnetwork)
 endif()
 add_subdirectory(toolsupport)
-if(NOT UIKIT AND NOT ANDROID AND NOT QNX) # FIXME: QTBUG-92591 QTBUG-100202
+if(NOT UIKIT AND NOT ANDROID AND NOT QNX AND NOT VXWORKS) # FIXME: QTBUG-92591 QTBUG-100202
     add_subdirectory(qmltest)
 endif()
 if(TARGET Qt::Quick)
@@ -45,4 +48,7 @@ endif()
 if(TARGET Qt::QuickTemplates2)
     add_subdirectory(quickcontrols)
     add_subdirectory(quickdialogs)
+endif()
+if (ANDROID)
+    add_subdirectory(qtquickview)
 endif()

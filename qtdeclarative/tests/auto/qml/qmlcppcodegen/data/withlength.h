@@ -9,6 +9,14 @@
 #include <QtCore/qrect.h>
 #include <QtQml/qqml.h>
 
+class ObjectType : public QObject
+{
+    Q_OBJECT
+    QML_ELEMENT
+public:
+    ObjectType(QObject *parent = nullptr) : QObject(parent) {}
+};
+
 struct ValueTypeWithLength
 {
     Q_GADGET
@@ -22,6 +30,7 @@ public:
     Q_INVOKABLE ValueTypeWithLength(int length) : m_length(length) {}
     Q_INVOKABLE ValueTypeWithLength(QPointF point) : m_length(point.manhattanLength()) {}
     Q_INVOKABLE ValueTypeWithLength(QRectF rect) : m_length(rect.width()) {}
+    Q_INVOKABLE ValueTypeWithLength(ObjectType *o) : m_length(o->objectName().length()) {}
     Q_INVOKABLE QString toString() const { return QStringLiteral("no"); }
 
     int length() const { return m_length; }

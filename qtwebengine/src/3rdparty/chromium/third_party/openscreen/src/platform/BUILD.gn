@@ -3,11 +3,12 @@
 # found in the LICENSE file.
 
 import("//build_overrides/build.gni")
+import("../gni/openscreen.gni")
 
 visibility = [ "./*" ]
 
 # Source files that depend on nothing (all your base/ are belong to us).
-source_set("base") {
+openscreen_source_set("base") {
   defines = []
   visibility += [ "*" ]
   public = [
@@ -22,6 +23,7 @@ source_set("base") {
     "base/trace_logging_activation.h",
     "base/trace_logging_types.h",
     "base/trivial_clock_traits.h",
+    "base/type_util.h",
     "base/udp_packet.h",
   ]
 
@@ -36,12 +38,10 @@ source_set("base") {
     "base/trivial_clock_traits.cc",
     "base/udp_packet.cc",
   ]
-
-  public_configs = [ "../build:openscreen_include_dirs" ]
 }
 
 # Public API source files. May depend on nothing except :base.
-source_set("logging") {
+openscreen_source_set("logging") {
   defines = []
   visibility += [ "../util/*" ]
 
@@ -51,7 +51,7 @@ source_set("logging") {
 }
 
 # Public API source files. These may depend on nothing except :base.
-source_set("api") {
+openscreen_source_set("api") {
   defines = []
   visibility += [ "*" ]
   public = [
@@ -83,9 +83,16 @@ source_set("api") {
 
 # The following target is only activated in standalone builds (see :platform).
 if (!build_with_chromium) {
-  source_set("standalone_impl") {
+  openscreen_source_set("standalone_impl") {
     defines = []
-    visibility += [ "../*" ]
+    visibility += [
+      "../cast/common:discovery_e2e_test",
+      "../cast/standalone_receiver:cast_receiver",
+      "../cast/standalone_sender:cast_sender",
+      "../cast/test:e2e_tests",
+      "../osp:osp_demo",
+      "../test:test_main",
+    ]
     public = [
       "impl/logging.h",
       "impl/network_interface.h",
@@ -160,7 +167,7 @@ if (!build_with_chromium) {
 
 # The main target, which either assumes an embedder will link-in the platform
 # API implementation elsewhere, or links-in the :standalone_impl in the build.
-source_set("platform") {
+openscreen_source_set("platform") {
   visibility += [ "*" ]
   public_deps = [ ":api" ]
   if (!build_with_chromium) {
@@ -169,7 +176,7 @@ source_set("platform") {
 }
 
 # Test helpers, referenced in other Open Screen BUILD.gn test targets.
-source_set("test") {
+openscreen_source_set("test") {
   testonly = true
   visibility += [ "../*" ]
   public = [
@@ -216,7 +223,7 @@ source_set("test") {
   ]
 }
 
-source_set("unittests") {
+openscreen_source_set("unittests") {
   testonly = true
   visibility += [ "..:openscreen_unittests_all" ]
   public = []
@@ -250,10 +257,7 @@ source_set("unittests") {
   # The unit tests in impl/ assume the standalone implementation is being used.
   # Exclude them if an embedder is providing the implementation.
   if (!build_with_chromium) {
-    sources += [
-      "impl/task_runner_unittest.cc",
-      "impl/time_unittest.cc",
-    ]
+    sources += [ "impl/task_runner_unittest.cc" ]
 
     if (is_posix) {
       sources += [

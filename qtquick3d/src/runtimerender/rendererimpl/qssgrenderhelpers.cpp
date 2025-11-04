@@ -15,7 +15,11 @@
 #include "rendererimpl/qssgshadowmaphelpers_p.h"
 #include <QtQuick3DUtils/private/qssgassert_p.h>
 
+#include <QtGui/qquaternion.h>
+
 #include <QtCore/qbitarray.h>
+
+#include <cmath>
 
 QT_BEGIN_NAMESPACE
 
@@ -37,12 +41,13 @@ static QSSGRhiShaderPipelinePtr shadersForDefaultMaterial(QSSGRhiGraphicsPipelin
 }
 
 static QSSGRhiShaderPipelinePtr shadersForParticleMaterial(QSSGRhiGraphicsPipelineState *ps,
-                                                           QSSGParticlesRenderable &particleRenderable)
+                                                           QSSGParticlesRenderable &particleRenderable,
+                                                           QSSGRenderLayer::OITMethod method)
 {
     const auto &renderer(particleRenderable.renderer);
     const auto &shaderCache = renderer->contextInterface()->shaderCache();
     auto featureLevel = particleRenderable.particles.m_featureLevel;
-    const auto &shaderPipeline = shaderCache->getBuiltInRhiShaders().getRhiParticleShader(featureLevel, ps->viewCount);
+    const auto &shaderPipeline = shaderCache->getBuiltInRhiShaders().getRhiParticleShader(featureLevel, ps->viewCount, method);
     if (shaderPipeline)
         QSSGRhiGraphicsPipelineStatePrivate::setShaderPipeline(*ps, shaderPipeline.get());
     return shaderPipeline;
@@ -109,10 +114,18 @@ std::pair<QSSGBounds3, QSSGBounds3> RenderHelpers::calculateSortedObjectBounds(c
         for (const QSSGRenderableObjectHandle &handle : *handles) {
             const QSSGRenderableObject &obj = *handle.obj;
             // We skip objects not casting or receiving shadows since they don't influence or need to be covered by the shadow map
-            if (obj.renderableFlags.castsShadows())
-                boundsCasting.include(obj.globalBounds);
-            if (obj.renderableFlags.receivesShadows())
-                boundsReceiving.include(obj.globalBounds);
+            if (obj.renderableFlags.castsShadows()) {
+                if (!obj.globalBoundsInstancing.isEmpty())
+                    boundsCasting.include(obj.globalBoundsInstancing);
+                else
+                    boundsCasting.include(obj.globalBounds);
+            }
+            if (obj.renderableFlags.receivesShadows()) {
+                if (!obj.globalBoundsInstancing.isEmpty())
+                    boundsReceiving.include(obj.globalBoundsInstancing);
+                else
+                    boundsReceiving.include(obj.globalBounds);
+            }
         }
     }
     return { boundsCasting, boundsReceiving };
@@ -158,6 +171,8 @@ static std::unique_ptr<QSSGRenderCamera> computeShadowCameraFromFrustum(const QM
                                                                         const QSSGBoxPoints &frustumPoints,
                                                                         float frustumStartT,
                                                                         float frustumEndT,
+                                                                        float frustumRadius,
+                                                                        bool lockShadowmapTexels,
                                                                         const QSSGBounds3 &castingBox,
                                                                         const QSSGBounds3 &receivingBox,
                                                                         QSSGDebugDrawSystem *debugDrawSystem,
@@ -220,10 +235,26 @@ static std::unique_ptr<QSSGRenderCamera> computeShadowCameraFromFrustum(const QM
     QVector3D boundsDims = castReceiveBounds.dimensions();
     boundsDims.setZ(boundsDims.z() * 1.01f); // Expand slightly in z direction to avoid pancaking precision errors
 
-    // We expand the shadowmap to cover the bounds with one extra texel on all sides
-    const float texelExpandFactor = shadowMapResolution / (shadowMapResolution - 2);
+    if (lockShadowmapTexels) {
+        // Calculate center position aligned to texel size to avoid shimmering
+        const float diam = (pcfRadius + frustumRadius) * 2.0f;
+        const float texelsPerUnit = diam / shadowMapResolution;
+        QVector3D centerLight = lightMatrix.map(boundsCenterWorld);
+        float x = centerLight.x();
+        float y = centerLight.y();
+        float z = centerLight.z();
+        centerLight = QVector3D(int(x / texelsPerUnit), int(y / texelsPerUnit), int(z / texelsPerUnit)) * texelsPerUnit;
+        boundsCenterWorld = lightMatrixInverted.map(centerLight);
+        boundsDims.setX(diam);
+        boundsDims.setY(diam);
+    } else {
+        // We expand the shadowmap to cover the bounds with one extra texel on all sides
+        const float texelExpandFactor = shadowMapResolution / (shadowMapResolution - 2);
+        boundsDims.setX(boundsDims.x() * texelExpandFactor);
+        boundsDims.setY(boundsDims.y() * texelExpandFactor);
+    }
 
-    QRectF theViewport(0.0f, 0.0f, boundsDims.x() * texelExpandFactor, boundsDims.y() * texelExpandFactor);
+    QRectF theViewport(0.0f, 0.0f, boundsDims.x(), boundsDims.y());
 
     auto camera = std::make_unique<QSSGRenderCamera>(QSSGRenderGraphObject::Type::OrthographicCamera);
     camera->clipNear = -0.5f * boundsDims.z();
@@ -247,6 +278,7 @@ static QVarLengthArray<std::unique_ptr<QSSGRenderCamera>, 4> setupCascadingCamer
                                                                                                const float clipFar,
                                                                                                const QSSGBounds3 &castingObjectsBox,
                                                                                                const QSSGBounds3 &receivingObjectsBox,
+                                                                                               bool lockShadowmapTexels,
                                                                                                QSSGDebugDrawSystem *debugDrawSystem,
                                                                                                bool drawCascades,
                                                                                                bool drawSceneCascadeIntersection)
@@ -278,6 +310,26 @@ static QVarLengthArray<std::unique_ptr<QSSGRenderCamera>, 4> setupCascadingCamer
     QMatrix4x4 viewProjection(Qt::Uninitialized);
     inCamera.calculateViewProjectionMatrix(viewProjection);
     const QSSGBoxPoints frustum = computeFrustumBounds(viewProjection);
+    const QSSGBoxPoints frustumUntransformed = lockShadowmapTexels ? computeFrustumBounds(inCamera.projection) : QSSGBoxPoints();
+
+    // We calculate the radius of the cascade without rotation or translation so we always get
+    // the same floating point value.
+    const auto calcFrustumRadius = [&](float t0, float t1) -> float {
+        const QSSGBoxPoints pts = sliceFrustum(frustumUntransformed, t0 * farScale, t1 * farScale);
+
+        QVector3D center = QVector3D(0.f, 0.f, 0.f);
+        for (QVector3D point : pts) {
+            center += point;
+        }
+        center = center * 0.125f;
+
+        float radiusSquared = 0;
+        for (QVector3D point : pts) {
+            radiusSquared = qMax(radiusSquared, (point - center).lengthSquared());
+        }
+
+        return std::sqrt(radiusSquared);
+    };
 
     const auto computeSplitRanges = [inLight](const QVarLengthArray<float, 3> &splits) -> QVarLengthArray<QPair<float, float>, 4> {
         QVarLengthArray<QPair<float, float>, 4> ranges;
@@ -294,6 +346,7 @@ static QVarLengthArray<std::unique_ptr<QSSGRenderCamera>, 4> setupCascadingCamer
 
     const auto computeFrustums = [&](const QVarLengthArray<float, 3> &splits) {
         for (const auto &range : computeSplitRanges(splits)) {
+            const float frustumRadius = lockShadowmapTexels ? calcFrustumRadius(range.first, range.second) : 0.0f;
             auto camera = computeShadowCameraFromFrustum(lightMatrix,
                                                          lightMatrixInverted,
                                                          lightPivot,
@@ -304,6 +357,8 @@ static QVarLengthArray<std::unique_ptr<QSSGRenderCamera>, 4> setupCascadingCamer
                                                          frustum,
                                                          range.first * farScale,
                                                          range.second * farScale,
+                                                         frustumRadius,
+                                                         lockShadowmapTexels,
                                                          castingObjectsBox,
                                                          receivingObjectsBox,
                                                          debugDrawSystem,
@@ -837,7 +892,8 @@ void RenderHelpers::rhiPrepareRenderable(QSSGRhiContext *rhiCtx,
                                          QSSGRenderCamera *alteredCamera,
                                          QMatrix4x4 *alteredModelViewProjection,
                                          QSSGRenderTextureCubeFace cubeFace,
-                                         QSSGReflectionMapEntry *entry)
+                                         QSSGReflectionMapEntry *entry,
+                                         bool oit)
 {
     const auto &defaultMaterialShaderKeyProperties = inData.getDefaultMaterialPropertyTable();
 
@@ -941,7 +997,8 @@ void RenderHelpers::rhiPrepareRenderable(QSSGRhiContext *rhiCtx,
 
             const auto &material = static_cast<const QSSGRenderDefaultMaterial &>(subsetRenderable.getMaterial());
             ps->cullMode = QSSGRhiHelpers::toCullMode(material.cullMode);
-            fillTargetBlend(&ps->targetBlend, material.blendMode);
+            if (!oit)
+                fillTargetBlend(&ps->targetBlend[0], material.blendMode);
 
             auto &ia = QSSGRhiInputAssemblerStatePrivate::get(*ps);
 
@@ -1161,13 +1218,13 @@ void RenderHelpers::rhiPrepareRenderable(QSSGRhiContext *rhiCtx,
 
         customMaterialSystem.rhiPrepareRenderable(ps, passKey, subsetRenderable, featureSet,
                                                   material, inData, renderPassDescriptor, samples, viewCount,
-                                                  alteredCamera, cubeFace, alteredModelViewProjection, entry);
+                                                  alteredCamera, cubeFace, alteredModelViewProjection, entry, oit);
         break;
     }
     case QSSGRenderableObject::Type::Particles:
     {
         QSSGParticlesRenderable &particleRenderable(static_cast<QSSGParticlesRenderable &>(inObject));
-        const auto &shaderPipeline = shadersForParticleMaterial(ps, particleRenderable);
+        const auto &shaderPipeline = shadersForParticleMaterial(ps, particleRenderable, oit ? inData.layer.oitMethod : QSSGRenderLayer::OITMethod::None);
         if (shaderPipeline) {
             QSSGParticleRenderer::rhiPrepareRenderable(*shaderPipeline, passKey, rhiCtx, ps, particleRenderable, inData, renderPassDescriptor, samples, viewCount,
                                                        alteredCamera, cubeFace, entry);
@@ -1354,6 +1411,7 @@ void RenderHelpers::rhiRenderShadowMap(QSSGRhiContext *rhiCtx,
 
     QSSGDebugDrawSystem *debugDrawSystem = renderer.contextInterface()->debugDrawSystem().get();
     const bool drawDirectionalLightShadowBoxes = layerData.layer.drawDirectionalLightShadowBoxes;
+    const bool drawPointLightShadowBoxes = layerData.layer.drawPointLightShadowBoxes;
     const bool drawShadowCastingBounds = layerData.layer.drawShadowCastingBounds;
     const bool drawShadowReceivingBounds = layerData.layer.drawShadowReceivingBounds;
     const bool drawCascades = layerData.layer.drawCascades;
@@ -1405,6 +1463,7 @@ void RenderHelpers::rhiRenderShadowMap(QSSGRhiContext *rhiCtx,
                                                              clipFar,
                                                              castingObjectsBox,
                                                              receivingObjectsBox,
+                                                             light->m_lockShadowmapTexels,
                                                              debugDrawSystem,
                                                              drawCascades,
                                                              drawSceneCascadeIntersection);
@@ -1537,6 +1596,10 @@ void RenderHelpers::rhiRenderShadowMap(QSSGRhiContext *rhiCtx,
                 cb->endPass();
                 QSSGRHICTX_STAT(rhiCtx, endRenderPass());
                 Q_QUICK3D_PROFILE_END_WITH_STRING(QQuick3DProfiler::Quick3DRenderPass, 0, QSSG_RENDERPASS_NAME("shadow_cube", 0, outFace));
+            }
+
+            if (drawPointLightShadowBoxes) {
+                ShadowmapHelpers::addPointLightDebugBox(light->getGlobalPos(), shadowMapFar, debugDrawSystem);
             }
         }
     }
@@ -2195,7 +2258,7 @@ bool RenderHelpers::rhiPrepareDepthPass(QSSGRhiContext *rhiCtx,
     ps.samples = samples;
     ps.viewCount = viewCount;
     ps.flags |= { QSSGRhiGraphicsPipelineState::Flag::DepthTestEnabled, QSSGRhiGraphicsPipelineState::Flag::DepthWriteEnabled };
-    ps.targetBlend.colorWrite = {};
+    ps.targetBlend[0].colorWrite = {};
 
     for (const QSSGRenderableObjectHandle &handle : sortedOpaqueObjects) {
         if (!rhiPrepareDepthPassForObject(rhiCtx, passKey, inData, handle.obj, rpDesc, &ps))
@@ -2283,7 +2346,8 @@ void RenderHelpers::rhiRenderDepthPass(QSSGRhiContext *rhiCtx,
 bool RenderHelpers::rhiPrepareDepthTexture(QSSGRhiContext *rhiCtx,
                                            const QSize &size,
                                            QSSGRhiRenderableTexture *renderableTex,
-                                           quint8 viewCount)
+                                           quint8 viewCount,
+                                           int samples)
 {
     QRhi *rhi = rhiCtx->rhi();
     bool needsBuild = false;
@@ -2295,7 +2359,7 @@ bool RenderHelpers::rhiPrepareDepthTexture(QSSGRhiContext *rhiCtx,
         if (!rhi->isTextureFormatSupported(format))
             qWarning("Depth texture not supported");
         if (viewCount <= 1)
-            renderableTex->texture = rhiCtx->rhi()->newTexture(format, size, 1, QRhiTexture::RenderTarget);
+            renderableTex->texture = rhiCtx->rhi()->newTexture(format, size, samples, QRhiTexture::RenderTarget);
         else
             renderableTex->texture = rhiCtx->rhi()->newTextureArray(format, viewCount, size, 1, QRhiTexture::RenderTarget);
         needsBuild = true;

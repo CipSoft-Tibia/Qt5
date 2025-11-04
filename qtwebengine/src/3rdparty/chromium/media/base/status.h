@@ -7,13 +7,13 @@
 
 #include <memory>
 #include <string>
+#include <string_view>
 #include <type_traits>
 #include <utility>
 #include <vector>
 
 #include "base/functional/bind.h"
 #include "base/location.h"
-#include "base/strings/string_piece.h"
 #include "base/values.h"
 #include "media/base/crc_16.h"
 #include "media/base/media_export.h"
@@ -44,7 +44,7 @@ namespace media {
 using StatusCodeType = uint16_t;
 
 // This is the type that TypedStatusTraits::Group should be.
-using StatusGroupType = base::StringPiece;
+using StatusGroupType = std::string_view;
 
 // This is the type that a status will get serialized into for UKM purposes.
 using UKMPackedType = uint64_t;
@@ -148,14 +148,14 @@ struct StatusTraitsHelper {
   static constexpr bool has_pack = HasPackExtraData<T>::as_method;
 
   // If T defines OkEnumValue(), then return it. Otherwise, return an
-  // T::Codes::kOk if that's defined, or absl::nullopt if its not.
-  static constexpr absl::optional<typename T::Codes> OkEnumValue() {
+  // T::Codes::kOk if that's defined, or std::nullopt if its not.
+  static constexpr std::optional<typename T::Codes> OkEnumValue() {
     if constexpr (has_default) {
       return T::OkEnumValue();
     } else if constexpr (has_ok) {
       return T::Codes::kOk;
     } else {
-      return absl::nullopt;
+      return std::nullopt;
     }
   }
 
@@ -245,7 +245,7 @@ class MEDIA_EXPORT TypedStatus {
               const base::Location& location = base::Location::Current())
       : TypedStatus(code, "", location) {}
 
-  TypedStatus(std::tuple<Codes, base::StringPiece> pack,
+  TypedStatus(std::tuple<Codes, std::string_view> pack,
               const base::Location& location = base::Location::Current())
       : TypedStatus(std::get<0>(pack), std::get<1>(pack), location) {}
 
@@ -272,7 +272,7 @@ class MEDIA_EXPORT TypedStatus {
       typename = std::enable_if<std::is_pointer_v<decltype(&_T::OnCreateFrom)>>>
   TypedStatus(
       Codes code,
-      base::StringPiece message,
+      std::string_view message,
       const typename internal::SecondArgType<decltype(_T::OnCreateFrom)>::Type&
           data,
       const base::Location& location = base::Location::Current())
@@ -295,7 +295,7 @@ class MEDIA_EXPORT TypedStatus {
   // Used to allow returning {TypedStatus::Codes::kValue, "message", cause}
   template <typename CausalStatusType>
   TypedStatus(Codes code,
-              base::StringPiece message,
+              std::string_view message,
               TypedStatus<CausalStatusType>&& cause,
               const base::Location& location = base::Location::Current())
       : TypedStatus(code, message, location) {
@@ -311,7 +311,7 @@ class MEDIA_EXPORT TypedStatus {
   // Also used to allow returning {TypedStatus::Codes::kValue, "message"}
   // implicitly as a typed status.
   TypedStatus(Codes code,
-              base::StringPiece message,
+              std::string_view message,
               const base::Location& location = base::Location::Current()) {
     // Note that |message| would be dropped when code is the default value,
     // so DCHECK that it is not set.
@@ -563,7 +563,7 @@ class MEDIA_EXPORT TypedStatus {
     ReturnType MapValue(
         FnType&& lambda,
         typename ConvertTo::Codes on_error,
-        base::StringPiece message = "",
+        std::string_view message = "",
         base::Location location = base::Location::Current()) && {
       CHECK(error_ || value_);
       if (!has_value()) {
@@ -579,12 +579,12 @@ class MEDIA_EXPORT TypedStatus {
     }
 
    private:
-    absl::optional<TypedStatus<T>> error_;
+    std::optional<TypedStatus<T>> error_;
 
     // We wrap |OtherType| in a container so that windows COM wrappers work.
     // They override operator& and similar, and won't compile in a
-    // absl::optional.
-    absl::optional<std::tuple<OtherType>> value_;
+    // std::optional.
+    std::optional<std::tuple<OtherType>> value_;
   };
 
   static Callback BindOkContinuation(Callback err,

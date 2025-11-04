@@ -4,7 +4,12 @@
 #ifndef QOPEN62541VALUECONVERTER_H
 #define QOPEN62541VALUECONVERTER_H
 
+#ifdef USE_SYSTEM_OPEN62541
+#include <open62541/common.h>
+#else
 #include "qopen62541.h"
+#endif
+
 #include <QtOpcUa/qopcuanode.h>
 #include <QtOpcUa/qopcuatype.h>
 #include <QtOpcUa/qopcuabinarydataencoding.h>
@@ -18,7 +23,7 @@ namespace QOpen62541ValueConverter {
 
     inline UA_AttributeId toUaAttributeId(QOpcUa::NodeAttribute attr)
     {
-        const int attributeIdUsedBits = 23;
+        const int attributeIdUsedBits = 27;
         for (int i = 0; i < attributeIdUsedBits; ++i)
             if (static_cast<int>(attr) == (1 << i))
                 return static_cast<UA_AttributeId>(i + 1);
@@ -28,7 +33,7 @@ namespace QOpen62541ValueConverter {
 
     inline QOpcUa::NodeAttribute toQtAttributeId(UA_AttributeId attr)
     {
-        if (attr > 0 && attr <= UA_ATTRIBUTEID_DATATYPEDEFINITION)
+        if (attr > 0 && attr <= UA_ATTRIBUTEID_ACCESSLEVELEX)
             return QOpcUa::NodeAttribute(1 << (attr - 1));
 
         return QOpcUa::NodeAttribute::None;

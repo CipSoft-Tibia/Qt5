@@ -25,6 +25,7 @@ qt_internal_add_test(tst_qcoreapplication
     VERSION ${target_version}
     SOURCES
         tst_qcoreapplication.cpp tst_qcoreapplication.h
+        apphelper.h
     LIBRARIES
         Qt::CorePrivate
 )
@@ -59,3 +60,15 @@ set_target_properties(apphelper_core PROPERTIES OUTPUT_NAME apphelper)
 add_dependencies(tst_qcoreapplication
     apphelper_core
 )
+
+if(QT_FEATURE_library)
+    qt_internal_add_cmake_library(apphelper_core_plugin
+        MODULE
+        SOURCES
+            apphelper_plugin.cpp
+        LIBRARIES
+            Qt::Core
+    )
+    qt_autogen_tools_initial_setup(apphelper_core_plugin)
+    add_dependencies(apphelper_core apphelper_core_plugin)
+endif()

@@ -42,6 +42,11 @@
 
 namespace dawn::native {
 
+const char MemoryDump::kNameSize[] = "size";
+const char MemoryDump::kNameObjectCount[] = "object_count";
+const char MemoryDump::kUnitsBytes[] = "bytes";
+const char MemoryDump::kUnitsObjects[] = "objects";
+
 const DawnProcTable& GetProcsAutogen();
 
 const DawnProcTable& GetProcs() {
@@ -58,7 +63,7 @@ Adapter::Adapter() = default;
 
 Adapter::Adapter(AdapterBase* impl) : mImpl(impl) {
     if (mImpl != nullptr) {
-        mImpl->Reference();
+        mImpl->AddRef();
     }
 }
 
@@ -78,18 +83,18 @@ Adapter& Adapter::operator=(const Adapter& other) {
         }
         mImpl = other.mImpl;
         if (mImpl) {
-            mImpl->Reference();
+            mImpl->AddRef();
         }
     }
     return *this;
 }
 
-void Adapter::GetProperties(wgpu::AdapterProperties* properties) const {
-    GetProperties(reinterpret_cast<WGPUAdapterProperties*>(properties));
+wgpu::Status Adapter::GetInfo(wgpu::AdapterInfo* info) const {
+    return GetInfo(reinterpret_cast<WGPUAdapterInfo*>(info));
 }
 
-void Adapter::GetProperties(WGPUAdapterProperties* properties) const {
-    mImpl->APIGetProperties(FromAPI(properties));
+wgpu::Status Adapter::GetInfo(WGPUAdapterInfo* info) const {
+    return mImpl->APIGetInfo(FromAPI(info));
 }
 
 WGPUAdapter Adapter::Get() const {
@@ -101,7 +106,7 @@ std::vector<const char*> Adapter::GetSupportedFeatures() const {
     return supportedFeaturesSet.GetEnabledFeatureNames();
 }
 
-bool Adapter::GetLimits(WGPUSupportedLimits* limits) const {
+wgpu::ConvertibleStatus Adapter::GetLimits(WGPUSupportedLimits* limits) const {
     return mImpl->APIGetLimits(FromAPI(limits));
 }
 
@@ -140,7 +145,8 @@ void Adapter::RequestDevice(const WGPUDeviceDescriptor* descriptor,
 }
 
 void Adapter::ResetInternalDeviceForTesting() {
-    mImpl->GetPhysicalDevice()->ResetInternalDeviceForTesting();
+    [[maybe_unused]] bool hadError = mImpl->GetInstance()->ConsumedError(
+        mImpl->GetPhysicalDevice()->ResetInternalDeviceForTesting());
 }
 
 // DawnInstanceDescriptor
@@ -152,16 +158,22 @@ DawnInstanceDescriptor::DawnInstanceDescriptor() {
 bool DawnInstanceDescriptor::operator==(const DawnInstanceDescriptor& rhs) const {
     return (nextInChain == rhs.nextInChain) &&
            std::tie(additionalRuntimeSearchPathsCount, additionalRuntimeSearchPaths, platform,
-                    backendValidationLevel, beginCaptureOnStartup, enableAdapterBlocklist) ==
+                    backendValidationLevel, beginCaptureOnStartup) ==
                std::tie(rhs.additionalRuntimeSearchPathsCount, rhs.additionalRuntimeSearchPaths,
-                        rhs.platform, rhs.backendValidationLevel, rhs.beginCaptureOnStartup,
-                        rhs.enableAdapterBlocklist);
+                        rhs.platform, rhs.backendValidationLevel, rhs.beginCaptureOnStartup);
 }
 
 // Instance
 
 Instance::Instance(const WGPUInstanceDescriptor* desc)
     : mImpl(APICreateInstance(reinterpret_cast<const InstanceDescriptor*>(desc))) {
+    tint::Initialize();
+}
+
+Instance::Instance(InstanceBase* impl) : mImpl(impl) {
+    if (mImpl != nullptr) {
+        mImpl->APIAddRef();
+    }
     tint::Initialize();
 }
 
@@ -189,46 +201,28 @@ const ToggleInfo* Instance::GetToggleInfo(const char* toggleName) {
     return mImpl->GetToggleInfo(toggleName);
 }
 
-const FeatureInfo* Instance::GetFeatureInfo(WGPUFeatureName feature) {
-    return mImpl->GetFeatureInfo(static_cast<wgpu::FeatureName>(feature));
-}
-
-void Instance::EnableBackendValidation(bool enableBackendValidation) {
-    if (enableBackendValidation) {
-        mImpl->SetBackendValidationLevel(BackendValidationLevel::Full);
-    }
-}
-
 void Instance::SetBackendValidationLevel(BackendValidationLevel level) {
     mImpl->SetBackendValidationLevel(level);
-}
-
-void Instance::EnableBeginCaptureOnStartup(bool beginCaptureOnStartup) {
-    mImpl->EnableBeginCaptureOnStartup(beginCaptureOnStartup);
-}
-
-void Instance::EnableAdapterBlocklist(bool enable) {
-    mImpl->EnableAdapterBlocklist(enable);
 }
 
 uint64_t Instance::GetDeviceCountForTesting() const {
     return mImpl->GetDeviceCountForTesting();
 }
 
+uint64_t Instance::GetDeprecationWarningCountForTesting() const {
+    return mImpl->GetDeprecationWarningCountForTesting();
+}
+
 WGPUInstance Instance::Get() const {
     return ToAPI(mImpl);
 }
 
+void Instance::DisconnectDawnPlatform() {
+    mImpl->DisconnectDawnPlatform();
+}
+
 size_t GetLazyClearCountForTesting(WGPUDevice device) {
     return FromAPI(device)->GetLazyClearCountForTesting();
-}
-
-size_t GetDeprecationWarningCountForTesting(WGPUDevice device) {
-    return FromAPI(device)->GetDeprecationWarningCountForTesting();
-}
-
-size_t GetPhysicalDeviceCountForTesting(WGPUInstance instance) {
-    return FromAPI(instance)->GetPhysicalDeviceCountForTesting();
 }
 
 bool IsTextureSubresourceInitialized(WGPUTexture texture,
@@ -248,9 +242,9 @@ bool IsTextureSubresourceInitialized(WGPUTexture texture,
     return textureBase->IsSubresourceContentInitialized(range);
 }
 
-std::vector<const char*> GetProcMapNamesForTestingInternal();
+std::vector<std::string_view> GetProcMapNamesForTestingInternal();
 
-std::vector<const char*> GetProcMapNamesForTesting() {
+std::vector<std::string_view> GetProcMapNamesForTesting() {
     return GetProcMapNamesForTestingInternal();
 }
 
@@ -258,8 +252,8 @@ DAWN_NATIVE_EXPORT bool DeviceTick(WGPUDevice device) {
     return FromAPI(device)->APITick();
 }
 
-DAWN_NATIVE_EXPORT void InstanceProcessEvents(WGPUInstance instance) {
-    FromAPI(instance)->APIProcessEvents();
+DAWN_NATIVE_EXPORT bool InstanceProcessEvents(WGPUInstance instance) {
+    return FromAPI(instance)->ProcessEvents();
 }
 
 // ExternalImageDescriptor
@@ -301,6 +295,21 @@ const FeatureInfo* GetFeatureInfo(wgpu::FeatureName feature) {
         return nullptr;
     }
     return &kFeatureNameAndInfoList[FromAPI(feature)];
+}
+
+void DumpMemoryStatistics(WGPUDevice device, MemoryDump* dump) {
+    auto deviceLock(FromAPI(device)->GetScopedLock());
+    FromAPI(device)->DumpMemoryStatistics(dump);
+}
+
+uint64_t ComputeEstimatedMemoryUsage(WGPUDevice device) {
+    auto deviceLock(FromAPI(device)->GetScopedLock());
+    return FromAPI(device)->ComputeEstimatedMemoryUsage();
+}
+
+void ReduceMemoryUsage(WGPUDevice device) {
+    auto deviceLock(FromAPI(device)->GetScopedLock());
+    FromAPI(device)->ReduceMemoryUsage();
 }
 
 }  // namespace dawn::native

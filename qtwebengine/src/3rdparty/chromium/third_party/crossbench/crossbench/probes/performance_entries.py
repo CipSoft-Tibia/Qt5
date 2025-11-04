@@ -16,7 +16,7 @@ if TYPE_CHECKING:
   from crossbench.probes.results import ProbeResult
   from crossbench.runner.actions import Actions
   from crossbench.runner.groups import BrowsersRunGroup, StoriesRunGroup
-  from crossbench.types import JSON
+  from crossbench.types import Json
 
 
 class PerformanceEntriesProbe(JsonResultProbe):
@@ -34,7 +34,7 @@ class PerformanceEntriesProbe(JsonResultProbe):
       raise ProbeIncompatibleBrowser(self, browser,
                                      "Needs browser with JS-execution support")
 
-  def to_json(self, actions: Actions) -> JSON:
+  def to_json(self, actions: Actions) -> Json:
     return actions.js("""
       let data = { __proto__: null, paint: {}, mark: {} };
       for (let entryType of Object.keys(data)) {

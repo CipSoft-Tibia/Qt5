@@ -156,16 +156,16 @@ jumbo_source_set("audio") {
 
   if (is_apple) {
     sources += [
+      "apple/audio_auhal.cc",
+      "apple/audio_auhal.h",
+      "apple/audio_input.cc",
+      "apple/audio_input.h",
+      "apple/audio_low_latency_input.cc",
+      "apple/audio_low_latency_input.h",
       "apple/audio_manager_apple.cc",
       "apple/audio_manager_apple.h",
-      "mac/audio_auhal_mac.cc",
-      "mac/audio_auhal_mac.h",
-      "mac/audio_input_mac.cc",
-      "mac/audio_input_mac.h",
-      "mac/audio_low_latency_input_mac.cc",
-      "mac/audio_low_latency_input_mac.h",
-      "mac/scoped_audio_unit.cc",
-      "mac/scoped_audio_unit.h",
+      "apple/scoped_audio_unit.cc",
+      "apple/scoped_audio_unit.h",
     ]
 
     deps += [ "//media/base/mac" ]
@@ -188,8 +188,6 @@ jumbo_source_set("audio") {
       "mac/audio_manager_mac.h",
       "mac/core_audio_util_mac.cc",
       "mac/core_audio_util_mac.h",
-      "mac/coreaudio_dispatch_override.cc",
-      "mac/coreaudio_dispatch_override.h",
       "mac/screen_capture_kit_swizzler.h",
       "mac/screen_capture_kit_swizzler.mm",
     ]
@@ -468,8 +466,8 @@ source_set("unit_tests") {
 
   if (is_apple) {
     sources += [
-      "mac/audio_auhal_mac_unittest.cc",
-      "mac/audio_low_latency_input_mac_unittest.cc",
+      "apple/audio_auhal_unittest.cc",
+      "apple/audio_low_latency_input_unittest.cc",
     ]
   }
 

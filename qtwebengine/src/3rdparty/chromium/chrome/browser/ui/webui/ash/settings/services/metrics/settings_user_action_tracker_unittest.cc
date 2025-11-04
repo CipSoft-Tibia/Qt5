@@ -4,7 +4,6 @@
 
 #include "chrome/browser/ui/webui/ash/settings/services/metrics/settings_user_action_tracker.h"
 
-#include "ash/constants/ash_features.h"
 #include "ash/webui/settings/public/constants/setting.mojom.h"
 #include "base/test/metrics/histogram_tester.h"
 #include "base/values.h"
@@ -53,10 +52,7 @@ using ::chromeos::settings::mojom::Setting;
 
 class SettingsUserActionTrackerTest : public testing::Test {
  protected:
-  SettingsUserActionTrackerTest() {
-    feature_list_.InitAndEnableFeature(::ash::features::kPerUserMetrics);
-  }
-
+  SettingsUserActionTrackerTest() = default;
   ~SettingsUserActionTrackerTest() override = default;
 
   void SetUpTestingProfile() {
@@ -101,8 +97,8 @@ class SettingsUserActionTrackerTest : public testing::Test {
                                         mojom::Setting::kTouchpadSpeed);
     fake_hierarchy_->AddSettingMetadata(mojom::Section::kPeople,
                                         mojom::Setting::kAddAccount);
-    fake_hierarchy_->AddSettingMetadata(mojom::Section::kPrinting,
-                                        mojom::Setting::kScanningApp);
+    fake_hierarchy_->AddSettingMetadata(mojom::Section::kPersonalization,
+                                        mojom::Setting::kOpenWallpaper);
     fake_hierarchy_->AddSettingMetadata(mojom::Section::kNetwork,
                                         mojom::Setting::kWifiAddNetwork);
 
@@ -133,11 +129,6 @@ class SettingsUserActionTrackerTest : public testing::Test {
   raw_ptr<TestingProfile> testing_profile_;
   raw_ptr<PrefService> test_pref_service_;
   std::unique_ptr<SettingsUserActionTracker> tracker_;
-
-  // This needs to be initialized before any tasks running on other threads
-  // access the feature list, and destroyed after |task_environment_|, to avoid
-  // data races.
-  base::test::ScopedFeatureList feature_list_;
 
   // MetricsService.
   std::unique_ptr<TestingPrefServiceSimple> local_state_;
@@ -262,24 +253,24 @@ TEST_F(SettingsUserActionTrackerTest, TestRecordSettingChangedIntPref) {
 }
 
 TEST_F(SettingsUserActionTrackerTest, TestRecordSettingChangedNullValue) {
-  // Record that the Scan app is opened.
-  tracker_->RecordSettingChangeWithDetails(mojom::Setting::kScanningApp,
+  // Record that the Wallpaper app is opened.
+  tracker_->RecordSettingChangeWithDetails(mojom::Setting::kOpenWallpaper,
                                            nullptr);
 
   // The umbrella metric for which setting was changed should be updated. Note
-  // that kScanningApp has enum value of 1403.
+  // that kOpenWallpaper has enum value of 500.
   histogram_tester_.ExpectTotalCount("ChromeOS.Settings.SettingChanged",
                                      /*count=*/1);
   histogram_tester_.ExpectBucketCount("ChromeOS.Settings.SettingChanged",
-                                      /*sample=*/1403,
+                                      /*sample=*/500,
                                       /*count=*/1);
 
-  // The LogMetric fn in the Printing section should have been called.
-  const FakeOsSettingsSection* printing_section =
+  // The LogMetric fn in the Personalization section should have been called.
+  const FakeOsSettingsSection* personalization_section =
       static_cast<const FakeOsSettingsSection*>(
-          fake_sections_->GetSection(mojom::Section::kPrinting));
-  EXPECT_TRUE(printing_section->logged_metrics().back() ==
-              mojom::Setting::kScanningApp);
+          fake_sections_->GetSection(mojom::Section::kPersonalization));
+  EXPECT_TRUE(personalization_section->logged_metrics().back() ==
+              mojom::Setting::kOpenWallpaper);
 }
 
 }  // namespace ash::settings

@@ -111,7 +111,7 @@ void CSSStyleRule::setSelectorText(const ExecutionContext* execution_context,
   // our newly created StyleRule instead of the old one.
   if (new_style_rule->ChildRules()) {
     for (StyleRuleBase* child_rule : *new_style_rule->ChildRules()) {
-      child_rule->Reparent(style_rule_, new_style_rule);
+      child_rule->Reparent(new_style_rule);
     }
   }
 
@@ -140,7 +140,7 @@ String CSSStyleRule::cssText() const {
   for (unsigned i = 0; i < size; ++i) {
     // Step 6.2 for rules.
     rules.Append("\n  ");
-    rules.Append(Item(i)->cssText());
+    rules.Append(ItemInternal(i)->cssText());
   }
 
   // Step 4.
@@ -202,7 +202,7 @@ unsigned CSSStyleRule::length() const {
   }
 }
 
-CSSRule* CSSStyleRule::Item(unsigned index) const {
+CSSRule* CSSStyleRule::Item(unsigned index, bool trigger_use_counters) const {
   if (index >= length()) {
     return nullptr;
   }
@@ -211,7 +211,7 @@ CSSRule* CSSStyleRule::Item(unsigned index) const {
   Member<CSSRule>& rule = child_rule_cssom_wrappers_[index];
   if (!rule) {
     rule = (*style_rule_->ChildRules())[index]->CreateCSSOMWrapper(
-        index, const_cast<CSSStyleRule*>(this));
+        index, const_cast<CSSStyleRule*>(this), trigger_use_counters);
   }
   return rule.Get();
 }

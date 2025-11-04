@@ -8,6 +8,7 @@
 #include <memory>
 #include <string>
 
+#include "base/memory/raw_ptr.h"
 #include "base/memory/weak_ptr.h"
 #include "components/dom_distiller/core/distiller_page.h"
 #include "ios/web/public/web_state_observer.h"
@@ -66,12 +67,13 @@ class DistillerPageIOS : public DistillerPage, public web::WebStateObserver {
 
   GURL url_;
   std::string script_;
-  web::BrowserState* browser_state_;
+  raw_ptr<web::BrowserState> browser_state_;
   std::unique_ptr<web::WebState> web_state_;
   std::unique_ptr<DistillerPageMediaBlocker> media_blocker_;
+  bool distilling_navigation_ = false;
 
   // Used to store whether the owned WebState is currently loading or not.
-  // TODO(crbug.com/782159): this is a work-around as WebState::IsLoading()
+  // TODO(crbug.com/40548473): this is a work-around as WebState::IsLoading()
   // is/was not returning the expected value when an SLL interstitial is
   // blocked. Remove this and use WebState::IsLoading() when WebState has
   // been fixed.

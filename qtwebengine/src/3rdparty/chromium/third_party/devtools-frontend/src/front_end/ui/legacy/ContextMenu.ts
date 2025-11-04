@@ -49,7 +49,7 @@ export class Item {
   customElement?: Element;
   private shortcut?: string;
   #tooltip: Common.UIString.LocalizedString|undefined;
-  #jslogContext: string|undefined;
+  protected jslogContext: string|undefined;
 
   constructor(
       contextMenu: ContextMenu|null, type: 'checkbox'|'item'|'separator'|'subMenu', label?: string, disabled?: boolean,
@@ -64,7 +64,7 @@ export class Item {
     if (type === 'item' || type === 'checkbox') {
       this.idInternal = contextMenu ? contextMenu.nextId() : 0;
     }
-    this.#jslogContext = jslogContext;
+    this.jslogContext = jslogContext;
   }
 
   id(): number {
@@ -97,7 +97,7 @@ export class Item {
           checked: undefined,
           subItems: undefined,
           tooltip: this.#tooltip,
-          jslogContext: this.#jslogContext,
+          jslogContext: this.jslogContext,
         };
         if (this.customElement) {
           result.element = this.customElement;
@@ -126,7 +126,7 @@ export class Item {
           enabled: !this.disabled,
           subItems: undefined,
           tooltip: this.#tooltip,
-          jslogContext: this.#jslogContext,
+          jslogContext: this.jslogContext,
         };
         if (this.customElement) {
           result.element = this.customElement;
@@ -143,7 +143,7 @@ export class Item {
 }
 
 export class Section {
-  private readonly contextMenu: ContextMenu|null;
+  readonly contextMenu: ContextMenu|null;
   readonly items: Item[];
   constructor(contextMenu: ContextMenu|null) {
     this.contextMenu = contextMenu;
@@ -206,23 +206,29 @@ export class Section {
     return item;
   }
 
-  appendCheckboxItem(
-      label: string, handler: () => void, checked?: boolean, disabled?: boolean, additionalElement?: Element,
-      tooltip?: Platform.UIString.LocalizedString, jslogContext?: string): Item {
-    const item = new Item(this.contextMenu, 'checkbox', label, disabled, checked, tooltip, jslogContext);
+  appendCheckboxItem(label: string, handler: () => void, options?: {
+    checked?: boolean,
+    disabled?: boolean,
+    additionalElement?: Element,
+    tooltip?: Platform.UIString.LocalizedString,
+    jslogContext?: string,
+  }): Item {
+    const item = new Item(
+        this.contextMenu, 'checkbox', label, options?.disabled, options?.checked, options?.tooltip,
+        options?.jslogContext);
     this.items.push(item);
     if (this.contextMenu) {
       this.contextMenu.setHandler(item.id(), handler);
     }
-    if (additionalElement) {
-      item.customElement = additionalElement;
+    if (options?.additionalElement) {
+      item.customElement = options.additionalElement;
     }
     return item;
   }
 }
 
 export class SubMenu extends Item {
-  private readonly sections: Map<string, Section>;
+  readonly sections: Map<string, Section>;
   private readonly sectionList: Section[];
 
   constructor(contextMenu: ContextMenu|null, label?: string, disabled?: boolean, jslogContext?: string) {
@@ -236,6 +242,9 @@ export class SubMenu extends Item {
   }
 
   section(name?: string): Section {
+    if (!name) {
+      name = 'default';
+    }
     let section: Section|(Section | null | undefined) = name ? this.sections.get(name) : null;
     if (!section) {
       section = new Section(this.contextMenu);
@@ -301,6 +310,7 @@ export class SubMenu extends Item {
       subItems: [],
       id: undefined,
       checked: undefined,
+      jslogContext: this.jslogContext,
     };
 
     const nonEmptySections = this.sectionList.filter(section => Boolean(section.items.length));
@@ -366,7 +376,6 @@ export interface ContextMenuOptions {
   onSoftMenuClosed?: () => void;
   x?: number;
   y?: number;
-  jsLogContext?: string;
 }
 
 export class ContextMenu extends SubMenu {
@@ -385,6 +394,7 @@ export class ContextMenu extends SubMenu {
   private contextMenuLabel?: string;
   private openHostedMenu: Host.InspectorFrontendHostAPI.ContextMenuDescriptor[]|null;
   private eventTarget: EventTarget|null;
+  private loggableParent: Element|null = null;
 
   constructor(event: Event, options: ContextMenuOptions = {}) {
     super(null);
@@ -399,14 +409,19 @@ export class ContextMenu extends SubMenu {
     this.x = options.x === undefined ? mouseEvent.x : options.x;
     this.y = options.y === undefined ? mouseEvent.y : options.y;
     this.onSoftMenuClosed = options.onSoftMenuClosed;
-    this.jsLogContext = options.jsLogContext;
     this.handlers = new Map();
     this.idInternal = 0;
     this.openHostedMenu = null;
 
-    const target = deepElementFromEvent(event);
+    let target = (deepElementFromEvent(event) || event.target) as Element | null;
     if (target) {
       this.appendApplicableItems((target as Object));
+      while (target instanceof Element && !target.hasAttribute('jslog')) {
+        target = target.parentElementOrShadowHost() ?? null;
+      }
+      if (target instanceof Element) {
+        this.loggableParent = target;
+      }
     }
   }
 
@@ -509,7 +524,7 @@ export class ContextMenu extends SubMenu {
         Host.InspectorFrontendHost.InspectorFrontendHostInstance.isHostedMode()) {
       this.softMenu = new SoftContextMenu(
           (menuObject as SoftContextMenuDescriptor[]), this.itemSelected.bind(this), this.keepOpen, undefined,
-          this.onSoftMenuClosed);
+          this.onSoftMenuClosed, this.loggableParent);
       // let soft context menu focus on the first item when the event is triggered by a non-mouse event
       // add another check of button value to differentiate mouse event with 'shift + f10' keyboard event
       const isMouseEvent =
@@ -529,11 +544,7 @@ export class ContextMenu extends SubMenu {
         Host.InspectorFrontendHost.InspectorFrontendHostInstance.events.addEventListener(
             Host.InspectorFrontendHostAPI.Events.ContextMenuItemSelected, this.onItemSelected, this);
       }
-      const visualElement = VisualLogging.menu();
-      if (this.jsLogContext) {
-        visualElement.context(this.jsLogContext);
-      }
-      VisualLogging.registerLoggable(menuObject, `${visualElement}`, null);
+      VisualLogging.registerLoggable(menuObject, `${VisualLogging.menu()}`, this.loggableParent);
       this.registerLoggablesWithin(menuObject);
       this.openHostedMenu = menuObject;
       // showContextMenuAtPoint call above synchronously issues a clear event for previous context menu (if any),
@@ -560,6 +571,13 @@ export class ContextMenu extends SubMenu {
     }
   }
 
+  invokeHandler(id: number): void {
+    const handler = this.handlers.get(id);
+    if (handler) {
+      handler.call(this);
+    }
+  }
+
   private buildMenuDescriptors(): (SoftContextMenuDescriptor|Host.InspectorFrontendHostAPI.ContextMenuDescriptor)[] {
     return super.buildDescriptor().subItems as (
                SoftContextMenuDescriptor | Host.InspectorFrontendHostAPI.ContextMenuDescriptor)[];
@@ -570,10 +588,7 @@ export class ContextMenu extends SubMenu {
   }
 
   private itemSelected(id: number): void {
-    const handler = this.handlers.get(id);
-    if (handler) {
-      handler.call(this);
-    }
+    this.invokeHandler(id);
     if (this.openHostedMenu) {
       const itemWithId = (items: Host.InspectorFrontendHostAPI.ContextMenuDescriptor[],
                           id: number): Host.InspectorFrontendHostAPI.ContextMenuDescriptor|null => {
@@ -602,6 +617,9 @@ export class ContextMenu extends SubMenu {
         Host.InspectorFrontendHostAPI.Events.ContextMenuCleared, this.menuCleared, this);
     Host.InspectorFrontendHost.InspectorFrontendHostInstance.events.removeEventListener(
         Host.InspectorFrontendHostAPI.Events.ContextMenuItemSelected, this.onItemSelected, this);
+    if (this.openHostedMenu) {
+      void VisualLogging.logResize(this.openHostedMenu, new DOMRect(0, 0, 0, 0));
+    }
     this.openHostedMenu = null;
     if (!this.keepOpen) {
       this.onSoftMenuClosed?.();
@@ -630,8 +648,6 @@ export class ContextMenu extends SubMenu {
 
   private static pendingMenu: ContextMenu|null = null;
   private static useSoftMenu = false;
-  // TODO(crbug.com/1172300) Ignored during the jsdoc to ts migration
-  // eslint-disable-next-line @typescript-eslint/naming-convention
   static readonly groupWeights =
       ['header', 'new', 'reveal', 'edit', 'clipboard', 'debug', 'view', 'default', 'override', 'save', 'footer'];
 }

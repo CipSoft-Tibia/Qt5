@@ -17,12 +17,20 @@
 #include <dlfcn.h>  // for dlsym()
 #include <pthread.h>
 
+#include <algorithm>
 #include <cstdint>
 #include <cstring>
 
+#include "absl/base/nullability.h"
 #include "./centipede/runner.h"
 
 using centipede::tls;
+
+// Used for the interceptors to avoid sanitizing them, as they could be called
+// before or during the sanitizer initialization. Instead, we check if the
+// current thread is marked as started by the runner as the proxy of sanitizier
+// initialization. If not, we skip the interception logic.
+#define NO_SANITIZE __attribute__((no_sanitize("all")))
 
 namespace {
 
@@ -48,7 +56,7 @@ struct ThreadCreateArgs {
 // Calls the actual start_routine and returns its results.
 // Performs custom actions before and after start_routine().
 // `arg` is a `ThreadCreateArgs *` with the actual pthread_create() args.
-void *MyThreadStart(void *arg) {
+void *MyThreadStart(absl::Nonnull<void *> arg) {
   auto *args_orig_ptr = static_cast<ThreadCreateArgs *>(arg);
   auto args = *args_orig_ptr;
   delete args_orig_ptr;  // allocated in the pthread_create wrapper.
@@ -94,28 +102,34 @@ void RunnerInterceptor() {}  // to be referenced in runner.cc
 #define SANITIZER_INTERCEPTOR_NAME(orig_func_name) \
   __interceptor_##orig_func_name
 #define DECLARE_CENTIPEDE_ORIG_FUNC(ret_type, orig_func_name, args)         \
-  extern "C" __attribute__((weak))                                          \
-  ret_type(SANITIZER_INTERCEPTOR_NAME(orig_func_name)) args;                \
+  extern "C" __attribute__((weak)) ret_type(                                \
+      SANITIZER_INTERCEPTOR_NAME(orig_func_name)) args;                     \
   static decltype(&SANITIZER_INTERCEPTOR_NAME(                              \
       orig_func_name)) GetOrig_##orig_func_name() {                         \
     if (auto p = &SANITIZER_INTERCEPTOR_NAME(orig_func_name)) return p;     \
     return FuncAddr<decltype(&SANITIZER_INTERCEPTOR_NAME(orig_func_name))>( \
         #orig_func_name);                                                   \
   }                                                                         \
-  static ret_type(*orig_func_name##_orig) args = GetOrig_##orig_func_name()
+  static ret_type(*orig_func_name##_orig) args;                             \
+  __attribute__((constructor)) void InitializeOrig_##orig_func_name() {     \
+    orig_func_name##_orig = GetOrig_##orig_func_name();                     \
+  }
 #define REAL(orig_func_name) \
   (orig_func_name##_orig ? orig_func_name##_orig : GetOrig_##orig_func_name())
 
 DECLARE_CENTIPEDE_ORIG_FUNC(int, memcmp,
                             (const void *s1, const void *s2, size_t n));
 DECLARE_CENTIPEDE_ORIG_FUNC(int, strcmp, (const char *s1, const char *s2));
+DECLARE_CENTIPEDE_ORIG_FUNC(int, strncmp,
+                            (const char *s1, const char *s2, size_t n));
 DECLARE_CENTIPEDE_ORIG_FUNC(int, pthread_create,
                             (pthread_t * thread, const pthread_attr_t *attr,
                              void *(*start_routine)(void *), void *arg));
 
 // Fallback for the case *cmp_orig is null.
 // Will be executed several times at process startup, if at all.
-static int memcmp_fallback(const void *s1, const void *s2, size_t n) {
+static NO_SANITIZE int memcmp_fallback(const void *s1, const void *s2,
+                                       size_t n) {
   const auto *p1 = static_cast<const uint8_t *>(s1);
   const auto *p2 = static_cast<const uint8_t *>(s2);
   for (size_t i = 0; i < n; ++i) {
@@ -127,24 +141,60 @@ static int memcmp_fallback(const void *s1, const void *s2, size_t n) {
 
 // memcmp interceptor.
 // Calls the real memcmp() and possibly modifies state.cmp_feature_set.
-extern "C" int memcmp(const void *s1, const void *s2, size_t n) {
+extern "C" NO_SANITIZE int memcmp(const void *s1, const void *s2, size_t n) {
   const int result =
       memcmp_orig ? memcmp_orig(s1, s2, n) : memcmp_fallback(s1, s2, n);
+  if (!tls.started) [[unlikely]] {
+    return result;
+  }
   tls.TraceMemCmp(reinterpret_cast<uintptr_t>(__builtin_return_address(0)),
                   reinterpret_cast<const uint8_t *>(s1),
                   reinterpret_cast<const uint8_t *>(s2), n, result == 0);
   return NormalizeCmpResult(result);
 }
 
+// TODO(b/341111359): Investigate inefficiencies in the `strcmp`/`strncmp`
+// interceptors and `TraceMemCmp`.
+
 // strcmp interceptor.
 // Calls the real strcmp() and possibly modifies state.cmp_feature_set.
-extern "C" int strcmp(const char *s1, const char *s2) {
+extern "C" NO_SANITIZE int strcmp(const char *s1, const char *s2) {
+  // Find the length of the shorter string, as this determines the actual number
+  // of bytes that are compared. Note that this is needed even if we call
+  // `strcmp_orig` because we're passing it to `TraceMemCmp()`.
   size_t len = 0;
   while (s1[len] && s2[len]) ++len;
   const int result =
       // Need to include one more byte than the shorter string length
       // when falling back to memcmp e.g. "foo" < "foobar".
       strcmp_orig ? strcmp_orig(s1, s2) : memcmp_fallback(s1, s2, len + 1);
+  if (!tls.started) [[unlikely]] {
+    return result;
+  }
+  // Pass `len` here to avoid storing the trailing '\0' in the dictionary.
+  tls.TraceMemCmp(reinterpret_cast<uintptr_t>(__builtin_return_address(0)),
+                  reinterpret_cast<const uint8_t *>(s1),
+                  reinterpret_cast<const uint8_t *>(s2), len, result == 0);
+  return NormalizeCmpResult(result);
+}
+
+// strncmp interceptor.
+// Calls the real strncmp() and possibly modifies state.cmp_feature_set.
+extern "C" NO_SANITIZE int strncmp(const char *s1, const char *s2, size_t n) {
+  // Find the length of the shorter string, as this determines the actual number
+  // of bytes that are compared. Note that this is needed even if we call
+  // `strncmp_orig` because we're passing it to `TraceMemCmp()`.
+  size_t len = 0;
+  while (len < n && s1[len] && s2[len]) ++len;
+  // Need to include '\0' in the comparison if the shorter string is shorter
+  // than `n`, hence we add 1 to the length.
+  if (n > len + 1) n = len + 1;
+  const int result =
+      strncmp_orig ? strncmp_orig(s1, s2, n) : memcmp_fallback(s1, s2, n);
+  if (!tls.started) [[unlikely]] {
+    return result;
+  }
+  // Pass `len` here to avoid storing the trailing '\0' in the dictionary.
   tls.TraceMemCmp(reinterpret_cast<uintptr_t>(__builtin_return_address(0)),
                   reinterpret_cast<const uint8_t *>(s1),
                   reinterpret_cast<const uint8_t *>(s2), len, result == 0);
@@ -153,8 +203,13 @@ extern "C" int strcmp(const char *s1, const char *s2) {
 
 // pthread_create interceptor.
 // Calls real pthread_create, but wraps the start_routine() in MyThreadStart.
-extern "C" int pthread_create(pthread_t *thread, const pthread_attr_t *attr,
-                              void *(*start_routine)(void *), void *arg) {
+extern "C" int pthread_create(absl::Nonnull<pthread_t *> thread,
+                              absl::Nullable<const pthread_attr_t *> attr,
+                              void *(*start_routine)(void *),
+                              absl::Nullable<void *> arg) {
+  if (!tls.started) [[unlikely]] {
+    return REAL(pthread_create)(thread, attr, start_routine, arg);
+  }
   // Wrap the arguments. Will be deleted in MyThreadStart.
   auto *wrapped_args = new ThreadCreateArgs{start_routine, arg};
   // Run the actual pthread_create.

@@ -13,17 +13,21 @@
 // limitations under the License.
 
 import {EnableTracingRequest, TraceConfig} from '../protos';
+import {Engine} from '../trace_processor/engine';
+import {NUM} from '../trace_processor/query_result';
 
 // In this file are contained a few functions to simplify the proto parsing.
 
-export function extractTraceConfig(enableTracingRequest: Uint8Array):
-    Uint8Array|undefined {
+export function extractTraceConfig(
+  enableTracingRequest: Uint8Array,
+): Uint8Array | undefined {
   try {
     const enableTracingObject =
-        EnableTracingRequest.decode(enableTracingRequest);
+      EnableTracingRequest.decode(enableTracingRequest);
     if (!enableTracingObject.traceConfig) return undefined;
     return TraceConfig.encode(enableTracingObject.traceConfig).finish();
-  } catch (e) {  // This catch is for possible proto encoding/decoding issues.
+  } catch (e) {
+    // This catch is for possible proto encoding/decoding issues.
     console.error('Error extracting the config: ', e.message);
     return undefined;
   }
@@ -32,7 +36,8 @@ export function extractTraceConfig(enableTracingRequest: Uint8Array):
 export function extractDurationFromTraceConfig(traceConfigProto: Uint8Array) {
   try {
     return TraceConfig.decode(traceConfigProto).durationMs;
-  } catch (e) {  // This catch is for possible proto encoding/decoding issues.
+  } catch (e) {
+    // This catch is for possible proto encoding/decoding issues.
     return undefined;
   }
 }
@@ -40,7 +45,8 @@ export function extractDurationFromTraceConfig(traceConfigProto: Uint8Array) {
 export function browserSupportsPerfettoConfig(): boolean {
   const minimumChromeVersion = '91.0.4448.0';
   const runningVersion = String(
-      (/Chrome\/(([0-9]+\.?){4})/.exec(navigator.userAgent) || [, 0])[1]);
+    (/Chrome\/(([0-9]+\.?){4})/.exec(navigator.userAgent) || [, 0])[1],
+  );
 
   if (!runningVersion) return false;
 
@@ -51,15 +57,39 @@ export function browserSupportsPerfettoConfig(): boolean {
     if (runVerArray[index] === minVerArray[index]) continue;
     return runVerArray[index] > minVerArray[index];
   }
-  return true;  // Exact version match.
+  return true; // Exact version match.
 }
 
 export function hasSystemDataSourceConfig(config: TraceConfig): boolean {
   for (const ds of config.dataSources) {
-    if (ds.config && ds.config.name &&
-        !ds.config.name.startsWith('org.chromium.')) {
+    if (!(ds.config?.name ?? '').startsWith('org.chromium.')) {
       return true;
     }
   }
   return false;
+}
+
+export async function hasWattsonSupport(engine: Engine): Promise<boolean> {
+  // These tables are hard requirements and are the bare minimum needed for
+  // Wattson to run, so check that these tables are populated
+  const queryChecks: string[] = [
+    `
+    INCLUDE PERFETTO MODULE wattson.device_infos;
+    SELECT COUNT(*) as numRows FROM _wattson_device
+    `,
+    `
+    INCLUDE PERFETTO MODULE linux.cpu.frequency;
+    SELECT COUNT(*) as numRows FROM cpu_frequency_counters
+    `,
+    `
+    INCLUDE PERFETTO MODULE linux.cpu.idle;
+    SELECT COUNT(*) as numRows FROM cpu_idle_counters
+    `,
+  ];
+  for (const queryCheck of queryChecks) {
+    const checkValue = await engine.query(queryCheck);
+    if (checkValue.firstRow({numRows: NUM}).numRows === 0) return false;
+  }
+
+  return true;
 }

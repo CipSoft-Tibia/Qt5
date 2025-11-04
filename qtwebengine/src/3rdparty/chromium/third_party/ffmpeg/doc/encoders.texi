@@ -144,8 +144,7 @@ If this option is unspecified it is set to @samp{aac_low}.
 
 AC-3 audio encoders.
 
-These encoders implement part of ATSC A/52:2010 and ETSI TS 102 366, as well as
-the undocumented RealAudio 3 (a.k.a. dnet).
+These encoders implement part of ATSC A/52:2010 and ETSI TS 102 366.
 
 The @var{ac3} encoder uses floating-point math, while the @var{ac3_fixed}
 encoder only uses fixed-point integer math. This does not mean that one is
@@ -615,7 +614,7 @@ and slightly improves compression.
 
 Opus encoder.
 
-This is a native FFmpeg encoder for the Opus format. Currently its in development and
+This is a native FFmpeg encoder for the Opus format. Currently, it's in development and
 only implements the CELT part of the codec. Its quality is usually worse and at best
 is equal to the libopus encoder.
 
@@ -813,6 +812,63 @@ High-Efficiency AAC profile:
 ffmpeg -i input.wav -c:a libfdk_aac -profile:a aac_he -b:a 64k output.m4a
 @end example
 @end itemize
+
+@anchor{liblc3-enc}
+@section liblc3
+
+liblc3 LC3 (Low Complexity Communication Codec) encoder wrapper.
+
+Requires the presence of the liblc3 headers and library during configuration.
+You need to explicitly configure the build with @code{--enable-liblc3}.
+
+This encoder has support for the Bluetooth SIG LC3 codec for the LE Audio
+protocol, and the following features of LC3plus:
+@itemize
+@item
+Frame duration of 2.5 and 5ms.
+@item
+High-Resolution mode, 48 KHz, and 96 kHz sampling rates.
+@end itemize
+
+For more information see the liblc3 project at
+@url{https://github.com/google/liblc3}.
+
+@subsection Options
+
+The following options are mapped on the shared FFmpeg codec options.
+
+@table @option
+@item b @var{bitrate}
+Set the bit rate in bits/s. This will determine the fixed size of the encoded
+frames, for a selected frame duration.
+
+@item ar @var{frequency}
+Set the audio sampling rate (in Hz).
+
+@item channels
+Set the number of audio channels.
+
+@item frame_duration
+Set the audio frame duration in milliseconds. Default value is 10ms.
+Allowed frame durations are 2.5ms, 5ms, 7.5ms and 10ms.
+LC3 (Bluetooth LE Audio), allows 7.5ms and 10ms; and LC3plus 2.5ms, 5ms
+and 10ms.
+
+The 10ms frame duration is available in LC3 and LC3 plus standard.
+In this mode, the produced bitstream can be referenced either as LC3 or LC3plus.
+
+@item high_resolution @var{boolean}
+Enable the high-resolution mode if set to 1. The high-resolution mode is
+available with all LC3plus frame durations and for a sampling rate of 48 KHz,
+and 96 KHz.
+
+The encoder automatically turns off this mode at lower sampling rates and
+activates it at 96 KHz.
+
+This mode should be preferred at high bitrates. In this mode, the audio
+bandwidth is always up to the Nyquist frequency, compared to LC3 at 48 KHz,
+which limits the bandwidth to 20 KHz.
+@end table
 
 @anchor{libmp3lame}
 @section libmp3lame
@@ -2237,6 +2293,12 @@ the two temporal layer 2 frames within the temporal period.
 @end table
 @end table
 
+@item VP8-specific options
+@table @option
+@item screen-content-mode
+Screen content mode, one of: 0 (off), 1 (screen), 2 (screen with more aggressive rate control).
+@end table
+
 @item VP9-specific options
 @table @option
 @item lossless
@@ -2421,6 +2483,10 @@ To get a more accurate and extensive documentation of the libx264
 options, invoke the command @command{x264 --fullhelp} or consult
 the libx264 documentation.
 
+In the list below, note that the @command{x264} option name is shown
+in parentheses after the libavcodec corresponding name, in case there
+is a direct mapping.
+
 @table @option
 @item b (@emph{bitrate})
 Set bitrate in bits/s. Note that FFmpeg's @option{b} option is
@@ -2428,17 +2494,19 @@ expressed in bits/s, while @command{x264}'s @option{bitrate} is in
 kilobits/s.
 
 @item bf (@emph{bframes})
+Number of B-frames between I and P-frames
 
 @item g (@emph{keyint})
+Maximum GOP size
 
 @item qmin (@emph{qpmin})
-Minimum quantizer scale.
+Minimum quantizer scale
 
 @item qmax (@emph{qpmax})
-Maximum quantizer scale.
+Maximum quantizer scale
 
 @item qdiff (@emph{qpstep})
-Maximum difference between quantizer scales.
+Maximum difference between quantizer scales
 
 @item qblur (@emph{qblur})
 Quantizer curve blur
@@ -2447,7 +2515,7 @@ Quantizer curve blur
 Quantizer curve compression factor
 
 @item refs (@emph{ref})
-Number of reference frames each P-frame can use. The range is from @var{0-16}.
+Number of reference frames each P-frame can use. The range is @var{0-16}.
 
 @item level (@emph{level})
 Set the @code{x264_param_t.i_level_idc} value in case the value is
@@ -2469,7 +2537,8 @@ Sets the threshold for the scene change detection.
 @item trellis (@emph{trellis})
 Performs Trellis quantization to increase efficiency. Enabled by default.
 
-@item nr  (@emph{nr})
+@item nr (@emph{nr})
+Noise reduction
 
 @item me_range (@emph{merange})
 Maximum range of the motion search in pixels.
@@ -2550,6 +2619,7 @@ open GOP by setting it to @code{-cgop}. The result is similar to
 the behavior of @command{x264}'s @option{--open-gop} option.
 
 @item rc_init_occupancy (@emph{vbv-init})
+Initial VBV buffer occupancy
 
 @item preset (@emph{preset})
 Set the encoding preset.
@@ -2595,7 +2665,7 @@ Set AQ strength, reduce blocking and blurring in flat and textured areas.
 Use psychovisual optimizations when set to 1. When set to 0, it has the
 same effect as @command{x264}'s @option{--no-psy} option.
 
-@item psy-rd  (@emph{psy-rd})
+@item psy-rd (@emph{psy-rd})
 Set strength of psychovisual optimization, in
 @var{psy-rd}:@var{psy-trellis} format.
 
@@ -2627,7 +2697,7 @@ to 1.
 
 @item avcintra-class (@emph{class})
 Configure the encoder to generate AVC-Intra.
-Valid values are 50,100 and 200
+Valid values are 50, 100 and 200
 
 @item bluray-compat (@emph{bluray-compat})
 Configure the encoder to be compatible with the bluray standard.
@@ -2678,8 +2748,8 @@ Set loop filter parameters, in @var{alpha}:@var{beta} form.
 Set fluctuations reduction in QP (before curve compression).
 
 @item partitions (@emph{partitions})
-Set partitions to consider as a comma-separated list of. Possible
-values in the list:
+Set partitions to consider as a comma-separated list of values.
+Possible values in the list:
 
 @table @samp
 @item p8x8
@@ -2735,18 +2805,31 @@ Variable bit rate.
 Constant bit rate (not allowed in MP4 container).
 @end table
 
-@item x264opts (N.A.)
-Set any x264 option, see @command{x264 --fullhelp} for a list.
+@item x264opts @var{opts}
+@item x264-params @var{opts}
+Override the x264 configuration using a :-separated list of key=value
+options.
 
-Argument is a list of @var{key}=@var{value} couples separated by
-":". In @var{filter} and @var{psy-rd} options that use ":" as a separator
-themselves, use "," instead. They accept it as well since long ago but this
-is kept undocumented for some reason.
+The argument for both options is a list of @var{key}=@var{value}
+couples separated by ":". With @option{x264opts} the value can be
+omitted, and the value @code{1} is assumed in that case.
+
+For @var{filter} and @var{psy-rd} options values that use ":" as a
+separator themselves, use "," instead. They accept it as well since
+long ago but this is kept undocumented for some reason.
+
+For example, the options might be provided as:
+@example
+level=30:bframes=0:weightp=0:cabac=0:ref=1:vbv-maxrate=768:vbv-bufsize=2000:analyse=all:me=umh:no-fast-pskip=1:subq=6:8x8dct=0:trellis=0
+@end example
 
 For example to specify libx264 encoding options with @command{ffmpeg}:
 @example
 ffmpeg -i foo.mpg -c:v libx264 -x264opts keyint=123:min-keyint=20 -an out.mkv
 @end example
+
+To get the complete list of the libx264 options, invoke the command
+@command{x264 --fullhelp} or consult the libx264 documentation.
 
 @item a53cc @var{boolean}
 Import closed captions (which must be ATSC compatible format) into output.
@@ -2758,20 +2841,6 @@ Import user data unregistered SEI if available into output. Default is 0 (off).
 @item mb_info @var{boolean}
 Set mb_info data through AVFrameSideData, only useful when used from the
 API. Default is 0 (off).
-
-@item x264-params (N.A.)
-Override the x264 configuration using a :-separated list of key=value
-parameters.
-
-This option is functionally the same as the @option{x264opts}, but is
-duplicated for compatibility with the Libav fork.
-
-For example to specify libx264 encoding options with @command{ffmpeg}:
-@example
-ffmpeg -i INPUT -c:v libx264 -x264-params level=30:bframes=0:weightp=0:\
-cabac=0:ref=1:vbv-maxrate=768:vbv-bufsize=2000:analyse=all:me=umh:\
-no-fast-pskip=1:subq=6:8x8dct=0:trellis=0 OUTPUT
-@end example
 @end table
 
 Encoding ffpresets for common usages are provided so they can be used with the
@@ -2965,7 +3034,7 @@ Set the encoder preset value to determine encoding speed [fast, medium, slow, pl
 Set the encoder tune parameter [psnr, zerolatency]
 
 @item profile (@emph{profile})
-Set the encoder profile [0: baselie; 1: main]
+Set the encoder profile [0: baseline; 1: main]
 
 @item crf (@emph{crf})
 Set the quality for constant quality mode.
@@ -3032,9 +3101,6 @@ Enable high quality AC prediction.
 @item gray
 Only encode grayscale.
 
-@item gmc
-Enable the use of global motion compensation (GMC).
-
 @item qpel
 Enable quarter-pixel motion compensation.
 
@@ -3046,7 +3112,9 @@ Place global headers in extradata instead of every keyframe.
 
 @end table
 
-@item trellis
+@item gmc
+Enable the use of global motion compensation (GMC).  Default is 0
+(disabled).
 
 @item me_quality
 Set motion estimation quality level. Possible values in decreasing order of
@@ -3100,6 +3168,9 @@ When combined with @option{lumi_aq}, the resulting quality will not
 be better than any of the two specified individually. In other
 words, the resulting quality will be the worse one of the two
 effects.
+
+@item trellis
+Set rate-distortion optimal quantization.
 
 @item ssim
 Set structural similarity (SSIM) displaying method. Possible values:
@@ -3325,8 +3396,8 @@ quality range is 1 to 51, with 1 being the best quality.
 @end itemize
 
 @item
-Otherwise, a bitrate-based mode is used. For all of those, you should specify at
-least the desired average bitrate with the @option{b} option.
+Otherwise when the desired average bitrate is specified with the @option{b}
+option, a bitrate-based mode is used.
 @itemize @minus
 @item
 @var{LA} - VBR with lookahead, when the @option{look_ahead} option is specified.
@@ -3347,6 +3418,9 @@ than the average bitrate.
 @option{avbr_accuracy} and @option{avbr_convergence} are set to non-zero. This
 mode is available for H264 and HEVC on Windows.
 @end itemize
+
+@item
+Otherwise the default ratecontrol method @var{CQP} is used.
 @end itemize
 
 Note that depending on your system, a different mode than the one you specified
@@ -3472,6 +3546,20 @@ Change these value to reset qsv codec's bitrate control configuration.
 @item @var{pic_timing_sei}
 Supported in h264_qsv and hevc_qsv.
 Change this value to reset qsv codec's pic_timing_sei configuration.
+
+@item @var{qsv_params}
+Set QSV encoder parameters as a colon-separated list of key-value pairs.
+
+The @option{qsv_params} should be formatted as @code{key1=value1:key2=value2:...}.
+
+These parameters are passed directly to the underlying Intel Quick Sync Video (QSV) encoder using the MFXSetParameter function.
+
+Example:
+@example
+ffmpeg -i input.mp4 -c:v h264_qsv -qsv_params "CodingOption1=1:CodingOption2=2" output.mp4
+@end example
+
+This option allows fine-grained control over various encoder-specific settings provided by the QSV encoder.
 @end table
 
 @subsection H264 options
@@ -4072,6 +4160,10 @@ Quality-defined variable-bitrate.
 @item AVBR
 Average variable bitrate.
 @end table
+
+@item blbrc
+Enable block level rate control, which assigns different bitrate block by block.
+Invalid for CQP mode.
 
 @end table
 

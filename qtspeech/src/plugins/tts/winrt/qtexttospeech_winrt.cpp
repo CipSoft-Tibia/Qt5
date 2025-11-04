@@ -1,5 +1,6 @@
 // Copyright (C) 2022 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qtexttospeech_winrt.h"
 #include "qtexttospeech_winrt_audiosource.h"
@@ -360,8 +361,9 @@ void QTextToSpeechEngineWinRT::timerEvent(QTimerEvent *e)
             emit sayingWord(d->currentBoundary->text, d->currentBoundary->beginIndex,
                             d->currentBoundary->endIndex - d->currentBoundary->beginIndex + 1);
         ++d->currentBoundary;
-        const qint64 msecsToNext = qMax((d->currentBoundary->startTime - elapsed) / 1000, 0);
+
         if (d->audioSource && d->currentBoundary != d->boundaries.constEnd()) {
+            const qint64 msecsToNext = qMax((d->currentBoundary->startTime - elapsed) / 1000, 0);
             d->boundaryTimer.start(msecsToNext, Qt::PreciseTimer, this);
         } else {
             d->boundaryTimer.stop();

@@ -4,6 +4,8 @@
 
 #include "src/ic/keyed-store-generic.h"
 
+#include <optional>
+
 #include "src/codegen/code-factory.h"
 #include "src/codegen/code-stub-assembler-inl.h"
 #include "src/codegen/interface-descriptors.h"
@@ -15,6 +17,8 @@
 
 namespace v8 {
 namespace internal {
+
+#include "src/codegen/define-code-stub-assembler-macros.inc"
 
 enum class StoreMode {
   // kSet implements [[Set]] in the spec and traverses the prototype
@@ -959,14 +963,15 @@ void KeyedStoreGenericAssembler::EmitGenericPropertyStore(
     // seeing global objects here (which would need special handling).
 
     TVARIABLE(IntPtrT, var_name_index);
-    Label dictionary_found(this, &var_name_index), not_found(this);
+    Label dictionary_found(this, &var_name_index),
+        not_found(this, &var_name_index);
     TNode<PropertyDictionary> properties = CAST(LoadSlowProperties(receiver));
 
     // When dealing with class fields defined with DefineKeyedOwnIC or
     // DefineNamedOwnIC, use the slow path to check the existing property.
     NameDictionaryLookup<PropertyDictionary>(
         properties, name, IsAnyDefineOwn() ? slow : &dictionary_found,
-        &var_name_index, &not_found);
+        &var_name_index, &not_found, kFindExistingOrInsertionIndex);
 
     if (!IsAnyDefineOwn()) {
       BIND(&dictionary_found);
@@ -1046,7 +1051,8 @@ void KeyedStoreGenericAssembler::EmitGenericPropertyStore(
       InvalidateValidityCellIfPrototype(receiver_map, bitfield3);
       UpdateMayHaveInterestingProperty(properties, name);
       AddToDictionary<PropertyDictionary>(properties, name, p->value(),
-                                          &add_dictionary_property_slow);
+                                          &add_dictionary_property_slow,
+                                          var_name_index.value());
       exit_point->Return(p->value());
 
       BIND(&add_dictionary_property_slow);
@@ -1127,8 +1133,8 @@ void KeyedStoreGenericAssembler::EmitGenericPropertyStore(
     TVARIABLE(MaybeObject, var_handler);
     Label found_handler(this, &var_handler), stub_cache_miss(this);
 
-    TryProbeStubCache(isolate()->store_stub_cache(), receiver, name,
-                      &found_handler, &var_handler, &stub_cache_miss);
+    TryProbeStubCache(p->stub_cache(isolate()), receiver, name, &found_handler,
+                      &var_handler, &stub_cache_miss);
 
     BIND(&found_handler);
     {
@@ -1179,7 +1185,7 @@ void KeyedStoreGenericAssembler::KeyedStoreGeneric(
   {
     Comment("key is unique name");
     StoreICParameters p(context, receiver, var_unique.value(), value,
-                        base::nullopt, slot, maybe_vector,
+                        std::nullopt, slot, maybe_vector,
                         StoreICMode::kDefault);
     ExitPoint direct_exit(this);
     EmitGenericPropertyStore(CAST(receiver), receiver_map, instance_type, &p,
@@ -1274,7 +1280,7 @@ void KeyedStoreGenericAssembler::StoreIC_NoFeedback() {
     // checks, strings and string wrappers, proxies) are handled in the runtime.
     GotoIf(IsSpecialReceiverInstanceType(instance_type), &miss);
     {
-      StoreICParameters p(context, receiver, name, value, base::nullopt, {},
+      StoreICParameters p(context, receiver, name, value, std::nullopt, {},
                           UndefinedConstant(),
                           IsDefineNamedOwn() ? StoreICMode::kDefineNamedOwn
                                              : StoreICMode::kDefault);
@@ -1300,7 +1306,7 @@ void KeyedStoreGenericAssembler::StoreProperty(TNode<Context> context,
                                                TNode<Name> unique_name,
                                                TNode<Object> value,
                                                LanguageMode language_mode) {
-  StoreICParameters p(context, receiver, unique_name, value, base::nullopt, {},
+  StoreICParameters p(context, receiver, unique_name, value, std::nullopt, {},
                       UndefinedConstant(), StoreICMode::kDefault);
 
   Label done(this), slow(this, Label::kDeferred);
@@ -1333,6 +1339,8 @@ void KeyedStoreGenericAssembler::StoreProperty(TNode<Context> context,
 
   BIND(&done);
 }
+
+#include "src/codegen/undef-code-stub-assembler-macros.inc"
 
 }  // namespace internal
 }  // namespace v8

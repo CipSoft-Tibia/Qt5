@@ -7,6 +7,7 @@
 #include <optional>
 
 #include "base/functional/callback_helpers.h"
+#include "base/memory/raw_ptr.h"
 #include "base/uuid.h"
 #include "components/services/storage/public/mojom/blob_storage_context.mojom.h"
 #include "content/browser/cache_storage/background_fetch_cache_entry_handler_impl.h"
@@ -211,7 +212,7 @@ int CacheStorageCacheEntryHandler::DiskCacheBlobEntry::GetSize(
     case CacheStorageCache::INDEX_SIDE_DATA:
       return disk_cache_entry_->GetDataSize(CacheStorageCache::INDEX_SIDE_DATA);
   }
-  NOTREACHED();
+  NOTREACHED_IN_MIGRATION();
 }
 
 void CacheStorageCacheEntryHandler::DiskCacheBlobEntry::Invalidate() {
@@ -337,9 +338,11 @@ void CacheStorageCacheEntryHandler::InvalidateDiskCacheBlobEntrys() {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   // Calling Invalidate() can cause the CacheStorageCacheEntryHandler to be
   // destroyed. Be careful not to touch |this| after calling Invalidate().
-  std::set<DiskCacheBlobEntry*> entries = std::move(blob_entries_);
-  for (auto* entry : entries)
+  std::set<raw_ptr<DiskCacheBlobEntry, SetExperimental>> entries =
+      std::move(blob_entries_);
+  for (DiskCacheBlobEntry* entry : entries) {
     entry->Invalidate();
+  }
 }
 
 void CacheStorageCacheEntryHandler::EraseDiskCacheBlobEntry(
@@ -362,7 +365,7 @@ CacheStorageCacheEntryHandler::CreateCacheEntryHandler(
       return std::make_unique<BackgroundFetchCacheEntryHandlerImpl>(
           std::move(blob_storage_context));
   }
-  NOTREACHED();
+  NOTREACHED_IN_MIGRATION();
 }
 
 blink::mojom::SerializedBlobPtr CacheStorageCacheEntryHandler::CreateBlob(

@@ -68,13 +68,21 @@ public:
                                                                   : value.name()))
                             .arg(qToUnderlying(binding.bindingType()))
                             .arg(bindingScope.baseTypeName()),
-                    plugin, bindingScope.sourceLocation());
+                    plugin, binding.sourceLocation());
     }
 
     void onRead(const QQmlSA::Element &element, const QString &propertyName,
                 const QQmlSA::Element &readScope, QQmlSA::SourceLocation location) override
     {
         emitWarning(u"Saw read on %1 property %2 in scope %3"_s.arg(
+                            element.baseTypeName(), propertyName, readScope.baseTypeName()),
+                    plugin, location);
+    }
+
+    void onCall(const QQmlSA::Element &element, const QString &propertyName,
+                const QQmlSA::Element &readScope, QQmlSA::SourceLocation location) override
+    {
+        emitWarning(u"Saw call on %1 property %2 in scope %3"_s.arg(
                             element.baseTypeName(), propertyName, readScope.baseTypeName()),
                     plugin, location);
     }
@@ -128,8 +136,16 @@ void LintPlugin::registerPasses(QQmlSA::PassManager *manager, const QQmlSA::Elem
     manager->registerPropertyPass(std::make_unique<PropertyTest>(manager), "QtQuick", "Text",
                                   "text");
     manager->registerPropertyPass(std::make_unique<PropertyTest>(manager), "", "", "x");
+    manager->registerPropertyPass(std::make_unique<PropertyTest>(manager), "", "", "onXChanged");
     manager->registerPropertyPass(std::make_unique<PropertyTest>(manager), "", "", "log");
+    manager->registerPropertyPass(std::make_unique<PropertyTest>(manager), "", "", "abs");
+    manager->registerPropertyPass(std::make_unique<PropertyTest>(manager), "", "", "now");
+    manager->registerPropertyPass(std::make_unique<PropertyTest>(manager), "", "", "qsTr");
+    manager->registerPropertyPass(std::make_unique<PropertyTest>(manager), "", "", "qsTrId");
+    manager->registerPropertyPass(std::make_unique<PropertyTest>(manager), "", "", "qsTranslate");
     manager->registerPropertyPass(std::make_unique<PropertyTest>(manager), "QtQuick", "ListView");
+    manager->registerPropertyPass(std::make_unique<PropertyTest>(manager), "QtQuick", "$internal$.QQuickEnterKeyAttached", "");
+
     if (manager->hasImportedModule("QtQuick.Controls")) {
         if (manager->hasImportedModule("QtQuick")) {
             if (manager->hasImportedModule("QtQuick.Window")) {

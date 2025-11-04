@@ -15,7 +15,6 @@
 namespace cc {
 class LayerTreeFrameSink;
 struct BeginMainFrameMetrics;
-struct WebVitalMetrics;
 class RenderFrameMetadataObserver;
 }  // namespace cc
 
@@ -44,7 +43,7 @@ class LayerTreeViewDelegate {
   virtual void OnDeferCommitsChanged(
       bool defer_status,
       cc::PaintHoldingReason reason,
-      absl::optional<cc::PaintHoldingCommitTrigger> trigger) = 0;
+      std::optional<cc::PaintHoldingCommitTrigger> trigger) = 0;
   virtual void OnCommitRequested() = 0;
 
   // Notifies that the layer tree host has completed a call to
@@ -94,8 +93,6 @@ class LayerTreeViewDelegate {
   // RecordEndOfFrameMetrics.
   virtual std::unique_ptr<cc::BeginMainFrameMetrics>
   GetBeginMainFrameMetrics() = 0;
-
-  virtual std::unique_ptr<cc::WebVitalMetrics> GetWebVitalMetrics() = 0;
 
   // Notification of the beginning and end of LayerTreeHost::UpdateLayers, for
   // metrics collection.

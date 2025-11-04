@@ -4,13 +4,14 @@
 
 import("//build/config/chromeos/ui_mode.gni")
 import("//build/config/features.gni")
+import("//build/config/jumbo.gni")
 
 if (is_android) {
   import("//build/config/android/rules.gni")
   import("//third_party/jni_zero/jni_zero.gni")
 }
 
-source_set("generic_sensor") {
+jumbo_source_set("generic_sensor") {
   visibility = [ "//services/device:*" ]
 
   output_name = "generic_sensor"
@@ -76,17 +77,8 @@ source_set("generic_sensor") {
 
   if (is_mac) {
     sources += [
-      "platform_sensor_accelerometer_mac.cc",
-      "platform_sensor_accelerometer_mac.h",
-      "platform_sensor_ambient_light_mac.cc",
-      "platform_sensor_ambient_light_mac.h",
       "platform_sensor_provider_mac.cc",
       "platform_sensor_provider_mac.h",
-    ]
-    deps += [ "//third_party/sudden_motion_sensor" ]
-    frameworks = [
-      "CoreFoundation.framework",
-      "IOKit.framework",
     ]
   }
 

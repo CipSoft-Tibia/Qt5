@@ -19,6 +19,7 @@
 #include "content/public/browser/browser_thread.h"
 #include "content/public/browser/storage_partition.h"
 #include "content/public/test/browser_test.h"
+#include "content/public/test/browser_test_utils.h"
 #include "content/public/test/content_browser_test.h"
 #include "content/public/test/content_browser_test_utils.h"
 #include "content/shell/browser/shell.h"
@@ -142,6 +143,8 @@ class FetchEventTestHelper {
         std::make_unique<ServiceWorkerFetchDispatcher>(
             std::move(request), network::mojom::RequestDestination::kDocument,
             base::Uuid::GenerateRandomV4().AsLowercaseString() /* client_id */,
+            base::Uuid::GenerateRandomV4()
+                .AsLowercaseString() /* resulting_client_id */,
             std::move(version), base::DoNothing() /* prepare callback */,
             std::move(fetch_callback),
             fetch_event_dispatch->param_and_expected_result.param
@@ -616,7 +619,7 @@ IN_PROC_BROWSER_TEST_F(ServiceWorkerOfflineCapabilityCheckBrowserTest,
 // Sites with a service worker are identified as supporting offline capability
 // only when it returns a valid response in the offline mode.
 
-// TODO(crbug.com/1365409): Flaky on all platforms.
+// TODO(crbug.com/40866226): Flaky on all platforms.
 IN_PROC_BROWSER_TEST_F(ServiceWorkerOfflineCapabilityCheckBrowserTest,
                        DISABLED_CheckOfflineCapability) {
   EXPECT_TRUE(NavigateToURL(shell(),

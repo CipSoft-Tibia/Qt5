@@ -23,7 +23,7 @@ public:
 
 public Q_SLOTS:
     void stopRecording();
-    void handleStateChanged(QAudio::State newState);
+    void handleStateChanged(QtAudio::State newState);
 
 private:
     //! [Audio input class members]
@@ -41,9 +41,9 @@ void AudioInputExample::setup()
 
     QAudioFormat format;
     // Set up the desired format, for example:
-    format.setSampleRate(8000);
+    format.setSampleRate(44100);
     format.setChannelCount(1);
-    format.setSampleFormat(QAudioFormat::UInt8);
+    format.setSampleFormat(QAudioFormat::Int16);
 
     QAudioDevice info = QMediaDevices::defaultAudioInput();
     if (!info.isFormatSupported(format)) {
@@ -69,18 +69,18 @@ void AudioInputExample::stopRecording()
 //! [Audio input stop recording]
 
 //! [Audio input state changed]
-void AudioInputExample::handleStateChanged(QAudio::State newState)
+void AudioInputExample::handleStateChanged(QtAudio::State newState)
 {
     switch (newState) {
-        case QAudio::StoppedState:
-            if (audio->error() != QAudio::NoError) {
+        case QtAudio::StoppedState:
+            if (audio->error() != QtAudio::NoError) {
                 // Error handling
             } else {
                 // Finished recording
             }
             break;
 
-        case QAudio::ActiveState:
+        case QtAudio::ActiveState:
             // Started recording - read from IO device
             break;
 
@@ -98,7 +98,7 @@ public:
     void setup();
 
 public Q_SLOTS:
-    void handleStateChanged(QAudio::State newState);
+    void handleStateChanged(QtAudio::State newState);
     void stopAudioOutput();
 
 private:
@@ -117,9 +117,9 @@ void AudioOutputExample::setup()
 
     QAudioFormat format;
     // Set up the format, eg.
-    format.setSampleRate(8000);
+    format.setSampleRate(44100);
     format.setChannelCount(1);
-    format.setSampleFormat(QAudioFormat::UInt8);
+    format.setSampleFormat(QAudioFormat::Int16);
 
     QAudioDevice info(QMediaDevices::defaultAudioOutput());
     if (!info.isFormatSupported(format)) {
@@ -143,17 +143,17 @@ void AudioOutputExample::stopAudioOutput()
 //! [Audio output stop]
 
 //! [Audio output state changed]
-void AudioOutputExample::handleStateChanged(QAudio::State newState)
+void AudioOutputExample::handleStateChanged(QtAudio::State newState)
 {
     switch (newState) {
-        case QAudio::IdleState:
+        case QtAudio::IdleState:
             // Finished playing (no more data)
             AudioOutputExample::stopAudioOutput();
             break;
 
-        case QAudio::StoppedState:
+        case QtAudio::StoppedState:
             // Stopped for other reasons
-            if (audio->error() != QAudio::NoError) {
+            if (audio->error() != QtAudio::NoError) {
                 // Error handling
             }
             break;
@@ -187,7 +187,7 @@ public:
     void decode();
 
 public Q_SLOTS:
-    void handleStateChanged(QAudio::State newState);
+    void handleStateChanged(QtAudio::State newState);
     void readBuffer();
 };
 

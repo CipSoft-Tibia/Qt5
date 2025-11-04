@@ -196,7 +196,7 @@ QT_BEGIN_NAMESPACE
     The behavior is undefined if \a len is negative or, when positive, if \a str is \nullptr.
 
 //! [compatible-char-types]
-    This constructor only participates in overload resolution if \c Char is a compatible
+    \constraints \c Char is a compatible
     character type. The compatible character types are: \c QChar, \c ushort, \c char16_t and
     (on platforms, such as Windows, where it is a 16-bit type) \c wchar_t.
 //! [compatible-char-types]
@@ -265,14 +265,14 @@ QT_BEGIN_NAMESPACE
 
     \c{std::data(str)} must remain valid for the lifetime of this string view object.
 
-    This constructor only participates in overload resolution if \c Container is a
-    container with a compatible character type as \c{value_type}. The
-    compatible character types are: \c QChar, \c ushort, \c char16_t and
-    (on platforms, such as Windows, where it is a 16-bit type) \c wchar_t.
-
     The string view will be empty if and only if \c{std::size(str) == 0}. It is unspecified
     whether this constructor can result in a null string view (\c{std::data(str)} would
     have to return \nullptr for this).
+
+    \constraints \c Container is a
+    container with a compatible character type as \c{value_type}. The
+    compatible character types are: \c QChar, \c ushort, \c char16_t and
+    (on platforms, such as Windows, where it is a 16-bit type) \c wchar_t.
 
     \sa isNull(), isEmpty()
 */
@@ -511,15 +511,18 @@ QT_BEGIN_NAMESPACE
     \fn template <typename...Args> QString QString::arg(Args &&...args) const
     \since 5.14
 
+//![qstring-multi-arg]
     Replaces occurrences of \c{%N} in this string with the corresponding
     argument from \a args. The arguments are not positional: the first of
     the \a args replaces the \c{%N} with the lowest \c{N} (all of them), the
     second of the \a args the \c{%N} with the next-lowest \c{N} etc.
 
-    \c Args can consist of anything that implicitly converts to QString,
-    QStringView or QLatin1StringView.
+    \c Args can consist of anything that implicitly converts to QAnyStringView.
+//![qstring-multi-arg]
 
-    In addition, the following types are also supported: QChar, QLatin1Char.
+    \note In Qt versions prior to 6.9, QAnyStringView and UTF-8 strings
+    (QUtf8StringView, QByteArray, QByteArrayView, \c{const char8_t*}, etc) were
+    not supported as \a args.
 
     \sa QString::arg()
 */
@@ -709,7 +712,7 @@ QT_BEGIN_NAMESPACE
 
     \note The behavior is undefined when \a length < 0 or \a length > size().
 
-    \sa mid(), left(), right(), chop(), truncate(), slice()
+    \sa sliced(), left(), right(), chop(), truncate(), slice()
 */
 
 /*!
@@ -721,7 +724,7 @@ QT_BEGIN_NAMESPACE
 
     \note The behavior is undefined when \a length < 0 or \a length > size().
 
-    \sa mid(), left(), right(), chopped(), chop()
+    \sa sliced(), left(), right(), chopped(), chop()
 */
 
 /*!
@@ -733,7 +736,7 @@ QT_BEGIN_NAMESPACE
 
     \note The behavior is undefined when \a length < 0 or \a length > size().
 
-    \sa mid(), left(), right(), chopped(), truncate(), slice()
+    \sa sliced(), left(), right(), chopped(), truncate(), slice()
 */
 
 /*!
@@ -855,7 +858,7 @@ or the character \a ch
 /*!
     \fn qsizetype QStringView::indexOf(QStringView str, qsizetype from = 0, Qt::CaseSensitivity cs = Qt::CaseSensitive) const
     \fn qsizetype QStringView::indexOf(QLatin1StringView l1, qsizetype from = 0, Qt::CaseSensitivity cs = Qt::CaseSensitive) const
-    \fn qsizetype QStringView::indexOf(QChar c, qsizetype from = 0, Qt::CaseSensitivity cs = Qt::CaseSensitive) const
+    \fn qsizetype QStringView::indexOf(QChar ch, qsizetype from = 0, Qt::CaseSensitivity cs = Qt::CaseSensitive) const
     \since 5.14
 
     Returns the index position of the first occurrence of
@@ -873,7 +876,7 @@ or the character \a ch
 /*!
     \fn bool QStringView::contains(QStringView str, Qt::CaseSensitivity cs) const
     \fn bool QStringView::contains(QLatin1StringView l1, Qt::CaseSensitivity cs) const
-    \fn bool QStringView::contains(QChar c, Qt::CaseSensitivity cs) const
+    \fn bool QStringView::contains(QChar ch, Qt::CaseSensitivity cs) const
     \since 5.14
 
     Returns \c true if this string view contains an occurrence of
@@ -888,7 +891,7 @@ or the character \a ch
 /*!
     \fn qsizetype QStringView::lastIndexOf(QStringView str, qsizetype from, Qt::CaseSensitivity cs) const
     \fn qsizetype QStringView::lastIndexOf(QLatin1StringView l1, qsizetype from, Qt::CaseSensitivity cs) const
-    \fn qsizetype QStringView::lastIndexOf(QChar c, qsizetype from, Qt::CaseSensitivity cs) const
+    \fn qsizetype QStringView::lastIndexOf(QChar ch, qsizetype from, Qt::CaseSensitivity cs) const
     \since 5.14
 
     Returns the index position of the last occurrence of
@@ -898,7 +901,7 @@ or the character \a ch
 
     \include qstring.qdocinc negative-index-start-search-from-end
 
-    Returns -1 if \a str, \a l1 or \a c is not found, respectively.
+    Returns -1 if \a str, \a l1 or \a ch is not found, respectively.
 
     \include qstring.qdocinc {search-comparison-case-sensitivity} {search}
 
@@ -930,7 +933,7 @@ or the character \a ch
 */
 
 /*!
-    \fn QStringView::lastIndexOf(QChar c, Qt::CaseSensitivity cs) const
+    \fn QStringView::lastIndexOf(QChar ch, Qt::CaseSensitivity cs) const
     \since 6.3
     \overload lastIndexOf()
 */

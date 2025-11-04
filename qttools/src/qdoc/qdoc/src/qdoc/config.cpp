@@ -24,6 +24,7 @@ QString ConfigStrings::DEFINES = QStringLiteral("defines");
 QString ConfigStrings::DEPENDS = QStringLiteral("depends");
 QString ConfigStrings::DESCRIPTION = QStringLiteral("description");
 QString ConfigStrings::DOCBOOKEXTENSIONS = QStringLiteral("usedocbookextensions");
+QString ConfigStrings::DOCUMENTATIONINHEADERS = QStringLiteral("documentationinheaders");
 QString ConfigStrings::ENDHEADER = QStringLiteral("endheader");
 QString ConfigStrings::EXAMPLEDIRS = QStringLiteral("exampledirs");
 QString ConfigStrings::EXAMPLES = QStringLiteral("examples");
@@ -62,9 +63,12 @@ QString ConfigStrings::OUTPUTDIR = QStringLiteral("outputdir");
 QString ConfigStrings::OUTPUTFORMATS = QStringLiteral("outputformats");
 QString ConfigStrings::OUTPUTPREFIXES = QStringLiteral("outputprefixes");
 QString ConfigStrings::OUTPUTSUFFIXES = QStringLiteral("outputsuffixes");
+QString ConfigStrings::PRODUCTNAME = QStringLiteral("productname");
 QString ConfigStrings::PROJECT = QStringLiteral("project");
 QString ConfigStrings::REDIRECTDOCUMENTATIONTODEVNULL =
         QStringLiteral("redirectdocumentationtodevnull");
+QString ConfigStrings::REPORTMISSINGALTTEXTFORIMAGES =
+        QStringLiteral("reportmissingalttextforimages");
 QString ConfigStrings::QHP = QStringLiteral("qhp");
 QString ConfigStrings::QUOTINGINFORMATION = QStringLiteral("quotinginformation");
 QString ConfigStrings::SCRIPTS = QStringLiteral("scripts");
@@ -82,12 +86,15 @@ QString ConfigStrings::TIMESTAMPS = QStringLiteral("timestamps");
 QString ConfigStrings::TOCTITLES = QStringLiteral("toctitles");
 QString ConfigStrings::TRADEMARKSPAGE = QStringLiteral("trademarkspage");
 QString ConfigStrings::URL = QStringLiteral("url");
+QString ConfigStrings::USEALTTEXTASTITLE = QStringLiteral("usealttextastitle");
 QString ConfigStrings::VERSION = QStringLiteral("version");
 QString ConfigStrings::VERSIONSYM = QStringLiteral("versionsym");
 QString ConfigStrings::FILEEXTENSIONS = QStringLiteral("fileextensions");
 QString ConfigStrings::IMAGEEXTENSIONS = QStringLiteral("imageextensions");
 QString ConfigStrings::QMLTYPESPAGE = QStringLiteral("qmltypespage");
 QString ConfigStrings::QMLTYPESTITLE = QStringLiteral("qmltypestitle");
+QString ConfigStrings::WARNABOUTMISSINGIMAGES = QStringLiteral("warnaboutmissingimages");
+QString ConfigStrings::WARNABOUTMISSINGPROJECTFILES = QStringLiteral("warnaboutmissingprojectfiles");
 QString ConfigStrings::WARNINGLIMIT = QStringLiteral("warninglimit");
 
 /*!
@@ -369,6 +376,8 @@ void Config::reset()
     setStringList(CONFIG_OUTPUTFORMATS, QStringList("HTML"));
     setStringList(CONFIG_TABSIZE, QStringList("8"));
     setStringList(CONFIG_LOCATIONINFO, QStringList("true"));
+    setStringList(CONFIG_WARNABOUTMISSINGIMAGES, QStringList("true"));
+    setStringList(CONFIG_WARNABOUTMISSINGPROJECTFILES, QStringList("true"));
 
     // Publish options from the command line as config variables
     const auto setListFlag = [this](const QString &key, bool test) {
@@ -418,6 +427,8 @@ void Config::load(const QString &fileName)
     // Prefetch values that are used internally
     m_exampleFiles = getCanonicalPathList(CONFIG_EXAMPLES);
     m_exampleDirs = getCanonicalPathList(CONFIG_EXAMPLEDIRS);
+    m_reportMissingAltTextForImages =
+            m_configVars.value(CONFIG_REPORTMISSINGALTTEXTFORIMAGES).asBool();
 }
 
 /*!

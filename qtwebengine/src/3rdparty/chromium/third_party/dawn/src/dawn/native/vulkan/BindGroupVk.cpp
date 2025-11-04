@@ -28,6 +28,8 @@
 #include "dawn/native/vulkan/BindGroupVk.h"
 
 #include "dawn/common/BitSetIterator.h"
+#include "dawn/common/MatchVariant.h"
+#include "dawn/common/Range.h"
 #include "dawn/common/ityp_stack_vec.h"
 #include "dawn/native/ExternalTexture.h"
 #include "dawn/native/vulkan/BindGroupLayoutVk.h"
@@ -63,7 +65,7 @@ BindGroup::BindGroup(Device* device,
         bindingCount);
 
     uint32_t numWrites = 0;
-    for (const auto [_, bindingIndex] : GetLayout()->GetBindingMap()) {
+    for (BindingIndex bindingIndex : Range(GetLayout()->GetBindingCount())) {
         const BindingInfo& bindingInfo = GetLayout()->GetBindingInfo(bindingIndex);
 
         auto& write = writes[numWrites];
@@ -75,8 +77,9 @@ BindGroup::BindGroup(Device* device,
         write.descriptorCount = 1;
         write.descriptorType = VulkanDescriptorType(bindingInfo);
 
-        switch (bindingInfo.bindingType) {
-            case BindingInfoType::Buffer: {
+        bool shouldWriteDescriptor = MatchVariant(
+            bindingInfo.bindingLayout,
+            [&](const BufferBindingInfo&) -> bool {
                 BufferBinding binding = GetBindingAsBufferBinding(bindingIndex);
 
                 VkBuffer handle = ToBackend(binding.buffer)->GetHandle();
@@ -85,23 +88,27 @@ BindGroup::BindGroup(Device* device,
                     // a Vulkan Validation Layers error. This bind group won't be used as it
                     // is an error to submit a command buffer that references destroyed
                     // resources.
-                    continue;
+                    return false;
                 }
                 writeBufferInfo[numWrites].buffer = handle;
                 writeBufferInfo[numWrites].offset = binding.offset;
                 writeBufferInfo[numWrites].range = binding.size;
                 write.pBufferInfo = &writeBufferInfo[numWrites];
-                break;
-            }
-
-            case BindingInfoType::Sampler: {
+                return true;
+            },
+            [&](const SamplerBindingInfo&) -> bool {
                 Sampler* sampler = ToBackend(GetBindingAsSampler(bindingIndex));
                 writeImageInfo[numWrites].sampler = sampler->GetHandle();
                 write.pImageInfo = &writeImageInfo[numWrites];
-                break;
-            }
-
-            case BindingInfoType::Texture: {
+                return true;
+            },
+            [&](const StaticSamplerBindingInfo& layout) -> bool {
+                // Static samplers are bound into the Vulkan layout as immutable
+                // samplers at BindGroupLayout creation time. There is no work
+                // to be done at BindGroup creation time.
+                return false;
+            },
+            [&](const TextureBindingInfo&) -> bool {
                 TextureView* view = ToBackend(GetBindingAsTextureView(bindingIndex));
 
                 VkImageView handle = view->GetHandle();
@@ -111,17 +118,30 @@ BindGroup::BindGroup(Device* device,
                     // a Vulkan Validation Layers error. This bind group won't be used as it
                     // is an error to submit a command buffer that references destroyed
                     // resources.
-                    continue;
+                    return false;
                 }
+
+                // TODO(crbug.com/41488897: Add GetVkDescriptorSet{Index,
+                // Type}(BindingIndex) functions to BindGroupLayoutVk that
+                // access vectors holding entries for all BGL entries and
+                // eliminate this special-case code in favor of calling those
+                // functions to assign `dstBinding` and `descriptorType` above.
+                if (auto samplerIndex =
+                        ToBackend(GetLayout())->GetStaticSamplerIndexForTexture(bindingIndex)) {
+                    // Write the info of the texture at the binding index for the
+                    // sampler.
+                    write.dstBinding = static_cast<uint32_t>(samplerIndex.value());
+                    write.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+                }
+
                 writeImageInfo[numWrites].imageView = handle;
                 writeImageInfo[numWrites].imageLayout = VulkanImageLayout(
                     view->GetTexture()->GetFormat(), wgpu::TextureUsage::TextureBinding);
 
                 write.pImageInfo = &writeImageInfo[numWrites];
-                break;
-            }
-
-            case BindingInfoType::StorageTexture: {
+                return true;
+            },
+            [&](const StorageTextureBindingInfo&) -> bool {
                 TextureView* view = ToBackend(GetBindingAsTextureView(bindingIndex));
 
                 VkImageView handle = VK_NULL_HANDLE;
@@ -136,21 +156,36 @@ BindGroup::BindGroup(Device* device,
                     // a Vulkan Validation Layers error. This bind group won't be used as it
                     // is an error to submit a command buffer that references destroyed
                     // resources.
-                    continue;
+                    return false;
                 }
                 writeImageInfo[numWrites].imageView = handle;
                 writeImageInfo[numWrites].imageLayout = VK_IMAGE_LAYOUT_GENERAL;
 
                 write.pImageInfo = &writeImageInfo[numWrites];
-                break;
-            }
+                return true;
+            },
+            [&](const InputAttachmentBindingInfo&) -> bool {
+                TextureView* view = ToBackend(GetBindingAsTextureView(bindingIndex));
 
-            case BindingInfoType::ExternalTexture:
-                DAWN_UNREACHABLE();
-                break;
+                VkImageView handle = view->GetHandle();
+                if (handle == VK_NULL_HANDLE) {
+                    // The Texture was destroyed before the TextureView was created.
+                    // Skip this descriptor write since it would be
+                    // a Vulkan Validation Layers error. This bind group won't be used as it
+                    // is an error to submit a command buffer that references destroyed
+                    // resources.
+                    return false;
+                }
+                writeImageInfo[numWrites].imageView = handle;
+                writeImageInfo[numWrites].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+
+                write.pImageInfo = &writeImageInfo[numWrites];
+                return true;
+            });
+
+        if (shouldWriteDescriptor) {
+            numWrites++;
         }
-
-        numWrites++;
     }
 
     // TODO(crbug.com/dawn/855): Batch these updates

@@ -10,163 +10,109 @@
     android:baselineAligned="false">
 
     <FrameLayout
-        android:id="@+id/qmlFrame"
+        android:id="@+id/firstQmlFrame"
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_weight="1">
-
     </FrameLayout>
 
-    <LinearLayout
-        android:id="@+id/javaLinear"
+    <FrameLayout
+        android:id="@+id/secondQmlFrame"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1">
+    </FrameLayout>
+
+    <RelativeLayout
+        android:id="@+id/javaRelative"
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_weight="1"
-        android:background="@color/lilac"
-        android:orientation="vertical">
-
+        android:gravity="center_horizontal"
+        android:background="@color/lilac">
 
         <TextView
-            android:id="@+id/title"
+            android:id="@+id/header_title"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_gravity="center_horizontal"
-            android:layout_marginTop="@dimen/title_margin_top"
-            android:gravity="center_horizontal"
-            android:includeFontPadding="false"
+            android:layout_centerHorizontal="true"
             android:text="@string/java"
+            android:layout_marginTop="@dimen/title_margin_top"
             android:textColor="@color/white"
-            android:textSize="@dimen/title_text_size"
-            android:textStyle="bold" />
+            android:textStyle="bold"
+            android:textSize="@dimen/title_text_size"/>
 
         <TextView
             android:id="@+id/qmlStatusText"
+            android:textSize="@dimen/other_text_size"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_gravity="center_horizontal"
-            android:layout_marginTop="@dimen/smaller_top_margin"
-            android:gravity="center_horizontal"
-            android:text="@string/qml_view_status"
-            android:textColor="@color/white"
-            android:textSize="@dimen/other_text_size"/>
-
-        <LinearLayout
-            android:id="@+id/buttonAndSwitchLayout"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_gravity="center_horizontal"
-            android:gravity="center_horizontal"
-            android:orientation="horizontal"
+            android:layout_below="@+id/header_title"
             android:layout_marginTop="@dimen/bigger_top_margin"
-            android:baselineAligned="false">
-
-            <LinearLayout
-                android:id="@+id/buttonLinearLayout"
-                android:layout_width="match_parent"
-                android:layout_height="match_parent"
-                android:orientation="vertical"
-                android:layout_weight="1">
-
-                <TextView
-                    android:id="@+id/changeColorText"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_gravity="center_horizontal"
-                    android:gravity="center_horizontal"
-                    android:maxLines="3"
-                    android:text="@string/change_qml_background"
-                    android:textColor="@color/white"
-                    android:textSize="@dimen/other_text_size"/>
-
-                <com.google.android.material.button.MaterialButton
-                    android:id="@+id/changeQmlColorButton"
-                    android:layout_width="@dimen/change_color_button_width"
-                    android:layout_height="wrap_content"
-                    android:layout_gravity="center_horizontal"
-                    android:layout_marginTop="@dimen/smaller_top_margin"
-                    android:text="@string/button"
-                    android:textSize="@dimen/other_text_size"
-                    app:cornerRadius="@dimen/button_corner_radius"/>
-            </LinearLayout>
-
-            <LinearLayout
-                android:id="@+id/switchLinearLayout"
-                android:layout_width="match_parent"
-                android:layout_height="match_parent"
-                android:orientation="vertical"
-                android:layout_weight="1">
-
-                <TextView
-                    android:id="@+id/switchText"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_gravity="center_horizontal"
-                    android:gravity="center_horizontal"
-                    android:maxLines="3"
-                    android:text="@string/disconnect_qml_button_signal_listener"
-                    android:textColor="@color/white"
-                    android:textSize="@dimen/other_text_size"/>
-
-                <androidx.appcompat.widget.SwitchCompat
-                    android:id="@+id/disconnectQmlListenerSwitch"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_gravity="center_horizontal"
-                    android:layout_marginTop="@dimen/smaller_top_margin"
-                    app:showText="true"
-                    android:thumb="@drawable/switch_thumb"
-                    app:track="@drawable/switch_track"
-                    app:switchTextAppearance="@style/switchStyle"
-                    android:textOff="@string/off"
-                    android:textOn="@string/on" />
-            </LinearLayout>
-
-        </LinearLayout>
+            android:layout_centerHorizontal="true"
+            android:text="@string/qml_view_status"
+            android:textColor="@color/white"/>
 
         <LinearLayout
-            android:id="@+id/qmlColorLinear"
+            android:id="@+id/qmlColorLayout"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_gravity="center_horizontal"
-            android:gravity="center_horizontal"
             android:orientation="horizontal"
+            android:layout_centerHorizontal="true"
+            android:layout_below="@id/qmlStatusText"
             android:layout_marginTop="@dimen/bigger_top_margin">
 
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="match_parent"
-                android:orientation="vertical"
-                android:layout_weight="1">
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textColor="@color/white"
+                android:textSize="@dimen/other_text_size"
+                android:layout_gravity="center_vertical"
+                android:text="@string/qml_view_color_label"/>
+
+            <RelativeLayout
+                android:id="@+id/qmlColorBox"
+                android:layout_width="@dimen/color_box_width"
+                android:layout_height="@dimen/color_box_height"
+                android:background="@color/cardview_shadow_start_color"
+                android:layout_gravity="center_vertical"
+                android:layout_marginStart="@dimen/color_box_margin_start">
 
                 <TextView
                     android:id="@+id/qmlViewBackgroundText"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:layout_gravity="center_horizontal"
-                    android:gravity="center_horizontal"
-                    android:maxLines="2"
-                    android:text="@string/qml_view_background_color"
-                    android:textColor="@color/white"
-                    android:textSize="@dimen/other_text_size"/>
+                    android:textSize="@dimen/other_text_size"
+                    android:text=""
+                    android:layout_centerInParent="true"
+                    android:textColor="@color/white"/>
 
-                <TextView
-                    android:id="@+id/getPropertyValueText"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_gravity="center_horizontal"
-                    android:gravity="center_horizontal"
-                    android:textColor="@color/white"
-                    android:textSize="@dimen/other_text_size"/>
-            </LinearLayout>
+            </RelativeLayout>
+        </LinearLayout>
 
-            <View
-                android:id="@+id/qmlColorBox"
-                android:layout_width="@dimen/color_box_width"
-                android:layout_height="@dimen/color_box_height"
-                android:layout_gravity="center_horizontal"
-                android:background="@android:color/transparent"
-                android:layout_weight="0"
-                android:layout_marginStart="@dimen/color_box_margin_start"/>
+        <LinearLayout
+            android:id="@+id/switchAndTextLayout"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_below="@+id/qmlColorLayout"
+            android:layout_marginTop="@dimen/bigger_top_margin"
+            android:layout_centerHorizontal="true">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/connect_qml_button_signal_listener"
+                android:textSize="@dimen/other_text_size"
+                android:textColor="@color/white"/>
+
+            <androidx.appcompat.widget.SwitchCompat
+                android:id="@+id/disconnectQmlListenerSwitch"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="@dimen/switch_left_margin"
+                app:track="@drawable/switch_track"
+                android:thumb="@drawable/switch_thumb"
+                android:checked="true"/>
 
         </LinearLayout>
 
@@ -175,37 +121,26 @@
             android:layout_height="wrap_content"
             android:orientation="horizontal"
             android:gravity="center_horizontal"
+            android:layout_below="@+id/switchAndTextLayout"
             android:layout_marginTop="@dimen/bigger_top_margin">
-
-            <com.google.android.material.button.MaterialButton
-                android:id="@+id/loadSecondQml"
+            <Button
+                android:id="@+id/changeQmlColorButton"
                 android:layout_width="@dimen/other_buttons_width"
                 android:layout_height="wrap_content"
-                android:layout_gravity="center_horizontal"
-                android:text="@string/load_second_qml"
+                android:layout_gravity="center_vertical"
+                android:text="@string/change_qml_background"
                 android:textSize="@dimen/other_text_size"
-                android:layout_marginEnd="@dimen/load_second_button_margin_end"
+                android:maxLines="2"
                 app:cornerRadius="@dimen/button_corner_radius"/>
-
-            <com.google.android.material.button.MaterialButton
-                android:id="@+id/loadMainQml"
+            <Button
+                android:id="@+id/rotateQmlGridButton"
                 android:layout_width="@dimen/other_buttons_width"
                 android:layout_height="wrap_content"
-                android:layout_gravity="center_horizontal"
-                android:text="@string/load_main_qml"
+                android:layout_gravity="center_vertical"
+                android:text="@string/rotate_qml_grid"
                 android:textSize="@dimen/other_text_size"
-                app:cornerRadius="@dimen/button_corner_radius"/>
+                app:cornerRadius="@dimen/button_corner_radius"
+                android:layout_marginStart="@dimen/rotate_qml_grid_margin_start"/>
         </LinearLayout>
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/rotateQmlGridButton"
-            android:layout_width="@dimen/other_buttons_width"
-            android:layout_height="wrap_content"
-            android:layout_gravity="center_horizontal"
-            android:layout_marginTop="@dimen/rotate_qml_grid_top_margin"
-            android:text="@string/rotate_qml_grid"
-            android:textSize="@dimen/other_text_size"
-            app:cornerRadius="@dimen/button_corner_radius"/>
-
-    </LinearLayout>
-
+    </RelativeLayout>
 </LinearLayout>

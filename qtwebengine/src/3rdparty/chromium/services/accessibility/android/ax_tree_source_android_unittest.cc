@@ -5,6 +5,7 @@
 #include "services/accessibility/android/ax_tree_source_android.h"
 
 #include <memory>
+#include <optional>
 #include <utility>
 
 #include "base/memory/raw_ptr.h"
@@ -16,7 +17,6 @@
 #include "services/accessibility/android/test/android_accessibility_test_util.h"
 #include "testing/gtest/include/gtest/gtest-death-test.h"
 #include "testing/gtest/include/gtest/gtest.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "ui/accessibility/ax_action_data.h"
 #include "ui/accessibility/ax_enums.mojom.h"
 #include "ui/accessibility/ax_role_properties.h"
@@ -55,10 +55,11 @@ class MockAutomationEventRouter
   ui::AXTree* tree() { return &tree_; }
 
   // extensions::AutomationEventRouterInterface:
-  void DispatchAccessibilityEvents(const ui::AXTreeID& tree_id,
-                                   std::vector<ui::AXTreeUpdate> updates,
-                                   const gfx::Point& mouse_location,
-                                   std::vector<ui::AXEvent> events) override {
+  void DispatchAccessibilityEvents(
+      const ui::AXTreeID& tree_id,
+      const std::vector<ui::AXTreeUpdate>& updates,
+      const gfx::Point& mouse_location,
+      const std::vector<ui::AXEvent>& events) override {
     for (auto&& event : events) {
       ASSERT_NE(event.event_type, ax::mojom::Event::kNone);
       event_count_[event.event_type]++;
@@ -76,7 +77,7 @@ class MockAutomationEventRouter
   }
 
   void DispatchAccessibilityLocationChange(
-      const content::AXLocationChangeNotificationDetails& details) override {}
+      const ui::AXLocationChanges& details) override {}
 
   void DispatchTreeDestroyedEvent(ui::AXTreeID tree_id) override {}
 
@@ -87,7 +88,7 @@ class MockAutomationEventRouter
 
   void DispatchGetTextLocationDataResult(
       const ui::AXActionData& data,
-      const absl::optional<gfx::Rect>& rect) override {}
+      const std::optional<gfx::Rect>& rect) override {}
 
   std::vector<ui::AXEvent> last_dispatched_events() const {
     return last_dispatched_events_;
@@ -194,7 +195,7 @@ TEST_F(AXTreeSourceAndroidTest, ReorderChildrenByLayout) {
   set_full_focus_mode(true);
 
   auto event = AXEventData::New();
-  event->source_id = 0;
+  event->source_id = 100;
   event->task_id = 1;
   event->event_type = AXEventType::VIEW_FOCUSED;
 
@@ -1279,6 +1280,7 @@ TEST_F(AXTreeSourceAndroidTest, SyncFocus) {
   event->node_data.resize(1);
 
   event->event_type = AXEventType::WINDOW_CONTENT_CHANGED;
+  event->source_id = root->id;
   CallNotifyAccessibilityEvent(event.get());
 
   data = ui::AXTreeData();
@@ -1288,7 +1290,7 @@ TEST_F(AXTreeSourceAndroidTest, SyncFocus) {
 
 TEST_F(AXTreeSourceAndroidTest, StateDescriptionChangedEvent) {
   auto event = AXEventData::New();
-  event->source_id = 10;
+  event->source_id = 11;
   event->task_id = 1;
   event->event_type = AXEventType::WINDOW_CONTENT_CHANGED;
 
@@ -1299,9 +1301,16 @@ TEST_F(AXTreeSourceAndroidTest, StateDescriptionChangedEvent) {
   root_window->root_node_id = 10;
 
   event->node_data.push_back(AXNodeInfoData::New());
+  AXNodeInfoData* root_node = event->node_data.back().get();
+  root_node->id = 10;
+  root_node->window_id = 100;
+  SetProperty(root_node, AXIntListProperty::CHILD_NODE_IDS,
+              std::vector<int>({11}));
+
+  event->node_data.push_back(AXNodeInfoData::New());
   AXNodeInfoData* range_widget = event->node_data.back().get();
   range_widget->range_info = AXRangeInfoData::New();
-  range_widget->id = 10;
+  range_widget->id = 11;
 
   // State description changed event from range widget.
   std::vector<int> content_change_types = {
@@ -1315,9 +1324,11 @@ TEST_F(AXTreeSourceAndroidTest, StateDescriptionChangedEvent) {
   // State description changed event from non range widget.
   event->node_data.push_back(AXNodeInfoData::New());
   AXNodeInfoData* not_range_widget = event->node_data.back().get();
-  not_range_widget->id = 11;
+  not_range_widget->id = 12;
 
-  event->source_id = 11;
+  event->source_id = 12;
+  SetProperty(root_node, AXIntListProperty::CHILD_NODE_IDS,
+              std::vector<int>({11, 12}));
   CallNotifyAccessibilityEvent(event.get());
   EXPECT_TRUE(last_dispatched_events().empty());
 }

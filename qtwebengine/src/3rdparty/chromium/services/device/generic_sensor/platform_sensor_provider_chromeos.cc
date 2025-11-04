@@ -12,6 +12,7 @@
 #include "base/containers/contains.h"
 #include "base/functional/bind.h"
 #include "base/memory/scoped_refptr.h"
+#include "base/not_fatal_until.h"
 #include "base/ranges/algorithm.h"
 #include "base/strings/string_number_conversions.h"
 #include "base/task/sequenced_task_runner.h"
@@ -25,7 +26,7 @@ namespace {
 
 constexpr base::TimeDelta kReconnectDelay = base::Milliseconds(1000);
 
-absl::optional<mojom::SensorType> ConvertSensorType(
+std::optional<mojom::SensorType> ConvertSensorType(
     chromeos::sensors::mojom::DeviceType device_type) {
   switch (device_type) {
     case chromeos::sensors::mojom::DeviceType::ACCEL:
@@ -44,7 +45,7 @@ absl::optional<mojom::SensorType> ConvertSensorType(
       return mojom::SensorType::GRAVITY;
 
     default:
-      return absl::nullopt;
+      return std::nullopt;
   }
 }
 
@@ -74,6 +75,11 @@ PlatformSensorProviderChromeOS::PlatformSensorProviderChromeOS() {
 
 PlatformSensorProviderChromeOS::~PlatformSensorProviderChromeOS() {
   DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
+}
+
+base::WeakPtr<PlatformSensorProvider>
+PlatformSensorProviderChromeOS::AsWeakPtr() {
+  return weak_ptr_factory_.GetWeakPtr();
 }
 
 void PlatformSensorProviderChromeOS::SetUpChannel(
@@ -114,7 +120,6 @@ void PlatformSensorProviderChromeOS::OnNewDeviceAdded(
 
 void PlatformSensorProviderChromeOS::CreateSensorInternal(
     mojom::SensorType type,
-    SensorReadingSharedBuffer* reading_buffer,
     CreateSensorCallback callback) {
   DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
 
@@ -131,7 +136,7 @@ void PlatformSensorProviderChromeOS::CreateSensorInternal(
   // algorithm, wait until all sensors ready before processing the fusion
   // sensors as well.
   if (IsFusionSensorType(type)) {
-    CreateFusionSensor(type, reading_buffer, std::move(callback));
+    CreateFusionSensor(type, std::move(callback));
     return;
   }
 
@@ -148,7 +153,7 @@ void PlatformSensorProviderChromeOS::CreateSensorInternal(
 
   auto sensor_device_remote = GetSensorDeviceRemote(id);
   std::move(callback).Run(base::MakeRefCounted<PlatformSensorChromeOS>(
-      id, type, reading_buffer, this,
+      id, type, GetSensorReadingSharedBufferForType(type), AsWeakPtr(),
       base::BindOnce(&PlatformSensorProviderChromeOS::OnSensorDeviceDisconnect,
                      weak_ptr_factory_.GetWeakPtr(), id),
       sensor.scale.value(), std::move(sensor_device_remote)));
@@ -182,12 +187,12 @@ bool PlatformSensorProviderChromeOS::IsSensorTypeAvailable(
 PlatformSensorProviderChromeOS::SensorData::SensorData() = default;
 PlatformSensorProviderChromeOS::SensorData::~SensorData() = default;
 
-absl::optional<PlatformSensorProviderChromeOS::SensorLocation>
+std::optional<PlatformSensorProviderChromeOS::SensorLocation>
 PlatformSensorProviderChromeOS::ParseLocation(
-    const absl::optional<std::string>& raw_location) {
+    const std::optional<std::string>& raw_location) {
   if (!raw_location.has_value()) {
     LOG(ERROR) << "No location attribute";
-    return absl::nullopt;
+    return std::nullopt;
   }
 
   // These locations must be listed in the same order as the SensorLocation
@@ -198,18 +203,18 @@ PlatformSensorProviderChromeOS::ParseLocation(
       chromeos::sensors::mojom::kLocationCamera};
   const auto it = base::ranges::find(location_strings, raw_location.value());
   if (it == std::end(location_strings))
-    return absl::nullopt;
+    return std::nullopt;
 
   return static_cast<SensorLocation>(
       std::distance(std::begin(location_strings), it));
 }
 
-absl::optional<int32_t> PlatformSensorProviderChromeOS::GetDeviceId(
+std::optional<int32_t> PlatformSensorProviderChromeOS::GetDeviceId(
     mojom::SensorType type) const {
   DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
   const auto type_id = sensor_id_by_type_.find(type);
   if (type_id == sensor_id_by_type_.end())
-    return absl::nullopt;
+    return std::nullopt;
   return type_id->second;
 }
 
@@ -344,11 +349,11 @@ void PlatformSensorProviderChromeOS::RegisterDevice(
 
 void PlatformSensorProviderChromeOS::GetAttributesCallback(
     int32_t id,
-    const std::vector<absl::optional<std::string>>& values) {
+    const std::vector<std::optional<std::string>>& values) {
   DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
 
   auto it = sensors_.find(id);
-  DCHECK(it != sensors_.end());
+  CHECK(it != sensors_.end(), base::NotFatalUntil::M130);
   auto& sensor = it->second;
   DCHECK(sensor.remote.is_bound());
 
@@ -546,7 +551,7 @@ void PlatformSensorProviderChromeOS::DetermineMotionSensors() {
 // Prefer the light sensor on the lid, as it's more meaningful to web API users.
 void PlatformSensorProviderChromeOS::DetermineLightSensor() {
   DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
-  absl::optional<int32_t> id = absl::nullopt;
+  std::optional<int32_t> id = std::nullopt;
 
   for (const auto& sensor : sensors_) {
     if (sensor.second.ignored ||
@@ -588,17 +593,18 @@ void PlatformSensorProviderChromeOS::ProcessStoredRequests() {
   DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
   std::vector<mojom::SensorType> request_types = GetPendingRequestTypes();
   for (const auto& type : request_types) {
+    if (IsFusionSensorType(type)) {
+      CreateFusionSensor(
+          type,
+          base::BindOnce(&PlatformSensorProviderChromeOS::NotifySensorCreated,
+                         weak_ptr_factory_.GetWeakPtr(), type));
+      continue;
+    }
+
     SensorReadingSharedBuffer* reading_buffer =
         GetSensorReadingSharedBufferForType(type);
 
-    if (!reading_buffer)
-      continue;
-
-    if (IsFusionSensorType(type)) {
-      CreateFusionSensor(
-          type, reading_buffer,
-          base::BindOnce(&PlatformSensorProviderChromeOS::NotifySensorCreated,
-                         weak_ptr_factory_.GetWeakPtr(), type));
+    if (!reading_buffer) {
       continue;
     }
 
@@ -617,7 +623,7 @@ void PlatformSensorProviderChromeOS::ProcessStoredRequests() {
     auto sensor_device_remote = GetSensorDeviceRemote(id);
     NotifySensorCreated(
         type, base::MakeRefCounted<PlatformSensorChromeOS>(
-                  id, type, reading_buffer, this,
+                  id, type, reading_buffer, AsWeakPtr(),
                   base::BindOnce(
                       &PlatformSensorProviderChromeOS::OnSensorDeviceDisconnect,
                       weak_ptr_factory_.GetWeakPtr(), id),

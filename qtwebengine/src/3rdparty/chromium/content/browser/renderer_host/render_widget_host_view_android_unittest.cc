@@ -7,7 +7,6 @@
 #include <memory>
 
 #include "base/memory/raw_ptr.h"
-#include "base/test/scoped_feature_list.h"
 #include "cc/layers/deadline_policy.h"
 #include "cc/slim/layer.h"
 #include "components/viz/common/features.h"
@@ -341,8 +340,7 @@ TEST_F(RenderWidgetHostViewAndroidTest, DisplayFeature) {
 
   // Set a vertical display feature, and verify this is reflected in the
   // computed display feature.
-  test_view_android_delegate_->SetDisplayFeatureForTesting(
-      gfx::Rect(95, 0, 10, 400));
+  rwhva->SetDisplayFeatureBoundsForTesting(gfx::Rect(95, 0, 10, 400));
   DisplayFeature expected_display_feature = {
       DisplayFeature::Orientation::kVertical,
       /* offset */ 95,
@@ -353,27 +351,23 @@ TEST_F(RenderWidgetHostViewAndroidTest, DisplayFeature) {
   // being exposed as a content::DisplayFeature (we currently only consider
   // display features that completely cover one of the view's dimensions).
   rwhva->GetNativeView()->SetLayoutForTesting(0, 0, 400, 200);
-  test_view_android_delegate_->SetDisplayFeatureForTesting(
-      gfx::Rect(200, 100, 100, 200));
+  rwhva->SetDisplayFeatureBoundsForTesting(gfx::Rect(200, 100, 100, 200));
   EXPECT_EQ(std::nullopt, rwhv->GetDisplayFeature());
 
   // Verify that horizontal display feature is correctly validated.
-  test_view_android_delegate_->SetDisplayFeatureForTesting(
-      gfx::Rect(0, 90, 400, 20));
+  rwhva->SetDisplayFeatureBoundsForTesting(gfx::Rect(0, 90, 400, 20));
   expected_display_feature = {DisplayFeature::Orientation::kHorizontal,
                               /* offset */ 90,
                               /* mask_length */ 20};
   EXPECT_EQ(expected_display_feature, *rwhv->GetDisplayFeature());
 
-  test_view_android_delegate_->SetDisplayFeatureForTesting(
-      gfx::Rect(0, 95, 600, 10));
+  rwhva->SetDisplayFeatureBoundsForTesting(gfx::Rect(0, 95, 600, 10));
   expected_display_feature = {DisplayFeature::Orientation::kHorizontal,
                               /* offset */ 95,
                               /* mask_length */ 10};
   EXPECT_EQ(expected_display_feature, *rwhv->GetDisplayFeature());
 
-  test_view_android_delegate_->SetDisplayFeatureForTesting(
-      gfx::Rect(195, 0, 10, 300));
+  rwhva->SetDisplayFeatureBoundsForTesting(gfx::Rect(195, 0, 10, 300));
   expected_display_feature = {DisplayFeature::Orientation::kVertical,
                               /* offset */ 195,
                               /* mask_length */ 10};
@@ -1053,28 +1047,14 @@ class RenderWidgetHostViewAndroidRotationKillswitchTest
     : public RenderWidgetHostViewAndroidRotationTest,
       public testing::WithParamInterface<bool> {
  public:
-  RenderWidgetHostViewAndroidRotationKillswitchTest();
+  RenderWidgetHostViewAndroidRotationKillswitchTest() = default;
   ~RenderWidgetHostViewAndroidRotationKillswitchTest() override = default;
-
- private:
-  base::test::ScopedFeatureList scoped_feature_list_;
 };
-
-RenderWidgetHostViewAndroidRotationKillswitchTest::
-    RenderWidgetHostViewAndroidRotationKillswitchTest() {
-  if (GetParam()) {
-    scoped_feature_list_.InitAndEnableFeature(
-        features::kSurfaceSyncFullscreenKillswitch);
-  } else {
-    scoped_feature_list_.InitAndDisableFeature(
-        features::kSurfaceSyncFullscreenKillswitch);
-  }
-}
 
 // Tests that when a rotation occurs, that we only advance the
 // viz::LocalSurfaceId once, and that no other visual changes occurring during
 // this time can separately trigger SurfaceSync. (https://crbug.com/1203804)
-TEST_P(RenderWidgetHostViewAndroidRotationKillswitchTest,
+TEST_F(RenderWidgetHostViewAndroidRotationKillswitchTest,
        RotationOnlyAdvancesSurfaceSyncOnce) {
   // Android default host and views initialize as visible.
   RenderWidgetHostViewAndroid* rwhva = render_widget_host_view_android();
@@ -1341,7 +1321,7 @@ void RenderWidgetHostViewAndroidMixedOrientationStartupTest::SetUp() {
 
 // Tests that when we EnterFullscreenMode and the PhysicalBacking changes to
 // match the Portrait ScreenInfo, that we do not block syncing.
-TEST_P(RenderWidgetHostViewAndroidMixedOrientationStartupTest,
+TEST_F(RenderWidgetHostViewAndroidMixedOrientationStartupTest,
        EnterFullscreenMode) {
   RenderWidgetHostViewAndroid* rwhva = render_widget_host_view_android();
   EXPECT_TRUE(rwhva->CanSynchronizeVisualProperties());
@@ -1352,9 +1332,7 @@ TEST_P(RenderWidgetHostViewAndroidMixedOrientationStartupTest,
   // fullscreen mode prevents syncing until we get a non-rotation change to
   // sizes.
   EnterFullscreenMode();
-  if (GetParam()) {
-    EXPECT_FALSE(rwhva->CanSynchronizeVisualProperties());
-  }
+  EXPECT_FALSE(rwhva->CanSynchronizeVisualProperties());
 
   // This is a rotation compared to the initial physical backing, however by
   // matching the orientation of the ScreenInfo, we should sync and no longer
@@ -1363,14 +1341,5 @@ TEST_P(RenderWidgetHostViewAndroidMixedOrientationStartupTest,
   EXPECT_TRUE(rwhva->CanSynchronizeVisualProperties());
   GetLocalSurfaceIdAndConfirmNewerThan(initial_local_surface_id);
 }
-
-// Tests Rotation improvements that launched with
-// features::kSurfaceSyncThrottling flag, and now only exist behind the
-// kSurfaceSyncFullscreenKillswitch flag. When off they should directly compare
-// visual properties to make throttling determination
-INSTANTIATE_TEST_SUITE_P(,
-                         RenderWidgetHostViewAndroidMixedOrientationStartupTest,
-                         ::testing::Bool(),
-                         &PostTestCaseName);
 
 }  // namespace content

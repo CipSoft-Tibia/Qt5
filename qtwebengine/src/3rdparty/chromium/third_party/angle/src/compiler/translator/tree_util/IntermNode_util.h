@@ -34,7 +34,11 @@ TIntermConstantUnion *CreateIndexNode(int index);
 TIntermConstantUnion *CreateUIntNode(unsigned int value);
 TIntermConstantUnion *CreateBoolNode(bool value);
 
+// Create temporary variable of known type |type|.
 TVariable *CreateTempVariable(TSymbolTable *symbolTable, const TType *type);
+
+// Create temporary variable compatible with user-provide type |type|.
+// Possibly creates a new type. The qualifer of the new type of the new variable is |qualifier|.
 TVariable *CreateTempVariable(TSymbolTable *symbolTable, const TType *type, TQualifier qualifier);
 
 TIntermSymbol *CreateTempSymbolNode(const TVariable *tempVariable);
@@ -74,6 +78,11 @@ const TVariable *DeclareInterfaceBlock(TIntermBlock *root,
 // If the input node is a block node, return it.
 // If the input node is not a block node, put it inside a block node and return that.
 TIntermBlock *EnsureBlock(TIntermNode *node);
+
+// If the input node is nullptr, return a new block.
+// If the input node is a block node, return it.
+// If the input node is not a block node, put it inside a block node and return that.
+TIntermBlock *EnsureLoopBodyBlock(TIntermNode *node);
 
 // Should be called from inside Compiler::compileTreeImpl() where the global level is in scope.
 TIntermSymbol *ReferenceGlobalVariable(const ImmutableString &name,

@@ -1,5 +1,6 @@
 // Copyright (C) 2021 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:sensitive reason:trivial-impl-only
 
 #ifndef QLOCALE_H
 #define QLOCALE_H
@@ -1172,6 +1173,7 @@ private:
     bool equals(const QLocale &other) const noexcept;
     friend class QLocalePrivate;
     friend class QSystemLocale;
+    friend class QTimeZonePrivate;
     friend class QCalendarBackend;
     friend class QRomanCalendar;
     friend Q_CORE_EXPORT size_t qHash(const QLocale &key, size_t seed) noexcept;

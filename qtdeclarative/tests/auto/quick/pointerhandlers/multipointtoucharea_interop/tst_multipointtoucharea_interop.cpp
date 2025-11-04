@@ -1,7 +1,8 @@
 // Copyright (C) 2017 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
-#include <QtTest/QtTest>
+#include <QtTest/QTest>
+#include <QtTest/QSignalSpy>
 
 #include <QtQml/qqmlengine.h>
 #include <QtQml/qqmlproperty.h>
@@ -37,7 +38,7 @@ private slots:
 
 private:
     void createView(QScopedPointer<QQuickView> &window, const char *fileName);
-    QPointingDevice *touchDevice = QTest::createTouchDevice();
+    std::unique_ptr<QPointingDevice> touchscreen{QTest::createTouchDevice()};
 };
 
 void tst_MptaInterop::createView(QScopedPointer<QQuickView> &window, const char *fileName)
@@ -78,7 +79,7 @@ void tst_MptaInterop::touchDrag()
     QVERIFY(tp.at(3)); // the QML declares four touchpoints
     QSignalSpy mptaPressedSpy(mpta, SIGNAL(pressed(QList<QObject*>)));
     QSignalSpy mptaReleasedSpy(mpta, SIGNAL(released(QList<QObject*>)));
-    QTest::QTouchEventSequence touch = QTest::touchEvent(window, touchDevice);
+    QTest::QTouchEventSequence touch = QTest::touchEvent(window, touchscreen.get());
 
     // Press one touchpoint:
     // DragHandler gets a passive grab
@@ -87,7 +88,7 @@ void tst_MptaInterop::touchDrag()
     QPoint p1 = mpta->mapToScene(QPointF(20, 20)).toPoint();
     touch.press(1, p1).commit();
     QQuickTouchUtils::flush(window);
-    auto devPriv = QPointingDevicePrivate::get(touchDevice);
+    auto devPriv = QPointingDevicePrivate::get(touchscreen.get());
     QCOMPARE(tp.at(0)->property("pressed").toBool(), true);
     QTRY_VERIFY(devPriv->pointById(1)->passiveGrabbers.contains(drag));
 
@@ -128,8 +129,8 @@ void tst_MptaInterop::touchesThenPinch()
     QSignalSpy mptaPressedSpy(mpta, SIGNAL(pressed(QList<QObject*>)));
     QSignalSpy mptaReleasedSpy(mpta, SIGNAL(released(QList<QObject*>)));
     QSignalSpy mptaCanceledSpy(mpta, SIGNAL(canceled(QList<QObject*>)));
-    QTest::QTouchEventSequence touch = QTest::touchEvent(window, touchDevice);
-    auto devPriv = QPointingDevicePrivate::get(touchDevice);
+    QTest::QTouchEventSequence touch = QTest::touchEvent(window, touchscreen.get());
+    auto devPriv = QPointingDevicePrivate::get(touchscreen.get());
 
     // Press one touchpoint:
     // DragHandler gets a passive grab

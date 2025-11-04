@@ -635,7 +635,7 @@ class PixelLocalStorageImageLoadStore : public PixelLocalStorage
         Framebuffer *framebuffer = state.getDrawFramebuffer();
         if (mPLSOptions.renderPassNeedsAMDRasterOrderGroupsWorkaround)
         {
-            // anglebug.com/7792 -- Metal [[raster_order_group()]] does not work for read_write
+            // anglebug.com/42266263 -- Metal [[raster_order_group()]] does not work for read_write
             // textures on AMD when the render pass doesn't have a color attachment on slot 0. To
             // work around this we attach one of the PLS textures to GL_COLOR_ATTACHMENT0, if there
             // isn't one already.
@@ -645,7 +645,8 @@ class PixelLocalStorageImageLoadStore : public PixelLocalStorage
             // Note that the PLS extension disallows simultaneously binding a single texture image
             // to a PLS plane and attaching it to the draw framebuffer. Enabling this workaround on
             // any other platform would yield incorrect results.
-            mHadColorAttachment0 = framebuffer->getColorAttachment(0) != nullptr;
+            // This flag is set to true iff the framebuffer has an attachment 0 and it is enabled.
+            mHadColorAttachment0 = framebuffer->getDrawBufferMask().test(0);
             if (!mHadColorAttachment0)
             {
                 // Indexed color masks are always available on Metal.

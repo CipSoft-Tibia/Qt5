@@ -62,6 +62,12 @@ QList<int> QRhiNull::supportedSampleCounts() const
     return { 1 };
 }
 
+QList<QSize> QRhiNull::supportedShadingRates(int sampleCount) const
+{
+    Q_UNUSED(sampleCount);
+    return { QSize(1, 1) };
+}
+
 QRhiSwapChain *QRhiNull::createSwapChain()
 {
     return new QNullSwapChain(this);
@@ -141,6 +147,8 @@ int QRhiNull::resourceLimit(QRhi::ResourceLimit limit) const
         return 32;
     case QRhi::MaxVertexOutputs:
         return 32;
+    case QRhi::ShadingRateImageTileSize:
+        return 0;
     }
 
     Q_UNREACHABLE_RETURN(0);
@@ -167,6 +175,11 @@ bool QRhiNull::makeThreadLocalNativeContextCurrent()
 {
     // not applicable
     return false;
+}
+
+void QRhiNull::setQueueSubmitParams(QRhiNativeHandles *)
+{
+    // not applicable
 }
 
 void QRhiNull::releaseCachedResources()
@@ -214,6 +227,11 @@ QRhiTextureRenderTarget *QRhiNull::createTextureRenderTarget(const QRhiTextureRe
                                                              QRhiTextureRenderTarget::Flags flags)
 {
     return new QNullTextureRenderTarget(this, desc, flags);
+}
+
+QRhiShadingRateMap *QRhiNull::createShadingRateMap()
+{
+    return nullptr;
 }
 
 QRhiGraphicsPipeline *QRhiNull::createGraphicsPipeline()
@@ -282,6 +300,12 @@ void QRhiNull::setStencilRef(QRhiCommandBuffer *cb, quint32 refValue)
 {
     Q_UNUSED(cb);
     Q_UNUSED(refValue);
+}
+
+void QRhiNull::setShadingRate(QRhiCommandBuffer *cb, const QSize &coarsePixelSize)
+{
+    Q_UNUSED(cb);
+    Q_UNUSED(coarsePixelSize);
 }
 
 void QRhiNull::draw(QRhiCommandBuffer *cb, quint32 vertexCount,

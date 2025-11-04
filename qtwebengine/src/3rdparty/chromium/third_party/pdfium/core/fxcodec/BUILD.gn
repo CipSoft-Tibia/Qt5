@@ -9,8 +9,8 @@ source_set("fxcodec") {
   sources = [
     "basic/basicmodule.cpp",
     "basic/basicmodule.h",
-    "cfx_codec_memory.cpp",
-    "cfx_codec_memory.h",
+    "data_and_bytes_consumed.cpp",
+    "data_and_bytes_consumed.h",
     "fax/faxmodule.cpp",
     "fax/faxmodule.h",
     "flate/flatemodule.cpp",
@@ -58,7 +58,7 @@ source_set("fxcodec") {
     "jbig2/JBig2_TrdProc.h",
     "jbig2/jbig2_decoder.cpp",
     "jbig2/jbig2_decoder.h",
-    "jpeg/jpeg_common.cpp",
+    "jpeg/jpeg_common.c",
     "jpeg/jpeg_common.h",
     "jpeg/jpegmodule.cpp",
     "jpeg/jpegmodule.h",
@@ -73,17 +73,18 @@ source_set("fxcodec") {
     "../../:pdfium_strict_config",
     "../../:pdfium_noshorten_config",
   ]
-  public_deps = [ "../../third_party:pdfium_base" ]
+  public_deps = [ "../fxcrt" ]
   deps = [
     "../../third_party:lcms2",
     "../../third_party:libopenjpeg2",
     "../../third_party:zlib",
-    "../fxcrt",
     "../fxge",
     "//third_party:jpeg",
   ]
   if (pdf_enable_xfa) {
     sources += [
+      "cfx_codec_memory.cpp",
+      "cfx_codec_memory.h",
       "jpeg/jpeg_progressive_decoder.cpp",
       "jpeg/jpeg_progressive_decoder.h",
       "progressive_decoder.cpp",

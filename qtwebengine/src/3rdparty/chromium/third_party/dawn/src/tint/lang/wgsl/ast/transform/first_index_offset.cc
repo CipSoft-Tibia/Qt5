@@ -69,6 +69,7 @@ FirstIndexOffset::BindingPoint::BindingPoint() = default;
 FirstIndexOffset::BindingPoint::BindingPoint(uint32_t b, uint32_t g) : binding(b), group(g) {}
 FirstIndexOffset::BindingPoint::~BindingPoint() = default;
 
+FirstIndexOffset::Data::Data() = default;
 FirstIndexOffset::Data::Data(bool has_vtx_index, bool has_inst_index)
     : has_vertex_index(has_vtx_index), has_instance_index(has_inst_index) {}
 FirstIndexOffset::Data::Data(const Data&) = default;
@@ -108,7 +109,7 @@ Transform::ApplyResult FirstIndexOffset::Apply(const Program& src,
         if (auto* var = node->As<Variable>()) {
             for (auto* attr : var->attributes) {
                 if (auto* builtin_attr = attr->As<BuiltinAttribute>()) {
-                    core::BuiltinValue builtin = src.Sem().Get(builtin_attr)->Value();
+                    core::BuiltinValue builtin = builtin_attr->builtin;
                     if (builtin == core::BuiltinValue::kVertexIndex) {
                         auto* sem_var = ctx.src->Sem().Get(var);
                         builtin_vars.emplace(sem_var, kFirstVertexName);
@@ -125,7 +126,7 @@ Transform::ApplyResult FirstIndexOffset::Apply(const Program& src,
         if (auto* member = node->As<StructMember>()) {
             for (auto* attr : member->attributes) {
                 if (auto* builtin_attr = attr->As<BuiltinAttribute>()) {
-                    core::BuiltinValue builtin = src.Sem().Get(builtin_attr)->Value();
+                    core::BuiltinValue builtin = builtin_attr->builtin;
                     if (builtin == core::BuiltinValue::kVertexIndex) {
                         auto* sem_mem = ctx.src->Sem().Get(member);
                         builtin_members.emplace(sem_mem, kFirstVertexName);

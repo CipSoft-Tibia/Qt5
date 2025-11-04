@@ -183,8 +183,6 @@ ProgramD3DMetadata::ProgramD3DMetadata(
     int shaderVersion)
     : mRendererMajorShaderModel(renderer->getMajorShaderModel()),
       mShaderModelSuffix(renderer->getShaderModelSuffix()),
-      mUsesInstancedPointSpriteEmulation(
-          renderer->getFeatures().useInstancedPointSpriteEmulation.enabled),
       mUsesViewScale(renderer->presentPathFastEnabled()),
       mCanSelectViewInVertexShader(renderer->canSelectViewInVertexShader()),
       mFragmentShader(fragmentShader),
@@ -239,8 +237,7 @@ bool ProgramD3DMetadata::usesPointSize() const
 
 bool ProgramD3DMetadata::usesInsertedPointCoordValue() const
 {
-    return (!usesPointSize() || !mUsesInstancedPointSpriteEmulation) && usesPointCoord() &&
-           mRendererMajorShaderModel >= 4;
+    return usesPointCoord() && mRendererMajorShaderModel >= 4;
 }
 
 bool ProgramD3DMetadata::usesViewScale() const
@@ -273,14 +270,11 @@ bool ProgramD3DMetadata::canSelectViewInVertexShader() const
 
 bool ProgramD3DMetadata::addsPointCoordToVertexShader() const
 {
-    // PointSprite emulation requiress that gl_PointCoord is present in the vertex shader
-    // VS_OUTPUT structure to ensure compatibility with the generated PS_INPUT of the pixel shader.
-    // Even with a geometry shader, the app can render triangles or lines and reference
+    // With a geometry shader, the app can render triangles or lines and reference
     // gl_PointCoord in the fragment shader, requiring us to provide a placeholder value. For
     // simplicity, we always add this to the vertex shader when the fragment shader
     // references gl_PointCoord, even if we could skip it in the geometry shader.
-    return (mUsesInstancedPointSpriteEmulation && usesPointCoord()) ||
-           usesInsertedPointCoordValue();
+    return usesInsertedPointCoordValue();
 }
 
 bool ProgramD3DMetadata::usesTransformFeedbackGLPosition() const
@@ -293,7 +287,7 @@ bool ProgramD3DMetadata::usesTransformFeedbackGLPosition() const
 
 bool ProgramD3DMetadata::usesSystemValuePointSize() const
 {
-    return !mUsesInstancedPointSpriteEmulation && usesPointSize();
+    return usesPointSize();
 }
 
 bool ProgramD3DMetadata::usesMultipleFragmentOuts() const
@@ -491,9 +485,10 @@ class ProgramD3D::LinkTaskD3D final : public LinkLoadTaskD3D
     {}
     ~LinkTaskD3D() override = default;
 
-    std::vector<std::shared_ptr<LinkSubTask>> link(const gl::ProgramLinkedResources &resources,
-                                                   const gl::ProgramMergedVaryings &mergedVaryings,
-                                                   bool *areSubTasksOptionalOut) override;
+    void link(const gl::ProgramLinkedResources &resources,
+              const gl::ProgramMergedVaryings &mergedVaryings,
+              std::vector<std::shared_ptr<LinkSubTask>> *linkSubTasksOut,
+              std::vector<std::shared_ptr<LinkSubTask>> *postLinkSubTasksOut) override;
 
   private:
     const gl::Version mClientVersion;
@@ -502,12 +497,15 @@ class ProgramD3D::LinkTaskD3D final : public LinkLoadTaskD3D
     const gl::ProvokingVertexConvention mProvokingVertex;
 };
 
-std::vector<std::shared_ptr<LinkSubTask>> ProgramD3D::LinkTaskD3D::link(
-    const gl::ProgramLinkedResources &resources,
-    const gl::ProgramMergedVaryings &mergedVaryings,
-    bool *areSubTasksOptionalOut)
+void ProgramD3D::LinkTaskD3D::link(const gl::ProgramLinkedResources &resources,
+                                   const gl::ProgramMergedVaryings &mergedVaryings,
+                                   std::vector<std::shared_ptr<LinkSubTask>> *linkSubTasksOut,
+                                   std::vector<std::shared_ptr<LinkSubTask>> *postLinkSubTasksOut)
 {
     ANGLE_TRACE_EVENT0("gpu.angle", "LinkTaskD3D::link");
+
+    ASSERT(linkSubTasksOut && linkSubTasksOut->empty());
+    ASSERT(postLinkSubTasksOut && postLinkSubTasksOut->empty());
 
     angle::Result result =
         mProgram->linkJobImpl(this, mCaps, mClientVersion, mClientType, resources, mergedVaryings);
@@ -515,15 +513,13 @@ std::vector<std::shared_ptr<LinkSubTask>> ProgramD3D::LinkTaskD3D::link(
 
     if (result != angle::Result::Continue)
     {
-        return {};
+        return;
     }
 
     // Create the subtasks
-    std::vector<std::shared_ptr<LinkSubTask>> subTasks;
-
     if (mExecutable->hasShaderStage(gl::ShaderType::Compute))
     {
-        subTasks.push_back(std::make_shared<GetComputeExecutableTask>(
+        linkSubTasksOut->push_back(std::make_shared<GetComputeExecutableTask>(
             mProgram, mProgram->getAttachedShader(gl::ShaderType::Compute)));
     }
     else
@@ -531,17 +527,14 @@ std::vector<std::shared_ptr<LinkSubTask>> ProgramD3D::LinkTaskD3D::link(
         // Geometry shaders are currently only used internally, so there is no corresponding shader
         // object at the interface level. For now the geometry shader debug info is prepended to the
         // vertex shader.
-        subTasks.push_back(std::make_shared<GetVertexExecutableTask>(
+        linkSubTasksOut->push_back(std::make_shared<GetVertexExecutableTask>(
             mProgram, mProgram->getAttachedShader(gl::ShaderType::Vertex)));
-        subTasks.push_back(std::make_shared<GetPixelExecutableTask>(
+        linkSubTasksOut->push_back(std::make_shared<GetPixelExecutableTask>(
             mProgram, mProgram->getAttachedShader(gl::ShaderType::Fragment)));
-        subTasks.push_back(std::make_shared<GetGeometryExecutableTask>(
+        linkSubTasksOut->push_back(std::make_shared<GetGeometryExecutableTask>(
             mProgram, mProgram->getAttachedShader(gl::ShaderType::Vertex), mCaps,
             mProvokingVertex));
     }
-
-    *areSubTasksOptionalOut = false;
-    return subTasks;
 }
 
 class ProgramD3D::LoadTaskD3D final : public LinkLoadTaskD3D
@@ -552,14 +545,18 @@ class ProgramD3D::LoadTaskD3D final : public LinkLoadTaskD3D
     {}
     ~LoadTaskD3D() override = default;
 
-    std::vector<std::shared_ptr<LinkSubTask>> load(bool *areSubTasksOptionalOut) override
+    void load(std::vector<std::shared_ptr<LinkSubTask>> *linkSubTasksOut,
+              std::vector<std::shared_ptr<LinkSubTask>> *postLinkSubTasksOut) override
     {
         ANGLE_TRACE_EVENT0("gpu.angle", "LoadTaskD3D::load");
+
+        ASSERT(linkSubTasksOut && linkSubTasksOut->empty());
+        ASSERT(postLinkSubTasksOut && postLinkSubTasksOut->empty());
 
         gl::BinaryInputStream stream(mStreamData.data(), mStreamData.size());
         mResult = mExecutable->loadBinaryShaderExecutables(this, mProgram->mRenderer, &stream);
 
-        return {};
+        return;
     }
 
     angle::Result getResult(const gl::Context *context, gl::InfoLog &infoLog) override
@@ -610,7 +607,7 @@ angle::Result ProgramD3D::load(const gl::Context *context,
 
     // Note: pretty much all the above can also be moved to the task
     *loadTaskOut = std::shared_ptr<LinkTask>(new LoadTaskD3D(this, std::move(streamData)));
-    *resultOut   = egl::CacheGetResult::GetSuccess;
+    *resultOut   = egl::CacheGetResult::Success;
 
     return angle::Result::Continue;
 }

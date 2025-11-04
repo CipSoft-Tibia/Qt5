@@ -307,12 +307,12 @@ static QWaylandQuickShellSurfaceItem *findSurfaceItemFromMoveItem(QQuickItem *mo
 
 static inline bool onTop(QWaylandQuickShellSurfaceItem *surf)
 {
-    return surf->staysOnTop() || surf->shellSurface()->isModal();
+    return surf->staysOnTop() || (surf->shellSurface() && surf->shellSurface()->isModal());
 }
 
 static inline bool onBottom(QWaylandQuickShellSurfaceItem *surf)
 {
-    return surf->staysOnBottom() && !surf->shellSurface()->isModal();
+    return surf->staysOnBottom() && !(surf->shellSurface() && surf->shellSurface()->isModal());
 }
 
 /*

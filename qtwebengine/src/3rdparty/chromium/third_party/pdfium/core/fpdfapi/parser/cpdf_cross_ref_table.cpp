@@ -8,8 +8,8 @@
 
 #include "core/fpdfapi/parser/cpdf_dictionary.h"
 #include "core/fpdfapi/parser/cpdf_parser.h"
-#include "third_party/base/check_op.h"
-#include "third_party/base/containers/contains.h"
+#include "core/fxcrt/check_op.h"
+#include "core/fxcrt/containers/contains.h"
 
 // static
 std::unique_ptr<CPDF_CrossRefTable> CPDF_CrossRefTable::MergeUp(
@@ -67,21 +67,18 @@ void CPDF_CrossRefTable::AddNormal(uint32_t obj_num,
   if (info.gennum > gen_num)
     return;
 
-  if (info.type == ObjectType::kCompressed && gen_num == 0)
-    return;
-
   info.type = ObjectType::kNormal;
   info.is_object_stream_flag |= is_object_stream;
   info.gennum = gen_num;
   info.pos = pos;
 }
 
-void CPDF_CrossRefTable::SetFree(uint32_t obj_num) {
+void CPDF_CrossRefTable::SetFree(uint32_t obj_num, uint16_t gen_num) {
   CHECK_LT(obj_num, CPDF_Parser::kMaxObjectNumber);
 
   auto& info = objects_info_[obj_num];
   info.type = ObjectType::kFree;
-  info.gennum = 0xFFFF;
+  info.gennum = gen_num;
   info.pos = 0;
 }
 

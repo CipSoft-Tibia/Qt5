@@ -23,7 +23,7 @@ void QmlClient::testMethod(const qtgrpc::tests::IntMessage &arg,
         return;
     }
 
-    auto reply = call("testMethod"_L1, arg, options ? options->options() : QGrpcCallOptions{});
+    auto reply = Client::testMethod(arg, options ? options->options() : QGrpcCallOptions{});
     QtGrpcQuickFunctional::makeCallConnections<qtgrpc::tests::IntMessage>(jsEngine,
                         std::move(reply), finishCallback, errorCallback);
 }
@@ -41,7 +41,7 @@ void QmlClient::testMethodServerStream(const qtgrpc::tests::IntMessage &arg,
         return;
     }
 
-    auto stream = serverStream("testMethodServerStream"_L1, arg, options ? options->options() : QGrpcCallOptions{});
+    auto stream = Client::testMethodServerStream(arg, options ? options->options() : QGrpcCallOptions{});
     QtGrpcQuickFunctional::makeServerStreamConnections<qtgrpc::tests::IntMessage>(jsEngine,
                         std::move(stream),
                         messageCallback, finishCallback, errorCallback);
@@ -59,7 +59,7 @@ TestMethodClientStreamSender *QmlClient::testMethodClientStream(const qtgrpc::te
         return nullptr;
     }
 
-    auto stream = clientStream("testMethodClientStream"_L1, arg, options ? options->options() : QGrpcCallOptions{});
+    auto stream = Client::testMethodClientStream(arg, options ? options->options() : QGrpcCallOptions{});
     auto *sender = new TestMethodClientStreamSender(stream.get());
     QtGrpcQuickFunctional::makeClientStreamConnections<qtgrpc::tests::IntMessage>(jsEngine,
                         std::move(stream), finishCallback, errorCallback);
@@ -80,7 +80,7 @@ TestMethodBiStreamSender *QmlClient::testMethodBiStream(const qtgrpc::tests::Int
         return nullptr;
     }
 
-    auto stream = bidiStream("testMethodBiStream"_L1, arg, options ? options->options() : QGrpcCallOptions {});
+    auto stream = Client::testMethodBiStream(arg, options ? options->options() : QGrpcCallOptions {});
     auto *sender = new TestMethodBiStreamSender(stream.get());
     QtGrpcQuickFunctional::makeBidiStreamConnections<qtgrpc::tests::IntMessage>(jsEngine,
                         std::move(stream), messageCallback, finishCallback, errorCallback);

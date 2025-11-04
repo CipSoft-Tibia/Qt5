@@ -15,6 +15,7 @@
 #include <utility>
 
 #include "api/dtls_transport_interface.h"
+#include "api/environment/environment_factory.h"
 #include "api/transport/enums.h"
 #include "p2p/base/candidate_pair_interface.h"
 #include "p2p/base/dtls_transport_factory.h"
@@ -83,7 +84,9 @@ class JsepTransportControllerTest : public JsepTransportController::Observer,
                                     public ::testing::Test,
                                     public sigslot::has_slots<> {
  public:
-  JsepTransportControllerTest() : signaling_thread_(rtc::Thread::Current()) {
+  JsepTransportControllerTest()
+      : env_(CreateEnvironment(&field_trials_)),
+        signaling_thread_(rtc::Thread::Current()) {
     fake_ice_transport_factory_ = std::make_unique<FakeIceTransportFactory>();
     fake_dtls_transport_factory_ = std::make_unique<FakeDtlsTransportFactory>();
   }
@@ -100,9 +103,9 @@ class JsepTransportControllerTest : public JsepTransportController::Observer,
     config.ice_transport_factory = fake_ice_transport_factory_.get();
     config.dtls_transport_factory = fake_dtls_transport_factory_.get();
     config.on_dtls_handshake_error_ = [](rtc::SSLHandshakeError s) {};
-    config.field_trials = &field_trials_;
     transport_controller_ = std::make_unique<JsepTransportController>(
-        network_thread, port_allocator, nullptr /* async_resolver_factory */,
+        env_, network_thread, port_allocator,
+        nullptr /* async_resolver_factory */, payload_type_picker_,
         std::move(config));
     SendTask(network_thread, [&] { ConnectTransportControllerSignals(); });
   }
@@ -345,6 +348,8 @@ class JsepTransportControllerTest : public JsepTransportController::Observer,
     return true;
   }
 
+  test::ScopedKeyValueConfig field_trials_;
+  Environment env_;
   rtc::AutoThread main_thread_;
   // Information received from signals from transport controller.
   cricket::IceConnectionState connection_state_ =
@@ -376,11 +381,10 @@ class JsepTransportControllerTest : public JsepTransportController::Observer,
   std::map<std::string, RtpTransportInternal*> changed_rtp_transport_by_mid_;
   std::map<std::string, cricket::DtlsTransportInternal*>
       changed_dtls_transport_by_mid_;
-
+  webrtc::PayloadTypePicker payload_type_picker_;
   // Transport controller needs to be destroyed first, because it may issue
   // callbacks that modify the changed_*_by_mid in the destructor.
   std::unique_ptr<JsepTransportController> transport_controller_;
-  test::ScopedKeyValueConfig field_trials_;
 };
 
 TEST_F(JsepTransportControllerTest, GetRtpTransport) {
@@ -640,7 +644,7 @@ TEST_F(JsepTransportControllerTest, GetDtlsRole) {
           ->SetLocalDescription(SdpType::kOffer, offer_desc.get(), nullptr)
           .ok());
 
-  absl::optional<rtc::SSLRole> role =
+  std::optional<rtc::SSLRole> role =
       transport_controller_->GetDtlsRole(kAudioMid1);
   // The DTLS role is not decided yet.
   EXPECT_FALSE(role);

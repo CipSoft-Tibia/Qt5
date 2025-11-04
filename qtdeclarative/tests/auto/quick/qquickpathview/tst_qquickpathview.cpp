@@ -1,7 +1,7 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
-#include <QtTest/QtTest>
+#include <QtTest/QTest>
 #include <QtQuick/qquickview.h>
 #include <QtQml/qqmlengine.h>
 #include <QtQml/qqmlcomponent.h>
@@ -137,7 +137,7 @@ private slots:
     void qtbug46487();
 
 private:
-    QScopedPointer<QPointingDevice> touchDevice = QScopedPointer<QPointingDevice>(QTest::createTouchDevice());
+    std::unique_ptr<QPointingDevice> touchscreen{QTest::createTouchDevice()};
 };
 
 class TestObject : public QObject
@@ -2782,7 +2782,7 @@ void tst_QQuickPathView::touchMove()
     QPoint from(250, 100);
     QPoint to(10, 100);
 
-    QTest::touchEvent(window.data(), touchDevice.data()).press(0, from, window.data());
+    QTest::touchEvent(window.data(), touchscreen.get()).press(0, from, window.data());
     QQuickTouchUtils::flush(window.data());
 
     QVERIFY(!pathview->isMoving());
@@ -2797,7 +2797,7 @@ void tst_QQuickPathView::touchMove()
     QCOMPARE(flickEndedSpy.size(), 0);
 
     from -= QPoint(QGuiApplication::styleHints()->startDragDistance() + 1, 0);
-    QTest::touchEvent(window.data(), touchDevice.data()).move(0, from, window.data());
+    QTest::touchEvent(window.data(), touchscreen.get()).move(0, from, window.data());
     QQuickTouchUtils::flush(window.data());
 
     // first move does not trigger move/drag
@@ -2815,7 +2815,7 @@ void tst_QQuickPathView::touchMove()
     QPoint diff = from - to;
     int moveCount = 4;
     for (int i = 1; i <= moveCount; ++i) {
-        QTest::touchEvent(window.data(), touchDevice.data()).move(0, from - i * diff / moveCount, window.data());
+        QTest::touchEvent(window.data(), touchscreen.get()).move(0, from - i * diff / moveCount, window.data());
         QQuickTouchUtils::flush(window.data());
 
         QVERIFY(pathview->isMoving());
@@ -2831,7 +2831,7 @@ void tst_QQuickPathView::touchMove()
     }
     QVERIFY(pathview->currentIndex() != current);
 
-    QTest::touchEvent(window.data(), touchDevice.data()).release(0, to, window.data());
+    QTest::touchEvent(window.data(), touchscreen.get()).release(0, to, window.data());
     QQuickTouchUtils::flush(window.data());
 
     QVERIFY(pathview->isMoving());
@@ -2949,11 +2949,11 @@ public:
         m_values << 0 << 1 << 2 << 3 << 4;
     }
 
-    int rowCount(const QModelIndex &parent = QModelIndex()) const {
+    int rowCount(const QModelIndex &parent = QModelIndex()) const final {
         Q_UNUSED(parent);
         return m_values.count();
     }
-    QVariant data(const QModelIndex &index, int role) const {
+    QVariant data(const QModelIndex &index, int) const final {
         if (index.row() < 0 || m_values.count() <= index.row())
             return QVariant();
 

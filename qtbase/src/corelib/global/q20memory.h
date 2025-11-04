@@ -7,7 +7,7 @@
 
 #include <QtCore/qtconfigmacros.h>
 
-#include <memory>
+#include <QtCore/q17memory.h>
 
 #include <QtCore/q20type_traits.h>
 #include <utility>

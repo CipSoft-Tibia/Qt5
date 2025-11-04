@@ -64,8 +64,9 @@ bool ResizeObserverController::SkippedObservations() {
 void ResizeObserverController::DeliverObservations() {
   // Copy is needed because m_observers might get modified during
   // deliverObservations.
-  HeapVector<Member<ResizeObserver>> observers(observers_);
-
+  HeapLinkedHashSet<Member<ResizeObserver>> observers;
+  for (const WeakMember<ResizeObserver> &observer : observers_)
+     observers.insert(observer);
   for (auto& observer : observers) {
     if (observer) {
       observer->DeliverObservations();

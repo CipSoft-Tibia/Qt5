@@ -48,7 +48,7 @@ class ServiceWorkerPaymentAppTest : public testing::Test,
     amount->currency = "USD";
     total->amount = std::move(amount);
     details->total = std::move(total);
-    details->id = absl::optional<std::string>("123456");
+    details->id = std::optional<std::string>("123456");
     details->modifiers = std::vector<mojom::PaymentDetailsModifierPtr>();
 
     mojom::PaymentDetailsModifierPtr modifier_1 =
@@ -252,10 +252,9 @@ TEST_F(ServiceWorkerPaymentAppTest, ValidateCanMakePayment) {
   // CanMakePaymentEvent is not triggered because this test app lacks any
   // explicitly verified methods.
   CreateInstalledServiceWorkerPaymentApp(/*with_url_method=*/true);
-  GetApp()->ValidateCanMakePayment(base::BindOnce(
-      [](base::WeakPtr<ServiceWorkerPaymentApp> app, bool result) {
+  GetApp()->ValidateCanMakePayment(
+      base::BindOnce([](base::WeakPtr<ServiceWorkerPaymentApp> app) {
         EXPECT_NE(nullptr, app.get());
-        EXPECT_TRUE(result);
       }));
   EXPECT_FALSE(GetApp()->HasEnrolledInstrument());
 }

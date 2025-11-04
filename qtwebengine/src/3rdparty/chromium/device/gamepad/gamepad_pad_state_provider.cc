@@ -2,15 +2,20 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#ifdef UNSAFE_BUFFERS_BUILD
+// TODO(crbug.com/351564777): Remove this and convert code to safer constructs.
+#pragma allow_unsafe_buffers
+#endif
+
 #include "device/gamepad/gamepad_pad_state_provider.h"
 
 #include <cmath>
 #include <memory>
+#include <optional>
 
 #include "device/gamepad/gamepad_data_fetcher.h"
 #include "device/gamepad/gamepad_provider.h"
 #include "device/gamepad/public/cpp/gamepads.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 
 namespace device {
 
@@ -36,8 +41,8 @@ PadState* GamepadPadStateProvider::GetPadState(GamepadSource source,
                                                int source_id,
                                                bool new_gamepad_recognized) {
   // Check to see if the device already has a reserved slot
-  absl::optional<size_t> empty_slot_index;
-  absl::optional<size_t> unrecognized_slot_index;
+  std::optional<size_t> empty_slot_index;
+  std::optional<size_t> unrecognized_slot_index;
   for (size_t i = 0; i < Gamepads::kItemsLengthCap; ++i) {
     auto& state = pad_states_.get()[i];
     if (state.source == source && state.source_id == source_id) {

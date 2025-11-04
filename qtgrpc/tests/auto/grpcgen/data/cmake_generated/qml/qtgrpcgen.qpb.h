@@ -53,6 +53,7 @@ public:
         QProtobufMessage::swap(other);
         dptr.swap(other.dptr);
     }
+    QPB_TST_QTGRPCGEN_QML_EXPORT Q_IMPLICIT operator QVariant() const;
 
     QPB_TST_QTGRPCGEN_QML_EXPORT QtProtobuf::sint32 field() const;
     QPB_TST_QTGRPCGEN_QML_EXPORT void setField(QtProtobuf::sint32 field);

@@ -2,7 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-import * as ComponentHelpers from '../../../ui/components/helpers/helpers.js';
 import * as LitHtml from '../../../ui/lit-html/lit-html.js';
 
 import iconStyles from './icon.css.legacy.js';
@@ -85,7 +84,7 @@ export class Icon extends HTMLElement {
     this.#shadowRoot = this.attachShadow({mode: 'open'});
     this.#shadowRoot.appendChild(this.#icon);
 
-    // TODO(bmeurer): Ideally we'd have a `connectedCallback()` that would just
+    // TODO(crbug.com/359141904): Ideally we'd have a `connectedCallback()` that would just
     // install the CSS via `adoptedStyleSheets`, but that throws when using the
     // same `CSSStyleSheet` across two different documents (which happens in the
     // case of undocked DevTools windows and using the DeviceMode). So the work-
@@ -183,7 +182,7 @@ export const create = (name: string, className?: string): Icon => {
   return icon;
 };
 
-ComponentHelpers.CustomElements.defineComponent('devtools-icon', Icon);
+customElements.define('devtools-icon', Icon);
 
 declare global {
   interface HTMLElementTagNameMap {

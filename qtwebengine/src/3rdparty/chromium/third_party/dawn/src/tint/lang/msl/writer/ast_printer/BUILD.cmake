@@ -47,8 +47,8 @@ tint_add_target(tint_lang_msl_writer_ast_printer lib
 
 tint_target_add_dependencies(tint_lang_msl_writer_ast_printer lib
   tint_api_common
-  tint_api_options
   tint_lang_core
+  tint_lang_core_common
   tint_lang_core_constant
   tint_lang_core_type
   tint_lang_wgsl
@@ -72,6 +72,10 @@ tint_target_add_dependencies(tint_lang_msl_writer_ast_printer lib
   tint_utils_symbol
   tint_utils_text
   tint_utils_traits
+)
+
+tint_target_add_external_dependencies(tint_lang_msl_writer_ast_printer lib
+  "src_utils"
 )
 
 if(TINT_BUILD_MSL_WRITER)
@@ -123,7 +127,6 @@ tint_add_target(tint_lang_msl_writer_ast_printer_test test
 
 tint_target_add_dependencies(tint_lang_msl_writer_ast_printer_test test
   tint_api_common
-  tint_api_options
   tint_lang_core
   tint_lang_core_constant
   tint_lang_core_type
@@ -153,6 +156,7 @@ tint_target_add_dependencies(tint_lang_msl_writer_ast_printer_test test
 
 tint_target_add_external_dependencies(tint_lang_msl_writer_ast_printer_test test
   "gtest"
+  "src_utils"
 )
 
 if(TINT_BUILD_MSL_WRITER)

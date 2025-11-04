@@ -10,8 +10,6 @@
 
 namespace user_manager {
 
-const char kRegularUsersPref[] = "LoggedInUsers";
-
 UserManager* UserManager::instance = nullptr;
 
 UserManager::Observer::~Observer() = default;
@@ -56,8 +54,7 @@ void UserManager::UserSessionStateObserver::UserAddedToSession(
     const User* active_user) {}
 
 void UserManager::UserSessionStateObserver::OnLoginStateUpdated(
-    const User* active_user,
-    bool is_current_user_owner) {}
+    const User* active_user) {}
 
 UserManager::UserSessionStateObserver::~UserSessionStateObserver() {}
 
@@ -68,6 +65,19 @@ UserManager::UserAccountData::UserAccountData(
     : display_name_(display_name), given_name_(given_name), locale_(locale) {}
 
 UserManager::UserAccountData::~UserAccountData() {}
+
+UserManager::DeviceLocalAccountInfo::DeviceLocalAccountInfo(std::string user_id,
+                                                            UserType type)
+    : user_id(std::move(user_id)), type(type) {}
+
+UserManager::DeviceLocalAccountInfo::DeviceLocalAccountInfo(
+    const UserManager::DeviceLocalAccountInfo&) = default;
+
+UserManager::DeviceLocalAccountInfo&
+UserManager::DeviceLocalAccountInfo::operator=(
+    const UserManager::DeviceLocalAccountInfo&) = default;
+
+UserManager::DeviceLocalAccountInfo::~DeviceLocalAccountInfo() = default;
 
 void UserManager::Initialize() {
   DCHECK(!UserManager::instance);
@@ -115,21 +125,21 @@ UserType UserManager::CalculateUserType(const AccountId& account_id,
                                         const bool browser_restart,
                                         const bool is_child) const {
   if (account_id == GuestAccountId()) {
-    return USER_TYPE_GUEST;
+    return UserType::kGuest;
   }
 
   // This may happen after browser crash after device account was marked for
   // removal, but before clean exit.
   if (browser_restart && IsDeviceLocalAccountMarkedForRemoval(account_id))
-    return USER_TYPE_PUBLIC_ACCOUNT;
+    return UserType::kPublicAccount;
 
   // If user already exists
   if (user) {
     // This branch works for any other user type, including PUBLIC_ACCOUNT.
     const UserType user_type = user->GetType();
-    if (user_type == USER_TYPE_CHILD || user_type == USER_TYPE_REGULAR) {
+    if (user_type == UserType::kChild || user_type == UserType::kRegular) {
       const UserType new_user_type =
-          is_child ? USER_TYPE_CHILD : USER_TYPE_REGULAR;
+          is_child ? UserType::kChild : UserType::kRegular;
       if (new_user_type != user_type) {
         LOG(WARNING) << "Child user type has changed: " << user_type << " => "
                      << new_user_type;
@@ -150,11 +160,27 @@ UserType UserManager::CalculateUserType(const AccountId& account_id,
 
   // User is new
   if (is_child)
-    return USER_TYPE_CHILD;
+    return UserType::kChild;
 
   CHECK(account_id.GetAccountType() != AccountType::ACTIVE_DIRECTORY);
 
-  return USER_TYPE_REGULAR;
+  return UserType::kRegular;
+}
+
+bool UserManager::IsUserAllowed(const user_manager::User& user,
+                                bool is_guest_allowed,
+                                bool is_user_allowlisted) {
+  DCHECK(user.GetType() == UserType::kRegular ||
+         user.GetType() == UserType::kGuest ||
+         user.GetType() == UserType::kChild);
+
+  if (user.GetType() == UserType::kGuest && !is_guest_allowed) {
+    return false;
+  }
+  if (user.HasGaiaAccount() && !is_user_allowlisted) {
+    return false;
+  }
+  return true;
 }
 
 }  // namespace user_manager

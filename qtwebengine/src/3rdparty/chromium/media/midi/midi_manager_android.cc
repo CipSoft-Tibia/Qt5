@@ -9,13 +9,15 @@
 #include "base/metrics/field_trial_params.h"
 #include "base/strings/stringprintf.h"
 #include "media/midi/midi_device_android.h"
-#include "media/midi/midi_jni_headers/MidiManagerAndroid_jni.h"
 #include "media/midi/midi_manager_usb.h"
 #include "media/midi/midi_output_port_android.h"
 #include "media/midi/midi_service.h"
 #include "media/midi/midi_switches.h"
 #include "media/midi/task_service.h"
 #include "media/midi/usb_midi_device_factory_android.h"
+
+// Must come after all headers that specialize FromJniType() / ToJniType().
+#include "media/midi/midi_jni_headers/MidiManagerAndroid_jni.h"
 
 using base::android::JavaParamRef;
 using midi::mojom::PortState;
@@ -28,7 +30,7 @@ namespace {
 bool HasSystemFeatureMidi() {
   // Check if the MIDI service actually runs on the system.
   return Java_MidiManagerAndroid_hasSystemFeatureMidi(
-      base::android::AttachCurrentThread());
+      jni_zero::AttachCurrentThread());
 }
 
 }  // namespace
@@ -49,7 +51,7 @@ MidiManagerAndroid::~MidiManagerAndroid() {
     return;
 
   // Finalization steps should be implemented after the UnbindInstance() call.
-  JNIEnv* env = base::android::AttachCurrentThread();
+  JNIEnv* env = jni_zero::AttachCurrentThread();
   Java_MidiManagerAndroid_stop(env, raw_manager_);
 }
 
@@ -57,7 +59,7 @@ void MidiManagerAndroid::StartInitialization() {
   if (!service()->task_service()->BindInstance())
     return CompleteInitialization(Result::INITIALIZATION_ERROR);
 
-  JNIEnv* env = base::android::AttachCurrentThread();
+  JNIEnv* env = jni_zero::AttachCurrentThread();
 
   uintptr_t pointer = reinterpret_cast<uintptr_t>(this);
   raw_manager_.Reset(Java_MidiManagerAndroid_create(env, pointer));

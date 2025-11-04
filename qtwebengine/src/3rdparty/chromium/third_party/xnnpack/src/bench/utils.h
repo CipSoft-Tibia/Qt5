@@ -8,9 +8,9 @@
 #include <cstddef>
 #include <cstdint>
 
-#include <xnnpack.h>
-#include <xnnpack/common.h>
-#include <xnnpack/memory.h>
+#include "xnnpack.h"
+#include "xnnpack/common.h"
+#include "xnnpack/memory.h"
 
 #include <benchmark/benchmark.h>
 
@@ -146,6 +146,10 @@ bool CheckNEONI8MM(benchmark::State& state);
 // If V is unsupported, report error in benchmark state, and return false.
 bool CheckRVV(benchmark::State& state);
 
+// Check if RISC-V V (vector) FP16-ARITH extension is supported.
+// If RVV-FP16-ARITH is unsupported, report error in benchmark state, and return false.
+bool CheckRVVFP16ARITH(benchmark::State& state);
+
 // Check if x86 SSSE3 extension is supported.
 // If SSSE3 is unsupported, report error in benchmark state, and return false.
 bool CheckSSSE3(benchmark::State& state);
@@ -161,10 +165,6 @@ bool CheckAVX(benchmark::State& state);
 // Check if x86 F16C extension is supported.
 // If F16C is unsupported, report error in benchmark state, and return false.
 bool CheckF16C(benchmark::State& state);
-
-// Check if x86 XOP extension is supported.
-// If XOP is unsupported, report error in benchmark state, and return false.
-bool CheckXOP(benchmark::State& state);
 
 // Check if x86 FMA3 extension is supported.
 // If FMA3 is unsupported, report error in benchmark state, and return false.
@@ -190,9 +190,36 @@ bool CheckAVX512VBMI(benchmark::State& state);
 // If VNNI or SKX-level AVX512 extensions are unsupported, report error in benchmark state, and return false.
 bool CheckAVX512VNNI(benchmark::State& state);
 
+// Check if x86 VNNI + GFNI + SKX-level AVX512 extensions (AVX512F, AVX512CD, AVX512BW, AVX512DQ, AVX512VL, and GFNI) are supported.
+// If VNNI or GFNI or SKX-level AVX512 extensions are unsupported, report error in benchmark state, and return false.
+bool CheckAVX512VNNIGFNI(benchmark::State& state);
+
+// Check if x86 VNNI + GFNI + SKX-level + AMX AVX512 extensions (AAVX512F, AVX512CD, AVX512BW, AVX512DQ, AVX512VL, GFNI and AMX) are supported.
+// If AVX512 or AMX are unsupported, report error in benchmark state, and return false.
+bool CheckAVX512AMX(benchmark::State& state);
+
+// Check if x86 VNNI + GFNI + SKX-level + FP16 AVX512 extensions (AAVX512F, AVX512CD, AVX512BW, AVX512DQ, AVX512VL, GFNI and FP16) are supported.
+// If AVX512 or FP16 are unsupported, report error in benchmark state, and return false.
+bool CheckAVX512FP16(benchmark::State& state);
+
 // Check if x86 AVX-VNNI extension is supported.
 // If AVX-VNNI extension is unsupported, report error in benchmark state, and return false.
 bool CheckAVXVNNI(benchmark::State& state);
+
+// Check if x86 AVX256SKX extension is supported.
+// If AVX256SKX extension is unsupported, report error in benchmark state, and return false.
+bool CheckAVX256SKX(benchmark::State& state);
+
+// Check if x86 AVXVNNI + AVX10 or AVX512 is supported
+// If VNNI or SKX-level AVX256 extensions are unsupported, report error in benchmark state, and return false.
+bool CheckAVX256VNNI(benchmark::State& state);
+
+// Check if x86 VNNI + GFNI + AVX10 or AVX512 is supported
+bool CheckAVX256VNNIGFNI(benchmark::State& state);
+
+// Check if Hexagon HVX extension is supported.
+// If HVX is unsupported, report error in benchmark state, and return false.
+bool CheckHVX(benchmark::State& state);
 
 // Check if PSHUFB instruction is available in WAsm Relaxed SIMD as Relaxed Swizzle.
 // If WAsm PSHUFB is unsupported, report error in benchmark state, and return false.
@@ -201,6 +228,10 @@ bool CheckWAsmPSHUFB(benchmark::State& state);
 // Check if SDOT instruction is available in WAsm Relaxed SIMD as Relaxed Integer Dot Product with Accumulation.
 // If WAsm SDOT is unsupported, report error in benchmark state, and return false.
 bool CheckWAsmSDOT(benchmark::State& state);
+
+// Check if USDOT instruction is available in WAsm Relaxed SIMD as Relaxed Integer Dot Product with Accumulation.
+// If WAsm USDOT is unsupported, report error in benchmark state, and return false.
+bool CheckWAsmUSDOT(benchmark::State& state);
 
 // Check if BLENDVPS instruction is available in WAsm Relaxed SIMD as Relaxed Lane Select.
 // If WAsm BLENDVPS is unsupported, report error in benchmark state, and return false.

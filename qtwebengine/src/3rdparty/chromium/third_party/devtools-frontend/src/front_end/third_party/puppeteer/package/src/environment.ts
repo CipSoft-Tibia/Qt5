@@ -4,16 +4,38 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+import type FS from 'fs';
+import type Path from 'path';
+
+import type {ScreenRecorder} from './node/ScreenRecorder.js';
+
 /**
  * @internal
  */
 export const isNode = !!(typeof process !== 'undefined' && process.version);
 
+export interface EnvironmentDependencies {
+  fs: typeof FS;
+  path: typeof Path;
+  ScreenRecorder: typeof ScreenRecorder;
+}
+
 /**
- * @internal
+ * Holder for environment dependencies. These dependencies cannot
+ * be used during the module instantiation.
  */
-export const DEFERRED_PROMISE_DEBUG_TIMEOUT =
-  typeof process !== 'undefined' &&
-  typeof process.env['PUPPETEER_DEFERRED_PROMISE_DEBUG_TIMEOUT'] !== 'undefined'
-    ? Number(process.env['PUPPETEER_DEFERRED_PROMISE_DEBUG_TIMEOUT'])
-    : -1;
+export const environment: {
+  value: EnvironmentDependencies;
+} = {
+  value: {
+    get fs(): typeof FS {
+      throw new Error('fs is not available in this environment');
+    },
+    get path(): typeof Path {
+      throw new Error('path is not available in this environment');
+    },
+    get ScreenRecorder(): typeof ScreenRecorder {
+      throw new Error('ScreenRecorder is not available in this environment');
+    },
+  },
+};

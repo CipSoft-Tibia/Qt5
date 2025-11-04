@@ -482,6 +482,11 @@ Pane {
                             onCheckedChanged: root.source.environment.debugSettings.drawDirectionalLightShadowBoxes = checked
                         }
                         CheckBox {
+                            text: "Draw point light shadow bounding boxes"
+                            checked: root.source.environment.debugSettings.drawPointLightShadowBoxes
+                            onCheckedChanged: root.source.environment.debugSettings.drawPointLightShadowBoxes = checked
+                        }
+                        CheckBox {
                             text: "Draw shadow casting bounding box"
                             checked: root.source.environment.debugSettings.drawShadowCastingBounds
                             onCheckedChanged: root.source.environment.debugSettings.drawShadowCastingBounds = checked

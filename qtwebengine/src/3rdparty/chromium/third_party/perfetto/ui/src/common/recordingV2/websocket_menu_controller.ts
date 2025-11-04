@@ -17,7 +17,6 @@ import {
   DEFAULT_WEBSOCKET_URL,
   TRACED_ENDPOINT,
 } from '../../frontend/recording/recording_ui_utils';
-
 import {TargetFactory} from './recording_interfaces_v2';
 import {
   ANDROID_WEBSOCKET_TARGET_FACTORY,
@@ -46,16 +45,16 @@ export class WebsocketMenuController {
 
   onPathChange(): void {
     if (targetFactoryRegistry.has(ANDROID_WEBSOCKET_TARGET_FACTORY)) {
-      const androidTargetFactory =
-          targetFactoryRegistry.get(ANDROID_WEBSOCKET_TARGET_FACTORY) as
-          AndroidWebsocketTargetFactory;
+      const androidTargetFactory = targetFactoryRegistry.get(
+        ANDROID_WEBSOCKET_TARGET_FACTORY,
+      ) as AndroidWebsocketTargetFactory;
       androidTargetFactory.tryEstablishWebsocket(this.path + ADB_ENDPOINT);
     }
 
     if (targetFactoryRegistry.has(HOST_OS_TARGET_FACTORY)) {
-      const hostTargetFactory =
-          targetFactoryRegistry.get(HOST_OS_TARGET_FACTORY) as
-          HostOsTargetFactory;
+      const hostTargetFactory = targetFactoryRegistry.get(
+        HOST_OS_TARGET_FACTORY,
+      ) as HostOsTargetFactory;
       hostTargetFactory.tryEstablishWebsocket(this.path + TRACED_ENDPOINT);
     }
   }
@@ -64,7 +63,8 @@ export class WebsocketMenuController {
     const targetFactories = [];
     if (targetFactoryRegistry.has(ANDROID_WEBSOCKET_TARGET_FACTORY)) {
       targetFactories.push(
-          targetFactoryRegistry.get(ANDROID_WEBSOCKET_TARGET_FACTORY));
+        targetFactoryRegistry.get(ANDROID_WEBSOCKET_TARGET_FACTORY),
+      );
     }
     if (targetFactoryRegistry.has(HOST_OS_TARGET_FACTORY)) {
       targetFactories.push(targetFactoryRegistry.get(HOST_OS_TARGET_FACTORY));

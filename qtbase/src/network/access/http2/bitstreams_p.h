@@ -1,5 +1,6 @@
 // Copyright (C) 2018 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:network-protocol
 
 #ifndef BITSTREAMS_P_H
 #define BITSTREAMS_P_H
@@ -15,8 +16,10 @@
 // We mean it.
 //
 
-#include <QtCore/private/qglobal_p.h>
-#include <QtCore/qdebug.h>
+#include <QtCore/private/qtcoreglobal_p.h>
+#include <QtCore/qassert.h>
+#include <QtCore/qtclasshelpermacros.h>
+#include <QtCore/qtypes.h>
 
 #include <type_traits>
 #include <algorithm>
@@ -25,6 +28,7 @@
 QT_BEGIN_NAMESPACE
 
 class QByteArray;
+class QByteArrayView;
 
 namespace HPack
 {

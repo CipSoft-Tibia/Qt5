@@ -425,10 +425,11 @@ public:
     explicit VersionDialog(QWidget *parent = nullptr);
 };
 
-const char aboutTextFormat[] = QT_TRANSLATE_NOOP("MainWindow",
-"<h3>Testcon - An ActiveX Test Container</h3>\nVersion: %1<br/><br/>\n"
-"This application implements a generic test container for ActiveX controls."
-"<br/><br/>Copyright (C) %2 The Qt Company Ltd.");
+const char aboutTextFormat[] = QT_TRANSLATE_NOOP(
+        "MainWindow",
+        "<h3>Testcon - An ActiveX Test Container</h3>\nVersion: %1<br/><br/>\n"
+        "This application implements a generic test container for ActiveX controls."
+        "<br/><br/>Copyright (C) The Qt Company Ltd. and other contributors.");
 
 VersionDialog::VersionDialog(QWidget *parent) : QDialog(parent)
 {
@@ -437,9 +438,7 @@ VersionDialog::VersionDialog(QWidget *parent) : QDialog(parent)
     QGridLayout *layout = new QGridLayout(this);
     QLabel *logoLabel = new QLabel;
     logoLabel->setPixmap(QStringLiteral(":/qt-project.org/qmessagebox/images/qtlogo-64.png"));
-    const QString aboutText =
-        tr(aboutTextFormat).arg(QLatin1String(QLibraryInfo::build()),
-                                QStringLiteral("2017"));
+    const QString aboutText = tr(aboutTextFormat).arg(QLatin1StringView(QLibraryInfo::build()));
     QLabel *aboutLabel = new QLabel(aboutText);
     aboutLabel->setTextInteractionFlags(Qt::TextBrowserInteraction);
     aboutLabel->setWordWrap(true);

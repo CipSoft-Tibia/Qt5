@@ -61,7 +61,11 @@
 
     \snippet qml/tableview/cpp-tablemodel.h 0
 
-    And then how to use it from QML:
+    And then the \l TableViewDelegate automatically uses the model to set/get data
+    to/from the model. The \l TableViewDelegate uses the \l {Qt::ItemDataRole}{Qt::DisplayRole}
+    for display text and \l {Qt::ItemDataRole}{Qt::EditRole} for editing data in the model.
+
+    The following snippet shows how to use the model from QML in a custom delegate:
 
     \snippet qml/tableview/cpp-tablemodel.qml 0
 
@@ -71,6 +75,32 @@
     example), \l TableModel can be used:
 
     \snippet qml/tableview/qml-tablemodel.qml 0
+
+    As the \l TableViewDelegate uses the \l {Qt::ItemDataRole}{Qt::EditRole} to set
+    the data, it's necessary to specify the edit role in the \l TableModelColumn when
+    the delegate is \l TableViewDelegate:
+
+    \code
+    model: TableModel {
+        TableModelColumn { display: "name", edit: "name" }
+        TableModelColumn { display: "color", edit: "color" }
+
+        rows: [
+            {
+                "name": "cat",
+                "color": "black"
+            },
+            {
+                "name": "dog",
+                "color": "brown"
+            },
+            {
+                "name": "bird",
+                "color": "white"
+            }
+        ]
+     }
+    \endcode
 
     \section1 Reusing items
 
@@ -150,8 +180,8 @@
     Since Qt 5.13, if you want to hide a specific column, you can return \c 0
     from the \l columnWidthProvider for that column. Likewise, you can return 0
     from the \l rowHeightProvider to hide a row. If you return a negative
-    number, TableView will fall back to calculate the size based on the delegate
-    items.
+    number or \c undefined, TableView will fall back to calculate the size based
+    on the delegate items.
 
     \note The size of a row or column should be a whole number to avoid
     sub-pixel alignment of items.
@@ -233,7 +263,8 @@
     be allowed to select individual cells, rows, or columns.
 
     To find out whether a delegate is selected or current, declare the
-    following properties:
+    following properties (unless the delegate is a \l TableViewDelegate,
+    in which case the properties have are already been added):
 
     \code
     delegate: Item {
@@ -278,8 +309,11 @@
     You can also disable keyboard navigation fully (in case you want to implement your
     own key handlers) by setting \l keyNavigationEnabled to \c false.
 
+    \note By default, the \l TableViewDelegate renders the current and selected cells,
+    so there is no need to add these properties.
+
     The following example demonstrates how you can use keyboard navigation together
-    with \c current and \c selected properties:
+    with \c current and \c selected properties in a custom delegate:
 
     \snippet qml/tableview/keyboard-navigation.qml 0
 
@@ -408,7 +442,7 @@
     You can check for this by calling \l {isRowLoaded()}{isRowLoaded(row)},
     and simply return -1 if that is not yet the case.
 
-    \sa rowHeightProvider, isRowLoaded(), {Row heights and column widths}
+    \sa columnWidthProvider, isRowLoaded(), {Row heights and column widths}
 */
 
 /*!
@@ -420,8 +454,8 @@
     for which the TableView needs to know the width.
 
     Since Qt 5.13, if you want to hide a specific column, you can return \c 0
-    width for that column. If you return a negative number, TableView
-    calculates the width based on the delegate items.
+    width for that column. If you return a negative number or \c undefined,
+    TableView calculates the width based on the delegate items.
 
     \note The columnWidthProvider will usually be called two times when
     a column is about to load (or when doing layout). First, to know if
@@ -451,8 +485,16 @@
 /*!
     \qmlproperty Component QtQuick::TableView::delegate
 
-    The delegate provides a template defining each cell item instantiated by the
-    view. The model index is exposed as an accessible \c index property. The same
+    The delegate provides a template defining each cell item instantiated by the view.
+    It can be any custom component, but it's recommended to use \l {TableViewDelegate},
+    as it styled according to the application style, and offers out-of-the-box functionality.
+
+    To use \l TableViewDelegate, simply set it as the delegate:
+    \code
+    delegate: TableViewDelegate { }
+    \endcode
+
+    The model index is exposed as an accessible \c index property. The same
     applies to \c row and \c column. Properties of the model are also available
     depending upon the type of \l {qml-data-models}{Data Model}.
 
@@ -461,9 +503,10 @@
     information. Explicit width or height settings are ignored and overwritten.
 
     Inside the delegate, you can optionally add one or more of the following
-    properties. TableView modifies the values of these properties to inform the
-    delegate which state it's in. This can be used by the delegate to render
-    itself differently according on its own state.
+    properties (unless the delegate is a \l TableViewDelegate, in which case
+    the properties have already been added). TableView modifies the values
+    of these properties to inform the delegate which state it's in. This can be
+    used by the delegate to render itself differently according on its own state.
 
     \list
     \li required property bool current - \c true if the delegate is \l {Keyboard navigation}{current.}
@@ -474,7 +517,7 @@
     VerticalHeaderView. (since Qt 6.8)
     \endlist
 
-    The following example shows how to use these properties:
+    The following example shows how to use these properties in a custom delegate:
     \code
     delegate: Rectangle {
         required property bool current
@@ -488,7 +531,8 @@
     They are also reused if the \l reuseItems property is set to \c true. You
     should therefore avoid storing state information in the delegates.
 
-    \sa {Row heights and column widths}, {Reusing items}, {Required Properties}
+    \sa {Row heights and column widths}, {Reusing items}, {Required Properties},
+    {TableViewDelegate}, {Customizing TableViewDelegate}
 */
 
 /*!
@@ -1478,8 +1522,7 @@
     \l QAbstractItemModel::flags(), and return \c Qt::ItemIsEditable.
 
     You can also open and close the edit delegate manually by calling \l edit()
-    and \l closeEditor(), respectively. The \c Qt::ItemIsEditable flag will
-    then be ignored.
+    and \l closeEditor(), respectively.
 
     Editing ends when the user presses \c Qt::Key_Enter or \c Qt::Key_Return
     (and also \c Qt::Key_Tab or \c Qt::Key_Backtab, if TableView has
@@ -1496,7 +1539,7 @@
     inside the \l {TableView::delegate}{TableView delegate.}. The latter can be done
     by defining a property \c {required property bool editing} inside it, that you
     bind to the \l {QQuickItem::}{visible} property of some of the child items.
-    The following snippet shows how to do that:
+    The following snippet shows how to do that in a custom delegate:
 
     \snippet qml/tableview/editdelegate.qml 1
 
@@ -1504,7 +1547,21 @@
     on it. If you want active focus to be set on a child of the edit delegate instead, let
     the edit delegate be a \l FocusScope.
 
-    \sa editTriggers, TableView::commit, edit(), closeEditor(), {Editing cells}
+    By default, \l TableViewDelegate provides an \l {TableView::editDelegate}{edit delegate},
+    and you can also set your own:
+
+    \code
+    delegate: TableViewDelegate {
+        TableView.editDelegate: TextField {
+            width: parent.width
+            height: parent.height
+            text: display
+            TableView.onCommit: display = text
+        }
+    }
+    \endcode
+
+    \sa editTriggers, TableView::commit, edit(), closeEditor(), {Editing cells}, TableViewDelegate
 */
 
 QT_BEGIN_NAMESPACE
@@ -1518,6 +1575,7 @@ Q_LOGGING_CATEGORY(lcTableViewDelegateLifecycle, "qt.quick.tableview.lifecycle")
 
 static const Qt::Edge allTableEdges[] = { Qt::LeftEdge, Qt::RightEdge, Qt::TopEdge, Qt::BottomEdge };
 
+static const char* kRequiredProperty_tableView = "tableView";
 static const char* kRequiredProperties = "_qt_tableview_requiredpropertymask";
 static const char* kRequiredProperty_selected = "selected";
 static const char* kRequiredProperty_current = "current";
@@ -1777,7 +1835,7 @@ bool QQuickTableViewPrivate::startSelection(const QPointF &pos, Qt::KeyboardModi
 
     selectionStartCell = QPoint(-1, -1);
     selectionEndCell = QPoint(-1, -1);
-    q->closeEditor();
+    closeEditorAndCommit();
     return true;
 }
 
@@ -2144,8 +2202,29 @@ void QQuickTableViewPrivate::setCallback(std::function<void (CallBackFlag)> func
 
 QQuickTableViewAttached *QQuickTableViewPrivate::getAttachedObject(const QObject *object) const
 {
-    QObject *attachedObject = qmlAttachedPropertiesObject<QQuickTableView>(object);
+    QObject *attachedObject = qmlAttachedPropertiesObject<QQuickTableView>(object, false);
     return static_cast<QQuickTableViewAttached *>(attachedObject);
+}
+
+QQuickTableViewAttached::QQuickTableViewAttached(QObject *parent)
+    : QObject(parent)
+{
+    QQuickItem *parentItem = qobject_cast<QQuickItem *>(parent);
+    if (!parentItem)
+        return;
+
+    // For a normal delegate, the 3rd parent should be the view (1:delegate, 2:contentItem,
+    // 3:TableView). For an edit delegate, the 4th. We don't search further than that, as
+    // you're not supposed to use attached objects on any other descendant.
+    for (int i = 0; i < 3; ++i) {
+        parentItem = parentItem->parentItem();
+        if (!parentItem)
+            return;
+        if (auto tableView = qobject_cast<QQuickTableView *>(parentItem)) {
+            setView(tableView);
+            return;
+        }
+    }
 }
 
 int QQuickTableViewPrivate::modelIndexAtCell(const QPoint &cell) const
@@ -2593,18 +2672,6 @@ void QQuickTableViewPrivate::syncLoadedTableRectFromLoadedTable()
     QRectF bottomRightRect = loadedTableItem(bottomRight)->geometry();
     loadedTableOuterRect = QRectF(topLeftRect.topLeft(), bottomRightRect.bottomRight());
     loadedTableInnerRect = QRectF(topLeftRect.bottomRight(), bottomRightRect.topLeft());
-}
-
-void QQuickTableViewPrivate::shiftLoadedTableRect(const QPointF newPosition)
-{
-    // Move the tracked table rects to the new position. For this to
-    // take visual effect (move the delegate items to be inside the table
-    // rect), it needs to be followed by a relayoutTableItems().
-    // Also note that the position of the viewport needs to be adjusted
-    // separately for it to overlap the loaded table.
-    const QPointF innerDiff = loadedTableOuterRect.topLeft() - loadedTableInnerRect.topLeft();
-    loadedTableOuterRect.moveTopLeft(newPosition);
-    loadedTableInnerRect.moveTopLeft(newPosition + innerDiff);
 }
 
 QQuickTableViewPrivate::RebuildOptions QQuickTableViewPrivate::checkForVisibilityChanges()
@@ -4388,17 +4455,19 @@ void QQuickTableViewPrivate::initItemCallback(int modelIndex, QObject *object)
     item->setParentItem(q->contentItem());
     item->setZ(1);
 
+    if (auto attached = getAttachedObject(item))
+        attached->setView(q);
+
     const QPoint cell = cellAtModelIndex(modelIndex);
     const QPoint visualCell = QPoint(visualColumnIndex(cell.x()), visualRowIndex(cell.y()));
     const bool current = currentInSelectionModel(visualCell);
     const bool selected = selectedInSelectionModel(visualCell);
+
+    setRequiredProperty(kRequiredProperty_tableView, QVariant::fromValue(q), modelIndex, item, true);
     setRequiredProperty(kRequiredProperty_current, QVariant::fromValue(current), modelIndex, object, true);
     setRequiredProperty(kRequiredProperty_selected, QVariant::fromValue(selected), modelIndex, object, true);
     setRequiredProperty(kRequiredProperty_editing, QVariant::fromValue(false), modelIndex, item, true);
     setRequiredProperty(kRequiredProperty_containsDrag, QVariant::fromValue(false), modelIndex, item, true);
-
-    if (auto attached = getAttachedObject(object))
-        attached->setView(q);
 }
 
 void QQuickTableViewPrivate::itemPooledCallback(int modelIndex, QObject *object)
@@ -4411,10 +4480,14 @@ void QQuickTableViewPrivate::itemPooledCallback(int modelIndex, QObject *object)
 
 void QQuickTableViewPrivate::itemReusedCallback(int modelIndex, QObject *object)
 {
+    Q_Q(QQuickTableView);
+
     const QPoint cell = cellAtModelIndex(modelIndex);
     const QPoint visualCell = QPoint(visualColumnIndex(cell.x()), visualRowIndex(cell.y()));
     const bool current = currentInSelectionModel(visualCell);
     const bool selected = selectedInSelectionModel(visualCell);
+
+    setRequiredProperty(kRequiredProperty_tableView, QVariant::fromValue(q), modelIndex, object, false);
     setRequiredProperty(kRequiredProperty_current, QVariant::fromValue(current), modelIndex, object, false);
     setRequiredProperty(kRequiredProperty_selected, QVariant::fromValue(selected), modelIndex, object, false);
     // Note: the edit item will never be reused, so no reason to set kRequiredProperty_editing
@@ -5097,7 +5170,7 @@ void QQuickTableViewPrivate::handleTap(const QQuickHandlerPoint &point)
     // Since the tap didn't result in selecting or editing cells, we clear
     // the current selection and move the current index instead.
     if (pointerNavigationEnabled) {
-        q->closeEditor();
+        closeEditorAndCommit();
         if (selectionBehavior != QQuickTableView::SelectionDisabled) {
             clearSelection();
             cancelSelectionTracking();
@@ -5118,8 +5191,8 @@ bool QQuickTableViewPrivate::canEdit(const QModelIndex tappedIndex, bool warn)
         return false;
     }
 
-    if (auto const qaim = model->abstractItemModel()) {
-        if (!(qaim->flags(tappedIndex) & Qt::ItemIsEditable)) {
+    if (auto const sourceModel = qaim(modelImpl())) {
+        if (!(sourceModel->flags(tappedIndex) & Qt::ItemIsEditable)) {
             if (warn)
                 qmlWarning(q) << "cannot edit: QAbstractItemModel::flags(index) doesn't contain Qt::ItemIsEditable";
             return false;
@@ -5469,6 +5542,34 @@ bool QQuickTableViewPrivate::editFromKeyEvent(QKeyEvent *e)
     }
 
     return true;
+}
+
+QObject *QQuickTableViewPrivate::installEventFilterOnFocusObjectInsideEditItem()
+{
+    // If the current focus object is inside the edit item, install an event filter
+    // on it to handle Enter, Tab, and FocusOut. Note that the focusObject doesn't
+    // need to be the editItem itself, in case the editItem is a FocusScope.
+    // Return the focus object that we filter, or nullptr otherwise.
+    Q_Q(QQuickTableView);
+    if (QObject *focusObject = editItem->window()->focusObject()) {
+        QQuickItem *focusItem = qobject_cast<QQuickItem *>(focusObject);
+        if (focusItem == editItem || editItem->isAncestorOf(focusItem)) {
+            focusItem->installEventFilter(q);
+            return focusItem;
+        }
+    }
+    return nullptr;
+}
+
+void QQuickTableViewPrivate::closeEditorAndCommit()
+{
+    if (!editItem)
+        return;
+
+    if (auto attached = getAttachedObject(editItem))
+        emit attached->commit();
+
+    q_func()->closeEditor();
 }
 
 #if QT_CONFIG(cursor)
@@ -6680,8 +6781,8 @@ void QQuickTableView::edit(const QModelIndex &index)
     if (d->selectionModel)
         d->selectionModel->setCurrentIndex(index, QItemSelectionModel::NoUpdate);
 
-    if (d->editIndex.isValid())
-        closeEditor();
+    // If the user is already editing another cell, close that editor first
+    d->closeEditorAndCommit();
 
     const auto cellItem = itemAtCell(cellAtIndex(index));
     Q_ASSERT(cellItem);
@@ -6719,15 +6820,7 @@ void QQuickTableView::edit(const QModelIndex &index)
 
     // Transfer focus to the edit item
     d->editItem->forceActiveFocus(Qt::MouseFocusReason);
-
-    // Install an event filter on the focus object to handle Enter and Tab.
-    // Note that the focusObject doesn't need to be the editItem itself, in
-    // case the editItem is a FocusScope.
-    if (QObject *focusObject = d->editItem->window()->focusObject()) {
-        QQuickItem *focusItem = qobject_cast<QQuickItem *>(focusObject);
-        if (focusItem == d->editItem || d->editItem->isAncestorOf(focusItem))
-            focusItem->installEventFilter(this);
-    }
+    (void)d->installEventFilterOnFocusObjectInsideEditItem();
 }
 
 void QQuickTableView::closeEditor()
@@ -6845,22 +6938,24 @@ bool QQuickTableView::eventFilter(QObject *obj, QEvent *event)
 {
     Q_D(QQuickTableView);
 
-    if (event->type() == QEvent::KeyPress) {
+    if (obj != d->editItem && !d->editItem->isAncestorOf(qobject_cast<QQuickItem *>(obj))) {
+        // We might also receive events from old editItems that are about to be
+        // destroyed (such as DefferedDelete events). Just ignore those events.
+        return QQuickFlickable::eventFilter(obj, event);
+    }
+
+    switch (event->type()) {
+    case QEvent::KeyPress: {
         Q_ASSERT(d->editItem);
         QKeyEvent *keyEvent = static_cast<QKeyEvent *>(event);
         switch (keyEvent->key()) {
         case Qt::Key_Enter:
         case Qt::Key_Return:
-            if (auto attached = d->getAttachedObject(d->editItem))
-                emit attached->commit();
-            closeEditor();
+            d->closeEditorAndCommit();
             return true;
         case Qt::Key_Tab:
         case Qt::Key_Backtab:
             if (activeFocusOnTab()) {
-                if (auto attached = d->getAttachedObject(d->editItem))
-                    emit attached->commit();
-                closeEditor();
                 if (d->setCurrentIndexFromKeyEvent(keyEvent)) {
                     const QModelIndex currentIndex = d->selectionModel->currentIndex();
                     if (d->canEdit(currentIndex, false))
@@ -6873,6 +6968,15 @@ bool QQuickTableView::eventFilter(QObject *obj, QEvent *event)
             closeEditor();
             return true;
         }
+        break; }
+    case QEvent::FocusOut:
+        // If focus was transferred within the edit delegate, we start to filter
+        // the new focus object. Otherwise we close the edit delegate.
+        if (!d->installEventFilterOnFocusObjectInsideEditItem())
+            d->closeEditorAndCommit();
+        break;
+    default:
+        break;
     }
 
     return QQuickFlickable::eventFilter(obj, event);

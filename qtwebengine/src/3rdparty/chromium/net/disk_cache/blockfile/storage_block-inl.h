@@ -12,6 +12,7 @@
 
 #include <type_traits>
 
+#include "base/containers/span.h"
 #include "base/hash/hash.h"
 #include "base/logging.h"
 #include "base/notreached.h"
@@ -58,7 +59,7 @@ template<typename T> int StorageBlock<T>::offset() const {
 template<typename T> bool StorageBlock<T>::LazyInit(MappedFile* file,
                                                     Addr address) {
   if (file_ || address_.is_initialized()) {
-    NOTREACHED();
+    NOTREACHED_IN_MIGRATION();
     return false;
   }
   file_ = file;
@@ -77,7 +78,7 @@ template<typename T> void  StorageBlock<T>::Discard() {
   if (!data_)
     return;
   if (!own_data_) {
-    NOTREACHED();
+    NOTREACHED_IN_MIGRATION();
     return;
   }
   DeleteData();
@@ -193,7 +194,8 @@ template<typename T> void StorageBlock<T>::DeleteData() {
 
 template <typename T>
 uint32_t StorageBlock<T>::CalculateHash() const {
-  return base::PersistentHash(data_, offsetof(T, self_hash));
+  base::span<const uint8_t> bytes = base::as_bytes(base::span_from_ref(*data_));
+  return base::PersistentHash(bytes.first(offsetof(T, self_hash)));
 }
 
 }  // namespace disk_cache

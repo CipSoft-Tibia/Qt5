@@ -32,49 +32,62 @@
 
 namespace wgpu::binding {
 
-AsyncRunner::AsyncRunner(Napi::Env env, wgpu::Device device) : env_(env), device_(device) {}
+// static
+std::shared_ptr<AsyncRunner> AsyncRunner::Create(dawn::native::Instance* instance) {
+    auto runner = std::make_shared<AsyncRunner>(instance);
+    runner->weak_this_ = runner;
+    return runner;
+}
 
-void AsyncRunner::Begin() {
-    assert(count_ != std::numeric_limits<decltype(count_)>::max());
-    if (count_++ == 0) {
-        QueueTick();
+AsyncRunner::AsyncRunner(dawn::native::Instance* instance) : instance_(instance) {}
+
+void AsyncRunner::Begin(Napi::Env env) {
+    assert(tasks_waiting_ != std::numeric_limits<decltype(tasks_waiting_)>::max());
+    if (tasks_waiting_ == 0) {
+        ScheduleProcessEvents(env);
     }
+    tasks_waiting_++;
 }
 
 void AsyncRunner::End() {
-    assert(count_ > 0);
-    count_--;
+    assert(tasks_waiting_ > 0);
+    tasks_waiting_--;
 }
 
-void AsyncRunner::QueueTick() {
+void AsyncRunner::ScheduleProcessEvents(Napi::Env env) {
     // TODO(crbug.com/dawn/1127): We probably want to reduce the frequency at which this gets
     // called.
-    if (tick_queued_) {
+    if (process_events_queued_) {
         return;
     }
-    tick_queued_ = true;
-    env_.Global()
+    process_events_queued_ = true;
+
+    auto weak_self = weak_this_;
+    env.Global()
         .Get("setImmediate")
         .As<Napi::Function>()
         .Call({
             // TODO(crbug.com/dawn/1127): Create once, reuse.
-            Napi::Function::New(env_,
-                                [this](const Napi::CallbackInfo&) {
-                                    tick_queued_ = false;
-                                    if (count_ > 0) {
-                                        device_.Tick();
-                                        QueueTick();
+            Napi::Function::New(env,
+                                [weak_self, env](const Napi::CallbackInfo&) {
+                                    auto self = weak_self.lock();
+                                    if (self == nullptr) {
+                                        return;
                                     }
+
+                                    self->process_events_queued_ = false;
+                                    wgpuInstanceProcessEvents(self->instance_->Get());
+                                    self->ScheduleProcessEvents(env);
                                 }),
         });
 }
 
-void AsyncRunner::Reject(interop::Promise<void> promise, Napi::Error error) {
-    env_.Global()
+void AsyncRunner::Reject(Napi::Env env, interop::Promise<void> promise, Napi::Error error) {
+    env.Global()
         .Get("setImmediate")
         .As<Napi::Function>()
         .Call({Napi::Function::New(
-            env_, [promise, error](const Napi::CallbackInfo&) { promise.Reject(error); })});
+            env, [promise, error](const Napi::CallbackInfo&) { promise.Reject(error); })});
 }
 
 }  // namespace wgpu::binding

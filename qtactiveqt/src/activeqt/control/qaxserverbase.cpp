@@ -60,7 +60,6 @@ QT_BEGIN_NAMESPACE
 extern ITypeLib *qAxTypeLibrary;
 extern unsigned long qAxLock();
 extern unsigned long qAxUnlock();
-extern HANDLE qAxInstance;
 extern bool qAxOutProcServer;
 
 static int invokeCount = 0;
@@ -1524,7 +1523,7 @@ HWND QAxServerBase::create(HWND hWndParent, RECT& rcPos)
     Q_ASSERT(isWidget && qt.widget);
 
     static ATOM atom = 0;
-    HINSTANCE hInst = reinterpret_cast<HINSTANCE>(qAxInstance);
+    HINSTANCE hInst = reinterpret_cast<HINSTANCE>(QCoreApplicationPrivate::mainInstanceHandle);
     EnterCriticalSection(&createWindowSection);
     QString cn(QLatin1String("QAxControl"));
     cn += QString::number(quintptr(ActiveXProc));

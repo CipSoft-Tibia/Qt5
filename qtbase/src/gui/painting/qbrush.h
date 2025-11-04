@@ -6,7 +6,6 @@
 
 #include <QtGui/qtguiglobal.h>
 #include <QtCore/qlist.h>
-#include <QtCore/qpair.h>
 #include <QtCore/qpoint.h>
 #include <QtCore/qscopedpointer.h>
 #include <QtGui/qcolor.h>
@@ -49,6 +48,10 @@ public:
     inline void swap(QBrush &other) noexcept
     { d.swap(other.d); }
 
+    QBrush &operator=(Qt::BrushStyle style);
+    QBrush &operator=(QColor color);
+    QBrush &operator=(Qt::GlobalColor color) { return operator=(QColor(color)); }
+
     operator QVariant() const;
 
     inline Qt::BrushStyle style() const;
@@ -82,6 +85,22 @@ private:
     friend struct QSpanData;
     friend class QPainter;
     friend bool Q_GUI_EXPORT qHasPixmapTexture(const QBrush& brush);
+
+    bool doCompareEqualColor(QColor rhs) const noexcept;
+    friend bool comparesEqual(const QBrush &lhs, QColor rhs) noexcept
+    {
+        return lhs.doCompareEqualColor(rhs);
+    }
+    Q_DECLARE_EQUALITY_COMPARABLE(QBrush, QColor)
+    Q_DECLARE_EQUALITY_COMPARABLE(QBrush, Qt::GlobalColor)
+
+    bool doCompareEqualStyle(Qt::BrushStyle rhs) const noexcept;
+    friend bool comparesEqual(const QBrush &lhs, Qt::BrushStyle rhs) noexcept
+    {
+        return lhs.doCompareEqualStyle(rhs);
+    }
+    Q_DECLARE_EQUALITY_COMPARABLE(QBrush, Qt::BrushStyle)
+
     void detach(Qt::BrushStyle newStyle);
     void init(const QColor &color, Qt::BrushStyle bs);
     DataPtr d;
@@ -128,7 +147,7 @@ inline bool QBrush::isDetached() const { return d->ref.loadRelaxed() == 1; }
  */
 class QGradientPrivate;
 
-typedef QPair<qreal, QColor> QGradientStop;
+typedef std::pair<qreal, QColor> QGradientStop;
 typedef QList<QGradientStop> QGradientStops;
 
 class Q_GUI_EXPORT QGradient

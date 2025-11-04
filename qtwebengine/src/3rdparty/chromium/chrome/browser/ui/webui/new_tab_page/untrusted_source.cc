@@ -6,6 +6,7 @@
 
 #include <optional>
 #include <string>
+#include <string_view>
 #include <utility>
 
 #include "base/base64.h"
@@ -15,7 +16,6 @@
 #include "base/memory/ref_counted_memory.h"
 #include "base/memory/scoped_refptr.h"
 #include "base/metrics/histogram_macros.h"
-#include "base/strings/string_piece.h"
 #include "base/strings/stringprintf.h"
 #include "base/strings/utf_string_conversions.h"
 #include "base/task/task_traits.h"
@@ -44,10 +44,8 @@ std::string FormatTemplate(int resource_id,
   ui::ResourceBundle& bundle = ui::ResourceBundle::GetSharedInstance();
   scoped_refptr<base::RefCountedMemory> bytes =
       bundle.LoadDataResourceBytes(resource_id);
-  base::StringPiece string_piece(reinterpret_cast<const char*>(bytes->front()),
-                                 bytes->size());
   return ui::ReplaceTemplateExpressions(
-      string_piece, replacements,
+      base::as_string_view(*bytes), replacements,
       /* skip_unexpected_placeholder_check= */ true);
 }
 
@@ -86,7 +84,7 @@ std::string UntrustedSource::GetContentSecurityPolicy(
     case network::mojom::CSPDirectiveName::ChildSrc:
       return "child-src https:;";
     case network::mojom::CSPDirectiveName::DefaultSrc:
-      // TODO(https://crbug.com/1085325): Audit and tighten CSP.
+      // TODO(crbug.com/40693567): Audit and tighten CSP.
       return std::string();
     case network::mojom::CSPDirectiveName::FrameAncestors:
       return base::StringPrintf("frame-ancestors %s",
@@ -116,14 +114,8 @@ void UntrustedSource::StartDataRequest(
     std::string query_params;
     net::GetValueForKeyInQuery(url, "paramsencoded", &query_params);
     base::Base64Decode(query_params, &query_params);
-    bool wait_for_refresh =
-        one_google_bar_service_->SetAdditionalQueryParams(query_params);
+    one_google_bar_service_->SetAdditionalQueryParams(query_params);
     one_google_bar_callbacks_.push_back(std::move(callback));
-    if (one_google_bar_service_->one_google_bar_data().has_value() &&
-        !wait_for_refresh &&
-        base::FeatureList::IsEnabled(ntp_features::kCacheOneGoogleBar)) {
-      OnOneGoogleBarDataUpdated();
-    }
     if (one_google_bar_callbacks_.size() == 1) {
       one_google_bar_load_start_time_ = base::TimeTicks::Now();
       one_google_bar_service_->Refresh();
@@ -153,15 +145,15 @@ void UntrustedSource::StartDataRequest(
   if (path == "custom_background_image") {
     // Parse all query parameters to hash map and decode values.
     std::unordered_map<std::string, std::string> params;
+    std::string_view query_piece = url.query_piece();
     url::Component query(0, url.query_piece().length());
     url::Component key, value;
-    while (
-        url::ExtractQueryKeyValue(url.query().c_str(), &query, &key, &value)) {
+    while (url::ExtractQueryKeyValue(query_piece, &query, &key, &value)) {
       url::RawCanonOutputW<kMaxUriDecodeLen> output;
-      url::DecodeURLEscapeSequences(
-          url.query_piece().substr(value.begin, value.len),
-          url::DecodeURLMode::kUTF8OrIsomorphic, &output);
-      params.insert({std::string(url.query_piece().substr(key.begin, key.len)),
+      url::DecodeURLEscapeSequences(query_piece.substr(value.begin, value.len),
+                                    url::DecodeURLMode::kUTF8OrIsomorphic,
+                                    &output);
+      params.insert({std::string(query_piece.substr(key.begin, key.len)),
                      base::UTF16ToUTF8(output.view())});
     }
     // Extract desired values.
@@ -194,7 +186,7 @@ void UntrustedSource::StartDataRequest(
 }
 
 std::string UntrustedSource::GetMimeType(const GURL& url) {
-  const base::StringPiece stripped_path = url.path_piece();
+  const std::string_view stripped_path = url.path_piece();
   if (base::EndsWith(stripped_path, ".js",
                      base::CompareCase::INSENSITIVE_ASCII)) {
     return "application/javascript";

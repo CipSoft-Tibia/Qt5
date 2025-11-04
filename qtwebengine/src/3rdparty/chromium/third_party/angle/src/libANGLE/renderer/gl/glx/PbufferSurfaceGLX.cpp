@@ -6,11 +6,11 @@
 
 // PbufferSurfaceGLX.cpp: GLX implementation of egl::Surface for PBuffers
 
-#include "libANGLE/renderer/gl/glx/PbufferSurfaceGLX.h"
-
 #include "common/debug.h"
 #include "libANGLE/renderer/gl/glx/DisplayGLX.h"
+
 #include "libANGLE/renderer/gl/glx/FunctionsGLX.h"
+#include "libANGLE/renderer/gl/glx/PbufferSurfaceGLX.h"
 
 namespace rx
 {
@@ -103,7 +103,7 @@ egl::Error PbufferSurfaceGLX::releaseTexImage(const gl::Context *context, EGLint
     return egl::NoError();
 }
 
-void PbufferSurfaceGLX::setSwapInterval(EGLint interval) {}
+void PbufferSurfaceGLX::setSwapInterval(const egl::Display *display, EGLint interval) {}
 
 EGLint PbufferSurfaceGLX::getWidth() const
 {

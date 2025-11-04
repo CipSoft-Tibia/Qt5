@@ -349,7 +349,7 @@ class PERFETTO_EXPORT_COMPONENT TracingSession {
   // thread.
   virtual void SetOnStartCallback(std::function<void()>) = 0;
 
-  // This callback can be used to get a notification when some error occured
+  // This callback can be used to get a notification when some error occurred
   // (e.g., peer disconnection). Error type will be passed as an argument. This
   // callback will be invoked on an internal perfetto thread.
   virtual void SetOnErrorCallback(std::function<void(TracingError)>) = 0;
@@ -503,8 +503,8 @@ class PERFETTO_EXPORT_COMPONENT StartupTracingSession {
   virtual void AbortBlocking() = 0;
 };
 
-PERFETTO_ALWAYS_INLINE inline std::unique_ptr<TracingSession>
-Tracing::NewTrace(BackendType backend) {
+PERFETTO_ALWAYS_INLINE inline std::unique_ptr<TracingSession> Tracing::NewTrace(
+    BackendType backend) {
   // This code is inlined to allow dead-code elimination for unused consumer
   // implementation. The logic behind it is the following:
   // Nothing other than the code below references the GetInstance() method

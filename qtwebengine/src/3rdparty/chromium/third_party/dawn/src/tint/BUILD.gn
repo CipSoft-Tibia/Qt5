@@ -50,6 +50,13 @@ config("tint_common_config") {
     "${tint_root_dir}",
     "${tint_gen_dir}",
   ]
+
+  # Some versions of MSVC ignores the [[noreturn]] on ~InternalCompilerError(),
+  # triggering a warning if it is the last statement on a function that has a
+  # return value.
+  if (!is_clang && is_win) {
+    cflags = [ "/wd4715" ]
+  }
 }
 
 config("tint_public_config") {
@@ -108,6 +115,18 @@ config("tint_public_config") {
     defines += [ "TINT_BUILD_SYNTAX_TREE_WRITER=0" ]
   }
 
+  if (tint_build_ir_binary) {
+    defines += [ "TINT_BUILD_IR_BINARY=1" ]
+  } else {
+    defines += [ "TINT_BUILD_IR_BINARY=0" ]
+  }
+
+  if (tint_build_ir_fuzzer) {
+    defines += [ "TINT_BUILD_IR_FUZZER=1" ]
+  } else {
+    defines += [ "TINT_BUILD_IR_FUZZER=0" ]
+  }
+
   if (tint_build_is_win) {
     defines += [ "TINT_BUILD_IS_WIN=1" ]
   } else {
@@ -137,6 +156,10 @@ config("tint_config") {
   if (tint_build_spv_reader || tint_build_spv_writer) {
     include_dirs += [ "${tint_spirv_tools_dir}/include/" ]
   }
+}
+
+source_set("dl") {
+  # GN doesn't appear to need to depend on any dl libraries.
 }
 
 source_set("thread") {
@@ -235,13 +258,25 @@ if (tint_build_benchmarks) {
     testonly = true
     public_deps = [ "//third_party/google_benchmark" ]
   }
+  action("generate_benchmark_inputs") {
+    generated_header_relpath = "gen/src/tint/cmd/bench/benchmark_inputs.h"
+    generated_header_abspath = "${root_build_dir}/${generated_header_relpath}"
+    outputs = [ generated_header_abspath ]
+    script = "${tint_src_dir}/cmd/bench/generate_benchmark_inputs.py"
+    depfile = "${generated_header_abspath}.d"
+    args = [
+      "header",
+      rebase_path(root_build_dir, root_build_dir),
+      generated_header_relpath,
+    ]
+  }
 }
 
 group("abseil") {
-  # When build_with_chromium=true we need to include "//third_party/abseil-cpp:absl" while
+  # When building within Chromium or ANGLE we need to include "//third_party/abseil-cpp:absl" while
   # it's beneficial to be more specific with standalone Dawn, especially when it comes to
   # including it as a dependency in other projects (such as Skia).
-  if (build_with_chromium) {
+  if (build_with_chromium || build_with_angle) {
     public_deps = [ "$dawn_abseil_dir:absl" ]
   } else {
     public_deps = [ "${dawn_root}/third_party/gn/abseil-cpp:strings" ]
@@ -252,19 +287,50 @@ source_set("winsock") {
   libs = [ "ws2_32.lib" ]
 }
 
+config("dxc-include-config") {
+  include_dirs = [ "${dawn_dxc_dir}/include" ]
+}
+source_set("dxc-include") {
+  public_configs = [ ":dxc-include-config" ]
+}
+
+source_set("dxcompiler-for-fuzzer") {
+  if (defined(use_libfuzzer) && use_libfuzzer &&
+      (is_win || is_linux || is_mac) && target_cpu != "x86") {
+    public_deps = [ "${dawn_dxc_dir}/../gn/dxc:dxcompiler" ]
+  }
+}
+
 ###############################################################################
 # Fuzzers
 ###############################################################################
 if (tint_has_fuzzers) {
   action("tint_generate_wgsl_corpus") {
     script = "${tint_src_dir}/cmd/fuzz/wgsl/generate_wgsl_corpus.py"
-    sources = [ "${tint_src_dir}/cmd/fuzz/wgsl/generate_wgsl_corpus.py" ]
+    sources = [ "${script}" ]
     args = [
       "--stamp=" + rebase_path(fuzzer_corpus_wgsl_stamp, root_build_dir),
       rebase_path("${tint_root_dir}/test", root_build_dir),
       rebase_path(fuzzer_corpus_wgsl_dir, root_build_dir),
     ]
     outputs = [ fuzzer_corpus_wgsl_stamp ]
+  }
+
+  if (tint_build_ir_fuzzer) {
+    if (tint_build_cmds && tint_build_wgsl_reader && tint_build_ir_binary) {
+      action("tint_generate_ir_corpus") {
+        script = "${tint_src_dir}/cmd/fuzz/ir/generate_ir_corpus.py"
+        sources = [ "${script}" ]
+        deps = [ "${tint_src_dir}/cmd/fuzz/ir/as" ]
+        args = [
+          "--stamp=" + rebase_path(fuzzer_corpus_ir_stamp, root_build_dir),
+          rebase_path("${root_build_dir}/ir_fuzz_as", root_build_dir),
+          rebase_path("${tint_root_dir}/test", root_build_dir),
+          rebase_path(fuzzer_corpus_ir_dir, root_build_dir),
+        ]
+        outputs = [ fuzzer_corpus_ir_stamp ]
+      }
+    }
   }
 }
 
@@ -284,16 +350,28 @@ group("cmds") {
       "${tint_src_dir}/cmd/tint",
     ]
   }
+  if (tint_build_tintd) {
+    deps += [ "${tint_src_dir}/cmd/tintd" ]
+  }
+  if (tint_build_ir_fuzzer && tint_build_ir_binary) {
+    if (tint_build_wgsl_reader) {
+      deps += [ "${tint_src_dir}/cmd/fuzz/ir/as" ]
+    }
+    if (tint_build_wgsl_writer && tint_build_spv_writer) {
+      deps += [ "${tint_src_dir}/cmd/fuzz/ir/dis" ]
+    }
+  }
 }
 
 group("fuzzers") {
   testonly = true
   deps = []
   if (tint_has_fuzzers) {
-    deps += [
-      "${tint_src_dir}/cmd/fuzz/wgsl",
-      "${tint_src_dir}/fuzzers",
-    ]
+    deps += [ "${tint_src_dir}/cmd/fuzz/wgsl" ]
+  }
+
+  if (tint_build_ir_fuzzer && (!is_asan || build_with_chromium)) {
+    deps += [ "${tint_src_dir}/cmd/fuzz/ir" ]
   }
 }
 
@@ -308,7 +386,7 @@ group("tests") {
 group("benchmarks") {
   testonly = true
   deps = []
-  if (tint_build_benchmarks) {
+  if (tint_build_benchmarks && tint_build_wgsl_reader) {
     deps += [ "${tint_src_dir}/cmd/bench:bench_cmd" ]
   }
 }

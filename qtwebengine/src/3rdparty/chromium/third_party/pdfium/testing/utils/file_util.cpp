@@ -9,9 +9,10 @@
 #include <utility>
 #include <vector>
 
-#include "core/fxcrt/span_util.h"
+#include "core/fxcrt/numerics/safe_conversions.h"
+#include "core/fxcrt/span.h"
+#include "core/fxcrt/stl_util.h"
 #include "testing/utils/path_service.h"
-#include "third_party/base/numerics/safe_conversions.h"
 
 std::vector<uint8_t> GetFileContents(const char* filename) {
   FILE* file = fopen(filename, "rb");
@@ -46,7 +47,7 @@ FileAccessForTesting::FileAccessForTesting(const std::string& file_name) {
     return;
   }
 
-  m_FileLen = pdfium::base::checked_cast<unsigned long>(file_contents_.size());
+  m_FileLen = pdfium::checked_cast<unsigned long>(file_contents_.size());
   m_GetBlock = SGetBlock;
   m_Param = this;
 }
@@ -54,8 +55,8 @@ FileAccessForTesting::FileAccessForTesting(const std::string& file_name) {
 int FileAccessForTesting::GetBlockImpl(unsigned long pos,
                                        unsigned char* pBuf,
                                        unsigned long size) {
-  fxcrt::spancpy(pdfium::make_span(pBuf, size),
-                 pdfium::make_span(file_contents_).subspan(pos, size));
+  fxcrt::Copy(pdfium::make_span(file_contents_).subspan(pos, size),
+              pdfium::make_span(pBuf, size));
   return size ? 1 : 0;
 }
 

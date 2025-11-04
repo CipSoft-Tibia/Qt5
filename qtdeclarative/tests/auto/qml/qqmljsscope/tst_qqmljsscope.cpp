@@ -1,7 +1,7 @@
 // Copyright (C) 2021 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
-#include <QtTest/QtTest>
+#include <QtTest/QTest>
 #include <QtQuickTestUtils/private/qmlutils_p.h>
 
 #include <QtCore/qfileinfo.h>
@@ -105,6 +105,7 @@ private Q_SLOTS:
     void groupedPropertiesConsistency();
     void groupedPropertySyntax();
     void attachedProperties();
+    void attachedSignalHandler();
     void scriptIndices();
     void extensions();
     void emptyBlockBinding();
@@ -119,6 +120,7 @@ private Q_SLOTS:
     void methodAndSignalSourceLocation();
     void modulePrefixes();
     void javaScriptBuiltinFlag();
+    void isRoot();
 
 public:
     tst_qqmljsscope()
@@ -348,6 +350,7 @@ void tst_qqmljsscope::groupedProperties()
 
 void tst_qqmljsscope::descriptiveNameOfNull()
 {
+    QQmlJSRegisterContentPool pool;
     QQmlJSRegisterContent nullContent;
     QCOMPARE(nullContent.descriptiveName(), u"(invalid type)"_s);
 
@@ -356,10 +359,10 @@ void tst_qqmljsscope::descriptiveNameOfNull()
     QQmlJSMetaProperty property;
     property.setPropertyName(u"foo"_s);
     property.setTypeName(u"baz"_s);
-    QQmlJSRegisterContent unscoped = QQmlJSRegisterContent::create(
-            stored, property, QQmlJSRegisterContent::InvalidLookupIndex,
-            QQmlJSRegisterContent::InvalidLookupIndex, QQmlJSRegisterContent::ScopeProperty,
-            QQmlJSScope::ConstPtr());
+    QQmlJSRegisterContent unscoped = pool.storedIn(pool.createProperty(
+            property, QQmlJSRegisterContent::InvalidLookupIndex,
+            QQmlJSRegisterContent::InvalidLookupIndex, QQmlJSRegisterContent::Property,
+            QQmlJSRegisterContent()), stored);
     QCOMPARE(unscoped.descriptiveName(), u"(invalid type)::foo with type baz (stored as bar)"_s);
 }
 
@@ -429,7 +432,7 @@ void tst_qqmljsscope::attachedProperties()
             [&](QMultiHash<QString, QQmlJSMetaPropertyBinding> *bindings, qsizetype index) -> void {
         const auto &binding = keysBindings[index];
         QCOMPARE(binding.bindingType(), QQmlSA::BindingType::AttachedProperty);
-        auto keysScope = binding.attachingType();
+        auto keysScope = binding.attachedType();
         QVERIFY(keysScope);
         QCOMPARE(keysScope->accessSemantics(), QQmlJSScope::AccessSemantics::Reference);
         *bindings = keysScope->ownPropertyBindings();
@@ -450,6 +453,27 @@ void tst_qqmljsscope::attachedProperties()
     getBindingsWithinAttached(&bindingsOfBaseType, 1);
     QCOMPARE(bindingsOfBaseType.size(), 1);
     QCOMPARE(value(bindingsOfBaseType, u"priority"_s).bindingType(), QQmlSA::BindingType::Script);
+}
+
+void tst_qqmljsscope::attachedSignalHandler()
+{
+    QQmlJSScope::ConstPtr root = run(u"attachedSignalHandler.qml"_s);
+    QVERIFY(root);
+
+    auto binding = std::find_if(root->childScopesBegin(), root->childScopesEnd(),
+                                [](const QQmlJSScope::ConstPtr &child) {
+                                    return child->baseTypeName() == "binding"_L1;
+                                });
+    QCOMPARE_NE(binding, root->childScopesEnd());
+
+    auto block = std::find_if(
+            (**binding).childScopesBegin(), (**binding).childScopesEnd(),
+            [](const QQmlJSScope::ConstPtr &child) { return child->baseTypeName() == "block"_L1; });
+    QCOMPARE_NE(block, (**binding).childScopesEnd());
+
+    // note: the event JS identifier is inserted only if the "Keys" basetype of the attached
+    // property was resolved before the creation of the "block" scope.
+    QVERIFY((**block).jsIdentifier("event"_L1));
 }
 
 inline QString getScopeName(const QQmlJSScope::ConstPtr &scope)
@@ -755,7 +779,7 @@ void tst_qqmljsscope::resolvedNonUniqueScopes()
         auto topLevelBindings = root->propertyBindings(u"Component"_s);
         QCOMPARE(topLevelBindings.size(), 1);
         QCOMPARE(topLevelBindings[0].bindingType(), QQmlSA::BindingType::AttachedProperty);
-        auto componentScope = topLevelBindings[0].attachingType();
+        auto componentScope = topLevelBindings[0].attachedType();
         auto componentBindings = componentScope->ownPropertyBindings();
         QCOMPARE(componentBindings.size(), 2);
         auto onCompletedBinding = value(componentBindings, u"onCompleted"_s);
@@ -1043,6 +1067,21 @@ void tst_qqmljsscope::javaScriptBuiltinFlag()
     QVERIFY(typeResolver.mathObject()->isJavaScriptBuiltin()); // JS
     QVERIFY(!typeResolver.typeForName("ComponentType")->isJavaScriptBuiltin()); // QML
     QVERIFY(!typeResolver.varType()->isJavaScriptBuiltin()); // C++
+}
+
+void tst_qqmljsscope::isRoot()
+{
+    auto jsscope = run(u"isRoot.qml"_s, false);
+
+    QVERIFY(jsscope->isFileRootComponent());
+    QVERIFY(jsscope->property(u"isRoot"_s).isValid());
+
+    const auto children = jsscope->childScopes();
+    QCOMPARE(children.size(), 2);
+    for (const auto &child : children) {
+        QVERIFY(!child->isFileRootComponent());
+        QVERIFY(child->property(u"isNotRoot"_s).isValid());
+    }
 }
 
 QTEST_MAIN(tst_qqmljsscope)

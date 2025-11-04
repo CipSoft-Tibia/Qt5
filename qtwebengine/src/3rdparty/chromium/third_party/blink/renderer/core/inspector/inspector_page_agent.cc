@@ -28,22 +28,28 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+#ifdef UNSAFE_BUFFERS_BUILD
+// TODO(crbug.com/351564777): Remove this and convert code to safer constructs.
+#pragma allow_unsafe_buffers
+#endif
+
 #include "third_party/blink/renderer/core/inspector/inspector_page_agent.h"
 
 #include <memory>
+#include <optional>
 #include <utility>
 
 #include "base/containers/span.h"
 #include "base/numerics/safe_conversions.h"
 #include "build/build_config.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "third_party/blink/public/common/frame/frame_ad_evidence.h"
 #include "third_party/blink/public/common/origin_trials/trial_token.h"
 #include "third_party/blink/public/common/web_preferences/web_preferences.h"
 #include "third_party/blink/public/mojom/ad_tagging/ad_evidence.mojom-blink.h"
+#include "third_party/blink/public/mojom/loader/same_document_navigation_type.mojom-blink.h"
+#include "third_party/blink/renderer/bindings/core/v8/local_window_proxy.h"
 #include "third_party/blink/renderer/bindings/core/v8/script_controller.h"
 #include "third_party/blink/renderer/bindings/core/v8/script_evaluation_result.h"
-#include "third_party/blink/renderer/bindings/core/v8/script_regexp.h"
 #include "third_party/blink/renderer/core/dom/document.h"
 #include "third_party/blink/renderer/core/dom/document_timing.h"
 #include "third_party/blink/renderer/core/dom/dom_node_ids.h"
@@ -82,6 +88,8 @@
 #include "third_party/blink/renderer/core/script/classic_script.h"
 #include "third_party/blink/renderer/core/style/computed_style.h"
 #include "third_party/blink/renderer/platform/bindings/dom_wrapper_world.h"
+#include "third_party/blink/renderer/platform/bindings/script_regexp.h"
+#include "third_party/blink/renderer/platform/heap/garbage_collected.h"
 #include "third_party/blink/renderer/platform/loader/fetch/memory_cache.h"
 #include "third_party/blink/renderer/platform/loader/fetch/resource.h"
 #include "third_party/blink/renderer/platform/loader/fetch/resource_fetcher.h"
@@ -115,16 +123,17 @@ String ClientNavigationReasonToProtocol(ClientNavigationReason reason) {
       return ReasonEnum::HttpHeaderRefresh;
     case ClientNavigationReason::kFrameNavigation:
       return ReasonEnum::ScriptInitiated;
+    case ClientNavigationReason::kInitialFrameNavigation:
+      return ReasonEnum::InitialFrameNavigation;
     case ClientNavigationReason::kMetaTagRefresh:
       return ReasonEnum::MetaTagRefresh;
     case ClientNavigationReason::kPageBlock:
       return ReasonEnum::PageBlockInterstitial;
     case ClientNavigationReason::kReload:
       return ReasonEnum::Reload;
-    default:
-      NOTREACHED();
+    case ClientNavigationReason::kNone:
+      return ReasonEnum::Other;
   }
-  return ReasonEnum::Reload;
 }
 
 String NavigationPolicyToProtocol(NavigationPolicy policy) {
@@ -145,7 +154,7 @@ String NavigationPolicyToProtocol(NavigationPolicy policy) {
     case kNavigationPolicyPictureInPicture:
       return DispositionEnum::NewWindow;
     case kNavigationPolicyLinkPreview:
-      NOTREACHED_NORETURN();
+      NOTREACHED();
   }
   return DispositionEnum::CurrentTab;
 }
@@ -206,6 +215,9 @@ std::unique_ptr<protocol::Array<String>> GetEnabledWindowFeatures(
     feature_strings->emplace_back("resizable");
   if (window_features.noopener)
     feature_strings->emplace_back("noopener");
+  if (window_features.explicit_opener) {
+    feature_strings->emplace_back("opener");
+  }
   if (window_features.background)
     feature_strings->emplace_back("background");
   if (window_features.persistent)
@@ -214,20 +226,6 @@ std::unique_ptr<protocol::Array<String>> GetEnabledWindowFeatures(
 }
 
 }  // namespace
-
-struct InspectorPageAgent::IsolatedWorldRequest {
-  IsolatedWorldRequest() = delete;
-  IsolatedWorldRequest(String world_name,
-                       bool grant_universal_access,
-                       std::unique_ptr<CreateIsolatedWorldCallback> callback)
-      : world_name(world_name),
-        grant_universal_access(grant_universal_access),
-        callback(std::move(callback)) {}
-
-  const String world_name;
-  const bool grant_universal_access;
-  std::unique_ptr<CreateIsolatedWorldCallback> callback;
-};
 
 static bool PrepareResourceBuffer(const Resource* cached_resource,
                                   bool* has_zero_size) {
@@ -312,9 +310,9 @@ static void MaybeEncodeTextContent(const String& text_content,
                                   base64_encoded);
   }
 
-  const SharedBuffer::DeprecatedFlatData flat_buffer(std::move(buffer));
+  const SegmentedBuffer::DeprecatedFlatData flat_buffer(buffer.get());
   return MaybeEncodeTextContent(
-      text_content, flat_buffer.Data(),
+      text_content, flat_buffer.data(),
       base::checked_cast<wtf_size_t>(flat_buffer.size()), result,
       base64_encoded);
 }
@@ -327,8 +325,8 @@ KURL InspectorPageAgent::UrlWithoutFragment(const KURL& url) {
 }
 
 // static
-bool InspectorPageAgent::SharedBufferContent(
-    scoped_refptr<const SharedBuffer> buffer,
+bool InspectorPageAgent::SegmentedBufferContent(
+    const SegmentedBuffer* buffer,
     const String& mime_type,
     const String& text_encoding_name,
     String* result,
@@ -341,16 +339,16 @@ bool InspectorPageAgent::SharedBufferContent(
       CreateResourceTextDecoder(mime_type, text_encoding_name);
   WTF::TextEncoding encoding(text_encoding_name);
 
-  const SharedBuffer::DeprecatedFlatData flat_buffer(std::move(buffer));
+  const SegmentedBuffer::DeprecatedFlatData flat_buffer(buffer);
   if (decoder) {
-    text_content = decoder->Decode(flat_buffer.Data(), flat_buffer.size());
+    text_content = decoder->Decode(flat_buffer);
     text_content = text_content + decoder->Flush();
   } else if (encoding.IsValid()) {
     text_content = encoding.Decode(
-        flat_buffer.Data(), base::checked_cast<wtf_size_t>(flat_buffer.size()));
+        flat_buffer.data(), base::checked_cast<wtf_size_t>(flat_buffer.size()));
   }
 
-  MaybeEncodeTextContent(text_content, flat_buffer.Data(),
+  MaybeEncodeTextContent(text_content, flat_buffer.data(),
                          base::checked_cast<wtf_size_t>(flat_buffer.size()),
                          result, base64_encoded);
   return true;
@@ -371,9 +369,8 @@ bool InspectorPageAgent::CachedResourceContent(const Resource* cached_resource,
     if (!buffer)
       return false;
 
-    const SharedBuffer::DeprecatedFlatData flat_buffer(std::move(buffer));
-    *result = Base64Encode(base::as_bytes(
-        base::make_span(flat_buffer.Data(), flat_buffer.size())));
+    const SegmentedBuffer::DeprecatedFlatData flat_buffer(buffer.get());
+    *result = Base64Encode(base::as_byte_span(flat_buffer));
     *base64_encoded = true;
     return true;
   }
@@ -403,8 +400,8 @@ bool InspectorPageAgent::CachedResourceContent(const Resource* cached_resource,
       if (text_encoding_name.empty() &&
           cached_resource->GetType() != blink::ResourceType::kRaw)
         text_encoding_name = "WinLatin1";
-      return InspectorPageAgent::SharedBufferContent(
-          cached_resource->ResourceBuffer(),
+      return InspectorPageAgent::SegmentedBufferContent(
+          cached_resource->ResourceBuffer().get(),
           cached_resource->GetResponse().MimeType(), text_encoding_name, result,
           base64_encoded);
   }
@@ -495,7 +492,7 @@ void InspectorPageAgent::PageReloadScriptInjection::SetPending(
     String script,
     const KURL& target_url) {
   pending_script_to_evaluate_on_load_once_.Set(script);
-  target_url_for_pending_script_.Set(target_url.GetString());
+  target_url_for_pending_script_.Set(target_url.GetString().GetString());
 }
 
 void InspectorPageAgent::PageReloadScriptInjection::PromoteToLoadOnce() {
@@ -598,7 +595,7 @@ protocol::Response InspectorPageAgent::addScriptToEvaluateOnNewDocument(
     Maybe<bool> runImmediately,
     String* identifier) {
   Vector<WTF::String> keys = scripts_to_evaluate_on_load_.Keys();
-  auto* result = std::max_element(
+  auto result = std::max_element(
       keys.begin(), keys.end(), [](const WTF::String& a, const WTF::String& b) {
         return Decimal::FromString(a) < Decimal::FromString(b);
       });
@@ -934,20 +931,24 @@ protocol::Response InspectorPageAgent::getPermissionsPolicyState(
   auto feature_states = std::make_unique<
       protocol::Array<protocol::Page::PermissionsPolicyFeatureState>>();
 
-  for (const auto& entry : blink::GetDefaultFeatureNameMap()) {
+  bool is_isolated_context =
+      frame->DomWindow() && frame->DomWindow()->IsIsolatedContext();
+  for (const auto& entry :
+       blink::GetDefaultFeatureNameMap(is_isolated_context)) {
     const String& feature_name = entry.key;
     const mojom::blink::PermissionsPolicyFeature feature = entry.value;
 
     if (blink::DisabledByOriginTrial(feature_name, frame->DomWindow()))
       continue;
 
-    absl::optional<blink::PermissionsPolicyBlockLocator> locator =
+    std::optional<blink::PermissionsPolicyBlockLocator> locator =
         blink::TracePermissionsPolicyBlockSource(frame, feature);
 
     std::unique_ptr<protocol::Page::PermissionsPolicyFeatureState>
         feature_state =
             protocol::Page::PermissionsPolicyFeatureState::create()
-                .setFeature(blink::PermissionsPolicyFeatureToProtocol(feature))
+                .setFeature(blink::PermissionsPolicyFeatureToProtocol(
+                    feature, frame->DomWindow()))
                 .setAllowed(!locator.has_value())
                 .build();
 
@@ -978,27 +979,48 @@ protocol::Response InspectorPageAgent::setDocumentContent(
   return protocol::Response::Success();
 }
 
-void InspectorPageAgent::DidNavigateWithinDocument(LocalFrame* frame) {
+namespace {
+const char* NavigationTypeToProtocolString(
+    mojom::blink::SameDocumentNavigationType navigation_type) {
+  switch (navigation_type) {
+    case mojom::blink::SameDocumentNavigationType::kFragment:
+      return protocol::Page::NavigatedWithinDocument::NavigationTypeEnum::
+          Fragment;
+    case mojom::blink::SameDocumentNavigationType::kHistoryApi:
+      return protocol::Page::NavigatedWithinDocument::NavigationTypeEnum::
+          HistoryApi;
+    case mojom::blink::SameDocumentNavigationType::kNavigationApiIntercept:
+    case mojom::blink::SameDocumentNavigationType::
+        kPrerenderNoVarySearchActivation:
+      return protocol::Page::NavigatedWithinDocument::NavigationTypeEnum::Other;
+  }
+}
+}  // namespace
+
+void InspectorPageAgent::DidNavigateWithinDocument(
+    LocalFrame* frame,
+    mojom::blink::SameDocumentNavigationType navigation_type) {
   Document* document = frame->GetDocument();
   if (document) {
     return GetFrontend()->navigatedWithinDocument(
-        IdentifiersFactory::FrameId(frame), document->Url());
+        IdentifiersFactory::FrameId(frame), document->Url(),
+        NavigationTypeToProtocolString(navigation_type));
   }
 }
 
-scoped_refptr<DOMWrapperWorld> InspectorPageAgent::EnsureDOMWrapperWorld(
+DOMWrapperWorld* InspectorPageAgent::EnsureDOMWrapperWorld(
     LocalFrame* frame,
     const String& world_name,
     bool grant_universal_access) {
   if (!isolated_worlds_.Contains(frame))
-    isolated_worlds_.Set(frame, FrameIsolatedWorlds());
-  FrameIsolatedWorlds& frame_worlds = isolated_worlds_.find(frame)->value;
+    isolated_worlds_.Set(frame, MakeGarbageCollected<FrameIsolatedWorlds>());
+  FrameIsolatedWorlds& frame_worlds = *isolated_worlds_.find(frame)->value;
 
   auto world_it = frame_worlds.find(world_name);
   if (world_it != frame_worlds.end())
     return world_it->value;
   LocalDOMWindow* window = frame->DomWindow();
-  scoped_refptr<DOMWrapperWorld> world =
+  DOMWrapperWorld* world =
       window->GetScriptController().CreateNewInspectorIsolatedWorld(world_name);
   if (!world)
     return nullptr;
@@ -1055,7 +1077,7 @@ void InspectorPageAgent::EvaluateScriptOnNewDocument(
   const String world_name = worlds_to_evaluate_on_load_.Get(script_identifier);
   if (world_name.empty()) {
     script_state = ToScriptStateForMainWorld(window->GetFrame());
-  } else if (scoped_refptr<DOMWrapperWorld> world = EnsureDOMWrapperWorld(
+  } else if (DOMWrapperWorld* world = EnsureDOMWrapperWorld(
                  &frame, world_name, true /* grant_universal_access */)) {
     script_state =
         ToScriptState(window->GetFrame(),
@@ -1096,6 +1118,7 @@ void InspectorPageAgent::WillCommitLoad(LocalFrame*, DocumentLoader* loader) {
   }
   GetFrontend()->frameNavigated(BuildObjectForFrame(loader->GetFrame()),
                                 protocol::Page::NavigationTypeEnum::Navigation);
+  GetFrontend()->flush();
 }
 
 void InspectorPageAgent::DidRestoreFromBackForwardCache(LocalFrame* frame) {
@@ -1113,7 +1136,7 @@ void InspectorPageAgent::DidOpenDocument(LocalFrame* frame,
 
 void InspectorPageAgent::FrameAttachedToParent(
     LocalFrame* frame,
-    const absl::optional<AdScriptIdentifier>& ad_script_on_stack) {
+    const std::optional<AdScriptIdentifier>& ad_script_on_stack) {
   // TODO(crbug.com/1217041): If an ad script on the stack caused this frame to
   // be tagged as an ad, send the script's ID to the frontend.
   Frame* parent_frame = frame->Tree().Parent();
@@ -1142,6 +1165,11 @@ void InspectorPageAgent::FrameDetachedFromParent(LocalFrame* frame,
 
   GetFrontend()->frameDetached(IdentifiersFactory::FrameId(frame),
                                FrameDetachTypeToProtocol(type));
+}
+
+void InspectorPageAgent::FrameSubtreeWillBeDetached(Frame* frame) {
+  GetFrontend()->frameSubtreeWillBeDetached(IdentifiersFactory::FrameId(frame));
+  GetFrontend()->flush();
 }
 
 bool InspectorPageAgent::ScreencastEnabled() {
@@ -1541,7 +1569,7 @@ InspectorPageAgent::BuildObjectForResourceTree(LocalFrame* frame) {
             .setMimeType(cached_resource->GetResponse().MimeType())
             .setContentSize(cached_resource->GetResponse().DecodedBodyLength())
             .build();
-    absl::optional<base::Time> last_modified =
+    std::optional<base::Time> last_modified =
         cached_resource->GetResponse().LastModified();
     if (last_modified) {
       resource_object->setLastModified(
@@ -1614,12 +1642,12 @@ protocol::Response InspectorPageAgent::getLayoutMetrics(
                              .setClientHeight(visible_contents.height())
                              .build();
 
-  // PageZoomFactor takes CSS pixels to device/physical pixels. It includes
+  // LayoutZoomFactor takes CSS pixels to device/physical pixels. It includes
   // both browser ctrl+/- zoom as well as the device scale factor for screen
   // density. Note: we don't account for pinch-zoom, even though it scales a
   // CSS pixel, since "device pixels" coming from Blink are also unscaled by
   // pinch-zoom.
-  float css_to_physical = main_frame->PageZoomFactor();
+  float css_to_physical = main_frame->LayoutZoomFactor();
   float physical_to_css = 1.f / css_to_physical;
 
   // `visible_contents` is in physical pixels. Normlisation is needed to
@@ -1727,7 +1755,7 @@ void InspectorPageAgent::CreateIsolatedWorldImpl(
     bool grant_universal_access,
     std::unique_ptr<CreateIsolatedWorldCallback> callback) {
   DCHECK(!frame.IsProvisional());
-  scoped_refptr<DOMWrapperWorld> world =
+  DOMWrapperWorld* world =
       EnsureDOMWrapperWorld(&frame, world_name, grant_universal_access);
   if (!world) {
     callback->sendFailure(

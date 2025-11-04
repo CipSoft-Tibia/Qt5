@@ -3,6 +3,7 @@
 
 /*!
     \example clientguide
+    \title Qt GRPC Client Guide
     \ingroup qtgrpc-examples
     \examplecategory {Networking}
     \meta tag {network,protobuf,grpc,serialization,overview}

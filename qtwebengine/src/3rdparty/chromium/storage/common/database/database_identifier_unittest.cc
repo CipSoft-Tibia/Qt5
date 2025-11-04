@@ -2,18 +2,24 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#ifdef UNSAFE_BUFFERS_BUILD
+// TODO(crbug.com/351564777): Remove this and convert code to safer constructs.
+#pragma allow_unsafe_buffers
+#endif
+
 #include "storage/common/database/database_identifier.h"
 
 #include <stddef.h>
 
+#include <string>
+
+#include "base/test/scoped_feature_list.h"
 #include "testing/gtest/include/gtest/gtest.h"
 #include "url/gurl.h"
 #include "url/origin.h"
+#include "url/url_features.h"
 
-using storage::DatabaseIdentifier;
-
-namespace content {
-namespace {
+namespace storage {
 
 TEST(DatabaseIdentifierTest, CreateIdentifierFromOrigin) {
   struct OriginTestCase {
@@ -44,14 +50,10 @@ TEST(DatabaseIdentifierTest, CreateIdentifierFromOrigin) {
     GURL origin_url(test_case.origin);
     url::Origin origin = url::Origin::Create(origin_url);
 
-    DatabaseIdentifier identifier_from_url =
-        DatabaseIdentifier::CreateFromOrigin(origin_url);
-    EXPECT_EQ(test_case.expectedIdentifier, identifier_from_url.ToString())
+    EXPECT_EQ(test_case.expectedIdentifier, GetIdentifierFromOrigin(origin_url))
         << "test case " << test_case.origin;
 
-    DatabaseIdentifier identifier_from_origin =
-        DatabaseIdentifier::CreateFromOrigin(origin_url);
-    EXPECT_EQ(test_case.expectedIdentifier, identifier_from_origin.ToString())
+    EXPECT_EQ(test_case.expectedIdentifier, GetIdentifierFromOrigin(origin))
         << "test case " << test_case.origin;
   }
 }
@@ -66,7 +68,7 @@ TEST(DatabaseIdentifierTest, CreateIdentifierAllHostChars) {
     bool shouldRoundTrip;
   } cases[] = {
     {"x\x1Fx", "__0", false},
-    // TODO(https://crbug.com/1416013) SPACE (0x20) should not be escaped.
+    // TODO(crbug.com/40256677) SPACE (0x20) should not be escaped.
     {"x\x20x", "http_x%20x_0", false},
     {"x\x21x", "http_x!x_0", false},
     {"x\x22x", "http_x\"x_0", false},
@@ -77,7 +79,7 @@ TEST(DatabaseIdentifierTest, CreateIdentifierAllHostChars) {
     {"x\x27x", "http_x'x_0", false},
     {"x\x28x", "http_x(x_0", false},
     {"x\x29x", "http_x)x_0", false},
-    // TODO(https://crbug.com/1416013) ASTERISK (0x2A) should not be escaped.
+    // TODO(crbug.com/40256677) ASTERISK (0x2A) should not be escaped.
     {"x\x2ax", "http_x%2ax_0", false},
     {"x\x2bx", "http_x+x_0", false},
     {"x\x2cx", "http_x,x_0", false},
@@ -171,34 +173,45 @@ TEST(DatabaseIdentifierTest, CreateIdentifierAllHostChars) {
   for (size_t i = 0; i < std::size(cases); ++i) {
     GURL origin_url("http://" + cases[i].hostname);
     url::Origin origin = url::Origin::Create(origin_url);
-    DatabaseIdentifier identifier_from_url =
-        DatabaseIdentifier::CreateFromOrigin(origin_url);
-    DatabaseIdentifier identifier_from_origin =
-        DatabaseIdentifier::CreateFromOrigin(origin);
-    EXPECT_EQ(cases[i].expected, identifier_from_url.ToString())
+    EXPECT_EQ(cases[i].expected, GetIdentifierFromOrigin(origin_url))
         << "test case " << i << " :\"" << cases[i].hostname << "\"";
-    EXPECT_EQ(cases[i].expected, identifier_from_origin.ToString())
+    EXPECT_EQ(cases[i].expected, GetIdentifierFromOrigin(origin))
         << "test case " << i << " :\"" << cases[i].hostname << "\"";
-    EXPECT_EQ(identifier_from_url.ToString(),
-              identifier_from_origin.ToString());
+    EXPECT_EQ(GetIdentifierFromOrigin(origin_url),
+              GetIdentifierFromOrigin(origin));
     if (cases[i].shouldRoundTrip) {
-      DatabaseIdentifier parsed_identifier_from_url =
-          DatabaseIdentifier::Parse(identifier_from_url.ToString());
-      EXPECT_EQ(identifier_from_url.ToString(),
-                parsed_identifier_from_url.ToString())
+      EXPECT_EQ(GetOriginURLFromIdentifier(GetIdentifierFromOrigin(origin_url)),
+                origin_url)
           << "test case " << i << " :\"" << cases[i].hostname << "\"";
-      DatabaseIdentifier parsed_identifier_from_origin =
-          DatabaseIdentifier::Parse(identifier_from_origin.ToString());
-      EXPECT_EQ(identifier_from_origin.ToString(),
-                parsed_identifier_from_origin.ToString())
+      EXPECT_EQ(GetOriginFromIdentifier(GetIdentifierFromOrigin(origin)),
+                origin)
           << "test case " << i << " :\"" << cases[i].hostname << "\"";
-      EXPECT_EQ(parsed_identifier_from_url.ToString(),
-                parsed_identifier_from_origin.ToString());
     }
   }
 }
 
-TEST(DatabaseIdentifierTest, ExtractOriginDataFromIdentifier) {
+// Non-special URLs behavior is affected by the
+// StandardCompliantNonSpecialSchemeURLParsing feature.
+// See https://crbug.com/40063064 for details.
+class DatabaseIdentifierParamTest : public testing::TestWithParam<bool> {
+ public:
+  DatabaseIdentifierParamTest()
+      : use_standard_compliant_non_special_scheme_url_parsing_(GetParam()) {
+    scoped_feature_list_.InitWithFeatureState(
+        url::kStandardCompliantNonSpecialSchemeURLParsing,
+        use_standard_compliant_non_special_scheme_url_parsing_);
+  }
+
+  bool use_standard_compliant_non_special_scheme_url_parsing_;
+
+ private:
+  base::test::ScopedFeatureList scoped_feature_list_;
+};
+
+// Use a parameterized test here to ensure that
+// StandardCompliantNonSpecialSchemeURLParsing feature doesn't change the
+// behavior of DatabaseIdentifier.
+TEST_P(DatabaseIdentifierParamTest, ExtractOriginDataFromIdentifier) {
   struct IdentifierTestCase {
     std::string str;
     std::string expected_scheme;
@@ -250,16 +263,8 @@ TEST(DatabaseIdentifierTest, ExtractOriginDataFromIdentifier) {
   // clang-format on
 
   for (const auto& valid_case : valid_cases) {
-    DatabaseIdentifier identifier = DatabaseIdentifier::Parse(valid_case.str);
-    EXPECT_EQ(valid_case.expected_scheme, identifier.scheme())
-        << "test case " << valid_case.str;
-    EXPECT_EQ(valid_case.expected_host, identifier.hostname())
-        << "test case " << valid_case.str;
-    EXPECT_EQ(valid_case.expected_port, identifier.port())
-        << "test case " << valid_case.str;
-    EXPECT_EQ(valid_case.expected_origin, identifier.ToOrigin())
-        << "test case " << valid_case.str;
-    EXPECT_EQ(valid_case.expected_unique, identifier.is_unique())
+    GURL actual_origin = GetOriginURLFromIdentifier(valid_case.str);
+    EXPECT_EQ(valid_case.expected_origin, actual_origin)
         << "test case " << valid_case.str;
   }
 
@@ -277,13 +282,12 @@ TEST(DatabaseIdentifierTest, ExtractOriginDataFromIdentifier) {
   };
 
   for (const auto& bogus_component : bogus_components) {
-    DatabaseIdentifier identifier = DatabaseIdentifier::Parse(bogus_component);
-    EXPECT_EQ("__0", identifier.ToString()) << "test case " << bogus_component;
-    EXPECT_EQ(GURL("null"), identifier.ToOrigin())
-        << "test case " << bogus_component;
-    EXPECT_EQ(true, identifier.is_unique()) << "test case " << bogus_component;
+    GURL actual_origin = GetOriginURLFromIdentifier(bogus_component);
+    EXPECT_EQ(GURL("null"), actual_origin) << "test case " << bogus_component;
   }
 }
+
+INSTANTIATE_TEST_SUITE_P(All, DatabaseIdentifierParamTest, ::testing::Bool());
 
 static GURL GURLToAndFromOriginIdentifier(const GURL& origin_url) {
   std::string id = storage::GetIdentifierFromOrigin(origin_url);
@@ -322,5 +326,4 @@ TEST(DatabaseIdentifierTest, IsValidOriginIdentifier) {
   TestValidOriginIdentifier(false, std::string("bad\0id", 6));
 }
 
-}  // namespace
-}  // namespace content
+}  // namespace storage

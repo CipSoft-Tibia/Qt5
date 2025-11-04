@@ -1,5 +1,6 @@
 // Copyright (C) 2022 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 // based on chrome/browser/pdf/chrome_pdf_stream_delegate.cc:
 
@@ -21,7 +22,7 @@
 class StreamInfoHelper : public content::DocumentUserData<StreamInfoHelper>
 {
 public:
-    absl::optional<pdf::PdfStreamDelegate::StreamInfo> TakeStreamInfo()
+    std::optional<pdf::PdfStreamDelegate::StreamInfo> TakeStreamInfo()
     { return std::move(stream_info_); }
 
 private:
@@ -33,7 +34,7 @@ private:
         : content::DocumentUserData<StreamInfoHelper>(embedder_frame),
           stream_info_(std::move(stream_info)) {}
 
-    absl::optional<pdf::PdfStreamDelegate::StreamInfo> stream_info_;
+    std::optional<pdf::PdfStreamDelegate::StreamInfo> stream_info_;
 };
 
 DOCUMENT_USER_DATA_KEY_IMPL(StreamInfoHelper);
@@ -41,13 +42,13 @@ DOCUMENT_USER_DATA_KEY_IMPL(StreamInfoHelper);
 PdfStreamDelegateQt::PdfStreamDelegateQt() = default;
 PdfStreamDelegateQt::~PdfStreamDelegateQt() = default;
 
-absl::optional<GURL> PdfStreamDelegateQt::MapToOriginalUrl(content::NavigationHandle &navigation_handle)
+std::optional<GURL> PdfStreamDelegateQt::MapToOriginalUrl(content::NavigationHandle &navigation_handle)
 {
     content::RenderFrameHost *embedder_frame = navigation_handle.GetParentFrame();
     StreamInfoHelper *helper = StreamInfoHelper::GetForCurrentDocument(embedder_frame);
     if (helper) {
         // PDF viewer and Print Preview only do this once per WebContents.
-        return absl::nullopt;
+        return std::nullopt;
     }
 
     GURL original_url;
@@ -61,7 +62,7 @@ absl::optional<GURL> PdfStreamDelegateQt::MapToOriginalUrl(content::NavigationHa
         if (!stream || stream->extension_id() != extension_misc::kPdfExtensionId ||
             stream->stream_url() != navigation_handle.GetURL() ||
             !stream->pdf_plugin_attributes()) {
-            return absl::nullopt;
+            return std::nullopt;
         }
 
         original_url = stream->original_url();
@@ -69,7 +70,7 @@ absl::optional<GURL> PdfStreamDelegateQt::MapToOriginalUrl(content::NavigationHa
         info.full_frame = !stream->embedded();
         info.allow_javascript = stream->pdf_plugin_attributes()->allow_javascript;
     } else {
-        return absl::nullopt;
+        return std::nullopt;
     }
 
     static const base::NoDestructor<std::string> injected_script(
@@ -83,17 +84,29 @@ absl::optional<GURL> PdfStreamDelegateQt::MapToOriginalUrl(content::NavigationHa
     return original_url;
 }
 
-absl::optional<pdf::PdfStreamDelegate::StreamInfo>
+std::optional<pdf::PdfStreamDelegate::StreamInfo>
 PdfStreamDelegateQt::GetStreamInfo(content::RenderFrameHost* embedder_frame)
 {
     if (!embedder_frame)
-        return absl::nullopt;
+        return std::nullopt;
 
     StreamInfoHelper *helper = StreamInfoHelper::GetForCurrentDocument(embedder_frame);
     if (!helper)
-        return absl::nullopt;
+        return std::nullopt;
 
     // Only the call immediately following `MapToOriginalUrl()` requires a valid
     // `StreamInfo`; subsequent calls should just get nothing.
     return helper->TakeStreamInfo();
 }
+
+void PdfStreamDelegateQt::OnPdfEmbedderSandboxed(content::FrameTreeNodeId)
+{
+    NOTIMPLEMENTED();
+}
+
+bool PdfStreamDelegateQt::ShouldAllowPdfFrameNavigation(content::NavigationHandle*)
+{
+    // Only for the OOPIF PDF viewer
+    return true;
+}
+

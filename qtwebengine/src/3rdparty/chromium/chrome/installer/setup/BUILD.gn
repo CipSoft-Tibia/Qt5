@@ -4,14 +4,8 @@
 
 import("//build/buildflag_header.gni")
 import("//build/config/chrome_build.gni")
-import("//chrome/installer/setup/buildflags.gni")
 import("//chrome/process_version_rc_template.gni")
 import("//testing/test.gni")
-
-buildflag_header("buildflags") {
-  header = "buildflags.h"
-  flags = [ "ZUCCHINI=$use_zucchini" ]
-}
 
 if (is_win) {
   executable("setup") {
@@ -32,7 +26,6 @@ if (is_win) {
     configs += [ "//build/config/win:windowed" ]
 
     deps = [
-      ":buildflags",
       ":lib",
       ":setup_exe_version",
       "//base",
@@ -62,6 +55,8 @@ if (is_win) {
       "archive_patch_helper.cc",
       "archive_patch_helper.h",
       "brand_behaviors.h",
+      "configure_app_container_sandbox.cc",
+      "configure_app_container_sandbox.h",
       "downgrade_cleanup.cc",
       "downgrade_cleanup.h",
       "install.cc",
@@ -90,6 +85,8 @@ if (is_win) {
       "setup_singleton.h",
       "setup_util.cc",
       "setup_util.h",
+      "unpack_archive.cc",
+      "unpack_archive.h",
       "update_active_setup_version_work_item.cc",
       "update_active_setup_version_work_item.h",
       "user_hive_visitor.cc",
@@ -97,7 +94,6 @@ if (is_win) {
     ]
 
     public_deps = [
-      ":buildflags",
       "//base",
       "//chrome/installer/util:with_rc_strings",
     ]
@@ -116,7 +112,6 @@ if (is_win) {
       "//components/version_info:channel",
       "//components/zucchini:zucchini_io",
       "//components/zucchini:zucchini_lib",
-      "//courgette:courgette_lib",
       "//third_party/bspatch",
       "//third_party/crashpad/crashpad/client",
       "//third_party/crashpad/crashpad/util",
@@ -140,6 +135,7 @@ if (is_win) {
   test("setup_unittests") {
     sources = [
       "archive_patch_helper_unittest.cc",
+      "configure_app_container_sandbox_unittest.cc",
       "downgrade_cleanup_unittest.cc",
       "install_unittest.cc",
       "install_worker_unittest.cc",
@@ -152,6 +148,7 @@ if (is_win) {
       "setup_util_unittest.cc",
       "setup_util_unittest.h",
       "taskbar_util_unittest.cc",
+      "unpack_archive_unittest.cc",
       "update_active_setup_version_work_item_unittest.cc",
       "user_hive_visitor_unittest.cc",
     ]

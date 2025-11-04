@@ -312,10 +312,10 @@
     provide system packages with similar names.
 
     Qt does not maintain a comprehensive package list for all distributions.
-    Some distributions, such as Red Hat and its derivatives, may require
+    Some distributions, such as \tm{Red Hat} and its derivatives, may require
     additional repositories for certain packages (e.g., EPEL for RHEL).
     Consult your distribution's documentation for specific package names. RHEL
-    users can contact Red Hat support for detailed information.
+    users can contact \tm{Red Hat} support for detailed information.
 
     \section1 Accessibility Dependencies
 
@@ -396,7 +396,7 @@
     \header \li Tool \li Supported Versions
     \row
         \li CMake
-        \li Version 3.16 and newer (3.21 and newer for \c{-static} builds).
+        \li Version 3.22 and newer.
     \row
         \li Ninja
         \li -
@@ -470,7 +470,7 @@
     \endcode
 
     If you plan to use Qt from an IDE, you need to register the Qt version
-    explicitly there. For Qt Creator, see \l{Qt Creator: Adding Qt Versions}.
+    explicitly there. For \QC, see \l{\QC: Add Qt versions}.
 */
 
 /*!

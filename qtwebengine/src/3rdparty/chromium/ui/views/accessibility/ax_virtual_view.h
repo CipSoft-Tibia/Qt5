@@ -8,12 +8,12 @@
 #include <stdint.h>
 
 #include <memory>
+#include <optional>
 #include <vector>
 
 #include "base/functional/callback_forward.h"
 #include "base/memory/raw_ptr.h"
 #include "build/build_config.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "ui/accessibility/ax_enums.mojom-forward.h"
 #include "ui/accessibility/ax_node_data.h"
 #include "ui/accessibility/platform/ax_platform_node_delegate.h"
@@ -30,7 +30,6 @@
 namespace ui {
 
 struct AXActionData;
-class AXUniqueId;
 
 }  // namespace ui
 
@@ -113,7 +112,7 @@ class VIEWS_EXPORT AXVirtualView : public ui::AXPlatformNodeDelegate {
 
   // Returns the index of |view|, or nullopt if |view| is not a child of this
   // virtual view.
-  absl::optional<size_t> GetIndexOf(const AXVirtualView* view) const;
+  std::optional<size_t> GetIndexOf(const AXVirtualView* view) const;
 
   //
   // Other methods.
@@ -158,12 +157,11 @@ class VIEWS_EXPORT AXVirtualView : public ui::AXPlatformNodeDelegate {
   bool AccessibilityPerformAction(const ui::AXActionData& data) override;
   bool ShouldIgnoreHoveredStateForTesting() override;
   bool IsOffscreen() const override;
-  const ui::AXUniqueId& GetUniqueId() const override;
+  ui::AXPlatformNodeId GetUniqueId() const override;
   gfx::AcceleratedWidget GetTargetForNativeAccessibilityEvent() override;
   std::vector<int32_t> GetColHeaderNodeIds() const override;
   std::vector<int32_t> GetColHeaderNodeIds(int col_index) const override;
-  absl::optional<int32_t> GetCellId(int row_index,
-                                    int col_index) const override;
+  std::optional<int32_t> GetCellId(int row_index, int col_index) const override;
 
   // Gets the real View that owns our shallowest virtual ancestor,, if any.
   View* GetOwnerView() const;
@@ -182,6 +180,18 @@ class VIEWS_EXPORT AXVirtualView : public ui::AXPlatformNodeDelegate {
   // request is sometimes asynchronous. The right way to send a response is
   // via NotifyAccessibilityEvent().
   virtual bool HandleAccessibleAction(const ui::AXActionData& action_data);
+
+  // Prune/Unprune all descendant virtual views from the tree. As of right now,
+  // these should only be called by their ViewAccessibility counterparts. This
+  // is for a scenario such as the following: ViewAccessibility A has a child
+  // AXVirtualView B, which has a child AXVirtualView C:
+  // A
+  //  B
+  //   C
+  // A->SetIsLeaf(true) is called. B and C then should be pruned from the tree
+  // and marked as ignored.
+  void PruneVirtualSubtree();
+  void UnpruneVirtualSubtree();
 
  protected:
   // Forwards a request from assistive technology to perform an action on this
@@ -229,9 +239,13 @@ class VIEWS_EXPORT AXVirtualView : public ui::AXPlatformNodeDelegate {
   // this object, if any.
   raw_ptr<AXAuraObjCache> ax_aura_obj_cache_ = nullptr;
 
-  ui::AXUniqueId unique_id_;
+  const ui::AXUniqueId unique_id_{ui::AXUniqueId::Create()};
   ui::AXNodeData custom_data_;
   base::RepeatingCallback<void(ui::AXNodeData*)> populate_data_callback_;
+
+  // If set to true, this virtual view will be hidden from accessibility by
+  // 'pruning' it from the tree, by marking it as ignored in `GetData()`.
+  bool pruned_ = false;
 
   friend class ViewAccessibility;
 };

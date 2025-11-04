@@ -36,7 +36,9 @@
 #include "qwhatsthis.h"
 #endif
 #include "qdebug.h"
+#if QT_CONFIG(style_stylesheet)
 #include "private/qstylesheetstyle_p.h"
+#endif
 #include "private/qstyle_p.h"
 #include "qfileinfo.h"
 #include "qscopeguard.h"
@@ -85,8 +87,8 @@ using namespace Qt::StringLiterals;
 
 Q_LOGGING_CATEGORY(lcWidgetPainting, "qt.widgets.painting", QtWarningMsg);
 Q_LOGGING_CATEGORY(lcWidgetShowHide, "qt.widgets.showhide", QtWarningMsg);
-Q_LOGGING_CATEGORY(lcWidgetWindow, "qt.widgets.window", QtWarningMsg);
-Q_LOGGING_CATEGORY(lcWidgetFocus, "qt.widgets.focus")
+Q_STATIC_LOGGING_CATEGORY(lcWidgetWindow, "qt.widgets.window", QtWarningMsg);
+Q_STATIC_LOGGING_CATEGORY(lcWidgetFocus, "qt.widgets.focus")
 
 #ifndef QT_NO_DEBUG_STREAM
 namespace {
@@ -102,6 +104,9 @@ static inline bool qRectIntersects(const QRect &r1, const QRect &r2)
 }
 
 extern bool qt_sendSpontaneousEvent(QObject*, QEvent*); // qapplication.cpp
+
+static void setAttribute_internal(Qt::WidgetAttribute attribute,
+    bool on, QWidgetData *data, QWidgetPrivate *d);
 
 QWidgetPrivate::QWidgetPrivate(int version)
     : QObjectPrivate(version)
@@ -853,14 +858,8 @@ struct QWidgetExceptionCleaner
     \sa windowFlags
 */
 QWidget::QWidget(QWidget *parent, Qt::WindowFlags f)
-    : QObject(*new QWidgetPrivate, nullptr), QPaintDevice()
+    : QWidget(*new QWidgetPrivate, parent, f)
 {
-    QT_TRY {
-        d_func()->init(parent, f);
-    } QT_CATCH(...) {
-        QWidgetExceptionCleaner::cleanup(this, d_func());
-        QT_RETHROW;
-    }
 }
 
 
@@ -868,6 +867,7 @@ QWidget::QWidget(QWidget *parent, Qt::WindowFlags f)
 */
 QWidget::QWidget(QWidgetPrivate &dd, QWidget* parent, Qt::WindowFlags f)
     : QObject(dd, nullptr), QPaintDevice()
+    , data(&dd.data)
 {
     Q_D(QWidget);
     QT_TRY {
@@ -951,8 +951,6 @@ void QWidgetPrivate::init(QWidget *parentWidget, Qt::WindowFlags f)
     if (allWidgets)
         allWidgets->insert(q);
 
-    q->data = &data;
-
 #if QT_CONFIG(thread)
     if (!parent) {
         Q_ASSERT_X(QThread::isMainThread(), "QWidget",
@@ -985,7 +983,6 @@ void QWidgetPrivate::init(QWidget *parentWidget, Qt::WindowFlags f)
     q->setAttribute(Qt::WA_QuitOnClose); // might be cleared in adjustQuitOnCloseAttribute()
     adjustQuitOnCloseAttribute();
 
-    q->setAttribute(Qt::WA_ContentsMarginsRespectsSafeArea);
     q->setAttribute(Qt::WA_WState_Hidden);
 
     //give potential windows a bigger "pre-initial" size; create() will give them a new size later
@@ -1212,6 +1209,19 @@ void QWidget::create(WId window, bool initializeWindow, bool destroyOldWindow)
     if (QApplicationPrivate::testAttribute(Qt::AA_NativeWindows))
         setAttribute(Qt::WA_NativeWindow);
 
+    if (isWindow()
+#if QT_CONFIG(graphicsview)
+        && !graphicsProxyWidget()
+#endif
+    ) {
+        // Make top levels automatically respect safe areas by default
+        auto *topExtra = d->maybeTopData();
+        if (!topExtra || !topExtra->explicitContentsMarginsRespectsSafeArea) {
+            setAttribute_internal(Qt::WA_ContentsMarginsRespectsSafeArea,
+                true, data, d);
+        }
+    }
+
     d->updateIsOpaque();
 
     setAttribute(Qt::WA_WState_Created);                        // set created flag
@@ -1303,7 +1313,7 @@ void QWidgetPrivate::create()
 
 #if defined(QT_PLATFORM_UIKIT)
     if (q->testAttribute(Qt::WA_ContentsMarginsRespectsSafeArea))
-        flags |= Qt::MaximizeUsingFullscreenGeometryHint;
+        flags |= Qt::ExpandedClientAreaHint;
 #endif
 
     if (q->testAttribute(Qt::WA_ShowWithoutActivating))
@@ -1630,6 +1640,7 @@ void QWidgetPrivate::createTLExtra()
         x->posIncludesFrame = 0;
         x->sizeAdjusted = false;
         x->embedded = 0;
+        x->explicitContentsMarginsRespectsSafeArea = 0;
         x->window = nullptr;
         x->initialScreen = nullptr;
 
@@ -1687,7 +1698,7 @@ void QWidgetPrivate::deleteExtra()
 {
     if (extra) {                                // if exists
         deleteSysExtra();
-#ifndef QT_NO_STYLE_STYLESHEET
+#if QT_CONFIG(style_stylesheet)
         // dereference the stylesheet style
         if (QStyleSheetStyle *proxy = qt_styleSheet(extra->style))
             proxy->deref();
@@ -2547,7 +2558,7 @@ void QWidget::setScreen(QScreen *screen)
     d->setScreen(screen);
 }
 
-#ifndef QT_NO_STYLE_STYLESHEET
+#if QT_CONFIG(style_stylesheet)
 
 /*!
     \property QWidget::styleSheet
@@ -2652,7 +2663,7 @@ void QWidget::setStyle(QStyle *style)
     Q_D(QWidget);
     setAttribute(Qt::WA_SetStyle, style != nullptr);
     d->createExtra();
-#ifndef QT_NO_STYLE_STYLESHEET
+#if QT_CONFIG(style_stylesheet)
     if (QStyleSheetStyle *styleSheetStyle = qt_styleSheet(style)) {
         //if for some reason someone try to set a QStyleSheetStyle, ref it
         //(this may happen for example in QButtonDialogBox which propagates its style)
@@ -2673,13 +2684,13 @@ void QWidgetPrivate::setStyle_helper(QStyle *newStyle, bool propagate)
 
     createExtra();
 
-#ifndef QT_NO_STYLE_STYLESHEET
+#if QT_CONFIG(style_stylesheet)
     QPointer<QStyle> origStyle = extra->style;
 #endif
     extra->style = newStyle;
 
     // repolish
-    if (polished && q->windowType() != Qt::Desktop) {
+    if (polished && q->windowType() != Qt::Desktop && oldStyle != q->style()) {
         oldStyle->unpolish(q);
         q->style()->polish(q);
     }
@@ -2694,7 +2705,7 @@ void QWidgetPrivate::setStyle_helper(QStyle *newStyle, bool propagate)
         }
     }
 
-#ifndef QT_NO_STYLE_STYLESHEET
+#if QT_CONFIG(style_stylesheet)
     if (!qt_styleSheet(newStyle)) {
         if (const QStyleSheetStyle* cssStyle = qt_styleSheet(origStyle)) {
             cssStyle->clearWidgetFont(q);
@@ -2705,7 +2716,7 @@ void QWidgetPrivate::setStyle_helper(QStyle *newStyle, bool propagate)
     QEvent e(QEvent::StyleChange);
     QCoreApplication::sendEvent(q, &e);
 
-#ifndef QT_NO_STYLE_STYLESHEET
+#if QT_CONFIG(style_stylesheet)
     // dereference the old stylesheet style
     if (QStyleSheetStyle *proxy = qt_styleSheet(origStyle))
         proxy->deref();
@@ -2715,7 +2726,7 @@ void QWidgetPrivate::setStyle_helper(QStyle *newStyle, bool propagate)
 // Inherits style from the current parent and propagates it as necessary
 void QWidgetPrivate::inheritStyle()
 {
-#ifndef QT_NO_STYLE_STYLESHEET
+#if QT_CONFIG(style_stylesheet)
     Q_Q(QWidget);
 
     QStyle *extraStyle = extra ? (QStyle*)extra->style : nullptr;
@@ -4693,7 +4704,7 @@ void QWidget::setFont(const QFont &font)
 {
     Q_D(QWidget);
 
-#ifndef QT_NO_STYLE_STYLESHEET
+#if QT_CONFIG(style_stylesheet)
     const QStyleSheetStyle* style;
     if (d->extra && (style = qt_styleSheet(d->extra->style)))
         style->saveWidgetFont(this, font);
@@ -4802,7 +4813,7 @@ void QWidgetPrivate::resolveFont()
 void QWidgetPrivate::updateFont(const QFont &font)
 {
     Q_Q(QWidget);
-#ifndef QT_NO_STYLE_STYLESHEET
+#if QT_CONFIG(style_stylesheet)
     const QStyleSheetStyle* cssStyle;
     cssStyle = extra ? qt_styleSheet(extra->style) : nullptr;
     const bool useStyleSheetPropagationInWidgetStyles =
@@ -4832,7 +4843,7 @@ void QWidgetPrivate::updateFont(const QFont &font)
         QWidget *w = qobject_cast<QWidget*>(children.at(i));
         if (w) {
             if (0) {
-#ifndef QT_NO_STYLE_STYLESHEET
+#if QT_CONFIG(style_stylesheet)
             } else if (!useStyleSheetPropagationInWidgetStyles && w->testAttribute(Qt::WA_StyleSheet)) {
                 // Style sheets follow a different font propagation scheme.
                 if (cssStyle)
@@ -4847,7 +4858,7 @@ void QWidgetPrivate::updateFont(const QFont &font)
         }
     }
 
-#ifndef QT_NO_STYLE_STYLESHEET
+#if QT_CONFIG(style_stylesheet)
     if (!useStyleSheetPropagationInWidgetStyles && cssStyle) {
         cssStyle->updateStyleSheetFont(q);
     }
@@ -6065,8 +6076,25 @@ void QWidgetPrivate::setWindowTitle_sys(const QString &caption)
         return;
 
     if (QWindow *window = q->windowHandle())
+    {
+#if QT_CONFIG(accessibility)
+        QString oldAccessibleName;
+        const QAccessibleInterface *accessible = QAccessible::isActive()
+                                               ? QAccessible::queryAccessibleInterface(q)
+                                               : nullptr;
+        if (accessible)
+            oldAccessibleName = accessible->text(QAccessible::Name);
+#endif
+
         window->setTitle(caption);
 
+#if QT_CONFIG(accessibility)
+        if (accessible && accessible->text(QAccessible::Name) != oldAccessibleName) {
+            QAccessibleEvent event(q, QAccessible::NameChanged);
+            QAccessible::updateAccessibility(&event);
+        }
+#endif
+    }
 }
 
 void QWidgetPrivate::setWindowIconText_helper(const QString &title)
@@ -6132,13 +6160,6 @@ void QWidget::setWindowTitle(const QString &title)
     if (QWidget::windowTitle() == title && !title.isEmpty() && !title.isNull())
         return;
 
-#if QT_CONFIG(accessibility)
-    QString oldAccessibleName;
-    const QAccessibleInterface *accessible = QAccessible::queryAccessibleInterface(this);
-    if (accessible)
-        oldAccessibleName = accessible->text(QAccessible::Name);
-#endif
-
     Q_D(QWidget);
     d->topData()->caption = title;
     d->setWindowTitle_helper(title);
@@ -6147,13 +6168,6 @@ void QWidget::setWindowTitle(const QString &title)
     QCoreApplication::sendEvent(this, &e);
 
     emit windowTitleChanged(title);
-
-#if QT_CONFIG(accessibility)
-    if (accessible && accessible->text(QAccessible::Name) != oldAccessibleName) {
-        QAccessibleEvent event(this, QAccessible::NameChanged);
-        QAccessible::updateAccessibility(&event);
-    }
-#endif
 }
 
 
@@ -7353,6 +7367,12 @@ void QWidgetPrivate::setGeometry_sys(int x, int y, int w, int h, bool isMove)
             q->setAttribute(Qt::WA_PendingResizeEvent, true);
     }
 
+#if QT_CONFIG(accessibility)
+    if (QAccessible::isActive() && q->isVisible()) {
+        QAccessibleEvent event(q, QAccessible::LocationChanged);
+        QAccessible::updateAccessibility(&event);
+    }
+#endif
 }
 
 /*!
@@ -7710,15 +7730,19 @@ QRect QWidget::contentsRect() const
 QMargins QWidgetPrivate::safeAreaMargins() const
 {
     Q_Q(const QWidget);
+
+#if QT_CONFIG(graphicsview)
+    // Don't report margins for proxied widgets, as the logic
+    // below doesn't handle that case (yet).
+    if (nearestGraphicsProxyWidget(q))
+        return QMargins();
+#endif
+
     QWidget *nativeWidget = q->window();
     if (!nativeWidget->windowHandle())
         return QMargins();
 
-    QPlatformWindow *platformWindow = nativeWidget->windowHandle()->handle();
-    if (!platformWindow)
-        return QMargins();
-
-    QMargins safeAreaMargins = platformWindow->safeAreaMargins();
+    QMargins safeAreaMargins = nativeWidget->windowHandle()->safeAreaMargins();
 
     if (!q->isWindow()) {
         // In theory the native parent widget already has a contents rect reflecting
@@ -8487,7 +8511,7 @@ void QWidgetPrivate::hideChildren(bool spontaneous)
             continue;
         qCDebug(lcWidgetShowHide) << "Considering" << widget
               << "with attributes" << WidgetAttributes{widget};
-        if (widget->isWindow() || widget->testAttribute(Qt::WA_WState_Hidden))
+        if (widget->isWindow() || !widget->isVisible())
             continue;
 
         if (spontaneous)
@@ -11365,10 +11389,18 @@ void QWidgetPrivate::macUpdateSizeAttribute()
 */
 void QWidget::setAttribute(Qt::WidgetAttribute attribute, bool on)
 {
+    Q_D(QWidget);
+
+    if (attribute == Qt::WA_ContentsMarginsRespectsSafeArea) {
+        if (isWindow()) {
+            auto *topExtra = d->topData();
+            topExtra->explicitContentsMarginsRespectsSafeArea = true;
+        }
+    }
+
     if (testAttribute(attribute) == on)
         return;
 
-    Q_D(QWidget);
     static_assert(sizeof(d->high_attributes)*8 >= (Qt::WA_AttributeCount - sizeof(uint)*8),
                       "QWidget::setAttribute(WidgetAttribute, bool): "
                       "QWidgetPrivate::high_attributes[] too small to contain all attributes in WidgetAttribute");
@@ -11827,6 +11859,9 @@ QString QWidget::whatsThis() const
 void QWidget::setAccessibleName(const QString &name)
 {
     Q_D(QWidget);
+    if (d->accessibleName == name)
+        return;
+
     d->accessibleName = name;
     QAccessibleEvent event(this, QAccessible::NameChanged);
     QAccessible::updateAccessibility(&event);
@@ -11857,6 +11892,9 @@ QString QWidget::accessibleName() const
 void QWidget::setAccessibleDescription(const QString &description)
 {
     Q_D(QWidget);
+    if (d->accessibleDescription == description)
+        return;
+
     d->accessibleDescription = description;
     QAccessibleEvent event(this, QAccessible::DescriptionChanged);
     QAccessible::updateAccessibility(&event);
@@ -11867,6 +11905,35 @@ QString QWidget::accessibleDescription() const
     Q_D(const QWidget);
     return d->accessibleDescription;
 }
+
+/*!
+  \property QWidget::accessibleIdentifier
+
+  \brief the widget's identifier as seen by assistive technologies
+
+  If set, the accessible identifier of a widget can be used by assistive
+  technologies in order to identify a specific widget, e.g. in automated
+  tests.
+
+  \since 6.9
+*/
+void QWidget::setAccessibleIdentifier(const QString &identifier)
+{
+    Q_D(QWidget);
+    if (d->accessibleIdentifier == identifier)
+        return;
+
+    d->accessibleIdentifier = identifier;
+    QAccessibleEvent event(this, QAccessible::IdentifierChanged);
+    QAccessible::updateAccessibility(&event);
+}
+
+QString QWidget::accessibleIdentifier() const
+{
+    Q_D(const QWidget);
+    return d->accessibleIdentifier;
+}
+
 #endif // QT_CONFIG(accessibility)
 
 #ifndef QT_NO_SHORTCUT
@@ -12722,7 +12789,6 @@ QPoint QWidget::mapFromGlobal(const QPoint &pos) const
    return mapFromGlobal(QPointF(pos)).toPoint();
 }
 
-QWidget *qt_pressGrab = nullptr;
 QWidget *qt_mouseGrb = nullptr;
 static bool mouseGrabWithCursor = false;
 static QWidget *keyboardGrb = nullptr;
@@ -12757,7 +12823,6 @@ static void grabMouseForWidget(QWidget *widget)
     }
 
     qt_mouseGrb = widget;
-    qt_pressGrab = nullptr;
 }
 
 static void releaseMouseGrabOfWidget(QWidget *widget)
@@ -12918,9 +12983,7 @@ void QWidget::releaseKeyboard()
 */
 QWidget *QWidget::mouseGrabber()
 {
-    if (qt_mouseGrb)
-        return qt_mouseGrb;
-    return qt_pressGrab;
+    return qt_mouseGrb;
 }
 
 /*!

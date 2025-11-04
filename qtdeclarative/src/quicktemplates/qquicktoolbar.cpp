@@ -3,6 +3,7 @@
 
 #include "qquicktoolbar_p.h"
 #include "qquickpane_p_p.h"
+#include "qquickapplicationwindow_p.h"
 
 QT_BEGIN_NAMESPACE
 
@@ -68,6 +69,8 @@ class QQuickToolBarPrivate : public QQuickPanePrivate
 public:
     QPalette defaultPalette() const override { return QQuickTheme::palette(QQuickTheme::ToolBar); }
 
+    bool handlePress(const QPointF &point, ulong timestamp) override;
+
     QQuickToolBar::Position position = QQuickToolBar::Header;
 };
 
@@ -119,6 +122,18 @@ QAccessible::Role QQuickToolBar::accessibleRole() const
     return QAccessible::ToolBar;
 }
 #endif
+
+bool QQuickToolBarPrivate::handlePress(const QPointF &point, ulong timestamp)
+{
+    if (position == QQuickToolBar::Header && window && parent == window
+        && window->flags() & (Qt::ExpandedClientAreaHint | Qt::NoTitleBarBackgroundHint)
+        && qobject_cast<QQuickApplicationWindow*>(window)) {
+        if (window->startSystemMove())
+            return true;
+    }
+
+    return QQuickPanePrivate::handlePress(point, timestamp);
+}
 
 QT_END_NAMESPACE
 

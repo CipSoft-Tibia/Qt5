@@ -1,5 +1,6 @@
 // Copyright (C) 2017 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
+// Qt-Security score:critical reason:authorization-protocol
 
 #include <qabstractoauth.h>
 #include <qabstractoauthreplyhandler.h>
@@ -18,8 +19,6 @@
 
 #include <QtCore/qrandom.h>
 #include <QtCore/private/qlocking_p.h>
-
-#include <utility>
 
 QT_BEGIN_NAMESPACE
 
@@ -103,7 +102,17 @@ QT_BEGIN_NAMESPACE
     has not verified the supplied callback URI in the request. This
     usually happens when the provided callback does not match with
     the callback supplied during client registration.
+
+    \value [since 6.9] ClientError          An error that is attributable
+    to the client application (e.g. missing configuration or attempting a
+    request in a state where it's not allowed). Currently used by
+    \l {QOAuth2DeviceAuthorizationFlow}.
+
+    \value [since 6.9] ExpiredError         A token has expired.
+    Currently used by \l {QOAuth2DeviceAuthorizationFlow}.
 */
+
+// ### Qt 7 remove ContentType when removing support for HTTP methods (QTBUG-124329)
 
 /*!
     \enum QAbstractOAuth::ContentType
@@ -171,6 +180,9 @@ QT_BEGIN_NAMESPACE
     \sa QAbstractOAuth2::error()
     \sa QAbstractOAuthReplyHandler::tokenRequestErrorOccurred()
 */
+
+// ### Qt 7 remove the support for separate HTTP methods (head(), get(), post(), put(),
+// deleteResource()), see QTBUG-124329
 
 /*!
     \fn QNetworkReply *QAbstractOAuth::head(const QUrl &url, const QVariantMap &parameters)
@@ -323,6 +335,7 @@ QByteArray QAbstractOAuthPrivate::convertParameters(const QVariantMap &parameter
     return data;
 }
 
+// ### Qt 7 remove when removing HTTP method support (QTBUG-124329)
 void QAbstractOAuthPrivate::addContentTypeHeaders(QNetworkRequest *request)
 {
     Q_ASSERT(request);
@@ -513,6 +526,8 @@ void QAbstractOAuth::setReplyHandler(QAbstractOAuthReplyHandler *handler)
     d->replyHandler = handler;
 }
 
+// ### Qt 7 remove prepareRequest when removing HTTP method support (QTBUG-124329)
+
 /*!
     \fn QAbstractOAuth::prepareRequest(QNetworkRequest *request, const QByteArray &verb, const QByteArray &body)
     \since 5.13
@@ -554,6 +569,7 @@ void QAbstractOAuth::setModifyParametersFunction(
 */
 QAbstractOAuth::ContentType QAbstractOAuth::contentType() const
 {
+    // ### Qt 7 remove this function when removing HTTP method support (QTBUG-124329)
     Q_D(const QAbstractOAuth);
     return d->contentType;
 }
@@ -563,6 +579,7 @@ QAbstractOAuth::ContentType QAbstractOAuth::contentType() const
 */
 void QAbstractOAuth::setContentType(QAbstractOAuth::ContentType contentType)
 {
+    // ### Qt 7 remove this function when removing HTTP method support (QTBUG-124329)
     Q_D(QAbstractOAuth);
     if (d->contentType != contentType) {
         d->contentType = contentType;

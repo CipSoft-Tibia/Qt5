@@ -41,7 +41,7 @@ private slots:
     void testActive();
 
 private:
-    void loadTestData(const QByteArray &filename);
+    void loadTestData(const QString &filename);
     void updateProperty(int frame);
 
     BMRepeater *m_repeater = nullptr;
@@ -153,7 +153,7 @@ void tst_BMRepeater::testHidden()
 }
 
 
-void tst_BMRepeater::loadTestData(const QByteArray &filename)
+void tst_BMRepeater::loadTestData(const QString &filename)
 {
     if (m_repeater) {
         delete m_repeater;

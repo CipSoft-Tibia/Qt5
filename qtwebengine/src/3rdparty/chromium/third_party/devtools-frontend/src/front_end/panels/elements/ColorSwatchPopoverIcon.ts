@@ -72,7 +72,7 @@ export class BezierPopoverIcon {
     const model = InlineEditor.AnimationTimingModel.AnimationTimingModel.parse(this.swatch.bezierText()) ||
         InlineEditor.AnimationTimingModel.LINEAR_BEZIER;
     this.bezierEditor = new InlineEditor.BezierEditor.BezierEditor(model);
-    this.bezierEditor.addEventListener(InlineEditor.BezierEditor.Events.BezierChanged, this.boundBezierChanged);
+    this.bezierEditor.addEventListener(InlineEditor.BezierEditor.Events.BEZIER_CHANGED, this.boundBezierChanged);
     this.swatchPopoverHelper.show(this.bezierEditor, this.swatch.iconElement(), this.onPopoverHidden.bind(this));
     this.scrollerElement = this.swatch.enclosingNodeOrSelfWithClass('style-panes-wrapper');
     if (this.scrollerElement) {
@@ -103,7 +103,7 @@ export class BezierPopoverIcon {
     }
 
     if (this.bezierEditor) {
-      this.bezierEditor.removeEventListener(InlineEditor.BezierEditor.Events.BezierChanged, this.boundBezierChanged);
+      this.bezierEditor.removeEventListener(InlineEditor.BezierEditor.Events.BEZIER_CHANGED, this.boundBezierChanged);
     }
     this.bezierEditor = undefined;
 
@@ -115,11 +115,11 @@ export class BezierPopoverIcon {
 }
 
 export const enum ColorSwatchPopoverIconEvents {
-  ColorChanged = 'colorchanged',
+  COLOR_CHANGED = 'colorchanged',
 }
 
 export type ColorSwatchPopoverIconEventTypes = {
-  [ColorSwatchPopoverIconEvents.ColorChanged]: string,
+  [ColorSwatchPopoverIconEvents.COLOR_CHANGED]: string,
 };
 
 export class ColorSwatchPopoverIcon extends Common.ObjectWrapper.ObjectWrapper<ColorSwatchPopoverIconEventTypes> {
@@ -169,7 +169,7 @@ export class ColorSwatchPopoverIcon extends Common.ObjectWrapper.ObjectWrapper<C
       colors.push(value.value);
       colorNames.push(cssVariable);
     }
-    return {title: 'CSS Variables', mutable: false, matchUserFormat: true, colors: colors, colorNames: colorNames};
+    return {title: 'CSS Variables', mutable: false, matchUserFormat: true, colors, colorNames};
   }
 
   setContrastInfo(contrastInfo: ColorPicker.ContrastInfo.ContrastInfo): void {
@@ -192,17 +192,16 @@ export class ColorSwatchPopoverIcon extends Common.ObjectWrapper.ObjectWrapper<C
     }
 
     const color = this.swatch.getColor();
-    const format = this.swatch.getFormat();
-    if (!color || !format) {
+    if (!color) {
       return;
     }
 
     this.spectrum = new ColorPicker.Spectrum.Spectrum(this.contrastInfo);
-    this.spectrum.setColor(color, format);
+    this.spectrum.setColor(color);
     this.spectrum.addPalette(this.generateCSSVariablesPalette());
 
-    this.spectrum.addEventListener(ColorPicker.Spectrum.Events.SizeChanged, this.spectrumResized, this);
-    this.spectrum.addEventListener(ColorPicker.Spectrum.Events.ColorChanged, this.boundSpectrumChanged);
+    this.spectrum.addEventListener(ColorPicker.Spectrum.Events.SIZE_CHANGED, this.spectrumResized, this);
+    this.spectrum.addEventListener(ColorPicker.Spectrum.Events.COLOR_CHANGED, this.boundSpectrumChanged);
     this.swatchPopoverHelper.show(this.spectrum, this.swatch, this.onPopoverHidden.bind(this));
     this.scrollerElement = this.swatch.enclosingNodeOrSelfWithClass('style-panes-wrapper');
     if (this.scrollerElement) {
@@ -218,7 +217,7 @@ export class ColorSwatchPopoverIcon extends Common.ObjectWrapper.ObjectWrapper<C
     }
 
     UI.Context.Context.instance().setFlavor(ColorSwatchPopoverIcon, this);
-    Host.userMetrics.colorPickerOpenedFrom(Host.UserMetrics.ColorPickerOpenedFrom.StylesPane);
+    Host.userMetrics.colorPickerOpenedFrom(Host.UserMetrics.ColorPickerOpenedFrom.STYLES_TAB);
   }
 
   private spectrumResized(): void {
@@ -244,7 +243,7 @@ export class ColorSwatchPopoverIcon extends Common.ObjectWrapper.ObjectWrapper<C
 
     // `asString` somehow can return null.
     if (text) {
-      this.dispatchEventToListeners(ColorSwatchPopoverIconEvents.ColorChanged, text);
+      this.dispatchEventToListeners(ColorSwatchPopoverIconEvents.COLOR_CHANGED, text);
     }
   }
 
@@ -258,7 +257,7 @@ export class ColorSwatchPopoverIcon extends Common.ObjectWrapper.ObjectWrapper<C
     }
 
     if (this.spectrum) {
-      this.spectrum.removeEventListener(ColorPicker.Spectrum.Events.ColorChanged, this.boundSpectrumChanged);
+      this.spectrum.removeEventListener(ColorPicker.Spectrum.Events.COLOR_CHANGED, this.boundSpectrumChanged);
     }
     this.spectrum = undefined;
 
@@ -271,13 +270,21 @@ export class ColorSwatchPopoverIcon extends Common.ObjectWrapper.ObjectWrapper<C
   }
 }
 
-export class ShadowSwatchPopoverHelper {
+export const enum ShadowEvents {
+  SHADOW_CHANGED = 'shadowChanged',
+}
+
+export interface ShadowEventTypes {
+  [ShadowEvents.SHADOW_CHANGED]: InlineEditor.CSSShadowEditor.CSSShadowModel;
+}
+
+export class ShadowSwatchPopoverHelper extends Common.ObjectWrapper.ObjectWrapper<ShadowEventTypes> {
   private treeElement: StylePropertyTreeElement;
   private readonly swatchPopoverHelper: InlineEditor.SwatchPopoverHelper.SwatchPopoverHelper;
   private readonly shadowSwatch: InlineEditor.Swatches.CSSShadowSwatch;
   private iconElement: HTMLSpanElement;
   private readonly boundShadowChanged:
-      (event: Common.EventTarget.EventTargetEvent<InlineEditor.CSSShadowModel.CSSShadowModel>) => void;
+      (event: Common.EventTarget.EventTargetEvent<InlineEditor.CSSShadowEditor.CSSShadowModel>) => void;
   private readonly boundOnScroll: (event: Event) => void;
   private cssShadowEditor?: InlineEditor.CSSShadowEditor.CSSShadowEditor;
   private scrollerElement?: Element;
@@ -285,6 +292,7 @@ export class ShadowSwatchPopoverHelper {
   constructor(
       treeElement: StylePropertyTreeElement, swatchPopoverHelper: InlineEditor.SwatchPopoverHelper.SwatchPopoverHelper,
       shadowSwatch: InlineEditor.Swatches.CSSShadowSwatch) {
+    super();
     this.treeElement = treeElement;
     this.swatchPopoverHelper = swatchPopoverHelper;
     this.shadowSwatch = shadowSwatch;
@@ -311,7 +319,7 @@ export class ShadowSwatchPopoverHelper {
 
     this.cssShadowEditor = new InlineEditor.CSSShadowEditor.CSSShadowEditor();
     this.cssShadowEditor.setModel(this.shadowSwatch.model());
-    this.cssShadowEditor.addEventListener(InlineEditor.CSSShadowEditor.Events.ShadowChanged, this.boundShadowChanged);
+    this.cssShadowEditor.addEventListener(InlineEditor.CSSShadowEditor.Events.SHADOW_CHANGED, this.boundShadowChanged);
     this.swatchPopoverHelper.show(this.cssShadowEditor, this.iconElement, this.onPopoverHidden.bind(this));
     this.scrollerElement = this.iconElement.enclosingNodeOrSelfWithClass('style-panes-wrapper');
     if (this.scrollerElement) {
@@ -327,9 +335,8 @@ export class ShadowSwatchPopoverHelper {
     }
   }
 
-  private shadowChanged(event: Common.EventTarget.EventTargetEvent<InlineEditor.CSSShadowModel.CSSShadowModel>): void {
-    this.shadowSwatch.setCSSShadow(event.data);
-    void this.treeElement.applyStyleText(this.treeElement.renderedPropertyText(), false);
+  private shadowChanged(event: Common.EventTarget.EventTargetEvent<InlineEditor.CSSShadowEditor.CSSShadowModel>): void {
+    this.dispatchEventToListeners(ShadowEvents.SHADOW_CHANGED, event.data);
   }
 
   private onScroll(_event: Event): void {
@@ -343,7 +350,7 @@ export class ShadowSwatchPopoverHelper {
 
     if (this.cssShadowEditor) {
       this.cssShadowEditor.removeEventListener(
-          InlineEditor.CSSShadowEditor.Events.ShadowChanged, this.boundShadowChanged);
+          InlineEditor.CSSShadowEditor.Events.SHADOW_CHANGED, this.boundShadowChanged);
     }
     this.cssShadowEditor = undefined;
 
@@ -472,8 +479,8 @@ export class FontEditorSectionManager {
     this.parentPane = parentPane;
     const propertyValueMap = this.createPropertyValueMap();
     this.fontEditor = new InlineEditor.FontEditor.FontEditor(propertyValueMap);
-    this.fontEditor.addEventListener(InlineEditor.FontEditor.Events.FontChanged, this.boundFontChanged);
-    this.fontEditor.addEventListener(InlineEditor.FontEditor.Events.FontEditorResized, this.boundResized);
+    this.fontEditor.addEventListener(InlineEditor.FontEditor.Events.FONT_CHANGED, this.boundFontChanged);
+    this.fontEditor.addEventListener(InlineEditor.FontEditor.Events.FONT_EDITOR_RESIZED, this.boundResized);
     this.swatchPopoverHelper.show(this.fontEditor, iconElement, this.onPopoverHidden.bind(this));
     this.scrollerElement = iconElement.enclosingNodeOrSelfWithClass('style-panes-wrapper');
     if (this.scrollerElement) {
@@ -493,7 +500,7 @@ export class FontEditorSectionManager {
     }
     this.section.onpopulate();
     if (this.fontEditor) {
-      this.fontEditor.removeEventListener(InlineEditor.FontEditor.Events.FontChanged, this.boundFontChanged);
+      this.fontEditor.removeEventListener(InlineEditor.FontEditor.Events.FONT_CHANGED, this.boundFontChanged);
     }
     this.fontEditor = null;
     if (this.parentPane) {
@@ -502,8 +509,4 @@ export class FontEditorSectionManager {
     this.section.resetToolbars();
     this.section.onpopulate();
   }
-
-  // TODO(crbug.com/1172300) Ignored during the jsdoc to ts migration
-  // eslint-disable-next-line @typescript-eslint/naming-convention
-  private static readonly treeElementSymbol = Symbol('FontEditorSectionManager._treeElementSymbol');
 }

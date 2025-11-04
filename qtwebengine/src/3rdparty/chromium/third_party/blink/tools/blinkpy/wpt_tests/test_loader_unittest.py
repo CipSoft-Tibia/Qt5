@@ -2,17 +2,24 @@
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
+import contextlib
 import json
 import textwrap
 import unittest
+from unittest import mock
 
 from blinkpy.common import path_finder
 from blinkpy.common.host_mock import MockHost
-from blinkpy.wpt_tests.test_loader import TestLoader, wpt_url_to_blink_test
+from blinkpy.wpt_tests.test_loader import (
+    allow_any_subtests_on_timeout,
+    TestLoader,
+    wpt_url_to_blink_test,
+)
 
 path_finder.bootstrap_wpt_imports()
-from wptrunner import wptlogging
 from tools.manifest.manifest import load_and_update
+from wptrunner import wptlogging, wpttest
+from wptrunner.testloader import Subsuite
 
 
 class TestLoaderTestCase(unittest.TestCase):
@@ -49,7 +56,8 @@ class TestLoaderTestCase(unittest.TestCase):
             }))
         wptlogging.setup({}, {})
 
-    def _load_metadata(self, test_path: str, virtual_suite: str = ''):
+    @contextlib.contextmanager
+    def _make_loader(self, **kwargs):
         port = self.host.port_factory.get('test-linux-trusty')
         with self.fs.patch_builtins():
             manifest = load_and_update(
@@ -58,10 +66,20 @@ class TestLoaderTestCase(unittest.TestCase):
                 '/',
                 update=False,
                 parallel=False)
-            loader = TestLoader(port, {'/': manifest},
-                                ['testharness', 'reftest'],
-                                base_run_info={})
+            test_root = {
+                'url_base': manifest.url_base,
+                'tests_path': manifest.tests_root,
+                'metadata_path': manifest.tests_root,
+            }
+            yield TestLoader(port, {manifest: test_root},
+                             ['testharness', 'reftest'],
+                             base_run_info={},
+                             **kwargs)
+
+    def _load_metadata(self, test_path: str, virtual_suite: str = ''):
+        with self._make_loader() as loader:
             run_info = {**loader.base_run_info, 'virtual_suite': virtual_suite}
+            manifest, *_ = loader.manifests
             inherit_metadata, test_metadata = loader.load_metadata(
                 run_info, manifest, manifest.tests_root, test_path)
         self.assertEqual(inherit_metadata, [])
@@ -106,7 +124,7 @@ class TestLoaderTestCase(unittest.TestCase):
         test_file = self._load_metadata('reftest.html')
         test = test_file.get_test('reftest.html')
         self.assertEqual(test.expected, 'FAIL')
-        self.assertEqual(test.known_intermittent, ['ERROR'])
+        self.assertEqual(test.known_intermittent, ['PASS', 'ERROR'])
         self.assertFalse(test.disabled)
         self.assertIsNone(test.get_subtest('should not exist'))
 
@@ -158,14 +176,54 @@ class TestLoaderTestCase(unittest.TestCase):
             textwrap.dedent("""\
                 # results: [ Failure Skip ]
                 external/wpt/variant.html?foo=bar/abc [ Failure ]
-                external/wpt/variant.html?foo=baz [ Failure Skip ]
+                external/wpt/variant.html?foo=baz [ Skip ]
+                """))
+        self.fs.write_text_file(
+            self.finder.path_from_wpt_tests('variant_foo=baz-expected.txt'),
+            textwrap.dedent("""\
+                This is a testharness.js-based test.
+                [FAIL] subtest
+                Harness: the test ran to completion.
+                """))
+
+        test_file = self._load_metadata('variant.html')
+        test = test_file.get_test('variant.html?foo=bar/abc')
+        self.assertEqual(test.expected, 'OK')
+        self.assertEqual(test.known_intermittent,
+                         ['ERROR', 'PRECONDITION_FAILED'])
+
+        # Even though this test is annotated with `[ Skip ]`, the test loader
+        # should still translate its expectations in case it was explicitly
+        # specified on the command line, which overrides `[ Skip ]`. See
+        # https://crbug.com/329898284.
+        test = test_file.get_test('variant.html?foo=baz')
+        self.assertEqual(test.expected, 'OK')
+        self.assertEqual(test.known_intermittent, [])
+        subtest = test.get_subtest('subtest')
+        self.assertEqual(subtest.expected, 'FAIL')
+        self.assertEqual(subtest.known_intermittent, [])
+
+    def test_load_failure_with_baseline(self):
+        """A `[ Failure ]` line allows harness OK, even with a baseline."""
+        self.fs.write_text_file(
+            self.finder.path_from_web_tests('TestExpectations'),
+            textwrap.dedent("""\
+                # results: [ Failure ]
+                external/wpt/variant.html?foo=bar/abc [ Failure ]
+                """))
+        self.fs.write_text_file(
+            self.finder.path_from_wpt_tests(
+                'variant_foo=bar_abc-expected.txt'),
+            textwrap.dedent("""\
+                This is a testharness.js-based test.
+                Harness Error. harness_status.status = 3 , harness_status.message =
+                Harness: the test ran to completion.
                 """))
         test_file = self._load_metadata('variant.html')
         test = test_file.get_test('variant.html?foo=bar/abc')
         self.assertEqual(test.expected, 'OK')
         self.assertEqual(test.known_intermittent,
                          ['ERROR', 'PRECONDITION_FAILED'])
-        self.assertIsNone(test_file.get_test('variant.html?foo=baz'))
 
     def test_load_baseline_precondition_failed(self):
         self.fs.write_text_file(
@@ -231,8 +289,8 @@ class TestLoaderTestCase(unittest.TestCase):
                 """))
         test_file = self._load_metadata('variant.html')
         test = test_file.get_test('variant.html?foo=baz')
-        self.assertEqual(test.expected, 'TIMEOUT')
-        self.assertEqual(test.known_intermittent, [])
+        self.assertEqual(test.expected, 'OK')
+        self.assertEqual(test.known_intermittent, ['TIMEOUT'])
         self.assertFalse(test.disabled)
 
     def test_load_virtual_expectations(self):
@@ -263,14 +321,78 @@ class TestLoaderTestCase(unittest.TestCase):
 
         subtest = test.get_subtest('subtest1')
         self.assertEqual(subtest.expected, 'FAIL')
-        self.assertEqual(subtest.known_intermittent, ['TIMEOUT', 'NOTRUN'])
+        self.assertEqual(subtest.known_intermittent, [])
 
         subtest = test.get_subtest('subtest2')
         self.assertEqual(subtest.expected, 'PASS')
-        self.assertEqual(subtest.known_intermittent, ['TIMEOUT', 'NOTRUN'])
+        self.assertEqual(subtest.known_intermittent, [])
 
     def test_wpt_url_to_exp_test(self):
         self.assertEqual(wpt_url_to_blink_test('/css/test.html?a'),
                          'external/wpt/css/test.html?a')
         self.assertEqual(wpt_url_to_blink_test('/wpt_internal/test.html'),
                          'wpt_internal/test.html')
+
+    def test_allow_any_subtests_on_timeout(self):
+        test = mock.Mock()
+        test.expected_fail_message.return_value = 'expect this message'
+        test_result = wpttest.TestharnessResult('TIMEOUT',
+                                                message=None,
+                                                expected='TIMEOUT')
+        subtest_result = wpttest.TestharnessSubtestResult('subtest',
+                                                          'TIMEOUT',
+                                                          message=None,
+                                                          expected='FAIL')
+
+        test_result, (subtest_result, ) = allow_any_subtests_on_timeout(
+            test, (test_result, [subtest_result]))
+        self.assertEqual(subtest_result.expected, 'TIMEOUT')
+        self.assertEqual(subtest_result.known_intermittent, [])
+        self.assertEqual(subtest_result.message, 'expect this message')
+        test.expected_fail_message.assert_called_once_with('subtest')
+
+    def test_do_not_allow_any_subtests_on_completion(self):
+        test = mock.Mock()
+        test.expected_fail_message.return_value = (
+            'should not expect this message')
+        test_result = wpttest.TestharnessResult('OK',
+                                                message=None,
+                                                expected='TIMEOUT')
+        subtest_result = wpttest.TestharnessSubtestResult('subtest',
+                                                          'FAIL',
+                                                          message=None,
+                                                          expected='TIMEOUT')
+
+        test_result, (subtest_result, ) = allow_any_subtests_on_timeout(
+            test, (test_result, [subtest_result]))
+        self.assertEqual(subtest_result.expected, 'TIMEOUT')
+        self.assertEqual(subtest_result.known_intermittent, [])
+        self.assertIsNone(subtest_result.message)
+        test.expected_fail_message.assert_not_called()
+
+    def test_load_tests(self):
+        subsuites = {
+            '':
+            Subsuite('', config={}),
+            'fake-vts':
+            Subsuite('fake-vts',
+                     config={},
+                     include=['/variant.html?foo=baz',
+                              '/does-not-exist.html']),
+        }
+        with self._make_loader(subsuites=subsuites,
+                               include=['reftest.html']) as loader:
+            self.assertEqual(set(loader.tests), {'', 'fake-vts'})
+            self.assertEqual(set(loader.tests['']), {'reftest'})
+            self.assertEqual(set(loader.tests['fake-vts']), {'testharness'})
+            (base_test, ) = loader.tests['']['reftest']
+            (virtual_test, ) = loader.tests['fake-vts']['testharness']
+            self.assertEqual(base_test.id, '/reftest.html')
+            self.assertEqual(virtual_test.id, '/variant.html?foo=baz')
+            self.assertEqual(loader.disabled_tests, {'': {}, 'fake-vts': {}})
+
+    def test_load_no_tests(self):
+        subsuites = {'': Subsuite('', config={})}
+        with self._make_loader(subsuites=subsuites, include=[]) as loader:
+            self.assertEqual(set(loader.tests), {''})
+            self.assertEqual(loader.tests[''], {})

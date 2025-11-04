@@ -13,9 +13,10 @@
 #include "core/fxcodec/gif/cfx_gif.h"
 #include "core/fxcodec/gif/gif_decoder.h"
 #include "core/fxcodec/gif/lzw_decompressor.h"
+#include "core/fxcrt/compiler_specific.h"
 #include "core/fxcrt/retain_ptr.h"
+#include "core/fxcrt/span.h"
 #include "core/fxcrt/unowned_ptr.h"
-#include "third_party/base/containers/span.h"
 
 class CFX_CodecMemory;
 
@@ -32,8 +33,7 @@ class CFX_GifContext : public ProgressiveDecoderIface::Context {
                          int32_t top,
                          int32_t width,
                          int32_t height,
-                         int32_t pal_num,
-                         CFX_GifPalette* pal,
+                         pdfium::span<CFX_GifPalette> pal,
                          int32_t trans_index,
                          bool interlace);
   GifDecoder::Status ReadHeader();
@@ -60,7 +60,7 @@ class CFX_GifContext : public ProgressiveDecoderIface::Context {
   uint8_t img_pass_num_ = 0;
 
  protected:
-  bool ReadAllOrNone(uint8_t* dest, uint32_t size);
+  bool ReadAllOrNone(pdfium::span<uint8_t> dest);
   GifDecoder::Status ReadGifSignature();
   GifDecoder::Status ReadLogicalScreenDescriptor();
 

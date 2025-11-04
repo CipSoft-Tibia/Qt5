@@ -38,7 +38,7 @@ public:
 
     QRhiGraphicsPipeline::CompareOp depthFunc = QRhiGraphicsPipeline::LessOrEqual;
     QRhiGraphicsPipeline::CullMode cullMode = QRhiGraphicsPipeline::None;
-    QRhiGraphicsPipeline::TargetBlend targetBlend;
+    std::array<QRhiGraphicsPipeline::TargetBlend, 8> targetBlend;
     QRhiGraphicsPipeline::PolygonMode polygonMode = QRhiGraphicsPipeline::Fill;
     QRhiGraphicsPipeline::StencilOpState stencilOpFrontState {};
     quint32 stencilWriteMask = 0xFF;

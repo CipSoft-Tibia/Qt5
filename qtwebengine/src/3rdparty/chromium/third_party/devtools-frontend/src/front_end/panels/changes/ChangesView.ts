@@ -70,7 +70,7 @@ export class ChangesView extends UI.Widget.VBox {
   constructor() {
     super(true);
 
-    this.element.setAttribute('jslog', `${VisualLogging.panel().context('changes')}`);
+    this.element.setAttribute('jslog', `${VisualLogging.panel('changes').track({resize: true})}`);
 
     const splitWidget = new UI.SplitWidget.SplitWidget(true /* vertical */, false /* sidebar on left */);
     const mainWidget = new UI.Widget.Widget();
@@ -82,7 +82,8 @@ export class ChangesView extends UI.Widget.VBox {
 
     this.workspaceDiff = WorkspaceDiff.WorkspaceDiff.workspaceDiff();
     this.changesSidebar = new ChangesSidebar(this.workspaceDiff);
-    this.changesSidebar.addEventListener(Events.SelectedUISourceCodeChanged, this.selectedUISourceCodeChanged, this);
+    this.changesSidebar.addEventListener(
+        Events.SELECTED_UI_SOURCE_CODE_CHANGED, this.selectedUISourceCodeChanged, this);
     splitWidget.setSidebarWidget(this.changesSidebar);
 
     this.selectedUISourceCode = null;
@@ -94,6 +95,7 @@ export class ChangesView extends UI.Widget.VBox {
     this.diffView = this.diffContainer.appendChild(new DiffView.DiffView.DiffView());
 
     this.toolbar = new UI.Toolbar.Toolbar('changes-toolbar', mainWidget.element);
+    this.toolbar.element.setAttribute('jslog', `${VisualLogging.toolbar()}`);
     this.toolbar.appendToolbarItem(UI.Toolbar.Toolbar.createActionButtonForId('changes.revert'));
     this.diffStats = new UI.Toolbar.ToolbarText('');
     this.toolbar.appendToolbarItem(this.diffStats);

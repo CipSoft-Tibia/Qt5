@@ -16,6 +16,8 @@
 #include "qplaneshape_p.h"
 #include "qstaticphysxobjects_p.h"
 
+#include <QtGui/qquaternion.h>
+
 #define PHYSX_RELEASE(x)                                                                           \
     if (x != nullptr) {                                                                            \
         x->release();                                                                              \

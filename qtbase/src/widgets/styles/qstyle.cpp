@@ -7,13 +7,16 @@
 #include "qwidget.h"
 #include "qbitmap.h"
 #include "qpixmapcache.h"
+#include "qset.h"
 #include "qstyleoption.h"
 #include "private/qstyle_p.h"
+#include "private/qstylehelper_p.h"
 #include "private/qguiapplication_p.h"
 #include <qpa/qplatformtheme.h>
 #ifndef QT_NO_DEBUG
 #include "qdebug.h"
 #endif
+#include <QtCore/q20utility.h>
 
 #include <limits.h>
 #include <algorithm>
@@ -2232,7 +2235,7 @@ int QStyle::sliderPositionFromValue(int min, int max, int logicalValue, int span
     if (range > (uint)INT_MAX/4096) {
         double dpos = (double(p))/(double(range)/span);
         return int(dpos);
-    } else if (range > (uint)span) {
+    } else if (q20::cmp_greater(range, span)) {
         return (2 * p * span + range) / (2*range);
     } else {
         uint div = span / range;
@@ -2271,7 +2274,7 @@ int QStyle::sliderValueFromPosition(int min, int max, int pos, int span, bool up
 
     const qint64 range = qint64(max) - min;
 
-    if ((uint)span > range) {
+    if (q20::cmp_greater(span, range)) {
         const int tmp = (2 * range * pos + span) / (qint64(2) * span);
         return upsideDown ? max - tmp : tmp + min;
     } else {
@@ -2419,6 +2422,53 @@ bool QStylePrivate::useFullScreenForPopup()
 {
     auto theme = QGuiApplicationPrivate::platformTheme();
     return theme && theme->themeHint(QPlatformTheme::UseFullScreenForPopupMenu).toBool();
+}
+
+//
+// QCachedPainter
+QSet<QString> QCachedPainter::s_pixmapCacheKeys;
+QCachedPainter::QCachedPainter(QPainter *painter, const QString &cachePrefix,
+                               const QStyleOption *option, QSize size, QRect paintRect)
+    : m_painter(painter)
+    , m_option(option)
+    , m_paintRect(paintRect)
+{
+    const auto sz = size.isEmpty() ? option->rect.size() : size;
+    const qreal dpr = QStyleHelper::getDpr(painter);
+    m_pixmapName = QStyleHelper::uniqueName(cachePrefix, option, sz, dpr);
+    m_alreadyCached = QPixmapCache::find(m_pixmapName, &m_pixmap);
+    if (!m_alreadyCached) {
+        m_pixmap = styleCachePixmap(sz, dpr);
+        m_pixmapPainter = std::make_unique<QPainter>(&m_pixmap);
+        m_pixmapPainter->setRenderHints(painter->renderHints());
+        s_pixmapCacheKeys += m_pixmapName;
+    }
+}
+
+QCachedPainter::~QCachedPainter()
+{
+    finish();
+    if (!m_alreadyCached)
+        QPixmapCache::insert(m_pixmapName, m_pixmap);
+}
+
+void QCachedPainter::finish()
+{
+    m_pixmapPainter.reset();
+    if (!m_pixmapDrawn) {
+        m_pixmapDrawn = true;
+        if (m_paintRect.isNull())
+            m_painter->drawPixmap(m_option->rect.topLeft(), m_pixmap);
+        else
+            m_painter->drawPixmap(m_paintRect, m_pixmap);
+    }
+}
+
+void QCachedPainter::cleanupPixmapCache()
+{
+    for (const auto &key : s_pixmapCacheKeys)
+        QPixmapCache::remove(key);
+    s_pixmapCacheKeys.clear();
 }
 
 QT_END_NAMESPACE

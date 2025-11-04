@@ -2,6 +2,7 @@
 // Copyright (C) 2014 Ivan Komissarov <ABBAPOH@gmail.com>
 // Copyright (C) 2016 Intel Corporation.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qstorageinfo_p.h"
 
@@ -98,7 +99,7 @@ private:
 #elif defined(Q_OS_HURD)
     FILE *fp;
     QByteArray buffer;
-    mountinfoent mnt;
+    struct mntent mnt;
 #elif defined(Q_OS_HAIKU)
     BVolumeRoster m_volumeRoster;
 

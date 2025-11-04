@@ -15,8 +15,6 @@
 
 QT_BEGIN_NAMESPACE
 
-Q_DECLARE_LOGGING_CATEGORY(qLcEvdevTouch)
-
 QEvdevTouchManager::QEvdevTouchManager(const QString &key, const QString &specification, QObject *parent)
     : QObject(parent)
 {
@@ -25,7 +23,7 @@ QEvdevTouchManager::QEvdevTouchManager(const QString &key, const QString &specif
     if (qEnvironmentVariableIsSet("QT_QPA_EVDEV_DEBUG"))
         const_cast<QLoggingCategory &>(qLcEvdevTouch()).setEnabled(QtDebugMsg, true);
 
-    QString spec = QString::fromLocal8Bit(qgetenv("QT_QPA_EVDEV_TOUCHSCREEN_PARAMETERS"));
+    QString spec = qEnvironmentVariable("QT_QPA_EVDEV_TOUCHSCREEN_PARAMETERS");
 
     if (spec.isEmpty())
         spec = specification;

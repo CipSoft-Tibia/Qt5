@@ -9,11 +9,7 @@
 
 #include <private/qopcuaclient_p.h>
 
-#include <QtCore/qloggingcategory.h>
-
 QT_BEGIN_NAMESPACE
-
-Q_DECLARE_LOGGING_CATEGORY(QT_OPCUA)
 
 /*!
     \class QOpcUaClient
@@ -958,12 +954,20 @@ const QOpcUaAuthenticationInformation &QOpcUaClient::authenticationInformation()
 
     The values from \a connectionSettings are applied to any new connections after this point.
 
+    The \c open62541 plugin supports updating the session locale ids for the current connection.
+    All other values that are modified but do not support being updated while connected cause
+    a warning message and will be applied during the next call to \l connectToEndpoint().
+
     \sa connectionSettings()
  */
 void QOpcUaClient::setConnectionSettings(const QOpcUaConnectionSettings &connectionSettings)
 {
     Q_D(QOpcUaClient);
-    d->m_connectionSettings = connectionSettings;
+
+    if (connectionSettings != d->m_connectionSettings) {
+        d->m_connectionSettings = connectionSettings;
+       emit d->m_impl->connectionSettingsChanged(connectionSettings);
+    }
 }
 
 /*!

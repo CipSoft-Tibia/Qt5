@@ -25,6 +25,8 @@
 // OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+#include <utility>
+
 #include "dawn/native/CommandBuffer.h"
 
 #include "dawn/common/BitSetIterator.h"
@@ -43,6 +45,7 @@ CommandBufferBase::CommandBufferBase(CommandEncoder* encoder,
     : ApiObjectBase(encoder->GetDevice(), descriptor->label),
       mCommands(encoder->AcquireCommands()),
       mResourceUsages(encoder->AcquireResourceUsages()),
+      mIndirectDrawMetadata(encoder->AcquireIndirectDrawMetadata()),
       mEncoderLabel(encoder->GetLabel()) {
     GetObjectTrackingList()->Track(this);
 }
@@ -91,12 +94,18 @@ MaybeError CommandBufferBase::ValidateCanUseInSubmitNow() const {
 }
 
 void CommandBufferBase::DestroyImpl() {
+    // These metadatas hold raw_ptr to the commands, so they need to be cleared first.
+    mIndirectDrawMetadata.clear();
     FreeCommands(&mCommands);
     mResourceUsages = {};
 }
 
 const CommandBufferResourceUsage& CommandBufferBase::GetResourceUsages() const {
     return mResourceUsages;
+}
+
+const std::vector<IndirectDrawMetadata>& CommandBufferBase::GetIndirectDrawMetadata() {
+    return mIndirectDrawMetadata;
 }
 
 CommandIterator* CommandBufferBase::GetCommandIteratorForTesting() {
@@ -264,26 +273,32 @@ void LazyClearRenderPassAttachments(BeginRenderPassCmd* renderPass) {
 
 bool IsFullBufferOverwrittenInTextureToBufferCopy(const CopyTextureToBufferCmd* copy) {
     DAWN_ASSERT(copy != nullptr);
+    return IsFullBufferOverwrittenInTextureToBufferCopy(copy->source, copy->destination,
+                                                        copy->copySize);
+}
 
-    if (copy->destination.offset > 0) {
+bool IsFullBufferOverwrittenInTextureToBufferCopy(const TextureCopy& source,
+                                                  const BufferCopy& destination,
+                                                  const Extent3D& copySize) {
+    if (destination.offset > 0) {
         // The copy doesn't touch the start of the buffer.
         return false;
     }
 
-    const TextureBase* texture = copy->source.texture.Get();
-    const TexelBlockInfo& blockInfo = texture->GetFormat().GetAspectInfo(copy->source.aspect).block;
-    const uint64_t widthInBlocks = copy->copySize.width / blockInfo.width;
-    const uint64_t heightInBlocks = copy->copySize.height / blockInfo.height;
-    const bool multiSlice = copy->copySize.depthOrArrayLayers > 1;
+    const TextureBase* texture = source.texture.Get();
+    const TexelBlockInfo& blockInfo = texture->GetFormat().GetAspectInfo(source.aspect).block;
+    const uint64_t widthInBlocks = copySize.width / blockInfo.width;
+    const uint64_t heightInBlocks = copySize.height / blockInfo.height;
+    const bool multiSlice = copySize.depthOrArrayLayers > 1;
     const bool multiRow = multiSlice || heightInBlocks > 1;
 
-    if (multiSlice && copy->destination.rowsPerImage > heightInBlocks) {
+    if (multiSlice && destination.rowsPerImage > heightInBlocks) {
         // There are gaps between slices that aren't overwritten
         return false;
     }
 
     const uint64_t copyTextureDataSizePerRow = widthInBlocks * blockInfo.byteSize;
-    if (multiRow && copy->destination.bytesPerRow > copyTextureDataSizePerRow) {
+    if (multiRow && destination.bytesPerRow > copyTextureDataSizePerRow) {
         // There are gaps between rows that aren't overwritten
         return false;
     }
@@ -291,10 +306,10 @@ bool IsFullBufferOverwrittenInTextureToBufferCopy(const CopyTextureToBufferCmd* 
     // After the above checks, we're sure the copy has no gaps.
     // Now, compute the total number of bytes written.
     const uint64_t writtenBytes =
-        ComputeRequiredBytesInCopy(blockInfo, copy->copySize, copy->destination.bytesPerRow,
-                                   copy->destination.rowsPerImage)
+        ComputeRequiredBytesInCopy(blockInfo, copySize, destination.bytesPerRow,
+                                   destination.rowsPerImage)
             .AcquireSuccess();
-    if (!copy->destination.buffer->IsFullBufferRange(copy->destination.offset, writtenBytes)) {
+    if (!destination.buffer->IsFullBufferRange(destination.offset, writtenBytes)) {
         // The written bytes don't cover the whole buffer.
         return false;
     }

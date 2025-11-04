@@ -14,6 +14,7 @@
 #include "base/time/time.h"
 #include "content/browser/shared_storage/shared_storage_event_params.h"
 #include "content/common/content_export.h"
+#include "content/public/browser/frame_tree_node_id.h"
 #include "third_party/blink/public/mojom/origin_trial_feature/origin_trial_feature.mojom-shared.h"
 #include "third_party/blink/public/mojom/shared_storage/shared_storage.mojom.h"
 
@@ -27,6 +28,9 @@ class SharedStorageWorkletHost;
 // manager is bound to the StoragePartition.
 class CONTENT_EXPORT SharedStorageWorkletHostManager {
  public:
+  using WorkletHosts = std::map<SharedStorageWorkletHost*,
+                                std::unique_ptr<SharedStorageWorkletHost>>;
+
   SharedStorageWorkletHostManager();
   virtual ~SharedStorageWorkletHostManager();
 
@@ -43,6 +47,7 @@ class CONTENT_EXPORT SharedStorageWorkletHostManager {
       kDocumentAppend,
       kDocumentDelete,
       kDocumentClear,
+      kDocumentGet,
       kWorkletSet,
       kWorkletAppend,
       kWorkletDelete,
@@ -51,13 +56,17 @@ class CONTENT_EXPORT SharedStorageWorkletHostManager {
       kWorkletKeys,
       kWorkletEntries,
       kWorkletLength,
-      kWorkletRemainingBudget
+      kWorkletRemainingBudget,
+      kHeaderSet,
+      kHeaderAppend,
+      kHeaderDelete,
+      kHeaderClear,
     };
 
     virtual void OnSharedStorageAccessed(
         const base::Time& access_time,
         AccessType type,
-        const std::string& main_frame_id,
+        FrameTreeNodeId main_frame_id,
         const std::string& owner_origin,
         const SharedStorageEventParams& params) = 0;
 
@@ -71,16 +80,19 @@ class CONTENT_EXPORT SharedStorageWorkletHostManager {
       SharedStorageDocumentServiceImpl* document_service);
 
   void ExpireWorkletHostForDocumentService(
-      SharedStorageDocumentServiceImpl* document_service);
+      SharedStorageDocumentServiceImpl* document_service,
+      SharedStorageWorkletHost* worklet_host);
 
   void CreateWorkletHost(
       SharedStorageDocumentServiceImpl* document_service,
       const url::Origin& frame_origin,
+      const url::Origin& data_origin,
       const GURL& script_source_url,
+      network::mojom::CredentialsMode credentials_mode,
       const std::vector<blink::mojom::OriginTrialFeature>&
           origin_trial_features,
       mojo::PendingAssociatedReceiver<blink::mojom::SharedStorageWorkletHost>
-          worklet_host,
+          worklet_host_receiver,
       blink::mojom::SharedStorageDocumentService::CreateWorkletCallback
           callback);
 
@@ -90,12 +102,11 @@ class CONTENT_EXPORT SharedStorageWorkletHostManager {
 
   void NotifySharedStorageAccessed(
       SharedStorageObserverInterface::AccessType type,
-      const std::string& main_frame_id,
+      FrameTreeNodeId main_frame_id,
       const std::string& owner_origin,
       const SharedStorageEventParams& params);
 
-  const std::map<SharedStorageDocumentServiceImpl*,
-                 std::unique_ptr<SharedStorageWorkletHost>>&
+  std::map<SharedStorageDocumentServiceImpl*, WorkletHosts>&
   GetAttachedWorkletHostsForTesting() {
     return attached_shared_storage_worklet_hosts_;
   }
@@ -117,7 +128,9 @@ class CONTENT_EXPORT SharedStorageWorkletHostManager {
   virtual std::unique_ptr<SharedStorageWorkletHost> CreateWorkletHostHelper(
       SharedStorageDocumentServiceImpl& document_service,
       const url::Origin& frame_origin,
+      const url::Origin& data_origin,
       const GURL& script_source_url,
+      network::mojom::CredentialsMode credentials_mode,
       const std::vector<blink::mojom::OriginTrialFeature>&
           origin_trial_features,
       mojo::PendingAssociatedReceiver<blink::mojom::SharedStorageWorkletHost>
@@ -129,18 +142,16 @@ class CONTENT_EXPORT SharedStorageWorkletHostManager {
   // The hosts that are attached to the worklet's owner document. Those hosts
   // are created on demand when the `SharedStorageDocumentServiceImpl` requests
   // it. When the corresponding document is destructed (where it will call
-  // `OnDocumentServiceDestroyed`), those hosts will either be removed from this
-  // map entirely, or will be moved from this map to
+  // `OnDocumentServiceDestroyed`), its associated worklet hosts will either be
+  // destroyed, or will be moved from this map to
   // `keep_alive_shared_storage_worklet_hosts_`, depending on whether there are
   // pending operations.
-  std::map<SharedStorageDocumentServiceImpl*,
-           std::unique_ptr<SharedStorageWorkletHost>>
+  std::map<SharedStorageDocumentServiceImpl*, WorkletHosts>
       attached_shared_storage_worklet_hosts_;
 
   // The hosts that are detached from the worklet's owner document and have
   // entered keep-alive phase.
-  std::map<SharedStorageWorkletHost*, std::unique_ptr<SharedStorageWorkletHost>>
-      keep_alive_shared_storage_worklet_hosts_;
+  WorkletHosts keep_alive_shared_storage_worklet_hosts_;
 
   base::ObserverList<SharedStorageObserverInterface> observers_;
 };

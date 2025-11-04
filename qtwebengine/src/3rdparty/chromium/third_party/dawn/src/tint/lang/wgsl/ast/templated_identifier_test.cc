@@ -25,8 +25,6 @@
 // OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-#include "gtest/gtest-spi.h"
-
 #include "src/tint/lang/wgsl/ast/helper_test.h"
 
 namespace tint::ast {
@@ -35,6 +33,7 @@ namespace {
 using namespace tint::core::number_suffixes;  // NOLINT
 
 using TemplatedIdentifierTest = TestHelper;
+using TemplatedIdentifierDeathTest = TemplatedIdentifierTest;
 
 TEST_F(TemplatedIdentifierTest, Creation) {
     auto* i = Ident("ident", 1_a, Add("x", "y"), false, "x");
@@ -64,8 +63,8 @@ TEST_F(TemplatedIdentifierTest, Creation_WithSource) {
     EXPECT_EQ(src.range.begin.column, 2u);
 }
 
-TEST_F(TemplatedIdentifierTest, Assert_InvalidSymbol) {
-    EXPECT_FATAL_FAILURE(
+TEST_F(TemplatedIdentifierDeathTest, Assert_InvalidSymbol) {
+    EXPECT_DEATH_IF_SUPPORTED(
         {
             ProgramBuilder b;
             b.Expr("");
@@ -73,8 +72,8 @@ TEST_F(TemplatedIdentifierTest, Assert_InvalidSymbol) {
         "internal compiler error");
 }
 
-TEST_F(TemplatedIdentifierTest, Assert_DifferentGenerationID_Symbol) {
-    EXPECT_FATAL_FAILURE(
+TEST_F(TemplatedIdentifierDeathTest, Assert_DifferentGenerationID_Symbol) {
+    EXPECT_DEATH_IF_SUPPORTED(
         {
             ProgramBuilder b1;
             ProgramBuilder b2;
@@ -83,8 +82,8 @@ TEST_F(TemplatedIdentifierTest, Assert_DifferentGenerationID_Symbol) {
         "internal compiler error");
 }
 
-TEST_F(TemplatedIdentifierTest, Assert_DifferentGenerationID_TemplateArg) {
-    EXPECT_FATAL_FAILURE(
+TEST_F(TemplatedIdentifierDeathTest, Assert_DifferentGenerationID_TemplateArg) {
+    EXPECT_DEATH_IF_SUPPORTED(
         {
             ProgramBuilder b1;
             ProgramBuilder b2;

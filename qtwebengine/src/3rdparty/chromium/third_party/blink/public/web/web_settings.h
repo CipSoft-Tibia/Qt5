@@ -140,6 +140,8 @@ class WebSettings {
                                     UScriptCode = USCRIPT_COMMON) = 0;
   virtual void SetMathFontFamily(const WebString&,
                                  UScriptCode = USCRIPT_COMMON) = 0;
+  // Osaka font should be represented as "Osaka", not "Osaka-Mono" in the
+  // first argument.
   virtual void SetFixedFontFamily(const WebString&,
                                   UScriptCode = USCRIPT_COMMON) = 0;
   virtual void SetNetworkQuietTimeout(double timeout) = 0;
@@ -169,6 +171,7 @@ class WebSettings {
   virtual void SetMinimumFontSize(int) = 0;
   virtual void SetMinimumLogicalFontSize(int) = 0;
   virtual void SetHideScrollbars(bool) = 0;
+  virtual void SetPrefersDefaultScrollbarStyles(bool) = 0;
   virtual void SetPasswordEchoDurationInSeconds(double) = 0;
   virtual void SetPasswordEchoEnabled(bool) = 0;
   virtual void SetPluginsEnabled(bool) = 0;
@@ -253,12 +256,12 @@ class WebSettings {
   virtual void SetDoNotUpdateSelectionOnMutatingSelectionRange(bool) = 0;
   virtual void SetLowPriorityIframesThreshold(WebEffectiveConnectionType) = 0;
   virtual void SetLazyLoadEnabled(bool) = 0;
-  virtual void SetLazyFrameLoadingDistanceThresholdPxUnknown(int) = 0;
-  virtual void SetLazyFrameLoadingDistanceThresholdPxOffline(int) = 0;
-  virtual void SetLazyFrameLoadingDistanceThresholdPxSlow2G(int) = 0;
-  virtual void SetLazyFrameLoadingDistanceThresholdPx2G(int) = 0;
-  virtual void SetLazyFrameLoadingDistanceThresholdPx3G(int) = 0;
-  virtual void SetLazyFrameLoadingDistanceThresholdPx4G(int) = 0;
+  virtual void SetLazyLoadingFrameMarginPxUnknown(int) = 0;
+  virtual void SetLazyLoadingFrameMarginPxOffline(int) = 0;
+  virtual void SetLazyLoadingFrameMarginPxSlow2G(int) = 0;
+  virtual void SetLazyLoadingFrameMarginPx2G(int) = 0;
+  virtual void SetLazyLoadingFrameMarginPx3G(int) = 0;
+  virtual void SetLazyLoadingFrameMarginPx4G(int) = 0;
   virtual void SetLazyLoadingImageMarginPxUnknown(int) = 0;
   virtual void SetLazyLoadingImageMarginPxOffline(int) = 0;
   virtual void SetLazyLoadingImageMarginPxSlow2G(int) = 0;
@@ -266,15 +269,20 @@ class WebSettings {
   virtual void SetLazyLoadingImageMarginPx3G(int) = 0;
   virtual void SetLazyLoadingImageMarginPx4G(int) = 0;
   virtual void SetForceDarkModeEnabled(bool) = 0;
+  virtual void SetInForcedColors(bool) = 0;
+  virtual void SetIsForcedColorsDisabled(bool) = 0;
+  virtual void SetPreferredRootScrollbarColorScheme(
+      blink::mojom::PreferredColorScheme) = 0;
   virtual void SetPreferredColorScheme(blink::mojom::PreferredColorScheme) = 0;
   virtual void SetPreferredContrast(mojom::PreferredContrast) = 0;
   virtual void SetNavigationControls(NavigationControls) = 0;
   virtual void SetAriaModalPrunesAXTree(bool) = 0;
-  virtual void SetUseAXMenuList(bool) = 0;
   virtual void SetSelectionClipboardBufferAvailable(bool) = 0;
   virtual void SetAccessibilityIncludeSvgGElement(bool) = 0;
   virtual void SetWebXRImmersiveArAllowed(bool) = 0;
   virtual void SetModalContextMenu(bool) = 0;
+  virtual void SetRequireTransientActivationAndAuthorizationForSubAppsAPIs(
+      bool) = 0;
 
  protected:
   ~WebSettings() = default;

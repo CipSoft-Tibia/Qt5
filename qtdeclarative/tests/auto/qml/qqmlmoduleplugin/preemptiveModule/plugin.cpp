@@ -5,29 +5,26 @@
 #include <QtQml/qqml.h>
 #include <QDebug>
 
-class MyPluginType : public QObject
+class MyPluginTypeMyPluginPreemptive : public QObject
 {
     Q_OBJECT
-public:
-    MyPluginType(QObject *parent=nullptr) : QObject(parent) {}
 };
 
-
-class MyPlugin : public QQmlExtensionPlugin
+class MyPluginPreemptive : public QQmlExtensionPlugin
 {
     Q_OBJECT
     Q_PLUGIN_METADATA(IID QQmlExtensionInterface_iid)
 
 public:
-    MyPlugin() {}
-
     void registerTypes(const char *uri) override
     {
         Q_ASSERT(QLatin1String(uri) == "org.qtproject.PreemptiveModule");
-        qmlRegisterType<MyPluginType>("org.qtproject.PreemptiveModule", 1, 0, "MyPluginType");
+        qmlRegisterType<MyPluginTypeMyPluginPreemptive>("org.qtproject.PreemptiveModule", 1, 0,
+                                                        "MyPluginType");
 
         // Install into another namespace that should be protected
-        qmlRegisterType<MyPluginType>("org.qtproject.PreemptedStrictModule", 1, 0, "MyPluginType");
+        qmlRegisterType<MyPluginTypeMyPluginPreemptive>("org.qtproject.PreemptedStrictModule", 1, 0,
+                                                        "MyPluginType");
     }
 };
 

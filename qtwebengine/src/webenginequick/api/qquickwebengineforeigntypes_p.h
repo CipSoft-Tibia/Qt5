@@ -33,6 +33,7 @@
 #include <QtWebEngineCore/qwebenginefilesystemaccessrequest.h>
 #include <QtWebEngineCore/qwebenginewebauthuxrequest.h>
 #include <QtWebEngineCore/qwebenginepermission.h>
+#include <QtWebEngineCore/qwebengineclienthints.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -111,10 +112,10 @@ struct ForeignWebEngineScript
 {
     Q_GADGET
     QML_FOREIGN(QWebEngineScript)
+    QML_STRUCTURED_VALUE
     QML_NAMED_ELEMENT(webEngineScript)
     QML_ADDED_IN_VERSION(1, 1)
     QML_EXTRA_VERSION(2, 0)
-    QML_UNCREATABLE("")
 };
 
 struct ForeignWebEngineHistory
@@ -261,6 +262,15 @@ struct ForeignWebEnginePermission
     Q_GADGET
     QML_FOREIGN(QWebEnginePermission)
     QML_VALUE_TYPE(webEnginePermission)
+    QML_ADDED_IN_VERSION(6, 8)
+    QML_UNCREATABLE("")
+};
+
+struct ForeignWebEngineClientHints : public QObject
+{
+    Q_OBJECT
+    QML_FOREIGN(QWebEngineClientHints)
+    QML_NAMED_ELEMENT(WebEngineClientHints)
     QML_ADDED_IN_VERSION(6, 8)
     QML_UNCREATABLE("")
 };

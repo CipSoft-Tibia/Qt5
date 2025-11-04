@@ -59,10 +59,10 @@ constexpr std::chrono::seconds kGoodbyeRecordTtl{1};
 
 }  // namespace
 
-MdnsTracker::MdnsTracker(MdnsSender* sender,
+MdnsTracker::MdnsTracker(MdnsSender& sender,
                          TaskRunner& task_runner,
                          ClockNowFunctionPtr now_function,
-                         MdnsRandom* random_delay,
+                         MdnsRandom& random_delay,
                          TrackerType tracker_type)
     : sender_(sender),
       task_runner_(task_runner),
@@ -70,9 +70,7 @@ MdnsTracker::MdnsTracker(MdnsSender* sender,
       send_alarm_(now_function, task_runner),
       random_delay_(random_delay),
       tracker_type_(tracker_type) {
-  OSP_DCHECK(now_function_);
-  OSP_DCHECK(random_delay_);
-  OSP_DCHECK(sender_);
+  OSP_CHECK(now_function_);
 }
 
 MdnsTracker::~MdnsTracker() {
@@ -84,8 +82,8 @@ MdnsTracker::~MdnsTracker() {
 }
 
 bool MdnsTracker::AddAdjacentNode(const MdnsTracker* node) const {
-  OSP_DCHECK(node);
-  OSP_DCHECK(task_runner_.IsRunningOnTaskRunner());
+  OSP_CHECK(node);
+  OSP_CHECK(task_runner_.IsRunningOnTaskRunner());
 
   if (Contains(adjacent_nodes_, node)) {
     return false;
@@ -97,8 +95,8 @@ bool MdnsTracker::AddAdjacentNode(const MdnsTracker* node) const {
 }
 
 bool MdnsTracker::RemoveAdjacentNode(const MdnsTracker* node) const {
-  OSP_DCHECK(node);
-  OSP_DCHECK(task_runner_.IsRunningOnTaskRunner());
+  OSP_CHECK(node);
+  OSP_CHECK(task_runner_.IsRunningOnTaskRunner());
 
   auto it = std::find(adjacent_nodes_.begin(), adjacent_nodes_.end(), node);
   if (it == adjacent_nodes_.end()) {
@@ -117,7 +115,7 @@ void MdnsTracker::AddReverseAdjacency(const MdnsTracker* node) const {
 
 void MdnsTracker::RemovedReverseAdjacency(const MdnsTracker* node) const {
   auto it = std::find(adjacent_nodes_.begin(), adjacent_nodes_.end(), node);
-  OSP_DCHECK(it != adjacent_nodes_.end());
+  OSP_CHECK(it != adjacent_nodes_.end());
 
   adjacent_nodes_.erase(it);
 }
@@ -125,10 +123,10 @@ void MdnsTracker::RemovedReverseAdjacency(const MdnsTracker* node) const {
 MdnsRecordTracker::MdnsRecordTracker(
     MdnsRecord record,
     DnsType dns_type,
-    MdnsSender* sender,
+    MdnsSender& sender,
     TaskRunner& task_runner,
     ClockNowFunctionPtr now_function,
-    MdnsRandom* random_delay,
+    MdnsRandom& random_delay,
     RecordExpiredCallback record_expired_callback)
     : MdnsTracker(sender,
                   task_runner,
@@ -139,11 +137,11 @@ MdnsRecordTracker::MdnsRecordTracker(
       dns_type_(dns_type),
       start_time_(now_function_()),
       record_expired_callback_(std::move(record_expired_callback)) {
-  OSP_DCHECK(record_expired_callback_);
+  OSP_CHECK(record_expired_callback_);
 
   // RecordTrackers cannot be created for tracking NSEC types or ANY types.
-  OSP_DCHECK(dns_type_ != DnsType::kNSEC);
-  OSP_DCHECK(dns_type_ != DnsType::kANY);
+  OSP_CHECK(dns_type_ != DnsType::kNSEC);
+  OSP_CHECK(dns_type_ != DnsType::kANY);
 
   // Validate that, if the provided |record| is an NSEC record, then it provides
   // a negative response for |dns_type|.
@@ -157,7 +155,7 @@ MdnsRecordTracker::~MdnsRecordTracker() = default;
 
 ErrorOr<MdnsRecordTracker::UpdateType> MdnsRecordTracker::Update(
     const MdnsRecord& new_record) {
-  OSP_DCHECK(task_runner_.IsRunningOnTaskRunner());
+  OSP_CHECK(task_runner_.IsRunningOnTaskRunner());
   const bool has_same_rdata = record_.dns_type() == new_record.dns_type() &&
                               record_.rdata() == new_record.rdata();
   const bool new_is_negative_response = new_record.dns_type() == DnsType::kNSEC;
@@ -219,7 +217,7 @@ bool MdnsRecordTracker::RemoveAssociatedQuery(
 }
 
 void MdnsRecordTracker::ExpireSoon() {
-  OSP_DCHECK(task_runner_.IsRunningOnTaskRunner());
+  OSP_CHECK(task_runner_.IsRunningOnTaskRunner());
 
   record_ =
       MdnsRecord(record_.name(), record_.dns_type(), record_.dns_class(),
@@ -269,13 +267,13 @@ std::vector<MdnsRecord> MdnsRecordTracker::GetRecords() const {
 }
 
 Clock::time_point MdnsRecordTracker::GetNextSendTime() {
-  OSP_DCHECK(attempt_count_ < countof(kTtlFractions));
+  OSP_CHECK_LT(attempt_count_, countof(kTtlFractions));
 
   double ttl_fraction = kTtlFractions[attempt_count_++];
 
   // Do not add random variation to the expiration time (last fraction of TTL)
   if (attempt_count_ != countof(kTtlFractions)) {
-    ttl_fraction += random_delay_->GetRecordTtlVariation();
+    ttl_fraction += random_delay_.GetRecordTtlVariation();
   }
 
   const Clock::duration delay =
@@ -284,10 +282,10 @@ Clock::time_point MdnsRecordTracker::GetNextSendTime() {
 }
 
 MdnsQuestionTracker::MdnsQuestionTracker(MdnsQuestion question,
-                                         MdnsSender* sender,
+                                         MdnsSender& sender,
                                          TaskRunner& task_runner,
                                          ClockNowFunctionPtr now_function,
-                                         MdnsRandom* random_delay,
+                                         MdnsRandom& random_delay,
                                          const Config& config,
                                          QueryType query_type)
     : MdnsTracker(sender,
@@ -313,13 +311,13 @@ MdnsQuestionTracker::MdnsQuestionTracker(MdnsQuestion question,
     if (query_type_ == QueryType::kOneShot) {
       task_runner_.PostTask([this] { MdnsQuestionTracker::SendQuery(); });
     } else {
-      OSP_DCHECK(query_type_ == QueryType::kContinuous);
+      OSP_CHECK(query_type_ == QueryType::kContinuous);
       send_alarm_.ScheduleFromNow(
           [this]() {
             MdnsQuestionTracker::SendQuery();
             ScheduleFollowUpQuery();
           },
-          random_delay_->GetInitialQueryDelay());
+          random_delay_.GetInitialQueryDelay());
     }
   }
 }
@@ -339,12 +337,12 @@ bool MdnsQuestionTracker::RemoveAssociatedRecord(
 std::vector<MdnsRecord> MdnsQuestionTracker::GetRecords() const {
   std::vector<MdnsRecord> records;
   for (const MdnsTracker* tracker : adjacent_nodes()) {
-    OSP_DCHECK(tracker->tracker_type() == TrackerType::kRecordTracker);
+    OSP_CHECK(tracker->tracker_type() == TrackerType::kRecordTracker);
 
     // This call cannot result in an infinite loop because MdnsRecordTracker
     // instances only return a single record from this call.
     std::vector<MdnsRecord> node_records = tracker->GetRecords();
-    OSP_DCHECK(node_records.size() == 1);
+    OSP_CHECK_EQ(node_records.size(), 1);
 
     records.push_back(std::move(node_records[0]));
   }
@@ -369,7 +367,7 @@ bool MdnsQuestionTracker::SendQuery() const {
 
   // Send the message and additional known answer packets as needed.
   for (auto it = adjacent_nodes().begin(); it != adjacent_nodes().end();) {
-    OSP_DCHECK((*it)->tracker_type() == TrackerType::kRecordTracker);
+    OSP_CHECK((*it)->tracker_type() == TrackerType::kRecordTracker);
 
     const MdnsRecordTracker* record_tracker =
         static_cast<const MdnsRecordTracker*>(*it);
@@ -380,7 +378,7 @@ bool MdnsQuestionTracker::SendQuery() const {
 
     // A record tracker should only contain one record.
     std::vector<MdnsRecord> node_records = (*it)->GetRecords();
-    OSP_DCHECK(node_records.size() == 1);
+    OSP_CHECK_EQ(node_records.size(), 1);
     MdnsRecord node_record = std::move(node_records[0]);
 
     if (message.CanAddRecord(node_record)) {
@@ -395,11 +393,11 @@ bool MdnsQuestionTracker::SendQuery() const {
       it++;
     } else {
       message.set_truncated();
-      sender_->SendMulticast(message);
+      sender_.SendMulticast(message);
       message = MdnsMessage(CreateMessageId(), MessageType::Query);
     }
   }
-  sender_->SendMulticast(message);
+  sender_.SendMulticast(message);
   return true;
 }
 

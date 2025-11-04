@@ -31,10 +31,12 @@ Q_FORWARD_DECLARE_OBJC_CLASS(AVURLAsset);
 Q_FORWARD_DECLARE_OBJC_CLASS(AVAssetReader);
 Q_FORWARD_DECLARE_OBJC_CLASS(AVAssetReaderTrackOutput);
 Q_FORWARD_DECLARE_OBJC_CLASS(AVFResourceReaderDelegate);
+Q_FORWARD_DECLARE_OBJC_CLASS(AVAssetTrack);
+Q_FORWARD_DECLARE_OBJC_CLASS(NSError);
 
 QT_BEGIN_NAMESPACE
 
-class AVFAudioDecoder : public QPlatformAudioDecoder
+class AVFAudioDecoder final : public QPlatformAudioDecoder
 {
     Q_OBJECT
 
@@ -42,7 +44,7 @@ class AVFAudioDecoder : public QPlatformAudioDecoder
 
 public:
     AVFAudioDecoder(QAudioDecoder *parent);
-    virtual ~AVFAudioDecoder();
+    ~AVFAudioDecoder() override;
 
     QUrl source() const override;
     void setSource(const QUrl &fileName) override;
@@ -72,6 +74,7 @@ private:
 
     template<typename F>
     void invokeWithDecodingContext(std::weak_ptr<DecodingContext> weakContext, F &&f);
+    Q_INVOKABLE void initAssetReaderImpl(AVAssetTrack *track, NSError *error);
 
 private:
     QUrl m_source;

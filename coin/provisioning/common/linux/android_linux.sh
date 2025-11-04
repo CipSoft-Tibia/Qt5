@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Copyright (C) 2022 The Qt Company Ltd.
+# Copyright (C) 2025 The Qt Company Ltd.
 # SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 # This script install Android sdk and ndk.
@@ -24,14 +24,21 @@ basePath="http://ci-files01-hki.ci.qt.io/input/android"
 
 toolsVersion="2.1"
 toolsFile="commandlinetools-linux-6609375_latest.zip"
-ndkVersionLatest="r26b"
-ndkVersionDefault=$ndkVersionLatest
 sdkBuildToolsVersion="35.0.1"
 sdkApiLevel="android-35"
-
 toolsSha1="9172381ff070ee2a416723c1989770cf4b0d1076"
-ndkSha1Latest="fdf33d9f6c1b3f16e5459d53a82c7d2201edbcc4"
-ndkSha1Default=$ndkSha1Latest
+
+ndkVersionLatest="r27c"
+ndkSha1Latest="090e8083a715fdb1a3e402d0763c388abb03fb4e"
+
+# Non-latest (but still supported by the qt/qt5 branch) NDKs are installed for nightly targets in:
+# coin/platform_configs/nightly_android.yaml
+
+ndkVersionNightly1=$ndkVersionLatest  # Same version = skip NDK install for nightly
+ndkSha1Nightly1=$ndkSha1Latest
+
+ndkVersionNightly2=$ndkVersionLatest
+ndkSha1Nightly2=$ndkSha1Latest
 
 # Android Automotive max SDK level image
 sdkApiLevelAutomotiveMax="android-34"
@@ -69,17 +76,22 @@ function InstallNdk() {
     androidNdkRoot="${targetFolder}/${zipBase}"
 }
 
-InstallNdk $ndkVersionDefault $ndkSha1Default
-SetEnvVar "ANDROID_NDK_ROOT_DEFAULT" "$androidNdkRoot"
-
-if [ "$ndkVersionDefault" != "$ndkVersionLatest" ]; then
-    InstallNdk $ndkVersionLatest $ndkSha1Latest
-fi
+InstallNdk $ndkVersionLatest $ndkSha1Latest
 SetEnvVar "ANDROID_NDK_ROOT_LATEST" "$androidNdkRoot"
 
+if [ "$ndkVersionNightly1" != "$ndkVersionLatest" ]; then
+    InstallNdk $ndkVersionNightly1 $ndkSha1Nightly1
+    SetEnvVar "ANDROID_NDK_ROOT_NIGHTLY1" "$androidNdkRoot"
+fi
+
+if [ "$ndkVersionNightly2" != "$ndkVersionLatest" ]; then
+    InstallNdk $ndkVersionNightly2 $ndkSha1Nightly2
+    SetEnvVar "ANDROID_NDK_ROOT_NIGHTLY2" "$androidNdkRoot"
+fi
+
 # To be used by vcpkg
-SetEnvVar "ANDROID_NDK_HOME" "$targetFolder/android-ndk-$ndkVersionDefault"
-export ANDROID_NDK_HOME="$targetFolder/android-ndk-$ndkVersionDefault"
+SetEnvVar "ANDROID_NDK_HOME" "$targetFolder/android-ndk-$ndkVersionLatest"
+export ANDROID_NDK_HOME="$targetFolder/android-ndk-$ndkVersionLatest"
 
 echo "Changing ownership of Android files."
 if uname -a |grep -q "el7"; then
@@ -172,6 +184,21 @@ echo "Unzipping the Android 15 to $maxVersionDestination"
 sudo unzip -o -q "$maxVersionFilePath" -d "$maxVersionDestination"
 rm "$maxVersionFilePath"
 
+echo "Download and unzip Android 16 System Image for insignificant"
+insignificantMaxVersionFileName="x86_64-36_r06.zip"
+insignificantMaxVersionDestination="$sdkTargetFolder/system-images/android-36/google_apis/"
+insignificantMaxVersionFilePath="$insignificantMaxVersionDestination/$insignificantMaxVersionFileName"
+insignificantMaxVersionCiUrl="$basePath/system-images/google_apis/$insignificantMaxVersionFileName"
+insignificantMaxVersionUrl="https://dl.google.com/android/repository/sys-img/google_apis/$insignificantMaxVersionFileName"
+insignificantMaxVersionSha1="a9b0b4a0488e0c6c380f5485507950f011388511"
+
+mkdir -p "$insignificantMaxVersionDestination"
+DownloadURL "$insignificantMaxVersionCiUrl" "$insignificantMaxVersionUrl" "$insignificantMaxVersionSha1" "$insignificantMaxVersionFilePath"
+
+echo "Unzipping the Android 16 insignicant to $insignificantMaxVersionDestination"
+sudo unzip -o -q "$insignificantMaxVersionFilePath" -d "$insignificantMaxVersionDestination"
+rm "$insignificantMaxVersionFilePath"
+
 echo "Checking the contents of Android SDK again..."
 ls -l "$sdkTargetFolder"
 
@@ -180,6 +207,9 @@ echo "no" | ./avdmanager create avd -n emulator_x86_api_28 -c 2048M -f \
 
 echo "no" | ./avdmanager create avd -n emulator_x86_64_api_35 -c 2048M -f \
     -k "system-images;android-35;google_apis;x86_64"
+
+echo "no" | ./avdmanager create avd -n emulator_x86_64_api_36 -c 2048M -f \
+    -k "system-images;android-36;google_apis;x86_64"
 
 echo "Install maximum supported SDK level image for Android Automotive $sdkApiLevelAutomotiveMax"
 DownloadURL "$androidAutomotiveMaxUrl" "$androidAutomotiveMaxUrl" "$androidAutomotiveMaxSha" \
@@ -210,7 +240,7 @@ cp -r "${scripts_dir_name}/android/gradle_project" /tmp/gradle_project
 cd /tmp/gradle_project
 # Get Gradle files from qtbase
 qtbaseGradleUrl="https://code.qt.io/cgit/qt/qtbase.git/plain/src/3rdparty/gradle"
-commit_sha="8436455e2740000a817e0b8154e13f47e6abb68c"
+commit_sha="e5f79573fe2f21cf7bea8f63386f39bb18b351f0"
 curl "$qtbaseGradleUrl/gradle.properties?h=$commit_sha" > gradle.properties
 curl "$qtbaseGradleUrl/gradlew?h=$commit_sha" > gradlew
 curl "$qtbaseGradleUrl/gradlew.bat?h=$commit_sha" > gradlew.bat

@@ -274,8 +274,10 @@ struct TensorEvaluator<const TensorVolumePatchOp<Planes, Rows, Cols, ArgType>, D
           m_colPaddingLeft = dx / 2;
           break;
         }
-        default:
+        default: {
           eigen_assert(false && "unexpected padding");
+          return;
+        }
       }
     }
     eigen_assert(m_outputRows > 0);
@@ -364,6 +366,13 @@ struct TensorEvaluator<const TensorVolumePatchOp<Planes, Rows, Cols, ArgType>, D
     m_impl.evalSubExprsIfNeeded(NULL);
     return true;
   }
+
+#ifdef EIGEN_USE_THREADS
+  template <typename EvalSubExprsCallback>
+  EIGEN_STRONG_INLINE void evalSubExprsIfNeededAsync(EvaluatorPointerType /*data*/, EvalSubExprsCallback done) {
+    m_impl.evalSubExprsIfNeededAsync(nullptr, [done](bool) { done(true); });
+  }
+#endif  // EIGEN_USE_THREADS
 
   EIGEN_STRONG_INLINE void cleanup() { m_impl.cleanup(); }
 

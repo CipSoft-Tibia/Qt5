@@ -41,16 +41,27 @@ class Module;
 namespace tint::core::ir {
 
 /// Enumerator of optional IR capabilities.
-enum class Capability {
+enum class Capability : uint8_t {
+    /// Allows 8-bit integer types.
+    kAllow8BitIntegers,
     /// Allows access instructions to create pointers to vector elements.
     kAllowVectorElementPointer,
+    /// Allows ref types
+    kAllowRefTypes,
+    /// Allows module scoped lets
+    kAllowModuleScopeLets,
+    /// Allows pointers inside structures.
+    kAllowPointersInStructures,
 };
+
+/// Capabilities is a set of Capability
+using Capabilities = EnumSet<Capability>;
 
 /// Validates that a given IR module is correctly formed
 /// @param mod the module to validate
 /// @param capabilities the optional capabilities that are allowed
 /// @returns success or failure
-Result<SuccessType> Validate(const Module& mod, EnumSet<Capability> capabilities = {});
+Result<SuccessType> Validate(const Module& mod, Capabilities capabilities = {});
 
 /// Validates the module @p ir and dumps its contents if required by the build configuration.
 /// @param ir the module to transform
@@ -59,7 +70,7 @@ Result<SuccessType> Validate(const Module& mod, EnumSet<Capability> capabilities
 /// @returns success or failure
 Result<SuccessType> ValidateAndDumpIfNeeded(const Module& ir,
                                             const char* msg,
-                                            EnumSet<Capability> capabilities = {});
+                                            Capabilities capabilities = {});
 
 }  // namespace tint::core::ir
 

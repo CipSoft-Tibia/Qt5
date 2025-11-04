@@ -1,5 +1,6 @@
 // Copyright (C) 2016 Intel Corporation.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:data-parser
 
 #include "qurl.h"
 #include "private/qstringconverter_p.h"
@@ -255,7 +256,9 @@ struct QUrlUtf8Traits : public QUtf8BaseTraitsNoAscii
 static bool encodedUtf8ToUtf16(QString &result, char16_t *&output, const char16_t *begin,
                                const char16_t *&input, const char16_t *end, char16_t decoded)
 {
-    char32_t ucs4 = 0, *dst = &ucs4;
+    char32_t buffer[1];
+    char32_t &ucs4 = buffer[0];
+    char32_t *dst = buffer;
     const char16_t *src = input + 3;// skip the %XX that yielded \a decoded
     int charsNeeded = QUtf8Functions::fromUtf8<QUrlUtf8Traits>(decoded, dst, src, end);
     if (charsNeeded < 0)

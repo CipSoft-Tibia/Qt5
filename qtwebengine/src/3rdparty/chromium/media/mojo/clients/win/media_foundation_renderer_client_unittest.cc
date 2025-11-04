@@ -33,7 +33,7 @@ class FakeMojomRenderer : public mojom::Renderer {
   // mojom::Renderer implementations.
   void Initialize(
       mojo::PendingAssociatedRemote<mojom::RendererClient>,
-      absl::optional<std::vector<mojo::PendingRemote<mojom::DemuxerStream>>>,
+      std::optional<std::vector<mojo::PendingRemote<mojom::DemuxerStream>>>,
       mojom::MediaUrlParamsPtr,
       InitializeCallback cb) override {
     std::move(cb).Run(true);
@@ -45,7 +45,11 @@ class FakeMojomRenderer : public mojom::Renderer {
   MOCK_METHOD(void, SetVolume, (float), (override));
   MOCK_METHOD(void,
               SetCdm,
-              (const absl::optional<base::UnguessableToken>&, SetCdmCallback),
+              (const std::optional<base::UnguessableToken>&, SetCdmCallback),
+              (override));
+  MOCK_METHOD(void,
+              SetLatencyHint,
+              (std::optional<base::TimeDelta>),
               (override));
 };
 
@@ -167,7 +171,7 @@ class MockRendererClientMF : public RendererClient {
               (override));
   MOCK_METHOD(void, OnVideoNaturalSizeChange, (const gfx::Size&), (override));
   MOCK_METHOD(void, OnVideoOpacityChange, (bool), (override));
-  MOCK_METHOD(void, OnVideoFrameRateChange, (absl::optional<int>), (override));
+  MOCK_METHOD(void, OnVideoFrameRateChange, (std::optional<int>), (override));
 };
 
 class MediaFoundationRendererClientTest
@@ -201,8 +205,8 @@ class MediaFoundationRendererClientTest
         /*video_overlay_factory*/ nullptr,
         /*video_renderer_sink*/ nullptr, std::move(renderer_remote));
 
-    frame_server_mailbox_ = gpu::Mailbox::GenerateForSharedImage();
-    dcomp_mailbox_ = gpu::Mailbox::GenerateForSharedImage();
+    frame_server_mailbox_ = gpu::Mailbox::Generate();
+    dcomp_mailbox_ = gpu::Mailbox::Generate();
     dcomp_texture_wrapper_ = std::make_unique<FakeDCOMPTextureWrapper>(
         frame_server_mailbox_, dcomp_mailbox_);
 
@@ -235,7 +239,7 @@ class MediaFoundationRendererClientTest
       dcomp_on_state_change_cb_ = cb;
     } else {
       // Unexpected
-      NOTREACHED();
+      NOTREACHED_IN_MIGRATION();
     }
 
     return std::make_unique<MockOverlayStateObserverSubscription>();

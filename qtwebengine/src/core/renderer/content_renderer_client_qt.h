@@ -1,5 +1,7 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
+
 #ifndef CONTENT_RENDERER_CLIENT_QT_H
 #define CONTENT_RENDERER_CLIENT_QT_H
 
@@ -69,7 +71,7 @@ public:
     uint64_t VisitedLinkHash(std::string_view canonical_url) override;
     bool IsLinkVisited(uint64_t linkHash) override;
     std::unique_ptr<blink::WebPrescientNetworking> CreatePrescientNetworking(content::RenderFrame *render_frame) override;
-    void GetSupportedKeySystems(media::GetSupportedKeySystemsCB cb) override;
+    std::unique_ptr<media::KeySystemSupportRegistration> GetSupportedKeySystems(content::RenderFrame *render_frame, media::GetSupportedKeySystemsCB cb) override;
     void RunScriptsAtDocumentStart(content::RenderFrame *render_frame) override;
     void RunScriptsAtDocumentEnd(content::RenderFrame *render_frame) override;
     void RunScriptsAtDocumentIdle(content::RenderFrame *render_frame) override;
@@ -84,7 +86,8 @@ public:
 
     void WillSendRequest(blink::WebLocalFrame *frame,
                          ui::PageTransition transition_type,
-                         const blink::WebURL &url,
+                         const blink::WebURL &upstream_url,
+                         const blink::WebURL &target_url,
                          const net::SiteForCookies &site_for_cookies,
                          const url::Origin *initiator_origin,
                          GURL *new_url) override;

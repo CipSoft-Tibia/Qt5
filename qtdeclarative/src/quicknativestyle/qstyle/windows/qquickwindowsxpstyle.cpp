@@ -948,11 +948,12 @@ bool QWindowsXPStylePrivate::drawBackgroundThruNativeBuffer(XPThemeData &themeDa
             rotMatrix.rotate(themeData.rotate);
             imgCopy = imgCopy.transformed(rotMatrix);
         }
-        if (themeData.mirrorHorizontally || themeData.mirrorVertically) {
-            imgCopy = imgCopy.mirrored(themeData.mirrorHorizontally, themeData.mirrorVertically);
-        }
-        painter->drawImage(themeData.rect,
-                           imgCopy);
+        static constexpr Qt::Orientation none = Qt::Orientation(0);
+        const auto orientation = (themeData.mirrorHorizontally ? Qt::Horizontal : none)
+                               | (themeData.mirrorVertically ? Qt::Vertical : none);
+        if (orientation)
+            imgCopy.flip(orientation);
+        painter->drawImage(themeData.rect, imgCopy);
     }
 
     if (useRegion || addBorderContentClipping) {

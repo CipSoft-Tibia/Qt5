@@ -46,24 +46,27 @@ struct BindingPoint {
     uint32_t binding = 0;
 
     /// Reflect the fields of this class so that it can be used by tint::ForeachField()
-    TINT_REFLECT(group, binding);
+    TINT_REFLECT(BindingPoint, group, binding);
+
+    /// @returns the hash code of the BindingPoint
+    tint::HashCode HashCode() const { return tint::Hash(group, binding); }
 
     /// Equality operator
     /// @param rhs the BindingPoint to compare against
     /// @returns true if this BindingPoint is equal to `rhs`
-    inline bool operator==(const BindingPoint& rhs) const {
+    bool operator==(const BindingPoint& rhs) const {
         return group == rhs.group && binding == rhs.binding;
     }
 
     /// Inequality operator
     /// @param rhs the BindingPoint to compare against
     /// @returns true if this BindingPoint is not equal to `rhs`
-    inline bool operator!=(const BindingPoint& rhs) const { return !(*this == rhs); }
+    bool operator!=(const BindingPoint& rhs) const { return !(*this == rhs); }
 
     /// Less-than operator
     /// @param rhs the BindingPoint to compare against
     /// @returns true if this BindingPoint comes before @p rhs
-    inline bool operator<(const BindingPoint& rhs) const {
+    bool operator<(const BindingPoint& rhs) const {
         if (group < rhs.group) {
             return true;
         }
@@ -94,8 +97,9 @@ class hash<tint::BindingPoint> {
   public:
     /// @param binding_point the binding point to create a hash for
     /// @return the hash value
-    inline std::size_t operator()(const tint::BindingPoint& binding_point) const {
-        return tint::Hash(binding_point.group, binding_point.binding);
+    size_t operator()(const tint::BindingPoint& binding_point) const {
+        return (static_cast<size_t>(binding_point.group) << 16) |
+               static_cast<size_t>(binding_point.binding);
     }
 };
 

@@ -209,46 +209,26 @@ public:
 
     QVariant lighter(const QVariant &var, qreal factor) override
     {
-        QColor color = var.value<QColor>();
-        color = color.lighter(int(qRound(factor*100.)));
-        return QVariant::fromValue(color);
+        return QVariant::fromValue(
+                QQuickColorValueType(var.value<QColor>()).lighter(factor));
     }
 
     QVariant darker(const QVariant &var, qreal factor) override
     {
-        QColor color = var.value<QColor>();
-        color = color.darker(int(qRound(factor*100.)));
-        return QVariant::fromValue(color);
+        return QVariant::fromValue(
+                QQuickColorValueType(var.value<QColor>()).darker(factor));
     }
 
     QVariant alpha(const QVariant &var, qreal value) override
     {
-        QColor color = var.value<QColor>();
-        color.setAlphaF(value);
-        return QVariant::fromValue(color);
+        return QVariant::fromValue(
+                QQuickColorValueType(var.value<QColor>()).alpha(value));
     }
 
     QVariant tint(const QVariant &baseVar, const QVariant &tintVar) override
     {
-        QColor tintColor = tintVar.value<QColor>().toRgb();
-
-        int tintAlpha = tintColor.alpha();
-        if (tintAlpha == 0xFF) {
-            return tintVar;
-        } else if (tintAlpha == 0x00) {
-            return baseVar;
-        }
-
-        // tint the base color and return the final color
-        QColor baseColor = baseVar.value<QColor>().toRgb();
-        qreal a = tintColor.alphaF();
-        qreal inv_a = 1.0 - a;
-
-        qreal r = tintColor.redF() * a + baseColor.redF() * inv_a;
-        qreal g = tintColor.greenF() * a + baseColor.greenF() * inv_a;
-        qreal b = tintColor.blueF() * a + baseColor.blueF() * inv_a;
-
-        return QVariant::fromValue(QColor::fromRgbF(r, g, b, a + inv_a * baseColor.alphaF()));
+        return QVariant::fromValue(
+                QQuickColorValueType(baseVar.value<QColor>()).tint(tintVar.value<QColor>()));
     }
 };
 

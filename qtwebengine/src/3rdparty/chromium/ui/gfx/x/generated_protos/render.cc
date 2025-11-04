@@ -381,11 +381,8 @@ std::unique_ptr<Render::QueryPictFormatsReply> detail::ReadReply<
   auto& num_visuals = (*reply).num_visuals;
   uint32_t num_subpixel{};
   auto& formats = (*reply).formats;
-  size_t formats_len = formats.size();
   auto& screens = (*reply).screens;
-  size_t screens_len = screens.size();
   auto& subpixels = (*reply).subpixels;
-  size_t subpixels_len = subpixels.size();
 
   // response_type
   uint8_t response_type;
@@ -493,7 +490,6 @@ std::unique_ptr<Render::QueryPictFormatsReply> detail::ReadReply<
       uint32_t num_depths{};
       auto& fallback = screens_elem.fallback;
       auto& depths = screens_elem.depths;
-      size_t depths_len = depths.size();
 
       // num_depths
       Read(&num_depths, &buf);
@@ -509,7 +505,6 @@ std::unique_ptr<Render::QueryPictFormatsReply> detail::ReadReply<
           auto& depth = depths_elem.depth;
           uint16_t num_visuals{};
           auto& visuals = depths_elem.visuals;
-          size_t visuals_len = visuals.size();
 
           // depth
           Read(&depth, &buf);
@@ -604,7 +599,6 @@ std::unique_ptr<Render::QueryPictIndexValuesReply> detail::ReadReply<
   auto& sequence = (*reply).sequence;
   uint32_t num_values{};
   auto& values = (*reply).values;
-  size_t values_len = values.size();
 
   // response_type
   uint8_t response_type;
@@ -823,19 +817,19 @@ Future<void> Render::CreatePicture(
     const Picture& pid,
     const Drawable& drawable,
     const PictFormat& format,
-    const absl::optional<Repeat>& repeat,
-    const absl::optional<Picture>& alphamap,
-    const absl::optional<int32_t>& alphaxorigin,
-    const absl::optional<int32_t>& alphayorigin,
-    const absl::optional<int32_t>& clipxorigin,
-    const absl::optional<int32_t>& clipyorigin,
-    const absl::optional<Pixmap>& clipmask,
-    const absl::optional<uint32_t>& graphicsexposure,
-    const absl::optional<SubwindowMode>& subwindowmode,
-    const absl::optional<PolyEdge>& polyedge,
-    const absl::optional<PolyMode>& polymode,
-    const absl::optional<Atom>& dither,
-    const absl::optional<uint32_t>& componentalpha) {
+    const std::optional<Repeat>& repeat,
+    const std::optional<Picture>& alphamap,
+    const std::optional<int32_t>& alphaxorigin,
+    const std::optional<int32_t>& alphayorigin,
+    const std::optional<int32_t>& clipxorigin,
+    const std::optional<int32_t>& clipyorigin,
+    const std::optional<Pixmap>& clipmask,
+    const std::optional<uint32_t>& graphicsexposure,
+    const std::optional<SubwindowMode>& subwindowmode,
+    const std::optional<PolyEdge>& polyedge,
+    const std::optional<PolyMode>& polymode,
+    const std::optional<Atom>& dither,
+    const std::optional<uint32_t>& componentalpha) {
   return Render::CreatePicture(Render::CreatePictureRequest{
       pid, drawable, format, repeat, alphamap, alphaxorigin, alphayorigin,
       clipxorigin, clipyorigin, clipmask, graphicsexposure, subwindowmode,
@@ -995,19 +989,19 @@ Future<void> Render::ChangePicture(
 
 Future<void> Render::ChangePicture(
     const Picture& picture,
-    const absl::optional<Repeat>& repeat,
-    const absl::optional<Picture>& alphamap,
-    const absl::optional<int32_t>& alphaxorigin,
-    const absl::optional<int32_t>& alphayorigin,
-    const absl::optional<int32_t>& clipxorigin,
-    const absl::optional<int32_t>& clipyorigin,
-    const absl::optional<Pixmap>& clipmask,
-    const absl::optional<uint32_t>& graphicsexposure,
-    const absl::optional<SubwindowMode>& subwindowmode,
-    const absl::optional<PolyEdge>& polyedge,
-    const absl::optional<PolyMode>& polymode,
-    const absl::optional<Atom>& dither,
-    const absl::optional<uint32_t>& componentalpha) {
+    const std::optional<Repeat>& repeat,
+    const std::optional<Picture>& alphamap,
+    const std::optional<int32_t>& alphaxorigin,
+    const std::optional<int32_t>& alphayorigin,
+    const std::optional<int32_t>& clipxorigin,
+    const std::optional<int32_t>& clipyorigin,
+    const std::optional<Pixmap>& clipmask,
+    const std::optional<uint32_t>& graphicsexposure,
+    const std::optional<SubwindowMode>& subwindowmode,
+    const std::optional<PolyEdge>& polyedge,
+    const std::optional<PolyMode>& polymode,
+    const std::optional<Atom>& dither,
+    const std::optional<uint32_t>& componentalpha) {
   return Render::ChangePicture(Render::ChangePictureRequest{
       picture, repeat, alphamap, alphaxorigin, alphayorigin, clipxorigin,
       clipyorigin, clipmask, graphicsexposure, subwindowmode, polyedge,
@@ -2382,9 +2376,7 @@ std::unique_ptr<Render::QueryFiltersReply> detail::ReadReply<
   uint32_t num_aliases{};
   uint32_t num_filters{};
   auto& aliases = (*reply).aliases;
-  size_t aliases_len = aliases.size();
   auto& filters = (*reply).filters;
-  size_t filters_len = filters.size();
 
   // response_type
   uint8_t response_type;

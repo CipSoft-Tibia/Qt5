@@ -173,7 +173,7 @@ gfx::Rect BoundsForCharacter(const blink::WebAXObject& object,
                          inline_text_box_rect.width(), character_offsets[0]);
       }
       default:
-        NOTREACHED();
+        NOTREACHED_IN_MIGRATION();
         return gfx::Rect();
     }
   }
@@ -321,8 +321,6 @@ gin::ObjectTemplateBuilder WebAXObjectProxy::GetObjectTemplateBuilder(
       .SetProperty("isSelectable", &WebAXObjectProxy::IsSelectable)
       .SetProperty("isMultiLine", &WebAXObjectProxy::IsMultiLine)
       .SetProperty("isMultiSelectable", &WebAXObjectProxy::IsMultiSelectable)
-      .SetProperty("isSelectedOptionActive",
-                   &WebAXObjectProxy::IsSelectedOptionActive)
       .SetProperty("isExpanded", &WebAXObjectProxy::IsExpanded)
       .SetProperty("checked", &WebAXObjectProxy::Checked)
       .SetProperty("isVisible", &WebAXObjectProxy::IsVisible)
@@ -902,13 +900,6 @@ bool WebAXObjectProxy::IsMultiSelectable() {
   return GetAXNodeData().HasState(ax::mojom::State::kMultiselectable);
 }
 
-bool WebAXObjectProxy::IsSelectedOptionActive() {
-  if (!UpdateLayout()) {
-    return false;
-  }
-  return accessibility_object_.IsSelectedOptionActive();
-}
-
 bool WebAXObjectProxy::IsExpanded() {
   if (!UpdateLayout()) {
     return false;
@@ -978,7 +969,7 @@ bool WebAXObjectProxy::IsIgnored() {
   if (!UpdateLayout()) {
     return false;
   }
-  return accessibility_object_.AccessibilityIsIgnored();
+  return accessibility_object_.IsIgnored();
 }
 
 v8::Local<v8::Object> WebAXObjectProxy::ActiveDescendant() {
@@ -1730,7 +1721,7 @@ int WebAXObjectProxy::ScrollY() {
 
 std::string WebAXObjectProxy::ToString() {
   UpdateLayout();
-  return accessibility_object_.ToString().Utf8();
+  return accessibility_object_.ToString(/*verbose*/ false).Utf8();
 }
 
 float WebAXObjectProxy::BoundsX() {
@@ -2067,6 +2058,19 @@ WebAXObjectProxyList::~WebAXObjectProxyList() {
   Clear();
 }
 
+void WebAXObjectProxyList::Remove(unsigned axid) {
+  auto persistent = ax_objects_.find(axid);
+  if (persistent != ax_objects_.end()) {
+    v8::HandleScope handle_scope(isolate_);
+    auto local = v8::Local<v8::Object>::New(isolate_, persistent->second);
+    WebAXObjectProxy* proxy = nullptr;
+    bool ok = gin::ConvertFromV8(isolate_, local, &proxy);
+    DCHECK(ok);
+    proxy->Reset();
+    ax_objects_.erase(axid);
+  }
+}
+
 void WebAXObjectProxyList::Clear() {
   v8::HandleScope handle_scope(isolate_);
 
@@ -2094,19 +2098,22 @@ v8::Local<v8::Object> WebAXObjectProxyList::GetOrCreate(
     return v8::Local<v8::Object>();
   }
 
-  // Return existing object if there is a match.
+  // Return existing object if there is a match and it hasn't been detached.
+  bool found = false;
   auto persistent = ax_objects_.find(object.AxID());
   if (persistent != ax_objects_.end()) {
-    auto local = v8::Local<v8::Object>::New(isolate_, persistent->second);
-
-#if DCHECK_IS_ON()
+    found = true;
     WebAXObjectProxy* proxy = nullptr;
+    // TODO(accessibility): Can this detached check be simplified?
+    auto local = v8::Local<v8::Object>::New(isolate_, persistent->second);
     bool ok = gin::ConvertFromV8(isolate_, local, &proxy);
     DCHECK(ok);
-    DCHECK(proxy->IsEqualToObject(object));
+    if (!proxy->accessibility_object().IsDetached()) {
+#if DCHECK_IS_ON()
+      DCHECK(proxy->IsEqualToObject(object));
 #endif
-
-    return local;
+      return local;
+    }
   }
 
   // Create a new object.
@@ -2115,6 +2122,10 @@ v8::Local<v8::Object> WebAXObjectProxyList::GetOrCreate(
   v8::Local<v8::Object> handle;
   if (value_handle.IsEmpty() ||
       !value_handle->ToObject(isolate_->GetCurrentContext()).ToLocal(&handle)) {
+    if (found) {
+      // Remove old detached object.
+      ax_objects_.erase(object.AxID());
+    }
     return {};
   }
 

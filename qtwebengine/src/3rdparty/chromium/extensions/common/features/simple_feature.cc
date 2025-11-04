@@ -2,6 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#ifdef UNSAFE_BUFFERS_BUILD
+// TODO(crbug.com/351564777): Remove this and convert code to safer constructs.
+#pragma allow_unsafe_buffers
+#endif
+
 #include "extensions/common/features/simple_feature.h"
 
 #include <algorithm>
@@ -21,6 +26,7 @@
 #include "content/public/common/content_features.h"
 #include "extensions/common/extension_api.h"
 #include "extensions/common/extension_features.h"
+#include "extensions/common/extension_id.h"
 #include "extensions/common/features/feature.h"
 #include "extensions/common/features/feature_channel.h"
 #include "extensions/common/features/feature_developer_mode_only.h"
@@ -94,9 +100,9 @@ std::string GetDisplayName(Manifest::Type type) {
     case Manifest::TYPE_CHROMEOS_SYSTEM_EXTENSION:
       return "chromeos system extension";
     case Manifest::NUM_LOAD_TYPES:
-      NOTREACHED();
+      NOTREACHED_IN_MIGRATION();
   }
-  NOTREACHED();
+  NOTREACHED_IN_MIGRATION();
   return "";
 }
 
@@ -131,24 +137,7 @@ std::string GetDisplayName(mojom::ContextType context) {
     case mojom::ContextType::kUserScript:
       return "user script";
   }
-  NOTREACHED();
-  return "";
-}
-
-std::string GetDisplayName(version_info::Channel channel) {
-  switch (channel) {
-    case version_info::Channel::UNKNOWN:
-      return "trunk";
-    case version_info::Channel::CANARY:
-      return "canary";
-    case version_info::Channel::DEV:
-      return "dev";
-    case version_info::Channel::BETA:
-      return "beta";
-    case version_info::Channel::STABLE:
-      return "stable";
-  }
-  NOTREACHED();
+  NOTREACHED_IN_MIGRATION();
   return "";
 }
 
@@ -268,15 +257,6 @@ Feature::Availability SimpleFeature::IsAvailableToContextImpl(
     int context_id,
     bool check_developer_mode,
     const ContextData& context_data) const {
-  // Check the environment availability first. This is because, for features
-  // that use delegated availability checks, those checks should also include
-  // environment availability checks. By checking the environment first, if the
-  // feature isn't intended for the current environment, it will fail the
-  // availability check here first. If it passes the environment check, then the
-  // delegated availability check will run and we can return that result, either
-  // pass or fail. This also allows features that don't require delegated
-  // availability checks to proceed through their normal checks from environment
-  // on to manifest and then context availability.
   Availability environment_availability = GetEnvironmentAvailability(
       platform, GetCurrentChannel(), GetCurrentFeatureSessionType(), context_id,
       check_developer_mode);
@@ -284,11 +264,16 @@ Feature::Availability SimpleFeature::IsAvailableToContextImpl(
     return environment_availability;
 
   if (RequiresDelegatedAvailabilityCheck()) {
-    return HasDelegatedAvailabilityCheckHandler()
-               ? RunDelegatedAvailabilityCheck(
-                     extension, context, url, platform, context_id,
-                     check_developer_mode, std::move(context_data))
-               : CreateAvailability(MISSING_DELEGATED_AVAILABILITY_CHECK);
+    Feature::Availability delegated_availibility =
+        HasDelegatedAvailabilityCheckHandler()
+            ? RunDelegatedAvailabilityCheck(extension, context, url, platform,
+                                            context_id, check_developer_mode,
+                                            std::move(context_data))
+            : CreateAvailability(MISSING_DELEGATED_AVAILABILITY_CHECK);
+
+    if (!delegated_availibility.is_available()) {
+      return delegated_availibility;
+    }
   }
 
   if (extension) {
@@ -399,8 +384,8 @@ std::string SimpleFeature::GetAvailabilityMessage(
     case UNSUPPORTED_CHANNEL:
       return base::StringPrintf(
           "'%s' requires %s channel or newer, but this is the %s channel.",
-          name().c_str(), GetDisplayName(channel).c_str(),
-          GetDisplayName(GetCurrentChannel()).c_str());
+          name().c_str(), version_info::GetChannelString(channel).data(),
+          version_info::GetChannelString(GetCurrentChannel()).data());
     case MISSING_COMMAND_LINE_SWITCH:
       DCHECK(command_line_switch_);
       return base::StringPrintf(
@@ -423,7 +408,7 @@ std::string SimpleFeature::GetAvailabilityMessage(
                                 name().c_str());
   }
 
-  NOTREACHED();
+  NOTREACHED_IN_MIGRATION();
   return std::string();
 }
 
@@ -496,7 +481,7 @@ bool SimpleFeature::IsIdInAllowlist(const HashedExtensionId& hashed_id) const {
 }
 
 // static
-bool SimpleFeature::IsIdInArray(const std::string& extension_id,
+bool SimpleFeature::IsIdInArray(const ExtensionId& extension_id,
                                 const char* const array[],
                                 size_t array_length) {
   if (!IsValidExtensionId(extension_id))
@@ -532,7 +517,7 @@ bool SimpleFeature::MatchesManifestLocation(
     case SimpleFeature::UNPACKED_LOCATION:
       return Manifest::IsUnpackedLocation(manifest_location);
   }
-  NOTREACHED();
+  NOTREACHED_IN_MIGRATION();
   return false;
 }
 
@@ -582,7 +567,7 @@ Feature::Availability SimpleFeature::CheckDependencies(
 }
 
 // static
-bool SimpleFeature::IsValidExtensionId(const std::string& extension_id) {
+bool SimpleFeature::IsValidExtensionId(const ExtensionId& extension_id) {
   // Belt-and-suspenders philosophy here. We should be pretty confident by this
   // point that we've validated the extension ID format, but in case something
   // slips through, we avoid a class of attack where creative ID manipulation
@@ -749,7 +734,8 @@ Feature::Availability SimpleFeature::GetContextAvailability(
 
   // TODO(kalman): Consider checking |matches_| regardless of context type.
   // Fewer surprises, and if the feature configuration wants to isolate
-  // "matches" from say "blessed_extension" then they can use complex features.
+  // "matches" from say "privileged_extension" then they can use complex
+  // features.
   const bool supports_url_matching =
       context == mojom::ContextType::kWebPage ||
       context == mojom::ContextType::kWebUi ||

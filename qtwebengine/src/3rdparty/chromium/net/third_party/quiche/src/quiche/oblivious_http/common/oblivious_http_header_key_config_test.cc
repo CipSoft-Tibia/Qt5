@@ -1,6 +1,7 @@
 #include "quiche/oblivious_http/common/oblivious_http_header_key_config.h"
 
 #include <cstdint>
+#include <string>
 
 #include "absl/strings/escaping.h"
 #include "absl/strings/str_cat.h"
@@ -169,27 +170,34 @@ MATCHER_P(HasAeadId, id, "") {
 }
 
 TEST(ObliviousHttpKeyConfigs, SingleKeyConfig) {
-  std::string key = absl::HexStringToBytes(
+  std::string key;
+  ASSERT_TRUE(absl::HexStringToBytes(
       "4b0020f83e0a17cbdb18d2684dd2a9b087a43e5f3fa3fa27a049bc746a6e97a1e0244b00"
-      "0400010002");
+      "0400010002",
+      &key));
   auto configs = ObliviousHttpKeyConfigs::ParseConcatenatedKeys(key).value();
   EXPECT_THAT(configs, Property(&ObliviousHttpKeyConfigs::NumKeys, 1));
   EXPECT_THAT(
       configs.PreferredConfig(),
       AllOf(HasKeyId(0x4b), HasKemId(EVP_HPKE_DHKEM_X25519_HKDF_SHA256),
             HasKdfId(EVP_HPKE_HKDF_SHA256), HasAeadId(EVP_HPKE_AES_256_GCM)));
+  std::string expected_public_key;
+  ASSERT_TRUE(absl::HexStringToBytes(
+      "f83e0a17cbdb18d2684dd2a9b087a43e5f3fa3fa27a049bc746a6e97a1e0244b",
+      &expected_public_key));
   EXPECT_THAT(
       configs.GetPublicKeyForId(configs.PreferredConfig().GetKeyId()).value(),
-      StrEq(absl::HexStringToBytes(
-          "f83e0a17cbdb18d2684dd2a9b087a43e5f3fa3fa27a049bc746a6e97a1e0244b")));
+      StrEq(expected_public_key));
 }
 
 TEST(ObliviousHttpKeyConfigs, TwoSimilarKeyConfigs) {
-  std::string key = absl::HexStringToBytes(
+  std::string key;
+  ASSERT_TRUE(absl::HexStringToBytes(
       "4b0020f83e0a17cbdb18d2684dd2a9b087a43e5f3fa3fa27a049bc746a6e97a1e0244b00"
       "0400010002"  // Intentional concatenation
       "4f0020f83e0a17cbdb18d2684dd2a9b087a43e5f3fa3fa27a049bc746a6e97a1e0244b00"
-      "0400010001");
+      "0400010001",
+      &key));
   EXPECT_THAT(ObliviousHttpKeyConfigs::ParseConcatenatedKeys(key).value(),
               Property(&ObliviousHttpKeyConfigs::NumKeys, 2));
   EXPECT_THAT(
@@ -199,27 +207,34 @@ TEST(ObliviousHttpKeyConfigs, TwoSimilarKeyConfigs) {
 }
 
 TEST(ObliviousHttpKeyConfigs, RFCExample) {
-  std::string key = absl::HexStringToBytes(
+  std::string key;
+  ASSERT_TRUE(absl::HexStringToBytes(
       "01002031e1f05a740102115220e9af918f738674aec95f54db6e04eb705aae8e79815500"
-      "080001000100010003");
+      "080001000100010003",
+      &key));
   auto configs = ObliviousHttpKeyConfigs::ParseConcatenatedKeys(key).value();
   EXPECT_THAT(configs, Property(&ObliviousHttpKeyConfigs::NumKeys, 1));
   EXPECT_THAT(
       configs.PreferredConfig(),
       AllOf(HasKeyId(0x01), HasKemId(EVP_HPKE_DHKEM_X25519_HKDF_SHA256),
             HasKdfId(EVP_HPKE_HKDF_SHA256), HasAeadId(EVP_HPKE_AES_128_GCM)));
+  std::string expected_public_key;
+  ASSERT_TRUE(absl::HexStringToBytes(
+      "31e1f05a740102115220e9af918f738674aec95f54db6e04eb705aae8e798155",
+      &expected_public_key));
   EXPECT_THAT(
       configs.GetPublicKeyForId(configs.PreferredConfig().GetKeyId()).value(),
-      StrEq(absl::HexStringToBytes(
-          "31e1f05a740102115220e9af918f738674aec95f54db6e04eb705aae8e798155")));
+      StrEq(expected_public_key));
 }
 
 TEST(ObliviousHttpKeyConfigs, DuplicateKeyId) {
-  std::string key = absl::HexStringToBytes(
+  std::string key;
+  ASSERT_TRUE(absl::HexStringToBytes(
       "4b0020f83e0a17cbdb18d2684dd2a9b087a43e5f3fa3fa27a049bc746a6e97a1e0244b00"
       "0400010002"  // Intentional concatenation
       "4b0020f83e0a17cbdb18d2684dd2a9b087a43e5f3fa3fb27a049bc746a6e97a1e0244b00"
-      "0400010001");
+      "0400010001",
+      &key));
   EXPECT_FALSE(ObliviousHttpKeyConfigs::ParseConcatenatedKeys(key).ok());
 }
 

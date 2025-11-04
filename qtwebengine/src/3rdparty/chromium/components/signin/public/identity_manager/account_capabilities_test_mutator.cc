@@ -16,16 +16,23 @@ AccountCapabilitiesTestMutator::GetSupportedAccountCapabilityNames() {
   return AccountCapabilities::GetSupportedAccountCapabilityNames();
 }
 
+void AccountCapabilitiesTestMutator::set_can_fetch_family_member_info(
+    bool value) {
+  capabilities_->capabilities_map_[kCanFetchFamilyMemberInfoCapabilityName] =
+      value;
+}
+
 void AccountCapabilitiesTestMutator::set_can_have_email_address_displayed(
     bool value) {
   capabilities_
       ->capabilities_map_[kCanHaveEmailAddressDisplayedCapabilityName] = value;
 }
 
-void AccountCapabilitiesTestMutator::set_can_offer_extended_chrome_sync_promos(
-    bool value) {
-  capabilities_
-      ->capabilities_map_[kCanOfferExtendedChromeSyncPromosCapabilityName] =
+void AccountCapabilitiesTestMutator::
+    set_can_show_history_sync_opt_ins_without_minor_mode_restrictions(
+        bool value) {
+  capabilities_->capabilities_map_
+      [kCanShowHistorySyncOptInsWithoutMinorModeRestrictionsCapabilityName] =
       value;
 }
 
@@ -50,6 +57,21 @@ void AccountCapabilitiesTestMutator::set_can_toggle_auto_updates(bool value) {
 void AccountCapabilitiesTestMutator::set_can_use_chrome_ip_protection(
     bool value) {
   capabilities_->capabilities_map_[kCanUseChromeIpProtectionName] = value;
+}
+
+void AccountCapabilitiesTestMutator::
+    set_can_use_devtools_generative_ai_features(bool value) {
+  capabilities_
+      ->capabilities_map_[kCanUseDevToolsGenerativeAiFeaturesCapabilityName] =
+      value;
+}
+
+void AccountCapabilitiesTestMutator::set_can_use_edu_features(bool value) {
+  capabilities_->capabilities_map_[kCanUseEduFeaturesCapabilityName] = value;
+}
+
+void AccountCapabilitiesTestMutator::set_can_use_manta_service(bool value) {
+  capabilities_->capabilities_map_[kCanUseMantaServiceName] = value;
 }
 
 void AccountCapabilitiesTestMutator::set_can_use_model_execution_features(
@@ -82,9 +104,29 @@ void AccountCapabilitiesTestMutator::set_is_subject_to_parental_controls(
       value;
 }
 
+void AccountCapabilitiesTestMutator::set_can_use_speaker_label_in_recorder_app(
+    bool value) {
+  capabilities_->capabilities_map_[kCanUseSpeakerLabelInRecorderApp] = value;
+}
+
+void AccountCapabilitiesTestMutator::set_can_use_generative_ai_in_recorder_app(
+    bool value) {
+  capabilities_->capabilities_map_[kCanUseGenerativeAiInRecorderApp] = value;
+}
+
 void AccountCapabilitiesTestMutator::SetAllSupportedCapabilities(bool value) {
   for (const std::string& name :
        AccountCapabilities::GetSupportedAccountCapabilityNames()) {
     capabilities_->capabilities_map_[name] = value;
   }
+}
+
+void AccountCapabilitiesTestMutator::SetCapability(const std::string& name,
+                                                   bool value) {
+  const std::vector<std::string>& capability_names =
+      AccountCapabilities::GetSupportedAccountCapabilityNames();
+  CHECK(std::find(capability_names.begin(), capability_names.end(), name) !=
+        capability_names.end())
+      << "Invalid capability name: " << name;
+  capabilities_->capabilities_map_[name] = value;
 }

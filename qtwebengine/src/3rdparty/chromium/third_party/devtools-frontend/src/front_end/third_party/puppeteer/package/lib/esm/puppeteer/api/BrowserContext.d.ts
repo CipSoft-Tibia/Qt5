@@ -5,6 +5,7 @@
  */
 import { EventEmitter, type EventType } from '../common/EventEmitter.js';
 import { asyncDisposeSymbol, disposeSymbol } from '../util/disposable.js';
+import { Mutex } from '../util/Mutex.js';
 import type { Browser, Permission, WaitForTargetOptions } from './Browser.js';
 import type { Page } from './Page.js';
 import type { Target } from './Target.js';
@@ -32,11 +33,6 @@ export declare const enum BrowserContextEvent {
      */
     TargetDestroyed = "targetdestroyed"
 }
-export { 
-/**
- * @deprecated Use {@link BrowserContextEvent}
- */
-BrowserContextEvent as BrowserContextEmittedEvents, };
 /**
  * @public
  */
@@ -46,12 +42,13 @@ export interface BrowserContextEvents extends Record<EventType, unknown> {
     [BrowserContextEvent.TargetDestroyed]: Target;
 }
 /**
- * {@link BrowserContext} represents individual sessions within a
+ * {@link BrowserContext} represents individual user contexts within a
  * {@link Browser | browser}.
  *
- * When a {@link Browser | browser} is launched, it has a single
- * {@link BrowserContext | browser context} by default. Others can be created
- * using {@link Browser.createIncognitoBrowserContext}.
+ * When a {@link Browser | browser} is launched, it has at least one default
+ * {@link BrowserContext | browser context}. Others can be created
+ * using {@link Browser.createBrowserContext}. Each context has isolated storage
+ * (cookies/localStorage/etc.)
  *
  * {@link BrowserContext} {@link EventEmitter | emits} various events which are
  * documented in the {@link BrowserContextEvent} enum.
@@ -60,11 +57,11 @@ export interface BrowserContextEvents extends Record<EventType, unknown> {
  * `window.open`, the popup will belong to the parent {@link Page.browserContext
  * | page's browser context}.
  *
- * @example Creating an incognito {@link BrowserContext | browser context}:
+ * @example Creating a new {@link BrowserContext | browser context}:
  *
  * ```ts
- * // Create a new incognito browser context
- * const context = await browser.createIncognitoBrowserContext();
+ * // Create a new browser context
+ * const context = await browser.createBrowserContext();
  * // Create a new page inside context.
  * const page = await context.newPage();
  * // ... do stuff with page ...
@@ -73,9 +70,17 @@ export interface BrowserContextEvents extends Record<EventType, unknown> {
  * await context.close();
  * ```
  *
+ * @remarks
+ *
+ * In Chrome all non-default contexts are incognito,
+ * and {@link Browser.defaultBrowserContext | default browser context}
+ * might be incognito if you provide the `--incognito` argument when launching
+ * the browser.
+ *
  * @public
  */
 export declare abstract class BrowserContext extends EventEmitter<BrowserContextEvents> {
+    #private;
     /**
      * @internal
      */
@@ -85,6 +90,14 @@ export declare abstract class BrowserContext extends EventEmitter<BrowserContext
      * {@link BrowserContext | browser context}.
      */
     abstract targets(): Target[];
+    /**
+     * @internal
+     */
+    startScreenshot(): Promise<InstanceType<typeof Mutex.Guard>>;
+    /**
+     * @internal
+     */
+    waitForScreenshotOperations(): Promise<InstanceType<typeof Mutex.Guard>> | undefined;
     /**
      * Waits until a {@link Target | target} matching the given `predicate`
      * appears and returns it.
@@ -100,7 +113,7 @@ export declare abstract class BrowserContext extends EventEmitter<BrowserContext
      * );
      * ```
      */
-    abstract waitForTarget(predicate: (x: Target) => boolean | Promise<boolean>, options?: WaitForTargetOptions): Promise<Target>;
+    waitForTarget(predicate: (x: Target) => boolean | Promise<boolean>, options?: WaitForTargetOptions): Promise<Target>;
     /**
      * Gets a list of all open {@link Page | pages} inside this
      * {@link BrowserContext | browser context}.
@@ -109,13 +122,6 @@ export declare abstract class BrowserContext extends EventEmitter<BrowserContext
      * will not be listed here. You can find them using {@link Target.page}.
      */
     abstract pages(): Promise<Page[]>;
-    /**
-     * Whether this {@link BrowserContext | browser context} is incognito.
-     *
-     * The {@link Browser.defaultBrowserContext | default browser context} is the
-     * only non-incognito browser context.
-     */
-    abstract isIncognito(): boolean;
     /**
      * Grants this {@link BrowserContext | browser context} the given
      * `permissions` within the given `origin`.

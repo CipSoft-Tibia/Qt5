@@ -13,31 +13,27 @@
 // limitations under the License.
 
 // Keep this import first.
+import '../base/disposable_polyfill';
 import '../base/static_initializers';
 import '../gen/all_plugins';
-
+import '../gen/all_core_plugins';
 import {Draft} from 'immer';
 import m from 'mithril';
-
 import {defer} from '../base/deferred';
 import {addErrorHandler, reportError} from '../base/logging';
+import {Store} from '../base/store';
 import {Actions, DeferredAction, StateActions} from '../common/actions';
-import {CommandManager} from '../common/commands';
-import {createEmptyState} from '../common/empty_state';
 import {flattenArgs, traceEvent} from '../common/metatracing';
-import {pluginManager, pluginRegistry} from '../common/plugins';
+import {pluginManager} from '../common/plugins';
 import {State} from '../common/state';
 import {initController, runControllers} from '../controller';
-import {
-  isGetCategoriesResponse,
-} from '../controller/chrome_proxy_record_controller';
-import {RECORDING_V2_FLAG} from '../core/feature_flags';
-import {initLiveReloadIfLocalhost} from '../core/live_reload';
+import {isGetCategoriesResponse} from '../controller/chrome_proxy_record_controller';
+import {RECORDING_V2_FLAG, featureFlags} from '../core/feature_flags';
+import {initLiveReload} from '../core/live_reload';
 import {raf} from '../core/raf_scheduler';
 import {initWasm} from '../trace_processor/wasm_engine_proxy';
 import {setScheduleFullRedraw} from '../widgets/raf';
-
-import {App} from './app';
+import {UiMain} from './ui_main';
 import {initCssConstants} from './css_constants';
 import {registerDebugGlobals} from './debug';
 import {maybeShowErrorDialog} from './error_dialog';
@@ -54,61 +50,33 @@ import {RecordPage, updateAvailableAdbDevices} from './record_page';
 import {RecordPageV2} from './record_page_v2';
 import {Route, Router} from './router';
 import {CheckHttpRpcConnection} from './rpc_http_dialog';
-import {Store} from './store';
 import {TraceInfoPage} from './trace_info_page';
 import {maybeOpenTraceFromRoute} from './trace_url_handler';
 import {ViewerPage} from './viewer_page';
 import {VizPage} from './viz_page';
 import {WidgetsPage} from './widgets_page';
+import {HttpRpcEngine} from '../trace_processor/http_rpc_engine';
+import {showModal} from '../widgets/modal';
+import {initAnalytics} from './analytics';
 
 const EXTENSION_ID = 'lfmkphfpdbjijhpomgecfikhfohaoine';
 
-class FrontendApi {
-  constructor() {
-    globals.store.subscribe(this.handleStoreUpdate);
-  }
-
-  private handleStoreUpdate = (store: Store<State>, oldState: State) => {
-    const newState = store.state;
-
-    // If the visible time in the global state has been updated more
-    // recently than the visible time handled by the frontend @ 60fps,
-    // update it. This typically happens when restoring the state from a
-    // permalink.
-    globals.timeline.mergeState(newState.frontendLocalState);
-
-    // Only redraw if something other than the frontendLocalState changed.
-    let key: keyof State;
-    for (key in store.state) {
-      if (key !== 'frontendLocalState' && oldState[key] !== newState[key]) {
-        raf.scheduleFullRedraw();
-        break;
-      }
-    }
-
-    // Run in microtask to avoid avoid reentry
-    setTimeout(runControllers, 0);
-  };
-
-  dispatchMultiple(actions: DeferredAction[]) {
-    const edits = actions.map((action) => {
-      return traceEvent(`action.${action.type}`, () => {
-        return (draft: Draft<State>) => {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          (StateActions as any)[action.type](draft, action.args);
-        };
-      }, {
-        args: flattenArgs(action.args),
-      });
-    });
-    globals.store.edit(edits);
-  }
-}
+const CSP_WS_PERMISSIVE_PORT = featureFlags.register({
+  id: 'cspAllowAnyWebsocketPort',
+  name: 'Relax Content Security Policy for 127.0.0.1:*',
+  description:
+    'Allows simultaneous usage of several trace_processor_shell ' +
+    '-D --http-port 1234 by opening ' +
+    'https://ui.perfetto.dev/#!/?rpc_port=1234',
+  defaultValue: false,
+});
 
 function setExtensionAvailability(available: boolean) {
-  globals.dispatch(Actions.setExtensionAvailable({
-    available,
-  }));
+  globals.dispatch(
+    Actions.setExtensionAvailable({
+      available,
+    }),
+  );
 }
 
 function routeChange(route: Route) {
@@ -129,6 +97,20 @@ function routeChange(route: Route) {
 
 function setupContentSecurityPolicy() {
   // Note: self and sha-xxx must be quoted, urls data: and blob: must not.
+
+  let rpcPolicy = [
+    'http://127.0.0.1:9001', // For trace_processor_shell --httpd.
+    'ws://127.0.0.1:9001', // Ditto, for the websocket RPC.
+  ];
+  if (CSP_WS_PERMISSIVE_PORT.get()) {
+    const route = Router.parseUrl(window.location.href);
+    if (/^\d+$/.exec(route.args.rpc_port ?? '')) {
+      rpcPolicy = [
+        `http://127.0.0.1:${route.args.rpc_port}`,
+        `ws://127.0.0.1:${route.args.rpc_port}`,
+      ];
+    }
+  }
   const policy = {
     'default-src': [
       `'self'`,
@@ -148,14 +130,12 @@ function setupContentSecurityPolicy() {
     'object-src': ['none'],
     'connect-src': [
       `'self'`,
-      'http://127.0.0.1:9001',  // For trace_processor_shell --httpd.
-      'ws://127.0.0.1:9001',    // Ditto, for the websocket RPC.
-      'ws://127.0.0.1:8037',    // For the adb websocket server.
+      'ws://127.0.0.1:8037', // For the adb websocket server.
       'https://*.google-analytics.com',
-      'https://*.googleapis.com',  // For Google Cloud Storage fetches.
+      'https://*.googleapis.com', // For Google Cloud Storage fetches.
       'blob:',
       'data:',
-    ],
+    ].concat(rpcPolicy),
     'img-src': [
       `'self'`,
       'data:',
@@ -164,10 +144,7 @@ function setupContentSecurityPolicy() {
       'https://www.googletagmanager.com',
       'https://*.googleapis.com',
     ],
-    'style-src': [
-      `'self'`,
-      `'unsafe-inline'`,
-    ],
+    'style-src': [`'self'`, `'unsafe-inline'`],
     'navigate-to': ['https://*.perfetto.dev', 'self'],
   };
   const meta = document.createElement('meta');
@@ -178,6 +155,47 @@ function setupContentSecurityPolicy() {
   }
   meta.content = policyStr;
   document.head.appendChild(meta);
+}
+
+function setupExtentionPort(extensionLocalChannel: MessageChannel) {
+  // We proxy messages between the extension and the controller because the
+  // controller's worker can't access chrome.runtime.
+  const extensionPort =
+    // eslint-disable-next-line @typescript-eslint/strict-boolean-expressions
+    window.chrome && chrome.runtime
+      ? chrome.runtime.connect(EXTENSION_ID)
+      : undefined;
+
+  setExtensionAvailability(extensionPort !== undefined);
+
+  if (extensionPort) {
+    // Send messages to keep-alive the extension port.
+    const interval = setInterval(() => {
+      extensionPort.postMessage({
+        method: 'ExtensionVersion',
+      });
+    }, 25000);
+    extensionPort.onDisconnect.addListener((_) => {
+      setExtensionAvailability(false);
+      clearInterval(interval);
+      void chrome.runtime.lastError; // Needed to not receive an error log.
+    });
+    // This forwards the messages from the extension to the controller.
+    extensionPort.onMessage.addListener(
+      (message: object, _port: chrome.runtime.Port) => {
+        if (isGetCategoriesResponse(message)) {
+          globals.dispatch(Actions.setChromeCategories(message));
+          return;
+        }
+        extensionLocalChannel.port2.postMessage(message);
+      },
+    );
+  }
+
+  // This forwards the messages from the controller to the extension
+  extensionLocalChannel.port2.onmessage = ({data}) => {
+    if (extensionPort) extensionPort.postMessage(data);
+  };
 }
 
 function main() {
@@ -203,7 +221,7 @@ function main() {
   // and initialize GA after that (or after a timeout if something goes wrong).
   const script = document.createElement('script');
   script.src =
-      'https://storage.cloud.google.com/perfetto-ui-internal/is_internal_user.js';
+    'https://storage.cloud.google.com/perfetto-ui-internal/is_internal_user.js';
   script.async = true;
   script.onerror = () => globals.logging.initialize();
   script.onload = () => globals.logging.initialize();
@@ -224,9 +242,44 @@ function main() {
   initWasm(globals.root);
   initController(extensionLocalChannel.port1);
 
-  const dispatch = (action: DeferredAction) => {
-    frontendApi.dispatchMultiple([action]);
-  };
+  // These need to be set before globals.initialize.
+  const route = Router.parseUrl(window.location.href);
+  globals.embeddedMode = route.args.mode === 'embedded';
+  globals.hideSidebar = route.args.hideSidebar === true;
+
+  globals.initialize(stateActionDispatcher, initAnalytics);
+
+  globals.serviceWorkerController.install();
+
+  globals.store.subscribe(scheduleRafAndRunControllersOnStateChange);
+  globals.publishRedraw = () => raf.scheduleFullRedraw();
+
+  setupExtentionPort(extensionLocalChannel);
+
+  // Put debug variables in the global scope for better debugging.
+  registerDebugGlobals();
+
+  // Prevent pinch zoom.
+  document.body.addEventListener(
+    'wheel',
+    (e: MouseEvent) => {
+      if (e.ctrlKey) e.preventDefault();
+    },
+    {passive: false},
+  );
+
+  cssLoadPromise.then(() => onCssLoaded());
+
+  if (globals.testing) {
+    document.body.classList.add('testing');
+  }
+}
+
+function onCssLoaded() {
+  initCssConstants();
+  // Clear all the contents of the initial page (e.g. the <pre> error message)
+  // And replace it with the root <main> element which will be used by mithril.
+  document.body.innerHTML = '';
 
   const router = new Router({
     '/': HomePage,
@@ -243,90 +296,28 @@ function main() {
   });
   router.onRouteChanged = routeChange;
 
-  // These need to be set before globals.initialize.
-  const route = Router.parseUrl(window.location.href);
-  globals.embeddedMode = route.args.mode === 'embedded';
-  globals.hideSidebar = route.args.hideSidebar === true;
-
-  const cmdManager = new CommandManager();
-
-  globals.initialize(dispatch, router, createEmptyState(), cmdManager);
-
-  globals.serviceWorkerController.install();
-
-  const frontendApi = new FrontendApi();
-  globals.publishRedraw = () => raf.scheduleFullRedraw();
-
-  // We proxy messages between the extension and the controller because the
-  // controller's worker can't access chrome.runtime.
-  // eslint-disable-next-line @typescript-eslint/strict-boolean-expressions
-  const extensionPort = window.chrome && chrome.runtime ?
-      chrome.runtime.connect(EXTENSION_ID) :
-      undefined;
-
-  setExtensionAvailability(extensionPort !== undefined);
-
-  if (extensionPort) {
-    extensionPort.onDisconnect.addListener((_) => {
-      setExtensionAvailability(false);
-      void chrome.runtime.lastError;  // Needed to not receive an error log.
-    });
-    // This forwards the messages from the extension to the controller.
-    extensionPort.onMessage.addListener(
-        (message: object, _port: chrome.runtime.Port) => {
-          if (isGetCategoriesResponse(message)) {
-            globals.dispatch(Actions.setChromeCategories(message));
-            return;
-          }
-          extensionLocalChannel.port2.postMessage(message);
-        });
-  }
-
-  // This forwards the messages from the controller to the extension
-  extensionLocalChannel.port2.onmessage = ({data}) => {
-    if (extensionPort) extensionPort.postMessage(data);
-  };
-
-  // Put debug variables in the global scope for better debugging.
-  registerDebugGlobals();
-
-  // Prevent pinch zoom.
-  document.body.addEventListener('wheel', (e: MouseEvent) => {
-    if (e.ctrlKey) e.preventDefault();
-  }, {passive: false});
-
-  cssLoadPromise.then(() => onCssLoaded());
-
-  if (globals.testing) {
-    document.body.classList.add('testing');
-  }
-
-  for (const plugin of pluginRegistry.values()) {
-    pluginManager.activatePlugin(plugin.pluginId);
-  }
-
-  cmdManager.registerCommandSource(pluginManager);
-}
-
-function onCssLoaded() {
-  initCssConstants();
-  // Clear all the contents of the initial page (e.g. the <pre> error message)
-  // And replace it with the root <main> element which will be used by mithril.
-  document.body.innerHTML = '';
-
   raf.domRedraw = () => {
-    m.render(document.body, m(App, globals.router.resolve()));
+    m.render(document.body, m(UiMain, router.resolve()));
   };
 
-  initLiveReloadIfLocalhost(globals.embeddedMode);
+  if (
+    (location.origin.startsWith('http://localhost:') ||
+      location.origin.startsWith('http://127.0.0.1:')) &&
+    !globals.embeddedMode &&
+    !globals.testing
+  ) {
+    initLiveReload();
+  }
 
   if (!RECORDING_V2_FLAG.get()) {
     updateAvailableAdbDevices();
     try {
-      navigator.usb.addEventListener(
-          'connect', () => updateAvailableAdbDevices());
-      navigator.usb.addEventListener(
-          'disconnect', () => updateAvailableAdbDevices());
+      navigator.usb.addEventListener('connect', () =>
+        updateAvailableAdbDevices(),
+      );
+      navigator.usb.addEventListener('disconnect', () =>
+        updateAvailableAdbDevices(),
+      );
     } catch (e) {
       console.error('WebUSB API not supported');
     }
@@ -338,18 +329,20 @@ function onCssLoaded() {
   // Don't auto-open any trace URLs until we get a response here because we may
   // accidentially clober the state of an open trace processor instance
   // otherwise.
+  maybeChangeRpcPortFromFragment();
   CheckHttpRpcConnection().then(() => {
     const route = Router.parseUrl(window.location.href);
-
-    globals.dispatch(Actions.maybeSetPendingDeeplink({
-      ts: route.args.ts,
-      tid: route.args.tid,
-      dur: route.args.dur,
-      pid: route.args.pid,
-      query: route.args.query,
-      visStart: route.args.visStart,
-      visEnd: route.args.visEnd,
-    }));
+    globals.dispatch(
+      Actions.maybeSetPendingDeeplink({
+        ts: route.args.ts,
+        tid: route.args.tid,
+        dur: route.args.dur,
+        pid: route.args.pid,
+        query: route.args.query,
+        visStart: route.args.visStart,
+        visEnd: route.args.visEnd,
+      }),
+    );
 
     if (!globals.embeddedMode) {
       installFileDropHandler();
@@ -369,6 +362,74 @@ function onCssLoaded() {
     // cases.
     routeChange(route);
   });
+
+  // Force one initial render to get everything in place
+  m.render(document.body, m(UiMain, router.resolve()));
+
+  // Initialize plugins, now that we are ready to go
+  pluginManager.initialize();
+}
+
+// If the URL is /#!?rpc_port=1234, change the default RPC port.
+// For security reasons, this requires toggling a flag. Detect this and tell the
+// user what to do in this case.
+function maybeChangeRpcPortFromFragment() {
+  const route = Router.parseUrl(window.location.href);
+  if (route.args.rpc_port !== undefined) {
+    if (!CSP_WS_PERMISSIVE_PORT.get()) {
+      showModal({
+        title: 'Using a different port requires a flag change',
+        content: m(
+          'div',
+          m(
+            'span',
+            'For security reasons before connecting to a non-standard ' +
+              'TraceProcessor port you need to manually enable the flag to ' +
+              'relax the Content Security Policy and restart the UI.',
+          ),
+        ),
+        buttons: [
+          {
+            text: 'Take me to the flags page',
+            primary: true,
+            action: () => Router.navigate('#!/flags/cspAllowAnyWebsocketPort'),
+          },
+        ],
+      });
+    } else {
+      HttpRpcEngine.rpcPort = route.args.rpc_port;
+    }
+  }
+}
+
+function stateActionDispatcher(actions: DeferredAction[]) {
+  const edits = actions.map((action) => {
+    return traceEvent(
+      `action.${action.type}`,
+      () => {
+        return (draft: Draft<State>) => {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          (StateActions as any)[action.type](draft, action.args);
+        };
+      },
+      {
+        args: flattenArgs(action.args),
+      },
+    );
+  });
+  globals.store.edit(edits);
+}
+
+function scheduleRafAndRunControllersOnStateChange(
+  store: Store<State>,
+  oldState: State,
+) {
+  // Only redraw if something actually changed
+  if (oldState !== store.state) {
+    raf.scheduleFullRedraw();
+  }
+  // Run in a separate task to avoid avoid reentry.
+  setTimeout(runControllers, 0);
 }
 
 main();

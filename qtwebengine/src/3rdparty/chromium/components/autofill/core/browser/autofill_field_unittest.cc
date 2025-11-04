@@ -13,6 +13,8 @@
 namespace autofill {
 namespace {
 
+const char kGuidA[] = "EDC609ED-7EEE-4F27-B00C-423242A9C44A";
+
 class AutofillFieldTest : public testing::Test {
  public:
   AutofillFieldTest() = default;
@@ -20,6 +22,41 @@ class AutofillFieldTest : public testing::Test {
  private:
   test::AutofillUnitTestEnvironment autofill_test_environment_;
 };
+
+TEST_F(AutofillFieldTest, ValueWasIdentifiedAsPotentiallySensitive) {
+  AutofillField field;
+
+  // Initially the value should not be identified as sensitive.
+  EXPECT_FALSE(field.value_identified_as_potentially_sensitive());
+
+  // We should be able to set the value and retrieve the state.
+  field.set_value_identified_as_potentially_sensitive(true);
+  EXPECT_TRUE(field.value_identified_as_potentially_sensitive());
+}
+
+TEST_F(AutofillFieldTest, FieldIsEligableForPredictionImprovementsFlag) {
+  AutofillField field;
+
+  // Initially the value should not be identified as sensitive.
+  EXPECT_FALSE(
+      field.field_is_eligible_for_prediction_improvements().has_value());
+
+  // Test that settings the value works.
+  field.set_field_is_eligible_for_prediction_improvements(true);
+  ASSERT_TRUE(
+      field.field_is_eligible_for_prediction_improvements().has_value());
+  EXPECT_TRUE(field.field_is_eligible_for_prediction_improvements().value());
+
+  field.set_field_is_eligible_for_prediction_improvements(false);
+  ASSERT_TRUE(
+      field.field_is_eligible_for_prediction_improvements().has_value());
+  EXPECT_FALSE(field.field_is_eligible_for_prediction_improvements().value());
+
+  // Verify that the state can also be reset.
+  field.set_field_is_eligible_for_prediction_improvements(std::nullopt);
+  EXPECT_FALSE(
+      field.field_is_eligible_for_prediction_improvements().has_value());
+}
 
 // Tests that if both autocomplete attributes and server agree it's a phone
 // field, always use server predicted type. If they disagree with autocomplete
@@ -58,6 +95,22 @@ TEST_F(AutofillFieldTest, Type_ServerPredictionOfCityAndNumber_OverrideHtml) {
   EXPECT_EQ(PHONE_HOME_CITY_AND_NUMBER, field.Type().GetStorableType());
 }
 
+// Tests that a local heuristics prediction for `EMAIL_ADDRESS` overrides server
+// predictions for `USERNAME` or `SINGLE_USERNAME`.
+TEST_F(AutofillFieldTest, EmailOverridesUsernameType) {
+  base::test::ScopedFeatureList feature_list{
+      features::kAutofillGivePrecedenceToEmailOverUsername};
+  AutofillField field;
+
+  field.set_server_predictions({test::CreateFieldPrediction(USERNAME)});
+  field.set_heuristic_type(GetActiveHeuristicSource(), EMAIL_ADDRESS);
+  EXPECT_EQ(field.Type().GetStorableType(), EMAIL_ADDRESS);
+
+  field.set_server_predictions({test::CreateFieldPrediction(SINGLE_USERNAME)});
+  field.set_heuristic_type(GetActiveHeuristicSource(), EMAIL_ADDRESS);
+  EXPECT_EQ(field.Type().GetStorableType(), EMAIL_ADDRESS);
+}
+
 TEST_F(AutofillFieldTest, IsFieldFillable) {
   AutofillField field;
   ASSERT_EQ(UNKNOWN_TYPE, field.Type().GetStorableType());
@@ -83,8 +136,22 @@ TEST_F(AutofillFieldTest, IsFieldFillable) {
 
   // Field has autocomplete="off" set. Since autofill was able to make a
   // prediction, it is still considered a fillable field.
-  field.should_autocomplete = false;
+  field.set_should_autocomplete(false);
   EXPECT_TRUE(field.IsFieldFillable());
+}
+
+TEST_F(AutofillFieldTest, SetAndGetPossibleProfileValueSources) {
+  AutofillField field;
+
+  PossibleProfileValueSources sources;
+  sources.AddPossibleValueSource(kGuidA, NAME_FIRST);
+  PossibleProfileValueSources copy = sources;
+
+  field.set_possible_profile_value_sources(sources);
+
+  EXPECT_THAT(
+      field.possible_profile_value_sources()->GetAllPossibleValueSources(),
+      testing::ElementsAre(ProfileValueSource(kGuidA, NAME_FIRST)));
 }
 
 // Parameters for `PrecedenceOverAutocompleteTest`
@@ -99,15 +166,7 @@ struct PrecedenceOverAutocompleteParams {
 };
 
 class PrecedenceOverAutocompleteTest
-    : public testing::TestWithParam<PrecedenceOverAutocompleteParams> {
-  base::test::ScopedFeatureList scoped_feature_list;
-
- public:
-  PrecedenceOverAutocompleteTest() {
-    scoped_feature_list.InitAndEnableFeature(
-        features::kAutofillStreetNameOrHouseNumberPrecedenceOverAutocomplete);
-  }
-};
+    : public testing::TestWithParam<PrecedenceOverAutocompleteParams> {};
 
 // Tests giving StreetName or HouseNumber predictions, by heuristic or server,
 // precedence over HtmlFieldType::kAddressLine(1|2) autocomplete prediction.
@@ -210,10 +269,6 @@ class AutofillLocalHeuristicsOverridesTest
     : public testing::TestWithParam<AutofillLocalHeuristicsOverridesParams> {
  public:
   AutofillLocalHeuristicsOverridesTest() = default;
-
- private:
-  base::test::ScopedFeatureList feature_{
-      features::kAutofillLocalHeuristicsOverrides};
 };
 
 // Tests the correctness of local heuristic overrides while computing the
@@ -308,7 +363,17 @@ INSTANTIATE_TEST_SUITE_P(
             .html_field_type = HtmlFieldType::kUnspecified,
             .server_type = ADDRESS_HOME_CITY,
             .heuristic_type = ADDRESS_HOME_APT_NUM,
-            .expected_result = ADDRESS_HOME_CITY}));
+            .expected_result = ADDRESS_HOME_CITY},
+        AutofillLocalHeuristicsOverridesParams{
+            .html_field_type = HtmlFieldType::kUnspecified,
+            .server_type = ADDRESS_HOME_HOUSE_NUMBER,
+            .heuristic_type = ADDRESS_HOME_HOUSE_NUMBER_AND_APT,
+            .expected_result = ADDRESS_HOME_HOUSE_NUMBER_AND_APT},
+        AutofillLocalHeuristicsOverridesParams{
+            .html_field_type = HtmlFieldType::kUnspecified,
+            .server_type = ADDRESS_HOME_APT_NUM,
+            .heuristic_type = ADDRESS_HOME_HOUSE_NUMBER_AND_APT,
+            .expected_result = ADDRESS_HOME_HOUSE_NUMBER_AND_APT}));
 
 // Tests that consecutive identical events are not added twice to the event log.
 TEST(AutofillFieldLogEventTypeTest, AppendLogEventIfNotRepeated) {
@@ -327,8 +392,7 @@ TEST(AutofillFieldLogEventTypeTest, AppendLogEventIfNotRepeated) {
   AutofillField::FieldLogEventType c = FillFieldLogEvent{
       .fill_event_id = absl::get<TriggerFillFieldLogEvent>(b).fill_event_id,
       .had_value_before_filling = OptionalBoolean::kTrue,
-      .autofill_skipped_status =
-          FieldFillingSkipReason::kAutofilledFieldsNotRefill,
+      .autofill_skipped_status = FieldFillingSkipReason::kAlreadyAutofilled,
       .was_autofilled_before_security_policy = OptionalBoolean::kTrue,
       .had_value_after_filling = OptionalBoolean::kTrue};
 

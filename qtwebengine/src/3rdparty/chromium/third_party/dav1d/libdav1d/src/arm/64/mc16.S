@@ -145,11 +145,11 @@ function \type\()_16bpc_neon, export=1
         dup             v27.4s,  w6
         neg             v27.4s,  v27.4s
 .endif
-        adr             x7,  L(\type\()_tbl)
+        movrel          x7,  \type\()_tbl
         sub             w4,  w4,  #24
         \type           v4,  v5,  v0,  v1,  v2,  v3
-        ldrh            w4,  [x7, x4, lsl #1]
-        sub             x7,  x7,  w4, uxtw
+        ldrsw           x4,  [x7, x4, lsl #2]
+        add             x7,  x7,  x4
         br              x7
 40:
         AARCH64_VALID_JUMP_TARGET
@@ -175,8 +175,9 @@ function \type\()_16bpc_neon, export=1
         b.le            0f
         \type           v4,  v5,  v0,  v1,  v2,  v3
         b               8b
-16:
+160:
         AARCH64_VALID_JUMP_TARGET
+16:
         \type           v6,  v7,  v0,  v1,  v2,  v3
         st1             {v4.8h, v5.8h}, [x0], x1
         subs            w5,  w5,  #2
@@ -184,8 +185,9 @@ function \type\()_16bpc_neon, export=1
         b.le            0f
         \type           v4,  v5,  v0,  v1,  v2,  v3
         b               16b
-32:
+320:
         AARCH64_VALID_JUMP_TARGET
+32:
         \type           v6,  v7,  v0,  v1,  v2,  v3
         subs            w5,  w5,  #1
         st1             {v4.8h, v5.8h, v6.8h, v7.8h},  [x0], x1
@@ -228,14 +230,16 @@ function \type\()_16bpc_neon, export=1
         b               128b
 0:
         ret
-L(\type\()_tbl):
-        .hword L(\type\()_tbl) - 1280b
-        .hword L(\type\()_tbl) -  640b
-        .hword L(\type\()_tbl) -   32b
-        .hword L(\type\()_tbl) -   16b
-        .hword L(\type\()_tbl) -   80b
-        .hword L(\type\()_tbl) -   40b
 endfunc
+
+jumptable \type\()_tbl
+        .word 1280b - \type\()_tbl
+        .word 640b  - \type\()_tbl
+        .word 320b  - \type\()_tbl
+        .word 160b  - \type\()_tbl
+        .word 80b   - \type\()_tbl
+        .word 40b   - \type\()_tbl
+endjumptable
 .endm
 
 bidir_fn avg, w6
@@ -247,12 +251,12 @@ bidir_fn mask, w7
 function w_mask_\type\()_16bpc_neon, export=1
         ldr             w8,  [sp]
         clz             w9,  w4
-        adr             x10, L(w_mask_\type\()_tbl)
+        movrel          x10, w_mask_\type\()_tbl
         dup             v31.8h,  w8   // bitdepth_max
         sub             w9,  w9,  #24
         clz             w8,  w8       // clz(bitdepth_max)
-        ldrh            w9,  [x10,  x9,  lsl #1]
-        sub             x10, x10, w9,  uxtw
+        ldrsw           x9,  [x10,  x9,  lsl #2]
+        add             x10, x10, x9
         sub             w8,  w8,  #12 // sh = intermediate_bits + 6 = clz(bitdepth_max) - 12
         mov             w9,  #PREP_BIAS*64
         neg             w8,  w8       // -sh
@@ -274,8 +278,9 @@ function w_mask_\type\()_16bpc_neon, export=1
         add             x12,  x0,  x1
         lsl             x1,   x1,  #1
         br              x10
-4:
+40:
         AARCH64_VALID_JUMP_TARGET
+4:
         ld1             {v4.8h, v5.8h}, [x2], #32 // tmp1 (four rows at once)
         ld1             {v6.8h, v7.8h}, [x3], #32 // tmp2 (four rows at once)
         subs            w5,  w5,  #4
@@ -339,8 +344,9 @@ function w_mask_\type\()_16bpc_neon, export=1
         st1             {v5.d}[1],  [x12], x1
         b.gt            4b
         ret
-8:
+80:
         AARCH64_VALID_JUMP_TARGET
+8:
         ld1             {v4.8h, v5.8h}, [x2], #32 // tmp1
         ld1             {v6.8h, v7.8h}, [x3], #32 // tmp2
         subs            w5,  w5,  #2
@@ -541,14 +547,16 @@ function w_mask_\type\()_16bpc_neon, export=1
         add             x12, x12, x1
         b.gt            161b
         ret
-L(w_mask_\type\()_tbl):
-        .hword L(w_mask_\type\()_tbl) - 1280b
-        .hword L(w_mask_\type\()_tbl) -  640b
-        .hword L(w_mask_\type\()_tbl) -  320b
-        .hword L(w_mask_\type\()_tbl) -  160b
-        .hword L(w_mask_\type\()_tbl) -    8b
-        .hword L(w_mask_\type\()_tbl) -    4b
 endfunc
+
+jumptable w_mask_\type\()_tbl
+        .word 1280b - w_mask_\type\()_tbl
+        .word 640b  - w_mask_\type\()_tbl
+        .word 320b  - w_mask_\type\()_tbl
+        .word 160b  - w_mask_\type\()_tbl
+        .word 80b   - w_mask_\type\()_tbl
+        .word 40b   - w_mask_\type\()_tbl
+endjumptable
 .endm
 
 w_mask_fn 444
@@ -557,11 +565,11 @@ w_mask_fn 420
 
 
 function blend_16bpc_neon, export=1
-        adr             x6,  L(blend_tbl)
+        movrel          x6,  blend_tbl
         clz             w3,  w3
         sub             w3,  w3,  #26
-        ldrh            w3,  [x6,  x3,  lsl #1]
-        sub             x6,  x6,  w3,  uxtw
+        ldrsw           x3,  [x6,  x3,  lsl #2]
+        add             x6,  x6,  x3
         add             x8,  x0,  x1
         br              x6
 40:
@@ -642,8 +650,9 @@ function blend_16bpc_neon, export=1
         st1             {v2.8h, v3.8h}, [x8], x1
         b.gt            16b
         ret
-32:
+320:
         AARCH64_VALID_JUMP_TARGET
+32:
         ld1             {v16.16b, v17.16b},           [x5], #32
         ld1             {v4.8h, v5.8h, v6.8h, v7.8h}, [x2], #64
         subs            w4,  w4,  #1
@@ -673,15 +682,17 @@ function blend_16bpc_neon, export=1
         st1             {v0.8h, v1.8h, v2.8h, v3.8h}, [x0], x1
         b.gt            32b
         ret
-L(blend_tbl):
-        .hword L(blend_tbl) -  32b
-        .hword L(blend_tbl) - 160b
-        .hword L(blend_tbl) -  80b
-        .hword L(blend_tbl) -  40b
 endfunc
 
+jumptable blend_tbl
+        .word 320b - blend_tbl
+        .word 160b - blend_tbl
+        .word 80b  - blend_tbl
+        .word 40b  - blend_tbl
+endjumptable
+
 function blend_h_16bpc_neon, export=1
-        adr             x6,  L(blend_h_tbl)
+        movrel          x6,  blend_h_tbl
         movrel          x5,  X(obmc_masks)
         add             x5,  x5,  w4,  uxtw
         sub             w4,  w4,  w4,  lsr #2
@@ -689,11 +700,12 @@ function blend_h_16bpc_neon, export=1
         add             x8,  x0,  x1
         lsl             x1,  x1,  #1
         sub             w7,  w7,  #24
-        ldrh            w7,  [x6,  x7,  lsl #1]
-        sub             x6,  x6,  w7, uxtw
+        ldrsw           x7,  [x6,  x7,  lsl #2]
+        add             x6,  x6,  x7
         br              x6
-2:
+20:
         AARCH64_VALID_JUMP_TARGET
+2:
         ld2r            {v2.8b, v3.8b}, [x5], #2
         ld1             {v1.4h},        [x2], #8
         ext             v2.8b,   v2.8b,   v3.8b,   #6
@@ -710,8 +722,9 @@ function blend_h_16bpc_neon, export=1
         st1             {v0.s}[1], [x8], x1
         b.gt            2b
         ret
-4:
+40:
         AARCH64_VALID_JUMP_TARGET
+4:
         ld2r            {v2.8b, v3.8b}, [x5], #2
         ld1             {v1.8h},        [x2], #16
         ext             v2.8b,   v2.8b,   v3.8b,   #4
@@ -728,8 +741,9 @@ function blend_h_16bpc_neon, export=1
         st1             {v0.d}[1], [x8], x1
         b.gt            4b
         ret
-8:
+80:
         AARCH64_VALID_JUMP_TARGET
+8:
         ld2r            {v4.8b, v5.8b}, [x5], #2
         ld1             {v2.8h, v3.8h}, [x2], #32
         neg             v4.8b,   v4.8b            // -m
@@ -751,8 +765,9 @@ function blend_h_16bpc_neon, export=1
         st1             {v1.8h}, [x8], x1
         b.gt            8b
         ret
-16:
+160:
         AARCH64_VALID_JUMP_TARGET
+16:
         ld2r            {v16.8b, v17.8b}, [x5], #2
         ld1             {v4.8h, v5.8h, v6.8h, v7.8h}, [x2], #64
         neg             v16.8b,  v16.8b           // -m
@@ -835,26 +850,28 @@ function blend_h_16bpc_neon, export=1
         add             x7,  x7,  w3,  uxtw #1
         b.gt            321b
         ret
-L(blend_h_tbl):
-        .hword L(blend_h_tbl) - 1280b
-        .hword L(blend_h_tbl) -  640b
-        .hword L(blend_h_tbl) -  320b
-        .hword L(blend_h_tbl) -   16b
-        .hword L(blend_h_tbl) -    8b
-        .hword L(blend_h_tbl) -    4b
-        .hword L(blend_h_tbl) -    2b
 endfunc
 
+jumptable blend_h_tbl
+        .word 1280b - blend_h_tbl
+        .word 640b  - blend_h_tbl
+        .word 320b  - blend_h_tbl
+        .word 160b  - blend_h_tbl
+        .word 80b   - blend_h_tbl
+        .word 40b   - blend_h_tbl
+        .word 20b   - blend_h_tbl
+endjumptable
+
 function blend_v_16bpc_neon, export=1
-        adr             x6,  L(blend_v_tbl)
+        movrel          x6,  blend_v_tbl
         movrel          x5,  X(obmc_masks)
         add             x5,  x5,  w3,  uxtw
         clz             w3,  w3
         add             x8,  x0,  x1
         lsl             x1,  x1,  #1
         sub             w3,  w3,  #26
-        ldrh            w3,  [x6,  x3,  lsl #1]
-        sub             x6,  x6,  w3,  uxtw
+        ldrsw           x3,  [x6,  x3,  lsl #2]
+        add             x6,  x6,  x3
         br              x6
 20:
         AARCH64_VALID_JUMP_TARGET
@@ -992,25 +1009,28 @@ function blend_v_16bpc_neon, export=1
         st1             {v4.8h, v5.8h, v6.8h}, [x8], x1
         b.gt            32b
         ret
-L(blend_v_tbl):
-        .hword L(blend_v_tbl) - 320b
-        .hword L(blend_v_tbl) - 160b
-        .hword L(blend_v_tbl) -  80b
-        .hword L(blend_v_tbl) -  40b
-        .hword L(blend_v_tbl) -  20b
 endfunc
+
+jumptable blend_v_tbl
+        .word 320b - blend_v_tbl
+        .word 160b - blend_v_tbl
+        .word 80b  - blend_v_tbl
+        .word 40b  - blend_v_tbl
+        .word 20b  - blend_v_tbl
+endjumptable
 
 
 // This has got the same signature as the put_8tap functions,
 // and assumes that x9 is set to (clz(w)-24).
-function put_neon
-        adr             x10, L(put_tbl)
-        ldrh            w9, [x10, x9, lsl #1]
-        sub             x10, x10, w9, uxtw
+function put_16bpc_neon, export=1
+        movrel          x10, put_16bpc_tbl
+        ldrsw           x9, [x10, x9, lsl #2]
+        add             x10, x10, x9
         br              x10
 
-2:
+20:
         AARCH64_VALID_JUMP_TARGET
+2:
         ld1             {v0.s}[0], [x2], x3
         ld1             {v1.s}[0], [x2], x3
         subs            w5,  w5,  #2
@@ -1018,8 +1038,9 @@ function put_neon
         st1             {v1.s}[0], [x0], x1
         b.gt            2b
         ret
-4:
+40:
         AARCH64_VALID_JUMP_TARGET
+4:
         ld1             {v0.4h}, [x2], x3
         ld1             {v1.4h}, [x2], x3
         subs            w5,  w5,  #2
@@ -1041,8 +1062,9 @@ function put_neon
         st1             {v1.8h}, [x8], x1
         b.gt            8b
         ret
-16:
+160:
         AARCH64_VALID_JUMP_TARGET
+16:
         ldp             x6,  x7,  [x2]
         ldp             x8,  x9,  [x2, #16]
         stp             x6,  x7,  [x0]
@@ -1052,8 +1074,9 @@ function put_neon
         add             x0,  x0,  x1
         b.gt            16b
         ret
-32:
+320:
         AARCH64_VALID_JUMP_TARGET
+32:
         ldp             x6,  x7,  [x2]
         ldp             x8,  x9,  [x2, #16]
         stp             x6,  x7,  [x0]
@@ -1067,8 +1090,9 @@ function put_neon
         add             x0,  x0,  x1
         b.gt            32b
         ret
-64:
+640:
         AARCH64_VALID_JUMP_TARGET
+64:
         ldp             q0,  q1,  [x2]
         ldp             q2,  q3,  [x2, #32]
         stp             q0,  q1,  [x0]
@@ -1082,8 +1106,9 @@ function put_neon
         add             x0,  x0,  x1
         b.gt            64b
         ret
-128:
+1280:
         AARCH64_VALID_JUMP_TARGET
+128:
         ldp             q0,  q1,  [x2]
         ldp             q2,  q3,  [x2, #32]
         stp             q0,  q1,  [x0]
@@ -1105,27 +1130,28 @@ function put_neon
         add             x0,  x0,  x1
         b.gt            128b
         ret
-
-L(put_tbl):
-        .hword L(put_tbl) - 128b
-        .hword L(put_tbl) -  64b
-        .hword L(put_tbl) -  32b
-        .hword L(put_tbl) -  16b
-        .hword L(put_tbl) -  80b
-        .hword L(put_tbl) -   4b
-        .hword L(put_tbl) -   2b
 endfunc
+
+jumptable put_16bpc_tbl
+        .word 1280b - put_16bpc_tbl
+        .word 640b  - put_16bpc_tbl
+        .word 320b  - put_16bpc_tbl
+        .word 160b  - put_16bpc_tbl
+        .word 80b   - put_16bpc_tbl
+        .word 40b   - put_16bpc_tbl
+        .word 20b   - put_16bpc_tbl
+endjumptable
 
 
 // This has got the same signature as the prep_8tap functions,
 // and assumes that x9 is set to (clz(w)-24), w7 to intermediate_bits and
 // x8 to w*2.
-function prep_neon
-        adr             x10, L(prep_tbl)
-        ldrh            w9, [x10, x9, lsl #1]
+function prep_16bpc_neon
+        movrel          x10, prep_16bpc_tbl
+        ldrsw           x9, [x10, x9, lsl #2]
         dup             v31.8h,  w7   // intermediate_bits
         movi            v30.8h,  #(PREP_BIAS >> 8), lsl #8
-        sub             x10, x10, w9, uxtw
+        add             x10, x10, x9
         br              x10
 
 40:
@@ -1156,8 +1182,9 @@ function prep_neon
         st1             {v0.8h, v1.8h}, [x0], #32
         b.gt            8b
         ret
-16:
+160:
         AARCH64_VALID_JUMP_TARGET
+16:
         ldp             q0,  q1,  [x1]
         add             x1,  x1,  x2
         sshl            v0.8h,   v0.8h,   v31.8h
@@ -1174,8 +1201,9 @@ function prep_neon
         st1             {v0.8h, v1.8h, v2.8h, v3.8h}, [x0], #64
         b.gt            16b
         ret
-32:
+320:
         AARCH64_VALID_JUMP_TARGET
+32:
         ldp             q0,  q1,  [x1]
         sshl            v0.8h,   v0.8h,   v31.8h
         ldp             q2,  q3,  [x1, #32]
@@ -1191,8 +1219,9 @@ function prep_neon
         st1             {v0.8h, v1.8h, v2.8h, v3.8h}, [x0], #64
         b.gt            32b
         ret
-64:
+640:
         AARCH64_VALID_JUMP_TARGET
+64:
         ldp             q0,  q1,  [x1]
         subs            w4,  w4,  #1
         sshl            v0.8h,   v0.8h,   v31.8h
@@ -1222,8 +1251,9 @@ function prep_neon
         add             x0,  x0,  x8
         b.gt            64b
         ret
-128:
+1280:
         AARCH64_VALID_JUMP_TARGET
+128:
         ldp             q0,  q1,  [x1]
         subs            w4,  w4,  #1
         sshl            v0.8h,   v0.8h,   v31.8h
@@ -1277,15 +1307,16 @@ function prep_neon
         add             x0,  x0,  x8
         b.gt            128b
         ret
-
-L(prep_tbl):
-        .hword L(prep_tbl) - 128b
-        .hword L(prep_tbl) -  64b
-        .hword L(prep_tbl) -  32b
-        .hword L(prep_tbl) -  16b
-        .hword L(prep_tbl) -  80b
-        .hword L(prep_tbl) -  40b
 endfunc
+
+jumptable prep_16bpc_tbl
+        .word 1280b - prep_16bpc_tbl
+        .word 640b  - prep_16bpc_tbl
+        .word 320b  - prep_16bpc_tbl
+        .word 160b  - prep_16bpc_tbl
+        .word 80b   - prep_16bpc_tbl
+        .word 40b   - prep_16bpc_tbl
+endjumptable
 
 
 .macro load_slice s0, s1, strd, wd, d0, d1, d2, d3, d4, d5, d6
@@ -1374,19 +1405,35 @@ endfunc
         sub             \r3\wd,  \r3\wd,  \c\wd
 .endif
 .endm
-.macro smull_smlal_4 d, s0, s1, s2, s3
+.macro smull_smlal_4tap d, s0, s1, s2, s3
         smull           \d\().4s,  \s0\().4h,  v0.h[0]
         smlal           \d\().4s,  \s1\().4h,  v0.h[1]
         smlal           \d\().4s,  \s2\().4h,  v0.h[2]
         smlal           \d\().4s,  \s3\().4h,  v0.h[3]
 .endm
-.macro smull2_smlal2_4 d, s0, s1, s2, s3
+.macro smull2_smlal2_4tap d, s0, s1, s2, s3
         smull2          \d\().4s,  \s0\().8h,  v0.h[0]
         smlal2          \d\().4s,  \s1\().8h,  v0.h[1]
         smlal2          \d\().4s,  \s2\().8h,  v0.h[2]
         smlal2          \d\().4s,  \s3\().8h,  v0.h[3]
 .endm
-.macro smull_smlal_8 d, s0, s1, s2, s3, s4, s5, s6, s7
+.macro smull_smlal_6tap d, s0, s1, s2, s3, s4, s5, s6, s7
+        smull           \d\().4s,  \s1\().4h,  v0.h[1]
+        smlal           \d\().4s,  \s2\().4h,  v0.h[2]
+        smlal           \d\().4s,  \s3\().4h,  v0.h[3]
+        smlal           \d\().4s,  \s4\().4h,  v0.h[4]
+        smlal           \d\().4s,  \s5\().4h,  v0.h[5]
+        smlal           \d\().4s,  \s6\().4h,  v0.h[6]
+.endm
+.macro smull2_smlal2_6tap d, s0, s1, s2, s3, s4, s5, s6, s7
+        smull2          \d\().4s,  \s1\().8h,  v0.h[1]
+        smlal2          \d\().4s,  \s2\().8h,  v0.h[2]
+        smlal2          \d\().4s,  \s3\().8h,  v0.h[3]
+        smlal2          \d\().4s,  \s4\().8h,  v0.h[4]
+        smlal2          \d\().4s,  \s5\().8h,  v0.h[5]
+        smlal2          \d\().4s,  \s6\().8h,  v0.h[6]
+.endm
+.macro smull_smlal_8tap d, s0, s1, s2, s3, s4, s5, s6, s7
         smull           \d\().4s,  \s0\().4h,  v0.h[0]
         smlal           \d\().4s,  \s1\().4h,  v0.h[1]
         smlal           \d\().4s,  \s2\().4h,  v0.h[2]
@@ -1396,7 +1443,7 @@ endfunc
         smlal           \d\().4s,  \s6\().4h,  v0.h[6]
         smlal           \d\().4s,  \s7\().4h,  v0.h[7]
 .endm
-.macro smull2_smlal2_8 d, s0, s1, s2, s3, s4, s5, s6, s7
+.macro smull2_smlal2_8tap d, s0, s1, s2, s3, s4, s5, s6, s7
         smull2          \d\().4s,  \s0\().8h,  v0.h[0]
         smlal2          \d\().4s,  \s1\().8h,  v0.h[1]
         smlal2          \d\().4s,  \s2\().8h,  v0.h[2]
@@ -1499,11 +1546,11 @@ endfunc
         st1             {\r0\().8h, \r1\().8h}, [\dst], \strd
 .endm
 
-.macro make_8tap_fn op, type, type_h, type_v
+.macro make_8tap_fn op, type, type_h, type_v, taps
 function \op\()_8tap_\type\()_16bpc_neon, export=1
         mov             w9,  \type_h
         mov             w10, \type_v
-        b               \op\()_8tap_neon
+        b               \op\()_\taps\()_neon
 endfunc
 .endm
 
@@ -1512,18 +1559,8 @@ endfunc
 #define SMOOTH  ((1*15<<7)|4*15)
 #define SHARP   ((2*15<<7)|3*15)
 
-.macro filter_fn type, dst, d_strd, src, s_strd, w, h, mx, xmx, my, xmy, bdmax, ds2, sr2
-make_8tap_fn \type, regular,        REGULAR, REGULAR
-make_8tap_fn \type, regular_smooth, REGULAR, SMOOTH
-make_8tap_fn \type, regular_sharp,  REGULAR, SHARP
-make_8tap_fn \type, smooth,         SMOOTH,  SMOOTH
-make_8tap_fn \type, smooth_regular, SMOOTH,  REGULAR
-make_8tap_fn \type, smooth_sharp,   SMOOTH,  SHARP
-make_8tap_fn \type, sharp,          SHARP,   SHARP
-make_8tap_fn \type, sharp_regular,  SHARP,   REGULAR
-make_8tap_fn \type, sharp_smooth,   SHARP,   SMOOTH
-
-function \type\()_8tap_neon
+.macro filter_fn type, dst, d_strd, src, s_strd, w, h, mx, xmx, my, xmy, bdmax, ds2, sr2, taps
+function \type\()_\taps\()_neon
 .ifc \bdmax, w8
         ldr             w8,  [sp]
 .endif
@@ -1547,12 +1584,12 @@ function \type\()_8tap_neon
         add             w13, w12, \bdmax       // 6 + intermediate_bits
         sub             w12, w12, \bdmax       // 6 - intermediate_bits
         movrel          x11, X(mc_subpel_filters), -8
-        b.ne            L(\type\()_8tap_h)
+        b.ne            L(\type\()_\taps\()_h)
         tst             \my, #(0x7f << 14)
-        b.ne            L(\type\()_8tap_v)
-        b               \type\()_neon
+        b.ne            L(\type\()_\taps\()_v)
+        b               \type\()_16bpc_neon
 
-L(\type\()_8tap_h):
+L(\type\()_\taps\()_h):
         cmp             \w,   #4
         ubfx            w10,  \mx, #7, #7
         and             \mx,  \mx, #0x7f
@@ -1561,18 +1598,18 @@ L(\type\()_8tap_h):
 4:
         tst             \my,  #(0x7f << 14)
         add             \xmx, x11, \mx, uxtw #3
-        b.ne            L(\type\()_8tap_hv)
+        b.ne            L(\type\()_\taps\()_hv)
 
-        adr             x10, L(\type\()_8tap_h_tbl)
+        movrel          x10, \type\()_\taps\()_h_tbl
         dup             v30.4s,  w12           // 6 - intermediate_bits
-        ldrh            w9,  [x10, x9, lsl #1]
+        ldrsw           x9,  [x10, x9, lsl #2]
         neg             v30.4s,  v30.4s        // -(6-intermediate_bits)
 .ifc \type, put
         dup             v29.8h,  \bdmax        // intermediate_bits
 .else
         movi            v28.8h,  #(PREP_BIAS >> 8), lsl #8
 .endif
-        sub             x10, x10, w9, uxtw
+        add             x10, x10, x9
 .ifc \type, put
         neg             v29.8h,  v29.8h        // -intermediate_bits
 .endif
@@ -1682,6 +1719,22 @@ L(\type\()_8tap_h):
         mov             \mx, \w
 
 8:
+.ifc \taps, 6tap
+        ext             v24.16b, v16.16b, v17.16b, #2
+        ext             v25.16b, v20.16b, v21.16b, #2
+        smull           v18.4s,  v24.4h,  v0.h[1]
+        smull2          v19.4s,  v24.8h,  v0.h[1]
+        smull           v22.4s,  v25.4h,  v0.h[1]
+        smull2          v23.4s,  v25.8h,  v0.h[1]
+.irpc i, 23456
+        ext             v24.16b, v16.16b, v17.16b, #(2*\i)
+        ext             v25.16b, v20.16b, v21.16b, #(2*\i)
+        smlal           v18.4s,  v24.4h,  v0.h[\i]
+        smlal2          v19.4s,  v24.8h,  v0.h[\i]
+        smlal           v22.4s,  v25.4h,  v0.h[\i]
+        smlal2          v23.4s,  v25.8h,  v0.h[\i]
+.endr
+.else   // 8tap
         smull           v18.4s,  v16.4h,  v0.h[0]
         smull2          v19.4s,  v16.8h,  v0.h[0]
         smull           v22.4s,  v20.4h,  v0.h[0]
@@ -1694,6 +1747,7 @@ L(\type\()_8tap_h):
         smlal           v22.4s,  v25.4h,  v0.h[\i]
         smlal2          v23.4s,  v25.8h,  v0.h[\i]
 .endr
+.endif
         subs            \mx, \mx, #8
         srshl           v18.4s,  v18.4s,  v30.4s // -(6-intermediate_bits)
         srshl           v19.4s,  v19.4s,  v30.4s // -(6-intermediate_bits)
@@ -1733,19 +1787,20 @@ L(\type\()_8tap_h):
         subs            \h,  \h,  #2
         b.gt            81b
         ret
+endfunc
 
-L(\type\()_8tap_h_tbl):
-        .hword L(\type\()_8tap_h_tbl) - 1280b
-        .hword L(\type\()_8tap_h_tbl) -  640b
-        .hword L(\type\()_8tap_h_tbl) -  320b
-        .hword L(\type\()_8tap_h_tbl) -  160b
-        .hword L(\type\()_8tap_h_tbl) -   80b
-        .hword L(\type\()_8tap_h_tbl) -   40b
-        .hword L(\type\()_8tap_h_tbl) -   20b
-        .hword 0
+jumptable \type\()_\taps\()_h_tbl
+        .word 1280b - \type\()_\taps\()_h_tbl
+        .word 640b  - \type\()_\taps\()_h_tbl
+        .word 320b  - \type\()_\taps\()_h_tbl
+        .word 160b  - \type\()_\taps\()_h_tbl
+        .word 80b   - \type\()_\taps\()_h_tbl
+        .word 40b   - \type\()_\taps\()_h_tbl
+        .word 20b   - \type\()_\taps\()_h_tbl
+endjumptable
 
 
-L(\type\()_8tap_v):
+function L(\type\()_\taps\()_v)
         cmp             \h,  #4
         ubfx            w10, \my, #7, #7
         and             \my, \my, #0x7f
@@ -1758,12 +1813,12 @@ L(\type\()_8tap_v):
         dup             v30.4s,  w12           // 6 - intermediate_bits
         movi            v29.8h,  #(PREP_BIAS >> 8), lsl #8
 .endif
-        adr             x10, L(\type\()_8tap_v_tbl)
-        ldrh            w9,  [x10, x9, lsl #1]
+        movrel          x10, \type\()_\taps\()_v_tbl
+        ldrsw           x9,  [x10, x9, lsl #2]
 .ifc \type, prep
         neg             v30.4s,  v30.4s        // -(6-intermediate_bits)
 .endif
-        sub             x10, x10, w9, uxtw
+        add             x10, x10, x9
         br              x10
 
 20:     // 2xN v
@@ -1785,7 +1840,7 @@ L(\type\()_8tap_v):
         load_s          \src, \sr2, \s_strd, v1, v2, v3, v4, v5
         interleave_1_s  v1,  v2,  v3,  v4,  v5
         b.gt            24f
-        smull_smlal_4   v6,  v1,  v2,  v3,  v4
+        smull_smlal_4tap v6, v1,  v2,  v3,  v4
         sqrshrun_h      6,   v6
         umin_h          v31, .8h, v6
         st_s            \d_strd, v6, 2
@@ -1794,8 +1849,8 @@ L(\type\()_8tap_v):
 24:     // 2x4 v
         load_s          \sr2, \src, \s_strd, v6, v7
         interleave_1_s  v5,  v6,  v7
-        smull_smlal_4   v16, v1,  v2,  v3,  v4
-        smull_smlal_4   v17, v3,  v4,  v5,  v6
+        smull_smlal_4tap v16, v1, v2, v3, v4
+        smull_smlal_4tap v17, v3, v4, v5, v6
         sqrshrun_h      6,   v16, v17
         umin_h          v31, .8h, v16
         st_s            \d_strd, v16, 4
@@ -1817,8 +1872,8 @@ L(\type\()_8tap_v):
         subs            \h,  \h,  #4
         load_s          \sr2, \src, \s_strd, v16, v17, v18, v19
         interleave_1_s  v7,  v16, v17, v18, v19
-        smull_smlal_8   v24, v1,  v2,  v3,  v4,  v5,  v6,  v7,  v16
-        smull_smlal_8   v25, v3,  v4,  v5,  v6,  v7,  v16, v17, v18
+        smull_smlal_\taps v24, v1,  v2,  v3,  v4,  v5,  v6,  v7, v16
+        smull_smlal_\taps v25, v3,  v4,  v5,  v6,  v7, v16, v17, v18
         sqrshrun_h      6,   v24, v25
         umin_h          v31, .8h, v24
         st_s            \d_strd, v24, 4
@@ -1836,7 +1891,7 @@ L(\type\()_8tap_v):
 26:
         load_s          \sr2, \src, \s_strd, v16, v17
         interleave_1_s  v7,  v16, v17
-        smull_smlal_8   v24, v1,  v2,  v3,  v4,  v5,  v6,  v7,  v16
+        smull_smlal_\taps v24, v1, v2,  v3,  v4,  v5,  v6,  v7, v16
         sqrshrun_h      6,   v24
         umin_h          v31, .4h, v24
         st_s            \d_strd, v24, 2
@@ -1860,13 +1915,13 @@ L(\type\()_8tap_v):
         sxtl            v0.8h,   v0.8b
 
         load_4h         \src, \sr2, \s_strd, v1, v2, v3, v4, v5
-        smull_smlal_4   v6,  v1,  v2,  v3,  v4
-        smull_smlal_4   v7,  v2,  v3,  v4,  v5
+        smull_smlal_4tap v6,  v1,  v2,  v3,  v4
+        smull_smlal_4tap v7,  v2,  v3,  v4,  v5
         shift_store_4   \type, \d_strd, v6, v7
         b.le            0f
         load_4h         \sr2, \src, \s_strd, v6, v7
-        smull_smlal_4   v1,  v3,  v4,  v5,  v6
-        smull_smlal_4   v2,  v4,  v5,  v6,  v7
+        smull_smlal_4tap v1,  v3,  v4,  v5,  v6
+        smull_smlal_4tap v2,  v4,  v5,  v6,  v7
         shift_store_4   \type, \d_strd, v1, v2
 0:
         ret
@@ -1885,10 +1940,10 @@ L(\type\()_8tap_v):
 48:
         subs            \h,  \h,  #4
         load_4h         \sr2, \src, \s_strd, v23, v24, v25, v26
-        smull_smlal_8   v1,  v16, v17, v18, v19, v20, v21, v22, v23
-        smull_smlal_8   v2,  v17, v18, v19, v20, v21, v22, v23, v24
-        smull_smlal_8   v3,  v18, v19, v20, v21, v22, v23, v24, v25
-        smull_smlal_8   v4,  v19, v20, v21, v22, v23, v24, v25, v26
+        smull_smlal_\taps v1, v16, v17, v18, v19, v20, v21, v22, v23
+        smull_smlal_\taps v2, v17, v18, v19, v20, v21, v22, v23, v24
+        smull_smlal_\taps v3, v18, v19, v20, v21, v22, v23, v24, v25
+        smull_smlal_\taps v4, v19, v20, v21, v22, v23, v24, v25, v26
         shift_store_4   \type, \d_strd, v1, v2, v3, v4
         b.le            0f
         cmp             \h,  #2
@@ -1903,8 +1958,8 @@ L(\type\()_8tap_v):
         b               48b
 46:
         load_4h         \sr2, \src, \s_strd, v23, v24
-        smull_smlal_8   v1,  v16, v17, v18, v19, v20, v21, v22, v23
-        smull_smlal_8   v2,  v17, v18, v19, v20, v21, v22, v23, v24
+        smull_smlal_\taps v1, v16, v17, v18, v19, v20, v21, v22, v23
+        smull_smlal_\taps v2, v17, v18, v19, v20, v21, v22, v23, v24
         shift_store_4   \type, \d_strd, v1, v2
 0:
         ret
@@ -1925,17 +1980,17 @@ L(\type\()_8tap_v):
         sxtl            v0.8h,   v0.8b
 
         load_8h         \src, \sr2, \s_strd, v1, v2, v3, v4, v5
-        smull_smlal_4   v16, v1,  v2,  v3,  v4
-        smull2_smlal2_4 v17, v1,  v2,  v3,  v4
-        smull_smlal_4   v18, v2,  v3,  v4,  v5
-        smull2_smlal2_4 v19, v2,  v3,  v4,  v5
+        smull_smlal_4tap   v16, v1,  v2,  v3,  v4
+        smull2_smlal2_4tap v17, v1,  v2,  v3,  v4
+        smull_smlal_4tap   v18, v2,  v3,  v4,  v5
+        smull2_smlal2_4tap v19, v2,  v3,  v4,  v5
         shift_store_8   \type, \d_strd, v16, v17, v18, v19
         b.le            0f
         load_8h         \sr2, \src, \s_strd, v6, v7
-        smull_smlal_4   v16, v3,  v4,  v5,  v6
-        smull2_smlal2_4 v17, v3,  v4,  v5,  v6
-        smull_smlal_4   v18, v4,  v5,  v6,  v7
-        smull2_smlal2_4 v19, v4,  v5,  v6,  v7
+        smull_smlal_4tap   v16, v3,  v4,  v5,  v6
+        smull2_smlal2_4tap v17, v3,  v4,  v5,  v6
+        smull_smlal_4tap   v18, v4,  v5,  v6,  v7
+        smull2_smlal2_4tap v19, v4,  v5,  v6,  v7
         shift_store_8   \type, \d_strd, v16, v17, v18, v19
 0:
         ret
@@ -1962,18 +2017,18 @@ L(\type\()_8tap_v):
 88:
         subs            \h,  \h,  #2
         load_8h         \sr2, \src, \s_strd, v23, v24
-        smull_smlal_8   v1,  v16, v17, v18, v19, v20, v21, v22, v23
-        smull2_smlal2_8 v2,  v16, v17, v18, v19, v20, v21, v22, v23
-        smull_smlal_8   v3,  v17, v18, v19, v20, v21, v22, v23, v24
-        smull2_smlal2_8 v4,  v17, v18, v19, v20, v21, v22, v23, v24
+        smull_smlal_\taps   v1, v16, v17, v18, v19, v20, v21, v22, v23
+        smull2_smlal2_\taps v2, v16, v17, v18, v19, v20, v21, v22, v23
+        smull_smlal_\taps   v3, v17, v18, v19, v20, v21, v22, v23, v24
+        smull2_smlal2_\taps v4, v17, v18, v19, v20, v21, v22, v23, v24
         shift_store_8   \type, \d_strd, v1, v2, v3, v4
         b.le            9f
         subs            \h,  \h,  #2
         load_8h         \sr2, \src, \s_strd, v25, v26
-        smull_smlal_8   v1,  v18, v19, v20, v21, v22, v23, v24, v25
-        smull2_smlal2_8 v2,  v18, v19, v20, v21, v22, v23, v24, v25
-        smull_smlal_8   v3,  v19, v20, v21, v22, v23, v24, v25, v26
-        smull2_smlal2_8 v4,  v19, v20, v21, v22, v23, v24, v25, v26
+        smull_smlal_\taps   v1, v18, v19, v20, v21, v22, v23, v24, v25
+        smull2_smlal2_\taps v2, v18, v19, v20, v21, v22, v23, v24, v25
+        smull_smlal_\taps   v3, v19, v20, v21, v22, v23, v24, v25, v26
+        smull2_smlal2_\taps v4, v19, v20, v21, v22, v23, v24, v25, v26
         shift_store_8   \type, \d_strd, v1, v2, v3, v4
         b.le            9f
         mov             v16.16b, v20.16b
@@ -2013,10 +2068,10 @@ L(\type\()_8tap_v):
 16:
         load_16h        \src, \src, \s_strd, v22, v23
         subs            \h,  \h,  #1
-        smull_smlal_4   v1,  v16, v18, v20, v22
-        smull2_smlal2_4 v2,  v16, v18, v20, v22
-        smull_smlal_4   v3,  v17, v19, v21, v23
-        smull2_smlal2_4 v4,  v17, v19, v21, v23
+        smull_smlal_4tap   v1, v16, v18, v20, v22
+        smull2_smlal2_4tap v2, v16, v18, v20, v22
+        smull_smlal_4tap   v3, v17, v19, v21, v23
+        smull2_smlal2_4tap v4, v17, v19, v21, v23
         shift_store_16  \type, \d_strd, x0, v1, v2, v3, v4
         b.le            0f
         mov             v16.16b, v18.16b
@@ -2028,18 +2083,19 @@ L(\type\()_8tap_v):
         b               16b
 0:
         ret
+endfunc
 
-L(\type\()_8tap_v_tbl):
-        .hword L(\type\()_8tap_v_tbl) - 1280b
-        .hword L(\type\()_8tap_v_tbl) -  640b
-        .hword L(\type\()_8tap_v_tbl) -  320b
-        .hword L(\type\()_8tap_v_tbl) -  160b
-        .hword L(\type\()_8tap_v_tbl) -   80b
-        .hword L(\type\()_8tap_v_tbl) -   40b
-        .hword L(\type\()_8tap_v_tbl) -   20b
-        .hword 0
+jumptable \type\()_\taps\()_v_tbl
+        .word 1280b - \type\()_\taps\()_v_tbl
+        .word 640b  - \type\()_\taps\()_v_tbl
+        .word 320b  - \type\()_\taps\()_v_tbl
+        .word 160b  - \type\()_\taps\()_v_tbl
+        .word 80b   - \type\()_\taps\()_v_tbl
+        .word 40b   - \type\()_\taps\()_v_tbl
+        .word 20b   - \type\()_\taps\()_v_tbl
+endjumptable
 
-L(\type\()_8tap_hv):
+function L(\type\()_\taps\()_hv)
         cmp             \h,  #4
         ubfx            w10, \my, #7, #7
         and             \my, \my, #0x7f
@@ -2048,16 +2104,16 @@ L(\type\()_8tap_hv):
 4:
         add             \xmy, x11, \my, uxtw #3
 
-        adr             x10, L(\type\()_8tap_hv_tbl)
+        movrel          x10, \type\()_\taps\()_hv_tbl
         dup             v30.4s,  w12           // 6 - intermediate_bits
-        ldrh            w9,  [x10, x9, lsl #1]
+        ldrsw           x9,  [x10, x9, lsl #2]
         neg             v30.4s,  v30.4s        // -(6-intermediate_bits)
 .ifc \type, put
         dup             v29.4s,  w13           // 6 + intermediate_bits
 .else
         movi            v29.8h,  #(PREP_BIAS >> 8), lsl #8
 .endif
-        sub             x10, x10, w9, uxtw
+        add             x10, x10, x9
 .ifc \type, put
         neg             v29.4s,  v29.4s        // -(6+intermediate_bits)
 .endif
@@ -2089,7 +2145,7 @@ L(\type\()_8tap_hv):
         addp            v27.4s,  v27.4s,  v28.4s
         addp            v16.4s,  v27.4s,  v27.4s
         srshl           v16.2s,  v16.2s,  v30.2s // -(6-intermediate_bits)
-        bl              L(\type\()_8tap_filter_2)
+        bl              L(\type\()_\taps\()_filter_2)
         // The intermediates from the horizontal pass fit in 16 bit without
         // any bias; we could just as well keep them as .4s, but narrowing
         // them to .4h gives a significant speedup on out of order cores
@@ -2100,7 +2156,7 @@ L(\type\()_8tap_hv):
         mov             v17.8b,  v24.8b
 
 2:
-        bl              L(\type\()_8tap_filter_2)
+        bl              L(\type\()_\taps\()_filter_2)
 
         ext             v18.8b,  v17.8b,  v24.8b,  #4
         smull           v2.4s,   v16.4h,  v1.h[0]
@@ -2143,20 +2199,28 @@ L(\type\()_8tap_hv):
         // them to .4h gives a significant speedup on out of order cores
         // (at the cost of a smaller slowdown on in-order cores such as A53).
 
-        bl              L(\type\()_8tap_filter_2)
+        bl              L(\type\()_\taps\()_filter_2)
         xtn             v16.4h,  v16.4s
         trn1            v16.2s,  v16.2s,  v24.2s
         mov             v17.8b,  v24.8b
-        bl              L(\type\()_8tap_filter_2)
+        bl              L(\type\()_\taps\()_filter_2)
         ext             v18.8b,  v17.8b,  v24.8b,  #4
         mov             v19.8b,  v24.8b
-        bl              L(\type\()_8tap_filter_2)
+        bl              L(\type\()_\taps\()_filter_2)
         ext             v20.8b,  v19.8b,  v24.8b,  #4
         mov             v21.8b,  v24.8b
 
 28:
-        bl              L(\type\()_8tap_filter_2)
+        bl              L(\type\()_\taps\()_filter_2)
         ext             v22.8b,  v21.8b,  v24.8b,  #4
+.ifc \taps, 6tap
+        smull           v3.4s,   v17.4h,  v1.h[1]
+        smlal           v3.4s,   v18.4h,  v1.h[2]
+        smlal           v3.4s,   v19.4h,  v1.h[3]
+        smlal           v3.4s,   v20.4h,  v1.h[4]
+        smlal           v3.4s,   v21.4h,  v1.h[5]
+        smlal           v3.4s,   v22.4h,  v1.h[6]
+.else   // 8tap
         smull           v3.4s,   v16.4h,  v1.h[0]
         smlal           v3.4s,   v17.4h,  v1.h[1]
         smlal           v3.4s,   v18.4h,  v1.h[2]
@@ -2165,6 +2229,7 @@ L(\type\()_8tap_hv):
         smlal           v3.4s,   v21.4h,  v1.h[5]
         smlal           v3.4s,   v22.4h,  v1.h[6]
         smlal           v3.4s,   v24.4h,  v1.h[7]
+.endif
 
         srshl           v3.4s,   v3.4s,   v29.4s // -(6+intermediate_bits)
         sqxtun          v3.4h,   v3.4s
@@ -2184,7 +2249,7 @@ L(\type\()_8tap_hv):
 0:
         ret             x15
 
-L(\type\()_8tap_filter_2):
+L(\type\()_\taps\()_filter_2):
         ld1             {v25.8h},  [\sr2], \s_strd
         ld1             {v27.8h},  [\src], \s_strd
         ext             v26.16b, v25.16b, v25.16b, #2
@@ -2234,12 +2299,12 @@ L(\type\()_8tap_filter_2):
         // (at the cost of a smaller slowdown on in-order cores such as A53).
         xtn             v16.4h,  v16.4s
 
-        bl              L(\type\()_8tap_filter_4)
+        bl              L(\type\()_\taps\()_filter_4)
         mov             v17.8b,  v24.8b
         mov             v18.8b,  v25.8b
 
 4:
-        bl              L(\type\()_8tap_filter_4)
+        bl              L(\type\()_\taps\()_filter_4)
         smull           v2.4s,   v16.4h,  v1.h[0]
         smlal           v2.4s,   v17.4h,  v1.h[1]
         smlal           v2.4s,   v18.4h,  v1.h[2]
@@ -2272,8 +2337,13 @@ L(\type\()_8tap_filter_2):
 480:    // 4x8, 4x16, 4x32 hv
         ld1             {v1.8b},  [\xmy]
         sub             \src, \src, #2
+.ifc \taps, 6tap
+        sub             \sr2, \src, \s_strd
+        sub             \src, \src, \s_strd, lsl #1
+.else
         sub             \sr2, \src, \s_strd, lsl #1
         sub             \src, \sr2, \s_strd
+.endif
         add             \ds2, \dst, \d_strd
         lsl             \s_strd, \s_strd, #1
         lsl             \d_strd, \d_strd, #1
@@ -2294,20 +2364,38 @@ L(\type\()_8tap_filter_2):
         // any bias; we could just as well keep them as .4s, but narrowing
         // them to .4h gives a significant speedup on out of order cores
         // (at the cost of a smaller slowdown on in-order cores such as A53).
+.ifc \taps, 6tap
+        xtn             v18.4h,  v16.4s
+.else
         xtn             v16.4h,  v16.4s
 
-        bl              L(\type\()_8tap_filter_4)
+        bl              L(\type\()_\taps\()_filter_4)
         mov             v17.8b,  v24.8b
         mov             v18.8b,  v25.8b
-        bl              L(\type\()_8tap_filter_4)
+.endif
+        bl              L(\type\()_\taps\()_filter_4)
         mov             v19.8b,  v24.8b
         mov             v20.8b,  v25.8b
-        bl              L(\type\()_8tap_filter_4)
+        bl              L(\type\()_\taps\()_filter_4)
         mov             v21.8b,  v24.8b
         mov             v22.8b,  v25.8b
 
 48:
-        bl              L(\type\()_8tap_filter_4)
+        bl              L(\type\()_\taps\()_filter_4)
+.ifc \taps, 6tap
+        smull           v3.4s,   v18.4h,  v1.h[1]
+        smlal           v3.4s,   v19.4h,  v1.h[2]
+        smlal           v3.4s,   v20.4h,  v1.h[3]
+        smlal           v3.4s,   v21.4h,  v1.h[4]
+        smlal           v3.4s,   v22.4h,  v1.h[5]
+        smlal           v3.4s,   v24.4h,  v1.h[6]
+        smull           v4.4s,   v19.4h,  v1.h[1]
+        smlal           v4.4s,   v20.4h,  v1.h[2]
+        smlal           v4.4s,   v21.4h,  v1.h[3]
+        smlal           v4.4s,   v22.4h,  v1.h[4]
+        smlal           v4.4s,   v24.4h,  v1.h[5]
+        smlal           v4.4s,   v25.4h,  v1.h[6]
+.else   // 8tap
         smull           v3.4s,   v16.4h,  v1.h[0]
         smlal           v3.4s,   v17.4h,  v1.h[1]
         smlal           v3.4s,   v18.4h,  v1.h[2]
@@ -2324,6 +2412,7 @@ L(\type\()_8tap_filter_2):
         smlal           v4.4s,   v22.4h,  v1.h[5]
         smlal           v4.4s,   v24.4h,  v1.h[6]
         smlal           v4.4s,   v25.4h,  v1.h[7]
+.endif
 .ifc \type, put
         srshl           v3.4s,   v3.4s,   v29.4s // -(6+intermediate_bits)
         srshl           v4.4s,   v4.4s,   v29.4s // -(6+intermediate_bits)
@@ -2339,8 +2428,10 @@ L(\type\()_8tap_filter_2):
         st1             {v3.d}[0], [\dst], \d_strd
         st1             {v3.d}[1], [\ds2], \d_strd
         b.le            0f
+.ifc \taps, 8tap
         mov             v16.8b,  v18.8b
         mov             v17.8b,  v19.8b
+.endif
         mov             v18.8b,  v20.8b
         mov             v19.8b,  v21.8b
         mov             v20.8b,  v22.8b
@@ -2350,7 +2441,7 @@ L(\type\()_8tap_filter_2):
 0:
         ret             x15
 
-L(\type\()_8tap_filter_4):
+L(\type\()_\taps\()_filter_4):
         ld1             {v24.8h}, [\sr2], \s_strd
         ld1             {v25.8h}, [\src], \s_strd
         ext             v26.16b, v24.16b, v24.16b, #2
@@ -2411,14 +2502,14 @@ L(\type\()_8tap_filter_4):
         // and conserves register space (no need to clobber v8-v15).
         uzp1            v16.8h,  v24.8h,  v25.8h // Same as xtn, xtn2
 
-        bl              L(\type\()_8tap_filter_8)
+        bl              L(\type\()_\taps\()_filter_8)
         mov             v17.16b, v23.16b
         mov             v18.16b, v24.16b
 
 8:
         smull           v2.4s,   v16.4h,  v1.h[0]
         smull2          v3.4s,   v16.8h,  v1.h[0]
-        bl              L(\type\()_8tap_filter_8)
+        bl              L(\type\()_\taps\()_filter_8)
         smull           v4.4s,   v17.4h,  v1.h[0]
         smull2          v5.4s,   v17.8h,  v1.h[0]
         smlal           v2.4s,   v17.4h,  v1.h[1]
@@ -2480,7 +2571,9 @@ L(\type\()_8tap_filter_4):
         ld1             {v0.8b},  [\xmx]
         ld1             {v1.8b},  [\xmy]
         sub             \src,  \src,  #6
+.ifc \taps, 8tap
         sub             \src,  \src,  \s_strd
+.endif
         sub             \src,  \src,  \s_strd, lsl #1
         sxtl            v0.8h,   v0.8b
         sxtl            v1.8h,   v1.8b
@@ -2494,6 +2587,16 @@ L(\type\()_8tap_filter_4):
         lsl             \s_strd, \s_strd, #1
 
         ld1             {v27.8h, v28.8h},  [\src], \s_strd
+.ifc \taps, 6tap
+        ext             v26.16b, v27.16b, v28.16b, #2
+        smull           v24.4s,  v26.4h,  v0.h[1]
+        smull2          v25.4s,  v26.8h,  v0.h[1]
+.irpc i, 23456
+        ext             v26.16b, v27.16b, v28.16b, #(2*\i)
+        smlal           v24.4s,  v26.4h,  v0.h[\i]
+        smlal2          v25.4s,  v26.8h,  v0.h[\i]
+.endr
+.else   // 8tap
         smull           v24.4s,  v27.4h,  v0.h[0]
         smull2          v25.4s,  v27.8h,  v0.h[0]
 .irpc i, 1234567
@@ -2501,6 +2604,7 @@ L(\type\()_8tap_filter_4):
         smlal           v24.4s,  v26.4h,  v0.h[\i]
         smlal2          v25.4s,  v26.8h,  v0.h[\i]
 .endr
+.endif
         srshl           v24.4s,  v24.4s,  v30.4s // -(6-intermediate_bits)
         srshl           v25.4s,  v25.4s,  v30.4s // -(6-intermediate_bits)
         // The intermediates from the horizontal pass fit in 16 bit without
@@ -2508,22 +2612,53 @@ L(\type\()_8tap_filter_4):
         // them to .4h gives a significant speedup on out of order cores
         // (at the cost of a smaller slowdown on in-order cores such as A53),
         // and conserves register space (no need to clobber v8-v15).
+.ifc \taps, 6tap
+        uzp1            v18.8h,  v24.8h,  v25.8h // Same as xtn, xtn2
+.else
         uzp1            v16.8h,  v24.8h,  v25.8h // Same as xtn, xtn2
 
-        bl              L(\type\()_8tap_filter_8)
+        bl              L(\type\()_\taps\()_filter_8)
         mov             v17.16b, v23.16b
         mov             v18.16b, v24.16b
-        bl              L(\type\()_8tap_filter_8)
+.endif
+        bl              L(\type\()_\taps\()_filter_8)
         mov             v19.16b, v23.16b
         mov             v20.16b, v24.16b
-        bl              L(\type\()_8tap_filter_8)
+        bl              L(\type\()_\taps\()_filter_8)
         mov             v21.16b, v23.16b
         mov             v22.16b, v24.16b
 
 88:
+.ifc \taps, 6tap
+        smull           v2.4s,   v18.4h,  v1.h[1]
+        smull2          v3.4s,   v18.8h,  v1.h[1]
+        bl              L(\type\()_\taps\()_filter_8)
+        smull           v4.4s,   v19.4h,  v1.h[1]
+        smull2          v5.4s,   v19.8h,  v1.h[1]
+        smlal           v2.4s,   v19.4h,  v1.h[2]
+        smlal2          v3.4s,   v19.8h,  v1.h[2]
+        smlal           v4.4s,   v20.4h,  v1.h[2]
+        smlal2          v5.4s,   v20.8h,  v1.h[2]
+        smlal           v2.4s,   v20.4h,  v1.h[3]
+        smlal2          v3.4s,   v20.8h,  v1.h[3]
+        smlal           v4.4s,   v21.4h,  v1.h[3]
+        smlal2          v5.4s,   v21.8h,  v1.h[3]
+        smlal           v2.4s,   v21.4h,  v1.h[4]
+        smlal2          v3.4s,   v21.8h,  v1.h[4]
+        smlal           v4.4s,   v22.4h,  v1.h[4]
+        smlal2          v5.4s,   v22.8h,  v1.h[4]
+        smlal           v2.4s,   v22.4h,  v1.h[5]
+        smlal2          v3.4s,   v22.8h,  v1.h[5]
+        smlal           v4.4s,   v23.4h,  v1.h[5]
+        smlal2          v5.4s,   v23.8h,  v1.h[5]
+        smlal           v2.4s,   v23.4h,  v1.h[6]
+        smlal2          v3.4s,   v23.8h,  v1.h[6]
+        smlal           v4.4s,   v24.4h,  v1.h[6]
+        smlal2          v5.4s,   v24.8h,  v1.h[6]
+.else   // 8tap
         smull           v2.4s,   v16.4h,  v1.h[0]
         smull2          v3.4s,   v16.8h,  v1.h[0]
-        bl              L(\type\()_8tap_filter_8)
+        bl              L(\type\()_\taps\()_filter_8)
         smull           v4.4s,   v17.4h,  v1.h[0]
         smull2          v5.4s,   v17.8h,  v1.h[0]
         smlal           v2.4s,   v17.4h,  v1.h[1]
@@ -2554,6 +2689,7 @@ L(\type\()_8tap_filter_4):
         smlal2          v3.4s,   v23.8h,  v1.h[7]
         smlal           v4.4s,   v24.4h,  v1.h[7]
         smlal2          v5.4s,   v24.8h,  v1.h[7]
+.endif
 .ifc \type, put
         srshl           v2.4s,   v2.4s,   v29.4s // -(6+intermediate_bits)
         srshl           v3.4s,   v3.4s,   v29.4s // -(6+intermediate_bits)
@@ -2577,8 +2713,10 @@ L(\type\()_8tap_filter_4):
         st1             {v2.8h}, [\dst], \d_strd
         st1             {v3.8h}, [\ds2], \d_strd
         b.le            9f
+.ifc \taps, 8tap
         mov             v16.16b, v18.16b
         mov             v17.16b, v19.16b
+.endif
         mov             v18.16b, v20.16b
         mov             v19.16b, v21.16b
         mov             v20.16b, v22.16b
@@ -2596,13 +2734,32 @@ L(\type\()_8tap_filter_4):
         mov             \h,  \my
         add             \src,  \src,  #16
         add             \dst,  \dst,  #16
+.ifc \taps, 6tap
+        add             \src,  \src,  \s_strd,  lsl #1
+.endif
         b               168b
 0:
         ret             x15
 
-L(\type\()_8tap_filter_8):
+L(\type\()_\taps\()_filter_8):
         ld1             {v4.8h, v5.8h},  [\sr2], \s_strd
         ld1             {v6.8h, v7.8h},  [\src], \s_strd
+.ifc \taps, 6tap
+        ext             v23.16b, v4.16b,  v5.16b,  #2
+        ext             v24.16b, v6.16b,  v7.16b,  #2
+        smull           v25.4s,  v23.4h,  v0.h[1]
+        smull2          v26.4s,  v23.8h,  v0.h[1]
+        smull           v27.4s,  v24.4h,  v0.h[1]
+        smull2          v28.4s,  v24.8h,  v0.h[1]
+.irpc i, 23456
+        ext             v23.16b, v4.16b,  v5.16b,  #(2*\i)
+        ext             v24.16b, v6.16b,  v7.16b,  #(2*\i)
+        smlal           v25.4s,  v23.4h,  v0.h[\i]
+        smlal2          v26.4s,  v23.8h,  v0.h[\i]
+        smlal           v27.4s,  v24.4h,  v0.h[\i]
+        smlal2          v28.4s,  v24.8h,  v0.h[\i]
+.endr
+.else   // 8tap
         smull           v25.4s,  v4.4h,   v0.h[0]
         smull2          v26.4s,  v4.8h,   v0.h[0]
         smull           v27.4s,  v6.4h,   v0.h[0]
@@ -2615,6 +2772,7 @@ L(\type\()_8tap_filter_8):
         smlal           v27.4s,  v24.4h,  v0.h[\i]
         smlal2          v28.4s,  v24.8h,  v0.h[\i]
 .endr
+.endif
         srshl           v25.4s,  v25.4s,  v30.4s // -(6-intermediate_bits)
         srshl           v26.4s,  v26.4s,  v30.4s // -(6-intermediate_bits)
         srshl           v27.4s,  v27.4s,  v30.4s // -(6-intermediate_bits)
@@ -2622,19 +2780,21 @@ L(\type\()_8tap_filter_8):
         uzp1            v23.8h,  v25.8h,  v26.8h // Same as xtn, xtn2
         uzp1            v24.8h,  v27.8h,  v28.8h // Ditto
         ret
-
-L(\type\()_8tap_hv_tbl):
-        .hword L(\type\()_8tap_hv_tbl) - 1280b
-        .hword L(\type\()_8tap_hv_tbl) -  640b
-        .hword L(\type\()_8tap_hv_tbl) -  320b
-        .hword L(\type\()_8tap_hv_tbl) -  160b
-        .hword L(\type\()_8tap_hv_tbl) -   80b
-        .hword L(\type\()_8tap_hv_tbl) -   40b
-        .hword L(\type\()_8tap_hv_tbl) -   20b
-        .hword 0
 endfunc
 
+jumptable \type\()_\taps\()_hv_tbl
+        .word 1280b - \type\()_\taps\()_hv_tbl
+        .word 640b  - \type\()_\taps\()_hv_tbl
+        .word 320b  - \type\()_\taps\()_hv_tbl
+        .word 160b  - \type\()_\taps\()_hv_tbl
+        .word 80b   - \type\()_\taps\()_hv_tbl
+        .word 40b   - \type\()_\taps\()_hv_tbl
+        .word 20b   - \type\()_\taps\()_hv_tbl
+endjumptable
+.endm
 
+
+.macro filter_bilin_fn type, dst, d_strd, src, s_strd, w, h, mx, xmx, my, xmy, bdmax, ds2, sr2
 function \type\()_bilin_16bpc_neon, export=1
 .ifc \bdmax, w8
         ldr             w8,  [sp]
@@ -2660,21 +2820,21 @@ function \type\()_bilin_16bpc_neon, export=1
         add             w12, \bdmax, #4   // 4 + intermediate_bits
         cbnz            \mx, L(\type\()_bilin_h)
         cbnz            \my, L(\type\()_bilin_v)
-        b               \type\()_neon
+        b               \type\()_16bpc_neon
 
 L(\type\()_bilin_h):
         cbnz            \my, L(\type\()_bilin_hv)
 
-        adr             x10, L(\type\()_bilin_h_tbl)
+        movrel          x10, \type\()_bilin_h_tbl
         dup             v31.8h,  w11      // 4 - intermediate_bits
-        ldrh            w9,  [x10, x9, lsl #1]
+        ldrsw           x9,  [x10, x9, lsl #2]
         neg             v31.8h,  v31.8h   // -(4-intermediate_bits)
 .ifc \type, put
         dup             v30.8h,  \bdmax   // intermediate_bits
 .else
         movi            v29.8h,  #(PREP_BIAS >> 8), lsl #8
 .endif
-        sub             x10, x10, w9, uxtw
+        add             x10, x10, x9
 .ifc \type, put
         neg             v30.8h,  v30.8h   // -intermediate_bits
 .endif
@@ -2831,30 +2991,31 @@ L(\type\()_bilin_h):
         subs            \h,  \h,  #2
         b.gt            161b
         ret
+endfunc
 
-L(\type\()_bilin_h_tbl):
-        .hword L(\type\()_bilin_h_tbl) - 1280b
-        .hword L(\type\()_bilin_h_tbl) -  640b
-        .hword L(\type\()_bilin_h_tbl) -  320b
-        .hword L(\type\()_bilin_h_tbl) -  160b
-        .hword L(\type\()_bilin_h_tbl) -   80b
-        .hword L(\type\()_bilin_h_tbl) -   40b
-        .hword L(\type\()_bilin_h_tbl) -   20b
-        .hword 0
+jumptable \type\()_bilin_h_tbl
+        .word 1280b - \type\()_bilin_h_tbl
+        .word 640b  - \type\()_bilin_h_tbl
+        .word 320b  - \type\()_bilin_h_tbl
+        .word 160b  - \type\()_bilin_h_tbl
+        .word 80b   - \type\()_bilin_h_tbl
+        .word 40b   - \type\()_bilin_h_tbl
+        .word 20b   - \type\()_bilin_h_tbl
+endjumptable
 
 
-L(\type\()_bilin_v):
+function L(\type\()_bilin_v)
         cmp             \h,  #4
-        adr             x10, L(\type\()_bilin_v_tbl)
+        movrel          x10, \type\()_bilin_v_tbl
 .ifc \type, prep
         dup             v31.8h,  w11      // 4 - intermediate_bits
 .endif
-        ldrh            w9,  [x10, x9, lsl #1]
+        ldrsw           x9,  [x10, x9, lsl #2]
 .ifc \type, prep
         movi            v29.8h,  #(PREP_BIAS >> 8), lsl #8
         neg             v31.8h,  v31.8h   // -(4-intermediate_bits)
 .endif
-        sub             x10, x10, w9, uxtw
+        add             x10, x10, x9
         br              x10
 
 20:     // 2xN v
@@ -3029,28 +3190,29 @@ L(\type\()_bilin_v):
         b               1b
 0:
         ret
+endfunc
 
-L(\type\()_bilin_v_tbl):
-        .hword L(\type\()_bilin_v_tbl) - 1280b
-        .hword L(\type\()_bilin_v_tbl) -  640b
-        .hword L(\type\()_bilin_v_tbl) -  320b
-        .hword L(\type\()_bilin_v_tbl) -  160b
-        .hword L(\type\()_bilin_v_tbl) -   80b
-        .hword L(\type\()_bilin_v_tbl) -   40b
-        .hword L(\type\()_bilin_v_tbl) -   20b
-        .hword 0
+jumptable \type\()_bilin_v_tbl
+        .word 1280b - \type\()_bilin_v_tbl
+        .word 640b  - \type\()_bilin_v_tbl
+        .word 320b  - \type\()_bilin_v_tbl
+        .word 160b  - \type\()_bilin_v_tbl
+        .word 80b   - \type\()_bilin_v_tbl
+        .word 40b   - \type\()_bilin_v_tbl
+        .word 20b   - \type\()_bilin_v_tbl
+endjumptable
 
-L(\type\()_bilin_hv):
-        adr             x10, L(\type\()_bilin_hv_tbl)
+function L(\type\()_bilin_hv)
+        movrel          x10, \type\()_bilin_hv_tbl
         dup             v31.8h,  w11      // 4 - intermediate_bits
-        ldrh            w9,  [x10, x9, lsl #1]
+        ldrsw           x9,  [x10, x9, lsl #2]
         neg             v31.8h,  v31.8h   // -(4-intermediate_bits)
 .ifc \type, put
         dup             v30.4s,  w12      // 4 + intermediate_bits
 .else
         movi            v29.8h,  #(PREP_BIAS >> 8), lsl #8
 .endif
-        sub             x10, x10, w9, uxtw
+        add             x10, x10, x9
 .ifc \type, put
         neg             v30.4s,  v30.4s   // -(4+intermediate_bits)
 .endif
@@ -3223,21 +3385,47 @@ L(\type\()_bilin_hv):
         b               1b
 0:
         ret
-
-L(\type\()_bilin_hv_tbl):
-        .hword L(\type\()_bilin_hv_tbl) - 1280b
-        .hword L(\type\()_bilin_hv_tbl) -  640b
-        .hword L(\type\()_bilin_hv_tbl) -  320b
-        .hword L(\type\()_bilin_hv_tbl) -  160b
-        .hword L(\type\()_bilin_hv_tbl) -   80b
-        .hword L(\type\()_bilin_hv_tbl) -   40b
-        .hword L(\type\()_bilin_hv_tbl) -   20b
-        .hword 0
 endfunc
+
+jumptable \type\()_bilin_hv_tbl
+        .word 1280b - \type\()_bilin_hv_tbl
+        .word 640b  - \type\()_bilin_hv_tbl
+        .word 320b  - \type\()_bilin_hv_tbl
+        .word 160b  - \type\()_bilin_hv_tbl
+        .word 80b   - \type\()_bilin_hv_tbl
+        .word 40b   - \type\()_bilin_hv_tbl
+        .word 20b   - \type\()_bilin_hv_tbl
+endjumptable
 .endm
 
-filter_fn put,  x0, x1, x2, x3, w4, w5, w6, x6, w7, x7, w8, x9, x10
-filter_fn prep, x0, x8, x1, x2, w3, w4, w5, x5, w6, x6, w7, x9, x10
+make_8tap_fn    put,  regular_sharp,  REGULAR, SHARP,   8tap
+make_8tap_fn    put,  smooth_sharp,   SMOOTH,  SHARP,   8tap
+make_8tap_fn    put,  sharp,          SHARP,   SHARP,   8tap
+make_8tap_fn    put,  sharp_regular,  SHARP,   REGULAR, 8tap
+make_8tap_fn    put,  sharp_smooth,   SHARP,   SMOOTH,  8tap
+filter_fn       put,  x0, x1, x2, x3, w4, w5, w6, x6, w7, x7, w8, x9, x10, 8tap
+
+make_8tap_fn    put,  regular,        REGULAR, REGULAR, 6tap
+make_8tap_fn    put,  regular_smooth, REGULAR, SMOOTH,  6tap
+make_8tap_fn    put,  smooth,         SMOOTH,  SMOOTH,  6tap
+make_8tap_fn    put,  smooth_regular, SMOOTH,  REGULAR, 6tap
+filter_fn       put,  x0, x1, x2, x3, w4, w5, w6, x6, w7, x7, w8, x9, x10, 6tap
+filter_bilin_fn put,  x0, x1, x2, x3, w4, w5, w6, x6, w7, x7, w8, x9, x10
+
+make_8tap_fn    prep,  regular_sharp,  REGULAR, SHARP,   8tap
+make_8tap_fn    prep,  smooth_sharp,   SMOOTH,  SHARP,   8tap
+make_8tap_fn    prep,  sharp,          SHARP,   SHARP,   8tap
+make_8tap_fn    prep,  sharp_regular,  SHARP,   REGULAR, 8tap
+make_8tap_fn    prep,  sharp_smooth,   SHARP,   SMOOTH,  8tap
+filter_fn       prep, x0, x8, x1, x2, w3, w4, w5, x5, w6, x6, w7, x9, x10, 8tap
+
+make_8tap_fn    prep,  regular,        REGULAR, REGULAR, 6tap
+make_8tap_fn    prep,  regular_smooth, REGULAR, SMOOTH,  6tap
+make_8tap_fn    prep,  smooth,         SMOOTH,  SMOOTH,  6tap
+make_8tap_fn    prep,  smooth_regular, SMOOTH,  REGULAR, 6tap
+filter_fn       prep, x0, x8, x1, x2, w3, w4, w5, x5, w6, x6, w7, x9, x10, 6tap
+filter_bilin_fn prep, x0, x8, x1, x2, w3, w4, w5, x5, w6, x6, w7, x9, x10
+
 
 .macro load_filter_row dst, src, inc
         asr             w13, \src, #10

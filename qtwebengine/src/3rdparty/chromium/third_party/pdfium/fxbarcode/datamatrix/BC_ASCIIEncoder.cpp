@@ -22,20 +22,22 @@
 
 #include "fxbarcode/datamatrix/BC_ASCIIEncoder.h"
 
+#include <optional>
+
+#include "core/fxcrt/compiler_specific.h"
 #include "core/fxcrt/fx_extension.h"
 #include "fxbarcode/datamatrix/BC_Encoder.h"
 #include "fxbarcode/datamatrix/BC_EncoderContext.h"
 #include "fxbarcode/datamatrix/BC_HighLevelEncoder.h"
 #include "fxbarcode/datamatrix/BC_SymbolInfo.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 
 namespace {
 
-absl::optional<wchar_t> EncodeASCIIDigits(wchar_t digit1, wchar_t digit2) {
+std::optional<wchar_t> EncodeASCIIDigits(wchar_t digit1, wchar_t digit2) {
   if (!FXSYS_IsDecimalDigit(digit1) || !FXSYS_IsDecimalDigit(digit2)) {
     // This could potentially return 0 as a sentinel value. Then this function
-    // can just return wchar_t instead of absl::optional<wchar_t>.
-    return absl::nullopt;
+    // can just return wchar_t instead of std::optional<wchar_t>.
+    return std::nullopt;
   }
   return static_cast<wchar_t>((digit1 - 48) * 10 + (digit2 - 48) + 130);
 }
@@ -46,11 +48,17 @@ size_t DetermineConsecutiveDigitCount(const WideString& msg, size_t startpos) {
   size_t count = 0;
   const size_t size = msg.GetLength();
   const wchar_t* data = msg.c_str();
-  for (size_t i = startpos; i < size; ++i) {
-    if (!FXSYS_IsDecimalDigit(data[i]))
-      break;
-    ++count;
-  }
+
+  // SAFETY: performance-sensitive.
+  UNSAFE_BUFFERS({
+    for (size_t i = startpos; i < size; ++i) {
+      if (!FXSYS_IsDecimalDigit(data[i])) {
+        break;
+      }
+      ++count;
+    }
+  });
+
   return count;
 }
 
@@ -67,7 +75,7 @@ CBC_HighLevelEncoder::Encoding CBC_ASCIIEncoder::GetEncodingMode() {
 bool CBC_ASCIIEncoder::Encode(CBC_EncoderContext* context) {
   size_t n = DetermineConsecutiveDigitCount(context->m_msg, context->m_pos);
   if (n >= 2) {
-    absl::optional<wchar_t> code = EncodeASCIIDigits(
+    std::optional<wchar_t> code = EncodeASCIIDigits(
         context->m_msg[context->m_pos], context->m_msg[context->m_pos + 1]);
     if (!code.has_value())
       return false;

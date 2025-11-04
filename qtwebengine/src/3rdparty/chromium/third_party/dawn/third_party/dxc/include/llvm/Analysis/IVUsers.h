@@ -79,7 +79,7 @@ private:
 
   /// OperandValToReplace - The Value of the operand in the user instruction
   /// that this IVStrideUse is representing.
-  WeakVH OperandValToReplace;
+  WeakTrackingVH OperandValToReplace;
 
   /// PostIncLoops - The set of loops for which Expr has been adjusted to
   /// use post-inc mode. This corresponds with SCEVExpander's post-inc concept.
@@ -96,7 +96,17 @@ template<> struct ilist_traits<IVStrideUse>
   // the list...
   // The sentinel is relative to this instance, so we use a non-static
   // method.
-  IVStrideUse *createSentinel() const {
+// HLSL Change Starts
+// Temporarily disable "downcast of address" UBSAN runtime error
+// https://github.com/microsoft/DirectXShaderCompiler/issues/6446
+#ifdef __has_feature
+#if __has_feature(undefined_behavior_sanitizer)
+  __attribute__((no_sanitize("undefined")))
+#endif // __has_feature(address_sanitizer)
+#endif // defined(__has_feature)
+       // HLSL Change Ends
+  IVStrideUse *
+  createSentinel() const {
     // since i(p)lists always publicly derive from the corresponding
     // traits, placing a data member in this class will augment i(p)list.
     // But since the NodeTy is expected to publicly derive from

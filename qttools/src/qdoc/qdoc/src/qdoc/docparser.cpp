@@ -607,9 +607,7 @@ void DocParser::parse(const QString &source, DocPrivate *docPrivate,
                         skipToNextPreprocessorCommand();
                     break;
                 case CMD_IMAGE:
-                    leaveValueList();
-                    appendAtom(Atom(Atom::Image, getArgument()));
-                    appendAtom(Atom(Atom::ImageText, getRestOfLine()));
+                    cmd_image(cmd);
                     break;
                 case CMD_IMPORTANT:
                     leavePara();
@@ -631,14 +629,7 @@ void DocParser::parse(const QString &source, DocPrivate *docPrivate,
                     break;
                 }
                 case CMD_INLINEIMAGE:
-                    enterPara();
-                    appendAtom(Atom(Atom::InlineImage, getArgument()));
-                    //Append ImageText only if the following
-                    //argument is enclosed in braces.
-                    if (isLeftBraceAhead()) {
-                        appendAtom(Atom(Atom::ImageText, getArgument()));
-                        appendAtom(Atom(Atom::String, " "));
-                    }
+                    cmd_image(cmd);
                     break;
                 case CMD_INDEX:
                     if (m_paragraphState == OutsideParagraph) {
@@ -1043,24 +1034,7 @@ void DocParser::parse(const QString &source, DocPrivate *docPrivate,
                     enterPara(Atom::WarningLeft, Atom::WarningRight);
                     break;
                 case CMD_OVERLOAD:
-                    leavePara();
-                    m_private->m_metacommandsUsed.insert(cmdStr);
-                    p1.clear();
-                    if (!isBlankLine())
-                        p1 = getRestOfLine();
-                    if (!p1.isEmpty()) {
-                        appendAtom(Atom(Atom::ParaLeft));
-                        appendAtom(Atom(Atom::String, "This function overloads "));
-                        appendAtom(Atom(Atom::AutoLink, p1));
-                        appendAtom(Atom(Atom::String, "."));
-                        appendAtom(Atom(Atom::ParaRight));
-                    } else {
-                        appendAtom(Atom(Atom::ParaLeft));
-                        appendAtom(Atom(Atom::String, "This is an overloaded function."));
-                        appendAtom(Atom(Atom::ParaRight));
-                        p1 = getMetaCommandArgument(cmdStr);
-                    }
-                    m_private->m_metaCommandMap[cmdStr].append(ArgPair(p1, QString()));
+                    cmd_overload();
                     break;
                 case NOT_A_CMD:
                     if (metaCommandSet.contains(cmdStr)) {
@@ -1664,7 +1638,7 @@ bool DocParser::isAutoLinkString(const QString &word, qsizetype &curPos)
         } else if (latin1Ch == '(') {
             if ((curPos < len - 1) && (word.at(curPos + 1) == QLatin1Char(')'))) {
                 ++numStrangeSymbols;
-                m_position += 2;
+                curPos += 2;
             }
 
             break;
@@ -1730,6 +1704,83 @@ void DocParser::endSection(int, int) // (int unit, int endCmd)
     leavePara();
     appendAtom(Atom(Atom::SectionRight, QString::number(m_currentSection)));
     m_currentSection = (Doc::NoSection);
+}
+
+/*!
+    \internal
+
+    \brief Processes CMD_IMAGE and CMD_INLINEIMAGE, as specified by \a cmd.
+
+    The first argument to the command is the image file name. The rest of the
+    line is an optional string that's used as the text description of the image
+    (e.g. the HTML <img> alt attribute). The optional argument can be wrapped in
+    curly braces, in which case it can span multiple lines.
+
+    This function may modify the optional argument by removing one pair of
+    double quotes, if they wrap the string.
+ */
+void DocParser::cmd_image(int cmd) {
+    Atom::AtomType imageAtom{};
+    switch (cmd) {
+    case CMD_IMAGE: {
+        leaveValueList();
+        imageAtom = Atom::AtomType::Image;
+        break;
+    }
+    case CMD_INLINEIMAGE: {
+        enterPara();
+        imageAtom = Atom::AtomType::InlineImage;
+        break;
+    }
+    default:
+        break;
+    }
+
+    const QString imageFileName = getArgument();
+    QString imageText;
+    if (isLeftBraceAhead())
+        imageText = getArgument();
+    else if (cmd == CMD_IMAGE)
+        imageText = getRestOfLine();
+
+    if (imageText.length() > 1) {
+        if (imageText.front() == '"' && imageText.back() == '"') {
+            imageText.removeFirst();
+            imageText.removeLast();
+        }
+    }
+
+    if (imageText.isEmpty() && Config::instance().reportMissingAltTextForImages())
+        location().report(QStringLiteral("\\%1 %2 is without a textual description, "
+                                         "QDoc will not generate an alt text for the image.")
+                                  .arg(cmdName(cmd))
+                                  .arg(imageFileName));
+    appendAtom(Atom(imageAtom, imageFileName));
+    appendAtom(Atom(Atom::ImageText, imageText));
+}
+
+/*!
+    \brief Processes the \\overload command in documentation comments.
+
+    This function registers metadata when the \\overload command is used in a
+    documentation comment. It records the use of the command and stores any
+    arguments to the command. Arguments are optional and can be passed with or
+    without curly braces. This allows the user to use either of:
+
+    \badcode
+        \overload someFunction
+        \overload {someFunction}
+    \endcode
+ */
+void DocParser::cmd_overload()
+{
+    const QString cmd{"overload"};
+
+    leavePara();
+    m_private->m_metacommandsUsed.insert(cmd);
+    const QString overloadArgument = isBlankLine() ? getMetaCommandArgument(cmd) : getRestOfLine();
+
+    m_private->m_metaCommandMap[cmd].append(ArgPair(overloadArgument, QString()));
 }
 
 /*!

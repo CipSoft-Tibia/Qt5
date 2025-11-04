@@ -1,14 +1,15 @@
 // Copyright (C) 2017 Witekio.
 // Copyright (C) 2018 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QCOAPINTERNALREQUEST_H
 #define QCOAPINTERNALREQUEST_H
 
 #include <private/qcoapinternalmessage_p.h>
+#include <private/qcoapnamespace_p.h>
 
 #include <QtCoap/qcoapglobal.h>
-#include <QtCoap/qcoapnamespace.h>
 #include <private/qcoapconnection_p.h>
 
 #include <QtCore/qglobal.h>

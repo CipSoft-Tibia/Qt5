@@ -7,12 +7,14 @@
 #include <memory>
 #include <string>
 
+#include "base/check_is_test.h"
 #include "base/feature_list.h"
 #include "base/functional/bind.h"
 #include "base/functional/callback.h"
 #include "base/memory/ptr_util.h"
 #include "base/memory/ref_counted.h"
 #include "base/memory/scoped_refptr.h"
+#include "base/metrics/histogram_functions.h"
 #include "base/sequence_checker.h"
 #include "base/task/bind_post_task.h"
 #include "base/task/sequenced_task_runner.h"
@@ -25,6 +27,7 @@
 #include "components/reporting/client/report_queue_impl.h"
 #include "components/reporting/proto/synced/record_constants.pb.h"
 #include "components/reporting/storage/storage_module_interface.h"
+#include "components/reporting/util/reporting_errors.h"
 #include "components/reporting/util/status.h"
 #include "components/reporting/util/status_macros.h"
 #include "components/reporting/util/statusor.h"
@@ -32,6 +35,8 @@
 namespace reporting {
 
 using InitCompleteCallback = base::OnceCallback<void(Status)>;
+
+ReportQueueProvider* g_report_queue_provider_instance = nullptr;
 
 // Report queue creation request. Recorded in the `create_request_queue_` when
 // provider cannot create queues yet.
@@ -102,7 +107,12 @@ ReportQueueProvider::ReportQueueProvider(
     StorageModuleCreateCallback storage_create_cb,
     scoped_refptr<base::SequencedTaskRunner> seq_task_runner)
     : storage_create_cb_(storage_create_cb),
-      sequenced_task_runner_(seq_task_runner) {}
+      sequenced_task_runner_(seq_task_runner) {
+  if (g_report_queue_provider_instance) {
+    CHECK_IS_TEST();  // Duplicate is allowed in tests only.
+  }
+  g_report_queue_provider_instance = this;
+}
 
 ReportQueueProvider::~ReportQueueProvider() {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
@@ -114,6 +124,7 @@ ReportQueueProvider::~ReportQueueProvider() {
             Status(error::UNAVAILABLE, "ReportQueueProvider shut down")));
     create_request_queue_.pop();
   }
+  g_report_queue_provider_instance = nullptr;
 }
 
 base::WeakPtr<ReportQueueProvider> ReportQueueProvider::GetWeakPtr() {
@@ -142,6 +153,10 @@ void ReportQueueProvider::CreateNewQueue(
             if (!provider) {
               std::move(cb).Run(base::unexpected(
                   Status(error::UNAVAILABLE, "Provider has been shut down")));
+              base::UmaHistogramEnumeration(
+                  reporting::kUmaUnavailableErrorReason,
+                  UnavailableErrorReason::REPORT_QUEUE_PROVIDER_DESTRUCTED,
+                  UnavailableErrorReason::MAX_VALUE);
               return;
             }
             // Configure report queue config with an appropriate DM token and
@@ -269,6 +284,10 @@ void ReportQueueProvider::OnStorageModuleConfigured(
       std::move(report_queue_request->release_create_cb())
           .Run(base::unexpected(
               Status(error::UNAVAILABLE, "Unable to build a ReportQueue")));
+      base::UmaHistogramEnumeration(
+          reporting::kUmaUnavailableErrorReason,
+          UnavailableErrorReason::UNABLE_TO_BUILD_REPORT_QUEUE,
+          UnavailableErrorReason::MAX_VALUE);
       create_request_queue_.pop();
     }
     return;
@@ -285,5 +304,12 @@ void ReportQueueProvider::OnStorageModuleConfigured(
                    report_queue_request->release_create_cb());
     create_request_queue_.pop();
   }
+}
+
+// static
+ReportQueueProvider* ReportQueueProvider::GetInstance() {
+  CHECK(g_report_queue_provider_instance)
+      << "Report queue provider not set yet";
+  return g_report_queue_provider_instance;
 }
 }  // namespace reporting

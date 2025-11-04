@@ -5,10 +5,11 @@
 #ifndef THIRD_PARTY_BLINK_RENDERER_CORE_CSS_MEDIA_VALUES_H_
 #define THIRD_PARTY_BLINK_RENDERER_CORE_CSS_MEDIA_VALUES_H_
 
-#include "services/device/public/mojom/device_posture_provider.mojom-blink-forward.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
+#include <optional>
+
 #include "third_party/blink/public/mojom/css/preferred_color_scheme.mojom-blink-forward.h"
 #include "third_party/blink/public/mojom/css/preferred_contrast.mojom-blink-forward.h"
+#include "third_party/blink/public/mojom/device_posture/device_posture_provider.mojom-blink-forward.h"
 #include "third_party/blink/public/mojom/manifest/display_mode.mojom-shared.h"
 #include "third_party/blink/public/mojom/webpreferences/web_preferences.mojom-blink-forward.h"
 #include "third_party/blink/renderer/core/core_export.h"
@@ -18,8 +19,8 @@
 #include "third_party/blink/renderer/platform/heap/garbage_collected.h"
 #include "third_party/blink/renderer/platform/text/text_direction.h"
 #include "third_party/blink/renderer/platform/text/writing_mode.h"
+#include "ui/base/mojom/window_show_state.mojom-blink-forward.h"
 #include "ui/base/pointer/pointer_device.h"
-#include "ui/base/ui_base_types.h"
 
 namespace blink {
 
@@ -59,10 +60,10 @@ class CORE_EXPORT MediaValues : public GarbageCollected<MediaValues>,
     return true;
   }
 
-  absl::optional<double> InlineSize() const;
-  absl::optional<double> BlockSize() const;
-  virtual absl::optional<double> Width() const { return ViewportWidth(); }
-  virtual absl::optional<double> Height() const { return ViewportHeight(); }
+  std::optional<double> InlineSize() const;
+  std::optional<double> BlockSize() const;
+  virtual std::optional<double> Width() const { return ViewportWidth(); }
+  virtual std::optional<double> Height() const { return ViewportHeight(); }
   virtual int DeviceWidth() const = 0;
   virtual int DeviceHeight() const = 0;
   virtual float DevicePixelRatio() const = 0;
@@ -79,7 +80,7 @@ class CORE_EXPORT MediaValues : public GarbageCollected<MediaValues>,
   virtual bool ThreeDEnabled() const = 0;
   virtual const String MediaType() const = 0;
   virtual blink::mojom::DisplayMode DisplayMode() const = 0;
-  virtual ui::WindowShowState WindowShowState() const = 0;
+  virtual ui::mojom::blink::WindowShowState WindowShowState() const = 0;
   virtual bool Resizable() const = 0;
   virtual bool StrictMode() const = 0;
   virtual Document* GetDocument() const = 0;
@@ -96,22 +97,22 @@ class CORE_EXPORT MediaValues : public GarbageCollected<MediaValues>,
   virtual NavigationControls GetNavigationControls() const = 0;
   virtual int GetHorizontalViewportSegments() const = 0;
   virtual int GetVerticalViewportSegments() const = 0;
-  virtual device::mojom::blink::DevicePostureType GetDevicePosture() const = 0;
-  // For evaluating state(stuck: left), state(stuck: right)
+  virtual mojom::blink::DevicePostureType GetDevicePosture() const = 0;
+  // For evaluating scroll-state(stuck: left), scroll-state(stuck: right)
   virtual ContainerStuckPhysical StuckHorizontal() const {
     return ContainerStuckPhysical::kNo;
   }
-  // For evaluating state(stuck: top), state(stuck: bottom)
+  // For evaluating scroll-state(stuck: top), scroll-state(stuck: bottom)
   virtual ContainerStuckPhysical StuckVertical() const {
     return ContainerStuckPhysical::kNo;
   }
-  // For evaluating state(stuck: inset-inline-start),
-  // state(stuck: inset-inline-end)
+  // For evaluating scroll-state(stuck: inline-start),
+  // scroll-state(stuck: inline-end)
   virtual ContainerStuckLogical StuckInline() const {
     return ContainerStuckLogical::kNo;
   }
-  // For evaluating state(stuck: inset-block-start),
-  // state(stuck: inset-block-end)
+  // For evaluating scroll-state(stuck: block-start),
+  // scroll-state(stuck: block-end)
   virtual ContainerStuckLogical StuckBlock() const {
     return ContainerStuckLogical::kNo;
   }
@@ -120,16 +121,26 @@ class CORE_EXPORT MediaValues : public GarbageCollected<MediaValues>,
     return StuckHorizontal() != ContainerStuckPhysical::kNo ||
            StuckVertical() != ContainerStuckPhysical::kNo;
   }
-  // For evaluating state(snapped: block/inline)
-  bool SnappedBlock() const {
-    return SnappedFlags() &
-           static_cast<ContainerSnappedFlags>(ContainerSnapped::kBlock);
+  virtual ContainerSnappedFlags SnappedFlags() const {
+    return static_cast<ContainerSnappedFlags>(ContainerSnapped::kNone);
   }
-  bool SnappedInline() const {
+  // For evaluating scroll-state(snapped: x/y)
+  bool SnappedX() const {
     return SnappedFlags() &
-           static_cast<ContainerSnappedFlags>(ContainerSnapped::kInline);
+           static_cast<ContainerSnappedFlags>(ContainerSnapped::kX);
   }
-  bool Snapped() const { return SnappedBlock() || SnappedInline(); }
+  bool SnappedY() const {
+    return SnappedFlags() &
+           static_cast<ContainerSnappedFlags>(ContainerSnapped::kY);
+  }
+  // For evaluating scroll-state(snapped: block/inline)
+  bool SnappedBlock() const;
+  bool SnappedInline() const;
+  // For boolean context evaluation.
+  bool Snapped() const {
+    return SnappedFlags() !=
+           static_cast<ContainerSnappedFlags>(ContainerSnapped::kNone);
+  }
   // Returns the container element used to retrieve base style and parent style
   // when computing the computed value of a style() container query.
   virtual Element* ContainerElement() const { return nullptr; }
@@ -137,13 +148,10 @@ class CORE_EXPORT MediaValues : public GarbageCollected<MediaValues>,
   virtual Scripting GetScripting() const = 0;
 
   // CSSLengthResolver override.
+  void ReferenceTreeScope() const override {}
   void ReferenceAnchor() const override {}
 
  protected:
-  virtual ContainerSnappedFlags SnappedFlags() const {
-    return static_cast<ContainerSnappedFlags>(ContainerSnapped::kNone);
-  }
-
   static double CalculateViewportWidth(LocalFrame*);
   static double CalculateViewportHeight(LocalFrame*);
   static double CalculateSmallViewportWidth(LocalFrame*);
@@ -168,7 +176,8 @@ class CORE_EXPORT MediaValues : public GarbageCollected<MediaValues>,
   static bool CalculateInvertedColors(LocalFrame*);
   static const String CalculateMediaType(LocalFrame*);
   static blink::mojom::DisplayMode CalculateDisplayMode(LocalFrame*);
-  static ui::WindowShowState CalculateWindowShowState(LocalFrame*);
+  static ui::mojom::blink::WindowShowState CalculateWindowShowState(
+      LocalFrame*);
   static bool CalculateResizable(LocalFrame*);
   static bool CalculateThreeDEnabled(LocalFrame*);
   static mojom::blink::PointerType CalculatePrimaryPointerType(LocalFrame*);
@@ -189,8 +198,7 @@ class CORE_EXPORT MediaValues : public GarbageCollected<MediaValues>,
   static NavigationControls CalculateNavigationControls(LocalFrame*);
   static int CalculateHorizontalViewportSegments(LocalFrame*);
   static int CalculateVerticalViewportSegments(LocalFrame*);
-  static device::mojom::blink::DevicePostureType CalculateDevicePosture(
-      LocalFrame*);
+  static mojom::blink::DevicePostureType CalculateDevicePosture(LocalFrame*);
   static Scripting CalculateScripting(LocalFrame*);
 
   bool ComputeLengthImpl(double value,

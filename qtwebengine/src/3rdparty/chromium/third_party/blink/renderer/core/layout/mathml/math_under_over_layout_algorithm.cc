@@ -8,7 +8,6 @@
 #include "third_party/blink/renderer/core/layout/length_utils.h"
 #include "third_party/blink/renderer/core/layout/logical_box_fragment.h"
 #include "third_party/blink/renderer/core/layout/mathml/math_layout_utils.h"
-#include "third_party/blink/renderer/core/layout/out_of_flow_layout_part.h"
 #include "third_party/blink/renderer/core/layout/physical_box_fragment.h"
 #include "third_party/blink/renderer/core/mathml/mathml_operator_element.h"
 #include "third_party/blink/renderer/core/mathml/mathml_under_over_element.h"
@@ -37,7 +36,7 @@ UnderOverVerticalParameters GetUnderOverVerticalParameters(
     bool is_base_large_operator,
     bool is_base_stretchy_in_inline_axis) {
   UnderOverVerticalParameters parameters;
-  const SimpleFontData* font_data = style.GetFont().PrimaryFont();
+  const SimpleFontData* font_data = style.GetFont()->PrimaryFont();
   if (!font_data)
     return parameters;
 
@@ -130,7 +129,7 @@ bool HasAccent(const BlockNode& node, bool accent_under) {
          (accent_under && script_type == MathScriptType::kUnder) ||
          (!accent_under && script_type == MathScriptType::kOver));
 
-  absl::optional<bool> attribute_value =
+  std::optional<bool> attribute_value =
       accent_under ? underover->AccentUnder() : underover->Accent();
   return attribute_value && *attribute_value;
 }
@@ -177,7 +176,7 @@ void MathUnderOverLayoutAlgorithm::GatherChildren(BlockNode* base,
         *over = block_child;
         break;
       default:
-        NOTREACHED();
+        NOTREACHED_IN_MIGRATION();
     }
   }
 }
@@ -241,7 +240,7 @@ const LayoutResult* MathUnderOverLayoutAlgorithm::Layout() {
     layout_remaining_items_with_zero_inline_stretch_size = false;
   }
 
-  if (UNLIKELY(layout_remaining_items_with_zero_inline_stretch_size)) {
+  if (layout_remaining_items_with_zero_inline_stretch_size) [[unlikely]] {
     // "If LNotToStretch is empty, perform layout with stretch size constraint 0
     // on all the items of LToStretch.
     for (LayoutInputNode child = Node().FirstChild(); child;
@@ -255,7 +254,7 @@ const LayoutResult* MathUnderOverLayoutAlgorithm::Layout() {
       LayoutUnit zero_stretch_size;
       const auto child_constraint_space = CreateConstraintSpaceForMathChild(
           Node(), ChildAvailableSize(), constraint_space, child,
-          LayoutResultCacheSlot::kMeasure, absl::nullopt, zero_stretch_size);
+          LayoutResultCacheSlot::kMeasure, std::nullopt, zero_stretch_size);
       const auto* child_layout_result = To<BlockNode>(child).Layout(
           child_constraint_space, nullptr /* break_token */);
       UpdateInlineStretchSize(child_layout_result);
@@ -274,7 +273,7 @@ const LayoutResult* MathUnderOverLayoutAlgorithm::Layout() {
         IsInlineAxisStretchyOperator(To<BlockNode>(child))) {
       return CreateConstraintSpaceForMathChild(
           Node(), ChildAvailableSize(), constraint_space, child,
-          LayoutResultCacheSlot::kLayout, absl::nullopt,
+          LayoutResultCacheSlot::kLayout, std::nullopt,
           constraint_space.TargetStretchInlineSize());
     }
     if ((child != base || (!base_inherits_block_stretch_size_constraint &&
@@ -282,7 +281,7 @@ const LayoutResult* MathUnderOverLayoutAlgorithm::Layout() {
         IsInlineAxisStretchyOperator(To<BlockNode>(child))) {
       return CreateConstraintSpaceForMathChild(
           Node(), ChildAvailableSize(), constraint_space, child,
-          LayoutResultCacheSlot::kLayout, absl::nullopt, inline_stretch_size);
+          LayoutResultCacheSlot::kLayout, std::nullopt, inline_stretch_size);
     }
     return CreateConstraintSpaceForMathChild(Node(), ChildAvailableSize(),
                                              constraint_space, child,
@@ -389,13 +388,13 @@ const LayoutResult* MathUnderOverLayoutAlgorithm::Layout() {
 
   LayoutUnit intrinsic_block_size = ascent + descent;
   LayoutUnit block_size = ComputeBlockSizeForFragment(
-      constraint_space, Style(), BorderPadding(), intrinsic_block_size,
+      constraint_space, Node(), BorderPadding(), intrinsic_block_size,
       border_box_size.inline_size);
 
   container_builder_.SetIntrinsicBlockSize(intrinsic_block_size);
   container_builder_.SetFragmentsTotalBlockSize(block_size);
 
-  OutOfFlowLayoutPart(Node(), constraint_space, &container_builder_).Run();
+  container_builder_.HandleOofsAndSpecialDescendants();
 
   return container_builder_.ToBoxFragment();
 }

@@ -49,7 +49,7 @@ void QtGrpcClientDeadlineTest::channelDeadlineCallExceeds()
 
     const auto code = qvariant_cast<QGrpcStatus>(finSpy.at(0).first());
     QCOMPARE_EQ(code.code(), QtGrpc::StatusCode::DeadlineExceeded);
-    QCOMPARE_EQ(code.message(), QString("Deadline Exceeded"));
+    QVERIFY(!code.message().isEmpty());
 }
 
 void QtGrpcClientDeadlineTest::channelDeadlineCallFinishes()

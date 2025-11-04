@@ -6,9 +6,9 @@ bazel_deps()
 
 load("//toolchain:download_toolchains.bzl", "download_toolchains_for_skia")
 
-download_toolchains_for_skia("clang_linux_amd64", "clang_mac", "ndk_linux_amd64")
+download_toolchains_for_skia("clang_linux_amd64", "clang_mac", "clang_windows_amd64", "ndk_linux_amd64")
 
-load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive", "http_file")
 load("//bazel:gcs_mirror.bzl", "gcs_mirror_url")
 
 # See https://github.com/emscripten-core/emsdk/tree/85d27a4a2a60d591613a305b14ae438c2bb3ce11/bazel#setup-instructions
@@ -80,44 +80,6 @@ pip_install(
     name = "py_deps",
     python_interpreter_target = interpreter,
     requirements = "//:requirements.txt",
-)
-
-#######################################################################################
-# Maven
-#######################################################################################
-
-# https://github.com/bazelbuild/rules_jvm_external
-http_archive(
-    name = "rules_jvm_external",
-    sha256 = "cd1a77b7b02e8e008439ca76fd34f5b07aecb8c752961f9640dea15e9e5ba1ca",
-    strip_prefix = "rules_jvm_external-4.2",
-    urls = gcs_mirror_url(
-        sha256 = "cd1a77b7b02e8e008439ca76fd34f5b07aecb8c752961f9640dea15e9e5ba1ca",
-        url = "https://github.com/bazelbuild/rules_jvm_external/archive/4.2.zip",
-    ),
-)
-
-load("@rules_jvm_external//:repositories.bzl", "rules_jvm_external_deps")
-
-rules_jvm_external_deps()
-
-load("@rules_jvm_external//:setup.bzl", "rules_jvm_external_setup")
-
-rules_jvm_external_setup()
-
-load("@rules_jvm_external//:defs.bzl", "maven_install")
-
-maven_install(
-    artifacts = [
-        # The version released after this one (1.6.0-rc1) did not resolve unknown symbol errors when
-        # building.
-        # https://b.corp.google.com/issues/269331711
-        "androidx.annotation:annotation:1.5.0",
-    ],
-    repositories = [
-        "https://maven.google.com",
-        "https://repo1.maven.org/maven2",
-    ],
 )
 
 #######################################################################################
@@ -311,25 +273,25 @@ browser_repositories(
 
 http_archive(
     name = "rules_rust",
-    sha256 = "950a3ad4166ae60c8ccd628d1a8e64396106e7f98361ebe91b0bcfe60d8e4b60",
+    integrity = "sha256-GuRaQT0LlDOYcyDfKtQQ22oV+vtsiM8P0b87qsvoJts=",
     urls = gcs_mirror_url(
-        sha256 = "950a3ad4166ae60c8ccd628d1a8e64396106e7f98361ebe91b0bcfe60d8e4b60",
-        url = "https://github.com/bazelbuild/rules_rust/releases/download/0.20.0/rules_rust-v0.20.0.tar.gz",
+        sha256 = "1ae45a413d0b9433987320df2ad410db6a15fafb6c88cf0fd1bf3baacbe826db",
+        url = "https://github.com/bazelbuild/rules_rust/releases/download/0.39.0/rules_rust-v0.39.0.tar.gz",
     ),
 )
 
 load("@rules_rust//rust:repositories.bzl", "rules_rust_dependencies", "rust_register_toolchains")
 
-# https://github.com/bazelbuild/rules_rust/blob/eaf51386596523af4d9d5b1b5d2dcc6fe39a8465/rust/repositories.bzl#L48
+# https://github.com/bazelbuild/rules_rust/blob/5c715ec50602e2ba6ca2ebfdd870662a6e6d1eda/rust/repositories.bzl#L48
 rules_rust_dependencies()
 
 rust_register_toolchains(
     edition = "2021",
     extra_target_triples = ["aarch64-apple-darwin"],
     versions = [
-        # supported versions from https://github.com/bazelbuild/rules_rust/blob/dab425760656c449d3a0f73c490be92c240b6ef2/util/fetch_shas_VERSIONS.txt
-        # The rust rules validate a toolchain by sha256 hash, as listed in https://github.com/bazelbuild/rules_rust/blob/dab425760656c449d3a0f73c490be92c240b6ef2/rust/known_shas.bzl
-        "1.68.2",
+        # supported versions from https://github.com/bazelbuild/rules_rust/blob/5c715ec50602e2ba6ca2ebfdd870662a6e6d1eda/util/fetch_shas_VERSIONS.txt
+        # The rust rules validate a toolchain by sha256 hash, as listed in https://github.com/bazelbuild/rules_rust/blob/5c715ec50602e2ba6ca2ebfdd870662a6e6d1eda/rust/known_shas.bzl
+        "1.76.0",
     ],
 )
 
@@ -513,22 +475,22 @@ c_plus_plus_deps()
 # https://bazel.build/reference/be/workspace#new_local_repository
 local_repository(
     name = "freetype_config",
-    path = "bazel/external/freetype/config",
+    path = "third_party/freetype2/include",
 )
 
 local_repository(
     name = "harfbuzz_config",
-    path = "bazel/external/harfbuzz/config",
+    path = "third_party/harfbuzz",
 )
 
 local_repository(
     name = "icu_utils",
-    path = "bazel/external/icu/utils",
+    path = "third_party/icu",
 )
 
 local_repository(
     name = "expat_config",
-    path = "bazel/external/expat/config",
+    path = "third_party/expat/include",
 )
 
 load("//bazel:cipd_install.bzl", "cipd_install")
@@ -616,17 +578,52 @@ cipd_install(
     tag = "version:47",
 )
 
+http_file(
+    name = "buildifier_linux_x64",
+    downloaded_file_path = "buildifier",
+    executable = True,
+    sha256 = "be63db12899f48600bad94051123b1fd7b5251e7661b9168582ce52396132e92",
+    urls = gcs_mirror_url(
+        ext = "",
+        sha256 = "be63db12899f48600bad94051123b1fd7b5251e7661b9168582ce52396132e92",
+        url = "https://github.com/bazelbuild/buildtools/releases/download/v6.4.0/buildifier-linux-amd64",
+    ),
+)
+
+http_file(
+    name = "buildifier_macos_arm64",
+    downloaded_file_path = "buildifier",
+    executable = True,
+    sha256 = "fa07ba0d20165917ca4cc7609f9b19a8a4392898148b7babdf6bb2a7dd963f05",
+    urls = gcs_mirror_url(
+        ext = "",
+        sha256 = "fa07ba0d20165917ca4cc7609f9b19a8a4392898148b7babdf6bb2a7dd963f05",
+        url = "https://github.com/bazelbuild/buildtools/releases/download/v6.4.0/buildifier-darwin-arm64",
+    ),
+)
+
+http_file(
+    name = "buildifier_macos_x64",
+    downloaded_file_path = "buildifier",
+    executable = True,
+    sha256 = "eeb47b2de27f60efe549348b183fac24eae80f1479e8b06cac0799c486df5bed",
+    urls = gcs_mirror_url(
+        ext = "",
+        sha256 = "eeb47b2de27f60efe549348b183fac24eae80f1479e8b06cac0799c486df5bed",
+        url = "https://github.com/bazelbuild/buildtools/releases/download/v6.4.0/buildifier-darwin-amd64",
+    ),
+)
+
 ##################################
 # Docker rules and dependencies. #
 ##################################
 
 http_archive(
     name = "io_bazel_rules_docker",
-    sha256 = "27d53c1d646fc9537a70427ad7b034734d08a9c38924cc6357cc973fed300820",
-    strip_prefix = "rules_docker-0.24.0",
+    sha256 = "b1e80761a8a8243d03ebca8845e9cc1ba6c82ce7c5179ce2b295cd36f7e394bf",
     urls = gcs_mirror_url(
-        sha256 = "27d53c1d646fc9537a70427ad7b034734d08a9c38924cc6357cc973fed300820",
-        url = "https://github.com/bazelbuild/rules_docker/releases/download/v0.24.0/rules_docker-v0.24.0.tar.gz",
+        sha256 = "b1e80761a8a8243d03ebca8845e9cc1ba6c82ce7c5179ce2b295cd36f7e394bf",
+        url = "https://github.com/bazelbuild/rules_docker/releases/download/v0.25.0/rules_docker-v0.25.0.tar.gz",
     ),
 )
 
@@ -653,7 +650,7 @@ load(
 # Pulls the gcr.io/skia-public/debugger-app-base container.
 container_pull(
     name = "debugger-app-base",
-    digest = "sha256:067d72e0dddf5375ff28b82df97d488eead14d1920fdb096a54d29698a1a4c60",
+    digest = "sha256:ebfa46371f66b4fe233c4470803ed1e1bdf7e149e2a30d93579e4f5cc78189c0",
     registry = "gcr.io",
     repository = "skia-public/debugger-app-base",
 )
@@ -661,7 +658,7 @@ container_pull(
 # Pulls the gcr.io/skia-public/jsfiddle-base container.
 container_pull(
     name = "jsfiddle-base",
-    digest = "sha256:f6c22747cda4e4b47aed9322e94a3ec0fcba058f6b44482e5f194c24fbeb3218",
+    digest = "sha256:dadc8978c6e993f54c4020b05650faa8e074c0fdedc7d38db25a62baba630969",
     registry = "gcr.io",
     repository = "skia-public/jsfiddle-base",
 )
@@ -669,7 +666,7 @@ container_pull(
 # Pulls the gcr.io/skia-public/shaders-base container.
 container_pull(
     name = "shaders-base",
-    digest = "sha256:e7695f0fdff5e79fad84833284284bd69f970df240fd166b7219896d603771ae",
+    digest = "sha256:4a9e92f23d7fca8810ead2fddd329f8fa9b00f1f760979431c31f8a8a5987a9b",
     registry = "gcr.io",
     repository = "skia-public/shaders-base",
 )
@@ -677,7 +674,7 @@ container_pull(
 # Pulls the gcr.io/skia-public/skottie-base container.
 container_pull(
     name = "skottie-base",
-    digest = "sha256:f4b64e5c220e0c50c8bce825095966cda6e0c3c65746f9bc6380c266677f19bd",
+    digest = "sha256:20f5d28635bda984b7fc4cc935428c00a4829c1066ec02866cc0b08eb855bdcb",
     registry = "gcr.io",
     repository = "skia-public/skottie-base",
 )

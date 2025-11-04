@@ -15,7 +15,7 @@ QT_BEGIN_NAMESPACE
 
 namespace QFFmpeg {
 
-static Q_LOGGING_CATEGORY(qLcFFmpegAudioEncoder, "qt.multimedia.ffmpeg.audioencoder");
+Q_STATIC_LOGGING_CATEGORY(qLcFFmpegAudioEncoder, "qt.multimedia.ffmpeg.audioencoder");
 
 namespace {
 void setupStreamParameters(AVStream *stream, const Codec &codec,
@@ -63,7 +63,7 @@ bool openCodecContext(AVCodecContext *codecContext, AVStream *stream,
 
     if (res != 0) {
         qCWarning(qLcFFmpegAudioEncoder)
-                << "Cannot open audio codec" << codec.name() << "; result:" << err2str(res);
+                << "Cannot open audio codec" << codec.name() << "; result:" << AVError(res);
         return false;
     }
 

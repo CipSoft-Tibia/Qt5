@@ -119,6 +119,46 @@ QList<QGraphsTheme *> Q3DGraphsWidgetItem::themes() const
 }
 
 /*!
+ * \property Q3DGraphsWidgetItem::transparencyTechnique
+ * \since 6.9
+ *
+ * \brief Specifies which transparency technique to use. The Default value is \c{Default}.
+ * When rendering transparent surface graphs, use \c{Approximate} or \c{Accurate}.
+ *
+ * \value Default
+ *        Indicates that order-independent transparency techniques are not used.
+ *        Offers the best performance. Use when graphs don't contain
+ *        transparency or when a bar or scatter graph is also using instancing,
+ *        that is \l optimizationHint is {QtGraphs3D::OptimizationHint::Default}.
+ *
+ * \value Approximate
+ *        Indicates that a graph attempts an approximation of order-independent
+ *        transparency. This method is faster than \c Accurate and works on older
+ *        hardware but may yield inaccurate results. Use when the order-independent
+ *        transparency is needed, but the performance cost has to be lower than
+ *        when using accurate order-independent transparency.
+ *
+ * \value Accurate
+ *        Indicates that accurate order-independent transparency is used.
+ *        Use when perfect transparency rendering is needed.
+ *        \note Accurate transparency is not yet implemented
+ *              and will be enabled when the required functionality
+ *              is added to QtQuick3D.
+ *
+ * \sa QtGraphs3D::TransparencyTechnique
+ */
+QtGraphs3D::TransparencyTechnique Q3DGraphsWidgetItem::transparencyTechnique() const
+{
+    Q_D(const Q3DGraphsWidgetItem);
+    return d->m_graphsItem->transparencyTechnique();
+}
+void Q3DGraphsWidgetItem::setTransparencyTechnique(QtGraphs3D::TransparencyTechnique technique)
+{
+    Q_D(const Q3DGraphsWidgetItem);
+    d->m_graphsItem->setTransparencyTechnique(technique);
+}
+
+/*!
  * \property Q3DGraphsWidgetItem::selectionMode
  *
  * \brief Item selection mode.
@@ -424,6 +464,7 @@ void Q3DGraphsWidgetItem::setCameraYRotation(float rotation)
  * \property Q3DGraphsWidgetItem::minCameraXRotation
  *
  * \brief The minimum X-rotation angle of the camera around the target point in degrees.
+ * The default value is \c{-180.0}
  */
 float Q3DGraphsWidgetItem::minCameraXRotation() const
 {
@@ -441,6 +482,7 @@ void Q3DGraphsWidgetItem::setMinCameraXRotation(float rotation)
  * \property Q3DGraphsWidgetItem::maxCameraXRotation
  *
  * \brief The maximum X-rotation angle of the camera around the target point in degrees.
+ * The default value is \c{180.0}
  */
 float Q3DGraphsWidgetItem::maxCameraXRotation() const
 {
@@ -458,6 +500,7 @@ void Q3DGraphsWidgetItem::setMaxCameraXRotation(float rotation)
  * \property Q3DGraphsWidgetItem::minCameraYRotation
  *
  * \brief The minimum Y-rotation angle of the camera around the target point in degrees.
+ * The default value is \c{0.0}
  */
 float Q3DGraphsWidgetItem::minCameraYRotation() const
 {
@@ -475,6 +518,7 @@ void Q3DGraphsWidgetItem::setMinCameraYRotation(float rotation)
  * \property Q3DGraphsWidgetItem::maxCameraYRotation
  *
  * \brief The maximum Y-rotation angle of the camera around the target point in degrees.
+ * The default value is \c{90.0}
  */
 float Q3DGraphsWidgetItem::maxCameraYRotation() const
 {
@@ -940,10 +984,29 @@ void Q3DGraphsWidgetItem::setMsaaSamples(int samples)
     d->m_graphsItem->setMsaaSamples(samples);
 }
 
+/*!
+ * Performs picking using view coordinates from \a point
+ * on the elements of the graph, selecting the first item hit.
+ * Default input handling performs this upon receiving the onTapped event.
+ *
+ * \sa selectedElement
+ */
 void Q3DGraphsWidgetItem::doPicking(QPoint point)
 {
     Q_D(Q3DGraphsWidgetItem);
     d->m_graphsItem->doPicking(point);
+}
+
+/*!
+ * Performs picking starting from \a origin and in \a direction
+ * on the elements of the graph, selecting the first item hit.
+ *
+ * \sa selectedElement
+ */
+void Q3DGraphsWidgetItem::doRayPicking(QVector3D origin, QVector3D direction)
+{
+    Q_D(Q3DGraphsWidgetItem);
+    d->m_graphsItem->doRayPicking(origin, direction);
 }
 
 /*!
@@ -1434,6 +1497,10 @@ void Q3DGraphsWidgetItemPrivate::createGraph()
                      &QQuickGraphsItem::activeThemeChanged,
                      q,
                      &Q3DGraphsWidgetItem::activeThemeChanged);
+    QObject::connect(m_graphsItem.get(),
+                     &QQuickGraphsItem::transparencyTechniqueChanged,
+                     q,
+                     &Q3DGraphsWidgetItem::transparencyTechniqueChanged);
     QObject::connect(m_graphsItem.get(),
                      &QQuickGraphsItem::selectionModeChanged,
                      q,

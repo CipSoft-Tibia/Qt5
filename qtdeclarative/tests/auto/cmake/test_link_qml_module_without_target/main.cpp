@@ -3,7 +3,7 @@
 
 #include <QtCore/QDirIterator>
 #include <QtGui/QGuiApplication>
-#include <QtTest/QtTest>
+#include <QtTest/QTest>
 #include <QtQml/qqmlengine.h>
 #include <QtQml/qqmlextensionplugin.h>
 #include <QtQml/qqmlcomponent.h>

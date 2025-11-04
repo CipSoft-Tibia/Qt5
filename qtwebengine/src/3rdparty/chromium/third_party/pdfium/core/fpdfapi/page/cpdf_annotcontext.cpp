@@ -12,7 +12,7 @@
 #include "core/fpdfapi/page/cpdf_page.h"
 #include "core/fpdfapi/parser/cpdf_dictionary.h"
 #include "core/fpdfapi/parser/cpdf_stream.h"
-#include "third_party/base/check.h"
+#include "core/fxcrt/check.h"
 
 #ifdef SetForm
 #undef SetForm

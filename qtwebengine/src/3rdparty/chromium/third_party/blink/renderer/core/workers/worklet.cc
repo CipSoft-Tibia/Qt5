@@ -4,9 +4,10 @@
 
 #include "third_party/blink/renderer/core/workers/worklet.h"
 
+#include <optional>
+
 #include "base/task/single_thread_task_runner.h"
 #include "services/network/public/mojom/fetch_api.mojom-blink.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "third_party/blink/public/mojom/use_counter/metrics/web_feature.mojom-blink.h"
 #include "third_party/blink/public/platform/task_type.h"
 #include "third_party/blink/public/platform/web_url_request.h"
@@ -44,23 +45,24 @@ void Worklet::Dispose() {
 // Implementation of the first half of the "addModule(moduleURL, options)"
 // algorithm:
 // https://drafts.css-houdini.org/worklets/#dom-worklet-addmodule
-ScriptPromise Worklet::addModule(ScriptState* script_state,
-                                 const String& module_url,
-                                 const WorkletOptions* options,
-                                 ExceptionState& exception_state) {
+ScriptPromise<IDLUndefined> Worklet::addModule(
+    ScriptState* script_state,
+    const String& module_url,
+    const WorkletOptions* options,
+    ExceptionState& exception_state) {
   DCHECK(IsMainThread());
   if (!GetExecutionContext()) {
     exception_state.ThrowDOMException(DOMExceptionCode::kInvalidStateError,
                                       "This frame is already detached");
-    return ScriptPromise();
+    return EmptyPromise();
   }
   UseCounter::Count(GetExecutionContext(),
                     mojom::WebFeature::kWorkletAddModule);
 
   // Step 1: "Let promise be a new promise."
-  auto* resolver = MakeGarbageCollected<ScriptPromiseResolver>(
+  auto* resolver = MakeGarbageCollected<ScriptPromiseResolver<IDLUndefined>>(
       script_state, exception_state.GetContext());
-  ScriptPromise promise = resolver->Promise();
+  auto promise = resolver->Promise();
 
   // Step 2: "Let worklet be the current Worklet."
   // |this| is the current Worklet.
@@ -129,7 +131,7 @@ void Worklet::FetchAndInvokeScript(const KURL& module_url_record,
     return;
 
   // Step 6: "Let credentialOptions be the credentials member of options."
-  absl::optional<network::mojom::CredentialsMode> credentials_mode =
+  std::optional<network::mojom::CredentialsMode> credentials_mode =
       Request::ParseCredentialsMode(credentials);
   DCHECK(credentials_mode);
 

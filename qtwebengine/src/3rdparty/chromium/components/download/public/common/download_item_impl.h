@@ -8,6 +8,7 @@
 #include <stdint.h>
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -32,7 +33,6 @@
 #include "mojo/public/cpp/bindings/pending_receiver.h"
 #include "services/device/public/mojom/wake_lock_provider.mojom.h"
 #include "services/network/public/mojom/fetch_api.mojom-shared.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "url/gurl.h"
 #include "url/origin.h"
 
@@ -56,7 +56,7 @@ class COMPONENTS_DOWNLOAD_EXPORT DownloadItemImpl
                 const std::string& serialized_embedder_download_data,
                 const GURL& tab_url,
                 const GURL& tab_referrer_url,
-                const absl::optional<url::Origin>& request_initiator,
+                const std::optional<url::Origin>& request_initiator,
                 const std::string& suggested_filename,
                 const base::FilePath& forced_file_path,
                 ui::PageTransition transition_type,
@@ -64,7 +64,7 @@ class COMPONENTS_DOWNLOAD_EXPORT DownloadItemImpl
                 const std::string& remote_address,
                 base::Time start_time,
                 ::network::mojom::CredentialsMode credentials_mode,
-                const absl::optional<net::IsolationInfo>& isolation_info,
+                const std::optional<net::IsolationInfo>& isolation_info,
                 int64_t range_request_from,
                 int64_t range_request_to);
     RequestInfo();
@@ -91,7 +91,7 @@ class COMPONENTS_DOWNLOAD_EXPORT DownloadItemImpl
     GURL tab_referrer_url;
 
     // The origin of the requester that originally initiated the download.
-    absl::optional<url::Origin> request_initiator;
+    std::optional<url::Origin> request_initiator;
 
     // Filename suggestion from DownloadSaveInfo. It could, among others, be the
     // suggested filename in 'download' attribute of an anchor. Details:
@@ -119,7 +119,7 @@ class COMPONENTS_DOWNLOAD_EXPORT DownloadItemImpl
         ::network::mojom::CredentialsMode::kInclude;
 
     // Isolation info for the request.
-    absl::optional<net::IsolationInfo> isolation_info;
+    std::optional<net::IsolationInfo> isolation_info;
 
     // Range request offsets. Used only for explicitly download part of the
     // content.
@@ -159,6 +159,10 @@ class COMPONENTS_DOWNLOAD_EXPORT DownloadItemImpl
     // Current received bytes.
     int64_t received_bytes = 0;
 
+    // Current uploaded bytes. Used only when the downloaded file is to be save
+    // in the cloud.
+    int64_t uploaded_bytes = 0;
+
     // True if we've saved all the data for the download. If true, then the file
     // at |current_path| contains |received_bytes|, which constitute the
     // entirety of what we expect to save there. A digest of its contents can be
@@ -197,7 +201,7 @@ class COMPONENTS_DOWNLOAD_EXPORT DownloadItemImpl
       const std::string& serialized_embedder_download_data,
       const GURL& tab_url,
       const GURL& tab_referrer_url,
-      const absl::optional<url::Origin>& request_initiator,
+      const std::optional<url::Origin>& request_initiator,
       const std::string& mime_type,
       const std::string& original_mime_type,
       base::Time start_time,
@@ -247,8 +251,7 @@ class COMPONENTS_DOWNLOAD_EXPORT DownloadItemImpl
   void UpdateObservers() override;
   void ValidateDangerousDownload() override;
   void ValidateInsecureDownload() override;
-  void StealDangerousDownload(bool need_removal,
-                              AcquireFileCallback callback) override;
+  void CopyDownload(AcquireFileCallback callback) override;
   void Pause() override;
   void Resume(bool user_resume) override;
   void Cancel(bool user_cancel) override;
@@ -275,7 +278,7 @@ class COMPONENTS_DOWNLOAD_EXPORT DownloadItemImpl
   const std::string& GetSerializedEmbedderDownloadData() const override;
   const GURL& GetTabUrl() const override;
   const GURL& GetTabReferrerUrl() const override;
-  const absl::optional<url::Origin>& GetRequestInitiator() const override;
+  const std::optional<url::Origin>& GetRequestInitiator() const override;
   std::string GetSuggestedFilename() const override;
   const scoped_refptr<const net::HttpResponseHeaders>& GetResponseHeaders()
       const override;
@@ -299,8 +302,10 @@ class COMPONENTS_DOWNLOAD_EXPORT DownloadItemImpl
   bool GetFileExternallyRemoved() const override;
   void DeleteFile(base::OnceCallback<void(bool)> callback) override;
   DownloadFile* GetDownloadFile() override;
+  DownloadItemRenameHandler* GetRenameHandler() override;
 #if BUILDFLAG(IS_ANDROID)
   bool IsFromExternalApp() override;
+  bool IsMustDownload() override;
 #endif  // BUILDFLAG(IS_ANDROID)
   bool IsDangerous() const override;
   bool IsInsecure() const override;
@@ -314,6 +319,7 @@ class COMPONENTS_DOWNLOAD_EXPORT DownloadItemImpl
   int64_t GetReceivedBytes() const override;
   const std::vector<DownloadItem::ReceivedSlice>& GetReceivedSlices()
       const override;
+  int64_t GetUploadedBytes() const override;
   base::Time GetStartTime() const override;
   base::Time GetEndTime() const override;
   bool CanShowInFolder() override;
@@ -329,7 +335,7 @@ class COMPONENTS_DOWNLOAD_EXPORT DownloadItemImpl
   bool IsParallelDownload() const override;
   DownloadCreationType GetDownloadCreationType() const override;
   ::network::mojom::CredentialsMode GetCredentialsMode() const override;
-  const absl::optional<net::IsolationInfo>& GetIsolationInfo() const override;
+  const std::optional<net::IsolationInfo>& GetIsolationInfo() const override;
   void OnContentCheckCompleted(DownloadDangerType danger_type,
                                DownloadInterruptReason reason) override;
   void OnAsyncScanningCompleted(DownloadDangerType danger_type) override;
@@ -606,6 +612,9 @@ class COMPONENTS_DOWNLOAD_EXPORT DownloadItemImpl
   // DownloadItem::Completed().
   void OnDownloadCompleting();
 
+  void OnRenameAndAnnotateDone(DownloadInterruptReason reason,
+                               const base::FilePath& full_path);
+
   void OnDownloadRenamedToFinalName(DownloadInterruptReason reason,
                                     const base::FilePath& full_path);
 
@@ -706,6 +715,8 @@ class COMPONENTS_DOWNLOAD_EXPORT DownloadItemImpl
                                                 DownloadInternalState to);
   static bool IsValidStateTransition(DownloadInternalState from,
                                      DownloadInternalState to);
+
+  void UpdateRenameProgress(int64_t bytes_so_far, int64_t bytes_per_sec);
 
   RequestInfo request_info_;
 
@@ -879,8 +890,15 @@ class COMPONENTS_DOWNLOAD_EXPORT DownloadItemImpl
   InsecureDownloadStatus insecure_download_status_ =
       InsecureDownloadStatus::UNKNOWN;
 
+  // A handler for renaming and helping with displaying the item.
+  std::unique_ptr<DownloadItemRenameHandler> rename_handler_;
+
+  // Whether renaming is in progress.
+  bool renaming_ = false;
+
 #if BUILDFLAG(IS_ANDROID)
   bool is_from_external_app_ = false;
+  bool is_must_download_ = false;
 #endif  // BUILDFLAG(IS_ANDROID)
 
   THREAD_CHECKER(thread_checker_);

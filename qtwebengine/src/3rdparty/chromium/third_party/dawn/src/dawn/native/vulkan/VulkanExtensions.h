@@ -106,6 +106,8 @@ enum class DeviceExt {
     DriverProperties,
     ImageFormatList,
     ShaderFloat16Int8,
+    ShaderSubgroupExtendedTypes,
+    DrawIndirectCount,
 
     // Promoted to 1.3
     ShaderIntegerDotProduct,
@@ -120,6 +122,7 @@ enum class DeviceExt {
     QueueFamilyForeign,
     Robustness2,
     ShaderSubgroupUniformControlFlow,
+    DisplayTiming,
 
     // External* extensions
     ExternalMemoryAndroidHardwareBuffer,

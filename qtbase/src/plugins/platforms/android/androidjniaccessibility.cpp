@@ -28,6 +28,7 @@ using namespace Qt::StringLiterals;
 
 namespace QtAndroidAccessibility
 {
+    static jmethodID m_setClassNameMethodID = 0;
     static jmethodID m_addActionMethodID = 0;
     static jmethodID m_setCheckableMethodID = 0;
     static jmethodID m_setCheckedMethodID = 0;
@@ -40,6 +41,7 @@ namespace QtAndroidAccessibility
     static jmethodID m_setHeadingMethodID = 0;
     static jmethodID m_setScrollableMethodID = 0;
     static jmethodID m_setTextSelectionMethodID = 0;
+    static jmethodID m_setRangeInfoMethodID = 0;
     static jmethodID m_setVisibleToUserMethodID = 0;
 
     static bool m_accessibilityActivated = false;
@@ -95,10 +97,12 @@ namespace QtAndroidAccessibility
         QMutexLocker lock(QtAndroid::platformInterfaceMutex());
         QAndroidPlatformIntegration *platformIntegration = QtAndroid::androidPlatformIntegration();
         m_accessibilityActivated = active;
-        if (platformIntegration)
+        if (platformIntegration) {
             platformIntegration->accessibility()->setActive(active);
-        else
-            __android_log_print(ANDROID_LOG_WARN, m_qtTag, "Could not (yet) activate platform accessibility.");
+        } else {
+            __android_log_print(ANDROID_LOG_DEBUG, m_qtTag,
+                "Android platform integration is not ready, accessibility activation deferred.");
+        }
     }
 
     QAccessibleInterface *interfaceFromId(jint objectId)
@@ -146,9 +150,26 @@ namespace QtAndroidAccessibility
         QtAndroid::notifyValueChanged(accessibilityObjectId, value);
     }
 
+    // Forward declaration
+    static QString descriptionForInterface(QAccessibleInterface *iface);
+
+    void notifyDescriptionOrNameChanged(uint accessibilityObjectId)
+    {
+        QAccessibleInterface *iface = interfaceFromId(accessibilityObjectId);
+        if (iface && iface->isValid()) {
+            const QString value = descriptionForInterface(iface);
+            QtAndroid::notifyDescriptionOrNameChanged(accessibilityObjectId, value);
+        }
+    }
+
     void notifyScrolledEvent(uint accessiblityObjectId)
     {
         QtAndroid::notifyScrolledEvent(accessiblityObjectId);
+    }
+
+    void notifyAnnouncementEvent(uint accessibilityObjectId, const QString &message)
+    {
+        QtAndroid::notifyAnnouncementEvent(accessibilityObjectId, message);
     }
 
     static QVarLengthArray<int, 8> childIdListForAccessibleObject_helper(int objectId)
@@ -296,12 +317,39 @@ namespace QtAndroidAccessibility
         return true;
     }
 
+    static bool focusAction_helper(int objectId)
+    {
+        QAccessibleInterface *iface = interfaceFromId(objectId);
+        if (!iface || !iface->isValid() || !iface->actionInterface())
+            return false;
+
+        const auto& actionNames = iface->actionInterface()->actionNames();
+
+        if (actionNames.contains(QAccessibleActionInterface::setFocusAction())) {
+            invokeActionOnInterfaceInMainThread(iface->actionInterface(),
+                                                QAccessibleActionInterface::setFocusAction());
+            return true;
+        }
+        return false;
+    }
+
     static jboolean clickAction(JNIEnv */*env*/, jobject /*thiz*/, jint objectId)
     {
         bool result = false;
         if (m_accessibilityContext) {
             runInObjectContext(m_accessibilityContext, [objectId]() {
                 return clickAction_helper(objectId);
+            }, &result);
+        }
+        return result;
+    }
+
+    static jboolean focusAction(JNIEnv */*env*/, jobject /*thiz*/, jint objectId)
+    {
+        bool result = false;
+        if (m_accessibilityContext) {
+            runInObjectContext(m_accessibilityContext, [objectId]() {
+                return focusAction_helper(objectId);
             }, &result);
         }
         return result;
@@ -421,6 +469,131 @@ namespace QtAndroidAccessibility
         return jstr;
     }
 
+    static QString classNameForRole(QAccessible::Role role, QAccessible::State state) {
+        switch (role) {
+        case QAccessible::Role::Button:
+        case QAccessible::Role::Link:
+        {
+            if (state.checkable)
+                // There is also a android.widget.Switch for which we have no match.
+                return QStringLiteral("android.widget.ToggleButton");
+            return QStringLiteral("android.widget.Button");
+        }
+        case QAccessible::Role::CheckBox:
+            // As of android/accessibility/utils/Role.java::getRole a CheckBox
+            // is NOT android.widget.CheckBox
+            return QStringLiteral("android.widget.CompoundButton");
+        case QAccessible::Role::Clock:
+            return QStringLiteral("android.widget.TextClock");
+        case QAccessible::Role::ComboBox:
+            return QStringLiteral("android.widget.Spinner");
+        case QAccessible::Role::Graphic:
+            // QQuickImage does not provide this role it inherits Client from QQuickItem
+            return QStringLiteral("android.widget.ImageView");
+        case QAccessible::Role::Grouping:
+            return QStringLiteral("android.view.ViewGroup");
+        case QAccessible::Role::List:
+            // As of android/accessibility/utils/Role.java::getRole a List
+            // is NOT android.widget.ListView
+            return QStringLiteral("android.widget.AbsListView");
+        case QAccessible::Role::MenuItem:
+            return QStringLiteral("android.view.MenuItem");
+        case QAccessible::Role::PopupMenu:
+            return QStringLiteral("android.widget.PopupMenu");
+        case QAccessible::Role::Separator:
+            return QStringLiteral("android.widget.Space");
+        case QAccessible::Role::ToolBar:
+            return QStringLiteral("android.view.Toolbar");
+        case QAccessible::Role::Heading: [[fallthrough]];
+        case QAccessible::Role::StaticText:
+            // Heading vs. regular Text is finally determined by AccessibilityNodeInfo.isHeading()
+            return QStringLiteral("android.widget.TextView");
+        case QAccessible::Role::EditableText:
+            return QStringLiteral("android.widget.EditText");
+        case QAccessible::Role::RadioButton:
+            return QStringLiteral("android.widget.RadioButton");
+        case QAccessible::Role::ProgressBar:
+            return QStringLiteral("android.widget.ProgressBar");
+            // Range information need to be filled to announce percentages
+        case QAccessible::Role::SpinBox:
+            return QStringLiteral("android.widget.NumberPicker");
+        case QAccessible::Role::WebDocument:
+            return QStringLiteral("android.webkit.WebView");
+        case QAccessible::Role::Dialog:
+            return QStringLiteral("android.app.AlertDialog");
+        case QAccessible::Role::PageTab:
+            return QStringLiteral("android.app.ActionBar.Tab");
+        case QAccessible::Role::PageTabList:
+            return QStringLiteral("android.widget.TabWidget");
+        case QAccessible::Role::ScrollBar:
+            return QStringLiteral("android.widget.Scroller");
+        case QAccessible::Role::Slider:
+            return QStringLiteral("com.google.android.material.slider.Slider");
+        case QAccessible::Role::Table:
+            // #TODO Evaluate the usage of AccessibleNodeInfo.setCollectionItemInfo() to provide
+            // infos about colums, rows und items.
+            return QStringLiteral("android.widget.GridView");
+        case QAccessible::Role::Pane:
+            // #TODO QQuickScrollView, QQuickListView (see QTBUG-137806)
+            return QStringLiteral("android.view.ViewGroup");
+        case QAccessible::Role::AlertMessage:
+        case QAccessible::Role::Animation:
+        case QAccessible::Role::Application:
+        case QAccessible::Role::Assistant:
+        case QAccessible::Role::BlockQuote:
+        case QAccessible::Role::Border:
+        case QAccessible::Role::ButtonDropGrid:
+        case QAccessible::Role::ButtonDropDown:
+        case QAccessible::Role::ButtonMenu:
+        case QAccessible::Role::Canvas:
+        case QAccessible::Role::Caret:
+        case QAccessible::Role::Cell:
+        case QAccessible::Role::Chart:
+        case QAccessible::Role::Client:
+        case QAccessible::Role::ColorChooser:
+        case QAccessible::Role::Column:
+        case QAccessible::Role::ColumnHeader:
+        case QAccessible::Role::ComplementaryContent:
+        case QAccessible::Role::Cursor:
+        case QAccessible::Role::Desktop:
+        case QAccessible::Role::Dial:
+        case QAccessible::Role::Document:
+        case QAccessible::Role::Equation:
+        case QAccessible::Role::Footer:
+        case QAccessible::Role::Form:
+        case QAccessible::Role::Grip:
+        case QAccessible::Role::HelpBalloon:
+        case QAccessible::Role::HotkeyField:
+        case QAccessible::Role::Indicator:
+        case QAccessible::Role::LayeredPane:
+        case QAccessible::Role::ListItem:
+        case QAccessible::Role::MenuBar:
+        case QAccessible::Role::NoRole:
+        case QAccessible::Role::Note:
+        case QAccessible::Role::Notification:
+        case QAccessible::Role::Paragraph:
+        case QAccessible::Role::PropertyPage:
+        case QAccessible::Role::Row:
+        case QAccessible::Role::RowHeader:
+        case QAccessible::Role::Section:
+        case QAccessible::Role::Sound:
+        case QAccessible::Role::Splitter:
+        case QAccessible::Role::StatusBar:
+        case QAccessible::Role::Terminal:
+        case QAccessible::Role::TitleBar:
+        case QAccessible::Role::ToolTip:
+        case QAccessible::Role::Tree:
+        case QAccessible::Role::TreeItem:
+        case QAccessible::Role::UserRole:
+        case QAccessible::Role::Whitespace:
+        case QAccessible::Role::Window:
+            // If unsure, every visible or interactive element in Android
+            // inherits android.view.View and by many extends also TextView.
+            // Android itself does a similar thing e.g. in its Settings-App.
+            return QStringLiteral("android.view.TextView");
+        }
+    }
+
     static QString descriptionForInterface(QAccessibleInterface *iface)
     {
         QString desc;
@@ -474,6 +647,11 @@ namespace QtAndroidAccessibility
         bool hasTextSelection = false;
         int selectionStart = 0;
         int selectionEnd = 0;
+        bool hasValue = false;
+        QVariant minValue = 0;
+        QVariant maxValue = 0;
+        QVariant currentValue = 0;
+        QVariant valueStepSize = 0;
     };
 
     static NodeInfo populateNode_helper(int objectId)
@@ -492,6 +670,14 @@ namespace QtAndroidAccessibility
                 info.hasTextSelection = true;
                 textIface->selection(0, &info.selectionStart, &info.selectionEnd);
             }
+            QAccessibleValueInterface *valueInterface = iface->valueInterface();
+            if (valueInterface) {
+                info.hasValue = true;
+                info.minValue = valueInterface->minimumValue();
+                info.maxValue = valueInterface->maximumValue();
+                info.currentValue = valueInterface->currentValue();
+                info.valueStepSize = valueInterface->minimumStepSize();
+            }
         }
         return info;
     }
@@ -509,9 +695,14 @@ namespace QtAndroidAccessibility
             return false;
         }
 
+        const QString role = classNameForRole(info.role, info.state);
+        jstring jrole = env->NewString((jchar*)role.constData(), (jsize)role.size());
+        env->CallVoidMethod(node, m_setClassNameMethodID, jrole);
+
         const bool hasClickableAction =
-                info.actions.contains(QAccessibleActionInterface::pressAction()) ||
-                info.actions.contains(QAccessibleActionInterface::toggleAction());
+                (info.actions.contains(QAccessibleActionInterface::pressAction())
+                 || info.actions.contains(QAccessibleActionInterface::toggleAction()))
+                && !(info.role == QAccessible::StaticText || info.role == QAccessible::Heading);
         const bool hasIncreaseAction =
                 info.actions.contains(QAccessibleActionInterface::increaseAction());
         const bool hasDecreaseAction =
@@ -520,6 +711,28 @@ namespace QtAndroidAccessibility
         if (info.hasTextSelection && m_setTextSelectionMethodID) {
             env->CallVoidMethod(node, m_setTextSelectionMethodID, info.selectionStart,
                                 info.selectionEnd);
+        }
+
+        if (info.hasValue && m_setRangeInfoMethodID) {
+            int valueType = info.currentValue.typeId();
+            jint rangeType = 3; // RANGE_TYPE_INDETERMINATE
+            switch (valueType) {
+            case QMetaType::Float:
+            case QMetaType::Double:
+                rangeType = 1; // RANGE_TYPE_FLOAT
+                break;
+            case QMetaType::Int:
+                rangeType = 0; // RANGE_TYPE_INT
+                break;
+            }
+
+            QJniObject rangeInfo("android/view/accessibility/AccessibilityNodeInfo$RangeInfo",
+                                 "(IFFF)V", rangeType, info.minValue.toFloat(),
+                                 info.maxValue.toFloat(), info.currentValue.toFloat());
+
+            if (rangeInfo.isValid()) {
+                env->CallVoidMethod(node, m_setRangeInfoMethodID, rangeInfo.object());
+            }
         }
 
         env->CallVoidMethod(node, m_setCheckableMethodID, (bool)info.state.checkable);
@@ -566,6 +779,7 @@ namespace QtAndroidAccessibility
         {"hitTest", "(FF)I", (void*)hitTest},
         {"populateNode", "(ILandroid/view/accessibility/AccessibilityNodeInfo;)Z", (void*)populateNode},
         {"clickAction", "(I)Z", (void*)clickAction},
+        {"focusAction", "(I)Z", (void*)focusAction},
         {"scrollForward", "(I)Z", (void*)scrollForward},
         {"scrollBackward", "(I)Z", (void*)scrollBackward},
     };
@@ -586,6 +800,7 @@ namespace QtAndroidAccessibility
         }
 
         jclass nodeInfoClass = env->FindClass("android/view/accessibility/AccessibilityNodeInfo");
+        GET_AND_CHECK_STATIC_METHOD(m_setClassNameMethodID, nodeInfoClass, "setClassName", "(Ljava/lang/CharSequence;)V");
         GET_AND_CHECK_STATIC_METHOD(m_addActionMethodID, nodeInfoClass, "addAction", "(I)V");
         GET_AND_CHECK_STATIC_METHOD(m_setCheckableMethodID, nodeInfoClass, "setCheckable", "(Z)V");
         GET_AND_CHECK_STATIC_METHOD(m_setCheckedMethodID, nodeInfoClass, "setChecked", "(Z)V");
@@ -601,6 +816,9 @@ namespace QtAndroidAccessibility
         GET_AND_CHECK_STATIC_METHOD(m_setScrollableMethodID, nodeInfoClass, "setScrollable", "(Z)V");
         GET_AND_CHECK_STATIC_METHOD(m_setVisibleToUserMethodID, nodeInfoClass, "setVisibleToUser", "(Z)V");
         GET_AND_CHECK_STATIC_METHOD(m_setTextSelectionMethodID, nodeInfoClass, "setTextSelection", "(II)V");
+        GET_AND_CHECK_STATIC_METHOD(
+                m_setRangeInfoMethodID, nodeInfoClass, "setRangeInfo",
+                "(Landroid/view/accessibility/AccessibilityNodeInfo$RangeInfo;)V");
 
         return true;
     }

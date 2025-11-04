@@ -198,6 +198,29 @@ void QQuick3DDebugSettings::setDrawShadowCastingBounds(bool newDrawShadowCasting
 }
 
 /*!
+    \qmlproperty bool QtQuick3D::DebugSettings::drawPointLightShadowBoxes
+    \since 6.9
+
+    When this property is enabled a bounding box is drawn for every point light's shadowmap.
+
+    The default value is \c false.
+*/
+
+bool QQuick3DDebugSettings::drawPointLightShadowBoxes() const
+{
+    return m_drawPointLightShadowBoxes;
+}
+
+void QQuick3DDebugSettings::setDrawPointLightShadowBoxes(bool newDrawPointLightShadowBoxes)
+{
+    if (m_drawPointLightShadowBoxes == newDrawPointLightShadowBoxes)
+        return;
+    m_drawPointLightShadowBoxes = newDrawPointLightShadowBoxes;
+    emit drawPointLightShadowBoxesChanged();
+    update();
+}
+
+/*!
     \qmlproperty bool QtQuick3D::DebugSettings::drawShadowReceivingBounds
     \since 6.8
 

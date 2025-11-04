@@ -10,13 +10,15 @@ class TopographicSeries : public QSurface3DSeries
 {
     Q_OBJECT
 public:
+    Q_DISABLE_COPY_MOVE(TopographicSeries)
+
     TopographicSeries();
     ~TopographicSeries() override;
 
-    void setTopographyFile(const QString file, float width, float height);
+    void setTopographyFile(const QString &file, float width, float height);
 
-    float sampleCountX() { return m_sampleCountX; }
-    float sampleCountZ() { return m_sampleCountZ; }
+    float sampleCountX() const { return m_sampleCountX; }
+    float sampleCountZ() const { return m_sampleCountZ; }
 
 private:
     float m_sampleCountX = 0.f;

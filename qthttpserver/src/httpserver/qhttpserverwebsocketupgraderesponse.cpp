@@ -1,5 +1,6 @@
 // Copyright (C) 2024 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include <QtHttpServer/qhttpserverwebsocketupgraderesponse.h>
 
@@ -114,7 +115,8 @@ QHttpServerWebSocketUpgradeResponse QHttpServerWebSocketUpgradeResponse::accept(
 
 /*!
     Creates an instance of QHttpServerWebSocketUpgradeResponse with
-    \l type() \l Deny, \l denyStatus() 403 and the \l denyMessage() "Forbidden".
+    \l type() \l Deny, \l denyStatus() \c 403 and the \l denyMessage()
+    \c "Forbidden".
 
     \sa ResponseType, type(), denyStatus(), denyMessage()
 */

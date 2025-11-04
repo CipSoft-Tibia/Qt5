@@ -510,7 +510,7 @@ async function printStyleSection(section, omitLonghands, includeSelectorGroupMar
 
   TestRunner.addResult(
       '[expanded] ' + ((section.propertiesTreeOutline.element.classList.contains('no-affect') ? '[no-affect] ' : '')));
-  const queries = section.titleElement.querySelectorAll('devtools-css-query');
+  const queries = section.element.querySelectorAll('devtools-css-query');
 
   for (const query of queries) {
     const queryElement = query.shadowRoot.querySelector('.query');
@@ -525,7 +525,7 @@ async function printStyleSection(section, omitLonghands, includeSelectorGroupMar
       section.titleElement.querySelector('.selector') || section.titleElement.querySelector('.keyframe-key');
   let selectorText = (includeSelectorGroupMarks ? buildMarkedSelectors(selector) : text(selector));
   selectorText += text(selector.nextSibling);
-  const anchor = section.titleElement.querySelector('.styles-section-subtitle');
+  const anchor = section.element.querySelector('.styles-section-subtitle');
 
   if (anchor) {
     const anchorText = await extractLinkText(anchor);
@@ -590,19 +590,19 @@ ElementsTestRunner.toggleMatchedStyleProperty = function(propertyName, checked) 
 };
 
 ElementsTestRunner.eventListenersWidget = function() {
-  UI.ViewManager.ViewManager.instance().showView('elements.eventListeners');
+  UI.ViewManager.ViewManager.instance().showView('elements.event-listeners');
   return Elements.EventListenersWidget.EventListenersWidget.instance();
 };
 
 ElementsTestRunner.showEventListenersWidget = function() {
-  return UI.ViewManager.ViewManager.instance().showView('elements.eventListeners');
+  return UI.ViewManager.ViewManager.instance().showView('elements.event-listeners');
 };
 
 /**
  * @return {Promise}
  */
 ElementsTestRunner.showComputedStyles = function() {
-  Elements.ElementsPanel.ElementsPanel.instance().sidebarPaneView.tabbedPane().selectTab('Computed', true);
+  Elements.ElementsPanel.ElementsPanel.instance().sidebarPaneView.tabbedPane().selectTab('computed', true);
   return ElementsTestRunner.computedStyleWidget().doUpdate();
 };
 

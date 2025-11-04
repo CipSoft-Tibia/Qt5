@@ -50,6 +50,10 @@ CPPLINT_EXCEPTIONS = [
 PYLINT_OLD_STYLE = [
     "PRESUBMIT.py",
     "tools_webrtc/autoroller/roll_deps.py",
+    "tools_webrtc/android/build_aar.py",
+    "tools_webrtc/ios/build_ios_libs.py",
+    "tools_webrtc/mb/mb.py",
+    "tools_webrtc/mb/mb_unittest.py",
 ]
 
 # These filters will always be removed, even if the caller specifies a filter
@@ -127,14 +131,6 @@ DEPS_RE = re.compile(r'\bdeps \+?= \[(?P<deps>.*?)\]',
 
 # FILE_PATH_RE matches a file path.
 FILE_PATH_RE = re.compile(r'"(?P<file_path>(\w|\/)+)(?P<extension>\.\w+)"')
-
-
-def FindSrcDirPath(starting_dir):
-    """Returns the abs path to the src/ dir of the project."""
-    src_dir = starting_dir
-    while os.path.basename(src_dir) != 'src':
-        src_dir = os.path.normpath(os.path.join(src_dir, os.pardir))
-    return src_dir
 
 
 @contextmanager
@@ -370,39 +366,6 @@ def CheckNoSourcesAbove(input_api, gn_files, output_api):
                 items=violating_gn_files)
         ]
     return []
-
-
-def CheckAbseilDependencies(input_api, gn_files, output_api):
-    """Checks that Abseil dependencies are declared in `absl_deps`."""
-    absl_re = re.compile(r'third_party/abseil-cpp', re.MULTILINE | re.DOTALL)
-    target_types_to_check = [
-        'rtc_library',
-        'rtc_source_set',
-        'rtc_static_library',
-        'webrtc_fuzzer_test',
-    ]
-    error_msg = ('Abseil dependencies in target "%s" (file: %s) '
-                 'should be moved to the "absl_deps" parameter.')
-    errors = []
-
-    # pylint: disable=too-many-nested-blocks
-    for gn_file in gn_files:
-        gn_file_content = input_api.ReadFile(gn_file)
-        for target_match in TARGET_RE.finditer(gn_file_content):
-            target_type = target_match.group('target_type')
-            target_name = target_match.group('target_name')
-            target_contents = target_match.group('target_contents')
-            if target_type in target_types_to_check:
-                for deps_match in DEPS_RE.finditer(target_contents):
-                    deps = deps_match.group('deps').splitlines()
-                    for dep in deps:
-                        if re.search(absl_re, dep):
-                            errors.append(
-                                output_api.PresubmitError(
-                                    error_msg %
-                                    (target_name, gn_file.LocalPath())))
-                            break  # no need to warn more than once per target
-    return errors
 
 
 def CheckNoMixingSources(input_api, gn_files, output_api):
@@ -667,7 +630,6 @@ def CheckGnChanges(input_api, output_api):
     if gn_files:
         result.extend(CheckNoSourcesAbove(input_api, gn_files, output_api))
         result.extend(CheckNoMixingSources(input_api, gn_files, output_api))
-        result.extend(CheckAbseilDependencies(input_api, gn_files, output_api))
         result.extend(
             CheckNoPackageBoundaryViolations(input_api, gn_files, output_api))
         result.extend(CheckPublicDepsIsNotUsed(gn_files, input_api,
@@ -688,8 +650,8 @@ def CheckGnGen(input_api, output_api):
     with _AddToPath(
             input_api.os_path.join(input_api.PresubmitLocalPath(),
                                    'tools_webrtc', 'presubmit_checks_lib')):
-        from build_helpers import RunGnCheck
-    errors = RunGnCheck(FindSrcDirPath(input_api.PresubmitLocalPath()))[:5]
+        from build_helpers import run_gn_check
+    errors = run_gn_check(input_api.change.RepositoryRoot())[:5]
     if errors:
         return [
             output_api.PresubmitPromptWarning(
@@ -711,8 +673,8 @@ def CheckUnwantedDependencies(input_api, output_api, source_file_filter):
     # We need to wait until we have an input_api object and use this
     # roundabout construct to import checkdeps because this file is
     # eval-ed and thus doesn't have __file__.
-    src_path = FindSrcDirPath(input_api.PresubmitLocalPath())
-    checkdeps_path = input_api.os_path.join(src_path, 'buildtools',
+    repo_root = input_api.change.RepositoryRoot()
+    checkdeps_path = input_api.os_path.join(repo_root, 'buildtools',
                                             'checkdeps')
     if not os.path.exists(checkdeps_path):
         return [
@@ -1068,6 +1030,8 @@ def CommonChecks(input_api, output_api):
         CheckNewlineAtTheEndOfProtoFiles(
             input_api, output_api, source_file_filter=non_third_party_sources))
     results.extend(
+        CheckLFNewline(input_api, output_api, non_third_party_sources))
+    results.extend(
         CheckNoStreamUsageIsAdded(input_api, output_api,
                                   non_third_party_sources))
     results.extend(
@@ -1083,7 +1047,13 @@ def CommonChecks(input_api, output_api):
         CheckBannedAbslMakeUnique(input_api, output_api,
                                   non_third_party_sources))
     results.extend(
+        CheckBannedAbslOptional(input_api, output_api,
+                                non_third_party_sources))
+    results.extend(
         CheckObjcApiSymbols(input_api, output_api, non_third_party_sources))
+    results.extend(
+        CheckConditionalIncludes(input_api, output_api,
+                                 non_third_party_sources))
     return results
 
 
@@ -1162,6 +1132,59 @@ def CheckBannedAbslMakeUnique(input_api, output_api, source_file_filter):
                 'Affected files:', files)
         ]
     return []
+
+
+def CheckBannedAbslOptional(input_api, output_api, source_file_filter):
+    absl_optional = re.compile(r'absl::(optional|make_optional|nullopt)',
+                               re.MULTILINE)
+    absl_optional_include = re.compile(r'^#include\s*"absl/types/optional\.h"',
+                                       input_api.re.MULTILINE)
+    file_filter = lambda f: (f.LocalPath().endswith(
+        ('.cc', '.h')) and source_file_filter(f))
+
+    files = []
+    for f in input_api.AffectedFiles(include_deletes=False,
+                                     file_filter=file_filter):
+        for _, line in f.ChangedContents():
+            if absl_optional.search(line) or absl_optional_include.search(
+                    line):
+                files.append(f.LocalPath())
+                break
+
+    if files:
+        return [
+            output_api.PresubmitError(
+                'Please use std::optional instead of absl::optional.\n'
+                'Affected files:', files)
+        ]
+    return []
+
+
+def CheckConditionalIncludes(input_api, output_api, source_file_filter):
+    conditional_includes = {
+        '<netinet/in.h>': '"rtc_base/ip_address.h"',
+        '<sys/socket.h>': '"rtc_base/net_helpers.h"',
+    }
+    file_filter = lambda f: (f.LocalPath().endswith(
+        ('.cc', '.h')) and source_file_filter(f))
+    results = []
+    for key, value in conditional_includes.items():
+        include_regex = re.compile('^#include ' + key +
+                                   '((?!IWYU pragma|no-presubmit-check).)*$')
+        files = []
+        for f in input_api.AffectedFiles(include_deletes=False,
+                                         file_filter=file_filter):
+            for _, line in f.ChangedContents():
+                if include_regex.search(line):
+                    files.append(f.LocalPath())
+                    break
+
+        if files:
+            results.append(
+                output_api.PresubmitError(
+                    'Please include ' + value + ' instead of ' + key +
+                    '.\nAffected files:', files))
+    return results
 
 
 def CheckObjcApiSymbols(input_api, output_api, source_file_filter):
@@ -1321,6 +1344,20 @@ def CheckNewlineAtTheEndOfProtoFiles(input_api, output_api,
                     output_api.PresubmitError(error_msg.format(file_path)))
     return results
 
+
+def CheckLFNewline(input_api, output_api, source_file_filter):
+    """Checks that all files have LF newlines."""
+    error_msg = 'File {} must use LF newlines.'
+    results = []
+    file_filter = lambda x: input_api.FilterSourceFile(
+        x, files_to_check=(r'.+', )) and source_file_filter(x)
+    for f in input_api.AffectedSourceFiles(file_filter):
+        file_path = f.LocalPath()
+        with open(file_path, 'rb') as f:
+            if b'\r\n' in f.read():
+                results.append(
+                    output_api.PresubmitError(error_msg.format(file_path)))
+    return results
 
 def _ExtractAddRulesFromParsedDeps(parsed_deps):
     """Extract the rules that add dependencies from a parsed DEPS file.

@@ -419,7 +419,7 @@ void QQuickTextAreaPrivate::accessibilityActiveChanged(bool active)
 {
     QQuickTextEditPrivate::accessibilityActiveChanged(active);
     if (QQuickAccessibleAttached *accessibleAttached = QQuickControlPrivate::accessibleAttached(q_func()))
-        accessibleAttached->setDescription(placeholder);
+        accessibleAttached->setDescriptionImplicitly(placeholder);
 }
 #endif
 
@@ -615,7 +615,7 @@ void QQuickTextArea::setPlaceholderText(const QString &text)
     d->placeholder = text;
 #if QT_CONFIG(accessibility)
     if (QQuickAccessibleAttached *accessibleAttached = QQuickControlPrivate::accessibleAttached(this))
-        accessibleAttached->setDescription(text);
+        accessibleAttached->setDescriptionImplicitly(text);
 #endif
     emit placeholderTextChanged();
 }
@@ -1117,7 +1117,7 @@ void QQuickTextAreaAttached::setFlickable(QQuickTextArea *control)
     Q_D(QQuickTextAreaAttached);
     QQuickFlickable *flickable = qobject_cast<QQuickFlickable *>(parent());
     if (!flickable) {
-        qmlWarning(parent()) << "TextArea must be attached to a Flickable";
+        qmlWarning(parent()) << "TextArea attached property must be attached to an object deriving from Flickable";
         return;
     }
 

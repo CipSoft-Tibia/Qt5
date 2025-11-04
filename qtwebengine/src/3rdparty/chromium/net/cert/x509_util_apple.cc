@@ -2,6 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#ifdef UNSAFE_BUFFERS_BUILD
+// TODO(crbug.com/40284755): Remove this and spanify to fix the errors.
+#pragma allow_unsafe_buffers
+#endif
+
 #include "net/cert/x509_util_apple.h"
 
 #include <CommonCrypto/CommonDigest.h>
@@ -40,13 +45,13 @@ bssl::UniquePtr<CRYPTO_BUFFER> CertBufferFromSecCertificate(
 }  // namespace
 
 base::apple::ScopedCFTypeRef<SecCertificateRef> CreateSecCertificateFromBytes(
-    const uint8_t* data,
-    size_t length) {
-  base::apple::ScopedCFTypeRef<CFDataRef> cert_data(
-      CFDataCreate(kCFAllocatorDefault, reinterpret_cast<const UInt8*>(data),
-                   base::checked_cast<CFIndex>(length)));
-  if (!cert_data)
+    base::span<const uint8_t> data) {
+  base::apple::ScopedCFTypeRef<CFDataRef> cert_data(CFDataCreate(
+      kCFAllocatorDefault, reinterpret_cast<const UInt8*>(data.data()),
+      base::checked_cast<CFIndex>(data.size())));
+  if (!cert_data) {
     return base::apple::ScopedCFTypeRef<SecCertificateRef>();
+  }
 
   return base::apple::ScopedCFTypeRef<SecCertificateRef>(
       SecCertificateCreateWithData(nullptr, cert_data.get()));
@@ -54,8 +59,7 @@ base::apple::ScopedCFTypeRef<SecCertificateRef> CreateSecCertificateFromBytes(
 
 base::apple::ScopedCFTypeRef<SecCertificateRef>
 CreateSecCertificateFromX509Certificate(const X509Certificate* cert) {
-  return CreateSecCertificateFromBytes(CRYPTO_BUFFER_data(cert->cert_buffer()),
-                                       CRYPTO_BUFFER_len(cert->cert_buffer()));
+  return CreateSecCertificateFromBytes(CryptoBufferAsSpan(cert->cert_buffer()));
 }
 
 base::apple::ScopedCFTypeRef<CFMutableArrayRef>
@@ -74,15 +78,14 @@ CreateSecCertificateArrayForX509Certificate(
     return base::apple::ScopedCFTypeRef<CFMutableArrayRef>();
   std::string bytes;
   base::apple::ScopedCFTypeRef<SecCertificateRef> sec_cert(
-      CreateSecCertificateFromBytes(CRYPTO_BUFFER_data(cert->cert_buffer()),
-                                    CRYPTO_BUFFER_len(cert->cert_buffer())));
-  if (!sec_cert)
+      CreateSecCertificateFromBytes(CryptoBufferAsSpan(cert->cert_buffer())));
+  if (!sec_cert) {
     return base::apple::ScopedCFTypeRef<CFMutableArrayRef>();
+  }
   CFArrayAppendValue(cert_list.get(), sec_cert.get());
   for (const auto& intermediate : cert->intermediate_buffers()) {
     base::apple::ScopedCFTypeRef<SecCertificateRef> intermediate_cert(
-        CreateSecCertificateFromBytes(CRYPTO_BUFFER_data(intermediate.get()),
-                                      CRYPTO_BUFFER_len(intermediate.get())));
+        CreateSecCertificateFromBytes(CryptoBufferAsSpan(intermediate.get())));
     if (!intermediate_cert) {
       if (invalid_intermediate_behavior == InvalidIntermediateBehavior::kFail)
         return base::apple::ScopedCFTypeRef<CFMutableArrayRef>();
@@ -152,7 +155,7 @@ base::apple::ScopedCFTypeRef<CFArrayRef> CertificateChainFromSecTrust(
         SecTrustCopyCertificateChain(trust));
   }
 
-// TODO(crbug.com/1426476): Remove code when it is no longer needed.
+// TODO(crbug.com/40899365): Remove code when it is no longer needed.
 #if (BUILDFLAG(IS_MAC) &&                                    \
      MAC_OS_X_VERSION_MIN_REQUIRED < MAC_OS_VERSION_12_0) || \
     (BUILDFLAG(IS_IOS) && __IPHONE_OS_VERSION_MIN_REQUIRED < __IPHONE_15_0)
@@ -167,7 +170,7 @@ base::apple::ScopedCFTypeRef<CFArrayRef> CertificateChainFromSecTrust(
 #else
   // The other logic paths should be used, this is just to make the compiler
   // happy.
-  NOTREACHED();
+  NOTREACHED_IN_MIGRATION();
   return base::apple::ScopedCFTypeRef<CFArrayRef>(nullptr);
 #endif  // (BUILDFLAG(IS_MAC) && MAC_OS_X_VERSION_MIN_REQUIRED <
         // MAC_OS_VERSION_12_0)

@@ -33,7 +33,10 @@ public:
     {
         AoTexture,
         DepthTexture,
-        ScreenTexture
+        DepthTextureMS,
+        ScreenTexture,
+        AccumTexture,
+        RevealageTexture
     };
 
     struct Result

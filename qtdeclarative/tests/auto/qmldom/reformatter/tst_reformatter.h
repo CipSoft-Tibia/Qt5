@@ -10,7 +10,7 @@
 #include <QtQmlDom/private/qqmldomtop_p.h>
 #include <QtQmlDom/private/qqmldomreformatter_p.h>
 
-#include <QtTest/QtTest>
+#include <QtTest/QTest>
 #include <QCborValue>
 #include <QDebug>
 #include <QLibraryInfo>
@@ -198,6 +198,35 @@ private slots:
         QTest::newRow("file1NoReorder")
                 << QStringLiteral(u"file1.qml") << QStringLiteral(u"file1Reformatted2.qml")
                 << noReorderOptions;
+        {
+            // line break width tests
+            LineWriterOptions lwOptions;
+            lwOptions.maxLineLength = 40;
+            QTest::newRow("linebreakBinding")
+                    << QStringLiteral(u"linebreakAfterColon.qml")
+                    << QStringLiteral(u"linebreakAfterColonReformatted.qml") << lwOptions;
+            QTest::newRow("linebreakPrePostIncDec")
+                    << QStringLiteral(u"linebreakPrePostIncDec.qml")
+                    << QStringLiteral(u"linebreakPrePostIncDecReformatted.qml") << lwOptions;
+            QTest::newRow("linebreakArrayTypes")
+                    << QStringLiteral(u"linebreakArray.qml")
+                    << QStringLiteral(u"linebreakArrayReformatted.qml") << lwOptions;
+            QTest::newRow("linebreakBasicFunction")
+                    << QStringLiteral(u"linebreakFunction.qml")
+                    << QStringLiteral(u"linebreakFunctionReformatted.qml") << lwOptions;
+            QTest::newRow("linebreakBinaryOp")
+                    << QStringLiteral(u"linebreakBinaryOp.qml")
+                    << QStringLiteral(u"linebreakBinaryOpReformattedWidth40.qml") << lwOptions;
+
+            lwOptions.maxLineLength = 60;
+            QTest::newRow("linebreakBinaryOp")
+                    << QStringLiteral(u"linebreakBinaryOp.qml")
+                    << QStringLiteral(u"linebreakBinaryOpReformattedWidth60.qml") << lwOptions;
+        }
+        QTest::newRow("nonInitializedPropertyInComponent")
+                << "nonInitializedPropertyInComponent.qml"
+                << "nonInitializedPropertyInComponent.formatted.qml"
+                << defaultOptions;
         QTest::newRow("fromAsIdentifier")
                 << "fromAsIdentifier.qml"
                 << "fromAsIdentifier.formatted.qml"
@@ -465,6 +494,13 @@ private slots:
                 << QStringLiteral(u"function *g(a,b){}") << QStringLiteral(u"function* g(a, b) {}");
         QTest::newRow("AnonymousGenerator") << QStringLiteral(u"let g=function * (a,b){}")
                                             << QStringLiteral(u"let g = function* (a, b) {}");
+        QTest::newRow("yield") << QStringLiteral(u"let g=function*(a,b){yield a;}")
+                               << QStringLiteral(u"let g = function* (a, b) {\nyield a;\n}");
+        QTest::newRow("yield*") << QStringLiteral(u"let g=function*(a,b){yield*a;}")
+                                << QStringLiteral(u"let g = function* (a, b) {\nyield* a;\n}");
+        QTest::newRow("yield*NoSemicolon")
+                << QStringLiteral(u"let g=function*(a,b){yield*a}")
+                << QStringLiteral(u"let g = function* (a, b) {\nyield* a;\n}");
     }
 
     // https://262.ecma-international.org/7.0/#prod-HoistableDeclaration
@@ -756,6 +792,11 @@ private slots:
         QTest::newRow("StatementWithMultipleEmptyLinesAndPreCommentOnNextStatement")
                 << QStringLiteral(u"a=1;\n\n\n\n\n\n\n\n//\nb=1;")
                 << QStringLiteral(u"a = 1;\n\n//\nb = 1;");
+        QTest::newRow("ForLoopWithMultipleVarDeclarations")
+                << QStringLiteral("function bla() {"
+                                  "for (let i = 0, j = 1; i < j; ++i) {}}")
+                << QStringLiteral("function bla() {\n"
+                                  "for (let i = 0, j = 1; i < j; ++i) {}\n}");
     }
 
     void statementList()
@@ -765,6 +806,61 @@ private slots:
 
         QString formattedCode = formatJSCode(codeToBeFormatted);
 
+        QCOMPARE(formattedCode, expectedFormattedCode);
+    }
+
+    void comments_data()
+    {
+        QTest::addColumn<QString>("codeToBeFormatted");
+        QTest::addColumn<QString>("expectedFormattedCode");
+
+        QTest::newRow("MultipleCommentsAtTheEnd")
+                << QStringLiteral(u"a=1/*a*/ //abc\n/*b*/")
+                << QStringLiteral(u"a = 1/*a*/ //abc\n/*b*/");
+
+        QTest::newRow("emptyClassBody") << QStringLiteral(u"/*1*/class/*2*/ A/*3*/{/*4*/}/*5*/")
+                                        << QStringLiteral(u"/*1*/class /*2*/ A/*3*/ {/*4*/}/*5*/");
+        QTest::newRow("classBody")
+                << QStringLiteral(u"/*1*/class/*2*/ A/*3*/{/*4*/constructor(){}/*5*/}/*6*/")
+                << QStringLiteral(u"/*1*/class /*2*/ A/*3*/ {/*4*/\nconstructor(){}/*5*/\n}/*6*/");
+
+        QTest::newRow("AroundEmptyFunction")
+                << u"/*1*/function/*2*/ a/*3*/(/*4*/a/*5*/,/*6*/b/*7*/)/*8*/{/*9*/}/*10*/"_s
+                << u"/*1*/function /*2*/ a/*3*/(/*4*/a/*5*/, /*6*/b/*7*/)/*8*/ {/*9*/}/*10*/"_s;
+        QTest::newRow("AroundFunction")
+                << u"/*1*/function/*2*/ a/*3*/(/*4*/a/*5*/,/*6*/b/*7*/)/*8*/{/*9*/ "
+                   u"return 42 /*10*/}/*11*/"_s
+                << u"/*1*/function /*2*/ a/*3*/(/*4*/a/*5*/, /*6*/b/*7*/)/*8*/ "
+                   u"{/*9*/\nreturn 42; /*10*/\n}/*11*/"_s;
+        QTest::newRow("AroundFunctionDouble")
+                << u"/*1a*//*1b*/function/*2a*//*2b*/ "
+                   u"a/*3a*//*3b*/(/*4a*//*4b*/a/*5a*//*5b*/,/*6a*//*6b*/b/*7a*//*7b*/)/"
+                   u"*8a*//*8b*/{/*9a*//*9b*/ return 42 /*10a*//*10b*/}/*11a*//*11b*/"_s
+                << u"/*1a*//*1b*/function /*2a*//*2b*/ "
+                   u"a/*3a*//*3b*/(/*4a*//*4b*/a/*5a*//*5b*/, "
+                   u"/*6a*//*6b*/b/*7a*//*7b*/)/*8a*//*8b*/ {/*9a*//*9b*/\nreturn "
+                   u"42; /*10a*//*10b*/\n}/*11a*//*11b*/"_s;
+
+        QTest::newRow("AroundAnonymous")
+                << u"const x = /*1*/function/*2*/(/*3*/a/*4*/,/*5*/b/*6*/)/*7*/{/*8*/ "
+                   u"return 42 /*9*/}/*10*/"_s
+                << u"const x = /*1*/function /*2*/(/*3*/a/*4*/, /*5*/b/*6*/)/*7*/ {/*8*/\nreturn 42; /*9*/\n}/*10*/"_s;
+
+        QTest::newRow("AroundArrowFunction")
+                << u"const x = /*1*/(/*2*/a/*3*/,/*4*/b/*5*/)/*6*/ => /*7*/ {/*8*/ return 42 /*9*/}/*10*/"_s
+                << u"const x = /*1*/(/*2*/a/*3*/, /*4*/b/*5*/)/*6*/ => /*7*/ {/*8*/\nreturn 42; /*9*/\n}/*10*/"_s;
+
+        QTest::newRow("AroundArrowFunction2")
+                << u"const x = /*1*/(/*2*/a/*3*/, /*4*/b/*5*/)/*6*/ => /*7*/42/*8*/"_s
+                << u"const x = /*1*/(/*2*/a/*3*/, /*4*/b/*5*/)/*6*/ => /*7*/42/*8*/"_s;
+    }
+
+    void comments()
+    {
+        QFETCH(QString, codeToBeFormatted);
+        QFETCH(QString, expectedFormattedCode);
+
+        QString formattedCode = formatJSCode(codeToBeFormatted);
         QCOMPARE(formattedCode, expectedFormattedCode);
     }
 

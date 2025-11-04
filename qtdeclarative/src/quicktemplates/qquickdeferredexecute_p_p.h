@@ -27,9 +27,11 @@ class QString;
 class QObject;
 
 namespace QtQuickPrivate {
-    Q_QUICKTEMPLATES2_EXPORT void beginDeferred(QObject *object, const QString &property, QQuickUntypedDeferredPointer *delegate, bool isOwnState);
+    Q_QUICKTEMPLATES2_EXPORT void beginDeferred(QObject *object, const QString &property,
+        QQuickUntypedDeferredPointer *delegate, bool isOwnState, QQmlEngine *engine = nullptr);
     Q_QUICKTEMPLATES2_EXPORT void cancelDeferred(QObject *object, const QString &property);
-    Q_QUICKTEMPLATES2_EXPORT void completeDeferred(QObject *object, const QString &property, QQuickUntypedDeferredPointer *delegate);
+    Q_QUICKTEMPLATES2_EXPORT void completeDeferred(QObject *object, const QString &property,
+        QQuickUntypedDeferredPointer *delegate, QQmlEngine *engine = nullptr);
 }
 
 template<typename T>
@@ -39,6 +41,17 @@ void quickBeginDeferred(QObject *object, const QString &property, QQuickDeferred
         return;
 
     QtQuickPrivate::beginDeferred(object, property, &delegate, delegate.setExecuting(true));
+    delegate.setExecuting(false);
+}
+
+template<typename T>
+void quickBeginAttachedDeferred(QObject *object, const QString &property,
+    QQuickDeferredPointer<T> &delegate, QQmlEngine *engine)
+{
+    if (!QQmlVME::componentCompleteEnabled())
+        return;
+
+    QtQuickPrivate::beginDeferred(object, property, &delegate, delegate.setExecuting(true), engine);
     delegate.setExecuting(false);
 }
 
@@ -52,6 +65,15 @@ void quickCompleteDeferred(QObject *object, const QString &property, QQuickDefer
 {
     Q_ASSERT(!delegate.wasExecuted());
     QtQuickPrivate::completeDeferred(object, property, &delegate);
+    delegate.setExecuted();
+}
+
+template<typename T>
+void quickCompleteAttachedDeferred(QObject *object, const QString &property,
+    QQuickDeferredPointer<T> &delegate, QQmlEngine *engine)
+{
+    Q_ASSERT(!delegate.wasExecuted());
+    QtQuickPrivate::completeDeferred(object, property, &delegate, engine);
     delegate.setExecuted();
 }
 

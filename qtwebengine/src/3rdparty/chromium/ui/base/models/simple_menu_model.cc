@@ -364,7 +364,8 @@ void SimpleMenuModel::SetVisibleAt(size_t index, bool visible) {
   MenuItemsChanged();
 }
 
-void SimpleMenuModel::SetIsNewFeatureAt(size_t index, bool is_new_feature) {
+void SimpleMenuModel::SetIsNewFeatureAt(size_t index,
+                                        IsNewFeatureAtValue is_new_feature) {
   items_[ValidateItemIndex(index)].is_new_feature = is_new_feature;
 }
 
@@ -394,17 +395,21 @@ void SimpleMenuModel::Clear() {
   MenuItemsChanged();
 }
 
-absl::optional<size_t> SimpleMenuModel::GetIndexOfCommandId(
+std::optional<size_t> SimpleMenuModel::GetIndexOfCommandId(
     int command_id) const {
   for (auto i = items_.begin(); i != items_.end(); ++i) {
     if (i->command_id == command_id)
       return static_cast<size_t>(std::distance(items_.begin(), i));
   }
-  return absl::nullopt;
+  return std::nullopt;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 // SimpleMenuModel, MenuModel implementation:
+
+base::WeakPtr<ui::MenuModel> SimpleMenuModel::AsWeakPtr() {
+  return method_factory_.GetWeakPtr();
+}
 
 size_t SimpleMenuModel::GetItemCount() const {
   return items_.size();

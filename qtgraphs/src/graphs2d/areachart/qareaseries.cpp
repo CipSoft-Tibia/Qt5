@@ -1,6 +1,7 @@
 // Copyright (C) 2024 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
+#include "graphs2d/qabstractseries_p.h"
 #include <QtGraphs/qareaseries.h>
 #include <private/qareaseries_p.h>
 #include <private/qgraphsview_p.h>
@@ -164,6 +165,32 @@ QT_BEGIN_NAMESPACE
     This signal is emitted when the lower series changes.
 */
 
+/*!
+    \qmlsignal AreaSeries::clicked(point point)
+    This signal is emitted when the user clicks or taps an area graph.
+    The \a point specifies the event triggered position.
+*/
+
+/*!
+    \qmlsignal AreaSeries::doubleClicked(point point)
+    This signal is emitted when the user double-clicks or double-taps an area graph.
+    The \a point specifies the event triggered position.
+    This signal always occurs after \l clicked.
+*/
+
+/*!
+    \qmlsignal AreaSeries::pressed(point point)
+    This signal is emitted when the user clicks or taps the area graph and holds down
+    the mouse button or gesture.
+    The \a point specifies the event triggered position.
+*/
+
+/*!
+    \qmlsignal AreaSeries::released(point point)
+    This signal is emitted when the user releases a pressed click or tap.
+    The \a point specifies the event triggered position.
+*/
+
 QAreaSeries::QAreaSeries(QObject *parent)
     : QAbstractSeries(*(new QAreaSeriesPrivate()), parent)
 {}
@@ -313,6 +340,8 @@ void QAreaSeries::setLowerSeries(QXYSeries *newLowerSeries)
     emit lowerSeriesChanged();
 }
 
-QAreaSeriesPrivate::QAreaSeriesPrivate() {}
+QAreaSeriesPrivate::QAreaSeriesPrivate()
+    : QAbstractSeriesPrivate(QAbstractSeries::SeriesType::Area)
+{}
 
 QT_END_NAMESPACE

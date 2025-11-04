@@ -4,6 +4,7 @@
 #include <QtCore/qdatetime.h>
 #include <jni.h>
 #include <QJniObject>
+#include <QTimeZone>
 
 #include "androidinapppurchasebackend.h"
 
@@ -33,7 +34,7 @@ static void registerPurchased(JNIEnv *, jclass, jlong nativePointer, jstring ide
                               jstring signature, jstring data, jstring purchaseToken, jstring orderId, jlong timestamp)
 {
     QDateTime dateTime = QDateTime::fromMSecsSinceEpoch(qint64(timestamp));
-    dateTime.setTimeSpec(Qt::LocalTime);
+    dateTime.setTimeZone(QTimeZone::LocalTime);
 
     AndroidInAppPurchaseBackend *backend = reinterpret_cast<AndroidInAppPurchaseBackend *>(nativePointer);
     QMetaObject::invokeMethod(backend,
@@ -51,7 +52,7 @@ static void purchaseSucceeded(JNIEnv *, jclass, jlong nativePointer, jint reques
                               jstring signature, jstring data, jstring purchaseToken, jstring orderId, jlong timestamp)
 {
     QDateTime dateTime = QDateTime::fromMSecsSinceEpoch(qint64(timestamp));
-    dateTime.setTimeSpec(Qt::LocalTime);
+    dateTime.setTimeZone(QTimeZone::LocalTime);
 
     AndroidInAppPurchaseBackend *backend = reinterpret_cast<AndroidInAppPurchaseBackend *>(nativePointer);
     QMetaObject::invokeMethod(backend,

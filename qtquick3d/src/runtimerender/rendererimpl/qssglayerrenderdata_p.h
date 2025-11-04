@@ -45,6 +45,8 @@ QT_BEGIN_NAMESPACE
 
 struct QSSGRenderableObject;
 
+class QSGRenderer;
+
 enum class QSSGLayerRenderPreparationResultFlag
 {
     // Was the data in this layer dirty (meaning re-render to texture, possibly)
@@ -67,7 +69,13 @@ enum class QSSGLayerRenderPreparationResultFlag
     RequiresScreenTexture = 1 << 5,
 
     // set together with RequiresScreenTexture when SCREEN_MIP_TEXTURE is used
-    RequiresMipmapsForScreenTexture = 1 << 6
+    RequiresMipmapsForScreenTexture = 1 << 6,
+
+    // Set when material has custom blend mode(not SourceOver)
+    MaterialHasCustomBlendMode = 1 << 7,
+
+    // Set when multisampled depth texture is required
+    RequiresDepthTextureMS = 1 << 8
 };
 
 struct QSSGLayerRenderPreparationResultFlags : public QFlags<QSSGLayerRenderPreparationResultFlag>
@@ -91,6 +99,15 @@ struct QSSGLayerRenderPreparationResultFlags : public QFlags<QSSGLayerRenderPrep
     void setRequiresDepthTexture(bool inValue)
     {
         setFlag(QSSGLayerRenderPreparationResultFlag::RequiresDepthTexture, inValue);
+    }
+
+    bool requiresDepthTextureMS() const
+    {
+        return this->operator&(QSSGLayerRenderPreparationResultFlag::RequiresDepthTextureMS);
+    }
+    void setRequiresDepthTextureMS(bool inValue)
+    {
+        setFlag(QSSGLayerRenderPreparationResultFlag::RequiresDepthTextureMS, inValue);
     }
 
     bool requiresSsaoPass() const { return this->operator&(QSSGLayerRenderPreparationResultFlag::RequiresSsaoPass); }
@@ -124,6 +141,15 @@ struct QSSGLayerRenderPreparationResultFlags : public QFlags<QSSGLayerRenderPrep
     void setRequiresMipmapsForScreenTexture(bool inValue)
     {
         setFlag(QSSGLayerRenderPreparationResultFlag::RequiresMipmapsForScreenTexture, inValue);
+    }
+
+    bool hasCustomBlendMode() const
+    {
+        return this->operator&(QSSGLayerRenderPreparationResultFlag::MaterialHasCustomBlendMode);
+    }
+    void setHasCustomBlendMode(bool inValue)
+    {
+        setFlag(QSSGLayerRenderPreparationResultFlag::MaterialHasCustomBlendMode, inValue);
     }
 };
 
@@ -162,6 +188,19 @@ struct QSSGBakedLightingModel
 
     const QSSGRenderModel *model;
     QVector<QSSGRenderableObjectHandle> renderables;
+};
+
+struct QSSGOITRenderContext
+{
+    QRhiTextureRenderTarget *oitRenderTarget = nullptr;
+    QRhiRenderPassDescriptor *renderPassDescriptor = nullptr;
+    void reset()
+    {
+        delete oitRenderTarget;
+        delete renderPassDescriptor;
+        oitRenderTarget = nullptr;
+        renderPassDescriptor = nullptr;
+    }
 };
 
 class Q_QUICK3DRUNTIMERENDER_EXPORT QSSGLayerRenderData
@@ -210,7 +249,7 @@ public:
                                 QSSGRenderableObjectList &transparentObjects,
                                 QSSGRenderableObjectList &screenTextureObjects,
                                 float lodThreshold = 0.0f);
-    bool prepareParticlesForRender(const RenderableNodeEntries &renderableParticles, const QSSGRenderCameraData &cameraData);
+    bool prepareParticlesForRender(const RenderableNodeEntries &renderableParticles, const QSSGRenderCameraData &cameraData, QSSGLayerRenderPreparationResultFlags &ioFlags);
     bool prepareItem2DsForRender(const QSSGRenderContextInterface &ctxIfc,
                                  const RenderableItem2DEntries &renderableItem2Ds);
 
@@ -245,6 +284,7 @@ public:
     ZPrePassPass zPrePassPass;
     SSAOMapPass ssaoMapPass;
     DepthMapPass depthMapPass;
+    DepthMapPass depthMapPassMS;
     ScreenMapPass screenMapPass;
     ScreenReflectionPass reflectionPass;
     Item2DPass item2DPass;
@@ -254,6 +294,8 @@ public:
     UserPass userPasses[USERPASSES];
     OpaquePass opaquePass;
     TransparentPass transparentPass;
+    OITRenderPass oitRenderPass;
+    OITCompositePass oitCompositePass;
     InfiniteGridPass infiniteGridPass;
     DebugDrawPass debugDrawPass;
 
@@ -282,6 +324,9 @@ public:
     // it is simplest to duplicate the lists.
     QVector<QSSGBakedLightingModel> renderedBakedLightingModels;
     RenderableItem2DEntries renderedItem2Ds;
+    // Temporary look-up map for Item2D data (for use in prepareItem2DsForRender()).
+    QSSGRenderer::Item2DDataMap item2DDataMap;
+    QPointer<QSGRenderContext> item2DRenderContext;
 
     QSSGLayerRenderPreparationResult layerPrepResult;
     std::optional<QSSGRenderCameraDataList> renderedCameraData;
@@ -291,6 +336,9 @@ public:
 
     bool tooManyLightsWarningShown = false;
     bool tooManyShadowLightsWarningShown = false;
+    bool oitWarningUnsupportedShown = false;
+    bool oitWarningInvalidBlendModeShown = false;
+    bool orderIndependentTransparencyEnabled = false;
 
     QSSGLightmapper *m_lightmapper = nullptr;
 
@@ -338,6 +386,8 @@ public:
     const QSSGRenderReflectionMapPtr &requestReflectionMapManager();
     const QSSGRenderShadowMapPtr &getShadowMapManager() const { return shadowMapManager; }
     const QSSGRenderReflectionMapPtr &getReflectionMapManager() const { return reflectionMapManager; }
+
+    QSSGOITRenderContext &getOitRenderContext() { return oitRenderContext; }
 
     static bool prepareInstancing(QSSGRhiContext *rhiCtx,
                                   QSSGSubsetRenderable *renderable,
@@ -500,7 +550,8 @@ private:
     QSSGRenderReflectionMapPtr reflectionMapManager;
     QHash<const QSSGModelContext *, QRhiTexture *> lightmapTextures;
     QHash<const QSSGModelContext *, QRhiTexture *> bonemapTextures;
-    QSSGRhiRenderableTexture renderResults[3] {};
+    QSSGRhiRenderableTexture renderResults[6] {};
+    QSSGOITRenderContext oitRenderContext;
 };
 
 QT_END_NAMESPACE

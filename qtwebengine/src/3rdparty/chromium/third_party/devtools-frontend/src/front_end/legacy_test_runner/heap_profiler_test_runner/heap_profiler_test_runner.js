@@ -16,7 +16,7 @@ export const HeapProfilerTestRunner = {};
 
 HeapProfilerTestRunner.createHeapSnapshotMockFactories = function() {
   HeapProfilerTestRunner.createJSHeapSnapshotMockObject = function() {
-    return {
+    const result = {
       rootNodeIndex: 0,
       nodeTypeOffset: 0,
       nodeNameOffset: 1,
@@ -40,6 +40,10 @@ HeapProfilerTestRunner.createHeapSnapshotMockFactories = function() {
       createEdge: HeapSnapshotWorker.HeapSnapshot.JSHeapSnapshot.prototype.createEdge,
       createRetainingEdge: HeapSnapshotWorker.HeapSnapshot.JSHeapSnapshot.prototype.createRetainingEdge
     };
+    result.nodes.getValue = result.containmentEdges.getValue = function(i) {
+      return this[i];
+    };
+    return result;
   };
 
   HeapProfilerTestRunner.createHeapSnapshotMockRaw = function() {
@@ -78,6 +82,9 @@ HeapProfilerTestRunner.createHeapSnapshotMockFactories = function() {
   HeapProfilerTestRunner.postprocessHeapSnapshotMock = function(mock) {
     mock.nodes = new Uint32Array(mock.nodes);
     mock.edges = new Uint32Array(mock.edges);
+    mock.nodes.getValue = mock.edges.getValue = function(i) {
+      return this[i];
+    };
     return mock;
   };
 
@@ -127,17 +134,17 @@ HeapProfilerTestRunner.createHeapSnapshotMockFactories = function() {
   };
 
   HeapProfilerTestRunner.HeapNode.Type = {
-    'hidden': 'hidden',
-    'array': 'array',
-    'string': 'string',
-    'object': 'object',
-    'code': 'code',
-    'closure': 'closure',
-    'regexp': 'regexp',
-    'number': 'number',
-    'native': 'native',
-    'synthetic': 'synthetic',
-    'bigint': 'bigint'
+    hidden: 'hidden',
+    array: 'array',
+    string: 'string',
+    object: 'object',
+    code: 'code',
+    closure: 'closure',
+    regexp: 'regexp',
+    number: 'number',
+    native: 'native',
+    synthetic: 'synthetic',
+    bigint: 'bigint'
   };
 
   HeapProfilerTestRunner.HeapNode.prototype = {
@@ -210,13 +217,13 @@ HeapProfilerTestRunner.createHeapSnapshotMockFactories = function() {
   };
 
   HeapProfilerTestRunner.HeapEdge.Type = {
-    'context': 'context',
-    'element': 'element',
-    'property': 'property',
-    'internal': 'internal',
-    'hidden': 'hidden',
-    'shortcut': 'shortcut',
-    'weak': 'weak'
+    context: 'context',
+    element: 'element',
+    property: 'property',
+    internal: 'internal',
+    hidden: 'hidden',
+    shortcut: 'shortcut',
+    weak: 'weak'
   };
 
   HeapProfilerTestRunner.HeapSnapshotBuilder = function() {
@@ -247,19 +254,19 @@ HeapProfilerTestRunner.createHeapSnapshotMockFactories = function() {
   HeapProfilerTestRunner.HeapSnapshotBuilder.prototype = {
     generateSnapshot: function() {
       const rawSnapshot = {
-        'snapshot': {
-          'meta': {
-            'node_fields': ['type', 'name', 'id', 'self_size', 'retained_size', 'dominator', 'edge_count'],
-            'node_types': [this.nodeTypesArray, 'string', 'number', 'number', 'number', 'number', 'number'],
-            'edge_fields': ['type', 'name_or_index', 'to_node'],
-            'edge_types': [this.edgeTypesArray, 'string_or_number', 'node']
+        snapshot: {
+          meta: {
+            node_fields: ['type', 'name', 'id', 'self_size', 'retained_size', 'dominator', 'edge_count'],
+            node_types: [this.nodeTypesArray, 'string', 'number', 'number', 'number', 'number', 'number'],
+            edge_fields: ['type', 'name_or_index', 'to_node'],
+            edge_types: [this.edgeTypesArray, 'string_or_number', 'node']
           }
         },
 
-        'nodes': [],
-        'edges': [],
-        'locations': [],
-        'strings': []
+        nodes: [],
+        edges: [],
+        locations: [],
+        strings: []
       };
 
       for (let i = 0; i < this.nodes.length; ++i) {
@@ -736,7 +743,7 @@ HeapProfilerTestRunner.waitUntilProfileViewIsShown = function(title, callback) {
       profilesPanel.visibleView.profileHeader.title === title) {
     callback(profilesPanel.visibleView);
   } else {
-    HeapProfilerTestRunner.waitUntilProfileViewIsShownCallback = {title: title, callback: callback};
+    HeapProfilerTestRunner.waitUntilProfileViewIsShownCallback = {title, callback};
   }
 };
 

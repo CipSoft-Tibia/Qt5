@@ -2,7 +2,7 @@
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
-import("../../../third_party/typescript/typescript.gni")
+import("../../../scripts/build/typescript/typescript.gni")
 
 node_ts_library("emulation") {
   sources = [
@@ -10,6 +10,7 @@ node_ts_library("emulation") {
     "dual-screen_test.ts",
     "foldable-device_test.ts",
     "media-query-inspector_test.ts",
+    "responsive_test.ts",
   ]
 
   deps = [

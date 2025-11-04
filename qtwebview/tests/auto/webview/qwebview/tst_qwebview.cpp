@@ -130,7 +130,7 @@ void tst_QWebView::loadHtml()
     QWebView view;
 #endif
     QCOMPARE(view.loadProgress(), 0);
-    QSignalSpy loadChangedSingalSpy(&view, SIGNAL(loadingChanged(const QWebViewLoadRequestPrivate &)));
+    QSignalSpy loadChangedSingalSpy(&view, SIGNAL(loadingChanged(QWebViewLoadRequestPrivate)));
     const QByteArray content(
             QByteArrayLiteral("<html><title>WebViewTitle</title>"
                               "<body><span style=\"color:#ff0000\">Hello</span></body></html>"));
@@ -143,10 +143,14 @@ void tst_QWebView::loadHtml()
     const QWebViewLoadRequestPrivate &lr = loadChangedSingalSpy.at(1).at(0).value<QWebViewLoadRequestPrivate>();
     QCOMPARE(lr.m_status, QWebView::LoadSucceededStatus);
 
+// The following test is disabled because the content is not loaded in the same way in the webview
+// on darwin and url will be just the base url (which unless specified is about:blank)
+#if ! (defined(QT_PLATFORM_UIKIT) || defined(Q_OS_MACOS))
     QByteArray encoded("data:text/html;charset=UTF-8,");
     encoded.append(content.toPercentEncoding());
     QVERIFY(view.url().isValid());
-    QCOMPARE(QUrl(encoded), view.url());
+    QCOMPARE(view.url(), QUrl(encoded));
+#endif
 }
 
 void tst_QWebView::loadRequest()
@@ -173,7 +177,7 @@ void tst_QWebView::loadRequest()
 #endif
         QCOMPARE(view.loadProgress(), 0);
         const QUrl url = QUrl::fromLocalFile(fileName);
-        QSignalSpy loadChangedSingalSpy(&view, SIGNAL(loadingChanged(const QWebViewLoadRequestPrivate &)));
+        QSignalSpy loadChangedSingalSpy(&view, SIGNAL(loadingChanged(QWebViewLoadRequestPrivate)));
         view.setUrl(url);
         QTRY_VERIFY(!view.isLoading());
         QTRY_COMPARE(view.loadProgress(), 100);
@@ -206,7 +210,7 @@ void tst_QWebView::loadRequest()
         view.getSettings()->setLocalContentCanAccessFileUrls(true);
 #endif
         QCOMPARE(view.loadProgress(), 0);
-        QSignalSpy loadChangedSingalSpy(&view, SIGNAL(loadingChanged(const QWebViewLoadRequestPrivate &)));
+        QSignalSpy loadChangedSingalSpy(&view, SIGNAL(loadingChanged(QWebViewLoadRequestPrivate)));
         view.setUrl(QUrl(QStringLiteral("file:///file_that_does_not_exist.html")));
         QTRY_VERIFY(!view.isLoading());
         QTRY_COMPARE(loadChangedSingalSpy.size(), 2);
@@ -241,8 +245,8 @@ void tst_QWebView::setAndDeleteCookie()
     view.getSettings()->setLocalContentCanAccessFileUrls(true);
 #endif
 
-    QSignalSpy cookieAddedSpy(&view, SIGNAL(cookieAdded(const QString &, const QString &)));
-    QSignalSpy cookieRemovedSpy(&view, SIGNAL(cookieRemoved(const QString &, const QString &)));
+    QSignalSpy cookieAddedSpy(&view, SIGNAL(cookieAdded(QString,QString)));
+    QSignalSpy cookieRemovedSpy(&view, SIGNAL(cookieRemoved(QString,QString)));
 
     view.setCookie(".example.com", "TestCookie", "testValue");
     view.setCookie(".example2.com", "TestCookie2", "testValue2");

@@ -30,7 +30,6 @@ QT_BEGIN_NAMESPACE
 
 // Some global variables to store module information
 bool qAxIsServer = false;
-HANDLE qAxInstance = nullptr;
 ITypeLib *qAxTypeLibrary = nullptr;
 wchar_t qAxModuleFilename[MAX_PATH];
 bool qAxOutProcServer = false;
@@ -77,7 +76,7 @@ static CRITICAL_SECTION qAxModuleSection;
 
 static int initCount = 0;
 
-Q_LOGGING_CATEGORY(lcAxRegistration, "qt.activeqt.registration")
+Q_STATIC_LOGGING_CATEGORY(lcAxRegistration, "qt.activeqt.registration")
 
 QString qAxInit()
 {

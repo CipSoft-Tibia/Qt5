@@ -177,7 +177,7 @@ void PreferredAppsList::ApplyBulkUpdate(apps::PreferredAppChangesPtr changes) {
         });
 
     // Notify observers if any of the removed filters were supported links.
-    // TODO(crbug.com/1250153): Notify observers about all changes, not just
+    // TODO(crbug.com/40791690): Notify observers about all changes, not just
     // changes to supported links status.
     if (has_supported_link) {
       for (auto& obs : observers_) {
@@ -238,15 +238,15 @@ bool PreferredAppsList::IsPreferredAppForSupportedLinks(
   return false;
 }
 
-absl::optional<std::string> PreferredAppsList::FindPreferredAppForUrl(
+std::optional<std::string> PreferredAppsList::FindPreferredAppForUrl(
     const GURL& url) const {
   return FindPreferredAppForIntent(
       std::make_unique<Intent>(apps_util::kIntentActionView, url));
 }
 
-absl::optional<std::string> PreferredAppsList::FindPreferredAppForIntent(
+std::optional<std::string> PreferredAppsList::FindPreferredAppForIntent(
     const IntentPtr& intent) const {
-  absl::optional<std::string> best_match_app_id = absl::nullopt;
+  std::optional<std::string> best_match_app_id = std::nullopt;
   int best_match_level = static_cast<int>(IntentFilterMatchLevel::kNone);
   DCHECK(intent);
   for (auto& preferred_app : preferred_apps_) {

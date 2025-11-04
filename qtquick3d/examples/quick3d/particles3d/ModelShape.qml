@@ -83,7 +83,7 @@ Item {
                 Model {
                     source: "meshes/suzanne.mesh"
                     scale: Qt.vector3d(100, 100, 100)
-                    materials: DefaultMaterial { diffuseColor: "red" }
+                    materials: PrincipledMaterial { baseColor: "red" }
                 }
             }
 
@@ -92,7 +92,7 @@ Item {
                 Model {
                     source: "#Cube"
                     scale: Qt.vector3d(2, 2, 2)
-                    materials: DefaultMaterial { diffuseColor: "red" }
+                    materials: PrincipledMaterial { baseColor: "red" }
                 }
             }
 

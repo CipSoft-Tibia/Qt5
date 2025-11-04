@@ -74,6 +74,14 @@ export type TextfieldAutofixType = 'clear'|'preserve'|'strip';
 /** Regex used for automatically stripping non numeric characters from input. */
 const NON_INTEGER_REGEX = /\D/g;
 
+// DO NOT MODIFY THIS STYLESHEET
+// Added by MWC team to be removed in b/278960272.
+const MWC_SELECTION_STYLES = css`
+  ::selection {
+    background-color: var(--cros-sys-highlight_text);
+  }
+`;
+
 /**
  * ChromeOS compliant Textfield component.
  */
@@ -129,6 +137,10 @@ export class Textfield extends LitElement {
       --md-outlined-field-leading-space: ${MD_FIELD_LEFT_RIGHT_SPACE_PX};
       --md-outlined-field-top-space: ${MD_FIELD_TOP_BOTTOM_SPACE_PX};
       --md-outlined-field-trailing-space: ${MD_FIELD_LEFT_RIGHT_SPACE_PX};
+      /** Leading/trailing spacing */
+      --md-outlined-field-content-space: 8px;
+      --md-outlined-field-with-leading-content-leading-space: 12px;
+      --md-outlined-field-with-trailing-content-trailing-space: 14px;
       /** Disabled */
       --md-outlined-field-disabled-supporting-text-color: var(--cros-sys-on_surface);
       --md-outlined-text-field-disabled-input-text-color: var(--cros-sys-on_surface);
@@ -154,6 +166,7 @@ export class Textfield extends LitElement {
       --md-outlined-text-field-hover-supporting-text-color: var(--cros-sys-on_surface);
       --md-outlined-text-field-hover-input-text-color: var(--cros-sys-on_surface);
       --md-outlined-text-field-hover-state-layer-opacity: 0;
+      text-align: inherit;
       width: 100%;
     }
 
@@ -196,6 +209,16 @@ export class Textfield extends LitElement {
 
     :host([shaded]) #textfield-background {
       background-color: ${TEXTFIELD_CONTAINER_ON_SHADED};
+    }
+
+    /**
+     * This adjustment updates the trailing icon to match the spec. This cannot
+     * be achieved with the md-outlined-field spacing tokens because the inner
+     * spacing is symmetric.
+     */
+    ::slotted([slot="trailing"]) {
+      position: relative;
+      inset-inline-start: 4px;
     }
 
     /**
@@ -431,6 +454,13 @@ export class Textfield extends LitElement {
     // Run the logic to forward any slotted icons to the md-text-field internal
     // icon slots.
     this.handleIconChange();
+
+    // DO NOT MODIFY THIS BLOCK
+    // Added by MWC team to be removed in b/278960272.
+    this.mdTextfield!.shadowRoot!.adoptedStyleSheets = [
+      ...this.mdTextfield!.shadowRoot!.adoptedStyleSheets,
+      MWC_SELECTION_STYLES.styleSheet!
+    ];
   }
 
   override update(changedProperties: PropertyValues<Textfield>) {

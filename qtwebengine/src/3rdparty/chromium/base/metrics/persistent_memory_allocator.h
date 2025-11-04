@@ -2,6 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#ifdef UNSAFE_BUFFERS_BUILD
+// TODO(crbug.com/40284755): Remove this and spanify to fix the errors.
+#pragma allow_unsafe_buffers
+#endif
+
 #ifndef BASE_METRICS_PERSISTENT_MEMORY_ALLOCATOR_H_
 #define BASE_METRICS_PERSISTENT_MEMORY_ALLOCATOR_H_
 
@@ -9,18 +14,19 @@
 
 #include <atomic>
 #include <memory>
+#include <string_view>
 #include <type_traits>
 
 #include "base/atomicops.h"
 #include "base/base_export.h"
 #include "base/check.h"
 #include "base/check_op.h"
+#include "base/containers/span.h"
 #include "base/files/file_path.h"
 #include "base/gtest_prod_util.h"
 #include "base/memory/raw_ptr.h"
 #include "base/memory/raw_ptr_exclusion.h"
 #include "base/memory/shared_memory_mapping.h"
-#include "base/strings/string_piece.h"
 #include "build/build_config.h"
 
 namespace metrics {
@@ -103,6 +109,18 @@ class MemoryMappedFile;
 class BASE_EXPORT PersistentMemoryAllocator {
  public:
   typedef uint32_t Reference;
+
+  // All allocations and data-structures must be aligned to this byte boundary.
+  // Alignment as large as the physical bus between CPU and RAM is _required_
+  // for some architectures, is simply more efficient on other CPUs, and
+  // generally a Good Idea(tm) for all platforms as it reduces/eliminates the
+  // chance that a type will span cache lines. Alignment mustn't be less
+  // than 8 to ensure proper alignment for all types. The rest is a balance
+  // between reducing spans across multiple cache lines and wasted space spent
+  // padding out allocations. An alignment of 16 would ensure that the block
+  // header structure always sits in a single cache line. An average of about
+  // 1/2 this value will be wasted with every allocation.
+  static constexpr size_t kAllocAlignment = 8;
 
   // These states are used to indicate the overall condition of the memory
   // segment irrespective of what is stored within it. Because the data is
@@ -318,7 +336,7 @@ class BASE_EXPORT PersistentMemoryAllocator {
                             size_t size,
                             size_t page_size,
                             uint64_t id,
-                            base::StringPiece name,
+                            std::string_view name,
                             AccessMode access_mode);
 
   PersistentMemoryAllocator(const PersistentMemoryAllocator&) = delete;
@@ -357,7 +375,7 @@ class BASE_EXPORT PersistentMemoryAllocator {
   // be updated with the following histograms for each `name` param:
   //    UMA.PersistentAllocator.name.Errors
   //    UMA.PersistentAllocator.name.UsedPct
-  void CreateTrackingHistograms(base::StringPiece name);
+  void CreateTrackingHistograms(std::string_view name);
 
   // Flushes the persistent memory to any backing store. This typically does
   // nothing but is used by the FilePersistentMemoryAllocator to inform the
@@ -381,7 +399,6 @@ class BASE_EXPORT PersistentMemoryAllocator {
   size_t length() const { return mem_size_; }
   size_t size() const { return mem_size_; }
   size_t used() const;
-
 
   // Get an object referenced by a `ref`. For safety reasons, the `type_id`
   // code and size-of(`T`) are compared to ensure the reference is valid
@@ -473,7 +490,7 @@ class BASE_EXPORT PersistentMemoryAllocator {
   }
 
   // Get the corresponding reference for an object held in persistent memory.
-  // If the |memory| is not valid or the type does not match, a kReferenceNull
+  // If the `memory` is not valid or the type does not match, a kReferenceNull
   // result will be returned.
   Reference GetAsReference(const void* memory, uint32_t type_id) const;
 
@@ -555,6 +572,7 @@ class BASE_EXPORT PersistentMemoryAllocator {
   // when the last field is actually variable length.
   template <typename T>
   T* New(size_t size) {
+    static_assert(alignof(T) <= kAllocAlignment);
     if (size < sizeof(T))
       size = sizeof(T);
     Reference ref = Allocate(size, T::kPersistentTypeId);
@@ -671,15 +689,14 @@ class BASE_EXPORT PersistentMemoryAllocator {
                             size_t size,
                             size_t page_size,
                             uint64_t id,
-                            base::StringPiece name,
+                            std::string_view name,
                             AccessMode access_mode);
 
   // Implementation of Flush that accepts how much to flush.
   virtual void FlushPartial(size_t length, bool sync);
 
-  // This field is not a raw_ptr<> because it always points to a mmap'd region
-  // of memory outside of the PA heap. Thus, there would be overhead involved
-  // with using a raw_ptr<> but no safety gains.
+  // RAW_PTR_EXCLUSION: Never allocated by PartitionAlloc (always mmap'ed), so
+  // there is no benefit to using a raw_ptr, only cost.
   RAW_PTR_EXCLUSION volatile char* const
       mem_base_;                   // Memory base. (char so sizeof guaranteed 1)
   const MemoryType mem_type_;      // Type of memory allocation.
@@ -690,17 +707,6 @@ class BASE_EXPORT PersistentMemoryAllocator {
  private:
   struct SharedMetadata;
   struct BlockHeader;
-  // All allocations and data-structures must be aligned to this byte boundary.
-  // Alignment as large as the physical bus between CPU and RAM is _required_
-  // for some architectures, is simply more efficient on other CPUs, and
-  // generally a Good Idea(tm) for all platforms as it reduces/eliminates the
-  // chance that a type will span cache lines. Alignment mustn't be less
-  // than 8 to ensure proper alignment for all types. The rest is a balance
-  // between reducing spans across multiple cache lines and wasted space spent
-  // padding out allocations. An alignment of 16 would ensure that the block
-  // header structure always sits in a single cache line. An average of about
-  // 1/2 this value will be wasted with every allocation.
-  static constexpr size_t kAllocAlignment = 8;
   static const Reference kReferenceQueue;
 
   // The shared metadata is always located at the top of the memory segment.
@@ -763,9 +769,6 @@ class BASE_EXPORT PersistentMemoryAllocator {
             ref, type_id, size, alloc_size));
   }
 
-  // Records an error in the internal histogram.
-  void RecordError(int error) const;
-
   // Returns the offset to the first free space segment.
   uint32_t freeptr() const;
 
@@ -777,14 +780,13 @@ class BASE_EXPORT PersistentMemoryAllocator {
   // Local version of "corrupted" flag.
   mutable std::atomic<bool> corrupt_ = false;
 
-  // Histogram recording allocs.
-  raw_ptr<HistogramBase> allocs_histogram_ = nullptr;
   // Histogram recording used space.
   raw_ptr<HistogramBase> used_histogram_ = nullptr;
-  // Histogram recording errors.
-  raw_ptr<HistogramBase> errors_histogram_ = nullptr;
 
+  // TODO(crbug.com/40064026) For debugging purposes. Remove these once done.
+  friend class DelayedPersistentAllocation;
   friend class metrics::FileMetricsProvider;
+
   friend class PersistentMemoryAllocatorTest;
   FRIEND_TEST_ALL_PREFIXES(PersistentMemoryAllocatorTest, AllocateAndIterate);
 };
@@ -797,8 +799,9 @@ class BASE_EXPORT PersistentMemoryAllocator {
 class BASE_EXPORT LocalPersistentMemoryAllocator
     : public PersistentMemoryAllocator {
  public:
-  LocalPersistentMemoryAllocator(size_t size, uint64_t id,
-                                 base::StringPiece name);
+  LocalPersistentMemoryAllocator(size_t size,
+                                 uint64_t id,
+                                 std::string_view name);
 
   LocalPersistentMemoryAllocator(const LocalPersistentMemoryAllocator&) =
       delete;
@@ -811,7 +814,7 @@ class BASE_EXPORT LocalPersistentMemoryAllocator
   // Allocates a block of local memory of the specified `size`, ensuring that
   // the memory will not be physically allocated until accessed and will read
   // as zero when that happens.
-  static Memory AllocateLocalMemory(size_t size, base::StringPiece name);
+  static Memory AllocateLocalMemory(size_t size, std::string_view name);
 
   // Deallocates a block of local `memory` of the specified `size`.
   static void DeallocateLocalMemory(void* memory, size_t size, MemoryType type);
@@ -826,7 +829,7 @@ class BASE_EXPORT WritableSharedPersistentMemoryAllocator
   WritableSharedPersistentMemoryAllocator(
       base::WritableSharedMemoryMapping memory,
       uint64_t id,
-      base::StringPiece name);
+      std::string_view name);
 
   WritableSharedPersistentMemoryAllocator(
       const WritableSharedPersistentMemoryAllocator&) = delete;
@@ -854,7 +857,7 @@ class BASE_EXPORT ReadOnlySharedPersistentMemoryAllocator
   ReadOnlySharedPersistentMemoryAllocator(
       base::ReadOnlySharedMemoryMapping memory,
       uint64_t id,
-      base::StringPiece name);
+      std::string_view name);
 
   ReadOnlySharedPersistentMemoryAllocator(
       const ReadOnlySharedPersistentMemoryAllocator&) = delete;
@@ -887,7 +890,7 @@ class BASE_EXPORT FilePersistentMemoryAllocator
   FilePersistentMemoryAllocator(std::unique_ptr<MemoryMappedFile> file,
                                 size_t max_size,
                                 uint64_t id,
-                                base::StringPiece name,
+                                std::string_view name,
                                 AccessMode access_mode);
 
   FilePersistentMemoryAllocator(const FilePersistentMemoryAllocator&) = delete;
@@ -952,15 +955,26 @@ class BASE_EXPORT DelayedPersistentAllocation {
                               size_t offset = 0);
   ~DelayedPersistentAllocation();
 
-  // Gets a pointer to the defined allocation. This will realize the request
+  // Gets a span to the defined allocation. This will realize the request
   // and update the reference provided during construction. The memory will
   // be zeroed the first time it is returned, after that it is shared with
   // all other Get() requests and so shows any changes made to it elsewhere.
   //
-  // If the allocation fails for any reason, null will be returned. This works
-  // even on "const" objects because the allocation is already defined, just
-  // delayed.
-  void* Get() const;
+  // If the allocation fails for any reason, an empty span will be returned.
+  // This works even on "const" objects because the allocation is already
+  // defined, just delayed.
+  template <typename T>
+  span<T> Get() const {
+    // PersistentMemoryAllocator only supports types with alignment at most
+    // kAllocAlignment.
+    static_assert(alignof(T) <= PersistentMemoryAllocator::kAllocAlignment);
+    // The offset must be a multiple of the alignment or misaligned pointers
+    // will result.
+    CHECK_EQ(offset_ % alignof(T), 0u);
+    span<uint8_t> untyped = GetUntyped();
+    return make_span(reinterpret_cast<T*>(untyped.data()),
+                     untyped.size() / sizeof(T));
+  }
 
   // Gets the internal reference value. If this returns a non-zero value then
   // a subsequent call to Get() will do nothing but convert that reference into
@@ -971,6 +985,8 @@ class BASE_EXPORT DelayedPersistentAllocation {
   }
 
  private:
+  span<uint8_t> GetUntyped() const;
+
   // The underlying object that does the actual allocation of memory. Its
   // lifetime must exceed that of all DelayedPersistentAllocation objects
   // that use it.

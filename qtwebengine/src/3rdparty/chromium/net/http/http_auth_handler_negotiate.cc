@@ -44,8 +44,7 @@ base::Value::Dict NetLogParameterChannelBindings(
   if (!NetLogCaptureIncludesSocketBytes(capture_mode))
     return dict;
 
-  dict.Set("token", base::HexEncode(channel_binding_token.data(),
-                                    channel_binding_token.size()));
+  dict.Set("token", base::HexEncode(channel_binding_token));
   return dict;
 }
 
@@ -60,7 +59,7 @@ std::unique_ptr<HttpAuthMechanism> CreateAuthSystem(
   if (negotiate_auth_system_factory)
     return negotiate_auth_system_factory.Run(prefs);
 #if BUILDFLAG(IS_ANDROID)
-  return std::make_unique<net::android::HttpAuthNegotiateAndroid>(prefs);
+  return std::make_unique<android::HttpAuthNegotiateAndroid>(prefs);
 #elif BUILDFLAG(IS_WIN)
   return std::make_unique<HttpAuthSSPI>(auth_library,
                                         HttpAuth::AUTH_SCHEME_NEGOTIATE);
@@ -336,7 +335,7 @@ int HttpAuthHandlerNegotiate::DoLoop(int result) {
         rv = DoGenerateAuthTokenComplete(rv);
         break;
       default:
-        NOTREACHED() << "bad state";
+        NOTREACHED_IN_MIGRATION() << "bad state";
         rv = ERR_FAILED;
         break;
     }

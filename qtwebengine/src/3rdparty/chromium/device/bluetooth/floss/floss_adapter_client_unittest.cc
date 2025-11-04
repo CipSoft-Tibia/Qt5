@@ -2,6 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#ifdef UNSAFE_BUFFERS_BUILD
+// TODO(crbug.com/351564777): Remove this and convert code to safer constructs.
+#pragma allow_unsafe_buffers
+#endif
+
 #include "device/bluetooth/floss/floss_adapter_client.h"
 
 #include <utility>
@@ -202,6 +207,12 @@ class FlossAdapterClientTest : public testing::Test {
                 HasMemberOf(adapter::kGetDiscoverable), _, _))
         .WillByDefault(
             Invoke(this, &FlossAdapterClientTest::HandleGetDiscoverable));
+    ON_CALL(*adapter_object_proxy_.get(),
+            DoCallMethodWithErrorResponse(
+                HasMemberOf(adapter::kIsLeExtendedAdvertisingSupported), _, _))
+        .WillByDefault(Invoke(
+            this,
+            &FlossAdapterClientTest::HandleIsLeExtendedAdvertisingSupported));
   }
 
   void SetUp() override {
@@ -255,6 +266,17 @@ class FlossAdapterClientTest : public testing::Test {
     auto response = ::dbus::Response::CreateEmpty();
     ::dbus::MessageWriter msg(response.get());
     msg.AppendBool(adapter_discoverable_);
+
+    std::move(*cb).Run(response.get(), nullptr);
+  }
+
+  void HandleIsLeExtendedAdvertisingSupported(
+      ::dbus::MethodCall* method_call,
+      int timeout_ms,
+      ::dbus::ObjectProxy::ResponseOrErrorCallback* cb) {
+    auto response = ::dbus::Response::CreateEmpty();
+    ::dbus::MessageWriter msg(response.get());
+    msg.AppendBool(ext_adv_supported_);
 
     std::move(*cb).Run(response.get(), nullptr);
   }
@@ -456,6 +478,7 @@ class FlossAdapterClientTest : public testing::Test {
   std::string adapter_address_ = "00:11:22:33:44:55";
   std::string adapter_name_ = "floss";
   bool adapter_discoverable_ = false;
+  bool ext_adv_supported_ = true;
 
   scoped_refptr<::dbus::MockBus> bus_;
   scoped_refptr<::dbus::MockExportedObject> exported_callbacks_;
@@ -539,6 +562,9 @@ TEST_F(FlossAdapterClientTest, InitializesCorrectly) {
   // Make sure discoverable is initialized correctly
   EXPECT_EQ(test_observer.discoverable_changed_count_, 1);
   EXPECT_EQ(client_->GetDiscoverable(), adapter_discoverable_);
+
+  // Make sure extended advertising support is initialized correctly.
+  EXPECT_EQ(client_->IsExtAdvSupported(), ext_adv_supported_);
 
   // Make sure to unregister callbacks when client is destroyed
   EXPECT_CALL(*adapter_object_proxy_.get(),

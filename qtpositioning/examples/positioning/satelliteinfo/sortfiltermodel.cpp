@@ -13,24 +13,28 @@ SortFilterModel::SortFilterModel(QObject *parent)
 
 void SortFilterModel::updateFilterString(const QString &str)
 {
+    beginFilterChange();
     m_filterString = str;
     invalidateFilter();
 }
 
 void SortFilterModel::updateShowInView(bool show)
 {
+    beginFilterChange();
     m_showInView = show;
     invalidateFilter();
 }
 
 void SortFilterModel::updateShowInUse(bool show)
 {
+    beginFilterChange();
     m_showInUse = show;
     invalidateFilter();
 }
 
 void SortFilterModel::updateSelectedSystems(int id, bool show)
 {
+    beginFilterChange();
     if (show)
         m_selectedSystems.insert(id);
     else

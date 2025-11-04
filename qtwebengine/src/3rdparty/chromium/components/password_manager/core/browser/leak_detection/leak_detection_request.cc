@@ -77,7 +77,7 @@ google::internal::identity::passwords::leak::check::v1::
           LookupSingleLeakRequest::ClientUseCase::
               LookupSingleLeakRequest_ClientUseCase_CHROME_IOS_SIGNED_IN_ON_DEVICE_PROACTIVE_PASSWORD_CHECKUP;
   }
-  NOTREACHED_NORETURN();
+  NOTREACHED();
 }
 
 google::internal::identity::passwords::leak::check::v1::LookupSingleLeakRequest
@@ -216,8 +216,7 @@ void LeakDetectionRequest::OnLookupSingleLeakResponse(
       LookupSingleLeakResponse leak_response;
   if (!leak_response.ParseFromString(*response)) {
     RecordLookupResponseResult(LeakLookupResponseResult::kParseError);
-    DLOG(ERROR) << "Could not parse response: "
-                << base::HexEncode(response->data(), response->size());
+    DLOG(ERROR) << "Could not parse response: " << base::HexEncode(*response);
     std::move(callback).Run(nullptr,
                             LeakDetectionError::kInvalidServerResponse);
     return;

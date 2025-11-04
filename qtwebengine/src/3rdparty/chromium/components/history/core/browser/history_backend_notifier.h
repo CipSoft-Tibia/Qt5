@@ -35,10 +35,9 @@ class HistoryBackendNotifier {
   // `local_navigation_id` from the underlying `content::NavigationHandle`,
   // which will be non-null only for navigations on the local device.
   // It is valid to call NotifyURLVisited() with an empty `local_navigation_id`.
-  virtual void NotifyURLVisited(
-      const URLRow& url_row,
-      const VisitRow& visit_row,
-      absl::optional<int64_t> local_navigation_id) = 0;
+  virtual void NotifyURLVisited(const URLRow& url_row,
+                                const VisitRow& visit_row,
+                                std::optional<int64_t> local_navigation_id) = 0;
 
   // Sends notification that `changed_urls` have been changed or added.
   virtual void NotifyURLsModified(const URLRows& changed_urls,
@@ -47,14 +46,15 @@ class HistoryBackendNotifier {
   // Sends notification that some or the totality of the URLs have been
   // deleted.
   // `deletion_info` describes the urls that have been removed from history.
-  virtual void NotifyURLsDeleted(DeletionInfo deletion_info) = 0;
+  virtual void NotifyDeletions(DeletionInfo deletion_info) = 0;
 
   // Called after a visit has been updated.
   virtual void NotifyVisitUpdated(const VisitRow& visit,
                                   VisitUpdateReason reason) = 0;
 
-  // Called after a visit has been deleted.
-  virtual void NotifyVisitDeleted(const VisitRow& visit) = 0;
+  // Called after visits have been deleted. May also notify of any deleted
+  // VisitedLinkRows as a result of the VisitRow deletion.
+  virtual void NotifyVisitsDeleted(const std::vector<DeletedVisit>& visits) = 0;
 };
 
 }  // namespace history

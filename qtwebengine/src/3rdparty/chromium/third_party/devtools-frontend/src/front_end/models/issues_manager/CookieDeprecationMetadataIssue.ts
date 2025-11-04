@@ -13,7 +13,7 @@ const UIStrings = {
   /**
    * @description Label for a link for third-party cookie Issues.
    */
-  thirdPartyPhaseoutExplained: 'Prepare for phasing out third-party cookies',
+  thirdPartyPhaseoutExplained: 'Changes to Chrome\'s treatment of third-party cookies',
 };
 const str_ = i18n.i18n.registerUIStrings('models/issues_manager/CookieDeprecationMetadataIssue.ts', UIStrings);
 const i18nString = i18n.i18n.getLocalizedString.bind(undefined, str_);
@@ -24,20 +24,34 @@ export class CookieDeprecationMetadataIssue extends Issue {
 
   constructor(
       issueDetails: Protocol.Audits.CookieDeprecationMetadataIssueDetails, issuesModel: SDK.IssuesModel.IssuesModel) {
-    super(Protocol.Audits.InspectorIssueCode.CookieDeprecationMetadataIssue, issuesModel);
+    // Set a distinct code for ReadCookie and SetCookie issues, so they are grouped separately.
+    const issueCode = Protocol.Audits.InspectorIssueCode.CookieDeprecationMetadataIssue + '_' + issueDetails.operation;
+    super(issueCode, issuesModel);
     this.#issueDetails = issueDetails;
   }
 
   getCategory(): IssueCategory {
-    return IssueCategory.Other;
+    return IssueCategory.OTHER;
   }
 
   getDescription(): MarkdownIssueDescription {
+    const fileName = this.#issueDetails.operation === 'SetCookie' ? 'cookieWarnMetadataGrantSet.md' :
+                                                                    'cookieWarnMetadataGrantRead.md';
+
+    let optOutText = '';
+    if (this.#issueDetails.isOptOutTopLevel) {
+      optOutText = '\n\n (Top level site opt-out: ' + this.#issueDetails.optOutPercentage +
+          '% - [learn more](gracePeriodStagedControlExplainer))';
+    }
+
     return {
-      file: 'cookieWarnMetadataGrantRead.md',
+      file: fileName,
+      substitutions: new Map([
+        ['PLACEHOLDER_topleveloptout', optOutText],
+      ]),
       links: [
         {
-          link: 'https://developer.chrome.com/docs/privacy-sandbox/third-party-cookie-phase-out/',
+          link: 'https://goo.gle/changes-to-chrome-browsing',
           linkTitle: i18nString(UIStrings.thirdPartyPhaseoutExplained),
         },
       ],
@@ -49,18 +63,11 @@ export class CookieDeprecationMetadataIssue extends Issue {
   }
 
   getKind(): IssueKind {
-    return IssueKind.BreakingChange;
+    return IssueKind.BREAKING_CHANGE;
   }
 
   primaryKey(): string {
     return JSON.stringify(this.#issueDetails);
-  }
-
-  override metadataAllowedSites(): Iterable<string> {
-    if (this.#issueDetails.allowedSites) {
-      return this.#issueDetails.allowedSites;
-    }
-    return [];
   }
 
   static fromInspectorIssue(issuesModel: SDK.IssuesModel.IssuesModel, inspectorIssue: Protocol.Audits.InspectorIssue):

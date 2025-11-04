@@ -2,6 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#ifdef UNSAFE_BUFFERS_BUILD
+// TODO(crbug.com/351564777): Remove this and convert code to safer constructs.
+#pragma allow_unsafe_buffers
+#endif
+
 #ifndef THIRD_PARTY_BLINK_RENDERER_PLATFORM_HEAP_COLLECTION_SUPPORT_HEAP_VECTOR_BACKING_H_
 #define THIRD_PARTY_BLINK_RENDERER_PLATFORM_HEAP_COLLECTION_SUPPORT_HEAP_VECTOR_BACKING_H_
 
@@ -55,10 +60,6 @@ class HeapVectorBacking final
     return reinterpret_cast<ClassType*>(payload);
   }
 
-  void operator delete(void* p) { delete
-                                  (WTF::ConditionalDestructor<HeapVectorBacking<T, Traits>,
-                                                              !Traits::kNeedsDestruction>*)p; }
-
   void Free(cppgc::HeapHandle& heap_handle) {
     cppgc::subtle::FreeUnreferencedObject(heap_handle, *this);
   }
@@ -67,7 +68,6 @@ class HeapVectorBacking final
     return cppgc::subtle::Resize(*this, GetAdditionalBytes(new_size));
   }
 
-  // Conditionally invoked via destructor.
   void Finalize();
 
  private:
@@ -81,7 +81,8 @@ class HeapVectorBacking final
 };
 
 template <typename T, typename Traits>
-void HeapVectorBacking<T, Traits>::Finalize() {
+void HeapVectorBacking<T, Traits>::Finalize()
+{
   static_assert(Traits::kNeedsDestruction,
                 "Only vector buffers with items requiring destruction should "
                 "be finalized");
@@ -157,8 +158,9 @@ struct TraceInCollectionTrait<kNoWeakHandling,
         "cleared as unused with memset.");
 
     // Bail out early if the contents are not actually traceable.
-    if constexpr (!IsTraceableInCollectionTrait<Traits>::value)
+    if constexpr (!IsTraceable<T>::value) {
       return;
+    }
 
     const T* array = reinterpret_cast<const T*>(self);
     const size_t length =
@@ -170,7 +172,7 @@ struct TraceInCollectionTrait<kNoWeakHandling,
     // already zeroed out).
     ANNOTATE_CHANGE_SIZE(array, length, 0, length);
 #endif  // ANNOTATE_CONTIGUOUS_CONTAINER
-    if constexpr (IsTraceableInCollectionTrait<Traits>::value) {
+    if constexpr (IsTraceable<T>::value) {
       for (unsigned i = 0; i < length; ++i) {
         if (!std::is_polymorphic_v<T> ||
             blink::internal::VTableInitialized(&array[i])) {
@@ -238,7 +240,7 @@ struct TraceTrait<blink::HeapVectorBacking<T, Traits>> {
 
     static_assert(!WTF::IsWeak<T>::value,
                   "Weakness is not supported in HeapVector and HeapDeque");
-    if (WTF::IsTraceableInCollectionTrait<Traits>::value) {
+    if (WTF::IsTraceable<T>::value) {
       WTF::TraceInCollectionTrait<WTF::kNoWeakHandling,
                                   blink::HeapVectorBacking<T, Traits>,
                                   void>::Trace(visitor, self);

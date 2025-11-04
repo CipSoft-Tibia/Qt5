@@ -47,6 +47,10 @@ Item {
         scaleSlider.value = newScale;
     }
 
+    function selectLastPreviewSource() {
+        sourceImageSelector.currentIndex = sourceImageSelector.imagesModel.rowCount - 1;
+    }
+
     height: 50
 
     Behavior on contentScale {
@@ -72,6 +76,10 @@ Item {
             anchors.verticalCenter: parent.verticalCenter
             description: "Preview source"
             imagesModel: effectManager.settings.sourceImagesModel
+            showAddButton: true
+            onAddPressed: {
+                applicationSettingsDialog.addPreviewSourceImage();
+            }
         }
         CustomImageSelector {
             id: backgroundImageSelector

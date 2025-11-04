@@ -22,7 +22,11 @@ MarkerRangeMappingContext::DOMToTextContentOffsetMapper::GetMappingUnits(
   const OffsetMapping* const offset_mapping =
       OffsetMapping::GetFor(layout_object);
   DCHECK(offset_mapping);
-  return offset_mapping->GetMappingUnitsForLayoutObject(*layout_object);
+  if (RuntimeEnabledFeatures::PaintHighlightsForFirstLetterEnabled()) {
+    return offset_mapping->GetMappingUnitsForNode(*layout_object->GetNode());
+  } else {
+    return offset_mapping->GetMappingUnitsForLayoutObject(*layout_object);
+  }
 }
 
 unsigned
@@ -71,12 +75,11 @@ MarkerRangeMappingContext::DOMToTextContentOffsetMapper::FindUnit(
                        }));
 }
 
-absl::optional<TextOffsetRange>
-MarkerRangeMappingContext::GetTextContentOffsets(
+std::optional<TextOffsetRange> MarkerRangeMappingContext::GetTextContentOffsets(
     const DocumentMarker& marker) const {
   if (marker.EndOffset() <= fragment_dom_range_.start ||
       marker.StartOffset() >= fragment_dom_range_.end) {
-    return absl::nullopt;
+    return std::nullopt;
   }
 
   // Clamp the marker to the fragment in DOM space

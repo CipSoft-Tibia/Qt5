@@ -17,6 +17,7 @@
 #include "base/memory/ptr_util.h"
 #include "base/memory/raw_ptr.h"
 #include "base/run_loop.h"
+#include "base/strings/string_number_conversions.h"
 #include "base/strings/string_split.h"
 #include "base/strings/stringprintf.h"
 #include "base/strings/utf_string_conversions.h"
@@ -26,6 +27,7 @@
 #include "base/test/metrics/histogram_tester.h"
 #include "base/test/run_until.h"
 #include "base/test/scoped_feature_list.h"
+#include "base/test/test_future.h"
 #include "base/time/time.h"
 #include "base/time/time_override.h"
 #include "base/values.h"
@@ -34,7 +36,6 @@
 #include "chrome/browser/browser_process.h"
 #include "chrome/browser/devtools/protocol/devtools_protocol_test_support.h"
 #include "chrome/browser/devtools/url_constants.h"
-#include "chrome/browser/extensions/active_tab_permission_granter.h"
 #include "chrome/browser/extensions/api/extension_action/test_extension_action_api_observer.h"
 #include "chrome/browser/extensions/error_console/error_console.h"
 #include "chrome/browser/extensions/error_console/error_console_test_observer.h"
@@ -44,7 +45,8 @@
 #include "chrome/browser/extensions/extension_tab_util.h"
 #include "chrome/browser/extensions/extension_util.h"
 #include "chrome/browser/extensions/extension_with_management_policy_apitest.h"
-#include "chrome/browser/extensions/scripting_permissions_modifier.h"
+#include "chrome/browser/extensions/permissions/active_tab_permission_granter.h"
+#include "chrome/browser/extensions/permissions/scripting_permissions_modifier.h"
 #include "chrome/browser/extensions/tab_helper.h"
 #include "chrome/browser/net/profile_network_context_service.h"
 #include "chrome/browser/net/profile_network_context_service_factory.h"
@@ -105,8 +107,8 @@
 #include "extensions/browser/extension_prefs.h"
 #include "extensions/browser/extension_registry.h"
 #include "extensions/browser/process_manager.h"
+#include "extensions/browser/service_worker/service_worker_task_queue.h"
 #include "extensions/browser/service_worker/service_worker_test_utils.h"
-#include "extensions/browser/service_worker_task_queue.h"
 #include "extensions/common/extension_builder.h"
 #include "extensions/common/extension_features.h"
 #include "extensions/common/features/feature.h"
@@ -134,6 +136,7 @@
 #include "services/network/public/cpp/features.h"
 #include "services/network/public/cpp/resource_request.h"
 #include "services/network/public/cpp/simple_url_loader.h"
+#include "services/network/public/cpp/url_loader_factory_builder.h"
 #include "services/network/public/mojom/fetch_api.mojom.h"
 #include "services/network/test/test_url_loader_client.h"
 #include "third_party/blink/public/common/features.h"
@@ -323,9 +326,10 @@ class ExtensionWebRequestApiTest : public ExtensionApiTest {
       : ExtensionApiTest(context_type) {
     feature_list_.InitWithFeatures(
         /*enabled_features=*/{},
-        // TODO(crbug.com/1394910): Use HTTPS URLs in tests to avoid having to
+        // TODO(crbug.com/40248833): Use HTTPS URLs in tests to avoid having to
         // disable this feature.
-        /*disabled_features=*/{features::kHttpsUpgrades});
+        /*disabled_features=*/
+        {features::kHttpsUpgrades, features::kHttpsFirstModeIncognito});
   }
   ExtensionWebRequestApiTest(const ExtensionWebRequestApiTest&) = delete;
   ExtensionWebRequestApiTest& operator=(const ExtensionWebRequestApiTest&) =
@@ -358,7 +362,7 @@ class ExtensionWebRequestApiTest : public ExtensionApiTest {
         network::mojom::URLLoaderFactoryParams::New();
     params->process_id = network::mojom::kBrowserProcessId;
     params->automatically_assign_isolation_info = true;
-    params->is_corb_enabled = false;
+    params->is_orb_enabled = false;
     mojo::PendingRemote<network::mojom::URLLoaderFactory> loader_factory;
     profile()
         ->GetDefaultStoragePartition()
@@ -456,22 +460,24 @@ INSTANTIATE_TEST_SUITE_P(
             BackgroundResourceFetchTestCase::kBackgroundResourceFetchDisabled)),
     ExtensionWebRequestApiTestWithContextType::PrintToStringParamName());
 
+// These tests use webRequestBlocking and/or declarativeWebRequest.
+// See crbug.com/332512510.
 INSTANTIATE_TEST_SUITE_P(
     ServiceWorker,
     ExtensionWebRequestApiTestWithContextType,
     ::testing::Values(
         std::make_pair(
-            ContextType::kServiceWorker,
+            ContextType::kServiceWorkerMV2,
             BackgroundResourceFetchTestCase::kBackgroundResourceFetchEnabled),
         std::make_pair(
-            ContextType::kServiceWorker,
+            ContextType::kServiceWorkerMV2,
             BackgroundResourceFetchTestCase::kBackgroundResourceFetchDisabled)),
     ExtensionWebRequestApiTestWithContextType::PrintToStringParamName());
 
 class DevToolsFrontendInWebRequestApiTest : public ExtensionApiTest {
  public:
   DevToolsFrontendInWebRequestApiTest() {
-    // TODO(crbug.com/1394910): Use HTTPS URLs in tests to avoid having to
+    // TODO(crbug.com/40248833): Use HTTPS URLs in tests to avoid having to
     // disable this feature.
     feature_list_.InitAndDisableFeature(features::kHttpsUpgrades);
   }
@@ -568,8 +574,9 @@ IN_PROC_BROWSER_TEST_P(ExtensionWebRequestApiTestWithContextType,
   ASSERT_TRUE(RunExtensionTest("webrequest/test_simple")) << message_;
 }
 
+// TODO(crbug.com/333791060): Parameterized test is flaky on multiple bots.
 IN_PROC_BROWSER_TEST_P(ExtensionWebRequestApiTestWithContextType,
-                       WebRequestComplex) {
+                       DISABLED_WebRequestComplex) {
   ASSERT_TRUE(StartEmbeddedTestServer());
   ASSERT_TRUE(RunExtensionTest("webrequest/test_complex")) << message_;
 }
@@ -602,15 +609,17 @@ INSTANTIATE_TEST_SUITE_P(
             BackgroundResourceFetchTestCase::kBackgroundResourceFetchDisabled)),
     ExtensionWebRequestApiTestWithContextType::PrintToStringParamName());
 
+// These tests use webRequestBlocking and/or declarativeWebRequest.
+// See crbug.com/332512510.
 INSTANTIATE_TEST_SUITE_P(
     ServiceWorker,
     ExtensionDevToolsProtocolTest,
     ::testing::Values(
         std::make_pair(
-            ContextType::kServiceWorker,
+            ContextType::kServiceWorkerMV2,
             BackgroundResourceFetchTestCase::kBackgroundResourceFetchEnabled),
         std::make_pair(
-            ContextType::kServiceWorker,
+            ContextType::kServiceWorkerMV2,
             BackgroundResourceFetchTestCase::kBackgroundResourceFetchDisabled)),
     ExtensionWebRequestApiTestWithContextType::PrintToStringParamName());
 
@@ -781,7 +790,7 @@ IN_PROC_BROWSER_TEST_P(ExtensionDevToolsProtocolTest,
   ASSERT_EQ(*cookie_value, "cookieValue");
 }
 
-// TODO(crbug.com/1177120) The test is flaky on multiple bots.
+// TODO(crbug.com/40168662) The test is flaky on multiple bots.
 IN_PROC_BROWSER_TEST_F(ExtensionWebRequestApiTest, DISABLED_WebRequestTypes) {
   ASSERT_TRUE(StartEmbeddedTestServer());
   ASSERT_TRUE(RunExtensionTest("webrequest/test_types")) << message_;
@@ -847,9 +856,6 @@ enum class ProfileMode {
 };
 
 struct ARTestParams {
-  ARTestParams(ProfileMode profile_mode, ContextType context_type)
-      : profile_mode(profile_mode), context_type(context_type) {}
-
   ProfileMode profile_mode;
   ContextType context_type;
 };
@@ -967,16 +973,18 @@ INSTANTIATE_TEST_SUITE_P(
     ::testing::Values(ARTestParams(ProfileMode::kIncognito,
                                    ContextType::kPersistentBackground)));
 
+// These tests use webRequestBlocking and/or declarativeWebRequest.
+// See crbug.com/332512510.
 INSTANTIATE_TEST_SUITE_P(
     ServiceWorker,
     ExtensionWebRequestApiAuthRequiredTest,
     ::testing::Values(ARTestParams(ProfileMode::kUserProfile,
-                                   ContextType::kServiceWorker)));
+                                   ContextType::kServiceWorkerMV2)));
 INSTANTIATE_TEST_SUITE_P(
     ServiceWorkerIncognito,
     ExtensionWebRequestApiAuthRequiredTest,
     ::testing::Values(ARTestParams(ProfileMode::kIncognito,
-                                   ContextType::kServiceWorker)));
+                                   ContextType::kServiceWorkerMV2)));
 
 IN_PROC_BROWSER_TEST_P(ExtensionWebRequestApiTestWithContextType,
                        WebRequestBlocking) {
@@ -992,7 +1000,7 @@ IN_PROC_BROWSER_TEST_P(ExtensionWebRequestApiTestWithContextType,
 // Slower and flaky tests should be isolated in the "slow" group of tests in
 // the JS file. This prevents losing test coverage for those tests that are
 // not causing timeouts and flakes.
-// TODO(https://crbug.com/1453477): Investigate the flakiness across all
+// TODO(crbug.com/40916455): Investigate the flakiness across all
 // platforms and re-enable.
 IN_PROC_BROWSER_TEST_P(ExtensionWebRequestApiTestWithContextType,
                        DISABLED_WebRequestBlockingSlow) {
@@ -1029,8 +1037,8 @@ IN_PROC_BROWSER_TEST_P(ExtensionWebRequestApiTestWithContextType,
       << message_;
 }
 
-// TODO(crbug.com/1450976): test is flaky on Mac11.
-#if BUILDFLAG(IS_MAC)
+// TODO: crbug.com/1450976 - Re-enable tests on Mac and CrOS.
+#if BUILDFLAG(IS_MAC) || BUILDFLAG(IS_CHROMEOS)
 #define MAYBE_WebRequestCORSWithExtraHeaders \
   DISABLED_WebRequestCORSWithExtraHeaders
 #else
@@ -1087,9 +1095,9 @@ IN_PROC_BROWSER_TEST_P(ExtensionWebRequestApiTestWithContextType,
 
 // Tests redirects around workers. To test service workers, the HTTPS test
 // server is used.
-// TODO(crbug.com/1413434): test is flaky on linux-chromeos-rel.
-// TODO(crbug.com/1422191): test is flaky on Mac10.14.
-// TODO(crbug.com/1484203): test is flaky on linux tests.
+// TODO(crbug.com/40255652): test is flaky on linux-chromeos-rel.
+// TODO(crbug.com/40259518): test is flaky on Mac10.14.
+// TODO(crbug.com/40282182): test is flaky on linux tests.
 #if BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
 #define MAYBE_WebRequestRedirectsWorkers DISABLED_WebRequestRedirectsWorkers
 #else
@@ -1115,7 +1123,7 @@ IN_PROC_BROWSER_TEST_P(ExtensionWebRequestApiTestWithContextType,
       << message_;
 }
 
-// TODO(crbug.com/1453477): test is flaky on multiple platforms.
+// TODO(crbug.com/40916455): test is flaky on multiple platforms.
 IN_PROC_BROWSER_TEST_P(ExtensionWebRequestApiTestWithContextType,
                        DISABLED_WebRequestSubresourceRedirects) {
   ASSERT_TRUE(StartEmbeddedTestServer());
@@ -1123,7 +1131,7 @@ IN_PROC_BROWSER_TEST_P(ExtensionWebRequestApiTestWithContextType,
       << message_;
 }
 
-// TODO(crbug.com/1453477): test is flaky on multiple platforms.
+// TODO(crbug.com/40916455): test is flaky on multiple platforms.
 IN_PROC_BROWSER_TEST_P(ExtensionWebRequestApiTestWithContextType,
                        DISABLED_WebRequestSubresourceRedirectsWithExtraHeaders) {
   ASSERT_TRUE(StartEmbeddedTestServer());
@@ -1144,8 +1152,8 @@ IN_PROC_BROWSER_TEST_P(ExtensionWebRequestApiTestWithContextType,
   ResultCatcher catcher;
 
   ExtensionRegistry* registry = ExtensionRegistry::Get(browser()->profile());
-  const Extension* extension = registry->GetExtensionById(
-      last_loaded_extension_id(), extensions::ExtensionRegistry::ENABLED);
+  const Extension* extension =
+      registry->enabled_extensions().GetByID(last_loaded_extension_id());
   GURL url = extension->GetResourceURL("newTab/a.html");
 
   ASSERT_TRUE(ui_test_utils::NavigateToURL(browser(), url));
@@ -1282,9 +1290,9 @@ IN_PROC_BROWSER_TEST_P(ExtensionWebRequestApiTestWithContextType,
   RunPermissionTest("split", false, false, "redirected1", "", GetContextType());
 }
 
-// TODO(crbug.com/238179): Cure these flaky tests.
-// TODO(crbug.com/1154345): Bulk-disabled as part of mac arm64 bot greening
-// TODO(crbug.com/1222127): Further disabled due to ongoing flakiness.
+// TODO(crbug.com/41010858): Cure these flaky tests.
+// TODO(crbug.com/40734863): Bulk-disabled as part of mac arm64 bot greening
+// TODO(crbug.com/40773828): Further disabled due to ongoing flakiness.
 IN_PROC_BROWSER_TEST_F(ExtensionWebRequestApiTest, DISABLED_PostData1) {
   // Test HTML form POST data access with the default and "url" encoding.
   ASSERT_TRUE(StartEmbeddedTestServer());
@@ -1932,7 +1940,7 @@ IN_PROC_BROWSER_TEST_P(ExtensionWebRequestApiTestWithContextType,
 
 // Test that the webRequest events are dispatched for the WebSocket handshake
 // requests.
-// TODO(crbug.com/1121727): Test is flaky on multiple platforms.
+// TODO(crbug.com/40715657): Test is flaky on multiple platforms.
 IN_PROC_BROWSER_TEST_F(ExtensionWebRequestApiTest, DISABLED_WebSocketRequest) {
   ASSERT_TRUE(StartEmbeddedTestServer());
   ASSERT_TRUE(StartWebSocketServer(net::GetWebSocketTestDataDirectory()));
@@ -1943,7 +1951,7 @@ IN_PROC_BROWSER_TEST_F(ExtensionWebRequestApiTest, DISABLED_WebSocketRequest) {
 
 // Test that the webRequest events are dispatched for the WebSocket handshake
 // requests when authenrication is requested by server.
-// TODO(crbug.com/1177120) Re-enable test
+// TODO(crbug.com/40168662) Re-enable test
 IN_PROC_BROWSER_TEST_F(ExtensionWebRequestApiTest,
                        DISABLED_WebSocketRequestAuthRequired) {
   ASSERT_TRUE(StartEmbeddedTestServer());
@@ -1966,7 +1974,14 @@ IN_PROC_BROWSER_TEST_F(ExtensionWebRequestApiTest, WebSocketRequestOnWorker) {
 // Tests that a clean close from the server is not reported as an error when
 // there is a race between OnDropChannel and SendFrame.
 // Regression test for https://crbug.com/937790.
-IN_PROC_BROWSER_TEST_F(ExtensionWebRequestApiTest, WebSocketCleanClose) {
+//
+// TODO(b:332825952): Flaky on linux-chromeos-dbg
+#if BUILDFLAG(IS_CHROMEOS)
+#define MAYBE_WebSocketCleanClose DISABLED_WebSocketCleanClose
+#else
+#define MAYBE_WebSocketCleanClose WebSocketCleanClose
+#endif
+IN_PROC_BROWSER_TEST_F(ExtensionWebRequestApiTest, MAYBE_WebSocketCleanClose) {
   ASSERT_TRUE(StartEmbeddedTestServer());
   ASSERT_TRUE(StartWebSocketServer(net::GetWebSocketTestDataDirectory()));
   ASSERT_TRUE(RunExtensionTest(
@@ -2240,9 +2255,9 @@ IN_PROC_BROWSER_TEST_P(ExtensionWebRequestApiTestWithContextType,
       EXPECT_FALSE(initiator_listener.was_satisfied());
     } else {
       ASSERT_TRUE(initiator_listener.was_satisfied());
-      EXPECT_EQ(
-          "http://" + testcase.expected_initiator + ":" + std::to_string(port),
-          initiator_listener.message());
+      EXPECT_EQ("http://" + testcase.expected_initiator + ":" +
+                    base::NumberToString(port),
+                initiator_listener.message());
     }
   }
 }
@@ -2290,15 +2305,15 @@ IN_PROC_BROWSER_TEST_F(ExtensionWebRequestApiTest,
   ProfileManager* profile_manager = g_browser_process->profile_manager();
   std::unique_ptr<Profile> temp_profile = Profile::CreateProfile(
       profile_manager->user_data_dir().AppendASCII("profile"), nullptr,
-      Profile::CreateMode::CREATE_MODE_SYNCHRONOUS);
+      Profile::CreateMode::kSynchronous);
   // Create a WebRequestAPI instance that we can control the lifetime of.
   auto api = std::make_unique<WebRequestAPI>(temp_profile.get());
   // Make sure we are proxying for |temp_profile|.
   api->ForceProxyForTesting();
   temp_profile->GetDefaultStoragePartition()->FlushNetworkInterfaceForTesting();
 
-  mojo::Remote<network::mojom::URLLoaderFactory> factory;
-  auto pending_receiver = factory.BindNewPipeAndPassReceiver();
+  network::URLLoaderFactoryBuilder factory_builder;
+
   auto temp_web_contents =
       WebContents::Create(WebContents::CreateParams(temp_profile.get()));
   content::RenderFrameHost* frame = temp_web_contents->GetPrimaryMainFrame();
@@ -2306,14 +2321,16 @@ IN_PROC_BROWSER_TEST_F(ExtensionWebRequestApiTest,
       frame->GetProcess()->GetBrowserContext(), frame,
       frame->GetProcess()->GetID(),
       content::ContentBrowserClient::URLLoaderFactoryType::kDocumentSubResource,
-      std::nullopt, ukm::kInvalidSourceIdObj, &pending_receiver, nullptr,
+      std::nullopt, ukm::kInvalidSourceIdObj, factory_builder, nullptr,
       nullptr));
   temp_web_contents.reset();
   auto params = network::mojom::URLLoaderFactoryParams::New();
   params->process_id = 0;
-  temp_profile->GetDefaultStoragePartition()
-      ->GetNetworkContext()
-      ->CreateURLLoaderFactory(std::move(pending_receiver), std::move(params));
+  mojo::Remote<network::mojom::URLLoaderFactory> factory(
+      std::move(factory_builder)
+          .Finish<mojo::PendingRemote<network::mojom::URLLoaderFactory>>(
+              temp_profile->GetDefaultStoragePartition()->GetNetworkContext(),
+              std::move(params)));
 
   network::TestURLLoaderClient client;
   mojo::PendingRemote<network::mojom::URLLoader> loader;
@@ -3015,15 +3032,18 @@ INSTANTIATE_TEST_SUITE_P(
             ContextType::kPersistentBackground,
             BackgroundResourceFetchTestCase::kBackgroundResourceFetchDisabled)),
     ExtensionWebRequestApiTestWithContextType::PrintToStringParamName());
+
+// These tests use webRequestBlocking and/or declarativeWebRequest.
+// See crbug.com/332512510.
 INSTANTIATE_TEST_SUITE_P(
     ServiceWorker,
     ExtensionWebRequestMockedClockTest,
     ::testing::Values(
         std::make_pair(
-            ContextType::kServiceWorker,
+            ContextType::kServiceWorkerMV2,
             BackgroundResourceFetchTestCase::kBackgroundResourceFetchEnabled),
         std::make_pair(
-            ContextType::kServiceWorker,
+            ContextType::kServiceWorkerMV2,
             BackgroundResourceFetchTestCase::kBackgroundResourceFetchDisabled)),
     ExtensionWebRequestApiTestWithContextType::PrintToStringParamName());
 
@@ -3362,9 +3382,6 @@ IN_PROC_BROWSER_TEST_P(ExtensionWebRequestApiTestWithContextType,
 }
 
 struct SWTestParams {
-  SWTestParams(bool extra_info_spec, ContextType context_type)
-      : extra_info_spec(extra_info_spec), context_type(context_type) {}
-
   // This parameter is for opt_extraInfoSpec passed to addEventListener.
   // 'blocking' and 'requestHeaders' if it's false, and 'extraHeaders' in
   // addition to them if it's true.
@@ -3486,15 +3503,17 @@ INSTANTIATE_TEST_SUITE_P(
     ServiceWorkerWebRequestApiTest,
     ::testing::Values(SWTestParams(false, ContextType::kPersistentBackground)));
 
+// These tests use webRequestBlocking and/or declarativeWebRequest.
+// See crbug.com/332512510.
 INSTANTIATE_TEST_SUITE_P(
     ServiceWorkerWithExtraHeaders,
     ServiceWorkerWebRequestApiTest,
-    ::testing::Values(SWTestParams(true, ContextType::kServiceWorker)));
+    ::testing::Values(SWTestParams(true, ContextType::kServiceWorkerMV2)));
 
 INSTANTIATE_TEST_SUITE_P(
     ServiceWorker,
     ServiceWorkerWebRequestApiTest,
-    ::testing::Values(SWTestParams(false, ContextType::kServiceWorker)));
+    ::testing::Values(SWTestParams(false, ContextType::kServiceWorkerMV2)));
 
 IN_PROC_BROWSER_TEST_P(ServiceWorkerWebRequestApiTest, ServiceWorkerFetch) {
   RunServiceWorkerFetchTest("fetch_event_respond_with_fetch.js");
@@ -3816,7 +3835,7 @@ IN_PROC_BROWSER_TEST_P(ServiceWorkerWebRequestApiTest,
 // Ensure we don't strip off initiator incorrectly in web request events when
 // both the normal and incognito contexts are active. Regression test for
 // crbug.com/934398.
-// TODO(crbug.com/1520416): enable this flaky test
+// TODO(crbug.com/41493389): enable this flaky test
 #if BUILDFLAG(IS_LINUX) && defined(ADDRESS_SANITIZER) && defined(LEAK_SANITIZER)
 #define MAYBE_Initiator_SpanningIncognito DISABLED_Initiator_SpanningIncognito
 #else
@@ -4017,27 +4036,24 @@ IN_PROC_BROWSER_TEST_P(ExtensionWebRequestApiTestWithContextType,
                        HSTSUpgradeAfterRedirect) {
   net::EmbeddedTestServer https_test_server(
       net::EmbeddedTestServer::TYPE_HTTPS);
-  https_test_server.ServeFilesFromDirectory(
-      test_data_dir_.AppendASCII("webrequest"));
-  net::test_server::RegisterDefaultHandlers(&https_test_server);
   ASSERT_TRUE(StartEmbeddedTestServer());
   ASSERT_TRUE(https_test_server.Start());
 
   TestExtensionDir test_dir;
   test_dir.WriteManifest(R"({
-        "name": "Web Request HSTS Test",
-        "manifest_version": 2,
-        "version": "0.1",
-        "background": { "scripts": ["background.js"], "persistent": true },
-        "permissions": ["<all_urls>", "webRequest", "webRequestBlocking"]
-      })");
+    "name": "Web Request HSTS Test",
+    "manifest_version": 2,
+    "version": "0.1",
+    "background": { "scripts": ["background.js"], "persistent": true },
+    "permissions": ["<all_urls>", "webRequest", "webRequestBlocking"]
+  })");
   test_dir.WriteFile(FILE_PATH_LITERAL("background.js"), R"(
-        chrome.webRequest.onBeforeRedirect.addListener(function(details) {
-        }, {urls: ['<all_urls>']},
-        ['responseHeaders', 'extraHeaders']);
+    chrome.webRequest.onBeforeRedirect.addListener(() => {}, {
+      urls: [ '<all_urls>' ]
+    }, [ 'responseHeaders', 'extraHeaders' ]);
 
-        chrome.test.sendMessage('ready');
-      )");
+    chrome.test.sendMessage('ready');
+  )");
 
   ExtensionTestMessageListener listener("ready");
   const Extension* extension = LoadExtension(test_dir.UnpackedPath());
@@ -4046,23 +4062,98 @@ IN_PROC_BROWSER_TEST_P(ExtensionWebRequestApiTestWithContextType,
 
   content::StoragePartition* partition =
       profile()->GetDefaultStoragePartition();
-  base::RunLoop run_loop;
+  base::test::TestFuture<void> hsts_added;
   partition->GetNetworkContext()->AddHSTS("hsts.com",
                                           base::Time::Now() + base::Days(100),
-                                          true, run_loop.QuitClosure());
-  run_loop.Run();
+                                          true, hsts_added.GetCallback());
+  ASSERT_TRUE(hsts_added.Wait());
 
   GURL final_url = https_test_server.GetURL("hsts.com", "/echo");
   GURL::Replacements replace_scheme;
   replace_scheme.SetSchemeStr("http");
   GURL http_url = final_url.ReplaceComponents(replace_scheme);
-  std::string redirect_path =
-      base::StringPrintf("/server-redirect?%s", http_url.spec().c_str());
-  GURL redirect_url = embedded_test_server()->GetURL("test.com", redirect_path);
+  GURL redirect_url = embedded_test_server()->GetURL(
+      "test.com", "/server-redirect?" + http_url.spec());
+
   ASSERT_TRUE(ui_test_utils::NavigateToURL(browser(), redirect_url));
-  content::WebContents* web_contents =
-      browser()->tab_strip_model()->GetActiveWebContents();
-  EXPECT_EQ(final_url, web_contents->GetLastCommittedURL());
+  EXPECT_EQ(final_url, browser()
+                           ->tab_strip_model()
+                           ->GetActiveWebContents()
+                           ->GetLastCommittedURL());
+}
+
+// Regression test for https://crbug.com/40864513. This test passes if it
+// doesn't crash.
+// This is a copy of HSTSUpgradeAfterRedirect, but the redirect contains a CSP
+// header.
+// TODO(https://crbug.com/40864513) Enable this test.
+IN_PROC_BROWSER_TEST_P(ExtensionWebRequestApiTestWithContextType,
+                       DISABLED_HSTSUpgradeAfterRedirectWithCSP) {
+  net::EmbeddedTestServer https_test_server(
+      net::EmbeddedTestServer::TYPE_HTTPS);
+  embedded_test_server()->RegisterRequestHandler(base::BindLambdaForTesting(
+      [](const net::test_server::HttpRequest& request)
+          -> std::unique_ptr<net::test_server::HttpResponse> {
+        if (request.relative_url.starts_with("/server-redirect-with-csp")) {
+          auto response =
+              std::make_unique<net::test_server::BasicHttpResponse>();
+          response->AddCustomHeader("Location", request.GetURL().query_piece());
+          response->AddCustomHeader("Content-Security-Policy",
+                                    "frame-ancestors 'none'");
+          response->set_code(net::HTTP_MOVED_PERMANENTLY);
+          return response;
+        }
+        return nullptr;
+      }));
+  ASSERT_TRUE(StartEmbeddedTestServer());
+  ASSERT_TRUE(https_test_server.Start());
+
+  TestExtensionDir test_dir;
+  test_dir.WriteManifest(R"({
+    "name": "Web Request HSTS Test",
+    "manifest_version": 2,
+    "version": "0.1",
+    "background": { "scripts": ["background.js"], "persistent": true },
+    "permissions": ["<all_urls>", "webRequest", "webRequestBlocking"]
+  })");
+  test_dir.WriteFile(FILE_PATH_LITERAL("background.js"), R"(
+    chrome.webRequest.onBeforeRedirect.addListener(() => {}, {
+      urls: [
+        '<all_urls>',
+      ]
+    }, [
+      'responseHeaders',
+      'extraHeaders',
+    ]);
+
+    chrome.test.sendMessage('ready');
+  )");
+
+  ExtensionTestMessageListener listener("ready");
+  const Extension* extension = LoadExtension(test_dir.UnpackedPath());
+  ASSERT_TRUE(extension);
+  EXPECT_TRUE(listener.WaitUntilSatisfied());
+
+  content::StoragePartition* partition =
+      profile()->GetDefaultStoragePartition();
+  base::test::TestFuture<void> hsts_added;
+  partition->GetNetworkContext()->AddHSTS("hsts.com",
+                                          base::Time::Now() + base::Days(100),
+                                          true, hsts_added.GetCallback());
+  ASSERT_TRUE(hsts_added.Wait());
+
+  GURL final_url = https_test_server.GetURL("hsts.com", "/echo");
+  GURL::Replacements replace_scheme;
+  replace_scheme.SetSchemeStr("http");
+  GURL http_url = final_url.ReplaceComponents(replace_scheme);
+  GURL redirect_url = embedded_test_server()->GetURL(
+      "test.com", "/server-redirect-with-csp?" + http_url.spec());
+
+  ASSERT_TRUE(ui_test_utils::NavigateToURL(browser(), redirect_url));
+  EXPECT_EQ(final_url, browser()
+                           ->tab_strip_model()
+                           ->GetActiveWebContents()
+                           ->GetLastCommittedURL());
 }
 
 // Tests registering webRequest events in multiple contexts in the same
@@ -4147,9 +4238,6 @@ IN_PROC_BROWSER_TEST_F(ExtensionWebRequestApiTest,
 }
 
 struct SWBTestParams {
-  SWBTestParams(bool extra_info_spec, ContextType context_type)
-      : extra_info_spec(extra_info_spec), context_type(context_type) {}
-
   // The parameter is for opt_extraInfoSpec passed to addEventListener.
   // 'blocking' if it's false, and 'extraHeaders' in addition to them
   // if it's true.
@@ -4291,19 +4379,21 @@ INSTANTIATE_TEST_SUITE_P(
     ::testing::Values(SWBTestParams(false,
                                     ContextType::kPersistentBackground)));
 
+// These tests use webRequestBlocking and/or declarativeWebRequest.
+// See crbug.com/332512510.
 INSTANTIATE_TEST_SUITE_P(
     ServiceWorkerWithExtraHeaders,
     SubresourceWebBundlesWebRequestApiTest,
-    ::testing::Values(SWBTestParams(true, ContextType::kServiceWorker)));
+    ::testing::Values(SWBTestParams(true, ContextType::kServiceWorkerMV2)));
 
 INSTANTIATE_TEST_SUITE_P(
     ServiceWorker,
     SubresourceWebBundlesWebRequestApiTest,
-    ::testing::Values(SWBTestParams(false, ContextType::kServiceWorker)));
+    ::testing::Values(SWBTestParams(false, ContextType::kServiceWorkerMV2)));
 
 // Ensure web request listeners can intercept requests for a web bundle and its
 // subresources.
-// TODO(https://crbug.com/1264982): Fix flane and re-enable test.
+// TODO(crbug.com/40801096): Fix flane and re-enable test.
 IN_PROC_BROWSER_TEST_P(SubresourceWebBundlesWebRequestApiTest,
                        DISABLED_RequestIntercepted) {
   const std::string uuid_in_package_script_url =
@@ -5084,7 +5174,7 @@ IN_PROC_BROWSER_TEST_P(SubresourceWebBundlesWebRequestApiTest,
             ExecuteScriptAndReturnString(extension->id(), profile(), kScript));
 }
 
-// TODO(crbug.com/1082020) When we implement variant matching of subresource
+// TODO(crbug.com/40130781) When we implement variant matching of subresource
 // web bundles, we should add test for request header modification.
 
 enum class RedirectType {
@@ -5093,9 +5183,6 @@ enum class RedirectType {
 };
 
 struct RITestParams {
-  RITestParams(RedirectType redirect_type, ContextType context_type)
-      : redirect_type(redirect_type), context_type(context_type) {}
-
   RedirectType redirect_type;
   ContextType context_type;
 };
@@ -5105,7 +5192,7 @@ class RedirectInfoWebRequestApiTest
       public ExtensionApiTest {
  public:
   RedirectInfoWebRequestApiTest() : ExtensionApiTest(GetParam().context_type) {
-    // TODO(crbug.com/1394910): Use HTTPS URLs in tests to avoid having to
+    // TODO(crbug.com/40248833): Use HTTPS URLs in tests to avoid having to
     // disable this feature.
     feature_list_.InitAndDisableFeature(features::kHttpsUpgrades);
   }
@@ -5171,17 +5258,19 @@ INSTANTIATE_TEST_SUITE_P(
     ::testing::Values(RITestParams(RedirectType::kOnHeadersReceived,
                                    ContextType::kPersistentBackground)));
 
+// These tests use webRequestBlocking and/or declarativeWebRequest.
+// See crbug.com/332512510.
 INSTANTIATE_TEST_SUITE_P(
     ServiceWorkerOnBeforeRequest,
     RedirectInfoWebRequestApiTest,
     ::testing::Values(RITestParams(RedirectType::kOnBeforeRequest,
-                                   ContextType::kServiceWorker)));
+                                   ContextType::kServiceWorkerMV2)));
 
 INSTANTIATE_TEST_SUITE_P(
     ServiceWorkerOnHeadersReceived,
     RedirectInfoWebRequestApiTest,
     ::testing::Values(RITestParams(RedirectType::kOnHeadersReceived,
-                                   ContextType::kServiceWorker)));
+                                   ContextType::kServiceWorkerMV2)));
 
 // Test that a main frame request redirected by an extension has the correct
 // site_for_cookies and network_isolation_key parameters.
@@ -5685,8 +5774,8 @@ class ManifestV3WebRequestApiTest : public ExtensionWebRequestApiTest {
     ExtensionTestMessageListener listener("ready");
     // Since we may programmatically stop the worker, we also need to wait for
     // the registration to be fully stored.
-    service_worker_test_utils::TestRegistrationObserver registration_observer(
-        profile());
+    service_worker_test_utils::TestServiceWorkerContextObserver
+        registration_observer(profile());
     base::FilePath packed_path = test_dir.Pack();
     const Extension* extension = InstallExtension(
         packed_path, 1, mojom::ManifestLocation::kExternalPolicyDownload);
@@ -6889,7 +6978,7 @@ IN_PROC_BROWSER_TEST_F(ManifestV3WebRequestApiTest, RecordUkmOnNavigation) {
           ukm_entry, "DeclarativeWebRequestPermissionCount",
           ukm::GetExponentialBucketMin(1u, kBucketSpacing));
     } else {
-      NOTREACHED();
+      NOTREACHED_IN_MIGRATION();
     }
   }
 }

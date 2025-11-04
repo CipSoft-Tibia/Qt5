@@ -47,10 +47,11 @@ TEST_P(WaylandSurfaceTest, SurfaceReenterOutput) {
   EXPECT_THAT(wayland_surface->entered_outputs(), ElementsAre(output_id));
 }
 
+#if !BUILDFLAG(IS_CHROMEOS_LACROS)
 INSTANTIATE_TEST_SUITE_P(XdgVersionStableTest,
                          WaylandSurfaceTest,
                          ::testing::Values(wl::ServerConfig{}));
-
+#else
 INSTANTIATE_TEST_SUITE_P(
     XdgVersionStableTestWithAuraShell,
     WaylandSurfaceTest,
@@ -58,8 +59,8 @@ INSTANTIATE_TEST_SUITE_P(
         wl::ServerConfig{
             .enable_aura_shell = wl::EnableAuraShellProtocol::kEnabled},
         wl::ServerConfig{
-            .enable_aura_shell = wl::EnableAuraShellProtocol::kEnabled,
-            .use_aura_output_manager = true}));
+            .enable_aura_shell = wl::EnableAuraShellProtocol::kEnabled}));
+#endif
 
 }  // namespace
 }  // namespace ui

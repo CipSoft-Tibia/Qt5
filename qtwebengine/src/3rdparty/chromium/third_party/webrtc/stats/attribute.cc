@@ -25,12 +25,12 @@ namespace {
 struct VisitIsSequence {
   // Any type of vector is a sequence.
   template <typename T>
-  bool operator()(const RTCStatsMember<std::vector<T>>* attribute) {
+  bool operator()(const std::optional<std::vector<T>>* attribute) {
     return true;
   }
   // Any other type is not.
   template <typename T>
-  bool operator()(const RTCStatsMember<T>* attribute) {
+  bool operator()(const std::optional<T>* attribute) {
     return false;
   }
 };
@@ -62,7 +62,7 @@ struct VisitToString {
 
   // Vector attributes.
   template <typename T>
-  std::string operator()(const RTCStatsMember<std::vector<T>>* attribute) {
+  std::string operator()(const std::optional<std::vector<T>>* attribute) {
     rtc::StringBuilder sb;
     sb << "[";
     const char* separator = "";
@@ -84,7 +84,7 @@ struct VisitToString {
   // Map attributes.
   template <typename T>
   std::string operator()(
-      const RTCStatsMember<std::map<std::string, T>>* attribute) {
+      const std::optional<std::map<std::string, T>>* attribute) {
     rtc::StringBuilder sb;
     sb << "{";
     const char* separator = "";
@@ -106,21 +106,18 @@ struct VisitToString {
   }
   // Simple attributes.
   template <typename T>
-  std::string operator()(const RTCStatsMember<T>* attribute) {
+  std::string operator()(const std::optional<T>* attribute) {
     return ValueToString(attribute->value());
   }
 };
 
 struct VisitIsEqual {
   template <typename T>
-  bool operator()(const RTCStatsMember<T>* attribute) {
+  bool operator()(const std::optional<T>* attribute) {
     if (!other.holds_alternative<T>()) {
       return false;
     }
-    absl::optional<T> attribute_as_optional =
-        attribute->has_value() ? absl::optional<T>(attribute->value())
-                               : absl::nullopt;
-    return attribute_as_optional == other.as_optional<T>();
+    return *attribute == other.as_optional<T>();
   }
 
   const Attribute& other;
@@ -146,8 +143,7 @@ bool Attribute::is_sequence() const {
 }
 
 bool Attribute::is_string() const {
-  return absl::holds_alternative<const RTCStatsMember<std::string>*>(
-      attribute_);
+  return absl::holds_alternative<const std::optional<std::string>*>(attribute_);
 }
 
 std::string Attribute::ToString() const {

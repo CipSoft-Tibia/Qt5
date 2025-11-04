@@ -16,11 +16,11 @@
 // #ifdef unless needed and tested.
 #ifdef WEBRTC_USE_H264
 
-#include "api/video/color_space.h"
-
 extern "C" {
-#include "third_party/ffmpeg/libavcodec/avcodec.h"
+#include <libavcodec/avcodec.h>
 }  // extern "C"
+
+#include "api/video/color_space.h"
 
 namespace webrtc {
 

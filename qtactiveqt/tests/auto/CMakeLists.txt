@@ -4,7 +4,9 @@
 add_subdirectory(conversion)
 add_subdirectory(qaxobject)
 add_subdirectory(dumpcpp)
-add_subdirectory(cmake)
+if(NOT (WIN32 AND CMAKE_CROSSCOMPILING))
+    add_subdirectory(cmake)
+endif()
 add_subdirectory(qbstr)
 
 find_program(midl midl.exe)

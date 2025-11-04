@@ -34,6 +34,13 @@ group("icu") {
   ]
 }
 
+# Allow access to normalization test data from unit/integration tests.
+copy("normalization_test") {
+  testonly = true
+  sources = [ "source/data/unidata/NormalizationTest.txt" ]
+  outputs = [ "$root_out_dir/testdata/{{source_file_part}}" ]
+}
+
 # Shared config used by ICU and all dependents.
 config("bundled_icu_config") {
   defines = [
@@ -163,6 +170,12 @@ config("icu_code") {
       # Used for conditional changes to the compilation process that
       # are only needed for the Fuchsia toolchain.
       "-DICU_IS_IN_FUCHSIA",
+
+      # Fuchsia's default compilation config makes
+      # no-newline-after-eof an error. While in ICU it
+      # probably does not matter. So we instruct Fuchsia
+      # to lower its standards when compiling ICU.
+      "-Wno-newline-eof",
     ] + icu_fuchsia_extra_compile_flags
   }
   if (current_cpu == "wasm") {
@@ -215,6 +228,12 @@ template("generate_icu_component") {
       # take effect.
       configs += [ ":icu_code" ]
       configs += extra_configs
+      # Add Fuchsia-specific configs
+      configs += icu_fuchsia_extra_configs
+      # Remove Fuchsia-specific configs, the "add-then-remove" ensures that
+      # removing a config that is not there does not fail.
+      configs += icu_fuchsia_remove_configs
+      configs -= icu_fuchsia_remove_configs
       public_configs = [ ":icu_config" ]
     }
   } else {
@@ -265,6 +284,10 @@ template("generate_icu_component") {
       # take effect.
       configs += [ ":icu_code" ]
       configs += extra_configs
+      # See a similar stanza above for details.
+      configs += icu_fuchsia_extra_configs
+      configs += icu_fuchsia_remove_configs
+      configs -= icu_fuchsia_remove_configs
       public_configs = [ ":icu_config" ]
 
       # Make icu into a standalone static library. Currently This is only useful
@@ -309,11 +332,23 @@ template("generate_icui18n") {
 
 generate_icui18n("icui18n") {
   extra_configs = []
+  if (icu_is_in_fuchsia) {
+      # See similar stanza above for details.
+      extra_configs += icu_fuchsia_extra_configs
+      extra_configs += icu_fuchsia_remove_configs
+      extra_configs -= icu_fuchsia_remove_configs
+  }
   icuuc_deps = [ ":bundled_icuuc_private" ]
 }
 
 generate_icui18n("icui18n_hidden_visibility") {
   extra_configs = [ ":visibility_hidden" ]
+  if (icu_is_in_fuchsia) {
+      # See similar stanza above for details.
+      extra_configs += icu_fuchsia_extra_configs
+      extra_configs += icu_fuchsia_remove_configs
+      extra_configs -= icu_fuchsia_remove_configs
+  }
   icuuc_deps = [ ":bundled_icuuc_private_hidden_visibility" ]
   if (is_fuchsia && !icu_is_in_fuchsia) {
     fuchsia_output_name_postfix = "_hidden_visibility"
@@ -371,6 +406,12 @@ source_set("icuuc_public") {
 
 generate_icuuc("icuuc_private") {
   extra_configs = []
+  if (icu_is_in_fuchsia) {
+      # See similar stanza above for details.
+      extra_configs += icu_fuchsia_extra_configs
+      extra_configs += icu_fuchsia_remove_configs
+      extra_configs -= icu_fuchsia_remove_configs
+  }
   output_name = "icuuc"
   visibility = [
     ":bundled_icui18n",
@@ -380,6 +421,12 @@ generate_icuuc("icuuc_private") {
 
 generate_icuuc("icuuc_private_hidden_visibility") {
   extra_configs = [ ":visibility_hidden" ]
+  if (icu_is_in_fuchsia) {
+      # See similar stanza above for details.
+      extra_configs += icu_fuchsia_extra_configs
+      extra_configs += icu_fuchsia_remove_configs
+      extra_configs -= icu_fuchsia_remove_configs
+  }
   output_name = "icuuc_hidden_visibility"
   visibility = [
     ":bundled_icui18n_hidden_visibility",
@@ -494,10 +541,12 @@ if (icu_use_data_file) {
       if (is_mac || is_ios) {
         args += [ "--mac" ]
       } else if (is_win) {
-        if (host_os == "linux") {
-          args += [ "--win-on-linux" ]
+        if (target_cpu == "arm64" || target_cpu == "x64") {
+          args += [ "--win64" ]
+        } else if (target_cpu == "arm" || target_cpu == "x86") {
+          args += [ "--win32" ]
         } else {
-          args += [ "--win" ]
+          assert(false)
         }
       }
     }

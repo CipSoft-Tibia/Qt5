@@ -10,6 +10,8 @@
 #ifndef COMPILER_TRANSLATOR_IMMUTABLESTRINGBUILDER_H_
 #define COMPILER_TRANSLATOR_IMMUTABLESTRINGBUILDER_H_
 
+#include <cstring>
+
 #include "compiler/translator/ImmutableString.h"
 
 namespace sh
@@ -24,14 +26,14 @@ class ImmutableStringBuilder
 
     ImmutableStringBuilder &operator<<(const ImmutableString &str);
 
-    ImmutableStringBuilder &operator<<(const char *str);
+    ImmutableStringBuilder &operator<<(const char *str) { return *this << ImmutableString(str); }
 
-    ImmutableStringBuilder &operator<<(const char &c);
+    ImmutableStringBuilder &operator<<(char c);
 
     // This invalidates the ImmutableStringBuilder, so it should only be called once.
     operator ImmutableString();
 
-    void appendDecimal(const uint32_t &i);
+    void appendDecimal(uint32_t i);
 
     template <typename T>
     void appendHex(T number)
@@ -74,6 +76,47 @@ class ImmutableStringBuilder
 
 // GLSL ES 3.00.6 section 3.9: the maximum length of an identifier is 1024 characters.
 constexpr unsigned int kESSLMaxIdentifierLength = 1024u;
+
+namespace impl
+{
+inline size_t GetArgLength(const ImmutableString &str)
+{
+    return str.length();
+}
+
+inline size_t GetArgLength(const char *str)
+{
+    return strlen(str);
+}
+
+inline size_t GetArgsTotalSize()
+{
+    return 0;
+}
+
+template <typename T, typename... Rest>
+inline size_t GetArgsTotalSize(const T &firstArg, Rest... rest)
+{
+    return GetArgLength(firstArg) + GetArgsTotalSize(rest...);
+}
+
+inline void AppendStrings(ImmutableStringBuilder &builder) {}
+
+template <typename T, typename... Rest>
+inline void AppendStrings(ImmutableStringBuilder &builder, const T &firstArg, Rest... rest)
+{
+    builder << firstArg;
+    AppendStrings(builder, rest...);
+}
+}  // namespace impl
+
+template <typename... Args>
+ImmutableString BuildConcatenatedImmutableString(Args... args)
+{
+    ImmutableStringBuilder builder(impl::GetArgsTotalSize(args...));
+    impl::AppendStrings(builder, args...);
+    return builder;
+}
 
 }  // namespace sh
 

@@ -7,16 +7,14 @@ import QtQml
 DynamicRigidBody {
     id: root
     property real diceWidth: 1.9 // cm
-    property bool atRest: true
+    property alias atRest: motionTimeout.running
     property bool isClose: position.length() < 100
     receiveContactReports: true
     sendContactReports: true
     onBodyContact: (body, positions, impulses, normals) => {
-        motionTimeout.start()
-        atRest = false
-        let volume = 0
-        impulses.forEach(vector => { volume += vector.length() })
-        diceSound.volume = volume / 2000
+        motionTimeout.restart()
+        const volume = impulses.reduce((acc, vector) => acc + vector.length(), 0)
+        diceSound.audioOutput.volume = volume / 2000
         if (!diceSound.playing)
             diceSound.play()
     }
@@ -25,10 +23,6 @@ DynamicRigidBody {
         interval: 500
         running: false
         repeat: false
-        onRunningChanged: {
-            if (!running)
-                root.atRest = true
-        }
     }
 
     massMode: DynamicRigidBody.CustomDensity
@@ -41,9 +35,11 @@ DynamicRigidBody {
         receivesShadows: root.isClose
         scale: Qt.vector3d(2.65, 2.65, 2.65).times(root.diceWidth)
     }
-    SoundEffect {
-        id: diceSound
-        loops: 0
-        source: "sounds/onedice.wav"
+
+    MediaPlayer {
+            id: diceSound
+            source: "sounds/onedice.wav"
+            loops: 0
+            audioOutput: AudioOutput {}
     }
 }

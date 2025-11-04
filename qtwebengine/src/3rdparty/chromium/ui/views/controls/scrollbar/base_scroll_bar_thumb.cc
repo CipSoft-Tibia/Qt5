@@ -26,7 +26,7 @@ BaseScrollBarThumb::~BaseScrollBarThumb() = default;
 void BaseScrollBarThumb::SetLength(int length) {
   // Make sure the thumb is never sized smaller than its minimum possible
   // display size.
-  gfx::Size size = GetPreferredSize();
+  gfx::Size size = GetPreferredSize({});
   size.SetToMax(
       gfx::Size(IsHorizontal() ? length : 0, IsHorizontal() ? 0 : length));
   SetSize(size);
@@ -136,7 +136,7 @@ void BaseScrollBarThumb::OnStateChanged() {
 }
 
 bool BaseScrollBarThumb::IsHorizontal() const {
-  return scroll_bar_->IsHorizontal();
+  return scroll_bar_->GetOrientation() == ScrollBar::Orientation::kHorizontal;
 }
 
 BEGIN_METADATA(BaseScrollBarThumb)

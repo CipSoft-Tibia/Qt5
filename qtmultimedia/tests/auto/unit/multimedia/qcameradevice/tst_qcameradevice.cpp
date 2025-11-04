@@ -1,12 +1,14 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
-#include <QtTest/QtTest>
+#include <QtTest/qtest.h>
 #include <QDebug>
 
 #include <qcamera.h>
 #include <qcameradevice.h>
 #include <qmediadevices.h>
+
+#include <private/qcameradevice_p.h>
 
 #include "qmockintegration.h"
 
@@ -25,6 +27,8 @@ private slots:
     void defaultCamera();
     void availableCameras();
     void equality_operators();
+    void basicComparison_data();
+    void basicComparison();
     void qDebug_operator();
 };
 
@@ -119,6 +123,66 @@ void tst_QCameraDevice::equality_operators()
         QCamera camera(cameras.at(1));
         QVERIFY(camera.cameraDevice() == cameras.at(1));
     }
+}
+
+void tst_QCameraDevice::basicComparison_data()
+{
+    QTest::addColumn<QByteArray>("idA");
+    QTest::addColumn<QString>("descriptionA");
+    QTest::addColumn<QByteArray>("idB");
+    QTest::addColumn<QString>("descriptionB");
+    QTest::addColumn<bool>("expected");
+
+    const QByteArray idA = "ABC";
+    const QString descrA = "Camera A";
+    const QByteArray idB = "DEF";
+    const QString descrB = "Camera B";
+
+    QTest::newRow("Equal ID, equal description")
+        << idA << descrA
+        << idA << descrA
+        << true;
+
+    QTest::newRow("Equal ID, inequal description")
+        << idA << descrA
+        << idA << descrB
+        << true;
+
+    QTest::newRow("Inequal ID, equal description")
+        << idA << descrA
+        << idB << descrA
+        << false;
+
+    QTest::newRow("Inequal ID, inequal description")
+        << idA << descrA
+        << idB << descrB
+        << false;
+
+    QTest::newRow("Both are null-devices")
+        << QByteArray() << ""
+        << QByteArray() << ""
+        << true;
+}
+
+void tst_QCameraDevice::basicComparison()
+{
+    QFETCH(QByteArray, idA);
+    QFETCH(QString, descriptionA);
+    QFETCH(QByteArray, idB);
+    QFETCH(QString, descriptionB);
+    QFETCH(bool, expected);
+
+    QCameraDevicePrivate *privA = new QCameraDevicePrivate;
+    privA->id = idA;
+    privA->description = descriptionA;
+    const QCameraDevice a = privA->create();
+
+    QCameraDevicePrivate *privB = new QCameraDevicePrivate;
+    privB->id = idB;
+    privB->description = descriptionB;
+    const QCameraDevice b = privB->create();
+
+    QCOMPARE(a == b, expected);
 }
 
 void tst_QCameraDevice::qDebug_operator()

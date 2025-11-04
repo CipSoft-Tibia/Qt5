@@ -18,13 +18,10 @@ let lastReloadDialogTime = 0;
 const kMinTimeBetweenDialogsMs = 10000;
 const changedPaths = new Set<string>();
 
-export function initLiveReloadIfLocalhost(embeddedMode: boolean) {
-  if (!location.origin.startsWith('http://localhost:')) return;
-  if (embeddedMode) return;
-
+export function initLiveReload() {
   const monitor = new EventSource('/live_reload');
   monitor.onmessage = (msg) => {
-    const change = msg.data;
+    const change = String(msg.data);
     console.log('Live reload:', change);
     changedPaths.add(change);
     if (change.endsWith('.css')) {
@@ -53,25 +50,29 @@ const rapidReloadFlag = featureFlags.register({
   id: 'rapidReload',
   name: 'Development: rapid live reload',
   defaultValue: false,
-  description: 'During development, instantly reload the page on change. ' +
-      'Enables lower latency of live reload at the cost of potential ' +
-      'multiple re-reloads.',
+  description:
+    'During development, instantly reload the page on change. ' +
+    'Enables lower latency of live reload at the cost of potential ' +
+    'multiple re-reloads.',
   devOnly: true,
 });
 
 function reloadDelayed() {
-  setTimeout(() => {
-    let pathsStr = '';
-    for (const path of changedPaths) {
-      pathsStr += path + '\n';
-    }
-    changedPaths.clear();
-    if (Date.now() - lastReloadDialogTime < kMinTimeBetweenDialogsMs) return;
-    const reload =
+  setTimeout(
+    () => {
+      let pathsStr = '';
+      for (const path of changedPaths) {
+        pathsStr += path + '\n';
+      }
+      changedPaths.clear();
+      if (Date.now() - lastReloadDialogTime < kMinTimeBetweenDialogsMs) return;
+      const reload =
         rapidReloadFlag.get() || confirm(`${pathsStr}changed, click to reload`);
-    lastReloadDialogTime = Date.now();
-    if (reload) {
-      window.location.reload();
-    }
-  }, rapidReloadFlag.get() ? 0 : 1000);
+      lastReloadDialogTime = Date.now();
+      if (reload) {
+        window.location.reload();
+      }
+    },
+    rapidReloadFlag.get() ? 0 : 1000,
+  );
 }

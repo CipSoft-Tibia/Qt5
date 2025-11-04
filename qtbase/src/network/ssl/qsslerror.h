@@ -1,11 +1,13 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 
 #ifndef QSSLERROR_H
 #define QSSLERROR_H
 
 #include <QtNetwork/qtnetworkglobal.h>
+#include <QtCore/qdebug.h>
 #include <QtCore/qvariant.h>
 #include <QtNetwork/qsslcertificate.h>
 

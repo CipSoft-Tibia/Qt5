@@ -15,14 +15,12 @@ class QmlMqttClient;
 class QmlMqttSubscription : public QObject
 {
     Q_OBJECT
-    Q_PROPERTY(QMqttTopicFilter topic MEMBER m_topic NOTIFY topicChanged)
     QML_UNCREATABLE("Not intended to be creatable")
 public:
     QmlMqttSubscription(QMqttSubscription *s, QmlMqttClient *c);
     ~QmlMqttSubscription();
 
 Q_SIGNALS:
-    void topicChanged(QString);
     void messageReceived(const QString &msg);
 
 public slots:
@@ -32,7 +30,6 @@ private:
     Q_DISABLE_COPY(QmlMqttSubscription)
     QMqttSubscription *sub;
     QmlMqttClient *client;
-    QMqttTopicFilter m_topic;
 };
 
 class QmlMqttClient : public QObject

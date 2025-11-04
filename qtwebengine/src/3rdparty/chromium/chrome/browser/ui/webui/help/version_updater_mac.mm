@@ -2,11 +2,12 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#include "chrome/browser/ui/webui/help/version_updater_mac.h"
+#include "chrome/browser/ui/webui/help/version_updater.h"
 
 #import <Foundation/Foundation.h>
 
 #include <algorithm>
+#include <memory>
 #include <string>
 #include <utility>
 
@@ -16,6 +17,7 @@
 #include "base/functional/callback_helpers.h"
 #include "base/logging.h"
 #include "base/mac/authorization_util.h"
+#include "base/memory/ptr_util.h"
 #include "base/memory/scoped_refptr.h"
 #include "base/strings/stringprintf.h"
 #include "base/strings/utf_string_conversions.h"
@@ -46,7 +48,7 @@ void UpdateStatus(VersionUpdater::StatusCallback status_callback,
   VersionUpdater::Status status = VersionUpdater::Status::CHECKING;
   int progress = 0;
   std::string version;
-  std::string err_message;
+  std::u16string err_message;
 
   switch (update_state.state) {
     case updater::UpdateService::UpdateState::State::kCheckingForUpdates:
@@ -71,10 +73,13 @@ void UpdateStatus(VersionUpdater::StatusCallback status_callback,
       break;
     case updater::UpdateService::UpdateState::State::kUpdateError:
       status = VersionUpdater::Status::FAILED;
-      // TODO(https://crbug.com/1146201): Localize error string.
-      err_message = base::StringPrintf(
-          "An error occurred. (Error code: %d) (Extra code: %d)",
-          update_state.error_code, update_state.extra_code1);
+      err_message = l10n_util::GetStringFUTF16(
+          IDS_ABOUT_BOX_ERROR_DURING_UPDATE_CHECK,
+          l10n_util::GetStringFUTF16(IDS_ABOUT_BOX_GOOGLE_UPDATE_ERROR,
+                                     base::UTF8ToUTF16(base::StringPrintf(
+                                         "%d", update_state.error_code)),
+                                     base::UTF8ToUTF16(base::StringPrintf(
+                                         "%d", update_state.extra_code1))));
       break;
     case updater::UpdateService::UpdateState::State::kNotStarted:
       [[fallthrough]];
@@ -82,47 +87,52 @@ void UpdateStatus(VersionUpdater::StatusCallback status_callback,
       return;
   }
 
-  status_callback.Run(status, progress, false, false, version, 0,
-                      base::UTF8ToUTF16(err_message));
+  status_callback.Run(status, progress, false, false, version, 0, err_message);
 }
+
+// macOS implementation of version update functionality, used by the WebUI
+// About/Help page.
+class VersionUpdaterMac : public VersionUpdater {
+ public:
+  VersionUpdaterMac() = default;
+  VersionUpdaterMac(const VersionUpdaterMac&) = delete;
+  VersionUpdaterMac& operator=(const VersionUpdaterMac&) = delete;
+  ~VersionUpdaterMac() override = default;
+
+  // VersionUpdater implementation.
+  void CheckForUpdate(StatusCallback status_callback,
+                      PromoteCallback promote_callback) override {
+    EnsureUpdater(
+        base::BindOnce(
+            [](PromoteCallback prompt) {
+              prompt.Run(PromotionState::PROMOTE_ENABLED);
+            },
+            promote_callback),
+        base::BindOnce(
+            [](base::RepeatingCallback<void(
+                   const updater::UpdateService::UpdateState&)>
+                   status_callback) {
+              base::ThreadPool::PostTaskAndReplyWithResult(
+                  FROM_HERE, {base::MayBlock()},
+                  base::BindOnce(&GetUpdaterScope),
+                  base::BindOnce(
+                      [](base::RepeatingCallback<void(
+                             const updater::UpdateService::UpdateState&)>
+                             status_callback,
+                         updater::UpdaterScope scope) {
+                        BrowserUpdaterClient::Create(scope)->CheckForUpdate(
+                            status_callback);
+                      },
+                      status_callback));
+            },
+            base::BindRepeating(&UpdateStatus, status_callback)));
+  }
+  void PromoteUpdater() override { SetupSystemUpdater(); }
+};
 
 }  // namespace
 
-VersionUpdater* VersionUpdater::Create(
+std::unique_ptr<VersionUpdater> VersionUpdater::Create(
     content::WebContents* /* web_contents */) {
-  return new VersionUpdaterMac;
-}
-
-VersionUpdaterMac::VersionUpdaterMac() = default;
-
-VersionUpdaterMac::~VersionUpdaterMac() = default;
-
-void VersionUpdaterMac::CheckForUpdate(StatusCallback status_callback,
-                                       PromoteCallback promote_callback) {
-  EnsureUpdater(
-      base::BindOnce(
-          [](PromoteCallback prompt) {
-            prompt.Run(PromotionState::PROMOTE_ENABLED);
-          },
-          promote_callback),
-      base::BindOnce(
-          [](base::RepeatingCallback<void(
-                 const updater::UpdateService::UpdateState&)> status_callback) {
-            base::ThreadPool::PostTaskAndReplyWithResult(
-                FROM_HERE, {base::MayBlock()}, base::BindOnce(&GetUpdaterScope),
-                base::BindOnce(
-                    [](base::RepeatingCallback<void(
-                           const updater::UpdateService::UpdateState&)>
-                           status_callback,
-                       updater::UpdaterScope scope) {
-                      BrowserUpdaterClient::Create(scope)->CheckForUpdate(
-                          status_callback);
-                    },
-                    status_callback));
-          },
-          base::BindRepeating(&UpdateStatus, status_callback)));
-}
-
-void VersionUpdaterMac::PromoteUpdater() {
-  SetupSystemUpdater();
+  return base::WrapUnique(new VersionUpdaterMac());
 }

@@ -8,7 +8,9 @@
 
 #include <qcoreapplication.h>
 #include <qnetworkinterface.h>
+#if QT_CONFIG(udpsocket)
 #include <qudpsocket.h>
+#endif
 #include "../../../network-settings.h"
 
 #include <private/qtnetwork-config_p.h>
@@ -190,11 +192,16 @@ void tst_QNetworkInterface::localAddress_data()
             if (addr.isLoopback())
                 continue;       // added above
 
-            if (addr.protocol() == QAbstractSocket::IPv4Protocol) {
+            int prefixLength = entry.prefixLength();
+            if (prefixLength > 0 && addr.protocol() == QAbstractSocket::IPv4Protocol) {
                 // add an IPv4 address with bits in the host portion of the address flipped
+                // (for point-to-point, we flip the least significant bit)
                 quint32 ip4 = entry.ip().toIPv4Address();
-                addr.setAddress(ip4 ^ ~entry.netmask().toIPv4Address());
-            } else if (!ipv6 || entry.prefixLength() != 64) {
+                quint32 hostmask = 0x1;
+                if (prefixLength != 32)
+                    hostmask = ~0U >> prefixLength;
+                addr.setAddress(ip4 ^ hostmask);
+            } else if (!ipv6 || prefixLength != 64) {
                 continue;
             } else {
 #ifdef Q_OS_ANDROID
@@ -223,6 +230,9 @@ void tst_QNetworkInterface::localAddress_data()
 
 void tst_QNetworkInterface::localAddress()
 {
+#if !QT_CONFIG(udpsocket)
+    QSKIP("UDP socket support not built in");
+#else
     QFETCH(QHostAddress, target);
     QUdpSocket socket;
     socket.connectToHost(target, 80);
@@ -252,7 +262,8 @@ void tst_QNetworkInterface::localAddress()
              << "pmtu" << pmtu;
 
     // check that the Path MTU is less than or equal the interface's MTU
-    QVERIFY(pmtu <= outgoingIface->maximumTransmissionUnit());
+    QCOMPARE_LE(pmtu, outgoingIface->maximumTransmissionUnit());
+#endif // QT_CONFIG(udpsocket)
 }
 
 void tst_QNetworkInterface::interfaceFromXXX_data()

@@ -41,7 +41,7 @@ std::string GetServerTypeString(BaseTestServer::Type type) {
     case BaseTestServer::TYPE_WSS:
       return "ws";
     default:
-      NOTREACHED();
+      NOTREACHED_IN_MIGRATION();
   }
   return std::string();
 }
@@ -81,7 +81,7 @@ std::string GetSpawnerUrlBase() {
   if (!ReadFileToString(config_path, &config_json))
     LOG(FATAL) << "Failed to read " << config_path.value();
 
-  absl::optional<base::Value> config = base::JSONReader::Read(config_json);
+  std::optional<base::Value> config = base::JSONReader::Read(config_json);
   if (!config)
     LOG(FATAL) << "Failed to parse " << config_path.value();
 
@@ -99,7 +99,7 @@ RemoteTestServer::RemoteTestServer(Type type,
                                    const base::FilePath& document_root)
     : BaseTestServer(type), io_thread_("RemoteTestServer IO Thread") {
   if (!Init(document_root))
-    NOTREACHED();
+    NOTREACHED_IN_MIGRATION();
 }
 
 RemoteTestServer::RemoteTestServer(Type type,
@@ -108,7 +108,7 @@ RemoteTestServer::RemoteTestServer(Type type,
     : BaseTestServer(type, ssl_options),
       io_thread_("RemoteTestServer IO Thread") {
   if (!Init(document_root))
-    NOTREACHED();
+    NOTREACHED_IN_MIGRATION();
 }
 
 RemoteTestServer::~RemoteTestServer() {
@@ -119,7 +119,7 @@ bool RemoteTestServer::StartInBackground() {
   DCHECK(!started());
   DCHECK(!start_request_);
 
-  absl::optional<base::Value::Dict> arguments_dict = GenerateArguments();
+  std::optional<base::Value::Dict> arguments_dict = GenerateArguments();
   if (!arguments_dict)
     return false;
 

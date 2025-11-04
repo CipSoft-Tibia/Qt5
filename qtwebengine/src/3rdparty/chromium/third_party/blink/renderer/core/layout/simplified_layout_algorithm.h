@@ -42,22 +42,15 @@ class CORE_EXPORT SimplifiedLayoutAlgorithm
                             const LayoutResult&,
                             bool keep_old_size = false);
 
-  // Perform a simple copy of all children of the old fragment.
-  void CloneOldChildren();
-
   void AppendNewChildFragment(const PhysicalFragment&, LogicalOffset);
-
-  // Just create a new layout result based on the current builder state. To be
-  // used after CloneOldChildren() / AppendNewChildFragment().
-  const LayoutResult* CreateResultAfterManualChildLayout();
 
   // Attempt to perform simplified layout on all children and return a new
   // result. If nullptr is returned, it means that simplified layout isn't
   // possible.
-  const LayoutResult* Layout() override;
+  const LayoutResult* Layout();
 
-  MinMaxSizesResult ComputeMinMaxSizes(const MinMaxSizesFloatInput&) override {
-    NOTREACHED();
+  MinMaxSizesResult ComputeMinMaxSizes(const MinMaxSizesFloatInput&) {
+    NOTREACHED_IN_MIGRATION();
     return MinMaxSizesResult();
   }
 

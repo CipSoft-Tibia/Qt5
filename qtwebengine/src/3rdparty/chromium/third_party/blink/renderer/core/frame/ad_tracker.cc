@@ -5,10 +5,10 @@
 #include "third_party/blink/renderer/core/frame/ad_tracker.h"
 
 #include <memory>
+#include <optional>
 
 #include "base/compiler_specific.h"
 #include "base/feature_list.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "third_party/blink/renderer/bindings/core/v8/v8_binding_for_core.h"
 #include "third_party/blink/renderer/core/core_probe_sink.h"
 #include "third_party/blink/renderer/core/execution_context/execution_context.h"
@@ -51,14 +51,6 @@ String GenerateFakeUrlFromScriptId(int script_id) {
 
 }  // namespace
 
-namespace features {
-// Controls whether the AdTracker will look across async stacks to determine if
-// the currently running stack is ad related.
-BASE_FEATURE(kAsyncStackAdTagging,
-             "AsyncStackAdTagging",
-             base::FEATURE_ENABLED_BY_DEFAULT);
-}  // namespace features
-
 // static
 AdTracker* AdTracker::FromExecutionContext(
     ExecutionContext* execution_context) {
@@ -80,10 +72,7 @@ bool AdTracker::IsAdScriptExecutingInDocument(Document* document,
   return ad_tracker && ad_tracker->IsAdScriptInStack(stack_type);
 }
 
-AdTracker::AdTracker(LocalFrame* local_root)
-    : local_root_(local_root),
-      async_stack_enabled_(
-          base::FeatureList::IsEnabled(features::kAsyncStackAdTagging)) {
+AdTracker::AdTracker(LocalFrame* local_root) : local_root_(local_root) {
   local_root_->GetProbeSink()->AddAdTracker(this);
 }
 
@@ -103,7 +92,7 @@ String AdTracker::ScriptAtTopOfStack() {
   // is the url of the script at the top of the stack. See crbug.com/1057211 for
   // more detail.
   v8::Isolate* isolate = v8::Isolate::TryGetCurrent();
-  if (UNLIKELY(!isolate)) {
+  if (!isolate) [[unlikely]] {
     return String();
   }
 
@@ -267,10 +256,7 @@ bool AdTracker::CalculateIfAdSubresource(
 
 void AdTracker::DidCreateAsyncTask(probe::AsyncTaskContext* task_context) {
   DCHECK(task_context);
-  if (!async_stack_enabled_)
-    return;
-
-  absl::optional<AdScriptIdentifier> id;
+  std::optional<AdScriptIdentifier> id;
   if (IsAdScriptInStack(StackType::kBottomAndTop, &id)) {
     task_context->SetAdTask(id);
   }
@@ -278,9 +264,6 @@ void AdTracker::DidCreateAsyncTask(probe::AsyncTaskContext* task_context) {
 
 void AdTracker::DidStartAsyncTask(probe::AsyncTaskContext* task_context) {
   DCHECK(task_context);
-  if (!async_stack_enabled_)
-    return;
-
   if (task_context->IsAdTask()) {
     if (running_ad_async_tasks_ == 0) {
       DCHECK(!bottom_most_async_ad_script_.has_value());
@@ -293,9 +276,6 @@ void AdTracker::DidStartAsyncTask(probe::AsyncTaskContext* task_context) {
 
 void AdTracker::DidFinishAsyncTask(probe::AsyncTaskContext* task_context) {
   DCHECK(task_context);
-  if (!async_stack_enabled_)
-    return;
-
   if (task_context->IsAdTask()) {
     DCHECK_GE(running_ad_async_tasks_, 1);
     running_ad_async_tasks_ -= 1;
@@ -306,7 +286,7 @@ void AdTracker::DidFinishAsyncTask(probe::AsyncTaskContext* task_context) {
 
 bool AdTracker::IsAdScriptInStack(
     StackType stack_type,
-    absl::optional<AdScriptIdentifier>* out_ad_script) {
+    std::optional<AdScriptIdentifier>* out_ad_script) {
   // First check if async tasks are running, as `bottom_most_async_ad_script_`
   // is more likely to be what the caller is looking for than
   // `bottom_most_ad_script_`.

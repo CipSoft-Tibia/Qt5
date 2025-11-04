@@ -2,9 +2,14 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#include "components/os_crypt/sync/os_crypt.h"
+
 #include <windows.h>
 
 #include "base/base64.h"
+#include "base/check.h"
+#include "base/check_op.h"
+#include "base/containers/span.h"
 #include "base/feature_list.h"
 #include "base/logging.h"
 #include "base/memory/singleton.h"
@@ -14,7 +19,6 @@
 #include "base/strings/sys_string_conversions.h"
 #include "base/strings/utf_string_conversions.h"
 #include "base/win/wincrypt_shim.h"
-#include "components/os_crypt/sync/os_crypt.h"
 #include "components/prefs/pref_registry_simple.h"
 #include "components/prefs/pref_service.h"
 #include "components/version_info/version_info.h"
@@ -112,8 +116,7 @@ bool EncryptAndStoreKey(const std::string& key, PrefService* local_state) {
 
   // Add header indicating this key is encrypted with DPAPI.
   encrypted_key.insert(0, kDPAPIKeyPrefix);
-  std::string base64_key;
-  base::Base64Encode(encrypted_key, &base64_key);
+  std::string base64_key = base::Base64Encode(encrypted_key);
   local_state->SetString(kOsCryptEncryptedKeyPrefName, base64_key);
   return true;
 }
@@ -199,8 +202,8 @@ bool OSCryptImpl::EncryptString(const std::string& plaintext,
   DCHECK_EQ(kKeyLength, aead.KeyLength());
   DCHECK_EQ(kNonceLength, aead.NonceLength());
 
-  std::string nonce;
-  crypto::RandBytes(base::WriteInto(&nonce, kNonceLength + 1), kNonceLength);
+  std::string nonce(kNonceLength, '\0');
+  crypto::RandBytes(base::as_writable_byte_span(nonce));
 
   if (!aead.Seal(plaintext, nonce, std::string(), ciphertext))
     return false;
@@ -252,8 +255,8 @@ bool OSCryptImpl::Init(PrefService* local_state) {
 
   // If there is no key in the local state, or if DPAPI decryption fails,
   // generate a new key.
-  std::string key;
-  crypto::RandBytes(base::WriteInto(&key, kKeyLength + 1), kKeyLength);
+  std::string key(kKeyLength, '\0');
+  crypto::RandBytes(base::as_writable_byte_span(key));
 
   if (!EncryptAndStoreKey(key, local_state)) {
     return false;
@@ -280,7 +283,6 @@ OSCrypt::InitResult OSCryptImpl::InitWithExistingKey(PrefService* local_state) {
 
   if (!base::StartsWith(encrypted_key_with_header, kDPAPIKeyPrefix,
                         base::CompareCase::SENSITIVE)) {
-    DUMP_WILL_BE_NOTREACHED_NORETURN() << "Invalid key format.";
     return OSCrypt::kInvalidKeyFormat;
   }
 
@@ -332,6 +334,9 @@ std::string OSCryptImpl::GetRawEncryptionKey() {
 }
 
 bool OSCryptImpl::IsEncryptionAvailable() {
+  if (use_mock_key_) {
+    return !GetRawEncryptionKey().empty();
+  }
   return !encryption_key_.empty();
 }
 

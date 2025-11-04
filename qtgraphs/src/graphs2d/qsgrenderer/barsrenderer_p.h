@@ -27,6 +27,7 @@ class QGraphsView;
 class QBarSeries;
 class QBarSet;
 class QAbstractSeries;
+class QQuickTapHandler;
 
 class BarsRenderer : public QQuickItem
 {
@@ -39,7 +40,6 @@ public:
     void updateSeries(QBarSeries *series);
     void afterUpdate(QList<QAbstractSeries *> &cleanupSeries);
     void afterPolish(QList<QAbstractSeries *> &cleanupSeries);
-    bool handleMousePress(QMouseEvent *event);
     bool handleHoverMove(QHoverEvent *event);
 
 Q_SIGNALS:
@@ -72,11 +72,17 @@ private:
     void updateComponents(QBarSeries *series);
     void updateValueLabels(QBarSeries *series);
 
+    void onSingleTapped(QEventPoint eventPoint, Qt::MouseButton button);
+    void onDoubleTapped(QEventPoint eventPoint, Qt::MouseButton button);
+    void onPressedChanged();
+
     QGraphsView *m_graph = nullptr;
     QHash<QBarSeries *, QList<BarSelectionRect>> m_rectNodesInputRects;
     QHash<QBarSeries *, QList<QQuickItem *>> m_barItems;
     QHash<QBarSeries *, QList<QQuickText *>> m_labelTextItems;
     QHash<QBarSeries *, QList<BarSeriesData>> m_seriesData;
+
+    QQuickTapHandler *m_tapHandler = nullptr;
 
     QBarSeries *m_currentHoverSeries = nullptr;
     qsizetype m_colorIndex = -1;

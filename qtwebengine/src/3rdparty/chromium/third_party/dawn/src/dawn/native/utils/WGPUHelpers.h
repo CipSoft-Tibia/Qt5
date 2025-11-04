@@ -37,9 +37,16 @@
 #include "dawn/native/UsageValidationMode.h"
 #include "dawn/native/dawn_platform.h"
 
+namespace tint::wgsl {
+enum class Extension : uint8_t;
+}
+
 namespace dawn::native::utils {
 
-ResultOrError<Ref<ShaderModuleBase>> CreateShaderModule(DeviceBase* device, const char* source);
+ResultOrError<Ref<ShaderModuleBase>> CreateShaderModule(
+    DeviceBase* device,
+    const char* source,
+    const std::vector<tint::wgsl::Extension>& internalExtensions = {});
 
 ResultOrError<Ref<BufferBase>> CreateBufferFromData(DeviceBase* device,
                                                     wgpu::BufferUsage usage,
@@ -135,6 +142,34 @@ ResultOrError<Ref<BindGroupBase>> MakeBindGroup(
     UsageValidationMode mode);
 
 const char* GetLabelForTrace(const char* label);
+
+// Given a std vector, allocate an equivalent array that can be returned in an API's foos/fooCount
+// pair of fields. The apiData must eventually be freed using FreeApiSeq.
+template <typename T>
+void AllocateApiSeqFromStdVector(const T** apiData, size_t* apiSize, const std::vector<T>& vector) {
+    size_t size = vector.size();
+    *apiSize = size;
+
+    if (size > 0) {
+        T* mutableData = new T[size];
+        memcpy(mutableData, vector.data(), size * sizeof(T));
+        *apiData = mutableData;
+    } else {
+        *apiData = nullptr;
+    }
+}
+
+// Free an API sequence that was allocated by AllocateApiSeqFromStdVector
+template <typename T>
+void FreeApiSeq(T** apiData, size_t* apiSize) {
+    delete[] *apiData;
+    *apiData = nullptr;
+    *apiSize = 0;
+}
+
+// Normalize the label, truncating it at the first null-terminator, if any.
+std::string_view NormalizeLabel(std::string_view in);
+std::string_view NormalizeLabel(std::optional<std::string_view> in);
 
 }  // namespace dawn::native::utils
 

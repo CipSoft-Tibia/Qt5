@@ -8,6 +8,7 @@
 #include <string>
 #include <vector>
 
+#include "base/containers/span.h"
 #include "base/files/file.h"
 #include "base/files/file_path.h"
 #include "base/location.h"
@@ -18,27 +19,27 @@
 
 namespace device_signals {
 
-absl::optional<std::string> HashFile(const base::FilePath& file_path) {
+std::optional<std::string> HashFile(const base::FilePath& file_path) {
   base::ScopedBlockingCall scoped_blocking_call(FROM_HERE,
                                                 base::BlockingType::MAY_BLOCK);
 
   base::File file(file_path, base::File::FLAG_OPEN | base::File::FLAG_READ);
   if (!file.IsValid()) {
-    return absl::nullopt;
+    return std::nullopt;
   }
 
   auto secure_hash =
       crypto::SecureHash::Create(crypto::SecureHash::Algorithm::SHA256);
   std::vector<char> buffer(base::GetPageSize());
 
-  int bytes_read = 0;
+  std::optional<size_t> bytes_read;
   do {
-    bytes_read = file.ReadAtCurrentPos(buffer.data(), buffer.size());
-    if (bytes_read == -1) {
-      return absl::nullopt;
+    bytes_read = file.ReadAtCurrentPos(base::as_writable_byte_span(buffer));
+    if (!bytes_read.has_value()) {
+      return std::nullopt;
     }
-    secure_hash->Update(buffer.data(), bytes_read);
-  } while (bytes_read > 0);
+    secure_hash->Update(buffer.data(), bytes_read.value());
+  } while (bytes_read.value() > 0);
 
   std::string hash(crypto::kSHA256Length, 0);
   secure_hash->Finish(std::data(hash), hash.size());

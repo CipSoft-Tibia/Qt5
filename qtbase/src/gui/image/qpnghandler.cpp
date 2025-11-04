@@ -1,6 +1,7 @@
 // Copyright (C) 2013 Samuel Gaist <samuel.gaist@edeltech.ch>
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:data-parser
 
 #include "private/qpnghandler_p.h"
 
@@ -46,8 +47,6 @@
 QT_BEGIN_NAMESPACE
 
 using namespace Qt::StringLiterals;
-
-Q_DECLARE_LOGGING_CATEGORY(lcImageIo)
 
 // avoid going through QImage::scanLine() which calls detach
 #define FAST_SCAN_LINE(data, bpl, y) (data + (y) * bpl)
@@ -468,7 +467,7 @@ bool QPngHandlerPrivate::readPngHeader()
         png_get_gAMA(png_ptr, info_ptr, &file_gamma);
         fileGamma = file_gamma;
         if (fileGamma > 0.0f) {
-            QColorSpacePrimaries primaries;
+            QColorSpace::PrimaryPoints primaries;
             if (png_get_valid(png_ptr, info_ptr, PNG_INFO_cHRM)) {
                 double white_x, white_y, red_x, red_y;
                 double green_x, green_y, blue_x, blue_y;
@@ -480,7 +479,7 @@ bool QPngHandlerPrivate::readPngHeader()
                 primaries.greenPoint = QPointF(green_x, green_y);
                 primaries.bluePoint = QPointF(blue_x, blue_y);
             }
-            if (primaries.areValid()) {
+            if (primaries.isValid()) {
                 colorSpace = QColorSpace(primaries.whitePoint, primaries.redPoint, primaries.greenPoint, primaries.bluePoint,
                                          QColorSpace::TransferFunction::Gamma, 1.0f / fileGamma);
             } else {

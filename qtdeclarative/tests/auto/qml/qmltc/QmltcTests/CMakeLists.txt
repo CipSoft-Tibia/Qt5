@@ -33,9 +33,7 @@ set(qml_sources
     simpleQtQuickTypes.qml
     typeWithEnums.qml
     methods.qml
-    properties.qml
     ObjectWithId.qml
-    documentWithIds.qml
     importNamespace.qml
     gradients.qml
     qjsvalueAssignments.qml
@@ -151,12 +149,20 @@ set(js_sources
 
 set(common_libraries
     Qt::Core
+    Qt::Qml
     Qt::QmlPrivate
     Qt::QuickPrivate
     Qt::QuickTemplates2Private
     Qt::TestPrivate
     Qt::Gui # QColor, QMatrix4x4, ...
 )
+
+if(QT_FEATURE_quick_tableview)
+    list(APPEND qml_sources properties.qml)
+    if(QT_FEATURE_quick_gridview)
+        list(APPEND qml_sources documentWithIds.qml)
+    endif()
+endif()
 
 if (QT_FEATURE_qml_table_model)
     list(APPEND qml_sources QmlTableModel.qml)

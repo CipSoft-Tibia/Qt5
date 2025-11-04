@@ -2,6 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#ifdef UNSAFE_BUFFERS_BUILD
+// TODO(crbug.com/40285824): Remove this and convert code to safer constructs.
+#pragma allow_unsafe_buffers
+#endif
+
 #include "components/leveldb_proto/internal/shared_proto_database_client.h"
 
 #include <memory>
@@ -58,11 +63,11 @@ bool SharedProtoDatabaseClient::HasPrefix(const PhysicalKey& key,
 }
 
 // static
-absl::optional<LogicalKey> SharedProtoDatabaseClient::StripPrefix(
+std::optional<LogicalKey> SharedProtoDatabaseClient::StripPrefix(
     const PhysicalKey& key,
     const KeyPrefix& prefix) {
   if (!HasPrefix(key, prefix))
-    return absl::nullopt;
+    return std::nullopt;
   return LogicalKey(key.value().substr(prefix.value().length()));
 }
 
@@ -82,7 +87,7 @@ bool SharedProtoDatabaseClient::KeyFilterStripPrefix(
     const PhysicalKey& key) {
   if (key_filter.is_null())
     return true;
-  absl::optional<LogicalKey> stripped = StripPrefix(key, prefix);
+  std::optional<LogicalKey> stripped = StripPrefix(key, prefix);
   if (!stripped)
     return false;
   return key_filter.Run(stripped->value());
@@ -103,7 +108,7 @@ SharedProtoDatabaseClient::KeyIteratorControllerStripPrefix(
     const KeyPrefix& prefix,
     const PhysicalKey& key) {
   DCHECK(!controller.is_null());
-  absl::optional<LogicalKey> stripped = StripPrefix(key, prefix);
+  std::optional<LogicalKey> stripped = StripPrefix(key, prefix);
   if (!stripped)
     return Enums::kSkipAndStop;
   return controller.Run(stripped->value());
@@ -194,7 +199,7 @@ SharedProtoDatabaseClient::~SharedProtoDatabaseClient() {
 void SharedProtoDatabaseClient::Init(const std::string& client_uma_name,
                                      Callbacks::InitStatusCallback callback) {
   // Should never be called from from the selector, and init is not necessary.
-  NOTREACHED();
+  NOTREACHED_IN_MIGRATION();
   GetSharedDatabaseInitStatusAsync(client_db_id(), parent_db_,
                                    std::move(callback));
 }
@@ -205,7 +210,7 @@ void SharedProtoDatabaseClient::InitWithDatabase(
     const leveldb_env::Options& options,
     bool destroy_on_corruption,
     Callbacks::InitStatusCallback callback) {
-  NOTREACHED();
+  NOTREACHED_IN_MIGRATION();
 }
 
 void SharedProtoDatabaseClient::UpdateEntries(
@@ -374,7 +379,7 @@ void SharedProtoDatabaseClient::StripPrefixLoadKeysCallback(
     std::unique_ptr<leveldb_proto::KeyVector> keys) {
   auto stripped_keys = std::make_unique<leveldb_proto::KeyVector>();
   for (auto& key : *keys) {
-    absl::optional<LogicalKey> stripped = StripPrefix(PhysicalKey(key), prefix);
+    std::optional<LogicalKey> stripped = StripPrefix(PhysicalKey(key), prefix);
     if (!stripped)
       continue;
     stripped_keys->emplace_back(stripped->value());
@@ -390,7 +395,7 @@ void SharedProtoDatabaseClient::StripPrefixLoadKeysAndEntriesCallback(
     std::unique_ptr<KeyValueMap> keys_entries) {
   auto stripped_keys_map = std::make_unique<KeyValueMap>();
   for (auto& key_entry : *keys_entries) {
-    absl::optional<LogicalKey> stripped_key =
+    std::optional<LogicalKey> stripped_key =
         StripPrefix(PhysicalKey(key_entry.first), prefix);
     if (!stripped_key)
       continue;

@@ -55,7 +55,7 @@ const char* StreamTypeToString(MediaStreamSource::StreamType type) {
     case MediaStreamSource::kTypeVideo:
       return "Video";
     default:
-      NOTREACHED();
+      NOTREACHED_IN_MIGRATION();
   }
   return "Invalid";
 }
@@ -69,7 +69,7 @@ const char* ReadyStateToString(MediaStreamSource::ReadyState state) {
     case MediaStreamSource::kReadyStateEnded:
       return "Ended";
     default:
-      NOTREACHED();
+      NOTREACHED_IN_MIGRATION();
   }
   return "Invalid";
 }
@@ -316,6 +316,7 @@ void MediaStreamSource::ConsumeAudio(AudioBus* bus, int number_of_frames) {
                "MediaStreamSource::ConsumeAudio");
 
   DCHECK(requires_consumer_);
+
   base::AutoLock locker(audio_consumer_lock_);
   if (!audio_consumer_)
     return;
@@ -355,6 +356,22 @@ void MediaStreamSource::OnDeviceCaptureHandleChange(
   for (auto observer : observers) {
     observer->SourceChangedCaptureHandle();
   }
+}
+
+void MediaStreamSource::OnZoomLevelChange(const MediaStreamDevice& device,
+                                          int zoom_level) {
+#if !BUILDFLAG(IS_ANDROID) && !BUILDFLAG(IS_IOS)
+  if (!platform_source_) {
+    return;
+  }
+
+  // Observers may dispatch events which create and add new Observers;
+  // take a snapshot so as to safely iterate.
+  HeapVector<Member<Observer>> observers(observers_);
+  for (auto observer : observers) {
+    observer->SourceChangedZoomLevel(zoom_level);
+  }
+#endif
 }
 
 void MediaStreamSource::Trace(Visitor* visitor) const {

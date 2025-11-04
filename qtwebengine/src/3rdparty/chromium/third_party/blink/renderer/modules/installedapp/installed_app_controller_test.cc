@@ -8,7 +8,8 @@
 #include <utility>
 
 #include "testing/gtest/include/gtest/gtest.h"
-#include "third_party/blink/public/common/browser_interface_broker_proxy.h"
+#include "third_party/blink/public/platform/browser_interface_broker_proxy.h"
+#include "third_party/blink/renderer/bindings/core/v8/idl_types.h"
 #include "third_party/blink/renderer/bindings/core/v8/script_promise.h"
 #include "third_party/blink/renderer/core/frame/frame_test_helpers.h"
 #include "third_party/blink/renderer/core/frame/local_dom_window.h"
@@ -46,8 +47,8 @@ class InstalledAppControllerTest : public testing::Test {
     url_test_helpers::RegisterMockedURLLoad(
         KURL("https://example.com/manifest.json"), "", "");
     GetFrame().Loader().CommitNavigation(
-        WebNavigationParams::CreateWithHTMLBufferForTesting(
-            SharedBuffer::Create(), KURL("https://example.com")),
+        WebNavigationParams::CreateWithEmptyHTMLForTesting(
+            KURL("https://example.com")),
         nullptr /* extra_data */);
     test::RunPendingTasks();
 
@@ -73,12 +74,12 @@ class InstalledAppControllerTest : public testing::Test {
 
 TEST_F(InstalledAppControllerTest, DestroyContextBeforeCallback) {
   auto* controller = InstalledAppController::From(*GetFrame().DomWindow());
-  auto* resolver =
-      MakeGarbageCollected<ScriptPromiseResolver>(GetScriptState());
-  ScriptPromise promise = resolver->Promise();
+  auto* resolver = MakeGarbageCollected<
+      ScriptPromiseResolver<IDLSequence<RelatedApplication>>>(GetScriptState());
+  auto promise = resolver->Promise();
   controller->GetInstalledRelatedApps(
       std::make_unique<
-          CallbackPromiseAdapter<HeapVector<Member<RelatedApplication>>, void>>(
+          CallbackPromiseAdapter<IDLSequence<RelatedApplication>, void>>(
           resolver));
 
   ExecutionContext::From(GetScriptState())->NotifyContextDestroyed();

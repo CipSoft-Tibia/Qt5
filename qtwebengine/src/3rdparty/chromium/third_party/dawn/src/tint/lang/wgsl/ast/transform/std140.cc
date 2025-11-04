@@ -57,7 +57,7 @@ namespace {
 /// UniformVariable is used by Std140::State::AccessIndex to indicate the root uniform variable
 struct UniformVariable {
     /// @returns a hash code for this object
-    size_t HashCode() const { return 0; }
+    tint::HashCode HashCode() const { return 0; }
 };
 
 /// Inequality operator for UniformVariable
@@ -70,7 +70,7 @@ struct DynamicIndex {
     size_t slot;  // The index of the expression in Std140::State::AccessChain::dynamic_indices
 
     /// @returns a hash code for this object
-    size_t HashCode() const { return Hash(slot); }
+    tint::HashCode HashCode() const { return Hash(slot); }
 };
 
 /// Inequality operator for DynamicIndex
@@ -193,12 +193,8 @@ struct Std140::State {
         /// The chain of accesses indices.
         AccessIndices indices;
 
-        /// Hash function for LoadFnKey.
-        struct Hasher {
-            /// @param fn the LoadFnKey to hash
-            /// @return the hash for the given LoadFnKey
-            size_t operator()(const LoadFnKey& fn) const { return Hash(fn.var, fn.indices); }
-        };
+        /// @returns the hash code for the LoadFnKey
+        tint::HashCode HashCode() const { return Hash(var, indices); }
 
         /// Equality operator
         bool operator==(const LoadFnKey& other) const {
@@ -218,7 +214,7 @@ struct Std140::State {
     const SymbolTable& sym = src.Symbols();
 
     /// Map of load function signature, to the generated function
-    Hashmap<LoadFnKey, Symbol, 8, LoadFnKey::Hasher> load_fns;
+    Hashmap<LoadFnKey, Symbol, 8> load_fns;
 
     /// Map of std140-forked type to converter function name
     Hashmap<const core::type::Type*, Symbol, 8> conv_fns;
@@ -294,7 +290,7 @@ struct Std140::State {
                             fork_std140 = true;
                             // Replace the member with column vectors.
                             const auto name_prefix = PrefixForUniqueNames(
-                                str->Declaration(), member->Name(), mat->columns());
+                                str->Declaration(), member->Name(), mat->Columns());
 
                             // Build a struct member for each column of the matrix
                             auto column_members = DecomposedMatrixStructMembers(
@@ -403,17 +399,17 @@ struct Std140::State {
         return Switch(
             ty,  //
             [&](const core::type::Struct* str) {
-                if (auto std140 = std140_structs.Find(str)) {
+                if (auto std140 = std140_structs.Get(str)) {
                     return b.ty(*std140);
                 }
                 return Type{};
             },
             [&](const core::type::Matrix* mat) {
                 if (MatrixNeedsDecomposing(mat)) {
-                    auto std140_mat = std140_mats.GetOrCreate(mat, [&] {
-                        auto name = b.Symbols().New("mat" + std::to_string(mat->columns()) + "x" +
-                                                    std::to_string(mat->rows()) + "_" +
-                                                    mat->type()->FriendlyName());
+                    auto std140_mat = std140_mats.GetOrAdd(mat, [&] {
+                        auto name = b.Symbols().New("mat" + std::to_string(mat->Columns()) + "x" +
+                                                    std::to_string(mat->Rows()) + "_" +
+                                                    mat->Type()->FriendlyName());
                         auto members =
                             DecomposedMatrixStructMembers(mat, "col", mat->Align(), mat->Size());
                         b.Structure(name, members);
@@ -434,13 +430,12 @@ struct Std140::State {
                         attrs.Push(b.create<StrideAttribute>(arr->Stride()));
                     }
                     auto count = arr->ConstantCount();
-                    if (TINT_UNLIKELY(!count)) {
+                    if (DAWN_UNLIKELY(!count)) {
                         // Non-constant counts should not be possible:
                         // * Override-expression counts can only be applied to workgroup arrays, and
                         //   this method only handles types transitively used as uniform buffers.
                         // * Runtime-sized arrays cannot be used in uniform buffers.
                         TINT_ICE() << "unexpected non-constant array count";
-                        count = 1;
                     }
                     return b.ty.array(std140, b.Expr(u32(count.value())), std::move(attrs));
                 }
@@ -459,7 +454,9 @@ struct Std140::State {
         uint32_t align,
         uint32_t size) {
         // Replace the member with column vectors.
-        const auto num_columns = mat->columns();
+        const auto num_columns = mat->Columns();
+        const auto column_size = mat->ColumnType()->Size();
+        const auto column_stride = mat->ColumnStride();
         // Build a struct member for each column of the matrix
         tint::Vector<const StructMember*, 4> out;
         for (uint32_t i = 0; i < num_columns; i++) {
@@ -470,10 +467,13 @@ struct Std140::State {
                 // needs to be applied to the first column vector.
                 attributes.Push(b.MemberAlign(i32(align)));
             }
-            if ((i == num_columns - 1) && mat->Size() != size) {
-                // The matrix was @size() annotated with a larger size than the
-                // natural size for the matrix. This extra padding needs to be
-                // applied to the last column vector.
+            if ((i == num_columns - 1) &&
+                (column_stride * (num_columns - 1) + column_size) != size) {
+                // The matrix size is larger than the individual component vectors.
+                // This occurs with matNx3 matrices, as the last vec3 column has space for one extra
+                // trailing scalar, which is occupied by the matrix. It also applies to matrices
+                // with an explicit @size() attribute.
+                // Apply extra padding needs to the last column vector.
                 attributes.Push(
                     b.MemberSize(AInt(size - mat->ColumnType()->Align() * (num_columns - 1))));
             }
@@ -517,7 +517,7 @@ struct Std140::State {
                         access.indices.Push(UniformVariable{});
                         return Action::kStop;
                     }
-                    if (TINT_LIKELY(user->Variable()->Type()->Is<core::type::Pointer>())) {
+                    if (DAWN_LIKELY(user->Variable()->Type()->Is<core::type::Pointer>())) {
                         // Found a pointer. As the root identifier is a uniform buffer variable,
                         // this must be a pointer-let. Continue traversing from the let
                         // initializer.
@@ -526,7 +526,6 @@ struct Std140::State {
                     }
                     TINT_ICE() << "unexpected variable found walking access chain: "
                                << user->Variable()->Declaration()->name->symbol.Name();
-                    return Action::kError;
                 },
                 [&](const sem::StructMemberAccess* a) {
                     // Is this a std140 decomposed matrix?
@@ -582,15 +581,13 @@ struct Std140::State {
                                           default:
                                               TINT_ICE() << "unhandled unary op for access chain: "
                                                          << u->op;
-                                              return Action::kError;
                                       }
                                   });
                 },
-                [&](Default) {
+                [&](Default) -> Action {
                     TINT_ICE() << "unhandled expression type for access chain\n"
                                << "AST: " << expr->Declaration()->TypeInfo().name << "\n"
                                << "SEM: " << expr->TypeInfo().name;
-                    return Action::kError;
                 });
 
             switch (action) {
@@ -629,19 +626,18 @@ struct Std140::State {
             [&](const core::type::Struct* str) { return str->Name().Name(); },
             [&](const core::type::Array* arr) {
                 auto count = arr->ConstantCount();
-                if (TINT_UNLIKELY(!count)) {
+                if (DAWN_UNLIKELY(!count)) {
                     // Non-constant counts should not be possible:
                     // * Override-expression counts can only be applied to workgroup arrays, and
                     //   this method only handles types transitively used as uniform buffers.
                     // * Runtime-sized arrays cannot be used in uniform buffers.
                     TINT_ICE() << "unexpected non-constant array count";
-                    count = 1;
                 }
                 return "arr" + std::to_string(count.value()) + "_" + ConvertSuffix(arr->ElemType());
             },
             [&](const core::type::Matrix* mat) {
-                return "mat" + std::to_string(mat->columns()) + "x" + std::to_string(mat->rows()) +
-                       "_" + ConvertSuffix(mat->type());
+                return "mat" + std::to_string(mat->Columns()) + "x" + std::to_string(mat->Rows()) +
+                       "_" + ConvertSuffix(mat->Type());
             },
             [&](const core::type::F32*) { return "f32"; },  //
             [&](const core::type::F16*) { return "f16"; },  //
@@ -671,7 +667,7 @@ struct Std140::State {
     /// @returns the converted value expression.
     const Expression* Convert(const core::type::Type* ty, const Expression* expr) {
         // Get an existing, or create a new function for converting the std140 type to ty.
-        auto fn = conv_fns.GetOrCreate(ty, [&] {
+        auto fn = conv_fns.GetOrAdd(ty, [&] {
             auto std140_ty = Std140Type(ty);
             if (!std140_ty) {
                 // ty was not forked for std140.
@@ -690,7 +686,7 @@ struct Std140::State {
                     // call, or by reassembling a std140 matrix from column vector members.
                     tint::Vector<const Expression*, 8> args;
                     for (auto* member : str->Members()) {
-                        if (auto col_members = std140_mat_members.Find(member)) {
+                        if (auto col_members = std140_mat_members.Get(member)) {
                             // std140 decomposed matrix. Reassemble.
                             auto mat_ty = CreateASTTypeFor(ctx, member->Type());
                             auto mat_args =
@@ -709,7 +705,7 @@ struct Std140::State {
                 [&](const core::type::Matrix* mat) {
                     // Reassemble a std140 matrix from the structure of column vector members.
                     auto std140_mat = std140_mats.Get(mat);
-                    if (TINT_LIKELY(std140_mat)) {
+                    if (DAWN_LIKELY(std140_mat)) {
                         tint::Vector<const Expression*, 8> args;
                         // std140 decomposed matrix. Reassemble.
                         auto mat_ty = CreateASTTypeFor(ctx, mat);
@@ -731,13 +727,12 @@ struct Std140::State {
                     auto* dst_el = b.IndexAccessor(var, i);
                     auto* src_el = Convert(arr->ElemType(), b.IndexAccessor(param, i));
                     auto count = arr->ConstantCount();
-                    if (TINT_UNLIKELY(!count)) {
+                    if (DAWN_UNLIKELY(!count)) {
                         // Non-constant counts should not be possible:
                         // * Override-expression counts can only be applied to workgroup arrays, and
                         //   this method only handles types transitively used as uniform buffers.
                         // * Runtime-sized arrays cannot be used in uniform buffers.
                         TINT_ICE() << "unexpected non-constant array count";
-                        count = 1;
                     }
                     stmts.Push(b.Decl(var));
                     stmts.Push(b.For(b.Decl(i),                          //
@@ -772,7 +767,7 @@ struct Std140::State {
     const Expression* LoadMatrixWithFn(const AccessChain& access) {
         // Get an existing, or create a new function for loading the uniform buffer value.
         // This function is keyed off the uniform buffer variable and the access chain.
-        auto fn = load_fns.GetOrCreate(LoadFnKey{access.var, access.indices}, [&] {
+        auto fn = load_fns.GetOrAdd(LoadFnKey{access.var, access.indices}, [&] {
             if (access.IsMatrixSubset()) {
                 // Access chain passes through the matrix, but ends either at a column vector,
                 // column swizzle, or element.
@@ -884,7 +879,7 @@ struct Std140::State {
         const core::type::Type* ret_ty = nullptr;
 
         // Build switch() cases for each column of the matrix
-        auto num_columns = chain.std140_mat_ty->columns();
+        auto num_columns = chain.std140_mat_ty->Columns();
         for (uint32_t column_idx = 0; column_idx < num_columns; column_idx++) {
             const Expression* expr = nullptr;
             const core::type::Type* ty = nullptr;
@@ -1087,7 +1082,7 @@ struct Std140::State {
                 [&](const core::type::Vector* vec) -> ExprTypeName {
                     auto* idx = dynamic_index(dyn_idx->slot);
                     auto* expr = b.IndexAccessor(lhs, idx);
-                    return {expr, vec->type(), name};
+                    return {expr, vec->Type(), name};
                 },  //
                 TINT_ICE_ON_NO_MATCH);
         }
@@ -1102,7 +1097,7 @@ struct Std140::State {
                         rhs += xyzw[el];
                     }
                     auto swizzle_ty = src.Types().Find<core::type::Vector>(
-                        vec->type(), static_cast<uint32_t>(swizzle->Length()));
+                        vec->Type(), static_cast<uint32_t>(swizzle->Length()));
                     auto* expr = b.MemberAccessor(lhs, rhs);
                     return {expr, swizzle_ty, rhs};
                 },  //
@@ -1129,7 +1124,7 @@ struct Std140::State {
             },  //
             [&](const core::type::Vector* vec) -> ExprTypeName {
                 auto* expr = b.IndexAccessor(lhs, idx);
-                return {expr, vec->type(), std::to_string(idx)};
+                return {expr, vec->Type(), std::to_string(idx)};
             },  //
             TINT_ICE_ON_NO_MATCH);
     }

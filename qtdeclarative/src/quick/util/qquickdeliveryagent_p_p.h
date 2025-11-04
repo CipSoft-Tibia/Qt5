@@ -18,6 +18,7 @@
 #include <QtQuick/private/qquickdeliveryagent_p.h>
 #include <QtGui/qevent.h>
 #include <QtCore/qstack.h>
+#include <QtCore/qxpfunctional.h>
 
 #include <private/qevent_p.h>
 #include <private/qpointingdevice_p.h>
@@ -148,6 +149,7 @@ public:
     static bool isMouseEvent(const QPointerEvent *ev);
     static bool isMouseOrWheelEvent(const QPointerEvent *ev);
     static bool isHoverEvent(const QPointerEvent *ev);
+    static bool isHoveringMoveEvent(const QPointerEvent *ev);
     static bool isTouchEvent(const QPointerEvent *ev);
     static bool isTabletEvent(const QPointerEvent *ev);
     static bool isEventFromMouseOrTouchpad(const QPointerEvent *ev);
@@ -166,6 +168,7 @@ public:
     void deliverUpdatedPoints(QPointerEvent *event);
     void deliverMatchingPointsToItem(QQuickItem *item, bool isGrabber, QPointerEvent *pointerEvent, bool handlersOnly = false);
 
+    QVector<QQuickItem *> eventTargets(QQuickItem *, const QEvent *event, QPointF scenePos, qxp::function_ref<std::optional<bool> (QQuickItem *, const QEvent *)> predicate) const;
     QVector<QQuickItem *> pointerTargets(QQuickItem *, const QPointerEvent *event, const QEventPoint &point,
                                          bool checkMouseButtons, bool checkAcceptsTouch) const;
     QVector<QQuickItem *> mergePointerTargets(const QVector<QQuickItem *> &list1, const QVector<QQuickItem *> &list2) const;
@@ -195,6 +198,10 @@ public:
     static bool dragOverThreshold(qreal d, Qt::Axis axis, const QEventPoint &tp, int startDragThreshold = -1);
 
     static bool dragOverThreshold(QVector2D delta);
+
+    // context menu events
+    QVector<QQuickItem *> contextMenuTargets(QQuickItem *item, const QContextMenuEvent *event) const;
+    void deliverContextMenuEvent(QContextMenuEvent *event);
 };
 
 Q_DECLARE_OPERATORS_FOR_FLAGS(QQuickDeliveryAgentPrivate::FocusOptions)

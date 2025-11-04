@@ -42,6 +42,15 @@ export function arrayEquals<T>(a: ArrayLike<T>, b: ArrayLike<T>): boolean {
 }
 
 export function isArrayOf<P, Q>(
-    predicate: (x: P|Q) => x is P, xs: (P|Q)[]): xs is P[] {
+  predicate: (x: P | Q) => x is P,
+  xs: (P | Q)[],
+): xs is P[] {
   return xs.every(predicate);
+}
+
+// Filter out falsy values from an array, leaving only the truthy ones
+export function removeFalsyValues<T>(
+  array: (T | false | null | undefined)[],
+): T[] {
+  return array.filter(Boolean) as T[];
 }

@@ -14,7 +14,9 @@
 #ifndef API_RTP_RECEIVER_INTERFACE_H_
 #define API_RTP_RECEIVER_INTERFACE_H_
 
+#include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "api/crypto/frame_decryptor_interface.h"
@@ -44,7 +46,8 @@ class RtpReceiverObserverInterface {
   virtual ~RtpReceiverObserverInterface() {}
 };
 
-class RTC_EXPORT RtpReceiverInterface : public webrtc::RefCountInterface {
+class RTC_EXPORT RtpReceiverInterface : public webrtc::RefCountInterface,
+                                        public FrameTransformerHost {
  public:
   virtual rtc::scoped_refptr<MediaStreamTrackInterface> track() const = 0;
 
@@ -88,7 +91,7 @@ class RTC_EXPORT RtpReceiverInterface : public webrtc::RefCountInterface {
   // positive value including 0.0 measured in seconds. `nullopt` means default
   // value must be used.
   virtual void SetJitterBufferMinimumDelay(
-      absl::optional<double> delay_seconds) = 0;
+      std::optional<double> delay_seconds) = 0;
 
   // TODO(zhihuang): Remove the default implementation once the subclasses
   // implement this. Currently, the only relevant subclass is the
@@ -111,8 +114,17 @@ class RTC_EXPORT RtpReceiverInterface : public webrtc::RefCountInterface {
   // Sets a frame transformer between the depacketizer and the decoder to enable
   // client code to transform received frames according to their own processing
   // logic.
+  // TODO: bugs.webrtc.org/15929 - add [[deprecated("Use SetFrameTransformer")]]
+  // when usage in Chrome is removed
   virtual void SetDepacketizerToDecoderFrameTransformer(
-      rtc::scoped_refptr<FrameTransformerInterface> frame_transformer);
+      rtc::scoped_refptr<FrameTransformerInterface> frame_transformer) {
+    SetFrameTransformer(std::move(frame_transformer));
+  }
+
+  // Default implementation of SetFrameTransformer.
+  // TODO: bugs.webrtc.org/15929 - Make pure virtual.
+  void SetFrameTransformer(
+      rtc::scoped_refptr<FrameTransformerInterface> frame_transformer) override;
 
  protected:
   ~RtpReceiverInterface() override = default;

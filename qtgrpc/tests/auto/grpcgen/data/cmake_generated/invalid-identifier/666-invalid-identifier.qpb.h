@@ -47,6 +47,7 @@ public:
         QProtobufMessage::swap(other);
         dptr.swap(other.dptr);
     }
+    QPB_TST_QTGRPCGEN_PROTOBUF_INVALID_IDENTIFIER_EXPORT Q_IMPLICIT operator QVariant() const;
     QPB_TST_QTGRPCGEN_PROTOBUF_INVALID_IDENTIFIER_EXPORT static void registerTypes();
 
 private:

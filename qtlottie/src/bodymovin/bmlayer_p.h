@@ -57,13 +57,13 @@ protected:
     virtual BMLayer *linkedLayer() const;
 
     int m_layerIndex = 0;
-    int m_startFrame;
-    int m_endFrame;
-    qreal m_startTime;
-    int m_blendMode;
+    int m_startFrame = 0;
+    int m_endFrame = 0;
+    qreal m_startTime = 0;
+    int m_blendMode = 0;
     bool m_3dLayer = false;
     BMBase *m_effects = nullptr;
-    qreal m_stretch;
+    qreal m_stretch = 0;
     BMBasicTransform *m_layerTransform = nullptr;
 
     int m_parentLayer = 0;

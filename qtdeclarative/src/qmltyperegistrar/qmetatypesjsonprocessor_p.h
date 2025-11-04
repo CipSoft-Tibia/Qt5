@@ -15,6 +15,8 @@
 // We mean it.
 //
 
+#include <private/qduplicatetracker_p.h>
+
 #include <QtCore/qcbormap.h>
 #include <QtCore/qstring.h>
 #include <QtCore/qtyperevision.h>
@@ -123,6 +125,7 @@ struct Method
     bool isCloned = false;
     bool isJavaScriptFunction = false;
     bool isConstructor = false;
+    bool isConst = false;
 };
 
 struct Enum
@@ -293,6 +296,7 @@ private:
     QList<UsingDeclaration> m_usingDeclarations;
     QVector<MetaType> m_types;
     QVector<MetaType> m_foreignTypes;
+    QDuplicateTracker<QString> m_seenMetaTypesFiles;
     bool m_privateIncludes = false;
 };
 

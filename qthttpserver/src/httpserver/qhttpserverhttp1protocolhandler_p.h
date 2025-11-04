@@ -1,5 +1,6 @@
 // Copyright (C) 2024 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QHttpServerHttp1ProtocolHandler_H
 #define QHttpServerHttp1ProtocolHandler_H
@@ -7,6 +8,7 @@
 #include <QtHttpServer/qthttpserverglobal.h>
 #include <QtHttpServer/qhttpserverrequest.h>
 #include <QtHttpServer/private/qhttpserverstream_p.h>
+#include <QtHttpServer/private/qhttpserverrequestfilter_p.h>
 
 //
 //  W A R N I N G
@@ -25,6 +27,8 @@ class QAbstractHttpServer;
 #if QT_CONFIG(localserver)
 class QLocalSocket;
 #endif
+template <qint64 BUFFERSIZE>
+struct QHttpServerHttp1IOChunkedTransfer;
 
 class QHttpServerHttp1ProtocolHandler : public QHttpServerStream
 {
@@ -34,7 +38,9 @@ class QHttpServerHttp1ProtocolHandler : public QHttpServerStream
     friend class QHttpServerResponder;
 
 private:
-    QHttpServerHttp1ProtocolHandler(QAbstractHttpServer *server, QIODevice *socket);
+    QHttpServerHttp1ProtocolHandler(QAbstractHttpServer *server,
+                                    QIODevice *socket,
+                                    QHttpServerRequestFilter *filter);
 
     void responderDestroyed() final;
     void startHandlingRequest() final;
@@ -61,17 +67,21 @@ private:
     void write(const QByteArray &data);
     void write(const char *body, qint64 size);
 
+    void resumeListening();
+
     QAbstractHttpServer *server;
     QIODevice *socket;
     QTcpSocket *tcpSocket;
 #if QT_CONFIG(localserver)
     QLocalSocket *localSocket;
 #endif
+    QHttpServerRequestFilter *m_filter;
 
     enum class TransferState {
         Ready,
         HeadersSent,
-        ChunkedTransferBegun
+        ChunkedTransferBegun,
+        IODeviceTransferBegun,
     } state = TransferState::Ready;
 
     QHttpServerRequest request;
@@ -80,6 +90,11 @@ private:
    // a request is still being handled.
     bool handlingRequest = false;
     bool protocolChanged = false;
+    bool useHttp1_1 = false;
+    void completeWriting();
+
+    template <qint64 BUFFERSIZE>
+    friend struct QHttpServerHttp1IOChunkedTransfer;
 };
 
 QT_END_NAMESPACE

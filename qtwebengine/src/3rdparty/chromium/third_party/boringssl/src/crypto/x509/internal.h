@@ -170,7 +170,6 @@ struct x509_st {
   uint32_t ex_flags;
   uint32_t ex_kusage;
   uint32_t ex_xkusage;
-  uint32_t ex_nscert;
   ASN1_OCTET_STRING *skid;
   AUTHORITY_KEYID *akid;
   STACK_OF(DIST_POINT) *crldp;
@@ -342,8 +341,6 @@ struct x509_store_st {
 
   // Callbacks for various operations
   X509_STORE_CTX_verify_cb verify_cb;       // error callback
-  X509_STORE_CTX_get_crl_fn get_crl;        // retrieve CRL
-  X509_STORE_CTX_check_crl_fn check_crl;    // Check CRL validity
 
   CRYPTO_refcount_t references;
 } /* X509_STORE */;
@@ -375,8 +372,6 @@ struct x509_store_ctx_st {
 
   // Callbacks for various operations
   X509_STORE_CTX_verify_cb verify_cb;       // error callback
-  X509_STORE_CTX_get_crl_fn get_crl;        // retrieve CRL
-  X509_STORE_CTX_check_crl_fn check_crl;    // Check CRL validity
 
   // The following is built up
   int last_untrusted;     // index of last untrusted cert
@@ -423,7 +418,7 @@ int x509_print_rsa_pss_params(BIO *bp, const X509_ALGOR *sigalg, int indent,
 // Signature algorithm functions.
 
 // x509_digest_sign_algorithm encodes the signing parameters of |ctx| as an
-// AlgorithmIdentifer and saves the result in |algor|. It returns one on
+// AlgorithmIdentifier and saves the result in |algor|. It returns one on
 // success, or zero on error.
 int x509_digest_sign_algorithm(EVP_MD_CTX *ctx, X509_ALGOR *algor);
 
@@ -588,6 +583,13 @@ GENERAL_NAMES *v2i_GENERAL_NAMES(const X509V3_EXT_METHOD *method,
 // TODO(https://crbug.com/boringssl/407): Make |issuer| const once the
 // |X509_NAME| issue is resolved.
 int X509_check_akid(X509 *issuer, const AUTHORITY_KEYID *akid);
+
+int X509_is_valid_trust_id(int trust);
+
+int X509_PURPOSE_get_trust(const X509_PURPOSE *xp);
+
+// TODO(https://crbug.com/boringssl/695): Remove this.
+int DIST_POINT_set_dpname(DIST_POINT_NAME *dpn, X509_NAME *iname);
 
 
 #if defined(__cplusplus)

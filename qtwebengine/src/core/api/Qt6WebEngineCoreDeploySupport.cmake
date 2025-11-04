@@ -74,51 +74,127 @@ function(_qt_internal_deploy_webenginecore_binary)
         endif()
     endforeach()
 
-    set(install_destination "${QT_DEPLOY_PREFIX}/")
+    # CMAKE_INSTALL_PREFIX does not contain $ENV{DESTDIR}, whereas QT_DEPLOY_PREFIX does.
+    # The install_ variant should be used in file(INSTALL) to avoid double DESTDIR in paths.
+    # Other code should reference the destdir_ variant instead.
+    set(install_destination "${CMAKE_INSTALL_PREFIX}/")
+    set(destdir_destination "${QT_DEPLOY_PREFIX}/")
+
     if(__QT_DEPLOY_SYSTEM_NAME STREQUAL "Windows")
         string(APPEND install_destination "${QT_DEPLOY_BIN_DIR}")
+        string(APPEND destdir_destination "${QT_DEPLOY_BIN_DIR}")
     else()
         string(APPEND install_destination "${QT_DEPLOY_LIBEXEC_DIR}")
+        string(APPEND destdir_destination "${QT_DEPLOY_LIBEXEC_DIR}")
     endif()
     file(INSTALL "${process_path}" DESTINATION "${install_destination}")
 
     get_filename_component(process_file_name "${process_path}" NAME)
     if(CMAKE_VERSION GREATER_EQUAL "3.19")
-        file(CHMOD "${install_destination}/${process_file_name}"
+        file(CHMOD "${destdir_destination}/${process_file_name}"
             PERMISSIONS OWNER_EXECUTE OWNER_READ OWNER_WRITE
                         GROUP_EXECUTE GROUP_READ
                         WORLD_EXECUTE WORLD_READ
         )
     else()
         execute_process(
-            COMMAND chmod 0755 "${install_destination}/${process_file_name}"
+            COMMAND chmod 0755 "${destdir_destination}/${process_file_name}"
+        )
+    endif()
+
+    if(NOT __QT_DEPLOY_SYSTEM_NAME STREQUAL "Windows")
+        qt6_deploy_qt_conf("${destdir_destination}/qt.conf"
+            PREFIX "${QT_DEPLOY_PREFIX}"
+            BIN_DIR "${QT_DEPLOY_BIN_DIR}"
+            LIB_DIR "${QT_DEPLOY_LIB_DIR}"
+            PLUGINS_DIR "${QT_DEPLOY_PLUGINS_DIR}"
+            QML_DIR "${QT_DEPLOY_QML_DIR}"
+        )
+    endif()
+    # Checking for __QT_DEPLOY_MUST_ADJUST_PLUGINS_RPATH is a bit strange because this is not a
+    # plugin, but it gives a single common way to detect when the rpath adjustment must be done,
+    # because the lib dir is different than the original Qt configured one.
+    if(__QT_DEPLOY_MUST_ADJUST_PLUGINS_RPATH)
+        _qt_internal_get_rpath_origin(rpath_origin)
+        file(RELATIVE_PATH rel_lib_dir "${destdir_destination}"
+            "${QT_DEPLOY_PREFIX}/${QT_DEPLOY_LIB_DIR}")
+        _qt_internal_set_rpath(
+            FILE "${destdir_destination}/${process_file_name}"
+            NEW_RPATH "${rpath_origin}/${rel_lib_dir}"
         )
     endif()
 endfunction()
 
-function(_qt_internal_deploy_webenginecore_data)
-    _qt_internal_webenginecore_status_message("Deploying the WebEngineCore data files")
-    set(data_files
+# Finds resource files for given active deployment configuration,
+# however it also adds a fallback in case user application
+# build does not match installed qt build type.
+function(_qt_internal_webenginecore_find_resources out_var)
+
+    set(no_value_options "")
+    set(single_value_options RESOURCES_DIR)
+    set(multi_value_options "")
+    cmake_parse_arguments(PARSE_ARGV 1 arg
+        "${no_value_options}" "${single_value_options}" "${multi_value_options}"
+    )
+
+    set(data_files "")
+    set(debug_data_files
+        icudtl.dat
+        qtwebengine_devtools_resources.debug.pak
+        qtwebengine_resources.debug.pak
+        qtwebengine_resources_100p.debug.pak
+        qtwebengine_resources_200p.debug.pak
+    )
+    set(release_data_files
         icudtl.dat
         qtwebengine_devtools_resources.pak
         qtwebengine_resources.pak
         qtwebengine_resources_100p.pak
         qtwebengine_resources_200p.pak
     )
+    if(__QT_DEPLOY_ACTIVE_CONFIG STREQUAL "Debug")
+        set(data_files ${debug_data_files})
+        set(candidate_data_files ${release_data_files})
+    else()
+        set(data_files ${release_data_files})
+        set(candidate_data_files ${debug_data_files})
+    endif()
+
+    foreach(resource IN LISTS data_files)
+        if(NOT EXISTS "${resources_dir}/${resource}")
+            # assume candidate data files exist, otherwise there is
+            # sth wrong with installation
+            set(data_files ${candidate_data_files})
+            break()
+        endif()
+    endforeach()
+    set("${out_var}" "${data_files}" PARENT_SCOPE)
+endfunction()
+
+function(_qt_internal_deploy_webenginecore_data)
+    # used for deployment on Linux, using the CMake deployment API.
+    _qt_internal_webenginecore_status_message("Deploying the WebEngineCore data files")
+
     get_filename_component(resources_dir "resources" ABSOLUTE
         BASE_DIR "${__QT_DEPLOY_QT_INSTALL_PREFIX}/${__QT_DEPLOY_QT_INSTALL_DATA}"
     )
 
+    _qt_internal_webenginecore_find_resources(
+        data_files
+        RESOURCES_DIR "${resources_dir}"
+    )
     _qt_internal_webenginecore_find_v8_context_snapshot(
         snapshot_file
         RESOURCES_DIR "${resources_dir}"
     )
+
     if(NOT snapshot_file STREQUAL "")
         list(APPEND data_files "${snapshot_file}")
     endif()
 
+    # See comment above why we use CMAKE_INSTALL_PREFIX instead of QT_DEPLOY_PREFIX.
     get_filename_component(install_destination "${QT_DEPLOY_WEBENGINECORE_RESOURCES_DIR}" ABSOLUTE
-        BASE_DIR "${QT_DEPLOY_PREFIX}/${QT_DEPLOY_DATA_DIR}"
+        BASE_DIR "${CMAKE_INSTALL_PREFIX}/${QT_DEPLOY_DATA_DIR}"
     )
     foreach(data_file IN LISTS data_files)
         file(INSTALL "${resources_dir}/${data_file}" DESTINATION "${install_destination}")
@@ -143,8 +219,7 @@ function(_qt_internal_webenginecore_find_v8_context_snapshot out_var)
         v8_context_snapshot.bin
         v8_context_snapshot.debug.bin
     )
-    if(__QT_DEPLOY_QT_IS_MULTI_CONFIG_BUILD_WITH_DEBUG
-            AND __QT_DEPLOY_ACTIVE_CONFIG STREQUAL "Debug")
+    if(__QT_DEPLOY_ACTIVE_CONFIG STREQUAL "Debug")
         # Favor the debug version of the snapshot.
         list(REVERSE candidates)
     endif()
@@ -163,8 +238,9 @@ function(_qt_internal_deploy_webenginecore_translations)
     get_filename_component(locales_dir "qtwebengine_locales" ABSOLUTE
         BASE_DIR "${__QT_DEPLOY_QT_INSTALL_PREFIX}/${__QT_DEPLOY_QT_INSTALL_TRANSLATIONS}"
     )
+    # See comment above why we use CMAKE_INSTALL_PREFIX instead of QT_DEPLOY_PREFIX.
     get_filename_component(install_destination "qtwebengine_locales" ABSOLUTE
-        BASE_DIR "${QT_DEPLOY_PREFIX}/${QT_DEPLOY_TRANSLATIONS_DIR}"
+        BASE_DIR "${CMAKE_INSTALL_PREFIX}/${QT_DEPLOY_TRANSLATIONS_DIR}"
     )
     file(GLOB locale_files "${locales_dir}/*.pak")
     foreach(locale_file IN LISTS locale_files)

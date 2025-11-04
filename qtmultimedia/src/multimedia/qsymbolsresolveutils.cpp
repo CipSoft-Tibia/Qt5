@@ -4,12 +4,11 @@
 #include "qsymbolsresolveutils_p.h"
 
 #include <qdebug.h>
-#include <algorithm>
 #include <qloggingcategory.h>
 
 QT_BEGIN_NAMESPACE
 
-static Q_LOGGING_CATEGORY(qLcSymbolsResolver, "qt.multimedia.symbolsresolver");
+Q_STATIC_LOGGING_CATEGORY(qLcSymbolsResolver, "qt.multimedia.symbolsresolver");
 
 bool SymbolsResolver::isLazyLoadEnabled()
 {

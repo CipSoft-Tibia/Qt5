@@ -26,7 +26,7 @@ QT_REQUIRE_CONFIG(quick_draganddrop);
 QT_BEGIN_NAMESPACE
 
 class QQuickDropAreaPrivate;
-class QQuickDragEvent : public QObject
+class Q_QUICK_EXPORT QQuickDragEvent : public QObject
 {
     Q_OBJECT
     Q_PROPERTY(qreal x READ x FINAL)

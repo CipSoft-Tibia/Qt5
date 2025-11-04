@@ -113,8 +113,8 @@ public:
 
     QVariant toVariant() const;
 
-    template<typename ValueType>
-    ValueType *cast()
+    template <typename ValueType>
+    ValueType *cast() const
     {
         if (QMetaType::fromType<ValueType>() != d()->metaType())
             return nullptr;
@@ -142,16 +142,13 @@ public:
     static ReturnedValue method_toString(const FunctionObject *b, const Value *thisObject, const Value *argv, int argc);
     static ReturnedValue virtualResolveLookupGetter(const Object *object, ExecutionEngine *engine, Lookup *lookup);
     static bool virtualResolveLookupSetter(Object *object, ExecutionEngine *engine, Lookup *lookup, const Value &value);
-    static ReturnedValue lookupGetter(Lookup *lookup, ExecutionEngine *engine, const Value &object);
-    static bool lookupSetter(
-            QV4::Lookup *l, QV4::ExecutionEngine *engine, QV4::Value &object,
-            const QV4::Value &value);
-    static bool lookupSetterAsVariant(
-            QV4::Lookup *l, QV4::ExecutionEngine *engine, QV4::Value &object,
-            const QV4::Value &value);
 
     static void initProto(ExecutionEngine *v4);
     static int virtualMetacall(Object *object, QMetaObject::Call call, int index, void **a);
+
+    static ReturnedValue getGadgetProperty(
+            ExecutionEngine *engine, Heap::QQmlValueTypeWrapper *valueTypeWrapper,
+            QMetaType metaType, quint16 coreIndex, bool isFunction, bool isEnum);
 };
 
 }

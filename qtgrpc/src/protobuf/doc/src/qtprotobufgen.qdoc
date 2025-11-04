@@ -67,5 +67,6 @@ options are supported:
     \include qtprotoccommon.qdocinc copy_comments-li
     \include qtprotoccommon.qdocinc generate_package_subfolders-li
     \include qtprotoccommon.qdocinc export_macro-cli-li
+    \include qtprotoccommon.qdocinc header_guard-li
 \endlist
 */

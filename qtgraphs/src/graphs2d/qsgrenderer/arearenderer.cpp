@@ -10,6 +10,7 @@
 #include <private/qareaseries_p.h>
 #include <private/qgraphsview_p.h>
 #include <private/qxyseries_p.h>
+#include <QtQuick/private/qquicktaphandler_p.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -21,6 +22,11 @@ AreaRenderer::AreaRenderer(QGraphsView *graph)
     setClip(true);
     m_shape.setParentItem(this);
     m_shape.setPreferredRendererType(QQuickShape::CurveRenderer);
+
+    m_tapHandler = new QQuickTapHandler(this);
+    connect(m_tapHandler, &QQuickTapHandler::singleTapped, this, &AreaRenderer::onSingleTapped);
+    connect(m_tapHandler, &QQuickTapHandler::doubleTapped, this, &AreaRenderer::onDoubleTapped);
+    connect(m_tapHandler, &QQuickTapHandler::pressedChanged, this, &AreaRenderer::onPressedChanged);
 }
 
 AreaRenderer::~AreaRenderer()
@@ -135,22 +141,34 @@ void AreaRenderer::handlePolish(QAreaSeries *series)
 
     auto &&upperPoints = upper->points();
     QList<QPointF> fittedPoints;
+#ifdef USE_SPLINEGRAPH
     if (upper->type() == QAbstractSeries::SeriesType::Spline)
         fittedPoints = qobject_cast<QSplineSeries *>(upper)->getControlPoints();
+#endif
 
     int extraPointCount = lower ? 0 : 3;
 
     if (series->isVisible()) {
+        qreal prevUpperY = 0;
         for (int i = 0, j = 0; i < upperPoints.size() + extraPointCount; ++i, ++j) {
-            qreal x, y;
-            if (i == upperPoints.size())
-                calculateRenderCoordinates(upperPoints[upperPoints.size() - 1].x(), 0, &x, &y);
-            else if (i == upperPoints.size() + 1)
-                calculateRenderCoordinates(upperPoints[0].x(), 0, &x, &y);
-            else if (i == upperPoints.size() + 2)
-                calculateRenderCoordinates(upperPoints[0].x(), upperPoints[0].y(), &x, &y);
-            else
-                calculateRenderCoordinates(upperPoints[i].x(), upperPoints[i].y(), &x, &y);
+            qreal x;
+            qreal y;
+            qreal upperX;
+            qreal upperY;
+            if (i == upperPoints.size()) {
+                upperX = upperPoints[upperPoints.size() - 1].x();
+                upperY = 0;
+            } else if (i == upperPoints.size() + 1) {
+                upperX = upperPoints[0].x();
+                upperY = 0;
+            } else if (i == upperPoints.size() + 2) {
+                upperX = upperPoints[0].x();
+                upperY = upperPoints[0].y();
+            } else {
+                upperX = upperPoints[i].x();
+                upperY = upperPoints[i].y();
+            }
+            calculateRenderCoordinates(upperX, upperY, &x, &y);
 
             if (i == 0) {
                 painterPath.moveTo(x, y);
@@ -168,16 +186,23 @@ void AreaRenderer::handlePolish(QAreaSeries *series)
                     ++j;
                 } else {
                     painterPath.lineTo(x, y);
+                    if (i != 0 && i < upper->points().size()
+                    && upperY == 0 && prevUpperY == 0) {
+                        painterPath.moveTo(x, y);
+                    }
                 }
             }
+            prevUpperY = upperY;
         }
     }
 
     if (lower && series->isVisible()) {
         auto &&lowerPoints = lower->points();
         QList<QPointF> fittedPoints;
+#ifdef USE_SPLINEGRAPH
         if (lower->type() == QAbstractSeries::SeriesType::Spline)
             fittedPoints = qobject_cast<QSplineSeries *>(lower)->getControlPoints();
+#endif
 
         for (int i = 0, j = 0; i < lowerPoints.size(); ++i, ++j) {
             qreal x, y;
@@ -328,27 +353,6 @@ bool AreaRenderer::pointInArea(QPoint pt, QAreaSeries *series) const
     return false;
 }
 
-bool AreaRenderer::handleMousePress(QMouseEvent *event)
-{
-    bool handled = false;
-    for (auto &&group : m_groups) {
-        if (!group->series->isSelectable() || !group->series->isVisible())
-            continue;
-
-        if (!group->series->upperSeries() || group->series->upperSeries()->count() < 2)
-            continue;
-
-        if (group->series->lowerSeries() && group->series->lowerSeries()->count() < 2)
-            continue;
-
-        if (pointInArea(event->pos(), group->series)) {
-            group->series->setSelected(!group->series->isSelected());
-            handled = true;
-        }
-    }
-    return handled;
-}
-
 bool AreaRenderer::handleHoverMove(QHoverEvent *event)
 {
     bool handled = false;
@@ -388,6 +392,79 @@ bool AreaRenderer::handleHoverMove(QHoverEvent *event)
         }
     }
     return handled;
+}
+
+void AreaRenderer::onSingleTapped(QEventPoint eventPoint, Qt::MouseButton button)
+{
+    Q_UNUSED(button)
+
+    for (auto &&group : m_groups) {
+        if (!group->series->isSelectable() || !group->series->isVisible())
+            continue;
+
+        if (!group->series->upperSeries() || group->series->upperSeries()->count() < 2)
+            continue;
+
+        if (group->series->lowerSeries() && group->series->lowerSeries()->count() < 2)
+            continue;
+
+        if (pointInArea(eventPoint.position().toPoint(), group->series)) {
+            group->series->setSelected(!group->series->isSelected());
+            m_graph->polishAndUpdate();
+            qreal x;
+            qreal y;
+            calculateAxisCoordinates(eventPoint.position().x(), eventPoint.position().y(), &x, &y);
+            emit group->series->clicked(QPoint(x, y));
+        }
+    }
+}
+
+void AreaRenderer::onDoubleTapped(QEventPoint eventPoint, Qt::MouseButton button)
+{
+    Q_UNUSED(button)
+
+    for (auto &&group : m_groups) {
+        if (!group->series->isSelectable() || !group->series->isVisible())
+            continue;
+
+        if (!group->series->upperSeries() || group->series->upperSeries()->count() < 2)
+            continue;
+
+        if (group->series->lowerSeries() && group->series->lowerSeries()->count() < 2)
+            continue;
+
+        if (pointInArea(eventPoint.position().toPoint(), group->series)) {
+            qreal x;
+            qreal y;
+            calculateAxisCoordinates(eventPoint.position().x(), eventPoint.position().y(), &x, &y);
+            emit group->series->doubleClicked(QPoint(x, y));
+        }
+    }
+}
+
+void AreaRenderer::onPressedChanged()
+{
+    QPointF position = m_tapHandler->point().position();
+    for (auto &&group : m_groups) {
+        if (!group->series->isSelectable() || !group->series->isVisible())
+            continue;
+
+        if (!group->series->upperSeries() || group->series->upperSeries()->count() < 2)
+            continue;
+
+        if (group->series->lowerSeries() && group->series->lowerSeries()->count() < 2)
+            continue;
+
+        if (pointInArea(position.toPoint(), group->series)) {
+            qreal x;
+            qreal y;
+            calculateAxisCoordinates(position.x(), position.y(), &x, &y);
+            if (m_tapHandler->isPressed())
+                emit group->series->pressed(QPoint(x, y));
+            else
+                emit group->series->released(QPoint(x, y));
+        }
+    }
 }
 
 QT_END_NAMESPACE

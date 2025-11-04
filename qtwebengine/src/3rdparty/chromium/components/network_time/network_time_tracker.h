@@ -6,17 +6,23 @@
 #define COMPONENTS_NETWORK_TIME_NETWORK_TIME_TRACKER_H_
 
 #include <stdint.h>
+
 #include <memory>
+#include <optional>
+#include <string_view>
 
 #include "base/feature_list.h"
 #include "base/gtest_prod_util.h"
 #include "base/memory/raw_ptr.h"
 #include "base/memory/ref_counted.h"
+#include "base/observer_list.h"
+#include "base/observer_list_types.h"
 #include "base/threading/thread_checker.h"
 #include "base/time/clock.h"
 #include "base/time/time.h"
 #include "base/timer/timer.h"
 #include "build/build_config.h"
+#include "components/network_time/time_tracker/time_tracker.h"
 #include "url/gurl.h"
 
 class PrefRegistrySimple;
@@ -90,16 +96,26 @@ class NetworkTimeTracker {
     FETCHES_IN_BACKGROUND_AND_ON_DEMAND,
   };
 
+  class NetworkTimeObserver : public base::CheckedObserver {
+   public:
+    virtual void OnNetworkTimeChanged(
+        const TimeTracker::TimeTrackerState state) = 0;
+  };
+
   static void RegisterPrefs(PrefRegistrySimple* registry);
 
   // Constructor.  Arguments may be stubbed out for tests. |url_loader_factory|
   // must be non-null unless the kNetworkTimeServiceQuerying is disabled.
   // Otherwise, time is available only if |UpdateNetworkTime| is called.
+  // If |fetch_behavior| is not nullopt, it will control the behavior of the
+  // NetworkTimeTracker, if it is nullopt, it will be controlled via a feature
+  // parameter.
   NetworkTimeTracker(
       std::unique_ptr<base::Clock> clock,
       std::unique_ptr<const base::TickClock> tick_clock,
       PrefService* pref_service,
-      scoped_refptr<network::SharedURLLoaderFactory> url_loader_factory);
+      scoped_refptr<network::SharedURLLoaderFactory> url_loader_factory,
+      std::optional<FetchBehavior> fetch_behavior);
 
   NetworkTimeTracker(const NetworkTimeTracker&) = delete;
   NetworkTimeTracker& operator=(const NetworkTimeTracker&) = delete;
@@ -148,9 +164,15 @@ class NetworkTimeTracker {
   // Blocks until the the next time query completes.
   void WaitForFetch();
 
+  void AddObserver(NetworkTimeObserver* obs);
+
+  void RemoveObserver(NetworkTimeObserver* obs);
+
+  bool GetTrackerState(TimeTracker::TimeTrackerState* state) const;
+
   void SetMaxResponseSizeForTesting(size_t limit);
 
-  void SetPublicKeyForTesting(base::StringPiece key);
+  void SetPublicKeyForTesting(std::string_view key);
 
   void SetTimeServerURLForTesting(const GURL& url);
 
@@ -163,6 +185,8 @@ class NetworkTimeTracker {
   void OverrideNonceForTesting(uint32_t nonce);
 
   base::TimeDelta GetTimerDelayForTesting() const;
+
+  void ClearNetworkTimeForTesting();
 
  private:
   // Checks whether a network time query should be issued, and issues one if so.
@@ -184,6 +208,8 @@ class NetworkTimeTracker {
   // unconditionally every once in a long while, just to be on the safe side.
   bool ShouldIssueTimeQuery();
 
+  void NotifyObservers();
+
   // State variables for internally-managed secure time service queries.
   GURL server_url_;
   size_t max_response_size_;
@@ -204,35 +230,25 @@ class NetworkTimeTracker {
 
   raw_ptr<PrefService> pref_service_;
 
-  // Network time based on last call to UpdateNetworkTime().
-  mutable base::Time network_time_at_last_measurement_;
-
-  // The estimated local times that correspond with |network_time_|. Assumes
-  // the actual network time measurement was performed midway through the
-  // latency time.  See UpdateNetworkTime(...) implementation for details.  The
-  // tick clock is the one actually used to return values to callers, but both
-  // clocks must agree to within some tolerance.
-  base::Time time_at_last_measurement_;
-  base::TimeTicks ticks_at_last_measurement_;
-
-  // Uncertainty of |network_time_| based on added inaccuracies/resolution.  See
-  // UpdateNetworkTime(...) implementation for details.
-  base::TimeDelta network_time_uncertainty_;
-
   // True if any time query has completed (but not necessarily succeeded) in
   // this NetworkTimeTracker's lifetime.
   bool time_query_completed_;
 
   // The time that was received from the last network time fetch made by
-  // CheckTime(). Unlike |network_time_at_least_measurement_|, this time
-  // is not updated when UpdateNetworkTime() is called. Used for UMA
-  // metrics.
+  // CheckTime(). Unlike the time used inside |tracker_| this time is not
+  // updated when UpdateNetworkTime() is called. Used for UMA metrics.
   base::Time last_fetched_time_;
 
   // Callbacks to run when the in-progress time fetch completes.
   std::vector<base::OnceClosure> fetch_completion_callbacks_;
 
   base::ThreadChecker thread_checker_;
+
+  std::optional<FetchBehavior> fetch_behavior_;
+
+  std::optional<TimeTracker> tracker_;
+
+  base::ObserverList<NetworkTimeObserver> observers_;
 };
 
 }  // namespace network_time

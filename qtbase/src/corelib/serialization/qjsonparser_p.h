@@ -18,6 +18,7 @@
 #include <QtCore/private/qglobal_p.h>
 #include <QtCore/private/qcborvalue_p.h>
 #include <QtCore/qjsondocument.h>
+#include <QtCore/qutf8stringview.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -26,7 +27,7 @@ namespace QJsonPrivate {
 class Parser
 {
 public:
-    Parser(const char *json, int length);
+    explicit Parser(QUtf8StringView json);
 
     QCborValue parse(QJsonParseError *error);
 
@@ -39,8 +40,9 @@ private:
     bool parseArray();
     bool parseMember();
     bool parseString();
-    bool parseValue();
-    bool parseNumber();
+    bool parseValueIntoContainer();
+    QCborValue parseValue();
+    QCborValue parseNumber();
     const char *head;
     const char *json;
     const char *end;

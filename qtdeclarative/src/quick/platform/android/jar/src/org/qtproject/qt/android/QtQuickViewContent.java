@@ -9,12 +9,12 @@ import java.util.HashMap;
 import java.util.HashSet;
 
 /**
- * @Since 6.8
+ * The QtQuickViewContent represents a QML component that can be loaded by a QtQuickView instance.
  *
- * The QtQuickViewContent represents a QML component that can be loaded by a QtQuickView instance
  * This abstract class should be extended to be used by a QtQuickView. It provides QtQuickView with
  * essential information to load the QML component it represents.
  * It also offers convenient methods for seamless interaction with the QtQuickView that loads it.
+ * @Since 6.8
  **/
 public abstract class QtQuickViewContent
 {
@@ -27,19 +27,19 @@ public abstract class QtQuickViewContent
     /**
      * Implement this to return the library name that this component belongs to.
      **/
-    protected abstract String getLibraryName();
+    public abstract String getLibraryName();
     /**
      * Implement this to return the module name that this component belongs to.
      **/
-    protected abstract String getModuleName();
+    public abstract String getModuleName();
     /**
      * Implement this to return the qrc (Qt Resource) path of this QML component.
      **/
-    protected abstract String getFilePath();
+    public abstract String getFilePath();
 
     /**
      * Sets a StatusChangeListener to listen to status changes.
-     * <p>
+     *
      * @param listener an instance of a StatusChangeListener interface
      **/
     public void setStatusChangeListener(QtQmlStatusChangeListener listener)
@@ -52,7 +52,7 @@ public abstract class QtQuickViewContent
 
     /**
      * Gets the QtQuickView instance that has loaded this component.
-     * <p>
+     *
      * @return Returns an instance of QtQuickView or null if this component is not loaded by any
      * QtQuickView.
      **/
@@ -65,7 +65,7 @@ public abstract class QtQuickViewContent
 
     /**
      * Checks if this is currently attached to a QtQuickView instance
-     * <p>
+     *
      * @return Returns true if this is attached to a QtQuickView instance, otherwise, returns false.
      **/
     protected boolean isViewAttached() { return getQuickView() != null; }
@@ -111,7 +111,7 @@ public abstract class QtQuickViewContent
      * {@link java.lang.Boolean} and {@link java.lang.String}. These types get converted to their
      * corresponding QML types int, double/float, bool, and string. This function does not add
      * properties to the QML root object if they do not exist but prints a warning.
-     * <p>
+     *
      * @param propertyName the name of the existing QML property to set the value of
      * @param value        the value to set the property to QML's int, double/float,
                            bool or string
@@ -137,8 +137,8 @@ public abstract class QtQuickViewContent
      * {@link java.lang.Boolean} and {@link java.lang.String}. These types get converted to their
      * corresponding QML types int, double/float, bool and string. If the property does not
      * exist or the status of the QML component is anything other than
-     * {@link QtQuickView#STATUS_READY STATUS_READY}, this function will return null.
-     * <p>
+     * {@link QtQmlStatus#READY}, this function will return null.
+     *
      * @param propertyName the name of the existing root object property
      * @throws ClassCastException if the returned type cannot be cast to the requested type.
      * @see <a href="https://doc.qt.io/qt-6/qml-int.html">QML int</a>
@@ -159,7 +159,7 @@ public abstract class QtQuickViewContent
     /**
      * Connects a SignalListener to a signal of the QML component if it has already been attached
      * and loaded by a QtQuickView instance.
-     * <p>
+     *
      * @param signalName the name of the root object signal
      * @param argType    the Class type of the signal argument
      * @param listener   an instance of the QtSignalListener interface
@@ -184,9 +184,9 @@ public abstract class QtQuickViewContent
 
     /**
      * Disconnects a SignalListener with a given id obtained from
-     * {@link QtQuickView#connectSignalListener() connectSignalListener} call, from listening to
-     * a signal.
-     * <p>
+     * {@link QtQuickView#connectSignalListener(String, Class, QtSignalListener)} call,
+     * from listening to a signal.
+     *
      * @param signalListenerId the connection id
      * @return Returns true if the connection id is valid and has been successfully removed,
      *         otherwise returns false.

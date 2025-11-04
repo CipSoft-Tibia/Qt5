@@ -150,7 +150,7 @@ void QSplineSeries::setCapStyle(Qt::PenCapStyle newCapStyle)
 }
 
 QSplineSeriesPrivate::QSplineSeriesPrivate()
-    : QXYSeriesPrivate()
+    : QXYSeriesPrivate(QAbstractSeries::SeriesType::Spline)
     , m_width(1.0)
     , m_capStyle(Qt::PenCapStyle::SquareCap)
     , m_controlPoints()

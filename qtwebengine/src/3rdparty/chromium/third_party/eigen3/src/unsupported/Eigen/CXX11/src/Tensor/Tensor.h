@@ -239,18 +239,16 @@ class Tensor : public TensorBase<Tensor<Scalar_, NumIndices_, Options_, IndexTyp
 
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Tensor(const Self& other) : Base(other), m_storage(other.m_storage) {}
 
-  template<typename... IndexTypes>
-    EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Tensor(Index firstDimension, IndexTypes... otherDimensions)
-        : m_storage(firstDimension, otherDimensions...)
-    {
-      // The number of dimensions used to construct a tensor must be equal to the rank of the tensor.
-      EIGEN_STATIC_ASSERT(sizeof...(otherDimensions) + 1 == NumIndices, YOU_MADE_A_PROGRAMMING_MISTAKE)
-    }
+  template <typename... IndexTypes>
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Tensor(Index firstDimension, IndexTypes... otherDimensions)
+      : m_storage(firstDimension, otherDimensions...) {
+    // The number of dimensions used to construct a tensor must be equal to the rank of the tensor.
+    EIGEN_STATIC_ASSERT(sizeof...(otherDimensions) + 1 == NumIndices, YOU_MADE_A_PROGRAMMING_MISTAKE)
+  }
 
-    /** Normal Dimension */
-    EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE explicit Tensor(const array<Index, NumIndices>& dimensions)
-        : m_storage(internal::array_prod(dimensions), dimensions)
-    {
+  /** Normal Dimension */
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE explicit Tensor(const array<Index, NumIndices>& dimensions)
+      : m_storage(internal::array_prod(dimensions), dimensions) {
     EIGEN_INITIALIZE_COEFFS_IF_THAT_OPTION_IS_ENABLED
   }
 
@@ -303,12 +301,16 @@ class Tensor : public TensorBase<Tensor<Scalar_, NumIndices_, Options_, IndexTyp
 
   /** Normal Dimension */
   EIGEN_DEVICE_FUNC void resize(const array<Index, NumIndices>& dimensions) {
-    int i;
+#ifndef EIGEN_NO_DEBUG
     Index size = Index(1);
-    for (i = 0; i < NumIndices; i++) {
+    for (int i = 0; i < NumIndices; i++) {
       internal::check_rows_cols_for_overflow<Dynamic, Dynamic, Dynamic>::run(size, dimensions[i]);
       size *= dimensions[i];
     }
+#else
+    Index size = internal::array_prod(dimensions);
+#endif
+
 #ifdef EIGEN_INITIALIZE_COEFFS
     bool size_changed = size != this->size();
     m_storage.resize(size, dimensions);
@@ -316,15 +318,6 @@ class Tensor : public TensorBase<Tensor<Scalar_, NumIndices_, Options_, IndexTyp
 #else
     m_storage.resize(size, dimensions);
 #endif
-  }
-
-  // Why this overload, DSizes is derived from array ??? //
-  EIGEN_DEVICE_FUNC void resize(const DSizes<Index, NumIndices>& dimensions) {
-    array<Index, NumIndices> dims;
-    for (int i = 0; i < NumIndices; ++i) {
-      dims[i] = dimensions[i];
-    }
-    resize(dims);
   }
 
   EIGEN_DEVICE_FUNC void resize() {
@@ -347,7 +340,6 @@ class Tensor : public TensorBase<Tensor<Scalar_, NumIndices_, Options_, IndexTyp
     resize(internal::customIndices2Array<Index, NumIndices>(dimensions));
   }
 
-#ifndef EIGEN_EMULATE_CXX11_META_H
   template <typename std::ptrdiff_t... Indices>
   EIGEN_DEVICE_FUNC void resize(const Sizes<Indices...>& dimensions) {
     array<Index, NumIndices> dims;
@@ -356,16 +348,6 @@ class Tensor : public TensorBase<Tensor<Scalar_, NumIndices_, Options_, IndexTyp
     }
     resize(dims);
   }
-#else
-  template <std::size_t V1, std::size_t V2, std::size_t V3, std::size_t V4, std::size_t V5>
-  EIGEN_DEVICE_FUNC void resize(const Sizes<V1, V2, V3, V4, V5>& dimensions) {
-    array<Index, NumIndices> dims;
-    for (int i = 0; i < NumIndices; ++i) {
-      dims[i] = static_cast<Index>(dimensions[i]);
-    }
-    resize(dims);
-  }
-#endif
 
 #ifdef EIGEN_TENSOR_PLUGIN
 #include EIGEN_TENSOR_PLUGIN

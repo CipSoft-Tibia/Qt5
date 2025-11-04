@@ -18,7 +18,7 @@ from bind_gen.path_manager import PathManager
 
 def parse_output_reldirs(reldirs):
     required = ["core", "modules"]
-    valid = required + ["extensions_chromeos"]
+    valid = required + ["extensions_chromeos", "extensions_webview"]
     result = {}
     for key_value_pair in reldirs:
         key, value = key_value_pair.split("=", 1)
@@ -88,6 +88,7 @@ def main():
                   root_gen_dir=options.root_gen_dir,
                   component_reldirs=component_reldirs,
                   enable_style_format=False,
+                  enable_code_generation_tracing=False,
                   enable_shorter_filenames=options.keep_shorter_filenames)
     web_idl_database = bind_gen.package_initializer.package_initializer(
     ).web_idl_database()

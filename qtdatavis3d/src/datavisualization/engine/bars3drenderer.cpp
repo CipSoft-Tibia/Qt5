@@ -10,6 +10,8 @@
 #include "utils_p.h"
 #include "barseriesrendercache_p.h"
 
+#include <QtGui/qquaternion.h>
+
 #include <QtCore/qmath.h>
 
 // You can verify that depth buffer drawing works correctly by uncommenting this.
@@ -794,7 +796,6 @@ void Bars3DRenderer::drawSlicedScene()
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
-    BarRenderItem *dummyItem(0);
     const LabelItem &sliceSelectionLabel = *m_sliceTitleItem;
     QVector3D positionComp(0.0f, m_autoScaleAdjustment, 0.0f);
 
@@ -893,23 +894,23 @@ void Bars3DRenderer::drawSlicedScene()
     // Draw labels for axes
     if (rowMode) {
         if (m_sliceTitleItem) {
-            m_drawer->drawLabel(*dummyItem, sliceSelectionLabel, viewMatrix, projectionMatrix,
+            m_drawer->drawLabel(m_dummyBarRenderItem, sliceSelectionLabel, viewMatrix, projectionMatrix,
                                 positionComp, identityQuaternion, 0, m_cachedSelectionMode,
                                 m_labelShader, m_labelObj, activeCamera, false, false,
                                 Drawer::LabelTop, Qt::AlignCenter, true);
         }
-        m_drawer->drawLabel(*dummyItem, m_axisCacheX.titleItem(), viewMatrix, projectionMatrix,
+        m_drawer->drawLabel(m_dummyBarRenderItem, m_axisCacheX.titleItem(), viewMatrix, projectionMatrix,
                             positionComp, identityQuaternion, 0, m_cachedSelectionMode,
                             m_labelShader, m_labelObj, activeCamera, false, false,
                             Drawer::LabelBottom, Qt::AlignCenter, true);
     } else {
-        m_drawer->drawLabel(*dummyItem, m_axisCacheZ.titleItem(), viewMatrix, projectionMatrix,
+        m_drawer->drawLabel(m_dummyBarRenderItem, m_axisCacheZ.titleItem(), viewMatrix, projectionMatrix,
                             positionComp, identityQuaternion, 0, m_cachedSelectionMode,
                             m_labelShader,
                             m_labelObj, activeCamera, false, false, Drawer::LabelBottom,
                             Qt::AlignCenter, true);
         if (m_sliceTitleItem) {
-            m_drawer->drawLabel(*dummyItem, sliceSelectionLabel, viewMatrix, projectionMatrix,
+            m_drawer->drawLabel(m_dummyBarRenderItem, sliceSelectionLabel, viewMatrix, projectionMatrix,
                                 positionComp, identityQuaternion, 0, m_cachedSelectionMode,
                                 m_labelShader,
                                 m_labelObj, activeCamera, false, false, Drawer::LabelTop,

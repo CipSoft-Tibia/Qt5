@@ -5,26 +5,22 @@
 #include <QtQml/qqml.h>
 #include <QDebug>
 
-class MyPluginType : public QObject
+class MyPluginTypeInvalidFirstCommand : public QObject
 {
     Q_OBJECT
-public:
-    MyPluginType(QObject *parent=nullptr) : QObject(parent) {}
 };
 
-
-class MyPlugin : public QQmlExtensionPlugin
+class MyPluginInvalidFirstCommand : public QQmlExtensionPlugin
 {
     Q_OBJECT
     Q_PLUGIN_METADATA(IID QQmlExtensionInterface_iid)
 
 public:
-    MyPlugin() {}
-
     void registerTypes(const char *uri) override
     {
         Q_ASSERT(QLatin1String(uri) == "org.qtproject.InvalidFirstCommandModule");
-        qmlRegisterType<MyPluginType>("org.qtproject.InvalidFirstCommandModule", 1, 0, "MyPluginType");
+        qmlRegisterType<MyPluginTypeInvalidFirstCommand>("org.qtproject.InvalidFirstCommandModule",
+                                                         1, 0, "MyPluginType");
     }
 };
 

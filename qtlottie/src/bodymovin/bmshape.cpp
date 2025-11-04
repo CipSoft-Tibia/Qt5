@@ -13,6 +13,7 @@
 #include "bmstroke_p.h"
 #include "bmrect_p.h"
 #include "bmellipse_p.h"
+#include "bmpolystar_p.h"
 #include "bmround_p.h"
 #include "bmtrimpath_p.h"
 #include "bmshapetransform_p.h"
@@ -102,6 +103,13 @@ BMShape *BMShape::construct(QJsonObject definition, const QVersionNumber &versio
         shape->setType(BM_SHAPE_ELLIPSE_IX);
         break;
     }
+    case BM_SHAPE_TAG('s', 'r'):
+    {
+        qCDebug(lcLottieQtBodymovinParser) << "Parse polystar";
+        shape = new BMPolyStar(definition, version, parent);
+        shape->setType(BM_SHAPE_STAR_IX);
+        break;
+    }
     case BM_SHAPE_TAG('r', 'd'):
     {
         qCDebug(lcLottieQtBodymovinParser) << "Parse round";
@@ -131,7 +139,6 @@ BMShape *BMShape::construct(QJsonObject definition, const QVersionNumber &versio
         break;
     }
     case BM_SHAPE_TAG('g', 's'): // ### BM_SHAPE_GSTROKE_IX
-    case BM_SHAPE_TAG('s', 'r'): // ### BM_SHAPE_STAR_IX
         // fall through
     default:
         qCWarning(lcLottieQtBodymovinParser) << "Unsupported shape type:"

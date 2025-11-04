@@ -195,7 +195,14 @@ extern "C" int qt_main_wrapper(int argc, char *argv[])
         if (infoPlistValue(@"QtRunLoopIntegrationDisableSeparateStack", false))
             requestedStackSize = 0;
 
+        QT_WARNING_PUSH
+#if Q_CC_CLANG >= 1800
+        QT_WARNING_DISABLE_CLANG("-Wvla-cxx-extension")
+#endif
+        // The user-main stack _must_ live on the stack, so that the stack pointer
+        // during user-main is within pthread_get_stackaddr_np/pthread_get_stacksize_np.
         char reservedStack[Stack::computeSize(requestedStackSize)];
+        QT_WARNING_POP
 
         if (sizeof(reservedStack) > 0) {
             userMainStack.adopt(reservedStack, sizeof(reservedStack));

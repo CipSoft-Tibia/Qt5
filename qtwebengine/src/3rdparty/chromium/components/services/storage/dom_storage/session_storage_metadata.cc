@@ -2,6 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#ifdef UNSAFE_BUFFERS_BUILD
+// TODO(crbug.com/40285824): Remove this and convert code to safer constructs.
+#pragma allow_unsafe_buffers
+#endif
+
 #include "components/services/storage/dom_storage/session_storage_metadata.h"
 
 #include <string_view>
@@ -104,7 +109,7 @@ SessionStorageMetadata::SetupNewDatabase() {
 }
 
 bool SessionStorageMetadata::ParseDatabaseVersion(
-    absl::optional<std::vector<uint8_t>> value,
+    std::optional<std::vector<uint8_t>> value,
     std::vector<AsyncDomStorageDatabase::BatchDatabaseTask>* upgrade_tasks) {
   if (!value) {
     initial_database_version_from_disk_ = 0;
@@ -198,7 +203,7 @@ bool SessionStorageMetadata::ParseNamespaces(
     if (map_number >= next_map_id_from_namespaces_)
       next_map_id_from_namespaces_ = map_number + 1;
 
-    absl::optional<blink::StorageKey> storage_key =
+    std::optional<blink::StorageKey> storage_key =
         blink::StorageKey::Deserialize(storage_key_str);
     if (!storage_key) {
       LOG(ERROR) << "Invalid StorageKey " << storage_key_str;

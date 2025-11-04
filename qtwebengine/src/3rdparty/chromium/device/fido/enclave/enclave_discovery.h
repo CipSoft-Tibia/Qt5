@@ -6,6 +6,7 @@
 #define DEVICE_FIDO_ENCLAVE_ENCLAVE_DISCOVERY_H_
 
 #include <memory>
+#include <optional>
 #include <vector>
 
 #include "base/component_export.h"
@@ -16,7 +17,6 @@
 #include "device/fido/enclave/types.h"
 #include "device/fido/fido_discovery_base.h"
 #include "services/network/public/mojom/network_context.mojom.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 
 namespace device::enclave {
 
@@ -30,8 +30,6 @@ class COMPONENT_EXPORT(DEVICE_FIDO) EnclaveAuthenticatorDiscovery
   using NetworkContextFactory =
       base::RepeatingCallback<network::mojom::NetworkContext*()>;
   EnclaveAuthenticatorDiscovery(
-      base::RepeatingCallback<void(sync_pb::WebauthnCredentialSpecifics)>
-          save_passkey_callback,
       std::unique_ptr<EventStream<std::unique_ptr<CredentialRequest>>>
           ui_request_stream,
       NetworkContextFactory network_context_factory);
@@ -47,10 +45,8 @@ class COMPONENT_EXPORT(DEVICE_FIDO) EnclaveAuthenticatorDiscovery
   std::vector<std::unique_ptr<EnclaveAuthenticator>> authenticators_;
   std::unique_ptr<EventStream<std::unique_ptr<CredentialRequest>>>
       ui_request_stream_;
-  base::RepeatingCallback<void(sync_pb::WebauthnCredentialSpecifics)>
-      save_passkey_callback_;
   NetworkContextFactory network_context_factory_;
-  std::unique_ptr<EventStream<absl::optional<std::string_view>>>
+  std::unique_ptr<EventStream<std::optional<std::string_view>>>
       oauth_token_provider_;
 
   base::WeakPtrFactory<EnclaveAuthenticatorDiscovery> weak_factory_{this};

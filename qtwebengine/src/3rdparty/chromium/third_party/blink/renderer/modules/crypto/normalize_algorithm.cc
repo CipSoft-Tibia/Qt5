@@ -28,6 +28,11 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+#ifdef UNSAFE_BUFFERS_BUILD
+// TODO(crbug.com/351564777): Remove this and convert code to safer constructs.
+#pragma allow_unsafe_buffers
+#endif
+
 #include "third_party/blink/renderer/modules/crypto/normalize_algorithm.h"
 
 #include <algorithm>
@@ -43,6 +48,7 @@
 #include "third_party/blink/renderer/core/typed_arrays/dom_typed_array.h"
 #include "third_party/blink/renderer/modules/crypto/crypto_key.h"
 #include "third_party/blink/renderer/modules/crypto/crypto_utilities.h"
+#include "third_party/blink/renderer/platform/runtime_enabled_features.h"
 #include "third_party/blink/renderer/platform/wtf/allocator/allocator.h"
 #include "third_party/blink/renderer/platform/wtf/math_extras.h"
 #include "third_party/blink/renderer/platform/wtf/text/string_builder.h"
@@ -523,7 +529,7 @@ V8AlgorithmIdentifier* GetAlgorithmIdentifier(v8::Isolate* isolate,
         ScriptValue(isolate, dictionary.V8Value()));
   }
 
-  absl::optional<String> algorithm_name =
+  std::optional<String> algorithm_name =
       raw.Get<IDLString>(property_name, exception_state);
   if (exception_state.HadException()) {
     return nullptr;
@@ -832,7 +838,7 @@ bool ParseNamedCurve(const Dictionary& raw,
                      WebCryptoNamedCurve& named_curve,
                      ErrorContext context,
                      ExceptionState& exception_state) {
-  absl::optional<String> named_curve_string =
+  std::optional<String> named_curve_string =
       raw.Get<IDLString>("namedCurve", exception_state);
   if (exception_state.HadException()) {
     return false;
@@ -1067,7 +1073,7 @@ bool ParseAlgorithmParams(v8::Isolate* isolate,
       context.Add("Pbkdf2Params");
       return ParsePbkdf2Params(isolate, raw, params, context, exception_state);
   }
-  NOTREACHED();
+  NOTREACHED_IN_MIGRATION();
   return false;
 }
 
@@ -1162,7 +1168,7 @@ bool ParseAlgorithmIdentifier(v8::Isolate* isolate,
     return false;
   }
 
-  absl::optional<String> algorithm_name =
+  std::optional<String> algorithm_name =
       params.Get<IDLString>("name", exception_state);
   if (exception_state.HadException()) {
     return false;

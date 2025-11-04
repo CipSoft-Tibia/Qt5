@@ -28,6 +28,8 @@
 #include "dawn/native/IndirectDrawMetadata.h"
 
 #include <algorithm>
+#include <cstdint>
+#include <tuple>
 #include <utility>
 
 #include "dawn/common/Constants.h"
@@ -133,6 +135,10 @@ IndirectDrawMetadata::IndexedIndirectBufferValidationInfo::GetBatches() const {
     return mBatches;
 }
 
+BufferBase* IndirectDrawMetadata::IndexedIndirectBufferValidationInfo::GetIndirectBuffer() const {
+    return mIndirectBuffer.Get();
+}
+
 IndirectDrawMetadata::IndirectDrawMetadata(const CombinedLimits& limits)
     : mMaxBatchOffsetRange(ComputeMaxIndirectValidationBatchOffsetRange(limits)),
       mMaxDrawCallsPerBatch(ComputeMaxDrawCallsPerIndirectValidationBatch(limits)) {}
@@ -146,6 +152,11 @@ IndirectDrawMetadata& IndirectDrawMetadata::operator=(IndirectDrawMetadata&&) = 
 IndirectDrawMetadata::IndexedIndirectBufferValidationInfoMap*
 IndirectDrawMetadata::GetIndexedIndirectBufferValidationInfo() {
     return &mIndexedIndirectBufferValidationInfo;
+}
+
+const std::vector<IndirectDrawMetadata::IndirectMultiDraw>&
+IndirectDrawMetadata::GetIndirectMultiDraws() const {
+    return mMultiDraws;
 }
 
 void IndirectDrawMetadata::AddBundle(RenderBundleBase* bundle) {
@@ -170,24 +181,28 @@ void IndirectDrawMetadata::AddBundle(RenderBundleBase* bundle) {
 
 void IndirectDrawMetadata::AddIndexedIndirectDraw(wgpu::IndexFormat indexFormat,
                                                   uint64_t indexBufferSize,
+                                                  uint64_t indexBufferOffset,
                                                   BufferBase* indirectBuffer,
                                                   uint64_t indirectOffset,
                                                   bool duplicateBaseVertexInstance,
                                                   DrawIndexedIndirectCmd* cmd) {
     uint64_t numIndexBufferElements;
+    uint64_t indexBufferOffsetInElements;
     switch (indexFormat) {
         case wgpu::IndexFormat::Uint16:
             numIndexBufferElements = indexBufferSize / 2;
+            indexBufferOffsetInElements = indexBufferOffset / 2;
             break;
         case wgpu::IndexFormat::Uint32:
             numIndexBufferElements = indexBufferSize / 4;
+            indexBufferOffsetInElements = indexBufferOffset / 4;
             break;
         case wgpu::IndexFormat::Undefined:
             DAWN_UNREACHABLE();
     }
 
-    const IndexedIndirectConfig config = {indirectBuffer, duplicateBaseVertexInstance,
-                                          DrawType::Indexed};
+    const IndexedIndirectConfig config = {reinterpret_cast<uintptr_t>(indirectBuffer),
+                                          duplicateBaseVertexInstance, DrawType::Indexed};
     auto it = mIndexedIndirectBufferValidationInfo.find(config);
     if (it == mIndexedIndirectBufferValidationInfo.end()) {
         auto result = mIndexedIndirectBufferValidationInfo.emplace(
@@ -198,6 +213,7 @@ void IndirectDrawMetadata::AddIndexedIndirectDraw(wgpu::IndexFormat indexFormat,
     IndirectDraw draw{};
     draw.inputBufferOffset = indirectOffset;
     draw.numIndexBufferElements = numIndexBufferElements;
+    draw.indexBufferOffsetInElements = indexBufferOffsetInElements;
     draw.cmd = cmd;
     it->second.AddIndirectDraw(mMaxDrawCallsPerBatch, mMaxBatchOffsetRange, draw);
 }
@@ -206,8 +222,8 @@ void IndirectDrawMetadata::AddIndirectDraw(BufferBase* indirectBuffer,
                                            uint64_t indirectOffset,
                                            bool duplicateBaseVertexInstance,
                                            DrawIndirectCmd* cmd) {
-    const IndexedIndirectConfig config = {indirectBuffer, duplicateBaseVertexInstance,
-                                          DrawType::NonIndexed};
+    const IndexedIndirectConfig config = {reinterpret_cast<uintptr_t>(indirectBuffer),
+                                          duplicateBaseVertexInstance, DrawType::NonIndexed};
     auto it = mIndexedIndirectBufferValidationInfo.find(config);
     if (it == mIndexedIndirectBufferValidationInfo.end()) {
         auto result = mIndexedIndirectBufferValidationInfo.emplace(
@@ -222,16 +238,53 @@ void IndirectDrawMetadata::AddIndirectDraw(BufferBase* indirectBuffer,
     it->second.AddIndirectDraw(mMaxDrawCallsPerBatch, mMaxBatchOffsetRange, draw);
 }
 
+void IndirectDrawMetadata::ClearIndexedIndirectBufferValidationInfo() {
+    mIndexedIndirectBufferValidationInfo.clear();
+}
+
+void IndirectDrawMetadata::AddMultiDrawIndirect(wgpu::PrimitiveTopology topology,
+                                                bool duplicateBaseVertexInstance,
+                                                MultiDrawIndirectCmd* cmd) {
+    IndirectMultiDraw multiDraw;
+    multiDraw.type = DrawType::NonIndexed;
+    multiDraw.cmd = cmd;
+    multiDraw.topology = topology;
+    multiDraw.duplicateBaseVertexInstance = duplicateBaseVertexInstance;
+    mMultiDraws.push_back(multiDraw);
+}
+
+void IndirectDrawMetadata::AddMultiDrawIndexedIndirect(BufferBase* indexBuffer,
+                                                       wgpu::IndexFormat indexFormat,
+                                                       uint64_t indexBufferSize,
+                                                       uint64_t indexBufferOffset,
+                                                       wgpu::PrimitiveTopology topology,
+                                                       bool duplicateBaseVertexInstance,
+                                                       MultiDrawIndexedIndirectCmd* cmd) {
+    IndirectMultiDraw multiDraw;
+    multiDraw.type = DrawType::Indexed;
+    multiDraw.indexBuffer = indexBuffer;
+    multiDraw.cmd = cmd;
+    multiDraw.indexBufferSize = indexBufferSize;
+    multiDraw.indexBufferOffsetInBytes = indexBufferOffset;
+    multiDraw.indexFormat = indexFormat;
+    multiDraw.topology = topology;
+    multiDraw.duplicateBaseVertexInstance = duplicateBaseVertexInstance;
+
+    mMultiDraws.push_back(multiDraw);
+}
+
 bool IndirectDrawMetadata::IndexedIndirectConfig::operator<(
     const IndexedIndirectConfig& other) const {
-    return std::tie(inputIndirectBuffer, duplicateBaseVertexInstance, drawType) <
-           std::tie(other.inputIndirectBuffer, other.duplicateBaseVertexInstance, other.drawType);
+    return std::tie(inputIndirectBufferPtr, duplicateBaseVertexInstance, drawType) <
+           std::tie(other.inputIndirectBufferPtr, other.duplicateBaseVertexInstance,
+                    other.drawType);
 }
 
 bool IndirectDrawMetadata::IndexedIndirectConfig::operator==(
     const IndexedIndirectConfig& other) const {
-    return std::tie(inputIndirectBuffer, duplicateBaseVertexInstance, drawType) ==
-           std::tie(other.inputIndirectBuffer, other.duplicateBaseVertexInstance, other.drawType);
+    return std::tie(inputIndirectBufferPtr, duplicateBaseVertexInstance, drawType) ==
+           std::tie(other.inputIndirectBufferPtr, other.duplicateBaseVertexInstance,
+                    other.drawType);
 }
 
 }  // namespace dawn::native

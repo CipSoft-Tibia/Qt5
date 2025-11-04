@@ -23,10 +23,6 @@ namespace init {
 // If its value is kDefault, use the default GPU of the system.
 GLDisplay* InitializeGLOneOffPlatform(gl::GpuPreference gpu_preference);
 
-#if defined(TOOLKIT_QT)
-bool usingSoftwareDynamicGL();
-#endif
-
 // Initializes a particular GL implementation.
 bool InitializeStaticGLBindings(GLImplementationParts implementation);
 

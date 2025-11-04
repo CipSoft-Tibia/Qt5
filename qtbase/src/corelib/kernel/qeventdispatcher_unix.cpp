@@ -28,7 +28,17 @@ static constexpr bool UsingEventfd = false;
 #endif
 
 #if defined(Q_OS_VXWORKS)
+#  include <taskLib.h>
+#if QT_CONFIG(vxpipedrv)
+#  include "qbytearray.h"
+#  include "qdatetime.h"
+#  include "qdir.h" // to get application name
+#  include "qrandom.h"
 #  include <pipeDrv.h>
+#  include <selectLib.h>
+#  include <rtpLib.h>
+#  include <sysLib.h>
+#endif
 #endif
 
 using namespace std::chrono;
@@ -62,12 +72,12 @@ QThreadPipe::~QThreadPipe()
     if (!UsingEventfd && fds[1] >= 0)
         close(fds[1]);
 
-#if defined(Q_OS_VXWORKS)
+#if defined(Q_OS_VXWORKS) && QT_CONFIG(vxpipedrv)
     pipeDevDelete(name, true);
 #endif
 }
 
-#if defined(Q_OS_VXWORKS)
+#if defined(Q_OS_VXWORKS) && QT_CONFIG(vxpipedrv)
 static void initThreadPipeFD(int fd)
 {
     int ret = fcntl(fd, F_SETFD, FD_CLOEXEC);
@@ -88,20 +98,32 @@ bool QThreadPipe::init()
 {
 #if defined(Q_OS_WASM)
     // do nothing.
-#elif defined(Q_OS_VXWORKS)
-    std::snprintf(name, sizeof(name), "/pipe/qt_%08x", int(taskIdSelf()));
+#elif defined(Q_OS_VXWORKS) && QT_CONFIG(vxpipedrv)
+    RTP_DESC rtpStruct;
+    rtpInfoGet((RTP_ID)NULL, &rtpStruct);
+
+    QByteArray pipeName("/pipe/qevloop_");
+    QByteArray path(rtpStruct.pathName);
+    pipeName.append(path.mid(path.lastIndexOf(QDir::separator().toLatin1())+1, path.size()));
+    pipeName.append("_");
+    pipeName.append(QByteArray::number((uint)rtpStruct.entrAddr, 16));
+    pipeName.append("_");
+    pipeName.append(QByteArray::number((uint)QThread::currentThreadId(), 16));
+    pipeName.append("_");
+    QRandomGenerator rg(QTime::currentTime().msecsSinceStartOfDay());
+    pipeName.append(QByteArray::number(rg.generate()));
 
     // make sure there is no pipe with this name
-    pipeDevDelete(name, true);
+    pipeDevDelete(pipeName, true);
 
     // create the pipe
-    if (pipeDevCreate(name, 128 /*maxMsg*/, 1 /*maxLength*/) != OK) {
-        perror("QThreadPipe: Unable to create thread pipe device");
+    if (pipeDevCreate(pipeName, 128 /*maxMsg*/, 1 /*maxLength*/) != OK) {
+        qCritical("QThreadPipe: Unable to create thread pipe device %s : %s", name, std::strerror(errno));
         return false;
     }
 
-    if ((fds[0] = open(name, O_RDWR, 0)) < 0) {
-        perror("QThreadPipe: Unable to open pipe device");
+    if ((fds[0] = open(pipeName, O_RDWR, 0)) < 0) {
+        qCritical("QThreadPipe: Unable to open pipe device %s : %s", name, std::strerror(errno));
         return false;
     }
 
@@ -150,7 +172,7 @@ int QThreadPipe::check(const pollfd &pfd)
     if (readyread) {
         // consume the data on the thread pipe so that
         // poll doesn't immediately return next time
-#if defined(Q_OS_VXWORKS)
+#if defined(Q_OS_VXWORKS) && QT_CONFIG(vxpipedrv)
         ::read(fds[0], c, sizeof(c));
         ::ioctl(fds[0], FIOFLUSH, 0);
 #else
@@ -459,6 +481,12 @@ bool QEventDispatcherUNIX::processEvents(QEventLoop::ProcessEventsFlags flags)
     switch (qt_safe_poll(d->pollfds.data(), d->pollfds.size(), deadline)) {
     case -1:
         qErrnoWarning("qt_safe_poll");
+#if defined(Q_OS_VXWORKS) && defined(EDOOM)
+        if (errno == EDOOM) {
+            // being deleted, stop here and wait for the thread to go away
+            taskSuspend(0);
+        }
+#endif
         if (QT_CONFIG(poll_exit_on_error))
             abort();
         break;

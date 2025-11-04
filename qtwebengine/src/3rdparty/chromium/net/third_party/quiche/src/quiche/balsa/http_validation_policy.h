@@ -49,11 +49,39 @@ struct QUICHE_EXPORT HttpValidationPolicy {
   // the character '"'.
   bool disallow_double_quote_in_header_name = false;
 
+  // TODO(b/314138604): remove this field once upstream Envoy stops using it
   // If true, then signal an INVALID_HEADER_CHARACTER warning or error, or
   // neither, depending on InvalidCharsLevel, if a response header contains an
   // invalid character. Invalid characters are always disallowed according to
   // InvalidCharsLevel in request headers.
   bool disallow_invalid_header_characters_in_response = false;
+
+  // If true, then signal an INVALID_HEADER_CHARACTER warning or error, or
+  // neither, depending on InvalidCharsLevel, if a request header value contains
+  // a carriage return that is not succeeded by a line feed.
+  bool disallow_lone_cr_in_request_headers = false;
+
+  // The RFC is quite specific about chunk extensions formatting, but we only
+  // verify that there are no CR without a subsequent LF.
+  bool disallow_lone_cr_in_chunk_extension = false;
+
+  // If true, then requests with a target URI that is invalid will be rejected.
+  bool disallow_invalid_target_uris = false;
+
+  // If SANITIZE, a request-line containing tab or carriage return will have
+  // those characters replaced with space. If REJECT, a request-line containing
+  // tab or carriage return will be rejected.
+  enum class FirstLineValidationOption : uint8_t {
+    NONE,
+    SANITIZE,
+    REJECT,
+  };
+  FirstLineValidationOption sanitize_cr_tab_in_first_line =
+      FirstLineValidationOption::NONE;
+
+  // If true, rejects messages with `obs-text` in header field names. RFC 9110
+  // allows obs-text in header field values, but not names.
+  bool disallow_obs_text_in_field_names = false;
 };
 
 }  // namespace quiche

@@ -25,8 +25,8 @@
 
 QT_BEGIN_NAMESPACE
 
-Q_LOGGING_CATEGORY(lcDimmer, "qt.quick.controls.popup.dimmer")
-Q_LOGGING_CATEGORY(lcQuickPopup, "qt.quick.controls.popup")
+Q_STATIC_LOGGING_CATEGORY(lcDimmer, "qt.quick.controls.popup.dimmer")
+Q_STATIC_LOGGING_CATEGORY(lcQuickPopup, "qt.quick.controls.popup")
 
 /*!
     \qmltype Popup
@@ -269,18 +269,23 @@ Q_LOGGING_CATEGORY(lcQuickPopup, "qt.quick.controls.popup")
     To ensure that the popup is positioned within the bounds of the enclosing
     window, the \l margins property can be set to a non-negative value.
 
-    \section1 Showing Non-Child Items in Front of Popup
+    \section1 Using the overlay
 
     In cases where \l {Showing a popup as an item}{popup windows} are not being used,
     Popup sets its contentItem's \l{qtquick-visualcanvas-visualparent.html}{visual parent}
-    to be the window's \l{Overlay::overlay}{overlay}, in order to ensure that
-    the popup appears in front of everything else in the scene.
+    to be the window's \l {Overlay::overlay}{overlay}, in order to ensure that
+    the popup appears in front of everything else in the scene. Its main task is to
+    intercept events to prevent delivery to items under a \l modal popup, and to close
+    the popup according to its \l closePolicy.
+
     In some cases, it might be useful to put an item in front of a popup,
     such as a \l [QML QtVirtualKeyboard] {InputPanel} {virtual keyboard}.
-    This can be done by setting the item's parent to the overlay,
-    and giving the item a positive z value. The same result can also be
-    achieved by waiting until the popup is opened, before re-parenting the item
-    to the overlay.
+    This can currently only be done by setting the item's parent to the overlay,
+    and ensuring that the item is stacked before any popup item, which a positive
+    \l z value ensures.
+
+    It's generally not recommended to use the overlay in this way, since the overlay wasn't
+    designed for this purpose, and the behavior won't be consistent when changing the \l popupType.
 
     \omit
         This shouldn't be a snippet, since we don't want VKB to be a dependency to controls.
@@ -506,6 +511,11 @@ void QQuickPopupPrivate::init()
     QObject::connect(popupItem, &QQuickControl::implicitContentHeightChanged, q, &QQuickPopup::implicitContentHeightChanged);
     QObject::connect(popupItem, &QQuickControl::implicitBackgroundWidthChanged, q, &QQuickPopup::implicitBackgroundWidthChanged);
     QObject::connect(popupItem, &QQuickControl::implicitBackgroundHeightChanged, q, &QQuickPopup::implicitBackgroundHeightChanged);
+    QObject::connect(popupItem, &QQuickControl::spacingChanged, q, &QQuickPopup::spacingChanged);
+    QObject::connect(popupItem, &QQuickControl::topInsetChanged, q, &QQuickPopup::topInsetChanged);
+    QObject::connect(popupItem, &QQuickControl::bottomInsetChanged, q, &QQuickPopup::bottomInsetChanged);
+    QObject::connect(popupItem, &QQuickControl::leftInsetChanged, q, &QQuickPopup::leftInsetChanged);
+    QObject::connect(popupItem, &QQuickControl::rightInsetChanged, q, &QQuickPopup::rightInsetChanged);
 }
 
 void QQuickPopupPrivate::closeOrReject()
@@ -762,6 +772,7 @@ bool QQuickPopupPrivate::prepareEnterTransition()
         return false;
 
     if (transitionState != EnterTransition) {
+        const QPointer<QQuickItem> lastActiveFocusItem = window->activeFocusItem();
         visible = true;
         adjustPopupItemParentAndWindow();
         if (dim)
@@ -772,10 +783,15 @@ bool QQuickPopupPrivate::prepareEnterTransition()
         getPositioner()->setParentItem(parentItem);
         emit q->visibleChanged();
 
-        QQuickOverlay *overlay = QQuickOverlay::overlay(window);
-        auto *overlayPrivate = QQuickOverlayPrivate::get(overlay);
-        if (overlayPrivate->lastActiveFocusItem.isNull())
-            overlayPrivate->lastActiveFocusItem = window->activeFocusItem();
+        if (lastActiveFocusItem) {
+            if (auto *overlay = QQuickOverlay::overlay(window)) {
+                auto *overlayPrivate = QQuickOverlayPrivate::get(overlay);
+                if (overlayPrivate->lastActiveFocusItem.isNull() && !popupItem->isAncestorOf(lastActiveFocusItem)) {
+                    overlayPrivate->lastActiveFocusItem = lastActiveFocusItem;
+                    savedLastActiveFocusItem = true;
+                }
+            }
+        }
 
         if (focus)
             popupItem->setFocus(true, Qt::PopupFocusReason);
@@ -839,8 +855,9 @@ void QQuickPopupPrivate::finalizeExitTransition()
         if (QQuickOverlay *overlay = QQuickOverlay::overlay(window)) {
             const auto stackingOrderPopups = QQuickOverlayPrivate::get(overlay)->stackingOrderPopups();
             for (auto popup : stackingOrderPopups) {
+                // only pick a popup that is focused but has not already been activated
                 if (QQuickPopupPrivate::get(popup)->transitionState != ExitTransition
-                        && popup->hasFocus()) {
+                        && popup->hasFocus() && !popup->hasActiveFocus()) {
                     nextFocusPopup = popup;
                     break;
                 }
@@ -848,24 +865,35 @@ void QQuickPopupPrivate::finalizeExitTransition()
         }
         if (nextFocusPopup) {
             nextFocusPopup->forceActiveFocus(Qt::PopupFocusReason);
-        } else {
+        } else if (auto *overlay = QQuickOverlay::overlay(window)) {
             auto *appWindow = qobject_cast<QQuickApplicationWindow*>(window);
             auto *contentItem = appWindow ? appWindow->contentItem() : window->contentItem();
-            auto *overlay = QQuickOverlay::overlay(window);
             auto *overlayPrivate = QQuickOverlayPrivate::get(overlay);
             if (!contentItem->scopedFocusItem()
                 && !overlayPrivate->lastActiveFocusItem.isNull()) {
-                overlayPrivate->lastActiveFocusItem->setFocus(true, Qt::OtherFocusReason);
+                // The last active focus item may have lost focus not just for
+                // itself but for its entire focus chain, so force active focus.
+                overlayPrivate->lastActiveFocusItem->forceActiveFocus(Qt::OtherFocusReason);
             } else {
                 contentItem->setFocus(true, Qt::PopupFocusReason);
             }
-            overlayPrivate->lastActiveFocusItem = nullptr;
         }
     }
+
+    if (window) {
+        auto *overlay = QQuickOverlay::overlay(window);
+        auto *overlayPrivate = overlay ? QQuickOverlayPrivate::get(overlay) : nullptr;
+
+        // Clear the overlay's saved focus if this popup was the one that set it
+        if (savedLastActiveFocusItem && overlayPrivate)
+            overlayPrivate->lastActiveFocusItem = nullptr;
+    }
+
     visible = false;
     adjustPopupItemParentAndWindow();
     transitionState = NoTransition;
     hadActiveFocusBeforeExitTransition = false;
+    savedLastActiveFocusItem = false;
     emit q->visibleChanged();
     emit q->closed();
 #if QT_CONFIG(accessibility)
@@ -1016,6 +1044,12 @@ void QQuickPopupPrivate::setWindow(QQuickWindow *newWindow)
         QQuickOverlay *overlay = QQuickOverlay::overlay(window);
         if (overlay)
             QQuickOverlayPrivate::get(overlay)->removePopup(q);
+
+        // Interacting with Popups in async Loaders (QTBUG-139306) would cause crashes
+        // because the popup's window was null. We can avoid this by unparenting the popupItem,
+        // which removes it from stackingOrderPopups and hence excludes it from receiving events.
+        if (!newWindow && popupItem)
+            popupItem->setParentItem(nullptr);
     }
 
     window = newWindow;
@@ -1064,8 +1098,8 @@ QQuickPopup::PopupType QQuickPopupPrivate::resolvedPopupType() const
 
     // PopupType::Native is not directly supported by QQuickPopup (only by subclasses).
     // So for that case, we fall back to use PopupType::Window, if supported.
-    if (m_popupType == QQuickPopup::PopupType::Window
-        || m_popupType == QQuickPopup::PopupType::Native) {
+    if (popupType == QQuickPopup::PopupType::Window
+        || popupType == QQuickPopup::PopupType::Native) {
         if (QGuiApplicationPrivate::platformIntegration()->hasCapability(QPlatformIntegration::Capability::MultipleWindows))
             return QQuickPopup::PopupType::Window;
     }
@@ -1096,11 +1130,15 @@ void QQuickPopupPrivate::adjustPopupItemParentAndWindow()
         if (visible) {
             if (!popupWindow) {
                 popupWindow = new QQuickPopupWindow(q, window);
-                popupWindow->setWidth(popupItem->width() + windowInsets().left() + windowInsets().right());
-                popupWindow->setHeight(popupItem->height() + windowInsets().top() + windowInsets().bottom());
+                // Changing the visual parent can cause the popup item's implicit width/height to change.
+                // We store the initial size here first, to ensure that we're resizing the window to the correct size.
+                const qreal initialWidth = popupItem->width() + windowInsets().left() + windowInsets().right();
+                const qreal initialHeight = popupItem->height() + windowInsets().top() + windowInsets().bottom();
+                popupItem->setParentItem(popupWindow->contentItem());
+                popupWindow->resize(qCeil(initialWidth), qCeil(initialHeight));
                 popupWindow->setModality(modal ? Qt::ApplicationModal : Qt::NonModal);
                 popupItem->resetTitle();
-                popupWindow->setTitle(m_title);
+                popupWindow->setTitle(title);
             }
             popupItem->setParentItem(popupWindow->contentItem());
             popupItem->forceActiveFocus(Qt::PopupFocusReason);
@@ -1131,7 +1169,7 @@ void QQuickPopupPrivate::adjustPopupItemParentAndWindow()
             }
         }
 
-        popupItem->setTitle(m_title);
+        popupItem->setTitle(title);
     }
     popupItem->setVisible(visible);
 }
@@ -2385,8 +2423,6 @@ void QQuickPopup::setModal(bool modal)
         d->toggleOverlay();
     emit modalChanged();
 
-    QQuickItemPrivate::get(d->popupItem)->isTabFence = modal;
-
     if (!d->hasDim) {
         setDim(modal);
         d->hasDim = false;
@@ -2963,16 +2999,16 @@ void QQuickPopup::resetBottomInset()
 QQuickPopup::PopupType QQuickPopup::popupType() const
 {
     Q_D(const QQuickPopup);
-    return d->m_popupType;
+    return d->popupType;
 }
 
 void QQuickPopup::setPopupType(PopupType popupType)
 {
     Q_D(QQuickPopup);
-    if (d->m_popupType == popupType)
+    if (d->popupType == popupType)
         return;
 
-    d->m_popupType = popupType;
+    d->popupType = popupType;
 
     emit popupTypeChanged();
 }
@@ -3056,6 +3092,7 @@ void QQuickPopup::componentComplete()
         d->transitionManager.transitionEnter();
 
     d->complete = true;
+    d->popupItem->setObjectName(QQmlMetaType::prettyTypeName(this));
     d->popupItem->componentComplete();
 
     if (auto currentContentItem = d->popupItem->d_func()->contentItem.data()) {
@@ -3147,6 +3184,20 @@ void QQuickPopup::mouseUngrabEvent()
     d->handleUngrab();
 }
 
+
+static QQuickItem *findRootOfOverlaySubtree(QQuickItem *source, const QQuickOverlay *overlay)
+{
+    QQuickItem *sourceAncestor = source;
+    while (sourceAncestor) {
+        QQuickItem *parentItem = sourceAncestor->parentItem();
+        if (parentItem == overlay)
+            return sourceAncestor;
+        sourceAncestor = parentItem;
+    }
+    // Not an ancestor of the overlay.
+    return nullptr;
+}
+
 /*!
     \internal
 
@@ -3162,6 +3213,17 @@ void QQuickPopup::mouseUngrabEvent()
 bool QQuickPopup::overlayEvent(QQuickItem *item, QEvent *event)
 {
     Q_D(QQuickPopup);
+
+    // The overlay will normally call this function for each active popup, assuming there is no active mouse grabber.
+    // If \a item doesn't belong to any of these popups, but exists in an overlay subtree, we shouldn't filter the event,
+    // since the item is supposed to be independent of any active popups.
+    auto *overlay = QQuickOverlay::overlay(d->window);
+    const QList<QQuickItem *> paintOrderChildItems = QQuickOverlayPrivate::get(overlay)->paintOrderChildItems();
+    const qsizetype targetItemPaintOrderIndex = paintOrderChildItems.indexOf(findRootOfOverlaySubtree(item, overlay));
+    const qsizetype popupItemPaintOrderIndex = paintOrderChildItems.indexOf(d->popupItem);
+    if (targetItemPaintOrderIndex > popupItemPaintOrderIndex)
+        return false;
+
     switch (event->type()) {
     case QEvent::KeyPress:
     case QEvent::KeyRelease:
@@ -3195,7 +3257,7 @@ bool QQuickPopup::overlayEvent(QQuickItem *item, QEvent *event)
 void QQuickPopup::touchEvent(QTouchEvent *event)
 {
     Q_D(QQuickPopup);
-    d->handleTouchEvent(d->popupItem, event);
+    event->setAccepted(d->handleTouchEvent(d->popupItem, event));
 }
 
 void QQuickPopup::touchUngrabEvent()
@@ -3376,6 +3438,11 @@ bool QQuickPopup::setAccessibleProperty(const char *propertyName, const QVariant
 {
     Q_D(QQuickPopup);
     return d->popupItem->setAccessibleProperty(propertyName, value);
+}
+
+QQuickItem *QQuickPopup::safeAreaAttachmentItem()
+{
+    return popupItem();
 }
 
 QT_END_NAMESPACE

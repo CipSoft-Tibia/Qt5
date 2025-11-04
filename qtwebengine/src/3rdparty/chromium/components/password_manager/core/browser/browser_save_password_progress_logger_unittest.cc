@@ -3,15 +3,17 @@
 // found in the LICENSE file.
 
 #include "components/password_manager/core/browser/browser_save_password_progress_logger.h"
-#include "components/autofill/core/browser/autofill_test_utils.h"
 
 #include "base/containers/flat_map.h"
 #include "base/strings/utf_string_conversions.h"
+#include "components/autofill/core/browser/autofill_test_utils.h"
 #include "components/autofill/core/browser/autofill_type.h"
 #include "components/autofill/core/browser/field_types.h"
 #include "components/autofill/core/browser/form_structure.h"
 #include "components/autofill/core/browser/logging/stub_log_manager.h"
 #include "components/autofill/core/browser/proto/server.pb.h"
+#include "components/autofill/core/common/form_data.h"
+#include "components/autofill/core/common/form_data_test_api.h"
 #include "components/autofill/core/common/save_password_progress_logger.h"
 #include "components/autofill/core/common/unique_ids.h"
 #include "components/password_manager/core/browser/password_form.h"
@@ -54,27 +56,27 @@ class TestLogger : public BrowserSavePasswordProgressLogger {
 class BrowserSavePasswordProgressLoggerTest : public testing::Test {
  public:
   BrowserSavePasswordProgressLoggerTest() {
-    form_.url = GURL("http://myform.com/form.html");
-    form_.action = GURL("http://m.myform.com/submit.html");
-    form_.name = u"form_name";
+    form_.set_url(GURL("http://myform.com/form.html"));
+    form_.set_action(GURL("http://m.myform.com/submit.html"));
+    form_.set_name(u"form_name");
 
     // Add a password field.
     autofill::FormFieldData field;
-    field.name = u"password";
-    field.form_control_type = autofill::FormControlType::kInputPassword;
-    field.is_focusable = true;
-    field.autocomplete_attribute = "new-password";
-    field.unique_renderer_id = autofill::FieldRendererId(10);
-    form_.fields.push_back(field);
+    field.set_name(u"password");
+    field.set_form_control_type(autofill::FormControlType::kInputPassword);
+    field.set_is_focusable(true);
+    field.set_autocomplete_attribute("new-password");
+    field.set_renderer_id(autofill::FieldRendererId(10));
+    test_api(form_).Append(field);
 
     // Add a text field.
-    field.name = u"email";
-    field.form_control_type = autofill::FormControlType::kInputText;
-    field.is_focusable = false;
-    field.unique_renderer_id = autofill::FieldRendererId(42);
-    field.value = u"a@example.com";
-    field.autocomplete_attribute.clear();
-    form_.fields.push_back(field);
+    field.set_name(u"email");
+    field.set_form_control_type(autofill::FormControlType::kInputText);
+    field.set_is_focusable(false);
+    field.set_renderer_id(autofill::FieldRendererId(42));
+    field.set_value(u"a@example.com");
+    field.set_autocomplete_attribute({});
+    test_api(form_).Append(field);
   }
 
  protected:
@@ -92,7 +94,6 @@ TEST_F(BrowserSavePasswordProgressLoggerTest, LogFormData) {
   EXPECT_TRUE(logger.LogsContainSubstring("Origin: http://myform.com"));
   EXPECT_TRUE(logger.LogsContainSubstring("Action: http://m.myform.com"));
   EXPECT_TRUE(logger.LogsContainSubstring("Form name: form_name"));
-  EXPECT_TRUE(logger.LogsContainSubstring("Form with form tag: true"));
   EXPECT_TRUE(logger.LogsContainSubstring("Form fields:"));
   EXPECT_TRUE(logger.LogsContainSubstring(
       "password: signature=2051817934, type=password, renderer_id=10, "
@@ -110,7 +111,7 @@ TEST_F(BrowserSavePasswordProgressLoggerTest,
   password_prediction.server_predictions = {
       CreateFieldPrediction(FieldType::NEW_PASSWORD)};
   base::flat_map<FieldGlobalId, AutofillType::ServerPrediction> predictions = {
-      {form_.fields[0].global_id(), std::move(password_prediction)}};
+      {form_.fields()[0].global_id(), std::move(password_prediction)}};
   logger.LogFormDataWithServerPredictions(Logger::STRING_SERVER_PREDICTIONS,
                                           form_, predictions);
 

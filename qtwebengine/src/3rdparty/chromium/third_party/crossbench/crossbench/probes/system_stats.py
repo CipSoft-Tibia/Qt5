@@ -7,15 +7,15 @@ from __future__ import annotations
 import datetime as dt
 from typing import TYPE_CHECKING
 
-from crossbench.probes import polling
+from crossbench.probes.polling import PollingProbe
 from crossbench.probes.probe import ProbeValidationError
 
 if TYPE_CHECKING:
-  from crossbench.env import HostEnvironment
   from crossbench.browsers.browser import Browser
+  from crossbench.env import HostEnvironment
 
 
-class SystemStatsProbe(polling.PollingProbe):
+class SystemStatsProbe(PollingProbe):
   """
   General-purpose probe to periodically collect system-wide CPU and memory
   stats on unix systems.

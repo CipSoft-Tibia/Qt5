@@ -4,7 +4,7 @@
 #include <QtQmlDom/private/qqmldomtop_p.h>
 #include <QtQmlDom/private/qqmldomitem_p.h>
 
-#include <QtTest/QtTest>
+#include <QtTest/QTest>
 #include <QtCore/QLibraryInfo>
 
 class tst_qmldomconstruction : public QObject

@@ -22,26 +22,26 @@ static bool canConvertForLiteralBinding(QQmlJSTypeResolver *resolver,
     Q_ASSERT(resolver);
     auto from = QQmlJSScope::scope(fromElement);
     auto to = QQmlJSScope::scope(toElement);
-    if (resolver->equals(from, to))
+    if (from == to)
         return true;
 
     if (!resolver->canConvertFromTo(from, to))
         return false;
 
-    const bool fromIsString = resolver->equals(from, resolver->stringType());
+    const bool fromIsString = from == resolver->stringType();
 
-    if (resolver->equals(to, resolver->stringType())
-            || resolver->equals(to, resolver->stringListType())
-            || resolver->equals(to, resolver->byteArrayType())
-            || resolver->equals(to, resolver->urlType())) {
+    if (to == resolver->stringType()
+            || to == resolver->stringListType()
+            || to == resolver->byteArrayType()
+            || to == resolver->urlType()) {
         return fromIsString;
     }
 
     if (resolver->isNumeric(to))
         return resolver->isNumeric(from);
 
-    if (resolver->equals(to, resolver->boolType()))
-        return resolver->equals(from, resolver->boolType());
+    if (to == resolver->boolType())
+        return from == resolver->boolType();
 
     return true;
 }
@@ -93,11 +93,33 @@ QQmlSA::Property LiteralBindingCheckBase::getProperty(const QString &propertyNam
     return bindingScope.property(unqualifiedPropertyName);
 }
 
+void LiteralBindingCheckBase::warnOnCheckedBinding(
+        const QQmlSA::Binding &binding, const QQmlSA::Element &propertyType)
+{
+    auto construction = check(propertyType.internalId(), binding.stringValue());
+    if (!construction.isValid())
+        return;
 
-void LiteralBindingCheckBase::onBinding(const QQmlSA::Element &element, const QString &propertyName,
-                                        const QQmlSA::Binding &binding,
-                                        const QQmlSA::Element &bindingScope,
-                                        const QQmlSA::Element &value)
+    const QString warningMessage =
+            u"Construction from string is deprecated. Use structured value type "
+            u"construction instead for type \"%1\""_s.arg(propertyType.internalId());
+
+    if (construction.code.isEmpty()) {
+        emitWarning(warningMessage, qmlIncompatibleType, binding.sourceLocation());
+        return;
+    }
+
+    const QQmlSA::FixSuggestion suggestion(
+            u"Replace string by structured value construction"_s,
+            binding.sourceLocation(), construction.code);
+    emitWarning(warningMessage, qmlIncompatibleType, binding.sourceLocation(), suggestion);
+}
+
+void QQmlJSLiteralBindingCheck::onBinding(const QQmlSA::Element &element,
+                                          const QString &propertyName,
+                                          const QQmlSA::Binding &binding,
+                                          const QQmlSA::Element &bindingScope,
+                                          const QQmlSA::Element &value)
 {
     Q_UNUSED(value);
 
@@ -112,38 +134,9 @@ void LiteralBindingCheckBase::onBinding(const QQmlSA::Element &element, const QS
                     qmlReadOnlyProperty, binding.sourceLocation());
         return;
     }
-    if (auto propertyType = property.type(); propertyType) {
-        auto construction = check(propertyType.internalId(), binding.stringValue());
-        if (construction.isValid()) {
-            const QString warningMessage =
-                    u"Construction from string is deprecated. Use structured value type "
-                    u"construction instead for type \"%1\""_s.arg(propertyType.internalId());
 
-            if (!construction.code.isNull()) {
-                QQmlSA::FixSuggestion suggestion(
-                        u"Replace string by structured value construction"_s,
-                        binding.sourceLocation(), construction.code);
-                emitWarning(warningMessage, qmlIncompatibleType, binding.sourceLocation(), suggestion);
-                return;
-            }
-            emitWarning(warningMessage, qmlIncompatibleType, binding.sourceLocation());
-            return;
-        }
-    }
-
-}
-
-void QQmlJSLiteralBindingCheck::onBinding(const QQmlSA::Element &element,
-                                          const QString &propertyName,
-                                          const QQmlSA::Binding &binding,
-                                          const QQmlSA::Element &bindingScope,
-                                          const QQmlSA::Element &value)
-{
-    LiteralBindingCheckBase::onBinding(element, propertyName, binding, bindingScope, value);
-
-    const auto property = getProperty(propertyName, binding, bindingScope);
-    if (!property.isValid())
-        return;
+    if (const auto propertyType = property.type())
+        warnOnCheckedBinding(binding, propertyType);
 
     if (!canConvertForLiteralBinding(m_resolver, resolveLiteralType(binding), property.type())) {
         emitWarning(u"Cannot assign literal of type %1 to %2"_s.arg(

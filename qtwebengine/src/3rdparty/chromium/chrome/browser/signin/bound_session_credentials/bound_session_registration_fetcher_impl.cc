@@ -4,8 +4,11 @@
 
 #include "chrome/browser/signin/bound_session_credentials/bound_session_registration_fetcher_impl.h"
 
+#include <string_view>
+
 #include "base/base64.h"
 #include "base/containers/span.h"
+#include "base/containers/to_vector.h"
 #include "base/json/json_reader.h"
 #include "base/json/json_writer.h"
 #include "base/metrics/histogram_functions.h"
@@ -18,6 +21,7 @@
 #include "components/unexportable_keys/service_error.h"
 #include "components/unexportable_keys/unexportable_key_id.h"
 #include "components/unexportable_keys/unexportable_key_service.h"
+#include "components/variations/net/variations_http_headers.h"
 #include "google_apis/gaia/gaia_urls.h"
 #include "net/base/schemeful_site.h"
 #include "net/http/http_response_headers.h"
@@ -30,6 +34,7 @@
 namespace {
 constexpr char kSessionIdentifier[] = "session_identifier";
 constexpr char kCredentials[] = "credentials";
+constexpr char kRefreshUrl[] = "refresh_url";
 const char kXSSIPrefix[] = ")]}'";
 
 bound_session_credentials::Credential CreateCookieCredential(
@@ -49,9 +54,11 @@ bound_session_credentials::Credential CreateCookieCredential(
 BoundSessionRegistrationFetcherImpl::BoundSessionRegistrationFetcherImpl(
     BoundSessionRegistrationFetcherParam registration_params,
     scoped_refptr<network::SharedURLLoaderFactory> loader_factory,
-    unexportable_keys::UnexportableKeyService& key_service)
+    unexportable_keys::UnexportableKeyService& key_service,
+    bool is_off_the_record_profile)
     : registration_params_(std::move(registration_params)),
       key_service_(key_service),
+      is_off_the_record_profile_(is_off_the_record_profile),
       url_loader_factory_(std::move(loader_factory)) {}
 
 BoundSessionRegistrationFetcherImpl::~BoundSessionRegistrationFetcherImpl() =
@@ -61,21 +68,23 @@ void BoundSessionRegistrationFetcherImpl::Start(
     RegistrationCompleteCallback callback) {
   TRACE_EVENT("browser", "BoundSessionRegistrationFetcherImpl::Start",
               perfetto::Flow::FromPointer(this), "endpoint",
-              registration_params_.RegistrationEndpoint());
+              registration_params_.registration_endpoint());
   CHECK(!registration_duration_.has_value());
   CHECK(!callback_);
   CHECK(!registration_token_helper_);
   registration_duration_.emplace();  // Starts the timer.
   callback_ = std::move(callback);
+  registration_token_helper_ = std::make_unique<RegistrationTokenHelper>(
+      key_service_.get(),
+      base::ToVector(registration_params_.supported_algos()));
   // base::Unretained() is safe since `this` owns
   // `registration_token_helper_`.
-  registration_token_helper_ = RegistrationTokenHelper::CreateForSessionBinding(
-      key_service_.get(), registration_params_.Challenge(),
-      registration_params_.RegistrationEndpoint(),
+  registration_token_helper_->GenerateForSessionBinding(
+      registration_params_.challenge(),
+      registration_params_.registration_endpoint(),
       base::BindOnce(
           &BoundSessionRegistrationFetcherImpl::OnRegistrationTokenCreated,
           base::Unretained(this), base::ElapsedTimer()));
-  registration_token_helper_->Start();
 }
 
 void BoundSessionRegistrationFetcherImpl::OnURLLoaderComplete(
@@ -116,7 +125,8 @@ void BoundSessionRegistrationFetcherImpl::OnURLLoaderComplete(
   }
 
   RegistrationErrorOr<bound_session_credentials::BoundSessionParams>
-      params_or_error = ParseJsonResponse(std::move(response_body));
+      params_or_error = ParseJsonResponse(url_loader_->GetFinalURL(),
+                                          std::move(response_body));
   if (!params_or_error.has_value()) {
     RunCallbackAndRecordMetrics(params_or_error);
     return;
@@ -125,8 +135,9 @@ void BoundSessionRegistrationFetcherImpl::OnURLLoaderComplete(
   bound_session_credentials::BoundSessionParams params =
       std::move(params_or_error).value();
   params.set_site(
-      net::SchemefulSite(registration_params_.RegistrationEndpoint())
-          .Serialize());
+      net::SchemefulSite(registration_params_.registration_endpoint())
+          .GetURL()
+          .spec());
   params.set_wrapped_key(wrapped_key_str_);
   *params.mutable_creation_time() =
       bound_session_credentials::TimeToTimestamp(base::Time::Now());
@@ -187,37 +198,38 @@ void BoundSessionRegistrationFetcherImpl::StartFetchingRegistration(
                 email: "chrome-signin-team@google.com"
             }
           }
-          last_reviewed: "2023-06-15"
+          last_reviewed: "2024-05-30"
         }
         policy {
           cookies_allowed: YES
           cookies_store: "user"
           setting:
-             "This is a new feature being developed behind a flag that is"
-             " disabled by default (kEnableBoundSessionCredentials). This"
-             " request will only be sent if the feature is enabled and once"
-             " a server requests it with a special header."
-          policy_exception_justification:
-            "Not implemented. "
-            "If the feature is on, this request must be made to ensure the user"
-            " maintains their signed in status on the web for Google owned"
-            " domains."
+             "This feature cannot be disabled in settings, but this request "
+             "won't be made unless the user signs in to google.com."
+          chrome_policy: {
+            BoundSessionCredentialsEnabled {
+              BoundSessionCredentialsEnabled: false
+            }
+          }
         })");
 
   auto request = std::make_unique<network::ResourceRequest>();
-  request->url = registration_params_.RegistrationEndpoint();
+  request->url = registration_params_.registration_endpoint();
   request->method = "POST";
-  request->site_for_cookies =
-      net::SiteForCookies::FromUrl(registration_params_.RegistrationEndpoint());
+  request->site_for_cookies = net::SiteForCookies::FromUrl(
+      registration_params_.registration_endpoint());
   request->trusted_params = network::ResourceRequest::TrustedParams();
   request->trusted_params->isolation_info =
       net::IsolationInfo::CreateForInternalRequest(
-          url::Origin::Create(registration_params_.RegistrationEndpoint()));
+          url::Origin::Create(registration_params_.registration_endpoint()));
 
   std::string content_type = "application/jwt";
 
-  url_loader_ =
-      network::SimpleURLLoader::Create(std::move(request), traffic_annotation);
+  url_loader_ = CreateSimpleURLLoaderWithVariationsHeaderUnknownSignedIn(
+      std::move(request),
+      is_off_the_record_profile_ ? variations::InIncognito::kYes
+                                 : variations::InIncognito::kNo,
+      traffic_annotation);
   url_loader_->AttachStringForUpload(registration_token, content_type);
   url_loader_->SetRetryOptions(
       3, network::SimpleURLLoader::RETRY_ON_NETWORK_CHANGE);
@@ -258,10 +270,11 @@ void BoundSessionRegistrationFetcherImpl::RunCallbackAndRecordMetrics(
 BoundSessionRegistrationFetcherImpl::RegistrationErrorOr<
     bound_session_credentials::BoundSessionParams>
 BoundSessionRegistrationFetcherImpl::ParseJsonResponse(
+    const GURL& request_url,
     std::unique_ptr<std::string> response_body) {
   // JSON responses normally should start with XSSI-protection prefix which
   // should be removed prior to parsing.
-  base::StringPiece response_json = *response_body;
+  std::string_view response_json = *response_body;
   if (base::StartsWith(*response_body, kXSSIPrefix,
                        base::CompareCase::SENSITIVE)) {
     response_json = response_json.substr(strlen(kXSSIPrefix));
@@ -274,7 +287,8 @@ BoundSessionRegistrationFetcherImpl::ParseJsonResponse(
 
   std::string* session_id = maybe_root->FindString(kSessionIdentifier);
   base::Value::List* credentials_list = maybe_root->FindList(kCredentials);
-  if (!session_id || !credentials_list) {
+  std::string* refresh_url = maybe_root->FindString(kRefreshUrl);
+  if (!session_id || !credentials_list || !refresh_url) {
     // Incorrect registration params.
     return base::unexpected(RegistrationError::kRequiredFieldMissing);
   }
@@ -291,6 +305,15 @@ BoundSessionRegistrationFetcherImpl::ParseJsonResponse(
   for (auto& credential : credentials_or_error.value()) {
     *params.add_credentials() = std::move(credential);
   }
+
+  // The refresh URL must be a correct, same-site URL.
+  GURL refresh_endpoint =
+      bound_session_credentials::ResolveEndpointPath(request_url, *refresh_url);
+  if (!refresh_endpoint.is_valid()) {
+    return base::unexpected(RegistrationError::kInvalidSessionParams);
+  }
+  params.set_refresh_url(refresh_endpoint.spec());
+
   return params;
 }
 

@@ -3,6 +3,7 @@
 
 #include "qsvgfilter_p.h"
 
+#include "qsvggraphics_p.h"
 #include "qsvgnode_p.h"
 #include "qsvgtinydocument_p.h"
 #include "qpainter.h"
@@ -13,10 +14,8 @@
 
 QT_BEGIN_NAMESPACE
 
-Q_DECLARE_LOGGING_CATEGORY(lcSvgDraw);
-
-QSvgFeFilterPrimitive::QSvgFeFilterPrimitive(QSvgNode *parent, QString input, QString result,
-                                             const QSvgRectF &rect)
+QSvgFeFilterPrimitive::QSvgFeFilterPrimitive(QSvgNode *parent, const QString &input,
+                                             const QString &result, const QSvgRectF &rect)
     : QSvgStructureNode(parent)
     , m_input(input)
     , m_result(result)
@@ -87,23 +86,23 @@ const QSvgFeFilterPrimitive *QSvgFeFilterPrimitive::castToFilterPrimitive(const 
         node->type() == QSvgNode::FeGaussianblur ||
         node->type() == QSvgNode::FeOffset ||
         node->type() == QSvgNode::FeComposite ||
-        node->type() == QSvgNode::FeFlood ) {
+        node->type() == QSvgNode::FeFlood ||
+        node->type() == QSvgNode::FeBlend ) {
         return reinterpret_cast<const QSvgFeFilterPrimitive*>(node);
     } else {
         return nullptr;
     }
 }
 
-QSvgFeColorMatrix::QSvgFeColorMatrix(QSvgNode *parent, QString input, QString result, const QSvgRectF &rect,
-                                     ColorShiftType type, Matrix matrix)
+QSvgFeColorMatrix::QSvgFeColorMatrix(QSvgNode *parent, const QString &input, const QString &result,
+                                     const QSvgRectF &rect, ColorShiftType type,
+                                     const Matrix &matrix)
     : QSvgFeFilterPrimitive(parent, input, result, rect)
-    , m_type(type)
     , m_matrix(matrix)
 {
-    (void)m_type;
     //Magic numbers see SVG 1.1(Second edition)
     if (type == ColorShiftType::Saturate) {
-        qreal s = qBound(0., matrix.data()[0], 1.);
+        qreal s = qBound(0., m_matrix.data()[0], 1.);
 
         m_matrix.fill(0);
 
@@ -122,7 +121,7 @@ QSvgFeColorMatrix::QSvgFeColorMatrix(QSvgNode *parent, QString input, QString re
         m_matrix.data()[3+3*5] = 1;
 
     } else if (type == ColorShiftType::HueRotate){
-        qreal angle = matrix.data()[0]/180.*M_PI;
+        qreal angle = m_matrix.data()[0]/180.*M_PI;
         qreal s = sin(angle);
         qreal c = cos(angle);
 
@@ -272,14 +271,15 @@ QImage QSvgFeColorMatrix::apply(const QMap<QString, QImage> &sources, QPainter *
     return result;
 }
 
-QSvgFeGaussianBlur::QSvgFeGaussianBlur(QSvgNode *parent, QString input, QString result, const QSvgRectF &rect,
+QSvgFeGaussianBlur::QSvgFeGaussianBlur(QSvgNode *parent, const QString &input,
+                                       const QString &result, const QSvgRectF &rect,
                                        qreal stdDeviationX, qreal stdDeviationY, EdgeMode edgemode)
     : QSvgFeFilterPrimitive(parent, input, result, rect)
     , m_stdDeviationX(stdDeviationX)
     , m_stdDeviationY(stdDeviationY)
     , m_edgemode(edgemode)
 {
-    (void)m_edgemode;
+    Q_UNUSED(m_edgemode);
 }
 
 QSvgNode::Type QSvgFeGaussianBlur::type() const
@@ -424,8 +424,8 @@ QImage QSvgFeGaussianBlur::apply(const QMap<QString, QImage> &sources, QPainter 
     return result;
 }
 
-QSvgFeOffset::QSvgFeOffset(QSvgNode *parent, QString input, QString result, const QSvgRectF &rect,
-                           qreal dx, qreal dy)
+QSvgFeOffset::QSvgFeOffset(QSvgNode *parent, const QString &input, const QString &result,
+                           const QSvgRectF &rect, qreal dx, qreal dy)
     : QSvgFeFilterPrimitive(parent, input, result, rect)
     , m_dx(dx)
     , m_dy(dy)
@@ -478,7 +478,8 @@ QImage QSvgFeOffset::apply(const QMap<QString, QImage> &sources, QPainter *p,
 }
 
 
-QSvgFeMerge::QSvgFeMerge(QSvgNode *parent, QString input, QString result, const QSvgRectF &rect)
+QSvgFeMerge::QSvgFeMerge(QSvgNode *parent, const QString &input,
+                         const QString &result, const QSvgRectF &rect)
     : QSvgFeFilterPrimitive(parent, input, result, rect)
 {
 
@@ -538,7 +539,8 @@ bool QSvgFeMerge::requiresSourceAlpha() const
     return false;
 }
 
-QSvgFeMergeNode::QSvgFeMergeNode(QSvgNode *parent, QString input, QString result, const QSvgRectF &rect)
+QSvgFeMergeNode::QSvgFeMergeNode(QSvgNode *parent, const QString &input,
+                                 const QString &result, const QSvgRectF &rect)
     : QSvgFeFilterPrimitive(parent, input, result, rect)
 {
 
@@ -555,8 +557,9 @@ QImage QSvgFeMergeNode::apply(const QMap<QString, QImage> &sources, QPainter *,
     return sources.value(m_input);
 }
 
-QSvgFeComposite::QSvgFeComposite(QSvgNode *parent, QString input, QString result, const QSvgRectF &rect,
-                                 QString input2, Operator op, QVector4D k)
+QSvgFeComposite::QSvgFeComposite(QSvgNode *parent, const QString &input, const QString &result,
+                                 const QSvgRectF &rect, const QString &input2, Operator op,
+                                 const QVector4D &k)
     : QSvgFeFilterPrimitive(parent, input, result, rect)
     , m_input2(input2)
     , m_operator(op)
@@ -694,7 +697,7 @@ bool QSvgFeComposite::requiresSourceAlpha() const
 }
 
 
-QSvgFeFlood::QSvgFeFlood(QSvgNode *parent, QString input, QString result,
+QSvgFeFlood::QSvgFeFlood(QSvgNode *parent, const QString &input, const QString &result,
                          const QSvgRectF &rect, const QColor &color)
     : QSvgFeFilterPrimitive(parent, input, result, rect)
     , m_color(color)
@@ -727,7 +730,123 @@ QImage QSvgFeFlood::apply(const QMap<QString, QImage> &,
     return result;
 }
 
-QSvgFeUnsupported::QSvgFeUnsupported(QSvgNode *parent, QString input, QString result,
+QSvgFeBlend::QSvgFeBlend(QSvgNode *parent, const QString &input, const QString &result,
+                         const QSvgRectF &rect, const QString &input2, Mode mode)
+    : QSvgFeFilterPrimitive(parent, input, result, rect)
+      , m_input2(input2)
+      , m_mode(mode)
+{
+
+}
+
+QSvgNode::Type QSvgFeBlend::type() const
+{
+    return QSvgNode::FeBlend;
+}
+
+QImage QSvgFeBlend::apply(const QMap<QString, QImage> &sources, QPainter *p,
+                          const QRectF &itemBounds, const QRectF &filterBounds,
+                          QtSvg::UnitTypes primitiveUnits, QtSvg::UnitTypes filterUnits) const
+{
+    if (!sources.contains(m_input))
+        return QImage();
+    if (!sources.contains(m_input2))
+        return QImage();
+    QImage source1 = sources[m_input];
+    QImage source2 = sources[m_input2];
+    Q_ASSERT(source1.depth() == 32);
+    Q_ASSERT(source2.depth() == 32);
+
+    QRectF clipRect = localSubRegion(itemBounds, filterBounds, primitiveUnits, filterUnits);
+    QRect clipRectGlob = p->transform().mapRect(clipRect).toRect();
+
+    QImage result;
+    if (!QImageIOHandler::allocateImage(clipRectGlob.size(), QImage::Format_ARGB32_Premultiplied, &result)) {
+        qCWarning(lcSvgDraw) << "The requested filter buffer is too big, ignoring";
+        return QImage();
+    }
+    result.setOffset(clipRectGlob.topLeft());
+    result.fill(Qt::transparent);
+
+    for (int j = 0; j < result.height(); j++) {
+        int jj1 = j - source1.offset().y() + result.offset().y();
+        int jj2 = j - source2.offset().y() + result.offset().y();
+
+        QRgb *resultLine = reinterpret_cast<QRgb *>(result.scanLine(j));
+        QRgb *source1Line = nullptr;
+        QRgb *source2Line = nullptr;
+
+        if (jj1 >= 0 && jj1 < source1.size().height())
+            source1Line = reinterpret_cast<QRgb *>(source1.scanLine(jj1));
+        if (jj2 >= 0 && jj2 < source2.size().height())
+            source2Line = reinterpret_cast<QRgb *>(source2.scanLine(jj2));
+
+        for (int i = 0; i < result.width(); i++) {
+            int ii1 = i - source1.offset().x() + result.offset().x();
+            int ii2 = i - source2.offset().x() + result.offset().x();
+
+            QRgb pixel1 = (ii1 >= 0 && ii1 < source1.size().width() && source1Line) ?
+                    source1Line[ii1] : qRgba(0, 0, 0, 0);
+            QRgb pixel2 = (ii2 >= 0 && ii2 < source2.size().width() && source2Line) ?
+                    source2Line[ii2] : qRgba(0, 0, 0, 0);
+
+            qreal r = 0, g = 0, b = 0;
+            qreal red1 = qRed(pixel1);
+            qreal red2 = qRed(pixel2);
+            qreal green1 = qGreen(pixel1);
+            qreal green2 = qGreen(pixel2);
+            qreal blue1 = qBlue(pixel1);
+            qreal blue2 = qBlue(pixel2);
+            qreal alpha1 = qAlpha(pixel1) / 255.;
+            qreal alpha2 = qAlpha(pixel2) / 255.;
+            qreal a = 255 - (1 - alpha1) * (1 - alpha2) * 255.;
+
+            switch (m_mode) {
+            case Mode::Normal:
+                r = (1 - alpha1) * red2 + red1;
+                g = (1 - alpha1) * green2 + green1;
+                b = (1 - alpha1) * blue2 + blue1;
+                break;
+            case Mode::Multiply:
+                r = (1 - alpha1) * red2 + (1 - alpha2) * red1 + red1 * red2;
+                g = (1 - alpha1) * green2 + (1 - alpha2) * green1 + green1 * green2;
+                b = (1 - alpha1) * blue2 + (1 - alpha2) * blue1 + blue1 * blue2;
+                break;
+            case Mode::Screen:
+                r = red2 + red1 - red1 * red2;
+                g = green2 + green1 - green1 * green2;
+                b = blue2 + blue1 - blue1 * blue2;
+                break;
+            case Mode::Darken:
+                r = qMin((1 - alpha1) * red2 + red1, (1 - alpha2) * red1 + red2);
+                g = qMin((1 - alpha1) * green2 + green1, (1 - alpha2) * green1 + green2);
+                b = qMin((1 - alpha1) * blue2 + blue1, (1 - alpha2) * blue1 + blue2);
+                break;
+            case Mode::Lighten:
+                r = qMax((1 - alpha1) * red2 + red1, (1 - alpha2) * red1 + red2);
+                g = qMax((1 - alpha1) * green2 + green1, (1 - alpha2) * green1 + green2);
+                b = qMax((1 - alpha1) * blue2 + blue1, (1 - alpha2) * blue1 + blue2);
+                break;
+            }
+            a = qBound(0., a, 255.);
+            resultLine[i] = qRgba(qBound(0., r, a),
+                                  qBound(0., g, a),
+                                  qBound(0., b, a),
+                                  a);
+        }
+    }
+    clipToTransformedBounds(&result, p, clipRect);
+    return result;
+}
+
+bool QSvgFeBlend::requiresSourceAlpha() const
+{
+    if (QSvgFeFilterPrimitive::requiresSourceAlpha())
+        return true;
+    return m_input2 == QLatin1StringView("SourceAlpha");
+}
+
+QSvgFeUnsupported::QSvgFeUnsupported(QSvgNode *parent, const QString &input, const QString &result,
                          const QSvgRectF &rect)
     : QSvgFeFilterPrimitive(parent, input, result, rect)
 {

@@ -235,7 +235,7 @@
             functional for your host platform.
         \li The toolchain file, in this example \c{$HOME/qnx.cmake}.
         \li The Qt source code checked out or installed, in this example under \c{$HOME/qt}.
-        \li Host build of Qt, in this example \c{$HOME/qt-host}.
+        \li \l{Cross-compiling Qt}{Host build of Qt}, in this example \c{$HOME/qt-host}.
         \li Prefix for the Qt build installation location on the local system, in this example
         \c{$HOME/qnx-install}.
         \li Prefix for the Qt build deployment location on the target device, in this example
@@ -329,11 +329,11 @@
     $HOME/qnx-install/bin/qt-cmake -DQT_CHAINLOAD_TOOLCHAIN_FILE=$HOME/qnx.cmake .
     \endcode
 
-    When building applications in Qt Creator using Qt installation that has not been
+    When building applications in \QC using Qt installation that has not been
     built in your machine, the \c {CMAKE_TOOLCHAIN_FILE} variable, pointing to local toolchain
      file, needs to be added to kit configuration (\b {Edit > Preferences > Kits}).
 
-    For more information on connecting and adding kits for QNX devices while using Qt Creator,
+    For more information on connecting and adding kits for QNX devices while using \QC,
     see \l {https://doc.qt.io/qtcreator/creator-developing-qnx.html} {Connecting QNX devices}.
 
     \section1 Third party libraries

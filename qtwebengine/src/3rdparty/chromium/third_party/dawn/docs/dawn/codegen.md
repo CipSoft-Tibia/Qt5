@@ -11,9 +11,9 @@ Most of the code generation is done from [`dawn.json`](../../src/dawn/dawn.json)
 At this time it is used to generate:
 
  - the Dawn, Emscripten, and upstream webgpu-native `webgpu.h` C header
- - the Dawn and Emscripten `webgpu_cpp.cpp/h` C++ wrapper over the C header
+ - the Dawn and Emscripten `webgpu_cpp.h` C++ wrapper over the C header
  - libraries that implements `webgpu.h` by calling in a static or `thread_local` proc table
- - other parts of the [Emscripten](https://emscripten.org/) WebGPU implementation
+ - the [Emscripten](https://emscripten.org/) WebGPU binding implementation
  - a GMock version of the API with its proc table for testing
  - validation helper functions for dawn_native
  - the definition of dawn_native's proc table
@@ -36,6 +36,8 @@ The `"_metadata"` key in the JSON file is used by flexible templates for generat
 The basic schema is that every entry is a thing with a `"category"` key what determines the sub-schema to apply to that thing. Categories and their sub-shema are defined below. Several parts of the schema use the concept of "record" which is a list of "record members" which are a combination of a type, a name and other metadata. For example the list of arguments of a function is a record. The list of structure members is a record. This combined concept is useful for the dawn_wire generator to generate code for structure and function calls in a very similar way.
 
 Most items and sub-items can include a list of `"tags"`, which, if specified, conditionally includes the item if any of its tags appears in the `enabled_tags` configuration passed to `parse_json`. This is used to include and exclude various items for Dawn, Emscripten, or upstream header variants. Tags are applied in the "parse_json" step ([rather than later](https://docs.google.com/document/d/1fBniVOxx3-hQbxHMugEPcQsaXaKBZYVO8yG9iXJp-fU/edit?usp=sharing)): this has the benefit of automatically catching when, for a particular tag configuration, an included item references an excluded item.
+
+When used on enum values, `"tags"` may add an additional prefix to the enum value. This is to implement [implementation-specific ranges of enums](https://github.com/webgpu-native/webgpu-headers/issues/214). All compat enums are to start at `0x0002_0000`, Emscripten enums are to start at `0x0004_0000`, and all Dawn enums are to start at `0x0005_0000`. Use of `"compat"`, `"emscripten"`, or `"dawn"` tags will add these values, respectively. So, an enum with value `"3"` but tag `"emscripten"` will actually use value `0x0002_0003`. Multi-implementation native enums start at `0x0001_0000`, so this value is added if the `"native"` tag is present and no other value-impacting tag is applied.
 
 A **record** is a list of **record members**, each of which is a dictionary with the following schema:
  - `"name"` a string
@@ -115,12 +117,3 @@ The schema of `dawn_wire.json` is a dictionary with the following keys:
 ## OpenGL loader generator
 
 The code to load OpenGL entrypoints from a `GetProcAddress` function is generated from [`gl.xml`](../../third_party/khronos/gl.xml) and the [list of extensions](../../src/dawn/native/opengl/supported_extensions.json) it supports.
-
-
-## Dawn lpmfuzz generator
-One of Dawn's Fuzzers utilizes the information in [`dawn.json`, `dawn_wire.json`, `dawn_lpm.json`] to generate  the `.proto` and `.cpp` files required for a [libprotobuf-mutator fuzzer](https://github.com/google/libprotobuf-mutator) that fuzzes Dawn Wire Server's stack with more effectiveness in some areas than plain libfuzzer.
-
-At this time it is used to generate:
-
- - the `dawn_lpm.proto` file used to describe the grammar for the fuzzer
- - the serializer `DawnLPMSerializer.cpp` that takes an arbitrary number of protobuf structures that were defined in `dawn_lpm.proto` and serializes them to be passed to `DawnWireServer::HandleCommands`.

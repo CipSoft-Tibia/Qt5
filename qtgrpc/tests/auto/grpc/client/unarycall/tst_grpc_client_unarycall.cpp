@@ -142,37 +142,35 @@ void QtGrpcClientUnaryCallTest::asyncStatusMessage()
 void QtGrpcClientUnaryCallTest::metadata()
 {
     QGrpcCallOptions opt;
-    opt.setMetadata({
-        { "client_header",        "1"           },
-        { "client_return_header", "valid_value" }
-    });
+    QHash<QByteArray, QByteArray> clientMd{
+        { "request_initial",  "3"  },
+        { "request_trailing", "2"  },
+        { "request_sum",      "20" },
+        { "request_sum",      "10" }
+    };
+    QT_IGNORE_DEPRECATIONS(opt.setMetadata(clientMd);)
     auto reply = client()->testMetadata({}, opt);
+    QSignalSpy replyFinishedSpy(reply.get(), &QGrpcCallReply::finished);
+    QVERIFY(replyFinishedSpy.isValid());
 
-    QHash<QByteArray, QByteArray> metadata;
-    QEventLoop waiter;
+    QTRY_COMPARE_EQ_WITH_TIMEOUT(replyFinishedSpy.count(), 1, FailTimeout);
+    const auto &args = replyFinishedSpy.first();
+    QCOMPARE_EQ(args.count(), 1);
+    QVERIFY(args.first().value<QGrpcStatus>().isOk());
 
-    connect(
-        reply.get(), &QGrpcOperation::finished, this,
-        [&reply, &metadata, &waiter](const QGrpcStatus &) {
-            metadata = reply->metadata();
-            waiter.quit();
-        },
-        Qt::SingleShotConnection);
+    const auto &md = reply->metadata();
+    auto initialIt = md.equal_range("response_initial");
+    QCOMPARE_EQ(std::distance(initialIt.first, initialIt.second), 1);
+    QCOMPARE_EQ(initialIt.first.value(), "2");
 
-    waiter.exec();
+    auto trailingIt = md.equal_range("response_trailing");
+    QCOMPARE_EQ(std::distance(trailingIt.first, trailingIt.second), 1);
+    QCOMPARE_EQ(trailingIt.first.value(), "1");
 
-    int serverHeaderCount = 0;
-    QByteArray clientReturnHeader;
-    for (const auto &[key, value] : reply->metadata().asKeyValueRange()) {
-        if (key == "server_header") {
-            QCOMPARE_EQ(QString::fromLatin1(value), QString::number(++serverHeaderCount));
-        } else if (key == "client_return_header") {
-            clientReturnHeader = value;
-        }
-    }
-
-    QCOMPARE_EQ(serverHeaderCount, 1);
-    QCOMPARE_EQ(clientReturnHeader, "valid_value"_ba);
+    auto sumIt = md.equal_range("response_sum");
+    QCOMPARE_EQ(std::distance(sumIt.first, sumIt.second), 1);
+    auto sum = sumIt.first.value();
+    QVERIFY(sum == "20"_ba || sum == "10"_ba);
 }
 
 QTEST_MAIN(QtGrpcClientUnaryCallTest)

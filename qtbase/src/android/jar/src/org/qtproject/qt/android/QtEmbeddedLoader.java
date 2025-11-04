@@ -6,8 +6,6 @@ package org.qtproject.qt.android;
 import android.content.Context;
 import android.content.ContextWrapper;
 
-import android.util.Log;
-
 class QtEmbeddedLoader extends QtLoader {
     private static final String TAG = "QtEmbeddedLoader";
 
@@ -19,6 +17,8 @@ class QtEmbeddedLoader extends QtLoader {
         String stylePath = ExtractStyle.setup(context, "minimal", displayDensity);
         setEnvironmentVariable("ANDROID_STYLE_PATH", stylePath);
         setEnvironmentVariable("QT_ANDROID_NO_EXIT_CALL", String.valueOf(true));
+
+        extractContextMetaData(context);
     }
 
     static QtEmbeddedLoader getEmbeddedLoader(Context context) throws IllegalArgumentException {

@@ -18,6 +18,7 @@ private Q_SLOTS:
     void updateReply();
     void requestData();
     void abortRequest();
+    void readReplyChunked();
 };
 
 void tst_QCoapReply::updateReply_data()
@@ -115,6 +116,39 @@ void tst_QCoapReply::abortRequest()
     QList<QVariant> arguments = spyAborted.takeFirst();
     QTRY_COMPARE_WITH_TIMEOUT(spyFinished.size(), 1, 1000);
     QVERIFY(arguments.at(0).toByteArray() == "token");
+}
+
+void tst_QCoapReply::readReplyChunked()
+{
+    const QByteArray token = "\xAF\x01\xC2";
+    const quint16 id = 645;
+    const QByteArray payload = "this is some payload";
+
+    QScopedPointer<QCoapReply> reply(QCoapReplyPrivate::createCoapReply(QCoapRequest()));
+    QCoapMessage message;
+    message.setToken(token);
+    message.setMessageId(id);
+    message.setPayload(payload);
+
+    QMetaObject::invokeMethod(reply.data(), "_q_setContent",
+                              Q_ARG(QHostAddress, QHostAddress()),
+                              Q_ARG(QCoapMessage, message),
+                              Q_ARG(QtCoap::ResponseCode, QtCoap::ResponseCode::Content));
+    QMetaObject::invokeMethod(reply.data(), "_q_setFinished",
+                              Q_ARG(QtCoap::Error, QtCoap::Error::Ok));
+
+    QCOMPARE_EQ(reply->pos(), 0);
+    const qsizetype startBytes = 7;
+    const QByteArray start = reply->read(startBytes);
+    QCOMPARE_EQ(start, payload.first(startBytes));
+    QCOMPARE_EQ(reply->pos(), startBytes);
+
+    QByteArray last(100, Qt::Uninitialized);
+    const qint64 read = reply->read(last.data(), last.size());
+    QCOMPARE_EQ(read, payload.size() - startBytes);
+    QCOMPARE_EQ(reply->pos(), payload.size());
+    last.resize(read);
+    QCOMPARE_EQ(start + last, payload);
 }
 
 QTEST_MAIN(tst_QCoapReply)

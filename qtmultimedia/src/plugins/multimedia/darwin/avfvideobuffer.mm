@@ -9,24 +9,23 @@
 #include <QtCore/qloggingcategory.h>
 
 #include <private/qvideotexturehelper_p.h>
-#include "qavfhelpers_p.h"
+#include <QtMultimedia/private/qavfhelpers_p.h>
 
 #import <AVFoundation/AVFoundation.h>
 #import <Metal/Metal.h>
 
 QT_USE_NAMESPACE
 
-Q_LOGGING_CATEGORY(qLcVideoBuffer, "qt.multimedia.darwin.videobuffer")
+Q_STATIC_LOGGING_CATEGORY(qLcVideoBuffer, "qt.multimedia.darwin.videobuffer")
 
-AVFVideoBuffer::AVFVideoBuffer(AVFVideoSinkInterface *sink, CVImageBufferRef buffer)
+AVFVideoBuffer::AVFVideoBuffer(AVFVideoSinkInterface *sink, QCFType<CVImageBufferRef> buffer)
     : QHwVideoBuffer(sink->rhi() ? QVideoFrame::RhiTextureHandle : QVideoFrame::NoHandle,
                      sink->rhi()),
       sink(sink),
-      m_buffer(buffer)
+      m_buffer(std::move(buffer))
 {
 //    m_type = QVideoFrame::NoHandle;
 //    qDebug() << "RHI" << m_rhi;
-    CVPixelBufferRetain(m_buffer);
     const bool rhiIsOpenGL = sink && sink->rhi() && sink->rhi()->backend() == QRhi::OpenGLES2;
     m_format = QAVFHelpers::videoFormatForImageBuffer(m_buffer, rhiIsOpenGL);
 
@@ -37,17 +36,6 @@ AVFVideoBuffer::AVFVideoBuffer(AVFVideoSinkInterface *sink, CVImageBufferRef buf
 AVFVideoBuffer::~AVFVideoBuffer()
 {
     Q_ASSERT(m_mode == QVideoFrame::NotMapped);
-    for (int i = 0; i < 3; ++i)
-        if (cvMetalTexture[i])
-            CFRelease(cvMetalTexture[i]);
-#if defined(Q_OS_MACOS)
-    if (cvOpenGLTexture)
-        CVOpenGLTextureRelease(cvOpenGLTexture);
-#elif defined(Q_OS_IOS)
-    if (cvOpenGLESTexture)
-        CFRelease(cvOpenGLESTexture);
-#endif
-    CVPixelBufferRelease(m_buffer);
 }
 
 AVFVideoBuffer::MapData AVFVideoBuffer::map(QVideoFrame::MapMode mode)

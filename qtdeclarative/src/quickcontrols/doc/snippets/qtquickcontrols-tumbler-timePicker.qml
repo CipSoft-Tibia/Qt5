@@ -10,11 +10,6 @@ Rectangle {
     width: frame.implicitWidth + 10
     height: frame.implicitHeight + 10
 
-    function formatText(count, modelData) {
-        var data = count === 12 ? modelData + 1 : modelData;
-        return data.toString().length < 2 ? "0" + data : data;
-    }
-
     FontMetrics {
         id: fontMetrics
     }
@@ -28,6 +23,11 @@ Rectangle {
             horizontalAlignment: Text.AlignHCenter
             verticalAlignment: Text.AlignVCenter
             font.pixelSize: fontMetrics.font.pixelSize * 1.25
+
+            function formatText(count, modelData) {
+                var data = count === 12 ? modelData + 1 : modelData;
+                return data.toString().length < 2 ? "0" + data : data;
+            }
         }
     }
 

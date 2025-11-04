@@ -16,6 +16,8 @@
 #include <QtQuick/private/qquicktransition_p.h>
 #include <QtQuick/private/qquicktransitionmanager_p_p.h>
 
+#include <algorithm>
+
 QT_BEGIN_NAMESPACE
 
 /*!
@@ -589,7 +591,7 @@ qreal QQuickSwipe::position() const
 void QQuickSwipe::setPosition(qreal position)
 {
     Q_D(QQuickSwipe);
-    const qreal adjustedPosition = qBound<qreal>(-1.0, position, 1.0);
+    const qreal adjustedPosition = std::clamp(position, qreal(-1.0), qreal(1.0));
     if (adjustedPosition == d->position)
         return;
 
@@ -789,7 +791,8 @@ bool QQuickSwipeDelegatePrivate::handleMouseMoveEvent(QQuickItem *item, QMouseEv
         // We used to use the custom threshold that QQuickDrawerPrivate::grabMouse used,
         // but since it's larger than what Flickable uses, it results in Flickable
         // stealing events from us (QTBUG-50045), so now we use the default.
-        const bool overThreshold = QQuickWindowPrivate::dragOverThreshold(distance, Qt::XAxis, event);
+        const bool overThreshold = QQuickDeliveryAgentPrivate::dragOverThreshold(distance,
+                                                                                 Qt::XAxis, event);
         if (window && overThreshold) {
             QQuickItem *grabber = q->window()->mouseGrabberItem();
             if (!grabber || !grabber->keepMouseGrab()) {
@@ -1411,7 +1414,7 @@ QQuickSwipeDelegateAttached::QQuickSwipeDelegateAttached(QObject *object)
         // the first one with an attached object.
         item->setAcceptedMouseButtons(Qt::AllButtons);
     } else {
-        qWarning() << "Attached properties of SwipeDelegate must be accessed through an Item";
+        qWarning() << "SwipeDelegate attached property must be attached to an object deriving from Item";
     }
 }
 

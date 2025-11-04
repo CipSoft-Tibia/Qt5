@@ -33,8 +33,8 @@ QT_BEGIN_NAMESPACE
 
 using namespace Qt::StringLiterals;
 
-Q_LOGGING_CATEGORY(lcQmlUsedBeforeDeclared, "qt.qml.usedbeforedeclared");
-Q_LOGGING_CATEGORY(lcQmlInjectedParameter, "qt.qml.injectedparameter");
+Q_STATIC_LOGGING_CATEGORY(lcQmlUsedBeforeDeclared, "qt.qml.usedbeforedeclared");
+Q_STATIC_LOGGING_CATEGORY(lcQmlInjectedParameter, "qt.qml.injectedparameter");
 
 using namespace QV4;
 using namespace QV4::Compiler;
@@ -1121,7 +1121,7 @@ bool Codegen::visit(ClassDeclaration *ast)
     return false;
 }
 
-bool Codegen::visit(Expression *ast)
+bool Codegen::visit(CommaExpression *ast)
 {
     if (hasError())
         return false;
@@ -1470,6 +1470,7 @@ bool Codegen::visit(BinaryExpression *ast)
 
         return false;
     } else if (ast->op == QSOperator::Assign) {
+        bytecodeGenerator->setLocation(ast->left->firstSourceLocation());
         if (AST::Pattern *p = ast->left->patternCast()) {
             RegisterScope scope(this);
             Reference right = expression(ast->right);

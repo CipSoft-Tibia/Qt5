@@ -13,6 +13,7 @@
 #include "base/ranges/algorithm.h"
 #include "ui/base/interaction/element_identifier.h"
 #include "ui/base/models/dialog_model_field.h"
+#include "ui/base/mojom/dialog_button.mojom.h"
 #include "ui/base/ui_base_types.h"
 
 namespace ui {
@@ -37,7 +38,7 @@ DialogModel::Button::Params& DialogModel::Button::Params::SetLabel(
 }
 
 DialogModel::Button::Params& DialogModel::Button::Params::SetStyle(
-    absl::optional<ButtonStyle> style) {
+    std::optional<ButtonStyle> style) {
   CHECK(style_ != style, base::NotFatalUntil::M123);
   style_ = style;
   return *this;
@@ -105,7 +106,7 @@ DialogModel::Builder& DialogModel::Builder::AddCancelButton(
 DialogModel::Builder& DialogModel::Builder::AddButtonInternal(
     ButtonCallbackVariant callback,
     const DialogModel::Button::Params& params,
-    absl::optional<ui::DialogModel::Button>& model_button,
+    std::optional<ui::DialogModel::Button>& model_button,
     ButtonCallbackVariant& model_callback) {
   CHECK(params.is_visible_);
   CHECK(!model_button.has_value());
@@ -148,17 +149,17 @@ DialogModel::Builder& DialogModel::Builder::AddExtraLink(
 }
 
 DialogModel::Builder& DialogModel::Builder::OverrideDefaultButton(
-    DialogButton button) {
+    mojom::DialogButton button) {
   // This can only be called once.
   CHECK(!model_->override_default_button_, base::NotFatalUntil::M123);
   // Confirm the button exists.
   switch (button) {
-    case DIALOG_BUTTON_NONE:
+    case mojom::DialogButton::kNone:
       break;
-    case DIALOG_BUTTON_OK:
+    case mojom::DialogButton::kOk:
       CHECK(model_->ok_button_, base::NotFatalUntil::M123);
       break;
-    case DIALOG_BUTTON_CANCEL:
+    case mojom::DialogButton::kCancel:
       CHECK(model_->cancel_button_, base::NotFatalUntil::M123);
       break;
   }
@@ -280,6 +281,15 @@ void DialogModel::SetButtonLabel(DialogModel::Button* button,
                                  const std::u16string& label) {
   CHECK(button);
   button->label_ = label;
+
+  if (host_) {
+    host_->OnDialogButtonChanged();
+  }
+}
+
+void DialogModel::SetButtonEnabled(DialogModel::Button* button, bool enabled) {
+  CHECK(button);
+  button->is_enabled_ = enabled;
 
   if (host_) {
     host_->OnDialogButtonChanged();

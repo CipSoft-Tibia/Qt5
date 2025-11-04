@@ -16,6 +16,7 @@ QT_BEGIN_NAMESPACE
     \inqmlmodule QtOpcUa
     \internal
     \brief This class resolves relative nodes.
+    \deprecated [6.9]
 
     This class is used to resolve relative node IDs. It will emit \c resolvedNode
     with the result and delete itself afterwards.

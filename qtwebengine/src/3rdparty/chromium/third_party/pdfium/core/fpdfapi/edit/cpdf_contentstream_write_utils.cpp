@@ -10,6 +10,9 @@
 #include <cmath>
 #include <ostream>
 
+#include "core/fxcrt/compiler_specific.h"
+#include "core/fxcrt/span.h"
+
 namespace {
 
 constexpr unsigned kMaximumSkFloatToDecimalLength = 49;
@@ -96,13 +99,14 @@ double pow10(int e) {
 // Motivation: "PDF does not support [numbers] in exponential format
 // (such as 6.02e23)."  Otherwise, this function would rely on a
 // sprintf-type function from the standard library.
-unsigned SkFloatToDecimal(float value,
-                          char output[kMaximumSkFloatToDecimalLength]) {
+unsigned SkFloatToDecimal(
+    float value,
+    pdfium::span<char, kMaximumSkFloatToDecimalLength> output) {
   // The longest result is -FLT_MIN.
   // We serialize it as "-.0000000000000000000000000000000000000117549435"
   // which has 48 characters plus a terminating '\0'.
-
   static_assert(kMaximumSkFloatToDecimalLength == 49, "");
+
   // 3 = '-', '.', and '\0' characters.
   // 9 = number of significant digits
   // abs(FLT_MIN_10_EXP) = number of zeros in FLT_MIN
@@ -117,9 +121,10 @@ unsigned SkFloatToDecimal(float value,
   // Experimentally, rasterizers such as pdfium do seem to benefit
   // from this.  Rasterizers that rely on fixed-point scalars should
   // gracefully ignore these values that they can not parse.
-  char* output_ptr = &output[0];
-  const char* const end = &output[kMaximumSkFloatToDecimalLength - 1];
-  // subtract one to leave space for '\0'.
+  char* output_ptr = output.data();
+
+  // last(1) leaves space for '\0'.
+  const char* const end = output.last(1u).data();
 
   // This function is written to accept any possible input value,
   // including non-finite values such as INF and NAN.  In that case,
@@ -131,86 +136,88 @@ unsigned SkFloatToDecimal(float value,
   if (value == -INFINITY) {
     value = -FLT_MAX;  // nearest finite float.
   }
-  if (!std::isfinite(value) || value == 0.0f) {
-    // NAN is unsupported in PDF.  Always output a valid number.
-    // Also catch zero here, as a special case.
-    *output_ptr++ = '0';
-    *output_ptr = '\0';
-    return static_cast<unsigned>(output_ptr - output);
-  }
-  if (value < 0.0) {
-    *output_ptr++ = '-';
-    value = -value;
-  }
-  assert(value >= 0.0f);
-
-  int binaryExponent;
-  (void)std::frexp(value, &binaryExponent);
-  static const double kLog2 = 0.3010299956639812;  // log10(2.0);
-  int decimalExponent = static_cast<int>(std::floor(kLog2 * binaryExponent));
-  int decimalShift = decimalExponent - 8;
-  double power = pow10(-decimalShift);
-  assert(value * power <= (double)INT_MAX);
-  int d = static_cast<int>(value * power + 0.5);
-  // assert(value == (float)(d * pow(10.0, decimalShift)));
-  assert(d <= 999999999);
-  if (d > 167772159) {  // floor(pow(10,1+log10(1<<24)))
-    // need one fewer decimal digits for 24-bit precision.
-    decimalShift = decimalExponent - 7;
-    // assert(power * 0.1 = pow10(-decimalShift));
-    // recalculate to get rounding right.
-    d = static_cast<int>(value * (power * 0.1) + 0.5);
-    assert(d <= 99999999);
-  }
-  while (d % 10 == 0) {
-    d /= 10;
-    ++decimalShift;
-  }
-  assert(d > 0);
-  // assert(value == (float)(d * pow(10.0, decimalShift)));
-  unsigned char buffer[9];  // decimal value buffer.
-  int bufferIndex = 0;
-  do {
-    buffer[bufferIndex++] = d % 10;
-    d /= 10;
-  } while (d != 0);
-  assert(bufferIndex <= (int)sizeof(buffer) && bufferIndex > 0);
-  if (decimalShift >= 0) {
-    do {
-      --bufferIndex;
-      *output_ptr++ = '0' + buffer[bufferIndex];
-    } while (bufferIndex);
-    for (int i = 0; i < decimalShift; ++i) {
+  UNSAFE_TODO({
+    if (!std::isfinite(value) || value == 0.0f) {
+      // NAN is unsupported in PDF.  Always output a valid number.
+      // Also catch zero here, as a special case.
       *output_ptr++ = '0';
+      *output_ptr = '\0';
+      return static_cast<unsigned>(output_ptr - output.data());
     }
-  } else {
-    int placesBeforeDecimal = bufferIndex + decimalShift;
-    if (placesBeforeDecimal > 0) {
-      while (placesBeforeDecimal-- > 0) {
+    if (value < 0.0) {
+      *output_ptr++ = '-';
+      value = -value;
+    }
+    assert(value >= 0.0f);
+
+    int binaryExponent;
+    (void)std::frexp(value, &binaryExponent);
+    static const double kLog2 = 0.3010299956639812;  // log10(2.0);
+    int decimalExponent = static_cast<int>(std::floor(kLog2 * binaryExponent));
+    int decimalShift = decimalExponent - 8;
+    double power = pow10(-decimalShift);
+    assert(value * power <= (double)INT_MAX);
+    int d = static_cast<int>(value * power + 0.5);
+    // assert(value == (float)(d * pow(10.0, decimalShift)));
+    assert(d <= 999999999);
+    if (d > 167772159) {  // floor(pow(10,1+log10(1<<24)))
+      // need one fewer decimal digits for 24-bit precision.
+      decimalShift = decimalExponent - 7;
+      // assert(power * 0.1 = pow10(-decimalShift));
+      // recalculate to get rounding right.
+      d = static_cast<int>(value * (power * 0.1) + 0.5);
+      assert(d <= 99999999);
+    }
+    while (d % 10 == 0) {
+      d /= 10;
+      ++decimalShift;
+    }
+    assert(d > 0);
+    // assert(value == (float)(d * pow(10.0, decimalShift)));
+    unsigned char buffer[9];  // decimal value buffer.
+    int bufferIndex = 0;
+    do {
+      buffer[bufferIndex++] = d % 10;
+      d /= 10;
+    } while (d != 0);
+    assert(bufferIndex <= (int)sizeof(buffer) && bufferIndex > 0);
+    if (decimalShift >= 0) {
+      do {
         --bufferIndex;
         *output_ptr++ = '0' + buffer[bufferIndex];
-      }
-      *output_ptr++ = '.';
-    } else {
-      *output_ptr++ = '.';
-      int placesAfterDecimal = -placesBeforeDecimal;
-      while (placesAfterDecimal-- > 0) {
+      } while (bufferIndex);
+      for (int i = 0; i < decimalShift; ++i) {
         *output_ptr++ = '0';
       }
-    }
-    while (bufferIndex > 0) {
-      --bufferIndex;
-      *output_ptr++ = '0' + buffer[bufferIndex];
-      if (output_ptr == end) {
-        break;  // denormalized: don't need extra precision.
-                // Note: denormalized numbers will not have the same number of
-                // significantDigits, but do not need them to round-trip.
+    } else {
+      int placesBeforeDecimal = bufferIndex + decimalShift;
+      if (placesBeforeDecimal > 0) {
+        while (placesBeforeDecimal-- > 0) {
+          --bufferIndex;
+          *output_ptr++ = '0' + buffer[bufferIndex];
+        }
+        *output_ptr++ = '.';
+      } else {
+        *output_ptr++ = '.';
+        int placesAfterDecimal = -placesBeforeDecimal;
+        while (placesAfterDecimal-- > 0) {
+          *output_ptr++ = '0';
+        }
+      }
+      while (bufferIndex > 0) {
+        --bufferIndex;
+        *output_ptr++ = '0' + buffer[bufferIndex];
+        if (output_ptr == end) {
+          break;  // denormalized: don't need extra precision.
+          // Note: denormalized numbers will not have the same number
+          // of significantDigits, but do not need them to round-trip.
+        }
       }
     }
-  }
-  assert(output_ptr <= end);
-  *output_ptr = '\0';
-  return static_cast<unsigned>(output_ptr - output);
+    assert(output_ptr <= end);
+    *output_ptr = '\0';
+    return static_cast<unsigned>(output_ptr - output.data());
+  });
 }
 
 }  // namespace

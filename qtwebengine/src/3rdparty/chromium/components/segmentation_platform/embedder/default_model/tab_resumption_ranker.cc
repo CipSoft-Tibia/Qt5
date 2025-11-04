@@ -20,7 +20,7 @@ namespace {
 using proto::SegmentId;
 
 constexpr SegmentId kSegmentId = SegmentId::TAB_RESUMPTION_CLASSIFIER;
-constexpr uint64_t kTabResumptionRankerVersion = 2;
+constexpr uint64_t kTabResumptionRankerVersion = 3;
 
 #define DECL_SQL_FEATURE_SINGLE_UKM_METRIC(name, query, event_name,        \
                                            metric_name)                    \
@@ -206,7 +206,7 @@ void TabResumptionRanker::ExecuteModelWithInput(
   if (inputs.size() !=
       processing::TabSessionSource::kNumInputs + kSqlFeatures.size()) {
     base::SequencedTaskRunner::GetCurrentDefault()->PostTask(
-        FROM_HERE, base::BindOnce(std::move(callback), absl::nullopt));
+        FROM_HERE, base::BindOnce(std::move(callback), std::nullopt));
     return;
   }
 

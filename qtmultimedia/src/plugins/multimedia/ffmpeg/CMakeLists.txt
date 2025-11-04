@@ -40,6 +40,7 @@ qt_internal_add_module(FFmpegMediaPluginImplPrivate
         playbackengine/qffmpegdemuxer.cpp playbackengine/qffmpegdemuxer_p.h
         playbackengine/qffmpegstreamdecoder.cpp playbackengine/qffmpegstreamdecoder_p.h
         playbackengine/qffmpegrenderer.cpp playbackengine/qffmpegrenderer_p.h
+        playbackengine/qffmpegaudioframeconverter.cpp playbackengine/qffmpegaudioframeconverter_p.h
         playbackengine/qffmpegaudiorenderer.cpp playbackengine/qffmpegaudiorenderer_p.h
         playbackengine/qffmpegvideorenderer.cpp playbackengine/qffmpegvideorenderer_p.h
         playbackengine/qffmpegsubtitlerenderer.cpp playbackengine/qffmpegsubtitlerenderer_p.h
@@ -75,12 +76,20 @@ qt_internal_add_module(FFmpegMediaPluginImplPrivate
         recordingengine/qffmpegvideoframeencoder.cpp
     NO_GENERATE_CPP_EXPORTS
     DEFINES
-        QT_COMPILING_FFMPEG
         QT_NO_CAST_FROM_ASCII
         QT_NO_CAST_TO_ASCII
     PUBLIC_LIBRARIES
         Qt::MultimediaPrivate
         Qt::CorePrivate
+    NO_PCH_SOURCES
+        # compiled with different compiler options:
+        # not used because `__NO_INLINE__' not defined [-Werror=invalid-pch]
+        playbackengine/qffmpegaudioframeconverter.cpp
+
+    SYSTEM_INCLUDE_DIRECTORIES
+        ../../../3rdparty/signalsmith-stretch/
+    ATTRIBUTION_FILE_DIR_PATHS
+        ../../../3rdparty/signalsmith-stretch
 )
 
 if (LINUX OR ANDROID)
@@ -118,63 +127,57 @@ endif()
 
 qt_internal_extend_target(FFmpegMediaPluginImplPrivate CONDITION APPLE
     SOURCES
-        ../darwin/qavfhelpers.mm ../darwin/qavfhelpers_p.h
-        ../darwin/camera/qavfcamerabase_p.h ../darwin/camera/qavfcamerabase.mm
-        ../darwin/camera/avfcamerautility_p.h ../darwin/camera/avfcamerautility.mm
         qffmpeghwaccel_videotoolbox.mm qffmpeghwaccel_videotoolbox_p.h
-        qavfcamera.mm qavfcamera_p.h
-        qavfsamplebufferdelegate.mm qavfsamplebufferdelegate_p.h
+        darwin/qavfcamera.mm darwin/qavfcamera_p.h
+        darwin/qavfsamplebufferdelegate.mm darwin/qavfsamplebufferdelegate_p.h
 
     NO_UNITY_BUILD_SOURCES
         qffmpeghwaccel_videotoolbox.mm # AVMediaType clash between libavformat and AVFoundation
 
-    INCLUDE_DIRECTORIES
-        ../darwin
-        ../darwin/camera
     LIBRARIES
         ${FWAudioToolbox}
+        ${FWAVFoundation}
         ${FWCoreMedia}
         ${FWCoreVideo}
-        ${FWVideoToolbox}
         ${FWSecurity}
-        AVFoundation::AVFoundation
 )
 
 qt_internal_extend_target(FFmpegMediaPluginImplPrivate CONDITION MACOS
     SOURCES
-        qavfscreencapture.mm qavfscreencapture_p.h
-        qcgwindowcapture.mm qcgwindowcapture_p.h
-        qcgcapturablewindows.mm qcgcapturablewindows_p.h
+        darwin/qavfscreencapture.mm darwin/qavfscreencapture_p.h
+        darwin/qcgwindowcapture.mm darwin/qcgwindowcapture_p.h
+        darwin/qcgcapturablewindows.mm darwin/qcgcapturablewindows_p.h
     LIBRARIES
         ${FWAppKit}
 )
 
 qt_internal_extend_target(FFmpegMediaPluginImplPrivate CONDITION WIN32
     SOURCES
-        ../windows/qwindowsvideodevices.cpp ../windows/qwindowsvideodevices_p.h
         qwindowscamera.cpp qwindowscamera_p.h
         qffmpeghwaccel_d3d11.cpp qffmpeghwaccel_d3d11_p.h
         qgdiwindowcapture.cpp qgdiwindowcapture_p.h
         qffmpegscreencapture_dxgi.cpp qffmpegscreencapture_dxgi_p.h
         qwincapturablewindows.cpp qwincapturablewindows_p.h
-    INCLUDE_DIRECTORIES
-        ../windows
     LIBRARIES
         Qt::MultimediaPrivate
-        WMF::WMF
+        mf
+        mfplat
         mfreadwrite
+        mfuuid
 )
 
 qt_internal_extend_target(FFmpegMediaPluginImplPrivate CONDITION QT_FEATURE_cpp_winrt
     SOURCES
         qffmpegwindowcapture_uwp.cpp qffmpegwindowcapture_uwp_p.h
-    INCLUDE_DIRECTORIES
-        ../windows
     LIBRARIES
         Dwmapi
         Dxva2
         windowsapp
 )
+
+if(QT_FEATURE_cpp_winrt)
+    qt_internal_set_exceptions_flags(FFmpegMediaPluginImplPrivate ON)
+endif()
 
 qt_internal_extend_target(FFmpegMediaPluginImplPrivate CONDITION QT_FEATURE_xlib
     SOURCES
@@ -186,14 +189,27 @@ qt_internal_extend_target(FFmpegMediaPluginImplPrivate CONDITION QT_FEATURE_xlib
         Xext
 )
 
-qt_internal_extend_target(FFmpegMediaPluginImplPrivate CONDITION QT_FEATURE_eglfs
-    SOURCES
-        qeglfsscreencapture.cpp qeglfsscreencapture_p.h
-        qopenglvideobuffer.cpp qopenglvideobuffer_p.h
-    LIBRARIES
-        Qt::OpenGLPrivate
-        Qt::Quick
-)
+
+if(QT_FEATURE_eglfs AND TARGET Qt::OpenGLPrivate)
+    if(TARGET Qt::Quick)
+        qt_internal_extend_target(FFmpegMediaPluginImplPrivate
+            LIBRARIES Qt::Quick
+        )
+    else()
+        # There's no "quick" feature we could test for in C++ code. Add a define for that.
+        qt_internal_extend_target(FFmpegMediaPluginImplPrivate
+            DEFINES QT_NO_QUICK
+        )
+    endif()
+
+    qt_internal_extend_target(FFmpegMediaPluginImplPrivate
+        SOURCES
+            qeglfsscreencapture.cpp qeglfsscreencapture_p.h
+            qopenglvideobuffer.cpp qopenglvideobuffer_p.h
+        LIBRARIES
+            Qt::OpenGLPrivate
+    )
+endif()
 
 set_source_files_properties(qx11surfacecapture.cpp qx11capturablewindows.cpp # X headers
                             PROPERTIES SKIP_UNITY_BUILD_INCLUSION ON)
@@ -233,6 +249,18 @@ if (ANDROID)
     )
 endif()
 
+# signalsmith-stretch is header-only and rather slow in debug builds. so let's optimize it:
+if(GCC OR CLANG)
+    set_source_files_properties(playbackengine/qffmpegaudioframeconverter.cpp PROPERTIES
+        COMPILE_OPTIONS $<$<CONFIG:Debug>:-O3>)
+elseif(MSVC)
+    # we cannot just /O2, so we need to rely on pragma optimize here
+    set_source_files_properties(playbackengine/qffmpegaudioframeconverter.cpp PROPERTIES
+        COMPILE_DEFINITIONS $<$<CONFIG:Debug>:QT_MM_OPTIMIZE_DEBUG>
+    )
+endif()
+
+
 # TODO: get libs from FindFFmpeg.cmake
 set(ffmpeg_libs FFmpeg::avformat FFmpeg::avcodec FFmpeg::swresample FFmpeg::swscale FFmpeg::avutil)
 
@@ -245,9 +273,10 @@ if (QT_DEPLOY_FFMPEG AND FFMPEG_SHARED_LIBRARIES AND (BUILD_SHARED_LIBS OR UIKIT
     qt_internal_multimedia_copy_or_install_ffmpeg()
 endif()
 
-if(BUILD_SHARED_LIBS)
+if( NOT (UIKIT AND FFMPEG_SHARED_LIBRARIES) )
     qt_internal_extend_target(FFmpegMediaPluginImplPrivate PUBLIC_LIBRARIES ${ffmpeg_libs})
 else()
+    # applications need to link against the ffmpeg libs via qt_add_ios_ffmpeg_libraries
     foreach(ffmpeg_lib IN LISTS ffmpeg_libs)
         qt_internal_add_target_include_dirs(FFmpegMediaPluginImplPrivate ${ffmpeg_lib})
         target_include_directories(FFmpegMediaPluginImplPrivate PUBLIC

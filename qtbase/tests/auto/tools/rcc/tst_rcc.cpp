@@ -152,6 +152,11 @@ void tst_rcc::rcc_data()
 
     QTest::newRow("legal") << m_dataPath + QLatin1StringView("/legal")
                                << "legal.qrc" << "rcc_legal.cpp";
+
+    if (sizeof(size_t) == 8) {
+        const QString deduplicationPath = m_dataPath + QLatin1String("/deduplication");
+        QTest::newRow("deduplication") << deduplicationPath << "deduplication.qrc" << "deduplication.expected";
+    }
 }
 
 static QStringList readLinesFromFile(const QString &fileName,
@@ -311,10 +316,15 @@ void tst_rcc::binary()
     const QString rootPrefix = QLatin1String("/test_root/");
     const QString resourceRootPrefix = QLatin1Char(':') + rootPrefix;
 
-    QLocale oldDefaultLocale;
+    const auto restoreLocale = qScopeGuard([prior = QLocale()]() {
+        QLocale::setDefault(prior);
+    });
     QLocale::setDefault(locale);
     QVERIFY(QFile::exists(resourceFile));
     QVERIFY(QResource::registerResource(resourceFile, rootPrefix));
+    const auto unregister = qScopeGuard([resourceFile, rootPrefix]() {
+        QVERIFY(QResource::unregisterResource(resourceFile, rootPrefix));
+    });
 
     { // need to destroy the iterators on the resource, in order to be able to unregister it
 
@@ -340,7 +350,7 @@ void tst_rcc::binary()
 
     // now actually check the file contents
     QDir directory(baseDirectory);
-    for (QStringMap::const_iterator i = expectedFiles.constBegin(); i != expectedFiles.constEnd(); ++i) {
+    for (auto i = expectedFiles.constBegin(); i != expectedFiles.constEnd(); ++i) {
         QString resourceFileName = i.key();
         QString actualFileName = i.value();
 
@@ -357,9 +367,6 @@ void tst_rcc::binary()
     }
 
     }
-
-    QVERIFY(QResource::unregisterResource(resourceFile, rootPrefix));
-    QLocale::setDefault(oldDefaultLocale);
 }
 
 void tst_rcc::readback_data()

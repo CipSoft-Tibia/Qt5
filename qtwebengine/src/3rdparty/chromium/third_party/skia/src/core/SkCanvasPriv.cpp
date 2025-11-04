@@ -159,19 +159,6 @@ bool SkCanvasPriv::ImageToColorFilter(SkPaint* paint) {
     return true;
 }
 
-#if defined(GRAPHITE_TEST_UTILS)
-#include "src/gpu/graphite/Device.h"
-
-skgpu::graphite::TextureProxy* SkCanvasPriv::TopDeviceGraphiteTargetProxy(SkCanvas* canvas) {
-    if (auto gpuDevice = canvas->topDevice()->asGraphiteDevice()) {
-        return gpuDevice->target();
-    }
-    return nullptr;
-}
-
-#endif // defined(GRAPHITE_TEST_UTILS)
-
-
 AutoLayerForImageFilter::AutoLayerForImageFilter(SkCanvas* canvas,
                                                  const SkPaint& paint,
                                                  const SkRect* rawBounds,
@@ -211,7 +198,24 @@ AutoLayerForImageFilter::~AutoLayerForImageFilter() {
         fCanvas->fSaveCount -= 1;
         fCanvas->internalRestore();
     }
-    SkASSERT(fCanvas->getSaveCount() == fSaveCount);
+    // Negative save count occurs when this layer was moved.
+    SkASSERT(fSaveCount < 0 || fCanvas->getSaveCount() == fSaveCount);
+}
+
+AutoLayerForImageFilter::AutoLayerForImageFilter(AutoLayerForImageFilter&& other) {
+    *this = std::move(other);
+}
+
+AutoLayerForImageFilter& AutoLayerForImageFilter::operator=(AutoLayerForImageFilter&& other) {
+    fPaint = std::move(other.fPaint);
+    fCanvas = other.fCanvas;
+    fTempLayersForFilters = other.fTempLayersForFilters;
+    SkDEBUGCODE(fSaveCount = other.fSaveCount;)
+
+    other.fTempLayersForFilters = 0;
+    SkDEBUGCODE(other.fSaveCount = -1;)
+
+    return *this;
 }
 
 void AutoLayerForImageFilter::addImageFilterLayer(const SkRect* drawBounds) {

@@ -7,7 +7,7 @@ syntax = "proto2";
 option optimize_for = LITE_RUNTIME;
 
 package power_manager;
-option go_package = "chromiumos/system_api/power_manager_proto";
+option go_package = "go.chromium.org/chromiumos/system_api/power_manager_proto";
 
 // See
 // https://chromium.googlesource.com/chromiumos/platform2/+/HEAD/power_manager/docs/screen_brightness.md
@@ -40,10 +40,34 @@ message SetBacklightBrightnessRequest {
     USER_REQUEST = 0;
     // Automated request based on a prediction of the desired brightness.
     MODEL = 1;
+    // User request via the Settings app.
+    USER_REQUEST_FROM_SETTINGS_APP = 2;
+    // Brightness was restored to the previous user preference (typically on the
+    // login screen).
+    RESTORED_FROM_USER_PREFERENCE = 3;
   }
   optional Cause cause = 3;
 
   // Next value to use: 4
+}
+
+// Request to change the ambient light sensor sent from Chrome to powerd in a
+// SetAmbientLightSensorEnabled D-Bus method call.
+message SetAmbientLightSensorEnabledRequest {
+  // Desired status of the ambient light sensor.
+  optional bool sensor_enabled = 1;
+
+  // The reason for sending the request.
+  enum Cause {
+    // User request via the Settings app.
+    USER_REQUEST_FROM_SETTINGS_APP = 0;
+    // Ambient light sensor was restored to the previous user
+    // preference (typically on the login screen).
+    RESTORED_FROM_USER_PREFERENCE = 1;
+  }
+  optional Cause cause = 2;
+
+  // Next value to use: 3
 }
 
 // Announcement of a backlight brightness change emitted by powerd via a
@@ -85,9 +109,45 @@ message BacklightBrightnessChange {
     USER_TOGGLED_ON = 12;
     // Changed due to battery saver state change.
     BATTERY_SAVER_STATE_CHANGED = 13;
-    // Next value to use: 14
+    // User request via the Settings app.
+    USER_REQUEST_FROM_SETTINGS_APP = 14;
+    // Brightness was restored to the previous user preference (typically on the
+    // login screen).
+    RESTORED_FROM_USER_PREFERENCE = 15;
+    // Next value to use: 16
   }
   optional Cause cause = 2;
 
   // Next value to use: 3
+}
+
+// Announcement of a change to the ambient light sensor state emitted by powerd
+// via a AmbientLightSensorEnabledChanged D-Bus signal.
+message AmbientLightSensorChange {
+  // Current status of the ambient light sensor.
+  optional bool sensor_enabled = 1;
+
+  // The reason the ambient light sensor status was changed.
+  enum Cause {
+    // Ambient light sensor usage was disabled because no sensor is present.
+    NO_SENSOR_PRESENT = 0;
+    // Ambient light sensor was disabled because it was not supplying readings.
+    NO_READINGS_FROM_ALS = 1;
+    // User directly toggled the ambient light sensor via the Settings app.
+    USER_REQUEST_SETTINGS_APP = 2;
+    // Ambient light sensor was disabled as a result of a brightness change
+    // triggered by the user (e.g. brightness keys or quick settings slider).
+    BRIGHTNESS_USER_REQUEST = 3;
+    // Ambient light sensor was disabled as a result of a brightness change
+    // triggered by the user from the Settings app.
+    BRIGHTNESS_USER_REQUEST_SETTINGS_APP = 4;
+    // Ambient light sensor status was changed as a result of a brightness
+    // change not triggered by the user.
+    BRIGHTNESS_OTHER = 5;
+    // Ambient light sensor status was restored to the previous user preference
+    // (typically on the login screen).
+    RESTORED_FROM_USER_PREFERENCE = 6;
+    // Next value to use: 7
+  }
+  optional Cause cause = 2;
 }

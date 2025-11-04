@@ -83,6 +83,7 @@ source_set("fpdfdoc") {
   ]
   deps = [
     "../../constants",
+    "../fpdfapi/edit:contentstream_write_utils",
     "../fpdfapi/font",
     "../fpdfapi/page",
     "../fpdfapi/parser",
@@ -105,6 +106,7 @@ pdfium_unittest_source_set("unittests") {
     "cpdf_formfield_unittest.cpp",
     "cpdf_metadata_unittest.cpp",
     "cpdf_nametree_unittest.cpp",
+    "cpdf_pagelabel_unittest.cpp",
   ]
   deps = [
     ":fpdfdoc",

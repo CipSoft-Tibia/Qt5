@@ -1,12 +1,12 @@
 // Copyright (C) 2018 Intel Corporation.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:data-parser
 
 #ifndef QCBORCOMMON_H
 #define QCBORCOMMON_H
 
 #include <QtCore/qobjectdefs.h>
 #include <QtCore/qmetatype.h>
-#include <QtCore/qdebug.h>
 
 #if 0
 #pragma qt_class(QtCborCommon)
@@ -19,6 +19,8 @@
 #endif
 
 QT_BEGIN_NAMESPACE
+
+class QDebug;
 
 enum class QCborSimpleType : quint8 {
     False = 20,
@@ -116,12 +118,5 @@ enum class QCborNegativeInteger : quint64 {};
 QT_END_NAMESPACE
 
 QT_DECL_METATYPE_EXTERN(QCborTag, Q_CORE_EXPORT)
-
-// To avoid changing namespace we need to reinstate defines, even though our .cpp
-// will then have to remove them again.
-#if defined(QT_X11_DEFINES_FOUND)
-#  define True  1
-#  define False 0
-#endif
 
 #endif // QCBORSTREAM_H

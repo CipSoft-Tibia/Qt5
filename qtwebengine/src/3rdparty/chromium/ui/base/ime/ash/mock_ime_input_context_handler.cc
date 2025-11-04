@@ -74,14 +74,14 @@ void MockIMEInputContextHandler::SetAutocorrectRange(
   std::move(callback).Run(autocorrect_enabled_);
 }
 
-absl::optional<ui::GrammarFragment>
+std::optional<ui::GrammarFragment>
 MockIMEInputContextHandler::GetGrammarFragmentAtCursor() {
   for (const auto& fragment : grammar_fragments_) {
     if (fragment.range.Contains(cursor_range_)) {
       return fragment;
     }
   }
-  return absl::nullopt;
+  return std::nullopt;
 }
 
 bool MockIMEInputContextHandler::ClearGrammarFragments(
@@ -153,8 +153,9 @@ void MockIMEInputContextHandler::ConfirmComposition(bool reset_engine) {
   // TODO(b/134473433) Modify this function so that the selection is unchanged.
   NOTIMPLEMENTED_LOG_ONCE();
 
-  if (!HasCompositionText())
+  if (!HasCompositionText()) {
     return;
+  }
 
   CommitText(
       last_update_composition_arg_.composition_text.text,

@@ -17,23 +17,25 @@
 #ifndef SRC_TRACE_PROCESSOR_IMPORTERS_PROTO_PROTO_IMPORTER_MODULE_H_
 #define SRC_TRACE_PROCESSOR_IMPORTERS_PROTO_PROTO_IMPORTER_MODULE_H_
 
+#include <cstdint>
 #include <optional>
+#include <string>
 
+#include "perfetto/base/logging.h"
 #include "perfetto/base/status.h"
+#include "perfetto/trace_processor/ref_counted.h"
 #include "src/trace_processor/importers/common/trace_parser.h"
+#include "src/trace_processor/importers/proto/packet_sequence_state_generation.h"
 
 namespace perfetto {
 
-namespace protos {
-namespace pbzero {
+namespace protos::pbzero {
 class TraceConfig_Decoder;
 class TracePacket_Decoder;
-}  // namespace pbzero
-}  // namespace protos
+}  // namespace protos::pbzero
 
 namespace trace_processor {
 
-class PacketSequenceState;
 class TraceBlobView;
 class TraceProcessorContext;
 
@@ -53,7 +55,7 @@ class TraceProcessorContext;
 class ModuleResult {
  public:
   // Allow auto conversion from util::Status to Handled / Error result.
-  ModuleResult(base::Status status)
+  ModuleResult(const base::Status& status)
       : ignored_(false),
         error_(status.ok() ? std::nullopt
                            : std::make_optional(status.message())) {}
@@ -108,7 +110,7 @@ class ProtoImporterModule {
       const protos::pbzero::TracePacket_Decoder&,
       TraceBlobView* packet,
       int64_t packet_timestamp,
-      PacketSequenceState*,
+      RefPtr<PacketSequenceStateGeneration> sequence_state,
       uint32_t field_id);
 
   // Called by ProtoTraceReader during the tokenization stage i.e. before

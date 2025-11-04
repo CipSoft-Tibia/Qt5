@@ -25,18 +25,14 @@ quic::WebTransportRequestCallback CreateWebTransportCallback(
   return [callback = std::move(callback)](absl::string_view path,
                                           webtransport::Session* session)
              -> absl::StatusOr<std::unique_ptr<webtransport::SessionVisitor>> {
-    absl::StatusOr<MoqtSessionCallbacks> callbacks = callback(path);
-    if (!callbacks.ok()) {
-      return callbacks.status();
+    absl::StatusOr<MoqtConfigureSessionCallback> configurator = callback(path);
+    if (!configurator.ok()) {
+      return configurator.status();
     }
-    MoqtSessionParameters parameters;
-    parameters.perspective = quic::Perspective::IS_SERVER;
-    parameters.path = path;
-    parameters.using_webtrans = true;
-    parameters.version = MoqtVersion::kDraft01;
-    parameters.deliver_partial_objects = false;
-    return std::make_unique<MoqtSession>(session, parameters,
-                                         *std::move(callbacks));
+    MoqtSessionParameters parameters(quic::Perspective::IS_SERVER);
+    auto moqt_session = std::make_unique<MoqtSession>(session, parameters);
+    std::move (*configurator)(moqt_session.get());
+    return moqt_session;
   };
 }
 }  // namespace

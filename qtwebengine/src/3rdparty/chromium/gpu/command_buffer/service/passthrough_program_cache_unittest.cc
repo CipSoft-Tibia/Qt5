@@ -50,6 +50,7 @@ class PassthroughProgramCacheTest : public GpuServiceTest,
   void OnSwapBuffers(uint64_t swap_id, uint32_t flags) override {}
   void ScheduleGrContextCleanup() override {}
   void HandleReturnData(base::span<const uint8_t> data) override {}
+  bool ShouldYield() override { return false; }
 
   int32_t blob_count() { return blob_count_; }
 
@@ -105,10 +106,8 @@ TEST_F(PassthroughProgramCacheTest, LoadProgram) {
     std::string binary_blob = MakeBlob(kBlobLength, key_start + 10);
 
     // Encode the strings to pretend like they came from disk.
-    std::string key_string_64;
-    std::string value_string_64;
-    base::Base64Encode(binary_key, &key_string_64);
-    base::Base64Encode(binary_blob, &value_string_64);
+    std::string key_string_64 = base::Base64Encode(binary_key);
+    std::string value_string_64 = base::Base64Encode(binary_blob);
 
     cache_->LoadProgram(key_string_64, value_string_64);
 

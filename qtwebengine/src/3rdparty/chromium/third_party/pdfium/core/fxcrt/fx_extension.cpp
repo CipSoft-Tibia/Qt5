@@ -6,12 +6,13 @@
 
 #include "core/fxcrt/fx_extension.h"
 
-#include <algorithm>
-#include <limits>
+#include <wchar.h>
 
+#include "core/fxcrt/check.h"
+#include "core/fxcrt/compiler_specific.h"
 #include "core/fxcrt/fx_system.h"
 #include "core/fxcrt/utf16.h"
-#include "third_party/base/check.h"
+#include "core/fxcrt/widestring.h"
 
 namespace {
 
@@ -28,89 +29,18 @@ struct tm* (*g_localtime_func)(const time_t*) = DefaultLocaltimeFunction;
 
 }  // namespace
 
-float FXSYS_wcstof(const wchar_t* pwsStr, size_t nLength, size_t* pUsedLen) {
-  DCHECK(pwsStr);
-  if (nLength == 0)
-    return 0.0f;
-
-  size_t nUsedLen = 0;
-  bool bNegtive = false;
-  switch (pwsStr[nUsedLen]) {
-    case '-':
-      bNegtive = true;
-      [[fallthrough]];
-    case '+':
-      nUsedLen++;
-      break;
+float FXSYS_wcstof(WideStringView pwsStr, size_t* pUsedLen) {
+  // Force NUL-termination via copied buffer.
+  auto copied = WideString(pwsStr);
+  wchar_t* endptr = nullptr;
+  float result = wcstof(copied.c_str(), &endptr);
+  if (result != result) {
+    result = 0.0f;  // Convert NAN to 0.0f;
   }
-
-  float fValue = 0.0f;
-  while (nUsedLen < nLength) {
-    wchar_t wch = pwsStr[nUsedLen];
-    if (!FXSYS_IsDecimalDigit(wch))
-      break;
-
-    fValue = fValue * 10.0f + (wch - L'0');
-    nUsedLen++;
+  if (pUsedLen) {
+    *pUsedLen = endptr - copied.c_str();
   }
-
-  if (nUsedLen < nLength && pwsStr[nUsedLen] == L'.') {
-    float fPrecise = 0.1f;
-    while (++nUsedLen < nLength) {
-      wchar_t wch = pwsStr[nUsedLen];
-      if (!FXSYS_IsDecimalDigit(wch))
-        break;
-
-      fValue += (wch - L'0') * fPrecise;
-      fPrecise *= 0.1f;
-    }
-  }
-
-  if (nUsedLen < nLength &&
-      (pwsStr[nUsedLen] == 'e' || pwsStr[nUsedLen] == 'E')) {
-    ++nUsedLen;
-
-    bool negative_exponent = false;
-    if (nUsedLen < nLength &&
-        (pwsStr[nUsedLen] == '-' || pwsStr[nUsedLen] == '+')) {
-      negative_exponent = pwsStr[nUsedLen] == '-';
-      ++nUsedLen;
-    }
-
-    int32_t exp_value = 0;
-    while (nUsedLen < nLength) {
-      wchar_t wch = pwsStr[nUsedLen];
-      if (!FXSYS_IsDecimalDigit(wch))
-        break;
-
-      exp_value = exp_value * 10.0f + (wch - L'0');
-      // Exponent is outside the valid range, fail.
-      if ((negative_exponent &&
-           -exp_value < std::numeric_limits<float>::min_exponent10) ||
-          (!negative_exponent &&
-           exp_value > std::numeric_limits<float>::max_exponent10)) {
-        if (pUsedLen)
-          *pUsedLen = 0;
-        return 0.0f;
-      }
-
-      ++nUsedLen;
-    }
-
-    for (size_t i = exp_value; i > 0; --i) {
-      if (exp_value > 0) {
-        if (negative_exponent)
-          fValue /= 10;
-        else
-          fValue *= 10;
-      }
-    }
-  }
-
-  if (pUsedLen)
-    *pUsedLen = nUsedLen;
-
-  return bNegtive ? -fValue : fValue;
+  return result;
 }
 
 wchar_t* FXSYS_wcsncpy(wchar_t* dstStr, const wchar_t* srcStr, size_t count) {
@@ -118,38 +48,38 @@ wchar_t* FXSYS_wcsncpy(wchar_t* dstStr, const wchar_t* srcStr, size_t count) {
   DCHECK(srcStr);
   DCHECK(count > 0);
 
-  for (size_t i = 0; i < count; ++i)
-    if ((dstStr[i] = srcStr[i]) == L'\0')
-      break;
+  // SAFETY: required from caller, enforced by UNSAFE_BUFFER_USAGE in header.
+  UNSAFE_BUFFERS({
+    for (size_t i = 0; i < count; ++i) {
+      dstStr[i] = srcStr[i];
+      if (dstStr[i] == L'\0') {
+        break;
+      }
+    }
+  });
   return dstStr;
 }
 
-int32_t FXSYS_wcsnicmp(const wchar_t* s1, const wchar_t* s2, size_t count) {
-  DCHECK(s1);
-  DCHECK(s2);
-  DCHECK(count > 0);
-
-  while (count-- > 0) {
-    wchar_t wch1 = static_cast<wchar_t>(FXSYS_towlower(*s1++));
-    wchar_t wch2 = static_cast<wchar_t>(FXSYS_towlower(*s2++));
-    if (wch1 != wch2) {
-      return wch1 > wch2 ? 1 : -1;
-    }
-  }
-  return 0;
-}
-
+// TODO(tsepez): should be UNSAFE_BUFFER_USAGE.
 void FXSYS_IntToTwoHexChars(uint8_t n, char* buf) {
   static const char kHex[] = "0123456789ABCDEF";
-  buf[0] = kHex[n / 16];
-  buf[1] = kHex[n % 16];
+  // SAFETY: range of uint8_t keeps indices in bound.
+  UNSAFE_BUFFERS({
+    buf[0] = kHex[n / 16];
+    buf[1] = kHex[n % 16];
+  });
 }
 
+// TODO(tsepez): This is UNSAFE_BUFFER_USAGE as well.
 void FXSYS_IntToFourHexChars(uint16_t n, char* buf) {
-  FXSYS_IntToTwoHexChars(n / 256, buf);
-  FXSYS_IntToTwoHexChars(n % 256, buf + 2);
+  // SAFETY: required from caller.
+  UNSAFE_BUFFERS({
+    FXSYS_IntToTwoHexChars(n / 256, buf);
+    FXSYS_IntToTwoHexChars(n % 256, buf + 2);
+  });
 }
 
+// TODO(tsepez): This is UNSAFE_BUFFER_USAGE as well.
 size_t FXSYS_ToUTF16BE(uint32_t unicode, char* buf) {
   DCHECK(unicode <= pdfium::kMaximumSupplementaryCodePoint);
   DCHECK(!pdfium::IsHighSurrogate(unicode));
@@ -159,9 +89,12 @@ size_t FXSYS_ToUTF16BE(uint32_t unicode, char* buf) {
     FXSYS_IntToFourHexChars(unicode, buf);
     return 4;
   }
-  pdfium::SurrogatePair surrogate_pair(unicode);
-  FXSYS_IntToFourHexChars(surrogate_pair.high(), buf);
-  FXSYS_IntToFourHexChars(surrogate_pair.low(), buf + 4);
+  // SAFETY: required from caller.
+  UNSAFE_BUFFERS({
+    pdfium::SurrogatePair surrogate_pair(unicode);
+    FXSYS_IntToFourHexChars(surrogate_pair.high(), buf);
+    FXSYS_IntToFourHexChars(surrogate_pair.low(), buf + 4);
+  });
   return 8;
 }
 

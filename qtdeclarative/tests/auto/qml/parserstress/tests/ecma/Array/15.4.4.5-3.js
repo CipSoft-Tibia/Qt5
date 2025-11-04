@@ -46,7 +46,7 @@ gTestfile = '15.4.4.5-3.js';
    This is a regression test for
    http://scopus/bugsplat/show_bug.cgi?id=117144
 
-   Verify that sort is successfull, even if the sort compare function returns
+   Verify that sort is successful, even if the sort compare function returns
    a very large negative or positive value.
 
    Author:             christine@netscape.com

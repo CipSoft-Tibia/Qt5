@@ -7,6 +7,8 @@
 #include <netinet/icmp6.h>
 #include <netinet/ip6.h>
 
+#include <limits>
+#include <memory>
 #include <utility>
 
 #include "absl/strings/string_view.h"
@@ -169,6 +171,9 @@ void QboneSessionBase::SendPacketToPeer(absl::string_view packet) {
         break;
       case MESSAGE_STATUS_BLOCKED:
         QUIC_BUG(quic_bug_10987_5) << "MESSAGE_STATUS_BLOCKED";
+        break;
+      case MESSAGE_STATUS_SETTINGS_NOT_RECEIVED:
+        QUIC_BUG(quic_bug_10987_8) << "MESSAGE_STATUS_SETTINGS_NOT_RECEIVED";
         break;
       case MESSAGE_STATUS_INTERNAL_ERROR:
         QUIC_BUG(quic_bug_10987_6) << "MESSAGE_STATUS_INTERNAL_ERROR";

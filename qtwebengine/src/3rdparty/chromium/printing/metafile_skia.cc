@@ -2,6 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#ifdef UNSAFE_BUFFERS_BUILD
+// TODO(crbug.com/351564777): Remove this and convert code to safer constructs.
+#pragma allow_unsafe_buffers
+#endif
+
 #include "printing/metafile_skia.h"
 
 #include <algorithm>
@@ -16,6 +21,7 @@
 #include "base/functional/bind.h"
 #include "base/functional/callback_helpers.h"
 #include "base/memory/raw_ptr.h"
+#include "base/not_fatal_until.h"
 #include "base/numerics/safe_conversions.h"
 #include "base/time/time.h"
 #include "base/unguessable_token.h"
@@ -29,9 +35,7 @@
 #include "third_party/skia/include/core/SkPicture.h"
 #include "third_party/skia/include/core/SkSerialProcs.h"
 #include "third_party/skia/include/core/SkStream.h"
-// Note that headers in third_party/skia/src are fragile.  This is
-// an experimental, fragile, and diagnostic-only document type.
-#include "third_party/skia/src/utils/SkMultiPictureDocument.h"
+#include "third_party/skia/include/docs/SkMultiPictureDocument.h"
 #include "ui/gfx/geometry/size_conversions.h"
 #include "ui/gfx/geometry/skia_conversions.h"
 
@@ -200,23 +204,21 @@ bool MetafileSkia::FinishDocument() {
 
   SkDynamicMemoryWStream stream;
   sk_sp<SkDocument> doc;
-  cc::PlaybackParams::CustomDataRasterCallback custom_callback;
+  cc::PlaybackCallbacks::CustomDataRasterCallback custom_callback;
   switch (data_->type) {
     case mojom::SkiaDocumentType::kPDF:
-      doc = MakePdfDocument(printing::GetAgent(), accessibility_tree_,
+      doc = MakePdfDocument(printing::GetAgent(), title_, accessibility_tree_,
                             generate_document_outline_, &stream);
       break;
 #if BUILDFLAG(IS_WIN)
     case mojom::SkiaDocumentType::kXPS:
-      // TODO(crbug.com/1008222) Update to use MakeXpsDocument() once it is
-      // available.
-      NOTIMPLEMENTED();
+      doc = MakeXpsDocument(&stream);
       break;
 #endif
     case mojom::SkiaDocumentType::kMSKP:
       SkSerialProcs procs = SerializationProcs(&data_->subframe_content_info,
                                                data_->typeface_content_info);
-      doc = SkMakeMultiPictureDocument(&stream, &procs);
+      doc = SkMultiPictureDocument::Make(&stream, &procs);
       // It is safe to use base::Unretained(this) because the callback
       // is only used by `canvas` in the following loop which has shorter
       // lifetime than `this`.
@@ -245,11 +247,11 @@ void MetafileSkia::FinishFrameContent() {
   DCHECK_EQ(data_->type, mojom::SkiaDocumentType::kMSKP);
   DCHECK(!data_->data_stream);
 
-  cc::PlaybackParams::CustomDataRasterCallback custom_callback =
-      base::BindRepeating(&MetafileSkia::CustomDataToSkPictureCallback,
-                          base::Unretained(this));
+  cc::PlaybackCallbacks callbacks;
+  callbacks.custom_callback = base::BindRepeating(
+      &MetafileSkia::CustomDataToSkPictureCallback, base::Unretained(this));
   sk_sp<SkPicture> pic = data_->pages[0].content.ToSkPicture(
-      SkRect::MakeSize(data_->pages[0].size), nullptr, custom_callback);
+      SkRect::MakeSize(data_->pages[0].size), nullptr, callbacks);
   SkSerialProcs procs = SerializationProcs(&data_->subframe_content_info,
                                            data_->typeface_content_info);
   SkDynamicMemoryWStream stream;
@@ -293,19 +295,19 @@ unsigned int MetafileSkia::GetPageCount() const {
 }
 
 printing::NativeDrawingContext MetafileSkia::context() const {
-  NOTREACHED();
+  NOTREACHED_IN_MIGRATION();
   return nullptr;
 }
 
 #if BUILDFLAG(IS_WIN)
 bool MetafileSkia::Playback(printing::NativeDrawingContext hdc,
                             const RECT* rect) const {
-  NOTREACHED();
+  NOTREACHED_IN_MIGRATION();
   return false;
 }
 
 bool MetafileSkia::SafePlayback(printing::NativeDrawingContext hdc) const {
-  NOTREACHED();
+  NOTREACHED_IN_MIGRATION();
   return false;
 }
 
@@ -459,7 +461,7 @@ void MetafileSkia::CustomDataToSkPictureCallback(SkCanvas* canvas,
     return;
 
   auto it = data_->subframe_pics.find(content_id);
-  DCHECK(it != data_->subframe_pics.end());
+  CHECK(it != data_->subframe_pics.end(), base::NotFatalUntil::M130);
 
   // Found the picture, draw it on canvas.
   sk_sp<SkPicture> pic = it->second;

@@ -10,6 +10,7 @@
 
 #define NOMINMAX
 
+#include "dxc/Support/WinIncludes.h"
 #include <algorithm>
 #include <memory>
 #include <string>
@@ -17,7 +18,7 @@
 
 #include "dxc/DxilContainer/DxilContainer.h"
 #include "dxc/DxilContainer/DxilContainerAssembler.h"
-#include "dxc/Support/WinIncludes.h"
+#include "dxc/DxilHash/DxilHash.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Regex.h"
@@ -295,6 +296,7 @@ public:
   TEST_METHOD(ValidateRootSigContainer)
   TEST_METHOD(ValidatePrintfNotAllowed)
 
+  TEST_METHOD(ValidateWithHash)
   TEST_METHOD(ValidateVersionNotAllowed)
   TEST_METHOD(CreateHandleNotAllowedSM66)
 
@@ -315,7 +317,7 @@ public:
     FileRunTestResult t =
         FileRunTestResult::RunFromFileCommands(fullPath.c_str());
     if (t.RunResult != 0) {
-      CA2W commentWide(t.ErrorMessage.c_str(), CP_UTF8);
+      CA2W commentWide(t.ErrorMessage.c_str());
       WEX::Logging::Log::Comment(commentWide);
       WEX::Logging::Log::Error(L"Run result is not zero");
     }
@@ -368,7 +370,7 @@ public:
     CComPtr<IDxcOperationResult> pResult;
     CComPtr<IDxcBlob> pProgram;
 
-    CA2W shWide(pShaderModel, CP_UTF8);
+    CA2W shWide(pShaderModel);
 
     const wchar_t *pEntryName = L"main";
 
@@ -871,6 +873,8 @@ TEST_F(ValidationTest, GetDimCalcLODFail) {
       /*bRegex*/ true);
 }
 TEST_F(ValidationTest, HsAttributeFail) {
+  if (m_ver.SkipDxilVersion(1, 8))
+    return;
   RewriteAssemblyCheckMsg(
       L"..\\CodeGenHLSL\\hsAttribute.hlsl", "hs_6_0",
       {"i32 3, i32 3, i32 2, i32 3, i32 3, float 6.400000e+01"},
@@ -881,7 +885,7 @@ TEST_F(ValidationTest, HsAttributeFail) {
        "Invalid Tessellator Output Primitive specified",
        "Hull Shader MaxTessFactor must be [1.000000..64.000000].  65.000000 "
        "specified",
-       "output control point count must be [0..32].  36 specified"});
+       "output control point count must be [1..32].  36 specified"});
 }
 TEST_F(ValidationTest, InnerCoverageFail) {
   RewriteAssemblyCheckMsg(
@@ -1034,6 +1038,8 @@ TEST_F(ValidationTest, SigOverlapFail) {
        "signature element"});
 }
 TEST_F(ValidationTest, SimpleHs1Fail) {
+  if (m_ver.SkipDxilVersion(1, 8))
+    return;
   RewriteAssemblyCheckMsg(
       L"..\\DXILValidation\\SimpleHs1.hlsl", "hs_6_0",
       {
@@ -1047,7 +1053,7 @@ TEST_F(ValidationTest, SimpleHs1Fail) {
           "\"InsideTessFactor\", i8 9, i8 0",
       },
       {
-          "output control point count must be [0..32].  3000 specified",
+          "output control point count must be [1..32].  3000 specified",
           "Required TessFactor for domain not found declared anywhere in Patch "
           "Constant data",
           // TODO: enable this after support pass thru hull shader.
@@ -4065,6 +4071,42 @@ TEST_F(ValidationTest, ValidateRootSigContainer) {
 
 TEST_F(ValidationTest, ValidatePrintfNotAllowed) {
   TestCheck(L"..\\CodeGenHLSL\\printf.hlsl");
+}
+
+TEST_F(ValidationTest, ValidateWithHash) {
+  if (m_ver.SkipDxilVersion(1, 8))
+    return;
+  CComPtr<IDxcBlob> pProgram;
+  CompileSource("float4 main(float a:A, float b:B) : SV_Target { return 1; }",
+                "ps_6_0", &pProgram);
+
+  CComPtr<IDxcValidator> pValidator;
+  CComPtr<IDxcOperationResult> pResult;
+  unsigned Flags = 0;
+  VERIFY_SUCCEEDED(
+      m_dllSupport.CreateInstance(CLSID_DxcValidator, &pValidator));
+  // With hash.
+  VERIFY_SUCCEEDED(pValidator->Validate(pProgram, Flags, &pResult));
+  // Make sure the validation was successful.
+  HRESULT status;
+  VERIFY_IS_NOT_NULL(pResult);
+  CComPtr<IDxcBlob> pValidationOutput;
+  pResult->GetStatus(&status);
+  VERIFY_SUCCEEDED(status);
+  pResult->GetResult(&pValidationOutput);
+  // Make sure the validation output is not null when hashing.
+  VERIFY_SUCCEEDED(pValidationOutput != nullptr);
+
+  hlsl::DxilContainerHeader *pHeader =
+      (hlsl::DxilContainerHeader *)pProgram->GetBufferPointer();
+  // Validate the hash.
+  constexpr uint32_t HashStartOffset =
+      offsetof(struct DxilContainerHeader, Version);
+  auto *DataToHash = (const BYTE *)pHeader + HashStartOffset;
+  UINT AmountToHash = pHeader->ContainerSizeInBytes - HashStartOffset;
+  BYTE Result[DxilContainerHashSize];
+  ComputeHashRetail(DataToHash, AmountToHash, Result);
+  VERIFY_ARE_EQUAL(memcmp(Result, pHeader->Hash.Digest, sizeof(Result)), 0);
 }
 
 TEST_F(ValidationTest, ValidateVersionNotAllowed) {

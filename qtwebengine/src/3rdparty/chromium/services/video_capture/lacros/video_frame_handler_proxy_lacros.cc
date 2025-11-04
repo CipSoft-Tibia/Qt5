@@ -54,7 +54,7 @@ class VideoFrameHandlerProxyLacros::AccessPermissionProxyMap
   void EraseAccessPermission(int32_t buffer_id) {
     auto it = access_permissions_by_buffer_ids_.find(buffer_id);
     if (it == access_permissions_by_buffer_ids_.end()) {
-      NOTREACHED();
+      NOTREACHED_IN_MIGRATION();
       return;
     }
     access_permissions_by_buffer_ids_.erase(it);
@@ -91,8 +91,7 @@ class VideoFrameHandlerProxyLacros::VideoFrameAccessHandlerProxy
 
 VideoFrameHandlerProxyLacros::VideoFrameHandlerProxyLacros(
     mojo::PendingReceiver<crosapi::mojom::VideoFrameHandler> proxy_receiver,
-    absl::optional<mojo::PendingRemote<mojom::VideoFrameHandler>>
-        handler_remote,
+    std::optional<mojo::PendingRemote<mojom::VideoFrameHandler>> handler_remote,
     base::WeakPtr<media::VideoFrameReceiver> handler_remote_in_process) {
   CHECK(handler_remote || handler_remote_in_process);
   receiver_.Bind(std::move(proxy_receiver));
@@ -127,7 +126,8 @@ void VideoFrameHandlerProxyLacros::OnNewBuffer(
 void VideoFrameHandlerProxyLacros::DEPRECATED_OnFrameReadyInBuffer(
     crosapi::mojom::ReadyFrameInBufferPtr buffer,
     std::vector<crosapi::mojom::ReadyFrameInBufferPtr> /*scaled_buffers*/) {
-  OnFrameReadyInBuffer(std::move(buffer));
+  NOTREACHED()
+      << "This method is deprecated, use OnFrameReadyInBuffer instead.";
 }
 
 void VideoFrameHandlerProxyLacros::OnFrameReadyInBuffer(

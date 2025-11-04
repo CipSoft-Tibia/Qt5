@@ -46,7 +46,7 @@ else()
     endif()
 endif()
 
-target_link_libraries(svg PRIVATE Qt${QT_VERSION_MAJOR}::Widgets Qt${QT_VERSION_MAJOR}::Quick Qt${QT_VERSION_MAJOR}::Qml Qt${QT_VERSION_MAJOR}::Svg Qt${QT_VERSION_MAJOR}::QuickWidgets Qt${QT_VERSION_MAJOR}::QuickVectorImageGeneratorPrivate Qt${QT_VERSION_MAJOR}::SvgWidgets)
+target_link_libraries(svg PRIVATE Qt${QT_VERSION_MAJOR}::Widgets Qt${QT_VERSION_MAJOR}::Quick Qt${QT_VERSION_MAJOR}::Qml Qt${QT_VERSION_MAJOR}::Svg Qt${QT_VERSION_MAJOR}::QuickWidgets Qt${QT_VERSION_MAJOR}::QuickVectorImageGeneratorPrivate Qt${QT_VERSION_MAJOR}::SvgWidgets Qt${QT_VERSION_MAJOR}::GuiPrivate)
 
 set_target_properties(svg PROPERTIES
     MACOSX_BUNDLE_GUI_IDENTIFIER my.example.com

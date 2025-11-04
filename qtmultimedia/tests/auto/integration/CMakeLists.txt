@@ -1,22 +1,19 @@
 # Copyright (C) 2022 The Qt Company Ltd.
 # SPDX-License-Identifier: BSD-3-Clause
 
-# Generated from integration.pro.
-
-# special case begin
 add_subdirectory(qaudiodecoderbackend)
 add_subdirectory(qaudiodevicebackend)
 add_subdirectory(qaudiosource)
 add_subdirectory(qaudiosink)
 add_subdirectory(qmediaformatbackend)
 add_subdirectory(qmediaplayerbackend)
-if (QT_FEATURE_wmf)
+if (WIN32)
     add_subdirectory(qmediaplayer_concurrent)
 endif()
 add_subdirectory(qmediaplayerformatsupport)
 add_subdirectory(qmediarecorderbackend)
 add_subdirectory(qsoundeffect)
-if (QT_FEATURE_wmf)
+if(QT_FEATURE_thread)
     add_subdirectory(qsoundeffect_concurrent)
 endif()
 add_subdirectory(qvideoframebackend)
@@ -36,5 +33,13 @@ endif()
 if(TARGET Qt::Quick)
     add_subdirectory(qquickvideooutput)
     add_subdirectory(qquickvideooutput_window)
+
+    if(NOT UIKIT AND NOT ANDROID AND NOT QNX AND NOT VXWORKS) # FIXME: Add support for cross-compiled platforms by adding qml files as resources
+        add_subdirectory(qml)
+    endif()
+
 endif()
-# special case end
+
+if(QT_FEATURE_static)
+    add_subdirectory(static_linking)
+endif()

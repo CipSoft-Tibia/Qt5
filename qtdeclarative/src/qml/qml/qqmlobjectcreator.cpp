@@ -34,7 +34,7 @@
 #include <QScopedValueRollback>
 #include <QLoggingCategory>
 
-Q_LOGGING_CATEGORY(lcQmlDefaultMethod, "qt.qml.defaultmethod")
+Q_STATIC_LOGGING_CATEGORY(lcQmlDefaultMethod, "qt.qml.defaultmethod")
 
 QT_USE_NAMESPACE
 
@@ -859,6 +859,21 @@ bool QQmlObjectCreator::setPropertyBinding(const QQmlPropertyData *bindingProper
             return false;
         }
 
+        const QQmlType attachedObjectType = QQmlMetaType::qmlType(attachedType.attachedPropertiesType(QQmlEnginePrivate::get((engine))));
+        const int parserStatusCast = attachedObjectType.parserStatusCast();
+        QQmlParserStatus *parserStatus  = nullptr;
+        if (parserStatusCast != -1)
+            parserStatus = reinterpret_cast<QQmlParserStatus*>(reinterpret_cast<char *>(qmlObject) + parserStatusCast);
+        if (parserStatus) {
+            parserStatus->classBegin();
+            // we ignore them for profiling, because it doesn't interact well with the logic anyway
+            // can't use sharedState->allParserStatusCallbacks, we haven't reserved space TODO: could we?
+            if (!sharedState->attachedObjectParserStatusCallbacks)
+                sharedState->attachedObjectParserStatusCallbacks = std::make_unique<std::deque<QQmlParserStatus *>>();
+            sharedState->attachedObjectParserStatusCallbacks->push_back(parserStatus);
+            parserStatus->d = &sharedState->attachedObjectParserStatusCallbacks->back();
+        }
+
         if (!populateInstance(binding->value.objectIndex, qmlObject, qmlObject,
                               /*value type property*/ nullptr, binding))
             return false;
@@ -969,7 +984,7 @@ bool QQmlObjectCreator::setPropertyBinding(const QQmlPropertyData *bindingProper
             && !_valueTypeProperty;
 
     if (allowedToRemoveBinding) {
-        if (bindingProperty->isBindable()) {
+        if (bindingProperty->acceptsQBinding()) {
             removePendingBinding(_bindingTarget, bindingProperty->coreIndex());
         } else {
             QQmlPropertyPrivate::removeBinding(
@@ -986,7 +1001,7 @@ bool QQmlObjectCreator::setPropertyBinding(const QQmlPropertyData *bindingProper
                         _bindingTarget, signalIndex, context,
                         _scopeObject, runtimeFunction, currentQmlContext());
 
-            if (bindingProperty->isBindable()) {
+            if (bindingProperty->notifiesViaBindable()) {
                 auto target = _bindingTarget;
                 if (bindingProperty->isAlias()) {
                     // If the property is an alias, we cannot obtain the bindable interface directly with qt_metacall
@@ -1010,7 +1025,7 @@ bool QQmlObjectCreator::setPropertyBinding(const QQmlPropertyData *bindingProper
                 QQmlBoundSignal *bs = new QQmlBoundSignal(_bindingTarget, signalIndex, _scopeObject, engine);
                 bs->takeExpression(expr);
             }
-        } else if (bindingProperty->isBindable()) {
+        } else if (bindingProperty->acceptsQBinding()) {
             QUntypedPropertyBinding qmlBinding;
             if (binding->isTranslationBinding()) {
                 qmlBinding = QQmlTranslationPropertyBinding::create(bindingProperty, compilationUnit, binding);
@@ -1218,11 +1233,17 @@ bool QQmlObjectCreator::setPropertyBinding(const QQmlPropertyData *bindingProper
                 recordError(binding->location, tr("Cannot assign object to read only list"));
                 return false;
             }
-
-        } else {
+        } else if (bindingProperty->propType().flags().testFlag(QMetaType::PointerToQObject)) {
             // pointer compatibility was tested in QQmlPropertyValidator at type compile time
             argv[0] = &createdSubObject;
             QMetaObject::metacall(_qobject, QMetaObject::WriteProperty, bindingProperty->coreIndex(), argv);
+        } else {
+            QVariant target = QQmlValueTypeProvider::createValueType(
+                    QVariant::fromValue(createdSubObject), bindingProperty->propType(), v4);
+            if (target.isValid())
+                bindingProperty->writeProperty(_qobject, target.data(), propertyWriteFlags);
+            else
+                recordError(binding->location, tr("Cannot construct value type from given object"));
         }
         return true;
     }
@@ -1570,6 +1591,19 @@ bool QQmlObjectCreator::finalize(QQmlInstantiationInterrupt &interrupt)
         while (!sharedState->allParserStatusCallbacks.isEmpty()) {
             QQmlObjectCompletionProfiler profiler(&sharedState->profiler);
             QQmlParserStatus *status = sharedState->allParserStatusCallbacks.pop();
+
+            if (status && status->d) {
+                status->d = nullptr;
+                status->componentComplete();
+            }
+
+            if (watcher.hasRecursed() || interrupt.shouldInterrupt())
+                return false;
+        }
+        while (sharedState->attachedObjectParserStatusCallbacks && !sharedState->attachedObjectParserStatusCallbacks->empty()) {
+            // ### TODO: no profiler integration (QTBUG-132827)
+            QQmlParserStatus *status = sharedState->attachedObjectParserStatusCallbacks->back();
+            sharedState->attachedObjectParserStatusCallbacks->pop_back();
 
             if (status && status->d) {
                 status->d = nullptr;

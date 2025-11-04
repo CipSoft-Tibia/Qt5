@@ -2,6 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#ifdef UNSAFE_BUFFERS_BUILD
+// TODO(crbug.com/40285824): Remove this and convert code to safer constructs.
+#pragma allow_unsafe_buffers
+#endif
+
 #include "media/audio/mac/audio_loopback_input_mac_impl.h"
 
 #import <ScreenCaptureKit/ScreenCaptureKit.h>
@@ -290,7 +295,7 @@ SCKAudioInputStream::SCKAudioInputStream(
                                              params_.sample_rate())) {
   CHECK(AudioDeviceDescription::IsLoopbackDevice(device_id_));
   CHECK(!log_callback_.is_null());
-  // TODO(crbug.com/1480224): Update getDisplayMedia to handle sample rate
+  // TODO(crbug.com/40281254): Update getDisplayMedia to handle sample rate
   // constraints
   // ScreenCaptureKit supports only certain sample rates:
   // https://developer.apple.com/documentation/screencapturekit/scstreamconfiguration/3931903-samplerate

@@ -17,6 +17,8 @@
 #include <QList>
 #include <QtQuick3D/qquick3dtexturedata.h>
 
+QT_BEGIN_NAMESPACE
+
 class QQuickGraphsTextureData : public QQuick3DTextureData
 {
     Q_OBJECT
@@ -30,5 +32,7 @@ public:
 private:
     QColor linearInterpolate(QColor startColor, QColor endColor, float value);
 };
+
+QT_END_NAMESPACE
 
 #endif // QQUICKGRAPHSTEXTUREDATA_P_H

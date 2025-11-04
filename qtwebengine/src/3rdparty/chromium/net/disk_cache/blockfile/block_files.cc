@@ -2,11 +2,17 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#ifdef UNSAFE_BUFFERS_BUILD
+// TODO(crbug.com/40284755): Remove this and spanify to fix the errors.
+#pragma allow_unsafe_buffers
+#endif
+
 #include "net/disk_cache/blockfile/block_files.h"
 
 #include <atomic>
 #include <limits>
 #include <memory>
+#include <optional>
 
 #include "base/files/file_path.h"
 #include "base/files/file_util.h"
@@ -17,7 +23,6 @@
 #include "net/disk_cache/blockfile/file_lock.h"
 #include "net/disk_cache/blockfile/stress_support.h"
 #include "net/disk_cache/cache_util.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 
 using base::TimeTicks;
 
@@ -113,7 +118,7 @@ bool BlockHeader::CreateMapBlock(int size, int* index) {
 
 void BlockHeader::DeleteMapBlock(int index, int size) {
   if (size < 0 || size > kMaxNumBlocks) {
-    NOTREACHED();
+    NOTREACHED_IN_MIGRATION();
     return;
   }
   int byte_index = index / 8;
@@ -350,7 +355,7 @@ void BlockFiles::DeleteBlock(Addr address, bool deep) {
   if (deep)
     file->Write(zero_buffer_.data(), size, offset);
 
-  absl::optional<FileType> type_to_delete;
+  std::optional<FileType> type_to_delete;
   {
     // Block Header can't outlive file's buffer.
     BlockHeader file_header(file);

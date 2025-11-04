@@ -11,7 +11,10 @@ import {
   type HighlightedEntryInfo,
   type TrackAppender,
   type TrackAppenderName,
+  VisualLoggingTrackName,
 } from './CompatibilityTracksAppender.js';
+import {ExtensionDataGatherer} from './ExtensionDataGatherer.js';
+import * as Extensions from './extensions/extensions.js';
 import {TimelineFlameChartMarker} from './TimelineFlameChartView.js';
 import {type TimelineMarkerStyle} from './TimelineUIUtils.js';
 
@@ -25,12 +28,43 @@ const UIStrings = {
 const str_ = i18n.i18n.registerUIStrings('panels/timeline/TimingsTrackAppender.ts', UIStrings);
 const i18nString = i18n.i18n.getLocalizedString.bind(undefined, str_);
 
+type TimelineMarkerEntry =
+    TraceEngine.Types.Extensions.SyntheticExtensionMarker|TraceEngine.Types.TraceEvents.PageLoadEvent;
+
+/**
+ * This defines the order these markers will be rendered if they are at the
+ * same timestamp. The smaller number will be shown first - e.g. so if MarkFCP,
+ * MarkDOMContent and MarkLCPCandidate have the same timestamp, visually we
+ * will render [FCP][DCL][LCP] everytime.
+ */
+export const SORT_ORDER_PAGE_LOAD_MARKERS: Readonly<Record<string, number>> = {
+  [TraceEngine.Types.TraceEvents.KnownEventName.NAVIGATION_START]: 0,
+  [TraceEngine.Types.TraceEvents.KnownEventName.MARK_LOAD]: 1,
+  [TraceEngine.Types.TraceEvents.KnownEventName.MARK_FCP]: 2,
+  [TraceEngine.Types.TraceEvents.KnownEventName.MARK_FIRST_PAINT]: 2,
+  [TraceEngine.Types.TraceEvents.KnownEventName.MARK_DOM_CONTENT]: 3,
+  [TraceEngine.Types.TraceEvents.KnownEventName.MARK_LCP_CANDIDATE]: 4,
+};
+
 export class TimingsTrackAppender implements TrackAppender {
   readonly appenderName: TrackAppenderName = 'Timings';
 
   #colorGenerator: Common.Color.Generator;
   #compatibilityBuilder: CompatibilityTracksAppender;
   #traceParsedData: Readonly<TraceEngine.Handlers.Types.TraceParseData>;
+
+  /**
+   * Before rendering the markers we group them by timestamp. This is because
+   * if we have multiple markers (e.g. FCP and LCP) at the same time, we want
+   * to ensure that we visually render FCP before LCP - else it's confusing
+   * to the user to see LCP appear before FCP, even though they are at the
+   * same timestamp.
+   * We only do this for PageLoadMarkers - any extension based markers are
+   * not sorted. If an extension marker happens to be at the same time as
+   * LCP, the native LCP event is preferred and shown first.
+   * Because we create an instance of an Appender per trace, we can cache this rather than calculate on each run.
+   */
+  #cachedMarkersByTimestamp: Map<TraceEngine.Types.Timing.MicroSeconds, TimelineMarkerEntry[]>|null = null;
 
   constructor(
       compatibilityBuilder: CompatibilityTracksAppender, traceParsedData: TraceEngine.Handlers.Types.TraceParseData,
@@ -50,14 +84,18 @@ export class TimingsTrackAppender implements TrackAppender {
    * appended the track's events.
    */
   appendTrackAtLevel(trackStartLevel: number, expanded?: boolean): number {
-    const allMarkerEvents = this.#traceParsedData.PageLoadMetrics.allMarkerEvents;
-    const performanceMarks = this.#traceParsedData.UserTimings.performanceMarks;
-    const performanceMeasures = this.#traceParsedData.UserTimings.performanceMeasures;
+    const extensionMarkers = ExtensionDataGatherer.instance().getExtensionData().extensionMarkers;
+    const pageloadMarkers = this.#traceParsedData.PageLoadMetrics.allMarkerEvents;
+    const extensionMarkersAreEmpty = extensionMarkers.length === 0;
+    const performanceMarks = this.#traceParsedData.UserTimings.performanceMarks.filter(
+        m => !TraceEngine.Handlers.ModelHandlers.ExtensionTraceData.extensionDataInTiming(m));
+    const performanceMeasures = this.#traceParsedData.UserTimings.performanceMeasures.filter(
+        m => !TraceEngine.Handlers.ModelHandlers.ExtensionTraceData.extensionDataInTiming(m));
     const timestampEvents = this.#traceParsedData.UserTimings.timestampEvents;
     const consoleTimings = this.#traceParsedData.UserTimings.consoleTimings;
 
-    if (allMarkerEvents.length === 0 && performanceMarks.length === 0 && performanceMeasures.length === 0 &&
-        timestampEvents.length === 0 && consoleTimings.length === 0) {
+    if (extensionMarkersAreEmpty && pageloadMarkers.length === 0 && performanceMarks.length === 0 &&
+        performanceMeasures.length === 0 && timestampEvents.length === 0 && consoleTimings.length === 0) {
       return trackStartLevel;
     }
     this.#appendTrackHeaderAtLevel(trackStartLevel, expanded);
@@ -79,11 +117,45 @@ export class TimingsTrackAppender implements TrackAppender {
    */
   #appendTrackHeaderAtLevel(currentLevel: number, expanded?: boolean): void {
     const trackIsCollapsible = this.#traceParsedData.UserTimings.performanceMeasures.length > 0;
-    const style =
-        buildGroupStyle({shareHeaderLine: true, useFirstLineForOverview: true, collapsible: trackIsCollapsible});
-    const group =
-        buildTrackHeader(currentLevel, i18nString(UIStrings.timings), style, /* selectable= */ true, expanded);
+    const style = buildGroupStyle({useFirstLineForOverview: true, collapsible: trackIsCollapsible});
+    const group = buildTrackHeader(
+        VisualLoggingTrackName.TIMINGS, currentLevel, i18nString(UIStrings.timings), style, /* selectable= */ true,
+        expanded);
     this.#compatibilityBuilder.registerTrackForGroup(group, this);
+  }
+
+  #sortMarkersForPreferredVisualOrder(markers: TimelineMarkerEntry[]): void {
+    markers.sort((m1, m2) => {
+      const m1Index = SORT_ORDER_PAGE_LOAD_MARKERS[m1.name] ?? Infinity;
+      const m2Index = SORT_ORDER_PAGE_LOAD_MARKERS[m2.name] ?? Infinity;
+      return m1Index - m2Index;
+    });
+  }
+
+  /**
+   * Group markers into a map, where keys are timestamps and the values are markers that have the same timestamp.
+   */
+  #groupMarkersByTimestamp(markers: TimelineMarkerEntry[]):
+      Map<TraceEngine.Types.Timing.MicroSeconds, TimelineMarkerEntry[]> {
+    if (this.#cachedMarkersByTimestamp) {
+      return this.#cachedMarkersByTimestamp;
+    }
+    const markersByTimestamp = new Map<TraceEngine.Types.Timing.MicroSeconds, TimelineMarkerEntry[]>();
+
+    markers.forEach(marker => {
+      const forTime = markersByTimestamp.get(marker.ts) || [];
+      forTime.push(marker);
+      markersByTimestamp.set(marker.ts, forTime);
+    });
+
+    for (const markersAtTime of markersByTimestamp.values()) {
+      if (markersAtTime.length > 1) {
+        this.#sortMarkersForPreferredVisualOrder(markersAtTime);
+      }
+    }
+
+    this.#cachedMarkersByTimestamp = markersByTimestamp;
+    return this.#cachedMarkersByTimestamp;
   }
 
   /**
@@ -96,18 +168,36 @@ export class TimingsTrackAppender implements TrackAppender {
    * page load markers (the first available level to append more data).
    */
   #appendMarkersAtLevel(currentLevel: number): number {
-    const markers = this.#traceParsedData.PageLoadMetrics.allMarkerEvents;
-    markers.forEach(marker => {
-      const index = this.#compatibilityBuilder.appendEventAtLevel(marker, currentLevel, this);
-      this.#compatibilityBuilder.getFlameChartTimelineData().entryTotalTimes[index] = Number.NaN;
-    });
+    let markers: TimelineMarkerEntry[] = this.#traceParsedData.PageLoadMetrics.allMarkerEvents;
+    markers = markers.concat(ExtensionDataGatherer.instance().getExtensionData().extensionMarkers)
+                  .sort((m1, m2) => m1.ts - m2.ts);
+    if (markers.length === 0) {
+      return currentLevel;
+    }
+    const markersByTimestamp = this.#groupMarkersByTimestamp(markers);
+    for (const markersAtTime of markersByTimestamp.values()) {
+      for (const marker of markersAtTime) {
+        const index = this.#compatibilityBuilder.appendEventAtLevel(marker, currentLevel, this);
+        this.#compatibilityBuilder.getFlameChartTimelineData().entryTotalTimes[index] = Number.NaN;
+      }
+    }
 
     const minTimeMs = TraceEngine.Helpers.Timing.microSecondsToMilliseconds(this.#traceParsedData.Meta.traceBounds.min);
     const flameChartMarkers = markers.map(marker => {
+      // The timestamp for user timing trace events is set to the
+      // start time passed by the user at the call site of the timing
+      // (based on the UserTiming spec), meaning we can use event.ts
+      // directly.
+      // https://source.chromium.org/chromium/chromium/src/+/main:third_party/blink/renderer/core/timing/performance_user_timing.cc;l=236;drc=494419358caf690316f160a1f27d9e771a14c033
       const startTimeMs = TraceEngine.Helpers.Timing.microSecondsToMilliseconds(marker.ts);
-      return new TimelineFlameChartMarker(startTimeMs, startTimeMs - minTimeMs, this.markerStyleForEvent(marker));
+      const style = TraceEngine.Types.Extensions.isSyntheticExtensionEntry(marker) ?
+          this.markerStyleForExtensionMarker(marker) :
+          this.markerStyleForPageLoadEvent(marker);
+      return new TimelineFlameChartMarker(startTimeMs, startTimeMs - minTimeMs, style);
     });
     this.#compatibilityBuilder.getFlameChartTimelineData().markers.push(...flameChartMarkers);
+    // TODO: we would like to have markers share the level with the rest but...
+    //  due to how CompatTrackAppender.appendEventsAtLevel tweaks the legacyEntryTypeByLevel array, it would take some work
     return ++currentLevel;
   }
 
@@ -121,7 +211,7 @@ export class TimingsTrackAppender implements TrackAppender {
   /**
    * Gets the style for a page load marker event.
    */
-  markerStyleForEvent(markerEvent: TraceEngine.Types.TraceEvents.PageLoadEvent): TimelineMarkerStyle {
+  markerStyleForPageLoadEvent(markerEvent: TraceEngine.Types.TraceEvents.PageLoadEvent): TimelineMarkerStyle {
     const tallMarkerDashStyle = [6, 4];
     let title = '';
     let color = 'grey';
@@ -150,10 +240,25 @@ export class TimingsTrackAppender implements TrackAppender {
       title = '';
     }
     return {
-      title: title,
+      title,
       dashStyle: tallMarkerDashStyle,
       lineWidth: 0.5,
-      color: color,
+      color,
+      tall: true,
+      lowPriority: false,
+    };
+  }
+
+  markerStyleForExtensionMarker(markerEvent: TraceEngine.Types.Extensions.SyntheticExtensionMarker):
+      TimelineMarkerStyle {
+    const tallMarkerDashStyle = [6, 4];
+    const title = markerEvent.name;
+    const color = Extensions.ExtensionUI.extensionEntryColor(markerEvent);
+    return {
+      title,
+      dashStyle: tallMarkerDashStyle,
+      lineWidth: 0.5,
+      color,
       tall: true,
       lowPriority: false,
     };
@@ -163,8 +268,11 @@ export class TimingsTrackAppender implements TrackAppender {
    * Gets the color an event added by this appender should be rendered with.
    */
   colorForEvent(event: TraceEngine.Types.TraceEvents.TraceEventData): string {
-    if (TraceEngine.Handlers.ModelHandlers.PageLoadMetrics.eventIsPageLoadEvent(event)) {
-      return this.markerStyleForEvent(event).color;
+    if (TraceEngine.Types.TraceEvents.eventIsPageLoadEvent(event)) {
+      return this.markerStyleForPageLoadEvent(event).color;
+    }
+    if (TraceEngine.Types.Extensions.isSyntheticExtensionEntry(event)) {
+      return Extensions.ExtensionUI.extensionEntryColor(event);
     }
     // Performance and console timings.
     return this.#colorGenerator.colorForID(event.name);
@@ -175,7 +283,7 @@ export class TimingsTrackAppender implements TrackAppender {
    */
   titleForEvent(event: TraceEngine.Types.TraceEvents.TraceEventData): string {
     const metricsHandler = TraceEngine.Handlers.ModelHandlers.PageLoadMetrics;
-    if (metricsHandler.eventIsPageLoadEvent(event)) {
+    if (TraceEngine.Types.TraceEvents.eventIsPageLoadEvent(event)) {
       switch (event.name) {
         case 'MarkDOMContent':
           return metricsHandler.MetricName.DCL;
@@ -207,13 +315,15 @@ export class TimingsTrackAppender implements TrackAppender {
    * is hovered in the timeline.
    */
   highlightedEntryInfo(event: TraceEngine.Types.TraceEvents.TraceEventData): HighlightedEntryInfo {
-    const title = this.titleForEvent(event);
+    const title = TraceEngine.Types.Extensions.isSyntheticExtensionEntry(event) && event.args.tooltipText ?
+        event.args.tooltipText :
+        this.titleForEvent(event);
 
     // If an event is a marker event, rather than show a duration of 0, we can instead show the time that the event happened, which is much more useful. We do this currently for:
     // Page load events: DCL, FCP and LCP
     // performance.mark() events
     // console.timestamp() events
-    if (TraceEngine.Handlers.ModelHandlers.PageLoadMetrics.isTraceEventMarkerEvent(event) ||
+    if (TraceEngine.Types.TraceEvents.isTraceEventMarkerEvent(event) ||
         TraceEngine.Types.TraceEvents.isTraceEventPerformanceMark(event) ||
         TraceEngine.Types.TraceEvents.isTraceEventTimeStamp(event)) {
       const timeOfEvent = TraceEngine.Helpers.Timing.timeStampForEventAdjustedByClosestNavigation(

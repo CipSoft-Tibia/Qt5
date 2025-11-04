@@ -68,6 +68,7 @@ qt_internal_add_module(Gui
         image/qabstractfileiconprovider.cpp image/qabstractfileiconprovider.h image/qabstractfileiconprovider_p.h
         image/qbitmap.cpp image/qbitmap.h
         image/qbmphandler.cpp image/qbmphandler_p.h
+        image/qfonticonengine.cpp image/qfonticonengine_p.h
         image/qicon.cpp image/qicon.h image/qicon_p.h
         image/qiconengine.cpp image/qiconengine.h image/qiconengine_p.h
         image/qiconengineplugin.cpp image/qiconengineplugin.h
@@ -183,6 +184,8 @@ qt_internal_add_module(Gui
         painting/qdrawhelper_p.h
         painting/qdrawhelper_x86_p.h
         painting/qdrawingprimitive_sse2_p.h
+        painting/qdrawhelper_loongarch64_p.h
+        painting/qdrawingprimitive_lsx_p.h
         painting/qemulationpaintengine.cpp painting/qemulationpaintengine_p.h
         painting/qfixed_p.h
         painting/qgrayraster.c painting/qgrayraster_p.h
@@ -202,6 +205,7 @@ qt_internal_add_module(Gui
         painting/qpaintengine_raster.cpp painting/qpaintengine_raster_p.h
         painting/qpaintengineex.cpp painting/qpaintengineex_p.h
         painting/qpainter.cpp painting/qpainter.h painting/qpainter_p.h
+        painting/qpainterstateguard.cpp painting/qpainterstateguard.h
         painting/qpainterpath.cpp painting/qpainterpath.h painting/qpainterpath_p.h
         painting/qpathclipper.cpp painting/qpathclipper_p.h
         painting/qpathsimplifier.cpp painting/qpathsimplifier_p.h
@@ -230,6 +234,7 @@ qt_internal_add_module(Gui
         rhi/qshader.cpp rhi/qshader.h rhi/qshader_p.h
         rhi/qshaderdescription.cpp rhi/qshaderdescription.h rhi/qshaderdescription_p.h
         text/qabstracttextdocumentlayout.cpp text/qabstracttextdocumentlayout.h text/qabstracttextdocumentlayout_p.h
+        text/qcolrpaintgraphrenderer.cpp text/qcolrpaintgraphrenderer_p.h
         text/qdistancefield.cpp text/qdistancefield_p.h
         text/qfont.cpp text/qfont.h text/qfont_p.h
         text/qfontdatabase.cpp text/qfontdatabase.h text/qfontdatabase_p.h
@@ -238,6 +243,7 @@ qt_internal_add_module(Gui
         text/qfontinfo.h
         text/qfontmetrics.cpp text/qfontmetrics.h
         text/qfontsubset.cpp text/qfontsubset_p.h
+        text/qfontvariableaxis.cpp text/qfontvariableaxis.h
         text/qfragmentmap.cpp text/qfragmentmap_p.h
         text/qglyphrun.cpp text/qglyphrun.h text/qglyphrun_p.h
         text/qinputcontrol.cpp text/qinputcontrol_p.h
@@ -464,6 +470,8 @@ qt_internal_extend_target(Gui CONDITION WIN32
         rhi/cs_mipmap_p.h
         ../3rdparty/D3D12MemoryAllocator/D3D12MemAlloc.h
         ../3rdparty/D3D12MemoryAllocator/D3D12MemAlloc.cpp
+        rhi/qdxgivsyncservice_p.h rhi/qdxgivsyncservice.cpp
+        rhi/qdxgihdrinfo_p.h rhi/qdxgihdrinfo.cpp
         text/windows/qwindowsfontdatabase.cpp text/windows/qwindowsfontdatabase_p.h
         text/windows/qwindowsfontdatabasebase.cpp text/windows/qwindowsfontdatabasebase_p.h
         text/windows/qwindowsfontengine.cpp text/windows/qwindowsfontengine_p.h
@@ -533,6 +541,7 @@ qt_internal_extend_target(Gui CONDITION QT_FEATURE_accessibility
         accessible/qaccessiblebridge.cpp accessible/qaccessiblebridge.h
         accessible/qaccessiblebridgeutils.cpp accessible/qaccessiblebridgeutils_p.h
         accessible/qaccessiblecache.cpp accessible/qaccessiblecache_p.h
+        accessible/qaccessiblehelper.cpp accessible/qaccessiblehelper_p.h
         accessible/qaccessibleobject.cpp accessible/qaccessibleobject.h
         accessible/qaccessibleplugin.cpp accessible/qaccessibleplugin.h
         accessible/qplatformaccessibility.cpp
@@ -655,6 +664,19 @@ qt_internal_add_simd_part(Gui SIMD neon
         image/qimage_neon.cpp
         painting/qdrawhelper_neon.cpp painting/qdrawhelper_neon_p.h
         painting/qimagescale_neon.cpp
+)
+
+qt_internal_add_simd_part(Gui SIMD lsx
+    SOURCES
+        image/qimage_lsx.cpp
+        painting/qdrawhelper_lsx.cpp
+        painting/qimagescale_lsx.cpp
+)
+
+qt_internal_add_simd_part(Gui SIMD lasx
+    SOURCES
+        image/qimage_lasx.cpp
+        painting/qdrawhelper_lasx.cpp
 )
 
 if(NOT ANDROID)
@@ -980,6 +1002,7 @@ add_custom_command(
     WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
     VERBATIM
 )
+set_source_files_properties(${vulkan_fun_outputs} PROPERTIES _qt_syncqt_exclude_from_docs TRUE)
 
 qt_internal_extend_target(Gui CONDITION WASM
     SOURCES
@@ -1008,7 +1031,7 @@ qt_internal_extend_target(Gui CONDITION QT_FEATURE_glib AND UNIX
 
 qt_internal_extend_target(Gui CONDITION UNIX AND (QT_FEATURE_xcb OR NOT UIKIT)
     SOURCES
-        platform/unix/qgenericunixservices.cpp platform/unix/qgenericunixservices_p.h
+        platform/unix/qdesktopunixservices.cpp platform/unix/qdesktopunixservices_p.h
 )
 
 qt_internal_extend_target(Gui CONDITION UNIX AND (QT_FEATURE_xcb)
@@ -1021,7 +1044,7 @@ qt_internal_extend_target(Gui CONDITION TARGET Qt::DBus AND UNIX AND (QT_FEATURE
         Qt::DBus
 )
 
-qt_internal_extend_target(Gui CONDITION UNIX AND (QT_FEATURE_xcb OR NOT MACOS) AND (QT_FEATURE_xcb OR NOT UIKIT)
+qt_internal_extend_target(Gui CONDITION UNIX AND (((QT_FEATURE_xcb OR NOT MACOS) AND (QT_FEATURE_xcb OR NOT UIKIT)) OR QT_FEATURE_wayland)
     SOURCES
         platform/unix/qgenericunixthemes.cpp platform/unix/qgenericunixthemes_p.h
 )

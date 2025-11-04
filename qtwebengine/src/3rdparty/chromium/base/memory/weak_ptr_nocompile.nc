@@ -9,11 +9,14 @@
 
 namespace base {
 
-struct Producer : SupportsWeakPtr<Producer> {};
+struct Producer {
+  WeakPtr<Producer> AsWeakPtr() {
+    return weak_ptr_factory_.GetWeakPtr();
+  }
+  WeakPtrFactory<Producer> weak_ptr_factory_{this};
+};
 struct DerivedProducer : Producer {};
 struct OtherDerivedProducer : Producer {};
-struct MultiplyDerivedProducer : Producer,
-                                 SupportsWeakPtr<MultiplyDerivedProducer> {};
 struct Unrelated {};
 struct DerivedUnrelated : Unrelated {};
 
@@ -41,75 +44,19 @@ void RefDowncastDisallowed() {
   }
 }
 
-void AsWeakPtrDowncastDisallowed() {
-  Producer f;
-  WeakPtr<DerivedProducer> ptr =
-      SupportsWeakPtr<Producer>::StaticAsWeakPtr<DerivedProducer>(&f);  // expected-error {{no matching function for call to 'StaticAsWeakPtr'}}
-}
-
-void UnsafeDowncastViaAsWeakPtrDisallowed() {
-  Producer f;
-  {
-    WeakPtr<DerivedProducer> ptr = AsWeakPtr(&f);  // expected-error {{no viable conversion from 'WeakPtr<base::Producer>' to 'WeakPtr<DerivedProducer>'}}
-  }
-  {
-    WeakPtr<DerivedProducer> ptr = AsWeakPtr<DerivedProducer>(&f);  // expected-error {{no matching function for call to 'AsWeakPtr'}}
-  }
-  {
-    WeakPtr<DerivedProducer> ptr = AsWeakPtr<Producer>(&f);  // expected-error {{no viable conversion from 'WeakPtr<base::Producer>' to 'WeakPtr<DerivedProducer>'}}
-  }
-}
-
-void UnsafeSidecastViaAsWeakPtrDisallowed() {
-  DerivedProducer f;
-  {
-    WeakPtr<OtherDerivedProducer> ptr = AsWeakPtr(&f);  // expected-error {{no viable conversion from 'WeakPtr<base::DerivedProducer>' to 'WeakPtr<OtherDerivedProducer>'}}
-  }
-  {
-    WeakPtr<OtherDerivedProducer> ptr = AsWeakPtr<DerivedProducer>(&f);  // expected-error {{no viable conversion from 'WeakPtr<base::DerivedProducer>' to 'WeakPtr<OtherDerivedProducer>'}}
-  }
-  {
-    WeakPtr<OtherDerivedProducer> ptr = AsWeakPtr<OtherDerivedProducer>(&f);  // expected-error {{no matching function for call to 'AsWeakPtr'}}
-  }
-}
-
-void UnrelatedCastViaAsWeakPtrDisallowed() {
-  DerivedProducer f;
-  {
-    WeakPtr<Unrelated> ptr = AsWeakPtr(&f);  // expected-error {{no viable conversion from 'WeakPtr<base::DerivedProducer>' to 'WeakPtr<Unrelated>'}}
-  }
-  {
-    WeakPtr<Unrelated> ptr = AsWeakPtr<Unrelated>(&f);  // expected-error {{no matching function for call to 'AsWeakPtr'}}
-  }
-}
-
-void AsWeakPtrWithoutSupportsWeakPtrDisallowed() {
-  {
-    Unrelated f;
-    WeakPtr<Unrelated> ptr = AsWeakPtr(&f);  // expected-error@*:* {{AsWeakPtr argument must inherit from SupportsWeakPtr}}
-    // expected-error@*:* {{no viable constructor or deduction guide for deduction of template arguments of 'ExtractSinglyInheritedBase'}}
-    // expected-error@*:* {{static_cast from 'base::Unrelated *' to 'SupportsWeakPtr<Base> *' (aka 'SupportsWeakPtr<int> *'), which are not related by inheritance, is not allowed}}
-  }
-  {
-    DerivedUnrelated f;
-    WeakPtr<Unrelated> ptr = AsWeakPtr(&f);  // expected-error@*:* {{AsWeakPtr argument must inherit from SupportsWeakPtr}}
-    // expected-error@*:* {{no viable constructor or deduction guide for deduction of template arguments of 'ExtractSinglyInheritedBase'}}
-    // expected-error@*:* {{static_cast from 'base::DerivedUnrelated *' to 'SupportsWeakPtr<Base> *' (aka 'SupportsWeakPtr<int> *'), which are not related by inheritance, is not allowed}}
-  }
-}
-
-void AsWeakPtrWithAmbiguousAncestorsDisallowed() {
-  MultiplyDerivedProducer f;
-  WeakPtr<MultiplyDerivedProducer> ptr = AsWeakPtr(&f);  // expected-error@*:* {{no viable constructor or deduction guide for deduction of template arguments of 'ExtractSinglyInheritedBase'}}
-  // expected-error@*:* {{static_cast from 'base::MultiplyDerivedProducer *' to 'SupportsWeakPtr<Base> *' (aka 'SupportsWeakPtr<int> *'), which are not related by inheritance, is not allowed}}
-}
-
 void VendingMutablePtrsFromConstFactoryDisallowed() {
   {
     Unrelated unrelated;
     const WeakPtrFactory<const Unrelated> factory(&unrelated);
     factory.GetMutableWeakPtr();  // expected-error {{invalid reference to function 'GetMutableWeakPtr': constraints not satisfied}}
   }
+}
+
+void UnauthorizedBindToCurrentSequenceDisallowed() {
+  Unrelated unrelated;
+  WeakPtrFactory<Unrelated> factory(&unrelated);
+  factory.BindToCurrentSequence(
+      subtle::BindWeakPtrFactoryPassKey());  // expected-error {{calling a private constructor of class 'base::subtle::BindWeakPtrFactoryPassKey'}}
 }
 
 }  // namespace base

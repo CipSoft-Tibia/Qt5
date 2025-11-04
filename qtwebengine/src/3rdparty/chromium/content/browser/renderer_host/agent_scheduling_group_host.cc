@@ -8,6 +8,7 @@
 #include "base/containers/contains.h"
 #include "base/containers/unique_ptr_adapters.h"
 #include "base/feature_list.h"
+#include "base/memory/raw_ptr.h"
 #include "base/no_destructor.h"
 #include "base/state_transitions.h"
 #include "base/supports_user_data.h"
@@ -56,7 +57,8 @@ struct AgentSchedulingGroupHostUserData : public base::SupportsUserData::Data {
   // This is used solely to DCHECK the invariant that a SiteInstanceGroup cannot
   // request an AgentSchedulingGroup twice from the same RenderProcessHost.
 #if DCHECK_IS_ON()
-  std::set<const SiteInstanceGroup*> site_instance_groups;
+  std::set<raw_ptr<const SiteInstanceGroup, SetExperimental>>
+      site_instance_groups;
 #endif
 };
 
@@ -167,15 +169,20 @@ void AgentSchedulingGroupHost::RenderProcessExited(
   // interface are reinitialized.
   ResetIPC();
 
-  // RenderProcessHostImpl will attempt to call this method later if it has not
-  // already been called. We call it now since `SetUpIPC()` relies on it being
-  // called, thus setting up the IPC channel and mojom::Renderer interface.
-  process_->EnableSendQueue();
+  // We don't want to reinitialize the RenderProcessHost's IPC channel when
+  // we are going to immediately get a call to RenderProcessHostDestroyed.
+  if (!process_->IsDeletingSoon()) {
+    // RenderProcessHostImpl will attempt to call this method later if it has
+    // not already been called. We call it now since `SetUpIPC()` relies on it
+    // being called, thus setting up the IPC channel and mojom::Renderer
+    // interface.
+    process_->EnableSendQueue();
 
-  // We call this so that we can immediately queue IPC and mojo messages on the
-  // new channel/interfaces that are bound for the next renderer process, should
-  // one eventually be spun up.
-  SetUpIPC();
+    // We call this so that we can immediately queue IPC and mojo messages on
+    // the new channel/interfaces that are bound for the next renderer process,
+    // should one eventually be spun up.
+    SetUpIPC();
+  }
 }
 
 void AgentSchedulingGroupHost::RenderProcessHostDestroyed(
@@ -186,7 +193,8 @@ void AgentSchedulingGroupHost::RenderProcessHostDestroyed(
       RenderProcessExited(host, ChildProcessTerminationInfo());
     }
   }
-  DCHECK_EQ(state_, LifecycleState::kBound);
+  DCHECK(state_ == LifecycleState::kBound ||
+         state_ == LifecycleState::kRenderProcessExited);
 
   DCHECK_EQ(host, &*process_);
   process_->RemoveObserver(this);
@@ -234,7 +242,6 @@ void AgentSchedulingGroupHost::AddFilter(BrowserMessageFilter* filter) {
     return;
   }
 
-  filter->RegisterAssociatedInterfaces(channel_.get());
   channel_->AddFilter(filter->GetFilter());
 }
 #endif
@@ -306,6 +313,9 @@ void AgentSchedulingGroupHost::AddRoute(int32_t routing_id,
 }
 
 void AgentSchedulingGroupHost::RemoveRoute(int32_t routing_id) {
+  TRACE_EVENT0("navigation", "AgentSchedulingGroupHost::RemoveRoute");
+  base::ScopedUmaHistogramTimer histogram_timer(
+      "Navigation.AgentSchedulingGroupHost.RemoveRoute");
   DCHECK_EQ(state_, LifecycleState::kBound);
   listener_map_.Remove(routing_id);
   process_->RemoveRoute(routing_id);
@@ -340,12 +350,6 @@ void AgentSchedulingGroupHost::CreateSharedStorageWorkletService(
       std::move(receiver), std::move(global_scope_creation_params));
 }
 
-void AgentSchedulingGroupHost::ReportNoBinderForInterface(
-    const std::string& error) {
-  broker_receiver_.ReportBadMessage(error +
-                                    " for the agent scheduling group scope");
-}
-
 // static
 void AgentSchedulingGroupHost::
     set_agent_scheduling_group_host_factory_for_testing(
@@ -375,7 +379,6 @@ void AgentSchedulingGroupHost::ResetIPC() {
   receiver_.reset();
   mojo_remote_.reset();
   remote_route_provider_.reset();
-  broker_receiver_.reset();
   channel_ = nullptr;
 }
 
@@ -395,7 +398,6 @@ void AgentSchedulingGroupHost::SetUpIPC() {
   DCHECK(!mojo_remote_.is_bound());
   DCHECK(!receiver_.is_bound());
   DCHECK(!remote_route_provider_.is_bound());
-  DCHECK(!broker_receiver_.is_bound());
 
   // After this function returns, all of `this`'s mojo interfaces need to be
   // bound, and associated interfaces need to be associated "properly" - in
@@ -416,8 +418,7 @@ void AgentSchedulingGroupHost::SetUpIPC() {
   //    IPC channel/pipe.
   if (GetMBIMode() == ::features::MBIMode::kLegacy) {
     process_->GetRendererInterface()->CreateAssociatedAgentSchedulingGroup(
-        mojo_remote_.BindNewEndpointAndPassReceiver(),
-        broker_receiver_.BindNewPipeAndPassRemote());
+        mojo_remote_.BindNewEndpointAndPassReceiver());
   } else {
     auto io_task_runner = GetIOThreadTaskRunner({});
 
@@ -425,8 +426,7 @@ void AgentSchedulingGroupHost::SetUpIPC() {
     mojo::PendingRemote<IPC::mojom::ChannelBootstrap> bootstrap;
 
     process_->GetRendererInterface()->CreateAgentSchedulingGroup(
-        bootstrap.InitWithNewPipeAndPassReceiver(),
-        broker_receiver_.BindNewPipeAndPassRemote());
+        bootstrap.InitWithNewPipeAndPassReceiver());
 
     auto channel_factory = ChannelMojo::CreateServerFactory(
         bootstrap.PassPipe(), /*ipc_task_runner=*/io_task_runner,
@@ -439,7 +439,7 @@ void AgentSchedulingGroupHost::SetUpIPC() {
                              /*listener_task_runner=*/
                              base::SingleThreadTaskRunner::GetCurrentDefault());
 
-    // TODO(crbug.com/1111231): Add necessary filters.
+    // TODO(crbug.com/40142495): Add necessary filters.
     // Most of the filters currently installed on the process-wide channel are:
     // 1. "Process-bound", that is, they do not handle messages sent using ASG,
     // 2. Pepper/NaCl-related, that are going away, and are not supported, or
@@ -463,12 +463,13 @@ void AgentSchedulingGroupHost::SetState(
           {LifecycleState::kNewborn, {LifecycleState::kBound}},
           {LifecycleState::kBound,
            {LifecycleState::kRenderProcessExited,
-            // Note: kRenderProcessHostDestroyed is only reached through kBound
-            //       state. Upon kRenderProcessExited, we immediately setup a
-            //       unclaimed mojo endpoint to be consumed by the next
-            //       renderer process.
+            // Note: If a renderer process is never spawned to claim the
+            //       mojo endpoint created at initialization, then we will
+            //       skip straight to the destroyed state.
             LifecycleState::kRenderProcessHostDestroyed}},
-          {LifecycleState::kRenderProcessExited, {LifecycleState::kBound}},
+          {LifecycleState::kRenderProcessExited,
+           {LifecycleState::kBound,
+            LifecycleState::kRenderProcessHostDestroyed}},
       }));
 
   DCHECK_STATE_TRANSITION(transitions, state_, state);

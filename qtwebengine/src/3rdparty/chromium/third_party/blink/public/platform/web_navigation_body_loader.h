@@ -5,12 +5,15 @@
 #ifndef THIRD_PARTY_BLINK_PUBLIC_PLATFORM_WEB_NAVIGATION_BODY_LOADER_H_
 #define THIRD_PARTY_BLINK_PUBLIC_PLATFORM_WEB_NAVIGATION_BODY_LOADER_H_
 
+#include <optional>
+#include <variant>
+
 #include "base/containers/span.h"
+#include "base/containers/span_or_size.h"
 #include "base/task/single_thread_task_runner.h"
 #include "base/time/time.h"
 #include "services/network/public/mojom/url_loader.mojom-forward.h"
 #include "services/network/public/mojom/url_response_head.mojom-forward.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "third_party/blink/public/mojom/navigation/navigation_params.mojom-forward.h"
 #include "third_party/blink/public/platform/web_common.h"
 #include "third_party/blink/public/platform/web_loader_freeze_mode.h"
@@ -41,10 +44,11 @@ class BLINK_EXPORT WebNavigationBodyLoader {
     // BodyDataReceived() if the data is able to be decoded off thread.
     // |encoded_data| will contain the original data if
     // |should_keep_encoded_data| was passed to StartLoadingBodyInBackground().
-    virtual void DecodedBodyDataReceived(const WebString& data,
-                                         const WebEncodingData& encoding_data,
-                                         base::span<const char> encoded_data) {
-      NOTREACHED();
+    virtual void DecodedBodyDataReceived(
+        const WebString& data,
+        const WebEncodingData& encoding_data,
+        base::SpanOrSize<const char> encoded_data) {
+      NOTREACHED_IN_MIGRATION();
     }
 
     // Called once at the end. If something went wrong, |error| will be set.
@@ -54,7 +58,7 @@ class BLINK_EXPORT WebNavigationBodyLoader {
         int64_t total_encoded_data_length,
         int64_t total_encoded_body_length,
         int64_t total_decoded_body_length,
-        const absl::optional<WebURLError>& error) = 0;
+        const std::optional<WebURLError>& error) = 0;
 
     // The client can return a ProcessBackgroundDataCallback which will be
     // called on a background thread with the decoded data. The returned

@@ -764,7 +764,6 @@
 #include <QtCore/qbitarray.h>
 #include <QtCore/qpoint.h>
 #include <QtCore/qstack.h>
-#include <QtCore/qtimer.h>
 #include <QtCore/qvariant.h>
 #include <QtCore/qvarlengtharray.h>
 #include <QtCore/qnumeric.h>
@@ -4637,10 +4636,14 @@ inline void QGraphicsItemPrivate::sendScenePosChange()
 /*!
     \since 4.6
 
-    Stacks this item before \a sibling, which must be a sibling item (i.e., the
-    two items must share the same parent item, or must both be toplevel items).
-    The \a sibling must have the same Z value as this item, otherwise calling
-    this function will have no effect.
+    Stacks this item before \a sibling, which means this item will be drawn
+    behind the sibling item. In other words, the sibling item will visually
+    appear on top of this item.
+
+    The two items must be siblings (i.e., they must share the same parent
+    item, or must both be toplevel items).The \a sibling must have the
+    same Z value as this item, otherwise calling this function will have
+    no effect.
 
     By default, all sibling items are stacked by insertion order (i.e., the
     first item you add is drawn before the next item you add). If two items' Z
@@ -10529,7 +10532,7 @@ void QGraphicsSimpleTextItemPrivate::updateBoundingRect()
 
 /*!
     \class QGraphicsSimpleTextItem
-    \brief The QGraphicsSimpleTextItem class provides a simple text path item
+    \brief The QGraphicsSimpleTextItem class provides a simple text item
     that you can add to a QGraphicsScene.
     \since 4.2
     \ingroup graphicsview-api

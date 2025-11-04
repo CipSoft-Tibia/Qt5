@@ -2,6 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#ifdef UNSAFE_BUFFERS_BUILD
+// TODO(crbug.com/40285824): Remove this and convert code to safer constructs.
+#pragma allow_unsafe_buffers
+#endif
+
 #include "components/history/core/browser/url_utils.h"
 
 #include "base/ranges/algorithm.h"
@@ -72,12 +77,13 @@ bool IsPathPrefix(const std::string& p1, const std::string& p2) {
 
 GURL ToggleHTTPAndHTTPS(const GURL& url) {
   std::string new_scheme;
-  if (url.SchemeIs("http"))
+  if (url.SchemeIs("http")) {
     new_scheme = "https";
-  else if (url.SchemeIs("https"))
+  } else if (url.SchemeIs("https")) {
     new_scheme = "http";
-  else
-    return GURL::EmptyGURL();
+  } else {
+    return GURL();
+  }
   GURL::Replacements replacement;
   replacement.SetSchemeStr(new_scheme);
   return url.ReplaceComponents(replacement);

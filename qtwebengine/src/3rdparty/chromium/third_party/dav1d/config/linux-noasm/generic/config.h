@@ -9,7 +9,19 @@
 
 #define ARCH_ARM 0
 
+#define ARCH_LOONGARCH 0
+
+#define ARCH_LOONGARCH32 0
+
+#define ARCH_LOONGARCH64 0
+
 #define ARCH_PPC64LE 0
+
+#define ARCH_RISCV 0
+
+#define ARCH_RV32 0
+
+#define ARCH_RV64 0
 
 #define ARCH_X86 0
 
@@ -22,6 +34,8 @@
 #define CONFIG_8BPC 1
 
 // #define CONFIG_LOG 1 -- Logging is controlled by Chromium
+
+#define CONFIG_MACOS_KPERF 0
 
 #define ENDIANNESS_BIG 0
 
@@ -38,6 +52,10 @@
 // #define HAVE_PTHREAD_GETAFFINITY_NP 1 -- Controlled by Chomium
 
 // #define HAVE_PTHREAD_SETAFFINITY_NP 1 -- Controlled by Chomium
+
+#define HAVE_PTHREAD_SETNAME_NP 1
+
+#define HAVE_SYS_TYPES_H 1
 
 #define HAVE_UNISTD_H 1
 

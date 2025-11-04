@@ -32,6 +32,8 @@ jumbo_component("compositor") {
     "debug_utils.h",
     "float_animation_curve_adapter.cc",
     "float_animation_curve_adapter.h",
+    "host_begin_frame_observer.cc",
+    "host_begin_frame_observer.h",
     "layer.cc",
     "layer.h",
     "layer_animation_delegate.h",
@@ -93,7 +95,6 @@ jumbo_component("compositor") {
   public_deps = [ "//cc" ]
   deps = [
     "//base",
-    "//base/third_party/dynamic_annotations",
     "//build:chromeos_buildflags",
     "//cc/animation",
     "//cc/paint",
@@ -260,6 +261,7 @@ test("compositor_unittests") {
     "//testing/gmock",
     "//testing/gtest",
     "//ui/base",
+    "//ui/display",
     "//ui/gfx",
     "//ui/gfx:test_support",
     "//ui/gfx/geometry",
@@ -276,7 +278,7 @@ test("compositor_unittests") {
   }
 
   if (is_linux || is_chromeos) {
-    deps += [ "//third_party/mesa_headers" ]
+    deps += [ "//third_party/angle:includes" ]
   }
 
   if (is_chromeos) {
@@ -287,12 +289,12 @@ test("compositor_unittests") {
   }
 
   if (is_fuchsia) {
-    # TODO(https://crbug.com/1022542): Some of these tests use SwiftShader,
+    # TODO(crbug.com/42050042): Some of these tests use SwiftShader,
     # which requires ambient VMEX.
     test_runner_shard = "//build/config/fuchsia/test/elf_test_ambient_exec_runner.shard.test-cml"
 
     additional_manifest_fragments = [
-      # TODO(https://crbug.com/1185811): Investigate removing the requirement
+      # TODO(crbug.com/40055105): Investigate removing the requirement
       # for VmexResource.
       "//build/config/fuchsia/test/mark_vmo_executable.shard.test-cml",
       "//build/config/fuchsia/test/present_view.shard.test-cml",

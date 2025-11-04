@@ -24,13 +24,16 @@
 #include "components/autofill/core/browser/proto/password_requirements.pb.h"
 #include "components/autofill/core/common/autofill_test_utils.h"
 #include "components/autofill/core/common/form_data.h"
+#include "components/autofill/core/common/form_data_test_api.h"
 #include "components/autofill/core/common/form_field_data.h"
 #include "components/autofill/core/common/password_form_generation_data.h"
 #include "components/autofill/core/common/signatures.h"
+#include "components/password_manager/core/browser/generation/password_generator.h"
 #include "components/password_manager/core/browser/generation/password_requirements_spec_fetcher.h"
 #include "components/password_manager/core/browser/password_autofill_manager.h"
 #include "components/password_manager/core/browser/password_manager.h"
 #include "components/password_manager/core/browser/password_requirements_service.h"
+#include "components/password_manager/core/browser/password_store/mock_password_store_interface.h"
 #include "components/password_manager/core/browser/password_store/test_password_store.h"
 #include "components/password_manager/core/browser/stub_password_manager_client.h"
 #include "components/password_manager/core/browser/stub_password_manager_driver.h"
@@ -46,11 +49,13 @@
 using autofill::AutofillField;
 using autofill::AutofillType;
 using autofill::FieldGlobalId;
+using autofill::FieldSignature;
 using autofill::FieldType;
 using autofill::FormData;
 using autofill::FormSignature;
 using autofill::FormStructure;
 using autofill::PasswordRequirementsSpec;
+using autofill::password_generation::PasswordGenerationType;
 using autofill::test::CreateFieldPrediction;
 using autofill::test::CreateTestFormField;
 using base::ASCIIToUTF16;
@@ -127,7 +132,7 @@ class FakePasswordRequirementsSpecFetcher
                    kHasServerResponse) != std::string::npos) {
       std::move(callback).Run(GetDomainWideRequirements());
     } else {
-      NOTREACHED();
+      NOTREACHED_IN_MIGRATION();
     }
   }
 };
@@ -139,14 +144,12 @@ class MockPasswordManagerClient : public StubPasswordManagerClient {
 
   explicit MockPasswordManagerClient(std::unique_ptr<PrefService> prefs)
       : prefs_(std::move(prefs)),
-        store_(new TestPasswordStore),
+        store_(new MockPasswordStoreInterface),
         driver_(this),
         password_requirements_service_(
-            std::make_unique<FakePasswordRequirementsSpecFetcher>()) {
-    store_->Init(prefs_.get(), /*affiliated_match_helper=*/nullptr);
-  }
+            std::make_unique<FakePasswordRequirementsSpecFetcher>()) {}
 
-  ~MockPasswordManagerClient() override { store_->ShutdownOnUIThread(); }
+  ~MockPasswordManagerClient() override {}
 
   PasswordStoreInterface* GetProfilePasswordStore() const override {
     return store_.get();
@@ -163,11 +166,12 @@ class MockPasswordManagerClient : public StubPasswordManagerClient {
   }
 
   TestPasswordManagerDriver* test_driver() { return &driver_; }
+  MockPasswordStoreInterface* mock_store() { return store_.get(); }
 
  private:
   autofill::test::AutofillUnitTestEnvironment autofill_environment_;
   std::unique_ptr<PrefService> prefs_;
-  scoped_refptr<TestPasswordStore> store_;
+  scoped_refptr<MockPasswordStoreInterface> store_;
   NiceMock<TestPasswordManagerDriver> driver_;
   PasswordRequirementsService password_requirements_service_;
   url::Origin last_committed_origin_;
@@ -185,6 +189,10 @@ class PasswordGenerationFrameHelperTest : public testing::Test {
         new TestingPrefServiceSimple());
     prefs->registry()->RegisterBooleanPref(prefs::kCredentialsEnableService,
                                            true);
+#if BUILDFLAG(IS_ANDROID)
+    prefs->registry()->RegisterIntegerPref(
+        password_manager::prefs::kPasswordsUseUPMLocalAndSeparateStores, 0);
+#endif
     client_ = std::make_unique<MockPasswordManagerClient>(std::move(prefs));
   }
 
@@ -205,8 +213,15 @@ class PasswordGenerationFrameHelperTest : public testing::Test {
 };
 
 TEST_F(PasswordGenerationFrameHelperTest, IsGenerationEnabled) {
+  // If password store is not able to save passwords generation is disabled.
+  EXPECT_CALL(*client_->mock_store(), IsAbleToSavePasswords())
+      .WillOnce(testing::Return(false));
+  EXPECT_FALSE(IsGenerationEnabled());
+
   // Enabling the PasswordManager and password sync should cause generation to
   // be enabled, unless the sync is with a custom passphrase.
+  EXPECT_CALL(*client_->mock_store(), IsAbleToSavePasswords())
+      .WillOnce(testing::Return(true));
   EXPECT_CALL(*client_, IsSavingAndFillingEnabled(_))
       .WillRepeatedly(testing::Return(true));
   EXPECT_CALL(*client_->GetPasswordFeatureManager(), IsGenerationEnabled())
@@ -214,12 +229,16 @@ TEST_F(PasswordGenerationFrameHelperTest, IsGenerationEnabled) {
   EXPECT_TRUE(IsGenerationEnabled());
 
   // Disabling password syncing should cause generation to be disabled.
+  EXPECT_CALL(*client_->mock_store(), IsAbleToSavePasswords())
+      .WillOnce(testing::Return(true));
   EXPECT_CALL(*client_->GetPasswordFeatureManager(), IsGenerationEnabled())
       .WillRepeatedly(testing::Return(false));
   EXPECT_FALSE(IsGenerationEnabled());
 
   // Disabling the PasswordManager should cause generation to be disabled even
   // if syncing is enabled.
+  EXPECT_CALL(*client_->mock_store(), IsAbleToSavePasswords())
+      .WillOnce(testing::Return(true));
   EXPECT_CALL(*client_, IsSavingAndFillingEnabled(_))
       .WillRepeatedly(testing::Return(false));
   EXPECT_CALL(*client_->GetPasswordFeatureManager(), IsGenerationEnabled())
@@ -227,9 +246,25 @@ TEST_F(PasswordGenerationFrameHelperTest, IsGenerationEnabled) {
   EXPECT_FALSE(IsGenerationEnabled());
 }
 
+#if BUILDFLAG(IS_ANDROID)
+TEST_F(PasswordGenerationFrameHelperTest,
+       GenerationDisabledDueToOutdatedGMSCore) {
+  EXPECT_CALL(*client_->mock_store(), IsAbleToSavePasswords())
+      .WillOnce(testing::Return(true));
+  EXPECT_CALL(*client_, IsSavingAndFillingEnabled(_))
+      .WillRepeatedly(testing::Return(true));
+  EXPECT_CALL(*client_->GetPasswordFeatureManager(), ShouldUpdateGmsCore())
+      .WillRepeatedly(testing::Return(false));
+  EXPECT_FALSE(IsGenerationEnabled());
+}
+#endif
+
 // Verify that password requirements received from the autofill server are
 // stored and that domain-wide password requirements are fetched as well.
 TEST_F(PasswordGenerationFrameHelperTest, ProcessPasswordRequirements) {
+  EXPECT_CALL(*client_->mock_store(), IsAbleToSavePasswords())
+      .WillRepeatedly(testing::Return(true));
+
   // Setup so that IsGenerationEnabled() returns true.
   EXPECT_CALL(*client_, IsSavingAndFillingEnabled(_))
       .WillRepeatedly(testing::Return(true));
@@ -296,11 +331,10 @@ TEST_F(PasswordGenerationFrameHelperTest, ProcessPasswordRequirements) {
                                        : kNoServerResponse));
 
     FormData account_creation_form;
-    account_creation_form.url = origin;
-    account_creation_form.action = origin;
-    account_creation_form.name = u"account_creation_form";
-    account_creation_form.fields.push_back(username);
-    account_creation_form.fields.push_back(password);
+    account_creation_form.set_url(origin);
+    account_creation_form.set_action(origin);
+    account_creation_form.set_name(u"account_creation_form");
+    account_creation_form.set_fields({username, password});
 
     client_->SetLastCommittedEntryUrl(origin);
     GetGenerationHelper()->PrefetchSpec(origin.DeprecatedGetOriginAsURL());
@@ -362,6 +396,9 @@ TEST_F(PasswordGenerationFrameHelperTest, UpdatePasswordSyncStateIncognito) {
 }
 
 TEST_F(PasswordGenerationFrameHelperTest, GenerationDisabledForGoogle) {
+  EXPECT_CALL(*client_->mock_store(), IsAbleToSavePasswords())
+      .WillRepeatedly(testing::Return(true));
+
   EXPECT_CALL(*client_, IsSavingAndFillingEnabled(_))
       .WillRepeatedly(testing::Return(true));
   EXPECT_CALL(*client_->GetPasswordFeatureManager(), IsGenerationEnabled())
@@ -386,6 +423,36 @@ TEST_F(PasswordGenerationFrameHelperTest, GenerationDisabledForGoogle) {
   EXPECT_CALL(*GetTestDriver(), GetLastCommittedURL())
       .WillOnce(testing::ReturnRef(non_google_url));
   EXPECT_TRUE(IsGenerationEnabled());
+}
+
+TEST_F(PasswordGenerationFrameHelperTest, ShortCrowdsourcedPasswordLength) {
+  const GURL kTestOrigin("https://example.com");
+  constexpr FormSignature kTestFormSignature(123);
+  constexpr FieldSignature kTestFieldSignature(456);
+
+  // Create a spec with a length shorter than default.
+  PasswordRequirementsSpec spec;
+  constexpr size_t kShortLength = 9u;
+  spec.set_max_length(kShortLength);
+  spec.set_priority(10);
+  client_->GetPasswordRequirementsService()->AddSpec(
+      kTestOrigin, kTestFormSignature, kTestFieldSignature, spec);
+
+  // Check that crowdsourced length is used when password is generated
+  // automatically.
+  std::u16string generated_pwd = GetGenerationHelper()->GeneratePassword(
+      kTestOrigin, PasswordGenerationType::kAutomatic, kTestFormSignature,
+      kTestFieldSignature,
+      /*max_length=*/0);
+  EXPECT_EQ(generated_pwd.size(), kShortLength);
+
+  // Check that crowdsourced length is ignored when password generation is
+  // triggered on the manual fallback.
+  generated_pwd = GetGenerationHelper()->GeneratePassword(
+      kTestOrigin, PasswordGenerationType::kManual, kTestFormSignature,
+      kTestFieldSignature,
+      /*max_length=*/0);
+  EXPECT_EQ(generated_pwd.size(), autofill::kDefaultPasswordLength);
 }
 
 }  // namespace password_manager

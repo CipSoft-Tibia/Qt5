@@ -116,6 +116,7 @@ class PageLoadMetricsObserverTester : public test::WeakMockTimerProvider {
       content::NavigationHandle* navigation_handle);
   void SimulateSoftNavigationCountUpdate(
       const mojom::SoftNavigationMetrics& soft_navigation_metrics);
+  void SimulateCustomUserTimingUpdate(mojom::CustomUserTimingMarkPtr timing);
 
   // Simulates a loaded resource. Main frame resources must specify a
   // GlobalRequestID, using the SimulateLoadedResource() method that takes a
@@ -175,7 +176,7 @@ class PageLoadMetricsObserverTester : public test::WeakMockTimerProvider {
       const mojom::FrameRenderDataUpdate& render_data,
       const mojom::CpuTiming& cpu_timing,
       const mojom::InputTiming& input_timing,
-      const absl::optional<blink::SubresourceLoadMetrics>&
+      const std::optional<blink::SubresourceLoadMetrics>&
           subresource_load_metrics,
       content::RenderFrameHost* rfh,
       const mojom::SoftNavigationMetrics& soft_navigation_metrics);

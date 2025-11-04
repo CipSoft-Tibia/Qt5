@@ -2,6 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#ifdef UNSAFE_BUFFERS_BUILD
+// TODO(crbug.com/351564777): Remove this and convert code to safer constructs.
+#pragma allow_unsafe_buffers
+#endif
+
 #include "third_party/blink/renderer/core/mathml/mathml_operator_element.h"
 
 #include "third_party/blink/renderer/core/css/style_change_reason.h"
@@ -60,7 +65,7 @@ static const QualifiedName& OperatorPropertyFlagToAttributeName(
     case MathMLOperatorElement::kSymmetric:
       return mathml_names::kSymmetricAttr;
   }
-  NOTREACHED();
+  NOTREACHED_IN_MIGRATION();
   return g_null_name;
 }
 
@@ -199,7 +204,7 @@ void MathMLOperatorElement::ComputeDictionaryCategory() {
 void MathMLOperatorElement::ComputeOperatorProperty(OperatorPropertyFlag flag) {
   DCHECK(properties_.dirty_flags & flag);
   const auto& name = OperatorPropertyFlagToAttributeName(flag);
-  if (absl::optional<bool> value = BooleanAttribute(name)) {
+  if (std::optional<bool> value = BooleanAttribute(name)) {
     // https://w3c.github.io/mathml-core/#dfn-algorithm-for-determining-the-properties-of-an-embellished-operator
     // Step 1.
     if (*value) {

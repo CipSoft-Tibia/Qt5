@@ -1,5 +1,6 @@
 // Copyright (C) 2022 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qtexttospeech_sapi.h"
 
@@ -372,9 +373,26 @@ QLocale QTextToSpeechEngineSapi::lcidToLocale(const QString &lcid) const
         qWarning() << "Could not convert language attribute to LCID";
         return QLocale();
     }
+
+    // Windows Vista+
+    WCHAR name[LOCALE_NAME_MAX_LENGTH] = {};
+    if (LCIDToLocaleName(locale, name, LOCALE_NAME_MAX_LENGTH, 0))
+        return QLocale(QString::fromWCharArray(name));
+
+    // Fallback to GetLocaleInfoW
     const int nchars = GetLocaleInfoW(locale, LOCALE_SISO639LANGNAME, NULL, 0);
     QVarLengthArray<wchar_t, 12> languageCode(nchars);
     GetLocaleInfoW(locale, LOCALE_SISO639LANGNAME, languageCode.data(), nchars);
+
+    // Use country code when available
+    const int countryCodeSize = GetLocaleInfoW(locale, LOCALE_SISO3166CTRYNAME, NULL, 0);
+    if (countryCodeSize > 0) {
+        QVarLengthArray<wchar_t, 12> countryCode(countryCodeSize);
+        GetLocaleInfoW(locale, LOCALE_SISO3166CTRYNAME, countryCode.data(), countryCodeSize);
+        return QLocale(u"%1_%2"_s.arg(QString::fromWCharArray(languageCode.data()),
+                                      QString::fromWCharArray(countryCode.data())));
+    }
+
     return QLocale(QString::fromWCharArray(languageCode.data()));
 }
 
@@ -563,8 +581,10 @@ HRESULT QTextToSpeechEngineSapi::NotifyCallback(WPARAM /*wParam*/, LPARAM /*lPar
                 m_state = QTextToSpeech::Ready;
                 break;
             case SPEI_WORD_BOUNDARY:
-                emit sayingWord(currentText.sliced(event.lParam, event.wParam),
-                                event.lParam - textOffset, event.wParam);
+                if (qsizetype(event.lParam + event.wParam) <= currentText.size()) {
+                    emit sayingWord(currentText.sliced(event.lParam, event.wParam),
+                                    event.lParam - textOffset, event.wParam);
+                }
                 break;
             // these are the other TTS events which might be interesting for us at some point
             case SPEI_SENTENCE_BOUNDARY:

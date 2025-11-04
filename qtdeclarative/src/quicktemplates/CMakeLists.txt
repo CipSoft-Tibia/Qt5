@@ -19,7 +19,9 @@ qt_internal_add_qml_module(QuickTemplates2
         qquickabstractbutton_p_p.h
         qquickaction.cpp qquickaction_p.h
         qquickactiongroup.cpp qquickactiongroup_p.h
-        qquickapplicationwindow.cpp qquickapplicationwindow_p.h
+        qquickapplicationwindow.cpp
+        qquickapplicationwindow_p.h
+        qquickapplicationwindow_p_p.h
         qquickbusyindicator.cpp qquickbusyindicator_p.h
         qquickbutton.cpp qquickbutton_p.h
         qquickbutton_p_p.h
@@ -27,6 +29,7 @@ qt_internal_add_qml_module(QuickTemplates2
         qquickcheckbox.cpp qquickcheckbox_p.h
         qquickcheckdelegate.cpp qquickcheckdelegate_p.h
         qquickcontentitem.cpp qquickcontentitem_p.h
+        qquickcontextmenu.cpp qquickcontextmenu_p.h
         qquickcontrol.cpp qquickcontrol_p.h
         qquickcontrol_p_p.h
         qquickdeferredexecute.cpp
@@ -172,6 +175,7 @@ qt_internal_extend_target(QuickTemplates2 CONDITION QT_FEATURE_quick_tableview
         qquickheaderview_p_p.h
         qquickselectionrectangle.cpp qquickselectionrectangle_p.h
         qquickselectionrectangle_p_p.h
+        qquicktableviewdelegate.cpp qquicktableviewdelegate_p.h
 )
 
 qt_internal_extend_target(QuickTemplates2 CONDITION QT_FEATURE_quick_treeview

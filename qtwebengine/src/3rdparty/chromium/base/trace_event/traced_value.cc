@@ -8,6 +8,7 @@
 #include <stdint.h>
 
 #include <atomic>
+#include <string_view>
 #include <utility>
 
 #include "base/bits.h"
@@ -25,25 +26,24 @@
 #include "base/trace_event/trace_log.h"
 #include "base/values.h"
 
-namespace base {
-namespace trace_event {
+namespace base::trace_event {
 
 namespace {
-const char kTypeStartDict = '{';
-const char kTypeEndDict = '}';
-const char kTypeStartArray = '[';
-const char kTypeEndArray = ']';
-const char kTypeBool = 'b';
-const char kTypeInt = 'i';
-const char kTypeDouble = 'd';
-const char kTypeString = 's';
-const char kTypeCStr = '*';  // only used for key names
+constexpr char kTypeStartDict = '{';
+constexpr char kTypeEndDict = '}';
+constexpr char kTypeStartArray = '[';
+constexpr char kTypeEndArray = ']';
+constexpr char kTypeBool = 'b';
+constexpr char kTypeInt = 'i';
+constexpr char kTypeDouble = 'd';
+constexpr char kTypeString = 's';
+constexpr char kTypeCStr = '*';  // only used for key names
 
 std::atomic<TracedValue::WriterFactoryCallback> g_writer_factory_callback;
 
 #ifndef NDEBUG
-const bool kStackTypeDict = false;
-const bool kStackTypeArray = true;
+constexpr bool kStackTypeDict = false;
+constexpr bool kStackTypeArray = true;
 #define DCHECK_CURRENT_CONTAINER_IS(x) DCHECK_EQ(x, nesting_stack_.back())
 #define DCHECK_CONTAINER_STACK_DEPTH_EQ(x) DCHECK_EQ(x, nesting_stack_.size())
 #define DEBUG_PUSH_CONTAINER(x) nesting_stack_.push_back(x)
@@ -64,12 +64,12 @@ const bool kStackTypeArray = true;
 #endif
 
 inline void WriteKeyNameAsRawPtr(Pickle& pickle, const char* ptr) {
-  pickle.WriteBytes(as_bytes(make_span(&kTypeCStr, 1u)));
+  pickle.WriteBytes(byte_span_from_ref(kTypeCStr));
   pickle.WriteUInt64(static_cast<uint64_t>(reinterpret_cast<uintptr_t>(ptr)));
 }
 
-inline void WriteKeyNameWithCopy(Pickle& pickle, base::StringPiece str) {
-  pickle.WriteBytes(as_bytes(make_span(&kTypeString, 1u)));
+inline void WriteKeyNameWithCopy(Pickle& pickle, std::string_view str) {
+  pickle.WriteBytes(byte_span_from_ref(kTypeString));
   pickle.WriteString(str);
 }
 
@@ -100,127 +100,124 @@ class PickleWriter final : public TracedValue::Writer {
   bool IsProtoWriter() const override { return false; }
 
   void SetInteger(const char* name, int value) override {
-    pickle_.WriteBytes(as_bytes(make_span(&kTypeInt, 1u)));
+    pickle_.WriteBytes(byte_span_from_ref(kTypeInt));
     pickle_.WriteInt(value);
     WriteKeyNameAsRawPtr(pickle_, name);
   }
 
-  void SetIntegerWithCopiedName(base::StringPiece name, int value) override {
-    pickle_.WriteBytes(as_bytes(make_span(&kTypeInt, 1u)));
+  void SetIntegerWithCopiedName(std::string_view name, int value) override {
+    pickle_.WriteBytes(byte_span_from_ref(kTypeInt));
     pickle_.WriteInt(value);
     WriteKeyNameWithCopy(pickle_, name);
   }
 
   void SetDouble(const char* name, double value) override {
-    pickle_.WriteBytes(as_bytes(make_span(&kTypeDouble, 1u)));
+    pickle_.WriteBytes(byte_span_from_ref(kTypeDouble));
     pickle_.WriteDouble(value);
     WriteKeyNameAsRawPtr(pickle_, name);
   }
 
-  void SetDoubleWithCopiedName(base::StringPiece name, double value) override {
-    pickle_.WriteBytes(as_bytes(make_span(&kTypeDouble, 1u)));
+  void SetDoubleWithCopiedName(std::string_view name, double value) override {
+    pickle_.WriteBytes(byte_span_from_ref(kTypeDouble));
     pickle_.WriteDouble(value);
     WriteKeyNameWithCopy(pickle_, name);
   }
 
   void SetBoolean(const char* name, bool value) override {
-    pickle_.WriteBytes(as_bytes(make_span(&kTypeBool, 1u)));
+    pickle_.WriteBytes(byte_span_from_ref(kTypeBool));
     pickle_.WriteBool(value);
     WriteKeyNameAsRawPtr(pickle_, name);
   }
 
-  void SetBooleanWithCopiedName(base::StringPiece name, bool value) override {
-    pickle_.WriteBytes(as_bytes(make_span(&kTypeBool, 1u)));
+  void SetBooleanWithCopiedName(std::string_view name, bool value) override {
+    pickle_.WriteBytes(byte_span_from_ref(kTypeBool));
     pickle_.WriteBool(value);
     WriteKeyNameWithCopy(pickle_, name);
   }
 
-  void SetString(const char* name, base::StringPiece value) override {
-    pickle_.WriteBytes(as_bytes(make_span(&kTypeString, 1u)));
+  void SetString(const char* name, std::string_view value) override {
+    pickle_.WriteBytes(byte_span_from_ref(kTypeString));
     pickle_.WriteString(value);
     WriteKeyNameAsRawPtr(pickle_, name);
   }
 
-  void SetStringWithCopiedName(base::StringPiece name,
-                               base::StringPiece value) override {
-    pickle_.WriteBytes(as_bytes(make_span(&kTypeString, 1u)));
+  void SetStringWithCopiedName(std::string_view name,
+                               std::string_view value) override {
+    pickle_.WriteBytes(byte_span_from_ref(kTypeString));
     pickle_.WriteString(value);
     WriteKeyNameWithCopy(pickle_, name);
   }
 
   void SetValue(const char* name, Writer* value) override {
-    DCHECK(value->IsPickleWriter());
+    CHECK(value->IsPickleWriter());
     const PickleWriter* pickle_writer = static_cast<const PickleWriter*>(value);
 
     BeginDictionary(name);
-    pickle_.WriteBytes(pickle_writer->pickle_.payload(),
-                       pickle_writer->pickle_.payload_size());
+    pickle_.WriteBytes(pickle_writer->pickle_.payload_bytes());
     EndDictionary();
   }
 
-  void SetValueWithCopiedName(base::StringPiece name, Writer* value) override {
-    DCHECK(value->IsPickleWriter());
+  void SetValueWithCopiedName(std::string_view name, Writer* value) override {
+    CHECK(value->IsPickleWriter());
     const PickleWriter* pickle_writer = static_cast<const PickleWriter*>(value);
 
     BeginDictionaryWithCopiedName(name);
-    pickle_.WriteBytes(
-        as_bytes(make_span(pickle_writer->pickle_.payload(),
-                           pickle_writer->pickle_.payload_size())));
+    pickle_.WriteBytes(pickle_writer->pickle_.payload_bytes());
     EndDictionary();
   }
 
   void BeginArray() override {
-    pickle_.WriteBytes(as_bytes(make_span(&kTypeStartArray, 1u)));
+    pickle_.WriteBytes(byte_span_from_ref(kTypeStartArray));
   }
 
   void BeginDictionary() override {
-    pickle_.WriteBytes(as_bytes(make_span(&kTypeStartDict, 1u)));
+    pickle_.WriteBytes(byte_span_from_ref(kTypeStartDict));
   }
 
   void BeginDictionary(const char* name) override {
-    pickle_.WriteBytes(as_bytes(make_span(&kTypeStartDict, 1u)));
+    pickle_.WriteBytes(byte_span_from_ref(kTypeStartDict));
     WriteKeyNameAsRawPtr(pickle_, name);
   }
 
-  void BeginDictionaryWithCopiedName(base::StringPiece name) override {
-    pickle_.WriteBytes(as_bytes(make_span(&kTypeStartDict, 1u)));
+  void BeginDictionaryWithCopiedName(std::string_view name) override {
+    pickle_.WriteBytes(byte_span_from_ref(kTypeStartDict));
     WriteKeyNameWithCopy(pickle_, name);
   }
 
   void BeginArray(const char* name) override {
-    pickle_.WriteBytes(as_bytes(make_span(&kTypeStartArray, 1u)));
+    pickle_.WriteBytes(byte_span_from_ref(kTypeStartArray));
     WriteKeyNameAsRawPtr(pickle_, name);
   }
 
-  void BeginArrayWithCopiedName(base::StringPiece name) override {
-    pickle_.WriteBytes(as_bytes(make_span(&kTypeStartArray, 1u)));
+  void BeginArrayWithCopiedName(std::string_view name) override {
+    pickle_.WriteBytes(byte_span_from_ref(kTypeStartArray));
     WriteKeyNameWithCopy(pickle_, name);
   }
 
   void EndDictionary() override {
-    pickle_.WriteBytes(as_bytes(make_span(&kTypeEndDict, 1u)));
+    pickle_.WriteBytes(byte_span_from_ref(kTypeEndDict));
   }
   void EndArray() override {
-    pickle_.WriteBytes(as_bytes(make_span(&kTypeEndArray, 1u)));
+    pickle_.WriteBytes(byte_span_from_ref(kTypeEndArray));
   }
 
   void AppendInteger(int value) override {
-    pickle_.WriteBytes(as_bytes(make_span(&kTypeInt, 1u)));
+    pickle_.WriteBytes(byte_span_from_ref(kTypeInt));
     pickle_.WriteInt(value);
   }
 
   void AppendDouble(double value) override {
-    pickle_.WriteBytes(as_bytes(make_span(&kTypeDouble, 1u)));
+    pickle_.WriteBytes(byte_span_from_ref(kTypeDouble));
     pickle_.WriteDouble(value);
   }
 
   void AppendBoolean(bool value) override {
-    pickle_.WriteBytes(as_bytes(make_span(&kTypeBool, 1u)));
+    pickle_.WriteBytes(byte_span_from_ref(kTypeBool));
     pickle_.WriteBool(value);
   }
 
-  void AppendString(base::StringPiece value) override {
-    pickle_.WriteBytes(as_bytes(make_span(&kTypeString, 1u)));
+  void AppendString(std::string_view value) override {
+    pickle_.WriteBytes(byte_span_from_ref(kTypeString));
     pickle_.WriteString(value);
   }
 
@@ -495,7 +492,7 @@ void TracedValue::SetInteger(const char* name, int value) {
   writer_->SetInteger(name, value);
 }
 
-void TracedValue::SetIntegerWithCopiedName(base::StringPiece name, int value) {
+void TracedValue::SetIntegerWithCopiedName(std::string_view name, int value) {
   DCHECK_CURRENT_CONTAINER_IS(kStackTypeDict);
   writer_->SetIntegerWithCopiedName(name, value);
 }
@@ -505,8 +502,7 @@ void TracedValue::SetDouble(const char* name, double value) {
   writer_->SetDouble(name, value);
 }
 
-void TracedValue::SetDoubleWithCopiedName(base::StringPiece name,
-                                          double value) {
+void TracedValue::SetDoubleWithCopiedName(std::string_view name, double value) {
   DCHECK_CURRENT_CONTAINER_IS(kStackTypeDict);
   writer_->SetDoubleWithCopiedName(name, value);
 }
@@ -516,18 +512,18 @@ void TracedValue::SetBoolean(const char* name, bool value) {
   writer_->SetBoolean(name, value);
 }
 
-void TracedValue::SetBooleanWithCopiedName(base::StringPiece name, bool value) {
+void TracedValue::SetBooleanWithCopiedName(std::string_view name, bool value) {
   DCHECK_CURRENT_CONTAINER_IS(kStackTypeDict);
   writer_->SetBooleanWithCopiedName(name, value);
 }
 
-void TracedValue::SetString(const char* name, base::StringPiece value) {
+void TracedValue::SetString(const char* name, std::string_view value) {
   DCHECK_CURRENT_CONTAINER_IS(kStackTypeDict);
   writer_->SetString(name, value);
 }
 
-void TracedValue::SetStringWithCopiedName(base::StringPiece name,
-                                          base::StringPiece value) {
+void TracedValue::SetStringWithCopiedName(std::string_view name,
+                                          std::string_view value) {
   DCHECK_CURRENT_CONTAINER_IS(kStackTypeDict);
   writer_->SetStringWithCopiedName(name, value);
 }
@@ -537,7 +533,7 @@ void TracedValue::SetValue(const char* name, TracedValue* value) {
   writer_->SetValue(name, value->writer_.get());
 }
 
-void TracedValue::SetValueWithCopiedName(base::StringPiece name,
+void TracedValue::SetValueWithCopiedName(std::string_view name,
                                          TracedValue* value) {
   DCHECK_CURRENT_CONTAINER_IS(kStackTypeDict);
   writer_->SetValueWithCopiedName(name, value->writer_.get());
@@ -559,7 +555,7 @@ void TracedValue::SetPointer(const char* name, const void* value) {
   writer_->SetString(name, PointerToString(value));
 }
 
-void TracedValue::SetPointerWithCopiedName(base::StringPiece name,
+void TracedValue::SetPointerWithCopiedName(std::string_view name,
                                            const void* value) {
   DCHECK_CURRENT_CONTAINER_IS(kStackTypeDict);
   writer_->SetStringWithCopiedName(name, PointerToString(value));
@@ -571,7 +567,7 @@ void TracedValue::BeginDictionary(const char* name) {
   writer_->BeginDictionary(name);
 }
 
-void TracedValue::BeginDictionaryWithCopiedName(base::StringPiece name) {
+void TracedValue::BeginDictionaryWithCopiedName(std::string_view name) {
   DCHECK_CURRENT_CONTAINER_IS(kStackTypeDict);
   DEBUG_PUSH_CONTAINER(kStackTypeDict);
   writer_->BeginDictionaryWithCopiedName(name);
@@ -583,7 +579,7 @@ void TracedValue::BeginArray(const char* name) {
   writer_->BeginArray(name);
 }
 
-void TracedValue::BeginArrayWithCopiedName(base::StringPiece name) {
+void TracedValue::BeginArrayWithCopiedName(std::string_view name) {
   DCHECK_CURRENT_CONTAINER_IS(kStackTypeDict);
   DEBUG_PUSH_CONTAINER(kStackTypeArray);
   writer_->BeginArrayWithCopiedName(name);
@@ -604,7 +600,7 @@ void TracedValue::AppendBoolean(bool value) {
   writer_->AppendBoolean(value);
 }
 
-void TracedValue::AppendString(base::StringPiece value) {
+void TracedValue::AppendString(std::string_view value) {
   DCHECK_CURRENT_CONTAINER_IS(kStackTypeArray);
   writer_->AppendString(value);
 }
@@ -703,7 +699,7 @@ TracedValue::ValueHolder::ValueHolder(bool value) {
   kept_value_type_ = KeptValueType::kBoolType;
 }
 
-TracedValue::ValueHolder::ValueHolder(base::StringPiece value) {
+TracedValue::ValueHolder::ValueHolder(std::string_view value) {
   kept_value_.string_piece_value = value;
   kept_value_type_ = KeptValueType::kStringPieceType;
 }
@@ -911,7 +907,7 @@ TracedValue::ArrayScope TracedValue::BeginArrayScoped(const char* name) {
 }
 
 TracedValue::ArrayScope TracedValue::BeginArrayScopedWithCopiedName(
-    base::StringPiece name) {
+    std::string_view name) {
   BeginArrayWithCopiedName(name);
   return TracedValue::ArrayScope(this);
 }
@@ -935,10 +931,9 @@ TracedValue::DictionaryScope TracedValue::BeginDictionaryScoped(
 }
 
 TracedValue::DictionaryScope TracedValue::BeginDictionaryScopedWithCopiedName(
-    base::StringPiece name) {
+    std::string_view name) {
   BeginDictionaryWithCopiedName(name);
   return TracedValue::DictionaryScope(this);
 }
 
-}  // namespace trace_event
-}  // namespace base
+}  // namespace base::trace_event

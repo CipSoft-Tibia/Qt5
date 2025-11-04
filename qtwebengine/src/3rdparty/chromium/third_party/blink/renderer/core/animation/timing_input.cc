@@ -22,7 +22,6 @@
 #include "third_party/blink/renderer/core/execution_context/security_context.h"
 #include "third_party/blink/renderer/platform/bindings/exception_state.h"
 #include "third_party/blink/renderer/platform/geometry/calculation_value.h"
-#include "third_party/blink/renderer/platform/runtime_enabled_features.h"
 
 namespace blink {
 namespace {
@@ -38,13 +37,13 @@ Timing::PlaybackDirection ConvertPlaybackDirection(const String& direction) {
   return Timing::PlaybackDirection::NORMAL;
 }
 
-absl::optional<AnimationTimeDelta> ConvertIterationDuration(
+std::optional<AnimationTimeDelta> ConvertIterationDuration(
     const V8UnionCSSNumericValueOrStringOrUnrestrictedDouble* duration) {
   if (duration->IsUnrestrictedDouble()) {
     return ANIMATION_TIME_DELTA_FROM_MILLISECONDS(
         duration->GetAsUnrestrictedDouble());
   }
-  return absl::nullopt;
+  return std::nullopt;
 }
 
 Timing::Delay ConvertDelay(const Timing::V8Delay* delay,
@@ -118,7 +117,7 @@ Timing TimingInput::Convert(
       return ConvertEffectTiming(timing_input, document, exception_state);
     }
   }
-  NOTREACHED();
+  NOTREACHED_IN_MIGRATION();
   return Timing();
 }
 
@@ -149,7 +148,7 @@ Timing TimingInput::Convert(
       return ConvertEffectTiming(timing_input, document, exception_state);
     }
   }
-  NOTREACHED();
+  NOTREACHED_IN_MIGRATION();
   return Timing();
 }
 

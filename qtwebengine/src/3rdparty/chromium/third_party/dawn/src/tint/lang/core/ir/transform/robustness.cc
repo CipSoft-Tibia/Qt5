@@ -28,7 +28,6 @@
 #include "src/tint/lang/core/ir/transform/robustness.h"
 
 #include <algorithm>
-#include <utility>
 
 #include "src/tint/lang/core/ir/builder.h"
 #include "src/tint/lang/core/ir/module.h"
@@ -65,48 +64,42 @@ struct State {
         Vector<ir::LoadVectorElement*, 64> vector_loads;
         Vector<ir::StoreVectorElement*, 64> vector_stores;
         Vector<ir::CoreBuiltinCall*, 64> texture_calls;
-        for (auto* inst : ir.instructions.Objects()) {
-            if (inst->Alive()) {
-                tint::Switch(
-                    inst,  //
-                    [&](ir::Access* access) {
-                        // Check if accesses into this object should be clamped.
-                        auto* ptr = access->Object()->Type()->As<type::Pointer>();
-                        if (ptr) {
-                            if (ShouldClamp(ptr->AddressSpace())) {
-                                accesses.Push(access);
-                            }
-                        } else {
-                            if (config.clamp_value) {
-                                accesses.Push(access);
-                            }
+        for (auto* inst : ir.Instructions()) {
+            tint::Switch(
+                inst,  //
+                [&](ir::Access* access) {
+                    // Check if accesses into this object should be clamped.
+                    if (access->Object()->Type()->Is<type::Pointer>()) {
+                        if (ShouldClamp(access->Object())) {
+                            accesses.Push(access);
                         }
-                    },
-                    [&](ir::LoadVectorElement* lve) {
-                        // Check if loads from this address space should be clamped.
-                        auto* ptr = lve->From()->Type()->As<type::Pointer>();
-                        if (ShouldClamp(ptr->AddressSpace())) {
-                            vector_loads.Push(lve);
+                    } else {
+                        if (config.clamp_value) {
+                            accesses.Push(access);
                         }
-                    },
-                    [&](ir::StoreVectorElement* sve) {
-                        // Check if stores to this address space should be clamped.
-                        auto* ptr = sve->To()->Type()->As<type::Pointer>();
-                        if (ShouldClamp(ptr->AddressSpace())) {
-                            vector_stores.Push(sve);
+                    }
+                },
+                [&](ir::LoadVectorElement* lve) {
+                    // Check if loads from this value should be clamped.
+                    if (ShouldClamp(lve->From())) {
+                        vector_loads.Push(lve);
+                    }
+                },
+                [&](ir::StoreVectorElement* sve) {
+                    // Check if stores to this value should be clamped.
+                    if (ShouldClamp(sve->To())) {
+                        vector_stores.Push(sve);
+                    }
+                },
+                [&](ir::CoreBuiltinCall* call) {
+                    // Check if this is a texture builtin that needs to be clamped.
+                    if (config.clamp_texture) {
+                        if (call->Func() == core::BuiltinFn::kTextureDimensions ||
+                            call->Func() == core::BuiltinFn::kTextureLoad) {
+                            texture_calls.Push(call);
                         }
-                    },
-                    [&](ir::CoreBuiltinCall* call) {
-                        // Check if this is a texture builtin that needs to be clamped.
-                        if (config.clamp_texture) {
-                            if (call->Func() == core::BuiltinFn::kTextureDimensions ||
-                                call->Func() == core::BuiltinFn::kTextureLoad ||
-                                call->Func() == core::BuiltinFn::kTextureStore) {
-                                texture_calls.Push(call);
-                            }
-                        }
-                    });
-            }
+                    }
+                });
         }
 
         // Clamp access indices.
@@ -140,18 +133,15 @@ struct State {
                 ClampTextureCallArgs(call);
             });
         }
-
-        // TODO(jrprice): Handle config.bindings_ignored.
-        if (!config.bindings_ignored.empty()) {
-            TINT_UNIMPLEMENTED();
-        }
     }
 
-    /// Check if clamping should be applied to a particular address space.
-    /// @param addrspace the address space to check
-    /// @returns true if pointer accesses in @p param addrspace should be clamped
-    bool ShouldClamp(AddressSpace addrspace) {
-        switch (addrspace) {
+    /// Check if clamping should be applied to a particular value.
+    /// @param value the value to check. The value's type must be type::Pointer.
+    /// @returns true if pointer accesses in @p param should be clamped
+    bool ShouldClamp(Value* value) {
+        auto* ptr = value->Type()->As<type::Pointer>();
+        TINT_ASSERT(ptr);
+        switch (ptr->AddressSpace()) {
             case AddressSpace::kFunction:
                 return config.clamp_function;
             case AddressSpace::kPrivate:
@@ -159,9 +149,9 @@ struct State {
             case AddressSpace::kPushConstant:
                 return config.clamp_push_constant;
             case AddressSpace::kStorage:
-                return config.clamp_storage;
+                return config.clamp_storage && !IsRootVarIgnored(value);
             case AddressSpace::kUniform:
-                return config.clamp_uniform;
+                return config.clamp_uniform && !IsRootVarIgnored(value);
             case AddressSpace::kWorkgroup:
                 return config.clamp_workgroup;
             case AddressSpace::kUndefined:
@@ -178,7 +168,7 @@ struct State {
     /// @param value the value to convert
     /// @returns the converted value, or @p value if it is already a u32
     ir::Value* CastToU32(ir::Value* value) {
-        if (value->Type()->is_unsigned_integer_scalar_or_vector()) {
+        if (value->Type()->IsUnsignedIntegerScalarOrVector()) {
             return value;
         }
 
@@ -229,14 +219,13 @@ struct State {
                     return b.Constant(u32(vec->Width() - 1u));
                 },
                 [&](const type::Matrix* mat) -> ir::Value* {
-                    return b.Constant(u32(mat->columns() - 1u));
+                    return b.Constant(u32(mat->Columns() - 1u));
                 },
                 [&](const type::Array* arr) -> ir::Value* {
                     if (arr->ConstantCount()) {
                         return b.Constant(u32(arr->ConstantCount().value() - 1u));
                     }
-                    TINT_ASSERT_OR_RETURN_VALUE(arr->Count()->Is<type::RuntimeArrayCount>(),
-                                                nullptr);
+                    TINT_ASSERT(arr->Count()->Is<type::RuntimeArrayCount>());
 
                     // Skip clamping runtime-sized array indices if requested.
                     if (config.disable_runtime_sized_array_index_clamping) {
@@ -248,8 +237,8 @@ struct State {
                         // Generate a pointer to the runtime-sized array if it isn't the base of
                         // this access instruction.
                         auto* base_ptr = object->Type()->As<type::Pointer>();
-                        TINT_ASSERT_OR_RETURN_VALUE(base_ptr != nullptr, nullptr);
-                        TINT_ASSERT_OR_RETURN_VALUE(i == 1, nullptr);
+                        TINT_ASSERT(base_ptr != nullptr);
+                        TINT_ASSERT(i == 1);
                         auto* arr_ptr = ty.ptr(base_ptr->AddressSpace(), arr, base_ptr->Access());
                         object = b.Access(arr_ptr, object, indices[0])->Result(0);
                     }
@@ -290,12 +279,9 @@ struct State {
 
         // Helper for clamping the coordinates.
         auto clamp_coords = [&](uint32_t idx) {
-            const type::Type* type = ty.u32();
-            auto* one = b.Constant(1_u);
-            if (auto* vec = args[idx]->Type()->As<type::Vector>()) {
-                type = ty.vec(type, vec->Width());
-                one = b.Splat(type, one, vec->Width());
-            }
+            auto* arg_ty = args[idx]->Type();
+            const type::Type* type = ty.match_width(ty.u32(), arg_ty);
+            auto* one = b.MatchWidth(1_u, arg_ty);
             auto* dims = clamped_level ? b.Call(type, core::BuiltinFn::kTextureDimensions, args[0],
                                                 clamped_level)
                                        : b.Call(type, core::BuiltinFn::kTextureDimensions, args[0]);
@@ -324,7 +310,7 @@ struct State {
             }
             case core::BuiltinFn::kTextureLoad: {
                 uint32_t next_arg = 2u;
-                if (type::IsTextureArray(texture->dim())) {
+                if (type::IsTextureArray(texture->Dim())) {
                     clamp_array_index(next_arg++);
                 }
                 if (texture->IsAnyOf<type::SampledTexture, type::DepthTexture>()) {
@@ -335,7 +321,7 @@ struct State {
             }
             case core::BuiltinFn::kTextureStore: {
                 clamp_coords(1u);
-                if (type::IsTextureArray(texture->dim())) {
+                if (type::IsTextureArray(texture->Dim())) {
                     clamp_array_index(2u);
                 }
                 break;
@@ -343,6 +329,52 @@ struct State {
             default:
                 break;
         }
+    }
+
+    // Returns the root Var for `value` by walking up the chain of instructions,
+    // or nullptr if none is found.
+    Var* RootVarFor(Value* value) {
+        Var* result = nullptr;
+        while (value) {
+            TINT_ASSERT(value->Alive());
+            value = tint::Switch(
+                value,  //
+                [&](InstructionResult* res) {
+                    // value was emitted by an instruction
+                    auto* inst = res->Instruction();
+                    return tint::Switch(
+                        inst,
+                        [&](Access* access) {  //
+                            return access->Object();
+                        },
+                        [&](Let* let) {  //
+                            return let->Value();
+                        },
+                        [&](Var* var) {
+                            result = var;
+                            return nullptr;  // Done
+                        },
+                        TINT_ICE_ON_NO_MATCH);
+                },
+                [&](FunctionParam*) {
+                    // Cannot follow function params to vars
+                    return nullptr;
+                },  //
+                TINT_ICE_ON_NO_MATCH);
+        }
+        return result;
+    }
+
+    // Returns true if the binding for `value`'s root variable is in config.bindings_ignored.
+    bool IsRootVarIgnored(Value* value) {
+        if (auto* var = RootVarFor(value)) {
+            if (auto bp = var->BindingPoint()) {
+                if (config.bindings_ignored.find(*bp) != config.bindings_ignored.end()) {
+                    return true;  // Ignore this variable
+                }
+            }
+        }
+        return false;
     }
 };
 

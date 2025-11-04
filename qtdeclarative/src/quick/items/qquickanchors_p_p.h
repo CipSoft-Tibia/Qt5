@@ -43,7 +43,8 @@ inline bool operator==(const QQuickAnchorLine& a, const QQuickAnchorLine& b)
     return a.item == b.item && a.anchorLine == b.anchorLine;
 }
 
-class QQuickAnchorsPrivate : public QObjectPrivate, public QQuickItemChangeListener
+class QQuickAnchorsPrivate : public QObjectPrivate,
+                             public QSafeQuickItemChangeListener<QQuickAnchorsPrivate>
 {
     Q_DECLARE_PUBLIC(QQuickAnchors)
 public:

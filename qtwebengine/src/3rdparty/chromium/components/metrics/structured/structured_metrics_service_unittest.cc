@@ -5,10 +5,12 @@
 #include "components/metrics/structured/structured_metrics_service.h"
 
 #include <memory>
+#include <utility>
 
 #include "base/files/file_path.h"
 #include "base/files/file_util.h"
 #include "base/files/scoped_temp_dir.h"
+#include "base/memory/scoped_refptr.h"
 #include "base/test/scoped_feature_list.h"
 #include "base/test/task_environment.h"
 #include "base/test/test_simple_task_runner.h"
@@ -17,6 +19,7 @@
 #include "components/metrics/structured/recorder.h"
 #include "components/metrics/structured/reporting/structured_metrics_reporting_service.h"
 #include "components/metrics/structured/structured_events.h"
+#include "components/metrics/structured/structured_metrics_client.h"
 #include "components/metrics/structured/structured_metrics_features.h"
 #include "components/metrics/structured/structured_metrics_prefs.h"
 #include "components/metrics/structured/structured_metrics_recorder.h"
@@ -63,6 +66,8 @@ class StructuredMetricsServiceTest : public testing::Test {
         prefs_.registry());
   }
 
+  ~StructuredMetricsServiceTest() override = default;
+
   void SetUp() override {
     feature_list_.InitWithFeatures({kEnabledStructuredMetricsService}, {});
 
@@ -77,17 +82,23 @@ class StructuredMetricsServiceTest : public testing::Test {
     WriteTestingProfileKeys();
   }
 
-  void TearDown() override { StructuredMetricsClient::Get()->UnsetDelegate(); }
+  void TearDown() override {
+    StructuredMetricsClient::Get()->UnsetDelegate();
+    service_.reset();
+    Wait();
+  }
 
   void Init() {
-    auto recorder = std::make_unique<StructuredMetricsRecorder>(
-        std::make_unique<TestKeyDataProvider>(DeviceKeyFilePath(),
-                                              ProfileKeyFilePath()),
-        std::make_unique<TestEventStorage>());
+    auto key_data_provider =
+        std::make_unique<TestKeyDataProvider>(DeviceKeyFilePath());
+    TestKeyDataProvider* test_key_data_provider = key_data_provider.get();
+    auto recorder = base::MakeRefCounted<StructuredMetricsRecorder>(
+        std::move(key_data_provider), std::make_unique<TestEventStorage>());
 
-    recorder->OnProfileAdded(temp_dir_.GetPath());
     service_ = std::make_unique<StructuredMetricsService>(&client_, &prefs_,
                                                           std::move(recorder));
+    // Register the profile with the key data provider.
+    test_key_data_provider->OnProfileAdded(temp_dir_.GetPath());
     Wait();
   }
 
@@ -198,8 +209,11 @@ TEST_F(StructuredMetricsServiceTest, PurgeInMemory) {
   EnableRecording();
   EnableReporting();
 
-  TestEventOne().SetTestMetricTwo(1).Record();
-  TestEventSeven().SetTestMetricSeven(1.0).Record();
+  StructuredMetricsClient::Record(
+      std::move(TestEventOne().SetTestMetricTwo(1)));
+  StructuredMetricsClient::Record(
+      std::move(TestEventSeven().SetTestMetricSeven(1.0)));
+  Wait();
 
   service_->Purge();
   service_->Flush(metrics::MetricsLogsEventManager::CreateReason::kUnknown);
@@ -214,8 +228,11 @@ TEST_F(StructuredMetricsServiceTest, PurgePersisted) {
   EnableRecording();
   EnableReporting();
 
-  TestEventOne().SetTestMetricTwo(1).Record();
-  TestEventSeven().SetTestMetricSeven(1.0).Record();
+  StructuredMetricsClient::Record(
+      std::move(TestEventOne().SetTestMetricTwo(1)));
+  StructuredMetricsClient::Record(
+      std::move(TestEventSeven().SetTestMetricSeven(1.0)));
+  Wait();
 
   service_->Flush(metrics::MetricsLogsEventManager::CreateReason::kUnknown);
 
@@ -234,13 +251,17 @@ TEST_F(StructuredMetricsServiceTest, RotateLogs) {
   EnableRecording();
   EnableReporting();
 
-  TestEventOne().SetTestMetricTwo(1).Record();
-  TestEventSeven().SetTestMetricSeven(1).Record();
+  StructuredMetricsClient::Record(
+      std::move(TestEventOne().SetTestMetricTwo(1)));
+  StructuredMetricsClient::Record(
+      std::move(TestEventSeven().SetTestMetricSeven(1)));
+  Wait();
 
   service_->Flush(metrics::MetricsLogsEventManager::CreateReason::kUnknown);
 
   const auto uma_proto = GetPersistedLog();
   EXPECT_THAT(uma_proto.structured_data().events().size(), 2);
+  service_.reset();
 }
 
 TEST_F(StructuredMetricsServiceTest, SystemProfileFilled) {
@@ -249,8 +270,11 @@ TEST_F(StructuredMetricsServiceTest, SystemProfileFilled) {
   EnableRecording();
   EnableReporting();
 
-  TestEventOne().SetTestMetricTwo(1).Record();
-  TestEventSeven().SetTestMetricSeven(1).Record();
+  StructuredMetricsClient::Record(
+      std::move(TestEventOne().SetTestMetricTwo(1)));
+  StructuredMetricsClient::Record(
+      std::move(TestEventSeven().SetTestMetricSeven(1)));
+  Wait();
 
   service_->Flush(metrics::MetricsLogsEventManager::CreateReason::kUnknown);
 
@@ -268,17 +292,41 @@ TEST_F(StructuredMetricsServiceTest, DoesNotRecordWhenRecordingDisabled) {
   EnableRecording();
   EnableReporting();
 
-  TestEventOne().SetTestMetricTwo(1).Record();
-  TestEventSeven().SetTestMetricSeven(1).Record();
+  StructuredMetricsClient::Record(
+      std::move(TestEventOne().SetTestMetricTwo(1)));
+  StructuredMetricsClient::Record(
+      std::move(TestEventSeven().SetTestMetricSeven(1)));
+  Wait();
 
   DisableRecording();
 
-  TestEventOne().SetTestMetricTwo(1).Record();
-  TestEventSeven().SetTestMetricSeven(1).Record();
+  StructuredMetricsClient::Record(
+      std::move(TestEventOne().SetTestMetricTwo(1)));
+  StructuredMetricsClient::Record(
+      std::move(TestEventSeven().SetTestMetricSeven(1)));
+  Wait();
 
   EnableRecording();
 
   service_->Flush(metrics::MetricsLogsEventManager::CreateReason::kUnknown);
+
+  const auto uma_proto = GetPersistedLog();
+  EXPECT_THAT(uma_proto.structured_data().events().size(), 2);
+}
+
+TEST_F(StructuredMetricsServiceTest, FlushOnShutdown) {
+  Init();
+  EnableRecording();
+  EnableReporting();
+
+  StructuredMetricsClient::Record(
+      std::move(TestEventOne().SetTestMetricTwo(1)));
+  StructuredMetricsClient::Record(
+      std::move(TestEventSeven().SetTestMetricSeven(1)));
+  Wait();
+
+  // Will flush the log.
+  service_.reset();
 
   const auto uma_proto = GetPersistedLog();
   EXPECT_THAT(uma_proto.structured_data().events().size(), 2);

@@ -4,39 +4,42 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import type {Readable} from 'stream';
-
 import type {Protocol} from 'devtools-protocol';
 
 import {
-  delay,
+  concat,
+  EMPTY,
   filter,
-  filterAsync,
   first,
   firstValueFrom,
   from,
-  fromEvent,
   map,
   merge,
+  mergeMap,
+  mergeScan,
   of,
   raceWith,
+  ReplaySubject,
   startWith,
   switchMap,
+  take,
+  takeUntil,
+  timer,
   type Observable,
 } from '../../third_party/rxjs/rxjs.js';
 import type {HTTPRequest} from '../api/HTTPRequest.js';
 import type {HTTPResponse} from '../api/HTTPResponse.js';
-import type {BidiNetworkManager} from '../bidi/NetworkManager.js';
 import type {Accessibility} from '../cdp/Accessibility.js';
 import type {Coverage} from '../cdp/Coverage.js';
 import type {DeviceRequestPrompt} from '../cdp/DeviceRequestPrompt.js';
-import type {
-  NetworkManager as CdpNetworkManager,
-  Credentials,
-  NetworkConditions,
-} from '../cdp/NetworkManager.js';
+import type {NetworkConditions} from '../cdp/NetworkManager.js';
 import type {Tracing} from '../cdp/Tracing.js';
 import type {ConsoleMessage} from '../common/ConsoleMessage.js';
+import type {
+  Cookie,
+  CookieParam,
+  DeleteCookiesRequest,
+} from '../common/Cookie.js';
 import type {Device} from '../common/Device.js';
 import {TargetCloseError} from '../common/Errors.js';
 import {
@@ -46,16 +49,11 @@ import {
   type Handler,
 } from '../common/EventEmitter.js';
 import type {FileChooser} from '../common/FileChooser.js';
-import {NetworkManagerEvent} from '../common/NetworkManagerEvents.js';
-import {
-  paperFormats,
-  type LowerCasePaperFormat,
-  type ParsedPDFOptions,
-  type PDFOptions,
-} from '../common/PDFOptions.js';
+import type {PDFOptions} from '../common/PDFOptions.js';
 import {TimeoutSettings} from '../common/TimeoutSettings.js';
 import type {
   Awaitable,
+  AwaitablePredicate,
   EvaluateFunc,
   EvaluateFuncWith,
   HandleFor,
@@ -63,15 +61,17 @@ import type {
 } from '../common/types.js';
 import {
   debugError,
-  importFSPromises,
-  isNumber,
+  fromEmitterEvent,
+  filterAsync,
   isString,
+  NETWORK_IDLE_TIME,
   timeout,
   withSourcePuppeteerURLIfNone,
+  fromAbortSignal,
 } from '../common/util.js';
 import type {Viewport} from '../common/Viewport.js';
+import {environment} from '../environment.js';
 import type {ScreenRecorder} from '../node/ScreenRecorder.js';
-import {assert} from '../util/assert.js';
 import {guarded} from '../util/decorators.js';
 import {
   AsyncDisposableStack,
@@ -79,6 +79,7 @@ import {
   DisposableStack,
   disposeSymbol,
 } from '../util/disposable.js';
+import {stringToTypedArray} from '../util/encoding.js';
 
 import type {Browser} from './Browser.js';
 import type {BrowserContext} from './BrowserContext.js';
@@ -135,6 +136,32 @@ export interface Metrics {
 /**
  * @public
  */
+export interface Credentials {
+  username: string;
+  password: string;
+}
+
+/**
+ * @public
+ */
+export interface WaitForNetworkIdleOptions extends WaitTimeoutOptions {
+  /**
+   * Time (in milliseconds) the network should be idle.
+   *
+   * @defaultValue `500`
+   */
+  idleTime?: number;
+  /**
+   * Maximum number concurrent of network connections to be considered inactive.
+   *
+   * @defaultValue `0`
+   */
+  concurrency?: number;
+}
+
+/**
+ * @public
+ */
 export interface WaitTimeoutOptions {
   /**
    * Maximum wait time in milliseconds. Pass 0 to disable the timeout.
@@ -142,9 +169,13 @@ export interface WaitTimeoutOptions {
    * The default value can be changed by using the
    * {@link Page.setDefaultTimeout} method.
    *
-   * @defaultValue `30000`
+   * @defaultValue `30_000`
    */
   timeout?: number;
+  /**
+   * A signal object that allows you to cancel a waitFor call.
+   */
+  signal?: AbortSignal;
 }
 
 /**
@@ -152,15 +183,16 @@ export interface WaitTimeoutOptions {
  */
 export interface WaitForSelectorOptions {
   /**
-   * Wait for the selected element to be present in DOM and to be visible, i.e.
-   * to not have `display: none` or `visibility: hidden` CSS properties.
+   * Wait for the selected element to be present in DOM and to be visible. See
+   * {@link ElementHandle.isVisible} for the definition of element visibility.
    *
    * @defaultValue `false`
    */
   visible?: boolean;
   /**
-   * Wait for the selected element to not be found in the DOM or to be hidden,
-   * i.e. have `display: none` or `visibility: hidden` CSS properties.
+   * Wait for the selected element to not be found in the DOM or to be hidden.
+   * See {@link ElementHandle.isHidden} for the definition of element
+   * invisibility.
    *
    * @defaultValue `false`
    */
@@ -198,10 +230,18 @@ export interface GeolocationOptions {
 }
 
 /**
+ * A media feature to emulate.
+ *
  * @public
  */
 export interface MediaFeature {
+  /**
+   * A name of the feature, for example, 'prefers-reduced-motion'.
+   */
   name: string;
+  /**
+   * A value for the feature, for example, 'reduce'.
+   */
   value: string;
 }
 
@@ -257,7 +297,7 @@ export interface ScreenshotOptions {
    */
   path?: string;
   /**
-   * Specifies the region of the page to clip.
+   * Specifies the region of the page/element to clip.
    */
   clip?: ScreenshotClip;
   /**
@@ -306,11 +346,26 @@ export interface ScreencastOptions {
    */
   speed?: number;
   /**
-   * Path to the [ffmpeg](https://ffmpeg.org/).
+   * Path to the {@link https://ffmpeg.org/ | ffmpeg}.
    *
    * Required if `ffmpeg` is not in your PATH.
    */
   ffmpegPath?: string;
+}
+
+/**
+ * @public
+ */
+export interface QueryOptions {
+  /**
+   * Whether to run the query in isolation. When returning many elements
+   * from {@link Page.$$} or similar methods, it might be useful to turn
+   * off the isolation to improve performance. By default, the querying
+   * code will be executed in a separate sandbox realm.
+   *
+   * @defaultValue `true`
+   */
+  isolate: boolean;
 }
 
 /**
@@ -465,15 +520,6 @@ export const enum PageEvent {
   WorkerDestroyed = 'workerdestroyed',
 }
 
-export {
-  /**
-   * All the events that a page instance may emit.
-   *
-   * @deprecated Use {@link PageEvent}.
-   */
-  PageEvent as PageEmittedEvents,
-};
-
 /**
  * Denotes the objects received by callback functions for page events.
  *
@@ -503,13 +549,6 @@ export interface PageEvents extends Record<EventType, unknown> {
   [PageEvent.WorkerCreated]: WebWorker;
   [PageEvent.WorkerDestroyed]: WebWorker;
 }
-
-export type {
-  /**
-   * @deprecated Use {@link PageEvents}.
-   */
-  PageEvents as PageEventObject,
-};
 
 /**
  * @public
@@ -592,11 +631,45 @@ export abstract class Page extends EventEmitter<PageEvents> {
 
   #requestHandlers = new WeakMap<Handler<HTTPRequest>, Handler<HTTPRequest>>();
 
+  #inflight$ = new ReplaySubject<number>(1);
+
   /**
    * @internal
    */
   constructor() {
     super();
+
+    fromEmitterEvent(this, PageEvent.Request)
+      .pipe(
+        mergeMap(originalRequest => {
+          return concat(
+            of(1),
+            merge(
+              fromEmitterEvent(this, PageEvent.RequestFailed),
+              fromEmitterEvent(this, PageEvent.RequestFinished),
+              fromEmitterEvent(this, PageEvent.Response).pipe(
+                map(response => {
+                  return response.request();
+                })
+              )
+            ).pipe(
+              filter(request => {
+                return request.id === originalRequest.id;
+              }),
+              take(1),
+              map(() => {
+                return -1;
+              })
+            )
+          );
+        }),
+        mergeScan((acc, addend) => {
+          return of(acc + addend);
+        }, 0),
+        takeUntil(fromEmitterEvent(this, PageEvent.Close)),
+        startWith(0)
+      )
+      .subscribe(this.#inflight$);
   }
 
   /**
@@ -684,6 +757,13 @@ export abstract class Page extends EventEmitter<PageEvents> {
    *
    * :::
    *
+   * :::caution
+   *
+   * Interception of file dialogs triggered via DOM APIs such as
+   * window.showOpenFilePicker is currently not supported.
+   *
+   * :::
+   *
    * @remarks
    * In the "headful" browser, this method results in the native file picker
    * dialog `not showing up` for the user.
@@ -722,6 +802,8 @@ export abstract class Page extends EventEmitter<PageEvents> {
 
   /**
    * A target this page was created from.
+   *
+   * @deprecated Use {@link Page.createCDPSession} directly.
    */
   abstract target(): Target;
 
@@ -737,9 +819,6 @@ export abstract class Page extends EventEmitter<PageEvents> {
 
   /**
    * The page's main frame.
-   *
-   * @remarks
-   * Page is guaranteed to have a main frame which persists during navigations.
    */
   abstract mainFrame(): Frame;
 
@@ -771,7 +850,9 @@ export abstract class Page extends EventEmitter<PageEvents> {
   /**
    * {@inheritDoc Accessibility}
    */
-  abstract get accessibility(): Accessibility;
+  get accessibility(): Accessibility {
+    return this.mainFrame().accessibility;
+  }
 
   /**
    * An array of all frames attached to the page.
@@ -797,7 +878,7 @@ export abstract class Page extends EventEmitter<PageEvents> {
    * continued, responded or aborted; or completed using the browser cache.
    *
    * See the
-   * {@link https://pptr.dev/next/guides/request-interception|Request interception guide}
+   * {@link https://pptr.dev/guides/network-interception|Request interception guide}
    * for more details.
    *
    * @example
@@ -915,9 +996,21 @@ export abstract class Page extends EventEmitter<PageEvents> {
    * Creates a locator for the provided selector. See {@link Locator} for
    * details and supported actions.
    *
-   * @remarks
-   * Locators API is experimental and we will not follow semver for breaking
-   * change in the Locators API.
+   * @param selector -
+   * {@link https://pptr.dev/guides/page-interactions#selectors | selector}
+   * to query the page for.
+   * {@link https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_Selectors | CSS selectors}
+   * can be passed as-is and a
+   * {@link https://pptr.dev/guides/page-interactions#non-css-selectors | Puppeteer-specific selector syntax}
+   * allows quering by
+   * {@link https://pptr.dev/guides/page-interactions#text-selectors--p-text | text},
+   * {@link https://pptr.dev/guides/page-interactions#aria-selectors--p-aria | a11y role and name},
+   * and
+   * {@link https://pptr.dev/guides/page-interactions#xpath-selectors--p-xpath | xpath}
+   * and
+   * {@link https://pptr.dev/guides/page-interactions#querying-elements-in-shadow-dom | combining these queries across shadow roots}.
+   * Alternatively, you can specify the selector type using a
+   * {@link https://pptr.dev/guides/page-interactions#prefixed-selector-syntax | prefix}.
    */
   locator<Selector extends string>(
     selector: Selector
@@ -927,9 +1020,21 @@ export abstract class Page extends EventEmitter<PageEvents> {
    * Creates a locator for the provided function. See {@link Locator} for
    * details and supported actions.
    *
-   * @remarks
-   * Locators API is experimental and we will not follow semver for breaking
-   * change in the Locators API.
+   * @param selector -
+   * {@link https://pptr.dev/guides/page-interactions#selectors | selector}
+   * to query the page for.
+   * {@link https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_Selectors | CSS selectors}
+   * can be passed as-is and a
+   * {@link https://pptr.dev/guides/page-interactions#non-css-selectors | Puppeteer-specific selector syntax}
+   * allows quering by
+   * {@link https://pptr.dev/guides/page-interactions#text-selectors--p-text | text},
+   * {@link https://pptr.dev/guides/page-interactions#aria-selectors--p-aria | a11y role and name},
+   * and
+   * {@link https://pptr.dev/guides/page-interactions#xpath-selectors--p-xpath | xpath}
+   * and
+   * {@link https://pptr.dev/guides/page-interactions#querying-elements-in-shadow-dom | combining these queries across shadow roots}.
+   * Alternatively, you can specify the selector type using a
+   * {@link https://pptr.dev/guides/page-interactions#prefixed-selector-syntax | prefix}.
    */
   locator<Ret>(func: () => Awaitable<Ret>): Locator<Ret>;
   locator<Selector extends string, Ret>(
@@ -954,12 +1059,28 @@ export abstract class Page extends EventEmitter<PageEvents> {
   }
 
   /**
-   * Runs `document.querySelector` within the page. If no element matches the
-   * selector, the return value resolves to `null`.
+   * Finds the first element that matches the selector. If no element matches
+   * the selector, the return value resolves to `null`.
    *
-   * @param selector - A `selector` to query page for
-   * {@link https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_Selectors | selector}
-   * to query page for.
+   * @param selector -
+   * {@link https://pptr.dev/guides/page-interactions#selectors | selector}
+   * to query the page for.
+   * {@link https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_Selectors | CSS selectors}
+   * can be passed as-is and a
+   * {@link https://pptr.dev/guides/page-interactions#non-css-selectors | Puppeteer-specific selector syntax}
+   * allows quering by
+   * {@link https://pptr.dev/guides/page-interactions#text-selectors--p-text | text},
+   * {@link https://pptr.dev/guides/page-interactions#aria-selectors--p-aria | a11y role and name},
+   * and
+   * {@link https://pptr.dev/guides/page-interactions#xpath-selectors--p-xpath | xpath}
+   * and
+   * {@link https://pptr.dev/guides/page-interactions#querying-elements-in-shadow-dom | combining these queries across shadow roots}.
+   * Alternatively, you can specify the selector type using a
+   * {@link https://pptr.dev/guides/page-interactions#prefixed-selector-syntax | prefix}.
+   *
+   * @remarks
+   *
+   * Shortcut for {@link Frame.$ | Page.mainFrame().$(selector) }.
    */
   async $<Selector extends string>(
     selector: Selector
@@ -968,19 +1089,34 @@ export abstract class Page extends EventEmitter<PageEvents> {
   }
 
   /**
-   * The method runs `document.querySelectorAll` within the page. If no elements
+   * Finds elements on the page that match the selector. If no elements
    * match the selector, the return value resolves to `[]`.
    *
-   * @param selector - A `selector` to query page for
+   * @param selector -
+   * {@link https://pptr.dev/guides/page-interactions#selectors | selector}
+   * to query the page for.
+   * {@link https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_Selectors | CSS selectors}
+   * can be passed as-is and a
+   * {@link https://pptr.dev/guides/page-interactions#non-css-selectors | Puppeteer-specific selector syntax}
+   * allows quering by
+   * {@link https://pptr.dev/guides/page-interactions#text-selectors--p-text | text},
+   * {@link https://pptr.dev/guides/page-interactions#aria-selectors--p-aria | a11y role and name},
+   * and
+   * {@link https://pptr.dev/guides/page-interactions#xpath-selectors--p-xpath | xpath}
+   * and
+   * {@link https://pptr.dev/guides/page-interactions#querying-elements-in-shadow-dom | combining these queries across shadow roots}.
+   * Alternatively, you can specify the selector type using a
+   * {@link https://pptr.dev/guides/page-interactions#prefixed-selector-syntax | prefix}.
    *
    * @remarks
    *
    * Shortcut for {@link Frame.$$ | Page.mainFrame().$$(selector) }.
    */
   async $$<Selector extends string>(
-    selector: Selector
+    selector: Selector,
+    options?: QueryOptions
   ): Promise<Array<ElementHandle<NodeFor<Selector>>>> {
-    return await this.mainFrame().$$(selector);
+    return await this.mainFrame().$$(selector, options);
   }
 
   /**
@@ -1082,8 +1218,8 @@ export abstract class Page extends EventEmitter<PageEvents> {
   ): Promise<JSHandle<Prototype[]>>;
 
   /**
-   * This method runs `document.querySelector` within the page and passes the
-   * result as the first argument to the `pageFunction`.
+   * This method finds the first element within the page that matches the selector
+   * and passes the result as the first argument to the `pageFunction`.
    *
    * @remarks
    *
@@ -1131,11 +1267,23 @@ export abstract class Page extends EventEmitter<PageEvents> {
    * );
    * ```
    *
-   * @param selector - the
-   * {@link https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_Selectors | selector}
-   * to query for
+   * @param selector -
+   * {@link https://pptr.dev/guides/page-interactions#selectors | selector}
+   * to query the page for.
+   * {@link https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_Selectors | CSS selectors}
+   * can be passed as-is and a
+   * {@link https://pptr.dev/guides/page-interactions#non-css-selectors | Puppeteer-specific selector syntax}
+   * allows quering by
+   * {@link https://pptr.dev/guides/page-interactions#text-selectors--p-text | text},
+   * {@link https://pptr.dev/guides/page-interactions#aria-selectors--p-aria | a11y role and name},
+   * and
+   * {@link https://pptr.dev/guides/page-interactions#xpath-selectors--p-xpath | xpath}
+   * and
+   * {@link https://pptr.dev/guides/page-interactions#querying-elements-in-shadow-dom | combining these queries across shadow roots}.
+   * Alternatively, you can specify the selector type using a
+   * {@link https://pptr.dev/guides/page-interactions#prefixed-selector-syntax | prefix}.
    * @param pageFunction - the function to be evaluated in the page context.
-   * Will be passed the result of `document.querySelector(selector)` as its
+   * Will be passed the result of the element matching the selector as its
    * first argument.
    * @param args - any additional arguments to pass through to `pageFunction`.
    *
@@ -1160,8 +1308,8 @@ export abstract class Page extends EventEmitter<PageEvents> {
   }
 
   /**
-   * This method runs `Array.from(document.querySelectorAll(selector))` within
-   * the page and passes the result as the first argument to the `pageFunction`.
+   * This method returns all elements matching the selector and passes the
+   * resulting array as the first argument to the `pageFunction`.
    *
    * @remarks
    * If `pageFunction` returns a promise `$$eval` will wait for the promise to
@@ -1187,9 +1335,7 @@ export abstract class Page extends EventEmitter<PageEvents> {
    * @example
    *
    * ```ts
-   * // if you don't provide HTMLInputElement here, TS will error
-   * // as `value` is not on `Element`
-   * await page.$$eval('input', (elements: HTMLInputElement[]) => {
+   * await page.$$eval('input', elements => {
    *   return elements.map(e => e.value);
    * });
    * ```
@@ -1201,20 +1347,28 @@ export abstract class Page extends EventEmitter<PageEvents> {
    * @example
    *
    * ```ts
-   * // The compiler can infer the return type in this case, but if it can't
-   * // or if you want to be more explicit, provide it as the generic type.
-   * const allInputValues = await page.$$eval<string[]>(
-   *   'input',
-   *   (elements: HTMLInputElement[]) => elements.map(e => e.textContent)
+   * const allInputValues = await page.$$eval('input', elements =>
+   *   elements.map(e => e.textContent)
    * );
    * ```
    *
-   * @param selector - the
-   * {@link https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_Selectors | selector}
-   * to query for
+   * @param selector -
+   * {@link https://pptr.dev/guides/page-interactions#selectors | selector}
+   * to query the page for.
+   * {@link https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_Selectors | CSS selectors}
+   * can be passed as-is and a
+   * {@link https://pptr.dev/guides/page-interactions#non-css-selectors | Puppeteer-specific selector syntax}
+   * allows quering by
+   * {@link https://pptr.dev/guides/page-interactions#text-selectors--p-text | text},
+   * {@link https://pptr.dev/guides/page-interactions#aria-selectors--p-aria | a11y role and name},
+   * and
+   * {@link https://pptr.dev/guides/page-interactions#xpath-selectors--p-xpath | xpath}
+   * and
+   * {@link https://pptr.dev/guides/page-interactions#querying-elements-in-shadow-dom | combining these queries across shadow roots}.
+   * Alternatively, you can specify the selector type using a
+   * {@link https://pptr.dev/guides/page-interactions#prefixed-selector-syntax | prefix}.
    * @param pageFunction - the function to be evaluated in the page context.
-   * Will be passed the result of
-   * `Array.from(document.querySelectorAll(selector))` as its first argument.
+   * Will be passed an array of matching elements as its first argument.
    * @param args - any additional arguments to pass through to `pageFunction`.
    *
    * @returns The result of calling `pageFunction`. If it returns an element it
@@ -1238,28 +1392,12 @@ export abstract class Page extends EventEmitter<PageEvents> {
   }
 
   /**
-   * The method evaluates the XPath expression relative to the page document as
-   * its context node. If there are no such elements, the method resolves to an
-   * empty array.
-   *
-   * @remarks
-   * Shortcut for {@link Frame.$x | Page.mainFrame().$x(expression) }.
-   *
-   * @param expression - Expression to evaluate
-   */
-  async $x(expression: string): Promise<Array<ElementHandle<Node>>> {
-    return await this.mainFrame().$x(expression);
-  }
-
-  /**
    * If no URLs are specified, this method returns cookies for the current page
    * URL. If URLs are specified, only cookies for those URLs are returned.
    */
-  abstract cookies(...urls: string[]): Promise<Protocol.Network.Cookie[]>;
+  abstract cookies(...urls: string[]): Promise<Cookie[]>;
 
-  abstract deleteCookie(
-    ...cookies: Protocol.Network.DeleteCookiesRequest[]
-  ): Promise<void>;
+  abstract deleteCookie(...cookies: DeleteCookiesRequest[]): Promise<void>;
 
   /**
    * @example
@@ -1268,7 +1406,7 @@ export abstract class Page extends EventEmitter<PageEvents> {
    * await page.setCookie(cookieObject1, cookieObject2);
    * ```
    */
-  abstract setCookie(...cookies: Protocol.Network.CookieParam[]): Promise<void>;
+  abstract setCookie(...cookies: CookieParam[]): Promise<void>;
 
   /**
    * Adds a `<script>` tag into the page with the desired URL or content.
@@ -1321,7 +1459,7 @@ export abstract class Page extends EventEmitter<PageEvents> {
    *
    * Functions installed via `page.exposeFunction` survive navigations.
    *
-   * :::note
+   * :::
    *
    * @example
    * An example of adding an `md5` function into the page:
@@ -1393,10 +1531,17 @@ export abstract class Page extends EventEmitter<PageEvents> {
   /**
    * Provide credentials for `HTTP authentication`.
    *
+   * :::note
+   *
+   * Request interception will be turned on behind the scenes to
+   * implement authentication. This might affect performance.
+   *
+   * :::
+   *
    * @remarks
    * To disable authentication, pass `null`.
    */
-  abstract authenticate(credentials: Credentials): Promise<void>;
+  abstract authenticate(credentials: Credentials | null): Promise<void>;
 
   /**
    * The extra HTTP headers will be sent with every request the page initiates.
@@ -1492,69 +1637,13 @@ export abstract class Page extends EventEmitter<PageEvents> {
    *
    * @param html - HTML markup to assign to the page.
    * @param options - Parameters that has some properties.
-   *
-   * @remarks
-   *
-   * The parameter `options` might have the following options.
-   *
-   * - `timeout` : Maximum time in milliseconds for resources to load, defaults
-   *   to 30 seconds, pass `0` to disable timeout. The default value can be
-   *   changed by using the {@link Page.setDefaultNavigationTimeout} or
-   *   {@link Page.setDefaultTimeout} methods.
-   *
-   * - `waitUntil`: When to consider setting markup succeeded, defaults to
-   *   `load`. Given an array of event strings, setting content is considered
-   *   to be successful after all events have been fired. Events can be
-   *   either:<br/>
-   * - `load` : consider setting content to be finished when the `load` event
-   *   is fired.<br/>
-   * - `domcontentloaded` : consider setting content to be finished when the
-   *   `DOMContentLoaded` event is fired.<br/>
-   * - `networkidle0` : consider setting content to be finished when there are
-   *   no more than 0 network connections for at least `500` ms.<br/>
-   * - `networkidle2` : consider setting content to be finished when there are
-   *   no more than 2 network connections for at least `500` ms.
    */
   async setContent(html: string, options?: WaitForOptions): Promise<void> {
     await this.mainFrame().setContent(html, options);
   }
 
   /**
-   * Navigates the page to the given `url`.
-   *
-   * @remarks
-   *
-   * Navigation to `about:blank` or navigation to the same URL with a different
-   * hash will succeed and return `null`.
-   *
-   * :::warning
-   *
-   * Headless mode doesn't support navigation to a PDF document. See the {@link
-   * https://bugs.chromium.org/p/chromium/issues/detail?id=761295 | upstream
-   * issue}.
-   *
-   * :::
-   *
-   * Shortcut for {@link Frame.goto | page.mainFrame().goto(url, options)}.
-   *
-   * @param url - URL to navigate page to. The URL should include scheme, e.g.
-   * `https://`
-   * @param options - Options to configure waiting behavior.
-   * @returns A promise which resolves to the main resource response. In case of
-   * multiple redirects, the navigation will resolve with the response of the
-   * last redirect.
-   * @throws If:
-   *
-   * - there's an SSL error (e.g. in case of self-signed certificates).
-   * - target URL is invalid.
-   * - the timeout is exceeded during navigation.
-   * - the remote server does not respond or is unreachable.
-   * - the main resource failed to load.
-   *
-   * This method will not throw an error when any valid HTTP status code is
-   * returned by the remote server, including 404 "Not Found" and 500 "Internal
-   * Server Error". The status code for such responses can be retrieved by
-   * calling {@link HTTPResponse.status}.
+   * {@inheritDoc Frame.goto}
    */
   async goto(url: string, options?: GoToOptions): Promise<HTTPResponse | null> {
     return await this.mainFrame().goto(url, options);
@@ -1627,10 +1716,31 @@ export abstract class Page extends EventEmitter<PageEvents> {
    *   `0` to disable the timeout. The default value can be changed by using the
    *   {@link Page.setDefaultTimeout} method.
    */
-  abstract waitForRequest(
-    urlOrPredicate: string | ((req: HTTPRequest) => boolean | Promise<boolean>),
-    options?: {timeout?: number}
-  ): Promise<HTTPRequest>;
+  waitForRequest(
+    urlOrPredicate: string | AwaitablePredicate<HTTPRequest>,
+    options: WaitTimeoutOptions = {}
+  ): Promise<HTTPRequest> {
+    const {timeout: ms = this._timeoutSettings.timeout(), signal} = options;
+    if (typeof urlOrPredicate === 'string') {
+      const url = urlOrPredicate;
+      urlOrPredicate = (request: HTTPRequest) => {
+        return request.url() === url;
+      };
+    }
+    const observable$ = fromEmitterEvent(this, PageEvent.Request).pipe(
+      filterAsync(urlOrPredicate),
+      raceWith(
+        timeout(ms),
+        fromAbortSignal(signal),
+        fromEmitterEvent(this, PageEvent.Close).pipe(
+          map(() => {
+            throw new TargetCloseError('Page closed!');
+          })
+        )
+      )
+    );
+    return firstValueFrom(observable$);
+  }
 
   /**
    * @param urlOrPredicate - A URL or predicate to wait for.
@@ -1659,51 +1769,72 @@ export abstract class Page extends EventEmitter<PageEvents> {
    *   pass `0` to disable the timeout. The default value can be changed by using
    *   the {@link Page.setDefaultTimeout} method.
    */
-  abstract waitForResponse(
-    urlOrPredicate:
-      | string
-      | ((res: HTTPResponse) => boolean | Promise<boolean>),
-    options?: {timeout?: number}
-  ): Promise<HTTPResponse>;
+  waitForResponse(
+    urlOrPredicate: string | AwaitablePredicate<HTTPResponse>,
+    options: WaitTimeoutOptions = {}
+  ): Promise<HTTPResponse> {
+    const {timeout: ms = this._timeoutSettings.timeout(), signal} = options;
+    if (typeof urlOrPredicate === 'string') {
+      const url = urlOrPredicate;
+      urlOrPredicate = (response: HTTPResponse) => {
+        return response.url() === url;
+      };
+    }
+    const observable$ = fromEmitterEvent(this, PageEvent.Response).pipe(
+      filterAsync(urlOrPredicate),
+      raceWith(
+        timeout(ms),
+        fromAbortSignal(signal),
+        fromEmitterEvent(this, PageEvent.Close).pipe(
+          map(() => {
+            throw new TargetCloseError('Page closed!');
+          })
+        )
+      )
+    );
+    return firstValueFrom(observable$);
+  }
 
   /**
-   * @param options - Optional waiting parameters
-   * @returns Promise which resolves when network is idle
+   * Waits for the network to be idle.
+   *
+   * @param options - Options to configure waiting behavior.
+   * @returns A promise which resolves once the network is idle.
    */
-  abstract waitForNetworkIdle(options?: {
-    idleTime?: number;
-    timeout?: number;
-  }): Promise<void>;
+  waitForNetworkIdle(options: WaitForNetworkIdleOptions = {}): Promise<void> {
+    return firstValueFrom(this.waitForNetworkIdle$(options));
+  }
 
   /**
    * @internal
    */
-  _waitForNetworkIdle(
-    networkManager: BidiNetworkManager | CdpNetworkManager,
-    idleTime: number,
-    requestsInFlight = 0
+  waitForNetworkIdle$(
+    options: WaitForNetworkIdleOptions = {}
   ): Observable<void> {
-    return merge(
-      fromEvent(
-        networkManager,
-        NetworkManagerEvent.Request as unknown as string
-      ) as Observable<void>,
-      fromEvent(
-        networkManager,
-        NetworkManagerEvent.Response as unknown as string
-      ) as Observable<void>,
-      fromEvent(
-        networkManager,
-        NetworkManagerEvent.RequestFailed as unknown as string
-      ) as Observable<void>
-    ).pipe(
-      startWith(undefined),
-      filter(() => {
-        return networkManager.inFlightRequestsCount() <= requestsInFlight;
+    const {
+      timeout: ms = this._timeoutSettings.timeout(),
+      idleTime = NETWORK_IDLE_TIME,
+      concurrency = 0,
+      signal,
+    } = options;
+
+    return this.#inflight$.pipe(
+      switchMap(inflight => {
+        if (inflight > concurrency) {
+          return EMPTY;
+        }
+        return timer(idleTime);
       }),
-      switchMap(v => {
-        return of(v).pipe(delay(idleTime));
-      })
+      map(() => {}),
+      raceWith(
+        timeout(ms),
+        fromAbortSignal(signal),
+        fromEmitterEvent(this, PageEvent.Close).pipe(
+          map(() => {
+            throw new TargetCloseError('Page closed!');
+          })
+        )
+      )
     );
   }
 
@@ -1722,25 +1853,26 @@ export abstract class Page extends EventEmitter<PageEvents> {
     urlOrPredicate: string | ((frame: Frame) => Awaitable<boolean>),
     options: WaitTimeoutOptions = {}
   ): Promise<Frame> {
-    const {timeout: ms = this.getDefaultTimeout()} = options;
+    const {timeout: ms = this.getDefaultTimeout(), signal} = options;
 
-    if (isString(urlOrPredicate)) {
-      urlOrPredicate = (frame: Frame) => {
-        return urlOrPredicate === frame.url();
-      };
-    }
+    const predicate = isString(urlOrPredicate)
+      ? (frame: Frame) => {
+          return urlOrPredicate === frame.url();
+        }
+      : urlOrPredicate;
 
     return await firstValueFrom(
       merge(
-        fromEvent(this, PageEvent.FrameAttached) as Observable<Frame>,
-        fromEvent(this, PageEvent.FrameNavigated) as Observable<Frame>,
+        fromEmitterEvent(this, PageEvent.FrameAttached),
+        fromEmitterEvent(this, PageEvent.FrameNavigated),
         from(this.frames())
       ).pipe(
-        filterAsync(urlOrPredicate),
+        filterAsync(predicate),
         first(),
         raceWith(
           timeout(ms),
-          fromEvent(this, PageEvent.Close).pipe(
+          fromAbortSignal(signal),
+          fromEmitterEvent(this, PageEvent.Close).pipe(
             map(() => {
               throw new TargetCloseError('Page closed.');
             })
@@ -1756,25 +1888,6 @@ export abstract class Page extends EventEmitter<PageEvents> {
    * @returns Promise which resolves to the main resource response. In case of
    * multiple redirects, the navigation will resolve with the response of the
    * last redirect. If can not go back, resolves to `null`.
-   * @remarks
-   * The argument `options` might have the following properties:
-   *
-   * - `timeout` : Maximum navigation time in milliseconds, defaults to 30
-   *   seconds, pass 0 to disable timeout. The default value can be changed by
-   *   using the {@link Page.setDefaultNavigationTimeout} or
-   *   {@link Page.setDefaultTimeout} methods.
-   *
-   * - `waitUntil` : When to consider navigation succeeded, defaults to `load`.
-   *   Given an array of event strings, navigation is considered to be
-   *   successful after all events have been fired. Events can be either:<br/>
-   * - `load` : consider navigation to be finished when the load event is
-   *   fired.<br/>
-   * - `domcontentloaded` : consider navigation to be finished when the
-   *   DOMContentLoaded event is fired.<br/>
-   * - `networkidle0` : consider navigation to be finished when there are no
-   *   more than 0 network connections for at least `500` ms.<br/>
-   * - `networkidle2` : consider navigation to be finished when there are no
-   *   more than 2 network connections for at least `500` ms.
    */
   abstract goBack(options?: WaitForOptions): Promise<HTTPResponse | null>;
 
@@ -1784,25 +1897,6 @@ export abstract class Page extends EventEmitter<PageEvents> {
    * @returns Promise which resolves to the main resource response. In case of
    * multiple redirects, the navigation will resolve with the response of the
    * last redirect. If can not go forward, resolves to `null`.
-   * @remarks
-   * The argument `options` might have the following properties:
-   *
-   * - `timeout` : Maximum navigation time in milliseconds, defaults to 30
-   *   seconds, pass 0 to disable timeout. The default value can be changed by
-   *   using the {@link Page.setDefaultNavigationTimeout} or
-   *   {@link Page.setDefaultTimeout} methods.
-   *
-   * - `waitUntil`: When to consider navigation succeeded, defaults to `load`.
-   *   Given an array of event strings, navigation is considered to be
-   *   successful after all events have been fired. Events can be either:<br/>
-   * - `load` : consider navigation to be finished when the load event is
-   *   fired.<br/>
-   * - `domcontentloaded` : consider navigation to be finished when the
-   *   DOMContentLoaded event is fired.<br/>
-   * - `networkidle0` : consider navigation to be finished when there are no
-   *   more than 0 network connections for at least `500` ms.<br/>
-   * - `networkidle2` : consider navigation to be finished when there are no
-   *   more than 2 network connections for at least `500` ms.
    */
   abstract goForward(options?: WaitForOptions): Promise<HTTPResponse | null>;
 
@@ -1828,7 +1922,7 @@ export abstract class Page extends EventEmitter<PageEvents> {
    *
    * ```ts
    * import {KnownDevices} from 'puppeteer';
-   * const iPhone = KnownDevices['iPhone 6'];
+   * const iPhone = KnownDevices['iPhone 15 Pro'];
    *
    * (async () => {
    *   const browser = await puppeteer.launch();
@@ -2031,7 +2125,9 @@ export abstract class Page extends EventEmitter<PageEvents> {
    * the page.
    *
    * In the case of multiple pages in a single browser, each page can have its
-   * own viewport size.
+   * own viewport size. Setting the viewport to `null` resets the viewport to
+   * its default value.
+   *
    * @example
    *
    * ```ts
@@ -2049,7 +2145,7 @@ export abstract class Page extends EventEmitter<PageEvents> {
    * NOTE: in certain cases, setting viewport will reload the page in order to
    * set the isMobile or hasTouch properties.
    */
-  abstract setViewport(viewport: Viewport): Promise<void>;
+  abstract setViewport(viewport: Viewport | null): Promise<void>;
 
   /**
    * Returns the current page viewport settings without checking the actual page
@@ -2057,7 +2153,8 @@ export abstract class Page extends EventEmitter<PageEvents> {
    *
    * This is either the viewport set with the previous {@link Page.setViewport}
    * call or the default viewport set via
-   * {@link BrowserConnectOptions.defaultViewport}.
+   * {@link BrowserConnectOptions.defaultViewport |
+   * BrowserConnectOptions.defaultViewport}.
    */
   abstract viewport(): Viewport | null;
 
@@ -2182,17 +2279,15 @@ export abstract class Page extends EventEmitter<PageEvents> {
   /**
    * @internal
    */
-  async _maybeWriteBufferToFile(
+  async _maybeWriteTypedArrayToFile(
     path: string | undefined,
-    buffer: Buffer
+    typedArray: Uint8Array
   ): Promise<void> {
     if (!path) {
       return;
     }
 
-    const fs = await importFSPromises();
-
-    await fs.writeFile(path, buffer);
+    await environment.value.fs.promises.writeFile(path, typedArray);
   }
 
   /**
@@ -2238,12 +2333,9 @@ export abstract class Page extends EventEmitter<PageEvents> {
   async screencast(
     options: Readonly<ScreencastOptions> = {}
   ): Promise<ScreenRecorder> {
-    const [{ScreenRecorder}, [width, height, devicePixelRatio]] =
-      await Promise.all([
-        import('../node/ScreenRecorder.js'),
-        this.#getNativePixelDimensions(),
-      ]);
-
+    const ScreenRecorder = environment.value.ScreenRecorder;
+    const [width, height, devicePixelRatio] =
+      await this.#getNativePixelDimensions();
     let crop: BoundingBox | undefined;
     if (options.crop) {
       const {
@@ -2302,7 +2394,7 @@ export abstract class Page extends EventEmitter<PageEvents> {
       throw error;
     }
     if (options.path) {
-      const {createWriteStream} = await import('fs');
+      const {createWriteStream} = environment.value.fs;
       const stream = createWriteStream(options.path, 'binary');
       recorder.pipe(stream);
     }
@@ -2375,20 +2467,33 @@ export abstract class Page extends EventEmitter<PageEvents> {
    * Captures a screenshot of this {@link Page | page}.
    *
    * @param options - Configures screenshot behavior.
+   *
+   * @remarks
+   *
+   * While a screenshot is being taken in a {@link BrowserContext}, the
+   * following methods will automatically wait for the screenshot to
+   * finish to prevent interference with the screenshot process:
+   * {@link BrowserContext.newPage}, {@link Browser.newPage},
+   * {@link Page.close}.
+   *
+   * Calling {@link Page.bringToFront} will not wait for existing
+   * screenshot operations.
+   *
    */
   async screenshot(
     options: Readonly<ScreenshotOptions> & {encoding: 'base64'}
   ): Promise<string>;
-  async screenshot(options?: Readonly<ScreenshotOptions>): Promise<Buffer>;
+  async screenshot(options?: Readonly<ScreenshotOptions>): Promise<Uint8Array>;
   @guarded(function () {
     return this.browser();
   })
   async screenshot(
     userOptions: Readonly<ScreenshotOptions> = {}
-  ): Promise<Buffer | string> {
+  ): Promise<Uint8Array | string> {
+    using _guard = await this.browserContext().startScreenshot();
+
     await this.bringToFront();
 
-    // TODO: use structuredClone after Node 16 support is dropped.
     const options = {
       ...userOptions,
       clip: userOptions.clip
@@ -2399,7 +2504,7 @@ export abstract class Page extends EventEmitter<PageEvents> {
     };
     if (options.type === undefined && options.path !== undefined) {
       const filePath = options.path;
-      // Note we cannot use Node.js here due to browser compatability.
+      // Note we cannot use Node.js here due to browser compatibility.
       const extension = filePath
         .slice(filePath.lastIndexOf('.') + 1)
         .toLowerCase();
@@ -2417,7 +2522,7 @@ export abstract class Page extends EventEmitter<PageEvents> {
       }
     }
     if (options.quality !== undefined) {
-      if (options.quality < 0 && options.quality > 100) {
+      if (options.quality < 0 || options.quality > 100) {
         throw new Error(
           `Expected 'quality' (${options.quality}) to be between 0 and 100, inclusive.`
         );
@@ -2470,14 +2575,7 @@ export abstract class Page extends EventEmitter<PageEvents> {
             ...scrollDimensions,
           });
           stack.defer(async () => {
-            if (viewport) {
-              await this.setViewport(viewport).catch(debugError);
-            } else {
-              await this.setViewport({
-                width: 0,
-                height: 0,
-              }).catch(debugError);
-            }
+            await this.setViewport(viewport).catch(debugError);
           });
         }
       } else {
@@ -2489,69 +2587,16 @@ export abstract class Page extends EventEmitter<PageEvents> {
     if (options.encoding === 'base64') {
       return data;
     }
-    const buffer = Buffer.from(data, 'base64');
-    await this._maybeWriteBufferToFile(options.path, buffer);
-    return buffer;
+
+    const typedArray = stringToTypedArray(data, true);
+    await this._maybeWriteTypedArrayToFile(options.path, typedArray);
+    return typedArray;
   }
 
   /**
    * @internal
    */
   abstract _screenshot(options: Readonly<ScreenshotOptions>): Promise<string>;
-
-  /**
-   * @internal
-   */
-  _getPDFOptions(
-    options: PDFOptions = {},
-    lengthUnit: 'in' | 'cm' = 'in'
-  ): ParsedPDFOptions {
-    const defaults: Omit<ParsedPDFOptions, 'width' | 'height' | 'margin'> = {
-      scale: 1,
-      displayHeaderFooter: false,
-      headerTemplate: '',
-      footerTemplate: '',
-      printBackground: false,
-      landscape: false,
-      pageRanges: '',
-      preferCSSPageSize: false,
-      omitBackground: false,
-      timeout: 30000,
-      tagged: false,
-    };
-
-    let width = 8.5;
-    let height = 11;
-    if (options.format) {
-      const format =
-        paperFormats[options.format.toLowerCase() as LowerCasePaperFormat];
-      assert(format, 'Unknown paper format: ' + options.format);
-      width = format.width;
-      height = format.height;
-    } else {
-      width = convertPrintParameterToInches(options.width, lengthUnit) ?? width;
-      height =
-        convertPrintParameterToInches(options.height, lengthUnit) ?? height;
-    }
-
-    const margin = {
-      top: convertPrintParameterToInches(options.margin?.top, lengthUnit) || 0,
-      left:
-        convertPrintParameterToInches(options.margin?.left, lengthUnit) || 0,
-      bottom:
-        convertPrintParameterToInches(options.margin?.bottom, lengthUnit) || 0,
-      right:
-        convertPrintParameterToInches(options.margin?.right, lengthUnit) || 0,
-    };
-
-    return {
-      ...defaults,
-      ...options,
-      width,
-      height,
-      margin,
-    };
-  }
 
   /**
    * Generates a PDF of the page with the `print` CSS media type.
@@ -2569,12 +2614,14 @@ export abstract class Page extends EventEmitter<PageEvents> {
    * {@link https://developer.mozilla.org/en-US/docs/Web/CSS/-webkit-print-color-adjust | `-webkit-print-color-adjust`}
    * property to force rendering of exact colors.
    */
-  abstract createPDFStream(options?: PDFOptions): Promise<Readable>;
+  abstract createPDFStream(
+    options?: PDFOptions
+  ): Promise<ReadableStream<Uint8Array>>;
 
   /**
    * {@inheritDoc Page.createPDFStream}
    */
-  abstract pdf(options?: PDFOptions): Promise<Buffer>;
+  abstract pdf(options?: PDFOptions): Promise<Uint8Array>;
 
   /**
    * The page's title
@@ -2602,7 +2649,7 @@ export abstract class Page extends EventEmitter<PageEvents> {
 
   /**
    * This method fetches an element with `selector`, scrolls it into view if
-   * needed, and then uses {@link Page | Page.mouse} to click in the center of the
+   * needed, and then uses {@link Page.mouse} to click in the center of the
    * element. If there's no element matching `selector`, the method throws an
    * error.
    *
@@ -2621,7 +2668,21 @@ export abstract class Page extends EventEmitter<PageEvents> {
    * ```
    *
    * Shortcut for {@link Frame.click | page.mainFrame().click(selector[, options]) }.
-   * @param selector - A `selector` to search for element to click. If there are
+   * @param selector -
+   * {@link https://pptr.dev/guides/page-interactions#selectors | selector}
+   * to query the page for.
+   * {@link https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_Selectors | CSS selectors}
+   * can be passed as-is and a
+   * {@link https://pptr.dev/guides/page-interactions#non-css-selectors | Puppeteer-specific selector syntax}
+   * allows quering by
+   * {@link https://pptr.dev/guides/page-interactions#text-selectors--p-text | text},
+   * {@link https://pptr.dev/guides/page-interactions#aria-selectors--p-aria | a11y role and name},
+   * and
+   * {@link https://pptr.dev/guides/page-interactions#xpath-selectors--p-xpath | xpath}
+   * and
+   * {@link https://pptr.dev/guides/page-interactions#querying-elements-in-shadow-dom | combining these queries across shadow roots}.
+   * Alternatively, you can specify the selector type using a
+   * {@link https://pptr.dev/guides/page-interactions#prefixed-selector-syntax | prefix}. If there are
    * multiple elements satisfying the `selector`, the first will be clicked
    * @param options - `Object`
    * @returns Promise which resolves when the element matching `selector` is
@@ -2633,19 +2694,33 @@ export abstract class Page extends EventEmitter<PageEvents> {
   }
 
   /**
-   * This method fetches an element with `selector` and focuses it. If there's no
-   * element matching `selector`, the method throws an error.
-   * @param selector - A
-   * {@link https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_Selectors | selector }
-   * of an element to focus. If there are multiple elements satisfying the
-   * selector, the first will be focused.
-   * @returns Promise which resolves when the element matching selector is
-   * successfully focused. The promise will be rejected if there is no element
-   * matching selector.
+   * This method fetches an element with `selector` and focuses it. If
+   * there's no element matching `selector`, the method throws an error.
+   * @param selector -
+   * {@link https://pptr.dev/guides/page-interactions#selectors | selector}
+   * to query the page for.
+   * {@link https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_Selectors | CSS selectors}
+   * can be passed as-is and a
+   * {@link https://pptr.dev/guides/page-interactions#non-css-selectors | Puppeteer-specific selector syntax}
+   * allows quering by
+   * {@link https://pptr.dev/guides/page-interactions#text-selectors--p-text | text},
+   * {@link https://pptr.dev/guides/page-interactions#aria-selectors--p-aria | a11y role and name},
+   * and
+   * {@link https://pptr.dev/guides/page-interactions#xpath-selectors--p-xpath | xpath}
+   * and
+   * {@link https://pptr.dev/guides/page-interactions#querying-elements-in-shadow-dom | combining these queries across shadow roots}.
+   * Alternatively, you can specify the selector type using a
+   * {@link https://pptr.dev/guides/page-interactions#prefixed-selector-syntax | prefix}.
+   * If there are multiple elements satisfying the selector, the first
+   * will be focused.
+   * @returns Promise which resolves when the element matching selector
+   * is successfully focused. The promise will be rejected if there is
+   * no element matching selector.
    *
    * @remarks
    *
-   * Shortcut for {@link Frame.focus | page.mainFrame().focus(selector)}.
+   * Shortcut for
+   * {@link Frame.focus | page.mainFrame().focus(selector)}.
    */
   focus(selector: string): Promise<void> {
     return this.mainFrame().focus(selector);
@@ -2653,13 +2728,25 @@ export abstract class Page extends EventEmitter<PageEvents> {
 
   /**
    * This method fetches an element with `selector`, scrolls it into view if
-   * needed, and then uses {@link Page | Page.mouse}
+   * needed, and then uses {@link Page.mouse}
    * to hover over the center of the element.
    * If there's no element matching `selector`, the method throws an error.
-   * @param selector - A
-   * {@link https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_Selectors | selector}
-   * to search for element to hover. If there are multiple elements satisfying
-   * the selector, the first will be hovered.
+   * @param selector -
+   * {@link https://pptr.dev/guides/page-interactions#selectors | selector}
+   * to query the page for.
+   * {@link https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_Selectors | CSS selectors}
+   * can be passed as-is and a
+   * {@link https://pptr.dev/guides/page-interactions#non-css-selectors | Puppeteer-specific selector syntax}
+   * allows quering by
+   * {@link https://pptr.dev/guides/page-interactions#text-selectors--p-text | text},
+   * {@link https://pptr.dev/guides/page-interactions#aria-selectors--p-aria | a11y role and name},
+   * and
+   * {@link https://pptr.dev/guides/page-interactions#xpath-selectors--p-xpath | xpath}
+   * and
+   * {@link https://pptr.dev/guides/page-interactions#querying-elements-in-shadow-dom | combining these queries across shadow roots}.
+   * Alternatively, you can specify the selector type using a
+   * {@link https://pptr.dev/guides/page-interactions#prefixed-selector-syntax | prefix}. If there are
+   * multiple elements satisfying the `selector`, the first will be hovered.
    * @returns Promise which resolves when the element matching `selector` is
    * successfully hovered. Promise gets rejected if there's no element matching
    * `selector`.
@@ -2684,9 +2771,21 @@ export abstract class Page extends EventEmitter<PageEvents> {
    * page.select('select#colors', 'red', 'green', 'blue'); // multiple selections
    * ```
    *
-   * @param selector - A
-   * {@link https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_Selectors | Selector}
-   * to query the page for
+   * @param selector -
+   * {@link https://pptr.dev/guides/page-interactions#selectors | selector}
+   * to query the page for.
+   * {@link https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_Selectors | CSS selectors}
+   * can be passed as-is and a
+   * {@link https://pptr.dev/guides/page-interactions#non-css-selectors | Puppeteer-specific selector syntax}
+   * allows quering by
+   * {@link https://pptr.dev/guides/page-interactions#text-selectors--p-text | text},
+   * {@link https://pptr.dev/guides/page-interactions#aria-selectors--p-aria | a11y role and name},
+   * and
+   * {@link https://pptr.dev/guides/page-interactions#xpath-selectors--p-xpath | xpath}
+   * and
+   * {@link https://pptr.dev/guides/page-interactions#querying-elements-in-shadow-dom | combining these queries across shadow roots}.
+   * Alternatively, you can specify the selector type using a
+   * {@link https://pptr.dev/guides/page-interactions#prefixed-selector-syntax | prefix}.
    * @param values - Values of options to select. If the `<select>` has the
    * `multiple` attribute, all values are considered, otherwise only the first one
    * is taken into account.
@@ -2702,12 +2801,24 @@ export abstract class Page extends EventEmitter<PageEvents> {
 
   /**
    * This method fetches an element with `selector`, scrolls it into view if
-   * needed, and then uses {@link Page | Page.touchscreen}
+   * needed, and then uses {@link Page.touchscreen}
    * to tap in the center of the element.
    * If there's no element matching `selector`, the method throws an error.
-   * @param selector - A
-   * {@link https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_Selectors | Selector}
-   * to search for element to tap. If there are multiple elements satisfying the
+   * @param selector -
+   * {@link https://pptr.dev/guides/page-interactions#selectors | selector}
+   * to query the page for.
+   * {@link https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_Selectors | CSS selectors}
+   * can be passed as-is and a
+   * {@link https://pptr.dev/guides/page-interactions#non-css-selectors | Puppeteer-specific selector syntax}
+   * allows quering by
+   * {@link https://pptr.dev/guides/page-interactions#text-selectors--p-text | text},
+   * {@link https://pptr.dev/guides/page-interactions#aria-selectors--p-aria | a11y role and name},
+   * and
+   * {@link https://pptr.dev/guides/page-interactions#xpath-selectors--p-xpath | xpath}
+   * and
+   * {@link https://pptr.dev/guides/page-interactions#querying-elements-in-shadow-dom | combining these queries across shadow roots}.
+   * Alternatively, you can specify the selector type using a
+   * {@link https://pptr.dev/guides/page-interactions#prefixed-selector-syntax | prefix}. If there are multiple elements satisfying the
    * selector, the first will be tapped.
    *
    * @remarks
@@ -2732,10 +2843,21 @@ export abstract class Page extends EventEmitter<PageEvents> {
    * // Types slower, like a user
    * ```
    *
-   * @param selector - A
-   * {@link https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_Selectors | selector}
-   * of an element to type into. If there are multiple elements satisfying the
-   * selector, the first will be used.
+   * @param selector -
+   * {@link https://pptr.dev/guides/page-interactions#selectors | selector}
+   * to query the page for.
+   * {@link https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_Selectors | CSS selectors}
+   * can be passed as-is and a
+   * {@link https://pptr.dev/guides/page-interactions#non-css-selectors | Puppeteer-specific selector syntax}
+   * allows quering by
+   * {@link https://pptr.dev/guides/page-interactions#text-selectors--p-text | text},
+   * {@link https://pptr.dev/guides/page-interactions#aria-selectors--p-aria | a11y role and name},
+   * and
+   * {@link https://pptr.dev/guides/page-interactions#xpath-selectors--p-xpath | xpath}
+   * and
+   * {@link https://pptr.dev/guides/page-interactions#querying-elements-in-shadow-dom | combining these queries across shadow roots}.
+   * Alternatively, you can specify the selector type using a
+   * {@link https://pptr.dev/guides/page-interactions#prefixed-selector-syntax | prefix}.
    * @param text - A text to type into a focused element.
    * @param options - have property `delay` which is the Time to wait between
    * key presses in milliseconds. Defaults to `0`.
@@ -2747,31 +2869,6 @@ export abstract class Page extends EventEmitter<PageEvents> {
     options?: Readonly<KeyboardTypeOptions>
   ): Promise<void> {
     return this.mainFrame().type(selector, text, options);
-  }
-
-  /**
-   * @deprecated Replace with `new Promise(r => setTimeout(r, milliseconds));`.
-   *
-   * Causes your script to wait for the given number of milliseconds.
-   *
-   * @remarks
-   *
-   * It's generally recommended to not wait for a number of seconds, but instead
-   * use {@link Frame.waitForSelector}, {@link Frame.waitForXPath} or
-   * {@link Frame.waitForFunction} to wait for exactly the conditions you want.
-   *
-   * @example
-   *
-   * Wait for 1 second:
-   *
-   * ```ts
-   * await page.waitForTimeout(1000);
-   * ```
-   *
-   * @param milliseconds - the number of milliseconds to wait.
-   */
-  waitForTimeout(milliseconds: number): Promise<void> {
-    return this.mainFrame().waitForTimeout(milliseconds);
   }
 
   /**
@@ -2803,9 +2900,21 @@ export abstract class Page extends EventEmitter<PageEvents> {
    * })();
    * ```
    *
-   * @param selector - A
-   * {@link https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_Selectors | selector}
-   * of an element to wait for
+   * @param selector -
+   * {@link https://pptr.dev/guides/page-interactions#selectors | selector}
+   * to query the page for.
+   * {@link https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_Selectors | CSS selectors}
+   * can be passed as-is and a
+   * {@link https://pptr.dev/guides/page-interactions#non-css-selectors | Puppeteer-specific selector syntax}
+   * allows quering by
+   * {@link https://pptr.dev/guides/page-interactions#text-selectors--p-text | text},
+   * {@link https://pptr.dev/guides/page-interactions#aria-selectors--p-aria | a11y role and name},
+   * and
+   * {@link https://pptr.dev/guides/page-interactions#xpath-selectors--p-xpath | xpath}
+   * and
+   * {@link https://pptr.dev/guides/page-interactions#querying-elements-in-shadow-dom | combining these queries across shadow roots}.
+   * Alternatively, you can specify the selector type using a
+   * {@link https://pptr.dev/guides/page-interactions#prefixed-selector-syntax | prefix}.
    * @param options - Optional waiting parameters
    * @returns Promise which resolves when element specified by selector string
    * is added to DOM. Resolves to `null` if waiting for hidden: `true` and
@@ -2831,64 +2940,6 @@ export abstract class Page extends EventEmitter<PageEvents> {
     options: WaitForSelectorOptions = {}
   ): Promise<ElementHandle<NodeFor<Selector>> | null> {
     return await this.mainFrame().waitForSelector(selector, options);
-  }
-
-  /**
-   * Wait for the `xpath` to appear in page. If at the moment of calling the
-   * method the `xpath` already exists, the method will return immediately. If
-   * the `xpath` doesn't appear after the `timeout` milliseconds of waiting, the
-   * function will throw.
-   *
-   * @example
-   * This method works across navigation
-   *
-   * ```ts
-   * import puppeteer from 'puppeteer';
-   * (async () => {
-   *   const browser = await puppeteer.launch();
-   *   const page = await browser.newPage();
-   *   let currentURL;
-   *   page
-   *     .waitForXPath('//img')
-   *     .then(() => console.log('First URL with image: ' + currentURL));
-   *   for (currentURL of [
-   *     'https://example.com',
-   *     'https://google.com',
-   *     'https://bbc.com',
-   *   ]) {
-   *     await page.goto(currentURL);
-   *   }
-   *   await browser.close();
-   * })();
-   * ```
-   *
-   * @param xpath - A
-   * {@link https://developer.mozilla.org/en-US/docs/Web/XPath | xpath} of an
-   * element to wait for
-   * @param options - Optional waiting parameters
-   * @returns Promise which resolves when element specified by xpath string is
-   * added to DOM. Resolves to `null` if waiting for `hidden: true` and xpath is
-   * not found in DOM, otherwise resolves to `ElementHandle`.
-   * @remarks
-   * The optional Argument `options` have properties:
-   *
-   * - `visible`: A boolean to wait for element to be present in DOM and to be
-   *   visible, i.e. to not have `display: none` or `visibility: hidden` CSS
-   *   properties. Defaults to `false`.
-   *
-   * - `hidden`: A boolean wait for element to not be found in the DOM or to be
-   *   hidden, i.e. have `display: none` or `visibility: hidden` CSS properties.
-   *   Defaults to `false`.
-   *
-   * - `timeout`: A number which is maximum time to wait for in milliseconds.
-   *   Defaults to `30000` (30 seconds). Pass `0` to disable timeout. The default
-   *   value can be changed by using the {@link Page.setDefaultTimeout} method.
-   */
-  waitForXPath(
-    xpath: string,
-    options?: WaitForSelectorOptions
-  ): Promise<ElementHandle<Node> | null> {
-    return this.mainFrame().waitForXPath(xpath, options);
   }
 
   /**
@@ -3016,50 +3067,6 @@ export const supportedMetrics = new Set<string>([
   'JSHeapUsedSize',
   'JSHeapTotalSize',
 ]);
-
-/**
- * @internal
- */
-export const unitToPixels = {
-  px: 1,
-  in: 96,
-  cm: 37.8,
-  mm: 3.78,
-};
-
-function convertPrintParameterToInches(
-  parameter?: string | number,
-  lengthUnit: 'in' | 'cm' = 'in'
-): number | undefined {
-  if (typeof parameter === 'undefined') {
-    return undefined;
-  }
-  let pixels;
-  if (isNumber(parameter)) {
-    // Treat numbers as pixel values to be aligned with phantom's paperSize.
-    pixels = parameter;
-  } else if (isString(parameter)) {
-    const text = parameter;
-    let unit = text.substring(text.length - 2).toLowerCase();
-    let valueText = '';
-    if (unit in unitToPixels) {
-      valueText = text.substring(0, text.length - 2);
-    } else {
-      // In case of unknown unit try to parse the whole parameter as number of pixels.
-      // This is consistent with phantom's paperSize behavior.
-      unit = 'px';
-      valueText = text;
-    }
-    const value = Number(valueText);
-    assert(!isNaN(value), 'Failed to parse parameter value: ' + text);
-    pixels = value * unitToPixels[unit as keyof typeof unitToPixels];
-  } else {
-    throw new Error(
-      'page.pdf() Cannot handle parameter type: ' + typeof parameter
-    );
-  }
-  return pixels / unitToPixels[lengthUnit];
-}
 
 /** @see https://w3c.github.io/webdriver-bidi/#normalize-rect */
 function normalizeRectangle<BoundingBoxType extends BoundingBox>(

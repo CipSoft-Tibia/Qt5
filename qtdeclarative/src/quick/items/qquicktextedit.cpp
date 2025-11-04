@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:data-parser
 
 #include "qquicktextedit_p.h"
 #include "qquicktextedit_p_p.h"
@@ -34,8 +35,7 @@
 
 QT_BEGIN_NAMESPACE
 
-Q_DECLARE_LOGGING_CATEGORY(lcVP)
-Q_LOGGING_CATEGORY(lcTextEdit, "qt.quick.textedit")
+Q_STATIC_LOGGING_CATEGORY(lcTextEdit, "qt.quick.textedit")
 
 using namespace Qt::StringLiterals;
 
@@ -1975,12 +1975,15 @@ QRectF QQuickTextEdit::cursorRectangle() const
 bool QQuickTextEdit::event(QEvent *event)
 {
     Q_D(QQuickTextEdit);
-    if (event->type() == QEvent::ShortcutOverride) {
-        d->control->processEvent(event, QPointF(-d->xoff, -d->yoff));
-        if (event->isAccepted())
-            return true;
+    bool state = QQuickImplicitSizeItem::event(event);
+    if (event->type() == QEvent::ShortcutOverride && !event->isAccepted()) {
+        QQuickItemPrivate *itemPriv = QQuickItemPrivate::get(this);
+        if (!itemPriv->extra.isAllocated() || !itemPriv->extra->keyHandler) {
+            d->control->processEvent(event, QPointF(-d->xoff, -d->yoff));
+        }
+        state = true;
     }
-    return QQuickImplicitSizeItem::event(event);
+    return state;
 }
 
 /*!
@@ -2458,12 +2461,13 @@ void QQuickTextEdit::setDocument(QTextDocument *doc)
     q_textChanged();
 }
 
-inline void resetEngine(QQuickTextNodeEngine *engine, const QColor& textColor, const QColor& selectedTextColor, const QColor& selectionColor)
+inline void resetEngine(QQuickTextNodeEngine *engine, const QColor& textColor, const QColor& selectedTextColor, const QColor& selectionColor, qreal dpr)
 {
     *engine = QQuickTextNodeEngine();
     engine->setTextColor(textColor);
     engine->setSelectedTextColor(selectedTextColor);
     engine->setSelectionColor(selectionColor);
+    engine->setDevicePixelRatio(dpr);
 }
 
 QSGNode *QQuickTextEdit::updatePaintNode(QSGNode *oldNode, UpdatePaintNodeData *updatePaintNodeData)
@@ -2500,8 +2504,11 @@ QSGNode *QQuickTextEdit::updatePaintNode(QSGNode *oldNode, UpdatePaintNodeData *
     while (nodeIterator != d->textNodeMap.end() && !nodeIterator->dirty())
         ++nodeIterator;
 
+    const auto dpr = window()->effectiveDevicePixelRatio();
     QQuickTextNodeEngine engine;
+    engine.setDevicePixelRatio(dpr);
     QQuickTextNodeEngine frameDecorationsEngine;
+    frameDecorationsEngine.setDevicePixelRatio(dpr);
 
     if (!oldNode || nodeIterator < d->textNodeMap.end() || d->textNodeMap.isEmpty()) {
 
@@ -2537,7 +2544,7 @@ QSGNode *QQuickTextEdit::updatePaintNode(QSGNode *oldNode, UpdatePaintNodeData *
 
         // FIXME: the text decorations could probably be handled separately (only updated for affected textFrames)
         rootNode->resetFrameDecorations(d->createTextNode());
-        resetEngine(&frameDecorationsEngine, d->color, d->selectedTextColor, d->selectionColor);
+        resetEngine(&frameDecorationsEngine, d->color, d->selectedTextColor, d->selectionColor, dpr);
 
         QSGInternalTextNode *node = nullptr;
 
@@ -2569,7 +2576,7 @@ QSGNode *QQuickTextEdit::updatePaintNode(QSGNode *oldNode, UpdatePaintNodeData *
                           << "to" << positionToRectangle(textFrame->lastPosition()).bottomRight();
             frames.append(textFrame->childFrames());
             frameDecorationsEngine.addFrameDecorations(d->document, textFrame);
-            resetEngine(&engine, d->color, d->selectedTextColor, d->selectionColor);
+            resetEngine(&engine, d->color, d->selectedTextColor, d->selectionColor, dpr);
 
             if (textFrame->firstPosition() > textFrame->lastPosition()
                     && textFrame->frameFormat().position() != QTextFrameFormat::InFlow) {
@@ -2692,7 +2699,7 @@ QSGNode *QQuickTextEdit::updatePaintNode(QSGNode *oldNode, UpdatePaintNodeData *
                             d->addCurrentTextNodeToRoot(&engine, rootNode, node, nodeIterator, nodeStart);
                         if (!createdNodeInView)
                             node = d->createTextNode();
-                        resetEngine(&engine, d->color, d->selectedTextColor, d->selectionColor);
+                        resetEngine(&engine, d->color, d->selectedTextColor, d->selectionColor, dpr);
                         nodeStart = block.next().position();
                     }
                     ++it;
@@ -2913,6 +2920,8 @@ void QQuickTextEdit::q_textChanged()
     }
 
     emit textChanged();
+    if (d->control->isBeingEdited())
+        emit textEdited();
 }
 
 void QQuickTextEdit::markDirtyNodesForRange(int start, int end, int charDelta)
@@ -3543,6 +3552,15 @@ void QQuickTextEditPrivate::updateMouseCursorShape()
     and the link string provides access to the particular link.
 
     \sa linkHovered, linkAt()
+*/
+
+/*!
+    \qmlsignal QtQuick::TextEdit::textEdited()
+    \since 6.9
+
+    This signal is emitted whenever the text is edited. Unlike \l{TextEdit::text}{textChanged()},
+    this signal is not emitted when the text is changed programmatically, for example,
+    by changing the value of the \l text property or by calling \l clear().
 */
 
 QString QQuickTextEdit::hoveredLink() const

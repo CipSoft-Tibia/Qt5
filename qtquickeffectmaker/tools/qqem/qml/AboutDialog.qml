@@ -42,19 +42,13 @@ CustomPopup {
             width: parent.width
             spacing: 10
             Label {
-                text: qsTr("Copyright 2022 The Qt Company Ltd. All rights reserved.")
+                text: qsTr("Copyright (C) The Qt Company Ltd and other contributors.")
                 width: parent.width
                 wrapMode: Label.WrapAtWordBoundaryOrAnywhere
                 font.pixelSize: 14
                 color: mainView.foregroundColor2
             }
-            Label {
-                text: qsTr("The program is provided AS IS with NO WARRANTY OF ANY KIND, INCLUDING THE WARRANTY OF DESIGN, MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.");
-                width: parent.width
-                wrapMode: Label.WordWrap
-                font.pixelSize: 14
-                color: mainView.foregroundColor2
-            }
+
         }
     }
 }

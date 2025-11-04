@@ -17,8 +17,8 @@
 #include "core/fxcrt/fx_memory.h"
 #include "core/fxcrt/observed_ptr.h"
 #include "core/fxcrt/retain_ptr.h"
+#include "core/fxcrt/span.h"
 #include "core/fxcrt/unowned_ptr.h"
-#include "third_party/base/containers/span.h"
 
 class CPDF_ReadValidator;
 class CPDF_StreamAcc;
@@ -33,7 +33,7 @@ class CPDF_Document : public Observable,
    public:
     virtual ~Extension() = default;
     virtual int GetPageCount() const = 0;
-    virtual void DeletePage(int page_index) = 0;
+    virtual uint32_t DeletePage(int page_index) = 0;
     virtual bool ContainsExtensionForm() const = 0;
     virtual bool ContainsExtensionFullForm() const = 0;
     virtual bool ContainsExtensionForegroundForm() const = 0;
@@ -99,7 +99,12 @@ class CPDF_Document : public Observable,
   RetainPtr<CPDF_Dictionary> GetInfo();
   RetainPtr<const CPDF_Array> GetFileIdentifier() const;
 
-  void DeletePage(int iPage);
+  // Returns the object number for the deleted page, or 0 on failure.
+  uint32_t DeletePage(int iPage);
+  // `page_obj_num` is the return value from DeletePage(). If it is non-zero,
+  // and it is no longer used in the page tree, then replace the page object
+  // with a null object.
+  void SetPageToNullObject(uint32_t page_obj_num);
   bool MovePages(pdfium::span<const int> page_indices, int dest_page_index);
 
   int GetPageCount() const;
@@ -129,8 +134,10 @@ class CPDF_Document : public Observable,
     m_pLinksContext = std::move(pContext);
   }
 
-  // Behaves like NewIndirect<CPDF_Stream>(), but keeps track of the new stream.
-  RetainPtr<CPDF_Stream> CreateModifiedAPStream();
+  // Behaves like NewIndirect<CPDF_Stream>(dict), but keeps track of the object
+  // number assigned to the newly created stream.
+  RetainPtr<CPDF_Stream> CreateModifiedAPStream(
+      RetainPtr<CPDF_Dictionary> dict);
 
   // Returns whether CreateModifiedAPStream() created `stream`.
   bool IsModifiedAPStream(const CPDF_Stream* stream) const;
@@ -154,10 +161,11 @@ class CPDF_Document : public Observable,
   void IncrementParsedPageCount() { ++m_ParsedPageCount; }
   uint32_t GetParsedPageCountForTesting() { return m_ParsedPageCount; }
 
+  void SetRootForTesting(RetainPtr<CPDF_Dictionary> root);
+
  protected:
   void SetParser(std::unique_ptr<CPDF_Parser> pParser);
 
-  void SetRootForTesting(RetainPtr<CPDF_Dictionary> root);
   void ResizePageListForTesting(size_t size);
 
  private:
@@ -212,8 +220,9 @@ class CPDF_Document : public Observable,
   int m_iNextPageToTraverse = 0;
   uint32_t m_ParsedPageCount = 0;
 
-  std::unique_ptr<RenderDataIface> m_pDocRender;
-  std::unique_ptr<PageDataIface> m_pDocPage;  // Must be after |m_pDocRender|.
+  std::unique_ptr<RenderDataIface> const m_pDocRender;
+  // Must be after `m_pDocRender`.
+  std::unique_ptr<PageDataIface> const m_pDocPage;
   std::unique_ptr<JBig2_DocumentContext> m_pCodecContext;
   std::unique_ptr<LinkListIface> m_pLinksContext;
   std::set<uint32_t> m_ModifiedAPStreamIDs;

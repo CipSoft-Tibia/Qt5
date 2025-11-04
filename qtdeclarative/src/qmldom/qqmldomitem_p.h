@@ -50,7 +50,7 @@
 
 QT_BEGIN_NAMESPACE
 
-Q_DECLARE_LOGGING_CATEGORY(writeOutLog);
+QT_DECLARE_EXPORTED_QT_LOGGING_CATEGORY(writeOutLog, QMLDOM_EXPORT);
 
 namespace QQmlJS {
 // we didn't have enough 'O's to properly name everything...
@@ -674,9 +674,9 @@ public:
     Path referredObjectPath;
 };
 
-template<typename Info>
-class AttachedInfoT;
-class FileLocations;
+namespace FileLocations {
+struct Info;
+}
 
 /*!
     \internal
@@ -695,8 +695,8 @@ struct ScriptElement : public DomElement
     using PointerType = std::shared_ptr<T>;
 
     using DomElement::DomElement;
-    virtual void createFileLocations(
-            const std::shared_ptr<AttachedInfoT<FileLocations>> &fileLocationOfOwner) = 0;
+    virtual void
+    createFileLocations(const std::shared_ptr<FileLocations::Node> &fileLocationOfOwner) = 0;
 
     QQmlJSScope::ConstPtr semanticScope();
     void setSemanticScope(const QQmlJSScope::ConstPtr &scope);
@@ -793,64 +793,30 @@ private:
 
 // TODO: create more "groups" to simplify this variant? Maybe into Internal, ScriptExpression, ???
 using ElementT =
-        std::variant<
-                ConstantData,
-                Empty,
-                List,
-                ListP,
-                Map,
-                Reference,
-                ScriptElementDomWrapper,
-                SimpleObjectWrap,
-                const AstComments *,
-                const AttachedInfo *,
-                const DomEnvironment *,
-                const DomUniverse *,
-                const EnumDecl *,
-                const ExternalItemInfoBase *,
-                const ExternalItemPairBase *,
-                const GlobalComponent *,
-                const GlobalScope *,
-                const JsFile *,
-                const JsResource *,
-                const LoadInfo *,
-                const MockObject *,
-                const MockOwner *,
-                const ModuleIndex *,
-                const ModuleScope *,
-                const QmlComponent *,
-                const QmlDirectory *,
-                const QmlFile *,
-                const QmlObject *,
-                const QmldirFile *,
-                const QmltypesComponent *,
-                const QmltypesFile *,
-                const ScriptExpression *
-        >;
+        std::variant<ConstantData, Empty, List, ListP, Map, Reference, ScriptElementDomWrapper,
+                     SimpleObjectWrap, const AstComments *, const FileLocations::Node *,
+                     const DomEnvironment *, const DomUniverse *, const EnumDecl *,
+                     const ExternalItemInfoBase *, const ExternalItemPairBase *,
+                     const GlobalComponent *, const GlobalScope *, const JsFile *,
+                     const JsResource *, const LoadInfo *, const MockObject *, const MockOwner *,
+                     const ModuleIndex *, const ModuleScope *, const QmlComponent *,
+                     const QmlDirectory *, const QmlFile *, const QmlObject *, const QmldirFile *,
+                     const QmltypesComponent *, const QmltypesFile *, const ScriptExpression *>;
 
 using TopT = std::variant<
         std::monostate,
         std::shared_ptr<DomEnvironment>,
         std::shared_ptr<DomUniverse>>;
 
-using OwnerT = std::variant<
-        std::monostate,
-        std::shared_ptr<ModuleIndex>,
-        std::shared_ptr<MockOwner>,
-        std::shared_ptr<ExternalItemInfoBase>,
-        std::shared_ptr<ExternalItemPairBase>,
-        std::shared_ptr<QmlDirectory>,
-        std::shared_ptr<QmldirFile>,
-        std::shared_ptr<JsFile>,
-        std::shared_ptr<QmlFile>,
-        std::shared_ptr<QmltypesFile>,
-        std::shared_ptr<GlobalScope>,
-        std::shared_ptr<ScriptExpression>,
-        std::shared_ptr<AstComments>,
-        std::shared_ptr<LoadInfo>,
-        std::shared_ptr<AttachedInfo>,
-        std::shared_ptr<DomEnvironment>,
-        std::shared_ptr<DomUniverse>>;
+using OwnerT =
+        std::variant<std::monostate, std::shared_ptr<ModuleIndex>, std::shared_ptr<MockOwner>,
+                     std::shared_ptr<ExternalItemInfoBase>, std::shared_ptr<ExternalItemPairBase>,
+                     std::shared_ptr<QmlDirectory>, std::shared_ptr<QmldirFile>,
+                     std::shared_ptr<JsFile>, std::shared_ptr<QmlFile>,
+                     std::shared_ptr<QmltypesFile>, std::shared_ptr<GlobalScope>,
+                     std::shared_ptr<ScriptExpression>, std::shared_ptr<AstComments>,
+                     std::shared_ptr<LoadInfo>, std::shared_ptr<FileLocations::Node>,
+                     std::shared_ptr<DomEnvironment>, std::shared_ptr<DomUniverse>>;
 
 inline bool emptyChildrenVisitor(Path, const DomItem &, bool)
 {
@@ -1073,8 +1039,6 @@ public:
     quintptr id() const;
     Path pathFromOwner() const;
     QString canonicalFilePath() const;
-    DomItem fileLocationsTree() const;
-    DomItem fileLocations() const;
     MutableDomItem makeCopy(CopyOption option = CopyOption::EnvConnected) const;
     bool commitToBase(const std::shared_ptr<DomEnvironment> &validPtr = nullptr) const;
     DomItem refreshed() const { return top().path(canonicalPath()); }
@@ -1284,7 +1248,7 @@ public:
 
 private:
     enum class WriteOutCheckResult { Success, Failed };
-    WriteOutCheckResult performWriteOutChecks(const DomItem &, const DomItem &, OutWriter &, WriteOutChecks) const;
+    WriteOutCheckResult performWriteOutChecks(const DomItem &, OutWriter &, WriteOutChecks) const;
     const DomBase *base() const;
 
     template<typename Env, typename Owner>
@@ -1329,7 +1293,7 @@ private:
     friend class MutableDomItem;
     friend class ScriptExpression;
     friend class AstComments;
-    friend class AttachedInfo;
+    friend class FileLocations::Node;
     friend class TestDomItem;
     friend QMLDOM_EXPORT bool operator==(const DomItem &, const DomItem &);
     DomType m_kind = DomType::Empty;
@@ -1564,10 +1528,10 @@ std::shared_ptr<T> DomItem::ownerAs() const
 {
     if constexpr (domTypeIsOwningItem(T::kindValue)) {
         if (!std::holds_alternative<std::monostate>(m_owner)) {
-            if constexpr (T::kindValue == DomType::AttachedInfo) {
-                if (std::holds_alternative<std::shared_ptr<AttachedInfo>>(m_owner))
+            if constexpr (T::kindValue == DomType::FileLocationsNode) {
+                if (std::holds_alternative<std::shared_ptr<FileLocations::Node>>(m_owner))
                     return std::static_pointer_cast<T>(
-                            std::get<std::shared_ptr<AttachedInfo>>(m_owner));
+                            std::get<std::shared_ptr<FileLocations::Node>>(m_owner));
             } else if constexpr (T::kindValue == DomType::ExternalItemInfo) {
                 if (std::holds_alternative<std::shared_ptr<ExternalItemInfoBase>>(m_owner))
                     return std::static_pointer_cast<T>(
@@ -1728,7 +1692,6 @@ public:
         return item().writeOut(path, nBackups, opt, fw);
     }
 
-    MutableDomItem fileLocations() { return MutableDomItem(item().fileLocations()); }
     MutableDomItem makeCopy(CopyOption option = CopyOption::EnvConnected)
     {
         return item().makeCopy(option);
@@ -1959,8 +1922,7 @@ constexpr bool domTypeIsObjWrap(DomType k)
     case DomType::Comment:
     case DomType::CommentedElement:
     case DomType::RegionComments:
-    case DomType::FileLocations:
-    case DomType::UpdatedScriptExpression:
+    case DomType::FileLocationsInfo:
         return true;
     default:
         return false;
@@ -2021,7 +1983,7 @@ constexpr bool domTypeIsOwningItem(DomType k)
     case DomType::AstComments:
 
     case DomType::LoadInfo:
-    case DomType::AttachedInfo:
+    case DomType::FileLocationsNode:
 
     case DomType::DomEnvironment:
     case DomType::DomUniverse:
@@ -2036,7 +1998,7 @@ constexpr bool domTypeIsUnattachedOwningItem(DomType k)
     switch (k) {
     case DomType::ScriptExpression:
     case DomType::AstComments:
-    case DomType::AttachedInfo:
+    case DomType::FileLocationsNode:
         return true;
     default:
         return false;

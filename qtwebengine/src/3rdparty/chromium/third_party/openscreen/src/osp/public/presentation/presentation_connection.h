@@ -14,6 +14,7 @@
 #include <vector>
 
 #include "osp/public/message_demuxer.h"
+#include "osp/public/presentation/presentation_common.h"
 #include "platform/api/time.h"
 #include "platform/base/error.h"
 #include "platform/base/ip_address.h"
@@ -23,18 +24,6 @@
 namespace openscreen::osp {
 
 class ProtocolConnection;
-
-enum class TerminationReason {
-  kReceiverTerminateCalled = 0,
-  kReceiverUserTerminated,
-  kControllerTerminateCalled,
-  kControllerUserTerminated,
-  kReceiverPresentationReplaced,
-  kReceiverIdleTooLong,
-  kReceiverPresentationUnloaded,
-  kReceiverShuttingDown,
-  kReceiverError,
-};
 
 class Connection {
  public:
@@ -57,10 +46,16 @@ class Connection {
     kTerminated,
   };
 
-  // An object to receive callbacks related to a single Connection.
+  // An object to receive callbacks related to a single Connection. Embedder can
+  // link it's presentation connection functionality through this interface.
   class Delegate {
    public:
-    Delegate() = default;
+    Delegate();
+    Delegate(const Delegate&) = delete;
+    Delegate& operator=(const Delegate&) = delete;
+    Delegate(Delegate&&) noexcept = delete;
+    Delegate& operator=(Delegate&&) noexcept = delete;
+    virtual ~Delegate();
 
     // State changes.
     virtual void OnConnected() = 0;
@@ -82,31 +77,27 @@ class Connection {
 
     // A binary message was received.
     virtual void OnBinaryMessage(const std::vector<uint8_t>& data) = 0;
-
-   protected:
-    virtual ~Delegate() = default;
-
-   private:
-    OSP_DISALLOW_COPY_AND_ASSIGN(Delegate);
   };
 
   // Allows different close, termination, and destruction behavior for both
-  // possible parents: controller and receiver.  This is different from the
-  // normal delegate above, which would be supplied by the embedder to link it's
-  // presentation connection functionality.
-  class ParentDelegate {
+  // possible parents: controller and receiver.
+  class Controller {
    public:
-    ParentDelegate() = default;
-    virtual ~ParentDelegate() = default;
+    Controller();
+    Controller(const Controller&) = delete;
+    Controller& operator=(const Controller&) = delete;
+    Controller(Controller&&) noexcept = delete;
+    Controller& operator=(Controller&&) noexcept = delete;
+    virtual ~Controller();
 
     virtual Error CloseConnection(Connection* connection,
                                   CloseReason reason) = 0;
+    // Called by the embedder to report that a presentation has been
+    // terminated.
     virtual Error OnPresentationTerminated(const std::string& presentation_id,
+                                           TerminationSource source,
                                            TerminationReason reason) = 0;
     virtual void OnConnectionDestroyed(Connection* connection) = 0;
-
-   private:
-    OSP_DISALLOW_COPY_AND_ASSIGN(ParentDelegate);
   };
 
   struct PresentationInfo {
@@ -117,22 +108,28 @@ class Connection {
   // Constructs a new connection using |delegate| for callbacks.
   Connection(const PresentationInfo& info,
              Delegate* delegate,
-             ParentDelegate* parent_delegate);
+             Controller* controller);
+  Connection(const Connection&) = delete;
+  Connection& operator=(const Connection&) = delete;
+  Connection(Connection&&) noexcept = delete;
+  Connection& operator=(Connection&&) noexcept = delete;
   ~Connection();
 
   // Returns the ID and URL of this presentation.
-  const PresentationInfo& presentation_info() const { return presentation_; }
+  const PresentationInfo& presentation_info() const {
+    return presentation_info_;
+  }
 
   State state() const { return state_; }
 
-  ProtocolConnection* get_protocol_connection() const {
+  ProtocolConnection* protocol_connection() const {
     return protocol_connection_.get();
   }
 
   // These methods should only be called when we are connected.
-  uint64_t endpoint_id() const {
-    OSP_CHECK(endpoint_id_);
-    return endpoint_id_.value();
+  uint64_t instance_id() const {
+    OSP_CHECK(instance_id_);
+    return instance_id_.value();
   }
   uint64_t connection_id() const {
     OSP_CHECK(connection_id_);
@@ -151,21 +148,21 @@ class Connection {
   Error Close(CloseReason reason);
 
   // Terminates the presentation associated with this connection.
-  void Terminate(TerminationReason reason);
+  void Terminate(TerminationSource source, TerminationReason reason);
 
   void OnConnecting();
 
   // Called by the receiver when the OnPresentationStarted logic happens. This
   // notifies the delegate and updates our internal stream and ids.
   void OnConnected(uint64_t connection_id,
-                   uint64_t endpoint_id,
+                   uint64_t instance_id,
                    std::unique_ptr<ProtocolConnection> stream);
 
-  void OnClosedByError(Error cause);
+  void OnClosedByError(const Error& cause);
   void OnClosedByRemote();
   void OnTerminated();
 
-  Delegate* get_delegate() { return delegate_; }
+  Delegate* delegate() { return delegate_; }
 
  private:
   // Helper method that handles closing down our internal state.
@@ -173,26 +170,29 @@ class Connection {
   // whether or not delegates should be informed).
   bool OnClosed();
 
-  PresentationInfo presentation_;
+  PresentationInfo presentation_info_;
   State state_ = State::kConnecting;
-  Delegate* delegate_;
-  ParentDelegate* parent_delegate_;
+  Delegate* delegate_ = nullptr;
+  Controller* controller_ = nullptr;
   std::optional<uint64_t> connection_id_;
-  std::optional<uint64_t> endpoint_id_;
+  std::optional<uint64_t> instance_id_;
   std::unique_ptr<ProtocolConnection> protocol_connection_;
-
-  OSP_DISALLOW_COPY_AND_ASSIGN(Connection);
 };
 
 class ConnectionManager final : public MessageDemuxer::MessageCallback {
  public:
-  explicit ConnectionManager(MessageDemuxer* demuxer);
+  explicit ConnectionManager(MessageDemuxer& demuxer);
+  ConnectionManager(const ConnectionManager&) = delete;
+  ConnectionManager& operator=(const ConnectionManager&) = delete;
+  ConnectionManager(ConnectionManager&&) noexcept = delete;
+  ConnectionManager& operator=(ConnectionManager&&) noexcept = delete;
+  ~ConnectionManager();
 
   void AddConnection(Connection* connection);
   void RemoveConnection(Connection* connection);
 
   // MessasgeDemuxer::MessageCallback overrides.
-  ErrorOr<size_t> OnStreamMessage(uint64_t endpoint_id,
+  ErrorOr<size_t> OnStreamMessage(uint64_t instance_id,
                                   uint64_t connection_id,
                                   msgs::Type message_type,
                                   const uint8_t* buffer,
@@ -200,18 +200,16 @@ class ConnectionManager final : public MessageDemuxer::MessageCallback {
                                   Clock::time_point now) override;
 
   Connection* GetConnection(uint64_t connection_id);
+  size_t ConnectionCount() const;
 
  private:
-  // TODO(btolsch): Connection IDs were changed to be per-endpoint, but this
-  // table then needs to be <endpoint id, connection id> since connection id is
-  // still not unique globally.
+  // TODO(btolsch): Connection IDs were changed to be per-instance, but this
+  // table then needs to be <instance id, connection id> since connection id
+  // is still not unique globally.
   std::map<uint64_t, Connection*> connections_;
 
   MessageDemuxer::MessageWatch message_watch_;
-  MessageDemuxer::MessageWatch close_request_watch_;
   MessageDemuxer::MessageWatch close_event_watch_;
-
-  OSP_DISALLOW_COPY_AND_ASSIGN(ConnectionManager);
 };
 
 }  // namespace openscreen::osp

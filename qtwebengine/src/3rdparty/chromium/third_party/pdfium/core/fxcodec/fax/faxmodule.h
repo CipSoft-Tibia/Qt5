@@ -12,7 +12,7 @@
 #include <memory>
 
 #include "build/build_config.h"
-#include "third_party/base/containers/span.h"
+#include "core/fxcrt/span.h"
 
 #if BUILDFLAG(IS_WIN)
 #include "core/fxcrt/data_vector.h"
@@ -39,8 +39,7 @@ class FaxModule {
       int Rows);
 
   // Return the ending bit position.
-  static int FaxG4Decode(const uint8_t* src_buf,
-                         uint32_t src_size,
+  static int FaxG4Decode(pdfium::span<const uint8_t> src_buf,
                          int starting_bitpos,
                          int width,
                          int height,

@@ -1,6 +1,5 @@
 [mouseSelection]
-opensuse-leap
-qnx
+*
 
 # QTBUG-78846
 [mouseSelectionMode]
@@ -37,4 +36,12 @@ opensuse-leap
 
 # QTBUG-118066
 [inFlickableTouch]
+opensuse-leap
+
+# QTBUG-132632
+[cursorDelegate]
+opensuse-leap
+
+# QTBUG-132650
+[overwriteMode]
 opensuse-leap

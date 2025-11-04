@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qfilesystemiterator_p.h"
 #include "qfilesystemengine_p.h"
@@ -7,6 +8,7 @@
 #include "qplatformdefs.h"
 
 #include <QtCore/qt_windows.h>
+#include <QtCore/private/wcharhelpers_win_p.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -69,7 +71,8 @@ bool QFileSystemIterator::advance(QFileSystemEntry &fileEntry, QFileSystemMetaDa
         int searchOps =  0;         // FindExSearchNameMatch
         if (onlyDirs)
             searchOps = 1 ;         // FindExSearchLimitToDirectories
-        findFileHandle = FindFirstFileEx((const wchar_t *)nativePath.utf16(), FINDEX_INFO_LEVELS(infoLevel), &findData,
+        findFileHandle = FindFirstFileEx(qt_castToWchar(nativePath),
+                                         FINDEX_INFO_LEVELS(infoLevel), &findData,
                                          FINDEX_SEARCH_OPS(searchOps), 0, dwAdditionalFlags);
         if (findFileHandle == INVALID_HANDLE_VALUE) {
             if (nativePath.startsWith("\\\\?\\UNC\\"_L1)) {
@@ -104,7 +107,7 @@ bool QFileSystemIterator::advance(QFileSystemEntry &fileEntry, QFileSystemMetaDa
         QString fileName = QString::fromWCharArray(findData.cFileName);
         fileEntry = QFileSystemEntry(dirPath + fileName);
         metaData = QFileSystemMetaData();
-        if (!fileName.endsWith(".lnk"_L1)) {
+        if (findData.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY || !fileName.endsWith(".lnk"_L1)) {
             metaData.fillFromFindData(findData, true);
         }
         return true;

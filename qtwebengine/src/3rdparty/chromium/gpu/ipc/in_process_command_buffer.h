@@ -10,10 +10,10 @@
 
 #include <map>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
-#include <optional>
 #include "base/compiler_specific.h"
 #include "base/functional/callback.h"
 #include "base/functional/callback_helpers.h"
@@ -59,13 +59,10 @@ namespace gfx {
 struct GpuFenceHandle;
 }
 
-namespace viz {
-class GpuTaskSchedulerHelper;
-}
-
 namespace gpu {
 class SharedContextState;
 class GpuProcessShmCount;
+class GpuTaskSchedulerHelper;
 class SharedImageInterface;
 class SyncPointClientState;
 struct ContextCreationAttribs;
@@ -160,6 +157,7 @@ class GL_IN_PROCESS_CONTEXT_EXPORT InProcessCommandBuffer
   void OnSwapBuffers(uint64_t swap_id, uint32_t flags) override;
   void ScheduleGrContextCleanup() override;
   void HandleReturnData(base::span<const uint8_t> data) override;
+  bool ShouldYield() override;
 
   const gles2::FeatureInfo* GetFeatureInfo() const;
 
@@ -307,7 +305,7 @@ class GL_IN_PROCESS_CONTEXT_EXPORT InProcessCommandBuffer
 
   // Pointer to the SingleTaskSequence that actually does the scheduling.
   raw_ptr<SingleTaskSequence> task_sequence_;
-  std::unique_ptr<SharedImageInterfaceInProcess> shared_image_interface_;
+  scoped_refptr<SharedImageInterfaceInProcess> shared_image_interface_;
 
   // The group of contexts that share namespaces with this context.
   scoped_refptr<gles2::ContextGroup> context_group_;

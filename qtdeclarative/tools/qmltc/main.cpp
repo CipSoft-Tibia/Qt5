@@ -291,8 +291,14 @@ int main(int argc, char **argv)
                                   QString(), QString(), QString());
     passMan->analyze(QQmlJSScope::createQQmlSAElement(visitor.result()));
 
-    if (logger.hasErrors())
+    if (logger.hasErrors()) {
+        if (visitor.hasSeenCustomParsers()) {
+            logger.log(QStringLiteral("qmltc does not support custom parsers such as ListModel or "
+                                      "old forms of Connections and PropertyChanges."),
+                       qmlCompiler, QQmlJS::SourceLocation());
+        }
         return EXIT_FAILURE;
+    }
 
     QList<QQmlJS::DiagnosticMessage> warnings = importer.takeGlobalWarnings();
     if (!warnings.isEmpty()) {

@@ -37,7 +37,15 @@ const UIStrings = {
   /**
    *@description The UI destination when right clicking an item that can be revealed
    */
+  timelinePanel: 'Performance panel',
+  /**
+   *@description The UI destination when right clicking an item that can be revealed
+   */
   memoryInspectorPanel: 'Memory inspector panel',
+  /**
+   * @description The UI destination when revealing loaded resources through the Developer Resources Panel
+   */
+  developerResourcesPanel: 'Developer Resources panel',
 };
 const str_ = i18n.i18n.registerUIStrings('core/common/Revealer.ts', UIStrings);
 const i18nLazyString = i18n.i18n.getLazilyComputedLocalizedString.bind(undefined, str_);
@@ -159,11 +167,13 @@ export interface RevealerRegistration<T> {
 }
 
 export const RevealerDestination = {
+  DEVELOPER_RESOURCES_PANEL: i18nLazyString(UIStrings.developerResourcesPanel),
   ELEMENTS_PANEL: i18nLazyString(UIStrings.elementsPanel),
   STYLES_SIDEBAR: i18nLazyString(UIStrings.stylesSidebar),
   CHANGES_DRAWER: i18nLazyString(UIStrings.changesDrawer),
   ISSUES_VIEW: i18nLazyString(UIStrings.issuesView),
   NETWORK_PANEL: i18nLazyString(UIStrings.networkPanel),
+  TIMELINE_PANEL: i18nLazyString(UIStrings.timelinePanel),
   APPLICATION_PANEL: i18nLazyString(UIStrings.applicationPanel),
   SOURCES_PANEL: i18nLazyString(UIStrings.sourcesPanel),
   MEMORY_INSPECTOR_PANEL: i18nLazyString(UIStrings.memoryInspectorPanel),

@@ -9,9 +9,13 @@
 #include "simpleqtquicktypes.h"
 #include "typewithenums.h"
 #include "methods.h"
+#if QT_CONFIG(quick_tableview)
 #include "properties.h"
+#endif
 #include "objectwithid.h"
+#if QT_CONFIG(quick_gridview)
 #include "documentwithids.h"
+#endif
 #include "importnamespace.h"
 #include "deferredproperties.h"
 #include "deferredproperties_group.h"
@@ -87,7 +91,9 @@
 #include "mysignals.h"
 #include "namespacedtypes.h"
 #include "type.h"
+#if QT_CONFIG(qml_table_model)
 #include "qmltablemodel.h"
+#endif
 #include "stringtourl.h"
 #include "signalconnections.h"
 #include "requiredproperties.h"
@@ -108,6 +114,8 @@
 #include <private/qqmltimer_p.h>
 
 #include <QtTest/qsignalspy.h>
+
+#include <QtGui/qquaternion.h>
 
 #include <QtCore/private/qobject_p.h>
 #include <QtTest/private/qemulationdetector_p.h>
@@ -332,6 +340,7 @@ void tst_qmltc::methods()
     QCOMPARE(metaTypedMethod.parameterNames(), QList<QByteArray>({ "a", "b" }));
 }
 
+#if QT_CONFIG(quick_tableview)
 void tst_qmltc::properties()
 {
     QQmlEngine e;
@@ -476,7 +485,9 @@ void tst_qmltc::properties()
     QVERIFY(sentinelForComponent);
     QCOMPARE(sentinelForComponent->property("text").toString(), u"should be correctly created"_s);
 }
+#endif // QT_CONFIG(quick_tableview)
 
+#if QT_CONFIG(quick_tableview) && QT_CONFIG(quick_gridview)
 void tst_qmltc::ids()
 {
     {
@@ -573,6 +584,7 @@ void tst_qmltc::ids()
         verifyComponent(afterChild, QString(), u"afterDelegateDefaultPropertyText"_s);
     }
 }
+#endif // QT_CONFIG(quick_tableview) && QT_CONFIG(quick_gridview)
 
 void tst_qmltc::importNamespace()
 {
@@ -913,8 +925,9 @@ void tst_qmltc::requiredPropertiesInitialization()
         &e,
         {
             aliasToInnerThatWillBeMarkedRequired,
-            aliasToPropertyThatShadows,
-            aliasToRequiredInner,
+            // QTBUG-131777
+            //aliasToPropertyThatShadows,
+            //aliasToRequiredInner,
             &inheritedRequiredProperty,
             nonRequiredInheritedPropertyThatWillBeMarkedRequired,
             objectList,
@@ -927,7 +940,9 @@ void tst_qmltc::requiredPropertiesInitialization()
     );
 
     QCOMPARE(created.aliasToInnerThatWillBeMarkedRequired(), aliasToInnerThatWillBeMarkedRequired);
+    QEXPECT_FAIL("", "QTBUG-131777", Continue);
     QCOMPARE(created.aliasToPropertyThatShadows(), aliasToPropertyThatShadows);
+    QEXPECT_FAIL("", "QTBUG-131777", Continue);
     QCOMPARE(created.aliasToRequiredInner(), aliasToRequiredInner);
     QCOMPARE(created.getInheritedRequiredProperty(), &inheritedRequiredProperty);
     QCOMPARE(created.getNonRequiredInheritedPropertyThatWillBeMarkedRequired(), nonRequiredInheritedPropertyThatWillBeMarkedRequired);

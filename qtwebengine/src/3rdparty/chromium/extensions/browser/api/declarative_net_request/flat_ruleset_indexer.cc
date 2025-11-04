@@ -2,6 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#ifdef UNSAFE_BUFFERS_BUILD
+// TODO(crbug.com/351564777): Remove this and convert code to safer constructs.
+#pragma allow_unsafe_buffers
+#endif
+
 #include "extensions/browser/api/declarative_net_request/flat_ruleset_indexer.h"
 
 #include <string>
@@ -12,11 +17,11 @@
 #include "base/strings/escape.h"
 #include "base/strings/string_util.h"
 #include "extensions/browser/api/declarative_net_request/constants.h"
+#include "extensions/browser/api/declarative_net_request/flat/extension_ruleset_generated.h"
 #include "extensions/browser/api/declarative_net_request/indexed_rule.h"
 #include "extensions/browser/api/declarative_net_request/utils.h"
 
-namespace extensions {
-namespace declarative_net_request {
+namespace extensions::declarative_net_request {
 
 namespace {
 
@@ -42,6 +47,24 @@ bool IsBeforeRequestRule(const IndexedRule& indexed_rule) {
          indexed_rule.excluded_response_headers.empty();
 }
 
+template <typename T>
+FlatStringListOffset BuildVectorOfSharedStringsImpl(
+    flatbuffers::FlatBufferBuilder* builder,
+    const T& container,
+    bool is_lower_case) {
+  if (container.empty()) {
+    return FlatStringListOffset();
+  }
+
+  std::vector<FlatStringOffset> offsets;
+  offsets.reserve(container.size());
+  for (const std::string& str : container) {
+    offsets.push_back(builder->CreateSharedString(
+        is_lower_case ? base::ToLowerASCII(str) : str));
+  }
+  return builder->CreateVector(offsets);
+}
+
 // Writes to `builder` a flatbuffer vector of shared strings corresponding to
 // `container` and returns the offset to it. If `container` is empty, returns an
 // empty offset.
@@ -49,20 +72,25 @@ template <typename T>
 FlatStringListOffset BuildVectorOfSharedStrings(
     flatbuffers::FlatBufferBuilder* builder,
     const T& container) {
-  if (container.empty())
-    return FlatStringListOffset();
+  return BuildVectorOfSharedStringsImpl(builder, container,
+                                        /*is_lower_case=*/false);
+}
 
-  std::vector<FlatStringOffset> offsets;
-  offsets.reserve(container.size());
-  for (const std::string& str : container)
-    offsets.push_back(builder->CreateSharedString(str));
-  return builder->CreateVector(offsets);
+// Same as `BuildVectorOfSharedStrings` except all strings are converted to
+// lower-case in the offset.
+template <typename T>
+FlatStringListOffset BuildVectorOfSharedLowercaseStrings(
+    flatbuffers::FlatBufferBuilder* builder,
+    const T& container) {
+  return BuildVectorOfSharedStringsImpl(builder, container,
+                                        /*is_lower_case=*/true);
 }
 
 FlatIntListOffset BuildIntVector(flatbuffers::FlatBufferBuilder* builder,
                                  const base::flat_set<int>& input) {
-  if (input.empty())
+  if (input.empty()) {
     return FlatIntListOffset();
+  }
 
   return builder->CreateVector(
       std::vector<int32_t>(input.begin(), input.end()));
@@ -92,8 +120,9 @@ FlatOffset<flat::UrlTransform> BuildTransformOffset(
 
   auto skip_separator_and_create_string_offset =
       [builder](const std::optional<std::string>& str, char separator) {
-        if (!str)
+        if (!str) {
           return FlatStringOffset();
+        }
 
         DCHECK(!str->empty());
         DCHECK_EQ(separator, str->at(0));
@@ -202,8 +231,24 @@ FlatVectorOffset<flat::ModifyHeaderInfo> BuildModifyHeaderInfoOffset(
 
     FlatStringOffset header_name =
         builder->CreateSharedString(base::ToLowerASCII(header_info.header));
+    FlatStringOffset header_regex_filter =
+        header_info.regex_filter
+            ? builder->CreateSharedString(*header_info.regex_filter)
+            : FlatStringOffset();
+    FlatStringOffset header_substitution_filter =
+        header_info.regex_substitution
+            ? builder->CreateSharedString(*header_info.regex_substitution)
+            : FlatStringOffset();
+
+    flatbuffers::Offset<flat::RegexFilterOptions> header_regex_options =
+        header_info.regex_options
+            ? flat::CreateRegexFilterOptions(
+                  *builder, *header_info.regex_options->match_all)
+            : flat::CreateRegexFilterOptions(*builder);
+
     flat_modify_header_list.push_back(flat::CreateModifyHeaderInfo(
-        *builder, operation, header_name, header_value));
+        *builder, operation, header_name, header_value, header_regex_filter,
+        header_substitution_filter, header_regex_options));
   }
 
   return builder->CreateVector(flat_modify_header_list);
@@ -217,12 +262,12 @@ FlatVectorOffset<flat::HeaderCondition> BuildHeaderConditionsOffset(
   for (const dnr_api::HeaderInfo& info : header_infos) {
     FlatStringOffset header = builder->CreateSharedString(info.header);
     FlatStringListOffset values =
-        info.values ? BuildVectorOfSharedStrings(builder, *info.values)
+        info.values ? BuildVectorOfSharedLowercaseStrings(builder, *info.values)
                     : FlatStringListOffset();
     FlatStringListOffset excluded_values =
-        info.excluded_values
-            ? BuildVectorOfSharedStrings(builder, *info.excluded_values)
-            : FlatStringListOffset();
+        info.excluded_values ? BuildVectorOfSharedLowercaseStrings(
+                                   builder, *info.excluded_values)
+                             : FlatStringListOffset();
 
     flat_header_infos.push_back(
         flat::CreateHeaderCondition(*builder, header, values, excluded_values));
@@ -250,9 +295,9 @@ FlatOffset<flatbuffers::Vector<uint8_t>> BuildEmbedderConditionsOffset(
     FlatVectorOffset<flat::HeaderCondition> response_headers_offset =
         BuildHeaderConditionsOffset(&nested_builder,
                                     indexed_rule.response_headers);
-    FlatStringListOffset excluded_response_headers_offset =
-        BuildVectorOfSharedStrings(&nested_builder,
-                                   indexed_rule.excluded_response_headers);
+    FlatVectorOffset<flat::HeaderCondition> excluded_response_headers_offset =
+        BuildHeaderConditionsOffset(&nested_builder,
+                                    indexed_rule.excluded_response_headers);
 
     auto nested_flatbuffer_root_offset = flat::CreateEmbedderConditions(
         nested_builder, tab_ids_included_offset, tab_ids_excluded_offset,
@@ -312,8 +357,9 @@ void FlatRulesetIndexer::AddUrlRule(const IndexedRule& indexed_rule) {
       url_pattern_index::flat::UrlPatternType_REGEXP) {
     std::vector<UrlPatternIndexBuilder*> builders = GetBuilders(indexed_rule);
     CHECK(!builders.empty());
-    for (UrlPatternIndexBuilder* builder : builders)
+    for (UrlPatternIndexBuilder* builder : builders) {
       builder->IndexUrlRule(offset);
+    }
   } else {
     // A UrlPatternIndex is not built for regex rules. These are stored
     // separately as part of flat::ExtensionIndexedRuleset.
@@ -425,9 +471,8 @@ FlatRulesetIndexer::GetBuilders(const IndexedRule& indexed_rule) {
     case dnr_api::RuleActionType::kNone:
       break;
   }
-  NOTREACHED();
+  NOTREACHED_IN_MIGRATION();
   return {};
 }
 
-}  // namespace declarative_net_request
-}  // namespace extensions
+}  // namespace extensions::declarative_net_request

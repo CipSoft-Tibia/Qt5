@@ -25,60 +25,116 @@
 # OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-add_library(dawn_utils STATIC ${DAWN_PLACEHOLDER_FILE})
-common_compile_options(dawn_utils)
-target_sources(dawn_utils PRIVATE
-    "BinarySemaphore.cpp"
-    "BinarySemaphore.h"
-    "ComboRenderBundleEncoderDescriptor.cpp"
+###############################################################################
+# Dawn WGPU utilities
+#   - Used in tests and samples
+###############################################################################
+set(private_wgpu_depends)
+if (TINT_BUILD_SPV_READER)
+      list(APPEND private_wgpu_depends SPIRV-Tools-opt)
+endif()
+
+dawn_add_library(
+  dawn_wgpu_utils
+  ENABLE_EMSCRIPTEN
+  UTILITY_TARGET dawn_internal_config
+  PRIVATE_HEADERS
     "ComboRenderBundleEncoderDescriptor.h"
-    "ComboRenderPipelineDescriptor.cpp"
     "ComboRenderPipelineDescriptor.h"
-    "PlatformDebugLogger.h"
-    "SystemUtils.cpp"
-    "SystemUtils.h"
-    "TerribleCommandBuffer.cpp"
-    "TerribleCommandBuffer.h"
-    "TestUtils.cpp"
-    "TestUtils.h"
-    "TextureUtils.cpp"
     "TextureUtils.h"
-    "Timer.h"
-    "WGPUHelpers.cpp"
     "WGPUHelpers.h"
-    "WireHelper.cpp"
+  SOURCES
+    "ComboRenderBundleEncoderDescriptor.cpp"
+    "ComboRenderPipelineDescriptor.cpp"
+    "TextureUtils.cpp"
+    "WGPUHelpers.cpp"
+  DEPENDS
+    webgpu_cpp
+    dawn::dawn_common
+  PRIVATE_DEPENDS
+    ${private_wgpu_depends}
+)
+
+# Needed by WGPUHelpers
+target_compile_definitions(dawn_wgpu_utils
+  PUBLIC
+    "-DTINT_BUILD_SPV_READER=$<BOOL:${TINT_BUILD_SPV_READER}>")
+
+###############################################################################
+# Dawn test utilities
+#   - Used in tests
+###############################################################################
+dawn_add_library(
+  dawn_test_utils
+  UTILITY_TARGET dawn_internal_config
+  PRIVATE_HEADERS
+    "BinarySemaphore.h"
+    "TerribleCommandBuffer.h"
+    "TestUtils.h"
     "WireHelper.h"
+  SOURCES
+    "BinarySemaphore.cpp"
+    "TerribleCommandBuffer.cpp"
+    "TestUtils.cpp"
+    "WireHelper.cpp"
+  DEPENDS
+    webgpu_cpp
+    dawn::dawn_common
+    dawn::dawn_wire
+    dawn::partition_alloc
 )
-target_link_libraries(dawn_utils
-    PUBLIC dawncpp_headers
-           partition_alloc
-    PRIVATE dawn_internal_config
-            dawn_common
-            dawn_native
-            dawn_proc
-            dawn_wire
-            SPIRV-Tools-opt
+
+###############################################################################
+# Dawn system utilities
+#   - Used in tests and samples
+###############################################################################
+set(private_system_headers
+    "CommandLineParser.h"
+    "PlatformDebugLogger.h"
+    "SystemUtils.h"
+    "Timer.h"
 )
+set(system_sources
+    "CommandLineParser.cpp"
+    "SystemUtils.cpp"
+)
+set(private_system_depends)
 
-if(WIN32 AND NOT WINDOWS_STORE)
-    target_sources(dawn_utils PRIVATE "WindowsDebugLogger.cpp")
-else()
-    target_sources(dawn_utils PRIVATE "EmptyDebugLogger.cpp")
-endif()
+if (WIN32 AND NOT WINDOWS_STORE)
+  list(APPEND system_sources "WindowsDebugLogger.cpp")
+else ()
+  list(APPEND system_sources "EmptyDebugLogger.cpp")
+endif ()
 
-if(WIN32)
-    target_sources(dawn_utils PRIVATE "WindowsTimer.cpp")
-elseif(APPLE)
-    target_sources(dawn_utils PRIVATE
-        "OSXTimer.cpp"
-        "ObjCUtils.h"
-        "ObjCUtils.mm"
-    )
-    target_link_libraries(dawn_utils PRIVATE "-framework QuartzCore")
-elseif(UNIX)
-    target_sources(dawn_utils PRIVATE "PosixTimer.cpp")
-endif()
+if (WIN32)
+  list(APPEND system_sources "WindowsTimer.cpp")
+elseif (APPLE)
+  list(APPEND private_system_headers
+      "ObjCUtils.h"
+  )
+  list(APPEND system_sources
+      "ObjCUtils.mm"
+      "OSXTimer.cpp"
+  )
+  list(APPEND private_system_depends "-framework QuartzCore")
+elseif (UNIX)
+    list(APPEND system_sources "PosixTimer.cpp")
+endif ()
 
-if (DAWN_ENABLE_METAL)
-    target_link_libraries(dawn_utils PRIVATE "-framework Metal")
-endif()
+dawn_add_library(
+  dawn_system_utils
+  ENABLE_EMSCRIPTEN
+  UTILITY_TARGET dawn_internal_config
+  PRIVATE_HEADERS
+    ${private_system_headers}
+  SOURCES
+    ${system_sources}
+  DEPENDS
+    dawn::dawn_common
+    absl::span
+  PRIVATE_DEPENDS
+    absl::strings
+    absl::str_format_internal
+    absl::flat_hash_map
+    ${private_system_depends}
+)

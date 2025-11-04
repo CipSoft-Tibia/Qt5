@@ -13,13 +13,13 @@
 #include "cc/base/invalidation_region.h"
 #include "cc/benchmarks/micro_benchmark_controller.h"
 #include "cc/layers/layer.h"
+#include "cc/layers/recording_source.h"
 
 namespace cc {
 
 class ContentLayerClient;
 class DisplayItemList;
 class RasterSource;
-class RecordingSource;
 
 class CC_EXPORT PictureLayer : public Layer {
  public:
@@ -30,15 +30,8 @@ class CC_EXPORT PictureLayer : public Layer {
 
   void ClearClient();
 
-  void SetNearestNeighbor(bool nearest_neighbor);
-  bool nearest_neighbor() const {
-    return picture_layer_inputs_.nearest_neighbor;
-  }
-
   void SetIsBackdropFilterMask(bool is_backdrop_filter_mask);
-  bool is_backdrop_filter_mask() const {
-    return picture_layer_inputs_.is_backdrop_filter_mask;
-  }
+  bool is_backdrop_filter_mask() const { return is_backdrop_filter_mask_; }
 
   // Layer interface.
   std::unique_ptr<LayerImpl> CreateLayerImpl(
@@ -55,32 +48,16 @@ class CC_EXPORT PictureLayer : public Layer {
   void CaptureContent(const gfx::Rect& rect,
                       std::vector<NodeInfo>* content) const override;
 
-  ContentLayerClient* client() { return picture_layer_inputs_.client; }
+  ContentLayerClient* client() { return client_; }
 
-  RecordingSource* GetRecordingSourceForTesting() {
-    return recording_source_.Write(*this).get();
+  RecordingSource& GetRecordingSourceForTesting() {
+    return recording_source_.Write(*this);
   }
-
-  const RecordingSource* GetRecordingSourceForTesting() const {
+  const RecordingSource& GetRecordingSourceForTesting() const {
     return recording_source_.Read(*this);
   }
 
-  gfx::Vector2dF DirectlyCompositedImageDefaultRasterScaleForTesting() const {
-    return picture_layer_inputs_.directly_composited_image_default_raster_scale;
-  }
-
  protected:
-  // Encapsulates all data, callbacks or interfaces received from the embedder.
-  struct PictureLayerInputs {
-    PictureLayerInputs();
-    ~PictureLayerInputs();
-
-    raw_ptr<ContentLayerClient, DanglingUntriaged> client = nullptr;
-    bool nearest_neighbor = false;
-    bool is_backdrop_filter_mask = false;
-    gfx::Vector2dF directly_composited_image_default_raster_scale;
-  };
-
   explicit PictureLayer(ContentLayerClient* client);
   ~PictureLayer() override;
 
@@ -88,8 +65,6 @@ class CC_EXPORT PictureLayer : public Layer {
 
   // Can be overridden in tests to customize RasterSource.
   virtual scoped_refptr<RasterSource> CreateRasterSource() const;
-
-  PictureLayerInputs picture_layer_inputs_;
 
  private:
   friend class TestSerializationPictureLayer;
@@ -99,7 +74,12 @@ class CC_EXPORT PictureLayer : public Layer {
 
   const DisplayItemList* GetDisplayItemList() const;
 
-  ProtectedSequenceWritable<std::unique_ptr<RecordingSource>> recording_source_;
+  // These fields are not protected because they are only modified during
+  // LayerTreeHost::PaintContent().
+  raw_ptr<ContentLayerClient, DanglingUntriaged> client_ = nullptr;
+  bool is_backdrop_filter_mask_ = false;
+
+  ProtectedSequenceWritable<RecordingSource> recording_source_;
   ProtectedSequenceForbidden<devtools_instrumentation::ScopedLayerObjectTracker>
       instrumentation_object_tracker_;
 

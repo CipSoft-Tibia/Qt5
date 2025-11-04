@@ -56,7 +56,7 @@ WebNavigationType WebPerformanceMetricsForReporting::GetNavigationType() const {
     case PerformanceNavigation::kTypeReserved:
       return kWebNavigationTypeOther;
   }
-  NOTREACHED();
+  NOTREACHED_IN_MIGRATION();
   return kWebNavigationTypeOther;
 }
 
@@ -99,6 +99,19 @@ double WebPerformanceMetricsForReporting::InputForNavigationStart() const {
 
 double WebPerformanceMetricsForReporting::ResponseStart() const {
   return base::Milliseconds(private_->timing()->responseStart()).InSecondsF();
+}
+
+double WebPerformanceMetricsForReporting::DomainLookupStart() const {
+  return base::Milliseconds(private_->timing()->domainLookupStart())
+      .InSecondsF();
+}
+
+double WebPerformanceMetricsForReporting::DomainLookupEnd() const {
+  return base::Milliseconds(private_->timing()->domainLookupEnd()).InSecondsF();
+}
+
+double WebPerformanceMetricsForReporting::ConnectStart() const {
+  return base::Milliseconds(private_->timing()->connectStart()).InSecondsF();
 }
 
 double WebPerformanceMetricsForReporting::DomContentLoadedEventStart() const {
@@ -179,27 +192,27 @@ double WebPerformanceMetricsForReporting::FirstInputOrScrollNotifiedTimestamp()
       .InSecondsF();
 }
 
-absl::optional<base::TimeDelta>
+std::optional<base::TimeDelta>
 WebPerformanceMetricsForReporting::FirstInputDelay() const {
   return private_->timingForReporting()->FirstInputDelay();
 }
 
-absl::optional<base::TimeDelta>
+std::optional<base::TimeDelta>
 WebPerformanceMetricsForReporting::FirstInputTimestamp() const {
   return private_->timingForReporting()->FirstInputTimestamp();
 }
 
-absl::optional<base::TimeTicks>
+std::optional<base::TimeTicks>
 WebPerformanceMetricsForReporting::FirstInputTimestampAsMonotonicTime() const {
   return private_->timingForReporting()->FirstInputTimestampAsMonotonicTime();
 }
 
-absl::optional<base::TimeDelta>
+std::optional<base::TimeDelta>
 WebPerformanceMetricsForReporting::FirstScrollDelay() const {
   return private_->timingForReporting()->FirstScrollDelay();
 }
 
-absl::optional<base::TimeDelta>
+std::optional<base::TimeDelta>
 WebPerformanceMetricsForReporting::FirstScrollTimestamp() const {
   return private_->timingForReporting()->FirstScrollTimestamp();
 }
@@ -245,29 +258,35 @@ double WebPerformanceMetricsForReporting::
       .InSecondsF();
 }
 
-absl::optional<base::TimeTicks>
-WebPerformanceMetricsForReporting::LastPortalActivatedPaint() const {
-  return private_->timingForReporting()->LastPortalActivatedPaint();
-}
-
-absl::optional<base::TimeDelta>
+std::optional<base::TimeDelta>
 WebPerformanceMetricsForReporting::PrerenderActivationStart() const {
   return private_->timingForReporting()->PrerenderActivationStart();
 }
 
-absl::optional<base::TimeDelta>
+std::optional<base::TimeDelta>
 WebPerformanceMetricsForReporting::UserTimingMarkFullyLoaded() const {
   return private_->timingForReporting()->UserTimingMarkFullyLoaded();
 }
 
-absl::optional<base::TimeDelta>
+std::optional<base::TimeDelta>
 WebPerformanceMetricsForReporting::UserTimingMarkFullyVisible() const {
   return private_->timingForReporting()->UserTimingMarkFullyVisible();
 }
 
-absl::optional<base::TimeDelta>
+std::optional<base::TimeDelta>
 WebPerformanceMetricsForReporting::UserTimingMarkInteractive() const {
   return private_->timingForReporting()->UserTimingMarkInteractive();
+}
+
+std::optional<std::tuple<std::string, base::TimeDelta>>
+WebPerformanceMetricsForReporting::CustomUserTimingMark() const {
+  auto mark = private_->timingForReporting()->CustomUserTimingMark();
+  if (!mark) {
+    return std::nullopt;
+  }
+  const auto [name, start_time] = mark.value();
+
+  return std::make_tuple(name.Utf8(), start_time);
 }
 
 WebPerformanceMetricsForReporting::WebPerformanceMetricsForReporting(

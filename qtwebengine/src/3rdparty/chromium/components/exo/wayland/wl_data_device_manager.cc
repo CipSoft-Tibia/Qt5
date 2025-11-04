@@ -54,7 +54,7 @@ uint32_t WaylandDataDeviceManagerDndAction(DndAction action) {
     case DndAction::kAsk:
       return WL_DATA_DEVICE_MANAGER_DND_ACTION_ASK;
   }
-  NOTREACHED();
+  NOTREACHED_IN_MIGRATION();
 }
 
 uint32_t WaylandDataDeviceManagerDndActions(
@@ -76,7 +76,7 @@ DndAction DataDeviceManagerDndAction(uint32_t value) {
     case WL_DATA_DEVICE_MANAGER_DND_ACTION_ASK:
       return DndAction::kAsk;
     default:
-      NOTREACHED();
+      NOTREACHED_IN_MIGRATION();
       return DndAction::kNone;
   }
 }
@@ -112,7 +112,7 @@ class WaylandDataSourceDelegate : public DataSourceDelegate {
     return surface &&
            wl_resource_get_client(GetSurfaceResource(surface)) == client_;
   }
-  void OnTarget(const absl::optional<std::string>& mime_type) override {
+  void OnTarget(const std::optional<std::string>& mime_type) override {
     wl_data_source_send_target(data_source_resource_,
                                mime_type ? mime_type->c_str() : nullptr);
     wl_client_flush(wl_resource_get_client(data_source_resource_));
@@ -148,6 +148,9 @@ class WaylandDataSourceDelegate : public DataSourceDelegate {
       wl_client_flush(wl_resource_get_client(data_source_resource_));
     }
   }
+  SecurityDelegate* GetSecurityDelegate() const override {
+    return ::exo::wayland::GetSecurityDelegate(client_);
+  }
 
  private:
   const raw_ptr<wl_client> client_;
@@ -179,8 +182,8 @@ const struct wl_data_source_interface data_source_implementation = {
 
 class WaylandDataOfferDelegate : public DataOfferDelegate {
  public:
-  explicit WaylandDataOfferDelegate(wl_resource* offer)
-      : data_offer_resource_(offer) {}
+  explicit WaylandDataOfferDelegate(wl_client* client, wl_resource* offer)
+      : client_(client), data_offer_resource_(offer) {}
 
   WaylandDataOfferDelegate(const WaylandDataOfferDelegate&) = delete;
   WaylandDataOfferDelegate& operator=(const WaylandDataOfferDelegate&) = delete;
@@ -209,8 +212,12 @@ class WaylandDataOfferDelegate : public DataOfferDelegate {
       wl_client_flush(wl_resource_get_client(data_offer_resource_));
     }
   }
+  SecurityDelegate* GetSecurityDelegate() const override {
+    return ::exo::wayland::GetSecurityDelegate(client_);
+  }
 
  private:
+  const raw_ptr<wl_client> client_;
   const raw_ptr<wl_resource> data_offer_resource_;
 };
 
@@ -281,7 +288,7 @@ class WaylandDataDeviceDelegate : public DataDeviceDelegate {
         wl_resource_create(client_, &wl_data_offer_interface,
                            wl_resource_get_version(data_device_resource_), 0);
     std::unique_ptr<DataOffer> data_offer = std::make_unique<DataOffer>(
-        new WaylandDataOfferDelegate(data_offer_resource));
+        new WaylandDataOfferDelegate(client_, data_offer_resource));
     SetDataOfferResource(data_offer.get(), data_offer_resource);
     SetImplementation(data_offer_resource, &data_offer_implementation,
                       std::move(data_offer));
@@ -327,9 +334,9 @@ class WaylandDataDeviceDelegate : public DataDeviceDelegate {
                  Surface* origin,
                  Surface* icon,
                  uint32_t serial) {
-    absl::optional<wayland::SerialTracker::EventType> event_type =
+    std::optional<wayland::SerialTracker::EventType> event_type =
         serial_tracker_->GetEventType(serial);
-    if (event_type == absl::nullopt) {
+    if (event_type == std::nullopt) {
       LOG(ERROR) << "The serial passed to StartDrag does not exist.";
       source->Cancelled();
       return;
@@ -378,7 +385,7 @@ class WaylandDataDeviceDelegate : public DataDeviceDelegate {
       source->Cancelled();
       return;
     }
-    // TODO(crbug/1371493): Remove this when bug is fixed.
+    // TODO(crbug.com/40061238): Remove this when bug is fixed.
     LOG(ERROR) << "DataDrag Started=" << serial
                << ", event_type=" << SerialTracker::ToString(*event_type);
   }
@@ -386,9 +393,9 @@ class WaylandDataDeviceDelegate : public DataDeviceDelegate {
   void SetSelection(DataDevice* data_device,
                     DataSource* source,
                     uint32_t serial) {
-    absl::optional<wayland::SerialTracker::EventType> event_type =
+    std::optional<wayland::SerialTracker::EventType> event_type =
         serial_tracker_->GetEventType(serial);
-    if (event_type == absl::nullopt) {
+    if (event_type == std::nullopt) {
       LOG(ERROR) << "The serial passed to SetSelection does not exist.";
       return;
     }

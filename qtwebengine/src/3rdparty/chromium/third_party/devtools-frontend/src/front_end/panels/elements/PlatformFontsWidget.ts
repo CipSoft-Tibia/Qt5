@@ -80,7 +80,7 @@ export class PlatformFontsWidget extends UI.ThrottledWidget.ThrottledWidget {
     super(true);
 
     this.sharedModel = sharedModel;
-    this.sharedModel.addEventListener(Events.ComputedStyleChanged, this.update, this);
+    this.sharedModel.addEventListener(Events.COMPUTED_STYLE_CHANGED, this.update, this);
 
     this.sectionTitle = document.createElement('div');
     this.sectionTitle.classList.add('title');
@@ -90,9 +90,7 @@ export class PlatformFontsWidget extends UI.ThrottledWidget.ThrottledWidget {
     this.fontStatsSection = this.contentElement.createChild('div', 'stats-section');
   }
 
-  // TODO(crbug.com/1172300) Ignored during the jsdoc to ts migration
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  override doUpdate(): Promise<any> {
+  override doUpdate(): Promise<void> {
     const cssModel = this.sharedModel.cssModel();
     const node = this.sharedModel.node();
     if (!node || !cssModel) {

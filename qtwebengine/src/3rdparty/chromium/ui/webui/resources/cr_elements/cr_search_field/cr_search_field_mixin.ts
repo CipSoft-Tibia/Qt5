@@ -7,9 +7,10 @@
  * <settings-subpage-search> for a simple implementation.
  */
 import {assertNotReached} from '//resources/js/assert.js';
-import {dedupingMixin, PolymerElement} from '//resources/polymer/v3_0/polymer/polymer_bundled.min.js';
+import type {PolymerElement} from '//resources/polymer/v3_0/polymer/polymer_bundled.min.js';
+import {dedupingMixin} from '//resources/polymer/v3_0/polymer/polymer_bundled.min.js';
 
-import {CrInputElement} from '../cr_input/cr_input.js';
+import type {CrInputElement} from '../cr_input/cr_input.js';
 
 
 type Constructor<T> = new (...args: any[]) => T;
@@ -24,26 +25,23 @@ export const CrSearchFieldMixin = dedupingMixin(
             // Prompt text to display in the search field.
             label: {
               type: String,
-              value: '',
             },
 
             // Tooltip to display on the clear search button.
             clearLabel: {
               type: String,
-              value: '',
             },
 
             hasSearchText: {
               type: Boolean,
               reflectToAttribute: true,
-              value: false,
             },
           };
         }
 
-        label: string;
-        clearLabel: string;
-        hasSearchText: boolean;
+        label: string = '';
+        clearLabel: string = '';
+        hasSearchText: boolean = false;
         private effectiveValue_: string = '';
         private searchDelayTimer_: number = -1;
 

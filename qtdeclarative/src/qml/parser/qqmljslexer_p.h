@@ -133,6 +133,8 @@ public:
     Error errorCode() const;
     QString errorMessage() const;
 
+    std::optional<DiagnosticMessage> illegalFileLengthError() const;
+
     bool canInsertAutomaticSemicolon(int token) const;
 
     enum ParenthesesState {
@@ -240,7 +242,7 @@ private:
     int scanToken();
     int scanNumber(QChar ch);
     int scanVersionNumber(QChar ch);
-    enum ScanStringMode {
+    enum ScanStringMode : char16_t {
         SingleQuote = '\'',
         DoubleQuote = '"',
         TemplateHead = '`',

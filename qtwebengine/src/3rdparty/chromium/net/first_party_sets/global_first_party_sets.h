@@ -5,6 +5,8 @@
 #ifndef NET_FIRST_PARTY_SETS_GLOBAL_FIRST_PARTY_SETS_H_
 #define NET_FIRST_PARTY_SETS_GLOBAL_FIRST_PARTY_SETS_H_
 
+#include <optional>
+
 #include "base/containers/flat_map.h"
 #include "base/containers/flat_set.h"
 #include "base/functional/function_ref.h"
@@ -16,7 +18,6 @@
 #include "net/first_party_sets/first_party_sets_context_config.h"
 #include "net/first_party_sets/local_set_declaration.h"
 #include "net/first_party_sets/sets_mutation.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 
 namespace mojo {
 template <typename DataViewType, typename T>
@@ -62,7 +63,7 @@ class NET_EXPORT GlobalFirstPartySets {
   // Respects any customization/overlay specified by `config`. This is
   // semi-agnostic to scheme: it just cares whether the scheme is secure or
   // insecure.
-  absl::optional<FirstPartySetEntry> FindEntry(
+  std::optional<FirstPartySetEntry> FindEntry(
       const SchemefulSite& site,
       const FirstPartySetsContextConfig& config) const;
 
@@ -146,9 +147,30 @@ class NET_EXPORT GlobalFirstPartySets {
 
   // Same as the public version of FindEntry, but is allowed to omit the
   // `config` argument (i.e. pass nullptr instead of a reference).
-  absl::optional<FirstPartySetEntry> FindEntry(
+  std::optional<FirstPartySetEntry> FindEntry(
       const SchemefulSite& site,
       const FirstPartySetsContextConfig* config) const;
+
+  using FlattenedSets = base::flat_map<SchemefulSite, FirstPartySetEntry>;
+
+  // Finds the existing primary sites whose sets are affected by a set of custom
+  // additions.
+  base::flat_map<SchemefulSite, FirstPartySetEntry>
+  FindPrimariesAffectedByAdditions(const FlattenedSets& additions) const;
+
+  // Finds the existing primary sites whose sets are affected by a set of custom
+  // replacements.
+  //
+  // Returns the set of existing primaries that may become a singleton (along
+  // with the sites in their set that have left due to the replacements); and
+  // the set of existing primaries that themselves were in a replacement set.
+  std::pair<base::flat_map<SchemefulSite, base::flat_set<SchemefulSite>>,
+            base::flat_set<SchemefulSite>>
+  FindPrimariesAffectedByReplacements(
+      const FlattenedSets& replacements,
+      const FlattenedSets& additions,
+      const base::flat_map<SchemefulSite, FirstPartySetEntry>&
+          addition_intersected_primaries) const;
 
   // Preprocesses a collection of "addition" sets, such that any sets that
   // transitively overlap (when taking the current `entries_` of this map, plus
@@ -172,9 +194,9 @@ class NET_EXPORT GlobalFirstPartySets {
   void ForEachAlias(base::FunctionRef<void(const SchemefulSite&,
                                            const SchemefulSite&)> f) const;
 
-  // Returns true iff this instance contains a singleton set (a set with only
-  // one site).
-  bool ContainsSingleton() const;
+  // Synchronously iterate over all the effective entries. Returns true iff all
+  // the entries are valid.
+  bool IsValid(const FirstPartySetsContextConfig* config = nullptr) const;
 
   // The version associated with the component_updater-provided public sets.
   // This may be invalid if the "First-Party Sets" component has not been

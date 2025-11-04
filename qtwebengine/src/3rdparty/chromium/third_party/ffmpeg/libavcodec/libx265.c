@@ -30,21 +30,19 @@
 #include "libavutil/avassert.h"
 #include "libavutil/buffer.h"
 #include "libavutil/internal.h"
-#include "libavutil/common.h"
+#include "libavutil/mastering_display_metadata.h"
+#include "libavutil/mem.h"
 #include "libavutil/opt.h"
 #include "libavutil/pixdesc.h"
 #include "avcodec.h"
 #include "codec_internal.h"
+#include "dovi_rpu.h"
 #include "encode.h"
-#include "internal.h"
 #include "packet_internal.h"
 #include "atsc_a53.h"
 #include "sei.h"
 
 typedef struct ReorderedData {
-#if FF_API_REORDERED_OPAQUE
-    int64_t reordered_opaque;
-#endif
     int64_t duration;
 
     void        *frame_opaque;
@@ -81,6 +79,8 @@ typedef struct libx265Context {
      * encounter a frame with ROI side data.
      */
     int roi_warned;
+
+    DOVIContext dovi;
 } libx265Context;
 
 static int is_keyframe(NalUnitType naltype)
@@ -146,6 +146,8 @@ static av_cold int libx265_encode_close(AVCodecContext *avctx)
     if (ctx->encoder)
         ctx->api->encoder_close(ctx->encoder);
 
+    ff_dovi_ctx_unref(&ctx->dovi);
+
     return 0;
 }
 
@@ -174,6 +176,68 @@ static av_cold int libx265_param_parse_int(AVCodecContext *avctx,
     if (ctx->api->param_parse(ctx->params, key, buf) == X265_PARAM_BAD_VALUE) {
         av_log(avctx, AV_LOG_ERROR, "Invalid value %d for param \"%s\".\n", value, key);
         return AVERROR(EINVAL);
+    }
+
+    return 0;
+}
+
+static int handle_mdcv(void *logctx, const x265_api *api,
+                       x265_param *params,
+                       const AVMasteringDisplayMetadata *mdcv)
+{
+    char buf[10 /* # of PRId64s */ * 20 /* max strlen for %PRId64 */ + sizeof("G(,)B(,)R(,)WP(,)L(,)")];
+
+    // G(%hu,%hu)B(%hu,%hu)R(%hu,%hu)WP(%hu,%hu)L(%u,%u)
+    snprintf(buf, sizeof(buf),
+        "G(%"PRId64",%"PRId64")B(%"PRId64",%"PRId64")R(%"PRId64",%"PRId64")"
+        "WP(%"PRId64",%"PRId64")L(%"PRId64",%"PRId64")",
+        av_rescale_q(1, mdcv->display_primaries[1][0], (AVRational){ 1, 50000 }),
+        av_rescale_q(1, mdcv->display_primaries[1][1], (AVRational){ 1, 50000 }),
+        av_rescale_q(1, mdcv->display_primaries[2][0], (AVRational){ 1, 50000 }),
+        av_rescale_q(1, mdcv->display_primaries[2][1], (AVRational){ 1, 50000 }),
+        av_rescale_q(1, mdcv->display_primaries[0][0], (AVRational){ 1, 50000 }),
+        av_rescale_q(1, mdcv->display_primaries[0][1], (AVRational){ 1, 50000 }),
+        av_rescale_q(1, mdcv->white_point[0], (AVRational){ 1, 50000 }),
+        av_rescale_q(1, mdcv->white_point[1], (AVRational){ 1, 50000 }),
+        av_rescale_q(1, mdcv->max_luminance,  (AVRational){ 1, 10000 }),
+        av_rescale_q(1, mdcv->min_luminance,  (AVRational){ 1, 10000 }));
+
+    if (api->param_parse(params, "master-display", buf) ==
+            X265_PARAM_BAD_VALUE) {
+        av_log(logctx, AV_LOG_ERROR,
+               "Invalid value \"%s\" for param \"master-display\".\n",
+               buf);
+        return AVERROR(EINVAL);
+    }
+
+    return 0;
+}
+
+static int handle_side_data(AVCodecContext *avctx, const x265_api *api,
+                            x265_param *params)
+{
+    const AVFrameSideData *cll_sd =
+        av_frame_side_data_get(avctx->decoded_side_data,
+            avctx->nb_decoded_side_data, AV_FRAME_DATA_CONTENT_LIGHT_LEVEL);
+    const AVFrameSideData *mdcv_sd =
+        av_frame_side_data_get(avctx->decoded_side_data,
+            avctx->nb_decoded_side_data,
+            AV_FRAME_DATA_MASTERING_DISPLAY_METADATA);
+
+    if (cll_sd) {
+        const AVContentLightMetadata *cll =
+            (AVContentLightMetadata *)cll_sd->data;
+
+        params->maxCLL  = cll->MaxCLL;
+        params->maxFALL = cll->MaxFALL;
+    }
+
+    if (mdcv_sd) {
+        int ret = handle_mdcv(
+            avctx, api, params,
+            (AVMasteringDisplayMetadata *)mdcv_sd->data);
+        if (ret < 0)
+            return ret;
     }
 
     return 0;
@@ -257,12 +321,9 @@ FF_ENABLE_DEPRECATION_WARNINGS
             avctx->pix_fmt == AV_PIX_FMT_YUVJ422P ||
             avctx->pix_fmt == AV_PIX_FMT_YUVJ444P;
 
-    if ((avctx->color_primaries <= AVCOL_PRI_SMPTE432 &&
-         avctx->color_primaries != AVCOL_PRI_UNSPECIFIED) ||
-        (avctx->color_trc <= AVCOL_TRC_ARIB_STD_B67 &&
-         avctx->color_trc != AVCOL_TRC_UNSPECIFIED) ||
-        (avctx->colorspace <= AVCOL_SPC_ICTCP &&
-         avctx->colorspace != AVCOL_SPC_UNSPECIFIED)) {
+    if (avctx->color_primaries != AVCOL_PRI_UNSPECIFIED ||
+        avctx->color_trc       != AVCOL_TRC_UNSPECIFIED ||
+        avctx->colorspace      != AVCOL_SPC_UNSPECIFIED) {
 
         ctx->params->vui.bEnableColorDescriptionPresentFlag = 1;
 
@@ -337,6 +398,13 @@ FF_ENABLE_DEPRECATION_WARNINGS
                "Pixel format '%s' cannot be mapped to a libx265 CSP!\n",
                desc->name);
         return AVERROR_BUG;
+    }
+
+    ret = handle_side_data(avctx, ctx->api, ctx->params);
+    if (ret < 0) {
+        av_log(avctx, AV_LOG_ERROR, "Failed handling side data! (%s)\n",
+               av_err2str(ret));
+        return ret;
     }
 
     if (ctx->crf >= 0) {
@@ -427,8 +495,8 @@ FF_ENABLE_DEPRECATION_WARNINGS
     }
 
     {
-        AVDictionaryEntry *en = NULL;
-        while ((en = av_dict_get(ctx->x265_opts, "", en, AV_DICT_IGNORE_SUFFIX))) {
+        const AVDictionaryEntry *en = NULL;
+        while ((en = av_dict_iterate(ctx->x265_opts, en))) {
             int parse_ret = ctx->api->param_parse(ctx->params, en->key, en->value);
 
             switch (parse_ret) {
@@ -462,6 +530,14 @@ FF_ENABLE_DEPRECATION_WARNINGS
             return AVERROR(EINVAL);
         }
     }
+
+#if X265_BUILD >= 167
+    ctx->dovi.logctx = avctx;
+    if ((ret = ff_dovi_configure(&ctx->dovi, avctx)) < 0)
+        return ret;
+    ctx->params->dolbyProfile = ctx->dovi.cfg.dv_profile * 10 +
+                                ctx->dovi.cfg.dv_bl_signal_compatibility_id;
+#endif
 
     ctx->encoder = ctx->api->encoder_open(ctx->params);
     if (!ctx->encoder) {
@@ -566,6 +642,10 @@ static void free_picture(libx265Context *ctx, x265_picture *pic)
     for (int i = 0; i < sei->numPayloads; i++)
         av_free(sei->payloads[i].payload);
 
+#if X265_BUILD >= 167
+    av_free(pic->rpu.payload);
+#endif
+
     if (pic->userData) {
         int idx = (int)(intptr_t)pic->userData - 1;
         rd_release(ctx, idx);
@@ -597,6 +677,7 @@ static int libx265_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
     sei->numPayloads = 0;
 
     if (pic) {
+        AVFrameSideData *sd;
         ReorderedData *rd;
         int rd_idx;
 
@@ -626,11 +707,6 @@ static int libx265_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
         rd = &ctx->rd[rd_idx];
 
         rd->duration         = pic->duration;
-#if FF_API_REORDERED_OPAQUE
-FF_DISABLE_DEPRECATION_WARNINGS
-        rd->reordered_opaque = pic->reordered_opaque;
-FF_ENABLE_DEPRECATION_WARNINGS
-#endif
         if (avctx->flags & AV_CODEC_FLAG_COPY_OPAQUE) {
             rd->frame_opaque = pic->opaque;
             ret = av_buffer_replace(&rd->frame_opaque_ref, pic->opaque_ref);
@@ -702,6 +778,24 @@ FF_ENABLE_DEPRECATION_WARNINGS
                 sei->numPayloads++;
             }
         }
+
+#if X265_BUILD >= 167
+        sd = av_frame_get_side_data(pic, AV_FRAME_DATA_DOVI_METADATA);
+        if (ctx->dovi.cfg.dv_profile && sd) {
+            const AVDOVIMetadata *metadata = (const AVDOVIMetadata *)sd->data;
+            ret = ff_dovi_rpu_generate(&ctx->dovi, metadata, &x265pic.rpu.payload,
+                                       &x265pic.rpu.payloadSize);
+            if (ret < 0) {
+                free_picture(ctx, &x265pic);
+                return ret;
+            }
+        } else if (ctx->dovi.cfg.dv_profile) {
+            av_log(avctx, AV_LOG_ERROR, "Dolby Vision enabled, but received frame "
+                   "without AV_FRAME_DATA_DOVI_METADATA");
+            free_picture(ctx, &x265pic);
+            return AVERROR_INVALIDDATA;
+        }
+#endif
     }
 
     ret = ctx->api->encoder_encode(ctx->encoder, &nal, &nnal,
@@ -768,11 +862,6 @@ FF_ENABLE_DEPRECATION_WARNINGS
         int idx = (int)(intptr_t)x265pic_out.userData - 1;
         ReorderedData *rd = &ctx->rd[idx];
 
-#if FF_API_REORDERED_OPAQUE
-FF_DISABLE_DEPRECATION_WARNINGS
-        avctx->reordered_opaque = rd->reordered_opaque;
-FF_ENABLE_DEPRECATION_WARNINGS
-#endif
         pkt->duration           = rd->duration;
 
         if (avctx->flags & AV_CODEC_FLAG_COPY_OPAQUE) {
@@ -783,13 +872,6 @@ FF_ENABLE_DEPRECATION_WARNINGS
 
         rd_release(ctx, idx);
     }
-#if FF_API_REORDERED_OPAQUE
-    else {
-FF_DISABLE_DEPRECATION_WARNINGS
-        avctx->reordered_opaque = 0;
-FF_ENABLE_DEPRECATION_WARNINGS
-    }
-#endif
 
     *got_packet = 1;
     return 0;
@@ -868,6 +950,10 @@ static const AVOption options[] = {
     { "udu_sei",     "Use user data unregistered SEI if available",                                 OFFSET(udu_sei),   AV_OPT_TYPE_BOOL,   { .i64 = 0 }, 0, 1, VE },
     { "a53cc",       "Use A53 Closed Captions (if available)",                                      OFFSET(a53_cc),    AV_OPT_TYPE_BOOL,   { .i64 = 1 }, 0, 1, VE },
     { "x265-params", "set the x265 configuration using a :-separated list of key=value parameters", OFFSET(x265_opts), AV_OPT_TYPE_DICT,   { 0 }, 0, 0, VE },
+#if X265_BUILD >= 167
+    { "dolbyvision", "Enable Dolby Vision RPU coding", OFFSET(dovi.enable), AV_OPT_TYPE_BOOL, {.i64 = FF_DOVI_AUTOMATIC }, -1, 1, VE, .unit = "dovi" },
+    {   "auto", NULL, 0, AV_OPT_TYPE_CONST, {.i64 = FF_DOVI_AUTOMATIC}, .flags = VE, .unit = "dovi" },
+#endif
     { NULL }
 };
 

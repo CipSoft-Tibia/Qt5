@@ -9,6 +9,7 @@
 #include "third_party/blink/renderer/platform/fonts/shaping/shape_result_inline_headers.h"
 #include "third_party/blink/renderer/platform/fonts/simple_font_data.h"
 #include "third_party/blink/renderer/platform/text/text_direction.h"
+#include "third_party/blink/renderer/platform/text/text_run.h"
 #include "ui/gfx/geometry/point_f.h"
 
 namespace blink {
@@ -16,10 +17,11 @@ namespace blink {
 namespace {
 
 unsigned CharactersInShapeResult(
-    const Vector<scoped_refptr<const ShapeResult>, 64>& results) {
+    const HeapVector<Member<const ShapeResult>, 64>& results) {
   unsigned num_characters = 0;
-  for (const scoped_refptr<const ShapeResult>& result : results)
+  for (const Member<const ShapeResult>& result : results) {
     num_characters += result->NumCharacters();
+  }
   return num_characters;
 }
 
@@ -52,7 +54,7 @@ CharacterRange ShapeResultBuffer::GetCharacterRange(
 
   unsigned total_num_characters = 0;
   for (unsigned j = 0; j < results_.size(); j++) {
-    const scoped_refptr<const ShapeResult> result = results_[j];
+    const ShapeResult* result = results_[j];
     result->EnsureGraphemes(
         StringView(text, total_num_characters, result->NumCharacters()));
     if (direction == TextDirection::kRtl) {
@@ -90,8 +92,8 @@ CharacterRange ShapeResultBuffer::GetCharacterRange(
       }
 
       if (found_from_x || found_to_x) {
-        min_y = std::min(min_y, result->DeprecatedInkBounds().y());
-        max_y = std::max(max_y, result->DeprecatedInkBounds().bottom());
+        min_y = std::min(min_y, result->GetDeprecatedInkBounds().y());
+        max_y = std::max(max_y, result->GetDeprecatedInkBounds().bottom());
       }
 
       if (found_from_x && found_to_x)
@@ -125,86 +127,6 @@ CharacterRange ShapeResultBuffer::GetCharacterRange(
   return CharacterRange(to_x, from_x, -min_y, max_y);
 }
 
-void ShapeResultBuffer::AddRunInfoAdvances(const ShapeResult::RunInfo& run_info,
-                                           double offset,
-                                           Vector<double>& advances) {
-  const unsigned num_glyphs = run_info.glyph_data_.size();
-  const unsigned num_chars = run_info.num_characters_;
-
-  if (run_info.IsRtl())
-    offset += run_info.width_;
-
-  double current_width = 0;
-  for (unsigned glyph_id = 0; glyph_id < num_glyphs; glyph_id++) {
-    unsigned gid = run_info.IsRtl() ? num_glyphs - glyph_id - 1 : glyph_id;
-    unsigned next_gid =
-        run_info.IsRtl() ? num_glyphs - glyph_id - 2 : glyph_id + 1;
-    const HarfBuzzRunGlyphData& glyph = run_info.glyph_data_[gid];
-
-    unsigned char_id = glyph.character_index;
-    unsigned next_char_id =
-        (glyph_id + 1 == num_glyphs)
-            ? num_chars
-            : run_info.glyph_data_[next_gid].character_index;
-
-    current_width += glyph.advance;
-
-    if (char_id == next_char_id)
-      continue;
-
-    unsigned num_graphemes = run_info.NumGraphemes(char_id, next_char_id);
-
-    for (unsigned i = char_id; i < next_char_id; i++) {
-      if (run_info.IsRtl()) {
-        advances.push_back(offset - (current_width / num_graphemes));
-      } else {
-        advances.push_back(offset);
-      }
-
-      if (num_graphemes == next_char_id - char_id) {
-        offset += (current_width / num_graphemes) * (run_info.IsRtl() ? -1 : 1);
-      }
-    }
-
-    if (num_graphemes != next_char_id - char_id) {
-      offset += current_width * (run_info.IsRtl() ? -1 : 1);
-    }
-
-    current_width = 0;
-  }
-}
-
-Vector<double> ShapeResultBuffer::IndividualCharacterAdvances(
-    const StringView& text,
-    TextDirection direction,
-    float total_width) const {
-  unsigned character_offset = 0;
-  Vector<double> advances;
-  double current_x = direction == TextDirection::kRtl ? total_width : 0;
-
-  for (const scoped_refptr<const ShapeResult>& result : results_) {
-    unsigned run_count = result->runs_.size();
-
-    result->EnsureGraphemes(
-        StringView(text, character_offset, result->NumCharacters()));
-
-    if (result->IsRtl()) {
-      for (int index = run_count - 1; index >= 0; index--) {
-        current_x -= result->runs_[index]->width_;
-        AddRunInfoAdvances(*result->runs_[index], current_x, advances);
-      }
-    } else {
-      for (unsigned index = 0; index < run_count; index++) {
-        AddRunInfoAdvances(*result->runs_[index], current_x, advances);
-        current_x += result->runs_[index]->width_;
-      }
-    }
-
-    character_offset += result->NumCharacters();
-  }
-  return advances;
-}
-
 int ShapeResultBuffer::OffsetForPosition(
     const TextRun& run,
     float target_x,
@@ -215,7 +137,7 @@ int ShapeResultBuffer::OffsetForPosition(
   if (run.Rtl()) {
     total_offset = run.length();
     for (unsigned i = results_.size(); i; --i) {
-      const scoped_refptr<const ShapeResult>& word_result = results_[i - 1];
+      const Member<const ShapeResult>& word_result = results_[i - 1];
       if (!word_result)
         continue;
       total_offset -= word_result->NumCharacters();
@@ -230,7 +152,7 @@ int ShapeResultBuffer::OffsetForPosition(
     }
   } else {
     total_offset = 0;
-    for (const scoped_refptr<const ShapeResult>& word_result : results_) {
+    for (const Member<const ShapeResult>& word_result : results_) {
       if (!word_result)
         continue;
       int offset_for_word = word_result->OffsetForPosition(
@@ -247,8 +169,8 @@ int ShapeResultBuffer::OffsetForPosition(
   return total_offset;
 }
 
-Vector<ShapeResult::RunFontData> ShapeResultBuffer::GetRunFontData() const {
-  Vector<ShapeResult::RunFontData> font_data;
+HeapVector<ShapeResult::RunFontData> ShapeResultBuffer::GetRunFontData() const {
+  HeapVector<ShapeResult::RunFontData> font_data;
   for (const auto& result : results_)
     result->GetRunFontData(&font_data);
   return font_data;
@@ -262,10 +184,9 @@ GlyphData ShapeResultBuffer::EmphasisMarkGlyphData(
       if (run->glyph_data_.IsEmpty())
         continue;
 
-      return GlyphData(
-          run->glyph_data_[0].glyph,
-          run->font_data_->EmphasisMarkFontData(font_description).get(),
-          run->CanvasRotation());
+      return GlyphData(run->glyph_data_[0].glyph,
+                       run->font_data_->EmphasisMarkFontData(font_description),
+                       run->CanvasRotation());
     }
   }
 

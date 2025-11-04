@@ -4,6 +4,8 @@
 
 #include "osp/public/message_demuxer.h"
 
+#include <utility>
+
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "osp/msgs/osp_messages.h"
@@ -49,8 +51,10 @@ class MessageDemuxerTest : public ::testing::Test {
   const uint64_t connection_id_ = 45;
   FakeClock fake_clock_{Clock::time_point(std::chrono::milliseconds(1298424))};
   msgs::CborEncodeBuffer buffer_;
-  msgs::PresentationConnectionOpenRequest request_{1, "fry-am-the-egg-man",
-                                                   "url"};
+  msgs::PresentationConnectionOpenRequest request_ = {
+      .request_id = 1,
+      .presentation_id = "fry-am-the-egg-man",
+      .url = "url"};
   MockMessageCallback mock_callback_;
   MessageDemuxer demuxer_{FakeClock::now, MessageDemuxer::kDefaultBufferLimit};
 };
@@ -77,14 +81,35 @@ TEST_F(MessageDemuxerTest, WatchStartStop) {
                            msgs::Type message_type, const uint8_t* buffer,
                            size_t buffer_size, Clock::time_point now) {
         decode_result = msgs::DecodePresentationConnectionOpenRequest(
-            buffer, buffer_size, &received_request);
+            buffer, buffer_size, received_request);
         return ConvertDecodeResult(decode_result);
       }));
   demuxer_.OnStreamData(endpoint_id_, connection_id_, buffer_.data(),
                         buffer_.size());
   ExpectDecodedRequest(decode_result, received_request);
 
-  watch = MessageDemuxer::MessageWatch();
+  // Move a MessageWatch will not make it invalid.
+  MessageDemuxer::MessageWatch new_watch = std::move(watch);
+  msgs::PresentationConnectionOpenRequest new_received_request;
+  ssize_t new_decode_result = 0;
+  EXPECT_CALL(
+      mock_callback_,
+      OnStreamMessage(endpoint_id_, connection_id_,
+                      msgs::Type::kPresentationConnectionOpenRequest, _, _, _))
+      .WillOnce(Invoke([&new_decode_result, &new_received_request](
+                           uint64_t endpoint_id, uint64_t connection_id,
+                           msgs::Type message_type, const uint8_t* buffer,
+                           size_t buffer_size, Clock::time_point now) {
+        new_decode_result = msgs::DecodePresentationConnectionOpenRequest(
+            buffer, buffer_size, new_received_request);
+        return ConvertDecodeResult(new_decode_result);
+      }));
+  demuxer_.OnStreamData(endpoint_id_, connection_id_, buffer_.data(),
+                        buffer_.size());
+  ExpectDecodedRequest(new_decode_result, new_received_request);
+
+  // Reset a MessageWatch will make it invalid.
+  new_watch.Reset();
   EXPECT_CALL(mock_callback_, OnStreamMessage(_, _, _, _, _, _)).Times(0);
   demuxer_.OnStreamData(endpoint_id_, connection_id_, buffer_.data(),
                         buffer_.size());
@@ -111,7 +136,7 @@ TEST_F(MessageDemuxerTest, BufferPartialMessage) {
                                  msgs::Type message_type, const uint8_t* buffer,
                                  size_t buffer_size, Clock::time_point now) {
         decode_result = msgs::DecodePresentationConnectionOpenRequest(
-            buffer, buffer_size, &received_request);
+            buffer, buffer_size, received_request);
         return ConvertDecodeResult(decode_result);
       }));
   demuxer_.OnStreamData(endpoint_id_, connection_id_, buffer_.data(),
@@ -140,7 +165,7 @@ TEST_F(MessageDemuxerTest, DefaultWatch) {
                            msgs::Type message_type, const uint8_t* buffer,
                            size_t buffer_size, Clock::time_point now) {
         decode_result = msgs::DecodePresentationConnectionOpenRequest(
-            buffer, buffer_size, &received_request);
+            buffer, buffer_size, received_request);
         return ConvertDecodeResult(decode_result);
       }));
   demuxer_.OnStreamData(endpoint_id_, connection_id_, buffer_.data(),
@@ -175,7 +200,7 @@ TEST_F(MessageDemuxerTest, DefaultWatchOverridden) {
                            msgs::Type message_type, const uint8_t* buffer,
                            size_t buffer_size, Clock::time_point now) {
         decode_result = msgs::DecodePresentationConnectionOpenRequest(
-            buffer, buffer_size, &received_request);
+            buffer, buffer_size, received_request);
         return ConvertDecodeResult(decode_result);
       }));
   demuxer_.OnStreamData(endpoint_id_ + 1, 14, buffer_.data(), buffer_.size());
@@ -191,7 +216,7 @@ TEST_F(MessageDemuxerTest, DefaultWatchOverridden) {
                            msgs::Type message_type, const uint8_t* buffer,
                            size_t buffer_size, Clock::time_point now) {
         decode_result = msgs::DecodePresentationConnectionOpenRequest(
-            buffer, buffer_size, &received_request);
+            buffer, buffer_size, received_request);
         return ConvertDecodeResult(decode_result);
       }));
   demuxer_.OnStreamData(endpoint_id_, connection_id_, buffer_.data(),
@@ -211,7 +236,7 @@ TEST_F(MessageDemuxerTest, WatchAfterData) {
                            msgs::Type message_type, const uint8_t* buffer,
                            size_t buffer_size, Clock::time_point now) {
         decode_result = msgs::DecodePresentationConnectionOpenRequest(
-            buffer, buffer_size, &received_request);
+            buffer, buffer_size, received_request);
         return ConvertDecodeResult(decode_result);
       }));
   MessageDemuxer::MessageWatch watch = demuxer_.WatchMessageType(
@@ -241,7 +266,7 @@ TEST_F(MessageDemuxerTest, WatchAfterMultipleData) {
                            msgs::Type message_type, const uint8_t* buffer,
                            size_t buffer_size, Clock::time_point now) {
         decode_result1 = msgs::DecodePresentationConnectionOpenRequest(
-            buffer, buffer_size, &received_request);
+            buffer, buffer_size, received_request);
         return ConvertDecodeResult(decode_result1);
       }));
   EXPECT_CALL(mock_init_callback,
@@ -252,7 +277,7 @@ TEST_F(MessageDemuxerTest, WatchAfterMultipleData) {
                            msgs::Type message_type, const uint8_t* buffer,
                            size_t buffer_size, Clock::time_point now) {
         decode_result2 = msgs::DecodePresentationStartRequest(
-            buffer, buffer_size, &received_init_request);
+            buffer, buffer_size, received_init_request);
         return ConvertDecodeResult(decode_result2);
       }));
   MessageDemuxer::MessageWatch watch = demuxer_.WatchMessageType(
@@ -264,9 +289,8 @@ TEST_F(MessageDemuxerTest, WatchAfterMultipleData) {
                         buffer_.size());
 
   msgs::CborEncodeBuffer buffer;
-  msgs::PresentationStartRequest request;
-  request.request_id = 2;
-  request.url = "https://example.com/recv";
+  msgs::PresentationStartRequest request = {.request_id = 2,
+                                            .url = "https://example.com/recv"};
   ASSERT_TRUE(msgs::EncodePresentationStartRequest(request, &buffer));
   demuxer_.OnStreamData(endpoint_id_, connection_id_, buffer.data(),
                         buffer.size());
@@ -290,7 +314,7 @@ TEST_F(MessageDemuxerTest, GlobalWatchAfterData) {
                            msgs::Type message_type, const uint8_t* buffer,
                            size_t buffer_size, Clock::time_point now) {
         decode_result = msgs::DecodePresentationConnectionOpenRequest(
-            buffer, buffer_size, &received_request);
+            buffer, buffer_size, received_request);
         return ConvertDecodeResult(decode_result);
       }));
   MessageDemuxer::MessageWatch watch = demuxer_.SetDefaultMessageTypeWatch(
@@ -322,7 +346,7 @@ TEST_F(MessageDemuxerTest, BufferLimit) {
                            msgs::Type message_type, const uint8_t* buffer,
                            size_t buffer_size, Clock::time_point now) {
         decode_result = msgs::DecodePresentationConnectionOpenRequest(
-            buffer, buffer_size, &received_request);
+            buffer, buffer_size, received_request);
         return ConvertDecodeResult(decode_result);
       }));
   demuxer.OnStreamData(endpoint_id_, connection_id_, buffer_.data(),
@@ -334,7 +358,7 @@ TEST_F(MessageDemuxerTest, DeserializeMessages) {
   std::vector<uint8_t> kAgentInfoResponseSerialized{0x0B, 0xFF};
   std::vector<uint8_t> kPresentationConnectionCloseEventSerialized{0x40, 0x71,
                                                                    0x00};
-  std::vector<uint8_t> kAuthenticationRequestSerialized{0x43, 0xE9, 0xFF, 0x00};
+  std::vector<uint8_t> kAuthCapabilitiesSerialized{0x43, 0xE9, 0xFF, 0x00};
 
   size_t used_bytes;
   auto kAgentInfoResponseInfo =
@@ -350,12 +374,11 @@ TEST_F(MessageDemuxerTest, DeserializeMessages) {
   EXPECT_EQ(kPresentationConnectionCloseEventInfo.value(),
             msgs::Type::kPresentationConnectionCloseEvent);
 
-  auto kAuthenticationRequestInfo = MessageTypeDecoder::DecodeType(
-      kAuthenticationRequestSerialized, &used_bytes);
-  EXPECT_FALSE(kAuthenticationRequestInfo.is_error());
+  auto kAuthCapabilitiesInfo =
+      MessageTypeDecoder::DecodeType(kAuthCapabilitiesSerialized, &used_bytes);
+  EXPECT_FALSE(kAuthCapabilitiesInfo.is_error());
   EXPECT_EQ(used_bytes, size_t{2});
-  EXPECT_EQ(kAuthenticationRequestInfo.value(),
-            msgs::Type::kAuthenticationRequest);
+  EXPECT_EQ(kAuthCapabilitiesInfo.value(), msgs::Type::kAuthCapabilities);
 
   auto kUnknownInfo = MessageTypeDecoder::DecodeType({0xFF}, &used_bytes);
   EXPECT_TRUE(kUnknownInfo.is_error());

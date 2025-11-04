@@ -52,6 +52,9 @@
 #include <qwindow.h>
 #include <private/qwindowcontainer_p.h>
 #include <QtCore/qvarlengtharray.h>
+#if QT_CONFIG(accessibility)
+#include <QtGui/private/qaccessiblehelper_p.h>
+#endif
 #include <QtGui/qvalidator.h>
 
 #ifdef Q_OS_MAC
@@ -66,7 +69,6 @@ using namespace Qt::StringLiterals;
 
 QWidgetList _q_ac_childWidgets(const QWidget *widget);
 
-QString qt_accStripAmp(const QString &text);
 QString qt_accHotKey(const QString &text);
 
 #if QT_CONFIG(abstractbutton)
@@ -287,11 +289,24 @@ QToolButton *QAccessibleToolButton::toolButton() const
 bool QAccessibleToolButton::isSplitButton() const
 {
 #if QT_CONFIG(menu)
-    return toolButton()->menu() && toolButton()->popupMode() == QToolButton::MenuButtonPopup;
+    return menu() && toolButton()->popupMode() == QToolButton::MenuButtonPopup;
 #else
     return false;
 #endif
 }
+
+#if QT_CONFIG(menu)
+QMenu *QAccessibleToolButton::menu() const
+{
+    if (QMenu *menu = toolButton()->menu())
+        return menu;
+
+    if (QAction *defaultAction = toolButton()->defaultAction())
+        return defaultAction->menu();
+
+    return nullptr;
+}
+#endif
 
 QAccessible::State QAccessibleToolButton::state() const
 {
@@ -299,7 +314,7 @@ QAccessible::State QAccessibleToolButton::state() const
     if (toolButton()->autoRaise())
         st.hotTracked = true;
 #if QT_CONFIG(menu)
-    if (toolButton()->menu())
+    if (menu())
         st.hasPopup = true;
 #endif
     return st;
@@ -313,9 +328,8 @@ int QAccessibleToolButton::childCount() const
 QAccessible::Role QAccessibleToolButton::role() const
 {
 #if QT_CONFIG(menu)
-    QAbstractButton *ab = button();
-    QToolButton *tb = qobject_cast<QToolButton*>(ab);
-    if (!tb->menu())
+    QToolButton *tb = toolButton();
+    if (!menu())
         return tb->isCheckable() ? QAccessible::CheckBox : QAccessible::PushButton;
     else if (tb->popupMode() == QToolButton::DelayedPopup)
         return QAccessible::ButtonDropDown;
@@ -327,10 +341,8 @@ QAccessible::Role QAccessibleToolButton::role() const
 QAccessibleInterface *QAccessibleToolButton::child(int index) const
 {
 #if QT_CONFIG(menu)
-    if (index == 0 && toolButton()->menu())
-    {
-        return QAccessible::queryAccessibleInterface(toolButton()->menu());
-    }
+    if (index == 0 && menu())
+        return QAccessible::queryAccessibleInterface(menu());
 #else
     Q_UNUSED(index);
 #endif
@@ -669,10 +681,7 @@ QString QAccessibleLineEdit::text(QAccessible::Text t) const
     QString str;
     switch (t) {
     case QAccessible::Value:
-        if (lineEdit()->echoMode() == QLineEdit::Normal)
-            str = lineEdit()->text();
-        else if (lineEdit()->echoMode() != QLineEdit::NoEcho)
-            str = QString(lineEdit()->text().size(), QChar::fromLatin1('*'));
+        str = lineEdit()->displayText();
         break;
     default:
         break;
@@ -786,19 +795,12 @@ QString QAccessibleLineEdit::text(int startOffset, int endOffset) const
     if (startOffset > endOffset)
         return QString();
 
-    if (lineEdit()->echoMode() != QLineEdit::Normal)
-        return QString();
-
-    return lineEdit()->text().mid(startOffset, endOffset - startOffset);
+    return lineEdit()->displayText().mid(startOffset, endOffset - startOffset);
 }
 
 QString QAccessibleLineEdit::textBeforeOffset(int offset, QAccessible::TextBoundaryType boundaryType,
         int *startOffset, int *endOffset) const
 {
-    if (lineEdit()->echoMode() != QLineEdit::Normal) {
-        *startOffset = *endOffset = -1;
-        return QString();
-    }
     if (offset == -2)
         offset = cursorPosition();
     return QAccessibleTextInterface::textBeforeOffset(offset, boundaryType, startOffset, endOffset);
@@ -807,10 +809,6 @@ QString QAccessibleLineEdit::textBeforeOffset(int offset, QAccessible::TextBound
 QString QAccessibleLineEdit::textAfterOffset(int offset, QAccessible::TextBoundaryType boundaryType,
         int *startOffset, int *endOffset) const
 {
-    if (lineEdit()->echoMode() != QLineEdit::Normal) {
-        *startOffset = *endOffset = -1;
-        return QString();
-    }
     if (offset == -2)
         offset = cursorPosition();
     return QAccessibleTextInterface::textAfterOffset(offset, boundaryType, startOffset, endOffset);
@@ -819,10 +817,6 @@ QString QAccessibleLineEdit::textAfterOffset(int offset, QAccessible::TextBounda
 QString QAccessibleLineEdit::textAtOffset(int offset, QAccessible::TextBoundaryType boundaryType,
         int *startOffset, int *endOffset) const
 {
-    if (lineEdit()->echoMode() != QLineEdit::Normal) {
-        *startOffset = *endOffset = -1;
-        return QString();
-    }
     if (offset == -2)
         offset = cursorPosition();
     return QAccessibleTextInterface::textAtOffset(offset, boundaryType, startOffset, endOffset);
@@ -851,7 +845,7 @@ void QAccessibleLineEdit::setSelection(int selectionIndex, int startOffset, int 
 
 int QAccessibleLineEdit::characterCount() const
 {
-    return lineEdit()->text().size();
+    return lineEdit()->displayText().size();
 }
 
 void QAccessibleLineEdit::scrollToSubstring(int startIndex, int endIndex)
@@ -978,9 +972,6 @@ QString QAccessibleMessageBox::text(QAccessible::Text t) const
         if (str.isEmpty()) // implies no title text is set
             str = messageBox()->text();
         break;
-    case QAccessible::Description:
-        str = widget()->accessibleDescription();
-        break;
     case QAccessible::Value:
         str = messageBox()->text();
         break;
@@ -988,6 +979,7 @@ QString QAccessibleMessageBox::text(QAccessible::Text t) const
         str = messageBox()->informativeText();
         break;
     default:
+        str = QAccessibleWidget::text(t);
         break;
     }
 

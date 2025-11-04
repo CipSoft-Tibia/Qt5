@@ -1,5 +1,6 @@
 // Copyright (C) 2019 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qplatformdefs.h"
 #include "qfilesystemengine_p.h"
@@ -20,6 +21,16 @@ QT_BEGIN_NAMESPACE
     Using Finder would also play the trash sound, which we don't want either in
     such a core API; applications that want that can play the sound themselves.
 */
+//static
+bool QFileSystemEngine::supportsMoveFileToTrash()
+{
+#ifdef Q_OS_MACOS // desktop macOS has a trash can
+    return true;
+#else // watch, tv, iOS don't have a trash can
+    return false;
+#endif
+}
+
 //static
 bool QFileSystemEngine::moveFileToTrash(const QFileSystemEntry &source,
                                         QFileSystemEntry &newLocation, QSystemError &error)

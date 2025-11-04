@@ -318,7 +318,7 @@ QQuickAccessibleAttached::QQuickAccessibleAttached(QObject *parent)
     } else {
         const QLatin1StringView className(QQmlData::ensurePropertyCache(parent)->firstCppMetaObject()->className());
         if (className != QLatin1StringView("QQuickAction")) {
-            qmlWarning(parent) << "Accessible must be attached to an Item or an Action";
+            qmlWarning(parent) << "Accessible attached property must be attached to an object deriving from Item or Action";
             return;
         }
     }
@@ -429,6 +429,14 @@ void QQuickAccessibleAttached::setNameImplicitly(const QString &name)
     m_nameExplicitlySet = false;
 }
 
+void QQuickAccessibleAttached::setDescriptionImplicitly(const QString &desc)
+{
+    if (m_descriptionExplicitlySet)
+        return;
+    setDescription(desc);
+    m_descriptionExplicitlySet = false;
+}
+
 QQuickAccessibleAttached *QQuickAccessibleAttached::qmlAttachedProperties(QObject *obj)
 {
     return new QQuickAccessibleAttached(obj);
@@ -445,6 +453,9 @@ void QQuickAccessibleAttached::setIgnored(bool ignored)
     auto item = qobject_cast<QQuickItem *>(parent());
     if (item && this->ignored() != ignored) {
         item->d_func()->isAccessible = !ignored;
+        QAccessibleEvent event(item,
+                               ignored ? QAccessible::ObjectDestroyed : QAccessible::ObjectCreated);
+        QAccessible::updateAccessibility(&event);
         emit ignoredChanged();
     }
 }

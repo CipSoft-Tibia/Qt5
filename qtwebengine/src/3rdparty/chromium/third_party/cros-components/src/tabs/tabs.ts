@@ -38,7 +38,7 @@ export class Tabs extends LitElement {
     }
 
     md-tabs {
-      --md-divider-color: transparent;
+      --md-divider-thickness: 0;
     }
 
     slot {

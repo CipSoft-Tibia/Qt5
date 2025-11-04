@@ -14,17 +14,12 @@ public:
     int value() const { return 16; }
 };
 
-
-class MyMixedPlugin : public QQmlExtensionPlugin
+class MyMixedPluginVersion : public QQmlExtensionPlugin
 {
     Q_OBJECT
     Q_PLUGIN_METADATA(IID QQmlExtensionInterface_iid)
 
 public:
-    MyMixedPlugin()
-    {
-    }
-
     void registerTypes(const char *uri) override
     {
         Q_ASSERT(QLatin1String(uri) == "org.qtproject.AutoTestQmlVersionPluginType");

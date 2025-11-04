@@ -10,6 +10,7 @@ ColumnLayout {
     spacing: 10
 
     property bool barsVisible: barsMode.checked
+    property bool valueColoring: valueColoringChange.checked
 
     Label {
         text: "Bars3D Graph"
@@ -153,7 +154,7 @@ ColumnLayout {
             if (checked)
                 customTheme.colorStyle = GraphsTheme.ColorStyle.Uniform
             else
-                customTheme.colorStyle = GraphsTheme.ColorStyle.ObjectGradient
+                customTheme.colorStyle = GraphsTheme.ColorStyle.RangeGradient
         }
     }
     Label {
@@ -163,5 +164,16 @@ ColumnLayout {
     CheckBox {
         id: testgradientchange
         checked: false
+    }
+
+    Label {
+        text: "Value Coloring"
+        color: "gray"
+        visible: bars.visible && !colorStyle.checked;
+    }
+    CheckBox {
+        id: valueColoringChange
+        checked: false
+        visible: bars.visible && !colorStyle.checked
     }
 }

@@ -9,8 +9,11 @@ set_property(CACHE INPUT_openxr PROPERTY STRINGS undefined no qt system)
 
 #### Libraries
 
-qt_find_package(WrapSystemOpenXR 1.0.29 PROVIDED_TARGETS WrapSystemOpenXR::WrapSystemOpenXR MODULE_NAME quick3dxr QMAKE_LIB quick3dxr_openxr)
-
+if (MACOS)
+    qt_find_package(WrapSystemOpenXR 1.1.40 PROVIDED_TARGETS WrapSystemOpenXR::WrapSystemOpenXR MODULE_NAME quick3dxr QMAKE_LIB quick3dxr_openxr)
+else()
+    qt_find_package(WrapSystemOpenXR 1.0.29 PROVIDED_TARGETS WrapSystemOpenXR::WrapSystemOpenXR MODULE_NAME quick3dxr QMAKE_LIB quick3dxr_openxr)
+endif()
 #### Tests
 
 #### Features

@@ -23,15 +23,18 @@
 #include <QList>
 #include <QHash>
 #include <QThread>
+#include <QLoggingCategory>
 #include <QtCore/private/qthread_p.h>
 #include <qpa/qwindowsysteminterface.h>
-#include "qevdevtouchfilter_p.h"
+#include <QtInputSupport/private/qtouchfilter_p.h>
 
 #if QT_CONFIG(mtdev)
 struct mtdev;
 #endif
 
 QT_BEGIN_NAMESPACE
+
+Q_DECLARE_LOGGING_CATEGORY(qLcEvdevTouch)
 
 class QSocketNotifier;
 class QEvdevTouchScreenData;
@@ -102,8 +105,8 @@ private:
     QWindow *m_filterWindow;
 
     struct FilteredTouchPoint {
-        QEvdevTouchFilter x;
-        QEvdevTouchFilter y;
+        QTouchFilter x;
+        QTouchFilter y;
         QWindowSystemInterface::TouchPoint touchPoint;
     };
     QHash<int, FilteredTouchPoint> m_filteredPoints;

@@ -1,10 +1,14 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:data-parser
 
 #include "qplatformdefs.h"
 
 #include "qbytearray.h"
 #include "qstring.h"
+
+#include <cerrno>
+#include <QtCore/q26numeric.h>
 
 #include "string.h"
 
@@ -22,15 +26,15 @@ QT_BEGIN_NAMESPACE
     \sa qsnprintf(), qvsnprintf().
 */
 
+#if QT_DEPRECATED_SINCE(6, 9)
+
 #if !defined(QT_VSNPRINTF) || defined(Q_QDOC)
 
 /*!
     \fn int qvsnprintf(char *str, size_t n, const char *fmt, va_list ap)
     \relates QByteArray
 
-    \obsolete
-
-    Use C++11's \c{std::vsnprintf()} from \c{<cstdio>} instead.
+    \deprecated [6.9] Use C++11's \c{std::vsnprintf()} from \c{<cstdio>} instead.
 
     A portable \c vsnprintf() function. Will call \c ::vsnprintf(), \c
     ::_vsnprintf(), or \c ::vsnprintf_s depending on the system, or
@@ -61,13 +65,25 @@ int qvsnprintf(char *str, size_t n, const char *fmt, va_list ap)
 
     const QByteArray ba = QString::vasprintf(fmt, ap).toLocal8Bit();
 
+    const auto realSize = ba.size();
+    int result;
+    if constexpr (sizeof(int) != sizeof(realSize)) {
+        result = q26::saturate_cast<int>(realSize);
+        if (result != realSize) {
+            errno = EOVERFLOW;
+            return -1;
+        }
+    } else {
+        result = realSize;
+    }
+
     if (n > 0) {
-        size_t blen = qMin(size_t(ba.length()), size_t(n - 1));
+        size_t blen = (std::min)(size_t(realSize), n - 1);
         memcpy(str, ba.constData(), blen);
         str[blen] = '\0'; // make sure str is always 0 terminated
     }
 
-    return ba.length();
+    return result;
 }
 
 #else
@@ -89,9 +105,7 @@ int qvsnprintf(char *str, size_t n, const char *fmt, va_list ap)
     \target bytearray-qsnprintf
     \relates QByteArray
 
-    \obsolete
-
-    Use C++11's \c{std::snprintf()} from \c{<cstdio>} instead.
+    \deprecated [6.9] Use C++11's \c{std::snprintf()} from \c{<cstdio>} instead.
 
     A portable snprintf() function, calls qvsnprintf.
 
@@ -111,10 +125,14 @@ int qsnprintf(char *str, size_t n, const char *fmt, ...)
     va_list ap;
     va_start(ap, fmt);
 
+    QT_IGNORE_DEPRECATIONS(
     int ret = qvsnprintf(str, n, fmt, ap);
+    )
     va_end(ap);
 
     return ret;
 }
+
+#endif // QT_DEPRECATED_SINCE(6, 9)
 
 QT_END_NAMESPACE

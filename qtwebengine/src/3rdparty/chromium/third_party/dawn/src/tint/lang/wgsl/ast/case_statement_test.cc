@@ -27,7 +27,6 @@
 
 #include "src/tint/lang/wgsl/ast/case_statement.h"
 
-#include "gtest/gtest-spi.h"
 #include "src/tint/lang/wgsl/ast/discard_statement.h"
 #include "src/tint/lang/wgsl/ast/helper_test.h"
 #include "src/tint/lang/wgsl/ast/if_statement.h"
@@ -38,6 +37,7 @@ namespace tint::ast {
 namespace {
 
 using CaseStatementTest = TestHelper;
+using CaseStatementDeathTest = CaseStatementTest;
 
 TEST_F(CaseStatementTest, Creation_i32) {
     auto* selector = CaseSelector(2_i);
@@ -99,8 +99,8 @@ TEST_F(CaseStatementTest, IsCase) {
     EXPECT_TRUE(c->Is<CaseStatement>());
 }
 
-TEST_F(CaseStatementTest, Assert_Null_Body) {
-    EXPECT_FATAL_FAILURE(
+TEST_F(CaseStatementDeathTest, Assert_Null_Body) {
+    EXPECT_DEATH_IF_SUPPORTED(
         {
             ProgramBuilder b;
             b.create<CaseStatement>(tint::Vector{b.DefaultCaseSelector()}, nullptr);
@@ -108,8 +108,8 @@ TEST_F(CaseStatementTest, Assert_Null_Body) {
         "internal compiler error");
 }
 
-TEST_F(CaseStatementTest, Assert_Null_Selector) {
-    EXPECT_FATAL_FAILURE(
+TEST_F(CaseStatementDeathTest, Assert_Null_Selector) {
+    EXPECT_DEATH_IF_SUPPORTED(
         {
             ProgramBuilder b;
             b.create<CaseStatement>(tint::Vector<const ast::CaseSelector*, 1>{nullptr},
@@ -118,8 +118,8 @@ TEST_F(CaseStatementTest, Assert_Null_Selector) {
         "internal compiler error");
 }
 
-TEST_F(CaseStatementTest, Assert_DifferentGenerationID_Call) {
-    EXPECT_FATAL_FAILURE(
+TEST_F(CaseStatementDeathTest, Assert_DifferentGenerationID_Call) {
+    EXPECT_DEATH_IF_SUPPORTED(
         {
             ProgramBuilder b1;
             ProgramBuilder b2;
@@ -129,8 +129,8 @@ TEST_F(CaseStatementTest, Assert_DifferentGenerationID_Call) {
         "internal compiler error");
 }
 
-TEST_F(CaseStatementTest, Assert_DifferentGenerationID_Selector) {
-    EXPECT_FATAL_FAILURE(
+TEST_F(CaseStatementDeathTest, Assert_DifferentGenerationID_Selector) {
+    EXPECT_DEATH_IF_SUPPORTED(
         {
             ProgramBuilder b1;
             ProgramBuilder b2;

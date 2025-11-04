@@ -36,7 +36,6 @@ public:
     static QWasmScreen *get(QPlatformScreen *screen);
     static QWasmScreen *get(QScreen *screen);
     emscripten::val element() const;
-    QString eventTargetId() const;
     QString outerScreenId() const;
     QPointingDevice *touchDevice() { return m_touchDevice.get(); }
     QPointingDevice *tabletDevice() { return m_tabletDevice.get(); }
@@ -44,7 +43,7 @@ public:
     QWasmCompositor *compositor();
     QWasmDeadKeySupport *deadKeySupport() { return m_deadKeySupport.get(); }
 
-    QList<QWasmWindow *> allWindows();
+    QList<QWasmWindow *> allWindows() const;
 
     QRect geometry() const override;
     int depth() const override;
@@ -66,7 +65,7 @@ public:
     QPointF clipPoint(const QPointF &p) const;
 
     void invalidateSize();
-    void updateQScreenAndCanvasRenderSize();
+    void updateQScreenSize();
     void installCanvasResizeObserver();
     static void canvasResizeObserverCallback(emscripten::val entries, emscripten::val);
 

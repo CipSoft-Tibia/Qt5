@@ -11,7 +11,7 @@
 #include <QtQmlDom/private/qqmldomfieldfilter_p.h>
 #include <QtQmlDom/private/qqmldomscriptelements_p.h>
 
-#include <QtTest/QtTest>
+#include <QtTest/QTest>
 #include <QtCore/QCborValue>
 #include <QtCore/QDebug>
 #include <QtCore/QLibraryInfo>
@@ -52,7 +52,7 @@ public:
 private slots:
     void initTestCase()
     {
-        baseDir = QLatin1String(QT_QMLTEST_DATADIR) + QLatin1String("/domitem");
+        baseDir = QDir::cleanPath(QLatin1String(QT_QMLTEST_DATADIR) + QLatin1String("/domitem"));
         qmltypeDirs = QStringList({ baseDir, QLibraryInfo::path(QLibraryInfo::QmlImportsPath) });
         universePtr =
                 std::shared_ptr<DomUniverse>(new DomUniverse(QStringLiteral(u"dummyUniverse")));
@@ -2508,18 +2508,16 @@ private slots:
             auto subEls = current.tree->subItems();
             for (auto it = subEls.begin(); it != subEls.end(); ++it) {
                 DomItem childItem = current.item.path(it.key());
-                FileLocations::Tree childTree =
-                        std::static_pointer_cast<AttachedInfoT<FileLocations>>(it.value());
+                FileLocations::Tree childTree = it.value();
                 if (!childItem) {
-                    const auto attachedInfo = FileLocations::findAttachedInfo(current.item);
-                    const DomItem treeItem = current.item.path(attachedInfo.foundTreePath);
+                    const auto itemFLoc = FileLocations::treeOf(current.item);
                     qDebug() << current.item.internalKindStr()
                              << "has incorrect FileLocations! Make sure that "
                                 "finalizeScriptExpression is called with the right arguments. It "
                                 "should print out some debugging information with the "
                                 "qt.qmldom.astcreator.debug logging rule.";
                     qDebug() << "Current FileLocations has keys:"
-                             << treeItem.field(Fields::subItems).keys()
+                             << itemFLoc->subItems().keys()
                              << "but current Item of type" << current.item.internalKindStr()
                              << "has fields: " << current.item.fields()
                              << "and keys: " << current.item.keys()
@@ -2546,7 +2544,7 @@ private slots:
             QVERIFY(canonical.length() > 0);
             if (canonical.length() > 0)
                 QCOMPARE(canonical.toString(),
-                         FileLocations::treeOf(item)->canonicalPathForTesting());
+                         FileLocations::canonicalPathForTesting(FileLocations::treeOf(item)));
         };
 
         /*
@@ -2832,28 +2830,43 @@ private slots:
                          .replace("\r", "\n"),
                  u" // after helloWorld binding\n"_s);
 
-        const auto fileLocations = FileLocations::findAttachedInfo(binding);
-        const DomItem bindingFileLocation =
-                rootQmlObject.path(fileLocations.foundTreePath).field(Fields::infoItem);
-
         // test if FileLocation Tree map works correctly with DomItem interface
-        QCOMPARE(bindingFileLocation.field(Fields::fullRegion).value(),
-                 bindingFileLocation.field(Fields::regions)
+        const auto fileLocationsPtr = FileLocations::treeOf(binding);
+        QVERIFY(fileLocationsPtr);
+        const DomItem bindingFileLocationItem =
+                rootQmlObject.top().wrap({},fileLocationsPtr).field(Fields::infoItem);
+        const auto bindingFileLocationInfo = fileLocationsPtr->info();
+
+        QCOMPARE(bindingFileLocationItem.field(Fields::fullRegion).value(),
+                 bindingFileLocationItem.field(Fields::regions)
                          .key(fileLocationRegionName(FileLocationRegion::MainRegion))
                          .value());
-
-        QCOMPARE(bindingFileLocation.field(Fields::fullRegion).value(),
-                 sourceLocationToQCborValue(fileLocations.foundTree->info().fullRegion));
-
-        QCOMPARE(bindingFileLocation.field(Fields::regions)
+        QCOMPARE(bindingFileLocationItem.field(Fields::fullRegion).value(),
+                 sourceLocationToQCborValue(bindingFileLocationInfo.fullRegion));
+        QCOMPARE(bindingFileLocationItem.field(Fields::regions)
                          .key(fileLocationRegionName(FileLocationRegion::MainRegion))
                          .value(),
-                 sourceLocationToQCborValue(fileLocations.foundTree->info().regions[MainRegion]));
-
-        QCOMPARE(bindingFileLocation.field(Fields::regions)
+                 sourceLocationToQCborValue(bindingFileLocationInfo.regions[MainRegion]));
+        QCOMPARE(bindingFileLocationItem.field(Fields::regions)
                          .key(fileLocationRegionName(FileLocationRegion::ColonTokenRegion))
                          .value(),
-                 sourceLocationToQCborValue(fileLocations.foundTree->info().regions[ColonTokenRegion]));
+                 sourceLocationToQCborValue(bindingFileLocationInfo.regions[ColonTokenRegion]));
+
+        QCOMPARE(bindingFileLocationItem.field(Fields::fullRegion).value(),
+                 sourceLocationToQCborValue(bindingFileLocationInfo.fullRegion));
+    }
+
+    // This test exists to document the usage of DOM API on fileLocations for debug purposes
+    void fileLocationsDebugDump() {
+        using namespace Qt::StringLiterals;
+        const QString filePath = baseDir + u"/Base.qml"_s;
+        auto qmlFile = parse(filePath, qmltypeDirs).fileObject(GoTo::MostLikely);
+        QString fileDump;
+        qmlFile.dump([&fileDump](QStringView v) { fileDump.append(v); });
+        QVERIFY(fileDump.contains("fileLocationsTree"));
+        QVERIFY(fileDump.contains("infoItem"));
+        QVERIFY(fileDump.contains("fullRegion"));
+        QVERIFY(fileDump.contains("regions"));
     }
 
     // add qml files here that should not crash the dom construction
@@ -3184,11 +3197,14 @@ private slots:
         std::shared_ptr<DomEnvironment> envPtr = DomEnvironment::create(
                 qmltypeDirs, QQmlJS::Dom::DomEnvironment::Option::SingleThreaded, Extended);
 
-        const QString fileName{ QDir::cleanPath(baseDir + u"/propertyBindings.qml"_s) };
+        const QString fileName{ baseDir + u"/NeedsImportPath.qml"_s };
 
         {
             DomItem envChild = DomItem(envPtr).makeCopy(DomItem::CopyOption::EnvConnected).item();
             auto envPtrChild = envChild.ownerAs<DomEnvironment>();
+            const QStringList newImportPath =
+                    QStringList{ baseDir + u"/ImportPath"_s } + envPtr->loadPaths();
+            envPtrChild->setLoadPaths(newImportPath);
             envPtrChild->loadFile(
                     FileToLoad::fromFileSystem(envPtrChild, fileName),
                     [&qmlObject](Path, const DomItem &, const DomItem &newIt) {
@@ -3218,6 +3234,13 @@ private slots:
                                               .field(Fields::components)
                                               .key(QString());
         QVERIFY(mainComponent);
+
+        // make sure that the QmlFile was loaded with the import path of the child environment!
+        const QString loadedQmldir = mainComponent[0][Fields::objects][0][Fields::prototypes][0]
+                                                  [Fields::get][Fields::uri]
+                                                          .value()
+                                                          .toString();
+        QCOMPARE(loadedQmldir, "\"%1/ImportPath/MyModule/qmldir\""_L1.arg(baseDir));
     }
 
     void populateLazyFileAfterCommitToBase()
@@ -3227,16 +3250,18 @@ private slots:
         std::shared_ptr<DomEnvironment> envPtr = DomEnvironment::create(
                 qmltypeDirs, QQmlJS::Dom::DomEnvironment::Option::SingleThreaded, Extended);
 
-        const QString fileName{ QDir::cleanPath(baseDir + u"/propertyBindings.qml"_s) };
+        const QString fileName{ baseDir + u"/NeedsImportPath.qml"_s };
 
         {
             DomItem envChild = DomItem(envPtr).makeCopy(DomItem::CopyOption::EnvConnected).item();
             auto envPtrChild = envChild.ownerAs<DomEnvironment>();
-            envPtrChild->loadFile(
-                    FileToLoad::fromFileSystem(envPtrChild, fileName),
-                    [&qmlObject](Path, const DomItem &, const DomItem &newIt) {
-                        qmlObject = newIt.fileObject();
-                    });
+            const QStringList newImportPath =
+                    QStringList{ baseDir + u"/ImportPath"_s } + envPtr->loadPaths();
+            envPtrChild->setLoadPaths(newImportPath);
+            envPtrChild->loadFile(FileToLoad::fromFileSystem(envPtrChild, fileName),
+                                  [&qmlObject](Path, const DomItem &, const DomItem &newIt) {
+                                      qmlObject = newIt.fileObject();
+                                  });
             envPtrChild->loadPendingDependencies();
             envPtrChild->commitToBase(DomItem(envPtrChild));
         } // destroy the temporary environment that the file was loaded into
@@ -3249,6 +3274,13 @@ private slots:
                                               .field(Fields::components)
                                               .key(QString());
         QVERIFY(mainComponent);
+
+        // make sure that the QmlFile was loaded with the import path of the child environment!
+        const QString loadedQmldir = mainComponent[0][Fields::objects][0][Fields::prototypes][0]
+                                                  [Fields::get][Fields::uri]
+                                                          .value()
+                                                          .toString();
+        QCOMPARE(loadedQmldir, "\"%1/ImportPath/MyModule/qmldir\""_L1.arg(baseDir));
     }
 
     void qtbug_124799()
@@ -3415,6 +3447,16 @@ private slots:
                 << QSet{ QQmlJS::SourceLocation{ 247, 1, 13, 18 },
                          QQmlJS::SourceLocation{ 264, 1, 14, 15 } };
 
+        QTest::newRow("signal-lparen")
+                << baseDir + u"/fileLocationRegions/functions.qml"_s << LeftParenthesisRegion
+                << QSet{ QQmlJS::SourceLocation{ 242, 1, 13, 13 },
+                         QQmlJS::SourceLocation{ 263, 1, 14, 14 } };
+
+        QTest::newRow("signal-rparen")
+                << baseDir + u"/fileLocationRegions/functions.qml"_s << RightParenthesisRegion
+                << QSet{ QQmlJS::SourceLocation{ 248, 1, 13, 19 },
+                         QQmlJS::SourceLocation{ 270, 1, 14, 21 } };
+
         QTest::newRow("pragma-keyword")
                 << baseDir + u"/fileLocationRegions/pragmas.qml"_s << PragmaKeywordRegion
                 << QSet{ QQmlJS::SourceLocation{ 112, 6, 4, 1 },
@@ -3472,17 +3514,16 @@ private slots:
         envPtr->loadPendingDependencies();
 
         const auto tree = FileLocations::treeOf(file);
-        using AttachedInfo = AttachedInfoT<FileLocations>;
         QSet<QQmlJS::SourceLocation> locs;
-        auto visitor = [&](const Path &currentPath, const AttachedInfo::Ptr &attachedInfo){
+        auto visitor = [&](const Path &currentPath, const FileLocations::Tree &fLocPtr){
             Q_UNUSED(currentPath);
-            const auto regions = attachedInfo->info().regions;
+            const auto regions = fLocPtr->info().regions;
             if (regions.contains(region)) {
                locs << regions.value(region);
             }
             return true;
         };
-        AttachedInfo::visitTree(tree, visitor, Path());
+        FileLocations::visitTree(tree, visitor, Path());
         [&] {
             QVERIFY(locs.contains(expectedLocs));
         }();
@@ -3586,7 +3627,7 @@ private slots:
 private:
     void checkFunctionKeyword(const DomItem &item) const
     {
-        auto fileLocationRegions = FileLocations::fileLocationsOf(item)->regions;
+        auto fileLocationRegions = FileLocations::treeOf(item)->info().regions;
         QVERIFY(fileLocationRegions.contains(FileLocationRegion::FunctionKeywordRegion));
         QCOMPARE(fileLocationRegions[FileLocationRegion::FunctionKeywordRegion].length,
                  std::char_traits<char>::length("function"));
@@ -4096,15 +4137,15 @@ private slots:
         QVERIFY(component);
         QCOMPARE(component.internalKind(), DomType::ScriptTemplateLiteral);
 
-        auto fileLocations = FileLocations::fileLocationsOf(component);
+        auto fileLocations = FileLocations::treeOf(component)->info();
 
-        const auto left = fileLocations->regions[FileLocationRegion::LeftBacktickTokenRegion];
+        const auto left = fileLocations.regions[FileLocationRegion::LeftBacktickTokenRegion];
         QCOMPARE(left, expectedLeftBacktick);
 
-        const auto right = fileLocations->regions[FileLocationRegion::RightBacktickTokenRegion];
+        const auto right = fileLocations.regions[FileLocationRegion::RightBacktickTokenRegion];
         QCOMPARE(right, expectedRightBacktick);
 
-        QCOMPARE(fileLocations->regions.size(), 3); // left and right "`" and "main" region
+        QCOMPARE(fileLocations.regions.size(), 3); // left and right "`" and "main" region
     }
     void templateLiteralExpressionParts_data()
     {
@@ -4157,15 +4198,15 @@ private slots:
         QVERIFY(component);
         QCOMPARE(component.internalKind(), DomType::ScriptTemplateExpressionPart);
 
-        auto fileLocations = FileLocations::fileLocationsOf(component);
+        auto fileLocations = FileLocations::treeOf(component)->info();
 
-        const auto left = fileLocations->regions[FileLocationRegion::DollarLeftBraceTokenRegion];
+        const auto left = fileLocations.regions[FileLocationRegion::DollarLeftBraceTokenRegion];
         QCOMPARE(left, expectedDollarLeftBrace);
 
-        const auto right = fileLocations->regions[FileLocationRegion::RightBraceRegion];
+        const auto right = fileLocations.regions[FileLocationRegion::RightBraceRegion];
         QCOMPARE(right, expectedRightBrace);
 
-        QCOMPARE(fileLocations->regions.size(), 3); // "${", "}" and "main" region
+        QCOMPARE(fileLocations.regions.size(), 3); // "${", "}" and "main" region
     }
 
     void templateLiteralStringParts_data()
@@ -4221,16 +4262,16 @@ private slots:
         QVERIFY(component);
         QCOMPARE(component.internalKind(), DomType::ScriptTemplateStringPart);
 
-        auto fileLocations = FileLocations::fileLocationsOf(component);
+        auto fileLocations = FileLocations::treeOf(component)->info();
 
-        const auto location = fileLocations->regions[FileLocationRegion::MainRegion];
+        const auto location = fileLocations.regions[FileLocationRegion::MainRegion];
         qDebug() << location.startLine;
         qDebug() << location.startColumn;
         qDebug() << location.offset;
         qDebug() << location.length;
         QCOMPARE(location, expectedLocation);
 
-        QCOMPARE(fileLocations->regions.size(), 1); // "main" region
+        QCOMPARE(fileLocations.regions.size(), 1); // "main" region
     }
 
     void newExpression()
@@ -4506,64 +4547,69 @@ private slots:
         QVERIFY(semanticAnalysis.m_mapper->isFile(u"/qt/qml/MyModule/qml/HelloWorld.qml"_s));
     }
 
+    void methodSignature_data()
+    {
+        QTest::addColumn<QString>("name");
+        QTest::addColumn<QString>("expectedSignature");
+
+        QTest::addRow("function") << u"f"_s << u"(a: int, b: string): bool"_s;
+        QTest::addRow("signal") << u"f2"_s << u"(int a, b: string)"_s;
+        QTest::addRow("noArgs") << u"noArgs"_s << u""_s;
+        QTest::addRow("returnVoid") << u"returnVoid"_s << u"(): void"_s;
+        QTest::addRow("defaultArgs") << u"defaultArgs"_s << u"(x = 12345, y = { x: 44, y: \"hello\", z: x => x }): void"_s;
+        QTest::addRow("deconstruction") << u"deconstruction"_s << u"({ x = 4 }): void"_s;
+        QTest::addRow("functionWithComments") << u"comments"_s << u"(a: int, b): int"_s;
+    }
+
+    void methodSignature()
+    {
+        QFETCH(QString, name);
+        QFETCH(QString, expectedSignature);
+
+        const QString testFile = baseDir + u"/methods.qml"_s;
+        const DomItem rootQmlObject = rootQmlObjectFromFile(testFile, qmltypeDirs);
+
+        const DomItem methods = rootQmlObject.field(Fields::methods);
+        const DomItem method = methods.key(name)[0];
+        const MethodInfo *methodInfo = method.as<MethodInfo>();
+
+        QCOMPARE(methodInfo->signature(method), expectedSignature);
+    }
+
     void commentsFileLocations()
     {
         const QString testFile = baseDir + u"/Comments.qml"_s;
-        const DomItem fileLocations = rootQmlObjectFromFile(testFile, qmltypeDirs).fileObject().fileLocationsTree();
-        const DomItem commentsForItem = fileLocations
-                .field(Fields::subItems).key(u".components")
-                .field(Fields::subItems).key(u"[\"\"]")
-                .field(Fields::subItems).key(u"[0]")
-                .field(Fields::subItems).key(u".objects")
-                .field(Fields::subItems).key(u"[0]")
-                .field(Fields::subItems).key(u".children")
-                .field(Fields::subItems).key(u"[0]")
-                .field(Fields::subItems).key(u".comments")
-                .field(Fields::subItems).key(u".regionComments")
-                .field(Fields::subItems);
+        const auto fileLocations = FileLocations::treeOf(rootQmlObjectFromFile(testFile, qmltypeDirs).fileObject());
+        const auto commentsPath = Path::fromString(u".components[\"\"][0].objects[0].children[0].comments.regionComments");
+        const auto commentsForItem = FileLocations::find(fileLocations, commentsPath);
 
         QVERIFY(commentsForItem);
         {
             // Hello World! comment
-            const FileLocations *preComment = commentsForItem
-                    .key(u"[\"IdentifierRegion\"]")
-                    .field(Fields::subItems)
-                    .key(u".preComments")
-                    .field(Fields::subItems)
-                    .key(u"[0]")
-                    .field(Fields::infoItem)
-                    .as<FileLocations>();
-            QVERIFY(preComment);
-            QCOMPARE(preComment->fullRegion.startLine, 4);
-            QCOMPARE(preComment->fullRegion.startColumn, 5);
+            const auto preCommentPath = Path::fromString(u"[\"IdentifierRegion\"].preComments[0]");
+            const auto preCommentFLocPtr = FileLocations::find(commentsForItem, preCommentPath);
+
+            QVERIFY(preCommentFLocPtr);
+            QCOMPARE(preCommentFLocPtr->info().fullRegion.startLine, 4);
+            QCOMPARE(preCommentFLocPtr->info().fullRegion.startColumn, 5);
         }
         {
             // Goodbye World! comment
-            const FileLocations *postComment = commentsForItem
-                    .key(u"[\"MainRegion\"]")
-                    .field(Fields::subItems)
-                    .key(u".postComments")
-                    .field(Fields::subItems)
-                    .key(u"[0]")
-                    .field(Fields::infoItem)
-                    .as<FileLocations>();
-            QVERIFY(postComment);
-            QCOMPARE(postComment->fullRegion.startLine, 6);
-            QCOMPARE(postComment->fullRegion.startColumn, 5);
+            const auto postCommentPath = Path::fromString(u"[\"MainRegion\"].postComments[0]");
+            const auto postCommentFLocPtr = FileLocations::find(commentsForItem, postCommentPath);
+
+            QVERIFY(postCommentFLocPtr);
+            QCOMPARE(postCommentFLocPtr->info().fullRegion.startLine, 6);
+            QCOMPARE(postCommentFLocPtr->info().fullRegion.startColumn, 5);
         }
         {
             // multi line comment
-            const FileLocations *postComment = commentsForItem
-                    .key(u"[\"MainRegion\"]")
-                    .field(Fields::subItems)
-                    .key(u".postComments")
-                    .field(Fields::subItems)
-                    .key(u"[1]")
-                    .field(Fields::infoItem)
-                    .as<FileLocations>();
-            QVERIFY(postComment);
-            QCOMPARE(postComment->fullRegion.startLine, 7);
-            QCOMPARE(postComment->fullRegion.startColumn, 5);
+            const auto postCommentPath = Path::fromString(u"[\"MainRegion\"].postComments[1]");
+            const auto postCommentFLocPtr = FileLocations::find(commentsForItem, postCommentPath);
+
+            QVERIFY(postCommentFLocPtr);
+            QCOMPARE(postCommentFLocPtr->info().fullRegion.startLine, 7);
+            QCOMPARE(postCommentFLocPtr->info().fullRegion.startColumn, 5);
         }
     }
 

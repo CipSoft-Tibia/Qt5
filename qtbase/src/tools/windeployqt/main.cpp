@@ -194,6 +194,7 @@ struct Options {
     unsigned updateFileFlags = 0;
     QStringList qmlDirectories; // Project's QML files.
     QStringList qmlImportPaths; // Custom QML module locations.
+    int qmlImportTimeout = 30000;
     QString directory;
     QString qtpathsBinary;
     QString translationsDirectory; // Translations target directory
@@ -444,6 +445,12 @@ static inline int parseArguments(const QStringList &arguments, QCommandLineParse
                                        QStringLiteral("directory"));
     parser->addOption(qmlImportOption);
 
+    QCommandLineOption qmlImportTimeoutOption(QStringLiteral("qmlimporttimeout"),
+                                       QStringLiteral("Set timeout (in ms for) execution of "
+                                                             "qmlimportscanner."),
+                                       QStringLiteral("timeout"));
+    parser->addOption(qmlImportTimeoutOption);
+
     QCommandLineOption noQuickImportOption(QStringLiteral("no-quick-import"),
                                            QStringLiteral("Skip deployment of Qt Quick imports."));
     parser->addOption(noQuickImportOption);
@@ -693,6 +700,18 @@ static inline int parseArguments(const QStringList &arguments, QCommandLineParse
     if (parser->isSet(qmlImportOption))
         options->qmlImportPaths = parser->values(qmlImportOption);
 
+    if (parser->isSet(qmlImportTimeoutOption)) {
+        const QString timeoutString = parser->value(qmlImportTimeoutOption);
+        bool ok;
+        int timeout = timeoutString.toInt(&ok);
+        if (!ok) {
+            *errorMessage = u'"' + timeoutString + QStringLiteral("\" is not an acceptable timeout "
+                                                                  "value.");
+            return CommandLineParseError;
+        }
+        options->qmlImportTimeout = timeout;
+    }
+
     const QString &file = posArgs.front();
     const QFileInfo fi(QDir::cleanPath(file));
     if (!fi.exists()) {
@@ -806,8 +825,9 @@ static inline bool isQtModule(const QString &libName)
 }
 
 // Helper for recursively finding all dependent Qt libraries.
-static bool findDependentQtLibraries(const QString &qtBinDir, const QString &binary, Platform platform,
-                                     QString *errorMessage, QStringList *result,
+static bool findDependentQtLibraries(const QString &qtBinDir, const QString &binary,
+                                     Platform platform, QString *errorMessage,
+                                     QStringList *qtDependencies, QStringList *nonQtDependencies,
                                      unsigned *wordSize = nullptr, bool *isDebug = nullptr,
                                      unsigned short *machineArch = nullptr,
                                      int *directDependencyCount = nullptr, int recursionDepth = 0)
@@ -823,20 +843,23 @@ static bool findDependentQtLibraries(const QString &qtBinDir, const QString &bin
     }
     // Filter out the Qt libraries. Note that depends.exe finds libs from optDirectory if we
     // are run the 2nd time (updating). We want to check against the Qt bin dir libraries
-    const int start = result->size();
+    const int start = qtDependencies->size();
     for (const QString &lib : std::as_const(dependentLibs)) {
         if (isQtModule(lib)) {
             const QString path = normalizeFileName(qtBinDir + u'/' + QFileInfo(lib).fileName());
-            if (!result->contains(path))
-                result->append(path);
+            if (!qtDependencies->contains(path))
+                qtDependencies->append(path);
+        } else if (nonQtDependencies && !nonQtDependencies->contains(lib)) {
+            nonQtDependencies->append(lib);
         }
     }
-    const int end = result->size();
+    const int end = qtDependencies->size();
     if (directDependencyCount)
         *directDependencyCount = end - start;
     // Recurse
     for (int i = start; i < end; ++i)
-        if (!findDependentQtLibraries(qtBinDir, result->at(i), platform, errorMessage, result,
+        if (!findDependentQtLibraries(qtBinDir, qtDependencies->at(i), platform, errorMessage,
+                                      qtDependencies, nonQtDependencies,
                                       nullptr, nullptr, nullptr, nullptr, recursionDepth + 1))
             return false;
     return true;
@@ -1030,7 +1053,7 @@ static QString deployPlugin(const QString &plugin, const QDir &subDir, const boo
     QStringList dependentQtLibs;
     QString errorMessage;
     if (findDependentQtLibraries(libraryLocation, pluginPath, platform,
-                                 &errorMessage, &dependentQtLibs)) {
+                                 &errorMessage, &dependentQtLibs, nullptr)) {
         for (int d = 0; d < dependentQtLibs.size(); ++d) {
             const qint64 module = qtModule(dependentQtLibs.at(d), infix);
             if (module >= 0)
@@ -1474,17 +1497,40 @@ static DeployResult deploy(const Options &options, const QMap<QString, QString> 
         std::wcout << "Qt binaries in " << QDir::toNativeSeparators(qtBinDir) << '\n';
 
     QStringList dependentQtLibs;
+    QStringList dependentNonQtLibs;
     bool detectedDebug;
     unsigned wordSize;
     unsigned short machineArch;
     int directDependencyCount = 0;
-    if (!findDependentQtLibraries(libraryLocation, options.binaries.first(), options.platform, errorMessage, &dependentQtLibs, &wordSize,
+    if (!findDependentQtLibraries(libraryLocation, options.binaries.first(), options.platform,
+                                  errorMessage, &dependentQtLibs, &dependentNonQtLibs, &wordSize,
                                   &detectedDebug, &machineArch, &directDependencyCount)) {
         return result;
     }
     for (int b = 1; b < options.binaries.size(); ++b) {
-        if (!findDependentQtLibraries(libraryLocation, options.binaries.at(b), options.platform, errorMessage, &dependentQtLibs,
-                                      nullptr, nullptr, nullptr)) {
+        if (!findDependentQtLibraries(libraryLocation, options.binaries.at(b), options.platform,
+                                      errorMessage, &dependentQtLibs, &dependentNonQtLibs,
+                                      nullptr, nullptr, nullptr, nullptr)) {
+            return result;
+        }
+    }
+
+    const QFileInfo fi(options.binaries.first());
+    const QString canonicalBinPath = fi.canonicalPath();
+    // Also check Qt dependencies of "local non Qt dependencies" (dlls located in the same folder)
+    // Index based loop as container might be changed which invalidates iterators
+    for (qsizetype i = 0; i < dependentNonQtLibs.size(); ++i) {
+        const QString nonQtLib = dependentNonQtLibs.at(i);
+        const QString path = canonicalBinPath + u'/' + nonQtLib;
+        if (!QFileInfo::exists(path))
+            continue;
+
+        if (optVerboseLevel)
+            std::wcout << "Adding local dependency" << path << '\n';
+
+        if (!findDependentQtLibraries(libraryLocation, path, options.platform,
+                                      errorMessage, &dependentQtLibs, &dependentNonQtLibs,
+                                      nullptr, nullptr, nullptr, nullptr)) {
             return result;
         }
     }
@@ -1597,13 +1643,14 @@ static DeployResult deploy(const Options &options, const QMap<QString, QString> 
             const QmlImportScanResult scanResult =
                 runQmlImportScanner(qmlDirectory, qmlImportPaths,
                                     result.directlyUsedQtLibraries.test(QtWidgetsModuleId),
-                                    options.platform, debugMatchMode, errorMessage);
+                                    options.platform, debugMatchMode, errorMessage,
+                                    options.qmlImportTimeout);
             if (!scanResult.ok)
                 return result;
             qmlScanResult.append(scanResult);
             // Additional dependencies of QML plugins.
             for (const QString &plugin : std::as_const(qmlScanResult.plugins)) {
-                if (!findDependentQtLibraries(libraryLocation, plugin, options.platform, errorMessage, &dependentQtLibs, &wordSize, &detectedDebug, &machineArch))
+                if (!findDependentQtLibraries(libraryLocation, plugin, options.platform, errorMessage, &dependentQtLibs, nullptr, &wordSize, &detectedDebug, &machineArch))
                     return result;
             }
             if (optVerboseLevel >= 1) {
@@ -1840,13 +1887,18 @@ static bool deployWebEngineCore(const QMap<QString, QString> &qtpathsVariables,
                                 const PluginInformation &pluginInfo, const Options &options,
                                 bool isDebug, QString *errorMessage)
 {
-    static const char *installDataFiles[] = { "icudtl.dat",
-                                              "qtwebengine_devtools_resources.pak",
-                                              "qtwebengine_resources.pak",
-                                              "qtwebengine_resources_100p.pak",
-                                              "qtwebengine_resources_200p.pak",
-                                              isDebug ? "v8_context_snapshot.debug.bin"
-                                                      : "v8_context_snapshot.bin" };
+    static const char *installDataFilesRelease[] = {
+        "icudtl.dat", "qtwebengine_devtools_resources.pak", "qtwebengine_resources.pak",
+        "qtwebengine_resources_100p.pak", "qtwebengine_resources_200p.pak"
+    };
+    static const char *installDataFilesDebug[] = {
+        "icudtl.dat", "qtwebengine_devtools_resources.debug.pak", "qtwebengine_resources.debug.pak",
+        "qtwebengine_resources_100p.debug.pak", "qtwebengine_resources_200p.debug.pak"
+    };
+    static const auto &installDataFiles = isDebug ? installDataFilesDebug : installDataFilesRelease;
+    static const auto installV8SnapshotFile =
+            isDebug ? "v8_context_snapshot.debug.bin" : "v8_context_snapshot.bin";
+
     QByteArray webEngineProcessName(webEngineProcessC);
     if (isDebug && platformHasDebugSuffix(options.platform))
         webEngineProcessName.append('d');
@@ -1866,6 +1918,10 @@ static bool deployWebEngineCore(const QMap<QString, QString> &qtpathsVariables,
             return false;
         }
     }
+    // snapshot file is optional feature in qtwebengine, so it might be missing
+    updateFile(resourcesSourceDir + QLatin1StringView(installV8SnapshotFile), resourcesTargetDir,
+               options.updateFileFlags, options.json, errorMessage);
+    errorMessage->clear();
     const QFileInfo translations(qtpathsVariables.value(QStringLiteral("QT_INSTALL_TRANSLATIONS"))
                                  + QStringLiteral("/qtwebengine_locales"));
     if (!translations.isDir()) {

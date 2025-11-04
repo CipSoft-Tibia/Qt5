@@ -4,21 +4,40 @@
 // LICENSE file in the root directory of this source tree.
 
 #include <assert.h>
+#include <inttypes.h>
 #include <math.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <stdlib.h>
+#include <string.h>
 
 #include <fp16/fp16.h>
+#include "xnnpack.h"
+#include "xnnpack/allocator.h"
+#include "xnnpack/common.h"
+#include "xnnpack/compute.h"
+#include "xnnpack/config-types.h"
+#include "xnnpack/config.h"
+#include "xnnpack/log.h"
+#include "xnnpack/microfnptr.h"
+#include "xnnpack/microparams.h"
+#include "xnnpack/operator-type.h"
+#include "xnnpack/operator.h"
+#include "xnnpack/params.h"
+#include "pthreadpool.h"
 
-#include <xnnpack.h>
-#include <xnnpack/allocator.h>
-#include <xnnpack/config.h>
-#include <xnnpack/log.h>
-#include <xnnpack/operator.h>
-#include <xnnpack/operator-utils.h>
-#include <xnnpack/microparams-init.h>
-
+static xnn_status_t check_op_type(xnn_operator_t op,
+                                  enum xnn_operator_type expected_type) {
+  if (op->type != expected_type) {
+    xnn_log_error(
+        "failed to setup operator: operator type mismatch (expected %s, got "
+        "%s)",
+        xnn_operator_type_to_string(expected_type),
+        xnn_operator_type_to_string(op->type));
+    return xnn_status_invalid_parameter;
+  }
+  return xnn_status_success;
+}
 
 static void init_unary_elementwise_nc(
     uint32_t flags,
@@ -255,9 +274,9 @@ enum xnn_status xnn_create_abs_nc_f32(
 {
   const struct xnn_unary_elementwise_config* f32_abs_config = xnn_init_f32_abs_config();
 
-  union xnn_f32_abs_params params;
-  if XNN_LIKELY(f32_abs_config != NULL && f32_abs_config->init.f32_abs != NULL) {
-    f32_abs_config->init.f32_abs(&params);
+  union xnn_f32_default_params params;
+  if XNN_LIKELY(f32_abs_config != NULL && f32_abs_config->init.f32_default != NULL) {
+    f32_abs_config->init.f32_default(&params);
   }
 
   return create_unary_elementwise_nc(
@@ -350,9 +369,9 @@ enum xnn_status xnn_create_clamp_nc_f16(
   const uint16_t output_max_as_half = fp16_ieee_from_fp32_value(output_max);
   output_min = fp16_ieee_to_fp32_value(output_min_as_half);
   output_max = fp16_ieee_to_fp32_value(output_max_as_half);
-  if (output_min >= output_max) {
+  if (output_min > output_max) {
     xnn_log_error(
-      "failed to create %s operator with [%.7g, %.7g] output range: lower bound must be below upper bound",
+      "failed to create %s operator with [%.7g, %.7g] output range: lower bound must be less than or equal to upper bound",
       xnn_operator_type_to_string(xnn_operator_type_clamp_nc_f16), output_min, output_max);
     return xnn_status_invalid_parameter;
   }
@@ -391,9 +410,9 @@ enum xnn_status xnn_create_clamp_nc_f32(
     return xnn_status_invalid_parameter;
   }
 
-  if (output_min >= output_max) {
+  if (output_min > output_max) {
     xnn_log_error(
-      "failed to create %s operator with [%.7g, %.7g] output range: lower bound must be below upper bound",
+      "failed to create %s operator with [%.7g, %.7g] output range: lower bound must be less than or equal to upper bound",
       xnn_operator_type_to_string(xnn_operator_type_clamp_nc_f32), output_min, output_max);
     return xnn_status_invalid_parameter;
   }
@@ -425,9 +444,9 @@ enum xnn_status xnn_create_clamp_nc_s8(
     uint32_t flags,
     xnn_operator_t* clamp_op_out)
 {
-  if (output_min >= output_max) {
+  if (output_min > output_max) {
     xnn_log_error(
-      "failed to create %s operator with [%" PRId8 ", %" PRId8 "] output range: range min must be below range max",
+      "failed to create %s operator with [%" PRId8 ", %" PRId8 "] output range: lower bound must be less than or equal to upper bound",
       xnn_operator_type_to_string(xnn_operator_type_clamp_nc_s8), output_min, output_max);
     return xnn_status_invalid_parameter;
   }
@@ -451,9 +470,9 @@ enum xnn_status xnn_create_clamp_nc_u8(
     uint32_t flags,
     xnn_operator_t* clamp_op_out)
 {
-  if (output_min >= output_max) {
+  if (output_min > output_max) {
     xnn_log_error(
-      "failed to create %s operator with [%" PRIu8 ", %" PRIu8 "] output range: range min must be below range max",
+      "failed to create %s operator with [%" PRIu8 ", %" PRIu8 "] output range: lower bound must be less than or equal to upper bound",
       xnn_operator_type_to_string(xnn_operator_type_clamp_nc_u8), output_min, output_max);
     return xnn_status_invalid_parameter;
   }
@@ -520,9 +539,9 @@ enum xnn_status xnn_create_convert_nc_f32_qs8(
     return xnn_status_invalid_parameter;
   }
 
-  if (output_min >= output_max) {
+  if (output_min > output_max) {
     xnn_log_error(
-      "failed to create %s operator with [%" PRId8 ", %" PRId8 "] output range: range min must be below range max",
+      "failed to create %s operator with [%" PRId8 ", %" PRId8 "] output range: lower bound must be less than or equal to upper bound",
       xnn_operator_type_to_string(xnn_operator_type_convert_nc_f32_qs8), output_min, output_max);
     return xnn_status_invalid_parameter;
   }
@@ -587,6 +606,27 @@ enum xnn_status xnn_create_convert_nc_f32_qd8(
     xnn_operator_type_convert_nc_f32_qd8, convert_op_out);
 }
 
+enum xnn_status xnn_create_convert_nc_f32_qp8(uint32_t flags,
+                                              xnn_operator_t* convert_op_out) {
+  const struct xnn_reduce_config* f32_rminmax_config =
+      xnn_init_f32_rminmax_config();
+  if (f32_rminmax_config == NULL) {
+    xnn_log_error(
+        "failed to create %s operator: unsupported hardware configuration",
+        xnn_operator_type_to_string(xnn_operator_type_convert_nc_f32_qp8));
+    return xnn_status_unsupported_hardware;
+  }
+
+  union xnn_f32_default_params params;
+  if (f32_rminmax_config->init.f32_default != NULL) {
+    f32_rminmax_config->init.f32_default(&params);
+  }
+
+  return create_unary_elementwise_nc(
+      flags, xnn_init_f32_to_qp8_cvt_config(), f32_rminmax_config, &params,
+      sizeof(params), xnn_operator_type_convert_nc_f32_qp8, convert_op_out);
+}
+
 enum xnn_status xnn_create_convert_nc_f32_qu8(
   float output_scale,
   uint8_t output_zero_point,
@@ -602,9 +642,9 @@ enum xnn_status xnn_create_convert_nc_f32_qu8(
     return xnn_status_invalid_parameter;
   }
 
-  if (output_min >= output_max) {
+  if (output_min > output_max) {
     xnn_log_error(
-      "failed to create %s operator with [%" PRIu8 ", %" PRIu8 "] output range: range min must be below range max",
+      "failed to create %s operator with [%" PRIu8 ", %" PRIu8 "] output range: lower bound must be less than or equal to upper bound",
       xnn_operator_type_to_string(xnn_operator_type_convert_nc_f32_qu8), output_min, output_max);
     return xnn_status_invalid_parameter;
   }
@@ -946,6 +986,23 @@ enum xnn_status xnn_create_floor_nc_f32(
     xnn_operator_type_floor_nc_f32, floor_op_out);
 }
 
+enum xnn_status xnn_create_gelu_nc_f32(uint32_t flags,
+                                       xnn_operator_t* gelu_op_out) {
+  const struct xnn_unary_elementwise_config* f32_gelu_config =
+      xnn_init_f32_gelu_config();
+
+  union xnn_f32_default_params params;
+  if XNN_LIKELY (f32_gelu_config != NULL) {
+    if (f32_gelu_config->init.f32_default != NULL) {
+      f32_gelu_config->init.f32_default(&params);
+    }
+  }
+
+  return create_unary_elementwise_nc(
+      flags, f32_gelu_config, /*rminmax_config=*/NULL, &params, sizeof(params),
+      xnn_operator_type_gelu_nc_f32, gelu_op_out);
+}
+
 enum xnn_status xnn_create_hardswish_nc_f16(
     uint32_t flags,
     xnn_operator_t* hardswish_op_out)
@@ -1034,6 +1091,53 @@ enum xnn_status xnn_create_leaky_relu_nc_f32(
     flags, f32_lrelu_config, /*rminmax_config=*/NULL,
     &params, sizeof(params),
     xnn_operator_type_leaky_relu_nc_f32, leaky_relu_op_out);
+}
+
+enum xnn_status xnn_create_log_nc_f32(
+  uint32_t flags,
+  xnn_operator_t* log_op_out)
+{
+  const struct xnn_unary_elementwise_config* f32_log_config = xnn_init_f32_log_config();
+
+  union xnn_f32_default_params params;
+  if XNN_LIKELY(f32_log_config != NULL) {
+    if (f32_log_config->init.f32_default != NULL) {
+      f32_log_config->init.f32_default(&params);
+    }
+  }
+
+  return create_unary_elementwise_nc(
+    flags, f32_log_config, /*rminmax_config=*/NULL,
+    &params, sizeof(params),
+    xnn_operator_type_log_nc_f32, log_op_out);
+}
+
+enum xnn_status xnn_reshape_log_nc_f32(
+  xnn_operator_t log_op,
+  size_t batch_size,
+  size_t channels,
+  size_t input_stride,
+  size_t output_stride,
+  pthreadpool_t threadpool)
+{
+  return reshape_unary_elementwise_nc(
+    log_op, xnn_operator_type_log_nc_f32,
+    batch_size,
+    channels, input_stride, output_stride,
+    /*log2_input_size=*/XNN_LOG2_SIZEOF_FLOAT,
+    /*log2_output_size=*/XNN_LOG2_SIZEOF_FLOAT,
+    &log_op->params.f32_default, sizeof(log_op->params.f32_default),
+    threadpool);
+}
+
+enum xnn_status xnn_setup_log_nc_f32(
+  xnn_operator_t log_op,
+  const float* input,
+  float* output)
+{
+  return setup_unary_elementwise_nc(
+    log_op, xnn_operator_type_log_nc_f32,
+    input, output);
 }
 
 enum xnn_status xnn_create_leaky_relu_nc_qs8(
@@ -1193,9 +1297,9 @@ enum xnn_status xnn_create_negate_nc_f32(
 {
   const struct xnn_unary_elementwise_config* f32_neg_config = xnn_init_f32_neg_config();
 
-  union xnn_f32_neg_params params;
-  if XNN_LIKELY(f32_neg_config != NULL && f32_neg_config->init.f32_neg != NULL) {
-    f32_neg_config->init.f32_neg(&params);
+  union xnn_f32_default_params params;
+  if XNN_LIKELY(f32_neg_config != NULL && f32_neg_config->init.f32_default != NULL) {
+    f32_neg_config->init.f32_default(&params);
   }
 
   return create_unary_elementwise_nc(
@@ -1290,6 +1394,32 @@ enum xnn_status xnn_create_square_root_nc_f32(
     flags, f32_sqrt_config, /*rminmax_config=*/NULL,
     &params, sizeof(params),
     xnn_operator_type_square_root_nc_f32, sqrt_op_out);
+}
+
+enum xnn_status xnn_create_reciprocal_square_root_nc_f16(
+    uint32_t flags,
+    xnn_operator_t* rsqrt_op_out)
+{
+  return create_unary_elementwise_nc(
+    flags, xnn_init_f16_rsqrt_config(), /*rminmax_config=*/NULL,
+    /*params=*/NULL, /*params_size=*/0,
+    xnn_operator_type_reciprocal_square_root_nc_f16, rsqrt_op_out);
+}
+
+enum xnn_status xnn_create_reciprocal_square_root_nc_f32(
+    uint32_t flags, xnn_operator_t* rsqrt_op_out) {
+  const struct xnn_unary_elementwise_config* f32_rsqrt_config =
+      xnn_init_f32_rsqrt_config();
+
+  union xnn_f32_rsqrt_params params;
+  if XNN_LIKELY (f32_rsqrt_config != NULL &&
+                 f32_rsqrt_config->init.f32_rsqrt != NULL) {
+    f32_rsqrt_config->init.f32_rsqrt(&params);
+  }
+
+  return create_unary_elementwise_nc(
+      flags, f32_rsqrt_config, /*rminmax_config=*/NULL, &params, sizeof(params),
+      xnn_operator_type_reciprocal_square_root_nc_f32, rsqrt_op_out);
 }
 
 enum xnn_status xnn_create_tanh_nc_f16(
@@ -1389,7 +1519,7 @@ enum xnn_status xnn_reshape_abs_nc_f32(
     output_stride,
     /*log2_input_size=*/XNN_LOG2_SIZEOF_FLOAT,
     /*log2_output_size=*/XNN_LOG2_SIZEOF_FLOAT,
-    &abs_op->params.f32_abs, sizeof(abs_op->params.f32_abs),
+    &abs_op->params.f32_default, sizeof(abs_op->params.f32_default),
     threadpool);
 }
 
@@ -1687,6 +1817,64 @@ enum xnn_status xnn_reshape_convert_nc_f32_qd8(
   return xnn_status_success;
 }
 
+enum xnn_status xnn_reshape_convert_nc_f32_qp8(xnn_operator_t convert_op,
+                                               size_t batch_size,
+                                               size_t channels,
+                                               size_t input_stride,
+                                               pthreadpool_t threadpool) {
+  if (convert_op->type != xnn_operator_type_convert_nc_f32_qp8) {
+    xnn_log_error(
+        "failed to setup operator: operator type mismatch (expected %s, got "
+        "%s)",
+        xnn_operator_type_to_string(xnn_operator_type_convert_nc_f32_qp8),
+        xnn_operator_type_to_string(convert_op->type));
+    return xnn_status_invalid_parameter;
+  }
+  convert_op->state = xnn_run_state_invalid;
+
+  if ((xnn_params.init_flags & XNN_INIT_FLAG_XNNPACK) == 0) {
+    xnn_log_error(
+        "failed to setup %s operator: XNNPACK is not initialized",
+        xnn_operator_type_to_string(xnn_operator_type_convert_nc_f32_qp8));
+    return xnn_status_uninitialized;
+  }
+
+  if (batch_size == 0) {
+    convert_op->state = xnn_run_state_skip;
+    return xnn_status_success;
+  }
+
+  convert_op->batch_size = batch_size;
+
+  const struct xnn_gemm_config* gemm_config =
+      xnn_init_qp8_f32_qc4w_gemm_config();
+  const uint32_t mr_packed = batch_size == 1 ? 1 : gemm_config->mr_packed;
+  const uint32_t kr = UINT32_C(1) << gemm_config->log2_kr;
+  const uint32_t sr = UINT32_C(1) << gemm_config->log2_sr;
+
+  convert_op->context.f32_qp8_convert = (struct f32_qp8_convert_context){
+      .m = batch_size,
+      .k = channels,
+      .mr = mr_packed,
+      .kr = kr,
+      .sr = sr,
+      .lhs_stride = input_stride * sizeof(float),
+      .packq_ukernel = (xnn_x8_packq_f32qp8_ukernel_fn)
+                           convert_op->unary_elementwise_config->ukernel,
+  };
+
+  // TODO(b/340399245) - Ideally, this should parallelize along `batch` in
+  // groups of `mr`.
+  convert_op->compute[0].type = xnn_parallelization_type_1d;
+  convert_op->compute[0].task_1d =
+      (pthreadpool_task_1d_t)xnn_compute_f32_qp8_convert;
+  convert_op->compute[0].range[0] = batch_size;
+
+  convert_op->state = xnn_run_state_needs_setup;
+
+  return xnn_status_success;
+}
+
 enum xnn_status xnn_reshape_convert_nc_f32_qs8(
   xnn_operator_t convert_op,
   size_t batch_size,
@@ -1921,6 +2109,53 @@ enum xnn_status xnn_reshape_elu_nc_f32(
     threadpool);
 }
 
+enum xnn_status xnn_create_exp_nc_f32(
+  uint32_t flags,
+  xnn_operator_t* exp_op_out)
+{
+  const struct xnn_unary_elementwise_config* f32_exp_config = xnn_init_f32_exp_config();
+
+  union xnn_f32_default_params params;
+  if XNN_LIKELY(f32_exp_config != NULL) {
+    if (f32_exp_config->init.f32_default != NULL) {
+      f32_exp_config->init.f32_default(&params);
+    }
+  }
+
+  return create_unary_elementwise_nc(
+    flags, f32_exp_config, /*rminmax_config=*/NULL,
+    &params, sizeof(params),
+    xnn_operator_type_exp_nc_f32, exp_op_out);
+}
+
+enum xnn_status xnn_reshape_exp_nc_f32(
+  xnn_operator_t exp_op,
+  size_t batch_size,
+  size_t channels,
+  size_t input_stride,
+  size_t output_stride,
+  pthreadpool_t threadpool)
+{
+  return reshape_unary_elementwise_nc(
+    exp_op, xnn_operator_type_exp_nc_f32,
+    batch_size,
+    channels, input_stride, output_stride,
+    /*log2_input_size=*/XNN_LOG2_SIZEOF_FLOAT,
+    /*log2_output_size=*/XNN_LOG2_SIZEOF_FLOAT,
+    &exp_op->params.f32_default, sizeof(exp_op->params.f32_default),
+    threadpool);
+}
+
+enum xnn_status xnn_setup_exp_nc_f32(
+  xnn_operator_t exp_op,
+  const float* input,
+  float* output)
+{
+  return setup_unary_elementwise_nc(
+    exp_op, xnn_operator_type_exp_nc_f32,
+    input, output);
+}
+
 enum xnn_status xnn_reshape_floor_nc_f16(
     xnn_operator_t floor_op,
     size_t batch_size,
@@ -1955,6 +2190,19 @@ enum xnn_status xnn_reshape_floor_nc_f32(
     /*log2_output_size=*/XNN_LOG2_SIZEOF_FLOAT,
     &floor_op->params.f32_rnd, sizeof(floor_op->params.f32_rnd),
     threadpool);
+}
+
+enum xnn_status xnn_reshape_gelu_nc_f32(xnn_operator_t gelu_op,
+                                        size_t batch_size, size_t channels,
+                                        size_t input_stride,
+                                        size_t output_stride,
+                                        pthreadpool_t threadpool) {
+  return reshape_unary_elementwise_nc(
+      gelu_op, xnn_operator_type_gelu_nc_f32, batch_size, channels,
+      input_stride, output_stride,
+      /*log2_input_size=*/XNN_LOG2_SIZEOF_FLOAT,
+      /*log2_output_size=*/XNN_LOG2_SIZEOF_FLOAT, &gelu_op->params.f32_default,
+      sizeof(gelu_op->params.f32_default), threadpool);
 }
 
 enum xnn_status xnn_reshape_hardswish_nc_f16(
@@ -2097,7 +2345,43 @@ enum xnn_status xnn_reshape_negate_nc_f32(
     channels, input_stride, output_stride,
     /*log2_input_size=*/XNN_LOG2_SIZEOF_FLOAT,
     /*log2_output_size=*/XNN_LOG2_SIZEOF_FLOAT,
-    &negate_op->params.f32_neg, sizeof(negate_op->params.f32_neg),
+    &negate_op->params.f32_default, sizeof(negate_op->params.f32_default),
+    threadpool);
+}
+
+enum xnn_status xnn_reshape_reciprocal_square_root_nc_f16(
+    xnn_operator_t rsqrt_op,
+    size_t batch_size,
+    size_t channels,
+    size_t input_stride,
+    size_t output_stride,
+    pthreadpool_t threadpool)
+{
+  return reshape_unary_elementwise_nc(
+    rsqrt_op, xnn_operator_type_reciprocal_square_root_nc_f16,
+    batch_size,
+    channels, input_stride, output_stride,
+    /*log2_input_size=*/XNN_LOG2_SIZEOF_HALF,
+    /*log2_output_size=*/XNN_LOG2_SIZEOF_HALF,
+    /*params=*/NULL, /*params_size=*/0,
+    threadpool);
+}
+
+enum xnn_status xnn_reshape_reciprocal_square_root_nc_f32(
+    xnn_operator_t rsqrt_op,
+    size_t batch_size,
+    size_t channels,
+    size_t input_stride,
+    size_t output_stride,
+    pthreadpool_t threadpool)
+{
+  return reshape_unary_elementwise_nc(
+    rsqrt_op, xnn_operator_type_reciprocal_square_root_nc_f32,
+    batch_size,
+    channels, input_stride, output_stride,
+    /*log2_input_size=*/XNN_LOG2_SIZEOF_FLOAT,
+    /*log2_output_size=*/XNN_LOG2_SIZEOF_FLOAT,
+    &rsqrt_op->params.f32_rsqrt, sizeof(rsqrt_op->params.f32_rsqrt),
     threadpool);
 }
 
@@ -2473,6 +2757,38 @@ enum xnn_status xnn_setup_convert_nc_f32_qd8(
   return xnn_status_success;
 }
 
+enum xnn_status xnn_setup_convert_nc_f32_qp8(xnn_operator_t convert_op,
+                                             const float* input,
+                                             int8_t* output) {
+  xnn_status_t status =
+      check_op_type(convert_op, xnn_operator_type_convert_nc_f32_qp8);
+  if (status != xnn_status_success) {
+    return status;
+  }
+
+  switch (convert_op->state) {
+    case xnn_run_state_skip:
+      return xnn_status_success;
+    case xnn_run_state_invalid:
+      xnn_log_error(
+          "failed to setup %s operator: operator has not been reshaped yet",
+          xnn_operator_type_to_string(convert_op->type));
+      return xnn_status_invalid_state;
+    case xnn_run_state_needs_setup:
+      // Operator has been reshaped, but not setup, continue with setup.
+    case xnn_run_state_ready:
+      // Operator has been reshaped, and we are setting up with different
+      // pointers.
+      break;
+  }
+
+  convert_op->context.f32_qp8_convert.lhs = input;
+  convert_op->context.f32_qp8_convert.lhs_packed = output;
+  convert_op->state = xnn_run_state_ready;
+
+  return xnn_status_success;
+}
+
 enum xnn_status xnn_setup_convert_nc_f32_qs8(
   xnn_operator_t convert_op,
   const float* input,
@@ -2623,6 +2939,12 @@ enum xnn_status xnn_setup_floor_nc_f32(
     input, output);
 }
 
+enum xnn_status xnn_setup_gelu_nc_f32(xnn_operator_t gelu_op,
+                                      const float* input, float* output) {
+  return setup_unary_elementwise_nc(gelu_op, xnn_operator_type_gelu_nc_f32,
+                                    input, output);
+}
+
 enum xnn_status xnn_setup_hardswish_nc_f16(
     xnn_operator_t hardswish_op,
     const void* input,
@@ -2700,6 +3022,26 @@ enum xnn_status xnn_setup_negate_nc_f32(
 {
   return setup_unary_elementwise_nc(
     negate_op, xnn_operator_type_negate_nc_f32,
+    input, output);
+}
+
+enum xnn_status xnn_setup_reciprocal_square_root_nc_f16(
+    xnn_operator_t rsqrt_op,
+    const void* input,
+    void* output)
+{
+  return setup_unary_elementwise_nc(
+    rsqrt_op, xnn_operator_type_reciprocal_square_root_nc_f16,
+    input, output);
+}
+
+enum xnn_status xnn_setup_reciprocal_square_root_nc_f32(
+    xnn_operator_t rsqrt_op,
+    const float* input,
+    float* output)
+{
+  return setup_unary_elementwise_nc(
+    rsqrt_op, xnn_operator_type_reciprocal_square_root_nc_f32,
     input, output);
 }
 
@@ -2886,9 +3228,9 @@ enum xnn_status xnn_run_abs_nc_f32(
 {
   const struct xnn_unary_elementwise_config* f32_abs_config = xnn_init_f32_abs_config();
 
-  union xnn_f32_abs_params params;
-  if XNN_LIKELY(f32_abs_config != NULL && f32_abs_config->init.f32_abs != NULL) {
-    f32_abs_config->init.f32_abs(&params);
+  union xnn_f32_default_params params;
+  if XNN_LIKELY(f32_abs_config != NULL && f32_abs_config->init.f32_default != NULL) {
+    f32_abs_config->init.f32_default(&params);
   }
 
   return run_unary_elementwise_nc(
@@ -2986,9 +3328,9 @@ enum xnn_status xnn_run_clamp_nc_f32(
     return xnn_status_invalid_parameter;
   }
 
-  if (output_min >= output_max) {
+  if (output_min > output_max) {
     xnn_log_error(
-      "failed to create %s operator with [%.7g, %.7g] output range: lower bound must be below upper bound",
+      "failed to create %s operator with [%.7g, %.7g] output range: lower bound must be less than or equal to upper bound",
       xnn_operator_type_to_string(xnn_operator_type_clamp_nc_f32), output_min, output_max);
     return xnn_status_invalid_parameter;
   }
@@ -3366,6 +3708,27 @@ enum xnn_status xnn_run_floor_nc_f32(
     threadpool);
 }
 
+enum xnn_status xnn_run_gelu_nc_f32(size_t channels, size_t input_stride,
+                                    size_t output_stride, size_t batch_size,
+                                    const float* input, float* output,
+                                    uint32_t flags, pthreadpool_t threadpool) {
+  const struct xnn_unary_elementwise_config* f32_gelu_config =
+      xnn_init_f32_gelu_config();
+
+  union xnn_f32_default_params params;
+  if XNN_LIKELY (f32_gelu_config != NULL) {
+    if (f32_gelu_config->init.f32_default != NULL) {
+      f32_gelu_config->init.f32_default(&params);
+    }
+  }
+
+  return run_unary_elementwise_nc(
+      xnn_operator_type_gelu_nc_f32, channels, input_stride, output_stride,
+      batch_size, input, output, f32_gelu_config, &params, sizeof(params),
+      /*log2_input_size=*/XNN_LOG2_SIZEOF_FLOAT,
+      /*log2_output_size=*/XNN_LOG2_SIZEOF_FLOAT, flags, threadpool);
+}
+
 enum xnn_status xnn_run_hardswish_nc_f32(
     size_t channels,
     size_t input_stride,
@@ -3444,9 +3807,9 @@ enum xnn_status xnn_run_negate_nc_f32(
 {
   const struct xnn_unary_elementwise_config* f32_neg_config = xnn_init_f32_neg_config();
 
-  union xnn_f32_neg_params params;
-  if XNN_LIKELY(f32_neg_config != NULL && f32_neg_config->init.f32_neg != NULL) {
-    f32_neg_config->init.f32_neg(&params);
+  union xnn_f32_default_params params;
+  if XNN_LIKELY(f32_neg_config != NULL && f32_neg_config->init.f32_default != NULL) {
+    f32_neg_config->init.f32_default(&params);
   }
 
   return run_unary_elementwise_nc(
@@ -3454,6 +3817,34 @@ enum xnn_status xnn_run_negate_nc_f32(
     channels, input_stride, output_stride, batch_size,
     input, output,
     f32_neg_config, &params, sizeof(params),
+    /*log2_input_size=*/XNN_LOG2_SIZEOF_FLOAT,
+    /*log2_output_size=*/XNN_LOG2_SIZEOF_FLOAT,
+    flags,
+    threadpool);
+}
+
+enum xnn_status xnn_run_reciprocal_square_root_nc_f32(
+  size_t channels,
+  size_t input_stride,
+  size_t output_stride,
+  size_t batch_size,
+  const float* input,
+  float* output,
+  uint32_t flags,
+  pthreadpool_t threadpool)
+{
+  const struct xnn_unary_elementwise_config* f32_rsqrt_config = xnn_init_f32_rsqrt_config();
+
+  union xnn_f32_rsqrt_params params;
+  if XNN_LIKELY(f32_rsqrt_config != NULL && f32_rsqrt_config->init.f32_rsqrt != NULL) {
+    f32_rsqrt_config->init.f32_rsqrt(&params);
+  }
+
+  return run_unary_elementwise_nc(
+    xnn_operator_type_reciprocal_square_root_nc_f32,
+    channels, input_stride, output_stride, batch_size,
+    input, output,
+    f32_rsqrt_config, &params, sizeof(params),
     /*log2_input_size=*/XNN_LOG2_SIZEOF_FLOAT,
     /*log2_output_size=*/XNN_LOG2_SIZEOF_FLOAT,
     flags,

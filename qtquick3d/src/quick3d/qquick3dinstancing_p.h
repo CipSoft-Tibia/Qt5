@@ -32,6 +32,8 @@ public:
     bool m_instanceDataChanged = true;
     bool m_instanceCountOverrideChanged = false;
     bool m_depthSortingEnabled = false;
+    QVector3D m_shadowBoundsMinimum = QVector3D(1, 1, 1);
+    QVector3D m_shadowBoundsMaximum = QVector3D(-1, -1, -1);
 };
 
 class Q_QUICK3D_EXPORT QQuick3DInstanceListEntry : public QQuick3DObject

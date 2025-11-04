@@ -1,18 +1,266 @@
 Unreleased:
   Tracing service and probes:
+    * Improved accuracy of ftrace event cropping when there are multiple
+      concurrent tracing sessions. See `previous_bundle_end_timestamp` in
+      ftrace_event_bundle.proto.
+    * Increased watchdog timeout to 180s from 30s to make watchdog crashes
+      much less likely when system is under heavy load.
+  SQL Standard library:
+    *
+  Trace Processor:
+    *
+  UI:
+    *
+  SDK:
+    *
+
+
+v47.0 - 2024-08-07:
+  SQL Standard library:
+    * Removed `cpu.cpus` and `cpu.size` modules. The functions inside
+      for guessing core type were inaccurate and often misleading.
+      There is no replacement for these as there is no accurate data
+      source available.
+    * Moved `cpu.utilization` package to `linux.cpu.utilization`. The
+      functionality inside this package only works properly on Linux
+      and Linux derived OSes (e.g. Android).
+    * Moved `cpu.freq` module to `linux.cpu.frequency` and renamed
+      `cpu_freq_counters` to `cpu_frequency_counters` for the same
+      reason as above.
+    * Moved `gpu.frequency` to `android.gpu.frequency` for the same reason as
+      above.
+    * Moved `cpu.idle` module to `linux.cpu.idle` or `linux.cpu.idle_stats` for
+      the same reason as above.
+    * Moved content of `linux.cpu_idle` into `linux.cpu.idle` and
+      `linux.cpu.idle_stats` to make it consistent with above changes.
+    * Moved `memory.android.gpu` to `android.memory.gpu`  to make it consistent
+      with above changes.`
+    * Moved contents of `memory.linux.process` to `linux.memory.process` and
+      `android.memory.process` to make it consistent with above changes.
+    * Moved `memory.linux.high_watermark` to `linux.memory.high_watermark` to
+      make it consistent with above changes.
+    * Moved `memory.heap_graph_dominator_tree` to
+      `android.memory.heap_graph.dominator_tree`. This is to allow for the
+      addition of more modules related to heap graphs.
+    * Added `linux_kernel_threads` table to `linux.threads` module.
+  Trace Processor:
+    * Change `NotifyEndOfFile` method to return a Status object. For backwards
+      compatibility, this value can be ignored but in the future a [[nodiscard]]
+      annotation will be added.
+    * Added `CREATE PERFETTO INDEX` to add sqlite-like indexes to Perfetto
+      tables. Has the same API as `CREATE INDEX`.
+  UI:
+    * Updated to Typescript 5.5.2, lib es2022, & upreved various packages.
+    * Made `Disposable`, `DisposableStack`, and their async variants available
+      to use in the UI.
+    * Vastly improved flamegraph.
+    * Added track filter which can be used to search for tracks by name.
+    * Added Wattson cpu power estimation plugin.
+    * Added option to show thread slice ancestor/descendant slices in thread
+      slice details panel context menu.
+    * Added feature where plugin can ask tracks to be automatically pinned when
+      adding tracks on trace load.
+    * Fixed inconsistent y-range for all CPU SS tracks.
+    * Switched to using explicit de/serialization when creating/loading
+      permalinks.
+    * Improved sched slice details query efficiency.
+    * Added `TagInput` widget.
+    * Added `ui/format-sources` script to run eslint and prettier in one go.
+    * Reduced number of circular imports.
+    * Added `SharedAsyncDisposable` for management of shared async resources.
+    * Fixed rendering of negative counter tracks.
+    * Improved data loss notification using a popup
+    * Tidied up `TrackDescriptor`.
+    * Added Android trace probes for ChromeOS
+    * Added feature to try reconnect when websocket connection is lost.
+    * Fixed bug in 1ns event rendering.
+    * Tidied up details panel font sizes and weights.
+    * Added segmented buttons widget.
+    * Added 'main thread' chip to main thread tracks.
+    * Added plugin API to add menu items to the sidebar.
+    * Added `onTraceReady` plugin hook.
+    * Various clean-ups and bugfixes.
+
+
+v46.0 - 2024-06-13:
+  SQL Standard library:
+    * Added megacycles support to CPU package. Added tables:
+      `cpu_cycles_per_process`, `cpu_cycles_per_thread` and
+      `cpu_cycles_per_cpu`.
+    * Improved `memory` package. Added `memory.linux.process`,
+      `memory.linux.high_watermark` and `memory.android.gpu` modules.
+    * Created `gpu` package with `gpu.frequency` module.
+    * Migrated `sched.utilization` package to `cpu.utilization`.
+  Trace Processor:
+    * Added "time to initial display" and "time to full display" metrics to
+      the Android startup metric.
+  UI:
+    * Added plugin for synchronizing two instances of the UI - search for
+      'Enable timeline sync with other Perfetto UI tabs' in the command palette.
+    * Add builtin prompt functionality to the plugin API:
+      I.e. `await PluginContextTrace.prompt('...')`
+    * Fixed various bits of tech debt.
+  SDK:
+    * The TRACE_COUNTER macro and CounterTrack constructor no longer accept
+      `const char *` track names. In case your code fails to compile,
+      https://perfetto.dev/docs/instrumentation/track-events#dynamic-event-names
+      explains how to fix the problem.
+
+
+v45.0 - 2024-05-09:
+  Trace Processor:
+    * Optimised single column `DISTINCT` queries.
+    * Optimised `LIMIT` and `OFFSET` queries.
+  SQL Standard library:
+    * Improved support for querying startups on Android 9 (API level 28) and
+      below. Available in `android.startup.startups` module.
+    * Added tables for querying "Time To Initial Display" and "Time To Full
+      Display" metrics for app startups. Available in new module
+      `android.startup.time_to_display`.
+    * Added table for querying hardware power rail counters in new
+      `android.power_rails` module.
+  UI:
+    * Add tracks to the list of searchable items.
+    * Use mipmaps to improve track query performance on large traces.
+    * Fix slow scrolling bug in ftrace explorer tab on low DPI machines.
+    * Overhaul track decider queries to improve trace load times.
+    * Add track
+    * Tidy up command names & remove some example ones.
+    * Remove arg auto-completion in pivot table.
+    * Show dominator tree views by default.
+    * Fix counter event selection off-by-one error.
+    * Add viewport control to the plugin API.
+    * Sticky track titles to improve track button accessibility in tall tracks.
+    * A handful of small bugfixes.
+  SDK:
+    * The TRACE_EVENT macro used to reject `const char *` event names: either
+      `StaticString` or `DynamicString` needed to be specified. In the last year
+      (since https://r.android.com/2494614), TRACE_EVENT mistakenly accepted
+      `const char *` as an event name. This has been fixed now. In case your
+      code fails to compile,
+      https://perfetto.dev/docs/instrumentation/track-events#dynamic-event-names
+      explains how to fix the problem.
+
+
+v44.0 - 2024-04-10:
+  Trace Processor:
+    * New modules added to standard library: `frames.timeline`,
+      `frame.per_frame_metrics`, `sched.time_in_state`.
+  UI:
+    * Per-cpu scheduling tracks now distinguish real-time priority threads with
+      a hatched pattern and name prefix. Based on priority during switch-in.
+    * Added ftrace event cropping for traces recorded by perfetto v44+.
+      Events are ignored if they precede the earliest timestamp covered by all
+      per-cpu data streams. This should significantly improve the presentation
+      of RING_BUFFER traces, removing artifacts such as never-ending slices
+      starting at the beginning of the trace.
+    * Significantly improved trace load times.
+    * Improved counter track view modes, including log scale, expanded view, and
+      the ability for plugin authors to link scales of several counter tracks
+      together.
+    * Add dominated size and objects to Java heap graph view.
+      Added hotkey Q to open and close bottom drawer.
+    * Fixed bug where timeline header and tracks could become horizontally
+      misaligned when using browser zoom.
+    * Fixed crash when hot-reloading Sass during development.
+    * Fixed bug where crashed debug tracks could not be closed.
+    * Fixed missing flame graph details for area selections.
+    * Consistent reporting of durations for incomplete slices.
+    * Switch to using prettier for formatting TS & Sass instead of ESLint.
+  SDK:
+    * "track_event" categories are disabled by default in the C API, if they
+      don't match anything in the data source config. This behavior differs from
+      the C++ API. Configs should include either `enabled_categories: "*"` or
+      `disable_categories: "*"` to explicitly specify the desired behavior that
+      work both for C and C++.
+
+
+v43.2 - 2024-03-07:
+  UI:
+    * Added redirection to pinned UI version when using
+      `trace_processor_shell --httpd` and pinned version is available.
+
+
+v43.1 - 2024-03-05:
+  Tracing service and probes:
+    * Cherry-pick of https://r.android.com/2988674, which fixes the android x86
+      standalone build.
+
+
+v43.0 - 2024-03-05:
+  Tracing service and probes:
+    * Buffers marked as `transfer_on_clone` will be flushed independently when
+      cloning.
+    * ftrace: added drain_buffer_percent option to read kernel ring buffer
+      based on occupancy in addition to existing periodic reads. Requires Linux
+      kernel v6.1+.
+    * ftrace: changed default kernel per-cpu ring buffer sizes if a config
+      doesn't request an explicit size via buffer_size_kb. Added
+      buffer_size_lower_bound option that lets the service choose a bigger ring
+      buffer size than requested.
+    * "linux.process_stats" data source: added options to record: process age,
+      time spent running in userspace, and time spent running in kernel mode,
+      using /proc/pid/stat. See "record_process_age" and
+      "record_process_runtime" options.
+  Trace Processor:
+    * Added `decompress_packets` mode to the traceconv tool.
+    * Support memory mapped file access on Windows.
+    * Deprecated `common` standard library module, it will be removed by v45.
+      Some of the functionality have been migrated to other parts of standard
+      library.
+  UI:
+    * Added a "defaultPlugins" list to allow control over which plugins are
+      enabled by default.
+    * Added a feature to allow enabling/disabling plugins permanently from the
+      plugins page.
+    * Added plugin load times to the plugin page.
+    * Added scrolling to the pinned track area.
+    * Added commands for expanding and closing all tracks.
+    * Added {expand,collapse}GroupsByPredicate to plugin API.
+    * Added SimpleSliceTrack & SimpleCounterTrack which have the same
+      functionality of debug tracks but may be added on trace load from within
+      plugins.
+    * Added naive track crash containment, which means tracks that crash should
+      not crash the entire UI.
+    * Don't render "idle" kernel thread slices in thread state tracks.
+    * Fixed crash when using autofill in text inputs in chrome.
+    * Fixed bug where "incomplete" slices were sometimes not rendered.
+    * Fixed crash when calls to CacheStorage fail via promise rejection.
+    * Fixed bug causing slices to occasionally disappear in tracks v2.
+    * Fixes crash in tracksV2 when visible window is negative.
+    * Fix bug when toggling the sidebar without a trace loaded would either
+      crash the UI or simply not work.
+    * Various TabsV2 QoL improvements.
+    * Various AndroidLongBatteryTracing plugin improvements.
+
+
+v42.0 - 2024-02-02:
+  Tracing service and probes:
     * Linux/Android: kernel scheduling data (sched_switch and sched_waking
       ftrace events) is now serialised in a more compact format by default
       (previously required setting ftrace_config.compact_sched.enabled).
-  Trace Processor:
-    *
   UI:
     * Added "Realtime (Trace TZ)" timestamp formatting option to see timestamps
       in the local time of the traced device. It requires recent versions of the
       tracing service which set the system_info.timezone_off_mins field.
+    * Added tab support to the plugin API.
+    * Added a plugin to improve visualization of Android power traces containing
+      ODPM (on-device power rail monitor) data.
+    * Added support to attach the UI via ?rpc_port=1234 to multiple instances of
+      trace_processor --httpd --http-port=1234 (see UI docs).
+    * Fixed OOM detection message on in-memory tables.
+    * Fixed rendering of events at the every beginning and end of the trace.
+    * Fixed rendering of low density slices.
+    * Fixed bug in filterVisibleSlices (Thanks to Liangliang Sui).
   SDK:
+    * Fixed a bug that would cause DataSource::OnStop to be called twice upon
+      service disconnection with HandleStopAsynchronously().
+    * Fixed a long standing bug that caused the last TracePacket for every
+      sequence to be lost during scraping, for data sources that do not support
+      flushing. The fix works with old versions of the tracing service.
 
 
-v41.0 - 2023-01-02:
+v41.0 - 2024-01-11:
   Tracing service and probes:
     * Added support for ADB_SERVER_SOCKET in the websocket bridge.
     * Added support for reading Pressure Stall Information (PSI) from the kernel.
@@ -25,9 +273,6 @@ v41.0 - 2023-01-02:
     * Fixed a long standing bug that caused the last TrackEvent event for each
       thread to be lost during scraping. The fix works with old versions of the
       tracing service.
-    * Fixed a long standing bug that caused the last TracePacket for every
-      sequence to be lost during scraping, for data sources that do not support
-      flushing. The fix works with old versions of the tracing service.
 
 
 v40.0 - 2023-12-04:
@@ -331,7 +576,7 @@ v27.0 - 2022-07-01:
     * Changed sorting of process groups to take slice count and presence of
       perf profiles into account.
   SDK:
-    * 
+    *
 
 
 v26.1 - 2022-06-13:
@@ -377,7 +622,7 @@ v26.0 - 2022-06-13:
       endoint or even newer /websocket.
   UI:
     * Changed detail panel to separate slice args from generic slice properties.
-    * Automatically enabled sched_compact when generating trace configs for 
+    * Automatically enabled sched_compact when generating trace configs for
       Android S+ targets.
   SDK:
     * Added option for recording thread CPU times at the beginning and end of

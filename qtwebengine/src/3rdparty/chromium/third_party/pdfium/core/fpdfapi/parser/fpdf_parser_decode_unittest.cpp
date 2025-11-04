@@ -15,26 +15,30 @@
 #include "core/fpdfapi/parser/cpdf_name.h"
 #include "core/fpdfapi/parser/cpdf_reference.h"
 #include "core/fpdfapi/parser/cpdf_string.h"
+#include "core/fxcodec/data_and_bytes_consumed.h"
 #include "core/fxcrt/bytestring.h"
-#include "core/fxcrt/fx_memory_wrappers.h"
+#include "core/fxcrt/span.h"
 #include "core/fxcrt/string_view_template.h"
 #include "core/fxcrt/widestring.h"
+#include "testing/gmock/include/gmock/gmock.h"
 #include "testing/gtest/include/gtest/gtest.h"
 #include "testing/test_support.h"
-#include "third_party/base/containers/span.h"
+
+using ::testing::ElementsAreArray;
 
 namespace {
 
 // Converts a string literal into a `uint8_t` span.
 template <size_t N>
 pdfium::span<const uint8_t> ToSpan(const char (&array)[N]) {
-  return pdfium::as_bytes(ByteStringView(array, N - 1).span());
+  return pdfium::as_bytes(UNSAFE_BUFFERS(ByteStringView(array, N - 1).span()));
 }
 
 // Converts a string literal into a `ByteString`.
 template <size_t N>
 ByteString ToByteString(const char (&array)[N]) {
-  return ByteString(array, N - 1);
+  // SAFETY: compiler correctly infers size.
+  return UNSAFE_BUFFERS(ByteString(array, N - 1));
 }
 
 }  // namespace
@@ -94,7 +98,7 @@ TEST(ParserDecodeTest, ValidateDecoderPipeline) {
   {
     // Invalid 1 decoder pipeline due to wrong type.
     auto decoders = pdfium::MakeRetain<CPDF_Array>();
-    decoders->AppendNew<CPDF_String>("FlateEncode", false);
+    decoders->AppendNew<CPDF_String>("FlateEncode");
     EXPECT_FALSE(ValidateDecoderPipeline(decoders.Get()));
   }
   {
@@ -114,7 +118,7 @@ TEST(ParserDecodeTest, ValidateDecoderPipeline) {
   {
     // Invalid 2 decoder pipeline due to wrong type.
     auto decoders = pdfium::MakeRetain<CPDF_Array>();
-    decoders->AppendNew<CPDF_String>("AHx", false);
+    decoders->AppendNew<CPDF_String>("AHx");
     decoders->AppendNew<CPDF_Name>("LZWDecode");
     EXPECT_FALSE(ValidateDecoderPipeline(decoders.Get()));
   }
@@ -135,7 +139,7 @@ TEST(ParserDecodeTest, ValidateDecoderPipeline) {
     decoders->AppendNew<CPDF_Name>("A85");
     decoders->AppendNew<CPDF_Name>("RunLengthDecode");
     decoders->AppendNew<CPDF_Name>("FlateDecode");
-    decoders->AppendNew<CPDF_String>("RL", false);
+    decoders->AppendNew<CPDF_String>("RL");
     EXPECT_FALSE(ValidateDecoderPipeline(decoders.Get()));
   }
 }
@@ -172,8 +176,7 @@ TEST(ParserDecodeTest, ValidateDecoderPipelineWithIndirectObjects) {
   {
     // Invalid 2 decoder pipeline due to wrong type indirect object.
     CPDF_IndirectObjectHolder objects_holder;
-    auto decoder =
-        pdfium::MakeRetain<CPDF_String>(nullptr, "FlateDecode", false);
+    auto decoder = pdfium::MakeRetain<CPDF_String>(nullptr, "FlateDecode");
     uint32_t decoder_number =
         objects_holder.AddIndirectObject(std::move(decoder));
 
@@ -201,22 +204,22 @@ TEST(ParserDecodeTest, GetDecoderArray) {
   {
     // Treat no filter as an empty filter array.
     auto dict = pdfium::MakeRetain<CPDF_Dictionary>();
-    absl::optional<DecoderArray> decoder_array = GetDecoderArray(dict);
+    std::optional<DecoderArray> decoder_array = GetDecoderArray(dict);
     ASSERT_TRUE(decoder_array.has_value());
     EXPECT_TRUE(decoder_array.value().empty());
   }
   {
     // Wrong filter type.
     auto dict = pdfium::MakeRetain<CPDF_Dictionary>();
-    dict->SetNewFor<CPDF_String>("Filter", "RL", false);
-    absl::optional<DecoderArray> decoder_array = GetDecoderArray(dict);
+    dict->SetNewFor<CPDF_String>("Filter", "RL");
+    std::optional<DecoderArray> decoder_array = GetDecoderArray(dict);
     EXPECT_FALSE(decoder_array.has_value());
   }
   {
     // Filter name.
     auto dict = pdfium::MakeRetain<CPDF_Dictionary>();
     dict->SetNewFor<CPDF_Name>("Filter", "RL");
-    absl::optional<DecoderArray> decoder_array = GetDecoderArray(dict);
+    std::optional<DecoderArray> decoder_array = GetDecoderArray(dict);
     ASSERT_TRUE(decoder_array.has_value());
     ASSERT_EQ(1u, decoder_array.value().size());
     EXPECT_EQ("RL", decoder_array.value()[0].first);
@@ -225,7 +228,7 @@ TEST(ParserDecodeTest, GetDecoderArray) {
     // Empty filter array.
     auto dict = pdfium::MakeRetain<CPDF_Dictionary>();
     dict->SetNewFor<CPDF_Array>("Filter");
-    absl::optional<DecoderArray> decoder_array = GetDecoderArray(dict);
+    std::optional<DecoderArray> decoder_array = GetDecoderArray(dict);
     ASSERT_TRUE(decoder_array.has_value());
     EXPECT_TRUE(decoder_array.value().empty());
   }
@@ -234,7 +237,7 @@ TEST(ParserDecodeTest, GetDecoderArray) {
     auto dict = pdfium::MakeRetain<CPDF_Dictionary>();
     auto filter_array = dict->SetNewFor<CPDF_Array>("Filter");
     filter_array->AppendNew<CPDF_Name>("FooBar");
-    absl::optional<DecoderArray> decoder_array = GetDecoderArray(dict);
+    std::optional<DecoderArray> decoder_array = GetDecoderArray(dict);
     ASSERT_TRUE(decoder_array.has_value());
     ASSERT_EQ(1u, decoder_array.value().size());
     EXPECT_EQ("FooBar", decoder_array.value()[0].first);
@@ -245,7 +248,7 @@ TEST(ParserDecodeTest, GetDecoderArray) {
     auto filter_array = dict->SetNewFor<CPDF_Array>("Filter");
     filter_array->AppendNew<CPDF_Name>("AHx");
     filter_array->AppendNew<CPDF_Name>("LZWDecode");
-    absl::optional<DecoderArray> decoder_array = GetDecoderArray(dict);
+    std::optional<DecoderArray> decoder_array = GetDecoderArray(dict);
     ASSERT_TRUE(decoder_array.has_value());
     ASSERT_EQ(2u, decoder_array.value().size());
     EXPECT_EQ("AHx", decoder_array.value()[0].first);
@@ -257,7 +260,7 @@ TEST(ParserDecodeTest, GetDecoderArray) {
     auto invalid_filter_array = dict->SetNewFor<CPDF_Array>("Filter");
     invalid_filter_array->AppendNew<CPDF_Name>("DCTDecode");
     invalid_filter_array->AppendNew<CPDF_Name>("CCITTFaxDecode");
-    absl::optional<DecoderArray> decoder_array = GetDecoderArray(dict);
+    std::optional<DecoderArray> decoder_array = GetDecoderArray(dict);
     EXPECT_FALSE(decoder_array.has_value());
   }
 }
@@ -282,18 +285,11 @@ TEST(ParserDecodeTest, A85Decode) {
       STR_IN_OUT_CASE("FCfN8FCfN8vw", "testtest", 11),
   };
   for (const auto& test_case : kTestData) {
-    std::unique_ptr<uint8_t, FxFreeDeleter> result;
-    uint32_t result_size = 0;
-    EXPECT_EQ(test_case.processed_size,
-              A85Decode({test_case.input, test_case.input_size}, &result,
-                        &result_size))
+    DataAndBytesConsumed result = A85Decode(test_case.input_span());
+    EXPECT_EQ(test_case.processed_size, result.bytes_consumed)
         << "for case " << test_case.input;
-    ASSERT_EQ(test_case.expected_size, result_size);
-    const uint8_t* result_ptr = result.get();
-    for (size_t j = 0; j < result_size; ++j) {
-      EXPECT_EQ(test_case.expected[j], result_ptr[j])
-          << "for case " << test_case.input << " char " << j;
-    }
+    EXPECT_THAT(result.data, ElementsAreArray(test_case.expected_span()))
+        << "for case " << test_case.input;
   }
 }
 
@@ -317,18 +313,12 @@ TEST(ParserDecodeTest, HexDecode) {
       STR_IN_OUT_CASE("12AcED3c3456", "\x12\xac\xed\x3c\x34\x56", 12),
   };
   for (const auto& test_case : kTestData) {
-    std::unique_ptr<uint8_t, FxFreeDeleter> result;
-    uint32_t result_size = 0;
-    EXPECT_EQ(test_case.processed_size,
-              HexDecode({test_case.input, test_case.input_size}, &result,
-                        &result_size))
+    DataAndBytesConsumed result = HexDecode(
+        UNSAFE_TODO(pdfium::make_span(test_case.input, test_case.input_size)));
+    EXPECT_EQ(test_case.processed_size, result.bytes_consumed)
         << "for case " << test_case.input;
-    ASSERT_EQ(test_case.expected_size, result_size);
-    const uint8_t* result_ptr = result.get();
-    for (size_t j = 0; j < result_size; ++j) {
-      EXPECT_EQ(test_case.expected[j], result_ptr[j])
-          << "for case " << test_case.input << " char " << j;
-    }
+    EXPECT_THAT(result.data, ElementsAreArray(test_case.expected_span()))
+        << "for case " << test_case.input;
   }
 }
 
@@ -429,7 +419,7 @@ TEST(ParserDecodeTest, RoundTripText) {
   for (int pdf_code_point = 0; pdf_code_point < 256; ++pdf_code_point) {
     ByteString original(static_cast<char>(pdf_code_point));
     ByteString reencoded =
-        PDF_EncodeText(PDF_DecodeText(original.raw_span()).AsStringView());
+        PDF_EncodeText(PDF_DecodeText(original.unsigned_span()).AsStringView());
 
     switch (pdf_code_point) {
       case 0x7F:

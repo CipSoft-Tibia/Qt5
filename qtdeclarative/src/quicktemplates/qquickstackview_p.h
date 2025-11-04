@@ -16,6 +16,7 @@
 //
 
 #include <QtCore/qdebug.h>
+#include <QtCore/qvariantmap.h>
 #include <QtQuickTemplates2/private/qquickcontrol_p.h>
 
 QT_BEGIN_NAMESPACE
@@ -25,6 +26,7 @@ class QQuickStackElement;
 class QQuickStackViewPrivate;
 class QQuickStackViewAttached;
 class QQuickStackViewAttachedPrivate;
+class QQmlComponent;
 
 /*!
     \internal
@@ -146,13 +148,13 @@ public:
     Q_INVOKABLE void replace(QQmlV4FunctionPtr args);
 
     Q_REVISION(6, 7) Q_INVOKABLE QQuickItem *pushItems(QList<QQuickStackViewArg> args,
-        Operation operation = Immediate);
+        Operation operation = PushTransition);
     Q_REVISION(6, 7) Q_INVOKABLE QQuickItem *pushItem(QQuickItem *item, const QVariantMap &properties = {},
-        Operation operation = Immediate);
+        Operation operation = PushTransition);
     Q_REVISION(6, 7) Q_INVOKABLE QQuickItem *pushItem(QQmlComponent *component, const QVariantMap &properties = {},
-        Operation operation = Immediate);
+        Operation operation = PushTransition);
     Q_REVISION(6, 7) Q_INVOKABLE QQuickItem *pushItem(const QUrl &url, const QVariantMap &properties = {},
-        Operation operation = Immediate);
+        Operation operation = PushTransition);
 
     Q_REVISION(6, 7) Q_INVOKABLE QQuickItem *popToItem(QQuickItem *item, Operation operation = PopTransition);
     Q_REVISION(6, 7) Q_INVOKABLE QQuickItem *popToIndex(int index, Operation operation = PopTransition);

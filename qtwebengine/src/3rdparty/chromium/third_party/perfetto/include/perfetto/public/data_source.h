@@ -42,8 +42,11 @@ struct PerfettoDs {
   { &perfetto_atomic_false, PERFETTO_NULL }
 
 // All the callbacks are optional and can be NULL if not needed.
+//
 struct PerfettoDsParams {
-  // Instance lifecycle callbacks:
+  // Instance lifecycle callbacks.
+  //
+  // Can be called from any thread.
   PerfettoDsOnSetupCb on_setup_cb;
   PerfettoDsOnStartCb on_start_cb;
   PerfettoDsOnStopCb on_stop_cb;
@@ -52,12 +55,18 @@ struct PerfettoDsParams {
 
   // These are called to create/delete custom thread-local instance state, which
   // can be accessed with PerfettoDsTracerImplGetCustomTls().
+  //
+  // Called from inside a trace point. Trace points inside these will be
+  // ignored.
   PerfettoDsOnCreateCustomState on_create_tls_cb;
   PerfettoDsOnDeleteCustomState on_delete_tls_cb;
 
   // These are called to create/delete custom thread-local instance incremental
   // state. Incremental state may be cleared periodically by the tracing service
   // and can be accessed with PerfettoDsTracerImplGetIncrementalState().
+  //
+  // Called from inside a trace point. Trace points inside these will be
+  // ignored.
   PerfettoDsOnCreateCustomState on_create_incr_cb;
   PerfettoDsOnDeleteCustomState on_delete_incr_cb;
 
@@ -66,6 +75,10 @@ struct PerfettoDsParams {
 
   // How to behave when running out of shared memory buffer space.
   enum PerfettoDsBufferExhaustedPolicy buffer_exhausted_policy;
+
+  // When true the data source is expected to ack the stop request through the
+  // NotifyDataSourceStopped() IPC.
+  bool will_notify_on_stop;
 };
 
 static inline struct PerfettoDsParams PerfettoDsParamsDefault(void) {
@@ -79,7 +92,8 @@ static inline struct PerfettoDsParams PerfettoDsParamsDefault(void) {
                                  PERFETTO_NULL,
                                  PERFETTO_NULL,
                                  PERFETTO_NULL,
-                                 PERFETTO_DS_BUFFER_EXHAUSTED_POLICY_DROP};
+                                 PERFETTO_DS_BUFFER_EXHAUSTED_POLICY_DROP,
+                                 true};
   return ret;
 }
 
@@ -103,6 +117,8 @@ static inline bool PerfettoDsRegister(struct PerfettoDs* ds,
     PerfettoPbMsgInit(&desc.msg, &writer);
 
     perfetto_protos_DataSourceDescriptor_set_cstr_name(&desc, data_source_name);
+    perfetto_protos_DataSourceDescriptor_set_will_notify_on_stop(
+        &desc, params.will_notify_on_stop);
 
     desc_size = PerfettoStreamWriterGetWrittenSize(&writer.writer);
     desc_buf = malloc(desc_size);

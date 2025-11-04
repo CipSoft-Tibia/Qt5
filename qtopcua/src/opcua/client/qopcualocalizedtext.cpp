@@ -22,6 +22,7 @@ QT_BEGIN_NAMESPACE
     \inqmlmodule QtOpcUa
     \brief Contains a text with associated locale.
     \since QtOpcUa 5.12
+    \deprecated [6.9]
 
     The two members of this type contain the actual text and the locale of the text.
 */

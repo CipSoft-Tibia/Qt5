@@ -422,6 +422,9 @@ static bool loadDocument(QSvgRenderer *const q,
     }
     d->startOrStopTimer();
 
+    if (d->render)
+        d->render->restartAnimation();
+
     //force first update
     QSvgRendererPrivate::callRepaintNeeded(q);
 
@@ -471,6 +474,7 @@ void QSvgRenderer::render(QPainter *painter)
 {
     Q_D(QSvgRenderer);
     if (d->render) {
+        d->render->animator()->advanceAnimations();
         d->render->draw(painter);
     }
 }
@@ -492,6 +496,7 @@ void QSvgRenderer::render(QPainter *painter, const QString &elementId,
 {
     Q_D(QSvgRenderer);
     if (d->render) {
+        d->render->animator()->advanceAnimations();
         d->render->draw(painter, elementId, bounds);
     }
 }
@@ -506,6 +511,7 @@ void QSvgRenderer::render(QPainter *painter, const QRectF &bounds)
 {
     Q_D(QSvgRenderer);
     if (d->render) {
+        d->render->animator()->advanceAnimations();
         d->render->draw(painter, bounds);
     }
 }

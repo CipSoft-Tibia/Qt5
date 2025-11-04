@@ -71,7 +71,7 @@ static_assert(QQmlJSScope::sizeofQQmlSAElement() == sizeof(Element));
     \value TranslationById  The binding is a \l{Text ID based translations}{translation} by id
     \value Script           The binding is a regular script
     \value Object           The binging is an \l{QML Object Types}{Object}
-    \value Interceptor      The binding is an interceptor that can intercept writes to properties such as \l{Behavior QML Type}{Behavior}
+    \value Interceptor      The binding is an interceptor that can intercept writes to properties such as \l[Quick]{Behavior}
     \value ValueSource      The binging is a \l{Defining QML Types from C++#Property Value Sources}{property value source}
     \value AttachedProperty The binding is an \l{QML Object Attributes#Attached Properties and Attached Signal Handlers}{attached object}
     \value GroupProperty    The binding is a \l{QML Object Attributes#Grouped Properties}{grouped property}
@@ -253,8 +253,11 @@ Binding &Binding::operator=(const Binding &other)
     if (*this == other)
         return *this;
 
-    d_func()->m_binding = other.d_func()->m_binding;
-    d_func()->q_ptr = this;
+    Q_D(Binding);
+    d->m_binding = other.d_func()->m_binding;
+    d->m_bindingScope = other.d_func()->m_bindingScope;
+    d->q_ptr = this;
+    d->m_isAttached = other.d_func()->m_isAttached;
     return *this;
 }
 
@@ -266,8 +269,11 @@ Binding &Binding::operator=(Binding &&other) noexcept
     if (*this == other)
         return *this;
 
-    d_func()->m_binding = std::move(other.d_func()->m_binding);
-    d_func()->q_ptr = this;
+    Q_D(Binding);
+    d->m_binding = std::move(other.d_func()->m_binding);
+    d->m_bindingScope = std::move(other.d_func()->m_bindingScope);
+    d->q_ptr = this;
+    d->m_isAttached = other.d_func()->m_isAttached;
     return *this;
 }
 
@@ -278,11 +284,14 @@ Binding::~Binding() = default;
 
 bool Binding::operatorEqualsImpl(const Binding &lhs, const Binding &rhs)
 {
-    return lhs.d_func()->m_binding == rhs.d_func()->m_binding;
+    return lhs.d_func()->m_binding == rhs.d_func()->m_binding
+            && lhs.d_func()->m_bindingScope == rhs.d_func()->m_bindingScope
+            && lhs.d_func()->m_isAttached == rhs.d_func()->m_isAttached;
 }
 
 BindingPrivate::BindingPrivate(Binding *interface, const BindingPrivate &other)
-    : m_binding{ other.m_binding }, q_ptr{ interface }
+    : m_binding{ other.m_binding }, m_bindingScope{ other.m_bindingScope }, q_ptr{ interface },
+      m_isAttached{ other.m_isAttached }
 {
 }
 
@@ -313,6 +322,14 @@ Element Binding::groupType() const
 }
 
 /*!
+    Returns the Element scope in which the binding is defined.
+ */
+Element Binding::bindingScope() const
+{
+    return BindingPrivate::get(this)->m_bindingScope;
+}
+
+/*!
     Returns the type of this binding.
  */
 QQmlSA::BindingType Binding::bindingType() const
@@ -338,13 +355,34 @@ QString Binding::propertyName() const
 }
 
 /*!
+    Returns \c true if this type is attached to another one, \c false otherwise.
+ */
+bool Binding::isAttached() const
+{
+    return BindingPrivate::get(this)->m_isAttached;
+}
+
+/*!
     Returns the attached type if the content type of this binding is
     AttachedProperty, otherwise returns an invalid Element.
  */
+Element Binding::attachedType() const
+{
+    return QQmlJSScope::createQQmlSAElement(BindingPrivate::binding(*this).attachedType());
+}
+
+#if QT_DEPRECATED_SINCE(6, 9)
+/*!
+    Returns the attached type if the content type of this binding is
+    AttachedProperty, otherwise returns an invalid Element.
+
+    \deprecated [6.9] Use the better named attachedType() method.
+ */
 Element Binding::attachingType() const
 {
-    return QQmlJSScope::createQQmlSAElement(BindingPrivate::binding(*this).attachingType());
+    return attachedType();
 }
+#endif
 
 /*!
     Returns the location in the QML code where this binding is defined.
@@ -889,6 +927,14 @@ Element Element::parentScope() const
 bool Element::inherits(const Element &element) const
 {
     return QQmlJSScope::scope(*this)->inherits(QQmlJSScope::scope(element));
+}
+
+/*!
+    Returns whether this Element is the root component of its QML file.
+ */
+bool Element::isFileRootComponent() const
+{
+    return QQmlJSScope::scope(*this)->isFileRootComponent();
 }
 
 /*!
@@ -1444,10 +1490,8 @@ bool PassManagerPrivate::registerPropertyPass(std::shared_ptr<PropertyPass> pass
 
         name = lookupName(element, Register);
     }
-    const QQmlSA::PropertyPassInfo passInfo{ propertyName.isEmpty()
-                                                     ? QStringList{}
-                                                     : QStringList{ propertyName.toString() },
-                                             std::move(pass), allowInheritance };
+    const QQmlSA::PropertyPassInvocation passInfo{ propertyName.toString(), std::move(pass),
+                                                   allowInheritance };
     m_propertyPasses.insert({ name, passInfo });
 
     return true;
@@ -1457,25 +1501,37 @@ void PassManagerPrivate::addBindingSourceLocations(const Element &element, const
                                                    const QString prefix, bool isAttached)
 {
     const Element &currentScope = scope.isNull() ? element : scope;
-    const auto ownBindings = currentScope.ownPropertyBindings();
-    for (const auto &binding : ownBindings) {
+    auto ownBindings = currentScope.ownPropertyBindings();
+    for (auto &binding : ownBindings) {
         switch (binding.bindingType()) {
         case QQmlSA::BindingType::GroupProperty:
             addBindingSourceLocations(element, Element{ binding.groupType() },
                                       prefix + binding.propertyName() + u'.');
-            break;
+            continue; // don't insert into m_bindingsByLocation
         case QQmlSA::BindingType::AttachedProperty:
-            addBindingSourceLocations(element, Element{ binding.attachingType() },
+            addBindingSourceLocations(element, Element{ binding.attachedType() },
                                       prefix + binding.propertyName() + u'.', true);
+            continue; // don't insert into m_bindingsByLocation
+        case QQmlSA::BindingType::Translation: {
+            analyzeCall(QQmlJSScope::createQQmlSAElement(m_typeResolver->jsGlobalObject()),
+                        u"qsTr"_s, element, binding.sourceLocation());
             break;
-        default:
-            m_bindingsByLocation.insert({ binding.sourceLocation().offset(),
-                                          BindingInfo{ prefix + binding.propertyName(), binding,
-                                                       currentScope, isAttached } });
-
-            if (binding.bindingType() != QQmlSA::BindingType::Script)
-                analyzeBinding(element, QQmlSA::Element(), binding.sourceLocation());
         }
+        case QQmlSA::BindingType::TranslationById: {
+            analyzeCall(QQmlJSScope::createQQmlSAElement(m_typeResolver->jsGlobalObject()),
+                        u"qsTrId"_s, element, binding.sourceLocation());
+            break;
+        }
+        default:
+            break;
+        }
+
+        BindingPrivate::get(&binding)->setBindingScope(currentScope);
+        BindingPrivate::get(&binding)->setPropertyName(prefix + binding.propertyName());
+        BindingPrivate::get(&binding)->setIsAttached(isAttached);
+        m_bindingsByLocation.insert({ binding.sourceLocation().offset(), binding });
+        if (binding.bindingType() != QQmlSA::BindingType::Script)
+            analyzeBinding(element, QQmlSA::Element(), binding.sourceLocation());
     }
 }
 
@@ -1516,40 +1572,47 @@ void PassManagerPrivate::analyze(const Element &root)
     }
 }
 
-void PassManagerPrivate::analyzeWrite(const Element &element, QString propertyName,
+void PassManagerPrivate::analyzeWrite(const Element &element, const QString &propertyName,
                                       const Element &value, const Element &writeScope,
-                                      QQmlSA::SourceLocation location)
+                                      const QQmlSA::SourceLocation &location)
 {
     for (PropertyPass *pass : findPropertyUsePasses(element, propertyName))
         pass->onWrite(element, propertyName, value, writeScope, location);
 }
 
-void PassManagerPrivate::analyzeRead(const Element &element, QString propertyName,
-                                     const Element &readScope, QQmlSA::SourceLocation location)
+void PassManagerPrivate::analyzeRead(const Element &element, const QString &propertyName,
+                                     const Element &readScope, const QQmlSA::SourceLocation &location)
 {
     for (PropertyPass *pass : findPropertyUsePasses(element, propertyName))
         pass->onRead(element, propertyName, readScope, location);
 }
 
-void PassManagerPrivate::analyzeBinding(const Element &element, const QQmlSA::Element &value,
-                                        QQmlSA::SourceLocation location)
+void PassManagerPrivate::analyzeCall(const Element &element, const QString &propertyName,
+                                     const Element &readScope, const QQmlSA::SourceLocation &location)
 {
-    const auto info = m_bindingsByLocation.find(location.offset());
+    for (PropertyPass *pass : findPropertyUsePasses(element, propertyName))
+        pass->onCall(element, propertyName, readScope, location);
+}
+
+void PassManagerPrivate::analyzeBinding(const Element &element, const QQmlSA::Element &value,
+                                        const QQmlSA::SourceLocation &location)
+{
+    const auto it = m_bindingsByLocation.find(location.offset());
 
     // If there's no matching binding that means we're in a nested Ret somewhere inside an
     // expression
-    if (info == m_bindingsByLocation.end())
+    if (it == m_bindingsByLocation.cend())
         return;
 
-    const QQmlSA::Element &bindingScope = info->second.bindingScope;
-    const QQmlSA::Binding &binding = info->second.binding;
-    const QString &propertyName = info->second.fullPropertyName;
+    const auto &[offset, binding] = *it;
+    const QQmlSA::Element &bindingScope = binding.bindingScope();
+    const QString &propertyName = binding.propertyName();
 
     const auto elementPasses = findPropertyUsePasses(element, propertyName);
     for (PropertyPass *pass : elementPasses)
         pass->onBinding(element, propertyName, binding, bindingScope, value);
 
-    if (!info->second.isAttached || bindingScope.baseType().isNull())
+    if (!binding.isAttached() || bindingScope.baseType().isNull())
         return;
 
     const auto bindingScopePasses = findPropertyUsePasses(bindingScope.baseType(), propertyName);
@@ -1622,10 +1685,8 @@ QSet<PropertyPass *> PassManagerPrivate::findPropertyUsePasses(const QQmlSA::Ele
             for (auto it = pass.first; it != pass.second; it++) {
                 if (typeName != typeNames.constFirst() && !it->second.allowInheritance)
                     continue;
-                if (it->second.properties.isEmpty()
-                    || it->second.properties.contains(propertyName)) {
+                if (it->second.property.isEmpty() || it->second.property == propertyName)
                     passes.insert(it->second.pass.get());
-                }
             }
         }
     }
@@ -1778,8 +1839,30 @@ void PropertyPass::onBinding(const Element &element, const QString &propertyName
 
     The property \a propertyName of \a element is read by an instruction within
     \a readScope defined at \a location.
+
+    This is also executed if the property \a propertyName is called as a function as that requires
+    the property to be read first.
  */
 void PropertyPass::onRead(const Element &element, const QString &propertyName,
+                          const Element &readScope, QQmlSA::SourceLocation location)
+{
+    Q_UNUSED(element);
+    Q_UNUSED(propertyName);
+    Q_UNUSED(readScope);
+    Q_UNUSED(location);
+}
+
+/*!
+    Executes whenever a property or method is called.
+
+    The property or method \a propertyName of \a element is called as a function by an instruction
+    within \a readScope defined at \a location.
+
+    \note Currently only direct calls of methods or properties are supported, indirect calls, for
+    example by storing a method into a JavaScript variable and then calling the variable, are not
+    recognized.
+ */
+void PropertyPass::onCall(const Element &element, const QString &propertyName,
                           const Element &readScope, QQmlSA::SourceLocation location)
 {
     Q_UNUSED(element);
@@ -1859,27 +1942,9 @@ void DebugPropertyPass::onWrite(const QQmlSA::Element &element, const QString &p
 }
 
 /*!
-    Returns the list of element passes.
- */
-std::vector<std::shared_ptr<ElementPass>> PassManager::elementPasses() const
-{
-    Q_D(const PassManager);
-    return d->m_elementPasses;
-}
-
-/*!
-    Returns the list of property passes.
- */
-std::multimap<QString, PropertyPassInfo> PassManager::propertyPasses() const
-{
-    Q_D(const PassManager);
-    return d->m_propertyPasses;
-}
-
-/*!
     Returns bindings by their source location.
  */
-std::unordered_map<quint32, BindingInfo> PassManager::bindingsByLocation() const
+std::unordered_map<quint32, Binding> PassManager::bindingsByLocation() const
 {
     Q_D(const PassManager);
     return d->m_bindingsByLocation;
@@ -2110,6 +2175,11 @@ bool QQmlSA::FixSuggestion::isAutoApplicable() const
 bool FixSuggestion::operatorEqualsImpl(const FixSuggestion &lhs, const FixSuggestion &rhs)
 {
     return lhs.d_func()->m_fixSuggestion == rhs.d_func()->m_fixSuggestion;
+}
+
+bool isRegularBindingType(BindingType type)
+{
+    return type >= BindingType::BoolLiteral && type <= BindingType::Object;
 }
 
 } // namespace QQmlSA

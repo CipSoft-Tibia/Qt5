@@ -152,6 +152,8 @@ public:
 
     bool cursorOn() const;
 
+    bool isBeingEdited();
+
 protected:
     void timerEvent(QTimerEvent *e) override;
 

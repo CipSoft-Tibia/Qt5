@@ -1,9 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <db:article xmlns:db="http://docbook.org/ns/docbook" xmlns:xlink="http://www.w3.org/1999/xlink" version="5.2" xml:lang="en">
 <db:info>
-<db:title>Numbers Class</db:title>
-<db:subtitle>QDocTests::Numbers</db:subtitle>
-<db:productname>auto as return type</db:productname>
+<db:title>QDocTests::Numbers Class</db:title>
+<db:productname>Qt</db:productname>
 <db:titleabbrev>auto as return type Reference Documentation</db:titleabbrev>
 <db:abstract>
 <db:para>The Numbers class provides functions for manipulating numbers.</db:para>

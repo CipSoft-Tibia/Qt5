@@ -2,12 +2,18 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#ifdef UNSAFE_BUFFERS_BUILD
+// TODO(crbug.com/40285824): Remove this and convert code to safer constructs.
+#pragma allow_unsafe_buffers
+#endif
+
 #ifndef COMPONENTS_ZUCCHINI_IMAGE_UTILS_H_
 #define COMPONENTS_ZUCCHINI_IMAGE_UTILS_H_
 
 #include <stddef.h>
 #include <stdint.h>
 
+#include <optional>
 #include <string>
 
 #include "base/format_macros.h"
@@ -15,7 +21,6 @@
 #include "base/strings/stringprintf.h"
 #include "components/zucchini/buffer_view.h"
 #include "components/zucchini/typed_value.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 
 namespace zucchini {
 
@@ -93,7 +98,7 @@ class ReferenceReader {
 
   // Returns the next available Reference, or nullopt_t if exhausted.
   // Extracted References must be ordered by their location in the image.
-  virtual absl::optional<Reference> GetNext() = 0;
+  virtual std::optional<Reference> GetNext() = 0;
 };
 
 // Interface for writing References through member function

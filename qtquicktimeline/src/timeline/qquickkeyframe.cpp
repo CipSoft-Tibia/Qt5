@@ -4,7 +4,6 @@
 #include "qquickkeyframe_p.h"
 
 #include "qquicktimeline_p.h"
-#include "qquickkeyframedatautils_p.h"
 
 #include <QtCore/qdebug.h>
 #include <QtCore/QVariantAnimation>
@@ -16,6 +15,13 @@
 #include <QtQml/QQmlEngine>
 #include <QtCore/QFile>
 #include <QtCore/QCborStreamReader>
+#include <QCborArray>
+#include <QRect>
+#include <QVector2D>
+#include <QVector3D>
+#include <QVector4D>
+#include <QQuaternion>
+#include <QColor>
 
 #include <private/qvariantanimation_p.h>
 #include <private/qqmlproperty_p.h>
@@ -39,7 +45,8 @@ public:
 
 protected:
     void setupKeyframes();
-    void loadKeyframes(bool fromBinary = false);
+    bool loadKeyframes(bool fromBinary = false);
+    void resetKeyframes();
 
     static void append_keyframe(QQmlListProperty<QQuickKeyframe> *list, QQuickKeyframe *a);
     static qsizetype keyframe_count(QQmlListProperty<QQuickKeyframe> *list);
@@ -62,7 +69,154 @@ void QQuickKeyframeGroupPrivate::setupKeyframes()
     });
 }
 
-void QQuickKeyframeGroupPrivate::loadKeyframes(bool fromBinary)
+// time, easingType, data
+static int validFrameSize(QMetaType::Type type)
+{
+    switch (type) {
+    case QMetaType::Bool:
+    case QMetaType::Int:
+    case QMetaType::Float:
+    case QMetaType::Double:
+        return 3;
+    case QMetaType::QVector2D:
+    case QMetaType::QPoint:
+    case QMetaType::QPointF:
+    case QMetaType::QSize:
+    case QMetaType::QSizeF:
+        return 4;
+    case QMetaType::QVector3D:
+        return 5;
+    case QMetaType::QVector4D:
+    case QMetaType::QQuaternion:
+    case QMetaType::QColor:
+    case QMetaType::QRect:
+    case QMetaType::QRectF:
+        return 6;
+    default:
+        qWarning() << "Keyframe property type not handled:" << type;
+        return -1;
+    }
+}
+
+// Read property 'type' value from CborArray from index 'id' and return it as QVariant.
+static QVariant qQuickKeyframeReadProperty(const QCborArray &array, qsizetype id, QMetaType::Type type)
+{
+    switch (type) {
+    case QMetaType::QVector2D:
+        {
+            QVector2D v;
+            v.setX(array.at(id).toDouble());
+            v.setY(array.at(id + 1).toDouble());
+            return QVariant(v);
+        }
+        break;
+    case QMetaType::QVector3D:
+        {
+            QVector3D v;
+            v.setX(array.at(id).toDouble());
+            v.setY(array.at(id + 1).toDouble());
+            v.setZ(array.at(id + 2).toDouble());
+            return QVariant(v);
+        }
+        break;
+    case QMetaType::QVector4D:
+        {
+            QVector4D v;
+            v.setX(array.at(id).toDouble());
+            v.setY(array.at(id + 1).toDouble());
+            v.setZ(array.at(id + 2).toDouble());
+            v.setW(array.at(id + 3).toDouble());
+            return QVariant(v);
+        }
+        break;
+    case QMetaType::QQuaternion:
+        {
+            QQuaternion q;
+            q.setScalar(array.at(id).toDouble());
+            q.setX(array.at(id + 1).toDouble());
+            q.setY(array.at(id + 2).toDouble());
+            q.setZ(array.at(id + 3).toDouble());
+            return QVariant(q);
+        }
+        break;
+    case QMetaType::QColor:
+        {
+            QColor c;
+            c.setRed(array.at(id).toInteger());
+            c.setGreen(array.at(id + 1).toInteger());
+            c.setBlue(array.at(id + 2).toInteger());
+            c.setAlpha(array.at(id + 3).toInteger());
+            return QVariant(c);
+        }
+        break;
+    case QMetaType::QRectF:
+        {
+            QRectF r;
+            r.setX(array.at(id).toDouble());
+            r.setY(array.at(id + 1).toDouble());
+            r.setWidth(array.at(id + 2).toDouble());
+            r.setHeight(array.at(id + 3).toDouble());
+            return QVariant(r);
+        }
+        break;
+    case QMetaType::QRect:
+        {
+            QRect r;
+            r.setX(array.at(id).toInteger());
+            r.setY(array.at(id + 1).toInteger());
+            r.setWidth(array.at(id + 2).toInteger());
+            r.setHeight(array.at(id + 3).toInteger());
+            return QVariant(r);
+        }
+        break;
+    case QMetaType::QPointF:
+        {
+            QPointF p;
+            p.setX(array.at(id).toDouble());
+            p.setY(array.at(id + 1).toDouble());
+            return QVariant(p);
+        }
+        break;
+    case QMetaType::QPoint:
+        {
+            QPoint p;
+            p.setX(array.at(id).toInteger());
+            p.setY(array.at(id + 1).toInteger());
+            return QVariant(p);
+        }
+        break;
+    case QMetaType::QSizeF:
+        {
+            QSizeF s;
+            s.setWidth(array.at(id).toDouble());
+            s.setHeight(array.at(id + 1).toDouble());
+            return QVariant(s);
+        }
+        break;
+    case QMetaType::QSize:
+        {
+            QSize s;
+            s.setWidth(array.at(id).toInteger());
+            s.setHeight(array.at(id + 1).toInteger());
+            return QVariant(s);
+        }
+        break;
+    case QMetaType::Bool:
+    case QMetaType::Int:
+    case QMetaType::Float:
+    case QMetaType::Double:
+        {
+            return array.at(id).toVariant();
+        }
+
+    default:
+        qWarning() << "Keyframe property type not handled:" << type;
+    }
+
+    return QVariant();
+}
+
+bool QQuickKeyframeGroupPrivate::loadKeyframes(bool fromBinary)
 {
     Q_Q(QQuickKeyframeGroup);
 
@@ -80,48 +234,81 @@ void QQuickKeyframeGroupPrivate::loadKeyframes(bool fromBinary)
         if (!dataFile.open(QIODevice::ReadOnly)) {
             // Invalid file
             qWarning() << "Unable to open keyframeSource:" << dataFilePath;
-            qDeleteAll(keyframes);
-            keyframes.clear();
-            return;
+            return false;
         }
         reader.setDevice(&dataFile);
     } else {
         reader.addData(keyframeData);
     }
 
-    auto cleanup = qScopeGuard([&dataFile] { dataFile.close(); });
+    auto error = [&reader](const QString &msg = QString()) {
+        if (!msg.isEmpty())
+            qWarning() << "Corrupt keyframeSource" << msg;
+        else
+            qWarning() << "Corrupt keyframeSource" << reader.lastError().toString();
+        return false;
+    };
 
-    // Check that file is standard keyframes CBOR and get the version
-    int version = readKeyframesHeader(reader);
+    QCborValue kfSrcCborValue = QCborValue::fromCbor(reader);
+    if (reader.lastError() != QCborError::NoError || !kfSrcCborValue.isArray())
+        return error(QStringLiteral("invalid format.(array expected)"));
 
-    if (version == -1) {
-        // Invalid file
-        qWarning() << "Invalid keyframeSource version:" << version;
-        return;
-    }
+    QCborArray kfSrcCborArray = kfSrcCborValue.toArray();
+    // [ "QTimelineKeyframes", version(int), property type(int), [...]]
+    if (kfSrcCborArray.size() != 4)
+        return error(QStringLiteral("invalid data size"));
 
-    QMetaType::Type propertyType = QMetaType::UnknownType;
-    if (reader.isInteger()) {
-        propertyType = static_cast<QMetaType::Type>(reader.toInteger());
-        reader.next();
-    }
+    if (kfSrcCborArray.at(0).toString() != QStringLiteral("QTimelineKeyframes"))
+        return error(QStringLiteral("invalid keyframeSource header string"));
+
+    if (kfSrcCborArray.at(1).toInteger() != 1)
+        return error(QStringLiteral("invalid keyframeSource version %1").arg(kfSrcCborArray.at(1).toInteger()));
+
+    // QMetaType::UnknownType = 0;
+    QMetaType::Type propertyType = static_cast<QMetaType::Type>(kfSrcCborArray.at(2).toInteger(0));
+    const int frameSize = validFrameSize(propertyType);
+    if (frameSize < 0)
+        return error(QStringLiteral("unsupported property type"));
 
     // Start keyframes array
-    reader.enterContainer();
+    QCborArray kfArray = kfSrcCborArray.at(3).toArray();
+    const auto arraySize = kfArray.size();
+    bool validKeyframeData = true;
+    for (qsizetype i = 0; i < arraySize - frameSize; i += frameSize) {
+        auto keyframe = std::make_unique<QQuickKeyframe>(q);
 
-    while (reader.lastError() == QCborError::NoError && reader.hasNext()) {
-        auto keyframe = new QQuickKeyframe(q);
-        keyframe->setFrame(readReal(reader));
-        keyframe->setEasing(QEasingCurve(static_cast<QEasingCurve::Type>(reader.toInteger())));
-        reader.next();
-        keyframe->setValue(readValue(reader, propertyType));
-        keyframes.append(keyframe);
+        keyframe->setFrame(kfArray.at(i).toDouble());
+
+        QCborValue easingTypeValue = kfArray.at(i + 1);
+        if (!easingTypeValue.isInteger()) {
+            validKeyframeData = false;
+            break;
+        }
+        keyframe->setEasing(static_cast<QEasingCurve::Type>(easingTypeValue.toInteger()));
+
+        QVariant value = qQuickKeyframeReadProperty(kfArray, i + 2, propertyType);
+        if (value.isValid()) {
+            keyframe->setValue(value);
+            keyframes.append(keyframe.release());
+        } else {
+            validKeyframeData = false;
+            break;
+        }
     }
-    // Leave keyframes array
-    reader.leaveContainer();
 
-    // Leave root array
-    reader.leaveContainer();
+    if (!validKeyframeData) {
+        qWarning() << "Invalid keyframe data";
+        resetKeyframes();
+        return false;
+    }
+
+    return true;
+}
+
+void QQuickKeyframeGroupPrivate::resetKeyframes()
+{
+    qDeleteAll(keyframes);
+    keyframes.clear();
 }
 
 void QQuickKeyframeGroupPrivate::append_keyframe(QQmlListProperty<QQuickKeyframe> *list, QQuickKeyframe *a)
@@ -347,14 +534,13 @@ void QQuickKeyframeGroup::setKeyframeSource(const QUrl &source)
 
     if (d->keyframes.size() > 0) {
         // Remove possible previously loaded keyframes
-        qDeleteAll(d->keyframes);
-        d->keyframes.clear();
+        d->resetKeyframes();
         d->keyframeData.clear();
     }
 
     d->keyframeSource = source;
-    d->loadKeyframes();
-    d->setupKeyframes();
+    if (d->loadKeyframes())
+        d->setupKeyframes();
     reset();
 
     emit keyframeSourceChanged();
@@ -374,14 +560,13 @@ void QQuickKeyframeGroup::setKeyframeData(const QByteArray &data)
 
     if (d->keyframes.size() > 0) {
         // Remove possible previously loaded keyframes
-        qDeleteAll(d->keyframes);
-        d->keyframes.clear();
+        d->resetKeyframes();
         d->keyframeSource.clear();
     }
 
     d->keyframeData = data;
-    d->loadKeyframes(true);
-    d->setupKeyframes();
+    if (d->loadKeyframes(true))
+        d->setupKeyframes();
     reset();
 
     emit keyframeSourceChanged();

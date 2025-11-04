@@ -2,6 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#ifdef UNSAFE_BUFFERS_BUILD
+// TODO(crbug.com/351564777): Remove this and convert code to safer constructs.
+#pragma allow_unsafe_buffers
+#endif
+
 #include "third_party/blink/renderer/modules/mediastream/low_latency_video_renderer_algorithm.h"
 
 #include <queue>
@@ -87,7 +92,7 @@ class LowLatencyVideoRendererAlgorithmTest : public testing::Test {
 
   void StepUntilJustBeforeNextFrameIsRendered(
       base::TimeDelta render_interval,
-      absl::optional<media::VideoFrame::ID> expected_id = absl::nullopt) {
+      std::optional<media::VideoFrame::ID> expected_id = std::nullopt) {
     // No frame will be rendered until the total render time that has passed is
     // greater than the frame duration of a frame.
     base::TimeTicks start_time = current_render_time_;

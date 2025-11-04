@@ -13,6 +13,7 @@
 
 #include "base/check.h"
 #include "base/check_op.h"
+#include "base/containers/span.h"
 #include "base/notreached.h"
 #include "base/numerics/safe_conversions.h"
 #include "base/strings/string_number_conversions.h"
@@ -24,6 +25,7 @@
 
 #if BUILDFLAG(IS_WIN)
 #include <winsock2.h>
+
 #include <ws2bth.h>
 
 #include "net/base/winsock_util.h"  // For kBluetoothAddressSize
@@ -35,7 +37,7 @@ namespace {
 
 // Value dictionary keys
 constexpr std::string_view kValueAddressKey = "address";
-constexpr std::string_view kValuePortKey = "port";
+constexpr std::string_view kValuePortKeyIE = "port";
 
 }  // namespace
 
@@ -54,7 +56,7 @@ std::optional<IPEndPoint> IPEndPoint::FromValue(const base::Value& value) {
   // Expect IPAddress to only allow deserializing valid addresses.
   DCHECK(address.value().IsValid());
 
-  std::optional<int> port = dict->FindInt(kValuePortKey);
+  std::optional<int> port = dict->FindInt(kValuePortKeyIE);
   if (!port.has_value() ||
       !base::IsValueInRangeForNumericType<uint16_t>(port.value())) {
     return std::nullopt;
@@ -95,7 +97,7 @@ int IPEndPoint::GetSockAddrFamily() const {
       return AF_BTH;
 #endif
     default:
-      NOTREACHED() << "Bad IP address";
+      NOTREACHED_IN_MIGRATION() << "Bad IP address";
       return AF_UNSPEC;
   }
 }
@@ -155,8 +157,8 @@ bool IPEndPoint::FromSockAddr(const struct sockaddr* sock_addr,
       const struct sockaddr_in* addr =
           reinterpret_cast<const struct sockaddr_in*>(sock_addr);
       *this = IPEndPoint(
-          IPAddress(reinterpret_cast<const uint8_t*>(&addr->sin_addr),
-                    IPAddress::kIPv4AddressSize),
+          // `s_addr` is a `uint32_t`, but it is already in network byte order.
+          IPAddress(base::as_bytes(base::span_from_ref(addr->sin_addr.s_addr))),
           base::NetToHost16(addr->sin_port));
       return true;
     }
@@ -165,10 +167,8 @@ bool IPEndPoint::FromSockAddr(const struct sockaddr* sock_addr,
         return false;
       const struct sockaddr_in6* addr =
           reinterpret_cast<const struct sockaddr_in6*>(sock_addr);
-      *this = IPEndPoint(
-          IPAddress(reinterpret_cast<const uint8_t*>(&addr->sin6_addr),
-                    IPAddress::kIPv6AddressSize),
-          base::NetToHost16(addr->sin6_port));
+      *this = IPEndPoint(IPAddress(addr->sin6_addr.s6_addr),
+                         base::NetToHost16(addr->sin6_port));
       return true;
     }
 #if BUILDFLAG(IS_WIN)
@@ -178,8 +178,10 @@ bool IPEndPoint::FromSockAddr(const struct sockaddr* sock_addr,
       const SOCKADDR_BTH* addr =
           reinterpret_cast<const SOCKADDR_BTH*>(sock_addr);
       *this = IPEndPoint();
-      address_ = IPAddress(reinterpret_cast<const uint8_t*>(&addr->btAddr),
-                           kBluetoothAddressSize);
+      // A bluetooth address is 6 bytes, but btAddr is a ULONGLONG, so we take a
+      // prefix of it.
+      address_ = IPAddress(base::as_bytes(base::span_from_ref(addr->btAddr))
+                               .first(kBluetoothAddressSize));
       // Intentionally ignoring Bluetooth port. It is a ULONG, but
       // `IPEndPoint::port_` is a uint16_t. See https://crbug.com/1231273.
       return true;
@@ -224,7 +226,7 @@ base::Value IPEndPoint::ToValue() const {
 
   DCHECK(address_.IsValid());
   dict.Set(kValueAddressKey, address_.ToValue());
-  dict.Set(kValuePortKey, port_);
+  dict.Set(kValuePortKeyIE, port_);
 
   return base::Value(std::move(dict));
 }

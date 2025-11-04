@@ -43,7 +43,7 @@ public:
 };
 
 
-class Q_AUTOTEST_EXPORT QQuickItemViewChangeSet
+class Q_QUICK_EXPORT QQuickItemViewChangeSet
 {
 public:
     QQuickItemViewChangeSet();
@@ -151,6 +151,7 @@ public:
         return releaseItem(oldCurrentItem, reusableFlag);
     }
     virtual bool releaseItem(FxViewItem *item, QQmlInstanceModel::ReusableFlag reusableFlag);
+    void itemDestroyed(QQuickItem *item) override;
 
     QQuickItem *createHighlightItem();
     QQuickItem *createComponentItem(QQmlComponent *component, qreal zValue, bool createDefault = false) const;
@@ -310,6 +311,7 @@ public:
 #endif
     bool delegateValidated : 1;
     bool isClearing : 1;
+    bool explicitDelegate: 1;
 
 protected:
     virtual Qt::Orientation layoutOrientation() const = 0;

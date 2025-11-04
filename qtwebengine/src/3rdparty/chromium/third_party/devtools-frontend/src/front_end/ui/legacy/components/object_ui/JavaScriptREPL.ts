@@ -3,10 +3,10 @@
 // found in the LICENSE file.
 
 import * as Platform from '../../../../core/platform/platform.js';
-import * as Root from '../../../../core/root/root.js';
 import * as SDK from '../../../../core/sdk/sdk.js';
 import * as Formatter from '../../../../models/formatter/formatter.js';
 import * as SourceMapScopes from '../../../../models/source_map_scopes/source_map_scopes.js';
+import * as Acorn from '../../../../third_party/acorn/acorn.js';
 import * as UI from '../../legacy.js';
 
 import {RemoteObjectPreviewFormatter} from './RemoteObjectPreviewFormatter.js';
@@ -28,7 +28,9 @@ export class JavaScriptREPL {
       }
     }
 
-    const parse = (async(): Promise<number> => 0).constructor;
+    const parse = (expression: string): void => void Acorn.parse(
+        expression,
+        {ecmaVersion: 2022, allowAwaitOutsideFunction: true, ranges: false, allowReturnOutsideFunction: true});
     try {
       // Check if the body can be interpreted as an expression.
       parse('return {' + body + '};');
@@ -56,15 +58,13 @@ export class JavaScriptREPL {
     }
 
     let expression = text;
-    if (Root.Runtime.experiments.isEnabled('evaluateExpressionsWithSourceMaps')) {
-      const callFrame = executionContext.debuggerModel.selectedCallFrame();
-      if (callFrame) {
-        const nameMap = await SourceMapScopes.NamesResolver.allVariablesInCallFrame(callFrame);
-        try {
-          expression =
-              await Formatter.FormatterWorkerPool.formatterWorkerPool().javaScriptSubstitute(expression, nameMap);
-        } catch {
-        }
+    const callFrame = executionContext.debuggerModel.selectedCallFrame();
+    if (callFrame && callFrame.script.isJavaScript()) {
+      const nameMap = await SourceMapScopes.NamesResolver.allVariablesInCallFrame(callFrame);
+      try {
+        expression =
+            await Formatter.FormatterWorkerPool.formatterWorkerPool().javaScriptSubstitute(expression, nameMap);
+      } catch {
       }
     }
 

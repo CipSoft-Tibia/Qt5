@@ -240,7 +240,7 @@ class CORE_EXPORT GridLayoutTrackCollection : public GridTrackCollectionBase {
   GridTrackSizingDirection track_direction_;
 
   // Baselines are only created when there are items with baseline alignment.
-  absl::optional<Baselines> baselines_;
+  std::optional<Baselines> baselines_;
 
   // Initially we only know some of the set sizes - others will be indefinite.
   // To represent this we store a vector of the last indefinite indices for each
@@ -394,7 +394,9 @@ class CORE_EXPORT GridSizingTrackCollection final
   typedef SetIteratorBase<true> ConstSetIterator;
 
   GridSizingTrackCollection() = delete;
+  GridSizingTrackCollection(GridSizingTrackCollection&&) = default;
   GridSizingTrackCollection(const GridSizingTrackCollection&) = delete;
+  GridSizingTrackCollection& operator=(GridSizingTrackCollection&&) = default;
   GridSizingTrackCollection& operator=(const GridSizingTrackCollection&) =
       delete;
 
@@ -445,6 +447,7 @@ class CORE_EXPORT GridSizingTrackCollection final
  private:
   friend class GridLayoutAlgorithmTest;
   friend class GridTrackCollectionTest;
+  friend class MasonryLayoutAlgorithmTest;
 
   // These methods are internal implementations also used in testing.
   void BuildSets(const NGGridTrackList& explicit_track_list,

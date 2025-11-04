@@ -353,6 +353,11 @@ void QSGMaterialShader::setShader(Stage stage, const QShader &shader)
     Sets the \a filename for the shader for the specified \a stage.
 
     The file is expected to contain a serialized QShader.
+
+    \warning Shaders, including \c{.qsb} files, are assumed to be trusted
+    content. Application developers are advised to carefully consider the
+    potential implications before allowing the loading of user-provided content
+    that is not part of the application.
  */
 void QSGMaterialShader::setShaderFileName(Stage stage, const QString &filename)
 {
@@ -371,6 +376,11 @@ void QSGMaterialShader::setShaderFileName(Stage stage, const QString &filename)
 
     \a viewCount should be 2, 3, or 4. The \a filename is adjusted automatically
     based on this.
+
+    \warning Shaders, including \c{.qsb} files, are assumed to be trusted
+    content. Application developers are advised to carefully consider the
+    potential implications before allowing the loading of user-provided content
+    that is not part of the application.
 
     \since 6.8
  */

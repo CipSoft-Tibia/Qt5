@@ -350,7 +350,6 @@ int main(int argc, char *argv[])
                 {
                     case SH_HLSL_3_0_OUTPUT:
                     case SH_HLSL_4_1_OUTPUT:
-                    case SH_HLSL_4_0_FL9_3_OUTPUT:
                         compileOptions.selectViewInNvGLSLVertexShader = false;
                         break;
                     default:
@@ -928,7 +927,9 @@ static void PrintSpirv(const sh::BinaryBlob &blob)
     spvtools::SpirvTools spirvTools(SPV_ENV_VULKAN_1_1);
 
     std::string readableSpirv;
-    spirvTools.Disassemble(blob, &readableSpirv, 0);
+    spirvTools.Disassemble(blob, &readableSpirv,
+                           SPV_BINARY_TO_TEXT_OPTION_COMMENT | SPV_BINARY_TO_TEXT_OPTION_INDENT |
+                               SPV_BINARY_TO_TEXT_OPTION_NESTED_INDENT);
 
     puts(readableSpirv.c_str());
 #endif

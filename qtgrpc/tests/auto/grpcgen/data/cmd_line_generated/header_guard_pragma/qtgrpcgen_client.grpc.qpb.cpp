@@ -15,43 +15,56 @@ Client::~Client() = default;
 
 std::unique_ptr<QGrpcCallReply> Client::testMethod(const qtgrpc::tests::IntMessage &arg)
 {
-    return call("testMethod"_L1, arg, {});
+    return testMethod(arg, {});
 }
 
 
 std::unique_ptr<QGrpcCallReply> Client::testMethod(const qtgrpc::tests::IntMessage &arg, const QGrpcCallOptions &options)
 {
-    return call("testMethod"_L1, arg, options);
+    auto reply = call("testMethod"_L1, arg, options);
+    if (auto *replyPtr = reply.get(); replyPtr != nullptr) {
+        setOperationResponseMetaType(replyPtr, QMetaType::fromType<qtgrpc::tests::IntMessage>());
+    }
+    return reply;
 }
 
 std::unique_ptr<QGrpcServerStream> Client::testMethodServerStream(const qtgrpc::tests::IntMessage &arg)
 {
-    return serverStream("testMethodServerStream"_L1, arg, {});
-}
+    return testMethodServerStream(arg, {});}
 
 std::unique_ptr<QGrpcServerStream> Client::testMethodServerStream(const qtgrpc::tests::IntMessage &arg, const QGrpcCallOptions &options)
 {
-    return serverStream("testMethodServerStream"_L1, arg, options);
+    auto stream = serverStream("testMethodServerStream"_L1, arg, options);
+    if (auto *streamPtr = stream.get(); streamPtr != nullptr) {
+        setOperationResponseMetaType(streamPtr, QMetaType::fromType<qtgrpc::tests::IntMessage>());
+    }
+    return stream;
 }
 
 std::unique_ptr<QGrpcClientStream> Client::testMethodClientStream(const qtgrpc::tests::IntMessage &arg)
 {
-    return clientStream("testMethodClientStream"_L1, arg, {});
-}
+    return testMethodClientStream(arg, {});}
 
 std::unique_ptr<QGrpcClientStream> Client::testMethodClientStream(const qtgrpc::tests::IntMessage &arg, const QGrpcCallOptions &options)
 {
-    return clientStream("testMethodClientStream"_L1, arg, options);
+    auto stream = clientStream("testMethodClientStream"_L1, arg, options);
+    if (auto *streamPtr = stream.get(); streamPtr != nullptr) {
+        setOperationResponseMetaType(streamPtr, QMetaType::fromType<qtgrpc::tests::IntMessage>());
+    }
+    return stream;
 }
 
 std::unique_ptr<QGrpcBidiStream> Client::testMethodBiStream(const qtgrpc::tests::IntMessage &arg)
 {
-    return bidiStream("testMethodBiStream"_L1, arg, {});
-}
+    return testMethodBiStream(arg, {});}
 
 std::unique_ptr<QGrpcBidiStream> Client::testMethodBiStream(const qtgrpc::tests::IntMessage &arg, const QGrpcCallOptions &options)
 {
-    return bidiStream("testMethodBiStream"_L1, arg, options);
+    auto stream = bidiStream("testMethodBiStream"_L1, arg, options);
+    if (auto *streamPtr = stream.get(); streamPtr != nullptr) {
+        setOperationResponseMetaType(streamPtr, QMetaType::fromType<qtgrpc::tests::IntMessage>());
+    }
+    return stream;
 }
 
 } // namespace TestService

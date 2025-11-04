@@ -10,11 +10,11 @@ import {
   kValidTextureFormatsForCopyE2T,
   RegularTextureFormat,
 } from '../../format_info.js';
-import { CopyToTextureUtils } from '../../util/copy_to_texture.js';
+import { TextureUploadingUtils } from '../../util/copy_to_texture.js';
 import { CanvasType, kAllCanvasTypes, createCanvas } from '../../util/create_elements.js';
 import { TexelCompareOptions } from '../../util/texture/texture_ok.js';
 
-class F extends CopyToTextureUtils {
+class F extends TextureUploadingUtils {
   init2DCanvasContentWithColorSpace({
     width,
     height,
@@ -97,9 +97,7 @@ class F extends CopyToTextureUtils {
     }
 
     const imageData = new ImageData(imagePixels, width, height, { colorSpace });
-    // MAINTENANCE_TODO: Remove as any when tsc support imageData.colorSpace
-    /* eslint-disable-next-line @typescript-eslint/no-explicit-any */
-    if (typeof (imageData as any).colorSpace === 'undefined') {
+    if (typeof imageData.colorSpace === 'undefined') {
       this.skip('color space attr is not supported for ImageData');
     }
 
@@ -403,7 +401,7 @@ class F extends CopyToTextureUtils {
       dstPremultiplied: boolean;
     }
   ) {
-    const dst = this.device.createTexture({
+    const dst = this.createTextureTracked({
       size: {
         width: p.width,
         height: p.height,
@@ -762,7 +760,7 @@ g.test('color_space_conversion')
   .params(u =>
     u
       .combine('srcColorSpace', ['srgb', 'display-p3'] as const)
-      .combine('dstColorSpace', ['srgb'] as const)
+      .combine('dstColorSpace', ['srgb', 'display-p3'] as const)
       .combine('dstColorFormat', kValidTextureFormatsForCopyE2T)
       .combine('dstPremultiplied', [true, false])
       .combine('srcDoFlipYDuringCopy', [true, false])
@@ -789,7 +787,7 @@ g.test('color_space_conversion')
       colorSpace: srcColorSpace,
     });
 
-    const dst = t.device.createTexture({
+    const dst = t.createTextureTracked({
       size: { width, height },
       format: dstColorFormat,
       usage:

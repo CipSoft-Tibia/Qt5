@@ -1,6 +1,7 @@
 // Copyright (C) 2020 The Qt Company Ltd.
 // Copyright (C) 2020 Intel Corporation.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:data-parser
 
 #ifndef QSTRINGCONVERTER_P_H
 #define QSTRINGCONVERTER_P_H
@@ -42,7 +43,7 @@ struct QLatin1
     }
 
     static QChar *convertToUnicode(QChar *dst, QByteArrayView in,
-                                   [[maybe_unused]] QStringConverterBase::State *state) noexcept
+                                   [[maybe_unused]] QStringConverter::State *state) noexcept
     {
         Q_ASSERT(state);
 
@@ -288,6 +289,20 @@ namespace QUtf8Functions
         Traits::advanceByte(src, charsNeeded - 1);
         return charsNeeded;
     }
+
+    /// wrapper around fromUtf8<Traits> to provide a simpler interface for a common case
+    template <typename Traits = QUtf8BaseTraits>
+    char32_t nextUcs4FromUtf8(const qchar8_t *&src, const qchar8_t *end,
+                              char32_t errorChar = QChar::ReplacementCharacter)
+    {
+        auto ch = *src++;
+        char32_t buffer[1];
+        auto *output = buffer;
+        if (QUtf8Functions::fromUtf8<Traits>(ch, output, src, end) < 0)
+            return errorChar; // decoding error
+        Q_ASSERT(output == buffer + 1);
+        return buffer[0];
+    }
 }
 
 enum DataEndianness
@@ -320,7 +335,7 @@ struct QUtf8
     static char16_t *convertToUnicode(char16_t *dst, QByteArrayView in, QStringConverter::State *state);
 
     Q_CORE_EXPORT static QByteArray convertFromUnicode(QStringView in);
-    Q_CORE_EXPORT static QByteArray convertFromUnicode(QStringView in, QStringConverterBase::State *state);
+    Q_CORE_EXPORT static QByteArray convertFromUnicode(QStringView in, QStringConverter::State *state);
     static char *convertFromUnicode(char *out, QStringView in, QStringConverter::State *state);
     Q_CORE_EXPORT static char *convertFromLatin1(char *out, QLatin1StringView in);
     struct ValidUtf8Result {
@@ -334,6 +349,12 @@ struct QUtf8
                            Qt::CaseSensitivity cs = Qt::CaseSensitive);
     static int compareUtf8(QByteArrayView lhs, QByteArrayView rhs,
                            Qt::CaseSensitivity cs = Qt::CaseSensitive) noexcept;
+
+private:
+    template <typename OnErrorLambda> static char *
+    convertFromUnicode(char *out, QStringView in, OnErrorLambda &&onError) noexcept;
+    template <typename OnErrorLambda> static char16_t *
+    convertToUnicode(char16_t *dst, QByteArrayView in, OnErrorLambda &&onError) noexcept;
 };
 
 struct QUtf16

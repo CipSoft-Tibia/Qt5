@@ -10,6 +10,7 @@
 
 #include "platform/base/error.h"
 #include "platform/base/ip_address.h"
+#include "platform/base/span.h"
 
 namespace openscreen {
 
@@ -19,7 +20,7 @@ class TlsConnection {
   class Client {
    public:
     // Called when |connection| experiences an error, such as a read error.
-    virtual void OnError(TlsConnection* connection, Error error) = 0;
+    virtual void OnError(TlsConnection* connection, const Error& error) = 0;
 
     // Called when a |block| arrives on |connection|.
     virtual void OnRead(TlsConnection* connection,
@@ -38,7 +39,7 @@ class TlsConnection {
   virtual void SetClient(Client* client) = 0;
 
   // Sends a message. Returns true iff the message will be sent.
-  [[nodiscard]] virtual bool Send(const void* data, size_t len) = 0;
+  [[nodiscard]] virtual bool Send(ByteView data) = 0;
 
   // Get the connected remote address.
   virtual IPEndpoint GetRemoteEndpoint() const = 0;

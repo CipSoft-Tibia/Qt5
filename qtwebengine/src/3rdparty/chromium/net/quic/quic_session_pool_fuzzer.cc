@@ -11,6 +11,9 @@
 #include "base/no_destructor.h"
 #include "base/task/sequenced_task_runner.h"
 #include "net/base/network_anonymization_key.h"
+#include "net/base/privacy_mode.h"
+#include "net/base/proxy_chain.h"
+#include "net/base/session_usage.h"
 #include "net/base/test_completion_callback.h"
 #include "net/cert/do_nothing_ct_verifier.h"
 #include "net/cert/mock_cert_verifier.h"
@@ -25,6 +28,7 @@
 #include "net/quic/mock_quic_context.h"
 #include "net/quic/quic_context.h"
 #include "net/quic/quic_http_stream.h"
+#include "net/quic/quic_session_key.h"
 #include "net/quic/test_task_runner.h"
 #include "net/socket/fuzzed_datagram_client_socket.h"
 #include "net/socket/fuzzed_socket_factory.h"
@@ -88,15 +92,9 @@ struct FuzzerEnvironment {
   MockQuicContext quic_context;
 };
 
-FuzzerEnvironment* GetFuzzerEnvironment() {
-  static base::NoDestructor<FuzzerEnvironment> fuzzer_environment;
-  return &*fuzzer_environment;
-}
-
 extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
   FuzzedDataProvider data_provider(data, size);
-
-  FuzzerEnvironment* env = GetFuzzerEnvironment();
+  FuzzerEnvironment env;
 
   std::unique_ptr<ContextHostResolver> host_resolver =
       CreateFuzzedContextHostResolver(HostResolver::ManagerOptions(), nullptr,
@@ -107,7 +105,7 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
   // Initialize this on each loop since some options mutate this.
   HttpServerProperties http_server_properties;
 
-  QuicParams& params = *env->quic_context.params();
+  QuicParams& params = *env.quic_context.params();
   params.max_server_configs_stored_in_properties =
       data_provider.ConsumeBool() ? 1 : 0;
   params.close_sessions_on_ip_change = data_provider.ConsumeBool();
@@ -115,7 +113,7 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
   params.estimate_initial_rtt = data_provider.ConsumeBool();
   params.enable_socket_recv_optimization = data_provider.ConsumeBool();
 
-  env->crypto_client_stream_factory.AddProofVerifyDetails(&env->verify_details);
+  env.crypto_client_stream_factory.AddProofVerifyDetails(&env.verify_details);
 
   params.goaway_sessions_on_ip_change = false;
   params.migrate_sessions_early_v2 = false;
@@ -138,10 +136,10 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
   }
 
   std::unique_ptr<QuicSessionPool> factory = std::make_unique<QuicSessionPool>(
-      env->net_log.net_log(), host_resolver.get(),
-      env->ssl_config_service.get(), &socket_factory, &http_server_properties,
-      env->cert_verifier.get(), &env->transport_security_state, nullptr,
-      nullptr, &env->crypto_client_stream_factory, &env->quic_context);
+      env.net_log.net_log(), host_resolver.get(), env.ssl_config_service.get(),
+      &socket_factory, &http_server_properties, env.cert_verifier.get(),
+      &env.transport_security_state, nullptr, nullptr, nullptr,
+      &env.crypto_client_stream_factory, &env.quic_context);
 
   QuicSessionRequest request(factory.get());
   TestCompletionCallback callback;
@@ -154,10 +152,12 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
   quic::QuicEnableVersion(version);
 
   request.Request(
-      env->scheme_host_port, version, PRIVACY_MODE_DISABLED, DEFAULT_PRIORITY,
+      env.scheme_host_port, version, ProxyChain::Direct(),
+      TRAFFIC_ANNOTATION_FOR_TESTS, /*http_user_agent_settings=*/nullptr,
+      SessionUsage::kDestination, PRIVACY_MODE_DISABLED, DEFAULT_PRIORITY,
       SocketTag(), NetworkAnonymizationKey(), SecureDnsPolicy::kAllow,
-      true /* use_dns_aliases */, false /* require_dns_https_alpn */,
-      kCertVerifyFlags, GURL(kUrl), env->net_log, &net_error_details,
+      /*require_dns_https_alpn=*/false, kCertVerifyFlags, GURL(kUrl),
+      env.net_log, &net_error_details,
       /*failed_on_default_network_callback=*/CompletionOnceCallback(),
       callback.callback());
 
@@ -177,7 +177,7 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
   request_info.traffic_annotation =
       MutableNetworkTrafficAnnotationTag(TRAFFIC_ANNOTATION_FOR_TESTS);
   stream->RegisterRequest(&request_info);
-  stream->InitializeStream(true, DEFAULT_PRIORITY, env->net_log,
+  stream->InitializeStream(true, DEFAULT_PRIORITY, env.net_log,
                            CompletionOnceCallback());
 
   HttpResponseInfo response;

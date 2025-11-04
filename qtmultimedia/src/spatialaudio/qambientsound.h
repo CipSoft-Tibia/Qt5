@@ -59,8 +59,11 @@ public Q_SLOTS:
 
 private:
     void setEngine(QAudioEngine *engine);
-    friend class QAmbientSoundPrivate;
-    QAmbientSoundPrivate *d = nullptr;
+
+    Q_DECLARE_PRIVATE(QAmbientSound)
+
+    // ### Qt7: remove unused member
+    QT6_ONLY(Q_DECL_UNUSED_MEMBER void *unused = nullptr;) // for ABI compatibility
 };
 
 QT_END_NAMESPACE

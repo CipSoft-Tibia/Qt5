@@ -77,7 +77,7 @@ class SubscriptionsServerProxy {
       // Passing the endpoint_fetcher ensures the endpoint_fetcher's
       // lifetime extends to the callback and is not destroyed
       // prematurely (which would result in cancellation of the request).
-      // TODO(crbug.com/1362026): Avoid passing this fetcher.
+      // TODO(crbug.com/40238190): Avoid passing this fetcher.
       std::unique_ptr<EndpointFetcher> endpoint_fetcher,
       std::unique_ptr<EndpointResponse> responses);
 
@@ -92,7 +92,7 @@ class SubscriptionsServerProxy {
       // Passing the endpoint_fetcher ensures the endpoint_fetcher's
       // lifetime extends to the callback and is not destroyed
       // prematurely (which would result in cancellation of the request).
-      // TODO(crbug.com/1362026): Avoid passing this fetcher.
+      // TODO(crbug.com/40238190): Avoid passing this fetcher.
       std::unique_ptr<EndpointFetcher> endpoint_fetcher,
       std::unique_ptr<EndpointResponse> responses);
 
@@ -105,9 +105,11 @@ class SubscriptionsServerProxy {
   GetSubscriptionsFromParsedJson(
       const data_decoder::DataDecoder::ValueOrError& result);
 
+  bool IsPriceTrackingLocaleKeyEnabled();
+
   base::Value::Dict Serialize(const CommerceSubscription& subscription);
 
-  absl::optional<CommerceSubscription> Deserialize(const base::Value& value);
+  std::optional<CommerceSubscription> Deserialize(const base::Value& value);
 
   const scoped_refptr<network::SharedURLLoaderFactory> url_loader_factory_;
 

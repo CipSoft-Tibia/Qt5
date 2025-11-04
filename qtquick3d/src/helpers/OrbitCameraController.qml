@@ -17,6 +17,9 @@ Item {
 
     property bool mouseEnabled: true
     property bool panEnabled: true
+    property bool automaticClipping: true
+
+    property alias acceptedButtons: dragHandler.acceptedButtons
 
     readonly property bool inputsNeedProcessing: status.useMouse || status.isPanning
 
@@ -24,6 +27,7 @@ Item {
     implicitHeight: parent.height
 
     Connections {
+        enabled: root.automaticClipping
         target: root.camera
         function onZChanged() {
             // Adjust near/far values based on distance
@@ -66,6 +70,7 @@ Item {
         id: ctrlDragHandler
         target: null
         enabled: root.mouseEnabled && root.panEnabled
+        acceptedButtons: root.acceptedButtons
         acceptedModifiers: Qt.ControlModifier
         onCentroidChanged: {
             root.panEvent(Qt.vector2d(centroid.position.x, centroid.position.y));
@@ -111,6 +116,7 @@ Item {
     }
 
     TapHandler {
+        acceptedButtons: root.acceptedButtons
         onTapped: root.forceActiveFocus() // qmllint disable signal-handler-parameters
     }
 

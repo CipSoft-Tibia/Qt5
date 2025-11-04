@@ -23,7 +23,8 @@ bool AccountReconcilorDelegate::IsReconcileEnabled() const {
 }
 
 gaia::GaiaSource AccountReconcilorDelegate::GetGaiaApiSource() const {
-  NOTREACHED() << "Reconcile is not enabled, no Gaia API calls should be made.";
+  NOTREACHED_IN_MIGRATION()
+      << "Reconcile is not enabled, no Gaia API calls should be made.";
   return gaia::GaiaSource::kChrome;
 }
 
@@ -46,11 +47,10 @@ AccountReconcilorDelegate::CalculateParametersForMultilogin(
   const gaia::MultiloginMode mode =
       CalculateModeForReconcile(chrome_accounts, gaia_accounts, primary_account,
                                 first_execution, primary_has_error);
-  const std::vector<CoreAccountId> accounts_to_send =
-      GetChromeAccountsForReconcile(chrome_accounts, primary_account,
-                                    gaia_accounts, first_execution,
-                                    primary_has_error, mode);
-  return {mode, accounts_to_send};
+  std::vector<CoreAccountId> accounts_to_send = GetChromeAccountsForReconcile(
+      chrome_accounts, primary_account, gaia_accounts, first_execution,
+      primary_has_error, mode);
+  return {mode, std::move(accounts_to_send)};
 }
 
 bool AccountReconcilorDelegate::RevokeSecondaryTokensBeforeMultiloginIfNeeded(
@@ -175,8 +175,8 @@ AccountReconcilorDelegate::GetChromeAccountsForReconcile(
   return std::vector<CoreAccountId>();
 }
 
-void AccountReconcilorDelegate::RevokeSecondaryTokensBeforeReconcileIfNeeded() {
-}
+void AccountReconcilorDelegate::RevokeSecondaryTokensForReconcileIfNeeded(
+    const std::vector<gaia::ListedAccount>& gaia_accounts) {}
 
 void AccountReconcilorDelegate::OnAccountsCookieDeletedByUserAction(
     bool synced_data_deletion_in_progress) {}

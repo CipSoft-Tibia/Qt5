@@ -1,5 +1,6 @@
 // Copyright (C) 2022 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:data-parser
 
 #include "qloggingregistry_p.h"
 
@@ -11,6 +12,7 @@
 #include <QtCore/qtextstream.h>
 #include <QtCore/qdir.h>
 #include <QtCore/qcoreapplication.h>
+#include <QtCore/qscopedvaluerollback.h>
 
 #if QT_CONFIG(settings)
 #include <QtCore/qsettings.h>
@@ -282,9 +284,8 @@ void QLoggingRegistry::initializeRules()
     }
     QList<QLoggingRule> er, qr, cr;
     // get rules from environment
-    const QByteArray rulesFilePath = qgetenv("QT_LOGGING_CONF");
-    if (!rulesFilePath.isEmpty())
-        er = loadRulesFromFile(QFile::decodeName(rulesFilePath));
+    if (QString rulesFilePath = qEnvironmentVariable("QT_LOGGING_CONF"); !rulesFilePath.isEmpty())
+        er = loadRulesFromFile(rulesFilePath);
 
     if (qtLoggingDebug())
         debugMsg("Checking %s environment variable", "QT_LOGGING_RULES");
@@ -302,16 +303,16 @@ void QLoggingRegistry::initializeRules()
         er += parser.rules();
     }
 
-    const QString configFileName = QStringLiteral("qtlogging.ini");
+    const QString configFileName = u"QtProject/qtlogging.ini"_s;
+    QStringView baseConfigFileName = QStringView(configFileName).sliced(strlen("QtProject"));
+    Q_ASSERT(baseConfigFileName.startsWith(u'/'));
 
     // get rules from Qt data configuration path
-    const QString qtConfigPath
-            = QDir(QLibraryInfo::path(QLibraryInfo::DataPath)).absoluteFilePath(configFileName);
-    qr = loadRulesFromFile(qtConfigPath);
+    qr = loadRulesFromFile(QLibraryInfo::path(QLibraryInfo::DataPath) + baseConfigFileName);
 
     // get rules from user's/system configuration
     const QString envPath = QStandardPaths::locate(QStandardPaths::GenericConfigLocation,
-                                                   QString::fromLatin1("QtProject/") + configFileName);
+                                                   configFileName);
     if (!envPath.isEmpty())
         cr = loadRulesFromFile(envPath);
 
@@ -335,11 +336,9 @@ void QLoggingRegistry::registerCategory(QLoggingCategory *cat, QtMsgType enableF
 {
     const auto locker = qt_scoped_lock(registryMutex);
 
-    const auto oldSize = categories.size();
-    auto &e = categories[cat];
-    if (categories.size() != oldSize) {
+    auto r = categories.tryEmplace(cat, enableForLevel);
+    if (r.inserted) {
         // new entry
-        e = enableForLevel;
         (*categoryFilter)(cat);
     }
 }
@@ -422,6 +421,10 @@ QLoggingRegistry::installFilter(QLoggingCategory::CategoryFilter filter)
 
 QLoggingRegistry *QLoggingRegistry::instance()
 {
+    Q_CONSTINIT thread_local bool recursionGuard = false;
+    if (recursionGuard)
+        return nullptr;
+    QScopedValueRollback<bool> rollback(recursionGuard, true);
     return qtLoggingRegistry();
 }
 

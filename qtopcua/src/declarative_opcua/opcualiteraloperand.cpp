@@ -10,6 +10,7 @@ QT_BEGIN_NAMESPACE
     \inqmlmodule QtOpcUa
     \brief The OPC UA LiteralOperand type.
     \since QtOpcUa 5.13
+    \deprecated [6.9]
 
     The LiteralOperand is defined in OPC UA 1.05 part 4, 7.7.4.3.
     It contains a literal value that is to be used as operand for filters.

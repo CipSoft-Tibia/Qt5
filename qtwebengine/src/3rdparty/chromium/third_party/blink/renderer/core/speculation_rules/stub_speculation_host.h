@@ -11,9 +11,9 @@
 #ifndef THIRD_PARTY_BLINK_RENDERER_CORE_SPECULATION_RULES_STUB_SPECULATION_HOST_H_
 #define THIRD_PARTY_BLINK_RENDERER_CORE_SPECULATION_RULES_STUB_SPECULATION_HOST_H_
 
-class KURL;
-
 namespace blink {
+
+class KURL;
 
 class StubSpeculationHost : public mojom::blink::SpeculationHost {
  public:
@@ -40,19 +40,14 @@ class StubSpeculationHost : public mojom::blink::SpeculationHost {
 
   bool is_bound() const { return receiver_.is_bound(); }
 
-  bool sent_no_vary_search_support_to_browser() const {
-    return sent_no_vary_search_support_to_browser_;
-  }
-
   // mojom::blink::SpeculationHost.
   void UpdateSpeculationCandidates(Candidates candidates) override;
-  void EnableNoVarySearchSupport() override;
+  void OnLCPPredicted() override {}
   void InitiatePreview(const KURL& url) override;
 
  private:
   mojo::Receiver<SpeculationHost> receiver_{this};
   Vector<mojom::blink::SpeculationCandidatePtr> candidates_;
-  bool sent_no_vary_search_support_to_browser_ = false;
   base::OnceClosure done_closure_;
   base::RepeatingCallback<void(const Candidates&)> candidates_updated_callback_;
 };

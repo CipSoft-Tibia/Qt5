@@ -24,6 +24,7 @@
 #include "third_party/blink/renderer/core/style/computed_style.h"
 #include "third_party/blink/renderer/core/testing/mock_policy_container_host.h"
 #include "third_party/blink/renderer/platform/graphics/color.h"
+#include "third_party/blink/renderer/platform/testing/task_environment.h"
 #include "third_party/blink/renderer/platform/testing/unit_test_helpers.h"
 #include "third_party/blink/renderer/platform/testing/url_test_helpers.h"
 #include "third_party/blink/renderer/platform/weborigin/scheme_registry.h"
@@ -41,16 +42,17 @@ const char kNoOriginTrialDummyFilePath[] = "simple_div.html";
 
 class WebDocumentTest : public testing::Test {
  protected:
-  static void SetUpTestCase();
+  static void SetUpTestSuite();
 
   void LoadURL(const std::string& url);
   Document* TopDocument() const;
   WebDocument TopWebDocument() const;
 
+  test::TaskEnvironment task_environment_;
   WebViewHelper web_view_helper_;
 };
 
-void WebDocumentTest::SetUpTestCase() {
+void WebDocumentTest::SetUpTestSuite() {
   url_test_helpers::RegisterMockedURLLoad(
       ToKURL(std::string(kDefaultOrigin) + kNoOriginTrialDummyFilePath),
       test::CoreTestDataPath(kNoOriginTrialDummyFilePath));
@@ -198,7 +200,7 @@ void RegisterMockedURLLoad(const KURL& url, const char* path) {
 
 class WebDocumentFirstPartyTest : public WebDocumentTest {
  public:
-  static void SetUpTestCase();
+  static void SetUpTestSuite();
 
  protected:
   void Load(const char*);
@@ -206,7 +208,7 @@ class WebDocumentFirstPartyTest : public WebDocumentTest {
   Document* NestedNestedDocument() const;
 };
 
-void WebDocumentFirstPartyTest::SetUpTestCase() {
+void WebDocumentFirstPartyTest::SetUpTestSuite() {
   RegisterMockedURLLoad(ToOriginA(g_empty_file), g_empty_file);
   RegisterMockedURLLoad(ToOriginA(g_nested_data), g_nested_data);
   RegisterMockedURLLoad(ToOriginA(g_nested_origin_a), g_nested_origin_a);
@@ -282,8 +284,8 @@ TEST_F(WebDocumentFirstPartyTest, Empty) {
 TEST_F(WebDocumentFirstPartyTest, EmptySandbox) {
   web_view_helper_.Initialize();
   WebLocalFrameImpl* frame = web_view_helper_.GetWebView()->MainFrameImpl();
-  auto params = WebNavigationParams::CreateWithHTMLStringForTesting(
-      /*html=*/"", KURL("https://a.com"));
+  auto params =
+      WebNavigationParams::CreateWithEmptyHTMLForTesting(KURL("https://a.com"));
   MockPolicyContainerHost mock_policy_container_host;
   params->policy_container = std::make_unique<blink::WebPolicyContainer>(
       blink::WebPolicyContainerPolicies(),

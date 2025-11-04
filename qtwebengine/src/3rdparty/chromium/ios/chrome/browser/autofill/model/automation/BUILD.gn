@@ -22,6 +22,7 @@ source_set("eg2_tests") {
     "//ios/chrome/browser/ui/infobars:constants",
     "//ios/chrome/test/earl_grey:eg_test_support+eg2",
     "//ios/testing/earl_grey:eg_test_support+eg2",
+    "//ios/testing/earl_grey:launch_configuration",
     "//ios/web/public/test:element_selector",
     "//net:test_support",
   ]
@@ -41,7 +42,7 @@ source_set("eg_app_support+eg2") {
     "//components/autofill/ios/browser",
     "//components/strings",
     "//ios/chrome/browser/autofill/model",
-    "//ios/chrome/browser/shared/model/browser_state",
+    "//ios/chrome/browser/shared/model/profile",
     "//ios/chrome/test/app:test_support",
     "//ios/testing:nserror_support",
     "//ios/testing/earl_grey:eg_app_support+eg2",

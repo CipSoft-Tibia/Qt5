@@ -12,6 +12,9 @@
 #include <qshareddata.h>
 
 QT_REQUIRE_CONFIG(dom);
+
+#include <QtCore/qxpfunctional.h>
+
 QT_BEGIN_NAMESPACE
 
 //
@@ -145,9 +148,14 @@ public:
     bool operator==(const QDomNodeListPrivate &) const noexcept;
 
     void createList() const;
+    bool checkNode(QDomNodePrivate* p) const;
+    QDomNodePrivate *findNextInOrder(QDomNodePrivate* p) const;
+    QDomNodePrivate *findPrevInOrder(QDomNodePrivate* p) const;
+    void forEachNode(qxp::function_ref<void(QDomNodePrivate*)> yield) const;
     bool maybeCreateList() const;
     QDomNodePrivate *item(int index);
     int length() const;
+    int noexceptLength() const noexcept;
 
     QAtomicInt ref;
     /*

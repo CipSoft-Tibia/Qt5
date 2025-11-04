@@ -18,9 +18,9 @@ $ SUFFIX = 'q'
 
 #include <assert.h>
 
-#include <xnnpack/common.h>
-#include <xnnpack/math.h>
-#include <xnnpack/transpose.h>
+#include "xnnpack/common.h"
+#include "xnnpack/math.h"
+#include "xnnpack/transpose.h"
 
 void xnn_x${SIZE}_transposec_ukernel__${TILE_SIZE}x${TILE_SIZE}_${IN_PTRS.lower()}_${OUT_PTRS.lower()}_zip_neon(
     const uint${SIZE}_t* input,
@@ -31,8 +31,8 @@ void xnn_x${SIZE}_transposec_ukernel__${TILE_SIZE}x${TILE_SIZE}_${IN_PTRS.lower(
     size_t block_height,
     const union xnn_x${SIZE}_transpose_params params[restrict XNN_MIN_ELEMENTS(1)]) XNN_OOB_READS
 {
-  assert(output_stride >= block_height * sizeof(uint${SIZE}_t));
-  assert(input_stride >= block_width * sizeof(uint${SIZE}_t));
+  assert(block_width == 1 || output_stride >= block_height * sizeof(uint${SIZE}_t));
+  assert(block_height == 1 || input_stride >= block_width * sizeof(uint${SIZE}_t));
 
   const size_t tile_height = ${TILE_SIZE};
   const size_t tile_width = ${TILE_SIZE};
@@ -116,8 +116,10 @@ void xnn_x${SIZE}_transposec_ukernel__${TILE_SIZE}x${TILE_SIZE}_${IN_PTRS.lower(
           $for N in reversed(range(2, TILE_SIZE)):
             case ${N}:
               vst1${SUFFIX}_u${SIZE}(oN, v0_${N>>1}.val[${N%2}]); oN = (uint${SIZE}_t*) ((uintptr_t) oN + minus_output_stride);
+              XNN_FALLTHROUGH
           case 1:
             vst1${SUFFIX}_u${SIZE}(oN, v0_0.val[1]);
+            XNN_FALLTHROUGH
           case 0:
             vst1${SUFFIX}_u${SIZE}(o, v0_0.val[0]); o = (uint${SIZE}_t*) ((uintptr_t) o + tile_hbytes);
             break;
@@ -217,8 +219,10 @@ void xnn_x${SIZE}_transposec_ukernel__${TILE_SIZE}x${TILE_SIZE}_${IN_PTRS.lower(
               $for N in reversed(range(2, TILE_SIZE)):
                 case ${N}:
                   vst1_u${SIZE}(oN, v${N}_low); oN = (uint${SIZE}_t*) ((uintptr_t) oN + minus_output_stride);
+                  XNN_FALLTHROUGH
               case 1:
                 vst1_u${SIZE}(oN, v1_low);
+                XNN_FALLTHROUGH
               case 0:
                 $if NUM_ITERS > 1:
                   vst1_u${SIZE}(o, v0_low); o += ${TILE_SIZE>>1};
@@ -287,11 +291,13 @@ void xnn_x${SIZE}_transposec_ukernel__${TILE_SIZE}x${TILE_SIZE}_${IN_PTRS.lower(
                     vst1_lane_u32(oN, v${N}_low, 0); oN = (uint${SIZE}_t*) ((uintptr_t) oN + minus_output_stride);
                   $else:
                     vst1_lane_u32((void*) oN, vreinterpret_u32_u${SIZE}(v${N}_low), 0); oN = (uint${SIZE}_t*) ((uintptr_t) oN + minus_output_stride);
+                XNN_FALLTHROUGH
               case 1:
                 $if SIZE == 32:
                   vst1_lane_u32(oN, v1_low, 0);
                 $else:
                   vst1_lane_u32((void*) oN, vreinterpret_u32_u${SIZE}(v1_low), 0);
+                XNN_FALLTHROUGH
               case 0:
                 $if SIZE == 32:
                   vst1_lane_u32(o, v0_low, 0);
@@ -368,11 +374,13 @@ void xnn_x${SIZE}_transposec_ukernel__${TILE_SIZE}x${TILE_SIZE}_${IN_PTRS.lower(
                     vst1_lane_u16(oN, v${N}_low, 0); oN = (uint${SIZE}_t*) ((uintptr_t) oN + minus_output_stride);
                   $else:
                     vst1_lane_u16((void*) oN, vreinterpret_u16_u${SIZE}(v${N}_low), 0); oN = (uint${SIZE}_t*) ((uintptr_t) oN + minus_output_stride);
+                  XNN_FALLTHROUGH
               case 1:
                 $if SIZE == 16:
                   vst1_lane_u16(oN, v1_low, 0);
                 $else:
                   vst1_lane_u16((void*) oN, vreinterpret_u16_u${SIZE}(v1_low), 0);
+                XNN_FALLTHROUGH
               case 0:
                 $if SIZE == 16:
                   vst1_lane_u16(o, v0_low, 0);
@@ -446,8 +454,10 @@ void xnn_x${SIZE}_transposec_ukernel__${TILE_SIZE}x${TILE_SIZE}_${IN_PTRS.lower(
               $for N in reversed(range(2, TILE_SIZE)):
                 case ${N}:
                   vst1_lane_u8(oN, v${N}_low, 0); oN = (uint${SIZE}_t*) ((uintptr_t) oN + minus_output_stride);
+                  XNN_FALLTHROUGH
               case 1:
                 vst1_lane_u8(oN, v1_low, 0);
+                XNN_FALLTHROUGH
               case 0:
                 vst1_lane_u8(o, v0_low, 0);
                 break;

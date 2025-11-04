@@ -99,7 +99,7 @@ class UnpackedPtr {
 
     UnpackedPtr() : mStruct(nullptr) {}
 
-    operator bool() const { return mStruct != nullptr; }
+    explicit operator bool() const { return mStruct != nullptr; }
     PtrType operator->() const { return mStruct; }
     PtrType operator*() const { return mStruct; }
 
@@ -308,7 +308,7 @@ template <typename... Branches>
 ResultOrError<wgpu::SType> UnpackedPtr<T>::ValidateBranches() const {
     using Validator = detail::BranchesValidator<UnpackedPtr<T>, Branches...>;
 
-    wgpu::SType match = wgpu::SType::Invalid;
+    wgpu::SType match = wgpu::SType(0u);
     if (Validator::Validate(*this, mBitset, match)) {
         return match;
     }

@@ -91,7 +91,7 @@ class CoordinatorImplTest : public testing::Test {
       base::ProcessId pid) {
     coordinator_->RegisterClientProcess(
         std::move(receiver), std::move(client_process), process_type, pid,
-        /*service_name=*/absl::nullopt);
+        /*service_name=*/std::nullopt);
   }
 
   void RequestGlobalMemoryDump(RequestGlobalMemoryDumpCallback callback) {
@@ -189,7 +189,7 @@ class MockClientProcess : public mojom::ClientProcess {
 
   ~MockClientProcess() override = default;
 
-  // TODO(crbug.com/729950): Remove non const reference here once GMock is
+  // TODO(crbug.com/40524294): Remove non const reference here once GMock is
   // updated to support move-only types.
   MOCK_METHOD2(RequestChromeMemoryDumpMock,
                void(const MemoryDumpRequestArgs& args,
@@ -829,7 +829,7 @@ TEST_F(CoordinatorImplTest, DumpsArentAddedToTraceUnlessRequested) {
   }
 }
 
-// TODO(crbug.com/1479976): Test is flaky across platforms.
+// TODO(crbug.com/40281135): Test is flaky across platforms.
 TEST_F(CoordinatorImplTest, DISABLED_DumpsAreAddedToTraceWhenRequested) {
   tracing::DataSourceTester data_source_tester(
       TracingObserverProto::GetInstance());

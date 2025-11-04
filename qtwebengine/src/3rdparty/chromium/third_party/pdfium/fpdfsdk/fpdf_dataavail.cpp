@@ -15,12 +15,12 @@
 #include "core/fpdfapi/render/cpdf_docrenderdata.h"
 #include "core/fxcrt/fx_safe_types.h"
 #include "core/fxcrt/fx_stream.h"
+#include "core/fxcrt/numerics/safe_conversions.h"
 #include "core/fxcrt/retain_ptr.h"
 #include "core/fxcrt/unowned_ptr.h"
 #include "core/fxcrt/unowned_ptr_exclusion.h"
 #include "fpdfsdk/cpdfsdk_helpers.h"
 #include "public/fpdf_formfill.h"
-#include "third_party/base/numerics/safe_conversions.h"
 
 #ifdef PDF_ENABLE_XFA
 #include "fpdfsdk/fpdfxfa/cpdfxfa_context.h"
@@ -60,8 +60,8 @@ class FPDF_FileAvailContext final : public CPDF_DataAvail::FileAvail {
 
   // CPDF_DataAvail::FileAvail:
   bool IsDataAvail(FX_FILESIZE offset, size_t size) override {
-    return !!avail_->IsDataAvail(
-        avail_, pdfium::base::checked_cast<size_t>(offset), size);
+    return !!avail_->IsDataAvail(avail_, pdfium::checked_cast<size_t>(offset),
+                                 size);
   }
 
  private:
@@ -81,16 +81,17 @@ class FPDF_FileAccessContext final : public IFX_SeekableReadStream {
     if (buffer.empty() || offset < 0)
       return false;
 
-    if (!pdfium::base::IsValueInRangeForNumericType<FX_FILESIZE>(buffer.size()))
+    if (!pdfium::IsValueInRangeForNumericType<FX_FILESIZE>(buffer.size())) {
       return false;
+    }
 
     FX_SAFE_FILESIZE new_pos = buffer.size();
     new_pos += offset;
     return new_pos.IsValid() && new_pos.ValueOrDie() <= GetSize() &&
            file_->m_GetBlock(
-               file_->m_Param,
-               pdfium::base::checked_cast<unsigned long>(offset), buffer.data(),
-               pdfium::base::checked_cast<unsigned long>(buffer.size()));
+               file_->m_Param, pdfium::checked_cast<unsigned long>(offset),
+               buffer.data(),
+               pdfium::checked_cast<unsigned long>(buffer.size()));
   }
 
  private:
@@ -171,11 +172,11 @@ FPDF_EXPORT int FPDF_CALLCONV FPDFAvail_IsDocAvail(FPDF_AVAIL avail,
 FPDF_EXPORT FPDF_DOCUMENT FPDF_CALLCONV
 FPDFAvail_GetDocument(FPDF_AVAIL avail, FPDF_BYTESTRING password) {
   auto* avail_context = FPDFAvailContextFromFPDFAvail(avail);
-  if (!avail_context)
+  if (!avail_context) {
     return nullptr;
-  CPDF_Parser::Error error;
-  std::unique_ptr<CPDF_Document> document;
-  std::tie(error, document) = avail_context->data_avail()->ParseDocument(
+  }
+
+  auto [error, document] = avail_context->data_avail()->ParseDocument(
       std::make_unique<CPDF_DocRenderData>(),
       std::make_unique<CPDF_DocPageData>(), password);
   if (error != CPDF_Parser::SUCCESS) {

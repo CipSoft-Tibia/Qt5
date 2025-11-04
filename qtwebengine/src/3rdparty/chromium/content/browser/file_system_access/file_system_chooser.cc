@@ -157,7 +157,7 @@ ui::SelectFileDialog::Type ValidateType(ui::SelectFileDialog::Type type) {
     case ui::SelectFileDialog::SELECT_FOLDER:
       return type;
     default:
-      NOTREACHED();
+      NOTREACHED_IN_MIGRATION();
       return ui::SelectFileDialog::SELECT_NONE;
   }
 }
@@ -237,17 +237,19 @@ void FileSystemChooser::CreateAndShow(
   // In content_shell --run-web-tests, there might be no dialog available. In
   // that case just abort.
   if (!listener->dialog_) {
-    listener->FileSelectionCanceled(nullptr);
+    listener->FileSelectionCanceled();
     return;
   }
 
+#if BUILDFLAG(IS_ANDROID)
+  listener->dialog_->SetOpenWritable(true);
+#endif
   listener->dialog_->SelectFile(
       options.type(), options.title(), options.default_path(),
       &options.file_type_info(), options.default_file_type_index(),
       /*default_extension=*/base::FilePath::StringType(),
       web_contents ? web_contents->GetTopLevelNativeWindow()
                    : gfx::NativeWindow(),
-      /*params=*/nullptr,
       /*caller=*/
       web_contents ? &web_contents->GetPrimaryMainFrame()->GetLastCommittedURL()
                    : nullptr);
@@ -256,7 +258,7 @@ void FileSystemChooser::CreateAndShow(
 // static
 bool FileSystemChooser::IsShellIntegratedExtension(
     const base::FilePath::StringType& extension) {
-  // TODO(https://crbug.com/1154757): Figure out some way to unify this with
+  // TODO(crbug.com/40159607): Figure out some way to unify this with
   // net::IsSafePortablePathComponent, with the result probably ending up in
   // base/i18n/file_util_icu.h.
   // - For the sake of consistency across platforms, we sanitize '.lnk' and
@@ -303,15 +305,13 @@ FileSystemChooser::~FileSystemChooser() {
 }
 
 void FileSystemChooser::FileSelected(const ui::SelectedFileInfo& file,
-                                     int index,
-                                     void* params) {
+                                     int index) {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
-  MultiFilesSelected({file}, params);
+  MultiFilesSelected({file});
 }
 
 void FileSystemChooser::MultiFilesSelected(
-    const std::vector<ui::SelectedFileInfo>& files,
-    void* params) {
+    const std::vector<ui::SelectedFileInfo>& files) {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   std::vector<ResultEntry> result;
 
@@ -329,7 +329,7 @@ void FileSystemChooser::MultiFilesSelected(
   delete this;
 }
 
-void FileSystemChooser::FileSelectionCanceled(void* params) {
+void FileSystemChooser::FileSelectionCanceled() {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   std::move(callback_).Run(
       file_system_access_error::FromStatus(

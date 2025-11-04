@@ -30,17 +30,17 @@
 
 QT_BEGIN_NAMESPACE
 
-class QWindow;
-
 namespace QtWaylandClient {
 
 class QWaylandDisplay;
 class QWaylandInputDevice;
 class QWaylandXdgShell;
 class QWaylandXdgExportedV2;
+class QWaylandShmBuffer;
 class QWaylandXdgExporterV2;
 class QWaylandXdgDialogWmV1;
 class QWaylandXdgDialogV1;
+class QWaylandXdgToplevelIconManagerV1;
 
 class Q_WAYLANDCLIENT_EXPORT QWaylandXdgSurface : public QWaylandShellSurface, public QtWayland::xdg_surface
 {
@@ -62,7 +62,7 @@ public:
     void applyConfigure() override;
     bool wantsDecorations() const override;
     void propagateSizeHints() override;
-    void setWindowGeometry(const QRect &rect) override;
+    void setContentGeometry(const QRect &rect) override;
     bool requestActivate() override;
     bool requestActivateOnShow() override;
     void setXdgActivationToken(const QString &token) override;
@@ -71,6 +71,7 @@ public:
     bool isAlertState() const override { return m_alertState; }
     QString externWindowHandle() override;
     void setWindowPosition(const QPoint &position) override;
+    void setIcon(const QIcon &icon) override;
 
     void setSizeHints();
 
@@ -187,6 +188,7 @@ private:
     QScopedPointer<QWaylandXdgActivationV1> m_xdgActivation;
     QScopedPointer<QWaylandXdgExporterV2> m_xdgExporter;
     QScopedPointer<QWaylandXdgDialogWmV1> m_xdgDialogWm;
+    QScopedPointer<QWaylandXdgToplevelIconManagerV1> m_topLevelIconManager;
 
     friend class QWaylandXdgSurface;
 };

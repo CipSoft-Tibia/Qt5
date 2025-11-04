@@ -17,6 +17,7 @@ QT_BEGIN_NAMESPACE
     \brief Represents a value node from a server.
     \inherits Node
     \since QtOpcUa 5.12
+    \deprecated [6.9]
 
     \code
     import QtOpcUa as QtOpcUa

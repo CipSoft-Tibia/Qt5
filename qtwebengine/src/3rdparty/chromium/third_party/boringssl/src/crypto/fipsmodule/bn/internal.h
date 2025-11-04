@@ -400,23 +400,64 @@ int bn_rand_secret_range(BIGNUM *r, int *out_is_uniform, BN_ULONG min_inclusive,
 // inputs.
 int bn_mul_mont(BN_ULONG *rp, const BN_ULONG *ap, const BN_ULONG *bp,
                 const BN_ULONG *np, const BN_ULONG *n0, size_t num);
+
+#if defined(OPENSSL_X86_64)
+OPENSSL_INLINE int bn_mulx_adx_capable(void) {
+  // MULX is in BMI2.
+  return CRYPTO_is_BMI2_capable() && CRYPTO_is_ADX_capable();
+}
+int bn_mul_mont_nohw(BN_ULONG *rp, const BN_ULONG *ap, const BN_ULONG *bp,
+                     const BN_ULONG *np, const BN_ULONG *n0, size_t num);
+OPENSSL_INLINE int bn_mul4x_mont_capable(size_t num) {
+  return num >= 8 && (num & 3) == 0;
+}
+int bn_mul4x_mont(BN_ULONG *rp, const BN_ULONG *ap, const BN_ULONG *bp,
+                  const BN_ULONG *np, const BN_ULONG *n0, size_t num);
+OPENSSL_INLINE int bn_mulx4x_mont_capable(size_t num) {
+  return bn_mul4x_mont_capable(num) && bn_mulx_adx_capable();
+}
+int bn_mulx4x_mont(BN_ULONG *rp, const BN_ULONG *ap, const BN_ULONG *bp,
+                   const BN_ULONG *np, const BN_ULONG *n0, size_t num);
+OPENSSL_INLINE int bn_sqr8x_mont_capable(size_t num) {
+  return num >= 8 && (num & 7) == 0;
+}
+int bn_sqr8x_mont(BN_ULONG *rp, const BN_ULONG *ap, BN_ULONG mulx_adx_capable,
+                  const BN_ULONG *np, const BN_ULONG *n0, size_t num);
+#elif defined(OPENSSL_ARM)
+OPENSSL_INLINE int bn_mul8x_mont_neon_capable(size_t num) {
+  return (num & 7) == 0 && CRYPTO_is_NEON_capable();
+}
+int bn_mul8x_mont_neon(BN_ULONG *rp, const BN_ULONG *ap, const BN_ULONG *bp,
+                       const BN_ULONG *np, const BN_ULONG *n0, size_t num);
+int bn_mul_mont_nohw(BN_ULONG *rp, const BN_ULONG *ap, const BN_ULONG *bp,
+                     const BN_ULONG *np, const BN_ULONG *n0, size_t num);
 #endif
+
+#endif  // OPENSSL_BN_ASM_MONT
 
 #if !defined(OPENSSL_NO_ASM) && defined(OPENSSL_X86_64)
 #define OPENSSL_BN_ASM_MONT5
 
-// bn_mul_mont_gather5 multiples loads index |power| of |table|, multiplies it
-// by |ap| modulo |np|, and stores the result in |rp|. The values are |num|
-// words long and represented in Montgomery form. |n0| is a pointer to the
-// corresponding field in |BN_MONT_CTX|. |table| must be aligned to at least
-// 16 bytes. |power| must be less than 32 and is treated as secret.
-//
-// WARNING: This function implements Almost Montgomery Multiplication from
-// https://eprint.iacr.org/2011/239. The inputs do not need to be fully reduced.
-// However, even if they are fully reduced, the output may not be.
-void bn_mul_mont_gather5(BN_ULONG *rp, const BN_ULONG *ap,
-                         const BN_ULONG *table, const BN_ULONG *np,
-                         const BN_ULONG *n0, int num, int power);
+// The following functions implement |bn_mul_mont_gather5|. See
+// |bn_mul_mont_gather5| for details.
+OPENSSL_INLINE int bn_mul4x_mont_gather5_capable(int num) {
+  return (num & 7) == 0;
+}
+void bn_mul4x_mont_gather5(BN_ULONG *rp, const BN_ULONG *ap,
+                           const BN_ULONG *table, const BN_ULONG *np,
+                           const BN_ULONG *n0, int num, int power);
+
+OPENSSL_INLINE int bn_mulx4x_mont_gather5_capable(int num) {
+  return bn_mul4x_mont_gather5_capable(num) && CRYPTO_is_ADX_capable() &&
+         CRYPTO_is_BMI1_capable() && CRYPTO_is_BMI2_capable();
+}
+void bn_mulx4x_mont_gather5(BN_ULONG *rp, const BN_ULONG *ap,
+                            const BN_ULONG *table, const BN_ULONG *np,
+                            const BN_ULONG *n0, int num, int power);
+
+void bn_mul_mont_gather5_nohw(BN_ULONG *rp, const BN_ULONG *ap,
+                              const BN_ULONG *table, const BN_ULONG *np,
+                              const BN_ULONG *n0, int num, int power);
 
 // bn_scatter5 stores |inp| to index |power| of |table|. |inp| and each entry of
 // |table| are |num| words long. |power| must be less than 32 and is treated as
@@ -430,17 +471,19 @@ void bn_scatter5(const BN_ULONG *inp, size_t num, BN_ULONG *table,
 // is treated as secret. |table| must be aligned to at least 16 bytes.
 void bn_gather5(BN_ULONG *out, size_t num, const BN_ULONG *table, size_t power);
 
-// bn_power5 squares |ap| five times and multiplies it by the value stored at
-// index |power| of |table|, modulo |np|. It stores the result in |rp|. The
-// values are |num| words long and represented in Montgomery form. |n0| is a
-// pointer to the corresponding field in |BN_MONT_CTX|. |num| must be divisible
-// by 8. |power| must be less than 32 and is treated as secret.
-//
-// WARNING: This function implements Almost Montgomery Multiplication from
-// https://eprint.iacr.org/2011/239. The inputs do not need to be fully reduced.
-// However, even if they are fully reduced, the output may not be.
-void bn_power5(BN_ULONG *rp, const BN_ULONG *ap, const BN_ULONG *table,
-               const BN_ULONG *np, const BN_ULONG *n0, int num, int power);
+// The following functions implement |bn_power5|. See |bn_power5| for details.
+void bn_power5_nohw(BN_ULONG *rp, const BN_ULONG *ap, const BN_ULONG *table,
+                    const BN_ULONG *np, const BN_ULONG *n0, int num, int power);
+
+OPENSSL_INLINE int bn_power5_capable(int num) { return (num & 7) == 0; }
+
+OPENSSL_INLINE int bn_powerx5_capable(int num) {
+  return bn_power5_capable(num) && CRYPTO_is_ADX_capable() &&
+         CRYPTO_is_BMI1_capable() && CRYPTO_is_BMI2_capable();
+}
+void bn_powerx5(BN_ULONG *rp, const BN_ULONG *ap, const BN_ULONG *table,
+                const BN_ULONG *np, const BN_ULONG *n0, int num, int power);
+
 #endif  // !OPENSSL_NO_ASM && OPENSSL_X86_64
 
 uint64_t bn_mont_n0(const BIGNUM *n);
@@ -768,8 +811,8 @@ void bn_mod_inverse0_prime_mont_small(BN_ULONG *r, const BN_ULONG *a,
 
 // bn_big_endian_to_words interprets |in_len| bytes from |in| as a big-endian,
 // unsigned integer and writes the result to |out_len| words in |out|. |out_len|
-// must be large enough to represent any |in_len|-byte value. That is, |out_len|
-// must be at least |BN_BYTES * in_len|.
+// must be large enough to represent any |in_len|-byte value. That is, |in_len|
+// must be at most |BN_BYTES * out_len|.
 void bn_big_endian_to_words(BN_ULONG *out, size_t out_len, const uint8_t *in,
                             size_t in_len);
 

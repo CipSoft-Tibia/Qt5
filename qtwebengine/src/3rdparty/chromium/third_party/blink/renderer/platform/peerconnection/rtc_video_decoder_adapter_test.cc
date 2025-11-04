@@ -2,11 +2,13 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#include "third_party/blink/renderer/platform/peerconnection/rtc_video_decoder_adapter.h"
+
+#include <stdint.h>
+
 #include <memory>
 #include <utility>
 #include <vector>
-
-#include <stdint.h>
 
 #include "base/check.h"
 #include "base/functional/bind.h"
@@ -32,8 +34,8 @@
 #include "media/video/mock_gpu_video_accelerator_factories.h"
 #include "testing/gmock/include/gmock/gmock.h"
 #include "testing/gtest/include/gtest/gtest.h"
+#include "third_party/blink/public/common/features.h"
 #include "third_party/blink/renderer/platform/peerconnection/resolution_monitor.h"
-#include "third_party/blink/renderer/platform/peerconnection/rtc_video_decoder_adapter.h"
 #include "third_party/blink/renderer/platform/webrtc/webrtc_video_utils.h"
 #include "third_party/webrtc/api/video_codecs/video_codec.h"
 #include "third_party/webrtc/api/video_codecs/vp9_profile.h"
@@ -61,7 +63,7 @@ class FakeResolutionMonitor : public ResolutionMonitor {
             webrtc::PayloadStringToCodecType(format.name))) {}
   ~FakeResolutionMonitor() override = default;
 
-  absl::optional<gfx::Size> GetResolution(
+  std::optional<gfx::Size> GetResolution(
       const media::DecoderBuffer& buffer) override {
     if (pass_resolution_monitor_) {
       return gfx::Size(1280, 720);
@@ -389,14 +391,13 @@ class RTCVideoDecoderAdapterTest : public ::testing::Test {
 
   void FinishDecodeOnMediaThread(uint32_t timestamp) {
     DCHECK(media_thread_.task_runner()->BelongsToCurrentThread());
-    gpu::MailboxHolder mailbox_holders[media::VideoFrame::kMaxPlanes];
-    mailbox_holders[0].mailbox = gpu::Mailbox::GenerateForSharedImage();
-    scoped_refptr<media::VideoFrame> frame =
-        media::VideoFrame::WrapNativeTextures(
-            media::PIXEL_FORMAT_ARGB, mailbox_holders,
-            media::VideoFrame::ReleaseMailboxCB(), gfx::Size(640, 360),
-            gfx::Rect(640, 360), gfx::Size(640, 360),
-            base::Microseconds(timestamp));
+    scoped_refptr<gpu::ClientSharedImage> shared_image =
+        gpu::ClientSharedImage::CreateForTesting();
+    scoped_refptr<media::VideoFrame> frame = media::VideoFrame::WrapSharedImage(
+        media::PIXEL_FORMAT_ARGB, shared_image, gpu::SyncToken(), 0,
+        media::VideoFrame::ReleaseMailboxCB(), gfx::Size(640, 360),
+        gfx::Rect(640, 360), gfx::Size(640, 360),
+        base::Microseconds(timestamp));
     output_cb_.Run(std::move(frame));
   }
 
@@ -727,6 +728,25 @@ TEST_F(RTCVideoDecoderAdapterTest, FallsBackForLowResolution) {
   EXPECT_EQ(GetCurrentDecoderCount(), 0);
 }
 
+#if BUILDFLAG(RTC_USE_H265)
+TEST_F(RTCVideoDecoderAdapterTest, DoesNotFailForH256LowResolution) {
+  // Make sure that low-resolution decode does not fail for H.265.
+  SetSdpFormat(webrtc::SdpVideoFormat(
+      webrtc::CodecTypeToPayloadString(webrtc::kVideoCodecH265)));
+  ASSERT_TRUE(CreateAndInitialize(true, false));
+  webrtc::VideoDecoder::Settings settings;
+  settings.set_codec_type(webrtc::kVideoCodecH265);
+  ASSERT_TRUE(adapter_wrapper_->Configure(settings));
+  ASSERT_EQ(RegisterDecodeCompleteCallback(), WEBRTC_VIDEO_CODEC_OK);
+
+  EXPECT_CALL(*video_decoder_, Decode_(_, _)).Times(1);
+
+  ASSERT_EQ(Decode(0), WEBRTC_VIDEO_CODEC_OK);
+
+  media_thread_.FlushForTesting();
+}
+#endif
+
 TEST_F(RTCVideoDecoderAdapterTest, DoesNotFallBackForHighResolution) {
   // Make sure that high-resolution decoders don't fall back.
   webrtc::VideoDecoder::Settings decoder_settings;
@@ -807,4 +827,23 @@ TEST_F(RTCVideoDecoderAdapterTest,
   media_thread_.FlushForTesting();
 }
 #endif  // BUILDFLAG(IS_WIN)
+
+TEST_F(RTCVideoDecoderAdapterTest, FallbackToSWInAV1SVC) {
+  SetSdpFormat(webrtc::SdpVideoFormat(
+      webrtc::CodecTypeToPayloadString(webrtc::kVideoCodecAV1)));
+  ASSERT_TRUE(CreateAndInitialize());
+  webrtc::VideoDecoder::Settings settings;
+  settings.set_codec_type(webrtc::kVideoCodecAV1);
+  ASSERT_TRUE(adapter_wrapper_->Configure(settings));
+  ASSERT_EQ(RegisterDecodeCompleteCallback(), WEBRTC_VIDEO_CODEC_OK);
+
+  SetSpatialIndex(2);
+  // kTesting will represent hw decoders for other use cases mentioned above.
+  EXPECT_CALL(*video_decoder_, Decode_(_, _)).Times(0);
+
+  ASSERT_EQ(Decode(0), WEBRTC_VIDEO_CODEC_FALLBACK_SOFTWARE);
+
+  media_thread_.FlushForTesting();
+}
+
 }  // namespace blink

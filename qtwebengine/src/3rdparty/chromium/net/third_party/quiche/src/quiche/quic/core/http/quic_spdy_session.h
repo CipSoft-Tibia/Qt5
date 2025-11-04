@@ -25,6 +25,7 @@
 #include "quiche/quic/core/qpack/qpack_encoder.h"
 #include "quiche/quic/core/qpack/qpack_receive_stream.h"
 #include "quiche/quic/core/qpack/qpack_send_stream.h"
+#include "quiche/quic/core/qpack/value_splitting_header_list.h"
 #include "quiche/quic/core/quic_session.h"
 #include "quiche/quic/core/quic_stream_priority.h"
 #include "quiche/quic/core/quic_time.h"
@@ -32,8 +33,8 @@
 #include "quiche/quic/core/quic_utils.h"
 #include "quiche/quic/core/quic_versions.h"
 #include "quiche/quic/platform/api/quic_export.h"
+#include "quiche/common/http/http_header_block.h"
 #include "quiche/spdy/core/http2_frame_decoder_adapter.h"
-#include "quiche/spdy/core/http2_header_block.h"
 
 namespace quic {
 
@@ -82,6 +83,7 @@ class QUICHE_EXPORT Http3DebugVisitor {
   virtual void OnGoAwayFrameReceived(const GoAwayFrame& /*frame*/) = 0;
   virtual void OnPriorityUpdateFrameReceived(
       const PriorityUpdateFrame& /*frame*/) = 0;
+  virtual void OnOriginFrameReceived(const OriginFrame& /*frame*/) {}
   virtual void OnAcceptChFrameReceived(const AcceptChFrame& /*frame*/) {}
 
   // Incoming HTTP/3 frames on request or push streams.
@@ -109,7 +111,7 @@ class QUICHE_EXPORT Http3DebugVisitor {
                                QuicByteCount /*payload_length*/) = 0;
   virtual void OnHeadersFrameSent(
       QuicStreamId /*stream_id*/,
-      const spdy::Http2HeaderBlock& /*header_block*/) = 0;
+      const quiche::HttpHeaderBlock& /*header_block*/) = 0;
 
   // 0-RTT related events.
   virtual void OnSettingsFrameResumed(const SettingsFrame& /*frame*/) = 0;
@@ -197,6 +199,10 @@ class QUICHE_EXPORT QuicSpdySession
   bool OnPriorityUpdateForRequestStream(QuicStreamId stream_id,
                                         HttpStreamPriority priority);
 
+  // Called when an HTTP/3 ORIGIN frame has been received.
+  // This method will only be called for client sessions.
+  virtual void OnOriginFrame(const OriginFrame& /*frame*/) {}
+
   // Called when an HTTP/3 ACCEPT_CH frame has been received.
   // This method will only be called for client sessions.
   virtual void OnAcceptChFrame(const AcceptChFrame& /*frame*/) {}
@@ -217,7 +223,7 @@ class QUICHE_EXPORT QuicSpdySession
   // If provided, |ack_notifier_delegate| will be registered to be notified when
   // we have seen ACKs for all packets resulting from this call.
   virtual size_t WriteHeadersOnHeadersStream(
-      QuicStreamId id, spdy::Http2HeaderBlock headers, bool fin,
+      QuicStreamId id, quiche::HttpHeaderBlock headers, bool fin,
       const spdy::SpdyStreamPrecedence& precedence,
       quiche::QuicheReferenceCountedPointer<QuicAckListenerInterface>
           ack_listener);
@@ -282,6 +288,10 @@ class QUICHE_EXPORT QuicSpdySession
       uint64_t qpack_maximum_dynamic_table_capacity) {
     qpack_maximum_dynamic_table_capacity_ =
         qpack_maximum_dynamic_table_capacity;
+  }
+
+  uint64_t qpack_maximum_dynamic_table_capacity() const {
+    return qpack_maximum_dynamic_table_capacity_;
   }
 
   // Must not be called after Initialize().
@@ -511,7 +521,7 @@ class QUICHE_EXPORT QuicSpdySession
       PendingStream* pending) override;
 
   size_t WriteHeadersOnHeadersStreamImpl(
-      QuicStreamId id, spdy::Http2HeaderBlock headers, bool fin,
+      QuicStreamId id, quiche::HttpHeaderBlock headers, bool fin,
       QuicStreamId parent_stream_id, int weight, bool exclusive,
       quiche::QuicheReferenceCountedPointer<QuicAckListenerInterface>
           ack_listener);
@@ -551,9 +561,24 @@ class QUICHE_EXPORT QuicSpdySession
   // available.
   void SendInitialData();
 
+  // Sends any data which should be sent after the initial SETTINGS frame.
+  virtual void SendInitialDataAfterSettings() {}
+
   // Override to skip checking for qpack_decoder_send_stream_ given decoder data
   // is always bundled opportunistically.
   bool CheckStreamWriteBlocked(QuicStream* stream) const override;
+
+  // Disables the use of Huffman encoding for QPACK headers.
+  void DisableHuffmanEncoding() {
+    huffman_encoding_ = HuffmanEncoding::kDisabled;
+  }
+
+  // Disables cookie crumbling for QPACK headers.
+  void DisableCookieCrumbling() {
+    cookie_crumbling_ = CookieCrumbling::kDisabled;
+  }
+
+  QuicSendControlStream* send_control_stream() { return send_control_stream_; }
 
  private:
   friend class test::QuicSpdySessionPeer;
@@ -602,6 +627,8 @@ class QUICHE_EXPORT QuicSpdySession
 
   bool ValidateWebTransportSettingsConsistency();
 
+  HuffmanEncoding huffman_encoding_ = HuffmanEncoding::kEnabled;
+  CookieCrumbling cookie_crumbling_ = CookieCrumbling::kEnabled;
   std::unique_ptr<QpackEncoder> qpack_encoder_;
   std::unique_ptr<QpackDecoder> qpack_decoder_;
 

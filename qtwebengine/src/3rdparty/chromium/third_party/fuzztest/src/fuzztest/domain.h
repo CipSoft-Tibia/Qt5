@@ -12,10 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+// IWYU pragma: private, include "fuzztest/fuzztest.h"
+// IWYU pragma: friend fuzztest/.*
+
 #ifndef FUZZTEST_FUZZTEST_DOMAIN_H_
 #define FUZZTEST_FUZZTEST_DOMAIN_H_
 
-#include "./fuzztest/domain_core.h"
+#include "./fuzztest/domain_core.h"  // IWYU pragma: export
 #include "./fuzztest/internal/domains/in_regexp_impl.h"
 #include "./fuzztest/internal/domains/protobuf_domain_impl.h"
 
@@ -57,16 +60,16 @@ template <typename PrototypeMessageProvider,
           typename T = std::remove_cv_t<std::remove_pointer_t<
               decltype(std::declval<PrototypeMessageProvider>()())>>>
 auto ProtobufOf(PrototypeMessageProvider get_prototype) {
-  if constexpr (std::is_abstract_v<T>) {  // T = Message
-    return Domain<std::unique_ptr<T>>(internal::ProtobufDomainUntypedImpl<T>(
+  constexpr bool kIsMessageClass = !std::is_copy_constructible_v<T>;
+  if constexpr (kIsMessageClass) {
+    return internal::ProtobufDomainUntypedImpl<T>(
         fuzztest::internal::PrototypePtr<T>(get_prototype),
-        /*use_lazy_initialization=*/false));
+        /*use_lazy_initialization=*/false);
   } else {  // T is derived class of Message
     using Message = typename T::Message;
-    return Domain<std::unique_ptr<Message>>(
-        internal::ProtobufDomainUntypedImpl<Message>(
-            fuzztest::internal::PrototypePtr<Message>(get_prototype),
-            /*use_lazy_initialization=*/false));
+    return internal::ProtobufDomainUntypedImpl<Message>(
+        fuzztest::internal::PrototypePtr<Message>(get_prototype),
+        /*use_lazy_initialization=*/false);
   }
 }
 

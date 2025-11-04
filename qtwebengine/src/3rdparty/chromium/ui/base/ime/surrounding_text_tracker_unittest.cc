@@ -4,6 +4,8 @@
 
 #include "ui/base/ime/surrounding_text_tracker.h"
 
+#include <string_view>
+
 #include "testing/gtest/include/gtest/gtest.h"
 #include "ui/base/ime/composition_text.h"
 
@@ -24,7 +26,7 @@ TEST(SurroundingTextTracker, StateGetCompositionText) {
                                         /*composition=*/gfx::Range()};
 
     // Empty composition range is valid. Empty composition is expected.
-    EXPECT_EQ(base::StringPiece16(), state.GetCompositionText());
+    EXPECT_EQ(std::u16string_view(), state.GetCompositionText());
   }
 
   {
@@ -32,7 +34,7 @@ TEST(SurroundingTextTracker, StateGetCompositionText) {
                                         /*selection=*/gfx::Range(),
                                         /*composition=*/gfx::Range(11, 13)};
 
-    EXPECT_EQ(base::StringPiece16(u"bc"), state.GetCompositionText());
+    EXPECT_EQ(std::u16string_view(u"bc"), state.GetCompositionText());
   }
 
   {
@@ -41,7 +43,7 @@ TEST(SurroundingTextTracker, StateGetCompositionText) {
                                         /*composition=*/gfx::Range(1, 3)};
 
     // Out of the range case.
-    EXPECT_EQ(absl::nullopt, state.GetCompositionText());
+    EXPECT_EQ(std::nullopt, state.GetCompositionText());
   }
 
   {
@@ -50,7 +52,7 @@ TEST(SurroundingTextTracker, StateGetCompositionText) {
                                         /*composition=*/gfx::Range(8, 12)};
 
     // Overlapping but not fully covered case.
-    EXPECT_EQ(absl::nullopt, state.GetCompositionText());
+    EXPECT_EQ(std::nullopt, state.GetCompositionText());
   }
 }
 

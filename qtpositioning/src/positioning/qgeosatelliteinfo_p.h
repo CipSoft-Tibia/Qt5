@@ -33,7 +33,7 @@ public:
     int signal;
     int satId;
     QGeoSatelliteInfo::SatelliteSystem system;
-    QHash<int, qreal> doubleAttribs;
+    QHash<QGeoSatelliteInfo::Attribute, qreal> doubleAttribs;
 };
 
 QT_END_NAMESPACE

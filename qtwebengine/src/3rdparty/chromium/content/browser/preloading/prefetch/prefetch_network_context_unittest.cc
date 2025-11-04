@@ -7,18 +7,31 @@
 #include "base/memory/scoped_refptr.h"
 #include "base/task/sequenced_task_runner.h"
 #include "base/test/scoped_feature_list.h"
-#include "content/browser/preloading/prefetch/prefetch_features.h"
 #include "content/browser/preloading/prefetch/prefetch_service.h"
 #include "content/browser/preloading/prefetch/prefetch_type.h"
 #include "content/public/browser/render_process_host.h"
 #include "content/public/common/content_client.h"
+#include "content/public/common/content_features.h"
+#include "content/public/test/navigation_simulator.h"
 #include "content/public/test/test_renderer_host.h"
 #include "content/test/test_content_browser_client.h"
+#include "net/base/isolation_info.h"
 #include "testing/gmock/include/gmock/gmock.h"
 #include "testing/gtest/include/gtest/gtest.h"
 
 namespace content {
 namespace {
+
+// "arg" type is `url::Origin`.
+// `url` type is `GURL`.
+MATCHER_P(IsSameOriginWith, url, "") {
+  return arg.IsSameOriginWith(url);
+}
+
+// "arg" type is `net::IsolationInfo`.
+MATCHER(IsEmptyIsolationInfo, "") {
+  return arg.IsEmpty();
+}
 
 class ScopedMockContentBrowserClient : public TestContentBrowserClient {
  public:
@@ -31,17 +44,17 @@ class ScopedMockContentBrowserClient : public TestContentBrowserClient {
   }
 
   MOCK_METHOD(
-      bool,
+      void,
       WillCreateURLLoaderFactory,
       (BrowserContext * browser_context,
        RenderFrameHost* frame,
        int render_process_id,
        URLLoaderFactoryType type,
        const url::Origin& request_initiator,
+       const net::IsolationInfo& isolation_info,
        std::optional<int64_t> navigation_id,
        ukm::SourceIdObj ukm_source_id,
-       mojo::PendingReceiver<network::mojom::URLLoaderFactory>*
-           factory_receiver,
+       network::URLLoaderFactoryBuilder& factory_builder,
        mojo::PendingRemote<network::mojom::TrustedURLLoaderHeaderClient>*
            header_client,
        bool* bypass_redirect_checks,
@@ -86,25 +99,19 @@ class PrefetchNetworkContextTest : public RenderViewHostTestHarness {
 
 TEST_F(PrefetchNetworkContextTest, CreateIsolatedURLLoaderFactory) {
   const GURL kReferringUrl = GURL("https://test.referring.origin.com");
+  NavigationSimulator::NavigateAndCommitFromBrowser(web_contents(),
+                                                    kReferringUrl);
 
   EXPECT_CALL(
       *test_content_browser_client(),
       WillCreateURLLoaderFactory(
           testing::NotNull(), main_rfh(), main_rfh()->GetProcess()->GetID(),
           ContentBrowserClient::URLLoaderFactoryType::kPrefetch,
-          testing::ResultOf(
-              [&kReferringUrl](const url::Origin& request_initiator) {
-                return request_initiator.IsSameOriginWith(kReferringUrl);
-              },
-              true),
+          IsSameOriginWith(kReferringUrl), IsEmptyIsolationInfo(),
           testing::Eq(std::nullopt),
           ukm::SourceIdObj::FromInt64(main_rfh()->GetPageUkmSourceId()),
-          testing::NotNull(), testing::NotNull(), testing::NotNull(),
-          testing::IsNull(), testing::IsNull(), testing::IsNull()))
-      .WillOnce(testing::Return(false));
-
-  blink::mojom::Referrer referring_origin;
-  referring_origin.url = kReferringUrl;
+          testing::_, testing::NotNull(), testing::NotNull(), testing::IsNull(),
+          testing::IsNull(), testing::IsNull()));
 
   std::unique_ptr<PrefetchNetworkContext> prefetch_network_context =
       std::make_unique<PrefetchNetworkContext>(
@@ -112,7 +119,7 @@ TEST_F(PrefetchNetworkContextTest, CreateIsolatedURLLoaderFactory) {
           PrefetchType(PreloadingTriggerType::kSpeculationRule,
                        /*use_prefetch_proxy=*/false,
                        blink::mojom::SpeculationEagerness::kEager),
-          referring_origin, main_rfh()->GetGlobalId());
+          main_rfh()->GetGlobalId(), main_rfh()->GetLastCommittedOrigin());
 
   prefetch_network_context->GetURLLoaderFactory(prefetch_service());
 }
@@ -120,25 +127,19 @@ TEST_F(PrefetchNetworkContextTest, CreateIsolatedURLLoaderFactory) {
 TEST_F(PrefetchNetworkContextTest,
        CreateURLLoaderFactoryInDefaultNetworkContext) {
   const GURL kReferringUrl = GURL("https://test.referring.origin.com");
+  NavigationSimulator::NavigateAndCommitFromBrowser(web_contents(),
+                                                    kReferringUrl);
 
   EXPECT_CALL(
       *test_content_browser_client(),
       WillCreateURLLoaderFactory(
           testing::NotNull(), main_rfh(), main_rfh()->GetProcess()->GetID(),
           ContentBrowserClient::URLLoaderFactoryType::kPrefetch,
-          testing::ResultOf(
-              [&kReferringUrl](const url::Origin request_initiator) {
-                return request_initiator.IsSameOriginWith(kReferringUrl);
-              },
-              true),
+          IsSameOriginWith(kReferringUrl), IsEmptyIsolationInfo(),
           testing::Eq(std::nullopt),
           ukm::SourceIdObj::FromInt64(main_rfh()->GetPageUkmSourceId()),
-          testing::NotNull(), testing::NotNull(), testing::NotNull(),
-          testing::IsNull(), testing::IsNull(), testing::IsNull()))
-      .WillOnce(testing::Return(false));
-
-  blink::mojom::Referrer referring_origin;
-  referring_origin.url = kReferringUrl;
+          testing::_, testing::NotNull(), testing::NotNull(), testing::IsNull(),
+          testing::IsNull(), testing::IsNull()));
 
   std::unique_ptr<PrefetchNetworkContext> prefetch_network_context =
       std::make_unique<PrefetchNetworkContext>(
@@ -146,7 +147,38 @@ TEST_F(PrefetchNetworkContextTest,
           PrefetchType(PreloadingTriggerType::kSpeculationRule,
                        /*use_prefetch_proxy=*/false,
                        blink::mojom::SpeculationEagerness::kEager),
-          referring_origin, main_rfh()->GetGlobalId());
+          main_rfh()->GetGlobalId(), main_rfh()->GetLastCommittedOrigin());
+
+  prefetch_network_context->GetURLLoaderFactory(prefetch_service());
+}
+
+TEST_F(PrefetchNetworkContextTest,
+       CreateURLLoaderFactoryForBrowserInitiatedTriggersNetworkContext) {
+  base::test::ScopedFeatureList scoped_feature_list;
+  scoped_feature_list.InitAndEnableFeature(
+      features::kPrefetchBrowserInitiatedTriggers);
+
+  const GURL kReferringUrl = GURL("https://test.referring.origin.com");
+  const url::Origin kReferringOrigin = url::Origin::Create(kReferringUrl);
+
+  EXPECT_CALL(
+      *test_content_browser_client(),
+      WillCreateURLLoaderFactory(
+          testing::NotNull(), testing::IsNull(),
+          testing::Eq(content::ChildProcessHost::kInvalidUniqueID),
+          ContentBrowserClient::URLLoaderFactoryType::kPrefetch,
+          IsSameOriginWith(kReferringUrl), IsEmptyIsolationInfo(),
+          testing::Eq(std::nullopt), testing::Eq(ukm::kInvalidSourceIdObj),
+          testing::_, testing::NotNull(), testing::NotNull(), testing::IsNull(),
+          testing::IsNull(), testing::IsNull()));
+
+  std::unique_ptr<PrefetchNetworkContext> prefetch_network_context =
+      std::make_unique<PrefetchNetworkContext>(
+          /*use_isolated_network_context=*/false,
+          PrefetchType(PreloadingTriggerType::kEmbedder,
+                       /*use_prefetch_proxy=*/false),
+          /*referring_render_frame_host_id=*/GlobalRenderFrameHostId(),
+          kReferringOrigin);
 
   prefetch_network_context->GetURLLoaderFactory(prefetch_service());
 }

@@ -33,7 +33,7 @@ source_set("vr_gl_bindings") {
 if (enable_vr) {
   # This target is intended to contain generic base classes or utils that are
   # used by ALL (or almost All) XR devices/runtimes.
-  # TODO(https://crbug.com/1073113): Flesh out and cleanup this target, this
+  # TODO(crbug.com/40686137): Flesh out and cleanup this target, this
   # includes determination of which things (if any) should be in the public
   # target.
   component("vr_base") {
@@ -42,7 +42,7 @@ if (enable_vr) {
     # the isolated_xr_device service needs to the public target, or document why
     # we opted to leave the exception.
     visibility = [
-      # TODO(https://crbug.com/843374): Move arcore_device
+      # TODO(crbug.com/41389193): Move arcore_device
       "//chrome/browser/*",
       "//content/services/isolated_xr_device/*",
       "//device/vr/*",
@@ -154,6 +154,24 @@ if (enable_vr) {
       sources += [
         "openxr/context_provider_callbacks.h",
         "openxr/exit_xr_present_reason.h",
+        "openxr/fb/openxr_hand_tracker_fb.cc",
+        "openxr/fb/openxr_hand_tracker_fb.h",
+        "openxr/msft/openxr_anchor_manager_msft.cc",
+        "openxr/msft/openxr_anchor_manager_msft.h",
+        "openxr/msft/openxr_scene_bounds_msft.cc",
+        "openxr/msft/openxr_scene_bounds_msft.h",
+        "openxr/msft/openxr_scene_msft.cc",
+        "openxr/msft/openxr_scene_msft.h",
+        "openxr/msft/openxr_scene_object_msft.cc",
+        "openxr/msft/openxr_scene_object_msft.h",
+        "openxr/msft/openxr_scene_observer_msft.cc",
+        "openxr/msft/openxr_scene_observer_msft.h",
+        "openxr/msft/openxr_scene_plane_msft.cc",
+        "openxr/msft/openxr_scene_plane_msft.h",
+        "openxr/msft/openxr_scene_understanding_manager_msft.cc",
+        "openxr/msft/openxr_scene_understanding_manager_msft.h",
+        "openxr/msft/openxr_unbounded_space_provider_msft.cc",
+        "openxr/msft/openxr_unbounded_space_provider_msft.h",
         "openxr/openxr_anchor_manager.cc",
         "openxr/openxr_anchor_manager.h",
         "openxr/openxr_api_wrapper.cc",
@@ -162,22 +180,28 @@ if (enable_vr) {
         "openxr/openxr_controller.h",
         "openxr/openxr_debug_util.cc",
         "openxr/openxr_debug_util.h",
+        "openxr/openxr_depth_sensor.cc",
+        "openxr/openxr_depth_sensor.h",
         "openxr/openxr_device.cc",
         "openxr/openxr_device.h",
         "openxr/openxr_extension_handle.h",
+        "openxr/openxr_extension_handler_factories.cc",
+        "openxr/openxr_extension_handler_factories.h",
+        "openxr/openxr_extension_handler_factory.cc",
+        "openxr/openxr_extension_handler_factory.h",
         "openxr/openxr_extension_helper.cc",
         "openxr/openxr_extension_helper.h",
         "openxr/openxr_graphics_binding.cc",
         "openxr/openxr_graphics_binding.h",
         "openxr/openxr_hand_tracker.cc",
         "openxr/openxr_hand_tracker.h",
-        "openxr/openxr_hand_tracker_meta.cc",
-        "openxr/openxr_hand_tracker_meta.h",
         "openxr/openxr_input_helper.cc",
         "openxr/openxr_input_helper.h",
         "openxr/openxr_interaction_profile_paths.h",
         "openxr/openxr_interaction_profiles.cc",
         "openxr/openxr_interaction_profiles.h",
+        "openxr/openxr_light_estimator.cc",
+        "openxr/openxr_light_estimator.h",
         "openxr/openxr_path_helper.cc",
         "openxr/openxr_path_helper.h",
         "openxr/openxr_platform.h",
@@ -185,23 +209,13 @@ if (enable_vr) {
         "openxr/openxr_platform_helper.h",
         "openxr/openxr_render_loop.cc",
         "openxr/openxr_render_loop.h",
-        "openxr/openxr_scene.cc",
-        "openxr/openxr_scene.h",
-        "openxr/openxr_scene_bounds.cc",
-        "openxr/openxr_scene_bounds.h",
-        "openxr/openxr_scene_object.cc",
-        "openxr/openxr_scene_object.h",
-        "openxr/openxr_scene_observer.cc",
-        "openxr/openxr_scene_observer.h",
-        "openxr/openxr_scene_plane.cc",
-        "openxr/openxr_scene_plane.h",
         "openxr/openxr_scene_understanding_manager.cc",
         "openxr/openxr_scene_understanding_manager.h",
-        "openxr/openxr_scene_understanding_manager_msft.cc",
-        "openxr/openxr_scene_understanding_manager_msft.h",
         "openxr/openxr_stage_bounds_provider.h",
         "openxr/openxr_stage_bounds_provider_basic.cc",
         "openxr/openxr_stage_bounds_provider_basic.h",
+        "openxr/openxr_unbounded_space_provider.cc",
+        "openxr/openxr_unbounded_space_provider.h",
         "openxr/openxr_util.cc",
         "openxr/openxr_util.h",
         "openxr/openxr_view_configuration.cc",
@@ -234,24 +248,34 @@ if (enable_vr) {
 
       if (is_android) {
         sources += [
+          "openxr/android/openxr_anchor_manager_android.cc",
+          "openxr/android/openxr_anchor_manager_android.h",
+          "openxr/android/openxr_depth_sensor_android.cc",
+          "openxr/android/openxr_depth_sensor_android.h",
           "openxr/android/openxr_graphics_binding_open_gles.cc",
           "openxr/android/openxr_graphics_binding_open_gles.h",
-          "openxr/android/openxr_hand_tracker_android.cc",
-          "openxr/android/openxr_hand_tracker_android.h",
+          "openxr/android/openxr_light_estimator_android.cc",
+          "openxr/android/openxr_light_estimator_android.h",
           "openxr/android/openxr_platform_helper_android_statics.cc",
+          "openxr/android/openxr_scene_understanding_manager_android.cc",
+          "openxr/android/openxr_scene_understanding_manager_android.h",
           "openxr/android/openxr_stage_bounds_provider_android.cc",
           "openxr/android/openxr_stage_bounds_provider_android.h",
+          "openxr/android/openxr_unbounded_space_provider_android.cc",
+          "openxr/android/openxr_unbounded_space_provider_android.h",
         ]
 
-        configs += [ "//third_party/khronos:khronos_headers" ]
-
-        deps += [ "//device/vr/android:vr_android" ]
+        deps += [
+          "//device/vr/android:vr_android",
+          "//third_party/angle:includes",
+        ]
       }
 
       deps += [
         ":openxr_data",
         "//components/version_info",
         "//device/base",
+        "//device/vr/public/mojom:vr_public_typemaps",
         "//gpu/command_buffer/service:gles2",
         "//third_party/openxr",
         "//ui/gl/init",
@@ -331,6 +355,8 @@ if (enable_openxr) {
       testonly = true
       output_name = "mock_vr_clients/bin/openxr/openxrruntime"
 
+      defines = [ "XR_EXTENSION_PROTOTYPES" ]
+
       include_dirs = [ "//third_party/openxr/src/include" ]
 
       sources = [
@@ -358,6 +384,7 @@ if (enable_openxr) {
         "//components/version_info",
         "//device/gamepad/public/cpp:shared_with_blink",
         "//device/vr/public/mojom:test_mojom",
+        "//device/vr/public/mojom:vr_service",
         "//third_party/openxr:openxr_headers",
       ]
 

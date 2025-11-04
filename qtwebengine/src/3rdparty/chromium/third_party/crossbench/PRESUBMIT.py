@@ -33,8 +33,11 @@ def CheckChange(input_api, output_api, on_commit):
       "missing-class-docstring",
       "useless-super-delegation",
       "useless-return",
-      "line-too-long",  # Annoying false-positives on URLs
-      "cyclic-import",  # TODO: This is not working as expected with pytype
+      "line-too-long",  # Annoying false-positives on URLs.
+      "cyclic-import",  # TODO: This is not working as expected with pytype.
+      "no-member",  # Need newer pylint to handle issues with generics.
+      "bad-option-value"  # Some annotations are only supported in
+                          # newer pylint versions.
   ]
   tests += input_api.canned_checks.GetPylint(
       input_api,
@@ -51,7 +54,7 @@ def CheckChange(input_api, output_api, on_commit):
     files_to_check = [r".*test_.*\.py$"]
   else:
     # Only check a small subset on upload
-    dirs_to_check = [crossbench_test_path]
+    dirs_to_check = [crossbench_test_path / "cli"]
     files_to_check = [r".*test_cli\.py$"]
   for dir_to_check in dirs_to_check:
     # Skip potentially empty dirs
@@ -68,28 +71,6 @@ def CheckChange(input_api, output_api, on_commit):
         files_to_check=files_to_check,
         skip_shebang_check=True,
         run_on_python2=False)
-  # ---------------------------------------------------------------------------
-  # Pytype (not supported on windows)
-  if on_commit and platform.system() in ("Linux", "Darwin"):
-    tests.append(
-        input_api.Command(
-            name="pytype",
-            cmd=[
-                input_api.python3_executable,
-                "-m",
-                "pytype",
-                "--keep-going",
-                "--jobs=auto",
-                "--overriding-parameter-count-checks",
-                "--use-enum-overlay",
-                str(testing_path / "crossbench"),
-                # Skip tests to speed up type checking.
-                # str(testing_path / "tests")
-            ],
-            message=output_api.PresubmitError,
-            kwargs={},
-            python3=True,
-        ))
   # ---------------------------------------------------------------------------
   # Run all test
   results += input_api.RunTests(tests)

@@ -26,9 +26,8 @@ static inline void openSlDebugInfo()
              << "\nDefault buffer size: " << QOpenSLESEngine::getDefaultBufferSize(format);
 }
 
-QAndroidAudioSink::QAndroidAudioSink(const QByteArray &device, QObject *parent)
-    : QPlatformAudioSink(parent),
-      m_deviceName(device)
+QAndroidAudioSink::QAndroidAudioSink(QAudioDevice device, const QAudioFormat &fmt, QObject *parent)
+    : QPlatformAudioSink(std::move(device), fmt, parent)
 {
 #ifndef ANDROID
       m_streamType = -1;
@@ -40,11 +39,6 @@ QAndroidAudioSink::QAndroidAudioSink(const QByteArray &device, QObject *parent)
 QAndroidAudioSink::~QAndroidAudioSink()
 {
     destroyPlayer();
-}
-
-QAudio::Error QAndroidAudioSink::error() const
-{
-    return m_error;
 }
 
 QAudio::State QAndroidAudioSink::state() const
@@ -182,17 +176,6 @@ void QAndroidAudioSink::resume()
     setError(QAudio::NoError);
 }
 
-void QAndroidAudioSink::setFormat(const QAudioFormat &format)
-{
-    m_startRequiresInit = true;
-    m_format = format;
-}
-
-QAudioFormat QAndroidAudioSink::format() const
-{
-    return m_format;
-}
-
 void QAndroidAudioSink::suspend()
 {
     if (m_state != QAudio::ActiveState && m_state != QAudio::IdleState)
@@ -214,17 +197,12 @@ void QAndroidAudioSink::reset()
     destroyPlayer();
 }
 
-void QAndroidAudioSink::setVolume(qreal vol)
+void QAndroidAudioSink::setVolume(float volume)
 {
-    m_volume = qBound(qreal(0.0), vol, qreal(1.0));
-    const SLmillibel newVolume = adjustVolume(m_volume);
+    QPlatformAudioEndpointBase::setVolume(volume);
+    const SLmillibel newVolume = adjustVolume(volume);
     if (m_volumeItf && SL_RESULT_SUCCESS != (*m_volumeItf)->SetVolumeLevel(m_volumeItf, newVolume))
         qWarning() << "Unable to change volume";
-}
-
-qreal QAndroidAudioSink::volume() const
-{
-    return m_volume;
 }
 
 void QAndroidAudioSink::onEOSEvent()
@@ -324,7 +302,7 @@ bool QAndroidAudioSink::preparePlayer()
     else
         return true;
 
-    if (!QOpenSLESEngine::setAudioOutput(m_deviceName))
+    if (!QOpenSLESEngine::setAudioOutput(m_audioDevice.id()))
         qWarning() << "Unable to set up Audio Output Device";
 
     SLEngineItf engine = QOpenSLESEngine::instance()->slEngine();
@@ -444,7 +422,7 @@ bool QAndroidAudioSink::preparePlayer()
         return false;
     }
 
-    setVolume(m_volume);
+    setVolume(volume());
 
     const int lowLatencyBufferSize = QOpenSLESEngine::getLowLatencyBufferSize(m_format);
     const int defaultBufferSize = QOpenSLESEngine::getDefaultBufferSize(m_format);
@@ -591,21 +569,12 @@ inline void QAndroidAudioSink::setState(QAudio::State state)
     Q_EMIT stateChanged(m_state);
 }
 
-inline void QAndroidAudioSink::setError(QAudio::Error error)
+inline SLmillibel QAndroidAudioSink::adjustVolume(float vol)
 {
-    if (m_error == error)
-        return;
-
-    m_error = error;
-    Q_EMIT errorChanged(m_error);
-}
-
-inline SLmillibel QAndroidAudioSink::adjustVolume(qreal vol)
-{
-    if (qFuzzyIsNull(vol))
+    if (vol == 0.f)
         return SL_MILLIBEL_MIN;
 
-    if (qFuzzyCompare(vol, qreal(1.0)))
+    if (vol == 1.f)
         return 0;
 
     return QAudio::convertVolume(vol, QAudio::LinearVolumeScale, QAudio::DecibelVolumeScale) * 100;

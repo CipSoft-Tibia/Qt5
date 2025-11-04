@@ -106,6 +106,9 @@ class QUICHE_EXPORT QuicSession
 
     virtual void OnServerPreferredAddressAvailable(
         const QuicSocketAddress& /*server_preferred_address*/) = 0;
+
+    // Called when connection detected path degrading.
+    virtual void OnPathDegrading() = 0;
   };
 
   // Does not take ownership of |connection| or |visitor|.
@@ -117,7 +120,8 @@ class QUICHE_EXPORT QuicSession
               const QuicConfig& config,
               const ParsedQuicVersionVector& supported_versions,
               QuicStreamCount num_expected_unidirectional_static_streams,
-              std::unique_ptr<QuicDatagramQueue::Observer> datagram_observer);
+              std::unique_ptr<QuicDatagramQueue::Observer> datagram_observer,
+              QuicPriorityType priority_type = QuicPriorityType::kHttp);
   QuicSession(const QuicSession&) = delete;
   QuicSession& operator=(const QuicSession&) = delete;
 
@@ -503,6 +507,9 @@ class QUICHE_EXPORT QuicSession
 
   // Returns the Google QUIC error code
   QuicErrorCode error() const { return on_closed_frame_.quic_error_code; }
+  // The error code on the wire.  For Google QUIC frames, this has the same
+  // value as `error()`.
+  uint64_t wire_error() const { return on_closed_frame_.wire_error_code; }
   const std::string& error_details() const {
     return on_closed_frame_.error_details;
   }
@@ -681,7 +688,7 @@ class QUICHE_EXPORT QuicSession
   void OnStreamCountReset();
 
   // Returns the priority type used by the streams in the session.
-  QuicPriorityType priority_type() const { return QuicPriorityType::kHttp; }
+  QuicPriorityType priority_type() const { return priority_type_; }
 
  protected:
   using StreamMap =
@@ -979,7 +986,7 @@ class QUICHE_EXPORT QuicSession
   // A list of streams which need to write more data.  Stream register
   // themselves in their constructor, and unregisterm themselves in their
   // destructors, so the write blocked list must outlive all streams.
-  std::unique_ptr<QuicWriteBlockedList> write_blocked_streams_;
+  std::unique_ptr<QuicWriteBlockedListInterface> write_blocked_streams_;
 
   ClosedStreams closed_streams_;
 
@@ -1085,6 +1092,8 @@ class QUICHE_EXPORT QuicSession
   // event loop.
   QuicStreamCount max_streams_accepted_per_loop_ = kMaxQuicStreamCount;
   std::unique_ptr<QuicAlarm> stream_count_reset_alarm_;
+
+  QuicPriorityType priority_type_;
 };
 
 }  // namespace quic

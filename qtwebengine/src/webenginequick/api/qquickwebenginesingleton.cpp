@@ -54,26 +54,20 @@ QQuickWebEngineSettings *QQuickWebEngineSingleton::settings() const
 */
 QQuickWebEngineProfile *QQuickWebEngineSingleton::defaultProfile() const
 {
-    auto profile = QQuickWebEngineProfile::defaultProfile();
-
-    // MEMO first ever call to default profile will create one without context
-    // it needs something to get qml engine from (WebEngine singleton is created in qml land)
-    profile->ensureQmlContext(this);
-
-    return profile;
+    return QQuickWebEngineProfile::defaultProfile();
 }
 
 /*!
-    \qmlmethod WebEngineScript WebEngine::script
+    \qmlmethod webEngineScript WebEngine::script
     //! \nativetype QWebEngineScript
     \since QtWebEngine 6.2
 
-    Constructs WebEngineScript, which can be set up and inserted into user scripts' collection
-    for \l{WebEngineView::userScripts}{WebEngineView.userScripts} or
-    \l{WebEngineProfile::userScripts}{WebEngineProfile.userScripts}
+    Constructs webEngineScript value, which can be set up and inserted
+    into user scripts' collection for \l{WebEngineView::userScripts}{WebEngineView.userScripts}
+    or \l{WebEngineProfile::userScripts}{WebEngineProfile.userScripts}
     using \l{WebEngineScriptCollection}.
 
-    \sa WebEngineScript WebEngineScriptCollection
+    \sa webEngineScript WebEngineScriptCollection
 */
 
 QWebEngineScript QQuickWebEngineSingleton::script() const

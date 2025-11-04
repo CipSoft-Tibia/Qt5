@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QHTTPNETWORKCONNECTION_H
 #define QHTTPNETWORKCONNECTION_H
@@ -36,6 +37,8 @@
 #include <private/http2protocol_p.h>
 
 #include <private/qhttpnetworkconnectionchannel_p.h>
+
+#include <utility>
 
 QT_REQUIRE_CONFIG(http);
 
@@ -129,7 +132,7 @@ private:
 
 
 // private classes
-typedef QPair<QHttpNetworkRequest, QHttpNetworkReply*> HttpMessagePair;
+typedef std::pair<QHttpNetworkRequest, QHttpNetworkReply*> HttpMessagePair;
 
 
 class QHttpNetworkConnectionPrivate : public QObjectPrivate

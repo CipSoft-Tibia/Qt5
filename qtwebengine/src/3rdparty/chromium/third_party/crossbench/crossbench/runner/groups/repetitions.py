@@ -6,21 +6,19 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Iterable, List, Optional, Tuple
 
-from .base import RunGroup
-
 from crossbench import helper
+from crossbench.runner.groups.base import RunGroup
 
 if TYPE_CHECKING:
   from crossbench import exception
   from crossbench.browsers.browser import Browser
   from crossbench.probes.probe import Probe
   from crossbench.probes.results import ProbeResult
+  from crossbench.runner.groups.cache_temperature import \
+      CacheTemperatureRunGroup
   from crossbench.runner.run import Run
-  from crossbench.runner.runner import Runner
   from crossbench.stories.story import Story
   from crossbench.types import JsonDict
-
-  from .cache_temperature import CacheTemperatureRunGroup
 
 
 class RepetitionsRunGroup(RunGroup):
@@ -82,7 +80,7 @@ class RepetitionsRunGroup(RunGroup):
 
   @property
   def info(self) -> JsonDict:
-    info = {"story": str(self.story)}
+    info: JsonDict = {"story": str(self.story)}
     info.update(super().info)
     return info
 

@@ -11,16 +11,16 @@
 #include <stdint.h>
 
 #include <memory>
+#include <optional>
 #include <string>
+#include <string_view>
 
 #include "base/functional/callback_forward.h"
 #include "base/memory/raw_ptr.h"
 #include "base/metrics/histogram_base.h"
-#include "base/strings/string_piece.h"
 #include "base/time/time.h"
 #include "build/chromeos_buildflags.h"
 #include "components/metrics/metrics_reporting_default_state.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "third_party/metrics_proto/chrome_user_metrics_extension.pb.h"
 #include "third_party/metrics_proto/system_profile.pb.h"
 
@@ -48,9 +48,9 @@ enum UkmLogSourceType {
 // Holds optional metadata associated with a log to be stored.
 struct LogMetadata {
   LogMetadata();
-  LogMetadata(absl::optional<base::HistogramBase::Count> samples_count,
-              absl::optional<uint64_t> user_id,
-              absl::optional<UkmLogSourceType> log_source_type);
+  LogMetadata(std::optional<base::HistogramBase::Count> samples_count,
+              std::optional<uint64_t> user_id,
+              std::optional<UkmLogSourceType> log_source_type);
   LogMetadata(const LogMetadata& other);
   ~LogMetadata();
 
@@ -59,13 +59,13 @@ struct LogMetadata {
   void AddSampleCount(base::HistogramBase::Count sample_count);
 
   // The total number of samples in this log if applicable.
-  absl::optional<base::HistogramBase::Count> samples_count;
+  std::optional<base::HistogramBase::Count> samples_count;
 
   // User id associated with the log.
-  absl::optional<uint64_t> user_id;
+  std::optional<uint64_t> user_id;
 
   // For UKM logs, indicates the type of data.
-  absl::optional<UkmLogSourceType> log_source_type;
+  std::optional<UkmLogSourceType> log_source_type;
 };
 
 class MetricsServiceClient;
@@ -77,7 +77,7 @@ constexpr int kOmniboxEventLimit = 5000;
 constexpr int kUserActionEventLimit = 5000;
 
 SystemProfileProto::InstallerPackage ToInstallerPackage(
-    base::StringPiece installer_package_name);
+    std::string_view installer_package_name);
 }  // namespace internal
 
 class MetricsLog {
@@ -144,6 +144,9 @@ class MetricsLog {
       const std::string& package_name,
       SystemProfileProto* system_profile);
 
+  // Assign a unique finalized record id to this log.
+  void AssignFinalizedRecordId(PrefService* local_state);
+
   // Assign a unique record id to this log.
   void AssignRecordId(PrefService* local_state);
 
@@ -202,7 +205,7 @@ class MetricsLog {
   void FinalizeLog(
       bool truncate_events,
       const std::string& current_app_version,
-      absl::optional<ChromeUserMetricsExtension::RealLocalTime> close_time,
+      std::optional<ChromeUserMetricsExtension::RealLocalTime> close_time,
       std::string* encoded_log);
 
 #if BUILDFLAG(IS_CHROMEOS_ASH)

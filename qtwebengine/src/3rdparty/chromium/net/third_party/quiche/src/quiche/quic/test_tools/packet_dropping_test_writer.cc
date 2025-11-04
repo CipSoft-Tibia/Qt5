@@ -4,6 +4,9 @@
 
 #include "quiche/quic/test_tools/packet_dropping_test_writer.h"
 
+#include <memory>
+#include <utility>
+
 #include "quiche/quic/platform/api/quic_logging.h"
 
 namespace quic {
@@ -94,7 +97,7 @@ WriteResult PacketDroppingTestWriter::WritePacket(
   ++num_calls_to_write_;
   ReleaseOldPackets();
 
-  QuicWriterMutexLock lock(&config_mutex_);
+  quiche::QuicheWriterMutexLock lock(&config_mutex_);
   if (passthrough_for_next_n_packets_ > 0) {
     --passthrough_for_next_n_packets_;
     return QuicPacketWriterWrapper::WritePacket(buffer, buf_len, self_address,
@@ -198,7 +201,7 @@ QuicTime PacketDroppingTestWriter::ReleaseNextPacket() {
   if (delayed_packets_.empty()) {
     return QuicTime::Zero();
   }
-  QuicReaderMutexLock lock(&config_mutex_);
+  quiche::QuicheReaderMutexLock lock(&config_mutex_);
   auto iter = delayed_packets_.begin();
   // Determine if we should re-order.
   if (delayed_packets_.size() > 1 && fake_packet_reorder_percentage_ > 0 &&

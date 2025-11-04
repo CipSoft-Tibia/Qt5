@@ -83,6 +83,13 @@ QT_BEGIN_NAMESPACE
  * 10% of the height of the graph, provided the item mesh is normalized and the
  * graph aspect ratios have not been changed from the defaults.
  *
+ * \note Only absolute scaling is supported for Custom3DLabel items or for
+ * custom items used in \l{GraphsItem3D::polar}{polar} graphs.
+ *
+ * \note In Qt 6.8 models were incorrectly assumed to be scaled to a size of 1 (-0.5...0.5)
+ * by default, when they in reality are scaled to the size of 2 (-1...1). Because of this, all
+ * custom items from Qt 6.9 onwards are twice the size compared to Qt 6.8
+ *
  * \sa scalingAbsolute
  */
 
@@ -323,6 +330,10 @@ bool QCustom3DItem::isPositionAbsolute() const
  * sets the item to 10% of the height of the graph, provided the item mesh is
  * normalized and the graph aspect ratios have not been changed from the
  * defaults.
+ *
+ * \note In Qt 6.8 models were incorrectly assumed to be scaled to a size of 1 (-0.5...0.5)
+ * by default, when they in reality are scaled to the size of 2 (-1...1). Because of this, all
+ * custom items from Qt 6.9 onwards are twice the size compared to Qt 6.8
  *
  * \sa scalingAbsolute
  */

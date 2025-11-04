@@ -33,6 +33,7 @@ target_link_libraries(CarRenderingApp PRIVATE
     Qt6::Qml
 )
 
+include(${CMAKE_CURRENT_SOURCE_DIR}/buildsetup.cmake)
 include(${CMAKE_CURRENT_SOURCE_DIR}/qmlmodules.cmake)
 include(${CMAKE_CURRENT_SOURCE_DIR}/qmlcomponents.cmake)
 

@@ -14,6 +14,7 @@
 #include "base/lazy_instance.h"
 #include "base/memory/singleton.h"
 #include "base/no_destructor.h"
+#include "base/not_fatal_until.h"
 #include "base/observer_list.h"
 #include "base/strings/string_number_conversions.h"
 #include "base/trace_event/trace_event.h"
@@ -71,6 +72,56 @@ bool IsEnabled(const base::CommandLine* command_line,
 }
 #endif
 
+bool IsForcedRuntime(const base::CommandLine* command_line,
+                     const std::string& name) {
+  return (base::CompareCaseInsensitiveASCII(
+              command_line->GetSwitchValueASCII(switches::kWebXrForceRuntime),
+              name) == 0);
+}
+
+std::optional<device::mojom::XRDeviceId> GetForcedRuntime(
+    device::mojom::XRSessionMode mode) {
+  auto* cmd_line = base::CommandLine::ForCurrentProcess();
+  if (!cmd_line->HasSwitch(switches::kWebXrForceRuntime)) {
+    return std::nullopt;
+  }
+
+  switch (mode) {
+    case device::mojom::XRSessionMode::kImmersiveAr:
+#if BUILDFLAG(ENABLE_ARCORE)
+      if (IsForcedRuntime(cmd_line, switches::kWebXrRuntimeArCore)) {
+        return device::mojom::XRDeviceId::ARCORE_DEVICE_ID;
+      }
+#endif
+#if BUILDFLAG(ENABLE_OPENXR)
+      if (IsForcedRuntime(cmd_line, switches::kWebXrRuntimeOpenXr)) {
+        return device::mojom::XRDeviceId::OPENXR_DEVICE_ID;
+      }
+#endif
+      break;
+    case device::mojom::XRSessionMode::kImmersiveVr:
+#if BUILDFLAG(ENABLE_OPENXR)
+      if (IsForcedRuntime(cmd_line, switches::kWebXrRuntimeOpenXr)) {
+        return device::mojom::XRDeviceId::OPENXR_DEVICE_ID;
+      }
+#endif
+#if BUILDFLAG(ENABLE_CARDBOARD)
+      if (IsForcedRuntime(cmd_line, switches::kWebXrRuntimeCardboard)) {
+        return device::mojom::XRDeviceId::CARDBOARD_DEVICE_ID;
+      }
+#endif
+      break;
+    case device::mojom::XRSessionMode::kInline:
+      if (IsForcedRuntime(cmd_line,
+                          switches::kWebXrRuntimeOrientationSensors)) {
+        return device::mojom::XRDeviceId::ORIENTATION_DEVICE_ID;
+      }
+      break;
+  }
+
+  return device::mojom::XRDeviceId::FAKE_DEVICE_ID;
+}
+
 std::unique_ptr<device::XrFrameSinkClient> FrameSinkClientFactory(
     int32_t render_process_id,
     int32_t render_frame_id) {
@@ -115,7 +166,8 @@ void XRRuntimeManager::ExitImmersivePresentation() {
 
 // Static
 scoped_refptr<XRRuntimeManagerImpl>
-XRRuntimeManagerImpl::GetOrCreateInstance() {
+XRRuntimeManagerImpl::GetOrCreateRuntimeManagerInternal(
+    WebContents* web_contents) {
   if (g_xr_runtime_manager) {
     return base::WrapRefCounted(g_xr_runtime_manager);
   }
@@ -153,7 +205,17 @@ XRRuntimeManagerImpl::GetOrCreateInstance() {
         std::make_unique<device::VROrientationDeviceProvider>(
             std::move(sensor_provider)));
   }
-  return CreateInstance(std::move(providers));
+  return CreateInstance(std::move(providers), web_contents);
+}
+
+scoped_refptr<XRRuntimeManagerImpl> XRRuntimeManagerImpl::GetOrCreateInstance(
+    WebContents& web_contents) {
+  return GetOrCreateRuntimeManagerInternal(&web_contents);
+}
+
+scoped_refptr<XRRuntimeManagerImpl>
+XRRuntimeManagerImpl::GetOrCreateInstanceForTesting() {
+  return GetOrCreateRuntimeManagerInternal(nullptr);
 }
 
 // static
@@ -172,11 +234,6 @@ content::WebContents* XRRuntimeManagerImpl::GetImmersiveSessionWebContents() {
 void XRRuntimeManagerImpl::AddService(VRServiceImpl* service) {
   DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
   DVLOG(2) << __func__;
-
-  // Loop through any currently active runtimes and send Connected messages to
-  // the service. Future runtimes that come online will send a Connected message
-  // when they are created.
-  InitializeProviders(service);
 
   if (AreAllProvidersInitialized())
     service->InitializationComplete();
@@ -218,10 +275,8 @@ BrowserXRRuntimeImpl* XRRuntimeManagerImpl::GetRuntimeForOptions(
       runtime = GetImmersiveVrRuntime();
       break;
     case device::mojom::XRSessionMode::kInline:
-      // Try the orientation provider if it exists.
-      // If we don't have an orientation provider, then we don't have an
-      // explicit runtime to back a non-immersive session.
-      runtime = GetRuntime(device::mojom::XRDeviceId::ORIENTATION_DEVICE_ID);
+      runtime = GetInlineRuntime();
+      break;
   }
 
   // Return the runtime from above if we got one and it supports all required
@@ -232,6 +287,12 @@ BrowserXRRuntimeImpl* XRRuntimeManagerImpl::GetRuntimeForOptions(
 }
 
 BrowserXRRuntimeImpl* XRRuntimeManagerImpl::GetImmersiveVrRuntime() {
+  std::optional<device::mojom::XRDeviceId> maybe_runtime =
+      GetForcedRuntime(device::mojom::XRSessionMode::kImmersiveVr);
+  if (maybe_runtime.has_value()) {
+    return GetRuntime(maybe_runtime.value());
+  }
+
 // OpenXR is the highest priority if it's available.
 #if BUILDFLAG(ENABLE_OPENXR)
   auto* openxr = GetRuntime(device::mojom::XRDeviceId::OPENXR_DEVICE_ID);
@@ -253,11 +314,17 @@ BrowserXRRuntimeImpl* XRRuntimeManagerImpl::GetImmersiveVrRuntime() {
 }
 
 BrowserXRRuntimeImpl* XRRuntimeManagerImpl::GetImmersiveArRuntime() {
+  std::optional<device::mojom::XRDeviceId> maybe_runtime =
+      GetForcedRuntime(device::mojom::XRSessionMode::kImmersiveAr);
+  if (maybe_runtime.has_value()) {
+    auto* runtime = GetRuntime(maybe_runtime.value());
+    return runtime && runtime->SupportsArBlendMode() ? runtime : nullptr;
+  }
+
 #if BUILDFLAG(ENABLE_OPENXR)
   // If OpenXR is available and the runtime supports an AR blend mode, prefer
   // it over ARCore to unify VR/AR rendering paths.
-  if (base::FeatureList::IsEnabled(
-          device::features::kOpenXrExtendedFeatureSupport)) {
+  if (device::features::IsOpenXrArEnabled()) {
     auto* openxr = GetRuntime(device::mojom::XRDeviceId::OPENXR_DEVICE_ID);
     if (openxr && openxr->SupportsArBlendMode())
       return openxr;
@@ -273,6 +340,19 @@ BrowserXRRuntimeImpl* XRRuntimeManagerImpl::GetImmersiveArRuntime() {
 #endif
 
   return nullptr;
+}
+
+BrowserXRRuntimeImpl* XRRuntimeManagerImpl::GetInlineRuntime() {
+  std::optional<device::mojom::XRDeviceId> maybe_runtime =
+      GetForcedRuntime(device::mojom::XRSessionMode::kInline);
+  if (maybe_runtime.has_value()) {
+    return GetRuntime(maybe_runtime.value());
+  }
+
+  // Try the orientation provider if it exists.
+  // If we don't have an orientation provider, then we don't have an
+  // explicit runtime to back a non-immersive session.
+  return GetRuntime(device::mojom::XRDeviceId::ORIENTATION_DEVICE_ID);
 }
 
 BrowserXRRuntimeImpl*
@@ -375,7 +455,7 @@ void XRRuntimeManagerImpl::MakeXrCompatible() {
 #else
     // MakeXrCompatible is not yet supported on other platforms so
     // IsInitializedOnCompatibleAdapter should have returned true.
-    NOTREACHED();
+    NOTREACHED_IN_MIGRATION();
 #endif
   }
 
@@ -422,11 +502,13 @@ void XRRuntimeManagerImpl::OnGpuInfoUpdate() {
     service->OnMakeXrCompatibleComplete(xr_compatible_result);
 }
 
-XRRuntimeManagerImpl::XRRuntimeManagerImpl(XRProviderList providers)
+XRRuntimeManagerImpl::XRRuntimeManagerImpl(XRProviderList providers,
+                                           WebContents* web_contents)
     : providers_(std::move(providers)) {
   DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
   CHECK(!g_xr_runtime_manager);
   g_xr_runtime_manager = this;
+  InitializeProviders(web_contents);
 }
 
 XRRuntimeManagerImpl::~XRRuntimeManagerImpl() {
@@ -457,8 +539,9 @@ XRRuntimeManagerImpl::~XRRuntimeManagerImpl() {
 }
 
 scoped_refptr<XRRuntimeManagerImpl> XRRuntimeManagerImpl::CreateInstance(
-    XRProviderList providers) {
-  auto* ptr = new XRRuntimeManagerImpl(std::move(providers));
+    XRProviderList providers,
+    WebContents* contents) {
+  auto* ptr = new XRRuntimeManagerImpl(std::move(providers), contents);
   CHECK_EQ(ptr, g_xr_runtime_manager);
   return base::AdoptRef(ptr);
 }
@@ -482,14 +565,13 @@ size_t XRRuntimeManagerImpl::NumberOfConnectedServices() {
 // some aspect of the service, such as the WebContents, to perform
 // initialization can do so, but the providers should be initialized in such a
 // way that they are not explicitly tied to this service.
-void XRRuntimeManagerImpl::InitializeProviders(
-    VRServiceImpl* initializing_service) {
+void XRRuntimeManagerImpl::InitializeProviders(WebContents* web_contents) {
   if (providers_initialized_)
     return;
 
   for (const auto& provider : providers_) {
     if (!provider) {
-      // TODO(crbug.com/1050470): Remove this logging after investigation.
+      // TODO(crbug.com/40673158): Remove this logging after investigation.
       LOG(ERROR) << __func__ << " got null XR provider";
       continue;
     }
@@ -498,7 +580,7 @@ void XRRuntimeManagerImpl::InitializeProviders(
     // to ourselves here, since we own the providers and can guarantee that they
     // will not outlive us. Providers should not take a long-term reference to
     // the WebContents.
-    provider->Initialize(this, initializing_service->GetWebContents());
+    provider->Initialize(this, web_contents);
   }
 
   providers_initialized_ = true;
@@ -556,7 +638,7 @@ void XRRuntimeManagerImpl::RemoveRuntime(device::mojom::XRDeviceId id) {
 
   DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
   auto it = runtimes_.find(id);
-  DCHECK(it != runtimes_.end());
+  CHECK(it != runtimes_.end(), base::NotFatalUntil::M130);
 
   GetLoggerManager().RecordRuntimeRemoved(id);
 

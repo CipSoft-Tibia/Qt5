@@ -59,7 +59,7 @@ ScatterDataModifier::ScatterDataModifier(Q3DScatterWidgetItem *scatter, QObject 
     //! [2]
 }
 
-ScatterDataModifier::~ScatterDataModifier() {}
+ScatterDataModifier::~ScatterDataModifier() = default;
 
 void ScatterDataModifier::addData()
 {
@@ -99,7 +99,7 @@ void ScatterDataModifier::addData()
 
 void ScatterDataModifier::changeStyle(int style)
 {
-    QComboBox *comboBox = qobject_cast<QComboBox *>(sender());
+    const auto *comboBox = qobject_cast<QComboBox *>(sender());
     if (comboBox) {
         m_style = comboBox->itemData(style).value<QAbstract3DSeries::Mesh>();
         if (!m_graph->seriesList().isEmpty())
@@ -212,7 +212,7 @@ void ScatterDataModifier::handleAxisDragging(QVector2D delta)
 
 void ScatterDataModifier::changeShadowQuality(int quality)
 {
-    QtGraphs3D::ShadowQuality sq = QtGraphs3D::ShadowQuality(quality);
+    const auto sq = QtGraphs3D::ShadowQuality(quality);
     m_graph->setShadowQuality(sq);
 }
 

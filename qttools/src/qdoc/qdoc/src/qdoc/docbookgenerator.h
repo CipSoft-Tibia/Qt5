@@ -59,7 +59,7 @@ protected:
     bool generateThreadSafeness(const Node *node);
     bool generateSince(const Node *node);
     void generateAddendum(const Node *node, Generator::Addendum type, CodeMarker *marker,
-                          bool generateNote) override;
+                          AdmonitionPrefix prefix) override;
     using Generator::generateBody;
     void generateBody(const Node *node);
 
@@ -132,7 +132,7 @@ private:
     void generateStartRequisite(const QString &description);
     void generateEndRequisite();
     void generateRequisite(const QString &description, const QString &value);
-    void generateCMakeRequisite(const QStringList &values);
+    void generateCMakeRequisite(const QString &findPackage, const QString &linkLibraries);
     void generateSynopsisInfo(const QString &key, const QString &value);
     void generateModifier(const QString &value);
 
@@ -156,6 +156,7 @@ private:
 
     // Generator configuration, set before starting the generation.
     QString m_project {};
+    QString m_productName {};
     QString m_projectDescription {};
     QString m_naturalLanguage {};
     QString m_buildVersion {};

@@ -73,7 +73,7 @@ TEST_F(PageLoadMetricsUtilTest, GetGoogleHostnamePrefix) {
       {true, "www.www", "https://www.www.google.com/"},
   };
   for (const auto& test : test_cases) {
-    absl::optional<std::string> result =
+    std::optional<std::string> result =
         page_load_metrics::GetGoogleHostnamePrefix(GURL(test.url));
     EXPECT_EQ(test.expected_result, result.has_value())
         << "For URL: " << test.url;
@@ -81,6 +81,25 @@ TEST_F(PageLoadMetricsUtilTest, GetGoogleHostnamePrefix) {
       EXPECT_EQ(test.expected_prefix, result.value())
           << "Prefix for URL: " << test.url;
     }
+  }
+}
+
+TEST_F(PageLoadMetricsUtilTest, HasGoogleSearchQuery) {
+  struct {
+    bool expected_result;
+    const char* url;
+  } test_cases[] = {
+      {true, "https://www.google.com/search#q=test"},
+      {true, "https://www.google.com/search?q=test"},
+      {true, "https://www.google.com#q=test"},
+      {true, "https://www.google.com?q=test"},
+      {false, "https://www.google.com/search"},
+      {false, "https://www.google.com/"},
+  };
+  for (const auto& test : test_cases) {
+    EXPECT_EQ(test.expected_result,
+              page_load_metrics::HasGoogleSearchQuery(GURL(test.url)))
+        << "for URL: " << test.url;
   }
 }
 
@@ -104,6 +123,67 @@ TEST_F(PageLoadMetricsUtilTest, IsGoogleSearchHostname) {
   for (const auto& test : test_cases) {
     EXPECT_EQ(test.expected_result,
               page_load_metrics::IsGoogleSearchHostname(GURL(test.url)))
+        << "for URL: " << test.url;
+  }
+}
+
+TEST_F(PageLoadMetricsUtilTest, IsProbablyGoogleSearchUrl) {
+  struct {
+    bool expected_result;
+    const char* url;
+  } test_cases[] = {
+      {false, "http://www.example.com/"},
+      {false, "https://google.com/#q=test"},
+      {false, "https://google.com/url?"},
+      {false, "https://other.google.com/"},
+      {false, "https://other.google.com/webhp?q=test"},
+      {false, "https://www.example.com/url?source=web"},
+      {false, "https://www.example.com/url?source=web"},
+      {false, "https://www.example.com/webhp?q=test"},
+      {true, "https://www.google.com/?"},
+      {true, "https://www.google.com/?source=web"},
+      {true, "https://www.google.com/?url"},
+      {true, "https://www.google.com/"},
+      {true, "https://www.google.com/#q=test"},
+      {true, "https://www.google.com/about/"},
+      {true, "https://www.google.com/search?q=test"},
+      {true, "https://www.google.com/search#q=test"},
+      {true, "https://www.google.com/searchurl/r.html#foo"},
+      {true, "https://www.google.com/source=web"},
+      {true, "https://www.google.com/url?"},
+      {true, "https://www.google.com/url?a=b"},
+      {true, "https://www.google.com/url?a=b&source=web&c=d"},
+      {true, "https://www.google.com/url?source=web"},
+      {true, "https://www.google.com/url?source=web#foo"},
+      {true, "https://www.google.com/webhp?#a=b&q=test&c=d"},
+      {true, "https://www.google.com/webhp?a=b&q=test"},
+      {true, "https://www.google.com/webhp?a=b&q=test&c=d"},
+      {true, "https://www.google.com/webhp?q=test"},
+      {true, "https://www.google.com/webhp#a=b&q=test&c=d"},
+      {true, "https://www.google.com/webhp#q=test"},
+      {true, "https://www.google.com/webmasters/#?modal_active=none"},
+      {false, "https://www.google.com/maps"},
+      {false,
+       "https://www.google.com/maps/place/Shibuya+Stream/"
+       "@35.6572693,139.7031288,15z/"
+       "data=!4m2!3m1!1s0x0:0x387c407b91e2ad68?sa=X&ved=1t:2428&ictx=111"},
+      {false,
+       "https://www.google.com/maps/reviews/"
+       "data=!4m5!14m4!1m3!1m2!1s102657011957627300761!2s0x60188b31a00165ed:"
+       "0x387c407b91e2ad68?ved=1t:31295&ictx=111"},
+      {false, "https://www.google.co.jp/maps"},
+      {false,
+       "https://www.google.co.jp/maps/place/Shibuya+Stream/"
+       "@35.6572693,139.7031288,15z/"
+       "data=!4m2!3m1!1s0x0:0x387c407b91e2ad68?sa=X&ved=1t:2428&ictx=111"},
+      {false,
+       "https://www.google.co.jp/maps/reviews/"
+       "data=!4m5!14m4!1m3!1m2!1s102657011957627300761!2s0x60188b31a00165ed:"
+       "0x387c407b91e2ad68?ved=1t:31295&ictx=111"},
+  };
+  for (const auto& test : test_cases) {
+    EXPECT_EQ(test.expected_result,
+              page_load_metrics::IsProbablyGoogleSearchUrl(GURL(test.url)))
         << "for URL: " << test.url;
   }
 }
@@ -135,6 +215,38 @@ TEST_F(PageLoadMetricsUtilTest, IsGoogleSearchResultUrl) {
   for (const auto& test : test_cases) {
     EXPECT_EQ(test.expected_result,
               page_load_metrics::IsGoogleSearchResultUrl(GURL(test.url)))
+        << "for URL: " << test.url;
+  }
+}
+
+TEST_F(PageLoadMetricsUtilTest, IsGoogleSearchHomepageUrl) {
+  struct {
+    bool expected_result;
+    const char* url;
+  } test_cases[] = {
+      {false, "https://www.google.com/search#q=test"},
+      {false, "https://www.google.com/search?q=test"},
+      {false, "https://www.google.com/custom?q=test"},
+      {true, "https://www.google.com/search"},
+      {true, "https://www.google.com/custom"},
+      {true, "https://www.google.com/#q=test"},
+      {true, "https://www.google.com/webhp#q=test"},
+      {true, "https://www.google.com/webhp?q=test"},
+      {true, "https://www.google.com/webhp?a=b&q=test"},
+      {true, "https://www.google.com/webhp?a=b&q=test&c=d"},
+      {true, "https://www.google.com/webhp#a=b&q=test&c=d"},
+      {true, "https://www.google.com/webhp?#a=b&q=test&c=d"},
+      {true, "https://www.google.com/"},
+      {false, "https://www.google.com/about/"},
+      {false, "https://other.google.com/"},
+      {false, "https://other.google.com/webhp?q=test"},
+      {false, "http://www.example.com/"},
+      {false, "https://www.example.com/webhp?q=test"},
+      {false, "https://google.com/#q=test"},
+  };
+  for (const auto& test : test_cases) {
+    EXPECT_EQ(test.expected_result,
+              page_load_metrics::IsGoogleSearchHomepageUrl(GURL(test.url)))
         << "for URL: " << test.url;
   }
 }
@@ -255,27 +367,27 @@ TEST_F(PageLoadMetricsUtilTest, UmaMaxCumulativeShiftScoreHistogram) {
 TEST_F(PageLoadMetricsUtilTest, GetNonPrerenderingBackgroundStartTiming) {
   struct {
     PrerenderingState prerendering_state;
-    absl::optional<base::TimeDelta> activation_start;
+    std::optional<base::TimeDelta> activation_start;
     PageVisibility visibility_at_start_or_activation_;
-    absl::optional<base::TimeDelta> time_to_first_background;
-    absl::optional<base::TimeDelta> expected_result;
+    std::optional<base::TimeDelta> time_to_first_background;
+    std::optional<base::TimeDelta> expected_result;
   } test_cases[] = {
-      {PrerenderingState::kNoPrerendering, absl::nullopt,
-       PageVisibility::kForeground, absl::nullopt, absl::nullopt},
-      {PrerenderingState::kNoPrerendering, absl::nullopt,
+      {PrerenderingState::kNoPrerendering, std::nullopt,
+       PageVisibility::kForeground, std::nullopt, std::nullopt},
+      {PrerenderingState::kNoPrerendering, std::nullopt,
        PageVisibility::kForeground, base::Seconds(2), base::Seconds(2)},
-      {PrerenderingState::kNoPrerendering, absl::nullopt,
-       PageVisibility::kBackground, absl::nullopt, base::Seconds(0)},
-      {PrerenderingState::kNoPrerendering, absl::nullopt,
+      {PrerenderingState::kNoPrerendering, std::nullopt,
+       PageVisibility::kBackground, std::nullopt, base::Seconds(0)},
+      {PrerenderingState::kNoPrerendering, std::nullopt,
        PageVisibility::kBackground, base::Seconds(2), base::Seconds(0)},
-      {PrerenderingState::kInPrerendering, absl::nullopt,
-       PageVisibility::kForeground, absl::nullopt, absl::nullopt},
-      {PrerenderingState::kInPrerendering, absl::nullopt,
-       PageVisibility::kForeground, base::Seconds(10), absl::nullopt},
-      {PrerenderingState::kActivatedNoActivationStart, absl::nullopt,
-       PageVisibility::kForeground, base::Seconds(12), absl::nullopt},
+      {PrerenderingState::kInPrerendering, std::nullopt,
+       PageVisibility::kForeground, std::nullopt, std::nullopt},
+      {PrerenderingState::kInPrerendering, std::nullopt,
+       PageVisibility::kForeground, base::Seconds(10), std::nullopt},
+      {PrerenderingState::kActivatedNoActivationStart, std::nullopt,
+       PageVisibility::kForeground, base::Seconds(12), std::nullopt},
       {PrerenderingState::kActivated, base::Seconds(10),
-       PageVisibility::kForeground, absl::nullopt, absl::nullopt},
+       PageVisibility::kForeground, std::nullopt, std::nullopt},
       {PrerenderingState::kActivated, base::Seconds(10),
        PageVisibility::kForeground, base::Seconds(12), base::Seconds(12)},
       // Invalid time_to_first_background. Not checked and may return invalid
@@ -283,7 +395,7 @@ TEST_F(PageLoadMetricsUtilTest, GetNonPrerenderingBackgroundStartTiming) {
       {PrerenderingState::kActivated, base::Seconds(10),
        PageVisibility::kForeground, base::Seconds(2), base::Seconds(2)},
       {PrerenderingState::kActivated, base::Seconds(10),
-       PageVisibility::kBackground, absl::nullopt, base::Seconds(10)},
+       PageVisibility::kBackground, std::nullopt, base::Seconds(10)},
       {PrerenderingState::kActivated, base::Seconds(10),
        PageVisibility::kBackground, base::Seconds(12), base::Seconds(10)},
       // Invalid time_to_first_background. Not checked and may return invalid
@@ -300,7 +412,7 @@ TEST_F(PageLoadMetricsUtilTest, GetNonPrerenderingBackgroundStartTiming) {
           delegate.navigation_start_ +
           test_case.time_to_first_background.value();
     } else {
-      delegate.first_background_time_ = absl::nullopt;
+      delegate.first_background_time_ = std::nullopt;
     }
 
     switch (test_case.prerendering_state) {
@@ -329,7 +441,7 @@ TEST_F(PageLoadMetricsUtilTest, GetNonPrerenderingBackgroundStartTiming) {
         break;
     }
 
-    absl::optional<base::TimeDelta> got =
+    std::optional<base::TimeDelta> got =
         GetNonPrerenderingBackgroundStartTiming(delegate);
     EXPECT_EQ(test_case.expected_result, got);
   }
@@ -338,18 +450,18 @@ TEST_F(PageLoadMetricsUtilTest, GetNonPrerenderingBackgroundStartTiming) {
 TEST_F(PageLoadMetricsUtilTest, CorrectEventAsNavigationOrActivationOrigined) {
   struct {
     PrerenderingState prerendering_state;
-    absl::optional<base::TimeDelta> activation_start;
+    std::optional<base::TimeDelta> activation_start;
     base::TimeDelta event;
-    absl::optional<base::TimeDelta> expected_result;
+    std::optional<base::TimeDelta> expected_result;
   } test_cases[] = {
       // Not modified
-      {PrerenderingState::kNoPrerendering, absl::nullopt, base::Seconds(2),
+      {PrerenderingState::kNoPrerendering, std::nullopt, base::Seconds(2),
        base::Seconds(2)},
       // max(0, 2 - x), where x is time of activation start that may come in the
       // future and should be greater than an already occurred event.
-      {PrerenderingState::kInPrerendering, absl::nullopt, base::Seconds(2),
+      {PrerenderingState::kInPrerendering, std::nullopt, base::Seconds(2),
        base::Seconds(0)},
-      {PrerenderingState::kActivatedNoActivationStart, absl::nullopt,
+      {PrerenderingState::kActivatedNoActivationStart, std::nullopt,
        base::Seconds(2), base::Seconds(0)},
       // max(0, 2 - 10)
       {PrerenderingState::kActivated, base::Seconds(10), base::Seconds(2),
@@ -369,7 +481,7 @@ TEST_F(PageLoadMetricsUtilTest, CorrectEventAsNavigationOrActivationOrigined) {
 
     // Currently, multiple implementations of PageLoadMetricsObserver is
     // ongoing. We'll left the old version for a while.
-    // TODO(https://crbug.com/1317494): Delete below.
+    // TODO(crbug.com/40222513): Delete below.
 
     page_load_metrics::mojom::PageLoadTiming timing;
     page_load_metrics::InitPageLoadTimingForTest(&timing);
@@ -382,7 +494,7 @@ TEST_F(PageLoadMetricsUtilTest, CorrectEventAsNavigationOrActivationOrigined) {
 
     // In some path, this function is called with old PageLoadTiming, which can
     // lack activation_start. The result is the same for such case.
-    timing.activation_start = absl::nullopt;
+    timing.activation_start = std::nullopt;
     base::TimeDelta got3 = CorrectEventAsNavigationOrActivationOrigined(
         delegate, timing, test_case.event);
     EXPECT_EQ(test_case.expected_result, got3);

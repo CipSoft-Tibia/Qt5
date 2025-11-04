@@ -4,6 +4,7 @@
 
 #include "third_party/blink/renderer/core/paint/object_painter.h"
 
+#include "third_party/blink/renderer/core/frame/local_frame.h"
 #include "third_party/blink/renderer/core/layout/layout_block.h"
 #include "third_party/blink/renderer/core/layout/layout_inline.h"
 #include "third_party/blink/renderer/core/layout/layout_object.h"
@@ -12,7 +13,6 @@
 #include "third_party/blink/renderer/core/paint/paint_info.h"
 #include "third_party/blink/renderer/core/style/border_edge.h"
 #include "third_party/blink/renderer/core/style/computed_style.h"
-#include "third_party/blink/renderer/platform/geometry/layout_point.h"
 #include "third_party/blink/renderer/platform/graphics/graphics_context_state_saver.h"
 #include "third_party/blink/renderer/platform/graphics/paint/drawing_recorder.h"
 #include "third_party/blink/renderer/platform/wtf/vector.h"
@@ -25,8 +25,9 @@ void ObjectPainter::PaintOutline(const PaintInfo& paint_info,
 
   const ComputedStyle& style_to_use = layout_object_.StyleRef();
   if (!style_to_use.HasOutline() ||
-      style_to_use.Visibility() != EVisibility::kVisible)
+      style_to_use.UsedVisibility() != EVisibility::kVisible) {
     return;
+  }
 
   // Only paint the focus ring by hand if the theme isn't able to draw the focus
   // ring.
@@ -44,8 +45,7 @@ void ObjectPainter::PaintOutline(const PaintInfo& paint_info,
     return;
 
   OutlinePainter::PaintOutlineRects(paint_info, layout_object_, outline_rects,
-                                    info, style_to_use,
-                                    layout_object_.GetDocument());
+                                    info, style_to_use);
 }
 
 void ObjectPainter::PaintInlineChildrenOutlines(const PaintInfo& paint_info) {
@@ -64,7 +64,7 @@ void ObjectPainter::AddURLRectIfNeeded(const PaintInfo& paint_info,
                                        const PhysicalOffset& paint_offset) {
   DCHECK(paint_info.ShouldAddUrlMetadata());
   if (!layout_object_.GetNode() || !layout_object_.GetNode()->IsLink() ||
-      layout_object_.StyleRef().Visibility() != EVisibility::kVisible) {
+      layout_object_.StyleRef().UsedVisibility() != EVisibility::kVisible) {
     return;
   }
 
@@ -155,33 +155,41 @@ void ObjectPainter::RecordHitTestData(
   // If an object is not visible, it does not participate in painting or hit
   // testing. TODO(crbug.com/1471738): Some pointer-events values actually
   // allow hit testing with visibility:hidden.
-  if (layout_object_.StyleRef().Visibility() != EVisibility::kVisible) {
+  if (layout_object_.StyleRef().UsedVisibility() != EVisibility::kVisible) {
     return;
+  }
+
+  paint_info.context.GetPaintController().RecordHitTestData(
+      background_client, paint_rect,
+      layout_object_.EffectiveAllowedTouchAction(),
+      layout_object_.InsideBlockingWheelEventHandler(), GetHitTestOpaqueness());
+}
+
+cc::HitTestOpaqueness ObjectPainter::GetHitTestOpaqueness() const {
+  if (!RuntimeEnabledFeatures::HitTestOpaquenessEnabled()) {
+    return cc::HitTestOpaqueness::kMixed;
   }
 
   // Effects (e.g. clip-path and mask) are not checked here even if they
   // affects hit test. They are checked during PaintArtifactCompositor update
   // based on paint properties.
-  auto hit_test_opaqueness = cc::HitTestOpaqueness::kMixed;
-  if (RuntimeEnabledFeatures::HitTestOpaquenessEnabled()) {
-    if (!layout_object_.VisibleToHitTesting()) {
-      hit_test_opaqueness = cc::HitTestOpaqueness::kTransparent;
-    } else {
-      // Border radius is not considered opaque for hit test because the hit
-      // test may be inside or outside of the rounded corner.
-      // SVG children are not considered opaque for hit test because SVG has
-      // special hit test rules for stroke/fill/etc, and the children may
-      // overflow the root.
-      if (!layout_object_.StyleRef().HasBorderRadius() &&
-          !layout_object_.IsSVGChild()) {
-        hit_test_opaqueness = cc::HitTestOpaqueness::kOpaque;
-      }
-    }
+
+  if (!layout_object_.VisibleToHitTesting() ||
+      !layout_object_.GetFrame()->GetVisibleToHitTesting()) {
+    return cc::HitTestOpaqueness::kTransparent;
   }
-  paint_info.context.GetPaintController().RecordHitTestData(
-      background_client, paint_rect,
-      layout_object_.EffectiveAllowedTouchAction(),
-      layout_object_.InsideBlockingWheelEventHandler(), hit_test_opaqueness);
+  // Border radius is not considered opaque for hit test because the hit
+  // test may be inside or outside of the rounded corner.
+  if (layout_object_.StyleRef().HasBorderRadius()) {
+    return cc::HitTestOpaqueness::kMixed;
+  }
+  // SVG children are not considered opaque for hit test because SVG has
+  // special hit test rules for stroke/fill/etc, and the children may
+  // overflow the root.
+  if (layout_object_.IsSVGChild()) {
+    return cc::HitTestOpaqueness::kMixed;
+  }
+  return cc::HitTestOpaqueness::kOpaque;
 }
 
 bool ObjectPainter::ShouldRecordSpecialHitTestData(

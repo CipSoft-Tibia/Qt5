@@ -41,8 +41,7 @@ class LintPlugin;
 class Q_QMLCOMPILER_EXPORT QQmlJSLinter
 {
 public:
-    QQmlJSLinter(const QStringList &importPaths,
-                 const QStringList &pluginPaths = { QQmlJSLinter::defaultPluginPath() },
+    QQmlJSLinter(const QStringList &importPaths, const QStringList &extraPluginPaths = {},
                  bool useAbsolutePath = false);
 
     enum LintResult { FailedToOpen, FailedToParse, HasWarnings, LintSuccess };
@@ -106,7 +105,6 @@ public:
     };
 
     static std::vector<Plugin> loadPlugins(QStringList paths);
-    static QString defaultPluginPath();
 
     LintResult lintFile(const QString &filename, const QString *fileContents, const bool silent,
                         QJsonArray *json, const QStringList &qmlImportPaths,

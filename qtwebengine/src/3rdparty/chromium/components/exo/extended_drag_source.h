@@ -6,14 +6,13 @@
 #define COMPONENTS_EXO_EXTENDED_DRAG_SOURCE_H_
 
 #include <memory>
-#include <string>
+#include <optional>
 
 #include "ash/drag_drop/toplevel_window_drag_delegate.h"
 #include "ash/wm/toplevel_window_event_handler.h"
 #include "base/memory/raw_ptr.h"
 #include "base/observer_list.h"
 #include "components/exo/data_source_observer.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "ui/aura/scoped_window_event_targeting_blocker.h"
 #include "ui/base/dragdrop/mojom/drag_drop_types.mojom-shared.h"
 #include "ui/gfx/geometry/point.h"
@@ -44,9 +43,6 @@ class ExtendedDragSource : public DataSourceObserver,
    public:
     virtual bool ShouldAllowDropAnywhere() const = 0;
     virtual bool ShouldLockCursor() const = 0;
-    virtual void OnSwallowed(const std::string& mime_type) = 0;
-    virtual void OnUnswallowed(const std::string& mime_type,
-                               const gfx::Vector2d& offset) = 0;
     virtual void OnDataSourceDestroying() = 0;
 
    protected:
@@ -90,7 +86,7 @@ class ExtendedDragSource : public DataSourceObserver,
   void OnWindowDestroyed(aura::Window* window) override;
 
   aura::Window* GetDraggedWindowForTesting();
-  absl::optional<gfx::Vector2d> GetDragOffsetForTesting() const;
+  std::optional<gfx::Vector2d> GetDragOffsetForTesting() const;
   aura::Window* GetDragSourceWindowForTesting();
 
  private:

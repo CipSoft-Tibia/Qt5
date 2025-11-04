@@ -43,14 +43,16 @@ class WebViewImpl : public WebView {
       const BrowserInfo* browser_info,
       std::unique_ptr<DevToolsClient> client,
       std::optional<MobileDevice> mobile_device,
-      std::string page_load_strategy);
+      std::string page_load_strategy,
+      bool autoaccept_beforeunload);
   WebViewImpl(const std::string& id,
               const bool w3c_compliant,
               const WebViewImpl* parent,
               const BrowserInfo* browser_info,
               std::unique_ptr<DevToolsClient> client,
               std::optional<MobileDevice> mobile_device,
-              std::string page_load_strategy);
+              std::string page_load_strategy,
+              bool autoaccept_beforeunload);
   ~WebViewImpl() override;
   std::unique_ptr<WebViewImpl> CreateChild(const std::string& session_id,
                                            const std::string& target_id) const;
@@ -59,7 +61,7 @@ class WebViewImpl : public WebView {
   bool IsServiceWorker() const override;
   std::string GetId() override;
   bool WasCrashed() override;
-  Status AttachTo(DevToolsClient* parent);
+  Status AttachTo(DevToolsClient* root_client);
   Status AttachChildView(WebViewImpl* child);
   Status HandleEventsUntil(const ConditionalFunc& conditional_func,
                            const Timeout& timeout) override;
@@ -69,9 +71,11 @@ class WebViewImpl : public WebView {
   Status Reload(const Timeout* timeout) override;
   Status Freeze(const Timeout* timeout) override;
   Status Resume(const Timeout* timeout) override;
-  Status StartBidiServer(std::string bidi_mapper_script,
-                         const base::Value::Dict& mapper_options) override;
+  Status StartBidiServer(std::string bidi_mapper_script) override;
   Status PostBidiCommand(base::Value::Dict command) override;
+  Status SendBidiCommand(base::Value::Dict command,
+                         const Timeout& timeout,
+                         base::Value::Dict& response) override;
   Status SendCommand(const std::string& cmd,
                      const base::Value::Dict& params) override;
   Status SendCommandFromWebSocket(const std::string& cmd,
@@ -89,7 +93,7 @@ class WebViewImpl : public WebView {
                                  const std::string& function,
                                  const base::Value::List& args,
                                  const base::TimeDelta& timeout,
-                                 std::unique_ptr<base::Value>* result);
+                                 std::unique_ptr<base::Value>* result) override;
   Status CallFunction(const std::string& frame,
                       const std::string& function,
                       const base::Value::List& args,
@@ -110,16 +114,16 @@ class WebViewImpl : public WebView {
                             std::string* out_frame) override;
   Status DispatchMouseEvents(const std::vector<MouseEvent>& events,
                              const std::string& frame,
-                             bool async_dispatch_events = false) override;
+                             bool async_dispatch_events) override;
   Status DispatchTouchEvent(const TouchEvent& event,
-                            bool async_dispatch_events = false) override;
+                            bool async_dispatch_events) override;
   Status DispatchTouchEvents(const std::vector<TouchEvent>& events,
-                             bool async_dispatch_events = false) override;
+                             bool async_dispatch_events) override;
   Status DispatchTouchEventWithMultiPoints(
       const std::vector<TouchEvent>& events,
-      bool async_dispatch_events = false) override;
+      bool async_dispatch_events) override;
   Status DispatchKeyEvents(const std::vector<KeyEvent>& events,
-                           bool async_dispatch_events = false) override;
+                           bool async_dispatch_events) override;
   Status GetCookies(base::Value* cookies,
                     const std::string& current_page_url) override;
   Status DeleteCookie(const std::string& name,
@@ -140,7 +144,6 @@ class WebViewImpl : public WebView {
                                    bool stop_load_on_timeout) override;
   Status IsPendingNavigation(const Timeout* timeout,
                              bool* is_pending) const override;
-  JavaScriptDialogManager* GetJavaScriptDialogManager() override;
   MobileEmulationOverrideManager* GetMobileEmulationOverrideManager()
       const override;
   Status OverrideGeolocation(const Geoposition& geoposition) override;
@@ -181,7 +184,13 @@ class WebViewImpl : public WebView {
   void Unlock();
   bool IsLocked() const;
   void SetDetached();
-  bool IsDetached() const;
+  bool IsDetached() const override;
+
+  bool IsDialogOpen() const override;
+  Status GetDialogMessage(std::string& message) const override;
+  Status GetTypeOfDialog(std::string& type) const override;
+  Status HandleDialog(bool accept,
+                      const std::optional<std::string>& text) override;
 
  protected:
   WebViewImpl(const std::string& id,
@@ -191,7 +200,7 @@ class WebViewImpl : public WebView {
               std::unique_ptr<DevToolsClient> client);
 
  private:
-  WebViewImpl* GetTargetForFrame(const std::string& frame);
+  WebView* GetTargetForFrame(const std::string& frame);
   Status GetLoaderId(const std::string& frame_id,
                      const Timeout& timeout,
                      std::string& loader_id);
@@ -243,6 +252,9 @@ class WebViewImpl : public WebView {
       const std::vector<MouseEvent>& events,
       const std::string& frame);
 
+  std::unique_ptr<PageLoadStrategy> CreatePageLoadStrategy(
+      const std::string& strategy);
+
   std::string id_;
   bool w3c_compliant_;
   raw_ptr<const BrowserInfo> browser_info_;
@@ -254,7 +266,6 @@ class WebViewImpl : public WebView {
   // before the trackers, to ensured trackers are destructed before client_.
   std::unique_ptr<DevToolsClient> client_;
   std::unique_ptr<FrameTracker> frame_tracker_;
-  std::unique_ptr<JavaScriptDialogManager> dialog_manager_;
   std::unique_ptr<PageLoadStrategy> navigation_tracker_;
   std::unique_ptr<MobileEmulationOverrideManager>
       mobile_emulation_override_manager_;
@@ -267,6 +278,7 @@ class WebViewImpl : public WebView {
   std::unique_ptr<CastTracker> cast_tracker_;
   std::unique_ptr<FedCmTracker> fedcm_tracker_;
   bool is_service_worker_;
+  bool autoaccept_beforeunload_ = false;
 };
 
 // Responsible for locking a WebViewImpl and its associated data structure to

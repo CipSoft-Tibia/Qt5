@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QTHREADPOOL_H
 #define QTHREADPOOL_H
@@ -71,6 +72,9 @@ public:
 
     void reserveThread();
     void releaseThread();
+
+    void setServiceLevel(QThread::QualityOfService serviceLevel);
+    QThread::QualityOfService serviceLevel() const;
 
     QT_CORE_INLINE_SINCE(6, 8)
     bool waitForDone(int msecs);

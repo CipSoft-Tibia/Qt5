@@ -40,7 +40,7 @@
 #include "hevc_sei.h"
 #include "hevcdsp.h"
 #include "h274.h"
-#include "threadframe.h"
+#include "progressframe.h"
 #include "videodsp.h"
 
 #define SHIFT_CTB_WPP 2
@@ -84,58 +84,6 @@ enum RPSType {
     LT_CURR,
     LT_FOLL,
     NB_RPS_TYPE,
-};
-
-enum SyntaxElement {
-    SAO_MERGE_FLAG = 0,
-    SAO_TYPE_IDX,
-    SAO_EO_CLASS,
-    SAO_BAND_POSITION,
-    SAO_OFFSET_ABS,
-    SAO_OFFSET_SIGN,
-    END_OF_SLICE_FLAG,
-    SPLIT_CODING_UNIT_FLAG,
-    CU_TRANSQUANT_BYPASS_FLAG,
-    SKIP_FLAG,
-    CU_QP_DELTA,
-    PRED_MODE_FLAG,
-    PART_MODE,
-    PCM_FLAG,
-    PREV_INTRA_LUMA_PRED_FLAG,
-    MPM_IDX,
-    REM_INTRA_LUMA_PRED_MODE,
-    INTRA_CHROMA_PRED_MODE,
-    MERGE_FLAG,
-    MERGE_IDX,
-    INTER_PRED_IDC,
-    REF_IDX_L0,
-    REF_IDX_L1,
-    ABS_MVD_GREATER0_FLAG,
-    ABS_MVD_GREATER1_FLAG,
-    ABS_MVD_MINUS2,
-    MVD_SIGN_FLAG,
-    MVP_LX_FLAG,
-    NO_RESIDUAL_DATA_FLAG,
-    SPLIT_TRANSFORM_FLAG,
-    CBF_LUMA,
-    CBF_CB_CR,
-    TRANSFORM_SKIP_FLAG,
-    EXPLICIT_RDPCM_FLAG,
-    EXPLICIT_RDPCM_DIR_FLAG,
-    LAST_SIGNIFICANT_COEFF_X_PREFIX,
-    LAST_SIGNIFICANT_COEFF_Y_PREFIX,
-    LAST_SIGNIFICANT_COEFF_X_SUFFIX,
-    LAST_SIGNIFICANT_COEFF_Y_SUFFIX,
-    SIGNIFICANT_COEFF_GROUP_FLAG,
-    SIGNIFICANT_COEFF_FLAG,
-    COEFF_ABS_LEVEL_GREATER1_FLAG,
-    COEFF_ABS_LEVEL_GREATER2_FLAG,
-    COEFF_ABS_LEVEL_REMAINING,
-    COEFF_SIGN_FLAG,
-    LOG2_RES_SCALE_ABS,
-    RES_SCALE_SIGN_FLAG,
-    CU_CHROMA_QP_OFFSET_FLAG,
-    CU_CHROMA_QP_OFFSET_IDX,
 };
 
 enum PartMode {
@@ -404,9 +352,13 @@ typedef struct DBParams {
 #define HEVC_SEQUENCE_COUNTER_INVALID (HEVC_SEQUENCE_COUNTER_MASK + 1)
 
 typedef struct HEVCFrame {
-    AVFrame *frame;
+    union {
+        struct {
+            AVFrame *frame;
+        };
+        ProgressFrame tf;
+    };
     AVFrame *frame_grain;
-    ThreadFrame tf;
     int needs_fg; /* 1 if grain needs to be applied by the decoder */
     MvField *tab_mvf;              ///< RefStruct reference
     RefPicList *refPicList;

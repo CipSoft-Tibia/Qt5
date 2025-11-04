@@ -26,7 +26,7 @@ fn atomicLoad(atomic_ptr: ptr<AS, atomic<T>, read_write>) -> T
       .combine('workgroupSize', workgroupSizes)
       .combine('dispatchSize', dispatchSizes)
       .combine('mapId', keysOf(kMapId))
-      .combine('scalarType', ['u32', 'i32'])
+      .combine('scalarType', ['u32', 'i32'] as const)
   )
   .fn(t => {
     const numInvocations = t.params.workgroupSize * t.params.dispatchSize;
@@ -61,21 +61,19 @@ fn atomicLoad(atomic_ptr: ptr<AS, atomic<T>, read_write>) -> T
     const arrayType = typedArrayCtor(scalarType);
 
     // Create input buffer with values [map_id(0)..map_id(n)]
-    const inputBuffer = t.device.createBuffer({
+    const inputBuffer = t.createBufferTracked({
       size: bufferNumElements * arrayType.BYTES_PER_ELEMENT,
       usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC,
       mappedAtCreation: true,
     });
-    t.trackForCleanup(inputBuffer);
     const data = new arrayType(inputBuffer.getMappedRange());
     data.forEach((_, i) => (data[i] = mapId.f(i, numInvocations)));
     inputBuffer.unmap();
 
-    const outputBuffer = t.device.createBuffer({
+    const outputBuffer = t.createBufferTracked({
       size: bufferNumElements * arrayType.BYTES_PER_ELEMENT,
       usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC,
     });
-    t.trackForCleanup(outputBuffer);
 
     const bindGroup = t.device.createBindGroup({
       layout: pipeline.getBindGroupLayout(0),
@@ -117,7 +115,7 @@ fn atomicLoad(atomic_ptr: ptr<AS, atomic<T>, read_write>) -> T
       .combine('workgroupSize', workgroupSizes)
       .combine('dispatchSize', dispatchSizes)
       .combine('mapId', keysOf(kMapId))
-      .combine('scalarType', ['u32', 'i32'])
+      .combine('scalarType', ['u32', 'i32'] as const)
   )
   .fn(t => {
     const numInvocations = t.params.workgroupSize;
@@ -162,11 +160,10 @@ fn atomicLoad(atomic_ptr: ptr<AS, atomic<T>, read_write>) -> T
 
     const arrayType = typedArrayCtor(scalarType);
 
-    const outputBuffer = t.device.createBuffer({
+    const outputBuffer = t.createBufferTracked({
       size: wgNumElements * dispatchSize * arrayType.BYTES_PER_ELEMENT,
       usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC,
     });
-    t.trackForCleanup(outputBuffer);
 
     const bindGroup = t.device.createBindGroup({
       layout: pipeline.getBindGroupLayout(0),

@@ -24,7 +24,8 @@ QT_BEGIN_NAMESPACE
 class QQuickIconImage;
 class QQuickMnemonicLabel;
 
-class Q_AUTOTEST_EXPORT QQuickIconLabelPrivate : public QQuickItemPrivate, public QQuickItemChangeListener
+class Q_AUTOTEST_EXPORT QQuickIconLabelPrivate : public QQuickItemPrivate,
+                                                 public QSafeQuickItemChangeListener<QQuickIconLabelPrivate>
 {
     Q_DECLARE_PUBLIC(QQuickIconLabel)
 

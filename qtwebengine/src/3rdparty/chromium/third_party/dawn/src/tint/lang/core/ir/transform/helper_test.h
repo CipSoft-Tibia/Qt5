@@ -37,6 +37,7 @@
 #include "src/tint/lang/core/ir/builder.h"
 #include "src/tint/lang/core/ir/disassembler.h"
 #include "src/tint/lang/core/ir/validator.h"
+#include "src/tint/utils/containers/enum_set.h"
 
 namespace tint::core::ir::transform {
 
@@ -57,11 +58,11 @@ class TransformTestBase : public BASE {
         }
 
         // Validate the output IR.
-        EXPECT_EQ(ir::Validate(mod), Success);
+        EXPECT_EQ(ir::Validate(mod, capabilities), Success);
     }
 
     /// @returns the transformed module as a disassembled string
-    std::string str() { return "\n" + ir::Disassemble(mod); }
+    std::string str() { return "\n" + ir::Disassembler(mod).Plain(); }
 
   protected:
     /// The test IR module.
@@ -70,6 +71,8 @@ class TransformTestBase : public BASE {
     ir::Builder b{mod};
     /// The type manager.
     core::type::Manager& ty{mod.Types()};
+    /// IR validation capabilities
+    Capabilities capabilities;
 };
 
 using TransformTest = TransformTestBase<testing::Test>;

@@ -30,7 +30,7 @@ void GLEGLUtilityX11::ChooseEGLAlphaAndBufferSize(EGLint* alpha_size,
 void GLEGLUtilityX11::CollectGpuExtraInfo(
     bool enable_native_gpu_memory_buffers,
     gfx::GpuExtraInfo& gpu_extra_info) const {
-  // TODO(https://crbug.com/1031269): Enable by default.
+  // TODO(crbug.com/40110388): Enable by default.
   if (enable_native_gpu_memory_buffers) {
     gpu_extra_info.gpu_memory_buffer_support_x11 =
         ui::GpuMemoryBufferSupportX11::GetInstance()->supported_configs();
@@ -46,13 +46,13 @@ bool GLEGLUtilityX11::HasVisualManager() {
   return true;
 }
 
-absl::optional<base::ScopedEnvironmentVariableOverride>
+std::optional<base::ScopedEnvironmentVariableOverride>
 GLEGLUtilityX11::MaybeGetScopedDisplayUnsetForVulkan() {
   // Unset DISPLAY env, so the vulkan can be initialized successfully, if the
   // X server doesn't support Vulkan surface.
   if (!ui::IsVulkanSurfaceSupported())
-    return absl::optional<base::ScopedEnvironmentVariableOverride>("DISPLAY");
-  return absl::nullopt;
+    return std::optional<base::ScopedEnvironmentVariableOverride>("DISPLAY");
+  return std::nullopt;
 }
 
 }  // namespace ui

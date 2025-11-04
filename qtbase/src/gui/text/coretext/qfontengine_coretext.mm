@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:data-parser
 
 #include "qfontengine_coretext_p.h"
 
@@ -254,6 +255,50 @@ void QCoreTextFontEngine::init()
     cache_cost = (CTFontGetAscent(ctfont) + CTFontGetDescent(ctfont)) * avgCharWidth.toInt() * 2000;
 
     kerningPairsLoaded = false;
+
+    if (QCFType<CFArrayRef> variationAxes = CTFontCopyVariationAxes(ctfont)) {
+        CFIndex count = CFArrayGetCount(variationAxes);
+        for (CFIndex i = 0; i < count; ++i) {
+            CFDictionaryRef variationAxis = CFDictionaryRef(CFArrayGetValueAtIndex(variationAxes, i));
+
+            QFontVariableAxis fontVariableAxis;
+            if (CFNumberRef tagRef = (CFNumberRef) CFDictionaryGetValue(variationAxis,
+                                                                        kCTFontVariationAxisIdentifierKey)) {
+                quint32 tag;
+                CFNumberGetValue(tagRef, kCFNumberIntType, &tag);
+                if (auto maybeTag = QFont::Tag::fromValue(tag))
+                    fontVariableAxis.setTag(*maybeTag);
+            }
+
+            if (CFNumberRef minimumValueRef = (CFNumberRef) CFDictionaryGetValue(variationAxis,
+                                                                                 kCTFontVariationAxisMinimumValueKey)) {
+                float minimumValue;
+                CFNumberGetValue(minimumValueRef, kCFNumberFloatType, &minimumValue);
+                fontVariableAxis.setMinimumValue(minimumValue);
+            }
+
+            if (CFNumberRef maximumValueRef = (CFNumberRef) CFDictionaryGetValue(variationAxis,
+                                                                                 kCTFontVariationAxisMaximumValueKey)) {
+                float maximumValue;
+                CFNumberGetValue(maximumValueRef, kCFNumberFloatType, &maximumValue);
+                fontVariableAxis.setMaximumValue(maximumValue);
+            }
+
+            if (CFNumberRef defaultValueRef = (CFNumberRef) CFDictionaryGetValue(variationAxis,
+                                                                                 kCTFontVariationAxisDefaultValueKey)) {
+                float defaultValue;
+                CFNumberGetValue(defaultValueRef, kCFNumberFloatType, &defaultValue);
+                fontVariableAxis.setDefaultValue(defaultValue);
+            }
+
+            if (CFStringRef nameRef = (CFStringRef) CFDictionaryGetValue(variationAxis,
+                                                                         kCTFontVariationAxisNameKey)) {
+                fontVariableAxis.setName(QString::fromCFString(nameRef));
+            }
+
+            variableAxisList.append(fontVariableAxis);
+        }
+    }
 }
 
 glyph_t QCoreTextFontEngine::glyphIndex(uint ucs4) const
@@ -273,6 +318,24 @@ glyph_t QCoreTextFontEngine::glyphIndex(uint ucs4) const
     CTFontGetGlyphsForCharacters(ctfont, (const UniChar *)str, glyphIndices, len);
 
     return glyphIndices[0];
+}
+
+QString QCoreTextFontEngine::glyphName(glyph_t index) const
+{
+    QString result = QCFString(CTFontCopyNameForGlyph(ctfont, index));
+    if (result.isEmpty())
+        result = QFontEngine::glyphName(index);
+    return result;
+}
+
+glyph_t QCoreTextFontEngine::findGlyph(QLatin1StringView name) const
+{
+    const QCFString cfName = CFStringCreateWithBytes(kCFAllocatorDefault,
+                                                     reinterpret_cast<const UInt8 *>(name.data()),
+                                                     name.size(), kCFStringEncodingASCII, false);
+    const glyph_t result = CTFontGetGlyphWithName(ctfont, cfName);
+
+    return result ? result : QFontEngine::findGlyph(name);
 }
 
 int QCoreTextFontEngine::stringToCMap(const QChar *str, int len, QGlyphLayout *glyphs,
@@ -999,6 +1062,11 @@ void QCoreTextFontEngine::doKerning(QGlyphLayout *g, ShaperFlags flags) const
     }
 
     QFontEngine::doKerning(g, flags);
+}
+
+QList<QFontVariableAxis> QCoreTextFontEngine::variableAxes() const
+{
+    return variableAxisList;
 }
 
 QT_END_NAMESPACE

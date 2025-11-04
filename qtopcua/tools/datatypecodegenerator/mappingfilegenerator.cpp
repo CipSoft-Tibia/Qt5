@@ -124,6 +124,8 @@ MappingFileGenerator::MappingError MappingFileGenerator::generateMappingHeader()
     output << Util::lineBreak();
     output << "#include <QtOpcUa/QOpcUaBinaryDataEncoding>"
            << Util::lineBreak();
+    output << "#include <QtOpcUa/QOpcUaExtensionObject>"
+           << Util::lineBreak();
     output << Util::lineBreak();
 
     output << "class " << m_prefix << "BinaryDeEncoder"
@@ -212,7 +214,7 @@ MappingFileGenerator::MappingError MappingFileGenerator::generateMappingCpp()
     output << "{"
            << Util::lineBreak();
     output << "}"
-           << Util::lineBreak();
+           << Util::lineBreak(2);
     output << "QOpcUaBinaryDataEncoding &" << m_prefix << "BinaryDeEncoder::binaryDataEncoding()"
            << Util::lineBreak();
     output << "{"

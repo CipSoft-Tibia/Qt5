@@ -120,8 +120,8 @@ VideoEncodeAccelerator::SupportedProfiles
 MojoVideoEncodeAccelerator::GetSupportedProfiles() {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
 
-  NOTREACHED() << "GetSupportedProfiles() should never be called."
-               << "Use VEA provider or GPU factories";
+  NOTREACHED_IN_MIGRATION() << "GetSupportedProfiles() should never be called."
+                            << "Use VEA provider or GPU factories";
   return {};
 }
 
@@ -206,7 +206,7 @@ void MojoVideoEncodeAccelerator::UseOutputBitstreamBuffer(
 void MojoVideoEncodeAccelerator::RequestEncodingParametersChange(
     const Bitrate& bitrate,
     uint32_t framerate,
-    const absl::optional<gfx::Size>& size) {
+    const std::optional<gfx::Size>& size) {
   DVLOG(2) << __func__;
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   DCHECK(vea_.is_bound());
@@ -217,7 +217,7 @@ void MojoVideoEncodeAccelerator::RequestEncodingParametersChange(
 void MojoVideoEncodeAccelerator::RequestEncodingParametersChange(
     const VideoBitrateAllocation& bitrate,
     uint32_t framerate,
-    const absl::optional<gfx::Size>& size) {
+    const std::optional<gfx::Size>& size) {
   DVLOG(2) << __func__;
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   DCHECK(vea_.is_bound());

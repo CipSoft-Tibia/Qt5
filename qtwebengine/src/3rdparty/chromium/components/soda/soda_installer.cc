@@ -4,9 +4,13 @@
 
 #include "components/soda/soda_installer.h"
 
+#include <optional>
+#include <string>
+
 #include "base/containers/contains.h"
 #include "base/feature_list.h"
 #include "base/observer_list.h"
+#include "base/strings/string_split.h"
 #include "base/values.h"
 #include "build/chromeos_buildflags.h"
 #include "components/live_caption/pref_names.h"
@@ -15,7 +19,6 @@
 #include "components/soda/constants.h"
 #include "components/soda/pref_names.h"
 #include "media/base/media_switches.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 
 #if BUILDFLAG(IS_CHROMEOS_ASH)
 #include "ash/constants/ash_features.h"
@@ -25,14 +28,10 @@
 namespace {
 
 constexpr int kSodaCleanUpDelayInDays = 30;
-
-#if BUILDFLAG(IS_CHROMEOS_ASH)
-
-inline std::string GetProjectorLanguageCode(PrefService* pref_service) {
-  return pref_service->GetString(ash::prefs::kProjectorCreationFlowLanguage);
-}
-
-#endif  // IS_CHROMEOS_ASH
+const constexpr char* const kDefaultEnabledLanguages[] = {
+    "en-US", "fr-FR", "it-IT", "de-DE",       "es-ES",
+    "ja-JP", "hi-IN", "pt-BR", "ko-KR",       "pl-PL",
+    "th-TH", "tr-TR", "id-ID", "cmn-Hans-CN", "cmn-Hant-TW"};
 
 }  // namespace
 
@@ -90,30 +89,18 @@ void SodaInstaller::Init(PrefService* profile_prefs,
     return;
   }
 
+#if BUILDFLAG(IS_CHROMEOS_ASH)
+  if (IsAnyFeatureUsingSodaEnabled(profile_prefs) ||
+      base::FeatureList::IsEnabled(media::kOnDeviceWebSpeech)) {
+#else  // !BUILDFLAG(IS_CHROMEOS_ASH)
   if (IsAnyFeatureUsingSodaEnabled(profile_prefs)) {
+#endif
     soda_installer_initialized_ = true;
     // Set the SODA uninstaller time to NULL time so that it doesn't get
     // uninstalled when features are using it.
     global_prefs->SetTime(prefs::kSodaScheduledDeletionTime, base::Time());
     SodaInstaller::GetInstance()->InstallSoda(global_prefs);
-
-    if (global_prefs->GetList(prefs::kSodaRegisteredLanguagePacks).empty()) {
-      // TODO(crbug.com/1200667): Register the default language used by
-      // Dictation on ChromeOS.
-
-#if BUILDFLAG(IS_CHROMEOS_ASH)
-      RegisterLanguage(GetProjectorLanguageCode(profile_prefs), global_prefs);
-#endif  // BUILDFLAG(IS_CHROMEOS_ASH)
-
-      RegisterLanguage(prefs::GetLiveCaptionLanguageCode(profile_prefs),
-                       global_prefs);
-    }
-
-    for (const auto& language :
-         global_prefs->GetList(prefs::kSodaRegisteredLanguagePacks)) {
-      SodaInstaller::GetInstance()->InstallLanguage(language.GetString(),
-                                                    global_prefs);
-    }
+    InitLanguages(profile_prefs, global_prefs);
   } else {
     base::Time deletion_time =
         global_prefs->GetTime(prefs::kSodaScheduledDeletionTime);
@@ -121,6 +108,20 @@ void SodaInstaller::Init(PrefService* profile_prefs,
       UninstallSoda(global_prefs);
       soda_installer_initialized_ = false;
     }
+  }
+}
+
+void SodaInstaller::InitLanguages(PrefService* profile_prefs,
+                                  PrefService* global_prefs) {
+  if (global_prefs->GetList(prefs::kSodaRegisteredLanguagePacks).empty()) {
+    RegisterLanguage(prefs::GetLiveCaptionLanguageCode(profile_prefs),
+                     global_prefs);
+  }
+
+  for (const auto& language :
+       global_prefs->GetList(prefs::kSodaRegisteredLanguagePacks)) {
+    SodaInstaller::GetInstance()->InstallLanguage(language.GetString(),
+                                                  global_prefs);
   }
 }
 
@@ -137,8 +138,17 @@ void SodaInstaller::SetUninstallTimer(PrefService* profile_prefs,
       base::Time::Now() + base::Days(kSodaCleanUpDelayInDays));
 }
 
+std::string SodaInstaller::GetLanguageDlcNameForLocale(
+    const std::string& locale) const {
+  return std::string();
+}
+
 bool SodaInstaller::IsSodaInstalled(LanguageCode language_code) const {
   return (soda_binary_installed_ && IsLanguageInstalled(language_code));
+}
+
+bool SodaInstaller::IsSodaBinaryInstalled() const {
+  return soda_binary_installed_;
 }
 
 const std::set<LanguageCode> SodaInstaller::InstalledLanguages() const {
@@ -284,15 +294,15 @@ bool SodaInstaller::IsSodaDownloading(LanguageCode language_code) const {
          base::Contains(language_pack_progress_, language_code);
 }
 
-absl::optional<SodaInstaller::ErrorCode> SodaInstaller::GetSodaInstallErrorCode(
+std::optional<SodaInstaller::ErrorCode> SodaInstaller::GetSodaInstallErrorCode(
     LanguageCode language_code) const {
   if (IsSodaDownloading(language_code))
-    return absl::nullopt;
+    return std::nullopt;
 
   const auto error_code = error_codes_.find(language_code);
   if (error_code != error_codes_.end())
     return error_code->second;
-  return absl::nullopt;
+  return std::nullopt;
 }
 
 bool SodaInstaller::IsAnyFeatureUsingSodaEnabled(PrefService* prefs) {
@@ -303,6 +313,19 @@ bool SodaInstaller::IsAnyFeatureUsingSodaEnabled(PrefService* prefs) {
 #else  // !BUILDFLAG(IS_CHROMEOS_ASH)
   return prefs->GetBoolean(prefs::kLiveCaptionEnabled);
 #endif
+}
+
+std::vector<std::string> SodaInstaller::GetLiveCaptionEnabledLanguages() const {
+  std::vector<std::string> enabled_languages = base::SplitString(
+      base::GetFieldTrialParamValueByFeature(
+          media::kLiveCaptionExperimentalLanguages, "available_languages"),
+      ",", base::TRIM_WHITESPACE, base::SPLIT_WANT_ALL);
+
+  for (const char* const enabled_language : kDefaultEnabledLanguages) {
+    enabled_languages.push_back(enabled_language);
+  }
+
+  return enabled_languages;
 }
 
 }  // namespace speech

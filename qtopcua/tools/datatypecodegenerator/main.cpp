@@ -1,6 +1,7 @@
 // Copyright (C) 2023 basysKom GmbH, opensource@basyskom.com
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
+#include "nodeidgenerator.h"
 #include "recursivedescentparser.h"
 
 #include <QtCore/qcommandlineoption.h>
@@ -59,11 +60,13 @@ bool readBsdFile(RecursiveDescentParser &recursiveDescentParser,
 bool generateBsdFiles(RecursiveDescentParser &recursiveDescentParser,
                       const QString &outputPath,
                       const QString &dataPrefix,
-                      const QString &outputFileHeader)
+                      const QString &outputFileHeader,
+                      bool generateBundleFiles)
 {
     switch (recursiveDescentParser.generateInputFiles(outputPath,
                                                       dataPrefix,
-                                                      outputFileHeader)) {
+                                                      outputFileHeader,
+                                                      generateBundleFiles)) {
     case RecursiveDescentParser::NoError:
         return true;
     case RecursiveDescentParser::UnableToWriteFile:
@@ -86,7 +89,7 @@ int main(int argc, char *argv[])
     QCoreApplication a(argc, argv);
 
     const QString appName = QStringLiteral("qopcuaxmldatatypes2cpp");
-    const QString appVersion = QStringLiteral("1.0");
+    const QString appVersion = QStringLiteral("1.1");
 
     auto arguments = a.arguments();
     arguments.replace(0, appName);
@@ -115,6 +118,11 @@ int main(int argc, char *argv[])
                                        "check for missing dependencies",
                                        "file");
     parser.addOption(inputFileOption);
+    const QCommandLineOption nodeIdFileOption(QStringList() << "n"
+                                                           << "nodeids",
+                                             "A CSV file with NodeIds. Will add an enum class <name>NodeId to the <prefix>nodeids.h file",
+                                             "name:path");
+    parser.addOption(nodeIdFileOption);
     const QCommandLineOption inputDependencyFileOption(
         QStringList() << "d"
                       << "dependencyinput",
@@ -133,11 +141,14 @@ int main(int argc, char *argv[])
                            "prefix",
                            "GeneratedOpcUa");
     parser.addOption(outputPrefixOption);
+    const QCommandLineOption bundleFilesOption(QStringList() << "b" << "bundle",
+                                               QStringLiteral("Create bundle .h and .cpp file"));
+    parser.addOption(bundleFilesOption);
 
     parser.process(a);
 
-    if (!parser.isSet(inputFileOption)) {
-        qCritical() << "Error: At least one input file must be specified";
+    if (!parser.isSet(inputFileOption) && !parser.isSet(nodeIdFileOption)) {
+        qCritical() << "Error: At least one bsd or csv input file must be specified";
         parser.showHelp(1);
         return EXIT_FAILURE;
     }
@@ -160,6 +171,36 @@ int main(int argc, char *argv[])
 
     const auto dataPrefix = parser.value(outputPrefixOption);
 
+    NodeIdGenerator nodeIdGen;
+
+    if (parser.isSet(nodeIdFileOption)) {
+        const auto nodeIdEntries = parser.values(nodeIdFileOption);
+
+        for (const auto &entry : nodeIdEntries) {
+            const auto index = entry.indexOf(QChar::fromLatin1(':'));
+            if (index == -1 || index == 0 || entry.size() <= index + 1) {
+                qWarning() << "Invalid value:" << entry << "- NodeId entries must be given as name:filepath";
+                return EXIT_FAILURE;
+            }
+
+            const auto success = nodeIdGen.parseNodeIds(entry.first(index), entry.mid(index + 1));
+            if (!success)
+                return EXIT_FAILURE;
+        }
+    }
+
+    if (!parser.isSet(inputFileOption) && !nodeIdGen.hasNodeIds())
+        return EXIT_FAILURE;
+
+    if (nodeIdGen.hasNodeIds()) {
+        const auto success = nodeIdGen.generateNodeIdsHeader(dataPrefix, parser.value(outputDirectoryPathOption), outputFileHeader);
+        if (success)
+            qInfo() << "All node ids were successfully generated";
+
+        if (!parser.isSet(inputFileOption))
+            return success ? EXIT_SUCCESS : EXIT_FAILURE;
+    }
+
     auto success = true;
     RecursiveDescentParser recursiveDescentParser;
     const QStringList inputFileNames = parser.values(inputFileOption);
@@ -173,7 +214,9 @@ int main(int argc, char *argv[])
         if (generateBsdFiles(recursiveDescentParser,
                              outputPath,
                              dataPrefix,
-                             outputFileHeader)) {
+                             outputFileHeader,
+                             parser.isSet(bundleFilesOption))) {
+
             qInfo() << "Info: All types were successfully generated";
             return EXIT_SUCCESS;
         }

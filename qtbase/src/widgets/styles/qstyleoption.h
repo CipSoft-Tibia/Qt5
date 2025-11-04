@@ -248,7 +248,7 @@ public:
     enum SelectedPosition { NotAdjacent, NextIsSelected, PreviousIsSelected };
     enum CornerWidget { NoCornerWidgets = 0x00, LeftCornerWidget = 0x01,
                         RightCornerWidget = 0x02 };
-    enum TabFeature { None = 0x00, HasFrame = 0x01 };
+    enum TabFeature { None = 0x00, HasFrame = 0x01, MinimumSizeHint = 0x02 };
     Q_DECLARE_FLAGS(CornerWidgets, CornerWidget)
     Q_DECLARE_FLAGS(TabFeatures, TabFeature)
 
@@ -403,7 +403,9 @@ public:
         Alternate = 0x02,
         HasCheckIndicator = 0x04,
         HasDisplay = 0x08,
-        HasDecoration = 0x10
+        HasDecoration = 0x10,
+        IsDecoratedRootColumn = 0x20,
+        IsDecorationForRootColumn = 0x40,
     };
     Q_DECLARE_FLAGS(ViewItemFeatures, ViewItemFeature)
 
@@ -540,6 +542,7 @@ protected:
 };
 #endif // QT_CONFIG(spinbox)
 
+#if QT_CONFIG(toolbutton)
 class Q_WIDGETS_EXPORT QStyleOptionToolButton : public QStyleOptionComplex
 {
 public:
@@ -568,6 +571,7 @@ protected:
 };
 
 Q_DECLARE_OPERATORS_FOR_FLAGS(QStyleOptionToolButton::ToolButtonFeatures)
+#endif  // QT_CONFIG(toolbutton)
 
 class Q_WIDGETS_EXPORT QStyleOptionComboBox : public QStyleOptionComplex
 {

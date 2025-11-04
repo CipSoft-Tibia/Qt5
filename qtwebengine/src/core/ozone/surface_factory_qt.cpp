@@ -1,30 +1,31 @@
 // Copyright (C) 2024 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
-#if defined(USE_OZONE)
 #include "surface_factory_qt.h"
 
 #include "qtwebenginecoreglobal_p.h"
-#include "ozone/gl_context_qt.h"
 #include "ozone/gl_ozone_angle_qt.h"
-#include "ozone/gl_ozone_egl_qt.h"
+#include "ozone/ozone_util_qt.h"
 #include "qtwebenginecoreglobal_p.h"
-#include "web_engine_context.h"
 
 #include "media/gpu/buildflags.h"
 #include "ui/base/ozone_buildflags.h"
+#include "ui/gfx/buffer_format_util.h"
 #include "ui/gfx/linux/drm_util_linux.h"
 #include "ui/gfx/linux/gbm_buffer.h"
 #include "ui/gfx/linux/native_pixmap_dmabuf.h"
-#include "ui/gl/egl_util.h"
 
 #include <QDebug>
 #include <QtGui/qtgui-config.h>
 
-#if BUILDFLAG(IS_OZONE_X11)
-#include "ozone/gl_ozone_glx_qt.h"
-
+#if QT_CONFIG(opengl) && BUILDFLAG(IS_OZONE_X11) && QT_CONFIG(xcb_glx_plugin)
+#include "ozone/glx_helper.h"
 #include "ui/gfx/linux/gpu_memory_buffer_support_x11.h"
+#endif
+
+#if QT_CONFIG(egl)
+#include "ozone/egl_helper.h"
 #endif
 
 #if QT_CONFIG(webengine_vulkan)
@@ -35,21 +36,10 @@ namespace QtWebEngineCore {
 
 SurfaceFactoryQt::SurfaceFactoryQt()
 {
-#if BUILDFLAG(IS_OZONE_X11)
-    if (GLContextHelper::getGlxPlatformInterface()) {
-        m_impls.push_back({ gl::GLImplementationParts(gl::kGLImplementationDesktopGL),
-                            std::make_unique<ui::GLOzoneGLXQt>() });
-    } else
-#endif
-    if (GLContextHelper::getEglPlatformInterface()) {
-        m_impls.push_back({ gl::GLImplementationParts(gl::kGLImplementationEGLGLES2),
-                            std::make_unique<ui::GLOzoneEGLQt>() });
-        m_impls.push_back({ gl::GLImplementationParts(gl::kGLImplementationDesktopGL),
-                            std::make_unique<ui::GLOzoneEGLQt>() });
-    }
-
+#if QT_CONFIG(opengl)
     m_impls.push_back({ gl::GLImplementationParts(gl::kGLImplementationEGLANGLE),
                         std::make_unique<ui::GLOzoneANGLEQt>() });
+#endif
     m_impls.push_back({ gl::GLImplementationParts(gl::kGLImplementationDisabled), nullptr });
 }
 
@@ -69,7 +59,7 @@ ui::GLOzone *SurfaceFactoryQt::GetGLOzone(const gl::GLImplementationParts &imple
             return impl.second.get();
     }
 
-    qFatal() << "GLOzone not found for" << gl::GetGLImplementationGLName(implementation);
+    qFatal("GLOzone not found for %s", gl::GetGLImplementationGLName(implementation));
     return nullptr;
 }
 
@@ -88,13 +78,21 @@ SurfaceFactoryQt::CreateVulkanImplementation(bool /*allow_protected_memory*/,
 
 bool SurfaceFactoryQt::CanCreateNativePixmapForFormat(gfx::BufferFormat format)
 {
-#if BUILDFLAG(IS_OZONE_X11)
-    if (GLContextHelper::getGlxPlatformInterface())
+#if QT_CONFIG(opengl)
+#if BUILDFLAG(IS_OZONE_X11) && QT_CONFIG(xcb_glx_plugin)
+    if (OzoneUtilQt::usingGLX())
         return ui::GpuMemoryBufferSupportX11::GetInstance()->CanCreateNativePixmapForFormat(format);
 #endif
 
-    if (GLContextHelper::getEglPlatformInterface())
+#if QT_CONFIG(egl)
+    if (OzoneUtilQt::usingEGL()) {
+        // Multiplanar format support is not yet implemented. See EGLHelper::queryDmaBuf().
+        if (gfx::BufferFormatIsMultiplanar(format))
+            return false;
         return ui::SurfaceFactoryOzone::CanCreateNativePixmapForFormat(format);
+    }
+#endif
+#endif // QT_CONFIG(opengl)
 
     return false;
 }
@@ -105,7 +103,7 @@ scoped_refptr<gfx::NativePixmap> SurfaceFactoryQt::CreateNativePixmap(
         gfx::Size size,
         gfx::BufferFormat format,
         gfx::BufferUsage usage,
-        absl::optional<gfx::Size> framebuffer_size)
+        std::optional<gfx::Size> framebuffer_size)
 {
     if (!SupportsNativePixmaps())
         return nullptr;
@@ -114,10 +112,14 @@ scoped_refptr<gfx::NativePixmap> SurfaceFactoryQt::CreateNativePixmap(
     if (framebuffer_size && !gfx::Rect(size).Contains(gfx::Rect(*framebuffer_size)))
         return nullptr;
 
+    // Multiplanar format support is not yet implemented. It was not necessary with ANGLE at the
+    // time when the assert was added.
+    Q_ASSERT(!gfx::BufferFormatIsMultiplanar(format));
+
     gfx::NativePixmapHandle handle;
 
-#if BUILDFLAG(IS_OZONE_X11)
-    if (GLContextHelper::getGlxPlatformInterface()) {
+#if BUILDFLAG(IS_OZONE_X11) && QT_CONFIG(xcb_glx_plugin)
+    if (OzoneUtilQt::usingGLX()) {
         auto gbmBuffer =
                 ui::GpuMemoryBufferSupportX11::GetInstance()->CreateBuffer(format, size, usage);
         if (!gbmBuffer)
@@ -126,7 +128,8 @@ scoped_refptr<gfx::NativePixmap> SurfaceFactoryQt::CreateNativePixmap(
     }
 #endif
 
-    if (GLContextHelper::getEglPlatformInterface()) {
+#if QT_CONFIG(egl)
+    if (OzoneUtilQt::usingEGL()) {
         int fd = -1;
         int stride;
         int offset;
@@ -142,6 +145,7 @@ scoped_refptr<gfx::NativePixmap> SurfaceFactoryQt::CreateNativePixmap(
         handle.planes.push_back(std::move(plane));
         handle.modifier = modifiers;
     }
+#endif
 
     return base::MakeRefCounted<gfx::NativePixmapDmaBuf>(size, format, std::move(handle));
 #else
@@ -180,8 +184,8 @@ SurfaceFactoryQt::CreateNativePixmapFromHandle(
 #if QT_CONFIG(opengl)
     gfx::NativePixmapHandle bufferHandle;
 
-#if BUILDFLAG(IS_OZONE_X11)
-    if (GLContextHelper::getGlxPlatformInterface()) {
+#if BUILDFLAG(IS_OZONE_X11) && QT_CONFIG(xcb_glx_plugin)
+    if (OzoneUtilQt::usingGLX()) {
         auto gbmBuffer = ui::GpuMemoryBufferSupportX11::GetInstance()->CreateBufferFromHandle(
                 size, format, std::move(handle));
         if (!gbmBuffer)
@@ -190,7 +194,8 @@ SurfaceFactoryQt::CreateNativePixmapFromHandle(
     }
 #endif
 
-    if (GLContextHelper::getEglPlatformInterface()) {
+#if QT_CONFIG(egl)
+    if (OzoneUtilQt::usingEGL()) {
         const size_t numPlanes = handle.planes.size();
         const uint32_t fourccFormat = ui::GetFourCCFormatFromBufferFormat(format);
 
@@ -215,16 +220,15 @@ SurfaceFactoryQt::CreateNativePixmapFromHandle(
         }
         attrs.push_back(EGL_NONE);
 
-        EGLDisplay eglDisplay = GLContextHelper::getEGLDisplay();
         EGLHelper *eglHelper = EGLHelper::instance();
         auto *eglFun = eglHelper->functions();
+        EGLDisplay eglDisplay = eglHelper->getEGLDisplay();
 
         EGLImage eglImage =
                 eglFun->eglCreateImage(eglDisplay, EGL_NO_CONTEXT, EGL_LINUX_DMA_BUF_EXT,
                                        (EGLClientBuffer)NULL, attrs.data());
         if (eglImage == EGL_NO_IMAGE_KHR) {
-            qFatal() << "Failed to import EGLImage:"
-                     << ui::GetEGLErrorString(eglFun->eglGetError());
+            qFatal("Failed to import EGLImage: %s", eglHelper->getLastEGLErrorString());
         }
 
         Q_ASSERT(numPlanes <= 3);
@@ -232,8 +236,7 @@ SurfaceFactoryQt::CreateNativePixmapFromHandle(
         int strides[3];
         int offsets[3];
         if (!eglFun->eglExportDMABUFImageMESA(eglDisplay, eglImage, fds, strides, offsets)) {
-            qFatal() << "Failed to export EGLImage:"
-                     << ui::GetEGLErrorString(eglFun->eglGetError());
+            qFatal("Failed to export EGLImage: %s", eglHelper->getLastEGLErrorString());
         }
 
         bufferHandle.modifier = handle.modifier;
@@ -255,6 +258,7 @@ SurfaceFactoryQt::CreateNativePixmapFromHandle(
 
         eglFun->eglDestroyImage(eglDisplay, eglImage);
     }
+#endif // QT_CONFIG(egl)
 
     return base::MakeRefCounted<gfx::NativePixmapDmaBuf>(size, format, std::move(bufferHandle));
 #else
@@ -265,20 +269,18 @@ SurfaceFactoryQt::CreateNativePixmapFromHandle(
 bool SurfaceFactoryQt::SupportsNativePixmaps()
 {
 #if QT_CONFIG(opengl)
-#if BUILDFLAG(IS_OZONE_X11)
-    if (GLContextHelper::getGlxPlatformInterface()) {
-        return QtWebEngineCore::WebEngineContext::isGbmSupported()
-                && ui::GpuMemoryBufferSupportX11::GetInstance()->has_gbm_device();
-    }
-#endif // BUILDFLAG(IS_OZONE_X11)
+#if BUILDFLAG(IS_OZONE_X11) && QT_CONFIG(xcb_glx_plugin)
+    if (OzoneUtilQt::usingGLX())
+        return GLXHelper::instance()->isDmaBufSupported();
+#endif // BUILDFLAG(IS_OZONE_X11) && QT_CONFIG(xcb_glx_plugin)
 
-    if (GLContextHelper::getEglPlatformInterface())
+#if QT_CONFIG(egl)
+    if (OzoneUtilQt::usingEGL())
         return EGLHelper::instance()->isDmaBufSupported();
+#endif // QT_CONFIG(egl)
 #endif // QT_CONFIG(opengl)
 
     return false;
 }
 
 } // namespace QtWebEngineCore
-#endif // defined(USE_OZONE)
-

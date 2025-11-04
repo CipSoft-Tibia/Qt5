@@ -7,13 +7,13 @@
 
 #include <map>
 #include <memory>
+#include <optional>
+#include <string_view>
 #include <vector>
 
 #include "base/component_export.h"
 #include "base/files/file_path.h"
 #include "base/memory/raw_ptr.h"
-#include "base/strings/string_piece.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "ui/base/resource/data_pack.h"
 #include "ui/base/resource/resource_handle.h"
 #include "ui/base/resource/resource_scale_factor.h"
@@ -85,7 +85,7 @@ class COMPONENT_EXPORT(UI_DATA_PACK) DataPackWithResourceSharing
 
   // ResourceHandle implementation:
   bool HasResource(uint16_t resource_id) const override;
-  absl::optional<base::StringPiece> GetStringPiece(
+  std::optional<std::string_view> GetStringPiece(
       uint16_t resource_id) const override;
   base::RefCountedStaticMemory* GetStaticMemory(
       uint16_t resource_id) const override;
@@ -119,15 +119,15 @@ class COMPONENT_EXPORT(UI_DATA_PACK) DataPackWithResourceSharing
       std::vector<Mapping> mapping = std::vector<Mapping>(),
       std::vector<uint16_t> resource_ids = std::vector<uint16_t>(),
       std::map<uint16_t, uint16_t> aliases = std::map<uint16_t, uint16_t>(),
-      std::map<uint16_t, base::StringPiece> fallback_resources =
-          std::map<uint16_t, base::StringPiece>());
+      std::map<uint16_t, std::string_view> fallback_resources =
+          std::map<uint16_t, std::string_view>());
 
  private:
   // Loads mapping_table_ from mapping file.
   bool LoadMappingTable(const base::FilePath& path);
   // Returns mapped resource ID if |resource_id| is in |mapping_table_|.
   // Return null if not.
-  const absl::optional<uint16_t> LookupMappingTable(uint16_t resource_id) const;
+  const std::optional<uint16_t> LookupMappingTable(uint16_t resource_id) const;
 
   // Check the shared resource `path` version is valid. If Lacros version used
   // to generate `path` is not the same with the current Lacros, return false.
@@ -150,7 +150,7 @@ class COMPONENT_EXPORT(UI_DATA_PACK) DataPackWithResourceSharing
   static bool WriteFallbackResources(
       std::vector<uint16_t> resource_ids,
       std::map<uint16_t, uint16_t> aliases,
-      std::map<uint16_t, base::StringPiece> fallback_resources,
+      std::map<uint16_t, std::string_view> fallback_resources,
       size_t margin_to_skip,
       ScopedFileWriter& file);
   // Close and delete temp shared resource file used for generating.

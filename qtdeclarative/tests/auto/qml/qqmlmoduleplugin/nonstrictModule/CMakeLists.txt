@@ -12,6 +12,7 @@ qt_internal_add_cmake_library(nonstrictModule
     OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/../imports/org/qtproject/NonstrictModule"
     SOURCES
         plugin.cpp
+    MOC_OPTIONS "-Muri=org.qtproject.NonstrictModule"
     LIBRARIES
         Qt::Core
         Qt::CorePrivate
@@ -19,6 +20,11 @@ qt_internal_add_cmake_library(nonstrictModule
         Qt::Qml
         Qt::QmlPrivate
 )
+
+get_target_property(target_type nonstrictModule TYPE)
+if(target_type STREQUAL STATIC_LIBRARY)
+    target_compile_definitions(nonstrictModule PRIVATE QT_STATICPLUGIN)
+endif()
 
 #### Keys ignored in scope 1:.:.:nonstrictModule.pro:<TRUE>:
 # IMPORT_FILES = "qmldir"

@@ -7,7 +7,6 @@
 #include "evrhelpers_p.h"
 #include <private/qwindowsmultimediautils_p.h>
 #include <private/qplatformvideosink_p.h>
-#include <private/qwindowsmfdefs_p.h>
 
 #include <rhi/qrhi.h>
 
@@ -26,12 +25,14 @@
 
 QT_BEGIN_NAMESPACE
 
-static Q_LOGGING_CATEGORY(qLcEvrCustomPresenter, "qt.multimedia.evrcustompresenter")
+Q_STATIC_LOGGING_CATEGORY(qLcEvrCustomPresenter, "qt.multimedia.evrcustompresenter");
 
 const static MFRatio g_DefaultFrameRate = { 30, 1 };
 static const DWORD SCHEDULER_TIMEOUT = 5000;
 static const MFTIME ONE_SECOND = 10000000;
 static const LONG   ONE_MSEC = 1000;
+
+#define QMM_PRESENTATION_CURRENT_POSITION 0x7fffffffffffffff
 
 // Function declarations.
 static HRESULT setMixerSourceRect(IMFTransform *mixer, const MFVideoNormalizedRect& nrcSource);
@@ -1781,7 +1782,27 @@ void EVRCustomPresenter::presentSample(const ComPtr<IMFSample> &sample)
     if (!m_videoSink || !m_presentEngine->videoSurfaceFormat().isValid())
         return;
 
-    QVideoFrame frame = m_presentEngine->makeVideoFrame(sample);
+    QtVideo::Rotation rotation = [&] {
+        ComPtr<IMFMediaType> inputStreamType;
+        if (SUCCEEDED(m_mixer->GetInputCurrentType(0, inputStreamType.GetAddressOf()))) {
+            auto rotation = static_cast<MFVideoRotationFormat>(
+                    MFGetAttributeUINT32(inputStreamType.Get(), MF_MT_VIDEO_ROTATION, 0));
+            switch (rotation) {
+            case MFVideoRotationFormat_90:
+                return QtVideo::Rotation::Clockwise90;
+            case MFVideoRotationFormat_180:
+                return QtVideo::Rotation::Clockwise180;
+            case MFVideoRotationFormat_270:
+                return QtVideo::Rotation::Clockwise270;
+            case MFVideoRotationFormat_0:
+            default:
+                return QtVideo::Rotation::None;
+            }
+        }
+        return QtVideo::Rotation::None;
+    }();
+
+    QVideoFrame frame = m_presentEngine->makeVideoFrame(sample, rotation);
 
     // Since start/end times are related to a position when the clock is started,
     // to have times from the beginning, need to adjust it by adding seeked position.
@@ -1790,18 +1811,6 @@ void EVRCustomPresenter::presentSample(const ComPtr<IMFSample> &sample)
             frame.setStartTime(frame.startTime() + m_positionOffset);
         if (frame.endTime())
             frame.setEndTime(frame.endTime() + m_positionOffset);
-    }
-
-    ComPtr<IMFMediaType> inputStreamType;
-    if (SUCCEEDED(m_mixer->GetInputCurrentType(0, inputStreamType.GetAddressOf()))) {
-        auto rotation = static_cast<MFVideoRotationFormat>(MFGetAttributeUINT32(inputStreamType.Get(), MF_MT_VIDEO_ROTATION, 0));
-        switch (rotation) {
-        case MFVideoRotationFormat_0: frame.setRotation(QtVideo::Rotation::None); break;
-        case MFVideoRotationFormat_90: frame.setRotation(QtVideo::Rotation::Clockwise90); break;
-        case MFVideoRotationFormat_180: frame.setRotation(QtVideo::Rotation::Clockwise180); break;
-        case MFVideoRotationFormat_270: frame.setRotation(QtVideo::Rotation::Clockwise270); break;
-        default: frame.setRotation(QtVideo::Rotation::None);
-        }
     }
 
     m_videoSink->platformVideoSink()->setVideoFrame(frame);

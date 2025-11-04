@@ -1113,6 +1113,8 @@ void DataTypeFileWriter::writeStructuredTypeCppDebug(const StructuredType *struc
         }
     }
 
+    bool parameterUsed = false;
+
     for (const auto &field : structuredType->fields()) {
         if (structuredType->hasUnion() && field == structuredType->fields().constFirst())
             continue;
@@ -1146,6 +1148,7 @@ void DataTypeFileWriter::writeStructuredTypeCppDebug(const StructuredType *struc
 
         if (isPrecoded == StringIdentifier::opcUaPrecodedTypes.constEnd() || StringIdentifier::precodedTypesWithDebugOperator.contains(field->typeNameSecondPart())) {
             output << Util::indent(1 + indentOffset) <<  "debug << v." << field->lowerFirstName() << "();" << Util::lineBreak();
+            parameterUsed = true;
         } else {
             if (field->needContainer()) {
                 const auto tempListName = QStringLiteral("%1%2").arg(field->lowerFirstName(), "Strings");
@@ -1153,6 +1156,7 @@ void DataTypeFileWriter::writeStructuredTypeCppDebug(const StructuredType *struc
                 output << Util::indent(1 + indentOffset) << "for (int i = 0; i < v." << field->lowerFirstName() << "().size(); ++i)" << Util::lineBreak();
                 output << Util::indent(2 + indentOffset) << tempListName << ".push_back(\"" << isPrecoded->className() << "(...)\"" << ");" << Util::lineBreak();
                 output << Util::indent(1 + indentOffset) << "debug << \"QList(\" << " << tempListName << ".join(\", \") << \")\";";
+                parameterUsed = true;
             } else {
                 output << Util::indent(1 + indentOffset) << "debug << \"" << isPrecoded->className() << "(...)\";";
             }
@@ -1169,6 +1173,9 @@ void DataTypeFileWriter::writeStructuredTypeCppDebug(const StructuredType *struc
 
         isFirst = false;
     }
+
+    if (!parameterUsed)
+        output << Util::lineBreak() << Util::indent(1) << "Q_UNUSED(v);" << Util::lineBreak(2);
 
     output << Util::indent(1) << "debug << \")\";" << Util::lineBreak();
     output << Util::indent(1) << "return debug;" << Util::lineBreak();
@@ -1217,6 +1224,9 @@ DataTypeFileWriter::GeneratingError DataTypeFileWriter::writeEnumeratedTypes()
     output << Util::lineBreak();
     output << "}"
            << Util::lineBreak();
+
+    m_generatedHeaderFileNames.push_back(fileName);
+
     return GeneratingError::NoError;
 }
 
@@ -1240,9 +1250,13 @@ DataTypeFileWriter::GeneratingError DataTypeFileWriter::generateFile(const XmlEl
     if (structuredType) {
         if (fileExtension == StringIdentifier::headerIdentifier) {
             writeStructuredTypeHeader(structuredType, output);
+            if (!m_generatedHeaderFileNames.contains(fileName))
+                m_generatedHeaderFileNames.push_back(fileName);
         } else {
             if (fileExtension == StringIdentifier::cppIdentifier) {
                 writeStructuredTypeCpp(structuredType, output);
+                if (!m_generatedSourceFileNames.contains(fileName))
+                    m_generatedSourceFileNames.push_back(fileName);
             }
         }
     }
@@ -1284,4 +1298,48 @@ QList<XmlElement *> DataTypeFileWriter::generateMapping() const
 void DataTypeFileWriter::setGenerateMapping(const QList<XmlElement *> &generateMapping)
 {
     m_generateMapping = generateMapping;
+}
+
+bool DataTypeFileWriter::writeBundleFiles()
+{
+    const auto collectionHeaderName = QStringLiteral("%1datatypes%2")
+    .arg(m_prefix.toLower(), StringIdentifier::headerIdentifier);
+    const auto collectionSourceName = QStringLiteral("%1datatypes%2")
+                                          .arg(m_prefix.toLower(), StringIdentifier::cppIdentifier);
+
+    if (!m_generatedHeaderFileNames.isEmpty()) {
+        QFile file(QDir(m_path).absoluteFilePath(collectionHeaderName));
+        if (!file.open(QFile::WriteOnly))
+            return false;
+
+        QTextStream out(&file);
+
+        writeLicenseHeader(out);
+
+        out << "#pragma once" << Util::lineBreak(2);
+
+        for (const auto &header : m_generatedHeaderFileNames)
+            out << "#include \"" << header << "\"" << Util::lineBreak();
+    }
+
+    const auto enumHeaderCandidate = QStringLiteral("%1enumerations.h").arg(m_prefix.toLower());
+    const bool hasEnums = m_generatedHeaderFileNames.contains(enumHeaderCandidate);
+
+    if (!m_generatedSourceFileNames.isEmpty() || hasEnums) {
+        QFile file(QDir(m_path).absoluteFilePath(collectionSourceName));
+        if (!file.open(QFile::WriteOnly))
+            return false;
+
+        QTextStream out(&file);
+
+        writeLicenseHeader(out);
+
+        if (hasEnums)
+            out << "#include \"" << QStringLiteral("moc_%1enumerations.cpp").arg(m_prefix.toLower()) << "\"" << Util::lineBreak();
+
+        for (const auto &source : m_generatedSourceFileNames)
+            out << "#include \"" << source << "\"" << Util::lineBreak();
+    }
+
+    return true;
 }

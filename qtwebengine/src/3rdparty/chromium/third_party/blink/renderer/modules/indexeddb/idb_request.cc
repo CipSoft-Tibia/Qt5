@@ -30,8 +30,11 @@
 
 #include <atomic>
 #include <memory>
+#include <optional>
 #include <utility>
 
+#include "base/debug/stack_trace.h"
+#include "base/metrics/histogram_functions.h"
 #include "base/metrics/histogram_macros.h"
 #include "third_party/blink/public/platform/web_blob_info.h"
 #include "third_party/blink/renderer/bindings/core/v8/to_v8_traits.h"
@@ -53,7 +56,6 @@
 #include "third_party/blink/renderer/platform/heap/garbage_collected.h"
 #include "third_party/blink/renderer/platform/instrumentation/tracing/trace_event.h"
 #include "third_party/blink/renderer/platform/wtf/functional.h"
-#include "third_party/blink/renderer/platform/wtf/shared_buffer.h"
 
 namespace blink {
 
@@ -121,23 +123,32 @@ const char* RequestTypeToName(IDBRequest::TypeForMetrics type) {
 }
 
 void RecordHistogram(IDBRequest::TypeForMetrics type,
+                     bool success,
                      base::TimeDelta duration) {
   switch (type) {
     case IDBRequest::TypeForMetrics::kObjectStorePut:
-      UMA_HISTOGRAM_TIMES("WebCore.IndexedDB.RequestDuration.ObjectStorePut",
+      UMA_HISTOGRAM_TIMES("WebCore.IndexedDB.RequestDuration2.ObjectStorePut",
                           duration);
+      base::UmaHistogramBoolean(
+          "WebCore.IndexedDB.RequestDispatchOutcome.ObjectStorePut", success);
       break;
     case IDBRequest::TypeForMetrics::kObjectStoreAdd:
-      UMA_HISTOGRAM_TIMES("WebCore.IndexedDB.RequestDuration.ObjectStoreAdd",
+      UMA_HISTOGRAM_TIMES("WebCore.IndexedDB.RequestDuration2.ObjectStoreAdd",
                           duration);
+      base::UmaHistogramBoolean(
+          "WebCore.IndexedDB.RequestDispatchOutcome.ObjectStoreAdd", success);
       break;
     case IDBRequest::TypeForMetrics::kObjectStoreGet:
-      UMA_HISTOGRAM_TIMES("WebCore.IndexedDB.RequestDuration.ObjectStoreGet",
+      UMA_HISTOGRAM_TIMES("WebCore.IndexedDB.RequestDuration2.ObjectStoreGet",
                           duration);
+      base::UmaHistogramBoolean(
+          "WebCore.IndexedDB.RequestDispatchOutcome.ObjectStoreGet", success);
       break;
 
     case IDBRequest::TypeForMetrics::kFactoryOpen:
-      UMA_HISTOGRAM_TIMES("WebCore.IndexedDB.RequestDuration.Open", duration);
+      UMA_HISTOGRAM_TIMES("WebCore.IndexedDB.RequestDuration2.Open", duration);
+      base::UmaHistogramBoolean("WebCore.IndexedDB.RequestDispatchOutcome.Open",
+                                success);
       break;
 
     case IDBRequest::TypeForMetrics::kCursorAdvance:
@@ -176,11 +187,17 @@ IDBRequest::AsyncTraceState::AsyncTraceState(TypeForMetrics type)
                                     TRACE_ID_LOCAL(id_));
 }
 
+void IDBRequest::AsyncTraceState::WillDispatchResult(bool success) {
+  if (type_) {
+    RecordHistogram(*type_, success, base::TimeTicks::Now() - start_time_);
+    RecordAndReset();
+  }
+}
+
 void IDBRequest::AsyncTraceState::RecordAndReset() {
   if (type_) {
     TRACE_EVENT_NESTABLE_ASYNC_END0("IndexedDB", RequestTypeToName(*type_),
                                     TRACE_ID_LOCAL(id_));
-    RecordHistogram(*type_, base::TimeTicks::Now() - start_time_);
     type_.reset();
   }
 }
@@ -282,7 +299,7 @@ ScriptValue IDBRequest::result(ScriptState* script_state,
   if (!result_) {
     value = v8::Null(script_state->GetIsolate());
   } else {
-    value = result_->ToV8(script_state).ToLocalChecked();
+    value = result_->ToV8(script_state);
   }
   return ScriptValue(script_state->GetIsolate(), value);
 }
@@ -448,9 +465,9 @@ void IDBRequest::HandleResponseAdvanceCursor(
   DCHECK(transit_blob_handles_.empty());
 
   std::unique_ptr<IDBValue> value =
-      optional_value ? std::move(optional_value)
-                     : std::make_unique<IDBValue>(scoped_refptr<SharedBuffer>(),
-                                                  Vector<WebBlobInfo>());
+      optional_value
+          ? std::move(optional_value)
+          : std::make_unique<IDBValue>(Vector<char>(), Vector<WebBlobInfo>());
   value->SetIsolate(GetIsolate());
   transaction_->EnqueueResult(std::make_unique<IDBRequestQueueItem>(
       this, std::move(key), std::move(primary_key), std::move(value),
@@ -468,7 +485,8 @@ void IDBRequest::OnClear(bool success) {
 
 void IDBRequest::OnGetAll(
     bool key_only,
-    mojo::PendingReceiver<mojom::blink::IDBDatabaseGetAllResultSink> receiver) {
+    mojo::PendingAssociatedReceiver<mojom::blink::IDBDatabaseGetAllResultSink>
+        receiver) {
   probe::AsyncTask async_task(GetExecutionContext(), &async_task_context_,
                               "success");
   DCHECK(transit_blob_handles_.empty());
@@ -538,21 +556,18 @@ void IDBRequest::OnOpenCursor(
     return;
   }
 
-  std::unique_ptr<WebIDBCursor> cursor = std::make_unique<WebIDBCursor>(
-      std::move(result->get_value()->cursor), transaction_->Id(),
-      GetExecutionContext()->GetTaskRunner(TaskType::kDatabaseAccess));
   std::unique_ptr<IDBValue> value;
   if (result->get_value()->value) {
     value = std::move(*result->get_value()->value);
   } else {
-    value = std::make_unique<IDBValue>(scoped_refptr<SharedBuffer>(),
-                                       Vector<WebBlobInfo>());
+    value = std::make_unique<IDBValue>(Vector<char>(), Vector<WebBlobInfo>());
   }
 
   value->SetIsolate(GetIsolate());
 
   transaction_->EnqueueResult(std::make_unique<IDBRequestQueueItem>(
-      this, std::move(cursor), std::move(result->get_value()->key),
+      this, std::move(result->get_value()->cursor),
+      std::move(result->get_value()->key),
       std::move(result->get_value()->primary_key), std::move(value),
       WTF::BindOnce(&IDBTransaction::OnResultReady,
                     WrapPersistent(transaction_.Get()))));
@@ -639,10 +654,12 @@ void IDBRequest::HandleError(mojom::blink::IDBErrorPtr error) {
                     WrapPersistent(transaction_.Get()))));
 }
 
-void IDBRequest::SendResultCursor(std::unique_ptr<WebIDBCursor> backend,
-                                  std::unique_ptr<IDBKey> key,
-                                  std::unique_ptr<IDBKey> primary_key,
-                                  std::unique_ptr<IDBValue> value) {
+void IDBRequest::SendResultCursor(
+    mojo::PendingAssociatedRemote<mojom::blink::IDBCursor>
+        pending_remote_cursor,
+    std::unique_ptr<IDBKey> key,
+    std::unique_ptr<IDBKey> primary_key,
+    std::unique_ptr<IDBValue> value) {
   if (!CanStillSendResult()) {
     metrics_.RecordAndReset();
     return;
@@ -669,17 +686,17 @@ void IDBRequest::SendResultCursor(std::unique_ptr<WebIDBCursor> backend,
 
   switch (cursor_type_) {
     case indexed_db::kCursorKeyOnly:
-      cursor =
-          MakeGarbageCollected<IDBCursor>(std::move(backend), cursor_direction_,
-                                          this, source, transaction_.Get());
+      cursor = MakeGarbageCollected<IDBCursor>(std::move(pending_remote_cursor),
+                                               cursor_direction_, this, source,
+                                               transaction_.Get());
       break;
     case indexed_db::kCursorKeyAndValue:
       cursor = MakeGarbageCollected<IDBCursorWithValue>(
-          std::move(backend), cursor_direction_, this, source,
+          std::move(pending_remote_cursor), cursor_direction_, this, source,
           transaction_.Get());
       break;
     default:
-      NOTREACHED();
+      NOTREACHED_IN_MIGRATION();
   }
   SendResultCursorInternal(cursor, std::move(key), std::move(primary_key),
                            std::move(value));
@@ -690,14 +707,14 @@ static IDBObjectStore* EffectiveObjectStore(const IDBRequest::Source* source) {
   DCHECK(source);
   switch (source->GetContentType()) {
     case IDBRequest::Source::ContentType::kIDBCursor:
-      NOTREACHED();
+      NOTREACHED_IN_MIGRATION();
       return nullptr;
     case IDBRequest::Source::ContentType::kIDBIndex:
       return source->GetAsIDBIndex()->objectStore();
     case IDBRequest::Source::ContentType::kIDBObjectStore:
       return source->GetAsIDBObjectStore();
   }
-  NOTREACHED();
+  NOTREACHED_IN_MIGRATION();
   return nullptr;
 }
 #endif  // DCHECK_IS_ON()
@@ -730,8 +747,8 @@ void IDBRequest::SendResultValue(std::unique_ptr<IDBValue> value) {
   }
 
   if (pending_cursor_) {
-    // Value should be null, signifying the end of the cursor's range.
-    DCHECK(value->IsNull());
+    // Value should be empty, signifying the end of the cursor's range.
+    DCHECK(!value->DataSize());
     DCHECK(!value->BlobInfo().size());
     pending_cursor_->Close();
     pending_cursor_.Clear();
@@ -864,7 +881,8 @@ DispatchEventResult IDBRequest::DispatchEventInternal(Event& event) {
 
   // Now that the event dispatching has been triggered, record that the metric
   // has completed.
-  metrics_.RecordAndReset();
+  metrics_.WillDispatchResult(/*success=*/
+                              event.type() != event_type_names::kError);
 
   DispatchEventResult dispatch_result =
       IDBEventDispatcher::Dispatch(event, targets);

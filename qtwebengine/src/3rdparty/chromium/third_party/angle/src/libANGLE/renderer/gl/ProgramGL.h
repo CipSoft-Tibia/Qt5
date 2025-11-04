@@ -58,7 +58,7 @@ class ProgramGL : public ProgramImpl
 
     ANGLE_INLINE GLuint getProgramID() const { return mProgramID; }
 
-    angle::Result syncState(const gl::Context *context) override;
+    void onUniformBlockBinding(gl::UniformBlockIndex uniformBlockIndex) override;
 
     const ProgramExecutableGL *getExecutable() const
     {
@@ -76,12 +76,10 @@ class ProgramGL : public ProgramImpl
     friend class LinkTaskGL;
     friend class PostLinkGL;
 
-    void linkJobImpl(const gl::Extensions &extensions);
+    angle::Result linkJobImpl(const gl::Extensions &extensions);
     angle::Result postLinkJobImpl(const gl::ProgramLinkedResources &resources);
 
     bool checkLinkStatus();
-
-    void reapplyUBOBindingsIfNeeded(const gl::Context *context);
 
     bool getUniformBlockSize(const std::string &blockName,
                              const std::string &blockMappedName,
@@ -98,7 +96,6 @@ class ProgramGL : public ProgramImpl
     void getAtomicCounterBufferSizeMap(std::map<int, unsigned int> *sizeMapOut) const;
 
     void linkResources(const gl::ProgramLinkedResources &resources);
-    void setUniformBlockBinding(GLuint uniformBlockIndex, GLuint uniformBlockBinding);
 
     const FunctionsGL *mFunctions;
     const angle::FeaturesGL &mFeatures;

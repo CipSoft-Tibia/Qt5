@@ -27,7 +27,6 @@ class GL_EXPORT GLFenceWin : public GLFence {
              gfx::GpuFenceHandle gpu_fence_handle);
   ~GLFenceWin() override;
 
-  TransferableFence Transfer() override;
   bool HasCompleted() override;
   void ClientWait() override;
   void ServerWait() override;

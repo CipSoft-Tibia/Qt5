@@ -269,7 +269,10 @@ qt_add_lrelease(TS_FILES file1.ts [file2.ts ...]
                 [LRELEASE_TARGET target-name]
                 [EXCLUDE_FROM_ALL]
                 [NO_GLOBAL_TARGET]
+                [QM_OUTPUT_DIRECTORY directory]             # since 6.9
                 [QM_FILES_OUTPUT_VARIABLE variable-name]
+                [MERGE_QT_TRANSLATIONS]
+                [QT_TRANSLATION_CATALOGS catalog1 [catalog2 ...]]
                 [OPTIONS ...])
 \endcode
 
@@ -310,9 +313,26 @@ You can set additional \c{OPTIONS} that should be passed when \c{lrelease} is
 invoked. You can find possible options in the \l{lrelease}{lrelease
 documentation}.
 
+\section1 Location of generated .qm files
+
 By default, the \c{.qm} files will be placed in the current build directory
-(\c{CMAKE_CURRENT_BINARY_DIR}). To change this, you can set \c{OUTPUT_LOCATION}
-as a property of the source \c{.ts} file before calling \c qt_add_lrelease.
+(\c{CMAKE_CURRENT_BINARY_DIR}). Since Qt 6.9 you can use the \c
+QM_OUTPUT_DIRECTORY argument to generate the \c{.qm} files in a different
+directory. Relative paths are considered to be below \c
+CMAKE_CURRENT_BINARY_DIR.
+
+For example, with the following code, the \c{.qm} files are generated
+in a \c{translations} directory below the current build directory.
+
+\snippet cmake-macros/examples.cmake set_qm_output_directory_with_qt_add_lrelease
+
+For more fine-grained control, you can specify the output directory of
+individual \c{.qm} files by setting the source file property \c{OUTPUT_LOCATION}
+on the corresponding \c{.ts} file. This must happen before calling \c
+qt_add_lrelease.
+
+The \c OUTPUT_LOCATION source file property overrides the directory passed via
+\c QM_OUTPUT_DIRECTORY.
 
 For example, with the following code, the \c{.qm} files are generated
 in a \c{translations} directory below the current build directory.
@@ -344,6 +364,43 @@ Pass \c{NO_GLOBAL_TARGET} to \c{qt_add_lrelease} to prevent this behavior.
 
 The name of this target can be overridden by setting the variable
 \c{QT_GLOBAL_LRELEASE_TARGET} before calling \c{qt_add_lrelease}.
+
+\section1 Merging Qt-provided translations
+
+Since Qt 6.9, you can merge the translations that are provided by Qt into
+application-specific \c{.qm} files. To do that, pass the \c
+MERGE_QT_TRANSLATIONS option to \c{qt_add_translations}. This will determine the
+Qt translation catalogs that belong to the modules used by your project and
+merge them into the \c{.qm} files that are produced by \c{lrelease}.
+
+The Qt translation catalogs are determined by the \c find_package calls in the
+scope of your \c{CMakeLists.txt} where \c qt_add_translations is called. For
+example, the following sequence will merge the catalogs \c qtbase and
+\c{qtmultimedia} into your \c{.qm} files:
+
+\badcode
+find_package(Qt6 COMPONENTS MultimediaWidgets)
+...
+qt_add_lrelease(
+    TS_FILES myapp_de.ts myapp_fi.ts
+    MERGE_QT_TRANSLATIONS
+)
+\endcode
+
+To explicitly specify the catalogs, use the \c QT_TRANSLATION_CATALOGS argument:
+
+\badcode
+qt_add_lrelease(
+    TS_FILES myapp_de.ts myapp_fi.ts
+    MERGE_QT_TRANSLATIONS
+    QT_TRANSLATION_CATALOGS qtbase qtmultimedia
+)
+\endcode
+
+If your project supports a language for which Qt doesn't offer its own
+translation, a warning will be issued at configure time. You can suppress this
+warning by setting the CMake variable \c QT_NO_MISSING_CATALOG_LANGUAGE_WARNING
+to \c{ON}.
 
 \section1 Deprecated Command Signature
 
@@ -399,20 +456,23 @@ qt_add_translations([target]
                     [TARGETS target1 [target2...]]
                     [SOURCE_TARGETS target1 [target2...]]
                     [TS_FILE_BASE name]
-                    [TS_FILE_DIR directory]
                     [TS_FILES file1.ts [file2.ts ...]]
                     [PLURALS_TS_FILE file.ts]
                     [NO_GENERATE_PLURALS_TS_FILE]
                     [RESOURCE_PREFIX prefix]
                     [OUTPUT_TARGETS variable-name]
                     [TS_FILES_OUTPUT_VARIABLE variable-name]    # since 6.8
+                    [TS_OUTPUT_DIRECTORY directory]             # since 6.9
                     [QM_FILES_OUTPUT_VARIABLE variable-name]
+                    [QM_OUTPUT_DIRECTORY directory]             # since 6.9
                     [SOURCES source1.cpp [sources2.cpp ...]]
                     [INCLUDE_DIRECTORIES directory1 [directory2 ...]]
                     [LUPDATE_TARGET target-name]
                     [LUPDATE_OPTIONS ...]
                     [LRELEASE_TARGET target-name]
                     [LRELEASE_OPTIONS ...]
+                    [MERGE_QT_TRANSLATIONS]
+                    [QT_TRANSLATION_CATALOGS catalog1 [catalog2 ...]]
                     [IMMEDIATE_CALL])
 \endcode
 
@@ -481,17 +541,21 @@ This will create the files \c{myproject_de.ts} and \c{myproject_fr.ts} in the
 project's source directory.
 
 By default, the \c{.ts} files are created in \c{CMAKE_CURRENT_SOURCE_DIR}. You
-can change the location by passing a different directory with the \c TS_FILE_DIR
-argument.
+can change the location by passing a different directory with the \c
+TS_OUTPUT_DIRECTORY argument.
 
 By default, the \c{.ts} file names are constructed from \c{PROJECT_NAME}. You
 can specify a different base name with the \c{TS_FILE_BASE} argument.
 
-\note \c TS_FILE_DIR and \c TS_FILE_BASE have no effect for explicitly specified
-\c{.ts} files.
+\note \c TS_OUTPUT_DIRECTORY and \c TS_FILE_BASE have no effect for explicitly
+specified \c{.ts} files.
 
 Since Qt 6.8, you can specify the \c TS_FILES_OUTPUT_VARIABLE argument to store
 the automatically determined \c{.ts} file paths in a variable.
+
+Before Qt 6.9, the argument \c TS_OUTPUT_DIRECTORY was called \c TS_FILE_DIR.
+That name is still an alias for \c TS_OUTPUT_DIRECTORY to keep older project
+files working.
 
 \include cmake-macros.qdoc plurals-ts-file
 
@@ -542,9 +606,26 @@ the \l{lupdate options} and \l{lrelease options}.
 For example, to use \l{Text ID based translations}{ID based translations}, you
 need to pass \c{LRELEASE_OPTIONS -idbased} to \c qt_add_translations.
 
+\section1 Location of generated .qm files
+
 By default, the \c{.qm} files will be placed in the current build directory
-(\c{CMAKE_CURRENT_BINARY_DIR}). To change this, you can set \c{OUTPUT_LOCATION}
-as a property of the source \c{.ts} file before calling \c qt_add_translations.
+(\c{CMAKE_CURRENT_BINARY_DIR}). Since Qt 6.9 you can use the \c
+QM_OUTPUT_DIRECTORY argument to generate the \c{.qm} files in a different
+directory. Relative paths are considered to be below \c
+CMAKE_CURRENT_BINARY_DIR.
+
+For example, with the following code, the \c{.qm} files are generated
+in a \c{translations} directory below the current build directory.
+
+\snippet cmake-macros/examples.cmake set_qm_output_directory_with_qt_add_translations
+
+For more fine-grained control, you can specify the output directory of
+individual \c{.qm} files by setting the source file property \c{OUTPUT_LOCATION}
+on the corresponding \c{.ts} file. This must happen before calling \c
+qt_add_translations.
+
+The \c OUTPUT_LOCATION source file property overrides the directory passed via
+\c QM_OUTPUT_DIRECTORY.
 
 For example, with the following code, the \c{.qm} files are generated
 in a \c{translations} directory below the current build directory.
@@ -578,6 +659,43 @@ files.
 
 Since Qt 6.7, the target in the first argument is not used for source extraction
 anymore.
+
+\section1 Merging Qt-provided translations
+
+Since Qt 6.9, you can merge the translations that are provided by Qt into
+application-specific \c{.qm} files. To do that, pass the \c
+MERGE_QT_TRANSLATIONS option to \c{qt_add_translations}. This will determine the
+Qt translation catalogs that belong to the modules used by your project and
+merge them into the \c{.qm} files that are produced by \c{lrelease}.
+
+The Qt translation catalogs are determined by the \c find_package calls in the
+scope of your \c{CMakeLists.txt} where \c qt_add_translations is called. For
+example, the following sequence will merge the catalogs \c qtbase and
+\c{qtmultimedia} into your \c{.qm} files:
+
+\badcode
+find_package(Qt6 COMPONENTS MultimediaWidgets)
+...
+qt_add_translations(my_app MERGE_QT_TRANSLATIONS)
+\endcode
+
+To explicitly specify the catalogs, use the \c QT_TRANSLATION_CATALOGS argument:
+
+\badcode
+qt_add_translations(my_app
+    MERGE_QT_TRANSLATIONS
+    QT_TRANSLATION_CATALOGS qtbase qtmultimedia
+)
+\endcode
+
+If your project supports a language for which Qt doesn't offer its own
+translation, a warning will be issued at configure time. You can suppress this
+warning by setting the CMake variable \c QT_NO_MISSING_CATALOG_LANGUAGE_WARNING
+to \c{ON}.
+
+If the automatic determination of \c{.ts} file names is not used then you must
+ensure that the \l QT_I18N_TRANSLATED_LANGUAGES source file property is set on
+each of the \c{.ts} files.
 
 \section1 Examples
 
@@ -670,7 +788,7 @@ qt_standard_project_setup(I18N_TRANSLATED_LANGUAGES de fr)
 ...
 qt_add_translations(frogger
     TS_FILE_BASE froggo
-    TS_FILE_DIR translations
+    TS_OUTPUT_DIRECTORY translations
 )
 \endcode
 

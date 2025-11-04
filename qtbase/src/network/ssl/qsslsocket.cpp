@@ -1,6 +1,7 @@
 // Copyright (C) 2021 The Qt Company Ltd.
 // Copyright (C) 2014 BlackBerry Limited. All rights reserved.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 
 //#define QSSLSOCKET_DEBUG
@@ -2962,7 +2963,8 @@ QList<QByteArray> QSslSocketPrivate::unixRootCertDirectories()
     static const QByteArray dirs[] = {
         ba("/etc/ssl/certs/"), // (K)ubuntu, OpenSUSE, Mandriva ...
         ba("/usr/lib/ssl/certs/"), // Gentoo, Mandrake
-        ba("/usr/share/ssl/"), // Centos, Redhat, SuSE
+        ba("/usr/share/ssl/"), // Red Hat pre-2004, SuSE
+        ba("/etc/pki/ca-trust/extracted/pem/directory-hash/"), // Red Hat 2021+
         ba("/usr/local/ssl/"), // Normal OpenSSL Tarball
         ba("/var/ssl/certs/"), // AIX
         ba("/usr/local/ssl/certs/"), // Solaris

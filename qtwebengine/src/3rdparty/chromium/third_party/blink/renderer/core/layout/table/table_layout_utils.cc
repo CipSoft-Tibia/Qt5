@@ -2,6 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#ifdef UNSAFE_BUFFERS_BUILD
+// TODO(crbug.com/351564777): Remove this and convert code to safer constructs.
+#pragma allow_unsafe_buffers
+#endif
+
 #include "third_party/blink/renderer/core/layout/table/table_layout_utils.h"
 
 #include "third_party/blink/renderer/core/layout/block_layout_algorithm_utils.h"
@@ -192,7 +197,7 @@ TableTypes::Row ComputeMinimumRowBlockSize(
   // will be cached. Needs to be fixed in NG framework.
 
   LayoutUnit max_cell_block_size;
-  absl::optional<float> row_percent;
+  std::optional<float> row_percent;
   bool is_constrained = false;
   bool has_rowspan_start = false;
   wtf_size_t start_cell_index = cell_block_constraints->size();
@@ -224,7 +229,7 @@ TableTypes::Row ComputeMinimumRowBlockSize(
     SetupTableCellConstraintSpaceBuilder(
         table_writing_direction, cell, cell_borders, column_locations,
         /* cell_block_size */ kIndefiniteSize, cell_percentage_inline_size,
-        /* alignment_baseline */ absl::nullopt,
+        /* alignment_baseline */ std::nullopt,
         colspan_cell_tabulator->CurrentColumn(),
         /* is_initial_block_size_indefinite */ true,
         is_table_block_size_specified, has_collapsed_borders,
@@ -263,8 +268,8 @@ TableTypes::Row ComputeMinimumRowBlockSize(
         has_descendant_that_depends_on_percentage_block_size);
 
     // Compute cell's css block size.
-    absl::optional<LayoutUnit> cell_css_block_size;
-    absl::optional<float> cell_css_percent;
+    std::optional<LayoutUnit> cell_css_block_size;
+    std::optional<float> cell_css_percent;
 
     // TODO(1105272) Handle cell_specified_block_length.IsCalculated()
     if (cell_specified_block_length.IsPercent()) {
@@ -319,7 +324,7 @@ TableTypes::Row ComputeMinimumRowBlockSize(
 
   const LayoutUnit row_block_size =
       row_baseline_tabulator.ComputeRowBlockSize(max_cell_block_size);
-  absl::optional<LayoutUnit> row_baseline;
+  std::optional<LayoutUnit> row_baseline;
   if (!row_baseline_tabulator.BaselineDependsOnPercentageBlockDescendant())
     row_baseline = row_baseline_tabulator.ComputeBaseline(row_block_size);
 
@@ -332,7 +337,7 @@ TableTypes::Row ComputeMinimumRowBlockSize(
       is_constrained,
       has_rowspan_start,
       /* is_collapsed */ is_section_collapsed ||
-          row.Style().Visibility() == EVisibility::kCollapse};
+          row.Style().UsedVisibility() == EVisibility::kCollapse};
 }
 
 // Computes inline constraints for COLGROUP/COLs.
@@ -347,7 +352,7 @@ class ColumnConstraintsBuilder {
         TableTypes::CreateColumn(column.Style(),
                                  !is_fixed_layout_ && colgroup_constraint_
                                      ? colgroup_constraint_->max_inline_size
-                                     : absl::nullopt,
+                                     : std::nullopt,
                                  is_fixed_layout_);
     for (wtf_size_t i = 0; i < span; ++i)
       column_constraints_->data.push_back(col_constraint);
@@ -357,7 +362,7 @@ class ColumnConstraintsBuilder {
   void EnterColgroup(const LayoutInputNode& colgroup,
                      wtf_size_t start_column_index) {
     colgroup_constraint_ = TableTypes::CreateColumn(
-        colgroup.Style(), absl::nullopt, is_fixed_layout_);
+        colgroup.Style(), std::nullopt, is_fixed_layout_);
   }
 
   void LeaveColgroup(const LayoutInputNode& colgroup,
@@ -382,7 +387,7 @@ class ColumnConstraintsBuilder {
  private:
   TableTypes::Columns* column_constraints_;
   bool is_fixed_layout_;
-  absl::optional<TableTypes::Column> colgroup_constraint_;
+  std::optional<TableTypes::Column> colgroup_constraint_;
 };
 
 // Computes constraints specified on column elements.
@@ -436,7 +441,7 @@ void ComputeSectionInlineConstraints(
                 cell, table_writing_direction, is_fixed_layout, cell_border,
                 cell_padding);
         if (colspan == 1) {
-          absl::optional<TableTypes::CellInlineConstraint>& constraint =
+          std::optional<TableTypes::CellInlineConstraint>& constraint =
               (*cell_inline_constraints)[colspan_cell_tabulator
                                              .CurrentColumn()];
           // Standard cell, update final column inline size values.
@@ -545,7 +550,7 @@ Vector<LayoutUnit> DistributeInlineSizeToComputedInlineSizeAuto(
   switch (starting_guess) {
     case kMinGuess: {
       // All columns are their min inline-size.
-      LayoutUnit* computed_size = computed_sizes.begin();
+      LayoutUnit* computed_size = computed_sizes.data();
       for (const TableTypes::Column* column = start_column;
            column != end_column; ++column, ++computed_size) {
         if (column->is_mergeable) {
@@ -562,7 +567,7 @@ Vector<LayoutUnit> DistributeInlineSizeToComputedInlineSizeAuto(
       LayoutUnit distributable_inline_size =
           target_inline_size - guess_sizes[kMinGuess];
       LayoutUnit remaining_deficit = distributable_inline_size;
-      LayoutUnit* computed_size = computed_sizes.begin();
+      LayoutUnit* computed_size = computed_sizes.data();
       LayoutUnit* last_computed_size = nullptr;
       for (const TableTypes::Column* column = start_column;
            column != end_column; ++column, ++computed_size) {
@@ -602,7 +607,7 @@ Vector<LayoutUnit> DistributeInlineSizeToComputedInlineSizeAuto(
           target_inline_size - guess_sizes[kPercentageGuess];
       LayoutUnit remaining_deficit = distributable_inline_size;
       LayoutUnit* last_computed_size = nullptr;
-      LayoutUnit* computed_size = computed_sizes.begin();
+      LayoutUnit* computed_size = computed_sizes.data();
       for (const TableTypes::Column* column = start_column;
            column != end_column; ++column, ++computed_size) {
         if (column->is_mergeable) {
@@ -648,7 +653,7 @@ Vector<LayoutUnit> DistributeInlineSizeToComputedInlineSizeAuto(
       LayoutUnit remaining_deficit =
           is_exact_match ? LayoutUnit() : distributable_inline_size;
       LayoutUnit* last_computed_size = nullptr;
-      LayoutUnit* computed_size = computed_sizes.begin();
+      LayoutUnit* computed_size = computed_sizes.data();
       for (const TableTypes::Column* column = start_column;
            column != end_column; ++column, ++computed_size) {
         if (column->is_mergeable) {
@@ -685,7 +690,7 @@ Vector<LayoutUnit> DistributeInlineSizeToComputedInlineSizeAuto(
         // Grow auto columns if available.
         LayoutUnit remaining_deficit = distributable_inline_size;
         LayoutUnit* last_computed_size = nullptr;
-        LayoutUnit* computed_size = computed_sizes.begin();
+        LayoutUnit* computed_size = computed_sizes.data();
         for (const TableTypes::Column* column = start_column;
              column != end_column; ++column, ++computed_size) {
           if (column->is_mergeable) {
@@ -717,7 +722,7 @@ Vector<LayoutUnit> DistributeInlineSizeToComputedInlineSizeAuto(
         // Grow fixed columns if available.
         LayoutUnit remaining_deficit = distributable_inline_size;
         LayoutUnit* last_computed_size = nullptr;
-        LayoutUnit* computed_size = computed_sizes.begin();
+        LayoutUnit* computed_size = computed_sizes.data();
         for (const TableTypes::Column* column = start_column;
              column != end_column; ++column, ++computed_size) {
           if (column->is_mergeable) {
@@ -738,7 +743,7 @@ Vector<LayoutUnit> DistributeInlineSizeToComputedInlineSizeAuto(
             remaining_deficit -= delta;
             *computed_size = *column->max_inline_size + delta;
           } else {
-            NOTREACHED();
+            NOTREACHED_IN_MIGRATION();
           }
         }
         if (remaining_deficit != LayoutUnit()) {
@@ -751,7 +756,7 @@ Vector<LayoutUnit> DistributeInlineSizeToComputedInlineSizeAuto(
         // proportional to column percent.
         LayoutUnit remaining_deficit = distributable_inline_size;
         LayoutUnit* last_computed_size = nullptr;
-        LayoutUnit* computed_size = computed_sizes.begin();
+        LayoutUnit* computed_size = computed_sizes.data();
         for (const TableTypes::Column* column = start_column;
              column != end_column; ++column, ++computed_size) {
           if (column->is_mergeable || !column->percent) {
@@ -841,8 +846,8 @@ Vector<LayoutUnit> SynchronizeAssignableTableInlineSizeAndColumnsFixed(
         scale_available = false;
       }
     }
-    LayoutUnit* column_size = column_sizes.begin();
-    for (const TableTypes::Column* column = column_constraints.data.begin();
+    LayoutUnit* column_size = column_sizes.data();
+    for (auto column = column_constraints.data.begin();
          column != column_constraints.data.end(); ++column, ++column_size) {
       if (!TreatAsFixed(*column)) {
         continue;
@@ -880,8 +885,8 @@ Vector<LayoutUnit> SynchronizeAssignableTableInlineSizeAndColumnsFixed(
         scale_available = false;
       }
     }
-    LayoutUnit* column_size = column_sizes.begin();
-    for (const TableTypes::Column* column = column_constraints.data.begin();
+    LayoutUnit* column_size = column_sizes.data();
+    for (auto column = column_constraints.data.begin();
          column != column_constraints.data.end(); ++column, ++column_size) {
       if (!column->percent) {
         continue;
@@ -901,12 +906,12 @@ Vector<LayoutUnit> SynchronizeAssignableTableInlineSizeAndColumnsFixed(
   // Distribute to auto, and zero inline size columns.
   LayoutUnit distributing_inline_size =
       target_inline_size - assigned_inline_size;
-  LayoutUnit* column_size = column_sizes.begin();
+  LayoutUnit* column_size = column_sizes.data();
 
   bool distribute_zero_inline_size =
       zero_inline_size_constrained_colums_count == all_columns_count;
 
-  for (const TableTypes::Column* column = column_constraints.data.begin();
+  for (auto column = column_constraints.data.begin();
        column != column_constraints.data.end(); ++column, ++column_size) {
     if (column->percent || TreatAsFixed(*column)) {
       continue;
@@ -981,7 +986,7 @@ void DistributeColspanCellToColumnsFixed(
                                        static_cast<float>(effective_span));
   LayoutUnit new_max_size = LayoutUnit(colspan_cell_max_inline_size /
                                        static_cast<float>(effective_span));
-  absl::optional<float> new_percent;
+  std::optional<float> new_percent;
   if (colspan_cell.cell_inline_constraint.percent) {
     new_percent = *colspan_cell.cell_inline_constraint.percent / effective_span;
   }
@@ -1054,7 +1059,7 @@ void DistributeColspanCellToColumnsAuto(
       (colspan_cell.cell_inline_constraint.max_inline_size -
        total_inner_border_spacing)
           .ClampNegativeToZero();
-  absl::optional<float> colspan_cell_percent =
+  std::optional<float> colspan_cell_percent =
       colspan_cell.cell_inline_constraint.percent;
 
   if (colspan_cell_percent.has_value()) {
@@ -1124,7 +1129,7 @@ void DistributeColspanCellToColumnsAuto(
   Vector<LayoutUnit> computed_sizes =
       DistributeInlineSizeToComputedInlineSizeAuto(
           colspan_cell_min_inline_size, start_column, end_column, true);
-  LayoutUnit* computed_size = computed_sizes.begin();
+  LayoutUnit* computed_size = computed_sizes.data();
   for (TableTypes::Column* column = start_column; column != end_column;
        ++column, ++computed_size) {
     column->min_inline_size =
@@ -1134,7 +1139,7 @@ void DistributeColspanCellToColumnsAuto(
       colspan_cell_max_inline_size, start_column,
       end_column, /* treat_target_size_as_constrained */
       colspan_cell.cell_inline_constraint.is_constrained);
-  computed_size = computed_sizes.begin();
+  computed_size = computed_sizes.data();
   for (TableTypes::Column* column = start_column; column != end_column;
        ++column, ++computed_size) {
     column->max_inline_size =
@@ -1390,7 +1395,7 @@ void SetupTableCellConstraintSpaceBuilder(
     const Vector<TableColumnLocation>& column_locations,
     LayoutUnit cell_block_size,
     LayoutUnit percentage_inline_size,
-    absl::optional<LayoutUnit> alignment_baseline,
+    std::optional<LayoutUnit> alignment_baseline,
     wtf_size_t start_column,
     bool is_initial_block_size_indefinite,
     bool is_table_block_size_specified,
@@ -1440,7 +1445,7 @@ void SetupTableCellConstraintSpaceBuilder(
   builder->SetTableCellColumnIndex(start_column);
   builder->SetIsRestrictedBlockSizeTableCell(
       is_table_block_size_specified || cell_style.LogicalHeight().IsFixed());
-  builder->SetIsTableCellHiddenForPaint(is_hidden_for_paint);
+  builder->SetIsHiddenForPaint(is_hidden_for_paint);
   builder->SetIsTableCellWithCollapsedBorders(has_collapsed_borders);
   builder->SetHideTableCellIfEmpty(
       !has_collapsed_borders && cell_style.EmptyCells() == EEmptyCells::kHide);
@@ -1522,7 +1527,7 @@ void ComputeSectionMinimumRowBlockSizes(
   // In rare circumstances we need to know the total row count before we've
   // visited all them (for computing effective rowspans). We don't want to
   // perform this unnecessarily.
-  absl::optional<wtf_size_t> row_count;
+  std::optional<wtf_size_t> row_count;
   auto RowCountFunc = [&]() -> wtf_size_t {
     if (!row_count) {
       row_count = 0;
@@ -1551,7 +1556,7 @@ void ComputeSectionMinimumRowBlockSizes(
         RowCountFunc, row, cell_percentage_inline_size,
         is_table_block_size_specified, column_locations, table_borders,
         start_row, current_row++, section_index,
-        /* is_section_collapsed */ section.Style().Visibility() ==
+        /* is_section_collapsed */ section.Style().UsedVisibility() ==
             EVisibility::kCollapse,
         cell_block_constraints, &rowspan_cells, &colspan_cell_tabulator);
     if (row_constraint.percent.has_value()) {
@@ -1602,11 +1607,14 @@ void FinalizeTableCellLayout(LayoutUnit unconstrained_intrinsic_block_size,
   const bool has_inflow_children = !builder->Children().empty();
 
   // Hide table-cells if:
-  //  - They are within a collapsed column(s).
+  //  - They are within a collapsed column(s). These are already marked as
+  //    hidden for paint in the constraint space, and don't need to be marked
+  //    again in the fragment builder.
   //  - They have "empty-cells: hide", non-collapsed borders, and no children.
-  builder->SetIsHiddenForPaint(
-      space.IsTableCellHiddenForPaint() ||
-      (space.HideTableCellIfEmpty() && !has_inflow_children));
+  if (!space.IsHiddenForPaint()) {
+    builder->SetIsHiddenForPaint(space.HideTableCellIfEmpty() &&
+                                 !has_inflow_children);
+  }
   builder->SetHasCollapsedBorders(space.IsTableCellWithCollapsedBorders());
   builder->SetIsTablePart();
   builder->SetTableCellColumnIndex(space.TableCellColumnIndex());

@@ -181,7 +181,7 @@ void QmlTypesCreator::writeType(QAnyStringView type)
     if (resolved.isPointer)
         m_qml.writeBooleanBinding(S_IS_POINTER, true);
     if (resolved.isConstant)
-        m_qml.writeBooleanBinding(S_IS_CONSTANT, true);
+        m_qml.writeBooleanBinding(S_IS_TYPE_CONSTANT, true);
 }
 
 void QmlTypesCreator::writeProperties(const Property::Container &properties)
@@ -227,7 +227,7 @@ void QmlTypesCreator::writeProperties(const Property::Container &properties)
             m_qml.writeBooleanBinding(S_IS_FINAL, true);
 
         if (obj.isConstant)
-            m_qml.writeBooleanBinding(S_IS_CONSTANT, true);
+            m_qml.writeBooleanBinding(S_IS_PROPERTY_CONSTANT, true);
 
         if (obj.isRequired)
             m_qml.writeBooleanBinding(S_IS_REQUIRED, true);
@@ -256,6 +256,8 @@ void QmlTypesCreator::writeMethods(const Method::Container &methods, QLatin1Stri
             m_qml.writeBooleanBinding(S_IS_CONSTRUCTOR, true);
         if (obj.isJavaScriptFunction)
             m_qml.writeBooleanBinding(S_IS_JAVASCRIPT_FUNCTION, true);
+        if (obj.isConst)
+            m_qml.writeBooleanBinding(S_IS_METHOD_CONSTANT, true);
 
         const Argument::Container &arguments = obj.arguments;
         for (qsizetype i = 0, end = arguments.size(); i != end; ++i) {
@@ -288,47 +290,10 @@ void QmlTypesCreator::writeEnums(const Enum::Container &enums)
     }
 }
 
-template<typename Member>
-bool isAllowedInMajorVersion(const Member &memberObject, QTypeRevision maxMajorVersion)
-{
-    const QTypeRevision memberRevision = memberObject.revision;
-    return !memberRevision.hasMajorVersion()
-            || memberRevision.majorVersion() <= maxMajorVersion.majorVersion();
-}
-
-template<typename Members, typename Postprocess>
-Members members(const Members &candidates, QTypeRevision maxMajorVersion, Postprocess &&process)
-{
-    Members classDefMembers;
-
-    for (const auto &member : candidates) {
-        if (isAllowedInMajorVersion(member, maxMajorVersion))
-            classDefMembers.push_back(process(member));
-    }
-
-    return classDefMembers;
-}
-
-template<typename Members>
-Members members(const Members &candidates, QTypeRevision maxMajorVersion)
-{
-    return members(candidates, maxMajorVersion, [](const auto &member) { return member; });
-}
-
-template<typename Members>
-Members constructors(const Members &candidates, QTypeRevision maxMajorVersion)
-{
-    return members(candidates, maxMajorVersion, [](const auto &member) {
-        auto ctor = member;
-        ctor.isConstructor = true;
-        return ctor;
-    });
-}
-
 void QmlTypesCreator::writeRootMethods(const MetaType &classDef)
 {
     // Hide destroyed() signals
-    Method::Container componentSignals = members(classDef.sigs(), m_version);
+    Method::Container componentSignals = classDef.sigs();
     for (auto it = componentSignals.begin(); it != componentSignals.end();) {
         if (it->name == "destroyed"_L1)
             it = componentSignals.erase(it);
@@ -338,7 +303,7 @@ void QmlTypesCreator::writeRootMethods(const MetaType &classDef)
     writeMethods(componentSignals, S_SIGNAL);
 
     // Hide deleteLater() methods
-    Method::Container componentMethods = members(classDef.methods(), m_version);
+    Method::Container componentMethods = classDef.methods();
     for (auto it = componentMethods.begin(); it != componentMethods.end();) {
         if (it->name == "deleteLater"_L1)
             it = componentMethods.erase(it);
@@ -352,6 +317,7 @@ void QmlTypesCreator::writeRootMethods(const MetaType &classDef)
     toStringMethod.name = "toString"_L1;
     toStringMethod.access = Access::Public;
     toStringMethod.returnType = "QString"_L1;
+    toStringMethod.isConst = true;
     componentMethods.push_back(std::move(toStringMethod));
 
     // Add destroy(int)
@@ -384,16 +350,16 @@ void QmlTypesCreator::writeComponent(const QmlTypesClassDescription &collector)
 
     if (const MetaType &classDef = collector.resolvedClass; !classDef.isEmpty()) {
         writeEnums(classDef.enums());
-        writeProperties(members(classDef.properties(), m_version));
+        writeProperties(classDef.properties());
 
         if (collector.isRootClass) {
             writeRootMethods(classDef);
         } else {
-            writeMethods(members(classDef.sigs(), m_version), S_SIGNAL);
-            writeMethods(members(classDef.methods(), m_version), S_METHOD);
+            writeMethods(classDef.sigs(), S_SIGNAL);
+            writeMethods(classDef.methods(), S_METHOD);
         }
 
-        writeMethods(constructors(classDef.constructors(), m_version), S_METHOD);
+        writeMethods(classDef.constructors(), S_METHOD);
     }
     m_qml.writeEndObject();
 }
@@ -441,8 +407,11 @@ bool QmlTypesCreator::generate(const QString &outFileName)
     m_qml.writeEndObject();
 
     QSaveFile file(outFileName);
-    if (!file.open(QIODevice::WriteOnly))
+    if (!file.open(QIODevice::WriteOnly)) {
+        qCritical().nospace() << "Error: Failed to open " << file.fileName()
+                              << " for writing: " << file.errorString();
         return false;
+    }
 
     if (file.write(m_output) != m_output.size())
         return false;

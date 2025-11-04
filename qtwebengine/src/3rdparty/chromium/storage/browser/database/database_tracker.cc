@@ -22,6 +22,7 @@
 #include "base/location.h"
 #include "base/memory/scoped_refptr.h"
 #include "base/metrics/user_metrics.h"
+#include "base/not_fatal_until.h"
 #include "base/observer_list.h"
 #include "base/strings/string_number_conversions.h"
 #include "base/strings/utf_string_conversions.h"
@@ -104,7 +105,6 @@ DatabaseTracker::DatabaseTracker(
                   ? profile_path_.Append(kIncognitoDatabaseDirectoryName)
                   : profile_path_.Append(kDatabaseDirectoryName)),
       db_(std::make_unique<sql::Database>(sql::DatabaseOptions{
-          .exclusive_locking = true,
           .page_size = 4096,
           .cache_size = 500,
       })),
@@ -884,8 +884,9 @@ void DatabaseTracker::CloseIncognitoFileHandle(
     const std::u16string& vfs_file_name) {
   DCHECK(task_runner_->RunsTasksInCurrentSequence());
   DCHECK(is_incognito_);
-  DCHECK(incognito_file_handles_.find(vfs_file_name) !=
-         incognito_file_handles_.end());
+  CHECK(incognito_file_handles_.find(vfs_file_name) !=
+            incognito_file_handles_.end(),
+        base::NotFatalUntil::M130);
 
   auto it = incognito_file_handles_.find(vfs_file_name);
   if (it != incognito_file_handles_.end()) {
@@ -917,7 +918,7 @@ void DatabaseTracker::DeleteIncognitoDBDirectory() {
 void DatabaseTracker::Shutdown() {
   DCHECK(task_runner_->RunsTasksInCurrentSequence());
   if (shutting_down_) {
-    NOTREACHED();
+    NOTREACHED_IN_MIGRATION();
     return;
   }
   shutting_down_ = true;

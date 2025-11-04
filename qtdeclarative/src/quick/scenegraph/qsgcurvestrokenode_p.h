@@ -50,12 +50,18 @@ public:
         return m_strokeWidth;
     }
 
+    enum class TriangleFlag {
+        Line = 1 << 0,
+    };
+    Q_DECLARE_FLAGS(TriangleFlags, TriangleFlag)
+
     void appendTriangle(const std::array<QVector2D, 3> &v, // triangle vertices
                         const std::array<QVector2D, 3> &p, // curve points
                         const std::array<QVector2D, 3> &n); // vertex normals
     void appendTriangle(const std::array<QVector2D, 3> &v, // triangle vertices
                         const std::array<QVector2D, 2> &p, // line points
-                        const std::array<QVector2D, 3> &n); // vertex normals
+                        const std::array<QVector2D, 3> &n, // vertex normals
+                        QSGCurveStrokeNode::TriangleFlags = {});
 
     void cookGeometry() override;
 
@@ -112,6 +118,8 @@ protected:
     QVector<StrokeVertex> m_uncookedVertexes;
     QVector<quint32> m_uncookedIndexes;
 };
+
+Q_DECLARE_OPERATORS_FOR_FLAGS(QSGCurveStrokeNode::TriangleFlags)
 
 QT_END_NAMESPACE
 

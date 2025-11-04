@@ -8,7 +8,6 @@
 #include <optional>
 #include <vector>
 
-#include "base/strings/string_piece.h"
 #include "components/autofill/core/browser/autofill_field.h"
 #include "components/autofill/core/browser/field_types.h"
 #include "components/autofill/core/common/autocomplete_parsing_util.h"
@@ -36,20 +35,24 @@ namespace internal {
 template <typename = void>
 struct FieldDescription {
   FieldType role = FieldType::EMPTY_TYPE;
-  // If the server type is not set explcitly, it is assumed to be given by the
+  // If the server type is not set explicitly, it is assumed to be given by the
   // role.
   std::optional<FieldType> server_type;
-  // If the heuristic type is not set explcitly, it is assumed to be given by
+  // If the heuristic type is not set explicitly, it is assumed to be given by
   // the role.
   std::optional<FieldType> heuristic_type;
   std::optional<LocalFrameToken> host_frame;
-  std::optional<FieldRendererId> unique_renderer_id;
+  std::optional<FormSignature> host_form_signature;
+  std::optional<FieldRendererId> renderer_id;
   bool is_focusable = true;
   bool is_visible = true;
   std::optional<std::u16string> label;
   std::optional<std::u16string> name;
+  std::optional<std::u16string> name_attribute;
+  std::optional<std::u16string> id_attribute;
   std::optional<std::u16string> value;
   std::optional<std::u16string> placeholder;
+  std::optional<uint64_t> max_length;
   const std::string autocomplete_attribute;
   std::optional<AutocompleteParsingResult> parsed_autocomplete;
   const FormControlType form_control_type = FormControlType::kInputText;
@@ -58,6 +61,8 @@ struct FieldDescription {
   std::optional<url::Origin> origin;
   std::vector<SelectOption> select_options = {};
   FieldPropertiesMask properties_mask = 0;
+  FormFieldData::CheckStatus check_status =
+      FormFieldData::CheckStatus::kNotCheckable;
 };
 
 // Attributes provided to the test form.
@@ -66,12 +71,11 @@ struct FormDescription {
   const std::string description_for_logging;
   std::vector<FieldDescription<>> fields;
   std::optional<LocalFrameToken> host_frame;
-  std::optional<FormRendererId> unique_renderer_id;
+  std::optional<FormRendererId> renderer_id;
   const std::u16string name = u"TestForm";
   const std::string url = kFormUrl;
   const std::string action = kFormActionUrl;
   std::optional<url::Origin> main_frame_origin;
-  bool is_form_tag = true;
 };
 
 // Flags determining whether the corresponding check should be run on the test
@@ -87,7 +91,6 @@ struct TestFormFlags {
   bool should_be_queried = false;
   bool should_be_uploaded = false;
   bool has_author_specified_types = false;
-  bool has_author_specified_upi_vpa_hint = false;
   // The implicit default value `std::nullopt` means no checking.
   std::optional<bool> is_complete_credit_card_form;
   std::optional<int> field_count;
@@ -125,8 +128,14 @@ testing::Message DescribeFormData(const FormData& form_data);
 // Returns the form field relevant to the |role|.
 FormFieldData CreateFieldByRole(FieldType role);
 
+// Creates a FormFieldData to be fed to the parser.
+FormFieldData GetFormFieldData(const FieldDescription& fd);
+
 // Creates a FormData to be fed to the parser.
 FormData GetFormData(const FormDescription& test_form_attributes);
+
+// Creates a FormData with `field_types`.
+FormData GetFormData(const std::vector<FieldType>& field_types);
 
 // Extracts the heuristic types from the form description. If the heuristic type
 // is not explicitly set for a given field it is extracted from the field's

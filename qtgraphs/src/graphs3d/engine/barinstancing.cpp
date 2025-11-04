@@ -24,11 +24,14 @@ QByteArray BarInstancing::getInstanceBuffer(int *instanceCount)
             else
                 setDepthSortingEnabled(false);
 
+            QVector4D customData{};
+            customData.setX(item->heightValue);
             if (!item->selectedBar) {
                 auto entry = calculateTableEntryFromQuaternion(item->position,
                                                                item->scale,
                                                                item->rotation,
-                                                               item->color);
+                                                               item->color,
+                                                               customData);
                 m_instanceData.append(reinterpret_cast<char *>(&entry), sizeof(entry));
             } else {
                 // Even selected bars need to be drawn in a very small scale.

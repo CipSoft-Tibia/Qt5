@@ -227,6 +227,12 @@ int main(int argc, char *argv[])
         tr2.reportDuplicates(tr2.resolveDuplicates(), inFiles[i].name, verbose);
         for (int j = 0; j < tr2.messageCount(); ++j)
             tr.replaceSorted(tr2.message(j));
+
+        tr.appendDependencies(tr2.dependencies());
+    }
+
+    for (const auto &file: inFiles) {
+        tr.satisfyDependency(file.name, file.format);
     }
 
     if (!targetLanguage.isEmpty())

@@ -30,8 +30,8 @@ void QSGRhiInternalTextNode::addDecorationNode(const QRectF &rect, const QColor 
                                      [&node](const std::array<QVector2D, 3> &s,
                                              const std::array<QVector2D, 3> &p,
                                              const std::array<QVector2D, 3> &n,
-                                             bool isLine) {
-                                         Q_ASSERT(isLine);
+                                             QSGCurveStrokeNode::TriangleFlags f) {
+                                         Q_ASSERT(f.testFlag(QSGCurveStrokeNode::TriangleFlag::Line));
                                          node->appendTriangle(s, std::array<QVector2D, 2>{p.at(0), p.at(2)}, n);
                                      });
     node->cookGeometry();

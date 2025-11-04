@@ -30,7 +30,9 @@ excludedirs += \
     ../src/platformintegration
 
 # include java files in the list of example sources
-examples.fileextensions =+ *.java
+examples.fileextensions =+ *.java \
+                           *.kt \
+                           *.gradle
 
 # Exclude documentation for the broken examples
 excludefiles += \
@@ -46,15 +48,11 @@ qhp.QtDoc.virtualFolder       = qtdoc
 qhp.QtDoc.indexTitle          = Qt $QT_VERSION Reference Documentation
 qhp.QtDoc.indexRoot           =
 
-qhp.QtDoc.subprojects         = classes qmltypes examples
-qhp.QtDoc.subprojects.classes.title = Classes
-qhp.QtDoc.subprojects.classes.indexTitle = All C++ Classes
-qhp.QtDoc.subprojects.classes.selectors = class headerfile
-qhp.QtDoc.subprojects.classes.sortPages = true
-qhp.QtDoc.subprojects.qmltypes.title = QML Types
-qhp.QtDoc.subprojects.qmltypes.indexTitle = All QML Types
-qhp.QtDoc.subprojects.qmltypes.selectors = qmltype
-qhp.QtDoc.subprojects.qmltypes.sortPages = true
+qhp.QtDoc.subprojects = manual
+qhp.QtDoc.subprojects.manual.title = Qt $QT_VERSION Reference Documentation
+qhp.QtDoc.subprojects.manual.indexTitle = All Topics
+qhp.QtDoc.subprojects.manual.type = manual
+
 qhp.QtDoc.subprojects.examples.title = Tutorials and Examples
 qhp.QtDoc.subprojects.examples.indexTitle = Qt Examples And Tutorials
 qhp.QtDoc.subprojects.examples.selectors = example
@@ -67,12 +65,13 @@ qhp.QtDoc.subprojects.examples.sortPages = true
                                                                images/xNIz78IPBu0.jpg
 
 # Add an .html file with sidebar content, used in the online style
-HTML.stylesheets             += style/qt5-sidebar.html
+HTML.stylesheets             += style/tree_config.xml
 
 macro.indextitle              = "\\title Qt $QT_VER"
 macro.qtver                   = "$QT_VER"
 macro.qtmajorversion          = "$QT_VER"
 macro.qtmajorversion.match    = "^(\\d+)"
+macro.QtVersionTag           = "$QT_VERSION_TAG"
 
 macro.qt5 = "\\l{https://doc.qt.io/qt-5/\1}{\2}"
 macro.qtbug = "\\l{https://bugreports.qt.io/browse/\1}{\1}"
@@ -116,7 +115,12 @@ include(../edu/config/qtforeducation.qdocconf)
 # doc/src/overviews.qdoc:
 #   (qdoc) warning: '\generatelist explanations-webtechnologies' no such group
 #   (qdoc) warning: '\generatelist explanations-positioning' no such group
-warninglimit = 2
+#   (qdoc) warning: '\generatelist explanations-programminglanguages' no such group
+warninglimit = 3
+
+# Autogenerate navigation linking based on "All Topics":
+navigation.toctitles = "All Topics"
+navigation.toctitles.inclusive = false
 
 # Apple platform versions
 macro.macOSMinSdkVersion = $QT_SUPPORTED_MIN_MACOS_SDK_VERSION

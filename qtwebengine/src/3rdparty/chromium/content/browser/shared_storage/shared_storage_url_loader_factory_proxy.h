@@ -8,18 +8,21 @@
 #include <stdint.h>
 
 #include "base/functional/callback_forward.h"
-#include "base/strings/string_piece.h"
 #include "content/common/content_export.h"
 #include "mojo/public/cpp/bindings/pending_receiver.h"
 #include "mojo/public/cpp/bindings/pending_remote.h"
 #include "mojo/public/cpp/bindings/receiver.h"
 #include "mojo/public/cpp/bindings/remote.h"
+#include "net/cookies/site_for_cookies.h"
 #include "net/traffic_annotation/network_traffic_annotation.h"
 #include "services/network/public/mojom/url_loader_factory.mojom.h"
 #include "url/gurl.h"
 #include "url/origin.h"
 
 namespace content {
+
+const char kSecSharedStorageDataOriginHeader[] =
+    "Sec-Shared-Storage-Data-Origin";
 
 // Proxy URLLoaderFactoryFactory, to limit the requests that a shared storage
 // worklet can make.
@@ -31,7 +34,10 @@ class CONTENT_EXPORT SharedStorageURLLoaderFactoryProxy
           frame_url_loader_factory,
       mojo::PendingReceiver<network::mojom::URLLoaderFactory> pending_receiver,
       const url::Origin& frame_origin,
-      const GURL& script_url);
+      const url::Origin& data_origin,
+      const GURL& script_url,
+      network::mojom::CredentialsMode credentials_mode,
+      const net::SiteForCookies& site_for_cookies);
   SharedStorageURLLoaderFactoryProxy(
       const SharedStorageURLLoaderFactoryProxy&) = delete;
   SharedStorageURLLoaderFactoryProxy& operator=(
@@ -57,7 +63,13 @@ class CONTENT_EXPORT SharedStorageURLLoaderFactoryProxy
 
   const url::Origin frame_origin_;
 
+  const url::Origin data_origin_;
+
   const GURL script_url_;
+
+  const network::mojom::CredentialsMode credentials_mode_;
+
+  const net::SiteForCookies site_for_cookies_;
 };
 
 }  // namespace content

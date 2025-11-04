@@ -1,7 +1,9 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qthreadstorage.h"
+#include "qthreadstorage_p.h"
 
 #include "private/qcoreapplication_p.h"
 #include "qthread.h"
@@ -131,6 +133,13 @@ void **QThreadStorageData::set(void *p)
     value = p;
     DEBUG_MSG("QThreadStorageData: Set storage %d for thread %p to %p", id, data->thread.loadRelaxed(), p);
     return &value;
+}
+
+void QThreadStoragePrivate::init()
+{
+    // Make sure the Q_GLOBAL_STATIC is initialized, ensuring consistent
+    // destruction order.
+    destructors();
 }
 
 void QThreadStorageData::finish(void **p)

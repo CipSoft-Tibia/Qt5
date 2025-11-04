@@ -31,13 +31,6 @@
                 "-lflite_cmu_us_kal16 -lflite_usenglish -lflite_cmulex -lflite"
             ]
         },
-        "flite_alsa": {
-            "label": "Flite with ALSA",
-            "sources": [
-                { "type": "pkgConfig", "args": "alsa" },
-                "-lasound"
-            ]
-        },
         "speechd": {
             "label": "Speech Dispatcher",
             "test": {

@@ -36,12 +36,63 @@ using HeapObjectWrapper = WriteBarrier::HeapObjectWrapper<T, PhantomTag>;
 //       be trivially copyable. But you should never ever copy it. There are refcounted members
 //       in there.
 struct Q_QML_EXPORT Lookup {
-    union {
-        ReturnedValue (*getter)(Lookup *l, ExecutionEngine *engine, const Value &object);
-        ReturnedValue (*globalGetter)(Lookup *l, ExecutionEngine *engine);
-        ReturnedValue (*qmlContextPropertyGetter)(Lookup *l, ExecutionEngine *engine, Value *thisObject);
-        bool (*setter)(Lookup *l, ExecutionEngine *engine, Value &object, const Value &v);
+    enum class Call: quint16 {
+        ContextGetterContextObjectMethod,
+        ContextGetterContextObjectProperty,
+        ContextGetterGeneric,
+        ContextGetterIdObject,
+        ContextGetterIdObjectInParentContext,
+        ContextGetterInGlobalObject,
+        ContextGetterInParentContextHierarchy,
+        ContextGetterScopeObjectMethod,
+        ContextGetterScopeObjectProperty,
+        ContextGetterScopeObjectPropertyFallback,
+        ContextGetterScript,
+        ContextGetterSingleton,
+        ContextGetterType,
+        ContextGetterValueSingleton,
+
+        GlobalGetterGeneric,
+        GlobalGetterProto,
+        GlobalGetterProtoAccessor,
+
+        Getter0Inline,
+        Getter0InlineGetter0Inline,
+        Getter0InlineGetter0MemberData,
+        Getter0MemberData,
+        Getter0MemberDataGetter0MemberData,
+        GetterAccessor,
+        GetterAccessorPrimitive,
+        GetterEnumValue,
+        GetterGeneric,
+        GetterIndexed,
+        GetterProto,
+        GetterProtoAccessor,
+        GetterProtoAccessorTwoClasses,
+        GetterProtoPrimitive,
+        GetterProtoTwoClasses,
+        GetterQObjectAttached,
+        GetterQObjectMethod,
+        GetterQObjectMethodFallback,
+        GetterQObjectProperty,
+        GetterQObjectPropertyFallback,
+        GetterScopedEnum,
+        GetterSingletonMethod,
+        GetterSingletonProperty,
+        GetterStringLength,
+        GetterValueTypeProperty,
+
+        Setter0Inline,
+        Setter0MemberData,
+        Setter0Setter0,
+        SetterArrayLength,
+        SetterGeneric,
+        SetterInsert,
+        SetterQObjectProperty,
+        SetterQObjectPropertyFallback,
+        SetterValueTypeProperty,
     };
+
     // NOTE: gc assumes the first two entries in the struct are pointers to heap objects or null
     //       or that the least significant bit is 1 (see the Lookup::markObjects function)
     union {
@@ -61,6 +112,7 @@ struct Q_QML_EXPORT Lookup {
             quintptr protoId;
             quintptr _unused;
             const Value *data;
+            const QtPrivate::QMetaTypeInterface *metaType;
         } protoLookup;
         struct {
             HeapObjectWrapper<Heap::InternalClass, 1> ic;
@@ -139,7 +191,7 @@ struct Q_QML_EXPORT Lookup {
             quintptr reserved1;
             quintptr reserved2;
             quintptr reserved3;
-            ReturnedValue (*getterTrampoline)(Lookup *l, ExecutionEngine *engine);
+            Call getterTrampoline;
         } qmlContextGlobalLookup;
         struct {
             HeapObjectWrapper<Heap::Base, 11> qmlTypeWrapper;
@@ -157,55 +209,58 @@ struct Q_QML_EXPORT Lookup {
         } qmlScopedEnumWrapperLookup;
     };
 
+    Call call;
+    quint16 padding;
+
     uint nameIndex: 28; // Same number of bits we store in the compilation unit for name indices
     uint forCall: 1;    // Whether we are looking up a value in order to call it right away
-    uint reserved: 3;
+    uint asVariant: 1;  // Whether all types are to be converted from/to QVariant
+    uint reserved: 2;
 
     ReturnedValue resolveGetter(ExecutionEngine *engine, const Object *object);
     ReturnedValue resolvePrimitiveGetter(ExecutionEngine *engine, const Value &object);
     ReturnedValue resolveGlobalGetter(ExecutionEngine *engine);
     void resolveProtoGetter(PropertyKey name, const Heap::Object *proto);
 
-    static ReturnedValue getterGeneric(Lookup *l, ExecutionEngine *engine, const Value &object);
-    static ReturnedValue getterTwoClasses(Lookup *l, ExecutionEngine *engine, const Value &object);
-    static ReturnedValue getterFallback(Lookup *l, ExecutionEngine *engine, const Value &object);
-    static ReturnedValue getterFallbackAsVariant(Lookup *l, ExecutionEngine *engine, const Value &object);
+    static ReturnedValue getterGeneric(Lookup *lookup, ExecutionEngine *engine, const Value &object);
+    static ReturnedValue getterTwoClasses(Lookup *lookup, ExecutionEngine *engine, const Value &object);
+    static ReturnedValue getterFallback(Lookup *lookup, ExecutionEngine *engine, const Value &object);
 
-    static ReturnedValue getter0MemberData(Lookup *l, ExecutionEngine *engine, const Value &object);
-    static ReturnedValue getter0Inline(Lookup *l, ExecutionEngine *engine, const Value &object);
-    static ReturnedValue getterProto(Lookup *l, ExecutionEngine *engine, const Value &object);
-    static ReturnedValue getter0Inlinegetter0Inline(Lookup *l, ExecutionEngine *engine, const Value &object);
-    static ReturnedValue getter0Inlinegetter0MemberData(Lookup *l, ExecutionEngine *engine, const Value &object);
-    static ReturnedValue getter0MemberDatagetter0MemberData(Lookup *l, ExecutionEngine *engine, const Value &object);
-    static ReturnedValue getterProtoTwoClasses(Lookup *l, ExecutionEngine *engine, const Value &object);
-    static ReturnedValue getterAccessor(Lookup *l, ExecutionEngine *engine, const Value &object);
-    static ReturnedValue getterProtoAccessor(Lookup *l, ExecutionEngine *engine, const Value &object);
-    static ReturnedValue getterProtoAccessorTwoClasses(Lookup *l, ExecutionEngine *engine, const Value &object);
-    static ReturnedValue getterIndexed(Lookup *l, ExecutionEngine *engine, const Value &object);
-    static ReturnedValue getterQObject(Lookup *l, ExecutionEngine *engine, const Value &object);
-    static ReturnedValue getterQObjectAsVariant(Lookup *l, ExecutionEngine *engine, const Value &object);
-    static ReturnedValue getterQObjectMethod(Lookup *l, ExecutionEngine *engine, const Value &object);
+    static ReturnedValue getter0MemberData(Lookup *lookup, ExecutionEngine *engine, const Value &object);
+    static ReturnedValue getter0Inline(Lookup *lookup, ExecutionEngine *engine, const Value &object);
+    static ReturnedValue getterProto(Lookup *lookup, ExecutionEngine *engine, const Value &object);
+    static ReturnedValue getter0Inlinegetter0Inline(Lookup *lookup, ExecutionEngine *engine, const Value &object);
+    static ReturnedValue getter0Inlinegetter0MemberData(Lookup *lookup, ExecutionEngine *engine, const Value &object);
+    static ReturnedValue getter0MemberDatagetter0MemberData(Lookup *lookup, ExecutionEngine *engine, const Value &object);
+    static ReturnedValue getterProtoTwoClasses(Lookup *lookup, ExecutionEngine *engine, const Value &object);
+    static ReturnedValue getterAccessor(Lookup *lookup, ExecutionEngine *engine, const Value &object);
+    static ReturnedValue getterProtoAccessor(Lookup *lookup, ExecutionEngine *engine, const Value &object);
+    static ReturnedValue getterProtoAccessorTwoClasses(Lookup *lookup, ExecutionEngine *engine, const Value &object);
+    static ReturnedValue getterIndexed(Lookup *lookup, ExecutionEngine *engine, const Value &object);
+    static ReturnedValue getterQObject(Lookup *lookup, ExecutionEngine *engine, const Value &object);
+    static ReturnedValue getterQObjectMethod(Lookup *lookup, ExecutionEngine *engine, const Value &object);
+    static ReturnedValue getterFallbackMethod(Lookup *lookup, ExecutionEngine *engine, const Value &object);
 
-    static ReturnedValue primitiveGetterProto(Lookup *l, ExecutionEngine *engine, const Value &object);
-    static ReturnedValue primitiveGetterAccessor(Lookup *l, ExecutionEngine *engine, const Value &object);
-    static ReturnedValue stringLengthGetter(Lookup *l, ExecutionEngine *engine, const Value &object);
+    static ReturnedValue getterValueType(Lookup *lookup, ExecutionEngine *engine, const Value &object);
 
-    static ReturnedValue globalGetterGeneric(Lookup *l, ExecutionEngine *engine);
-    static ReturnedValue globalGetterProto(Lookup *l, ExecutionEngine *engine);
-    static ReturnedValue globalGetterProtoAccessor(Lookup *l, ExecutionEngine *engine);
+    static ReturnedValue primitiveGetterProto(Lookup *lookup, ExecutionEngine *engine, const Value &object);
+    static ReturnedValue primitiveGetterAccessor(Lookup *lookup, ExecutionEngine *engine, const Value &object);
+    static ReturnedValue stringLengthGetter(Lookup *lookup, ExecutionEngine *engine, const Value &object);
+
+    static ReturnedValue globalGetterGeneric(Lookup *lookup, ExecutionEngine *engine);
+    static ReturnedValue globalGetterProto(Lookup *lookup, ExecutionEngine *engine);
+    static ReturnedValue globalGetterProtoAccessor(Lookup *lookup, ExecutionEngine *engine);
 
     bool resolveSetter(ExecutionEngine *engine, Object *object, const Value &value);
-    static bool setterGeneric(Lookup *l, ExecutionEngine *engine, Value &object, const Value &value);
-    Q_NEVER_INLINE static bool setterTwoClasses(Lookup *l, ExecutionEngine *engine, Value &object, const Value &value);
-    static bool setterFallback(Lookup *l, ExecutionEngine *engine, Value &object, const Value &value);
-    static bool setterFallbackAsVariant(Lookup *l, ExecutionEngine *engine, Value &object, const Value &value);
-    static bool setter0MemberData(Lookup *l, ExecutionEngine *engine, Value &object, const Value &value);
-    static bool setter0Inline(Lookup *l, ExecutionEngine *engine, Value &object, const Value &value);
-    static bool setter0setter0(Lookup *l, ExecutionEngine *engine, Value &object, const Value &value);
-    static bool setterInsert(Lookup *l, ExecutionEngine *engine, Value &object, const Value &value);
-    static bool setterQObject(Lookup *l, ExecutionEngine *engine, Value &object, const Value &value);
-    static bool setterQObjectAsVariant(Lookup *l, ExecutionEngine *engine, Value &object, const Value &value);
-    static bool arrayLengthSetter(Lookup *l, ExecutionEngine *engine, Value &object, const Value &value);
+    static bool setterGeneric(Lookup *lookup, ExecutionEngine *engine, Value &object, const Value &value);
+    Q_NEVER_INLINE static bool setterTwoClasses(Lookup *lookup, ExecutionEngine *engine, Value &object, const Value &value);
+    static bool setterFallback(Lookup *lookup, ExecutionEngine *engine, Value &object, const Value &value);
+    static bool setter0MemberData(Lookup *lookup, ExecutionEngine *engine, Value &object, const Value &value);
+    static bool setter0Inline(Lookup *lookup, ExecutionEngine *engine, Value &object, const Value &value);
+    static bool setter0setter0(Lookup *lookup, ExecutionEngine *engine, Value &object, const Value &value);
+    static bool setterInsert(Lookup *lookup, ExecutionEngine *engine, Value &object, const Value &value);
+    static bool setterQObject(Lookup *lookup, ExecutionEngine *engine, Value &object, const Value &value);
+    static bool arrayLengthSetter(Lookup *lookup, ExecutionEngine *engine, Value &object, const Value &value);
 
     void markObjects(MarkStack *stack) {
         if (markDef.h1 && !(reinterpret_cast<quintptr>(markDef.h1) & 1))
@@ -214,31 +269,178 @@ struct Q_QML_EXPORT Lookup {
             markDef.h2->mark(stack);
     }
 
+    ReturnedValue contextGetter(ExecutionEngine *engine, Value *base)
+    {
+        switch (call) {
+        case Call::ContextGetterContextObjectMethod:
+            return QQmlContextWrapper::lookupContextObjectMethod(this, engine, base);
+        case Call::ContextGetterContextObjectProperty:
+            return QQmlContextWrapper::lookupContextObjectProperty(this, engine, base);
+        case Call::ContextGetterGeneric:
+            return QQmlContextWrapper::resolveQmlContextPropertyLookupGetter(this, engine, base);
+        case Call::ContextGetterIdObject:
+            return QQmlContextWrapper::lookupIdObject(this, engine, base);
+        case Call::ContextGetterIdObjectInParentContext:
+            return QQmlContextWrapper::lookupIdObjectInParentContext(this, engine, base);
+        case Call::ContextGetterInGlobalObject:
+            return QQmlContextWrapper::lookupInGlobalObject(this, engine, base);
+        case Call::ContextGetterInParentContextHierarchy:
+            return QQmlContextWrapper::lookupInParentContextHierarchy(this, engine, base);
+        case Call::ContextGetterScopeObjectMethod:
+            return QQmlContextWrapper::lookupScopeObjectMethod(this, engine, base);
+        case Call::ContextGetterScopeObjectProperty:
+            return QQmlContextWrapper::lookupScopeObjectProperty(this, engine, base);
+        case Call::ContextGetterSingleton:
+            return QQmlContextWrapper::lookupSingleton(this, engine, base);
+        case Call::ContextGetterScript:
+            return QQmlContextWrapper::lookupScript(this, engine, base);
+        case Call::ContextGetterType:
+            return QQmlContextWrapper::lookupType(this, engine, base);
+        case Call::ContextGetterValueSingleton:
+            return QQmlContextWrapper::lookupValueSingleton(this, engine, base);
+        default:
+            break;
+        }
+
+        Q_UNREACHABLE_RETURN(Encode::undefined());
+    }
+
+    static ReturnedValue doCallGlobal(Call call, Lookup *lookup, ExecutionEngine *engine)
+    {
+        switch (call) {
+        case Call::GlobalGetterGeneric:
+            return globalGetterGeneric(lookup, engine);
+        case Call::GlobalGetterProto:
+            return globalGetterProto(lookup, engine);
+        case Call::GlobalGetterProtoAccessor:
+            return globalGetterProtoAccessor(lookup, engine);
+        default:
+            break;
+        }
+
+        Q_UNREACHABLE_RETURN(Encode::undefined());
+    }
+
+    ReturnedValue globalGetter(ExecutionEngine *engine)
+    {
+        return doCallGlobal(call, this, engine);
+    }
+
+    ReturnedValue getter(ExecutionEngine *engine, const Value &object)
+    {
+        switch (call) {
+        case Call::Getter0Inline:
+            return getter0Inline(this, engine, object);
+        case Call::Getter0InlineGetter0Inline:
+            return getter0Inlinegetter0Inline(this, engine, object);
+        case Call::Getter0InlineGetter0MemberData:
+            return getter0Inlinegetter0MemberData(this, engine, object);
+        case Call::Getter0MemberData:
+            return getter0MemberData(this, engine, object);
+        case Call::Getter0MemberDataGetter0MemberData:
+            return getter0MemberDatagetter0MemberData(this, engine, object);
+        case Call::GetterAccessor:
+            return getterAccessor(this, engine, object);
+        case Call::GetterAccessorPrimitive:
+            return primitiveGetterAccessor(this, engine, object);
+        case Call::GetterEnumValue:
+            return QQmlTypeWrapper::lookupEnumValue(this, engine, object);
+        case Call::GetterQObjectPropertyFallback:
+            return getterFallback(this, engine, object);
+        case Call::GetterQObjectMethodFallback:
+            return getterFallbackMethod(this, engine, object);
+        case Call::GetterGeneric:
+            return getterGeneric(this, engine, object);
+        case Call::GetterIndexed:
+            return getterIndexed(this, engine, object);
+        case Call::GetterProto:
+            return getterProto(this, engine, object);
+        case Call::GetterProtoAccessor:
+            return getterProtoAccessor(this, engine, object);
+        case Call::GetterProtoAccessorTwoClasses:
+            return getterProtoAccessorTwoClasses(this, engine, object);
+        case Call::GetterProtoPrimitive:
+            return primitiveGetterProto(this, engine, object);
+        case Call::GetterProtoTwoClasses:
+            return getterProtoTwoClasses(this, engine, object);
+        case Call::GetterQObjectProperty:
+            return getterQObject(this, engine, object);
+        case Call::GetterQObjectAttached:
+            // TODO: more specific implementation for interpreter / JIT
+            return getterGeneric(this, engine, object);
+        case Call::GetterQObjectMethod:
+            return getterQObjectMethod(this, engine, object);
+        case Call::GetterSingletonMethod:
+            return QQmlTypeWrapper::lookupSingletonMethod(this, engine, object);
+        case Call::GetterSingletonProperty:
+            return QQmlTypeWrapper::lookupSingletonProperty(this, engine, object);
+        case Call::GetterStringLength:
+            return stringLengthGetter(this, engine, object);
+        case Call::GetterValueTypeProperty:
+            return getterValueType(this, engine, object);
+        case Call::GetterScopedEnum:
+            return QQmlTypeWrapper::lookupScopedEnum(this, engine, object);
+        default:
+            break;
+        }
+
+        Q_UNREACHABLE_RETURN(Encode::undefined());
+    }
+
+    bool setter(ExecutionEngine *engine, Value &object, const Value &value)
+    {
+        switch (call) {
+        case Call::Setter0Inline:
+            return setter0Inline(this, engine, object, value);
+        case Call::Setter0MemberData:
+            return setter0MemberData(this, engine, object, value);
+        case Call::Setter0Setter0:
+            return setter0setter0(this, engine, object, value);
+        case Call::SetterArrayLength:
+            return arrayLengthSetter(this, engine, object, value);
+        case Call::SetterQObjectPropertyFallback:
+            return setterFallback(this, engine, object, value);
+        case Call::SetterGeneric:
+            return setterGeneric(this, engine, object, value);
+        case Call::SetterInsert:
+            return setterInsert(this, engine, object, value);
+        case Call::SetterQObjectProperty:
+            return setterQObject(this, engine, object, value);
+        case Call::SetterValueTypeProperty:
+            // TODO: more specific implementation for interpreter / JIT
+            return setterFallback(this, engine, object, value);
+        default:
+            break;
+        }
+
+        Q_UNREACHABLE_RETURN(Encode::undefined());
+    }
+
     void releasePropertyCache()
     {
-        if (getter == getterQObject
-                || getter == QQmlTypeWrapper::lookupSingletonProperty
-                || setter == setterQObject
-                || qmlContextPropertyGetter == QQmlContextWrapper::lookupScopeObjectProperty
-                || qmlContextPropertyGetter == QQmlContextWrapper::lookupContextObjectProperty
-                || getter == getterQObjectAsVariant
-                || setter == setterQObjectAsVariant) {
+        switch (call) {
+        case Call::ContextGetterContextObjectProperty:
+        case Call::ContextGetterScopeObjectProperty:
+        case Call::GetterQObjectProperty:
+        case Call::GetterSingletonProperty:
+        case Call::SetterQObjectProperty:
             if (const QQmlPropertyCache *pc = qobjectLookup.propertyCache)
                 pc->release();
-        } else if (getter == getterQObjectMethod
-                   || getter == QQmlTypeWrapper::lookupSingletonMethod
-                   || qmlContextPropertyGetter == QQmlContextWrapper::lookupScopeObjectMethod
-                   || qmlContextPropertyGetter == QQmlContextWrapper::lookupContextObjectMethod) {
+            break;
+        case Call::ContextGetterContextObjectMethod:
+        case Call::ContextGetterScopeObjectMethod:
+        case Call::GetterQObjectMethod:
+        case Call::GetterSingletonMethod:
             if (const QQmlPropertyCache *pc = qobjectMethodLookup.propertyCache)
                 pc->release();
+            break;
+        default:
+            break;
         }
     }
 };
 
 Q_STATIC_ASSERT(std::is_standard_layout<Lookup>::value);
-// Ensure that these offsets are always at this point to keep generated code compatible
-// across 32-bit and 64-bit (matters when cross-compiling).
-Q_STATIC_ASSERT(offsetof(Lookup, getter) == 0);
 
 inline void setupQObjectLookup(
         Lookup *lookup, const QQmlData *ddata, const QQmlPropertyData *propertyData)

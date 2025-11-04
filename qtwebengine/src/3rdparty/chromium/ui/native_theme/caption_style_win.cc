@@ -65,7 +65,7 @@ void GetFontFamilyString(CC::ClosedCaptionStyle closed_caption_style,
       break;
     case CC::ClosedCaptionStyle_Default:
       // We shouldn't override with OS Styling for Default case.
-      NOTREACHED();
+      NOTREACHED_IN_MIGRATION();
       *css_font_family = std::string();
       break;
   }
@@ -91,7 +91,7 @@ std::string GetEdgeEffectString(CC::ClosedCaptionEdgeEffect edge_effect) {
       return "0px 0px 2px rgba(0, 0, 0, 0.5), 2px 2px 2px black";
     case CC::ClosedCaptionEdgeEffect_Default:
       // We shouldn't override with OS Styling for Default case.
-      NOTREACHED();
+      NOTREACHED_IN_MIGRATION();
       return std::string();
   }
 }
@@ -110,7 +110,7 @@ std::string GetCaptionSizeString(CC::ClosedCaptionSize caption_size) {
       return "200%";
     case CC::ClosedCaptionSize_Default:
       // We shouldn't override with OS Styling for Default case.
-      NOTREACHED();
+      NOTREACHED_IN_MIGRATION();
       return std::string();
   }
 }
@@ -155,7 +155,7 @@ SkColor GetCaptionColor(CC::ClosedCaptionColor caption_color) {
     case CC::ClosedCaptionColor_Default:
     default:
       // We shouldn't override with OS Styling for Default case.
-      NOTREACHED();
+      NOTREACHED_IN_MIGRATION();
       return SK_ColorWHITE;
   }
 }
@@ -170,7 +170,7 @@ std::string GetCssColorWithAlpha(CC::ClosedCaptionColor caption_color,
   return color_utils::SkColorToRgbaString(SkColorSetA(color, opacity));
 }
 
-absl::optional<CaptionStyle> InitializeFromSystemSettings() {
+std::optional<CaptionStyle> InitializeFromSystemSettings() {
   TRACE_EVENT0("ui", "InitializeFromSystemSettings");
   DCHECK(base::FeatureList::IsEnabled(features::kSystemCaptionStyle));
 
@@ -183,55 +183,55 @@ absl::optional<CaptionStyle> InitializeFromSystemSettings() {
       closed_caption_properties_string.get(),
       IID_PPV_ARGS(&closed_caption_properties_statics));
   if (FAILED(hr))
-    return absl::nullopt;
+    return std::nullopt;
 
   CC::ClosedCaptionSize font_size = CC::ClosedCaptionSize_Default;
   hr = closed_caption_properties_statics->get_FontSize(&font_size);
   if (FAILED(hr))
-    return absl::nullopt;
+    return std::nullopt;
 
   CC::ClosedCaptionEdgeEffect edge_effect = CC::ClosedCaptionEdgeEffect_Default;
   hr = closed_caption_properties_statics->get_FontEffect(&edge_effect);
   if (FAILED(hr))
-    return absl::nullopt;
+    return std::nullopt;
 
   CC::ClosedCaptionStyle font_family = CC::ClosedCaptionStyle_Default;
   hr = closed_caption_properties_statics->get_FontStyle(&font_family);
   if (FAILED(hr))
-    return absl::nullopt;
+    return std::nullopt;
 
   CC::ClosedCaptionColor font_color = CC::ClosedCaptionColor_Default;
   hr = closed_caption_properties_statics->get_FontColor(&font_color);
   if (FAILED(hr))
-    return absl::nullopt;
+    return std::nullopt;
 
   CC::ClosedCaptionOpacity font_opacity = CC::ClosedCaptionOpacity_Default;
   hr = closed_caption_properties_statics->get_FontOpacity(&font_opacity);
   if (FAILED(hr))
-    return absl::nullopt;
+    return std::nullopt;
 
   CC::ClosedCaptionColor background_color = CC::ClosedCaptionColor_Default;
   hr =
       closed_caption_properties_statics->get_BackgroundColor(&background_color);
   if (FAILED(hr))
-    return absl::nullopt;
+    return std::nullopt;
 
   CC::ClosedCaptionOpacity background_opacity =
       CC::ClosedCaptionOpacity_Default;
   hr = closed_caption_properties_statics->get_BackgroundOpacity(
       &background_opacity);
   if (FAILED(hr))
-    return absl::nullopt;
+    return std::nullopt;
 
   CC::ClosedCaptionColor region_color = CC::ClosedCaptionColor_Default;
   hr = closed_caption_properties_statics->get_RegionColor(&region_color);
   if (FAILED(hr))
-    return absl::nullopt;
+    return std::nullopt;
 
   CC::ClosedCaptionOpacity region_opacity = CC::ClosedCaptionOpacity_Default;
   hr = closed_caption_properties_statics->get_RegionOpacity(&region_opacity);
   if (FAILED(hr))
-    return absl::nullopt;
+    return std::nullopt;
 
   CaptionStyle caption_style;
   if (font_family != CC::ClosedCaptionStyle_Default) {
@@ -269,12 +269,12 @@ absl::optional<CaptionStyle> InitializeFromSystemSettings() {
 
 }  // namespace
 
-absl::optional<CaptionStyle> CaptionStyle::FromSystemSettings() {
+std::optional<CaptionStyle> CaptionStyle::FromSystemSettings() {
   if (base::FeatureList::IsEnabled(features::kSystemCaptionStyle)) {
     return InitializeFromSystemSettings();
   }
   // Return default CaptionStyle if kSystemCaptionStyle is not enabled.
-  return absl::nullopt;
+  return std::nullopt;
 }
 
 }  // namespace ui

@@ -29,10 +29,13 @@
 #define SRC_DAWN_NODE_BINDING_ASYNCRUNNER_H_
 
 #include <stdint.h>
+
+#include <webgpu/webgpu_cpp.h>
+
 #include <memory>
 #include <utility>
 
-#include "dawn/webgpu_cpp.h"
+#include "dawn/native/DawnNative.h"
 #include "src/dawn/node/interop/Core.h"
 #include "src/dawn/node/interop/NodeAPI.h"
 
@@ -42,14 +45,15 @@ namespace wgpu::binding {
 // tasks in flight.
 class AsyncRunner {
   public:
-    AsyncRunner(Napi::Env env, wgpu::Device device);
+    // Creates an AsyncRunner to use to process events on the instance.
+    static std::shared_ptr<AsyncRunner> Create(dawn::native::Instance* instance);
 
     // Begin() should be called when a new asynchronous task is started.
     // If the number of executing asynchronous tasks transitions from 0 to 1, then a function
     // will be scheduled on the main JavaScript thread to call wgpu::Device::Tick() whenever the
     // thread is idle. This will be repeatedly called until the number of executing asynchronous
     // tasks reaches 0 again.
-    void Begin();
+    void Begin(Napi::Env env);
 
     // End() should be called once the asynchronous task has finished.
     // Every call to Begin() should eventually result in a call to End().
@@ -59,35 +63,48 @@ class AsyncRunner {
     // some of the semantics of WebGPU w.r.t. the JavaScript event loop. Reject() can be called
     // any time, but callers need to make sure that the Promise is (rejected or resolved) only
     // once.
-    void Reject(interop::Promise<void> promise, Napi::Error error);
+    void Reject(Napi::Env env, interop::Promise<void> promise, Napi::Error error);
+
+    // Use AsyncRunner::Create instead of this constructor.
+    explicit AsyncRunner(dawn::native::Instance* instance);
 
   private:
-    void QueueTick();
-    Napi::Env env_;
-    wgpu::Device const device_;
-    uint64_t count_ = 0;
-    bool tick_queued_ = false;
+    void ScheduleProcessEvents(Napi::Env env);
+
+    std::weak_ptr<AsyncRunner> weak_this_;
+    const dawn::native::Instance* const instance_;
+    uint64_t tasks_waiting_ = 0;
+    bool process_events_queued_ = false;
 };
 
 // AsyncTask is a RAII helper for calling AsyncRunner::Begin() on construction, and
-// AsyncRunner::End() on destruction.
-class AsyncTask {
+// AsyncRunner::End() on destruction, that also encapsulates the promise generally
+// associated with any async task.
+template <typename T>
+class AsyncContext {
   public:
-    inline AsyncTask(AsyncTask&&) = default;
-
     // Constructor.
     // Calls AsyncRunner::Begin()
-    explicit inline AsyncTask(std::shared_ptr<AsyncRunner> runner) : runner_(std::move(runner)) {
-        runner_->Begin();
+    inline AsyncContext(Napi::Env env,
+                        const interop::PromiseInfo& info,
+                        std::shared_ptr<AsyncRunner> runner)
+        : env(env), promise(env, info), runner_(runner) {
+        runner_->Begin(env);
     }
 
     // Destructor.
     // Calls AsyncRunner::End()
-    inline ~AsyncTask() { runner_->End(); }
+    inline ~AsyncContext() { runner_->End(); }
+
+    // Note these are public to allow for access for the callbacks that take ownership of this
+    // context.
+    Napi::Env env;
+    interop::Promise<T> promise;
 
   private:
-    AsyncTask(const AsyncTask&) = delete;
-    AsyncTask& operator=(const AsyncTask&) = delete;
+    AsyncContext(const AsyncContext&) = delete;
+    AsyncContext& operator=(const AsyncContext&) = delete;
+
     std::shared_ptr<AsyncRunner> runner_;
 };
 

@@ -1,4 +1,4 @@
-// Copyright (C) 2024 The Qt Company Ltd.
+// Copyright (C) 2025 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GFDL-1.3-no-invariants-only
 
 /*!
@@ -13,7 +13,7 @@
     promises. Finally, we present the typical release schedules, and introduce the
     long-term support (LTS) releases and support periods provided.
 
-    \note Some tools like \l{Qt Creator Manual}{Qt Creator} or \l{Qt Design Studio Manual}{\QDS}
+    \note Some tools like \l{\QC Documentation}{\QC} or \l{Qt Design Studio Manual}{\QDS}
     and related products like \l{Qt for MCUs} are released independently and have their own
     versioning scheme and release schedule.
 
@@ -120,22 +120,22 @@
         \li Latest release
         \li Standard support until
     \row
+        \li Qt 6.9
+        \li Qt 6.9.3
+        \li 2026-03-31
+    \row
         \li Qt 6.8 LTS
-        \li Qt 6.8.3
+        \li Qt 6.8.4
         \li 2029-10-08
     \row
-        \li Qt 6.7
-        \li Qt 6.7.3
-        \li 2025-03-26
-    \row
         \li Qt 6.5 LTS
-        \li Qt 6.5.8 (LTS, commercial only)
+        \li Qt 6.5.10 (LTS, commercial only)
         \li 2026-03-30
     \row
         \li Qt 5.15 LTS
         \li Qt 5.15.16 (Open Source)
 
-            Qt 5.15.18 (LTS, commercial only)
+            Qt 5.15.19 (LTS, commercial only)
         \li 2023-05-26 (Qt Legacy licenses)
 
             2025-05-26 (Qt Subscription license holders only)
@@ -153,20 +153,24 @@
         \li Latest release
         \li Standard support until
     \row
+        \li \b{Qt 6.9}
+        \li Qt 6.9.3
+        \li 2026-03-31
+    \row
         \li \b{Qt 6.8 LTS}
-        \li Qt 6.8.3
+        \li Qt 6.8.4
         \li 2029-10-08
     \row
         \li \b{Qt 6.7}
         \li Qt 6.7.3
-        \li 2025-03-26
+        \li Ended (ES is available)
     \row
         \li \b{Qt 6.6}
         \li Qt 6.6.3
         \li Ended (ES is available)
     \row
         \li \b{Qt 6.5 LTS}
-        \li Qt 6.5.8
+        \li Qt 6.5.9
         \li 2026-03-30
     \row
         \li Qt 6.4
@@ -190,10 +194,11 @@
         \li Ended (ES is available)
     \row
         \li \b{Qt 5.15 LTS}
-        \li Qt 5.15.18
+        \li Qt 5.15.19
         \li 2023-05-26 (Qt Legacy licenses)
-
             2025-05-26 (Qt Subscription license holders only)
+            \l {Extended Security Maintenance for Qt 5.15}
+            {Extended Security Maintenance available}
     \row
         \li Qt 5.14
         \li Qt 5.14.2
@@ -256,6 +261,5 @@
         \li Ended (ES is available)
 
     \endtable
-
 
 */

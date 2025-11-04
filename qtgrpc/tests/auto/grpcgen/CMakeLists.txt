@@ -31,6 +31,7 @@ qt_add_protobuf(tst_qtgrpcgen_protobuf_common
     PROTO_FILES
         data/qtgrpcgen.proto
 )
+qt_autogen_tools_initial_setup(tst_qtgrpcgen_protobuf_common)
 
 set(cmake_generator_tests "")
 qt_add_grpc(tst_qtgrpcgen_generate_package_subfolders CLIENT
@@ -59,18 +60,20 @@ list(APPEND cmake_generator_tests no_options)
 qt_add_protobuf(tst_qtgrpcgen_protobuf_invalid-identifier
     PROTO_FILES
         data/666-invalid-identifier.proto
+    HEADER_GUARD filename
     OUTPUT_DIRECTORY
         "${CMAKE_CURRENT_BINARY_DIR}/${cmake_generated_dir}/invalid-identifier"
 )
 qt_add_grpc(tst_qtgrpcgen_invalid-identifier CLIENT
     PROTO_FILES
         data/666-invalid-identifier.proto
+    HEADER_GUARD filename
     OUTPUT_DIRECTORY
         "${CMAKE_CURRENT_BINARY_DIR}/${cmake_generated_dir}/invalid-identifier"
 )
 target_link_libraries(tst_qtgrpcgen_invalid-identifier
     PRIVATE tst_qtgrpcgen_protobuf_invalid-identifier)
-list(APPEND cmake_generator_tests invalid-identifier)
+list(APPEND cmake_generator_tests invalid-identifier protobuf_invalid-identifier)
 
 if(TARGET Qt6::GrpcQuick)
     qt_internal_extend_target(tst_qtgrpcgen

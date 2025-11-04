@@ -85,6 +85,7 @@ private slots:
     void timeRoundtrip_data();
     void timeRoundtrip();
 
+    void fontSetsStyleName();
     void fontSetsProperties();
 
 private:
@@ -733,7 +734,7 @@ void tst_qqmlqt::createQmlObject()
     QString warning4 = component.url().toString()+ ":9: TypeError: Passing incompatible arguments to C++ functions from JavaScript is not allowed.";
     QString warning5 = component.url().toString()+ ":8: Error: Too many arguments";
     QString warning6 = "RunTimeError:  Qt.createQmlObject(): failed to create object: \n    " + testFileUrl("inline").toString() + ":3:16: Cannot assign object type QObject with no default method";
-    QString warning7 = "Could not convert argument 1 at";
+    QString warning7 = "Could not convert argument 1 from 0 to QObject*";
     QString warning8 = "expression for noParent@";
     QTest::ignoreMessage(QtWarningMsg, QRegularExpression(warning1));
     QTest::ignoreMessage(QtWarningMsg, qPrintable(warning2));
@@ -826,11 +827,11 @@ void tst_qqmlqt::dateTimeFormatting()
         << "formatting.qml:36: Error: Unable to determine callable overload"
         << "formatting.qml:39: Error: Unable to determine callable overload"
         << "formatting.qml:42: Error: Unable to determine callable overload"
-        << "Could not convert argument 1 at"
+        << "Could not convert argument 1 from \\[object Object\\] to QLocale"
         << "expression for err_date2@"
-        << "Could not convert argument 1 at"
+        << "Could not convert argument 1 from \\[object Object\\] to QLocale"
         << "expression for err_time2@"
-        << "Could not convert argument 1 at"
+        << "Could not convert argument 1 from \\[object Object\\] to QLocale"
         << "expression for err_dateTime2@";
 
     for (const QString &warning : std::as_const(warnings))
@@ -911,11 +912,11 @@ void tst_qqmlqt::dateTimeFormattingVariants()
     warnings << "formatting.qml:36: Error: Unable to determine callable overload."
              << "formatting.qml:39: Error: Unable to determine callable overload."
              << "formatting.qml:42: Error: Unable to determine callable overload."
-             << "Could not convert argument 1 at"
+             << "Could not convert argument 1 from \\[object Object\\] to QLocale"
              << "expression for err_date2@"
-             << "Could not convert argument 1 at"
+             << "Could not convert argument 1 from \\[object Object\\] to QLocale"
              << "expression for err_time2@"
-             << "Could not convert argument 1 at"
+             << "Could not convert argument 1 from \\[object Object\\] to QLocale"
              << "expression for err_dateTime2@";
 
     for (const QString &warning : std::as_const(warnings))
@@ -1114,7 +1115,7 @@ void tst_qqmlqt::dateTimeFormattingWithLocale()
     auto dateString = o->property("dateString").toString();
     QCOMPARE(dateString, QLocale("de_DE").toString(date, QLocale::ShortFormat));
 
-    QTest::ignoreMessage(QtWarningMsg, QRegularExpression("Could not convert argument 1 at"));
+    QTest::ignoreMessage(QtWarningMsg, QRegularExpression("Could not convert argument 1 from null to QLocale"));
     QTest::ignoreMessage(QtWarningMsg, QRegularExpression("invalidUsage@"));
     QTest::ignoreMessage(
                 QtWarningMsg,
@@ -1475,6 +1476,18 @@ void tst_qqmlqt::timeRoundtrip()
     // any perturbation (e.g. by DST effects) from converting from QTime to V4's Date and back
     // again.
     QCOMPARE(tp.m_getTime, tp.m_putTime);
+}
+
+void tst_qqmlqt::fontSetsStyleName() {
+    QQmlComponent component(&engine, testFileUrl("qtbug_125495.qml"));
+
+    QScopedPointer<QObject> object(component.create());
+    QVERIFY(object != nullptr);
+
+    QFont f;
+    f.setStyleName("Some Style");
+
+    QCOMPARE(qvariant_cast<QFont>(object->property("fontProperty")), f);
 }
 
 void tst_qqmlqt::fontSetsProperties() {

@@ -32,25 +32,23 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+import type * as ProtocolProxyApi from '../../generated/protocol-proxy-api.js';
+import * as Protocol from '../../generated/protocol.js';
 import * as Common from '../common/common.js';
 import * as i18n from '../i18n/i18n.js';
 import * as Platform from '../platform/platform.js';
-import type * as ProtocolProxyApi from '../../generated/protocol-proxy-api.js';
-import * as Protocol from '../../generated/protocol.js';
 
-import {DOMModel, type DeferredDOMNode, type DOMNode} from './DOMModel.js';
-
+import {type DeferredDOMNode, DOMModel, type DOMNode} from './DOMModel.js';
+import {FrameManager} from './FrameManager.js';
 import {Events as NetworkManagerEvents, NetworkManager, type RequestUpdateDroppedEventData} from './NetworkManager.js';
 import {type NetworkRequest} from './NetworkRequest.js';
 import {Resource} from './Resource.js';
 import {ExecutionContext, RuntimeModel} from './RuntimeModel.js';
-
-import {Capability, Type, type Target} from './Target.js';
 import {SDKModel} from './SDKModel.js';
-import {TargetManager} from './TargetManager.js';
 import {SecurityOriginManager} from './SecurityOriginManager.js';
 import {StorageKeyManager} from './StorageKeyManager.js';
-import {FrameManager} from './FrameManager.js';
+import {Capability, type Target, Type} from './Target.js';
+import {TargetManager} from './TargetManager.js';
 
 export class ResourceTreeModel extends SDKModel<EventTypes> {
   readonly agent: ProtocolProxyApi.PageApi;
@@ -133,7 +131,7 @@ export class ResourceTreeModel extends SDKModel<EventTypes> {
 
   static reloadAllPages(bypassCache?: boolean, scriptToEvaluateOnLoad?: string): void {
     for (const resourceTreeModel of TargetManager.instance().models(ResourceTreeModel)) {
-      if (resourceTreeModel.target().parentTarget()?.type() !== Type.Frame) {
+      if (resourceTreeModel.target().parentTarget()?.type() !== Type.FRAME) {
         resourceTreeModel.reloadPage(bypassCache, scriptToEvaluateOnLoad);
       }
     }
@@ -143,7 +141,7 @@ export class ResourceTreeModel extends SDKModel<EventTypes> {
     if (!this.framesInternal.has(frameId)) {
       return null;
     }
-    const response = await this.storageAgent.invoke_getStorageKeyForFrame({frameId: frameId});
+    const response = await this.storageAgent.invoke_getStorageKeyForFrame({frameId});
     if (response.getError() === 'Frame tree node for given frame not found') {
       return null;
     }
@@ -240,7 +238,7 @@ export class ResourceTreeModel extends SDKModel<EventTypes> {
     this.dispatchEventToListeners(Events.FrameNavigated, frame);
 
     if (frame.isPrimaryFrame()) {
-      this.primaryPageChanged(frame, PrimaryPageChangeType.Navigation);
+      this.primaryPageChanged(frame, PrimaryPageChangeType.NAVIGATION);
     }
 
     // Fill frame with retained resources (the ones loaded using new loader).
@@ -468,7 +466,7 @@ export class ResourceTreeModel extends SDKModel<EventTypes> {
     data: string|null,
     errors: Array<Protocol.Page.AppManifestError>,
   }> {
-    const response = await this.agent.invoke_getAppManifest();
+    const response = await this.agent.invoke_getAppManifest({});
     if (response.getError()) {
       return {url: response.url as Platform.DevToolsPath.UrlString, data: null, errors: []};
     }
@@ -546,9 +544,9 @@ export class ResourceTreeModel extends SDKModel<EventTypes> {
       }
     }
     return {
-      securityOrigins: securityOrigins,
-      mainSecurityOrigin: mainSecurityOrigin,
-      unreachableMainSecurityOrigin: unreachableMainSecurityOrigin,
+      securityOrigins,
+      mainSecurityOrigin,
+      unreachableMainSecurityOrigin,
     };
   }
 
@@ -569,7 +567,7 @@ export class ResourceTreeModel extends SDKModel<EventTypes> {
       }
     }
 
-    return {storageKeys: storageKeys, mainStorageKey: mainStorageKey};
+    return {storageKeys, mainStorageKey};
   }
 
   private updateSecurityOrigins(): void {
@@ -619,6 +617,7 @@ export class ResourceTreeModel extends SDKModel<EventTypes> {
 }
 
 export enum Events {
+  /* eslint-disable @typescript-eslint/naming-convention -- Used by web_tests. */
   FrameAdded = 'FrameAdded',
   FrameNavigated = 'FrameNavigated',
   FrameDetached = 'FrameDetached',
@@ -637,6 +636,7 @@ export enum Events {
   InterstitialHidden = 'InterstitialHidden',
   BackForwardCacheDetailsUpdated = 'BackForwardCacheDetailsUpdated',
   JavaScriptDialogOpening = 'JavaScriptDialogOpening',
+  /* eslint-enable @typescript-eslint/naming-convention */
 }
 
 export type EventTypes = {
@@ -849,7 +849,7 @@ export class ResourceTreeFrame {
       return null;
     }
     const parentTarget = this.#model.target().parentTarget();
-    if (parentTarget?.type() !== Type.Frame) {
+    if (parentTarget?.type() !== Type.FRAME) {
       return null;
     }
     const parentModel = parentTarget.model(ResourceTreeModel);
@@ -888,7 +888,7 @@ export class ResourceTreeFrame {
    * https://chromium.googlesource.com/chromium/src/+/HEAD/docs/frame_trees.md
    */
   isOutermostFrame(): boolean {
-    return this.#model.target().parentTarget()?.type() !== Type.Frame && !this.#sameTargetParentFrameInternal &&
+    return this.#model.target().parentTarget()?.type() !== Type.FRAME && !this.#sameTargetParentFrameInternal &&
         !this.crossTargetParentFrameId;
   }
 
@@ -1023,8 +1023,8 @@ export class ResourceTreeFrame {
       return highlightFrameOwner(parentFrame.resourceTreeModel().domModel());
     }
 
-    // Portals.
-    if (parentTarget?.type() === Type.Frame) {
+    // Fenced frames.
+    if (parentTarget?.type() === Type.FRAME) {
       const domModel = parentTarget.model(DOMModel);
       if (domModel) {
         return highlightFrameOwner(domModel);
@@ -1113,6 +1113,9 @@ export class PageDispatcher implements ProtocolProxyApi.PageDispatcher {
     this.#resourceTreeModel.frameDetached(frameId, reason === Protocol.Page.FrameDetachedEventReason.Swap);
   }
 
+  frameSubtreeWillBeDetached(_params: Protocol.Page.FrameSubtreeWillBeDetachedEvent): void {
+  }
+
   frameStartedLoading({}: Protocol.Page.FrameStartedLoadingEvent): void {
   }
 
@@ -1190,6 +1193,6 @@ export interface StorageKeyData {
 }
 
 export const enum PrimaryPageChangeType {
-  Navigation = 'Navigation',
-  Activation = 'Activation',
+  NAVIGATION = 'Navigation',
+  ACTIVATION = 'Activation',
 }

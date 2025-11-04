@@ -30,8 +30,8 @@
 
 #include <vector>
 
+#include "absl/container/inlined_vector.h"
 #include "dawn/common/Constants.h"
-#include "dawn/common/StackContainer.h"
 #include "dawn/native/CommandAllocator.h"
 #include "dawn/native/Error.h"
 #include "dawn/native/Features.h"
@@ -101,10 +101,12 @@ MaybeError ValidateCopySizeFitsInBuffer(const Ref<BufferBase>& buffer,
 
 bool IsRangeOverlapped(uint32_t startA, uint32_t startB, uint32_t length);
 
-MaybeError ValidateTextureToTextureCopyCommonRestrictions(const ImageCopyTexture& src,
+MaybeError ValidateTextureToTextureCopyCommonRestrictions(DeviceBase const* device,
+                                                          const ImageCopyTexture& src,
                                                           const ImageCopyTexture& dst,
                                                           const Extent3D& copySize);
-MaybeError ValidateTextureToTextureCopyRestrictions(const ImageCopyTexture& src,
+MaybeError ValidateTextureToTextureCopyRestrictions(DeviceBase const* device,
+                                                    const ImageCopyTexture& src,
                                                     const ImageCopyTexture& dst,
                                                     const Extent3D& copySize);
 
@@ -112,8 +114,9 @@ MaybeError ValidateCanUseAs(const TextureBase* texture,
                             wgpu::TextureUsage usage,
                             UsageValidationMode mode);
 MaybeError ValidateCanUseAs(const BufferBase* buffer, wgpu::BufferUsage usage);
+MaybeError ValidateCanUseAsInternal(const BufferBase* buffer, wgpu::BufferUsage usage);
 
-using ColorAttachmentFormats = StackVector<const Format*, kMaxColorAttachments>;
+using ColorAttachmentFormats = absl::InlinedVector<const Format*, kMaxColorAttachments>;
 MaybeError ValidateColorAttachmentBytesPerSample(DeviceBase* device,
                                                  const ColorAttachmentFormats& formats);
 

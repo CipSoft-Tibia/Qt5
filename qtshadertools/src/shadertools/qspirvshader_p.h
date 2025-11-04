@@ -28,7 +28,7 @@ public:
     enum class GlslFlag {
         GlslEs = 0x01,
         FixClipSpace = 0x02,
-        FragDefaultMediump = 0x04
+        EsFragDefaultFloatPrecisionMedium = 0x04
     };
     Q_DECLARE_FLAGS(GlslFlags, GlslFlag)
 

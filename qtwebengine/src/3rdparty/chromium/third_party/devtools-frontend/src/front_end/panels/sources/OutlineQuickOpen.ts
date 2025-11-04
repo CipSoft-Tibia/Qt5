@@ -29,7 +29,9 @@ const i18nString = i18n.i18n.getLocalizedString.bind(undefined, str_);
 
 export type OutlineItem = {
   title: string,
-  subtitle?: string, lineNumber: number, columnNumber: number,
+  lineNumber: number,
+  columnNumber: number,
+  subtitle?: string,
 };
 
 export function outline(state: CodeMirror.EditorState): OutlineItem[] {
@@ -266,6 +268,10 @@ export function outline(state: CodeMirror.EditorState): OutlineItem[] {
 export class OutlineQuickOpen extends QuickOpen.FilteredListWidget.Provider {
   private items: OutlineItem[] = [];
   private active: boolean = false;
+
+  constructor() {
+    super('source-symbol');
+  }
 
   override attach(): void {
     const sourceFrame = this.currentSourceFrame();

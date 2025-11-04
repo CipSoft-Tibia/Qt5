@@ -37,7 +37,7 @@ Item {
 
     TestCase {
         when: windowShown && mapView.map.mapReady
-        name: "MapKeepGrabAndPreventSteal"
+        name: "FlickableKeepGrabAndPreventSteal"
 
         function init()
         {
@@ -74,22 +74,54 @@ Item {
             mouseRelease(mapView, i, 0)
         }
 
-        function test_map_preventsteal()
+        function test_flickable_preventsteal_data()
         {
+            return [
+                {tag: "flick,pan", stop: false},
+                {tag: "flick,stop,pan", stop: true},
+            ]
+        }
+
+        function test_flickable_preventsteal(data)
+        {
+            // This test will verify that once the user has started to flick the
+            // outer flickable, the inner MapView will not steal the grab until the
+            // flicking interaction has stopped.
             var center = QtPositioning.coordinate(mapView.map.center.latitude,mapView.map.center.longitude)
             flick() // flick flickable
             tryCompare(flickStartedSpy,"count",1)
             compare(flickable.flicking, true)
-            pan() // pan map: this interrupts flicking
+            compare(flickable.moving, true)
 
-            // The remaining lines of this test are commented out work that
-            // affects Flickable and grabbing has landed in QtQuick.
-
-            // compare(flickStartedSpy.count, 1) // didn't start flicking again
-            // compare(flickable.flicking, false)
-            // tryCompare(panActiveSpy, "count", 2)
-            // // map should change
-            // verify(center != mapView.map.center)
+            if (data.stop) {
+                // stop the flicking with a tap on top of the map
+                mousePress(mapView, 0, 0)
+                compare(flickable.dragging, false)
+                compare(flickable.flicking, false)
+                compare(flickable.moving, true)
+                mouseRelease(mapView, 0, 0)
+                compare(flickable.moving, false)
+                compare(panActiveSpy.count, 0)
+                // Try to pan the map. Since the flickable is no longer moving, it should succeed
+                pan()
+                compare(flickStartedSpy.count, 1)
+                compare(flickable.flicking, false)
+                compare(flickable.moving, false)
+                tryCompare(panActiveSpy, "count", 2)
+                // map should change
+                verify(center !== mapView.map.center)
+            } else {
+                // Try to pan the map. Since the flickable is still moving, it will
+                // not succeed. A drag on a descendant while the flickable is moving
+                // will only add (or reduce) momentum to the ongoing flick.
+                pan()
+                compare(flickStartedSpy.count, 2)
+                compare(flickable.flicking, true)
+                compare(flickable.moving, true)
+                tryCompare(panActiveSpy, "count", 0)
+                // map shouldn't change
+                verify(center === mapView.map.center)
+            }
         }
     }
 }

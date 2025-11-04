@@ -50,6 +50,8 @@ protected:
     float m_min;
     float m_max;
     bool m_autoAdjust;
+    bool m_scaleLabelsByCount;
+    qreal m_labelSize;
     float m_labelAutoAngle;
     float m_titleOffset;
     bool m_titleVisible;

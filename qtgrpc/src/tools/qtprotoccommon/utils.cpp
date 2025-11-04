@@ -4,14 +4,12 @@
 
 #include "utils.h"
 
-#include <string_view>
-
-#include <cctype>
 #include <cassert>
-#include <regex>
+#include <cctype>
+#include <filesystem>
 
 namespace {
-const std::string_view asciiSpacing = " \t\n\r\f\v";
+constexpr std::string_view AsciiSpacing = " \t\n\r\f\v";
 }
 
 namespace qtprotoccommon::utils {
@@ -31,16 +29,15 @@ std::vector<std::string> split(std::string_view s, std::string_view c, bool keep
     assert(!c.empty());
     std::vector<std::string> out;
     std::string::size_type pos = 0;
-    std::string item;
     for (std::string::size_type posNext = 0; (posNext = s.find(c, pos)) != std::string::npos;
          pos = posNext + c.size()) {
-        item = s.substr(pos, posNext - pos);
+        auto item = s.substr(pos, posNext - pos);
         if (keepEmpty || !item.empty())
-            out.push_back(item);
+            out.emplace_back(item);
     }
-    item = s.substr(pos);
+    auto item = s.substr(pos);
     if (keepEmpty || !item.empty())
-        out.push_back(item);
+        out.emplace_back(item);
     return out;
 }
 
@@ -65,12 +62,7 @@ std::string replace(std::string_view where, std::string_view from, std::string_v
 
 void asciiToLower(std::string &str)
 {
-    const auto toLower = [](char c) {
-        if (!isAsciiAlpha(c))
-            return c;
-        return char(c | char(0x20));
-    };
-    std::transform(std::begin(str), std::end(str), std::begin(str), toLower);
+    std::transform(std::begin(str), std::end(str), std::begin(str), utils::toAsciiLower);
 }
 
 void asciiToUpper(std::string &str)
@@ -78,20 +70,15 @@ void asciiToUpper(std::string &str)
     std::transform(std::begin(str), std::end(str), std::begin(str), utils::toAsciiUpper);
 }
 
-std::string removeFileSuffix(std::string fileName)
+std::string removeFileSuffix(std::string_view fileName)
 {
-    size_t dot = fileName.rfind('.'), slash = fileName.rfind('/');
-    if (dot != std::string::npos && (slash == std::string::npos || dot > slash))
-        fileName.resize(dot);
-    return fileName;
+    std::filesystem::path path(fileName);
+    return (path.parent_path() / path.stem()).string();
 }
 
-std::string extractFileBasename(std::string fileName)
+std::string extractFileBasename(std::string_view fileName)
 {
-    size_t dot = fileName.rfind('.'), slash = fileName.rfind('/');
-    if (dot != std::string::npos && (slash == std::string::npos || dot > slash))
-        fileName.resize(dot);
-    return slash != std::string::npos ? fileName.substr(slash + 1) : fileName;
+    return std::filesystem::path(fileName).stem().string();
 }
 
 std::string toValidIdentifier(std::string_view name)
@@ -113,48 +100,41 @@ std::string toValidIdentifier(std::string_view name)
     return out;
 }
 
-std::string capitalizeAsciiName(std::string name)
+std::string capitalizeAsciiName(std::string_view name)
 {
-    if (name.empty() || !isAsciiAlpha(name[0]))
-        return name;
-    name[0] &= ~char(0x20);
-    return name;
+    std::string result(name);
+    if (result.empty() || !isAsciiAlpha(result[0]))
+        return result;
+    result[0] &= ~char(0x20);
+    return result;
 }
 
-std::string deCapitalizeAsciiName(std::string name)
+std::string deCapitalizeAsciiName(std::string_view name)
 {
-    if (name.empty() || !isAsciiAlpha(name[0]))
-        return name;
-    name[0] |= char(0x20);
-    return name;
+    std::string result(name);
+    if (result.empty() || !isAsciiAlpha(result[0]))
+        return result;
+    result[0] |= char(0x20);
+    return result;
 }
 
 std::string &rtrim(std::string &s)
 {
-    const size_t cut = s.find_last_not_of(asciiSpacing);
+    const size_t cut = s.find_last_not_of(AsciiSpacing);
     s.erase(cut != std::string::npos ? cut + 1 : 0);
     return s;
 }
 
 std::string &ltrim(std::string &s)
 {
-    const size_t cut = s.find_first_not_of(asciiSpacing);
-    s.erase(0, cut == std::string::npos ? s.size() - 1 : cut);
+    const size_t cut = s.find_first_not_of(AsciiSpacing);
+    s.erase(0, cut == std::string::npos ? s.size() : cut);
     return s;
 }
 
 std::string &trim(std::string &s)
 {
-    const size_t lastKept = s.find_last_not_of(asciiSpacing);
-    if (lastKept == std::string::npos) { // true, in particular, if empty
-        s.erase(0);
-        return s;
-    }
-    const size_t firstKept = s.find_first_not_of(asciiSpacing);
-    assert(firstKept != std::string::npos);
-    assert(firstKept <= lastKept);
-    s = s.substr(firstKept, lastKept + 1 - firstKept);
-    return s;
+    return ltrim(rtrim(s));
 }
 
 bool HeaderComparator::operator()(const std::string &lhs, const std::string &rhs) const

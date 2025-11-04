@@ -1,5 +1,6 @@
 // Copyright (C) 2019 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:network-protocol
 
 #include "custom_url_loader_factory.h"
 
@@ -64,7 +65,7 @@ public:
     void FollowRedirect(const std::vector<std::string> &removed_headers,
                         const net::HttpRequestHeaders &modified_headers,
                         const net::HttpRequestHeaders &modified_cors_exempt_headers, // FIXME: do something with this?
-                        const absl::optional<GURL> &new_url) override
+                        const std::optional<GURL> &new_url) override
     {
         // We can be asked for follow our own redirect
         scoped_refptr<URLRequestCustomJobProxy> proxy = new URLRequestCustomJobProxy(this, m_proxy->m_scheme, m_proxy->m_profileAdapter);
@@ -267,9 +268,8 @@ private:
             }
         }
         if (m_corsEnabled) {
-            std::string origin;
-            if (m_request.headers.GetHeader("Origin", &origin)) {
-                headers += base::StringPrintf("Access-Control-Allow-Origin: %s\n", origin.c_str());
+            if (std::optional<std::string> origin = m_request.headers.GetHeader("Origin")) {
+                headers += base::StringPrintf("Access-Control-Allow-Origin: %s\n", origin->c_str());
                 headers += "Access-Control-Allow-Credentials: true\n";
             }
         }
@@ -292,7 +292,7 @@ private:
                         m_request.site_for_cookies,
                         first_party_url_policy, m_request.referrer_policy,
                         m_request.referrer.spec(), net::HTTP_SEE_OTHER,
-                        m_redirect, absl::nullopt, false /*insecure_scheme_was_upgraded*/);
+                        m_redirect, std::nullopt, false /*insecure_scheme_was_upgraded*/);
             m_client->OnReceiveRedirect(redirectInfo, std::move(m_head));
             m_head = nullptr;
             // ### should m_request be updated with RedirectInfo? (see FollowRedirect)
@@ -302,7 +302,7 @@ private:
         m_head->mime_type = m_mimeType;
         m_head->charset = m_charset;
         m_headerBytesRead = m_head->headers->raw_headers().length();
-        m_client->OnReceiveResponse(std::move(m_head), std::move(m_pipeConsumerHandle), absl::nullopt);
+        m_client->OnReceiveResponse(std::move(m_head), std::move(m_pipeConsumerHandle), std::nullopt);
         m_head = nullptr;
 
         m_watcher = std::make_unique<mojo::SimpleWatcher>(
@@ -353,7 +353,7 @@ private:
         m_head->encoded_data_length = m_head->headers->raw_headers().length();
         m_head->content_length = {};
         m_head->encoded_body_length = {};
-        m_client->OnReceiveResponse(std::move(m_head), mojo::ScopedDataPipeConsumerHandle(), absl::nullopt);
+        m_client->OnReceiveResponse(std::move(m_head), mojo::ScopedDataPipeConsumerHandle(), std::nullopt);
         CompleteWithFailure(net::Error(error));
     }
     void notifySuccess() override
@@ -385,20 +385,21 @@ private:
             if (m_error || !m_device)
                 break;
 
-            void *buffer = nullptr;
-            uint32_t bufferSize = 0;
-            MojoResult beginResult = m_pipeProducerHandle->BeginWriteData(
-                    &buffer, &bufferSize, MOJO_BEGIN_WRITE_DATA_FLAG_NONE);
+            base::span<uint8_t> buffer;
+            MojoResult beginResult =
+                    m_pipeProducerHandle->BeginWriteData(
+                        0, MOJO_BEGIN_WRITE_DATA_FLAG_NONE, buffer);
             if (beginResult == MOJO_RESULT_SHOULD_WAIT) {
                 m_watcher->ArmOrNotify();
                 return false; // Wait for pipe watcher
             }
             if (beginResult != MOJO_RESULT_OK)
                 break;
+            size_t bufferSize = buffer.size();
             if (m_maxBytesToRead > 0 && m_maxBytesToRead <= int64_t{std::numeric_limits<uint32_t>::max()})
-                bufferSize = std::min(bufferSize, uint32_t(m_maxBytesToRead));
+                bufferSize = std::min(bufferSize, size_t(m_maxBytesToRead));
 
-            int readResult = m_device->read(static_cast<char *>(buffer), bufferSize);
+            int readResult = m_device->read(reinterpret_cast<char *>(buffer.data()), bufferSize);
             uint32_t bytesRead = std::max(readResult, 0);
             m_pipeProducerHandle->EndWriteData(bytesRead);
             m_totalBytesRead += bytesRead;
@@ -427,10 +428,9 @@ private:
     }
     bool ParseRange(const net::HttpRequestHeaders &headers)
     {
-        std::string range_header;
-        if (headers.GetHeader(net::HttpRequestHeaders::kRange, &range_header)) {
+        if (auto range_header = headers.GetHeader(net::HttpRequestHeaders::kRange)) {
             std::vector<net::HttpByteRange> ranges;
-            if (net::HttpUtil::ParseRangeHeader(range_header, &ranges)) {
+            if (net::HttpUtil::ParseRangeHeader(*range_header, &ranges)) {
                 // Chromium doesn't support multirange requests.
                 if (ranges.size() == 1) {
                     m_byteRange = ranges[0];

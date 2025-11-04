@@ -7,7 +7,6 @@ import * as Platform from '../../../core/platform/platform.js';
 import * as UI from '../../legacy/legacy.js';
 import * as LitHtml from '../../lit-html/lit-html.js';
 import * as VisualLogging from '../../visual_logging/visual_logging.js';
-import * as ComponentHelpers from '../helpers/helpers.js';
 import * as Coordinator from '../render_coordinator/render_coordinator.js';
 
 import dataGridStyles from './dataGrid.css.js';
@@ -73,7 +72,8 @@ const str_ = i18n.i18n.registerUIStrings('ui/components/data_grid/DataGrid.ts', 
 const i18nString = i18n.i18n.getLocalizedString.bind(undefined, str_);
 export interface DataGridContextMenusConfiguration {
   headerRow?: (menu: UI.ContextMenu.ContextMenu, columns: readonly Column[]) => void;
-  bodyRow?: (menu: UI.ContextMenu.ContextMenu, columns: readonly Column[], row: Readonly<Row>) => void;
+  bodyRow?:
+      (menu: UI.ContextMenu.ContextMenu, columns: readonly Column[], row: Readonly<Row>, rows: readonly Row[]) => void;
 }
 
 export interface DataGridData {
@@ -85,6 +85,10 @@ export interface DataGridData {
   paddingRowsCount?: number;
   showScrollbar?: boolean;
   striped?: boolean;
+  /**
+   * Disable the auto-scroll on new data feature. This is enabled by default.
+   */
+  autoScrollToBottom?: boolean;
 }
 
 const enum UserScrollState {
@@ -111,6 +115,8 @@ export class DataGrid extends HTMLElement {
   #paddingRowsCount = 10;
   #showScrollbar?: boolean = false;
   #striped?: boolean = false;
+  #autoScrollToBottom: boolean = true;
+
   #currentResize: {
     rightCellCol: HTMLTableColElement,
     leftCellCol: HTMLTableColElement,
@@ -158,7 +164,7 @@ export class DataGrid extends HTMLElement {
 
   connectedCallback(): void {
     this.#shadow.adoptedStyleSheets = [dataGridStyles];
-    ComponentHelpers.SetCSSProperty.set(this, '--table-row-height', `${ROW_HEIGHT_PIXELS}px`);
+    this.style.setProperty('--table-row-height', `${ROW_HEIGHT_PIXELS}px`);
     void this.#render();
   }
 
@@ -168,6 +174,7 @@ export class DataGrid extends HTMLElement {
       rows: this.#rows as Row[],
       activeSort: this.#sortState,
       contextMenus: this.#contextMenus,
+      autoScrollToBottom: this.#autoScrollToBottom,
       label: this.#label,
       paddingRowsCount: this.#paddingRowsCount,
       showScrollbar: this.#showScrollbar,
@@ -186,6 +193,9 @@ export class DataGrid extends HTMLElement {
     this.#label = data.label;
     this.#showScrollbar = data.showScrollbar;
     this.#striped = data.striped;
+    if (typeof data.autoScrollToBottom === 'boolean') {
+      this.#autoScrollToBottom = data.autoScrollToBottom;
+    }
 
     /**
      * On first render, now we have data, we can figure out which cell is the
@@ -230,6 +240,10 @@ export class DataGrid extends HTMLElement {
   }
 
   #shouldAutoScrollToBottom(): boolean {
+    if (!this.#autoScrollToBottom) {
+      return false;
+    }
+
     /**
      * If the user's last scroll took them to the bottom, then we assume they
      * want to automatically scroll.
@@ -355,7 +369,7 @@ export class DataGrid extends HTMLElement {
     }
 
     const nextFocusedCell = handleArrowKeyNavigation({
-      key: key,
+      key,
       currentFocusedCell: this.#cellUserHasFocused,
       columns: this.#columns,
       rows: this.#rows,
@@ -587,12 +601,12 @@ export class DataGrid extends HTMLElement {
 
     const menu = new UI.ContextMenu.ContextMenu(event);
     addColumnVisibilityCheckboxes(this, menu);
-    const sortMenu = menu.defaultSection().appendSubMenuItem(i18nString(UIStrings.sortBy));
+    const sortMenu = menu.defaultSection().appendSubMenuItem(i18nString(UIStrings.sortBy), false, 'sort-by');
     addSortableColumnItems(this, sortMenu);
 
     menu.defaultSection().appendItem(i18nString(UIStrings.resetColumns), () => {
       this.dispatchEvent(new ContextMenuHeaderResetClickEvent());
-    });
+    }, {jslogContext: 'reset-columns'});
 
     if (this.#contextMenus && this.#contextMenus.headerRow) {
       // Let the user append things to the menu
@@ -625,17 +639,18 @@ export class DataGrid extends HTMLElement {
     const rowThatWasClicked = this.#rows[rowIndex - 1];
 
     const menu = new UI.ContextMenu.ContextMenu(event);
-    const sortMenu = menu.defaultSection().appendSubMenuItem(i18nString(UIStrings.sortBy));
+    const sortMenu = menu.defaultSection().appendSubMenuItem(i18nString(UIStrings.sortBy), false, 'sort-by');
     addSortableColumnItems(this, sortMenu);
 
-    const headerOptionsMenu = menu.defaultSection().appendSubMenuItem(i18nString(UIStrings.headerOptions));
+    const headerOptionsMenu =
+        menu.defaultSection().appendSubMenuItem(i18nString(UIStrings.headerOptions), false, 'header-options');
     addColumnVisibilityCheckboxes(this, headerOptionsMenu);
     headerOptionsMenu.defaultSection().appendItem(i18nString(UIStrings.resetColumns), () => {
       this.dispatchEvent(new ContextMenuHeaderResetClickEvent());
-    });
+    }, {jslogContext: 'reset-columns'});
 
     if (this.#contextMenus && this.#contextMenus.bodyRow) {
-      this.#contextMenus.bodyRow(menu, this.#columns, rowThatWasClicked);
+      this.#contextMenus.bodyRow(menu, this.#columns, rowThatWasClicked, this.#rows);
     }
     void menu.show();
   }
@@ -765,7 +780,7 @@ export class DataGrid extends HTMLElement {
     const containerClassMap = {
       'wrapping-container': true,
       'show-scrollbar': this.#showScrollbar === true,
-      'striped': this.#striped === true,
+      striped: this.#striped === true,
     };
 
     await coordinator.write(() => {
@@ -810,13 +825,13 @@ export class DataGrid extends HTMLElement {
                 const cellIsFocusableCell = anyColumnsSortable && columnIndex === tabbableCell[0] && tabbableCell[1] === 0;
 
                 return LitHtml.html`<th class=${thClasses}
-                  jslog=${VisualLogging.tableHeader().track({click: anyColumnsSortable}).context(col.id)}
+                  jslog=${VisualLogging.tableHeader().track({click: anyColumnsSortable, resize: true}).context(col.id)}
                   style=${LitHtml.Directives.ifDefined(col.styles ? LitHtml.Directives.styleMap(col.styles) : undefined)}
                   data-grid-header-cell=${col.id}
-                  @focus=${(): void => {
+                  @focus=${() => {
                     this.#focusCellIfRequired([columnIndex, 0]);
                   }}
-                  @click=${(): void => {
+                  @click=${() => {
                     /**
                      * We use click here rather than focus because if you've
                      * clicked on the header to sort, you've also focused it. If
@@ -840,7 +855,7 @@ export class DataGrid extends HTMLElement {
             <tr class="filler-row-top padding-row" style=${LitHtml.Directives.styleMap({
               height: `${topVisibleRow * ROW_HEIGHT_PIXELS}px`,
             })} aria-hidden="true"></tr>
-            ${LitHtml.Directives.repeat(renderableRows, row => this.#rowIndexMap.get(row), (row): LitHtml.TemplateResult => {
+            ${LitHtml.Directives.repeat(renderableRows, row => this.#rowIndexMap.get(row), row => {
               const rowIndex = this.#rowIndexMap.get(row);
               if (rowIndex === undefined) {
                 throw new Error('Trying to render a row that has no index in the rowIndexMap');
@@ -862,11 +877,12 @@ export class DataGrid extends HTMLElement {
                   aria-rowindex=${rowIndex + 1}
                   class=${rowClasses}
                   style=${LitHtml.Directives.ifDefined(row.styles ? LitHtml.Directives.styleMap(row.styles) : undefined)}
+                  jslog=${VisualLogging.tableRow().track({keydown: 'ArrowUp|ArrowDown|ArrowLeft|ArrowRight|Enter|Space'})}
                   @contextmenu=${this.#onBodyRowContextMenu}
-                  @mouseenter=${(): void => {
+                  @mouseenter=${() => {
                     this.dispatchEvent(new RowMouseEnterEvent(row));
                   }}
-                  @mouseleave=${(): void => {
+                  @mouseleave=${() => {
                     this.dispatchEvent(new RowMouseLeaveEvent(row));
                   }}
                 >${this.#columns.map((col, columnIndex) => {
@@ -879,7 +895,7 @@ export class DataGrid extends HTMLElement {
                   const cellOutput = col.visible ? renderCellValue(cell) : null;
                   return LitHtml.html`<td
                     class=${cellClasses}
-                    jslog=${VisualLogging.tableCell().track({click: true}).context(col.id)}
+                    jslog=${VisualLogging.tableCell().track({click: true})}).context(col.id)}
                     style=${LitHtml.Directives.ifDefined(col.styles ? LitHtml.Directives.styleMap(col.styles) : undefined)}
                     tabindex=${cellIsFocusableCell ? '0' : '-1'}
                     aria-colindex=${columnIndex + 1}
@@ -887,7 +903,7 @@ export class DataGrid extends HTMLElement {
                     data-row-index=${tableRowIndex}
                     data-col-index=${columnIndex}
                     data-grid-value-cell-for-column=${col.id}
-                    @focus=${(): void => {
+                    @focus=${() => {
                       this.#focusCellIfRequired([columnIndex, tableRowIndex]);
                       this.dispatchEvent(new BodyCellFocusedEvent(cell, row));
                     }}
@@ -942,7 +958,7 @@ export class DataGrid extends HTMLElement {
   }
 }
 
-ComponentHelpers.CustomElements.defineComponent('devtools-data-grid', DataGrid);
+customElements.define('devtools-data-grid', DataGrid);
 
 declare global {
   interface HTMLElementTagNameMap {

@@ -132,6 +132,7 @@ public:
         QProtobufMessage::swap(other);
         dptr.swap(other.dptr);
     }
+    Q_IMPLICIT operator QVariant() const;
 
     GlobalEnumGadget::GlobalEnum field1() const;
 
@@ -231,6 +232,7 @@ public:
         QProtobufMessage::swap(other);
         dptr.swap(other.dptr);
     }
+    Q_IMPLICIT operator QVariant() const;
 
     QtProtobuf::int32 field1() const;
 
@@ -350,6 +352,7 @@ public:
         QProtobufMessage::swap(other);
         dptr.swap(other.dptr);
     }
+    Q_IMPLICIT operator QVariant() const;
 
     const QtProtobuf::int32List &field1() const &;
 
@@ -463,6 +466,7 @@ class ScalarRepeatedNoPackedTypes : public QProtobufMessage
     Q_PROPERTY(QtProtobuf::doubleList field12 READ field12 WRITE setField12 SCRIPTABLE true)
     Q_PROPERTY(QStringList field13 READ field13 WRITE setField13 SCRIPTABLE true)
     Q_PROPERTY(QByteArrayList field14 READ field14 WRITE setField14 SCRIPTABLE true)
+    Q_PROPERTY(QList<qt::protobuf::GlobalEnumGadget::GlobalEnum> field15 READ field15 WRITE setField15 SCRIPTABLE true)
 
 public:
     using QtProtobufFieldEnum = ScalarRepeatedNoPackedTypes_QtProtobufNested::QtProtobufFieldEnum;
@@ -481,6 +485,7 @@ public:
         QProtobufMessage::swap(other);
         dptr.swap(other.dptr);
     }
+    Q_IMPLICIT operator QVariant() const;
 
     const QtProtobuf::int32List &field1() const &;
 
@@ -509,6 +514,8 @@ public:
     const QStringList &field13() const &;
 
     const QByteArrayList &field14() const &;
+
+    const QList<GlobalEnumGadget::GlobalEnum> &field15() const &;
     void setField1(const QtProtobuf::int32List &field1);
     void setField1(QtProtobuf::int32List &&field1);
     void setField2(const QtProtobuf::uint32List &field2);
@@ -537,6 +544,8 @@ public:
     void setField13(QStringList &&field13);
     void setField14(const QByteArrayList &field14);
     void setField14(QByteArrayList &&field14);
+    void setField15(const QList<GlobalEnumGadget::GlobalEnum> &field15);
+    void setField15(QList<GlobalEnumGadget::GlobalEnum> &&field15);
     static void registerTypes();
 
 private:
@@ -570,6 +579,7 @@ enum class QtProtobufFieldEnum {
     Field12ProtoFieldNumber = 12,
     Field13ProtoFieldNumber = 13,
     Field14ProtoFieldNumber = 14,
+    Field15ProtoFieldNumber = 15,
 };
 Q_ENUM_NS(QtProtobufFieldEnum)
 
@@ -627,6 +637,7 @@ public:
         QProtobufMessage::swap(other);
         dptr.swap(other.dptr);
     }
+    Q_IMPLICIT operator QVariant() const;
 
     bool hasField1() const;
     QtProtobuf::int32 field1() const;
@@ -823,6 +834,7 @@ public:
         QProtobufMessage::swap(other);
         dptr.swap(other.dptr);
     }
+    Q_IMPLICIT operator QVariant() const;
 
     bool hasField1() const;
     QtProtobuf::int32 field1() const;
@@ -1006,6 +1018,7 @@ public:
         QProtobufMessage::swap(other);
         dptr.swap(other.dptr);
     }
+    Q_IMPLICIT operator QVariant() const;
 
     const MapScalarTypes::Field1Entry &field1() const &;
 
@@ -1128,6 +1141,7 @@ public:
         QProtobufMessage::swap(other);
         dptr.swap(other.dptr);
     }
+    Q_IMPLICIT operator QVariant() const;
 
     bool hasField1() const;
     const ScalarTypes &field1() const &;
@@ -1245,6 +1259,7 @@ public:
         QProtobufMessage::swap(other);
         dptr.swap(other.dptr);
     }
+    Q_IMPLICIT operator QVariant() const;
 
     bool hasField1() const;
     const MessageNestedTypes_QtProtobufNested::NestedMessage &field1() const &;
@@ -1304,6 +1319,7 @@ public:
         QProtobufMessage::swap(other);
         dptr.swap(other.dptr);
     }
+    Q_IMPLICIT operator QVariant() const;
 
     QtProtobuf::int32 field1() const;
 

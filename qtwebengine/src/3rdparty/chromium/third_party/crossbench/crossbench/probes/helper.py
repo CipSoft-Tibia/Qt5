@@ -3,13 +3,15 @@
 # found in the LICENSE file.
 
 from __future__ import annotations
-import abc
 
 import csv
-import pathlib
-from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
+from typing import (TYPE_CHECKING, Any, Callable, Dict, Final, List, Optional,
+                    Sequence, Set, Tuple)
 
-from crossbench import plt
+if TYPE_CHECKING:
+  from crossbench.path import LocalPath
+
+INTERNAL_NAME_PREFIX: Final[str] = "cb."
 
 KeyFnType = Callable[[Tuple[str, ...]], Optional[str]]
 
@@ -32,7 +34,10 @@ class Flatten:
   _key_fn: KeyFnType
   _accumulator: Dict[str, Any]
 
-  def __init__(self, *args: Dict, key_fn: Optional[KeyFnType] = None) -> None:
+  def __init__(self,
+               *args: Dict,
+               key_fn: Optional[KeyFnType] = None,
+               sort: bool = True) -> None:
     """_summary_
 
     Args:
@@ -42,10 +47,13 @@ class Flatten:
     """
     self._accumulator = {}
     self._key_fn = key_fn or _default_flatten_key_fn
+    self._sort = sort
     self.append(*args)
 
   @property
   def data(self) -> Dict[str, Any]:
+    if not self._sort:
+      return dict(self._accumulator)
     items = sorted(self._accumulator.items(), key=lambda item: item[0])
     return dict(items)
 
@@ -83,11 +91,11 @@ class Flatten:
         self._flatten(path, item)
 
 
-def _ljust_row(sequence: List, n: int, fillvalue: Any = None) -> List:
-  return sequence + ([fillvalue] * (n - len(sequence)))
+def _ljust_row(sequence: List, n: int, fill_value: Any = None) -> List:
+  return sequence + ([fill_value] * (n - len(sequence)))
 
 
-def merge_csv(csv_list: Sequence[pathlib.Path],
+def merge_csv(csv_list: Sequence[LocalPath],
               headers: Optional[List[str]] = None,
               row_header_len: int = 1,
               delimiter: str = "\t") -> List[List[Any]]:
@@ -125,11 +133,11 @@ def merge_csv(csv_list: Sequence[pathlib.Path],
     table_headers = []
 
   # Initial row-headers from the first csv file.
-  known_row_headers = set()
+  known_row_headers: Set[Tuple[str, ...]] = set()
   _merge_csv_prepare_row_headers(table, known_row_headers, csv_list[0],
                                  row_header_len, delimiter)
 
-  table_row_len = row_header_len
+  table_row_len: int = row_header_len
   for csv_file in csv_list:
     with csv_file.open(encoding="utf-8") as f:
       csv_data = list(csv.reader(f, delimiter=delimiter))
@@ -142,8 +150,10 @@ def merge_csv(csv_list: Sequence[pathlib.Path],
   return table
 
 
-def _merge_csv_prepare_row_headers(table, known_row_headers, csv_file,
-                                   row_header_len, delimiter):
+def _merge_csv_prepare_row_headers(table: List[List[Any]],
+                                   known_row_headers: Set[Tuple[str, ...]],
+                                   csv_file: LocalPath, row_header_len: int,
+                                   delimiter: str):
   with csv_file.open(encoding="utf-8") as first_file:
     for csv_row in csv.reader(first_file, delimiter=delimiter):
       assert csv_row, "Mergeable CSV files must have row names."
@@ -153,7 +163,8 @@ def _merge_csv_prepare_row_headers(table, known_row_headers, csv_file,
       known_row_headers.add(csv_row_header_key)
 
 
-def _merge_csv_append(csv_data, table, table_headers, row_header_len, headers,
+def _merge_csv_append(csv_data: List[List[Any]], table: List[List[Any]],
+                      table_headers, row_header_len: int, headers,
                       known_row_headers, table_row_len):
   # Find the max row width in added csv_data.
   max_csv_row_len = max(len(row) for row in csv_data) - row_header_len
@@ -220,95 +231,3 @@ def _merge_csv_append(csv_data, table, table_headers, row_header_len, headers,
         break
     table_index += 1
   return table_row_len
-
-
-class BaseCheckoutFinder(abc.ABC):
-
-  def __init__(self, platform: plt.Platform, candidates: Tuple[pathlib.Path,
-                                                               ...]) -> None:
-    self._platform = platform
-    self._candidates = candidates
-    self._path: Optional[pathlib.Path] = self._find_checkout()
-    if self._path:
-      assert self._is_checkout_dir(self._path)
-
-  @property
-  def candidates(self) -> Tuple[pathlib.Path, ...]:
-    return self._candidates
-
-  @property
-  def platform(self) -> plt.Platform:
-    return self._platform
-
-  @property
-  def path(self) -> Optional[pathlib.Path]:
-    return self._path
-
-  def _find_checkout(self) -> Optional[pathlib.Path]:
-    # Try potential build location
-    for candidate_dir in self._candidates:
-      if self._is_checkout_dir(candidate_dir):
-        return candidate_dir
-    return None
-
-  @abc.abstractmethod
-  def _is_checkout_dir(self, candidate_dir: pathlib.Path) -> bool:
-    return False
-
-
-class ChromiumCheckoutFinder(BaseCheckoutFinder):
-
-  def __init__(self, platform: plt.Platform) -> None:
-    # A generous list of potential locations of a V8 or chromium checkout
-    candidates = (
-        # Assume crossbench is in chrome's src/third_party/crossbench
-        # __file__ == src/third_party/crossbench/crossbench/probes/helper.py
-        pathlib.Path(__file__).parents[3],
-        # Guessing default locations
-        pathlib.Path.home() / "Documents/chromium/src",
-        pathlib.Path.home() / "chromium/src",
-        pathlib.Path("C:") / "src/chromium/src",
-        pathlib.Path.home() / "Documents/chrome/src",
-        pathlib.Path.home() / "chrome/src",
-        pathlib.Path("C:") / "src/chrome/src",
-    )
-    super().__init__(platform, candidates)
-
-  def _is_checkout_dir(self, candidate_dir: pathlib.Path) -> bool:
-    return (self.platform.is_dir(candidate_dir / "v8") and
-            self.platform.is_dir(candidate_dir / "chrome") and
-            self.platform.is_dir(candidate_dir / ".git"))
-
-
-class V8CheckoutFinder(BaseCheckoutFinder):
-
-  def __init__(self, platform: plt.Platform) -> None:
-    candidates = (
-        # V8 Checkouts
-        pathlib.Path.home() / "Documents/v8/v8",
-        pathlib.Path.home() / "v8/v8",
-        pathlib.Path("C:") / "src/v8/v8",
-        # Raw V8 checkouts
-        pathlib.Path.home() / "Documents/v8",
-        pathlib.Path.home() / "v8",
-        pathlib.Path("C:") / "src/v8/",
-    )
-    super().__init__(platform, candidates)
-
-  def _find_checkout(self) -> Optional[pathlib.Path]:
-    if v8_checkout := super()._find_checkout():
-      return v8_checkout
-    if chromium_checkout := ChromiumCheckoutFinder(self.platform).path:
-      return chromium_checkout / "v8"
-    maybe_d8_path = self.platform.environ.get("D8_PATH")
-    if not maybe_d8_path:
-      return None
-    for candidate_dir in pathlib.Path(maybe_d8_path).parents:
-      if self._is_checkout_dir(candidate_dir):
-        return candidate_dir
-    return None
-
-  def _is_checkout_dir(self, candidate_dir: pathlib.Path) -> bool:
-    v8_header_file = candidate_dir / "include" / "v8.h"
-    return (self.platform.is_file(v8_header_file) and
-            (self.platform.is_dir(candidate_dir / ".git")))

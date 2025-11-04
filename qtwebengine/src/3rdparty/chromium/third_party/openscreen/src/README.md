@@ -95,24 +95,21 @@ instance of it. On Debian flavors, you can run:
 
 ## XCode (Mac only)
 
-On Mac OS X, the build will use the clang provided by
-[XCode](https://apps.apple.com/us/app/xcode/id497799835?mt=12). You can install
-the XCode command-line tools only or the full version of XCode.
+You can install the XCode command-line tools only or the full version of
+[XCode](https://apps.apple.com/us/app/xcode/id497799835?mt=12).
 
 ```bash
 xcode-select --install
 ```
 
-TODO(https://issuetracker.google.com/202964797): Switch to use Chromium clang for Mac builds.
-
 ##  gcc (optional, Linux only)
 
-Setting the `gn` argument `is_gcc=true` on Linux enables building using gcc
+Setting the `gn` argument `is_clang=false` on Linux enables building using gcc
 instead.
 
 ```bash
   mkdir out/debug-gcc
-  gn gen out/debug-gcc --args="is_gcc=true"
+  gn gen out/debug-gcc --args="is_clang=false"
 ```
 
 Note that g++ version 9 or newer must be installed.  On Debian flavors you can

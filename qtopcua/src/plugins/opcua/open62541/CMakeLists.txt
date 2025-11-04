@@ -38,8 +38,7 @@ qt_internal_extend_target(QOpen62541Plugin CONDITION QT_FEATURE_open62541 AND NO
         ../../../3rdparty/open62541
 )
 
-set_source_files_properties(QOpen62541Plugin
-                            qopen62541valueconverter.cpp
+set_source_files_properties(qopen62541valueconverter.cpp
                             PROPERTIES SKIP_UNITY_BUILD_INCLUSION ON)
 
 #qt_internal_extend_target(QOpen62541Plugin CONDITION QT_FEATURE_mbedtls AND QT_FEATURE_open62541 AND NOT QT_FEATURE_system_open62541
@@ -58,14 +57,19 @@ qt_internal_extend_target(QOpen62541Plugin CONDITION QT_FEATURE_open62541_securi
         WrapOpenSSL::WrapOpenSSL
 )
 
-qt_internal_extend_target(QOpen62541Plugin CONDITION QT_FEATURE_open62541 AND WIN32 AND MSVC AND NOT QT_FEATURE_system_open62541
+qt_internal_extend_target(QOpen62541Plugin CONDITION QT_FEATURE_open62541_security AND WrapOpenSSL_FOUND AND QT_FEATURE_system_open62541 AND OPEN62541_SYSTEM_ENCRYPTION
     LIBRARIES
-        ws2_32.lib
+        WrapOpenSSL::WrapOpenSSL
 )
 
-qt_internal_extend_target(QOpen62541Plugin CONDITION (QT_FEATURE_open62541 AND NOT QT_FEATURE_system_open62541) AND (WIN32 AND GCC)
+qt_internal_extend_target(QOpen62541Plugin CONDITION QT_FEATURE_open62541 AND WIN32 AND MSVC AND NOT QT_FEATURE_system_open62541
     LIBRARIES
-        ws2_32
+        iphlpapi.lib
+)
+
+qt_internal_extend_target(QOpen62541Plugin CONDITION QT_FEATURE_open62541 AND NOT QT_FEATURE_system_open62541 AND WIN32 AND (GCC OR CLANG)
+    LIBRARIES
+        iphlpapi
 )
 
 #qt_internal_extend_target(QOpen62541Plugin CONDITION QT_FEATURE_open62541 AND NOT QT_FEATURE_system_open62541 AND (WINRT OR WIN32 AND MSVC)
@@ -74,26 +78,28 @@ qt_internal_extend_target(QOpen62541Plugin CONDITION (QT_FEATURE_open62541 AND N
 #)
 
 if (QT_FEATURE_open62541 AND NOT QT_FEATURE_system_open62541)
+    if (APPLE)
+        set_source_files_properties(../../../3rdparty/open62541/open62541.c PROPERTIES
+        COMPILE_DEFINITIONS
+            "_DARWIN_C_SOURCE")
+    endif()
+
     if (NOT (WINRT OR WIN32 AND MSVC))
         set_source_files_properties(../../../3rdparty/open62541/open62541.c PROPERTIES
         COMPILE_OPTIONS
-            "-Wno-unused-parameter;-Wno-unused-function;-Wno-format;-Wno-format-security;-Wno-strict-aliasing;-Wno-unused-result;-std=c99")
+            "-Wno-unused-parameter;-Wno-incompatible-pointer-types;-Wno-maybe-uninitialized;-Wno-format-overflow;-std=c99")
     elseif(WIN32 AND MSVC)
-        # CMake uses C11+ by default and the _Static_assert expansion fails during compilation
         set_source_files_properties(../../../3rdparty/open62541/open62541.c PROPERTIES
-            LANGUAGE CXX
-            SKIP_PRECOMPILE_HEADERS ON
-            #COMPILE_OPTIONS "/Zc:strictStrings-;/permissive")
-            COMPILE_OPTIONS "/Zc:strictStrings-;/permissive;/wd4200")
+            COMPILE_OPTIONS "/wd4133")
     endif()
+endif()
+
+if (QT_FEATURE_system_open62541)
+    find_package(open62541 REQUIRED)
+    target_compile_definitions(QOpen62541Plugin PRIVATE USE_SYSTEM_OPEN62541)
 endif()
 
 qt_internal_extend_target(QOpen62541Plugin CONDITION QT_FEATURE_system_open62541 OR NOT QT_FEATURE_open62541
     LIBRARIES
-        open62541
+        open62541::open62541
 )
-
-#qt_internal_extend_target(QOpen62541Plugin CONDITION WIN32 AND MSVC AND (QT_FEATURE_system_open62541 OR NOT QT_FEATURE_open62541)
-#    PUBLIC_LIBRARIES
-#        open62541.lib
-#)

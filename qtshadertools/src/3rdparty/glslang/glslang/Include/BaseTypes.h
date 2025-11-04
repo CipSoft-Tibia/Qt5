@@ -68,6 +68,9 @@ enum TBasicType {
     EbtRayQuery,
     EbtHitObjectNV,
     EbtCoopmat,
+    EbtFunction,
+    EbtTensorLayoutNV,
+    EbtTensorViewNV,
     // SPIR-V type defined by spirv_type
     EbtSpirvType,
 
@@ -269,7 +272,6 @@ enum TBuiltInVariable {
     EbvRayTmin,
     EbvRayTmax,
     EbvCullMask,
-    EbvHitT,
     EbvHitKind,
     EbvObjectToWorld,
     EbvObjectToWorld3x4,
@@ -496,7 +498,6 @@ __inline const char* GetBuiltInVariableString(TBuiltInVariable v)
     case EbvObjectRayDirection:         return "ObjectRayDirectionNV";
     case EbvRayTmin:                    return "ObjectRayTminNV";
     case EbvRayTmax:                    return "ObjectRayTmaxNV";
-    case EbvHitT:                       return "HitTNV";
     case EbvHitKind:                    return "HitKindNV";
     case EbvIncomingRayFlags:           return "IncomingRayFlagsNV";
     case EbvObjectToWorld:              return "ObjectToWorldNV";
@@ -588,6 +589,30 @@ __inline bool isTypeFloat(TBasicType type)
         return true;
     default:
         return false;
+    }
+}
+
+__inline uint32_t GetNumBits(TBasicType type)
+{
+    switch (type) {
+    case EbtInt8:
+    case EbtUint8:
+        return 8;
+    case EbtFloat16:
+    case EbtInt16:
+    case EbtUint16:
+        return 16;
+    case EbtInt:
+    case EbtUint:
+    case EbtFloat:
+        return 32;
+    case EbtDouble:
+    case EbtInt64:
+    case EbtUint64:
+        return 64;
+    default:
+        assert(false);
+        return 0;
     }
 }
 

@@ -317,6 +317,9 @@ TEST_F(PositionIteratorTest, DecrementFromSelectElementAfterChildren) {
       ScanBackward(PositionInFlatTree::LastPositionInNode(select_element)),
       ElementsAre("---E SELECT@1 SELECT@afterAnchor",
                   "---E SELECT@1 SELECT@afterAnchor",
+                  "---E SELECT@1 SELECT@afterAnchor",
+                  "---E SELECT@1 SELECT@afterAnchor",
+                  "---E SELECT@1 SELECT@afterAnchor",
                   "-S-E SELECT@0 SELECT@beforeAnchor SELECT@afterAnchor",
                   "---- BODY BODY@offsetInAnchor[1]",
                   "---E #text \"ABC\"@3 #text \"ABC\"@offsetInAnchor[3]",
@@ -338,6 +341,9 @@ TEST_F(PositionIteratorTest, DecrementFromSelectElementAfterNode) {
   EXPECT_THAT(
       ScanBackward(PositionInFlatTree::AfterNode(select_element)),
       ElementsAre("---E SELECT@1 SELECT@afterAnchor",
+                  "---E SELECT@1 SELECT@afterAnchor",
+                  "---E SELECT@1 SELECT@afterAnchor",
+                  "---E SELECT@1 SELECT@afterAnchor",
                   "---E SELECT@1 SELECT@afterAnchor",
                   "-S-E SELECT@0 SELECT@beforeAnchor SELECT@afterAnchor",
                   "---- BODY BODY@offsetInAnchor[1]",
@@ -925,9 +931,13 @@ TEST_F(PositionIteratorTest, IncrementFromSelectElementOffset1) {
   EXPECT_THAT(
       ScanForward(PositionInFlatTree(select_element, 1)),
       ElementsAre("---- SELECT@1 SELECT@offsetInAnchor[1] SELECT@beforeAnchor",
-                  "-S-- SLOT SLOT@offsetInAnchor[0]",
-                  "-S-E OPTION OPTION@beforeAnchor OPTION@offsetInAnchor[0]",
-                  "---E SLOT SLOT@afterChildren"));
+                  "-S-- SLOT id=\"select-options\" SLOT "
+                  "id=\"select-options\"@offsetInAnchor[0]",
+                  "-S-- OPTION OPTION@offsetInAnchor[0]",
+                  "-S-E SLOT SLOT@beforeAnchor SLOT@offsetInAnchor[0]",
+                  "---E OPTION OPTION@afterChildren",
+                  "---E SLOT id=\"select-options\" SLOT "
+                  "id=\"select-options\"@afterChildren"));
 }
 
 TEST_F(PositionIteratorTest, IncrementWithCollapsedSpace) {

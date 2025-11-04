@@ -61,12 +61,12 @@ bool argumentsFromCommandLineAndFile(QStringList& allArguments, const QStringLis
     return true;
 }
 
-int main(int argv, char *argc[])
+int main(int argc, char *argv[])
 {
     QHashSeed::setDeterministicGlobalSeed();
     QList<QQmlJS::LoggerCategory> categories;
 
-    QCoreApplication app(argv, argc);
+    QCoreApplication app(argc, argv);
     QCoreApplication::setApplicationName("qmllint");
     QCoreApplication::setApplicationVersion(QT_VERSION_STR);
     QCommandLineParser parser;
@@ -284,7 +284,7 @@ All warnings can be set to three levels:
 
     bool success = true;
 
-    QStringList pluginPaths = { QQmlJSLinter::defaultPluginPath() };
+    QStringList pluginPaths;
 
     if (parser.isSet(pluginPathsOption))
         pluginPaths << parser.values(pluginPathsOption);
@@ -429,11 +429,11 @@ All warnings can be set to three levels:
                                          qmldirFiles, resourceFiles, categories);
         }
         success &= (lintResult == QQmlJSLinter::LintSuccess || lintResult == QQmlJSLinter::HasWarnings);
-        if (success)
-        {
-            int value = parser.isSet(maxWarnings) ? parser.value(maxWarnings).toInt()
-                                                  : settings.value(maxWarningsSetting).toInt();
-            if (value != -1 && value < linter.logger()->warnings().size())
+        if (success) {
+            const qsizetype value = parser.isSet(maxWarnings)
+                    ? parser.value(maxWarnings).toInt()
+                    : settings.value(maxWarningsSetting).toInt();
+            if (value != -1 && value < linter.logger()->numWarnings())
                 success = false;
         }
 

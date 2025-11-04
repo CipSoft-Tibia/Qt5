@@ -83,9 +83,8 @@
     \section2 QImage serialization
     The ProtobufQtGuiTypes library provides the possibility to work with the
     QImage class. Usually, the library converts all QImage objects in
-    to \c PNG format. But if the QImage was created using
-    \l {https://doc.qt.io/qt-6/qimage.html#Format-enum} a
-    {floating point formats}, then conversion to \c PNG will lead
+    to \c PNG format. But if the QImage was created using one of the floating
+    point formats of \l {QImage::Format}, then conversion to \c PNG will lead
     to data loss. To prevent data loss, the library automatically converts
     the image file to \c TIFF format, if it is supported by the system,
     otherwise converts to \c PNG.

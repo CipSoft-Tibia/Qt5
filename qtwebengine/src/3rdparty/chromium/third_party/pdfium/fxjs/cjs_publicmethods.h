@@ -7,11 +7,9 @@
 #ifndef FXJS_CJS_PUBLICMETHODS_H_
 #define FXJS_CJS_PUBLICMETHODS_H_
 
-#include <vector>
-
+#include "core/fxcrt/span.h"
 #include "fxjs/cjs_object.h"
 #include "fxjs/cjs_result.h"
-#include "third_party/base/containers/span.h"
 
 class CJS_PublicMethods final : public CJS_Object {
  public:

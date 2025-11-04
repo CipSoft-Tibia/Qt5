@@ -188,15 +188,16 @@ UserPolicySigninServiceBase::CreateClientForRegistrationOnly(
   device_management_service_->ScheduleInitialization(0);
 
   // Create a new CloudPolicyClient for fetching the DMToken.
-  return CreateCloudPolicyClient(device_management_service_,
-                                 system_url_loader_factory_);
+  return std::make_unique<CloudPolicyClient>(
+      GetProfileId(), device_management_service_, system_url_loader_factory_,
+      CloudPolicyClient::DeviceDMTokenCallback());
 }
 
 std::unique_ptr<CloudPolicyClient>
 UserPolicySigninServiceBase::CreateClientForNonRegistration(
     scoped_refptr<network::SharedURLLoaderFactory> url_loader_factory) {
   return std::make_unique<CloudPolicyClient>(
-      device_management_service_, std::move(url_loader_factory),
+      GetProfileId(), device_management_service_, std::move(url_loader_factory),
       GetDeviceDMTokenIfAffiliatedCallback());
 }
 
@@ -205,9 +206,8 @@ bool UserPolicySigninServiceBase::ShouldLoadPolicyForUser(
   if (username.empty())
     return false;  // Not signed in.
 
-  return signin::AccountManagedStatusFinder::IsEnterpriseUserBasedOnEmail(
-             username) ==
-         signin::AccountManagedStatusFinder::EmailEnterpriseStatus::kUnknown;
+  return signin::AccountManagedStatusFinder::MayBeEnterpriseUserBasedOnEmail(
+      username);
 }
 
 void UserPolicySigninServiceBase::InitializeForSignedInUser(
@@ -329,16 +329,6 @@ void UserPolicySigninServiceBase::RegisterForPolicyWithAccountId(
       identity_manager(), account_id, std::move(registration_callback));
 }
 
-// static
-std::unique_ptr<CloudPolicyClient>
-UserPolicySigninServiceBase::CreateCloudPolicyClient(
-    DeviceManagementService* device_management_service,
-    scoped_refptr<network::SharedURLLoaderFactory> url_loader_factory) {
-  return std::make_unique<CloudPolicyClient>(
-      device_management_service, std::move(url_loader_factory),
-      CloudPolicyClient::DeviceDMTokenCallback());
-}
-
 void UserPolicySigninServiceBase::SetDeviceDMTokenCallbackForTesting(
     CloudPolicyClient::DeviceDMTokenCallback callback) {
   device_dm_token_callback_for_testing_ = std::move(callback);
@@ -439,6 +429,10 @@ void UserPolicySigninServiceBase::UpdateLastPolicyCheckTime() {}
 signin::ConsentLevel
 UserPolicySigninServiceBase::GetConsentLevelForRegistration() {
   return signin::ConsentLevel::kSignin;
+}
+
+std::string_view UserPolicySigninServiceBase::name() const {
+  return "UserPolicySigninServiceBase";
 }
 
 }  // namespace policy

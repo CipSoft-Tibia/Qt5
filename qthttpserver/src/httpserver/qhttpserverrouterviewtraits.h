@@ -1,6 +1,7 @@
 // Copyright (C) 2020 Mikhail Svetkin <mikhail.svetkin@gmail.com>
 // Copyright (C) 2019 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QHTTPSERVERROUTERVIEWTRAITS_H
 #define QHTTPSERVERROUTERVIEWTRAITS_H
@@ -56,7 +57,7 @@ struct RouterViewTraitsHelper : ViewTraits<ViewHandler, DisableStaticAssert> {
 
 
     struct Arguments {
-        template<int ... I>
+        template<size_t ... I>
         struct ArgumentsReturn {
             template<int Idx>
             using Arg = ArgumentChecker<Idx>;
@@ -81,19 +82,17 @@ struct RouterViewTraitsHelper : ViewTraits<ViewHandler, DisableStaticAssert> {
             static constexpr bool Valid = (Arg<I>::Valid && ...);
             static constexpr bool StaticAssert = (Arg<I>::StaticAssert && ...);
 
-            using Indexes = typename QtPrivate::IndexesList<I...>;
+            using Indexes = std::index_sequence<I...>;
 
-            using CapturableIndexes =
-                typename QtPrivate::Indexes<CapturableCount>::Value;
+            using CapturableIndexes = std::make_index_sequence<CapturableCount>;
 
-            using PlaceholdersIndexes =
-                typename QtPrivate::Indexes<PlaceholdersCount>::Value;
+            using PlaceholdersIndexes = std::make_index_sequence<PlaceholdersCount>;
 
             using Last = Arg<FunctionTraits::ArgumentIndexMax>;
         };
 
-        template<int ... I>
-        static constexpr ArgumentsReturn<I...> eval(QtPrivate::IndexesList<I...>) noexcept;
+        template<size_t ... I>
+        static constexpr ArgumentsReturn<I...> eval(std::index_sequence<I...>) noexcept;
     };
 
     template<int CaptureOffset>
@@ -106,9 +105,9 @@ struct RouterViewTraitsHelper : ViewTraits<ViewHandler, DisableStaticAssert> {
         template<int Id>
         using OffsetArg = typename FunctionTraits::template Arg<CaptureOffset + Id>::Type;
 
-        template<int ... Idx>
+        template<size_t ... Idx>
         static constexpr typename FunctionWrapper<OffsetArg<Idx>...>::Type
-                eval(QtPrivate::IndexesList<Idx...>) noexcept;
+                eval(std::index_sequence<Idx...>) noexcept;
     };
 };
 

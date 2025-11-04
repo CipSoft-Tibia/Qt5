@@ -5,9 +5,10 @@
 #ifndef THIRD_PARTY_BLINK_RENDERER_PLATFORM_BINDINGS_BIGINT_H_
 #define THIRD_PARTY_BLINK_RENDERER_PLATFORM_BINDINGS_BIGINT_H_
 
+#include <optional>
+
 #include "base/compiler_specific.h"
 #include "third_party/abseil-cpp/absl/numeric/int128.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "third_party/blink/renderer/platform/platform_export.h"
 #include "third_party/blink/renderer/platform/wtf/vector.h"
 #include "v8/include/v8-context.h"
@@ -39,9 +40,9 @@ class PLATFORM_EXPORT BigInt final {
   }
 
   // Will return nullopt if this is negative or will not fit in 128 bits.
-  absl::optional<absl::uint128> ToUInt128() const {
+  std::optional<absl::uint128> ToUInt128() const {
     if (IsNegative() || !FitsIn128Bits()) {
-      return absl::nullopt;
+      return std::nullopt;
     }
     if (words_.size() == 0) {
       return 0;
@@ -67,7 +68,7 @@ inline BigInt ToBigInt(v8::Isolate* isolate,
                        v8::Local<v8::Value> value,
                        ExceptionState& exception_state) {
   // Fast case. The value is already a BigInt.
-  if (LIKELY(value->IsBigInt())) {
+  if (value->IsBigInt()) [[likely]] {
     return BigInt(value.As<v8::BigInt>());
   }
 

@@ -313,8 +313,10 @@ QMetaObject::Connection ScxmlEventRouter::connectToEvent(const QStringList &segm
     QString segment = nextSegment(segments);
     if (segment.isEmpty()) {
         const int *types = nullptr;
-        if (type == Qt::QueuedConnection || type == Qt::BlockingQueuedConnection)
-            types = QtPrivate::ConnectionTypes<QtPrivate::List<QScxmlEvent> >::types();
+        if (type == Qt::QueuedConnection || type == Qt::BlockingQueuedConnection) {
+            static const int eventTypeId[] = { qMetaTypeId<QScxmlEvent>(), 0 };
+            types = eventTypeId;
+        }
 
         const QMetaObject *meta = metaObject();
         static const int eventOccurredIndex = signalIndex(meta, "eventOccurred(QScxmlEvent)");
@@ -1849,9 +1851,8 @@ QMetaObject::Connection QScxmlStateMachine::connectToStateImpl(const QString &sc
                                                                QtPrivate::QSlotObjectBase *slotObj,
                                                                Qt::ConnectionType type)
 {
-    const int *types = nullptr;
-    if (type == Qt::QueuedConnection || type == Qt::BlockingQueuedConnection)
-        types = QtPrivate::ConnectionTypes<QtPrivate::List<bool> >::types();
+    static const int metaTypeIds[] = { QMetaType::Bool, 0 };
+    const int *types = metaTypeIds;
 
     Q_D(QScxmlStateMachine);
     const int signalIndex = d->m_stateNameToSignalIndex.value(scxmlStateName, -1);

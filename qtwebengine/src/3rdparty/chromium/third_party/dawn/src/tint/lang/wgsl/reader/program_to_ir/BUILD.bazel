@@ -71,6 +71,7 @@ cc_library(
     "//src/tint/utils/symbol",
     "//src/tint/utils/text",
     "//src/tint/utils/traits",
+    "//src/utils",
   ],
   copts = COPTS,
   visibility = ["//visibility:public"],
@@ -84,6 +85,7 @@ cc_library(
     "builtin_test.cc",
     "call_test.cc",
     "function_test.cc",
+    "ir_program_test.h",
     "let_test.cc",
     "literal_test.cc",
     "materialize_test.cc",
@@ -103,7 +105,6 @@ cc_library(
     "//src/tint/lang/wgsl/ast",
     "//src/tint/lang/wgsl/common",
     "//src/tint/lang/wgsl/features",
-    "//src/tint/lang/wgsl/helpers:test",
     "//src/tint/lang/wgsl/program",
     "//src/tint/lang/wgsl/reader/lower",
     "//src/tint/lang/wgsl/resolver",
@@ -122,6 +123,7 @@ cc_library(
     "//src/tint/utils/text",
     "//src/tint/utils/traits",
     "@gtest",
+    "//src/utils",
   ] + select({
     ":tint_build_wgsl_reader": [
       "//src/tint/lang/wgsl/reader",

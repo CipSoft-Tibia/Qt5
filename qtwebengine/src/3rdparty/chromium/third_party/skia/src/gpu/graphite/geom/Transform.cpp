@@ -4,25 +4,62 @@
  * Use of this source code is governed by a BSD-style license that can be
  * found in the LICENSE file.
  */
-
 #include "src/gpu/graphite/geom/Transform_graphite.h"
 
+#include "include/core/SkM44.h"
+#include "include/core/SkScalar.h"
+#include "include/private/base/SkAssert.h"
+#include "include/private/base/SkFloatingPoint.h"
 #include "src/base/SkVx.h"
 #include "src/core/SkMatrixInvert.h"
 #include "src/core/SkMatrixPriv.h"
 #include "src/gpu/graphite/geom/Rect.h"
 
+#include <algorithm>
+#include <cmath>
 #include <tuple>
+#include <utility>
 
 namespace skgpu::graphite {
 
 namespace {
 
-Rect map_rect(const SkM44& m, const Rect& r) {
-    // TODO: Can Rect's (l,t,-r,-b) structure be used to optimize mapRect?
-    // TODO: Can take this opportunity to implement 100% accurate perspective plane clipping since
-    //       it doesn't have to match raster/ganesh rendering behavior.
-    return SkMatrixPriv::MapRect(m, r.asSkRect());
+skvx::float4 scale_translate_rect(skvx::float4 rectVals, float sx, float sy, float tx, float ty) {
+    // The (-tx,-ty) terms preserve the calculated values in (l,t,-r,-b) form so that the return
+    // value can be passed directly into FromVals() to avoid extra negation operations in ltrb().
+    return rectVals * skvx::float4{sx,sy,sx,sy} + skvx::float4{tx,ty,-tx,-ty};
+}
+
+Rect map_rect(Transform::Type type, const SkM44& m, const Rect& r) {
+    switch (type) {
+        case Transform::Type::kIdentity:
+            return r;
+        case Transform::Type::kSimpleRectStaysRect:
+            // Since scale factors are positive, the returned rectangle is already sorted
+            return Rect::FromVals(
+                    scale_translate_rect(r.vals(), m.rc(0,0), m.rc(1,1), m.rc(0,3), m.rc(1,3)));
+        case Transform::Type::kRectStaysRect: {
+            // Which is not the case for general rect-stays-rect transforms
+            skvx::float4 xformed = r.vals();
+            if (m.rc(0,0) == 0.f) {
+                // Anti-diagonal matrix (90/270 rotation), so scale L+R by m10 and T+B by m01 and
+                // then swizzle so that the transformed values swap X and Y components and then sort
+                xformed = skvx::shuffle<1,0,3,2>(
+                        scale_translate_rect(xformed, m.rc(1,0), m.rc(0,1), m.rc(1,3), m.rc(0,3)));
+            } else {
+                // Mirror or 180 rotation, so X and/or Y edges may be flipped so just sort after.
+                xformed = scale_translate_rect(xformed, m.rc(0,0), m.rc(1,1), m.rc(0,3), m.rc(1,3));
+            }
+            return Rect::FromVals(xformed).sort();
+        }
+        case Transform::Type::kAffine:
+            [[fallthrough]];
+        case Transform::Type::kPerspective:
+            return SkMatrixPriv::MapRect(m, r.asSkRect());
+        case Transform::Type::kInvalid:
+            return Rect::InfiniteInverted();
+    }
+    SkUNREACHABLE;
 }
 
 void map_points(const SkM44& m, const SkV4* in, SkV4* out, int count) {
@@ -69,11 +106,24 @@ std::pair<float, float> sort_scale(float sx, float sy) {
 Transform::Transform(const SkM44& m) : fM(m) {
     static constexpr SkV4 kNoPerspective = {0.f, 0.f, 0.f, 1.f};
     static constexpr SkV4 kNoZ           = {0.f, 0.f, 1.f, 0.f};
-    if (m.row(3) != kNoPerspective || m.col(2) != kNoZ || m.row(2) != kNoZ) {
-        // Projection matrices will have per-location scale factors calculated, so cached scale
+    if (m.row(3) != kNoPerspective) {
+        // Perspective matrices will have per-location scale factors calculated, so cached scale
         // factors will not be used.
         if (m.invert(&fInvM)) {
-            fType = Type::kProjection;
+            fType = Type::kPerspective;
+        } else {
+            fType = Type::kInvalid;
+        }
+        return;
+    } else if (m.col(2) != kNoZ || m.row(2) != kNoZ) {
+        // Orthographic matrices are lumped into the kAffine type although we use SkM44::invert()
+        // instead of taking short cuts.
+        if (m.invert(&fInvM)) {
+            fType = Type::kAffine;
+            // These scale factors are valid for the case where Z=0, which is the case for all
+            // local geometry that's drawn.
+            std::tie(fMinScaleFactor, fMaxScaleFactor) = compute_svd(m.rc(0,0), m.rc(0,1),
+                                                                     m.rc(1,0), m.rc(1,1));
         } else {
             fType = Type::kInvalid;
         }
@@ -85,7 +135,7 @@ Transform::Transform(const SkM44& m) : fM(m) {
     //                                              [0  0  1 0 ]
     //                                              [0  0  0 1 ]
     // Other than kIdentity, none of the types depend on (tx, ty). The remaining types are
-    // identified by considering the upper 2x2.
+    // identified by considering the upper 2x2 (tx and ty are still used to compute the inverse).
     const float sx = m.rc(0, 0);
     const float sy = m.rc(1, 1);
     const float kx = m.rc(0, 1);
@@ -147,7 +197,7 @@ Transform::Transform(const SkM44& m) : fM(m) {
 
 std::pair<float, float> Transform::scaleFactors(const SkV2& p) const {
     SkASSERT(this->valid());
-    if (fType < Type::kProjection) {
+    if (fType < Type::kPerspective) {
         return {fMinScaleFactor, fMaxScaleFactor};
     }
 
@@ -201,7 +251,7 @@ float Transform::localAARadius(const Rect& bounds) const {
     SkASSERT(this->valid());
 
     float min;
-    if (fType < Type::kProjection) {
+    if (fType < Type::kPerspective) {
         // The scale factor is constant
         min = fMinScaleFactor;
     } else {
@@ -218,7 +268,7 @@ float Transform::localAARadius(const Rect& bounds) const {
     // transformation moves between [1,max/min] so using 1/min as the local AA radius ensures that
     // the post-transformed point is at least 1px away from the original.
     float aaRadius = sk_ieee_float_divide(1.f, min);
-    if (sk_float_isfinite(aaRadius)) {
+    if (SkIsFinite(aaRadius)) {
         return aaRadius;
     } else {
         return SK_FloatInfinity;
@@ -227,11 +277,11 @@ float Transform::localAARadius(const Rect& bounds) const {
 
 Rect Transform::mapRect(const Rect& rect) const {
     SkASSERT(this->valid());
-    return map_rect(fM, rect);
+    return map_rect(fType, fM, rect);
 }
 Rect Transform::inverseMapRect(const Rect& rect) const {
     SkASSERT(this->valid());
-    return map_rect(fInvM, rect);
+    return map_rect(fType, fInvM, rect);
 }
 
 void Transform::mapPoints(const Rect& localRect, SkV4 deviceOut[4]) const {

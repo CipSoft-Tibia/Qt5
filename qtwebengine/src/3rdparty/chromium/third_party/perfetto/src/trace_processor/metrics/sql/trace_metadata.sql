@@ -13,23 +13,12 @@
 -- See the License for the specific language governing permissions and
 -- limitations under the License.
 --
-
--- Expose all clock snapshots as instant events.
-DROP VIEW IF EXISTS trace_metadata_event;
-CREATE PERFETTO VIEW trace_metadata_event AS
-SELECT
-  'slice' AS track_type,
-  'Clock Snapshots' AS track_name,
-  ts,
-  0 AS dur,
-  'Snapshot' AS slice_name
-FROM clock_snapshot
-GROUP BY ts;
+INCLUDE PERFETTO MODULE android.suspend;
 
 DROP VIEW IF EXISTS trace_metadata_output;
 CREATE PERFETTO VIEW trace_metadata_output AS
 SELECT TraceMetadata(
-  'trace_duration_ns', CAST((SELECT end_ts - start_ts FROM trace_bounds) AS INT),
+  'trace_duration_ns', CAST(trace_dur() AS INT),
   'trace_uuid', (SELECT str_value FROM metadata WHERE name = 'trace_uuid'),
   'android_build_fingerprint', (
     SELECT str_value FROM metadata WHERE name = 'android_build_fingerprint'
@@ -61,5 +50,22 @@ SELECT TraceMetadata(
   'tracing_started_ns', (
     SELECT int_value FROM metadata
     WHERE name='tracing_started_ns'
+  ),
+  'android_sdk_version', (
+    SELECT int_value FROM metadata
+    WHERE name = 'android_sdk_version'
+  ),
+  'suspend_count', (
+    SELECT COUNT() FROM android_suspend_state WHERE power_state = 'suspended'
+  ),
+  'data_loss_count', (
+      SELECT COUNT()
+      FROM stats
+      WHERE severity = 'data_loss' AND value > 0
+  ),
+  'error_count', (
+      SELECT COUNT()
+      FROM stats
+      WHERE severity = 'error' AND value > 0
   )
 );

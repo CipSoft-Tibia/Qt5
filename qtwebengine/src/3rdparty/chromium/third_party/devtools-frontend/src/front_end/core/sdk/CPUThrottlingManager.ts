@@ -5,8 +5,7 @@
 import * as Common from '../../core/common/common.js';
 
 import {EmulationModel} from './EmulationModel.js';
-
-import {TargetManager, type SDKModelObserver} from './TargetManager.js';
+import {type SDKModelObserver, TargetManager} from './TargetManager.js';
 
 let throttlingManagerInstance: CPUThrottlingManager;
 
@@ -18,7 +17,7 @@ export class CPUThrottlingManager extends Common.ObjectWrapper.ObjectWrapper<Eve
 
   private constructor() {
     super();
-    this.#cpuThrottlingRateInternal = CPUThrottlingRates.NoThrottling;
+    this.#cpuThrottlingRateInternal = CPUThrottlingRates.NO_THROTTLING;
     TargetManager.instance().observeModels(EmulationModel, this);
   }
 
@@ -40,7 +39,7 @@ export class CPUThrottlingManager extends Common.ObjectWrapper.ObjectWrapper<Eve
     for (const emulationModel of TargetManager.instance().models(EmulationModel)) {
       void emulationModel.setCPUThrottlingRate(this.#cpuThrottlingRateInternal);
     }
-    this.dispatchEventToListeners(Events.RateChanged, this.#cpuThrottlingRateInternal);
+    this.dispatchEventToListeners(Events.RATE_CHANGED, this.#cpuThrottlingRateInternal);
   }
 
   setHardwareConcurrency(concurrency: number): void {
@@ -48,7 +47,7 @@ export class CPUThrottlingManager extends Common.ObjectWrapper.ObjectWrapper<Eve
     for (const emulationModel of TargetManager.instance().models(EmulationModel)) {
       void emulationModel.setHardwareConcurrency(concurrency);
     }
-    this.dispatchEventToListeners(Events.HardwareConcurrencyChanged, this.#hardwareConcurrencyInternal);
+    this.dispatchEventToListeners(Events.HARDWARE_CONCURRENCY_CHANGED, this.#hardwareConcurrencyInternal);
   }
 
   hasPrimaryPageTargetSet(): boolean {
@@ -70,7 +69,7 @@ export class CPUThrottlingManager extends Common.ObjectWrapper.ObjectWrapper<Eve
     if (!target) {
       if (existingCallback) {
         return new Promise(r => {
-          this.#pendingMainTargetPromise = (result: number): void => {
+          this.#pendingMainTargetPromise = (result: number) => {
             r(result);
             existingCallback(result);
           };
@@ -95,7 +94,7 @@ export class CPUThrottlingManager extends Common.ObjectWrapper.ObjectWrapper<Eve
   }
 
   modelAdded(emulationModel: EmulationModel): void {
-    if (this.#cpuThrottlingRateInternal !== CPUThrottlingRates.NoThrottling) {
+    if (this.#cpuThrottlingRateInternal !== CPUThrottlingRates.NO_THROTTLING) {
       void emulationModel.setCPUThrottlingRate(this.#cpuThrottlingRateInternal);
     }
     if (this.#hardwareConcurrencyInternal !== undefined) {
@@ -116,13 +115,13 @@ export class CPUThrottlingManager extends Common.ObjectWrapper.ObjectWrapper<Eve
 }
 
 export const enum Events {
-  RateChanged = 'RateChanged',
-  HardwareConcurrencyChanged = 'HardwareConcurrencyChanged',
+  RATE_CHANGED = 'RateChanged',
+  HARDWARE_CONCURRENCY_CHANGED = 'HardwareConcurrencyChanged',
 }
 
 export type EventTypes = {
-  [Events.RateChanged]: number,
-  [Events.HardwareConcurrencyChanged]: number,
+  [Events.RATE_CHANGED]: number,
+  [Events.HARDWARE_CONCURRENCY_CHANGED]: number,
 };
 
 export function throttlingManager(): CPUThrottlingManager {
@@ -130,7 +129,10 @@ export function throttlingManager(): CPUThrottlingManager {
 }
 
 export enum CPUThrottlingRates {
-  NoThrottling = 1,
+  NO_THROTTLING = 1,
+  // eslint-disable-next-line @typescript-eslint/naming-convention -- Used by web_tests.
   MidTierMobile = 4,
+  // eslint-disable-next-line @typescript-eslint/naming-convention -- Used by web_tests.
   LowEndMobile = 6,
+  EXTRA_SLOW = 20,
 }

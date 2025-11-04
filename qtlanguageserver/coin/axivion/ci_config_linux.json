@@ -24,9 +24,10 @@
             "_active": true,
             "_copy_from": "AxivionLinker",
             "input_files": [
-                "build/lib/lib*.so*.ir"
+                "build/lib/lib*.a.ir"
             ],
-            "ir": "build/$(env:TESTED_MODULE_COIN).ir"
+            "ir": "build/$(env:TESTED_MODULE_COIN).ir",
+            "options": "--include_unused"
 
         }
     },

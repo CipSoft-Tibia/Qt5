@@ -31,14 +31,14 @@ class MockEventListener final : public NativeEventListener {
 class FakeIdleService final : public mojom::blink::IdleManager {
  public:
   FakeIdleService() {
-    SetState(/*idle_time=*/absl::nullopt, /*screen_locked=*/false);
+    SetState(/*idle_time=*/std::nullopt, /*screen_locked=*/false);
   }
 
   mojo::PendingRemote<mojom::blink::IdleManager> BindNewPipeAndPassRemote() {
     return receiver_.BindNewPipeAndPassRemote();
   }
 
-  void SetState(absl::optional<base::TimeDelta> idle_time,
+  void SetState(std::optional<base::TimeDelta> idle_time,
                 bool screen_locked,
                 bool override = false) {
     state_ = mojom::blink::IdleState::New();
@@ -83,8 +83,8 @@ TEST(IdleDetectorTest, Start) {
   })));
 
   auto* options = IdleOptions::Create();
-  ScriptPromise start_promise = detector->start(scope.GetScriptState(), options,
-                                                scope.GetExceptionState());
+  ScriptPromiseUntyped start_promise = detector->start(
+      scope.GetScriptState(), options, scope.GetExceptionState());
 
   ScriptPromiseTester start_tester(scope.GetScriptState(), start_promise);
   start_tester.WaitUntilSettled();
@@ -118,8 +118,8 @@ TEST(IdleDetectorTest, StartIdleWithLongThreshold) {
 
   auto* options = IdleOptions::Create();
   options->setThreshold(90000);
-  ScriptPromise start_promise = detector->start(scope.GetScriptState(), options,
-                                                scope.GetExceptionState());
+  ScriptPromiseUntyped start_promise = detector->start(
+      scope.GetScriptState(), options, scope.GetExceptionState());
 
   ScriptPromiseTester start_tester(scope.GetScriptState(), start_promise);
   start_tester.WaitUntilSettled();
@@ -145,8 +145,8 @@ TEST(IdleDetectorTest, LockScreen) {
 
   auto* detector = IdleDetector::Create(scope.GetScriptState());
   auto* options = IdleOptions::Create();
-  ScriptPromise start_promise = detector->start(scope.GetScriptState(), options,
-                                                scope.GetExceptionState());
+  ScriptPromiseUntyped start_promise = detector->start(
+      scope.GetScriptState(), options, scope.GetExceptionState());
 
   ScriptPromiseTester start_tester(scope.GetScriptState(), start_promise);
   start_tester.WaitUntilSettled();
@@ -161,7 +161,7 @@ TEST(IdleDetectorTest, LockScreen) {
         EXPECT_EQ("locked", detector->screenState());
         loop.Quit();
       })));
-  idle_service.SetState(/*idle_time=*/absl::nullopt, /*screen_locked=*/true);
+  idle_service.SetState(/*idle_time=*/std::nullopt, /*screen_locked=*/true);
   loop.Run();
 }
 
@@ -175,8 +175,8 @@ TEST(IdleDetectorTest, BecomeIdle) {
 
   auto* detector = IdleDetector::Create(scope.GetScriptState());
   auto* options = IdleOptions::Create();
-  ScriptPromise start_promise = detector->start(scope.GetScriptState(), options,
-                                                scope.GetExceptionState());
+  ScriptPromiseUntyped start_promise = detector->start(
+      scope.GetScriptState(), options, scope.GetExceptionState());
 
   ScriptPromiseTester start_tester(scope.GetScriptState(), start_promise);
   start_tester.WaitUntilSettled();
@@ -206,8 +206,8 @@ TEST(IdleDetectorTest, BecomeIdleAndLockScreen) {
 
   auto* detector = IdleDetector::Create(scope.GetScriptState());
   auto* options = IdleOptions::Create();
-  ScriptPromise start_promise = detector->start(scope.GetScriptState(), options,
-                                                scope.GetExceptionState());
+  ScriptPromiseUntyped start_promise = detector->start(
+      scope.GetScriptState(), options, scope.GetExceptionState());
 
   ScriptPromiseTester start_tester(scope.GetScriptState(), start_promise);
   start_tester.WaitUntilSettled();
@@ -241,8 +241,8 @@ TEST(IdleDetectorTest, BecomeIdleAndLockScreenWithLongThreshold) {
 
   auto* options = IdleOptions::Create();
   options->setThreshold(90000);
-  ScriptPromise start_promise = detector->start(scope.GetScriptState(), options,
-                                                scope.GetExceptionState());
+  ScriptPromiseUntyped start_promise = detector->start(
+      scope.GetScriptState(), options, scope.GetExceptionState());
 
   ScriptPromiseTester start_tester(scope.GetScriptState(), start_promise);
   start_tester.WaitUntilSettled();
@@ -284,8 +284,8 @@ TEST(IdleDetectorTest, BecomeIdleAndLockAfterWithLongThreshold) {
 
   auto* options = IdleOptions::Create();
   options->setThreshold(90000);
-  ScriptPromise start_promise = detector->start(scope.GetScriptState(), options,
-                                                scope.GetExceptionState());
+  ScriptPromiseUntyped start_promise = detector->start(
+      scope.GetScriptState(), options, scope.GetExceptionState());
 
   ScriptPromiseTester start_tester(scope.GetScriptState(), start_promise);
   start_tester.WaitUntilSettled();
@@ -340,8 +340,8 @@ TEST(IdleDetectorTest, BecomeIdleThenActiveBeforeThreshold) {
 
   auto* options = IdleOptions::Create();
   options->setThreshold(90000);
-  ScriptPromise start_promise = detector->start(scope.GetScriptState(), options,
-                                                scope.GetExceptionState());
+  ScriptPromiseUntyped start_promise = detector->start(
+      scope.GetScriptState(), options, scope.GetExceptionState());
 
   ScriptPromiseTester start_tester(scope.GetScriptState(), start_promise);
   start_tester.WaitUntilSettled();
@@ -357,7 +357,7 @@ TEST(IdleDetectorTest, BecomeIdleThenActiveBeforeThreshold) {
 
   // 15s later the user becomes active again.
   task_runner->FastForwardBy(base::Seconds(15));
-  idle_service.SetState(/*idle_time=*/absl::nullopt, /*screen_locked=*/false);
+  idle_service.SetState(/*idle_time=*/std::nullopt, /*screen_locked=*/false);
 
   // 15s later we would have fired an event but shouldn't because the user
   // became active.
@@ -382,8 +382,8 @@ TEST(IdleDetectorTest, SetAndClearOverrides) {
 
   auto* options = IdleOptions::Create();
   options->setThreshold(90000);
-  ScriptPromise start_promise = detector->start(scope.GetScriptState(), options,
-                                                scope.GetExceptionState());
+  ScriptPromiseUntyped start_promise = detector->start(
+      scope.GetScriptState(), options, scope.GetExceptionState());
 
   ScriptPromiseTester start_tester(scope.GetScriptState(), start_promise);
   start_tester.WaitUntilSettled();

@@ -22,7 +22,9 @@
 #include "base/time/time.h"
 #include "base/timer/timer.h"
 #include "base/types/expected.h"
+#include "components/attribution_reporting/data_host.mojom.h"
 #include "components/attribution_reporting/registration_eligibility.mojom-forward.h"
+#include "components/attribution_reporting/registration_header_error.h"
 #include "content/browser/attribution_reporting/attribution_background_registrations_id.h"
 #include "content/browser/attribution_reporting/attribution_beacon_id.h"
 #include "content/browser/attribution_reporting/attribution_data_host_manager.h"
@@ -34,25 +36,25 @@
 #include "services/data_decoder/public/cpp/data_decoder.h"
 #include "third_party/abseil-cpp/absl/types/variant.h"
 #include "third_party/blink/public/common/tokens/tokens.h"
-#include "third_party/blink/public/mojom/conversions/attribution_data_host.mojom.h"
+#include "third_party/blink/public/mojom/devtools/inspector_issue.mojom-forward.h"
 
 class GURL;
 
 namespace attribution_reporting {
 class SuitableOrigin;
 
+enum class Registrar;
+
+struct OsRegistrationItem;
+struct RegistrationInfo;
 struct SourceRegistration;
 struct TriggerRegistration;
 }  // namespace attribution_reporting
 
-namespace network {
-class TriggerVerification;
-}  // namespace network
-
 namespace content {
 
 class AttributionManager;
-
+class AttributionSuitableContext;
 struct GlobalRenderFrameHostId;
 
 // Manages a receiver set of all ongoing `AttributionDataHost`s and forwards
@@ -60,9 +62,9 @@ struct GlobalRenderFrameHostId;
 // requests may continue until after we have detached a frame, all browser
 // process data needed to validate sources/triggers is stored alongside each
 // receiver.
-class CONTENT_EXPORT AttributionDataHostManagerImpl
+class CONTENT_EXPORT AttributionDataHostManagerImpl final
     : public AttributionDataHostManager,
-      public blink::mojom::AttributionDataHost {
+      public attribution_reporting::mojom::DataHost {
  public:
   explicit AttributionDataHostManagerImpl(
       AttributionManager* attribution_manager);
@@ -76,71 +78,58 @@ class CONTENT_EXPORT AttributionDataHostManagerImpl
 
   // AttributionDataHostManager:
   void RegisterDataHost(
-      mojo::PendingReceiver<blink::mojom::AttributionDataHost> data_host,
-      attribution_reporting::SuitableOrigin context_origin,
-      bool is_within_fenced_frame,
+      mojo::PendingReceiver<attribution_reporting::mojom::DataHost> data_host,
+      AttributionSuitableContext,
       attribution_reporting::mojom::RegistrationEligibility,
-      GlobalRenderFrameHostId render_frame_id,
-      int64_t last_navigation_id) override;
+      bool is_for_background_requests) override;
   bool RegisterNavigationDataHost(
-      mojo::PendingReceiver<blink::mojom::AttributionDataHost> data_host,
+      mojo::PendingReceiver<attribution_reporting::mojom::DataHost> data_host,
       const blink::AttributionSrcToken& attribution_src_token) override;
   bool NotifyNavigationWithBackgroundRegistrationsWillStart(
       const blink::AttributionSrcToken& attribution_src_token,
       size_t expected_registrations) override;
 
   void NotifyNavigationRegistrationStarted(
+      AttributionSuitableContext suitable_context,
       const blink::AttributionSrcToken& attribution_src_token,
-      AttributionInputEvent input_event,
-      const attribution_reporting::SuitableOrigin& source_origin,
-      bool is_within_fenced_frame,
-      GlobalRenderFrameHostId render_frame_id,
       int64_t navigation_id,
       std::string devtools_request_id) override;
   bool NotifyNavigationRegistrationData(
       const blink::AttributionSrcToken& attribution_src_token,
       const net::HttpResponseHeaders* headers,
-      GURL reporting_url,
-      network::AttributionReportingRuntimeFeatures) override;
+      GURL reporting_url) override;
   void NotifyNavigationRegistrationCompleted(
       const blink::AttributionSrcToken& attribution_src_token) override;
 
   void NotifyBackgroundRegistrationStarted(
       BackgroundRegistrationsId id,
-      const attribution_reporting::SuitableOrigin& context_origin,
-      bool is_within_fenced_frame,
+      AttributionSuitableContext,
       attribution_reporting::mojom::RegistrationEligibility,
-      GlobalRenderFrameHostId render_frame_id,
-      int64_t last_navigation_id,
       std::optional<blink::AttributionSrcToken> attribution_src_token,
       std::optional<std::string> devtools_request_id) override;
-  bool NotifyBackgroundRegistrationData(
-      BackgroundRegistrationsId id,
-      const net::HttpResponseHeaders* headers,
-      GURL reporting_url,
-      network::AttributionReportingRuntimeFeatures,
-      std::vector<network::TriggerVerification>) override;
+  bool NotifyBackgroundRegistrationData(BackgroundRegistrationsId id,
+                                        const net::HttpResponseHeaders* headers,
+                                        GURL reporting_url) override;
   void NotifyBackgroundRegistrationCompleted(
       BackgroundRegistrationsId id) override;
 
   void NotifyFencedFrameReportingBeaconStarted(
       BeaconId beacon_id,
+      AttributionSuitableContext,
       std::optional<int64_t> navigation_id,
-      attribution_reporting::SuitableOrigin source_origin,
-      bool is_within_fenced_frame,
-      AttributionInputEvent input_event,
-      GlobalRenderFrameHostId render_frame_id,
       std::string devtools_request_id) override;
   void NotifyFencedFrameReportingBeaconData(
       BeaconId beacon_id,
-      network::AttributionReportingRuntimeFeatures,
       GURL reporting_url,
       const net::HttpResponseHeaders* headers,
       bool is_final_response) override;
+  base::WeakPtr<AttributionDataHostManager> AsWeakPtr() override;
 
  private:
   class RegistrationContext;
-  class NavigationContextForPendingRegistration;
+  class NavigationForPendingRegistration;
+  class OsRegistrationsBuffer;
+  enum class OsRegistrationsBufferFlushReason;
 
   // Timer that can be used to be notified of sequential events. It uses a
   // single timer. When `Start` is called a timeout is added in a queue. If it
@@ -183,51 +172,76 @@ class CONTENT_EXPORT AttributionDataHostManagerImpl
   using RegistrationsId = absl::
       variant<blink::AttributionSrcToken, BeaconId, BackgroundRegistrationsId>;
 
-  // blink::mojom::AttributionDataHost:
+  // attribution_reporting::mojom::DataHost:
   void SourceDataAvailable(
       attribution_reporting::SuitableOrigin reporting_origin,
-      attribution_reporting::SourceRegistration) override;
+      attribution_reporting::SourceRegistration,
+      bool was_fetched_via_service_worker) override;
   void TriggerDataAvailable(
       attribution_reporting::SuitableOrigin reporting_origin,
       attribution_reporting::TriggerRegistration,
-      std::vector<network::TriggerVerification>) override;
+      bool was_fetched_via_service_worker) override;
   void OsSourceDataAvailable(
-      std::vector<attribution_reporting::OsRegistrationItem>) override;
+      attribution_reporting::SuitableOrigin reporting_origin,
+      std::vector<attribution_reporting::OsRegistrationItem>,
+      bool was_fetched_via_service_worker) override;
   void OsTriggerDataAvailable(
-      std::vector<attribution_reporting::OsRegistrationItem>) override;
+      attribution_reporting::SuitableOrigin reporting_origin,
+      std::vector<attribution_reporting::OsRegistrationItem>,
+      bool was_fetched_via_service_worker) override;
+  void ReportRegistrationHeaderError(
+      attribution_reporting::SuitableOrigin reporting_origin,
+      const attribution_reporting::RegistrationHeaderError&) override;
 
   const RegistrationContext* GetReceiverRegistrationContextForSource();
   const RegistrationContext* GetReceiverRegistrationContextForTrigger();
 
+  [[nodiscard]] bool CheckRegistrarSupport(
+      attribution_reporting::Registrar,
+      attribution_reporting::mojom::RegistrationType,
+      const RegistrationContext&,
+      const attribution_reporting::SuitableOrigin& reporting_origin);
+
   void OnReceiverDisconnected();
 
-  enum class Registrar;
-  struct RegistrarAndHeader;
   struct HeaderPendingDecode;
+  struct RegistrationDataHeaders;
+  struct PendingRegistrationData;
+
+  void HandleRegistrationData(base::flat_set<Registrations>::iterator,
+                              PendingRegistrationData);
+  void HandleNextRegistrationData(base::flat_set<Registrations>::iterator);
+  using InfoParseResult =
+      base::expected<net::structured_headers::Dictionary, std::string>;
+  void OnInfoHeaderParsed(RegistrationsId, InfoParseResult);
+  void HandleRegistrationInfo(base::flat_set<Registrations>::iterator,
+                              PendingRegistrationData,
+                              const attribution_reporting::RegistrationInfo&);
 
   void ParseHeader(base::flat_set<Registrations>::iterator,
                    HeaderPendingDecode,
-                   Registrar);
+                   attribution_reporting::Registrar);
   void HandleNextWebDecode(const Registrations&);
   void OnWebHeaderParsed(
       RegistrationsId,
-      attribution_reporting::mojom::RegistrationType,
-      std::optional<std::vector<network::TriggerVerification>>,
       data_decoder::DataDecoder::ValueOrError result);
   void HandleParsedWebSource(const Registrations&,
-                             const HeaderPendingDecode&,
+                             HeaderPendingDecode&,
                              data_decoder::DataDecoder::ValueOrError result);
   void HandleParsedWebTrigger(const Registrations&,
-                              const HeaderPendingDecode&,
-                              std::vector<network::TriggerVerification>,
+                              HeaderPendingDecode&,
                               data_decoder::DataDecoder::ValueOrError result);
 
   void HandleNextOsDecode(const Registrations&);
 
+  void MaybeLogAuditIssueAndReportHeaderError(
+      const Registrations&,
+      const HeaderPendingDecode&,
+      attribution_reporting::RegistrationHeaderErrorDetails);
+
   using OsParseResult =
       base::expected<net::structured_headers::List, std::string>;
   void OnOsHeaderParsed(RegistrationsId,
-                        attribution_reporting::mojom::RegistrationType,
                         OsParseResult);
 
   void MaybeOnRegistrationsFinished(
@@ -236,8 +250,27 @@ class CONTENT_EXPORT AttributionDataHostManagerImpl
   void MaybeStartNavigation(int64_t navigation_id);
   void MaybeDoneWithNavigation(int64_t navigation_id, bool due_to_timeout);
 
+  [[nodiscard]] bool AddNavigationSourceRegistrationToBatchMap(
+      int64_t navigation_id,
+      const attribution_reporting::SuitableOrigin& reporting_origin,
+      const attribution_reporting::SourceRegistration&,
+      const GlobalRenderFrameHostId&,
+      const std::optional<std::string>& devtools_request_id);
+  void ClearRegistrationsForNavigationBatch(int64_t navigation_id);
+
   void MaybeBindDeferredReceivers(int64_t navigation_id, bool due_to_timeout);
   void ClearRegistrationsDeferUntilNavigation(int64_t navigation_id);
+
+  void MaybeBufferOsRegistrations(
+      int64_t navigation_id,
+      std::vector<attribution_reporting::OsRegistrationItem>,
+      const RegistrationContext&);
+  void MaybeFlushOsRegistrationsBuffer(int64_t navigation_id,
+                                       OsRegistrationsBufferFlushReason);
+  void SubmitOsRegistrations(
+      std::vector<attribution_reporting::OsRegistrationItem>,
+      const RegistrationContext&,
+      attribution_reporting::mojom::RegistrationType);
 
   // In `RegisterNavigationDataHost` which, for a given navigation, will be
   // called before `NotifyNavigationRegistrationStarted`, we receive the number
@@ -263,7 +296,7 @@ class CONTENT_EXPORT AttributionDataHostManagerImpl
   // Owns `this`.
   const raw_ref<AttributionManager> attribution_manager_;
 
-  mojo::ReceiverSet<blink::mojom::AttributionDataHost, RegistrationContext>
+  mojo::ReceiverSet<attribution_reporting::mojom::DataHost, RegistrationContext>
       receivers_;
 
   // Map which stores pending receivers for data hosts which are going to
@@ -271,7 +304,7 @@ class CONTENT_EXPORT AttributionDataHostManagerImpl
   // `receivers_` until the necessary browser process information is available
   // to validate the attribution sources which is after the navigation starts.
   base::flat_map<blink::AttributionSrcToken,
-                 mojo::PendingReceiver<blink::mojom::AttributionDataHost>>
+                 mojo::PendingReceiver<attribution_reporting::mojom::DataHost>>
       navigation_data_host_map_;
 
   // If eligible, sources can be registered during a navigation. These
@@ -331,8 +364,7 @@ class CONTENT_EXPORT AttributionDataHostManagerImpl
                  base::flat_set<BackgroundRegistrationsId>>
       background_registrations_waiting_on_navigation_;
   SequentialTimeoutsTimer background_registrations_waiting_on_navigation_timer_;
-  base::flat_map<blink::AttributionSrcToken,
-                 NavigationContextForPendingRegistration>
+  base::flat_map<blink::AttributionSrcToken, NavigationForPendingRegistration>
       navigations_waiting_on_background_registrations_;
   SequentialTimeoutsTimer
       navigations_waiting_on_background_registrations_timer_;
@@ -341,9 +373,28 @@ class CONTENT_EXPORT AttributionDataHostManagerImpl
   // registrations or via a Fenced Frame Beacon.
   base::flat_set<Registrations> registrations_;
 
+  // The OS allows associating a navigation's input event to a single call. As a
+  // result, we must buffer all registrations tied to a navigation before
+  // submitting them to the OS.
+  base::flat_set<OsRegistrationsBuffer> os_buffers_;
+
   // Guardrail to ensure that a navigation which can receive registrations is
   // always eventually considered done.
   SequentialTimeoutsTimer navigation_registrations_timer_;
+
+  // Struct to contain useful information to be mapped against for limiting
+  // navigation and metric purposes.
+  struct ScopesAndCountForReportingOriginPerNavigation;
+
+  // Stores the first received non-empty attribution scopes set for each
+  // reporting origin tied to each navigation keyed by the navigation ID. Used
+  // to limit source registrations per reporting origin per navigation to only 1
+  // unique attribution scopes set. Also keeps count of each source registration
+  // attempt per reporting origin.
+  base::flat_map<int64_t,
+                 base::flat_map<attribution_reporting::SuitableOrigin,
+                                ScopesAndCountForReportingOriginPerNavigation>>
+      registrations_count_and_set_scopes_per_navigation_;
 
   data_decoder::DataDecoder data_decoder_;
 

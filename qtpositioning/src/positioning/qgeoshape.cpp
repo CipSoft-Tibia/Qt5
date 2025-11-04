@@ -225,6 +225,11 @@ QGeoRectangle QGeoShape::boundingGeoRectangle() const
 }
 
 /*!
+    \property QGeoShape::center
+    \brief the coordinate at the geometric center of the shape.
+*/
+
+/*!
     Returns the coordinate located at the geometric center of the geo shape.
 
     \since 5.5

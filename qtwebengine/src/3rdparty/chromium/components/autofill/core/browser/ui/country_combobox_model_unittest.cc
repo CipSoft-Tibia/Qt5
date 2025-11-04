@@ -22,7 +22,6 @@ class CountryComboboxModelTest : public testing::Test {
   CountryComboboxModelTest()
       : pref_service_(autofill::test::PrefServiceForTesting()) {
     manager_.SetPrefService(pref_service_.get());
-    manager_.set_timezone_country_code("KR");
     model_ = std::make_unique<CountryComboboxModel>();
     model_->SetCountries(
         manager_, base::RepeatingCallback<bool(const std::string&)>(), "en-US");
@@ -41,7 +40,11 @@ class CountryComboboxModelTest : public testing::Test {
 
 TEST_F(CountryComboboxModelTest, DefaultCountryCode) {
   std::string default_country = model()->GetDefaultCountryCode();
-  EXPECT_EQ(manager()->GetDefaultCountryCodeForNewAddress(), default_country);
+  EXPECT_EQ(manager()
+                ->address_data_manager()
+                .GetDefaultCountryCodeForNewAddress()
+                .value(),
+            default_country);
 
   AutofillCountry country(default_country, "en-US");
   EXPECT_EQ(country.name(), model()->GetItemAt(0));

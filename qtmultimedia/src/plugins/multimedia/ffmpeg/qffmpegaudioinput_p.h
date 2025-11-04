@@ -14,15 +14,13 @@
 // We mean it.
 //
 
+#include <QtMultimedia/qaudioinput.h>
 #include <QtMultimedia/private/qplatformaudioinput_p.h>
 #include <QtMultimedia/private/qplatformaudiobufferinput_p.h>
 #include <QtFFmpegMediaPluginImpl/private/qffmpegthread_p.h>
-#include <qaudioinput.h>
 
 QT_BEGIN_NAMESPACE
 
-class QAudioSource;
-class QAudioBuffer;
 namespace QFFmpeg {
 class AudioSourceIO;
 } // namespace QFFmpeg
@@ -34,7 +32,7 @@ class QFFmpegAudioInput : public QAudioBufferSource, public QPlatformAudioInput
     // for qobject_cast
     Q_OBJECT
 public:
-    QFFmpegAudioInput(QAudioInput *qq);
+    explicit QFFmpegAudioInput(QAudioInput *qq);
     ~QFFmpegAudioInput() override;
 
     void setAudioDevice(const QAudioDevice &/*device*/) override;
@@ -42,9 +40,17 @@ public:
     void setVolume(float /*volume*/) override;
 
     void setBufferSize(int bufferSize);
-    void setRunning(bool b);
 
     int bufferSize() const;
+
+protected:
+    // ensures the underlying audio source is run if
+    // the signal newAudioBuffer is connected
+    void connectNotify(const QMetaMethod &signal) override;
+
+    // postponly ensures that the underlying audio source is not run
+    // if the signal newAudioBuffer is not connacted to any slot.
+    void disconnectNotify(const QMetaMethod &signal) override;
 
 private:
     QFFmpeg::AudioSourceIO *m_audioIO = nullptr;

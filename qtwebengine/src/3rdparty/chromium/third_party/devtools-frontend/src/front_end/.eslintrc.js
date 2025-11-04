@@ -23,13 +23,18 @@ module.exports = {
     'rulesdir/custom_element_definitions_location': ['error', {
       rootFrontendDirectory: __dirname,
     }],
-    'rulesdir/custom_element_component_definition': 'error',
   },
   'overrides': [
     {
       'files': ['*.ts'],
       'rules': {
-        '@typescript-eslint/explicit-function-return-type': 'error',
+        '@typescript-eslint/explicit-function-return-type': [
+            'error', {
+              'allowExpressions': true,
+              'allowConciseArrowFunctionExpressionsStartingWithVoid': true,
+              'allowIIFEs':true,
+            },
+        ],
         'rulesdir/no_importing_images_from_src': 'error',
         'rulesdir/enforce_bound_render_for_schedule_render': 'error',
         'rulesdir/enforce_custom_event_names': 'error',
@@ -43,6 +48,7 @@ module.exports = {
         'rulesdir/ban_a_tags_in_lit_html': 'error',
         'rulesdir/check_component_naming': 'error',
         'rulesdir/check_css_import': 'error',
+        'rulesdir/enforce-optional-properties-last': 'error',
         'rulesdir/check_enumerated_histograms': 'error',
         'rulesdir/check_was_shown_methods': 'error',
         'rulesdir/static_custom_event_names': 'error',
@@ -50,87 +56,7 @@ module.exports = {
         'rulesdir/lit_html_no_attribute_quotes': 'error',
         'rulesdir/lit_template_result_or_nothing': 'error',
         'rulesdir/inject_checkbox_styles': 'error',
-        '@typescript-eslint/naming-convention': [
-          'error', {
-            'selector': ['property', 'parameterProperty'],
-            'format': ['camelCase'],
-          },
-          {
-            'selector': 'property',
-            'modifiers': ['public'],
-            'format': ['camelCase'],
-            'leadingUnderscore': 'allow',
-          },
-          {
-            'selector': 'classProperty',
-            'modifiers': ['static', 'readonly'],
-            'format': ['UPPER_CASE', 'camelCase'],
-          },
-          {
-            'selector': 'method',
-            'format': ['camelCase'],
-          },
-          {
-            'selector': 'function',
-            'format': ['camelCase'],
-          },
-          {
-            'selector': 'variable',
-            'filter': {
-              // Ignore localization variables.
-              'regex': '^(UIStrings|str_)$',
-              'match': false
-            },
-            'format': ['camelCase'],
-          },
-          {
-            // We are using camelCase, PascalCase and UPPER_CASE for top-level constants, allow the for now.
-            'selector': 'variable',
-            'modifiers': ['const'],
-            'filter': {
-              // Ignore localization variables.
-              'regex': '^(UIStrings|str_)$',
-              'match': false
-            },
-            'format': ['camelCase', 'UPPER_CASE', 'PascalCase'],
-          },
-          {
-            // Public methods are currently in transition and may still have leading underscores.
-            'selector': 'method',
-            'modifiers': ['public'],
-            'format': ['camelCase'],
-            'leadingUnderscore': 'allow',
-          },
-          {
-            // Object literals may be constructed as arguments to external libraries which follow different styles.
-            'selector': ['objectLiteralMethod', 'objectLiteralProperty'],
-            'modifiers': ['public'],
-            'format': null,
-          },
-          {
-            'selector': 'accessor',
-            'format': ['camelCase'],
-          },
-          {
-            'selector': 'enumMember',
-            'format': ['PascalCase', 'UPPER_CASE'],
-          },
-          {
-            'selector': ['typeLike'],
-            'format': ['PascalCase'],
-          },
-          {
-            'selector': 'parameter',
-            'format': ['camelCase'],
-            'leadingUnderscore': 'allow',
-          },
-          {
-            // Ignore type properties that require quotes
-            'selector': ['typeProperty', 'enumMember'],
-            'format': null,
-            'modifiers': ['requiresQuotes']
-          }
-        ]
+        'rulesdir/jslog_context_list': 'error',
       }
     },
     {
@@ -146,6 +72,14 @@ module.exports = {
       }
     },
     {
+      'files': ['*.test.ts', '**/testing/*.ts'],
+      'rules': {
+        'rulesdir/check_component_naming': 'off',
+        'rulesdir/custom_element_definitions_location': 'off',
+        '@typescript-eslint/explicit-function-return-type': 'off',
+      },
+    },
+    {
       'files': ['panels/**/components/*.ts', 'ui/components/**/*.ts', 'entrypoints/**/*.ts'],
       'rules': {
         'rulesdir/use_private_class_members': 'error',
@@ -159,6 +93,12 @@ module.exports = {
         'rulesdir/ban_literal_devtools_component_tag_names': 'off',
         // TODO(crbug/1402569): Reenable once https://github.com/microsoft/TypeScript/issues/48885 is closed.
         'rulesdir/use_private_class_members': 'off',
+      }
+    },
+    {
+      'files': ['generated/SupportedCSSProperties.js'],
+      'rules': {
+        'rulesdir/jslog_context_list': 'error',
       }
     }
   ]

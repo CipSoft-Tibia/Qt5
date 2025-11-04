@@ -121,17 +121,38 @@ std::string GetStringNameForOptimizationTarget(
       return "TextSafety";
     case proto::OPTIMIZATION_TARGET_SEGMENTATION_ANDROID_HOME_MODULE_RANKER:
       return "SegmentationAndroidHomeModuleRanker";
+    case proto::OPTIMIZATION_TARGET_COMPOSE:
+      return "Compose";
+    case proto::OPTIMIZATION_TARGET_PASSAGE_EMBEDDER:
+      return "PassageEmbedder";
+    case proto::OPTIMIZATION_TARGET_PHRASE_SEGMENTATION:
+      return "PhraseSegmentation";
+    case proto::OPTIMIZATION_TARGET_SEGMENTATION_COMPOSE_PROMOTION:
+      return "SegmentationComposePromotion";
+    case proto::OPTIMIZATION_TARGET_URL_VISIT_RESUMPTION_RANKER:
+      return "URLVisitResumptionRanker";
+    case proto::OPTIMIZATION_TARGET_CAMERA_BACKGROUND_SEGMENTATION:
+      return "CameraBackgroundSegmentation";
+    case proto::OPTIMIZATION_TARGET_MODEL_EXECUTION_FEATURE_HISTORY_SEARCH:
+      return "ModelExecutionFeatureHistorySearch";
+    case proto::OPTIMIZATION_TARGET_MODEL_EXECUTION_FEATURE_PROMPT_API:
+      return "ModelExecutionFeaturePromptAPI";
+    case proto::OPTIMIZATION_TARGET_SEGMENTATION_METRICS_CLUSTERING:
+      return "SegmentationMetricsClustering";
+    case proto::OPTIMIZATION_TARGET_MODEL_EXECUTION_FEATURE_SUMMARIZE:
+      return "ModelExecutionFeatureSummarize";
       // Whenever a new value is added, make sure to add it to the OptTarget
       // variant list in
       // //tools/metrics/histograms/metadata/optimization/histograms.xml.
   }
-  NOTREACHED();
+  NOTREACHED_IN_MIGRATION();
   return std::string();
 }
 
-absl::optional<base::FilePath> StringToFilePath(const std::string& str_path) {
-  if (str_path.empty())
-    return absl::nullopt;
+std::optional<base::FilePath> StringToFilePath(const std::string& str_path) {
+  if (str_path.empty()) {
+    return std::nullopt;
+  }
 
 #if BUILDFLAG(IS_WIN)
   return base::FilePath(base::UTF8ToWide(str_path));
@@ -160,13 +181,14 @@ std::string ModelOverrideSeparator() {
   return kModelOverrideSeparator;
 }
 
-absl::optional<
-    std::pair<std::string, absl::optional<optimization_guide::proto::Any>>>
+std::optional<
+    std::pair<std::string, std::optional<optimization_guide::proto::Any>>>
 GetModelOverrideForOptimizationTarget(
     optimization_guide::proto::OptimizationTarget optimization_target) {
   auto model_override_switch_value = switches::GetModelOverride();
-  if (!model_override_switch_value)
-    return absl::nullopt;
+  if (!model_override_switch_value) {
+    return std::nullopt;
+  }
 
   std::vector<std::string> model_overrides =
       base::SplitString(*model_override_switch_value, ",",
@@ -178,7 +200,7 @@ GetModelOverrideForOptimizationTarget(
     if (override_parts.size() != 2 && override_parts.size() != 3) {
       // Input is malformed.
       DLOG(ERROR) << "Invalid string format provided to the Model Override";
-      return absl::nullopt;
+      return std::nullopt;
     }
 
     optimization_guide::proto::OptimizationTarget recv_optimization_target;
@@ -187,39 +209,40 @@ GetModelOverrideForOptimizationTarget(
       // Optimization target is invalid.
       DLOG(ERROR)
           << "Invalid optimization target provided to the Model Override";
-      return absl::nullopt;
+      return std::nullopt;
     }
-    if (optimization_target != recv_optimization_target)
+    if (optimization_target != recv_optimization_target) {
       continue;
+    }
 
     std::string file_name = override_parts[1];
     base::FilePath file_path = *StringToFilePath(file_name);
     if (!file_path.IsAbsolute()) {
       DLOG(ERROR) << "Provided model file path must be absolute " << file_name;
-      return absl::nullopt;
+      return std::nullopt;
     }
 
     if (override_parts.size() == 2) {
-      std::pair<std::string, absl::optional<optimization_guide::proto::Any>>
-          file_path_and_metadata = std::make_pair(file_name, absl::nullopt);
+      std::pair<std::string, std::optional<optimization_guide::proto::Any>>
+          file_path_and_metadata = std::make_pair(file_name, std::nullopt);
       return file_path_and_metadata;
     }
 
     std::string binary_pb;
     if (!base::Base64Decode(override_parts[2], &binary_pb)) {
       DLOG(ERROR) << "Invalid base64 encoding of the Model Override";
-      return absl::nullopt;
+      return std::nullopt;
     }
     optimization_guide::proto::Any model_metadata;
     if (!model_metadata.ParseFromString(binary_pb)) {
       DLOG(ERROR) << "Invalid model metadata provided to the Model Override";
-      return absl::nullopt;
+      return std::nullopt;
     }
-    std::pair<std::string, absl::optional<optimization_guide::proto::Any>>
+    std::pair<std::string, std::optional<optimization_guide::proto::Any>>
         file_path_and_metadata = std::make_pair(file_name, model_metadata);
     return file_path_and_metadata;
   }
-  return absl::nullopt;
+  return std::nullopt;
 }
 
 bool CheckAllPathsExist(
@@ -249,11 +272,10 @@ base::FilePath ConvertToRelativePath(const base::FilePath& parent,
 std::string GetModelCacheKeyHash(proto::ModelCacheKey model_cache_key) {
   std::string bytes;
   model_cache_key.SerializeToString(&bytes);
-  uint64_t hash =
-      base::legacy::CityHash64(base::as_bytes(base::make_span(bytes)));
+  uint64_t hash = base::legacy::CityHash64(base::as_byte_span(bytes));
   // Convert the hash to hex encoding and not as base64 and other encodings,
   // since it will be used as filepath names.
-  return base::HexEncode(base::as_bytes(base::make_span(&hash, 1u)));
+  return base::HexEncode(base::byte_span_from_ref(hash));
 }
 
 void RecordPredictionModelStoreModelRemovalVersionHistogram(
@@ -280,6 +302,23 @@ bool IsPredictionModelVersionInKillSwitch(
   }
   return killswitch_model_versions_it->second.find(model_version) !=
          killswitch_model_versions_it->second.end();
+}
+
+std::optional<proto::ModelInfo> ParseModelInfoFromFile(
+    const base::FilePath& model_info_path) {
+  std::string binary_model_info;
+  if (!base::ReadFileToString(model_info_path, &binary_model_info)) {
+    return std::nullopt;
+  }
+
+  proto::ModelInfo model_info;
+  if (!model_info.ParseFromString(binary_model_info)) {
+    return std::nullopt;
+  }
+
+  DCHECK(model_info.has_version());
+  DCHECK(model_info.has_optimization_target());
+  return model_info;
 }
 
 }  // namespace optimization_guide

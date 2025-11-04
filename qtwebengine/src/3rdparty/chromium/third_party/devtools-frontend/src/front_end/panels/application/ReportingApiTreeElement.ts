@@ -25,7 +25,7 @@ export class ReportingApiTreeElement extends ApplicationPanelTreeElement {
   private view?: ReportingApiView;
 
   constructor(storagePanel: ResourcesPanel) {
-    super(storagePanel, i18nString(UIStrings.reportingApi), false);
+    super(storagePanel, i18nString(UIStrings.reportingApi), false, 'reporting-api');
     const icon = IconButton.Icon.create('document');
     this.setLeadingIcons([icon]);
   }
@@ -40,7 +40,7 @@ export class ReportingApiTreeElement extends ApplicationPanelTreeElement {
       this.view = new ReportingApiView(new ApplicationComponents.EndpointsGrid.EndpointsGrid());
     }
     this.showView(this.view);
-    Host.userMetrics.panelShown(Host.UserMetrics.PanelCodes[Host.UserMetrics.PanelCodes.reporting_api]);
+    Host.userMetrics.panelShown('reporting-api');
     return false;
   }
 }

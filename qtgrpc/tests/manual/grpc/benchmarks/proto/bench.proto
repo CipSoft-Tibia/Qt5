@@ -3,6 +3,8 @@
 
 syntax = "proto3";
 
+import "google/protobuf/timestamp.proto";
+
 package qt.bench;
 
 service BenchmarkService {
@@ -13,11 +15,14 @@ service BenchmarkService {
 }
 
 message UnaryCallRequest {
-    uint64 ping = 1;
+    google.protobuf.Timestamp timestamp = 1;
+    optional bytes payload = 2;
 }
 
 message UnaryCallResponse {
-    uint64 pong = 1;
+    uint64 request_latency_nanos = 1;
+    google.protobuf.Timestamp timestamp = 2;
+    optional bytes payload = 3;
 }
 
 message ServerStreamingRequest {
@@ -41,11 +46,11 @@ message ClientStreamingResponse {
 }
 
 message BiDiStreamingRequest {
-    uint64 ping = 1;
+    uint64 num = 1;
     optional bytes payload = 2;
 }
 
 message BiDiStreamingResponse {
-    uint64 pong = 1;
+    uint64 num = 1;
     optional bytes payload = 2;
 }

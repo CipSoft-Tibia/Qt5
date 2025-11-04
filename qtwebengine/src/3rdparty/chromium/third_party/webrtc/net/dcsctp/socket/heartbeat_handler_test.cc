@@ -38,7 +38,8 @@ DcSctpOptions MakeOptions(DurationMs heartbeat_interval) {
   DcSctpOptions options;
   options.heartbeat_interval_include_rtt = false;
   options.heartbeat_interval = heartbeat_interval;
-  options.enable_zero_checksum = false;
+  options.zero_checksum_alternate_error_detection_method =
+      ZeroChecksumAlternateErrorDetectionMethod::None();
   return options;
 }
 
@@ -55,7 +56,7 @@ class HeartbeatHandlerTestBase : public testing::Test {
   void AdvanceTime(webrtc::TimeDelta duration) {
     callbacks_.AdvanceTime(duration);
     for (;;) {
-      absl::optional<TimeoutID> timeout_id = callbacks_.GetNextExpiredTimeout();
+      std::optional<TimeoutID> timeout_id = callbacks_.GetNextExpiredTimeout();
       if (!timeout_id.has_value()) {
         break;
       }

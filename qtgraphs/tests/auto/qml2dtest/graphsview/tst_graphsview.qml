@@ -84,9 +84,15 @@ Item {
             compare(initial.marginBottom, 20)
             compare(initial.marginLeft, 20)
             compare(initial.marginRight, 20)
+            compare(initial.plotArea.x, 0)
+            compare(initial.plotArea.y, 0)
+            compare(initial.plotArea.width, 0)
+            compare(initial.plotArea.height, 0)
             compare(initial.seriesList, [])
             compare(initial.axisX, null)
             compare(initial.axisY, null)
+            compare(initial.panStyle, GraphsView.PanStyle.None)
+            compare(initial.zoomStyle, GraphsView.ZoomStyle.None)
             // compare some of the contents of the initial theme, as theme itself cannot be
             compare(initial.theme.theme, GraphsTheme.Theme.QtGreen)
             compare(initial.theme.colorScheme, GraphsTheme.ColorScheme.Automatic)
@@ -103,6 +109,8 @@ Item {
             initial.theme = myTheme
             initial.axisX = axisX
             initial.axisY = axisY
+            initial.panStyle = GraphsView.PanStyle.Drag
+            initial.zoomStyle = GraphsView.ZoomStyle.Center
             initial.addSeries(barInitial)
 
             waitForRendering(top)
@@ -113,8 +121,14 @@ Item {
             compare(initial.marginBottom, 11)
             compare(initial.marginLeft, 12)
             compare(initial.marginRight, 13)
+            verify(initial.plotArea.x !== 0)
+            verify(initial.plotArea.y !== 0)
+            verify(initial.plotArea.width !== 0)
+            verify(initial.plotArea.height !== 0)
             compare(initial.axisX, axisX)
             compare(initial.axisY, axisY)
+            compare(initial.panStyle, GraphsView.PanStyle.Drag)
+            compare(initial.zoomStyle, GraphsView.ZoomStyle.Center)
             compare(initial.seriesList, [barInitial])
             compare(initial.theme, myTheme)
             compare(initial.theme.theme, GraphsTheme.Theme.QtGreenNeon)

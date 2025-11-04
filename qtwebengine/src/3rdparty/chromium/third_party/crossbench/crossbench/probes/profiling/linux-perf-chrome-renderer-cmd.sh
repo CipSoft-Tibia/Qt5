@@ -3,7 +3,7 @@
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
-PERF_DATA_DIR="."
+PERF_DATA_DIR="profiling"
 PERF_DATA_PREFIX="chrome_renderer"
 RENDERER_ID="0"
 for i in "$@"; do

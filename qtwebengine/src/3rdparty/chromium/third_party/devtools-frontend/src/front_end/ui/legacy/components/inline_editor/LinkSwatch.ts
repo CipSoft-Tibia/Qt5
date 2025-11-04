@@ -3,10 +3,10 @@
 // found in the LICENSE file.
 
 import * as i18n from '../../../../core/i18n/i18n.js';
-import * as Platform from '../../../../core/platform/platform.js';
-import * as ComponentHelpers from '../../../components/helpers/helpers.js';
 import * as LitHtml from '../../../lit-html/lit-html.js';
 import * as VisualLogging from '../../../visual_logging/visual_logging.js';
+import textButtonStyles from '../../textButton.css.legacy.js';
+import * as ThemeSupport from '../../theme_support/theme_support.js';
 
 import linkSwatchStyles from './linkSwatch.css.js';
 
@@ -37,15 +37,12 @@ class BaseLinkSwatch extends HTMLElement {
 
   connectedCallback(): void {
     this.shadow.adoptedStyleSheets = [linkSwatchStyles];
+    ThemeSupport.ThemeSupport.instance().appendStyle(this.shadow, textButtonStyles);
   }
 
   set data(data: BaseLinkSwatchRenderData) {
-    this.onLinkActivate = (linkText: string, event: MouseEvent|KeyboardEvent): void => {
+    this.onLinkActivate = (linkText: string, event: MouseEvent|KeyboardEvent) => {
       if (event instanceof MouseEvent && event.button !== 0) {
-        return;
-      }
-
-      if (event instanceof KeyboardEvent && !Platform.KeyboardUtilities.isEnterOrSpaceKey(event)) {
         return;
       }
 
@@ -63,8 +60,10 @@ class BaseLinkSwatch extends HTMLElement {
   private render(data: BaseLinkSwatchRenderData): void {
     const {isDefined, text, title} = data;
     const classes = Directives.classMap({
+      'link-style': true,
+      'text-button': true,
       'link-swatch-link': true,
-      'undefined': !isDefined,
+      undefined: !isDefined,
     });
     // The linkText's space must be removed, otherwise it cannot be triggered when clicked.
     const onActivate = isDefined ? this.onLinkActivate.bind(this, text.trim()) : null;
@@ -72,11 +71,12 @@ class BaseLinkSwatch extends HTMLElement {
     // We added var popover, so don't need the title attribute when no need for showing title and
     // only provide the data-title for the popover to get the data.
     const {startNode} = render(
-        html`<span class=${classes} title=${LitHtml.Directives.ifDefined(data.showTitle ? title : null)} data-title=${
-            LitHtml.Directives.ifDefined(!data.showTitle ? title : null)} @mousedown=${onActivate} @keydown=${
-            onActivate} role="link" tabindex="-1">${text}</span>`,
+        html`<button .disabled=${!isDefined} class=${classes} title=${
+            LitHtml.Directives.ifDefined(data.showTitle ? title : null)} data-title=${
+            LitHtml.Directives.ifDefined(
+                !data.showTitle ? title : null)} @click=${onActivate} role="link" tabindex="-1">${text}</button>`,
         this.shadow, {host: this});
-    if (startNode?.nextSibling instanceof HTMLSpanElement) {
+    if (startNode?.nextSibling instanceof HTMLButtonElement) {
       this.#linkElement = startNode?.nextSibling;
     }
   }
@@ -135,14 +135,14 @@ export class CSSVarSwatch extends HTMLElement {
     // clang-format off
     render(
         html`<span data-title=${data.computedValue || ''}
-          jslog=${VisualLogging.link().track({click: true, hover: true}).context('css-var')}
+          jslog=${VisualLogging.link('css-variable').track({click: true, hover: true})}
         >var(${this.#link}<slot name="fallback">${data.fallbackText ? `, ${data.fallbackText}` : ''}</slot>)</span>`,
         this.shadow, {host: this});
     // clang-format on
   }
 }
 
-interface LinkSwatchRenderData {
+export interface LinkSwatchRenderData {
   isDefined: boolean;
   text: string;
   onLinkActivate: (linkText: string) => void;
@@ -172,12 +172,11 @@ export class LinkSwatch extends HTMLElement {
   }
 }
 
-ComponentHelpers.CustomElements.defineComponent('devtools-base-link-swatch', BaseLinkSwatch);
-ComponentHelpers.CustomElements.defineComponent('devtools-link-swatch', LinkSwatch);
-ComponentHelpers.CustomElements.defineComponent('devtools-css-var-swatch', CSSVarSwatch);
+customElements.define('devtools-base-link-swatch', BaseLinkSwatch);
+customElements.define('devtools-link-swatch', LinkSwatch);
+customElements.define('devtools-css-var-swatch', CSSVarSwatch);
 
 declare global {
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   interface HTMLElementTagNameMap {
     'devtools-base-link-swatch': BaseLinkSwatch;
     'devtools-link-swatch': LinkSwatch;

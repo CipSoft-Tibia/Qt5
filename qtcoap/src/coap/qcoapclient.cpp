@@ -1,6 +1,7 @@
 // Copyright (C) 2017 Witekio.
 // Copyright (C) 2018 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qcoapclient_p.h"
 #include "qcoapprotocol_p.h"
@@ -18,7 +19,7 @@
 
 QT_BEGIN_NAMESPACE
 
-Q_LOGGING_CATEGORY(lcCoapClient, "qt.coap.client")
+Q_STATIC_LOGGING_CATEGORY(lcCoapClient, "qt.coap.client")
 
 QCoapClientPrivate::QCoapClientPrivate(QCoapProtocol *protocol, QCoapConnection *connection)
     : protocol(protocol)
@@ -130,10 +131,6 @@ QCoapClientPrivate::~QCoapClientPrivate()
 
     The default for \a securityMode is QtCoap::NoSecurity, which
     disables security.
-
-    This connects using a QCoapQUdpConnection; to use a custom transport,
-    sub-class QCoapConnection and pass an instance to one of the other
-    constructors.
 */
 QCoapClient::QCoapClient(QtCoap::SecurityMode securityMode, QObject *parent) :
     QObject(*new QCoapClientPrivate(new QCoapProtocol, new QCoapQUdpConnection(securityMode)),
@@ -258,7 +255,8 @@ QCoapReply *QCoapClient::put(const QCoapRequest &request, const QByteArray &data
 
     Sends the \a request using the PUT method and returns a new QCoapReply
     object. Uses \a device content as the payload for this request.
-    A null device is treated as empty content.
+    A null device is treated as empty content, in which case the payload of the
+    \a request will be used.
 
     \note The device has to be open and readable before calling this function.
 

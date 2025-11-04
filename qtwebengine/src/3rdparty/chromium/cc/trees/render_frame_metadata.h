@@ -6,6 +6,7 @@
 #define CC_TREES_RENDER_FRAME_METADATA_H_
 
 #include <optional>
+
 #include "build/build_config.h"
 #include "cc/cc_export.h"
 #include "components/viz/common/quads/selection.h"
@@ -114,7 +115,13 @@ class CC_EXPORT RenderFrameMetadata {
   viz::VerticalScrollDirection new_vertical_scroll_direction =
       viz::VerticalScrollDirection::kNull;
 
-#if BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_IOS) || defined(TOOLKIT_QT)
+  // Indicates that this frame is submitted after the primary main frame
+  // navigating to a session history item, identified by this item sequence
+  // number.
+  static constexpr int64_t kInvalidItemSequenceNumber = -1;
+  int64_t primary_main_frame_item_sequence_number = kInvalidItemSequenceNumber;
+
+#if BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_IOS) || BUILDFLAG(IS_QTWEBENGINE)
   // Used to position Android bottom bar, whose position is computed by the
   // renderer compositor.
   float bottom_controls_height = 0.f;

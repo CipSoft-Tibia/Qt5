@@ -20,14 +20,24 @@ assert(enable_perfetto_trace_processor_sqlite)
 perfetto_amalgamated_sql_header("stdlib") {
   deps = [
     "android",
+    "callstacks",
     "chrome:chrome_sql",
     "common",
-    "experimental",
+    "counters",
+    "deprecated/v42/common",
+    "export",
+    "graphs",
     "intervals",
     "linux",
     "pkvm",
     "prelude",
     "sched",
+    "slices",
+    "stack_trace",
+    "time",
+    "v8",
+    "viz",
+    "wattson",
   ]
   generated_header = "stdlib.h"
   namespace = "stdlib"

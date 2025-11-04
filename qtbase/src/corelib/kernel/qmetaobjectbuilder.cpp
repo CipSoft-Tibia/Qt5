@@ -153,17 +153,24 @@ class QMetaEnumBuilderPrivate
 {
 public:
     QMetaEnumBuilderPrivate(const QByteArray &_name)
-        : name(_name), enumName(_name), isFlag(false), isScoped(false)
+        : name(_name), enumName(_name)
     {
     }
 
     QByteArray name;
     QByteArray enumName;
     QMetaType metaType;
-    bool isFlag;
-    bool isScoped;
     QList<QByteArray> keys;
-    QList<int> values;
+    QList<quint64> values;
+    QFlags<EnumFlags> flags = {};
+
+    int addKey(const QByteArray &name, quint64 value)
+    {
+        int index = keys.size();
+        keys += name;
+        values += value;
+        return index;
+    }
 };
 Q_DECLARE_TYPEINFO(QMetaEnumBuilderPrivate, Q_RELOCATABLE_TYPE);
 
@@ -177,8 +184,6 @@ public:
         staticMetacallFunction = nullptr;
     }
 
-    bool hasRevisionedMethods() const;
-
     QByteArray className;
     const QMetaObject *superClass;
     QMetaObjectBuilder::StaticMetacallFunction staticMetacallFunction;
@@ -191,15 +196,6 @@ public:
     QList<const QMetaObject *> relatedMetaObjects;
     MetaObjectFlags flags;
 };
-
-bool QMetaObjectBuilderPrivate::hasRevisionedMethods() const
-{
-    for (const auto &method : methods) {
-        if (method.revision)
-            return true;
-    }
-    return false;
-}
 
 /*!
     Constructs a new QMetaObjectBuilder.
@@ -603,7 +599,9 @@ QMetaEnumBuilder QMetaObjectBuilder::addEnumerator(const QMetaEnum &prototype)
     en.setIsScoped(prototype.isScoped());
     int count = prototype.keyCount();
     for (int index = 0; index < count; ++index)
-        en.addKey(prototype.key(index), prototype.value(index));
+        en.addKey(prototype.key(index), prototype.value64(index).value_or(0));
+    // reset the is64Bit() flag if necessary
+    en.setIs64Bit(prototype.is64Bit());
     return en;
 }
 
@@ -1118,14 +1116,24 @@ void QMetaStringTable::writeBlob(char *out) const
     }
 }
 
-// Returns the sum of all parameters (including return type) for the given
-// \a methods. This is needed for calculating the size of the methods'
-// parameter type/name meta-data.
+// Returns the number of integers needed to store these methods' parameter type
+// infos or type names, parameter names and, if present, the method revision.
+// This is needed for calculating the size of the methods' parameter type/name
+// meta-data.
 static int aggregateParameterCount(const std::vector<QMetaMethodBuilderPrivate> &methods)
 {
     int sum = 0;
-    for (const auto &method : methods)
-        sum += method.parameterCount() + 1; // +1 for return type
+    for (const auto &method : methods) {
+        if (method.revision)
+            ++sum;
+
+        // type infos or type names; +1 for return type (constructors don't
+        // have one, so this stores a link to an empty string)
+        sum += method.parameterCount() + 1;
+
+        // parameter names (return type doesn't get one)
+        sum += method.parameterCount();
+    }
     return sum;
 }
 
@@ -1147,7 +1155,6 @@ static int buildMetaObject(QMetaObjectBuilderPrivate *d, char *buf,
     int paramsIndex;
     int enumIndex;
     int index;
-    bool hasRevisionedMethods = d->hasRevisionedMethods();
 
     // Create the main QMetaObject structure at the start of the buffer.
     QMetaObject *meta = reinterpret_cast<QMetaObject *>(buf);
@@ -1166,15 +1173,12 @@ static int buildMetaObject(QMetaObjectBuilderPrivate *d, char *buf,
                                     : nullptr;
     //int pmetaSize = size;
     dataIndex = MetaObjectPrivateFieldCount;
-    int methodParametersDataSize =
-            ((aggregateParameterCount(d->methods)
-             + aggregateParameterCount(d->constructors)) * 2) // types and parameter names
-            - int(d->methods.size())       // return "parameters" don't have names
-            - int(d->constructors.size()); // "this" parameters don't have names
+    int methodParametersDataSize = aggregateParameterCount(d->methods)
+             + aggregateParameterCount(d->constructors);
     if constexpr (mode == Construct) {
-        static_assert(QMetaObjectPrivate::OutputRevision == 12, "QMetaObjectBuilder should generate the same version as moc");
+        static_assert(QMetaObjectPrivate::OutputRevision == 13, "QMetaObjectBuilder should generate the same version as moc");
         pmeta->revision = QMetaObjectPrivate::OutputRevision;
-        pmeta->flags = d->flags.toInt();
+        pmeta->flags = d->flags.toInt() | AllocatedMetaObject;
         pmeta->className = 0;   // Class name is always the first string.
         //pmeta->signalCount is handled in the "output method loop" as an optimization.
 
@@ -1185,8 +1189,6 @@ static int buildMetaObject(QMetaObjectBuilderPrivate *d, char *buf,
         pmeta->methodCount = int(d->methods.size());
         pmeta->methodData = dataIndex;
         dataIndex += QMetaObjectPrivate::IntsPerMethod * int(d->methods.size());
-        if (hasRevisionedMethods)
-            dataIndex += int(d->methods.size());
         paramsIndex = dataIndex;
         dataIndex += methodParametersDataSize;
 
@@ -1204,8 +1206,6 @@ static int buildMetaObject(QMetaObjectBuilderPrivate *d, char *buf,
     } else {
         dataIndex += 2 * int(d->classInfoNames.size());
         dataIndex += QMetaObjectPrivate::IntsPerMethod * int(d->methods.size());
-        if (hasRevisionedMethods)
-            dataIndex += int(d->methods.size());
         paramsIndex = dataIndex;
         dataIndex += methodParametersDataSize;
         dataIndex += QMetaObjectPrivate::IntsPerProperty * int(d->properties.size());
@@ -1215,8 +1215,11 @@ static int buildMetaObject(QMetaObjectBuilderPrivate *d, char *buf,
 
     // Allocate space for the enumerator key names and values.
     enumIndex = dataIndex;
-    for (const auto &enumerator : d->enumerators)
+    for (const auto &enumerator : d->enumerators) {
         dataIndex += 2 * enumerator.keys.size();
+        if (enumerator.flags & EnumIs64Bit)
+            dataIndex += enumerator.keys.size();
+    }
 
     // Zero terminator at the end of the data offset table.
     ++dataIndex;
@@ -1257,6 +1260,8 @@ static int buildMetaObject(QMetaObjectBuilderPrivate *d, char *buf,
         int argc = method.parameterCount();
         [[maybe_unused]] int tag = strings.enter(method.tag);
         [[maybe_unused]] int attrs = method.attributes;
+        if (method.revision)
+            ++paramsIndex;
         if constexpr (mode == Construct) {
             data[dataIndex]     = name;
             data[dataIndex + 1] = argc;
@@ -1271,20 +1276,18 @@ static int buildMetaObject(QMetaObjectBuilderPrivate *d, char *buf,
         paramsIndex += 1 + argc * 2;
         parameterMetaTypesIndex += 1 + argc;
     }
-    if (hasRevisionedMethods) {
-        for (const auto &method : d->methods) {
-            if constexpr (mode == Construct)
-                data[dataIndex] = method.revision;
-            ++dataIndex;
-        }
-    }
 
     // Output the method parameters in the class.
-    Q_ASSERT(!buf || dataIndex == pmeta->methodData + int(d->methods.size()) * QMetaObjectPrivate::IntsPerMethod
-             + (hasRevisionedMethods ? int(d->methods.size()) : 0));
+    Q_ASSERT(!buf || dataIndex == pmeta->methodData + int(d->methods.size()) * QMetaObjectPrivate::IntsPerMethod);
     for (int x = 0; x < 2; ++x) {
         const std::vector<QMetaMethodBuilderPrivate> &methods = (x == 0) ? d->methods : d->constructors;
         for (const auto &method : methods) {
+            if (method.revision) {
+                if constexpr (mode == Construct)
+                    data[dataIndex] = method.revision;
+                ++dataIndex;
+            }
+
             const QList<QByteArray> paramTypeNames = method.parameterTypes();
             int paramCount = paramTypeNames.size();
             for (int i = -1; i < paramCount; ++i) {
@@ -1343,26 +1346,30 @@ static int buildMetaObject(QMetaObjectBuilderPrivate *d, char *buf,
     for (const auto &enumerator : d->enumerators) {
         [[maybe_unused]] int name = strings.enter(enumerator.name);
         [[maybe_unused]] int enumName = strings.enter(enumerator.enumName);
-        [[maybe_unused]] int isFlag = enumerator.isFlag ? EnumIsFlag : 0;
-        [[maybe_unused]] int isScoped = enumerator.isScoped ? EnumIsScoped : 0;
         int count = enumerator.keys.size();
-        int enumOffset = enumIndex;
         if constexpr (mode == Construct) {
             data[dataIndex]     = name;
             data[dataIndex + 1] = enumName;
-            data[dataIndex + 2] = isFlag | isScoped;
+            data[dataIndex + 2] = enumerator.flags.toInt();
             data[dataIndex + 3] = count;
-            data[dataIndex + 4] = enumOffset;
+            data[dataIndex + 4] = enumIndex;
         }
         for (int key = 0; key < count; ++key) {
             [[maybe_unused]] int keyIndex = strings.enter(enumerator.keys[key]);
             if constexpr (mode == Construct) {
-                data[enumOffset++] = keyIndex;
-                data[enumOffset++] = enumerator.values[key];
+                data[enumIndex + 0] = keyIndex;
+                data[enumIndex + 1] = uint(enumerator.values[key]);
             }
+            enumIndex += 2;
+        }
+        bool is64Bit = enumerator.flags.testAnyFlags(EnumIs64Bit);
+        for (int key = 0; is64Bit && key < count; ++key) {
+            if constexpr (mode == Construct) {
+                data[enumIndex] = uint(enumerator.values[key] >> 32);
+            }
+            ++enumIndex;
         }
         dataIndex += QMetaObjectPrivate::IntsPerEnum;
-        enumIndex += 2 * count;
     }
 
     // Output the constructors in the class.
@@ -1382,6 +1389,8 @@ static int buildMetaObject(QMetaObjectBuilderPrivate *d, char *buf,
         }
         dataIndex += QMetaObjectPrivate::IntsPerMethod;
         paramsIndex += 1 + argc * 2;
+        if (ctor.revision)
+            ++paramsIndex;
         parameterMetaTypesIndex += argc;
     }
 
@@ -1468,8 +1477,7 @@ static int buildMetaObject(QMetaObjectBuilderPrivate *d, char *buf,
 QMetaObject *QMetaObjectBuilder::toMetaObject() const
 {
     int size = buildMetaObject<Prepare>(d, nullptr, 0);
-    char *buf = reinterpret_cast<char *>(malloc(size));
-    memset(buf, 0, size);
+    char *buf = new (calloc(size, 1)) char[size];
     buildMetaObject<Construct>(d, buf, size);
     return reinterpret_cast<QMetaObject *>(buf);
 }
@@ -2329,7 +2337,8 @@ QMetaType QMetaEnumBuilder::metaType() const
 }
 
 /*!
-    Sets this enumerator to have the given \c metaType.
+    Sets this enumerator to have the given \c metaType. The is64Bit() flag will
+    be set to match \a metaType's size.
 
     \since 6.6
     \sa metaType()
@@ -2337,8 +2346,10 @@ QMetaType QMetaEnumBuilder::metaType() const
 void QMetaEnumBuilder::setMetaType(QMetaType metaType)
 {
     QMetaEnumBuilderPrivate *d = d_func();
-    if (d)
+    if (d) {
         d->metaType = metaType;
+        setIs64Bit(metaType.sizeOf() > 4);
+    }
 }
 
 /*!
@@ -2351,7 +2362,7 @@ bool QMetaEnumBuilder::isFlag() const
 {
     QMetaEnumBuilderPrivate *d = d_func();
     if (d)
-        return d->isFlag;
+        return d->flags.toInt() & EnumIsFlag;
     else
         return false;
 }
@@ -2365,7 +2376,7 @@ void QMetaEnumBuilder::setIsFlag(bool value)
 {
     QMetaEnumBuilderPrivate *d = d_func();
     if (d)
-        d->isFlag = value;
+        d->flags.setFlag(EnumIsFlag, value);
 }
 
 /*!
@@ -2377,7 +2388,7 @@ bool QMetaEnumBuilder::isScoped() const
 {
     QMetaEnumBuilderPrivate *d = d_func();
     if (d)
-        return d->isScoped;
+        return d->flags.toInt() & EnumIsScoped;
     return false;
 }
 
@@ -2390,7 +2401,37 @@ void QMetaEnumBuilder::setIsScoped(bool value)
 {
     QMetaEnumBuilderPrivate *d = d_func();
     if (d)
-        d->isScoped = value;
+        d->flags.setFlag(EnumIsScoped, value);
+}
+
+/*!
+    Return \c true if this enumerations in this enumerator are 64-bit.
+
+    This flag is autoamtically enabled if a 64-bit value is added with addKey().
+
+    \sa setIs64Bit()
+*/
+bool QMetaEnumBuilder::is64Bit() const
+{
+    QMetaEnumBuilderPrivate *d = d_func();
+    if (d)
+        return d->flags.toInt() & EnumIs64Bit;
+    return false;
+}
+
+/*!
+    Sets this enumerator to be 64-bit wide if \a value is true. If \a value is
+    false, any stored 64-bit keys will be truncated to 32 bits.
+
+    This flag is autoamtically enabled if a 64-bit value is added with addKey().
+
+    \sa is64Bit()
+*/
+void QMetaEnumBuilder::setIs64Bit(bool value)
+{
+    QMetaEnumBuilderPrivate *d = d_func();
+    if (d)
+        d->flags.setFlag(EnumIs64Bit, value);
 }
 
 /*!
@@ -2426,15 +2467,38 @@ QByteArray QMetaEnumBuilder::key(int index) const
     Returns the value with the given \a index; or returns -1 if there
     is no such value.
 
-    \sa keyCount(), addKey(), key()
+    If this is a 64-bit enumeration (see is64Bit()), this function returns the
+    low 32-bit portion of the value. Use value64() to obtain the full value
+    instead.
+
+    \sa value64(), keyCount(), addKey(), key(), is64Bit()
 */
 int QMetaEnumBuilder::value(int index) const
 {
+    return value64(index).value_or(-1);
+}
+
+/*!
+    \since 6.9
+
+    Returns the value with the given \a index if it exists; or returns a
+    disengaged \c{std::optional} if it doesn't.
+
+    \include qmetaobject.cpp qmetaenum-32bit-signextend-64bit
+
+    \sa keyCount(), key(), addKey()
+*/
+std::optional<quint64> QMetaEnumBuilder::value64(int index) const
+{
     QMetaEnumBuilderPrivate *d = d_func();
-    if (d && index >= 0 && index < d->keys.size())
-        return d->values[index];
-    else
-        return -1;
+    if (d && index >= 0 && index < d->keys.size()) {
+        quint64 v = d->values[index];
+        if (d->flags & EnumIs64Bit)
+            return v;
+        return uint(v);     // return only the low 32 bits
+    } else {
+        return std::nullopt;
+    }
 }
 
 /*!
@@ -2447,13 +2511,31 @@ int QMetaEnumBuilder::addKey(const QByteArray &name, int value)
 {
     QMetaEnumBuilderPrivate *d = d_func();
     if (d) {
-        int index = d->keys.size();
-        d->keys += name;
-        d->values += value;
-        return index;
+        return d->addKey(name, uint(value));
     } else {
         return -1;
     }
+}
+
+/*!
+    \since 6.9
+
+    Adds a new key called \a name to this enumerator, associated
+    with \a value.  Returns the index of the new key.
+
+    Using the 64-bit version of this function automatically makes this
+    enumeration be stored as 64-bit.
+
+    \sa keyCount(), key(), value(), removeKey(), is64Bit()
+*/
+int QMetaEnumBuilder::addKey(const QByteArray &name, quint64 value)
+{
+    QMetaEnumBuilderPrivate *d = d_func();
+    if (d) {
+        setIs64Bit(true);
+        return d->addKey(name, value);
+    }
+    return -1;
 }
 
 /*!

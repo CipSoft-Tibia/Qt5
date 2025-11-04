@@ -24,6 +24,7 @@
 
 #include <QtGui/qaccessible.h>
 #include <private/qtquickglobal_p.h>
+#include <QtQml/qqml.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -120,6 +121,7 @@ public:
             QAccessible::updateAccessibility(&ev);
         }
     }
+    void setDescriptionImplicitly(const QString &desc);
 
     QString id() const { return m_id; }
     void setId(const QString &id)

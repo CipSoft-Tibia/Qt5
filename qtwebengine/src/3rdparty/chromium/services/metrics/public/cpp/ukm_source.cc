@@ -66,6 +66,8 @@ SourceType ToProtobufSourceType(SourceIdType source_id_type) {
       return SourceType::CHROMEOS_WEBSITE_ID;
     case SourceIdType::EXTENSION_ID:
       return SourceType::EXTENSION_ID;
+    case SourceIdType::NOTIFICATION_ID:
+      return SourceType::NOTIFICATION_ID;
   }
 }
 
@@ -82,7 +84,7 @@ AndroidActivityType ToProtobufActivityType(int32_t type) {
     case 4:
       return AndroidActivityType::WEB_APK;
     default:
-      NOTREACHED();
+      NOTREACHED_IN_MIGRATION();
       return AndroidActivityType::TABBED;
   }
 }

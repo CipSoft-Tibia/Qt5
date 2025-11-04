@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QSOCKS5SOCKETENGINE_P_H
 #define QSOCKS5SOCKETENGINE_P_H
@@ -59,9 +60,9 @@ public:
 #ifndef QT_NO_UDPSOCKET
 #ifndef QT_NO_NETWORKINTERFACE
     bool joinMulticastGroup(const QHostAddress &groupAddress,
-                            const QNetworkInterface &interface) override;
+                            const QNetworkInterface &iface) override;
     bool leaveMulticastGroup(const QHostAddress &groupAddress,
-                             const QNetworkInterface &interface) override;
+                             const QNetworkInterface &iface) override;
     QNetworkInterface multicastInterface() const override;
     bool setMulticastInterface(const QNetworkInterface &iface) override;
 #endif // QT_NO_NETWORKINTERFACE

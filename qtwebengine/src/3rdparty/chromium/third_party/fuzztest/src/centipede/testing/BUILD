@@ -41,6 +41,29 @@ centipede_fuzz_target(
     name = "expensive_startup_fuzz_target",
 )
 
+# Fuzz target that uses the C++ RunnerCallbacks API to return serialized config.
+cc_binary(
+    name = "_fuzz_target_with_config",
+    srcs = ["fuzz_target_with_config.cc"],
+    # Cannot be built directly - build :fuzz_target_with_config instead.
+    tags = [
+        "local",
+        "manual",
+        "notap",
+    ],
+    deps = [
+        "@com_google_absl//absl/base:nullability",
+        "@com_google_fuzztest//centipede:centipede_runner_no_main",
+        "@com_google_fuzztest//centipede:mutation_input",
+        "@com_google_fuzztest//common:defs",
+    ],
+)
+
+centipede_fuzz_target(
+    name = "fuzz_target_with_config",
+    fuzz_target = "_fuzz_target_with_config",
+)
+
 centipede_fuzz_target(
     name = "minimize_me_fuzz_target",
 )
@@ -65,15 +88,62 @@ cc_binary(
         "notap",
     ],
     deps = [
+        "@com_google_absl//absl/base:nullability",
         "@com_google_fuzztest//centipede:centipede_runner_no_main",
-        "@com_google_fuzztest//centipede:defs",
         "@com_google_fuzztest//centipede:mutation_input",
+        "@com_google_fuzztest//common:defs",
     ],
 )
 
 centipede_fuzz_target(
     name = "seeded_fuzz_target",
     fuzz_target = "_seeded_fuzz_target",
+)
+
+# Server binary for :external_target_test.
+cc_binary(
+    name = "_external_target_server",
+    srcs = ["external_target_server.cc"],
+    # Cannot be built directly - build :external_target_server instead.
+    tags = [
+        "local",
+        "manual",
+        "notap",
+    ],
+    deps = [
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/strings",
+        "@com_google_fuzztest//centipede:centipede_runner_no_main",
+    ],
+)
+
+centipede_fuzz_target(
+    name = "external_target_server",
+    fuzz_target = "_external_target_server",
+)
+
+cc_binary(
+    name = "_external_target",
+    srcs = ["external_target.cc"],
+    # Cannot be built directly - build :external_target instead.
+    tags = [
+        "local",
+        "manual",
+        "notap",
+    ],
+    deps = [
+        "@com_google_absl//absl/base:nullability",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/strings",
+        "@com_google_fuzztest//centipede:centipede_runner_no_main",
+        "@com_google_fuzztest//centipede:mutation_input",
+        "@com_google_fuzztest//common:defs",
+    ],
+)
+
+centipede_fuzz_target(
+    name = "external_target",
+    fuzz_target = "_external_target",
 )
 
 # Target instrumented with -fsanitize-coverage=trace-pc.
@@ -149,10 +219,38 @@ cc_binary(
     ],
 )
 
+# Helper DSO for :data_only_dso_target
+cc_library(
+    name = "data_only_dso_target_lib",
+    srcs = ["data_only_dso_target_lib.cc"],
+    hdrs = ["data_only_dso_target_lib.h"],
+    copts = [
+        "-fsanitize-coverage=trace-pc-guard,pc-table,control-flow",
+        "-gline-tables-only",
+    ],
+    linkopts = ["-Wl,-gc-sections"],
+)
+
+# A fuzz target with an instrumented data-only DSO dependency (:data_only_dso_target_lib).
+cc_binary(
+    name = "data_only_dso_target",
+    srcs = ["data_only_dso_target_main.cc"],
+    copts = [
+        "-fsanitize-coverage=trace-pc-guard,pc-table,trace-cmp",
+        "-gline-tables-only",
+    ],
+    linkstatic = False,
+    deps = [
+        ":data_only_dso_target_lib",
+        "@com_google_fuzztest//centipede:centipede_runner",
+    ],
+)
+
 # A standalone binary with main() that is worth fuzzing.
 cc_binary(
     name = "standalone_fuzz_target_with_main",
     srcs = ["standalone_fuzz_target_with_main.cc"],
+    deps = ["@com_google_absl//absl/base:nullability"],
 )
 
 ################################################################################
@@ -230,6 +328,16 @@ sh_test(
 )
 
 sh_test(
+    name = "data_only_dso_test",
+    srcs = ["data_only_dso_test.sh"],
+    data = [
+        ":data_only_dso_target",
+        "@com_google_fuzztest//centipede",
+        "@com_google_fuzztest//centipede:test_util_sh",
+    ],
+)
+
+sh_test(
     name = "trace_pc_test",
     srcs = ["trace_pc_test.sh"],
     data = [
@@ -286,6 +394,17 @@ sh_test(
     data = [
         "clusterfuzz_format_sanitized_target",
         "clusterfuzz_format_target",
+        "@com_google_fuzztest//centipede",
+        "@com_google_fuzztest//centipede:test_util_sh",
+    ],
+)
+
+sh_test(
+    name = "external_target_test",
+    srcs = ["external_target_test.sh"],
+    data = [
+        ":external_target",
+        ":external_target_server",
         "@com_google_fuzztest//centipede",
         "@com_google_fuzztest//centipede:test_util_sh",
     ],

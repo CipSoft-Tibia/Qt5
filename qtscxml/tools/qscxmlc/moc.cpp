@@ -162,7 +162,12 @@ Type Moc::parseType()
     }
 
     skipCxxAttributes();
-    test(ENUM) || test(CLASS) || test(STRUCT);
+    if (test(ENUM))
+        type.typeTag = TypeTag::HasEnum;
+    if (test(CLASS))
+        type.typeTag |= TypeTag::HasClass;
+    if (test(STRUCT))
+        type.typeTag |= TypeTag::HasStruct;
     for(;;) {
         skipCxxAttributes();
         switch (next()) {
@@ -243,7 +248,7 @@ bool Moc::parseEnum(EnumDef *def)
     bool isTypdefEnum = false; // typedef enum { ... } Foo;
 
     if (test(CLASS) || test(STRUCT))
-        def->isEnumClass = true;
+        def->flags |= EnumIsScoped;
 
     if (test(IDENTIFIER)) {
         def->name = lexem();
@@ -742,14 +747,14 @@ void Moc::parse()
                                 break;
                             case Q_ENUMS_TOKEN:
                             case Q_ENUM_NS_TOKEN:
-                                parseEnumOrFlag(&def, false);
+                                parseEnumOrFlag(&def, {});
                                 break;
                             case Q_ENUM_TOKEN:
                                 error("Q_ENUM can't be used in a Q_NAMESPACE, use Q_ENUM_NS instead");
                                 break;
                             case Q_FLAGS_TOKEN:
                             case Q_FLAG_NS_TOKEN:
-                                parseEnumOrFlag(&def, true);
+                                parseEnumOrFlag(&def, EnumIsFlag);
                                 break;
                             case Q_FLAG_TOKEN:
                                 error("Q_FLAG can't be used in a Q_NAMESPACE, use Q_FLAG_NS instead");
@@ -884,6 +889,7 @@ void Moc::parse()
                     if (test(Q_SIGNALS_TOKEN))
                         error("Signals cannot have access specifier");
                     break;
+                case STRUCT:
                 case CLASS: {
                     ClassDef nestedDef;
                     if (parseClassHead(&nestedDef)) {
@@ -937,14 +943,14 @@ void Moc::parse()
                     break;
                 case Q_ENUMS_TOKEN:
                 case Q_ENUM_TOKEN:
-                    parseEnumOrFlag(&def, false);
+                    parseEnumOrFlag(&def, {});
                     break;
                 case Q_ENUM_NS_TOKEN:
                     error("Q_ENUM_NS can't be used in a Q_OBJECT/Q_GADGET, use Q_ENUM instead");
                     break;
                 case Q_FLAGS_TOKEN:
                 case Q_FLAG_TOKEN:
-                    parseEnumOrFlag(&def, true);
+                    parseEnumOrFlag(&def, EnumIsFlag);
                     break;
                 case Q_FLAG_NS_TOKEN:
                     error("Q_FLAG_NS can't be used in a Q_OBJECT/Q_GADGET, use Q_FLAG instead");
@@ -1325,9 +1331,11 @@ void Moc::createPropertyDef(PropertyDef &propDef, int propertyIndex, Moc::Proper
     propDef.location = index;
     propDef.relativeIndex = propertyIndex;
 
-    QByteArray type = parseType().name;
+    Type t = parseType();
+    QByteArray type = t.name;
     if (type.isEmpty())
         error();
+    propDef.typeTag = t.typeTag;
     propDef.designable = propDef.scriptable = propDef.stored = "true";
     propDef.user = "false";
     /*
@@ -1341,8 +1349,6 @@ void Moc::createPropertyDef(PropertyDef &propDef, int propertyIndex, Moc::Proper
     type = normalizeType(type);
     if (type == "QMap")
         type = "QMap<QString,QVariant>";
-    else if (type == "QValueList")
-        type = "QValueList<QVariant>";
     else if (type == "LongLong")
         type = "qlonglong";
     else if (type == "ULongLong")
@@ -1600,7 +1606,7 @@ void Moc::parsePrivateProperty(ClassDef *def, Moc::PropertyMode mode)
     def->propertyList += propDef;
 }
 
-void Moc::parseEnumOrFlag(BaseDef *def, bool isFlag)
+void Moc::parseEnumOrFlag(BaseDef *def, EnumFlags flags)
 {
     next(LPAREN);
     QByteArray identifier;
@@ -1610,7 +1616,7 @@ void Moc::parseEnumOrFlag(BaseDef *def, bool isFlag)
             identifier += "::";
             identifier += lexem();
         }
-        def->enumDeclarations[identifier] = isFlag;
+        def->enumDeclarations[identifier] = flags;
     }
     next(RPAREN);
 }
@@ -2020,20 +2026,26 @@ QJsonObject ClassDef::toJson() const
     if (classInfos.size())
         cls["classInfos"_L1] = classInfos;
 
-    const auto appendFunctions = [&cls](const QString &type, const QList<FunctionDef> &funcs) {
+    int methodIndex = 0;
+    const auto appendFunctions
+            = [&cls, &methodIndex](const QString &type, const QList<FunctionDef> &funcs) {
         QJsonArray jsonFuncs;
 
         for (const FunctionDef &fdef: funcs)
-            jsonFuncs.append(fdef.toJson());
+            jsonFuncs.append(fdef.toJson(methodIndex++));
 
         if (!jsonFuncs.isEmpty())
             cls[type] = jsonFuncs;
     };
 
+    // signals, slots, and methods, in this order, follow the same index
     appendFunctions("signals"_L1, signalList);
     appendFunctions("slots"_L1, slotList);
-    appendFunctions("constructors"_L1, constructorList);
     appendFunctions("methods"_L1, methodList);
+
+    // constructors are indexed separately.
+    methodIndex = 0;
+    appendFunctions("constructors"_L1, constructorList);
 
     QJsonArray props;
 
@@ -2087,13 +2099,16 @@ QJsonObject ClassDef::toJson() const
     return cls;
 }
 
-QJsonObject FunctionDef::toJson() const
+QJsonObject FunctionDef::toJson(int index) const
 {
     QJsonObject fdef;
     fdef["name"_L1] = QString::fromUtf8(name);
+    fdef["index"_L1] = index;
     if (!tag.isEmpty())
         fdef["tag"_L1] = QString::fromUtf8(tag);
     fdef["returnType"_L1] = QString::fromUtf8(normalizedType);
+    if (isConst)
+        fdef["isConst"_L1] = true;
 
     QJsonArray args;
     for (const ArgumentDef &arg: arguments)
@@ -2179,13 +2194,14 @@ QJsonObject PropertyDef::toJson() const
 QJsonObject EnumDef::toJson(const ClassDef &cdef) const
 {
     QJsonObject def;
+    uint flags = this->flags | cdef.enumDeclarations.value(name);
     def["name"_L1] = QString::fromUtf8(name);
     if (!enumName.isEmpty())
         def["alias"_L1] = QString::fromUtf8(enumName);
     if (!type.isEmpty())
         def["type"_L1] = QString::fromUtf8(type);
-    def["isFlag"_L1] = cdef.enumDeclarations.value(name);
-    def["isClass"_L1] = isEnumClass;
+    def["isFlag"_L1] = (flags & QtMocConstants::EnumIsFlag) != 0;
+    def["isClass"_L1] = (flags & QtMocConstants::EnumIsScoped) != 0;
 
     QJsonArray valueArr;
     for (const QByteArray &value: values)

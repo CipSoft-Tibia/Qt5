@@ -5,6 +5,7 @@
 import("../../../scripts/build/ninja/devtools_entrypoint.gni")
 import("../../../scripts/build/ninja/devtools_module.gni")
 import("../../../scripts/build/ninja/devtools_pre_built.gni")
+import("../../../scripts/build/typescript/typescript.gni")
 import("../visibility.gni")
 
 devtools_module("issues_manager") {
@@ -35,6 +36,7 @@ devtools_module("issues_manager") {
     "QuirksModeIssue.ts",
     "RelatedIssue.ts",
     "SharedArrayBufferIssue.ts",
+    "SharedDictionaryIssue.ts",
     "SourceFrameIssuesManager.ts",
     "StylesheetLoadingIssue.ts",
   ]
@@ -62,6 +64,7 @@ devtools_issue_description_files = [
   "arInvalidRegisterOsTriggerHeader.md",
   "arInvalidRegisterSourceHeader.md",
   "arInvalidRegisterTriggerHeader.md",
+  "arNavigationRegistrationWithoutTransientUserActivation.md",
   "arOsSourceIgnored.md",
   "arOsTriggerIgnored.md",
   "arPermissionPolicyDisabled.md",
@@ -103,7 +106,6 @@ devtools_issue_description_files = [
   "cspTrustedTypesSinkViolation.md",
   "cspURLViolation.md",
   "deprecation.md",
-  "genericCrossOriginPortalPostMessageError.md",
   "genericFormLabelForNameError.md",
   "genericFormDuplicateIdForInputError.md",
   "genericFormInputHasWrongButWellIntendedAutocompleteValueError.md",
@@ -171,6 +173,29 @@ devtools_issue_description_files = [
   "sharedArrayBuffer.md",
   "stylesheetLateImport.md",
   "stylesheetRequestFailed.md",
+  "sharedDictionaryUseErrorCrossOriginNoCorsRequest.md",
+  "sharedDictionaryUseErrorDictionaryLoadFailure.md",
+  "sharedDictionaryUseErrorMatchingDictionaryNotUsed.md",
+  "sharedDictionaryUseErrorUnexpectedContentDictionaryHeader.md",
+  "sharedDictionaryWriteErrorCossOriginNoCorsRequest.md",
+  "sharedDictionaryWriteErrorDisallowedBySettings.md",
+  "sharedDictionaryWriteErrorExpiredResponse.md",
+  "sharedDictionaryWriteErrorFeatureDisabled.md",
+  "sharedDictionaryWriteErrorInsufficientResources.md",
+  "sharedDictionaryWriteErrorInvalidMatchField.md",
+  "sharedDictionaryWriteErrorInvalidStructuredHeader.md",
+  "sharedDictionaryWriteErrorNavigationRequest.md",
+  "sharedDictionaryWriteErrorNoMatchField.md",
+  "sharedDictionaryWriteErrorNonListMatchDestField.md",
+  "sharedDictionaryWriteErrorNonSecureContext.md",
+  "sharedDictionaryWriteErrorNonStringIdField.md",
+  "sharedDictionaryWriteErrorNonStringInMatchDestList.md",
+  "sharedDictionaryWriteErrorNonStringMatchField.md",
+  "sharedDictionaryWriteErrorNonTokenTypeField.md",
+  "sharedDictionaryWriteErrorRequestAborted.md",
+  "sharedDictionaryWriteErrorShuttingDown.md",
+  "sharedDictionaryWriteErrorTooLongIdField.md",
+  "sharedDictionaryWriteErrorUnsupportedType.md",
 ]
 
 devtools_pre_built("descriptions") {
@@ -189,10 +214,6 @@ devtools_entrypoint("bundle") {
 
   visibility = [
     ":*",
-    "../../../test/unittests/front_end/helpers/*",
-    "../../../test/unittests/front_end/models/issues_manager/*",
-    "../../../test/unittests/front_end/panels/console/*",
-    "../../../test/unittests/front_end/ui/components/issue_counter/*",
     "../../entrypoints/main/*",
     "../../panels/application/*",
     "../../panels/console/*",
@@ -201,10 +222,38 @@ devtools_entrypoint("bundle") {
     "../../panels/issues/*",
     "../../panels/network/*",
     "../../panels/sources/*",
+    "../../testing/*",
     "../../ui/components/docs/issue_counter/*",
     "../../ui/components/issue_counter/*",
     "../../ui/legacy/components/cookie_table/*",
   ]
 
   visibility += devtools_models_visibility
+}
+
+ts_library("unittests") {
+  testonly = true
+
+  sources = [
+    "CheckFormsIssuesTrigger.test.ts",
+    "DeprecationIssue.test.ts",
+    "FederatedAuthUserInfoRequestIssue.test.ts",
+    "GenericIssue.test.ts",
+    "Issue.test.ts",
+    "IssueResolver.test.ts",
+    "IssuesManager.test.ts",
+    "LowTextContrastIssue.test.ts",
+    "MarkdownIssueDescription.test.ts",
+    "PropertyRuleIssue.test.ts",
+    "RelatedIssue.test.ts",
+    "SharedDictionaryIssue.test.ts",
+    "StylesheetLoadingIssue.test.ts",
+  ]
+
+  deps = [
+    ":bundle",
+    "../../core/common:bundle",
+    "../../core/sdk:bundle",
+    "../../testing",
+  ]
 }

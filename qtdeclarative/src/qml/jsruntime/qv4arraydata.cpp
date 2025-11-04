@@ -264,14 +264,19 @@ uint SimpleArrayData::truncate(Object *o, uint newLen)
         return newLen;
 
     if (!dd->attrs) {
+        for (uint i = newLen; i < dd->values.size; ++i)
+            dd->setData(dd->internalClass->engine, i, Value::emptyValue());
         dd->values.size = newLen;
         return newLen;
     }
 
     while (dd->values.size > newLen) {
-        if (!dd->data(dd->values.size - 1).isEmpty() && !dd->attrs[dd->values.size - 1].isConfigurable())
+        const uint lastIndex = dd->values.size - 1;
+        if (!dd->data(lastIndex).isEmpty() && !dd->attrs[lastIndex].isConfigurable())
             return dd->values.size;
-        --dd->values.size;
+
+        dd->setData(dd->internalClass->engine, lastIndex, Value::emptyValue());
+        dd->values.size = lastIndex;
     }
     return dd->values.size;
 }
@@ -629,11 +634,6 @@ void ArrayData::sort(ExecutionEngine *engine, Object *thisObject, const Value &c
 
     if (!arrayData || !arrayData->length())
         return;
-
-    if (!comparefn.isUndefined() && !comparefn.isFunctionObject()) {
-        engine->throwTypeError();
-        return;
-    }
 
     // The spec says the sorting goes through a series of get,put and delete operations.
     // this implies that the attributes don't get sorted around.

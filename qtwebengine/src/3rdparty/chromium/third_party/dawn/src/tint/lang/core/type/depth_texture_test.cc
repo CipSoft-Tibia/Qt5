@@ -29,6 +29,7 @@
 
 #include "src/tint/lang/core/type/external_texture.h"
 #include "src/tint/lang/core/type/helper_test.h"
+#include "src/tint/lang/core/type/input_attachment.h"
 #include "src/tint/lang/core/type/sampled_texture.h"
 #include "src/tint/lang/core/type/storage_texture.h"
 #include "src/tint/lang/core/type/texture_dimension.h"
@@ -69,13 +70,14 @@ TEST_F(DepthTextureTest, IsTexture) {
     Texture* ty = &d;
     EXPECT_TRUE(ty->Is<DepthTexture>());
     EXPECT_FALSE(ty->Is<ExternalTexture>());
+    EXPECT_FALSE(ty->Is<InputAttachment>());
     EXPECT_FALSE(ty->Is<SampledTexture>());
     EXPECT_FALSE(ty->Is<StorageTexture>());
 }
 
 TEST_F(DepthTextureTest, Dim) {
     DepthTexture d(TextureDimension::kCube);
-    EXPECT_EQ(d.dim(), TextureDimension::kCube);
+    EXPECT_EQ(d.Dim(), TextureDimension::kCube);
 }
 
 TEST_F(DepthTextureTest, FriendlyName) {
@@ -90,7 +92,7 @@ TEST_F(DepthTextureTest, Clone) {
     core::type::CloneContext ctx{{nullptr}, {nullptr, &mgr}};
 
     auto* dt = a->Clone(ctx);
-    EXPECT_EQ(dt->dim(), TextureDimension::k2d);
+    EXPECT_EQ(dt->Dim(), TextureDimension::k2d);
 }
 
 }  // namespace

@@ -2,8 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifndef BASE_ALLOCATOR_PARTITION_ALLOCATOR_SRC_PARTITION_ALLOC_POINTERS_RAW_PTR_NOOP_IMPL_H_
-#define BASE_ALLOCATOR_PARTITION_ALLOCATOR_SRC_PARTITION_ALLOC_POINTERS_RAW_PTR_NOOP_IMPL_H_
+#ifndef PARTITION_ALLOC_POINTERS_RAW_PTR_NOOP_IMPL_H_
+#define PARTITION_ALLOC_POINTERS_RAW_PTR_NOOP_IMPL_H_
 
 #include <type_traits>
 
@@ -68,7 +68,8 @@ struct RawPtrNoOpImpl {
       typename Z,
       typename =
           std::enable_if_t<partition_alloc::internal::is_offset_type<Z>, void>>
-  PA_ALWAYS_INLINE static constexpr T* Advance(T* wrapped_ptr, Z delta_elems) {
+  PA_ALWAYS_INLINE static constexpr T*
+  Advance(T* wrapped_ptr, Z delta_elems, bool /*is_in_pointer_modification*/) {
     return wrapped_ptr + delta_elems;
   }
 
@@ -78,7 +79,8 @@ struct RawPtrNoOpImpl {
       typename Z,
       typename =
           std::enable_if_t<partition_alloc::internal::is_offset_type<Z>, void>>
-  PA_ALWAYS_INLINE static constexpr T* Retreat(T* wrapped_ptr, Z delta_elems) {
+  PA_ALWAYS_INLINE static constexpr T*
+  Retreat(T* wrapped_ptr, Z delta_elems, bool /*is_in_pointer_modification*/) {
     return wrapped_ptr - delta_elems;
   }
 
@@ -109,8 +111,9 @@ struct RawPtrNoOpImpl {
   }
 
   template <typename T>
-  static constexpr void Trace(uint64_t owner_id, T* wrapped_ptr) {}
-  static constexpr void Untrace(uint64_t owner_id) {}
+  static constexpr void Trace([[maybe_unused]] uint64_t owner_id,
+                              [[maybe_unused]] T* wrapped_ptr) {}
+  static constexpr void Untrace([[maybe_unused]] uint64_t owner_id) {}
 
   // This is for accounting only, used by unit tests.
   PA_ALWAYS_INLINE static constexpr void IncrementSwapCountForTest() {}
@@ -119,4 +122,4 @@ struct RawPtrNoOpImpl {
 
 }  // namespace base::internal
 
-#endif  // BASE_ALLOCATOR_PARTITION_ALLOCATOR_SRC_PARTITION_ALLOC_POINTERS_RAW_PTR_NOOP_IMPL_H_
+#endif  // PARTITION_ALLOC_POINTERS_RAW_PTR_NOOP_IMPL_H_

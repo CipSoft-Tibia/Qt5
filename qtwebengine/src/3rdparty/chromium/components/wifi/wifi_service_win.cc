@@ -2,29 +2,36 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#ifdef UNSAFE_BUFFERS_BUILD
+// TODO(crbug.com/40285824): Remove this and convert code to safer constructs.
+#pragma allow_unsafe_buffers
+#endif
+
 #include "components/wifi/wifi_service.h"
 
-// clang-format off
-#include <windows.h>  // Must be in front of other Windows header files.
-// clang-format on
+#include <objbase.h>
+
+#include <windows.h>
 
 #include <iphlpapi.h>
-#include <objbase.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <wlanapi.h>
 
 #include <algorithm>
 #include <memory>
+#include <optional>
 #include <set>
 #include <string>
 #include <utility>
 
 #include "base/base_paths_win.h"
+#include "base/containers/heap_array.h"
 #include "base/files/file_path.h"
 #include "base/functional/bind.h"
 #include "base/logging.h"
 #include "base/memory/ref_counted.h"
+#include "base/not_fatal_until.h"
 #include "base/path_service.h"
 #include "base/strings/string_util.h"
 #include "base/strings/utf_string_conversions.h"
@@ -36,7 +43,6 @@
 #include "base/win/win_util.h"
 #include "components/onc/onc_constants.h"
 #include "components/wifi/network_properties.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "third_party/libxml/chromium/xml_reader.h"
 #include "third_party/libxml/chromium/xml_writer.h"
 
@@ -886,8 +892,7 @@ void WiFiServiceImpl::WaitForNetworkConnect(const std::string& network_guid,
     if (created_profile) {
       const std::string* tkip_profile_xml =
           created_profile->FindString(kProfileXmlKey);
-      absl::optional<bool> shared =
-          created_profile->FindBool(kProfileSharedKey);
+      std::optional<bool> shared = created_profile->FindBool(kProfileSharedKey);
       // Check, if this connection there is alternative TKIP profile xml that
       // should be tried. If there is, then set it up and try to connect again.
       if (tkip_profile_xml && shared) {
@@ -1144,9 +1149,9 @@ DWORD WiFiServiceImpl::FindAdapterIndexMapByGUID(
   ULONG buffer_length = 0;
   DWORD error = ::GetInterfaceInfo(nullptr, &buffer_length);
   if (error == ERROR_INSUFFICIENT_BUFFER) {
-    std::unique_ptr<unsigned char[]> buffer(new unsigned char[buffer_length]);
+    auto buffer = base::HeapArray<unsigned char>::Uninit(buffer_length);
     IP_INTERFACE_INFO* interface_info =
-        reinterpret_cast<IP_INTERFACE_INFO*>(buffer.get());
+        reinterpret_cast<IP_INTERFACE_INFO*>(buffer.data());
     error = GetInterfaceInfo(interface_info, &buffer_length);
     if (error == ERROR_SUCCESS) {
       for (int adapter = 0; adapter < interface_info->NumAdapters; ++adapter) {
@@ -1258,7 +1263,7 @@ DOT11_SSID WiFiServiceImpl::SSIDFromGUID(
             network_guid.c_str(),
             ssid.uSSIDLength);
   } else {
-    NOTREACHED();
+    NOTREACHED_IN_MIGRATION();
   }
   return ssid;
 }
@@ -1381,7 +1386,8 @@ DWORD WiFiServiceImpl::GetVisibleNetworkList(NetworkList* network_list) {
               onc::connection_state::kConnected) {
             NetworkList::iterator previous_network_properties =
                 FindNetwork(*network_list, network_properties.guid);
-            DCHECK(previous_network_properties != network_list->end());
+            CHECK(previous_network_properties != network_list->end(),
+                  base::NotFatalUntil::M130);
             previous_network_properties->connection_state =
                 network_properties.connection_state;
           }
@@ -1486,7 +1492,7 @@ Frequency WiFiServiceImpl::GetFrequencyToConnect(
     const base::Value::Dict* wifi =
         properties->FindDict(onc::network_type::kWiFi);
     if (wifi) {
-      absl::optional<int> frequency = wifi->FindInt(onc::wifi::kFrequency);
+      std::optional<int> frequency = wifi->FindInt(onc::wifi::kFrequency);
       if (frequency.has_value())
         return GetNormalizedFrequency(*frequency);
     }

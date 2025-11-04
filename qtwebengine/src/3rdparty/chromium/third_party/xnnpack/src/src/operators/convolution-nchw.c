@@ -4,29 +4,31 @@
 // LICENSE file in the root directory of this source tree.
 
 #include <assert.h>
+#include <inttypes.h>
 #include <math.h>
-#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 
 #include <fp16/fp16.h>
-
-#include <xnnpack.h>
-#include <xnnpack/allocator.h>
-#include <xnnpack/common.h>
-#include <xnnpack/compute.h>
-#include <xnnpack/config.h>
-#include <xnnpack/indirection.h>
-#include <xnnpack/log.h>
-#include <xnnpack/math.h>
-#include <xnnpack/operator.h>
-#include <xnnpack/operator-utils.h>
-#include <xnnpack/operator-type.h>
-#include <xnnpack/pack.h>
-#include <xnnpack/microparams-init.h>
-#include <xnnpack/params.h>
+#include "xnnpack.h"
+#include "xnnpack/allocator.h"
+#include "xnnpack/cache.h"
+#include "xnnpack/common.h"
+#include "xnnpack/compute.h"
+#include "xnnpack/config-types.h"
+#include "xnnpack/config.h"
+#include "xnnpack/log.h"
+#include "xnnpack/math.h"
+#include "xnnpack/microfnptr.h"
+#include "xnnpack/microkernel-type.h"
+#include "xnnpack/operator-type.h"
+#include "xnnpack/operator-utils.h"
+#include "xnnpack/operator.h"
+#include "xnnpack/pack.h"
+#include "xnnpack/params.h"
+#include "pthreadpool.h"
 
 static enum xnn_status create_spmm_path(
     const uint32_t kernel_height,
@@ -191,8 +193,12 @@ static enum xnn_status create_conv2d_hwc2chw_path(
     kernel, bias, weights_ptr, NULL);
 
   if (use_weights_cache(convolution_op)) {
-    convolution_op->packed_weights.offset = xnn_get_or_insert_weights_cache(
-        convolution_op->weights_cache, weights_ptr, aligned_total_weights_size);
+    struct xnn_weights_cache_look_up_key cache_key;
+    cache_key.seed = group_input_channels ^ group_output_channels ^ output_channel_tile;
+    cache_key.kernel = kernel;
+    cache_key.bias = bias;
+    convolution_op->packed_weights.offset = xnn_look_up_or_insert_weights_cache(
+        convolution_op->weights_cache, &cache_key, weights_ptr, aligned_total_weights_size);
   }
 
   convolution_op->ukernel.conv2d = (struct xnn_ukernel_conv2d) {
@@ -233,19 +239,25 @@ static enum xnn_status create_dwconv_path(
   xnn_log_debug("allocated %zu bytes for packed weights in %s operator",
                 aligned_total_weights_size, xnn_operator_type_to_string(operator_type));
 
+  uint32_t cache_seed = kernel_height ^ kernel_width ^ groups;
   if (flags & XNN_FLAG_DEPTHWISE_CONVOLUTION) {
     pack_chw_dwconv_hwg_w(
       kernel_height * kernel_width, groups,
       kernel, bias, weights_ptr, NULL);
   } else {
+    cache_seed = ~cache_seed;
     pack_chw_dwconv_ghw_w(
       kernel_height * kernel_width, groups,
       kernel, bias, weights_ptr, NULL);
   }
 
   if (use_weights_cache(convolution_op)) {
-    convolution_op->packed_weights.offset = xnn_get_or_insert_weights_cache(
-        convolution_op->weights_cache, weights_ptr, aligned_total_weights_size);
+    struct xnn_weights_cache_look_up_key cache_key;
+    cache_key.seed = cache_seed;
+    cache_key.kernel = kernel;
+    cache_key.bias = bias;
+    convolution_op->packed_weights.offset = xnn_look_up_or_insert_weights_cache(
+        convolution_op->weights_cache, &cache_key, weights_ptr, aligned_total_weights_size);
   }
 
   convolution_op->ukernel.dwconv2d = (struct xnn_ukernel_dwconv2d) {
@@ -714,9 +726,9 @@ enum xnn_status xnn_create_convolution2d_nchw_f32(
     goto error;
   }
 
-  if (output_min >= output_max) {
+  if (output_min > output_max) {
     xnn_log_error(
-      "failed to create %s operator with [%.7g, %.7g] output range: lower bound must be below upper bound",
+      "failed to create %s operator with [%.7g, %.7g] output range: lower bound must be less than or equal to upper bound",
       xnn_operator_type_to_string(operator_type), output_min, output_max);
     goto error;
   }
@@ -975,12 +987,6 @@ static enum xnn_status reshape_convolution2d_nchw(
     return xnn_status_success;
   }
 
-  if (convolution_op->weights_cache != NULL && !xnn_weights_cache_is_finalized(convolution_op->weights_cache)) {
-    xnn_log_error("failed to reshape %s operator: weights cache is not finalized",
-      xnn_operator_type_to_string(convolution_op->type));
-    return xnn_status_invalid_state;
-  }
-
   convolution_op->batch_size = batch_size;
   convolution_op->input_height = input_height;
   convolution_op->input_width = input_width;
@@ -1004,9 +1010,7 @@ static enum xnn_status reshape_convolution2d_nchw(
 
   const size_t input_batch_stride = (input_height * input_width * convolution_op->input_pixel_stride) << log2_input_element_size;
   const size_t output_batch_stride = (output_height * output_width * convolution_op->output_pixel_stride) << log2_output_element_size;
-  #if !XNN_TEST_MODE
-    const size_t num_threads = pthreadpool_get_threads_count(threadpool);
-  #endif
+  const size_t num_threads = pthreadpool_get_threads_count(threadpool);
   switch (convolution_op->ukernel.type) {
     case xnn_microkernel_type_spmm:
     {
@@ -1050,18 +1054,14 @@ static enum xnn_status reshape_convolution2d_nchw(
       memcpy(&convolution_op->context.spmm.params, params, sizeof(convolution_op->context.spmm.params));
 
       const size_t mr = convolution_op->ukernel.spmm.mr;
-      #if XNN_TEST_MODE
-        const size_t mc = mr;
-      #else
-        size_t mc = input_size;
-        if (num_threads > 1) {
-          const size_t target_tiles_per_thread = 5;
-          const size_t max_mc = divide_round_up(input_size, num_threads * target_tiles_per_thread);
-          if (max_mc < mc) {
-            mc = min(mc, divide_round_up(mc, max_mc * mr) * mr);
-          }
+      size_t mc = input_size;
+      if (num_threads > 1) {
+        const size_t target_tiles_per_thread = 5;
+        const size_t max_mc = divide_round_up(input_size, num_threads * target_tiles_per_thread);
+        if (max_mc < mc) {
+          mc = min(mc, divide_round_up(mc, max_mc * mr) * mr);
         }
-      #endif
+      }
       convolution_op->compute[0].type = xnn_parallelization_type_2d_tile_1d;
       convolution_op->compute[0].task_2d_tile_1d = (pthreadpool_task_2d_tile_1d_t) xnn_compute_spmm;
       convolution_op->compute[0].range[0] = batch_size;
@@ -1101,19 +1101,15 @@ static enum xnn_status reshape_convolution2d_nchw(
       memcpy(&convolution_op->context.conv2d.params, params, sizeof(convolution_op->context.conv2d.params));
 
       const size_t output_height_tile = convolution_op->ukernel.conv2d.output_height_tile;
-      #if XNN_TEST_MODE
-        size_t output_height_slice = output_height_tile;
-      #else
-        size_t output_height_slice = output_height;
-        if (num_threads > 1) {
-          const size_t target_tiles_per_thread = 5;
-          const size_t max_output_height_slice = divide_round_up(output_height, num_threads * target_tiles_per_thread);
-          if (max_output_height_slice < output_height_slice) {
-            output_height_slice = min(output_height_slice,
-              divide_round_up(output_height_slice, max_output_height_slice * output_height_tile) * output_height_tile);
-          }
+      size_t output_height_slice = output_height;
+      if (num_threads > 1) {
+        const size_t target_tiles_per_thread = 5;
+        const size_t max_output_height_slice = divide_round_up(output_height, num_threads * target_tiles_per_thread);
+        if (max_output_height_slice < output_height_slice) {
+          output_height_slice = min(output_height_slice,
+            divide_round_up(output_height_slice, max_output_height_slice * output_height_tile) * output_height_tile);
         }
-      #endif
+      }
       convolution_op->compute[0].type = xnn_parallelization_type_2d_tile_1d;
       convolution_op->compute[0].task_2d_tile_1d = (pthreadpool_task_2d_tile_1d_t) xnn_compute_conv2d_hwc2chw;
       convolution_op->compute[0].range[0] = batch_size;
@@ -1226,6 +1222,12 @@ static enum xnn_status setup_convolution2d_nchw(
       xnn_operator_type_to_string(expected_operator_type),
       xnn_operator_type_to_string(convolution_op->type));
     return xnn_status_invalid_parameter;
+  }
+
+  if (convolution_op->weights_cache != NULL && !xnn_weights_cache_is_finalized(convolution_op->weights_cache)) {
+    xnn_log_error("failed to setup %s operator: weights cache is not finalized",
+      xnn_operator_type_to_string(expected_operator_type));
+    return xnn_status_invalid_state;
   }
 
   switch (convolution_op->state) {

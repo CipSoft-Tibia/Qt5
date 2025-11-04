@@ -1,6 +1,5 @@
-import QtQml.Models 2.12
-import Qt.labs.qmlmodels 1.0
-import QtQuick 2.12
+import QtQml.Models
+import QtQuick
 
 Item {
     id: root

@@ -4,81 +4,64 @@
 
 from __future__ import annotations
 
-import pathlib
 import re
-import tempfile
-from typing import TYPE_CHECKING, Optional, Tuple
+from typing import TYPE_CHECKING, Tuple
 
 from crossbench import plt
+from crossbench.browsers.attributes import BrowserAttributes
 from crossbench.browsers.browser import Browser
 from crossbench.browsers.viewport import Viewport
 from crossbench.browsers.webdriver import WebDriverBrowser
 
 if TYPE_CHECKING:
-  from crossbench.browsers.splash_screen import SplashScreen
-  from crossbench.flags import Flags
-  from crossbench.network.base import Network
+  from crossbench.browsers.settings import Settings
+  from crossbench.flags.base import Flags
+  from crossbench.path import RemotePath
   from crossbench.runner.groups import BrowserSessionRunGroup
 
 
 class Firefox(Browser):
 
   @classmethod
-  def default_path(cls) -> pathlib.Path:
-    return plt.PLATFORM.search_app_or_executable(
+  def default_path(cls, platform: plt.Platform) -> RemotePath:
+    return platform.search_app_or_executable(
         "Firefox",
         macos=["Firefox.app"],
         linux=["firefox"],
         win=["Mozilla Firefox/firefox.exe"])
 
   @classmethod
-  def developer_edition_path(cls) -> pathlib.Path:
-    return plt.PLATFORM.search_app_or_executable(
+  def developer_edition_path(cls, platform: plt.Platform) -> RemotePath:
+    return platform.search_app_or_executable(
         "Firefox Developer Edition",
         macos=["Firefox Developer Edition.app"],
         linux=["firefox-developer-edition"],
         win=["Firefox Developer Edition/firefox.exe"])
 
   @classmethod
-  def nightly_path(cls) -> pathlib.Path:
-    return plt.PLATFORM.search_app_or_executable(
+  def nightly_path(cls, platform: plt.Platform) -> RemotePath:
+    return platform.search_app_or_executable(
         "Firefox Nightly",
         macos=["Firefox Nightly.app"],
         linux=["firefox-nightly", "firefox-trunk"],
         win=["Firefox Nightly/firefox.exe"])
 
-  def __init__(
-      self,
-      label: str,
-      path: pathlib.Path,
-      flags: Optional[Flags.InitialDataType] = None,
-      js_flags: Optional[Flags.InitialDataType] = None,
-      cache_dir: Optional[pathlib.Path] = None,
-      type: str = "firefox",  # pylint: disable=redefined-builtin
-      network: Optional[Network] = None,
-      driver_path: Optional[pathlib.Path] = None,
-      viewport: Optional[Viewport] = None,
-      splash_screen: Optional[SplashScreen] = None,
-      platform: Optional[plt.Platform] = None):
-    if cache_dir is None:
-      # pylint: disable=bad-option-value, consider-using-with
-      self.cache_dir = pathlib.Path(
-          tempfile.TemporaryDirectory(prefix="firefox").name)
-      self.clear_cache_dir = True
+  def _setup_cache_dir(self, settings: Settings) -> None:
+    cache_dir = settings.cache_dir
+    if cache_dir:
       self.cache_dir = cache_dir
       self.clear_cache_dir = False
-    super().__init__(
-        label,
-        path,
-        flags,
-        js_flags=None,
-        type=type,
-        network=network,
-        driver_path=driver_path,
-        viewport=viewport,
-        splash_screen=splash_screen,
-        platform=platform)
-    assert not js_flags, "Firefox doesn't support custom js_flags"
+    else:
+      self.cache_dir: RemotePath = settings.platform.mkdtemp(prefix="firefox")
+      self.clear_cache_dir = True
+
+  @property
+  def type_name(self) -> str:
+    return "firefox"
+
+  @property
+  def attributes(self) -> BrowserAttributes:
+    return BrowserAttributes.FIREFOX
 
   def _extract_version(self) -> str:
     assert self.path
@@ -90,12 +73,13 @@ class Firefox(Browser):
       self, session: BrowserSessionRunGroup) -> Tuple[str, ...]:
     flags_copy = self.flags.copy()
     flags_copy.update(session.extra_flags)
+    flags_copy.update(self.network.extra_flags(self))
     self._handle_viewport_flags(flags_copy)
     if self.cache_dir and self.cache_dir:
       flags_copy["--profile"] = str(self.cache_dir)
     if self.log_file:
       flags_copy["--MOZ_LOG_FILE"] = str(self.log_file)
-    return tuple(flags_copy.get_list())
+    return tuple(flags_copy)
 
   def _handle_viewport_flags(self, flags: Flags) -> None:
     new_width, new_height = 0, 0

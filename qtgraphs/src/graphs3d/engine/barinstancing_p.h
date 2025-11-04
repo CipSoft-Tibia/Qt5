@@ -16,6 +16,10 @@
 #include <QtGraphs/qgraphsglobal.h>
 #include <private/qquick3dinstancing_p.h>
 
+#include <QtGui/qquaternion.h>
+
+QT_BEGIN_NAMESPACE
+
 struct BarItemHolder
 {
     QVector3D position = {.0f, .0f, .0f};
@@ -54,5 +58,7 @@ private:
     bool m_dirty = true;
     bool m_transparency = false;
 };
+
+QT_END_NAMESPACE
 
 #endif // BARINSTANCING_H

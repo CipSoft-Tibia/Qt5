@@ -13,7 +13,11 @@
 #include <utility>
 
 #include "build/build_config.h"
+#include "core/fxcrt/check.h"
+#include "core/fxcrt/check_op.h"
+#include "core/fxcrt/compiler_specific.h"
 #include "core/fxcrt/fx_safe_types.h"
+#include "core/fxcrt/span.h"
 #include "core/fxge/cfx_color.h"
 #include "core/fxge/cfx_defaultrenderdevice.h"
 #include "core/fxge/cfx_fillrenderoptions.h"
@@ -26,14 +30,10 @@
 #include "core/fxge/cfx_path.h"
 #include "core/fxge/cfx_textrenderoptions.h"
 #include "core/fxge/dib/cfx_dibitmap.h"
-#include "core/fxge/dib/cfx_imagerenderer.h"
 #include "core/fxge/fx_font.h"
 #include "core/fxge/renderdevicedriver_iface.h"
 #include "core/fxge/text_char_pos.h"
 #include "core/fxge/text_glyph_pos.h"
-#include "third_party/base/check.h"
-#include "third_party/base/check_op.h"
-#include "third_party/base/containers/span.h"
 
 #if defined(PDF_USE_SKIA)
 #include "third_party/skia/include/core/SkTypes.h"  // nogncheck
@@ -79,7 +79,7 @@ void AdjustGlyphSpace(std::vector<TextGlyphPos>* pGlyphAndPos) {
   }
 }
 
-constexpr uint8_t kTextGammaAdjust[256] = {
+constexpr std::array<const uint8_t, 256> kTextGammaAdjust = {{
     0,   2,   3,   4,   6,   7,   8,   10,  11,  12,  13,  15,  16,  17,  18,
     19,  21,  22,  23,  24,  25,  26,  27,  29,  30,  31,  32,  33,  34,  35,
     36,  38,  39,  40,  41,  42,  43,  44,  45,  46,  47,  48,  49,  51,  52,
@@ -98,11 +98,9 @@ constexpr uint8_t kTextGammaAdjust[256] = {
     228, 228, 229, 230, 231, 232, 233, 234, 235, 236, 237, 238, 239, 239, 240,
     241, 242, 243, 244, 245, 246, 247, 248, 249, 250, 250, 251, 252, 253, 254,
     255,
-};
+}};
 
 int TextGammaAdjust(int value) {
-  DCHECK_GE(value, 0);
-  DCHECK_LE(value, 255);
   return kTextGammaAdjust[value];
 }
 
@@ -116,98 +114,95 @@ void MergeGammaAdjust(uint8_t src, int channel, int alpha, uint8_t* dest) {
 }
 
 void MergeGammaAdjustRgb(const uint8_t* src,
-                         int r,
-                         int g,
-                         int b,
-                         int a,
+                         const FX_BGRA_STRUCT<uint8_t>& bgra,
                          uint8_t* dest) {
-  MergeGammaAdjust(src[2], b, a, &dest[0]);
-  MergeGammaAdjust(src[1], g, a, &dest[1]);
-  MergeGammaAdjust(src[0], r, a, &dest[2]);
+  UNSAFE_TODO({
+    MergeGammaAdjust(src[2], bgra.blue, bgra.alpha, &dest[0]);
+    MergeGammaAdjust(src[1], bgra.green, bgra.alpha, &dest[1]);
+    MergeGammaAdjust(src[0], bgra.red, bgra.alpha, &dest[2]);
+  });
 }
 
 int AverageRgb(const uint8_t* src) {
-  return (src[0] + src[1] + src[2]) / 3;
+  return UNSAFE_TODO((src[0] + src[1] + src[2]) / 3);
 }
 
 uint8_t CalculateDestAlpha(uint8_t back_alpha, int src_alpha) {
   return back_alpha + src_alpha - back_alpha * src_alpha / 255;
 }
 
-void ApplyAlpha(uint8_t* dest, int b, int g, int r, int alpha) {
-  dest[0] = FXDIB_ALPHA_MERGE(dest[0], b, alpha);
-  dest[1] = FXDIB_ALPHA_MERGE(dest[1], g, alpha);
-  dest[2] = FXDIB_ALPHA_MERGE(dest[2], r, alpha);
+void ApplyAlpha(uint8_t* dest, const FX_BGRA_STRUCT<uint8_t>& bgra, int alpha) {
+  UNSAFE_TODO({
+    dest[0] = FXDIB_ALPHA_MERGE(dest[0], bgra.blue, alpha);
+    dest[1] = FXDIB_ALPHA_MERGE(dest[1], bgra.green, alpha);
+    dest[2] = FXDIB_ALPHA_MERGE(dest[2], bgra.red, alpha);
+  });
 }
 
 void ApplyDestAlpha(uint8_t back_alpha,
                     int src_alpha,
-                    int r,
-                    int g,
-                    int b,
+                    const FX_BGRA_STRUCT<uint8_t>& bgra,
                     uint8_t* dest) {
   uint8_t dest_alpha = CalculateDestAlpha(back_alpha, src_alpha);
-  ApplyAlpha(dest, b, g, r, src_alpha * 255 / dest_alpha);
-  dest[3] = dest_alpha;
+  ApplyAlpha(dest, bgra, src_alpha * 255 / dest_alpha);
+  UNSAFE_TODO(dest[3] = dest_alpha);
 }
 
 void NormalizeArgb(int src_value,
-                   int r,
-                   int g,
-                   int b,
-                   int a,
+                   const FX_BGRA_STRUCT<uint8_t>& bgra,
                    uint8_t* dest,
                    int src_alpha) {
-  uint8_t back_alpha = dest[3];
-  if (back_alpha == 0)
-    FXARGB_SETDIB(dest, ArgbEncode(src_alpha, r, g, b));
-  else if (src_alpha != 0)
-    ApplyDestAlpha(back_alpha, src_alpha, r, g, b, dest);
+  UNSAFE_TODO({
+    uint8_t back_alpha = dest[3];
+    if (back_alpha == 0) {
+      FXARGB_SetDIB(dest,
+                    ArgbEncode(src_alpha, bgra.red, bgra.green, bgra.blue));
+    } else if (src_alpha != 0) {
+      ApplyDestAlpha(back_alpha, src_alpha, bgra, dest);
+    }
+  });
 }
 
 void NormalizeDest(bool has_alpha,
                    int src_value,
-                   int r,
-                   int g,
-                   int b,
-                   int a,
+                   const FX_BGRA_STRUCT<uint8_t>& bgra,
                    uint8_t* dest) {
   if (has_alpha) {
-    NormalizeArgb(src_value, r, g, b, a, dest,
-                  CalcAlpha(TextGammaAdjust(src_value), a));
+    NormalizeArgb(src_value, bgra, dest,
+                  CalcAlpha(TextGammaAdjust(src_value), bgra.alpha));
     return;
   }
-  int src_alpha = CalcAlpha(TextGammaAdjust(src_value), a);
+  int src_alpha = CalcAlpha(TextGammaAdjust(src_value), bgra.alpha);
   if (src_alpha == 0)
     return;
 
-  ApplyAlpha(dest, b, g, r, src_alpha);
+  ApplyAlpha(dest, bgra, src_alpha);
 }
 
 void NormalizeSrc(bool has_alpha,
                   int src_value,
-                  int r,
-                  int g,
-                  int b,
-                  int a,
+                  const FX_BGRA_STRUCT<uint8_t>& bgra,
                   uint8_t* dest) {
   if (!has_alpha) {
-    ApplyAlpha(dest, b, g, r, CalcAlpha(TextGammaAdjust(src_value), a));
+    ApplyAlpha(dest, bgra, CalcAlpha(TextGammaAdjust(src_value), bgra.alpha));
     return;
   }
-  int src_alpha = CalcAlpha(TextGammaAdjust(src_value), a);
+  int src_alpha = CalcAlpha(TextGammaAdjust(src_value), bgra.alpha);
   if (src_alpha != 0)
-    NormalizeArgb(src_value, r, g, b, a, dest, src_alpha);
+    NormalizeArgb(src_value, bgra, dest, src_alpha);
 }
 
 void NextPixel(const uint8_t** src_scan, uint8_t** dst_scan, int bpp) {
-  *src_scan += 3;
-  *dst_scan += bpp;
+  UNSAFE_TODO({
+    *src_scan += 3;
+    *dst_scan += bpp;
+  });
 }
 
 void SetAlpha(bool has_alpha, uint8_t* alpha) {
-  if (has_alpha)
-    alpha[3] = 255;
+  if (has_alpha) {
+    UNSAFE_TODO(alpha[3] = 255);
+  }
 }
 
 void DrawNormalTextHelper(const RetainPtr<CFX_DIBitmap>& bitmap,
@@ -219,12 +214,11 @@ void DrawNormalTextHelper(const RetainPtr<CFX_DIBitmap>& bitmap,
                           int end_col,
                           bool normalize,
                           int x_subpixel,
-                          int a,
-                          int r,
-                          int g,
-                          int b) {
-  const bool has_alpha = bitmap->GetFormat() == FXDIB_Format::kArgb;
-  const int Bpp = has_alpha ? 4 : bitmap->GetBPP() / 8;
+                          const FX_BGRA_STRUCT<uint8_t>& bgra) {
+  // TODO(crbug.com/42271020): Add support for `FXDIB_Format::kBgraPremul`.
+  CHECK(!bitmap->IsPremultiplied());
+  const bool has_alpha = bitmap->IsAlphaFormat();
+  const int bytes_per_pixel = has_alpha ? 4 : bitmap->GetBPP() / 8;
   for (int row = 0; row < nrows; ++row) {
     int dest_row = row + top;
     if (dest_row < 0 || dest_row >= bitmap->GetHeight())
@@ -232,69 +226,73 @@ void DrawNormalTextHelper(const RetainPtr<CFX_DIBitmap>& bitmap,
 
     const uint8_t* src_scan =
         pGlyph->GetScanline(row).subspan((start_col - left) * 3).data();
-    uint8_t* dest_scan =
-        bitmap->GetWritableScanline(dest_row).subspan(start_col * Bpp).data();
+    uint8_t* dest_scan = bitmap->GetWritableScanline(dest_row)
+                             .subspan(start_col * bytes_per_pixel)
+                             .data();
     if (x_subpixel == 0) {
       for (int col = start_col; col < end_col; ++col) {
         if (normalize) {
           int src_value = AverageRgb(&src_scan[0]);
-          NormalizeDest(has_alpha, src_value, r, g, b, a, dest_scan);
+          NormalizeDest(has_alpha, src_value, bgra, dest_scan);
         } else {
-          MergeGammaAdjustRgb(&src_scan[0], r, g, b, a, &dest_scan[0]);
+          MergeGammaAdjustRgb(&src_scan[0], bgra, &dest_scan[0]);
           SetAlpha(has_alpha, dest_scan);
         }
-        NextPixel(&src_scan, &dest_scan, Bpp);
+        NextPixel(&src_scan, &dest_scan, bytes_per_pixel);
       }
       continue;
     }
-    if (x_subpixel == 1) {
+    UNSAFE_TODO({
+      if (x_subpixel == 1) {
+        if (normalize) {
+          int src_value = start_col > left ? AverageRgb(&src_scan[-1])
+                                           : (src_scan[0] + src_scan[1]) / 3;
+          NormalizeSrc(has_alpha, src_value, bgra, dest_scan);
+        } else {
+          if (start_col > left) {
+            MergeGammaAdjust(src_scan[-1], bgra.red, bgra.alpha, &dest_scan[2]);
+          }
+          MergeGammaAdjust(src_scan[0], bgra.green, bgra.alpha, &dest_scan[1]);
+          MergeGammaAdjust(src_scan[1], bgra.blue, bgra.alpha, &dest_scan[0]);
+          SetAlpha(has_alpha, dest_scan);
+        }
+        NextPixel(&src_scan, &dest_scan, bytes_per_pixel);
+        for (int col = start_col + 1; col < end_col; ++col) {
+          if (normalize) {
+            int src_value = AverageRgb(&src_scan[-1]);
+            NormalizeDest(has_alpha, src_value, bgra, dest_scan);
+          } else {
+            MergeGammaAdjustRgb(&src_scan[-1], bgra, &dest_scan[0]);
+            SetAlpha(has_alpha, dest_scan);
+          }
+          NextPixel(&src_scan, &dest_scan, bytes_per_pixel);
+        }
+        continue;
+      }
       if (normalize) {
-        int src_value = start_col > left ? AverageRgb(&src_scan[-1])
-                                         : (src_scan[0] + src_scan[1]) / 3;
-        NormalizeSrc(has_alpha, src_value, r, g, b, a, dest_scan);
+        int src_value =
+            start_col > left ? AverageRgb(&src_scan[-2]) : src_scan[0] / 3;
+        NormalizeSrc(has_alpha, src_value, bgra, dest_scan);
       } else {
-        if (start_col > left)
-          MergeGammaAdjust(src_scan[-1], r, a, &dest_scan[2]);
-        MergeGammaAdjust(src_scan[0], g, a, &dest_scan[1]);
-        MergeGammaAdjust(src_scan[1], b, a, &dest_scan[0]);
+        if (start_col > left) {
+          MergeGammaAdjust(src_scan[-2], bgra.red, bgra.alpha, &dest_scan[2]);
+          MergeGammaAdjust(src_scan[-1], bgra.green, bgra.alpha, &dest_scan[1]);
+        }
+        MergeGammaAdjust(src_scan[0], bgra.blue, bgra.alpha, &dest_scan[0]);
         SetAlpha(has_alpha, dest_scan);
       }
-      NextPixel(&src_scan, &dest_scan, Bpp);
+      NextPixel(&src_scan, &dest_scan, bytes_per_pixel);
       for (int col = start_col + 1; col < end_col; ++col) {
         if (normalize) {
-          int src_value = AverageRgb(&src_scan[-1]);
-          NormalizeDest(has_alpha, src_value, r, g, b, a, dest_scan);
+          int src_value = AverageRgb(&src_scan[-2]);
+          NormalizeDest(has_alpha, src_value, bgra, dest_scan);
         } else {
-          MergeGammaAdjustRgb(&src_scan[-1], r, g, b, a, &dest_scan[0]);
+          MergeGammaAdjustRgb(&src_scan[-2], bgra, &dest_scan[0]);
           SetAlpha(has_alpha, dest_scan);
         }
-        NextPixel(&src_scan, &dest_scan, Bpp);
+        NextPixel(&src_scan, &dest_scan, bytes_per_pixel);
       }
-      continue;
-    }
-    if (normalize) {
-      int src_value =
-          start_col > left ? AverageRgb(&src_scan[-2]) : src_scan[0] / 3;
-      NormalizeSrc(has_alpha, src_value, r, g, b, a, dest_scan);
-    } else {
-      if (start_col > left) {
-        MergeGammaAdjust(src_scan[-2], r, a, &dest_scan[2]);
-        MergeGammaAdjust(src_scan[-1], g, a, &dest_scan[1]);
-      }
-      MergeGammaAdjust(src_scan[0], b, a, &dest_scan[0]);
-      SetAlpha(has_alpha, dest_scan);
-    }
-    NextPixel(&src_scan, &dest_scan, Bpp);
-    for (int col = start_col + 1; col < end_col; ++col) {
-      if (normalize) {
-        int src_value = AverageRgb(&src_scan[-2]);
-        NormalizeDest(has_alpha, src_value, r, g, b, a, dest_scan);
-      } else {
-        MergeGammaAdjustRgb(&src_scan[-2], r, g, b, a, &dest_scan[0]);
-        SetAlpha(has_alpha, dest_scan);
-      }
-      NextPixel(&src_scan, &dest_scan, Bpp);
-    }
+    });
   }
 }
 
@@ -472,11 +470,19 @@ bool GetZeroAreaPath(pdfium::span<const CFX_Path::Point> points,
   return new_path_size != 0;
 }
 
-FXDIB_Format GetCreateCompatibleBitmapFormat(int render_caps) {
-  if (render_caps & FXRC_BYTEMASK_OUTPUT)
+FXDIB_Format GetCreateCompatibleBitmapFormat(int render_caps,
+                                             bool use_argb_premul) {
+  if (render_caps & FXRC_BYTEMASK_OUTPUT) {
     return FXDIB_Format::k8bppMask;
-  if (render_caps & FXRC_ALPHA_OUTPUT)
-    return FXDIB_Format::kArgb;
+  }
+#if defined(PDF_USE_SKIA)
+  if (use_argb_premul && (render_caps & FXRC_PREMULTIPLIED_ALPHA)) {
+    return FXDIB_Format::kBgraPremul;
+  }
+#endif
+  if (render_caps & FXRC_ALPHA_OUTPUT) {
+    return FXDIB_Format::kBgra;
+  }
   return CFX_DIBBase::kPlatformRGBFormat;
 }
 
@@ -510,12 +516,7 @@ void CFX_RenderDevice::InitDeviceInfo() {
   m_bpp = m_pDeviceDriver->GetDeviceCaps(FXDC_BITS_PIXEL);
   m_RenderCaps = m_pDeviceDriver->GetDeviceCaps(FXDC_RENDER_CAPS);
   m_DeviceType = m_pDeviceDriver->GetDeviceType();
-  if (!m_pDeviceDriver->GetClipBox(&m_ClipBox)) {
-    m_ClipBox.left = 0;
-    m_ClipBox.top = 0;
-    m_ClipBox.right = m_Width;
-    m_ClipBox.bottom = m_Height;
-  }
+  m_ClipBox = m_pDeviceDriver->GetClipBox();
 }
 
 void CFX_RenderDevice::SaveState() {
@@ -549,8 +550,9 @@ bool CFX_RenderDevice::CreateCompatibleBitmap(
     const RetainPtr<CFX_DIBitmap>& pDIB,
     int width,
     int height) const {
-  return pDIB->Create(width, height,
-                      GetCreateCompatibleBitmapFormat(m_RenderCaps));
+  return pDIB->Create(
+      width, height,
+      GetCreateCompatibleBitmapFormat(m_RenderCaps, /*use_argb_premul=*/true));
 }
 
 void CFX_RenderDevice::SetBaseClip(const FX_RECT& rect) {
@@ -592,12 +594,7 @@ bool CFX_RenderDevice::SetClip_Rect(const FX_RECT& rect) {
 }
 
 void CFX_RenderDevice::UpdateClipBox() {
-  if (m_pDeviceDriver->GetClipBox(&m_ClipBox))
-    return;
-  m_ClipBox.left = 0;
-  m_ClipBox.top = 0;
-  m_ClipBox.right = m_Width;
-  m_ClipBox.bottom = m_Height;
+  m_ClipBox = m_pDeviceDriver->GetClipBox();
 }
 
 bool CFX_RenderDevice::DrawPath(const CFX_Path& path,
@@ -606,18 +603,6 @@ bool CFX_RenderDevice::DrawPath(const CFX_Path& path,
                                 uint32_t fill_color,
                                 uint32_t stroke_color,
                                 const CFX_FillRenderOptions& fill_options) {
-  return DrawPathWithBlend(path, pObject2Device, pGraphState, fill_color,
-                           stroke_color, fill_options, BlendMode::kNormal);
-}
-
-bool CFX_RenderDevice::DrawPathWithBlend(
-    const CFX_Path& path,
-    const CFX_Matrix* pObject2Device,
-    const CFX_GraphStateData* pGraphState,
-    uint32_t fill_color,
-    uint32_t stroke_color,
-    const CFX_FillRenderOptions& fill_options,
-    BlendMode blend_type) {
   const bool fill =
       fill_options.fill_type != CFX_FillRenderOptions::FillType::kNoFill;
   uint8_t fill_alpha = fill ? FXARGB_A(fill_color) : 0;
@@ -630,12 +615,12 @@ bool CFX_RenderDevice::DrawPathWithBlend(
       pos1 = pObject2Device->Transform(pos1);
       pos2 = pObject2Device->Transform(pos2);
     }
-    DrawCosmeticLine(pos1, pos2, fill_color, fill_options, blend_type);
+    DrawCosmeticLine(pos1, pos2, fill_color, fill_options);
     return true;
   }
 
   if (stroke_alpha == 0 && !fill_options.rect_aa) {
-    absl::optional<CFX_FloatRect> maybe_rect_f = path.GetRect(pObject2Device);
+    std::optional<CFX_FloatRect> maybe_rect_f = path.GetRect(pObject2Device);
     if (maybe_rect_f.has_value()) {
       const CFX_FloatRect& rect_f = maybe_rect_f.value();
       FX_RECT rect_i = rect_f.GetOuterRect();
@@ -643,39 +628,57 @@ bool CFX_RenderDevice::DrawPathWithBlend(
       // Depending on the top/bottom, left/right values of the rect it's
       // possible to overflow the Width() and Height() calculations. Check that
       // the rect will have valid dimension before continuing.
-      if (!rect_i.Valid())
+      if (!rect_i.Valid()) {
         return false;
+      }
 
       int width = static_cast<int>(ceil(rect_f.right - rect_f.left));
       if (width < 1) {
         width = 1;
-        if (rect_i.left == rect_i.right)
-          ++rect_i.right;
+        if (rect_i.left == rect_i.right) {
+          if (!pdfium::CheckAdd(rect_i.right, 1).AssignIfValid(&rect_i.right)) {
+            return false;
+          }
+        }
       }
       int height = static_cast<int>(ceil(rect_f.top - rect_f.bottom));
       if (height < 1) {
         height = 1;
-        if (rect_i.bottom == rect_i.top)
-          ++rect_i.bottom;
+        if (rect_i.bottom == rect_i.top) {
+          if (!pdfium::CheckAdd(rect_i.bottom, 1)
+                   .AssignIfValid(&rect_i.bottom)) {
+            return false;
+          }
+        }
       }
       if (rect_i.Width() >= width + 1) {
         if (rect_f.left - static_cast<float>(rect_i.left) >
             static_cast<float>(rect_i.right) - rect_f.right) {
-          ++rect_i.left;
+          if (!pdfium::CheckAdd(rect_i.left, 1).AssignIfValid(&rect_i.left)) {
+            return false;
+          }
         } else {
-          --rect_i.right;
+          if (!pdfium::CheckSub(rect_i.right, 1).AssignIfValid(&rect_i.right)) {
+            return false;
+          }
         }
       }
       if (rect_i.Height() >= height + 1) {
         if (rect_f.top - static_cast<float>(rect_i.top) >
             static_cast<float>(rect_i.bottom) - rect_f.bottom) {
-          ++rect_i.top;
+          if (!pdfium::CheckAdd(rect_i.top, 1).AssignIfValid(&rect_i.top)) {
+            return false;
+          }
         } else {
-          --rect_i.bottom;
+          if (!pdfium::CheckSub(rect_i.bottom, 1)
+                   .AssignIfValid(&rect_i.bottom)) {
+            return false;
+          }
         }
       }
-      if (FillRectWithBlend(rect_i, fill_color, blend_type))
+      if (FillRect(rect_i, fill_color)) {
         return true;
+      }
     }
   }
 
@@ -688,8 +691,7 @@ bool CFX_RenderDevice::DrawPathWithBlend(
       if (point_type == CFX_Path::Point::Type::kMove) {
         // Process the existing sub path.
         DrawZeroAreaPath(sub_path, pObject2Device, adjust,
-                         fill_options.aliased_path, fill_color, fill_alpha,
-                         blend_type);
+                         fill_options.aliased_path, fill_color, fill_alpha);
         sub_path.clear();
 
         // Start forming the next sub path.
@@ -710,36 +712,33 @@ bool CFX_RenderDevice::DrawPathWithBlend(
     }
     // Process the last sub paths.
     DrawZeroAreaPath(sub_path, pObject2Device, adjust,
-                     fill_options.aliased_path, fill_color, fill_alpha,
-                     blend_type);
+                     fill_options.aliased_path, fill_color, fill_alpha);
   }
 
   if (fill && fill_alpha && stroke_alpha < 0xff && fill_options.stroke) {
-    if (m_RenderCaps & FXRC_FILLSTROKE_PATH) {
 #if defined(PDF_USE_SKIA)
-      if (CFX_DefaultRenderDevice::UseSkiaRenderer()) {
+    if (m_RenderCaps & FXRC_FILLSTROKE_PATH) {
+      const bool using_skia = CFX_DefaultRenderDevice::UseSkiaRenderer();
+      if (using_skia) {
         m_pDeviceDriver->SetGroupKnockout(true);
       }
-#endif
-      bool draw_fillstroke_path_result = m_pDeviceDriver->DrawPath(
-          path, pObject2Device, pGraphState, fill_color, stroke_color,
-          fill_options, blend_type);
+      bool draw_fillstroke_path_result =
+          m_pDeviceDriver->DrawPath(path, pObject2Device, pGraphState,
+                                    fill_color, stroke_color, fill_options);
 
-#if defined(PDF_USE_SKIA)
-      if (CFX_DefaultRenderDevice::UseSkiaRenderer()) {
+      if (using_skia) {
         // Restore the group knockout status for `m_pDeviceDriver` after
         // finishing painting a fill-and-stroke path.
         m_pDeviceDriver->SetGroupKnockout(false);
       }
-#endif
       return draw_fillstroke_path_result;
     }
+#endif  // defined(PDF_USE_SKIA)
     return DrawFillStrokePath(path, pObject2Device, pGraphState, fill_color,
-                              stroke_color, fill_options, blend_type);
+                              stroke_color, fill_options);
   }
   return m_pDeviceDriver->DrawPath(path, pObject2Device, pGraphState,
-                                   fill_color, stroke_color, fill_options,
-                                   blend_type);
+                                   fill_color, stroke_color, fill_options);
 }
 
 // This can be removed once PDFium entirely relies on Skia
@@ -749,8 +748,7 @@ bool CFX_RenderDevice::DrawFillStrokePath(
     const CFX_GraphStateData* pGraphState,
     uint32_t fill_color,
     uint32_t stroke_color,
-    const CFX_FillRenderOptions& fill_options,
-    BlendMode blend_type) {
+    const CFX_FillRenderOptions& fill_options) {
   if (!(m_RenderCaps & FXRC_GET_BITS))
     return false;
   CFX_FloatRect bbox;
@@ -787,38 +785,40 @@ bool CFX_RenderDevice::DrawFillStrokePath(
   if (pObject2Device)
     matrix = *pObject2Device;
   matrix.Translate(-rect.left, -rect.top);
-  if (!bitmap_device.GetDeviceDriver()->DrawPath(path, &matrix, pGraphState,
-                                                 fill_color, stroke_color,
-                                                 fill_options, blend_type)) {
+  if (!bitmap_device.GetDeviceDriver()->DrawPath(
+          path, &matrix, pGraphState, fill_color, stroke_color, fill_options)) {
     return false;
   }
   FX_RECT src_rect(0, 0, rect.Width(), rect.Height());
-  return m_pDeviceDriver->SetDIBits(std::move(bitmap), 0, src_rect, rect.left,
-                                    rect.top, BlendMode::kNormal);
+  return m_pDeviceDriver->SetDIBits(std::move(bitmap), /*color=*/0, src_rect,
+                                    rect.left, rect.top, BlendMode::kNormal);
 }
 
-bool CFX_RenderDevice::FillRectWithBlend(const FX_RECT& rect,
-                                         uint32_t fill_color,
-                                         BlendMode blend_type) {
-  if (m_pDeviceDriver->FillRectWithBlend(rect, fill_color, blend_type))
+bool CFX_RenderDevice::FillRect(const FX_RECT& rect, uint32_t fill_color) {
+  if (m_pDeviceDriver->FillRect(rect, fill_color)) {
     return true;
+  }
 
-  if (!(m_RenderCaps & FXRC_GET_BITS))
+  if (!(m_RenderCaps & FXRC_GET_BITS)) {
     return false;
+  }
 
   auto bitmap = pdfium::MakeRetain<CFX_DIBitmap>();
-  if (!CreateCompatibleBitmap(bitmap, rect.Width(), rect.Height()))
+  if (!CreateCompatibleBitmap(bitmap, rect.Width(), rect.Height())) {
     return false;
+  }
 
-  if (!m_pDeviceDriver->GetDIBits(bitmap, rect.left, rect.top))
+  if (!m_pDeviceDriver->GetDIBits(bitmap, rect.left, rect.top)) {
     return false;
+  }
 
-  if (!bitmap->CompositeRect(0, 0, rect.Width(), rect.Height(), fill_color))
+  if (!bitmap->CompositeRect(0, 0, rect.Width(), rect.Height(), fill_color)) {
     return false;
+  }
 
   FX_RECT src_rect(0, 0, rect.Width(), rect.Height());
-  m_pDeviceDriver->SetDIBits(bitmap, 0, src_rect, rect.left, rect.top,
-                             BlendMode::kNormal);
+  m_pDeviceDriver->SetDIBits(std::move(bitmap), /*color=*/0, src_rect,
+                             rect.left, rect.top, BlendMode::kNormal);
   return true;
 }
 
@@ -826,10 +826,9 @@ bool CFX_RenderDevice::DrawCosmeticLine(
     const CFX_PointF& ptMoveTo,
     const CFX_PointF& ptLineTo,
     uint32_t color,
-    const CFX_FillRenderOptions& fill_options,
-    BlendMode blend_type) {
-  if ((color >= 0xff000000) && m_pDeviceDriver->DrawCosmeticLine(
-                                   ptMoveTo, ptLineTo, color, blend_type)) {
+    const CFX_FillRenderOptions& fill_options) {
+  if ((color >= 0xff000000) &&
+      m_pDeviceDriver->DrawCosmeticLine(ptMoveTo, ptLineTo, color)) {
     return true;
   }
   CFX_GraphStateData graph_state;
@@ -837,7 +836,7 @@ bool CFX_RenderDevice::DrawCosmeticLine(
   path.AppendPoint(ptMoveTo, CFX_Path::Point::Type::kMove);
   path.AppendPoint(ptLineTo, CFX_Path::Point::Type::kLine);
   return m_pDeviceDriver->DrawPath(path, nullptr, &graph_state, 0, color,
-                                   fill_options, blend_type);
+                                   fill_options);
 }
 
 void CFX_RenderDevice::DrawZeroAreaPath(
@@ -846,8 +845,7 @@ void CFX_RenderDevice::DrawZeroAreaPath(
     bool adjust,
     bool aliased_path,
     uint32_t fill_color,
-    uint8_t fill_alpha,
-    BlendMode blend_type) {
+    uint8_t fill_alpha) {
   if (path.empty())
     return;
 
@@ -874,28 +872,33 @@ void CFX_RenderDevice::DrawZeroAreaPath(
   path_options.aliased_path = aliased_path;
 
   m_pDeviceDriver->DrawPath(new_path, new_matrix, &graph_state, 0, stroke_color,
-                            path_options, blend_type);
+                            path_options);
 }
 
-bool CFX_RenderDevice::GetDIBits(const RetainPtr<CFX_DIBitmap>& pBitmap,
+bool CFX_RenderDevice::GetDIBits(RetainPtr<CFX_DIBitmap> bitmap,
+                                 int left,
+                                 int top) const {
+  return (m_RenderCaps & FXRC_GET_BITS) &&
+         m_pDeviceDriver->GetDIBits(std::move(bitmap), left, top);
+}
+
+bool CFX_RenderDevice::SetDIBits(RetainPtr<const CFX_DIBBase> bitmap,
                                  int left,
                                  int top) {
-  return (m_RenderCaps & FXRC_GET_BITS) &&
-         m_pDeviceDriver->GetDIBits(pBitmap, left, top);
+  return SetDIBitsWithBlend(std::move(bitmap), left, top, BlendMode::kNormal);
 }
 
-RetainPtr<CFX_DIBitmap> CFX_RenderDevice::GetBackDrop() {
+RetainPtr<const CFX_DIBitmap> CFX_RenderDevice::GetBackDrop() const {
   return m_pDeviceDriver->GetBackDrop();
 }
 
-bool CFX_RenderDevice::SetDIBitsWithBlend(
-    const RetainPtr<const CFX_DIBBase>& pBitmap,
-    int left,
-    int top,
-    BlendMode blend_mode) {
-  DCHECK(!pBitmap->IsMaskFormat());
-  FX_RECT dest_rect(left, top, left + pBitmap->GetWidth(),
-                    top + pBitmap->GetHeight());
+bool CFX_RenderDevice::SetDIBitsWithBlend(RetainPtr<const CFX_DIBBase> bitmap,
+                                          int left,
+                                          int top,
+                                          BlendMode blend_mode) {
+  DCHECK(!bitmap->IsMaskFormat());
+  FX_RECT dest_rect(left, top, left + bitmap->GetWidth(),
+                    top + bitmap->GetHeight());
   dest_rect.Intersect(m_ClipBox);
   if (dest_rect.IsEmpty())
     return true;
@@ -904,8 +907,8 @@ bool CFX_RenderDevice::SetDIBitsWithBlend(
                    dest_rect.left - left + dest_rect.Width(),
                    dest_rect.top - top + dest_rect.Height());
   if ((blend_mode == BlendMode::kNormal || (m_RenderCaps & FXRC_BLEND_MODE)) &&
-      (!pBitmap->IsAlphaFormat() || (m_RenderCaps & FXRC_ALPHA_IMAGE))) {
-    return m_pDeviceDriver->SetDIBits(std::move(pBitmap), 0, src_rect,
+      (!bitmap->IsAlphaFormat() || (m_RenderCaps & FXRC_ALPHA_IMAGE))) {
+    return m_pDeviceDriver->SetDIBits(std::move(bitmap), /*color=*/0, src_rect,
                                       dest_rect.left, dest_rect.top,
                                       blend_mode);
   }
@@ -916,20 +919,21 @@ bool CFX_RenderDevice::SetDIBitsWithBlend(
   int bg_pixel_height = dest_rect.Height();
   auto background = pdfium::MakeRetain<CFX_DIBitmap>();
   if (!background->Create(bg_pixel_width, bg_pixel_height,
-                          FXDIB_Format::kRgb32)) {
+                          FXDIB_Format::kBgrx)) {
     return false;
   }
   if (!m_pDeviceDriver->GetDIBits(background, dest_rect.left, dest_rect.top))
     return false;
 
   if (!background->CompositeBitmap(0, 0, bg_pixel_width, bg_pixel_height,
-                                   std::move(pBitmap), src_rect.left,
+                                   std::move(bitmap), src_rect.left,
                                    src_rect.top, blend_mode, nullptr, false)) {
     return false;
   }
   FX_RECT rect(0, 0, bg_pixel_width, bg_pixel_height);
-  return m_pDeviceDriver->SetDIBits(background, 0, rect, dest_rect.left,
-                                    dest_rect.top, BlendMode::kNormal);
+  return m_pDeviceDriver->SetDIBits(std::move(background), /*color=*/0, rect,
+                                    dest_rect.left, dest_rect.top,
+                                    BlendMode::kNormal);
 }
 
 bool CFX_RenderDevice::StretchDIBits(RetainPtr<const CFX_DIBBase> bitmap,
@@ -958,13 +962,13 @@ bool CFX_RenderDevice::StretchDIBitsWithFlagsAndBlend(
                                    dest_height, &clip_box, options, blend_mode);
 }
 
-bool CFX_RenderDevice::SetBitMask(const RetainPtr<CFX_DIBBase>& pBitmap,
+bool CFX_RenderDevice::SetBitMask(RetainPtr<const CFX_DIBBase> bitmap,
                                   int left,
                                   int top,
                                   uint32_t argb) {
-  FX_RECT src_rect(0, 0, pBitmap->GetWidth(), pBitmap->GetHeight());
-  return m_pDeviceDriver->SetDIBits(pBitmap, argb, src_rect, left, top,
-                                    BlendMode::kNormal);
+  FX_RECT src_rect(0, 0, bitmap->GetWidth(), bitmap->GetHeight());
+  return m_pDeviceDriver->SetDIBits(std::move(bitmap), argb, src_rect, left,
+                                    top, BlendMode::kNormal);
 }
 
 bool CFX_RenderDevice::StretchBitMask(RetainPtr<CFX_DIBBase> bitmap,
@@ -993,34 +997,40 @@ bool CFX_RenderDevice::StretchBitMaskWithFlags(
                                         options, BlendMode::kNormal);
 }
 
-bool CFX_RenderDevice::StartDIBits(RetainPtr<const CFX_DIBBase> bitmap,
-                                   float alpha,
-                                   uint32_t argb,
-                                   const CFX_Matrix& matrix,
-                                   const FXDIB_ResampleOptions& options,
-                                   std::unique_ptr<CFX_ImageRenderer>* handle) {
+RenderDeviceDriverIface::StartResult CFX_RenderDevice::StartDIBits(
+    RetainPtr<const CFX_DIBBase> bitmap,
+    float alpha,
+    uint32_t argb,
+    const CFX_Matrix& matrix,
+    const FXDIB_ResampleOptions& options) {
   return StartDIBitsWithBlend(std::move(bitmap), alpha, argb, matrix, options,
-                              handle, BlendMode::kNormal);
+                              BlendMode::kNormal);
 }
 
-bool CFX_RenderDevice::StartDIBitsWithBlend(
+RenderDeviceDriverIface::StartResult CFX_RenderDevice::StartDIBitsWithBlend(
     RetainPtr<const CFX_DIBBase> bitmap,
     float alpha,
     uint32_t argb,
     const CFX_Matrix& matrix,
     const FXDIB_ResampleOptions& options,
-    std::unique_ptr<CFX_ImageRenderer>* handle,
     BlendMode blend_mode) {
   return m_pDeviceDriver->StartDIBits(std::move(bitmap), alpha, argb, matrix,
-                                      options, handle, blend_mode);
+                                      options, blend_mode);
 }
 
-bool CFX_RenderDevice::ContinueDIBits(CFX_ImageRenderer* handle,
+bool CFX_RenderDevice::ContinueDIBits(CFX_AggImageRenderer* handle,
                                       PauseIndicatorIface* pPause) {
   return m_pDeviceDriver->ContinueDIBits(handle, pPause);
 }
 
 #if defined(PDF_USE_SKIA)
+bool CFX_RenderDevice::DrawShading(const CPDF_ShadingPattern& pattern,
+                                   const CFX_Matrix& matrix,
+                                   const FX_RECT& clip_rect,
+                                   int alpha) {
+  return m_pDeviceDriver->DrawShading(pattern, matrix, clip_rect, alpha);
+}
+
 bool CFX_RenderDevice::SetBitsWithMask(RetainPtr<const CFX_DIBBase> bitmap,
                                        RetainPtr<const CFX_DIBBase> mask,
                                        int left,
@@ -1031,10 +1041,10 @@ bool CFX_RenderDevice::SetBitsWithMask(RetainPtr<const CFX_DIBBase> bitmap,
                                           left, top, alpha, blend_type);
 }
 
-bool CFX_RenderDevice::SyncInternalBitmaps() {
-  return m_pDeviceDriver->SyncInternalBitmaps();
+void CFX_RenderDevice::SyncInternalBitmaps() {
+  m_pDeviceDriver->SyncInternalBitmaps();
 }
-#endif
+#endif  // defined(PDF_USE_SKIA)
 
 bool CFX_RenderDevice::DrawNormalText(pdfium::span<const TextCharPos> pCharPos,
                                       CFX_Font* pFont,
@@ -1085,15 +1095,30 @@ bool CFX_RenderDevice::DrawNormalText(pdfium::span<const TextCharPos> pCharPos,
     }
   }
 
-  if (GetDeviceType() != DeviceType::kDisplay) {
+#if BUILDFLAG(IS_WIN)
+  const bool is_printer = GetDeviceType() == DeviceType::kPrinter;
+  bool try_native_text = true;
+#else
+  constexpr bool is_printer = false;
+  constexpr bool try_native_text = true;
+#endif
+
+#if BUILDFLAG(IS_WIN)
+  if (GetDeviceType() == DeviceType::kPrinter) {
     if (ShouldDrawDeviceText(pFont, options) &&
         m_pDeviceDriver->DrawDeviceText(pCharPos, pFont, mtText2Device,
                                         font_size, fill_color, text_options)) {
       return true;
     }
-    if (FXARGB_A(fill_color) < 255)
+    if (FXARGB_A(fill_color) < 255) {
       return false;
-  } else if (options.native_text) {
+    }
+
+    try_native_text = false;
+  }
+#endif
+
+  if (try_native_text && options.native_text) {
     if (ShouldDrawDeviceText(pFont, options) &&
         m_pDeviceDriver->DrawDeviceText(pCharPos, pFont, mtText2Device,
                                         font_size, fill_color, text_options)) {
@@ -1104,8 +1129,7 @@ bool CFX_RenderDevice::DrawNormalText(pdfium::span<const TextCharPos> pCharPos,
   CFX_Matrix char2device = mtText2Device;
   CFX_Matrix text2Device = mtText2Device;
   char2device.Scale(font_size, -font_size);
-  if (fabs(char2device.a) + fabs(char2device.b) > 50 * 1.0f ||
-      GetDeviceType() == DeviceType::kPrinter) {
+  if (fabs(char2device.a) + fabs(char2device.b) > 50 * 1.0f || is_printer) {
     if (pFont->GetFaceRec()) {
       CFX_FillRenderOptions path_options;
       path_options.aliased_path = !is_text_smooth;
@@ -1150,8 +1174,7 @@ bool CFX_RenderDevice::DrawNormalText(pdfium::span<const TextCharPos> pCharPos,
       if (!glyph.m_pGlyph)
         continue;
 
-      absl::optional<CFX_Point> point =
-          glyph.GetOrigin({pixel_left, pixel_top});
+      std::optional<CFX_Point> point = glyph.GetOrigin({pixel_left, pixel_top});
       if (!point.has_value())
         continue;
 
@@ -1160,15 +1183,21 @@ bool CFX_RenderDevice::DrawNormalText(pdfium::span<const TextCharPos> pCharPos,
                                   pGlyph->GetWidth(), pGlyph->GetHeight(),
                                   pGlyph, 0, 0);
     }
-    return SetBitMask(bitmap, bmp_rect.left, bmp_rect.top, fill_color);
+    return SetBitMask(std::move(bitmap), bmp_rect.left, bmp_rect.top,
+                      fill_color);
   }
   auto bitmap = pdfium::MakeRetain<CFX_DIBitmap>();
   if (m_bpp == 8) {
     if (!bitmap->Create(pixel_width, pixel_height, FXDIB_Format::k8bppMask))
       return false;
   } else {
-    if (!CreateCompatibleBitmap(bitmap, pixel_width, pixel_height))
+    // TODO(crbug.com/42271020): Switch to CreateCompatibleBitmap() once
+    // DrawNormalTextHelper() supports `FXDIB_Format::kBgraPremul`.
+    if (!bitmap->Create(pixel_width, pixel_height,
+                        GetCreateCompatibleBitmapFormat(
+                            m_RenderCaps, /*use_argb_premul=*/false))) {
       return false;
+    }
   }
   if (!bitmap->IsAlphaFormat() && !bitmap->IsMaskFormat()) {
     bitmap->Clear(0xFFFFFFFF);
@@ -1176,18 +1205,16 @@ bool CFX_RenderDevice::DrawNormalText(pdfium::span<const TextCharPos> pCharPos,
       return false;
   }
   int dest_width = pixel_width;
-  int a = 0;
-  int r = 0;
-  int g = 0;
-  int b = 0;
-  if (anti_alias == FT_RENDER_MODE_LCD)
-    std::tie(a, r, g, b) = ArgbDecode(fill_color);
+  FX_BGRA_STRUCT<uint8_t> bgra;
+  if (anti_alias == FT_RENDER_MODE_LCD) {
+    bgra = ArgbToBGRAStruct(fill_color);
+  }
 
   for (const TextGlyphPos& glyph : glyphs) {
     if (!glyph.m_pGlyph)
       continue;
 
-    absl::optional<CFX_Point> point = glyph.GetOrigin({pixel_left, pixel_top});
+    std::optional<CFX_Point> point = glyph.GetOrigin({pixel_left, pixel_top});
     if (!point.has_value())
       continue;
 
@@ -1215,13 +1242,14 @@ bool CFX_RenderDevice::DrawNormalText(pdfium::span<const TextCharPos> pCharPos,
       continue;
 
     DrawNormalTextHelper(bitmap, pGlyph, nrows, point->x, point->y, start_col,
-                         end_col, normalize, x_subpixel, a, r, g, b);
+                         end_col, normalize, x_subpixel, bgra);
   }
 
-  if (bitmap->IsMaskFormat())
-    SetBitMask(bitmap, bmp_rect.left, bmp_rect.top, fill_color);
-  else
-    SetDIBits(bitmap, bmp_rect.left, bmp_rect.top);
+  if (bitmap->IsMaskFormat()) {
+    SetBitMask(std::move(bitmap), bmp_rect.left, bmp_rect.top, fill_color);
+  } else {
+    SetDIBits(std::move(bitmap), bmp_rect.left, bmp_rect.top);
+  }
   return true;
 }
 
@@ -1254,14 +1282,14 @@ bool CFX_RenderDevice::DrawTextPath(pdfium::span<const TextCharPos> pCharPos,
         options.fill_type = CFX_FillRenderOptions::FillType::kWinding;
       }
       options.text_mode = true;
-      if (!DrawPathWithBlend(transformed_path, pUser2Device, pGraphState,
-                             fill_color, stroke_color, options,
-                             BlendMode::kNormal)) {
+      if (!DrawPath(transformed_path, pUser2Device, pGraphState, fill_color,
+                    stroke_color, options)) {
         return false;
       }
     }
-    if (pClippingPath)
+    if (pClippingPath) {
       pClippingPath->Append(transformed_path, pUser2Device);
+    }
   }
   return true;
 }
@@ -1345,15 +1373,6 @@ void CFX_RenderDevice::DrawShadow(const CFX_Matrix& mtUser2Device,
     FX_ARGB color = ArgbEncode(nTransparency, nGray, nGray, nGray);
     DrawStrokeLine(&mtUser2Device, start, end, color, kLineWidth);
   }
-}
-
-bool CFX_RenderDevice::DrawShading(const CPDF_ShadingPattern* pPattern,
-                                   const CFX_Matrix* pMatrix,
-                                   const FX_RECT& clip_rect,
-                                   int alpha,
-                                   bool bAlphaMode) {
-  return m_pDeviceDriver->DrawShading(pPattern, pMatrix, clip_rect, alpha,
-                                      bAlphaMode);
 }
 
 void CFX_RenderDevice::DrawBorder(const CFX_Matrix* pUser2Device,
@@ -1485,9 +1504,8 @@ bool CFX_RenderDevice::MultiplyAlpha(float alpha) {
   return m_pDeviceDriver->MultiplyAlpha(alpha);
 }
 
-bool CFX_RenderDevice::MultiplyAlphaMask(
-    const RetainPtr<const CFX_DIBBase>& mask) {
-  return m_pDeviceDriver->MultiplyAlphaMask(mask);
+bool CFX_RenderDevice::MultiplyAlphaMask(RetainPtr<const CFX_DIBitmap> mask) {
+  return m_pDeviceDriver->MultiplyAlphaMask(std::move(mask));
 }
 
 CFX_RenderDevice::StateRestorer::StateRestorer(CFX_RenderDevice* pDevice)

@@ -1,5 +1,6 @@
 // Copyright (C) 2022 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 // This file is based on chrome/browser/file_system_access/chrome_file_system_access_permission_context.cc:
 // Copyright 2019 The Chromium Authors. All rights reserved.
@@ -474,6 +475,13 @@ void FileSystemAccessPermissionContextQt::PermissionGrantDestroyed(
 
 void FileSystemAccessPermissionContextQt::NotifyEntryMoved(const url::Origin &, const base::FilePath &, const base::FilePath &)
 {
+}
+
+void FileSystemAccessPermissionContextQt::CheckPathsAgainstEnterprisePolicy(
+        std::vector<PathInfo> entries, content::GlobalRenderFrameHostId,
+        EntriesAllowedByEnterprisePolicyCallback callback)
+{
+    std::move(callback).Run(std::move(entries));
 }
 
 } // namespace QtWebEngineCore

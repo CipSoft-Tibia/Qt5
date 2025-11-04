@@ -75,9 +75,12 @@ void ControllerWidget::updateStateControl()
         statesControl->setStates(activePreview->windowStates());
 }
 
-void ControllerWidget::updatePreview(QWindow *preview)
+void ControllerWidget::updatePreview(PreviewWindow *preview)
 {
     activePreview = preview;
+
+    if (recreateCheckbox->isChecked())
+        activePreview->destroy();
 
     const Qt::WindowFlags flags = typeControl->type() | hintsControl->hints();
 
@@ -91,7 +94,10 @@ void ControllerWidget::updatePreview(QWindow *preview)
         parentWindow->hide();
     }
 
+    preview->setVisualizeSafeAreas(safeAreaCheckBox->isChecked());
+
     preview->setFlags(flags);
+    preview->update();
 
     if (fixedSizeWindowCheckBox->isChecked()) {
         preview->setMinimumSize(preview->size());
@@ -108,6 +114,9 @@ void ControllerWidget::updatePreview(QWindow *preview)
 void ControllerWidget::updatePreview(QWidget *preview)
 {
     activePreview = preview->windowHandle();
+
+    if (activePreview && recreateCheckbox->isChecked())
+        activePreview->destroy();
 
     const Qt::WindowFlags flags = typeControl->type() | hintsControl->hints();
 
@@ -172,8 +181,12 @@ void ControllerWidget::createTypeGroupBox()
     l = new QHBoxLayout;
     modalWindowCheckBox = createCheckBox(tr("Modal window"));
     fixedSizeWindowCheckBox = createCheckBox(tr("Fixed size window"));
+    safeAreaCheckBox = createCheckBox(tr("Visualize safe areas"));
+    recreateCheckbox = createCheckBox(tr("Recreate on update"));
     l->addWidget(modalWindowCheckBox);
     l->addWidget(fixedSizeWindowCheckBox);
+    l->addWidget(safeAreaCheckBox);
+    l->addWidget(recreateCheckbox);
     additionalOptionsGroupBox->setLayout(l);
 }
 
@@ -225,6 +238,7 @@ public:
         case QEvent::ApplicationActivate:
         case QEvent::ApplicationDeactivate:
         case QEvent::ApplicationStateChange:
+        case QEvent::PlatformSurface:
             if (isTopLevel(o))
                 formatEvent(o, e);
             break;

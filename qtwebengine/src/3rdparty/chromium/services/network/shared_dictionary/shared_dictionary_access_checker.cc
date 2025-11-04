@@ -5,7 +5,7 @@
 #include "services/network/shared_dictionary/shared_dictionary_access_checker.h"
 
 #include "net/base/isolation_info.h"
-#include "net/extras/shared_dictionary/shared_dictionary_isolation_key.h"
+#include "net/shared_dictionary/shared_dictionary_isolation_key.h"
 #include "services/network/cookie_manager.h"
 #include "services/network/cookie_settings.h"
 #include "services/network/network_context.h"
@@ -33,7 +33,7 @@ bool SharedDictionaryAccessChecker::CheckAllowedToWriteAndReport(
     const GURL& dictionary_url,
     const net::SiteForCookies& site_for_cookies,
     const net::IsolationInfo& isolation_info) {
-  absl::optional<net::SharedDictionaryIsolationKey> isolation_key =
+  std::optional<net::SharedDictionaryIsolationKey> isolation_key =
       net::SharedDictionaryIsolationKey::MaybeCreate(isolation_info);
   CHECK(isolation_key);
 
@@ -54,7 +54,7 @@ bool SharedDictionaryAccessChecker::CheckAllowedToReadAndReport(
     const GURL& target_resource_url,
     const net::SiteForCookies& site_for_cookies,
     const net::IsolationInfo& isolation_info) {
-  absl::optional<net::SharedDictionaryIsolationKey> isolation_key =
+  std::optional<net::SharedDictionaryIsolationKey> isolation_key =
       net::SharedDictionaryIsolationKey::MaybeCreate(isolation_info);
   CHECK(isolation_key);
 

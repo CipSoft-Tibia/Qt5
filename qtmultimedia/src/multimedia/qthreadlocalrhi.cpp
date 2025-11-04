@@ -3,15 +3,15 @@
 
 #include "qthreadlocalrhi_p.h"
 
-#include <rhi/qrhi.h>
 #include <QtCore/qcoreapplication.h>
 #include <QtCore/qthreadstorage.h>
+#include <QtGui/private/qguiapplication_p.h>
 #include <QtGui/qoffscreensurface.h>
-#include <qpa/qplatformintegration.h>
-#include <private/qguiapplication_p.h>
+#include <QtGui/qpa/qplatformintegration.h>
+#include <QtGui/rhi/qrhi.h>
 
 #if defined(Q_OS_ANDROID)
-#include <qmetaobject.h>
+#  include <QtCore/qmetaobject.h>
 #endif
 
 QT_BEGIN_NAMESPACE
@@ -21,6 +21,7 @@ namespace {
 class ThreadLocalRhiHolder
 {
 public:
+    ThreadLocalRhiHolder();
     ~ThreadLocalRhiHolder() { resetRhi(); }
 
     QRhi *ensureRhi(QRhi *referenceRhi)
@@ -116,13 +117,26 @@ private:
 #endif
 };
 
-QThreadStorage<ThreadLocalRhiHolder> g_threadLocalRhiHolder;
+Q_CONSTINIT thread_local std::optional<ThreadLocalRhiHolder> g_threadLocalRhiHolder;
 
+ThreadLocalRhiHolder::ThreadLocalRhiHolder()
+{
+    if (QThread::isMainThread()) {
+        // ensure cleanup in qApp dtor
+        qAddPostRoutine([] {
+            g_threadLocalRhiHolder.reset();
+        });
+    }
 }
 
-QRhi *ensureThreadLocalRhi(QRhi* referenceRhi)
+} // namespace
+
+QRhi *qEnsureThreadLocalRhi(QRhi *referenceRhi)
 {
-    return g_threadLocalRhiHolder.localData().ensureRhi(referenceRhi);
+    if (!g_threadLocalRhiHolder)
+        g_threadLocalRhiHolder.emplace();
+
+    return g_threadLocalRhiHolder->ensureRhi(referenceRhi);
 }
 
 QT_END_NAMESPACE

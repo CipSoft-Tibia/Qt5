@@ -8,12 +8,14 @@
 
 #include "base/functional/bind.h"
 #include "base/observer_list.h"
-#include "components/browser_ui/accessibility/android/accessibility_jni_headers/FontSizePrefs_jni.h"
 #include "components/prefs/pref_change_registrar.h"
 #include "components/prefs/pref_service.h"
 #include "components/user_prefs/user_prefs.h"
 #include "content/public/browser/android/browser_context_handle.h"
 #include "content/public/browser/browser_context.h"
+
+// Must come after all headers that specialize FromJniType() / ToJniType().
+#include "components/browser_ui/accessibility/android/accessibility_jni_headers/FontSizePrefs_jni.h"
 
 namespace browser_ui {
 
@@ -83,13 +85,13 @@ jlong JNI_FontSizePrefs_Init(
 }
 
 void FontSizePrefsAndroid::OnFontScaleFactorChanged() {
-  JNIEnv* env = base::android::AttachCurrentThread();
+  JNIEnv* env = jni_zero::AttachCurrentThread();
   float factor = GetFontScaleFactor(env, java_ref_);
   Java_FontSizePrefs_onFontScaleFactorChanged(env, java_ref_, factor);
 }
 
 void FontSizePrefsAndroid::OnForceEnableZoomChanged() {
-  JNIEnv* env = base::android::AttachCurrentThread();
+  JNIEnv* env = jni_zero::AttachCurrentThread();
   bool enabled = GetForceEnableZoom(env, java_ref_);
   Java_FontSizePrefs_onForceEnableZoomChanged(env, java_ref_, enabled);
 }

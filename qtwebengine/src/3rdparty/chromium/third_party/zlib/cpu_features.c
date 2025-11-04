@@ -33,9 +33,13 @@ int ZLIB_INTERNAL x86_cpu_enable_ssse3 = 0;
 int ZLIB_INTERNAL x86_cpu_enable_simd = 0;
 int ZLIB_INTERNAL x86_cpu_enable_avx512 = 0;
 
+int ZLIB_INTERNAL riscv_cpu_enable_rvv = 0;
+int ZLIB_INTERNAL riscv_cpu_enable_vclmul = 0;
+
 #ifndef CPU_NO_SIMD
 
-#if defined(ARMV8_OS_ANDROID) || defined(ARMV8_OS_LINUX) || defined(ARMV8_OS_FUCHSIA) || defined(ARMV8_OS_IOS)
+#if defined(ARMV8_OS_ANDROID) || defined(ARMV8_OS_LINUX) || \
+    defined(ARMV8_OS_FUCHSIA) || defined(ARMV8_OS_IOS)
 #include <pthread.h>
 #endif
 
@@ -62,7 +66,22 @@ int ZLIB_INTERNAL x86_cpu_enable_avx512 = 0;
 static void _cpu_check_features(void);
 #endif
 
-#if defined(ARMV8_OS_ANDROID) || defined(ARMV8_OS_LINUX) || defined(ARMV8_OS_MACOS) || defined(ARMV8_OS_FUCHSIA) || defined(X86_NOT_WINDOWS) || defined(ARMV8_OS_IOS) || defined(__ARM_NEON__) || defined(__ARM_NEON)
+#if defined(ARMV8_OS_WINDOWS) || defined(X86_WINDOWS)
+static INIT_ONCE cpu_check_inited_once = INIT_ONCE_STATIC_INIT;
+static BOOL CALLBACK _cpu_check_features_forwarder(PINIT_ONCE once, PVOID param, PVOID* context)
+{
+    _cpu_check_features();
+    return TRUE;
+}
+void ZLIB_INTERNAL cpu_check_features(void)
+{
+    InitOnceExecuteOnce(&cpu_check_inited_once, _cpu_check_features_forwarder,
+                        NULL, NULL);
+}
+#elif defined(ARMV8_OS_ANDROID) || defined(ARMV8_OS_LINUX) || \
+    defined(ARMV8_OS_MACOS) || defined(ARMV8_OS_FUCHSIA) || \
+    defined(X86_NOT_WINDOWS) || defined(ARMV8_OS_IOS) || \
+    defined(RISCV_RVV) || defined(__ARM_NEON__) || defined(__ARM_NEON)
 #if !defined(ARMV8_OS_MACOS)
 // _cpu_check_features() doesn't need to do anything on mac/arm since all
 // features are known at build time, so don't call it.
@@ -75,18 +94,6 @@ void ZLIB_INTERNAL cpu_check_features(void)
 #if !defined(ARMV8_OS_MACOS)
     pthread_once(&cpu_check_inited_once, _cpu_check_features);
 #endif
-}
-#elif defined(ARMV8_OS_WINDOWS) || defined(X86_WINDOWS)
-static INIT_ONCE cpu_check_inited_once = INIT_ONCE_STATIC_INIT;
-static BOOL CALLBACK _cpu_check_features_forwarder(PINIT_ONCE once, PVOID param, PVOID* context)
-{
-    _cpu_check_features();
-    return TRUE;
-}
-void ZLIB_INTERNAL cpu_check_features(void)
-{
-    InitOnceExecuteOnce(&cpu_check_inited_once, _cpu_check_features_forwarder,
-                        NULL, NULL);
 }
 #endif
 
@@ -184,6 +191,23 @@ static void _cpu_check_features(void)
     x86_cpu_enable_avx512 = _xgetbv(0) & 0x00000040;
 #endif
 }
+#endif // x86 & NO_SIMD
+
+#elif defined(RISCV_RVV)
+#include <sys/auxv.h>
+
+#ifndef ZLIB_HWCAP_RVV
+#define ZLIB_HWCAP_RVV (1 << ('v' - 'a'))
 #endif
-#endif
-#endif
+
+/* TODO(cavalcantii)
+ * - add support for Android@RISCV i.e. __riscv_hwprobe().
+ * - detect vclmul (crypto extensions).
+ */
+static void _cpu_check_features(void)
+{
+  unsigned long features = getauxval(AT_HWCAP);
+  riscv_cpu_enable_rvv = !!(features & ZLIB_HWCAP_RVV);
+}
+#endif // ARM | x86 | RISCV
+#endif // NO SIMD CPU

@@ -2,12 +2,13 @@
 // Copyright (C) 2019 Alexey Edelev <semlanik@gmail.com>
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
+#include <QtGrpc/private/qgrpcoperation_p.h>
 #include <QtGrpc/private/qtgrpclogging_p.h>
 #include <QtGrpc/qgrpcoperation.h>
 #include <QtGrpc/qgrpcoperationcontext.h>
 
-#include <QtCore/private/qobject_p.h>
-#include <QtCore/qatomic.h>
+#include <QtProtobuf/private/qprotobufmessage_p.h>
+
 #include <QtCore/qbytearray.h>
 #include <QtCore/qeventloop.h>
 #include <QtCore/qpointer.h>
@@ -15,6 +16,9 @@
 QT_BEGIN_NAMESPACE
 
 using namespace Qt::StringLiterals;
+
+QGrpcOperationPrivate::~QGrpcOperationPrivate()
+    = default;
 
 /*!
     \class QGrpcOperation
@@ -51,20 +55,6 @@ using namespace Qt::StringLiterals;
     achieve this is by using the \l {Qt::} {SingleShotConnection} connection
     type. See \l {Single Shot RPCs} for further details.
 */
-
-class QGrpcOperationPrivate : public QObjectPrivate
-{
-    Q_DECLARE_PUBLIC(QGrpcOperation)
-public:
-    explicit QGrpcOperationPrivate(std::shared_ptr<QGrpcOperationContext> &&operationContext_)
-        : operationContext(operationContext_)
-    {
-    }
-
-    QByteArray data;
-    std::shared_ptr<QGrpcOperationContext> operationContext;
-    QAtomicInteger<bool> isFinished{ false };
-};
 
 /*!
     \internal
@@ -136,6 +126,12 @@ bool QGrpcOperation::read(QProtobufMessage *message) const
     Q_D(const QGrpcOperation);
     const auto ser = d->operationContext->serializer();
     Q_ASSERT_X(ser, "QGrpcOperation", "The serializer is null");
+
+    if (auto responseMetaType = d->operationContext->responseMetaType(); responseMetaType.isValid()
+        && QProtobufMessagePrivate::get(message)->metaObject != responseMetaType.metaObject()) {
+        qGrpcWarning("Operation result meta type doesn't match the message meta type.");
+    }
+
     if (!ser->deserialize(message, d->data)) {
         qGrpcWarning() << "Unable to deserialize message(" << qToUnderlying(ser->lastError()) <<"): "
                        << ser->lastErrorString();
@@ -153,20 +149,16 @@ bool QGrpcOperation::read(QProtobufMessage *message) const
 */
 void QGrpcOperation::cancel()
 {
-    if (!isFinished()) {
-        Q_D(QGrpcOperation);
-        d->isFinished.storeRelaxed(true);
-        emit d->operationContext->cancelRequested();
-        Q_EMIT finished(QGrpcStatus{ QtGrpc::StatusCode::Cancelled,
-                                     tr("Operation is cancelled by client") });
-    }
+    if (isFinished())
+        return;
+    Q_D(QGrpcOperation);
+    emit d->operationContext->cancelRequested();
 }
 
 /*!
     Returns the server metadata received from the channel.
 
-    \note For \l {QGrpcHttp2Channel} {HTTP/2 channels} it usually includes the
-    HTTP headers received from the server.
+    \include qtgrpc-shared.qdocinc http2-metadata-note
 */
 const QHash<QByteArray, QByteArray> &QGrpcOperation::metadata() const & noexcept
 {
@@ -209,6 +201,15 @@ const QGrpcOperationContext &QGrpcOperation::context() const & noexcept
 bool QGrpcOperation::event(QEvent *event)
 {
     return QObject::event(event);
+}
+
+/*!
+    Returns the meta type of the RPC response message.
+ */
+QMetaType QGrpcOperation::responseMetaType() const
+{
+    Q_D(const QGrpcOperation);
+    return d->operationContext->responseMetaType();
 }
 
 QT_END_NAMESPACE

@@ -35,6 +35,9 @@ const CROS_DROPDOWN_TOP_BOTTOM_SPACE_PX =
 const MD_FIELD_TOP_BOTTOM_SPACE_PX =
     css`${DEFAULT_TOP_BOTTOM_SPACE + CROS_DROPDOWN_OUTLINE_WIDTH}px`;
 
+/** 10px line height + 6px of top padding. */
+const SUPPORTING_TEXT_HEIGHT_PX = 16;
+
 /**
  * To account for the extra spacing around the textfield background and the
  * focus outline, we have to increase the corner radius by the outline width.
@@ -62,6 +65,7 @@ export class Dropdown extends LitElement {
   static override styles: CSSResultGroup = css`
     :host {
       display: inline-block;
+      --supporting-text-height: 0px;
     }
 
     md-outlined-select {
@@ -140,10 +144,10 @@ export class Dropdown extends LitElement {
       --md-outlined-select-text-field-disabled-supporting-text-color: var(--cros-sys-on_surface);
 
       /* Md-menu */
-      --md-menu-container-color: var(--cros-bg-color-elevation-3);
+      --md-menu-container-color: var(--cros-sys-base_elevated);
       --md-menu-container-shape: 8px;
       --md-menu-item-bottom-space: 0px;
-      --md-menu-item-container-color: var(--cros-bg-color-elevation-3);
+      --md-menu-item-container-color: var(--cros-sys-base_elevated);
       --md-menu-item-one-line-container-height: 36px;
       --md-menu-item-top-space: 0px;
     }
@@ -164,6 +168,9 @@ export class Dropdown extends LitElement {
       opacity: var(--cros-disabled-opacity);
     }
 
+    :host([supporting-text]:not([supporting-text=""])), :host(:is(.error, [error])) {
+      --supporting-text-height: ${SUPPORTING_TEXT_HEIGHT_PX}px;
+    }
     /**
      * The .error class is applied on native constraint invalidation, and the
      * error attribute is set by clients, so we need to use both to style the
@@ -191,6 +198,8 @@ export class Dropdown extends LitElement {
       position: absolute;
       right: ${CROS_DROPDOWN_OUTLINE_WIDTH}px;
       top: ${CROS_DROPDOWN_OUTLINE_WIDTH}px;
+      height: calc(100% - 2 * ${
+      CROS_DROPDOWN_OUTLINE_WIDTH}px - var(--supporting-text-height));
     }
 
     :host([shaded]) #dropdown-background {
@@ -231,7 +240,7 @@ export class Dropdown extends LitElement {
     label: {type: String},
     open: {type: Boolean, reflect: true},
     shaded: {type: Boolean, reflect: true},
-    supportingText: {type: String},
+    supportingText: {type: String, reflect: true, attribute: 'supporting-text'},
     value: {type: String},
   };
 

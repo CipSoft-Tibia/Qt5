@@ -86,11 +86,11 @@ void Receiver::Initialize(MediaResource* media_resource,
 
 /* CDM is not supported for remoting media */
 void Receiver::SetCdm(CdmContext* cdm_context, CdmAttachedCB cdm_attached_cb) {
-  NOTREACHED();
+  NOTREACHED_IN_MIGRATION();
 }
 
 // No-op. Controlled by sender via RPC calls instead.
-void Receiver::SetLatencyHint(absl::optional<base::TimeDelta> latency_hint) {}
+void Receiver::SetLatencyHint(std::optional<base::TimeDelta> latency_hint) {}
 
 // No-op. Controlled by sender via RPC calls instead.
 void Receiver::Flush(base::OnceClosure flush_cb) {}
@@ -248,7 +248,7 @@ void Receiver::OnError(PipelineStatus status) {
 }
 
 void Receiver::OnFallback(PipelineStatus status) {
-  NOTREACHED();
+  NOTREACHED_IN_MIGRATION();
 }
 
 void Receiver::OnEnded() {
@@ -303,7 +303,7 @@ void Receiver::OnVideoOpacityChange(bool opaque) {
   SendRpcMessageOnMainThread(std::move(rpc));
 }
 
-void Receiver::OnVideoFrameRateChange(absl::optional<int>) {}
+void Receiver::OnVideoFrameRateChange(std::optional<int>) {}
 
 }  // namespace remoting
 }  // namespace media

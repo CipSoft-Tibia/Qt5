@@ -15,13 +15,12 @@
 //
 
 #include <QtQuick/QSGMaterialShader>
-#include <private/qglobal_p.h>
 
 QT_BEGIN_NAMESPACE
 
 namespace Qt3DRender {
 
-class Scene3DSGMaterialShader : public QSGMaterialShader
+class Q_AUTOTEST_EXPORT Scene3DSGMaterialShader : public QSGMaterialShader
 {
 public:
     Scene3DSGMaterialShader();

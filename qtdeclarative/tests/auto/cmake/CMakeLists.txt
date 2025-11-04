@@ -13,7 +13,7 @@ cmake_minimum_required(VERSION 3.16)
 project(qtdeclarative_cmake_tests)
 enable_testing()
 
-set(required_packages Core)
+set(required_packages Core TestInternalsPrivate)
 set(optional_packages Qml Quick)
 
 # Setup the test when called as a completely standalone project.
@@ -132,6 +132,11 @@ if(TARGET Qt::Qml)
     )
 
     _qt_internal_test_expect_fail(test_invalid_qml_uri)
+
+    _qt_internal_test_expect_pass(test_deduplicate_metatypes TESTNAME cmake_test_duplicate_metatypes)
+    set_tests_properties(cmake_test_duplicate_metatypes PROPERTIES
+        FAIL_REGULAR_EXPRESSION "MyItem\\.h:10: Multiple C\\+\\+ types called MyItem found\\!"
+    )
 endif()
 
 if(TARGET Qt::Quick)
@@ -140,6 +145,9 @@ if(TARGET Qt::Quick)
             BINARY "${CMAKE_CTEST_COMMAND}"
             BINARY_ARGS "-V"
         )
+         if(CMAKE_VERSION VERSION_GREATER_EQUAL "3.19")
+            _qt_internal_test_expect_pass(quick_dependency_automatically_added)
+        endif()
         _qt_internal_test_expect_pass(qtquickcompiler BINARY qqc_test)
         if(CMAKE_VERSION VERSION_GREATER_EQUAL "3.21")
             _qt_internal_test_expect_pass(test_common_import_path
@@ -168,3 +176,5 @@ if(TARGET Qt::Quick)
         endif()
     endif()
 endif()
+
+add_subdirectory(RunCMake)

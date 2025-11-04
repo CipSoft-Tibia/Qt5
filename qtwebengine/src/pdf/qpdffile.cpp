@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qpdffile_p.h"
+#include <QThread>
 
 QT_BEGIN_NAMESPACE
 
@@ -21,6 +22,11 @@ QT_BEGIN_NAMESPACE
 QPdfFile::QPdfFile(QPdfDocument *doc)
   : QFile(doc->fileName()), m_document(doc)
 {
+    // Give up thread affinity: it may be created in one thread, rendered in
+    // another, and deleted in another. The rendering thread needs to be able
+    // to "pull" the affinity to itself. If deleteLater() is used, then
+    // the affinity _must_ be changed to avoid a memory leak!
+    moveToThread(nullptr);
 }
 
 QT_END_NAMESPACE

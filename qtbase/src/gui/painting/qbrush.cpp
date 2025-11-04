@@ -598,19 +598,49 @@ void QBrush::detach(Qt::BrushStyle newStyle)
 
 
 /*!
-    \fn QBrush &QBrush::operator=(const QBrush &brush)
-
     Assigns the given \a brush to \e this brush and returns a
     reference to \e this brush.
 */
 
-QBrush &QBrush::operator=(const QBrush &b)
+QBrush &QBrush::operator=(const QBrush &brush)
 {
-    if (d == b.d)
+    if (d == brush.d)
         return *this;
 
-    b.d->ref.ref();
-    d.reset(b.d.get());
+    brush.d->ref.ref();
+    d.reset(brush.d.get());
+    return *this;
+}
+
+/*!
+    \fn QBrush &QBrush::operator=(QColor color)
+    \fn QBrush &QBrush::operator=(Qt::GlobalColor color)
+    \overload
+    \since 6.9
+
+    Makes this brush a solid pattern brush of the given \a color,
+    and returns a reference to \e this brush.
+*/
+QBrush &QBrush::operator=(QColor color)
+{
+    detach(Qt::SolidPattern);
+    d->color = color;
+    d->transform = {};
+    return *this;
+}
+
+/*!
+    \overload
+    \since 6.9
+
+    Makes this brush a black brush of the given \a style,
+    and returns a reference to \e this brush.
+*/
+QBrush &QBrush::operator=(Qt::BrushStyle style)
+{
+    detach(style);
+    d->color = Qt::black;
+    d->transform = {};
     return *this;
 }
 
@@ -944,6 +974,33 @@ bool QBrush::operator==(const QBrush &b) const
     }
 }
 
+/*!
+    \internal
+*/
+bool QBrush::doCompareEqualColor(QColor rhs) const noexcept
+{
+    return style() == Qt::SolidPattern && color() == rhs && d->transform.isIdentity();
+}
+
+/*!
+    \internal
+*/
+bool QBrush::doCompareEqualStyle(Qt::BrushStyle rhs) const noexcept
+{
+    switch (rhs) {
+    case Qt::NoBrush:
+    case Qt::TexturePattern:
+    case Qt::LinearGradientPattern:
+    case Qt::RadialGradientPattern:
+    case Qt::ConicalGradientPattern:
+        // A brush constructed only from one of those styles will end up
+        // using NoBrush (see qbrush_check_type)
+        return style() == Qt::NoBrush;
+    default:
+        return style() == rhs && color() == QColor(0, 0, 0);
+    }
+}
+
 #ifndef QT_NO_DEBUG_STREAM
 /*!
   \internal
@@ -1036,7 +1093,7 @@ QDataStream &operator<<(QDataStream &s, const QBrush &b)
             s << quint32(stops.size());
             for (int i = 0; i < stops.size(); ++i) {
                 const QGradientStop &stop = stops.at(i);
-                s << QPair<double, QColor>(double(stop.first), stop.second);
+                s << std::pair<double, QColor>(double(stop.first), stop.second);
             }
         }
 
@@ -1122,7 +1179,7 @@ QDataStream &operator>>(QDataStream &s, QBrush &b)
             stops.reserve(numStops);
             for (quint32 i = 0; i < numStops; ++i) {
                 s >> n >> c;
-                stops << QPair<qreal, QColor>(n, c);
+                stops << std::pair<qreal, QColor>(n, c);
             }
         }
 
@@ -2474,7 +2531,7 @@ void QConicalGradient::setAngle(qreal angle)
     \typedef QGradientStop
     \relates QGradient
 
-    Typedef for QPair<\l qreal, QColor>.
+    Typedef for std::pair<\l qreal, QColor>.
 */
 
 /*!

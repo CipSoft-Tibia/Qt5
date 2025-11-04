@@ -6,7 +6,7 @@
 #include <QLoggingCategory>
 #include <QQmlComponent>
 #include <QQuickItem>
-#include <QtTest>
+#include <QTest>
 
 /*!
     QProcess wrapper around byzanz-record (sudo apt-get install byzanz).

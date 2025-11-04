@@ -23,6 +23,11 @@
 #include "mpegvideo.h"
 #include "vlc.h"
 
+/**
+ * Return value for header parsers if frame is not coded.
+ * */
+#define FRAME_SKIPPED 100
+
 // The defines below define the number of bits that are read at once for
 // reading vlc values. Changing these may improve speed and data cache needs
 // be aware though that decreasing them may need the number of stages that is
@@ -37,8 +42,6 @@ extern VLCElem ff_h263_intra_MCBPC_vlc[];
 extern VLCElem ff_h263_inter_MCBPC_vlc[];
 extern VLCElem ff_h263_cbpy_vlc[];
 extern VLCElem ff_h263_mv_vlc[];
-
-extern const enum AVPixelFormat ff_h263_hwaccel_pixfmt_list_420[];
 
 int ff_h263_decode_motion(MpegEncContext * s, int pred, int f_code);
 int ff_h263_decode_init(AVCodecContext *avctx);

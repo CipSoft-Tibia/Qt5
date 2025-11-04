@@ -1,7 +1,8 @@
 // Copyright (C) 2018 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
-#include <QtTest/QtTest>
+#include <QtTest/QTest>
+#include <QtTest/QSignalSpy>
 #include <QtQuickTest/quicktest.h>
 
 #include <QtQuick/qquickview.h>
@@ -12,6 +13,7 @@
 #include <QtQuick/private/qquicktextinput_p.h>
 
 #include <QtQuickTemplates2/private/qquickselectionrectangle_p.h>
+#include <QtQuickTemplates2/private/qquickcombobox_p.h>
 
 #include <QtQml/qqmlengine.h>
 #include <QtQml/qqmlcontext.h>
@@ -104,11 +106,13 @@ private slots:
     void checkColumnWidthProviderInvalidReturnValues();
     void checkColumnWidthProviderNegativeReturnValue();
     void checkColumnWidthProviderNotCallable();
+    void checkColumnWidthProviderUndefinedReturnValue();
     void checkColumnWidthBoundToViewWidth();
     void checkRowHeightWithoutProvider();
     void checkRowHeightProvider();
     void checkRowHeightProviderInvalidReturnValues();
     void checkRowHeightProviderNegativeReturnValue();
+    void checkRowHeightProviderUndefinedReturnValue();
     void checkRowHeightProviderNotCallable();
     void isColumnLoadedAndIsRowLoaded();
     void checkForceLayoutFunction();
@@ -139,6 +143,9 @@ private slots:
     void fillTableViewButNothingMore();
     void checkInitialAttachedProperties_data();
     void checkInitialAttachedProperties();
+    void checkNoAttachedObjectByDefault();
+    void checkAttachedView_data();
+    void checkAttachedView();
     void checkSpacingValues();
     void checkDelegateParent();
     void flick_data();
@@ -297,6 +304,7 @@ private slots:
     void checkScroll();
     void checkRebuildJsModel();
     void invalidateTableInstanceModelContextObject();
+    void transposed();
 
     // Row and column reordering
     void checkVisualRowColumnAfterReorder();
@@ -326,7 +334,7 @@ void tst_QQuickTableView::cleanupTestCase()
 
 QQuickTableViewAttached *tst_QQuickTableView::getAttachedObject(const QObject *object) const
 {
-    QObject *attachedObject = qmlAttachedPropertiesObject<QQuickTableView>(object);
+    QObject *attachedObject = qmlAttachedPropertiesObject<QQuickTableView>(object, false);
     return static_cast<QQuickTableViewAttached *>(attachedObject);
 }
 
@@ -635,6 +643,23 @@ void tst_QQuickTableView::checkColumnWidthProviderNegativeReturnValue()
         QCOMPARE(fxItem->item->width(), 20);
 }
 
+void tst_QQuickTableView::checkColumnWidthProviderUndefinedReturnValue()
+{
+    // Check that we fall back to use the implicit width of the delegate
+    // items if the columnWidthProvider returns an undefined.
+    LOAD_TABLEVIEW("userowcolumnprovider.qml");
+
+    auto model = TestModelAsVariant(10, 10);
+    view->rootObject()->setProperty("returnUndefinedColumnWidth", true);
+
+    tableView->setModel(model);
+
+    WAIT_UNTIL_POLISHED;
+
+    for (auto fxItem : tableViewPrivate->loadedItems)
+        QCOMPARE(fxItem->item->width(), 20);
+}
+
 void tst_QQuickTableView::checkColumnWidthProviderNotCallable()
 {
     // Check that we fall back to use default columns widths, if you
@@ -744,6 +769,23 @@ void tst_QQuickTableView::checkRowHeightProviderNegativeReturnValue()
 
     auto model = TestModelAsVariant(10, 10);
     view->rootObject()->setProperty("returnNegativeRowHeight", true);
+
+    tableView->setModel(model);
+
+    WAIT_UNTIL_POLISHED;
+
+    for (auto fxItem : tableViewPrivate->loadedItems)
+        QCOMPARE(fxItem->item->height(), 20);
+}
+
+void tst_QQuickTableView::checkRowHeightProviderUndefinedReturnValue()
+{
+    // Check that we fall back to use the implicit height of the delegate
+    // items if the rowHeightProvider return a negative number.
+    LOAD_TABLEVIEW("userowcolumnprovider.qml");
+
+    auto model = TestModelAsVariant(10, 10);
+    view->rootObject()->setProperty("returnUndefinedRowHeight", true);
 
     tableView->setModel(model);
 
@@ -1742,6 +1784,44 @@ void tst_QQuickTableView::checkInitialAttachedProperties()
         QCOMPARE(contextModelData, QStringLiteral("%1").arg(cell.y()));
         QCOMPARE(getAttachedObject(item)->view(), tableView);
     }
+}
+
+void tst_QQuickTableView::checkAttachedView_data()
+{
+    QTest::addColumn<QString>("table");
+    QTest::newRow("plain") << "plaintableview.qml";
+    QTest::newRow("setting editDelegate") << "editdelegate.qml";
+    QTest::newRow("using attached signals") << "countingtableview.qml";
+}
+
+void tst_QQuickTableView::checkAttachedView()
+{
+    // Check that attached view still works when modifying an attached property
+    // or conncecting to a signal
+    QFETCH(QString, table);
+    LOAD_TABLEVIEW(table);
+
+    tableView->setModel(3);
+
+    WAIT_UNTIL_POLISHED;
+
+    for (auto fxItem : tableViewPrivate->loadedItems) {
+        const auto item = fxItem->item;
+        QCOMPARE(getAttachedObject(item)->view(), tableView);
+    }
+}
+
+void tst_QQuickTableView::checkNoAttachedObjectByDefault()
+{
+    // Check that we don't create an attached object for every
+    // delegate, if the application is not using them.
+    LOAD_TABLEVIEW("tableviewimplicitsize.qml");
+    auto model = TestModelAsVariant(2, 2);
+    tableView->setModel(model);
+    WAIT_UNTIL_POLISHED;
+
+    for (auto fxItem : tableViewPrivate->loadedItems)
+        QVERIFY(!getAttachedObject(fxItem->item));
 }
 
 void tst_QQuickTableView::checkSpacingValues()
@@ -7355,6 +7435,8 @@ void tst_QQuickTableView::editDelegateComboBox()
     const char kEditIndex[] = "editIndex";
     const char kCommitCount[] = "commitCount";
     const char kComboFocusCount[] = "comboFocusCount";
+    const char kComboEditable[] = "comboBoxEditable";
+    const char kComboBox[] = "comboBox";
 
     WAIT_UNTIL_POLISHED;
 
@@ -7404,6 +7486,33 @@ void tst_QQuickTableView::editDelegateComboBox()
     QTest::keyClick(window, Qt::Key_Enter);
     QCOMPARE(tableView->property(kCommitCount).value<int>(), 3);
     QCOMPARE(tableView->property(kComboFocusCount).value<int>(), 4);
+    QVERIFY(!tableView->property(kEditIndex).value<QModelIndex>().isValid());
+    QVERIFY(!tableView->property(kEditItem).value<QQuickItem *>());
+
+    // Make the combo in cell 1 editable and edit it. Then transfer focus to the
+    // textfield inside it. Check that when we transfer focus locally _inside_
+    // the edit delegate, it stays open. And that hitting Enter after the focus
+    // transfer still works.
+    tableView->setProperty(kComboEditable, true);
+    tableView->edit(index1);
+    const QQuickItem *comboBox = tableViewPrivate->editItem->property(kComboBox).value<QQuickItem *>();
+    QVERIFY(comboBox);
+    QCOMPARE(qGuiApp->focusObject(), comboBox);
+
+    // Click on the textinput inside the combo to give it focus
+    auto *cellItem = tableView->itemAtIndex(index1);
+    QVERIFY(cellItem);
+    const QPoint localCenterPos = QPoint(comboBox->width() / 2, comboBox->height() / 2);
+    const QPoint centerPos = window->contentItem()->mapFromItem(comboBox, localCenterPos).toPoint();
+    QTest::mouseClick(window, Qt::LeftButton, Qt::NoModifier, centerPos);
+    // Check that focus moved to some other object (the line edit) inside the combo
+    QCOMPARE_NE(qGuiApp->focusObject(), comboBox);
+    QVERIFY(comboBox->isAncestorOf(qobject_cast<QQuickItem *>(qGuiApp->focusObject())));
+
+    // Press Enter to close the editor
+    QTest::keyClick(window, Qt::Key_Enter);
+    QCOMPARE(tableView->property(kCommitCount).value<int>(), 4);
+    QCOMPARE(tableView->property(kComboFocusCount).value<int>(), 5);
     QVERIFY(!tableView->property(kEditIndex).value<QModelIndex>().isValid());
     QVERIFY(!tableView->property(kEditItem).value<QQuickItem *>());
 }
@@ -7759,7 +7868,7 @@ void tst_QQuickTableView::attachedPropertiesOnEditDelegate()
     QQuickItem *editItem3 = tableView->property(kEditItem).value<QQuickItem *>();
     QVERIFY(editItem3);
     const auto attached3 = getAttachedObject(editItem3);
-    QVERIFY(editItem3);
+    QVERIFY(attached3);
     QSignalSpy commitSpy3(attached3, &QQuickTableViewAttached::commit);
 
     QTest::keyClick(window, Qt::Key_Escape);
@@ -7768,20 +7877,37 @@ void tst_QQuickTableView::attachedPropertiesOnEditDelegate()
     QCOMPARE(commitSpy3.count(), 0);
 
     // Repeat once more, but tap outside the edit item.
-    // This should close the edit, but without an accepted signal.
+    // This should close the edit with an accepted signal.
     tableView->edit(index);
     QCOMPARE(tableView->property(kEditIndex).value<QModelIndex>(), index);
     QQuickItem *editItem4 = tableView->property(kEditItem).value<QQuickItem *>();
     QVERIFY(editItem4);
     const auto attached4 = getAttachedObject(editItem4);
-    QVERIFY(editItem4);
+    QVERIFY(attached4);
     QSignalSpy commitSpy4(attached4, &QQuickTableViewAttached::commit);
 
     const QPoint tapPos = window->contentItem()->mapFromItem(editItem4, QPointF(-10, -10)).toPoint();
     QTest::mouseClick(window, Qt::LeftButton, Qt::NoModifier, tapPos);
     QVERIFY(!tableView->property(kEditItem).value<QQuickItem *>());
     QVERIFY(!tableView->property(kEditIndex).value<QModelIndex>().isValid());
-    QCOMPARE(commitSpy4.count(), 0);
+    QCOMPARE(commitSpy4.count(), 1);
+
+    // Repeat once more, but transfer focus to a different text input
+    // This should close the edit with an accepted signal.
+    tableView->edit(index);
+    QCOMPARE(tableView->property(kEditIndex).value<QModelIndex>(), index);
+    QQuickItem *editItem5 = tableView->property(kEditItem).value<QQuickItem *>();
+    QVERIFY(editItem5);
+    const auto attached5 = getAttachedObject(editItem5);
+    QVERIFY(attached5);
+    QSignalSpy commitSpy5(attached5, &QQuickTableViewAttached::commit);
+
+    auto *textInput = view->rootObject()->property("textInput").value<QQuickTextInput *>();
+    QVERIFY(textInput);
+    textInput->forceActiveFocus();
+    QVERIFY(!tableView->property(kEditItem).value<QQuickItem *>());
+    QVERIFY(!tableView->property(kEditIndex).value<QModelIndex>().isValid());
+    QCOMPARE(commitSpy5.count(), 1);
 }
 
 void tst_QQuickTableView::requiredPropertiesOnEditDelegate()
@@ -7916,6 +8042,48 @@ void tst_QQuickTableView::invalidateTableInstanceModelContextObject()
 
     window.reset();
     QTRY_COMPARE(tableViewDestroyed, true);
+}
+
+void tst_QQuickTableView::transposed()
+{
+    // Check that TableView will be transposed if isTransposed is set to true.
+    // This is used by HorizontalHeaderView to be able to use e.g a JavaScript
+    // Array as model.
+    LOAD_TABLEVIEW("plaintableview.qml");
+
+    const QStringList stringModel = {"one", "two", "three"};
+    tableView->setModel(QVariant::fromValue(stringModel));
+    WAIT_UNTIL_POLISHED;
+
+    // First, check that the elements are laid out in a
+    // column-major order when not transposed.
+    QCOMPARE(tableView->columns(), 1);
+    QCOMPARE(tableView->rows(), stringModel.count());
+
+    for (int row = 0; row < 3; ++row) {
+        auto item = tableView->itemAtCell({0, row});
+        QVERIFY(item);
+        const QPoint contextCell = getContextRowAndColumn(item);
+        QCOMPARE(contextCell, QPoint(0, row));
+    }
+
+    // Now transpose the model
+    tableViewPrivate->isTransposed = true;
+    tableView->forceLayout();
+
+    // Check that the elements are laid out in a row-major order
+    QCOMPARE(tableView->columns(), stringModel.count());
+    QCOMPARE(tableView->rows(), 1);
+
+    for (int col = 0; col < 3; ++col) {
+        auto item = tableView->itemAtCell({col, 0});
+        QVERIFY(item);
+        const QPoint contextCell = getContextRowAndColumn(item);
+        QCOMPARE(contextCell, QPoint(0, col));
+    }
+    // Also sanity-check that the old column-major items are removed
+    for (int row = 1; row < 3; ++row)
+        QVERIFY(!tableView->itemAtCell({0, row}));
 }
 
 void tst_QQuickTableView::checkVisualRowColumnAfterReorder()

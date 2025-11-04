@@ -9,6 +9,7 @@ macro(qt_internal_get_internal_add_plugin_keywords option_args single_args multi
         ALLOW_UNDEFINED_SYMBOLS
         SKIP_INSTALL
         NO_UNITY_BUILD
+        TEST_PLUGIN
         ${__qt_internal_sbom_optional_args}
     )
     set(${single_args}
@@ -159,7 +160,8 @@ function(qt_internal_add_plugin target)
 
     qt_set_common_target_properties("${target}")
     qt_internal_add_target_aliases("${target}")
-    qt_skip_warnings_are_errors_when_repo_unclean("${target}")
+
+    qt_internal_default_warnings_are_errors("${target}")
 
     set_target_properties("${target}" PROPERTIES
         LIBRARY_OUTPUT_DIRECTORY "${output_directory}"
@@ -206,16 +208,14 @@ function(qt_internal_add_plugin target)
         set(plugin_install_package_suffix "${qt_module}")
 
 
-        get_target_property(aliased_target ${qt_module_target} ALIASED_TARGET)
-        if(aliased_target)
-            set(qt_module_target ${aliased_target})
-        endif()
+        _qt_internal_dealias_target(qt_module_target)
         get_target_property(is_imported_qt_module ${qt_module_target} IMPORTED)
 
         if(NOT is_imported_qt_module)
             # This QT_PLUGINS assignment is only used by QtPostProcessHelpers to decide if a
             # QtModulePlugins.cmake file should be generated.
             set_property(TARGET "${qt_module_target}" APPEND PROPERTY QT_PLUGINS "${target}")
+            __qt_internal_add_interface_plugin_target(${qt_module_target} ${target} BUILD_ONLY)
         else()
             # The _qt_plugins property is considered when collecting the plugins in
             # deployment process. The usecase is following:
@@ -223,6 +223,7 @@ function(qt_internal_add_plugin target)
             # The plugin is built in some application build tree and its PLUGIN_TYPE is associated
             # with QtModuleX.
             set_property(TARGET "${qt_module_target}" APPEND PROPERTY _qt_plugins "${target}")
+            __qt_internal_add_interface_plugin_target(${qt_module_target} ${target})
         endif()
 
         qt_internal_add_autogen_sync_header_dependencies(${target} ${qt_module_target})
@@ -316,8 +317,11 @@ function(qt_internal_add_plugin target)
 
     qt_internal_add_repo_local_defines("${target}")
 
-    qt_internal_set_exceptions_flags("${target}" ${arg_EXCEPTIONS})
-
+    if(NOT arg_EXCEPTIONS)
+        qt_internal_set_exceptions_flags("${target}" "DEFAULT")
+    else()
+        qt_internal_set_exceptions_flags("${target}" "${arg_EXCEPTIONS}")
+    endif()
 
     set(qt_libs_private "")
     qt_internal_get_qt_all_known_modules(known_modules)
@@ -328,11 +332,20 @@ function(qt_internal_add_plugin target)
         endif()
     endforeach()
 
-    qt_register_target_dependencies("${target}" "${arg_PUBLIC_LIBRARIES}" "${qt_libs_private}")
+    set(qt_register_target_dependencies_args "")
+    if(arg_PUBLIC_LIBRARIES)
+        list(APPEND qt_register_target_dependencies_args PUBLIC ${arg_PUBLIC_LIBRARIES})
+    endif()
+    if(qt_libs_private)
+        list(APPEND qt_register_target_dependencies_args PRIVATE ${qt_libs_private})
+    endif()
+    qt_internal_register_target_dependencies("${target}"
+        ${qt_register_target_dependencies_args})
 
     if(target_type STREQUAL STATIC_LIBRARY)
         if(qt_module_target)
-            qt_internal_link_internal_platform_for_object_library("${plugin_init_target}")
+            qt_internal_link_internal_platform_for_object_library("${plugin_init_target}"
+                PARENT_TARGET "${target}")
         endif()
     endif()
 
@@ -358,6 +371,25 @@ function(qt_internal_add_plugin target)
 
         qt_internal_get_min_new_policy_cmake_version(min_new_policy_version)
         qt_internal_get_max_new_policy_cmake_version(max_new_policy_version)
+
+        # For test plugins we need to make sure plugins are not loaded from the Qt installation
+        # when building standalone tests.
+        if(QT_INTERNAL_CONFIGURING_TESTS OR arg_TEST_PLUGIN)
+            if(NOT arg_TEST_PLUGIN)
+                message(WARNING "The installable test plugin ${target} is built as part of a test"
+                    " suite, but is not marked as TEST_PLUGIN using the respective argument."
+                    "\nThis warning will soon become an error."
+                )
+            endif()
+            set(skip_internal_test_plugin
+"if(QT_BUILD_STANDALONE_TESTS AND \"\${PROJECT_NAME}\" STREQUAL \"${PROJECT_NAME}\")
+    message(DEBUG \"Skipping loading ${target}Config.cmake during \"
+        \"standalone tests run of ${PROJECT_NAME}\")
+    return()
+endif()"
+            )
+        endif()
+
         configure_package_config_file(
             "${QT_CMAKE_DIR}/QtPluginConfig.cmake.in"
             "${config_build_dir}/${INSTALL_CMAKE_NAMESPACE}${target}Config.cmake"
@@ -417,7 +449,7 @@ function(qt_internal_add_plugin target)
 
     if(QT_GENERATE_SBOM)
         set(sbom_args "")
-        list(APPEND sbom_args TYPE QT_PLUGIN)
+        list(APPEND sbom_args DEFAULT_SBOM_ENTITY_TYPE QT_PLUGIN)
 
         qt_get_cmake_configurations(configs)
         foreach(config IN LISTS configs)
@@ -458,12 +490,10 @@ function(qt_finalize_plugin target)
         _qt_internal_generate_win32_rc_file("${target}")
     endif()
 
-    # Generate .prl and .pri files for static plugins.
+    # Generate .prl and .pri files for installed static plugins.
     get_target_property(target_type "${target}" TYPE)
-    if(target_type STREQUAL STATIC_LIBRARY)
-        if(arg_INSTALL_PATH)
-            qt_generate_prl_file(${target} "${arg_INSTALL_PATH}")
-        endif()
+    if(target_type STREQUAL STATIC_LIBRARY AND arg_INSTALL_PATH)
+        qt_generate_prl_file(${target} "${arg_INSTALL_PATH}")
 
         # There's no point in generating pri files for qml plugins.
         # We didn't do it in Qt5 times.
@@ -519,6 +549,7 @@ function(qt_internal_add_darwin_permission_plugin permission)
         DEFAULT_IF FALSE
         SOURCES
             ${permission_source_file}
+            platform/darwin/qdarwinpermissionplugin_p_p.h
         DEFINES
             QT_DARWIN_PERMISSION_PLUGIN=${permission}
         LIBRARIES

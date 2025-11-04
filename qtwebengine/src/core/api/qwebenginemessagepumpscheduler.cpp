@@ -1,5 +1,6 @@
 // Copyright (C) 2019 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qwebenginemessagepumpscheduler_p.h"
 
@@ -14,11 +15,6 @@ QWebEngineMessagePumpScheduler::QWebEngineMessagePumpScheduler(std::function<voi
 void QWebEngineMessagePumpScheduler::scheduleImmediateWork()
 {
     QCoreApplication::postEvent(this, new QTimerEvent(0), Qt::NormalEventPriority);
-}
-
-void QWebEngineMessagePumpScheduler::scheduleIdleWork()
-{
-    QCoreApplication::postEvent(this, new QTimerEvent(0), Qt::LowEventPriority);
 }
 
 void QWebEngineMessagePumpScheduler::scheduleDelayedWork(int delay)

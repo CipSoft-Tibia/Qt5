@@ -29,7 +29,6 @@
 
 #include <utility>
 
-#include "dawn/common/StackContainer.h"
 #include "dawn/native/CommandValidation.h"
 #include "dawn/native/Commands.h"
 #include "dawn/native/Device.h"
@@ -61,15 +60,6 @@ MaybeError ValidateDepthStencilAttachmentFormat(const DeviceBase* device,
     DAWN_TRY_ASSIGN(format, device->GetInternalFormat(textureFormat));
     DAWN_INVALID_IF(!format->HasDepthOrStencil() || !format->isRenderable,
                     "Texture format %s is not depth/stencil renderable.", textureFormat);
-
-    if (!device->IsToggleEnabled(Toggle::AllowUnsafeAPIs)) {
-        DAWN_INVALID_IF(
-            format->HasDepth() && format->HasStencil() && depthReadOnly != stencilReadOnly,
-            "depthReadOnly (%u) and stencilReadOnly (%u) must be the same when format %s has "
-            "both depth and stencil aspects.",
-            depthReadOnly, stencilReadOnly, textureFormat);
-    }
-
     return {};
 }
 
@@ -90,7 +80,7 @@ MaybeError ValidateRenderBundleEncoderDescriptor(DeviceBase* device,
         if (format != wgpu::TextureFormat::Undefined) {
             DAWN_TRY_CONTEXT(ValidateColorAttachmentFormat(device, format),
                              "validating colorFormats[%u]", i);
-            colorAttachmentFormats->push_back(&device->GetValidInternalFormat(format));
+            colorAttachmentFormats.push_back(&device->GetValidInternalFormat(format));
             allColorFormatsUndefined = false;
         }
     }
@@ -125,9 +115,15 @@ RenderBundleEncoder::RenderBundleEncoder(DeviceBase* device,
 
 RenderBundleEncoder::RenderBundleEncoder(DeviceBase* device, ErrorTag errorTag, const char* label)
     : RenderEncoderBase(device, &mBundleEncodingContext, errorTag, label),
-      mBundleEncodingContext(device, this) {}
+      mBundleEncodingContext(device, errorTag) {}
+
+RenderBundleEncoder::~RenderBundleEncoder() {
+    mEncodingContext = nullptr;
+}
 
 void RenderBundleEncoder::DestroyImpl() {
+    mIndirectDrawMetadata.ClearIndexedIndirectBufferValidationInfo();
+    mCommandBufferState.End();
     RenderEncoderBase::DestroyImpl();
     mBundleEncodingContext.Destroy();
 }
@@ -155,7 +151,7 @@ CommandIterator RenderBundleEncoder::AcquireCommands() {
 RenderBundleBase* RenderBundleEncoder::APIFinish(const RenderBundleDescriptor* descriptor) {
     Ref<RenderBundleBase> result;
 
-    if (GetDevice()->ConsumedError(FinishImpl(descriptor), &result, "calling %s.Finish(%s).", this,
+    if (GetDevice()->ConsumedError(Finish(descriptor), &result, "calling %s.Finish(%s).", this,
                                    descriptor)) {
         result = RenderBundleBase::MakeError(GetDevice(), descriptor ? descriptor->label : nullptr);
         result->SetEncoderLabel(this->GetLabel());
@@ -164,17 +160,17 @@ RenderBundleBase* RenderBundleEncoder::APIFinish(const RenderBundleDescriptor* d
     return ReturnToAPI(std::move(result));
 }
 
-ResultOrError<Ref<RenderBundleBase>> RenderBundleEncoder::FinishImpl(
+ResultOrError<Ref<RenderBundleBase>> RenderBundleEncoder::Finish(
     const RenderBundleDescriptor* descriptor) {
+    mCommandBufferState.End();
     // Even if mBundleEncodingContext.Finish() validation fails, calling it will mutate the
     // internal state of the encoding context. Subsequent calls to encode commands will generate
     // errors.
     DAWN_TRY(mBundleEncodingContext.Finish());
+    DAWN_TRY(GetDevice()->ValidateIsAlive());
 
     RenderPassResourceUsage usages = mUsageTracker.AcquireResourceUsage();
     if (IsValidationEnabled()) {
-        DAWN_TRY(GetDevice()->ValidateObject(this));
-        DAWN_TRY(ValidateProgrammableEncoderEnd());
         DAWN_TRY(ValidateFinish(usages));
     }
 
@@ -186,6 +182,7 @@ ResultOrError<Ref<RenderBundleBase>> RenderBundleEncoder::FinishImpl(
 MaybeError RenderBundleEncoder::ValidateFinish(const RenderPassResourceUsage& usages) const {
     TRACE_EVENT0(GetDevice()->GetPlatform(), Validation, "RenderBundleEncoder::ValidateFinish");
     DAWN_TRY(GetDevice()->ValidateObject(this));
+    DAWN_TRY(ValidateProgrammableEncoderEnd());
     DAWN_TRY(ValidateSyncScopeResourceUsage(usages));
     return {};
 }

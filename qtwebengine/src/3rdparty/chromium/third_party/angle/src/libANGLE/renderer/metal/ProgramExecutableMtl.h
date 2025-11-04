@@ -47,17 +47,14 @@ struct UBOConversionInfo
 
     bool _calculateNeedsConversion()
     {
-        if (_stdSize != _metalSize)
-        {
-            return true;
-        }
+        // If we have a different number of fields then we need conversion
         if (_stdInfo.size() != _metalInfo.size())
         {
             return true;
         }
         for (size_t i = 0; i < _stdInfo.size(); ++i)
         {
-            // If the matrix is trasnposed
+            // If the matrix is transposed
             if (_stdInfo[i].isRowMajorMatrix)
             {
                 return true;
@@ -248,18 +245,14 @@ class ProgramExecutableMtl : public ProgramExecutableImpl
     angle::Result updateXfbBuffers(ContextMtl *context,
                                    mtl::RenderCommandEncoder *cmdEncoder,
                                    const mtl::RenderPipelineDesc &pipelineDesc);
-    angle::Result legalizeUniformBufferOffsets(ContextMtl *context,
-                                               const std::vector<gl::InterfaceBlock> &blocks);
+    angle::Result legalizeUniformBufferOffsets(ContextMtl *context);
     angle::Result bindUniformBuffersToDiscreteSlots(ContextMtl *context,
                                                     mtl::RenderCommandEncoder *cmdEncoder,
-                                                    const std::vector<gl::InterfaceBlock> &blocks,
                                                     gl::ShaderType shaderType);
 
-    angle::Result encodeUniformBuffersInfoArgumentBuffer(
-        ContextMtl *context,
-        mtl::RenderCommandEncoder *cmdEncoder,
-        const std::vector<gl::InterfaceBlock> &blocks,
-        gl::ShaderType shaderType);
+    angle::Result encodeUniformBuffersInfoArgumentBuffer(ContextMtl *context,
+                                                         mtl::RenderCommandEncoder *cmdEncoder,
+                                                         gl::ShaderType shaderType);
 
     bool mProgramHasFlatAttributes;
 
@@ -301,7 +294,7 @@ class ProgramExecutableMtl : public ProgramExecutableImpl
     gl::ShaderMap<std::unique_ptr<mtl::BufferPool>> mDefaultUniformBufferPools;
 };
 
-angle::Result CreateMslShaderLib(ContextMtl *context,
+angle::Result CreateMslShaderLib(mtl::Context *context,
                                  gl::InfoLog &infoLog,
                                  mtl::TranslatedShaderInfo *translatedMslInfo,
                                  const std::map<std::string, std::string> &substitutionMacros);

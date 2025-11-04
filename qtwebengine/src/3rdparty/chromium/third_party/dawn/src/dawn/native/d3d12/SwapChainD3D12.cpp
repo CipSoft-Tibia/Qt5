@@ -46,8 +46,8 @@ namespace dawn::native::d3d12 {
 ResultOrError<Ref<SwapChain>> SwapChain::Create(Device* device,
                                                 Surface* surface,
                                                 SwapChainBase* previousSwapChain,
-                                                const SwapChainDescriptor* descriptor) {
-    Ref<SwapChain> swapchain = AcquireRef(new SwapChain(device, surface, descriptor));
+                                                const SurfaceConfiguration* config) {
+    Ref<SwapChain> swapchain = AcquireRef(new SwapChain(device, surface, config));
     DAWN_TRY(swapchain->Initialize(previousSwapChain));
     return swapchain;
 }
@@ -61,7 +61,14 @@ IUnknown* SwapChain::GetD3DDeviceForCreatingSwapChain() {
 void SwapChain::ReuseBuffers(SwapChainBase* previousSwapChain) {
     SwapChain* previousD3DSwapChain = ToBackend(previousSwapChain);
     mBuffers = std::move(previousD3DSwapChain->mBuffers);
-    mBufferLastUsedSerials = std::move(previousD3DSwapChain->mBufferLastUsedSerials);
+
+    // Remember the current state of the ID3D12Resource for the current buffer if we didn't have
+    // chance to present it yet.
+    if (previousD3DSwapChain->mApiTexture != nullptr) {
+        D3D12_RESOURCE_STATES state =
+            previousD3DSwapChain->mApiTexture->GetCurrentStateForSwapChain();
+        mBuffers[previousD3DSwapChain->mCurrentBuffer].acquireState = state;
+    }
 }
 
 MaybeError SwapChain::CollectSwapChainBuffers() {
@@ -73,12 +80,10 @@ MaybeError SwapChain::CollectSwapChainBuffers() {
 
     mBuffers.resize(config.bufferCount);
     for (uint32_t i = 0; i < config.bufferCount; i++) {
-        DAWN_TRY(CheckHRESULT(dxgiSwapChain->GetBuffer(i, IID_PPV_ARGS(&mBuffers[i])),
+        DAWN_TRY(CheckHRESULT(dxgiSwapChain->GetBuffer(i, IID_PPV_ARGS(&mBuffers[i].resource)),
                               "Getting IDXGISwapChain buffer"));
     }
 
-    // Pretend all the buffers were last used at the beginning of time.
-    mBufferLastUsedSerials.resize(config.bufferCount, ExecutionSerial(0));
     return {};
 }
 
@@ -88,9 +93,8 @@ MaybeError SwapChain::PresentImpl() {
     // Transition the texture to the present state as required by IDXGISwapChain1::Present()
     // TODO(crbug.com/dawn/269): Remove the need for this by eagerly transitioning the
     // presentable texture to present at the end of submits that use them.
-    CommandRecordingContext* commandContext;
-    DAWN_TRY_ASSIGN(commandContext, queue->GetPendingCommandContext());
-    mApiTexture->TrackUsageAndTransitionNow(commandContext, kPresentTextureUsage,
+    CommandRecordingContext* commandContext = queue->GetPendingCommandContext();
+    mApiTexture->TrackUsageAndTransitionNow(commandContext, kPresentReleaseTextureUsage,
                                             mApiTexture->GetAllSubresources());
     DAWN_TRY(queue->SubmitPendingCommands());
 
@@ -98,7 +102,8 @@ MaybeError SwapChain::PresentImpl() {
 
     // Record that "new" is the last time the buffer has been used.
     DAWN_TRY(queue->NextSerial());
-    mBufferLastUsedSerials[mCurrentBuffer] = queue->GetLastSubmittedCommandSerial();
+    mBuffers[mCurrentBuffer].lastUsed = queue->GetLastSubmittedCommandSerial();
+    mBuffers[mCurrentBuffer].acquireState = D3D12_RESOURCE_STATE_COMMON;
 
     mApiTexture->APIDestroy();
     mApiTexture = nullptr;
@@ -106,7 +111,7 @@ MaybeError SwapChain::PresentImpl() {
     return {};
 }
 
-ResultOrError<Ref<TextureBase>> SwapChain::GetCurrentTextureImpl() {
+ResultOrError<SwapChainTextureInfo> SwapChain::GetCurrentTextureImpl() {
     Queue* queue = ToBackend(GetDevice()->GetQueue());
 
     // Synchronously wait until previous operations on the next swapchain buffer are finished.
@@ -114,13 +119,22 @@ ResultOrError<Ref<TextureBase>> SwapChain::GetCurrentTextureImpl() {
     // TODO(crbug.com/dawn/269): Consider whether this should  be lifted for Mailbox so that
     // there is not frame pacing.
     mCurrentBuffer = GetDXGISwapChain()->GetCurrentBackBufferIndex();
-    DAWN_TRY(queue->WaitForSerial(mBufferLastUsedSerials[mCurrentBuffer]));
+    const Buffer& buffer = mBuffers[mCurrentBuffer];
+
+    DAWN_TRY(queue->WaitForSerial(buffer.lastUsed));
 
     // Create the API side objects for this use of the swapchain's buffer.
     TextureDescriptor descriptor = GetSwapChainBaseTextureDescriptor(this);
-    DAWN_TRY_ASSIGN(mApiTexture, Texture::Create(ToBackend(GetDevice()), Unpack(&descriptor),
-                                                 mBuffers[mCurrentBuffer]));
-    return mApiTexture;
+    DAWN_TRY_ASSIGN(mApiTexture,
+                    Texture::CreateForSwapChain(ToBackend(GetDevice()), Unpack(&descriptor),
+                                                buffer.resource, buffer.acquireState));
+
+    SwapChainTextureInfo info;
+    info.texture = mApiTexture;
+    info.status = wgpu::SurfaceGetCurrentTextureStatus::Success;
+    // TODO(dawn:2320): Check for optimality
+    info.suboptimal = false;
+    return info;
 }
 
 MaybeError SwapChain::DetachAndWaitForDeallocation() {
@@ -131,7 +145,7 @@ MaybeError SwapChain::DetachAndWaitForDeallocation() {
     // before it is finished being used. Flush the commands and wait for that serial to be
     // passed, then Tick the device to make sure the reference to the D3D12 texture is removed.
     Queue* queue = ToBackend(GetDevice()->GetQueue());
-    DAWN_TRY(queue->NextSerial());
+    DAWN_TRY(queue->EnsureCommandsFlushed(queue->GetPendingCommandSerial()));
     DAWN_TRY(queue->WaitForSerial(queue->GetLastSubmittedCommandSerial()));
     return ToBackend(GetDevice())->TickImpl();
 }

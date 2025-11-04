@@ -16,7 +16,7 @@ syntax = "proto2";
 
 package nearby.proto.fastpair;
 
-import "third_party/nearby/proto/fast_pair_enums.proto";
+import "proto/fast_pair_enums.proto";
 
 option optimize_for = LITE_RUNTIME;
 option java_package = "nearby.proto.fastpair";
@@ -107,6 +107,8 @@ message FastPairLog {
   message ProviderInfo {
     // The number of account keys stored in the provider.
     optional int32 number_account_keys_on_provider = 1;
+    // The GATT database hash in the provider.
+    optional string database_hash = 2;
   }
 
   message FootprintsInfo {

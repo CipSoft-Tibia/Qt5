@@ -20,13 +20,19 @@ bool ShouldUseExistingFont(const CPDF_Font* font,
                            uint32_t glyph_id,
                            bool has_to_unicode) {
   // Check for invalid glyph ID.
-  if (glyph_id == static_cast<uint32_t>(-1))
+  if (glyph_id == static_cast<uint32_t>(-1)) {
     return false;
+  }
 
-  if (!font->IsTrueTypeFont())
+  if (font->IsEmbedded()) {
     return true;
+  }
 
-  // For TrueType fonts, a glyph ID of 0 may be invalid.
+  if (!font->IsTrueTypeFont()) {
+    return true;
+  }
+
+  // For non-embedded TrueType fonts, a glyph ID of 0 may be invalid.
   //
   // When a "ToUnicode" entry exists in the font dictionary, it indicates
   // a "ToUnicode" mapping file is used to convert from CIDs (which
@@ -55,7 +61,7 @@ bool IsActualFontLoaded(const CFX_SubstFont* subst_font,
   subst_font_name.Remove(' ');
   subst_font_name.MakeLower();
 
-  absl::optional<size_t> find =
+  std::optional<size_t> find =
       base_font_name.Find(subst_font_name.AsStringView());
   return find.has_value() && find.value() == 0;
 }
@@ -174,20 +180,20 @@ std::vector<TextCharPos> GetCharPosList(pdfium::span<const uint32_t> char_codes,
       text_char_pos.m_Origin.y -= font_size * vertical_origin.y / 1000;
     }
 
-    const uint8_t* cid_transform = cid_font->GetCIDTransform(cid);
+    const CIDTransform* cid_transform = cid_font->GetCIDTransform(cid);
     if (cid_transform && !is_vertical_glyph) {
       text_char_pos.m_AdjustMatrix[0] =
-          cid_font->CIDTransformToFloat(cid_transform[0]) * scaling_factor;
+          cid_font->CIDTransformToFloat(cid_transform->a) * scaling_factor;
       text_char_pos.m_AdjustMatrix[1] =
-          cid_font->CIDTransformToFloat(cid_transform[1]) * scaling_factor;
+          cid_font->CIDTransformToFloat(cid_transform->b) * scaling_factor;
       text_char_pos.m_AdjustMatrix[2] =
-          cid_font->CIDTransformToFloat(cid_transform[2]);
+          cid_font->CIDTransformToFloat(cid_transform->c);
       text_char_pos.m_AdjustMatrix[3] =
-          cid_font->CIDTransformToFloat(cid_transform[3]);
+          cid_font->CIDTransformToFloat(cid_transform->d);
       text_char_pos.m_Origin.x +=
-          cid_font->CIDTransformToFloat(cid_transform[4]) * font_size;
+          cid_font->CIDTransformToFloat(cid_transform->e) * font_size;
       text_char_pos.m_Origin.y +=
-          cid_font->CIDTransformToFloat(cid_transform[5]) * font_size;
+          cid_font->CIDTransformToFloat(cid_transform->f) * font_size;
       text_char_pos.m_bGlyphAdjust = true;
     }
   }

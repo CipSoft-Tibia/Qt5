@@ -43,7 +43,7 @@ mojom::NetworkRequestStatus ConvertInterruptReasonToMojoNetworkRequestStatus(
     case DOWNLOAD_INTERRUPT_REASON_NETWORK_FAILED:
       return mojom::NetworkRequestStatus::NETWORK_FAILED;
     default:
-      NOTREACHED();
+      NOTREACHED_IN_MIGRATION();
       return mojom::NetworkRequestStatus::NETWORK_FAILED;
   }
 }
@@ -103,7 +103,7 @@ void DownloadResponseHandler::OnReceiveEarlyHints(
 void DownloadResponseHandler::OnReceiveResponse(
     network::mojom::URLResponseHeadPtr head,
     mojo::ScopedDataPipeConsumerHandle body,
-    absl::optional<mojo_base::BigBuffer> cached_metadata) {
+    std::optional<mojo_base::BigBuffer> cached_metadata) {
   create_info_ = CreateDownloadCreateInfo(*head);
   cert_status_ = head->cert_status;
 

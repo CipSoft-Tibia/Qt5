@@ -3,7 +3,8 @@
 
 #include <qbaselinetest.h>
 
-#include <qsvgrenderer.h>
+#include <QtSvg/private/qsvgtinydocument_p.h>
+#include <QtSvg/private/qtsvgglobal_p.h>
 #include <QPainter>
 
 #include <QtCore/QCoreApplication>
@@ -34,20 +35,16 @@ private:
     quint16 checksumFileOrDir(const QString &path);
 
     QString testSuitePath;
-    QScopedPointer<QSvgRenderer> m_renderer;
+    std::unique_ptr<QSvgTinyDocument> m_doc;
 };
-
 
 tst_QSvgRenderer::tst_QSvgRenderer()
 {
 
 }
 
-
 void tst_QSvgRenderer::initTestCase()
 {
-    m_renderer.reset(new QSvgRenderer());
-
     QString dataDir = QFINDTESTDATA("../data/.");
     if (dataDir.isEmpty())
         dataDir = QStringLiteral("data");
@@ -60,7 +57,6 @@ void tst_QSvgRenderer::initTestCase()
     if (!QBaselineTest::connectToBaselineServer(&msg))
         QSKIP(msg);
 }
-
 
 void tst_QSvgRenderer::cleanup()
 {
@@ -77,12 +73,10 @@ void tst_QSvgRenderer::testRendering_data()
     setupTestSuite();
 }
 
-
 void tst_QSvgRenderer::testRendering()
 {
     runTest();
 }
-
 
 void tst_QSvgRenderer::setupTestSuite(const QByteArray& filter)
 {
@@ -121,23 +115,30 @@ void tst_QSvgRenderer::setupTestSuite(const QByteArray& filter)
         QSKIP("No svg test files found in " + testSuitePath.toLatin1());
 }
 
-
 void tst_QSvgRenderer::runTest(const QStringList& extraArgs)
 {
     Q_UNUSED(extraArgs)
 
     QFETCH(QString, svgFile);
 
-    m_renderer->load(svgFile);
-    QImage actual(m_renderer->viewBox().size(), QImage::Format_RGB32);
+    m_doc.reset(QSvgTinyDocument::load(svgFile, {}, QtSvg::AnimatorType::Controlled));
+    QSize size = m_doc ? m_doc->viewBox().toRect().size() : QSize(64, 64);
+    QImage actual(size, QImage::Format_RGB32);
     actual.fill(QColor(255, 255, 255));
-    QPainter actualPainter(&actual);
-    m_renderer->render(&actualPainter);
+
+    if (m_doc) {
+        if (m_doc->animated()) {
+            uint midTime = qFloor(m_doc->animationDuration() * 0.5);
+            uint currentFrame = midTime * 0.001 * 30;
+            m_doc->setCurrentFrame(currentFrame);
+            m_doc->animator()->advanceAnimations();
+        }
+        QPainter actualPainter(&actual);
+        m_doc->draw(&actualPainter);
+    }
 
     QBASELINE_TEST(actual);
 }
-
-
 
 quint16 tst_QSvgRenderer::checksumFileOrDir(const QString &path)
 {

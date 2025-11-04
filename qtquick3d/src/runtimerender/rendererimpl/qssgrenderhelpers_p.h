@@ -126,7 +126,8 @@ Q_QUICK3DRUNTIMERENDER_EXPORT void rhiPrepareRenderable(QSSGRhiContext *rhiCtx,
                                                         QSSGRenderCamera *alteredCamera = nullptr,
                                                         QMatrix4x4 *alteredModelViewProjection = nullptr,
                                                         QSSGRenderTextureCubeFace cubeFace = QSSGRenderTextureCubeFaceNone,
-                                                        QSSGReflectionMapEntry *entry = nullptr);
+                                                        QSSGReflectionMapEntry *entry = nullptr,
+                                                        bool oit = false);
 
 Q_QUICK3DRUNTIMERENDER_EXPORT void rhiRenderRenderable(QSSGRhiContext *rhiCtx,
                                                        const QSSGRhiGraphicsPipelineState &state,
@@ -137,7 +138,8 @@ Q_QUICK3DRUNTIMERENDER_EXPORT void rhiRenderRenderable(QSSGRhiContext *rhiCtx,
 bool rhiPrepareDepthTexture(QSSGRhiContext *rhiCtx,
                             const QSize &size,
                             QSSGRhiRenderableTexture *renderableTex,
-                            quint8 viewCount);
+                            quint8 viewCount,
+                            int samples = 1);
 
 inline QRect correctViewportCoordinates(const QRectF &layerViewport, const QRect &deviceRect)
 {

@@ -5,7 +5,8 @@
 #ifndef THIRD_PARTY_BLINK_RENDERER_CORE_LAYOUT_ABSOLUTE_UTILS_H_
 #define THIRD_PARTY_BLINK_RENDERER_CORE_LAYOUT_ABSOLUTE_UTILS_H_
 
-#include "third_party/abseil-cpp/absl/types/optional.h"
+#include <optional>
+
 #include "third_party/blink/renderer/core/core_export.h"
 #include "third_party/blink/renderer/core/layout/geometry/logical_size.h"
 #include "third_party/blink/renderer/core/layout/geometry/physical_size.h"
@@ -16,7 +17,6 @@
 namespace blink {
 
 class BlockNode;
-class BoxFragmentBuilder;
 class ConstraintSpace;
 class LayoutResult;
 struct LogicalStaticPosition;
@@ -41,18 +41,46 @@ struct CORE_EXPORT LogicalOofDimensions {
 };
 
 struct CORE_EXPORT LogicalOofInsets {
-  absl::optional<LayoutUnit> inline_start;
-  absl::optional<LayoutUnit> inline_end;
-  absl::optional<LayoutUnit> block_start;
-  absl::optional<LayoutUnit> block_end;
+  std::optional<LayoutUnit> inline_start;
+  std::optional<LayoutUnit> inline_end;
+  std::optional<LayoutUnit> block_start;
+  std::optional<LayoutUnit> block_end;
 };
+
+// The resolved alignment in the candidate's writing-direction.
+struct LogicalAlignment {
+  StyleSelfAlignmentData inline_alignment =
+      StyleSelfAlignmentData(ItemPosition::kNormal,
+                             OverflowAlignment::kDefault);
+  StyleSelfAlignmentData block_alignment =
+      StyleSelfAlignmentData(ItemPosition::kNormal,
+                             OverflowAlignment::kDefault);
+};
+
+LogicalAlignment ComputeAlignment(
+    const ComputedStyle& style,
+    bool is_containing_block_scrollable,
+    WritingDirectionMode container_writing_direction,
+    WritingDirectionMode self_writing_direction);
+
+// Represents the position that `anchor-center` alignment keyword resolves to.
+// A nullopt means that anchor-center alignment doesn't apply to the axis.
+struct LogicalAnchorCenterPosition {
+  std::optional<LayoutUnit> inline_offset;
+  std::optional<LayoutUnit> block_offset;
+};
+
+LogicalAnchorCenterPosition ComputeAnchorCenterPosition(
+    const ComputedStyle& style,
+    const LogicalAlignment& alignment,
+    WritingDirectionMode writing_direction,
+    LogicalSize available_size);
 
 CORE_EXPORT LogicalOofInsets
 ComputeOutOfFlowInsets(const ComputedStyle& style,
                        const LogicalSize& available_size,
-                       WritingDirectionMode container_writing_direction,
-                       WritingDirectionMode self_writing_direction,
-                       AnchorEvaluatorImpl* anchor_evaluator);
+                       const LogicalAlignment&,
+                       WritingDirectionMode self_writing_direction);
 
 struct CORE_EXPORT InsetModifiedContainingBlock {
   // The original containing block size that the insets refer to.
@@ -79,8 +107,14 @@ struct CORE_EXPORT InsetModifiedContainingBlock {
   // If safe alignment is specified (e.g. "align-self: safe end") and the
   // object overflows its containing block it'll become start aligned instead.
   // This field indicates the "start" edge of the containing block.
-  absl::optional<InsetBias> safe_inline_inset_bias;
-  absl::optional<InsetBias> safe_block_inset_bias;
+  std::optional<InsetBias> inline_safe_inset_bias;
+  std::optional<InsetBias> block_safe_inset_bias;
+
+  // If non-normal alignment is specified (e.g. "align-self: center") we'll
+  // adjust the position so that it doesn't overflow the containing block.
+  // This field indicates the "start" edge of the containing block.
+  std::optional<InsetBias> inline_default_inset_bias;
+  std::optional<InsetBias> block_default_inset_bias;
 
   LayoutUnit InlineEndOffset() const {
     return available_size.inline_size - inline_end;
@@ -103,6 +137,7 @@ struct CORE_EXPORT InsetModifiedContainingBlock {
 CORE_EXPORT InsetModifiedContainingBlock ComputeInsetModifiedContainingBlock(
     const BlockNode& node,
     const LogicalSize& available_size,
+    const LogicalAlignment&,
     const LogicalOofInsets&,
     const LogicalStaticPosition&,
     WritingDirectionMode container_writing_direction,
@@ -114,6 +149,7 @@ CORE_EXPORT InsetModifiedContainingBlock ComputeInsetModifiedContainingBlock(
 // https://www.w3.org/TR/css-anchor-position-1/#fallback-apply
 CORE_EXPORT InsetModifiedContainingBlock
 ComputeIMCBForPositionFallback(const LogicalSize& available_size,
+                               const LogicalAlignment&,
                                const LogicalOofInsets&,
                                const LogicalStaticPosition&,
                                const ComputedStyle&,
@@ -138,10 +174,12 @@ CORE_EXPORT bool ComputeOofInlineDimensions(
     const ComputedStyle& style,
     const ConstraintSpace&,
     const InsetModifiedContainingBlock&,
+    const LogicalAnchorCenterPosition&,
+    const LogicalAlignment&,
     const BoxStrut& border_padding,
-    const absl::optional<LogicalSize>& replaced_size,
+    const std::optional<LogicalSize>& replaced_size,
+    const BoxStrut& container_insets,
     WritingDirectionMode container_writing_direction,
-    const AnchorEvaluatorImpl* anchor_evaluator,
     LogicalOofDimensions* dimensions);
 
 // If layout was performed to determine the position, this will be returned
@@ -151,16 +189,13 @@ CORE_EXPORT const LayoutResult* ComputeOofBlockDimensions(
     const ComputedStyle& style,
     const ConstraintSpace&,
     const InsetModifiedContainingBlock&,
+    const LogicalAnchorCenterPosition&,
+    const LogicalAlignment&,
     const BoxStrut& border_padding,
-    const absl::optional<LogicalSize>& replaced_size,
+    const std::optional<LogicalSize>& replaced_size,
+    const BoxStrut& container_insets,
     WritingDirectionMode container_writing_direction,
-    const AnchorEvaluatorImpl* anchor_evaluator,
     LogicalOofDimensions* dimensions);
-
-CORE_EXPORT void AdjustOffsetForSplitInline(
-    const BlockNode& node,
-    const BoxFragmentBuilder* container_builder,
-    LogicalOffset& offset);
 
 }  // namespace blink
 

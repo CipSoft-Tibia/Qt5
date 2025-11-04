@@ -65,8 +65,8 @@ Window {
                 eulerRotation.y: 0
                 scale: Qt.vector3d(1, 1, 1)
                 position: Qt.vector3d(50.0, 40.0, 50.0)
-                materials:  DefaultMaterial {
-                    diffuseMap: Texture {
+                materials:  PrincipledMaterial {
+                    baseColorMap: Texture {
                         source: "qt_logo_rect.png"
                     }
                 }
@@ -77,8 +77,8 @@ Window {
                 Model {
                     source: "#Sphere"
                     position: Qt.vector3d(-400.0, screenSpaceReflectionsView.modelHeight, 0.0)
-                    materials: DefaultMaterial {
-                        diffuseColor: "magenta"
+                    materials: PrincipledMaterial {
+                        baseColor: "magenta"
                     }
                 }
             }
@@ -91,8 +91,8 @@ Window {
                     source: "#Sphere"
                     pivot: Qt.vector3d(0, 0.0, 0.0)
                     position: Qt.vector3d(200.0, 0.0, 0.0)
-                    materials: DefaultMaterial {
-                        diffuseColor: "green"
+                    materials: PrincipledMaterial {
+                        baseColor: "green"
                     }
                 }
             }
@@ -105,8 +105,8 @@ Window {
                     source: "#Sphere"
                     eulerRotation.y: 45
                     position: Qt.vector3d(0.0, 0.0, -200.0)
-                    materials: DefaultMaterial {
-                        diffuseColor: "blue"
+                    materials: PrincipledMaterial {
+                        baseColor: "blue"
                     }
                 }
             }
@@ -118,8 +118,8 @@ Window {
                 Model {
                     source: "#Sphere"
                     position: Qt.vector3d(0.0, 0.0, 200.0)
-                    materials: DefaultMaterial {
-                        diffuseColor: "red"
+                    materials: PrincipledMaterial {
+                        baseColor: "red"
                     }
                 }
             }

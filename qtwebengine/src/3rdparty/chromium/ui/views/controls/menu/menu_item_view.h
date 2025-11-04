@@ -6,21 +6,21 @@
 #define UI_VIEWS_CONTROLS_MENU_MENU_ITEM_VIEW_H_
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "base/callback_list.h"
 #include "base/gtest_prod_util.h"
 #include "base/memory/raw_ptr.h"
 #include "base/memory/weak_ptr.h"
 #include "build/build_config.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "third_party/skia/include/core/SkColor.h"
 #include "ui/base/interaction/element_identifier.h"
 #include "ui/base/l10n/l10n_util.h"
 #include "ui/base/models/menu_separator_types.h"
 #include "ui/base/themed_vector_icon.h"
-#include "ui/base/ui_base_features.h"
 #include "ui/gfx/geometry/insets.h"
 #include "ui/gfx/geometry/size.h"
 #include "ui/gfx/image/image_skia.h"
@@ -28,6 +28,7 @@
 #include "ui/views/controls/menu/menu_config.h"
 #include "ui/views/controls/menu/menu_controller.h"
 #include "ui/views/controls/menu/menu_types.h"
+#include "ui/views/layout/delegating_layout_manager.h"
 #include "ui/views/view.h"
 
 #if BUILDFLAG(IS_WIN)
@@ -74,10 +75,13 @@ class TestMenuItemView;
 // To show the menu use MenuRunner. See MenuRunner for details on how to run
 // (show) the menu as well as for details on the life time of the menu.
 
-class VIEWS_EXPORT MenuItemView : public View {
+class VIEWS_EXPORT MenuItemView : public View, public LayoutDelegate {
   METADATA_HEADER(MenuItemView, View)
 
  public:
+  // Padding between child views.
+  static constexpr int kChildHorizontalPadding = 8;
+
   // Different types of menu items.
   enum class Type {
     kNormal,             // Performs an action when selected.
@@ -163,26 +167,24 @@ class VIEWS_EXPORT MenuItemView : public View {
       const ui::ImageModel& icon,
       Type type,
       ui::MenuSeparatorType separator_style,
-      absl::optional<ui::ColorId> submenu_background_color = absl::nullopt,
-      absl::optional<ui::ColorId> foreground_color = absl::nullopt,
-      absl::optional<ui::ColorId> selected_color_id = absl::nullopt);
+      std::optional<ui::ColorId> submenu_background_color = std::nullopt,
+      std::optional<ui::ColorId> foreground_color = std::nullopt,
+      std::optional<ui::ColorId> selected_color_id = std::nullopt);
 
   void SetMenuItemBackground(
-      absl::optional<MenuItemBackground> menu_item_background) {
+      std::optional<MenuItemBackground> menu_item_background) {
     menu_item_background_ = menu_item_background;
   }
 
-  absl::optional<MenuItemBackground> GetMenuItemBackground() {
+  std::optional<MenuItemBackground> GetMenuItemBackground() {
     return menu_item_background_;
   }
 
-  void SetSelectedColorId(absl::optional<ui::ColorId> selected_color_id) {
+  void SetSelectedColorId(std::optional<ui::ColorId> selected_color_id) {
     selected_color_id_ = selected_color_id;
   }
 
-  absl::optional<ui::ColorId> GetSelectedColorId() {
-    return selected_color_id_;
-  }
+  std::optional<ui::ColorId> GetSelectedColorId() { return selected_color_id_; }
 
   void SetHighlightWhenSelectedWithChildViews(
       bool highlight_when_selected_with_child_views) {
@@ -295,16 +297,19 @@ class VIEWS_EXPORT MenuItemView : public View {
 
   // Sets the icon of this menu item.
   void SetIcon(const ui::ImageModel& icon);
+  const ui::ImageModel GetIcon() const;
 
   // Sets the view used to render the icon. This clobbers any icon set via
   // SetIcon(). MenuItemView takes ownership of |icon_view|.
   void SetIconView(std::unique_ptr<ImageView> icon_view);
 
+  ImageView* icon_view() { return icon_view_; }
+
   // Returns the preferred size of the icon view if any, or gfx::Size() if none.
   gfx::Size GetIconPreferredSize() const;
 
   // Sets the command id of this menu item.
-  void SetCommand(int command) { command_ = command; }
+  void SetCommand(int command);
 
   // Returns the command id of this item.
   int GetCommand() const { return command_; }
@@ -314,6 +319,7 @@ class VIEWS_EXPORT MenuItemView : public View {
 
   void set_may_have_mnemonics(bool may_have_mnemonics) {
     may_have_mnemonics_ = may_have_mnemonics;
+    UpdateAccessibleKeyShortcuts();
   }
   bool may_have_mnemonics() const { return may_have_mnemonics_; }
 
@@ -325,12 +331,8 @@ class VIEWS_EXPORT MenuItemView : public View {
   void OnPaint(gfx::Canvas* canvas) override;
 
   // Returns the preferred size of this item.
-  gfx::Size CalculatePreferredSize() const override;
-
-  // Gets the preferred height for the given |width|. This is only different
-  // from GetPreferredSize().width() if the item has a child view with flexible
-  // dimensions.
-  int GetHeightForWidth(int width) const override;
+  gfx::Size CalculatePreferredSize(
+      const SizeBounds& available_size) const override;
 
   // Returns the bounds of the submenu part of the ACTIONABLE_SUBMENU.
   gfx::Rect GetSubmenuAreaOfActionableSubmenu() const;
@@ -371,8 +373,9 @@ class VIEWS_EXPORT MenuItemView : public View {
   // recalculates the bounds.
   void ChildrenChanged();
 
-  // Sizes any child views.
-  void Layout() override;
+  // Overridden from LayoutDelegate:
+  ProposedLayout CalculateProposedLayout(
+      const SizeBounds& size_bounds) const override;
 
   // Returns true if the menu has mnemonics. This only useful on the root menu
   // item.
@@ -412,6 +415,18 @@ class VIEWS_EXPORT MenuItemView : public View {
 
   // Returns the corresponding border padding from the `MenuConfig`.
   int GetItemHorizontalBorder() const;
+
+  virtual void UpdateAccessibleCheckedState();
+
+  void SetTriggerActionWithNonIconChildViews(
+      bool trigger_action_with_non_icon_child_views) {
+    trigger_action_with_non_icon_child_views_ =
+        trigger_action_with_non_icon_child_views;
+  }
+
+  bool GetTriggerActionWithNonIconChildViews() const {
+    return trigger_action_with_non_icon_child_views_;
+  }
 
   bool last_paint_as_selected_for_testing() const {
     return last_paint_as_selected_;
@@ -470,7 +485,7 @@ class VIEWS_EXPORT MenuItemView : public View {
 
   // Returns the font list and font color to use for menu text.
   const gfx::FontList GetFontList() const;
-  const absl::optional<SkColor> GetMenuLabelColor() const;
+  const std::optional<SkColor> GetMenuLabelColor() const;
 
   // Ensures the submenu has an empty menu item iff it needs one, then updates
   // its metrics.
@@ -573,7 +588,7 @@ class VIEWS_EXPORT MenuItemView : public View {
   // could interact with model state.
   bool IsScheduledForDeletion() const;
 
-  void SetForegroundColorId(absl::optional<ui::ColorId> foreground_color_id) {
+  void SetForegroundColorId(std::optional<ui::ColorId> foreground_color_id) {
     foreground_color_id_ = foreground_color_id;
   }
 
@@ -581,10 +596,14 @@ class VIEWS_EXPORT MenuItemView : public View {
   // `vertical_margin_` is not set.
   int GetVerticalMargin() const;
 
+  void UpdateAccessibleRole();
+  void UpdateAccessibleKeyShortcuts();
+  void UpdateAccessibleSelection();
+
   // The delegate. This is only valid for the root menu item. You shouldn't
   // use this directly, instead use GetDelegate() which walks the tree as
   // as necessary.
-  raw_ptr<MenuDelegate, DanglingUntriaged> delegate_ = nullptr;
+  raw_ptr<MenuDelegate> delegate_ = nullptr;
 
   // The controller for the run operation, or NULL if the menu isn't showing.
   base::WeakPtr<MenuController> controller_;
@@ -648,7 +667,7 @@ class VIEWS_EXPORT MenuItemView : public View {
   // Removed items to be deleted in ChildrenChanged().
   std::vector<raw_ptr<View, VectorExperimental>> removed_items_;
 
-  absl::optional<int> vertical_margin_;
+  std::optional<int> vertical_margin_;
 
   // Corner radius in pixels, for HIGHLIGHTED items placed at the end of a menu.
   int corner_radius_ = 0;
@@ -664,6 +683,12 @@ class VIEWS_EXPORT MenuItemView : public View {
   // column.
   bool children_use_full_width_ = false;
 
+  // Default implementation will not trigger a MenuItemAction if there are child
+  // views other than the icon view. `trigger_action_with_non_icon_child_views_`
+  // specifies that we should still trigger the action even if we have non icon
+  // child views if other conditions are met as well.
+  bool trigger_action_with_non_icon_child_views_ = false;
+
   // Contains an image for the checkbox or radio icon.
   raw_ptr<ImageView> radio_check_image_view_ = nullptr;
 
@@ -671,7 +696,7 @@ class VIEWS_EXPORT MenuItemView : public View {
   raw_ptr<ImageView> submenu_arrow_image_view_ = nullptr;
 
   // The forced visual selection state of this item, if any.
-  absl::optional<bool> forced_visual_selection_;
+  std::optional<bool> forced_visual_selection_;
 
   // The vertical separator that separates the actionable and submenu regions of
   // an ACTIONABLE_SUBMENU.
@@ -699,13 +724,15 @@ class VIEWS_EXPORT MenuItemView : public View {
   // and SetIconView() explicitly calls UpdateSelectionBasedStateIfChanged().
   bool update_selection_based_state_in_view_herarchy_changed_ = true;
 
-  const std::u16string new_badge_text_ = l10n_util::GetStringUTF16(
-      features::IsChromeRefresh2023() ? IDS_NEW_BADGE_UPPERCASE
-                                      : IDS_NEW_BADGE);
+  const std::u16string new_badge_text_ =
+      l10n_util::GetStringUTF16(IDS_NEW_BADGE);
 
-  absl::optional<ui::ColorId> foreground_color_id_;
-  absl::optional<MenuItemBackground> menu_item_background_;
-  absl::optional<ui::ColorId> selected_color_id_;
+  std::optional<ui::ColorId> foreground_color_id_;
+  std::optional<MenuItemBackground> menu_item_background_;
+  std::optional<ui::ColorId> selected_color_id_;
+
+  base::CallbackListSubscription visible_changed_callback_;
+  base::CallbackListSubscription enabled_changed_callback_;
 };
 
 // EmptyMenuMenuItem ----------------------------------------------------------

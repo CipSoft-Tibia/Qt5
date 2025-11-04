@@ -30,7 +30,7 @@ String TransportStateToString(webrtc::SctpTransportState state) {
     case webrtc::SctpTransportState::kNew:
       // Not supposed to happen. DtlsTransport should
       // only be visible after reaching "connecting" state.
-      NOTREACHED();
+      NOTREACHED_IN_MIGRATION();
       return String("new");
     case webrtc::SctpTransportState::kConnecting:
       return String("connecting");
@@ -39,7 +39,7 @@ String TransportStateToString(webrtc::SctpTransportState state) {
     case webrtc::SctpTransportState::kClosed:
       return String("closed");
     default:
-      NOTREACHED();
+      NOTREACHED_IN_MIGRATION();
       return String("failed");
   }
 }
@@ -109,9 +109,9 @@ double RTCSctpTransport::maxMessageSize() const {
   return std::numeric_limits<double>::infinity();
 }
 
-absl::optional<int16_t> RTCSctpTransport::maxChannels() const {
+std::optional<int16_t> RTCSctpTransport::maxChannels() const {
   if (!current_state_.MaxChannels())
-    return absl::nullopt;
+    return std::nullopt;
   return current_state_.MaxChannels().value();
 }
 

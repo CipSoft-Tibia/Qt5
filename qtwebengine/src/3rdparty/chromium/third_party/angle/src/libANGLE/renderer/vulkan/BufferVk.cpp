@@ -15,11 +15,11 @@
 #include "common/utilities.h"
 #include "libANGLE/Context.h"
 #include "libANGLE/renderer/vulkan/ContextVk.h"
-#include "libANGLE/renderer/vulkan/RendererVk.h"
+#include "libANGLE/renderer/vulkan/vk_renderer.h"
 
 namespace rx
 {
-VkBufferUsageFlags GetDefaultBufferUsageFlags(RendererVk *renderer)
+VkBufferUsageFlags GetDefaultBufferUsageFlags(vk::Renderer *renderer)
 {
     // We could potentially use multiple backing buffers for different usages.
     // For now keep a single buffer with all relevant usage flags.
@@ -48,6 +48,8 @@ constexpr VkMemoryPropertyFlags kHostCachedFlags =
      VK_MEMORY_PROPERTY_HOST_CACHED_BIT);
 constexpr VkMemoryPropertyFlags kHostUncachedFlags =
     (VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+constexpr VkMemoryPropertyFlags kHostCachedNonCoherentFlags =
+    (VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_CACHED_BIT);
 
 // Vertex attribute buffers are used as storage buffers for conversion in compute, where access to
 // the buffer is made in 4-byte chunks.  Assume the size of the buffer is 4k+n where n is in [0, 3).
@@ -63,7 +65,7 @@ constexpr size_t kConvertedArrayBufferInitialSize = 1024 * 8;
 // device local memory to speed up access to and from the GPU.
 // Dynamic usage patterns or that are frequently mapped
 // will now request host cached memory to speed up access from the CPU.
-VkMemoryPropertyFlags GetPreferredMemoryType(RendererVk *renderer,
+VkMemoryPropertyFlags GetPreferredMemoryType(vk::Renderer *renderer,
                                              gl::BufferBinding target,
                                              gl::BufferUsage usage)
 {
@@ -93,14 +95,17 @@ VkMemoryPropertyFlags GetPreferredMemoryType(RendererVk *renderer,
         case gl::BufferUsage::StreamCopy:
         case gl::BufferUsage::StreamRead:
             // For all other types of usage, request a host cached memory
-            return kHostCachedFlags;
+            return renderer->getFeatures()
+                           .preferCachedNoncoherentForDynamicStreamBufferUsage.enabled
+                       ? kHostCachedNonCoherentFlags
+                       : kHostCachedFlags;
         default:
             UNREACHABLE();
             return kHostCachedFlags;
     }
 }
 
-VkMemoryPropertyFlags GetStorageMemoryType(RendererVk *renderer,
+VkMemoryPropertyFlags GetStorageMemoryType(vk::Renderer *renderer,
                                            GLbitfield storageFlags,
                                            bool externalBuffer)
 {
@@ -130,10 +135,40 @@ VkMemoryPropertyFlags GetStorageMemoryType(RendererVk *renderer,
 
 bool ShouldAllocateNewMemoryForUpdate(ContextVk *contextVk, size_t subDataSize, size_t bufferSize)
 {
-    // A sub data update with size > 50% of buffer size meets the threshold
-    // to acquire a new BufferHelper from the pool.
-    return contextVk->getRenderer()->getFeatures().preferCPUForBufferSubData.enabled ||
-           subDataSize > (bufferSize / 2);
+    // A sub-data update with size > 50% of buffer size meets the threshold to acquire a new
+    // BufferHelper from the pool.
+    size_t halfBufferSize = bufferSize / 2;
+    if (subDataSize > halfBufferSize)
+    {
+        return true;
+    }
+
+    // If the GPU is busy, it is possible to use the CPU for updating sub-data instead, but since it
+    // would need to create a duplicate of the buffer, a large enough buffer copy could result in a
+    // performance regression.
+    if (contextVk->getFeatures().preferCPUForBufferSubData.enabled)
+    {
+        // If the buffer is small enough, the cost of barrier associated with the GPU copy likely
+        // exceeds the overhead with the CPU copy. Duplicating the buffer allows the CPU to write to
+        // the buffer immediately, thus avoiding the barrier that prevents parallel operation.
+        constexpr size_t kCpuCopyBufferSizeThreshold = 32 * 1024;
+        if (bufferSize < kCpuCopyBufferSizeThreshold)
+        {
+            return true;
+        }
+
+        // To use CPU for the sub-data update in larger buffers, the update should be sizable enough
+        // compared to the whole buffer size. The threshold is chosen based on perf data collected
+        // from Pixel devices. At 1/8 of buffer size, the CPU overhead associated with extra data
+        // copy weighs less than serialization caused by barriers.
+        size_t subDataThreshold = bufferSize / 8;
+        if (subDataSize > subDataThreshold)
+        {
+            return true;
+        }
+    }
+
+    return false;
 }
 
 bool ShouldUseCPUToCopyData(ContextVk *contextVk,
@@ -141,7 +176,7 @@ bool ShouldUseCPUToCopyData(ContextVk *contextVk,
                             size_t copySize,
                             size_t bufferSize)
 {
-    RendererVk *renderer = contextVk->getRenderer();
+    vk::Renderer *renderer = contextVk->getRenderer();
 
     // If the buffer is not host-visible, or if it's busy on the GPU, can't read from it from the
     // CPU
@@ -203,7 +238,7 @@ angle::Result GetMemoryTypeIndex(ContextVk *contextVk,
                                  VkMemoryPropertyFlags memoryPropertyFlags,
                                  uint32_t *memoryTypeIndexOut)
 {
-    RendererVk *renderer           = contextVk->getRenderer();
+    vk::Renderer *renderer         = contextVk->getRenderer();
     const vk::Allocator &allocator = renderer->getAllocator();
 
     bool persistentlyMapped = renderer->getFeatures().persistentlyMappedBuffers.enabled;
@@ -239,45 +274,98 @@ bool IsSelfCopy(const BufferDataSource &dataSource, const vk::BufferHelper &dest
     return dataSource.data == nullptr &&
            dataSource.buffer->getBufferSerial() == destination.getBufferSerial();
 }
+
+angle::Result CopyBuffers(ContextVk *contextVk,
+                          vk::BufferHelper *srcBuffer,
+                          vk::BufferHelper *dstBuffer,
+                          uint32_t regionCount,
+                          const VkBufferCopy *copyRegions)
+{
+    ASSERT(srcBuffer->valid() && dstBuffer->valid());
+
+    // Enqueue a copy command on the GPU
+    vk::CommandBufferAccess access;
+    if (srcBuffer->getBufferSerial() == dstBuffer->getBufferSerial())
+    {
+        access.onBufferSelfCopy(srcBuffer);
+    }
+    else
+    {
+        access.onBufferTransferRead(srcBuffer);
+        access.onBufferTransferWrite(dstBuffer);
+    }
+
+    vk::OutsideRenderPassCommandBuffer *commandBuffer;
+    ANGLE_TRY(contextVk->getOutsideRenderPassCommandBuffer(access, &commandBuffer));
+
+    commandBuffer->copyBuffer(srcBuffer->getBuffer(), dstBuffer->getBuffer(), regionCount,
+                              copyRegions);
+
+    return angle::Result::Continue;
+}
 }  // namespace
 
 // ConversionBuffer implementation.
-ConversionBuffer::ConversionBuffer(RendererVk *renderer,
+ConversionBuffer::ConversionBuffer(vk::Renderer *renderer,
                                    VkBufferUsageFlags usageFlags,
                                    size_t initialSize,
                                    size_t alignment,
                                    bool hostVisible)
-    : dirty(true)
+    : mEntireBufferDirty(true)
 {
-    data = std::make_unique<vk::BufferHelper>();
+    mData = std::make_unique<vk::BufferHelper>();
+    mDirtyRanges.reserve(32);
 }
 
 ConversionBuffer::~ConversionBuffer()
 {
-    ASSERT(!data || !data->valid());
+    ASSERT(!mData || !mData->valid());
+    mDirtyRanges.clear();
 }
 
 ConversionBuffer::ConversionBuffer(ConversionBuffer &&other) = default;
 
-// BufferVk::VertexConversionBuffer implementation.
-BufferVk::VertexConversionBuffer::VertexConversionBuffer(RendererVk *renderer,
-                                                         angle::FormatID formatIDIn,
-                                                         GLuint strideIn,
-                                                         size_t offsetIn,
-                                                         bool hostVisible)
+// dirtyRanges may be overlap or continuous. In order to reduce the redunant conversion, we try to
+// consolidate the dirty ranges. First we sort it by the range's low. Then we walk the range again
+// and check it with previous range and merge them if possible. That merge will remove the
+// overlapped area as well as reduce the number of ranges.
+void ConversionBuffer::consolidateDirtyRanges()
+{
+    ASSERT(!mEntireBufferDirty);
+
+    auto comp = [](const RangeDeviceSize &a, const RangeDeviceSize &b) -> bool {
+        return a.low() < b.low();
+    };
+    std::sort(mDirtyRanges.begin(), mDirtyRanges.end(), comp);
+
+    size_t prev = 0;
+    for (size_t i = 1; i < mDirtyRanges.size(); i++)
+    {
+        if (mDirtyRanges[prev].intersectsOrContinuous(mDirtyRanges[i]))
+        {
+            mDirtyRanges[prev].merge(mDirtyRanges[i]);
+            mDirtyRanges[i].invalidate();
+        }
+        else
+        {
+            prev = i;
+        }
+    }
+}
+
+// VertexConversionBuffer implementation.
+VertexConversionBuffer::VertexConversionBuffer(vk::Renderer *renderer, const CacheKey &cacheKey)
     : ConversionBuffer(renderer,
                        vk::kVertexBufferUsageFlags,
                        kConvertedArrayBufferInitialSize,
                        vk::kVertexBufferAlignment,
-                       hostVisible),
-      formatID(formatIDIn),
-      stride(strideIn),
-      offset(offsetIn)
+                       cacheKey.hostVisible),
+      mCacheKey(cacheKey)
 {}
 
-BufferVk::VertexConversionBuffer::VertexConversionBuffer(VertexConversionBuffer &&other) = default;
+VertexConversionBuffer::VertexConversionBuffer(VertexConversionBuffer &&other) = default;
 
-BufferVk::VertexConversionBuffer::~VertexConversionBuffer() = default;
+VertexConversionBuffer::~VertexConversionBuffer() = default;
 
 // BufferVk implementation.
 BufferVk::BufferVk(const gl::BufferState &state)
@@ -288,10 +376,10 @@ BufferVk::BufferVk(const gl::BufferState &state)
       mIsStagingBufferMapped(false),
       mHasValidData(false),
       mIsMappedForWrite(false),
-      mUsageType(BufferUsageType::Static),
-      mMappedOffset(0),
-      mMappedLength(0)
-{}
+      mUsageType(BufferUsageType::Static)
+{
+    mMappedRange.invalidate();
+}
 
 BufferVk::~BufferVk() {}
 
@@ -302,9 +390,18 @@ void BufferVk::destroy(const gl::Context *context)
     (void)release(contextVk);
 }
 
+void BufferVk::releaseConversionBuffers(vk::Renderer *renderer)
+{
+    for (ConversionBuffer &buffer : mVertexConversionBuffers)
+    {
+        buffer.release(renderer);
+    }
+    mVertexConversionBuffers.clear();
+}
+
 angle::Result BufferVk::release(ContextVk *contextVk)
 {
-    RendererVk *renderer = contextVk->getRenderer();
+    vk::Renderer *renderer = contextVk->getRenderer();
     if (mBuffer.valid())
     {
         ANGLE_TRY(contextVk->releaseBufferAllocation(&mBuffer));
@@ -314,11 +411,7 @@ angle::Result BufferVk::release(ContextVk *contextVk)
         mStagingBuffer.release(renderer);
     }
 
-    for (ConversionBuffer &buffer : mVertexConversionBuffers)
-    {
-        buffer.data->release(renderer);
-    }
-    mVertexConversionBuffers.clear();
+    releaseConversionBuffers(renderer);
 
     return angle::Result::Continue;
 }
@@ -414,8 +507,8 @@ angle::Result BufferVk::setDataWithMemoryType(const gl::Context *context,
                                               VkMemoryPropertyFlags memoryPropertyFlags,
                                               gl::BufferUsage usage)
 {
-    ContextVk *contextVk = vk::GetImpl(context);
-    RendererVk *renderer = contextVk->getRenderer();
+    ContextVk *contextVk   = vk::GetImpl(context);
+    vk::Renderer *renderer = contextVk->getRenderer();
 
     // Since the buffer is being entirely reinitialized, reset the valid-data flag. If the caller
     // passed in data to fill the buffer, the flag will be updated when the data is copied to the
@@ -426,6 +519,14 @@ angle::Result BufferVk::setDataWithMemoryType(const gl::Context *context,
     {
         // Nothing to do.
         return angle::Result::Continue;
+    }
+
+    if (!mVertexConversionBuffers.empty())
+    {
+        for (ConversionBuffer &buffer : mVertexConversionBuffers)
+        {
+            buffer.clearDirty();
+        }
     }
 
     const BufferUsageType usageType = GetBufferUsageType(usage);
@@ -534,7 +635,7 @@ angle::Result BufferVk::flushStagingBuffer(ContextVk *contextVk,
                                            VkDeviceSize offset,
                                            VkDeviceSize size)
 {
-    RendererVk *renderer = contextVk->getRenderer();
+    vk::Renderer *renderer = contextVk->getRenderer();
 
     ASSERT(mIsStagingBufferMapped);
     ASSERT(mStagingBuffer.valid());
@@ -544,9 +645,8 @@ angle::Result BufferVk::flushStagingBuffer(ContextVk *contextVk,
         ANGLE_TRY(mStagingBuffer.flush(renderer));
     }
 
-    // Enqueue a copy command on the GPU.
     VkBufferCopy copyRegion = {mStagingBuffer.getOffset(), mBuffer.getOffset() + offset, size};
-    ANGLE_TRY(mBuffer.copyFromBuffer(contextVk, &mStagingBuffer, 1, &copyRegion));
+    ANGLE_TRY(CopyBuffers(contextVk, &mStagingBuffer, &mBuffer, 1, &copyRegion));
 
     return angle::Result::Continue;
 }
@@ -556,17 +656,35 @@ angle::Result BufferVk::handleDeviceLocalBufferMap(ContextVk *contextVk,
                                                    VkDeviceSize size,
                                                    uint8_t **mapPtr)
 {
+    vk::Renderer *renderer = contextVk->getRenderer();
     ANGLE_TRY(
         allocStagingBuffer(contextVk, vk::MemoryCoherency::CachedPreferCoherent, size, mapPtr));
-    ANGLE_TRY(mStagingBuffer.invalidate(contextVk->getRenderer()));
+    ANGLE_TRY(mStagingBuffer.flush(renderer));
 
     // Copy data from device local buffer to host visible staging buffer.
     VkBufferCopy copyRegion = {mBuffer.getOffset() + offset, mStagingBuffer.getOffset(), size};
-    ANGLE_TRY(mStagingBuffer.copyFromBuffer(contextVk, &mBuffer, 1, &copyRegion));
+    ANGLE_TRY(CopyBuffers(contextVk, &mBuffer, &mStagingBuffer, 1, &copyRegion));
     ANGLE_TRY(mStagingBuffer.waitForIdle(contextVk, "GPU stall due to mapping device local buffer",
                                          RenderPassClosureReason::DeviceLocalBufferMap));
-    // Because the buffer is coherent, no need to call invalidate here.
+    // Since coherent is prefer, we may end up getting non-coherent. Always call invalidate here (it
+    // will check memory flag before it actually calls into driver).
+    ANGLE_TRY(mStagingBuffer.invalidate(renderer));
 
+    return angle::Result::Continue;
+}
+
+angle::Result BufferVk::mapHostVisibleBuffer(ContextVk *contextVk,
+                                             VkDeviceSize offset,
+                                             GLbitfield access,
+                                             uint8_t **mapPtr)
+{
+    ANGLE_TRY(mBuffer.mapWithOffset(contextVk, mapPtr, static_cast<size_t>(offset)));
+
+    // Invalidate non-coherent for READ case.
+    if (!mBuffer.isCoherent() && (access & GL_MAP_READ_BIT) != 0)
+    {
+        ANGLE_TRY(mBuffer.invalidate(contextVk->getRenderer()));
+    }
     return angle::Result::Continue;
 }
 
@@ -584,7 +702,6 @@ angle::Result BufferVk::mapRange(const gl::Context *context,
                                  GLbitfield access,
                                  void **mapPtr)
 {
-    ANGLE_TRACE_EVENT0("gpu.angle", "BufferVk::mapRange");
     return mapRangeImpl(vk::GetImpl(context), offset, length, access, mapPtr);
 }
 
@@ -655,14 +772,13 @@ angle::Result BufferVk::mapRangeImpl(ContextVk *contextVk,
                                      GLbitfield access,
                                      void **mapPtr)
 {
-    RendererVk *renderer = contextVk->getRenderer();
+    vk::Renderer *renderer = contextVk->getRenderer();
     ASSERT(mBuffer.valid());
 
     // Record map call parameters in case this call is from angle internal (the access/offset/length
     // will be inconsistent from mState).
     mIsMappedForWrite = (access & GL_MAP_WRITE_BIT) != 0;
-    mMappedOffset     = offset;
-    mMappedLength     = length;
+    mMappedRange      = RangeDeviceSize(offset, offset + length);
 
     uint8_t **mapPtrBytes = reinterpret_cast<uint8_t **>(mapPtr);
     bool hostVisible      = mBuffer.isHostVisible();
@@ -672,7 +788,7 @@ angle::Result BufferVk::mapRangeImpl(ContextVk *contextVk,
     {
         if (hostVisible)
         {
-            return mBuffer.mapWithOffset(contextVk, mapPtrBytes, static_cast<size_t>(offset));
+            return mapHostVisibleBuffer(contextVk, offset, access, mapPtrBytes);
         }
         return handleDeviceLocalBufferMap(contextVk, offset, length, mapPtrBytes);
     }
@@ -694,7 +810,7 @@ angle::Result BufferVk::mapRangeImpl(ContextVk *contextVk,
         }
         if (hostVisible)
         {
-            return mBuffer.mapWithOffset(contextVk, mapPtrBytes, static_cast<size_t>(offset));
+            return mapHostVisibleBuffer(contextVk, offset, access, mapPtrBytes);
         }
         return handleDeviceLocalBufferMap(contextVk, offset, length, mapPtrBytes);
     }
@@ -708,7 +824,7 @@ angle::Result BufferVk::mapRangeImpl(ContextVk *contextVk,
     // Write case, buffer not in use.
     if (isExternalBuffer() || !isCurrentlyInUse(contextVk->getRenderer()))
     {
-        return mBuffer.mapWithOffset(contextVk, mapPtrBytes, static_cast<size_t>(offset));
+        return mapHostVisibleBuffer(contextVk, offset, access, mapPtrBytes);
     }
 
     // Write case, buffer in use.
@@ -727,7 +843,7 @@ angle::Result BufferVk::mapRangeImpl(ContextVk *contextVk,
     {
         ANGLE_TRY(acquireBufferHelper(contextVk, static_cast<size_t>(mState.getSize()),
                                       BufferUsageType::Dynamic));
-        return mBuffer.mapWithOffset(contextVk, mapPtrBytes, static_cast<size_t>(offset));
+        return mapHostVisibleBuffer(contextVk, offset, access, mapPtrBytes);
     }
 
     bool smallMapRange = (length < static_cast<VkDeviceSize>(mState.getSize()) / 2);
@@ -748,7 +864,7 @@ angle::Result BufferVk::mapRangeImpl(ContextVk *contextVk,
     // Write case (worst case, buffer in use for write)
     ANGLE_TRY(mBuffer.waitForIdle(contextVk, "GPU stall due to mapping buffer in use by the GPU",
                                   RenderPassClosureReason::BufferInUseWhenSynchronizedMap));
-    return mBuffer.mapWithOffset(contextVk, mapPtrBytes, static_cast<size_t>(offset));
+    return mapHostVisibleBuffer(contextVk, offset, access, mapPtrBytes);
 }
 
 angle::Result BufferVk::unmap(const gl::Context *context, GLboolean *result)
@@ -772,7 +888,7 @@ angle::Result BufferVk::unmapImpl(ContextVk *contextVk)
         // The buffer is device local or optimization of small range map.
         if (mIsMappedForWrite)
         {
-            ANGLE_TRY(flushStagingBuffer(contextVk, mMappedOffset, mMappedLength));
+            ANGLE_TRY(flushStagingBuffer(contextVk, mMappedRange.low(), mMappedRange.length()));
         }
 
         mIsStagingBufferMapped = false;
@@ -780,18 +896,29 @@ angle::Result BufferVk::unmapImpl(ContextVk *contextVk)
     else
     {
         ASSERT(mBuffer.isHostVisible());
-        mBuffer.unmap(contextVk->getRenderer());
+        vk::Renderer *renderer = contextVk->getRenderer();
+        if (!mBuffer.isCoherent())
+        {
+            ANGLE_TRY(mBuffer.flush(renderer));
+        }
+        mBuffer.unmap(renderer);
     }
 
     if (mIsMappedForWrite)
     {
-        dataUpdated();
+        if (mMappedRange == RangeDeviceSize(0, static_cast<VkDeviceSize>(getSize())))
+        {
+            dataUpdated();
+        }
+        else
+        {
+            dataRangeUpdated(mMappedRange);
+        }
     }
 
     // Reset the mapping parameters
     mIsMappedForWrite = false;
-    mMappedOffset     = 0;
-    mMappedLength     = 0;
+    mMappedRange.invalidate();
 
     return angle::Result::Continue;
 }
@@ -817,8 +944,8 @@ angle::Result BufferVk::getIndexRange(const gl::Context *context,
                                       bool primitiveRestartEnabled,
                                       gl::IndexRange *outRange)
 {
-    ContextVk *contextVk = vk::GetImpl(context);
-    RendererVk *renderer = contextVk->getRenderer();
+    ContextVk *contextVk   = vk::GetImpl(context);
+    vk::Renderer *renderer = contextVk->getRenderer();
 
     // This is a workaround for the mock ICD not implementing buffer memory state.
     // Could be removed if https://github.com/KhronosGroup/Vulkan-Tools/issues/84 is fixed.
@@ -868,7 +995,7 @@ angle::Result BufferVk::directUpdate(ContextVk *contextVk,
                                      size_t size,
                                      size_t offset)
 {
-    RendererVk *renderer      = contextVk->getRenderer();
+    vk::Renderer *renderer    = contextVk->getRenderer();
     uint8_t *srcPointerMapped = nullptr;
     const uint8_t *srcPointer = nullptr;
     uint8_t *dstPointer       = nullptr;
@@ -1046,8 +1173,8 @@ angle::Result BufferVk::acquireAndUpdate(ContextVk *contextVk,
 
     if (!copyRegions.empty())
     {
-        ANGLE_TRY(mBuffer.copyFromBuffer(
-            contextVk, &prevBuffer, static_cast<uint32_t>(copyRegions.size()), copyRegions.data()));
+        ANGLE_TRY(CopyBuffers(contextVk, &prevBuffer, &mBuffer,
+                              static_cast<uint32_t>(copyRegions.size()), copyRegions.data()));
     }
 
     if (prevBuffer.valid())
@@ -1124,36 +1251,51 @@ angle::Result BufferVk::setDataImpl(ContextVk *contextVk,
         ANGLE_TRY(updateBuffer(contextVk, bufferSize, dataSource, updateSize, updateOffset));
     }
 
-    // Update conversions
-    dataUpdated();
+    // Update conversions.
+    if (updateOffset == 0 && updateSize == bufferSize)
+    {
+        dataUpdated();
+    }
+    else
+    {
+        dataRangeUpdated(RangeDeviceSize(updateOffset, updateOffset + updateSize));
+    }
 
     return angle::Result::Continue;
 }
 
-ConversionBuffer *BufferVk::getVertexConversionBuffer(RendererVk *renderer,
-                                                      angle::FormatID formatID,
-                                                      GLuint stride,
-                                                      size_t offset,
-                                                      bool hostVisible)
+VertexConversionBuffer *BufferVk::getVertexConversionBuffer(
+    vk::Renderer *renderer,
+    const VertexConversionBuffer::CacheKey &cacheKey)
 {
     for (VertexConversionBuffer &buffer : mVertexConversionBuffers)
     {
-        if (buffer.formatID == formatID && buffer.stride == stride && buffer.offset == offset)
+        if (buffer.match(cacheKey))
         {
-            ASSERT(buffer.data && buffer.data->valid());
+            ASSERT(buffer.valid());
             return &buffer;
         }
     }
 
-    mVertexConversionBuffers.emplace_back(renderer, formatID, stride, offset, hostVisible);
+    mVertexConversionBuffers.emplace_back(renderer, cacheKey);
     return &mVertexConversionBuffers.back();
+}
+
+void BufferVk::dataRangeUpdated(const RangeDeviceSize &range)
+{
+    for (VertexConversionBuffer &buffer : mVertexConversionBuffers)
+    {
+        buffer.addDirtyBufferRange(range);
+    }
+    // Now we have valid data
+    mHasValidData = true;
 }
 
 void BufferVk::dataUpdated()
 {
     for (VertexConversionBuffer &buffer : mVertexConversionBuffers)
     {
-        buffer.dirty = true;
+        buffer.setEntireBufferDirty();
     }
     // Now we have valid data
     mHasValidData = true;
@@ -1168,9 +1310,9 @@ angle::Result BufferVk::acquireBufferHelper(ContextVk *contextVk,
                                             size_t sizeInBytes,
                                             BufferUsageType usageType)
 {
-    RendererVk *renderer = contextVk->getRenderer();
-    size_t size          = roundUpPow2(sizeInBytes, kBufferSizeGranularity);
-    size_t alignment     = renderer->getDefaultBufferAlignment();
+    vk::Renderer *renderer = contextVk->getRenderer();
+    size_t size            = roundUpPow2(sizeInBytes, kBufferSizeGranularity);
+    size_t alignment       = renderer->getDefaultBufferAlignment();
 
     if (mBuffer.valid())
     {
@@ -1190,7 +1332,7 @@ angle::Result BufferVk::acquireBufferHelper(ContextVk *contextVk,
     return angle::Result::Continue;
 }
 
-bool BufferVk::isCurrentlyInUse(RendererVk *renderer) const
+bool BufferVk::isCurrentlyInUse(vk::Renderer *renderer) const
 {
     return !renderer->hasResourceUseFinished(mBuffer.getResourceUse());
 }
@@ -1198,7 +1340,7 @@ bool BufferVk::isCurrentlyInUse(RendererVk *renderer) const
 // When a buffer is being completely changed, calculate whether it's better to allocate a new buffer
 // or overwrite the existing one.
 BufferUpdateType BufferVk::calculateBufferUpdateTypeOnFullUpdate(
-    RendererVk *renderer,
+    vk::Renderer *renderer,
     size_t size,
     VkMemoryPropertyFlags memoryPropertyFlags,
     BufferUsageType usageType,
@@ -1223,7 +1365,7 @@ BufferUpdateType BufferVk::calculateBufferUpdateTypeOnFullUpdate(
                                                              : BufferUpdateType::ContentsUpdate;
 }
 
-bool BufferVk::shouldRedefineStorage(RendererVk *renderer,
+bool BufferVk::shouldRedefineStorage(vk::Renderer *renderer,
                                      BufferUsageType usageType,
                                      VkMemoryPropertyFlags memoryPropertyFlags,
                                      size_t size) const
@@ -1244,10 +1386,13 @@ bool BufferVk::shouldRedefineStorage(RendererVk *renderer,
     }
     else
     {
-        size_t alignment   = renderer->getDefaultBufferAlignment();
-        size_t sizeInBytes = roundUpPow2(size, kBufferSizeGranularity);
-        size_t alignedSize = roundUp(sizeInBytes, alignment);
-        if (alignedSize != mBuffer.getSize())
+        size_t paddedBufferSize =
+            (renderer->getFeatures().padBuffersToMaxVertexAttribStride.enabled)
+                ? (size + static_cast<size_t>(renderer->getMaxVertexAttribStride()))
+                : size;
+        size_t sizeInBytes = roundUpPow2(paddedBufferSize, kBufferSizeGranularity);
+        size_t alignedSize = roundUp(sizeInBytes, renderer->getDefaultBufferAlignment());
+        if (alignedSize > mBuffer.getSize())
         {
             return true;
         }

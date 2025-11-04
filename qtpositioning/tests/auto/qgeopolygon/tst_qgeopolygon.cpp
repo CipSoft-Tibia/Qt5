@@ -273,7 +273,6 @@ void tst_QGeoPolygon::contains_data()
 
     QTest::newRow("One of the points") << c[0] << c[1] << c[2] <<  QGeoCoordinate(2, 2) << true;
     QTest::newRow("Not so far away") << c[0] << c[1] << c[2] << QGeoCoordinate(0.8, 0.8) << false;
-    QTest::newRow("Not so far away and large line") << c[0] << c[1] << c[2] << QGeoCoordinate(0.8, 0.8) << false;
     QTest::newRow("Inside") << c[0] << c[1] << c[2] << QGeoCoordinate(2.0, 1.0) << true;
 }
 
@@ -337,8 +336,8 @@ void tst_QGeoPolygon::boundingGeoRectangle_data()
 
     QTest::newRow("One of the points") << c[0] << c[1] << c[2] << QGeoCoordinate(2, 2) << true;
     QTest::newRow("Not so far away") << c[0] << c[1] << c[2] <<  QGeoCoordinate(0, 0) << false;
-    QTest::newRow("Inside the bounds") << c[0] << c[1] << c[2] <<  QGeoCoordinate(1, 0) << true;
-    QTest::newRow("Inside the bounds") << c[0] << c[1] << c[2] <<  QGeoCoordinate(1.1, 0.1) << true;
+    QTest::newRow("Inside the polygon") << c[0] << c[1] << c[2] <<  QGeoCoordinate(2, 1) << true;
+    QTest::newRow("Inside the bounding rectangle") << c[0] << c[1] << c[2] <<  QGeoCoordinate(1.1, 0.1) << true;
 }
 
 void tst_QGeoPolygon::boundingGeoRectangle()

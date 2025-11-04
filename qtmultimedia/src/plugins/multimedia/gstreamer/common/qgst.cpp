@@ -1236,7 +1236,7 @@ QGstBin QGstElement::getParentBin() const
     };
 }
 
-QGstPipeline QGstElement::getPipeline() const
+QGstBin QGstElement::getRootBin() const
 {
     QGstElement ancestor = *this;
     for (;;) {
@@ -1245,11 +1245,28 @@ QGstPipeline QGstElement::getPipeline() const
             ancestor = std::move(greatAncestor);
             continue;
         }
+        if (GST_IS_BIN(ancestor.element())) {
+            return QGstBin{
+                qGstSafeCast<GstBin>(ancestor.element()),
+                QGstBin::NeedsRef,
+            };
+        } else {
+            return QGstBin{};
+        }
+    }
+}
 
+QGstPipeline QGstElement::getPipeline() const
+{
+    QGstBin rootBin = getRootBin();
+    if (GST_IS_PIPELINE(rootBin.get())) {
         return QGstPipeline{
-            qGstSafeCast<GstPipeline>(ancestor.element()),
+            qGstSafeCast<GstPipeline>(rootBin.element()),
             QGstPipeline::NeedsRef,
         };
+    } else {
+        qWarning() << "QGstElement::getPipeline failed for element:" << *this;
+        return QGstPipeline{};
     }
 }
 
@@ -1263,9 +1280,7 @@ void QGstElement::dumpPipelineGraph(const char *filename) const
 {
     static const bool dumpEnabled = qEnvironmentVariableIsSet("GST_DEBUG_DUMP_DOT_DIR");
     if (dumpEnabled) {
-        QGstPipeline pipeline = getPipeline();
-        if (pipeline)
-            pipeline.dumpGraph(filename);
+        getRootBin().dumpGraph(filename);
     }
 }
 
@@ -1372,12 +1387,15 @@ bool QGstBin::syncChildrenState()
     return gst_bin_sync_children_states(bin());
 }
 
-void QGstBin::dumpGraph(const char *fileNamePrefix) const
+void QGstBin::dumpGraph(const char *fileNamePrefix, bool includeTimestamp) const
 {
     if (!get())
         return;
 
-    GST_DEBUG_BIN_TO_DOT_FILE(bin(), GST_DEBUG_GRAPH_SHOW_VERBOSE, fileNamePrefix);
+    if (includeTimestamp)
+        GST_DEBUG_BIN_TO_DOT_FILE_WITH_TS(bin(), GST_DEBUG_GRAPH_SHOW_VERBOSE, fileNamePrefix);
+    else
+        GST_DEBUG_BIN_TO_DOT_FILE(bin(), GST_DEBUG_GRAPH_SHOW_VERBOSE, fileNamePrefix);
 }
 
 QGstElement QGstBin::findByName(const char *name)

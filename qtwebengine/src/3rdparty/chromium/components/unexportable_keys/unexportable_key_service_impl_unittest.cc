@@ -7,6 +7,7 @@
 #include "base/containers/span.h"
 #include "base/functional/callback.h"
 #include "base/memory/ref_counted.h"
+#include "base/test/bind.h"
 #include "base/test/gmock_expected_support.h"
 #include "base/test/gmock_move_support.h"
 #include "base/test/task_environment.h"
@@ -17,6 +18,7 @@
 #include "components/unexportable_keys/unexportable_key_task_manager.h"
 #include "crypto/scoped_mock_unexportable_key_provider.h"
 #include "crypto/signature_verifier.h"
+#include "crypto/unexportable_key.h"
 #include "testing/gmock/include/gmock/gmock.h"
 #include "testing/gtest/include/gtest/gtest.h"
 
@@ -34,7 +36,8 @@ constexpr BackgroundTaskPriority kTaskPriority =
 class UnexportableKeyServiceImplTest : public testing::Test {
  public:
   UnexportableKeyServiceImplTest()
-      : task_manager_(std::make_unique<UnexportableKeyTaskManager>()),
+      : task_manager_(std::make_unique<UnexportableKeyTaskManager>(
+            crypto::UnexportableKeyProvider::Config())),
         service_(std::make_unique<UnexportableKeyServiceImpl>(*task_manager_)) {
   }
 
@@ -43,7 +46,8 @@ class UnexportableKeyServiceImplTest : public testing::Test {
   void RunBackgroundTasks() { task_environment_.RunUntilIdle(); }
 
   void ResetService() {
-    task_manager_ = std::make_unique<UnexportableKeyTaskManager>();
+    task_manager_ = std::make_unique<UnexportableKeyTaskManager>(
+        crypto::UnexportableKeyProvider::Config());
     service_ = std::make_unique<UnexportableKeyServiceImpl>(*task_manager_);
   }
 
@@ -67,10 +71,11 @@ class UnexportableKeyServiceImplTest : public testing::Test {
 };
 
 TEST_F(UnexportableKeyServiceImplTest, IsUnexportableKeyProviderSupported) {
-  EXPECT_TRUE(UnexportableKeyServiceImpl::IsUnexportableKeyProviderSupported());
+  EXPECT_TRUE(UnexportableKeyServiceImpl::IsUnexportableKeyProviderSupported(
+      crypto::UnexportableKeyProvider::Config()));
   DisableKeyProvider();
-  EXPECT_FALSE(
-      UnexportableKeyServiceImpl::IsUnexportableKeyProviderSupported());
+  EXPECT_FALSE(UnexportableKeyServiceImpl::IsUnexportableKeyProviderSupported(
+      crypto::UnexportableKeyProvider::Config()));
 
   // Test that the service returns a `ServiceError::kNoKeyProvider` error.
   base::test::TestFuture<ServiceErrorOr<UnexportableKeyId>> future;
@@ -187,6 +192,29 @@ TEST_F(UnexportableKeyServiceImplTest, FromWrappedKeyMultiplePendingRequests) {
     EXPECT_TRUE(future.IsReady());
     EXPECT_EQ(future.Get(), unwrapped_key_id);
   }
+}
+
+// Verify that a `FromWrappedSigningKeySlowlyAsync()` callback is executed
+// correctly when it's posted from another `FromWrappedSigningKeySlowlyAsync()`
+// callback.
+TEST_F(UnexportableKeyServiceImplTest,
+       FromWrappedKeyNewRequestFromFailedCallback) {
+  std::vector<uint8_t> invalid_wrapped_key = {1, 2, 3};
+
+  base::test::TestFuture<ServiceErrorOr<UnexportableKeyId>>
+      inner_request_future;
+  service().FromWrappedSigningKeySlowlyAsync(
+      invalid_wrapped_key, kTaskPriority,
+      base::BindLambdaForTesting(
+          [&](ServiceErrorOr<UnexportableKeyId> key_id_or_error) {
+            service().FromWrappedSigningKeySlowlyAsync(
+                invalid_wrapped_key, kTaskPriority,
+                inner_request_future.GetCallback());
+          }));
+  RunBackgroundTasks();
+  EXPECT_TRUE(inner_request_future.IsReady());
+  EXPECT_EQ(inner_request_future.Get(),
+            base::unexpected(ServiceError::kCryptoApiFailed));
 }
 
 TEST_F(UnexportableKeyServiceImplTest,

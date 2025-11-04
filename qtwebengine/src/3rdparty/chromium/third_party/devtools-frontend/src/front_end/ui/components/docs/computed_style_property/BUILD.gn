@@ -4,7 +4,7 @@
 
 import("../../../../../scripts/build/ninja/copy.gni")
 
-import("../../../../../third_party/typescript/typescript.gni")
+import("../../../../../scripts/build/typescript/typescript.gni")
 
 ts_library("ts") {
   testonly = true
@@ -14,8 +14,8 @@ ts_library("ts") {
   ]
 
   deps = [
-    "../../../../../test/unittests/front_end/helpers",
     "../../../../panels/elements/components:bundle",
+    "../../../../testing",
   ]
 }
 

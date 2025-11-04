@@ -2,6 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#ifdef UNSAFE_BUFFERS_BUILD
+// TODO(crbug.com/351564777): Remove this and convert code to safer constructs.
+#pragma allow_unsafe_buffers
+#endif
+
 #include "third_party/blink/renderer/modules/webaudio/audio_worklet_global_scope.h"
 
 #include <memory>
@@ -96,7 +101,7 @@ class AudioWorkletGlobalScopeTest : public PageTestBase, public ModuleTestBase {
             BeginFrameProviderParams(), nullptr /* parent_permissions_policy */,
             window->GetAgentClusterID(), ukm::kInvalidSourceId,
             window->GetExecutionContextToken()),
-        absl::nullopt, std::make_unique<WorkerDevToolsParams>());
+        std::nullopt, std::make_unique<WorkerDevToolsParams>());
     return thread;
   }
 

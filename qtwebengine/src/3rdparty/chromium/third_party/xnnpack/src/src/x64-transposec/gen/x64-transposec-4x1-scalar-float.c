@@ -10,9 +10,9 @@
 
 #include <assert.h>
 
-#include <xnnpack/common.h>
-#include <xnnpack/math.h>
-#include <xnnpack/transpose.h>
+#include "xnnpack/common.h"
+#include "xnnpack/math.h"
+#include "xnnpack/transpose.h"
 
 void xnn_x64_transposec_ukernel__4x1_scalar_float(
     const uint64_t *input,
@@ -23,8 +23,8 @@ void xnn_x64_transposec_ukernel__4x1_scalar_float(
     size_t block_height,
     const union xnn_x64_transpose_params params[restrict XNN_MIN_ELEMENTS(1)]) XNN_OOB_READS
 {
-  assert(output_stride >= block_height * sizeof(double));
-  assert(input_stride >= block_width * sizeof(double));
+  assert(block_width == 1 || output_stride >= block_height * sizeof(double));
+  assert(block_height == 1 || input_stride >= block_width * sizeof(double));
 
   const size_t tile_height = 4;
   const size_t tile_width = 1;

@@ -4,10 +4,11 @@
 
 #include "third_party/blink/renderer/core/loader/resource_load_observer_for_frame.h"
 
+#include <optional>
+
 #include "base/types/optional_util.h"
 #include "services/network/public/cpp/cors/cors_error_status.h"
 #include "services/network/public/mojom/cors.mojom-forward.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "third_party/blink/public/common/security/address_space_feature.h"
 #include "third_party/blink/public/mojom/frame/frame.mojom-blink.h"
 #include "third_party/blink/renderer/core/core_probes_inl.h"
@@ -80,7 +81,7 @@ void RecordAddressSpaceFeature(LocalFrame* client_frame,
     UseCounter::Count(window, WebFeature::kPrivateNetworkAccessNullIpAddress);
   }
 
-  absl::optional<WebFeature> feature = AddressSpaceFeature(
+  std::optional<WebFeature> feature = AddressSpaceFeature(
       FetchType::kSubresource, response.ClientAddressSpace(),
       window->IsSecureContext(), response.AddressSpace());
   if (!feature.has_value()) {
@@ -153,7 +154,7 @@ void ResourceLoadObserverForFrame::WillSendRequest(
   }
 
   frame->GetAttributionSrcLoader()->MaybeRegisterAttributionHeaders(
-      request, redirect_response, resource);
+      request, redirect_response);
 
   probe::WillSendRequest(
       document_->domWindow(), document_loader_,
@@ -163,7 +164,7 @@ void ResourceLoadObserverForFrame::WillSendRequest(
   if (auto* idleness_detector = frame->GetIdlenessDetector())
     idleness_detector->OnWillSendRequest(document_->Fetcher());
   if (auto* interactive_detector = InteractiveDetector::From(*document_))
-    interactive_detector->OnResourceLoadBegin(absl::nullopt);
+    interactive_detector->OnResourceLoadBegin(std::nullopt);
 }
 
 void ResourceLoadObserverForFrame::DidChangePriority(
@@ -255,8 +256,8 @@ void ResourceLoadObserverForFrame::DidReceiveResponse(
         document_loader_->GetContentSecurityNotifier());
   }
 
-  frame->GetAttributionSrcLoader()->MaybeRegisterAttributionHeaders(
-      request, response, resource);
+  frame->GetAttributionSrcLoader()->MaybeRegisterAttributionHeaders(request,
+                                                                    response);
 
   frame->Loader().Progress().IncrementProgress(identifier, response);
   probe::DidReceiveResourceResponse(GetProbe(), identifier, document_loader_,
@@ -268,12 +269,11 @@ void ResourceLoadObserverForFrame::DidReceiveResponse(
 
 void ResourceLoadObserverForFrame::DidReceiveData(
     uint64_t identifier,
-    base::span<const char> chunk) {
+    base::SpanOrSize<const char> chunk) {
   LocalFrame* frame = document_->GetFrame();
   DCHECK(frame);
   frame->Loader().Progress().IncrementProgress(identifier, chunk.size());
-  probe::DidReceiveData(GetProbe(), identifier, document_loader_, chunk.data(),
-                        chunk.size());
+  probe::DidReceiveData(GetProbe(), identifier, document_loader_, chunk);
 }
 
 void ResourceLoadObserverForFrame::DidReceiveTransferSizeUpdate(
@@ -332,7 +332,7 @@ void ResourceLoadObserverForFrame::DidFailLoading(
   if (auto* interactive_detector = InteractiveDetector::From(*document_)) {
     // We have not yet recorded load_finish_time. Pass nullopt here; we will
     // call base::TimeTicks::Now() lazily when we need it.
-    interactive_detector->OnResourceLoadEnd(absl::nullopt);
+    interactive_detector->OnResourceLoadEnd(std::nullopt);
   }
   if (IdlenessDetector* idleness_detector = frame->GetIdlenessDetector()) {
     idleness_detector->OnDidLoadResource();
@@ -353,6 +353,13 @@ void ResourceLoadObserverForFrame::DidChangeRenderBlockingBehavior(
             resource->GetResourceRequest(),
             params.GetResourceRequest().GetRenderBlockingBehavior());
       });
+}
+
+bool ResourceLoadObserverForFrame::InterestedInAllRequests() {
+  if (GetProbe()) {
+    return GetProbe()->HasInspectorNetworkAgents();
+  }
+  return false;
 }
 
 void ResourceLoadObserverForFrame::Trace(Visitor* visitor) const {

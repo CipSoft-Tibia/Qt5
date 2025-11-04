@@ -8,10 +8,12 @@
 #include <bitset>
 #include <cmath>
 #include <memory>
+#include <vector>
 
 #include "base/check.h"
 #include "base/functional/callback.h"
 #include "base/memory/raw_ptr.h"
+#include "base/time/time.h"
 #include "base/trace_event/traced_value.h"
 #include "cc/cc_export.h"
 #include "cc/metrics/frame_info.h"
@@ -22,7 +24,6 @@ struct BeginFrameArgs;
 }  // namespace viz
 
 namespace cc {
-class JankMetrics;
 struct FrameInfo;
 
 enum class FrameSequenceTrackerType {
@@ -80,32 +81,31 @@ class CC_EXPORT FrameSequenceMetrics {
   FrameSequenceMetrics(const FrameSequenceMetrics&) = delete;
   FrameSequenceMetrics& operator=(const FrameSequenceMetrics&) = delete;
 
-  struct ThroughputData {
-    static std::unique_ptr<base::trace_event::TracedValue> ToTracedValue(
-        const ThroughputData& impl,
-        const ThroughputData& main,
-        FrameInfo::SmoothEffectDrivingThread effective_thred);
-
-    void Merge(const ThroughputData& data) {
-      frames_expected += data.frames_expected;
-      frames_produced += data.frames_produced;
-    }
-
-    // Tracks the number of frames that were expected to be shown during this
-    // frame-sequence.
-    uint32_t frames_expected = 0;
-
-    // Tracks the number of frames that were actually presented to the user
-    // during this frame-sequence.
-    uint32_t frames_produced = 0;
-  };
-
   void SetScrollingThread(FrameInfo::SmoothEffectDrivingThread thread);
 
-  struct CustomReportData {
+  struct Jank {
+    // The start time of a jank.
+    base::TimeTicks start_time;
+    // The duration of a jank.
+    base::TimeDelta duration;
+  };
+
+  struct CC_EXPORT CustomReportData {
+    CustomReportData();
+    CustomReportData(uint32_t frames_expected,
+                     uint32_t frames_dropped,
+                     uint32_t jank_count,
+                     std::vector<Jank> janks);
+
+    CustomReportData(const CustomReportData&);
+    CustomReportData& operator=(const CustomReportData&);
+
+    ~CustomReportData();
+
     uint32_t frames_expected_v3 = 0;
     uint32_t frames_dropped_v3 = 0;
     uint32_t jank_count_v3 = 0;
+    std::vector<Jank> janks;
   };
   using CustomReporter = base::OnceCallback<void(const CustomReportData& data)>;
   // Sets reporter callback for kCustom typed sequence.
@@ -124,42 +124,26 @@ class CC_EXPORT FrameSequenceMetrics {
   void AddSortedFrame(const viz::BeginFrameArgs& args,
                       const FrameInfo& frame_info);
 
-  ThroughputData& impl_throughput() { return impl_throughput_; }
-  ThroughputData& main_throughput() { return main_throughput_; }
-
   FrameSequenceTrackerType type() const { return type_; }
 
   // Must be called before destructor.
   void ReportLeftoverData();
 
   void AdoptTrace(FrameSequenceMetrics* adopt_from);
-  void AdvanceTrace(base::TimeTicks timestamp, uint64_t sequence_number);
-
-  void ComputeJank(FrameInfo::SmoothEffectDrivingThread thread_type,
-                   uint32_t frame_token,
-                   base::TimeTicks presentation_time,
-                   base::TimeDelta frame_interval);
-
-  void NotifySubmitForJankReporter(
-      FrameInfo::SmoothEffectDrivingThread thread_type,
-      uint32_t frame_token,
-      uint32_t sequence_number);
-
-  void NotifyNoUpdateForJankReporter(
-      FrameInfo::SmoothEffectDrivingThread thread_type,
-      uint32_t sequence_number,
-      base::TimeDelta frame_interval);
 
  private:
+  friend class FrameSequenceMetricsTest;
+  friend class FrameSequenceTrackerTest;
   // FrameInfo is a merger of two threads' frame production. We should only look
   // at the `final_state`, `last_presented_termination_time` and
   // `termination_time` for the GetEffectiveThread.
-  void CalculateCheckerboardingAndJankV3(
-      const viz::BeginFrameArgs& args,
-      const FrameInfo& frame_info,
-      FrameInfo::FrameFinalState final_state,
-      base::TimeTicks last_presented_termination_time,
-      base::TimeTicks termination_time);
+  void CalculateJankV3(const viz::BeginFrameArgs& args,
+                       const FrameInfo& frame_info,
+                       FrameInfo::FrameFinalState final_state,
+                       base::TimeTicks last_presented_termination_time,
+                       base::TimeTicks termination_time);
+  void CalculateCheckerboarding(const FrameInfo& frame_info,
+                                FrameInfo::FrameFinalState final_state);
   void IncrementJankIdleTimeV3(base::TimeTicks last_presented_termination_time,
                                base::TimeTicks termination_time);
   void TraceJankV3(uint64_t sequence_number,
@@ -182,7 +166,15 @@ class CC_EXPORT FrameSequenceMetrics {
     FrameInfo last_presented_frame;
     base::TimeDelta last_frame_delta;
     base::TimeDelta no_update_duration;
+    // Note: janks are only recorded for kCustom types sequences
+    std::vector<Jank> janks;
   } v3_;
+
+  struct V4 {
+    uint32_t frames_checkerboarded = 0;
+    uint32_t frames_checkerboarded_need_raster = 0;
+    uint32_t frames_checkerboarded_need_record = 0;
+  } v4_;
 
   // Tracks some data to generate useful trace events.
   struct TraceData {
@@ -201,23 +193,16 @@ class CC_EXPORT FrameSequenceMetrics {
                  uint32_t dropped,
                  uint64_t sequence_number,
                  const char* histogram_name);
-    void Terminate();
-    void TerminateV3(const V3& v3,
-                     FrameInfo::SmoothEffectDrivingThread effective_thread);
+    void Terminate(const V3& v3,
+                   const V4& v4,
+                   FrameInfo::SmoothEffectDrivingThread effective_thread);
   } trace_data_{this};
-
-  TraceData trace_data_v3_{this};
-
-  ThroughputData impl_throughput_;
-  ThroughputData main_throughput_;
 
   FrameInfo::SmoothEffectDrivingThread scrolling_thread_ =
       FrameInfo::SmoothEffectDrivingThread::kUnknown;
 
   // Callback invoked to report metrics for kCustom typed sequence.
   CustomReporter custom_reporter_;
-
-  std::unique_ptr<JankMetrics> jank_reporter_;
 };
 
 bool ShouldReportForAnimation(FrameSequenceTrackerType sequence_type,

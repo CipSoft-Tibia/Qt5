@@ -37,8 +37,8 @@ class QQuickMaterialPlaceholderText : public QQuickPlaceholderText
     Q_PROPERTY(qreal controlImplicitBackgroundHeight READ controlImplicitBackgroundHeight
         WRITE setControlImplicitBackgroundHeight NOTIFY controlImplicitBackgroundHeightChanged FINAL)
     Q_PROPERTY(qreal controlHeight READ controlHeight WRITE setControlHeight FINAL)
-    Q_PROPERTY(int leftPadding WRITE setLeftPadding FINAL)
-    Q_PROPERTY(int floatingLeftPadding WRITE setFloatingLeftPadding FINAL)
+    Q_PROPERTY(int leftPadding MEMBER m_leftPadding WRITE setLeftPadding FINAL)
+    Q_PROPERTY(int floatingLeftPadding MEMBER m_floatingLeftPadding WRITE setFloatingLeftPadding FINAL)
     QML_NAMED_ELEMENT(FloatingPlaceholderText)
     QML_ADDED_IN_VERSION(6, 5)
 
@@ -89,10 +89,9 @@ private:
     qreal normalTargetX() const;
     qreal floatingTargetX() const;
 
-    void controlGotActiveFocus();
-    void controlLostActiveFocus();
+    void controlActiveFocusChanged();
 
-    void maybeSetFocusAnimationProgress();
+    void updateFocusAnimation(bool createIfNeeded = false);
 
     void componentComplete() override;
 
@@ -105,8 +104,7 @@ private:
     qreal m_controlHeight = 0;
     int m_leftPadding = 0;
     int m_floatingLeftPadding = 0;
-    QPointer<QParallelAnimationGroup> m_focusInAnimation;
-    QPointer<QParallelAnimationGroup> m_focusOutAnimation;
+    QPointer<QParallelAnimationGroup> m_focusAnimation;
 };
 
 QT_END_NAMESPACE

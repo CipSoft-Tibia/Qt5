@@ -12,9 +12,9 @@
 #include <memory>
 
 #include "core/fxcrt/data_vector.h"
-#include "third_party/base/memory/ptr_util.h"
-#include "third_party/base/notreached.h"
-#include "third_party/base/numerics/safe_conversions.h"
+#include "core/fxcrt/notreached.h"
+#include "core/fxcrt/numerics/safe_conversions.h"
+#include "core/fxcrt/ptr_util.h"
 
 namespace fxcodec {
 
@@ -56,7 +56,7 @@ IccTransform::~IccTransform() {
 std::unique_ptr<IccTransform> IccTransform::CreateTransformSRGB(
     pdfium::span<const uint8_t> span) {
   ScopedCmsProfile srcProfile(cmsOpenProfileFromMem(
-      span.data(), pdfium::base::checked_cast<cmsUInt32Number>(span.size())));
+      span.data(), pdfium::checked_cast<cmsUInt32Number>(span.size())));
   if (!srcProfile)
     return nullptr;
 
@@ -127,7 +127,7 @@ void IccTransform::Translate(pdfium::span<const float> pSrcValues,
   } else {
     DataVector<uint8_t> inputs(std::max<size_t>(pSrcValues.size(), 16));
     for (size_t i = 0; i < pSrcValues.size(); ++i) {
-      inputs[i] = std::clamp(static_cast<int>(pSrcValues[i] * 255.0f), 0, 255);
+      inputs[i] = static_cast<int>(std::clamp(pSrcValues[i] * 255.0f, 0.0f, 255.0f));
     }
     cmsDoTransform(m_hTransform, inputs.data(), output, 1);
   }

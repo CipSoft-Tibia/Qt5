@@ -21,11 +21,13 @@ class SurfaceGraphModifier : public QObject
 {
     Q_OBJECT
 
-    enum InputState { StateNormal = 0, StateDraggingX, StateDraggingZ, StateDraggingY };
+    enum InputState : unsigned short { StateNormal = 0, StateDraggingX, StateDraggingZ, StateDraggingY };
 
 public:
+    Q_DISABLE_COPY_MOVE(SurfaceGraphModifier)
+
     explicit SurfaceGraphModifier(Q3DSurfaceWidgetItem *surface, QLabel *label, QObject *parent);
-    ~SurfaceGraphModifier();
+    ~SurfaceGraphModifier() override;
 
     //! [0]
     void toggleModeNone() { m_graph->setSelectionMode(QtGraphs3D::SelectionFlag::None); }
@@ -106,7 +108,7 @@ private:
     QPropertyAnimation *m_selectionAnimation = nullptr;
     QCustom3DLabel *m_titleLabel = nullptr;
     QCustom3DItem *m_previouslyAnimatedItem = nullptr;
-    QVector3D m_previousScaling = {};
+    QVector3D m_previousScaling;
 
     TopographicSeries *m_topography = nullptr;
     HighlightSeries *m_highlight = nullptr;

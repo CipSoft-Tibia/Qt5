@@ -13,10 +13,13 @@
 #include "base/feature_list.h"
 #include "base/memory/scoped_refptr.h"
 #include "base/synchronization/lock.h"
+#include "base/time/default_clock.h"
 #include "base/values.h"
 #include "components/content_settings/core/browser/content_settings_rule.h"
+#include "components/content_settings/core/common/content_settings_rules.h"
 #include "components/content_settings/core/common/content_settings_types.h"
 #include "components/content_settings/core/common/features.h"
+#include "components/content_settings/core/common/host_indexed_content_settings.h"
 #include "url/gurl.h"
 
 namespace content_settings {
@@ -25,15 +28,16 @@ namespace {
 
 // This iterator is used for iterating the rules for |content_type| and
 // |resource_identifier| in the precedence order of the rules.
+template <class Iterator>
 class RuleIteratorImpl : public RuleIterator {
  public:
-  RuleIteratorImpl(const Rules::const_iterator& current_rule,
-                   const Rules::const_iterator& rule_end,
-                   scoped_refptr<RefCountedAutoLock> auto_lock,
+  RuleIteratorImpl(const Iterator& current_rule,
+                   const Iterator& rule_end,
+                   base::MovableAutoLock&& auto_lock,
                    base::AutoReset<bool> iterating)
-      : current_rule_(current_rule),
+      : auto_lock_(std::move(auto_lock)),
+        current_rule_(current_rule),
         rule_end_(rule_end),
-        auto_lock_(std::move(auto_lock)),
         iterating_(std::move(iterating)) {}
   ~RuleIteratorImpl() override = default;
 
@@ -50,9 +54,9 @@ class RuleIteratorImpl : public RuleIterator {
   }
 
  private:
-  Rules::const_iterator current_rule_;
-  Rules::const_iterator rule_end_;
-  scoped_refptr<RefCountedAutoLock> auto_lock_;
+  base::MovableAutoLock auto_lock_;
+  Iterator current_rule_;
+  Iterator rule_end_;
   base::AutoReset<bool> iterating_;
 };
 
@@ -64,15 +68,15 @@ std::unique_ptr<RuleIterator> OriginValueMap::GetRuleIterator(
   // must be passed to the |RuleIteratorImpl| in a locked state, so that nobody
   // can access |entries_| after |find()| but before the |RuleIteratorImpl| is
   // created.
-  scoped_refptr<RefCountedAutoLock> auto_lock =
-      MakeRefCounted<RefCountedAutoLock>(lock_);
-  auto it = entries_.find(content_type);
-  if (it == entries_.end()) {
+  base::MovableAutoLock auto_lock(lock_);
+  auto it = entry_index().find(content_type);
+  if (it == entry_index().end()) {
     return nullptr;
   }
   CHECK(!iterating_);
   base::AutoReset<bool> iterating(&iterating_, true);
-  return std::make_unique<RuleIteratorImpl>(
+  return std::make_unique<
+      RuleIteratorImpl<HostIndexedContentSettings::Iterator>>(
       it->second.begin(), it->second.end(), std::move(auto_lock),
       std::move(iterating));
 }
@@ -81,36 +85,43 @@ std::unique_ptr<Rule> OriginValueMap::GetRule(
     const GURL& primary_url,
     const GURL& secondary_url,
     ContentSettingsType content_type) const {
-  auto it = entries_.find(content_type);
-  if (it == entries_.end()) {
+  const RuleEntry* result = nullptr;
+  auto it = entry_index().find(content_type);
+  if (it == entry_index().end()) {
     return nullptr;
   }
-
-  // Iterate the entries in until a match is found. Since the rules are
-  // stored in the order of decreasing precedence, the most specific match
-  // is found first.
-  for (const auto& entry : it->second) {
-    if (entry.first.primary_pattern.Matches(primary_url) &&
-        entry.first.secondary_pattern.Matches(secondary_url) &&
-        (base::FeatureList::IsEnabled(
-             content_settings::features::kActiveContentSettingExpiry) ||
-         !entry.second.metadata.IsExpired())) {
-      return std::make_unique<Rule>(
-          entry.first.primary_pattern, entry.first.secondary_pattern,
-          entry.second.value.Clone(), entry.second.metadata);
-    }
+  result = it->second.Find(primary_url, secondary_url);
+  if (result) {
+    return std::make_unique<Rule>(
+        result->first.primary_pattern, result->first.secondary_pattern,
+        result->second.value.Clone(), result->second.metadata);
   }
+
   return nullptr;
 }
 
 size_t OriginValueMap::size() const {
   size_t size = 0;
-  for (const auto& entry : entries_)
+  for (const auto& entry : entry_index()) {
     size += entry.second.size();
+  }
   return size;
 }
 
-OriginValueMap::OriginValueMap() = default;
+std::vector<ContentSettingsType> OriginValueMap::types() const {
+  std::vector<ContentSettingsType> result;
+  for (const auto& entry : entry_index()) {
+    result.push_back(entry.first);
+  }
+  return result;
+}
+
+OriginValueMap::OriginValueMap(const base::Clock* clock) : clock_(clock) {
+  DCHECK(clock);
+}
+
+OriginValueMap::OriginValueMap()
+    : OriginValueMap(base::DefaultClock::GetInstance()) {}
 
 OriginValueMap::~OriginValueMap() = default;
 
@@ -118,18 +129,13 @@ const base::Value* OriginValueMap::GetValue(
     const GURL& primary_url,
     const GURL& secondary_url,
     ContentSettingsType content_type) const {
-  auto it = entries_.find(content_type);
-  if (it == entries_.end())
+  auto it = entry_index().find(content_type);
+  if (it == entry_index().end()) {
     return nullptr;
-
-  // Iterate the entries in until a match is found. Since the rules are stored
-  // in the order of decreasing precedence, the most specific match is found
-  // first.
-  for (const auto& entry : it->second) {
-    if (entry.first.primary_pattern.Matches(primary_url) &&
-        entry.first.secondary_pattern.Matches(secondary_url)) {
-      return &entry.second.value;
-    }
+  }
+  auto* result = it->second.Find(primary_url, secondary_url);
+  if (result) {
+    return &result->second.value;
   }
   return nullptr;
 }
@@ -146,14 +152,9 @@ bool OriginValueMap::SetValue(
   // TODO(raymes): Remove this after we track down the cause of
   // crbug.com/531548.
   CHECK_NE(ContentSettingsType::DEFAULT, content_type);
-  SortedPatternPair patterns(primary_pattern, secondary_pattern);
-  ValueEntry* entry = &entries_[content_type][patterns];
-  if (entry->value == value && entry->metadata == metadata) {
-    return false;
-  }
-  entry->value = std::move(value);
-  entry->metadata = metadata;
-  return true;
+
+  return get_index(content_type)
+      .SetValue(primary_pattern, secondary_pattern, std::move(value), metadata);
 }
 
 bool OriginValueMap::DeleteValue(
@@ -161,25 +162,33 @@ bool OriginValueMap::DeleteValue(
     const ContentSettingsPattern& secondary_pattern,
     ContentSettingsType content_type) {
   CHECK(!iterating_);
-  SortedPatternPair patterns(primary_pattern, secondary_pattern);
-  auto it = entries_.find(content_type);
-  if (it == entries_.end())
+  auto it = entry_index().find(content_type);
+  if (it == entry_index().end()) {
     return false;
-  bool result = it->second.erase(patterns) > 0;
-  if (it->second.empty())
-    entries_.erase(it);
+  }
+  bool result = it->second.DeleteValue(primary_pattern, secondary_pattern);
+  if (it->second.empty()) {
+    entry_index().erase(it);
+  }
   return result;
 }
 
 void OriginValueMap::DeleteValues(ContentSettingsType content_type) {
   CHECK(!iterating_);
-  entries_.erase(content_type);
+  entry_index().erase(content_type);
 }
 
 void OriginValueMap::clear() {
   CHECK(!iterating_);
   // Delete all owned value objects.
-  entries_.clear();
+  return entry_index().clear();
 }
 
+void OriginValueMap::SetClockForTesting(const base::Clock* clock) {
+  clock_ = clock;
+  base::AutoLock lock(lock_);
+  for (auto& index : entry_index()) {
+    index.second.SetClockForTesting(clock);  // IN-TEST
+  }
+}
 }  // namespace content_settings

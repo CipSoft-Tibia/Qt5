@@ -243,6 +243,9 @@ private slots:
     void QTBUG_73286_data() { generic_data("QODBC"); }
     void QTBUG_73286();
 
+    void ODBC_FloatingPoint_data() { return generic_data("QODBC"); }
+    void ODBC_FloatingPoint();
+
     void insertVarChar1_data() { generic_data("QODBC"); }
     void insertVarChar1();
 
@@ -270,6 +273,13 @@ private slots:
     // invalidQuery() if run later; so put this one last !
     void prematureExec_data() { generic_data(); }
     void prematureExec();
+
+#if QT_REMOVAL_QT7_DEPRECATED_SINCE(6, 2)
+    // cleanup() is data-driven
+    void qmetatypeDeprecatedCopy_data() { generic_data(); }
+    void qmetatypeDeprecatedCopy();
+#endif
+
 private:
     // returns all database connections
     void generic_data(const QString &engine=QString());
@@ -2908,10 +2918,10 @@ void tst_QSqlQuery::queryOnInvalidDatabase()
             QSqlDatabase::removeDatabase("invalidConnection");
         });
         // Note: destruction of db needs to happen before we call removeDatabase.
-        QTest::ignoreMessage(QtWarningMsg, "QSqlDatabase: INVALID driver not loaded");
 #if QT_CONFIG(regularexpression)
         QTest::ignoreMessage(QtWarningMsg,
-                             QRegularExpression("QSqlDatabase: available drivers: "));
+                             QRegularExpression("QSqlDatabase: can not load requested driver "
+                                                "'INVALID', available drivers: "));
 #endif
         QSqlDatabase db = QSqlDatabase::addDatabase("INVALID", "invalidConnection");
         QVERIFY(db.lastError().isValid());
@@ -4401,7 +4411,7 @@ void tst_QSqlQuery::aggregateFunctionTypes()
         const auto &tableName = ts.tableName();
 
         QSqlQuery q(db);
-        QVERIFY_SQL(q, exec(QLatin1String("CREATE TABLE %1 (id REAL)").arg(tableName)));
+        QVERIFY_SQL(q, exec(QLatin1String("CREATE TABLE %1 (id DOUBLE PRECISION)").arg(tableName)));
 
         // First test without any entries
         QVERIFY_SQL(q, exec("SELECT SUM(id) FROM " + tableName));
@@ -4675,6 +4685,34 @@ void tst_QSqlQuery::QTBUG_73286()
     QCOMPARE(q.value(1).toString(), "12345678901234567890");
     QCOMPARE(q.value(2).toString(), "12345678901234567.890");
 }
+
+void tst_QSqlQuery::ODBC_FloatingPoint()
+{
+    QFETCH(QString, dbName);
+    QSqlDatabase db = QSqlDatabase::database(dbName);
+    CHECK_DATABASE(db);
+    TableScope ts(db, "qtbug138642", __FILE__);
+
+    constexpr auto val1 = 0.015625; // more than 7 chars which is the length of real!
+    constexpr auto val2 = 0.09375;
+    QSqlQuery q(db);
+    QVERIFY_SQL(q, exec("CREATE TABLE %1 (Id INT, Column1 REAL, Column2 FLOAT)"_L1.arg(ts.tableName())));
+    QVERIFY_SQL(q, exec("INSERT INTO %1 (Id, Column1, Column2) Values (1, %2, %2)"_L1.arg(ts.tableName()).arg(val1)));
+    QVERIFY_SQL(q, exec("INSERT INTO %1 (Id, Column1, Column2) Values (2, %2, %2)"_L1.arg(ts.tableName()).arg(val2)));
+
+    const auto prec = {QSql::HighPrecision, QSql::LowPrecisionDouble};
+    for (const auto p  : prec) {
+        q.setNumericalPrecisionPolicy(p);
+        QVERIFY_SQL(q, exec("SELECT Column1, Column2 FROM %1 ORDER BY Id"_L1.arg(ts.tableName())));
+        QVERIFY_SQL(q, next());
+        QCOMPARE(q.value(0).toDouble(), val1);
+        QCOMPARE(q.value(1).toDouble(), val1);
+        QVERIFY_SQL(q, next());
+        QCOMPARE(q.value(0).toDouble(), val2);
+        QCOMPARE(q.value(1).toDouble(), val2);
+    }
+}
+
 
 void tst_QSqlQuery::insertVarChar1()
 {
@@ -5238,6 +5276,18 @@ void tst_QSqlQuery::psqlJsonOperator()
     QCOMPARE(qry.value(1).toByteArray(), "{\"b\": [3, 4]}");
 }
 
+
+#if QT_REMOVAL_QT7_DEPRECATED_SINCE(6, 2)
+void tst_QSqlQuery::qmetatypeDeprecatedCopy()
+{
+    QMetaType mt = QMetaType::fromType<QSqlQuery>();
+    QSqlQuery query;
+
+    QTest::ignoreMessage(QtWarningMsg, "QMetaType: copy construction of type 'QSqlQuery' is deprecated");
+    void *copy = mt.create(&query);
+    mt.destroy(copy);
+}
+#endif
 
 QTEST_MAIN(tst_QSqlQuery)
 #include "tst_qsqlquery.moc"

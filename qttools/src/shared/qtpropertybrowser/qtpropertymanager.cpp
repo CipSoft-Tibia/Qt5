@@ -336,7 +336,7 @@ static void setMinimumValue(PropertyManager *manager, PropertyManagerPrivate *ma
             QtProperty *property, const Value &minVal)
 {
     void (PropertyManagerPrivate::*setSubPropertyRange)(QtProperty *,
-                    ValueChangeParameter, ValueChangeParameter, ValueChangeParameter) = 0;
+                    ValueChangeParameter, ValueChangeParameter, ValueChangeParameter) = nullptr;
     setBorderValue<ValueChangeParameter, PropertyManagerPrivate, PropertyManager, Value, PrivateData>(manager, managerPrivate,
             propertyChangedSignal, valueChangedSignal, rangeChangedSignal,
             property, &PropertyManagerPrivate::Data::minimumValue, &PropertyManagerPrivate::Data::setMinimumValue, minVal, setSubPropertyRange);
@@ -350,7 +350,7 @@ static void setMaximumValue(PropertyManager *manager, PropertyManagerPrivate *ma
             QtProperty *property, const Value &maxVal)
 {
     void (PropertyManagerPrivate::*setSubPropertyRange)(QtProperty *,
-                    ValueChangeParameter, ValueChangeParameter, ValueChangeParameter) = 0;
+                    ValueChangeParameter, ValueChangeParameter, ValueChangeParameter) = nullptr;
     setBorderValue<ValueChangeParameter, PropertyManagerPrivate, PropertyManager, Value, PrivateData>(manager, managerPrivate,
             propertyChangedSignal, valueChangedSignal, rangeChangedSignal,
             property, &PropertyManagerPrivate::Data::maximumValue, &PropertyManagerPrivate::Data::setMaximumValue, maxVal, setSubPropertyRange);
@@ -425,7 +425,7 @@ void QtMetaEnumProvider::initLocale()
 
         if (!locales.isEmpty() && !m_languageToIndex.contains(language)) {
             const auto territories = sortedTerritories(locales);
-            int langIdx = m_languageEnumNames.size();
+            qsizetype langIdx = m_languageEnumNames.size();
             m_indexToLanguage[langIdx] = language;
             m_languageToIndex[language] = langIdx;
             QStringList territoryNames;
@@ -474,10 +474,15 @@ void QtMetaEnumProvider::indexToLocale(int languageIndex, int territoryIndex, QL
 {
     QLocale::Language l = QLocale::C;
     QLocale::Territory c = QLocale::AnyTerritory;
-    if (m_indexToLanguage.contains(languageIndex)) {
-        l = m_indexToLanguage[languageIndex];
-        if (m_indexToTerritory.contains(languageIndex) && m_indexToTerritory[languageIndex].contains(territoryIndex))
-            c = m_indexToTerritory[languageIndex][territoryIndex];
+    const auto lit = m_indexToLanguage.constFind(languageIndex);
+    if (lit != m_indexToLanguage.cend()) {
+        l = lit.value();
+        const auto tit = m_indexToTerritory.constFind(languageIndex);
+        if (tit != m_indexToTerritory.end()) {
+            const auto tit2 = tit.value().constFind(territoryIndex);
+            if (tit2 != tit.value().cend())
+                c = tit2.value();
+        }
     }
     if (language)
         *language = l;
@@ -489,10 +494,15 @@ void QtMetaEnumProvider::localeToIndex(QLocale::Language language, QLocale::Terr
 {
     int l = -1;
     int c = -1;
-    if (m_languageToIndex.contains(language)) {
-        l = m_languageToIndex[language];
-        if (m_territoryToIndex.contains(language) && m_territoryToIndex[language].contains(territory))
-            c = m_territoryToIndex[language][territory];
+    const auto lit = m_languageToIndex.constFind(language);
+    if (lit != m_languageToIndex.cend()) {
+        l = lit.value();
+        const auto tit = m_territoryToIndex.constFind(language);
+        if (tit != m_territoryToIndex.cend()) {
+            const auto tit2 = tit.value().constFind(territory);
+            if (tit2 != tit.value().cend())
+                c = tit2.value();
+        }
     }
 
     if (languageIndex)
@@ -530,10 +540,7 @@ QtGroupPropertyManager::QtGroupPropertyManager(QObject *parent)
 /*!
     Destroys this manager, and all the properties it has created.
 */
-QtGroupPropertyManager::~QtGroupPropertyManager()
-{
-
-}
+QtGroupPropertyManager::~QtGroupPropertyManager() = default;
 
 /*!
     \reimp
@@ -2226,7 +2233,7 @@ void QtLocalePropertyManagerPrivate::slotEnumChanged(QtProperty *property, int v
         const QLocale loc = m_values[prop];
         QLocale::Language newLanguage = loc.language();
         QLocale::Territory newTerritory = loc.territory();
-        metaEnumProvider()->indexToLocale(value, 0, &newLanguage, 0);
+        metaEnumProvider()->indexToLocale(value, 0, &newLanguage, nullptr);
         QLocale newLoc(newLanguage, newTerritory);
         q_ptr->setValue(prop, newLoc);
     } else if (QtProperty *prop = m_territoryToProperty.value(property, nullptr)) {
@@ -2344,7 +2351,7 @@ QString QtLocalePropertyManager::valueText(const QtProperty *property) const
     if (it == d_ptr->m_values.constEnd())
         return {};
 
-    const QLocale loc = it.value();
+    const QLocale &loc = it.value();
 
     int langIdx = 0;
     int territoryIdx = 0;
@@ -2354,7 +2361,7 @@ QString QtLocalePropertyManager::valueText(const QtProperty *property) const
         qWarning("QtLocalePropertyManager::valueText: Unknown language %d", loc.language());
         return tr("<Invalid>");
     }
-    const QString languageName = me->languageEnumNames().at(langIdx);
+    QString languageName = me->languageEnumNames().at(langIdx); // enable move
     if (territoryIdx < 0) {
         qWarning("QtLocalePropertyManager::valueText: Unknown territory %d for %s", loc.territory(), qPrintable(languageName));
         return languageName;
@@ -2377,7 +2384,7 @@ void QtLocalePropertyManager::setValue(QtProperty *property, const QLocale &val)
     if (it == d_ptr->m_values.end())
         return;
 
-    const QLocale loc = it.value();
+    const QLocale &loc = it.value();
     if (loc == val)
         return;
 
@@ -4727,7 +4734,7 @@ void QtEnumPropertyManager::setValue(QtProperty *property, int val)
     if (val >= data.enumNames.size())
         return;
 
-    if (val < 0 && data.enumNames.size() > 0)
+    if (val < 0 && !data.enumNames.empty())
         return;
 
     if (val < 0)
@@ -4769,7 +4776,7 @@ void QtEnumPropertyManager::setEnumNames(QtProperty *property, const QStringList
 
     data.val = -1;
 
-    if (enumNames.size() > 0)
+    if (!enumNames.empty())
         data.val = 0;
 
     it.value() = data;
@@ -4874,7 +4881,7 @@ void QtFlagPropertyManagerPrivate::slotPropertyDestroyed(QtProperty *property)
     if (flagProperty == nullptr)
         return;
 
-    m_propertyToFlags[flagProperty].replace(m_propertyToFlags[flagProperty].indexOf(property), 0);
+    m_propertyToFlags[flagProperty].replace(m_propertyToFlags[flagProperty].indexOf(property), nullptr);
     m_flagToProperty.remove(property);
 }
 
@@ -5152,16 +5159,14 @@ class QtSizePolicyPropertyManagerPrivate
     Q_DECLARE_PUBLIC(QtSizePolicyPropertyManager)
 public:
 
-    QtSizePolicyPropertyManagerPrivate();
-
     void slotIntChanged(QtProperty *property, int value);
     void slotEnumChanged(QtProperty *property, int value);
     void slotPropertyDestroyed(QtProperty *property);
 
     QHash<const QtProperty *, QSizePolicy> m_values;
 
-    QtIntPropertyManager *m_intPropertyManager;
-    QtEnumPropertyManager *m_enumPropertyManager;
+    QtIntPropertyManager *m_intPropertyManager = nullptr;
+    QtEnumPropertyManager *m_enumPropertyManager = nullptr;
 
     QHash<const QtProperty *, QtProperty *> m_propertyToHPolicy;
     QHash<const QtProperty *, QtProperty *> m_propertyToVPolicy;
@@ -5173,10 +5178,6 @@ public:
     QHash<const QtProperty *, QtProperty *> m_hStretchToProperty;
     QHash<const QtProperty *, QtProperty *> m_vStretchToProperty;
 };
-
-QtSizePolicyPropertyManagerPrivate::QtSizePolicyPropertyManagerPrivate()
-{
-}
 
 void QtSizePolicyPropertyManagerPrivate::slotIntChanged(QtProperty *property, int value)
 {
@@ -5475,8 +5476,6 @@ class QtFontPropertyManagerPrivate
     Q_DECLARE_PUBLIC(QtFontPropertyManager)
 public:
 
-    QtFontPropertyManagerPrivate();
-
     void slotIntChanged(QtProperty *property, int value);
     void slotEnumChanged(QtProperty *property, int value);
     void slotBoolChanged(QtProperty *property, bool value);
@@ -5510,15 +5509,9 @@ public:
     QHash<const QtProperty *, QtProperty *> m_kerningToProperty;
     QHash<const QtProperty *, QtProperty *> m_weightToProperty;
 
-    bool m_settingValue;
-    QTimer *m_fontDatabaseChangeTimer;
+    bool m_settingValue = false;
+    QTimer *m_fontDatabaseChangeTimer = nullptr;
 };
-
-QtFontPropertyManagerPrivate::QtFontPropertyManagerPrivate() :
-    m_settingValue(false),
-    m_fontDatabaseChangeTimer(0)
-{
-}
 
 void QtFontPropertyManagerPrivate::slotIntChanged(QtProperty *property, int value)
 {
@@ -5625,7 +5618,7 @@ void QtFontPropertyManagerPrivate::slotFontDatabaseDelayedChange()
     if (!m_propertyToFamily.isEmpty()) {
         for (QtProperty *familyProp : std::as_const(m_propertyToFamily)) {
             const int oldIdx = m_enumPropertyManager->value(familyProp);
-            int newIdx = m_familyNames.indexOf(oldFamilies.at(oldIdx));
+            qsizetype newIdx = m_familyNames.indexOf(oldFamilies.at(oldIdx));
             if (newIdx < 0)
                 newIdx = 0;
             m_enumPropertyManager->setEnumNames(familyProp, m_familyNames);
@@ -5803,13 +5796,13 @@ void QtFontPropertyManager::setValue(QtProperty *property, const QFont &val)
     if (it == d_ptr->m_values.end())
         return;
 
-    const QFont oldVal = it.value();
+    const QFont &oldVal = it.value();
     if (oldVal == val && oldVal.resolveMask() == val.resolveMask())
         return;
 
     it.value() = val;
 
-    int idx = d_ptr->m_familyNames.indexOf(val.family());
+    qsizetype idx = d_ptr->m_familyNames.indexOf(val.family());
     if (idx == -1)
         idx = 0;
     bool settingValue = d_ptr->m_settingValue;
@@ -5862,7 +5855,7 @@ void QtFontPropertyManager::initializeProperty(QtProperty *property)
     if (d_ptr->m_familyNames.isEmpty())
         d_ptr->m_familyNames = QFontDatabase::families();
     d_ptr->m_enumPropertyManager->setEnumNames(familyProp, d_ptr->m_familyNames);
-    int idx = d_ptr->m_familyNames.indexOf(val.family());
+    qsizetype idx = d_ptr->m_familyNames.indexOf(val.family());
     if (idx == -1)
         idx = 0;
     d_ptr->m_enumPropertyManager->setValue(familyProp, idx);

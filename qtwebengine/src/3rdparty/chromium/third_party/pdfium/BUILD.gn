@@ -4,7 +4,6 @@
 
 import("//build/config/clang/clang.gni")
 import("//build/config/gclient_args.gni")
-import("//build/config/rust.gni")
 import("//testing/test.gni")
 import("pdfium.gni")
 
@@ -40,12 +39,8 @@ config("pdfium_common_config") {
     defines += [ "PDF_ENABLE_CLICK_LOGGING" ]
   }
 
-  if (pdf_use_skia) {
-    defines += [ "PDF_USE_SKIA" ]
-
-    if (pdf_enable_fontations) {
-      defines += [ "PDF_ENABLE_FONTATIONS" ]
-    }
+  if (pdf_use_skia && pdf_enable_fontations) {
+    defines += [ "PDF_ENABLE_FONTATIONS" ]
   }
 
   if (pdf_use_partition_alloc) {
@@ -219,9 +214,6 @@ config("pdfium_common_config") {
     # Override -Wno-c++11-narrowing.
     cflags += [ "-Wc++11-narrowing" ]
 
-    # TODO(crbug.com/1213098): Remove once this is in //build.
-    cflags += [ "-Wdeprecated-copy" ]
-
     # May flag some issues when converting int to size_t.
     cflags += [ "-Wtautological-unsigned-zero-compare" ]
   }
@@ -235,6 +227,58 @@ config("pdfium_common_config") {
       # warns if there's no return there.
       "-Wno-return-type",
     ]
+  }
+
+  if (clang_use_chrome_plugins) {
+    defines += [ "PDF_USE_CHROME_PLUGINS" ]
+
+    # Catch misuse of C-style pointers.
+    # TODO(crbug.com/1320670): enable for non-debug builds once this stops
+    # interfering with code generation.
+    # TODO(tsepez): enable for windows, too.
+    if (is_debug && !is_win) {
+      cflags += [
+        "-Xclang",
+        "-plugin-arg-raw-ptr-plugin",
+        "-Xclang",
+        "check-raw-ptr-fields",
+
+        "-Xclang",
+        "-plugin-arg-raw-ptr-plugin",
+        "-Xclang",
+        "raw-ptr-exclude-path=public",
+
+        "-Xclang",
+        "-plugin-arg-raw-ptr-plugin",
+        "-Xclang",
+        "raw-ptr-exclude-path=test",
+
+        # TODO(tsepez): enforce raw_ref<> as well.
+        # "-Xclang",
+        # "-plugin-arg-raw-ptr-plugin",
+        # "-Xclang",
+        # "check-raw-ref-fields",
+      ]
+      defines += [ "PDF_ENABLE_UNOWNED_PTR_EXCLUSION" ]
+    }
+
+    # Catch misuse of cppgc in XFA.
+    if (pdf_enable_xfa) {
+      cflags += [
+        "-Xclang",
+        "-add-plugin",
+        "-Xclang",
+        "blink-gc-plugin",
+      ]
+
+      # Disable GC plugin forbidding off-heap collections of GCed:
+      cflags += [
+        "-Xclang",
+        "-plugin-arg-blink-gc-plugin",
+        "-Xclang",
+        "disable-off-heap-collections-of-gced-check",
+      ]
+    }
   }
 }
 
@@ -265,6 +309,10 @@ config("pdfium_public_config") {
       }
     }
   }
+
+  if (pdf_use_skia) {
+    defines += [ "PDF_USE_SKIA" ]
+  }
 }
 
 config("pdfium_core_config") {
@@ -286,62 +334,9 @@ config("pdfium_core_config") {
   }
 }
 
-config("pdfium_plugin_config") {
-  cflags = []
-  defines = []
-  if (clang_use_chrome_plugins) {
-    # Catch misuse of C-style pointers.
-    # TODO(tsepez): enable for windows, too.
-    if (!is_win) {
-      cflags += [
-        "-Xclang",
-        "-plugin-arg-find-bad-constructs",
-        "-Xclang",
-        "check-raw-ptr-fields",
-
-        "-Xclang",
-        "-plugin-arg-find-bad-constructs",
-        "-Xclang",
-        "raw-ptr-exclude-path=public",
-
-        "-Xclang",
-        "-plugin-arg-find-bad-constructs",
-        "-Xclang",
-        "raw-ptr-exclude-path=test",
-
-        # TODO(tsepez): enforce raw_ref<> as well.
-        # "-Xclang",
-        # "-plugin-arg-find-bad-constructs",
-        # "-Xclang",
-        # "check-raw-ref-fields",
-      ]
-      defines += [ "PDF_ENABLE_UNOWNED_PTR_EXCLUSION" ]
-    }
-
-    # Catch misuse of cppgc in XFA.
-    if (pdf_enable_xfa) {
-      cflags += [
-        "-Xclang",
-        "-add-plugin",
-        "-Xclang",
-        "blink-gc-plugin",
-      ]
-
-      # Disable GC plugin forbidding off-heap collections of GCed:
-      cflags += [
-        "-Xclang",
-        "-plugin-arg-blink-gc-plugin",
-        "-Xclang",
-        "disable-off-heap-collections-of-gced-check",
-      ]
-    }
-  }
-}
-
 config("pdfium_strict_config") {
   configs = [
     ":pdfium_core_config",
-    ":pdfium_plugin_config",
     "//build/config/compiler:wexit_time_destructors",
     "//build/config/compiler:wglobal_constructors",
   ]
@@ -407,7 +402,6 @@ component("pdfium") {
     "fpdfsdk",
     "fpdfsdk/formfiller",
     "fxjs",
-    "third_party:pdfium_base",
   ]
 
   public_deps = [
@@ -525,7 +519,6 @@ group("pdfium_embeddertest_deps") {
     ":pdfium_public_headers",
     "core/fxcrt",
     "testing:embedder_test_support",
-    "third_party:pdfium_base_test_support",
     "//testing/gmock",
     "//testing/gtest",
   ]
@@ -600,17 +593,12 @@ group("pdfium_all") {
     ":pdfium_diff",
     ":pdfium_embeddertests",
     ":pdfium_unittests",
-    "samples",
+    "testing:pdfium_test",
     "testing/fuzzers",
   ]
 
   if (pdf_is_standalone) {
     deps += [ "testing/tools:test_runner_py" ]
-  }
-  if (enable_rust) {
-    # Until there's actual Rust code to use, include the rust_build_tests in the
-    # all group to verify the language keeps working here.
-    deps += [ ":rust_build_tests" ]
   }
 }
 
@@ -624,12 +612,5 @@ group("gn_check") {
   # available.
   if (defined(checkout_skia) && checkout_skia && !is_android) {
     deps += [ "//skia" ]
-  }
-}
-
-if (enable_rust) {
-  group("rust_build_tests") {
-    testonly = true
-    deps = [ "//build/rust/tests" ]
   }
 }

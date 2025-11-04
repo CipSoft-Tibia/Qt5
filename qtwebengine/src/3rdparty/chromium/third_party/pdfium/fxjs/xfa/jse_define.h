@@ -7,10 +7,8 @@
 #ifndef FXJS_XFA_JSE_DEFINE_H_
 #define FXJS_XFA_JSE_DEFINE_H_
 
-#include <vector>
-
+#include "core/fxcrt/span.h"
 #include "fxjs/cjs_result.h"
-#include "third_party/base/containers/span.h"
 
 class CFXJSE_Engine;
 

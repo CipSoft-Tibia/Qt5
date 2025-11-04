@@ -197,7 +197,7 @@ export class ScreencastView extends UI.Widget.VBox implements SDK.OverlayModel.H
         this.focusNavigationBar.bind(this);
 
     SDK.TargetManager.TargetManager.instance().addEventListener(
-        SDK.TargetManager.Events.SuspendStateChanged, this.onSuspendStateChange, this);
+        SDK.TargetManager.Events.SUSPEND_STATE_CHANGED, this.onSuspendStateChange, this);
     this.updateGlasspane();
   }
 
@@ -252,7 +252,7 @@ export class ScreencastView extends UI.Widget.VBox implements SDK.OverlayModel.H
   }
 
   private screencastFrame(base64Data: string, metadata: Protocol.Page.ScreencastFrameMetadata): void {
-    this.imageElement.onload = (): void => {
+    this.imageElement.onload = () => {
       this.pageScaleFactor = metadata.pageScaleFactor;
       this.screenOffsetTop = metadata.offsetTop;
       this.scrollOffsetX = metadata.scrollOffsetX;
@@ -332,7 +332,7 @@ export class ScreencastView extends UI.Widget.VBox implements SDK.OverlayModel.H
     const node = await this.domModel.nodeForLocation(
         Math.floor(position.x / this.pageScaleFactor + this.scrollOffsetX),
         Math.floor(position.y / this.pageScaleFactor + this.scrollOffsetY),
-        Common.Settings.Settings.instance().moduleSetting('showUAShadowDOM').get());
+        Common.Settings.Settings.instance().moduleSetting('show-ua-shadow-dom').get());
     if (!node) {
       return;
     }
@@ -646,7 +646,7 @@ export class ScreencastView extends UI.Widget.VBox implements SDK.OverlayModel.H
     const bordersSize = BORDERS_SIZE;
     const width = this.element.offsetWidth - bordersSize - gutterSize;
     const height = this.element.offsetHeight - bordersSize - gutterSize - NAVBAR_HEIGHT;
-    return {width: width, height: height};
+    return {width, height};
   }
 
   setInspectMode(mode: Protocol.Overlay.InspectMode, config: Protocol.Overlay.HighlightConfig): Promise<void> {

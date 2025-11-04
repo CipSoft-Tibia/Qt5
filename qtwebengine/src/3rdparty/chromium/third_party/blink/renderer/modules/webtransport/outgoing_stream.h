@@ -110,11 +110,14 @@ class MODULES_EXPORT OutgoingStream final
   void HandlePipeClosed();
 
   // Implements UnderlyingSink::write().
-  ScriptPromise SinkWrite(ScriptState*, ScriptValue chunk, ExceptionState&);
+  ScriptPromise<IDLUndefined> SinkWrite(ScriptState*,
+                                        ScriptValue chunk,
+                                        ExceptionState&);
 
   // Writes |data| to |data_pipe_|, possible saving unwritten data to
   // |cached_data_|.
-  ScriptPromise WriteOrCacheData(ScriptState*, base::span<const uint8_t> data);
+  ScriptPromise<IDLUndefined> WriteOrCacheData(ScriptState*,
+                                               base::span<const uint8_t> data);
 
   // Attempts to write some more of |cached_data_| to |data_pipe_|.
   void WriteCachedData();
@@ -154,9 +157,9 @@ class MODULES_EXPORT OutgoingStream final
    private:
     // We need the isolate to call |AdjustAmountOfExternalAllocatedMemory| for
     // the memory stored in |buffer_|.
-    raw_ptr<v8::Isolate, ExperimentalRenderer> isolate_;
+    raw_ptr<v8::Isolate> isolate_;
     size_t length_ = 0u;
-    raw_ptr<uint8_t, ExperimentalRenderer> buffer_ = nullptr;
+    raw_ptr<uint8_t> buffer_ = nullptr;
   };
 
   const Member<ScriptState> script_state_;
@@ -186,13 +189,13 @@ class MODULES_EXPORT OutgoingStream final
 
   // If an asynchronous write() on the underlying sink object is pending, this
   // will be non-null.
-  Member<ScriptPromiseResolver> write_promise_resolver_;
+  Member<ScriptPromiseResolver<IDLUndefined>> write_promise_resolver_;
 
   // If a close() on the underlying sink object is pending, this will be
   // non-null.
-  Member<ScriptPromiseResolver> close_promise_resolver_;
+  Member<ScriptPromiseResolver<IDLUndefined>> close_promise_resolver_;
 
-  Member<ScriptPromiseResolver> pending_operation_;
+  Member<ScriptPromiseResolver<IDLUndefined>> pending_operation_;
 
   State state_ = State::kOpen;
 };

@@ -35,7 +35,7 @@ private slots:
     void testClipMode();
 
 private:
-    void loadTestData(const QByteArray &filename);
+    void loadTestData(const QString &filename);
 
     BMShapeLayer *m_layer;
     BMShapeLayer *m_clippedlayer;
@@ -126,7 +126,7 @@ void tst_BMShapeLayer::testClipMode()
     QVERIFY(m_clippedlayer->clipMode() == BMLayer::MatteClipMode::InvertedLuminence);
 }
 
-void tst_BMShapeLayer::loadTestData(const QByteArray &filename)
+void tst_BMShapeLayer::loadTestData(const QString &filename)
 {
     if (m_layer) {
         delete m_layer;

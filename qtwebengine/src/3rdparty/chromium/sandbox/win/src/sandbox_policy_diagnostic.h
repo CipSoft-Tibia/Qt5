@@ -53,9 +53,11 @@ class PolicyDiagnostic final : public PolicyInfo {
   std::vector<base::win::Sid> initial_capabilities_;
   AppContainerType app_container_type_ = AppContainerType::kNone;
   std::unique_ptr<PolicyGlobal> policy_rules_;
+  // From policy's TopLevelDispatcher.
+  std::vector<IpcTag> ipcs_;
   bool is_csrss_connected_ = false;
   bool zero_appshim_ = false;
-  HandleMap handles_to_close_;
+  HandleCloserConfig handles_to_close_;
   std::string tag_;
 };
 

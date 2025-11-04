@@ -1,4 +1,4 @@
-// Copyright (C) 2024 The Qt Company Ltd.
+// Copyright (C) 2025 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GFDL-1.3-no-invariants-only
 
 // The link-target for a third-party component is the "Id" value in its qt_attribution.json entry.
@@ -10,6 +10,146 @@
 
     Changes in Qt and \l{Third-Party Code Used in Qt}{Third Party Modules}
     released with Qt that are relevant to licensing.
+
+    \section1 Qt 6.9.3
+
+    \section2 Qt Core Module
+
+    \list
+        \li \l{pcre2}{PCRE2} was updated to version 10.46.
+        \li \l{pcre2-sljit}{PCRE2 - Stack-less Just-In-Time Compiler} was updated to version 10.46.
+    \endlist
+
+    \section2 Qt GUI Module
+
+    \list
+        \li \l{freetype}{Freetype 2} was updated to version 2.14.1.
+        \li \l{harfbuzz-ng}{HarfBuzz-NG} was updated to version 11.5.0.
+        \li \l{libjpeg}{LibJPEG-turbo} was updated to version 3.1.2.
+    \endlist
+
+    \section2 Qt Image Formats
+
+    \list
+        \li \l{libtiff}{TIFF Software Distribution (libtiff)} was updated to version 4.7.1.
+    \endlist
+
+    \section1 Qt 6.9.2
+
+    \section2 Qt 3D Module
+
+    \list
+        \li \l{assimp}{Open Asset Import Library} was updated to version 6.0.2.
+    \endlist
+
+    \section2 Qt Core Module
+
+    \list
+        \li \l{unicode-cldr}{Unicode Common Locale Data Repository (CLDR)} was updated to version v47.
+        \li \l{doubleconversion}{double-conversion} was updated to version 3.3.1.
+    \endlist
+
+    \section2 Qt GUI Module
+
+    \list
+        \li \l{harfbuzz-ng}{HarfBuzz-NG} was updated to version 11.3.3.
+        \li \l{libjpeg}{LibJPEG-turbo} was updated to version 3.1.1.
+        \li \l{libpng}{LibPNG} was updated to version 1.6.50.
+    \endlist
+
+    \section2 Qt Network module
+
+    \list
+        \li \l{psl-data}{The Public Suffix List} was updated to version 2025-06-16_09-45-02_UTC.
+    \endlist
+
+    \section2 Qt Quick3D module
+
+    \list
+        \li \l{assimp}{Open Asset Import Library} was updated to version 6.0.2.
+    \endlist
+
+    \section2 Qt SQL Module
+
+    \list
+        \li \l{sqlite}{SQLite} was updated to version 3.50.4.
+    \endlist
+
+    \section2 Qt Testlib Module
+
+    \list
+        \li \l{valgrind}{Valgrind} was updated to version 3.25.1.
+    \endlist
+
+    \section1 Qt 6.9.1
+
+    \section2 Qt GUI Module
+
+    \list
+        \li \l{harfbuzz-ng}{HarfBuzz-NG} was updated to version 11.2.1.
+        \li \l{libpng}{LibPNG} was updated to version 1.6.48.
+    \endlist
+
+    \section2 Qt Quick3D module
+
+    \list
+        \li \l{tinyexr}{Tiny OpenEXR} was updated to version v1.0.12.
+    \endlist
+
+    \section2 Qt SQL Module
+
+    \list
+        \li \l{sqlite}{SQLite} was updated to version 3.49.2.
+    \endlist
+
+    \section1 Qt 6.9.0
+
+    \section2 Qt Core module
+
+    \list
+        \li \l{android-gradle-wrapper}{Gradle wrapper} was updated to version 8.12.
+    \endlist
+
+    \section2 Qt GUI module
+
+    \list
+        \li Usage of \l{emoji-segmenter}{Emoji Segmenter}, version 0.4.0, is now documented.
+        \li Usage of \l{iaccessible2}{IAccessible2 IDL Specification} was removed.
+        li \l{VulkanMemoryAllocator}{Vulkan Memory Allocator} was updated to version 3.1.0.
+    \endlist
+
+    \section2 Qt OpcUA module
+
+    \list
+        \li \l{open62541}{Open62541} was updated to version 1.4.9.
+    \endlist
+
+    \section2 Qt Quick3D module
+
+    \list
+        \li Usage of \l{OpenXR}{OpenXR SDK} was updated to version 1.1.42.
+    \endlist
+
+    \section2 Qt Shadertools module
+
+    \list
+        \li \l{glslang}{glslang} was updated to version 15.1.0.
+        \li \l{SpirvCross}{SPIRV-Cross} was updated to version ebe2aa0cd80f5eb5cd8a605da604cacf72205f3b.
+    \endlist
+
+    \section2 Qt Wayland Compositor module
+
+    \list
+        \li Usage of \l{appmenu}{Wayland KDE DBus Menu Protocol} version 1
+        under LGPL 2.1 or later license is now documented.
+        \li Usage of \l{wlr-data-control-unstable-v1-protocol}{Wlr Data Control Unstable V1 Protocol} version 2
+        under MIT license is now documented.
+        \li Usage of \l{wayland-xdg-system-bell-protocol}{Wayland XDG System Bell Protocol} version 1.18
+        under MIT license is now documented.
+        \li Usage of \l{wayland-xdg-toplevel-icon-protocol}{Wayland xdg-toplevel-icon Protocol} version 1
+        under MIT license is now documented.
+        \li \l{wayland-protocol}{Wayland Protocol} was updated to version 1.23.0
+    \endlist
 
     \section1 Qt 6.8.3
 
@@ -266,7 +406,7 @@
     \section2 Qt Spatial Audio Module
 
     \list
-        \li \l{pfft}{pfft} was updated to version fbc4058602803f40dc554b8a5d2bcc694c005f2f.
+        \li \l{pffft}{pffft} was updated to version fbc4058602803f40dc554b8a5d2bcc694c005f2f.
     \endlist
 
     \section2 Qt SQL Module
@@ -432,7 +572,7 @@
     \section2 Qt Spatial Audio Module
 
     \list
-        \li \l{pfft}{pfft} was updated to version 7641e67977cf937c22849e2ef19fffa70269e562.
+        \li \l{pffft}{pffft} was updated to version 7641e67977cf937c22849e2ef19fffa70269e562.
     \endlist
 
     \section2 Qt SQL Module
@@ -570,7 +710,7 @@
     \section2 Qt Multimedia Module
 
     \list
-        \li \l{pfft}{pfft} was updated to version 38946c766c1a.
+        \li \l{pffft}{pffft} was updated to version 38946c766c1a.
         \li \l{resonance-audio}{Resonance Audio} was updated to version e225aedb5ec7.
     \endlist
 
@@ -781,7 +921,7 @@
     \list
         \li \l{eigen}{Eigen} version 3.4.0 under Mozilla Public License 2.0 and
         BSD 3-Clause "New" or "Revised" License is now documented.
-        \li \l{pfft}{pfft} version 7c3b5a7dc510a0f513b9c5b6dc5b56f7aeeda422 under
+        \li \l{pffft}{pffft} version 7c3b5a7dc510a0f513b9c5b6dc5b56f7aeeda422 under
         BSD 3-Clause "New" or "Revised" License is now documented.
         \li \l{resonance-audio}{Resonance Audio} version e225aedb5ec76ca6a0fe7079c0b84dbcbb490553 under
         Apache License 2.0 is now documented.
@@ -882,8 +1022,8 @@
 
     \list
         \li \l{wayland-protocol}{Wayland Protocol} was updated to version 1.19.0
-        \li Usage of \l {wayland-text-input-unstable-v4-wip}{Wayland Text Input Protocol} version unstable v4, WIP
-        under HPND license is now documented.
+        \li Usage of \e {Wayland Text Input Protocol} version unstable v4, WIP
+        under HPND license was documented.
         \li Usage of \l {wayland-xdg-activation}{Wayland xdg-activation Protocol} version unstable v1, version 1
         under MIT license is now documented.
         \li Usage of \l {presentation-time.xml}{Presentation Time Protocol} version 1

@@ -8,6 +8,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include <deque>
 #include <map>
 #include <memory>
 #include <optional>
@@ -23,8 +24,10 @@
 #include "base/memory/discardable_memory_allocator.h"
 #include "base/memory/memory_pressure_listener.h"
 #include "base/memory/ref_counted.h"
+#include "base/memory/structured_shared_memory.h"
 #include "base/metrics/user_metrics_action.h"
 #include "base/observer_list.h"
+#include "base/process/process.h"
 #include "base/task/sequenced_task_runner.h"
 #include "base/time/time.h"
 #include "base/types/pass_key.h"
@@ -60,7 +63,6 @@
 #include "third_party/blink/public/platform/scheduler/web_thread_scheduler.h"
 #include "third_party/blink/public/platform/url_loader_throttle_provider.h"
 #include "third_party/blink/public/platform/web_connection_type.h"
-#include "third_party/blink/public/web/web_memory_statistics.h"
 #include "ui/gfx/native_widget_types.h"
 
 namespace blink {
@@ -80,6 +82,7 @@ class RasterDarkModeFilter;
 
 namespace gpu {
 class GpuChannelHost;
+class ClientSharedImageInterface;
 }
 
 namespace media {
@@ -192,7 +195,7 @@ class CONTENT_EXPORT RenderThreadImpl
   bool IsElasticOverscrollEnabled();
   bool IsScrollAnimatorEnabled();
 
-  // TODO(crbug.com/1111231): The `enable_scroll_animator` flag is currently
+  // TODO(crbug.com/40142495): The `enable_scroll_animator` flag is currently
   // being passed as part of `CreateViewParams`, despite it looking like a
   // global setting. It should probably be moved to some `mojom::Renderer` API
   // and this method should be removed.
@@ -208,6 +211,8 @@ class CONTENT_EXPORT RenderThreadImpl
   // compositing. Clients of the compositor should give resources that match
   // the appropriate mode.
   bool IsGpuCompositingDisabled() const { return is_gpu_compositing_disabled_; }
+
+  bool IsGpuRemoteDisconnected();
 
   // Synchronously establish a channel to the GPU plugin if not previously
   // established or if it has been lost (for example if the GPU plugin crashed).
@@ -282,6 +287,9 @@ class CONTENT_EXPORT RenderThreadImpl
       GetVideoFrameCompositorContextProvider(
           scoped_refptr<viz::RasterContextProvider>);
 
+  scoped_refptr<gpu::ClientSharedImageInterface>
+  GetRenderThreadSharedImageInterface();
+
   // Returns a worker context provider that will be bound on the compositor
   // thread.
   scoped_refptr<cc::RasterContextProviderWrapper>
@@ -292,9 +300,6 @@ class CONTENT_EXPORT RenderThreadImpl
 
   scoped_refptr<viz::ContextProviderCommandBuffer>
   SharedMainThreadContextProvider();
-
-  scoped_refptr<viz::ContextProviderCommandBuffer>
-  PepperVideoDecodeContextProvider();
 
   // For producing custom V8 histograms. Custom histograms are produced if all
   // `blink::WebView`s share the same host, and the host is in the pre-specified
@@ -391,6 +396,7 @@ class CONTENT_EXPORT RenderThreadImpl
   void OnMemoryPressureFromBrowserReceived(
       base::MemoryPressureListener::MemoryPressureLevel level) override;
 #endif
+  void SetBatterySaverMode(bool battery_saver_mode_enabled) override;
 
   bool IsMainThread();
 
@@ -400,14 +406,12 @@ class CONTENT_EXPORT RenderThreadImpl
 
   // mojom::Renderer:
   void CreateAgentSchedulingGroup(
-      mojo::PendingReceiver<IPC::mojom::ChannelBootstrap> bootstrap,
-      mojo::PendingRemote<blink::mojom::BrowserInterfaceBroker> broker_remote)
-      override;
+      mojo::PendingReceiver<IPC::mojom::ChannelBootstrap> bootstrap) override;
   void CreateAssociatedAgentSchedulingGroup(
       mojo::PendingAssociatedReceiver<mojom::AgentSchedulingGroup>
-          agent_scheduling_group,
-      mojo::PendingRemote<blink::mojom::BrowserInterfaceBroker> broker_remote)
-      override;
+          agent_scheduling_group) override;
+  void TransferSharedLastForegroundTime(
+      base::ReadOnlySharedMemoryRegion last_foreground_time_region) override;
   void OnNetworkConnectionChanged(
       net::NetworkChangeNotifier::ConnectionType type,
       double max_bandwidth_mbps) override;
@@ -428,9 +432,8 @@ class CONTENT_EXPORT RenderThreadImpl
       mojom::UpdateSystemColorInfoParamsPtr params) override;
   void PurgePluginListCache(bool reload_pages) override;
   void PurgeResourceCache(PurgeResourceCacheCallback callback) override;
-  void SetProcessState(mojom::RenderProcessBackgroundState background_state,
+  void SetProcessState(base::Process::Priority priority,
                        mojom::RenderProcessVisibleState visible_state) override;
-  void SetBatterySaverMode(bool battery_saver_mode_enabled) override;
   void SetIsLockedToSite() override;
 #if BUILDFLAG(CLANG_PROFILING_INSIDE_SANDBOX)
   void WriteClangProfilingProfile(
@@ -464,6 +467,9 @@ class CONTENT_EXPORT RenderThreadImpl
       bool enable_video_encode_accelerator);
 
   mojom::RenderMessageFilter* render_message_filter();
+  void RequestNewItemsForFrameRoutingCache();
+  void PopulateFrameRoutingCacheWithItems(
+      std::vector<mojom::FrameRoutingInfoPtr> infos);
 
   scoped_refptr<discardable_memory::ClientDiscardableSharedMemoryManager>
       discardable_memory_allocator_;
@@ -482,8 +488,16 @@ class CONTENT_EXPORT RenderThreadImpl
   // Used to keep track of the renderer's backgrounded and visibility state.
   // Updated via an IPC from the browser process. If nullopt, the browser
   // process has yet to send an update and the state is unknown.
-  std::optional<mojom::RenderProcessBackgroundState> background_state_;
+  std::optional<base::Process::Priority> process_priority_;
   std::optional<mojom::RenderProcessVisibleState> visible_state_;
+
+  // A read-only mapping of a std::atomic<base::TimeTicks> set to
+  // TimeTicks::Now() by RenderProcessHostImpl when this process is foregrounded
+  // and back to a null TimeTicks when it's backgrounded. Used to track the
+  // exact state of this process without relying on IPC (which can itself be
+  // delayed) for use cases that require that precision.
+  std::optional<base::AtomicSharedMemory<base::TimeTicks>::ReadOnlyMapping>
+      last_foreground_time_mapping_;
 
   blink::WebString user_agent_;
   blink::UserAgentMetadata user_agent_metadata_;
@@ -525,9 +539,6 @@ class CONTENT_EXPORT RenderThreadImpl
 
   scoped_refptr<viz::ContextProviderCommandBuffer> shared_main_thread_contexts_;
 
-  scoped_refptr<viz::ContextProviderCommandBuffer>
-      pepper_video_decode_contexts_;
-
   base::ObserverList<RenderThreadObserver>::Unchecked observers_;
 
   scoped_refptr<viz::RasterContextProvider>
@@ -535,6 +546,8 @@ class CONTENT_EXPORT RenderThreadImpl
 
   scoped_refptr<cc::RasterContextProviderWrapper>
       shared_worker_context_provider_wrapper_;
+
+  scoped_refptr<gpu::ClientSharedImageInterface> shared_image_interface_;
 
   HistogramCustomizer histogram_customizer_;
 
@@ -580,6 +593,20 @@ class CONTENT_EXPORT RenderThreadImpl
 
   // Tracks the time the run loop started for this thread.
   base::TimeTicks run_loop_start_time_;
+
+  // A small cache of pending frame routing IDs/tokens so we do not need to make
+  // a synchronous IPC call to retrieve one most of the time. If the cache is
+  // empty a synchronous IPC call will be made. Once the cache only has two
+  // items an asynchronous request to populate it will also be made.
+  std::deque<mojom::FrameRoutingInfoPtr> cached_frame_routing_;
+
+  // Keep track of it we have requested items or not as we do not want to fire
+  // off only one asynchronous request.
+  bool cached_items_requested_ = false;
+  bool use_cached_routing_table_ = false;
+
+  std::optional<base::ThreadPoolInstance::ScopedRestrictedTasks>
+      restrict_thread_pool_;
 
   base::WeakPtrFactory<RenderThreadImpl> weak_factory_{this};
 };

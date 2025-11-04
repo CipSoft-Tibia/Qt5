@@ -1,5 +1,6 @@
 // Copyright (C) 2018 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QTLS_SCHANNEL_P_H
 #define QTLS_SCHANNEL_P_H
@@ -65,6 +66,14 @@ private:
         Renegotiate // Renegotiating!
     } schannelState = SchannelState::InitializeHandshake;
 
+    // Close to std::optional<QBArray>, but need to also cover the case where
+    // we encrypted some data, but encountered an error later.
+    struct MessageBufferResult {
+        bool ok = false;
+        QByteArray messageBuffer;
+    };
+    MessageBufferResult getNextEncryptedMessage();
+
     void reset();
     bool acquireCredentialsHandle();
     ULONG getContextRequirements();
@@ -105,8 +114,6 @@ private:
     QHCertStorePointer localCertificateStore = nullptr;
     QHCertStorePointer peerCertificateStore = nullptr;
     QHCertStorePointer caCertificateStore = nullptr;
-
-    const CERT_CONTEXT *localCertContext = nullptr;
 
     ULONG contextAttributes = 0;
     qint64 missingData = 0;

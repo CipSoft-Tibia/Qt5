@@ -143,6 +143,7 @@ struct Options
     QString jdkPath;
 
     // Build paths
+    QString abi;
     QString qtInstallDirectory;
     QHash<QString, QString> qtDirectories;
     QString qtDataDirectory;
@@ -172,7 +173,7 @@ struct Options
     QString versionName;
     QString versionCode;
     QByteArray minSdkVersion{"28"};
-    QByteArray targetSdkVersion{"34"};
+    QByteArray targetSdkVersion{"35"};
 
     // lib c++ path
     QString stdCppPath;
@@ -192,6 +193,8 @@ struct Options
     DeploymentMechanism deploymentMechanism;
     QString systemLibsPath;
     QString packageName;
+    QString appName;
+    QString appIcon;
     QStringList extraLibs;
     QHash<QString, QStringList> archExtraLibs;
     QStringList extraPlugins;
@@ -240,9 +243,9 @@ struct Options
     bool usesOpenGL = false;
 
     // Per package collected information
-    QStringList initClasses;
     // permissions 'name' => 'optional additional attributes'
-    QMap<QString, QString> permissions;
+    QMap<QString, QString> modulePermissions;
+    QMap<QString, QString> applicationPermissions;
     QStringList features;
 
     // Override qml import scanner path
@@ -763,7 +766,6 @@ bool copyFileIfNewer(const QString &sourceFileName,
 
 struct GradleBuildConfigs {
     QString appNamespace;
-    bool setsLegacyPackaging = false;
     bool usesIntegerCompileSdkVersion = false;
 };
 
@@ -796,9 +798,7 @@ GradleBuildConfigs gradleBuildConfigs(const QString &path)
         const QByteArray trimmedLine = line.trimmed();
         if (isComment(trimmedLine))
             continue;
-        if (trimmedLine.contains("useLegacyPackaging")) {
-            configs.setsLegacyPackaging = true;
-        } else if (trimmedLine.contains("compileSdkVersion androidCompileSdkVersion.toInteger()")) {
+        if (trimmedLine.contains("compileSdkVersion androidCompileSdkVersion.toInteger()")) {
             configs.usesIntegerCompileSdkVersion = true;
         } else if (trimmedLine.contains("namespace")) {
             const QString value = QString::fromUtf8(extractValue(trimmedLine));
@@ -1013,9 +1013,13 @@ bool readInputFile(Options *options)
     }
     dependenciesForDepfile << options->inputFileName;
 
-    QJsonDocument jsonDocument = QJsonDocument::fromJson(file.readAll());
+    QJsonParseError jsonParseError;
+    QJsonDocument jsonDocument = QJsonDocument::fromJson(file.readAll(), &jsonParseError);
     if (jsonDocument.isNull()) {
-        fprintf(stderr, "Invalid json file: %s\n", qPrintable(options->inputFileName));
+        fprintf(stderr, "Invalid json file: %s. Reason: %s at offset %i.\n",
+            qPrintable(options->inputFileName),
+            qPrintable(jsonParseError.errorString()),
+            jsonParseError.offset);
         return false;
     }
 
@@ -1030,15 +1034,27 @@ bool readInputFile(Options *options)
 
         options->sdkPath = QDir::fromNativeSeparators(sdkPath.toString());
 
+    }
+
+    {
         if (options->androidPlatform.isEmpty()) {
-            options->androidPlatform = detectLatestAndroidPlatform(options->sdkPath);
-            if (options->androidPlatform.isEmpty())
-                return false;
-        } else {
-            if (!QDir(options->sdkPath + "/platforms/"_L1 + options->androidPlatform).exists()) {
-                fprintf(stderr, "Warning: Android platform '%s' does not exist in SDK.\n",
-                        qPrintable(options->androidPlatform));
+            const QJsonValue ver = jsonObject.value("android-compile-sdk-version"_L1);
+            if (!ver.isUndefined()) {
+                const auto value = ver.toString();
+                options->androidPlatform = value.startsWith("android-"_L1) ?
+                        value : "android-%1"_L1.arg(value);
             }
+
+            if (options->androidPlatform.isEmpty()) {
+                options->androidPlatform = detectLatestAndroidPlatform(options->sdkPath);
+                if (options->androidPlatform.isEmpty())
+                    return false;
+            }
+        }
+
+        if (!QDir(options->sdkPath + "/platforms/"_L1 + options->androidPlatform).exists()) {
+            fprintf(stderr, "Warning: Android platform '%s' does not exist in SDK.\n",
+                    qPrintable(options->androidPlatform));
         }
     }
 
@@ -1171,6 +1187,11 @@ bool readInputFile(Options *options)
         const QJsonValue ver = jsonObject.value("android-target-sdk-version"_L1);
         if (!ver.isUndefined())
             options->targetSdkVersion = ver.toString().toUtf8();
+    }
+
+    {
+        if (const auto abi = jsonObject.value("abi"_L1); !abi.isUndefined())
+            options->abi = jsonObject.value("abi"_L1).toString();
     }
 
     {
@@ -1381,6 +1402,20 @@ bool readInputFile(Options *options)
     }
 
     {
+        const QJsonValue androidAppName = jsonObject.value("android-app-name"_L1);
+        if (!androidAppName.isUndefined())
+            options->appName = androidAppName.toString();
+        else
+            options->appName = options->applicationBinary;
+    }
+
+    {
+        const QJsonValue androidAppIcon = jsonObject.value("android-app-icon"_L1);
+        if (!androidAppIcon.isUndefined())
+            options->appIcon = androidAppIcon.toString();
+    }
+
+    {
         using ItFlag = QDirListing::IteratorFlag;
         const QJsonValue deploymentDependencies = jsonObject.value("deployment-dependencies"_L1);
         if (!deploymentDependencies.isUndefined()) {
@@ -1438,6 +1473,21 @@ bool readInputFile(Options *options)
         }
     }
 
+    {
+        QJsonArray permissions = jsonObject.value("permissions"_L1).toArray();
+        if (!permissions.isEmpty()) {
+            for (const QJsonValue &value : permissions) {
+                if (value.isObject()) {
+                    QJsonObject permissionObj = value.toObject();
+                    QString name = permissionObj.value("name"_L1).toString();
+                    QString extras;
+                    if (permissionObj.contains("extras"_L1))
+                        extras = permissionObj.value("extras"_L1).toString().trimmed();
+                    options->applicationPermissions.insert(name, extras);
+                }
+            }
+        }
+    }
     return true;
 }
 
@@ -1452,6 +1502,10 @@ bool copyFiles(const QDir &sourceDirectory, const QDir &destinationDirectory, co
     for (const QFileInfo &entry : entries) {
         if (entry.isDir()) {
             QDir dir(entry.absoluteFilePath());
+            const bool destinationInCopyDir = destinationDirectory.absolutePath().startsWith(dir.absolutePath());
+            if (sourceDirectory == options.androidSourceDirectory && destinationInCopyDir)
+                continue;
+
             if (!destinationDirectory.mkpath(dir.dirName())) {
                 fprintf(stderr, "Cannot make directory %s in %s\n", qPrintable(dir.dirName()), qPrintable(destinationDirectory.path()));
                 return false;
@@ -1701,6 +1755,11 @@ bool updateFile(const QString &fileName, const QHash<QString, QString> &replacem
             return false;
         }
 
+        // Remove leftover empty lines after replacements, for example,
+        // in case of setting the app icon.
+        QRegularExpression emptyLinesRegex("\\n\\s+\\n"_L1);
+        contents = QString::fromUtf8(contents).replace(emptyLinesRegex, "\n"_L1).toUtf8();
+
         inputFile.write(contents);
     }
 
@@ -1815,14 +1874,10 @@ bool updateLibsXml(Options *options)
         allLocalLibs += "        <item>%1;%2</item>\n"_L1.arg(it.key(), localLibs.join(u':'));
     }
 
-    options->initClasses.removeDuplicates();
-
     QHash<QString, QString> replacements;
     replacements[QStringLiteral("<!-- %%INSERT_QT_LIBS%% -->")] += qtLibs.trimmed();
     replacements[QStringLiteral("<!-- %%INSERT_LOCAL_LIBS%% -->")] = allLocalLibs.trimmed();
     replacements[QStringLiteral("<!-- %%INSERT_EXTRA_LIBS%% -->")] = extraLibs.trimmed();
-    const QString initClasses = options->initClasses.join(u':');
-    replacements[QStringLiteral("<!-- %%INSERT_INIT_CLASSES%% -->")] = initClasses;
 
     // Set BUNDLE_LOCAL_QT_LIBS based on the deployment used
     replacements[QStringLiteral("<!-- %%BUNDLE_LOCAL_QT_LIBS%% -->")]
@@ -1872,12 +1927,16 @@ bool updateAndroidManifest(Options &options)
         fprintf(stdout, "  -- AndroidManifest.xml \n");
 
     QHash<QString, QString> replacements;
-    replacements[QStringLiteral("-- %%INSERT_APP_NAME%% --")] = options.applicationBinary;
+    replacements[QStringLiteral("-- %%INSERT_APP_NAME%% --")] = options.appName;
     replacements[QStringLiteral("-- %%INSERT_APP_ARGUMENTS%% --")] = options.applicationArguments;
     replacements[QStringLiteral("-- %%INSERT_APP_LIB_NAME%% --")] = options.applicationBinary;
     replacements[QStringLiteral("-- %%INSERT_VERSION_NAME%% --")] = options.versionName;
     replacements[QStringLiteral("-- %%INSERT_VERSION_CODE%% --")] = options.versionCode;
     replacements[QStringLiteral("package=\"org.qtproject.example\"")] = "package=\"%1\""_L1.arg(options.packageName);
+
+    const QString iconAttribute = "android:icon=\"%1\""_L1;
+    replacements[iconAttribute.arg("-- %%INSERT_APP_ICON%% --"_L1)] = options.appIcon.isEmpty() ?
+            ""_L1 : iconAttribute.arg(options.appIcon);
 
     const QString androidManifestPath = options.outputDirectory + "/AndroidManifest.xml"_L1;
     QFile androidManifestXml(androidManifestPath);
@@ -1888,14 +1947,23 @@ bool updateAndroidManifest(Options &options)
         QXmlStreamReader reader(&androidManifestXml);
         while (!reader.atEnd()) {
             reader.readNext();
-            if (reader.isStartElement() && reader.name() == "uses-permission"_L1)
-                options.permissions.remove(QString(reader.attributes().value("android:name"_L1)));
+            if (reader.isStartElement() && reader.name() == "uses-permission"_L1) {
+                options.modulePermissions.remove(
+                        QString(reader.attributes().value("android:name"_L1)));
+                options.applicationPermissions.remove(
+                        QString(reader.attributes().value("android:name"_L1)));
+            }
         }
         androidManifestXml.close();
     }
 
+    // Application may define permissions in its CMakeLists.txt, give them the priority
+    QMap<QString, QString> resolvedPermissions = options.modulePermissions;
+    for (auto [name, extras] : options.applicationPermissions.asKeyValueRange())
+        resolvedPermissions.insert(name, extras);
+
     QString permissions;
-    for (auto [name, extras] : options.permissions.asKeyValueRange())
+    for (auto [name, extras] : resolvedPermissions.asKeyValueRange())
         permissions += "    <uses-permission android:name=\"%1\" %2 />\n"_L1.arg(name).arg(extras);
     replacements[QStringLiteral("<!-- %%INSERT_PERMISSIONS -->")] = permissions.trimmed();
 
@@ -2143,10 +2211,6 @@ bool readAndroidDependencyXml(Options *options,
                             usedDependencies->insert(dependency.absolutePath);
                         }
                     }
-
-                    if (reader.attributes().hasAttribute("initClass"_L1)) {
-                        options->initClasses.append(reader.attributes().value("initClass"_L1).toString());
-                    }
                 } else if (reader.name() == "lib"_L1) {
                     QString fileName = QDir::cleanPath(reader.attributes().value("file"_L1).toString());
                     if (reader.attributes().hasAttribute("replaces"_L1)) {
@@ -2168,9 +2232,9 @@ bool readAndroidDependencyXml(Options *options,
                     QString extras = reader.attributes().value("extras"_L1).toString();
                     // With duplicate permissions prioritize the one without any attributes,
                     // as that is likely the most permissive
-                    if (!options->permissions.contains(name)
-                        || !options->permissions.value(name).isEmpty()) {
-                        options->permissions.insert(name, extras);
+                    if (!options->modulePermissions.contains(name)
+                        || !options->modulePermissions.value(name).isEmpty()) {
+                        options->modulePermissions.insert(name, extras);
                     }
                 } else if (reader.name() == "feature"_L1) {
                     QString name = reader.attributes().value("name"_L1).toString();
@@ -2719,6 +2783,9 @@ bool goodToCopy(const Options *options, const QString &file, QStringList *unmetD
     if (!file.endsWith(".so"_L1))
         return true;
 
+    if (!options->abi.isEmpty() && options->abi != options->currentArchitecture)
+        return true;
+
     if (!checkArchitecture(*options, file))
         return false;
 
@@ -2808,8 +2875,9 @@ QStringList getLibraryProjectsInOutputFolder(const Options &options)
 
     QFile file(options.outputDirectory + "/project.properties"_L1);
     if (file.open(QIODevice::ReadOnly)) {
-        while (!file.atEnd()) {
-            QByteArray line = file.readLine().trimmed();
+        QByteArray lineArray;
+        while (file.readLineInto(&lineArray)) {
+            QByteArrayView line = QByteArrayView(lineArray).trimmed();
             if (line.startsWith("android.library.reference")) {
                 int equalSignIndex = line.indexOf('=');
                 if (equalSignIndex >= 0) {
@@ -2884,8 +2952,8 @@ static bool mergeGradleProperties(const QString &path, GradleProperties properti
 
     QFile oldFile(oldPathStr);
     if (oldFile.open(QIODevice::ReadOnly)) {
-        while (!oldFile.atEnd()) {
-            QByteArray line(oldFile.readLine());
+        QByteArray line;
+        while (oldFile.readLineInto(&line)) {
             QList<QByteArray> prop(line.split('='));
             if (prop.size() > 1) {
                 GradleProperties::iterator it = properties.find(prop.at(0).trimmed());
@@ -2942,8 +3010,6 @@ bool buildAndroidProject(const Options &options)
 
     const QString gradleBuildFilePath = options.outputDirectory + "build.gradle"_L1;
     GradleBuildConfigs gradleConfigs = gradleBuildConfigs(gradleBuildFilePath);
-    if (!gradleConfigs.setsLegacyPackaging)
-        gradleProperties["android.bundle.enableUncompressedNativeLibs"] = "false";
 
     gradleProperties["buildDir"] = "build";
     gradleProperties["qtAndroidDir"] =
@@ -3514,6 +3580,7 @@ int generateJavaQmlComponents(const Options &options)
             }
         }
         appImports << qmldirDirectories.values();
+        appImports.removeDuplicates();
 
         return appImports.count() + externalImports.count();
     };
@@ -3640,7 +3707,7 @@ int generateJavaQmlComponents(const Options &options)
     };
 
     const static QHash<QString, QString> qmlToJavaType = {
-        { "qreal"_L1, "Double"_L1 }, { "double"_L1, "Double"_L1 }, { "int"_L1, "Integer"_L1 },
+        { "real"_L1, "Double"_L1 }, { "double"_L1, "Double"_L1 }, { "int"_L1, "Integer"_L1 },
         { "float"_L1, "Float"_L1 },  { "bool"_L1, "Boolean"_L1 },  { "string"_L1, "String"_L1 },
         { "void"_L1, "Void"_L1 }
     };

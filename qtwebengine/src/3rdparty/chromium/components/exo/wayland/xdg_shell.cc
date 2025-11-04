@@ -8,6 +8,7 @@
 #include <wayland-server-protocol-core.h>
 #include <xdg-decoration-unstable-v1-server-protocol.h>
 #include <xdg-shell-server-protocol.h>
+
 #include <optional>
 
 #include "ash/public/cpp/shell_window_ids.h"
@@ -160,6 +161,7 @@ uint32_t HandleXdgSurfaceConfigureCallback(
     bool activated,
     const gfx::Vector2d& origin_offset,
     float raster_scale,
+    aura::Window::OcclusionState occlusion_state,
     std::optional<chromeos::WindowStateType> restore_state_type) {
   uint32_t serial =
       serial_tracker->GetNextSerial(SerialTracker::EventType::OTHER_EVENT);
@@ -201,6 +203,7 @@ class WaylandToplevel : public aura::WindowObserver {
 
   // Overridden from aura::WindowObserver:
   void OnWindowDestroying(aura::Window* window) override {
+    window->RemoveObserver(this);
     shell_surface_data_ = nullptr;
   }
 
@@ -309,7 +312,7 @@ class WaylandToplevel : public aura::WindowObserver {
     wl_array_init(&states);
     if (state_type == chromeos::WindowStateType::kMaximized)
       AddState(&states, XDG_TOPLEVEL_STATE_MAXIMIZED);
-    // TODO(crbug/1250129): Pinned states need to be handled properly.
+    // TODO(crbug.com/40197882): Pinned states need to be handled properly.
     if (IsFullscreenOrPinnedWindowStateType(state_type)) {
       AddState(&states, XDG_TOPLEVEL_STATE_FULLSCREEN);
       // If the window was maxmized before it is fullscreened, we should
@@ -564,6 +567,7 @@ class WaylandPopup : aura::WindowObserver {
 
   // Overridden from aura::WindowObserver:
   void OnWindowDestroying(aura::Window* window) override {
+    window->RemoveObserver(this);
     shell_surface_data_ = nullptr;
   }
 

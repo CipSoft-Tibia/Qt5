@@ -1,10 +1,15 @@
 // Copyright (C) 2022 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QHTTP1CONFIGURATION_H
 #define QHTTP1CONFIGURATION_H
 
 #include <QtNetwork/qtnetworkglobal.h>
+
+#include <QtCore/qtclasshelpermacros.h>
+#include <QtCore/qtypes.h>
+#include <QtCore/qtypeinfo.h>
 
 #include <utility>
 #include <cstdint>

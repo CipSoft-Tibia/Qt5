@@ -23,7 +23,7 @@ bool StructTraits<media_router::mojom::IssueDataView, media_router::IssueInfo>::
   if (!data.ReadSeverity(&out->severity))
     return false;
 
-  absl::optional<std::string> message;
+  std::optional<std::string> message;
   if (!data.ReadMessage(&message))
     return false;
 
@@ -48,7 +48,7 @@ UnionTraits<media_router::mojom::MediaSinkExtraDataDataView,
   } else if (sink.is_cast_sink()) {
     return media_router::mojom::MediaSinkExtraDataDataView::Tag::kCastMediaSink;
   }
-  NOTREACHED();
+  NOTREACHED_IN_MIGRATION();
   return media_router::mojom::MediaSinkExtraDataDataView::Tag::kCastMediaSink;
 }
 
@@ -110,7 +110,7 @@ bool UnionTraits<media_router::mojom::MediaSinkExtraDataDataView,
       return true;
     }
   }
-  NOTREACHED();
+  NOTREACHED_IN_MIGRATION();
   return false;
 }
 
@@ -164,7 +164,7 @@ bool StructTraits<media_router::mojom::MediaRouteDataView,
     return false;
   out->set_presentation_id(presentation_id);
 
-  absl::optional<media_router::MediaSource::Id> media_source_id;
+  std::optional<media_router::MediaSource::Id> media_source_id;
   if (!data.ReadMediaSource(&media_source_id))
     return false;
   if (media_source_id)

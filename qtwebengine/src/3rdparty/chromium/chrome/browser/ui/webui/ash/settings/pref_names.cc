@@ -14,7 +14,12 @@ namespace ash::settings::prefs {
 // Please note that this is only relevant if IsSyncAllOsTypesEnabled() is false,
 // so callers have to check both this pref and IsSyncAllOsTypesEnabled() to
 // verify whether this wallpaper sync is enabled.
-// TODO(https://crbug.com/1318106): Create a helper method that checks both.
+// TODO(crbug.com/40835149): Create a helper method that checks both.
 const char kSyncOsWallpaper[] = "sync.os_wallpaper";
+
+// Boolean that indicates that ash is restarting after the completion of
+// "Sanitize Settings", and the post-sanitize UI should be displayed after
+// restart. Once the post-sanitize UI is displayed, this value will be reset.
+const char kSanitizeCompleted[] = "chromeos.sanitize_completed";
 
 }  // namespace ash::settings::prefs

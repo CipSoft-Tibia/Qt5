@@ -16,7 +16,7 @@ public enum QtQmlStatus {
 
     /**
      * Loaded and ready.
-     * Invoking methods that operate on a QML component would succeed <b>only<b> if
+     * Invoking methods that operate on a QML component would succeed <b>only</b> if
      * the current status is ready.
      **/
     READY(1),

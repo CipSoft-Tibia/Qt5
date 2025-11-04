@@ -40,6 +40,7 @@ QT_BEGIN_NAMESPACE
     \inqmlmodule QtOpcUa
     \brief The OPC UA authentication information.
     \since QtOpcUa 5.13
+    \deprecated [6.9]
 
     This class holds the information necessary to perform a login on a server.
 
@@ -149,6 +150,19 @@ void QOpcUaAuthenticationInformation::setCertificateAuthentication()
 {
     data->authenticationData = QVariant();
     data->authenticationType = QOpcUaUserTokenPolicy::TokenType::Certificate;
+}
+
+/*!
+    \since 6.9
+
+    Sets the authentication method to certificate authentication with a
+    certificate different from the client certificate.
+*/
+void QOpcUaAuthenticationInformation::setCertificateAuthentication(const QString &certificatePath,
+                                                                   const QString &privateKeyPath)
+{
+    data->authenticationType = QOpcUaUserTokenPolicy::TokenType::Certificate;
+    data->authenticationData = QVariant::fromValue(QPair<QString, QString>(certificatePath, privateKeyPath));
 }
 
 /*!

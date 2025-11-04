@@ -28,23 +28,32 @@
 #ifndef SRC_DAWN_NATIVE_APPLYCLEARVALUEWITHDRAWHELPER_H_
 #define SRC_DAWN_NATIVE_APPLYCLEARVALUEWITHDRAWHELPER_H_
 
-#include <bitset>
+#include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "dawn/common/Ref.h"
 #include "dawn/common/ityp_array.h"
 #include "dawn/common/ityp_bitset.h"
+#include "dawn/native/ChainUtils.h"
+#include "dawn/native/Commands.h"
 #include "dawn/native/Error.h"
 #include "dawn/native/IntegerTypes.h"
 
 namespace dawn::native {
 class BufferBase;
+class CommandEncoder;
 class RenderPassEncoder;
 struct RenderPassDescriptor;
 
 struct KeyOfApplyClearColorValueWithDrawPipelines {
-    uint8_t colorAttachmentCount;
+    uint8_t colorAttachmentCount = 0;
     PerColorAttachment<wgpu::TextureFormat> colorTargetFormats;
     ColorAttachmentMask colorTargetsToApplyClearColorValue;
+    uint32_t sampleCount = 0;
+    wgpu::TextureFormat depthStencilFormat = wgpu::TextureFormat::Undefined;
+    bool hasPLS = false;
+    uint64_t totalPixelLocalStorageSize;
+    std::vector<wgpu::PipelineLayoutStorageAttachment> plsAttachments;
 };
 
 struct KeyOfApplyClearColorValueWithDrawPipelinesHashFunc {
@@ -60,11 +69,24 @@ using ApplyClearColorValueWithDrawPipelinesCache =
                         KeyOfApplyClearColorValueWithDrawPipelinesHashFunc,
                         KeyOfApplyClearColorValueWithDrawPipelinesEqualityFunc>;
 
-bool ShouldApplyClearBigIntegerColorValueWithDraw(const DeviceBase* device,
-                                                  const RenderPassDescriptor* renderPassDescriptor);
+class ClearWithDrawHelper {
+  public:
+    ClearWithDrawHelper();
+    ~ClearWithDrawHelper();
 
-MaybeError ApplyClearBigIntegerColorValueWithDraw(RenderPassEncoder* renderPassEncoder,
-                                                  const RenderPassDescriptor* renderPassDescriptor);
+    MaybeError Initialize(CommandEncoder* encoder,
+                          const UnpackedPtr<RenderPassDescriptor>& renderPassDescriptor);
+    MaybeError Apply(RenderPassEncoder* renderPassEncoder);
+
+    // Get the mask indicating the color attachments in the render pass that the workaround applies.
+    static ColorAttachmentMask GetAppliedColorAttachments(const DeviceBase* device,
+                                                          BeginRenderPassCmd* renderPass);
+
+  private:
+    bool mShouldRun = false;
+    KeyOfApplyClearColorValueWithDrawPipelines mKey;
+    Ref<BufferBase> mUniformBufferWithClearColorValues;
+};
 
 }  // namespace dawn::native
 

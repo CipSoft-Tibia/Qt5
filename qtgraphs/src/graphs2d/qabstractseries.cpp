@@ -1,6 +1,7 @@
 // Copyright (C) 2023 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
+#include "graphs2d/qabstractseries.h"
 #include <QtGraphs/qabstractseries.h>
 #include <private/qabstractseries_p.h>
 #include <private/qgraphsview_p.h>
@@ -239,6 +240,7 @@ QT_BEGIN_NAMESPACE
     This signal is emitted when the series hovering starts. The name of the series is in \a seriesName,
     the mouse/touch position in \a position, and the series value in \a value.
     \note This signal is only emitted when \l hoverable is set to true.
+    \note For Pie graph, the value represents (angle of position, start angle of hovering slice)
 */
 
 /*!
@@ -253,6 +255,7 @@ QT_BEGIN_NAMESPACE
     This signal is emitted when the series hovering changes. The name of the series is in \a seriesName,
     the mouse/touch position in \a position, and the series value in \a value.
     \note This signal is only emitted when \l hoverable is set to true.
+    \note For Pie graph, the value represents (angle of position, start angle of hovering slice)
 */
 
 /*!
@@ -378,6 +381,7 @@ void QAbstractSeries::setValuesMultiplier(qreal valuesMultiplier)
 }
 
 /*!
+    \internal
     Returns the graph that the series belongs to.
 
     Set automatically when the series is added to the graph,
@@ -396,18 +400,26 @@ void QAbstractSeries::setGraph(QGraphsView *graph)
     if (graph) {
         switch (type()) {
         case SeriesType::Bar:
+#ifdef USE_BARGRAPH
             graph->createBarsRenderer();
+#endif
             break;
         case SeriesType::Scatter:
         case SeriesType::Line:
         case SeriesType::Spline:
+#ifdef USE_POINTS
             graph->createPointRenderer();
+#endif
             break;
         case SeriesType::Pie:
+#ifdef USE_PIEGRAPH
             graph->createPieRenderer();
+#endif
             break;
         case SeriesType::Area:
+#ifdef USE_AREAGRAPH
             graph->createAreaRenderer();
+#endif
             break;
         default:
             break;
@@ -458,7 +470,8 @@ void QAbstractSeries::componentComplete()
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 
-QAbstractSeriesPrivate::QAbstractSeriesPrivate()
+QAbstractSeriesPrivate::QAbstractSeriesPrivate(QAbstractSeries::SeriesType type)
+    : m_type(type)
 {
 }
 

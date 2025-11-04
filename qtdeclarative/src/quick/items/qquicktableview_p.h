@@ -19,8 +19,11 @@
 QT_REQUIRE_CONFIG(quick_tableview);
 
 #include <QtCore/qpointer.h>
+#include <QtCore/qpoint.h>
+#include <QtCore/qrect.h>
 #include <QtQuick/private/qtquickglobal_p.h>
 #include <QtQuick/private/qquickflickable_p.h>
+#include <QtQml/qqmlcomponent.h>
 #include <QtQml/private/qqmlnullablevalue_p.h>
 #include <QtQml/private/qqmlfinalizer_p.h>
 #include <QtQml/private/qqmlguard_p.h>
@@ -301,8 +304,7 @@ class Q_QUICK_EXPORT QQuickTableViewAttached : public QObject
     Q_PROPERTY(QQmlComponent *editDelegate READ editDelegate WRITE setEditDelegate NOTIFY editDelegateChanged FINAL)
 
 public:
-    QQuickTableViewAttached(QObject *parent)
-        : QObject(parent) {}
+    QQuickTableViewAttached(QObject *parent);
 
     QQuickTableView *view() const { return m_view; }
     void setView(QQuickTableView *newTableView) {

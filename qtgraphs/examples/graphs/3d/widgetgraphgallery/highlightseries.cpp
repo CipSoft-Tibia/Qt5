@@ -18,7 +18,7 @@ HighlightSeries::HighlightSeries()
     setVisible(false);
 }
 
-HighlightSeries::~HighlightSeries() {}
+HighlightSeries::~HighlightSeries() = default;
 
 //! [0]
 void HighlightSeries::setTopographicSeries(TopographicSeries *series)

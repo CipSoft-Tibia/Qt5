@@ -227,6 +227,7 @@ Item {
             compare(top.common.shadowStrength, 25.0, "shadowStrength")
             top.common.shadowStrength = -1.0
             compare(top.common.shadowStrength, 25.0, "shadowStrength")
+
             top.common.cameraTargetPosition = Qt.vector3d(2.0, 2.0, -2.0)
             compare(top.common.cameraTargetPosition, Qt.vector3d(1.0, 1.0, -1.0),
                     "cameraTargetPosition")

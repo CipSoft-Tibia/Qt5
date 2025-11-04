@@ -49,7 +49,6 @@ static void dav1dCodecDestroyInternal(avifCodec * codec)
 }
 
 static avifBool dav1dCodecGetNextImage(struct avifCodec * codec,
-                                       struct avifDecoder * decoder,
                                        const avifDecodeSample * sample,
                                        avifBool alpha,
                                        avifBool * isLimitedRangeAlpha,
@@ -61,16 +60,16 @@ static avifBool dav1dCodecGetNextImage(struct avifCodec * codec,
         // Give all available threads to decode a single frame as fast as possible
 #if DAV1D_API_VERSION_MAJOR >= 6
         dav1dSettings.max_frame_delay = 1;
-        dav1dSettings.n_threads = AVIF_CLAMP(decoder->maxThreads, 1, DAV1D_MAX_THREADS);
+        dav1dSettings.n_threads = AVIF_CLAMP(codec->maxThreads, 1, DAV1D_MAX_THREADS);
 #else
         dav1dSettings.n_frame_threads = 1;
-        dav1dSettings.n_tile_threads = AVIF_CLAMP(decoder->maxThreads, 1, DAV1D_MAX_TILE_THREADS);
+        dav1dSettings.n_tile_threads = AVIF_CLAMP(codec->maxThreads, 1, DAV1D_MAX_TILE_THREADS);
 #endif // DAV1D_API_VERSION_MAJOR >= 6
         // Set a maximum frame size limit to avoid OOM'ing fuzzers. In 32-bit builds, if
         // frame_size_limit > 8192 * 8192, dav1d reduces frame_size_limit to 8192 * 8192 and logs
         // a message, so we set frame_size_limit to at most 8192 * 8192 to avoid the dav1d_log
         // message.
-        dav1dSettings.frame_size_limit = (sizeof(size_t) < 8) ? AVIF_MIN(decoder->imageSizeLimit, 8192 * 8192) : decoder->imageSizeLimit;
+        dav1dSettings.frame_size_limit = (sizeof(size_t) < 8) ? AVIF_MIN(codec->imageSizeLimit, 8192 * 8192) : codec->imageSizeLimit;
         dav1dSettings.operating_point = codec->operatingPoint;
         dav1dSettings.all_layers = codec->allLayers;
 
@@ -88,16 +87,17 @@ static avifBool dav1dCodecGetNextImage(struct avifCodec * codec,
         return AVIF_FALSE;
     }
 
+    int res;
     for (;;) {
         if (dav1dData.data) {
-            int res = dav1d_send_data(codec->internal->dav1dContext, &dav1dData);
+            res = dav1d_send_data(codec->internal->dav1dContext, &dav1dData);
             if ((res < 0) && (res != DAV1D_ERR(EAGAIN))) {
                 dav1d_data_unref(&dav1dData);
                 return AVIF_FALSE;
             }
         }
 
-        int res = dav1d_get_picture(codec->internal->dav1dContext, &nextFrame);
+        res = dav1d_get_picture(codec->internal->dav1dContext, &nextFrame);
         if (res == DAV1D_ERR(EAGAIN)) {
             if (dav1dData.data) {
                 // send more data
@@ -124,6 +124,27 @@ static avifBool dav1dCodecGetNextImage(struct avifCodec * codec,
     if (dav1dData.data) {
         dav1d_data_unref(&dav1dData);
     }
+
+    // Drain all buffered frames in the decoder.
+    //
+    // The sample should have only one frame of the desired layer. If there are more frames after
+    // that frame, we need to discard them so that they won't be mistakenly output when the decoder
+    // is used to decode another sample.
+    Dav1dPicture bufferedFrame;
+    memset(&bufferedFrame, 0, sizeof(Dav1dPicture));
+    do {
+        res = dav1d_get_picture(codec->internal->dav1dContext, &bufferedFrame);
+        if (res < 0) {
+            if (res != DAV1D_ERR(EAGAIN)) {
+                if (gotPicture) {
+                    dav1d_picture_unref(&nextFrame);
+                }
+                return AVIF_FALSE;
+            }
+        } else {
+            dav1d_picture_unref(&bufferedFrame);
+        }
+    } while (res == 0);
 
     if (gotPicture) {
         dav1d_picture_unref(&codec->internal->dav1dPicture);

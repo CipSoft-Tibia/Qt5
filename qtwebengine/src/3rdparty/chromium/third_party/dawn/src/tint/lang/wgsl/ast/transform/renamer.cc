@@ -1264,6 +1264,7 @@ Renamer::Data::Data(Remappings&& r) : remappings(std::move(r)) {}
 Renamer::Data::Data(const Data&) = default;
 Renamer::Data::~Data() = default;
 
+Renamer::Config::Config() = default;
 Renamer::Config::Config(Target t, bool pu) : target(t), preserve_unicode(pu) {}
 Renamer::Config::Config(Target t, bool pu, Remappings&& remappings)
     : target(t), preserve_unicode(pu), requested_names(std::move(remappings)) {}
@@ -1294,7 +1295,7 @@ Transform::ApplyResult Renamer::Apply(const Program& src,
         Switch(
             node,
             [&](const MemberAccessorExpression* accessor) {
-                auto* sem = src.Sem().Get(accessor)->UnwrapLoad();
+                auto* sem = src.Sem().Get(accessor)->Unwrap();
                 if (sem->Is<sem::Swizzle>()) {
                     preserved_identifiers.Add(accessor->member);
                 } else if (auto* str_expr = src.Sem().GetVal(accessor->object)) {
@@ -1398,7 +1399,7 @@ Transform::ApplyResult Renamer::Apply(const Program& src,
         }
 
         // Create a replacement for this symbol, if we haven't already.
-        auto replacement = remappings.GetOrCreate(symbol, [&] {
+        auto replacement = remappings.GetOrAdd(symbol, [&] {
             if (requested_names) {
                 auto iter = requested_names->find(symbol.Name());
                 if (iter != requested_names->end()) {
@@ -1422,8 +1423,8 @@ Transform::ApplyResult Renamer::Apply(const Program& src,
     ctx.Clone();
 
     Remappings out;
-    for (auto it : remappings) {
-        out[it.key.Name()] = it.value.Name();
+    for (auto& it : remappings) {
+        out[it.key->Name()] = it.value.Name();
     }
     outputs.Add<Data>(std::move(out));
 

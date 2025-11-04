@@ -179,8 +179,11 @@ Node *CppCodeParser::processTopicCommand(const Doc &doc, const QString &command,
         auto *qcn = database->findQmlTypeInPrimaryTree(qmid, arg.first);
         // A \qmlproperty may have already constructed a placeholder type
         // without providing a module identifier; allow such cases
-        if (!qcn && !qmid.isEmpty())
+        if (!qcn && !qmid.isEmpty()) {
             qcn = database->findQmlTypeInPrimaryTree(QString(), arg.first);
+            if (qcn && !qcn->logicalModuleName().isEmpty())
+                qcn = nullptr;
+        }
         if (!qcn || qcn->nodeType() != nodeType)
             qcn = new QmlTypeNode(database->primaryTreeRoot(), arg.first, nodeType);
         if (!qmid.isEmpty())
@@ -462,18 +465,39 @@ void CppCodeParser::processMetaCommand(const Doc &doc, const QString &command,
                             .arg(COMMAND_QTVARIABLE));
     } else if (command == COMMAND_QTCMAKEPACKAGE) {
         if (node->isModule())
-            node->setQtCMakeComponent(arg);
+            node->setCMakeComponent(arg);
         else
             doc.location().warning(
                     QStringLiteral("Command '\\%1' is only meaningful in '\\module'.")
                             .arg(COMMAND_QTCMAKEPACKAGE));
     } else if (command == COMMAND_QTCMAKETARGETITEM) {
         if (node->isModule())
-            node->setQtCMakeTargetItem(arg);
+            node->setCMakeTargetItem(QLatin1String("Qt6::") + arg);
         else
             doc.location().warning(
                     QStringLiteral("Command '\\%1' is only meaningful in '\\module'.")
                             .arg(COMMAND_QTCMAKETARGETITEM));
+    } else if (command == COMMAND_CMAKEPACKAGE) {
+        if (node->isModule())
+            node->setCMakePackage(arg);
+        else
+            doc.location().warning(
+                    QStringLiteral("Command '\\%1' is only meaningful in '\\module'.")
+                            .arg(COMMAND_CMAKEPACKAGE));
+    } else if (command == COMMAND_CMAKECOMPONENT) {
+        if (node->isModule())
+            node->setCMakeComponent(arg);
+        else
+            doc.location().warning(
+                    QStringLiteral("Command '\\%1' is only meaningful in '\\module'.")
+                            .arg(COMMAND_CMAKECOMPONENT));
+    } else if (command == COMMAND_CMAKETARGETITEM) {
+        if (node->isModule())
+            node->setCMakeTargetItem(arg);
+        else
+            doc.location().warning(
+                    QStringLiteral("Command '\\%1' is only meaningful in '\\module'.")
+                            .arg(COMMAND_CMAKETARGETITEM));
     } else if (command == COMMAND_MODULESTATE ) {
         if (!node->isModule() && !node->isQmlModule()) {
             doc.location().warning(
@@ -674,6 +698,7 @@ FunctionNode *CppCodeParser::parseMacroArg(const Location &location, const QStri
     }
     QString params;
     if (leftParenSplit.size() > 1) {
+        params = QString("");
         const QString &afterParen = leftParenSplit.at(1);
         qsizetype rightParen = afterParen.indexOf(')');
         if (rightParen >= 0)
@@ -687,7 +712,7 @@ FunctionNode *CppCodeParser::parseMacroArg(const Location &location, const QStri
         macroName = macroName.mid(i);
     }
     FunctionNode::Metaness metaness = FunctionNode::MacroWithParams;
-    if (params.isEmpty())
+    if (params.isNull())
         metaness = FunctionNode::MacroWithoutParams;
     auto *macro = new FunctionNode(metaness, database->primaryTreeRoot(), macroName);
     macro->setAccess(Access::Public);

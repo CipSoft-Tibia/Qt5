@@ -118,7 +118,7 @@
     Special
 
     \list
-        \li Meta XR Simulator (Windows only; macOS has not been tested by Qt for the time being)
+        \li Meta XR Simulator (Windows and macOS)
     \endlist
 
     \section1 Further reading

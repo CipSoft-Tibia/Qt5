@@ -11,10 +11,7 @@
   border-bottom: 1px solid var(--sys-color-divider);
   position: relative;
   overflow: hidden;
-
-  > div {
-    padding: 2px 2px 4px 4px;
-  }
+  padding: 2px 2px 4px 4px;
 
   &:last-child {
     border-bottom: none;
@@ -54,8 +51,20 @@
   }
 
   .selector,
-  .try-rule-selector-element {
-    color: var(--sys-color-state-disabled);
+  .try-rule-selector-element,
+  .ancestor-rule-list,
+  .ancestor-closing-braces {
+    color: var(--sys-color-token-meta);
+  }
+
+  .ancestor-rule-list,
+  .styles-section-title {
+    overflow-wrap: break-word;
+    white-space: normal;
+  }
+
+  .ancestor-rule-list devtools-css-query {
+    display: block;
   }
 
   .simple-selector.selector-matches,
@@ -91,27 +100,20 @@
   clear: both;
 }
 
-.styles-section-title {
-  background-origin: padding;
-  background-clip: padding;
-  word-wrap: break-word;
-  white-space: normal;
-
-  .ancestor-rule-list {
-    color: var(--sys-color-state-disabled);
-  }
-}
-
 .styles-section-subtitle {
   color: var(--sys-color-token-subtle);
   float: right;
-  padding-left: 15px;
+  padding: var(--sys-size-2) var(--sys-size-2) 0 var(--sys-size-8);
   max-width: 100%;
+  height: 15px;
+  margin-bottom: -1px;
+}
+
+.styles-section-subtitle * {
   text-overflow: ellipsis;
   overflow: hidden;
   white-space: nowrap;
-  height: 15px;
-  margin-bottom: -1px;
+  max-width: 100%;
 }
 
 .sidebar-pane-open-brace,
@@ -153,6 +155,15 @@
 
 .styles-selector {
   cursor: text;
+}
+
+/* TODO(changhaohan): restructure this in relation to stylePropertiesTreeOutline.css. */
+.styles-clipboard-only {
+  display: inline-block;
+  width: 0;
+  opacity: 0%;
+  pointer-events: none;
+  white-space: pre;
 }
 
 .styles-sidebar-pane-toolbar-container {
@@ -227,6 +238,7 @@
 }
 
 .styles-show-all {
+  padding: 4px;
   margin-left: 16px;
   text-overflow: ellipsis;
   overflow: hidden;

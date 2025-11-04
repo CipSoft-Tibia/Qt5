@@ -32,6 +32,7 @@
 #include "third_party/blink/renderer/core/page/chrome_client_impl.h"
 
 #include <memory>
+#include <optional>
 #include <utility>
 
 #include "base/debug/alias.h"
@@ -40,7 +41,6 @@
 #include "cc/animation/animation_timeline.h"
 #include "cc/layers/picture_layer.h"
 #include "cc/trees/paint_holding_reason.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "third_party/blink/public/common/page/page_zoom.h"
 #include "third_party/blink/public/common/widget/constants.h"
 #include "third_party/blink/public/mojom/input/focus_type.mojom-blink.h"
@@ -90,6 +90,8 @@
 #include "third_party/blink/renderer/core/html/forms/html_form_element.h"
 #include "third_party/blink/renderer/core/html/forms/html_input_element.h"
 #include "third_party/blink/renderer/core/html/forms/internal_popup_menu.h"
+#include "third_party/blink/renderer/core/html/html_embed_element.h"
+#include "third_party/blink/renderer/core/html/html_object_element.h"
 #include "third_party/blink/renderer/core/inspector/dev_tools_emulator.h"
 #include "third_party/blink/renderer/core/layout/hit_test_result.h"
 #include "third_party/blink/renderer/core/layout/layout_embedded_content.h"
@@ -136,7 +138,7 @@ const char* UIElementTypeToString(ChromeClient::UIElementType ui_element_type) {
     case ChromeClient::UIElementType::kPopup:
       return "popup";
   }
-  NOTREACHED();
+  NOTREACHED_IN_MIGRATION();
   return "";
 }
 
@@ -151,9 +153,9 @@ const char* DismissalTypeToString(Document::PageDismissalType dismissal_type) {
     case Document::kUnloadDismissal:
       return "unload";
     case Document::kNoDismissal:
-      NOTREACHED();
+      NOTREACHED_IN_MIGRATION();
   }
-  NOTREACHED();
+  NOTREACHED_IN_MIGRATION();
   return "";
 }
 
@@ -305,8 +307,12 @@ void ChromeClientImpl::SetKeyboardFocusURL(Element* new_focus_element) {
   web_view_->SetKeyboardFocusURL(focus_url);
 }
 
-bool ChromeClientImpl::SupportsAppRegion() {
-  return web_view_->SupportsAppRegion();
+bool ChromeClientImpl::SupportsDraggableRegions() {
+  return web_view_->SupportsDraggableRegions();
+}
+
+void ChromeClientImpl::DraggableRegionsChanged() {
+  return web_view_->DraggableRegionsChanged();
 }
 
 void ChromeClientImpl::StartDragging(LocalFrame* frame,
@@ -353,21 +359,6 @@ Page* ChromeClientImpl::CreateWindowDelegate(
   if (!new_view)
     return nullptr;
   return new_view->GetPage();
-}
-
-void ChromeClientImpl::DidOverscroll(
-    const gfx::Vector2dF& overscroll_delta,
-    const gfx::Vector2dF& accumulated_overscroll,
-    const gfx::PointF& position_in_viewport,
-    const gfx::Vector2dF& velocity_in_viewport) {
-  DCHECK(web_view_);
-  if (!web_view_->does_composite())
-    return;
-  // TODO(darin): Change caller to pass LocalFrame.
-  DCHECK(web_view_->MainFrameImpl());
-  web_view_->MainFrameImpl()->FrameWidgetImpl()->DidOverscroll(
-      overscroll_delta, accumulated_overscroll, position_in_viewport,
-      velocity_in_viewport);
 }
 
 void ChromeClientImpl::InjectScrollbarGestureScroll(
@@ -768,8 +759,9 @@ ColorChooser* ChromeClientImpl::OpenColorChooser(
     controller = MakeGarbageCollected<ColorChooserPopupUIController>(
         frame, this, chooser_client);
   } else {
-#if !BUILDFLAG(IS_ANDROID) && !BUILDFLAG(IS_IOS) && !defined(TOOLKIT_QT)
-    NOTREACHED() << "Page popups should be enabled on all but Android or iOS";
+#if !BUILDFLAG(IS_ANDROID) && !BUILDFLAG(IS_IOS) && !BUILDFLAG(IS_QTWEBENGINE)
+    NOTREACHED_IN_MIGRATION()
+        << "Page popups should be enabled on all but Android or iOS";
 #endif
     controller =
         MakeGarbageCollected<ColorChooserUIController>(frame, chooser_client);
@@ -981,19 +973,7 @@ PopupMenu* ChromeClientImpl::OpenPopupMenu(LocalFrame& frame,
                                            HTMLSelectElement& select) {
   NotifyPopupOpeningObservers();
 
-  bool use_external_popup_menus = WebViewImpl::UseExternalPopupMenus();
-#if BUILDFLAG(IS_MAC)
-  // There is a bug that is causing popup menus in PWA windows on macOS to
-  // sometimes not appear if using external popup menus. Until that bug is
-  // fixed, use internal menus if this is a PWA window on mac.
-  // TODO(https://crbug.com/1488347): Remove this workaround when the bug
-  // is fixed.
-  if (frame.GetSettings() && !frame.GetSettings()->GetWebAppScope().empty()) {
-    use_external_popup_menus = false;
-  }
-#endif
-
-  if (use_external_popup_menus) {
+  if (WebViewImpl::UseExternalPopupMenus()) {
     return MakeGarbageCollected<ExternalPopupMenu>(frame, select);
   }
 
@@ -1153,7 +1133,7 @@ std::unique_ptr<cc::ScopedPauseRendering> ChromeClientImpl::PauseRendering(
       ->PauseRendering();
 }
 
-absl::optional<int> ChromeClientImpl::GetMaxRenderBufferBounds(
+std::optional<int> ChromeClientImpl::GetMaxRenderBufferBounds(
     LocalFrame& frame) const {
   return WebLocalFrameImpl::FromFrame(frame)
       ->LocalRootFrameWidget()
@@ -1298,6 +1278,14 @@ void ChromeClientImpl::DidChangeValueInTextField(
   }
 }
 
+void ChromeClientImpl::DidClearValueInTextField(
+    HTMLFormControlElement& element) {
+  Document& doc = element.GetDocument();
+  if (auto* fill_client = AutofillClientFromFrame(doc.GetFrame())) {
+    fill_client->TextFieldCleared(WebFormControlElement(&element));
+  }
+}
+
 void ChromeClientImpl::DidUserChangeContentEditableContent(Element& element) {
   Document& doc = element.GetDocument();
   // Selecting the focused element as we are only interested in changes made by
@@ -1359,13 +1347,13 @@ void ChromeClientImpl::AjaxSucceeded(LocalFrame* frame) {
     fill_client->AjaxSucceeded();
 }
 
-void ChromeClientImpl::JavaScriptChangedAutofilledValue(
-    HTMLFormControlElement& element,
-    const String& old_value) {
+void ChromeClientImpl::JavaScriptChangedValue(HTMLFormControlElement& element,
+                                              const String& old_value,
+                                              bool was_autofilled) {
   Document& doc = element.GetDocument();
   if (auto* fill_client = AutofillClientFromFrame(doc.GetFrame())) {
-    fill_client->JavaScriptChangedAutofilledValue(
-        WebFormControlElement(&element), old_value);
+    fill_client->JavaScriptChangedValue(WebFormControlElement(&element),
+                                        old_value, was_autofilled);
   }
 }
 
@@ -1427,9 +1415,12 @@ void ChromeClientImpl::DocumentDetached(Document& document) {
   }
 }
 
-double ChromeClientImpl::UserZoomFactor() const {
+double ChromeClientImpl::UserZoomFactor(LocalFrame* frame) const {
   DCHECK(web_view_);
-  return PageZoomLevelToZoomFactor(web_view_->ZoomLevel());
+  return ZoomLevelToZoomFactor(
+      WebLocalFrameImpl::FromFrame(frame->LocalFrameRoot())
+          ->FrameWidgetImpl()
+          ->GetZoomLevel());
 }
 
 void ChromeClientImpl::SetDelegatedInkMetadata(

@@ -28,6 +28,7 @@
 #include "dawn/native/metal/PipelineLayoutMTL.h"
 
 #include "dawn/common/BitSetIterator.h"
+#include "dawn/common/MatchVariant.h"
 #include "dawn/native/BindGroupLayoutInternal.h"
 #include "dawn/native/metal/DeviceMTL.h"
 
@@ -60,24 +61,31 @@ PipelineLayout::PipelineLayout(Device* device,
                     continue;
                 }
 
-                switch (bindingInfo.bindingType) {
-                    case BindingInfoType::Buffer:
+                MatchVariant(
+                    bindingInfo.bindingLayout,
+                    [&](const BufferBindingInfo&) {
                         mIndexInfo[stage][group][bindingIndex] = bufferIndex;
                         bufferIndex++;
-                        break;
-
-                    case BindingInfoType::Sampler:
+                    },
+                    [&](const SamplerBindingInfo&) {
                         mIndexInfo[stage][group][bindingIndex] = samplerIndex;
                         samplerIndex++;
-                        break;
-
-                    case BindingInfoType::Texture:
-                    case BindingInfoType::StorageTexture:
-                    case BindingInfoType::ExternalTexture:
+                    },
+                    [&](const TextureBindingInfo&) {
                         mIndexInfo[stage][group][bindingIndex] = textureIndex;
                         textureIndex++;
-                        break;
-                }
+                    },
+                    [&](const StorageTextureBindingInfo&) {
+                        mIndexInfo[stage][group][bindingIndex] = textureIndex;
+                        textureIndex++;
+                    },
+                    [&](const StaticSamplerBindingInfo&) {
+                        // Static samplers are handled in the frontend.
+                        // TODO(crbug.com/dawn/2482): Implement static samplers in the
+                        // Metal backend.
+                        DAWN_UNREACHABLE();
+                    },
+                    [](const InputAttachmentBindingInfo&) { DAWN_UNREACHABLE(); });
             }
         }
 

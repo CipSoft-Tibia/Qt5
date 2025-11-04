@@ -1,26 +1,29 @@
 // Copyright (C) 2021 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
-#include <qtmultimediaglobal_p.h>
 #include "qplatformmediaintegration_p.h"
-#include <qatomic.h>
-#include <qmutex.h>
-#include <qplatformaudioinput_p.h>
-#include <qplatformaudiooutput_p.h>
-#include <qplatformaudioresampler_p.h>
-#include <qplatformvideodevices_p.h>
-#include <qmediadevices.h>
-#include <qcameradevice.h>
-#include <qloggingcategory.h>
-#include <QtCore/qcoreapplication.h>
-#include <QtCore/qapplicationstatic.h>
 
-#include "qplatformcapturablewindows_p.h"
-#include "qplatformaudiodevices_p.h"
-#include <QtCore/private/qfactoryloader_p.h>
+#include <QtCore/qapplicationstatic.h>
+#include <QtCore/qatomic.h>
+#include <QtCore/qcoreapplication.h>
+#include <QtCore/qloggingcategory.h>
+#include <QtCore/qmutex.h>
 #include <QtCore/private/qcoreapplication_p.h>
-#include <private/qplatformmediaformatinfo_p.h>
-#include "qplatformmediaplugin_p.h"
+#include <QtCore/private/qfactoryloader_p.h>
+
+#include <QtGui/qwindow.h>
+
+#include <QtMultimedia/qcameradevice.h>
+#include <QtMultimedia/qmediadevices.h>
+#include <QtMultimedia/private/qplatformaudiodevices_p.h>
+#include <QtMultimedia/private/qplatformaudioinput_p.h>
+#include <QtMultimedia/private/qplatformaudiooutput_p.h>
+#include <QtMultimedia/private/qplatformaudioresampler_p.h>
+#include <QtMultimedia/private/qplatformcapturablewindows_p.h>
+#include <QtMultimedia/private/qplatformmediaformatinfo_p.h>
+#include <QtMultimedia/private/qplatformmediaplugin_p.h>
+#include <QtMultimedia/private/qplatformvideodevices_p.h>
+#include <QtMultimedia/private/qtmultimediaglobal_p.h>
 
 namespace {
 
@@ -33,7 +36,7 @@ public:
     }
 };
 
-static Q_LOGGING_CATEGORY(qLcMediaPlugin, "qt.multimedia.plugin")
+Q_STATIC_LOGGING_CATEGORY(qLcMediaPlugin, "qt.multimedia.plugin")
 
 Q_GLOBAL_STATIC_WITH_ARGS(QFactoryLoader, loader,
                           (QPlatformMediaPlugin_iid,
@@ -118,7 +121,7 @@ void QPlatformMediaIntegration::resetInstance()
 QMaybe<std::unique_ptr<QPlatformAudioResampler>>
 QPlatformMediaIntegration::createAudioResampler(const QAudioFormat &, const QAudioFormat &)
 {
-    return notAvailable;
+    return QUnexpected(notAvailable);
 }
 
 QMaybe<QPlatformAudioInput *> QPlatformMediaIntegration::createAudioInput(QAudioInput *q)

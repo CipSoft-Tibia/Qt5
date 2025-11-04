@@ -418,7 +418,10 @@ void QQuickImageBase::itemChange(ItemChange change, const ItemChangeData &value)
         const auto oldDpr = d->devicePixelRatio;
         // ### how can we get here with !qmlEngine(this)? that implies
         // itemChange() on an item pending deletion, which seems strange.
-        if (qmlEngine(this) && isComponentComplete() && d->url.isValid()) {
+        // Note: We call load here without checking for a valid URL or
+        // any other properties, as we can't know whether the subclass'
+        // implementation of load() is based on URLs or not.
+        if (qmlEngine(this) && isComponentComplete()) {
             load();
             // not changed when loading (sourceSize might not be set)
             if (d->devicePixelRatio == oldDpr)

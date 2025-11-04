@@ -2,6 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#ifdef UNSAFE_BUFFERS_BUILD
+// TODO(crbug.com/341324165): Fix and remove.
+#pragma allow_unsafe_buffers
+#endif
+
 #include "net/disk_cache/simple/simple_index_file.h"
 
 #include <utility>
@@ -42,7 +47,7 @@ const int64_t kMaxIndexFileSizeBytes =
     kMaxEntriesInIndex * (8 + EntryMetadata::kOnDiskSizeBytes);
 
 uint32_t CalculatePickleCRC(const base::Pickle& pickle) {
-  return simple_util::Crc32(pickle.payload(), pickle.payload_size());
+  return simple_util::Crc32(pickle.payload_bytes());
 }
 
 // Used in histograms. Please only add new values at the end.
@@ -101,8 +106,8 @@ struct PickleHeader : public base::Pickle::Header {
 class SimpleIndexPickle : public base::Pickle {
  public:
   SimpleIndexPickle() : base::Pickle(sizeof(PickleHeader)) {}
-  SimpleIndexPickle(const char* data, int data_len)
-      : base::Pickle(data, data_len) {}
+  explicit SimpleIndexPickle(base::span<const uint8_t> data)
+      : base::Pickle(base::Pickle::kUnownedData, data) {}
 
   bool HeaderValid() const { return header_size() == sizeof(PickleHeader); }
 };
@@ -309,7 +314,7 @@ void SimpleIndexFile::SyncWriteToDisk(
   // flush delay. This simple approach will be reconsidered if it does not allow
   // for maintaining freshness.
   base::Time cache_dir_mtime;
-  absl::optional<base::File::Info> file_info =
+  std::optional<base::File::Info> file_info =
       file_operations->GetFileInfo(cache_directory);
   if (!file_info) {
     LOG(ERROR) << "Could not obtain information about cache age";
@@ -536,7 +541,8 @@ void SimpleIndexFile::Deserialize(net::CacheType cache_type,
   out_result->Reset();
   SimpleIndex::EntrySet* entries = &out_result->entries;
 
-  SimpleIndexPickle pickle(data, data_len);
+  SimpleIndexPickle pickle(
+      base::as_bytes(base::span(data, base::checked_cast<size_t>(data_len))));
   if (!pickle.data() || !pickle.HeaderValid()) {
     LOG(WARNING) << "Corrupt Simple Index File.";
     return;
@@ -605,7 +611,7 @@ void SimpleIndexFile::SyncRestoreFromDisk(
   SimpleIndex::EntrySet* entries = &out_result->entries;
 
   auto enumerator = file_operations->EnumerateFiles(cache_directory);
-  while (absl::optional<SimpleFileEnumerator::Entry> entry =
+  while (std::optional<SimpleFileEnumerator::Entry> entry =
              enumerator->Next()) {
     ProcessEntryFile(file_operations, cache_type, entries, entry->path,
                      entry->last_accessed, entry->last_modified, entry->size);

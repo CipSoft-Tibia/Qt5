@@ -5,13 +5,14 @@
 import("//build/config/chromeos/ui_mode.gni")
 import("//build/config/jumbo.gni")
 import("//chromeos/ash/components/assistant/assistant.gni")
-import("//components/services/screen_ai/buildflags/features.gni")
 import("//device/vr/buildflags/buildflags.gni")
 import("//media/gpu/args.gni")
 import("//media/media_options.gni")
 import("//mojo/public/tools/bindings/mojom.gni")
 import("//printing/buildflags/buildflags.gni")
 import("//services/accessibility/buildflags.gni")
+import("//services/screen_ai/buildflags/features.gni")
+import("//services/video_effects/args.gni")
 
 jumbo_source_set("utility") {
   # Only the public target should depend on this. All other targets (even
@@ -32,8 +33,6 @@ jumbo_source_set("utility") {
     "utility_blink_platform_with_sandbox_support_impl.cc",
     "utility_blink_platform_with_sandbox_support_impl.h",
     "utility_main.cc",
-    "utility_service_factory.cc",
-    "utility_service_factory.h",
     "utility_thread_impl.cc",
     "utility_thread_impl.h",
   ]
@@ -45,7 +44,6 @@ jumbo_source_set("utility") {
     "//build:branding_buildflags",
     "//build:chromeos_buildflags",
     "//components/optimization_guide/core:features",
-    "//components/services/screen_ai/buildflags",
     "//components/services/storage",
     "//components/services/storage/public/mojom",
     "//content:export",
@@ -68,6 +66,7 @@ jumbo_source_set("utility") {
     "//services/on_device_model:on_device_model_service",
     "//services/on_device_model/public/cpp",
     "//services/on_device_model/public/mojom",
+    "//services/screen_ai/buildflags",
     "//services/service_manager/public/cpp",
     "//services/service_manager/public/mojom",
     "//services/shape_detection:lib",
@@ -76,9 +75,14 @@ jumbo_source_set("utility") {
     "//services/tracing/public/mojom",
     "//services/video_capture:lib",
     "//services/video_capture/public/mojom:constants",
+    "//services/video_effects/buildflags",
     "//third_party/blink/public:blink_headers",
     "//url",
   ]
+
+  if (enable_video_effects) {
+    deps += [ "//services/video_effects:service" ]
+  }
 
   # When library CDMs are supported, we support running the CDM in the utility
   # process using mojo MediaService. On Windows, we use MediaFoundationService.
@@ -143,8 +147,8 @@ jumbo_source_set("utility") {
     }
   }
 
-  if ((is_linux || is_chromeos) && !is_qtwebengine) {
-    deps += [ "//components/services/screen_ai:screen_ai_sandbox_hook" ]
+  if (enable_screen_ai_service && (is_linux || is_chromeos)) {
+    deps += [ "//services/screen_ai:screen_ai_sandbox_hook" ]
   }
 
   if (enable_accessibility_service) {

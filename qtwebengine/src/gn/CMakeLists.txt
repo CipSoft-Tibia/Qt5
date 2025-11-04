@@ -26,7 +26,7 @@ set(GN_BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR})
 set(GN_LINKER ${CMAKE_CXX_COMPILER})
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${WEBENGINE_ROOT_SOURCE_DIR}/cmake")
 
-find_package(Python3 REQUIRED)
+find_package(Python3 3.8 REQUIRED)
 find_package(Ninja 1.7.2 REQUIRED)
 
 if(WIN32)
@@ -55,6 +55,15 @@ else()
     message(FATAL_ERROR "Unsupported gn platform !")
 endif()
 
+if(GCC_LEGACY_SUPPORT)
+    set(GN_GCC_LEGACY_SUPPORT --gcc-legacy-support)
+endif()
+
+string(REPLACE " " ";" ninja_flags "$ENV{NINJAFLAGS}")
+if(CMAKE_VERBOSE_MAKEFILE)
+    list(APPEND ninja_flags -v)
+endif()
+
 list(JOIN CMAKE_OSX_ARCHITECTURES "$<COMMA>" OSX_ARCH)
 add_custom_command(
     OUTPUT ${GN_EXECUTABLE}
@@ -70,11 +79,12 @@ add_custom_command(
         --platform ${platform}
         --ar ${CMAKE_AR}
         --qt-version "${QT_REPO_MODULE_VERSION}.qtwebengine.qt.io"
-        $<$<PLATFORM_ID:Darwin>:--isysroot>
-        $<$<PLATFORM_ID:Darwin>:${CMAKE_OSX_SYSROOT}>
+        $<$<AND:$<PLATFORM_ID:Darwin>,$<BOOL:${CMAKE_OSX_SYSROOT}>>:--isysroot>
+        $<$<AND:$<PLATFORM_ID:Darwin>,$<BOOL:${CMAKE_OSX_SYSROOT}>>:${CMAKE_OSX_SYSROOT}>
         $<$<AND:$<PLATFORM_ID:Darwin>,$<BOOL:${OSX_ARCH}>>:--osx-architectures>
         $<$<AND:$<PLATFORM_ID:Darwin>,$<BOOL:${OSX_ARCH}>>:${OSX_ARCH}>
-    COMMAND Ninja::ninja -C ${GN_BINARY_DIR}/$<CONFIG> ${GN_EXECUTABLE}
+        ${GN_GCC_LEGACY_SUPPORT}
+    COMMAND Ninja::ninja ${ninja_flags} -C ${GN_BINARY_DIR}/$<CONFIG> ${GN_EXECUTABLE}
     VERBATIM
     USES_TERMINAL
     COMMAND_EXPAND_LISTS

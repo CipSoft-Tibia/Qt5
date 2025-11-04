@@ -63,6 +63,7 @@
 // SPIRV change starts
 #ifdef ENABLE_SPIRV_CODEGEN
 #include "clang/SPIRV/EmitSpirvAction.h"
+#include "clang/SPIRV/FeatureManager.h"
 #endif
 // SPIRV change ends
 
@@ -76,17 +77,6 @@ using namespace llvm;
 using namespace clang;
 using namespace hlsl;
 using std::string;
-
-// This declaration is used for the locally-linked validator.
-HRESULT CreateDxcValidator(REFIID riid, LPVOID *ppv);
-
-// This internal call allows the validator to avoid having to re-deserialize
-// the module. It trusts that the caller didn't make any changes and is
-// kept internal because the layout of the module class may change based
-// on changes across modules, or picking a different compiler version or CRT.
-HRESULT RunInternalValidator(IDxcValidator *pValidator, llvm::Module *pModule,
-                             llvm::Module *pDebugModule, IDxcBlob *pShader,
-                             UINT32 Flags, IDxcOperationResult **ppResult);
 
 static bool ShouldBeCopiedIntoPDB(UINT32 FourCC) {
   switch (FourCC) {
@@ -442,8 +432,8 @@ static void CreateDefineStrings(const DxcDefine *pDefines, UINT defineCount,
                                 std::vector<std::string> &defines) {
   // Not very efficient but also not very important.
   for (UINT32 i = 0; i < defineCount; i++) {
-    CW2A utf8Name(pDefines[i].Name, CP_UTF8);
-    CW2A utf8Value(pDefines[i].Value, CP_UTF8);
+    CW2A utf8Name(pDefines[i].Name);
+    CW2A utf8Value(pDefines[i].Value);
     std::string val(utf8Name.m_psz);
     val += "=";
     val += (pDefines[i].Value) ? utf8Value.m_psz : "1";
@@ -594,15 +584,15 @@ public:
       const char *pUtf8SourceName =
           opts.InputFile.empty() ? "hlsl.hlsl" : opts.InputFile.data();
 
-      CA2W pWideSourceName(pUtf8SourceName, CP_UTF8);
+      CA2W pWideSourceName(pUtf8SourceName);
       const char *pUtf8EntryPoint =
           opts.EntryPoint.empty() ? "main" : opts.EntryPoint.data();
       const char *pUtf8OutputName = isPreprocessing ? opts.Preprocess.data()
                                     : opts.OutputObject.empty()
                                         ? ""
                                         : opts.OutputObject.data();
-      CA2W pWideOutputName(
-          isPreprocessing ? opts.Preprocess.data() : pUtf8OutputName, CP_UTF8);
+      CA2W pWideOutputName(isPreprocessing ? opts.Preprocess.data()
+                                           : pUtf8OutputName);
       LPCWSTR pObjectName = (!isPreprocessing && opts.OutputObject.empty())
                                 ? nullptr
                                 : pWideOutputName.m_psz;
@@ -867,6 +857,8 @@ public:
                 compiler.getCodeGenOpts().HLSLValidatorMinorVer, 1, 5) >= 0;
       }
 
+      compiler.getTarget().adjust(compiler.getLangOpts());
+
       if (opts.AstDump) {
         clang::ASTDumpAction dumpAction;
         // Consider - ASTDumpFilter, ASTDumpLookups
@@ -953,6 +945,7 @@ public:
         opts.SpirvOptions.codeGenHighLevel = opts.CodeGenHighLevel;
         opts.SpirvOptions.defaultRowMajor = opts.DefaultRowMajor;
         opts.SpirvOptions.disableValidation = opts.DisableValidation;
+        opts.SpirvOptions.IEEEStrict = opts.IEEEStrict;
         // Save a string representation of command line options and
         // input file name.
         if (opts.DebugInfo) {
@@ -1047,7 +1040,7 @@ public:
 
           dxcutil::AssembleInputs inputs(
               std::move(serializeModule), pOutputBlob, m_pMalloc,
-              SerializeFlags, pOutputStream, opts.GetPDBName(),
+              SerializeFlags, pOutputStream, 0, opts.GetPDBName(),
               &compiler.getDiagnostics(), &ShaderHashContent, pReflectionStream,
               pRootSigStream, pRootSignatureBlob, pPrivateBlob,
               opts.SelectValidator);
@@ -1459,6 +1452,22 @@ public:
 // SPIRV change starts
 #ifdef ENABLE_SPIRV_CODEGEN
     compiler.getLangOpts().SPIRV = Opts.GenSPIRV;
+    llvm::Optional<spv_target_env> spirvTargetEnv =
+        spirv::FeatureManager::stringToSpvEnvironment(
+            Opts.SpirvOptions.targetEnv);
+
+    // If we do not have a valid target environment, the error will be handled
+    // later.
+    if (spirvTargetEnv.hasValue()) {
+      VersionTuple spirvVersion =
+          spirv::FeatureManager::getSpirvVersion(spirvTargetEnv.getValue());
+      compiler.getLangOpts().SpirvMajorVersion = spirvVersion.getMajor();
+      assert(spirvVersion.getMinor().hasValue() &&
+             "There must always be a major and minor version number when "
+             "targeting SPIR-V.");
+      compiler.getLangOpts().SpirvMinorVersion =
+          spirvVersion.getMinor().getValue();
+    }
 #endif
     // SPIRV change ends
 
@@ -1505,8 +1514,6 @@ public:
     compiler.getCodeGenOpts().HLSLOverrideSemDefs = Opts.OverrideSemDefs;
     compiler.getCodeGenOpts().HLSLPreferControlFlow = Opts.PreferFlowControl;
     compiler.getCodeGenOpts().HLSLAvoidControlFlow = Opts.AvoidFlowControl;
-    compiler.getCodeGenOpts().HLSLNotUseLegacyCBufLoad =
-        Opts.NotUseLegacyCBufLoad;
     compiler.getCodeGenOpts().HLSLLegacyResourceReservation =
         Opts.LegacyResourceReservation;
     compiler.getCodeGenOpts().HLSLDefines = defines;

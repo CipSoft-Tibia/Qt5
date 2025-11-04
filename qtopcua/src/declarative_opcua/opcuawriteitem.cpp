@@ -13,6 +13,7 @@ QT_BEGIN_NAMESPACE
     \inqmlmodule QtOpcUa
     \brief Specifies an item to be written to the server.
     \since QtOpcUa 5.13
+    \deprecated [6.9]
 
     This type is used to specify items to be written to the server using the function
     \l Connection::writeNodeAttributes.

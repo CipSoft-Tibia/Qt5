@@ -6,23 +6,18 @@
 #define COMPONENTS_PERFORMANCE_MANAGER_RESOURCE_ATTRIBUTION_WORKER_CLIENT_PAGES_H_
 
 #include <set>
+#include <utility>
 
-#include "components/performance_manager/resource_attribution/graph_change.h"
+#include "components/performance_manager/resource_attribution/performance_manager_aliases.h"
+#include "content/public/browser/browsing_instance_id.h"
 
-namespace performance_manager {
-class PageNode;
-class WorkerNode;
-}  // namespace performance_manager
+namespace resource_attribution {
 
-namespace performance_manager::resource_attribution {
+// Returns the set of pages and browsing instances that are clients of
+// `worker_node`.
+std::pair<std::set<const PageNode*>, std::set<content::BrowsingInstanceId>>
+GetWorkerClientPagesAndBrowsingInstances(const WorkerNode* worker_node);
 
-// Returns the complete set of pages that are clients of `worker_node`.
-// `graph_change` is a change to the graph topology in progress that may affect
-// the client page set, or NoGraphChange.
-std::set<const PageNode*> GetWorkerClientPages(
-    const WorkerNode* worker_node,
-    GraphChange graph_change = NoGraphChange{});
-
-}  // namespace performance_manager::resource_attribution
+}  // namespace resource_attribution
 
 #endif  // COMPONENTS_PERFORMANCE_MANAGER_RESOURCE_ATTRIBUTION_WORKER_CLIENT_PAGES_H_

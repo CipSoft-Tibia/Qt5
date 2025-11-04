@@ -340,7 +340,7 @@ public:
 
     ReturnedValue resolveLookupGetter(ExecutionEngine *engine, Lookup *lookup) const
     { return vtable()->resolveLookupGetter(this, engine, lookup); }
-    ReturnedValue resolveLookupSetter(ExecutionEngine *engine, Lookup *lookup, const Value &value)
+    bool resolveLookupSetter(ExecutionEngine *engine, Lookup *lookup, const Value &value)
     { return vtable()->resolveLookupSetter(this, engine, lookup, value); }
 
     int metacall(QMetaObject::Call call, int index, void **a)

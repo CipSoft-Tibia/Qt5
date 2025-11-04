@@ -6,28 +6,28 @@ import QtQuick.Controls
 Rectangle {
     id: mainRectangle
 
+    color: colorStringFormat
+
     property string colorStringFormat: "#1CB669"
 
     signal onClicked()
 
-    color: colorStringFormat
-
     Text {
         id: helloText
 
-        text: "Main QML component"
+        text: "First QML View"
         color: "white"
-        font.pixelSize: 72
-        fontSizeMode: Text.VerticalFit
-        // Height is calculated based on display orientation
-        // from Screen height, dividing numbers are based on what seem
-        // to look good on most displays
-        height: Screen.width > Screen.height ? Screen.height / 8 : (Screen.height / 2) / 8
+        font.pointSize: 72
         font.bold: true
-        anchors.horizontalCenter: parent.horizontalCenter
-        anchors.top: parent.top
-        anchors.topMargin: 5
+        wrapMode: Text.WordWrap
+        width: mainRectangle.width
         horizontalAlignment: Text.AlignHCenter
+
+        anchors {
+            horizontalCenter: parent.horizontalCenter
+            top: parent.top
+            topMargin: mainRectangle.height / 40
+        }
     }
 
 
@@ -35,31 +35,28 @@ Rectangle {
         id: changeColorText
 
         text: "Tap button to change Java view background color"
-        wrapMode: Text.Wrap
         color: "white"
-        font.pixelSize: 58
-        fontSizeMode: Text.Fit
-        // Height and width are calculated based on display orientation
-        // from Screen height and width, dividing numbers are based on what seem to
-        // look good on most displays
-        height: Screen.width > Screen.height ? Screen.height / 8 : (Screen.height / 2) / 8
-        width: Screen.width > Screen.height ? (Screen.width / 2) / 2 : Screen.width / 2
-        anchors.horizontalCenter: parent.horizontalCenter
-        anchors.top: helloText.bottom
-        anchors.topMargin: Screen.height / 10
+        font.pointSize: 48
+        wrapMode: Text.WordWrap
+        padding: 20
+        width: mainRectangle.width
         horizontalAlignment: Text.AlignHCenter
+
+        anchors {
+            horizontalCenter: parent.horizontalCenter
+            top: helloText.bottom;
+            topMargin: mainRectangle.height / 10
+        }
     }
 
     Button {
         id: button
 
-        // Width is calculated from changeColorText which is calculated from Screen size
-        // dividing numbers are base on what seems to look good on most displays
-        width: changeColorText.width / 1.6
-        height: changeColorText.height * 1.2
-        anchors.horizontalCenter: parent.horizontalCenter
-        anchors.top: changeColorText.bottom
-        anchors.topMargin: height / 5
+        anchors {
+            horizontalCenter: parent.horizontalCenter
+            top: changeColorText.bottom
+            topMargin: mainRectangle.height / 30
+        }
 
         onClicked: mainRectangle.onClicked()
 
@@ -71,16 +68,15 @@ Rectangle {
             opacity: button.down ? 0.6 : 1
             scale: button.down ? 0.9 : 1
         }
+
         contentItem: Text {
             id: buttonText
 
             text: "CHANGE COLOR"
             color: "white"
-            font.pixelSize: 58
-            minimumPixelSize: 10
-            fontSizeMode: Text.Fit
+            font.pointSize: 56
             font.bold: true
-            wrapMode: Text.Wrap
+            padding: 20
             horizontalAlignment: Text.AlignHCenter
             verticalAlignment: Text.AlignVCenter
         }

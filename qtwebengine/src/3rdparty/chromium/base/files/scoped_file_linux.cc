@@ -14,7 +14,6 @@
 #include "base/debug/stack_trace.h"
 #include "base/immediate_crash.h"
 #include "base/logging.h"
-#include "base/strings/string_piece.h"
 
 namespace {
 
@@ -65,9 +64,11 @@ void ScopedFDCloseTraits::Release(const ScopedFD& owner, int fd) {
 
 namespace subtle {
 
+#if !defined(COMPONENT_BUILD)
 void EnableFDOwnershipEnforcement(bool enabled) {
   g_is_ownership_enforced = enabled;
 }
+#endif  // !defined(COMPONENT_BUILD)
 
 void ResetFDOwnership() {
   std::fill(g_is_fd_owned.begin(), g_is_fd_owned.end(), false);
@@ -84,7 +85,7 @@ bool IsFDOwned(int fd) {
 // Qt: Overriding libc functions from a library is not safe.
 // 'RTLD_NEXT' loads symbols from the next DSO in the link chain.
 //  It will fail if libc is linked before the library that tries to load.
-#ifndef TOOLKIT_QT
+#if !defined(COMPONENT_BUILD) && !BUILDFLAG(IS_QTWEBENGINE)
 using LibcCloseFuncPtr = int (*)(int);
 
 // Load the libc close symbol to forward to from the close wrapper.
@@ -114,4 +115,4 @@ __attribute__((visibility("default"), noinline)) int close(int fd) {
 }
 
 }  // extern "C"
-#endif
+#endif  // !defined(COMPONENT_BUILD) && !BUILDFLAG(IS_QTWEBENGINE)

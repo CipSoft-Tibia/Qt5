@@ -7,6 +7,7 @@
 #include "core/fpdfapi/font/cpdf_cidfont.h"
 
 #include <algorithm>
+#include <array>
 #include <limits>
 #include <utility>
 #include <vector>
@@ -23,35 +24,42 @@
 #include "core/fpdfapi/parser/cpdf_dictionary.h"
 #include "core/fpdfapi/parser/cpdf_stream.h"
 #include "core/fpdfapi/parser/cpdf_stream_acc.h"
+#include "core/fxcrt/check.h"
+#include "core/fxcrt/check_op.h"
 #include "core/fxcrt/fixed_size_data_vector.h"
 #include "core/fxcrt/fx_codepage.h"
 #include "core/fxcrt/fx_memory.h"
 #include "core/fxcrt/fx_safe_types.h"
 #include "core/fxcrt/fx_unicode.h"
+#include "core/fxcrt/span.h"
+#include "core/fxcrt/span_util.h"
 #include "core/fxcrt/stl_util.h"
 #include "core/fxge/fx_font.h"
-#include "third_party/base/check.h"
-#include "third_party/base/check_op.h"
-#include "third_party/base/containers/span.h"
 
 namespace {
 
-constexpr FX_CodePage kCharsetCodePages[CIDSET_NUM_SETS] = {
+struct LowHighVal {
+  int low;
+  int high;
+  int val;
+};
+
+struct LowHighValXY : LowHighVal {
+  int x;
+  int y;
+};
+
+bool IsMetricForCID(const LowHighVal& val, uint16_t cid) {
+  return val.low <= cid && cid <= val.high;
+}
+
+constexpr std::array<FX_CodePage, CIDSET_NUM_SETS> kCharsetCodePages = {
     FX_CodePage::kDefANSI,
     FX_CodePage::kChineseSimplified,
     FX_CodePage::kChineseTraditional,
     FX_CodePage::kShiftJIS,
     FX_CodePage::kHangul,
-    FX_CodePage::kUTF16LE};
-
-struct CIDTransform {
-  uint16_t cid;
-  uint8_t a;
-  uint8_t b;
-  uint8_t c;
-  uint8_t d;
-  uint8_t e;
-  uint8_t f;
+    FX_CodePage::kUTF16LE,
 };
 
 constexpr CIDTransform kJapan1VerticalCIDs[] = {
@@ -134,16 +142,6 @@ constexpr CIDTransform kJapan1VerticalCIDs[] = {
     {8818, 0, 129, 127, 0, 19, 114}, {8819, 0, 129, 127, 0, 218, 108},
 };
 
-// Boundary value to avoid integer overflow when adding 1/64th of the value.
-constexpr int kMaxRectTop = 2114445437;
-
-int FTPosToCBoxInt(FT_Pos pos) {
-  // Boundary values to avoid integer overflow when multiplied by 1000.
-  constexpr FT_Pos kMinCBox = -2147483;
-  constexpr FT_Pos kMaxCBox = 2147483;
-  return static_cast<int>(std::clamp(pos, kMinCBox, kMaxCBox));
-}
-
 #if !BUILDFLAG(IS_WIN)
 
 bool IsValidEmbeddedCharcodeFromUnicodeCharset(CIDSet charset) {
@@ -219,10 +217,6 @@ void UseCIDCharmap(const RetainPtr<CFX_Face>& face, CIDCoding coding) {
   if (!result && face->GetCharMapCount()) {
     face->SetCharMapByIndex(0);
   }
-}
-
-bool IsMetricForCID(const int* pEntry, uint16_t cid) {
-  return pEntry[0] <= cid && pEntry[1] >= cid;
 }
 
 void LoadMetricsArray(RetainPtr<const CPDF_Array> pArray,
@@ -333,15 +327,18 @@ wchar_t CPDF_CIDFont::GetUnicodeFromCharCode(uint32_t charcode) const {
     return m_pCID2UnicodeMap->UnicodeFromCID(CIDFromCharCode(charcode));
 
 #if BUILDFLAG(IS_WIN)
-  wchar_t unicode;
-  int charsize = 1;
-  if (charcode > 255) {
-    charcode = (charcode % 256) * 256 + (charcode / 256);
-    charsize = 2;
+  uint8_t sequence[2] = {};
+  const int charsize = charcode < 256 ? 1 : 2;
+  if (charsize == 1) {
+    sequence[0] = charcode;
+  } else {
+    sequence[0] = charcode / 256;
+    sequence[1] = charcode % 256;
   }
+  wchar_t unicode;
   size_t ret = FX_MultiByteToWideChar(
       kCharsetCodePages[static_cast<size_t>(m_pCMap->GetCoding())],
-      ByteStringView(reinterpret_cast<const char*>(&charcode), charsize),
+      ByteStringView(pdfium::make_span(sequence).first(charsize)),
       pdfium::span_from_ref(unicode));
   return ret == 1 ? unicode : 0;
 #else
@@ -388,8 +385,8 @@ uint32_t CPDF_CIDFont::CharCodeFromUnicode(wchar_t unicode) const {
   uint8_t buffer[32];
   size_t ret = FX_WideCharToMultiByte(
       kCharsetCodePages[static_cast<size_t>(m_pCMap->GetCoding())],
-      WideStringView(&unicode, 1),
-      pdfium::make_span(reinterpret_cast<char*>(buffer), 4u));
+      WideStringView(unicode),
+      pdfium::as_writable_chars(pdfium::make_span(buffer).first(4u)));
   if (ret == 1)
     return buffer[0];
   if (ret == 2)
@@ -528,56 +525,18 @@ FX_RECT CPDF_CIDFont::GetCharBBox(uint32_t charcode) {
   int glyph_index = GlyphFromCharCode(charcode, &bVert);
   RetainPtr<CFX_Face> face = m_Font.GetFace();
   if (face) {
-    FXFT_FaceRec* face_rec = face->GetRec();
-    if (face->IsTricky()) {
-      int err = FT_Load_Glyph(face_rec, glyph_index,
-                              FT_LOAD_IGNORE_GLOBAL_ADVANCE_WIDTH);
-      if (!err) {
-        FT_Glyph glyph;
-        err = FT_Get_Glyph(face_rec->glyph, &glyph);
-        if (!err) {
-          FT_BBox cbox;
-          FT_Glyph_Get_CBox(glyph, FT_GLYPH_BBOX_PIXELS, &cbox);
-          const int xMin = FTPosToCBoxInt(cbox.xMin);
-          const int xMax = FTPosToCBoxInt(cbox.xMax);
-          const int yMin = FTPosToCBoxInt(cbox.yMin);
-          const int yMax = FTPosToCBoxInt(cbox.yMax);
-          const int pixel_size_x = face_rec->size->metrics.x_ppem;
-          const int pixel_size_y = face_rec->size->metrics.y_ppem;
-          if (pixel_size_x == 0 || pixel_size_y == 0) {
-            rect = FX_RECT(xMin, yMax, xMax, yMin);
-          } else {
-            rect =
-                FX_RECT(xMin * 1000 / pixel_size_x, yMax * 1000 / pixel_size_y,
-                        xMax * 1000 / pixel_size_x, yMin * 1000 / pixel_size_y);
-          }
-          rect.top = std::min(rect.top, static_cast<int>(face->GetAscender()));
-          rect.bottom =
-              std::max(rect.bottom, static_cast<int>(face->GetDescender()));
-          FT_Done_Glyph(glyph);
-        }
-      }
-    } else {
-      int err = FT_Load_Glyph(face_rec, glyph_index, FT_LOAD_NO_SCALE);
-      if (err == 0) {
-        rect = GetCharBBoxForFace(face);
-        if (rect.top <= kMaxRectTop)
-          rect.top += rect.top / 64;
-        else
-          rect.top = std::numeric_limits<int>::max();
-      }
-    }
+    rect = face->GetCharBBox(charcode, glyph_index);
   }
   if (!m_pFontFile && m_Charset == CIDSET_JAPAN1) {
     uint16_t cid = CIDFromCharCode(charcode);
-    const uint8_t* pTransform = GetCIDTransform(cid);
+    const CIDTransform* pTransform = GetCIDTransform(cid);
     if (pTransform && !bVert) {
-      CFX_Matrix matrix(CIDTransformToFloat(pTransform[0]),
-                        CIDTransformToFloat(pTransform[1]),
-                        CIDTransformToFloat(pTransform[2]),
-                        CIDTransformToFloat(pTransform[3]),
-                        CIDTransformToFloat(pTransform[4]) * 1000,
-                        CIDTransformToFloat(pTransform[5]) * 1000);
+      CFX_Matrix matrix(CIDTransformToFloat(pTransform->a),
+                        CIDTransformToFloat(pTransform->b),
+                        CIDTransformToFloat(pTransform->c),
+                        CIDTransformToFloat(pTransform->d),
+                        CIDTransformToFloat(pTransform->e) * 1000,
+                        CIDTransformToFloat(pTransform->f) * 1000);
       rect = matrix.TransformRect(CFX_FloatRect(rect)).GetOuterRect();
     }
   }
@@ -588,52 +547,45 @@ FX_RECT CPDF_CIDFont::GetCharBBox(uint32_t charcode) {
 }
 
 int CPDF_CIDFont::GetCharWidthF(uint32_t charcode) {
-  if (charcode < 0x80 && m_bAnsiWidthsFixed)
+  if (charcode < 0x80 && m_bAnsiWidthsFixed) {
     return (charcode >= 32 && charcode < 127) ? 500 : 0;
-
+  }
   uint16_t cid = CIDFromCharCode(charcode);
-  size_t size = m_WidthList.size();
-  const int* pList = m_WidthList.data();
-  for (size_t i = 0; i < size; i += 3) {
-    const int* pEntry = pList + i;
-    if (IsMetricForCID(pEntry, cid))
-      return pEntry[2];
+  auto lhv_span =
+      fxcrt::reinterpret_span<const LowHighVal>(pdfium::make_span(m_WidthList));
+  for (const auto& lhv : lhv_span) {
+    if (IsMetricForCID(lhv, cid)) {
+      return lhv.val;
+    }
   }
   return m_DefaultWidth;
 }
 
 int16_t CPDF_CIDFont::GetVertWidth(uint16_t cid) const {
-  size_t vertsize = m_VertMetrics.size() / 5;
-  if (vertsize) {
-    const int* pTable = m_VertMetrics.data();
-    for (size_t i = 0; i < vertsize; i++) {
-      const int* pEntry = pTable + (i * 5);
-      if (IsMetricForCID(pEntry, cid))
-        return static_cast<int16_t>(pEntry[2]);
+  auto lhvxy_span = fxcrt::reinterpret_span<const LowHighValXY>(
+      pdfium::make_span(m_VertMetrics));
+  for (const auto& lhvxy : lhvxy_span) {
+    if (IsMetricForCID(lhvxy, cid)) {
+      return lhvxy.val;
     }
   }
   return m_DefaultW1;
 }
 
 CFX_Point16 CPDF_CIDFont::GetVertOrigin(uint16_t cid) const {
-  size_t vertsize = m_VertMetrics.size() / 5;
-  if (vertsize) {
-    const int* pTable = m_VertMetrics.data();
-    for (size_t i = 0; i < vertsize; i++) {
-      const int* pEntry = pTable + (i * 5);
-      if (IsMetricForCID(pEntry, cid)) {
-        return {static_cast<int16_t>(pEntry[3]),
-                static_cast<int16_t>(pEntry[4])};
-      }
+  auto lhvxy_span = fxcrt::reinterpret_span<const LowHighValXY>(
+      pdfium::make_span(m_VertMetrics));
+  for (const auto& lhvxy : lhvxy_span) {
+    if (IsMetricForCID(lhvxy, cid)) {
+      return {static_cast<int16_t>(lhvxy.x), static_cast<int16_t>(lhvxy.y)};
     }
   }
   int width = m_DefaultWidth;
-  size_t size = m_WidthList.size();
-  const int* pList = m_WidthList.data();
-  for (size_t i = 0; i < size; i += 3) {
-    const int* pEntry = pList + i;
-    if (IsMetricForCID(pEntry, cid)) {
-      width = pEntry[2];
+  auto lhv_span =
+      fxcrt::reinterpret_span<const LowHighVal>(pdfium::make_span(m_WidthList));
+  for (const auto& lhv : lhv_span) {
+    if (IsMetricForCID(lhv, cid)) {
+      width = lhv.val;
       break;
     }
   }
@@ -812,7 +764,7 @@ int CPDF_CIDFont::GlyphFromCharCode(uint32_t charcode, bool* pVertGlyph) {
       return cid;
     }
 
-    absl::optional<fxge::FontEncoding> charmap =
+    std::optional<fxge::FontEncoding> charmap =
         face->GetCurrentCharMapEncoding();
     if (!charmap.has_value()) {
       return cid;
@@ -848,8 +800,8 @@ size_t CPDF_CIDFont::CountChar(ByteStringView pString) const {
   return m_pCMap->CountChar(pString);
 }
 
-int CPDF_CIDFont::AppendChar(char* str, uint32_t charcode) const {
-  return m_pCMap->AppendChar(str, charcode);
+void CPDF_CIDFont::AppendChar(ByteString* str, uint32_t charcode) const {
+  m_pCMap->AppendChar(str, charcode);
 }
 
 bool CPDF_CIDFont::IsUnicodeCompatible() const {
@@ -890,7 +842,7 @@ void CPDF_CIDFont::LoadGB2312() {
   m_bAnsiWidthsFixed = true;
 }
 
-const uint8_t* CPDF_CIDFont::GetCIDTransform(uint16_t cid) const {
+const CIDTransform* CPDF_CIDFont::GetCIDTransform(uint16_t cid) const {
   if (m_Charset != CIDSET_JAPAN1 || m_pFontFile)
     return nullptr;
 
@@ -900,6 +852,5 @@ const uint8_t* CPDF_CIDFont::GetCIDTransform(uint16_t cid) const {
       pBegin, pEnd, cid,
       [](const CIDTransform& entry, uint16_t cid) { return entry.cid < cid; });
 
-  return (pTransform < pEnd && cid == pTransform->cid) ? &pTransform->a
-                                                       : nullptr;
+  return pTransform < pEnd && cid == pTransform->cid ? pTransform : nullptr;
 }

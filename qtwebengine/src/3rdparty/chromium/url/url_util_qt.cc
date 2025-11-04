@@ -13,93 +13,145 @@ namespace url {
 
 namespace {
 
-std::string ToString(const CustomScheme& cs)
-{
+std::string ToString(const CustomScheme& cs) {
   std::string serialized;
 
   serialized += cs.name;
   serialized += ':';
 
   switch (cs.type) {
-  case SCHEME_WITH_HOST_PORT_AND_USER_INFORMATION:
-    serialized += 'u';
-    serialized += base::NumberToString(cs.default_port);
-    break;
-  case SCHEME_WITH_HOST_AND_PORT:
-    serialized += 'p';
-    serialized += base::NumberToString(cs.default_port);
-    break;
-  case SCHEME_WITH_HOST:
-    serialized += 'h';
-    break;
-  case SCHEME_WITHOUT_AUTHORITY:
-    break;
+    case SCHEME_WITH_HOST_PORT_AND_USER_INFORMATION:
+      serialized += 'u';
+      serialized += base::NumberToString(cs.default_port);
+      break;
+    case SCHEME_WITH_HOST_AND_PORT:
+      serialized += 'p';
+      serialized += base::NumberToString(cs.default_port);
+      break;
+    case SCHEME_WITH_HOST:
+      serialized += 'h';
+      break;
+    case SCHEME_WITHOUT_AUTHORITY:
+      break;
   }
 
-  if (cs.flags & CustomScheme::Secure)
+  if (cs.flags & CustomScheme::Secure) {
     serialized += 's';
-  if (cs.flags & CustomScheme::Local)
+  }
+  if (cs.flags & CustomScheme::Local) {
     serialized += 'l';
-  if (cs.flags & CustomScheme::LocalAccessAllowed)
+  }
+  if (cs.flags & CustomScheme::LocalAccessAllowed) {
     serialized += 'L';
-  if (cs.flags & CustomScheme::NoAccessAllowed)
+  }
+  if (cs.flags & CustomScheme::NoAccessAllowed) {
     serialized += 'N';
-  if (cs.flags & CustomScheme::ServiceWorkersAllowed)
+  }
+  if (cs.flags & CustomScheme::ServiceWorkersAllowed) {
     serialized += 'W';
-  if (cs.flags & CustomScheme::ViewSourceAllowed)
+  }
+  if (cs.flags & CustomScheme::ViewSourceAllowed) {
     serialized += 'V';
-  if (cs.flags & CustomScheme::ContentSecurityPolicyIgnored)
+  }
+  if (cs.flags & CustomScheme::ContentSecurityPolicyIgnored) {
     serialized += 'C';
-  if (cs.flags & CustomScheme::CorsEnabled)
+  }
+  if (cs.flags & CustomScheme::CorsEnabled) {
     serialized += 'F';
-  if (cs.flags & CustomScheme::FetchApiAllowed)
+  }
+  if (cs.flags & CustomScheme::FetchApiAllowed) {
     serialized += 'G';
+  }
 
   return serialized;
 }
 
 class Parser {
-public:
+ public:
   void CharacterArrived(char ch) {
     switch (state) {
-    case NAME: CharacterArrivedWhileParsingName(ch); break;
-    case OPTIONS: CharacterArrivedWhileParsingOptions(ch); break;
-    case PORT: CharacterArrivedWhileParsingPort(ch); break;
+      case NAME:
+        CharacterArrivedWhileParsingName(ch);
+        break;
+      case OPTIONS:
+        CharacterArrivedWhileParsingOptions(ch);
+        break;
+      case PORT:
+        CharacterArrivedWhileParsingPort(ch);
+        break;
     }
   }
 
   void EndReached() {
-    if (!default_port_string.empty())
+    if (!default_port_string.empty()) {
       FlushPort();
-    if (!cs.name.empty())
+    }
+    if (!cs.name.empty()) {
       Flush();
+    }
   }
 
-private:
+ private:
   void CharacterArrivedWhileParsingName(char ch) {
     switch (ch) {
-    case ':': state = OPTIONS; break;
-    case ';': Flush(); break;
-    default: cs.name += ch; break;
+      case ':':
+        state = OPTIONS;
+        break;
+      case ';':
+        Flush();
+        break;
+      default:
+        cs.name += ch;
+        break;
     }
   }
 
   void CharacterArrivedWhileParsingOptions(char ch) {
     switch (ch) {
-    case 'u': cs.type = SCHEME_WITH_HOST_PORT_AND_USER_INFORMATION; state = PORT; break;
-    case 'p': cs.type = SCHEME_WITH_HOST_AND_PORT; state = PORT; break;
-    case 'h': cs.type = SCHEME_WITH_HOST; break;
-    case 's': cs.flags |= CustomScheme::Secure; break;
-    case 'l': cs.flags |= CustomScheme::Local; break;
-    case 'L': cs.flags |= CustomScheme::LocalAccessAllowed; break;
-    case 'N': cs.flags |= CustomScheme::NoAccessAllowed; break;
-    case 'W': cs.flags |= CustomScheme::ServiceWorkersAllowed; break;
-    case 'V': cs.flags |= CustomScheme::ViewSourceAllowed; break;
-    case 'C': cs.flags |= CustomScheme::ContentSecurityPolicyIgnored; break;
-    case 'F': cs.flags |= CustomScheme::CorsEnabled; break;
-    case 'G': cs.flags |= CustomScheme::FetchApiAllowed; break;
-    case ';': Flush(); state = NAME; break;
-    default: CHECK(false) << "Unexpected character '" << ch << "'.";
+      case 'u':
+        cs.type = SCHEME_WITH_HOST_PORT_AND_USER_INFORMATION;
+        state = PORT;
+        break;
+      case 'p':
+        cs.type = SCHEME_WITH_HOST_AND_PORT;
+        state = PORT;
+        break;
+      case 'h':
+        cs.type = SCHEME_WITH_HOST;
+        break;
+      case 's':
+        cs.flags |= CustomScheme::Secure;
+        break;
+      case 'l':
+        cs.flags |= CustomScheme::Local;
+        break;
+      case 'L':
+        cs.flags |= CustomScheme::LocalAccessAllowed;
+        break;
+      case 'N':
+        cs.flags |= CustomScheme::NoAccessAllowed;
+        break;
+      case 'W':
+        cs.flags |= CustomScheme::ServiceWorkersAllowed;
+        break;
+      case 'V':
+        cs.flags |= CustomScheme::ViewSourceAllowed;
+        break;
+      case 'C':
+        cs.flags |= CustomScheme::ContentSecurityPolicyIgnored;
+        break;
+      case 'F':
+        cs.flags |= CustomScheme::CorsEnabled;
+        break;
+      case 'G':
+        cs.flags |= CustomScheme::FetchApiAllowed;
+        break;
+      case ';':
+        Flush();
+        state = NAME;
+        break;
+      default:
+        CHECK(false) << "Unexpected character '" << ch << "'.";
     }
   }
 
@@ -117,7 +169,7 @@ private:
 
   void FlushPort() {
     CHECK(base::StringToInt(default_port_string, &cs.default_port))
-      << "Failed to parse '" << default_port_string << "'.";
+        << "Failed to parse '" << default_port_string << "'.";
     default_port_string.clear();
   }
 
@@ -131,7 +183,7 @@ private:
   std::string default_port_string;
 };
 
-} // namespace
+}  // namespace
 
 std::vector<CustomScheme>& CustomScheme::GetMutableSchemes() {
   static base::NoDestructor<std::vector<CustomScheme>> schemes;
@@ -142,54 +194,52 @@ const std::vector<CustomScheme>& CustomScheme::GetSchemes() {
   return GetMutableSchemes();
 }
 
-void CustomScheme::ClearSchemes()
-{
+void CustomScheme::ClearSchemes() {
   GetMutableSchemes().clear();
 }
 
-void CustomScheme::AddScheme(const CustomScheme& cs)
-{
+void CustomScheme::AddScheme(const CustomScheme& cs) {
   DCHECK(!cs.name.empty());
   DCHECK_EQ(cs.has_port_component(), (cs.default_port != PORT_UNSPECIFIED))
-    << "Scheme '" << cs.name << "' has invalid configuration.";
+      << "Scheme '" << cs.name << "' has invalid configuration.";
   DCHECK_EQ(base::ToLowerASCII(cs.name), cs.name)
-    << "Scheme '" << cs.name << "' should be lower-case.";
-  DCHECK(!FindScheme(cs.name))
-    << "Scheme '" << cs.name << "' already added.";
+      << "Scheme '" << cs.name << "' should be lower-case.";
+  DCHECK(!FindScheme(cs.name)) << "Scheme '" << cs.name << "' already added.";
 
   GetMutableSchemes().push_back(cs);
 }
 
-const CustomScheme* CustomScheme::FindScheme(std::string_view name)
-{
-  for (const CustomScheme& cs : GetSchemes())
-    if (base::EqualsCaseInsensitiveASCII(name, cs.name))
+const CustomScheme* CustomScheme::FindScheme(std::string_view name) {
+  for (const CustomScheme& cs : GetSchemes()) {
+    if (base::EqualsCaseInsensitiveASCII(name, cs.name)) {
       return &cs;
+    }
+  }
   return nullptr;
 }
 
 const char CustomScheme::kCommandLineFlag[] = "webengine-schemes";
 
-void CustomScheme::SaveSchemes(base::CommandLine* command_line)
-{
+void CustomScheme::SaveSchemes(base::CommandLine* command_line) {
   std::string serialized;
 
   for (const CustomScheme& cs : GetSchemes()) {
-    if (!serialized.empty())
+    if (!serialized.empty()) {
       serialized += ';';
+    }
     serialized += ToString(cs);
   }
 
   command_line->AppendSwitchASCII(kCommandLineFlag, std::move(serialized));
 }
 
-void CustomScheme::LoadSchemes(const base::CommandLine* command_line)
-{
+void CustomScheme::LoadSchemes(const base::CommandLine* command_line) {
   std::string serialized = command_line->GetSwitchValueASCII(kCommandLineFlag);
   Parser parser;
-  for (char ch : serialized)
+  for (char ch : serialized) {
     parser.CharacterArrived(ch);
+  }
   parser.EndReached();
 }
 
-} // namespace url
+}  // namespace url

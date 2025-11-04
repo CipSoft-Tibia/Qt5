@@ -8,6 +8,7 @@
 #include <linux-dmabuf-unstable-v1-client-protocol.h>
 
 #include "base/logging.h"
+#include "base/not_fatal_until.h"
 #include "base/ranges/algorithm.h"
 #include "ui/gfx/linux/drm_util_linux.h"
 #include "ui/ozone/platform/wayland/host/wayland_buffer_factory.h"
@@ -114,7 +115,7 @@ bool WaylandZwpLinuxDmabuf::CanCreateBufferImmed() const {
 
 void WaylandZwpLinuxDmabuf::AddSupportedFourCCFormatAndModifier(
     uint32_t fourcc_format,
-    absl::optional<uint64_t> modifier) {
+    std::optional<uint64_t> modifier) {
   // Return on not supported fourcc formats.
   if (!IsValidBufferFormat(fourcc_format))
     return;
@@ -144,7 +145,7 @@ void WaylandZwpLinuxDmabuf::NotifyRequestCreateBufferDone(
   auto it = base::ranges::find(pending_params_, params, [](const auto& item) {
     return item.first.get();
   });
-  DCHECK(it != pending_params_.end());
+  CHECK(it != pending_params_.end(), base::NotFatalUntil::M130);
   std::move(it->second).Run(wl::Object<wl_buffer>(new_buffer));
   pending_params_.erase(it);
   connection_->Flush();
@@ -167,7 +168,7 @@ void WaylandZwpLinuxDmabuf::OnFormat(void* data,
                                      zwp_linux_dmabuf_v1* linux_dmabuf,
                                      uint32_t format) {
   if (auto* self = static_cast<WaylandZwpLinuxDmabuf*>(data)) {
-    self->AddSupportedFourCCFormatAndModifier(format, absl::nullopt);
+    self->AddSupportedFourCCFormatAndModifier(format, std::nullopt);
   }
 }
 

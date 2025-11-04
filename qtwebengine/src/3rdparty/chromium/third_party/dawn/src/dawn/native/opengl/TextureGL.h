@@ -46,8 +46,6 @@ class Texture final : public TextureBase {
     GLuint GetHandle() const;
     GLenum GetGLTarget() const;
     const GLFormat& GetGLFormat() const;
-    uint32_t GetGenID() const;
-    void Touch();
 
     MaybeError EnsureSubresourceContentInitialized(const SubresourceRange& range);
 
@@ -61,17 +59,15 @@ class Texture final : public TextureBase {
     GLuint mHandle;
     bool mOwnsHandle = false;
     GLenum mTarget;
-    uint32_t mGenID = 0;
 };
 
 class TextureView final : public TextureViewBase {
   public:
-    TextureView(TextureBase* texture, const TextureViewDescriptor* descriptor);
+    TextureView(TextureBase* texture, const UnpackedPtr<TextureViewDescriptor>& descriptor);
 
     GLuint GetHandle() const;
     GLenum GetGLTarget() const;
     void BindToFramebuffer(GLenum target, GLenum attachment, GLuint depthLayer = 0);
-    void CopyIfNeeded();
 
   private:
     ~TextureView() override;
@@ -82,8 +78,6 @@ class TextureView final : public TextureViewBase {
     GLuint mHandle;
     GLenum mTarget;
     bool mOwnsHandle;
-    bool mUseCopy = false;
-    uint32_t mGenID = 0;
 };
 
 }  // namespace dawn::native::opengl

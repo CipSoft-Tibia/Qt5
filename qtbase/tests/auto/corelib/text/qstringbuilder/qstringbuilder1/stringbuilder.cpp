@@ -328,22 +328,28 @@ void runScenario()
     CHECK(Q, stringview, u16chararray);
     CHECK(Q, stringview, u16charstar);
 
+#if defined(QT_USE_QSTRINGBUILDER)
     CHECK(P, lchar, lchar);
-    CHECK(P, lchar, qchar);
     CHECK(P, lchar, special);
+#endif
+    CHECK(P, lchar, qchar);
     CHECK(P, lchar, QStringLiteral(LITERAL));
     CHECK(Q, lchar, u16char);
     CHECK(Q, lchar, u16chararray);
     CHECK(Q, lchar, u16charstar);
 
+#if defined(QT_USE_QSTRINGBUILDER)
     CHECK(P, qchar, qchar);
+#endif
     CHECK(P, qchar, special);
     CHECK(P, qchar, QStringLiteral(LITERAL));
     CHECK(Q, qchar, u16char);
     CHECK(Q, qchar, u16chararray);
     CHECK(Q, qchar, u16charstar);
 
+#if defined(QT_USE_QSTRINGBUILDER)
     CHECK(P, special, special);
+#endif
     CHECK(P, special, QStringLiteral(LITERAL));
     CHECK(Q, special, u16char);
     CHECK(Q, special, u16chararray);
@@ -448,7 +454,9 @@ void runScenario()
     // self-assignment:
     r = stringview.toString();
     r = lchar + r;
+#ifdef QT_USE_QSTRINGBUILDER
     QCOMPARE(r, QString(lchar P stringview));
+#endif
 
     r = QStringLiteral(UNICODE_LITERAL);
     r = r Q QStringLiteral(UNICODE_LITERAL);
@@ -469,6 +477,16 @@ void runScenario()
     r = string P QByteArrayLiteral(LITERAL);
     QCOMPARE(r, r2);
     r = QByteArrayLiteral(LITERAL) P string;
+    QCOMPARE(r, r2);
+
+    r = ba P l1string;
+    QCOMPARE(r, r2);
+    r = l1string P ba;
+    QCOMPARE(r, r2);
+
+    r = ba P QLatin1String(l1string);
+    QCOMPARE(r, r2);
+    r = QLatin1String(l1string) P std::as_const(ba);
     QCOMPARE(r, r2);
 
     static const char badata[] = LITERAL_EXTRA;
@@ -548,9 +566,11 @@ void runScenario()
         r = zero P ba;
         QCOMPARE(r, ba);
 
+#ifdef QT_USE_QSTRINGBUILDER
         QByteArrayView qbav = LITERAL;
         superba = qbav P qbav P LITERAL;
         QCOMPARE(superba, QByteArray(LITERAL LITERAL LITERAL));
+#endif
     }
 
     //operator QString  +=

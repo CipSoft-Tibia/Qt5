@@ -20,6 +20,7 @@
 #include "chrome/browser/printing/print_job.h"
 #include "chrome/grit/generated_resources.h"
 #include "components/device_event_log/device_event_log.h"
+#include "components/enterprise/buildflags/buildflags.h"
 #include "content/public/browser/browser_task_traits.h"
 #include "content/public/browser/browser_thread.h"
 #include "content/public/browser/global_routing_id.h"
@@ -34,11 +35,8 @@
 
 #if BUILDFLAG(IS_WIN)
 #include "base/threading/thread_restrictions.h"
+#include "chrome/browser/printing/xps_features.h"
 #include "printing/printed_page_win.h"
-#endif
-
-#if BUILDFLAG(IS_WIN)
-#include "printing/printing_features.h"
 #endif
 
 using content::BrowserThread;
@@ -80,17 +78,17 @@ bool PrintJobWorker::StartPrintingSanityCheck(
   DCHECK(task_runner_->RunsTasksInCurrentSequence());
 
   if (page_number_ != PageNumber::npos()) {
-    NOTREACHED();
+    NOTREACHED_IN_MIGRATION();
     return false;
   }
 
   if (!document_) {
-    NOTREACHED();
+    NOTREACHED_IN_MIGRATION();
     return false;
   }
 
   if (document_.get() != new_document) {
-    NOTREACHED();
+    NOTREACHED_IN_MIGRATION();
     return false;
   }
 
@@ -143,7 +141,7 @@ void PrintJobWorker::OnDocumentChanged(PrintedDocument* new_document) {
   DCHECK(task_runner_->RunsTasksInCurrentSequence());
 
   if (page_number_ != PageNumber::npos()) {
-    NOTREACHED();
+    NOTREACHED_IN_MIGRATION();
     return;
   }
 
@@ -168,7 +166,7 @@ void PrintJobWorker::OnNewPage() {
 #if BUILDFLAG(IS_WIN) && !defined(TOOLKIT_QT)
   const bool source_is_pdf =
       !print_job_->document()->settings().is_modifiable();
-  if (!features::ShouldPrintUsingXps(source_is_pdf)) {
+  if (!ShouldPrintUsingXps(source_is_pdf)) {
     // Using the Windows GDI print API.
     if (!OnNewPageHelperGdi())
       return;
@@ -227,7 +225,7 @@ void PrintJobWorker::Cancel() {
   // context we run.
 }
 
-#if BUILDFLAG(ENABLE_PRINT_CONTENT_ANALYSIS)
+#if BUILDFLAG(ENTERPRISE_CONTENT_ANALYSIS)
 void PrintJobWorker::CleanupAfterContentAnalysisDenial() {
   DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
   DVLOG(1) << "Canceling job due to content analysis";

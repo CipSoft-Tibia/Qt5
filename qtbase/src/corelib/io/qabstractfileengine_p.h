@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QABSTRACTFILEENGINE_P_H
 #define QABSTRACTFILEENGINE_P_H
@@ -239,8 +240,8 @@ private:
 class QAbstractFileEnginePrivate
 {
 public:
-    inline QAbstractFileEnginePrivate()
-        : fileError(QFile::UnspecifiedError)
+    inline QAbstractFileEnginePrivate(QAbstractFileEngine *q)
+        : fileError(QFile::UnspecifiedError), q_ptr(q)
     {
     }
     virtual ~QAbstractFileEnginePrivate();
@@ -248,7 +249,7 @@ public:
     QFile::FileError fileError;
     QString errorString;
 
-    QAbstractFileEngine *q_ptr;
+    QAbstractFileEngine *const q_ptr;
     Q_DECLARE_PUBLIC(QAbstractFileEngine)
 };
 

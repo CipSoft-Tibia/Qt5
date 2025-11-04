@@ -1,5 +1,6 @@
 // Copyright (C) 2021 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef HTTP2PROTOCOL_P_H
 #define HTTP2PROTOCOL_P_H
@@ -18,7 +19,6 @@
 #include <QtNetwork/qnetworkreply.h>
 #include <QtCore/qloggingcategory.h>
 #include <QtCore/qmetatype.h>
-#include <QtCore/private/qglobal_p.h>
 #include <QtCore/qmap.h>
 
 #include <vector>

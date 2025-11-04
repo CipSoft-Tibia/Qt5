@@ -40,8 +40,6 @@ declare_args() {
 
   use_blink = !is_ios
 
-  is_qtwebengine = false
-
   # enables compilation of crc32 for zlib with CRC extension
   use_arm_crc32 = true
 }

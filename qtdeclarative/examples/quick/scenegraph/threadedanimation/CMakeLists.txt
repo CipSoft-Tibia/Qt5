@@ -26,6 +26,7 @@ qt_add_qml_module(threadedanimation
     RESOURCES spinner.png
     RESOURCE_PREFIX /scenegraph/threadedanimation
     NO_RESOURCE_TARGET_PATH
+    DEPENDENCIES QtQuick
 )
 
 install(TARGETS threadedanimation

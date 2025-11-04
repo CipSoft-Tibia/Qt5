@@ -1082,10 +1082,6 @@ void DrawElementsInstancedBaseVertexBaseInstanceANGLE(
 
 void VertexAttribDivisorANGLE(GLuint index, GLuint divisor) override;
 
-void ProduceTextureDirectCHROMIUM(GLuint texture, GLbyte* mailbox) override;
-
-GLuint CreateAndConsumeTextureCHROMIUM(const GLbyte* mailbox) override;
-
 void BindUniformLocationCHROMIUM(GLuint program,
                                  GLint location,
                                  const char* name) override;
@@ -1102,8 +1098,6 @@ void DiscardFramebufferEXT(GLenum target,
 void LoseContextCHROMIUM(GLenum current, GLenum other) override;
 
 void DrawBuffersEXT(GLsizei count, const GLenum* bufs) override;
-
-void DiscardBackbufferCHROMIUM() override;
 
 void FlushDriverCachesCHROMIUM() override;
 

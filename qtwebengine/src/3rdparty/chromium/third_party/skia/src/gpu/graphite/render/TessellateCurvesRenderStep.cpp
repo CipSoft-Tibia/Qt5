@@ -81,11 +81,15 @@ TessellateCurvesRenderStep::TessellateCurvesRenderStep(bool evenOdd,
     // problems, we can modify StaticBufferManager to de-duplicate requests.
     const size_t vertexSize = FixedCountCurves::VertexBufferSize();
     auto vertexData = bufferManager->getVertexWriter(vertexSize, &fVertexBuffer);
-    FixedCountCurves::WriteVertexBuffer(std::move(vertexData), vertexSize);
+    if (vertexData) {
+        FixedCountCurves::WriteVertexBuffer(std::move(vertexData), vertexSize);
+    } // otherwise static buffer creation failed, so do nothing; Context initialization will fail.
 
     const size_t indexSize = FixedCountCurves::IndexBufferSize();
     auto indexData = bufferManager->getIndexWriter(indexSize, &fIndexBuffer);
-    FixedCountCurves::WriteIndexBuffer(std::move(indexData), indexSize);
+    if (indexData) {
+        FixedCountCurves::WriteIndexBuffer(std::move(indexData), indexSize);
+    } // ""
 }
 
 TessellateCurvesRenderStep::~TessellateCurvesRenderStep() {}
@@ -124,7 +128,7 @@ void TessellateCurvesRenderStep::writeVertices(DrawWriter* dw,
     // more accurately compute how many *parametric* segments are needed.
     // TODO: This doesn't account for perspective division yet, which will require updating the
     // approximate transform based on each verb's control points' bounding box.
-    SkASSERT(params.transform().type() < Transform::Type::kProjection);
+    SkASSERT(params.transform().type() < Transform::Type::kPerspective);
     writer.setShaderTransform(wangs_formula::VectorXform{params.transform().matrix()},
                               params.transform().maxScaleFactor());
 

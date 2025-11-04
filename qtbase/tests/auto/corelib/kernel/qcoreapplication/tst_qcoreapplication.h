@@ -7,10 +7,11 @@
 
 #include <QtCore/QtCore>
 
+#include "apphelper.h"
+
 class tst_QCoreApplication: public QObject
 {
     Q_OBJECT
-    void runHelperTest();
 
 private slots:
     void sendEventsOnProcessEvents(); // this must be the first test
@@ -18,6 +19,11 @@ private slots:
     void qAppName();
     void qAppVersion();
     void argc();
+#if QT_CONFIG(library)
+    void libraryPaths();
+    void libraryPaths_qt_plugin_path();
+    void libraryPaths_qt_plugin_path_2();
+#endif
     void postEvent();
     void removePostedEvents();
 #if QT_CONFIG(thread)
@@ -42,19 +48,14 @@ private slots:
     void applicationEventFilters_auxThread();
     void threadedEventDelivery_data();
     void threadedEventDelivery();
-#if QT_CONFIG(process)
+
     // also add to tst_qapplication.cpp
-    void exitFromEventLoop() { runHelperTest(); }
-    void exitFromThread() { runHelperTest(); }
-    void exitFromThreadedEventLoop() { runHelperTest(); }
-#  if defined(Q_OS_APPLE) && defined(QT_GUI_LIB)
-    // QGuiApplication in a thread fails inside Apple libs:
-    // *** Assertion failure in -[NSMenu _setMenuName:], NSMenu.m:777
-    // *** Terminating app due to uncaught exception 'NSInternalInconsistencyException', reason: 'API misuse: setting the main menu on a non-main thread. Main menu contents should only be modified from the main thread.'
-#  else
-    void mainAppInAThread() { runHelperTest(); }
-#  endif
-#endif
+    void exitFromEventLoop() { QCoreApplicationTestHelper::run(); }
+    void exitFromThread() { QCoreApplicationTestHelper::run(); }
+    void exitFromThreadedEventLoop() { QCoreApplicationTestHelper::run(); }
+    void exitWithPlugins() { QCoreApplicationTestHelper::run(); }
+    void mainAppInAThread() { QCoreApplicationTestHelper::run(); }
+
     void testTrWithPercantegeAtTheEnd();
 #if QT_CONFIG(library)
     void addRemoveLibPaths();

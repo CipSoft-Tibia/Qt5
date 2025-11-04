@@ -104,7 +104,7 @@ class VideoFrameFactoryImplTest : public testing::Test {
   void RequestVideoFrame() {
     auto output_buffer = CodecOutputBuffer::CreateForTesting(
         0, video_frame_params_.coded_size, video_frame_params_.color_space,
-        absl::nullopt);
+        std::nullopt);
     ASSERT_TRUE(VideoFrame::IsValidConfig(
         PIXEL_FORMAT_ARGB, VideoFrame::STORAGE_OPAQUE,
         video_frame_params_.coded_size, video_frame_params_.visible_rect,
@@ -132,7 +132,7 @@ class VideoFrameFactoryImplTest : public testing::Test {
   SharedImageVideoProvider::ImageRecord MakeImageRecord(
       bool* release_cb_called_flag = nullptr) {
     SharedImageVideoProvider::ImageRecord record;
-    record.mailbox = gpu::Mailbox::GenerateForSharedImage();
+    record.shared_image = gpu::ClientSharedImage::CreateForTesting();
     if (release_cb_called_flag)
       *release_cb_called_flag = false;
     record.release_cb = base::BindOnce(
@@ -211,7 +211,7 @@ TEST_F(VideoFrameFactoryImplTest, CreateVideoFrameFailsIfUnsupportedFormat) {
   gfx::Rect visible_rect(coded_size);
   gfx::Size natural_size(0, 0);
   auto output_buffer = CodecOutputBuffer::CreateForTesting(
-      0, coded_size, gfx::ColorSpace(), absl::nullopt);
+      0, coded_size, gfx::ColorSpace(), std::nullopt);
   ASSERT_FALSE(VideoFrame::IsValidConfig(PIXEL_FORMAT_ARGB,
                                          VideoFrame::STORAGE_OPAQUE, coded_size,
                                          visible_rect, natural_size));

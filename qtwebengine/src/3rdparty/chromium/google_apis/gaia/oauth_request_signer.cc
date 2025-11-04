@@ -2,6 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#ifdef UNSAFE_BUFFERS_BUILD
+// TODO(crbug.com/351564777): Remove this and convert code to safer constructs.
+#pragma allow_unsafe_buffers
+#endif
+
 #include "google_apis/gaia/oauth_request_signer.h"
 
 #include <stddef.h>
@@ -57,7 +62,7 @@ const std::string HttpMethodName(OAuthRequestSigner::HttpMethod method) {
     case OAuthRequestSigner::POST_METHOD:
       return "POST";
   }
-  NOTREACHED();
+  NOTREACHED_IN_MIGRATION();
   return std::string();
 }
 
@@ -71,7 +76,7 @@ const std::string SignatureMethodName(
     case OAuthRequestSigner::PLAINTEXT_SIGNATURE:
       return "PLAINTEXT";
   }
-  NOTREACHED();
+  NOTREACHED_IN_MIGRATION();
   return std::string();
 }
 
@@ -190,7 +195,7 @@ bool ParseQuery(const std::string& query,
       parameters[keyword] = value;
       break;
     default:
-      NOTREACHED();
+      NOTREACHED_IN_MIGRATION();
   }
   *parameters_result = parameters;
   return true;
@@ -207,9 +212,7 @@ bool SignHmacSha1(const std::string& text,
   bool result = hmac.Init(key) &&
       hmac.Sign(text, digest, kHmacDigestLength);
   if (result) {
-    base::Base64Encode(
-        std::string(reinterpret_cast<const char*>(digest), kHmacDigestLength),
-        signature_return);
+    *signature_return = base::Base64Encode(digest);
   }
   return result;
 }
@@ -285,7 +288,7 @@ bool SignParameters(const GURL& request_base_url,
       is_signed = SignPlaintext(base, key, &signature);
       break;
     default:
-      NOTREACHED();
+      NOTREACHED_IN_MIGRATION();
   }
   if (is_signed)
     (*parameters)[kOAuthSignatureLabel] = signature;
@@ -415,7 +418,7 @@ bool OAuthRequestSigner::SignURL(
         signed_text += BuildBaseStringParameters(parameters);
         break;
       default:
-        NOTREACHED();
+        NOTREACHED_IN_MIGRATION();
     }
     *signed_text_return = signed_text;
   }

@@ -22,13 +22,16 @@
 #include "QtGui/qimage.h"
 #include "QtGui/qtextlayout.h"
 #include "QtGui/qtextoption.h"
+#include "QtCore/qloggingcategory.h"
 #include "QtCore/qstack.h"
 
 QT_BEGIN_NAMESPACE
 
+Q_DECLARE_LOGGING_CATEGORY(lcSvgDraw);
+
 class QTextCharFormat;
 
-class Q_SVG_EXPORT QSvgAnimation : public QSvgNode
+class Q_SVG_EXPORT QSvgDummyNode : public QSvgNode
 {
 public:
     void drawCommand(QPainter *, QSvgExtraStates &) override;
@@ -243,7 +246,7 @@ public:
     QRectF internalBounds(QPainter *p, QSvgExtraStates &states) const override;
     QRectF decoratedInternalBounds(QPainter *p, QSvgExtraStates &states) const override;
     bool isResolved() const { return m_link != nullptr; }
-    QString linkId() const { return m_linkId; }
+    const QString &linkId() const { return m_linkId; }
     void setLink(QSvgNode *link) { m_link = link; }
     QSvgNode *link() const { return m_link; }
     QPointF start() const { return m_start; }

@@ -55,7 +55,7 @@ static String IgnoredReasonName_ITBH(AXIgnoredReason reason) {
     case kAXUninteresting:
       return "uninteresting";
   }
-  NOTREACHED();
+  NOTREACHED_IN_MIGRATION();
   return "";
 }
 

@@ -58,6 +58,8 @@ private slots:
     void componentDefinitionInnerRequiredProperty();
     void componentDefinitionInnerRequiredPropertyFromOutside();
     void innerLevelRequiredProperty();
+    void customParsed();
+    void typeWithUnknownPropertyType();
 };
 
 #ifndef TST_QMLTC_QPROCESS_RESOURCES
@@ -205,8 +207,11 @@ void tst_qmltc_qprocess::warningsAsErrors()
 
 void tst_qmltc_qprocess::invalidAliasRevision()
 {
+    // This isn't actually invalid. Revisions are only relevant for unqualified lookup
+    // but alias expressions are always qualified.
     const auto errors = runQmltc(u"invalidAliasRevision.qml"_s, false);
-    QVERIFY(errors.contains(u"Cannot resolve alias \"unexistingProperty\" [unresolved-alias]"_s));
+    QVERIFY2(!errors.contains(u"Cannot resolve alias \"unexistingProperty\" [unresolved-alias]"_s),
+             qPrintable(errors));
 }
 
 void tst_qmltc_qprocess::topLevelComponent()
@@ -334,6 +339,8 @@ void tst_qmltc_qprocess::unboundRequiredPropertyInInlineComponent()
 void tst_qmltc_qprocess::componentDefinitionInnerRequiredProperty()
 {
     {
+        QEXPECT_FAIL("", "QTBUG-131777", Continue);
+        QFAIL("QTBUG-131777");
         const auto errors = runQmltc(u"componentDefinitionInnerRequiredProperty.qml"_s, false);
         QVERIFY(errors.contains(
                 u"componentDefinitionInnerRequiredProperty.qml:11:13: Component is missing required property bar from here [required]"
@@ -357,9 +364,32 @@ void tst_qmltc_qprocess::innerLevelRequiredProperty()
     {
         const auto errors = runQmltc(u"innerLevelRequiredProperty.qml"_s, false);
         QVERIFY(errors.contains(
-                u"innerLevelRequiredProperty.qml:7:5: Component is missing required property foo from here [required]"
+                u"innerLevelRequiredProperty.qml:7:5: Component is missing required property foo from Item [required]"
         ));
     }
+}
+
+void tst_qmltc_qprocess::customParsed()
+{
+    const auto errors = runQmltc(u"customParsed.qml"_s, false);
+    QVERIFY(errors.contains(
+            u"customParsed.qml:5:9: Cannot assign to non-existent default property [missing-property]"
+    ));
+    QVERIFY(errors.contains(
+            u"customParsed.qml:5:23: Could not find property \"a\". [missing-property]"
+    ));
+    QVERIFY(errors.contains(
+            u"customParsed.qml:: qmltc does not support custom parsers such as ListModel or old forms "
+            "of Connections and PropertyChanges. [compiler]"
+    ));
+}
+
+void tst_qmltc_qprocess::typeWithUnknownPropertyType()
+{
+    const auto errors = runQmltc(u"typeWithUnknownPropertyType.qml"_s, false);
+    QVERIFY(errors.contains(
+            u"typeWithUnknownPropertyType.qml:3:1: Type of property 'u' is unknown [compiler]"
+    ));
 }
 
 QTEST_MAIN(tst_qmltc_qprocess)

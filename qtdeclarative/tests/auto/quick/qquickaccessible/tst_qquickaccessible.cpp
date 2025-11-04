@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 
-#include <QtTest/QtTest>
+#include <QtTest/QTest>
 #include <QtTest/qtestaccessible.h>
 
 #include <QtGui/qaccessible.h>
@@ -57,6 +57,9 @@ private slots:
     void commonTests();
 
     void quickAttachedProperties();
+
+    void quickAttachedProperties_description_data();
+    void quickAttachedProperties_description();
     void attachedWins();
     void basicPropertiesTest();
     void hitTest();
@@ -163,7 +166,7 @@ void tst_QQuickAccessible::quickAttachedProperties()
     // Attaching to non-item
     {
         QObject parent;
-        QTest::ignoreMessage(QtWarningMsg, "<Unknown File>: QML QtObject: Accessible must be attached to an Item or an Action");
+        QTest::ignoreMessage(QtWarningMsg, "<Unknown File>: QML QtObject: Accessible attached property must be attached to an object deriving from Item or Action");
         QQuickAccessibleAttached *attachedObj = new QQuickAccessibleAttached(&parent);
 
         QCOMPARE(attachedObj->ignored(), false);
@@ -324,6 +327,95 @@ void tst_QQuickAccessible::quickAttachedProperties()
         QCOMPARE(attachedObject->name(), QLatin1String("Explicit"));
         QVERIFY(attachedObject->wasNameExplicitlySet());
     }
+    QTestAccessibility::clearEvents();
+}
+
+void tst_QQuickAccessible::quickAttachedProperties_description_data()
+{
+    QTest::addColumn<QString>("qmlCode");
+    QTest::addColumn<QString>("initialExplicitDescription");
+    QTest::addColumn<QString>("implicitDescription");
+    QTest::addColumn<QString>("implicitDescription2");
+    QTest::addColumn<QString>("explicitDescription2");
+    QTest::addColumn<QString>("implicitDescription3");
+
+    QTest::addColumn<QAccessible::Role>("expectedRole");
+    QTest::addColumn<QString>("expectedDescription");
+
+    QTest::newRow("TextArea with initial explicit description") << R"(
+            import QtQuick
+            import QtQuick.Controls
+            TextArea {
+                Accessible.role: Accessible.EditableText
+                %1
+            })"
+            << "Explicit description"
+            << "Initial implicit"           // implicitDescription
+            << "Updated implicit"           // implicitDescription2
+            << "Explicit"                   // explicitDescription2
+            << "Updated implicit again"     // implicitDescription3
+
+            // EXPECTED
+            << QAccessible::EditableText
+            << "Explicit description";
+
+
+    QTest::newRow("TextArea, no initial explicit description") << R"(
+            import QtQuick
+            import QtQuick.Controls
+            TextArea {
+                Accessible.role: Accessible.EditableText
+                %1
+            })"
+            << QString()
+            << "Initial implicit"           // implicitDescription
+            << "Updated implicit"           // implicitDescription2
+            << "Explicit"                   // explicitDescription2
+            << "Updated implicit again"     // implicitDescription3
+
+            // EXPECTED
+            << QAccessible::EditableText
+            << "Explicit description";
+}
+
+void tst_QQuickAccessible::quickAttachedProperties_description()
+{
+    QFETCH(QString, qmlCode);
+    QFETCH(QString, initialExplicitDescription);
+    QFETCH(QString, implicitDescription);
+    QFETCH(QString, implicitDescription2);
+    QFETCH(QString, explicitDescription2);
+    QFETCH(QString, implicitDescription3);
+    QFETCH(QAccessible::Role, expectedRole);
+    QFETCH(QString, expectedDescription);
+
+    QQmlEngine engine;
+    QQmlComponent component(&engine);
+    QString extraCode;
+    if (!initialExplicitDescription.isNull())
+        extraCode.append(QString::fromLatin1(R"(Accessible.description: "%1")").arg(initialExplicitDescription));
+    extraCode.append(QString::fromLatin1("\nplaceholderText: \"%2\"").arg(implicitDescription));
+
+    component.setData(qmlCode.arg(extraCode).toUtf8(), QUrl());
+    auto object = std::unique_ptr<QObject>(component.create());
+    QVERIFY(object);
+
+    const auto attachedObject = qobject_cast<QQuickAccessibleAttached*>(
+            QQuickAccessibleAttached::attachedProperties(object.get()));
+    QVERIFY(attachedObject);
+    QCOMPARE(attachedObject->role(), expectedRole);
+
+    const QString &explicitDesc = initialExplicitDescription;
+    QCOMPARE(attachedObject->description(), explicitDesc.isNull() ? implicitDescription : explicitDesc);
+
+    object->setProperty("placeholderText", implicitDescription2);
+    QCOMPARE(attachedObject->description(), explicitDesc.isNull() ? implicitDescription2 : explicitDesc);
+
+    attachedObject->setDescription(explicitDescription2);
+    QCOMPARE(attachedObject->description(), explicitDescription2);
+
+    object->setProperty("placeholderText", implicitDescription2);
+    QCOMPARE(attachedObject->description(), explicitDescription2);
     QTestAccessibility::clearEvents();
 }
 

@@ -4,6 +4,8 @@
 
 #include "media/formats/hls/rendition_manager.h"
 
+#include <optional>
+
 #include "base/logging.h"
 #include "base/test/gmock_callback_support.h"
 #include "media/base/media_util.h"
@@ -13,14 +15,13 @@
 #include "media/formats/hls/types.h"
 #include "media/formats/hls/variant_stream.h"
 #include "testing/gtest/include/gtest/gtest.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 
 namespace media::hls {
 
 namespace {
 
 RenditionManager::CodecSupportType GetCodecSupportType(
-    base::StringPiece container,
+    std::string_view container,
     base::span<const std::string> codecs) {
   bool has_audio = false;
   bool has_video = false;
@@ -48,7 +49,7 @@ RenditionManager::CodecSupportType GetCodecSupportType(
 }
 
 RenditionManager::CodecSupportType GetCodecSupportForSoftwareOnlyLinux(
-    base::StringPiece container,
+    std::string_view container,
     base::span<const std::string> codecs) {
   bool has_audio = false;
   bool has_video = false;
@@ -96,7 +97,9 @@ class HlsRenditionManagerTest : public testing::Test {
  public:
   MOCK_METHOD(void, VariantSelected, (std::string, std::string), ());
 
-  void _VariantSelected(const VariantStream* vs, const AudioRendition* ar) {
+  void _VariantSelected(AdaptationReason,
+                        const VariantStream* vs,
+                        const AudioRendition* ar) {
     std::string variant_path = "NONE";
     std::string rendition_path = "NONE";
     if (vs) {
@@ -111,6 +114,12 @@ class HlsRenditionManagerTest : public testing::Test {
 
   decltype(auto) GetVariantCb() {
     return base::BindRepeating(&HlsRenditionManagerTest::_VariantSelected,
+                               base::Unretained(this),
+                               AdaptationReason::kUserSelection);
+  }
+
+  decltype(auto) GetVariantWithAdaptation() {
+    return base::BindRepeating(&HlsRenditionManagerTest::_VariantSelected,
                                base::Unretained(this));
   }
 
@@ -120,21 +129,21 @@ class HlsRenditionManagerTest : public testing::Test {
     builder.AppendLine("#EXTM3U");
     ([&] { builder.AppendLine(strings); }(), ...);
     return RenditionManager(builder.Parse(),
-                            base::BindRepeating(GetVariantCb()),
+                            base::BindRepeating(GetVariantWithAdaptation()),
                             base::BindRepeating(&GetCodecSupportType));
   }
 
   template <typename... Strings>
   RenditionManager GetCustomSupportRenditionManager(
       base::RepeatingCallback<RenditionManager::CodecSupportType(
-          base::StringPiece,
+          std::string_view,
           base::span<const std::string>)> support_cb,
       Strings... strings) {
     MultivariantPlaylistTestBuilder builder;
     builder.AppendLine("#EXTM3U");
     ([&] { builder.AppendLine(strings); }(), ...);
     return RenditionManager(builder.Parse(),
-                            base::BindRepeating(GetVariantCb()),
+                            base::BindRepeating(GetVariantWithAdaptation()),
                             std::move(support_cb));
   }
 };
@@ -606,7 +615,7 @@ TEST_F(HlsRenditionManagerTest, MultipleRenditionGroupsVariantsOutOfOrder) {
   // Unselect a preferred rendition, which switches back to english.
   EXPECT_CALL(*this, VariantSelected("/video/800kbit.m3u8",
                                      "/audio/stereo/en/128kbit.m3u8"));
-  rm.SetPreferredAudioRendition(absl::nullopt);
+  rm.SetPreferredAudioRendition(std::nullopt);
 }
 
 }  // namespace media::hls

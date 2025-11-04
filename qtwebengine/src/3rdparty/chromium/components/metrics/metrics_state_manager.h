@@ -7,6 +7,7 @@
 
 #include <memory>
 #include <string>
+#include <string_view>
 
 #include "base/callback_list.h"
 #include "base/files/file_path.h"
@@ -182,7 +183,14 @@ class MetricsStateManager final {
   // this method returns an entropy provider that has a high source of entropy,
   // partially based on the client ID or provisional client ID. Otherwise, it
   // only returns an entropy provider that is based on a low entropy source.
-  std::unique_ptr<const variations::EntropyProviders> CreateEntropyProviders();
+  //
+  // When |enable_limited_entropy_mode| is true, a limited entropy
+  // randomization source value will be generated for this client. This
+  // parameter can only be false before the limited entropy synthetic trial
+  // completes (See limited_entropy_synthetic_trial.h), after which it should be
+  // removed (TODO(crbug.com/40948861)).
+  std::unique_ptr<const variations::EntropyProviders> CreateEntropyProviders(
+      bool enable_limited_entropy_mode);
 
   ClonedInstallDetector* cloned_install_detector_for_testing() {
     return &cloned_install_detector_;
@@ -209,7 +217,7 @@ class MetricsStateManager final {
       EntropyParams entropy_params = {},
       StoreClientInfoCallback store_client_info = StoreClientInfoCallback(),
       LoadClientInfoCallback load_client_info = LoadClientInfoCallback(),
-      base::StringPiece external_client_id = base::StringPiece());
+      std::string_view external_client_id = std::string_view());
 
   // Registers local state prefs used by this class.
   static void RegisterPrefs(PrefRegistrySimple* registry);
@@ -224,6 +232,11 @@ class MetricsStateManager final {
       CheckProviderResetIds_PreviousIdOnlyReportInResetSession);
   FRIEND_TEST_ALL_PREFIXES(MetricsStateManagerTest, EntropySourceUsed_Low);
   FRIEND_TEST_ALL_PREFIXES(MetricsStateManagerTest, EntropySourceUsed_High);
+  FRIEND_TEST_ALL_PREFIXES(MetricsStateManagerTest,
+                           EntropySourceUsed_High_ExternalClientId);
+  FRIEND_TEST_ALL_PREFIXES(
+      MetricsStateManagerTest,
+      EntropySourceUsed_High_ExternalClientId_MetricsReportingDisabled);
   FRIEND_TEST_ALL_PREFIXES(MetricsStateManagerTest,
                            ProvisionalClientId_PromotedToClientId);
   FRIEND_TEST_ALL_PREFIXES(MetricsStateManagerTest,
@@ -280,7 +293,7 @@ class MetricsStateManager final {
                       StartupVisibility startup_visibility,
                       StoreClientInfoCallback store_client_info,
                       LoadClientInfoCallback load_client_info,
-                      base::StringPiece external_client_id);
+                      std::string_view external_client_id);
 
   // Returns a MetricsStateManagerProvider instance and sets its
   // |log_normal_metric_state_.gen| with the provided random seed.
@@ -292,6 +305,11 @@ class MetricsStateManager final {
 
   // Loads the client info via |load_client_info_|.
   std::unique_ptr<ClientInfo> LoadClientInfo();
+
+  // Gets the limited entropy randomization source. For clients that only use
+  // the low entropy source (e.g. Android Webview), this will return the empty
+  // string.
+  std::string_view GetLimitedEntropyRandomizationSource();
 
   // Returns the high entropy source for this client, which is composed of a
   // client ID and the low entropy source. This is intended to be unique for

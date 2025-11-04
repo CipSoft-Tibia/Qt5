@@ -74,7 +74,6 @@ using ::blink::mojom::CapturedSurfaceControlResult;
 using ::blink::mojom::MediaStreamType;
 using ::blink::mojom::StreamSelectionInfo;
 using ::blink::mojom::StreamSelectionInfoPtr;
-using ::blink::mojom::StreamSelectionStrategy;
 using ::testing::_;
 using testing::ElementsAre;
 using ::testing::Invoke;
@@ -161,12 +160,6 @@ class MockAudioManager : public AudioManagerPlatform {
           /*unique_id=*/std::string(kFakeDeviceIdPrefix) +
               base::NumberToString(i));
     }
-  }
-
-  media::AudioParameters GetDefaultOutputStreamParameters() override {
-    return media::AudioParameters(media::AudioParameters::AUDIO_PCM_LOW_LATENCY,
-                                  media::ChannelLayoutConfig::Stereo(), 48000,
-                                  128);
   }
 
   media::AudioParameters GetOutputStreamParameters(
@@ -270,6 +263,13 @@ class TestBrowserClient : public ContentBrowserClient {
     return std::make_unique<ScreenEnumeratorMock>(screen_count_);
   }
 
+  MOCK_METHOD(void,
+              NotifyMultiCaptureStateChanged,
+              (GlobalRenderFrameHostId render_frame_host_id,
+               const std::string& label,
+               MultiCaptureChanged state),
+              (override));
+
  private:
   raw_ptr<MediaObserver> media_observer_;
   raw_ptr<const size_t> screen_count_;
@@ -310,17 +310,17 @@ class TestMediaStreamDispatcherHost
       const std::optional<base::UnguessableToken>& session_id,
       blink::mojom::MediaStreamType type,
       bool is_secure) override {}
-  void OnStreamStarted(const std::string& label) override {}
 
 #if !BUILDFLAG(IS_ANDROID) && !BUILDFLAG(IS_IOS)
   void SendWheel(const base::UnguessableToken& device_id,
                  blink::mojom::CapturedWheelActionPtr action,
                  SendWheelCallback callback) override {}
-  void GetZoomLevel(const base::UnguessableToken& device_id,
-                    GetZoomLevelCallback callback) override {}
   void SetZoomLevel(const base::UnguessableToken& device_id,
                     int32_t zoom_level,
                     SetZoomLevelCallback callback) override {}
+  void RequestCapturedSurfaceControlPermission(
+      const base::UnguessableToken& device_id,
+      RequestCapturedSurfaceControlPermissionCallback callback) override {}
   void FocusCapturedSurface(const std::string& label, bool focus) override {}
   void ApplySubCaptureTarget(const base::UnguessableToken& device_id,
                              media::mojom::SubCaptureTargetType type,
@@ -368,23 +368,22 @@ class TestVideoCaptureHost : public media::mojom::VideoCaptureHost {
 blink::StreamControls GetVideoStreamControls(std::string hmac_device_id) {
   blink::StreamControls stream_controls{/*request_audio=*/false,
                                         /*request_video=*/true};
-  stream_controls.video.device_id = hmac_device_id;
+  stream_controls.video.device_ids = {hmac_device_id};
   return stream_controls;
 }
 
 blink::StreamControls GetAudioStreamControls(std::string hmac_device_id) {
   blink::StreamControls stream_controls{/*request_audio=*/true,
                                         /*request_video=*/false};
-  stream_controls.audio.device_id = hmac_device_id;
+  stream_controls.audio.device_ids = {hmac_device_id};
   return stream_controls;
 }
 
 #if !BUILDFLAG(IS_ANDROID) && !BUILDFLAG(IS_IOS)
-// TODO(crbug.com/1466247): Add other APIs (setZoomLevel, getZoomLevel).
 enum class CapturedSurfaceControlAPI {
   kSendWheel,
-  kGetZoomLevel,
   kSetZoomLevel,
+  kRequestPermission,
 };
 
 // Make an arbitrary valid CapturedWheelAction.
@@ -397,22 +396,18 @@ CapturedWheelActionPtr MakeCapturedWheelActionPtr() {
 }
 #endif  // !BUILDFLAG(IS_ANDROID) && !BUILDFLAG(IS_IOS)
 
+blink::mojom::StreamSelectionInfoPtr NewSearchBySessionId(
+    base::flat_map<std::string, base::UnguessableToken> session_id_map) {
+  return blink::mojom::StreamSelectionInfo::NewSearchBySessionId(
+      blink::mojom::SearchBySessionId::New(session_id_map));
+}
+
 }  // namespace
 
-class MediaStreamManagerTest : public ::testing::Test
-#if BUILDFLAG(IS_CHROMEOS_LACROS)
-    ,
-                               public crosapi::mojom::MultiCaptureService
-#endif  // BUILDFLAG(IS_CHROMEOS_LACROS)
-{
+class MediaStreamManagerTest : public ::testing::Test {
  public:
   MediaStreamManagerTest()
-      : task_environment_(content::BrowserTaskEnvironment::IO_MAINLOOP)
-#if BUILDFLAG(IS_CHROMEOS_LACROS)
-        ,
-        receiver_(this)
-#endif  // BUILDFLAG(IS_CHROMEOS_LACROS)
-  {
+      : task_environment_(content::BrowserTaskEnvironment::IO_MAINLOOP) {
     audio_manager_ = std::make_unique<MockAudioManager>();
     audio_system_ =
         std::make_unique<media::AudioSystemImpl>(audio_manager_.get());
@@ -428,24 +423,6 @@ class MediaStreamManagerTest : public ::testing::Test
 
     SetVideoCaptureDevices(/*devices=*/{});
   }
-
-#if BUILDFLAG(IS_CHROMEOS_LACROS)
-  void SetUp() override {
-    chromeos::LacrosService::Get()->InjectRemoteForTesting(
-        receiver_.BindNewPipeAndPassRemote());
-  }
-
-  // crosapi::mojom::MultiCaptureService:
-  MOCK_METHOD(void,
-              MultiCaptureStarted,
-              (const std::string& label, const std::string& host),
-              (override));
-  MOCK_METHOD(void,
-              MultiCaptureStopped,
-              (const std::string& label),
-              (override));
-
-#endif  // BUILDFLAG(IS_CHROMEOS_LACROS)
 
   MediaStreamManagerTest(const MediaStreamManagerTest&) = delete;
   MediaStreamManagerTest& operator=(const MediaStreamManagerTest&) = delete;
@@ -495,7 +472,9 @@ class MediaStreamManagerTest : public ::testing::Test
                     blink::mojom::MediaStreamType::DISPLAY_VIDEO_CAPTURE_SET,
                     MEDIA_REQUEST_STATE_OPENING));
 #if BUILDFLAG(IS_CHROMEOS_LACROS)
-    EXPECT_CALL(*this, MultiCaptureStarted(_, _));
+    EXPECT_CALL(*browser_content_client_,
+                NotifyMultiCaptureStateChanged(
+                    _, _, ContentBrowserClient::MultiCaptureChanged::kStarted));
 #endif  // BUILDFLAG(IS_CHROMEOS_LACROS)
     stream_provider_listener_ =
         std::make_unique<MediaStreamProviderListenerMock>();
@@ -507,16 +486,14 @@ class MediaStreamManagerTest : public ::testing::Test
         render_frame_host_id, requester_id, page_request_id, controls,
         MediaDeviceSaltAndOrigin::Empty(), /*user_gesture=*/false,
         /*audio_stream_selection_info_ptr=*/
-        blink::mojom::StreamSelectionInfo::New(
-            /*strategy=*/blink::mojom::StreamSelectionStrategy::
-                FORCE_NEW_STREAM,
-            /*session_id=*/session),
-        /*generate_stream_cb=*/base::DoNothing(),
-        /*device_stopped_cb=*/base::DoNothing(),
-        /*device_changed_cb=*/base::DoNothing(),
-        /*device_request_state_change_cb=*/base::DoNothing(),
-        /*device_capture_configuration_change_cb=*/base::DoNothing(),
-        /*device_capture_handle_change_cb=*/base::DoNothing());
+        NewSearchBySessionId({}),
+        /*generate_stream_callback=*/base::DoNothing(),
+        /*device_stopped_callback=*/base::DoNothing(),
+        /*device_changed_callback=*/base::DoNothing(),
+        /*device_request_state_change_callback=*/base::DoNothing(),
+        /*device_capture_configuration_change_callback=*/base::DoNothing(),
+        /*device_capture_handle_change_callback=*/base::DoNothing(),
+        /*zoom_level_change_callback=*/base::DoNothing());
     base::RunLoop().RunUntilIdle();
   }
 
@@ -591,19 +568,19 @@ class MediaStreamManagerTest : public ::testing::Test
         capture_configuration_change_callback;
     MediaStreamManager::DeviceCaptureHandleChangeCallback
         capture_handle_change_callback;
+    MediaStreamManager::ZoomLevelChangeCallback zoom_level_change_callback;
 
     SetMediaObserverExpectations(app_requested_audio, user_shared_audio);
 
     media_stream_manager_->GenerateStreams(
         kRenderFrameHostId, requester_id, page_request_id, controls,
         MediaDeviceSaltAndOrigin::Empty(), false /* user_gesture */,
-        StreamSelectionInfo::New(
-            blink::mojom::StreamSelectionStrategy::SEARCH_BY_DEVICE_ID,
-            std::nullopt),
+        StreamSelectionInfo::NewSearchOnlyByDeviceId({}),
         std::move(generate_stream_callback), stopped_callback.Get(),
         std::move(changed_callback), std::move(request_state_change_callback),
         std::move(capture_configuration_change_callback),
-        std::move(capture_handle_change_callback));
+        std::move(capture_handle_change_callback),
+        std::move(zoom_level_change_callback));
     run_loop_.Run();
 
     EXPECT_EQ(blink::mojom::MediaStreamType::DISPLAY_VIDEO_CAPTURE,
@@ -653,7 +630,7 @@ class MediaStreamManagerTest : public ::testing::Test
       const std::string& label,
       blink::mojom::StreamDevicesSetPtr stream_devices_set,
       bool pan_tilt_zoom_allowed) {
-    // TODO(crbug.com/1300883): Generalize to multiple streams.
+    // TODO(crbug.com/40216442): Generalize to multiple streams.
     DCHECK_EQ(stream_devices_set->stream_devices.size(), 1u);
     if (request_audio && audio_share) {
       ASSERT_TRUE(
@@ -679,8 +656,7 @@ class MediaStreamManagerTest : public ::testing::Test
   }
 
   blink::MediaStreamDevice CreateOrSearchAudioDeviceStream(
-      const StreamSelectionStrategy& strategy,
-      const std::optional<base::UnguessableToken>& session_id,
+      StreamSelectionInfoPtr selection_info,
       GlobalRenderFrameHostId render_frame_host_id = kRenderFrameHostId,
       const blink::StreamControls& controls =
           blink::StreamControls(true /* request_audio */,
@@ -704,17 +680,17 @@ class MediaStreamManagerTest : public ::testing::Test
         capture_configuration_change_callback;
     MediaStreamManager::DeviceCaptureHandleChangeCallback
         capture_handle_change_callback;
+    MediaStreamManager::ZoomLevelChangeCallback zoom_level_change_callback;
 
-    StreamSelectionInfoPtr info =
-        StreamSelectionInfo::New(strategy, session_id);
     media_stream_manager_->GenerateStreams(
         render_frame_host_id, requester_id, page_request_id, controls,
         MediaDeviceSaltAndOrigin::Empty(), false /* user_gesture */,
-        std::move(info), std::move(generate_stream_callback),
+        std::move(selection_info), std::move(generate_stream_callback),
         std::move(stopped_callback), std::move(changed_callback),
         std::move(request_state_change_callback),
         std::move(capture_configuration_change_callback),
-        std::move(capture_handle_change_callback));
+        std::move(capture_handle_change_callback),
+        std::move(zoom_level_change_callback));
     run_loop.Run();
 
     return audio_device;
@@ -740,12 +716,8 @@ class MediaStreamManagerTest : public ::testing::Test
   // task_environment_ because it uses the underlying message loop.
   std::unique_ptr<MediaStreamManager> media_stream_manager_;
   std::unique_ptr<MockMediaObserver> media_observer_;
-  std::unique_ptr<ContentBrowserClient> browser_content_client_;
+  std::unique_ptr<TestBrowserClient> browser_content_client_;
   content::BrowserTaskEnvironment task_environment_;
-#if BUILDFLAG(IS_CHROMEOS_LACROS)
-  chromeos::ScopedLacrosServiceTestHelper lacros_service_test_helper_;
-  mojo::Receiver<crosapi::mojom::MultiCaptureService> receiver_;
-#endif  // BUILDFLAG(IS_CHROMEOS_LACROS)
   raw_ptr<MockVideoCaptureProvider> video_capture_provider_;
   std::unique_ptr<MediaStreamProviderListenerMock> stream_provider_listener_;
   size_t screen_count_ = 0;
@@ -949,8 +921,7 @@ TEST_F(MediaStreamManagerTest, GenerateSameStreamForAudioDevice) {
   std::set<base::UnguessableToken> session_ids;
   for (int i = 0; i < num_call_iterations; ++i) {
     blink::MediaStreamDevice audio_device = CreateOrSearchAudioDeviceStream(
-        blink::mojom::StreamSelectionStrategy::SEARCH_BY_DEVICE_ID,
-        std::nullopt);
+        blink::mojom::StreamSelectionInfo::NewSearchOnlyByDeviceId({}));
 
     EXPECT_EQ(audio_device.id, "default");
     EXPECT_EQ(blink::mojom::MediaStreamType::DEVICE_AUDIO_CAPTURE,
@@ -973,8 +944,8 @@ TEST_F(MediaStreamManagerTest, GenerateDifferentStreamsForAudioDevice) {
   // new stream each time.
   std::set<base::UnguessableToken> session_ids;
   for (size_t i = 0; i < num_call_iterations; ++i) {
-    blink::MediaStreamDevice audio_device = CreateOrSearchAudioDeviceStream(
-        blink::mojom::StreamSelectionStrategy::FORCE_NEW_STREAM, std::nullopt);
+    blink::MediaStreamDevice audio_device =
+        CreateOrSearchAudioDeviceStream(NewSearchBySessionId({}));
 
     EXPECT_EQ(audio_device.id, "default");
     EXPECT_EQ(blink::mojom::MediaStreamType::DEVICE_AUDIO_CAPTURE,
@@ -993,19 +964,23 @@ TEST_F(MediaStreamManagerTest, GenerateAndReuseStreamForAudioDevice) {
 
   const int num_call_iterations = 3;
 
-  // Test that if |info.strategy| is provided as SEARCH_BY_SESSION_ID with
-  // |info.session_id| set to an non-existing ID a new stream is provided and
+  // Test that `StreamSelectionInfo` is provided as `SearchBySessionId` with
+  // the id set to an non-existing ID a new stream is provided and
   // that if the ID is valid, that the stream is reused.
   auto token = base::UnguessableToken::Create();
-  blink::MediaStreamDevice reference_device = CreateOrSearchAudioDeviceStream(
-      blink::mojom::StreamSelectionStrategy::SEARCH_BY_SESSION_ID, token);
+  blink::MediaStreamDevice reference_device =
+      CreateOrSearchAudioDeviceStream(NewSearchBySessionId(
+          {{media::AudioDeviceDescription::kDefaultDeviceId, token}}));
   EXPECT_NE(reference_device.session_id(), token);
 
   for (int i = 0; i < num_call_iterations; ++i) {
-    blink::MediaStreamDevice audio_device = CreateOrSearchAudioDeviceStream(
-        blink::mojom::StreamSelectionStrategy::SEARCH_BY_SESSION_ID,
-        reference_device.session_id());
-    EXPECT_EQ(audio_device.id, "default");
+    blink::MediaStreamDevice audio_device =
+        CreateOrSearchAudioDeviceStream(NewSearchBySessionId({
+            {media::AudioDeviceDescription::kDefaultDeviceId,
+             reference_device.session_id()},
+            {GetAudioInputDeviceId(0), token},
+        }));
+    EXPECT_EQ(audio_device.id, media::AudioDeviceDescription::kDefaultDeviceId);
     EXPECT_EQ(blink::mojom::MediaStreamType::DEVICE_AUDIO_CAPTURE,
               audio_device.type);
     EXPECT_TRUE(audio_device.session_id());
@@ -1068,15 +1043,14 @@ TEST_F(MediaStreamManagerTest, GetDisplayMediaRequestCallsUIProxy) {
   media_stream_manager_->GenerateStreams(
       render_frame_host_id, requester_id, page_request_id, controls,
       MediaDeviceSaltAndOrigin::Empty(), false /* user_gesture */,
-      StreamSelectionInfo::New(
-          blink::mojom::StreamSelectionStrategy::SEARCH_BY_DEVICE_ID,
-          std::nullopt),
+      StreamSelectionInfo::NewSearchOnlyByDeviceId({}),
       std::move(generate_stream_callback),
       MediaStreamManager::DeviceStoppedCallback(),
       MediaStreamManager::DeviceChangedCallback(),
       MediaStreamManager::DeviceRequestStateChangeCallback(),
       MediaStreamManager::DeviceCaptureConfigurationChangeCallback(),
-      MediaStreamManager::DeviceCaptureHandleChangeCallback());
+      MediaStreamManager::DeviceCaptureHandleChangeCallback(),
+      base::DoNothing());
   run_loop_.Run();
 
   EXPECT_CALL(*media_observer_, OnMediaRequestStateChanged(_, _, _, _, _, _))
@@ -1122,17 +1096,17 @@ TEST_F(MediaStreamManagerTest, DesktopCaptureDeviceStopped) {
       capture_configuration_change_callback;
   MediaStreamManager::DeviceCaptureHandleChangeCallback
       capture_handle_change_callback;
+  MediaStreamManager::ZoomLevelChangeCallback zoom_level_change_callback;
 
   media_stream_manager_->GenerateStreams(
       kRenderFrameHostId, requester_id, page_request_id, controls,
       MediaDeviceSaltAndOrigin::Empty(), false /* user_gesture */,
-      StreamSelectionInfo::New(
-          blink::mojom::StreamSelectionStrategy::SEARCH_BY_DEVICE_ID,
-          std::nullopt),
+      StreamSelectionInfo::NewSearchOnlyByDeviceId({}),
       std::move(generate_stream_callback), std::move(stopped_callback),
       std::move(changed_callback), std::move(request_state_change_callback),
       std::move(capture_configuration_change_callback),
-      std::move(capture_handle_change_callback));
+      std::move(capture_handle_change_callback),
+      std::move(zoom_level_change_callback));
   run_loop_.Run();
   EXPECT_EQ(controls.video.stream_type, video_device.type);
   EXPECT_NE(DesktopMediaID::TYPE_NONE,
@@ -1192,17 +1166,17 @@ TEST_F(MediaStreamManagerTest, DesktopCaptureDeviceChanged) {
       capture_configuration_change_callback;
   MediaStreamManager::DeviceCaptureHandleChangeCallback
       capture_handle_change_callback;
+  MediaStreamManager::ZoomLevelChangeCallback zoom_level_change_callback;
 
   media_stream_manager_->GenerateStreams(
       kRenderFrameHostId, requester_id, page_request_id, controls,
       MediaDeviceSaltAndOrigin::Empty(), false /* user_gesture */,
-      StreamSelectionInfo::New(
-          blink::mojom::StreamSelectionStrategy::SEARCH_BY_DEVICE_ID,
-          std::nullopt),
+      StreamSelectionInfo::NewSearchOnlyByDeviceId({}),
       std::move(generate_stream_callback), std::move(stopped_callback),
       std::move(changed_callback), std::move(request_state_change_callback),
       std::move(capture_configuration_change_callback),
-      std::move(capture_handle_change_callback));
+      std::move(capture_handle_change_callback),
+      std::move(zoom_level_change_callback));
   run_loop_.Run();
   EXPECT_EQ(controls.video.stream_type, video_device.type);
   EXPECT_NE(DesktopMediaID::TYPE_NONE,
@@ -1210,8 +1184,9 @@ TEST_F(MediaStreamManagerTest, DesktopCaptureDeviceChanged) {
 
   // |request_label| is cached in the |device.name| for testing purpose.
   std::string request_label = video_device.name;
-  media_stream_manager_->ChangeMediaStreamSourceFromBrowser(request_label,
-                                                            DesktopMediaID());
+  media_stream_manager_->ChangeMediaStreamSourceFromBrowser(
+      request_label, DesktopMediaID(),
+      /*captured_surface_control_active=*/false);
 
   // Wait to check callbacks before stopping the device.
   base::RunLoop().RunUntilIdle();
@@ -1330,7 +1305,9 @@ TEST_F(MediaStreamManagerTest, MultiCaptureIntermediateErrorOnOpening) {
           MEDIA_REQUEST_STATE_DONE))
       .Times(0);
 #if BUILDFLAG(IS_CHROMEOS_LACROS)
-  EXPECT_CALL(*this, MultiCaptureStopped(_));
+  EXPECT_CALL(*browser_content_client_,
+              NotifyMultiCaptureStateChanged(
+                  _, _, ContentBrowserClient::MultiCaptureChanged::kStopped));
 #endif  // BUILDFLAG(IS_CHROMEOS_LACROS)
 }
 
@@ -1410,16 +1387,13 @@ class MediaStreamManagerTestWithWebContents : public MediaStreamManagerTest {
         controls, salt_and_origin,
         /*user_gesture=*/false,
         /*audio_stream_selection_info_ptr=*/
-        blink::mojom::StreamSelectionInfo::New(
-            /*strategy=*/blink::mojom::StreamSelectionStrategy::
-                FORCE_NEW_STREAM,
-            std::nullopt),
-        std::move(generate_stream_cb),
-        /*device_stopped_cb=*/base::DoNothing(),
-        /*device_changed_cb=*/base::DoNothing(),
+        NewSearchBySessionId({}), std::move(generate_stream_cb),
+        /*device_stopped_callback=*/base::DoNothing(),
+        /*device_changed_callback=*/base::DoNothing(),
         /*device_request_state_change_cb*/ base::DoNothing(),
-        /*device_capture_configuration_change_cb=*/base::DoNothing(),
-        /*device_capture_handle_change_cb=*/base::DoNothing());
+        /*device_capture_configuration_change_callback=*/base::DoNothing(),
+        /*device_capture_handle_change_callback=*/base::DoNothing(),
+        /*zoom_level_change_callback=*/base::DoNothing());
   }
 
   std::vector<std::string> GetRawDeviceIdsOpenedForFrame(
@@ -1562,8 +1536,8 @@ class MediaStreamManagerTestForTransfers : public MediaStreamManagerTest {
 
   void RequestDeviceCaptureTypeAudioDevice() {
     // Generate stream on first renderer.
-    original_device_ = CreateOrSearchAudioDeviceStream(
-        blink::mojom::StreamSelectionStrategy::FORCE_NEW_STREAM, std::nullopt);
+    original_device_ =
+        CreateOrSearchAudioDeviceStream(NewSearchBySessionId({}));
     existing_device_session_id_ = original_device_.session_id();
 
     EXPECT_EQ(original_device_.type,
@@ -1595,15 +1569,14 @@ class MediaStreamManagerTestForTransfers : public MediaStreamManagerTest {
         render_frame_host_id_, requester_id_,
         /*page_request_id=*/1, controls, MediaDeviceSaltAndOrigin::Empty(),
         /*user_gesture=*/false,
-        StreamSelectionInfo::New(
-            blink::mojom::StreamSelectionStrategy::SEARCH_BY_DEVICE_ID,
-            std::nullopt),
+        blink::mojom::StreamSelectionInfo::NewSearchOnlyByDeviceId({}),
         std::move(generate_stream_callback),
-        /*device_stopped_cb=*/base::DoNothing(),
-        /*device_changed_cb=*/base::DoNothing(),
-        /*device_request_state_change_cb=*/base::DoNothing(),
-        /*device_capture_configuration_change_cb=*/base::DoNothing(),
-        /*device_capture_handle_change_cb=*/base::DoNothing());
+        /*device_stopped_callback=*/base::DoNothing(),
+        /*device_changed_callback=*/base::DoNothing(),
+        /*device_request_state_change_callback=*/base::DoNothing(),
+        /*device_capture_configuration_change_callback=*/base::DoNothing(),
+        /*device_capture_handle_change_callback=*/base::DoNothing(),
+        /*zoom_level_change_callback=*/base::DoNothing());
     run_loop.Run();
 
     original_device_ = transfer_audio ? audio_device : video_device;
@@ -1629,11 +1602,12 @@ class MediaStreamManagerTestForTransfers : public MediaStreamManagerTest {
         GlobalRenderFrameHostId{3, 4}, /*requester_id=*/2,
         /*page_request_id=*/2, MediaDeviceSaltAndOrigin::Empty(),
         std::move(get_open_device_cb),
-        /*device_stopped_cb=*/base::DoNothing(),
-        /*device_changed_cb=*/base::DoNothing(),
-        /*device_request_state_change_cb=*/base::DoNothing(),
-        /*device_capture_configuration_change_cb=*/base::DoNothing(),
-        /*device_capture_handle_change_cb=*/base::DoNothing());
+        /*device_stopped_callback=*/base::DoNothing(),
+        /*device_changed_callback=*/base::DoNothing(),
+        /*device_request_state_change_callback=*/base::DoNothing(),
+        /*device_capture_configuration_change_callback=*/base::DoNothing(),
+        /*device_capture_handle_change_callback=*/base::DoNothing(),
+        /*zoom_level_change_callback=*/base::DoNothing());
     run_loop_.Run();
   }
 
@@ -1807,13 +1781,8 @@ TEST_F(MediaStreamManagerTestForTransfers,
 
 #if !BUILDFLAG(IS_ANDROID) && !BUILDFLAG(IS_IOS)
 class MediaStreamManagerCapturedSurfaceControlTest
-    : public MediaStreamManagerTest,
-      public testing::WithParamInterface<CapturedSurfaceControlAPI> {
+    : public MediaStreamManagerTest {
  public:
-  MediaStreamManagerCapturedSurfaceControlTest() : tested_api_(GetParam()) {}
-
-  ~MediaStreamManagerCapturedSurfaceControlTest() override = default;
-
   void SetUp() override {
     base::CommandLine::ForCurrentProcess()->AppendSwitchASCII(
         switches::kUseFakeDeviceForMediaStream,
@@ -1853,37 +1822,52 @@ class MediaStreamManagerCapturedSurfaceControlTest
     media_stream_manager_->GenerateStreams(
         rfhid, /*requester_id=*/1,
         /*page_request_id=*/1, controls, MediaDeviceSaltAndOrigin::Empty(),
-        /*user_gesture=*/true,
-        StreamSelectionInfo::New(
-            blink::mojom::StreamSelectionStrategy::SEARCH_BY_DEVICE_ID,
-            std::nullopt),
+        /*user_gesture=*/true, StreamSelectionInfo::NewSearchOnlyByDeviceId({}),
         std::move(generate_stream_callback),
-        /*device_stopped_cb=*/base::DoNothing(),
-        /*device_changed_cb=*/base::DoNothing(),
-        /*device_request_state_change_cb=*/base::DoNothing(),
-        /*device_capture_configuration_change_cb=*/base::DoNothing(),
-        /*device_capture_handle_change_cb=*/base::DoNothing());
+        /*device_stopped_callback=*/base::DoNothing(),
+        /*device_changed_callback=*/base::DoNothing(),
+        /*device_request_state_change_callback=*/base::DoNothing(),
+        /*device_capture_configuration_change_callback=*/base::DoNothing(),
+        /*device_capture_handle_change_callback=*/base::DoNothing(),
+        /*zoom_level_change_callback=*/
+        base::BindRepeating(
+            &MediaStreamManagerCapturedSurfaceControlTest::OnZoomLevelChange,
+            base::Unretained(this)));
     run_loop.Run();
+  }
+
+  void OnZoomLevelChange(const std::string& label,
+                         const blink::MediaStreamDevice& device,
+                         int zoom_level) {
+    on_zoom_level_change_device_id_ = device.id;
+    on_zoom_level_change_zoom_level_ = zoom_level;
   }
 
   void SetCapturedSurfaceControllerFactory(
       GlobalRenderFrameHostId gdm_rfhid,
       WebContentsMediaCaptureId captured_wc_id) {
     media_stream_manager_->SetCapturedSurfaceControllerFactoryForTesting(
-        base::BindRepeating([](GlobalRenderFrameHostId gdm_rfhid,
-                               WebContentsMediaCaptureId captured_wc_id) {
-          auto captured_surface_controller =
-              std::make_unique<MockCapturedSurfaceController>(gdm_rfhid,
-                                                              captured_wc_id);
-          captured_surface_controller->SetSendWheelResponse(
-              CapturedSurfaceControlResult::kSuccess);
-          captured_surface_controller->SetGetZoomLevelResponse(
-              100, CapturedSurfaceControlResult::kSuccess);
-          captured_surface_controller->SetSetZoomLevelResponse(
-              CapturedSurfaceControlResult::kSuccess);
-          return base::WrapUnique<CapturedSurfaceController>(
-              captured_surface_controller.release());
-        }));
+        base::BindRepeating(
+            [](base::RepeatingCallback<void(int)>* received_zoom_level_callback,
+               GlobalRenderFrameHostId gdm_rfhid,
+               WebContentsMediaCaptureId captured_wc_id,
+               base::RepeatingCallback<void(int)> zoom_level_callback) {
+              *received_zoom_level_callback = zoom_level_callback;
+              auto captured_surface_controller =
+                  std::make_unique<MockCapturedSurfaceController>(
+                      gdm_rfhid, captured_wc_id);
+              captured_surface_controller->SetSendWheelResponse(
+                  CapturedSurfaceControlResult::kSuccess);
+              captured_surface_controller->SetGetZoomLevelResponse(
+                  100, CapturedSurfaceControlResult::kSuccess);
+              captured_surface_controller->SetSetZoomLevelResponse(
+                  CapturedSurfaceControlResult::kSuccess);
+              captured_surface_controller->SetRequestPermissionResponse(
+                  CapturedSurfaceControlResult::kSuccess);
+              return base::WrapUnique<CapturedSurfaceController>(
+                  captured_surface_controller.release());
+            },
+            &received_zoom_level_callback_));
   }
 
   base::OnceCallback<void(CapturedSurfaceControlResult)> MakeCallback() {
@@ -1917,14 +1901,6 @@ class MediaStreamManagerCapturedSurfaceControlTest
         &result_);
   }
 
-  void GetZoomLevel(
-      GlobalRenderFrameHostId gdm_rfhid,
-      std::optional<base::UnguessableToken> session_id = std::nullopt) {
-    media_stream_manager_->GetZoomLevel(
-        gdm_rfhid, session_id.value_or(video_device_.session_id()),
-        MakeGetZoomLevelCallback());
-  }
-
   void SetZoomLevel(
       GlobalRenderFrameHostId gdm_rfhid,
       std::optional<base::UnguessableToken> session_id = std::nullopt) {
@@ -1932,6 +1908,43 @@ class MediaStreamManagerCapturedSurfaceControlTest
         gdm_rfhid, session_id.value_or(video_device_.session_id()), 100,
         MakeCallback());
   }
+
+  void RequestPermission(
+      GlobalRenderFrameHostId gdm_rfhid,
+      std::optional<base::UnguessableToken> session_id = std::nullopt) {
+    media_stream_manager_->RequestCapturedSurfaceControlPermission(
+        gdm_rfhid, session_id.value_or(video_device_.session_id()),
+        MakeCallback());
+  }
+
+  blink::MediaStreamDevice video_device_;
+  blink::MediaStreamDevice audio_device_;
+
+  std::optional<CapturedSurfaceControlResult> result_;
+  base::RepeatingCallback<void(int)> received_zoom_level_callback_;
+  std::string on_zoom_level_change_device_id_;
+  std::optional<int> on_zoom_level_change_zoom_level_;
+};
+
+TEST_F(MediaStreamManagerCapturedSurfaceControlTest, ZoomLevelChangeEvent) {
+  SCOPED_TRACE("ZoomLevelChangeEvent");
+  const GlobalRenderFrameHostId gdm_rfhid{1, 2};
+  const WebContentsMediaCaptureId captured_wc_id{3, 4};
+
+  SetCapturedSurfaceControllerFactory(gdm_rfhid, captured_wc_id);
+  SimulateGetDisplayMedia(gdm_rfhid, captured_wc_id);
+
+  received_zoom_level_callback_.Run(90);
+  EXPECT_EQ(on_zoom_level_change_device_id_, video_device_.id);
+  EXPECT_EQ(on_zoom_level_change_zoom_level_, 90);
+}
+
+class MediaStreamManagerCapturedSurfaceControlActionTest
+    : public MediaStreamManagerCapturedSurfaceControlTest,
+      public testing::WithParamInterface<CapturedSurfaceControlAPI> {
+ public:
+  MediaStreamManagerCapturedSurfaceControlActionTest()
+      : tested_api_(GetParam()) {}
 
   void RunTestedAction(
       GlobalRenderFrameHostId gdm_rfhid,
@@ -1941,34 +1954,29 @@ class MediaStreamManagerCapturedSurfaceControlTest
         SendWheel(gdm_rfhid, session_id);
         return;
       }
-      case CapturedSurfaceControlAPI::kGetZoomLevel: {
-        GetZoomLevel(gdm_rfhid, session_id);
-        return;
-      }
       case CapturedSurfaceControlAPI::kSetZoomLevel: {
         SetZoomLevel(gdm_rfhid, session_id);
         return;
       }
+      case CapturedSurfaceControlAPI::kRequestPermission: {
+        RequestPermission(gdm_rfhid, session_id);
+        return;
+      }
     }
-    NOTREACHED_NORETURN();
+    NOTREACHED();
   }
 
   const CapturedSurfaceControlAPI tested_api_;
-
-  blink::MediaStreamDevice video_device_;
-  blink::MediaStreamDevice audio_device_;
-
-  std::optional<CapturedSurfaceControlResult> result_;
 };
 
 INSTANTIATE_TEST_SUITE_P(
     ,
-    MediaStreamManagerCapturedSurfaceControlTest,
+    MediaStreamManagerCapturedSurfaceControlActionTest,
     testing::Values(CapturedSurfaceControlAPI::kSendWheel,
-                    CapturedSurfaceControlAPI::kGetZoomLevel,
-                    CapturedSurfaceControlAPI::kSetZoomLevel));
+                    CapturedSurfaceControlAPI::kSetZoomLevel,
+                    CapturedSurfaceControlAPI::kRequestPermission));
 
-TEST_P(MediaStreamManagerCapturedSurfaceControlTest, SuccessfulIfValid) {
+TEST_P(MediaStreamManagerCapturedSurfaceControlActionTest, SuccessfulIfValid) {
   SCOPED_TRACE("SuccessfulIfValid");
   const GlobalRenderFrameHostId gdm_rfhid{1, 2};
   const WebContentsMediaCaptureId captured_wc_id{3, 4};
@@ -1980,7 +1988,8 @@ TEST_P(MediaStreamManagerCapturedSurfaceControlTest, SuccessfulIfValid) {
   EXPECT_EQ(result_, CapturedSurfaceControlResult::kSuccess);
 }
 
-TEST_P(MediaStreamManagerCapturedSurfaceControlTest, FailsIfInvalidSessionId) {
+TEST_P(MediaStreamManagerCapturedSurfaceControlActionTest,
+       FailsIfInvalidSessionId) {
   SCOPED_TRACE("FailsIfInvalidSessionId");
   const GlobalRenderFrameHostId gdm_rfhid{1, 2};
   const WebContentsMediaCaptureId captured_wc_id{3, 4};
@@ -1993,7 +2002,8 @@ TEST_P(MediaStreamManagerCapturedSurfaceControlTest, FailsIfInvalidSessionId) {
             CapturedSurfaceControlResult::kCapturedSurfaceNotFoundError);
 }
 
-TEST_P(MediaStreamManagerCapturedSurfaceControlTest, FailsIfNotCapturerRfhId) {
+TEST_P(MediaStreamManagerCapturedSurfaceControlActionTest,
+       FailsIfNotCapturerRfhId) {
   SCOPED_TRACE("FailsIfNotCapturerRfhId");
   const GlobalRenderFrameHostId gdm_rfhid{1, 2};
   const GlobalRenderFrameHostId other_rfhid{11, 22};
@@ -2009,8 +2019,8 @@ TEST_P(MediaStreamManagerCapturedSurfaceControlTest, FailsIfNotCapturerRfhId) {
 // This test is currently disabled because the code that ensures that Captured
 // Surface Control APIs are disallowed for self-capture has not yet been
 // authored.
-// TODO(crbug.com/1511754): Enable this test.
-TEST_P(MediaStreamManagerCapturedSurfaceControlTest,
+// TODO(crbug.com/41484336): Enable this test.
+TEST_P(MediaStreamManagerCapturedSurfaceControlActionTest,
        DISABLED_FailsIfSelfCapture) {
   SCOPED_TRACE("FailsIfSelfCapture");
   const GlobalRenderFrameHostId gdm_rfhid{1, 2};
@@ -2020,11 +2030,12 @@ TEST_P(MediaStreamManagerCapturedSurfaceControlTest,
   SimulateGetDisplayMedia(gdm_rfhid, captured_wc_id);
 
   RunTestedAction(gdm_rfhid);
-  // TODO(crbug.com/1512926): Use a dedicated error.
+  // TODO(crbug.com/41485502): Use a dedicated error.
   EXPECT_EQ(result_, CapturedSurfaceControlResult::kUnknownError);
 }
 
-TEST_P(MediaStreamManagerCapturedSurfaceControlTest, FailsIfCapturingWindow) {
+TEST_P(MediaStreamManagerCapturedSurfaceControlActionTest,
+       FailsIfCapturingWindow) {
   SCOPED_TRACE("FailsIfCapturingWindow");
   base::CommandLine::ForCurrentProcess()->AppendSwitchASCII(
       switches::kUseFakeDeviceForMediaStream,
@@ -2037,11 +2048,12 @@ TEST_P(MediaStreamManagerCapturedSurfaceControlTest, FailsIfCapturingWindow) {
   SimulateGetDisplayMedia(gdm_rfhid, captured_wc_id);
 
   RunTestedAction(gdm_rfhid);
-  // TODO(crbug.com/1512926): Use a dedicated error.
+  // TODO(crbug.com/41485502): Use a dedicated error.
   EXPECT_EQ(result_, CapturedSurfaceControlResult::kUnknownError);
 }
 
-TEST_P(MediaStreamManagerCapturedSurfaceControlTest, FailsIfCapturingScreen) {
+TEST_P(MediaStreamManagerCapturedSurfaceControlActionTest,
+       FailsIfCapturingScreen) {
   SCOPED_TRACE("FailsIfCapturingScreen");
   base::CommandLine::ForCurrentProcess()->AppendSwitchASCII(
       switches::kUseFakeDeviceForMediaStream,
@@ -2054,7 +2066,7 @@ TEST_P(MediaStreamManagerCapturedSurfaceControlTest, FailsIfCapturingScreen) {
   SimulateGetDisplayMedia(gdm_rfhid, captured_wc_id);
 
   RunTestedAction(gdm_rfhid);
-  // TODO(crbug.com/1512926): Use a dedicated error.
+  // TODO(crbug.com/41485502): Use a dedicated error.
   EXPECT_EQ(result_, CapturedSurfaceControlResult::kUnknownError);
 }
 #endif  // !BUILDFLAG(IS_ANDROID) && !BUILDFLAG(IS_IOS)

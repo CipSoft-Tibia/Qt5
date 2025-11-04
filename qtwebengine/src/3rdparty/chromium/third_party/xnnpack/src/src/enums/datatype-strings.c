@@ -3,13 +3,12 @@
 // This source code is licensed under the BSD-style license found in the
 // LICENSE file in the root directory of this source tree.
 
-#include <math.h>
 #include <stddef.h>
 #include <stdint.h>
 
-#include <xnnpack.h>
-#include <xnnpack/common.h>
-#include <xnnpack/log.h>
+#include "xnnpack.h"
+#include "xnnpack/common.h"
+#include "xnnpack/log.h"
 
 
 // This function is defined inline when logging is disabled
@@ -36,6 +35,12 @@ const char* xnn_datatype_to_string(enum xnn_datatype type) {
       return "QCINT32";
     case xnn_datatype_qdint8:
       return "QDINT8";
+    case xnn_datatype_qpint8:
+      return "QPINT8";
+    case xnn_datatype_int32:
+     return "INT32";
+    case xnn_datatype_qbint4:
+     return "QBINT4";
   }
   XNN_UNREACHABLE;
   return NULL;

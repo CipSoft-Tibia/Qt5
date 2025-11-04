@@ -2,9 +2,13 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#ifdef UNSAFE_BUFFERS_BUILD
+// TODO(crbug.com/40285824): Remove this and convert code to safer constructs.
+#pragma allow_unsafe_buffers
+#endif
+
 #include "chrome/browser/ui/webui/ash/settings/pages/multidevice/multidevice_section.h"
 
-#include "ash/constants/ash_features.h"
 #include "ash/constants/ash_pref_names.h"
 #include "base/feature_list.h"
 #include "base/no_destructor.h"
@@ -14,10 +18,11 @@
 #include "chrome/browser/nearby_sharing/common/nearby_share_features.h"
 #include "chrome/browser/nearby_sharing/common/nearby_share_prefs.h"
 #include "chrome/browser/nearby_sharing/common/nearby_share_resource_getter.h"
+#include "chrome/browser/nearby_sharing/nearby_share_settings.h"
 #include "chrome/browser/nearby_sharing/nearby_sharing_service.h"
 #include "chrome/browser/nearby_sharing/nearby_sharing_service_factory.h"
 #include "chrome/browser/profiles/profile.h"
-#include "chrome/browser/ui/ash/session_controller_client_impl.h"
+#include "chrome/browser/ui/ash/session/session_controller_client_impl.h"
 #include "chrome/browser/ui/webui/ash/settings/pages/multidevice/multidevice_handler.h"
 #include "chrome/browser/ui/webui/ash/settings/search/search_tag_registry.h"
 #include "chrome/browser/ui/webui/nearby_share/shared_resources.h"
@@ -549,6 +554,8 @@ void MultiDeviceSection::AddLoadTimeData(
        IDS_SETTINGS_MULTIDEVICE_NOTIFICATION_ACCESS_PROHIBITED_TOOLTIP},
       {"multideviceItemDisabledByPhoneAdminTooltip",
        IDS_SETTINGS_MULTIDEVICE_ITEM_DISABLED_BY_PHONE_ADMIN_TOOLTIP},
+      {"multideviceInstantHotspotItemTitle",
+       IDS_SETTINGS_MULTIDEVICE_INSTANT_HOTSPOT},
       {"multideviceInstantTetheringItemTitle",
        IDS_SETTINGS_MULTIDEVICE_INSTANT_TETHERING},
       {"multideviceInstantTetheringItemSummary",
@@ -668,30 +675,31 @@ void MultiDeviceSection::AddLoadTimeData(
       "multideviceForgetDeviceDialogMessage",
       ui::SubstituteChromeOSDeviceType(
           IDS_SETTINGS_MULTIDEVICE_FORGET_DEVICE_DIALOG_MESSAGE));
+
+  const std::u16string kBetterTogetherLearnMoreUrl = base::UTF8ToUTF16(
+      multidevice_setup::GetBoardSpecificBetterTogetherSuiteLearnMoreUrl()
+          .spec());
   html_source->AddString(
       "multideviceVerificationText",
-      l10n_util::GetStringFUTF16(
-          IDS_SETTINGS_MULTIDEVICE_VERIFICATION_TEXT,
-          base::UTF8ToUTF16(
-              multidevice_setup::
-                  GetBoardSpecificBetterTogetherSuiteLearnMoreUrl()
-                      .spec())));
+      l10n_util::GetStringFUTF16(IDS_SETTINGS_MULTIDEVICE_VERIFICATION_TEXT,
+                                 kBetterTogetherLearnMoreUrl));
   html_source->AddString(
       "multideviceSetupSummary",
-      l10n_util::GetStringFUTF16(
-          IDS_SETTINGS_MULTIDEVICE_SETUP_SUMMARY, ui::GetChromeOSDeviceName(),
-          base::UTF8ToUTF16(
-              multidevice_setup::
-                  GetBoardSpecificBetterTogetherSuiteLearnMoreUrl()
-                      .spec())));
-  html_source->AddString(
-      "multideviceNoHostText",
-      l10n_util::GetStringFUTF16(
-          IDS_SETTINGS_MULTIDEVICE_NO_ELIGIBLE_HOSTS,
-          base::UTF8ToUTF16(
-              multidevice_setup::
-                  GetBoardSpecificBetterTogetherSuiteLearnMoreUrl()
-                      .spec())));
+      l10n_util::GetStringFUTF16(IDS_SETTINGS_MULTIDEVICE_SETUP_SUMMARY,
+                                 ui::GetChromeOSDeviceName(),
+                                 kBetterTogetherLearnMoreUrl));
+  if (ash::features::IsOsSettingsRevampWayfindingEnabled()) {
+    html_source->AddString(
+        "multideviceNoHostText",
+        l10n_util::GetStringFUTF16(
+            IDS_OS_SETTINGS_REVAMP_MULTIDEVICE_NO_ELIGIBLE_HOSTS,
+            ui::GetChromeOSDeviceName(), kBetterTogetherLearnMoreUrl));
+  } else {
+    html_source->AddString(
+        "multideviceNoHostText",
+        l10n_util::GetStringFUTF16(IDS_SETTINGS_MULTIDEVICE_NO_ELIGIBLE_HOSTS,
+                                   kBetterTogetherLearnMoreUrl));
+  }
   html_source->AddString(
       "multideviceSmartLockItemSummary",
       l10n_util::GetStringFUTF16(
@@ -748,8 +756,7 @@ void MultiDeviceSection::AddLoadTimeData(
           GetHelpUrlWithBoard(phonehub::kPhoneHubLearnMoreLink)));
 
   html_source->AddBoolean("isCrossDeviceFeatureSuiteEnabled",
-                          base::FeatureList::IsEnabled(
-                              ash::features::kAllowCrossDeviceFeatureSuite));
+                          features::IsCrossDeviceFeatureSuiteAllowed());
 
   // We still need to register strings even if Nearby Share is not supported.
   // For example, the HTML is always built but only displayed if Nearby Share is
@@ -781,6 +788,13 @@ void MultiDeviceSection::AddLoadTimeData(
         l10n_util::GetStringUTF16(
             IDS_SETTINGS_MULTIDEVICE_PHONE_HUB_APPS_SECTION_TITLE));
   }
+
+  html_source->AddBoolean(
+      "isFastPairSoftwareScanningSupportEnabled",
+      ash::features::IsFastPairSoftwareScanningSupportEnabled());
+
+  html_source->AddBoolean("isQuickShareV2Enabled",
+                          chromeos::features::IsQuickShareV2Enabled());
 }
 
 void MultiDeviceSection::AddHandlers(content::WebUI* web_ui) {
@@ -884,8 +898,7 @@ void MultiDeviceSection::OnHostStatusChanged(
   updater.RemoveSearchTags(GetMultiDeviceOptedOutSearchConcepts());
   updater.RemoveSearchTags(GetMultiDeviceOptedInSearchConcepts());
 
-  if (!base::FeatureList::IsEnabled(
-          ash::features::kAllowCrossDeviceFeatureSuite)) {
+  if (!features::IsCrossDeviceFeatureSuiteAllowed()) {
     // Do not add multidevice search tags if Cross Device is disabled.
     return;
   }
@@ -907,8 +920,7 @@ void MultiDeviceSection::OnFeatureStatesChanged(
   updater.RemoveSearchTags(GetMultiDeviceOptedInWifiSyncSearchConcepts());
   updater.RemoveSearchTags(GetMultiDeviceOptedInPhoneHubAppsSearchConcepts());
 
-  if (!base::FeatureList::IsEnabled(
-          ash::features::kAllowCrossDeviceFeatureSuite)) {
+  if (!features::IsCrossDeviceFeatureSuiteAllowed()) {
     // Do not add multidevice search tags if Cross Device is disabled.
     return;
   }

@@ -4,17 +4,19 @@
 // LICENSE file in the root directory of this source tree.
 
 #include <assert.h>
-#include <math.h>
+#include <inttypes.h>
 #include <stddef.h>
 #include <stdint.h>
 
-#include <xnnpack.h>
-#include <xnnpack/log.h>
-#include <xnnpack/operator.h>
-#include <xnnpack/params.h>
-#include <xnnpack/requantization.h>
-#include <xnnpack/subgraph-validation.h>
-#include <xnnpack/subgraph.h>
+#include "xnnpack.h"
+#include "xnnpack/common.h"
+#include "xnnpack/log.h"
+#include "xnnpack/node-type.h"
+#include "xnnpack/operator-type.h"
+#include "xnnpack/operator.h"
+#include "xnnpack/subgraph-validation.h"
+#include "xnnpack/subgraph.h"
+#include "pthreadpool.h"
 
 static enum xnn_status create_fully_connected_operator(
   const struct xnn_node* node,
@@ -22,7 +24,7 @@ static enum xnn_status create_fully_connected_operator(
   size_t num_values,
   struct xnn_operator_data* opdata,
   struct xnn_code_cache* code_cache,
-  struct xnn_weights_cache* weights_cache)
+  xnn_weights_cache_t weights_cache)
 {
   assert(node->num_inputs >= 2);
   assert(node->num_inputs <= 3);
@@ -126,22 +128,30 @@ static enum xnn_status reshape_fully_connected_operator(
   const size_t input_channels = values[filter_id].shape.dim[1];
   const size_t num_input_elements = xnn_shape_multiply_all_dims(&values[input_id].shape);
   const size_t batch_size = num_input_elements / input_channels;
+  const size_t old_workspace_size = opdata->workspace_size;
+  enum xnn_status status = xnn_status_invalid_state;
   switch (opdata->operator_objects[0]->type) {
     case xnn_operator_type_convolution_nchw_f16:
-      return xnn_reshape_convolution2d_nchw_f16(
+      status = xnn_reshape_convolution2d_nchw_f16(
         opdata->operator_objects[0],
         batch_size,
         1, 1, NULL, NULL,
         threadpool);
+      break;
     case xnn_operator_type_convolution_nchw_f32:
-      return xnn_reshape_convolution2d_nchw_f32(
+      status = xnn_reshape_convolution2d_nchw_f32(
         opdata->operator_objects[0],
         batch_size,
         1, 1, NULL, NULL,
         threadpool);
+      break;
     default:
       XNN_UNREACHABLE;
   }
+  if (status != xnn_status_success) {
+    return status;
+  }
+  return resize_fully_connected_output_tensor(opdata, values, num_values, old_workspace_size, threadpool);
 }
 
 static enum xnn_status setup_fully_connected_operator(
@@ -195,6 +205,11 @@ static inline enum xnn_compute_type validate_datatypes_with_bias(
           output_datatype == xnn_datatype_fp32)
       {
         return xnn_compute_type_fp32;
+      } else if (input_datatype == xnn_datatype_fp16 &&
+          bias_datatype == xnn_datatype_fp32 &&
+          output_datatype == xnn_datatype_fp16) {
+        // Flag: XNN_FLAG_FP32_STATIC_WEIGHTS
+        return xnn_compute_type_fp16;
       }
       break;
     default:
@@ -212,6 +227,9 @@ static inline enum xnn_compute_type validate_datatypes_without_bias(
     case xnn_datatype_fp32:
       if (input_datatype == xnn_datatype_fp32 && output_datatype == xnn_datatype_fp32) {
         return xnn_compute_type_fp32;
+      } else if (input_datatype == xnn_datatype_fp16 && output_datatype == xnn_datatype_fp16) {
+        // Flag: XNN_FLAG_FP32_STATIC_WEIGHTS
+        return xnn_compute_type_fp16;
       }
       break;
     default:
@@ -252,6 +270,7 @@ enum xnn_status xnn_define_fully_connected_sparse(
   }
 
   switch (input_value->datatype) {
+    case xnn_datatype_fp16:
     case xnn_datatype_fp32:
       break;
     default:
@@ -285,6 +304,7 @@ enum xnn_status xnn_define_fully_connected_sparse(
   }
 
   switch (kernel_value->datatype) {
+    case xnn_datatype_fp16:
     case xnn_datatype_fp32:
       break;
     default:
@@ -320,6 +340,7 @@ enum xnn_status xnn_define_fully_connected_sparse(
     }
 
     switch (bias_value->datatype) {
+      case xnn_datatype_fp16:
       case xnn_datatype_fp32:
         break;
       default:
@@ -343,6 +364,7 @@ enum xnn_status xnn_define_fully_connected_sparse(
   }
 
   switch (output_value->datatype) {
+    case xnn_datatype_fp16:
     case xnn_datatype_fp32:
       break;
     default:

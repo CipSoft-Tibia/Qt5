@@ -16,15 +16,20 @@ enum GPUFeatureName {
     "rg11b10ufloat-renderable",
     "bgra8unorm-storage",
     "float32-filterable",
+    "dual-source-blending",
+    "clip-distances",
 
     // Non-standard (not currently in the spec).
     "chromium-experimental-timestamp-query-inside-passes",
     "chromium-experimental-subgroups",
     "chromium-experimental-subgroup-uniform-control-flow",
+    // Currently subgroups features are under OT.
+    "subgroups",
+    "subgroups-f16",
 };
 
 [
-    Exposed=(Window, DedicatedWorker),
+    Exposed=(Window, Worker),
     SecureContext
 ] interface GPUSupportedFeatures {
     readonly setlike<DOMString>;

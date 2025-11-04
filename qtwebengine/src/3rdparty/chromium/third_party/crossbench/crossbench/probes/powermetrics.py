@@ -12,14 +12,13 @@ from typing import TYPE_CHECKING, Optional, Sequence, Tuple
 
 from crossbench import cli_helper, compat, helper
 from crossbench.probes.probe import (Probe, ProbeConfigParser, ProbeContext,
-                                     ResultLocation)
+                                     ProbeKeyT, ResultLocation)
 from crossbench.probes.results import ProbeResult
 
 if TYPE_CHECKING:
-  import pathlib
-
   from crossbench.browsers.browser import Browser
   from crossbench.env import HostEnvironment
+  from crossbench.path import RemotePath
   from crossbench.runner.run import Run
 
 
@@ -71,7 +70,7 @@ class PowerMetricsProbe(Probe):
     self._samplers = tuple(samplers)
 
   @property
-  def key(self) -> Tuple[Tuple, ...]:
+  def key(self) -> ProbeKeyT:
     return super().key + (
         ("sampling_interval", self.sampling_interval.total_seconds()),
         ("samplers", tuple(map(str, self.samplers))),
@@ -98,8 +97,7 @@ class PowerMetricsProbeContext(ProbeContext[PowerMetricsProbe]):
   def __init__(self, probe: PowerMetricsProbe, run: Run) -> None:
     super().__init__(probe, run)
     self._power_metrics_process: Optional[subprocess.Popen] = None
-    self._output_plist_file: pathlib.Path = self.result_path.with_suffix(
-        ".plist")
+    self._output_plist_file: RemotePath = self.result_path.with_suffix(".plist")
 
   def start(self) -> None:
     self._power_metrics_process = self.browser_platform.popen(
@@ -121,7 +119,7 @@ class PowerMetricsProbeContext(ProbeContext[PowerMetricsProbe]):
     if self._power_metrics_process:
       self._power_metrics_process.terminate()
 
-  def tear_down(self) -> ProbeResult:
+  def teardown(self) -> ProbeResult:
     self.stop_process()
     return self.browser_result(file=(self._output_plist_file,))
 

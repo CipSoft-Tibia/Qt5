@@ -22,7 +22,7 @@
 #include <gst/video/video.h>
 #include <gst/pbutils/encoding-profile.h>
 
-static Q_LOGGING_CATEGORY(qLcMediaRecorder, "qt.multimedia.encoder")
+Q_STATIC_LOGGING_CATEGORY(qLcMediaRecorder, "qt.multimedia.recorder");
 
 QT_BEGIN_NAMESPACE
 

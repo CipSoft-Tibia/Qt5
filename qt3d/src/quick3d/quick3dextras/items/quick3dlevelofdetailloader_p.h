@@ -30,6 +30,10 @@ class Quick3DLevelOfDetailLoaderPrivate;
 class Q_3DQUICKEXTRASSHARED_PRIVATE_EXPORT Quick3DLevelOfDetailLoader : public Qt3DCore::QEntity
 {
     Q_OBJECT
+
+    QML_NAMED_ELEMENT(LevelOfDetailLoader)
+    QML_ADDED_IN_VERSION(2, 9)
+
     Q_PROPERTY(QVariantList sources READ sources WRITE setSources NOTIFY sourcesChanged)
 
     Q_PROPERTY(Qt3DRender::QCamera *camera READ camera WRITE setCamera NOTIFY cameraChanged)

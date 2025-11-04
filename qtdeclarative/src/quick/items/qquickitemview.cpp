@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qquickitemview_p_p.h"
+#include <QtQml/qqmlcomponent.h>
 #include "qquickitemviewfxitem_p_p.h"
 #include <QtQuick/private/qquicktransition_p.h>
 #include <QtQml/QQmlInfo>
@@ -10,7 +11,7 @@
 QT_BEGIN_NAMESPACE
 
 Q_LOGGING_CATEGORY(lcItemViewDelegateLifecycle, "qt.quick.itemview.lifecycle")
-Q_LOGGING_CATEGORY(lcCount, "qt.quick.itemview.count")
+Q_STATIC_LOGGING_CATEGORY(lcCount, "qt.quick.itemview.count")
 
 // Default cacheBuffer for all views.
 #ifndef QML_VIEW_DEFAULTCACHEBUFFER
@@ -179,19 +180,36 @@ void QQuickItemView::setModel(const QVariant &m)
     QObject *object = qvariant_cast<QObject*>(model);
     QQmlInstanceModel *vim = nullptr;
     if (object && (vim = qobject_cast<QQmlInstanceModel *>(object))) {
+        if (d->explicitDelegate) {
+            QQmlComponent *delegate = nullptr;
+            if (QQmlDelegateModel *old = qobject_cast<QQmlDelegateModel *>(oldModel))
+                delegate = old->delegate();
+
+            if (QQmlDelegateModel *newModel = qobject_cast<QQmlDelegateModel *>(vim)) {
+                newModel->setDelegate(delegate);
+            } else if (delegate) {
+                qmlWarning(this) << "Cannot retain explicitly set delegate on non-DelegateModel";
+                d->explicitDelegate = false;
+            }
+        }
+
         if (d->ownModel) {
             delete oldModel;
             d->ownModel = false;
         }
         d->model = vim;
     } else {
-        if (!d->ownModel) {
-            d->model = new QQmlDelegateModel(qmlContext(this), this);
-            d->ownModel = true;
-            if (isComponentComplete())
-                static_cast<QQmlDelegateModel *>(d->model.data())->componentComplete();
-        } else {
+        if (d->ownModel) {
             d->model = oldModel;
+        } else {
+            if (d->explicitDelegate) {
+                QQmlComponent *delegate = nullptr;
+                if (QQmlDelegateModel *old = qobject_cast<QQmlDelegateModel *>(oldModel))
+                    delegate = old->delegate();
+                QQmlDelegateModel::createForView(this, d)->setDelegate(delegate);
+            } else {
+                QQmlDelegateModel::createForView(this, d);
+            }
         }
         if (QQmlDelegateModel *dataModel = qobject_cast<QQmlDelegateModel*>(d->model))
             dataModel->setModel(model);
@@ -247,22 +265,41 @@ QQmlComponent *QQuickItemView::delegate() const
 void QQuickItemView::setDelegate(QQmlComponent *delegate)
 {
     Q_D(QQuickItemView);
-    if (delegate == this->delegate())
-        return;
-    if (!d->ownModel) {
-        d->model = new QQmlDelegateModel(qmlContext(this));
-        d->ownModel = true;
-        if (isComponentComplete())
-            static_cast<QQmlDelegateModel *>(d->model.data())->componentComplete();
-    }
-    if (QQmlDelegateModel *dataModel = qobject_cast<QQmlDelegateModel*>(d->model)) {
-        int oldCount = dataModel->count();
-        dataModel->setDelegate(delegate);
-        if (oldCount != dataModel->count())
+    const auto setExplicitDelegate = [&](QQmlDelegateModel *delegateModel) {
+        int oldCount = delegateModel->count();
+        delegateModel->setDelegate(delegate);
+        if (oldCount != delegateModel->count())
             d->emitCountChanged();
+        d->explicitDelegate = true;
+        d->delegateValidated = false;
+    };
+
+    if (!d->model) {
+        if (!delegate) {
+            // Explicitly set a null delegate. We can do this without model.
+            d->explicitDelegate = true;
+            return;
+        }
+
+        setExplicitDelegate(QQmlDelegateModel::createForView(this, d));
+        // The new model is not connected to applyDelegateChange, yet. We only do this once
+        // there is actual data, via an explicit setModel(). So we have to manually emit the
+        // delegateChanged() here.
+        emit delegateChanged();
+        return;
     }
-    emit delegateChanged();
-    d->delegateValidated = false;
+
+    if (QQmlDelegateModel *delegateModel = qobject_cast<QQmlDelegateModel *>(d->model)) {
+        // Disable the warning in applyDelegateChange since the new delegate is also explicit.
+        d->explicitDelegate = false;
+        setExplicitDelegate(delegateModel);
+        return;
+    }
+
+    if (delegate)
+        qmlWarning(this) << "Cannot set a delegate on an explicitly provided non-DelegateModel";
+    else
+        d->explicitDelegate = true; // Explicitly set null delegate always works
 }
 
 
@@ -1089,6 +1126,10 @@ qreal QQuickItemViewPrivate::calculatedMaxExtent() const
 
 void QQuickItemViewPrivate::applyDelegateChange()
 {
+    Q_Q(QQuickItemView);
+
+    QQmlDelegateModel::applyDelegateChangeOnView(q, this);
+
     releaseVisibleItems(QQmlDelegateModel::NotReusable);
     releaseCurrentItem(QQmlDelegateModel::NotReusable);
     updateSectionCriteria();
@@ -1530,12 +1571,16 @@ QQuickItemViewPrivate::QQuickItemViewPrivate()
 #if QT_CONFIG(quick_viewtransitions)
     , runDelayedRemoveTransition(false)
 #endif
-    , delegateValidated(false), isClearing(false)
+    , delegateValidated(false)
+    , isClearing(false)
+    , explicitDelegate(false)
 {
     bufferPause.addAnimationChangeListener(this, QAbstractAnimationJob::Completion);
     bufferPause.setLoopCount(1);
     bufferPause.setDuration(16);
 }
+
+static const QQuickItemPrivate::ChangeTypes itemChangeListenerTypes = QQuickItemPrivate::Destroyed;
 
 QQuickItemViewPrivate::~QQuickItemViewPrivate()
 {
@@ -2411,6 +2456,12 @@ FxViewItem *QQuickItemViewPrivate::createItem(int modelIndex, QQmlIncubator::Inc
         inRequest = false;
         return nullptr;
     } else {
+        // Container removes and instantly deletes items created within ObjectModels.
+        // We need to account for this to avoid having references to deleted items.
+        // itemDestroyed is called as a result of adding this listener.
+        if (qobject_cast<QQmlObjectModel *>(model))
+            QQuickItemPrivate::get(item)->updateOrAddItemChangeListener(this, itemChangeListenerTypes);
+
         item->setParentItem(q->contentItem());
         if (requestedIndex == modelIndex)
             requestedIndex = -1;
@@ -2457,6 +2508,7 @@ void QQuickItemView::initItem(int, QObject *object)
     }
 }
 
+// This is called when the model (if it's a QQmlInstanceModel) emits destroyingItem.
 void QQuickItemView::destroyingItem(QObject *object)
 {
     Q_D(QQuickItemView);
@@ -2464,6 +2516,7 @@ void QQuickItemView::destroyingItem(QObject *object)
     if (item) {
         item->setParentItem(nullptr);
         d->unrequestedItems.remove(item);
+        QQuickItemPrivate::get(item)->removeItemChangeListener(d, itemChangeListenerTypes);
     }
 }
 
@@ -2493,27 +2546,80 @@ bool QQuickItemViewPrivate::releaseItem(FxViewItem *item, QQmlInstanceModel::Reu
     item->trackGeometry(false);
 
     QQmlInstanceModel::ReleaseFlags flags = {};
-    if (model && item->item) {
-        flags = model->release(item->item, reusableFlag);
-        if (!flags) {
-            // item was not destroyed, and we no longer reference it.
-            if (item->item->parentItem() == contentItem) {
-                // Only cull the item if its parent item is still our contentItem.
-                // One case where this can happen is moving an item out of one ObjectModel and into another.
-                QQuickItemPrivate::get(item->item)->setCulled(true);
+    if (QPointer<QQuickItem> quickItem = item->item) {
+        if (model) {
+            flags = model->release(quickItem, reusableFlag);
+            if (!flags) {
+                // item was not destroyed, and we no longer reference it.
+                if (quickItem->parentItem() == contentItem) {
+                    // Only cull the item if its parent item is still our contentItem.
+                    // One case where this can happen is moving an item out of one ObjectModel and into another.
+                    QQuickItemPrivate::get(quickItem)->setCulled(true);
+                }
+                // If deleteLater was called, the item isn't long for this world and so we shouldn't store references to it.
+                // This can happen when a Repeater is used to populate items in SwipeView's ListView contentItem.
+                if (!isClearing && !QObjectPrivate::get(quickItem)->deleteLaterCalled)
+                    unrequestedItems.insert(quickItem, model->indexOf(quickItem, q));
+            } else if (flags & QQmlInstanceModel::Destroyed) {
+                quickItem->setParentItem(nullptr);
+            } else if (flags & QQmlInstanceModel::Pooled) {
+                item->setVisible(false);
             }
-            // If deleteLater was called, the item isn't long for this world and so we shouldn't store references to it.
-            // This can happen when a Repeater is used to populate items in SwipeView's ListView contentItem.
-            if (!isClearing && !QObjectPrivate::get(item->item)->deleteLaterCalled)
-                unrequestedItems.insert(item->item, model->indexOf(item->item, q));
-        } else if (flags & QQmlInstanceModel::Destroyed) {
-            item->item->setParentItem(nullptr);
-        } else if (flags & QQmlInstanceModel::Pooled) {
-            item->setVisible(false);
         }
+
+        QQuickItemPrivate::get(quickItem)->removeItemChangeListener(this, itemChangeListenerTypes);
+        delete item->transitionableItem;
+        item->transitionableItem = nullptr;
     }
+
     delete item;
     return flags != QQmlInstanceModel::Referenced;
+}
+
+/*!
+    \internal
+
+    Called when an item created in an ObjectModel is deleted rather than
+    removing it via the model.
+
+    Similar in what it does to destroyRemoved except that it intentionally
+    doesn't account for delayRemove.
+*/
+void QQuickItemViewPrivate::itemDestroyed(QQuickItem *item)
+{
+    // We can't check model->indexOf(item, q_func()) here, because the item
+    // may not exist there, so we instead check visibleItems.
+    FxViewItem *visibleFxItem = nullptr;
+    const int indexOfItem = -1;
+    for (auto *fxItem : std::as_const(visibleItems)) {
+        if (fxItem->item == item) {
+            visibleFxItem = fxItem;
+            break;
+        }
+    }
+
+    // Make sure that we don't try to clean up the same FxViewItem twice,
+    // as apparently there can be two FxViewItems for the same QQuickItem.
+    if (currentItem && visibleFxItem)
+        Q_ASSERT(currentItem != visibleFxItem);
+
+    if (visibleFxItem) {
+        qCDebug(lcItemViewDelegateLifecycle) << "removing deleted item"
+            << item << visibleFxItem << "at index" << indexOfItem << "without running transitions";
+        // We need to remove it from visibleItems manually, as we don't want to call
+        // removeNonVisibleItems since it won't remove items with transitions.
+        const bool removedVisibleFxItem = visibleItems.removeOne(visibleFxItem);
+        Q_ASSERT(removedVisibleFxItem);
+        releaseItem(visibleFxItem, QQmlDelegateModel::NotReusable);
+    }
+
+    if (currentItem && currentItem->item == item) {
+        releaseItem(currentItem, QQmlDelegateModel::NotReusable);
+        currentItem = nullptr;
+    }
+
+    // Update the positioning of the items.
+    forceLayoutPolish();
 }
 
 QQuickItem *QQuickItemViewPrivate::createHighlightItem()

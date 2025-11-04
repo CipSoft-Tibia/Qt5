@@ -20,12 +20,11 @@
 #include <QtCore/QList>
 #include <QtGui/QFontDatabase>
 #include <QtGui/private/qfontengine_p.h>
-#include <QtGui/private/qfont_p.h>
 #include <QtGui/private/qfontdatabase_p.h>
 
 QT_BEGIN_NAMESPACE
 
-Q_DECLARE_EXPORTED_LOGGING_CATEGORY(lcQpaFonts, Q_GUI_EXPORT)
+QT_DECLARE_EXPORTED_QT_LOGGING_CATEGORY(lcQpaFonts, Q_GUI_EXPORT)
 
 class QWritingSystemsPrivate;
 
@@ -72,12 +71,12 @@ public:
     virtual void populateFamily(const QString &familyName);
     virtual void invalidate();
 
-    virtual QStringList fallbacksForFamily(const QString &family, QFont::Style style, QFont::StyleHint styleHint, QChar::Script script) const;
+    virtual QStringList fallbacksForFamily(const QString &family, QFont::Style style, QFont::StyleHint styleHint, QFontDatabasePrivate::ExtendedScript script) const;
     virtual QStringList addApplicationFont(const QByteArray &fontData, const QString &fileName, QFontDatabasePrivate::ApplicationFont *font = nullptr);
 
     virtual QFontEngine *fontEngine(const QFontDef &fontDef, void *handle);
     virtual QFontEngine *fontEngine(const QByteArray &fontData, qreal pixelSize, QFont::HintingPreference hintingPreference);
-    virtual QFontEngineMulti *fontEngineMulti(QFontEngine *fontEngine, QChar::Script script);
+    virtual QFontEngineMulti *fontEngineMulti(QFontEngine *fontEngine, QFontDatabasePrivate::ExtendedScript script);
     virtual void releaseHandle(void *handle);
 
     virtual QString fontDir() const;
@@ -90,6 +89,7 @@ public:
     virtual QList<int> standardSizes() const;
 
     virtual bool supportsVariableApplicationFonts() const;
+    virtual bool supportsColrv0Fonts() const;
 
     // helper
     static QSupportedWritingSystems writingSystemsFromTrueTypeBits(quint32 unicodeRange[4], quint32 codePageRange[2]);
@@ -99,7 +99,7 @@ public:
     static void registerFont(const QString &familyname, const QString &stylename,
                              const QString &foundryname, QFont::Weight weight,
                              QFont::Style style, QFont::Stretch stretch, bool antialiased,
-                             bool scalable, int pixelSize, bool fixedPitch,
+                             bool scalable, int pixelSize, bool fixedPitch, bool colorFont,
                              const QSupportedWritingSystems &writingSystems, void *handle);
 
     static void registerFontFamily(const QString &familyName);

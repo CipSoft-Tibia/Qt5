@@ -9,9 +9,9 @@
 
 #include <memory>
 #include <string>
+#include <string_view>
 
 #include "base/gtest_prod_util.h"
-#include "base/strings/string_piece.h"
 #include "mojo/public/cpp/bindings/struct_traits.h"
 
 class GURL;
@@ -52,6 +52,10 @@ class ContentSettingsPattern {
   // - PREDECESSOR:
   //   Pattern A and B have an intersection. But pattern A has a higher
   //   precedence than pattern B for URLs that are matched by both pattern.
+  //
+  //  See the url below for more details about pattern precedence.
+  //  https://developer.chrome.com/docs/extensions/reference/api/contentSettings#content_setting_patterns
+  //
   enum Relation {
     DISJOINT_ORDER_POST = -2,
     SUCCESSOR = -1,
@@ -76,6 +80,7 @@ class ContentSettingsPattern {
     SCHEME_CHROME,
     SCHEME_CHROMEUNTRUSTED,
     SCHEME_DEVTOOLS,
+    SCHEME_ISOLATEDAPP,
     SCHEME_MAX,
   };
 
@@ -163,7 +168,8 @@ class ContentSettingsPattern {
   // all subdomains and ports.
   static ContentSettingsPattern FromURL(const GURL& url);
 
-  // Returns a pattern that matches exactly this URL.
+  // Returns a pattern that matches exactly this URL. (Paths are ignored for
+  // non-"file://" URLs.)
   static ContentSettingsPattern FromURLNoWildcard(const GURL& url);
 
   // Converts a given url to a ContentSettingsPattern that represents a site,
@@ -179,7 +185,7 @@ class ContentSettingsPattern {
   //   - file://path (The path has to be an absolute path and start with a '/')
   //   - a.b.c.d (matches an exact IPv4 ip)
   //   - [a:b:c:d:e:f:g:h] (matches an exact IPv6 ip)
-  static ContentSettingsPattern FromString(base::StringPiece pattern_spec);
+  static ContentSettingsPattern FromString(std::string_view pattern_spec);
 
   // Sets schemes that do not support domain wildcards and ports.
   // Needs to be called by the embedder before using ContentSettingsPattern.
@@ -193,7 +199,7 @@ class ContentSettingsPattern {
                                                  size_t count);
 
   // Compares |scheme| against the schemes set by the embedder.
-  static bool IsNonWildcardDomainNonPortScheme(base::StringPiece scheme);
+  static bool IsNonWildcardDomainNonPortScheme(std::string_view scheme);
 
   // Convert pattern to domain wildcard pattern. If fail to extract domain from
   // the pattern, return an invalid pattern.
@@ -204,11 +210,13 @@ class ContentSettingsPattern {
   static ContentSettingsPattern ToHostOnlyPattern(
       const ContentSettingsPattern& pattern);
 
-  // Expose an comparator to sort domains by precedence. Highest precedence
-  // first.
+  // Expose a comparator to sort domains by precedence. Highest precedence
+  // first. Returns true if |domain_a| has a higher precedence than |domain_b|.
+  // If there is no difference in precedence, then the domains are compared
+  // alphabetically.
   struct CompareDomains {
-    bool operator()(const std::string_view& domain_a,
-                    const std::string_view& domain_b) const;
+    using is_transparent = void;
+    bool operator()(std::string_view domain_a, std::string_view domain_b) const;
   };
 
   // Constructs an empty pattern. Empty patterns are invalid patterns. Invalid

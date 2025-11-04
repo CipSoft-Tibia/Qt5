@@ -98,7 +98,6 @@ TEST_F(SpirvWriterTest, Type_F16) {
     EXPECT_INST("OpCapability Float16");
     EXPECT_INST("OpCapability UniformAndStorageBuffer16BitAccess");
     EXPECT_INST("OpCapability StorageBuffer16BitAccess");
-    EXPECT_INST("OpCapability StorageInputOutput16");
     EXPECT_INST("%half = OpTypeFloat 16");
 }
 
@@ -303,6 +302,26 @@ TEST_F(SpirvWriterTest, Type_Samplers_Dedup) {
     EXPECT_INST("%v2 = OpVariable %_ptr_UniformConstant_3_0 UniformConstant");
 }
 
+TEST_F(SpirvWriterTest, Type_StorageTexture_Dedup) {
+    b.Append(b.ir.root_block, [&] {
+        auto* v1 = b.Var("v1", ty.ptr<handle, read_write>(ty.Get<core::type::StorageTexture>(
+                                   core::type::TextureDimension::k2dArray,
+                                   core::TexelFormat::kR32Uint, core::Access::kRead, ty.u32())));
+        auto* v2 = b.Var("v2", ty.ptr<handle, read_write>(ty.Get<core::type::StorageTexture>(
+                                   core::type::TextureDimension::k2dArray,
+                                   core::TexelFormat::kR32Uint, core::Access::kWrite, ty.u32())));
+        v1->SetBindingPoint(0, 1);
+        v2->SetBindingPoint(0, 2);
+    });
+
+    ASSERT_TRUE(Generate()) << Error() << output_;
+    EXPECT_INST("%3 = OpTypeImage %uint 2D 0 1 0 2 R32ui");
+    EXPECT_INST("%_ptr_UniformConstant_3 = OpTypePointer UniformConstant %3");
+    EXPECT_INST("%v1 = OpVariable %_ptr_UniformConstant_3 UniformConstant");
+    EXPECT_INST("%_ptr_UniformConstant_3_0 = OpTypePointer UniformConstant %3");
+    EXPECT_INST("%v2 = OpVariable %_ptr_UniformConstant_3_0 UniformConstant");
+}
+
 using Dim = core::type::TextureDimension;
 struct TextureCase {
     std::string result;
@@ -395,14 +414,14 @@ TEST_F(SpirvWriterTest, Type_DepthTexture_DedupWithSampledTexture) {
     });
 
     ASSERT_TRUE(Generate()) << Error() << output_;
-    EXPECT_EQ(DumpTypes(), R"(%4 = OpTypeFloat 32
-%3 = OpTypeImage %4 2D 0 0 0 1 Unknown
-%2 = OpTypePointer UniformConstant %3
-%1 = OpVariable %2 UniformConstant
-%6 = OpTypePointer UniformConstant %3
-%5 = OpVariable %6 UniformConstant
-%8 = OpTypeVoid
-%9 = OpTypeFunction %8
+    EXPECT_INST(R"(      %float = OpTypeFloat 32
+          %3 = OpTypeImage %float 2D 0 0 0 1 Unknown
+%_ptr_UniformConstant_3 = OpTypePointer UniformConstant %3
+         %v1 = OpVariable %_ptr_UniformConstant_3 UniformConstant   ; DescriptorSet 0, Binding 1, Coherent
+%_ptr_UniformConstant_3_0 = OpTypePointer UniformConstant %3
+         %v2 = OpVariable %_ptr_UniformConstant_3_0 UniformConstant     ; DescriptorSet 0, Binding 2, Coherent
+       %void = OpTypeVoid
+          %9 = OpTypeFunction %void
 )");
 }
 
@@ -428,14 +447,14 @@ TEST_F(SpirvWriterTest, Type_DepthMultisampledTexture_DedupWithMultisampledTextu
     });
 
     ASSERT_TRUE(Generate()) << Error() << output_;
-    EXPECT_EQ(DumpTypes(), R"(%4 = OpTypeFloat 32
-%3 = OpTypeImage %4 2D 0 0 1 1 Unknown
-%2 = OpTypePointer UniformConstant %3
-%1 = OpVariable %2 UniformConstant
-%6 = OpTypePointer UniformConstant %3
-%5 = OpVariable %6 UniformConstant
-%8 = OpTypeVoid
-%9 = OpTypeFunction %8
+    EXPECT_INST(R"(      %float = OpTypeFloat 32
+          %3 = OpTypeImage %float 2D 0 0 1 1 Unknown
+%_ptr_UniformConstant_3 = OpTypePointer UniformConstant %3
+         %v1 = OpVariable %_ptr_UniformConstant_3 UniformConstant   ; DescriptorSet 0, Binding 1, Coherent
+%_ptr_UniformConstant_3_0 = OpTypePointer UniformConstant %3
+         %v2 = OpVariable %_ptr_UniformConstant_3_0 UniformConstant     ; DescriptorSet 0, Binding 2, Coherent
+       %void = OpTypeVoid
+          %9 = OpTypeFunction %void
 )");
 }
 

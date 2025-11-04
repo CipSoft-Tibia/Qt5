@@ -7,6 +7,8 @@
 #include <QtWidgets/qscroller.h>
 #include <QtWidgets/qwidget.h>
 
+#include "private/qscroller_p.h"
+
 #include <QtGui/qevent.h>
 #include <QtGui/qpointingdevice.h>
 #include <QtGui/qstylehints.h>
@@ -119,7 +121,7 @@ private slots:
     void mouseEventTimestamp();
 
 private:
-    QPointingDevice *m_touchScreen = QTest::createTouchDevice();
+    const std::unique_ptr<QPointingDevice> m_touchScreen{QTest::createTouchDevice()};
 };
 
 /*! \internal
@@ -144,7 +146,7 @@ void tst_QScroller::kineticScroll(tst_QScrollerWidget *sw, QPointF from, QPoint 
     QMutableEventPoint::setGlobalPosition(touchPoint, touchStart);
 
     QTouchEvent touchEvent1(QEvent::TouchBegin,
-                            m_touchScreen,
+                            m_touchScreen.get(),
                             Qt::NoModifier,
                             (QList<QTouchEvent::TouchPoint>() << touchPoint));
 
@@ -159,7 +161,7 @@ void tst_QScroller::kineticScroll(tst_QScrollerWidget *sw, QPointF from, QPoint 
     QMutableEventPoint::setGlobalPosition(touchPoint, touchUpdate);
     QMutableEventPoint::setState(touchPoint, QEventPoint::State::Updated);
     QTouchEvent touchEvent2(QEvent::TouchUpdate,
-                            m_touchScreen,
+                            m_touchScreen.get(),
                             Qt::NoModifier,
                             (QList<QEventPoint>() << touchPoint));
     QApplication::sendEvent(sw, &touchEvent2);
@@ -183,7 +185,7 @@ void tst_QScroller::kineticScroll(tst_QScrollerWidget *sw, QPointF from, QPoint 
     QMutableEventPoint::setGlobalPosition(touchPoint, touchEnd);
     QMutableEventPoint::setState(touchPoint, QEventPoint::State::Released);
     QTouchEvent touchEvent5(QEvent::TouchEnd,
-                            m_touchScreen,
+                            m_touchScreen.get(),
                             Qt::NoModifier,
                             (QList<QEventPoint>() << touchPoint));
     QApplication::sendEvent(sw, &touchEvent5);
@@ -211,7 +213,7 @@ void tst_QScroller::kineticScrollNoTest(tst_QScrollerWidget *sw, QPointF from, Q
     QMutableEventPoint::setScenePosition(touchPoint, touchStart);
     QMutableEventPoint::setGlobalPosition(touchPoint, touchStart);
     QTouchEvent touchEvent1(QEvent::TouchBegin,
-                            m_touchScreen,
+                            m_touchScreen.get(),
                             Qt::NoModifier,
                             (QList<QEventPoint>() << touchPoint));
     QApplication::sendEvent(sw, &touchEvent1);
@@ -223,7 +225,7 @@ void tst_QScroller::kineticScrollNoTest(tst_QScrollerWidget *sw, QPointF from, Q
     QMutableEventPoint::setScenePosition(touchPoint, touchUpdate);
     QMutableEventPoint::setGlobalPosition(touchPoint, touchUpdate);
     QTouchEvent touchEvent2(QEvent::TouchUpdate,
-                            m_touchScreen,
+                            m_touchScreen.get(),
                             Qt::NoModifier,
                             (QList<QEventPoint>() << touchPoint));
     QApplication::sendEvent(sw, &touchEvent2);
@@ -236,7 +238,7 @@ void tst_QScroller::kineticScrollNoTest(tst_QScrollerWidget *sw, QPointF from, Q
     QMutableEventPoint::setScenePosition(touchPoint, touchEnd);
     QMutableEventPoint::setGlobalPosition(touchPoint, touchEnd);
     QTouchEvent touchEvent5(QEvent::TouchEnd,
-                            m_touchScreen,
+                            m_touchScreen.get(),
                             Qt::NoModifier,
                             (QList<QEventPoint>() << touchPoint));
     QApplication::sendEvent(sw, &touchEvent5);
@@ -467,6 +469,26 @@ void tst_QScroller::overshoot()
     sp1.setScrollMetric(QScrollerProperties::HorizontalOvershootPolicy, QVariant::fromValue(QScrollerProperties::OvershootAlwaysOff));
     s1->setScrollerProperties(sp1);
     kineticScrollNoTest(sw.data(), QPointF(500, 500), QPoint(0, 0), QPoint(400, 0), QPoint(490, 0));
+
+    QTRY_COMPARE(s1->state(), QScroller::Inactive);
+
+    QVERIFY(qFuzzyCompare(sw->currentPos.x(), 0));
+    QVERIFY(qFuzzyCompare(sw->currentPos.y(), 500));
+    QCOMPARE(sw->receivedOvershoot, false);
+
+    // -- try to scroll with overshoot (always off, slow)
+    sw->reset();
+    sw->scrollArea = QRectF(0, 0, 1000, 1000);
+
+    sp1.setScrollMetric(QScrollerProperties::HorizontalOvershootPolicy, QVariant::fromValue(QScrollerProperties::OvershootAlwaysOff));
+    s1->setScrollerProperties(sp1);
+    kineticScrollNoTest(sw.data(), QPointF(500, 500), QPoint(0, 0), QPoint(200, 0), QPoint(215, 0));
+
+    // Check that segment parameters are consistent
+    QScrollerPrivate* priv = s1->d_func();
+    QVERIFY(priv->xSegments.size() == 1);
+    auto& segment = priv->xSegments.head();
+    QCOMPARE_LT(segment.startPos + segment.deltaPos, segment.stopPos);
 
     QTRY_COMPARE(s1->state(), QScroller::Inactive);
 

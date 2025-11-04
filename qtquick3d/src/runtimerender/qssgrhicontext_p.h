@@ -115,6 +115,22 @@ inline bool operator==(const QSSGRhiGraphicsPipelineState &a, const QSSGRhiGraph
 {
     const auto &ia_a = QSSGRhiInputAssemblerStatePrivate::get(a);
     const auto &ia_b = QSSGRhiInputAssemblerStatePrivate::get(b);
+    const auto compareTargetBlend = [](const std::array<QRhiGraphicsPipeline::TargetBlend, 8> &a,
+                                       const std::array<QRhiGraphicsPipeline::TargetBlend, 8> &b,
+                                       const int count) -> bool {
+        for (int i = 0; i < count; i++) {
+            if (a[i].colorWrite != b[i].colorWrite
+                || a[i].srcColor != b[i].srcColor
+                || a[i].dstColor != b[i].dstColor
+                || a[i].opColor != b[i].opColor
+                || a[i].srcAlpha != b[i].srcAlpha
+                || a[i].dstAlpha != b[i].dstAlpha
+                || a[i].opAlpha != b[i].opAlpha) {
+                return false;
+            }
+        }
+        return true;
+    };
     return QSSGRhiGraphicsPipelineStatePrivate::getShaderPipeline(a) == QSSGRhiGraphicsPipelineStatePrivate::getShaderPipeline(b)
             && a.samples == b.samples
             && a.flags == b.flags
@@ -129,14 +145,8 @@ inline bool operator==(const QSSGRhiGraphicsPipelineState &a, const QSSGRhiGraph
             && a.scissor == b.scissor
             && ia_a.topology == ia_b.topology
             && ia_a.inputLayout == ia_b.inputLayout
-            && a.targetBlend.colorWrite == b.targetBlend.colorWrite
-            && a.targetBlend.srcColor == b.targetBlend.srcColor
-            && a.targetBlend.dstColor == b.targetBlend.dstColor
-            && a.targetBlend.opColor == b.targetBlend.opColor
-            && a.targetBlend.srcAlpha == b.targetBlend.srcAlpha
-            && a.targetBlend.dstAlpha == b.targetBlend.dstAlpha
-            && a.targetBlend.opAlpha == b.targetBlend.opAlpha
             && a.colorAttachmentCount == b.colorAttachmentCount
+            && compareTargetBlend(a.targetBlend, b.targetBlend, a.colorAttachmentCount)
             && a.lineWidth == b.lineWidth
             && a.polygonMode == b.polygonMode
             && a.viewCount == b.viewCount;
@@ -153,7 +163,7 @@ inline size_t qHash(const QSSGRhiGraphicsPipelineState &s, size_t seed) Q_DECL_N
     return qHash(QSSGRhiGraphicsPipelineStatePrivate::getShaderPipeline(s), seed)
             ^ qHash(s.samples)
             ^ qHash(s.viewCount)
-            ^ qHash(s.targetBlend.dstColor)
+            ^ qHash(s.targetBlend[0].dstColor)
             ^ qHash(s.depthFunc)
             ^ qHash(s.cullMode)
             ^ qHash(s.colorAttachmentCount)

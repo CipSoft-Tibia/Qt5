@@ -18,16 +18,18 @@ qt_internal_add_module(StateMachine
         qsignaltransition.cpp qsignaltransition.h qsignaltransition_p.h
         qstate.cpp qstate.h qstate_p.h
         qstatemachine.cpp qstatemachine.h qstatemachine_p.h
-        qstatemachineglobal.h
+        qstatemachineglobal.h qstatemachineglobal_p.h
     DEFINES
         QT_NO_CAST_FROM_ASCII
         QT_NO_CAST_TO_ASCII
     LIBRARIES
         Qt::CorePrivate
+        Qt::ScxmlGlobalPrivate
     PUBLIC_LIBRARIES
         Qt::Core
     PRIVATE_MODULE_INTERFACE
         Qt::CorePrivate
+        Qt::ScxmlGlobalPrivate
 )
 
 ## Scopes:

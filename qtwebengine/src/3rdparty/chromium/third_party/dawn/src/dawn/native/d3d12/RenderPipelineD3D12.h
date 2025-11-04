@@ -42,12 +42,9 @@ class RenderPipeline final : public RenderPipelineBase {
     static Ref<RenderPipeline> CreateUninitialized(
         Device* device,
         const UnpackedPtr<RenderPipelineDescriptor>& descriptor);
-    static void InitializeAsync(Ref<RenderPipelineBase> renderPipeline,
-                                WGPUCreateRenderPipelineAsyncCallback callback,
-                                void* userdata);
     RenderPipeline() = delete;
 
-    MaybeError Initialize() override;
+    MaybeError InitializeImpl() override;
 
     D3D12_PRIMITIVE_TOPOLOGY GetD3D12PrimitiveTopology() const;
     ID3D12PipelineState* GetPipelineState() const;
@@ -69,6 +66,7 @@ class RenderPipeline final : public RenderPipelineBase {
     using RenderPipelineBase::RenderPipelineBase;
     D3D12_INPUT_LAYOUT_DESC ComputeInputLayout(
         std::array<D3D12_INPUT_ELEMENT_DESC, kMaxVertexAttributes>* inputElementDescriptors);
+    D3D12_DEPTH_STENCIL_DESC ComputeDepthStencilDesc();
 
     D3D12_PRIMITIVE_TOPOLOGY mD3d12PrimitiveTopology;
     ComPtr<ID3D12PipelineState> mPipelineState;

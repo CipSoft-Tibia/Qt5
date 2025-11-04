@@ -4,6 +4,9 @@
 
 #include "quiche/quic/core/congestion_control/bbr2_misc.h"
 
+#include <algorithm>
+#include <limits>
+
 #include "quiche/quic/core/congestion_control/bandwidth_sampler.h"
 #include "quiche/quic/core/quic_bandwidth.h"
 #include "quiche/quic/core/quic_time.h"
@@ -153,19 +156,11 @@ void Bbr2NetworkModel::OnCongestionEventStart(
         congestion_event->prior_bytes_in_flight -
         congestion_event->bytes_acked - congestion_event->bytes_lost;
   } else {
-    if (GetQuicReloadableFlag(quic_bbr2_fix_spurious_loss_bytes_counting)) {
-      QUIC_BUG(quic_bbr2_prior_in_flight_too_small)
-          << "prior_bytes_in_flight:" << congestion_event->prior_bytes_in_flight
-          << " is smaller than the sum of bytes_acked:"
-          << congestion_event->bytes_acked
-          << " and bytes_lost:" << congestion_event->bytes_lost;
-    } else {
-      QUIC_LOG_FIRST_N(ERROR, 1)
-          << "prior_bytes_in_flight:" << congestion_event->prior_bytes_in_flight
-          << " is smaller than the sum of bytes_acked:"
-          << congestion_event->bytes_acked
-          << " and bytes_lost:" << congestion_event->bytes_lost;
-    }
+    QUIC_BUG(quic_bbr2_prior_in_flight_too_small)
+        << "prior_bytes_in_flight:" << congestion_event->prior_bytes_in_flight
+        << " is smaller than the sum of bytes_acked:"
+        << congestion_event->bytes_acked
+        << " and bytes_lost:" << congestion_event->bytes_lost;
     congestion_event->bytes_in_flight = 0;
   }
 

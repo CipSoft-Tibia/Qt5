@@ -16,7 +16,7 @@ extern "C" {
 
 QT_BEGIN_NAMESPACE
 
-static Q_LOGGING_CATEGORY(qLcVideoFrameEncoder, "qt.multimedia.ffmpeg.videoencoder");
+Q_STATIC_LOGGING_CATEGORY(qLcVideoFrameEncoder, "qt.multimedia.ffmpeg.videoencoder");
 
 namespace QFFmpeg {
 
@@ -147,14 +147,14 @@ AVStream *VideoFrameEncoder::createStream(const SourceParams &sourceParams,
     stream->codecpar->color_space = sourceParams.colorSpace;
     stream->codecpar->color_range = sourceParams.colorRange;
 
-    if (sourceParams.transform.rotation != QtVideo::Rotation::None || sourceParams.transform.mirrorredHorizontallyAfterRotation) {
+    if (sourceParams.transform.rotation != QtVideo::Rotation::None || sourceParams.transform.mirroredHorizontallyAfterRotation) {
         constexpr auto displayMatrixSize = sizeof(int32_t) * 9;
         AVPacketSideData sideData = { reinterpret_cast<uint8_t *>(av_malloc(displayMatrixSize)),
                                       displayMatrixSize, AV_PKT_DATA_DISPLAYMATRIX };
         int32_t *matrix = reinterpret_cast<int32_t *>(sideData.data);
         av_display_rotation_set(matrix, static_cast<double>(sourceParams.transform.rotation));
-        if (sourceParams.transform.mirrorredHorizontallyAfterRotation)
-            av_display_matrix_flip(matrix, sourceParams.transform.mirrorredHorizontallyAfterRotation, false);
+        if (sourceParams.transform.mirroredHorizontallyAfterRotation)
+            av_display_matrix_flip(matrix, sourceParams.transform.mirroredHorizontallyAfterRotation, false);
 
         addStreamSideData(stream, sideData);
     }
@@ -324,10 +324,12 @@ bool VideoFrameEncoder::open()
     applyVideoEncoderOptions(m_settings, QByteArray{ m_codec.name() }, m_codecContext.get(), opts);
     applyExperimentalCodecOptions(m_codec, opts);
 
+    qCDebug(qLcVideoFrameEncoder) << "Opening encoder" << m_codec.name() << "with" << opts;
+
     const int res = avcodec_open2(m_codecContext.get(), m_codec.get(), opts);
     if (res < 0) {
         qCWarning(qLcVideoFrameEncoder)
-                << "Couldn't open video encoder" << m_codec.name() << "; result:" << err2str(res);
+                << "Couldn't open video encoder" << m_codec.name() << "; result:" << AVError(res);
         return false;
     }
     qCDebug(qLcVideoFrameEncoder) << "video codec opened" << res << "time base"
@@ -363,7 +365,7 @@ struct FrameConverter
         int err = av_hwframe_transfer_data(cpuFrame.get(), currentFrame(), 0);
         if (err < 0) {
             qCDebug(qLcVideoFrameEncoder)
-                    << "Error transferring frame data to surface." << err2str(err);
+                    << "Error transferring frame data to surface." << AVError(err);
             return err;
         }
 
@@ -404,7 +406,7 @@ struct FrameConverter
 
         int err = av_hwframe_get_buffer(hwFramesContext, hwFrame.get(), 0);
         if (err < 0) {
-            qCDebug(qLcVideoFrameEncoder) << "Error getting HW buffer" << err2str(err);
+            qCDebug(qLcVideoFrameEncoder) << "Error getting HW buffer" << AVError(err);
             return err;
         } else {
             qCDebug(qLcVideoFrameEncoder) << "got HW buffer";
@@ -416,7 +418,7 @@ struct FrameConverter
         err = av_hwframe_transfer_data(hwFrame.get(), currentFrame(), 0);
         if (err < 0) {
             qCDebug(qLcVideoFrameEncoder)
-                    << "Error transferring frame data to surface." << err2str(err);
+                    << "Error transferring frame data to surface." << AVError(err);
             return err;
         }
 
@@ -437,7 +439,7 @@ struct FrameConverter
         // Copy metadata except size and format from input frame
         const int status = av_frame_copy_props(converted.get(), input.get());
         if (status != 0)
-            return status;
+            return QUnexpected{ status };
 
         return converted;
     }
@@ -527,7 +529,7 @@ AVPacketUPtr VideoFrameEncoder::retrievePacket()
         const int ret = avcodec_receive_packet(m_codecContext.get(), packet.get());
         if (ret < 0) {
             if (ret != AVERROR(EOF) && ret != AVERROR(EAGAIN) && ret != AVERROR_EOF)
-                qCDebug(qLcVideoFrameEncoder) << "Error receiving packet" << ret << err2str(ret);
+                qCDebug(qLcVideoFrameEncoder) << "Error receiving packet" << ret << AVError(ret);
             return AVPacketUPtr{};
         }
         auto ts = timeStampMs(packet->pts, m_stream->time_base);

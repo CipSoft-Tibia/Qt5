@@ -5,6 +5,7 @@
 #include "qopen62541utils.h"
 #include "generated/namespace_qtopcuatestmodel_generated.h"
 
+#include <QtCore/QCommandLineParser>
 #include <QtCore/QCoreApplication>
 #include <QtCore/QDebug>
 #include <QtCore/QThread>
@@ -38,7 +39,7 @@ static void signalHandler(int sig) {
     running = false;
 }
 
-int main()
+int main(int argc, char **argv)
 {
     signal(SIGINT, signalHandler);
     signal(SIGTERM, signalHandler);
@@ -48,8 +49,17 @@ int main()
     signal(SIGPIPE, SIG_IGN);
 #endif
 
+    QCommandLineParser parser;
+    const QCommandLineOption noNonePasswordOption(QStringLiteral("noNonePolicyPassword"));
+    parser.addOption(noNonePasswordOption);
+
+    QStringList args;
+    for (int i = 0; i < argc; ++i)
+        args.push_back(QString::fromUtf8(argv[i]));
+    parser.parse(args);
+
     TestServer server;
-    if (!server.init()) {
+    if (!server.init(parser.isSet(noNonePasswordOption))) {
         qCritical() << "Could not initialize server.";
         return -1;
     }
@@ -63,12 +73,12 @@ int main()
         qWarning() << "Unexpected namespace index for Test namespace";
     }
 
-    const UA_NodeId largeTestFolder = server.addFolder("ns=1;s=Large.Folder", "Large_Folder");
+    const auto largeTestFolder = server.addFolder("ns=1;s=Large.Folder", "Large_Folder");
 
     for (int x = 0; x < 100; ++x)
         server.addObject(largeTestFolder, idx, "");
 
-    const UA_NodeId testFolder = server.addFolder("ns=3;s=TestFolder", "TestFolder");
+    const auto testFolder = server.addFolder("ns=3;s=TestFolder", "TestFolder");
 
     server.addVariable(testFolder, "ns=3;s=TestNode.ReadWrite", "TestNode.ReadWrite", 0.1, QOpcUa::Types::Double);
 
@@ -269,14 +279,14 @@ int main()
                        QOpcUa::Types::DiagnosticInfo, {0}, UA_VALUERANK_ONE_DIMENSION);
 
     // Create folders containing child nodes with string, guid and opaque node ids
-    UA_NodeId testStringIdsFolder = server.addFolder("ns=3;s=testStringIdsFolder", "testStringIdsFolder");
+    const auto testStringIdsFolder = server.addFolder("ns=3;s=testStringIdsFolder", "testStringIdsFolder");
     server.addVariable(testStringIdsFolder, "ns=3;s=theStringId", "theStringId", QStringLiteral("Value"), QOpcUa::Types::String);
-    UA_NodeId testGuidIdsFolder = server.addFolder("ns=3;s=testGuidIdsFolder", "testGuidIdsFolder");
+    const auto testGuidIdsFolder = server.addFolder("ns=3;s=testGuidIdsFolder", "testGuidIdsFolder");
     server.addVariable(testGuidIdsFolder, "ns=3;g=08081e75-8e5e-319b-954f-f3a7613dc29b", "theGuidId", QStringLiteral("Value"), QOpcUa::Types::String);
-    UA_NodeId testOpaqueIdsFolder = server.addFolder("ns=3;s=testOpaqueIdsFolder", "testOpaqueIdsFolder");
+    const auto testOpaqueIdsFolder = server.addFolder("ns=3;s=testOpaqueIdsFolder", "testOpaqueIdsFolder");
     server.addVariable(testOpaqueIdsFolder, "ns=3;b=UXQgZnR3IQ==", "theOpaqueId", QStringLiteral("Value"), QOpcUa::Types::String);
 
-    UA_NodeId testUmlautIdFolder = server.addFolder("ns=3;s=ümläutFölderNödeId", "ümläutFölderNödeId");
+    const auto testUmlautIdFolder = server.addFolder("ns=3;s=ümläutFölderNödeId", "ümläutFölderNödeId");
     server.addVariable(testUmlautIdFolder, "ns=3;s=ümläutVäriableNödeId", "ümläutVäriableNödeId", QStringLiteral("Value"), QOpcUa::Types::String);
 
     // Add a method to the test folder
@@ -290,7 +300,7 @@ int main()
                        QOpcUaMultiDimensionalArray(value, arrayDimensions), QOpcUa::Types::Double, QList<quint32>({2, 2, 3}), 3);
 
     // Add folders for relative nodes
-    const UA_NodeId testFolder2 = server.addFolder("ns=3;s=TestFolder2", "TestFolder2");
+    const auto testFolder2 = server.addFolder("ns=3;s=TestFolder2", "TestFolder2");
     server.addVariable(testFolder2, "ns=3;s=TestNode2.ReadWrite", "TestNode.ReadWrite", 0.1, QOpcUa::Types::Double);
 
     // Add a method for adding namespaces
@@ -305,6 +315,8 @@ int main()
 
     server.addVariableWithWriteMask(testFolder, "ns=3;s=Demo.Static.Scalar.FullyWritable", "FullyWritableTest", 1.0, QOpcUa::Types::Double, fullWritableMask);
 
+    server.addLocalizedTextNodeWithCallback(testFolder);
+
     server.addEventTrigger(testFolder);
 
     server.addEventHistorian(UA_NODEID_NUMERIC(0, UA_NS0ID_OBJECTSFOLDER));
@@ -312,6 +324,7 @@ int main()
     server.addServerStatusTypeTestNodes(testFolder);
 
     server.addUnreadableVariableNode(testFolder);
+    server.addByteStringNodeIdWithNullIdVariableNode(testFolder);
 
     // Add test nodes for the generic type decoder
     auto result = server.addEncoderTestModel();

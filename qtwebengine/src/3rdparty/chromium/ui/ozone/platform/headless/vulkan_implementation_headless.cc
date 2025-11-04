@@ -4,6 +4,8 @@
 
 #include "ui/ozone/platform/headless/vulkan_implementation_headless.h"
 
+#include <optional>
+
 #include "base/base_paths.h"
 #include "base/files/file_path.h"
 #include "base/functional/callback_helpers.h"
@@ -15,7 +17,6 @@
 #include "gpu/vulkan/vulkan_instance.h"
 #include "gpu/vulkan/vulkan_surface.h"
 #include "gpu/vulkan/vulkan_util.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "ui/gfx/gpu_fence.h"
 #include "ui/gfx/gpu_memory_buffer.h"
 #include "ui/ozone/platform/headless/vulkan_surface_headless.h"
@@ -104,14 +105,14 @@ VulkanImplementationHeadless::GetOptionalDeviceExtensions() {
 
 VkFence VulkanImplementationHeadless::CreateVkFenceForGpuFence(
     VkDevice vk_device) {
-  NOTREACHED();
+  NOTREACHED_IN_MIGRATION();
   return VK_NULL_HANDLE;
 }
 
 std::unique_ptr<gfx::GpuFence>
 VulkanImplementationHeadless::ExportVkFenceToGpuFence(VkDevice vk_device,
                                                       VkFence vk_fence) {
-  NOTREACHED();
+  NOTREACHED_IN_MIGRATION();
   return nullptr;
 }
 

@@ -57,7 +57,7 @@ QT_BEGIN_NAMESPACE
         {Focus Management in Qt Quick Controls}
 */
 
-Q_LOGGING_CATEGORY(lcMenuBar, "qt.quick.controls.menubar")
+Q_STATIC_LOGGING_CATEGORY(lcMenuBar, "qt.quick.controls.menubar")
 
 static const char* kCreatedFromDelegate = "_qt_createdFromDelegate";
 
@@ -339,7 +339,8 @@ QQuickMenu *QQuickMenuBarPrivate::menus_at(QQmlListProperty<QQuickMenu> *prop, q
 void QQuickMenuBarPrivate::menus_clear(QQmlListProperty<QQuickMenu> *prop)
 {
     QQuickMenuBar *menuBar = static_cast<QQuickMenuBar *>(prop->object);
-    QQuickMenuBarPrivate::get(menuBar)->contentModel->clear();
+    for (int count = menuBar->count(); count > 0; count = menuBar->count())
+        menuBar->takeMenu(count - 1);
 }
 
 QPalette QQuickMenuBarPrivate::defaultPalette() const

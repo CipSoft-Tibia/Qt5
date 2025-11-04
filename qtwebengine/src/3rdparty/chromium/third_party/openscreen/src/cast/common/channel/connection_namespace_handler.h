@@ -44,8 +44,8 @@ class ConnectionNamespaceHandler : public CastMessageHandler {
   using RemoteConnectionResultCallback = std::function<void(bool)>;
 
   // Both |vc_router| and |vc_policy| should outlive this object.
-  ConnectionNamespaceHandler(VirtualConnectionRouter* vc_router,
-                             VirtualConnectionPolicy* vc_policy);
+  ConnectionNamespaceHandler(VirtualConnectionRouter& vc_router,
+                             VirtualConnectionPolicy& vc_policy);
   ~ConnectionNamespaceHandler() override;
 
   // Requests a virtual connection be established. The |result_callback| is
@@ -61,17 +61,17 @@ class ConnectionNamespaceHandler : public CastMessageHandler {
   // CastMessageHandler overrides.
   void OnMessage(VirtualConnectionRouter* router,
                  CastSocket* socket,
-                 ::cast::channel::CastMessage message) override;
+                 proto::CastMessage message) override;
 
  private:
   void HandleConnect(CastSocket* socket,
-                     ::cast::channel::CastMessage message,
+                     proto::CastMessage message,
                      Json::Value parsed_message);
   void HandleClose(CastSocket* socket,
-                   ::cast::channel::CastMessage message,
+                   proto::CastMessage message,
                    Json::Value parsed_message);
   void HandleConnectedResponse(CastSocket* socket,
-                               ::cast::channel::CastMessage message,
+                               proto::CastMessage message,
                                Json::Value parsed_message);
 
   void SendConnect(VirtualConnection virtual_conn);
@@ -82,8 +82,8 @@ class ConnectionNamespaceHandler : public CastMessageHandler {
   bool RemoveConnection(const VirtualConnection& conn,
                         VirtualConnection::CloseReason reason);
 
-  VirtualConnectionRouter* const vc_router_;
-  VirtualConnectionPolicy* const vc_policy_;
+  VirtualConnectionRouter& vc_router_;
+  VirtualConnectionPolicy& vc_policy_;
 
   struct PendingRequest {
     VirtualConnection conn;

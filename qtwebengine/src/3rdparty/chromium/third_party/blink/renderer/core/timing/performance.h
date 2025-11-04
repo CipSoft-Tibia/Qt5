@@ -66,6 +66,7 @@ class ExecutionContext;
 class LargestContentfulPaint;
 class LayoutShift;
 class MemoryInfo;
+class MemoryMeasurement;
 class Node;
 class PerformanceElementTiming;
 class PerformanceEventTiming;
@@ -75,7 +76,6 @@ class PerformanceMeasure;
 class PerformanceNavigation;
 class PerformanceObserver;
 class PerformanceTiming;
-class ScriptPromise;
 class ScriptState;
 class ScriptValue;
 class SoftNavigationEntry;
@@ -108,7 +108,7 @@ class CORE_EXPORT Performance : public EventTarget {
   virtual PerformanceTiming* timing() const;
   virtual PerformanceNavigation* navigation() const;
   virtual MemoryInfo* memory(ScriptState*) const;
-  virtual ScriptPromise measureUserAgentSpecificMemory(
+  virtual ScriptPromise<MemoryMeasurement> measureUserAgentSpecificMemory(
       ScriptState*,
       ExceptionState& exception_state) const;
   virtual EventCounts* eventCounts();
@@ -172,6 +172,7 @@ class CORE_EXPORT Performance : public EventTarget {
   void clearResourceTimings();
   void setResourceTimingBufferSize(unsigned);
   void setBackForwardCacheRestorationBufferSizeForTest(unsigned);
+  void setEventTimingBufferSizeForTest(unsigned);
 
   DEFINE_ATTRIBUTE_EVENT_LISTENER(resourcetimingbufferfull,
                                   kResourcetimingbufferfull)
@@ -197,14 +198,14 @@ class CORE_EXPORT Performance : public EventTarget {
                                      bool is_triggered_by_soft_navigation);
 
   bool IsElementTimingBufferFull() const;
-  void AddElementTimingBuffer(PerformanceElementTiming&);
+  void AddToElementTimingBuffer(PerformanceElementTiming&);
 
   bool IsEventTimingBufferFull() const;
-  void AddEventTimingBuffer(PerformanceEventTiming&);
+  void AddToEventTimingBuffer(PerformanceEventTiming&);
 
   bool IsLongAnimationFrameBufferFull() const;
 
-  void AddLayoutShiftBuffer(LayoutShift&);
+  void AddToLayoutShiftBuffer(LayoutShift&);
 
   void AddLargestContentfulPaint(LargestContentfulPaint*);
 
@@ -320,13 +321,13 @@ class CORE_EXPORT Performance : public EventTarget {
       ScriptState* script_state,
       const AtomicString& measure_name,
       const V8UnionPerformanceMeasureOptionsOrString* start_or_options,
-      absl::optional<String> end_mark,
+      std::optional<String> end_mark,
       ExceptionState& exception_state);
 
   PerformanceMeasure* MeasureWithDetail(ScriptState* script_state,
                                         const AtomicString& measure_name,
                                         const V8UnionDoubleOrString* start,
-                                        const absl::optional<double>& duration,
+                                        const std::optional<double>& duration,
                                         const V8UnionDoubleOrString* end,
                                         const ScriptValue& detail,
                                         ExceptionState& exception_state);

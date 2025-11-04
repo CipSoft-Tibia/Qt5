@@ -27,10 +27,14 @@
  * Boston, MA 02110-1301, USA.
  */
 
+#ifdef UNSAFE_BUFFERS_BUILD
+// TODO(crbug.com/351564777): Remove this and convert code to safer constructs.
+#pragma allow_unsafe_buffers
+#endif
+
 #include "third_party/blink/renderer/core/css/selector_checker.h"
 
 #include "base/auto_reset.h"
-#include "style_rule.h"
 #include "third_party/blink/public/mojom/input/focus_type.mojom-blink.h"
 #include "third_party/blink/renderer/core/css/check_pseudo_has_argument_context.h"
 #include "third_party/blink/renderer/core/css/check_pseudo_has_cache_scope.h"
@@ -38,6 +42,7 @@
 #include "third_party/blink/renderer/core/css/part_names.h"
 #include "third_party/blink/renderer/core/css/post_style_update_scope.h"
 #include "third_party/blink/renderer/core/css/style_engine.h"
+#include "third_party/blink/renderer/core/css/style_rule.h"
 #include "third_party/blink/renderer/core/css/style_scope_data.h"
 #include "third_party/blink/renderer/core/dom/document.h"
 #include "third_party/blink/renderer/core/dom/element.h"
@@ -46,6 +51,7 @@
 #include "third_party/blink/renderer/core/dom/node_computed_style.h"
 #include "third_party/blink/renderer/core/dom/nth_index_cache.h"
 #include "third_party/blink/renderer/core/dom/popover_data.h"
+#include "third_party/blink/renderer/core/dom/scroll_marker_pseudo_element.h"
 #include "third_party/blink/renderer/core/dom/shadow_root.h"
 #include "third_party/blink/renderer/core/dom/slot_assignment_engine.h"
 #include "third_party/blink/renderer/core/dom/text.h"
@@ -61,16 +67,19 @@
 #include "third_party/blink/renderer/core/html/forms/html_input_element.h"
 #include "third_party/blink/renderer/core/html/forms/html_option_element.h"
 #include "third_party/blink/renderer/core/html/forms/html_select_element.h"
+#include "third_party/blink/renderer/core/html/html_details_element.h"
 #include "third_party/blink/renderer/core/html/html_dialog_element.h"
 #include "third_party/blink/renderer/core/html/html_document.h"
 #include "third_party/blink/renderer/core/html/html_frame_element_base.h"
 #include "third_party/blink/renderer/core/html/html_permission_element.h"
 #include "third_party/blink/renderer/core/html/html_slot_element.h"
+#include "third_party/blink/renderer/core/html/media/html_audio_element.h"
 #include "third_party/blink/renderer/core/html/media/html_video_element.h"
 #include "third_party/blink/renderer/core/html/parser/html_parser_idioms.h"
 #include "third_party/blink/renderer/core/html/shadow/shadow_element_names.h"
 #include "third_party/blink/renderer/core/html/track/vtt/vtt_element.h"
 #include "third_party/blink/renderer/core/html_names.h"
+#include "third_party/blink/renderer/core/layout/custom_scrollbar.h"
 #include "third_party/blink/renderer/core/page/focus_controller.h"
 #include "third_party/blink/renderer/core/page/page.h"
 #include "third_party/blink/renderer/core/page/scrolling/fragment_anchor.h"
@@ -80,6 +89,8 @@
 #include "third_party/blink/renderer/core/scroll/scrollable_area.h"
 #include "third_party/blink/renderer/core/scroll/scrollbar_theme.h"
 #include "third_party/blink/renderer/core/style/computed_style.h"
+#include "third_party/blink/renderer/core/style/computed_style_constants.h"
+#include "third_party/blink/renderer/core/svg/svg_element.h"
 #include "third_party/blink/renderer/core/view_transition/view_transition.h"
 #include "third_party/blink/renderer/core/view_transition/view_transition_utils.h"
 #include "third_party/blink/renderer/platform/runtime_enabled_features.h"
@@ -101,7 +112,7 @@ static bool MatchesSpatialNavigationFocusPseudoClass(const Element& element) {
 
 static bool MatchesHasDatalistPseudoClass(const Element& element) {
   auto* html_input_element = DynamicTo<HTMLInputElement>(element);
-  return html_input_element && html_input_element->list();
+  return html_input_element && html_input_element->DataList();
 }
 
 static bool MatchesListBoxPseudoClass(const Element& element) {
@@ -256,7 +267,7 @@ bool SelectorChecker::Match(const SelectorCheckingContext& context,
   base::AutoReset<bool> reset_inside_match(&inside_match_, true);
 #endif  // DCHECK_IS_ON()
 
-  if (UNLIKELY(context.vtt_originating_element)) {
+  if (context.vtt_originating_element) [[unlikely]] {
     // A kUAShadow combinator is required for VTT matching.
     if (context.selector->IsLastInComplexSelector()) {
       return false;
@@ -302,27 +313,28 @@ SelectorChecker::MatchStatus SelectorChecker::MatchSelector(
     return kSelectorMatches;
   }
 
-  MatchStatus match;
-  if (context.selector->Relation() != CSSSelector::kSubSelector) {
-    // The kScopeActivation relation type does not change the current element
-    // being matched, unlike e.g. kChild which looks at the parent element.
-    if (NextSelectorExceedsScope(context) &&
-        (context.selector->Relation() != CSSSelector::kScopeActivation)) {
-      return kSelectorFailsCompletely;
-    }
+  switch (context.selector->Relation()) {
+    case CSSSelector::kSubSelector:
+      return MatchForSubSelector(context, result);
+    case CSSSelector::kScopeActivation:
+      // The kScopeActivation relation type does not change the current element
+      // being matched: it behaves like a special kSubSelector in this context.
+      return MatchForScopeActivation(context, result);
+    default: {
+      if (NextSelectorExceedsScope(context)) {
+        return kSelectorFailsCompletely;
+      }
 
-    if (context.pseudo_id != kPseudoIdNone &&
-        context.pseudo_id != result.dynamic_pseudo) {
-      return kSelectorFailsCompletely;
-    }
+      if (context.pseudo_id != kPseudoIdNone &&
+          context.pseudo_id != result.dynamic_pseudo) {
+        return kSelectorFailsCompletely;
+      }
 
-    base::AutoReset<PseudoId> dynamic_pseudo_scope(&result.dynamic_pseudo,
-                                                   kPseudoIdNone);
-    match = MatchForRelation(context, result);
-  } else {
-    match = MatchForSubSelector(context, result);
+      base::AutoReset<PseudoId> dynamic_pseudo_scope(&result.dynamic_pseudo,
+                                                     kPseudoIdNone);
+      return MatchForRelation(context, result);
+    }
   }
-  return match;
 }
 
 static inline SelectorChecker::SelectorCheckingContext
@@ -357,8 +369,10 @@ SelectorChecker::MatchStatus SelectorChecker::MatchForSubSelector(
   //
   // In all of those cases we need to skip matching the pseudo classes after the
   // pseudo element on the originating element.
+  // But we allow the ::column::scroll-marker case to keep matching when we are
+  // at ::column part.
   if (context.in_rightmost_compound && dynamic_pseudo != kPseudoIdNone &&
-      context.pseudo_id == kPseudoIdNone) {
+      context.pseudo_id == kPseudoIdNone && dynamic_pseudo != kPseudoIdColumn) {
     // We are in the rightmost compound and have matched a pseudo element
     // (dynamic_pseudo is not kPseudoIdNone), which means we are looking at
     // pseudo classes after the pseudo element. We are also matching the
@@ -384,7 +398,48 @@ SelectorChecker::MatchStatus SelectorChecker::MatchForSubSelector(
   }
 
   next_context.has_selection_pseudo = dynamic_pseudo == kPseudoIdSelection;
+  next_context.has_search_text_pseudo = dynamic_pseudo == kPseudoIdSearchText;
+  next_context.has_scroll_marker_pseudo =
+      dynamic_pseudo == kPseudoIdScrollMarker;
+  next_context.has_column_pseudo = dynamic_pseudo == kPseudoIdColumn;
   next_context.is_sub_selector = true;
+  return MatchSelector(next_context, result);
+}
+
+SelectorChecker::MatchStatus SelectorChecker::MatchForScopeActivation(
+    const SelectorCheckingContext& context,
+    MatchResult& result) const {
+  SelectorCheckingContext next_context = PrepareNextContextForRelation(context);
+  next_context.is_sub_selector = true;
+
+  if (context.style_scope) {
+    const StyleScopeActivations& activations =
+        EnsureActivations(context, *context.style_scope);
+    if (ImpactsSubject(context)) {
+      // For e.g. @scope (:hover) { :scope { ...} },
+      // the StyleScopeActivations may have stored MatchFlags that we
+      // need to propagate. However, this is only needed if :scope
+      // appears in the subject position, since MatchFlags are only
+      // used for subject invalidation. Non-subject flags are set on
+      // Elements directly (e.g. SetChildrenOrSiblingsAffectedByHover)
+      result.flags |= activations.match_flags;
+    }
+    if (activations.vector.empty()) {
+      return kSelectorFailsCompletely;
+    }
+    for (const StyleScopeActivation& activation : activations.vector) {
+      next_context.match_visited = context.match_visited;
+      next_context.impact = context.impact;
+      next_context.style_scope = nullptr;
+      next_context.scope = activation.root;
+      if (MatchSelector(next_context, result) == kSelectorMatches) {
+        result.proximity = activation.proximity;
+        return kSelectorMatches;
+      }
+    }
+    return kSelectorFailsLocally;
+  }
+
   return MatchSelector(next_context, result);
 }
 
@@ -398,10 +453,8 @@ SelectorChecker::MatchStatus SelectorChecker::MatchForRelation(
   // Disable :visited matching when we see the first link or try to match
   // anything else than an ancestor.
   if ((!context.is_sub_selector || context.in_nested_complex_selector) &&
-      (context.element->IsLink() ||
-       (relation != CSSSelector::kScopeActivation &&
-        relation != CSSSelector::kDescendant &&
-        relation != CSSSelector::kChild))) {
+      (context.element->IsLink() || (relation != CSSSelector::kDescendant &&
+                                     relation != CSSSelector::kChild))) {
     DisallowMatchVisited(next_context);
   }
 
@@ -550,38 +603,10 @@ SelectorChecker::MatchStatus SelectorChecker::MatchForRelation(
       }
       return kSelectorFailsCompletely;
     case CSSSelector::kSubSelector:
-      break;
     case CSSSelector::kScopeActivation:
-      if (context.style_scope) {
-        const StyleScopeActivations& activations =
-            EnsureActivations(context, *context.style_scope);
-        if (ImpactsSubject(context)) {
-          // For e.g. @scope (:hover) { :scope { ...} },
-          // the StyleScopeActivations may have stored MatchFlags that we
-          // need to propagate. However, this is only needed if :scope
-          // appears in the subject position, since MatchFlags are only
-          // used for subject invalidation. Non-subject flags are set on
-          // Elements directly (e.g. SetChildrenOrSiblingsAffectedByHover)
-          result.flags |= activations.match_flags;
-        }
-        if (activations.vector.empty()) {
-          return kSelectorFailsCompletely;
-        }
-        for (const StyleScopeActivation& activation : activations.vector) {
-          next_context.match_visited = context.match_visited;
-          next_context.impact = context.impact;
-          next_context.style_scope = nullptr;
-          next_context.scope = activation.root;
-          if (MatchSelector(next_context, result) == kSelectorMatches) {
-            result.proximity = activation.proximity;
-            return kSelectorMatches;
-          }
-        }
-        return kSelectorFailsLocally;
-      }
-      return MatchSelector(next_context, result);
+      break;
   }
-  NOTREACHED();
+  NOTREACHED_IN_MIGRATION();
   return kSelectorFailsCompletely;
 }
 
@@ -589,12 +614,7 @@ static bool AttributeValueMatches(const Attribute& attribute_item,
                                   CSSSelector::MatchType match,
                                   const AtomicString& selector_value,
                                   TextCaseSensitivity case_sensitivity) {
-  // TODO(esprehn): How do we get here with a null value?
   const AtomicString& value = attribute_item.Value();
-  if (value.IsNull()) {
-    return false;
-  }
-
   switch (match) {
     case CSSSelector::kAttributeExact:
       if (case_sensitivity == kTextCaseSensitive) {
@@ -658,7 +678,7 @@ static bool AttributeValueMatches(const Attribute& attribute_item,
       }
       return true;
     default:
-      NOTREACHED();
+      NOTREACHED_IN_MIGRATION();
       return false;
   }
 }
@@ -675,6 +695,7 @@ static bool AnyAttributeMatches(Element& element,
   // localName().
   element.SynchronizeAttribute(selector_attr.LocalName());
 
+  // NOTE: For kAttributeSet, this is a bogus pointer but never used.
   const AtomicString& selector_value = selector.Value();
   TextCaseSensitivity case_sensitivity =
       (selector.AttributeMatch() ==
@@ -760,10 +781,18 @@ ALWAYS_INLINE bool SelectorChecker::CheckOne(
   // However, the :scope pseudo-class may also match the host if the host is the
   // scoping root. [2]
   //
+  // Also, we need to descend into selectors that contain lists instead of
+  // just returning false, such that :is(:host, .doesnotmatch) (see [3]),
+  // or similar via nesting, is handled correctly. (This also deals with
+  // :not().) Such cases will eventually recurse back into CheckOne(),
+  // so should do not get false positives from doing this; the featurelessness
+  // will be checked on a lower level.
+  //
   // [1] https://drafts.csswg.org/css-scoping/#host-element-in-tree
   // [2] https://github.com/w3c/csswg-drafts/issues/9025
+  // [3] https://drafts.csswg.org/selectors-4/#data-model
   if (context.scope && context.scope->OwnerShadowHost() == element &&
-      (!selector.IsHostPseudoClass() &&
+      (!selector.IsHostPseudoClass() && !selector.SelectorListOrParent() &&
        selector.GetPseudoType() != CSSSelector::kPseudoTrue &&
        selector.GetPseudoType() != CSSSelector::kPseudoScope &&
        !context.treat_shadow_host_as_normal_scope &&
@@ -797,7 +826,7 @@ ALWAYS_INLINE bool SelectorChecker::CheckOne(
       return CheckPseudoElement(context, result);
 
     default:
-      NOTREACHED();
+      NOTREACHED_IN_MIGRATION();
       return false;
   }
 }
@@ -923,7 +952,7 @@ inline bool CacheMatchedElementsAndReturnMatchedResult(
           has_anchor_element, has_argument_leftmost_compound_matches,
           cache_scope_context, TraverseToPreviousSibling);
     default:
-      NOTREACHED();
+      NOTREACHED_IN_MIGRATION();
       return false;
   }
 }
@@ -991,7 +1020,7 @@ void SetAffectedByHasFlagsForHasAnchorElement(
           argument_context.GetSiblingsAffectedByHasFlags());
       break;
     default:
-      NOTREACHED();
+      NOTREACHED_IN_MIGRATION();
       break;
   }
 }
@@ -1245,12 +1274,26 @@ EarlyBreakOnHasArgumentChecking CheckEarlyBreakForHasArgument(
   return kNoEarlyBreak;
 }
 
+bool MatchesExternalSVGUseTarget(Element& element) {
+  const auto* svg_element = DynamicTo<SVGElement>(element);
+  return svg_element && svg_element->IsResourceTarget();
+}
+
 }  // namespace
 
 bool SelectorChecker::CheckPseudoHas(const SelectorCheckingContext& context,
                                      MatchResult& result) const {
+  if (context.element->GetDocument().InPseudoHasChecking()) {
+    // :has() within :has() would normally be rejected parse-time, but we can
+    // end up in this situation nevertheless, due to nesting. We just return
+    // a not-matched for now; it is possible that we should fail the entire rule
+    // (consider what happens if it is e.g. within :not()), but we would have to
+    // have some way to propagate that up the stack, and consider interactions
+    // with the forgiveness of :is().
+    return false;
+  }
   CheckPseudoHasCacheScope check_pseudo_has_cache_scope(
-      &context.element->GetDocument());
+      &context.element->GetDocument(), /*within_selector_checking=*/true);
 
   Element* has_anchor_element = context.element;
   Document& document = has_anchor_element->GetDocument();
@@ -1490,11 +1533,17 @@ bool SelectorChecker::CheckPseudoClass(const SelectorCheckingContext& context,
       return IsFirstOfType(element, element.TagQName()) &&
              IsLastOfType(element, element.TagQName());
     }
-    case CSSSelector::kPseudoPlaceholderShown:
+    case CSSSelector::kPseudoPlaceholderShown: {
+      probe::ForcePseudoState(&element, CSSSelector::kPseudoPlaceholderShown,
+                              &force_pseudo_state);
+      if (force_pseudo_state) {
+        return true;
+      }
       if (auto* text_control = ToTextControlOrNull(element)) {
         return text_control->IsPlaceholderVisible();
       }
       break;
+    }
     case CSSSelector::kPseudoNthChild:
       if (mode_ == kResolvingStyle) {
         if (ContainerNode* parent = element.ParentElementOrDocumentFragment()) {
@@ -1557,7 +1606,8 @@ bool SelectorChecker::CheckPseudoClass(const SelectorCheckingContext& context,
       if (force_pseudo_state) {
         return true;
       }
-      return element == element.GetDocument().CssTarget();
+      return element == element.GetDocument().CssTarget() ||
+             MatchesExternalSVGUseTarget(element);
     case CSSSelector::kPseudoIs:
     case CSSSelector::kPseudoWhere:
     case CSSSelector::kPseudoAny:
@@ -1595,7 +1645,7 @@ bool SelectorChecker::CheckPseudoClass(const SelectorCheckingContext& context,
       return element.IsDragged();
     case CSSSelector::kPseudoFocus:
       if (mode_ == kResolvingStyle) {
-        if (UNLIKELY(context.is_inside_has_pseudo_class)) {
+        if (context.is_inside_has_pseudo_class) [[unlikely]] {
           element.SetAncestorsOrSiblingsAffectedByFocusInHas();
         } else {
           if (ImpactsNonSubject(context)) {
@@ -1603,10 +1653,10 @@ bool SelectorChecker::CheckPseudoClass(const SelectorCheckingContext& context,
           }
         }
       }
-      return MatchesFocusPseudoClass(element);
+      return MatchesFocusPseudoClass(element, context.has_scroll_marker_pseudo);
     case CSSSelector::kPseudoFocusVisible:
       if (mode_ == kResolvingStyle) {
-        if (UNLIKELY(context.is_inside_has_pseudo_class)) {
+        if (context.is_inside_has_pseudo_class) [[unlikely]] {
           element.SetAncestorsOrSiblingsAffectedByFocusVisibleInHas();
         } else {
           if (ImpactsNonSubject(context)) {
@@ -1617,7 +1667,7 @@ bool SelectorChecker::CheckPseudoClass(const SelectorCheckingContext& context,
       return MatchesFocusVisiblePseudoClass(element);
     case CSSSelector::kPseudoFocusWithin:
       if (mode_ == kResolvingStyle) {
-        if (UNLIKELY(context.is_inside_has_pseudo_class)) {
+        if (context.is_inside_has_pseudo_class) [[unlikely]] {
           element.SetAncestorsOrSiblingsAffectedByFocusInHas();
         } else if (ImpactsNonSubject(context)) {
           element.SetChildrenOrSiblingsAffectedByFocusWithin();
@@ -1634,7 +1684,7 @@ bool SelectorChecker::CheckPseudoClass(const SelectorCheckingContext& context,
       return element.HasFocusWithin();
     case CSSSelector::kPseudoHover:
       if (mode_ == kResolvingStyle) {
-        if (UNLIKELY(context.is_inside_has_pseudo_class)) {
+        if (context.is_inside_has_pseudo_class) [[unlikely]] {
           element.SetAncestorsOrSiblingsAffectedByHoverInHas();
         } else if (ImpactsNonSubject(context)) {
           element.SetChildrenOrSiblingsAffectedByHover();
@@ -1654,7 +1704,7 @@ bool SelectorChecker::CheckPseudoClass(const SelectorCheckingContext& context,
       return element.IsHovered();
     case CSSSelector::kPseudoActive:
       if (mode_ == kResolvingStyle) {
-        if (UNLIKELY(context.is_inside_has_pseudo_class)) {
+        if (context.is_inside_has_pseudo_class) [[unlikely]] {
           element.SetAncestorsOrSiblingsAffectedByActiveInHas();
         } else if (ImpactsNonSubject(context)) {
           element.SetChildrenOrSiblingsAffectedByActive();
@@ -1672,13 +1722,24 @@ bool SelectorChecker::CheckPseudoClass(const SelectorCheckingContext& context,
         return true;
       }
       return element.IsActive();
-    case CSSSelector::kPseudoEnabled:
+    case CSSSelector::kPseudoEnabled: {
+      probe::ForcePseudoState(&element, CSSSelector::kPseudoEnabled,
+                              &force_pseudo_state);
+      if (force_pseudo_state) {
+        return true;
+      }
       return element.MatchesEnabledPseudoClass();
+    }
     case CSSSelector::kPseudoFullPageMedia:
       return element.GetDocument().IsMediaDocument();
     case CSSSelector::kPseudoDefault:
       return element.MatchesDefaultPseudoClass();
     case CSSSelector::kPseudoDisabled:
+      probe::ForcePseudoState(&element, CSSSelector::kPseudoDisabled,
+                              &force_pseudo_state);
+      if (force_pseudo_state) {
+        return true;
+      }
       if (auto* fieldset = DynamicTo<HTMLFieldSetElement>(element)) {
         // <fieldset> should never be considered disabled, but should still
         // match the :enabled or :disabled pseudo-classes according to whether
@@ -1687,34 +1748,84 @@ bool SelectorChecker::CheckPseudoClass(const SelectorCheckingContext& context,
         return fieldset->IsActuallyDisabled();
       }
       return element.IsDisabledFormControl();
-    case CSSSelector::kPseudoReadOnly:
+    case CSSSelector::kPseudoReadOnly: {
+      probe::ForcePseudoState(&element, CSSSelector::kPseudoReadOnly,
+                              &force_pseudo_state);
+      if (force_pseudo_state) {
+        return true;
+      }
       return element.MatchesReadOnlyPseudoClass();
-    case CSSSelector::kPseudoReadWrite:
+    }
+    case CSSSelector::kPseudoReadWrite: {
+      probe::ForcePseudoState(&element, CSSSelector::kPseudoReadWrite,
+                              &force_pseudo_state);
+      if (force_pseudo_state) {
+        return true;
+      }
       return element.MatchesReadWritePseudoClass();
-    case CSSSelector::kPseudoOptional:
+    }
+    case CSSSelector::kPseudoOptional: {
+      probe::ForcePseudoState(&element, CSSSelector::kPseudoOptional,
+                              &force_pseudo_state);
+      if (force_pseudo_state) {
+        return true;
+      }
       return element.IsOptionalFormControl();
-    case CSSSelector::kPseudoRequired:
+    }
+    case CSSSelector::kPseudoRequired: {
+      probe::ForcePseudoState(&element, CSSSelector::kPseudoRequired,
+                              &force_pseudo_state);
+      if (force_pseudo_state) {
+        return true;
+      }
       return element.IsRequiredFormControl();
-    case CSSSelector::kPseudoUserInvalid:
-      CHECK(RuntimeEnabledFeatures::UserValidUserInvalidEnabled());
+    }
+    case CSSSelector::kPseudoUserInvalid: {
+      probe::ForcePseudoState(&element, CSSSelector::kPseudoUserInvalid,
+                              &force_pseudo_state);
+      if (force_pseudo_state) {
+        return true;
+      }
       if (auto* form_control =
               DynamicTo<HTMLFormControlElementWithState>(element)) {
         return form_control->MatchesUserInvalidPseudo();
       }
       return false;
-    case CSSSelector::kPseudoUserValid:
-      CHECK(RuntimeEnabledFeatures::UserValidUserInvalidEnabled());
+    }
+    case CSSSelector::kPseudoUserValid: {
+      probe::ForcePseudoState(&element, CSSSelector::kPseudoUserValid,
+                              &force_pseudo_state);
+      if (force_pseudo_state) {
+        return true;
+      }
       if (auto* form_control =
               DynamicTo<HTMLFormControlElementWithState>(element)) {
         return form_control->MatchesUserValidPseudo();
       }
       return false;
+    }
     case CSSSelector::kPseudoValid:
+      probe::ForcePseudoState(&element, CSSSelector::kPseudoValid,
+                              &force_pseudo_state);
+      if (force_pseudo_state) {
+        return true;
+      }
       return element.MatchesValidityPseudoClasses() && element.IsValidElement();
-    case CSSSelector::kPseudoInvalid:
+    case CSSSelector::kPseudoInvalid: {
+      probe::ForcePseudoState(&element, CSSSelector::kPseudoInvalid,
+                              &force_pseudo_state);
+      if (force_pseudo_state) {
+        return true;
+      }
       return element.MatchesValidityPseudoClasses() &&
              !element.IsValidElement();
+    }
     case CSSSelector::kPseudoChecked: {
+      probe::ForcePseudoState(&element, CSSSelector::kPseudoChecked,
+                              &force_pseudo_state);
+      if (force_pseudo_state) {
+        return true;
+      }
       if (auto* input_element = DynamicTo<HTMLInputElement>(element)) {
         // Even though WinIE allows checked and indeterminate to
         // co-exist, the CSS selector spec says that you can't be
@@ -1729,11 +1840,21 @@ bool SelectorChecker::CheckPseudoClass(const SelectorCheckingContext& context,
         if (option_element->Selected()) {
           return true;
         }
+      } else if (PseudoElement* scroll_marker =
+                     element.GetPseudoElement(kPseudoIdScrollMarker);
+                 context.pseudo_id == kPseudoIdScrollMarker && scroll_marker) {
+        return To<ScrollMarkerPseudoElement>(scroll_marker)->IsSelected();
       }
       break;
     }
-    case CSSSelector::kPseudoIndeterminate:
+    case CSSSelector::kPseudoIndeterminate: {
+      probe::ForcePseudoState(&element, CSSSelector::kPseudoIndeterminate,
+                              &force_pseudo_state);
+      if (force_pseudo_state) {
+        return true;
+      }
       return element.ShouldAppearIndeterminate();
+    }
     case CSSSelector::kPseudoRoot:
       return element == element.GetDocument().documentElement();
     case CSSSelector::kPseudoLang: {
@@ -1787,7 +1908,7 @@ bool SelectorChecker::CheckPseudoClass(const SelectorCheckingContext& context,
         // When the dialog is transitioning to closed, we have to check the
         // elements which are in the top layer but are pending removal to see if
         // this element used to be open as a dialog.
-        absl::optional<Document::TopLayerReason> top_layer_reason =
+        std::optional<Document::TopLayerReason> top_layer_reason =
             dialog->GetDocument().IsScheduledForTopLayerRemoval(dialog);
         return top_layer_reason &&
                *top_layer_reason == Document::TopLayerReason::kDialog;
@@ -1806,7 +1927,7 @@ bool SelectorChecker::CheckPseudoClass(const SelectorCheckingContext& context,
         // When the popover is transitioning to closed, popoverOpen won't return
         // true and we have to check the elements which are in the top layer but
         // are pending removal to see if this element used to be popoverOpen.
-        absl::optional<Document::TopLayerReason> top_layer_reason =
+        std::optional<Document::TopLayerReason> top_layer_reason =
             html_element->GetDocument().IsScheduledForTopLayerRemoval(
                 html_element);
         return top_layer_reason &&
@@ -1822,11 +1943,23 @@ bool SelectorChecker::CheckPseudoClass(const SelectorCheckingContext& context,
     case CSSSelector::kPseudoOpen:
       if (auto* selectlist = DynamicTo<HTMLSelectListElement>(element)) {
         return selectlist->open();
+      } else if (auto* dialog = DynamicTo<HTMLDialogElement>(element)) {
+        return dialog->FastHasAttribute(html_names::kOpenAttr);
+      } else if (auto* details = DynamicTo<HTMLDetailsElement>(element)) {
+        return details->FastHasAttribute(html_names::kOpenAttr);
+      } else if (auto* select = DynamicTo<HTMLSelectElement>(element)) {
+        return select->PopupIsVisible();
       }
       return false;
     case CSSSelector::kPseudoClosed:
       if (auto* selectlist = DynamicTo<HTMLSelectListElement>(element)) {
         return !selectlist->open();
+      } else if (auto* dialog = DynamicTo<HTMLDialogElement>(element)) {
+        return !dialog->FastHasAttribute(html_names::kOpenAttr);
+      } else if (auto* details = DynamicTo<HTMLDetailsElement>(element)) {
+        return !details->FastHasAttribute(html_names::kOpenAttr);
+      } else if (auto* select = DynamicTo<HTMLSelectElement>(element)) {
+        return select->UsesMenuList() && !select->PopupIsVisible();
       }
       return false;
     case CSSSelector::kPseudoFullscreen:
@@ -1841,7 +1974,8 @@ bool SelectorChecker::CheckPseudoClass(const SelectorCheckingContext& context,
       return media_element && media_element->paused();
     }
     case CSSSelector::kPseudoPermissionGranted: {
-      DCHECK(RuntimeEnabledFeatures::PermissionElementEnabled());
+      CHECK(RuntimeEnabledFeatures::PermissionElementEnabled(
+          element.GetExecutionContext()));
       auto* permission_element = DynamicTo<HTMLPermissionElement>(element);
       return permission_element && permission_element->granted();
     }
@@ -1866,10 +2000,22 @@ bool SelectorChecker::CheckPseudoClass(const SelectorCheckingContext& context,
       // implementation, but could be different for AR headsets.
       return element.GetDocument().IsXrOverlay() &&
              Fullscreen::IsFullscreenElement(element);
-    case CSSSelector::kPseudoInRange:
+    case CSSSelector::kPseudoInRange: {
+      probe::ForcePseudoState(&element, CSSSelector::kPseudoInRange,
+                              &force_pseudo_state);
+      if (force_pseudo_state) {
+        return true;
+      }
       return element.IsInRange();
-    case CSSSelector::kPseudoOutOfRange:
+    }
+    case CSSSelector::kPseudoOutOfRange: {
+      probe::ForcePseudoState(&element, CSSSelector::kPseudoOutOfRange,
+                              &force_pseudo_state);
+      if (force_pseudo_state) {
+        return true;
+      }
       return element.IsOutOfRange();
+    }
     case CSSSelector::kPseudoFutureCue: {
       auto* vtt_element = DynamicTo<VTTElement>(element);
       return vtt_element && !vtt_element->IsPastNode();
@@ -1906,7 +2052,7 @@ bool SelectorChecker::CheckPseudoClass(const SelectorCheckingContext& context,
     case CSSSelector::kPseudoMultiSelectFocus:
       DCHECK(is_ua_rule_);
       return MatchesMultiSelectFocusPseudoClass(element);
-    case CSSSelector::kPseudoHostHasAppearance:
+    case CSSSelector::kPseudoHostHasNonAutoAppearance:
       DCHECK(is_ua_rule_);
       if (ShadowRoot* root = element.ContainingShadowRoot()) {
         if (!root->IsUserAgent()) {
@@ -1921,9 +2067,15 @@ bool SelectorChecker::CheckPseudoClass(const SelectorCheckingContext& context,
         return false;
       }
       return !element.GetDocument().GetPage()->GetFocusController().IsActive();
-    case CSSSelector::kPseudoState: {
+    case CSSSelector::kPseudoStateDeprecatedSyntax: {
+      CHECK(RuntimeEnabledFeatures::CSSCustomStateDeprecatedSyntaxEnabled());
       return element.DidAttachInternals() &&
              element.EnsureElementInternals().HasState(selector.Value());
+    }
+    case CSSSelector::kPseudoState: {
+      CHECK(RuntimeEnabledFeatures::CSSCustomStateNewSyntaxEnabled());
+      return element.DidAttachInternals() &&
+             element.EnsureElementInternals().HasState(selector.Argument());
     }
     case CSSSelector::kPseudoHorizontal:
     case CSSSelector::kPseudoVertical:
@@ -1973,20 +2125,25 @@ bool SelectorChecker::CheckPseudoClass(const SelectorCheckingContext& context,
       DCHECK(context.relative_anchor_element);
       return context.relative_anchor_element == &element;
     case CSSSelector::kPseudoActiveViewTransition: {
-      // :active_view_transition is only valid on the html element.
-      if (!IsA<HTMLElement>(element)) {
+      // :active-view-transition is only valid on the document element.
+      if (!element.IsDocumentElement()) {
         return false;
       }
 
-      if (mode_ == kResolvingStyle) {
-        if (UNLIKELY(context.is_inside_has_pseudo_class)) {
-          element.SetAncestorsOrSiblingsAffectedByActiveViewTransitionInHas();
-        } else if (ImpactsNonSubject(context)) {
-          element.SetChildrenOrSiblingsAffectedByActiveViewTransition();
-        }
+      // The pseudo is only valid if there is a transition.
+      auto* transition =
+          ViewTransitionUtils::GetTransition(element.GetDocument());
+      if (!transition) {
+        return false;
       }
-      if (ImpactsSubject(context)) {
-        result.SetFlag(MatchFlag::kAffectedByActiveViewTransition);
+
+      // Ask the transition to match for active-view-transition.
+      return transition->MatchForActiveViewTransition();
+    }
+    case CSSSelector::kPseudoActiveViewTransitionType: {
+      // :active-view-transition-type is only valid on the document element.
+      if (!element.IsDocumentElement()) {
+        return false;
       }
 
       // The pseudo is only valid if there is a transition.
@@ -1997,7 +2154,7 @@ bool SelectorChecker::CheckPseudoClass(const SelectorCheckingContext& context,
       }
 
       // Ask the transition to match based on the argument list.
-      return transition->MatchForActiveViewTransition(selector.IdentList());
+      return transition->MatchForActiveViewTransitionType(selector.IdentList());
     }
     case CSSSelector::kPseudoUnparsed:
       // Only kept around for parsing; can never match anything
@@ -2005,9 +2162,14 @@ bool SelectorChecker::CheckPseudoClass(const SelectorCheckingContext& context,
       return false;
     case CSSSelector::kPseudoTrue:
       return true;
+    case CSSSelector::kPseudoCurrent:
+      if (!context.has_search_text_pseudo) {
+        return false;
+      }
+      return context.search_text_request_is_current;
     case CSSSelector::kPseudoUnknown:
     default:
-      NOTREACHED();
+      NOTREACHED_IN_MIGRATION();
       break;
   }
   return false;
@@ -2020,6 +2182,12 @@ static bool MatchesUAShadowElement(Element& element, const AtomicString& id) {
 
 bool SelectorChecker::CheckPseudoAutofill(CSSSelector::PseudoType pseudo_type,
                                           Element& element) const {
+  bool force_pseudo_state = false;
+  probe::ForcePseudoState(&element, CSSSelector::kPseudoAutofill,
+                          &force_pseudo_state);
+  if (force_pseudo_state) {
+    return true;
+  }
   HTMLFormControlElement* form_control_element =
       DynamicTo<HTMLFormControlElement>(&element);
   if (auto* button = DynamicTo<HTMLButtonElement>(&element)) {
@@ -2040,9 +2208,9 @@ bool SelectorChecker::CheckPseudoAutofill(CSSSelector::PseudoType pseudo_type,
       return form_control_element->GetAutofillState() ==
              WebAutofillState::kPreviewed;
     case CSSSelector::kPseudoAutofillSelected:
-      return form_control_element->HighlightAutofilled();
+      return form_control_element->IsAutofilled();
     default:
-      NOTREACHED();
+      NOTREACHED_IN_MIGRATION();
   }
   return false;
 }
@@ -2087,6 +2255,19 @@ bool SelectorChecker::CheckPseudoElement(const SelectorCheckingContext& context,
     case CSSSelector::kPseudoFileSelectorButton:
       return MatchesUAShadowElement(
           element, shadow_element_names::kPseudoFileUploadButton);
+    case CSSSelector::kPseudoSelectFallbackButton:
+      return MatchesUAShadowElement(
+          element, shadow_element_names::kSelectFallbackButton);
+    case CSSSelector::kPseudoSelectFallbackButtonText:
+      return MatchesUAShadowElement(
+          element, shadow_element_names::kSelectFallbackButtonText);
+    case CSSSelector::kPseudoPicker:
+      if (selector.Argument() == "select") {
+        return MatchesUAShadowElement(element,
+                                      shadow_element_names::kPickerSelect);
+      } else {
+        return false;
+      }
     case CSSSelector::kPseudoPlaceholder:
       return MatchesUAShadowElement(
           element, shadow_element_names::kPseudoInputPlaceholder);
@@ -2147,9 +2328,36 @@ bool SelectorChecker::CheckPseudoElement(const SelectorCheckingContext& context,
         return false;
       }
       result.dynamic_pseudo = context.pseudo_id;
-      return selector_pseudo_id == kPseudoIdViewTransition ||
-             selector.Argument() == CSSSelector::UniversalSelectorAtom() ||
-             selector.Argument() == pseudo_argument_;
+      if (selector_pseudo_id == kPseudoIdViewTransition) {
+        return true;
+      }
+
+      CHECK(!selector.IdentList().empty());
+      const AtomicString& name_or_wildcard = selector.IdentList()[0];
+
+      // note that the pseudo_ident_list_ is the class list, and
+      // pseudo_argument_ is the name, while in the selector the IdentList() is
+      // both the name and the classes.
+      if (name_or_wildcard != CSSSelector::UniversalSelectorAtom() &&
+          name_or_wildcard != pseudo_argument_) {
+        return false;
+      }
+
+      // https://drafts.csswg.org/css-view-transitions-2/#typedef-pt-class-selector
+      // A named view transition pseudo-element selector which has one or more
+      // <custom-ident> values in its <pt-class-selector> would only match an
+      // element if the class list value in named elements for the
+      // pseudo-element’s view-transition-name contains all of those values.
+
+      // selector.IdentList() is equivalent to
+      // <pt-name-selector><pt-class-selector>, as in [name, class, class, ...]
+      // so we check that all of its items excluding the first one are
+      // contained in the pseudo element's classes (pseudo_ident_list_).
+      return base::ranges::all_of(
+          selector.IdentList().begin() + 1, selector.IdentList().end(),
+          [&](const AtomicString& class_from_selector) {
+            return base::Contains(pseudo_ident_list_, class_from_selector);
+          });
     }
     case CSSSelector::kPseudoScrollbarButton:
     case CSSSelector::kPseudoScrollbarCorner:
@@ -2161,6 +2369,14 @@ bool SelectorChecker::CheckPseudoElement(const SelectorCheckingContext& context,
         return false;
       }
       result.dynamic_pseudo = context.pseudo_id;
+      return true;
+    }
+    case CSSSelector::kPseudoScrollMarker: {
+      // The style for ::column::scroll-marker is stored on the originating
+      // element's style.
+      result.dynamic_pseudo = context.has_column_pseudo
+                                  ? kPseudoIdColumnScrollMarker
+                                  : kPseudoIdScrollMarker;
       return true;
     }
     case CSSSelector::kPseudoTargetText:
@@ -2333,8 +2549,7 @@ bool SelectorChecker::CheckScrollbarPseudoClass(
       return scrollbar_part_ == kBackTrackPart ||
              scrollbar_part_ == kForwardTrackPart;
     case CSSSelector::kPseudoCornerPresent:
-      return scrollbar_->GetScrollableArea() &&
-             scrollbar_->GetScrollableArea()->IsScrollCornerVisible();
+      return scrollbar_->IsScrollCornerVisible();
     default:
       return false;
   }
@@ -2350,12 +2565,19 @@ bool SelectorChecker::MatchesSelectorFragmentAnchorPseudoClass(
              ->IsSelectorFragmentAnchor();
 }
 
-bool SelectorChecker::MatchesFocusPseudoClass(const Element& element) {
+bool SelectorChecker::MatchesFocusPseudoClass(const Element& element,
+                                              bool has_scroll_marker_pseudo) {
   bool force_pseudo_state = false;
   probe::ForcePseudoState(const_cast<Element*>(&element),
                           CSSSelector::kPseudoFocus, &force_pseudo_state);
   if (force_pseudo_state) {
     return true;
+  }
+  if (has_scroll_marker_pseudo) {
+    if (const Element* scroll_marker =
+            element.GetPseudoElement(kPseudoIdScrollMarker)) {
+      return scroll_marker->IsFocused() && IsFrameFocused(*scroll_marker);
+    }
   }
   return element.IsFocused() && IsFrameFocused(element);
 }

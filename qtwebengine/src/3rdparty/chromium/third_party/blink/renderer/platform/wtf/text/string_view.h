@@ -2,6 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#ifdef UNSAFE_BUFFERS_BUILD
+// TODO(crbug.com/351564777): Remove this and convert code to safer constructs.
+#pragma allow_unsafe_buffers
+#endif
+
 #ifndef THIRD_PARTY_BLINK_RENDERER_PLATFORM_WTF_TEXT_STRING_VIEW_H_
 #define THIRD_PARTY_BLINK_RENDERER_PLATFORM_WTF_TEXT_STRING_VIEW_H_
 
@@ -11,6 +16,7 @@
 #include "base/containers/span.h"
 #include "base/dcheck_is_on.h"
 #include "base/numerics/safe_conversions.h"
+#include "third_party/abseil-cpp/absl/base/attributes.h"
 #include "third_party/blink/renderer/platform/wtf/allocator/allocator.h"
 #include "third_party/blink/renderer/platform/wtf/get_ptr.h"
 #include "third_party/blink/renderer/platform/wtf/text/code_point_iterator.h"
@@ -27,8 +33,13 @@ class CodePointIterator;
 class String;
 
 enum UTF8ConversionMode {
+  // Unpaired surrogates are encoded using the standard UTF-8 encoding scheme,
+  // even though surrogate characters should not be present in a valid UTF-8
+  // string.
   kLenientUTF8Conversion,
+  // Conversion terminates at the first unpaired surrogate, if any.
   kStrictUTF8Conversion,
+  // Unpaired surrogates are replaced with U+FFFD (REPLACEMENT CHARACTER).
   kStrictUTF8ConversionReplacingUnpairedSurrogatesWithFFFD
 };
 
@@ -55,7 +66,7 @@ class WTF_EXPORT StringView {
     template <typename CharT>
     CharT* Realloc(int length) {
       size_t size = length * sizeof(CharT);
-      if (UNLIKELY(size > sizeof(stackbuf16_))) {
+      if (size > sizeof(stackbuf16_)) [[unlikely]] {
         heapbuf_.reset(reinterpret_cast<char*>(
             WTF::Partitions::BufferMalloc(size, "StackBackingStore")));
         return reinterpret_cast<CharT*>(heapbuf_.get());
@@ -111,14 +122,22 @@ class WTF_EXPORT StringView {
   StringView(StringImpl&, unsigned offset, unsigned length);
 
   // From a String, implemented in wtf_string.h
-  inline StringView(const String&, unsigned offset, unsigned length);
-  inline StringView(const String&, unsigned offset);
-  inline StringView(const String&);
+  inline StringView(const String& string ABSL_ATTRIBUTE_LIFETIME_BOUND,
+                    unsigned offset,
+                    unsigned length);
+  inline StringView(const String& string ABSL_ATTRIBUTE_LIFETIME_BOUND,
+                    unsigned offset);
+  // NOLINTNEXTLINE(google-explicit-constructor)
+  inline StringView(const String& string ABSL_ATTRIBUTE_LIFETIME_BOUND);
 
   // From an AtomicString, implemented in atomic_string.h
-  inline StringView(const AtomicString&, unsigned offset, unsigned length);
-  inline StringView(const AtomicString&, unsigned offset);
-  inline StringView(const AtomicString&);
+  inline StringView(const AtomicString& string ABSL_ATTRIBUTE_LIFETIME_BOUND,
+                    unsigned offset,
+                    unsigned length);
+  inline StringView(const AtomicString& string ABSL_ATTRIBUTE_LIFETIME_BOUND,
+                    unsigned offset);
+  // NOLINTNEXTLINE(google-explicit-constructor)
+  inline StringView(const AtomicString& string ABSL_ATTRIBUTE_LIFETIME_BOUND);
 
   // From a literal string or LChar buffer:
   StringView(const LChar* chars, unsigned length)
@@ -234,6 +253,14 @@ class WTF_EXPORT StringView {
 
   String ToString() const;
   AtomicString ToAtomicString() const;
+
+  // Returns a version suitable for gtest and base/logging.*.  It prepends and
+  // appends double-quotes, and escapes characters other than ASCII printables.
+  [[nodiscard]] String EncodeForDebugging() const;
+
+  // Find characters. Returns the index of the match, or `kNotFound`.
+  wtf_size_t Find(CharacterMatchFunctionPtr match_function,
+                  wtf_size_t start = 0) const;
 
   template <bool isSpecialCharacter(UChar)>
   bool IsAllSpecialCharacters() const;
@@ -363,6 +390,12 @@ inline bool operator!=(const StringView& a, const StringView& b) {
   return !(a == b);
 }
 
+inline wtf_size_t StringView::Find(CharacterMatchFunctionPtr match_function,
+                                   wtf_size_t start) const {
+  return Is8Bit() ? WTF::Find(Characters8(), length_, match_function, start)
+                  : WTF::Find(Characters16(), length_, match_function, start);
+}
+
 template <bool isSpecialCharacter(UChar), typename CharacterType>
 inline bool IsAllSpecialCharacters(const CharacterType* characters,
                                    size_t length) {
@@ -384,6 +417,8 @@ inline bool StringView::IsAllSpecialCharacters() const {
                   : WTF::IsAllSpecialCharacters<isSpecialCharacter, UChar>(
                         Characters16(), len);
 }
+
+WTF_EXPORT std::ostream& operator<<(std::ostream&, const StringView&);
 
 }  // namespace WTF
 

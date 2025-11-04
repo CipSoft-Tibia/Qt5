@@ -3,7 +3,6 @@
 
 #include "qwaylandshellsurface_p.h"
 #include "qwaylandwindow_p.h"
-#include "qwaylandextendedsurface_p.h"
 #include "qwaylandinputdevice_p.h"
 
 QT_BEGIN_NAMESPACE
@@ -34,6 +33,12 @@ QPlatformWindow *QWaylandShellSurface::platformWindow()
 wl_surface *QWaylandShellSurface::wlSurface()
 {
     return m_window ? m_window->wlSurface() : nullptr;
+}
+
+void QWaylandShellSurface::setWindowGeometry(const QRect &rect)
+{
+    setWindowPosition(rect.topLeft());
+    setWindowSize(rect.size());
 }
 
 void QWaylandShellSurface::resizeFromApplyConfigure(const QSize &sizeWithMargins, const QPoint &offset)

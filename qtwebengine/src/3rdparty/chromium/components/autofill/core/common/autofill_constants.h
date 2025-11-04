@@ -35,7 +35,7 @@ inline constexpr size_t kAutofillManagerMaxFormCacheSize = 100;
 // not relevant to Autofill: (1) the Netflix queue; (2) the Amazon wishlist;
 // (3) router configuration pages; and (4) other configuration pages, e.g. for
 // Google code project settings.
-// Copied to components/autofill/ios/form_util/resources/fill.js.
+// Copied to components/autofill/ios/form_util/resources/fill.ts.
 inline constexpr size_t kMaxExtractableFields = 200;
 
 // The maximum number of form fields we are willing to extract, due to
@@ -54,7 +54,7 @@ inline constexpr unsigned kMaxStringLength = 1024;
 
 // The maximum string length of selected text in contenteditables, textareas,
 // and text-mode inputs.
-// TODO(crbug.com/1501381): Reduce the value.
+// TODO(crbug.com/40941660): Reduce the value.
 inline constexpr size_t kMaxSelectedTextLength = 50 * kMaxStringLength;
 
 // The maximum list size supported by Autofill.
@@ -76,14 +76,6 @@ inline constexpr size_t kMaxTypeMatchingCalls = 5000;
 // upload the form to and request predictions from the Autofill servers.
 inline constexpr size_t kRequiredFieldsForFormsWithOnlyPasswordFields = 2;
 
-// Options bitmask values for AutofillHostMsg_ShowPasswordSuggestions IPC
-enum ShowPasswordSuggestionsOptions {
-  SHOW_ALL = 1 << 0 /* show all credentials, not just ones matching username */,
-  IS_PASSWORD_FIELD = 1 << 1 /* input field is a password field */,
-  ACCEPTS_WEBAUTHN_CREDENTIALS =
-      1 << 2 /* input field is marked to accept webauthn credentials */,
-};
-
 // A refill happens only within `kLimitBeforeRefill` of the original fill.
 inline constexpr base::TimeDelta kLimitBeforeRefill = base::Seconds(1);
 
@@ -98,7 +90,7 @@ inline constexpr base::TimeDelta kMultiStepImportTTL = base::Minutes(5);
 
 // Returns if the entry with the given |use_date| is deletable? (i.e. has not
 // been used for a long time).
-bool IsAutofillEntryWithUseDateDeletable(const base::Time& use_date);
+bool IsAutofillEntryWithUseDateDeletable(base::Time use_date);
 
 // The period after which autocomplete entries should be cleaned-up in days.
 // Equivalent to roughly 14 months.
@@ -115,6 +107,21 @@ inline constexpr base::TimeDelta kAutocompleteRetentionPolicyPeriod =
 inline constexpr size_t kTypeValueFormFillingLimit = 9;
 inline constexpr size_t kCreditCardTypeValueFormFillingLimit = 19;
 inline constexpr size_t kStateTypeValueFormFillingLimit = 1000;
+
+// Limits the number of profiles from the list of matching profiles for
+// suggestions that Autofill will keep after deduplication. Remaining profiles
+// will be dropped.
+inline constexpr size_t kMaxDeduplicatedProfilesForSuggestion = 10;
+
+// Limits the number of profiles used to generate suggestions when triggering
+// Autofill via manual fallback. When using manual fallback, filters such as
+// prefix matching and the last time a profile was used used are not applied.
+inline constexpr size_t kMaxDisplayedAddressSuggestions = 10;
+
+// Limits the number of profiles from the list of stored profiles that Autofill
+// will keep after prefix matching with a field's contents to show as
+// suggestions. Remaining profiles will be dropped.
+inline constexpr size_t kMaxPrefixMatchedProfilesForSuggestion = 50;
 
 }  // namespace autofill
 

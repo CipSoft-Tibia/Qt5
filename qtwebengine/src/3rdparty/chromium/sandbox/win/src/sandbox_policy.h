@@ -9,7 +9,6 @@
 #include <stdint.h>
 
 #include "base/containers/span.h"
-#include "base/memory/scoped_refptr.h"
 #include "sandbox/win/src/sandbox_types.h"
 #include "sandbox/win/src/security_level.h"
 
@@ -33,6 +32,19 @@ enum class FileSemantics {
                    // the file system supports.
   kAllowReadonly,  // Allows open or create with read access only
                    // (includes access to query the attributes of a file).
+};
+
+// Configures sandbox policy to close a given handle or set of handles in the
+// target just before entering lockdown.
+enum class HandleToClose {
+  // Closes any Section ending with the name `\windows_shell_global_counters`.
+  kWindowsShellGlobalCounters,
+  // Closes any File with the full name `\Device\DeviceApi`.
+  kDeviceApi,
+  // Closes any File with the full name `\Device\KsecDD`.
+  kKsecDD,
+  // Closes all handles of type `ALPC Port` and closes the Csrss heap.
+  kDisconnectCsrss,
 };
 
 // Policy configuration that can be shared over multiple targets of the same tag
@@ -206,26 +218,21 @@ class [[clang::lto_visibility_public]] TargetConfig {
   virtual void SetLockdownDefaultDacl() = 0;
 
   // Configure policy to use an AppContainer profile. |package_name| is the
-  // name of the profile to use. Specifying True for |create_profile| ensures
-  // the profile exists, if set to False process creation will fail if the
-  // profile has not already been created.
+  // name of the profile to use.
   [[nodiscard]] virtual ResultCode AddAppContainerProfile(
-      const wchar_t* package_name,
-      bool create_profile) = 0;
+      const wchar_t* package_name) = 0;
 
-  // Get the configured AppContainer.
-  virtual scoped_refptr<AppContainer> GetAppContainer() = 0;
+  // Get the configured AppContainer. The returned object lasts only as long as
+  // the containing TargetConfig.
+  virtual AppContainer* GetAppContainer() = 0;
 
-  // Adds a handle that will be closed in the target process after lockdown.
-  // A nullptr value for handle_name indicates all handles of the specified
-  // type. An empty string for handle_name indicates the handle is unnamed.
-  [[nodiscard]] virtual ResultCode AddKernelObjectToClose(
-      const wchar_t* handle_type,
-      const wchar_t* handle_name) = 0;
+  // Adds a handle type to close in the child. See HandleToClose for supported
+  // types.
+  virtual void AddKernelObjectToClose(HandleToClose handle_info) = 0;
 
   // Disconnect the target from CSRSS when TargetServices::LowerToken() is
-  // called inside the target.
-  [[nodiscard]] virtual ResultCode SetDisconnectCsrss() = 0;
+  // called inside the target if supported by the OS and platform.
+  virtual void SetDisconnectCsrss() = 0;
 
   // Specifies the desktop on which the application is going to run. The
   // requested alternate desktop must have been created via the TargetPolicy

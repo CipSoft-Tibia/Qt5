@@ -317,7 +317,8 @@ RecursiveDescentParser::ParsingError RecursiveDescentParser::skipKnownElement(
 RecursiveDescentParser::ParsingError RecursiveDescentParser::generateInputFiles(
     const QString &path,
     const QString &prefix,
-    const QString &header)
+    const QString &header,
+    bool generateBundleFiles)
 {
     DependencyDataTypeValidator dependencyDataTypeValidator;
     for (auto it = m_mapTypeDictionary.constBegin(); it != m_mapTypeDictionary.constEnd(); ++it) {
@@ -355,6 +356,9 @@ RecursiveDescentParser::ParsingError RecursiveDescentParser::generateInputFiles(
 
         if (mappingFileGenerator.generateMapping() != MappingFileGenerator::MappingError::NoError)
             return UnableToWriteFile;
+
+        if (generateBundleFiles)
+            filewriter.writeBundleFiles();
     } else {
         return MissingDependency;
     }

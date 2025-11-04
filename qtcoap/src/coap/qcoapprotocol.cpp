@@ -1,6 +1,7 @@
 // Copyright (C) 2017 Witekio.
 // Copyright (C) 2018 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
+// Qt-Security score:critical reason:network-protocol
 
 #include "qcoapprotocol_p.h"
 #include "qcoapinternalrequest_p.h"
@@ -16,7 +17,7 @@
 
 QT_BEGIN_NAMESPACE
 
-Q_LOGGING_CATEGORY(lcCoapProtocol, "qt.coap.protocol")
+Q_STATIC_LOGGING_CATEGORY(lcCoapProtocol, "qt.coap.protocol")
 
 /*!
     \internal

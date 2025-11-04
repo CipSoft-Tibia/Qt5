@@ -59,6 +59,8 @@ protected:
 
     bool eventFilter(QObject *object, QEvent *event) override;
 
+    void focusInEvent(QFocusEvent *) override;
+
     QRectF clipRect() const override;
 
     void releaseResources() override;

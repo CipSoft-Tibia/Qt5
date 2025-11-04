@@ -10,7 +10,7 @@
 #include <QMetaEnum>
 #include <QUrl>
 
-Q_LOGGING_CATEGORY(lcCoapClient, "qt.coap.client")
+Q_STATIC_LOGGING_CATEGORY(lcCoapClient, "qt.coap.client")
 
 QmlCoapSecureClient::QmlCoapSecureClient(QObject *parent)
     : QObject(parent)

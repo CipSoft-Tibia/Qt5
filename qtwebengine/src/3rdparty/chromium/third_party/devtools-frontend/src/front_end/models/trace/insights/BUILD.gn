@@ -1,0 +1,61 @@
+# Copyright 2024 The Chromium Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+import("../../../../scripts/build/ninja/devtools_entrypoint.gni")
+import("../../../../scripts/build/ninja/devtools_module.gni")
+import("../../visibility.gni")
+
+devtools_module("insights") {
+  sources = [
+    "Common.ts",
+    "CumulativeLayoutShift.ts",
+    "DocumentLatency.ts",
+    "InsightRunners.ts",
+    "InteractionToNextPaint.ts",
+    "LargestContentfulPaint.ts",
+    "RenderBlocking.ts",
+    "SlowCSSSelector.ts",
+    "ThirdPartyWeb.ts",
+    "Viewport.ts",
+    "types.ts",
+  ]
+
+  deps = [
+    "../../../third_party/third-party-web:bundle",
+    "../extras:bundle",
+    "../handlers:bundle",
+    "../lantern:bundle",
+  ]
+}
+
+devtools_entrypoint("bundle") {
+  entrypoint = "insights.ts"
+  deps = [ ":insights" ]
+  visibility = [
+    ":*",
+    "../*",
+  ]
+
+  visibility += devtools_models_visibility
+}
+
+ts_library("unittests") {
+  testonly = true
+
+  sources = [
+    "CumulativeLayoutShift.test.ts",
+    "DocumentLatency.test.ts",
+    "InteractionToNextPaint.test.ts",
+    "LargestContentfulPaint.test.ts",
+    "RenderBlocking.test.ts",
+    "SlowCSSSelector.test.ts",
+    "ThirdPartyWeb.test.ts",
+    "Viewport.test.ts",
+  ]
+
+  deps = [
+    "../../../models/trace:bundle",
+    "../../../testing",
+  ]
+}

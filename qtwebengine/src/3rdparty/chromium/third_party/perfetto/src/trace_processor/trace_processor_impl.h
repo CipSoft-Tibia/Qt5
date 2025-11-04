@@ -20,33 +20,26 @@
 #include <sqlite3.h>
 
 #include <atomic>
-#include <functional>
-#include <map>
+#include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
-#include "perfetto/ext/base/flat_hash_map.h"
-#include "perfetto/ext/base/string_view.h"
+#include "perfetto/base/status.h"
 #include "perfetto/trace_processor/basic_types.h"
-#include "perfetto/trace_processor/status.h"
+#include "perfetto/trace_processor/trace_blob_view.h"
 #include "perfetto/trace_processor/trace_processor.h"
+#include "src/trace_processor/iterator_impl.h"
+#include "src/trace_processor/metrics/metrics.h"
 #include "src/trace_processor/perfetto_sql/engine/perfetto_sql_engine.h"
 #include "src/trace_processor/perfetto_sql/intrinsics/functions/create_function.h"
 #include "src/trace_processor/perfetto_sql/intrinsics/functions/create_view_function.h"
-#include "src/trace_processor/perfetto_sql/intrinsics/functions/import.h"
-#include "src/trace_processor/sqlite/db_sqlite_table.h"
-#include "src/trace_processor/sqlite/query_cache.h"
-#include "src/trace_processor/sqlite/scoped_db.h"
-#include "src/trace_processor/sqlite/sqlite_engine.h"
 #include "src/trace_processor/trace_processor_storage_impl.h"
-#include "src/trace_processor/util/sql_modules.h"
-
-#include "src/trace_processor/metrics/metrics.h"
 #include "src/trace_processor/util/descriptors.h"
 
-namespace perfetto {
-namespace trace_processor {
+namespace perfetto::trace_processor {
 
 // Coordinates the loading of traces from an arbitrary source and allows
 // execution of SQL queries on the events in these traces.
@@ -66,7 +59,7 @@ class TraceProcessorImpl : public TraceProcessor,
   // TraceProcessorStorage implementation:
   base::Status Parse(TraceBlobView) override;
   void Flush() override;
-  void NotifyEndOfFile() override;
+  base::Status NotifyEndOfFile() override;
 
   // TraceProcessor implementation:
   Iterator ExecuteQuery(const std::string& sql) override;
@@ -109,8 +102,9 @@ class TraceProcessorImpl : public TraceProcessor,
   friend class IteratorImpl;
 
   template <typename Table>
-  void RegisterStaticTable(const Table& table) {
-    engine_->RegisterStaticTable(table, Table::Name());
+  void RegisterStaticTable(Table* table) {
+    engine_->RegisterStaticTable(table, Table::Name(),
+                                 Table::ComputeStaticSchema());
   }
 
   bool IsRootMetricField(const std::string& metric_name);
@@ -124,6 +118,7 @@ class TraceProcessorImpl : public TraceProcessor,
 
   std::vector<metrics::SqlMetricFile> sql_metrics_;
   std::unordered_map<std::string, std::string> proto_field_to_sql_metric_path_;
+  std::unordered_map<std::string, std::string> proto_fn_name_to_path_;
 
   // This is atomic because it is set by the CTRL-C signal handler and we need
   // to prevent single-flow compiler optimizations in ExecuteQuery().
@@ -140,7 +135,6 @@ class TraceProcessorImpl : public TraceProcessor,
   bool notify_eof_called_ = false;
 };
 
-}  // namespace trace_processor
-}  // namespace perfetto
+}  // namespace perfetto::trace_processor
 
 #endif  // SRC_TRACE_PROCESSOR_TRACE_PROCESSOR_IMPL_H_

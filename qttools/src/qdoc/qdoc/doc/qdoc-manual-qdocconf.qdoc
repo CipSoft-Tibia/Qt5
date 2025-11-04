@@ -137,15 +137,18 @@
 
     \section1 Configuration Variables
 
-    \section1 Variable List
+    \section2 Variable List
 
     \list
     \li \l {defines-variable} {defines}
     \li \l {depends-variable} {depends}
+    \li \l {documentationinheaders-variable} {documentationinheaders} (technical preview)
     \li \l {exampledirs-variable} {exampledirs}
     \li \l {examples-variable} {examples}
     \li \l {examplesinstallpath-variable} {examplesinstallpath}
     \li \l {examples.fileextensions-variable} {examples.fileextensions}
+    \li \l {examples.warnaboutmissingimages-variable} {examples.warnaboutmissingimages}
+    \li \l {examples.warnaboutmissingprojectfiles-variable} {examples.warnaboutmissingprojectfiles}
     \li \l {excludedirs-variable} {excludedirs}
     \li \l {excludefiles-variable} {excludefiles}
     \li \l {extraimages-variable} {extraimages}
@@ -171,6 +174,7 @@
     \li \l {outputformats-variable} {outputformats}
     \li \l {outputprefixes-variable} {outputprefixes}
     \li \l {outputsuffixes-variable} {outputsuffixes}
+    \li \l {productname-variable} {productname}
     \li \l {project-variable} {project}
     \li \l {sourcedirs-variable} {sourcedirs}
     \li \l {sources-variable} {sources}
@@ -179,12 +183,13 @@
     \li \l {tabsize-variable} {tabsize}
     \li \l {url-variable} {url}
     \li \l {url.examples-variable} {url.examples}
+    \li \l {usealttextastitle-variable} {usealttextastitle}
     \li \l {version-variable} {version}
     \li \l {versionsym-variable} {versionsym}
     \li \l {warninglimit-variable} {warninglimit}
     \endlist
 
-    \section1 Categories
+    \section2 Categories
 
     \list
     \li \l {Generic Configuration Variables}
@@ -321,7 +326,20 @@
     depends = *
     \endcode
 
-    See also \l indexes, \l project, and \l url.
+    See also \l{indexes-variable}{indexes}, \l{project-variable}{project}, and
+    \l{url-variable}{url}.
+
+    \target documentationinheaders-variable
+    \section1 documentationinheaders (technical preview)
+
+    \note This configuration flag enables a technical preview feature in QDoc.
+
+    Set \c {documentationinheaders = true} to instruct QDoc to parse
+    documentation comments also in header files when generating
+    documentation for C++-based projects.
+
+    \warning In large code bases, this may impact QDoc's processing time.
+    Therefore, you shouldn't set this flag unless you need it.
 
     \target exampledirs-variable
     \section1 exampledirs
@@ -475,6 +493,34 @@
     \endcode
 
     See also \l{headers.fileextensions}.
+
+    \target examples.warnaboutmissingimages-variable
+    \section1 examples.warnaboutmissingimages
+
+    While processing example documentation, QDoc may emit warnings if an example
+    doesn't contain any images. This warning can be disabled by setting the
+    following configuration variable in the .qdocconf file for the project:
+
+    \c {examples.warnaboutmissingimages = false}
+
+    This configuration variable was introduced to QDoc with Qt 6.9.
+
+    See also \l{examples.warnaboutmissingprojectfiles-variable}
+    {examples.warnaboutmissingprojectfiles}.
+
+    \target examples.warnaboutmissingprojectfiles-variable
+    \section1 examples.warnaboutmissingprojectfiles
+
+    While processing example documentation, QDoc may emit warnings if an example
+    doesn't contain a project file. This warning can be disabled by setting the
+    following configuration variable in the .qdocconf file for the project:
+
+    \c {examples.warnaboutmissingprojectfiles = false}
+
+    This configuration variable was introduced to QDoc with Qt 6.9.
+
+    See also \l{examples.warnaboutmissingimages-variable}
+    {examples.warnaboutmissingimages}.
 
     \target excludedirs-variable
     \section1 excludedirs
@@ -1508,6 +1554,9 @@
     table of contents entry for a subproject. Multiple selectors can be listed,
     separated by whitespace.
 
+    \note If a subproject does not define a \c selectors property, all pages
+    in the project are included by default.
+
     \table
     \header \li Selector             \li Description
     \row    \li \c namespace         \li Namespaces
@@ -1529,6 +1578,9 @@
                                          Multiple group names can be listed as
                                          a comma-separated list.
                                          (Introduced in QDoc 5.6).
+    \row    \li \c none              \li Selects nothing; only a link to the
+                                         \c indexTitle is generated.
+                                         (Introduced in QDoc 6.9).
     \endtable
 
     Available subtypes for the \c doc selector:
@@ -1767,6 +1819,24 @@
 
     See also \l depends, \l project and \l url.
 
+    \target productname-variable
+    \section1 productname
+
+    Use the \c productname variable if the name of the product being documented
+    is different from the name of the documentation \qdocvar project. This is
+    particularly useful for larger documentation sets that consist of multiple
+    documentation projects and/or modules, as it allows QDoc to generate the
+    product name instead of project name in certain contexts, such as the
+    \qdoccmd since command.
+
+    For example, Qt defines \e Qt as the \c productname, while each individual
+    module defines its own \c project name. This allows authors to use the
+    shorthand notation for the \qdoccmd since command.
+
+    This configuration variable was introduced to QDoc with Qt 6.9.
+
+    See also \qdoccmd {since}.
+
     \target project-variable
     \section1 project
 
@@ -1866,6 +1936,19 @@
     \c {url.examples} variable was introduced in QDoc version 5.13.
 
     See also \l url, \l examplesinstallpath, and \l {example-command}{\\example}.
+
+
+    \target usealttextastitle-variable
+    \section1 usealttextastitle
+    In some cases, it's desirable to provide a "tooltip" for images when
+    rendered in graphical browsers. QDoc offers a way to do this, where the
+    \e alt text given as an optional string to the \qdoccmd image command is
+    also used as the \e title attribute for the image. Enable this behavior
+    by setting the this variable with \c {usealttextastitle = true} in your
+    QDoc configuration file.
+
+    This configuration variable was introduced to QDoc with Qt 6.9.
+
 
     \target howto
     \section1 How to Support Derived Projects

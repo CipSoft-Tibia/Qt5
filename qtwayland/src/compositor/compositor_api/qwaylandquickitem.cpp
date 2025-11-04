@@ -718,10 +718,13 @@ void QWaylandQuickItem::hoverLeaveEvent(QHoverEvent *event)
     Q_D(QWaylandQuickItem);
     if (d->shouldSendInputEvents()) {
         QWaylandSeat *seat = compositor()->seatFor(event);
-        seat->setMouseFocus(nullptr);
-    } else {
-        event->ignore();
+        if (d->view.data() == seat->mouseFocus()) {
+            seat->setMouseFocus(nullptr);
+            return;
+        }
     }
+
+    event->ignore();
 }
 
 #if QT_CONFIG(wheelevent)

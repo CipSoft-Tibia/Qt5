@@ -4,6 +4,7 @@
 
 import * as Common from '../../../../core/common/common.js';
 import * as Platform from '../../../../core/platform/platform.js';
+import * as VisualLogging from '../../../visual_logging/visual_logging.js';
 import * as UI from '../../legacy.js';
 
 import {ColorSwatch} from './ColorSwatch.js';
@@ -23,8 +24,8 @@ export class SwatchPopoverHelper extends Common.ObjectWrapper.ObjectWrapper<Even
   constructor() {
     super();
     this.popover = new UI.GlassPane.GlassPane();
-    this.popover.setSizeBehavior(UI.GlassPane.SizeBehavior.MeasureContent);
-    this.popover.setMarginBehavior(UI.GlassPane.MarginBehavior.Arrow);
+    this.popover.setSizeBehavior(UI.GlassPane.SizeBehavior.MEASURE_CONTENT);
+    this.popover.setMarginBehavior(UI.GlassPane.MarginBehavior.ARROW);
     this.popover.element.addEventListener('mousedown', e => e.consume(), false);
 
     this.hideProxy = this.hide.bind(this, true);
@@ -60,8 +61,9 @@ export class SwatchPopoverHelper extends Common.ObjectWrapper.ObjectWrapper<Even
       this.hide(true);
     }
 
+    VisualLogging.setMappedParent(view.contentElement, anchorElement);
     this.popover.registerCSSFiles([swatchPopoverStyles]);
-    this.dispatchEventToListeners(Events.WillShowPopover);
+    this.dispatchEventToListeners(Events.WILL_SHOW_POPOVER);
 
     this.isHidden = false;
     this.anchorElement = anchorElement;
@@ -148,9 +150,9 @@ export class SwatchPopoverHelper extends Common.ObjectWrapper.ObjectWrapper<Even
 }
 
 export const enum Events {
-  WillShowPopover = 'WillShowPopover',
+  WILL_SHOW_POPOVER = 'WillShowPopover',
 }
 
 export type EventTypes = {
-  [Events.WillShowPopover]: void,
+  [Events.WILL_SHOW_POPOVER]: void,
 };

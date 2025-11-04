@@ -41,7 +41,7 @@
 
 QT_BEGIN_NAMESPACE
 
-Q_LOGGING_CATEGORY(lcCoercingTypeAssertion, "qt.qml.coercingTypeAssertion");
+Q_STATIC_LOGGING_CATEGORY(lcCoercingTypeAssertion, "qt.qml.coercingTypeAssertion");
 
 namespace QV4 {
 
@@ -1190,33 +1190,33 @@ void Runtime::StoreSuperProperty::call(ExecutionEngine *engine, const Value &pro
 ReturnedValue Runtime::LoadGlobalLookup::call(ExecutionEngine *engine, Function *f, int index)
 {
     Lookup *l = runtimeLookup(f, index);
-    return l->globalGetter(l, engine);
+    return l->globalGetter(engine);
 }
 
 ReturnedValue Runtime::LoadQmlContextPropertyLookup::call(ExecutionEngine *engine, uint index)
 {
     Lookup *l = runtimeLookup(engine->currentStackFrame->v4Function, index);
-    return l->qmlContextPropertyGetter(l, engine, nullptr);
+    return l->contextGetter(engine, nullptr);
 }
 
 ReturnedValue Runtime::GetLookup::call(ExecutionEngine *engine, Function *f, const Value &base, int index)
 {
     Lookup *l = runtimeLookup(f, index);
-    return l->getter(l, engine, base);
+    return l->getter(engine, base);
 }
 
 void Runtime::SetLookupSloppy::call(Function *f, const Value &base, int index, const Value &value)
 {
     ExecutionEngine *engine = f->internalClass->engine;
     QV4::Lookup *l = runtimeLookup(f, index);
-    l->setter(l, engine, const_cast<Value &>(base), value);
+    l->setter(engine, const_cast<Value &>(base), value);
 }
 
 void Runtime::SetLookupStrict::call(Function *f, const Value &base, int index, const Value &value)
 {
     ExecutionEngine *engine = f->internalClass->engine;
     QV4::Lookup *l = runtimeLookup(f, index);
-    if (!l->setter(l, engine, const_cast<Value &>(base), value))
+    if (!l->setter(engine, const_cast<Value &>(base), value))
         engine->throwTypeError();
 }
 
@@ -1445,7 +1445,7 @@ ReturnedValue Runtime::CallGlobalLookup::call(ExecutionEngine *engine, uint inde
 {
     Scope scope(engine);
     Lookup *l = runtimeLookup(engine->currentStackFrame->v4Function, index);
-    Value function = Value::fromReturnedValue(l->globalGetter(l, engine));
+    Value function = Value::fromReturnedValue(l->globalGetter(engine));
     Value thisObject = Value::undefinedValue();
     if (!function.isFunctionObject()) {
         return throwPropertyIsNotAFunctionTypeError(engine, &thisObject,
@@ -1462,7 +1462,7 @@ ReturnedValue Runtime::CallQmlContextPropertyLookup::call(ExecutionEngine *engin
     Scope scope(engine);
     ScopedValue thisObject(scope);
     Lookup *l = runtimeLookup(engine->currentStackFrame->v4Function, index);
-    Value function = Value::fromReturnedValue(l->qmlContextPropertyGetter(l, engine, thisObject));
+    Value function = Value::fromReturnedValue(l->contextGetter(engine, thisObject));
     if (!function.isFunctionObject()) {
         return throwPropertyIsNotAFunctionTypeError(engine, thisObject,
                                                     engine->currentStackFrame->v4Function->compilationUnit->runtimeStrings[l->nameIndex]->toQString());
@@ -1556,7 +1556,7 @@ ReturnedValue Runtime::CallPropertyLookup::call(ExecutionEngine *engine, const V
 {
     Lookup *l = runtimeLookup(engine->currentStackFrame->v4Function, index);
     // ok to have the value on the stack here
-    Value f = Value::fromReturnedValue(l->getter(l, engine, base));
+    Value f = Value::fromReturnedValue(l->getter(engine, base));
 
     if (Q_LIKELY(f.isFunctionObject()))
         return checkedResult(engine, static_cast<FunctionObject &>(f).call(&base, argv, argc));
@@ -1601,13 +1601,13 @@ static CallArgs createSpreadArguments(Scope &scope, Value *argv, int argc)
 
     int argCount = 0;
 
-    Value *v = scope.alloc<Scope::Uninitialized>();
+    Value *v = scope.alloc<Scope::Undefined>();
     Value *arguments = v;
     for (int i = 0; i < argc; ++i) {
         if (!argv[i].isEmpty()) {
             *v = argv[i];
             ++argCount;
-            v = scope.alloc<Scope::Uninitialized>();
+            v = scope.alloc<Scope::Undefined>();
             continue;
         }
         // spread element
@@ -1628,7 +1628,7 @@ static CallArgs createSpreadArguments(Scope &scope, Value *argv, int argc)
                 scope.engine->throwRangeError(QLatin1String("Too many elements in array to use it with the spread operator"));
                         return { nullptr, 0 };
             }
-            v = scope.alloc<Scope::Uninitialized>();
+            v = scope.alloc<Scope::Undefined>();
         }
     }
     return { arguments, argCount };

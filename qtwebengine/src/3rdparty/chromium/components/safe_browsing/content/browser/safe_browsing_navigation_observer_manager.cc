@@ -6,9 +6,9 @@
 
 #include <iterator>
 #include <memory>
+#include <vector>
 
 #include "base/containers/contains.h"
-#include "base/containers/cxx20_erase.h"
 #include "base/feature_list.h"
 #include "base/metrics/field_trial_params.h"
 #include "base/metrics/histogram_functions.h"
@@ -20,6 +20,7 @@
 #include "components/safe_browsing/content/browser/safe_browsing_navigation_observer.h"
 #include "components/safe_browsing/content/browser/safe_browsing_navigation_observer_manager_util.h"
 #include "components/safe_browsing/content/browser/web_ui/safe_browsing_ui.h"
+#include "components/safe_browsing/core/browser/referrer_chain_provider.h"
 #include "components/safe_browsing/core/common/features.h"
 #include "components/safe_browsing/core/common/safe_browsing_prefs.h"
 #include "components/safe_browsing/core/common/utils.h"
@@ -98,27 +99,9 @@ std::string ShortOriginForReporting(const std::string& url) {
   GURL gurl(url);
   if (gurl.SchemeIsLocal()) {
     std::string sha_url = crypto::SHA256HashString(url);
-    return gurl.scheme() + "://" +
-           base::HexEncode(sha_url.data(), sha_url.size());
-  } else {
-    return gurl.DeprecatedGetOriginAsURL().spec();
+    return gurl.scheme() + "://" + base::HexEncode(sha_url);
   }
-}
-
-base::TimeDelta GetNavigationFootprintTTL() {
-  if (base::FeatureList::IsEnabled(kReferrerChainParameters)) {
-    return base::Seconds(kReferrerChainEventMaximumAgeSeconds.Get());
-  }
-
-  return kNavigationFootprintTTL;
-}
-
-int GetNavigationRecordMaxSize() {
-  if (base::FeatureList::IsEnabled(kReferrerChainParameters)) {
-    return kReferrerChainEventMaximumCount.Get();
-  }
-
-  return kNavigationRecordMaxSize;
+  return gurl.DeprecatedGetOriginAsURL().spec();
 }
 
 }  // namespace
@@ -130,10 +113,12 @@ const char ReferrerChainData::kDownloadReferrerChainDataKey[] =
     "referrer_chain_data_key";
 
 ReferrerChainData::ReferrerChainData(
+    ReferrerChainProvider::AttributionResult attribution_result,
     std::unique_ptr<ReferrerChain> referrer_chain,
     size_t referrer_chain_length,
     size_t recent_navigations_to_collect)
-    : referrer_chain_(std::move(referrer_chain)),
+    : attribution_result_(attribution_result),
+      referrer_chain_(std::move(referrer_chain)),
       referrer_chain_length_(referrer_chain_length),
       recent_navigations_to_collect_(recent_navigations_to_collect) {}
 
@@ -151,7 +136,7 @@ NavigationEventList::NavigationEventList(std::size_t size_limit)
 
 NavigationEventList::~NavigationEventList() = default;
 
-absl::optional<size_t> NavigationEventList::FindNavigationEvent(
+std::optional<size_t> NavigationEventList::FindNavigationEvent(
     const base::Time& last_event_timestamp,
     const GURL& target_url,
     const GURL& target_main_frame_url,
@@ -159,10 +144,10 @@ absl::optional<size_t> NavigationEventList::FindNavigationEvent(
     const content::GlobalRenderFrameHostId& outermost_main_frame_id,
     size_t start_index) {
   if (target_url.is_empty() && target_main_frame_url.is_empty())
-    return absl::nullopt;
+    return std::nullopt;
 
   if (navigation_events_.size() == 0)
-    return absl::nullopt;
+    return std::nullopt;
 
   // If target_url is empty, we should back trace navigation based on its
   // main frame URL instead.
@@ -238,7 +223,7 @@ absl::optional<size_t> NavigationEventList::FindNavigationEvent(
       return result_index;
     }
   }
-  return absl::nullopt;
+  return std::nullopt;
 }
 
 NavigationEvent* NavigationEventList::FindPendingNavigationEvent(
@@ -282,7 +267,7 @@ size_t NavigationEventList::FindRetargetingNavigationEvent(
 
 void NavigationEventList::RecordNavigationEvent(
     std::unique_ptr<NavigationEvent> nav_event,
-    absl::optional<CopyPasteEntry> last_copy_paste_entry) {
+    std::optional<CopyPasteEntry> last_copy_paste_entry) {
   // Skip page refresh and in-page navigation.
   if (nav_event->source_url == nav_event->GetDestinationUrl() &&
       nav_event->source_tab_id == nav_event->target_tab_id)
@@ -336,11 +321,11 @@ void NavigationEventList::RemovePendingNavigationEvent(
 
 std::size_t NavigationEventList::CleanUpNavigationEvents() {
   // Remove any stale NavigationEnvent, if it is older than
-  // `GetNavigationFootprintTTL()`.
+  // `kNavigationFootprintTTL`.
   std::size_t removal_count = 0;
   while (!navigation_events_.empty() &&
          IsEventExpired(navigation_events_[0]->last_updated,
-                        GetNavigationFootprintTTL())) {
+                        kNavigationFootprintTTL)) {
     navigation_events_.pop_front();
     removal_count++;
   }
@@ -348,7 +333,7 @@ std::size_t NavigationEventList::CleanUpNavigationEvents() {
   // Clean up expired pending navigation events.
   auto it = pending_navigation_events_.begin();
   while (it != pending_navigation_events_.end()) {
-    if (IsEventExpired(it->second->last_updated, GetNavigationFootprintTTL())) {
+    if (IsEventExpired(it->second->last_updated, kNavigationFootprintTTL)) {
       it = pending_navigation_events_.erase(it);
     } else {
       ++it;
@@ -432,13 +417,13 @@ void SafeBrowsingNavigationObserverManager::SanitizeReferrerChain(
 SafeBrowsingNavigationObserverManager::SafeBrowsingNavigationObserverManager(
     PrefService* pref_service,
     content::ServiceWorkerContext* context)
-    : navigation_event_list_(GetNavigationRecordMaxSize()),
+    : navigation_event_list_(kNavigationRecordMaxSize),
       pref_service_(pref_service),
       notification_context_(context) {
   ui::Clipboard::GetForCurrentThread()->AddObserver(this);
   notification_context_->AddObserver(this);
   // Schedule clean up in 2 minutes.
-  ScheduleNextCleanUpAfterInterval(GetNavigationFootprintTTL());
+  ScheduleNextCleanUpAfterInterval(kNavigationFootprintTTL);
 }
 
 void SafeBrowsingNavigationObserverManager::RecordNavigationEvent(
@@ -529,7 +514,7 @@ void SafeBrowsingNavigationObserverManager::CleanUpStaleNavigationFootprints() {
   CleanUpIpAddresses();
   CleanUpCopyData();
   CleanUpNotificationNavigationEvents();
-  ScheduleNextCleanUpAfterInterval(GetNavigationFootprintTTL());
+  ScheduleNextCleanUpAfterInterval(kNavigationFootprintTTL);
 }
 
 SafeBrowsingNavigationObserverManager::AttributionResult
@@ -563,6 +548,17 @@ SafeBrowsingNavigationObserverManager::IdentifyReferrerChainByEventURL(
                                            kReferrerChainMaxLength);
   RemoveSafeBrowsingAllowlistDomains(out_referrer_chain);
   return result;
+}
+
+SafeBrowsingNavigationObserverManager::AttributionResult
+SafeBrowsingNavigationObserverManager::IdentifyReferrerChainByEventURL(
+    const GURL& event_url,
+    SessionID event_tab_id,
+    int user_gesture_count_limit,
+    ReferrerChain* out_referrer_chain) {
+  return IdentifyReferrerChainByEventURL(
+      event_url, event_tab_id, content::GlobalRenderFrameHostId(),
+      user_gesture_count_limit, out_referrer_chain);
 }
 
 SafeBrowsingNavigationObserverManager::AttributionResult
@@ -760,9 +756,6 @@ void SafeBrowsingNavigationObserverManager::AppendRecentNavigations(
                 .navigation_time_msec();
   auto it = navigation_event_list_.navigation_events().rbegin();
   ReferrerChain navigation_chain;
-  UMA_HISTOGRAM_COUNTS_1000(
-      "SafeBrowsing.NavigationObserver.NavigationEventsRecordedLength",
-      navigation_event_list_.navigation_events().size());
   size_t user_gesture_cnt = 0;
   while (it != navigation_event_list_.navigation_events().rend()) {
     // Skip navigations that happened after |last_navigation_time_msec|.
@@ -809,7 +802,7 @@ void SafeBrowsingNavigationObserverManager::CleanUpNavigationEvents() {
 
 void SafeBrowsingNavigationObserverManager::CleanUpUserGestures() {
   for (auto it = user_gesture_map_.begin(); it != user_gesture_map_.end();) {
-    if (IsEventExpired(it->second, GetNavigationFootprintTTL())) {
+    if (IsEventExpired(it->second, kNavigationFootprintTTL)) {
       it = user_gesture_map_.erase(it);
     } else {
       ++it;
@@ -819,8 +812,8 @@ void SafeBrowsingNavigationObserverManager::CleanUpUserGestures() {
 
 void SafeBrowsingNavigationObserverManager::CleanUpIpAddresses() {
   for (auto it = host_to_ip_map_.begin(); it != host_to_ip_map_.end();) {
-    base::EraseIf(it->second, [](const ResolvedIPAddress& resolved_ip) {
-      return IsEventExpired(resolved_ip.timestamp, GetNavigationFootprintTTL());
+    std::erase_if(it->second, [](const ResolvedIPAddress& resolved_ip) {
+      return IsEventExpired(resolved_ip.timestamp, kNavigationFootprintTTL);
     });
     if (it->second.empty())
       it = host_to_ip_map_.erase(it);
@@ -832,8 +825,8 @@ void SafeBrowsingNavigationObserverManager::CleanUpIpAddresses() {
 void SafeBrowsingNavigationObserverManager::CleanUpCopyData() {
   if (last_copy_paste_entry_.has_value()) {
     if (IsEventExpired(last_copy_paste_entry_.value().recorded_time_,
-                       GetNavigationFootprintTTL())) {
-      last_copy_paste_entry_ = absl::nullopt;
+                       kNavigationFootprintTTL)) {
+      last_copy_paste_entry_ = std::nullopt;
     }
   }
 }
@@ -842,7 +835,7 @@ void SafeBrowsingNavigationObserverManager::
     CleanUpNotificationNavigationEvents() {
   auto it = notification_navigation_events_.begin();
   while (it != notification_navigation_events_.end()) {
-    if (IsEventExpired(it->second->last_updated, GetNavigationFootprintTTL())) {
+    if (IsEventExpired(it->second->last_updated, kNavigationFootprintTTL)) {
       it = notification_navigation_events_.erase(it);
     } else {
       ++it;
@@ -879,7 +872,9 @@ void SafeBrowsingNavigationObserverManager::RecordNotificationNavigationEvent(
     const GURL& script_url,
     const GURL& url) {
   // Push notifications are tied to the https scheme.
-  if (!script_url.SchemeIs(url::kHttpsScheme)) {
+  // We also care about notifications from Chrome extensions.
+  if (!script_url.SchemeIs(url::kHttpsScheme) &&
+      !script_url.SchemeIs("chrome-extension")) {
     return;
   }
   // We only collect notification referrers for ESB users.
@@ -894,8 +889,6 @@ void SafeBrowsingNavigationObserverManager::RecordNotificationNavigationEvent(
           std::move(nav_event);
   UMA_HISTOGRAM_BOOLEAN(
       "SafeBrowsing.NavigationObserver.NotificationNavigationEventAdded", true);
-  base::UmaHistogramBoolean("SafeBrowsing.NavigationObserver.IsScriptUrlValid",
-                            script_url.is_valid());
 }
 
 void SafeBrowsingNavigationObserverManager::MaybeAddToReferrerChain(

@@ -2,6 +2,7 @@
 // Copyright (C) 2022 Intel Corporation.
 // Copyright (C) 2021 Alex Trotsenko.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:execute-external-code
 
 //#define QPROCESS_DEBUG
 #include "qdebug.h"
@@ -180,7 +181,7 @@ struct ChildError
     int code;
     char function[_POSIX_PIPE_BUF - sizeof(code)];
 };
-static_assert(std::is_trivial_v<ChildError>);
+static_assert(std::is_trivially_copy_constructible_v<ChildError>);
 #ifdef PIPE_BUF
 static_assert(PIPE_BUF >= sizeof(ChildError)); // PIPE_BUF may be bigger
 #endif
@@ -785,18 +786,18 @@ static QString startFailureErrorMessage(ChildError &err, [[maybe_unused]] ssize_
     Q_ASSERT(bytesRead == sizeof(err));
 
     qsizetype len = qstrnlen(err.function, sizeof(err.function));
-    QString complement = QString::fromUtf8(err.function, len);
+    const QUtf8StringView complement(err.function, len);
     if (err.code == FakeErrnoForThrow)
         return QProcess::tr("Child process modifier threw an exception: %1")
-                .arg(std::move(complement));
+                .arg(complement);
     if (err.code == 0)
         return QProcess::tr("Child process modifier reported error: %1")
-                .arg(std::move(complement));
+                .arg(complement);
     if (err.code < 0)
         return QProcess::tr("Child process modifier reported error: %1: %2")
-                .arg(std::move(complement), qt_error_string(-err.code));
+                .arg(complement, qt_error_string(-err.code));
     return QProcess::tr("Child process set up failed: %1: %2")
-            .arg(std::move(complement), qt_error_string(err.code));
+            .arg(complement, qt_error_string(err.code));
 }
 
 Q_NORETURN void
@@ -881,6 +882,17 @@ static const char *applyProcessParameters(const QProcess::UnixProcessParameters 
                 errno = savedErrno;
                 return "ioctl";
             }
+        }
+    }
+
+    // Disable core dumps near the end. This isn't expected to fail.
+    if (params.flags.testFlag(QProcess::UnixProcessFlag::DisableCoreDumps)) {
+        if (struct rlimit lim; getrlimit(RLIMIT_CORE, &lim) == 0 && lim.rlim_cur) {
+            // We'll leave rlim_max untouched, so the child can set it back if it
+            // wants to. We don't expect setrlimit() to fail, so we ignore its
+            // return value.
+            lim.rlim_cur = 0;
+            (void) setrlimit(RLIMIT_CORE, &lim);
         }
     }
 

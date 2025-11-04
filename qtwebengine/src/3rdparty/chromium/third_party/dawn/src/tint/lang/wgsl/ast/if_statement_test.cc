@@ -28,7 +28,6 @@
 #include "src/tint/lang/wgsl/ast/if_statement.h"
 
 #include "gmock/gmock.h"
-#include "gtest/gtest-spi.h"
 #include "src/tint/lang/wgsl/ast/discard_statement.h"
 #include "src/tint/lang/wgsl/ast/helper_test.h"
 
@@ -36,6 +35,7 @@ namespace tint::ast {
 namespace {
 
 using IfStatementTest = TestHelper;
+using IfStatementDeathTest = IfStatementTest;
 
 TEST_F(IfStatementTest, Creation) {
     auto* cond = Expr("cond");
@@ -59,8 +59,8 @@ TEST_F(IfStatementTest, IsIf) {
     EXPECT_TRUE(stmt->Is<IfStatement>());
 }
 
-TEST_F(IfStatementTest, Assert_Null_Condition) {
-    EXPECT_FATAL_FAILURE(
+TEST_F(IfStatementDeathTest, Assert_Null_Condition) {
+    EXPECT_DEATH_IF_SUPPORTED(
         {
             ProgramBuilder b;
             b.If(nullptr, b.Block());
@@ -68,8 +68,8 @@ TEST_F(IfStatementTest, Assert_Null_Condition) {
         "internal compiler error");
 }
 
-TEST_F(IfStatementTest, Assert_Null_Body) {
-    EXPECT_FATAL_FAILURE(
+TEST_F(IfStatementDeathTest, Assert_Null_Body) {
+    EXPECT_DEATH_IF_SUPPORTED(
         {
             ProgramBuilder b;
             b.If(b.Expr(true), nullptr);
@@ -77,8 +77,8 @@ TEST_F(IfStatementTest, Assert_Null_Body) {
         "internal compiler error");
 }
 
-TEST_F(IfStatementTest, Assert_InvalidElse) {
-    EXPECT_FATAL_FAILURE(
+TEST_F(IfStatementDeathTest, Assert_InvalidElse) {
+    EXPECT_DEATH_IF_SUPPORTED(
         {
             ProgramBuilder b;
             b.If(b.Expr(true), b.Block(), b.Else(b.CallStmt(b.Call("foo"))));
@@ -86,8 +86,8 @@ TEST_F(IfStatementTest, Assert_InvalidElse) {
         "internal compiler error");
 }
 
-TEST_F(IfStatementTest, Assert_DifferentGenerationID_Cond) {
-    EXPECT_FATAL_FAILURE(
+TEST_F(IfStatementDeathTest, Assert_DifferentGenerationID_Cond) {
+    EXPECT_DEATH_IF_SUPPORTED(
         {
             ProgramBuilder b1;
             ProgramBuilder b2;
@@ -96,8 +96,8 @@ TEST_F(IfStatementTest, Assert_DifferentGenerationID_Cond) {
         "internal compiler error");
 }
 
-TEST_F(IfStatementTest, Assert_DifferentGenerationID_Body) {
-    EXPECT_FATAL_FAILURE(
+TEST_F(IfStatementDeathTest, Assert_DifferentGenerationID_Body) {
+    EXPECT_DEATH_IF_SUPPORTED(
         {
             ProgramBuilder b1;
             ProgramBuilder b2;
@@ -106,8 +106,8 @@ TEST_F(IfStatementTest, Assert_DifferentGenerationID_Body) {
         "internal compiler error");
 }
 
-TEST_F(IfStatementTest, Assert_DifferentGenerationID_ElseStatement) {
-    EXPECT_FATAL_FAILURE(
+TEST_F(IfStatementDeathTest, Assert_DifferentGenerationID_ElseStatement) {
+    EXPECT_DEATH_IF_SUPPORTED(
         {
             ProgramBuilder b1;
             ProgramBuilder b2;

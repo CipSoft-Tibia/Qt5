@@ -77,8 +77,8 @@ class VIEWS_EXPORT Combobox : public View,
   }
 
   // Gets/Sets the selected index.
-  absl::optional<size_t> GetSelectedIndex() const { return selected_index_; }
-  void SetSelectedIndex(absl::optional<size_t> index);
+  std::optional<size_t> GetSelectedIndex() const { return selected_index_; }
+  void SetSelectedIndex(std::optional<size_t> index);
   [[nodiscard]] base::CallbackListSubscription AddSelectedIndexChangedCallback(
       views::PropertyChangedCallback callback);
 
@@ -138,21 +138,21 @@ class VIEWS_EXPORT Combobox : public View,
   bool IsMenuRunning() const;
 
   // Overridden from View:
-  gfx::Size CalculatePreferredSize() const override;
+  gfx::Size CalculatePreferredSize(
+      const SizeBounds& /*available_size*/) const override;
   void OnBoundsChanged(const gfx::Rect& previous_bounds) override;
   bool SkipDefaultKeyEventProcessing(const ui::KeyEvent& e) override;
   bool OnKeyPressed(const ui::KeyEvent& e) override;
   void OnPaint(gfx::Canvas* canvas) override;
   void OnFocus() override;
   void OnBlur() override;
-  void GetAccessibleNodeData(ui::AXNodeData* node_data) override;
   bool HandleAccessibleAction(const ui::AXActionData& action_data) override;
   void OnThemeChanged() override;
 
   // Overridden from PrefixDelegate:
   size_t GetRowCount() override;
-  absl::optional<size_t> GetSelectedRow() override;
-  void SetSelectedRow(absl::optional<size_t> row) override;
+  std::optional<size_t> GetSelectedRow() override;
+  void SetSelectedRow(std::optional<size_t> row) override;
   std::u16string GetTextForRow(size_t row) override;
 
  protected:
@@ -202,6 +202,15 @@ class VIEWS_EXPORT Combobox : public View,
 
   const gfx::FontList& GetForegroundFontList() const;
 
+  // Sets the expanded/collapsed accessible state of the view.
+  void UpdateExpandedCollapsedAccessibleState() const;
+
+  // Updates the kValue attribute and triggers a kValueChanged event if
+  // selected index is changed.
+  void UpdateAccessibleValue() const;
+
+  void UpdateAccessibleDefaultActionVerb();
+
   // Optionally used to tie the lifetime of the model to this combobox. See
   // constructor.
   std::unique_ptr<ui::ComboboxModel> owned_model_;
@@ -222,7 +231,7 @@ class VIEWS_EXPORT Combobox : public View,
   MenuWillShowCallbackList on_menu_will_show_;
 
   // The current selected index; nullopt means no selection.
-  absl::optional<size_t> selected_index_ = absl::nullopt;
+  std::optional<size_t> selected_index_ = std::nullopt;
 
   // True when the selection is visually denoted as invalid.
   bool invalid_ = false;
@@ -234,15 +243,15 @@ class VIEWS_EXPORT Combobox : public View,
   bool should_show_arrow_ = true;
 
   // Overriding ColorId for the combobox border.
-  absl::optional<ui::ColorId> border_color_id_;
+  std::optional<ui::ColorId> border_color_id_;
 
   // Overriding ColorId for the combobox foreground (text and caret icon).
-  absl::optional<ui::ColorId> foreground_color_id_;
+  std::optional<ui::ColorId> foreground_color_id_;
 
   // Attempts to override the color for the combobox foreground icon.
-  absl::optional<ui::ColorId> foreground_icon_color_id_;
+  std::optional<ui::ColorId> foreground_icon_color_id_;
 
-  absl::optional<style::TextStyle> foreground_text_style_;
+  std::optional<style::TextStyle> foreground_text_style_;
 
   // A helper used to select entries by keyboard input.
   std::unique_ptr<PrefixSelector> selector_;
@@ -270,8 +279,8 @@ class VIEWS_EXPORT Combobox : public View,
   // destroyed.
   std::unique_ptr<MenuRunner> menu_runner_;
 
-  // Called to update background color and border when the combobox is
-  // enabled/disabled.
+  // Called to update background color, border and default action verb in
+  // accessibility cache when the combobox is enabled/disabled.
   base::CallbackListSubscription enabled_changed_subscription_;
 
   // When true, the size of contents is defined by the widest label in the menu.
@@ -288,7 +297,7 @@ BEGIN_VIEW_BUILDER(VIEWS_EXPORT, Combobox, View)
 VIEW_BUILDER_PROPERTY(base::RepeatingClosure, Callback)
 VIEW_BUILDER_PROPERTY(std::unique_ptr<ui::ComboboxModel>, OwnedModel)
 VIEW_BUILDER_PROPERTY(ui::ComboboxModel*, Model)
-VIEW_BUILDER_PROPERTY(absl::optional<size_t>, SelectedIndex)
+VIEW_BUILDER_PROPERTY(std::optional<size_t>, SelectedIndex)
 VIEW_BUILDER_PROPERTY(bool, Invalid)
 VIEW_BUILDER_PROPERTY(bool, SizeToLargestLabel)
 VIEW_BUILDER_PROPERTY(std::u16string, TooltipTextAndAccessibleName)

@@ -985,10 +985,12 @@ static inline bool isAutomaticPipelineCacheSaveSkippedForWindow(Qt::WindowFlags 
     return wflags.testFlag(Qt::Dialog) || wflags.testFlag(Qt::Popup);
 }
 
+#if !QT_CONFIG(temporaryfile)
 static inline QString pipelineCacheLockFileName(const QString &name)
 {
     return name + QLatin1String(".lck");
 }
+#endif
 
 void QSGRhiSupport::preparePipelineCache(QRhi *rhi, QQuickWindow *window)
 {
@@ -1007,12 +1009,14 @@ void QSGRhiSupport::preparePipelineCache(QRhi *rhi, QQuickWindow *window)
     if (pipelineCacheLoad.isEmpty())
         return;
 
+#if !QT_CONFIG(temporaryfile)
     QLockFile lock(pipelineCacheLockFileName(pipelineCacheLoad));
     if (!lock.lock()) {
         qWarning("Could not create pipeline cache lock file '%s'",
                  qPrintable(lock.fileName()));
         return;
     }
+#endif
 
     QFile f(pipelineCacheLoad);
     if (!f.open(QIODevice::ReadOnly)) {
@@ -1065,16 +1069,16 @@ void QSGRhiSupport::finalizePipelineCache(QRhi *rhi, const QQuickGraphicsConfigu
         return;
     }
 
+
+#if QT_CONFIG(temporaryfile)
+    QSaveFile f(pipelineCacheSave);
+#else
     QLockFile lock(pipelineCacheLockFileName(pipelineCacheSave));
     if (!lock.lock()) {
         qWarning("Could not create pipeline cache lock file '%s'",
                  qPrintable(lock.fileName()));
         return;
     }
-
-#if QT_CONFIG(temporaryfile)
-    QSaveFile f(pipelineCacheSave);
-#else
     QFile f(pipelineCacheSave);
 #endif
     if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
@@ -1328,7 +1332,7 @@ QImage QSGRhiSupport::grabAndBlockInCurrentFrame(QRhi *rhi, QRhiCommandBuffer *c
     const QImage img(p, result.pixelSize.width(), result.pixelSize.height(), imageFormat);
 
     if (rhi->isYUpInFramebuffer())
-        return img.mirrored();
+        return img.flipped();
 
     return img.copy();
 }
@@ -1387,7 +1391,11 @@ QImage QSGRhiSupport::grabOffscreen(QQuickWindow *window)
 
     // There was no rendercontrol which means a custom render target
     // should not be set either. Set our own, temporarily.
-    window->setRenderTarget(QQuickRenderTarget::fromRhiRenderTarget(rt.data()));
+    auto renderTarget = QQuickRenderTarget::fromRhiRenderTarget(rt.data());
+    // Pass on the scale factor. No need to use effectiveDevicePixelRatio(),
+    // because there is no rendercontrol anyway.
+    renderTarget.setDevicePixelRatio(window->devicePixelRatio());
+    window->setRenderTarget(renderTarget);
 
     QRhiCommandBuffer *cb = nullptr;
     if (rhi->beginOffscreenFrame(&cb) != QRhi::FrameOpSuccess) {

@@ -28,8 +28,8 @@
 #include "./centipede/command.h"
 #include "./centipede/control_flow.h"
 #include "./centipede/pc_info.h"
-#include "./centipede/remote_file.h"
 #include "./centipede/util.h"
+#include "./common/remote_file.h"
 
 namespace centipede {
 
@@ -116,21 +116,23 @@ void BinaryInfo::InitializeFromSanCovBinary(
     ScopedFile sym_tmp1_path(tmp_dir_path, "symbols_tmp1");
     ScopedFile sym_tmp2_path(tmp_dir_path, "symbols_tmp2");
     symbols.GetSymbolsFromBinary(pc_table, dso_table, symbolizer_path,
-                                 sym_tmp1_path.path(), sym_tmp2_path.path());
+                                 tmp_dir_path);
   }
 }
 
 void BinaryInfo::Read(std::string_view dir) {
   std::string symbol_table_contents;
   // TODO(b/295978603): move calculation of paths into WorkDir class.
-  RemoteFileGetContents(std::filesystem::path(dir).append(kSymbolTableFileName),
-                        symbol_table_contents);
+  CHECK_OK(RemoteFileGetContents(
+      (std::filesystem::path(dir) / kSymbolTableFileName).c_str(),
+      symbol_table_contents));
   std::istringstream symbol_table_stream(symbol_table_contents);
   symbols.ReadFromLLVMSymbolizer(symbol_table_stream);
 
   std::string pc_table_contents;
-  RemoteFileGetContents(std::filesystem::path(dir).append(kPCTableFileName),
-                        pc_table_contents);
+  CHECK_OK(RemoteFileGetContents(
+      (std::filesystem::path(dir) / kPCTableFileName).c_str(),
+      pc_table_contents));
   std::istringstream pc_table_stream(pc_table_contents);
   pc_table = ReadPcTable(pc_table_stream);
 }
@@ -139,13 +141,15 @@ void BinaryInfo::Write(std::string_view dir) {
   std::ostringstream symbol_table_stream;
   symbols.WriteToLLVMSymbolizer(symbol_table_stream);
   // TODO(b/295978603): move calculation of paths into WorkDir class.
-  RemoteFileSetContents(std::filesystem::path(dir).append(kSymbolTableFileName),
-                        symbol_table_stream.str());
+  CHECK_OK(RemoteFileSetContents(
+      (std::filesystem::path(dir) / kSymbolTableFileName).c_str(),
+      symbol_table_stream.str()));
 
   std::ostringstream pc_table_stream;
   WritePcTable(pc_table, pc_table_stream);
-  RemoteFileSetContents(std::filesystem::path(dir).append(kPCTableFileName),
-                        pc_table_stream.str());
+  CHECK_OK(RemoteFileSetContents(
+      (std::filesystem::path(dir) / kPCTableFileName).c_str(),
+      pc_table_stream.str()));
 }
 
 }  // namespace centipede

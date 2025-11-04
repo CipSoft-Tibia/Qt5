@@ -197,5 +197,11 @@
         <translation type="unfinished"></translation>
         <extra-quoted> string with spaces </extra-quoted>
     </message>
+    <message>
+        <location filename="main.js" line="96"/>
+        <source></source>
+        <translation type="unfinished"></translation>
+        <extra-quoted>empty string</extra-quoted>
+    </message>
 </context>
 </TS>

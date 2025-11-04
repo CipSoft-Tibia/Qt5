@@ -92,14 +92,6 @@ void QWasmWebViewPrivate::setHttpUserAgent(const QString &userAgent)
     qWarning("setHttpUserAgent() not supported on this platform");
 }
 
-QUrl QWasmWebViewPrivate::url() const
-{
-    if (m_iframe)
-        return QUrl(QString::fromStdString(
-                (*m_iframe)["contentWindow"]["location"]["href"].as<std::string>()));
-    return QUrl::fromUserInput("");
-}
-
 void QWasmWebViewPrivate::setUrl(const QUrl &url)
 {
     m_currentUrl = url;

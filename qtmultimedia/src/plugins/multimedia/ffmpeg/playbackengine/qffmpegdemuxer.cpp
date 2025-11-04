@@ -15,7 +15,7 @@ static constexpr TrackDuration MaxBufferedDurationUs{ 4'000'000 };
 // around 4 sec of hdr video
 static constexpr qint64 MaxBufferedSize = 32 * 1024 * 1024;
 
-static Q_LOGGING_CATEGORY(qLcDemuxer, "qt.multimedia.ffmpeg.demuxer");
+Q_STATIC_LOGGING_CATEGORY(qLcDemuxer, "qt.multimedia.ffmpeg.demuxer");
 
 static TrackPosition packetEndPos(const Packet &packet, const AVStream *stream,
                                   const AVFormatContext *context)
@@ -33,6 +33,11 @@ static bool isPacketWithinStreamDuration(const AVFormatContext *context, const P
     if (streamDuration.get() <= 0
         || context->duration_estimation_method != AVFMT_DURATION_FROM_STREAM)
         return true; // Stream duration shouldn't or doesn't need to be compared to pts
+
+    if (avPacket.pts == AV_NOPTS_VALUE) { // Unexpected situation
+        qWarning() << "QFFmpeg::Demuxer received AVPacket with pts == AV_NOPTS_VALUE";
+        return true;
+    }
 
     if (avStream.start_time != AV_NOPTS_VALUE)
         return AVStreamDuration(avPacket.pts - avStream.start_time) <= streamDuration;
@@ -74,10 +79,16 @@ void Demuxer::doNextStep()
     ensureSeeked();
 
     Packet packet(m_loopOffset, AVPacketUPtr{ av_packet_alloc() }, id());
+    AVPacket &avPacket = *packet.avPacket();
 
-    const int demuxStatus = av_read_frame(m_context, packet.avPacket());
+    const int demuxStatus = av_read_frame(m_context, &avPacket);
 
-    if (demuxStatus == AVERROR_EOF || !isPacketWithinStreamDuration(m_context, packet)) {
+    const int streamIndex = avPacket.stream_index;
+    auto streamIterator = m_streams.find(streamIndex);
+    const bool streamIsRelevant = streamIterator != m_streams.end();
+
+    if (demuxStatus == AVERROR_EOF
+        || (streamIsRelevant && !isPacketWithinStreamDuration(m_context, packet))) {
         ++m_loopOffset.loopIndex;
 
         const auto loops = m_loops.loadAcquire();
@@ -107,7 +118,7 @@ void Demuxer::doNextStep()
     }
 
     if (demuxStatus < 0) {
-        qCWarning(qLcDemuxer) << "Demuxing failed" << demuxStatus << err2str(demuxStatus);
+        qCWarning(qLcDemuxer) << "Demuxing failed" << demuxStatus << AVError(demuxStatus);
 
         if (demuxStatus == AVERROR(EAGAIN) && m_demuxerRetryCount != s_maxDemuxerRetries) {
             // When demuxer reports EAGAIN, we can try to recover by calling av_read_frame again.
@@ -133,14 +144,9 @@ void Demuxer::doNextStep()
 
     m_demuxerRetryCount = 0;
 
-    auto &avPacket = *packet.avPacket();
-
-    const auto streamIndex = avPacket.stream_index;
-    const auto stream = m_context->streams[streamIndex];
-
-    auto it = m_streams.find(streamIndex);
-    if (it != m_streams.end()) {
-        auto &streamData = it->second;
+    if (streamIsRelevant) {
+        auto &streamData = streamIterator->second;
+        const AVStream *stream = m_context->streams[streamIndex];
 
         const TrackPosition endPos = packetEndPos(packet, stream, m_context);
         m_maxPacketsEndPos = qMax(m_maxPacketsEndPos, endPos);
@@ -162,7 +168,7 @@ void Demuxer::doNextStep()
             emit firstPacketFound(id(), m_posInLoopUs + m_loopOffset.loopStartTimeUs.asDuration());
         }
 
-        auto signal = signalByTrackType(it->second.trackType);
+        auto signal = signalByTrackType(streamData.trackType);
         emit (this->*signal)(packet);
     }
 

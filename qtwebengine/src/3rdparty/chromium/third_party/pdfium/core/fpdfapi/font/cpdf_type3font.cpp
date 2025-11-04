@@ -16,8 +16,8 @@
 #include "core/fpdfapi/parser/cpdf_dictionary.h"
 #include "core/fpdfapi/parser/cpdf_stream.h"
 #include "core/fxcrt/autorestorer.h"
+#include "core/fxcrt/check.h"
 #include "core/fxcrt/fx_system.h"
-#include "third_party/base/check.h"
 
 namespace {
 
@@ -48,11 +48,14 @@ CPDF_Type3Font* CPDF_Type3Font::AsType3Font() {
 }
 
 void CPDF_Type3Font::WillBeDestroyed() {
+  m_bWillBeDestroyed = true;
+
   // Last reference to |this| may be through one of its CPDF_Type3Chars.
   RetainPtr<CPDF_Font> protector(this);
   for (const auto& item : m_CacheMap) {
-    if (item.second)
+    if (item.second) {
       item.second->WillBeDestroyed();
+    }
   }
 }
 
@@ -76,7 +79,7 @@ bool CPDF_Type3Font::Load() {
     m_FontBBox = box.ToFxRect();
   }
 
-  static constexpr size_t kCharLimit = std::extent<decltype(m_CharWidthL)>();
+  const size_t kCharLimit = m_CharWidthL.size();
   int StartChar = m_pFontDict->GetIntegerFor("FirstChar");
   if (StartChar >= 0 && static_cast<size_t>(StartChar) < kCharLimit) {
     RetainPtr<const CPDF_Array> pWidthArray =

@@ -13,22 +13,20 @@
 // limitations under the License.
 
 import {globals} from '../frontend/globals';
-import {Plugin} from '../public';
-import {Engine} from '../trace_processor/engine';
-
+import {PerfettoPlugin} from '../public/plugin';
+import {EngineBase} from '../trace_processor/engine';
 import {createEmptyState} from './empty_state';
 import {PluginManager, PluginRegistry} from './plugins';
 
-class FakeEngine extends Engine {
+class FakeEngine extends EngineBase {
   id: string = 'TestEngine';
 
   rpcSendRequestBytes(_data: Uint8Array) {}
 }
 
-function makeMockPlugin(): Plugin {
+function makeMockPlugin(): PerfettoPlugin {
   return {
     onActivate: jest.fn(),
-    onDeactivate: jest.fn(),
     onTraceLoad: jest.fn(),
     onTraceUnload: jest.fn(),
   };
@@ -37,11 +35,8 @@ function makeMockPlugin(): Plugin {
 const engine = new FakeEngine();
 globals.initStore(createEmptyState());
 
-// We use `any` here to avoid checking possibly undefined types in tests.
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-let mockPlugin: any;
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-let manager: any;
+let mockPlugin: PerfettoPlugin;
+let manager: PluginManager;
 
 describe('PluginManger', () => {
   beforeEach(() => {
@@ -54,40 +49,24 @@ describe('PluginManger', () => {
     manager = new PluginManager(registry);
   });
 
-  it('can activate plugin', () => {
-    manager.activatePlugin('foo');
+  it('can activate plugin', async () => {
+    await manager.activatePlugin('foo');
 
     expect(manager.isActive('foo')).toBe(true);
     expect(mockPlugin.onActivate).toHaveBeenCalledTimes(1);
   });
 
-  it('can deactivate plugin', () => {
-    manager.activatePlugin('foo');
-    manager.deactivatePlugin('foo');
-
-    expect(manager.isActive('foo')).toBe(false);
-    expect(mockPlugin.onDeactivate).toHaveBeenCalledTimes(1);
-  });
-
-  it('invokes onTraceLoad when trace is loaded', () => {
-    manager.activatePlugin('foo');
-    manager.onTraceLoad(engine);
+  it('invokes onTraceLoad when trace is loaded', async () => {
+    await manager.activatePlugin('foo');
+    await manager.onTraceLoad(engine);
 
     expect(mockPlugin.onTraceLoad).toHaveBeenCalledTimes(1);
   });
 
-  it('invokes onTraceLoad when plugin activated while trace loaded', () => {
-    manager.onTraceLoad(engine);
-    manager.activatePlugin('foo');
+  it('invokes onTraceLoad when plugin activated while trace loaded', async () => {
+    await manager.onTraceLoad(engine);
+    await manager.activatePlugin('foo');
 
     expect(mockPlugin.onTraceLoad).toHaveBeenCalledTimes(1);
-  });
-
-  it('invokes onTraceUnload when plugin deactivated while trace loaded', () => {
-    manager.activatePlugin('foo');
-    manager.onTraceLoad(engine);
-    manager.deactivatePlugin('foo');
-
-    expect(mockPlugin.onTraceUnload).toHaveBeenCalledTimes(1);
   });
 });

@@ -1,5 +1,6 @@
 // Copyright (C) 2021 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QWEBENGINECERTIFICATEERROR_H
 #define QWEBENGINECERTIFICATEERROR_H
@@ -27,12 +28,15 @@ class Q_WEBENGINECORE_EXPORT QWebEngineCertificateError
     Q_PROPERTY(bool isMainFrame READ isMainFrame CONSTANT FINAL REVISION(6, 8))
 
 public:
+    QWebEngineCertificateError() = default;
     QWebEngineCertificateError(const QWebEngineCertificateError &other);
     QWebEngineCertificateError &operator=(const QWebEngineCertificateError &other);
     ~QWebEngineCertificateError();
 
     // Keep this identical to NET_ERROR in net_error_list.h, or add mapping layer.
     enum Type {
+        Ok = 0, // No actual error. See net_errors.h for that one
+
         SslPinnedKeyNotInCertificateChain = -150,
         CertificateCommonNameInvalid = -200,
         CertificateDateInvalid = -201,

@@ -8,18 +8,33 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "base/memory/weak_ptr.h"
 #include "build/build_config.h"
 #include "build/chromeos_buildflags.h"
 #include "ui/base/ime/text_input_client.h"
 #include "ui/base/ime/text_input_flags.h"
+#include "ui/gfx/geometry/rect.h"
 
 namespace ui {
+
+class InputMethod;
 
 // Fake in-memory implementation of TextInputClient used for testing.
 // This class should act as a 'reference implementation' for TextInputClient.
 class FakeTextInputClient : public TextInputClient {
  public:
+  struct Options {
+    TextInputType type = TEXT_INPUT_TYPE_NONE;
+    TextInputMode mode = TEXT_INPUT_MODE_NONE;
+    TextInputFlags flags = TEXT_INPUT_FLAG_NONE;
+    bool can_insert_image = false;
+    bool should_do_learning = false;
+    gfx::Rect caret_bounds;
+  };
+
   explicit FakeTextInputClient(TextInputType text_input_type);
+  explicit FakeTextInputClient(Options options);
+  explicit FakeTextInputClient(InputMethod* input_method, Options options);
   FakeTextInputClient(const FakeTextInputClient& other) = delete;
   FakeTextInputClient& operator=(const FakeTextInputClient& other) = delete;
   ~FakeTextInputClient() override;
@@ -36,8 +51,18 @@ class FakeTextInputClient : public TextInputClient {
   const std::vector<ui::ImeTextSpan>& ime_text_spans() const {
     return ime_text_spans_;
   }
+  std::optional<GURL> last_inserted_image_url() const {
+    return last_inserted_image_url_;
+  }
+
+  // Sets this instance as the focused text input client.
+  void Focus();
+
+  // Sets `nullptr` as the focused text input client.
+  void Blur();
 
   // TextInputClient:
+  base::WeakPtr<ui::TextInputClient> AsWeakPtr() override;
   void SetCompositionText(const CompositionText& composition) override;
   size_t ConfirmCompositionText(bool keep_selection) override;
   void ClearCompositionText() override;
@@ -45,6 +70,8 @@ class FakeTextInputClient : public TextInputClient {
       const std::u16string& text,
       TextInputClient::InsertTextCursorBehavior cursor_behavior) override;
   void InsertChar(const KeyEvent& event) override;
+  bool CanInsertImage() override;
+  void InsertImage(const GURL& src) override;
   TextInputType GetTextInputType() const override;
   TextInputMode GetTextInputMode() const override;
   base::i18n::TextDirection GetTextDirection() const override;
@@ -86,8 +113,8 @@ class FakeTextInputClient : public TextInputClient {
 #endif
 #if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_CHROMEOS)
   void GetActiveTextInputControlLayoutBounds(
-      absl::optional<gfx::Rect>* control_bounds,
-      absl::optional<gfx::Rect>* selection_bounds) override;
+      std::optional<gfx::Rect>* control_bounds,
+      std::optional<gfx::Rect>* selection_bounds) override;
 #endif
 #if BUILDFLAG(IS_WIN)
   void SetActiveCompositionForAccessibility(
@@ -100,7 +127,9 @@ class FakeTextInputClient : public TextInputClient {
 #endif
 
  private:
+  raw_ptr<ui::InputMethod> input_method_ = nullptr;
   TextInputType text_input_type_;
+  TextInputMode mode_ = TEXT_INPUT_MODE_NONE;
   std::u16string text_;
   gfx::Range selection_;
   gfx::Range composition_range_;
@@ -109,6 +138,12 @@ class FakeTextInputClient : public TextInputClient {
   ukm::SourceId source_id_ = ukm::kInvalidSourceId;
   int flags_ = TEXT_INPUT_FLAG_NONE;
   GURL url_;
+  bool can_insert_image_ = false;
+  std::optional<GURL> last_inserted_image_url_;
+  gfx::Rect caret_bounds_;
+  bool should_do_learning_ = false;
+
+  base::WeakPtrFactory<FakeTextInputClient> weak_ptr_factory_{this};
 };
 
 }  // namespace ui

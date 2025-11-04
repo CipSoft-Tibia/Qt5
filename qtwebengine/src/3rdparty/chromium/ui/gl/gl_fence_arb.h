@@ -21,7 +21,6 @@ class GL_EXPORT GLFenceARB : public GLFence {
   ~GLFenceARB() override;
 
   // GLFence implementation:
-  TransferableFence Transfer() override;
   bool HasCompleted() override;
   void ClientWait() override;
   void ServerWait() override;

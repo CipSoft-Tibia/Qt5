@@ -15,6 +15,9 @@
 QT_BEGIN_NAMESPACE
 
 class QUrlQuery;
+#ifndef QT_NO_SSL
+class QSslConfiguration;
+#endif
 
 class QOAuthHttpServerReplyHandlerPrivate;
 class Q_OAUTH_EXPORT QOAuthHttpServerReplyHandler : public QOAuthOobReplyHandler
@@ -33,12 +36,19 @@ public:
     QString callbackPath() const;
     void setCallbackPath(const QString &path);
 
+    QString callbackHost() const;
+    void setCallbackHost(const QString &path);
+
     QString callbackText() const;
     void setCallbackText(const QString &text);
 
     quint16 port() const;
 
     bool listen(const QHostAddress &address = QHostAddress::Any, quint16 port = 0);
+#ifndef QT_NO_SSL
+    bool listen(const QSslConfiguration &configuration,
+                const QHostAddress &address = QHostAddress::Any, quint16 port = 0);
+#endif
     void close();
     bool isListening() const;
 

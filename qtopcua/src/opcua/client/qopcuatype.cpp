@@ -110,6 +110,8 @@ QT_BEGIN_NAMESPACE
     \value HasAttachedComponent Indicates that the subcomponent is attached to the component
     \value IsExecutingOn The type for a reference to relate a software component to its current execution environment
     \value HasPushedSecurityGroup The type for a reference to a pushed security group
+    \value [since 6.9] AlarmSuppressionGroupMember Connects alarm instances or bool variables to an alarm group
+    \value [since 6.9] HasReferenceDescription Connects a node of any node class to a reference description variable.
 */
 
 /*!
@@ -141,6 +143,10 @@ QT_BEGIN_NAMESPACE
     \value Executable True if the node is currently executable. Only relevant for Method nodes.
     \value UserExecutable Same as Executable, but for the current user.
     \value [since 6.7] DataTypeDefinition The data type definition attribute of a data type node.
+    \value [since 6.9] RolePermissions Permissions for all roles with access to the node.
+    \value [since 6.9] UserRolePermissions Permissions for all roles of the requesting session.
+    \value [since 6.9] AccessRestrictions The AccessRestrictions of the node.
+    \value [since 6.9] AccessLevelEx Contains a bit mask. Each bit corresponds to an access capability (OPC UA 1.05 part 3, 8.58).
 */
 
 /*!
@@ -172,13 +178,17 @@ QT_BEGIN_NAMESPACE
     \value ValueRank The ValueRank attribute is writable.
     \value WriteMask The WriteMask attribute is writable.
     \value ValueForVariableType The Value attribute of a variable type is writable.
+    \value [since 6.9] DataTypeDefinition The DataTypeDefinition attribute is writable.
+    \value [since 6.9] RolePermissions The RolePermissions attribute is writable.
+    \value [since 6.9] AccessRestrictions The AccessRestrictions attribute is writable.
+    \value [since 6.9] AccessLevelEx The AccessLevelEx attribute is writable.
 */
 
 /*!
     \enum QOpcUa::AccessLevelBit
 
     This enum contains all possible bits for the AccessLevel and UserAccessLevel node attributes
-    defined in OPC UA 1.05 part 3, 8.60.
+    defined in OPC UA 1.05 part 3, 8.57.
 
     \value None No read access to the Value attribute is permitted.
     \value CurrentRead The current value can be read.
@@ -188,6 +198,29 @@ QT_BEGIN_NAMESPACE
     \value SemanticChange The property variable generates SemanticChangeEvents.
     \value StatusWrite The status code of the value is writable.
     \value TimestampWrite The SourceTimestamp is writable.
+*/
+
+/*!
+    \enum QOpcUa::AccessLevelExBit
+    \since 6.9
+
+    This enum contains all possible bits for the AccessLevelEx node attribute
+    defined in OPC UA 1.05 part 3, 8.58.
+
+    \value None No read access to the Value attribute is permitted.
+    \value CurrentRead The current value can be read.
+    \value CurrentWrite The current value can be written.
+    \value HistoryRead The history of the value is readable.
+    \value HistoryWrite The history of the value is writable.
+    \value SemanticChange The property variable generates SemanticChangeEvents.
+    \value StatusWrite The status code of the value is writable.
+    \value TimestampWrite The SourceTimestamp is writable.
+    \value NonatomicRead Indicates if the read is non-atomic.
+    \value NonatomicWrite Indicates if the write is non-atomic.
+    \value WriteFullArrayOnly Indicates if writing an index range of an array is supported.
+    \value NoSubDataTypes Indicates if a write also accepts subtypes of the type.
+    \value NonVolatile Indicates if the variable is volatile.
+    \value Constant Indicates if the variable's value is constant.
 */
 
 /*!
@@ -483,7 +516,7 @@ QT_BEGIN_NAMESPACE
     \value GoodEntryReplaced The data or event field was successfully replaced in the historical database.
     \value UncertainDataSubNormal The value is derived from multiple values and has less than the required number of Good values.
     \value GoodNoData No data exists for the requested time range or event filter.
-    \value GoodMoreData The data or event field was successfully replaced in the historical database.
+    \value GoodMoreData More data is available in the time range beyond the number of values requested.
     \value BadAggregateListMismatch The requested number of Aggregates does not match the requested number of NodeIds.
     \value BadAggregateNotSupported The requested Aggregate is not support by the server.
     \value BadAggregateInvalidInputs The aggregate value could not be derived due to invalid data inputs.
@@ -491,8 +524,10 @@ QT_BEGIN_NAMESPACE
     \value GoodDataIgnored The request specifies fields which are not valid for the EventType or cannot be saved by the historian.
     \value BadRequestNotAllowed The request was rejected by the server because it did not meet the criteria set by the server.
     \value BadRequestNotComplete The request has not been processed by the server yet.
+    \value BadTransactionPending The operation is not allowed because a transaction is in progress.
     \value BadTicketRequired The device identity needs a ticket before it can be accepted.
     \value BadTicketInvalid The device identity needs a ticket before it can be accepted.
+    \value BadLocked The requested operation is not allowed, because the Node is locked by a different application.
     \value GoodEdited The value does not come from the real source and has been edited by the server.
     \value GoodPostActionFailed There was an error in execution of these post-actions.
     \value UncertainDominantValueChanged The related EngineeringUnit has been changed but the Variable Value is still provided based on the previous unit.
@@ -796,7 +831,7 @@ QString QOpcUa::namespace0Id(QOpcUa::NodeIds::Namespace0 id)
     identifier which is part of the OPC Foundation's NodeIds.csv file,
     \l {QOpcUa::NodeIds::Namespace0} {Unknown} is returned.
 
-    If Qt OPC UA has been configured with -no-feature-ns0idnames,
+    If Qt OPC UA has been configured with FEATURE_ns0idnames=OFF,
     the check if the numeric identifier is part of the NodeIds.csv
     file is omitted. If the node id is in namespace 0 and has a
     numeric identifier, the identifier is returned regardless if it
@@ -826,7 +861,7 @@ QOpcUa::NodeIds::Namespace0 QOpcUa::namespace0IdFromNodeId(const QString &nodeId
 /*!
     Returns the name of the namespace 0 node id \a id.
 
-    If \a id is unknown or Qt OPC UA has been configured with -no-feature-ns0idnames,
+    If \a id is unknown or Qt OPC UA has been configured with FEATURE_ns0idnames=OFF,
     an empty string is returned.
 */
 QString QOpcUa::namespace0IdName(QOpcUa::NodeIds::Namespace0 id)

@@ -40,7 +40,7 @@ class Q_WAYLANDCLIENT_EXPORT QWaylandShellIntegration
 {
 public:
     QWaylandShellIntegration() {}
-    virtual ~QWaylandShellIntegration() {}
+    virtual ~QWaylandShellIntegration();
 
     virtual bool initialize(QWaylandDisplay *display) = 0;
     virtual QWaylandShellSurface *createShellSurface(QWaylandWindow *window) = 0;
@@ -55,7 +55,9 @@ public:
 };
 
 template <typename T>
-class Q_WAYLANDCLIENT_EXPORT QWaylandShellIntegrationTemplate : public QWaylandShellIntegration, public QWaylandClientExtension
+class Q_WAYLANDCLIENT_EXPORT QWaylandShellIntegrationTemplate
+    : public QWaylandClientExtension,
+      public QWaylandShellIntegration
 {
 public:
     QWaylandShellIntegrationTemplate(const int ver) :
@@ -81,7 +83,10 @@ public:
         // developer and the version specified in the protocol and also the
         // compositor version.
         if (this->version() > T::interface()->version) {
-            qWarning("Supplied protocol version to QWaylandClientExtensionTemplate is higher than the version of the protocol, using protocol version instead.");
+            qWarning("Supplied protocol version to QWaylandClientExtensionTemplate is higher "
+                     "than the version of the protocol, using protocol version instead.\n"
+                     " interface.name: %s",
+                     T::interface()->name);
         }
         int minVersion = qMin(ver, qMin(T::interface()->version, this->version()));
         setVersion(minVersion);

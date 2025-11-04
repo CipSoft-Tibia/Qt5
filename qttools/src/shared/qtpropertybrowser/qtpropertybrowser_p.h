@@ -72,9 +72,8 @@ class QtAbstractPropertyManager : public QObject
 {
     Q_OBJECT
 public:
-
-    explicit QtAbstractPropertyManager(QObject *parent = 0);
-    ~QtAbstractPropertyManager();
+    explicit QtAbstractPropertyManager(QObject *parent = nullptr);
+    ~QtAbstractPropertyManager() override;
 
     QSet<QtProperty *> properties() const;
     void clear() const;
@@ -105,8 +104,7 @@ class QtAbstractEditorFactoryBase : public QObject
 public:
     virtual QWidget *createEditor(QtProperty *property, QWidget *parent) = 0;
 protected:
-    explicit QtAbstractEditorFactoryBase(QObject *parent = 0)
-        : QObject(parent) {}
+    explicit QtAbstractEditorFactoryBase(QObject *parent = nullptr) : QObject(parent) { }
 
     virtual void breakConnection(QtAbstractPropertyManager *manager) = 0;
 protected Q_SLOTS:
@@ -127,7 +125,7 @@ public:
                 return createEditor(manager, property, parent);
             }
         }
-        return 0;
+        return nullptr;
     }
     void addPropertyManager(PropertyManager *manager)
     {
@@ -140,12 +138,13 @@ public:
     }
     void removePropertyManager(PropertyManager *manager)
     {
-        if (!m_managers.contains(manager))
+        auto it = m_managers.constFind(manager);
+        if (it == m_managers.cend())
             return;
         disconnect(manager, &QObject::destroyed,
                 this, &QtAbstractEditorFactory<PropertyManager>::managerDestroyed);
         disconnectPropertyManager(manager);
-        m_managers.remove(manager);
+        m_managers.erase(it);
     }
     QSet<PropertyManager *> propertyManagers() const
     {
@@ -213,9 +212,8 @@ class QtAbstractPropertyBrowser : public QWidget
 {
     Q_OBJECT
 public:
-
-    explicit QtAbstractPropertyBrowser(QWidget *parent = 0);
-    ~QtAbstractPropertyBrowser();
+    explicit QtAbstractPropertyBrowser(QWidget *parent = nullptr);
+    ~QtAbstractPropertyBrowser() override;
 
     QList<QtProperty *> properties() const;
     QList<QtBrowserItem *> items(QtProperty *property) const;

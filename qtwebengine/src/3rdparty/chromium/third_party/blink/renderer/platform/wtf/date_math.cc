@@ -69,6 +69,11 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+#ifdef UNSAFE_BUFFERS_BUILD
+// TODO(crbug.com/351564777): Remove this and convert code to safer constructs.
+#pragma allow_unsafe_buffers
+#endif
+
 #include "third_party/blink/renderer/platform/wtf/date_math.h"
 
 #include <limits.h>
@@ -645,14 +650,14 @@ static double ParseDateFromNullTerminatedCharacters(const char* date_string,
          kMsPerSecond;
 }
 
-absl::optional<base::Time> ParseDateFromNullTerminatedCharacters(
+std::optional<base::Time> ParseDateFromNullTerminatedCharacters(
     const char* date_string) {
   bool have_tz;
   int offset;
   double ms =
       ParseDateFromNullTerminatedCharacters(date_string, have_tz, offset);
   if (std::isnan(ms))
-    return absl::nullopt;
+    return std::nullopt;
 
   // fall back to local timezone
   if (!have_tz) {

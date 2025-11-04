@@ -4,11 +4,10 @@
 
 from __future__ import annotations
 
-from .base import RunGroup
-
-from .browsers import BrowsersRunGroup
-from .cache_temperature import CacheTemperatureRunGroup
-from .repetitions import RepetitionsRunGroup
-from .session import BrowserSessionRunGroup
-from .stories import StoriesRunGroup
-from .thread import RunThreadGroup
+from crossbench.runner.groups.base import RunGroup
+from crossbench.runner.groups.browsers import BrowsersRunGroup
+from crossbench.runner.groups.cache_temperature import CacheTemperatureRunGroup
+from crossbench.runner.groups.repetitions import RepetitionsRunGroup
+from crossbench.runner.groups.session import BrowserSessionRunGroup
+from crossbench.runner.groups.stories import StoriesRunGroup
+from crossbench.runner.groups.thread import RunThreadGroup

@@ -337,6 +337,13 @@ void QmltcVisitor::endVisit(QQmlJS::AST::UiProgram *program)
             checkNamesAndTypes(type);
 }
 
+bool QmltcVisitor::checkCustomParser(const QQmlJSScope::ConstPtr &scope)
+{
+    if (QQmlJSImportVisitor::checkCustomParser(scope))
+        m_seenCustomParsers = true;
+    return false;
+}
+
 QQmlJSScope::ConstPtr fetchType(const QQmlJSMetaPropertyBinding &binding)
 {
     switch (binding.bindingType()) {
@@ -347,7 +354,7 @@ QQmlJSScope::ConstPtr fetchType(const QQmlJSMetaPropertyBinding &binding)
     case QQmlSA::BindingType::ValueSource:
         return binding.valueSourceType();
     case QQmlSA::BindingType::AttachedProperty:
-        return binding.attachingType();
+        return binding.attachedType();
     case QQmlSA::BindingType::GroupProperty:
         return binding.groupType();
     default:
@@ -356,11 +363,11 @@ QQmlJSScope::ConstPtr fetchType(const QQmlJSMetaPropertyBinding &binding)
     Q_UNREACHABLE_RETURN({});
 }
 
-template<typename Predicate>
-void iterateTypes(
+template<typename TypePredicate, typename BindingPredicate>
+void iterateBindings(
         const QQmlJSScope::ConstPtr &root,
         const QHash<QQmlJSScope::ConstPtr, QList<QQmlJSMetaPropertyBinding>> &qmlIrOrderedBindings,
-        Predicate predicate)
+        TypePredicate typePredicate, BindingPredicate bindingPredicate)
 {
     // NB: depth-first-search is used here to mimic various QmlIR passes
     QStack<QQmlJSScope::ConstPtr> types;
@@ -368,10 +375,7 @@ void iterateTypes(
     while (!types.isEmpty()) {
         auto current = types.pop();
 
-        if (predicate(current))
-            continue;
-
-        if (isOrUnderComponent(current)) // ignore implicit/explicit components
+        if (typePredicate(current))
             continue;
 
         Q_ASSERT(qmlIrOrderedBindings.contains(current));
@@ -380,6 +384,10 @@ void iterateTypes(
         // child first and we need left-most first
         for (auto it = bindings.rbegin(); it != bindings.rend(); ++it) {
             const auto &binding = *it;
+
+            if (bindingPredicate(current, binding))
+                continue;
+
             if (auto type = fetchType(binding))
                 types.push(type);
         }
@@ -387,34 +395,16 @@ void iterateTypes(
 }
 
 template<typename Predicate>
-void iterateBindings(
+void iterateTypes(
         const QQmlJSScope::ConstPtr &root,
         const QHash<QQmlJSScope::ConstPtr, QList<QQmlJSMetaPropertyBinding>> &qmlIrOrderedBindings,
         Predicate predicate)
 {
-    // NB: depth-first-search is used here to mimic various QmlIR passes
-    QStack<QQmlJSScope::ConstPtr> types;
-    types.push(root);
-    while (!types.isEmpty()) {
-        auto current = types.pop();
-
-        if (isOrUnderComponent(current)) // ignore implicit/explicit components
-            continue;
-
-        Q_ASSERT(qmlIrOrderedBindings.contains(current));
-        const auto &bindings = qmlIrOrderedBindings[current];
-        // reverse the binding order here, because stack processes right-most
-        // child first and we need left-most first
-        for (auto it = bindings.rbegin(); it != bindings.rend(); ++it) {
-            const auto &binding = *it;
-
-            if (predicate(current, binding))
-                continue;
-
-            if (auto type = fetchType(binding))
-                types.push(type);
-        }
-    }
+    iterateBindings(root, qmlIrOrderedBindings, [predicate](const QQmlJSScope::ConstPtr &current) {
+        return predicate(current) || isOrUnderComponent(current);
+    }, [](const QQmlJSScope::ConstPtr &, const QQmlJSMetaPropertyBinding &) {
+        return false;
+    });
 }
 
 /*! \internal
@@ -462,7 +452,7 @@ void QmltcVisitor::postVisitResolve(
     };
     for (const auto &inlineComponentName : m_inlineComponentNames) {
         iterateBindings(m_inlineComponents[inlineComponentName], qmlIrOrderedBindings,
-                        findDeferred);
+                        isOrUnderComponent, findDeferred);
     }
 
     const auto isOrUnderDeferred = [&deferredTypes](QQmlJSScope::ConstPtr type) {

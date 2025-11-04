@@ -198,8 +198,10 @@ export class SearchResultsTreeElement extends UI.TreeOutline.TreeElement {
         ({lineSegment: lineContent, matchRanges} = lineSegmentForMultipleMatches(lineContent, matchRanges));
       }
 
-      const anchor = Components.Linkifier.Linkifier.linkifyRevealable(searchResult.matchRevealable(i), '');
+      const anchor = Components.Linkifier.Linkifier.linkifyRevealable(
+          searchResult.matchRevealable(i), '', undefined, undefined, undefined, 'search-match');
       anchor.classList.add('search-match-link');
+      anchor.tabIndex = 0;
       const labelSpan = document.createElement('span');
       labelSpan.classList.add('search-match-line-number');
       const resultLabel = searchResult.matchLabel(i);

@@ -7,7 +7,18 @@
 ## Qt::3DQuickAnimation Module:
 #####################################################################
 
-qt_internal_add_module(3DQuickAnimation
+qt_internal_add_qml_module(3DQuickAnimation
+    URI "Qt3D.Animation"
+    VERSION "${PROJECT_VERSION}"
+    PAST_MAJOR_VERSIONS 2
+    CLASS_NAME Qt3DQuick3DAnimationPlugin
+    DEPENDENCIES
+        QtQml/auto
+        Qt3D.Render/auto
+        Qt3D.Core/auto
+    NO_GENERATE_PLUGIN_SOURCE
+    PLUGIN_TARGET quick3danimationplugin
+
     SOURCES
         items/quick3danimationcontroller.cpp items/quick3danimationcontroller_p.h
         items/quick3danimationgroup.cpp items/quick3danimationgroup_p.h
@@ -18,6 +29,7 @@ qt_internal_add_module(3DQuickAnimation
         items/quick3dvertexblendanimation.cpp items/quick3dvertexblendanimation_p.h
         qt3dquickanimation_global.cpp qt3dquickanimation_global.h qt3dquickanimation_global_p.h
         qt3dquickanimationnodefactory.cpp qt3dquickanimationnodefactory_p.h
+        qt3dquickanimationforeign_p.h
     INCLUDE_DIRECTORIES
         items
     LIBRARIES
@@ -55,4 +67,11 @@ qt_internal_extend_target(3DQuickAnimation CONDITION gcov
     LINK_OPTIONS
         "-fprofile-arcs"
         "-ftest-coverage"
+)
+
+qt_internal_extend_target(quick3danimationplugin
+    SOURCES
+        qt3dquickanimationplugin.cpp qt3dquickanimationplugin_p.h
+    LIBRARIES
+        Qt::3DQuickAnimationPrivate
 )

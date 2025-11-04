@@ -11,15 +11,17 @@
 #ifndef COMMON_VIDEO_H265_H265_PPS_PARSER_H_
 #define COMMON_VIDEO_H265_H265_PPS_PARSER_H_
 
-#include "absl/types/optional.h"
+#include <optional>
+
 #include "api/array_view.h"
 #include "common_video/h265/h265_sps_parser.h"
 #include "rtc_base/bitstream_reader.h"
+#include "rtc_base/system/rtc_export.h"
 
 namespace webrtc {
 
 // A class for parsing out picture parameter set (PPS) data from a H265 NALU.
-class H265PpsParser {
+class RTC_EXPORT H265PpsParser {
  public:
   // The parsed state of the PPS. Only some select values are stored.
   // Add more as they are actually needed.
@@ -42,19 +44,31 @@ class H265PpsParser {
   };
 
   // Unpack RBSP and parse PPS state from the supplied buffer.
-  static absl::optional<PpsState> ParsePps(const uint8_t* data,
-                                           size_t length,
-                                           const H265SpsParser::SpsState* sps);
+  static std::optional<PpsState> ParsePps(rtc::ArrayView<const uint8_t> data,
+                                          const H265SpsParser::SpsState* sps);
+  // TODO: bugs.webrtc.org/42225170 - Deprecate.
+  static inline std::optional<PpsState> ParsePps(
+      const uint8_t* data,
+      size_t length,
+      const H265SpsParser::SpsState* sps) {
+    return ParsePps(rtc::MakeArrayView(data, length), sps);
+  }
 
-  static bool ParsePpsIds(const uint8_t* data,
-                          size_t length,
+  static bool ParsePpsIds(rtc::ArrayView<const uint8_t> data,
                           uint32_t* pps_id,
                           uint32_t* sps_id);
+  // TODO: bugs.webrtc.org/42225170 - Deprecate.
+  static inline bool ParsePpsIds(const uint8_t* data,
+                                 size_t length,
+                                 uint32_t* pps_id,
+                                 uint32_t* sps_id) {
+    return ParsePpsIds(rtc::MakeArrayView(data, length), pps_id, sps_id);
+  }
 
  protected:
   // Parse the PPS state, for a bit buffer where RBSP decoding has already been
   // performed.
-  static absl::optional<PpsState> ParseInternal(
+  static std::optional<PpsState> ParseInternal(
       rtc::ArrayView<const uint8_t> buffer,
       const H265SpsParser::SpsState* sps);
   static bool ParsePpsIdsInternal(BitstreamReader& reader,

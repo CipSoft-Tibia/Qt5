@@ -7,7 +7,7 @@
 set(run_dbus_tests OFF)
 if (QT_FEATURE_dbus)
     set(run_dbus_tests ON)
-    if(NOT CMAKE_CROSSCOMPILING AND TARGET Qt::DBus)
+    if((NOT CMAKE_CROSSCOMPILING OR WIN32) AND TARGET Qt::DBus)
         execute_process(COMMAND dbus-send --session --type=signal / local.AutotestCheck.Hello
             TIMEOUT 5
             RESULT_VARIABLE dbus_session_test
@@ -68,9 +68,16 @@ if(QT_BUILD_WASM_BATCHED_TESTS)
     if(NOT WASM) # QTBUG-121822
     add_subdirectory(corelib/io/qsettings)
     endif()
+    add_subdirectory(corelib/io/qstorageinfo)
     add_subdirectory(corelib/io/qstandardpaths)
     add_subdirectory(corelib/io/qfileselector)
     add_subdirectory(corelib/io/qfile)
+    add_subdirectory(corelib/io/qdir)
+    if(TARGET Qt::Concurrent)
+        if(NOT INTEGRITY)
+        add_subdirectory(corelib/io/qdebug)
+        endif()
+    endif()
     add_subdirectory(corelib/serialization)
     add_subdirectory(corelib/text)
     add_subdirectory(corelib/thread)

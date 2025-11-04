@@ -1,5 +1,5 @@
 [versions]
-agp = "8.6.0"
+agp = "8.8.0"
 core = "1.13.1"
 appcompat = "1.6.1"
 material = "1.11.0"
@@ -15,4 +15,3 @@ constraintlayout = { group = "androidx.constraintlayout", name = "constraintlayo
 androidApplication = { id = "com.android.application", version.ref = "agp" }
 
 [bundles]
-

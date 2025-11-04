@@ -6,6 +6,7 @@
 #include <QtCore/qloggingcategory.h>
 #include <QtGui/qwindow.h>
 #include <QtQml/qqmlcontext.h>
+#include <QtQml/qqmlcomponent.h>
 #include <QtQml/qqmlinfo.h>
 #include <QtQuick/qquickwindow.h>
 #include <QtQuickTemplates2/private/qquickdialog_p.h>
@@ -16,7 +17,7 @@
 
 QT_BEGIN_NAMESPACE
 
-Q_LOGGING_CATEGORY(lcQuickPlatformFolderDialog, "qt.quick.dialogs.quickplatformfolderdialog")
+Q_STATIC_LOGGING_CATEGORY(lcQuickPlatformFolderDialog, "qt.quick.dialogs.quickplatformfolderdialog")
 
 /*!
     \class QQuickPlatformFolderDialog

@@ -600,6 +600,13 @@ void ScatterDataModifier::changeFontSize(int fontSize)
     m_chart->activeTheme()->setLabelFont(font);
 }
 
+void ScatterDataModifier::changeLabelSize(int labelSize)
+{
+    m_chart->axisX()->setLabelSize(float(labelSize) * 0.1);
+    m_chart->axisY()->setLabelSize(float(labelSize) * 0.1);
+    m_chart->axisZ()->setLabelSize(float(labelSize) * 0.1);
+}
+
 void ScatterDataModifier::changePointSize(int pointSize)
 {
     m_targetSeries->setItemSize(0.01f *  float(pointSize));
@@ -980,6 +987,13 @@ void ScatterDataModifier::toggleAxisTitleFixed(int enabled)
     m_chart->axisX()->setTitleFixed(enabled);
     m_chart->axisY()->setTitleFixed(enabled);
     m_chart->axisZ()->setTitleFixed(enabled);
+}
+
+void ScatterDataModifier::toggleLabelAdjustment(int enabled)
+{
+    m_chart->axisX()->setScaleLabelsByCount(enabled);
+    m_chart->axisY()->setScaleLabelsByCount(enabled);
+    m_chart->axisZ()->setScaleLabelsByCount(enabled);
 }
 
 void ScatterDataModifier::renderToImage()

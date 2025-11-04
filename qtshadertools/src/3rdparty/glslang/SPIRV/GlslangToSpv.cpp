@@ -175,7 +175,7 @@ protected:
     spv::LinkageType convertGlslangLinkageToSpv(glslang::TLinkType glslangLinkType);
     void decorateStructType(const glslang::TType&, const glslang::TTypeList* glslangStruct, glslang::TLayoutPacking,
                             const glslang::TQualifier&, spv::Id, const std::vector<spv::Id>& spvMembers);
-    spv::Id makeArraySizeId(const glslang::TArraySizes&, int dim, bool allowZero = false);
+    spv::Id makeArraySizeId(const glslang::TArraySizes&, int dim, bool allowZero = false, bool boolType = false);
     spv::Id accessChainLoad(const glslang::TType& type);
     void    accessChainStore(const glslang::TType& type, spv::Id rvalue);
     void multiTypeStore(const glslang::TType&, spv::Id rValue);
@@ -211,8 +211,9 @@ protected:
     spv::Id createUnaryMatrixOperation(spv::Op op, OpDecorations&, spv::Id typeId, spv::Id operand,
                                        glslang::TBasicType typeProxy);
     spv::Id createConversion(glslang::TOperator op, OpDecorations&, spv::Id destTypeId, spv::Id operand,
-                             glslang::TBasicType typeProxy);
-    spv::Id createIntWidthConversion(glslang::TOperator op, spv::Id operand, int vectorSize, spv::Id destType);
+                             glslang::TBasicType resultBasicType, glslang::TBasicType operandBasicType);
+    spv::Id createIntWidthConversion(spv::Id operand, int vectorSize, spv::Id destType,
+                                     glslang::TBasicType resultBasicType, glslang::TBasicType operandBasicType);
     spv::Id makeSmearedConstant(spv::Id constant, int vectorSize);
     spv::Id createAtomicOperation(glslang::TOperator op, spv::Decoration precision, spv::Id typeId,
         std::vector<spv::Id>& operands, glslang::TBasicType typeProxy,
@@ -991,18 +992,6 @@ spv::BuiltIn TGlslangToSpvTraverser::TranslateBuiltInDecoration(glslang::TBuiltI
         return spv::BuiltInHitTriangleVertexPositionsKHR;
     case glslang::EbvInstanceCustomIndex:
         return spv::BuiltInInstanceCustomIndexKHR;
-    case glslang::EbvHitT:
-        {
-            // this is a GLSL alias of RayTmax
-            // in SPV_NV_ray_tracing it has a dedicated builtin
-            // but in SPV_KHR_ray_tracing it gets mapped to RayTmax
-            auto& extensions = glslangIntermediate->getRequestedExtensions();
-            if (extensions.find("GL_NV_ray_tracing") != extensions.end()) {
-                return spv::BuiltInHitTNV;
-            } else {
-                return spv::BuiltInRayTmaxKHR;
-            }
-        }
     case glslang::EbvHitKind:
         return spv::BuiltInHitKindKHR;
     case glslang::EbvObjectToWorld:
@@ -1572,7 +1561,7 @@ TGlslangToSpvTraverser::TGlslangToSpvTraverser(unsigned int spvVersion,
         else {
             builder.setEmitSpirvDebugInfo();
         }
-        builder.setDebugSourceFile(glslangIntermediate->getSourceFile());
+        builder.setDebugMainSourceFile(glslangIntermediate->getSourceFile());
 
         // Set the source shader's text. If for SPV version 1.0, include
         // a preamble in comments stating the OpModuleProcessed instructions.
@@ -1596,6 +1585,8 @@ TGlslangToSpvTraverser::TGlslangToSpvTraverser(unsigned int spvVersion,
         for (auto iItr = include_txt.begin(); iItr != include_txt.end(); ++iItr)
             builder.addInclude(iItr->first, iItr->second);
     }
+
+    builder.setUseReplicatedComposites(glslangIntermediate->usingReplicatedComposites());
 
     stdBuiltins = builder.import("GLSL.std.450");
 
@@ -2050,6 +2041,10 @@ void TGlslangToSpvTraverser::visitSymbol(glslang::TIntermSymbol* symbol)
     // This is helpful to yield correct lines for control flow instructions
     if (!linkageOnly) {
         builder.setDebugSourceLocation(symbol->getLoc().line, symbol->getLoc().getFilename());
+    }
+
+    if (symbol->getBasicType() == glslang::EbtFunction) {
+        return;
     }
 
     SpecConstantOpModeGuard spec_constant_op_mode_setter(&builder);
@@ -2694,9 +2689,18 @@ bool TGlslangToSpvTraverser::visitUnary(glslang::TVisit /* visit */, glslang::TI
                                   TranslateNonUniformDecoration(node->getType().getQualifier()) };
 
     // it could be a conversion
-    if (! result)
+    if (! result) {
         result = createConversion(node->getOp(), decorations, resultType(), operand,
-            node->getOperand()->getBasicType());
+            node->getType().getBasicType(), node->getOperand()->getBasicType());
+        if (result) {
+            if (node->getType().isCoopMatKHR() && node->getOperand()->getAsTyped()->getType().isCoopMatKHR() &&
+                !node->getAsTyped()->getType().sameCoopMatUse(node->getOperand()->getAsTyped()->getType())) {
+                // Conversions that change use need CapabilityCooperativeMatrixConversionsNV
+                builder.addCapability(spv::CapabilityCooperativeMatrixConversionsNV);
+                builder.addExtension(spv::E_SPV_NV_cooperative_matrix2);
+            }
+        }
+    }
 
     // if not, then possibly an operation
     if (! result)
@@ -2818,6 +2822,18 @@ bool TGlslangToSpvTraverser::visitUnary(glslang::TVisit /* visit */, glslang::TI
         builder.createNoResultOp(spv::OpHitObjectRecordEmptyNV, operand);
         return false;
 
+    case glslang::EOpCreateTensorLayoutNV:
+        result = builder.createOp(spv::OpCreateTensorLayoutNV, resultType(), std::vector<spv::Id>{});
+        builder.clearAccessChain();
+        builder.setAccessChainRValue(result);
+        return false;
+
+    case glslang::EOpCreateTensorViewNV:
+        result = builder.createOp(spv::OpCreateTensorViewNV, resultType(), std::vector<spv::Id>{});
+        builder.clearAccessChain();
+        builder.setAccessChainRValue(result);
+        return false;
+
     default:
         logger->missingFunctionality("unknown glslang unary");
         return true;  // pick up operand as placeholder result
@@ -2870,9 +2886,16 @@ bool TGlslangToSpvTraverser::visitAggregate(glslang::TVisit visit, glslang::TInt
                                                             // SPIR-V, for an out parameter
     std::vector<spv::Id> temporaryLvalues;                  // temporaries to pass, as proxies for complexLValues
 
-    auto resultType = [&invertedType, &node, this](){ return invertedType != spv::NoType ?
-        invertedType :
-        convertGlslangToSpvType(node->getType()); };
+    auto resultType = [&invertedType, &node, this](){
+        if (invertedType != spv::NoType) {
+            return invertedType;
+        } else {
+            auto ret = convertGlslangToSpvType(node->getType());
+            // convertGlslangToSpvType may clobber the debug location, reset it
+            builder.setDebugSourceLocation(node->getLoc().line, node->getLoc().getFilename());
+            return ret;
+        }
+    };
 
     // try texturing
     result = createImageTextureFunctionCall(node);
@@ -2929,8 +2952,10 @@ bool TGlslangToSpvTraverser::visitAggregate(glslang::TVisit visit, glslang::TInt
 
                 return false;
             } else {
-                if (node->getOp() == glslang::EOpScope)
-                    builder.enterLexicalBlock(0);
+                if (node->getOp() == glslang::EOpScope) {
+                    auto loc = node->getLoc();
+                    builder.enterLexicalBlock(loc.line, loc.column);
+                }
             }
         } else {
             if (sequenceDepth > 1 && node->getOp() == glslang::EOpScope)
@@ -2979,6 +3004,12 @@ bool TGlslangToSpvTraverser::visitAggregate(glslang::TVisit visit, glslang::TInt
                 currentFunction->setDebugLineInfo(sourceFileId, loc.line, loc.column);
             }
         } else {
+            if (options.generateDebugInfo) {
+                if (glslangIntermediate->getSource() == glslang::EShSourceGlsl && node->getSequence().size() > 1) {
+                    auto endLoc = node->getSequence()[1]->getAsAggregate()->getEndLoc();
+                    builder.setDebugSourceLocation(endLoc.line, endLoc.getFilename());
+                }
+            }
             if (inEntryPoint)
                 entryPointTerminated = true;
             builder.leaveFunction();
@@ -3128,6 +3159,11 @@ bool TGlslangToSpvTraverser::visitAggregate(glslang::TVisit visit, glslang::TInt
                 constructed = arguments[0];
             } else
                 constructed = builder.createOp(spv::OpSampledImage, resultType(), arguments);
+        } else if (node->getOp() == glslang::EOpConstructCooperativeMatrixKHR &&
+                   node->getType().isCoopMatKHR() && node->getSequence()[0]->getAsTyped()->getType().isCoopMatKHR()) {
+            builder.addCapability(spv::CapabilityCooperativeMatrixConversionsNV);
+            builder.addExtension(spv::E_SPV_NV_cooperative_matrix2);
+            constructed = builder.createCooperativeMatrixConversion(resultType(), arguments[0]);
         } else if (node->getOp() == glslang::EOpConstructStruct ||
                  node->getOp() == glslang::EOpConstructCooperativeMatrixNV ||
                  node->getOp() == glslang::EOpConstructCooperativeMatrixKHR ||
@@ -3312,6 +3348,11 @@ bool TGlslangToSpvTraverser::visitAggregate(glslang::TVisit visit, glslang::TInt
     case glslang::EOpCooperativeMatrixStore:
     case glslang::EOpCooperativeMatrixLoadNV:
     case glslang::EOpCooperativeMatrixStoreNV:
+    case glslang::EOpCooperativeMatrixLoadTensorNV:
+    case glslang::EOpCooperativeMatrixStoreTensorNV:
+    case glslang::EOpCooperativeMatrixReduceNV:
+    case glslang::EOpCooperativeMatrixPerElementOpNV:
+    case glslang::EOpCooperativeMatrixTransposeNV:
         noReturnValue = true;
         break;
     case glslang::EOpBeginInvocationInterlock:
@@ -3558,12 +3599,20 @@ bool TGlslangToSpvTraverser::visitAggregate(glslang::TVisit visit, glslang::TInt
             break;
         case glslang::EOpCooperativeMatrixLoad:
         case glslang::EOpCooperativeMatrixLoadNV:
+        case glslang::EOpCooperativeMatrixLoadTensorNV:
             if (arg == 0 || arg == 1)
                 lvalue = true;
             break;
         case glslang::EOpCooperativeMatrixStore:
         case glslang::EOpCooperativeMatrixStoreNV:
+        case glslang::EOpCooperativeMatrixStoreTensorNV:
             if (arg == 1)
+                lvalue = true;
+            break;
+        case glslang::EOpCooperativeMatrixReduceNV:
+        case glslang::EOpCooperativeMatrixPerElementOpNV:
+        case glslang::EOpCooperativeMatrixTransposeNV:
+            if (arg == 0)
                 lvalue = true;
             break;
         case glslang::EOpSpirvInst:
@@ -3591,7 +3640,9 @@ bool TGlslangToSpvTraverser::visitAggregate(glslang::TVisit visit, glslang::TInt
         if (node->getOp() == glslang::EOpCooperativeMatrixLoad ||
             node->getOp() == glslang::EOpCooperativeMatrixStore ||
             node->getOp() == glslang::EOpCooperativeMatrixLoadNV ||
-            node->getOp() == glslang::EOpCooperativeMatrixStoreNV) {
+            node->getOp() == glslang::EOpCooperativeMatrixStoreNV ||
+            node->getOp() == glslang::EOpCooperativeMatrixLoadTensorNV ||
+            node->getOp() == glslang::EOpCooperativeMatrixStoreTensorNV) {
 
             if (arg == 1) {
                 // fold "element" parameter into the access chain
@@ -3613,10 +3664,12 @@ bool TGlslangToSpvTraverser::visitAggregate(glslang::TVisit visit, glslang::TInt
 
                 int memoryAccess = TranslateMemoryAccess(coherentFlags);
                 if (node->getOp() == glslang::EOpCooperativeMatrixLoad ||
-                    node->getOp() == glslang::EOpCooperativeMatrixLoadNV)
+                    node->getOp() == glslang::EOpCooperativeMatrixLoadNV ||
+                    node->getOp() == glslang::EOpCooperativeMatrixLoadTensorNV)
                     memoryAccess &= ~spv::MemoryAccessMakePointerAvailableKHRMask;
                 if (node->getOp() == glslang::EOpCooperativeMatrixStore ||
-                    node->getOp() == glslang::EOpCooperativeMatrixStoreNV)
+                    node->getOp() == glslang::EOpCooperativeMatrixStoreNV ||
+                    node->getOp() == glslang::EOpCooperativeMatrixStoreTensorNV)
                     memoryAccess &= ~spv::MemoryAccessMakePointerVisibleKHRMask;
                 if (builder.getStorageClass(builder.getAccessChain().base) ==
                     spv::StorageClassPhysicalStorageBufferEXT) {
@@ -3703,6 +3756,10 @@ bool TGlslangToSpvTraverser::visitAggregate(glslang::TVisit visit, glslang::TInt
              } else if (glslangOperands[arg]->getAsTyped()->getQualifier().isSpirvLiteral()) {
                  // Will be translated to a literal value, make a placeholder here
                  operands.push_back(spv::NoResult);
+             } else if (glslangOperands[arg]->getAsTyped()->getBasicType() == glslang::EbtFunction) {
+                 spv::Function* function = functionMap[glslangOperands[arg]->getAsSymbolNode()->getMangledName().c_str()];
+                 assert(function);
+                 operands.push_back(function->getId());
              } else  {
                 operands.push_back(accessChainLoad(glslangOperands[arg]->getAsTyped()->getType()));
              }
@@ -3710,13 +3767,56 @@ bool TGlslangToSpvTraverser::visitAggregate(glslang::TVisit visit, glslang::TInt
     }
 
     builder.setDebugSourceLocation(node->getLoc().line, node->getLoc().getFilename());
-    if (node->getOp() == glslang::EOpCooperativeMatrixLoad ||
-        node->getOp() == glslang::EOpCooperativeMatrixLoadNV) {
+    if (node->getOp() == glslang::EOpCooperativeMatrixLoadTensorNV) {
+        std::vector<spv::IdImmediate> idImmOps;
+
+        builder.addCapability(spv::CapabilityCooperativeMatrixTensorAddressingNV);
+        builder.addExtension(spv::E_SPV_NV_cooperative_matrix2);
+
+        spv::Id object = builder.createLoad(operands[0], spv::NoPrecision);
+
+        idImmOps.push_back(spv::IdImmediate(true, operands[1])); // Pointer
+        idImmOps.push_back(spv::IdImmediate(true, object)); // Object
+        idImmOps.push_back(spv::IdImmediate(true, operands[2])); // tensorLayout
+
+        idImmOps.insert(idImmOps.end(), memoryAccessOperands.begin(), memoryAccessOperands.end()); // memoryaccess
+
+        // initialize tensor operands to zero, then OR in flags based on the operands
+        size_t tensorOpIdx = idImmOps.size();
+        idImmOps.push_back(spv::IdImmediate(false, 0));
+
+        for (uint32_t i = 3; i < operands.size(); ++i) {
+            if (builder.isTensorView(operands[i])) {
+                idImmOps[tensorOpIdx].word |= spv::TensorAddressingOperandsTensorViewMask;
+            } else {
+                // must be the decode func
+                idImmOps[tensorOpIdx].word |= spv::TensorAddressingOperandsDecodeFuncMask;
+                builder.addCapability(spv::CapabilityCooperativeMatrixBlockLoadsNV);
+            }
+            idImmOps.push_back(spv::IdImmediate(true, operands[i])); // tensorView or decodeFunc
+        }
+
+        // get the pointee type
+        spv::Id typeId = builder.getContainedTypeId(builder.getTypeId(operands[0]));
+        assert(builder.isCooperativeMatrixType(typeId));
+        // do the op
+        spv::Id result = builder.createOp(spv::OpCooperativeMatrixLoadTensorNV, typeId, idImmOps);
+        // store the result to the pointer (out param 'm')
+        builder.createStore(result, operands[0]);
+        result = 0;
+    } else if (node->getOp() == glslang::EOpCooperativeMatrixLoad ||
+               node->getOp() == glslang::EOpCooperativeMatrixLoadNV) {
         std::vector<spv::IdImmediate> idImmOps;
 
         idImmOps.push_back(spv::IdImmediate(true, operands[1])); // buf
         if (node->getOp() == glslang::EOpCooperativeMatrixLoad) {
             idImmOps.push_back(spv::IdImmediate(true, operands[3])); // matrixLayout
+            auto layout = builder.getConstantScalar(operands[3]);
+            if (layout == spv::CooperativeMatrixLayoutRowBlockedInterleavedARM ||
+                layout == spv::CooperativeMatrixLayoutColumnBlockedInterleavedARM) {
+                builder.addExtension(spv::E_SPV_ARM_cooperative_matrix_layouts);
+                builder.addCapability(spv::CapabilityCooperativeMatrixLayoutsARM);
+            }
             idImmOps.push_back(spv::IdImmediate(true, operands[2])); // stride
         } else {
             idImmOps.push_back(spv::IdImmediate(true, operands[2])); // stride
@@ -3733,6 +3833,28 @@ bool TGlslangToSpvTraverser::visitAggregate(glslang::TVisit visit, glslang::TInt
         // store the result to the pointer (out param 'm')
         builder.createStore(result, operands[0]);
         result = 0;
+    } else if (node->getOp() == glslang::EOpCooperativeMatrixStoreTensorNV) {
+        std::vector<spv::IdImmediate> idImmOps;
+
+        idImmOps.push_back(spv::IdImmediate(true, operands[1])); // buf
+        idImmOps.push_back(spv::IdImmediate(true, operands[0])); // object
+
+        builder.addCapability(spv::CapabilityCooperativeMatrixTensorAddressingNV);
+        builder.addExtension(spv::E_SPV_NV_cooperative_matrix2);
+
+        idImmOps.push_back(spv::IdImmediate(true, operands[2])); // tensorLayout
+
+        idImmOps.insert(idImmOps.end(), memoryAccessOperands.begin(), memoryAccessOperands.end()); // memoryaccess
+
+        if (operands.size() > 3) {
+            idImmOps.push_back(spv::IdImmediate(false, spv::TensorAddressingOperandsTensorViewMask));
+            idImmOps.push_back(spv::IdImmediate(true, operands[3])); // tensorView
+        } else {
+            idImmOps.push_back(spv::IdImmediate(false, 0));
+        }
+
+        builder.createNoResultOp(spv::OpCooperativeMatrixStoreTensorNV, idImmOps);
+        result = 0;
     } else if (node->getOp() == glslang::EOpCooperativeMatrixStore ||
                node->getOp() == glslang::EOpCooperativeMatrixStoreNV) {
         std::vector<spv::IdImmediate> idImmOps;
@@ -3741,6 +3863,12 @@ bool TGlslangToSpvTraverser::visitAggregate(glslang::TVisit visit, glslang::TInt
         idImmOps.push_back(spv::IdImmediate(true, operands[0])); // object
         if (node->getOp() == glslang::EOpCooperativeMatrixStore) {
             idImmOps.push_back(spv::IdImmediate(true, operands[3])); // matrixLayout
+            auto layout = builder.getConstantScalar(operands[3]);
+            if (layout == spv::CooperativeMatrixLayoutRowBlockedInterleavedARM ||
+                layout == spv::CooperativeMatrixLayoutColumnBlockedInterleavedARM) {
+                builder.addExtension(spv::E_SPV_ARM_cooperative_matrix_layouts);
+                builder.addCapability(spv::CapabilityCooperativeMatrixLayoutsARM);
+            }
             idImmOps.push_back(spv::IdImmediate(true, operands[2])); // stride
         } else {
             idImmOps.push_back(spv::IdImmediate(true, operands[2])); // stride
@@ -3795,6 +3923,43 @@ bool TGlslangToSpvTraverser::visitAggregate(glslang::TVisit visit, glslang::TInt
             idImmOps.push_back(spv::IdImmediate(false, matrixOperands));
 
         result = builder.createOp(spv::OpCooperativeMatrixMulAddKHR, resultType(), idImmOps);
+    } else if (node->getOp() == glslang::EOpCooperativeMatrixReduceNV) {
+        builder.addCapability(spv::CapabilityCooperativeMatrixReductionsNV);
+        builder.addExtension(spv::E_SPV_NV_cooperative_matrix2);
+
+        spv::Op opcode = spv::OpCooperativeMatrixReduceNV;
+        unsigned mask = glslangOperands[2]->getAsConstantUnion()->getConstArray()[0].getUConst();
+
+        spv::Id typeId = builder.getContainedTypeId(builder.getTypeId(operands[0]));
+        assert(builder.isCooperativeMatrixType(typeId));
+
+        result = builder.createCooperativeMatrixReduce(opcode, typeId, operands[1], mask, operands[3]);
+        // store the result to the pointer (out param 'm')
+        builder.createStore(result, operands[0]);
+        result = 0;
+    } else if (node->getOp() == glslang::EOpCooperativeMatrixPerElementOpNV) {
+        builder.addCapability(spv::CapabilityCooperativeMatrixPerElementOperationsNV);
+        builder.addExtension(spv::E_SPV_NV_cooperative_matrix2);
+
+        spv::Id typeId = builder.getContainedTypeId(builder.getTypeId(operands[0]));
+        assert(builder.isCooperativeMatrixType(typeId));
+
+        result = builder.createCooperativeMatrixPerElementOp(typeId, operands);
+        // store the result to the pointer
+        builder.createStore(result, operands[0]);
+        result = 0;
+    } else if (node->getOp() == glslang::EOpCooperativeMatrixTransposeNV) {
+
+        builder.addCapability(spv::CapabilityCooperativeMatrixConversionsNV);
+        builder.addExtension(spv::E_SPV_NV_cooperative_matrix2);
+
+        spv::Id typeId = builder.getContainedTypeId(builder.getTypeId(operands[0]));
+        assert(builder.isCooperativeMatrixType(typeId));
+
+        result = builder.createUnaryOp(spv::OpCooperativeMatrixTransposeNV, typeId, operands[1]);
+        // store the result to the pointer
+        builder.createStore(result, operands[0]);
+        result = 0;
     } else if (atomic) {
         // Handle all atomics
         glslang::TBasicType typeProxy = (node->getOp() == glslang::EOpAtomicStore)
@@ -4120,7 +4285,7 @@ bool TGlslangToSpvTraverser::visitSwitch(glslang::TVisit /* visit */, glslang::T
         if (codeSegments[s])
             codeSegments[s]->traverse(this);
         else
-            builder.addSwitchBreak();
+            builder.addSwitchBreak(true);
     }
     breakForLoop.pop();
 
@@ -4144,7 +4309,7 @@ void TGlslangToSpvTraverser::visitConstantUnion(glslang::TIntermConstantUnion* n
 bool TGlslangToSpvTraverser::visitLoop(glslang::TVisit /* visit */, glslang::TIntermLoop* node)
 {
     auto blocks = builder.makeNewLoop();
-    builder.createBranch(&blocks.head);
+    builder.createBranch(true, &blocks.head);
 
     // Loop control:
     std::vector<unsigned int> operands;
@@ -4161,7 +4326,7 @@ bool TGlslangToSpvTraverser::visitLoop(glslang::TVisit /* visit */, glslang::TIn
     builder.createLoopMerge(&blocks.merge, &blocks.continue_target, control, operands);
     if (node->testFirst() && node->getTest()) {
         spv::Block& test = builder.makeNewBlock();
-        builder.createBranch(&test);
+        builder.createBranch(true, &test);
 
         builder.setBuildPoint(&test);
         node->getTest()->traverse(this);
@@ -4172,22 +4337,22 @@ bool TGlslangToSpvTraverser::visitLoop(glslang::TVisit /* visit */, glslang::TIn
         breakForLoop.push(true);
         if (node->getBody())
             node->getBody()->traverse(this);
-        builder.createBranch(&blocks.continue_target);
+        builder.createBranch(true, &blocks.continue_target);
         breakForLoop.pop();
 
         builder.setBuildPoint(&blocks.continue_target);
         if (node->getTerminal())
             node->getTerminal()->traverse(this);
-        builder.createBranch(&blocks.head);
+        builder.createBranch(true, &blocks.head);
     } else {
         builder.setDebugSourceLocation(node->getLoc().line, node->getLoc().getFilename());
-        builder.createBranch(&blocks.body);
+        builder.createBranch(true, &blocks.body);
 
         breakForLoop.push(true);
         builder.setBuildPoint(&blocks.body);
         if (node->getBody())
             node->getBody()->traverse(this);
-        builder.createBranch(&blocks.continue_target);
+        builder.createBranch(true, &blocks.continue_target);
         breakForLoop.pop();
 
         builder.setBuildPoint(&blocks.continue_target);
@@ -4202,7 +4367,7 @@ bool TGlslangToSpvTraverser::visitLoop(glslang::TVisit /* visit */, glslang::TIn
             // TODO: unless there was a break/return/discard instruction
             // somewhere in the body, this is an infinite loop, so we should
             // issue a warning.
-            builder.createBranch(&blocks.head);
+            builder.createBranch(true, &blocks.head);
         }
     }
     builder.setBuildPoint(&blocks.merge);
@@ -4238,7 +4403,7 @@ bool TGlslangToSpvTraverser::visitBranch(glslang::TVisit /* visit */, glslang::T
         if (breakForLoop.top())
             builder.createLoopExit();
         else
-            builder.addSwitchBreak();
+            builder.addSwitchBreak(false);
         break;
     case glslang::EOpContinue:
         builder.createLoopContinue();
@@ -4372,7 +4537,14 @@ spv::Id TGlslangToSpvTraverser::createSpvVariable(const glslang::TIntermSymbol* 
         initializer = builder.makeNullConstant(spvType);
     }
 
-    return builder.createVariable(spv::NoPrecision, storageClass, spvType, name, initializer, false);
+    spv::Id var = builder.createVariable(spv::NoPrecision, storageClass, spvType, name, initializer, false);
+    std::vector<spv::Decoration> topLevelDecorations;
+    glslang::TQualifier typeQualifier = node->getType().getQualifier();
+    TranslateMemoryDecoration(typeQualifier, topLevelDecorations, glslangIntermediate->usingVulkanMemoryModel());
+    for (auto deco : topLevelDecorations) {
+        builder.addDecoration(var, deco);
+    }
+    return var;
 }
 
 // Return type Id of the sampled type.
@@ -4669,6 +4841,32 @@ spv::Id TGlslangToSpvTraverser::convertGlslangToSpvType(const glslang::TType& ty
 
         break;
     }
+    case glslang::EbtTensorLayoutNV:
+    {
+        builder.addCapability(spv::CapabilityTensorAddressingNV);
+        builder.addExtension(spv::E_SPV_NV_tensor_addressing);
+
+        std::vector<spv::IdImmediate> operands;
+        for (uint32_t i = 0; i < 2; ++i) {
+            operands.push_back({true, makeArraySizeId(*type.getTypeParameters()->arraySizes, i, true)});
+        }
+        spvType = builder.makeGenericType(spv::OpTypeTensorLayoutNV, operands);
+        break;
+    }
+    case glslang::EbtTensorViewNV:
+    {
+        builder.addCapability(spv::CapabilityTensorAddressingNV);
+        builder.addExtension(spv::E_SPV_NV_tensor_addressing);
+
+        uint32_t dim = type.getTypeParameters()->arraySizes->getDimSize(0);
+        assert(dim >= 1 && dim <= 5);
+        std::vector<spv::IdImmediate> operands;
+        for (uint32_t i = 0; i < dim + 2; ++i) {
+            operands.push_back({true, makeArraySizeId(*type.getTypeParameters()->arraySizes, i, true, i==1)});
+        }
+        spvType = builder.makeGenericType(spv::OpTypeTensorViewNV, operands);
+        break;
+    }
     default:
         assert(0);
         break;
@@ -4861,7 +5059,7 @@ bool TGlslangToSpvTraverser::filterMember(const glslang::TType& member)
     }
 
     return false;
-};
+}
 
 // Do full recursive conversion of a glslang structure (or block) type to a SPIR-V Id.
 // explicitLayout can be kept the same throughout the hierarchical recursive walk.
@@ -5091,7 +5289,7 @@ void TGlslangToSpvTraverser::decorateStructType(const glslang::TType& type,
 // This is not quite trivial, because of specialization constants.
 // Sometimes, a raw constant is turned into an Id, and sometimes
 // a specialization constant expression is.
-spv::Id TGlslangToSpvTraverser::makeArraySizeId(const glslang::TArraySizes& arraySizes, int dim, bool allowZero)
+spv::Id TGlslangToSpvTraverser::makeArraySizeId(const glslang::TArraySizes& arraySizes, int dim, bool allowZero, bool boolType)
 {
     // First, see if this is sized with a node, meaning a specialization constant:
     glslang::TIntermTyped* specNode = arraySizes.getDimNode(dim);
@@ -5109,7 +5307,11 @@ spv::Id TGlslangToSpvTraverser::makeArraySizeId(const glslang::TArraySizes& arra
     if (!allowZero)
         assert(size > 0);
 
-    return builder.makeUintConstant(size);
+    if (boolType) {
+        return builder.makeBoolConstant(size);
+    } else {
+        return builder.makeUintConstant(size);
+    }
 }
 
 // Wrap the builder's accessChainLoad to:
@@ -5404,13 +5606,16 @@ void TGlslangToSpvTraverser::updateMemberOffset(const glslang::TType& structType
             memberAlignment = componentAlignment;
 
         // Don't add unnecessary padding after this member
-        if (memberType.isMatrix()) {
-            if (matrixLayout == glslang::ElmRowMajor)
-                memberSize -= componentSize * (4 - memberType.getMatrixCols());
-            else
-                memberSize -= componentSize * (4 - memberType.getMatrixRows());
-        } else if (memberType.isArray())
-            memberSize -= componentSize * (4 - memberType.getVectorSize());
+        // (undo std140 bumping size to a mutliple of vec4)
+        if (explicitLayout == glslang::ElpStd140) {
+            if (memberType.isMatrix()) {
+                if (matrixLayout == glslang::ElmRowMajor)
+                    memberSize -= componentSize * (4 - memberType.getMatrixCols());
+                else
+                    memberSize -= componentSize * (4 - memberType.getMatrixRows());
+            } else if (memberType.isArray())
+                memberSize -= componentSize * (4 - memberType.getVectorSize());
+        }
     }
 
     // Bump up to member alignment
@@ -5518,12 +5723,16 @@ void TGlslangToSpvTraverser::makeFunctions(const glslang::TIntermSequence& glslF
         glslang::TIntermAggregate* glslFunction = glslFunctions[f]->getAsAggregate();
         if (! glslFunction || glslFunction->getOp() != glslang::EOpFunction)
             continue;
+
+        builder.setDebugSourceLocation(glslFunction->getLoc().line, glslFunction->getLoc().getFilename());
+
         if (isShaderEntryPoint(glslFunction)) {
+            // For HLSL, the entry function is actually a compiler generated function to resolve the difference of
+            // entry function signature between HLSL and SPIR-V. So we don't emit debug information for that.
             if (glslangIntermediate->getSource() != glslang::EShSourceHlsl) {
-                builder.setupDebugFunctionEntry(shaderEntry, glslangIntermediate->getEntryPointMangledName().c_str(),
-                                                glslFunction->getLoc().line,
-                                                std::vector<spv::Id>(), // main function has no param
-                                                std::vector<char const*>());
+                builder.setupFunctionDebugInfo(shaderEntry, glslangIntermediate->getEntryPointMangledName().c_str(),
+                                               std::vector<spv::Id>(), // main function has no param
+                                               std::vector<char const*>());
             }
             continue;
         }
@@ -5576,8 +5785,7 @@ void TGlslangToSpvTraverser::makeFunctions(const glslang::TIntermSequence& glslF
             TranslatePrecisionDecoration(glslFunction->getType()), convertGlslangToSpvType(glslFunction->getType()),
             glslFunction->getName().c_str(), convertGlslangLinkageToSpv(glslFunction->getLinkType()), paramTypes,
             paramDecorations, &functionBlock);
-        builder.setupDebugFunctionEntry(function, glslFunction->getName().c_str(), glslFunction->getLoc().line,
-                                        paramTypes, paramNames);
+        builder.setupFunctionDebugInfo(function, glslFunction->getName().c_str(), paramTypes, paramNames);
         if (implicitThis)
             function->setImplicitThis();
 
@@ -5801,8 +6009,16 @@ void TGlslangToSpvTraverser::translateArguments(const glslang::TIntermAggregate&
             lvalueCoherentFlags = builder.getAccessChain().coherentFlags;
             builder.addDecoration(lvalue_id, TranslateNonUniformDecoration(lvalueCoherentFlags));
             lvalueCoherentFlags |= TranslateCoherent(glslangArguments[i]->getAsTyped()->getType());
-        } else
-            arguments.push_back(accessChainLoad(glslangArguments[i]->getAsTyped()->getType()));
+        } else {
+            if (i > 0 &&
+                glslangArguments[i]->getAsSymbolNode() && glslangArguments[i-1]->getAsSymbolNode() &&
+                glslangArguments[i]->getAsSymbolNode()->getId() == glslangArguments[i-1]->getAsSymbolNode()->getId()) {
+                // Reuse the id if possible
+                arguments.push_back(arguments[i-1]);
+            } else {
+                arguments.push_back(accessChainLoad(glslangArguments[i]->getAsTyped()->getType()));
+            }
+        }
     }
 }
 
@@ -6432,6 +6648,9 @@ spv::Id TGlslangToSpvTraverser::handleUserFunctionCall(const glslang::TIntermAgg
             rValues.push_back(accessChainLoad(*argTypes.back()));
         }
     }
+
+    // Reset source location to the function call location after argument evaluation
+    builder.setDebugSourceLocation(node->getLoc().line, node->getLoc().getFilename());
 
     // 2. Allocate space for anything needing a copy, and if it's "in" or "inout"
     // copy the original into that space.
@@ -7446,73 +7665,22 @@ spv::Id TGlslangToSpvTraverser::createUnaryMatrixOperation(spv::Op op, OpDecorat
 // for the signedness conversion.
 // destType is the final type that will be converted to, but this function
 // may only be doing part of that conversion.
-spv::Id TGlslangToSpvTraverser::createIntWidthConversion(glslang::TOperator op, spv::Id operand, int vectorSize, spv::Id destType)
+spv::Id TGlslangToSpvTraverser::createIntWidthConversion(spv::Id operand, int vectorSize, spv::Id destType,
+                                                         glslang::TBasicType resultBasicType, glslang::TBasicType operandBasicType)
 {
     // Get the result type width, based on the type to convert to.
-    int width = 32;
-    switch(op) {
-    case glslang::EOpConvInt16ToUint8:
-    case glslang::EOpConvIntToUint8:
-    case glslang::EOpConvInt64ToUint8:
-    case glslang::EOpConvUint16ToInt8:
-    case glslang::EOpConvUintToInt8:
-    case glslang::EOpConvUint64ToInt8:
-        width = 8;
-        break;
-    case glslang::EOpConvInt8ToUint16:
-    case glslang::EOpConvIntToUint16:
-    case glslang::EOpConvInt64ToUint16:
-    case glslang::EOpConvUint8ToInt16:
-    case glslang::EOpConvUintToInt16:
-    case glslang::EOpConvUint64ToInt16:
-        width = 16;
-        break;
-    case glslang::EOpConvInt8ToUint:
-    case glslang::EOpConvInt16ToUint:
-    case glslang::EOpConvInt64ToUint:
-    case glslang::EOpConvUint8ToInt:
-    case glslang::EOpConvUint16ToInt:
-    case glslang::EOpConvUint64ToInt:
-        width = 32;
-        break;
-    case glslang::EOpConvInt8ToUint64:
-    case glslang::EOpConvInt16ToUint64:
-    case glslang::EOpConvIntToUint64:
-    case glslang::EOpConvUint8ToInt64:
-    case glslang::EOpConvUint16ToInt64:
-    case glslang::EOpConvUintToInt64:
-        width = 64;
-        break;
-
-    default:
-        assert(false && "Default missing");
-        break;
-    }
+    int width = GetNumBits(resultBasicType);
 
     // Get the conversion operation and result type,
     // based on the target width, but the source type.
     spv::Id type = spv::NoType;
     spv::Op convOp = spv::OpNop;
-    switch(op) {
-    case glslang::EOpConvInt8ToUint16:
-    case glslang::EOpConvInt8ToUint:
-    case glslang::EOpConvInt8ToUint64:
-    case glslang::EOpConvInt16ToUint8:
-    case glslang::EOpConvInt16ToUint:
-    case glslang::EOpConvInt16ToUint64:
-    case glslang::EOpConvIntToUint8:
-    case glslang::EOpConvIntToUint16:
-    case glslang::EOpConvIntToUint64:
-    case glslang::EOpConvInt64ToUint8:
-    case glslang::EOpConvInt64ToUint16:
-    case glslang::EOpConvInt64ToUint:
+    if (isTypeSignedInt(operandBasicType)) {
         convOp = spv::OpSConvert;
         type = builder.makeIntType(width);
-        break;
-    default:
+    } else {
         convOp = spv::OpUConvert;
         type = builder.makeUintType(width);
-        break;
     }
 
     if (vectorSize > 0)
@@ -7527,7 +7695,7 @@ spv::Id TGlslangToSpvTraverser::createIntWidthConversion(glslang::TOperator op, 
 }
 
 spv::Id TGlslangToSpvTraverser::createConversion(glslang::TOperator op, OpDecorations& decorations, spv::Id destType,
-                                                 spv::Id operand, glslang::TBasicType typeProxy)
+                                                 spv::Id operand, glslang::TBasicType resultBasicType, glslang::TBasicType operandBasicType)
 {
     spv::Op convOp = spv::OpNop;
     spv::Id zero = 0;
@@ -7535,317 +7703,124 @@ spv::Id TGlslangToSpvTraverser::createConversion(glslang::TOperator op, OpDecora
 
     int vectorSize = builder.isVectorType(destType) ? builder.getNumTypeComponents(destType) : 0;
 
-    switch (op) {
-    case glslang::EOpConvIntToBool:
-    case glslang::EOpConvUintToBool:
-        zero = builder.makeUintConstant(0);
-        zero = makeSmearedConstant(zero, vectorSize);
-        return builder.createBinOp(spv::OpINotEqual, destType, operand, zero);
-    case glslang::EOpConvFloatToBool:
-        zero = builder.makeFloatConstant(0.0F);
-        zero = makeSmearedConstant(zero, vectorSize);
-        return builder.createBinOp(spv::OpFUnordNotEqual, destType, operand, zero);
-    case glslang::EOpConvBoolToFloat:
-        convOp = spv::OpSelect;
-        zero = builder.makeFloatConstant(0.0F);
-        one  = builder.makeFloatConstant(1.0F);
-        break;
-
-    case glslang::EOpConvBoolToInt:
-    case glslang::EOpConvBoolToInt64:
-        if (op == glslang::EOpConvBoolToInt64) {
-            zero = builder.makeInt64Constant(0);
-            one = builder.makeInt64Constant(1);
-        } else {
-            zero = builder.makeIntConstant(0);
-            one = builder.makeIntConstant(1);
+    if (IsOpNumericConv(op)) {
+        if (isTypeSignedInt(operandBasicType) && isTypeFloat(resultBasicType)) {
+            convOp = spv::OpConvertSToF;
         }
-
-        convOp = spv::OpSelect;
-        break;
-
-    case glslang::EOpConvBoolToUint:
-    case glslang::EOpConvBoolToUint64:
-        if (op == glslang::EOpConvBoolToUint64) {
-            zero = builder.makeUint64Constant(0);
-            one = builder.makeUint64Constant(1);
-        } else {
-            zero = builder.makeUintConstant(0);
-            one = builder.makeUintConstant(1);
+        if (isTypeUnsignedInt(operandBasicType) && isTypeFloat(resultBasicType)) {
+            convOp = spv::OpConvertUToF;
         }
+        if (isTypeFloat(operandBasicType) && isTypeSignedInt(resultBasicType)) {
+            convOp = spv::OpConvertFToS;
+        }
+        if (isTypeFloat(operandBasicType) && isTypeUnsignedInt(resultBasicType)) {
+            convOp = spv::OpConvertFToU;
+        }
+        if (isTypeSignedInt(operandBasicType) && isTypeSignedInt(resultBasicType)) {
+            convOp = spv::OpSConvert;
+        }
+        if (isTypeUnsignedInt(operandBasicType) && isTypeUnsignedInt(resultBasicType)) {
+            convOp = spv::OpUConvert;
+        }
+        if (isTypeFloat(operandBasicType) && isTypeFloat(resultBasicType)) {
+            convOp = spv::OpFConvert;
+            if (builder.isMatrixType(destType))
+                return createUnaryMatrixOperation(convOp, decorations, destType, operand, operandBasicType);
+        }
+        if (isTypeInt(operandBasicType) && isTypeInt(resultBasicType) &&
+            isTypeUnsignedInt(operandBasicType) != isTypeUnsignedInt(resultBasicType)) {
 
-        convOp = spv::OpSelect;
-        break;
+            if (GetNumBits(operandBasicType) != GetNumBits(resultBasicType)) {
+                // OpSConvert/OpUConvert + OpBitCast
+                operand = createIntWidthConversion(operand, vectorSize, destType, resultBasicType, operandBasicType);
+            }
 
-    case glslang::EOpConvInt8ToFloat16:
-    case glslang::EOpConvInt8ToFloat:
-    case glslang::EOpConvInt8ToDouble:
-    case glslang::EOpConvInt16ToFloat16:
-    case glslang::EOpConvInt16ToFloat:
-    case glslang::EOpConvInt16ToDouble:
-    case glslang::EOpConvIntToFloat16:
-    case glslang::EOpConvIntToFloat:
-    case glslang::EOpConvIntToDouble:
-    case glslang::EOpConvInt64ToFloat:
-    case glslang::EOpConvInt64ToDouble:
-    case glslang::EOpConvInt64ToFloat16:
-        convOp = spv::OpConvertSToF;
-        break;
-
-    case glslang::EOpConvUint8ToFloat16:
-    case glslang::EOpConvUint8ToFloat:
-    case glslang::EOpConvUint8ToDouble:
-    case glslang::EOpConvUint16ToFloat16:
-    case glslang::EOpConvUint16ToFloat:
-    case glslang::EOpConvUint16ToDouble:
-    case glslang::EOpConvUintToFloat16:
-    case glslang::EOpConvUintToFloat:
-    case glslang::EOpConvUintToDouble:
-    case glslang::EOpConvUint64ToFloat:
-    case glslang::EOpConvUint64ToDouble:
-    case glslang::EOpConvUint64ToFloat16:
-        convOp = spv::OpConvertUToF;
-        break;
-
-    case glslang::EOpConvFloat16ToInt8:
-    case glslang::EOpConvFloatToInt8:
-    case glslang::EOpConvDoubleToInt8:
-    case glslang::EOpConvFloat16ToInt16:
-    case glslang::EOpConvFloatToInt16:
-    case glslang::EOpConvDoubleToInt16:
-    case glslang::EOpConvFloat16ToInt:
-    case glslang::EOpConvFloatToInt:
-    case glslang::EOpConvDoubleToInt:
-    case glslang::EOpConvFloat16ToInt64:
-    case glslang::EOpConvFloatToInt64:
-    case glslang::EOpConvDoubleToInt64:
-        convOp = spv::OpConvertFToS;
-        break;
-
-    case glslang::EOpConvUint8ToInt8:
-    case glslang::EOpConvInt8ToUint8:
-    case glslang::EOpConvUint16ToInt16:
-    case glslang::EOpConvInt16ToUint16:
-    case glslang::EOpConvUintToInt:
-    case glslang::EOpConvIntToUint:
-    case glslang::EOpConvUint64ToInt64:
-    case glslang::EOpConvInt64ToUint64:
-        if (builder.isInSpecConstCodeGenMode()) {
-            // Build zero scalar or vector for OpIAdd.
-            if(op == glslang::EOpConvUint8ToInt8 || op == glslang::EOpConvInt8ToUint8) {
-                zero = builder.makeUint8Constant(0);
-            } else if (op == glslang::EOpConvUint16ToInt16 || op == glslang::EOpConvInt16ToUint16) {
-                zero = builder.makeUint16Constant(0);
-            } else if (op == glslang::EOpConvUint64ToInt64 || op == glslang::EOpConvInt64ToUint64) {
-                zero = builder.makeUint64Constant(0);
+            if (builder.isInSpecConstCodeGenMode()) {
+                uint32_t bits = GetNumBits(resultBasicType);
+                spv::Id zeroType = builder.makeUintType(bits);
+                if (bits == 64) {
+                    zero = builder.makeInt64Constant(zeroType, 0, false);
+                } else {
+                    zero = builder.makeIntConstant(zeroType, 0, false);
+                }
+                zero = makeSmearedConstant(zero, vectorSize);
+                // Use OpIAdd, instead of OpBitcast to do the conversion when
+                // generating for OpSpecConstantOp instruction.
+                return builder.createBinOp(spv::OpIAdd, destType, operand, zero);
+            }
+            // For normal run-time conversion instruction, use OpBitcast.
+            convOp = spv::OpBitcast;
+        }
+        if (resultBasicType == glslang::EbtBool) {
+            uint32_t bits = GetNumBits(operandBasicType);
+            if (isTypeInt(operandBasicType)) {
+                spv::Id zeroType = builder.makeUintType(bits);
+                if (bits == 64) {
+                    zero = builder.makeInt64Constant(zeroType, 0, false);
+                } else {
+                    zero = builder.makeIntConstant(zeroType, 0, false);
+                }
+                zero = makeSmearedConstant(zero, vectorSize);
+                return builder.createBinOp(spv::OpINotEqual, destType, operand, zero);
             } else {
-                zero = builder.makeUintConstant(0);
+                assert(isTypeFloat(operandBasicType));
+                if (bits == 64) {
+                    zero = builder.makeDoubleConstant(0.0);
+                } else if (bits == 32) {
+                    zero = builder.makeFloatConstant(0.0);
+                } else {
+                    assert(bits == 16);
+                    zero = builder.makeFloat16Constant(0.0);
+                }
+                zero = makeSmearedConstant(zero, vectorSize);
+                return builder.createBinOp(spv::OpFUnordNotEqual, destType, operand, zero);
             }
-            zero = makeSmearedConstant(zero, vectorSize);
-            // Use OpIAdd, instead of OpBitcast to do the conversion when
-            // generating for OpSpecConstantOp instruction.
-            return builder.createBinOp(spv::OpIAdd, destType, operand, zero);
         }
-        // For normal run-time conversion instruction, use OpBitcast.
-        convOp = spv::OpBitcast;
-        break;
-
-    case glslang::EOpConvFloat16ToUint8:
-    case glslang::EOpConvFloatToUint8:
-    case glslang::EOpConvDoubleToUint8:
-    case glslang::EOpConvFloat16ToUint16:
-    case glslang::EOpConvFloatToUint16:
-    case glslang::EOpConvDoubleToUint16:
-    case glslang::EOpConvFloat16ToUint:
-    case glslang::EOpConvFloatToUint:
-    case glslang::EOpConvDoubleToUint:
-    case glslang::EOpConvFloatToUint64:
-    case glslang::EOpConvDoubleToUint64:
-    case glslang::EOpConvFloat16ToUint64:
-        convOp = spv::OpConvertFToU;
-        break;
-
-    case glslang::EOpConvInt8ToBool:
-    case glslang::EOpConvUint8ToBool:
-        zero = builder.makeUint8Constant(0);
-        zero = makeSmearedConstant(zero, vectorSize);
-        return builder.createBinOp(spv::OpINotEqual, destType, operand, zero);
-    case glslang::EOpConvInt16ToBool:
-    case glslang::EOpConvUint16ToBool:
-        zero = builder.makeUint16Constant(0);
-        zero = makeSmearedConstant(zero, vectorSize);
-        return builder.createBinOp(spv::OpINotEqual, destType, operand, zero);
-    case glslang::EOpConvInt64ToBool:
-    case glslang::EOpConvUint64ToBool:
-        zero = builder.makeUint64Constant(0);
-        zero = makeSmearedConstant(zero, vectorSize);
-        return builder.createBinOp(spv::OpINotEqual, destType, operand, zero);
-    case glslang::EOpConvDoubleToBool:
-        zero = builder.makeDoubleConstant(0.0);
-        zero = makeSmearedConstant(zero, vectorSize);
-        return builder.createBinOp(spv::OpFUnordNotEqual, destType, operand, zero);
-    case glslang::EOpConvFloat16ToBool:
-        zero = builder.makeFloat16Constant(0.0F);
-        zero = makeSmearedConstant(zero, vectorSize);
-        return builder.createBinOp(spv::OpFUnordNotEqual, destType, operand, zero);
-    case glslang::EOpConvBoolToDouble:
-        convOp = spv::OpSelect;
-        zero = builder.makeDoubleConstant(0.0);
-        one  = builder.makeDoubleConstant(1.0);
-        break;
-    case glslang::EOpConvBoolToFloat16:
-        convOp = spv::OpSelect;
-        zero = builder.makeFloat16Constant(0.0F);
-        one = builder.makeFloat16Constant(1.0F);
-        break;
-    case glslang::EOpConvBoolToInt8:
-        zero = builder.makeInt8Constant(0);
-        one  = builder.makeInt8Constant(1);
-        convOp = spv::OpSelect;
-        break;
-    case glslang::EOpConvBoolToUint8:
-        zero = builder.makeUint8Constant(0);
-        one  = builder.makeUint8Constant(1);
-        convOp = spv::OpSelect;
-        break;
-    case glslang::EOpConvBoolToInt16:
-        zero = builder.makeInt16Constant(0);
-        one  = builder.makeInt16Constant(1);
-        convOp = spv::OpSelect;
-        break;
-    case glslang::EOpConvBoolToUint16:
-        zero = builder.makeUint16Constant(0);
-        one  = builder.makeUint16Constant(1);
-        convOp = spv::OpSelect;
-        break;
-    case glslang::EOpConvDoubleToFloat:
-    case glslang::EOpConvFloatToDouble:
-    case glslang::EOpConvDoubleToFloat16:
-    case glslang::EOpConvFloat16ToDouble:
-    case glslang::EOpConvFloatToFloat16:
-    case glslang::EOpConvFloat16ToFloat:
-        convOp = spv::OpFConvert;
-        if (builder.isMatrixType(destType))
-            return createUnaryMatrixOperation(convOp, decorations, destType, operand, typeProxy);
-        break;
-
-    case glslang::EOpConvInt8ToInt16:
-    case glslang::EOpConvInt8ToInt:
-    case glslang::EOpConvInt8ToInt64:
-    case glslang::EOpConvInt16ToInt8:
-    case glslang::EOpConvInt16ToInt:
-    case glslang::EOpConvInt16ToInt64:
-    case glslang::EOpConvIntToInt8:
-    case glslang::EOpConvIntToInt16:
-    case glslang::EOpConvIntToInt64:
-    case glslang::EOpConvInt64ToInt8:
-    case glslang::EOpConvInt64ToInt16:
-    case glslang::EOpConvInt64ToInt:
-        convOp = spv::OpSConvert;
-        break;
-
-    case glslang::EOpConvUint8ToUint16:
-    case glslang::EOpConvUint8ToUint:
-    case glslang::EOpConvUint8ToUint64:
-    case glslang::EOpConvUint16ToUint8:
-    case glslang::EOpConvUint16ToUint:
-    case glslang::EOpConvUint16ToUint64:
-    case glslang::EOpConvUintToUint8:
-    case glslang::EOpConvUintToUint16:
-    case glslang::EOpConvUintToUint64:
-    case glslang::EOpConvUint64ToUint8:
-    case glslang::EOpConvUint64ToUint16:
-    case glslang::EOpConvUint64ToUint:
-        convOp = spv::OpUConvert;
-        break;
-
-    case glslang::EOpConvInt8ToUint16:
-    case glslang::EOpConvInt8ToUint:
-    case glslang::EOpConvInt8ToUint64:
-    case glslang::EOpConvInt16ToUint8:
-    case glslang::EOpConvInt16ToUint:
-    case glslang::EOpConvInt16ToUint64:
-    case glslang::EOpConvIntToUint8:
-    case glslang::EOpConvIntToUint16:
-    case glslang::EOpConvIntToUint64:
-    case glslang::EOpConvInt64ToUint8:
-    case glslang::EOpConvInt64ToUint16:
-    case glslang::EOpConvInt64ToUint:
-    case glslang::EOpConvUint8ToInt16:
-    case glslang::EOpConvUint8ToInt:
-    case glslang::EOpConvUint8ToInt64:
-    case glslang::EOpConvUint16ToInt8:
-    case glslang::EOpConvUint16ToInt:
-    case glslang::EOpConvUint16ToInt64:
-    case glslang::EOpConvUintToInt8:
-    case glslang::EOpConvUintToInt16:
-    case glslang::EOpConvUintToInt64:
-    case glslang::EOpConvUint64ToInt8:
-    case glslang::EOpConvUint64ToInt16:
-    case glslang::EOpConvUint64ToInt:
-        // OpSConvert/OpUConvert + OpBitCast
-        operand = createIntWidthConversion(op, operand, vectorSize, destType);
-
-        if (builder.isInSpecConstCodeGenMode()) {
-            // Build zero scalar or vector for OpIAdd.
-            switch(op) {
-            case glslang::EOpConvInt16ToUint8:
-            case glslang::EOpConvIntToUint8:
-            case glslang::EOpConvInt64ToUint8:
-            case glslang::EOpConvUint16ToInt8:
-            case glslang::EOpConvUintToInt8:
-            case glslang::EOpConvUint64ToInt8:
-                zero = builder.makeUint8Constant(0);
-                break;
-            case glslang::EOpConvInt8ToUint16:
-            case glslang::EOpConvIntToUint16:
-            case glslang::EOpConvInt64ToUint16:
-            case glslang::EOpConvUint8ToInt16:
-            case glslang::EOpConvUintToInt16:
-            case glslang::EOpConvUint64ToInt16:
-                zero = builder.makeUint16Constant(0);
-                break;
-            case glslang::EOpConvInt8ToUint:
-            case glslang::EOpConvInt16ToUint:
-            case glslang::EOpConvInt64ToUint:
-            case glslang::EOpConvUint8ToInt:
-            case glslang::EOpConvUint16ToInt:
-            case glslang::EOpConvUint64ToInt:
-                zero = builder.makeUintConstant(0);
-                break;
-            case glslang::EOpConvInt8ToUint64:
-            case glslang::EOpConvInt16ToUint64:
-            case glslang::EOpConvIntToUint64:
-            case glslang::EOpConvUint8ToInt64:
-            case glslang::EOpConvUint16ToInt64:
-            case glslang::EOpConvUintToInt64:
-                zero = builder.makeUint64Constant(0);
-                break;
-            default:
-                assert(false && "Default missing");
-                break;
+        if (operandBasicType == glslang::EbtBool) {
+            uint32_t bits = GetNumBits(resultBasicType);
+            convOp = spv::OpSelect;
+            if (isTypeInt(resultBasicType)) {
+                spv::Id zeroType = isTypeSignedInt(resultBasicType) ? builder.makeIntType(bits) : builder.makeUintType(bits);
+                if (bits == 64) {
+                    zero = builder.makeInt64Constant(zeroType, 0, false);
+                    one = builder.makeInt64Constant(zeroType, 1, false);
+                } else {
+                    zero = builder.makeIntConstant(zeroType, 0, false);
+                    one = builder.makeIntConstant(zeroType, 1, false);
+                }
+            } else {
+                assert(isTypeFloat(resultBasicType));
+                if (bits == 64) {
+                    zero = builder.makeDoubleConstant(0.0);
+                    one = builder.makeDoubleConstant(1.0);
+                } else if (bits == 32) {
+                    zero = builder.makeFloatConstant(0.0);
+                    one = builder.makeFloatConstant(1.0);
+                } else {
+                    assert(bits == 16);
+                    zero = builder.makeFloat16Constant(0.0);
+                    one = builder.makeFloat16Constant(1.0);
+                }
             }
-            zero = makeSmearedConstant(zero, vectorSize);
-            // Use OpIAdd, instead of OpBitcast to do the conversion when
-            // generating for OpSpecConstantOp instruction.
-            return builder.createBinOp(spv::OpIAdd, destType, operand, zero);
         }
-        // For normal run-time conversion instruction, use OpBitcast.
-        convOp = spv::OpBitcast;
-        break;
-    case glslang::EOpConvUint64ToPtr:
-        convOp = spv::OpConvertUToPtr;
-        break;
-    case glslang::EOpConvPtrToUint64:
-        convOp = spv::OpConvertPtrToU;
-        break;
-    case glslang::EOpConvPtrToUvec2:
-    case glslang::EOpConvUvec2ToPtr:
-        convOp = spv::OpBitcast;
-        break;
+    }
 
-    default:
-        break;
+    if (convOp == spv::OpNop) {
+        switch (op) {
+        case glslang::EOpConvUint64ToPtr:
+            convOp = spv::OpConvertUToPtr;
+            break;
+        case glslang::EOpConvPtrToUint64:
+            convOp = spv::OpConvertPtrToU;
+            break;
+        case glslang::EOpConvPtrToUvec2:
+        case glslang::EOpConvUvec2ToPtr:
+            convOp = spv::OpBitcast;
+            break;
+
+        default:
+            break;
+        }
     }
 
     spv::Id result = 0;
@@ -7977,7 +7952,7 @@ spv::Id TGlslangToSpvTraverser::createAtomicOperation(glslang::TOperator op, spv
     case glslang::EOpAtomicExchange:
     case glslang::EOpImageAtomicExchange:
     case glslang::EOpAtomicCounterExchange:
-        if ((typeProxy == glslang::EbtFloat16) &&
+        if ((typeProxy == glslang::EbtFloat16) && 
             (opType.getVectorSize() == 2 || opType.getVectorSize() == 4)) {
                 builder.addExtension(spv::E_SPV_NV_shader_atomic_fp16_vector);
                 builder.addCapability(spv::CapabilityAtomicFloat16VectorNV);
@@ -8766,7 +8741,16 @@ spv::Id TGlslangToSpvTraverser::createMiscOperation(glslang::TOperator op, spv::
         builder.promoteScalar(precision, operands.front(), operands.back());
         break;
     case glslang::EOpModf:
-        libCall = spv::GLSLstd450Modf;
+        {
+            libCall = spv::GLSLstd450ModfStruct;
+            assert(builder.isFloatType(builder.getScalarTypeId(typeId0)));
+            int width = builder.getScalarTypeWidth(typeId0);
+            if (width == 16)
+                builder.addExtension(spv::E_SPV_AMD_gpu_shader_half_float);
+            // The returned struct has two members of the same type as the first argument
+            typeId = builder.makeStructResultType(typeId0, typeId0);
+            consumedOperands = 1;
+        }
         break;
     case glslang::EOpMax:
         if (isFloat)
@@ -9334,6 +9318,34 @@ spv::Id TGlslangToSpvTraverser::createMiscOperation(glslang::TOperator op, spv::
         addImageProcessing2QCOMDecoration(operands[0], true);
         addImageProcessing2QCOMDecoration(operands[2], true);
         break;
+    case glslang::EOpCreateTensorLayoutNV:
+        return builder.createOp(spv::OpCreateTensorLayoutNV, typeId, std::vector<spv::Id>{});
+    case glslang::EOpCreateTensorViewNV:
+        return builder.createOp(spv::OpCreateTensorViewNV, typeId, std::vector<spv::Id>{});
+    case glslang::EOpTensorLayoutSetBlockSizeNV:
+        opCode = spv::OpTensorLayoutSetBlockSizeNV;
+        break;
+    case glslang::EOpTensorLayoutSetDimensionNV:
+        opCode = spv::OpTensorLayoutSetDimensionNV;
+        break;
+    case glslang::EOpTensorLayoutSetStrideNV:
+        opCode = spv::OpTensorLayoutSetStrideNV;
+        break;
+    case glslang::EOpTensorLayoutSliceNV:
+        opCode = spv::OpTensorLayoutSliceNV;
+        break;
+    case glslang::EOpTensorLayoutSetClampValueNV:
+        opCode = spv::OpTensorLayoutSetClampValueNV;
+        break;
+    case glslang::EOpTensorViewSetDimensionNV:
+        opCode = spv::OpTensorViewSetDimensionNV;
+        break;
+    case glslang::EOpTensorViewSetStrideNV:
+        opCode = spv::OpTensorViewSetStrideNV;
+        break;
+    case glslang::EOpTensorViewSetClipNV:
+        opCode = spv::OpTensorViewSetClipNV;
+        break;
     default:
         return 0;
     }
@@ -9390,6 +9402,13 @@ spv::Id TGlslangToSpvTraverser::createMiscOperation(glslang::TOperator op, spv::
     case glslang::EOpIMulExtended:
         builder.createStore(builder.createCompositeExtract(id, typeId0, 0), operands[3]);
         builder.createStore(builder.createCompositeExtract(id, typeId0, 1), operands[2]);
+        break;
+    case glslang::EOpModf:
+        {
+            assert(operands.size() == 2);
+            builder.createStore(builder.createCompositeExtract(id, typeId0, 1), operands[1]);
+            id = builder.createCompositeExtract(id, typeId0, 0);
+        }
         break;
     case glslang::EOpFrexp:
         {
@@ -9633,6 +9652,10 @@ spv::Id TGlslangToSpvTraverser::getSymbolId(const glslang::TIntermSymbol* symbol
                 forceType[id] = forcedType.second;
             return id;
         }
+    }
+
+    if (symbol->getBasicType() == glslang::EbtFunction) {
+        return 0;
     }
 
     id = createSpvVariable(symbol, forcedType.first);
@@ -10191,12 +10214,13 @@ bool TGlslangToSpvTraverser::isTrivial(const glslang::TIntermTyped* node)
         return false;
     }
 
+    if (IsOpNumericConv(node->getAsOperator()->getOp()) &&
+        node->getType().getBasicType() == glslang::EbtBool) {
+        return true;
+    }
+
     switch (node->getAsOperator()->getOp()) {
     case glslang::EOpLogicalNot:
-    case glslang::EOpConvIntToBool:
-    case glslang::EOpConvUintToBool:
-    case glslang::EOpConvFloatToBool:
-    case glslang::EOpConvDoubleToBool:
     case glslang::EOpEqual:
     case glslang::EOpNotEqual:
     case glslang::EOpLessThan:
@@ -10274,7 +10298,7 @@ spv::Id TGlslangToSpvTraverser::getExtBuiltins(const char* name)
     }
 }
 
-};  // end anonymous namespace
+} // end anonymous namespace
 
 namespace QtShaderTools {
 namespace glslang {

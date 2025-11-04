@@ -4,24 +4,39 @@
 
 #include "build/build_config.h"
 #include "testing/gtest/include/gtest/gtest.h"
+#include "ui/views/examples/ax_example.h"
 #include "ui/views/examples/examples_exit_code.h"
 #include "ui/views/examples/examples_main_proc.h"
 
-#if BUILDFLAG(IS_WIN)
-#include "ui/native_theme/native_theme_win.h"
-#endif
-
 namespace views::examples {
 
-TEST(ExamplesTest, TestViewsExamplesLaunches) {
+// TODO(crbug.com/372806548): Test failing on Windows
 #if BUILDFLAG(IS_WIN)
-  if (ui::NativeTheme::GetInstanceForNativeUi()->ShouldUseDarkColors()) {
-    GTEST_SKIP() << "Host is in dark mode; skipping test";
-  }
+#define MAYBE_TestViewsExamplesLaunches DISABLED_TestViewsExamplesLaunches
+#else
+#define MAYBE_TestViewsExamplesLaunches TestViewsExamplesLaunches
 #endif
-  const ExamplesExitCode exit_code = ExamplesMainProc(true);
+TEST(ExamplesTest, MAYBE_TestViewsExamplesLaunches) {
+  const ExamplesExitCode exit_code = ExamplesMainProc(/*under_test=*/true);
   // Check the status of the Skia Gold comparison.
-  EXPECT_EQ(ExamplesExitCode::kSucceeded, exit_code);
+  EXPECT_TRUE((exit_code == ExamplesExitCode::kSucceeded) ||
+              (exit_code == ExamplesExitCode::kNone));
+}
+
+// TODO(crbug.com/372806548): Test failing on Windows
+#if BUILDFLAG(IS_WIN)
+#define MAYBE_TestViewsExamplesLaunchesWithArgs DISABLED_TestViewsExamplesLaunchesWithArgs
+#else
+#define MAYBE_TestViewsExamplesLaunchesWithArgs TestViewsExamplesLaunchesWithArgs
+#endif
+TEST(ExamplesTest, MAYBE_TestViewsExamplesLaunchesWithArgs) {
+  views::examples::ExampleVector examples;
+  examples.push_back(std::make_unique<AxExample>());
+  const ExamplesExitCode exit_code =
+      ExamplesMainProc(/*under_test=*/true, std::move(examples));
+  // Check the status of the Skia Gold comparison.
+  EXPECT_TRUE((exit_code == ExamplesExitCode::kSucceeded) ||
+              (exit_code == ExamplesExitCode::kNone));
 }
 
 }  // namespace views::examples

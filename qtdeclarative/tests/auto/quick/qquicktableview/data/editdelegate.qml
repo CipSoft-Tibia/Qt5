@@ -9,6 +9,13 @@ Item {
     height: 450
 
     property alias tableView: tableView
+    property alias textInput: textInput
+
+    TextInput {
+        id: textInput
+        width: 100
+        height: 10
+    }
 
     TableView {
         id: tableView
@@ -42,6 +49,10 @@ Item {
                 required property bool current
                 required property bool selected
                 required property bool editing
+
+                // Create an attached TableView object, so that we
+                // can check its values from the test.
+                property TableView dummy: TableView.view
 
                 Component.onCompleted: {
                     tableView.editItem = editRoot

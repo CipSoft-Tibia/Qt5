@@ -25,12 +25,14 @@ static inline QString host(const QHttpServerRequest &request)
 
 int main(int argc, char *argv[])
 {
+    //! [Setting up HTTP server]
     QCoreApplication app(argc, argv);
 
     QHttpServer httpServer;
     httpServer.route("/", []() {
         return "Hello world";
     });
+    //! [Setting up HTTP server]
 
     httpServer.route("/query", [] (const QHttpServerRequest &request) {
         return host(request) + u"/query/"_s;
@@ -71,15 +73,20 @@ int main(int argc, char *argv[])
         };
     });
 
+    //! [Returning assets]
     httpServer.route("/assets/<arg>", [] (const QUrl &url) {
         return QHttpServerResponse::fromFile(u":/assets/"_s + url.path());
     });
+    //! [Returning assets]
 
+    //! [Using QHttpServerRequest]
     httpServer.route("/remote_address", [](const QHttpServerRequest &request) {
         return request.remoteAddress().toString();
     });
+    //! [Using QHttpServerRequest]
 
     // Basic authentication example (RFC 7617)
+    //! [Using basic authentication]
     httpServer.route("/auth", [](const QHttpServerRequest &request) {
         auto auth = request.value("authorization").simplified();
 
@@ -103,6 +110,7 @@ int main(int argc, char *argv[])
         resp.setHeaders(std::move(h));
         return std::move(resp);
     });
+    //! [Using basic authentication]
 
     //! [Using addAfterRequestHandler()]
     httpServer.addAfterRequestHandler(&httpServer, [](const QHttpServerRequest &, QHttpServerResponse &resp) {
@@ -112,6 +120,7 @@ int main(int argc, char *argv[])
     });
     //! [Using addAfterRequestHandler()]
 
+    //! [Binding the TCP server]
     auto tcpserver = std::make_unique<QTcpServer>();
     if (!tcpserver->listen() || !httpServer.bind(tcpserver.get())) {
         qWarning() << QCoreApplication::translate("QHttpServerExample",
@@ -120,6 +129,7 @@ int main(int argc, char *argv[])
     }
     quint16 port = tcpserver->serverPort();
     tcpserver.release();
+    //! [Binding the TCP server]
 
 #if QT_CONFIG(ssl)
     //! [HTTPS Configuration example]
@@ -167,5 +177,7 @@ int main(int argc, char *argv[])
                                        "Running on http://127.0.0.1:%1/"
                                        "(Press CTRL+C to quit)").arg(port);
 #endif
+    //! [Start handling requests]
     return app.exec();
+    //! [Start handling requests]
 }

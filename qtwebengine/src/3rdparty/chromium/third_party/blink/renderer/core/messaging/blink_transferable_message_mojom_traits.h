@@ -2,6 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#ifdef UNSAFE_BUFFERS_BUILD
+// TODO(crbug.com/351564777): Remove this and convert code to safer constructs.
+#pragma allow_unsafe_buffers
+#endif
+
 #ifndef THIRD_PARTY_BLINK_RENDERER_CORE_MESSAGING_BLINK_TRANSFERABLE_MESSAGE_MOJOM_TRAITS_H_
 #define THIRD_PARTY_BLINK_RENDERER_CORE_MESSAGING_BLINK_TRANSFERABLE_MESSAGE_MOJOM_TRAITS_H_
 
@@ -66,12 +71,12 @@ struct CORE_EXPORT StructTraits<blink::mojom::TransferableMessageDataView,
     return input.delegated_capability;
   }
 
-  static absl::optional<blink::scheduler::TaskAttributionId> parent_task_id(
+  static std::optional<blink::scheduler::TaskAttributionId> parent_task_id(
       blink::BlinkTransferableMessage& input) {
     return input.parent_task_id
-               ? absl::make_optional(blink::scheduler::TaskAttributionId(
+               ? std::make_optional(blink::scheduler::TaskAttributionId(
                      input.parent_task_id.value()))
-               : absl::nullopt;
+               : std::nullopt;
   }
 
   static bool Read(blink::mojom::TransferableMessageDataView,

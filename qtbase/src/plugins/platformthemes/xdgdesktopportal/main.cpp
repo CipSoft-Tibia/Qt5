@@ -1,5 +1,6 @@
 // Copyright (C) 2017-2018 Red Hat, Inc
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include <qpa/qplatformthemeplugin.h>
 #include "qxdgdesktopportaltheme.h"
@@ -20,12 +21,7 @@ public:
 QPlatformTheme *QXdgDesktopPortalThemePlugin::create(const QString &key, const QStringList &params)
 {
     Q_UNUSED(params);
-    if (!key.compare("xdgdesktopportal"_L1, Qt::CaseInsensitive) ||
-        !key.compare("flatpak"_L1, Qt::CaseInsensitive) ||
-        !key.compare("snap"_L1, Qt::CaseInsensitive))
-        return new QXdgDesktopPortalTheme;
-
-    return nullptr;
+    return QXdgDesktopPortalTheme::isXdgPlugin(key) ? new QXdgDesktopPortalTheme : nullptr;
 }
 
 QT_END_NAMESPACE

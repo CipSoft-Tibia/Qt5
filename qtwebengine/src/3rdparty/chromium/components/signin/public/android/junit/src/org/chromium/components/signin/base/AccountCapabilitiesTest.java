@@ -44,16 +44,26 @@ public final class AccountCapabilitiesTest {
         switch (capabilityName) {
             case AccountCapabilitiesConstants.CAN_HAVE_EMAIL_ADDRESS_DISPLAYED_CAPABILITY_NAME:
                 return capabilities.canHaveEmailAddressDisplayed();
-            case AccountCapabilitiesConstants.CAN_OFFER_EXTENDED_CHROME_SYNC_PROMOS_CAPABILITY_NAME:
-                return capabilities.canOfferExtendedSyncPromos();
+            case AccountCapabilitiesConstants
+                    .CAN_SHOW_HISTORY_SYNC_OPT_INS_WITHOUT_MINOR_MODE_RESTRICTIONS_CAPABILITY_NAME:
+                return capabilities.canShowHistorySyncOptInsWithoutMinorModeRestrictions();
             case AccountCapabilitiesConstants.CAN_RUN_CHROME_PRIVACY_SANDBOX_TRIALS_CAPABILITY_NAME:
                 return capabilities.canRunChromePrivacySandboxTrials();
             case AccountCapabilitiesConstants.IS_OPTED_IN_TO_PARENTAL_SUPERVISION_CAPABILITY_NAME:
                 return capabilities.isOptedInToParentalSupervision();
+            case AccountCapabilitiesConstants.CAN_FETCH_FAMILY_MEMBER_INFO_CAPABILITY_NAME:
+                return capabilities.canFetchFamilyMemberInfo();
             case AccountCapabilitiesConstants.CAN_TOGGLE_AUTO_UPDATES_NAME:
                 return capabilities.canToggleAutoUpdates();
             case AccountCapabilitiesConstants.CAN_USE_CHROME_IP_PROTECTION_NAME:
                 return capabilities.canUseChromeIpProtection();
+            case AccountCapabilitiesConstants
+                    .CAN_USE_DEVTOOLS_GENERATIVE_AI_FEATURES_CAPABILITY_NAME:
+                return capabilities.canUseDevToolsGenerativeAiFeatures();
+            case AccountCapabilitiesConstants.CAN_USE_EDU_FEATURES_CAPABILITY_NAME:
+                return capabilities.canUseEduFeatures();
+            case AccountCapabilitiesConstants.CAN_USE_MANTA_SERVICE_NAME:
+                return capabilities.canUseMantaService();
             case AccountCapabilitiesConstants.CAN_USE_MODEL_EXECUTION_FEATURES_NAME:
                 return capabilities.canUseModelExecutionFeatures();
             case AccountCapabilitiesConstants.IS_ALLOWED_FOR_MACHINE_LEARNING_CAPABILITY_NAME:
@@ -65,6 +75,10 @@ public final class AccountCapabilitiesTest {
                 return capabilities.isSubjectToEnterprisePolicies();
             case AccountCapabilitiesConstants.IS_SUBJECT_TO_PARENTAL_CONTROLS_CAPABILITY_NAME:
                 return capabilities.isSubjectToParentalControls();
+            case AccountCapabilitiesConstants.CAN_USE_SPEAKER_LABEL_IN_RECORDER_APP:
+                return capabilities.canUseSpeakerLabelInRecorderApp();
+            case AccountCapabilitiesConstants.CAN_USE_GENERATIVE_AI_IN_RECORDER_APP:
+                return capabilities.canUseGenerativeAiInRecorderApp();
         }
         assert false : "Capability name is not known.";
         return -1;
@@ -91,10 +105,10 @@ public final class AccountCapabilitiesTest {
                                         AccountCapabilitiesConstants
                                                 .CAN_HAVE_EMAIL_ADDRESS_DISPLAYED_CAPABILITY_NAME),
                         new ParameterSet()
-                                .name("CanOfferExtendedChromeSyncPromos")
+                                .name("CanShowHistorySyncOptInsWithoutMinorModeRestrictions")
                                 .value(
                                         AccountCapabilitiesConstants
-                                                .CAN_OFFER_EXTENDED_CHROME_SYNC_PROMOS_CAPABILITY_NAME),
+                                                .CAN_SHOW_HISTORY_SYNC_OPT_INS_WITHOUT_MINOR_MODE_RESTRICTIONS_CAPABILITY_NAME),
                         new ParameterSet()
                                 .name("CanRunChromePrivacySandboxTrials")
                                 .value(
@@ -114,6 +128,14 @@ public final class AccountCapabilitiesTest {
                                         AccountCapabilitiesConstants
                                                 .CAN_USE_CHROME_IP_PROTECTION_NAME),
                         new ParameterSet()
+                                .name("CanUseDevToolsGenerativeAiFeatures")
+                                .value(
+                                        AccountCapabilitiesConstants
+                                                .CAN_USE_DEVTOOLS_GENERATIVE_AI_FEATURES_CAPABILITY_NAME),
+                        new ParameterSet()
+                                .name("CanUseMantaService")
+                                .value(AccountCapabilitiesConstants.CAN_USE_MANTA_SERVICE_NAME),
+                        new ParameterSet()
                                 .name("CanUseModelExecutionFeatures")
                                 .value(
                                         AccountCapabilitiesConstants
@@ -129,10 +151,25 @@ public final class AccountCapabilitiesTest {
                                         AccountCapabilitiesConstants
                                                 .IS_SUBJECT_TO_ENTERPRISE_POLICIES_CAPABILITY_NAME),
                         new ParameterSet()
+                                .name("CanFetchFamilyMemberInfo")
+                                .value(
+                                        AccountCapabilitiesConstants
+                                                .CAN_FETCH_FAMILY_MEMBER_INFO_CAPABILITY_NAME),
+                        new ParameterSet()
                                 .name("IsSubjectToParentalControls")
                                 .value(
                                         AccountCapabilitiesConstants
-                                                .IS_SUBJECT_TO_PARENTAL_CONTROLS_CAPABILITY_NAME));
+                                                .IS_SUBJECT_TO_PARENTAL_CONTROLS_CAPABILITY_NAME),
+                        new ParameterSet()
+                                .name("CanUseSpeakerLabelInRecorderApp")
+                                .value(
+                                        AccountCapabilitiesConstants
+                                                .CAN_USE_SPEAKER_LABEL_IN_RECORDER_APP),
+                        new ParameterSet()
+                                .name("CanUseGenerativeAiInRecorderApp")
+                                .value(
+                                        AccountCapabilitiesConstants
+                                                .CAN_USE_GENERATIVE_AI_IN_RECORDER_APP));
 
         // Returns String value added from Capabilities ParameterSet.
         static String getCapabilityName(ParameterSet parameterSet) {

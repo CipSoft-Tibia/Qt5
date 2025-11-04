@@ -37,11 +37,11 @@ struct ItemLocation
 
 struct TextPosition
 {
-    int line;
-    int character;
+    int line = 0;
+    int character = 0;
 };
 
-enum IdentifierType : char {
+enum IdentifierType : quint8 {
     NotAnIdentifier, // when resolving expressions like `Qt.point().x` for example, where
                      // `Qt.point()` is not an identifier
 
@@ -65,7 +65,7 @@ enum IdentifierType : char {
 
 struct ErrorMessage
 {
-    int code;
+    int code = 0;
     QString message;
 };
 
@@ -90,8 +90,8 @@ public:
     QQmlJS::SourceLocation sourceLocation() const { return m_sourceLocation; }
     TextPosition end() const { return m_end; }
 
-    static Location from(const QString &fileName, const QString &code, quint32 startLine,
-                         quint32 startCharacter, quint32 length);
+    static Location from(const QString &fileName, const QString &code, qsizetype startLine,
+                         qsizetype startCharacter, qsizetype length);
     static Location from(const QString &fileName, const QQmlJS::SourceLocation &sourceLocation,
                          const QString &code);
     static std::optional<Location> tryFrom(const QString &fileName,
@@ -144,8 +144,8 @@ struct Edit
     Location location;
     QString replacement;
 
-    static Edit from(const QString &fileName, const QString &code, quint32 startLine,
-                     quint32 startCharacter, quint32 length, const QString &newName);
+    static Edit from(const QString &fileName, const QString &code, qsizetype startLine,
+                     qsizetype startCharacter, qsizetype length, const QString &newName);
 
     friend bool operator<(const Edit &a, const Edit &b)
     {
@@ -175,11 +175,11 @@ public:
     void sort();
     bool isEmpty() const;
 
-    friend bool comparesEqual(const Usages &a, const Usages &b)
+    friend bool comparesEqual(const Usages &a, const Usages &b) noexcept
     {
         return a.m_usagesInFile == b.m_usagesInFile && a.m_usagesInFilename == b.m_usagesInFilename;
     }
-    Q_DECLARE_EQUALITY_COMPARABLE_NON_NOEXCEPT(Usages)
+    Q_DECLARE_EQUALITY_COMPARABLE(Usages)
 
     Usages() = default;
     Usages(const QList<Location> &usageInFile, const QList<QString> &usageInFilename);
@@ -213,12 +213,12 @@ renamed and also filename themselves can be renamed.
 class RenameUsages
 {
 public:
-    friend bool comparesEqual(const RenameUsages &a, const RenameUsages &b)
+    friend bool comparesEqual(const RenameUsages &a, const RenameUsages &b) noexcept
     {
         return std::tie(a.m_renamesInFile, a.m_renamesInFilename)
                 == std::tie(b.m_renamesInFile, b.m_renamesInFilename);
     }
-    Q_DECLARE_EQUALITY_COMPARABLE_NON_NOEXCEPT(RenameUsages)
+    Q_DECLARE_EQUALITY_COMPARABLE(RenameUsages)
 
     RenameUsages() = default;
     RenameUsages(const QList<Edit> &renamesInFile, const QList<FileRename> &renamesInFilename);

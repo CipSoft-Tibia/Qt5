@@ -18,6 +18,7 @@
 #include "components/segmentation_platform/public/proto/segmentation_platform.pb.h"
 #include "components/segmentation_platform/public/segmentation_platform_service.h"
 #include "components/segmentation_platform/public/trigger.h"
+#include "services/metrics/public/cpp/ukm_source_id.h"
 
 class PrefService;
 
@@ -62,6 +63,9 @@ class TrainingDataCollector {
     // TODO(haileywang): Make this a vector and append all the values to the
     // output.
     float output_value;
+
+    // Optional source ID to record UKM with.
+    ukm::SourceId ukm_source_id;
   };
 
   // Called when model metadata is updated. May result in training data
@@ -86,13 +90,14 @@ class TrainingDataCollector {
       proto::SegmentId id,
       scoped_refptr<InputContext> input_context,
       DecisionType type,
-      absl::optional<ModelProvider::Request> inputs,
+      std::optional<ModelProvider::Request> inputs,
       bool decision_result_update_trigger = false) = 0;
 
   // Called by Segmentation Platform when manually triggering data collection on
   // the client.
   virtual void CollectTrainingData(SegmentId segment_id,
                                    TrainingRequestId request_id,
+                                   ukm::SourceId ukm_source_id,
                                    const TrainingLabels& param,
                                    SuccessCallback callback) = 0;
 

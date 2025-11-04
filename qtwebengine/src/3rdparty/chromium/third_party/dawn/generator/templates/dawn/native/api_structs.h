@@ -24,6 +24,7 @@
 //* CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
 //* OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 //* OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+{% from 'dawn/cpp_macros.tmpl' import wgpu_string_constructors with context %}
 
 {% set namespace_name = Name(metadata.native_namespace) %}
 {% set DIR = namespace_name.concatcase().upper() %}
@@ -32,12 +33,16 @@
 #define {{DIR}}_{{namespace.upper()}}_STRUCTS_H_
 
 {% set api = metadata.api.lower() %}
+{% set CAPI = metadata.c_prefix %}
 #include "dawn/{{api}}_cpp.h"
 {% set impl_dir = metadata.impl_dir + "/" if metadata.impl_dir else "" %}
 {% set native_namespace = namespace_name.namespace_case() %}
 {% set native_dir = impl_dir + namespace_name.Dirs() %}
 #include "{{native_dir}}/Forward.h"
+
 #include <cmath>
+#include <optional>
+#include <string_view>
 
 namespace {{native_namespace}} {
 
@@ -46,6 +51,8 @@ namespace {{native_namespace}} {
         {{" "}}= nullptr
     {%- elif member.type.category == "object" and member.optional -%}
         {{" "}}= nullptr
+    {%- elif member.type.category == "callback info" -%}
+        {{" "}}= {{CAPI}}_{{member.name.SNAKE_CASE()}}_INIT
     {%- elif member.type.category in ["enum", "bitmask"] and member.default_value != None -%}
         {{" "}}= {{namespace}}::{{as_cppType(member.type.name)}}::{{as_cppEnum(Name(member.default_value))}}
     {%- elif member.type.category == "native" and member.default_value != None -%}
@@ -61,24 +68,25 @@ namespace {{native_namespace}} {
     using {{namespace}}::ChainedStructOut;
 
     {% for type in by_category["structure"] %}
+        {% set CppType = as_cppType(type.name) %}
         {% if type.chained %}
             {% set chainedStructType = "ChainedStructOut" if type.chained == "out" else "ChainedStruct" %}
-            struct {{as_cppType(type.name)}} : {{chainedStructType}} {
-                {{as_cppType(type.name)}}() {
+            struct {{CppType}} : {{chainedStructType}} {
+                {{CppType}}() {
                     sType = {{namespace}}::SType::{{type.name.CamelCase()}};
                 }
         {% else %}
-            struct {{as_cppType(type.name)}} {
+            struct {{CppType}} {
                 {% if type.has_free_members_function %}
-                    {{as_cppType(type.name)}}() = default;
+                    {{CppType}}() = default;
                 {% endif %}
         {% endif %}
             {% if type.has_free_members_function %}
-                ~{{as_cppType(type.name)}}();
-                {{as_cppType(type.name)}}(const {{as_cppType(type.name)}}&) = delete;
-                {{as_cppType(type.name)}}& operator=(const {{as_cppType(type.name)}}&) = delete;
-                {{as_cppType(type.name)}}({{as_cppType(type.name)}}&&);
-                {{as_cppType(type.name)}}& operator=({{as_cppType(type.name)}}&&);
+                ~{{CppType}}();
+                {{CppType}}(const {{CppType}}&) = delete;
+                {{CppType}}& operator=(const {{CppType}}&) = delete;
+                {{CppType}}({{CppType}}&&);
+                {{CppType}}& operator=({{CppType}}&&);
 
             {% endif %}
             {% if type.extensible %}
@@ -90,11 +98,24 @@ namespace {{native_namespace}} {
                 {% if type.chained and loop.first %}
                     //* Align the first member after ChainedStruct to match the C struct layout.
                     //* It has to be aligned both to its natural and ChainedStruct's alignment.
-                    alignas({{namespace}}::{{as_cppType(type.name)}}::kFirstMemberAlignment) {{member_declaration}};
+                    alignas({{namespace}}::{{CppType}}::kFirstMemberAlignment) {{member_declaration}};
                 {% else %}
                     {{member_declaration}};
                 {% endif %}
             {% endfor %}
+
+            //* Custom string constructors / conversion
+            {% if type.name.get() == "string view" %}
+                {{wgpu_string_constructors(CppType, false) | indent(8)}}
+
+                // NOLINTNEXTLINE(runtime/explicit) allow implicit conversion
+                operator std::string_view() const;
+            {% elif type.name.get() == "nullable string view" %}
+                {{wgpu_string_constructors(CppType, true) | indent(8)}}
+
+                // NOLINTNEXTLINE(runtime/explicit) allow implicit conversion
+                operator std::optional<std::string_view>() const;
+            {% endif %}
 
             {% if type.any_member_requires_struct_defaulting %}
                 // This method makes a copy of the struct, then, for any enum members with trivial
@@ -102,11 +123,16 @@ namespace {{native_namespace}} {
                 // all of the defaults for the struct, and recursively its by-value substructs (but
                 // NOT by-pointer substructs since they are const*). It must be called in an
                 // appropriate place in Dawn.
-                [[nodiscard]] {{as_cppType(type.name)}} WithTrivialFrontendDefaults() const;
+                [[nodiscard]] {{CppType}} WithTrivialFrontendDefaults() const;
             {% endif %}
             // Equality operators, mostly for testing. Note that this tests
             // strict pointer-pointer equality if the struct contains member pointers.
-            bool operator==(const {{as_cppType(type.name)}}& rhs) const;
+            bool operator==(const {{CppType}}& rhs) const;
+
+            {% if type.has_free_members_function %}
+              private:
+                inline void FreeMembers();
+            {% endif %}
         };
 
     {% endfor %}

@@ -7,6 +7,8 @@
 
 #include <stdint.h>
 
+#include <optional>
+
 #include "base/component_export.h"
 #include "base/memory/raw_ptr.h"
 #include "net/base/ip_address.h"
@@ -15,7 +17,6 @@
 #include "services/network/public/mojom/client_security_state.mojom.h"
 #include "services/network/public/mojom/ip_address_space.mojom-forward.h"
 #include "services/network/public/mojom/network_context.mojom-forward.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "url/origin.h"
 
 class GURL;
@@ -70,7 +71,7 @@ class COMPONENT_EXPORT(NETWORK_SERVICE) PrivateNetworkAccessChecker {
   //
   // Spec:
   // https://wicg.github.io/private-network-access/#response-ip-address-space
-  absl::optional<mojom::IPAddressSpace> ResponseAddressSpace() const {
+  std::optional<mojom::IPAddressSpace> ResponseAddressSpace() const {
     return response_address_space_;
   }
 
@@ -80,6 +81,10 @@ class COMPONENT_EXPORT(NETWORK_SERVICE) PrivateNetworkAccessChecker {
   // https://wicg.github.io/private-network-access/#request-target-ip-address-space
   mojom::IPAddressSpace TargetAddressSpace() const {
     return target_address_space_;
+  }
+
+  mojom::IPAddressSpace RequiredAddressSpace() const {
+    return required_address_space_;
   }
 
   // Clears state from all checks this instance has performed, and sets the
@@ -160,7 +165,7 @@ class COMPONENT_EXPORT(NETWORK_SERVICE) PrivateNetworkAccessChecker {
   // - request url = `http://localhost`     -> nullptr
   //
   // Used to compute metrics for https://crbug.com/1381471.
-  absl::optional<net::IPAddress> request_url_private_ip_;
+  std::optional<net::IPAddress> request_url_private_ip_;
 
   // The target IP address space set on the request. Ignored if `kUnknown`.
   //
@@ -176,13 +181,16 @@ class COMPONENT_EXPORT(NETWORK_SERVICE) PrivateNetworkAccessChecker {
   // the last call to `Check()`.
   //
   // Set by `Check()`, reset by `ResetForRedirect()`.
-  absl::optional<mojom::IPAddressSpace> response_address_space_;
+  std::optional<mojom::IPAddressSpace> response_address_space_;
 
   // The request initiator origin.
-  absl::optional<url::Origin> request_initiator_;
+  std::optional<url::Origin> request_initiator_;
 
   // The request is from/to a potentially trustworthy and same origin.
   bool is_potentially_trustworthy_same_origin_;
+
+  // IP address space required for permission prompt.
+  mojom::IPAddressSpace required_address_space_;
 };
 
 }  // namespace network

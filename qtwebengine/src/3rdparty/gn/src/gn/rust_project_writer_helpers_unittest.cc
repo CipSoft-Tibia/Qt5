@@ -111,6 +111,8 @@ TEST_F(RustProjectWriterHelper, SysrootDepsAreCorrect) {
   const char expected_json[] =
       "{\n"
       "  \"sysroot\": \"/root/out/Debug/sysroot\",\n"
+      "  \"sysroot_src\": "
+      "\"/root/out/Debug/sysroot/lib/rustlib/src/rust/library\",\n"
       "  \"crates\": [\n"
       "  ]\n"
       "}\n";

@@ -243,6 +243,11 @@ function(qt_auto_detect_apple)
 
     if(QT_APPLE_SDK)
         set(CMAKE_OSX_SYSROOT "${QT_APPLE_SDK}" CACHE STRING "")
+    elseif(NOT CMAKE_SYSTEM_NAME)
+        # Persist SDK name for macOS builds, since CMake 4.x will pick arbitrary
+        # SDK paths, ignoring xcode-select, if not given an explicit SDK.
+        _qt_internal_get_apple_sdk_name(sdk_name)
+        set(CMAKE_OSX_SYSROOT "${sdk_name}" CACHE STRING "")
     endif()
 
     if(CMAKE_SYSTEM_NAME STREQUAL iOS OR CMAKE_SYSTEM_NAME STREQUAL visionOS)
@@ -268,11 +273,16 @@ function(qt_auto_detect_apple)
             set(version "${QT_SUPPORTED_MIN_MACOS_VERSION}")
         elseif(CMAKE_SYSTEM_NAME STREQUAL iOS)
             set(version "${QT_SUPPORTED_MIN_IOS_VERSION}")
+        elseif(CMAKE_SYSTEM_NAME STREQUAL visionOS)
+            set(version "${QT_SUPPORTED_MIN_VISIONOS_VERSION}")
         endif()
         if(version)
             set(CMAKE_OSX_DEPLOYMENT_TARGET "${version}" CACHE STRING "${description}")
         endif()
     endif()
+
+    _qt_internal_get_apple_sdk_path(apple_sdk_path)
+    set(QT_APPLE_SDK_PATH "${apple_sdk_path}" CACHE STRING "Darwin SDK path.")
 
     _qt_internal_get_apple_sdk_version(apple_sdk_version)
     set(QT_MAC_SDK_VERSION "${apple_sdk_version}" CACHE STRING "Darwin SDK version.")

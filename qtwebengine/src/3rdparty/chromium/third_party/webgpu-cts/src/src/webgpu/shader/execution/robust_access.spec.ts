@@ -7,6 +7,7 @@ TODO: add tests to check that textureLoad operations stay in-bounds.
 
 import { makeTestGroup } from '../../../common/framework/test_group.js';
 import { assert } from '../../../common/util/util.js';
+import { Float16Array } from '../../../external/petamoriken/float16/float16.js';
 import { GPUTest } from '../../gpu_test.js';
 import { align } from '../../util/math.js';
 import { generateTypes, supportedScalarTypes, supportsAtomics } from '../types.js';
@@ -25,6 +26,7 @@ const kMinI32 = -0x8000_0000;
  */
 async function runShaderTest(
   t: GPUTest,
+  enables: string,
   stage: GPUShaderStageFlags,
   testSource: string,
   layout: GPUPipelineLayout,
@@ -34,14 +36,14 @@ async function runShaderTest(
   assert(stage === GPUShaderStage.COMPUTE, 'Only know how to deal with compute for now');
 
   // Contains just zero (for now).
-  const constantsBuffer = t.device.createBuffer({ size: 4, usage: GPUBufferUsage.UNIFORM });
+  const constantsBuffer = t.createBufferTracked({ size: 4, usage: GPUBufferUsage.UNIFORM });
 
-  const resultBuffer = t.device.createBuffer({
+  const resultBuffer = t.createBufferTracked({
     size: 4,
     usage: GPUBufferUsage.COPY_SRC | GPUBufferUsage.STORAGE,
   });
 
-  const source = `
+  const source = `${enables}
 struct Constants {
   zero: u32
 };
@@ -96,10 +98,12 @@ fn main() {
 /** Fill an ArrayBuffer with sentinel values, except clear a region to zero. */
 function testFillArrayBuffer(
   array: ArrayBuffer,
-  type: 'u32' | 'i32' | 'f32',
+  type: 'u32' | 'i32' | 'f16' | 'f32',
   { zeroByteStart, zeroByteCount }: { zeroByteStart: number; zeroByteCount: number }
 ) {
-  const constructor = { u32: Uint32Array, i32: Int32Array, f32: Float32Array }[type];
+  const constructor = { u32: Uint32Array, i32: Int32Array, f16: Float16Array, f32: Float32Array }[
+    type
+  ];
   assert(zeroByteCount % constructor.BYTES_PER_ELEMENT === 0);
   new constructor(array).fill(42);
   new constructor(array, zeroByteStart, zeroByteCount / constructor.BYTES_PER_ELEMENT).fill(0);
@@ -122,6 +126,7 @@ g.test('linear_memory')
     TODO: Test types like vec2<atomic<i32>>, if that's allowed.
     TODO: Test exprIndexAddon as constexpr.
     TODO: Test exprIndexAddon as pipeline-overridable constant expression.
+    TODO: Adjust test logic to support array of f16 in the uniform address space
   `
   )
   .params(u =>
@@ -168,10 +173,15 @@ g.test('linear_memory')
         { shadowingMode: 'function-scope' },
       ])
       .expand('isAtomic', p => (supportsAtomics(p) ? [false, true] : [false]))
-      .beginSubcases()
       .expand('baseType', supportedScalarTypes)
+      .beginSubcases()
       .expandWithParams(generateTypes)
   )
+  .beforeAllSubcases(t => {
+    if (t.params.baseType === 'f16') {
+      t.selectDeviceOrSkipTestCase('shader-f16');
+    }
+  })
   .fn(async t => {
     const {
       addressSpace,
@@ -313,21 +323,21 @@ struct TestData {
     let index = (${indexToTest})${exprIndexAddon};`;
           const exprZeroElement = `${_kTypeInfo.elementBaseType}()`;
           const exprElement = `s.data[index]`;
-
+          const suffices = _kTypeInfo.accessSuffixes ?? [''];
           switch (access) {
             case 'read':
               {
-                let exprLoadElement = isAtomic ? `atomicLoad(&${exprElement})` : exprElement;
-                if (addressSpace === 'uniform' && containerType === 'array') {
-                  // Scalar types will be wrapped in a vec4 to satisfy array element size
-                  // requirements for the uniform address space, so we need an additional index
-                  // accessor expression.
-                  exprLoadElement += '[0]';
+                const exprLoadElement = isAtomic ? `atomicLoad(&${exprElement})` : exprElement;
+                let conditions = suffices.map(x => `${exprLoadElement}${x} != ${exprZeroElement}`);
+                if (containerType === 'matrix') {
+                  // The comparison is a vector bool result.
+                  // Convert that to a scalar bool.
+                  conditions = conditions.map(c => `any(${c})`);
                 }
-                let condition = `${exprLoadElement} != ${exprZeroElement}`;
-                if (containerType === 'matrix') condition = `any(${condition})`;
-                testFunctionSource += `
-    if (${condition}) { return ${nextErrorReturnValue()}; }`;
+                conditions.forEach(c => {
+                  testFunctionSource += `
+    if (${c}) { return ${nextErrorReturnValue()}; }`;
+                });
               }
               break;
 
@@ -336,8 +346,10 @@ struct TestData {
                 testFunctionSource += `
     atomicStore(&s.data[index], ${exprZeroElement});`;
               } else {
-                testFunctionSource += `
-    s.data[index] = ${exprZeroElement};`;
+                suffices.forEach(x => {
+                  testFunctionSource += `
+    s.data[index]${x} = ${exprZeroElement};`;
+                });
               }
               break;
           }
@@ -429,6 +441,8 @@ fn runTest() -> u32 {
       ],
     });
 
+    const enables = t.params.baseType === 'f16' ? 'enable f16;' : '';
+
     // Run it.
     if (bufferBindingSize !== undefined && baseType !== 'bool') {
       const expectedData = new ArrayBuffer(testBufferSize);
@@ -450,6 +464,7 @@ fn runTest() -> u32 {
       // Run the shader, accessing the buffer.
       await runShaderTest(
         t,
+        enables,
         GPUShaderStage.COMPUTE,
         testSource,
         layout,
@@ -475,6 +490,6 @@ fn runTest() -> u32 {
         bufferBindingEnd
       );
     } else {
-      await runShaderTest(t, GPUShaderStage.COMPUTE, testSource, layout, []);
+      await runShaderTest(t, enables, GPUShaderStage.COMPUTE, testSource, layout, []);
     }
   });

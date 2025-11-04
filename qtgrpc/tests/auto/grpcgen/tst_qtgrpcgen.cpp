@@ -29,9 +29,9 @@ constexpr QLatin1StringView PluginKey(" --plugin=protoc-gen-qtgrpc=");
 constexpr QLatin1StringView OptKey(" --qtgrpc_opt=");
 constexpr QLatin1StringView OutKey(" --qtgrpc_out=");
 constexpr QLatin1StringView IncludeKey(" -I");
+#endif
 
 constexpr QLatin1StringView CmdLineGeneratedDir("cmd_line_generated");
-#endif
 
 #ifndef BINARY_DIR
 #  error BINARY_DIR definition must be set

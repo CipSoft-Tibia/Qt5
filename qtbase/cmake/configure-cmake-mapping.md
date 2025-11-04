@@ -58,8 +58,10 @@ The following table describes the mapping of configure options to CMake argument
 | -gcov                                 | -DINPUT_coverage=gcov                             | Enables code coverage using the gcov tool.                      |
 | -trace [backend]                      | -DINPUT_trace=yes or -DINPUT_trace=<backend>      |                                                                 |
 |                                       | or -DFEATURE_<backend>                            |                                                                 |
-| -sanitize address -sanitize undefined | -DFEATURE_sanitize_address=ON                     | Directly setting -DECM_ENABLE_SANITIZERS=foo is not supported   |
-|                                       | -DFEATURE_sanitize_undefined=ON                   |                                                                 |
+| -sanitize address                     | -DFEATURE_sanitize_address=ON                     | Directly setting -DECM_ENABLE_SANITIZERS=foo is not supported   |
+| -sanitize undefined                   | -DFEATURE_sanitize_undefined=ON                   | See above.                                                      |
+| -sanitize thread                      | -DFEATURE_sanitize_thread=ON                      | See above.                                                      |
+| -sanitize memory                      | -DFEATURE_sanitize_memory=ON                      | See above.                                                      |
 | -c++std c++20                         | -DFEATURE_cxx20=ON                                |                                                                 |
 | -sse2/-sse3/-ssse3/-sse4.1            | -DFEATURE_sse4=ON                                 |                                                                 |
 | -mips_dsp/-mips_dspr2                 | -DFEATURE_mips_dsp=ON                             |                                                                 |
@@ -178,3 +180,7 @@ The following table describes the mapping of configure options to CMake argument
 | -disable-deprecated-up-to <hex_version> | -DQT_DISABLE_DEPRECATED_UP_TO=<hex_version>     |                                                                 |
 | -mimetype-database-compression <type> | -DINPUT_mimetype_database_compression=<type>      | Sets the compression type for mime type database. Supported     |
 |                                       |                                                   | types: gzip, zstd, none.                                        |
+| -force-bundled-libs                   | -DFEATURE_force_bundled_libs=ON                   |                                                                 |
+| -force-system-libs                    | -DFEATURE_force_system_libs=ON                    |                                                                 |
+| -ffmpeg-dir                           | -DFFMPEG_DIR=<dir>                                | FFmpeg development libraries directory                          |
+| -ffmpeg-deploy                        | -DQT_DEPLOY_FFMPEG=ON                             | FFmpeg binaries will be copied to Qt's install directory        |

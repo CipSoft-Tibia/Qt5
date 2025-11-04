@@ -11,7 +11,9 @@
 #include <random>
 #include <vector>
 
-#include <xnnpack.h>
+#include <fp16/fp16.h>
+
+#include "xnnpack.h"
 
 #include <benchmark/benchmark.h>
 #include "bench/utils.h"
@@ -45,7 +47,6 @@ static void xnnpack_softmax_qu8(benchmark::State& state) {
 
   xnn_operator_t softmax_op = nullptr;
   status = xnn_create_softmax_nc_qu8(
-    channels, channels /* input stride */, channels /* output stride */,
     1.0f /* input scale */,
     0 /* output zero point */, 1.0f / 256.0f /* output scale */,
     0 /* flags */, &softmax_op);
@@ -56,6 +57,7 @@ static void xnnpack_softmax_qu8(benchmark::State& state) {
 
   status = xnn_reshape_softmax_nc_qu8(
     softmax_op,
+    channels, channels /* input stride */, channels /* output stride */,
     batch_size,
     /*threadpool=*/nullptr);
   if (status != xnn_status_success) {
@@ -119,9 +121,7 @@ static void xnnpack_softmax_f32(benchmark::State& state) {
   }
 
   xnn_operator_t softmax_op = nullptr;
-  status = xnn_create_softmax_nc_f32(
-    channels, channels /* input stride */, channels /* output stride */,
-    0 /* flags */, &softmax_op);
+  status = xnn_create_softmax_nc_f32(0 /* flags */, &softmax_op);
   if (status != xnn_status_success || softmax_op == nullptr) {
     state.SkipWithError("failed to create SoftMax operator");
     return;
@@ -129,6 +129,7 @@ static void xnnpack_softmax_f32(benchmark::State& state) {
 
   status = xnn_reshape_softmax_nc_f32(
     softmax_op,
+    channels, channels /* input stride */, channels /* output stride */,
     batch_size,
     /*threadpool=*/nullptr);
   if (status != xnn_status_success) {
@@ -168,6 +169,79 @@ static void xnnpack_softmax_f32(benchmark::State& state) {
     benchmark::Counter(uint64_t(state.iterations()) * elements_per_iteration, benchmark::Counter::kIsRate);
 
   const size_t bytes_per_iteration = 2 * elements_per_iteration * sizeof(float);
+  state.counters["bytes"] =
+    benchmark::Counter(uint64_t(state.iterations()) * bytes_per_iteration, benchmark::Counter::kIsRate);
+}
+
+static void xnnpack_softmax_f16(benchmark::State& state) {
+  const size_t batch_size = static_cast<size_t>(state.range(0));
+  const size_t channels = static_cast<size_t>(state.range(1));
+
+  std::random_device random_device;
+  auto rng = std::mt19937(random_device());
+  auto f32rng = std::bind(std::uniform_real_distribution<float>(-100.0f, 100.0f), std::ref(rng));
+  auto f16rng = std::bind(fp16_ieee_from_fp32_value, f32rng);
+
+  std::vector<uint16_t> input(batch_size * channels + XNN_EXTRA_BYTES / sizeof(uint16_t));
+  std::vector<uint16_t> output(batch_size * channels);
+  std::generate(input.begin(), input.end(), std::ref(f16rng));
+  std::fill(output.begin(), output.end(), UINT16_C(0x7E00) /* NaN */);
+
+  xnn_status status = xnn_initialize(nullptr /* allocator */);
+  if (status != xnn_status_success) {
+    state.SkipWithError("failed to initialize XNNPACK");
+    return;
+  }
+
+  xnn_operator_t softmax_op = nullptr;
+  status = xnn_create_softmax_nc_f16(0 /* flags */, &softmax_op);
+  if (status != xnn_status_success || softmax_op == nullptr) {
+    state.SkipWithError("failed to create SoftMax operator");
+    return;
+  }
+
+  status = xnn_reshape_softmax_nc_f16(
+    softmax_op,
+    channels, channels /* input stride */, channels /* output stride */,
+    batch_size,
+    /*threadpool=*/nullptr);
+  if (status != xnn_status_success) {
+    state.SkipWithError("failed to reshape SoftMax operator");
+    return;
+  }
+
+  status = xnn_setup_softmax_nc_f16(
+    softmax_op,
+    input.data(), output.data());
+  if (status != xnn_status_success) {
+    state.SkipWithError("failed to setup SoftMax operator");
+    return;
+  }
+
+  for (auto _ : state) {
+    status = xnn_run_operator(softmax_op, /*threadpool=*/nullptr);
+    if (status != xnn_status_success) {
+      state.SkipWithError("failed to run SoftMax operator");
+      return;
+    }
+  }
+
+  status = xnn_delete_operator(softmax_op);
+  if (status != xnn_status_success) {
+    state.SkipWithError("failed to delete SoftMax operator");
+    return;
+  }
+
+  const uint64_t cpu_frequency = benchmark::utils::GetCurrentCpuFrequency();
+  if (cpu_frequency != 0) {
+    state.counters["cpufreq"] = cpu_frequency;
+  }
+
+  const size_t elements_per_iteration = batch_size * channels;
+  state.counters["elements"] =
+    benchmark::Counter(uint64_t(state.iterations()) * elements_per_iteration, benchmark::Counter::kIsRate);
+
+  const size_t bytes_per_iteration = 2 * elements_per_iteration * sizeof(uint16_t);
   state.counters["bytes"] =
     benchmark::Counter(uint64_t(state.iterations()) * bytes_per_iteration, benchmark::Counter::kIsRate);
 }
@@ -309,8 +383,9 @@ static void CharacteristicArguments(benchmark::internal::Benchmark* b)
   b->Args({257 * 257, 151});
 }
 
-BENCHMARK(xnnpack_softmax_qu8)->Apply(CharacteristicArguments)->UseRealTime();
 BENCHMARK(xnnpack_softmax_f32)->Apply(CharacteristicArguments)->UseRealTime();
+BENCHMARK(xnnpack_softmax_f16)->Apply(CharacteristicArguments)->UseRealTime();
+BENCHMARK(xnnpack_softmax_qu8)->Apply(CharacteristicArguments)->UseRealTime();
 
 #ifdef BENCHMARK_TENSORFLOW_LITE
   BENCHMARK(tflite_softmax_f32)->Apply(CharacteristicArguments)->UseRealTime();

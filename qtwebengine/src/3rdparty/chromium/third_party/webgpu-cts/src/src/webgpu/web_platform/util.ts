@@ -134,22 +134,6 @@ export const kVideoInfo = makeTable({
         bottomRightColor: 'green',
       },
     },
-    'four-colors-theora-bt601.ogv': {
-      mimeType: 'video/ogg; codecs=theora',
-      colorSpace: 'bt601',
-      coded: {
-        topLeftColor: 'yellow',
-        topRightColor: 'red',
-        bottomLeftColor: 'blue',
-        bottomRightColor: 'green',
-      },
-      display: {
-        topLeftColor: 'yellow',
-        topRightColor: 'red',
-        bottomLeftColor: 'blue',
-        bottomRightColor: 'green',
-      },
-    },
     'four-colors-h264-bt601.mp4': {
       mimeType: 'video/mp4; codecs=avc1.4d400c',
       colorSpace: 'bt601',
@@ -295,6 +279,70 @@ export const kVideoInfo = makeTable({
         bottomRightColor: 'green',
       },
     },
+    'four-colors-h264-bt601-hflip.mp4': {
+      mimeType: 'video/mp4; codecs=avc1.4d400c',
+      colorSpace: 'bt601',
+      coded: {
+        topLeftColor: 'yellow',
+        topRightColor: 'red',
+        bottomLeftColor: 'blue',
+        bottomRightColor: 'green',
+      },
+      display: {
+        topLeftColor: 'red',
+        topRightColor: 'yellow',
+        bottomLeftColor: 'green',
+        bottomRightColor: 'blue',
+      },
+    },
+    'four-colors-h264-bt601-vflip.mp4': {
+      mimeType: 'video/mp4; codecs=avc1.4d400c',
+      colorSpace: 'bt601',
+      coded: {
+        topLeftColor: 'yellow',
+        topRightColor: 'red',
+        bottomLeftColor: 'blue',
+        bottomRightColor: 'green',
+      },
+      display: {
+        topLeftColor: 'blue',
+        topRightColor: 'green',
+        bottomLeftColor: 'yellow',
+        bottomRightColor: 'red',
+      },
+    },
+    'four-colors-vp9-bt601-hflip.mp4': {
+      mimeType: 'video/mp4; codecs=vp09.00.10.08',
+      colorSpace: 'bt601',
+      coded: {
+        topLeftColor: 'yellow',
+        topRightColor: 'red',
+        bottomLeftColor: 'blue',
+        bottomRightColor: 'green',
+      },
+      display: {
+        topLeftColor: 'red',
+        topRightColor: 'yellow',
+        bottomLeftColor: 'green',
+        bottomRightColor: 'blue',
+      },
+    },
+    'four-colors-vp9-bt601-vflip.mp4': {
+      mimeType: 'video/mp4; codecs=vp09.00.10.08',
+      colorSpace: 'bt601',
+      coded: {
+        topLeftColor: 'yellow',
+        topRightColor: 'red',
+        bottomLeftColor: 'blue',
+        bottomRightColor: 'green',
+      },
+      display: {
+        topLeftColor: 'blue',
+        topRightColor: 'green',
+        bottomLeftColor: 'yellow',
+        bottomRightColor: 'red',
+      },
+    },
   },
 } as const);
 
@@ -335,7 +383,12 @@ export function startPlayingAndWaitForVideo(
 
       video.addEventListener(
         'error',
-        event => reject(new ErrorWithExtra('Video received "error" event', () => ({ event }))),
+        event =>
+          reject(
+            new ErrorWithExtra('Video received "error" event, message: ' + event.message, () => ({
+              event,
+            }))
+          ),
         true
       );
 
@@ -413,7 +466,9 @@ export async function getVideoFrameFromVideoElement(
 
   return raceWithRejectOnTimeout(
     new Promise<VideoFrame>(resolve => {
-      const videoTrack: MediaStreamVideoTrack = video.captureStream().getVideoTracks()[0];
+      const videoTrack: MediaStreamVideoTrack = video
+        .captureStream()
+        .getVideoTracks()[0] as MediaStreamVideoTrack;
       const trackProcessor: MediaStreamTrackProcessor<VideoFrame> = new MediaStreamTrackProcessor({
         track: videoTrack,
       });
@@ -464,6 +519,8 @@ export function getVideoElement(t: GPUTest, videoName: VideoName): HTMLVideoElem
   const videoUrl = getResourcePath(videoName);
   videoElement.src = videoUrl;
 
+  t.trackForCleanup(videoElement);
+
   return videoElement;
 }
 
@@ -491,4 +548,61 @@ function callbackHelper(
   });
   const promise = raceWithRejectOnTimeout(promiseWithoutTimeout, 2000, timeoutMessage);
   return { promise, callbackAndResolve: callbackAndResolve! };
+}
+
+/**
+ * Create VideoFrame from camera captured frame. Check whether browser environment has
+ * camera supported.
+ * Returns a webcodec VideoFrame.
+ *
+ * @param test: GPUTest that requires getting VideoFrame
+ *
+ */
+export async function captureCameraFrame(test: GPUTest): Promise<VideoFrame> {
+  if (
+    typeof navigator.mediaDevices === 'undefined' ||
+    typeof navigator.mediaDevices.getUserMedia === 'undefined'
+  ) {
+    test.skip("Browser doesn't support capture frame from camera.");
+  }
+
+  const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+  const track = stream.getVideoTracks()[0] as MediaStreamVideoTrack;
+
+  if (!track) {
+    test.skip("Doesn't have valid camera captured stream for testing.");
+  }
+
+  // Use MediaStreamTrackProcessor and ReadableStream to generate video frame directly.
+  if (typeof MediaStreamTrackProcessor !== 'undefined') {
+    const trackProcessor = new MediaStreamTrackProcessor({ track });
+    const reader = trackProcessor.readable.getReader();
+    const result = await reader.read();
+    if (result.done) {
+      test.skip('MediaStreamTrackProcessor: Cannot get valid frame from readable stream.');
+    }
+
+    return result.value;
+  }
+
+  // Fallback to ImageCapture if MediaStreamTrackProcessor not supported. Using grabFrame() to
+  // generate imageBitmap and creating video frame from it.
+  if (typeof ImageCapture !== 'undefined') {
+    const imageCapture = new ImageCapture(track);
+    const imageBitmap = await imageCapture.grabFrame();
+    return new VideoFrame(imageBitmap);
+  }
+
+  // Fallback to using HTMLVideoElement to do capture.
+  if (typeof HTMLVideoElement === 'undefined') {
+    test.skip('Try to use HTMLVideoElement do capture but HTMLVideoElement not available.');
+  }
+
+  const video = document.createElement('video');
+  video.srcObject = stream;
+
+  const frame = await getVideoFrameFromVideoElement(test, video);
+  test.trackForCleanup(frame);
+
+  return frame;
 }

@@ -9,7 +9,8 @@
 
 #include <math.h>
 
-#include "third_party/abseil-cpp/absl/types/optional.h"
+#include <optional>
+
 #include "third_party/blink/renderer/bindings/core/v8/v8_binding_for_core.h"
 #include "third_party/blink/renderer/bindings/core/v8/v8_readable_stream.h"
 #include "third_party/blink/renderer/bindings/core/v8/v8_writable_stream.h"
@@ -56,9 +57,9 @@ v8::Local<v8::Promise> PromiseRejectInternal(ScriptState* script_state,
 
 class DefaultSizeAlgorithm final : public StrategySizeAlgorithm {
  public:
-  absl::optional<double> Run(ScriptState*,
-                             v8::Local<v8::Value>,
-                             ExceptionState&) override {
+  std::optional<double> Run(ScriptState*,
+                            v8::Local<v8::Value>,
+                            ExceptionState&) override {
     return 1;
   }
 };
@@ -68,9 +69,9 @@ class JavaScriptSizeAlgorithm final : public StrategySizeAlgorithm {
   JavaScriptSizeAlgorithm(v8::Isolate* isolate, v8::Local<v8::Function> size)
       : function_(isolate, size) {}
 
-  absl::optional<double> Run(ScriptState* script_state,
-                             v8::Local<v8::Value> chunk,
-                             ExceptionState& exception_state) override {
+  std::optional<double> Run(ScriptState* script_state,
+                            v8::Local<v8::Value> chunk,
+                            ExceptionState& exception_state) override {
     auto* isolate = script_state->GetIsolate();
     auto context = script_state->GetContext();
     v8::TryCatch trycatch(isolate);
@@ -83,7 +84,7 @@ class JavaScriptSizeAlgorithm final : public StrategySizeAlgorithm {
     v8::Local<v8::Value> result;
     if (!result_maybe.ToLocal(&result)) {
       exception_state.RethrowV8Exception(trycatch.Exception());
-      return absl::nullopt;
+      return std::nullopt;
     }
 
     // This conversion to double comes from the EnqueueValueWithSize
@@ -93,7 +94,7 @@ class JavaScriptSizeAlgorithm final : public StrategySizeAlgorithm {
     v8::Local<v8::Number> number;
     if (!number_maybe.ToLocal(&number)) {
       exception_state.RethrowV8Exception(trycatch.Exception());
-      return absl::nullopt;
+      return std::nullopt;
     }
     return number->Value();
   }
@@ -175,7 +176,7 @@ class JavaScriptStreamAlgorithmWithExtraArg final : public StreamAlgorithm {
     // 6.c.
     //      i. Let fullArgs be a List consisting of arg followed by the
     //         elements of extraArgs in order.
-    v8::Local<v8::Value> full_argv[2];
+    std::array<v8::Local<v8::Value>, 2> full_argv;
     if (argc != 0) {
       full_argv[0] = argv[0];
     }
@@ -184,7 +185,7 @@ class JavaScriptStreamAlgorithmWithExtraArg final : public StreamAlgorithm {
 
     //     ii. Return ! PromiseCall(method, underlyingObject, fullArgs).
     return PromiseCall(script_state, method_.Get(isolate), recv_.Get(isolate),
-                       full_argc, full_argv);
+                       full_argc, full_argv.data());
   }
 
   void Trace(Visitor* visitor) const override {
@@ -332,7 +333,7 @@ CORE_EXPORT v8::MaybeLocal<v8::Value> ResolveMethod(
     const char* name_for_error,
     ExceptionState& exception_state) {
   auto* isolate = script_state->GetIsolate();
-  v8::TryCatch try_catch(isolate);
+  TryRethrowScope rethrow_scope(isolate, exception_state);
 
   // Algorithm steps from CreateAlgorithmFromUnderlyingMethod in the standard.
   // https://streams.spec.whatwg.org/#create-algorithm-from-underlying-method
@@ -341,7 +342,6 @@ CORE_EXPORT v8::MaybeLocal<v8::Value> ResolveMethod(
                                   V8AtomicString(isolate, method_name));
   v8::Local<v8::Value> method;
   if (!method_maybe.ToLocal(&method)) {
-    exception_state.RethrowV8Exception(try_catch.Exception());
     return v8::MaybeLocal<v8::Value>();
   }
 
@@ -445,14 +445,9 @@ CORE_EXPORT v8::MaybeLocal<v8::Value> CallOrNoop1(
   DCHECK(method->IsFunction());
 
   // 6. Return ? Call(method, O, args).
-  v8::TryCatch try_catch(script_state->GetIsolate());
-  v8::MaybeLocal<v8::Value> result = method.As<v8::Function>()->Call(
-      script_state->GetContext(), object, 1, &arg0);
-  if (result.IsEmpty()) {
-    exception_state.RethrowV8Exception(try_catch.Exception());
-    return v8::MaybeLocal<v8::Value>();
-  }
-  return result;
+  TryRethrowScope rethrow_scope(script_state->GetIsolate(), exception_state);
+  return method.As<v8::Function>()->Call(script_state->GetContext(), object, 1,
+                                         &arg0);
 }
 
 CORE_EXPORT v8::MaybeLocal<v8::Value> Call1(ScriptState* script_state,
@@ -460,14 +455,8 @@ CORE_EXPORT v8::MaybeLocal<v8::Value> Call1(ScriptState* script_state,
                                             v8::Local<v8::Object> object,
                                             v8::Local<v8::Value> arg0,
                                             ExceptionState& exception_state) {
-  v8::TryCatch try_catch(script_state->GetIsolate());
-  v8::MaybeLocal<v8::Value> result =
-      method->Call(script_state->GetContext(), object, 1, &arg0);
-  if (result.IsEmpty()) {
-    exception_state.RethrowV8Exception(try_catch.Exception());
-    return v8::MaybeLocal<v8::Value>();
-  }
-  return result;
+  TryRethrowScope rethrow_scope(script_state->GetIsolate(), exception_state);
+  return method->Call(script_state->GetContext(), object, 1, &arg0);
 }
 
 CORE_EXPORT v8::Local<v8::Promise> PromiseCall(ScriptState* script_state,
@@ -590,11 +579,8 @@ void ScriptValueToObject(ScriptState* script_state,
     *object = v8::Object::New(isolate);
     return;
   }
-  v8::TryCatch try_catch(isolate);
-  if (!v8_value->ToObject(script_state->GetContext()).ToLocal(object)) {
-    exception_state.RethrowV8Exception(try_catch.Exception());
-    return;
-  }
+  TryRethrowScope rethrow_scope(isolate, exception_state);
+  std::ignore = v8_value->ToObject(script_state->GetContext()).ToLocal(object);
 }
 
 StrategyUnpacker::StrategyUnpacker(ScriptState* script_state,
@@ -612,17 +598,15 @@ StrategyUnpacker::StrategyUnpacker(ScriptState* script_state,
   // This is used in several places. The steps here are taken from
   // https://streams.spec.whatwg.org/#ws-constructor.
   // 2. Let size be ? GetV(strategy, "size").
-  v8::TryCatch try_catch(isolate);
+  TryRethrowScope rethrow_scope(isolate, exception_state);
   if (!strategy_object->Get(context, V8AtomicString(isolate, "size"))
            .ToLocal(&size_)) {
-    exception_state.RethrowV8Exception(try_catch.Exception());
     return;
   }
 
   // 3. Let highWaterMark be ? GetV(strategy, "highWaterMark").
   if (!strategy_object->Get(context, V8AtomicString(isolate, "highWaterMark"))
            .ToLocal(&high_water_mark_)) {
-    exception_state.RethrowV8Exception(try_catch.Exception());
     return;
   }
 }
@@ -646,11 +630,10 @@ double StrategyUnpacker::GetHighWaterMark(
     return default_value;
   }
 
-  v8::TryCatch try_catch(script_state->GetIsolate());
+  TryRethrowScope rethrow_scope(script_state->GetIsolate(), exception_state);
   v8::Local<v8::Number> high_water_mark_as_number;
   if (!high_water_mark_->ToNumber(script_state->GetContext())
            .ToLocal(&high_water_mark_as_number)) {
-    exception_state.RethrowV8Exception(try_catch.Exception());
     return 0.0;
   }
 

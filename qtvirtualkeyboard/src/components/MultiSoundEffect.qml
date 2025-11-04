@@ -10,6 +10,7 @@ Item {
     property int maxInstances: 2
     property var __cachedInstances
     property int __currentIndex: 0
+    property real soundVolume: 1.0
 
     signal playingChanged(url source, bool playing)
 
@@ -42,6 +43,7 @@ Item {
             __cachedInstances[__currentIndex].stop()
             __currentIndex = (__currentIndex + 1) % __cachedInstances.length
         }
+        __cachedInstances[__currentIndex].volume = soundVolume
         __cachedInstances[__currentIndex].play()
     }
 }

@@ -25,7 +25,7 @@
 #include "third_party/skia/include/core/SkRefCnt.h"
 #include "third_party/skia/include/core/SkSize.h"
 #include "third_party/skia/include/core/SkYUVAPixmaps.h"
-#include "third_party/skia/include/gpu/GrBackendSurface.h"
+#include "third_party/skia/include/gpu/ganesh/GrBackendSurface.h"
 #include "ui/gfx/geometry/skia_conversions.h"
 
 namespace cc {
@@ -366,6 +366,10 @@ bool PaintImage::IsYuv(
              gainmap_paint_image_generator_->QueryYUVA(supported_data_types,
                                                        info);
   }
+}
+
+bool PaintImage::NeedsLayer() const {
+  return paint_worklet_input_ && paint_worklet_input_->NeedsLayer();
 }
 
 const std::vector<FrameMetadata>& PaintImage::GetFrameMetadata() const {

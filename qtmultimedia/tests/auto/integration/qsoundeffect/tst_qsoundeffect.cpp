@@ -1,12 +1,15 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
-#include <QtTest/QtTest>
-#include <QtCore/qlocale.h>
-#include <qaudiodevice.h>
-#include <qaudio.h>
-#include "qsoundeffect.h"
-#include "qmediadevices.h"
+#include <QtTest/qsignalspy.h>
+#include <QtTest/qtest.h>
+#include <QtTest/qtesteventloop.h>
+#include <QtMultimedia/qaudio.h>
+#include <QtMultimedia/qaudiodevice.h>
+#include <QtMultimedia/qmediadevices.h>
+#include <QtMultimedia/qsoundeffect.h>
+
+using namespace Qt::Literals;
 
 class tst_QSoundEffect : public QObject
 {
@@ -27,6 +30,7 @@ private slots:
 
     void testPlaying();
     void testStatus();
+    void loopsRemaining_isUpdatedWhenPlaying();
 
     void testDestroyWhilePlaying();
     void testDestroyWhileRestartPlaying();
@@ -269,6 +273,20 @@ void tst_QSoundEffect::testStatus()
     QCOMPARE(sound->status(), QSoundEffect::Error);
 }
 
+void tst_QSoundEffect::loopsRemaining_isUpdatedWhenPlaying()
+{
+    sound->setSource(url);
+    QTRY_COMPARE(sound->status(), QSoundEffect::Ready);
+    sound->setLoopCount(3);
+
+    QSignalSpy loopsRemaining(sound, &QSoundEffect::loopsRemainingChanged);
+    QCOMPARE(sound->loopsRemaining(), 0);
+    sound->play();
+
+    QTRY_COMPARE(sound->loopsRemaining(), 0);
+    QCOMPARE(loopsRemaining.size(), 4);
+}
+
 void tst_QSoundEffect::testDestroyWhilePlaying()
 {
     QSoundEffect *instance = new QSoundEffect();
@@ -406,11 +424,12 @@ void tst_QSoundEffect::setAudioDevice_emitsSignalsInExpectedOrder_data()
     QTest::addColumn<bool>("with_source");
     QTest::addColumn<QStringList>("expectedSignals");
     QTest::addRow("while_playing")
-        << true << true << QStringList{"playingChanged", "playingChanged", "audioDeviceChanged"};
+            << true << true
+            << QStringList{ u"playingChanged"_s, u"playingChanged"_s, u"audioDeviceChanged"_s };
     QTest::addRow("while_stopped, with source")
-        << false << true << QStringList{"audioDeviceChanged"};
+            << false << true << QStringList{ u"audioDeviceChanged"_s };
     QTest::addRow("while_stopped, without source")
-        << false << false << QStringList{"audioDeviceChanged"};
+            << false << false << QStringList{ u"audioDeviceChanged"_s };
 }
 
 void tst_QSoundEffect::setAudioDevice_emitsSignalsInExpectedOrder()
@@ -427,13 +446,13 @@ void tst_QSoundEffect::setAudioDevice_emitsSignalsInExpectedOrder()
     // Track the order of emitted signals by appending them to a list
     QStringList emittedSignals;
     connect(sound, &QSoundEffect::audioDeviceChanged, this, [&emittedSignals]() {
-        emittedSignals.append("audioDeviceChanged");
+        emittedSignals.append(u"audioDeviceChanged"_s);
     });
     connect(sound, &QSoundEffect::playingChanged, this, [&emittedSignals]() {
-        emittedSignals.append("playingChanged");
+        emittedSignals.append(u"playingChanged"_s);
     });
     connect(sound, &QSoundEffect::statusChanged, this, [&emittedSignals]() {
-        emittedSignals.append("statusChanged");
+        emittedSignals.append(u"statusChanged"_s);
     });
 
     // Set source or not based on test data
@@ -447,11 +466,17 @@ void tst_QSoundEffect::setAudioDevice_emitsSignalsInExpectedOrder()
     }
     QTRY_COMPARE(sound->isPlaying(), while_playing);
 
-    QVERIFY(sound->audioDevice() != outputs.at(1));
+    QAudioDevice nonDefaultDevice = [&] {
+        if (!outputs[0].isDefault())
+            return outputs[0];
+        return outputs[1];
+    }();
+
+    QVERIFY(nonDefaultDevice != outputs.at(1));
     emittedSignals.clear();
 
     // Act
-    sound->setAudioDevice(outputs.at(1));
+    sound->setAudioDevice(nonDefaultDevice);
 
     // Assert
     QTRY_VERIFY(sound->isPlaying() == while_playing); // Verify that playback state didn't change

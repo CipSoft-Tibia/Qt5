@@ -19,12 +19,10 @@
  */
 
 #include "codec_internal.h"
-#include "mpegutils.h"
 #include "mpegvideo.h"
 #include "mpegvideodec.h"
 #include "h263data.h"
 #include "h263dec.h"
-#include "mpegvideodata.h"
 
 /* don't understand why they choose a different header ! */
 int ff_intel_h263_decode_picture_header(MpegEncContext *s)
@@ -138,8 +136,4 @@ const FFCodec ff_h263i_decoder = {
     FF_CODEC_DECODE_CB(ff_h263_decode_frame),
     .p.capabilities = AV_CODEC_CAP_DRAW_HORIZ_BAND | AV_CODEC_CAP_DR1,
     .caps_internal  = FF_CODEC_CAP_SKIP_FRAME_FILL_PARAM,
-    .p.pix_fmts     = (const enum AVPixelFormat[]) {
-        AV_PIX_FMT_YUV420P,
-        AV_PIX_FMT_NONE
-    },
 };

@@ -338,6 +338,17 @@ bool QSGRenderThread::event(QEvent *e)
 
         return true; }
 
+
+    case WM_Exposed: {
+        qCDebug(QSG_LOG_RENDERLOOP, QSG_RT_PAD, "WM_Exposed");
+
+        mutex.lock();
+        window = static_cast<WMWindowEvent *>(e)->window;
+        waitCondition.wakeOne();
+        mutex.unlock();
+
+        return true; }
+
     case WM_RequestSync: {
         qCDebug(QSG_LOG_RENDERLOOP, QSG_RT_PAD, "WM_RequestSync");
         WMSyncEvent *se = static_cast<WMSyncEvent *>(e);
@@ -641,8 +652,14 @@ void QSGRenderThread::syncAndRender()
         // An update request could still be delivered right before we get an
         // unexpose. With Vulkan on Windows for example attempting to render
         // leads to failures at this stage since the surface size is already 0.
-        if (effectiveOutputSize.isEmpty())
+        if (effectiveOutputSize.isEmpty()) {
+            if (syncRequested) {
+                mutex.lock();
+                waitCondition.wakeOne();
+                mutex.unlock();
+            }
             return;
+        }
 
         const QSize previousOutputSize = cd->swapchain->currentPixelSize();
         if (previousOutputSize != effectiveOutputSize || cd->swapchainJustBecameRenderable) {
@@ -1286,10 +1303,6 @@ void QSGThreadedRenderLoop::handleExposure(QQuickWindow *window)
         }
     }
 
-    // set this early as we'll be rendering shortly anyway and this avoids
-    // specialcasing exposure in polishAndSync.
-    w->thread->window = window;
-
 #ifndef QT_NO_DEBUG
     if (w->window->width() <= 0 || w->window->height() <= 0
         || (w->window->isTopLevel() && !w->window->geometry().intersects(w->window->screen()->availableGeometry()))) {
@@ -1307,6 +1320,10 @@ void QSGThreadedRenderLoop::handleExposure(QQuickWindow *window)
     // Start render thread if it is not running
     if (!w->thread->isRunning()) {
         qCDebug(QSG_LOG_RENDERLOOP, "- starting render thread");
+
+        // set this early as we'll be rendering shortly anyway and this avoids
+        // specialcasing exposure in polishAndSync.
+        w->thread->window = window;
 
         if (!w->thread->rhi) {
             QSGRhiSupport *rhiSupport = QSGRhiSupport::instance();
@@ -1332,6 +1349,12 @@ void QSGThreadedRenderLoop::handleExposure(QQuickWindow *window)
 
     } else {
         qCDebug(QSG_LOG_RENDERLOOP, "- render thread already running");
+
+        // set w->thread->window here too, but using an event so it's thread-safe
+        w->thread->mutex.lock();
+        w->thread->postEvent(new WMWindowEvent(w->window, QEvent::Type(WM_Exposed)));
+        w->thread->waitCondition.wait(&w->thread->mutex);
+        w->thread->mutex.unlock();
     }
 
     polishAndSync(w, true);
@@ -1464,13 +1487,11 @@ void QSGThreadedRenderLoop::update(QQuickWindow *window)
 
     const bool isRenderThread = QThread::currentThread() == w->thread;
 
-#if defined(Q_OS_MACOS)
-    using namespace QNativeInterface::Private;
-    if (auto *cocoaWindow = dynamic_cast<QCocoaWindow*>(window->handle())) {
+    if (QPlatformWindow *platformWindow = window->handle()) {
         // If the window is being resized we don't want to schedule unthrottled
         // updates on the render thread, as this will starve the main thread
         // from getting drawables for displaying the updated window size.
-        if (isRenderThread && cocoaWindow->inLiveResize()) {
+        if (isRenderThread && !platformWindow->allowsIndependentThreadedRendering()) {
             // In most cases the window will already have update requested
             // due to the animator triggering a sync, but just in case we
             // schedule an update request on the main thread explicitly.
@@ -1479,7 +1500,6 @@ void QSGThreadedRenderLoop::update(QQuickWindow *window)
             return;
         }
     }
-#endif
 
     if (isRenderThread) {
        qCDebug(QSG_LOG_RENDERLOOP) << "update on window - on render thread" << w->window;

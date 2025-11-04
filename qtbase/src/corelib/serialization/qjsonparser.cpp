@@ -1,6 +1,7 @@
 // Copyright (C) 2020 The Qt Company Ltd.
 // Copyright (C) 2021 Intel Corporation.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:data-parser
 
 #ifndef QT_BOOTSTRAPPED
 #include <qcoreapplication.h>
@@ -12,22 +13,6 @@
 #include "private/qcborvalue_p.h"
 #include "private/qnumeric_p.h"
 #include <private/qtools_p.h>
-
-//#define PARSER_DEBUG
-#ifdef PARSER_DEBUG
-#  error currently broken after `current` was moved to StashedContainer
-Q_CONSTINIT static int indent = 0;
-#  define QT_PARSER_TRACING_BEGIN \
-      qDebug() << QByteArray(4 * indent++, ' ').constData() << "pos=" << current
-#  define QT_PARSER_TRACING_END --indent
-#  define QT_PARSER_TRACING_DEBUG qDebug() << QByteArray(4 * indent, ' ').constData()
-#else
-#  define QT_PARSER_TRACING_BEGIN QT_NO_QDEBUG_MACRO()
-#  define QT_PARSER_TRACING_END \
-      do {                      \
-      } while (0)
-#  define QT_PARSER_TRACING_DEBUG QT_NO_QDEBUG_MACRO()
-#endif
 
 static const int nestingLimit = 1024;
 
@@ -77,7 +62,7 @@ using namespace QtMiscUtils;
     \value UnterminatedArray        The array is not correctly terminated with a closing square bracket
     \value MissingValueSeparator    A colon separating keys from values inside objects is missing
     \value IllegalValue             The value is illegal
-    \value TerminationByNumber      The input stream ended while parsing a number
+    \value TerminationByNumber      The input stream ended while parsing a number (as of 6.9, this is no longer returned)
     \value IllegalNumber            The number is not well formed
     \value IllegalEscapeSequence    An illegal escape sequence occurred in the input
     \value IllegalUTF8String        An illegal UTF8 sequence occurred in the input
@@ -177,29 +162,27 @@ class StashedContainer
 public:
     StashedContainer(QExplicitlySharedDataPointer<QCborContainerPrivate> *container,
                      QCborValue::Type type)
-        : type(type), stashed(std::move(*container)), current(container)
+        : type(type), stashed(std::move(*container))
     {
     }
 
-    ~StashedContainer()
+    QCborValue intoValue(QExplicitlySharedDataPointer<QCborContainerPrivate> *parent)
     {
-        stashed->append(QCborContainerPrivate::makeValue(type, -1, current->take(),
-                                                         QCborContainerPrivate::MoveContainer));
-        *current = std::move(stashed);
+        std::swap(stashed, *parent);
+        return QCborContainerPrivate::makeValue(type, -1, stashed.take(),
+                                                QCborContainerPrivate::MoveContainer);
     }
 
 private:
     QCborValue::Type type;
     QExplicitlySharedDataPointer<QCborContainerPrivate> stashed;
-    QExplicitlySharedDataPointer<QCborContainerPrivate> *current;
 };
 
-Parser::Parser(const char *json, int length)
-    : head(json), json(json)
+Parser::Parser(QUtf8StringView json)
+    : head(json.data()), json(head), end(json.end())
     , nestingLevel(0)
     , lastError(QJsonParseError::NoError)
 {
-    end = json + length;
 }
 
 
@@ -296,31 +279,28 @@ char Parser::nextToken()
 */
 QCborValue Parser::parse(QJsonParseError *error)
 {
-#ifdef PARSER_DEBUG
-    indent = 0;
-    qDebug(">>>>> parser begin");
-#endif
     eatBOM();
-    char token = nextToken();
 
-    QCborValue data;
+    char token;
+    QCborValue value;
 
-    QT_PARSER_TRACING_DEBUG << Qt::hex << (uint)token;
-    if (token == BeginArray) {
-        container = new QCborContainerPrivate;
-        if (!parseArray())
-            goto error;
-        data = QCborContainerPrivate::makeValue(QCborValue::Array, -1, container.take(),
-                                                QCborContainerPrivate::MoveContainer);
-    } else if (token == BeginObject) {
-        container = new QCborContainerPrivate;
-        if (!parseObject())
-            goto error;
-        data = QCborContainerPrivate::makeValue(QCborValue::Map, -1, container.take(),
-                                                QCborContainerPrivate::MoveContainer);
-    } else {
+    if (!eatSpace()) {
         lastError = QJsonParseError::IllegalValue;
         goto error;
+    }
+
+    token = *json;
+    if (token == Quote) {
+        container = new QCborContainerPrivate;
+        json++;
+        if (!parseString())
+            goto error;
+        value = QCborContainerPrivate::makeValue(QCborValue::String, 0, container.take(),
+                                                 QCborContainerPrivate::MoveContainer);
+    } else {
+        value = parseValue();
+        if (value.isUndefined())
+            goto error;
     }
 
     eatSpace();
@@ -329,20 +309,16 @@ QCborValue Parser::parse(QJsonParseError *error)
         goto error;
     }
 
-    QT_PARSER_TRACING_END;
     {
         if (error) {
             error->offset = 0;
             error->error = QJsonParseError::NoError;
         }
 
-        return data;
+        return value;
     }
 
 error:
-#ifdef PARSER_DEBUG
-    qDebug(">>>>> parser error");
-#endif
     container.reset();
     if (error) {
         error->offset = json - head;
@@ -448,6 +424,20 @@ static void sortContainer(QCborContainerPrivate *container)
     container->elements.erase(result.elementsIterator(), container->elements.end());
 }
 
+bool Parser::parseValueIntoContainer()
+{
+    QCborValue value = parseValue();
+    switch (value.type()) {
+    case QCborValue::Undefined:
+        return false; // error while parsing
+    case QCborValue::String:
+        break; // strings were already added
+    default:
+        container->append(std::move(value));
+    }
+
+    return true;
+}
 
 /*
     object = begin-object [ member *( value-separator member ) ]
@@ -460,8 +450,6 @@ bool Parser::parseObject()
         lastError = QJsonParseError::DeepNesting;
         return false;
     }
-
-    QT_PARSER_TRACING_BEGIN << "parseObject" << json;
 
     char token = nextToken();
     while (token == Quote) {
@@ -479,13 +467,10 @@ bool Parser::parseObject()
         }
     }
 
-    QT_PARSER_TRACING_DEBUG << "end token=" << token;
     if (token != EndObject) {
         lastError = QJsonParseError::UnterminatedObject;
         return false;
     }
-
-    QT_PARSER_TRACING_END;
 
     --nestingLevel;
 
@@ -499,8 +484,6 @@ bool Parser::parseObject()
 */
 bool Parser::parseMember()
 {
-    QT_PARSER_TRACING_BEGIN << "parseMember";
-
     if (!parseString())
         return false;
     char token = nextToken();
@@ -512,11 +495,8 @@ bool Parser::parseMember()
         lastError = QJsonParseError::UnterminatedObject;
         return false;
     }
-    if (!parseValue())
-        return false;
 
-    QT_PARSER_TRACING_END;
-    return true;
+    return parseValueIntoContainer();
 }
 
 /*
@@ -524,8 +504,6 @@ bool Parser::parseMember()
 */
 bool Parser::parseArray()
 {
-    QT_PARSER_TRACING_BEGIN << "parseArray";
-
     if (++nestingLevel > nestingLimit) {
         lastError = QJsonParseError::DeepNesting;
         return false;
@@ -545,8 +523,10 @@ bool Parser::parseArray()
             }
             if (!container)
                 container = new QCborContainerPrivate;
-            if (!parseValue())
+
+            if (!parseValueIntoContainer())
                 return false;
+
             char token = nextToken();
             if (token == EndArray)
                 break;
@@ -560,9 +540,6 @@ bool Parser::parseArray()
         }
     }
 
-    QT_PARSER_TRACING_DEBUG << "size =" << (container ? container->elements.size() : 0);
-    QT_PARSER_TRACING_END;
-
     --nestingLevel;
 
     return true;
@@ -573,98 +550,81 @@ value = false / null / true / object / array / number / string
 
 */
 
-bool Parser::parseValue()
+QCborValue Parser::parseValue()
 {
-    QT_PARSER_TRACING_BEGIN << "parse Value" << json;
-
     switch (*json++) {
     case 'n':
-        if (end - json < 4) {
+        if (end - json < 3) {
             lastError = QJsonParseError::IllegalValue;
-            return false;
+            return QCborValue();
         }
         if (*json++ == 'u' &&
             *json++ == 'l' &&
             *json++ == 'l') {
-            container->append(QCborValue(QCborValue::Null));
-            QT_PARSER_TRACING_DEBUG << "value: null";
-            QT_PARSER_TRACING_END;
-            return true;
+            return QCborValue(QCborValue::Null);
         }
         lastError = QJsonParseError::IllegalValue;
-        return false;
+        return QCborValue();
     case 't':
-        if (end - json < 4) {
+        if (end - json < 3) {
             lastError = QJsonParseError::IllegalValue;
-            return false;
+            return QCborValue();
         }
         if (*json++ == 'r' &&
             *json++ == 'u' &&
             *json++ == 'e') {
-            container->append(QCborValue(true));
-            QT_PARSER_TRACING_DEBUG << "value: true";
-            QT_PARSER_TRACING_END;
-            return true;
+            return QCborValue(true);
         }
         lastError = QJsonParseError::IllegalValue;
-        return false;
+        return QCborValue();
     case 'f':
-        if (end - json < 5) {
+        if (end - json < 4) {
             lastError = QJsonParseError::IllegalValue;
-            return false;
+            return QCborValue();
         }
         if (*json++ == 'a' &&
             *json++ == 'l' &&
             *json++ == 's' &&
             *json++ == 'e') {
-            container->append(QCborValue(false));
-            QT_PARSER_TRACING_DEBUG << "value: false";
-            QT_PARSER_TRACING_END;
-            return true;
+            return QCborValue(false);
         }
         lastError = QJsonParseError::IllegalValue;
-        return false;
+        return QCborValue();
     case Quote: {
-        if (!parseString())
-            return false;
-        QT_PARSER_TRACING_DEBUG << "value: string";
-        QT_PARSER_TRACING_END;
-        return true;
+        if (parseString())
+            // strings are already added to the container
+            // callers must check for this type
+            return QCborValue(QCborValue::String);
+
+        return QCborValue();
     }
     case BeginArray: {
         StashedContainer stashedContainer(&container, QCborValue::Array);
-        if (!parseArray())
-            return false;
-        QT_PARSER_TRACING_DEBUG << "value: array";
-        QT_PARSER_TRACING_END;
-        return true;
+        if (parseArray())
+            return stashedContainer.intoValue(&container);
+
+        return QCborValue();
     }
     case BeginObject: {
         StashedContainer stashedContainer(&container, QCborValue::Map);
-        if (!parseObject())
-            return false;
-        QT_PARSER_TRACING_DEBUG << "value: object";
-        QT_PARSER_TRACING_END;
-        return true;
+        if (parseObject())
+            return stashedContainer.intoValue(&container);
+
+        return QCborValue();
     }
     case ValueSeparator:
         // Essentially missing value, but after a colon, not after a comma
         // like the other MissingObject errors.
         lastError = QJsonParseError::IllegalValue;
-        return false;
+        return QCborValue();
     case EndObject:
     case EndArray:
         lastError = QJsonParseError::MissingObject;
-        return false;
+        return QCborValue();
     default:
         --json;
-        if (!parseNumber())
-            return false;
-        QT_PARSER_TRACING_DEBUG << "value: number";
-        QT_PARSER_TRACING_END;
+        return parseNumber();
     }
-
-    return true;
 }
 
 
@@ -685,10 +645,8 @@ bool Parser::parseValue()
 
 */
 
-bool Parser::parseNumber()
+QCborValue Parser::parseNumber()
 {
-    QT_PARSER_TRACING_BEGIN << "parseNumber" << json;
-
     const char *start = json;
     bool isInt = true;
 
@@ -723,21 +681,13 @@ bool Parser::parseNumber()
             ++json;
     }
 
-    if (json >= end) {
-        lastError = QJsonParseError::TerminationByNumber;
-        return false;
-    }
-
     const QByteArray number = QByteArray::fromRawData(start, json - start);
-    QT_PARSER_TRACING_DEBUG << "numberstring" << number;
 
     if (isInt) {
         bool ok;
         qlonglong n = number.toLongLong(&ok);
         if (ok) {
-            container->append(QCborValue(n));
-            QT_PARSER_TRACING_END;
-            return true;
+            return QCborValue(n);
         }
     }
 
@@ -746,17 +696,13 @@ bool Parser::parseNumber()
 
     if (!ok) {
         lastError = QJsonParseError::IllegalNumber;
-        return false;
+        return QCborValue();
     }
 
     qint64 n;
     if (convertDoubleTo(d, &n))
-        container->append(QCborValue(n));
-    else
-        container->append(QCborValue(d));
-
-    QT_PARSER_TRACING_END;
-    return true;
+        return QCborValue(n);
+    return QCborValue(d);
 }
 
 /*
@@ -799,7 +745,6 @@ static inline bool scanEscapeSequence(const char *&json, const char *end, char32
     if (json >= end)
         return false;
 
-    QT_PARSER_TRACING_DEBUG << "scan escape" << (char)*json;
     uchar escaped = *json++;
     switch (escaped) {
     case '"':
@@ -840,13 +785,13 @@ static inline bool scanEscapeSequence(const char *&json, const char *end, char32
 
 static inline bool scanUtf8Char(const char *&json, const char *end, char32_t *result)
 {
-    const auto *usrc = reinterpret_cast<const uchar *>(json);
-    const auto *uend = reinterpret_cast<const uchar *>(end);
-    const uchar b = *usrc++;
-    qsizetype res = QUtf8Functions::fromUtf8<QUtf8BaseTraits>(b, result, usrc, uend);
-    if (res < 0)
+    auto usrc = reinterpret_cast<const qchar8_t*>(json);
+    const auto uend = reinterpret_cast<const qchar8_t*>(end);
+    constexpr char32_t Invalid = ~U'\0';
+    const char32_t ch = QUtf8Functions::nextUcs4FromUtf8(usrc, uend, Invalid);
+    if (ch == Invalid)
         return false;
-
+    *result = ch;
     json = reinterpret_cast<const char *>(usrc);
     return true;
 }
@@ -857,7 +802,6 @@ bool Parser::parseString()
 
     // try to parse a utf-8 string without escape sequences, and note whether it's 7bit ASCII.
 
-    QT_PARSER_TRACING_BEGIN << "parse string" << json;
     bool isUtf8 = true;
     bool isAscii = true;
     while (json < end) {
@@ -878,11 +822,9 @@ bool Parser::parseString()
         }
         if (ch > 0x7f)
             isAscii = false;
-        QT_PARSER_TRACING_DEBUG << "  " << ch << char(ch);
     }
     ++json;
-    QT_PARSER_TRACING_DEBUG << "end of string";
-    if (json >= end) {
+    if (json > end) {
         lastError = QJsonParseError::UnterminatedString;
         return false;
     }
@@ -893,11 +835,8 @@ bool Parser::parseString()
             container->appendAsciiString(start, json - start - 1);
         else
             container->appendUtf8String(start, json - start - 1);
-        QT_PARSER_TRACING_END;
         return true;
     }
-
-    QT_PARSER_TRACING_DEBUG << "has escape sequences";
 
     json = start;
 
@@ -921,19 +860,14 @@ bool Parser::parseString()
     }
     ++json;
 
-    if (json >= end) {
+    if (json > end) {
         lastError = QJsonParseError::UnterminatedString;
         return false;
     }
 
     container->appendByteData(reinterpret_cast<const char *>(ucs4.constData()), ucs4.size() * 2,
                               QCborValue::String, QtCbor::Element::StringIsUtf16);
-    QT_PARSER_TRACING_END;
     return true;
 }
 
 QT_END_NAMESPACE
-
-#undef QT_PARSER_TRACING_BEGIN
-#undef QT_PARSER_TRACING_END
-#undef QT_PARSER_TRACING_DEBUG

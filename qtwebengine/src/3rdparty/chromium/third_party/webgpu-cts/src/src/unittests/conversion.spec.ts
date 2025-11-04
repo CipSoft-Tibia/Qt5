@@ -7,6 +7,7 @@ import { assert, objectEquals } from '../common/util/util.js';
 import { kValue } from '../webgpu/util/constants.js';
 import {
   bool,
+  concreteTypeOf,
   f16Bits,
   f32,
   f32Bits,
@@ -18,7 +19,7 @@ import {
   i32,
   kFloat16Format,
   kFloat32Format,
-  Matrix,
+  MatrixValue,
   numbersApproximatelyEqual,
   pack2x16float,
   pack2x16snorm,
@@ -26,14 +27,16 @@ import {
   pack4x8snorm,
   pack4x8unorm,
   packRGB9E5UFloat,
-  Scalar,
+  ScalarValue,
   toMatrix,
   u32,
   unpackRGB9E5UFloat,
   vec2,
   vec3,
   vec4,
-  Vector,
+  stringToType,
+  Type,
+  VectorValue,
 } from '../webgpu/util/conversion.js';
 
 import { UnitTest } from './unit_test.js';
@@ -191,7 +194,7 @@ g.test('floatBitsToULPFromZero,32').fn(t => {
 });
 
 g.test('scalarWGSL').fn(t => {
-  const cases: Array<[Scalar, string]> = [
+  const cases: Array<[ScalarValue, string]> = [
     [f32(0.0), '0.0f'],
     // The number -0.0 can be remapped to 0.0 when stored in a Scalar
     // object. It is not possible to guarantee that '-0.0f' will
@@ -227,7 +230,7 @@ expect: ${expect}`
 });
 
 g.test('vectorWGSL').fn(t => {
-  const cases: Array<[Vector, string]> = [
+  const cases: Array<[VectorValue, string]> = [
     [vec2(f32(42.0), f32(24.0)), 'vec2(42.0f, 24.0f)'],
     [vec2(f16Bits(0x5140), f16Bits(0x4e00)), 'vec2(42.0h, 24.0h)'],
     [vec2(u32(42), u32(24)), 'vec2(42u, 24u)'],
@@ -261,7 +264,7 @@ expect: ${expect}`
 });
 
 g.test('matrixWGSL').fn(t => {
-  const cases: Array<[Matrix, string]> = [
+  const cases: Array<[MatrixValue, string]> = [
     [
       toMatrix(
         [
@@ -391,7 +394,7 @@ g.test('constructorMatrix')
       return [...Array(rows).keys()].map(r => scalar_builder(c * cols + r));
     });
 
-    const got = new Matrix(elements);
+    const got = new MatrixValue(elements);
     const got_type = got.type;
     t.expect(
       got_type.cols === cols,
@@ -637,4 +640,59 @@ g.test('unpackRGB9E5UFloat')
       `unpackRGB9E5UFloat(${bits5_9_9_9(c.encoded)} ` +
         `returned ${got.R},${got.G},${got.B}. Expected ${expect}`
     );
+  });
+
+const kConcreteTypeOfNoAllowedListCases = {
+  bool: Type.bool,
+  i32: Type.i32,
+  u32: Type.u32,
+  f32: Type.f32,
+  f16: Type.f16,
+  abstractInt: Type.i32,
+  abstractFloat: Type.f32,
+  vec2b: Type.vec2b,
+  vec2i: Type.vec2i,
+  vec3u: Type.vec3u,
+  vec4f: Type.vec4f,
+  vec2h: Type.vec2h,
+  vec3ai: Type.vec3i,
+  vec4af: Type.vec4f,
+  mat2x2f: Type.mat2x2f,
+  mat3x4h: Type.mat3x4h,
+} as const;
+
+g.test('concreteTypeOf_noAllowedLiist')
+  .params(u => u.combine('src', keysOf(kConcreteTypeOfNoAllowedListCases)))
+  .fn(test => {
+    const src = test.params.src;
+    const dest = kConcreteTypeOfNoAllowedListCases[src];
+    const got = concreteTypeOf(stringToType(src));
+    test.expect(got === dest);
+  });
+
+const kConcreteTypeOfAllowListCases = {
+  af_f32: { type: Type.abstractFloat, allowed: [Type.f32], expect: Type.f32 },
+  af_f16: { type: Type.abstractFloat, allowed: [Type.f16], expect: Type.f16 },
+  af_all: {
+    type: Type.abstractFloat,
+    allowed: [Type.f16, Type.f32, Type.i32, Type.u32],
+    expect: Type.f32,
+  },
+  ai_i32: { type: Type.abstractInt, allowed: [Type.i32], expect: Type.i32 },
+  ai_u32: { type: Type.abstractInt, allowed: [Type.u32], expect: Type.u32 },
+  ai_f32: { type: Type.abstractInt, allowed: [Type.f32], expect: Type.f32 },
+  ai_f16: { type: Type.abstractInt, allowed: [Type.f16], expect: Type.f16 },
+  ai_all: {
+    type: Type.abstractInt,
+    allowed: [Type.f16, Type.f32, Type.i32, Type.u32],
+    expect: Type.i32,
+  },
+} as const;
+
+g.test('concreteTypeOf_AllowedLiist')
+  .params(u => u.combine('k', keysOf(kConcreteTypeOfAllowListCases)))
+  .fn(test => {
+    const { type, allowed, expect } = kConcreteTypeOfAllowListCases[test.params.k];
+    const got = concreteTypeOf(type, allowed as [Type]);
+    test.expect(got === expect);
   });

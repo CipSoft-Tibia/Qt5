@@ -5,9 +5,9 @@ windows gcc developer-build
 [buttonOnFlickable]
 windows gcc developer-build
 
-# QTBUG-74517
 [touchButtonOnFlickable]
-windows gcc developer-build
+windows gcc developer-build # QTBUG-74517
+opensuse-leap # QTBUG-132648
 
 # QTBUG-118059
 [tapOnDismissiveTopMouseAreaClicksBottomOne]

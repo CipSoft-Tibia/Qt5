@@ -65,7 +65,8 @@ class CORE_EXPORT WorkerOrWorkletGlobalScope
       std::unique_ptr<WebContentSettingsClient>,
       scoped_refptr<WebWorkerFetchContext>,
       WorkerReportingProxy&,
-      bool is_worker_loaded_from_data_url);
+      bool is_worker_loaded_from_data_url,
+      bool is_default_world_of_isolate);
   ~WorkerOrWorkletGlobalScope() override;
 
   // EventTarget
@@ -92,7 +93,8 @@ class CORE_EXPORT WorkerOrWorkletGlobalScope
 
   // BackForwardCacheLoaderHelperImpl::Delegate
   void EvictFromBackForwardCache(
-      mojom::blink::RendererEvictionReason reason) override {}
+      mojom::blink::RendererEvictionReason reason,
+      std::unique_ptr<SourceLocation> source_location) override {}
   void DidBufferLoadWhileInBackForwardCache(bool update_process_wide_count,
                                             size_t num_bytes) override {}
 
@@ -111,6 +113,7 @@ class CORE_EXPORT WorkerOrWorkletGlobalScope
   // UseCounter
   void CountUse(WebFeature feature) final;
   void CountDeprecation(WebFeature feature) final;
+  void CountWebDXFeature(WebDXFeature feature) final;
 
   // May return nullptr if this global scope is not threaded (i.e.,
   // WorkletGlobalScope for the main thread) or after Dispose() is called.
@@ -202,7 +205,7 @@ class CORE_EXPORT WorkerOrWorkletGlobalScope
                                    SourceLocation* location);
 
   // Called when BestEffortServiceWorker(crbug.com/1420517) is enabled.
-  virtual absl::optional<
+  virtual std::optional<
       mojo::PendingRemote<network::mojom::blink::URLLoaderFactory>>
   FindRaceNetworkRequestURLLoaderFactory(
       const base::UnguessableToken& token) = 0;
@@ -299,8 +302,10 @@ class CORE_EXPORT WorkerOrWorkletGlobalScope
   WorkerReportingProxy& reporting_proxy_;
 
   // This is the set of features that this worker has used.
-  std::bitset<static_cast<size_t>(WebFeature::kNumberOfFeatures)>
-      used_features_;
+  std::bitset<static_cast<size_t>(WebFeature::kMaxValue) + 1> used_features_;
+  // This is the set of WebDXFeatures that this worker has used.
+  std::bitset<static_cast<size_t>(WebDXFeature::kMaxValue) + 1>
+      used_webdx_features_;
 
   // This tracks deprecation features that have been used.
   Deprecation deprecation_;

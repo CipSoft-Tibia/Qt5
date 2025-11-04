@@ -2,6 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#ifdef UNSAFE_BUFFERS_BUILD
+// TODO(crbug.com/351564777): Remove this and convert code to safer constructs.
+#pragma allow_unsafe_buffers
+#endif
+
 #include "services/network/cors/preflight_cache.h"
 
 #include "base/test/simple_test_tick_clock.h"
@@ -54,7 +59,7 @@ class PreflightCacheTest : public testing::Test {
 
   std::unique_ptr<PreflightResult> CreateEntry() {
     return PreflightResult::Create(mojom::CredentialsMode::kInclude,
-                                   std::string("POST"), absl::nullopt,
+                                   std::string("POST"), std::nullopt,
                                    std::string("5"), nullptr);
   }
 

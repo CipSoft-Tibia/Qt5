@@ -105,7 +105,7 @@ bool StructTraits<PermissionDataView, apps::PermissionPtr>::Read(
   if (!data.ReadValue(&value))
     return false;
 
-  absl::optional<std::string> details;
+  std::optional<std::string> details;
   if (!data.ReadDetails(&details)) {
     return false;
   }
@@ -207,7 +207,7 @@ UnionTraits<PermissionValueDataView, apps::Permission::PermissionValue>::GetTag(
   } else if (absl::holds_alternative<apps::TriState>(r)) {
     return PermissionValueDataView::Tag::kTristateValue;
   }
-  NOTREACHED();
+  NOTREACHED_IN_MIGRATION();
   return PermissionValueDataView::Tag::kBoolValue;
 }
 
@@ -226,7 +226,7 @@ bool UnionTraits<PermissionValueDataView, apps::Permission::PermissionValue>::
       return true;
     }
   }
-  NOTREACHED();
+  NOTREACHED_IN_MIGRATION();
   return false;
 }
 

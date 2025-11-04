@@ -40,6 +40,7 @@ class Q_GRAPHS_EXPORT QItemModelScatterDataProxy : public QScatterDataProxy
                    zPosRoleReplaceChanged FINAL)
     Q_PROPERTY(QString rotationRoleReplace READ rotationRoleReplace WRITE setRotationRoleReplace
                    NOTIFY rotationRoleReplaceChanged FINAL)
+    QML_NAMED_ELEMENT(ItemModelScatterDataProxy)
 
 public:
     explicit QItemModelScatterDataProxy(QObject *parent = nullptr);

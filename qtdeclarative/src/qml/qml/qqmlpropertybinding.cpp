@@ -18,7 +18,7 @@ QT_BEGIN_NAMESPACE
 
 using namespace Qt::Literals::StringLiterals;
 
-Q_LOGGING_CATEGORY(lcQQPropertyBinding, "qt.qml.propertybinding");
+Q_STATIC_LOGGING_CATEGORY(lcQQPropertyBinding, "qt.qml.propertybinding");
 
 QUntypedPropertyBinding QQmlPropertyBinding::create(const QQmlPropertyData *pd, QV4::Function *function,
                                                     QObject *obj, const QQmlRefPointer<QQmlContextData> &ctxt,
@@ -133,6 +133,9 @@ QUntypedPropertyBinding QQmlPropertyBinding::createFromBoundFunction(const QQmlP
 
 void QQmlPropertyBindingJS::expressionChanged()
 {
+    if (!hasValidContext())
+        return;
+
     auto binding = asBinding();
     if (!binding->propertyDataPtr)
         return;

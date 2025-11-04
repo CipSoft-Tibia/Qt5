@@ -19,11 +19,9 @@
 #include "cfm/dbus-constants.h"
 #include "chunneld/dbus-constants.h"
 #include "cros-disks/dbus-constants.h"
-#include "cros_healthd/dbus-constants.h"
 #include "cryptohome/dbus-constants.h"
 #include "dcad/dbus-constants.h"
 #include "debugd/dbus-constants.h"
-#include "discod/dbus-constants.h"
 #include "dlp/dbus-constants.h"
 #include "drivefs/dbus-constants.h"
 #include "faced/dbus-constants.h"
@@ -31,7 +29,6 @@
 #include "fusebox/dbus-constants.h"
 #include "hammerd/dbus-constants.h"
 #include "hermes/dbus-constants.h"
-#include "hiberman/dbus-constants.h"
 #include "hps/dbus-constants.h"
 #include "ip_peripheral/dbus-constants.h"
 #include "login_manager/dbus-constants.h"
@@ -44,8 +41,10 @@
 #include "patchpanel/dbus-constants.h"
 #include "permission_broker/dbus-constants.h"
 #include "power_manager/dbus-constants.h"
+#include "primary_io_manager/dbus-constants.h"
 #include "printscanmgr/dbus-constants.h"
 #include "privacy_screen/dbus-constants.h"
+#include "regmon/dbus-constants.h"
 #include "resource_manager/dbus-constants.h"
 #include "rgbkbd/dbus-constants.h"
 #include "rmad/dbus-constants.h"
@@ -63,12 +62,15 @@
 #include "vm_concierge/dbus-constants.h"
 #include "vm_plugin_dispatcher/dbus-constants.h"
 #include "vm_sk_forwarding/dbus-constants.h"
-#include "wilco_dtc_supportd/dbus-constants.h"
 
 namespace dbus {
 const char kDBusInterface[] = "org.freedesktop.DBus";
 const char kDBusServiceName[] = "org.freedesktop.DBus";
 const char kDBusServicePath[] = "/org/freedesktop/DBus";
+
+// Debug Stats Interface
+const char kDBusDebugStatsInterface[] = "org.freedesktop.DBus.Debug.Stats";
+const char kDBusDebugStatsGetConnectionStats[] = "GetConnectionStats";
 
 // Object Manager interface
 const char kDBusObjectManagerInterface[] = "org.freedesktop.DBus.ObjectManager";
@@ -527,8 +529,6 @@ constexpr char kMojoConnectionServiceInterface[] =
 // Methods
 constexpr char kBootstrapMojoConnectionForRollbackNetworkConfigMethod[] =
     "BootstrapMojoConnectionForRollbackNetworkConfigService";
-constexpr char kBootstrapForCrosHealthdInternalServiceFactoryMethod[] =
-    "kBootstrapForCrosHealthdInternalServiceFactoryMethod";
 }  // namespace mojo_connection_service
 
 namespace virtual_file_provider {
@@ -553,13 +553,6 @@ constexpr char kRemoveHostnameIpMappingMethod[] = "RemoveHostnameIpMapping";
 }  // namespace crosdns
 
 namespace arc {
-
-constexpr char kArcServiceName[] = "org.chromium.Arc";
-constexpr char kArcServicePath[] = "/org/chromium/Arc";
-constexpr char kArcInterfaceName[] = "org.chromium.Arc";
-
-// Signal
-constexpr char kArcStopped[] = "ArcStopped";
 
 namespace keymaster {
 constexpr char kArcKeymasterServiceName[] = "org.chromium.ArcKeymaster";
@@ -603,6 +596,25 @@ constexpr char kMountMethod[] = "Mount";
 constexpr char kUnmountMethod[] = "Unmount";
 constexpr char kOpenFileMethod[] = "OpenFile";
 }  // namespace appfuse
+
+namespace tracing {
+// D-Bus service constants.
+constexpr char kArcTracingServiceName[] = "org.chromium.ArcTracing";
+constexpr char kArcTracingServicePath[] = "/org/chromium/ArcTracing";
+constexpr char kArcTracingInterfaceName[] = "org.chromium.ArcTracing";
+
+// Method names.
+constexpr char kArcTracingStartMethod[] = "StartTrace";
+constexpr char kArcTracingGetStatusMethod[] = "GetStatus";
+}  // namespace tracing
+
+namespace crosh {
+constexpr char kArcCroshServiceName[] = "org.chromium.ArcCrosh";
+constexpr char kArcCroshServicePath[] = "/org/chromium/ArcCrosh";
+constexpr char kArcCroshInterfaceName[] = "org.chromium.ArcCrosh";
+
+constexpr char kArcCroshRequest[] = "ArcCroshRequest";
+}  // namespace crosh
 
 }  // namespace arc
 

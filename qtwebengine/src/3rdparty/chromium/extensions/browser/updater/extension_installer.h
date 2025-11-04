@@ -6,6 +6,7 @@
 #define EXTENSIONS_BROWSER_UPDATER_EXTENSION_INSTALLER_H_
 
 #include <memory>
+#include <optional>
 #include <string>
 
 #include "base/files/file_path.h"
@@ -27,7 +28,7 @@ class ExtensionInstaller : public update_client::CrxInstaller {
   // A callback to implement the install of a new version of the extension.
   // Takes ownership of the directory at |unpacked_dir|.
   using ExtensionInstallerCallback = base::RepeatingCallback<void(
-      const std::string& extension_id,
+      const ExtensionId& extension_id,
       const std::string& public_key,
       const base::FilePath& unpacked_dir,
       bool install_immediately,
@@ -36,7 +37,7 @@ class ExtensionInstaller : public update_client::CrxInstaller {
   // This method takes the id and root directory for an extension we're doing
   // an update check for, as well as a callback to call if we get a new version
   // of it to install.
-  ExtensionInstaller(std::string extension_id,
+  ExtensionInstaller(ExtensionId extension_id,
                      const base::FilePath& extension_root,
                      bool install_immediately,
                      ExtensionInstallerCallback extension_installer_callback);
@@ -55,8 +56,8 @@ class ExtensionInstaller : public update_client::CrxInstaller {
                std::unique_ptr<InstallParams> install_params,
                ProgressCallback progress_callback,
                UpdateClientCallback update_client_callback) override;
-  bool GetInstalledFile(const std::string& file,
-                        base::FilePath* installed_file) override;
+  std::optional<base::FilePath> GetInstalledFile(
+      const std::string& file) override;
   bool Uninstall() override;
 
   // For unit tests.

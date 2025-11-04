@@ -496,13 +496,19 @@ enum cpuinfo_uarch {
 	cpuinfo_uarch_cortex_x2 = 0x00300502,
 	/** ARM Cortex-X3. */
 	cpuinfo_uarch_cortex_x3 = 0x00300503,
+	/** ARM Cortex-X4. */
+	cpuinfo_uarch_cortex_x4 = 0x00300504,
 
 	/** ARM Cortex-A510. */
 	cpuinfo_uarch_cortex_a510 = 0x00300551,
+	/** ARM Cortex-A520. */
+	cpuinfo_uarch_cortex_a520 = 0x00300552,
 	/** ARM Cortex-A710. */
 	cpuinfo_uarch_cortex_a710 = 0x00300571,
 	/** ARM Cortex-A715. */
 	cpuinfo_uarch_cortex_a715 = 0x00300572,
+	/** ARM Cortex-A720. */
+	cpuinfo_uarch_cortex_a720 = 0x00300573,
 
 	/** Qualcomm Scorpion. */
 	cpuinfo_uarch_scorpion = 0x00400100,
@@ -812,6 +818,13 @@ struct cpuinfo_x86_isa {
 	bool avx512vp2intersect;
 	bool avx512_4vnniw;
 	bool avx512_4fmaps;
+	bool amx_bf16;
+	bool amx_tile;
+	bool amx_int8;
+	bool amx_fp16;
+	bool avx_vnni_int8;
+	bool avx_vnni_int16;
+	bool avx_ne_convert;
 	bool hle;
 	bool rtm;
 	bool xtest;
@@ -1323,6 +1336,98 @@ static inline bool cpuinfo_has_x86_avx512_4vnniw(void) {
 static inline bool cpuinfo_has_x86_avx512_4fmaps(void) {
 #if CPUINFO_ARCH_X86 || CPUINFO_ARCH_X86_64
 	return cpuinfo_isa.avx512_4fmaps;
+#else
+	return false;
+#endif
+}
+
+/* [NOTE] Intel Advanced Matrix Extensions (AMX) detection
+ *
+ * I.  AMX is a new extensions to the x86 ISA to work on matrices, consists of
+ *   1) 2-dimentional registers (tiles), hold sub-matrices from larger matrices in memory
+ *   2) Accelerator called Tile Matrix Multiply (TMUL), contains instructions operating on tiles
+ *
+ * II. Platforms that supports AMX:
+ * +-----------------+-----+----------+----------+----------+----------+
+ * |    Platforms    | Gen | amx-bf16 | amx-tile | amx-int8 | amx-fp16 |
+ * +-----------------+-----+----------+----------+----------+----------+
+ * | Sapphire Rapids | 4th |   YES    |   YES    |   YES    |    NO    |
+ * +-----------------+-----+----------+----------+----------+----------+
+ * | Emerald Rapids  | 5th |   YES    |   YES    |   YES    |    NO    |
+ * +-----------------+-----+----------+----------+----------+----------+
+ * | Granite Rapids  | 6th |   YES    |   YES    |   YES    |   YES    |
+ * +-----------------+-----+----------+----------+----------+----------+
+ *
+ * Reference: https://www.intel.com/content/www/us/en/products/docs
+ *    /accelerator-engines/advanced-matrix-extensions/overview.html
+ */
+static inline bool cpuinfo_has_x86_amx_bf16(void) {
+#if CPUINFO_ARCH_X86 || CPUINFO_ARCH_X86_64
+	return cpuinfo_isa.amx_bf16;
+#else
+	return false;
+#endif
+}
+
+static inline bool cpuinfo_has_x86_amx_tile(void) {
+#if CPUINFO_ARCH_X86 || CPUINFO_ARCH_X86_64
+	return cpuinfo_isa.amx_tile;
+#else
+	return false;
+#endif
+}
+
+static inline bool cpuinfo_has_x86_amx_int8(void) {
+#if CPUINFO_ARCH_X86 || CPUINFO_ARCH_X86_64
+	return cpuinfo_isa.amx_int8;
+#else
+	return false;
+#endif
+}
+
+static inline bool cpuinfo_has_x86_amx_fp16(void) {
+#if CPUINFO_ARCH_X86 || CPUINFO_ARCH_X86_64
+	return cpuinfo_isa.amx_fp16;
+#else
+	return false;
+#endif
+}
+
+/*
+ * Intel AVX Vector Neural Network Instructions (VNNI) INT8
+ * Supported Platfroms: Sierra Forest, Arrow Lake, Lunar Lake
+ */
+static inline bool cpuinfo_has_x86_avx_vnni_int8(void) {
+#if CPUINFO_ARCH_X86 || CPUINFO_ARCH_X86_64
+	return cpuinfo_isa.avx_vnni_int8;
+#else
+	return false;
+#endif
+}
+
+/*
+ * Intel AVX Vector Neural Network Instructions (VNNI) INT16
+ * Supported Platfroms: Arrow Lake, Lunar Lake
+ */
+static inline bool cpuinfo_has_x86_avx_vnni_int16(void) {
+#if CPUINFO_ARCH_X86 || CPUINFO_ARCH_X86_64
+	return cpuinfo_isa.avx_vnni_int16;
+#else
+	return false;
+#endif
+}
+
+/*
+ * A new set of instructions, which can convert low precision floating point
+ * like BF16/FP16 to high precision floating point FP32, as well as convert FP32
+ * elements to BF16. This instruction allows the platform to have improved AI
+ * capabilities and better compatibility.
+ *
+ * Supported Platforms: Sierra Forest, Arrow Lake, Lunar Lake
+ */
+static inline bool cpuinfo_has_x86_avx_ne_convert(void) {
+#if CPUINFO_ARCH_X86 || CPUINFO_ARCH_X86_64
+	return cpuinfo_isa.avx_ne_convert;
 #else
 	return false;
 #endif

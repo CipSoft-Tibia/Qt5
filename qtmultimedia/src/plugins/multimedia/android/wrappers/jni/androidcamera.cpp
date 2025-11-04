@@ -23,7 +23,7 @@
 
 QT_BEGIN_NAMESPACE
 
-static Q_LOGGING_CATEGORY(lcAndroidCamera, "qt.multimedia.android.camera")
+Q_STATIC_LOGGING_CATEGORY(lcAndroidCamera, "qt.multimedia.android.camera");
 
 static const char QtCameraListenerClassName[] = "org/qtproject/qt/android/multimedia/QtCameraListener";
 
@@ -809,7 +809,7 @@ void AndroidCamera::getCameraInfo(int id, QCameraDevicePrivate *info)
     // (and more) front/back cameras
     if (id > 1) {
         info->id.append(QByteArray::number(id));
-        info->description.append(QString(" %1").arg(id));
+        info->description.append(QStringLiteral(" %1").arg(id));
     }
 }
 

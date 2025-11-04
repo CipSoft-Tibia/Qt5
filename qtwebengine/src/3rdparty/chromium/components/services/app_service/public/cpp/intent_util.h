@@ -7,13 +7,13 @@
 
 // Utility functions for App Service intent handling.
 
+#include <optional>
 #include <string>
 #include <string_view>
 
 #include "base/values.h"
 #include "components/services/app_service/public/cpp/intent.h"
 #include "components/services/app_service/public/cpp/intent_filter.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "url/gurl.h"
 #include "url/origin.h"
 
@@ -33,8 +33,8 @@ extern const char kIntentActionPotentialFileHandler[];
 // will open the link, and that we should not prompt the user about it.
 extern const char kUseBrowserForLink[];
 
-// Activity name for GuestOS intent filters. TODO(crbug/1349974): Remove when
-// default file handling preferences for Files App are migrated.
+// Activity name for GuestOS intent filters. TODO(crbug.com/40233967): Remove
+// when default file handling preferences for Files App are migrated.
 extern const char kGuestOsActivityName[];
 
 struct SharedText {
@@ -110,7 +110,7 @@ bool IsGenericFileHandler(const apps::IntentPtr& intent,
 // https://android.googlesource.com/platform/frameworks/base.git/+/e93165456c3c28278f275566bd90bfbcf1a0e5f7/core/java/android/os/PatternMatcher.java#186
 bool MatchGlob(std::string_view value, std::string_view pattern);
 
-// TODO(crbug.com/1092784): Handle file path with extension with mime type.
+// TODO(crbug.com/40134747): Handle file path with extension with mime type.
 // Unlike Android mime type matching logic, if the intent mime type has *, it
 // can only match with *, not anything. The reason for this is the way we find
 // the common mime type for multiple files. It uses * to represent more than one
@@ -161,12 +161,12 @@ SharedText ExtractSharedText(const std::string& share_text);
 // The underlying strings must be kept alive while the AuthorityView is around.
 struct AuthorityView {
   const std::string_view host;
-  const absl::optional<std::string_view> port;
+  const std::optional<std::string_view> port;
 
   // Stringifies the effective port of `url` if there is one. Not all URL
   // schemes have ports.
-  static absl::optional<std::string> PortToString(const GURL& url);
-  static absl::optional<std::string> PortToString(const url::Origin& url);
+  static std::optional<std::string> PortToString(const GURL& url);
+  static std::optional<std::string> PortToString(const url::Origin& url);
 
   // Decodes strings of the form:
   // "www.example.com:1234" into {.host="www.example.com", .port="1234"}

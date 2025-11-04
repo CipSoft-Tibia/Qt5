@@ -2,6 +2,9 @@
 //
 // This source code is licensed under the BSD-style license found in the
 // LICENSE file in the root directory of this source tree.
+//
+// Auto-generated file. Do not edit!
+//   Generator: tools/update-microkernels.py -a
 
 #include <assert.h>
 #include <stddef.h>
@@ -9,24 +12,24 @@
 
 #include <immintrin.h>
 
-#include <xnnpack/avgpool.h>
-#include <xnnpack/common.h>
-#include <xnnpack/conv.h>
-#include <xnnpack/dwconv.h>
-#include <xnnpack/gavgpool.h>
-#include <xnnpack/gemm.h>
-#include <xnnpack/ibilinear.h>
-#include <xnnpack/igemm.h>
-#include <xnnpack/intrinsics-polyfill.h>
-#include <xnnpack/math.h>
-#include <xnnpack/maxpool.h>
-#include <xnnpack/pavgpool.h>
-#include <xnnpack/reduce.h>
-#include <xnnpack/spmm.h>
-#include <xnnpack/transpose.h>
-#include <xnnpack/vbinary.h>
-#include <xnnpack/vmulcaddc.h>
-#include <xnnpack/vunary.h>
+#include "xnnpack/avgpool.h"
+#include "xnnpack/common.h"
+#include "xnnpack/conv.h"
+#include "xnnpack/dwconv.h"
+#include "xnnpack/gavgpool.h"
+#include "xnnpack/gemm.h"
+#include "xnnpack/ibilinear.h"
+#include "xnnpack/igemm.h"
+#include "xnnpack/intrinsics-polyfill.h"
+#include "xnnpack/math.h"
+#include "xnnpack/maxpool.h"
+#include "xnnpack/pavgpool.h"
+#include "xnnpack/reduce.h"
+#include "xnnpack/spmm.h"
+#include "xnnpack/transpose.h"
+#include "xnnpack/vbinary.h"
+#include "xnnpack/vmulcaddc.h"
+#include "xnnpack/vunary.h"
 
 
 void xnn_f32_avgpool_minmax_ukernel_9p8x__sse_c4(
@@ -7372,6 +7375,228 @@ void xnn_f32_pavgpool_minmax_ukernel_9x__sse_c4(
   } while (--output_pixels != 0);
 }
 
+void xnn_f32_rdsum_ukernel_7p7x__sse_c16(
+    size_t rows,
+    size_t channels,
+    const float* input,
+    size_t input_stride,
+    const float* zero,
+    float* output,
+    const union xnn_f32_scale_params params[restrict XNN_MIN_ELEMENTS(1)])
+{
+  assert(rows != 0);
+  assert(channels != 0);
+  assert(input != NULL);
+  assert(output != NULL);
+
+  const __m128 vscale = _mm_load_ps(params->sse.scale);
+
+  size_t input_increment = 7 * input_stride;
+  for (; channels >= 16; channels -= 16) {
+    const float* i0 = input;
+    const float* i1 = (const float*) ((uintptr_t) input + 1 * input_stride);
+    const float* i2 = (const float*) ((uintptr_t) input + 2 * input_stride);
+    const float* i3 = (const float*) ((uintptr_t) input + 3 * input_stride);
+    const float* i4 = (const float*) ((uintptr_t) input + 4 * input_stride);
+    const float* i5 = (const float*) ((uintptr_t) input + 5 * input_stride);
+    const float* i6 = (const float*) ((uintptr_t) input + 6 * input_stride);
+
+    __m128 vacc0 = _mm_setzero_ps();
+    __m128 vacc1 = _mm_setzero_ps();
+    __m128 vacc2 = _mm_setzero_ps();
+    __m128 vacc3 = _mm_setzero_ps();
+
+    for (int r = rows; r > 0; r -= 7) {
+      if XNN_UNPREDICTABLE(r < 2) {
+        i1 = zero;
+      }
+      if XNN_UNPREDICTABLE(r <= 2) {
+        i2 = zero;
+      }
+      if XNN_UNPREDICTABLE(r < 4) {
+        i3 = zero;
+      }
+      if XNN_UNPREDICTABLE(r <= 4) {
+        i4 = zero;
+      }
+      if XNN_UNPREDICTABLE(r < 6) {
+        i5 = zero;
+      }
+      if XNN_UNPREDICTABLE(r <= 6) {
+        i6 = zero;
+      }
+      __m128 vin0;
+      __m128 vin1;
+      __m128 vin2;
+      __m128 vin3;
+      vin0 = _mm_loadu_ps(&i0[0]);
+      vin1 = _mm_loadu_ps(&i0[4]);
+      vin2 = _mm_loadu_ps(&i0[8]);
+      vin3 = _mm_loadu_ps(&i0[12]);
+      vacc0 = _mm_add_ps(vin0, vacc0);
+      vacc1 = _mm_add_ps(vin1, vacc1);
+      vacc2 = _mm_add_ps(vin2, vacc2);
+      vacc3 = _mm_add_ps(vin3, vacc3);
+      vin0 = _mm_loadu_ps(&i1[0]);
+      vin1 = _mm_loadu_ps(&i1[4]);
+      vin2 = _mm_loadu_ps(&i1[8]);
+      vin3 = _mm_loadu_ps(&i1[12]);
+      vacc0 = _mm_add_ps(vin0, vacc0);
+      vacc1 = _mm_add_ps(vin1, vacc1);
+      vacc2 = _mm_add_ps(vin2, vacc2);
+      vacc3 = _mm_add_ps(vin3, vacc3);
+      vin0 = _mm_loadu_ps(&i2[0]);
+      vin1 = _mm_loadu_ps(&i2[4]);
+      vin2 = _mm_loadu_ps(&i2[8]);
+      vin3 = _mm_loadu_ps(&i2[12]);
+      vacc0 = _mm_add_ps(vin0, vacc0);
+      vacc1 = _mm_add_ps(vin1, vacc1);
+      vacc2 = _mm_add_ps(vin2, vacc2);
+      vacc3 = _mm_add_ps(vin3, vacc3);
+      vin0 = _mm_loadu_ps(&i3[0]);
+      vin1 = _mm_loadu_ps(&i3[4]);
+      vin2 = _mm_loadu_ps(&i3[8]);
+      vin3 = _mm_loadu_ps(&i3[12]);
+      vacc0 = _mm_add_ps(vin0, vacc0);
+      vacc1 = _mm_add_ps(vin1, vacc1);
+      vacc2 = _mm_add_ps(vin2, vacc2);
+      vacc3 = _mm_add_ps(vin3, vacc3);
+      vin0 = _mm_loadu_ps(&i4[0]);
+      vin1 = _mm_loadu_ps(&i4[4]);
+      vin2 = _mm_loadu_ps(&i4[8]);
+      vin3 = _mm_loadu_ps(&i4[12]);
+      vacc0 = _mm_add_ps(vin0, vacc0);
+      vacc1 = _mm_add_ps(vin1, vacc1);
+      vacc2 = _mm_add_ps(vin2, vacc2);
+      vacc3 = _mm_add_ps(vin3, vacc3);
+      vin0 = _mm_loadu_ps(&i5[0]);
+      vin1 = _mm_loadu_ps(&i5[4]);
+      vin2 = _mm_loadu_ps(&i5[8]);
+      vin3 = _mm_loadu_ps(&i5[12]);
+      vacc0 = _mm_add_ps(vin0, vacc0);
+      vacc1 = _mm_add_ps(vin1, vacc1);
+      vacc2 = _mm_add_ps(vin2, vacc2);
+      vacc3 = _mm_add_ps(vin3, vacc3);
+      vin0 = _mm_loadu_ps(&i6[0]);
+      vin1 = _mm_loadu_ps(&i6[4]);
+      vin2 = _mm_loadu_ps(&i6[8]);
+      vin3 = _mm_loadu_ps(&i6[12]);
+      vacc0 = _mm_add_ps(vin0, vacc0);
+      vacc1 = _mm_add_ps(vin1, vacc1);
+      vacc2 = _mm_add_ps(vin2, vacc2);
+      vacc3 = _mm_add_ps(vin3, vacc3);
+      i0 = (const float*) ((uintptr_t) i0 + input_increment);
+      i1 = (const float*) ((uintptr_t) i1 + input_increment);
+      i2 = (const float*) ((uintptr_t) i2 + input_increment);
+      i3 = (const float*) ((uintptr_t) i3 + input_increment);
+      i4 = (const float*) ((uintptr_t) i4 + input_increment);
+      i5 = (const float*) ((uintptr_t) i5 + input_increment);
+      i6 = (const float*) ((uintptr_t) i6 + input_increment);
+    }
+    vacc0 = _mm_mul_ps(vacc0, vscale);
+    vacc1 = _mm_mul_ps(vacc1, vscale);
+    vacc2 = _mm_mul_ps(vacc2, vscale);
+    vacc3 = _mm_mul_ps(vacc3, vscale);
+
+    const float* o = output;
+    __m128 vo0 = _mm_loadu_ps(o); o += 4;
+    __m128 vo1 = _mm_loadu_ps(o); o += 4;
+    __m128 vo2 = _mm_loadu_ps(o); o += 4;
+    __m128 vo3 = _mm_loadu_ps(o); o += 4;
+    vacc0 = _mm_add_ps(vo0, vacc0);
+    vacc1 = _mm_add_ps(vo1, vacc1);
+    vacc2 = _mm_add_ps(vo2, vacc2);
+    vacc3 = _mm_add_ps(vo3, vacc3);
+    _mm_storeu_ps(output, vacc0); output += 4;
+    _mm_storeu_ps(output, vacc1); output += 4;
+    _mm_storeu_ps(output, vacc2); output += 4;
+    _mm_storeu_ps(output, vacc3); output += 4;
+
+    input = (const float*) ((uintptr_t) input + 16 * sizeof(float));
+  }
+  if (channels != 0) {
+    input_increment = 7 * input_stride;
+    const float* i0 = input;
+    const float* i1 = (const float*) ((uintptr_t) input + 1 * input_stride);
+    const float* i2 = (const float*) ((uintptr_t) input + 2 * input_stride);
+    const float* i3 = (const float*) ((uintptr_t) input + 3 * input_stride);
+    const float* i4 = (const float*) ((uintptr_t) input + 4 * input_stride);
+    const float* i5 = (const float*) ((uintptr_t) input + 5 * input_stride);
+    const float* i6 = (const float*) ((uintptr_t) input + 6 * input_stride);
+    __m128 vacc[4];
+    vacc[0] = _mm_setzero_ps();
+    vacc[1] = _mm_setzero_ps();
+    vacc[2] = _mm_setzero_ps();
+    vacc[3] = _mm_setzero_ps();
+
+    size_t num_chunks = round_up_po2(channels, 4) >> 2;
+    for (int r = rows; r > 0; r -= 7) {
+      if XNN_UNPREDICTABLE(r < 2) {
+        i1 = zero;
+      }
+      if XNN_UNPREDICTABLE(r <= 2) {
+        i2 = zero;
+      }
+      if XNN_UNPREDICTABLE(r < 4) {
+        i3 = zero;
+      }
+      if XNN_UNPREDICTABLE(r <= 4) {
+        i4 = zero;
+      }
+      if XNN_UNPREDICTABLE(r < 6) {
+        i5 = zero;
+      }
+      if XNN_UNPREDICTABLE(r <= 6) {
+        i6 = zero;
+      }
+      for (int i = 0; i < num_chunks; ++i) {
+        vacc[i] = _mm_add_ps(_mm_loadu_ps(&i0[i*4]), vacc[i]);
+        vacc[i] = _mm_add_ps(_mm_loadu_ps(&i1[i*4]), vacc[i]);
+        vacc[i] = _mm_add_ps(_mm_loadu_ps(&i2[i*4]), vacc[i]);
+        vacc[i] = _mm_add_ps(_mm_loadu_ps(&i3[i*4]), vacc[i]);
+        vacc[i] = _mm_add_ps(_mm_loadu_ps(&i4[i*4]), vacc[i]);
+        vacc[i] = _mm_add_ps(_mm_loadu_ps(&i5[i*4]), vacc[i]);
+        vacc[i] = _mm_add_ps(_mm_loadu_ps(&i6[i*4]), vacc[i]);
+      }
+      i0 = (const float*) ((uintptr_t) i0 + input_increment);
+      i1 = (const float*) ((uintptr_t) i1 + input_increment);
+      i2 = (const float*) ((uintptr_t) i2 + input_increment);
+      i3 = (const float*) ((uintptr_t) i3 + input_increment);
+      i4 = (const float*) ((uintptr_t) i4 + input_increment);
+      i5 = (const float*) ((uintptr_t) i5 + input_increment);
+      i6 = (const float*) ((uintptr_t) i6 + input_increment);
+    }
+    for (int i = 0; i < num_chunks; ++i) {
+      vacc[i] = _mm_mul_ps(vacc[i], vscale);
+    }
+
+    __m128 vo[4];
+    const float* o = output;
+    for (int i = 0; i < channels >> 2; ++i) {
+      vo[i] = _mm_loadu_ps(o); o += 4;
+    }
+    for (int i = 0; i < channels >> 2; ++i) {
+      vacc[i] = _mm_add_ps(vo[i], vacc[i]);
+    }
+    for (int i = 0; i < channels >> 2; ++i) {
+      _mm_storeu_ps(output, vacc[i]); output += 4;
+    }
+    const size_t pos = channels >> 2;
+    channels &= 0x3;
+    __m128 vout = vacc[pos];
+    if (channels & 2) {
+      __m128 vo = _mm_loadl_pi(vscale, (__m64*) output);
+      _mm_storel_pi((__m64*) output, _mm_add_ps(vo, vout));
+      vout = _mm_movehl_ps(vout, vout);
+      output += 2;
+    }
+    if (channels & 1) {
+      __m128 vo = _mm_load_ss(output);
+      _mm_store_ss(output, _mm_add_ps(vo, vout));
+    }
+  }
+}
+
 void xnn_f32_rmax_ukernel__sse_u16_acc4(
     size_t batch,
     const float* input,
@@ -7535,7 +7760,7 @@ void xnn_f32_rsum_ukernel__sse_u16_acc4(
   }
   vacc0 = _mm_add_ss(vacc0, _mm_shuffle_ps(vacc0, vacc0, _MM_SHUFFLE(1, 1, 1, 1)));
   vacc0 = _mm_mul_ss(vacc0, _mm_load_ss(&params->scalar.scale));
-  _mm_store_ss(output, vacc0);
+  *output += _mm_cvtss_f32(vacc0);
 }
 
 void xnn_f32_spmm_minmax_ukernel_32x1__sse(
@@ -9201,7 +9426,89 @@ void xnn_f32_vmulcaddc_minmax_ukernel_c4__sse_2x(
   } while (rows != 0);
 }
 
-void xnn_f32_vsqrt_ukernel__sse_sqrt_u4(
+void xnn_f32_vrsqrt_ukernel__sse_rsqrt_u8(
+    size_t batch,
+    const float* input,
+    float* output,
+    const union xnn_f32_rsqrt_params params[XNN_MIN_ELEMENTS(1)]) XNN_OOB_READS
+{
+  assert(batch != 0);
+  assert(batch % sizeof(float) == 0);
+  assert(input != NULL);
+  assert(output != NULL);
+
+  // Constants for the Newton-Raphson iteration.
+  const __m128 vthree = _mm_load_ps(params->sse.three);
+  const __m128 vhalf = _mm_load_ps(params->sse.half);
+
+  for (; batch >= 8 * sizeof(float); batch -= 8 * sizeof(float)) {
+    const __m128 vx0123 = _mm_loadu_ps(input);
+    const __m128 vx4567 = _mm_loadu_ps(input + 4);
+    input += 8;
+
+    // Generate the initial 12-bit approximation.
+    const __m128 vt0_0123 = _mm_rsqrt_ps(vx0123);
+    const __m128 vt0_4567 = _mm_rsqrt_ps(vx4567);
+
+    // Do a single Newton-Raphson step as described above.
+    const __m128 vt1_0123 = _mm_mul_ps(vt0_0123, vt0_0123);
+    const __m128 vt1_4567 = _mm_mul_ps(vt0_4567, vt0_4567);
+    const __m128 vt2_0123 = _mm_mul_ps(vx0123, vt1_0123);
+    const __m128 vt2_4567 = _mm_mul_ps(vx4567, vt1_4567);
+    const __m128 vt3_0123 = _mm_sub_ps(vthree, vt2_0123);
+    const __m128 vt3_4567 = _mm_sub_ps(vthree, vt2_4567);
+    const __m128 vt4_0123 = _mm_mul_ps(vhalf, vt0_0123);
+    const __m128 vt4_4567 = _mm_mul_ps(vhalf, vt0_4567);
+    const __m128 vy0123 = _mm_mul_ps(vt3_0123, vt4_0123);
+    const __m128 vy4567 = _mm_mul_ps(vt3_4567, vt4_4567);
+
+    // Store the results.
+    _mm_storeu_ps(output, vy0123);
+    _mm_storeu_ps(output + 4, vy4567);
+    output += 8;
+  }
+  for (; batch >= 4 * sizeof(float); batch -= 4 * sizeof(float)) {
+    const __m128 vx = _mm_loadu_ps(input);
+    input += 4;
+
+    // Generate the initial 12-bit approximation.
+    const __m128 vt0 = _mm_rsqrt_ps(vx);
+
+    // Do a single Newton-Raphson step as described above.
+    const __m128 vt1 = _mm_mul_ps(vt0, vt0);
+    const __m128 vt2 = _mm_mul_ps(vx, vt1);
+    const __m128 vt3 = _mm_sub_ps(vthree, vt2);
+    const __m128 vt4 = _mm_mul_ps(vhalf, vt0);
+    const __m128 vy = _mm_mul_ps(vt3, vt4);
+
+    _mm_storeu_ps(output, vy);
+    output += 4;
+  }
+  if XNN_UNLIKELY(batch != 0) {
+    const __m128 vx = _mm_loadu_ps(input);
+
+    // Generate the initial 12-bit approximation.
+    const __m128 vt0 = _mm_rsqrt_ps(vx);
+
+    // Do a single Newton-Raphson step as described above.
+    const __m128 vt1 = _mm_mul_ps(vt0, vt0);
+    const __m128 vt2 = _mm_mul_ps(vx, vt1);
+    const __m128 vt3 = _mm_sub_ps(vthree, vt2);
+    const __m128 vt4 = _mm_mul_ps(vhalf, vt0);
+    __m128 vy = _mm_mul_ps(vt3, vt4);
+
+    if (batch & (2 * sizeof(float))) {
+      _mm_storel_pi((__m64*) output, vy);
+      vy = _mm_movehl_ps(vy, vy);
+      output += 2;
+    }
+    if (batch & (1 * sizeof(float))) {
+      _mm_store_ss(output, vy);
+    }
+  }
+}
+
+void xnn_f32_vsqrt_ukernel__sse_rsqrt_u12(
     size_t batch,
     const float* input,
     float* output,
@@ -9212,150 +9519,93 @@ void xnn_f32_vsqrt_ukernel__sse_sqrt_u4(
   assert(input != NULL);
   assert(output != NULL);
 
+  // Constants for the Newton-Raphson iteration.
+  const __m128 vthree = _mm_load_ps(params->sse.three);
+  const __m128 vhalf = _mm_load_ps(params->sse.half);
+
+  for (; batch >= 12 * sizeof(float); batch -= 12 * sizeof(float)) {
+    const __m128 vx0 = _mm_loadu_ps(input);
+    const __m128 vx1 = _mm_loadu_ps(input + 4);
+    const __m128 vx2 = _mm_loadu_ps(input + 8);
+    input += 12;
+
+    // Create a mask of the +/-0 inputs, which will be flushed to zero later.
+    const __m128 vmask0 = _mm_cmpeq_ps(vx0, _mm_setzero_ps());
+    const __m128 vmask1 = _mm_cmpeq_ps(vx1, _mm_setzero_ps());
+    const __m128 vmask2 = _mm_cmpeq_ps(vx2, _mm_setzero_ps());
+
+    // Generate the initial 12-bit approximation.
+    const __m128 vt0_0 = _mm_rsqrt_ps(vx0);
+    const __m128 vt0_1 = _mm_rsqrt_ps(vx1);
+    const __m128 vt0_2 = _mm_rsqrt_ps(vx2);
+
+    // Do a single Newton-Raphson step as described above.
+    const __m128 vt1_0 = _mm_mul_ps(vt0_0, vt0_0);
+    const __m128 vt1_1 = _mm_mul_ps(vt0_1, vt0_1);
+    const __m128 vt1_2 = _mm_mul_ps(vt0_2, vt0_2);
+    const __m128 vt2_0 = _mm_mul_ps(vx0, vt1_0);
+    const __m128 vt2_1 = _mm_mul_ps(vx1, vt1_1);
+    const __m128 vt2_2 = _mm_mul_ps(vx2, vt1_2);
+    const __m128 vt3_0 = _mm_sub_ps(vthree, vt2_0);
+    const __m128 vt3_1 = _mm_sub_ps(vthree, vt2_1);
+    const __m128 vt3_2 = _mm_sub_ps(vthree, vt2_2);
+    const __m128 vt4_0 = _mm_mul_ps(vhalf, vt0_0);
+    const __m128 vt4_1 = _mm_mul_ps(vhalf, vt0_1);
+    const __m128 vt4_2 = _mm_mul_ps(vhalf, vt0_2);
+    const __m128 vt5_0 = _mm_mul_ps(vt3_0, vt4_0);
+    const __m128 vt5_1 = _mm_mul_ps(vt3_1, vt4_1);
+    const __m128 vt5_2 = _mm_mul_ps(vt3_2, vt4_2);
+    const __m128 vt6_0 = _mm_andnot_ps(vmask0, vt5_0);
+    const __m128 vt6_1 = _mm_andnot_ps(vmask1, vt5_1);
+    const __m128 vt6_2 = _mm_andnot_ps(vmask2, vt5_2);
+    const __m128 vy0 = _mm_mul_ps(vx0, vt6_0);
+    const __m128 vy1 = _mm_mul_ps(vx1, vt6_1);
+    const __m128 vy2 = _mm_mul_ps(vx2, vt6_2);
+
+    // Store the results.
+    _mm_storeu_ps(output, vy0);
+    _mm_storeu_ps(output + 4, vy1);
+    _mm_storeu_ps(output + 8, vy2);
+    output += 12;
+  }
   for (; batch >= 4 * sizeof(float); batch -= 4 * sizeof(float)) {
     const __m128 vx = _mm_loadu_ps(input);
     input += 4;
-    const __m128 vy = _mm_sqrt_ps(vx);
+
+    // Generate the initial 12-bit approximation.
+    const __m128 vt0 = _mm_rsqrt_ps(vx);
+
+    // Create a mask of the +/-0 inputs, which will be flushed to zero later.
+    const __m128 vmask = _mm_cmpeq_ps(vx, _mm_setzero_ps());
+
+    // Do a single Newton-Raphson step as described above.
+    const __m128 vt1 = _mm_mul_ps(vt0, vt0);
+    const __m128 vt2 = _mm_mul_ps(vx, vt1);
+    const __m128 vt3 = _mm_sub_ps(vthree, vt2);
+    const __m128 vt4 = _mm_mul_ps(vhalf, vt0);
+    const __m128 vt5 = _mm_mul_ps(vt3, vt4);
+    const __m128 vt6 = _mm_andnot_ps(vmask, vt5);
+    const __m128 vy = _mm_mul_ps(vx, vt6);
     _mm_storeu_ps(output, vy);
     output += 4;
   }
   if XNN_UNLIKELY(batch != 0) {
     const __m128 vx = _mm_loadu_ps(input);
-    __m128 vy = _mm_sqrt_ps(vx);
-    if (batch & (2 * sizeof(float))) {
-      _mm_storel_pi((__m64*) output, vy);
-      vy = _mm_movehl_ps(vy, vy);
-      output += 2;
-    }
-    if (batch & (1 * sizeof(float))) {
-      _mm_store_ss(output, vy);
-    }
-  }
-}
+    // Generate the initial 12-bit approximation.
+    const __m128 vt0 = _mm_rsqrt_ps(vx);
 
-void xnn_f32_vabs_ukernel__sse_u8(
-    size_t batch,
-    const float* input,
-    float* output,
-    const union xnn_f32_abs_params params[ XNN_MIN_ELEMENTS(1)]) XNN_OOB_READS
-{
-  assert(batch != 0);
-  assert(batch % sizeof(float) == 0);
-  assert(input != NULL);
-  assert(output != NULL);
+    // Create a mask of the +/-0 inputs, which will be flushed to zero later.
+    const __m128 vmask = _mm_cmpeq_ps(vx, _mm_setzero_ps());
 
-  const __m128 vnonsign_mask = _mm_load_ps(params->sse.nonsign_mask);
-  for (; batch >= 8 * sizeof(float); batch -= 8 * sizeof(float)) {
-    const __m128 vx0123 = _mm_loadu_ps(input);
-    const __m128 vx4567 = _mm_loadu_ps(input + 4);
-    input += 8;
+    // Do a single Newton-Raphson step as described above.
+    const __m128 vt1 = _mm_mul_ps(vt0, vt0);
+    const __m128 vt2 = _mm_mul_ps(vx, vt1);
+    const __m128 vt3 = _mm_sub_ps(vthree, vt2);
+    const __m128 vt4 = _mm_mul_ps(vhalf, vt0);
+    const __m128 vt5 = _mm_mul_ps(vt3, vt4);
+    const __m128 vt6 = _mm_andnot_ps(vmask, vt5);
+    __m128 vy = _mm_mul_ps(vx, vt6);
 
-    const __m128 vy0123 = _mm_and_ps(vx0123, vnonsign_mask);
-    const __m128 vy4567 = _mm_and_ps(vx4567, vnonsign_mask);
-
-    _mm_storeu_ps(output, vy0123);
-    _mm_storeu_ps(output + 4, vy4567);
-    output += 8;
-  }
-  for (; batch >= 4 * sizeof(float); batch -= 4 * sizeof(float)) {
-    const __m128 vx = _mm_loadu_ps(input);
-    input += 4;
-    const __m128 vy = _mm_and_ps(vx, vnonsign_mask);
-    _mm_storeu_ps(output, vy);
-    output += 4;
-  }
-  if XNN_UNLIKELY(batch != 0) {
-    const __m128 vx = _mm_loadu_ps(input);
-    __m128 vy = _mm_and_ps(vx, vnonsign_mask);
-    if (batch & (2 * sizeof(float))) {
-      _mm_storel_pi((__m64*) output, vy);
-      vy = _mm_movehl_ps(vy, vy);
-      output += 2;
-    }
-    if (batch & (1 * sizeof(float))) {
-      _mm_store_ss(output, vy);
-    }
-  }
-}
-
-void xnn_f32_vneg_ukernel__sse_u8(
-    size_t batch,
-    const float* input,
-    float* output,
-    const union xnn_f32_neg_params params[ XNN_MIN_ELEMENTS(1)]) XNN_OOB_READS
-{
-  assert(batch != 0);
-  assert(batch % sizeof(float) == 0);
-  assert(input != NULL);
-  assert(output != NULL);
-
-  const __m128 vsign_mask = _mm_load_ps(params->sse.sign_mask);
-  for (; batch >= 8 * sizeof(float); batch -= 8 * sizeof(float)) {
-    const __m128 vx0123 = _mm_loadu_ps(input);
-    const __m128 vx4567 = _mm_loadu_ps(input + 4);
-    input += 8;
-
-    const __m128 vy0123 = _mm_xor_ps(vx0123, vsign_mask);
-    const __m128 vy4567 = _mm_xor_ps(vx4567, vsign_mask);
-
-    _mm_storeu_ps(output, vy0123);
-    _mm_storeu_ps(output + 4, vy4567);
-    output += 8;
-  }
-  for (; batch >= 4 * sizeof(float); batch -= 4 * sizeof(float)) {
-    const __m128 vx = _mm_loadu_ps(input);
-    input += 4;
-    const __m128 vy = _mm_xor_ps(vx, vsign_mask);
-    _mm_storeu_ps(output, vy);
-    output += 4;
-  }
-  if XNN_UNLIKELY(batch != 0) {
-    const __m128 vx = _mm_loadu_ps(input);
-    __m128 vy = _mm_xor_ps(vx, vsign_mask);
-    if (batch & (2 * sizeof(float))) {
-      _mm_storel_pi((__m64*) output, vy);
-      vy = _mm_movehl_ps(vy, vy);
-      output += 2;
-    }
-    if (batch & (1 * sizeof(float))) {
-      _mm_store_ss(output, vy);
-    }
-  }
-}
-
-void xnn_f32_vsqr_ukernel__sse_u8(
-    size_t batch,
-    const float* input,
-    float* output,
-    const union xnn_f32_default_params params[ XNN_MIN_ELEMENTS(1)]) XNN_OOB_READS
-{
-  assert(batch != 0);
-  assert(batch % sizeof(float) == 0);
-  assert(input != NULL);
-  assert(output != NULL);
-
-  for (; batch >= 8 * sizeof(float); batch -= 8 * sizeof(float)) {
-    const __m128 vx0123 = _mm_loadu_ps(input);
-    const __m128 vx4567 = _mm_loadu_ps(input + 4);
-    input += 8;
-
-    const __m128 vy0123 = _mm_mul_ps(vx0123, vx0123);
-    const __m128 vy4567 = _mm_mul_ps(vx4567, vx4567);
-
-    _mm_storeu_ps(output, vy0123);
-    _mm_storeu_ps(output + 4, vy4567);
-    output += 8;
-  }
-  for (; batch >= 4 * sizeof(float); batch -= 4 * sizeof(float)) {
-    const __m128 vx = _mm_loadu_ps(input);
-    input += 4;
-    const __m128 vy = _mm_mul_ps(vx, vx);
-    _mm_storeu_ps(output, vy);
-    output += 4;
-  }
-  if XNN_UNLIKELY(batch != 0) {
-    const __m128 vx = _mm_loadu_ps(input);
-    __m128 vy = _mm_mul_ps(vx, vx);
     if (batch & (2 * sizeof(float))) {
       _mm_storel_pi((__m64*) output, vy);
       vy = _mm_movehl_ps(vy, vy);
@@ -9376,8 +9626,8 @@ void xnn_x32_transposec_ukernel__4x4_sse(
     size_t block_height,
     const union xnn_x32_transpose_params params[ XNN_MIN_ELEMENTS(1)]) XNN_OOB_READS
 {
-  assert(output_stride >= block_height * sizeof(uint32_t));
-  assert(input_stride >= block_width * sizeof(uint32_t));
+  assert(block_width == 1 || output_stride >= block_height * sizeof(uint32_t));
+  assert(block_height == 1 || input_stride >= block_width * sizeof(uint32_t));
 
   const size_t tile_height = 4;
   const size_t tile_width = 4;

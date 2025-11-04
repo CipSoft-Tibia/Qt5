@@ -12,11 +12,11 @@ namespace pdfium {
 const char* AnnotationStampWithApChecksum() {
   if (CFX_DefaultRenderDevice::UseSkiaRenderer()) {
 #if BUILDFLAG(IS_WIN)
-    return "f7f3a1029cea01cc993fa7770feebdc1";
+    return "25b2a610cab9d656b9ab5f72746c9e2e";
 #elif BUILDFLAG(IS_APPLE)
-    return "f0867738d59a682b8d57baa88b35afc3";
+    return "0f6501f8e22441630bdd535363c93e59";
 #else
-    return "c7ff65a3ad1b01c3a0e94d635f10670e";
+    return "1814140b1a9a9776546af7894e21d17f";
 #endif
   }
 #if BUILDFLAG(IS_APPLE)

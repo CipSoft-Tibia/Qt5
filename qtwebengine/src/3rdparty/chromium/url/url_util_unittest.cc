@@ -350,116 +350,6 @@ TEST_F(URLUtilTest, TestEncodeURIComponent) {
   }
 }
 
-TEST_F(URLUtilTest, TestResolveRelativeWithNonStandardBase) {
-  // This tests non-standard (in the sense that IsStandard() == false)
-  // hierarchical schemes.
-  struct ResolveRelativeCase {
-    const char* base;
-    const char* rel;
-    bool is_valid;
-    const char* out;
-  } resolve_non_standard_cases[] = {
-      // Resolving a relative path against a non-hierarchical URL should fail.
-      {"scheme:opaque_data", "/path", false, ""},
-      // Resolving a relative path against a non-standard authority-based base
-      // URL doesn't alter the authority section.
-      {"scheme://Authority/", "../path", true, "scheme://Authority/path"},
-      // A non-standard hierarchical base is resolved with path URL
-      // canonicalization rules.
-      {"data:/Blah:Blah/", "file.html", true, "data:/Blah:Blah/file.html"},
-      {"data:/Path/../part/part2", "file.html", true,
-       "data:/Path/../part/file.html"},
-      {"data://text/html,payload", "//user:pass@host:33////payload22", true,
-       "data://user:pass@host:33////payload22"},
-      // Path URL canonicalization rules also apply to non-standard authority-
-      // based URLs.
-      {"custom://Authority/", "file.html", true,
-       "custom://Authority/file.html"},
-      {"custom://Authority/", "other://Auth/", true, "other://Auth/"},
-      {"custom://Authority/", "../../file.html", true,
-       "custom://Authority/file.html"},
-      {"custom://Authority/path/", "file.html", true,
-       "custom://Authority/path/file.html"},
-      {"custom://Authority:NoCanon/path/", "file.html", true,
-       "custom://Authority:NoCanon/path/file.html"},
-      // It's still possible to get an invalid path URL.
-      {"custom://Invalid:!#Auth/", "file.html", false, ""},
-      // A path with an authority section gets canonicalized under standard URL
-      // rules, even though the base was non-standard.
-      {"content://content.Provider/", "//other.Provider", true,
-       "content://other.provider/"},
-
-      // Resolving an absolute URL doesn't cause canonicalization of the
-      // result.
-      {"about:blank", "custom://Authority", true, "custom://Authority"},
-      // Fragment URLs can be resolved against a non-standard base.
-      {"scheme://Authority/path", "#fragment", true,
-       "scheme://Authority/path#fragment"},
-      {"scheme://Authority/", "#fragment", true,
-       "scheme://Authority/#fragment"},
-      // Resolving should fail if the base URL is authority-based but is
-      // missing a path component (the '/' at the end).
-      {"scheme://Authority", "path", false, ""},
-      // Test resolving a fragment (only) against any kind of base-URL.
-      {"about:blank", "#id42", true, "about:blank#id42"},
-      {"about:blank", " #id42", true, "about:blank#id42"},
-      {"about:blank#oldfrag", "#newfrag", true, "about:blank#newfrag"},
-      {"about:blank", " #id:42", true, "about:blank#id:42"},
-      // A surprising side effect of allowing fragments to resolve against
-      // any URL scheme is we might break javascript: URLs by doing so...
-      {"javascript:alert('foo#bar')", "#badfrag", true,
-       "javascript:alert('foo#badfrag"},
-      // In this case, the backslashes will not be canonicalized because it's a
-      // non-standard URL, but they will be treated as a path separators,
-      // giving the base URL here a path of "\".
-      //
-      // The result here is somewhat arbitrary. One could argue it should be
-      // either "aaa://a\" or "aaa://a/" since the path is being replaced with
-      // the "current directory". But in the context of resolving on data URLs,
-      // adding the requested dot doesn't seem wrong either.
-      {"aaa://a\\", "aaa:.", true, "aaa://a\\."}};
-
-  for (const auto& test : resolve_non_standard_cases) {
-    SCOPED_TRACE(testing::Message()
-                 << "base: " << test.base << ", rel: " << test.rel);
-
-    Parsed base_parsed;
-    ParsePathURL(test.base, strlen(test.base), false, &base_parsed);
-
-    std::string resolved;
-    StdStringCanonOutput output(&resolved);
-    Parsed resolved_parsed;
-    bool valid =
-        ResolveRelative(test.base, strlen(test.base), base_parsed, test.rel,
-                        strlen(test.rel), nullptr, &output, &resolved_parsed);
-    output.Complete();
-
-    EXPECT_EQ(test.is_valid, valid);
-    if (test.is_valid && valid) {
-      EXPECT_EQ(test.out, resolved);
-    }
-  }
-}
-
-TEST_F(URLUtilTest, TestNoRefComponent) {
-  // The hash-mark must be ignored when mailto: scheme is parsed,
-  // even if the URL has a base and relative part.
-  const char* base = "mailto://to/";
-  const char* rel = "any#body";
-
-  Parsed base_parsed;
-  ParsePathURL(base, strlen(base), false, &base_parsed);
-
-  std::string resolved;
-  StdStringCanonOutput output(&resolved);
-  Parsed resolved_parsed;
-
-  bool valid = ResolveRelative(base, strlen(base), base_parsed, rel,
-                               strlen(rel), nullptr, &output, &resolved_parsed);
-  EXPECT_TRUE(valid);
-  EXPECT_FALSE(resolved_parsed.ref.is_valid());
-}
-
 TEST_F(URLUtilTest, PotentiallyDanglingMarkup) {
   struct ResolveRelativeCase {
     const char* base;
@@ -490,8 +380,7 @@ TEST_F(URLUtilTest, PotentiallyDanglingMarkup) {
 
   for (const auto& test : cases) {
     SCOPED_TRACE(::testing::Message() << test.base << ", " << test.rel);
-    Parsed base_parsed;
-    ParseStandardURL(test.base, strlen(test.base), &base_parsed);
+    Parsed base_parsed = ParseStandardURL(test.base);
 
     std::string resolved;
     StdStringCanonOutput output(&resolved);
@@ -741,6 +630,12 @@ class URLUtilTypedTest : public ::testing::TestWithParam<bool> {
     bool expected_success;
   };
 
+  struct ResolveRelativeCase {
+    const std::string_view base;
+    const std::string_view rel;
+    std::optional<std::string_view> expected;
+  };
+
   void TestCanonicalize(const URLCase& url_case) {
     std::string canonicalized;
     StdStringCanonOutput output(&canonicalized);
@@ -754,11 +649,179 @@ class URLUtilTypedTest : public ::testing::TestWithParam<bool> {
     EXPECT_EQ(output.view(), url_case.expected);
   }
 
+  void TestResolveRelative(const ResolveRelativeCase& test) {
+    SCOPED_TRACE(testing::Message()
+                 << "base: " << test.base << ", rel: " << test.rel);
+
+    Parsed base_parsed =
+        url::IsUsingStandardCompliantNonSpecialSchemeURLParsing()
+            ? ParseNonSpecialURL(test.base)
+            : ParsePathURL(test.base, /*trim_path_end=*/true);
+
+    std::string resolved;
+    StdStringCanonOutput output(&resolved);
+
+    Parsed resolved_parsed;
+    bool valid = ResolveRelative(test.base.data(), test.base.size(),
+                                 base_parsed, test.rel.data(), test.rel.size(),
+                                 nullptr, &output, &resolved_parsed);
+    output.Complete();
+
+    if (valid) {
+      ASSERT_TRUE(test.expected);
+      EXPECT_EQ(resolved, *test.expected);
+    } else {
+      EXPECT_FALSE(test.expected);
+    }
+  }
+
   bool use_standard_compliant_non_special_scheme_url_parsing_;
 
  private:
   base::test::ScopedFeatureList scoped_feature_list_;
 };
+
+TEST_P(URLUtilTypedTest, TestResolveRelativeWithNonStandardBase) {
+  // This tests non-standard (in the sense that IsStandard() == false)
+  // hierarchical schemes.
+  struct ResolveRelativeCase {
+    const char* base;
+    const char* rel;
+    bool is_valid;
+    const char* out;
+    // Optional expected output when the feature is enabled.
+    // If the result doesn't change, you can omit this field.
+    const char* out_when_non_special_url_feature_is_enabled;
+  } resolve_non_standard_cases[] = {
+      // Resolving a relative path against a non-hierarchical URL should fail.
+      {"scheme:opaque_data", "/path", false, ""},
+      // Resolving a relative path against a non-standard authority-based base
+      // URL doesn't alter the authority section.
+      {"scheme://Authority/", "../path", true, "scheme://Authority/path"},
+      // A non-standard hierarchical base is resolved with path URL
+      // canonicalization rules.
+      {"data:/Blah:Blah/", "file.html", true, "data:/Blah:Blah/file.html"},
+      {"data:/Path/../part/part2", "file.html", true,
+       "data:/Path/../part/file.html"},
+      {"data://text/html,payload", "//user:pass@host:33////payload22", true,
+       "data://user:pass@host:33////payload22"},
+      // Path URL canonicalization rules also apply to non-standard authority-
+      // based URLs.
+      {"custom://Authority/", "file.html", true,
+       "custom://Authority/file.html"},
+      {"custom://Authority/", "other://Auth/", true, "other://Auth/"},
+      {"custom://Authority/", "../../file.html", true,
+       "custom://Authority/file.html"},
+      {"custom://Authority/path/", "file.html", true,
+       "custom://Authority/path/file.html"},
+      {"custom://Authority:NoCanon/path/", "file.html", true,
+       "custom://Authority:NoCanon/path/file.html"},
+      // A path with an authority section gets canonicalized under standard URL
+      // rules, even though the base was non-standard.
+      {"content://content.Provider/", "//other.Provider", true,
+       "content://other.provider/",
+       // With the feature enabled:
+       // - Host case sensitivity should be preserved.
+       // - Trailing slash after a host is no longer necessary.
+       "content://other.Provider"},
+      // Resolving an absolute URL doesn't cause canonicalization of the
+      // result.
+      {"about:blank", "custom://Authority", true, "custom://Authority"},
+      // Fragment URLs can be resolved against a non-standard base.
+      {"scheme://Authority/path", "#fragment", true,
+       "scheme://Authority/path#fragment"},
+      {"scheme://Authority/", "#fragment", true,
+       "scheme://Authority/#fragment"},
+      // Test resolving a fragment (only) against any kind of base-URL.
+      {"about:blank", "#id42", true, "about:blank#id42"},
+      {"about:blank", " #id42", true, "about:blank#id42"},
+      {"about:blank#oldfrag", "#newfrag", true, "about:blank#newfrag"},
+      {"about:blank", " #id:42", true, "about:blank#id:42"},
+      // A surprising side effect of allowing fragments to resolve against
+      // any URL scheme is we might break javascript: URLs by doing so...
+      {"javascript:alert('foo#bar')", "#badfrag", true,
+       "javascript:alert('foo#badfrag"},
+  };
+
+  for (const auto& test : resolve_non_standard_cases) {
+    SCOPED_TRACE(testing::Message()
+                 << "base: " << test.base << ", rel: " << test.rel);
+
+    Parsed base_parsed = use_standard_compliant_non_special_scheme_url_parsing_
+                             ? ParseNonSpecialURL(test.base)
+                             : ParsePathURL(test.base, /*trim_path_end=*/true);
+
+    std::string resolved;
+    StdStringCanonOutput output(&resolved);
+    Parsed resolved_parsed;
+    bool valid =
+        ResolveRelative(test.base, strlen(test.base), base_parsed, test.rel,
+                        strlen(test.rel), nullptr, &output, &resolved_parsed);
+    output.Complete();
+
+    EXPECT_EQ(test.is_valid, valid);
+    if (test.is_valid && valid) {
+      if (use_standard_compliant_non_special_scheme_url_parsing_ &&
+          test.out_when_non_special_url_feature_is_enabled) {
+        EXPECT_EQ(test.out_when_non_special_url_feature_is_enabled, resolved);
+      } else {
+        EXPECT_EQ(test.out, resolved);
+      }
+    }
+  }
+}
+
+TEST_P(URLUtilTypedTest, TestNoRefComponent) {
+  // This test was originally written before full support for non-special URLs
+  // became available. We need a flag-dependent test here because the test uses
+  // an internal parse function. See http://crbug.com/40063064 for details.
+  //
+  // The test case corresponds to the following user scenario:
+  //
+  // > const url = new URL("any#body", "mailto://to/");
+  // > assertEquals(url.href, "mailto://to/any#body");
+  //
+  // TODO(crbug.com/40063064): Remove this test once the flag is enabled.
+  const std::string_view base = "mailto://to/";
+  const std::string_view rel = "any#body";
+  if (use_standard_compliant_non_special_scheme_url_parsing_) {
+    // We probably don't need to test with the flag enabled, however, including
+    // a test with the flag enabled would be beneficial for comparison purposes,
+    // at least until we enable the flag by default.
+    Parsed base_parsed = ParseNonSpecialURL(base);
+
+    std::string resolved;
+    StdStringCanonOutput output(&resolved);
+    Parsed resolved_parsed;
+
+    bool valid =
+        ResolveRelative(base.data(), base.size(), base_parsed, rel.data(),
+                        rel.size(), nullptr, &output, &resolved_parsed);
+    EXPECT_TRUE(valid);
+    // Note: If the flag is enabled and the correct parsing function is used,
+    // resolved_parsed.ref becomes valid correctly.
+    EXPECT_TRUE(resolved_parsed.ref.is_valid());
+    output.Complete();
+    EXPECT_EQ(resolved, "mailto://to/any#body");
+  } else {
+    // Note: See the description of https://codereview.chromium.org/767713002/
+    // for the intention of this test, which added this test to record a wrong
+    // result if a wrong parser function is used. I kept the following original
+    // comment as is:
+    //
+    // The hash-mark must be ignored when mailto: scheme is parsed,
+    // even if the URL has a base and relative part.
+    std::string resolved;
+    StdStringCanonOutput output(&resolved);
+    Parsed resolved_parsed;
+
+    bool valid = ResolveRelative(
+        base.data(), base.size(), ParsePathURL(base, false), rel.data(),
+        rel.size(), nullptr, &output, &resolved_parsed);
+    EXPECT_TRUE(valid);
+    EXPECT_FALSE(resolved_parsed.ref.is_valid());
+  }
+}
 
 TEST_P(URLUtilTypedTest, Cannolicalize) {
   // Verify that the feature flag changes canonicalization behavior,
@@ -786,6 +849,70 @@ TEST_P(URLUtilTypedTest, Cannolicalize) {
     for (const auto& i : cases) {
       TestCanonicalize(i);
     }
+  }
+}
+
+TEST_P(URLUtilTypedTest, TestResolveRelativeWithNonSpecialBase) {
+  // Test flag-dependent behaviors. Existing tests in
+  // URLUtilTest::TestResolveRelativeWithNonStandardBase cover common cases.
+  //
+  // TODO(crbug.com/40063064): Test common cases in this typed test too.
+  if (use_standard_compliant_non_special_scheme_url_parsing_) {
+    ResolveRelativeCase cases[] = {
+        {"scheme://Authority", "path", "scheme://Authority/path"},
+    };
+    for (const auto& i : cases) {
+      TestResolveRelative(i);
+    }
+  } else {
+    ResolveRelativeCase cases[] = {
+        // It's still possible to get an invalid path URL.
+        //
+        // Note: If the flag is enabled, "custom://Invalid:!#Auth/" is an
+        // invalid URL.
+        // ResolveRelative() should be never called.
+        {"custom://Invalid:!#Auth/", "file.html", std::nullopt},
+
+        // Resolving should fail if the base URL is authority-based but is
+        // missing a path component (the '/' at the end).
+        {"scheme://Authority", "path", std::nullopt},
+
+        // In this case, the backslashes will not be canonicalized because it's
+        // a non-standard URL, but they will be treated as a path separators,
+        // giving the base URL here a path of "\".
+        //
+        // The result here is somewhat arbitrary. One could argue it should be
+        // either "aaa://a\" or "aaa://a/" since the path is being replaced with
+        // the "current directory". But in the context of resolving on data
+        // URLs, adding the requested dot doesn't seem wrong either.
+        //
+        // Note: If the flag is enabled, "aaa://a\\" is an invalid URL.
+        // ResolveRelative() should be never called.
+        {"aaa://a\\", "aaa:.", "aaa://a\\."}};
+    for (const auto& i : cases) {
+      TestResolveRelative(i);
+    }
+  }
+}
+
+TEST_P(URLUtilTypedTest, OpaqueNonSpecialScheme) {
+  // Ensure that the behavior of "android:" scheme URL is preserved, which is
+  // not URL Standard compliant.
+  //
+  // URL Standard-wise, "android://a b" is an invalid URL because the host part
+  // includes a space character, which is not allowed.
+  std::optional<std::string> res = CanonicalizeSpec("android://a b", false);
+  ASSERT_TRUE(res);
+  EXPECT_EQ(*res, "android://a b");
+
+  // Test a "git:" scheme URL for comparison.
+  res = CanonicalizeSpec("git://a b", false);
+  if (use_standard_compliant_non_special_scheme_url_parsing_) {
+    // This is correct behavior because "git://a b" is an invalid URL.
+    EXPECT_FALSE(res);
+  } else {
+    ASSERT_TRUE(res);
+    EXPECT_EQ(*res, "git://a b");
   }
 }
 

@@ -100,10 +100,14 @@ public:
     bool isVisible() const override;
     void setVisible(bool visible) override;
 
-    void popup(QQuickItem *menuItem = nullptr);
-    void popup(const QPointF &pos, QQuickItem *menuItem = nullptr);
-
-    Q_REVISION(2, 3) Q_INVOKABLE void popup(QQmlV4FunctionPtr args);
+    // overload set with parent item
+    Q_REVISION(2, 3) Q_INVOKABLE void popup(QQuickItem *parent, qreal x, qreal y, QQuickItem *menuItem = nullptr);
+    Q_REVISION(2, 3) Q_INVOKABLE void popup(QQuickItem *parent, const QPointF &position, QQuickItem *menuItem = nullptr);
+    Q_REVISION(2, 3) Q_INVOKABLE void popup(QQuickItem *parent, QQuickItem *menuItem);
+    Q_REVISION(2, 3) Q_INVOKABLE void popup(QQuickItem *parent = nullptr);
+    // overload set without parent item
+    Q_REVISION(2, 3) Q_INVOKABLE void popup(qreal x, qreal y, QQuickItem *menuItem = nullptr);
+    Q_REVISION(2, 3) Q_INVOKABLE void popup(const QPointF &position, QQuickItem *menuItem = nullptr);
     Q_REVISION(2, 3) Q_INVOKABLE void dismiss();
 
 protected:

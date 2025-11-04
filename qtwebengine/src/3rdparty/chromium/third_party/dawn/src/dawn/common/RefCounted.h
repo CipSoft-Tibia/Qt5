@@ -40,14 +40,17 @@ class WeakRefData;
 
 class RefCount {
   public:
+    RefCount(uint64_t initCount, uint64_t payload);
+
     // Create a refcount with a payload. The refcount starts initially at one.
     explicit RefCount(uint64_t payload = 0);
 
     uint64_t GetValueForTesting() const;
     uint64_t GetPayload() const;
 
-    // Add a reference.
-    void Increment();
+    // Add a reference, return true if the previous count is 0.
+    bool Increment();
+
     // Tries to add a reference. Returns false if the ref count is already at 0. This is used when
     // operating on a raw pointer to a RefCounted instead of a valid Ref that may be soon deleted.
     bool TryIncrement();
@@ -61,20 +64,20 @@ class RefCount {
 
 class RefCounted {
   public:
+    static constexpr bool HasExternalRefCount = false;
+
     explicit RefCounted(uint64_t payload = 0);
 
     uint64_t GetRefCountForTesting() const;
     uint64_t GetRefCountPayload() const;
 
-    void Reference();
+    void AddRef();
     // Release() is called by internal code, so it's assumed that there is already a thread
     // synchronization in place for destruction.
     void Release();
 
-    void APIReference() { Reference(); }
-    // APIRelease() can be called without any synchronization guarantees so we need to use a Release
-    // method that will call LockAndDeleteThis() on destruction.
-    void APIRelease() { ReleaseAndLockBeforeDestroy(); }
+    void APIAddRef() { AddRef(); }
+    void APIRelease() { Release(); }
 
   protected:
     // Friend class is needed to access the RefCount to TryIncrement.

@@ -94,6 +94,9 @@ public:
     bool closeOnReturn() const;
     void setCloseOnReturn(bool enable);
 
+    qreal keySoundVolume() const;
+    void setKeySoundVolume(qreal volume);
+
 signals:
     void styleChanged();
     void styleNameChanged();
@@ -115,6 +118,7 @@ signals:
     void defaultDictionaryDisabledChanged();
     void visibleFunctionKeysChanged();
     void closeOnReturnChanged();
+    void keySoundVolumeChanged();
 };
 
 } // namespace QtVirtualKeyboard

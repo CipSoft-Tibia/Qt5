@@ -12,78 +12,75 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 import m from 'mithril';
-
 import {BigintMath} from '../base/bigint_math';
 import {copyToClipboard} from '../base/clipboard';
 import {isString} from '../base/object_utils';
 import {Time} from '../base/time';
-import {Actions} from '../common/actions';
 import {QueryResponse} from '../common/queries';
 import {Row} from '../trace_processor/query_result';
 import {Anchor} from '../widgets/anchor';
 import {Button} from '../widgets/button';
 import {Callout} from '../widgets/callout';
 import {DetailsShell} from '../widgets/details_shell';
-
 import {queryResponseToClipboard} from './clipboard';
 import {downloadData} from './download_utils';
 import {globals} from './globals';
 import {Router} from './router';
-import {reveal} from './scroll_helper';
+import {scrollTo} from '../public/scroll_helper';
 
 interface QueryTableRowAttrs {
   row: Row;
   columns: string[];
 }
 
-type Numeric = bigint|number;
+type Numeric = bigint | number;
 
 function isIntegral(x: Row[string]): x is Numeric {
-  return typeof x === 'bigint' ||
-      (typeof x === 'number' && Number.isInteger(x));
+  return (
+    typeof x === 'bigint' || (typeof x === 'number' && Number.isInteger(x))
+  );
 }
 
-function hasTs(row: Row): row is Row&{ts: Numeric} {
-  return ('ts' in row && isIntegral(row.ts));
+function hasTs(row: Row): row is Row & {ts: Numeric} {
+  return 'ts' in row && isIntegral(row.ts);
 }
 
-function hasDur(row: Row): row is Row&{dur: Numeric} {
-  return ('dur' in row && isIntegral(row.dur));
+function hasDur(row: Row): row is Row & {dur: Numeric} {
+  return 'dur' in row && isIntegral(row.dur);
 }
 
-function hasTrackId(row: Row): row is Row&{track_id: Numeric} {
-  return ('track_id' in row && isIntegral(row.track_id));
+function hasTrackId(row: Row): row is Row & {track_id: Numeric} {
+  return 'track_id' in row && isIntegral(row.track_id);
 }
 
-function hasType(row: Row): row is Row&{type: string} {
-  return ('type' in row && isString(row.type));
+function hasType(row: Row): row is Row & {type: string} {
+  return 'type' in row && isString(row.type);
 }
 
-function hasId(row: Row): row is Row&{id: Numeric} {
-  return ('id' in row && isIntegral(row.id));
+function hasId(row: Row): row is Row & {id: Numeric} {
+  return 'id' in row && isIntegral(row.id);
 }
 
-function hasSliceId(row: Row): row is Row&{slice_id: Numeric} {
-  return ('slice_id' in row && isIntegral(row.slice_id));
+function hasSliceId(row: Row): row is Row & {slice_id: Numeric} {
+  return 'slice_id' in row && isIntegral(row.slice_id);
 }
 
 // These are properties that a row should have in order to be "slice-like",
 // insofar as it represents a time range and a track id which can be revealed
 // or zoomed-into on the timeline.
 type Sliceish = {
-  ts: Numeric,
-  dur: Numeric,
-  track_id: Numeric
+  ts: Numeric;
+  dur: Numeric;
+  track_id: Numeric;
 };
 
-export function isSliceish(row: Row): row is Row&Sliceish {
+export function isSliceish(row: Row): row is Row & Sliceish {
   return hasTs(row) && hasDur(row) && hasTrackId(row);
 }
 
 // Attempts to extract a slice ID from a row, or undefined if none can be found
-export function getSliceId(row: Row): number|undefined {
+export function getSliceId(row: Row): number | undefined {
   if (hasType(row) && row.type.includes('slice')) {
     if (hasId(row)) {
       return Number(row.id);
@@ -102,19 +99,22 @@ class QueryTableRow implements m.ClassComponent<QueryTableRowAttrs> {
     const cells = columns.map((col) => this.renderCell(col, row[col]));
 
     // TODO(dproy): Make click handler work from analyze page.
-    if (Router.parseUrl(window.location.href).page === '/viewer' &&
-        isSliceish(row)) {
+    if (
+      Router.parseUrl(window.location.href).page === '/viewer' &&
+      isSliceish(row)
+    ) {
       return m(
-          'tr',
-          {
-            onclick: () => this.highlightSlice(row, globals.state.currentTab),
-            // TODO(altimin): Consider improving the logic here (e.g. delay?) to
-            // account for cases when dblclick fires late.
-            ondblclick: () => this.highlightSlice(row),
-            clickable: true,
-            title: 'Go to slice',
-          },
-          cells);
+        'tr',
+        {
+          onclick: () => this.selectAndRevealSlice(row, false),
+          // TODO(altimin): Consider improving the logic here (e.g. delay?) to
+          // account for cases when dblclick fires late.
+          ondblclick: () => this.selectAndRevealSlice(row, true),
+          clickable: true,
+          title: 'Go to slice',
+        },
+        cells,
+      );
     } else {
       return m('tr', cells);
     }
@@ -130,35 +130,50 @@ class QueryTableRow implements m.ClassComponent<QueryTableRowAttrs> {
 
   private renderBlob(name: string, value: Uint8Array) {
     return m(
-        Anchor,
-        {
-          onclick: () => downloadData(`${name}.blob`, value),
-        },
-        `Blob (${value.length} bytes)`);
+      Anchor,
+      {
+        onclick: () => downloadData(`${name}.blob`, value),
+      },
+      `Blob (${value.length} bytes)`,
+    );
   }
 
-  private highlightSlice(row: Row&Sliceish, nextTab?: string) {
+  private selectAndRevealSlice(
+    row: Row & Sliceish,
+    switchToCurrentSelectionTab: boolean,
+  ) {
     const trackId = Number(row.track_id);
     const sliceStart = Time.fromRaw(BigInt(row.ts));
     // row.dur can be negative. Clamp to 1ns.
     const sliceDur = BigintMath.max(BigInt(row.dur), 1n);
-    const trackKey = globals.state.trackKeyByTrackId[trackId];
-    if (trackKey !== undefined) {
-      reveal(trackKey, sliceStart, Time.add(sliceStart, sliceDur), true);
+    const trackUri = globals.trackManager.findTrack((td) =>
+      td.tags?.trackIds?.includes(trackId),
+    )?.uri;
+    if (trackUri !== undefined) {
+      scrollTo({
+        track: {uri: trackUri, expandGroup: true},
+        time: {start: sliceStart, end: Time.add(sliceStart, sliceDur)},
+      });
       const sliceId = getSliceId(row);
       if (sliceId !== undefined) {
-        this.selectSlice(sliceId, trackKey, nextTab);
+        this.selectSlice(sliceId, trackUri, switchToCurrentSelectionTab);
       }
     }
   }
 
-  private selectSlice(sliceId: number, trackKey: string, nextTab?: string) {
-    const action = Actions.selectChromeSlice({
-      id: sliceId,
-      trackKey,
-      table: 'slice',
-    });
-    globals.makeSelection(action, {tab: nextTab});
+  private selectSlice(
+    sliceId: number,
+    trackUuid: string,
+    switchToCurrentSelectionTab: boolean,
+  ) {
+    globals.selectionManager.setLegacySlice(
+      {
+        id: sliceId,
+        trackUri: trackUuid,
+        table: 'slice',
+      },
+      {switchToCurrentSelectionTab},
+    );
   }
 }
 
@@ -182,21 +197,24 @@ class QueryTableContent implements m.ClassComponent<QueryTableContentAttrs> {
     }
     const tableHeader = m('tr', cols);
 
-    const rows =
-        resp.rows.map((row) => m(QueryTableRow, {row, columns: resp.columns}));
+    const rows = resp.rows.map((row) =>
+      m(QueryTableRow, {row, columns: resp.columns}),
+    );
 
     if (resp.error) {
       return m('.query-error', `SQL error: ${resp.error}`);
     } else {
       return m(
-          'table.pf-query-table', m('thead', tableHeader), m('tbody', rows));
+        'table.pf-query-table',
+        m('thead', tableHeader),
+        m('tbody', rows),
+      );
     }
   }
 }
 
 interface QueryTableAttrs {
   query: string;
-  onClose: () => void;
   resp?: QueryResponse;
   contextButtons?: m.Child[];
   fillParent: boolean;
@@ -204,23 +222,17 @@ interface QueryTableAttrs {
 
 export class QueryTable implements m.ClassComponent<QueryTableAttrs> {
   view({attrs}: m.CVnode<QueryTableAttrs>) {
-    const {
-      resp,
-      query,
-      onClose,
-      contextButtons = [],
-      fillParent,
-    } = attrs;
+    const {resp, query, contextButtons = [], fillParent} = attrs;
 
     return m(
-        DetailsShell,
-        {
-          title: this.renderTitle(resp),
-          description: query,
-          buttons: this.renderButtons(query, onClose, contextButtons, resp),
-          fillParent,
-        },
-        resp && this.renderTableContent(resp),
+      DetailsShell,
+      {
+        title: this.renderTitle(resp),
+        description: query,
+        buttons: this.renderButtons(query, contextButtons, resp),
+        fillParent,
+      },
+      resp && this.renderTableContent(resp),
     );
   }
 
@@ -233,46 +245,44 @@ export class QueryTable implements m.ClassComponent<QueryTableAttrs> {
   }
 
   renderButtons(
-      query: string, onClose: () => void, contextButtons: m.Child[],
-      resp?: QueryResponse) {
+    query: string,
+    contextButtons: m.Child[],
+    resp?: QueryResponse,
+  ) {
     return [
       contextButtons,
       m(Button, {
         label: 'Copy query',
-        minimal: true,
         onclick: () => {
           copyToClipboard(query);
         },
       }),
-      (resp && resp.error === undefined) && m(Button, {
-        label: 'Copy result (.tsv)',
-        minimal: true,
-        onclick: () => {
-          queryResponseToClipboard(resp);
-        },
-      }),
-      m(Button, {
-        minimal: true,
-        label: 'Close',
-        onclick: onClose,
-      }),
+      resp &&
+        resp.error === undefined &&
+        m(Button, {
+          label: 'Copy result (.tsv)',
+          onclick: () => {
+            queryResponseToClipboard(resp);
+          },
+        }),
     ];
   }
 
   renderTableContent(resp: QueryResponse) {
     return m(
-        '.pf-query-panel',
-        resp.statementWithOutputCount > 1 &&
-            m('.pf-query-warning',
-              m(
-                  Callout,
-                  {icon: 'warning'},
-                  `${resp.statementWithOutputCount} out of ${
-                      resp.statementCount} `,
-                  'statements returned a result. ',
-                  'Only the results for the last statement are displayed.',
-                  )),
-        m(QueryTableContent, {resp}),
+      '.pf-query-panel',
+      resp.statementWithOutputCount > 1 &&
+        m(
+          '.pf-query-warning',
+          m(
+            Callout,
+            {icon: 'warning'},
+            `${resp.statementWithOutputCount} out of ${resp.statementCount} `,
+            'statements returned a result. ',
+            'Only the results for the last statement are displayed.',
+          ),
+        ),
+      m(QueryTableContent, {resp}),
     );
   }
 }

@@ -75,7 +75,6 @@
 
 #include <QtCore/qbuffer.h>
 #include <QtCore/qdir.h>
-#include <QtCore/qlibraryinfo.h>
 #include <QtCore/qmetaobject.h>
 #include <QtCore/qdebug.h>
 #include <QtCore/qversionnumber.h>
@@ -102,13 +101,6 @@ static constexpr auto clipboardObjectName = "__qt_fake_top_level"_L1;
 #define OLD_RESOURCE_FORMAT // Support pre 4.4 format.
 
 namespace qdesigner_internal {
-
-static QVersionNumber qtVersion(const QDesignerFormEditorInterface *core)
-{
-    const QVariant v = core->integration()->property("qtVersion");
-    return v.isValid() && v.canConvert<QVersionNumber>()
-           ? v.value<QVersionNumber>() : QLibraryInfo::version();
-}
 
 static bool supportsQualifiedEnums(const QVersionNumber &qtVersion)
 {
@@ -503,7 +495,7 @@ void QDesignerResource::save(QIODevice *dev, QWidget *widget)
     // Do not write fully qualified enumerations for spacer/line orientations
     // and other enum/flag properties for older Qt versions since that breaks
     // older uic.
-    d->m_fullyQualifiedEnums = supportsQualifiedEnums(qtVersion(m_formWindow->core()));
+    d->m_fullyQualifiedEnums = supportsQualifiedEnums(m_formWindow->core()->integration()->qtVersion());
     QAbstractFormBuilder::save(dev, widget);
 }
 
@@ -996,84 +988,97 @@ void QDesignerResource::applyProperties(QObject *o, const QList<DomProperty*> &p
     if (properties.isEmpty())
         return;
 
-    QDesignerPropertySheetExtension *sheet = qt_extension<QDesignerPropertySheetExtension*>(core()->extensionManager(), o);
+    auto *sheet = qt_extension<QDesignerPropertySheetExtension*>(core()->extensionManager(), o);
     if (!sheet)
         return;
 
-    QDesignerDynamicPropertySheetExtension *dynamicSheet = qt_extension<QDesignerDynamicPropertySheetExtension*>(core()->extensionManager(), o);
-    const bool dynamicPropertiesAllowed = dynamicSheet && dynamicSheet->dynamicPropertiesAllowed();
+    auto *dynamicSheet = qt_extension<QDesignerDynamicPropertySheetExtension*>(core()->extensionManager(), o);
+    if (dynamicSheet != nullptr && !dynamicSheet->dynamicPropertiesAllowed())
+        dynamicSheet = nullptr;
 
     for (DomProperty *p : properties) {
         if (isDeprecatedQt5Property(o, p)) // ### fixme Qt 7 remove this
             continue; // ### fixme Qt 7 remove this: Exclude deprecated value of Qt 5.
-        QString propertyName = p->attributeName();
-        if (propertyName == "numDigits"_L1 && o->inherits("QLCDNumber")) // Deprecated in Qt 4, removed in Qt 5.
-            propertyName = u"digitCount"_s;
-        const int index = sheet->indexOf(propertyName);
-        QVariant v;
-        if (!readDomEnumerationValue(p, sheet, index, v))
-            v = toVariant(o->metaObject(), p);
-
-        switch (p->kind()) {
-        case DomProperty::String:
-            if (index != -1 && sheet->property(index).userType() == qMetaTypeId<PropertySheetKeySequenceValue>()) {
-                const DomString *key = p->elementString();
-                PropertySheetKeySequenceValue keyVal(QKeySequence(key->text()));
-                translationParametersFromDom(key, &keyVal);
-                v = QVariant::fromValue(keyVal);
-            } else {
-                const DomString *str = p->elementString();
-                PropertySheetStringValue strVal(v.toString());
-                translationParametersFromDom(str, &strVal);
-                v = QVariant::fromValue(strVal);
-            }
-            break;
-        case DomProperty::StringList: {
-            const DomStringList *list = p->elementStringList();
-            PropertySheetStringListValue listValue(list->elementString());
-            translationParametersFromDom(list, &listValue);
-            v = QVariant::fromValue(listValue);
+        const QString &propertyName = p->attributeName();
+        if (propertyName == "numDigits"_L1 && o->inherits("QLCDNumber")) { // Deprecated in Qt 4, removed in Qt 5.
+            applyProperty(o, p, u"digitCount"_s, sheet, dynamicSheet);
+        // Qt 6 reading Qt 7 forms
+        } else if (propertyName == "horizontalSizeConstraint"_L1 && o->inherits("QLayout")) {
+            applyProperty(o, p, u"sizeConstraint"_s, sheet, dynamicSheet);
+        } else if (propertyName == "verticalSizeConstraint"_L1 && o->inherits("QLayout")) {
+            // ignore
+        } else {
+            applyProperty(o, p, propertyName, sheet, dynamicSheet);
         }
-            break;
-        default:
-            break;
-        }
-
-        d->applyPropertyInternally(o, propertyName, v);
-        if (index != -1) {
-            sheet->setProperty(index, v);
-            sheet->setChanged(index, true);
-        } else if (dynamicPropertiesAllowed) {
-            QVariant defaultValue = QVariant(v.metaType());
-            bool isDefault = (v == defaultValue);
-            if (v.canConvert<PropertySheetIconValue>()) {
-                defaultValue = QVariant(QMetaType(QMetaType::QIcon));
-                isDefault = (qvariant_cast<PropertySheetIconValue>(v) == PropertySheetIconValue());
-            } else if (v.canConvert<PropertySheetPixmapValue>()) {
-                defaultValue = QVariant(QMetaType(QMetaType::QPixmap));
-                isDefault = (qvariant_cast<PropertySheetPixmapValue>(v) == PropertySheetPixmapValue());
-            } else if (v.canConvert<PropertySheetStringValue>()) {
-                defaultValue = QVariant(QMetaType(QMetaType::QString));
-                isDefault = (qvariant_cast<PropertySheetStringValue>(v) == PropertySheetStringValue());
-            } else if (v.canConvert<PropertySheetStringListValue>()) {
-                defaultValue = QVariant(QMetaType(QMetaType::QStringList));
-                isDefault = (qvariant_cast<PropertySheetStringListValue>(v) == PropertySheetStringListValue());
-            } else if (v.canConvert<PropertySheetKeySequenceValue>()) {
-                defaultValue = QVariant(QMetaType(QMetaType::QKeySequence));
-                isDefault = (qvariant_cast<PropertySheetKeySequenceValue>(v) == PropertySheetKeySequenceValue());
-            }
-            if (defaultValue.metaType().id() != QMetaType::User) {
-                const int idx = dynamicSheet->addDynamicProperty(p->attributeName(), defaultValue);
-                if (idx != -1) {
-                    sheet->setProperty(idx, v);
-                    sheet->setChanged(idx, !isDefault);
-                }
-            }
-        }
-
-        if (propertyName == "objectName"_L1)
-            changeObjectName(o, o->objectName());
     }
+}
+
+void QDesignerResource::applyProperty(QObject *o, DomProperty* p, const QString &propertyName,
+                                      QDesignerPropertySheetExtension *sheet,
+                                      QDesignerDynamicPropertySheetExtension *dynamicSheet)
+{
+    const int index = sheet->indexOf(propertyName);
+    QVariant v;
+    if (!readDomEnumerationValue(p, sheet, index, v))
+        v = toVariant(o->metaObject(), p);
+    switch (p->kind()) {
+    case DomProperty::String:
+        if (index != -1 && sheet->property(index).userType() == qMetaTypeId<PropertySheetKeySequenceValue>()) {
+            const DomString *key = p->elementString();
+            PropertySheetKeySequenceValue keyVal(QKeySequence(key->text()));
+            translationParametersFromDom(key, &keyVal);
+            v = QVariant::fromValue(keyVal);
+        } else {
+            const DomString *str = p->elementString();
+            PropertySheetStringValue strVal(v.toString());
+            translationParametersFromDom(str, &strVal);
+            v = QVariant::fromValue(strVal);
+        }
+        break;
+    case DomProperty::StringList: {
+        const DomStringList *list = p->elementStringList();
+        PropertySheetStringListValue listValue(list->elementString());
+        translationParametersFromDom(list, &listValue);
+        v = QVariant::fromValue(listValue);
+    }
+        break;
+    default:
+        break;
+    }
+    d->applyPropertyInternally(o, propertyName, v);
+    if (index != -1) {
+        sheet->setProperty(index, v);
+        sheet->setChanged(index, true);
+    } else if (dynamicSheet != nullptr) {
+        QVariant defaultValue = QVariant(v.metaType());
+        bool isDefault = (v == defaultValue);
+        if (v.canConvert<PropertySheetIconValue>()) {
+            defaultValue = QVariant(QMetaType(QMetaType::QIcon));
+            isDefault = (qvariant_cast<PropertySheetIconValue>(v) == PropertySheetIconValue());
+        } else if (v.canConvert<PropertySheetPixmapValue>()) {
+            defaultValue = QVariant(QMetaType(QMetaType::QPixmap));
+            isDefault = (qvariant_cast<PropertySheetPixmapValue>(v) == PropertySheetPixmapValue());
+        } else if (v.canConvert<PropertySheetStringValue>()) {
+            defaultValue = QVariant(QMetaType(QMetaType::QString));
+            isDefault = (qvariant_cast<PropertySheetStringValue>(v) == PropertySheetStringValue());
+        } else if (v.canConvert<PropertySheetStringListValue>()) {
+            defaultValue = QVariant(QMetaType(QMetaType::QStringList));
+            isDefault = (qvariant_cast<PropertySheetStringListValue>(v) == PropertySheetStringListValue());
+        } else if (v.canConvert<PropertySheetKeySequenceValue>()) {
+            defaultValue = QVariant(QMetaType(QMetaType::QKeySequence));
+            isDefault = (qvariant_cast<PropertySheetKeySequenceValue>(v) == PropertySheetKeySequenceValue());
+        }
+        if (defaultValue.metaType().id() != QMetaType::User) {
+            const int idx = dynamicSheet->addDynamicProperty(p->attributeName(), defaultValue);
+            if (idx != -1) {
+                sheet->setProperty(idx, v);
+                sheet->setChanged(idx, !isDefault);
+            }
+        }
+    }
+
+    if (propertyName == "objectName"_L1)
+            changeObjectName(o, o->objectName());
 }
 
 QWidget *QDesignerResource::createWidget(const QString &widgetName, QWidget *parentWidget, const QString &_name)

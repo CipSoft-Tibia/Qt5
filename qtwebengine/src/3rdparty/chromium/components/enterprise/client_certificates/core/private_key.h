@@ -10,8 +10,14 @@
 
 #include "base/containers/span.h"
 #include "base/memory/ref_counted.h"
+#include "base/memory/scoped_refptr.h"
 #include "components/enterprise/client_certificates/core/private_key_types.h"
+#include "components/enterprise/client_certificates/proto/client_certificates_database.pb.h"
 #include "crypto/signature_verifier.h"
+
+namespace net {
+class SSLPrivateKey;
+}  // namespace net
 
 namespace client_certificates {
 
@@ -31,16 +37,26 @@ class PrivateKey : public base::RefCountedThreadSafe<PrivateKey> {
   virtual crypto::SignatureVerifier::SignatureAlgorithm GetAlgorithm()
       const = 0;
 
+  // Returns a proto representation of the current private key which can be
+  // serialized and loaded again through the PrivateKeyFactory.
+  virtual client_certificates_pb::PrivateKey ToProto() const = 0;
+
   // Returns the source from where the private key was created.
   PrivateKeySource GetSource() const;
 
+  // Returns a version of this private key which can be used in TLS protocols.
+  // May be nullptr if not supported.
+  scoped_refptr<net::SSLPrivateKey> GetSSLPrivateKey();
+
  protected:
-  // Base constructor of PrivateKey instances.
-  explicit PrivateKey(PrivateKeySource source);
+  PrivateKey(PrivateKeySource source,
+             scoped_refptr<net::SSLPrivateKey> ssl_private_key);
 
   virtual ~PrivateKey();
 
   PrivateKeySource source_;
+
+  scoped_refptr<net::SSLPrivateKey> ssl_private_key_;
 
  private:
   friend class base::RefCountedThreadSafe<PrivateKey>;

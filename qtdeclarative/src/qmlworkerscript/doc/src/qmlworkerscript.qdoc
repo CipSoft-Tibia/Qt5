@@ -3,7 +3,7 @@
 
 /*!
     \qmlmodule QtQml.WorkerScript
-    \title Qt QML WorkerScript QML Types
+    \title Qt Qml WorkerScript QML Types
     \ingroup qmlmodules
     \brief Provides QML types for worker scripts.
     \since 5.14
@@ -15,4 +15,33 @@
     \qml
     import QtQml.WorkerScript
     \endqml
+*/
+
+/*!
+
+    \title Qt QML WorkerScript
+    \page qmlworkerscript-index.html
+
+    The Qml WorkerScript module enables the use of threads in a Qt Quick
+    application.
+
+    Use WorkerScript to run operations in a new thread. This is useful for
+    running operations in the background so that the main GUI thread is not
+    blocked.
+
+    The WorkerScript supports passing messages between the new thread and the
+    parent thread.
+
+    To use the types in this module, import the module with the following line:
+
+    \qml
+    import QtQml.WorkerScript
+    \endqml
+
+    \section1 API Reference
+
+    \list
+        \li \l {Qt QML WorkerScript QML Types}
+    \endlist
+
 */

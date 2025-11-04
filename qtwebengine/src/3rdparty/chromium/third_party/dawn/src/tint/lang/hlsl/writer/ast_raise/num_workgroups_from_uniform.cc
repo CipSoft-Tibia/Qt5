@@ -52,7 +52,7 @@ namespace {
 bool ShouldRun(const Program& program) {
     for (auto* node : program.ASTNodes().Objects()) {
         if (auto* attr = node->As<ast::BuiltinAttribute>()) {
-            if (program.Sem().Get(attr)->Value() == core::BuiltinValue::kNumWorkgroups) {
+            if (attr->builtin == core::BuiltinValue::kNumWorkgroups) {
                 return true;
             }
         }
@@ -90,8 +90,7 @@ ast::transform::Transform::ApplyResult NumWorkgroupsFromUniform::Apply(
 
     auto* cfg = inputs.Get<Config>();
     if (cfg == nullptr) {
-        b.Diagnostics().add_error(diag::System::Transform,
-                                  "missing transform data for " + std::string(TypeInfo().name));
+        b.Diagnostics().AddError(Source{}) << "missing transform data for " << TypeInfo().name;
         return resolver::Resolve(b);
     }
 

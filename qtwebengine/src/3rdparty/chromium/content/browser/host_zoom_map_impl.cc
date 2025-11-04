@@ -10,7 +10,6 @@
 #include <utility>
 
 #include "base/containers/contains.h"
-#include "base/strings/string_piece.h"
 #include "base/strings/utf_string_conversions.h"
 #include "base/time/default_clock.h"
 #include "base/values.h"
@@ -31,21 +30,16 @@
 #include "third_party/blink/public/common/page/page_zoom.h"
 
 #if BUILDFLAG(IS_ANDROID)
-#include "base/android/jni_array.h"
-#include "content/public/android/content_jni_headers/HostZoomMapImpl_jni.h"
+#include "base/android/jni_string.h"
 #include "content/public/browser/android/browser_context_handle.h"
-using base::android::ScopedJavaLocalRef;
+
+// Must come after all headers that specialize FromJniType() / ToJniType().
+#include "content/public/android/content_jni_headers/HostZoomMapImpl_jni.h"
 #endif
 
 namespace content {
 
 namespace {
-
-#if BUILDFLAG(IS_ANDROID)
-const char kRequestDesktopSiteZoomScaleParamName[] = "desktop_site_zoom_scale";
-const double kDefaultRequestDesktopSiteZoomScale =
-    1.1;  // Equivalent to 110% zoom.
-#endif
 
 std::string GetHostFromProcessFrame(RenderFrameHostImpl* rfh) {
   DCHECK_CURRENTLY_ON(BrowserThread::UI);
@@ -182,28 +176,20 @@ double HostZoomMapImpl::GetZoomLevelForHostAndScheme(const std::string& scheme,
 }
 
 #if BUILDFLAG(IS_ANDROID)
-double HostZoomMapImpl::GetZoomLevelForHostAndScheme(
+double HostZoomMapImpl::GetZoomLevelForHostAndSchemeAndroid(
     const std::string& scheme,
-    const std::string& host,
-    bool is_overriding_user_agent) {
+    const std::string& host) {
   double zoom_level = GetZoomLevelForHostAndScheme(scheme, host);
 
-  // On Android, if Request Desktop Site zoom is enabled, use a pre-defined zoom
-  // scale (default to 1.1, or 110%) relative to the current host zoom level
-  // when the desktop user agent is used.
-  double desktop_site_zoom_scale =
-      GetDesktopSiteZoomScale(is_overriding_user_agent);
-
   // On Android, we will use a zoom level that considers the current OS-level
-  // setting and the desktop site zoom scale. For this we pass the given |level|
-  // through JNI to the Java-side code, which can access the Android
-  // configuration and |fontScale|. This method will return the adjusted zoom
-  // level considering OS settings as well as the desktop site zoom. Note that
-  // the OS |fontScale| will be factored in only when the Page Zoom feature is
-  // enabled.
-  JNIEnv* env = base::android::AttachCurrentThread();
-  double adjusted_zoom_level = Java_HostZoomMapImpl_getAdjustedZoomLevel(
-      env, zoom_level, desktop_site_zoom_scale);
+  // setting. For this we pass the given |level| through JNI to the Java-side
+  // code, which can access the Android configuration and |fontScale|. This
+  // method will return the adjusted zoom level considering OS settings. Note
+  // that the OS |fontScale| will be factored in only when the Page Zoom feature
+  // is enabled.
+  JNIEnv* env = jni_zero::AttachCurrentThread();
+  double adjusted_zoom_level =
+      Java_HostZoomMapImpl_getAdjustedZoomLevel(env, zoom_level);
   return adjusted_zoom_level;
 }
 #endif
@@ -258,7 +244,7 @@ void HostZoomMapImpl::SetZoomLevelForHostInternal(const std::string& host,
                                                   base::Time last_modified) {
   DCHECK_CURRENTLY_ON(BrowserThread::UI);
 
-  if (blink::PageZoomValuesEqual(level, default_zoom_level_)) {
+  if (blink::ZoomValuesEqual(level, default_zoom_level_)) {
     host_zoom_levels_.erase(host);
   } else {
     ZoomLevel& zoomLevel = host_zoom_levels_[host];
@@ -306,17 +292,19 @@ double HostZoomMapImpl::GetDefaultZoomLevel() {
 void HostZoomMapImpl::SetDefaultZoomLevel(double level) {
   DCHECK_CURRENTLY_ON(BrowserThread::UI);
 
-  if (blink::PageZoomValuesEqual(level, default_zoom_level_))
+  if (blink::ZoomValuesEqual(level, default_zoom_level_)) {
     return;
+  }
 
   default_zoom_level_ = level;
 
   // First, remove all entries that match the new default zoom level.
   for (auto it = host_zoom_levels_.begin(); it != host_zoom_levels_.end();) {
-    if (blink::PageZoomValuesEqual(it->second.level, default_zoom_level_))
+    if (blink::ZoomValuesEqual(it->second.level, default_zoom_level_)) {
       it = host_zoom_levels_.erase(it);
-    else
+    } else {
       it++;
+    }
   }
 
   // Second, update zoom levels for all pages that do not have an overriding
@@ -389,9 +377,8 @@ double HostZoomMapImpl::GetZoomLevelForWebContents(
     url = GetURLFromEntry(entry);
 
 #if BUILDFLAG(IS_ANDROID)
-  return GetZoomLevelForHostAndScheme(
-      url.scheme(), net::GetHostOrSpecFromURL(url),
-      entry && entry->GetIsOverridingUserAgent());
+  return GetZoomLevelForHostAndSchemeAndroid(url.scheme(),
+                                             net::GetHostOrSpecFromURL(url));
 #else
   return GetZoomLevelForHostAndScheme(url.scheme(),
                                       net::GetHostOrSpecFromURL(url));
@@ -528,7 +515,7 @@ void HostZoomMapImpl::SetClockForTesting(base::Clock* clock) {
 
 #if BUILDFLAG(IS_ANDROID)
 void HostZoomMapImpl::SetSystemFontScaleForTesting(float scale) {
-  JNIEnv* env = base::android::AttachCurrentThread();
+  JNIEnv* env = jni_zero::AttachCurrentThread();
   Java_HostZoomMapImpl_setSystemFontScaleForTesting(env, scale);  // IN-TEST
 }
 
@@ -540,17 +527,6 @@ void HostZoomMapImpl::SetDefaultZoomLevelPrefCallback(
 HostZoomMap::DefaultZoomChangedCallback*
 HostZoomMapImpl::GetDefaultZoomLevelPrefCallback() {
   return &default_zoom_level_pref_callback_;
-}
-
-double HostZoomMapImpl::GetDesktopSiteZoomScale(bool is_overriding_user_agent) {
-  if (base::FeatureList::IsEnabled(features::kRequestDesktopSiteZoom) &&
-      is_overriding_user_agent) {
-    return base::GetFieldTrialParamByFeatureAsDouble(
-        features::kRequestDesktopSiteZoom,
-        kRequestDesktopSiteZoomScaleParamName,
-        kDefaultRequestDesktopSiteZoomScale);
-  }
-  return 1;
 }
 
 void JNI_HostZoomMapImpl_SetZoomLevel(
@@ -646,54 +622,39 @@ jdouble JNI_HostZoomMapImpl_GetDefaultZoomLevel(
   return host_zoom_map->GetDefaultZoomLevel();
 }
 
-ScopedJavaLocalRef<jobjectArray> JNI_HostZoomMapImpl_GetAllHostZoomLevels(
+std::vector<jni_zero::ScopedJavaLocalRef<jobject>>
+JNI_HostZoomMapImpl_GetAllHostZoomLevels(
     JNIEnv* env,
     const base::android::JavaParamRef<jobject>& j_context) {
   DCHECK_CURRENTLY_ON(BrowserThread::UI);
+  std::vector<jni_zero::ScopedJavaLocalRef<jobject>> ret;
 
   // Get instance of HostZoomMap.
   BrowserContext* context = BrowserContextFromJavaHandle(j_context);
   if (!context) {
-    return nullptr;
+    return ret;
   }
 
   HostZoomMap* host_zoom_map =
       HostZoomMap::GetDefaultForBrowserContext(context);
 
   // Convert C++ vector of structs to vector of objects.
-  ScopedJavaLocalRef<jclass> type = base::android::GetClass(
-      env, "org/chromium/content_public/browser/SiteZoomInfo");
-  std::vector<ScopedJavaLocalRef<jobject>> jobject_vector;
   for (const auto& entry : host_zoom_map->GetAllZoomLevels()) {
     switch (entry.mode) {
       case HostZoomMap::ZOOM_CHANGED_FOR_HOST: {
-        jobject_vector.push_back(Java_HostZoomMapImpl_buildSiteZoomInfo(
-            env, base::android::ConvertUTF8ToJavaString(env, entry.host),
-            static_cast<double>(entry.zoom_level)));
+        ret.push_back(Java_HostZoomMapImpl_buildSiteZoomInfo(env, entry.host,
+                                                             entry.zoom_level));
         break;
       }
       case HostZoomMap::ZOOM_CHANGED_FOR_SCHEME_AND_HOST:
-        NOTREACHED();
+        NOTREACHED_IN_MIGRATION();
         break;
       case HostZoomMap::ZOOM_CHANGED_TEMPORARY_ZOOM:
-        NOTREACHED();
+        NOTREACHED_IN_MIGRATION();
     }
   }
 
-  return base::android::ToTypedJavaArrayOfObjects(env, jobject_vector, type);
-}
-
-jdouble JNI_HostZoomMapImpl_GetDesktopSiteZoomScale(
-    JNIEnv* env,
-    const base::android::JavaParamRef<jobject>& j_web_contents) {
-  WebContents* web_contents = WebContents::FromJavaWebContents(j_web_contents);
-
-  HostZoomMapImpl* host_zoom_map = static_cast<HostZoomMapImpl*>(
-      HostZoomMap::GetForWebContents(web_contents));
-  NavigationEntry* entry =
-      web_contents->GetController().GetLastCommittedEntry();
-  return host_zoom_map->GetDesktopSiteZoomScale(
-      entry && entry->GetIsOverridingUserAgent());
+  return ret;
 }
 #endif
 
@@ -705,7 +666,7 @@ double HostZoomMapImpl::GetZoomLevelForPreviewAndHost(const std::string& host) {
 
 void HostZoomMapImpl::SetZoomLevelForPreviewAndHost(const std::string& host,
                                                     double level) {
-  if (blink::PageZoomValuesEqual(level, default_zoom_level_)) {
+  if (blink::ZoomValuesEqual(level, default_zoom_level_)) {
     host_zoom_levels_for_preview_.erase(host);
   } else {
     ZoomLevel& zoomLevel = host_zoom_levels_for_preview_[host];

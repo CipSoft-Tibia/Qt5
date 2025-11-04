@@ -13,11 +13,13 @@
 #include <utility>
 
 #include "build/build_config.h"
+#include "core/fxcrt/check.h"
+#include "core/fxcrt/check_op.h"
 #include "core/fxcrt/data_vector.h"
 #include "core/fxcrt/fx_extension.h"
 #include "core/fxcrt/fx_safe_types.h"
-#include "third_party/base/check.h"
-#include "third_party/base/check_op.h"
+#include "core/fxcrt/span.h"
+#include "core/fxcrt/span_util.h"
 
 namespace {
 
@@ -67,26 +69,19 @@ std::pair<size_t, size_t> UTF8Decode(pdfium::span<const uint8_t> pSrc,
   return {iSrcNum, iDstNum};
 }
 
+void UTF16ToWChar(pdfium::span<wchar_t> buffer) {
 #if defined(WCHAR_T_IS_32_BIT)
-static_assert(sizeof(wchar_t) > 2, "wchar_t is too small");
-
-void UTF16ToWChar(void* pBuffer, size_t iLength) {
-  DCHECK(pBuffer);
-  DCHECK_GT(iLength, 0u);
-
-  uint16_t* pSrc = static_cast<uint16_t*>(pBuffer);
-  wchar_t* pDst = static_cast<wchar_t*>(pBuffer);
-
+  auto src = fxcrt::reinterpret_span<uint16_t>(buffer);
   // Perform self-intersecting copy in reverse order.
-  for (size_t i = iLength; i > 0; --i)
-    pDst[i - 1] = static_cast<wchar_t>(pSrc[i - 1]);
-}
+  for (size_t i = buffer.size(); i > 0; --i) {
+    buffer[i - 1] = static_cast<wchar_t>(src[i - 1]);
+  }
 #endif  // defined(WCHAR_T_IS_32_BIT)
+}
 
-void SwapByteOrder(uint16_t* pStr, size_t iLength) {
-  while (iLength-- > 0) {
-    uint16_t wch = *pStr;
-    *pStr++ = (wch >> 8) | (wch << 8);
+void SwapByteOrder(pdfium::span<uint16_t> str) {
+  for (auto& wch : str) {
+    wch = (wch >> 8) | (wch << 8);
   }
 }
 
@@ -106,7 +101,7 @@ CFX_SeekableStreamProxy::CFX_SeekableStreamProxy(
   Seek(From::Begin, 0);
 
   uint32_t bom = 0;
-  ReadData(reinterpret_cast<uint8_t*>(&bom), 3);
+  ReadData(pdfium::byte_span_from_ref(bom).first<3>());
 
   bom &= BOM_UTF8_MASK;
   if (bom == BOM_UTF8) {
@@ -131,15 +126,15 @@ CFX_SeekableStreamProxy::CFX_SeekableStreamProxy(
 
 CFX_SeekableStreamProxy::~CFX_SeekableStreamProxy() = default;
 
-FX_FILESIZE CFX_SeekableStreamProxy::GetSize() {
+FX_FILESIZE CFX_SeekableStreamProxy::GetSize() const {
   return m_pStream->GetSize();
 }
 
-FX_FILESIZE CFX_SeekableStreamProxy::GetPosition() {
+FX_FILESIZE CFX_SeekableStreamProxy::GetPosition() const {
   return m_iPosition;
 }
 
-bool CFX_SeekableStreamProxy::IsEOF() {
+bool CFX_SeekableStreamProxy::IsEOF() const {
   return m_iPosition >= GetSize();
 }
 
@@ -164,55 +159,51 @@ void CFX_SeekableStreamProxy::SetCodePage(FX_CodePage wCodePage) {
   m_wCodePage = wCodePage;
 }
 
-size_t CFX_SeekableStreamProxy::ReadData(uint8_t* pBuffer, size_t iBufferSize) {
-  DCHECK(pBuffer);
-  DCHECK(iBufferSize > 0);
-
-  iBufferSize =
-      std::min(iBufferSize, static_cast<size_t>(GetSize() - m_iPosition));
-  if (iBufferSize <= 0)
+size_t CFX_SeekableStreamProxy::ReadData(pdfium::span<uint8_t> buffer) {
+  DCHECK(!buffer.empty());
+  const size_t remaining = static_cast<size_t>(GetSize() - m_iPosition);
+  size_t read_size = std::min(buffer.size(), remaining);
+  if (read_size == 0) {
     return 0;
-
-  if (!m_pStream->ReadBlockAtOffset({pBuffer, iBufferSize}, m_iPosition))
+  }
+  if (!m_pStream->ReadBlockAtOffset(buffer.first(read_size), m_iPosition)) {
     return 0;
-
+  }
   FX_SAFE_FILESIZE new_pos = m_iPosition;
-  new_pos += iBufferSize;
+  new_pos += read_size;
   m_iPosition = new_pos.ValueOrDefault(m_iPosition);
-  return new_pos.IsValid() ? iBufferSize : 0;
+  return new_pos.IsValid() ? read_size : 0;
 }
 
-size_t CFX_SeekableStreamProxy::ReadBlock(wchar_t* pStr, size_t size) {
-  if (!pStr || size == 0)
+size_t CFX_SeekableStreamProxy::ReadBlock(pdfium::span<wchar_t> buffer) {
+  if (buffer.empty()) {
     return 0;
-
+  }
   if (m_wCodePage == FX_CodePage::kUTF16LE ||
       m_wCodePage == FX_CodePage::kUTF16BE) {
-    size_t iBytes = size * 2;
-    size_t iLen = ReadData(reinterpret_cast<uint8_t*>(pStr), iBytes);
-    size = iLen / 2;
-    if (m_wCodePage == FX_CodePage::kUTF16BE)
-      SwapByteOrder(reinterpret_cast<uint16_t*>(pStr), size);
-
-#if defined(WCHAR_T_IS_32_BIT)
-    if (size > 0)
-      UTF16ToWChar(pStr, size);
-#endif
-    return size;
+    size_t bytes_to_read = buffer.size() * sizeof(uint16_t);
+    size_t bytes_read =
+        ReadData(pdfium::as_writable_bytes(buffer).first(bytes_to_read));
+    size_t elements = bytes_read / sizeof(uint16_t);
+    if (m_wCodePage == FX_CodePage::kUTF16BE) {
+      SwapByteOrder(fxcrt::reinterpret_span<uint16_t>(buffer).first(elements));
+    }
+    UTF16ToWChar(buffer.first(elements));
+    return elements;
   }
-
   FX_FILESIZE pos = GetPosition();
-  size_t iBytes = std::min(size, static_cast<size_t>(GetSize() - pos));
-  if (iBytes == 0)
+  size_t bytes_to_read =
+      std::min(buffer.size(), static_cast<size_t>(GetSize() - pos));
+  if (bytes_to_read == 0) {
     return 0;
-
-  DataVector<uint8_t> buf(iBytes);
-  size_t iLen = ReadData(buf.data(), iBytes);
-  if (m_wCodePage != FX_CodePage::kUTF8)
+  }
+  DataVector<uint8_t> byte_buf(bytes_to_read);
+  size_t bytes_read = ReadData(byte_buf);
+  if (m_wCodePage != FX_CodePage::kUTF8) {
     return 0;
-
-  size_t iSrc;
-  std::tie(iSrc, size) = UTF8Decode({buf.data(), iLen}, {pStr, size});
-  Seek(From::Current, iSrc - iLen);
-  return size;
+  }
+  auto [src_bytes_consumed, dest_wchars_produced] =
+      UTF8Decode(pdfium::make_span(byte_buf).first(bytes_read), buffer);
+  Seek(From::Current, src_bytes_consumed - bytes_read);
+  return dest_wchars_produced;
 }

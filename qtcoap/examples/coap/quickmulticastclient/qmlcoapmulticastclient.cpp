@@ -6,7 +6,7 @@
 #include <QCoapResourceDiscoveryReply>
 #include <QLoggingCategory>
 
-Q_LOGGING_CATEGORY(lcCoapClient, "qt.coap.client")
+Q_STATIC_LOGGING_CATEGORY(lcCoapClient, "qt.coap.client")
 
 //! [ctor]
 QmlCoapMulticastClient::QmlCoapMulticastClient(QObject *parent)

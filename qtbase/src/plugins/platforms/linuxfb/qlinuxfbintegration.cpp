@@ -8,8 +8,8 @@
 #endif
 
 #include <QtGui/private/qgenericunixfontdatabase_p.h>
-#include <QtGui/private/qgenericunixservices_p.h>
 #include <QtGui/private/qgenericunixeventdispatcher_p.h>
+#include <qpa/qplatformservices.h>
 
 #include <QtFbSupport/private/qfbvthandler_p.h>
 #include <QtFbSupport/private/qfbbackingstore_p.h>
@@ -40,8 +40,7 @@ using namespace Qt::StringLiterals;
 
 QLinuxFbIntegration::QLinuxFbIntegration(const QStringList &paramList)
     : m_primaryScreen(nullptr),
-      m_fontDb(new QGenericUnixFontDatabase),
-      m_kbdMgr(nullptr)
+      m_fontDb(new QGenericUnixFontDatabase)
 {
 #if QT_CONFIG(kms)
     if (qEnvironmentVariableIntValue("QT_QPA_FB_DRM") != 0)
@@ -111,7 +110,7 @@ QPlatformFontDatabase *QLinuxFbIntegration::fontDatabase() const
 QPlatformServices *QLinuxFbIntegration::services() const
 {
     if (m_services.isNull())
-        m_services.reset(new QGenericUnixServices);
+        m_services.reset(new QPlatformServices);
 
     return m_services.data();
 }

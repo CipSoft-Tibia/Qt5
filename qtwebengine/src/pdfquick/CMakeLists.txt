@@ -13,6 +13,10 @@ set(qml_files
     "PdfStyle.qml"
 )
 
+if(QT_KNOWN_POLICY_QTP0004)
+    qt_policy(SET QTP0004 OLD)
+endif()
+
 qt_internal_add_qml_module(PdfQuick
     URI "QtQuick.Pdf"
     VERSION "${PROJECT_VERSION}"
@@ -30,12 +34,17 @@ qt_internal_add_qml_module(PdfQuick
         qtpdfquickglobal_p.h
     INCLUDE_DIRECTORIES
         ../3rdparty/chromium
-    PUBLIC_LIBRARIES
-        Qt::QuickPrivate
+    LIBRARIES
         Qt::PdfPrivate
+        Qt::QuickPrivate
+    PRIVATE_MODULE_INTERFACE
+        Qt::PdfPrivate
+        Qt::QuickPrivate
+    PUBLIC_LIBRARIES
         Qt::Core
         Qt::Gui
+        Qt::Pdf
         Qt::Qml
+        Qt::Quick
     NO_GENERATE_CPP_EXPORTS
 )
-

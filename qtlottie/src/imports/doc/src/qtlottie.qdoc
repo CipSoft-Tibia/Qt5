@@ -38,6 +38,9 @@
     \li the timeline only supports frame-mode, not time-mode
     \endlist
 
+    \warning The input files for Qt Lottie Animation are assumed to be trusted
+    content. Application developers are advised to never pass in data from untrusted sources.
+
     \section2 Animation level limitations
 
     The following properties are not supported:

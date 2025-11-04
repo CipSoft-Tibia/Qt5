@@ -44,6 +44,7 @@
 import {
     AST_Array,
     AST_Arrow,
+    AST_BigInt,
     AST_BlockStatement,
     AST_Call,
     AST_Chain,
@@ -124,6 +125,8 @@ export function make_node_from_constant(val, orig) {
             operator: "-",
             expression: make_node(AST_Infinity, orig)
         }) : make_node(AST_Infinity, orig);
+      case "bigint":
+        return make_node(AST_BigInt, orig, { value: val.toString() });
       case "boolean":
         return make_node(val ? AST_True : AST_False, orig);
       case "undefined":
@@ -223,7 +226,17 @@ export function has_break_or_continue(loop, parent) {
 // func(something) because that changes the meaning of
 // the func (becomes lexical instead of global).
 export function maintain_this_binding(parent, orig, val) {
-    if (
+    if (requires_sequence_to_maintain_binding(parent, orig, val)) {
+        const zero = make_node(AST_Number, orig, { value: 0 });
+        return make_sequence(orig, [ zero, val ]);
+    } else {
+        return val;
+    }
+}
+
+/** Detect (1, x.noThis)(), (0, eval)(), which need sequences */
+export function requires_sequence_to_maintain_binding(parent, orig, val) {
+    return (
         parent instanceof AST_UnaryPrefix && parent.operator == "delete"
         || parent instanceof AST_Call && parent.expression === orig
             && (
@@ -231,12 +244,7 @@ export function maintain_this_binding(parent, orig, val) {
                 || val instanceof AST_PropAccess
                 || val instanceof AST_SymbolRef && val.name == "eval"
             )
-    ) {
-        const zero = make_node(AST_Number, orig, { value: 0 });
-        return make_sequence(orig, [ zero, val ]);
-    } else {
-        return val;
-    }
+    );
 }
 
 export function is_func_expr(node) {
@@ -344,5 +352,5 @@ export function retain_top_func(fn, compressor) {
         && fn instanceof AST_Defun
         && has_flag(fn, TOP)
         && fn.name
-        && compressor.top_retain(fn.name);
+        && compressor.top_retain(fn.name.definition());
 }

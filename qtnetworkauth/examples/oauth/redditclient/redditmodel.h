@@ -4,13 +4,13 @@
 #ifndef REDDITMODEL_H
 #define REDDITMODEL_H
 
-#include <QtNetworkAuth/qoauth2authorizationcodeflow.h>
+#include <QAbstractTableModel>
+#include <QJsonObject>
+#include <QModelIndex>
 
-#include <QtNetwork/qnetworkrequestfactory.h>
+#include <QNetworkRequestFactory>
 
-#include <QtCore/qabstractitemmodel.h>
-#include <QtCore/qjsonobject.h>
-#include <QtCore/qpointer.h>
+#include <QOAuth2AuthorizationCodeFlow>
 
 QT_FORWARD_DECLARE_CLASS(QRestAccessManager)
 

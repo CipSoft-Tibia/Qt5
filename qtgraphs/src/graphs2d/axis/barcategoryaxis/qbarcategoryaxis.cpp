@@ -116,7 +116,7 @@ QT_BEGIN_NAMESPACE
     Constructs an axis object that is the child of \a parent.
 */
 QBarCategoryAxis::QBarCategoryAxis(QObject *parent)
-    : QAbstractAxis(*(new QBarCategoryAxisPrivate), parent)
+    : QBarCategoryAxis(*(new QBarCategoryAxisPrivate), parent)
 {
 }
 

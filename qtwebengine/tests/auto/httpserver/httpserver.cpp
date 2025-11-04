@@ -5,8 +5,9 @@
 #include <QFile>
 #include <QLoggingCategory>
 #include <QMimeDatabase>
+#include <QtWebEngineCore/private/qtwebenginecoreglobal_p.h>
 
-Q_LOGGING_CATEGORY(gHttpServerLog, "HttpServer")
+Q_WEBENGINE_LOGGING_CATEGORY(gHttpServerLog, "HttpServer")
 
 HttpServer::HttpServer(QObject *parent)
     : HttpServer(new QTcpServer, "http", QHostAddress::LocalHost, 0, parent)

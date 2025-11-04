@@ -1,6 +1,7 @@
 // Copyright (C) 2023 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
+#include "graphs2d/qabstractseries_p.h"
 #include <QtGraphs/qabstractseries.h>
 #include <QtGraphs/qbarseries.h>
 #include <QtGraphs/qbarset.h>
@@ -262,6 +263,10 @@ QT_BEGIN_NAMESPACE
         \li barSelected
         \li This value is true when the bar is selected, meaning that the bar index
         is in \l{QBarSet::selectedBars}.
+    \row
+        \li int
+        \li barIndex
+        \li Index of the bar, from 0 to the amount of bars - 1. [since 6.9]
     \endtable
 
     To use any of these, add property with the defined name into your custom component.
@@ -308,6 +313,10 @@ QT_BEGIN_NAMESPACE
         \li barSelected
         \li This value is true when the bar is selected, meaning that the bar index
         is in \l{BarSet::selectedBars}.
+    \row
+        \li int
+        \li barIndex
+        \li Index of the bar, from 0 to the amount of bars - 1. [since 6.9]
     \endtable
 
     To use any of these, add property with the defined name into your custom component.
@@ -390,6 +399,18 @@ QT_BEGIN_NAMESPACE
 */
 
 /*!
+    \qmlmethod bool BarSeries::append(BarSet barset)
+
+    Adds a set of bars specified by \a barset to the bar series and takes
+    ownership of it. If the set is null or it already belongs to the series,
+    it will not be appended.
+
+    Returns \c true if appending succeeded.
+
+    \sa insert()
+*/
+
+/*!
     \qmlmethod bool BarSeries::remove(BarSet barset)
     Removes the bar set specified by \a barset from the series. Returns \c true if successful,
     \c false otherwise.
@@ -440,6 +461,31 @@ QT_BEGIN_NAMESPACE
     \qmlmethod bool BarSeries::replace(list<BarSet> sets)
     Completely replaces all current bar set with \a sets. The size does not need
     to match. Returns false if any of the bar set in \a sets are invalid.
+*/
+
+/*!
+    \qmlsignal BarSeries::clicked(int index, BarSet barset)
+    This signal is emitted when the user clicks or taps the bar specified by \a index
+    in the bar set specified by \a barset.
+*/
+
+/*!
+    \qmlsignal BarSeries::doubleClicked(int index, BarSet barset)
+    This signal is emitted when the user double-clicks or double-taps the bar specified
+    by \a index in the bar set specified by \a barset.
+    This signal always occurs after \l clicked.
+*/
+
+/*!
+    \qmlsignal BarSeries::pressed(int index, BarSet barset)
+    This signal is emitted when the user clicks or taps the bar specified by \a index
+    in the bar set specified by \a barset and holds down the mouse button or gesture.
+*/
+
+/*!
+    \qmlsignal BarSeries::released(int index, BarSet barset);
+    This signal is emitted when the user releases a previously pressed mouse button
+    or gesture on the bar specified by \a index in the bar set specified by \a barset.
 */
 
 /*!
@@ -833,7 +879,7 @@ bool QBarSeries::replace(const QList<QBarSet *> &sets)
             return false;
     }
 
-    for (const auto set : d->m_barSets) {
+    for (const auto set : std::as_const(d->m_barSets)) {
         remove(set);
     }
 
@@ -992,7 +1038,7 @@ void QBarSeries::setBarDelegate(QQmlComponent *newBarDelegate)
 void QBarSeries::selectAll()
 {
     Q_D(QBarSeries);
-    for (auto s : d->m_barSets) {
+    for (auto s : std::as_const(d->m_barSets)) {
         s->selectAllBars();
     }
 }
@@ -1001,7 +1047,7 @@ void QBarSeries::selectAll()
 void QBarSeries::deselectAll()
 {
     Q_D(QBarSeries);
-    for (auto s : d->m_barSets) {
+    for (auto s : std::as_const(d->m_barSets)) {
         s->deselectAllBars();
     }
 }
@@ -1052,16 +1098,17 @@ void QBarSeries::setBarDelegateDirty(bool dirty)
 }
 
 QBarSeriesPrivate::QBarSeriesPrivate()
-    : m_barWidth(0.5) // Default value is 50% of category width
-      , m_labelsVisible(false)
-      , m_visible(true)
-      , m_blockBarUpdate(false)
-      , m_labelsFormat()
-      , m_labelsMargin(0)
-      , m_labelsAngle(0)
-      , m_labelsPrecision(6)
-      , m_labelsDirty(true)
-      , m_barDelegateDirty(false)
+    : QAbstractSeriesPrivate(QAbstractSeries::SeriesType::Bar)
+    , m_barWidth(0.5) // Default value is 50% of category width
+    , m_labelsVisible(false)
+    , m_visible(true)
+    , m_blockBarUpdate(false)
+    , m_labelsFormat()
+    , m_labelsMargin(0)
+    , m_labelsAngle(0)
+    , m_labelsPrecision(6)
+    , m_labelsDirty(true)
+    , m_barDelegateDirty(false)
 {
 }
 

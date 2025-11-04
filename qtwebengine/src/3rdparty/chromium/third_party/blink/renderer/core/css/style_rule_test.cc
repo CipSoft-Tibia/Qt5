@@ -11,8 +11,11 @@
 #include "third_party/blink/renderer/core/dom/document.h"
 #include "third_party/blink/renderer/core/testing/page_test_base.h"
 #include "third_party/blink/renderer/platform/testing/runtime_enabled_features_test_helpers.h"
+#include "third_party/blink/renderer/platform/wtf/text/string_builder.h"
 
 namespace blink {
+
+using css_test_helpers::ParseRule;
 
 class StyleRuleTest : public PageTestBase {};
 
@@ -128,6 +131,22 @@ TEST_F(StyleRuleTest, SetPreludeTextReparentsStyleRules) {
   // Verify that '&' (in '.c &') now points to `rule_after`.
   EXPECT_EQ(rule_after,
             FindParentSelector(child_rule.FirstSelector())->ParentRule());
+}
+
+TEST_F(StyleRuleTest, SetPreludeTextWithEscape) {
+  auto* scope_rule = DynamicTo<StyleRuleScope>(
+      css_test_helpers::ParseRule(GetDocument(), R"CSS(
+      @scope (.a) to (.b &) {
+        .c & { }
+      }
+    )CSS"));
+
+  // Don't crash.
+  scope_rule->SetPreludeText(GetDocument().GetExecutionContext(),
+                             "(.x) to (.\\1F60A)", CSSNestingType::kNone,
+                             /* parent_rule_for_nesting */ nullptr,
+                             /* is_within_scope */ false,
+                             /* style_sheet */ nullptr);
 }
 
 TEST_F(StyleRuleTest, SetPreludeTextPreservesNestingContext) {

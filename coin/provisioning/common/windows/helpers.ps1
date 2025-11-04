@@ -189,6 +189,8 @@ function Set-EnvironmentVariable
     Write-Host "Setting environment variable `"$($Key)`" to `"$($Value)`""
 
     [Environment]::SetEnvironmentVariable($Key, $Value, [EnvironmentVariableTarget]::Machine)
+    # Make the envvar immediately available to subsequent scripts run in the same session.
+    [Environment]::SetEnvironmentVariable($Key, $Value, [EnvironmentVariableTarget]::Process)
 }
 
 function Is64BitWinHost
@@ -358,7 +360,7 @@ function EnterVSDevShell {
     Write-Host "Enter VisualStudio developer shell (-host_arch=$HostArch -arch=$Arch -VsInstallPath='$VSPath')"
     try {
         Import-Module "$VSPath\Common7\Tools\Microsoft.VisualStudio.DevShell.dll"
-        Enter-VsDevShell -VsInstallPath $VSPath -DevCmdArguments "-host_arch=$HostArch -arch=$Arch -no_logo"
+        Enter-VsDevShell -SkipAutomaticLocation -VsInstallPath $VSPath -DevCmdArguments "-host_arch=$HostArch -arch=$Arch -no_logo"
     } catch {
         Write-Host "Failed to enter VisualStudio DevShell"
         return $false
@@ -379,4 +381,23 @@ function Invoke-MtCommand {
   Write-Output Executing $cmdLine
   & $Env:SystemRoot\system32\cmd.exe /c $cmdLine | Write-Output
   Remove-Item $tempFile
+}
+
+function Invoke-NMake {
+    param([string[]]$NmakeArgs)
+    # Temporarily remove MAKE flags for NMAKE process
+    $old = @{
+        MAKEFLAGS  = (Get-Item Env:MAKEFLAGS  -ErrorAction Ignore).Value
+        MFLAGS     = (Get-Item Env:MFLAGS     -ErrorAction Ignore).Value
+        MAKE       = (Get-Item Env:MAKE       -ErrorAction Ignore).Value
+        NMAKEFLAGS = (Get-Item Env:NMAKEFLAGS -ErrorAction Ignore).Value
+    }
+    foreach ($n in $old.Keys) {Remove-Item "Env:$n" -ErrorAction SilentlyContinue}
+    try   {& nmake @NmakeArgs}
+    finally {
+        foreach ($n in $old.Keys) {
+            if ($old[$n]) {Set-EnvironmentVariable -Key "$n" -Value $old[$n]}
+            else {Remove-Item "Env:$n" -ErrorAction SilentlyContinue}
+        }
+    }
 }

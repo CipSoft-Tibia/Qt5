@@ -23,7 +23,7 @@ void MAIN()
         color = texture(custex, gradientUV);
         break;
     case 2: //  Range gradient
-        vec2 gradientUV = vec2((VAR_WORLD_POSITION.y + 1.0) / 2.0, 0.0);
+        vec2 gradientUV = vec2(((VAR_WORLD_POSITION.y + rootScale) / 2.0) / rootScale, 0.0);
         color = texture(custex, gradientUV);
         break;
     }

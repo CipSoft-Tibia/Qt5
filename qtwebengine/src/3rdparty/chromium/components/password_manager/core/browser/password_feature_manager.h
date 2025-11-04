@@ -85,6 +85,11 @@ class PasswordFeatureManager {
   // signed-in user (unconsented primary account).
   virtual void OptInToAccountStorage() = 0;
 
+  // Opts-out from using account storage for passwords for the
+  // current signed-in user (unconsented primary account). Addditionally it sets
+  // the default password store to kProfileStore.
+  virtual void OptOutOfAccountStorage() = 0;
+
   // Clears the opt-in to using account storage for passwords for the
   // current signed-in user (unconsented primary account), as well as all other
   // associated settings (e.g. default store choice).
@@ -100,7 +105,18 @@ class PasswordFeatureManager {
   // used for saving new credentials and adding blacking listing entries.
   virtual void SetDefaultPasswordStore(const PasswordForm::Store& store) = 0;
 
+  // Whether the default store value should be changed to match the account
+  // store setting. This is used to migrate users from having different
+  // `GetDefaultPasswordStore` and `IsOptedInForAccountStorage` values.
+  virtual bool ShouldChangeDefaultPasswordStore() const = 0;
+
 #endif  // !BUILDFLAG(IS_IOS) && !BUILDFLAG(IS_ANDROID)
+
+#if BUILDFLAG(IS_ANDROID)
+  // Returns whether it is required to update the GMSCore based on the
+  // GMSCore version.
+  virtual bool ShouldUpdateGmsCore();
+#endif  // BUILDFLAG(IS_ANDROID)
 };
 
 }  // namespace password_manager

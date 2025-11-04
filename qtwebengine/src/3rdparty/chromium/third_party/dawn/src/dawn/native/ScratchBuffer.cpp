@@ -41,12 +41,13 @@ void ScratchBuffer::Reset() {
 }
 
 MaybeError ScratchBuffer::EnsureCapacity(uint64_t capacity) {
+    DAWN_ASSERT(capacity > 0);
     if (!mBuffer.Get() || mBuffer->GetSize() < capacity) {
         BufferDescriptor descriptor;
         descriptor.size = capacity;
         descriptor.usage = mUsage;
         DAWN_TRY_ASSIGN(mBuffer, mDevice->CreateBuffer(&descriptor));
-        mBuffer->SetIsDataInitialized();
+        mBuffer->SetInitialized(true);
     }
     return {};
 }

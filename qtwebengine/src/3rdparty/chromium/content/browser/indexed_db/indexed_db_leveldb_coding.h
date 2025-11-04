@@ -19,9 +19,8 @@
 #include "third_party/blink/public/common/indexeddb/indexeddb_key.h"
 #include "third_party/blink/public/common/indexeddb/indexeddb_key_path.h"
 
-namespace content {
+namespace content::indexed_db {
 
-namespace indexed_db {
 // 0 - Initial version.
 // 1 - Adds UserIntVersion to DatabaseMetaData.
 // 2 - Adds DataVersion to to global metadata.
@@ -29,7 +28,10 @@ namespace indexed_db {
 // 4 - Adds size & last_modified to 'file' blob_info encodings.
 // 5 - One time verification that blob files exist on disk.
 const constexpr int64_t kLatestKnownSchemaVersion = 5;
-}  // namespace indexed_db
+// Migration from version 2 to 3 occurred in 2014, and migration to version 4
+// began in early 2020, so we currently continue to support schema that are as
+// old as 2014.
+const constexpr int64_t kEarliestSupportedSchemaVersion = 3;
 
 CONTENT_EXPORT extern const unsigned char kMinimumIndexId;
 
@@ -101,6 +103,9 @@ CONTENT_EXPORT void EncodeBlobJournal(const BlobJournalType& journal,
 [[nodiscard]] CONTENT_EXPORT bool DecodeIDBKey(
     std::string_view* slice,
     std::unique_ptr<blink::IndexedDBKey>* value);
+[[nodiscard]] CONTENT_EXPORT bool DecodeSortableIDBKey(
+    std::string_view serialized,
+    blink::IndexedDBKey* value);
 [[nodiscard]] CONTENT_EXPORT bool DecodeIDBKeyPath(
     std::string_view* slice,
     blink::IndexedDBKeyPath* value);
@@ -317,7 +322,7 @@ class DatabaseMetaDataKey {
   };
 
   CONTENT_EXPORT static const int64_t kAllBlobsNumber;
-  static const int64_t kBlobNumberGeneratorInitialNumber;
+  CONTENT_EXPORT static const int64_t kBlobNumberGeneratorInitialNumber;
   // All keys <= 0 are invalid.  This one's just a convenient example.
   static const int64_t kInvalidBlobNumber;
 
@@ -424,7 +429,7 @@ class IndexFreeListKey {
 class ObjectStoreNamesKey {
  public:
   // TODO(jsbell): We never use this to look up object store ids,
-  // because a mapping is kept in the IndexedDBDatabase. Can the
+  // because a mapping is kept in the Database. Can the
   // mapping become unreliable?  Can we remove this?
   static bool Decode(std::string_view* slice, ObjectStoreNamesKey* result);
   CONTENT_EXPORT static std::string Encode(
@@ -595,6 +600,6 @@ class IndexDataKey {
   int64_t sequence_number_;
 };
 
-}  // namespace content
+}  // namespace content::indexed_db
 
 #endif  // CONTENT_BROWSER_INDEXED_DB_INDEXED_DB_LEVELDB_CODING_H_

@@ -460,12 +460,6 @@ static const AVPixFmtDescriptor av_pix_fmt_descriptors[AV_PIX_FMT_NB] = {
         },
         .flags = AV_PIX_FMT_FLAG_PLANAR,
     },
-#if FF_API_XVMC
-    [AV_PIX_FMT_XVMC] = {
-        .name = "xvmc",
-        .flags = AV_PIX_FMT_FLAG_HWACCEL,
-    },
-#endif
     [AV_PIX_FMT_UYVY422] = {
         .name = "uyvy422",
         .nb_components = 3,
@@ -530,9 +524,9 @@ static const AVPixFmtDescriptor av_pix_fmt_descriptors[AV_PIX_FMT_NB] = {
         .log2_chroma_w = 0,
         .log2_chroma_h = 0,
         .comp = {
-            { 0, 1, 0, 6, 2 },        /* R */
-            { 0, 1, 0, 3, 3 },        /* G */
-            { 0, 1, 0, 0, 3 },        /* B */
+            { 0, 1, 0, 5, 3 },        /* R */
+            { 0, 1, 0, 2, 3 },        /* G */
+            { 0, 1, 0, 0, 2 },        /* B */
         },
         .flags = AV_PIX_FMT_FLAG_RGB,
     },
@@ -2311,6 +2305,10 @@ static const AVPixFmtDescriptor av_pix_fmt_descriptors[AV_PIX_FMT_NB] = {
         .name = "d3d11",
         .flags = AV_PIX_FMT_FLAG_HWACCEL,
     },
+    [AV_PIX_FMT_D3D12] = {
+        .name = "d3d12",
+        .flags = AV_PIX_FMT_FLAG_HWACCEL,
+    },
     [AV_PIX_FMT_GBRPF32BE] = {
         .name = "gbrpf32be",
         .nb_components = 3,
@@ -2856,6 +2854,9 @@ static const char * const color_space_names[] = {
     [AVCOL_SPC_CHROMA_DERIVED_NCL] = "chroma-derived-nc",
     [AVCOL_SPC_CHROMA_DERIVED_CL] = "chroma-derived-c",
     [AVCOL_SPC_ICTCP] = "ictcp",
+    [AVCOL_SPC_IPT_C2] = "ipt-c2",
+    [AVCOL_SPC_YCGCO_RE] = "ycgco-re",
+    [AVCOL_SPC_YCGCO_RO] = "ycgco-ro",
 };
 
 static const char * const chroma_location_names[] = {

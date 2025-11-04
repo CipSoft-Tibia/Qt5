@@ -998,7 +998,7 @@ QTextureImageDataPtr TextureLoadingHelper::loadTextureData(QIODevice *data, cons
         QImage img;
         if (img.load(data, suffix.toLatin1())) {
             textureData = QTextureImageDataPtr::create();
-            textureData->setImage(mirrored ? img.mirrored() : img);
+            textureData->setImage(mirrored ? std::move(img).flipped() : img);
         } else {
             qWarning() << "Failed to load textureImage data using QImage";
         }

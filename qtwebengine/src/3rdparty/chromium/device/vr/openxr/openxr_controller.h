@@ -7,7 +7,9 @@
 
 #include <stdint.h>
 #include <string.h>
+
 #include <map>
+#include <optional>
 #include <unordered_map>
 #include <vector>
 
@@ -18,7 +20,6 @@
 #include "device/vr/openxr/openxr_path_helper.h"
 #include "device/vr/public/mojom/openxr_interaction_profile_type.mojom.h"
 #include "device/vr/public/mojom/vr_service.mojom.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "third_party/openxr/src/include/openxr/openxr.h"
 #include "ui/gfx/geometry/transform.h"
 
@@ -52,14 +53,16 @@ class OpenXrController {
   mojom::XRInputSourceDescriptionPtr GetDescription(
       XrTime predicted_display_time);
 
-  absl::optional<GamepadButton> GetButton(OpenXrButtonType type) const;
-  absl::optional<Gamepad> GetWebXRGamepad() const;
+  std::optional<GamepadButton> GetButton(OpenXrButtonType type) const;
+  std::optional<Gamepad> GetWebXRGamepad() const;
 
-  absl::optional<gfx::Transform> GetMojoFromGripTransform(
+  std::optional<gfx::Transform> GetMojoFromGripTransform(
       XrTime predicted_display_time,
       XrSpace local_space,
       bool* emulated_position) const;
 
+  // Returns true if this controller can supply HandTracking data.
+  bool IsHandTrackingEnabled() const;
   mojom::XRHandTrackingDataPtr GetHandTrackingData();
 
   // Specifically update just the interaction profile. Will not update any other
@@ -71,7 +74,6 @@ class OpenXrController {
  private:
   XrResult InitializeControllerActions();
   XrResult InitializeControllerSpaces();
-  XrResult InitializeHandTracking();
 
   XrResult SuggestBindings(
       std::map<XrPath, std::vector<XrActionSuggestedBinding>>* bindings) const;
@@ -96,18 +98,18 @@ class OpenXrController {
 
   bool IsCurrentProfileFromHandTracker() const;
 
-  absl::optional<gfx::Transform> GetGripFromPointerTransform(
+  std::optional<gfx::Transform> GetGripFromPointerTransform(
       XrTime predicted_display_time) const;
 
+  mojom::XRTargetRayMode GetTargetRayMode() const;
   mojom::XRHandedness GetHandness() const;
   std::vector<double> GetAxis(OpenXrAxisType type) const;
-  absl::optional<Gamepad> GetXrStandardGamepad() const;
 
   template <typename T>
   XrResult QueryState(XrAction action, T* action_state) const {
     // this function should never be called because each valid XrActionState
     // has its own template function defined below.
-    NOTREACHED();
+    NOTREACHED_IN_MIGRATION();
     return XR_ERROR_ACTION_TYPE_MISMATCH;
   }
 

@@ -7,6 +7,7 @@
 #include <math.h>
 
 #include <algorithm>
+#include <array>
 #include <limits>
 #include <vector>
 
@@ -55,7 +56,7 @@ TEST(CPDFPageObjectHolder, GraphicsDataAsKey) {
   EXPECT_EQ(72u, graphics_map.size());
 
   // clang-format off
-  const int expected[72] = {
+  std::array<const int, 72> expected = {
       71, 35, 65, 29, 59, 23, 53, 17, 47, 11, 41, 5,
       70, 34, 64, 28, 58, 22, 52, 16, 46, 10, 40, 4,
       69, 33, 63, 27, 57, 21, 51, 15, 45, 9,  39, 3,

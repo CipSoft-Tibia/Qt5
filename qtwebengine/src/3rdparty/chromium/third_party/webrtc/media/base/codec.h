@@ -11,16 +11,16 @@
 #ifndef MEDIA_BASE_CODEC_H_
 #define MEDIA_BASE_CODEC_H_
 
-#include <map>
-#include <set>
+#include <cstddef>
+#include <optional>
 #include <string>
 #include <vector>
 
 #include "absl/container/inlined_vector.h"
 #include "absl/strings/string_view.h"
-#include "absl/types/optional.h"
 #include "api/audio_codecs/audio_format.h"
 #include "api/rtp_parameters.h"
+#include "api/video_codecs/scalability_mode.h"
 #include "api/video_codecs/sdp_video_format.h"
 #include "media/base/media_constants.h"
 #include "rtc_base/system/rtc_export.h"
@@ -79,6 +79,8 @@ struct RTC_EXPORT Codec {
     kFlexfec,
     kRtx,
   };
+  // Value of "id" if it's not explicitly set. Exposed for tests.
+  static const int kIdNotSet = -1;
 
   Type type;
   int id;
@@ -92,12 +94,12 @@ struct RTC_EXPORT Codec {
   size_t channels;
 
   // Video only
-  absl::optional<std::string> packetization;
+  std::optional<std::string> packetization;
   absl::InlinedVector<webrtc::ScalabilityMode, webrtc::kScalabilityModeCount>
       scalability_modes;
 
   // H.265 only
-  absl::optional<std::string> tx_mode;
+  std::optional<std::string> tx_mode;
 
   // Non key-value parameters such as the telephone-event "0‐15" are
   // represented using an empty string as key, i.e. {"": "0-15"}.
@@ -111,10 +113,25 @@ struct RTC_EXPORT Codec {
 
   // Indicates if this codec is compatible with the specified codec by
   // checking the assigned id and profile values for the relevant video codecs.
-  // For H.264, packetization modes will be compared; If H.265 is enabled,
-  // TxModes will be compared.
-  // H.264(and H.265, if enabled) levels are not compared.
+  // The rules for this comparison, in particular the parameters are
+  // codec-specific as described in RFC 3264 6.1:
+  // https://www.rfc-editor.org/rfc/rfc3264#section-6.1
+  // For H.264, packetization modes will be compared.
+  // If H.265 is enabled, TxModes will be compared.
+  // H.264 (and H.265, if enabled) levels are not compared.
+  // In all other cases, parameters do not need to match.
+  // This is used in SDP offer/answer codec matching.
   bool Matches(const Codec& codec) const;
+
+  // This is an exact match similar to what is described in
+  // https://w3c.github.io/webrtc-pc/#dfn-codec-match
+  // with two differences:
+  // - rtx which is included in capabilities  without the apt parameter
+  //   so number of channels, clock rate or the equality of the parameters
+  //   are not compared.
+  // - parameters is compared element-wise, not as a string comparison.
+  // This method should only be used to compare input on our end to something we
+  // generated, done e.g. by setCodecPreferences or setParameters.
   bool MatchesRtpCodec(const webrtc::RtpCodec& capability) const;
 
   // Find the parameter for `name` and write the value to `out`.
@@ -185,11 +202,12 @@ struct RTC_EXPORT Codec {
 };
 
 // TODO(webrtc:15214): Compatibility names, to be migrated away and removed.
-using VideoCodec = Codec;
-using AudioCodec = Codec;
+using VideoCodec [[deprecated]] = Codec;
+using AudioCodec [[deprecated]] = Codec;
 
-using VideoCodecs = std::vector<Codec>;
-using AudioCodecs = std::vector<Codec>;
+using VideoCodecs [[deprecated]] = std::vector<Codec>;
+using AudioCodecs [[deprecated]] = std::vector<Codec>;
+using Codecs = std::vector<Codec>;
 
 Codec CreateAudioCodec(int id,
                        const std::string& name,

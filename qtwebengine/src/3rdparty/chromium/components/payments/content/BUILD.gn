@@ -13,8 +13,8 @@ jumbo_static_library("content") {
     "android_payment_app.h",
     "android_payment_app_factory.cc",
     "android_payment_app_factory.h",
-    "can_make_payment_query_factory.cc",
-    "can_make_payment_query_factory.h",
+    "has_enrolled_instrument_query_factory.cc",
+    "has_enrolled_instrument_query_factory.h",
     "initialization_task.cc",
     "initialization_task.h",
     "payment_app.cc",
@@ -211,6 +211,7 @@ jumbo_static_library("test_support") {
   deps = [
     ":utils",
     "//base/test:test_support",
+    "//components/os_crypt/async/browser:test_support",
     "//components/webdata/common",
     "//components/webdata_services",
     "//testing/gmock",
@@ -240,7 +241,10 @@ jumbo_source_set("unit_tests") {
 
   if (!is_android) {
     sources += [
+      "mock_content_payment_request_delegate.cc",
+      "mock_content_payment_request_delegate.h",
       "payment_app_unittest.cc",
+      "payment_request_display_manager_unittest.cc",
       "payment_request_spec_unittest.cc",
       "payment_request_state_unittest.cc",
       "payment_request_web_contents_manager_unittest.cc",
@@ -263,6 +267,7 @@ jumbo_source_set("unit_tests") {
     "//base/test:test_support",
     "//components/autofill/core/browser",
     "//components/autofill/core/browser:test_support",
+    "//components/os_crypt/async/browser:test_support",
     "//components/payments/core",
     "//components/payments/core:error_strings",
     "//components/payments/core:method_strings",

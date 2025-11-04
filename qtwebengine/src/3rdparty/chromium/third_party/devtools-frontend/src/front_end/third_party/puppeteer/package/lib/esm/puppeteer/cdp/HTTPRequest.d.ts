@@ -6,13 +6,14 @@
 import type { Protocol } from 'devtools-protocol';
 import type { CDPSession } from '../api/CDPSession.js';
 import type { Frame } from '../api/Frame.js';
-import { type ContinueRequestOverrides, type ErrorCode, HTTPRequest, type InterceptResolutionState, type ResourceType, type ResponseForRequest } from '../api/HTTPRequest.js';
+import { type ContinueRequestOverrides, HTTPRequest, type ResourceType, type ResponseForRequest } from '../api/HTTPRequest.js';
 import type { CdpHTTPResponse } from './HTTPResponse.js';
 /**
  * @internal
  */
 export declare class CdpHTTPRequest extends HTTPRequest {
     #private;
+    id: string;
     _redirectChain: CdpHTTPRequest[];
     _response: CdpHTTPResponse | null;
     get client(): CDPSession;
@@ -43,13 +44,6 @@ export declare class CdpHTTPRequest extends HTTPRequest {
         type?: Protocol.Network.ResourceType;
     }, redirectChain: CdpHTTPRequest[]);
     url(): string;
-    continueRequestOverrides(): ContinueRequestOverrides;
-    responseForRequest(): Partial<ResponseForRequest> | null;
-    abortErrorReason(): Protocol.Network.ErrorReason | null;
-    interceptResolutionState(): InterceptResolutionState;
-    isInterceptResolutionHandled(): boolean;
-    enqueueInterceptAction(pendingHandler: () => void | PromiseLike<unknown>): void;
-    finalizeInterceptions(): Promise<void>;
     resourceType(): ResourceType;
     method(): string;
     postData(): string | undefined;
@@ -64,8 +58,11 @@ export declare class CdpHTTPRequest extends HTTPRequest {
     failure(): {
         errorText: string;
     } | null;
-    continue(overrides?: ContinueRequestOverrides, priority?: number): Promise<void>;
-    respond(response: Partial<ResponseForRequest>, priority?: number): Promise<void>;
-    abort(errorCode?: ErrorCode, priority?: number): Promise<void>;
+    /**
+     * @internal
+     */
+    _continue(overrides?: ContinueRequestOverrides): Promise<void>;
+    _respond(response: Partial<ResponseForRequest>): Promise<void>;
+    _abort(errorReason: Protocol.Network.ErrorReason | null): Promise<void>;
 }
 //# sourceMappingURL=HTTPRequest.d.ts.map

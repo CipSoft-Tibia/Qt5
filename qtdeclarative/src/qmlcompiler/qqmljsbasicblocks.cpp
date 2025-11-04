@@ -28,10 +28,6 @@ void QQmlJSBasicBlocks::dumpBasicBlocks()
         for (auto reg : block.readRegisters) {
             debug << reg << ", ";
         }
-        debug << "\n  readTypes[" << block.readTypes.size() << "]: ";
-        for (const auto &type : block.readTypes) {
-            debug << type->augmentedInternalName() << ", ";
-        }
         debug << "\n  jumpTarget: " << block.jumpTarget;
         debug << "\n  jumpIsUnConditional: " << block.jumpIsUnconditional;
         debug << "\n  isReturnBlock: " << block.isReturnBlock;
@@ -130,7 +126,7 @@ QQmlJSBasicBlocks::run(const Function *function, QQmlJSAotCompiler::Flags compil
     zeroBlock.jumpOrigins.append(m_basicBlocks.begin().key());
     m_basicBlocks.insert(0, zeroBlock);
 
-    const QByteArray byteCode = function->code;
+    const QByteArray &byteCode = function->code;
     decode(byteCode.constData(), static_cast<uint>(byteCode.size()));
     if (m_hadBackJumps) {
         // We may have missed some connections between basic blocks if there were back jumps.

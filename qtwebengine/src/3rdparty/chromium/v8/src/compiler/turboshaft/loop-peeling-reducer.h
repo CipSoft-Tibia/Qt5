@@ -28,7 +28,7 @@ class LoopUnrollingReducer;
 template <class Next>
 class LoopPeelingReducer : public Next {
  public:
-  TURBOSHAFT_REDUCER_BOILERPLATE()
+  TURBOSHAFT_REDUCER_BOILERPLATE(LoopPeeling)
 
 #if defined(__clang__)
   // LoopUnrolling and LoopPeeling shouldn't be performed in the same phase, see
@@ -37,22 +37,22 @@ class LoopPeelingReducer : public Next {
       !reducer_list_contains<ReducerList, LoopUnrollingReducer>::value);
 #endif
 
-  OpIndex REDUCE_INPUT_GRAPH(Goto)(OpIndex ig_idx, const GotoOp& gto) {
+  V<None> REDUCE_INPUT_GRAPH(Goto)(V<None> ig_idx, const GotoOp& gto) {
     // Note that the "ShouldSkipOptimizationStep" is placed in the part of
     // this Reduce method triggering the peeling rather than at the begining.
     // This is because the backedge skipping is not an optimization but a
     // mandatory lowering when peeling is being performed.
     LABEL_BLOCK(no_change) { return Next::ReduceInputGraphGoto(ig_idx, gto); }
 
-    Block* dst = gto.destination;
+    const Block* dst = gto.destination;
     if (dst->IsLoop() && !gto.is_backedge && CanPeelLoop(dst)) {
       if (ShouldSkipOptimizationStep()) goto no_change;
       PeelFirstIteration(dst);
-      return OpIndex::Invalid();
+      return {};
     } else if (IsPeeling() && dst == current_loop_header_) {
       // We skip the backedge of the loop: PeelFirstIeration will instead emit a
       // forward edge to the non-peeled header.
-      return OpIndex::Invalid();
+      return {};
     }
 
     goto no_change;
@@ -61,33 +61,41 @@ class LoopPeelingReducer : public Next {
   // TODO(dmercadier): remove once StackCheckOp are kept in the pipeline until
   // the very end (which should happen when we have a SimplifiedLowering in
   // Turboshaft).
-  OpIndex REDUCE_INPUT_GRAPH(Call)(OpIndex ig_idx, const CallOp& call) {
+  V<AnyOrNone> REDUCE_INPUT_GRAPH(Call)(V<AnyOrNone> ig_idx,
+                                        const CallOp& call) {
     LABEL_BLOCK(no_change) { return Next::ReduceInputGraphCall(ig_idx, call); }
     if (ShouldSkipOptimizationStep()) goto no_change;
 
     if (IsPeeling() && call.IsStackCheck(__ input_graph(), broker_,
                                          StackCheckKind::kJSIterationBody)) {
       // We remove the stack check of the peeled iteration.
-      return OpIndex::Invalid();
+      return {};
     }
 
     goto no_change;
   }
 
-  OpIndex REDUCE_INPUT_GRAPH(StackCheck)(OpIndex ig_idx,
-                                         const StackCheckOp& stack_check) {
-    LABEL_BLOCK(no_change) {
-      return Next::ReduceInputGraphStackCheck(ig_idx, stack_check);
-    }
-    if (ShouldSkipOptimizationStep()) goto no_change;
-
-    if (IsPeeling()) {
-      // We remove the stack check of the peeled iteration.
-      return OpIndex::Invalid();
+  V<None> REDUCE_INPUT_GRAPH(JSStackCheck)(V<None> ig_idx,
+                                           const JSStackCheckOp& stack_check) {
+    if (ShouldSkipOptimizationStep() || !IsPeeling()) {
+      return Next::ReduceInputGraphJSStackCheck(ig_idx, stack_check);
     }
 
-    goto no_change;
+    // We remove the stack check of the peeled iteration.
+    return V<None>::Invalid();
   }
+
+#if V8_ENABLE_WEBASSEMBLY
+  V<None> REDUCE_INPUT_GRAPH(WasmStackCheck)(
+      V<None> ig_idx, const WasmStackCheckOp& stack_check) {
+    if (ShouldSkipOptimizationStep() || !IsPeeling()) {
+      return Next::ReduceInputGraphWasmStackCheck(ig_idx, stack_check);
+    }
+
+    // We remove the stack check of the peeled iteration.
+    return V<None>::Invalid();
+  }
+#endif
 
   OpIndex REDUCE_INPUT_GRAPH(Phi)(OpIndex ig_idx, const PhiOp& phi) {
     if (!IsEmittingUnpeeledBody() ||
@@ -110,7 +118,7 @@ class LoopPeelingReducer : public Next {
     kEmittingUnpeeledBody
   };
 
-  void PeelFirstIteration(Block* header) {
+  void PeelFirstIteration(const Block* header) {
     DCHECK_EQ(peeling_, PeelingStatus::kNotPeeling);
     ScopedModification<PeelingStatus> scope(&peeling_,
                                             PeelingStatus::kEmittingPeeledLoop);
@@ -138,7 +146,7 @@ class LoopPeelingReducer : public Next {
                      /* is_loop_after_peeling */ true);
   }
 
-  bool CanPeelLoop(Block* header) {
+  bool CanPeelLoop(const Block* header) {
     if (IsPeeling()) return false;
     auto info = loop_finder_.GetLoopInfo(header);
     return !info.has_inner_loops && info.op_count <= kMaxSizeForPeeling;
@@ -152,11 +160,10 @@ class LoopPeelingReducer : public Next {
   }
 
   PeelingStatus peeling_ = PeelingStatus::kNotPeeling;
-  Block* current_loop_header_ = nullptr;
+  const Block* current_loop_header_ = nullptr;
 
-  ZoneUnorderedSet<Block*> loop_body_{__ phase_zone()};
   LoopFinder loop_finder_{__ phase_zone(), &__ modifiable_input_graph()};
-  JSHeapBroker* broker_ = PipelineData::Get().broker();
+  JSHeapBroker* broker_ = __ data() -> broker();
 };
 
 #include "src/compiler/turboshaft/undef-assembler-macros.inc"

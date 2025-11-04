@@ -26,6 +26,9 @@ class Q_GRAPHS_EXPORT QBarDataProxy : public QAbstractDataProxy
     Q_PROPERTY(qsizetype rowCount READ rowCount NOTIFY rowCountChanged FINAL)
     Q_PROPERTY(qsizetype colCount READ colCount NOTIFY colCountChanged FINAL)
     Q_PROPERTY(QBar3DSeries *series READ series NOTIFY seriesChanged FINAL)
+    QML_NAMED_ELEMENT(BarDataProxy)
+    QML_UNCREATABLE("")
+
 public:
     explicit QBarDataProxy(QObject *parent = nullptr);
     ~QBarDataProxy() override;

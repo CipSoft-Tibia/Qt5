@@ -223,15 +223,16 @@ void QTimer::start()
     Starts or restarts the timer with a timeout interval of \a msec
     milliseconds.
 
-    \include qtimer.cpp stop-restart-timer
-
-    \include qtimer.cpp singleshot-activation
     This is equivalent to:
 
     \code
         timer.setInterval(msec);
         timer.start();
     \endcode
+
+    \include qtimer.cpp stop-restart-timer
+
+    \include qtimer.cpp singleshot-activation
 
     \note   Keeping the event loop busy with a zero-timer is bound to
             cause trouble and highly erratic behavior of the UI.
@@ -279,7 +280,7 @@ void QTimer::stop()
 void QTimer::timerEvent(QTimerEvent *e)
 {
     Q_D(QTimer);
-    if (Qt::TimerId{e->timerId()} == d->id) {
+    if (e->id() == d->id) {
         if (d->single)
             stop();
         emit timeout(QPrivateSignal());
@@ -533,15 +534,16 @@ void QTimer::singleShot(std::chrono::nanoseconds ns, Qt::TimerType timerType,
 
     Starts or restarts the timer with a timeout of duration \a msec milliseconds.
 
-    \include qtimer.cpp stop-restart-timer
-
-    \include qtimer.cpp singleshot-activation
     This is equivalent to:
 
     \code
         timer.setInterval(msec);
         timer.start();
     \endcode
+
+    \include qtimer.cpp stop-restart-timer
+
+    \include qtimer.cpp singleshot-activation
 */
 
 /*!

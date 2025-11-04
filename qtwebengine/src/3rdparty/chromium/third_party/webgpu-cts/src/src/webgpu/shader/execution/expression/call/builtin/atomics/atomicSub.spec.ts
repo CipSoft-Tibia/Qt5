@@ -35,7 +35,7 @@ fn atomicSub(atomic_ptr: ptr<AS, atomic<T>, read_write>, v: T) -> T
     u
       .combine('workgroupSize', workgroupSizes)
       .combine('dispatchSize', dispatchSizes)
-      .combine('scalarType', ['u32', 'i32'])
+      .combine('scalarType', ['u32', 'i32'] as const)
   )
   .fn(t => {
     const numInvocations = t.params.workgroupSize * t.params.dispatchSize;
@@ -72,7 +72,7 @@ fn atomicSub(atomic_ptr: ptr<AS, atomic<T>, read_write>, v: T) -> T
     u
       .combine('workgroupSize', workgroupSizes)
       .combine('dispatchSize', dispatchSizes)
-      .combine('scalarType', ['u32', 'i32'])
+      .combine('scalarType', ['u32', 'i32'] as const)
   )
   .fn(t => {
     // Allocate one extra element to ensure it doesn't get modified
@@ -94,6 +94,29 @@ fn atomicSub(atomic_ptr: ptr<AS, atomic<T>, read_write>, v: T) -> T
       workgroupSize: t.params.workgroupSize,
       dispatchSize: t.params.dispatchSize,
       wgNumElements,
+      initValue,
+      op,
+      expected,
+    });
+  });
+
+g.test('sub_i32_min')
+  .desc('Test atomicSub with i32 minimum value')
+  .fn(t => {
+    // Allocate one extra element to ensure it doesn't get modified
+    const bufferNumElements = 2;
+
+    const initValue = 0xffff;
+    const op = `atomicSub(&output[0], -2147483648)`;
+    const expected = new (typedArrayCtor('i32'))(bufferNumElements);
+    expected[0] = -0x7fff0001;
+    expected[1] = 0xffff;
+
+    runStorageVariableTest({
+      t,
+      workgroupSize: 1,
+      dispatchSize: 1,
+      bufferNumElements,
       initValue,
       op,
       expected,

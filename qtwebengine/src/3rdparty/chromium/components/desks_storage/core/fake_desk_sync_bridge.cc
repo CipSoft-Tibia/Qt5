@@ -18,7 +18,6 @@
 #include "components/app_constants/constants.h"
 #include "components/desks_storage/core/desk_model_observer.h"
 #include "components/desks_storage/core/desk_template_util.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "ui/base/ui_base_types.h"
 
 #if !BUILDFLAG(IS_CHROMEOS_LACROS)

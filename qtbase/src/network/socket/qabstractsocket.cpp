@@ -1,6 +1,7 @@
 // Copyright (C) 2022 The Qt Company Ltd.
 // Copyright (C) 2016 Intel Corporation.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 //#define QABSTRACTSOCKET_DEBUG
 
@@ -435,6 +436,7 @@
 #include "private/qhostinfo_p.h"
 
 #include <qabstracteventdispatcher.h>
+#include <QtCore/qdebug.h>
 #include <qhostaddress.h>
 #include <qhostinfo.h>
 #include <qmetaobject.h>

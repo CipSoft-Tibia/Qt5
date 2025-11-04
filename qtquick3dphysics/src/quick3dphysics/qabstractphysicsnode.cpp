@@ -6,6 +6,9 @@
 #include <foundation/PxTransform.h>
 
 #include "qphysicsworld_p.h"
+
+#include <QtGui/qquaternion.h>
+
 QT_BEGIN_NAMESPACE
 
 /*!

@@ -7,13 +7,11 @@
 #include <utility>
 
 #include "base/containers/flat_set.h"
-#include "base/feature_list.h"
-#include "components/webapps/browser/features.h"
 #include "components/webapps/browser/installable/installable_logging.h"
 
 namespace webapps {
 
-Screenshot::Screenshot(SkBitmap image, absl::optional<std::u16string> label)
+Screenshot::Screenshot(SkBitmap image, std::optional<std::u16string> label)
     : image(std::move(image)), label(label) {}
 
 Screenshot::Screenshot(const Screenshot& screenshot) = default;
@@ -44,7 +42,7 @@ InstallableData::~InstallableData() = default;
 
 InstallableStatusCode InstallableData::GetFirstError() const {
   if (errors.empty()) {
-    return NO_ERROR_DETECTED;
+    return InstallableStatusCode::NO_ERROR_DETECTED;
   }
   return errors[0];
 }

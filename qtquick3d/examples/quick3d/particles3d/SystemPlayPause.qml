@@ -67,7 +67,7 @@ Item {
             Model {
                 source: "#Cube"
                 scale: Qt.vector3d(0.2, 0.2, 0.2)
-                materials: DefaultMaterial {
+                materials: PrincipledMaterial {
                 }
             }
         }
@@ -76,7 +76,7 @@ Item {
             id: modelEmitterComponent
             Model {
                 source: "#Cylinder"
-                materials: DefaultMaterial {}
+                materials: PrincipledMaterial {}
                 position: Qt.vector3d(Math.random() * 250 - 300, -150, 0)
                 scale: Qt.vector3d(0.5, 0.1, 0.5)
                 ParticleEmitter3D {
@@ -99,7 +99,7 @@ Item {
             id: spriteEmitterComponent
             Model {
                 source: "#Cylinder"
-                materials: DefaultMaterial { diffuseColor: "#ffff00" }
+                materials: PrincipledMaterial { baseColor: "#ffff00" }
                 position: Qt.vector3d(Math.random() * 250 + 50, -150, 0)
                 scale: Qt.vector3d(0.5, 0.1, 0.5)
                 ParticleEmitter3D {

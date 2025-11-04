@@ -24,13 +24,22 @@
     representations}, such as the \l
     {https://en.cppreference.com/w/cpp/chrono/system_clock} {system_clock} and
     its \l {https://en.cppreference.com/w/cpp/chrono/time_point} {time_point}
-    types. When Qt is built with C++20, it can now make use of these additions.
+    types. It also now provides access to the IANA database of \l
+    {https://en.cppreference.com/w/cpp/chrono#Time_zone} {timezone-related
+    information}. When Qt is built with C++20, it can now make use of these
+    additions.
 
     QDate and QDateTime now support conversion to and from the various calendar,
     date and date-time types, along with addition of \l
     {https://en.cppreference.com/w/cpp/chrono/duration} {duration
     types}. QTimeZone now supports construction from a \l
     {https://en.cppreference.com/w/cpp/chrono/time_zone} {time_zone}.
+
+    QTimeZone can also, when built with feature \c timezone_tzdb enabled, use
+    the C++20 \l {https://en.cppreference.com/w/cpp/chrono/tzdb} {tzdb}
+    facilities in place of platform-specific backends to access timezone
+    information. This remains experimental in Qt 6.9 as some standard library
+    implementations do not faithfully represent the IANA data for timezones.
 
     \section1 QSpan - a Qt version of \c {std::span}
 

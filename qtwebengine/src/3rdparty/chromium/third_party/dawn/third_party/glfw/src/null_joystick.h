@@ -1,5 +1,5 @@
 //========================================================================
-// GLFW 3.4 - www.glfw.org
+// GLFW 3.5 - www.glfw.org
 //------------------------------------------------------------------------
 // Copyright (c) 2006-2017 Camilla Löwy <elmindreda@glfw.org>
 //
@@ -26,7 +26,7 @@
 
 GLFWbool _glfwInitJoysticksNull(void);
 void _glfwTerminateJoysticksNull(void);
-int _glfwPollJoystickNull(_GLFWjoystick* js, int mode);
+GLFWbool _glfwPollJoystickNull(_GLFWjoystick* js, int mode);
 const char* _glfwGetMappingNameNull(void);
 void _glfwUpdateGamepadGUIDNull(char* guid);
 

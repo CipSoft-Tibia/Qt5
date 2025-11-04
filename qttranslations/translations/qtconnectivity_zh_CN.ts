@@ -17,7 +17,7 @@
     </message>
     <message>
         <source>Bluetooth LE is not supported</source>
-        <translation>不支持蓝牙 LE</translation>
+        <translation>不支持低功耗蓝牙</translation>
     </message>
     <message>
         <source>Unknown error</source>
@@ -57,7 +57,7 @@
     </message>
     <message>
         <source>Location service turned off. Search is not possible.</source>
-        <translation type="unfinished"></translation>
+        <translation>位置服务已关闭，无法进行搜索。</translation>
     </message>
     <message>
         <source>Classic Discovery cannot be started</source>

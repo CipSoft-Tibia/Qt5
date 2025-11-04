@@ -20,7 +20,7 @@ constexpr int kDefaultMaxBacklogSize = 64;
 // Call Select with no timeout, so that it doesn't block. Then use the result
 // to determine if any connection is pending.
 bool IsConnectionPending(int fd) {
-  fd_set handle_set;
+  fd_set handle_set{};
   FD_ZERO(&handle_set);
   FD_SET(fd, &handle_set);
   struct timeval tv {
@@ -55,7 +55,7 @@ StreamSocketPosix& StreamSocketPosix::operator=(StreamSocketPosix&& other) =
 
 StreamSocketPosix::~StreamSocketPosix() {
   if (handle_.fd != kUnsetHandleFd) {
-    OSP_DCHECK(state_ != TcpSocketState::kClosed);
+    OSP_CHECK(state_ != TcpSocketState::kClosed);
     Close();
   }
 }
@@ -124,7 +124,7 @@ Error StreamSocketPosix::Close() {
     return ReportSocketClosedError();
   }
 
-  OSP_DCHECK(state_ != TcpSocketState::kClosed);
+  OSP_CHECK(state_ != TcpSocketState::kClosed);
   state_ = TcpSocketState::kClosed;
 
   const int file_descriptor_to_close = handle_.fd;
@@ -153,7 +153,7 @@ Error StreamSocketPosix::Connect(const IPEndpoint& remote_endpoint) {
       return CloseOnError(Error::Code::kSocketInvalidState);
     }
 
-    struct sockaddr_in6 address_in6;
+    struct sockaddr_in6 address_in6 {};
     socklen_t size = sizeof(address_in6);
     if (getsockname(handle_.fd,
                     reinterpret_cast<struct sockaddr*>(&address_in6),
@@ -175,7 +175,7 @@ Error StreamSocketPosix::Listen() {
 }
 
 Error StreamSocketPosix::Listen(int max_backlog_size) {
-  OSP_DCHECK(state_ == TcpSocketState::kNotConnected);
+  OSP_CHECK(state_ == TcpSocketState::kNotConnected);
   if (!EnsureInitializedAndOpen()) {
     return ReportSocketClosedError();
   }
@@ -244,11 +244,11 @@ Error StreamSocketPosix::Initialize() {
     return CloseOnError(Error::Code::kSocketInvalidState);
   }
 
-  OSP_DCHECK_EQ(last_error_code_, Error::Code::kNone);
+  OSP_CHECK_EQ(last_error_code_, Error::Code::kNone);
   return Error::None();
 }
 
-Error StreamSocketPosix::CloseOnError(Error error) {
+Error StreamSocketPosix::CloseOnError(const Error& error) {
   last_error_code_ = error.code();
   Close();
   return error;

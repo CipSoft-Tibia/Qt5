@@ -49,17 +49,17 @@ String ToBase64URLWithoutPadding(DOMArrayBuffer* buffer) {
   return value;
 }
 
-// Converts a {absl::optional<base::Time>} into a
-// {absl::optional<base::DOMTimeStamp>} object.
+// Converts a {std::optional<base::Time>} into a
+// {std::optional<base::DOMTimeStamp>} object.
 // base::Time is in milliseconds from Windows epoch (1601-01-01 00:00:00 UTC)
 // while blink::DOMTimeStamp is in milliseconds from UNIX epoch (1970-01-01
 // 00:00:00 UTC)
-absl::optional<blink::DOMTimeStamp> ToDOMTimeStamp(
-    const absl::optional<base::Time>& time) {
+std::optional<blink::DOMTimeStamp> ToDOMTimeStamp(
+    const std::optional<base::Time>& time) {
   if (time)
     return ConvertSecondsToDOMTimeStamp(time->InSecondsFSinceUnixEpoch());
 
-  return absl::nullopt;
+  return std::nullopt;
 }
 
 }  // namespace
@@ -81,23 +81,20 @@ PushSubscription::PushSubscription(
     const WTF::Vector<uint8_t>& application_server_key,
     const WTF::Vector<unsigned char>& p256dh,
     const WTF::Vector<unsigned char>& auth,
-    const absl::optional<DOMTimeStamp>& expiration_time,
+    const std::optional<DOMTimeStamp>& expiration_time,
     ServiceWorkerRegistration* service_worker_registration)
     : endpoint_(endpoint),
       options_(MakeGarbageCollected<PushSubscriptionOptions>(
           user_visible_only,
           application_server_key)),
-      p256dh_(
-          DOMArrayBuffer::Create(p256dh.data(),
-                                 base::checked_cast<unsigned>(p256dh.size()))),
-      auth_(DOMArrayBuffer::Create(auth.data(),
-                                   base::checked_cast<unsigned>(auth.size()))),
+      p256dh_(DOMArrayBuffer::Create(p256dh)),
+      auth_(DOMArrayBuffer::Create(auth)),
       expiration_time_(expiration_time),
       service_worker_registration_(service_worker_registration) {}
 
 PushSubscription::~PushSubscription() = default;
 
-absl::optional<DOMTimeStamp> PushSubscription::expirationTime() const {
+std::optional<DOMTimeStamp> PushSubscription::expirationTime() const {
   // This attribute reflects the time at which the subscription will expire,
   // which is not relevant to this implementation yet as subscription refreshes
   // are not supported.
@@ -113,15 +110,18 @@ DOMArrayBuffer* PushSubscription::getKey(const AtomicString& name) const {
   return nullptr;
 }
 
-ScriptPromise PushSubscription::unsubscribe(ScriptState* script_state) {
-  auto* resolver = MakeGarbageCollected<ScriptPromiseResolver>(script_state);
-  ScriptPromise promise = resolver->Promise();
+ScriptPromise<IDLBoolean> PushSubscription::unsubscribe(
+    ScriptState* script_state) {
+  auto* resolver =
+      MakeGarbageCollected<ScriptPromiseResolver<IDLBoolean>>(script_state);
+  auto promise = resolver->Promise();
 
   PushProvider* push_provider =
       PushProvider::From(service_worker_registration_);
   DCHECK(push_provider);
   push_provider->Unsubscribe(
-      std::make_unique<CallbackPromiseAdapter<bool, DOMException*>>(resolver));
+      std::make_unique<CallbackPromiseAdapter<IDLBoolean, DOMException>>(
+          resolver));
   return promise;
 }
 
@@ -129,7 +129,7 @@ ScriptValue PushSubscription::toJSONForBinding(ScriptState* script_state) {
   DCHECK(p256dh_);
 
   V8ObjectBuilder result(script_state);
-  result.AddString("endpoint", endpoint());
+  result.AddString("endpoint", endpoint().GetString());
 
   if (expiration_time_) {
     result.AddNumber("expirationTime", *expiration_time_);

@@ -79,7 +79,7 @@ private:
 #define emit
 #undef QT_NO_KEYWORDS
 
-#include <QtTest/QtTest>
+#include <QtTest/QTest>
 
 class tst_NoKeywords : public QObject
 {

@@ -29,6 +29,7 @@ class BarsRenderer;
 class PointRenderer;
 class PieRenderer;
 class AreaRenderer;
+class QQuickPinchHandler;
 
 class Q_GRAPHS_EXPORT QGraphsView : public QQuickItem
 {
@@ -39,6 +40,7 @@ class Q_GRAPHS_EXPORT QGraphsView : public QQuickItem
     Q_PROPERTY(qreal marginBottom READ marginBottom WRITE setMarginBottom NOTIFY marginBottomChanged FINAL)
     Q_PROPERTY(qreal marginLeft READ marginLeft WRITE setMarginLeft NOTIFY marginLeftChanged FINAL)
     Q_PROPERTY(qreal marginRight READ marginRight WRITE setMarginRight NOTIFY marginRightChanged FINAL)
+    Q_PROPERTY(QRectF plotArea READ plotArea NOTIFY plotAreaChanged REVISION(6, 9))
 
     Q_PROPERTY(qreal axisXSmoothing READ axisXSmoothing WRITE setAxisXSmoothing NOTIFY axisXSmoothingChanged FINAL)
     Q_PROPERTY(qreal axisYSmoothing READ axisYSmoothing WRITE setAxisYSmoothing NOTIFY axisYSmoothingChanged FINAL)
@@ -56,6 +58,16 @@ class Q_GRAPHS_EXPORT QGraphsView : public QQuickItem
     Q_PROPERTY(QAbstractAxis *axisY READ axisY WRITE setAxisY NOTIFY axisYChanged FINAL)
     Q_PROPERTY(
         Qt::Orientation orientation READ orientation WRITE setOrientation NOTIFY orientationChanged FINAL)
+
+    Q_PROPERTY(ZoomStyle zoomStyle READ zoomStyle WRITE setZoomStyle NOTIFY zoomStyleChanged REVISION(6, 9))
+    Q_PROPERTY(PanStyle panStyle READ panStyle WRITE setPanStyle NOTIFY panStyleChanged REVISION(6, 9))
+    Q_PROPERTY(qreal zoomSensitivity READ zoomSensitivity WRITE setZoomSensitivity NOTIFY
+                   zoomSensitivityChanged REVISION(6, 9))
+
+    Q_PROPERTY(bool zoomAreaEnabled READ zoomAreaEnabled WRITE setZoomAreaEnabled NOTIFY
+                   zoomAreaEnabledChanged REVISION(6, 9))
+    Q_PROPERTY(QQmlComponent *zoomAreaDelegate READ zoomAreaDelegate WRITE setZoomAreaDelegate
+                   NOTIFY zoomAreaDelegateChanged REVISION(6, 9))
 
     Q_CLASSINFO("DefaultProperty", "seriesList")
     QML_NAMED_ELEMENT(GraphsView)
@@ -105,11 +117,19 @@ public:
     qsizetype graphSeriesCount() const;
     void setGraphSeriesCount(qsizetype count);
 
+#ifdef USE_BARGRAPH
     void createBarsRenderer();
+#endif
     void createAxisRenderer();
+#ifdef USE_POINTS
     void createPointRenderer();
+#endif
+#ifdef USE_PIEGRAPH
     void createPieRenderer();
+#endif
+#ifdef USE_AREAGRAPH
     void createAreaRenderer();
+#endif
 
     qreal axisXSmoothing() const;
     void setAxisXSmoothing(qreal smoothing);
@@ -140,6 +160,27 @@ public:
     Qt::Orientation orientation() const;
     void setOrientation(Qt::Orientation newOrientation);
 
+    enum class ZoomStyle { None, Center };
+    Q_ENUM(ZoomStyle)
+
+    enum class PanStyle { None, Drag };
+    Q_ENUM(PanStyle)
+
+    ZoomStyle zoomStyle() const;
+    void setZoomStyle(ZoomStyle newZoomStyle);
+
+    PanStyle panStyle() const;
+    void setPanStyle(PanStyle newPanStyle);
+
+    bool zoomAreaEnabled() const;
+    void setZoomAreaEnabled(bool newZoomAreaEnabled);
+
+    QQmlComponent *zoomAreaDelegate() const;
+    void setZoomAreaDelegate(QQmlComponent *newZoomAreaDelegate);
+
+    qreal zoomSensitivity() const;
+    void setZoomSensitivity(qreal newZoomSensitivity);
+
 protected:
     void handleHoverEnter(const QString &seriesName, QPointF position, QPointF value);
     void handleHoverExit(const QString &seriesName, QPointF position);
@@ -147,10 +188,8 @@ protected:
     void updateComponentSizes();
     void componentComplete() override;
     void geometryChange(const QRectF &newGeometry, const QRectF &oldGeometry) override;
-    void mouseMoveEvent(QMouseEvent *event) override;
-    void mousePressEvent(QMouseEvent *event) override;
-    void mouseReleaseEvent(QMouseEvent *event) override;
     void hoverMoveEvent(QHoverEvent *event) override;
+    void wheelEvent(QWheelEvent *event) override;
     QSGNode *updatePaintNode(QSGNode *oldNode, QQuickItem::UpdatePaintNodeData *updatePaintNodeData) override;
     void updatePolish() override;
 
@@ -160,6 +199,7 @@ Q_SIGNALS:
     void marginBottomChanged();
     void marginLeftChanged();
     void marginRightChanged();
+    Q_REVISION(6, 9) void plotAreaChanged();
     void hoverEnter(const QString &seriesName, QPointF position, QPointF value);
     void hoverExit(const QString &seriesName, QPointF position);
     void hover(const QString &seriesName, QPointF position, QPointF value);
@@ -180,6 +220,14 @@ Q_SIGNALS:
 
     void orientationChanged();
 
+    Q_REVISION(6, 9) void zoomStyleChanged();
+    Q_REVISION(6, 9) void panStyleChanged();
+
+    Q_REVISION(6, 9) void zoomAreaEnabledChanged();
+    Q_REVISION(6, 9) void zoomAreaDelegateChanged();
+
+    Q_REVISION(6, 9) void zoomSensitivityChanged();
+
 private:
     friend class AxisRenderer;
     friend class BarsRenderer;
@@ -189,6 +237,8 @@ private:
 
     void polishAndUpdate();
     int getSeriesRendererIndex(QAbstractSeries *series);
+    void onPinchScaleChanged(qreal delta);
+    void onPinchGrabChanged(QPointingDevice::GrabTransition transition, QEventPoint point);
 
     static constexpr qreal m_defaultAxisTickersWidth = 15;
     static constexpr qreal m_defaultAxisTickersHeight = 15;
@@ -252,6 +302,15 @@ private:
     qreal m_shadowXOffset = 0.0;
     qreal m_shadowYOffset = 0.0;
     qreal m_shadowSmoothing = 4.0;
+
+    ZoomStyle m_zoomStyle = ZoomStyle::None;
+    PanStyle m_panStyle = PanStyle::None;
+    qreal m_zoomSensitivity = 0.05f;
+
+    bool m_zoomAreaEnabled = false;
+    QQmlComponent *m_zoomAreaDelegate = nullptr;
+    QQuickItem *m_zoomAreaItem = nullptr;
+    QQuickPinchHandler *m_pinchHandler = nullptr;
 };
 
 QT_END_NAMESPACE

@@ -1,6 +1,7 @@
 // Copyright (C) 2017 Witekio.
 // Copyright (C) 2018 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qcoapoption_p.h"
 
@@ -9,7 +10,7 @@
 
 QT_BEGIN_NAMESPACE
 
-Q_LOGGING_CATEGORY(lcCoapOption, "qt.coap.option")
+Q_STATIC_LOGGING_CATEGORY(lcCoapOption, "qt.coap.option")
 
 /*!
     \class QCoapOption

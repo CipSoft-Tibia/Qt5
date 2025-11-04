@@ -25,7 +25,6 @@ QT_BEGIN_NAMESPACE
 
 QCocoaMenu::QCocoaMenu() :
     m_attachedItem(nil),
-    m_updateTimer(0),
     m_enabled(true),
     m_parentEnabled(true),
     m_visible(true),
@@ -45,6 +44,16 @@ QCocoaMenu::~QCocoaMenu()
 
     if (isOpen())
         dismiss();
+
+    if (NSMenu *superMenu = m_nativeMenu.supermenu) {
+        for (NSMenuItem *item in superMenu.itemArray) {
+            if (item.submenu == m_nativeMenu) {
+                [superMenu removeItem:item];
+                break;
+            }
+        }
+    }
+
     [m_nativeMenu release];
 }
 
@@ -201,15 +210,16 @@ QCocoaMenuItem *QCocoaMenu::itemOrNull(int index) const
 
 void QCocoaMenu::scheduleUpdate()
 {
-    if (!m_updateTimer)
-        m_updateTimer = startTimer(0);
+    using namespace std::chrono_literals;
+
+    if (!m_updateTimer.isActive())
+        m_updateTimer.start(0ms, this);
 }
 
 void QCocoaMenu::timerEvent(QTimerEvent *e)
 {
-    if (e->timerId() == m_updateTimer) {
-        killTimer(m_updateTimer);
-        m_updateTimer = 0;
+    if (e->id() == m_updateTimer.id()) {
+        m_updateTimer.stop();
         [m_nativeMenu update];
     }
 }

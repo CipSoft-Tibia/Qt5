@@ -44,10 +44,25 @@ Item {
         titleText: "Initialized"
         titleVisible: false
         visible: false
+        alignment: Qt.AlignLeft
     }
 
     TestCase {
-        name: "ValueAxis Initial"
+        name: "ValueAxis with GraphsView"
+
+        GraphsView {id: graphsView1}
+        GraphsView {id: graphsView2}
+        ValueAxis {id: axis1}
+
+        function test_1_add_to_multiple() {
+            ignoreWarning(/.*axis already associated with.*/)
+            graphsView1.axisX = axis1
+            graphsView2.axisX = axis1
+        }
+    }
+
+    TestCase {
+        name: "valueaxis initial"
 
         Text { id: dummy }
 
@@ -75,6 +90,7 @@ Item {
             compare(initial.titleText, "")
             compare(initial.titleVisible, true)
             compare(initial.visible, true)
+            compare(initial.alignment, Qt.AlignBottom)
         }
 
         function test_3_initial_change() {
@@ -100,6 +116,7 @@ Item {
             initial.titleText = "Dummy"
             initial.titleVisible = false
             initial.visible = false
+            initial.alignment = Qt.AlignTop
 
             // Properties from ValueAxis
             compare(initial.labelDecimals, 1)
@@ -121,6 +138,7 @@ Item {
             compare(initial.titleText, "Dummy")
             compare(initial.titleVisible, false)
             compare(initial.visible, false)
+            compare(initial.alignment, Qt.AlignTop)
         }
     }
 
@@ -149,6 +167,7 @@ Item {
             compare(initialized.titleText, "Initialized")
             compare(initialized.titleVisible, false)
             compare(initialized.visible, false)
+            compare(initialized.alignment, Qt.AlignLeft)
         }
 
         function test_2_initialized_change() {
@@ -173,6 +192,7 @@ Item {
             initialized.titleText = "Dummy"
             initialized.titleVisible = true
             initialized.visible = true
+            initialized.alignment = Qt.AlignRight
 
             // Properties from ValueAxis
             compare(initialized.labelDecimals, 1)
@@ -198,6 +218,7 @@ Item {
             compare(initialized.titleText, "Dummy")
             compare(initialized.titleVisible, true)
             compare(initialized.visible, true)
+            compare(initialized.alignment, Qt.AlignRight)
 
             // Signals
             compare(minSpy.count, 1)
@@ -220,6 +241,7 @@ Item {
             compare(titleColorSpy.count, 1)
             compare(titleVisibleSpy.count, 1)
             compare(titleFontSpy.count, 2)
+            compare(alignmentSpy.count, 1)
         }
 
         function test_3_initialized_change_to_invalid() {
@@ -339,6 +361,12 @@ Item {
             id: titleFontSpy
             target: initialized
             signalName: "titleFontChanged"
+        }
+
+        SignalSpy {
+            id: alignmentSpy
+            target: initialized
+            signalName: "alignmentChanged"
         }
     }
 }

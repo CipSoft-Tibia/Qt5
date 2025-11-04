@@ -9,6 +9,7 @@
 #if defined(Q_QDOC) || defined(Q_OS_ANDROID)
 #include <jni.h>
 #include <QtCore/qjnienvironment.h>
+#include <QtCore/qxptype_traits.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -31,20 +32,20 @@ class Q_CORE_EXPORT QJniObject
             if (hasFrame)
                 env->PopLocalFrame(nullptr);
         }
+        bool ensureFrame()
+        {
+            if (!hasFrame)
+                hasFrame = jniEnv()->PushLocalFrame(sizeof...(Args)) == 0;
+            return hasFrame;
+        }
         template <typename T>
         auto newLocalRef(jobject object)
         {
-            if (!hasFrame) {
-                if (jniEnv()->PushLocalFrame(sizeof...(Args)) < 0)
-                    return T{}; // JVM is out of memory, avoid making matters worse
-                hasFrame = true;
+            if (!ensureFrame()) {
+                // if the JVM is out of memory, avoid making matters worse
+                return T{};
             }
             return static_cast<T>(jniEnv()->NewLocalRef(object));
-        }
-        template <typename T>
-        auto newLocalRef(const QJniObject &object)
-        {
-            return newLocalRef<T>(object.template object<T>());
         }
         JNIEnv *jniEnv() const
         {
@@ -855,6 +856,12 @@ using FromContainerTest = decltype(QJniArrayBase::fromContainer(std::declval<C>(
 
 template <typename C>
 static constexpr bool isCompatibleSourceContainer = qxp::is_detected_v<FromContainerTest, C>;
+
+template <typename It>
+using IsReferenceWrapperTest = typename It::refwrapper;
+
+template <typename It>
+static constexpr bool isReferenceWrapper = qxp::is_detected_v<IsReferenceWrapperTest, It>;
 }
 }
 
@@ -864,13 +871,17 @@ auto QJniObject::LocalFrame<Args...>::convertToJni(T &&value)
 {
     using Type = q20::remove_cvref_t<T>;
     if constexpr (std::is_same_v<Type, QString>) {
-        return newLocalRef<jstring>(QJniObject::fromString(value));
+        if (ensureFrame()) // fromQString already returns a local reference
+            return QtJniTypes::Detail::fromQString(value, jniEnv());
+        return jstring{};
     } else if constexpr (QtJniTypes::IsJniArray<Type>::value) {
         return value.arrayObject();
     } else if constexpr (QtJniTypes::detail::isCompatibleSourceContainer<T>) {
         using QJniArrayType = decltype(QJniArrayBase::fromContainer(std::forward<T>(value)));
         using ArrayType = decltype(std::declval<QJniArrayType>().arrayObject());
         return newLocalRef<ArrayType>(QJniArrayBase::fromContainer(std::forward<T>(value)).template object<jobject>());
+    } else if constexpr (QtJniTypes::detail::isReferenceWrapper<Type>) {
+        return convertToJni(*value);
     } else if constexpr (std::is_base_of_v<QJniObject, Type>
                       || std::is_base_of_v<QtJniTypes::JObjectBase, Type>) {
         return value.object();

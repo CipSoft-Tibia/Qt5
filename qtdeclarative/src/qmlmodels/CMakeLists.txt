@@ -62,6 +62,7 @@ qt_internal_extend_target(QmlModels CONDITION QT_FEATURE_qml_delegate_model
         qqmlabstractdelegatecomponent.cpp qqmlabstractdelegatecomponent_p.h
         qqmladaptormodel.cpp qqmladaptormodel_p.h
         qqmladaptormodelenginedata.cpp qqmladaptormodelenginedata_p.h
+        qqmldelegatecomponent.cpp qqmldelegatecomponent_p.h
         qqmldelegatemodel.cpp qqmldelegatemodel_p.h
         qqmldelegatemodel_p_p.h
         qqmldmabstractitemmodeldata.cpp qqmldmabstractitemmodeldata_p.h
@@ -71,6 +72,7 @@ qt_internal_extend_target(QmlModels CONDITION QT_FEATURE_qml_delegate_model
         qqmllistcompositor.cpp qqmllistcompositor_p.h
         qquickpackage.cpp qquickpackage_p.h
 )
+
 qt_internal_add_docs(QmlModels
     doc/qtqmlmodels.qdocconf
 )

@@ -173,7 +173,7 @@ void OnCookiesAndExcludedReceived(
 }  // namespace
 
 CookieManagerImpl::CookieManagerImpl(
-    GetNetworkContextCallback get_network_context)
+    network::NetworkContextGetter get_network_context)
     : get_network_context_(std::move(get_network_context)) {}
 
 CookieManagerImpl::~CookieManagerImpl() = default;
@@ -220,7 +220,7 @@ void CookieManagerImpl::GetCookieList(
           GURL(*url), options, net::CookiePartitionKeyCollection::Todo(),
           base::BindOnce(&OnCookiesAndExcludedReceived, std::move(iterator)));
     } else {
-      // TODO(858853): Support filtering by name.
+      // TODO(crbug.com/42050622): Support filtering by name.
       iterator.Close(ZX_ERR_NOT_SUPPORTED);
     }
   }

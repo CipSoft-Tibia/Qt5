@@ -4,7 +4,7 @@
  *
  *   Auto-fitter hinting routines for latin writing system (body).
  *
- * Copyright (C) 2003-2023 by
+ * Copyright (C) 2003-2024 by
  * David Turner, Robert Wilhelm, and Werner Lemberg.
  *
  * This file is part of the FreeType project, and may only be used,
@@ -1263,10 +1263,9 @@
               max_height = FT_MAX( max_height, -Axis->blues[nn].descender );
             }
 
-            dist  = FT_ABS( FT_MulFix( max_height, new_scale - scale ) );
-            dist &= ~127;
+            dist  = FT_MulFix( max_height, new_scale - scale );
 
-            if ( dist == 0 )
+            if ( -128 < dist && dist < 128 )
             {
               FT_TRACE5(( "af_latin_metrics_scale_dim:"
                           " x height alignment (style `%s'):\n",
@@ -2611,7 +2610,7 @@
   }
 
 
-  /* Initalize hinting engine. */
+  /* Initialize hinting engine. */
 
   static FT_Error
   af_latin_hints_init( AF_GlyphHints    hints,

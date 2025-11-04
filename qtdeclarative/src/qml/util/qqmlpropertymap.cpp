@@ -370,6 +370,21 @@ QQmlPropertyMap::QQmlPropertyMap(const QMetaObject *staticMetaObject, QObject *p
     The type of \a derived is used to register the property map with the \l {Meta-Object System},
     which is necessary to ensure that properties of the derived class are accessible.
     This type must be derived from QQmlPropertyMap.
+
+    In the C++ file:
+    \snippet code/src_qml_qqmlpropertymap.cpp 0
+
+    \snippet code/src_qml_qqmlpropertymap.cpp 1
+
+    Then, in \c main.qml:
+    \code
+    MyQmlPropertyMap
+    {
+        id : owner
+        Component.onCompleted: { owner.updateEmail("new.email@example.com") }
+    }
+    Text { text : owner.name + " " + owner.phone + " " + owner.email }
+    \endcode
 */
 
 QT_END_NAMESPACE

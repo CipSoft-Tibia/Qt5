@@ -12,14 +12,23 @@ set(INSTALL_EXAMPLEDIR "${INSTALL_EXAMPLESDIR}/grpc/chat")
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_FIND_PACKAGE_PREFER_CONFIG TRUE)
 
 find_package(Qt6 COMPONENTS ProtobufTools ProtobufQtCoreTypes)
-find_package(WrapProtoc)
-find_package(WrapgRPC)
-find_package(WrapgRPCPlugin)
+find_package(Protobuf)
+find_package(gRPC)
 
-if(NOT TARGET WrapProtoc::WrapProtoc OR NOT TARGET WrapgRPC::WrapLibgRPC
-        OR NOT TARGET WrapgRPC::WrapgRPCPlugin OR NOT TARGET Qt6::ProtobufQtCoreTypes)
+if(CMAKE_CROSSCOMPILING)
+    find_program(grpc_cpp_plugin grpc_cpp_plugin NO_CACHE)
+elseif(TARGET gRPC::grpc_cpp_plugin)
+    set(grpc_cpp_plugin $<TARGET_FILE:gRPC::grpc_cpp_plugin>)
+else()
+    set(grpc_cpp_plugin "")
+endif()
+
+if(NOT grpc_cpp_plugin OR NOT TARGET WrapProtoc::WrapProtoc
+        OR NOT TARGET gRPC::grpc++ OR NOT TARGET Qt6::ProtobufQtCoreTypes
+        OR NOT TARGET gRPC::grpc++_reflection)
     message(WARNING "Dependencies of ${PROJECT_NAME} not found. Skipping.")
     return()
 endif()
@@ -56,7 +65,7 @@ add_custom_command(
     ARGS
     --grpc_out "${proto_out}"
     --cpp_out "${proto_out}"
-    --plugin=protoc-gen-grpc=$<TARGET_FILE:WrapgRPC::WrapgRPCPlugin>
+    --plugin=protoc-gen-grpc=${grpc_cpp_plugin}
     ${proto_includes}
     ${proto_files}
     WORKING_DIRECTORY ${proto_out}
@@ -74,7 +83,7 @@ add_executable(qtgrpc_chat_server
 )
 
 target_include_directories(qtgrpc_chat_server PRIVATE ${proto_out})
-target_link_libraries(qtgrpc_chat_server PRIVATE WrapgRPC::WrapLibgRPC)
+target_link_libraries(qtgrpc_chat_server PRIVATE gRPC::grpc++ gRPC::grpc++_reflection)
 
 install(TARGETS qtgrpc_chat_server
     RUNTIME DESTINATION "${INSTALL_EXAMPLEDIR}"

@@ -5,12 +5,12 @@
 #ifndef MEDIA_CAPTURE_VIDEO_VIDEO_CAPTURE_DEVICE_DESCRIPTOR_H_
 #define MEDIA_CAPTURE_VIDEO_VIDEO_CAPTURE_DEVICE_DESCRIPTOR_H_
 
+#include <optional>
 #include <string>
 #include <vector>
 
 #include "media/base/video_facing.h"
 #include "media/capture/capture_export.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 
 namespace media {
 
@@ -32,7 +32,8 @@ enum class VideoCaptureApi {
   ANDROID_API2_LIMITED = 10,
   FUCHSIA_CAMERA3 = 11,
   VIRTUAL_DEVICE = 12,
-  kMaxValue = VIRTUAL_DEVICE,
+  WEBRTC_LINUX_PIPEWIRE_SINGLE_PLANE = 13,
+  kMaxValue = WEBRTC_LINUX_PIPEWIRE_SINGLE_PLANE,
 };
 
 // Represents capture device's support for different controls.
@@ -85,7 +86,7 @@ struct CAPTURE_EXPORT VideoCaptureDeviceDescriptor {
       VideoCaptureTransportType transport_type =
           VideoCaptureTransportType::OTHER_TRANSPORT,
       VideoFacingMode facing = VideoFacingMode::MEDIA_VIDEO_FACING_NONE,
-      absl::optional<CameraAvailability> availability = absl::nullopt);
+      std::optional<CameraAvailability> availability = std::nullopt);
   VideoCaptureDeviceDescriptor(const VideoCaptureDeviceDescriptor& other);
   ~VideoCaptureDeviceDescriptor();
 
@@ -119,7 +120,7 @@ struct CAPTURE_EXPORT VideoCaptureDeviceDescriptor {
   std::string model_id;
 
   VideoFacingMode facing;
-  absl::optional<CameraAvailability> availability;
+  std::optional<CameraAvailability> availability;
 
   VideoCaptureApi capture_api;
   VideoCaptureTransportType transport_type;

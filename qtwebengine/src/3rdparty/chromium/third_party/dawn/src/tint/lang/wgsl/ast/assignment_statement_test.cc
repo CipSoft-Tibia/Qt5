@@ -27,7 +27,6 @@
 
 #include "src/tint/lang/wgsl/ast/assignment_statement.h"
 
-#include "gtest/gtest-spi.h"
 #include "src/tint/lang/wgsl/ast/helper_test.h"
 
 using namespace tint::core::number_suffixes;  // NOLINT
@@ -36,6 +35,7 @@ namespace tint::ast {
 namespace {
 
 using AssignmentStatementTest = TestHelper;
+using AssignmentStatementDeathTest = AssignmentStatementTest;
 
 TEST_F(AssignmentStatementTest, Creation) {
     auto* lhs = Expr("lhs");
@@ -64,8 +64,8 @@ TEST_F(AssignmentStatementTest, IsAssign) {
     EXPECT_TRUE(stmt->Is<AssignmentStatement>());
 }
 
-TEST_F(AssignmentStatementTest, Assert_Null_LHS) {
-    EXPECT_FATAL_FAILURE(
+TEST_F(AssignmentStatementDeathTest, Assert_Null_LHS) {
+    EXPECT_DEATH_IF_SUPPORTED(
         {
             ProgramBuilder b;
             b.create<AssignmentStatement>(nullptr, b.Expr(1_i));
@@ -73,8 +73,8 @@ TEST_F(AssignmentStatementTest, Assert_Null_LHS) {
         "internal compiler error");
 }
 
-TEST_F(AssignmentStatementTest, Assert_Null_RHS) {
-    EXPECT_FATAL_FAILURE(
+TEST_F(AssignmentStatementDeathTest, Assert_Null_RHS) {
+    EXPECT_DEATH_IF_SUPPORTED(
         {
             ProgramBuilder b;
             b.create<AssignmentStatement>(b.Expr(1_i), nullptr);
@@ -82,8 +82,8 @@ TEST_F(AssignmentStatementTest, Assert_Null_RHS) {
         "internal compiler error");
 }
 
-TEST_F(AssignmentStatementTest, Assert_DifferentGenerationID_LHS) {
-    EXPECT_FATAL_FAILURE(
+TEST_F(AssignmentStatementDeathTest, Assert_DifferentGenerationID_LHS) {
+    EXPECT_DEATH_IF_SUPPORTED(
         {
             ProgramBuilder b1;
             ProgramBuilder b2;
@@ -92,8 +92,8 @@ TEST_F(AssignmentStatementTest, Assert_DifferentGenerationID_LHS) {
         "internal compiler error");
 }
 
-TEST_F(AssignmentStatementTest, Assert_DifferentGenerationID_RHS) {
-    EXPECT_FATAL_FAILURE(
+TEST_F(AssignmentStatementDeathTest, Assert_DifferentGenerationID_RHS) {
+    EXPECT_DEATH_IF_SUPPORTED(
         {
             ProgramBuilder b1;
             ProgramBuilder b2;

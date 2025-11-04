@@ -1,5 +1,6 @@
 // Copyright (C) 2022 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QTEXTTOSPEECHENGINE_WINRT_AUDIOSOURCE_H
 #define QTEXTTOSPEECHENGINE_WINRT_AUDIOSOURCE_H
@@ -83,15 +84,16 @@ public:
     }
 
     // IUnknown
-    ULONG STDMETHODCALLTYPE AddRef() { return ++ref; }
-    ULONG STDMETHODCALLTYPE Release() {
+    ULONG STDMETHODCALLTYPE AddRef() override { return ++ref; }
+    ULONG STDMETHODCALLTYPE Release() override
+    {
         if (!--ref) {
             delete this;
             return 0;
         }
         return ref;
     }
-    HRESULT STDMETHODCALLTYPE QueryInterface(REFIID riid, VOID **ppvInterface);
+    HRESULT STDMETHODCALLTYPE QueryInterface(REFIID riid, VOID **ppvInterface) override;
 
     // completion handler for synthesising the stream
     HRESULT STDMETHODCALLTYPE Invoke(IAsyncOperation<SpeechSynthesisStream*> *operation,
@@ -130,6 +132,7 @@ private:
     bool m_riffHeaderChecked = false;
     quint64 m_bytesRead = 0;
     quint64 m_pauseRequestedAt = 0;
+    std::optional<qint64> m_pauseDetectionSilenceCount;
 
     void populateBoundaries();
     QList<Boundary> boundaries;

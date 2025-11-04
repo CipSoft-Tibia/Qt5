@@ -39,14 +39,6 @@ Rectangle {
             collisionShapes: BoxShape {
                 position: Qt.vector3d(0, -100, 0)
             }
-            Model {
-                scale: Qt.vector3d(0.99, 0.99, 0.99) // just to avoid z-fight
-                position: Qt.vector3d(0, -100, 0)
-                source: "#Cube"
-                materials: PrincipledMaterial {
-                    baseColor: "blue"
-                }
-            }
         }
 
         Node {
@@ -56,14 +48,6 @@ Rectangle {
                 scale: Qt.vector3d(1, 1, 1).times(1.5)
                 collisionShapes: BoxShape {
                     position: Qt.vector3d(0, 100, 0)
-                }
-                Model {
-                    scale: Qt.vector3d(0.99, 0.99, 0.99) // just to avoid z-fight
-                    position: Qt.vector3d(0, 100, 0)
-                    source: "#Cube"
-                    materials: PrincipledMaterial {
-                        baseColor: "pink"
-                    }
                 }
             }
         }

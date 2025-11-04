@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QtCore>
-#include <QtTest>
+#include <QTest>
 #include <QQmlFile>
 
 class tst_qqmlfile : public QObject

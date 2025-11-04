@@ -21,6 +21,8 @@
     \ingroup qmlmodules
 
     For more information on the Qt OPC UA module, see the \l{Qt OPC UA} module documentation.
+
+    The QML API has been marked as deprecated in Qt 6.9 and will be removed in a future version.
 */
 
 /*!
@@ -33,8 +35,7 @@
     The \l{Qt OPC UA Overview}{Qt OPC UA} module implements a Qt API to interact with OPC UA
     servers on top of the \l{https://www.open62541.org/}{open62541} library.
 
-    The QML API is still in development but are available as a technology preview.
-    This means those parts are unstable, likely to change, and provided as a convenience only.
+    The QML API has been marked as deprecated in Qt 6.9 and will be removed in a future version.
 
     \section1 Using the Module
 
@@ -388,46 +389,28 @@
     The Open62541 plugin is built by default from the included 3rd party sources and has no external dependencies.
     The open62541 library uses OpenSSL for security. If the OpenSSL library is detected during configuration,
     security is enabled for the tests and the open62541 backend.
-    The Open62541 source and header files bundled with Qt OPC UA have been generated from the open62541 v1.3.11
+    The Open62541 source and header files bundled with Qt OPC UA have been generated from the open62541 v1.4.9
     tag using the following commands:
 
     \code
-        cmake -DUA_ENABLE_AMALGAMATION=ON -DUA_AMALGAMATION_ARCHITECTURES="win32;posix" -DUA_ENABLE_SUBSCRIPTIONS_EVENTS=ON -DUA_ENABLE_HISTORIZING=ON -DUA_ENABLE_EXPERIMENTAL_HISTORIZING=ON
+        cmake -DUA_ENABLE_AMALGAMATION=ON -DUA_AMALGAMATION_MULTIARCH=ON -DUA_MULTITHREADING=0 /path/to/open62541-source
         make
     \endcode
 
-    In case you want to build a custom version of the Open62541 plugin, Open62541 v1.3.11 built with the same options as above is required.
-
-    The following options must be passed to cmake when building with open62541 installed to a custom location:
-
-    \code
-        -DINPUT_open62541=system -DOPEN62541_INCDIR=/path/to/sdk/include -DOPEN62541_LIBDIR=/path/to/sdk/lib
-    \endcode
-
-    \table
-    \header
-    \li Setting
-    \li Value
-    \row
-    \li OPEN62541_INCDIR
-    \li The directory which contains open62541.h
-    \row
-    \li OPEN62541_LIBDIR
-    \li The directory which contains the library file
-    \endtable
-
-    For example, the following options can be used for building the open62541 plugin using a static build
-    directly from its build directory without installing it:
-    \code
-        -DOPEN62541_INCDIR=/path/to/open62541/build -DOPEN62541_LIBDIR=/path/to/open62541/build/bin
-    \endcode
-
-    The output of the configuration step indicates whether the detection was successful:
+    In case you want to build a custom version of the open62541 plugin, an installed open62541 v1.4.9 built with the default options is required.
+    To enable encryption support, the open62541 build must be configured using the following parameters:
 
     \code
-        Open62541 .............................. yes
+        cmake -DUA_ENABLE_ENCRYPTION=OPENSSL /path/to/open62541-source
     \endcode
 
+    The following options must be passed to cmake when building with a custom open62541 installation.
+
+    \code
+        -DINPUT_open62541=system -DCMAKE_PREFIX_PATH=/path/to/open62541-install-dir
+    \endcode
+
+    The \a CMAKE_PREFIX_PATH is only required if open62541 is installed in a location cmake doesn't check by default.
 */
 
 /*!
@@ -459,9 +442,9 @@
 
     Starting with Qt 6.7, Qt OPC UA comes with a data type generator named \a qopcuaxmldatatypes2cpp
     which generates Qt OPC UA compatible C++ enumerations and data classes from enums and structured types
-    in .bsd files.
+    in .bsd files. As a secondary function, node id enums are generated from CSV files.
 
-    The generator is a command line tool which can be controlled by the following argument:
+    The generator is a command line tool which can be controlled by the following arguments:
 
     \table
     \header
@@ -469,21 +452,29 @@
     \li Short
     \li Purpose
     \row
-    \li --input
+    \li \--input
     \li -i
     \li A .bsd file for which all contained enum and struct types will be generated. Can be used more than once to generate code for multiple models.
     \row
-    \li --dependencyinput
+    \li \--dependencyinput
     \li -d
-    \li A dependency input .bsd file where only types required by a struct from an input file passed via ---input will be generated. Can be used more than once to accommodate models with dependencies to multiple other models.
+    \li A dependency input .bsd file where only types required by a struct from an input file passed via \--input will be generated. Can be used more than once to accommodate models with dependencies to multiple other models.
     \row
-    \li --output
+    \li \--nodeids
+    \li -n
+    \li A name and the path to a .csv file with node ids to generate an enum for, e.g. MyModel:/path/to/nodeids.csv => enum class MyModelNodeId. Can be specified multiple times.
+    \row
+    \li \--output
     \li -o
     \li The output directory where the generated files will be placed.
     \row
-    \li --prefix
+    \li \--prefix
     \li -p
     \li The prefix for the generated file, enum and class names. The default value is \a GeneratedOpcUa.
+    \row
+    \li \--bundle
+    \li -b
+    \li Generate bundle files <prefix>datatypes.h and <prefix>datatypes.cpp which #include all generated files
     \endtable
 
     The following files are generated for each run:
@@ -492,5 +483,54 @@
     \li One \a .h file containing a namespace with all enumerated types
     \li One \a .h and one \a .cpp file for each structured type
     \li One \a .h and one \a .cpp file containing encoding and decoding methods
+    \li One \a .h file containing the node id enums if -n is given at least once
+    \li The bundle files <prefix>datatypes.h and <prefix>datatypes.cpp if \e -b is given
     \endlist
+
+    \section2 CMake Integration
+
+    The \e qt_opcua_generate_datatypes() function takes one or multiple input \e .bsd files and any required dependency \e .bsd files
+    and invokes \e qopcuaxmldatatypes2cpp. The generated source and header files are written to \e OUTPUT_DIR and are added to the target
+    specified as the first argument.
+
+    The \e OUTPUT_DIR or its parent directory must also be added to the target's include directories.
+
+    The following \e CMakeLists.txt snippet shows how to integrate the code generator in to a CMake based project:
+
+    \code
+    find_package(Qt6 REQUIRED COMPONENTS Core OpcUa)
+
+    qt_standard_project_setup()
+
+    qt_add_executable(my_codegen
+        mycodegen.cpp
+    )
+
+    qt_opcua_generate_datatypes(
+        my_codegen # The target to add the generated files to
+        INPUT_BSD "${CMAKE_CURRENT_SOURCE_DIR}/mymodel.bsd" # Must be set at least once if INPUT_CSV_MAP is not set
+        INPUT_BSD "${CMAKE_CURRENT_SOURCE_DIR}/myothermodel.bsd"
+        DEPENDENCY_BSD "${CMAKE_CURRENT_SOURCE_DIR}/mydependency.bsd" # Optional
+        INPUT_CSV_MAP "MyModel:${CMAKE_CURRENT_SOURCE_DIR}/mymodel.csv" # Must be set at least once if INPUT_BSD is not set
+        INPUT_CSV_MAP "MyOtherModel:${CMAKE_CURRENT_SOURCE_DIR}/myothermodel.csv"
+        PREFIX "GeneratedOpcUa" # Mandatory
+        OUTPUT_DIR "${CMAKE_CURRENT_BINARY_DIR}/generated" # Mandatory
+    )
+
+    target_include_directories(my_codegen
+        PRIVATE
+            ${CMAKE_CURRENT_BINARY_DIR}
+    )
+
+    target_link_libraries(my_codegen PRIVATE Qt6::Core Qt6::OpcUa)
+    \endcode
+
+    The generated files can then be used in any header or source file by including the two top-level headers
+    for the data types and the encoder/decoder class.
+
+    \code
+    #include <generated/generatedopcuabinarydeencoder.h> // If INPUT_BSD was set
+    #include <generated/generatedopcuadatatypes.h> // If INPUT_BSD was set
+    #include <generated/generatedopcuanodeids.h> // If INPUT_CSV_MAP was set
+    \endcode
 */

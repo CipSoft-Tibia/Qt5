@@ -2,30 +2,97 @@
 <!DOCTYPE TS>
 <TS version="2.1" language="pt_BR">
 <context>
-    <name>GeoServiceProviderFactoryEsri</name>
+    <name>QtLocationQML</name>
     <message>
-        <source>Esri plugin requires a &apos;esri.token&apos; parameter.
-Please visit https://developers.arcgis.com/authentication/accessing-arcgis-online-services/</source>
-        <translation>O plugin Esri requer um parâmetro &apos;esri.token&apos;.
-Visite https://developers.arcgis.com/authentication/accessing-arcgis-online-services/</translation>
+        <source>Plugin property is not set.</source>
+        <translation>A propriedade do plugin não foi definida.</translation>
+    </message>
+    <message>
+        <source>Plugin Error (%1): %2</source>
+        <translation>Erro no plugin (%1): %2</translation>
+    </message>
+    <message>
+        <source>Plugin Error (%1): Could not instantiate provider</source>
+        <translation>Erro no plugin (%1): Não foi possível instanciar o fornecedor</translation>
+    </message>
+    <message>
+        <source>Plugin is not valid</source>
+        <translation>O plugin não é válido</translation>
+    </message>
+    <message>
+        <source>Unable to initialize categories</source>
+        <translation>Não foi possível inicializar as categorias</translation>
+    </message>
+    <message>
+        <source>Unable to create request</source>
+        <translation>Não foi possível criar a requisição</translation>
+    </message>
+    <message>
+        <source>Index &apos;%1&apos; out of range</source>
+        <translation>Índice &apos;%1&apos; fora da faixa</translation>
+    </message>
+    <message>
+        <source>Qt Location requires apiKey parameter.
+Please register at https://developer.here.com/ to get your personal application credentials.</source>
+        <translation>O Qt Location requer o parâmetro apiKey.
+Registre-se em https://developer.here.com/ para obter suas credenciais de inscrição.</translation>
+    </message>
+    <message>
+        <source>Saving places is not supported.</source>
+        <translation>Salvar lugares não é suportado.</translation>
+    </message>
+    <message>
+        <source>Removing places is not supported.</source>
+        <translation>Excluir lugares não é suportado.</translation>
+    </message>
+    <message>
+        <source>Saving categories is not supported.</source>
+        <translation>Salvar categorias não é suportado.</translation>
+    </message>
+    <message>
+        <source>Removing categories is not supported.</source>
+        <translation>Excluir categorias não é suportado.</translation>
+    </message>
+    <message>
+        <source>Error parsing response.</source>
+        <translation>Erro ao analisar a resposta.</translation>
+    </message>
+    <message>
+        <source>Network error.</source>
+        <translation>Erro de rede.</translation>
+    </message>
+    <message>
+        <source>Request was canceled.</source>
+        <translation>A requisição foi cancelada.</translation>
+    </message>
+    <message>
+        <source>The response from the service was not in a recognizable format.</source>
+        <translation>A resposta do servidor não veio em um formato reconhecido.</translation>
+    </message>
+    <message>
+        <source>Qt Location requires app_id and token parameters.
+Please register at https://developer.here.com/ to get your personal application credentials.</source>
+        <translation>O Qt Location necessita dos parâmetros app_id e token.
+Registre-se em https://developer.here.com/ para obter sua credencial de aplicativo pessoal.</translation>
     </message>
 </context>
 <context>
-    <name>PlaceSearchReplyEsri</name>
+    <name>QDeclarativeGeocodeModel</name>
     <message>
-        <source>Response parse error</source>
-        <translation>Erro de análise de resposta</translation>
-    </message>
-</context>
-<context>
-    <name>QDeclarativeGeoMap</name>
-    <message>
-        <source>No Map</source>
-        <translation>Sem mapa</translation>
+        <source>Cannot geocode, plugin not set.</source>
+        <translation>Não foi possível geocodificar, plugin não configurado.</translation>
     </message>
     <message>
-        <source>Plugin does not support mapping.</source>
-        <translation>O plugin não suporta mapeamento.</translation>
+        <source>Cannot geocode, geocode manager not set.</source>
+        <translation>Não foi possível geocodificar, gerenciador de geocodificação não configurado.</translation>
+    </message>
+    <message>
+        <source>Cannot geocode, valid query not set.</source>
+        <translation>Não foi possível geocodificar, consulta válida não configurada.</translation>
+    </message>
+    <message>
+        <source>Plugin does not support (reverse) geocoding.</source>
+        <translation>O plugin não suporta geocodificação (reversa).</translation>
     </message>
 </context>
 <context>
@@ -49,303 +116,6 @@ Visite https://developers.arcgis.com/authentication/accessing-arcgis-online-serv
     <message>
         <source>Not enough waypoints for routing.</source>
         <translation>Poucos pontos para roteamento.</translation>
-    </message>
-</context>
-<context>
-    <name>QDeclarativeGeocodeModel</name>
-    <message>
-        <source>Cannot geocode, plugin not set.</source>
-        <translation>Não foi possível geocodificar, plugin não configurado.</translation>
-    </message>
-    <message>
-        <source>Cannot geocode, geocode manager not set.</source>
-        <translation>Não foi possível geocodificar, gerenciador de geocodificação não configurado.</translation>
-    </message>
-    <message>
-        <source>Cannot geocode, valid query not set.</source>
-        <translation>Não foi possível geocodificar, consulta válida não configurada.</translation>
-    </message>
-    <message>
-        <source>Plugin does not support (reverse) geocoding.</source>
-        <translation>O plugin não suporta geocodificação (reversa).</translation>
-    </message>
-</context>
-<context>
-    <name>QDeclarativeNavigator</name>
-    <message>
-        <source>Plugin does not support navigation.</source>
-        <translation>O plugin não suporta navegação.</translation>
-    </message>
-    <message>
-        <source>Failed to create a navigator object.</source>
-        <translation>Falha ao criar um objeto navegador.</translation>
-    </message>
-</context>
-<context>
-    <name>QGeoCodeReplyMapbox</name>
-    <message>
-        <source>Response parse error</source>
-        <translation>Erro de análise de resposta</translation>
-    </message>
-</context>
-<context>
-    <name>QGeoMapMapboxGL</name>
-    <message>
-        <source>Development access token, do not use in production.</source>
-        <translation>Token de acesso de desenvolvimento, não use em produção.</translation>
-    </message>
-</context>
-<context>
-    <name>QGeoMappingManagerEngineItemsOverlay</name>
-    <message>
-        <source>Empty Map</source>
-        <translation>Mapa vazio</translation>
-    </message>
-</context>
-<context>
-    <name>QGeoMappingManagerEngineMapboxGL</name>
-    <message>
-        <source>China Streets</source>
-        <translation>Ruas da China</translation>
-    </message>
-    <message>
-        <source>China Light</source>
-        <translation>China claro</translation>
-    </message>
-    <message>
-        <source>China Dark</source>
-        <translation>China escuro</translation>
-    </message>
-    <message>
-        <source>Streets</source>
-        <translation>Ruas</translation>
-    </message>
-    <message>
-        <source>Basic</source>
-        <translation>Básico</translation>
-    </message>
-    <message>
-        <source>Bright</source>
-        <translation>Brilhante</translation>
-    </message>
-    <message>
-        <source>Outdoors</source>
-        <translation>Ar livre</translation>
-    </message>
-    <message>
-        <source>Satellite</source>
-        <translation>Satélite</translation>
-    </message>
-    <message>
-        <source>Satellite Streets</source>
-        <translation>Satélite ruas</translation>
-    </message>
-    <message>
-        <source>Light</source>
-        <translation>Claro</translation>
-    </message>
-    <message>
-        <source>Dark</source>
-        <translation>Escuro</translation>
-    </message>
-    <message>
-        <source>Navigation Preview Day</source>
-        <translation>Visualização diurna da navegação</translation>
-    </message>
-    <message>
-        <source>Navigation Preview Night</source>
-        <translation>Visualização noturna da navegação</translation>
-    </message>
-    <message>
-        <source>Navigation Guidance Day</source>
-        <translation>Orientação diurna da navegação</translation>
-    </message>
-    <message>
-        <source>Navigation Guidance Night</source>
-        <translation>Orientação noturna da navegação</translation>
-    </message>
-    <message>
-        <source>User provided style</source>
-        <translation>Estilo fornecido pelo usuário</translation>
-    </message>
-</context>
-<context>
-    <name>QGeoRouteParserOsrmV4</name>
-    <message>
-        <source>Go straight.</source>
-        <translation>Siga em frente.</translation>
-    </message>
-    <message>
-        <source>Go straight onto %1.</source>
-        <translation>Siga em frente em %1.</translation>
-    </message>
-    <message>
-        <source>Turn slightly right.</source>
-        <translation>Vire ligeiramente à direita.</translation>
-    </message>
-    <message>
-        <source>Turn slightly right onto %1.</source>
-        <translation>Vire ligeiramente à direita em %1.</translation>
-    </message>
-    <message>
-        <source>Turn right.</source>
-        <translation>Vire à direita.</translation>
-    </message>
-    <message>
-        <source>Turn right onto %1.</source>
-        <translation>Vire à direita em %1.</translation>
-    </message>
-    <message>
-        <source>Make a sharp right.</source>
-        <translation>Faça uma curva acentuada à direita.</translation>
-    </message>
-    <message>
-        <source>Make a sharp right onto %1.</source>
-        <translation>Faça uma curva acentuada à direita em %1.</translation>
-    </message>
-    <message>
-        <source>When it is safe to do so, perform a U-turn.</source>
-        <translation>Quando for seguro, faça retorno.</translation>
-    </message>
-    <message>
-        <source>Make a sharp left.</source>
-        <translation>Faça uma curva acentuada à esquerda.</translation>
-    </message>
-    <message>
-        <source>Make a sharp left onto %1.</source>
-        <translation>Faça uma curva acentuada à esquerda em %1.</translation>
-    </message>
-    <message>
-        <source>Turn left.</source>
-        <translation>Vire à esquerda.</translation>
-    </message>
-    <message>
-        <source>Turn left onto %1.</source>
-        <translation>Vire à esquerda em %1.</translation>
-    </message>
-    <message>
-        <source>Turn slightly left.</source>
-        <translation>Vire ligeiramente à esquerda.</translation>
-    </message>
-    <message>
-        <source>Turn slightly left onto %1.</source>
-        <translation>Vire ligeiramente à esquerda em %1.</translation>
-    </message>
-    <message>
-        <source>Reached waypoint.</source>
-        <translation>Chegou no destino.</translation>
-    </message>
-    <message>
-        <source>Head on.</source>
-        <translation>Siga em frente.</translation>
-    </message>
-    <message>
-        <source>Head onto %1.</source>
-        <translation>Siga em frente em %1.</translation>
-    </message>
-    <message>
-        <source>Enter the roundabout.</source>
-        <translation>Entre na rotatória.</translation>
-    </message>
-    <message>
-        <source>At the roundabout take the first exit.</source>
-        <translation>Na rotatória pegue a primeira saída.</translation>
-    </message>
-    <message>
-        <source>At the roundabout take the first exit onto %1.</source>
-        <translation>Na rotatória pegue a primeira saída em %1.</translation>
-    </message>
-    <message>
-        <source>At the roundabout take the second exit.</source>
-        <translation>Na rotatória pegue a segunda saída.</translation>
-    </message>
-    <message>
-        <source>At the roundabout take the second exit onto %1.</source>
-        <translation>Na rotatória pegue a segunda saída em %1.</translation>
-    </message>
-    <message>
-        <source>At the roundabout take the third exit.</source>
-        <translation>Na rotatória pegue a terceira saída.</translation>
-    </message>
-    <message>
-        <source>At the roundabout take the third exit onto %1.</source>
-        <translation>Na rotatória pegue a terceira saída em %1.</translation>
-    </message>
-    <message>
-        <source>At the roundabout take the fourth exit.</source>
-        <translation>Na rotatória pegue a quarta saída.</translation>
-    </message>
-    <message>
-        <source>At the roundabout take the fourth exit onto %1.</source>
-        <translation>Na rotatória pegue a quarta saída em %1.</translation>
-    </message>
-    <message>
-        <source>At the roundabout take the fifth exit.</source>
-        <translation>Na rotatória pegue a quinta saída.</translation>
-    </message>
-    <message>
-        <source>At the roundabout take the fifth exit onto %1.</source>
-        <translation>Na rotatória pegue a quinta saída em %1.</translation>
-    </message>
-    <message>
-        <source>At the roundabout take the sixth exit.</source>
-        <translation>Na rotatória pegue a sexta saída.</translation>
-    </message>
-    <message>
-        <source>At the roundabout take the sixth exit onto %1.</source>
-        <translation>Na rotatória pegue a sexta saída em %1.</translation>
-    </message>
-    <message>
-        <source>At the roundabout take the seventh exit.</source>
-        <translation>Na rotatória pegue a sétima saída.</translation>
-    </message>
-    <message>
-        <source>At the roundabout take the seventh exit onto %1.</source>
-        <translation>Na rotatória pegue a sétima saída em %1.</translation>
-    </message>
-    <message>
-        <source>At the roundabout take the eighth exit.</source>
-        <translation>Na rotatória pegue a oitava saída.</translation>
-    </message>
-    <message>
-        <source>At the roundabout take the eighth exit onto %1.</source>
-        <translation>Na rotatória pegue a oitava saída em %1.</translation>
-    </message>
-    <message>
-        <source>At the roundabout take the ninth exit.</source>
-        <translation>Na rotatória pegue a nona saída.</translation>
-    </message>
-    <message>
-        <source>At the roundabout take the ninth exit onto %1.</source>
-        <translation>Na rotatória pegue a nona saída em %1.</translation>
-    </message>
-    <message>
-        <source>Leave the roundabout.</source>
-        <translation>Saia da rotatória.</translation>
-    </message>
-    <message>
-        <source>Leave the roundabout onto %1.</source>
-        <translation>Saia da rotatória em %1.</translation>
-    </message>
-    <message>
-        <source>Stay on the roundabout.</source>
-        <translation>Permaneça na rotatória.</translation>
-    </message>
-    <message>
-        <source>Start at the end of the street.</source>
-        <translation>Comece no final da rua.</translation>
-    </message>
-    <message>
-        <source>Start at the end of %1.</source>
-        <translation>Comece no final da rua em %1.</translation>
-    </message>
-    <message>
-        <source>You have reached your destination.</source>
-        <translation>Você chegou ao seu destino.</translation>
-    </message>
-    <message>
-        <source>Don&apos;t know what to say for &apos;%1&apos;</source>
-        <translation>Não sei o que dizer para &apos;%1&apos;</translation>
     </message>
 </context>
 <context>
@@ -991,19 +761,53 @@ Visite https://developers.arcgis.com/authentication/accessing-arcgis-online-serv
     </message>
 </context>
 <context>
+    <name>QDeclarativeGeoMap</name>
+    <message>
+        <source>No Map</source>
+        <translation>Sem mapa</translation>
+    </message>
+    <message>
+        <source>Plugin does not support mapping.</source>
+        <translation>O plugin não suporta mapeamento.</translation>
+    </message>
+</context>
+<context>
+    <name>GeoServiceProviderFactoryEsri</name>
+    <message>
+        <source>Esri plugin requires a &apos;esri.token&apos; parameter.
+Please visit https://developers.arcgis.com/authentication/accessing-arcgis-online-services/</source>
+        <translation>O plugin Esri requer um parâmetro &apos;esri.token&apos;.
+Visite https://developers.arcgis.com/authentication/accessing-arcgis-online-services/</translation>
+    </message>
+</context>
+<context>
+    <name>PlaceSearchReplyEsri</name>
+    <message>
+        <source>Response parse error</source>
+        <translation>Erro de análise de resposta</translation>
+    </message>
+</context>
+<context>
+    <name>QGeoMappingManagerEngineItemsOverlay</name>
+    <message>
+        <source>Empty Map</source>
+        <translation>Mapa vazio</translation>
+    </message>
+</context>
+<context>
+    <name>QGeoCodeReplyMapbox</name>
+    <message>
+        <source>Response parse error</source>
+        <translation>Erro de análise de resposta</translation>
+    </message>
+</context>
+<context>
     <name>QGeoServiceProviderFactoryMapbox</name>
     <message>
         <source>Mapbox plugin requires a &apos;mapbox.access_token&apos; parameter.
 Please visit https://www.mapbox.com</source>
         <translation>O plugin Mapbox requer um parâmetro &apos;mapbox.access_token&apos;.
 Visite https://www.mapbox.com</translation>
-    </message>
-</context>
-<context>
-    <name>QGeoTileFetcherNokia</name>
-    <message>
-        <source>Mapping manager no longer exists</source>
-        <translation>O gerenciamento de mapas não existe mais</translation>
     </message>
 </context>
 <context>
@@ -1077,6 +881,94 @@ Visite https://www.mapbox.com</translation>
         <source>High Contrast</source>
         <extracomment>Noun describing type of a map with high contrast</extracomment>
         <translation>Alto contraste</translation>
+    </message>
+</context>
+<context>
+    <name>QPlaceSearchReplyMapbox</name>
+    <message>
+        <source>Response parse error</source>
+        <translation>Erro de análise de resposta</translation>
+    </message>
+</context>
+<context>
+    <name>QPlaceSearchSuggestionReplyMapbox</name>
+    <message>
+        <source>Response parse error</source>
+        <translation>Erro de análise de resposta</translation>
+    </message>
+</context>
+<context>
+    <name>QGeoMapMapboxGL</name>
+    <message>
+        <source>Development access token, do not use in production.</source>
+        <translation>Token de acesso de desenvolvimento, não use em produção.</translation>
+    </message>
+</context>
+<context>
+    <name>QGeoMappingManagerEngineMapboxGL</name>
+    <message>
+        <source>China Streets</source>
+        <translation>Ruas da China</translation>
+    </message>
+    <message>
+        <source>China Light</source>
+        <translation>China claro</translation>
+    </message>
+    <message>
+        <source>China Dark</source>
+        <translation>China escuro</translation>
+    </message>
+    <message>
+        <source>Streets</source>
+        <translation>Ruas</translation>
+    </message>
+    <message>
+        <source>Basic</source>
+        <translation>Básico</translation>
+    </message>
+    <message>
+        <source>Bright</source>
+        <translation>Brilhante</translation>
+    </message>
+    <message>
+        <source>Outdoors</source>
+        <translation>Ar livre</translation>
+    </message>
+    <message>
+        <source>Satellite</source>
+        <translation>Satélite</translation>
+    </message>
+    <message>
+        <source>Satellite Streets</source>
+        <translation>Satélite ruas</translation>
+    </message>
+    <message>
+        <source>Light</source>
+        <translation>Claro</translation>
+    </message>
+    <message>
+        <source>Dark</source>
+        <translation>Escuro</translation>
+    </message>
+    <message>
+        <source>Navigation Preview Day</source>
+        <translation>Visualização diurna da navegação</translation>
+    </message>
+    <message>
+        <source>Navigation Preview Night</source>
+        <translation>Visualização noturna da navegação</translation>
+    </message>
+    <message>
+        <source>Navigation Guidance Day</source>
+        <translation>Orientação diurna da navegação</translation>
+    </message>
+    <message>
+        <source>Navigation Guidance Night</source>
+        <translation>Orientação noturna da navegação</translation>
+    </message>
+    <message>
+        <source>User provided style</source>
+        <translation>Estilo fornecido pelo usuário</translation>
     </message>
 </context>
 <context>
@@ -1247,6 +1139,192 @@ Visite https://www.mapbox.com</translation>
     </message>
 </context>
 <context>
+    <name>QGeoTileFetcherNokia</name>
+    <message>
+        <source>Mapping manager no longer exists</source>
+        <translation>O gerenciamento de mapas não existe mais</translation>
+    </message>
+</context>
+<context>
+    <name>QGeoRouteParserOsrmV4</name>
+    <message>
+        <source>Go straight.</source>
+        <translation>Siga em frente.</translation>
+    </message>
+    <message>
+        <source>Go straight onto %1.</source>
+        <translation>Siga em frente em %1.</translation>
+    </message>
+    <message>
+        <source>Turn slightly right.</source>
+        <translation>Vire ligeiramente à direita.</translation>
+    </message>
+    <message>
+        <source>Turn slightly right onto %1.</source>
+        <translation>Vire ligeiramente à direita em %1.</translation>
+    </message>
+    <message>
+        <source>Turn right.</source>
+        <translation>Vire à direita.</translation>
+    </message>
+    <message>
+        <source>Turn right onto %1.</source>
+        <translation>Vire à direita em %1.</translation>
+    </message>
+    <message>
+        <source>Make a sharp right.</source>
+        <translation>Faça uma curva acentuada à direita.</translation>
+    </message>
+    <message>
+        <source>Make a sharp right onto %1.</source>
+        <translation>Faça uma curva acentuada à direita em %1.</translation>
+    </message>
+    <message>
+        <source>When it is safe to do so, perform a U-turn.</source>
+        <translation>Quando for seguro, faça retorno.</translation>
+    </message>
+    <message>
+        <source>Make a sharp left.</source>
+        <translation>Faça uma curva acentuada à esquerda.</translation>
+    </message>
+    <message>
+        <source>Make a sharp left onto %1.</source>
+        <translation>Faça uma curva acentuada à esquerda em %1.</translation>
+    </message>
+    <message>
+        <source>Turn left.</source>
+        <translation>Vire à esquerda.</translation>
+    </message>
+    <message>
+        <source>Turn left onto %1.</source>
+        <translation>Vire à esquerda em %1.</translation>
+    </message>
+    <message>
+        <source>Turn slightly left.</source>
+        <translation>Vire ligeiramente à esquerda.</translation>
+    </message>
+    <message>
+        <source>Turn slightly left onto %1.</source>
+        <translation>Vire ligeiramente à esquerda em %1.</translation>
+    </message>
+    <message>
+        <source>Reached waypoint.</source>
+        <translation>Chegou no destino.</translation>
+    </message>
+    <message>
+        <source>Head on.</source>
+        <translation>Siga em frente.</translation>
+    </message>
+    <message>
+        <source>Head onto %1.</source>
+        <translation>Siga em frente em %1.</translation>
+    </message>
+    <message>
+        <source>Enter the roundabout.</source>
+        <translation>Entre na rotatória.</translation>
+    </message>
+    <message>
+        <source>At the roundabout take the first exit.</source>
+        <translation>Na rotatória pegue a primeira saída.</translation>
+    </message>
+    <message>
+        <source>At the roundabout take the first exit onto %1.</source>
+        <translation>Na rotatória pegue a primeira saída em %1.</translation>
+    </message>
+    <message>
+        <source>At the roundabout take the second exit.</source>
+        <translation>Na rotatória pegue a segunda saída.</translation>
+    </message>
+    <message>
+        <source>At the roundabout take the second exit onto %1.</source>
+        <translation>Na rotatória pegue a segunda saída em %1.</translation>
+    </message>
+    <message>
+        <source>At the roundabout take the third exit.</source>
+        <translation>Na rotatória pegue a terceira saída.</translation>
+    </message>
+    <message>
+        <source>At the roundabout take the third exit onto %1.</source>
+        <translation>Na rotatória pegue a terceira saída em %1.</translation>
+    </message>
+    <message>
+        <source>At the roundabout take the fourth exit.</source>
+        <translation>Na rotatória pegue a quarta saída.</translation>
+    </message>
+    <message>
+        <source>At the roundabout take the fourth exit onto %1.</source>
+        <translation>Na rotatória pegue a quarta saída em %1.</translation>
+    </message>
+    <message>
+        <source>At the roundabout take the fifth exit.</source>
+        <translation>Na rotatória pegue a quinta saída.</translation>
+    </message>
+    <message>
+        <source>At the roundabout take the fifth exit onto %1.</source>
+        <translation>Na rotatória pegue a quinta saída em %1.</translation>
+    </message>
+    <message>
+        <source>At the roundabout take the sixth exit.</source>
+        <translation>Na rotatória pegue a sexta saída.</translation>
+    </message>
+    <message>
+        <source>At the roundabout take the sixth exit onto %1.</source>
+        <translation>Na rotatória pegue a sexta saída em %1.</translation>
+    </message>
+    <message>
+        <source>At the roundabout take the seventh exit.</source>
+        <translation>Na rotatória pegue a sétima saída.</translation>
+    </message>
+    <message>
+        <source>At the roundabout take the seventh exit onto %1.</source>
+        <translation>Na rotatória pegue a sétima saída em %1.</translation>
+    </message>
+    <message>
+        <source>At the roundabout take the eighth exit.</source>
+        <translation>Na rotatória pegue a oitava saída.</translation>
+    </message>
+    <message>
+        <source>At the roundabout take the eighth exit onto %1.</source>
+        <translation>Na rotatória pegue a oitava saída em %1.</translation>
+    </message>
+    <message>
+        <source>At the roundabout take the ninth exit.</source>
+        <translation>Na rotatória pegue a nona saída.</translation>
+    </message>
+    <message>
+        <source>At the roundabout take the ninth exit onto %1.</source>
+        <translation>Na rotatória pegue a nona saída em %1.</translation>
+    </message>
+    <message>
+        <source>Leave the roundabout.</source>
+        <translation>Saia da rotatória.</translation>
+    </message>
+    <message>
+        <source>Leave the roundabout onto %1.</source>
+        <translation>Saia da rotatória em %1.</translation>
+    </message>
+    <message>
+        <source>Stay on the roundabout.</source>
+        <translation>Permaneça na rotatória.</translation>
+    </message>
+    <message>
+        <source>Start at the end of the street.</source>
+        <translation>Comece no final da rua.</translation>
+    </message>
+    <message>
+        <source>Start at the end of %1.</source>
+        <translation>Comece no final da rua em %1.</translation>
+    </message>
+    <message>
+        <source>You have reached your destination.</source>
+        <translation>Você chegou ao seu destino.</translation>
+    </message>
+    <message>
+        <source>Don&apos;t know what to say for &apos;%1&apos;</source>
+        <translation>Não sei o que dizer para &apos;%1&apos;</translation>
+    </message>
+</context>
+<context>
     <name>QGeoTiledMappingManagerEngineOsm</name>
     <message>
         <source>Street Map</source>
@@ -1385,13 +1463,6 @@ Visite https://www.mapbox.com</translation>
     </message>
 </context>
 <context>
-    <name>QPlaceSearchReplyMapbox</name>
-    <message>
-        <source>Response parse error</source>
-        <translation>Erro de análise de resposta</translation>
-    </message>
-</context>
-<context>
     <name>QPlaceSearchReplyOsm</name>
     <message>
         <source>Response parse error</source>
@@ -1399,79 +1470,14 @@ Visite https://www.mapbox.com</translation>
     </message>
 </context>
 <context>
-    <name>QPlaceSearchSuggestionReplyMapbox</name>
+    <name>QDeclarativeNavigator</name>
     <message>
-        <source>Response parse error</source>
-        <translation>Erro de análise de resposta</translation>
-    </message>
-</context>
-<context>
-    <name>QtLocationQML</name>
-    <message>
-        <source>Plugin property is not set.</source>
-        <translation>A propriedade do plugin não foi definida.</translation>
+        <source>Plugin does not support navigation.</source>
+        <translation>O plugin não suporta navegação.</translation>
     </message>
     <message>
-        <source>Plugin Error (%1): %2</source>
-        <translation>Erro no plugin (%1): %2</translation>
-    </message>
-    <message>
-        <source>Plugin Error (%1): Could not instantiate provider</source>
-        <translation>Erro no plugin (%1): Não foi possível instanciar o fornecedor</translation>
-    </message>
-    <message>
-        <source>Plugin is not valid</source>
-        <translation>O plugin não é válido</translation>
-    </message>
-    <message>
-        <source>Unable to initialize categories</source>
-        <translation>Não foi possível inicializar as categorias</translation>
-    </message>
-    <message>
-        <source>Unable to create request</source>
-        <translation>Não foi possível criar a requisição</translation>
-    </message>
-    <message>
-        <source>Index &apos;%1&apos; out of range</source>
-        <translation>Índice &apos;%1&apos; fora da faixa</translation>
-    </message>
-    <message>
-        <source>Qt Location requires app_id and token parameters.
-Please register at https://developer.here.com/ to get your personal application credentials.</source>
-        <translation>O Qt Location necessita dos parâmetros app_id e token.
-Registre-se em https://developer.here.com/ para obter sua credencial de aplicativo pessoal.</translation>
-    </message>
-    <message>
-        <source>Saving places is not supported.</source>
-        <translation>Salvar lugares não é suportado.</translation>
-    </message>
-    <message>
-        <source>Removing places is not supported.</source>
-        <translation>Excluir lugares não é suportado.</translation>
-    </message>
-    <message>
-        <source>Saving categories is not supported.</source>
-        <translation>Salvar categorias não é suportado.</translation>
-    </message>
-    <message>
-        <source>Removing categories is not supported.</source>
-        <translation>Excluir categorias não é suportado.</translation>
-    </message>
-    <message>
-        <source>Error parsing response.</source>
-        <translation>Erro ao analisar a resposta.</translation>
-    </message>
-    <message>
-        <source>Network error.</source>
-        <translation>Erro de rede.</translation>
-    </message>
-    <message>
-        <source>Request was canceled.</source>
-        <translation>A requisição foi cancelada.</translation>
-    </message>
-    <message>
-        <source>The response from the service was not in a recognizable format.</source>
-        <translation>A resposta do servidor não veio em um formato reconhecido.</translation>
+        <source>Failed to create a navigator object.</source>
+        <translation>Falha ao criar um objeto navegador.</translation>
     </message>
 </context>
 <context>

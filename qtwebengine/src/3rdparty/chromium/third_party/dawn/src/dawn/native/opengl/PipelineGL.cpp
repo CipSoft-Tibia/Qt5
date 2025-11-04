@@ -52,7 +52,10 @@ PipelineGL::~PipelineGL() = default;
 
 MaybeError PipelineGL::InitializeBase(const OpenGLFunctions& gl,
                                       const PipelineLayout* layout,
-                                      const PerStage<ProgrammableStage>& stages) {
+                                      const PerStage<ProgrammableStage>& stages,
+                                      bool usesVertexIndex,
+                                      bool usesInstanceIndex,
+                                      bool usesFragDepth) {
     mProgram = gl.CreateProgram();
 
     // Compute the set of active stages.
@@ -70,10 +73,11 @@ MaybeError PipelineGL::InitializeBase(const OpenGLFunctions& gl,
     for (SingleShaderStage stage : IterateStages(activeStages)) {
         const ShaderModule* module = ToBackend(stages[stage].module.Get());
         GLuint shader;
-        DAWN_TRY_ASSIGN(shader, module->CompileShader(
-                                    gl, stages[stage], stage, &combinedSamplers[stage], layout,
-                                    &needsPlaceholderSampler, &mNeedsTextureBuiltinUniformBuffer,
-                                    &mBindingPointEmulatedBuiltins));
+        DAWN_TRY_ASSIGN(
+            shader, module->CompileShader(
+                        gl, stages[stage], stage, usesVertexIndex, usesInstanceIndex, usesFragDepth,
+                        &combinedSamplers[stage], layout, &needsPlaceholderSampler,
+                        &mNeedsTextureBuiltinUniformBuffer, &mBindingPointEmulatedBuiltins));
         gl.AttachShader(mProgram, shader);
         glShaders.push_back(shader);
     }
@@ -147,7 +151,8 @@ MaybeError PipelineGL::InitializeBase(const OpenGLFunctions& gl,
             GLuint textureIndex = indices[combined.textureLocation.group][bindingIndex];
             mUnitsForTextures[textureIndex].push_back(textureUnit);
 
-            shouldUseFiltering = bgl->GetBindingInfo(bindingIndex).texture.sampleType ==
+            const auto& bindingLayout = bgl->GetBindingInfo(bindingIndex).bindingLayout;
+            shouldUseFiltering = std::get<TextureBindingInfo>(bindingLayout).sampleType ==
                                  wgpu::TextureSampleType::Float;
         }
         {
@@ -212,8 +217,7 @@ const Buffer* PipelineGL::GetInternalUniformBuffer() const {
     return mTextureBuiltinsBuffer.Get();
 }
 
-const tint::TextureBuiltinsFromUniformOptions::BindingPointToFieldAndOffset&
-PipelineGL::GetBindingPointBuiltinDataInfo() const {
+const BindingPointToFunctionAndOffset& PipelineGL::GetBindingPointBuiltinDataInfo() const {
     return mBindingPointEmulatedBuiltins;
 }
 

@@ -18,7 +18,6 @@ rtc_library("rtc_stats") {
   sources = [
     "attribute.cc",
     "rtc_stats.cc",
-    "rtc_stats_member.cc",
     "rtc_stats_report.cc",
     "rtcstats_objects.cc",
   ]
@@ -28,8 +27,8 @@ rtc_library("rtc_stats") {
     "../rtc_base:checks",
     "../rtc_base:macromagic",
     "../rtc_base:stringutils",
+    "//third_party/abseil-cpp/absl/types:variant",
   ]
-  absl_deps = [ "//third_party/abseil-cpp/absl/types:variant" ]
 }
 
 rtc_library("rtc_stats_test_utils") {

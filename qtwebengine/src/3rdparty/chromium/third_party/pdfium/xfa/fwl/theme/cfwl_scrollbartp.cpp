@@ -14,7 +14,10 @@
 #include "xfa/fwl/cfwl_widget.h"
 #include "xfa/fwl/ifwl_themeprovider.h"
 
-CFWL_ScrollBarTP::CFWL_ScrollBarTP() : m_pThemeData(new SBThemeData) {
+namespace pdfium {
+
+CFWL_ScrollBarTP::CFWL_ScrollBarTP()
+    : m_pThemeData(std::make_unique<SBThemeData>()) {
   SetThemeData();
 }
 
@@ -76,8 +79,8 @@ void CFWL_ScrollBarTP::DrawThumbBtn(CFGAS_GEGraphics* pGraphics,
     return;
 
   FillSolidRect(pGraphics,
-                m_pThemeData->clrBtnBK[static_cast<size_t>(eState) - 1][1],
-                rect, matrix);
+                m_pThemeData->clrBtnBK[static_cast<size_t>(eState) - 1], rect,
+                matrix);
 
   CFGAS_GEGraphics::StateRestorer restorer(pGraphics);
   CFGAS_GEPath path;
@@ -134,16 +137,14 @@ void CFWL_ScrollBarTP::DrawMaxMinBtn(CFGAS_GEGraphics* pGraphics,
 void CFWL_ScrollBarTP::SetThemeData() {
   m_pThemeData->clrTrackBKStart = ArgbEncode(0xff, 243, 241, 236);
   m_pThemeData->clrTrackBKEnd = ArgbEncode(0xff, 254, 254, 251);
-  m_pThemeData->clrBtnBK[0][0] = ArgbEncode(0xff, 197, 213, 252);
-  m_pThemeData->clrBtnBK[0][1] = ArgbEncode(0xff, 182, 205, 251);
-  m_pThemeData->clrBtnBK[1][0] = ArgbEncode(0xff, 216, 232, 255);
-  m_pThemeData->clrBtnBK[1][1] = ArgbEncode(0xff, 204, 225, 255);
-  m_pThemeData->clrBtnBK[2][0] = ArgbEncode(0xff, 167, 190, 245);
-  m_pThemeData->clrBtnBK[2][1] = ArgbEncode(0xff, 146, 179, 249);
-  m_pThemeData->clrBtnBK[3][0] = ArgbEncode(0xff, 164, 180, 139);
-  m_pThemeData->clrBtnBK[3][1] = ArgbEncode(0xff, 141, 157, 115);
+  m_pThemeData->clrBtnBK[0] = ArgbEncode(0xff, 182, 205, 251);
+  m_pThemeData->clrBtnBK[1] = ArgbEncode(0xff, 204, 225, 255);
+  m_pThemeData->clrBtnBK[2] = ArgbEncode(0xff, 146, 179, 249);
+  m_pThemeData->clrBtnBK[3] = ArgbEncode(0xff, 141, 157, 115);
   m_pThemeData->clrBtnBorder[0] = ArgbEncode(0xff, 148, 176, 221);
   m_pThemeData->clrBtnBorder[1] = ArgbEncode(0xff, 218, 230, 254);
   m_pThemeData->clrBtnBorder[2] = ArgbEncode(0xff, 124, 159, 211);
   m_pThemeData->clrBtnBorder[3] = ArgbEncode(0xff, 236, 233, 216);
 }
+
+}  // namespace pdfium

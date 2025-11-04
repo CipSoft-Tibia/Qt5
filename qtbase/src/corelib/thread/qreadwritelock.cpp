@@ -2,6 +2,7 @@
 // Copyright (C) 2016 Intel Corporation.
 // Copyright (C) 2016 Olivier Goffart <ogoffart@woboq.com>
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qplatformdefs.h"
 #include "qreadwritelock.h"
@@ -225,7 +226,10 @@ Q_NEVER_INLINE static bool contendedTryLockForRead(QAtomicPointer<QReadWriteLock
             d = val;
         }
         Q_ASSERT(!isUncontendedLocked(d));
-        // d is an actual pointer;
+        // d is an actual pointer; acquire its contents
+        d = d_ptr.loadAcquire();
+        if (!d || isUncontendedLocked(d))
+            continue;
 
         if (d->recursive)
             return d->recursiveLockForRead(timeout);
@@ -333,7 +337,10 @@ Q_NEVER_INLINE static bool contendedTryLockForWrite(QAtomicPointer<QReadWriteLoc
             d = val;
         }
         Q_ASSERT(!isUncontendedLocked(d));
-        // d is an actual pointer;
+        // d is an actual pointer; acquire its contents
+        d = d_ptr.loadAcquire();
+        if (!d || isUncontendedLocked(d))
+            continue;
 
         if (d->recursive)
             return d->recursiveLockForWrite(timeout);

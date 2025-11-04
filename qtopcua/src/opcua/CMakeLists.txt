@@ -100,7 +100,7 @@ qt_internal_extend_target(OpcUa
     CONDITION
         QT_FEATURE_gds AND QT_FEATURE_openssl AND NOT APPLE AND NOT WINRT
     SOURCES
-        client/qopcuagdsclient.cpp client/qopcuagdsclient_p.h
+        client/qopcuagdsclient.cpp client/qopcuagdsclient.h client/qopcuagdsclient_p.h
         x509/openssl_symbols.cpp
         x509/qopcuakeypair.cpp x509/qopcuakeypair.h
         x509/qopcuakeypair_openssl.cpp
@@ -122,9 +122,10 @@ if (QT_FEATURE_gds AND QT_FEATURE_openssl)
 endif()
 
 if(MSVC)
-    target_compile_options(OpcUa PRIVATE /constexpr:steps3500000)
+    target_compile_options(OpcUa PRIVATE /constexpr:steps4600000)
+    target_compile_definitions(OpcUa PRIVATE USE_CUSTOM_NODEIDS_METAOBJECT)
 elseif(GCC)
-    target_compile_options(OpcUa PRIVATE -fconstexpr-ops-limit=40000000)
+    target_compile_options(OpcUa PRIVATE -fconstexpr-ops-limit=70000000)
 elseif(CLANG)
     target_compile_options(OpcUa PRIVATE -fconstexpr-steps=2000000)
 endif()

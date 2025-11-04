@@ -4,6 +4,7 @@
 
 #include "content/browser/web_package/prefetched_signed_exchange_cache.h"
 
+#include <string_view>
 #include <utility>
 
 #include "base/base64.h"
@@ -39,10 +40,10 @@
 #include "net/http/http_util.h"
 #include "net/url_request/redirect_util.h"
 #include "services/network/public/cpp/constants.h"
-#include "services/network/public/cpp/corb/corb_api.h"
 #include "services/network/public/cpp/cors/cors.h"
 #include "services/network/public/cpp/features.h"
 #include "services/network/public/cpp/initiator_lock_compatibility.h"
+#include "services/network/public/cpp/orb/orb_api.h"
 #include "services/network/public/cpp/resource_request.h"
 #include "services/network/public/cpp/shared_url_loader_factory.h"
 #include "services/network/public/cpp/single_request_url_loader_factory.h"
@@ -99,7 +100,7 @@ class RedirectResponseURLLoader : public network::mojom::URLLoader {
       const net::HttpRequestHeaders& modified_headers,
       const net::HttpRequestHeaders& modified_cors_exempt_headers,
       const std::optional<GURL>& new_url) override {
-    NOTREACHED();
+    NOTREACHED_IN_MIGRATION();
   }
   void SetPriority(net::RequestPriority priority,
                    int intra_priority_value) override {
@@ -146,11 +147,12 @@ class PrefetchedNavigationLoaderInterceptor
     if (state_ == State::kInitial &&
         tentative_resource_request.url == exchange_->outer_url()) {
       state_ = State::kOuterRequestRequested;
-      std::move(callback).Run(
+      std::move(callback).Run(NavigationLoaderInterceptor::Result(
           base::MakeRefCounted<network::SingleRequestURLLoaderFactory>(
               base::BindOnce(
                   &PrefetchedNavigationLoaderInterceptor::StartRedirectResponse,
-                  weak_factory_.GetWeakPtr())));
+                  weak_factory_.GetWeakPtr())),
+          /*subresource_loader_params=*/{}));
       return;
     }
     if (tentative_resource_request.url == exchange_->inner_url()) {
@@ -159,30 +161,22 @@ class PrefetchedNavigationLoaderInterceptor
               *exchange_->inner_response()->headers)) {
         DCHECK(cookie_manager_);
         state_ = State::kCheckingCookies;
-        CheckAbsenceOfCookies(tentative_resource_request, std::move(callback),
-                              std::move(fallback_callback));
+        CheckAbsenceOfCookies(tentative_resource_request, std::move(callback));
         return;
       } else {
         state_ = State::kInnerResponseRequested;
-        std::move(callback).Run(
+        SubresourceLoaderParams params;
+        params.prefetched_signed_exchanges = std::move(info_list_);
+        std::move(callback).Run(NavigationLoaderInterceptor::Result(
             base::MakeRefCounted<network::SingleRequestURLLoaderFactory>(
                 base::BindOnce(
                     &PrefetchedNavigationLoaderInterceptor::StartInnerResponse,
-                    weak_factory_.GetWeakPtr())));
+                    weak_factory_.GetWeakPtr())),
+            std::move(params)));
         return;
       }
     }
-    DUMP_WILL_BE_NOTREACHED_NORETURN();
-  }
-
-  std::optional<SubresourceLoaderParams> MaybeCreateSubresourceLoaderParams()
-      override {
-    if (state_ != State::kInnerResponseRequested)
-      return std::nullopt;
-
-    SubresourceLoaderParams params;
-    params.prefetched_signed_exchanges = std::move(info_list_);
-    return std::make_optional(std::move(params));
+    DUMP_WILL_BE_NOTREACHED();
   }
 
  private:
@@ -194,23 +188,21 @@ class PrefetchedNavigationLoaderInterceptor
   };
 
   void CheckAbsenceOfCookies(const network::ResourceRequest& request,
-                             LoaderCallback callback,
-                             FallbackCallback fallback_callback) {
+                             LoaderCallback callback) {
     auto match_options = network::mojom::CookieManagerGetOptions::New();
     match_options->name = "";
     match_options->match_type = network::mojom::CookieMatchType::STARTS_WITH;
     cookie_manager_->GetAllForUrl(
         request.url, request.trusted_params->isolation_info.site_for_cookies(),
         *request.trusted_params->isolation_info.top_frame_origin(),
-        request.has_storage_access, std::move(match_options),
+        request.storage_access_api_status, std::move(match_options),
         request.is_ad_tagged,
+        /*force_disable_third_party_cookies=*/false,
         base::BindOnce(&PrefetchedNavigationLoaderInterceptor::OnGetCookies,
-                       weak_factory_.GetWeakPtr(), std::move(callback),
-                       std::move(fallback_callback)));
+                       weak_factory_.GetWeakPtr(), std::move(callback)));
   }
 
   void OnGetCookies(LoaderCallback callback,
-                    FallbackCallback fallback_callback,
                     const std::vector<net::CookieWithAccessResult>& results) {
     DCHECK_EQ(State::kCheckingCookies, state_);
     if (!results.empty()) {
@@ -220,18 +212,21 @@ class PrefetchedNavigationLoaderInterceptor
       ResponseHeadUpdateParams head_update_params;
       head_update_params.load_timing_info =
           this->exchange_->outer_response()->load_timing;
-      std::move(fallback_callback)
-          .Run(true /* reset_subresource_loader_params */,
-               // TODO(crbug.com/1441384) test workerStart in SXG scenarios
-               head_update_params);
+      // TODO(crbug.com/40266535) test workerStart in SXG scenarios
+      std::move(callback).Run(NavigationLoaderInterceptor::Result(
+          /*factory=*/nullptr, /*subresource_loader_params=*/{},
+          std::move(head_update_params)));
       return;
     }
     state_ = State::kInnerResponseRequested;
-    std::move(callback).Run(
+    SubresourceLoaderParams params;
+    params.prefetched_signed_exchanges = std::move(info_list_);
+    std::move(callback).Run(NavigationLoaderInterceptor::Result(
         base::MakeRefCounted<network::SingleRequestURLLoaderFactory>(
             base::BindOnce(
                 &PrefetchedNavigationLoaderInterceptor::StartInnerResponse,
-                weak_factory_.GetWeakPtr())));
+                weak_factory_.GetWeakPtr())),
+        std::move(params)));
   }
 
   void StartRedirectResponse(
@@ -264,10 +259,10 @@ class PrefetchedNavigationLoaderInterceptor
     // guaranteed to have a value here.
     CHECK(resource_request.request_initiator.has_value());
 
-    // Okay to use separate/empty CORB/ORB state for each navigation request.
-    // (Because CORB doesn't apply to navigation requests.)
-    auto empty_corb_state = base::MakeRefCounted<
-        base::RefCountedData<network::corb::PerFactoryState>>();
+    // Okay to use separate/empty ORB state for each navigation request.
+    // (Because ORB doesn't apply to navigation requests.)
+    auto empty_orb_state = base::MakeRefCounted<
+        base::RefCountedData<network::orb::PerFactoryState>>();
 
     mojo::MakeSelfOwnedReceiver(
         std::make_unique<SignedExchangeInnerResponseURLLoader>(
@@ -275,7 +270,7 @@ class PrefetchedNavigationLoaderInterceptor
             std::make_unique<const storage::BlobDataHandle>(
                 *exchange_->blob_data_handle()),
             *exchange_->completion_status(), std::move(client),
-            true /* is_navigation_request */, std::move(empty_corb_state)),
+            true /* is_navigation_request */, std::move(empty_orb_state)),
         std::move(receiver));
   }
 
@@ -335,11 +330,11 @@ bool CanUseEntry(const PrefetchedSignedExchangeCacheEntry& entry,
 
 // Deserializes a SHA256HashValue from a string. On error, returns false.
 // This method support the form of "sha256-<base64-hash-value>".
-bool ExtractSHA256HashValueFromString(const base::StringPiece value,
+bool ExtractSHA256HashValueFromString(const std::string_view value,
                                       net::SHA256HashValue* out) {
   if (!base::StartsWith(value, "sha256-"))
     return false;
-  const base::StringPiece base64_str = value.substr(7);
+  const std::string_view base64_str = value.substr(7);
   std::string decoded;
   if (!base::Base64Decode(base64_str, &decoded) ||
       decoded.size() != sizeof(out->data)) {
@@ -374,7 +369,7 @@ std::map<GURL, net::SHA256HashValue> GetAllowedAltSXG(
     if (rel == link_params.end() || header_integrity == link_params.end() ||
         rel->second.value_or("") != std::string(kAllowedAltSxg) ||
         !ExtractSHA256HashValueFromString(
-            base::StringPiece(header_integrity->second.value_or("")),
+            std::string_view(header_integrity->second.value_or("")),
             &header_integrity_value)) {
       continue;
     }
@@ -419,7 +414,7 @@ void PrefetchedSignedExchangeCache::Clear() {
 std::unique_ptr<NavigationLoaderInterceptor>
 PrefetchedSignedExchangeCache::MaybeCreateInterceptor(
     const GURL& outer_url,
-    int frame_tree_node_id,
+    FrameTreeNodeId frame_tree_node_id,
     const net::IsolationInfo& isolation_info) {
   DCHECK_CURRENTLY_ON(BrowserThread::UI);
   const auto it = exchanges_.find(outer_url);
@@ -484,7 +479,7 @@ std::vector<blink::mojom::PrefetchedSignedExchangeInfoPtr>
 PrefetchedSignedExchangeCache::GetInfoListForNavigation(
     const PrefetchedSignedExchangeCacheEntry& main_exchange,
     const base::Time& verification_time,
-    int frame_tree_node_id,
+    FrameTreeNodeId frame_tree_node_id,
     const net::NetworkAnonymizationKey& network_anonymization_key) {
   DCHECK_CURRENTLY_ON(BrowserThread::UI);
 

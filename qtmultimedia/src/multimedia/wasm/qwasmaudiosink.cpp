@@ -41,10 +41,8 @@ protected:
     qint64 writeData(const char *data, qint64 len) override;
 };
 
-QWasmAudioSink::QWasmAudioSink(const QByteArray &device, QObject *parent)
-    : QPlatformAudioSink(parent),
-      m_name(device),
-      m_timer(new QTimer(this))
+QWasmAudioSink::QWasmAudioSink(QAudioDevice device, const QAudioFormat &fmt, QObject *parent)
+    : QPlatformAudioSink(std::move(device), fmt, parent), m_timer(new QTimer(this))
 {
     m_timer->setSingleShot(false);
     aldata = new ALData();
@@ -57,6 +55,10 @@ QWasmAudioSink::QWasmAudioSink(const QByteArray &device, QObject *parent)
             updateState();
         }
     });
+
+    m_bufferFragmentSize = m_format.bytesForDuration(DEFAULT_BUFFER_DURATION);
+    m_bufferSize = m_bufferFragmentSize * m_bufferFragmentsCount;
+    m_tmpData = new char[m_bufferFragmentSize];
 }
 
 QWasmAudioSink::~QWasmAudioSink()
@@ -130,7 +132,7 @@ void QWasmAudioSink::start(bool mode)
     }
 
     alGetError();
-    aldata->device = alcOpenDevice(m_name.data());
+    aldata->device = alcOpenDevice(m_audioDevice.id().constData());
     if (!aldata->device) {
         qWarning() << "Failed to open audio device" << alGetString(alGetError());
         return setError(QAudio::OpenError);
@@ -155,7 +157,7 @@ void QWasmAudioSink::start(bool mode)
     m_processed = 0;
     m_tmpDataOffset = 0;
     m_pullMode = mode;
-    alSourcef(aldata->source, AL_GAIN, m_volume);
+    alSourcef(aldata->source, AL_GAIN, volume());
     if (m_pullMode)
         loadALBuffers();
     m_timer->setInterval(DEFAULT_BUFFER_DURATION / 3000);
@@ -192,7 +194,7 @@ void QWasmAudioSink::stop()
 void QWasmAudioSink::reset()
 {
     stop();
-    m_error = QAudio::NoError;
+    setError(QAudio::NoError);
 }
 
 void QWasmAudioSink::suspend()
@@ -241,11 +243,6 @@ qint64 QWasmAudioSink::processedUSecs() const
                                          DEFAULT_BUFFER_DURATION * processed));
 }
 
-QAudio::Error QWasmAudioSink::error() const
-{
-    return m_error;
-}
-
 QAudio::State QWasmAudioSink::state() const
 {
     if (!m_running)
@@ -265,35 +262,11 @@ QAudio::State QWasmAudioSink::state() const
     return QAudio::StoppedState;
 }
 
-void QWasmAudioSink::setFormat(const QAudioFormat &fmt)
+void QWasmAudioSink::setVolume(float volume)
 {
-    if (m_running)
-        return;
-    m_format = fmt;
-    if (m_tmpData)
-        delete[] m_tmpData;
-    m_bufferFragmentSize = m_format.bytesForDuration(DEFAULT_BUFFER_DURATION);
-    m_bufferSize = m_bufferFragmentSize * m_bufferFragmentsCount;
-    m_tmpData = new char[m_bufferFragmentSize];
-}
-
-QAudioFormat QWasmAudioSink::format() const
-{
-    return m_format;
-}
-
-void QWasmAudioSink::setVolume(qreal volume)
-{
-    if (m_volume == volume)
-        return;
-    m_volume = volume;
+    QPlatformAudioEndpointBase::setVolume(volume);
     if (m_running)
         alSourcef(aldata->source, AL_GAIN, volume);
-}
-
-qreal QWasmAudioSink::volume() const
-{
-    return m_volume;
 }
 
 void QWasmAudioSink::loadALBuffers()
@@ -364,7 +337,7 @@ void QWasmAudioSink::nextALBuffers()
     loadALBuffers();
     ALint state;
     alGetSourcei(aldata->source, AL_SOURCE_STATE, &state);
-    if (state != AL_PLAYING && m_error == QAudio::NoError)
+    if (state != AL_PLAYING && error() == QAudio::NoError)
         alSourcePlay(aldata->source);
     updateState();
 }
@@ -385,15 +358,12 @@ void QWasmAudioSink::updateState()
 
 void QWasmAudioSink::setError(QAudio::Error error)
 {
-    if (error == m_error)
-        return;
-    m_error = error;
+    QPlatformAudioEndpointBase::setError(error);
+
     if (error != QAudio::NoError) {
         m_timer->stop();
         alSourceRewind(aldata->source);
     }
-
-    emit errorChanged(error);
 }
 
 QWasmAudioSinkDevice::QWasmAudioSinkDevice(QWasmAudioSink *parent)

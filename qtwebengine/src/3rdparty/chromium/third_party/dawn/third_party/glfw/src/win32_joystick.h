@@ -1,5 +1,5 @@
 //========================================================================
-// GLFW 3.4 Win32 - www.glfw.org
+// GLFW 3.5 Win32 - www.glfw.org
 //------------------------------------------------------------------------
 // Copyright (c) 2006-2017 Camilla Löwy <elmindreda@glfw.org>
 //
@@ -26,8 +26,6 @@
 
 #define GLFW_WIN32_JOYSTICK_STATE         _GLFWjoystickWin32 win32;
 #define GLFW_WIN32_LIBRARY_JOYSTICK_STATE
-
-#define GLFW_BUILD_WIN32_MAPPINGS
 
 // Joystick element (axis, button or slider)
 //

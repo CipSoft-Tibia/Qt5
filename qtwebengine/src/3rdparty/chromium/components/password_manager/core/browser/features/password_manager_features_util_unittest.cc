@@ -15,14 +15,16 @@
 #include "components/signin/public/base/signin_pref_names.h"
 #include "components/signin/public/base/signin_switches.h"
 #include "components/signin/public/identity_manager/account_info.h"
+#include "components/sync/base/features.h"
 #include "components/sync/base/pref_names.h"
 #include "components/sync/service/sync_prefs.h"
+#include "components/sync/service/sync_user_settings.h"
 #include "components/sync/test/test_sync_service.h"
 #include "testing/gtest/include/gtest/gtest.h"
 
 namespace password_manager::features_util {
 
-class PasswordManagerFeaturesUtilTestBase {
+class PasswordManagerFeaturesUtilTestBase : public testing::Test {
  public:
   PasswordManagerFeaturesUtilTestBase() {
 #if !BUILDFLAG(IS_IOS) && !BUILDFLAG(IS_ANDROID)
@@ -37,68 +39,77 @@ class PasswordManagerFeaturesUtilTestBase {
   }
 
  protected:
-  // Sets up |sync_service_| for the case where there is no signed-in user (so
-  // |sync_service_| will be fully inactive).
-  void SetSyncStateNotSignedIn() {
-    sync_service_.SetAccountInfo(CoreAccountInfo());
-    sync_service_.SetHasSyncConsent(false);
-    sync_service_.SetTransportState(
-        syncer::SyncService::TransportState::DISABLED);
-    sync_service_.SetDisableReasons(
-        {syncer::SyncService::DisableReason::DISABLE_REASON_NOT_SIGNED_IN});
-  }
-
-  // Sets up |sync_service_| for the case where there is a signed-in user, but
-  // they have *not* enabled Sync-the-feature. Sync will be active in
-  // "transport-only" mode, meaning that the user will be eligibe for
-  // account-based features such as the account-scoped password storage.
-  void SetSyncStateTransportActive(const CoreAccountInfo& account) {
-    sync_service_.SetAccountInfo(account);
-    sync_service_.SetHasSyncConsent(false);
-    sync_service_.SetTransportState(
-        syncer::SyncService::TransportState::ACTIVE);
-    sync_service_.SetDisableReasons({});
-    ASSERT_FALSE(sync_service_.IsSyncFeatureEnabled());
-  }
-
-  // Sets up |sync_service_| for the case where the signed-in user has enabled
-  // Sync-the-feature.
-  void SetSyncStateFeatureActive(const CoreAccountInfo& account) {
-    sync_service_.SetAccountInfo(account);
-    sync_service_.SetHasSyncConsent(true);
-    sync_service_.SetTransportState(
-        syncer::SyncService::TransportState::ACTIVE);
-    sync_service_.SetDisableReasons({});
-    sync_service_.SetInitialSyncFeatureSetupComplete(true);
-    ASSERT_TRUE(sync_service_.IsSyncFeatureEnabled());
-  }
-
   TestingPrefServiceSimple pref_service_;
   syncer::TestSyncService sync_service_;
 };
 
-// Test fixture where the account-scoped password storage is *disabled*.
+#if BUILDFLAG(IS_ANDROID)
+// Test fixture where the account-scoped password storage is *disabled* for both
+// syncing and non-syncing users, i.e. CanCreateAccountStore() is false. Android
+// is the only platform still supporting that.
 class PasswordManagerFeaturesUtilWithoutAccountStorageTest
-    : public PasswordManagerFeaturesUtilTestBase,
-      public testing::Test {
+    : public PasswordManagerFeaturesUtilTestBase {
  public:
   PasswordManagerFeaturesUtilWithoutAccountStorageTest() {
-    features_.InitAndDisableFeature(features::kEnablePasswordsAccountStorage);
+    pref_service_.registry()->RegisterIntegerPref(
+        prefs::kPasswordsUseUPMLocalAndSeparateStores,
+        static_cast<int>(
+            password_manager::prefs::UseUpmLocalAndSeparateStoresState::kOff));
+  }
+};
+#endif  // BUIDLFLAG(IS_ANDROID)
+
+// Test fixture where account storage is enabled (via flag) for signed-in
+// non-syncing users and disabled for syncing users.
+class PasswordManagerFeaturesUtilWithAccountStorageForNonSyncingTest
+    : public PasswordManagerFeaturesUtilTestBase {
+ public:
+  PasswordManagerFeaturesUtilWithAccountStorageForNonSyncingTest() {
+    feature_list_.InitWithFeatures(
+        /*enabled_features=*/
+        {syncer::kEnablePasswordsAccountStorageForNonSyncingUsers},
+        /*disabled_features=*/{
+            syncer::kEnablePasswordsAccountStorageForSyncingUsers});
+#if BUILDFLAG(IS_ANDROID)
+    pref_service_.registry()->RegisterIntegerPref(
+        prefs::kPasswordsUseUPMLocalAndSeparateStores,
+        static_cast<int>(
+            password_manager::prefs::UseUpmLocalAndSeparateStoresState::kOn));
+#endif  //  BUILDFLAG(IS_ANDROID)
+#if !BUILDFLAG(IS_IOS) && !BUILDFLAG(IS_ANDROID)
+    pref_service_.registry()->RegisterBooleanPref(
+        ::prefs::kExplicitBrowserSignin, false);
+#endif  // !BUILDFLAG(IS_IOS) && !BUILDFLAG(IS_ANDROID)
   }
 
  private:
-  base::test::ScopedFeatureList features_;
+  base::test::ScopedFeatureList feature_list_;
 };
 
-// Test fixture where the account-scoped password storage is *enabled*.
-class PasswordManagerFeaturesUtilTest
-    : public PasswordManagerFeaturesUtilTestBase,
-      public testing::Test {
+// Test fixture where account storage is enabled (via flag) for syncing users
+// and disabled for non-syncing users.
+class PasswordManagerFeaturesUtilWithAccountStorageForSyncingUsersTest
+    : public PasswordManagerFeaturesUtilTestBase {
+ public:
+  PasswordManagerFeaturesUtilWithAccountStorageForSyncingUsersTest() {
+    feature_list_.InitWithFeatures(
+        /*enabled_features=*/
+        {syncer::kEnablePasswordsAccountStorageForSyncingUsers},
+        /*disabled_features=*/{
+            syncer::kEnablePasswordsAccountStorageForNonSyncingUsers});
+#if BUILDFLAG(IS_ANDROID)
+    pref_service_.registry()->RegisterIntegerPref(
+        prefs::kPasswordsUseUPMLocalAndSeparateStores,
+        static_cast<int>(
+            password_manager::prefs::UseUpmLocalAndSeparateStoresState::kOn));
+#endif  //  BUILDFLAG(IS_ANDROID)
+  }
+
  private:
-  base::test::ScopedFeatureList features_{
-      features::kEnablePasswordsAccountStorage};
+  base::test::ScopedFeatureList feature_list_;
 };
 
+#if BUILDFLAG(IS_ANDROID)
 TEST_F(PasswordManagerFeaturesUtilWithoutAccountStorageTest,
        AccountStorageOptIn) {
   CoreAccountInfo account;
@@ -106,60 +117,73 @@ TEST_F(PasswordManagerFeaturesUtilWithoutAccountStorageTest,
   account.gaia = "foo";
   account.account_id = CoreAccountId::FromGaiaId(account.gaia);
 
-  // SyncService is running in transport mode with |account|.
-  SetSyncStateTransportActive(account);
+  // SyncService is running in transport mode with |account| and the opt-in
+  // bit is even present.
+  sync_service_.SetSignedIn(signin::ConsentLevel::kSignin, account);
+  sync_service_.GetUserSettings()->SetSelectedType(
+      syncer::UserSelectableType::kPasswords, true);
 
-  // Since the account storage feature is disabled, the profile store should be
+  // Since the account storage is disabled, the profile store should be the
   // the default.
-  EXPECT_FALSE(IsOptedInForAccountStorage(&sync_service_));
-  EXPECT_FALSE(ShouldShowAccountStorageOptIn(&sync_service_));
+  EXPECT_FALSE(IsOptedInForAccountStorage(&pref_service_, &sync_service_));
+  EXPECT_FALSE(ShouldShowAccountStorageOptIn(&pref_service_, &sync_service_));
+  EXPECT_EQ(GetDefaultPasswordStore(&pref_service_, &sync_service_),
+            PasswordForm::Store::kProfileStore);
+
+  // Same if the user is syncing.
+  sync_service_.SetSignedIn(signin::ConsentLevel::kSync, account);
+  EXPECT_FALSE(IsOptedInForAccountStorage(&pref_service_, &sync_service_));
   EXPECT_EQ(GetDefaultPasswordStore(&pref_service_, &sync_service_),
             PasswordForm::Store::kProfileStore);
 
   // Same if the user is signed out.
-  SetSyncStateNotSignedIn();
-  EXPECT_FALSE(IsOptedInForAccountStorage(&sync_service_));
+  sync_service_.SetSignedOut();
+  EXPECT_FALSE(IsOptedInForAccountStorage(&pref_service_, &sync_service_));
   EXPECT_EQ(GetDefaultPasswordStore(&pref_service_, &sync_service_),
             PasswordForm::Store::kProfileStore);
 }
+#endif  // BUILDFLAG(IS_ANDROID)
 
 #if !BUILDFLAG(IS_IOS) && !BUILDFLAG(IS_ANDROID)
-TEST_F(PasswordManagerFeaturesUtilTest, AccountStorageOptIn) {
+TEST_F(PasswordManagerFeaturesUtilWithAccountStorageForNonSyncingTest,
+       AccountStorageOptIn) {
   CoreAccountInfo account;
   account.email = "foo@account.com";
   account.gaia = "foo";
   account.account_id = CoreAccountId::FromGaiaId(account.gaia);
 
-  SetSyncStateNotSignedIn();
+  sync_service_.SetSignedOut();
 
   // Initially the user is not signed in, so everything is off/local.
-  EXPECT_FALSE(IsOptedInForAccountStorage(&sync_service_));
-  EXPECT_FALSE(ShouldShowAccountStorageOptIn(&sync_service_));
+  EXPECT_FALSE(IsOptedInForAccountStorage(&pref_service_, &sync_service_));
+  EXPECT_FALSE(ShouldShowAccountStorageOptIn(&pref_service_, &sync_service_));
   EXPECT_FALSE(
       ShouldShowAccountStorageBubbleUi(&pref_service_, &sync_service_));
   EXPECT_EQ(GetDefaultPasswordStore(&pref_service_, &sync_service_),
             PasswordForm::Store::kProfileStore);
 
   // Now let SyncService run in transport mode with |account|.
-  SetSyncStateTransportActive(account);
+  sync_service_.SetSignedIn(signin::ConsentLevel::kSignin, account);
 
   // By default, the user is not opted in, but eligible.
-  EXPECT_FALSE(IsOptedInForAccountStorage(&sync_service_));
-  EXPECT_TRUE(ShouldShowAccountStorageOptIn(&sync_service_));
+  EXPECT_FALSE(IsOptedInForAccountStorage(&pref_service_, &sync_service_));
+  EXPECT_NE(switches::IsExplicitBrowserSigninUIOnDesktopEnabled(),
+            ShouldShowAccountStorageOptIn(&pref_service_, &sync_service_));
   EXPECT_FALSE(IsDefaultPasswordStoreSet(&pref_service_, &sync_service_));
   EXPECT_EQ(GetDefaultPasswordStore(&pref_service_, &sync_service_),
             PasswordForm::Store::kProfileStore);
 
   // Opt in!
   OptInToAccountStorage(&pref_service_, &sync_service_);
-  EXPECT_TRUE(IsOptedInForAccountStorage(&sync_service_));
-  EXPECT_FALSE(ShouldShowAccountStorageOptIn(&sync_service_));
+  EXPECT_TRUE(IsOptedInForAccountStorage(&pref_service_, &sync_service_));
+  EXPECT_FALSE(ShouldShowAccountStorageOptIn(&pref_service_, &sync_service_));
   // Now the default is saving to the account.
-  EXPECT_FALSE(IsDefaultPasswordStoreSet(&pref_service_, &sync_service_));
+  EXPECT_TRUE(IsDefaultPasswordStoreSet(&pref_service_, &sync_service_));
   EXPECT_EQ(GetDefaultPasswordStore(&pref_service_, &sync_service_),
             PasswordForm::Store::kAccountStore);
 
-  // Change the default store to the profile one.
+  // TODO(b/40943570): Remove this section since setting default password store
+  // will not be possible. Change the default store to the profile one.
   SetDefaultPasswordStore(&pref_service_, &sync_service_,
                           PasswordForm::Store::kProfileStore);
   EXPECT_TRUE(IsDefaultPasswordStoreSet(&pref_service_, &sync_service_));
@@ -168,15 +192,15 @@ TEST_F(PasswordManagerFeaturesUtilTest, AccountStorageOptIn) {
 
   // Sign out. Now the settings should have reasonable default values (not opted
   // in, save to profile store).
-  SetSyncStateNotSignedIn();
-  EXPECT_FALSE(IsOptedInForAccountStorage(&sync_service_));
-  EXPECT_FALSE(ShouldShowAccountStorageOptIn(&sync_service_));
+  sync_service_.SetSignedOut();
+  EXPECT_FALSE(IsOptedInForAccountStorage(&pref_service_, &sync_service_));
+  EXPECT_FALSE(ShouldShowAccountStorageOptIn(&pref_service_, &sync_service_));
   EXPECT_FALSE(IsDefaultPasswordStoreSet(&pref_service_, &sync_service_));
   EXPECT_EQ(GetDefaultPasswordStore(&pref_service_, &sync_service_),
             PasswordForm::Store::kProfileStore);
 }
 
-TEST_F(PasswordManagerFeaturesUtilTest,
+TEST_F(PasswordManagerFeaturesUtilWithAccountStorageForNonSyncingTest,
        AccountStorageKeepSettingsOnlyForUsers) {
   CoreAccountInfo first_account;
   first_account.email = "first@account.com";
@@ -190,7 +214,7 @@ TEST_F(PasswordManagerFeaturesUtilTest,
 
   // Let SyncService run in transport mode with |first_account|, opt in and
   // set the profile store as default.
-  SetSyncStateTransportActive(first_account);
+  sync_service_.SetSignedIn(signin::ConsentLevel::kSignin, first_account);
   OptInToAccountStorage(&pref_service_, &sync_service_);
   SetDefaultPasswordStore(&pref_service_, &sync_service_,
                           PasswordForm::Store::kProfileStore);
@@ -198,7 +222,7 @@ TEST_F(PasswordManagerFeaturesUtilTest,
             PasswordForm::Store::kProfileStore);
 
   // Switch to |second_account| and do the same.
-  SetSyncStateTransportActive(second_account);
+  sync_service_.SetSignedIn(signin::ConsentLevel::kSignin, second_account);
   OptInToAccountStorage(&pref_service_, &sync_service_);
   SetDefaultPasswordStore(&pref_service_, &sync_service_,
                           PasswordForm::Store::kProfileStore);
@@ -206,8 +230,8 @@ TEST_F(PasswordManagerFeaturesUtilTest,
             PasswordForm::Store::kProfileStore);
 
   // Sign out. The store settings still exist, but don't apply anymore.
-  SetSyncStateNotSignedIn();
-  ASSERT_FALSE(IsOptedInForAccountStorage(&sync_service_));
+  sync_service_.SetSignedOut();
+  ASSERT_FALSE(IsOptedInForAccountStorage(&pref_service_, &sync_service_));
 
   // Keep the settings only for |first_account| (and some unknown other user).
   KeepAccountStorageSettingsOnlyForUsers(&pref_service_,
@@ -215,16 +239,17 @@ TEST_F(PasswordManagerFeaturesUtilTest,
 
   // The first account should still have kProfileStore as the default store,
   // but not the second.
-  SetSyncStateTransportActive(first_account);
+  sync_service_.SetSignedIn(signin::ConsentLevel::kSignin, first_account);
   EXPECT_EQ(GetDefaultPasswordStore(&pref_service_, &sync_service_),
             PasswordForm::Store::kProfileStore);
 
-  SetSyncStateTransportActive(second_account);
+  sync_service_.SetSignedIn(signin::ConsentLevel::kSignin, second_account);
   EXPECT_NE(GetDefaultPasswordStore(&pref_service_, &sync_service_),
             PasswordForm::Store::kProfileStore);
 }
 
-TEST_F(PasswordManagerFeaturesUtilTest, SyncSuppressesAccountStorageOptIn) {
+TEST_F(PasswordManagerFeaturesUtilWithAccountStorageForNonSyncingTest,
+       SyncSuppressesAccountStorageOptIn) {
   CoreAccountInfo account;
   account.email = "name@account.com";
   account.gaia = "name";
@@ -232,41 +257,75 @@ TEST_F(PasswordManagerFeaturesUtilTest, SyncSuppressesAccountStorageOptIn) {
 
   // Initially, the user is signed in but doesn't have Sync-the-feature enabled,
   // so the SyncService is running in transport mode.
-  SetSyncStateTransportActive(account);
+  sync_service_.SetSignedIn(signin::ConsentLevel::kSignin, account);
 
   // In this state, the user could opt in to the account storage.
-  ASSERT_FALSE(IsOptedInForAccountStorage(&sync_service_));
-  ASSERT_TRUE(ShouldShowAccountStorageOptIn(&sync_service_));
+  ASSERT_FALSE(IsOptedInForAccountStorage(&pref_service_, &sync_service_));
+  ASSERT_NE(switches::IsExplicitBrowserSigninUIOnDesktopEnabled(),
+            ShouldShowAccountStorageOptIn(&pref_service_, &sync_service_));
   ASSERT_TRUE(ShouldShowAccountStorageBubbleUi(&pref_service_, &sync_service_));
 
   // Now the user enables Sync-the-feature.
-  SetSyncStateFeatureActive(account);
+  sync_service_.SetSignedIn(signin::ConsentLevel::kSync, account);
   ASSERT_TRUE(sync_service_.IsSyncFeatureEnabled());
 
   // Now the account-storage opt-in should *not* be available anymore.
-  EXPECT_FALSE(IsOptedInForAccountStorage(&sync_service_));
-  EXPECT_FALSE(ShouldShowAccountStorageOptIn(&sync_service_));
+  EXPECT_FALSE(IsOptedInForAccountStorage(&pref_service_, &sync_service_));
+  EXPECT_FALSE(ShouldShowAccountStorageOptIn(&pref_service_, &sync_service_));
   EXPECT_FALSE(
       ShouldShowAccountStorageBubbleUi(&pref_service_, &sync_service_));
 }
+
+TEST_F(PasswordManagerFeaturesUtilWithAccountStorageForNonSyncingTest,
+       NoOptInOfferedIfExplicitSigninUIEnabled) {
+  base::test::ScopedFeatureList scoped_feature_list;
+  scoped_feature_list.InitWithFeatures(
+      /*enabled_features=*/{switches::kExplicitBrowserSigninUIOnDesktop},
+      /*disabled_features=*/{});
+  pref_service_.SetBoolean(::prefs::kExplicitBrowserSignin, true);
+  CoreAccountInfo account;
+  account.email = "foo@account.com";
+  account.gaia = "foo";
+  account.account_id = CoreAccountId::FromGaiaId(account.gaia);
+  sync_service_.SetSignedIn(signin::ConsentLevel::kSignin, account);
+  OptOutOfAccountStorage(&pref_service_, &sync_service_);
+  ASSERT_FALSE(IsOptedInForAccountStorage(&pref_service_, &sync_service_));
+
+  // The opt-in should not be shown, kExplicitBrowserSigninUIOnDesktop is
+  // enabled. The toggle is always shown.
+  EXPECT_FALSE(AreAccountStorageOptInPromosAllowed());
+  EXPECT_FALSE(ShouldShowAccountStorageOptIn(&pref_service_, &sync_service_));
+  EXPECT_TRUE(
+      ShouldShowAccountStorageSettingToggle(&pref_service_, &sync_service_));
+
+  pref_service_.SetBoolean(::prefs::kExplicitBrowserSignin, false);
+
+  // Explicit and implicit sign-ins are treated alike.
+  EXPECT_FALSE(AreAccountStorageOptInPromosAllowed());
+  EXPECT_FALSE(ShouldShowAccountStorageOptIn(&pref_service_, &sync_service_));
+  EXPECT_TRUE(
+      ShouldShowAccountStorageSettingToggle(&pref_service_, &sync_service_));
+}
+
 #else
-TEST_F(PasswordManagerFeaturesUtilTest, AccountStorageOptInOnMobile) {
+TEST_F(PasswordManagerFeaturesUtilWithAccountStorageForNonSyncingTest,
+       AccountStorageOptInOnMobile) {
   CoreAccountInfo account;
   account.email = "name@account.com";
   account.gaia = "name";
   account.account_id = CoreAccountId::FromGaiaId(account.gaia);
 
   // Initial state: Not signed in.
-  SetSyncStateNotSignedIn();
+  sync_service_.SetSignedOut();
 
   // Without a signed-in user, there can be no opt-in.
-  EXPECT_FALSE(IsOptedInForAccountStorage(&sync_service_));
+  EXPECT_FALSE(IsOptedInForAccountStorage(&pref_service_, &sync_service_));
 
   // Sign in and enable Sync-transport.
-  SetSyncStateTransportActive(account);
+  sync_service_.SetSignedIn(signin::ConsentLevel::kSignin, account);
 
   // Now the user should be considered opted-in.
-  EXPECT_TRUE(IsOptedInForAccountStorage(&sync_service_));
+  EXPECT_TRUE(IsOptedInForAccountStorage(&pref_service_, &sync_service_));
 
   // Disable the Passwords data type, which corresponds to the user opting out.
   syncer::UserSelectableTypeSet selected_types =
@@ -276,25 +335,27 @@ TEST_F(PasswordManagerFeaturesUtilTest, AccountStorageOptInOnMobile) {
                                                     selected_types);
 
   // The user should not be considered opted-in anymore.
-  EXPECT_FALSE(IsOptedInForAccountStorage(&sync_service_));
+  EXPECT_FALSE(IsOptedInForAccountStorage(&pref_service_, &sync_service_));
 }
 #endif  // !BUILDFLAG(IS_IOS) && !BUILDFLAG(IS_ANDROID)
 
-TEST_F(PasswordManagerFeaturesUtilTest, SyncDisablesAccountStorage) {
+TEST_F(PasswordManagerFeaturesUtilWithAccountStorageForNonSyncingTest,
+       SyncDisablesAccountStorage) {
   CoreAccountInfo account;
   account.email = "name@account.com";
   account.gaia = "name";
   account.account_id = CoreAccountId::FromGaiaId(account.gaia);
 
-  ASSERT_FALSE(IsOptedInForAccountStorage(&sync_service_));
+  ASSERT_FALSE(IsOptedInForAccountStorage(&pref_service_, &sync_service_));
 
   // The SyncService is running in transport mode.
-  SetSyncStateTransportActive(account);
+  sync_service_.SetSignedIn(signin::ConsentLevel::kSignin, account);
 
 #if !BUILDFLAG(IS_IOS) && !BUILDFLAG(IS_ANDROID)
   // The account storage is available in principle, so the opt-in will be shown.
-  ASSERT_FALSE(IsOptedInForAccountStorage(&sync_service_));
-  ASSERT_TRUE(ShouldShowAccountStorageOptIn(&sync_service_));
+  ASSERT_FALSE(IsOptedInForAccountStorage(&pref_service_, &sync_service_));
+  ASSERT_NE(switches::IsExplicitBrowserSigninUIOnDesktopEnabled(),
+            ShouldShowAccountStorageOptIn(&pref_service_, &sync_service_));
   ASSERT_TRUE(ShouldShowAccountStorageBubbleUi(&pref_service_, &sync_service_));
   ASSERT_FALSE(IsDefaultPasswordStoreSet(&pref_service_, &sync_service_));
 
@@ -302,29 +363,34 @@ TEST_F(PasswordManagerFeaturesUtilTest, SyncDisablesAccountStorage) {
   OptInToAccountStorage(&pref_service_, &sync_service_);
 #endif  // !BUILDFLAG(IS_IOS) && !BUILDFLAG(IS_ANDROID)
 
-  ASSERT_TRUE(IsOptedInForAccountStorage(&sync_service_));
-  ASSERT_FALSE(ShouldShowAccountStorageOptIn(&sync_service_));
+  ASSERT_TRUE(IsOptedInForAccountStorage(&pref_service_, &sync_service_));
+  ASSERT_FALSE(ShouldShowAccountStorageOptIn(&pref_service_, &sync_service_));
   ASSERT_TRUE(ShouldShowAccountStorageBubbleUi(&pref_service_, &sync_service_));
+#if !BUILDFLAG(IS_IOS) && !BUILDFLAG(IS_ANDROID)
+  EXPECT_TRUE(IsDefaultPasswordStoreSet(&pref_service_, &sync_service_));
+#else
   EXPECT_FALSE(IsDefaultPasswordStoreSet(&pref_service_, &sync_service_));
+#endif
   EXPECT_EQ(GetDefaultPasswordStore(&pref_service_, &sync_service_),
             PasswordForm::Store::kAccountStore);
 
   // Now enable Sync-the-feature. This should effectively turn *off* the account
   // storage again (since with Sync, there's only a single combined storage).
-  SetSyncStateFeatureActive(account);
+  sync_service_.SetSignedIn(signin::ConsentLevel::kSync, account);
   ASSERT_TRUE(sync_service_.IsSyncFeatureEnabled());
   // On desktop, the opt-in pref wasn't actually cleared, but
   // IsOptedInForAccountStorage() must return false because the user is syncing.
   // On mobile, since no explicit opt-in exists, the (implicit) opt-in is gone.
-  EXPECT_FALSE(IsOptedInForAccountStorage(&sync_service_));
-  EXPECT_FALSE(ShouldShowAccountStorageOptIn(&sync_service_));
+  EXPECT_FALSE(IsOptedInForAccountStorage(&pref_service_, &sync_service_));
+  EXPECT_FALSE(ShouldShowAccountStorageOptIn(&pref_service_, &sync_service_));
   EXPECT_FALSE(
       ShouldShowAccountStorageBubbleUi(&pref_service_, &sync_service_));
   EXPECT_EQ(GetDefaultPasswordStore(&pref_service_, &sync_service_),
             PasswordForm::Store::kProfileStore);
 }
 
-TEST_F(PasswordManagerFeaturesUtilTest, LocalSyncDisablesAccountStorage) {
+TEST_F(PasswordManagerFeaturesUtilWithAccountStorageForNonSyncingTest,
+       LocalSyncDisablesAccountStorage) {
   CoreAccountInfo account;
   account.email = "name@account.com";
   account.gaia = "name";
@@ -334,12 +400,12 @@ TEST_F(PasswordManagerFeaturesUtilTest, LocalSyncDisablesAccountStorage) {
   // In local-sync mode, there might or might not be an account. Set one for
   // this test, so that all other conditions for using the account-scoped
   // storage are fulfilled.
-  SetSyncStateTransportActive(account);
+  sync_service_.SetSignedIn(signin::ConsentLevel::kSignin, account);
   sync_service_.SetLocalSyncEnabled(true);
 
   // The account-scoped storage should be unavailable.
-  ASSERT_FALSE(IsOptedInForAccountStorage(&sync_service_));
-  EXPECT_FALSE(ShouldShowAccountStorageOptIn(&sync_service_));
+  ASSERT_FALSE(IsOptedInForAccountStorage(&pref_service_, &sync_service_));
+  EXPECT_FALSE(ShouldShowAccountStorageOptIn(&pref_service_, &sync_service_));
   EXPECT_FALSE(
       ShouldShowAccountStorageBubbleUi(&pref_service_, &sync_service_));
   EXPECT_EQ(GetDefaultPasswordStore(&pref_service_, &sync_service_),
@@ -352,8 +418,8 @@ TEST_F(PasswordManagerFeaturesUtilTest, LocalSyncDisablesAccountStorage) {
   OptInToAccountStorage(&pref_service_, &sync_service_);
   // The user is *not* considered opted in (even though the corresponding pref
   // is set) since the account storage is completely unavailable.
-  EXPECT_FALSE(IsOptedInForAccountStorage(&sync_service_));
-  EXPECT_FALSE(ShouldShowAccountStorageOptIn(&sync_service_));
+  EXPECT_FALSE(IsOptedInForAccountStorage(&pref_service_, &sync_service_));
+  EXPECT_FALSE(ShouldShowAccountStorageOptIn(&pref_service_, &sync_service_));
   EXPECT_FALSE(
       ShouldShowAccountStorageBubbleUi(&pref_service_, &sync_service_));
   EXPECT_EQ(GetDefaultPasswordStore(&pref_service_, &sync_service_),
@@ -362,7 +428,8 @@ TEST_F(PasswordManagerFeaturesUtilTest, LocalSyncDisablesAccountStorage) {
 }
 
 #if !BUILDFLAG(IS_IOS) && !BUILDFLAG(IS_ANDROID)
-TEST_F(PasswordManagerFeaturesUtilTest, OptOutClearsStorePreference) {
+TEST_F(PasswordManagerFeaturesUtilWithAccountStorageForNonSyncingTest,
+       OptOutAndClearSettingsClearsStorePreference) {
   base::HistogramTester histogram_tester;
 
   CoreAccountInfo account;
@@ -371,11 +438,11 @@ TEST_F(PasswordManagerFeaturesUtilTest, OptOutClearsStorePreference) {
   account.account_id = CoreAccountId::FromGaiaId(account.gaia);
 
   // The SyncService is running in transport mode.
-  SetSyncStateTransportActive(account);
+  sync_service_.SetSignedIn(signin::ConsentLevel::kSignin, account);
 
   // Opt in and set default store to profile.
   OptInToAccountStorage(&pref_service_, &sync_service_);
-  ASSERT_TRUE(IsOptedInForAccountStorage(&sync_service_));
+  ASSERT_TRUE(IsOptedInForAccountStorage(&pref_service_, &sync_service_));
   SetDefaultPasswordStore(&pref_service_, &sync_service_,
                           PasswordForm::Store::kProfileStore);
 
@@ -384,7 +451,7 @@ TEST_F(PasswordManagerFeaturesUtilTest, OptOutClearsStorePreference) {
 
   // The default store pref should have been erased.
   EXPECT_FALSE(IsDefaultPasswordStoreSet(&pref_service_, &sync_service_));
-  EXPECT_FALSE(IsOptedInForAccountStorage(&sync_service_));
+  EXPECT_FALSE(IsOptedInForAccountStorage(&pref_service_, &sync_service_));
   EXPECT_EQ(GetDefaultPasswordStore(&pref_service_, &sync_service_),
             PasswordForm::Store::kProfileStore);
 
@@ -394,7 +461,32 @@ TEST_F(PasswordManagerFeaturesUtilTest, OptOutClearsStorePreference) {
                                       PasswordForm::Store::kProfileStore, 1);
 }
 
-TEST_F(PasswordManagerFeaturesUtilTest, MigrateOptInPrefToSyncSelectedTypes) {
+TEST_F(PasswordManagerFeaturesUtilWithAccountStorageForNonSyncingTest,
+       OptOutSetsProfileStorePreference) {
+  CoreAccountInfo account;
+  account.email = "name@account.com";
+  account.gaia = "name";
+  account.account_id = CoreAccountId::FromGaiaId(account.gaia);
+
+  // The SyncService is running in transport mode.
+  sync_service_.SetSignedIn(signin::ConsentLevel::kSignin, account);
+
+  // Opt in.
+  OptInToAccountStorage(&pref_service_, &sync_service_);
+  ASSERT_TRUE(IsOptedInForAccountStorage(&pref_service_, &sync_service_));
+
+  // Opt out.
+  OptOutOfAccountStorage(&pref_service_, &sync_service_);
+
+  // The default store pref should set to profile store.
+  EXPECT_TRUE(IsDefaultPasswordStoreSet(&pref_service_, &sync_service_));
+  EXPECT_FALSE(IsOptedInForAccountStorage(&pref_service_, &sync_service_));
+  EXPECT_EQ(GetDefaultPasswordStore(&pref_service_, &sync_service_),
+            PasswordForm::Store::kProfileStore);
+}
+
+TEST_F(PasswordManagerFeaturesUtilWithAccountStorageForNonSyncingTest,
+       MigrateOptInPrefToSyncSelectedTypes) {
   syncer::SyncPrefs::RegisterProfilePrefs(pref_service_.registry());
   CoreAccountInfo account1;
   account1.gaia = "gaia1";
@@ -429,24 +521,21 @@ TEST_F(PasswordManagerFeaturesUtilTest, MigrateOptInPrefToSyncSelectedTypes) {
           .Has(syncer::UserSelectableType::kPasswords));
 
   // Verify the default store settings are unnaffected.
-  SetSyncStateTransportActive(account1);
+  sync_service_.SetSignedIn(signin::ConsentLevel::kSignin, account1);
   EXPECT_EQ(GetDefaultPasswordStore(&pref_service_, &sync_service_),
             PasswordForm::Store::kAccountStore);
-  SetSyncStateTransportActive(account2);
+  sync_service_.SetSignedIn(signin::ConsentLevel::kSignin, account2);
   EXPECT_EQ(GetDefaultPasswordStore(&pref_service_, &sync_service_),
             PasswordForm::Store::kProfileStore);
 }
 
-TEST_F(PasswordManagerFeaturesUtilTest,
+TEST_F(PasswordManagerFeaturesUtilWithAccountStorageForNonSyncingTest,
        MigrateDeclinedSaveOptInToExplicitOptOut) {
   // Using the Uno Flag because it will automatically turn on account password
   // storage if the default store has not been set to kProfileStore.
-  base::test::ScopedFeatureList scoped_feature_list{switches::kUnoDesktop};
+  base::test::ScopedFeatureList scoped_feature_list{
+      switches::kExplicitBrowserSigninUIOnDesktop};
   syncer::SyncPrefs::RegisterProfilePrefs(pref_service_.registry());
-  // Pref is registered in signin internal `PrimaryAccountManager`.
-  pref_service_.registry()->RegisterBooleanPref(::prefs::kExplicitBrowserSignin,
-                                                false);
-
   pref_service_.SetBoolean(::prefs::kExplicitBrowserSignin, true);
 
   CoreAccountInfo account1;
@@ -498,13 +587,48 @@ TEST_F(PasswordManagerFeaturesUtilTest,
           .Has(syncer::UserSelectableType::kPasswords));
 
   // Verify the default store settings are unaffected.
-  SetSyncStateTransportActive(account1);
+  sync_service_.SetSignedIn(signin::ConsentLevel::kSignin, account1);
   EXPECT_EQ(GetDefaultPasswordStore(&pref_service_, &sync_service_),
             PasswordForm::Store::kAccountStore);
-  SetSyncStateTransportActive(account2);
+  sync_service_.SetSignedIn(signin::ConsentLevel::kSignin, account2);
   EXPECT_EQ(GetDefaultPasswordStore(&pref_service_, &sync_service_),
             PasswordForm::Store::kProfileStore);
 }
 #endif  // !BUILDFLAG(IS_IOS) && !BUILDFLAG(IS_ANDROID)
+
+TEST_F(PasswordManagerFeaturesUtilWithAccountStorageForSyncingUsersTest,
+       OptedInIfSyncingAndPasswordsSelected) {
+  CoreAccountInfo account;
+  account.email = "foo@account.com";
+  account.gaia = "foo";
+  account.account_id = CoreAccountId::FromGaiaId(account.gaia);
+  sync_service_.SetSignedIn(signin::ConsentLevel::kSync, account);
+  sync_service_.GetUserSettings()->SetSelectedType(
+      syncer::UserSelectableType::kPasswords, true);
+
+  EXPECT_TRUE(IsOptedInForAccountStorage(&pref_service_, &sync_service_));
+
+  sync_service_.GetUserSettings()->SetSelectedType(
+      syncer::UserSelectableType::kPasswords, false);
+
+  EXPECT_FALSE(IsOptedInForAccountStorage(&pref_service_, &sync_service_));
+}
+
+TEST_F(PasswordManagerFeaturesUtilWithAccountStorageForSyncingUsersTest,
+       OptedOutIfNonSyncing) {
+  sync_service_.SetSignedOut();
+
+  EXPECT_FALSE(IsOptedInForAccountStorage(&pref_service_, &sync_service_));
+
+  CoreAccountInfo account;
+  account.email = "foo@account.com";
+  account.gaia = "foo";
+  account.account_id = CoreAccountId::FromGaiaId(account.gaia);
+  sync_service_.SetSignedIn(signin::ConsentLevel::kSignin, account);
+  sync_service_.GetUserSettings()->SetSelectedType(
+      syncer::UserSelectableType::kPasswords, true);
+
+  EXPECT_FALSE(IsOptedInForAccountStorage(&pref_service_, &sync_service_));
+}
 
 }  // namespace password_manager::features_util

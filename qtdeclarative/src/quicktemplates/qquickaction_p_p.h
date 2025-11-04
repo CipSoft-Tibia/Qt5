@@ -28,7 +28,8 @@ QT_BEGIN_NAMESPACE
 class QShortcutEvent;
 class QQuickActionGroup;
 
-class QQuickActionPrivate : public QObjectPrivate, public QQuickItemChangeListener
+class QQuickActionPrivate : public QObjectPrivate,
+                            public QSafeQuickItemChangeListener<QQuickActionPrivate>
 {
     Q_DECLARE_PUBLIC(QQuickAction)
 

@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:dataparser
 #include <qv4jsonobject_p.h>
 #include <qv4objectproto_p.h>
 #include <qv4numberobject_p.h>
@@ -623,7 +624,8 @@ public:
                         QStringLiteral("Cannot convert circular structure to JSON"));
         }
 
-        stringify->v4->checkStackLimits();
+        const bool hasOverflow = stringify->v4->checkStackLimits();
+        Q_UNUSED(hasOverflow); // No handling needed. Exception has been thrown already.
     }
 
     bool foundProblem() const { return m_callDepthRecorder.ee->hasException; }

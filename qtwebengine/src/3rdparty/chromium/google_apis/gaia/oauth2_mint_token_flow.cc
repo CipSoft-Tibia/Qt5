@@ -19,16 +19,21 @@
 #include "base/metrics/histogram_functions.h"
 #include "base/ranges/algorithm.h"
 #include "base/strings/escape.h"
+#include "base/strings/strcat.h"
 #include "base/strings/string_number_conversions.h"
 #include "base/strings/string_split.h"
 #include "base/strings/string_util.h"
 #include "base/strings/stringprintf.h"
 #include "base/strings/utf_string_conversions.h"
+#include "base/time/time.h"
 #include "base/values.h"
 #include "google_apis/gaia/gaia_urls.h"
 #include "google_apis/gaia/google_service_auth_error.h"
+#include "google_apis/gaia/oauth2_api_call_flow.h"
 #include "net/base/net_errors.h"
 #include "net/cookies/cookie_constants.h"
+#include "net/http/http_request_headers.h"
+#include "net/http/http_status_code.h"
 #include "services/network/public/mojom/url_response_head.mojom.h"
 
 namespace {
@@ -61,9 +66,10 @@ const char kGrantedScopesKey[] = "grantedScopes";
 const char kError[] = "error";
 const char kMessage[] = "message";
 
-const char kTokenBindingResponseKey[] = "tokenBindingResponse";
-const char kRetryResponseKey[] = "retryResponse";
-const char kChallengeKey[] = "challenge";
+const char kTokenBindingChallengeHeader[] =
+    "X-Chrome-Auth-Token-Binding-Challenge";
+constexpr char kTokenBindingResponseKey[] = "tokenBindingResponse";
+constexpr char kDirectedResponseKey[] = "directedResponse";
 
 static GoogleServiceAuthError CreateAuthError(
     int net_error,
@@ -105,20 +111,20 @@ static GoogleServiceAuthError CreateAuthError(
   return GoogleServiceAuthError::FromServiceError(*message);
 }
 
-std::string* FindTokenBindingChallenge(base::Value::Dict& dict) {
-  base::Value::Dict* token_binding_response =
-      dict.FindDict(kTokenBindingResponseKey);
-  if (!token_binding_response) {
-    return nullptr;
+std::string FindTokenBindingChallenge(
+    int net_error,
+    const network::mojom::URLResponseHead* head) {
+  if (net_error != net::OK || !head || !head->headers) {
+    return std::string();
   }
 
-  base::Value::Dict* retry_response =
-      token_binding_response->FindDict(kRetryResponseKey);
-  if (!retry_response) {
-    return nullptr;
+  std::string challenge;
+  if (!head->headers->GetNormalizedHeader(kTokenBindingChallengeHeader,
+                                          &challenge)) {
+    return std::string();
   }
 
-  return retry_response->FindString(kChallengeKey);
+  return challenge;
 }
 
 bool AreCookiesEqual(const net::CanonicalCookie& lhs,
@@ -148,7 +154,7 @@ bool RemoteConsentResolutionData::operator==(
          base::ranges::equal(cookies, rhs.cookies, &AreCookiesEqual);
 }
 
-OAuth2MintTokenFlow::Parameters::Parameters() : mode(MODE_ISSUE_ADVICE) {}
+OAuth2MintTokenFlow::Parameters::Parameters() = default;
 
 // static
 OAuth2MintTokenFlow::Parameters
@@ -184,7 +190,8 @@ OAuth2MintTokenFlow::Parameters::CreateForClientFlow(
     base::span<const std::string_view> scopes,
     std::string_view version,
     std::string_view channel,
-    std::string_view device_id) {
+    std::string_view device_id,
+    std::string_view bound_oauth_token) {
   Parameters parameters;
   parameters.client_id = client_id;
   parameters.scopes = std::vector<std::string>(scopes.begin(), scopes.end());
@@ -192,6 +199,7 @@ OAuth2MintTokenFlow::Parameters::CreateForClientFlow(
   parameters.version = version;
   parameters.channel = channel;
   parameters.device_id = device_id;
+  parameters.bound_oauth_token = bound_oauth_token;
   return parameters;
 }
 
@@ -207,18 +215,24 @@ OAuth2MintTokenFlow::Parameters OAuth2MintTokenFlow::Parameters::Clone() {
   return Parameters(*this);
 }
 
+OAuth2MintTokenFlow::MintTokenResult::MintTokenResult() = default;
+OAuth2MintTokenFlow::MintTokenResult::~MintTokenResult() = default;
+OAuth2MintTokenFlow::MintTokenResult::MintTokenResult(
+    MintTokenResult&& other) noexcept = default;
+OAuth2MintTokenFlow::MintTokenResult&
+OAuth2MintTokenFlow::MintTokenResult::operator=(
+    MintTokenResult&& other) noexcept = default;
+
 OAuth2MintTokenFlow::OAuth2MintTokenFlow(Delegate* delegate,
                                          Parameters parameters)
     : delegate_(delegate), parameters_(std::move(parameters)) {}
 
 OAuth2MintTokenFlow::~OAuth2MintTokenFlow() = default;
 
-void OAuth2MintTokenFlow::ReportSuccess(
-    const std::string& access_token,
-    const std::set<std::string>& granted_scopes,
-    int time_to_live) {
-  if (delegate_)
-    delegate_->OnMintTokenSuccess(access_token, granted_scopes, time_to_live);
+void OAuth2MintTokenFlow::ReportSuccess(const MintTokenResult& result) {
+  if (delegate_) {
+    delegate_->OnMintTokenSuccess(result);
+  }
 
   // |this| may already be deleted.
 }
@@ -241,6 +255,12 @@ void OAuth2MintTokenFlow::ReportFailure(
 
 GURL OAuth2MintTokenFlow::CreateApiCallUrl() {
   return GaiaUrls::GetInstance()->oauth2_issue_token_url();
+}
+
+net::HttpRequestHeaders OAuth2MintTokenFlow::CreateApiCallHeaders() {
+  net::HttpRequestHeaders headers;
+  headers.SetHeader("X-OAuth-Client-ID", parameters_.client_id);
+  return headers;
 }
 
 std::string OAuth2MintTokenFlow::CreateApiCallBody() {
@@ -290,12 +310,24 @@ std::string OAuth2MintTokenFlow::CreateApiCallBody() {
   return body;
 }
 
+std::string OAuth2MintTokenFlow::CreateAuthorizationHeaderValue(
+    const std::string& access_token) {
+  if (!parameters_.bound_oauth_token.empty()) {
+    // Replace a regular token with the one containing binding assertion.
+    return base::StrCat({"BoundOAuth ", parameters_.bound_oauth_token});
+  }
+
+  // Call the base class method to get a regular authorization value.
+  return OAuth2ApiCallFlow::CreateAuthorizationHeaderValue(access_token);
+}
+
 void OAuth2MintTokenFlow::ProcessApiCallSuccess(
     const network::mojom::URLResponseHead* head,
     std::unique_ptr<std::string> body) {
   std::string response_body;
-  if (body)
+  if (body) {
     response_body = std::move(*body);
+  }
 
   std::optional<base::Value> value = base::JSONReader::Read(response_body);
   if (!value || !value->is_dict()) {
@@ -306,15 +338,6 @@ void OAuth2MintTokenFlow::ProcessApiCallSuccess(
   }
 
   base::Value::Dict& dict = value->GetDict();
-
-  std::string* challenge = FindTokenBindingChallenge(dict);
-  if (challenge) {
-    RecordApiCallResult(
-        OAuth2MintTokenApiCallResult::kChallengeResponseRequiredFailure);
-    ReportFailure(
-        GoogleServiceAuthError::FromTokenBindingChallenge(*challenge));
-    return;
-  }
 
   std::string* issue_advice_value = dict.FindString(kIssueAdviceKey);
   if (!issue_advice_value) {
@@ -340,13 +363,10 @@ void OAuth2MintTokenFlow::ProcessApiCallSuccess(
     return;
   }
 
-  std::string access_token;
-  std::set<std::string> granted_scopes;
-  int time_to_live;
-  if (ParseMintTokenResponse(dict, &access_token, &granted_scopes,
-                             &time_to_live)) {
+  if (std::optional<MintTokenResult> result = ParseMintTokenResponse(dict);
+      result.has_value()) {
     RecordApiCallResult(OAuth2MintTokenApiCallResult::kMintTokenSuccess);
-    ReportSuccess(access_token, granted_scopes, time_to_live);
+    ReportSuccess(result.value());
   } else {
     RecordApiCallResult(OAuth2MintTokenApiCallResult::kParseMintTokenFailure);
     ReportFailure(GoogleServiceAuthError::FromUnexpectedServiceResponse(
@@ -361,45 +381,58 @@ void OAuth2MintTokenFlow::ProcessApiCallFailure(
     int net_error,
     const network::mojom::URLResponseHead* head,
     std::unique_ptr<std::string> body) {
+  std::string challenge = FindTokenBindingChallenge(net_error, head);
+  if (!challenge.empty()) {
+    RecordApiCallResult(
+        OAuth2MintTokenApiCallResult::kChallengeResponseRequiredFailure);
+    ReportFailure(GoogleServiceAuthError::FromTokenBindingChallenge(challenge));
+    return;
+  }
+
   RecordApiCallResult(OAuth2MintTokenApiCallResult::kApiCallFailure);
   ReportFailure(CreateAuthError(net_error, head, std::move(body)));
 }
 
 // static
-bool OAuth2MintTokenFlow::ParseMintTokenResponse(
-    const base::Value::Dict& dict,
-    std::string* access_token,
-    std::set<std::string>* granted_scopes,
-    int* time_to_live) {
-  CHECK(access_token);
-  CHECK(granted_scopes);
-  CHECK(time_to_live);
+std::optional<OAuth2MintTokenFlow::MintTokenResult>
+OAuth2MintTokenFlow::ParseMintTokenResponse(const base::Value::Dict& dict) {
+  MintTokenResult result;
 
   const std::string* ttl_string = dict.FindString(kExpiresInKey);
-  if (!ttl_string || !base::StringToInt(*ttl_string, time_to_live))
-    return false;
+  int ttl_seconds = 0;
+  if (!ttl_string || !base::StringToInt(*ttl_string, &ttl_seconds)) {
+    return std::nullopt;
+  }
+  result.time_to_live = base::Seconds(ttl_seconds);
 
   const std::string* access_token_ptr = dict.FindString(kAccessTokenKey);
-  if (!access_token_ptr)
-    return false;
-
-  *access_token = *access_token_ptr;
+  if (!access_token_ptr) {
+    return std::nullopt;
+  }
+  result.access_token = *access_token_ptr;
 
   const std::string* granted_scopes_string = dict.FindString(kGrantedScopesKey);
-
-  if (!granted_scopes_string)
-    return false;
-
+  if (!granted_scopes_string) {
+    return std::nullopt;
+  }
   const std::vector<std::string> granted_scopes_vector =
       base::SplitString(*granted_scopes_string, " ", base::TRIM_WHITESPACE,
                         base::SPLIT_WANT_NONEMPTY);
-  if (granted_scopes_vector.empty())
-    return false;
+  if (granted_scopes_vector.empty()) {
+    return std::nullopt;
+  }
+  result.granted_scopes.insert(granted_scopes_vector.begin(),
+                               granted_scopes_vector.end());
 
-  const std::set<std::string> granted_scopes_set(granted_scopes_vector.begin(),
-                                                 granted_scopes_vector.end());
-  *granted_scopes = std::move(granted_scopes_set);
-  return true;
+  const base::Value::Dict* token_binding_response =
+      dict.FindDict(kTokenBindingResponseKey);
+  // The presence of `kDirectedResponseKey` indicates that the returned token is
+  // encrypted to the public key provided by the client earlier.
+  result.is_token_encrypted =
+      token_binding_response &&
+      token_binding_response->FindDict(kDirectedResponseKey);
+
+  return result;
 }
 
 // static
@@ -475,7 +508,7 @@ bool OAuth2MintTokenFlow::ParseRemoteConsentResponse(
               is_http_only ? *is_http_only : false,
               net::StringToCookieSameSite(same_site ? *same_site : ""),
               net::COOKIE_PRIORITY_DEFAULT,
-              /* partition_key */ std::nullopt);
+              /* partition_key */ std::nullopt, /*status=*/nullptr);
       cookies.push_back(*cookie);
     }
   }

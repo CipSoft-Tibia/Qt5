@@ -41,8 +41,8 @@ QT_BEGIN_NAMESPACE
     cameraFormat represents a certain video format supported by a camera device.
 
     The format is a combination of a
-    \l{pixel format}{QVideoFrameFormat::PixelFormat}, resolution and a range of frame
-    rates.
+    \l{QVideoFrameFormat::PixelFormat}{pixel format}, resolution, and a range
+    of frame frates.
 
     cameraFormat objects can be queried from \l cameraDevice to inspect the set of
     supported video formats.
@@ -271,19 +271,11 @@ QCameraDevice::QCameraDevice(const QCameraDevice &other) = default;
 QCameraDevice::~QCameraDevice() = default;
 
 /*!
-    Returns true if this QCameraDevice is equal to \a other.
+    Returns true if this QCameraDevice represents the same device as \a other.
 */
 bool QCameraDevice::operator==(const QCameraDevice &other) const
 {
-    if (d == other.d)
-        return true;
-
-    if (!d || ! other.d)
-        return false;
-
-    return (d->id == other.d->id
-            && d->description == other.d->description
-            && d->position == other.d->position);
+    return id() == other.id();
 }
 
 /*!

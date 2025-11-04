@@ -7,22 +7,19 @@ from __future__ import annotations
 import argparse
 import enum
 import logging
-import pathlib
-from typing import TYPE_CHECKING, Dict, Optional, Sequence, Set, Tuple
+from typing import TYPE_CHECKING, Dict, Optional, Sequence, Set
 
-from crossbench import cli_helper, compat
-from crossbench.browsers.chromium.chromium import Chromium
-from crossbench.probes import helper as probe_helper
+from crossbench import cli_helper
+from crossbench import path as pth
+from crossbench.config import ConfigEnum
+from crossbench.helper.path_finder import TraceconvFinder
 from crossbench.probes.chromium_probe import ChromiumProbe
-from crossbench.probes.probe import (ProbeConfigParser, ProbeContext,
+from crossbench.probes.probe import (ProbeConfigParser, ProbeContext, ProbeKeyT,
                                      ResultLocation)
 from crossbench.probes.results import ProbeResult
 
 if TYPE_CHECKING:
-  from crossbench import plt
   from crossbench.browsers.browser import Browser
-  from crossbench.env import HostEnvironment
-  from crossbench.flags import ChromeFlags
   from crossbench.runner.run import Run
 
 # TODO: go over these again and clean the categories.
@@ -98,7 +95,7 @@ TRACE_PRESETS: Dict[str, frozenset[str]] = {
 
 
 @enum.unique
-class RecordMode(compat.StrEnumWithHelp):
+class RecordMode(ConfigEnum):
   CONTINUOUSLY = ("record-continuously",
                   "Record until the trace buffer is full.")
   UNTIL_FULL = ("record-until-full", "Record until the user ends the trace. "
@@ -112,12 +109,12 @@ class RecordMode(compat.StrEnumWithHelp):
 
 
 @enum.unique
-class RecordFormat(compat.StrEnumWithHelp):
+class RecordFormat(ConfigEnum):
   JSON = ("json", "Old about://tracing compatible file format.")
   PROTO = ("proto", "New https://ui.perfetto.dev/ compatible format")
 
 
-def parse_trace_config_file_path(value: str) -> pathlib.Path:
+def parse_trace_config_file_path(value: str) -> pth.LocalPath:
   data = cli_helper.parse_json_file(value)
   if "trace_config" not in data:
     raise argparse.ArgumentTypeError("Missing 'trace_config' property.")
@@ -133,19 +130,12 @@ def parse_trace_config_file_path(value: str) -> pathlib.Path:
                                                 not in config):
     raise argparse.ArgumentTypeError(
         "Empty trace config: no trace categories or memory dumps configured.")
-  record_mode = config.get("record_mode", RecordMode.CONTINUOUSLY)
-  try:
-    RecordMode(record_mode)
-  except ValueError as e:
-    # pytype: disable=missing-parameter
-    raise argparse.ArgumentTypeError(
-        f"Invalid record_mode: '{record_mode}'. "
-        f"Choices are: {', '.join(str(e) for e in RecordMode)}") from e
-    # pytype: enable=missing-parameter
-  return pathlib.Path(value)
+  RecordMode.parse(config.get("record_mode", RecordMode.CONTINUOUSLY))
+  return pth.LocalPath(value)
 
 
-ANDROID_TRACE_CONFIG_PATH = pathlib.Path("/data/local/chrome-trace-config.json")
+ANDROID_TRACE_CONFIG_PATH = pth.RemotePath(
+    "/data/local/chrome-trace-config.json")
 
 
 class TracingProbe(ChromiumProbe):
@@ -213,13 +203,13 @@ class TracingProbe(ChromiumProbe):
   def __init__(self,
                preset: Optional[str] = None,
                categories: Optional[Sequence[str]] = None,
-               trace_config: Optional[pathlib.Path] = None,
+               trace_config: Optional[pth.LocalPath] = None,
                startup_duration: int = 0,
                record_mode: RecordMode = RecordMode.CONTINUOUSLY,
                record_format: RecordFormat = RecordFormat.PROTO,
-               traceconv: Optional[pathlib.Path] = None) -> None:
+               traceconv: Optional[pth.RemotePath] = None) -> None:
     super().__init__()
-    self._trace_config: Optional[pathlib.Path] = trace_config
+    self._trace_config: Optional[pth.LocalPath] = trace_config
     self._categories: Set[str] = set(categories or MINIMAL_CONFIG)
     self._preset: Optional[str] = preset
     if preset:
@@ -234,10 +224,10 @@ class TracingProbe(ChromiumProbe):
     self._startup_duration: int = startup_duration
     self._record_mode: RecordMode = record_mode
     self._record_format: RecordFormat = record_format
-    self._traceconv: Optional[pathlib.Path] = traceconv
+    self._traceconv: Optional[pth.RemotePath] = traceconv
 
   @property
-  def key(self) -> Tuple[Tuple, ...]:
+  def key(self) -> ProbeKeyT:
     return super().key + (("preset", self._preset),
                           ("categories", tuple(self._categories)),
                           ("startup_duration", self._startup_duration),
@@ -250,7 +240,7 @@ class TracingProbe(ChromiumProbe):
     return f"trace.{self._record_format.value}"  # pylint: disable=no-member
 
   @property
-  def traceconv(self) -> Optional[pathlib.Path]:
+  def traceconv(self) -> Optional[pth.RemotePath]:
     return self._traceconv
 
   @property
@@ -258,8 +248,8 @@ class TracingProbe(ChromiumProbe):
     return self._record_format
 
   def attach(self, browser: Browser) -> None:
-    assert isinstance(browser, Chromium)
-    flags: ChromeFlags = browser.flags
+    assert browser.attributes.is_chromium_based
+    flags = browser.flags
     flags.update(self.CHROMIUM_FLAGS)
     # Force proto file so we can convert it to legacy json as well.
     flags["--trace-startup-format"] = str(self._record_format)
@@ -281,7 +271,7 @@ class TracingProbe(ChromiumProbe):
 
 
 class TracingProbeContext(ProbeContext[TracingProbe]):
-  _traceconv: Optional[pathlib.Path]
+  _traceconv: Optional[pth.RemotePath]
   _record_format: RecordFormat
 
   def setup(self) -> None:
@@ -289,7 +279,7 @@ class TracingProbeContext(ProbeContext[TracingProbe]):
     self._record_format = self.probe.record_format
     if self._record_format == RecordFormat.PROTO:
       self._traceconv = self.probe.traceconv or TraceconvFinder(
-          self.browser_platform).traceconv
+          self.browser_platform).path
     else:
       self._traceconv = None
 
@@ -299,7 +289,7 @@ class TracingProbeContext(ProbeContext[TracingProbe]):
   def stop(self) -> None:
     pass
 
-  def tear_down(self) -> ProbeResult:
+  def teardown(self) -> ProbeResult:
     if self._record_format == RecordFormat.JSON:
       return self.browser_result(json=(self.result_path,))
     if not self._traceconv:
@@ -313,15 +303,4 @@ class TracingProbeContext(ProbeContext[TracingProbe]):
     self.browser_platform.sh(self._traceconv, "json", self.result_path,
                              json_trace_file)
     return self.browser_result(
-        json=(json_trace_file,), file=(self.result_path,))
-
-
-class TraceconvFinder:
-
-  def __init__(self, platform: plt.Platform) -> None:
-    self.traceconv: Optional[pathlib.Path] = None
-    if chrome_checkout := probe_helper.ChromiumCheckoutFinder(platform).path:
-      candidate = (
-          chrome_checkout / "third_party" / "perfetto" / "tools" / "traceconv")
-      if candidate.is_file():
-        self.traceconv = candidate
+        json=(json_trace_file,), trace=(self.result_path,))

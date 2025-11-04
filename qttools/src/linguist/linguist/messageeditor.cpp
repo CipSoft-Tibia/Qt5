@@ -13,6 +13,7 @@
 
 #include <QApplication>
 #include <QBoxLayout>
+#include <QCheckBox>
 #ifndef QT_NO_CLIPBOARD
 #include <QClipboard>
 #endif
@@ -94,7 +95,7 @@ void MessageEditor::setupEditorPage()
     editorPage->setSizePolicy(QSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed));
 
     m_source = new FormWidget(tr("Source text"), false);
-    m_source->setHideWhenEmpty(true);
+    m_source->setHideWhenEmpty(false);
     m_source->setWhatsThis(tr("This area shows the source text."));
     connect(m_source, &FormWidget::selectionChanged,
             this, &MessageEditor::selectionChanged);
@@ -114,6 +115,12 @@ void MessageEditor::setupEditorPage()
     connect(m_commentText, &FormWidget::selectionChanged,
             this, &MessageEditor::selectionChanged);
 
+    m_ncrModeBox = new QCheckBox(tr("NCR mode"));
+    m_ncrModeBox->setWhatsThis(tr("Toggles Numeric Character Reference Mode "
+                                  "for displaying the source text and the translations."));
+    m_ncrModeBox->setHidden(true);
+    connect(m_ncrModeBox, &QCheckBox::checkStateChanged, this, &MessageEditor::toggleNcrMode);
+
     QBoxLayout *subLayout = new QVBoxLayout;
 
     subLayout->setContentsMargins(5, 5, 5, 5);
@@ -121,10 +128,14 @@ void MessageEditor::setupEditorPage()
     subLayout->addWidget(m_pluralSource);
     subLayout->addWidget(m_commentText);
 
+    QBoxLayout *horizontalLayout = new QHBoxLayout;
+    horizontalLayout->addLayout(subLayout);
+    horizontalLayout->addWidget(m_ncrModeBox, 0, Qt::AlignTop | Qt::AlignRight);
+
     m_layout = new QVBoxLayout;
     m_layout->setSpacing(2);
     m_layout->setContentsMargins(2, 2, 2, 2);
-    m_layout->addLayout(subLayout);
+    m_layout->addLayout(horizontalLayout);
     m_layout->addStretch(1);
     editorPage->setLayout(m_layout);
 
@@ -510,6 +521,22 @@ bool MessageEditor::eventFilter(QObject *o, QEvent *e)
         QWidget *widget = static_cast<QWidget *>(o);
         if (widget != m_focusWidget)
             trackFocus(widget);
+    } else if (e->type() == QEvent::ApplicationPaletteChange
+               || e->type() == QEvent::PaletteChange) {
+        QPalette p;
+        p.setBrush(QPalette::Window, p.brush(QPalette::Active, QPalette::Base));
+        setPalette(p);
+        if (m_editors.size() > 1) {
+            for (qsizetype i = 0; i < m_editors.size(); i++) {
+                m_editors[i].container->setPalette(paletteForModel(i));
+                m_editors[i].container->setAutoFillBackground(true);
+            }
+        }
+    } else if (e->type() == QEvent::ApplicationPaletteChange
+               || e->type() == QEvent::PaletteChange) {
+        QPalette p;
+        p.setBrush(QPalette::Window, p.brush(QPalette::Active, QPalette::Base));
+        setPalette(p);
     }
 
     return QScrollArea::eventFilter(o, e);
@@ -547,6 +574,8 @@ void MessageEditor::showNothing()
     m_source->clearTranslation();
     m_pluralSource->clearTranslation();
     m_commentText->clearTranslation();
+    m_ncrModeBox->setHidden(true);
+
     for (int j = 0; j < m_editors.size(); ++j) {
         setEditingEnabled(j, false);
         for (FormMultiWidget *widget : std::as_const(m_editors[j].transTexts))
@@ -558,6 +587,27 @@ void MessageEditor::showNothing()
 #endif
     updateBeginFromSource();
     updateUndoRedo();
+}
+
+void MessageEditor::toggleNcrMode()
+{
+    for (int j = 0; j < m_editors.size(); ++j) {
+
+        MessageItem *currentMessage = m_dataModel->messageItem(m_currentIndex, j);
+        if (!currentMessage)
+            continue;
+
+        bool newNcrMode = m_ncrModeBox->isChecked();
+        if (currentMessage->ncrMode() != newNcrMode) {
+            currentMessage->setNcrMode(newNcrMode);
+            m_source->setTranslation(currentMessage->text());
+            m_pluralSource->setTranslation(currentMessage->pluralText());
+            auto translations = currentMessage->translations();
+            for (int i = 0; i < translations.size(); i++)
+                setNumerusTranslation(j, translations.at(i), i);
+        }
+        break;
+    }
 }
 
 void MessageEditor::showMessage(const MultiDataIndex &index)
@@ -612,23 +662,21 @@ void MessageEditor::showMessage(const MultiDataIndex &index)
         ed.transTexts.first()->setLabel(ed.pluralEditMode ? ed.firstForm : ed.invariantForm);
 
         // Translation forms
-        if (item->text().isEmpty() && !item->context().isEmpty()) {
-            for (int i = 0; i < ed.transTexts.size(); ++i)
-                ed.transTexts.at(i)->setVisible(false);
-        } else {
-            QStringList normalizedTranslations =
-                m_dataModel->model(j)->normalizedTranslations(*item);
-            for (int i = 0; i < ed.transTexts.size(); ++i) {
-                bool shouldShow = (i < normalizedTranslations.size());
-                if (shouldShow)
-                    setNumerusTranslation(j, normalizedTranslations.at(i), i);
-                else
-                    setNumerusTranslation(j, QString(), i);
-                ed.transTexts.at(i)->setVisible(i == 0 || shouldShow);
-            }
+        QStringList normalizedTranslations =
+            m_dataModel->model(j)->normalizedTranslations(*item);
+        for (int i = 0; i < ed.transTexts.size(); ++i) {
+            bool shouldShow = (i < normalizedTranslations.size());
+            if (shouldShow)
+                setNumerusTranslation(j, normalizedTranslations.at(i), i);
+            else
+                setNumerusTranslation(j, QString(), i);
+            ed.transTexts.at(i)->setVisible(i == 0 || shouldShow);
         }
 
         ed.transCommentText->setTranslation(item->translatorComment().trimmed(), false);
+
+        m_ncrModeBox->setCheckState(item->ncrMode() ? Qt::Checked : Qt::Unchecked);
+        m_ncrModeBox->setHidden(false);
     }
 
     updateUndoRedo();

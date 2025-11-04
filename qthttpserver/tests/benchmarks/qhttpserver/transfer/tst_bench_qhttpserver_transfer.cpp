@@ -75,12 +75,12 @@ tst_bench_QHttpServer_transfer::tst_bench_QHttpServer_transfer()
     QByteArray bigdata = "1"_ba.repeated(1024 * 1024 * 100);
     using HTTP = QHttpServerRequest::Method;
     server.route("/bytearray", HTTP::Get,
-                 [=](const QHttpServerRequest &req, QHttpServerResponder &resp) {
+                 [=](QHttpServerResponder &resp) {
                      resp.write(bigdata, "application/octet-stream");
                  });
 
     server.route("/qbuffer", HTTP::Get,
-                 [=](const QHttpServerRequest &req, QHttpServerResponder &resp) {
+                 [=](QHttpServerResponder &resp) {
                      auto *buf = new QBuffer;
                      buf->setData(bigdata);
                      buf->open(QIODevice::ReadOnly);

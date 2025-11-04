@@ -23,11 +23,8 @@
 #include <optional>
 #include <utility>
 
-#include "perfetto/base/build_config.h"
 #include "perfetto/base/logging.h"
 #include "perfetto/ext/base/metatrace.h"
-#include "perfetto/ext/base/string_splitter.h"
-#include "perfetto/ext/base/string_utils.h"
 #include "perfetto/ext/base/utils.h"
 #include "perfetto/ext/tracing/core/trace_writer.h"
 #include "src/kallsyms/kernel_symbol_map.h"
@@ -117,8 +114,7 @@ T ReadValue(const uint8_t* ptr) {
 }
 
 // Reads a signed ftrace value as an int64_t, sign extending if necessary.
-static int64_t ReadSignedFtraceValue(const uint8_t* ptr,
-                                     FtraceFieldType ftrace_type) {
+int64_t ReadSignedFtraceValue(const uint8_t* ptr, FtraceFieldType ftrace_type) {
   if (ftrace_type == kFtraceInt32) {
     int32_t value;
     memcpy(&value, reinterpret_cast<const void*>(ptr), sizeof(value));
@@ -296,8 +292,7 @@ size_t CpuReader::ReadAndProcessBatch(
     }
   }  // end of metatrace::FTRACE_CPU_READ_BATCH
 
-  // Parse the pages and write to the trace for all relevant data
-  // sources.
+  // Parse the pages and write to the trace for all relevant data sources.
   if (pages_read == 0)
     return pages_read;
 
@@ -305,29 +300,36 @@ size_t CpuReader::ReadAndProcessBatch(
     ProcessPagesForDataSource(
         data_source->trace_writer(), data_source->mutable_metadata(), cpu_,
         data_source->parsing_config(), data_source->mutable_parse_errors(),
-        parsing_buf, pages_read, compact_sched_buf, table_, symbolizer_,
+        data_source->mutable_bundle_end_timestamp(cpu_), parsing_buf,
+        pages_read, compact_sched_buf, table_, symbolizer_,
         ftrace_clock_snapshot_, ftrace_clock_);
   }
-
   return pages_read;
 }
 
-void CpuReader::Bundler::StartNewPacket(bool lost_events) {
+void CpuReader::Bundler::StartNewPacket(
+    bool lost_events,
+    uint64_t previous_bundle_end_timestamp) {
   FinalizeAndRunSymbolizer();
   packet_ = trace_writer_->NewTracePacket();
   bundle_ = packet_->set_ftrace_events();
-  if (ftrace_clock_) {
-    bundle_->set_ftrace_clock(ftrace_clock_);
-
-    if (ftrace_clock_snapshot_ && ftrace_clock_snapshot_->ftrace_clock_ts) {
-      bundle_->set_ftrace_timestamp(ftrace_clock_snapshot_->ftrace_clock_ts);
-      bundle_->set_boot_timestamp(ftrace_clock_snapshot_->boot_clock_ts);
-    }
-  }
 
   bundle_->set_cpu(static_cast<uint32_t>(cpu_));
   if (lost_events) {
     bundle_->set_lost_events(true);
+  }
+
+  // note: set-to-zero is valid and expected for the first bundle per cpu
+  // (outside of concurrent tracing), with the effective meaning of "all data is
+  // valid since the data source was started".
+  bundle_->set_previous_bundle_end_timestamp(previous_bundle_end_timestamp);
+
+  if (ftrace_clock_) {
+    bundle_->set_ftrace_clock(ftrace_clock_);
+    if (ftrace_clock_snapshot_ && ftrace_clock_snapshot_->ftrace_clock_ts) {
+      bundle_->set_ftrace_timestamp(ftrace_clock_snapshot_->ftrace_clock_ts);
+      bundle_->set_boot_timestamp(ftrace_clock_snapshot_->boot_clock_ts);
+    }
   }
 }
 
@@ -412,6 +414,7 @@ bool CpuReader::ProcessPagesForDataSource(
     size_t cpu,
     const FtraceDataSourceConfig* ds_config,
     base::FlatSet<protos::pbzero::FtraceParseStatus>* parse_errors,
+    uint64_t* bundle_end_timestamp,
     const uint8_t* parsing_buf,
     const size_t pages_read,
     CompactSchedBuffer* compact_sched_buf,
@@ -423,7 +426,7 @@ bool CpuReader::ProcessPagesForDataSource(
   Bundler bundler(trace_writer, metadata,
                   ds_config->symbolize_ksyms ? symbolizer : nullptr, cpu,
                   ftrace_clock_snapshot, ftrace_clock, compact_sched_buf,
-                  ds_config->compact_sched.enabled);
+                  ds_config->compact_sched.enabled, *bundle_end_timestamp);
 
   bool success = true;
   size_t pages_parsed = 0;
@@ -459,11 +462,14 @@ bool CpuReader::ProcessPagesForDataSource(
             kCompactSchedInternerThreshold;
 
     if (page_header->lost_events || interner_past_threshold) {
-      bundler.StartNewPacket(page_header->lost_events);
+      // pass in an updated bundle_end_timestamp since we're starting a new
+      // bundle, which needs to reference the last timestamp from the prior one.
+      bundler.StartNewPacket(page_header->lost_events, *bundle_end_timestamp);
     }
 
-    FtraceParseStatus status = ParsePagePayload(
-        parse_pos, &page_header.value(), table, ds_config, &bundler, metadata);
+    FtraceParseStatus status =
+        ParsePagePayload(parse_pos, &page_header.value(), table, ds_config,
+                         &bundler, metadata, bundle_end_timestamp);
 
     if (status != FtraceParseStatus::FTRACE_STATUS_OK) {
       WriteAndSetParseError(&bundler, parse_errors, page_header->timestamp,
@@ -543,11 +549,13 @@ protos::pbzero::FtraceParseStatus CpuReader::ParsePagePayload(
     const ProtoTranslationTable* table,
     const FtraceDataSourceConfig* ds_config,
     Bundler* bundler,
-    FtraceMetadata* metadata) {
+    FtraceMetadata* metadata,
+    uint64_t* bundle_end_timestamp) {
   const uint8_t* ptr = start_of_payload;
   const uint8_t* const end = ptr + page_header->size;
 
   uint64_t timestamp = page_header->timestamp;
+  uint64_t last_written_event_ts = 0;
 
   while (ptr < end) {
     EventHeader event_header;
@@ -596,7 +604,7 @@ protos::pbzero::FtraceParseStatus CpuReader::ParsePagePayload(
       }
       // Data record:
       default: {
-        // If type_or_length <=28, the the record length is 4x that value.
+        // If type_or_length <=28, the record length is 4x that value.
         // If type_or_length == 0, the length of the record is stored in the
         // first uint32_t word of the payload.
         uint32_t event_size = 0;
@@ -634,10 +642,12 @@ protos::pbzero::FtraceParseStatus CpuReader::ParsePagePayload(
           const CompactSchedWakingFormat& sched_waking_format =
               table->compact_sched_format().sched_waking;
 
+          // Special-cased filtering of ftrace/print events to retain only the
+          // matching events.
+          bool event_written = true;
           bool ftrace_print_filter_enabled =
               ds_config->print_filter.has_value();
 
-          // compact sched_switch
           if (compact_sched_enabled &&
               ftrace_event_id == sched_switch_format.event_id) {
             if (event_size < sched_switch_format.size)
@@ -645,8 +655,6 @@ protos::pbzero::FtraceParseStatus CpuReader::ParsePagePayload(
 
             ParseSchedSwitchCompact(start, timestamp, &sched_switch_format,
                                     bundler->compact_sched_buf(), metadata);
-
-            // compact sched_waking
           } else if (compact_sched_enabled &&
                      ftrace_event_id == sched_waking_format.event_id) {
             if (event_size < sched_waking_format.size)
@@ -654,7 +662,6 @@ protos::pbzero::FtraceParseStatus CpuReader::ParsePagePayload(
 
             ParseSchedWakingCompact(start, timestamp, &sched_waking_format,
                                     bundler->compact_sched_buf(), metadata);
-
           } else if (ftrace_print_filter_enabled &&
                      ftrace_event_id == ds_config->print_filter->event_id()) {
             if (ds_config->print_filter->IsEventInteresting(start, next)) {
@@ -665,6 +672,8 @@ protos::pbzero::FtraceParseStatus CpuReader::ParsePagePayload(
                               event, metadata)) {
                 return FtraceParseStatus::FTRACE_STATUS_INVALID_EVENT;
               }
+            } else {  // print event did NOT pass the filter
+              event_written = false;
             }
           } else {
             // Common case: parse all other types of enabled events.
@@ -676,12 +685,17 @@ protos::pbzero::FtraceParseStatus CpuReader::ParsePagePayload(
               return FtraceParseStatus::FTRACE_STATUS_INVALID_EVENT;
             }
           }
-        }
-        // Jump to next event.
+          if (event_written) {
+            last_written_event_ts = timestamp;
+          }
+        }  // IsEventEnabled(id)
         ptr = next;
-      }  // default case
-    }    // switch (event_header.type_or_length)
-  }      // while (ptr < end)
+      }              // case (data_record)
+    }                // switch (event_header.type_or_length)
+  }                  // while (ptr < end)
+
+  if (last_written_event_ts)
+    *bundle_end_timestamp = last_written_event_ts;
   return FtraceParseStatus::FTRACE_STATUS_OK;
 }
 
@@ -718,7 +732,7 @@ bool CpuReader::ParseEvent(uint16_t ftrace_event_id,
                         protos::pbzero::FtraceEvent::kGenericFieldNumber)) {
     nested->AppendString(GenericFtraceEvent::kEventNameFieldNumber, info.name);
     for (const Field& field : info.fields) {
-      auto generic_field = nested->BeginNestedMessage<protozero::Message>(
+      auto* generic_field = nested->BeginNestedMessage<protozero::Message>(
           GenericFtraceEvent::kFieldFieldNumber);
       generic_field->AppendString(GenericFtraceEvent::Field::kNameFieldNumber,
                                   field.ftrace_name);
@@ -848,6 +862,9 @@ bool CpuReader::ParseField(const Field& field,
       return true;
     case kDevId64ToUint64:
       ReadDevId<uint64_t>(field_start, field_id, message, metadata);
+      return true;
+    case kFtraceSymAddr32ToUint64:
+      ReadSymbolAddr<uint32_t>(field_start, field_id, message, metadata);
       return true;
     case kFtraceSymAddr64ToUint64:
       ReadSymbolAddr<uint64_t>(field_start, field_id, message, metadata);

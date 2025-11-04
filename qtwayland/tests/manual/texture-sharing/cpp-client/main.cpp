@@ -29,7 +29,8 @@ public:
         : m_extension(nullptr)
     {
         m_extension = new TextureSharingExtension;
-        connect(m_extension, SIGNAL(bufferReceived(QtWaylandClient::QWaylandServerBuffer*, const QString&)), this, SLOT(receiveBuffer(QtWaylandClient::QWaylandServerBuffer*, const QString&)));
+        connect(m_extension, SIGNAL(bufferReceived(QtWaylandClient::QWaylandServerBuffer*,QString)),
+                this, SLOT(receiveBuffer(QtWaylandClient::QWaylandServerBuffer*,QString)));
         connect(m_extension, &TextureSharingExtension::activeChanged, this, &TestWindow::handleExtensionActive);
     }
 

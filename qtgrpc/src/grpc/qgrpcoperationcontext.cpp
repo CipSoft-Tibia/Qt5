@@ -1,7 +1,7 @@
 // Copyright (C) 2023 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
-#include <QtGrpc/qgrpccalloptions.h>
+#include <QtGrpc/private/qgrpcoperationcontext_p.h>
 #include <QtGrpc/qgrpcoperationcontext.h>
 #include <QtGrpc/qgrpcstatus.h>
 
@@ -61,7 +61,7 @@ QT_BEGIN_NAMESPACE
 */
 
 /*!
-    \fn void finished(const QGrpcStatus &status)
+    \fn void QGrpcOperationContext::finished(const QGrpcStatus &status)
 
     This signal should be emitted by the channel when an RPC finishes.
 
@@ -103,8 +103,9 @@ QT_BEGIN_NAMESPACE
     This signal is emitted by QGrpcOperation when requesting cancellation of the
     communication.
 
-    The channel is expected to connect its cancellation logic to this signal and
-    attempt to cancel the RPC and return immediately. Successful cancellation
+    The channel is expected to connect its cancellation logic to this signal
+    and attempt to cancel the RPC and finish it with a
+    \l{QtGrpc::StatusCode::}{Cancelled} status code. Successful cancellation
     cannot be guaranteed. Further processing of the data received from a
     channel is not required and should be avoided.
 
@@ -139,26 +140,6 @@ QT_BEGIN_NAMESPACE
     \sa QGrpcClientStream::writesDone
     \sa QGrpcBidiStream::writesDone
 */
-
-class QGrpcOperationContextPrivate : public QObjectPrivate
-{
-    Q_DECLARE_PUBLIC(QGrpcOperationContext)
-public:
-    QGrpcOperationContextPrivate(QLatin1StringView method_, QLatin1StringView service_,
-                                 QByteArrayView argument_, QGrpcCallOptions options_,
-                                 std::shared_ptr<QAbstractProtobufSerializer> &&serializer_)
-        : method(method_), service(service_), argument(argument_.toByteArray()),
-          options(std::move(options_)), serializer(std::move(serializer_))
-    {
-    }
-
-    QLatin1StringView method;
-    QLatin1StringView service;
-    QByteArray argument;
-    QGrpcCallOptions options;
-    std::shared_ptr<QAbstractProtobufSerializer> serializer;
-    QHash<QByteArray, QByteArray> serverMetadata;
-};
 
 /*!
     \internal
@@ -260,6 +241,24 @@ void QGrpcOperationContext::setServerMetadata(QHash<QByteArray, QByteArray> &&me
 {
     Q_D(QGrpcOperationContext);
     d->serverMetadata = std::move(metadata);
+}
+
+/*!
+    Returns the meta type of the RPC result message.
+ */
+QMetaType QGrpcOperationContext::responseMetaType() const
+{
+    Q_D(const QGrpcOperationContext);
+    return d->responseMetaType;
+}
+
+/*!
+    Stores the \a metaType of the RPC result message.
+*/
+void QGrpcOperationContext::setResponseMetaType(QMetaType metaType)
+{
+    Q_D(QGrpcOperationContext);
+    d->responseMetaType = metaType;
 }
 
 // For future extensions

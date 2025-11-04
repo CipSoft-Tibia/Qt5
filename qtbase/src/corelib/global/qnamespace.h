@@ -235,12 +235,20 @@ namespace Qt {
         WindowTransparentForInput = 0x00080000,
         WindowOverridesSystemGestures = 0x00100000,
         WindowDoesNotAcceptFocus = 0x00200000,
-        MaximizeUsingFullscreenGeometryHint = 0x00400000,
+#if QT_DEPRECATED_SINCE(6, 13)
+        MaximizeUsingFullscreenGeometryHint Q_DECL_ENUMERATOR_DEPRECATED_X(
+            "Use Qt::ExpandedClientAreaHint instead") = 0x00400000,
+#endif
+        ExpandedClientAreaHint = 0x00400000,
+        NoTitleBarBackgroundHint = 0x00800000,
 
         CustomizeWindowHint = 0x02000000,
         WindowStaysOnBottomHint = 0x04000000,
         WindowCloseButtonHint = 0x08000000,
-        MacWindowToolBarButtonHint = 0x10000000,
+#if QT_DEPRECATED_SINCE(6, 9)
+        MacWindowToolBarButtonHint Q_DECL_ENUMERATOR_DEPRECATED_X(
+            "This flag has been a no-op since Qt 5") = 0x10000000,
+#endif
         BypassGraphicsProxyWidget = 0x20000000,
         NoDropShadowWindowHint = 0x40000000,
         WindowFullscreenButtonHint = 0x80000000

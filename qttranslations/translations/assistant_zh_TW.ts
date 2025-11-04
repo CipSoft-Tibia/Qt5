@@ -71,7 +71,7 @@ Reason:
     </message>
     <message>
         <source>Cannot load sqlite database driver!</source>
-        <translation>無法載入 sqlite 資料庫驅動程式！</translation>
+        <translation>無法載入 SQLite 資料庫驅動程式！</translation>
     </message>
 </context>
 <context>

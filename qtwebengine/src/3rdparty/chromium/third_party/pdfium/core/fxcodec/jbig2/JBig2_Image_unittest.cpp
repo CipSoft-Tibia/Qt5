@@ -8,6 +8,7 @@
 
 #include <stdint.h>
 
+#include "core/fxcrt/compiler_specific.h"
 #include "testing/gtest/include/gtest/gtest.h"
 
 namespace {
@@ -57,14 +58,14 @@ TEST(fxcodec, JBig2ImageCreate) {
   EXPECT_EQ(0, img.GetPixel(0, 0));
   EXPECT_EQ(0, img.GetLine(0)[0]);
   EXPECT_EQ(0, img.GetPixel(kWidthPixels - 1, kHeightLines - 1));
-  EXPECT_EQ(0, img.GetLine(kHeightLines - 1)[kWidthBytes - 1]);
+  EXPECT_EQ(0, UNSAFE_TODO(img.GetLine(kHeightLines - 1)[kWidthBytes - 1]));
 
   img.SetPixel(0, 0, true);
   img.SetPixel(kWidthPixels - 1, kHeightLines - 1, true);
   EXPECT_EQ(1, img.GetPixel(0, 0));
   EXPECT_EQ(1, img.GetPixel(kWidthPixels - 1, kHeightLines - 1));
   EXPECT_EQ(0x80, img.GetLine(0)[0]);
-  EXPECT_EQ(0x01, img.GetLine(kHeightLines - 1)[kWidthBytes - 1]);
+  EXPECT_EQ(0x01, UNSAFE_TODO(img.GetLine(kHeightLines - 1)[kWidthBytes - 1]));
 
   // Out-of-bounds SetPixel() is silent no-op.
   img.SetPixel(-1, 1, true);

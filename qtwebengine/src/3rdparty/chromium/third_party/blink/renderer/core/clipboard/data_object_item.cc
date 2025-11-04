@@ -41,7 +41,6 @@
 #include "third_party/blink/renderer/platform/heap/garbage_collected.h"
 #include "third_party/blink/renderer/platform/image-encoders/image_encoder.h"
 #include "third_party/blink/renderer/platform/network/mime/mime_type_registry.h"
-#include "third_party/blink/renderer/platform/runtime_enabled_features.h"
 
 namespace blink {
 
@@ -108,7 +107,6 @@ DataObjectItem* DataObjectItem::CreateFromFileSharedBuffer(
   item->shared_buffer_ = std::move(buffer);
   item->is_image_accessible_ = is_image_accessible;
   item->filename_extension_ = filename_extension;
-  // TODO(dcheng): Rename these fields to be more generically named.
   item->title_ = content_disposition;
   item->base_url_ = source_url;
   return item;
@@ -163,7 +161,7 @@ File* DataObjectItem::GetAsFile() const {
     auto data = std::make_unique<BlobData>();
     data->SetContentType(type_);
     for (const auto& span : *shared_buffer_)
-      data->AppendBytes(span.data(), span.size());
+      data->AppendBytes(base::as_bytes(span));
     const uint64_t length = data->length();
     auto blob = BlobDataHandle::Create(std::move(data), length);
     return MakeGarbageCollected<File>(
@@ -179,7 +177,7 @@ File* DataObjectItem::GetAsFile() const {
 
     auto data = std::make_unique<BlobData>();
     data->SetContentType(kMimeTypeImagePng);
-    data->AppendBytes(png_data.data(), png_data.size());
+    data->AppendBytes(png_data);
 
     const uint64_t length = data->length();
     auto blob = BlobDataHandle::Create(std::move(data), length);
@@ -209,7 +207,7 @@ String DataObjectItem::GetAsString() const {
     unsigned ignored;
     data = system_clipboard_->ReadHTML(ignored_source_url, ignored, ignored);
   } else {
-    data = system_clipboard_->ReadCustomData(type_);
+    data = system_clipboard_->ReadDataTransferCustomData(type_);
   }
 
   return system_clipboard_->SequenceNumber() == sequence_number_ ? data
@@ -217,9 +215,6 @@ String DataObjectItem::GetAsString() const {
 }
 
 bool DataObjectItem::IsFilename() const {
-  // TODO(https://bugs.webkit.org/show_bug.cgi?id=81261): When we properly
-  // support File dragout, we'll need to make sure this works as expected for
-  // DragDataChromium.
   return kind_ == kFileKind && file_;
 }
 

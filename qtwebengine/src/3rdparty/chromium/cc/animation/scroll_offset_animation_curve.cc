@@ -56,11 +56,22 @@ static float MaximumDimension(const gfx::Vector2dF& delta) {
 
 static std::unique_ptr<TimingFunction> EaseInOutWithInitialSlope(double slope) {
   // Clamp slope to a sane value.
-  slope = std::clamp(slope, -100.0, 100.0);
+  slope = std::clamp(slope, -1000.0, 1000.0);
+
+  // Based on CubicBezierTimingFunction::EaseType::EASE_IN_OUT preset
+  // with first control point scaled.
+  const double x1 = 0.42;
+  const double y1 = slope * x1;
+  return CubicBezierTimingFunction::Create(x1, y1, 0.58, 1);
+}
+
+static std::unique_ptr<TimingFunction> EaseOutNaturalWithInitialSlope(double slope) {
+  // Clamp slope to a sane value.
+  slope = std::clamp(slope, -1000.0, 1000.0);
 
   // Based on CubicBezierTimingFunction::EaseType::EASE_OUT_NATURAL preset
   // with first control point scaled.
-  const double x1 = 0.25;
+  const double x1 = 0.26;
   const double y1 = slope * x1;
   return CubicBezierTimingFunction::Create(x1, y1, 0.45, 0.94);
 }
@@ -309,7 +320,8 @@ gfx::PointF ScrollOffsetAnimationCurve::GetValue(base::TimeDelta t) const {
   if (t <= base::TimeDelta())
     return initial_value_;
 
-  const double progress = timing_function_->GetValue(t / duration);
+  const double progress = timing_function_->GetValue(
+      t / duration, TimingFunction::LimitDirection::RIGHT);
   return gfx::PointF(gfx::Tween::FloatValueBetween(progress, initial_value_.x(),
                                                    target_value_.x()),
                      gfx::Tween::FloatValueBetween(progress, initial_value_.y(),
@@ -335,7 +347,8 @@ std::unique_ptr<gfx::AnimationCurve> ScrollOffsetAnimationCurve::Clone() const {
 void ScrollOffsetAnimationCurve::Tick(
     base::TimeDelta t,
     int property_id,
-    gfx::KeyframeModel* keyframe_model) const {
+    gfx::KeyframeModel* keyframe_model,
+    gfx::TimingFunction::LimitDirection unused) const {
   if (target_) {
     target_->OnScrollOffsetAnimated(GetValue(t), property_id, keyframe_model);
   }
@@ -438,8 +451,10 @@ void ScrollOffsetAnimationCurve::UpdateTarget(base::TimeDelta t,
   double new_slope =
       velocity * (new_duration.InSecondsF() / MaximumDimension(new_delta));
 
-  if (animation_type_ == AnimationType::kEaseInOut || animation_type_ == AnimationType::kEaseOutNatural) {
+  if (animation_type_ == AnimationType::kEaseInOut) {
     timing_function_ = EaseInOutWithInitialSlope(new_slope);
+  } else if (animation_type_ == AnimationType::kEaseOutNatural) {
+    timing_function_ = EaseOutNaturalWithInitialSlope(new_slope);
   } else {
     DCHECK_EQ(animation_type_, AnimationType::kImpulse);
     if (IsNewTargetInOppositeDirection(current_position, target_value_,

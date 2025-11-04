@@ -27,6 +27,21 @@ export class Tab extends LitElement {
       display: inline-block;
     }
 
+    #slotted-content {
+      display: inline-flex;
+      align-items: center;
+    }
+
+    :host([badged]) #slotted-content::after {
+      display: inline-block;
+      content: '';
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background-color: var(--cros-tab-badge-color, var(--cros-sys-error));
+      margin-inline-start: 4px;
+    }
+
     md-primary-tab {
       padding: 0 8px;
 
@@ -81,13 +96,16 @@ export class Tab extends LitElement {
   /** @nocollapse */
   static override properties = {
     active: {type: Boolean, reflect: true},
+    badged: {type: Boolean, reflect: true},
   };
 
   active: boolean;
+  badged: boolean;
 
   constructor() {
     super();
     this.active = false;
+    this.badged = false;
   }
 
   override firstUpdated() {
@@ -105,7 +123,7 @@ export class Tab extends LitElement {
   override render() {
     return html`
       <md-primary-tab ?active=${this.active}>
-        <slot></slot>
+        <span id="slotted-content"><slot></slot></span>
       </md-primary-tab>
     `;
   }

@@ -20,7 +20,7 @@ namespace {
 #endif
 
 #if defined(WEBRTC_DENORMAL_DISABLER_X86_SUPPORTED) || \
-    defined(WEBRTC_ARCH_ARM_FAMILY)
+    (defined(WEBRTC_ARCH_ARM_FAMILY) && !defined(_M_ARM64))
 #define WEBRTC_DENORMAL_DISABLER_SUPPORTED
 #endif
 

@@ -85,9 +85,6 @@ class QUICHE_EXPORT QuicSentPacketManager {
                                            QuicByteCount /*old_cwnd*/,
                                            QuicByteCount /*new_cwnd*/) {}
 
-    virtual void OnAdjustBurstSize(int /*old_burst_size*/,
-                                   int /*new_burst_size*/) {}
-
     virtual void OnOvershootingDetected() {}
 
     virtual void OnConfigProcessed(const SendParameters& /*parameters*/) {}
@@ -226,6 +223,11 @@ class QUICHE_EXPORT QuicSentPacketManager {
                     HasRetransmittableData has_retransmittable_data,
                     bool measure_rtt, QuicEcnCodepoint ecn_codepoint);
 
+  // Informs the sent packet manager of a |packet| sent by the dispatcher. This
+  // should only be called before any packet is sent by the QuicConnection.
+  const QuicTransmissionInfo& AddDispatcherSentPacket(
+      const DispatcherSentPacket& packet);
+
   bool CanSendAckFrequency() const;
 
   QuicAckFrequencyFrame GetUpdatedAckFrequencyFrame() const;
@@ -357,10 +359,6 @@ class QUICHE_EXPORT QuicSentPacketManager {
   void EnableMultiplePacketNumberSpacesSupport();
 
   void SetDebugDelegate(DebugDelegate* debug_delegate);
-
-  void SetPacingAlarmGranularity(QuicTime::Delta alarm_granularity) {
-    pacing_sender_.set_alarm_granularity(alarm_granularity);
-  }
 
   QuicPacketNumber GetLargestObserved() const {
     return unacked_packets_.largest_acked();

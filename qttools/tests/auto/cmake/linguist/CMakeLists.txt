@@ -60,12 +60,37 @@ include("${_Qt6CTestMacros}")
 _qt_internal_test_expect_pass(test_add_translation_macro)
 _qt_internal_test_expect_pass(test_create_translation_macro)
 _qt_internal_test_expect_pass(test_create_translation_same_base_names)
-_qt_internal_test_expect_pass(test_translation_api)
+_qt_internal_test_expect_pass(test_translation_api
+    BINARY "${CMAKE_COMMAND}"
+    BINARY_ARGS -P "${CMAKE_CURRENT_SOURCE_DIR}/test_translation_api/post_build_check.cmake"
+)
 _qt_internal_test_expect_pass(test_i18n_auto_ts_file_names)
 _qt_internal_test_expect_pass(test_i18n_exclusion)
 _qt_internal_test_expect_pass(test_i18n_filter_autogen_files)
-_qt_internal_test_expect_pass(test_i18n_source_language)
+_qt_internal_test_expect_pass(test_i18n_source_language
+    BINARY "${CMAKE_COMMAND}"
+    BINARY_ARGS -P "${CMAKE_CURRENT_SOURCE_DIR}/test_i18n_source_language/post_build_check.cmake"
+)
 if(NOT CMAKE_CROSSCOMPILING)
     _qt_internal_test_expect_pass(test_i18n_find_package_in_subdir BINARY app1)
+    _qt_internal_test_expect_pass(test_i18n_merge_qt_translations BINARY myapp)
+    _qt_internal_test_expect_pass(test_i18n_merge_qt_translations_language_match BINARY myapp)
+    _qt_internal_test_expect_pass(test_i18n_merge_qt_translations_select_catalogs BINARY myapp)
     _qt_internal_test_expect_pass(test_i18n_subdir BINARY app1)
+    _qt_internal_test_expect_pass(test_i18n_subdir2 BINARY app1)
+
+    if(APPLE)
+        _qt_internal_test_expect_pass(test_i18n_subdir
+            TESTNAME test_i18n_subdir_xcode
+            GENERATOR Xcode
+            MAKE_PROGRAM xcodebuild
+            BUILD_DIR "${CMAKE_CURRENT_BINARY_DIR}/test_i18n_subdir_xcode"
+        )
+
+        _qt_internal_test_expect_pass(test_i18n_subdir2
+            TESTNAME test_i18n_subdir2_xcode
+            GENERATOR Xcode
+            MAKE_PROGRAM xcodebuild
+            BUILD_DIR "${CMAKE_CURRENT_BINARY_DIR}/test_i18n_subdir2_xcode")
+    endif()
 endif()

@@ -9,6 +9,7 @@
 #include "private/qobject_p.h"
 #include "private/qlocale_p.h"
 #include "private/qnumeric_p.h"
+#include "private/qstringiterator_p.h"
 
 #include <limits.h>
 #include <cmath>
@@ -363,12 +364,15 @@ static qlonglong pow10(int exp)
 }
 
 template <typename T> static inline
-std::optional<QValidator::State> initialResultCheck(T min, T max, const ParsingResult &result)
+std::optional<QValidator::State> initialResultCheck(T min, T max,
+                                                    const QLocaleData::ParsingResult &result)
 {
+
+    using ParsingResult = QLocaleData::ParsingResult;
     if (result.state == ParsingResult::Invalid)
         return QValidator::Invalid;
 
-    const CharBuff &buff = result.buff;
+    const QLocaleData::CharBuff &buff = result.buff;
     if (buff.isEmpty())
         return QValidator::Intermediate;
 
@@ -385,7 +389,7 @@ std::optional<QValidator::State> initialResultCheck(T min, T max, const ParsingR
 
 QValidator::State QIntValidator::validate(QString & input, int&) const
 {
-    ParsingResult result =
+    QLocaleData::ParsingResult result =
         locale().d->m_data->validateChars(input, QLocaleData::IntegerMode, -1,
                                           locale().numberOptions());
 
@@ -393,7 +397,7 @@ QValidator::State QIntValidator::validate(QString & input, int&) const
     if (opt)
         return *opt;
 
-    const CharBuff &buff = result.buff;
+    const QLocaleData::CharBuff &buff = result.buff;
     QSimpleParsedNumber r = QLocaleData::bytearrayToLongLong(buff, 10);
     if (!r.ok())
         return Invalid;
@@ -428,7 +432,7 @@ void QIntValidator::fixup(QString &input) const
     auto [parseState, buff] =
         locale().d->m_data->validateChars(input, QLocaleData::IntegerMode, -1,
                                           locale().numberOptions());
-    if (parseState == ParsingResult::Invalid)
+    if (parseState == QLocaleData::ParsingResult::Invalid)
         return;
 
     QSimpleParsedNumber r = QLocaleData::bytearrayToLongLong(buff, 10);
@@ -657,7 +661,7 @@ QValidator::State QDoubleValidator::validate(QString & input, int &) const
 QValidator::State QDoubleValidatorPrivate::validateWithLocale(QString &input, QLocaleData::NumberMode numMode, const QLocale &locale) const
 {
     Q_Q(const QDoubleValidator);
-    ParsingResult result =
+    QLocaleData::ParsingResult result =
             locale.d->m_data->validateChars(input, numMode, q->dec, locale.numberOptions());
 
     std::optional<QValidator::State> opt = initialResultCheck(q->b, q->t, result);
@@ -745,7 +749,7 @@ void QDoubleValidatorPrivate::fixupWithLocale(QString &input, QLocaleData::Numbe
     // an Intermediate value, if it can.
     auto [parseState, buff] =
             locale.d->m_data->validateChars(input, numMode, -1, locale.numberOptions());
-    if (parseState == ParsingResult::Invalid)
+    if (parseState == QLocaleData::ParsingResult::Invalid)
         return;
 
     // buff contains data in C locale.
@@ -757,8 +761,19 @@ void QDoubleValidatorPrivate::fixupWithLocale(QString &input, QLocaleData::Numbe
         if (numMode == QLocaleData::DoubleStandardMode) {
             mode = 'f';
         } else {
-            // scientific mode can be either 'e' or 'E'
-            mode = input.contains(QChar::fromLatin1('E')) ? 'E' : 'e';
+            // Scientific mode can be either 'e' or 'E'
+            const QString exp = locale.exponential();
+            bool preferUpper = false;
+            QStringIterator scan(exp);
+            while (!preferUpper && scan.hasNext()) {
+                const char32_t ch = scan.next();
+                if (QChar::isUpper(ch))
+                    preferUpper = true;
+            }
+            if (preferUpper)
+                mode = input.contains(exp.toLower()) ? 'e' : 'E';
+            else // If case-free, we don't care which we use; otherwise, prefer lower.
+                mode = input.contains(exp.toUpper()) ? 'E' : 'e';
         }
         int precision;
         if (q->dec < 0) {

@@ -7,56 +7,42 @@ from __future__ import annotations
 import json
 import logging
 import os
-import pathlib
-import shlex
 import shutil
 import stat
 import tempfile
-from typing import TYPE_CHECKING, Dict, Optional, Tuple
+from typing import TYPE_CHECKING, Dict, Tuple
 
 from selenium import webdriver
 from selenium.webdriver.firefox.options import Options as FirefoxOptions
 from selenium.webdriver.firefox.service import Service as FirefoxService
 
 from crossbench import exception, helper
+from crossbench import path as pth
+from crossbench.browsers.attributes import BrowserAttributes
 from crossbench.browsers.browser_helper import BROWSERS_CACHE
+from crossbench.browsers.firefox.firefox import Firefox
 from crossbench.browsers.webdriver import WebDriverBrowser
 
-from .firefox import Firefox
-
 if TYPE_CHECKING:
-  from crossbench import plt
-  from crossbench.browsers.splash_screen import SplashScreen
-  from crossbench.browsers.viewport import Viewport
-  from crossbench.flags import Flags
-  from crossbench.network.base import Network
   from crossbench.runner.groups import BrowserSessionRunGroup
 
 
 class FirefoxWebDriver(WebDriverBrowser, Firefox):
 
-  def __init__(
-      self,
-      label: str,
-      path: pathlib.Path,
-      flags: Optional[Flags.InitialDataType] = None,
-      js_flags: Optional[Flags.InitialDataType] = None,
-      cache_dir: Optional[pathlib.Path] = None,
-      type: str = "firefox",  # pylint: disable=redefined-builtin
-      network: Optional[Network] = None,
-      driver_path: Optional[pathlib.Path] = None,
-      viewport: Optional[Viewport] = None,
-      splash_screen: Optional[SplashScreen] = None,
-      platform: Optional[plt.Platform] = None):
-    super().__init__(label, path, flags, js_flags, cache_dir, type, network,
-                     driver_path, viewport, splash_screen, platform)
+  @property
+  def attributes(self) -> BrowserAttributes:
+    return BrowserAttributes.FIREFOX | BrowserAttributes.WEBDRIVER
 
-  def _find_driver(self) -> pathlib.Path:
+  def _find_driver(self) -> pth.RemotePath:
     finder = FirefoxDriverFinder(self)
     return finder.download()
 
   def _start_driver(self, session: BrowserSessionRunGroup,
-                    driver_path: pathlib.Path) -> webdriver.Firefox:
+                    driver_path: pth.RemotePath) -> webdriver.Remote:
+    return self._start_firefox_driver(session, driver_path)
+
+  def _start_firefox_driver(self, session: BrowserSessionRunGroup,
+                            driver_path: pth.RemotePath) -> webdriver.Firefox:
     assert not self._is_running
     assert self.log_file
     options = FirefoxOptions()
@@ -67,12 +53,10 @@ class FirefoxWebDriver(WebDriverBrowser, Firefox):
     for arg in args:
       options.add_argument(arg)
     options.binary_location = str(self.path)
-
     session.setup_selenium_options(options)
 
-    logging.info("STARTING BROWSER: %s", self.path)
-    logging.info("STARTING BROWSER: driver: %s", driver_path)
-    logging.info("STARTING BROWSER: args: %s", shlex.join(args))
+    self._log_browser_start(args, driver_path)
+
     # Explicitly copy the env vars for FirefoxBrowserProfilerProbeContext
     env_copy = dict(self.platform.environ)
     service = FirefoxService(
@@ -80,12 +64,15 @@ class FirefoxWebDriver(WebDriverBrowser, Firefox):
         log_path=str(self.driver_log_file),
         service_args=[],
         env=env_copy)
-    service.log_file = self.stdout_log_file.open("w", encoding="utf-8")
+    # TODO support remote platforms:
+    service.log_file = self.platform.host_platform.local_path(
+        self.stdout_log_file).open(
+            "w", encoding="utf-8")
     driver = webdriver.Firefox(  # pytype: disable=wrong-keyword-args
         options=options, service=service)
     return driver
 
-  def _check_driver_version(self) -> None:
+  def _validate_driver_version(self) -> None:
     # TODO
     # version = self.platform.sh_stdout(self._driver_path, "--version")
     pass
@@ -96,7 +83,7 @@ class FirefoxDriverFinder:
 
   def __init__(self,
                browser: FirefoxWebDriver,
-               cache_dir: pathlib.Path = BROWSERS_CACHE):
+               cache_dir: pth.LocalPath = BROWSERS_CACHE):
     self.browser = browser
     self.platform = browser.platform
     self.extension = ""
@@ -105,7 +92,7 @@ class FirefoxDriverFinder:
     self.driver_path = (
         cache_dir / f"geckodriver-{self.browser.major_version}{self.extension}")
 
-  def download(self) -> pathlib.Path:
+  def download(self) -> pth.LocalPath:
     if not self.driver_path.exists():
       with exception.annotate(
           f"Downloading geckodriver for {self.browser.version}"):
@@ -115,9 +102,9 @@ class FirefoxDriverFinder:
   def _download(self) -> None:
     url, archive_type = self._find_driver_download_url()
     with tempfile.TemporaryDirectory() as tmp_dir:
-      tar_file = pathlib.Path(tmp_dir) / f"download.{archive_type}"
+      tar_file = pth.LocalPath(tmp_dir) / f"download.{archive_type}"
       self.platform.download_to(url, tar_file)
-      unpack_dir = pathlib.Path(tmp_dir) / "extracted"
+      unpack_dir = pth.LocalPath(tmp_dir) / "extracted"
       shutil.unpack_archive(tar_file, unpack_dir)
       driver = unpack_dir / f"geckodriver{self.extension}"
       assert driver.is_file(), (f"Extracted driver at {driver} does not exist.")

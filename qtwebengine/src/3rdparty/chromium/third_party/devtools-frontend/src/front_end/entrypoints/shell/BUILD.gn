@@ -2,7 +2,7 @@
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 import("../../../scripts/build/ninja/devtools_entrypoint.gni")
-import("../../../third_party/typescript/typescript.gni")
+import("../../../scripts/build/typescript/typescript.gni")
 import("../visibility.gni")
 
 devtools_entrypoint("shell") {
@@ -21,6 +21,7 @@ devtools_entrypoint("shell") {
     "../../panels/console_counters:meta",
     "../../panels/coverage:meta",
     "../../panels/explain:meta",
+    "../../panels/freestyler:meta",
     "../../panels/linear_memory_inspector:meta",
     "../../panels/profiler:meta",
     "../../panels/protocol_monitor:meta",
@@ -34,7 +35,7 @@ devtools_entrypoint("shell") {
 
   visibility = [
     "../..:*",
-    "../../../test/unittests/front_end/helpers/*",
+    "../../testing/*",
     "../devtools_app:*",
     "../js_app:*",
     "../ndb_app:*",

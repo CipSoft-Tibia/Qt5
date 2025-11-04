@@ -63,11 +63,7 @@ class IncomingStreamTest : public ::testing::Test {
   }
 
   void WriteToPipe(Vector<uint8_t> data) {
-    uint32_t num_bytes = data.size();
-    EXPECT_EQ(data_pipe_producer_->WriteData(data.data(), &num_bytes,
-                                             MOJO_WRITE_DATA_FLAG_ALL_OR_NONE),
-              MOJO_RESULT_OK);
-    EXPECT_EQ(num_bytes, data.size());
+    EXPECT_EQ(data_pipe_producer_->WriteAllData(data), MOJO_RESULT_OK);
   }
 
   void ClosePipe() { data_pipe_producer_.reset(); }
@@ -99,7 +95,7 @@ class IncomingStreamTest : public ::testing::Test {
   static Iterator Read(V8TestingScope& scope,
                        ReadableStreamDefaultReader* reader) {
     auto* script_state = scope.GetScriptState();
-    ScriptPromise read_promise =
+    ScriptPromiseUntyped read_promise =
         reader->read(script_state, ASSERT_NO_EXCEPTION);
     ScriptPromiseTester tester(script_state, read_promise);
     tester.WaitUntilSettled();
@@ -111,7 +107,7 @@ class IncomingStreamTest : public ::testing::Test {
                        ReadableStreamBYOBReader* reader,
                        NotShared<DOMArrayBufferView> view) {
     auto* script_state = scope.GetScriptState();
-    ScriptPromise read_promise =
+    ScriptPromiseUntyped read_promise =
         reader->read(script_state, view, ASSERT_NO_EXCEPTION);
     ScriptPromiseTester tester(script_state, read_promise);
     tester.WaitUntilSettled();
@@ -139,7 +135,7 @@ class IncomingStreamTest : public ::testing::Test {
     return ret;
   }
 
-  base::MockOnceCallback<void(absl::optional<uint8_t>)> mock_on_abort_;
+  base::MockOnceCallback<void(std::optional<uint8_t>)> mock_on_abort_;
   test::TaskEnvironment task_environment_;
   mojo::ScopedDataPipeProducerHandle data_pipe_producer_;
   mojo::ScopedDataPipeConsumerHandle data_pipe_consumer_;
@@ -175,7 +171,7 @@ TEST_F(IncomingStreamTest, ReadArrayBufferWithBYOBReader) {
       script_state, ASSERT_NO_EXCEPTION);
   NotShared<DOMArrayBufferView> view =
       NotShared<DOMUint8Array>(DOMUint8Array::Create(1));
-  ScriptPromise read_promise =
+  ScriptPromiseUntyped read_promise =
       reader->read(script_state, view, ASSERT_NO_EXCEPTION);
   ScriptPromiseTester tester(script_state, read_promise);
   EXPECT_FALSE(tester.IsFulfilled());
@@ -200,7 +196,7 @@ TEST_F(IncomingStreamTest, ReadThenClosedWithFin) {
 
   auto* incoming_stream = CreateIncomingStream(scope);
 
-  EXPECT_CALL(mock_on_abort_, Run(absl::optional<uint8_t>()));
+  EXPECT_CALL(mock_on_abort_, Run(std::optional<uint8_t>()));
 
   auto* script_state = scope.GetScriptState();
   auto* reader = incoming_stream->Readable()->GetDefaultReaderForTesting(
@@ -231,7 +227,7 @@ TEST_F(IncomingStreamTest, ReadThenClosedWithoutFin) {
 
   auto* incoming_stream = CreateIncomingStream(scope);
 
-  EXPECT_CALL(mock_on_abort_, Run(absl::optional<uint8_t>()));
+  EXPECT_CALL(mock_on_abort_, Run(std::optional<uint8_t>()));
 
   auto* script_state = scope.GetScriptState();
   auto* reader = incoming_stream->Readable()->GetDefaultReaderForTesting(
@@ -255,7 +251,8 @@ TEST_F(IncomingStreamTest, ReadThenClosedWithoutFin) {
   // data.
   EXPECT_THAT(result2.value, ElementsAre('C'));
 
-  ScriptPromise result3 = reader->read(script_state, ASSERT_NO_EXCEPTION);
+  ScriptPromiseUntyped result3 =
+      reader->read(script_state, ASSERT_NO_EXCEPTION);
   ScriptPromiseTester result3_tester(script_state, result3);
   result3_tester.WaitUntilSettled();
   EXPECT_TRUE(result3_tester.IsRejected());
@@ -274,7 +271,7 @@ TEST_F(IncomingStreamTest, ClosedWithFinThenRead) {
 
   auto* incoming_stream = CreateIncomingStream(scope);
 
-  EXPECT_CALL(mock_on_abort_, Run(absl::optional<uint8_t>()));
+  EXPECT_CALL(mock_on_abort_, Run(std::optional<uint8_t>()));
 
   auto* script_state = scope.GetScriptState();
   auto* reader = incoming_stream->Readable()->GetDefaultReaderForTesting(
@@ -297,7 +294,7 @@ TEST_F(IncomingStreamTest, ClosedWithFinWithoutRead) {
 
   auto* incoming_stream = CreateIncomingStream(scope);
 
-  EXPECT_CALL(mock_on_abort_, Run(absl::optional<uint8_t>()));
+  EXPECT_CALL(mock_on_abort_, Run(std::optional<uint8_t>()));
 
   auto* script_state = scope.GetScriptState();
   auto* reader = incoming_stream->Readable()->GetDefaultReaderForTesting(
@@ -305,8 +302,7 @@ TEST_F(IncomingStreamTest, ClosedWithFinWithoutRead) {
   incoming_stream->OnIncomingStreamClosed(true);
   ClosePipe();
 
-  ScriptPromiseTester tester(
-      script_state, reader->ClosedPromise()->GetScriptPromise(script_state));
+  ScriptPromiseTester tester(script_state, reader->closed(script_state));
   tester.WaitUntilSettled();
   EXPECT_TRUE(tester.IsFulfilled());
 }
@@ -316,7 +312,7 @@ TEST_F(IncomingStreamTest, DataPipeResetBeforeClosedWithFin) {
 
   auto* incoming_stream = CreateIncomingStream(scope);
 
-  EXPECT_CALL(mock_on_abort_, Run(absl::optional<uint8_t>()));
+  EXPECT_CALL(mock_on_abort_, Run(std::optional<uint8_t>()));
 
   auto* script_state = scope.GetScriptState();
   auto* reader = incoming_stream->Readable()->GetDefaultReaderForTesting(
@@ -338,7 +334,7 @@ TEST_F(IncomingStreamTest, DataPipeResetBeforeClosedWithoutFin) {
 
   auto* incoming_stream = CreateIncomingStream(scope);
 
-  EXPECT_CALL(mock_on_abort_, Run(absl::optional<uint8_t>()));
+  EXPECT_CALL(mock_on_abort_, Run(std::optional<uint8_t>()));
 
   auto* script_state = scope.GetScriptState();
   auto* reader = incoming_stream->Readable()->GetDefaultReaderForTesting(
@@ -351,7 +347,8 @@ TEST_F(IncomingStreamTest, DataPipeResetBeforeClosedWithoutFin) {
   EXPECT_FALSE(result1.done);
   EXPECT_THAT(result1.value, ElementsAre('F'));
 
-  ScriptPromise result2 = reader->read(script_state, ASSERT_NO_EXCEPTION);
+  ScriptPromiseUntyped result2 =
+      reader->read(script_state, ASSERT_NO_EXCEPTION);
   ScriptPromiseTester result2_tester(script_state, result2);
   result2_tester.WaitUntilSettled();
   EXPECT_TRUE(result2_tester.IsRejected());
@@ -371,7 +368,8 @@ TEST_F(IncomingStreamTest, WriteToPipeWithPendingRead) {
   auto* script_state = scope.GetScriptState();
   auto* reader = incoming_stream->Readable()->GetDefaultReaderForTesting(
       script_state, ASSERT_NO_EXCEPTION);
-  ScriptPromise read_promise = reader->read(script_state, ASSERT_NO_EXCEPTION);
+  ScriptPromiseUntyped read_promise =
+      reader->read(script_state, ASSERT_NO_EXCEPTION);
   ScriptPromiseTester tester(script_state, read_promise);
 
   test::RunPendingTasks();
@@ -392,11 +390,12 @@ TEST_F(IncomingStreamTest, Cancel) {
 
   auto* incoming_stream = CreateIncomingStream(scope);
 
-  EXPECT_CALL(mock_on_abort_, Run(absl::make_optional<uint8_t>(0)));
+  EXPECT_CALL(mock_on_abort_, Run(std::make_optional<uint8_t>(0)));
 
   auto* reader = incoming_stream->Readable()->GetDefaultReaderForTesting(
       script_state, ASSERT_NO_EXCEPTION);
-  ScriptPromise promise = reader->cancel(script_state, ASSERT_NO_EXCEPTION);
+  ScriptPromiseUntyped promise =
+      reader->cancel(script_state, ASSERT_NO_EXCEPTION);
   ScriptPromiseTester tester(script_state, promise);
 
   test::RunPendingTasks();
@@ -412,15 +411,15 @@ TEST_F(IncomingStreamTest, CancelWithWebTransportError) {
 
   auto* incoming_stream = CreateIncomingStream(scope);
 
-  EXPECT_CALL(mock_on_abort_, Run(absl::make_optional<uint8_t>(0)));
+  EXPECT_CALL(mock_on_abort_, Run(std::make_optional<uint8_t>(0)));
 
   v8::Local<v8::Value> error =
       WebTransportError::Create(isolate,
-                                /*stream_error_code=*/absl::nullopt, "foobar",
+                                /*stream_error_code=*/std::nullopt, "foobar",
                                 WebTransportError::Source::kStream);
   auto* reader = incoming_stream->Readable()->GetDefaultReaderForTesting(
       script_state, ASSERT_NO_EXCEPTION);
-  ScriptPromise promise = reader->cancel(
+  ScriptPromiseUntyped promise = reader->cancel(
       script_state, ScriptValue(isolate, error), ASSERT_NO_EXCEPTION);
   ScriptPromiseTester tester(script_state, promise);
 
@@ -437,14 +436,14 @@ TEST_F(IncomingStreamTest, CancelWithWebTransportErrorWithCode) {
 
   auto* incoming_stream = CreateIncomingStream(scope);
 
-  EXPECT_CALL(mock_on_abort_, Run(absl::make_optional<uint8_t>(19)));
+  EXPECT_CALL(mock_on_abort_, Run(std::make_optional<uint8_t>(19)));
 
   v8::Local<v8::Value> error = WebTransportError::Create(
       isolate,
       /*stream_error_code=*/19, "foobar", WebTransportError::Source::kStream);
   auto* reader = incoming_stream->Readable()->GetDefaultReaderForTesting(
       script_state, ASSERT_NO_EXCEPTION);
-  ScriptPromise promise = reader->cancel(
+  ScriptPromiseUntyped promise = reader->cancel(
       script_state, ScriptValue(isolate, error), ASSERT_NO_EXCEPTION);
   ScriptPromiseTester tester(script_state, promise);
 

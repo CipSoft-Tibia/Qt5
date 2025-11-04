@@ -13,8 +13,8 @@
 // limitations under the License.
 
 use crypto_provider::ed25519::{
-    InvalidBytes, RawPrivateKey, RawPrivateKeyPermit, RawPublicKey, RawSignature, Signature as _,
-    SignatureError,
+    InvalidPublicKeyBytes, RawPrivateKey, RawPrivateKeyPermit, RawPublicKey, RawSignature,
+    SignatureError, SignatureImpl,
 };
 
 pub struct Ed25519;
@@ -27,7 +27,7 @@ impl crypto_provider::ed25519::Ed25519Provider for Ed25519 {
 
 pub struct KeyPair(bssl_crypto::ed25519::PrivateKey);
 
-impl crypto_provider::ed25519::KeyPair for KeyPair {
+impl crypto_provider::ed25519::KeyPairImpl for KeyPair {
     type PublicKey = PublicKey;
     type Signature = Signature;
 
@@ -39,7 +39,7 @@ impl crypto_provider::ed25519::KeyPair for KeyPair {
     where
         Self: Sized,
     {
-        let private_key = bssl_crypto::ed25519::PrivateKey::new_from_seed(bytes);
+        let private_key = bssl_crypto::ed25519::PrivateKey::from_seed(bytes);
         Self(private_key)
     }
 
@@ -51,37 +51,37 @@ impl crypto_provider::ed25519::KeyPair for KeyPair {
         Self(bssl_crypto::ed25519::PrivateKey::generate())
     }
 
-    fn public(&self) -> Self::PublicKey {
-        PublicKey(self.0.public())
+    fn public_key(&self) -> Self::PublicKey {
+        PublicKey(self.0.to_public())
     }
 }
 
 pub struct Signature(bssl_crypto::ed25519::Signature);
 
-impl crypto_provider::ed25519::Signature for Signature {
+impl crypto_provider::ed25519::SignatureImpl for Signature {
     fn from_bytes(bytes: &RawSignature) -> Self {
-        Self(bssl_crypto::ed25519::Signature::from_bytes(*bytes))
+        Self(bssl_crypto::ed25519::Signature::from(*bytes))
     }
 
     fn to_bytes(&self) -> RawSignature {
-        self.0.to_bytes()
+        self.0
     }
 }
 
 pub struct PublicKey(bssl_crypto::ed25519::PublicKey);
 
-impl crypto_provider::ed25519::PublicKey for PublicKey {
+impl crypto_provider::ed25519::PublicKeyImpl for PublicKey {
     type Signature = Signature;
 
-    fn from_bytes(bytes: &RawPublicKey) -> Result<Self, InvalidBytes>
+    fn from_bytes(bytes: &RawPublicKey) -> Result<Self, InvalidPublicKeyBytes>
     where
         Self: Sized,
     {
-        Ok(Self(bssl_crypto::ed25519::PublicKey::from_bytes(*bytes)))
+        Ok(Self(bssl_crypto::ed25519::PublicKey::from_bytes(bytes)))
     }
 
     fn to_bytes(&self) -> RawPublicKey {
-        self.0.to_bytes()
+        *self.0.as_bytes()
     }
 
     fn verify_strict(
@@ -90,7 +90,7 @@ impl crypto_provider::ed25519::PublicKey for PublicKey {
         signature: &Self::Signature,
     ) -> Result<(), SignatureError> {
         self.0
-            .verify(message, bssl_crypto::ed25519::Signature::from_bytes(signature.to_bytes()))
+            .verify(message, &bssl_crypto::ed25519::Signature::from(signature.to_bytes()))
             .map_err(|_| SignatureError)
     }
 }

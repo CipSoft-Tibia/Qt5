@@ -9,10 +9,12 @@
 #include "components/optimization_guide/core/optimization_guide_model_executor.h"
 #include "components/optimization_guide/proto/features/compose.pb.h"
 optimization_guide::proto::ComposeLength ComposeLength(
-    compose::mojom::Length length);
-optimization_guide::proto::ComposeTone ComposeTone(compose::mojom::Tone tone);
+    compose::mojom::StyleModifier modifier);
+optimization_guide::proto::ComposeTone ComposeTone(
+    compose::mojom::StyleModifier modifier);
 compose::mojom::ComposeStatus ComposeStatusFromOptimizationGuideResult(
-    optimization_guide::OptimizationGuideModelStreamingExecutionResult result);
+    const optimization_guide::OptimizationGuideModelStreamingExecutionResult&
+        result);
 optimization_guide::proto::UserFeedback OptimizationFeedbackFromComposeFeedback(
     compose::mojom::UserFeedback feedback);
 #endif  // CHROME_COMMON_COMPOSE_TYPE_CONVERSIONS_H_

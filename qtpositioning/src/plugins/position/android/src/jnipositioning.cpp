@@ -220,7 +220,7 @@ namespace AndroidPositioning {
         return ret;
     }
 
-    QGeoPositionInfo positionInfoFromJavaLocation(const jobject &location)
+    QGeoPositionInfo positionInfoFromJavaLocation(const jobject &location, bool useAltConverter)
     {
         QGeoPositionInfo info;
 
@@ -241,8 +241,11 @@ namespace AndroidPositioning {
                 coordinate.setAltitude(value);
         }
         // MSL altitude, available in API Level 34+.
-        // It will be available only if we requested it when starting updates.
-        if (QNativeInterface::QAndroidApplication::sdkVersion() >= 34) {
+        // In API Level 34 it was available only if we manually added it.
+        // In API Level 35 (and potentially later), it's automatically added
+        // to the location object, so we need to use it *only* when the user
+        // set the relevant plugin parameter.
+        if (useAltConverter && QNativeInterface::QAndroidApplication::sdkVersion() >= 34) {
             attributeExists = jniObject.callMethod<jboolean>("hasMslAltitude");
             if (attributeExists) {
                 const jdouble value = jniObject.callMethod<jdouble>("getMslAltitudeMeters");
@@ -451,7 +454,7 @@ namespace AndroidPositioning {
         if (location == nullptr)
             return QGeoPositionInfo();
 
-        const QGeoPositionInfo info = positionInfoFromJavaLocation(location);
+        const QGeoPositionInfo info = positionInfoFromJavaLocation(location, useAltitudeConverter);
 
         return info;
     }
@@ -615,13 +618,16 @@ static void positionUpdated(JNIEnv *env, jobject thiz, QtJniTypes::Location loca
 {
     Q_UNUSED(env);
     Q_UNUSED(thiz);
-    QGeoPositionInfo info = AndroidPositioning::positionInfoFromJavaLocation(location.object());
 
     QGeoPositionInfoSourceAndroid *source = AndroidPositioning::idToPosSource()->value(androidClassKey);
     if (!source) {
         qCWarning(lcPositioning) << "positionUpdated: source == 0";
         return;
     }
+
+    const bool useAltitudeConverter = source->useAltitudeConverter();
+    QGeoPositionInfo info =
+            AndroidPositioning::positionInfoFromJavaLocation(location.object(), useAltitudeConverter);
 
     //we need to invoke indirectly as the Looper thread is likely to be not the same thread
     if (!isSingleUpdate)

@@ -1,5 +1,6 @@
 // Copyright (C) 2021 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QDTLS_OPENSSL_P_H
 #define QDTLS_OPENSSL_P_H
@@ -18,6 +19,7 @@
 #include <QtNetwork/qsslpresharedkeyauthenticator.h>
 #include <QtNetwork/qhostaddress.h>
 
+#include <QtCore/qbasictimer.h>
 #include <QtCore/qsharedpointer.h>
 #include <QtCore/qbytearray.h>
 #include <QtCore/qglobal.h>
@@ -187,7 +189,7 @@ private:
         void stop();
         void timerEvent(QTimerEvent *event) override;
 
-        int timerId = -1;
+        QBasicTimer timer;
         int timeoutMs = 1000;
 
         QDtlsPrivateOpenSSL *dtlsConnection = nullptr;

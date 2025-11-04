@@ -64,7 +64,7 @@ constexpr char kDownloadSessionIdSwitchName[] = "download-session-id";
 // Returns the lower range from a range header value.
 int ParseRangeHeader(const std::string& header) {
   int lower_range = 0;
-  // TODO(crbug.com/1493709): Don't use sscanf.
+  // TODO(crbug.com/40285933): Don't use sscanf.
   EXPECT_EQ(std::sscanf(header.c_str(), "bytes=%d-", &lower_range), 1);
   return lower_range;
 }
@@ -176,7 +176,8 @@ class BackgroundDownloaderTest : public testing::Test {
   EmbeddedTestServerHandle test_server_handle_;
 };
 
-TEST_F(BackgroundDownloaderTest, SimpleDownload) {
+// TODO(crbug.com/40939899): Disabled due to excessive flakiness.
+TEST_F(BackgroundDownloaderTest, DISABLED_SimpleDownload) {
   request_handler_ = base::BindLambdaForTesting([](const HttpRequest&) {
     std::unique_ptr<BasicHttpResponse> response =
         std::make_unique<BasicHttpResponse>();
@@ -203,7 +204,8 @@ TEST_F(BackgroundDownloaderTest, SimpleDownload) {
   run_loop.Run();
 }
 
-TEST_F(BackgroundDownloaderTest, DownloadDiscoveredInCache) {
+// TODO(crbug.com/40939899): Disabled due to excessive flakiness.
+TEST_F(BackgroundDownloaderTest, DISABLED_DownloadDiscoveredInCache) {
   request_handler_ = base::BindLambdaForTesting([](const HttpRequest&) {
     EXPECT_TRUE(false) << "The download server was expected to not be reached.";
     return base::WrapUnique<HttpResponse>(nullptr);
@@ -257,8 +259,9 @@ class InterruptedHttpResponse : public HttpResponse {
   base::RepeatingClosure on_reply_;
 };
 
+// TODO(crbug.com/40939899): Disabled due to excessive flakiness.
 // Tests that the download can resume after the server unexpectedly disconnects.
-TEST_F(BackgroundDownloaderTest, ServerHangup) {
+TEST_F(BackgroundDownloaderTest, DISABLED_ServerHangup) {
   const std::string data = GetLargeDownloadData();
   // If the request contains a range request, serve the content as requested.
   // Otherwise, send the first half of the data before hanging up.
@@ -275,8 +278,7 @@ TEST_F(BackgroundDownloaderTest, ServerHangup) {
               "Content-Range",
               base::StringPrintf("bytes %d-%zu/%zu", lower_range, data.size(),
                                  data.size()));
-          response->set_content(
-              std::string(data.begin() + lower_range, data.end()));
+          response->set_content(data.substr(lower_range));
           return base::WrapUnique<HttpResponse>(response.release());
         } else {
           return base::WrapUnique<HttpResponse>(
@@ -300,13 +302,14 @@ TEST_F(BackgroundDownloaderTest, ServerHangup) {
   run_loop.Run();
 }
 
-TEST_F(BackgroundDownloaderTest, DuplicateDownload) {
+// TODO(crbug.com/40939899): Disabled due to excessive flakiness.
+TEST_F(BackgroundDownloaderTest, DISABLED_DuplicateDownload) {
   scoped_refptr<base::SequencedTaskRunner> current_task_runner =
       base::SequencedTaskRunner::GetCurrentDefault();
   base::RunLoop second_download_run_loop;
   request_handler_ = base::BindLambdaForTesting([&](const HttpRequest&) {
     current_task_runner->PostTask(
-        FROM_HERE, base::BindLambdaForTesting([&]() {
+        FROM_HERE, base::BindLambdaForTesting([&] {
           DoStartDownload(
               GetURL(),
               base::BindLambdaForTesting(
@@ -340,9 +343,10 @@ TEST_F(BackgroundDownloaderTest, DuplicateDownload) {
   first_download_run_loop.Run();
 }
 
+// TODO(crbug.com/40939899): Disabled due to excessive flakiness.
 // Tests that downloads can complete when using multiple instances of
 // BackgroundDownloader.
-TEST_F(BackgroundDownloaderTest, ConcurrentDownloaders) {
+TEST_F(BackgroundDownloaderTest, DISABLED_ConcurrentDownloaders) {
   request_handler_ = base::BindLambdaForTesting([](const HttpRequest&) {
     std::unique_ptr<BasicHttpResponse> response =
         std::make_unique<BasicHttpResponse>();
@@ -383,7 +387,8 @@ TEST_F(BackgroundDownloaderTest, ConcurrentDownloaders) {
   run_loop.Run();
 }
 
-TEST_F(BackgroundDownloaderTest, MaxDownloads) {
+// TODO(crbug.com/40939899): Disabled due to excessive flakiness.
+TEST_F(BackgroundDownloaderTest, DISABLED_MaxDownloads) {
   request_handler_ = base::BindLambdaForTesting([](const HttpRequest& request) {
     return base::WrapUnique<HttpResponse>(new HungResponse());
   });
@@ -407,7 +412,7 @@ TEST_F(BackgroundDownloaderTest, MaxDownloads) {
   // is an alternative to adding intrusive instrumentation to the
   // implementation.
   base::SequencedTaskRunner::GetCurrentDefault()->PostDelayedTask(
-      FROM_HERE, base::BindLambdaForTesting([&]() {
+      FROM_HERE, base::BindLambdaForTesting([&] {
         DoStartDownload(
             GetURL(),
             base::BindLambdaForTesting(
@@ -448,7 +453,8 @@ class BackgroundDownloaderPeriodicTasksTest : public BackgroundDownloaderTest {
   }
 };
 
-TEST_F(BackgroundDownloaderPeriodicTasksTest, CleansStaleDownloads) {
+// TODO(crbug.com/40939899): Disabled due to excessive flakiness.
+TEST_F(BackgroundDownloaderPeriodicTasksTest, DISABLED_CleansStaleDownloads) {
   request_handler_ = base::BindLambdaForTesting([](const HttpRequest&) {
     std::unique_ptr<BasicHttpResponse> response =
         std::make_unique<BasicHttpResponse>();
@@ -479,7 +485,9 @@ TEST_F(BackgroundDownloaderPeriodicTasksTest, CleansStaleDownloads) {
   EXPECT_FALSE(base::PathExists(download_cache_.AppendASCII("file2")));
 }
 
-TEST_F(BackgroundDownloaderPeriodicTasksTest, CancelsTasksWithNoProgress) {
+// TODO(crbug.com/40939899): Disabled due to excessive flakiness.
+TEST_F(BackgroundDownloaderPeriodicTasksTest,
+       DISABLED_CancelsTasksWithNoProgress) {
   request_handler_ = base::BindLambdaForTesting([](const HttpRequest&) {
     return base::WrapUnique<HttpResponse>(new HungResponse());
   });
@@ -544,8 +552,9 @@ class BackgroundDownloaderCrashingClientTest : public testing::Test {
   EmbeddedTestServerHandle test_server_handle_;
 };
 
+// TODO(crbug.com/40939899): Disabled due to excessive flakiness.
 // Test that the download can be recovered after the client process crashes.
-TEST_F(BackgroundDownloaderCrashingClientTest, ClientCrash) {
+TEST_F(BackgroundDownloaderCrashingClientTest, DISABLED_ClientCrash) {
   const std::string data = GetLargeDownloadData();
   base::Process test_child_process;
   // If the request contains a range request, serve the content as requested.
@@ -564,8 +573,7 @@ TEST_F(BackgroundDownloaderCrashingClientTest, ClientCrash) {
               "Content-Range",
               base::StringPrintf("bytes %d-%zu/%zu", lower_range, data.size(),
                                  data.size()));
-          response->set_content(
-              std::string(data.begin() + lower_range, data.end()));
+          response->set_content(data.substr(lower_range));
           return base::WrapUnique<HttpResponse>(response.release());
         } else {
           return base::WrapUnique<HttpResponse>(

@@ -107,6 +107,7 @@ void tst_surface::initialProperties()
     QCOMPARE(m_graph->margin(), -1.0);
     QCOMPARE(m_graph->labelMargin(), 0.1f);
     QCOMPARE(m_graph->cameraTargetPosition(), QVector3D(.0f, .0f, .0f));
+    QCOMPARE(m_graph->transparencyTechnique(), QtGraphs3D::TransparencyTechnique::Default);
 }
 
 void tst_surface::initializeProperties()
@@ -134,6 +135,7 @@ void tst_surface::initializeProperties()
     m_graph->setMargin(1.0);
     m_graph->setLabelMargin(1.0f);
     m_graph->setCameraTargetPosition(QVector3D(1.f, 1.f, 1.f));
+    m_graph->setTransparencyTechnique(QtGraphs3D::TransparencyTechnique::Accurate);
 
     QCOMPARE(m_graph->activeTheme()->theme(), QGraphsTheme::Theme::QtGreenNeon);
     QCOMPARE(m_graph->selectionMode(),
@@ -152,6 +154,7 @@ void tst_surface::initializeProperties()
     QCOMPARE(m_graph->margin(), 1.0);
     QCOMPARE(m_graph->labelMargin(), 1.0f);
     QCOMPARE(m_graph->cameraTargetPosition(), QVector3D(1.f, 1.f, 1.f));
+    QCOMPARE(m_graph->transparencyTechnique(), QtGraphs3D::TransparencyTechnique::Accurate);
 }
 
 void tst_surface::invalidProperties()

@@ -13,6 +13,7 @@
 #include "services/metrics/public/cpp/ukm_source_id.h"
 #include "third_party/blink/public/mojom/loader/pause_subresource_loading_handle.mojom-blink.h"
 #include "third_party/blink/public/platform/task_type.h"
+#include "third_party/blink/renderer/platform/instrumentation/resource_coordinator/document_resource_coordinator.h"
 #include "third_party/blink/renderer/platform/platform_export.h"
 #include "third_party/blink/renderer/platform/scheduler/public/frame_or_worker_scheduler.h"
 #include "third_party/blink/renderer/platform/wtf/hash_set.h"
@@ -44,6 +45,12 @@ class FrameScheduler : public FrameOrWorkerScheduler {
     virtual void OnTaskCompleted(base::TimeTicks start_time,
                                  base::TimeTicks end_time) = 0;
     virtual void MainFrameInteractive() {}
+    virtual void MainFrameFirstMeaningfulPaint() {}
+
+    // Returns a `DocumentResourceCoordinator` to inform of feature usage by the
+    // frame. May be nullptr when the PerformanceManagerInstrumentation feature
+    // is disabled or in tests.
+    virtual DocumentResourceCoordinator* GetDocumentResourceCoordinator() = 0;
   };
 
   ~FrameScheduler() override = default;
@@ -67,12 +74,10 @@ class FrameScheduler : public FrameOrWorkerScheduler {
   // The scheduler may throttle tasks associated with cross origin frames using
   // small proportion of the page's visible area.
   virtual void SetVisibleAreaLarge(bool) = 0;
-  virtual bool IsVisibleAreaLarge() const = 0;
 
   // The scheduler may throttle tasks associated with cross origin frames
   // without user activation.
   virtual void SetHadUserActivation(bool) = 0;
-  virtual bool HadUserActivation() const = 0;
 
   // Query the page visibility state for the page associated with this frame.
   // The scheduler may throttle tasks associated with pages that are not
@@ -92,7 +97,13 @@ class FrameScheduler : public FrameOrWorkerScheduler {
   // origin frames may use a different scheduling policy from same origin
   // frames.
   virtual void SetCrossOriginToNearestMainFrame(bool) = 0;
+
+  // Returns whether this frame is cross-origin to the nearest main frame.
   virtual bool IsCrossOriginToNearestMainFrame() const = 0;
+
+  // Set the agent cluster id for this frame.
+  virtual void SetAgentClusterId(
+      const base::UnguessableToken& agent_cluster_id) = 0;
 
   virtual void SetIsAdFrame(bool is_ad_frame) = 0;
   virtual bool IsAdFrame() const = 0;
@@ -188,6 +199,10 @@ class FrameScheduler : public FrameOrWorkerScheduler {
   // Notifies the delegate the list of active features for this frame if they
   // have changed since the last notification.
   virtual void ReportActiveSchedulerTrackedFeatures() = 0;
+
+  // Returns the cumulative wall time spent in tasks for this frame not yet
+  // reported to the browser process via `Delegate::UpdateTaskTime()`.
+  virtual base::TimeDelta UnreportedTaskTime() const = 0;
 };
 
 }  // namespace blink

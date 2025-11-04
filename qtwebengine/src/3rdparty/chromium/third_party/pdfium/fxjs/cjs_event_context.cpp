@@ -8,12 +8,12 @@
 
 #include "core/fpdfdoc/cpdf_formfield.h"
 #include "core/fxcrt/autorestorer.h"
+#include "core/fxcrt/check.h"
 #include "fpdfsdk/cpdfsdk_formfillenvironment.h"
 #include "fxjs/cjs_field.h"
 #include "fxjs/cjs_runtime.h"
 #include "fxjs/js_define.h"
 #include "fxjs/js_resources.h"
-#include "third_party/base/check.h"
 #include "v8/include/v8-context.h"
 #include "v8/include/v8-isolate.h"
 
@@ -22,7 +22,7 @@ CJS_EventContext::CJS_EventContext(CJS_Runtime* pRuntime)
 
 CJS_EventContext::~CJS_EventContext() = default;
 
-absl::optional<IJS_Runtime::JS_Error> CJS_EventContext::RunScript(
+std::optional<IJS_Runtime::JS_Error> CJS_EventContext::RunScript(
     const WideString& script) {
   v8::Isolate::Scope isolate_scope(m_pRuntime->GetIsolate());
   v8::HandleScope handle_scope(m_pRuntime->GetIsolate());
@@ -44,7 +44,7 @@ absl::optional<IJS_Runtime::JS_Error> CJS_EventContext::RunScript(
         1, 1, JSGetStringFromID(JSMessage::kDuplicateEventError));
   }
 
-  absl::optional<IJS_Runtime::JS_Error> err;
+  std::optional<IJS_Runtime::JS_Error> err;
   if (script.GetLength() > 0)
     err = m_pRuntime->ExecuteScript(script);
 
@@ -66,11 +66,11 @@ CJS_Field* CJS_EventContext::SourceField() {
 
   auto* pFormFillEnv = GetFormFillEnv();
   auto* pJSDocument = static_cast<CJS_Document*>(
-      CFXJS_Engine::GetObjectPrivate(m_pRuntime->GetIsolate(), pDocObj));
+      CFXJS_Engine::GetBinding(m_pRuntime->GetIsolate(), pDocObj));
   pJSDocument->SetFormFillEnv(pFormFillEnv);
 
   auto* pJSField = static_cast<CJS_Field*>(
-      CFXJS_Engine::GetObjectPrivate(m_pRuntime->GetIsolate(), pFieldObj));
+      CFXJS_Engine::GetBinding(m_pRuntime->GetIsolate(), pFieldObj));
   pJSField->AttachField(pJSDocument, SourceName());
   return pJSField;
 }
@@ -88,11 +88,11 @@ CJS_Field* CJS_EventContext::TargetField() {
 
   auto* pFormFillEnv = GetFormFillEnv();
   auto* pJSDocument = static_cast<CJS_Document*>(
-      CFXJS_Engine::GetObjectPrivate(m_pRuntime->GetIsolate(), pDocObj));
+      CFXJS_Engine::GetBinding(m_pRuntime->GetIsolate(), pDocObj));
   pJSDocument->SetFormFillEnv(pFormFillEnv);
 
   auto* pJSField = static_cast<CJS_Field*>(
-      CFXJS_Engine::GetObjectPrivate(m_pRuntime->GetIsolate(), pFieldObj));
+      CFXJS_Engine::GetBinding(m_pRuntime->GetIsolate(), pFieldObj));
   pJSField->AttachField(pJSDocument, TargetName());
   return pJSField;
 }

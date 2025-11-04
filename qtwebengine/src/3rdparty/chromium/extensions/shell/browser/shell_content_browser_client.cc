@@ -29,10 +29,8 @@
 #include "content/public/common/user_agent.h"
 #include "content/shell/browser/shell_browser_context.h"
 #include "content/shell/browser/shell_devtools_manager_delegate.h"
-#include "extensions/browser/api/messaging/messaging_api_message_filter.h"
 #include "extensions/browser/api/web_request/web_request_api.h"
 #include "extensions/browser/event_router.h"
-#include "extensions/browser/extension_message_filter.h"
 #include "extensions/browser/extension_navigation_throttle.h"
 #include "extensions/browser/extension_navigation_ui_data.h"
 #include "extensions/browser/extension_protocols.h"
@@ -44,9 +42,9 @@
 #include "extensions/browser/process_map.h"
 #include "extensions/browser/renderer_startup_helper.h"
 #include "extensions/browser/url_loader_factory_manager.h"
-#include "extensions/buildflags/buildflags.h"
 #include "extensions/common/constants.h"
 #include "extensions/common/extension.h"
+#include "extensions/common/manifest_handlers/sandboxed_page_info.h"
 #include "extensions/common/mojom/event_router.mojom.h"
 #include "extensions/common/mojom/guest_view.mojom.h"
 #include "extensions/common/mojom/renderer_host.mojom.h"
@@ -57,6 +55,7 @@
 #include "extensions/shell/browser/shell_navigation_ui_data.h"
 #include "extensions/shell/browser/shell_speech_recognition_manager_delegate.h"
 #include "extensions/shell/common/version.h"  // Generated file.
+#include "net/base/isolation_info.h"
 #include "services/metrics/public/cpp/ukm_source_id.h"
 #include "third_party/blink/public/common/associated_interfaces/associated_interface_registry.h"
 #include "url/gurl.h"
@@ -113,19 +112,12 @@ ShellContentBrowserClient::CreateBrowserMainParts(bool is_integration_test) {
 
 void ShellContentBrowserClient::RenderProcessWillLaunch(
     content::RenderProcessHost* host) {
-#if BUILDFLAG(ENABLE_EXTENSIONS_LEGACY_IPC) || BUILDFLAG(ENABLE_NACL)
+#if BUILDFLAG(ENABLE_NACL)
   int render_process_id = host->GetID();
   BrowserContext* browser_context = browser_main_parts_->browser_context();
-#endif
-#if BUILDFLAG(ENABLE_EXTENSIONS_LEGACY_IPC)
-  host->AddFilter(
-      new ExtensionMessageFilter(render_process_id, browser_context));
-  host->AddFilter(
-      new MessagingAPIMessageFilter(render_process_id, browser_context));
-#endif
+
   // PluginInfoMessageFilter is not required because app_shell does not have
   // the concept of disabled plugins.
-#if BUILDFLAG(ENABLE_NACL)
   host->AddFilter(new nacl::NaClHostMessageFilter(
       render_process_id, browser_context->IsOffTheRecord(),
       browser_context->GetPath()));
@@ -170,6 +162,10 @@ void ShellContentBrowserClient::SiteInstanceGotProcessAndSite(
   const Extension* extension = GetExtension(site_instance);
   if (!extension)
     return;
+
+  if (site_instance->IsSandboxed()) {
+    return;
+  }
 
   ProcessMap::Get(browser_main_parts_->browser_context())
       ->Insert(extension->id(), site_instance->GetProcess()->GetID());
@@ -224,10 +220,6 @@ void ShellContentBrowserClient::ExposeInterfacesToRenderer(
     service_manager::BinderRegistry* registry,
     blink::AssociatedInterfaceRegistry* associated_registry,
     content::RenderProcessHost* render_process_host) {
-#if BUILDFLAG(ENABLE_EXTENSIONS_LEGACY_IPC)
-  associated_registry->AddInterface<mojom::EventRouter>(base::BindRepeating(
-      &EventRouter::BindForRenderer, render_process_host->GetID()));
-#endif
   associated_registry->AddInterface<mojom::RendererHost>(base::BindRepeating(
       &RendererStartupHelper::BindForRenderer, render_process_host->GetID()));
 }
@@ -277,18 +269,18 @@ ShellContentBrowserClient::GetNavigationUIData(
   return std::make_unique<ShellNavigationUIData>(navigation_handle);
 }
 
-void ShellContentBrowserClient::RegisterNonNetworkNavigationURLLoaderFactories(
-    int frame_tree_node_id,
-    NonNetworkURLLoaderFactoryMap* factories) {
-  DCHECK(factories);
-
-  content::WebContents* web_contents =
-      content::WebContents::FromFrameTreeNodeId(frame_tree_node_id);
-  factories->emplace(
-      extensions::kExtensionScheme,
-      extensions::CreateExtensionNavigationURLLoaderFactory(
-          web_contents->GetBrowserContext(),
-          !!extensions::WebViewGuest::FromWebContents(web_contents)));
+mojo::PendingRemote<network::mojom::URLLoaderFactory>
+ShellContentBrowserClient::CreateNonNetworkNavigationURLLoaderFactory(
+    const std::string& scheme,
+    content::FrameTreeNodeId frame_tree_node_id) {
+  if (scheme == extensions::kExtensionScheme) {
+    content::WebContents* web_contents =
+        content::WebContents::FromFrameTreeNodeId(frame_tree_node_id);
+    return extensions::CreateExtensionNavigationURLLoaderFactory(
+        web_contents->GetBrowserContext(),
+        !!extensions::WebViewGuest::FromWebContents(web_contents));
+  }
+  return {};
 }
 
 void ShellContentBrowserClient::
@@ -329,15 +321,16 @@ void ShellContentBrowserClient::RegisterNonNetworkSubresourceURLLoaderFactories(
                          render_process_id, render_frame_id));
 }
 
-bool ShellContentBrowserClient::WillCreateURLLoaderFactory(
+void ShellContentBrowserClient::WillCreateURLLoaderFactory(
     content::BrowserContext* browser_context,
     content::RenderFrameHost* frame,
     int render_process_id,
     URLLoaderFactoryType type,
     const url::Origin& request_initiator,
+    const net::IsolationInfo& isolation_info,
     std::optional<int64_t> navigation_id,
     ukm::SourceIdObj ukm_source_id,
-    mojo::PendingReceiver<network::mojom::URLLoaderFactory>* factory_receiver,
+    network::URLLoaderFactoryBuilder& factory_builder,
     mojo::PendingRemote<network::mojom::TrustedURLLoaderHeaderClient>*
         header_client,
     bool* bypass_redirect_checks,
@@ -349,17 +342,16 @@ bool ShellContentBrowserClient::WillCreateURLLoaderFactory(
           browser_context);
   bool use_proxy = web_request_api->MaybeProxyURLLoaderFactory(
       browser_context, frame, render_process_id, type, std::move(navigation_id),
-      ukm_source_id, factory_receiver, header_client,
+      ukm_source_id, factory_builder, header_client,
       std::move(navigation_response_task_runner));
   if (bypass_redirect_checks)
     *bypass_redirect_checks = use_proxy;
-  return use_proxy;
 }
 
 bool ShellContentBrowserClient::HandleExternalProtocol(
     const GURL& url,
     content::WebContents::Getter web_contents_getter,
-    int frame_tree_node_id,
+    content::FrameTreeNodeId frame_tree_node_id,
     content::NavigationUIData* navigation_data,
     bool is_primary_main_frame,
     bool is_in_fenced_frame_tree,

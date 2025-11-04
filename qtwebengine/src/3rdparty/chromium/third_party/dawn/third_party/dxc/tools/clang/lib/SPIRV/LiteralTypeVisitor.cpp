@@ -294,17 +294,9 @@ bool LiteralTypeVisitor::visit(SpirvVectorShuffle *inst) {
   return true;
 }
 
-bool LiteralTypeVisitor::visit(SpirvNonUniformUnaryOp *inst) {
-  // Went through each non-uniform binary operation and made sure the following
-  // does not result in a wrong type deduction.
-  tryToUpdateInstLitType(inst->getArg(), inst->getAstResultType());
-  return true;
-}
-
-bool LiteralTypeVisitor::visit(SpirvNonUniformBinaryOp *inst) {
-  // Went through each non-uniform unary operation and made sure the following
-  // does not result in a wrong type deduction.
-  tryToUpdateInstLitType(inst->getArg1(), inst->getAstResultType());
+bool LiteralTypeVisitor::visit(SpirvGroupNonUniformOp *inst) {
+  for (auto *operand : inst->getOperands())
+    tryToUpdateInstLitType(operand, inst->getAstResultType());
   return true;
 }
 
@@ -319,7 +311,6 @@ bool LiteralTypeVisitor::visit(SpirvLoad *inst) {
 
   assert(inst->hasAstResultType());
   QualType resultType = inst->getAstResultType();
-  assert(!isLitTypeOrVecOfLitType(resultType));
 
   if (!canDeduceTypeFromLitType(pointerType, resultType))
     return true;

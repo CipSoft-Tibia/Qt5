@@ -23,7 +23,8 @@ class TestMediaRouterFactory : public MediaRouterFactory {
   TestMediaRouterFactory() = default;
   ~TestMediaRouterFactory() override = default;
 
-  void ResetTestingFactory(content::BrowserContext* context) {
+  void ShutdownForBrowserContext(content::BrowserContext* context) {
+    BrowserContextShutdown(context);
     BrowserContextDestroyed(context);
   }
 
@@ -68,7 +69,7 @@ class TestWebContentsPresentationManager
       const RouteRequestResult& result) override {}
 
  private:
-  absl::optional<content::PresentationRequest> default_presentation_request_;
+  std::optional<content::PresentationRequest> default_presentation_request_;
   base::WeakPtrFactory<TestWebContentsPresentationManager> weak_factory_{this};
 };
 
@@ -77,7 +78,7 @@ class MirroringToFlingingSwitcherTest : public testing::Test {
   MirroringToFlingingSwitcherTest() = default;
 
   ~MirroringToFlingingSwitcherTest() override {
-    media_router_factory_.ResetTestingFactory(&browser_context_);
+    media_router_factory_.ShutdownForBrowserContext(&browser_context_);
   }
 
   void SetUp() override {
@@ -96,7 +97,7 @@ class MirroringToFlingingSwitcherTest : public testing::Test {
         presentation_manager_.get());
   }
 
-  int GetNewTabSource() {
+  content::FrameTreeNodeId GetNewTabSource() {
     return web_contents_->GetPrimaryMainFrame()->GetFrameTreeNodeId();
   }
 

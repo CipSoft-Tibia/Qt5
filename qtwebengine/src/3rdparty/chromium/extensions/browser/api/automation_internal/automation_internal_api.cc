@@ -16,7 +16,6 @@
 #include "base/strings/string_number_conversions.h"
 #include "base/strings/utf_string_conversions.h"
 #include "build/chromeos_buildflags.h"
-#include "content/public/browser/ax_event_notification_details.h"
 #include "content/public/browser/browser_accessibility_state.h"
 #include "content/public/browser/browser_context.h"
 #include "content/public/browser/browser_plugin_guest_manager.h"
@@ -26,6 +25,7 @@
 #include "content/public/browser/render_process_host.h"
 #include "content/public/browser/render_widget_host.h"
 #include "content/public/browser/render_widget_host_view.h"
+#include "content/public/browser/scoped_accessibility_mode.h"
 #include "content/public/browser/web_contents.h"
 #include "content/public/browser/web_contents_observer.h"
 #include "content/public/browser/web_contents_user_data.h"
@@ -34,7 +34,7 @@
 #include "extensions/browser/api/extensions_api_client.h"
 #include "extensions/common/api/automation.h"
 #include "extensions/common/api/automation_internal.h"
-#include "extensions/common/extension_messages.h"
+#include "extensions/common/extension_id.h"
 #include "extensions/common/manifest_handlers/automation.h"
 #include "extensions/common/permissions/permissions_data.h"
 #include "mojo/public/cpp/bindings/associated_remote.h"
@@ -43,6 +43,7 @@
 #include "ui/accessibility/ax_action_handler_base.h"
 #include "ui/accessibility/ax_action_handler_registry.h"
 #include "ui/accessibility/ax_enum_util.h"
+#include "ui/accessibility/ax_updates_and_events.h"
 
 #if defined(USE_AURA)
 #include "ui/aura/env.h"
@@ -68,7 +69,7 @@ AutomationInternalPerformActionFunction::Result ConvertToAXActionData(
     const std::string& action_type_string,
     int request_id,
     const base::Value::Dict& additional_properties,
-    const std::string& extension_id,
+    const ExtensionId& extension_id,
     ui::AXActionData* action) {
   AutomationInternalPerformActionFunction::Result validation_error_result;
   validation_error_result.validation_success = false;
@@ -315,23 +316,44 @@ class AutomationWebContentsObserver
     automation_event_router_observer_.Reset();
   }
 
+  // Set the accessibility mode for the observed WebContents so that
+  // accessibility events are forwarded to each WebContentsObserver. A reset is
+  // performed if the WebContents already has web accessibility enabled.
+  void EnableOrResetWebContentsAccessibility() {
+    // Force a reset if web accessibility is already enabled to ensure that new
+    // observers of accessibility events get the full accessibility tree from
+    // scratch.
+    const bool need_reset = web_contents()->GetAccessibilityMode().has_mode(
+        ui::AXMode::kWebContents);
+
+    if (!scoped_accessibility_mode_) {
+      scoped_accessibility_mode_ =
+          content::BrowserAccessibilityState::GetInstance()
+              ->CreateScopedModeForWebContents(web_contents(),
+                                               ui::kAXModeWebContentsOnly);
+    }
+
+    if (need_reset) {
+      web_contents()->ResetAccessibility();
+    }
+  }
+
   // content::WebContentsObserver overrides.
-  void AccessibilityEventReceived(const content::AXEventNotificationDetails&
-                                      content_event_bundle) override {
+  void AccessibilityEventReceived(
+      const ui::AXUpdatesAndEvents& content_event_bundle) override {
     gfx::Point mouse_location;
 #if defined(USE_AURA)
     mouse_location = aura::Env::GetInstance()->last_mouse_location();
 #endif
+
     AutomationEventRouter* router = AutomationEventRouter::GetInstance();
     router->DispatchAccessibilityEvents(
-        std::move(content_event_bundle.ax_tree_id),
-        std::move(content_event_bundle.updates), mouse_location,
-        std::move(content_event_bundle.events));
+        content_event_bundle.ax_tree_id, content_event_bundle.updates,
+        mouse_location, content_event_bundle.events);
   }
 
   void AccessibilityLocationChangesReceived(
-      const std::vector<content::AXLocationChangeNotificationDetails>& details)
-      override {
+      const std::vector<ui::AXLocationChanges>& details) override {
     AutomationEventRouter* router = AutomationEventRouter::GetInstance();
     for (const auto& src : details) {
       router->DispatchAccessibilityLocationChange(src);
@@ -345,7 +367,7 @@ class AutomationWebContentsObserver
     if (!render_frame_host)
       return;
 
-    content::AXEventNotificationDetails content_event_bundle;
+    ui::AXUpdatesAndEvents content_event_bundle;
     content_event_bundle.ax_tree_id = render_frame_host->GetAXTreeID();
     content_event_bundle.events.resize(1);
     content_event_bundle.events[0].event_type =
@@ -362,7 +384,7 @@ class AutomationWebContentsObserver
     if (!render_frame_host)
       return;
 
-    content::AXEventNotificationDetails content_event_bundle;
+    ui::AXUpdatesAndEvents content_event_bundle;
     content_event_bundle.ax_tree_id = render_frame_host->GetAXTreeID();
     content_event_bundle.events.resize(1);
     content_event_bundle.events[0].event_type =
@@ -372,19 +394,12 @@ class AutomationWebContentsObserver
 
   // AutomationEventRouterObserver overrides.
   void AllAutomationExtensionsGone() override {
-    if (!web_contents())
-      return;
-
-    ui::AXMode new_mode = web_contents()->GetAccessibilityMode();
-    uint8_t flags = ui::kAXModeWebContentsOnly.flags();
-    new_mode.set_mode(flags, false);
-    web_contents()->SetAccessibilityMode(std::move(new_mode));
+    scoped_accessibility_mode_.reset();
   }
 
   void ExtensionListenerAdded() override {
-    // This call resets accessibility.
     if (web_contents()) {
-      web_contents()->EnableAccessibilityMode(ui::kAXModeWebContentsOnly);
+      EnableOrResetWebContentsAccessibility();
 
       // On ChromeOS Ash, the automation api is the native accessibility api.
       // For the purposes of tracking web contents accessibility like other
@@ -437,7 +452,7 @@ class AutomationWebContentsObserver
         return;
       }
 
-      content::AXEventNotificationDetails content_event_bundle;
+      ui::AXUpdatesAndEvents content_event_bundle;
       content_event_bundle.ax_tree_id = render_frame_host->GetAXTreeID();
       content_event_bundle.events.resize(1);
       content_event_bundle.events[0].event_type =
@@ -454,6 +469,8 @@ class AutomationWebContentsObserver
   base::ScopedObservation<extensions::AutomationEventRouter,
                           extensions::AutomationEventRouterObserver>
       automation_event_router_observer_{this};
+
+  std::unique_ptr<content::ScopedAccessibilityMode> scoped_accessibility_mode_;
 
   WEB_CONTENTS_USER_DATA_KEY_DECL();
 };
@@ -481,7 +498,8 @@ std::optional<std::string> AutomationInternalEnableTreeFunction::EnableTree(
   // Only call this if this is the root of a frame tree, to avoid resetting
   // the accessibility state multiple times.
   if (render_frame_host->IsInPrimaryMainFrame()) {
-    contents->EnableAccessibilityMode(ui::kAXModeWebContentsOnly);
+    AutomationWebContentsObserver::FromWebContents(contents)
+        ->EnableOrResetWebContentsAccessibility();
   }
 
   return std::nullopt;
@@ -544,7 +562,7 @@ AutomationInternalPerformActionFunction::PerformAction(
         // If |extension| is nullptr, then Lacros is receiving a crosapi request
         // from ash to perform an action. We make the assumption this this is
         // allowed.
-        // TODO(https://crbug.com/1185764): Confirm whether this assumption is
+        // TODO(crbug.com/40753344): Confirm whether this assumption is
         // valid.
       }
 

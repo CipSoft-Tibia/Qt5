@@ -35,7 +35,7 @@ import (
 // inputFile represents a textual assembly file.
 type inputFile struct {
 	path string
-	// index is a unique identifer given to this file. It's used for
+	// index is a unique identifier given to this file. It's used for
 	// mapping local symbols.
 	index int
 	// isArchive indicates that the input should be processed as an ar
@@ -589,11 +589,15 @@ func (d *delocation) processAarch64Instruction(statement, instruction *node32) (
 							panic("Symbol reference outside of ldr instruction")
 						}
 
-						if skipWS(parts.next) != nil || parts.up.next != nil {
-							panic("can't handle tweak or post-increment with symbol references")
-						}
-
-						// Suppress the offset; adrp loaded the full address.
+						// Suppress the offset; adrp loaded the full address. This assumes the
+						// the compiler does not emit code like the following:
+						//
+						//   adrp x0, symbol
+						//   ldr x1, [x0, :lo12:symbol]
+						//   ldr x2, [x0, :lo12:symbol+4]
+						//
+						// Such code would only work if lo12(symbol+4) = lo12(symbol) + 4, but
+						// this is true when symbol is sufficiently aligned.
 						args = append(args, "["+baseAddrReg+"]")
 						changed = true
 						continue
@@ -610,6 +614,15 @@ func (d *delocation) processAarch64Instruction(statement, instruction *node32) (
 				// The adrp instruction will have been turned into a sequence that loads
 				// the full address, above, thus the offset is turned into zero. If that
 				// results in the instruction being a nop, then it is deleted.
+				//
+				// This assumes the compiler does not emit code like the following:
+				//
+				//   adrp x0, symbol
+				//   add x1, x0, :lo12:symbol
+				//   add x2, x0, :lo12:symbol+4
+				//
+				// Such code would only work if lo12(symbol+4) = lo12(symbol) + 4, but
+				// this is true when symbol is sufficiently aligned.
 				if instructionName != "add" {
 					panic(fmt.Sprintf("unsure how to handle %q instruction using lo12", instructionName))
 				}
@@ -923,6 +936,12 @@ func (d *delocation) isRIPRelative(node *node32) bool {
 }
 
 func (d *delocation) processIntelInstruction(statement, instruction *node32) (*node32, error) {
+	var prefix string
+	if instruction.pegRule == ruleInstructionPrefix {
+		prefix = d.contents(instruction)
+		instruction = skipWS(instruction.next)
+	}
+
 	assertNodeType(instruction, ruleInstructionName)
 	instructionName := d.contents(instruction)
 
@@ -1240,6 +1259,9 @@ Args:
 	if changed {
 		d.writeCommentedNode(statement)
 		replacement := "\t" + instructionName + "\t" + strings.Join(args, ", ") + "\n"
+		if len(prefix) != 0 {
+			replacement = "\t" + prefix + replacement
+		}
 		wrappers.do(func() {
 			d.output.WriteString(replacement)
 		})

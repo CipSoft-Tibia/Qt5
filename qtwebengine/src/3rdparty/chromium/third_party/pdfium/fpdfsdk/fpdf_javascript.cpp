@@ -11,8 +11,9 @@
 #include "core/fpdfapi/parser/cpdf_document.h"
 #include "core/fpdfdoc/cpdf_action.h"
 #include "core/fpdfdoc/cpdf_nametree.h"
+#include "core/fxcrt/compiler_specific.h"
+#include "core/fxcrt/numerics/safe_conversions.h"
 #include "fpdfsdk/cpdfsdk_helpers.h"
-#include "third_party/base/numerics/safe_conversions.h"
 
 struct CPDF_JavaScript {
   WideString name;
@@ -26,7 +27,7 @@ FPDFDoc_GetJavaScriptActionCount(FPDF_DOCUMENT document) {
     return -1;
 
   auto name_tree = CPDF_NameTree::Create(doc, "JavaScript");
-  return name_tree ? pdfium::base::checked_cast<int>(name_tree->GetCount()) : 0;
+  return name_tree ? pdfium::checked_cast<int>(name_tree->GetCount()) : 0;
 }
 
 FPDF_EXPORT FPDF_JAVASCRIPT_ACTION FPDF_CALLCONV
@@ -50,7 +51,7 @@ FPDFDoc_GetJavaScriptAction(FPDF_DOCUMENT document, int index) {
   if (action.GetType() != CPDF_Action::Type::kJavaScript)
     return nullptr;
 
-  absl::optional<WideString> script = action.MaybeGetJavaScript();
+  std::optional<WideString> script = action.MaybeGetJavaScript();
   if (!script.has_value())
     return nullptr;
 
@@ -73,9 +74,12 @@ FPDFJavaScriptAction_GetName(FPDF_JAVASCRIPT_ACTION javascript,
                              unsigned long buflen) {
   CPDF_JavaScript* js =
       CPDFJavaScriptActionFromFPDFJavaScriptAction(javascript);
-  if (!js)
+  if (!js) {
     return 0;
-  return Utf16EncodeMaybeCopyAndReturnLength(js->name, buffer, buflen);
+  }
+  // SAFETY: required from caller.
+  return Utf16EncodeMaybeCopyAndReturnLength(
+      js->name, UNSAFE_BUFFERS(SpanFromFPDFApiArgs(buffer, buflen)));
 }
 
 FPDF_EXPORT unsigned long FPDF_CALLCONV
@@ -84,7 +88,10 @@ FPDFJavaScriptAction_GetScript(FPDF_JAVASCRIPT_ACTION javascript,
                                unsigned long buflen) {
   CPDF_JavaScript* js =
       CPDFJavaScriptActionFromFPDFJavaScriptAction(javascript);
-  if (!js)
+  if (!js) {
     return 0;
-  return Utf16EncodeMaybeCopyAndReturnLength(js->script, buffer, buflen);
+  }
+  // SAFETY: required from caller.
+  return Utf16EncodeMaybeCopyAndReturnLength(
+      js->script, UNSAFE_BUFFERS(SpanFromFPDFApiArgs(buffer, buflen)));
 }

@@ -15,8 +15,9 @@
 #include "core/fpdfapi/parser/cpdf_stream.h"
 #include "core/fpdfapi/parser/cpdf_stream_acc.h"
 #include "core/fxcrt/cfx_bitstream.h"
-#include "third_party/base/check.h"
-#include "third_party/base/containers/span.h"
+#include "core/fxcrt/check.h"
+#include "core/fxcrt/compiler_specific.h"
+#include "core/fxcrt/span.h"
 
 namespace {
 
@@ -128,7 +129,7 @@ bool CPDF_MeshStream::Load() {
   if (ShouldCheckBitsPerFlag(m_type) && !IsValidBitsPerFlag(m_nFlagBits))
     return false;
 
-  uint32_t nComponents = m_pCS->CountComponents();
+  uint32_t nComponents = m_pCS->ComponentCount();
   if (nComponents > kMaxComponents)
     return false;
 
@@ -145,7 +146,6 @@ bool CPDF_MeshStream::Load() {
     m_ColorMin[i] = pDecode->GetFloatAt(i * 2 + 4);
     m_ColorMax[i] = pDecode->GetFloatAt(i * 2 + 5);
   }
-
   if (ShouldCheckBPC(m_type)) {
     m_CoordMax = m_nCoordBits == 32 ? -1 : (1 << m_nCoordBits) - 1;
     m_ComponentMax = (1 << m_nComponentBits) - 1;
@@ -177,12 +177,12 @@ bool CPDF_MeshStream::CanReadColor() const {
   return m_BitStream->BitsRemaining() / m_nComponentBits >= m_nComponents;
 }
 
-uint32_t CPDF_MeshStream::ReadFlag() {
+uint32_t CPDF_MeshStream::ReadFlag() const {
   DCHECK(ShouldCheckBitsPerFlag(m_type));
   return m_BitStream->GetBits(m_nFlagBits) & 0x03;
 }
 
-CFX_PointF CPDF_MeshStream::ReadCoords() {
+CFX_PointF CPDF_MeshStream::ReadCoords() const {
   DCHECK(ShouldCheckBPC(m_type));
 
   CFX_PointF pos;
@@ -200,32 +200,25 @@ CFX_PointF CPDF_MeshStream::ReadCoords() {
   return pos;
 }
 
-std::tuple<float, float, float> CPDF_MeshStream::ReadColor() {
+FX_RGB_STRUCT<float> CPDF_MeshStream::ReadColor() const {
   DCHECK(ShouldCheckBPC(m_type));
 
-  float color_value[kMaxComponents];
+  std::array<float, kMaxComponents> color_value;
   for (uint32_t i = 0; i < m_nComponents; ++i) {
-    color_value[i] = m_ColorMin[i] + m_BitStream->GetBits(m_nComponentBits) *
-                                         (m_ColorMax[i] - m_ColorMin[i]) /
-                                         m_ComponentMax;
+      color_value[i] = m_ColorMin[i] + m_BitStream->GetBits(m_nComponentBits) *
+                                           (m_ColorMax[i] - m_ColorMin[i]) /
+                                           m_ComponentMax;
   }
-
-  float r = 0.0;
-  float g = 0.0;
-  float b = 0.0;
   if (m_funcs.empty()) {
-    m_pCS->GetRGB(color_value, &r, &g, &b);
-    return std::tuple<float, float, float>(r, g, b);
+    return m_pCS->GetRGBOrZerosOnError(color_value);
   }
-
   float result[kMaxComponents] = {};
   for (const auto& func : m_funcs) {
-    if (func && func->CountOutputs() <= kMaxComponents)
-      func->Call(pdfium::make_span(color_value, 1u), result);
+    if (func && func->OutputCount() <= kMaxComponents) {
+      func->Call(pdfium::make_span(color_value).first<1u>(), result);
+    }
   }
-
-  m_pCS->GetRGB(result, &r, &g, &b);
-  return std::tuple<float, float, float>(r, g, b);
+  return m_pCS->GetRGBOrZerosOnError(result);
 }
 
 bool CPDF_MeshStream::ReadVertex(const CFX_Matrix& pObject2Bitmap,
@@ -241,7 +234,7 @@ bool CPDF_MeshStream::ReadVertex(const CFX_Matrix& pObject2Bitmap,
 
   if (!CanReadColor())
     return false;
-  std::tie(vertex->r, vertex->g, vertex->b) = ReadColor();
+  vertex->rgb = ReadColor();
   m_BitStream->ByteAlign();
   return true;
 }
@@ -260,7 +253,7 @@ std::vector<CPDF_MeshVertex> CPDF_MeshStream::ReadVertexRow(
     if (!CanReadColor())
       return std::vector<CPDF_MeshVertex>();
 
-    std::tie(vertex.r, vertex.g, vertex.b) = ReadColor();
+    vertex.rgb = ReadColor();
     m_BitStream->ByteAlign();
   }
   return vertices;

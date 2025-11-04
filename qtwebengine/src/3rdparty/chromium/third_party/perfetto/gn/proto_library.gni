@@ -181,7 +181,11 @@ template("ipc_library") {
       # the client-side code in the generated .ipc.cc effectively depends on the
       # client-side IPC library. Perhaps we just should do this unconditionally
       # on all platforms?
-      deps += [ "$perfetto_root_path/src/ipc:client" ]
+      if (perfetto_component_type == "static_library") {
+        deps += [ "$perfetto_root_path/src/ipc:perfetto_ipc" ]
+      } else {
+        deps += [ "$perfetto_root_path/src/ipc:client" ]
+      }
     }
 
     if (defined(invoker.deps)) {
@@ -371,8 +375,13 @@ template("perfetto_proto_library") {
 
         metadata = {
           proto_library_sources = invoker.sources
-          import_dirs = import_dirs_
-          exports = get_path_info(public_deps_, "abspath")
+          proto_import_dirs = import_dirs_
+          exports = []
+          foreach(i, public_deps_) {
+            # Get the absolute target path
+            exports +=
+                [ get_label_info(i, "dir") + ":" + get_label_info(i, "name") ]
+          }
         }
         forward_variables_from(invoker, vars_to_forward)
       }

@@ -66,6 +66,7 @@ public:
     virtual void setParent(const QPlatformWindow *window);
 
     virtual void setWindowTitle(const QString &title);
+    virtual QString windowTitle() const;
     virtual void setWindowFilePath(const QString &title);
     virtual void setWindowIcon(const QIcon &icon);
     virtual bool close();
@@ -117,6 +118,7 @@ public:
     virtual void requestUpdate();
     bool hasPendingUpdateRequest() const;
     virtual void deliverUpdateRequest();
+    virtual bool allowsIndependentThreadedRendering() const;
 
     // Window property accessors. Platform plugins should use these
     // instead of accessing QWindow directly.

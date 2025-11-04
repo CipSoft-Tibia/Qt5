@@ -28,7 +28,6 @@
 #include "src/tint/lang/wgsl/ast/loop_statement.h"
 
 #include "gmock/gmock.h"
-#include "gtest/gtest-spi.h"
 #include "src/tint/lang/wgsl/ast/discard_statement.h"
 #include "src/tint/lang/wgsl/ast/helper_test.h"
 #include "src/tint/lang/wgsl/ast/if_statement.h"
@@ -37,6 +36,7 @@ namespace tint::ast {
 namespace {
 
 using LoopStatementTest = TestHelper;
+using LoopStatementDeathTest = LoopStatementTest;
 
 TEST_F(LoopStatementTest, Creation) {
     auto* body = Block(create<DiscardStatement>());
@@ -93,8 +93,8 @@ TEST_F(LoopStatementTest, HasContinuing_WithContinuing) {
     EXPECT_TRUE(l->continuing);
 }
 
-TEST_F(LoopStatementTest, Assert_Null_Body) {
-    EXPECT_FATAL_FAILURE(
+TEST_F(LoopStatementDeathTest, Assert_Null_Body) {
+    EXPECT_DEATH_IF_SUPPORTED(
         {
             ProgramBuilder b;
             b.create<LoopStatement>(nullptr, nullptr, tint::Empty);
@@ -102,8 +102,8 @@ TEST_F(LoopStatementTest, Assert_Null_Body) {
         "internal compiler error");
 }
 
-TEST_F(LoopStatementTest, Assert_DifferentGenerationID_Body) {
-    EXPECT_FATAL_FAILURE(
+TEST_F(LoopStatementDeathTest, Assert_DifferentGenerationID_Body) {
+    EXPECT_DEATH_IF_SUPPORTED(
         {
             ProgramBuilder b1;
             ProgramBuilder b2;
@@ -112,8 +112,8 @@ TEST_F(LoopStatementTest, Assert_DifferentGenerationID_Body) {
         "internal compiler error");
 }
 
-TEST_F(LoopStatementTest, Assert_DifferentGenerationID_Continuing) {
-    EXPECT_FATAL_FAILURE(
+TEST_F(LoopStatementDeathTest, Assert_DifferentGenerationID_Continuing) {
+    EXPECT_DEATH_IF_SUPPORTED(
         {
             ProgramBuilder b1;
             ProgramBuilder b2;

@@ -6,6 +6,7 @@
 
 #include <stddef.h>
 
+#include "base/not_fatal_until.h"
 #include "base/ranges/algorithm.h"
 #include "base/strings/string_util.h"
 #include "content/browser/renderer_host/debug_urls.h"
@@ -22,47 +23,40 @@ namespace content {
 
 // Handles rewriting view-source URLs for what we'll actually load.
 static bool HandleViewSource(GURL* url, BrowserContext* browser_context) {
-  if (url->SchemeIs(kViewSourceScheme)) {
-    // Load the inner URL instead.
-    *url = GURL(url->GetContent());
-
-    // Bug 26129: limit view-source to view the content and not any
-    // other kind of 'active' url scheme like 'javascript' or 'data'.
-    static const char* const default_allowed_sub_schemes[] = {
-        url::kHttpScheme,
-        url::kHttpsScheme,
-        kChromeUIScheme,
-        url::kFileScheme,
-        url::kFileSystemScheme
-    };
-
-    // Merge all the schemes for which view-source is allowed by default, with
-    // the view-source schemes defined by the ContentBrowserClient.
-    std::vector<std::string> all_allowed_sub_schemes;
-    for (size_t i = 0; i < std::size(default_allowed_sub_schemes); ++i)
-      all_allowed_sub_schemes.push_back(default_allowed_sub_schemes[i]);
-    GetContentClient()->browser()->GetAdditionalViewSourceSchemes(
-        &all_allowed_sub_schemes);
-    for (auto& cs : url::CustomScheme::GetSchemes()) {
-      if (cs.flags & url::CustomScheme::ViewSourceAllowed)
-        all_allowed_sub_schemes.push_back(cs.name);
-    }
-
-    bool is_sub_scheme_allowed = false;
-    for (size_t i = 0; i < all_allowed_sub_schemes.size(); ++i) {
-      if (url->SchemeIs(all_allowed_sub_schemes[i].c_str())) {
-        is_sub_scheme_allowed = true;
-        break;
-      }
-    }
-
-    if (!is_sub_scheme_allowed) {
-      *url = GURL(url::kAboutBlankURL);
-      return false;
-    }
-
-    return true;
+  if (!url->SchemeIs(kViewSourceScheme)) {
+    return false;
   }
+
+  // Load the inner URL instead.
+  *url = GURL(url->GetContent());
+
+  // https://crbug.com/40077794: limit view-source to view the content and
+  // not any other kind of 'active' url scheme like 'javascript' or 'data'.
+  std::vector<std::string> all_allowed_sub_schemes({
+      url::kHttpScheme,
+      url::kHttpsScheme,
+      kChromeUIScheme,
+      url::kFileScheme,
+      url::kFileSystemScheme,
+  });
+
+  // Merge all the schemes for which view-source is allowed by default, with
+  // the view-source schemes defined by the ContentBrowserClient.
+  GetContentClient()->browser()->GetAdditionalViewSourceSchemes(
+      &all_allowed_sub_schemes);
+  for (auto& cs : url::CustomScheme::GetSchemes()) {
+    if (cs.flags & url::CustomScheme::ViewSourceAllowed) {
+      all_allowed_sub_schemes.push_back(cs.name);
+    }
+  }
+
+  for (const auto& allowed_sub_scheme : all_allowed_sub_schemes) {
+    if (url->SchemeIs(allowed_sub_scheme)) {
+      return true;
+    }
+  }
+
+  *url = GURL(url::kAboutBlankURL);
   return false;
 }
 
@@ -190,7 +184,7 @@ void BrowserURLHandlerImpl::RemoveHandlerForTesting(URLHandler handler) {
       return;
     }
   }
-  NOTREACHED();
+  CHECK(true, base::NotFatalUntil::M130);
 }
 
 }  // namespace content

@@ -16,6 +16,7 @@
 #include "base/containers/contains.h"
 #include "base/functional/bind.h"
 #include "base/functional/callback.h"
+#include "base/not_fatal_until.h"
 #include "base/notreached.h"
 #include "base/numerics/safe_conversions.h"
 #include "base/ranges/algorithm.h"
@@ -50,9 +51,9 @@ struct FlexChildData {
   std::string ToString() const {
     std::ostringstream oss;
     oss << "{ preferred " << preferred_size.ToString() << " current "
-        << current_size.ToString() << " min " << miniumize_size.ToString()
+        << current_size.ToString() << " min " << minimum_size.ToString()
         << " base " << flex_base_content_size.ToString() << " max "
-        << maxiumize_size.ToString() << " margins " << margins.ToString()
+        << maximum_size.ToString() << " margins " << margins.ToString()
         << (using_default_margins ? " (using default)" : "") << " padding "
         << internal_padding.ToString() << " bounds " << actual_bounds.ToString()
         << " }";
@@ -62,8 +63,8 @@ struct FlexChildData {
   NormalizedSize preferred_size;
   NormalizedSize current_size;
   NormalizedSize pending_size;
-  NormalizedSize miniumize_size;
-  NormalizedSize maxiumize_size;
+  NormalizedSize minimum_size;
+  NormalizedSize maximum_size;
   NormalizedSize flex_base_content_size;
   NormalizedInsets margins;
   bool using_default_margins = true;
@@ -113,8 +114,8 @@ class FlexLayout::ChildViewSpacing {
   // absent, uses the left edge of the parent container. If the second index is
   // absent, uses the right edge of the parent container.
   using GetViewSpacingCallback =
-      base::RepeatingCallback<int(absl::optional<size_t>,
-                                  absl::optional<size_t>)>;
+      base::RepeatingCallback<int(std::optional<size_t>,
+                                  std::optional<size_t>)>;
 
   explicit ChildViewSpacing(GetViewSpacingCallback get_view_spacing);
   ChildViewSpacing(const ChildViewSpacing& other) = default;
@@ -147,8 +148,8 @@ class FlexLayout::ChildViewSpacing {
                     int* new_trailing = nullptr);
 
  private:
-  absl::optional<size_t> GetPreviousViewIndex(size_t view_index) const;
-  absl::optional<size_t> GetNextViewIndex(size_t view_index) const;
+  std::optional<size_t> GetPreviousViewIndex(size_t view_index) const;
+  std::optional<size_t> GetNextViewIndex(size_t view_index) const;
 
   // Returns the change in space required if the specified view index were
   // added. The view must not already be present.
@@ -164,7 +165,7 @@ class FlexLayout::ChildViewSpacing {
 FlexLayout::ChildViewSpacing::ChildViewSpacing(
     GetViewSpacingCallback get_view_spacing)
     : get_view_spacing_(std::move(get_view_spacing)),
-      trailing_space_(get_view_spacing_.Run(absl::nullopt, absl::nullopt)) {}
+      trailing_space_(get_view_spacing_.Run(std::nullopt, std::nullopt)) {}
 
 bool FlexLayout::ChildViewSpacing::HasViewIndex(size_t view_index) const {
   return leading_spacings_.find(view_index) != leading_spacings_.end();
@@ -182,7 +183,7 @@ int FlexLayout::ChildViewSpacing::GetTrailingInset() const {
 
 int FlexLayout::ChildViewSpacing::GetLeadingSpace(size_t view_index) const {
   auto it = leading_spacings_.find(view_index);
-  DCHECK(it != leading_spacings_.end());
+  CHECK(it != leading_spacings_.end(), base::NotFatalUntil::M130);
   return it->second;
 }
 
@@ -225,8 +226,8 @@ void FlexLayout::ChildViewSpacing::AddViewIndex(size_t view_index,
                                                 int* new_leading,
                                                 int* new_trailing) {
   DCHECK(!HasViewIndex(view_index));
-  absl::optional<size_t> prev = GetPreviousViewIndex(view_index);
-  absl::optional<size_t> next = GetNextViewIndex(view_index);
+  std::optional<size_t> prev = GetPreviousViewIndex(view_index);
+  std::optional<size_t> next = GetNextViewIndex(view_index);
 
   const int leading_space = get_view_spacing_.Run(prev, view_index);
   const int trailing_space = get_view_spacing_.Run(view_index, next);
@@ -242,26 +243,26 @@ void FlexLayout::ChildViewSpacing::AddViewIndex(size_t view_index,
     *new_trailing = trailing_space;
 }
 
-absl::optional<size_t> FlexLayout::ChildViewSpacing::GetPreviousViewIndex(
+std::optional<size_t> FlexLayout::ChildViewSpacing::GetPreviousViewIndex(
     size_t view_index) const {
   const auto it = leading_spacings_.lower_bound(view_index);
   if (it == leading_spacings_.begin())
-    return absl::nullopt;
+    return std::nullopt;
   return std::prev(it)->first;
 }
 
-absl::optional<size_t> FlexLayout::ChildViewSpacing::GetNextViewIndex(
+std::optional<size_t> FlexLayout::ChildViewSpacing::GetNextViewIndex(
     size_t view_index) const {
   const auto it = leading_spacings_.upper_bound(view_index);
   if (it == leading_spacings_.end())
-    return absl::nullopt;
+    return std::nullopt;
   return it->first;
 }
 
 int FlexLayout::ChildViewSpacing::GetAddDelta(size_t view_index) const {
   DCHECK(!HasViewIndex(view_index));
-  absl::optional<size_t> prev = GetPreviousViewIndex(view_index);
-  absl::optional<size_t> next = GetNextViewIndex(view_index);
+  std::optional<size_t> prev = GetPreviousViewIndex(view_index);
+  std::optional<size_t> next = GetNextViewIndex(view_index);
   const int old_spacing = next ? GetLeadingSpace(*next) : GetTrailingInset();
   const int new_spacing = get_view_spacing_.Run(prev, view_index) +
                           get_view_spacing_.Run(view_index, next);
@@ -477,13 +478,13 @@ ProposedLayout FlexLayout::CalculateProposedLayout(
     std::vector<NormalizedSize> backup_size(data.num_children());
     for (size_t i = 0; i < data.num_children(); ++i) {
       FlexChildData& flex_child = data.child_data[i];
-      backup_size[i] = flex_child.maxiumize_size;
-      flex_child.maxiumize_size = flex_child.preferred_size;
+      backup_size[i] = flex_child.maximum_size;
+      flex_child.maximum_size = flex_child.preferred_size;
     }
     AllocateFlexItem(bounds, order_to_view_index, data, child_spacing, true);
     for (size_t i = 0; i < data.num_children(); ++i) {
       FlexChildData& flex_child = data.child_data[i];
-      flex_child.maxiumize_size = backup_size[i];
+      flex_child.maximum_size = backup_size[i];
     }
   }
   AllocateFlexItem(bounds, order_to_view_index, data, child_spacing, true);
@@ -589,15 +590,15 @@ void FlexLayout::InitializeChildData(
     // 'C'. So here the basic size is set according to the C rule.
     flex_child.preferred_size =
         GetPreferredSizeForRule(flex_child.flex.rule(), child, available_cross);
-    flex_child.miniumize_size =
+    flex_child.minimum_size =
         GetCurrentSizeForRule(flex_child.flex.rule(), child,
                               NormalizedSizeBounds(0, available_cross));
-    flex_child.maxiumize_size = GetCurrentSizeForRule(
+    flex_child.maximum_size = GetCurrentSizeForRule(
         flex_child.flex.rule(), child,
         NormalizedSizeBounds(bounds.main(), available_cross));
 
     data.SetCurrentSize(view_index, main_axis_bounded
-                                        ? flex_child.miniumize_size
+                                        ? flex_child.minimum_size
                                         : flex_child.preferred_size);
 
     // Keep track of non-hidden/ignored child views that can flex. We assume any
@@ -608,7 +609,7 @@ void FlexLayout::InitializeChildData(
         weight > 0 ||
         flex_child.current_size.main() < flex_child.preferred_size.main() ||
         (weight == 0 &&
-         flex_child.maxiumize_size.main() > flex_child.preferred_size.main());
+         flex_child.maximum_size.main() > flex_child.preferred_size.main());
 
     // Add views that have the potential to flex to the appropriate order list.
     if (can_flex)
@@ -616,11 +617,11 @@ void FlexLayout::InitializeChildData(
 
     if (main_axis_bounded) {
       flex_child.flex_base_content_size = std::min<NormalizedSize>(
-          std::max<NormalizedSize>(flex_child.miniumize_size,
+          std::max<NormalizedSize>(flex_child.minimum_size,
                                    flex_child.preferred_size),
-          flex_child.maxiumize_size);
+          flex_child.maximum_size);
     } else {
-      flex_child.flex_base_content_size = flex_child.maxiumize_size;
+      flex_child.flex_base_content_size = flex_child.maximum_size;
     }
   }
 }
@@ -735,8 +736,8 @@ SizeBound FlexLayout::GetAvailableCrossAxisSize(
 
 int FlexLayout::CalculateChildSpacing(
     const FlexLayoutData& layout,
-    absl::optional<size_t> child1_index,
-    absl::optional<size_t> child2_index) const {
+    std::optional<size_t> child1_index,
+    std::optional<size_t> child2_index) const {
   const FlexChildData* const child1 =
       child1_index ? &layout.child_data[*child1_index] : nullptr;
   const FlexChildData* const child2 =
@@ -778,14 +779,6 @@ void FlexLayout::UpdateLayoutFromChildren(
                                data.interior_margin.cross_trailing(), 0));
   data.total_size = NormalizedSize(0, min_cross_size);
 
-  // For cases with a non-zero cross-axis bound, the objective is to fit the
-  // layout into that precise size, not to determine what size we need.
-  bool force_cross_size = false;
-  if (bounds.cross().is_bounded() && bounds.cross() > 0) {
-    data.total_size.SetToMax(0, bounds.cross().value());
-    force_cross_size = true;
-  }
-
   std::vector<Inset1D> cross_spacings(data.num_children());
   for (size_t i = 0; i < data.num_children(); ++i) {
     FlexChildData& flex_child = data.child_data[i];
@@ -794,8 +787,7 @@ void FlexLayout::UpdateLayoutFromChildren(
 
     // Update the cross-axis margins and if necessary, the size.
     cross_spacings[i] = GetCrossAxisMargins(data, i);
-    if (!force_cross_size &&
-        (is_visible || flex_child.preferred_size.main() == 0)) {
+    if (is_visible || flex_child.preferred_size.main() == 0) {
       data.total_size.SetToMax(
           0, cross_spacings[i].size() + flex_child.current_size.cross());
     }
@@ -821,9 +813,17 @@ void FlexLayout::UpdateLayoutFromChildren(
   // Add the end margin.
   data.total_size.Enlarge(child_spacing.GetTrailingInset(), 0);
 
+  // We only need to consider the cross axis size when aligning. But we
+  // should not let it affect total_size. Because this will affect the preferred
+  // size of the host view.
+  SizeBound cross_axis_size =
+      bounds.cross().is_bounded() && bounds.cross().value() > 0
+          ? bounds.cross()
+          : data.total_size.cross();
+
   // Calculate cross-axis positioning based on the cross margins and size that
   // were calculated above.
-  const Span cross_span(0, data.total_size.cross());
+  const Span cross_span(0, cross_axis_size.value());
   for (size_t i = 0; i < data.num_children(); ++i) {
     FlexChildData& flex_child = data.child_data[i];
     flex_child.actual_bounds.set_size_cross(flex_child.current_size.cross());
@@ -839,8 +839,8 @@ NormalizedSize FlexLayout::ClampSizeToMinAndMax(FlexLayoutData& data,
                                                 const size_t view_index,
                                                 SizeBound size) const {
   FlexChildData& flex_child = data.child_data[view_index];
-  if (size.value() <= flex_child.miniumize_size.main()) {
-    return flex_child.miniumize_size;
+  if (size.value() <= flex_child.minimum_size.main()) {
+    return flex_child.minimum_size;
   }
 
   ChildLayout& child_layout = data.layout.child_layouts[view_index];
@@ -853,8 +853,8 @@ NormalizedSize FlexLayout::ClampSizeToMinAndMax(FlexLayoutData& data,
       flex_child.flex.rule(), child_layout.child_view, available);
 
   return std::min<NormalizedSize>(
-      std::max<NormalizedSize>(flex_child.miniumize_size, new_size),
-      flex_child.maxiumize_size);
+      std::max<NormalizedSize>(flex_child.minimum_size, new_size),
+      flex_child.maximum_size);
 }
 
 void FlexLayout::AllocateFlexItem(const NormalizedSizeBounds& bounds,

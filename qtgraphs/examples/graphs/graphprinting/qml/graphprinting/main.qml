@@ -146,6 +146,8 @@ Rectangle {
     }
     MessageDialog {
         id: message
+        onButtonClicked: mainView.cleanAfterPrint()
+
     }
 
     //! [1.1]
@@ -257,7 +259,20 @@ Rectangle {
     //! [3.3]
     function prepareForPrint() {
         if (stackLayout.currentIndex === 1) {
-            outputsize = Qt.size(bargraph.width * 4, bargraph.height * 4)
+            var newsize = Qt.size(bargraph.width * 4, bargraph.height * 4)
+
+            // check that we do not exceed maximum texture size
+            if (newsize.width * Screen.devicePixelRatio > graphPrinter.maxTextureSize() ) {
+                // scale to 25% under max texture size to be on the safe side; some GPUs seem
+                // to glitch when using the abosulute max
+                var ratio = (newsize.width * Screen.devicePixelRatio * 1.25)
+                        / graphPrinter.maxTextureSize()
+                newsize.width /= ratio
+                newsize.height /= ratio
+            }
+            outputsize.width = Math.round(newsize.width)
+            outputsize.height = Math.round(newsize.height)
+
             // resize the bar graph to match the PDF output size
             item.width = outputsize.width
             item.height = outputsize.height
@@ -269,8 +284,8 @@ Rectangle {
     function cleanAfterPrint() {
         if (stackLayout.currentIndex === 1) {
             // resize the bar graph back to the actual visual size
-            item.width = mainView.width
-            item.height = mainView.height
+            item.width = stackLayout.width
+            item.height = stackLayout.height
         }
     }
     //! [3.3]

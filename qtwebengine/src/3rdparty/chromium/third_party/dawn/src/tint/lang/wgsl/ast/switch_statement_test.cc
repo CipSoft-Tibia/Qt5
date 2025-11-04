@@ -28,7 +28,6 @@
 #include "src/tint/lang/wgsl/ast/switch_statement.h"
 
 #include "gmock/gmock.h"
-#include "gtest/gtest-spi.h"
 #include "src/tint/lang/wgsl/ast/helper_test.h"
 
 using namespace tint::core::number_suffixes;  // NOLINT
@@ -37,6 +36,7 @@ namespace tint::ast {
 namespace {
 
 using SwitchStatementTest = TestHelper;
+using SwitchStatementDeathTest = SwitchStatementTest;
 
 TEST_F(SwitchStatementTest, Creation) {
     auto* case_stmt = create<CaseStatement>(tint::Vector{CaseSelector(1_u)}, Block());
@@ -87,9 +87,9 @@ TEST_F(SwitchStatementTest, IsSwitch) {
     EXPECT_TRUE(stmt->Is<SwitchStatement>());
 }
 
-TEST_F(SwitchStatementTest, Assert_Null_Condition) {
+TEST_F(SwitchStatementDeathTest, Assert_Null_Condition) {
     using CaseStatementList = tint::Vector<const CaseStatement*, 2>;
-    EXPECT_FATAL_FAILURE(
+    EXPECT_DEATH_IF_SUPPORTED(
         {
             ProgramBuilder b;
             CaseStatementList cases;
@@ -100,9 +100,9 @@ TEST_F(SwitchStatementTest, Assert_Null_Condition) {
         "internal compiler error");
 }
 
-TEST_F(SwitchStatementTest, Assert_Null_CaseStatement) {
+TEST_F(SwitchStatementDeathTest, Assert_Null_CaseStatement) {
     using CaseStatementList = tint::Vector<const CaseStatement*, 2>;
-    EXPECT_FATAL_FAILURE(
+    EXPECT_DEATH_IF_SUPPORTED(
         {
             ProgramBuilder b;
             b.create<SwitchStatement>(b.Expr(true), CaseStatementList{nullptr}, tint::Empty,
@@ -111,8 +111,8 @@ TEST_F(SwitchStatementTest, Assert_Null_CaseStatement) {
         "internal compiler error");
 }
 
-TEST_F(SwitchStatementTest, Assert_DifferentGenerationID_Condition) {
-    EXPECT_FATAL_FAILURE(
+TEST_F(SwitchStatementDeathTest, Assert_DifferentGenerationID_Condition) {
+    EXPECT_DEATH_IF_SUPPORTED(
         {
             ProgramBuilder b1;
             ProgramBuilder b2;
@@ -129,8 +129,8 @@ TEST_F(SwitchStatementTest, Assert_DifferentGenerationID_Condition) {
         "internal compiler error");
 }
 
-TEST_F(SwitchStatementTest, Assert_DifferentGenerationID_CaseStatement) {
-    EXPECT_FATAL_FAILURE(
+TEST_F(SwitchStatementDeathTest, Assert_DifferentGenerationID_CaseStatement) {
+    EXPECT_DEATH_IF_SUPPORTED(
         {
             ProgramBuilder b1;
             ProgramBuilder b2;

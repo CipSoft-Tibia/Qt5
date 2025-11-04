@@ -6,41 +6,43 @@ from __future__ import annotations
 
 import argparse
 import logging
-import pathlib
 import re
-import tempfile
-from typing import TYPE_CHECKING, Optional, Tuple, cast
+from typing import TYPE_CHECKING, Optional, TextIO, Tuple, cast
 
+from crossbench import path as pth
 from crossbench import plt
+from crossbench.browsers.attributes import BrowserAttributes
 from crossbench.browsers.browser import Browser
 from crossbench.browsers.browser_helper import convert_flags_to_label
 from crossbench.browsers.viewport import Viewport
-from crossbench.flags import ChromeFeatures, ChromeFlags, Flags, JSFlags
+from crossbench.flags.chrome import ChromeFeatures, ChromeFlags
 from crossbench.types import JsonDict
 
 if TYPE_CHECKING:
-  from crossbench import plt
-  from crossbench.browsers.splash_screen import SplashScreen
-  from crossbench.network.base import Network
+  from crossbench.browsers.settings import Settings
+  from crossbench.flags.base import Flags
+  from crossbench.flags.js_flags import JSFlags
   from crossbench.runner.groups import BrowserSessionRunGroup
   from crossbench.runner.runner import Runner
 
 
 class Chromium(Browser):
-  MIN_HEADLESS_NEW_VERSION = 112
-  DEFAULT_FLAGS = (
+  MIN_HEADLESS_NEW_VERSION: int = 112
+  DEFAULT_FLAGS: Tuple[str, ...] = (
       "--no-default-browser-check",
       "--disable-component-update",
       "--disable-sync",
       "--disable-extensions",
       "--no-first-run",
+      # This could be enabled via feature-flags as well.
+      "--disable-search-engine-choice-screen",
   )
-  FLAGS_FOR_DISABLING_BACKGROUND_INTERVENTIONS = (
+  FLAGS_FOR_DISABLING_BACKGROUND_INTERVENTIONS: Tuple[str, ...] = (
       "--disable-background-timer-throttling",
       "--disable-renderer-backgrounding",
   )
   # All flags that might affect how finch / field-trials are loaded.
-  FIELD_TRIAL_FLAGS = (
+  FIELD_TRIAL_FLAGS: Tuple[str, ...] = (
       "--force-fieldtrials",
       "--variations-server-url",
       "--variations-insecure-server-url",
@@ -48,15 +50,15 @@ class Chromium(Browser):
       "--enable-field-trial-config",
       "--disable-variations-safe-mode",
   )
-  NO_EXPERIMENTS_FLAGS = (
+  NO_EXPERIMENTS_FLAGS: Tuple[str, ...] = (
       "--no-experiments",
       "--enable-benchmarking",
       "--disable-field-trial-config",
   )
 
   @classmethod
-  def default_path(cls) -> pathlib.Path:
-    return plt.PLATFORM.search_app_or_executable(
+  def default_path(cls, platform: plt.Platform) -> pth.RemotePath:
+    return platform.search_app_or_executable(
         "Chromium",
         macos=["Chromium.app"],
         linux=["google-chromium", "chromium"],
@@ -67,50 +69,17 @@ class Chromium(Browser):
                     initial_data: Flags.InitialDataType = None) -> ChromeFlags:
     return ChromeFlags(initial_data)
 
-  def __init__(
-      self,
-      label: str,
-      path: pathlib.Path,
-      flags: Optional[Flags.InitialDataType] = None,
-      js_flags: Optional[Flags.InitialDataType] = None,
-      cache_dir: Optional[pathlib.Path] = None,
-      type: str = "chromium",  # pylint: disable=redefined-builtin
-      network: Optional[Network] = None,
-      driver_path: Optional[pathlib.Path] = None,
-      viewport: Optional[Viewport] = None,
-      splash_screen: Optional[SplashScreen] = None,
-      platform: Optional[plt.Platform] = None):
-    super().__init__(
-        label,
-        path,
-        flags=None,
-        type=type,
-        network=network,
-        driver_path=driver_path,
-        viewport=viewport,
-        splash_screen=splash_screen,
-        platform=platform)
-    self._flags: ChromeFlags = self._create_flags(flags, js_flags)
-    if cache_dir is None:
-      maybe_cache_dir = self._flags.get("--user-data-dir", None)
-      if maybe_cache_dir:
-        cache_dir = pathlib.Path(maybe_cache_dir)
-    if cache_dir is None:
-      # pylint: disable=bad-option-value, consider-using-with
-      self.cache_dir = pathlib.Path(
-          tempfile.TemporaryDirectory(prefix=type).name)
-      self.clear_cache_dir = True
-    else:
-      self.cache_dir = cache_dir
-      self.clear_cache_dir = False
-    self._stdout_log_file = None
+  def __init__(self,
+               label: str,
+               path: pth.RemotePath,
+               settings: Optional[Settings] = None):
+    super().__init__(label, path, settings=settings)
+    self._stdout_log_file: Optional[TextIO] = None
+    assert isinstance(self._flags, ChromeFlags)
 
-  def _create_flags(self, flags: Flags.InitialDataType,
-                    js_flags: Flags.InitialDataType) -> ChromeFlags:
-    assert not isinstance(js_flags, str), (
-        f"js_flags should be a list, but got: {repr(js_flags)}")
-    assert not isinstance(
-        flags, str), (f"flags should be a list, but got: {repr(flags)}")
+  def _setup_flags(self, settings: Settings) -> ChromeFlags:
+    flags: Flags = settings.flags
+    js_flags: Flags = settings.js_flags
     self._flags = self.default_flags(self.DEFAULT_FLAGS)
     self._flags.update(flags)
 
@@ -155,6 +124,19 @@ class Chromium(Browser):
     self.flags.set("--disable-gpu-compositing")
     self.flags.set("--no-sandbox")
 
+  def _setup_cache_dir(self, settings: Settings) -> None:
+    cache_dir = settings.cache_dir
+    if cache_dir is None:
+      maybe_cache_dir = self._flags.get("--user-data-dir", None)
+      if maybe_cache_dir:
+        cache_dir = pth.RemotePath(maybe_cache_dir)
+    if cache_dir is None:
+      self.cache_dir = self.platform.mkdtemp(prefix=self.type_name)
+      self.clear_cache_dir = True
+    else:
+      self.cache_dir = cache_dir
+      self.clear_cache_dir = False
+
   def _extract_version(self) -> str:
     assert self.path
     version_string = self.platform.app_version(self.path)
@@ -167,33 +149,41 @@ class Chromium(Browser):
     return str(matches[0])
 
   @property
+  def type_name(self) -> str:
+    return "chromium"
+
+  @property
+  def attributes(self) -> BrowserAttributes:
+    return BrowserAttributes.CHROMIUM | BrowserAttributes.CHROMIUM_BASED
+
+  @property
   def is_headless(self) -> bool:
     return "--headless" in self._flags
 
   @property
-  def chrome_log_file(self) -> pathlib.Path:
+  def chrome_log_file(self) -> pth.RemotePath:
     assert self.log_file
-    return self.log_file.with_suffix(f".{self.type}.log")
+    return self.log_file.with_suffix(f".{self.type_name}.log")
 
   @property
   def flags(self) -> ChromeFlags:
-    return self._flags
+    return cast(ChromeFlags, self._flags)
 
   @property
   def js_flags(self) -> JSFlags:
-    return self._flags.js_flags
+    return cast(ChromeFlags, self._flags).js_flags
 
   @property
   def features(self) -> ChromeFeatures:
-    return self._flags.features
+    return cast(ChromeFlags, self._flags).features
 
   def details_json(self) -> JsonDict:
     details: JsonDict = super().details_json()
     if self.log_file:
       log = cast(JsonDict, details["log"])
-      log[self.type] = str(self.chrome_log_file)
+      log[self.type_name] = str(self.chrome_log_file)
       log["stdout"] = str(self.stdout_log_file)
-    details["js_flags"] = tuple(self.js_flags.get_list())
+    details["js_flags"] = tuple(self.js_flags)
     return details
 
   def _get_browser_flags_for_session(
@@ -203,6 +193,7 @@ class Chromium(Browser):
 
     flags_copy = self.flags.copy()
     flags_copy.update(session.extra_flags)
+    flags_copy.update(self.network.extra_flags(self))
     self._handle_viewport_flags(flags_copy)
 
     if len(js_flags_copy):
@@ -219,7 +210,7 @@ class Chromium(Browser):
 
     flags_copy = self._filter_flags_for_run(flags_copy)
 
-    return tuple(flags_copy.get_list())
+    return tuple(flags_copy)
 
   def _handle_viewport_flags(self, flags: Flags) -> None:
     self._sync_viewport_flag(flags, "--start-fullscreen",

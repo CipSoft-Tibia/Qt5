@@ -24,10 +24,11 @@ public:
     void ReadHTML(ui::ClipboardBuffer type, const ui::DataTransferEndpoint *data_dst, std::u16string *markup, std::string *src_url, uint32_t *fragment_start,
                   uint32_t *fragment_end) const override;
     void ReadRTF(ui::ClipboardBuffer type, const ui::DataTransferEndpoint *data_dst, std::string *result) const override;
-    void ReadCustomData(ui::ClipboardBuffer clipboard_type, const std::u16string &type, const ui::DataTransferEndpoint *data_dst, std::u16string *result) const override;
+    void ReadDataTransferCustomData(ui::ClipboardBuffer clipboard_type, const std::u16string &type, const ui::DataTransferEndpoint *data_dst, std::u16string *result) const override;
+
     void ReadBookmark(const ui::DataTransferEndpoint *data_dst, std::u16string *title, std::string *url) const override;
     void ReadData(const ui::ClipboardFormatType &format, const ui::DataTransferEndpoint *data_dst, std::string *result) const override;
-#if defined(USE_OZONE)
+#if BUILDFLAG(IS_OZONE)
     bool IsSelectionBufferAvailable() const override;
 #endif
     void OnPreShutdown() override {}
@@ -36,7 +37,7 @@ public:
 
     std::vector<std::u16string> GetStandardFormats(ui::ClipboardBuffer buffer, const ui::DataTransferEndpoint *data_dst) const override;
 
-    absl::optional<ui::DataTransferEndpoint> GetSource(ui::ClipboardBuffer buffer) const override;
+    std::optional<ui::DataTransferEndpoint> GetSource(ui::ClipboardBuffer buffer) const override;
 
     void ReadFilenames(ui::ClipboardBuffer buffer,
                        const ui::DataTransferEndpoint *data_dst,
@@ -45,19 +46,22 @@ public:
 protected:
     void WritePortableAndPlatformRepresentations(ui::ClipboardBuffer buffer,
                                                  const ObjectMap &objects,
-                                                 std::vector<Clipboard::PlatformRepresentation> platform_representations,
-                                                 std::unique_ptr<ui::DataTransferEndpoint> data_src) override;
-
-    void WriteText(base::StringPiece text) override;
-    void WriteHTML(base::StringPiece markup, absl::optional<base::StringPiece> source_url,
-                   ui::ClipboardContentType content_type) override;
-    void WriteRTF(base::StringPiece rtf) override;
-    void WriteBookmark(base::StringPiece title, base::StringPiece url) override;
+                                                 std::vector<PlatformRepresentation> platform_representations,
+                                                 std::unique_ptr<ui::DataTransferEndpoint> data_src,
+                                                 uint32_t) override;
+    void WriteText(std::string_view text) override;
+    void WriteHTML(std::string_view markup, std::optional<std::string_view> source_url) override;
+    void WriteRTF(std::string_view rtf) override;
+    void WriteBookmark(std::string_view title, std::string_view url) override;
     void WriteWebSmartPaste() override;
     void WriteBitmap(const SkBitmap &bitmap) override;
     void WriteData(const ui::ClipboardFormatType &format, base::span<const uint8_t> data) override;
-    void WriteSvg(base::StringPiece markup) override;
+    void WriteSvg(std::string_view markup) override;
     void WriteFilenames(std::vector<ui::FileInfo> filenames) override;
+
+    void WriteClipboardHistory() override;
+    void WriteUploadCloudClipboard() override;
+    void WriteConfidentialDataForPassword() override;
 
     base::flat_map<ui::ClipboardBuffer, std::unique_ptr<ui::DataTransferEndpoint>> m_dataSrc;
 };

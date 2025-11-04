@@ -12,17 +12,22 @@ T.Drawer {
     parent: T.Overlay.overlay
 
     implicitWidth: Math.max(implicitBackgroundWidth + leftInset + rightInset,
-                            contentWidth + leftPadding + rightPadding)
+                            implicitContentWidth + leftPadding + rightPadding)
     implicitHeight: Math.max(implicitBackgroundHeight + topInset + bottomInset,
-                             contentHeight + topPadding + bottomPadding)
+                             implicitContentHeight + topPadding + bottomPadding)
 
-    property real inset: control.dim ? 8 : 0
+    property real __inset: control.dim ? 8 : 0
     property bool vertical: control.edge === Qt.LeftEdge || control.edge === Qt.RightEdge
 
-    rightInset: background && control.edge === Qt.LeftEdge ? -inset : 0
-    leftInset: background && control.edge === Qt.RightEdge ? -inset : 0
-    bottomInset: background && control.edge === Qt.TopEdge ? -inset : 0
-    topInset: background && control.edge === Qt.BottomEdge ? -inset : 0
+    topPadding: SafeArea.margins.top
+    leftPadding: SafeArea.margins.left
+    rightPadding: SafeArea.margins.right
+    bottomPadding: SafeArea.margins.bottom
+
+    rightInset: background && control.edge === Qt.LeftEdge ? -__inset : 0
+    leftInset: background && control.edge === Qt.RightEdge ? -__inset : 0
+    bottomInset: background && control.edge === Qt.TopEdge ? -__inset : 0
+    topInset: background && control.edge === Qt.BottomEdge ? -__inset : 0
 
     enter: Transition { SmoothedAnimation { velocity: 5 } }
     exit: Transition { SmoothedAnimation { velocity: 5 } }
@@ -48,8 +53,11 @@ T.Drawer {
             width: vertical ? 1 : parent.width
             height: vertical ? parent.height : 1
             color: control.palette.mid
-            x: control.edge === Qt.LeftEdge ? parent.width - 1 - inset : (control.edge === Qt.RightEdge ? inset : 0)
-            y: control.edge === Qt.BottomEdge ? inset : (control.edge === Qt.TopEdge ? parent.height - 1 - inset : 0)
+            x: control.edge === Qt.LeftEdge ? parent.width - 1 - control.__inset
+                                            : (control.edge === Qt.RightEdge ? control.__inset : 0)
+            y: control.edge === Qt.BottomEdge ? control.__inset
+                                              : (control.edge === Qt.TopEdge
+                                                ? parent.height - 1 - control.__inset : 0)
             z: 10
         }
     }

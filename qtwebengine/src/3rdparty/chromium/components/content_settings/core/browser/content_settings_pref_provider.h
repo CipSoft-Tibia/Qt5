@@ -81,13 +81,13 @@ class PrefProvider : public UserModifiableProvider {
                            const ContentSettingsPattern& secondary_pattern,
                            ContentSettingsType content_type,
                            const PartitionKey& partition_key) override;
-  absl::optional<base::TimeDelta> RenewContentSetting(
+  std::optional<base::TimeDelta> RenewContentSetting(
       const GURL& primary_url,
       const GURL& secondary_url,
       ContentSettingsType content_type,
-      absl::optional<ContentSetting> setting_to_match,
+      std::optional<ContentSetting> setting_to_match,
       const PartitionKey& partition_key) override;
-  void SetClockForTesting(base::Clock* clock) override;
+  void SetClockForTesting(const base::Clock* clock) override;
 
   ContentSettingsPref* GetPref(ContentSettingsType type) const;
 
@@ -130,14 +130,14 @@ class PrefProvider : public UserModifiableProvider {
 
   bool store_last_modified_;
 
-  std::unique_ptr<PrefChangeRegistrar> pref_change_registrar_;
+  PrefChangeRegistrar pref_change_registrar_;
 
   std::map<ContentSettingsType, std::unique_ptr<ContentSettingsPref>>
       content_settings_prefs_;
 
   base::ThreadChecker thread_checker_;
 
-  raw_ptr<base::Clock> clock_;
+  raw_ptr<const base::Clock> clock_;
 };
 
 }  // namespace content_settings

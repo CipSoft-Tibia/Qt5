@@ -52,7 +52,7 @@ private slots:
     void operatorBool_returnsFalse_onlyWhenErrorSet()
     {
         {
-            const QMaybe<QString, int> error{ -1 }; // TOOD: Is it safe to deduce expected/unexpected only based on type?
+            const QMaybe<QString, int> error{ QUnexpected{ -1 } };
             QVERIFY(!static_cast<bool>(error));
         }
 
@@ -64,7 +64,8 @@ private slots:
 
     void operatorBool_returnsFalse_WhenValueIsNullptr()
     {
-        const QMaybe<int *, int> e{ nullptr };
+        int *null = nullptr;
+        const QMaybe<int *, int> e{ null };
         QVERIFY(!e);
     }
 
@@ -129,6 +130,23 @@ private slots:
         }
     }
 #endif
+
+    void constructFromUnexpected()
+    {
+        const QMaybe<int *, int> dut{ QUnexpected(42) };
+        QVERIFY(!dut);
+        QCOMPARE_EQ(dut.error(), 42);
+    }
+
+    void copy_move_unexpected()
+    {
+        QUnexpected u(42);
+        QUnexpected v(u);
+        QCOMPARE_EQ(u.error(), v.error());
+
+        QUnexpected w(std::move(v));
+        QCOMPARE_EQ(u.error(), w.error());
+    }
 };
 
 QTEST_APPLESS_MAIN(tst_QMaybe)

@@ -31,8 +31,8 @@ The set of QML object-type attribute types is as follows:
 
 These attributes are discussed in detail below.
 
-\section2 The \e id Attribute
 \keyword QML.id
+\section2 The \e id Attribute
 
 A QML element can have at most one \e id attribute. This attribute is
 provided by the language itself, and cannot be redefined or overridden by any
@@ -304,7 +304,7 @@ upon initialization. See \l{Property Binding} for more information.
 Properties are type safe. A property can only be assigned a value that matches
 the property type.
 
-For example, if a property is a real, and if you try to assign a string to it,
+For example, if a property is an int, and if you try to assign a string to it,
 you will get an error:
 
 \code

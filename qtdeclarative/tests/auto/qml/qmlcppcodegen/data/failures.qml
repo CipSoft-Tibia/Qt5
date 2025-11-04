@@ -36,7 +36,6 @@ QtObject {
     }
 
     property int enumFromGadget1: GadgetWithEnum.CONNECTED + 1
-    property int enumFromGadget2: TT2.GadgetWithEnum.CONNECTED + 1
 
     function constStore() : int {
         const x = 1;

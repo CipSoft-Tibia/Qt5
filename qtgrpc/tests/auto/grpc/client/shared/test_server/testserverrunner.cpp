@@ -13,6 +13,7 @@
 #include <grpc++/grpc++.h>
 
 #include <memory>
+#include <charconv>
 
 namespace {
 
@@ -226,21 +227,45 @@ Status TestServiceServiceImpl::testMethodNonCompatibleArgRet(grpc::ServerContext
 Status TestServiceServiceImpl::testMetadata(grpc::ServerContext *ctx, const Empty *,
                                             qtgrpc::tests::Empty *)
 {
-    std::string client_return_header;
-    for (const auto &header : ctx->client_metadata()) {
-        if (header.first == "client_header") {
-            ctx->AddTrailingMetadata("server_header",
-                                     std::string(header.second.data(), header.second.size()));
-        } else if (header.first == "client_return_header") {
-            if (client_return_header.empty())
-                client_return_header = std::string(header.second.data(), header.second.size());
-            else
-                client_return_header = "invalid_value";
-        }
+    const auto &md = ctx->client_metadata();
+    auto initial = md.find("request_initial");
+    uint initialCount = 0;
+    if (initial != md.end()) {
+        std::string v (initial->second.begin(), initial->second.end());
+        auto result = std::from_chars(v.data(), v.data() + v.size(), initialCount);
+        if (result.ec != std::errc())
+            return { grpc::StatusCode::ABORTED, "conversion failed initial" };
     }
 
-    ctx->AddTrailingMetadata("client_return_header", client_return_header);
-    return Status();
+    auto trailing = md.find("request_trailing");
+    uint trailingCount = 0;
+    if (trailing != md.end()) {
+        std::string v (trailing->second.begin(), trailing->second.end());
+        auto result = std::from_chars(v.data(), v.data() + v.size(), trailingCount);
+        if (result.ec != std::errc())
+            return { grpc::StatusCode::ABORTED, "conversion failed trailing" };
+    }
+
+    auto sum = md.equal_range("request_sum");
+    uint sumCount = 0;
+    while (sum.first != sum.second) {
+        uint temp = 0;
+        std::string v (sum.first->second.begin(), sum.first->second.end());
+        auto result = std::from_chars(v.data(), v.data() + v.size(), temp);
+        if (result.ec != std::errc())
+            return { grpc::StatusCode::ABORTED, "conversion failed sum" };
+        sumCount += temp;
+        ++sum.first;
+    }
+
+    for (auto i = 0u; i < initialCount; ++i)
+        ctx->AddInitialMetadata("response_initial", std::to_string(i));
+    for (auto i = 0u; i < trailingCount; ++i)
+        ctx->AddTrailingMetadata("response_trailing", std::to_string(i));
+    if (sumCount > 0)
+        ctx->AddTrailingMetadata("response_sum", std::to_string(sumCount));
+
+    return Status::OK;
 }
 
 grpc::Status TestServiceServiceImpl::testMethodClientStream(

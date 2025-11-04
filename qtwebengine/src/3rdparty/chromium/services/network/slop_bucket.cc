@@ -2,6 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#ifdef UNSAFE_BUFFERS_BUILD
+// TODO(crbug.com/351564777): Remove this and convert code to safer constructs.
+#pragma allow_unsafe_buffers
+#endif
+
 #include "services/network/slop_bucket.h"
 
 #include <limits.h>
@@ -391,7 +396,7 @@ class SlopBucket::Manager {
       Disable(DisabledReason::kMemoryPressure);
       RecordDisabledReason();
       DVLOG(1) << "Memory pressure detected. Disabling SlopBucket.";
-      memory_pressure_listener_ = absl::nullopt;
+      memory_pressure_listener_ = std::nullopt;
     }
     // We swap the vector so we don't have to hold the lock while we free the
     // elements.
@@ -434,7 +439,7 @@ class SlopBucket::Manager {
 
   // Calls OnMemoryPressure() on the IO thread when there is memory pressure.
   // Only set when SlopBucket is enabled. Only accessed on the IO thread.
-  absl::optional<base::MemoryPressureListener> memory_pressure_listener_;
+  std::optional<base::MemoryPressureListener> memory_pressure_listener_;
 
   SEQUENCE_CHECKER(sequence_checker_);
 };
@@ -532,7 +537,7 @@ SlopBucket::~SlopBucket() {
                               peak_chunks_allocated_);
 }
 
-absl::optional<int> SlopBucket::AttemptRead() {
+std::optional<int> SlopBucket::AttemptRead() {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   CHECK(!read_in_progress_);
   CHECK(!completion_code_.has_value());
@@ -543,7 +548,7 @@ absl::optional<int> SlopBucket::AttemptRead() {
   if (chunks_.empty() ||
       chunk_size - chunks_.back()->filled_up_to() < min_buffer_size) {
     if (!TryToAllocateChunk()) {
-      return absl::nullopt;
+      return std::nullopt;
     }
   }
   ChunkIOBuffer& destination = *chunks_.back();

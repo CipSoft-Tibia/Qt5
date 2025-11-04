@@ -169,9 +169,10 @@ namespace clang {
 
       // Link LinkModule into this module if present, preserving its validity.
       if (LinkModule) {
-        if (Linker::LinkModules(
-                M, LinkModule.get(),
-                [=](const DiagnosticInfo &DI) { linkerDiagnosticHandler(DI); }))
+        if (Linker::LinkModules(M, LinkModule.get(),
+                                [this](const DiagnosticInfo &DI) {
+                                  linkerDiagnosticHandler(DI);
+                                }))
           return;
       }
 
@@ -561,7 +562,7 @@ BackendConsumer::DxilDiagHandler(const llvm::DiagnosticInfoDxil &D) {
     auto *func = D.getFunction();
     if (DiagClient && func)
       DiagClient->setPrefix("Function: " + func->getName().str());
-
+    
     // Clang will de-duplicate this so that it only emits once.
     Diags.Report(
         Diags.getCustomDiagID(DiagnosticsEngine::Note,

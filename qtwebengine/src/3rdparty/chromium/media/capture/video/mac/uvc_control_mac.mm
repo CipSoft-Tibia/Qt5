@@ -2,6 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#ifdef UNSAFE_BUFFERS_BUILD
+// TODO(crbug.com/40285824): Remove this and convert code to safer constructs.
+#pragma allow_unsafe_buffers
+#endif
+
 #include "media/capture/video/mac/uvc_control_mac.h"
 
 #include <IOKit/IOCFPlugIn.h>
@@ -63,8 +68,8 @@ static void MaybeUpdatePanTiltControlRange(UvcControl& uvc,
 
 // Set pan and tilt values for a USB camera device.
 static void SetPanTiltCurrent(UvcControl& uvc,
-                              absl::optional<int> pan,
-                              absl::optional<int> tilt) {
+                              std::optional<int> pan,
+                              std::optional<int> tilt) {
   DCHECK(pan.has_value() || tilt.has_value());
 
   PanTilt pan_tilt_current;
@@ -547,11 +552,11 @@ void UvcControl::SetPhotoState(
   }
   if (UvcControl uvc(device_model, uvc::kVcInputTerminal); uvc.Good()) {
     if (settings->has_pan || settings->has_tilt) {
-      SetPanTiltCurrent(uvc,
-                        settings->has_pan ? absl::make_optional(settings->pan)
-                                          : absl::nullopt,
-                        settings->has_tilt ? absl::make_optional(settings->tilt)
-                                           : absl::nullopt);
+      SetPanTiltCurrent(
+          uvc,
+          settings->has_pan ? std::make_optional(settings->pan) : std::nullopt,
+          settings->has_tilt ? std::make_optional(settings->tilt)
+                             : std::nullopt);
     }
     if (settings->has_zoom) {
       uvc.SetControlCurrent<uint16_t>(uvc::kCtZoomAbsoluteControl,
@@ -663,13 +668,13 @@ bool UvcControl::IsControlAvailable(int control_selector) const {
   }
   size_t bitIndex;
   if (descriptor_subtype_ == uvc::kVcProcessingUnit) {
-    const auto* it = kProcessingUnitControlBitIndexes.find(control_selector);
+    const auto it = kProcessingUnitControlBitIndexes.find(control_selector);
     if (it == kProcessingUnitControlBitIndexes.end()) {
       return false;
     }
     bitIndex = it->second;
   } else if (descriptor_subtype_ == uvc::kVcInputTerminal) {
-    const auto* it = kCameraTerminalControlBitIndexes.find(control_selector);
+    const auto it = kCameraTerminalControlBitIndexes.find(control_selector);
     if (it == kCameraTerminalControlBitIndexes.end()) {
       return false;
     }
@@ -678,7 +683,7 @@ bool UvcControl::IsControlAvailable(int control_selector) const {
     return false;
   }
   UInt8 byteIndex = bitIndex / 8;
-  if (byteIndex > controls_.size()) {
+  if (byteIndex >= controls_.size()) {
     return false;
   }
   return ((controls_[byteIndex] & (1 << bitIndex % 8)) != 0);

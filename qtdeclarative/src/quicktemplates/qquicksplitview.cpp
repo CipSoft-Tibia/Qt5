@@ -11,6 +11,7 @@
 #include <QtCore/qcbormap.h>
 #include <QtCore/qcborvalue.h>
 #include <QtQml/QQmlInfo>
+#include <QtQml/qqmlcomponent.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -221,9 +222,9 @@ QT_BEGIN_NAMESPACE
     \sa SplitHandle, {Customizing SplitView}, {Container Controls}
 */
 
-Q_LOGGING_CATEGORY(qlcQQuickSplitView, "qt.quick.controls.splitview")
-Q_LOGGING_CATEGORY(qlcQQuickSplitViewPointer, "qt.quick.controls.splitview.pointer")
-Q_LOGGING_CATEGORY(qlcQQuickSplitViewState, "qt.quick.controls.splitview.state")
+Q_STATIC_LOGGING_CATEGORY(qlcQQuickSplitView, "qt.quick.controls.splitview")
+Q_STATIC_LOGGING_CATEGORY(qlcQQuickSplitViewPointer, "qt.quick.controls.splitview.pointer")
+Q_STATIC_LOGGING_CATEGORY(qlcQQuickSplitViewState, "qt.quick.controls.splitview.state")
 
 /*
     Updates m_fillIndex to be between 0 .. (item count - 1).

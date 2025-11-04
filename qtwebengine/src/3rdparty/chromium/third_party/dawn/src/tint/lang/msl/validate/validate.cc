@@ -27,8 +27,6 @@
 
 #include "src/tint/lang/msl/validate/validate.h"
 
-#include "src/tint/lang/wgsl/ast/module.h"
-#include "src/tint/lang/wgsl/program/program.h"
 #include "src/tint/utils/command/command.h"
 #include "src/tint/utils/file/tmpfile.h"
 
@@ -54,6 +52,9 @@ Result Validate(const std::string& xcrun_path, const std::string& source, MslVer
             break;
         case MslVersion::kMsl_2_1:
             version_str = "-std=macos-metal2.1";
+            break;
+        case MslVersion::kMsl_2_2:
+            version_str = "-std=macos-metal2.2";
             break;
         case MslVersion::kMsl_2_3:
             version_str = "-std=macos-metal2.3";

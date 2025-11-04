@@ -5,6 +5,7 @@
 #include "components/webauthn/core/browser/test_passkey_model.h"
 
 #include <iterator>
+#include <optional>
 
 #include "base/notreached.h"
 #include "base/rand_util.h"
@@ -12,7 +13,6 @@
 #include "components/sync/protocol/webauthn_credential_specifics.pb.h"
 #include "components/webauthn/core/browser/passkey_model_change.h"
 #include "components/webauthn/core/browser/passkey_model_utils.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 
 namespace webauthn {
 
@@ -32,10 +32,18 @@ void TestPasskeyModel::RemoveObserver(Observer* observer) {
   observers_.RemoveObserver(observer);
 }
 
-base::WeakPtr<syncer::ModelTypeControllerDelegate>
-TestPasskeyModel::GetModelTypeControllerDelegate() {
+base::WeakPtr<syncer::DataTypeControllerDelegate>
+TestPasskeyModel::GetDataTypeControllerDelegate() {
   NOTIMPLEMENTED();
   return nullptr;
+}
+
+bool TestPasskeyModel::IsReady() const {
+  return true;
+}
+
+bool TestPasskeyModel::IsEmpty() const {
+  return credentials_.empty();
 }
 
 base::flat_set<std::string> TestPasskeyModel::GetAllSyncIds() const {
@@ -51,7 +59,7 @@ TestPasskeyModel::GetAllPasskeys() const {
   return credentials_;
 }
 
-absl::optional<sync_pb::WebauthnCredentialSpecifics>
+std::optional<sync_pb::WebauthnCredentialSpecifics>
 TestPasskeyModel::GetPasskeyByCredentialId(
     const std::string& rp_id,
     const std::string& credential_id) const {
@@ -66,7 +74,7 @@ TestPasskeyModel::GetPasskeyByCredentialId(
                           return passkey.credential_id() == credential_id;
                         });
   if (result.empty()) {
-    return absl::nullopt;
+    return std::nullopt;
   }
   CHECK_EQ(result.size(), 1u);
   return result.front();
@@ -119,7 +127,8 @@ std::string TestPasskeyModel::AddNewPasskeyForTesting(
   return credentials_.back().credential_id();
 }
 
-bool TestPasskeyModel::DeletePasskey(const std::string& credential_id) {
+bool TestPasskeyModel::DeletePasskey(const std::string& credential_id,
+                                     const base::Location& location) {
   // Don't implement the shadow chain deletion logic. Instead, remove the
   // credential with the matching id.
   const auto credential_it =
@@ -133,6 +142,10 @@ bool TestPasskeyModel::DeletePasskey(const std::string& credential_id) {
   credentials_.erase(credential_it);
   NotifyPasskeysChanged({std::move(change)});
   return true;
+}
+
+void TestPasskeyModel::DeleteAllPasskeys() {
+  credentials_.clear();
 }
 
 bool TestPasskeyModel::UpdatePasskey(const std::string& credential_id,

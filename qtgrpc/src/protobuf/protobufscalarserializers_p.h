@@ -337,23 +337,31 @@ template <typename V, if_length_delimited<V> = false>
 template <typename V>
 [[nodiscard]] bool deserializeList(QProtobufSelfcheckIterator &it, QVariant &previousValue)
 {
-    QList<V> out;
-    auto opt = deserializeVarintCommon<QtProtobuf::uint64>(it);
+    static constexpr auto
+        MaxSafeCount = static_cast<quint64>(std::numeric_limits<qsizetype>::max());
+
+    const auto opt = deserializeVarintCommon<QtProtobuf::uint64>(it);
     if (!opt)
         return false;
-    quint64 count = *opt;
-    if (count > quint64(std::numeric_limits<qsizetype>::max()))
+    const quint64 count = *opt;
+    if (count > MaxSafeCount)
         return false;
-    QProtobufSelfcheckIterator lastVarint = it + count;
+    const auto safeCount = static_cast<qsizetype>(count);
+    const QProtobufSelfcheckIterator lastVarint = it + safeCount;
     if (!lastVarint.isValid())
         return false;
+
+    QList<V> out;
+    out.reserve(safeCount);
+
     while (it != lastVarint) {
         QVariant variantValue;
         if (!deserializeBasic<V>(it, variantValue))
             return false;
         out.append(variantValue.value<V>());
     }
-    previousValue.setValue(out);
+
+    previousValue.setValue(std::move(out));
     return true;
 }
 

@@ -143,12 +143,18 @@
   }
 }
 
+.heap-object-tag {
+  height: 14px;
+  width: 14px;
+}
+
 .heap-snapshot-view tr:not(.selected) td.object-column span.heap-object-tag,
 .heap-snapshot-view tr:not(.selected) td.object-column span.grayed {
   color: var(--sys-color-token-subtle);
 }
 
-.heap-snapshot-view tr:not(.selected) .cycled-ancessor-node {
+.heap-snapshot-view tr:not(.selected) .cycled-ancestor-node,
+.heap-snapshot-view tr:not(.selected) .unreachable-ancestor-node {
   opacity: 60%;
 }
 
@@ -210,7 +216,7 @@
 }
 
 @media (forced-colors: active) {
-  .cycled-ancessor-node {
+  .cycled-ancestor-node {
     opacity: 100%;
   }
 
@@ -219,4 +225,8 @@
   .heap-snapshot-view tr:not(.selected) .object-value-id {
     color: ButtonText;
   }
+}
+
+.detached-elements-view {
+  overflow: auto;
 }

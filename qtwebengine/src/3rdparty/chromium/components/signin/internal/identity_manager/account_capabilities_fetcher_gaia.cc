@@ -4,7 +4,8 @@
 
 #include "components/signin/internal/identity_manager/account_capabilities_fetcher_gaia.h"
 
-#include "base/feature_list.h"
+#include <optional>
+
 #include "base/metrics/histogram_functions.h"
 #include "base/time/time.h"
 #include "base/trace_event/trace_event.h"
@@ -16,33 +17,11 @@
 #include "google_apis/gaia/google_service_auth_error.h"
 #include "google_apis/gaia/oauth2_access_token_consumer.h"
 #include "services/network/public/cpp/shared_url_loader_factory.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 
 namespace {
 
-BASE_FEATURE(kSetNetworkPriorityForAccountCapabilitiesFetch,
-             "SetNetworkPriorityForAccountCapabilitiesFetch",
-             base::FEATURE_DISABLED_BY_DEFAULT);
-
 constexpr std::string_view kAccountCapabilitiesFetcherHistogramBaseName =
     "Signin.AccountCapabilities";
-
-net::RequestPriority ToNetworkPriority(
-    AccountCapabilitiesFetcher::FetchPriority priority) {
-  if (!base::FeatureList::IsEnabled(
-          kSetNetworkPriorityForAccountCapabilitiesFetch)) {
-    // Return the default priority value.
-    return net::RequestPriority::IDLE;
-  }
-
-  switch (priority) {
-    case AccountCapabilitiesFetcher::FetchPriority::kForeground:
-      return net::RequestPriority::HIGHEST;
-    case AccountCapabilitiesFetcher::FetchPriority::kBackground:
-      return net::RequestPriority::IDLE;
-  }
-  NOTREACHED_NORETURN() << "Unknown priority: " << static_cast<int>(priority);
-}
 
 std::string_view ToUmaToken(
     AccountCapabilitiesFetcher::FetchPriority priority) {
@@ -52,7 +31,7 @@ std::string_view ToUmaToken(
     case AccountCapabilitiesFetcher::FetchPriority::kBackground:
       return "Background";
   }
-  NOTREACHED_NORETURN() << "Unknown priority: " << static_cast<int>(priority);
+  NOTREACHED() << "Unknown priority: " << static_cast<int>(priority);
 }
 
 std::string_view ToUmaToken(
@@ -114,8 +93,8 @@ void AccountCapabilitiesFetcherGaia::OnGetTokenSuccess(
   const int kMaxRetries = 3;
   gaia_oauth_client_->GetAccountCapabilities(
       token_response.access_token,
-      AccountCapabilities::GetSupportedAccountCapabilityNames(),
-      ToNetworkPriority(fetch_priority()), kMaxRetries, this);
+      AccountCapabilities::GetSupportedAccountCapabilityNames(), kMaxRetries,
+      this);
 }
 
 void AccountCapabilitiesFetcherGaia::OnGetTokenFailure(
@@ -127,14 +106,14 @@ void AccountCapabilitiesFetcherGaia::OnGetTokenFailure(
   DCHECK_EQ(request, login_token_request_.get());
   login_token_request_.reset();
   RecordFetchResultAndDuration(FetchResult::kGetTokenFailure);
-  CompleteFetchAndMaybeDestroySelf(absl::nullopt);
+  CompleteFetchAndMaybeDestroySelf(std::nullopt);
 }
 
 void AccountCapabilitiesFetcherGaia::OnGetAccountCapabilitiesResponse(
     const base::Value::Dict& account_capabilities) {
   TRACE_EVENT_NESTABLE_ASYNC_END0("AccountFetcherService",
                                   "GetAccountCapabilities", this);
-  absl::optional<AccountCapabilities> parsed_capabilities =
+  std::optional<AccountCapabilities> parsed_capabilities =
       AccountCapabilitiesFromValue(account_capabilities);
   FetchResult result = FetchResult::kSuccess;
   if (!parsed_capabilities) {
@@ -153,7 +132,7 @@ void AccountCapabilitiesFetcherGaia::OnOAuthError() {
                                   "OAuthError");
   VLOG(1) << "OnOAuthError";
   RecordFetchResultAndDuration(FetchResult::kOAuthError);
-  CompleteFetchAndMaybeDestroySelf(absl::nullopt);
+  CompleteFetchAndMaybeDestroySelf(std::nullopt);
 }
 
 void AccountCapabilitiesFetcherGaia::OnNetworkError(int response_code) {
@@ -162,7 +141,7 @@ void AccountCapabilitiesFetcherGaia::OnNetworkError(int response_code) {
       "NetworkError", "response_code", response_code);
   VLOG(1) << "OnNetworkError " << response_code;
   RecordFetchResultAndDuration(FetchResult::kNetworkError);
-  CompleteFetchAndMaybeDestroySelf(absl::nullopt);
+  CompleteFetchAndMaybeDestroySelf(std::nullopt);
 }
 
 void AccountCapabilitiesFetcherGaia::RecordFetchResultAndDuration(

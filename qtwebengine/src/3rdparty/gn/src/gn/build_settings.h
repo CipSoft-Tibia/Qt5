@@ -129,7 +129,8 @@ class BuildSettings {
   // callback is is_null() (the default) the output will be printed to the
   // console.
   const PrintCallback& print_callback() const { return print_callback_; }
-  void set_print_callback(const PrintCallback& cb) { print_callback_ = cb; }
+  void set_print_callback(const PrintCallback cb) { print_callback_ = cb; }
+  const PrintCallback swap_print_callback(const PrintCallback cb);
 
   // A list of files that can call exec_script(). If the returned pointer is
   // null, exec_script may be called from anywhere.
@@ -151,7 +152,7 @@ class BuildSettings {
 
   // See 40045b9 for the reason behind using 1.7.2 as the default version.
   Version ninja_required_version_{1, 7, 2};
-  bool no_stamp_files_ = false;
+  bool no_stamp_files_ = true;
 
   SourceFile build_config_file_;
   SourceFile arg_file_template_path_;

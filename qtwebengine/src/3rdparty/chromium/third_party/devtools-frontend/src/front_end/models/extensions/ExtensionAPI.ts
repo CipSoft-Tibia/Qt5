@@ -50,6 +50,8 @@ export namespace PrivateAPI {
     NetworkRequestFinished = 'network-request-finished',
     OpenResource = 'open-resource',
     PanelSearch = 'panel-search-',
+    ProfilingStarted = 'profiling-started-',
+    ProfilingStopped = 'profiling-stopped-',
     ResourceAdded = 'resource-added',
     ResourceContentCommitted = 'resource-content-committed',
     ViewShown = 'view-shown-',
@@ -89,6 +91,8 @@ export namespace PrivateAPI {
     RegisterRecorderExtensionPlugin = 'registerRecorderExtensionPlugin',
     CreateRecorderView = 'createRecorderView',
     ShowRecorderView = 'showRecorderView',
+    ShowNetworkPanel = 'showNetworkPanel',
+    ReportResourceLoad = 'reportResourceLoad',
   }
 
   export const enum LanguageExtensionPluginCommands {
@@ -140,7 +144,9 @@ export namespace PrivateAPI {
   type RegisterRecorderExtensionPluginRequest = {
     command: Commands.RegisterRecorderExtensionPlugin,
     pluginName: string,
-    mediaType?: string, capabilities: RecordingExtensionPluginCapability[], port: MessagePort,
+    capabilities: RecordingExtensionPluginCapability[],
+    port: MessagePort,
+    mediaType?: string,
   };
   type CreateRecorderViewRequest = {
     command: Commands.CreateRecorderView,
@@ -177,7 +183,8 @@ export namespace PrivateAPI {
   type SetSidebarContentRequest = {
     command: Commands.SetSidebarContent,
     id: string,
-    evaluateOnPage?: boolean, expression: string,
+    expression: string,
+    evaluateOnPage?: boolean,
     rootTitle?: string,
     evaluateOptions?: EvaluateOptions,
   };
@@ -226,6 +233,13 @@ export namespace PrivateAPI {
     stopId: unknown,
   };
   type GetWasmOpRequest = {command: Commands.GetWasmOp, op: number, stopId: unknown};
+  type ShowNetworkPanelRequest = {command: Commands.ShowNetworkPanel, filter: string|undefined};
+  type ReportResourceLoadRequest = {
+    command: Commands.ReportResourceLoad,
+    extensionId: string,
+    resourceUrl: string,
+    status: {success: boolean, errorMessage?: string, size?: number},
+  };
 
   export type ServerRequests = ShowRecorderViewRequest|CreateRecorderViewRequest|RegisterRecorderExtensionPluginRequest|
       RegisterLanguageExtensionPluginRequest|SubscribeRequest|UnsubscribeRequest|AddRequestHeadersRequest|
@@ -234,7 +248,7 @@ export namespace PrivateAPI {
       OpenResourceRequest|SetOpenResourceHandlerRequest|SetThemeChangeHandlerRequest|ReloadRequest|
       EvaluateOnInspectedPageRequest|GetRequestContentRequest|GetResourceContentRequest|SetResourceContentRequest|
       ForwardKeyboardEventRequest|GetHARRequest|GetPageResourcesRequest|GetWasmLinearMemoryRequest|GetWasmLocalRequest|
-      GetWasmGlobalRequest|GetWasmOpRequest;
+      GetWasmGlobalRequest|GetWasmOpRequest|ShowNetworkPanelRequest|ReportResourceLoadRequest;
   export type ExtensionServerRequestMessage = PrivateAPI.ServerRequests&{requestId?: number};
 
   type AddRawModuleRequest = {
@@ -337,6 +351,7 @@ namespace APIImpl {
   export interface InspectorExtensionAPI {
     languageServices: PublicAPI.Chrome.DevTools.LanguageExtensions;
     recorder: PublicAPI.Chrome.DevTools.RecorderExtensions;
+    performance: PublicAPI.Chrome.DevTools.Performance;
     network: PublicAPI.Chrome.DevTools.Network;
     panels: PublicAPI.Chrome.DevTools.Panels;
     inspectedWindow: PublicAPI.Chrome.DevTools.InspectedWindow;
@@ -513,6 +528,7 @@ self.injectedExtensionAPI = function(
     this.network = new (Constructor(Network))();
     this.languageServices = new (Constructor(LanguageServicesAPI))();
     this.recorder = new (Constructor(RecorderServicesAPI))();
+    this.performance = new (Constructor(Performance))();
     defineDeprecatedProperty(this, 'webInspector', 'resources', 'network');
   }
 
@@ -550,7 +566,7 @@ self.injectedExtensionAPI = function(
 
     addRequestHeaders: function(headers: {[key: string]: string}): void {
       extensionServer.sendRequest(
-          {command: PrivateAPI.Commands.AddRequestHeaders, headers: headers, extensionId: window.location.hostname});
+          {command: PrivateAPI.Commands.AddRequestHeaders, headers, extensionId: window.location.hostname});
     },
   };
 
@@ -570,19 +586,20 @@ self.injectedExtensionAPI = function(
   };
 
   function Panels(this: APIImpl.Panels): void {
-    const panels: {[key: string]: ElementsPanel|SourcesPanel} = {
+    const panels: {[key: string]: ElementsPanel|SourcesPanel|PublicAPI.Chrome.DevTools.NetworkPanel} = {
       elements: new ElementsPanel(),
       sources: new SourcesPanel(),
+      network: new (Constructor(NetworkPanel))(),
     };
 
-    function panelGetter(name: string): ElementsPanel|SourcesPanel {
+    function panelGetter(name: string): ElementsPanel|SourcesPanel|PublicAPI.Chrome.DevTools.NetworkPanel {
       return panels[name];
     }
     for (const panel in panels) {
       Object.defineProperty(this, panel, {get: panelGetter.bind(null, panel), enumerable: true});
     }
     this.applyStyleSheet = function(styleSheet: string): void {
-      extensionServer.sendRequest({command: PrivateAPI.Commands.ApplyStyleSheet, styleSheet: styleSheet});
+      extensionServer.sendRequest({command: PrivateAPI.Commands.ApplyStyleSheet, styleSheet});
     };
   }
 
@@ -594,7 +611,7 @@ self.injectedExtensionAPI = function(
       const id = 'extension-panel-' + extensionServer.nextObjectId();
       extensionServer.sendRequest(
           {command: PrivateAPI.Commands.CreatePanel, id, title, page},
-          callback && ((): unknown => callback.call(this, new (Constructor(ExtensionPanel))(id))));
+          callback && (() => callback.call(this, new (Constructor(ExtensionPanel))(id))));
     },
 
     setOpenResourceHandler: function(
@@ -623,7 +640,7 @@ self.injectedExtensionAPI = function(
       // Only send command if we either removed an existing handler or added handler and had none before.
       if (hadHandler === !callback) {
         extensionServer.sendRequest(
-            {command: PrivateAPI.Commands.SetOpenResourceHandler, 'handlerPresent': Boolean(callback)});
+            {command: PrivateAPI.Commands.SetOpenResourceHandler, handlerPresent: Boolean(callback)});
       }
     },
 
@@ -645,7 +662,7 @@ self.injectedExtensionAPI = function(
       // Only send command if we either removed an existing handler or added handler and had none before.
       if (hadHandler === !callback) {
         extensionServer.sendRequest(
-            {command: PrivateAPI.Commands.SetThemeChangeHandler, 'handlerPresent': Boolean(callback)});
+            {command: PrivateAPI.Commands.SetThemeChangeHandler, handlerPresent: Boolean(callback)});
       }
     },
 
@@ -927,7 +944,47 @@ self.injectedExtensionAPI = function(
           return new Promise(
               resolve => extensionServer.sendRequest({command: PrivateAPI.Commands.GetWasmOp, op, stopId}, resolve));
         },
+
+    reportResourceLoad: function(resourceUrl: string, status: {success: boolean, errorMessage?: string, size?: number}):
+        Promise<void> {
+          return new Promise(
+              resolve => extensionServer.sendRequest(
+                  {
+                    command: PrivateAPI.Commands.ReportResourceLoad,
+                    extensionId: window.location.origin,
+                    resourceUrl,
+                    status,
+                  },
+                  resolve));
+        },
+
   };
+
+  function NetworkPanelImpl(this: PublicAPI.Chrome.DevTools.NetworkPanel): void {
+  }
+
+  (NetworkPanelImpl.prototype as Pick<PublicAPI.Chrome.DevTools.NetworkPanel, 'show'>) = {
+    show: function(options?: {filter: string}): Promise<void> {
+      return new Promise<void>(
+          resolve => extensionServer.sendRequest(
+              {command: PrivateAPI.Commands.ShowNetworkPanel, filter: options?.filter}, () => resolve()));
+    },
+  };
+
+  function PerformanceImpl(this: PublicAPI.Chrome.DevTools.Performance): void {
+    function dispatchProfilingStartedEvent(this: APIImpl.EventSink<() => unknown>): void {
+      this._fire();
+    }
+
+    function dispatchProfilingStoppedEvent(this: APIImpl.EventSink<() => unknown>): void {
+      this._fire();
+    }
+
+    this.onProfilingStarted =
+        new (Constructor(EventSink))(PrivateAPI.Events.ProfilingStarted, dispatchProfilingStartedEvent);
+    this.onProfilingStopped =
+        new (Constructor(EventSink))(PrivateAPI.Events.ProfilingStopped, dispatchProfilingStoppedEvent);
+  }
 
   function declareInterfaceClass<ImplT extends APIImpl.Callable>(implConstructor: ImplT): (
       this: ThisParameterType<ImplT>, ...args: Parameters<ImplT>) => void {
@@ -958,6 +1015,7 @@ self.injectedExtensionAPI = function(
 
   const LanguageServicesAPI = declareInterfaceClass(LanguageServicesAPIImpl);
   const RecorderServicesAPI = declareInterfaceClass(RecorderServicesAPIImpl);
+  const Performance = declareInterfaceClass(PerformanceImpl);
   const Button = declareInterfaceClass(ButtonImpl);
   const EventSink = declareInterfaceClass(EventSinkImpl);
   const ExtensionPanel = declareInterfaceClass(ExtensionPanelImpl);
@@ -966,6 +1024,7 @@ self.injectedExtensionAPI = function(
   const PanelWithSidebarClass = declareInterfaceClass(PanelWithSidebarImpl);
   const Request = declareInterfaceClass(RequestImpl);
   const Resource = declareInterfaceClass(ResourceImpl);
+  const NetworkPanel = declareInterfaceClass(NetworkPanelImpl);
 
   class ElementsPanel extends (Constructor(PanelWithSidebarClass)) {
     constructor() {
@@ -994,7 +1053,7 @@ self.injectedExtensionAPI = function(
                                  extensionServer.sendRequest({
                                    command: PrivateAPI.Commands.CreateToolbarButton,
                                    panel: this._id as string,
-                                   id: id,
+                                   id,
                                    icon: iconPath,
                                    tooltip: tooltipText,
                                    disabled: Boolean(disabled),
@@ -1038,8 +1097,7 @@ self.injectedExtensionAPI = function(
        Pick<APIImpl.ExtensionSidebarPane, 'setHeight'|'setExpression'|'setObject'|'setPage'>&
    {__proto__: APIImpl.ExtensionView}) = {
     setHeight: function(this: APIImpl.ExtensionSidebarPane, height: string): void {
-      extensionServer.sendRequest(
-          {command: PrivateAPI.Commands.SetSidebarHeight, id: this._id as string, height: height});
+      extensionServer.sendRequest({command: PrivateAPI.Commands.SetSidebarHeight, id: this._id as string, height});
     },
 
     setExpression: function(
@@ -1049,8 +1107,8 @@ self.injectedExtensionAPI = function(
           {
             command: PrivateAPI.Commands.SetSidebarContent,
             id: this._id as string,
-            expression: expression,
-            rootTitle: rootTitle,
+            expression,
+            rootTitle,
             evaluateOnPage: true,
             evaluateOptions: (typeof evaluateOptions === 'object' ? evaluateOptions : {}),
           },
@@ -1064,13 +1122,13 @@ self.injectedExtensionAPI = function(
             command: PrivateAPI.Commands.SetSidebarContent,
             id: this._id as string,
             expression: jsonObject,
-            rootTitle: rootTitle,
+            rootTitle,
           },
           callback);
     },
 
     setPage: function(this: APIImpl.ExtensionSidebarPane, page: string): void {
-      extensionServer.sendRequest({command: PrivateAPI.Commands.SetSidebarPage, id: this._id as string, page: page});
+      extensionServer.sendRequest({command: PrivateAPI.Commands.SetSidebarPage, id: this._id as string, page});
     },
 
     __proto__: ExtensionViewImpl.prototype,
@@ -1154,7 +1212,7 @@ self.injectedExtensionAPI = function(
             'Passing userAgent as string parameter to inspectedWindow.reload() is deprecated. ' +
             'Use inspectedWindow.reload({ userAgent: value}) instead.');
       }
-      extensionServer.sendRequest({command: PrivateAPI.Commands.Reload, options: options});
+      extensionServer.sendRequest({command: PrivateAPI.Commands.Reload, options});
     },
 
     eval: function(
@@ -1177,7 +1235,7 @@ self.injectedExtensionAPI = function(
           extensionServer.sendRequest(
               {
                 command: PrivateAPI.Commands.EvaluateOnInspectedPage,
-                expression: expression,
+                expression,
                 evaluateOptions: (typeof evaluateOptions === 'object' ? evaluateOptions : undefined),
               },
               callback && callbackWrapper);
@@ -1225,7 +1283,7 @@ self.injectedExtensionAPI = function(
     setContent: function(
         this: APIImpl.Resource, content: string, commit: boolean, callback: (error?: Object) => unknown): void {
       extensionServer.sendRequest(
-          {command: PrivateAPI.Commands.SetResourceContent, url: this._url, content: content, commit: commit},
+          {command: PrivateAPI.Commands.SetResourceContent, url: this._url, content, commit},
           callback as (response: unknown) => unknown);
     },
   };
@@ -1410,6 +1468,7 @@ self.injectedExtensionAPI = function(
   chrome.devtools!.panels.themeName = themeName;
   chrome.devtools!.languageServices = coreAPI.languageServices;
   chrome.devtools!.recorder = coreAPI.recorder;
+  chrome.devtools!.performance = coreAPI.performance;
 
   // default to expose experimental APIs for now.
   if (extensionInfo.exposeExperimentalAPIs !== false) {

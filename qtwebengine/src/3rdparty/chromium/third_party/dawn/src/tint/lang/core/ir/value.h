@@ -48,13 +48,29 @@ struct Usage {
     size_t operand_index = 0u;
 
     /// @returns the hash code of the Usage
-    size_t HashCode() const { return Hash(instruction, operand_index); }
+    tint::HashCode HashCode() const { return Hash(instruction, operand_index); }
 
     /// An equality helper for Usage.
     /// @param other the usage to compare against
     /// @returns true if the two usages are equal
     bool operator==(const Usage& other) const {
         return instruction == other.instruction && operand_index == other.operand_index;
+    }
+
+    /// A comparison helper for Usage.
+    /// @param other the usage to compare against
+    /// @returns true if `this` is less then `other`.
+    bool operator<(const Usage& other) const {
+        if (instruction == nullptr && other.instruction != nullptr) {
+            return false;
+        }
+        if (instruction != nullptr && other.instruction == nullptr) {
+            return true;
+        }
+        if (instruction == other.instruction) {
+            return operand_index < other.operand_index;
+        }
+        return instruction < other.instruction;
     }
 };
 
@@ -88,7 +104,12 @@ class Value : public Castable<Value> {
 
     /// @returns the set of usages of this value. An instruction may appear multiple times if it
     /// uses the value for multiple different operands.
-    const Hashset<Usage, 4>& Usages() { return uses_; }
+    const Hashset<Usage, 4>& UsagesUnsorted() { return uses_; }
+
+    /// @returns a sorted list of usages of this value. The usages are in the order of
+    /// <instruction, operand index> where the instructions are ordered earliest instruction to
+    /// latest and the operand indices from lowest to highest.
+    Vector<Usage, 4> UsagesSorted() const;
 
     /// @returns true if this Value has any usages
     bool IsUsed() const { return !uses_.IsEmpty(); }
@@ -100,12 +121,18 @@ class Value : public Castable<Value> {
     /// @param instruction the instruction
     /// @param operand_index the in
     bool HasUsage(const Instruction* instruction, size_t operand_index) const {
-        return uses_.Contains({const_cast<Instruction*>(instruction), operand_index});
+        return uses_.Contains(Usage{const_cast<Instruction*>(instruction), operand_index});
     }
 
-    /// Apply a function to all uses of the value that exist prior to calling this method.
+    /// Apply a function to all uses of the value that exist prior to calling this method. The uses
+    /// are in unsorted ordered.
     /// @param func the function will be applied to each use
-    void ForEachUse(std::function<void(Usage use)> func);
+    void ForEachUseUnsorted(std::function<void(Usage use)> func) const;
+
+    /// Apply a function to all uses of the value that exist prior to calling this method. The uses
+    /// are sorted in (instruction,operand) order
+    /// @param func the function will be applied to each use
+    void ForEachUseSorted(std::function<void(Usage use)> func) const;
 
     /// Replace all uses of the value.
     /// @param replacer a function which returns a replacement for a given use

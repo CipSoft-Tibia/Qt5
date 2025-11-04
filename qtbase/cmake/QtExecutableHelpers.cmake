@@ -131,7 +131,8 @@ function(qt_internal_add_executable name)
     endif()
 
     qt_autogen_tools_initial_setup(${name})
-    qt_skip_warnings_are_errors_when_repo_unclean("${name}")
+
+    qt_internal_default_warnings_are_errors("${name}")
 
     set(extra_libraries "")
     if(arg_CORE_LIBRARY STREQUAL "Bootstrap")
@@ -187,7 +188,11 @@ function(qt_internal_add_executable name)
         MACOSX_BUNDLE "${arg_GUI}"
     )
 
-    qt_internal_set_exceptions_flags("${name}" ${arg_EXCEPTIONS})
+    if(NOT arg_EXCEPTIONS)
+        qt_internal_set_exceptions_flags("${name}" "DEFAULT")
+    else()
+        qt_internal_set_exceptions_flags("${name}" "${arg_EXCEPTIONS}")
+    endif()
 
     # Check if target needs to be excluded from all target. Also affects qt_install.
     # Set by qt_exclude_tool_directories_from_default_target.

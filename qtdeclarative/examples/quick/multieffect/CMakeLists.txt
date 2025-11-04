@@ -3,3 +3,4 @@
 
 qt_internal_add_example(itemswitcher)
 qt_internal_add_example(testbed)
+qt_internal_add_example(neumorphicpanel)

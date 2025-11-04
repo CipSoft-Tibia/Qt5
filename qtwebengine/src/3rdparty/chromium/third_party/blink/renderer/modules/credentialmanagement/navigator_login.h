@@ -26,8 +26,8 @@ class MODULES_EXPORT NavigatorLogin : public ScriptWrappable,
   static NavigatorLogin* login(Navigator&);
   explicit NavigatorLogin(Navigator&);
 
-  ScriptPromise setStatus(ScriptState* script_state,
-                          const V8LoginStatus& status);
+  ScriptPromise<IDLUndefined> setStatus(ScriptState* script_state,
+                                        const V8LoginStatus& status);
 
   void Trace(Visitor*) const override;
 };

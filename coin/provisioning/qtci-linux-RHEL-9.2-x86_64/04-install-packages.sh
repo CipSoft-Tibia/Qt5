@@ -11,6 +11,8 @@ sudo yum -y remove PackageKit gnome-software
 sudo yum -y update
 
 installPackages=()
+# Make sure needed ca-certificates are available
+installPackages+=(ca-certificates)
 installPackages+=(git)
 installPackages+=(zlib-devel)
 installPackages+=(glib2-devel)
@@ -72,8 +74,9 @@ installPackages+=(yasm)
 installPackages+=(gtk3-devel)
 # libusb1 for tqtc-boot2qt/qdb
 installPackages+=(libusbx-devel)
-# speech-dispatcher-devel for QtSpeech, otherwise it has no backend on Linux
+# speech-dispatcher-devel / flite-devel for QtSpeech
 installPackages+=(speech-dispatcher-devel)
+installPackages+=(flite-devel)
 # Python 2 devel and pip. python-pip requires the EPEL repository to be added
 # Python 2 no longer supported
 # installPackages+=(python2-devel python2-pip)
@@ -165,6 +168,8 @@ installPackages+=(zip)
 installPackages+=(perl-IPC-Cmd)
 # password management support for Qt Creator
 installPackages+=(libsecret-devel)
+# For Firebird in RTA
+installPackages+=(libtommath-devel)
 
 sudo yum -y install "${installPackages[@]}"
 
@@ -195,6 +200,12 @@ SetEnvVar "SBOM_PYTHON_APPS_PATH" "/usr/local/bin"
 
 # Make FindPython3.cmake to find python3
 sudo ln -s /usr/bin/python3 /usr/local/bin/python3
+
+gccVersion="$(gcc --version |grep -Eo '[0-9]+\.[0-9]+(\.[0-9]+)?' |head -n 1)"
+echo "GCC = $gccVersion" >> versions.txt
+
+glibcVersion="$(ldd --version |grep -Eo '[0-9]+\.[0-9]+(\.[0-9]+)?' |head -n 1)"
+echo "glibc = $glibcVersion" >> versions.txt
 
 OpenSSLVersion="$(openssl version |cut -b 9-14)"
 echo "System's OpenSSL = $OpenSSLVersion" >> ~/versions.txt

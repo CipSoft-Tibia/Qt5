@@ -53,6 +53,8 @@ tint_add_target(tint_lang_spirv_writer_raise lib
   lang/spirv/writer/raise/pass_matrix_by_pointer.h
   lang/spirv/writer/raise/raise.cc
   lang/spirv/writer/raise/raise.h
+  lang/spirv/writer/raise/remove_unreachable_in_loop_continuing.cc
+  lang/spirv/writer/raise/remove_unreachable_in_loop_continuing.h
   lang/spirv/writer/raise/shader_io.cc
   lang/spirv/writer/raise/shader_io.h
   lang/spirv/writer/raise/var_for_dynamic_index.cc
@@ -61,8 +63,8 @@ tint_add_target(tint_lang_spirv_writer_raise lib
 
 tint_target_add_dependencies(tint_lang_spirv_writer_raise lib
   tint_api_common
-  tint_api_options
   tint_lang_core
+  tint_lang_core_common
   tint_lang_core_constant
   tint_lang_core_intrinsic
   tint_lang_core_ir
@@ -85,6 +87,10 @@ tint_target_add_dependencies(tint_lang_spirv_writer_raise lib
   tint_utils_symbol
   tint_utils_text
   tint_utils_traits
+)
+
+tint_target_add_external_dependencies(tint_lang_spirv_writer_raise lib
+  "src_utils"
 )
 
 if(TINT_BUILD_SPV_READER OR TINT_BUILD_SPV_WRITER)
@@ -112,6 +118,7 @@ tint_add_target(tint_lang_spirv_writer_raise_test test
   lang/spirv/writer/raise/handle_matrix_arithmetic_test.cc
   lang/spirv/writer/raise/merge_return_test.cc
   lang/spirv/writer/raise/pass_matrix_by_pointer_test.cc
+  lang/spirv/writer/raise/remove_unreachable_in_loop_continuing_test.cc
   lang/spirv/writer/raise/shader_io_test.cc
   lang/spirv/writer/raise/var_for_dynamic_index_test.cc
 )
@@ -141,6 +148,7 @@ tint_target_add_dependencies(tint_lang_spirv_writer_raise_test test
 
 tint_target_add_external_dependencies(tint_lang_spirv_writer_raise_test test
   "gtest"
+  "src_utils"
 )
 
 if(TINT_BUILD_SPV_WRITER)

@@ -67,9 +67,9 @@ ResourceBinding::SampledKind BaseTypeToSampledKind(const core::type::Type* base_
     if (auto* at = base_type->As<core::type::Array>()) {
         base_type = at->ElemType();
     } else if (auto* mt = base_type->As<core::type::Matrix>()) {
-        base_type = mt->type();
+        base_type = mt->Type();
     } else if (auto* vt = base_type->As<core::type::Vector>()) {
-        base_type = vt->type();
+        base_type = vt->Type();
     }
 
     if (base_type->Is<core::type::F32>()) {
@@ -120,6 +120,8 @@ ResourceBinding::TexelFormat TypeTexelFormatToResourceBindingTexelFormat(
             return ResourceBinding::TexelFormat::kRgba32Sint;
         case core::TexelFormat::kRgba32Float:
             return ResourceBinding::TexelFormat::kRgba32Float;
+        case core::TexelFormat::kR8Unorm:
+            return ResourceBinding::TexelFormat::kR8Unorm;
         case core::TexelFormat::kUndefined:
             return ResourceBinding::TexelFormat::kNone;
     }

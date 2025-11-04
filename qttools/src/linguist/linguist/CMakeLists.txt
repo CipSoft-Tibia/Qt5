@@ -33,7 +33,6 @@ qt_internal_add_app(linguist
         phrasebookbox.cpp phrasebookbox.h phrasebookbox.ui
         phrasemodel.cpp phrasemodel.h
         phraseview.cpp phraseview.h
-        printout.cpp printout.h
         recentfiles.cpp recentfiles.h
         sourcecodeview.cpp sourcecodeview.h
         statistics.cpp statistics.h statistics.ui
@@ -51,11 +50,26 @@ qt_internal_add_app(linguist
         Qt::CorePrivate
         Qt::Gui
         Qt::GuiPrivate
-        Qt::PrintSupport
         Qt::UiToolsPrivate
         Qt::Widgets
-    ENABLE_AUTOGEN_TOOLS
-        uic
+)
+
+qt_internal_extend_target(linguist CONDITION QT_FEATURE_printsupport
+    SOURCES
+        printout.cpp printout.h
+    LIBRARIES
+        Qt::PrintSupport
+)
+
+qt_add_ui(linguist
+    SOURCES
+        batchtranslation.ui
+        finddialog.ui
+        mainwindow.ui
+        phrasebookbox.ui
+        statistics.ui
+        translatedialog.ui
+        translationsettings.ui
 )
 
 # Resources:
@@ -88,12 +102,6 @@ set(linguist_resource_files
     "images/mac/whatsthis.png"
     "images/minus.png"
     "images/plus.png"
-    "images/s_check_danger.png"
-    "images/s_check_empty.png"
-    "images/s_check_obsolete.png"
-    "images/s_check_off.png"
-    "images/s_check_on.png"
-    "images/s_check_warning.png"
     "images/up.png"
     "images/win/accelerator.png"
     "images/win/book.png"

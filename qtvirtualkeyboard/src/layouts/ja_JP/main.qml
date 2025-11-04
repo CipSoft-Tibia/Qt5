@@ -10,8 +10,20 @@ KeyboardLayoutLoader {
     function createInputMethod() {
         return Qt.createQmlObject('import QtQuick; import QtQuick.VirtualKeyboard.Plugins; JapaneseInputMethod {}', parent, "inputMethod.qml")
     }
+
+    function __pickInputMode(mode) {
+        switch (mode) {
+            case InputEngine.InputMode.FullwidthLatin:
+                return page2
+            case InputEngine.InputMode.HiraganaFlick:
+                return page3
+            default:
+                return page1
+        }
+    }
+
     sharedLayouts: ['symbols']
-    sourceComponent: InputContext.inputEngine.inputMode === InputEngine.InputMode.FullwidthLatin ? page2 : page1
+    sourceComponent: __pickInputMode(InputContext.inputEngine.inputMode)
     Component {
         id: page1
         KeyboardLayout {
@@ -186,6 +198,17 @@ KeyboardLayoutLoader {
                         "あ",    // InputEngine.InputMode.Hiragana
                         "カ",    // InputEngine.InputMode.Katakana
                         "全角",  // InputEngine.InputMode.FullwidthLatin
+                        "",     // InputEngine.InputMode.Greek
+                        "",     // InputEngine.InputMode.Cyrillic
+                        "",     // InputEngine.InputMode.Arabic
+                        "",     // InputEngine.InputMode.Hebrew
+                        "",     // InputEngine.InputMode.ChineseHandwriting
+                        "",     // InputEngine.InputMode.JapaneseHandwriting
+                        "",     // InputEngine.InputMode.KoreanHandwriting
+                        "",     // InputEngine.InputMode.Thai
+                        "",     // InputEngine.InputMode.Stroke
+                        "",     // InputEngine.InputMode.Romaji
+                        "FLK",  // InputEngine.InputMode.HiraganaFlick
                     ]
                 }
                 SpaceKey {
@@ -405,6 +428,17 @@ KeyboardLayoutLoader {
                         "あ",    // InputEngine.InputMode.Hiragana
                         "カ",    // InputEngine.InputMode.Katakana
                         "全角",  // InputEngine.InputMode.FullwidthLatin
+                        "",     // InputEngine.InputMode.Greek
+                        "",     // InputEngine.InputMode.Cyrillic
+                        "",     // InputEngine.InputMode.Arabic
+                        "",     // InputEngine.InputMode.Hebrew
+                        "",     // InputEngine.InputMode.ChineseHandwriting
+                        "",     // InputEngine.InputMode.JapaneseHandwriting
+                        "",     // InputEngine.InputMode.KoreanHandwriting
+                        "",     // InputEngine.InputMode.Thai
+                        "",     // InputEngine.InputMode.Stroke
+                        "",     // InputEngine.InputMode.Romaji
+                        "FLK",  // InputEngine.InputMode.HiraganaFlick
                     ]
                 }
                 SpaceKey {
@@ -446,6 +480,127 @@ KeyboardLayoutLoader {
                 EnterKey {
                     weight: functionKeyWidth
                     Layout.fillWidth: false
+                }
+            }
+        }
+    }
+    Component {
+        id: page3
+        KeyboardLayout {
+            keyWeight: 160
+            readonly property real normalKeyWidth: normalKey.width
+            readonly property real functionKeyWidth: mapFromItem(normalKey, normalKey.width / 2, 0).x
+            KeyboardRow {
+                FillerKey {}
+                FlickKey {
+                    text: "\u3042" //a
+                    alternativeKeys: "\u3044\u3046\u3048\u304A"
+                }
+                FlickKey {
+                    id: normalKey
+                    text: "\u304B" //ka
+                    alternativeKeys: "\u3053\u304D\u304F\u3051"
+                }
+                FlickKey {
+                    text: "\u3055" //sa
+                    alternativeKeys: "\u3057\u3059\u305B\u305D"
+                }
+                BackspaceKey {}
+            }
+            KeyboardRow {
+                Key {
+                    key: Qt.Key_Left
+                    displayText: "\u2190"
+                    repeat: true
+                    noModifier: true
+                    functionKey: true
+                    highlighted: true
+                }
+                FlickKey {
+                    text: "\u305F" //ta
+                    alternativeKeys: "\u3061\u3064\u3066\u3068"
+                }
+                FlickKey {
+                    text: "\u306A" //na
+                    alternativeKeys: "\u306B\u306C\u306D\u306E"
+                }
+                FlickKey {
+                    text: "\u306F" //ha
+                    alternativeKeys: "\u3072\u3075\u3078\u307B"
+                }
+                Key {
+                    key: Qt.Key_Right
+                    displayText: "\u2192"
+                    repeat: true
+                    noModifier: true
+                    functionKey: true
+                    highlighted: true
+                }
+            }
+            KeyboardRow {
+                SymbolModeKey {}
+                FlickKey {
+                    text: "\u307E" //ma
+                    alternativeKeys: "\u307F\u3080\u3081\u3082"
+                }
+                FlickKey {
+                    text: "\u3084" //ya
+                    alternativeKeys: "\u3086\u3088"
+                }
+                FlickKey {
+                    text: "\u3089" //ra
+                    alternativeKeys: "\u308A\u308B\u308C\u308D"
+                }
+                SpaceKey {}
+            }
+            KeyboardRow {
+                InputModeKey {
+                    enabled: !(InputContext.inputMethodHints & Qt.ImhLatinOnly) && inputModeCount > 1
+                    weight: normalKeyWidth / 2
+                    inputModeNameList: [
+                        "半角",  // InputEngine.InputMode.Latin
+                        "",     // InputEngine.InputMode.Numeric
+                        "",     // InputEngine.InputMode.Dialable
+                        "",     // InputEngine.InputMode.Pinyin
+                        "",     // InputEngine.InputMode.Cangjie
+                        "",     // InputEngine.InputMode.Zhuyin
+                        "",     // InputEngine.InputMode.Hangul
+                        "あ",    // InputEngine.InputMode.Hiragana
+                        "カ",    // InputEngine.InputMode.Katakana
+                        "全角",  // InputEngine.InputMode.FullwidthLatin
+                        "",     // InputEngine.InputMode.Greek
+                        "",     // InputEngine.InputMode.Cyrillic
+                        "",     // InputEngine.InputMode.Arabic
+                        "",     // InputEngine.InputMode.Hebrew
+                        "",     // InputEngine.InputMode.ChineseHandwriting
+                        "",     // InputEngine.InputMode.JapaneseHandwriting
+                        "",     // InputEngine.InputMode.KoreanHandwriting
+                        "",     // InputEngine.InputMode.Thai
+                        "",     // InputEngine.InputMode.Stroke
+                        "",     // InputEngine.InputMode.Romaji
+                        "FLK",  // InputEngine.InputMode.HiraganaFlick
+                    ]
+                }
+                ChangeLanguageKey {
+                    weight: normalKeyWidth / 2
+                }
+                FlickKey {
+                    weight: normalKeyWidth
+                    text: "\u3099"
+                    alternativeKeys: "\u309A"
+                }
+                FlickKey {
+                    weight: normalKeyWidth
+                    text: "\u308F" //wa
+                    alternativeKeys: "\u3093\u3092\u30FC\u301C"
+                }
+                FlickKey {
+                    weight: normalKeyWidth
+                    text: "\u3001" //
+                    alternativeKeys: "\u3002\u003F\u0021\u2026"
+                }
+                EnterKey {
+                    weight: normalKeyWidth
                 }
             }
         }

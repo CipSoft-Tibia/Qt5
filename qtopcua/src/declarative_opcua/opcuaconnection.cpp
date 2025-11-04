@@ -21,6 +21,7 @@ QT_BEGIN_NAMESPACE
     \inqmlmodule QtOpcUa
     \brief Connects to a server.
     \since QtOpcUa 5.12
+    \deprecated [6.9]
 
     The main API uses backends to make connections. You have to set the backend before
     any connection attempt.

@@ -44,7 +44,7 @@
 namespace gfx {
 class PointF;
 class RectF;
-}
+}  // namespace gfx
 
 namespace cc {
 class PaintCanvas;
@@ -60,9 +60,7 @@ class TextRun;
 struct TextFragmentPaintInfo;
 struct TextRunPaintInfo;
 
-class PLATFORM_EXPORT Font {
-  DISALLOW_NEW();
-
+class PLATFORM_EXPORT Font : public GarbageCollected<Font> {
  public:
   Font();
   explicit Font(const FontDescription&);
@@ -158,11 +156,6 @@ class PLATFORM_EXPORT Font {
                                   float height,
                                   int from = 0,
                                   int to = -1) const;
-
-  // Returns a vector of same size as TextRun.length() with advances measured
-  // in pixels from the left bounding box of the full TextRun to the left bound
-  // of the glyph rendered by each character. Values should always be positive.
-  Vector<double> IndividualCharacterAdvances(const TextRun&) const;
 
   // Metrics that we query the FontFallbackList for.
   float SpaceWidth() const {

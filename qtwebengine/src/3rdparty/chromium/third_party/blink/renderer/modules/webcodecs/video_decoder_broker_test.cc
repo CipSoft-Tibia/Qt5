@@ -62,14 +62,13 @@ class FakeGpuVideoDecoder : public media::FakeVideoDecoder {
 
   scoped_refptr<media::VideoFrame> MakeVideoFrame(
       const media::DecoderBuffer& buffer) override {
-    gpu::MailboxHolder mailbox_holders[media::VideoFrame::kMaxPlanes];
-    mailbox_holders[0].mailbox.name[0] = 1;
-    scoped_refptr<media::VideoFrame> frame =
-        media::VideoFrame::WrapNativeTextures(
-            media::PIXEL_FORMAT_ARGB, mailbox_holders,
-            media::VideoFrame::ReleaseMailboxCB(), current_config_.coded_size(),
-            current_config_.visible_rect(), current_config_.natural_size(),
-            buffer.timestamp());
+    scoped_refptr<gpu::ClientSharedImage> shared_image =
+        gpu::ClientSharedImage::CreateForTesting();
+    scoped_refptr<media::VideoFrame> frame = media::VideoFrame::WrapSharedImage(
+        media::PIXEL_FORMAT_ARGB, shared_image, gpu::SyncToken(), 0,
+        media::VideoFrame::ReleaseMailboxCB(), current_config_.coded_size(),
+        current_config_.visible_rect(), current_config_.natural_size(),
+        buffer.timestamp());
     frame->metadata().power_efficient = true;
     return frame;
   }
@@ -127,6 +126,14 @@ class FakeInterfaceFactory : public media::mojom::InterfaceFactory {
         std::move(receiver));
   }
 
+#if BUILDFLAG(ALLOW_OOP_VIDEO_DECODER)
+  void CreateStableVideoDecoder(
+      mojo::PendingReceiver<media::stable::mojom::StableVideoDecoder>
+          video_decoder) override {
+    // TODO(b/327268445): we'll need to complete this for GTFO OOP-VD testing.
+  }
+#endif  // BUILDFLAG(ALLOW_OOP_VIDEO_DECODER)
+
   // Stub out other mojom::InterfaceFactory interfaces.
   void CreateAudioDecoder(
       mojo::PendingReceiver<media::mojom::AudioDecoder> receiver) override {}
@@ -155,7 +162,8 @@ class FakeInterfaceFactory : public media::mojom::InterfaceFactory {
 #endif  // BUILDFLAG(IS_ANDROID)
   void CreateCdm(const media::CdmConfig& cdm_config,
                  CreateCdmCallback callback) override {
-    std::move(callback).Run(mojo::NullRemote(), nullptr, "CDM not supported");
+    std::move(callback).Run(mojo::NullRemote(), nullptr,
+                            media::CreateCdmStatus::kCdmNotSupported);
   }
 
 #if BUILDFLAG(IS_WIN)

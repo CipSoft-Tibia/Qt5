@@ -50,7 +50,7 @@ class _DictionaryMember(object):
 
     # Map from Blink member type to presence expression.
     _MEMBER_TYPE_TO_PRESENCE_EXPR = {
-        "ScriptPromise": "!{}.IsEmpty()",
+        "ScriptPromiseUntyped": "!{}.IsEmpty()",
         "ScriptValue": "!{}.IsEmpty()",
     }
 
@@ -220,6 +220,9 @@ def bind_local_vars(code_node, cg_context):
           ("const bool ${is_cross_origin_isolated} = "
            "${execution_context}"
            "->CrossOriginIsolatedCapabilityOrDisabledWebSecurity();")),
+        S("is_in_injection_mitigated_context",
+          ("const bool ${is_in_injection_mitigated_context} = "
+           "${execution_context}->IsInjectionMitigatedContext();")),
         S("is_in_isolated_context",
           ("const bool ${is_in_isolated_context} = "
            "${execution_context}->IsIsolatedContext();")),
@@ -308,11 +311,13 @@ def make_factory_methods(cg_context):
     if not dictionary.has_required_member:
         body.append(
             CxxLikelyIfNode(cond="${v8_value}->IsNullOrUndefined()",
+                            attribute=None,
                             body=T("return dictionary;")))
     # [PermissiveDictionaryConversion]
     if "PermissiveDictionaryConversion" in dictionary.extended_attributes:
         body.append(
             CxxUnlikelyIfNode(cond="!${v8_value}->IsObject()",
+                              attribute=None,
                               body=[
                                   T("// [PermissiveDictionaryConversion]"),
                                   T("return dictionary;"),
@@ -320,6 +325,7 @@ def make_factory_methods(cg_context):
     else:
         body.append(
             CxxUnlikelyIfNode(cond="!${v8_value}->IsObject()",
+                              attribute=None,
                               body=[
                                   T("${exception_state}.ThrowTypeError("
                                     "ExceptionMessages::ValueNotOfType("
@@ -329,7 +335,8 @@ def make_factory_methods(cg_context):
     body.extend([
         T("dictionary->FillMembersFromV8Object("
           "${isolate}, ${v8_value}.As<v8::Object>(), ${exception_state});"),
-        CxxUnlikelyIfNode(cond="UNLIKELY(${exception_state}.HadException())",
+        CxxUnlikelyIfNode(cond="${exception_state}.HadException()",
+                          attribute="[[unlikely]]",
                           body=T("return nullptr;")),
         T("return dictionary;"),
     ])
@@ -424,6 +431,7 @@ def make_accessor_functions(cg_context):
         func_def.set_base_template_vars(cg_context.template_bindings())
         func_def.body.extend([
             CxxUnlikelyIfNode(cond="!{}()".format(member.api_has),
+                              attribute=None,
                               body=T("return fallback_value;")),
             F("return {};",
               member.type_info.member_var_to_ref_expr(member.value_var)),
@@ -442,6 +450,7 @@ def make_accessor_functions(cg_context):
         copy_func_def.set_base_template_vars(cg_context.template_bindings())
         copy_func_def.body.extend([
             CxxUnlikelyIfNode(cond="!{}()".format(member.api_has),
+                              attribute=None,
                               body=T("return fallback_value;")),
             F("return {};",
               member.type_info.member_var_to_ref_expr(member.value_var)),
@@ -456,6 +465,7 @@ def make_accessor_functions(cg_context):
         move_func_def.set_base_template_vars(cg_context.template_bindings())
         move_func_def.body.extend([
             CxxUnlikelyIfNode(cond="!{}()".format(member.api_has),
+                              attribute=None,
                               body=T("return std::move(fallback_value);")),
             F("return {};",
               member.type_info.member_var_to_ref_expr(member.value_var)),
@@ -480,6 +490,7 @@ def make_accessor_functions(cg_context):
         func_def.set_base_template_vars(cg_context.template_bindings())
         func_def.body.extend([
             CxxUnlikelyIfNode(cond="!{}()".format(member.api_has),
+                              attribute=None,
                               body=T("return fallback_value;")),
             F("return {};",
               member.type_info.member_var_to_ref_expr(member.value_var)),
@@ -534,7 +545,7 @@ def make_accessor_functions(cg_context):
 
     def make_api_set_non_nullable(member):
         # setMember(InnerType) in addition to
-        # setMember(absl::optional<InnerType>) for convenience.
+        # setMember(std::optional<InnerType>) for convenience.
         if not (member.idl_type.does_include_nullable_type
                 and not member.type_info.has_null_value):
             return None, None
@@ -542,7 +553,7 @@ def make_accessor_functions(cg_context):
 
     def make_api_set_copy_and_move_non_nullable(member):
         # setMember(InnerType) in addition to
-        # setMember(absl::optional<InnerType>) for convenience.
+        # setMember(std::optional<InnerType>) for convenience.
         if not (member.idl_type.does_include_nullable_type
                 and not member.type_info.has_null_value):
             return None, None
@@ -657,7 +668,7 @@ def make_backward_compatible_accessors(cg_context):
         if (not member.idl_type.unwrap(nullable=False).is_nullable
                 or member.type_info.has_null_value):
             continue
-        # The Blink type is absl::optional<T>.
+        # The Blink type is std::optional<T>.
         decls.append(make_api_has_non_null(member))
         decls.append(make_api_get_non_null(member))
 
@@ -687,69 +698,195 @@ def make_trace_function(cg_context):
     return func_def.make_decl(override=True), func_def
 
 
-def make_blink_to_v8_function(cg_context):
+def make_property_count_const(cg_context):
+    assert isinstance(cg_context, CodeGenContext)
+
+    T = TextNode
+
+    base_property_count = ("${base_class_name}::kTotalPropertyCount"
+                           if cg_context.dictionary.inherited else "0")
+
+    return ListNode([
+        T("static constexpr size_t kBasePropertyCount = {};".format(
+            base_property_count)),
+        T("static constexpr size_t kOwnPropertyCount = {};".format(
+            len(cg_context.dictionary.own_members))),
+        T("static constexpr size_t kTotalPropertyCount "
+          "= kBasePropertyCount + kOwnPropertyCount;")
+    ])
+
+
+def make_properties_array(cg_context):
+    assert isinstance(cg_context, CodeGenContext)
+
+    T = TextNode
+    F = FormatNode
+
+    if not cg_context.dictionary.own_members:
+        return ListNode({})
+
+    properties = ListNode([
+        T("\"{}\",".format(member.identifier))
+        for member in cg_context.dictionary.own_members
+    ])
+    return ListNode([
+        T("const std::string_view kOwnPropertyNames{}[] = {}".format(cg_context.class_name, "{")),
+        properties,
+        T("};"),
+        EmptyNode(),
+    ])
+
+
+def make_fill_template_properties_function(cg_context):
+    assert isinstance(cg_context, CodeGenContext)
+
+    T = TextNode
+    F = FormatNode
+
+    func_def = CxxFuncDefNode(name="FillTemplateProperties",
+                              arg_decls=[
+                                  "WTF::Vector<std::string_view>& properties",
+                              ],
+                              return_type="void",
+                              class_name=cg_context.class_name,
+                              const=True)
+
+    func_def.set_base_template_vars(cg_context.template_bindings())
+    body = func_def.body
+
+    if cg_context.dictionary.inherited:
+        body.extend([
+            T("${base_class_name}::FillTemplateProperties(properties);"),
+            T("DCHECK_EQ(properties.size(), kBasePropertyCount);"),
+            EmptyNode(),
+        ])
+
+    if cg_context.dictionary.own_members:
+        body.extend([
+            T("static_assert(std::size(kOwnPropertyNames{}) == kOwnPropertyCount);".format(cg_context.class_name)),
+            T("properties.AppendRange(std::cbegin(kOwnPropertyNames{}), std::cend(kOwnPropertyNames{}));".format(cg_context.class_name, cg_context.class_name)),
+            T("DCHECK_EQ(properties.size(), kTotalPropertyCount);")
+        ])
+
+    return func_def.make_decl(override=True), func_def
+
+
+def make_fill_values_function(cg_context):
     assert isinstance(cg_context, CodeGenContext)
 
     S = SymbolNode
     T = TextNode
     F = FormatNode
 
-    func_def = CxxFuncDefNode(name="FillV8ObjectWithMembers",
-                              arg_decls=[
-                                  "ScriptState* script_state",
-                                  "v8::Local<v8::Object> v8_dictionary",
-                              ],
-                              return_type="bool",
-                              class_name=cg_context.class_name,
-                              const=True)
+    func_def = CxxFuncDefNode(
+        name="FillValues",
+        arg_decls=[
+            "ScriptState* script_state",
+            "v8::Local<v8::DictionaryTemplate> dict_template",
+        ],
+        return_type="v8::Local<v8::Object>",
+        class_name=cg_context.class_name,
+        const=True)
+
+    func_def.set_base_template_vars(cg_context.template_bindings())
+    if cg_context.dictionary.members:
+        func_def.body.extend([
+            T("v8::MaybeLocal<v8::Value> values[kTotalPropertyCount];"),
+            T("FillValuesImpl(script_state, values);"),
+            T("return dict_template->NewInstance("
+              "script_state->GetContext(), values);")
+        ])
+    else:
+        func_def.body.extend([
+            T("return dict_template->NewInstance("
+              "script_state->GetContext(), {});")
+        ])
+
+    return func_def.make_decl(override=True), func_def
+
+
+def make_fill_values_impl_function(cg_context):
+    assert isinstance(cg_context, CodeGenContext)
+
+    S = SymbolNode
+    T = TextNode
+    F = FormatNode
+
+    func_def = CxxFuncDefNode(
+        name="FillValuesImpl",
+        arg_decls=[
+            "ScriptState* script_state",
+            "base::span<v8::MaybeLocal<v8::Value>> values"
+        ],
+        return_type="void",
+        class_name=cg_context.class_name,
+        const=True)
+
     func_def.set_base_template_vars(cg_context.template_bindings())
     body = func_def.body
-    body.add_template_vars({
-        "script_state": "script_state",
-        "v8_dictionary": "v8_dictionary",
-    })
+    body.add_template_vars({"script_state": "script_state"})
+    bind_local_vars(body, cg_context)
+
     body.register_code_symbols([
         S("isolate",
           "v8::Isolate* ${isolate} = ${script_state}->GetIsolate();"),
-        S("v8_value", "v8::Local<v8::Value> ${v8_value};"),
-        S("was_property_created", "bool ${was_property_created};"),
     ])
-    bind_local_vars(body, cg_context)
 
     if cg_context.dictionary.inherited:
         body.extend([
-            CxxUnlikelyIfNode(  #
-                cond=T("!${base_class_name}::FillV8ObjectWithMembers"
-                       "(${script_state}, ${v8_dictionary})"),
-                body=T("return false;")),
-            EmptyNode(),
+            F("${base_class_name}::FillValuesImpl("
+              "script_state, values.first(kBasePropertyCount));"),
+            T("values = values.subspan(kBasePropertyCount);"),
+            EmptyNode()
         ])
 
+    body.append(T("CHECK_EQ(kOwnPropertyCount, values.size());"))
     for index, member in enumerate(cg_context.dictionary_own_members):
-        node = CxxLikelyIfNode(
-            cond="{}()".format(member.api_has),
-            body=[
-                F(
-                    "${v8_value} = ToV8Traits<{native_value_tag}>::"
-                    "ToV8(${script_state}, {blink_value});",
-                    native_value_tag=native_value_tag(member.idl_type),
-                    blink_value=member.type_info.member_var_to_ref_expr(
-                        member.value_var)),
-                F(
-                    "${v8_dictionary}->CreateDataProperty("
-                    "${current_context}, "
-                    "${v8_own_member_names}[{index}].Get(${isolate}), "
-                    "${v8_value}).ToChecked();",
-                    index=index)
-            ])
+        convert_property = F(
+            "values[{index}] = "
+            "ToV8Traits<{native_value_tag}>::ToV8(script_state, {blink_value});",
+            native_value_tag=native_value_tag(member.idl_type),
+            blink_value=member.type_info.member_var_to_ref_expr(
+                member.value_var),
+            index=index)
 
-        conditional = expr_from_exposure(member.exposure)
-        if not conditional.is_always_true:
-            node = CxxLikelyIfNode(cond=conditional, body=node)
+        node = CxxLikelyIfNode(cond="{}()".format(member.api_has),
+                               attribute=None,
+                               body=[
+                                   convert_property,
+                                   F("DCHECK(!values[{index}].IsEmpty());",
+                                     index=index)
+                               ])
+
+        exposure_conditional = expr_from_exposure(member.exposure)
+        if not exposure_conditional.is_always_true:
+            node = CxxLikelyIfNode(cond=exposure_conditional,
+                                   attribute=None,
+                                   body=node)
+            node.accumulate(
+                CodeGenAccumulator.require_include_headers([
+                    "third_party/blink/renderer/platform/runtime_enabled_features.h"
+                ]))
 
         body.append(node)
 
-    body.append(TextNode("return true;"))
+    return func_def.make_decl(), func_def
+
+
+def make_template_key_function(cg_context):
+    assert isinstance(cg_context, CodeGenContext)
+
+    T = TextNode
+
+    func_def = CxxFuncDefNode(name="TemplateKey",
+                              arg_decls=[],
+                              return_type="const void*",
+                              class_name=cg_context.class_name,
+                              const=True)
+
+    func_def.body.extend(
+        [T("static const void *s_key = &s_key;"),
+         T("return s_key;")])
 
     return func_def.make_decl(override=True), func_def
 
@@ -780,24 +917,25 @@ def make_v8_to_blink_function(cg_context):
         S("exception_context_scope",
           ("ExceptionState::ContextScope ${exception_context_scope}("
            "ExceptionContext("
-           "ExceptionContextType::kDictionaryMemberGet, "
+           "v8::ExceptionContext::kAttributeGet, "
            "${class_like_name}, \"\"), "
            "${exception_state});")),
         S("fallback_presence_var", "bool ${fallback_presence_var};"),
         S("has_deprecated", "bool ${has_deprecated};"),
         S("is_optional", "constexpr bool ${is_optional} = false;"),
         S("is_required", "constexpr bool ${is_required} = true;"),
-        S("try_block", "v8::TryCatch ${try_block}(${isolate});"),
     ])
     bind_local_vars(body, cg_context)
 
+    body.append(
+        T("TryRethrowScope rethrow_scope(${isolate}, ${exception_state});"))
     if cg_context.dictionary.inherited:
         body.extend([
             T("${base_class_name}::FillMembersFromV8Object"
               "(${isolate}, ${v8_dictionary}, ${exception_state});"),
-            CxxUnlikelyIfNode(
-                cond="UNLIKELY(${exception_state}.HadException())",
-                body=T("return;")),
+            CxxUnlikelyIfNode(cond="${exception_state}.HadException()",
+                              attribute="[[unlikely]]",
+                              body=T("return;")),
             EmptyNode(),
         ])
 
@@ -809,7 +947,7 @@ def make_v8_to_blink_function(cg_context):
             "${v8_dictionary}, "
             "${v8_own_member_names}[{index}].Get(${isolate}), "
             "{presence_var}, {value_var}, "
-            "${try_block}, ${exception_state})",
+            "${exception_state})",
             native_value_tag=native_value_tag(member.idl_type),
             is_required=("${is_required}"
                          if member.is_required else "${is_optional}"),
@@ -821,7 +959,7 @@ def make_v8_to_blink_function(cg_context):
             F(("${exception_context_scope}"
                ".ChangePropertyNameAsOptimizationHack(\"{member_name}\");"),
               member_name=member.identifier),
-            CxxUnlikelyIfNode(cond=cond, body=T("return;")),
+            CxxUnlikelyIfNode(cond=cond, attribute=None, body=T("return;")),
         ])
 
         # [DeprecateAs]
@@ -835,8 +973,10 @@ def make_v8_to_blink_function(cg_context):
                     "${v8_own_member_names}[{index}].Get(${isolate}))"
                     ".To(&${has_deprecated})",
                     index=index),
+                                  attribute=None,
                                   body=T("return;")),
                 CxxUnlikelyIfNode(cond="${has_deprecated}",
+                                  attribute=None,
                                   body=F(("Deprecation::CountDeprecation("
                                           "${execution_context}, "
                                           "WebFeature::k{deprecate_as});"),
@@ -849,7 +989,11 @@ def make_v8_to_blink_function(cg_context):
 
         conditional = expr_from_exposure(member.exposure)
         if not conditional.is_always_true:
-            node = CxxLikelyIfNode(cond=conditional, body=node)
+            node = CxxLikelyIfNode(cond=conditional, attribute=None, body=node)
+            node.accumulate(
+                CodeGenAccumulator.require_include_headers([
+                    "third_party/blink/renderer/platform/runtime_enabled_features.h"
+                ]))
 
         body.append(node)
 
@@ -874,17 +1018,9 @@ def make_v8_own_member_names_function(cg_context):
         return func_decl, func_def
 
     body.extend([
-        ListNode([
-            TextNode("static const char* const kOwnMemberNames[] = {"),
-            ListNode([
-                TextNode("\"{}\",".format(member.identifier))
-                for member in cg_context.dictionary.own_members
-            ]),
-            TextNode("};"),
-        ]),
         TextNode("return V8PerIsolateData::From(${isolate})"
                  "->FindOrCreateEternalNameCache"
-                 "(kOwnMemberNames, kOwnMemberNames);"),
+                 "(kOwnPropertyNames${class_name}, kOwnPropertyNames${class_name});"),
     ])
 
     return func_decl, func_def
@@ -927,10 +1063,13 @@ def generate_dictionary(dictionary_identifier):
     api_component = path_manager.api_component
     for_testing = dictionary.code_generator_info.for_testing
 
+    input_only = not (dictionary.usage & web_idl.Dictionary.Usage.OUTPUT)
     # Class names
     class_name = blink_class_name(dictionary)
     if dictionary.inherited:
         base_class_name = blink_class_name(dictionary.inherited)
+    elif input_only:
+        base_class_name = "bindings::InputDictionaryBase"
     else:
         base_class_name = "bindings::DictionaryBase"
 
@@ -956,6 +1095,7 @@ def generate_dictionary(dictionary_identifier):
     # Namespaces
     header_blink_ns = CxxNamespaceNode(name_style.namespace("blink"))
     source_blink_ns = CxxNamespaceNode(name_style.namespace("blink"))
+    source_anon_ns = CxxNamespaceNode("")
 
     # Class definition
     class_def = CxxClassDefNode(cg_context.class_name,
@@ -971,7 +1111,9 @@ def generate_dictionary(dictionary_identifier):
     backward_compatible_accessor_decls, backward_compatible_accessor_defs = (
         make_backward_compatible_accessors(cg_context))
     trace_func_decls, trace_func_defs = make_trace_function(cg_context)
-    blink_to_v8_decls, blink_to_v8_defs = make_blink_to_v8_function(cg_context)
+
+    # blink_to_v8_decls, blink_to_v8_defs = make_blink_to_v8_function(cg_context)
+
     v8_to_blink_decls, v8_to_blink_defs = make_v8_to_blink_function(cg_context)
     v8_names_decls, v8_names_defs = make_v8_own_member_names_function(
         cg_context)
@@ -1004,6 +1146,8 @@ def generate_dictionary(dictionary_identifier):
     source_blink_ns.body.extend([
         make_forward_declarations(source_node.accumulator),
         EmptyNode(),
+        source_anon_ns,
+        EmptyNode(),
     ])
 
     # Assemble the parts.
@@ -1023,11 +1167,18 @@ def generate_dictionary(dictionary_identifier):
         "third_party/blink/renderer/platform/bindings/exception_state.h",
         "third_party/blink/renderer/platform/bindings/v8_per_isolate_data.h",
     ])
-    (header_forward_decls, header_include_headers, source_forward_decls,
-     source_include_headers) = collect_forward_decls_and_include_headers(
-         list(map(lambda member: member.idl_type, dictionary.own_members)))
+    (
+        header_forward_decls,
+        header_include_headers,
+        header_stdcpp_include_headers,
+        source_forward_decls,
+        source_include_headers,
+    ) = collect_forward_decls_and_include_headers(
+        list(map(lambda member: member.idl_type, dictionary.own_members)))
     header_node.accumulator.add_class_decls(header_forward_decls)
     header_node.accumulator.add_include_headers(header_include_headers)
+    header_node.accumulator.add_stdcpp_include_headers(
+        header_stdcpp_include_headers)
     source_node.accumulator.add_class_decls(source_forward_decls)
     source_node.accumulator.add_include_headers(source_include_headers)
 
@@ -1059,10 +1210,34 @@ def generate_dictionary(dictionary_identifier):
     source_blink_ns.body.append(trace_func_defs)
     source_blink_ns.body.append(EmptyNode())
 
-    class_def.protected_section.append(blink_to_v8_decls)
-    class_def.protected_section.append(EmptyNode())
-    source_blink_ns.body.append(blink_to_v8_defs)
-    source_blink_ns.body.append(EmptyNode())
+    class_def.protected_section.append(make_property_count_const(cg_context))
+
+    source_anon_ns.body.append(make_properties_array(cg_context))
+
+    if not input_only:
+        template_key_decl, template_key_def = make_template_key_function(
+            cg_context)
+        fill_template_properties_decl, fill_template_properties_def = (
+            make_fill_template_properties_function(cg_context))
+        fill_values_decl, fill_values_def = make_fill_values_function(
+            cg_context)
+        fill_values_impl_decl, fill_values_impl_def = (
+            make_fill_values_impl_function(cg_context))
+
+        class_def.protected_section.append(fill_template_properties_decl)
+        class_def.protected_section.append(fill_values_impl_decl)
+        class_def.protected_section.append(EmptyNode())
+        class_def.private_section.append(template_key_decl)
+        class_def.private_section.append(fill_values_decl)
+        class_def.protected_section.append(EmptyNode())
+        source_blink_ns.body.append(fill_template_properties_def)
+        source_blink_ns.body.append(EmptyNode())
+        source_blink_ns.body.append(fill_values_impl_def)
+        source_blink_ns.body.append(EmptyNode())
+        source_blink_ns.body.append(template_key_def)
+        source_blink_ns.body.append(EmptyNode())
+        source_blink_ns.body.append(fill_values_def)
+        source_blink_ns.body.append(EmptyNode())
 
     class_def.protected_section.append(v8_to_blink_decls)
     class_def.protected_section.append(EmptyNode())

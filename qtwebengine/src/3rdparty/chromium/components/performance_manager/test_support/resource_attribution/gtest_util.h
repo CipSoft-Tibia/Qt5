@@ -13,7 +13,7 @@
 #include "testing/gmock/include/gmock/gmock.h"
 #include "testing/gtest/include/gtest/gtest.h"
 
-namespace performance_manager::resource_attribution {
+namespace resource_attribution {
 
 namespace internal {
 
@@ -173,7 +173,9 @@ inline void PrintTo(const ResultMetadata& metadata, std::ostream* os) {
 }
 
 inline void PrintTo(const CPUTimeResult& result, std::ostream* os) {
-  *os << "cpu:" << result.cumulative_cpu << ",start_time:" << result.start_time
+  *os << "cumulative_cpu:" << result.cumulative_cpu
+      << ",cumulative_background_cpu:" << result.cumulative_background_cpu
+      << ",start_time:" << result.start_time
       << ",metadata:" << ::testing::PrintToString(result.metadata) << " ("
       << (result.metadata.measurement_time - result.start_time) << ")";
 }
@@ -203,6 +205,11 @@ inline void PrintTo(const WorkerContext& context, std::ostream* os) {
   *os << context.ToString();
 }
 
-}  // namespace performance_manager::resource_attribution
+inline void PrintTo(const OriginInBrowsingInstanceContext& context,
+                    std::ostream* os) {
+  *os << context.ToString();
+}
+
+}  // namespace resource_attribution
 
 #endif  // COMPONENTS_PERFORMANCE_MANAGER_TEST_SUPPORT_RESOURCE_ATTRIBUTION_GTEST_UTIL_H_

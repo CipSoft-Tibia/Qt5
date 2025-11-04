@@ -1,5 +1,6 @@
 // Copyright (C) 2020 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QSETTINGS_H
 #define QSETTINGS_H
@@ -31,7 +32,7 @@ class Q_CORE_EXPORT QSettings
 #ifndef QT_NO_QOBJECT
     Q_OBJECT
 #else
-    QScopedPointer<QSettingsPrivate> d_ptr;
+    std::unique_ptr<QSettingsPrivate> d_ptr;
 #endif
     Q_DECLARE_PRIVATE(QSettings)
 

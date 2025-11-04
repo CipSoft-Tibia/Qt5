@@ -2,6 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#ifdef UNSAFE_BUFFERS_BUILD
+// TODO(crbug.com/351564777): Remove this and convert code to safer constructs.
+#pragma allow_unsafe_buffers
+#endif
+
 #include "third_party/blink/renderer/core/layout/block_break_token.h"
 
 #include "third_party/blink/renderer/core/layout/box_fragment_builder.h"
@@ -102,6 +107,16 @@ const InlineBreakToken* BlockBreakToken::InlineBreakTokenFor(
     }
   }
   return nullptr;
+}
+
+void BlockBreakToken::MutableForOofFragmentation::Merge(
+    const BlockBreakToken& new_break_token) {
+  if (LayoutUnit monolithic_overflow = new_break_token.MonolithicOverflow()) {
+    DCHECK_GT(monolithic_overflow, LayoutUnit());
+    DCHECK(break_token_.data_);
+    break_token_.data_->monolithic_overflow =
+        std::max(break_token_.data_->monolithic_overflow, monolithic_overflow);
+  }
 }
 
 #if DCHECK_IS_ON()

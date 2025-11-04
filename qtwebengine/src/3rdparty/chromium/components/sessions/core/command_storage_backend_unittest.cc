@@ -2,6 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#ifdef UNSAFE_BUFFERS_BUILD
+// TODO(crbug.com/40285824): Remove this and convert code to safer constructs.
+#pragma allow_unsafe_buffers
+#endif
+
 #include "components/sessions/core/command_storage_backend.h"
 
 #include <stddef.h>
@@ -97,7 +102,7 @@ class CommandStorageBackendTest : public testing::Test {
   }
 
   // Functions that call into private members of CommandStorageBackend.
-  absl::optional<CommandStorageBackend::SessionInfo> GetLastSessionInfo(
+  std::optional<CommandStorageBackend::SessionInfo> GetLastSessionInfo(
       CommandStorageBackend* backend) {
     // Force `last_session_info_` to be updated.
     backend->InitIfNecessary();

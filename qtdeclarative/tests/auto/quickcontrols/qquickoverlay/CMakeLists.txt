@@ -3,7 +3,7 @@
 
 if (NOT QT_BUILD_STANDALONE_TESTS AND NOT QT_BUILDING_QT)
     cmake_minimum_required(VERSION 3.16)
-    project(tst_qquickpopup LANGUAGES C CXX ASM)
+    project(tst_qquickpopup LANGUAGES C CXX)
     find_package(Qt6BuildInternals COMPONENTS STANDALONE_TEST)
 endif()
 
@@ -28,8 +28,16 @@ qt_internal_add_test(tst_qquickoverlay
         Qt::QuickPrivate
         Qt::QuickTemplates2
         Qt::QuickTemplates2Private
+        Qt::QuickTestUtilsPrivate
+        Qt::QuickControlsTestUtilsPrivate
         Qt::TestPrivate
     TESTDATA ${test_data}
+)
+
+# Make the QML files available to Creator's locator.
+target_sources(tst_qquickoverlay
+    PRIVATE
+        ${test_data}
 )
 
 qt_internal_extend_target(tst_qquickoverlay CONDITION ANDROID OR IOS

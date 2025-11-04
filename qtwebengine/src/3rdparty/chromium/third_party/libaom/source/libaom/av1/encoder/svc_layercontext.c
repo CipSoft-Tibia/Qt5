@@ -1,11 +1,12 @@
 /*
- *  Copyright (c) 2019, Alliance for Open Media. All Rights Reserved.
+ * Copyright (c) 2019, Alliance for Open Media. All rights reserved.
  *
- *  Use of this source code is governed by a BSD-style license
- *  that can be found in the LICENSE file in the root of the source
- *  tree. An additional intellectual property rights grant can be found
- *  in the file PATENTS.  All contributing project authors may
- *  be found in the AUTHORS file in the root of the source tree.
+ * This source code is subject to the terms of the BSD 2 Clause License and
+ * the Alliance for Open Media Patent License 1.0. If the BSD 2 Clause License
+ * was not distributed with this source code in the LICENSE file, you can
+ * obtain it at www.aomedia.org/license/software. If the Alliance for Open
+ * Media Patent License 1.0 was not distributed with this source code in the
+ * PATENTS file, you can obtain it at www.aomedia.org/license/patent.
  */
 
 #include <assert.h>
@@ -197,14 +198,20 @@ void av1_update_temporal_layer_framerate(AV1_COMP *const cpi) {
     const double prev_layer_framerate =
         cpi->framerate / lcprev->framerate_factor;
     const int64_t prev_layer_target_bandwidth = lcprev->layer_target_bitrate;
-    lc->avg_frame_size =
-        (int)round((lc->target_bandwidth - prev_layer_target_bandwidth) /
-                   (lc->framerate - prev_layer_framerate));
+    if (lc->framerate > prev_layer_framerate) {
+      lc->avg_frame_size =
+          (int)round((lc->target_bandwidth - prev_layer_target_bandwidth) /
+                     (lc->framerate - prev_layer_framerate));
+    } else {
+      lc->avg_frame_size = (int)round(lc->target_bandwidth / lc->framerate);
+    }
   }
 }
 
-static AOM_INLINE bool check_ref_is_low_spatial_res_super_frame(
-    int ref_frame, const SVC *svc, const RTC_REF *rtc_ref) {
+bool av1_check_ref_is_low_spatial_res_super_frame(AV1_COMP *const cpi,
+                                                  int ref_frame) {
+  SVC *svc = &cpi->svc;
+  RTC_REF *const rtc_ref = &cpi->ppi->rtc_ref;
   int ref_frame_idx = rtc_ref->ref_idx[ref_frame - 1];
   return rtc_ref->buffer_time_index[ref_frame_idx] == svc->current_superframe &&
          rtc_ref->buffer_spatial_layer[ref_frame_idx] <=
@@ -218,7 +225,11 @@ void av1_restore_layer_context(AV1_COMP *const cpi) {
   LAYER_CONTEXT *const lc = get_layer_context(cpi);
   const int old_frame_since_key = cpi->rc.frames_since_key;
   const int old_frame_to_key = cpi->rc.frames_to_key;
+  const int frames_since_scene_change = cpi->rc.frames_since_scene_change;
+  const int last_encoded_size_keyframe = cpi->rc.last_encoded_size_keyframe;
+  const int last_target_size_keyframe = cpi->rc.last_target_size_keyframe;
   const int max_consec_drop = cpi->rc.max_consec_drop;
+  const int postencode_drop = cpi->rc.postencode_drop;
   // Restore layer rate control.
   cpi->rc = lc->rc;
   cpi->ppi->p_rc = lc->p_rc;
@@ -227,12 +238,15 @@ void av1_restore_layer_context(AV1_COMP *const cpi) {
   cpi->mv_search_params.max_mv_magnitude = lc->max_mv_magnitude;
   if (cpi->mv_search_params.max_mv_magnitude == 0)
     cpi->mv_search_params.max_mv_magnitude = AOMMAX(cm->width, cm->height);
-  // Reset the frames_since_key and frames_to_key counters to their values
-  // before the layer restore. Keep these defined for the stream (not layer).
+  // Reset the following parameters to their values before
+  // the layer restore. Keep these defined for the stream (not layer).
   cpi->rc.frames_since_key = old_frame_since_key;
   cpi->rc.frames_to_key = old_frame_to_key;
-  // Reset to value before the layer restore.
+  cpi->rc.frames_since_scene_change = frames_since_scene_change;
+  cpi->rc.last_encoded_size_keyframe = last_encoded_size_keyframe;
+  cpi->rc.last_target_size_keyframe = last_target_size_keyframe;
   cpi->rc.max_consec_drop = max_consec_drop;
+  cpi->rc.postencode_drop = postencode_drop;
   // For spatial-svc, allow cyclic-refresh to be applied on the spatial layers,
   // for the base temporal layer.
   if (cpi->oxcf.q_cfg.aq_mode == CYCLIC_REFRESH_AQ &&
@@ -253,13 +267,13 @@ void av1_restore_layer_context(AV1_COMP *const cpi) {
   // previous spatial layer(s) at the same time (current_superframe).
   if (rtc_ref->set_ref_frame_config && svc->force_zero_mode_spatial_ref &&
       cpi->sf.rt_sf.use_nonrd_pick_mode) {
-    if (check_ref_is_low_spatial_res_super_frame(LAST_FRAME, svc, rtc_ref)) {
+    if (av1_check_ref_is_low_spatial_res_super_frame(cpi, LAST_FRAME)) {
       svc->skip_mvsearch_last = 1;
     }
-    if (check_ref_is_low_spatial_res_super_frame(GOLDEN_FRAME, svc, rtc_ref)) {
+    if (av1_check_ref_is_low_spatial_res_super_frame(cpi, GOLDEN_FRAME)) {
       svc->skip_mvsearch_gf = 1;
     }
-    if (check_ref_is_low_spatial_res_super_frame(ALTREF_FRAME, svc, rtc_ref)) {
+    if (av1_check_ref_is_low_spatial_res_super_frame(cpi, ALTREF_FRAME)) {
       svc->skip_mvsearch_altref = 1;
     }
   }

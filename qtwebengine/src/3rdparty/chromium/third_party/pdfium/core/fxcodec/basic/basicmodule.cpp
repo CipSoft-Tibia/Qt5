@@ -10,13 +10,13 @@
 #include <utility>
 
 #include "core/fxcodec/scanlinedecoder.h"
+#include "core/fxcrt/byteorder.h"
+#include "core/fxcrt/check.h"
 #include "core/fxcrt/data_vector.h"
-#include "core/fxcrt/fx_memory_wrappers.h"
 #include "core/fxcrt/fx_safe_types.h"
-#include "core/fxcrt/fx_system.h"
-#include "core/fxcrt/span_util.h"
-#include "third_party/base/check.h"
-#include "third_party/base/numerics/safe_conversions.h"
+#include "core/fxcrt/numerics/safe_conversions.h"
+#include "core/fxcrt/raw_span.h"
+#include "core/fxcrt/stl_util.h"
 
 namespace fxcodec {
 
@@ -44,7 +44,7 @@ class RLScanlineDecoder final : public ScanlineDecoder {
   void UpdateOperator(uint8_t used_bytes);
 
   DataVector<uint8_t> m_Scanline;
-  pdfium::span<const uint8_t> m_SrcBuf;
+  pdfium::raw_span<const uint8_t> m_SrcBuf;
   size_t m_dwLineBytes = 0;
   size_t m_SrcOffset = 0;
   bool m_bEOD = false;
@@ -116,7 +116,7 @@ bool RLScanlineDecoder::Create(pdfium::span<const uint8_t> src_buf,
 }
 
 bool RLScanlineDecoder::Rewind() {
-  fxcrt::spanclr(pdfium::make_span(m_Scanline));
+  fxcrt::Fill(m_Scanline, 0);
   m_SrcOffset = 0;
   m_bEOD = false;
   m_Operator = 0;
@@ -129,25 +129,24 @@ pdfium::span<uint8_t> RLScanlineDecoder::GetNextLine() {
   } else if (m_bEOD) {
     return pdfium::span<uint8_t>();
   }
+  fxcrt::Fill(m_Scanline, 0);
   uint32_t col_pos = 0;
   bool eol = false;
   auto scan_span = pdfium::make_span(m_Scanline);
-  fxcrt::spanclr(scan_span);
   while (m_SrcOffset < m_SrcBuf.size() && !eol) {
     if (m_Operator < 128) {
       uint32_t copy_len = m_Operator + 1;
       if (col_pos + copy_len >= m_dwLineBytes) {
-        copy_len =
-            pdfium::base::checked_cast<uint32_t>(m_dwLineBytes - col_pos);
+        copy_len = pdfium::checked_cast<uint32_t>(m_dwLineBytes - col_pos);
         eol = true;
       }
       if (copy_len >= m_SrcBuf.size() - m_SrcOffset) {
         copy_len =
-            pdfium::base::checked_cast<uint32_t>(m_SrcBuf.size() - m_SrcOffset);
+            pdfium::checked_cast<uint32_t>(m_SrcBuf.size() - m_SrcOffset);
         m_bEOD = true;
       }
-      auto copy_span = m_SrcBuf.subspan(m_SrcOffset, copy_len);
-      fxcrt::spancpy(scan_span.subspan(col_pos), copy_span);
+      fxcrt::Copy(m_SrcBuf.subspan(m_SrcOffset, copy_len),
+                  scan_span.subspan(col_pos));
       col_pos += copy_len;
       UpdateOperator((uint8_t)copy_len);
     } else if (m_Operator > 128) {
@@ -157,11 +156,10 @@ pdfium::span<uint8_t> RLScanlineDecoder::GetNextLine() {
       }
       uint32_t duplicate_len = 257 - m_Operator;
       if (col_pos + duplicate_len >= m_dwLineBytes) {
-        duplicate_len =
-            pdfium::base::checked_cast<uint32_t>(m_dwLineBytes - col_pos);
+        duplicate_len = pdfium::checked_cast<uint32_t>(m_dwLineBytes - col_pos);
         eol = true;
       }
-      fxcrt::spanset(scan_span.subspan(col_pos, duplicate_len), fill);
+      fxcrt::Fill(scan_span.subspan(col_pos, duplicate_len), fill);
       col_pos += duplicate_len;
       UpdateOperator((uint8_t)duplicate_len);
     } else {
@@ -173,7 +171,7 @@ pdfium::span<uint8_t> RLScanlineDecoder::GetNextLine() {
 }
 
 uint32_t RLScanlineDecoder::GetSrcOffset() {
-  return pdfium::base::checked_cast<uint32_t>(m_SrcOffset);
+  return pdfium::checked_cast<uint32_t>(m_SrcOffset);
 }
 
 void RLScanlineDecoder::GetNextOperator() {
@@ -226,7 +224,7 @@ std::unique_ptr<ScanlineDecoder> BasicModule::CreateRunLengthDecoder(
   if (!pDecoder->Create(src_buf, width, height, nComps, bpc))
     return nullptr;
 
-  return std::move(pDecoder);
+  return pDecoder;
 }
 
 // static
@@ -331,7 +329,7 @@ DataVector<uint8_t> BasicModule::A85Encode(
   uint32_t line_length = 0;
   while (src_span.size() >= 4 && pos < src_span.size() - 3) {
     auto val_span = src_span.subspan(pos, 4);
-    uint32_t val = FXSYS_UINT32_GET_MSBFIRST(val_span);
+    uint32_t val = fxcrt::GetUInt32MSBFirst(val_span);
     pos += 4;
     if (val == 0) {  // All zero special case
       result_span[0] = 'z';

@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #undef QT_NO_FOREACH // this file contains unported legacy Q_FOREACH uses
 
@@ -14,7 +15,7 @@
 #include <qfileinfo.h>
 
 #include <private/qguiapplication_p.h>
-#include <private/qgenericunixservices_p.h>
+#include <private/qdesktopunixservices_p.h>
 #include <qpa/qplatformintegration.h>
 #include <qpa/qplatformfontdatabase.h>
 
@@ -109,7 +110,7 @@ bool QGtk3Dialog::show(Qt::WindowFlags flags, Qt::WindowModality modality, QWind
         if (false) {
 #if defined(GDK_WINDOWING_WAYLAND) && GTK_CHECK_VERSION(3, 22, 0)
         } else if (GDK_IS_WAYLAND_WINDOW(gdkWindow)) {
-            const auto unixServices = dynamic_cast<QGenericUnixServices *>(
+            const auto unixServices = dynamic_cast<QDesktopUnixServices *>(
                     QGuiApplicationPrivate::platformIntegration()->services());
             if (unixServices) {
                 const auto handle = unixServices->portalWindowIdentifier(parent);

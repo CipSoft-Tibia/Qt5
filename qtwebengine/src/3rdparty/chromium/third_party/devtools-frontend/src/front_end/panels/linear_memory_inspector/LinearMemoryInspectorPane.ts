@@ -27,7 +27,7 @@ export class LinearMemoryInspectorPane extends Common.ObjectWrapper.eventMixin<E
 
   constructor() {
     super(false);
-    this.element.setAttribute('jslog', `${VisualLogging.panel().context('linear-memory-inspector')}`);
+    this.element.setAttribute('jslog', `${VisualLogging.panel('linear-memory-inspector').track({resize: true})}`);
     const placeholder = document.createElement('div');
     placeholder.textContent = i18nString(UIStrings.noOpenInspections);
     placeholder.style.display = 'flex';
@@ -37,6 +37,8 @@ export class LinearMemoryInspectorPane extends Common.ObjectWrapper.eventMixin<E
     this.#tabbedPane.setAllowTabReorder(true, true);
     this.#tabbedPane.addEventListener(UI.TabbedPane.Events.TabClosed, this.#tabClosed, this);
     this.#tabbedPane.show(this.contentElement);
+    this.#tabbedPane.headerElement().setAttribute(
+        'jslog', `${VisualLogging.toolbar().track({keydown: 'ArrowUp|ArrowLeft|ArrowDown|ArrowRight|Enter|Space'})}`);
   }
 
   static instance(): LinearMemoryInspectorPane {
@@ -81,16 +83,16 @@ export class LinearMemoryInspectorPane extends Common.ObjectWrapper.eventMixin<E
 
   #tabClosed(event: Common.EventTarget.EventTargetEvent<UI.TabbedPane.EventData>): void {
     const {tabId} = event.data;
-    this.dispatchEventToListeners(Events.ViewClosed, tabId);
+    this.dispatchEventToListeners(Events.VIEW_CLOSED, tabId);
   }
 }
 
 export const enum Events {
-  ViewClosed = 'ViewClosed',
+  VIEW_CLOSED = 'ViewClosed',
 }
 
 export type EventTypes = {
-  [Events.ViewClosed]: string,
+  [Events.VIEW_CLOSED]: string,
 };
 
 class LinearMemoryInspectorView extends UI.Widget.VBox {
@@ -188,8 +190,8 @@ class LinearMemoryInspectorView extends UI.Widget.VBox {
 
     void LinearMemoryInspectorController.getMemoryRange(this.#memoryWrapper, start, end).then(memory => {
       this.#inspector.data = {
-        memory: memory,
-        address: address,
+        memory,
+        address,
         memoryOffset: start,
         outerMemoryLength: this.#memoryWrapper.length(),
         highlightInfo: this.#getHighlightInfo(),

@@ -28,6 +28,7 @@
 #include "dawn/native/CommandValidation.h"
 
 #include <algorithm>
+#include <array>
 #include <limits>
 #include <sstream>
 #include <string>
@@ -47,8 +48,81 @@
 #include "dawn/native/RenderBundle.h"
 #include "dawn/native/RenderPipeline.h"
 #include "dawn/native/ValidationUtils_autogen.h"
+#include "dawn/native/webgpu_absl_format.h"
 
 namespace dawn::native {
+
+namespace {
+
+std::string ToBufferSyncScopeResourceUsage(wgpu::BufferUsage syncScopeBufferUsage) {
+    constexpr std::array kUsageInfoList = {
+        std::make_pair(wgpu::BufferUsage::Index, "Index"),
+        std::make_pair(wgpu::BufferUsage::Vertex, "Vertex"),
+        std::make_pair(wgpu::BufferUsage::Indirect, "Indirect"),
+        std::make_pair(wgpu::BufferUsage::Uniform, "Uniform"),
+        std::make_pair(wgpu::BufferUsage::Storage, "Storage(read-write)"),
+        std::make_pair(kReadOnlyStorageBuffer, "Storage(read-only)")};
+
+    std::stringstream stream;
+    bool first = true;
+    for (const auto& [usage, info] : kUsageInfoList) {
+        if (syncScopeBufferUsage & usage) {
+            if (!first) {
+                stream << "|";
+            }
+            first = false;
+            stream << info;
+            syncScopeBufferUsage &= ~usage;
+        }
+    }
+
+    if (static_cast<bool>(syncScopeBufferUsage)) {
+        if (!first) {
+            stream << "|";
+        }
+        stream << "BufferUsage::0x" << std::hex
+               << static_cast<typename std::underlying_type<wgpu::BufferUsage>::type>(
+                      syncScopeBufferUsage);
+    }
+
+    return stream.str();
+}
+
+std::string ToTextureSyncScopeResourceUsage(wgpu::TextureUsage syncScopeTextureUsage) {
+    constexpr std::array kUsageInfoList = {
+        std::make_pair(wgpu::TextureUsage::TextureBinding, "TextureBinding"),
+        std::make_pair(wgpu::TextureUsage::StorageBinding, "Storage(read-write)"),
+        std::make_pair(kWriteOnlyStorageTexture, "Storage(write-only)"),
+        std::make_pair(kReadOnlyStorageTexture, "Storage(read-only)"),
+        std::make_pair(wgpu::TextureUsage::RenderAttachment, "RenderAttachment"),
+        std::make_pair(kReadOnlyRenderAttachment, "RenderAttachment(read-only)")};
+
+    std::stringstream stream;
+    bool first = true;
+    for (const auto& [usage, info] : kUsageInfoList) {
+        if (syncScopeTextureUsage & usage) {
+            if (!first) {
+                stream << "|";
+            }
+            first = false;
+            stream << info;
+            syncScopeTextureUsage &= ~usage;
+        }
+    }
+
+    if (static_cast<bool>(syncScopeTextureUsage)) {
+        if (!first) {
+            stream << "|";
+        }
+        stream << "TextureUsage::0x" << std::hex
+               << static_cast<typename std::underlying_type<wgpu::TextureUsage>::type>(
+                      syncScopeTextureUsage);
+    }
+
+    return stream.str();
+}
+
+}  // namespace
 
 // Performs validation of the "synchronization scope" rules of WebGPU.
 MaybeError ValidateSyncScopeResourceUsage(const SyncScopeResourceUsage& scope) {
@@ -61,7 +135,7 @@ MaybeError ValidateSyncScopeResourceUsage(const SyncScopeResourceUsage& scope) {
         DAWN_INVALID_IF(!readOnly && !singleUse,
                         "%s usage (%s) includes writable usage and another usage in the same "
                         "synchronization scope.",
-                        scope.buffers[i], usage);
+                        scope.buffers[i], ToBufferSyncScopeResourceUsage(usage));
     }
 
     // Check that every single subresource is used as either a single-write usage or a
@@ -86,7 +160,7 @@ MaybeError ValidateSyncScopeResourceUsage(const SyncScopeResourceUsage& scope) {
                 return DAWN_VALIDATION_ERROR(
                     "%s usage (%s) includes writable usage and another usage in the same "
                     "synchronization scope.",
-                    scope.textures[i], syncInfo.usage);
+                    scope.textures[i], ToTextureSyncScopeResourceUsage(syncInfo.usage));
             }));
     }
     return {};
@@ -98,10 +172,9 @@ MaybeError ValidateTimestampQuery(const DeviceBase* device,
                                   Feature requiredFeature) {
     DAWN_TRY(device->ValidateObject(querySet));
 
-    DAWN_INVALID_IF(
-        !device->HasFeature(requiredFeature),
-        "Timestamp queries used without the %s feature enabled.",
-        device->GetPhysicalDevice()->GetInstance()->GetFeatureInfo(ToAPI(requiredFeature))->name);
+    DAWN_INVALID_IF(!device->HasFeature(requiredFeature),
+                    "Timestamp queries used without the %s feature enabled.",
+                    ToAPI(requiredFeature));
 
     DAWN_INVALID_IF(querySet->GetQueryType() != wgpu::QueryType::Timestamp,
                     "The type of %s is not %s.", querySet, wgpu::QueryType::Timestamp);
@@ -277,13 +350,13 @@ MaybeError ValidateLinearTextureData(const TextureDataLayout& layout,
     DAWN_ASSERT(copyExtent.height % blockInfo.height == 0);
     uint32_t heightInBlocks = copyExtent.height / blockInfo.height;
 
-    // TODO(dawn:563): Right now kCopyStrideUndefined will be formatted as a large value in the
-    // validation message. Investigate ways to make it print as a more readable symbol.
     DAWN_INVALID_IF(
         copyExtent.depthOrArrayLayers > 1 && (layout.bytesPerRow == wgpu::kCopyStrideUndefined ||
                                               layout.rowsPerImage == wgpu::kCopyStrideUndefined),
         "Copy depth (%u) is > 1, but bytesPerRow (%u) or rowsPerImage (%u) are not specified.",
-        copyExtent.depthOrArrayLayers, layout.bytesPerRow, layout.rowsPerImage);
+        copyExtent.depthOrArrayLayers,
+        WrapUndefined(layout.bytesPerRow, wgpu::kCopyStrideUndefined),
+        WrapUndefined(layout.rowsPerImage, wgpu::kCopyStrideUndefined));
 
     DAWN_INVALID_IF(heightInBlocks > 1 && layout.bytesPerRow == wgpu::kCopyStrideUndefined,
                     "HeightInBlocks (%u) is > 1, but bytesPerRow is not specified.",
@@ -483,7 +556,8 @@ MaybeError ValidateLinearToDepthStencilCopyRestrictions(const ImageCopyTexture& 
     return {};
 }
 
-MaybeError ValidateTextureToTextureCopyCommonRestrictions(const ImageCopyTexture& src,
+MaybeError ValidateTextureToTextureCopyCommonRestrictions(DeviceBase const* device,
+                                                          const ImageCopyTexture& src,
                                                           const ImageCopyTexture& dst,
                                                           const Extent3D& copySize) {
     const uint32_t srcSamples = src.texture->GetSampleCount();
@@ -493,6 +567,11 @@ MaybeError ValidateTextureToTextureCopyCommonRestrictions(const ImageCopyTexture
         srcSamples != dstSamples,
         "Source %s sample count (%u) and destination %s sample count (%u) does not match.",
         src.texture, srcSamples, dst.texture, dstSamples);
+
+    DAWN_INVALID_IF(device->IsCompatibilityMode() && srcSamples != 1,
+                    "Source %s and destination %s with sample count (%u) > 1 cannot be copied in "
+                    "compatibility mode.",
+                    src.texture, dst.texture, srcSamples);
 
     // Metal cannot select a single aspect for texture-to-texture copies.
     const Format& format = src.texture->GetFormat();
@@ -537,7 +616,8 @@ MaybeError ValidateTextureToTextureCopyCommonRestrictions(const ImageCopyTexture
     return {};
 }
 
-MaybeError ValidateTextureToTextureCopyRestrictions(const ImageCopyTexture& src,
+MaybeError ValidateTextureToTextureCopyRestrictions(DeviceBase const* device,
+                                                    const ImageCopyTexture& src,
                                                     const ImageCopyTexture& dst,
                                                     const Extent3D& copySize) {
     // Metal requires texture-to-texture copies happens between texture formats that equal to
@@ -547,7 +627,7 @@ MaybeError ValidateTextureToTextureCopyRestrictions(const ImageCopyTexture& src,
                     src.texture, src.texture->GetFormat().format, dst.texture,
                     dst.texture->GetFormat().format);
 
-    return ValidateTextureToTextureCopyCommonRestrictions(src, dst, copySize);
+    return ValidateTextureToTextureCopyCommonRestrictions(device, src, dst, copySize);
 }
 
 MaybeError ValidateCanUseAs(const TextureBase* texture,
@@ -570,8 +650,15 @@ MaybeError ValidateCanUseAs(const TextureBase* texture,
 
 MaybeError ValidateCanUseAs(const BufferBase* buffer, wgpu::BufferUsage usage) {
     DAWN_ASSERT(wgpu::HasZeroOrOneBits(usage));
-    DAWN_INVALID_IF(!(buffer->GetUsageExternalOnly() & usage), "%s usage (%s) doesn't include %s.",
-                    buffer, buffer->GetUsageExternalOnly(), usage);
+    DAWN_INVALID_IF(!(buffer->GetUsage() & usage), "%s usage (%s) doesn't include %s.", buffer,
+                    buffer->GetUsage(), usage);
+    return {};
+}
+
+MaybeError ValidateCanUseAsInternal(const BufferBase* buffer, wgpu::BufferUsage usage) {
+    DAWN_INVALID_IF(!(buffer->GetInternalUsage() & usage),
+                    "%s internal usage (%s) doesn't include %s.", buffer,
+                    buffer->GetInternalUsage(), usage);
     return {};
 }
 

@@ -35,8 +35,7 @@ EncodedAudioChunk* EncodedAudioChunk::Create(ScriptState* script_state,
         std::make_unique<ArrayBufferContentsExternalMemory>(
             std::move(buffer_contents), array_span));
   } else {
-    buffer =
-        media::DecoderBuffer::CopyFrom(array_span.data(), array_span.size());
+    buffer = media::DecoderBuffer::CopyFrom(array_span);
   }
   DCHECK(buffer);
 
@@ -87,32 +86,32 @@ int64_t EncodedAudioChunk::timestamp() const {
   return buffer_->timestamp().InMicroseconds();
 }
 
-absl::optional<uint64_t> EncodedAudioChunk::duration() const {
+std::optional<uint64_t> EncodedAudioChunk::duration() const {
   if (buffer_->duration() == media::kNoTimestamp)
-    return absl::nullopt;
+    return std::nullopt;
   return buffer_->duration().InMicroseconds();
 }
 
 uint64_t EncodedAudioChunk::byteLength() const {
-  return buffer_->data_size();
+  return buffer_->size();
 }
 
 void EncodedAudioChunk::copyTo(const AllowSharedBufferSource* destination,
                                ExceptionState& exception_state) {
   // Validate destination buffer.
   auto dest_wrapper = AsSpan<uint8_t>(destination);
-  if (dest_wrapper.size() < buffer_->data_size()) {
+  if (dest_wrapper.size() < buffer_->size()) {
     exception_state.ThrowTypeError("destination is not large enough.");
     return;
   }
 
-  if (buffer_->data_size() == 0) {
+  if (buffer_->empty()) {
     // Calling memcpy with nullptr is UB, even if count is zero.
     return;
   }
 
   // Copy data.
-  memcpy(dest_wrapper.data(), buffer_->data(), buffer_->data_size());
+  memcpy(dest_wrapper.data(), buffer_->data(), buffer_->size());
 }
 
 }  // namespace blink

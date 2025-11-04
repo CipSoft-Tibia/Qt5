@@ -37,5 +37,5 @@ umount "$mountpoint"
 echo "Removing $packageName"
 rm "/tmp/$packageName"
 
-SetEnvVar "POSTGRESQLBINPATH" "/Applications/Postgres.app/Contents/Versions/$psqlVersion/bin"
+SetEnvVar "PostgreSQL_ROOT" "/Applications/Postgres.app/Contents/Versions/$psqlVersion"
 echo "PostgreSQL = $psqlVersion ($psqlAppVersion)" >> ~/versions.txt

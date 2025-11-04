@@ -31,10 +31,6 @@ bool Presenter::SupportsPlaneGpuFences() const {
   return false;
 }
 
-bool Presenter::SupportsGpuVSync() const {
-  return false;
-}
-
 bool Presenter::ScheduleOverlayPlane(
     OverlayImage image,
     std::unique_ptr<gfx::GpuFence> gpu_fence,
@@ -48,9 +44,8 @@ bool Presenter::ScheduleCALayer(const ui::CARendererLayerParams& params) {
   return false;
 }
 
-bool Presenter::ScheduleDCLayer(std::unique_ptr<DCLayerOverlayParams> params) {
+void Presenter::ScheduleDCLayer(std::unique_ptr<DCLayerOverlayParams> params) {
   NOTIMPLEMENTED();
-  return false;
 }
 
 bool Presenter::Resize(const gfx::Size& size,

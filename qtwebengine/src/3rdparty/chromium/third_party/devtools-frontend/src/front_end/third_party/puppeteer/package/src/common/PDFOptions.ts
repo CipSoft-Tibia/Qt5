@@ -98,7 +98,7 @@ export interface PDFOptions {
   headerTemplate?: string;
   /**
    * HTML template for the print footer. Has the same constraints and support
-   * for special classes as {@link PDFOptions | PDFOptions.headerTemplate}.
+   * for special classes as {@link PDFOptions.headerTemplate}.
    */
   footerTemplate?: string;
   /**
@@ -158,15 +158,34 @@ export interface PDFOptions {
   omitBackground?: boolean;
   /**
    * Generate tagged (accessible) PDF.
-   * @defaultValue `false`
+   *
+   * @defaultValue `true`
    * @experimental
    */
   tagged?: boolean;
   /**
+   * Generate document outline.
+   *
+   * @defaultValue `false`
+   * @experimental
+   */
+  outline?: boolean;
+  /**
    * Timeout in milliseconds. Pass `0` to disable timeout.
+   *
+   * The default value can be changed by using {@link Page.setDefaultTimeout}
+   *
    * @defaultValue `30_000`
    */
   timeout?: number;
+  /**
+   * If true, waits for `document.fonts.ready` to resolve. This might require
+   * activating the page using {@link Page.bringToFront} if the page is in the
+   * background.
+   *
+   * @defaultValue `true`
+   */
+  waitForFonts?: boolean;
 }
 
 /**
@@ -195,7 +214,7 @@ export interface ParsedPDFOptionsInterface {
  * @internal
  */
 export type ParsedPDFOptions = Required<
-  Omit<PDFOptions, 'path' | 'format'> & ParsedPDFOptionsInterface
+  Omit<PDFOptions, 'path' | 'format' | 'timeout'> & ParsedPDFOptionsInterface
 >;
 
 /**

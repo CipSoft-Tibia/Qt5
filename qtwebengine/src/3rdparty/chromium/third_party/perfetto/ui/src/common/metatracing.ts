@@ -13,12 +13,8 @@
 // limitations under the License.
 
 import {featureFlags} from '../core/feature_flags';
-import {
-  MetatraceCategories,
-  PerfettoMetatrace,
-  Trace,
-  TracePacket,
-} from '../protos';
+import {MetatraceCategories, PerfettoMetatrace} from '../protos';
+import protobuf from 'protobufjs/minimal';
 
 const METATRACING_BUFFER_SIZE = 100000;
 
@@ -45,16 +41,19 @@ const AOMT_DETAILED_FLAG = featureFlags.register({
   defaultValue: false,
 });
 
-function getInitialCategories(): MetatraceCategories|undefined {
+function getInitialCategories(): MetatraceCategories | undefined {
   if (!AOMT_FLAG.get()) return undefined;
   if (AOMT_DETAILED_FLAG.get()) return MetatraceCategories.ALL;
   return MetatraceCategories.QUERY_TIMELINE | MetatraceCategories.API_TIMELINE;
 }
 
-let enabledCategories: MetatraceCategories|undefined = getInitialCategories();
+let enabledCategories: MetatraceCategories | undefined = getInitialCategories();
 
 export function enableMetatracing(categories?: MetatraceCategories) {
-  enabledCategories = categories || MetatraceCategories.ALL;
+  enabledCategories =
+    categories === undefined || categories === MetatraceCategories.NONE
+      ? MetatraceCategories.ALL
+      : categories;
 }
 
 export function disableMetatracingAndGetTrace(): Uint8Array {
@@ -66,8 +65,9 @@ export function isMetatracingEnabled(): boolean {
   return enabledCategories !== undefined;
 }
 
-export function getEnabledMetatracingCategories(): MetatraceCategories|
-    undefined {
+export function getEnabledMetatracingCategories():
+  | MetatraceCategories
+  | undefined {
   return enabledCategories;
 }
 
@@ -82,32 +82,51 @@ interface TraceEvent {
 const traceEvents: TraceEvent[] = [];
 
 function readMetatrace(): Uint8Array {
-  const eventToPacket = (e: TraceEvent): TracePacket => {
+  const eventToPacket = (e: TraceEvent): Uint8Array => {
     const metatraceEvent = PerfettoMetatrace.create({
       eventName: e.eventName,
       threadId: e.track,
       eventDurationNs: e.durNs,
     });
     for (const [key, value] of Object.entries(e.args ?? {})) {
-      metatraceEvent.args.push(PerfettoMetatrace.Arg.create({
-        key,
-        value,
-      }));
+      metatraceEvent.args.push(
+        PerfettoMetatrace.Arg.create({
+          key,
+          value,
+        }),
+      );
     }
-    return TracePacket.create({
-      timestamp: e.startNs,
-      timestampClockId: 1,
-      perfettoMetatrace: metatraceEvent,
-    });
+    const PROTO_VARINT_TYPE = 0;
+    const PROTO_LEN_DELIMITED_WIRE_TYPE = 2;
+    const TRACE_PACKET_PROTO_TAG = (1 << 3) | PROTO_LEN_DELIMITED_WIRE_TYPE;
+    const TRACE_PACKET_TIMESTAMP_TAG = (8 << 3) | PROTO_VARINT_TYPE;
+    const TRACE_PACKET_CLOCK_ID_TAG = (58 << 3) | PROTO_VARINT_TYPE;
+    const TRACE_PACKET_METATRACE_TAG =
+      (49 << 3) | PROTO_LEN_DELIMITED_WIRE_TYPE;
+
+    const wri = protobuf.Writer.create();
+    wri.uint32(TRACE_PACKET_PROTO_TAG);
+    wri.fork(); // Start of Trace Packet.
+    wri.uint32(TRACE_PACKET_TIMESTAMP_TAG).int64(e.startNs);
+    wri.uint32(TRACE_PACKET_CLOCK_ID_TAG).int32(1);
+    wri
+      .uint32(TRACE_PACKET_METATRACE_TAG)
+      .bytes(PerfettoMetatrace.encode(metatraceEvent).finish());
+    wri.ldelim();
+    return wri.finish();
   };
-  const packets: TracePacket[] = [];
+  const packets: Uint8Array[] = [];
   for (const event of traceEvents) {
     packets.push(eventToPacket(event));
   }
-  const trace = Trace.create({
-    packet: packets,
-  });
-  return Trace.encode(trace).finish();
+  const totalLength = packets.reduce((acc, arr) => acc + arr.length, 0);
+  const trace = new Uint8Array(totalLength);
+  let offset = 0;
+  for (const packet of packets) {
+    trace.set(packet, offset);
+    offset += packet.length;
+  }
+  return trace;
 }
 
 interface TraceEventParams {
@@ -116,7 +135,8 @@ interface TraceEventParams {
 }
 
 export type TraceEventScope = {
-  startNs: number; eventName: string;
+  startNs: number;
+  eventName: string;
   params?: TraceEventParams;
 };
 
@@ -127,11 +147,14 @@ function msToNs(ms: number) {
 }
 
 function now(): number {
-  return msToNs((correctedTimeOrigin + performance.now()));
+  return msToNs(correctedTimeOrigin + performance.now());
 }
 
 export function traceEvent<T>(
-    name: string, event: () => T, params?: TraceEventParams): T {
+  name: string,
+  event: () => T,
+  params?: TraceEventParams,
+): T {
   const scope = traceEventBegin(name, params);
   try {
     const result = event();
@@ -142,7 +165,9 @@ export function traceEvent<T>(
 }
 
 export function traceEventBegin(
-    eventName: string, params?: TraceEventParams): TraceEventScope {
+  eventName: string,
+  params?: TraceEventParams,
+): TraceEventScope {
   return {
     eventName,
     startNs: now(),
@@ -167,7 +192,9 @@ export function traceEventEnd(traceEvent: TraceEventScope) {
 
 // Flatten arbitrary values so they can be used as args in traceEvent() et al.
 export function flattenArgs(
-    input: unknown, parentKey = ''): {[key: string]: string} {
+  input: unknown,
+  parentKey = '',
+): {[key: string]: string} {
   if (typeof input !== 'object' || input === null) {
     return {[parentKey]: String(input)};
   }

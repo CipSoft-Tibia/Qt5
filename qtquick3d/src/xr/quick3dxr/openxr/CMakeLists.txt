@@ -60,3 +60,19 @@ qt_internal_extend_target(Quick3DXr CONDITION ANDROID
      DEFINES
         XR_USE_PLATFORM_ANDROID
 )
+
+if (MACOS)
+    enable_language(OBJCXX)
+endif ()
+
+# macOS AND Metal && OpenXR 1.1.40 or later
+qt_internal_extend_target(Quick3DXr CONDITION MACOS AND QT_FEATURE_metal
+    SOURCES
+        qopenxrgraphics_metal.mm qopenxrgraphics_metal_p.h
+    DEFINES
+        XR_USE_GRAPHICS_API_METAL
+    LIBRARIES
+        ${FWFoundation}
+        ${FWQuartzCore}
+        ${FWMetal}
+)

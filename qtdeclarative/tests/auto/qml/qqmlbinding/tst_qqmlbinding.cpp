@@ -4,14 +4,18 @@
 #include "WithBindableProperties.h"
 
 #include <private/qmlutils_p.h>
+#include <private/qqmlanybinding_p.h>
 #include <private/qqmlbind_p.h>
 #include <private/qqmlcomponentattached_p.h>
+#include <private/qqmlinstantiator_p.h>
+#include <private/qqmlpropertytopropertybinding_p.h>
 #include <private/qquickrectangle_p.h>
 
 #include <QtTest/qtest.h>
 
-#include <QtQml/qqmlengine.h>
 #include <QtQml/qqmlcomponent.h>
+#include <QtQml/qqmlengine.h>
+#include <QtQml/qqmlproperty.h>
 
 class tst_qqmlbinding : public QQmlDataTest
 {
@@ -37,6 +41,7 @@ private slots:
     void disabledOnReadonlyProperty();
     void delayed();
     void bindingOverwriting();
+    void bindingInDeadContext();
     void bindToQmlComponent();
     void bindingDoesNoWeirdConversion();
     void bindNaNToInt();
@@ -46,6 +51,10 @@ private slots:
     void whenEvaluatedEarlyEnough();
     void propertiesAttachedToBindingItself();
     void toggleEnableProperlyRemembersValues();
+    void qQmlPropertyToPropertyBinding();
+    void delayedBindingDestruction();
+    void deleteStashedObject();
+    void multiValueTypeBinding();
 
 private:
     QQmlEngine engine;
@@ -492,6 +501,40 @@ void tst_qqmlbinding::bindingOverwriting()
     QLoggingCategory::setFilterRules(QString());
 }
 
+void tst_qqmlbinding::bindingInDeadContext()
+{
+    // We manually control the deletion order of the objects here.
+    // This is what some of our views also do. One way to prevent
+    // the engine from deleting objects is to parent them to the
+    // application.
+
+    QScopedPointer<QObject> o;
+    QScopedPointer<QObject> inner1;
+    {
+        QScopedPointer<QObject> inner2;
+
+        QQmlEngine engine;
+        QQmlComponent c(&engine, testFileUrl("bindingInDeadContext.qml"));
+
+        QVERIFY2(c.isReady(), qPrintable(c.errorString()));
+        o.reset(c.create());
+        QVERIFY(!o.isNull());
+        o->setParent(QCoreApplication::instance());
+
+        inner1.reset(o->property("inner1").value<QObject *>());
+        QVERIFY(inner1);
+        inner1->setParent(QCoreApplication::instance());
+
+        inner2.reset(o->property("inner2").value<QObject *>());
+        QVERIFY(inner2);
+        inner2->setParent(QCoreApplication::instance());
+    }
+
+    // The objectName binding did not get re-evaluated when inner2 died
+    // because the engine was gone already.
+    QCOMPARE(inner1->objectName(), "aa");
+}
+
 void tst_qqmlbinding::bindToQmlComponent()
 {
     QQmlEngine engine;
@@ -672,6 +715,182 @@ void tst_qqmlbinding::toggleEnableProperlyRemembersValues()
         }
         root->setProperty("enabled", false);
     }
+}
+
+class PropertyToPropertyObject : public QObject
+{
+    Q_OBJECT
+    Q_PROPERTY(QRectF a READ a WRITE setA NOTIFY aChanged)
+    Q_PROPERTY(QRectF b READ b BINDABLE bindableB)
+
+    Q_PROPERTY(qreal top READ top WRITE setTop NOTIFY topChanged)
+    Q_PROPERTY(qreal bottom READ bottom BINDABLE bindableBottom)
+    Q_PROPERTY(qreal left READ left WRITE setLeft NOTIFY leftChanged)
+    Q_PROPERTY(qreal right READ right BINDABLE bindableRight)
+public:
+
+    QRectF a() const { return m_a; }
+    void setA(const QRectF &a)
+    {
+        if (m_a == a)
+            return;
+        m_a = a;
+        emit aChanged();
+    }
+
+    QRectF b() const { return m_b.value(); }
+    QBindable<QRectF> bindableB() { return QBindable<QRectF>(&m_b); }
+
+    qreal top() const { return m_top; }
+    void setTop(qreal top)
+    {
+        if (qFuzzyCompare(m_top, top))
+            return;
+        m_top = top;
+        emit topChanged();
+    }
+
+    qreal bottom() const { return m_bottom; }
+    QBindable<qreal> bindableBottom() { return QBindable<qreal>(&m_bottom); }
+
+    qreal left() const { return m_left; }
+    void setLeft(qreal left)
+    {
+        if (qFuzzyCompare(m_left, left))
+            return;
+        m_left = left;
+        emit leftChanged();
+    }
+
+    qreal right() const { return m_right; }
+    QBindable<qreal> bindableRight() { return QBindable<qreal>(&m_right); }
+
+signals:
+    void aChanged();
+    void topChanged();
+    void leftChanged();
+
+private:
+    QRectF m_a;
+    QProperty<QRectF> m_b;
+    qreal m_top = 0;
+    QProperty<qreal> m_bottom;
+    qreal m_left = 0;
+    QProperty<qreal> m_right;
+};
+
+void tst_qqmlbinding::qQmlPropertyToPropertyBinding()
+{
+    using namespace Qt::StringLiterals;
+
+    QScopedPointer<PropertyToPropertyObject> target(new PropertyToPropertyObject);
+    QScopedPointer<PropertyToPropertyObject> source(new PropertyToPropertyObject);
+
+    auto installPropertyBinding
+            = [&](QObject *targetObject, const QString &targetPropertyName,
+                  QObject *sourceObject, const QString &sourcePropertyName) {
+        QQmlProperty targetProperty(targetObject, targetPropertyName);
+        QQmlProperty sourceProperty(sourceObject, sourcePropertyName);
+        QQmlAnyBinding binding;
+
+        binding = new QQmlPropertyToPropertyBinding(
+                &engine,
+                sourceObject, QQmlPropertyPrivate::get(sourceProperty)->encodedIndex(),
+                targetObject, targetProperty.index());
+        binding.installOn(targetProperty);
+    };
+
+    installPropertyBinding(target.data(), "left"_L1,   source.data(), "a.left"_L1);
+    installPropertyBinding(target.data(), "top"_L1,    source.data(), "b.top"_L1);
+
+    // TODO: We cannot install a QQmlPropertyToPropertyBinding on bindable properties
+    //       This is because it derives from QQmlAbstractBinding which is only meant for
+    //       non-bindable properties.
+
+    // installPropertyBinding(target.data(), "right"_L1,  source.data(), "a.right"_L1);
+    // installPropertyBinding(target.data(), "bottom"_L1, source.data(), "b.bottom"_L1);
+
+    QCOMPARE(target->top(), 0);
+    QCOMPARE(target->bottom(), 0);
+    QCOMPARE(target->left(), 0);
+    QCOMPARE(target->right(), 0);
+
+    source->setA(QRectF(11, 22, 33, 44));
+    QCOMPARE(target->top(), 0);
+    QCOMPARE(target->bottom(), 0);
+    QCOMPARE(target->left(), 11);
+    // QCOMPARE(target->right(), 33);
+
+    source->bindableB().setValue(QRectF(55, 66, 77, 88));
+    QCOMPARE(target->top(), 66);
+    // QCOMPARE(target->bottom(), 88);
+    QCOMPARE(target->left(), 11);
+    // QCOMPARE(target->right(), 33);
+}
+
+void tst_qqmlbinding::delayedBindingDestruction()
+{
+    QQmlEngine engine;
+    QQmlComponent component(&engine, testFileUrl("delayedBindingDestruction.qml"));
+    QVERIFY2(component.isReady(), qPrintable(component.errorString()));
+    QScopedPointer<QObject> object(component.create());
+    QVERIFY(object);
+    QVERIFY(object->objectName().isEmpty());
+    QVERIFY(object->property("result").toString().isEmpty());
+
+    const auto verifyDelegate = [&](const QString &expected) {
+        QQmlInstantiator *instantiator
+                = object->property("instantiator").value<QQmlInstantiator *>();
+        QVERIFY(instantiator);
+        QCOMPARE(instantiator->object()->objectName(), expected);
+    };
+
+    QMetaObject::invokeMethod(object.data(), "toggle");
+    QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+    QCoreApplication::processEvents();
+    QCOMPARE(object->objectName(), QLatin1String("bar"));
+    verifyDelegate(QLatin1String("bar"));
+
+    QMetaObject::invokeMethod(object.data(), "toggle");
+    QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+    QCoreApplication::processEvents();
+    QCOMPARE(object->objectName(), QLatin1String("foo"));
+    verifyDelegate(QLatin1String("foo"));
+}
+
+void tst_qqmlbinding::deleteStashedObject()
+{
+    QQmlEngine engine;
+    QQmlComponent component(&engine, testFileUrl("deleteStashedObject.qml"));
+    QVERIFY2(component.isReady(), qPrintable(component.errorString()));
+
+    QTest::ignoreMessage(QtDebugMsg, "alive");
+    QTest::ignoreMessage(QtDebugMsg, "destroy");
+    QScopedPointer<QObject> object(component.create());
+    QVERIFY(object);
+    QVERIFY(object->property("page").value<QObject *>() != nullptr);
+
+    QTest::ignoreMessage(QtDebugMsg, "dead");
+    QTest::ignoreMessage(QtDebugMsg, "before");
+    QTest::ignoreMessage(QtDebugMsg, "after");
+    QTRY_VERIFY(object->property("page").value<QObject *>() == nullptr);
+}
+
+void tst_qqmlbinding::multiValueTypeBinding()
+{
+    QQmlEngine engine;
+    QQmlComponent component(&engine, testFileUrl("multiValueTypeBinding.qml"));
+    QVERIFY2(component.isReady(), qPrintable(component.errorString()));
+    QScopedPointer<QObject> object(component.create());
+    QVERIFY(object);
+
+    QObject *label = object->property("label").value<QObject *>();
+    QVERIFY(label);
+
+    QRectF rect = label->property("rect").toRectF();
+    QCOMPARE(rect.x(), 12);
+    QCOMPARE(rect.y(), 24);
+    QCOMPARE(rect.width(), 9);
 }
 
 QTEST_MAIN(tst_qqmlbinding)

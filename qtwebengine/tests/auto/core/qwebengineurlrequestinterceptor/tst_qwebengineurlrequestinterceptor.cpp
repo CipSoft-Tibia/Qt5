@@ -53,6 +53,7 @@ private Q_SLOTS:
     void postWithBody();
     void profilePreventsPageInterception_data();
     void profilePreventsPageInterception();
+    void download();
 };
 
 tst_QWebEngineUrlRequestInterceptor::tst_QWebEngineUrlRequestInterceptor()
@@ -86,6 +87,7 @@ struct RequestInfo {
         , initiator(info.initiator())
         , resourceType(info.resourceType())
         , headers(info.httpHeaders())
+        , download(info.isDownload())
     {}
 
     QUrl requestUrl;
@@ -93,11 +95,12 @@ struct RequestInfo {
     QUrl initiator;
     int resourceType;
     QHash<QByteArray, QByteArray> headers;
+    bool download;
 };
 
 static const QUrl kRedirectUrl = QUrl("qrc:///resources/content.html");
 
-Q_LOGGING_CATEGORY(lc, "qt.webengine.tests")
+Q_WEBENGINE_LOGGING_CATEGORY(lc, "qt.webengine.tests")
 
 class TestRequestInterceptor : public QWebEngineUrlRequestInterceptor
 {
@@ -437,11 +440,10 @@ void tst_QWebEngineUrlRequestInterceptor::firstPartyUrlNestedIframes()
 
     if (requestUrl.scheme() == "file"
         && !QDir(QDir(QT_TESTCASE_SOURCEDIR).canonicalPath()).exists())
-        W_QSKIP(QString("This test requires access to resources found in '%1'")
+        QSKIP(QString("This test requires access to resources found in '%1'")
                         .arg(QDir(QT_TESTCASE_SOURCEDIR).canonicalPath())
                         .toLatin1()
-                        .constData(),
-                SkipAll);
+                        .constData());
 
     QString adjustedUrl = requestUrl.adjusted(QUrl::RemoveFilename).toString();
 
@@ -526,11 +528,10 @@ void tst_QWebEngineUrlRequestInterceptor::requestInterceptorByResourceType_data(
 void tst_QWebEngineUrlRequestInterceptor::requestInterceptorByResourceType()
 {
     if (!QDir(QDir(QT_TESTCASE_SOURCEDIR).canonicalPath()).exists())
-        W_QSKIP(QString("This test requires access to resources found in '%1'")
+        QSKIP(QString("This test requires access to resources found in '%1'")
                         .arg(QDir(QT_TESTCASE_SOURCEDIR).canonicalPath())
                         .toLatin1()
-                        .constData(),
-                SkipAll);
+                        .constData());
     QFETCH(QUrl, requestUrl);
     QFETCH(QUrl, firstPartyUrl);
     QFETCH(int, resourceType);
@@ -944,10 +945,9 @@ void tst_QWebEngineUrlRequestInterceptor::multipleRedirects()
 class TestPostRequestInterceptor : public QWebEngineUrlRequestInterceptor
 {
 public:
-    TestPostRequestInterceptor(QString expected, bool isAppendFile, QObject *parent = nullptr)
+    TestPostRequestInterceptor(QString expected, QObject *parent = nullptr)
         : QWebEngineUrlRequestInterceptor(parent)
         , m_expected(expected)
-        , m_isAppendFile(isAppendFile)
     {};
 
     void interceptRequest(QWebEngineUrlRequestInfo &info) override
@@ -956,10 +956,6 @@ public:
         isCalled = true;
 
         QIODevice *requestBodyDevice = info.requestBody();
-
-        if (m_isAppendFile) {
-            info.d_ptr->appendFileToResourceRequestBodyForTest(":/resources/postBodyFile.txt");
-        }
 
         QVERIFY2(requestBodyDevice->open(QIODevice::ReadOnly),
                  qPrintable(requestBodyDevice->errorString()));
@@ -996,18 +992,20 @@ void tst_QWebEngineUrlRequestInterceptor::postWithBody_data()
                "\"1Content-Disposition:form-data"
                ";name=\"title\"Test123Content-Di"
                "sposition:form-data;name=\"completed\"f"
-               "alse--"
-            << false;
+               "alse--";
     QTest::addRow("FormData blob (DataElementPipe)")
             << "const blob1 = new Blob(['blob1thisisablob'],"
                "{type: 'text/plain'});"
                "fd.append('blob1', blob1);"
             << "Content-Disposition:form-data;name=\"blob1"
                "\";filename=\"blob\"Content-Type:text/plai"
-               "nblob1thisisablob--"
-            << false;
-    QTest::addRow("Append file (DataElementFile)") << ""
-                                                   << "--{\"test\":\"1234\"}\"1234\"}" << true;
+               "nblob1thisisablob--";
+    QTest::addRow("Append file (DataElementFile)") << "const blob = new Blob(['{\"test\":\"1234\"}']);"
+                                                      "fd.append('file', new File([blob], 'file.txt'), 'file.txt');"
+                                                   << "Content-Disposition:form-data;name=\"file\";"
+                                                      "filename=\"file.txt\""
+                                                      "Content-Type:application/octet-stream{\"test\":\"1234\"}"
+                                                      "--";
     QTest::addRow("All combined") << "fd.append('userId', 1);"
                                      "fd.append('title', 'Test123');"
                                      "fd.append('completed', false);"
@@ -1020,6 +1018,7 @@ void tst_QWebEngineUrlRequestInterceptor::postWithBody_data()
                                      "fd.append('title', 'Test456');"
                                      "fd.append('completed', true);"
                                      "fd.append('blob2', blob2);"
+                                     "fd.append('file', new File([blob1], 'file.txt'), 'file.txt');"
                                   << "Content-Disposition:form-data;name=\"userId\""
                                      "1Content-Disposition:form-data;na"
                                      "me=\"title\"Test123Content-Disposit"
@@ -1032,16 +1031,17 @@ void tst_QWebEngineUrlRequestInterceptor::postWithBody_data()
                                      "Content-Disposition:form-data;name=\"complete"
                                      "d\"trueContent-Disposition:form-da"
                                      "ta;name=\"blob2\";filename=\"blob\"Content-Ty"
-                                     "pe:text/plainblob2thisisanotherblob--"
-                                     "{\"test\":\"1234\"}\"1234\"}"
-                                  << true;
+                                     "pe:text/plainblob2thisisanotherblob"
+                                     "Content-Disposition:form-data;name=\"file\";"
+                                     "filename=\"file.txt\""
+                                     "Content-Type:application/octet-streamblob1thisisablob"
+                                     "--";
 }
 
 void tst_QWebEngineUrlRequestInterceptor::postWithBody()
 {
     QFETCH(QString, input);
     QFETCH(QString, output);
-    QFETCH(bool, isAppendFile);
 
     QString script;
     script.append("const fd = new FormData();");
@@ -1050,7 +1050,7 @@ void tst_QWebEngineUrlRequestInterceptor::postWithBody()
 
     QWebEngineProfile profile;
     profile.settings()->setAttribute(QWebEngineSettings::ErrorPageEnabled, false);
-    TestPostRequestInterceptor interceptor(output, isAppendFile);
+    TestPostRequestInterceptor interceptor(output);
     profile.setUrlRequestInterceptor(&interceptor);
     QWebEnginePage page(&profile);
     bool ok = false;
@@ -1116,6 +1116,31 @@ void tst_QWebEngineUrlRequestInterceptor::profilePreventsPageInterception()
     QTRY_COMPARE(loadSpy.size(), 1);
     QCOMPARE(profileInterceptor.ran, interceptInProfile);
     QCOMPARE(pageInterceptor.ran, interceptInPage);
+}
+
+void tst_QWebEngineUrlRequestInterceptor::download()
+{
+    HttpServer server;
+    server.setResourceDirs({ ":/resources" });
+    QVERIFY(server.start());
+
+    TestRequestInterceptor interceptor;
+    QWebEnginePage page;
+    page.setUrlRequestInterceptor(&interceptor);
+    QSignalSpy loadSpy(&page, SIGNAL(loadFinished(bool)));
+
+    const auto url = QUrl(server.url("/content.html"));
+
+    page.load(url);
+    QTRY_COMPARE(loadSpy.size(), 1);
+    QCOMPARE(interceptor.requestInfos.size(), 1);
+    QCOMPARE(interceptor.requestInfos.at(0).download, false);
+
+    interceptor.requestInfos.clear();
+
+    page.download(url);
+    QTRY_COMPARE(interceptor.requestInfos.size(), 1);
+    QCOMPARE(interceptor.requestInfos.at(0).download, true);
 }
 
 QTEST_MAIN(tst_QWebEngineUrlRequestInterceptor)

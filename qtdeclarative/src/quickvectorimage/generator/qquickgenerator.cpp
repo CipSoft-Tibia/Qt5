@@ -20,13 +20,11 @@ Q_LOGGING_CATEGORY(lcQuickVectorImage, "qt.quick.vectorimage", QtWarningMsg)
 QQuickGenerator::QQuickGenerator(const QString fileName, QQuickVectorImageGenerator::GeneratorFlags flags)
     : m_flags(flags)
     , m_fileName(fileName)
-    , m_loader(nullptr)
 {
 }
 
 QQuickGenerator::~QQuickGenerator()
 {
-    delete m_loader;
 }
 
 void QQuickGenerator::setGeneratorFlags(QQuickVectorImageGenerator::GeneratorFlags flags)
@@ -41,9 +39,8 @@ QQuickVectorImageGenerator::GeneratorFlags QQuickGenerator::generatorFlags()
 
 bool QQuickGenerator::generate()
 {
-    m_loader = new QSvgVisitorImpl(m_fileName, this);
-    m_generationSucceeded = m_loader->traverse();
-    return m_generationSucceeded;
+    QSvgVisitorImpl loader(m_fileName, this);
+    return loader.traverse();
 }
 
 void QQuickGenerator::optimizePaths(const PathNodeInfo &info, const QRectF &overrideBoundingRect)

@@ -13,6 +13,24 @@ Rectangle {
     height: 640
     color: "blue"
 
+    // Visualize Qt.inputMethod.keyboardRectangle for testing purposes
+    Rectangle {
+        z: 100
+        x: Qt.inputMethod.keyboardRectangle.x
+        y: Qt.inputMethod.keyboardRectangle.y
+        width: Qt.inputMethod.keyboardRectangle.width
+        height: Qt.inputMethod.keyboardRectangle.height
+        color: "transparent"
+        border.color: "red"
+        border.width: 1
+    }
+
+    SignalSpy {
+        id: keyboardRectangleChangedSpy
+        target: Qt.inputMethod
+        signalName: "keyboardRectangleChanged"
+    }
+
     Component {
         id: textInputComp
         TextEdit {
@@ -77,7 +95,7 @@ Rectangle {
             inputPanel.setLayoutMirroring(data !== undefined && data.hasOwnProperty("layoutMirroring") && data.layoutMirroring)
             inputPanel.setVisibleFunctionKeys(data !== undefined && data.hasOwnProperty("visibleFunctionKeys") ? data.visibleFunctionKeys : ["All"])
             inputPanel.setCloseOnReturn(data !== undefined && data.hasOwnProperty("closeOnReturn") && data.closeOnReturn)
-
+            inputPanel.noAnimations = !data || !data.hasOwnProperty("noAnimations") || data.noAnimations
 
             var window = container.Window.window
             verify(window)
@@ -98,6 +116,7 @@ Rectangle {
             textInput.inputMethodHints = data !== undefined && data.hasOwnProperty("initInputMethodHints") ? data.initInputMethodHints : Qt.ImhNone
             textInput.selectByMouse = false
             handwritingInputPanel.available = false
+            handwritingInputPanel.active = false
             inputPanel.setHandwritingMode(false)
             textInput.forceActiveFocus()
             var activeLocales = data !== undefined && data.hasOwnProperty("activeLocales") ? data.activeLocales : []
@@ -269,6 +288,62 @@ Rectangle {
 
             Qt.inputMethod.hide()
             verify(inputPanel.visible === false)
+        }
+
+        function test_keyboardRectWithWordCandidateView_data() {
+            return [
+                { wclAlwaysVisible: false },
+                { wclAlwaysVisible: true },
+            ]
+        }
+
+        function test_keyboardRectWithWordCandidateView(data) {
+            prepareTest()
+
+            compare(Qt.inputMethod.keyboardRectangle, Qt.rect(0, container.height - inputPanel.height, inputPanel.width, inputPanel.height))
+        }
+
+        function test_keyboardRect_data() {
+            return [
+                { wclAlwaysVisible: false },
+                { wclAlwaysVisible: true },
+            ]
+        }
+
+        function test_keyboardRect(data) {
+            prepareTest(data)
+
+            // Initially visible
+            compare(Qt.inputMethod.keyboardRectangle, Qt.rect(0, container.height - inputPanel.height, inputPanel.width, inputPanel.height))
+
+            // Hidden
+            keyboardRectangleChangedSpy.clear()
+            container.forceActiveFocus()
+            verify(inputPanel.visible === false)
+            compare(Qt.inputMethod.keyboardRectangle, Qt.rect(0, 0, 0, 0))
+            compare(keyboardRectangleChangedSpy.count, 1)
+
+            // Visible
+            keyboardRectangleChangedSpy.clear()
+            textInput.forceActiveFocus()
+            compare(Qt.inputMethod.keyboardRectangle, Qt.rect(0, container.height - inputPanel.height, inputPanel.width, inputPanel.height))
+            verify(keyboardRectangleChangedSpy.count < 3)
+        }
+
+        function test_keyboardRectFullScreenHwr() {
+            prepareTest({ initHwrMode: true }, true)
+
+            // Full screen hwr available -> keyboard hidden
+            keyboardRectangleChangedSpy.clear()
+            handwritingInputPanel.available = true
+            compare(Qt.inputMethod.keyboardRectangle, Qt.rect(0, 0, 0, 0))
+            compare(keyboardRectangleChangedSpy.count, 1)
+
+            // Full screen hwr active -> full screen input
+            keyboardRectangleChangedSpy.clear()
+            handwritingInputPanel.active = true
+            compare(Qt.inputMethod.keyboardRectangle, Qt.rect(0, 0, container.width, container.height))
+            compare(keyboardRectangleChangedSpy.count, 1)
         }
 
         function test_keyPress_data() {
@@ -669,6 +744,15 @@ Rectangle {
             compare(inputPanel.soundEffectSpy.count, 2)
         }
 
+        function test_keySoundVolume() {
+            inputPanel.setKeySoundVolume(0.5)
+            compare(inputPanel.keySoundVolumeSpy.count, 1)
+            compare(inputPanel.keySoundVolume(), 0.5);
+            inputPanel.setKeySoundVolume(1.5)
+            compare(inputPanel.keySoundVolumeSpy.count, 2)
+            compare(inputPanel.keySoundVolume(), 1.0);
+        }
+
         function test_navigationKeyInputSequence_data() {
             return [
                 { initialKey: Qt.Key_Space, initInputMethodHints: Qt.ImhNoPredictiveText | Qt.ImhNoAutoUppercase, inputSequence: "\u00E1\u017C", outputText: "\u00E1\u017C" },
@@ -966,6 +1050,9 @@ Rectangle {
                 { initInputMethodHints: Qt.ImhNone | Qt.ImhSensitiveData, initLocale: "zh_CN", inputSequence: "zhang'ang", expectedCandidates: [ "\u7AE0", "\u6602" ], outputText: "\u7AE0\u6602" },
                 // Invalid pinyin sequence
                 { initInputMethodHints: Qt.ImhNone, initLocale: "zh_CN", inputSequence: "fi", expectedCandidates: [ "\u53D1", "i" ], outputText: "\u53D1i" },
+                { initInputMethodHints: Qt.ImhNone, initLocale: "zh_CN", inputSequence: "dfrt7", expectedCandidates: [], outputText: "dfrt7" },
+                // QTBUG-124178
+                { initInputMethodHints: Qt.ImhNone, initLocale: "zh_CN", inputSequence: "nss", expectedCandidates: ["\u4F60\u662F\u8C01"], outputText: "\u4F60\u662F\u8C01" },
             ]
         }
 
@@ -1231,6 +1318,51 @@ Rectangle {
                 //              2. Change input mode to Katakana.
                 //              3. The input sequence should be committed leaving the cursor in the middle.
                 { initLocale: "ja_JP", initInputMode: "Hiragana", inputSequence: ["n","i","h","o","n","g","o",Qt.Key_Left,Qt.Key_Left,Qt.Key_Left,Qt.Key_Mode_switch], outputText: "\u306B\u307B\u3093\u3054", expectedCursorPosition: 2 },
+                // HiraganaFlick
+                { initLocale: "ja_JP", initInputMode: "HiraganaFlick", inputSequence: ["こ","ん","に","ち","は",Qt.Key_Return], outputText: "こんにちは" },
+                { initLocale: "ja_JP", initInputMode: "HiraganaFlick", inputSequence: ["さ","よ","う","な","ら",Qt.Key_Return], outputText: "さようなら" },
+                // Top(き,つ), Right(ね)
+                { initLocale: "ja_JP", initInputMode: "HiraganaFlick", inputSequence: ["き","つ","ね",Qt.Key_Return], outputText: "きつね" },
+                // Top(ふ), Right(ね)
+                { initLocale: "ja_JP", initInputMode: "HiraganaFlick", inputSequence: ["ふ","ね",Qt.Key_Return], outputText: "ふね" },
+                // Bottom(ほ), Left(し)
+                { initLocale: "ja_JP", initInputMode: "HiraganaFlick", inputSequence: ["ほ","し",Qt.Key_Return], outputText: "ほし" },
+                // Top(す), Bottom(も), Top(う)
+                { initLocale: "ja_JP", initInputMode: "HiraganaFlick", inputSequence: ["す","も","う",Qt.Key_Return], outputText: "すもう" },
+                // Bottom(け), Top(む), Left(り)
+                { initLocale: "ja_JP", initInputMode: "HiraganaFlick", inputSequence: ["け","む","り",Qt.Key_Return], outputText: "けむり" },
+                // Left(ひ), Top(る)
+                { initLocale: "ja_JP", initInputMode: "HiraganaFlick", inputSequence: ["ひ","る",Qt.Key_Return], outputText: "ひる" },
+                // Top(ぬ), Bottom(の)
+                { initLocale: "ja_JP", initInputMode: "HiraganaFlick", inputSequence: ["ぬ","の",Qt.Key_Return], outputText: "ぬの" },
+                // Bottom(そ,と)
+                { initLocale: "ja_JP", initInputMode: "HiraganaFlick", inputSequence: ["そ","と",Qt.Key_Return], outputText: "そと" },
+                // Right(く), Top(る), Base(ま)
+                { initLocale: "ja_JP", initInputMode: "HiraganaFlick", inputSequence: ["く","る","ま",Qt.Key_Return], outputText: "くるま" },
+                // Right(へ), Left(い)
+                { initLocale: "ja_JP", initInputMode: "HiraganaFlick", inputSequence: ["へ","い",Qt.Key_Return], outputText: "へい" },
+                // particle を + ん (also checks wa-key Left/Top)
+                { initLocale: "ja_JP", initInputMode: "HiraganaFlick", inputSequence: ["き","を","つ","け","て",Qt.Key_Return], outputText: "きをつけて" },
+                // NFC check (dakuten/handakuten via combining key U+3099/U+309A)
+                { initLocale: "ja_JP", initInputMode: "HiraganaFlick", inputSequence: ["か","\u3099","く",Qt.Key_Return], outputText: "がく" },
+                // uses わ-Left for ん
+                { initLocale: "ja_JP", initInputMode: "HiraganaFlick", inputSequence: ["は","\u309A","ん",Qt.Key_Return], outputText: "ぱん" },
+                // kana conversion
+                { initLocale:"ja_JP", initInputMode:"HiraganaFlick", inputSequence:["に","ほ","ん",Qt.Key_Space,Qt.Key_Return], outputText:"日本" },
+                { initLocale:"ja_JP", initInputMode:"HiraganaFlick", inputSequence:["に","ほ","ん","こ","\u3099",Qt.Key_Space,Qt.Key_Return], outputText:"日本語" },
+                { initLocale:"ja_JP", initInputMode:"HiraganaFlick", inputSequence:["て","ん","き",Qt.Key_Space,Qt.Key_Return], outputText:"天気" },
+                 // じ = し + ゙
+                { initLocale:"ja_JP", initInputMode:"HiraganaFlick", inputSequence:["か","ん","し","\u3099",Qt.Key_Space,Qt.Key_Space,Qt.Key_Return], outputText:"漢字" },
+                // が = か + ゙
+                { initLocale:"ja_JP", initInputMode:"HiraganaFlick", inputSequence:["か","\u3099","く","せ","い",Qt.Key_Space,Qt.Key_Return], outputText:"学生" },
+                { initLocale:"ja_JP", initInputMode:"HiraganaFlick", inputSequence:["お","お","さ","か",Qt.Key_Space,Qt.Key_Return], outputText:"大阪" },
+                { initLocale:"ja_JP", initInputMode:"HiraganaFlick", inputSequence:["せ","か","い",Qt.Key_Space,Qt.Key_Return], outputText:"世界" },
+                // で = て + ゙
+                { initLocale:"ja_JP", initInputMode:"HiraganaFlick", inputSequence:["て","\u3099","ん","わ",Qt.Key_Space,Qt.Key_Return], outputText:"電話" },
+                // だ = た + ゙
+                { initLocale:"ja_JP", initInputMode:"HiraganaFlick", inputSequence:["や","ま","た","\u3099",Qt.Key_Space,Qt.Key_Return], outputText:"山田" },
+                // use 大よ
+                { initLocale:"ja_JP", initInputMode:"HiraganaFlick", inputSequence:["と","う","き","よ","う",Qt.Key_Space,Qt.Key_Return], outputText:"東京" }
             ]
         }
 
@@ -1948,6 +2080,48 @@ Rectangle {
             }
         }
 
+
+        function test_languagePopupListToggleCheckItemsVisible_data() {
+            return [
+                { initLocale: "fi_FI", noAnimations: false },
+            ]
+        }
+
+        function test_languagePopupListToggleCheckItemsVisible(data) {
+            prepareTest(data)
+
+            if (!inputPanel.keyboard.style.languagePopupListEnabled)
+                skip("The language popup is disabled (!style.languagePopupListEnabled)")
+
+            var languagePopupList = inputPanel.findObjectByName("languagePopupList")
+
+            // show
+            inputPanel.doKeyboardFunction("ChangeLanguage")
+            waitForPolish(languagePopupList)
+
+            // hide
+            inputPanel.doKeyboardFunction("ChangeLanguage")
+
+            // show
+            inputPanel.doKeyboardFunction("ChangeLanguage")
+            waitForPolish(languagePopupList)
+
+            function checkItemVisibility(index) {
+                if (index >= 0 && index < languagePopupList.count) {
+                    let itemDelegate = languagePopupList.itemAtIndex(index)
+                    verify(itemDelegate.visible)
+                    compare(itemDelegate.opacity, 1)
+                }
+            }
+
+            if (languagePopupList.preferredVisibleItems > 2) {
+                let numberOfSurroundingItems = Math.floor((languagePopupList.preferredVisibleItems - 1) / 2)
+                for (let offset = -numberOfSurroundingItems; offset < numberOfSurroundingItems; ++offset) {
+                    checkItemVisibility(languagePopupList.currentIndex + offset)
+                }
+            }
+        }
+
         function test_wclAutoHide_data() {
             return [
                 { wclAutoHideDelay: 100, wclAlwaysVisible: false },
@@ -1960,22 +2134,22 @@ Rectangle {
             prepareTest(data)
             inputPanel.wordCandidateListChangedSpy.clear()
             Qt.inputMethod.show()
-            compare(inputPanel.wordCandidateView.visibleCondition, data.wclAlwaysVisible)
+            if (!inputPanel.wordCandidateListVisibleHint)
+                skip("Prediction/spell correction not enabled")
+            compare(inputPanel.wordCandidateView.state, data.wclAlwaysVisible ? "alwaysVisible" : "")
             inputPanel.virtualKeyClick("a")
             inputPanel.virtualKeyClick("u")
             inputPanel.virtualKeyClick("t")
             inputPanel.virtualKeyClick("o")
-            if (!inputPanel.wordCandidateListVisibleHint)
-                skip("Prediction/spell correction not enabled")
             inputPanel.wordCandidateListChangedSpy.wait(1000)
-            compare(inputPanel.wordCandidateView.visibleCondition, true)
+            compare(inputPanel.wordCandidateView.state, "visible")
             inputPanel.wordCandidateListVisibleSpy.clear()
             inputPanel.selectionListSelectCurrentItem()
             if (data.wclAlwaysVisible)
                 wait(data.wclAutoHideDelay + 250)
             else
                 inputPanel.wordCandidateListVisibleSpy.wait(data.wclAutoHideDelay + 500)
-            compare(inputPanel.wordCandidateView.visibleCondition, data.wclAlwaysVisible)
+            compare(inputPanel.wordCandidateView.state, data.wclAlwaysVisible ? "alwaysVisible" : "")
         }
 
         function test_wclAutoCommitWordSetting_data() {

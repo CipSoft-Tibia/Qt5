@@ -30,9 +30,7 @@
 
 #include "dawn/common/MutexProtected.h"
 #include "dawn/common/SerialMap.h"
-#include "dawn/native/SystemEvent.h"
 #include "dawn/native/d3d/QueueD3D.h"
-
 #include "dawn/native/d3d11/CommandRecordingContextD3D11.h"
 #include "dawn/native/d3d11/Forward.h"
 
@@ -41,27 +39,31 @@ namespace dawn::native::d3d11 {
 class Device;
 class SharedFence;
 
-class Queue final : public d3d::Queue {
+class Queue : public d3d::Queue {
   public:
     static ResultOrError<Ref<Queue>> Create(Device* device, const QueueDescriptor* descriptor);
 
     ScopedCommandRecordingContext GetScopedPendingCommandContext(SubmitMode submitMode);
     ScopedSwapStateCommandRecordingContext GetScopedSwapStatePendingCommandContext(
         SubmitMode submitMode);
-    MaybeError SubmitPendingCommands();
-    MaybeError NextSerial();
-    MaybeError WaitForSerial(ExecutionSerial serial);
+    MaybeError SubmitPendingCommands() override;
+    virtual MaybeError NextSerial() = 0;
 
     // Separated from creation because it creates resources, which is not valid before the
     // DeviceBase is fully created.
     MaybeError InitializePendingContext();
 
-  private:
+    // Register the pending map buffer to be checked.
+    void TrackPendingMapBuffer(Ref<Buffer>&& buffer,
+                               wgpu::MapMode mode,
+                               ExecutionSerial readySerial);
+
+  protected:
     using d3d::Queue::Queue;
 
     ~Queue() override = default;
 
-    MaybeError Initialize();
+    MaybeError Initialize(bool isMonitored);
 
     MaybeError SubmitImpl(uint32_t commandCount, CommandBufferBase* const* commands) override;
     MaybeError WriteBufferImpl(BufferBase* buffer,
@@ -70,22 +72,30 @@ class Queue final : public d3d::Queue {
                                size_t size) override;
     MaybeError WriteTextureImpl(const ImageCopyTexture& destination,
                                 const void* data,
+                                size_t dataSize,
                                 const TextureDataLayout& dataLayout,
                                 const Extent3D& writeSizePixel) override;
 
     void DestroyImpl() override;
     bool HasPendingCommands() const override;
-    ResultOrError<ExecutionSerial> CheckAndUpdateCompletedSerials() override;
     void ForceEventualFlushOfCommands() override;
     MaybeError WaitForIdleForDestruction() override;
 
     ResultOrError<Ref<d3d::SharedFence>> GetOrCreateSharedFence() override;
-    void SetEventOnCompletion(ExecutionSerial serial, HANDLE event) override;
+
+    // Check all pending map buffers, and actually map the ready ones.
+    MaybeError CheckAndMapReadyBuffers(ExecutionSerial completedSerial);
 
     ComPtr<ID3D11Fence> mFence;
-    HANDLE mFenceEvent = nullptr;
     Ref<SharedFence> mSharedFence;
-    CommandRecordingContext mPendingCommands;
+    MutexProtected<CommandRecordingContext, CommandRecordingContextGuard> mPendingCommands;
+    std::atomic<bool> mPendingCommandsNeedSubmit = false;
+
+    struct BufferMapEntry {
+        Ref<Buffer> buffer;
+        wgpu::MapMode mode;
+    };
+    SerialMap<ExecutionSerial, BufferMapEntry> mPendingMapBuffers;
 };
 
 }  // namespace dawn::native::d3d11

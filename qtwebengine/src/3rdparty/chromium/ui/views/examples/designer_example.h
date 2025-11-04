@@ -89,7 +89,8 @@ class VIEWS_EXAMPLES_EXPORT DesignerExample : public ExampleBase,
    protected:
     // View overrides.
     ui::Cursor GetCursor(const ui::MouseEvent& event) override;
-    gfx::Size CalculatePreferredSize() const override;
+    gfx::Size CalculatePreferredSize(
+        const SizeBounds& /*available_size*/) const override;
     void OnPaint(gfx::Canvas* canvas) override;
     bool OnMousePressed(const ui::MouseEvent& event) override;
     bool OnMouseDragged(const ui::MouseEvent& event) override;
@@ -149,7 +150,7 @@ class VIEWS_EXAMPLES_EXPORT DesignerExample : public ExampleBase,
   // ui::ComboboxModel overrides
   size_t GetItemCount() const override;
   std::u16string GetItemAt(size_t index) const override;
-  absl::optional<size_t> GetDefaultIndex() const override;
+  std::optional<size_t> GetDefaultIndex() const override;
 
   raw_ptr<BoxLayoutView> designer_container_ = nullptr;
   raw_ptr<DesignerSurface> designer_panel_ = nullptr;

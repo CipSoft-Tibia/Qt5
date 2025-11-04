@@ -323,7 +323,7 @@ void DecryptingDemuxerStream::OnBufferDecrypted(
     std::string key_id = pending_buffer_to_decrypt_->decrypt_config()->key_id();
 
     std::string log_message =
-        "no key for key ID " + base::HexEncode(key_id.data(), key_id.size()) +
+        "no key for key ID " + base::HexEncode(key_id) +
         "; will resume decrypting after new usable key is available";
     DVLOG(1) << __func__ << ": " << log_message;
     MEDIA_LOG(INFO, media_log_) << GetDisplayName() << ": " << log_message;
@@ -348,7 +348,7 @@ void DecryptingDemuxerStream::OnBufferDecrypted(
 
   // Copy the key frame flag and duration from the encrypted to decrypted
   // buffer.
-  // TODO(crbug.com/1116263): Ensure all fields are copied by Decryptor.
+  // TODO(crbug.com/40711813): Ensure all fields are copied by Decryptor.
   decrypted_buffer->set_is_key_frame(
       pending_buffer_to_decrypt_->is_key_frame());
   decrypted_buffer->set_duration(pending_buffer_to_decrypt_->duration());
@@ -420,7 +420,7 @@ void DecryptingDemuxerStream::InitializeDecoderConfig() {
     }
 
     default:
-      NOTREACHED_NORETURN();
+      NOTREACHED();
   }
   LogMetadata();
 }

@@ -6,13 +6,14 @@
 
 // PixmapSurfaceGLX.cpp: GLX implementation of egl::Surface for Pixmaps
 
-#include "libANGLE/renderer/gl/glx/PixmapSurfaceGLX.h"
-
 #include "common/debug.h"
 #include "libANGLE/Display.h"
 #include "libANGLE/Surface.h"
+
 #include "libANGLE/renderer/gl/glx/DisplayGLX.h"
+
 #include "libANGLE/renderer/gl/glx/FunctionsGLX.h"
+#include "libANGLE/renderer/gl/glx/PixmapSurfaceGLX.h"
 #include "libANGLE/renderer/gl/glx/glx_utils.h"
 
 #include <iostream>
@@ -179,7 +180,7 @@ egl::Error PixmapSurfaceGLX::releaseTexImage(const gl::Context *context, EGLint 
     return egl::NoError();
 }
 
-void PixmapSurfaceGLX::setSwapInterval(EGLint interval) {}
+void PixmapSurfaceGLX::setSwapInterval(const egl::Display *display, EGLint interval) {}
 
 EGLint PixmapSurfaceGLX::getWidth() const
 {

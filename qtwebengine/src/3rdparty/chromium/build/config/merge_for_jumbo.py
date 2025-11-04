@@ -73,7 +73,7 @@ def generate_chunk_stops(inputs, output_count, smart_merge=True):
 
 
 def write_jumbo_files(inputs, outputs, written_input_set, written_output_set):
-  chunk_stops = generate_chunk_stops(inputs, len(outputs))
+  chunk_stops = generate_chunk_stops(inputs, len(outputs), len(inputs) > len(outputs))
 
   written_inputs = 0
   for output_index, output_file in enumerate(outputs):
@@ -103,20 +103,30 @@ def write_jumbo_files(inputs, outputs, written_input_set, written_output_set):
 
 def main():
   parser = argparse.ArgumentParser()
-  parser.add_argument("--outputs", nargs="+", required=True,
-                      help='List of output files to split input into')
-  parser.add_argument("--file-list", required=True)
+  parser.add_argument("--param-list", required=True)
   parser.add_argument("--verbose", action="store_true")
   args = parser.parse_args()
 
   lines = []
   # If written with gn |write_file| each file is on its own line.
-  with open(args.file_list) as file_list_file:
+  with open(args.param_list) as file_list_file:
     lines = [line.strip() for line in file_list_file if line.strip()]
   # If written with gn |response_file_contents| the files are space separated.
   all_inputs = []
+  all_outputs = []
+  output_mode = False
   for line in lines:
-    all_inputs.extend(line.split())
+    for element in line.split():
+      if element == "--inputs":
+        output_mode = False
+        continue
+      if element == "--outputs":
+        output_mode = True
+        continue
+      if output_mode:
+        all_outputs.append(element)
+      else:
+        all_inputs.append(element)
 
   written_output_set = set()  # Just for double checking
   written_input_set = set()  # Just for double checking
@@ -126,7 +136,7 @@ def main():
     else:
       ext_pattern = tuple([language_ext])
 
-    outputs = [x for x in args.outputs if x.endswith(ext_pattern)]
+    outputs = [x for x in all_outputs if x.endswith(ext_pattern)]
     inputs = [x for x in all_inputs if x.endswith(ext_pattern)]
 
     if not outputs:
@@ -135,7 +145,7 @@ def main():
 
     write_jumbo_files(inputs, outputs, written_input_set, written_output_set)
 
-  assert set(args.outputs) == written_output_set, "Did not fill all outputs"
+  assert set(all_outputs) == written_output_set, "Did not fill all outputs"
   assert set(all_inputs) == written_input_set, "Did not use all inputs"
   if args.verbose:
     print("Generated %s (%d files) based on %s" % (

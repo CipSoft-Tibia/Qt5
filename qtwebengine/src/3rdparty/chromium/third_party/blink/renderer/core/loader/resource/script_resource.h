@@ -74,12 +74,15 @@ class CORE_EXPORT ScriptResource final : public TextResource {
       FetchParameters&,
       ResourceFetcher*,
       ResourceClient*,
+      v8::Isolate*,
       StreamingAllowed,
       v8_compile_hints::V8CrowdsourcedCompileHintsProducer*,
-      v8_compile_hints::V8CrowdsourcedCompileHintsConsumer*);
+      v8_compile_hints::V8CrowdsourcedCompileHintsConsumer*,
+      bool v8_compile_hints_magic_comment_runtime_enabled);
 
   // Public for testing
   static ScriptResource* CreateForTest(
+      v8::Isolate* isolate,
       const KURL& url,
       const WTF::TextEncoding& encoding,
       mojom::blink::ScriptType = mojom::blink::ScriptType::kClassic);
@@ -87,7 +90,11 @@ class CORE_EXPORT ScriptResource final : public TextResource {
   ScriptResource(const ResourceRequest&,
                  const ResourceLoaderOptions&,
                  const TextResourceDecoderOptions&,
+                 v8::Isolate*,
                  StreamingAllowed,
+                 v8_compile_hints::V8CrowdsourcedCompileHintsProducer*,
+                 v8_compile_hints::V8CrowdsourcedCompileHintsConsumer*,
+                 bool v8_compile_hints_magic_comment_runtime_enabled,
                  mojom::blink::ScriptType);
   ~ScriptResource() override;
 
@@ -121,7 +128,7 @@ class CORE_EXPORT ScriptResource final : public TextResource {
 
   // Gets the script streamer from the ScriptResource, clearing the resource's
   // streamer so that it cannot be used twice.
-  ResourceScriptStreamer* TakeStreamer();
+  ScriptStreamer* TakeStreamer();
 
   ScriptStreamer::NotStreamingReason NoStreamerReason() const {
     return no_streamer_reason_;
@@ -156,6 +163,16 @@ class CORE_EXPORT ScriptResource final : public TextResource {
   GetV8CrowdsourcedCompileHintsConsumer() const {
     return v8_compile_hints_consumer_.Get();
   }
+
+  bool GetV8CompileHintsMagicCommentRuntimeFeatureEnabled() const {
+    return v8_compile_hints_magic_comment_runtime_enabled_;
+  }
+
+  // Returns the Isolate if set. This may be null.
+  v8::Isolate* GetIsolateOrNull() { return isolate_if_main_thread_; }
+
+  std::unique_ptr<BackgroundResponseProcessorFactory>
+  MaybeCreateBackgroundResponseProcessorFactory() override;
 
  protected:
   void DestroyDecodedDataIfPossible() override;
@@ -210,11 +227,22 @@ class CORE_EXPORT ScriptResource final : public TextResource {
   class ScriptResourceFactory : public ResourceFactory {
    public:
     explicit ScriptResourceFactory(
+        v8::Isolate* isolate,
         StreamingAllowed streaming_allowed,
+        v8_compile_hints::V8CrowdsourcedCompileHintsProducer*
+            v8_compile_hints_producer,
+        v8_compile_hints::V8CrowdsourcedCompileHintsConsumer*
+            v8_compile_hints_consumer,
+        bool v8_compile_hints_magic_comment_runtime_enabled,
         mojom::blink::ScriptType initial_request_script_type)
         : ResourceFactory(ResourceType::kScript,
                           TextResourceDecoderOptions::kPlainTextContent),
+          isolate_(isolate),
           streaming_allowed_(streaming_allowed),
+          v8_compile_hints_producer_(v8_compile_hints_producer),
+          v8_compile_hints_consumer_(v8_compile_hints_consumer),
+          v8_compile_hints_magic_comment_runtime_enabled_(
+              v8_compile_hints_magic_comment_runtime_enabled),
           initial_request_script_type_(initial_request_script_type) {}
 
     Resource* Create(
@@ -222,12 +250,25 @@ class CORE_EXPORT ScriptResource final : public TextResource {
         const ResourceLoaderOptions& options,
         const TextResourceDecoderOptions& decoder_options) const override {
       return MakeGarbageCollected<ScriptResource>(
-          request, options, decoder_options, streaming_allowed_,
+          request, options, decoder_options, isolate_, streaming_allowed_,
+          v8_compile_hints_producer_, v8_compile_hints_consumer_,
+          v8_compile_hints_magic_comment_runtime_enabled_,
           initial_request_script_type_);
     }
 
    private:
+    v8::Isolate* isolate_;
     StreamingAllowed streaming_allowed_;
+    v8_compile_hints::V8CrowdsourcedCompileHintsProducer*
+        v8_compile_hints_producer_;
+    v8_compile_hints::V8CrowdsourcedCompileHintsConsumer*
+        v8_compile_hints_consumer_;
+    // For transmitting the status of the runtime enabled feature to script
+    // streaming, which can access the ScriptResource but not the
+    // ExecutionContext.
+    // TODO(42203853): Remove this once explicit compile hints have launched and
+    // the feature is always on.
+    bool v8_compile_hints_magic_comment_runtime_enabled_;
     mojom::blink::ScriptType initial_request_script_type_;
   };
 
@@ -252,6 +293,10 @@ class CORE_EXPORT ScriptResource final : public TextResource {
 
   ParkableString source_text_;
 
+  // This isolate will be null if this ScriptResource is not created on the main
+  // thread. The isolate is not stored because non-main thread Isolates are
+  // transient. The main thread isolate will be always outlive this object.
+  v8::Isolate* isolate_if_main_thread_;
   Member<ResourceScriptStreamer> streamer_;
   ScriptStreamer::NotStreamingReason no_streamer_reason_ =
       ScriptStreamer::NotStreamingReason::kInvalid;
@@ -277,6 +322,15 @@ class CORE_EXPORT ScriptResource final : public TextResource {
   // ScriptResource.
   Member<v8_compile_hints::V8CrowdsourcedCompileHintsConsumer>
       v8_compile_hints_consumer_;
+
+  // For transmitting the status of the runtime enabled feature to script
+  // streaming, which can access the ScriptResource but not the
+  // ExecutionContext.
+  // TODO(42203853): Remove this once explicit compile hints have launched and
+  // the feature is always on.
+  bool v8_compile_hints_magic_comment_runtime_enabled_;
+
+  Member<BackgroundResourceScriptStreamer> background_streamer_;
 };
 
 template <>

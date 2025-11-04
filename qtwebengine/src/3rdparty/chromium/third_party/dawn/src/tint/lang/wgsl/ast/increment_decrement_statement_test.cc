@@ -27,13 +27,13 @@
 
 #include "src/tint/lang/wgsl/ast/increment_decrement_statement.h"
 
-#include "gtest/gtest-spi.h"
 #include "src/tint/lang/wgsl/ast/helper_test.h"
 
 namespace tint::ast {
 namespace {
 
 using IncrementDecrementStatementTest = TestHelper;
+using IncrementDecrementStatementDeathTest = IncrementDecrementStatementTest;
 
 TEST_F(IncrementDecrementStatementTest, Creation) {
     auto* expr = Expr("expr");
@@ -66,8 +66,8 @@ TEST_F(IncrementDecrementStatementTest, Decrement) {
     EXPECT_FALSE(i->increment);
 }
 
-TEST_F(IncrementDecrementStatementTest, Assert_DifferentGenerationID_Expr) {
-    EXPECT_FATAL_FAILURE(
+TEST_F(IncrementDecrementStatementDeathTest, Assert_DifferentGenerationID_Expr) {
+    EXPECT_DEATH_IF_SUPPORTED(
         {
             ProgramBuilder b1;
             ProgramBuilder b2;

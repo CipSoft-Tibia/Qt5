@@ -15,18 +15,31 @@
 #include "base/unguessable_token.h"
 #include "net/base/net_errors.h"
 #include "net/disk_cache/disk_cache.h"
+#include "services/network/public/cpp/request_destination.h"
 #include "services/network/shared_dictionary/shared_dictionary_storage_on_disk.h"
+#include "services/network/shared_dictionary/simple_url_pattern_matcher.h"
 
 namespace network {
 namespace {
 
-absl::optional<base::UnguessableToken> DeserializeToUnguessableToken(
+std::optional<base::UnguessableToken> DeserializeToUnguessableToken(
     const std::string& token_string) {
-  absl::optional<base::Token> token = base::Token::FromString(token_string);
+  std::optional<base::Token> token = base::Token::FromString(token_string);
   if (!token) {
-    return absl::nullopt;
+    return std::nullopt;
   }
   return base::UnguessableToken::Deserialize(token->high(), token->low());
+}
+
+std::string ToCommaSeparatedString(
+    const std::set<mojom::RequestDestination>& match_dest) {
+  std::vector<std::string_view> destinations;
+  for (auto dest : match_dest) {
+    std::string_view result = RequestDestinationToString(
+        dest, EmptyRequestDestinationOption::kUseFiveCharEmptyString);
+    destinations.push_back(result);
+  }
+  return base::JoinString(destinations, ",");
 }
 
 }  // namespace
@@ -244,7 +257,7 @@ class SharedDictionaryManagerOnDisk::MismatchingEntryDeletionTask
     }
     disk_cache::ScopedEntryPtr entry(result.ReleaseEntry());
     // 5) Get the disk cache key token of the entry.
-    absl::optional<base::UnguessableToken> token =
+    std::optional<base::UnguessableToken> token =
         DeserializeToUnguessableToken(entry->GetKey());
     if (!token) {
       // 6) If the disk cache entry key is not a valid token, deletes the entry.
@@ -535,7 +548,9 @@ void SharedDictionaryManagerOnDisk::GetSharedDictionaryInfo(
               return;
             }
             for (auto& info : result.value()) {
-              dictionaries.push_back(ToMojoSharedDictionaryInfo(info));
+              dictionaries.push_back(ToMojoSharedDictionaryInfo(
+                  SharedDictionaryStorageOnDisk::WrappedDictionaryInfo(
+                      info, /*matcher=*/nullptr)));
             }
             std::move(callback).Run(std::move(dictionaries));
           },
@@ -562,9 +577,12 @@ scoped_refptr<SharedDictionaryWriter>
 SharedDictionaryManagerOnDisk::CreateWriter(
     const net::SharedDictionaryIsolationKey& isolation_key,
     const GURL& url,
+    base::Time last_fetch_time,
     base::Time response_time,
     base::TimeDelta expiration,
     const std::string& match,
+    const std::set<mojom::RequestDestination>& match_dest,
+    const std::string& id,
     base::OnceCallback<void(net::SharedDictionaryInfo)> callback) {
   const base::UnguessableToken disk_cache_key_token =
       base::UnguessableToken::Create();
@@ -573,8 +591,9 @@ SharedDictionaryManagerOnDisk::CreateWriter(
       disk_cache_key_token,
       base::BindOnce(
           &SharedDictionaryManagerOnDisk::OnDictionaryWrittenInDiskCache,
-          weak_factory_.GetWeakPtr(), isolation_key, url, response_time,
-          expiration, match, disk_cache_key_token, std::move(callback)),
+          weak_factory_.GetWeakPtr(), isolation_key, url, last_fetch_time,
+          response_time, expiration, match, match_dest, id,
+          disk_cache_key_token, std::move(callback)),
       disk_cache_.GetWeakPtr());
   writer->Initialize();
   return writer;
@@ -583,9 +602,12 @@ SharedDictionaryManagerOnDisk::CreateWriter(
 void SharedDictionaryManagerOnDisk::OnDictionaryWrittenInDiskCache(
     const net::SharedDictionaryIsolationKey& isolation_key,
     const GURL& url,
+    base::Time last_fetch_time,
     base::Time response_time,
     base::TimeDelta expiration,
     const std::string& match,
+    const std::set<mojom::RequestDestination>& match_dest,
+    const std::string& id,
     const base::UnguessableToken& disk_cache_key_token,
     base::OnceCallback<void(net::SharedDictionaryInfo)> callback,
     SharedDictionaryWriterOnDisk::Result result,
@@ -601,10 +623,11 @@ void SharedDictionaryManagerOnDisk::OnDictionaryWrittenInDiskCache(
     return;
   }
   base::Time last_used_time = base::Time::Now();
-  net::SharedDictionaryInfo info(url, response_time, expiration, match,
-                                 last_used_time, size, hash,
-                                 disk_cache_key_token,
-                                 /*primary_key_in_database=*/absl::nullopt);
+  net::SharedDictionaryInfo info(
+      url, last_fetch_time, response_time, expiration, match,
+      ToCommaSeparatedString(match_dest), id, last_used_time, size, hash,
+      disk_cache_key_token,
+      /*primary_key_in_database=*/std::nullopt);
   metadata_store_.RegisterDictionary(
       isolation_key, info,
       /*max_size_per_site*/ cache_max_size_ / 2,
@@ -655,6 +678,16 @@ void SharedDictionaryManagerOnDisk::OnDictionaryWrittenInDatabase(
     return;
   }
   MaybePostCacheEvictionTask();
+}
+
+void SharedDictionaryManagerOnDisk::UpdateDictionaryLastFetchTime(
+    net::SharedDictionaryInfo& info,
+    base::Time last_fetch_time) {
+  info.set_last_fetch_time(last_fetch_time);
+  CHECK(info.primary_key_in_database());
+  metadata_store_.UpdateDictionaryLastFetchTime(
+      *info.primary_key_in_database(), info.last_fetch_time(),
+      base::BindOnce([](net::SQLitePersistentSharedDictionaryStore::Error) {}));
 }
 
 void SharedDictionaryManagerOnDisk::UpdateDictionaryLastUsedTime(

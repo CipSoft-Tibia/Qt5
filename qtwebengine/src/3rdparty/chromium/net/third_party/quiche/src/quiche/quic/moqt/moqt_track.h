@@ -9,72 +9,16 @@
 #include <optional>
 
 #include "absl/strings/string_view.h"
+#include "quiche/quic/core/quic_time.h"
 #include "quiche/quic/moqt/moqt_messages.h"
-#include "quiche/quic/moqt/moqt_subscribe_windows.h"
+#include "quiche/quic/moqt/moqt_priority.h"
+#include "quiche/common/quiche_callbacks.h"
 
 namespace moqt {
 
-// A track to which the peer might subscribe.
-class LocalTrack {
- public:
-  class Visitor {
-   public:
-    virtual ~Visitor() = default;
-
-    // Requests that application re-publish objects from {start_group,
-    // start_object} to the latest object. If the return value is nullopt, the
-    // subscribe is valid and the application will deliver the object and
-    // the session will send SUBSCRIBE_OK. If the return has a value, the value
-    // is the error message (the session will send SUBSCRIBE_ERROR). Via this
-    // API, the application decides if a partially fulfillable
-    // SUBSCRIBE_REQUEST results in an error or not.
-    virtual std::optional<absl::string_view> OnSubscribeRequestForPast(
-        const SubscribeWindow& window) = 0;
-  };
-  // |visitor| must not be nullptr.
-  LocalTrack(const FullTrackName& full_track_name, uint64_t track_alias,
-             Visitor* visitor)
-      : full_track_name_(full_track_name),
-        track_alias_(track_alias),
-        visitor_(visitor) {}
-  // Creates a LocalTrack that does not start at sequence (0,0)
-  LocalTrack(const FullTrackName& full_track_name, uint64_t track_alias,
-             Visitor* visitor, FullSequence next_sequence)
-      : full_track_name_(full_track_name),
-        track_alias_(track_alias),
-        next_sequence_(next_sequence),
-        visitor_(visitor) {}
-
-  const FullTrackName& full_track_name() const { return full_track_name_; }
-
-  uint64_t track_alias() const { return track_alias_; }
-
-  Visitor* visitor() { return visitor_; }
-
-  bool ShouldSend(uint64_t group, uint64_t object) const {
-    return windows_.SequenceIsSubscribed(group, object);
-  }
-
-  void AddWindow(SubscribeWindow window) { windows_.AddWindow(window); }
-
-  // Returns the largest observed sequence, but increments the object sequence
-  // by one.
-  const FullSequence& next_sequence() const { return next_sequence_; }
-
-  FullSequence& next_sequence_mutable() { return next_sequence_; }
-
-  bool HasSubscriber() const { return !windows_.IsEmpty(); }
-
- private:
-  // This only needs to track subscriptions to current and future objects;
-  // requests for objects in the past are forwarded to the application.
-  const FullTrackName full_track_name_;
-  const uint64_t track_alias_;
-  // The sequence numbers from this track to which the peer is subscribed.
-  MoqtSubscribeWindows windows_;
-  FullSequence next_sequence_ = {0, 0};
-  Visitor* visitor_;
-};
+using MoqtObjectAckFunction =
+    quiche::MultiUseCallback<void(uint64_t group_id, uint64_t object_id,
+                                  quic::QuicTimeDelta delta_from_deadline)>;
 
 // A track on the peer to which the session has subscribed.
 class RemoteTrack {
@@ -82,35 +26,50 @@ class RemoteTrack {
   class Visitor {
    public:
     virtual ~Visitor() = default;
-    // Called when the session receives a response to the SUBSCRIBE_REQUEST.
+    // Called when the session receives a response to the SUBSCRIBE, unless it's
+    // a SUBSCRIBE_ERROR with a new track_alias. In that case, the session will
+    // automatically retry.
     virtual void OnReply(
         const FullTrackName& full_track_name,
         std::optional<absl::string_view> error_reason_phrase) = 0;
-    virtual void OnObjectFragment(const FullTrackName& full_track_name,
-                                  uint32_t stream_id, uint64_t group_sequence,
-                                  uint64_t object_sequence,
-                                  uint64_t object_send_order,
-                                  absl::string_view object,
-                                  bool end_of_message) = 0;
+    // Called when the subscription process is far enough that it is possible to
+    // send OBJECT_ACK messages; provides a callback to do so. The callback is
+    // valid for as long as the session is valid.
+    virtual void OnCanAckObjects(MoqtObjectAckFunction ack_function) = 0;
+    // Called when an object fragment (or an entire object) is received.
+    virtual void OnObjectFragment(
+        const FullTrackName& full_track_name, uint64_t group_sequence,
+        uint64_t object_sequence, MoqtPriority publisher_priority,
+        MoqtObjectStatus object_status,
+        MoqtForwardingPreference forwarding_preference,
+        absl::string_view object, bool end_of_message) = 0;
     // TODO(martinduke): Add final sequence numbers
   };
-  RemoteTrack(const FullTrackName& full_track_name, Visitor* visitor)
-      : full_track_name_(full_track_name), visitor_(visitor) {}
+  RemoteTrack(const FullTrackName& full_track_name, uint64_t track_alias,
+              Visitor* visitor)
+      : full_track_name_(full_track_name),
+        track_alias_(track_alias),
+        visitor_(visitor) {}
 
   const FullTrackName& full_track_name() { return full_track_name_; }
 
-  std::optional<uint64_t> track_alias() const { return track_alias_; }
+  uint64_t track_alias() const { return track_alias_; }
 
   Visitor* visitor() { return visitor_; }
 
-  void set_track_alias(uint64_t track_alias) { track_alias_ = track_alias; }
+  // When called while processing the first object in the track, sets the
+  // forwarding preference to the value indicated by the incoming encoding.
+  // Otherwise, returns true if the incoming object does not violate the rule
+  // that the preference is consistent.
+  bool CheckForwardingPreference(MoqtForwardingPreference preference);
 
  private:
   // TODO: There is no accounting for the number of outstanding subscribes,
   // because we can't match track names to individual subscribes.
-  FullTrackName full_track_name_;
-  std::optional<uint64_t> track_alias_;
+  const FullTrackName full_track_name_;
+  const uint64_t track_alias_;
   Visitor* visitor_;
+  std::optional<MoqtForwardingPreference> forwarding_preference_;
 };
 
 }  // namespace moqt

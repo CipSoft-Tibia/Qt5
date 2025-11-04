@@ -2,12 +2,17 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#ifdef UNSAFE_BUFFERS_BUILD
+// TODO(crbug.com/342213636): Remove this and spanify to fix the errors.
+#pragma allow_unsafe_buffers
+#endif
+
 #include "content/services/isolated_xr_device/xr_test_hook_wrapper.h"
 #include "base/task/single_thread_task_runner.h"
 
 namespace device {
 
-// TODO(https://crbug.com/891832): Remove these as conversion functions as part
+// TODO(crbug.com/41418750): Remove these as conversion functions as part
 // of the switch to only mojom types.
 ControllerRole MojoToDeviceControllerRole(
     device_test::mojom::ControllerRole role) {

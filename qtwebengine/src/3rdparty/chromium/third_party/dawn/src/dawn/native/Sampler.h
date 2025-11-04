@@ -58,6 +58,7 @@ class SamplerBase : public ApiObjectBase,
 
     bool IsComparison() const;
     bool IsFiltering() const;
+    bool IsYCbCr() const;
 
     // Functions necessary for the unordered_set<SamplerBase*>-based cache.
     size_t ComputeContentHash() override;
@@ -70,6 +71,12 @@ class SamplerBase : public ApiObjectBase,
 
   protected:
     void DestroyImpl() override;
+
+    // Valid to call only if `IsYCbCr()` is true.
+    YCbCrVkDescriptor GetYCbCrVkDescriptor() {
+        DAWN_ASSERT(IsYCbCr());
+        return mYCbCrVkDescriptor;
+    }
 
   private:
     SamplerBase(DeviceBase* device, ObjectBase::ErrorTag tag, const char* label);
@@ -85,6 +92,8 @@ class SamplerBase : public ApiObjectBase,
     float mLodMaxClamp;
     wgpu::CompareFunction mCompareFunction;
     uint16_t mMaxAnisotropy;
+    bool mIsYCbCr = false;
+    YCbCrVkDescriptor mYCbCrVkDescriptor = {};
 };
 
 }  // namespace dawn::native

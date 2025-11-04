@@ -32,6 +32,10 @@ Item {
         });
     }
 
+    function selectLastPreviewSource() {
+        effectPreviewToolbar.selectLastPreviewSource();
+    }
+
     clip: true
 
     Image {

@@ -6,11 +6,13 @@
 #define COMPONENTS_SEGMENTATION_PLATFORM_INTERNAL_DATABASE_STORAGE_SERVICE_H_
 
 #include <memory>
+#include <optional>
 
 #include "base/check.h"
 #include "base/containers/flat_set.h"
 #include "base/functional/callback.h"
 #include "base/memory/raw_ptr.h"
+#include "base/memory/weak_ptr.h"
 #include "components/leveldb_proto/public/proto_database.h"
 #include "components/segmentation_platform/internal/database/cached_result_provider.h"
 #include "components/segmentation_platform/internal/database/cached_result_writer.h"
@@ -19,7 +21,6 @@
 #include "components/segmentation_platform/internal/execution/model_manager.h"
 #include "components/segmentation_platform/internal/execution/model_manager_impl.h"
 #include "components/segmentation_platform/public/proto/segmentation_platform.pb.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 
 class PrefService;
 
@@ -77,6 +78,7 @@ class StorageService {
       std::vector<std::unique_ptr<Config>> configs,
       ModelProviderFactory* model_provider_factory,
       PrefService* profile_prefs,
+      const std::string& profile_id,
       ModelManager::SegmentationModelUpdatedCallback model_updated_callback);
 
   // For tests:
@@ -93,6 +95,7 @@ class StorageService {
       std::vector<std::unique_ptr<Config>> configs,
       ModelProviderFactory* model_provider_factory,
       PrefService* profile_prefs,
+      const std::string& profile_id,
       ModelManager::SegmentationModelUpdatedCallback model_updated_callback);
 
   // For tests:
@@ -147,6 +150,8 @@ class StorageService {
 
   UkmDataManager* ukm_data_manager() { return ukm_data_manager_; }
 
+  const std::string& profile_id() const { return profile_id_; }
+
   ClientResultPrefs* client_result_prefs() {
     return client_result_prefs_.get();
   }
@@ -159,6 +164,14 @@ class StorageService {
       std::unique_ptr<CachedResultProvider> provider) {
     cached_result_provider_ = std::move(provider);
   }
+  void set_profile_id_for_testing(const std::string& profile_id) {
+    profile_id_ = profile_id;
+  }
+
+  // Get a WeakPtr to the service. Feature processors are destroyed after
+  // service sometimes due to posted tasks. WeakPtr is useful to refer to the
+  // service.
+  base::WeakPtr<StorageService> GetWeakPtr();
 
  private:
   void OnSegmentInfoDatabaseInitialized(bool success);
@@ -192,13 +205,16 @@ class StorageService {
   // from the manager.
   raw_ptr<UkmDataManager> ukm_data_manager_;
 
+  // The profile ID of the current profile, used to query the UKM database.
+  std::string profile_id_;
+
   // Database maintenance.
   std::unique_ptr<DatabaseMaintenanceImpl> database_maintenance_;
 
   // Database initialization statuses.
-  absl::optional<bool> segment_info_database_initialized_;
-  absl::optional<bool> signal_database_initialized_;
-  absl::optional<bool> signal_storage_config_initialized_;
+  std::optional<bool> segment_info_database_initialized_;
+  std::optional<bool> signal_database_initialized_;
+  std::optional<bool> signal_storage_config_initialized_;
   SuccessCallback init_callback_;
 
   base::WeakPtrFactory<StorageService> weak_ptr_factory_{this};

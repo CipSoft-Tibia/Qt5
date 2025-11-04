@@ -28,6 +28,7 @@
 #include "config_components.h"
 
 #include "libavutil/avassert.h"
+#include "libavutil/mem.h"
 #include "libavutil/pixdesc.h"
 #include "libavutil/timecode.h"
 #include "decode.h"
@@ -387,7 +388,6 @@ int ff_h264_update_thread_context(AVCodecContext *dst,
 
     h->width_from_caller    = h1->width_from_caller;
     h->height_from_caller   = h1->height_from_caller;
-    h->coded_picture_number = h1->coded_picture_number;
     h->first_field          = h1->first_field;
     h->picture_structure    = h1->picture_structure;
     h->mb_aff_frame         = h1->mb_aff_frame;
@@ -482,7 +482,7 @@ static int h264_frame_start(H264Context *h)
 
     if (!ff_thread_can_start_frame(h->avctx)) {
         av_log(h->avctx, AV_LOG_ERROR, "Attempt to start a frame outside SETUP state\n");
-        return -1;
+        return AVERROR_BUG;
     }
 
     release_unused_pictures(h, 1);
@@ -496,11 +496,6 @@ static int h264_frame_start(H264Context *h)
     pic = &h->DPB[i];
 
     pic->reference              = h->droppable ? 0 : h->picture_structure;
-#if FF_API_FRAME_PICTURE_NUMBER
-FF_DISABLE_DEPRECATION_WARNINGS
-    pic->f->coded_picture_number = h->coded_picture_number++;
-FF_ENABLE_DEPRECATION_WARNINGS
-#endif
     pic->field_picture          = h->picture_structure != PICT_FRAME;
     pic->frame_num               = h->poc.frame_num;
     /*
@@ -521,7 +516,10 @@ FF_ENABLE_DEPRECATION_WARNINGS
     pic->f->crop_top    = h->crop_top;
     pic->f->crop_bottom = h->crop_bottom;
 
-    pic->needs_fg = h->sei.common.film_grain_characteristics.present && !h->avctx->hwaccel &&
+    pic->needs_fg =
+        h->sei.common.film_grain_characteristics &&
+        h->sei.common.film_grain_characteristics->present &&
+        !h->avctx->hwaccel &&
         !(h->avctx->export_side_data & AV_CODEC_EXPORT_DATA_FILM_GRAIN);
 
     if ((ret = alloc_picture(h, pic)) < 0)
@@ -784,6 +782,7 @@ static enum AVPixelFormat get_pixel_format(H264Context *h, int force_callback)
 {
 #define HWACCEL_MAX (CONFIG_H264_DXVA2_HWACCEL + \
                      (CONFIG_H264_D3D11VA_HWACCEL * 2) + \
+                     CONFIG_H264_D3D12VA_HWACCEL + \
                      CONFIG_H264_NVDEC_HWACCEL + \
                      CONFIG_H264_VAAPI_HWACCEL + \
                      CONFIG_H264_VIDEOTOOLBOX_HWACCEL + \
@@ -886,6 +885,9 @@ static enum AVPixelFormat get_pixel_format(H264Context *h, int force_callback)
 #if CONFIG_H264_D3D11VA_HWACCEL
             *fmt++ = AV_PIX_FMT_D3D11VA_VLD;
             *fmt++ = AV_PIX_FMT_D3D11;
+#endif
+#if CONFIG_H264_D3D12VA_HWACCEL
+            *fmt++ = AV_PIX_FMT_D3D12;
 #endif
 #if CONFIG_H264_VAAPI_HWACCEL
             *fmt++ = AV_PIX_FMT_VAAPI;
@@ -1253,26 +1255,27 @@ static int h264_export_frame_props(H264Context *h)
     if (h->sei.picture_timing.timecode_cnt > 0) {
         uint32_t *tc_sd;
         char tcbuf[AV_TIMECODE_STR_SIZE];
+        AVFrameSideData *tcside;
+        ret = ff_frame_new_side_data(h->avctx, out, AV_FRAME_DATA_S12M_TIMECODE,
+                                     sizeof(uint32_t)*4, &tcside);
+        if (ret < 0)
+            return ret;
 
-        AVFrameSideData *tcside = av_frame_new_side_data(out,
-                                                         AV_FRAME_DATA_S12M_TIMECODE,
-                                                         sizeof(uint32_t)*4);
-        if (!tcside)
-            return AVERROR(ENOMEM);
+        if (tcside) {
+            tc_sd = (uint32_t*)tcside->data;
+            tc_sd[0] = h->sei.picture_timing.timecode_cnt;
 
-        tc_sd = (uint32_t*)tcside->data;
-        tc_sd[0] = h->sei.picture_timing.timecode_cnt;
+            for (int i = 0; i < tc_sd[0]; i++) {
+                int drop = h->sei.picture_timing.timecode[i].dropframe;
+                int   hh = h->sei.picture_timing.timecode[i].hours;
+                int   mm = h->sei.picture_timing.timecode[i].minutes;
+                int   ss = h->sei.picture_timing.timecode[i].seconds;
+                int   ff = h->sei.picture_timing.timecode[i].frame;
 
-        for (int i = 0; i < tc_sd[0]; i++) {
-            int drop = h->sei.picture_timing.timecode[i].dropframe;
-            int   hh = h->sei.picture_timing.timecode[i].hours;
-            int   mm = h->sei.picture_timing.timecode[i].minutes;
-            int   ss = h->sei.picture_timing.timecode[i].seconds;
-            int   ff = h->sei.picture_timing.timecode[i].frame;
-
-            tc_sd[i + 1] = av_timecode_get_smpte(h->avctx->framerate, drop, hh, mm, ss, ff);
-            av_timecode_make_smpte_tc_string2(tcbuf, h->avctx->framerate, tc_sd[i + 1], 0, 0);
-            av_dict_set(&out->metadata, "timecode", tcbuf, 0);
+                tc_sd[i + 1] = av_timecode_get_smpte(h->avctx->framerate, drop, hh, mm, ss, ff);
+                av_timecode_make_smpte_tc_string2(tcbuf, h->avctx->framerate, tc_sd[i + 1], 0, 0);
+                av_dict_set(&out->metadata, "timecode", tcbuf, 0);
+            }
         }
         h->sei.picture_timing.timecode_cnt = 0;
     }
@@ -1396,7 +1399,7 @@ static int h264_field_start(H264Context *h, const H264SliceContext *sl,
 
     sps = h->ps.sps;
 
-    if (sps && sps->bitstream_restriction_flag &&
+    if (sps->bitstream_restriction_flag &&
         h->avctx->has_b_frames < sps->num_reorder_frames) {
         h->avctx->has_b_frames = sps->num_reorder_frames;
     }

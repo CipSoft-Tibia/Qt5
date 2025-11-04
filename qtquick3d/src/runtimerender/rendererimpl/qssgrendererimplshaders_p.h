@@ -51,7 +51,7 @@ public:
     QSSGRhiShaderPipelinePtr getRhiSkyBoxShader(QSSGRenderLayer::TonemapMode tonemapMode, bool isRGBE, int viewCount);
     QSSGRhiShaderPipelinePtr getRhiSupersampleResolveShader(int viewCount);
     QSSGRhiShaderPipelinePtr getRhiProgressiveAAShader();
-    QSSGRhiShaderPipelinePtr getRhiParticleShader(QSSGRenderParticles::FeatureLevel featureLevel, int viewCount);
+    QSSGRhiShaderPipelinePtr getRhiParticleShader(QSSGRenderParticles::FeatureLevel featureLevel, int viewCount, QSSGRenderLayer::OITMethod method);
     QSSGRhiShaderPipelinePtr getRhiSimpleQuadShader(int viewCount);
     QSSGRhiShaderPipelinePtr getRhiLightmapUVRasterizationShader(LightmapUVRasterizationShaderMode mode);
     QSSGRhiShaderPipelinePtr getRhiLightmapDilateShader();
@@ -59,6 +59,8 @@ public:
     QSSGRhiShaderPipelinePtr getRhiReflectionprobePreFilterShader();
     QSSGRhiShaderPipelinePtr getRhienvironmentmapPreFilterShader(bool isRGBE);
     QSSGRhiShaderPipelinePtr getRhiEnvironmentmapShader();
+    QSSGRhiShaderPipelinePtr getRhiClearMRTShader();
+    QSSGRhiShaderPipelinePtr getRhiOitCompositeShader(QSSGRenderLayer::OITMethod method, bool multisample);
 
 private:
     QSSGShaderCache &m_shaderCache; // We're owned by the shadercache
@@ -73,7 +75,8 @@ private:
     QSSGRhiShaderPipelinePtr getBuiltinRhiShader(const QByteArray &name,
                                                 BuiltinShader &storage,
                                                 int viewCount = 1);
-
+    static constexpr int particleShaderCount = 2;
+    static constexpr int compositeShaderCount = 2;
     struct {
         BuiltinShader cubemapShadowBlurXRhiShader;
         BuiltinShader cubemapShadowBlurYRhiShader;
@@ -97,18 +100,21 @@ private:
         BuiltinShader environmentmapPreFilterShader[2];
         BuiltinShader environmentmapShader;
 
-        BuiltinShader particlesNoLightingSimpleRhiShader;
-        BuiltinShader particlesNoLightingMappedRhiShader;
-        BuiltinShader particlesNoLightingAnimatedRhiShader;
-        BuiltinShader particlesVLightingSimpleRhiShader;
-        BuiltinShader particlesVLightingMappedRhiShader;
-        BuiltinShader particlesVLightingAnimatedRhiShader;
-        BuiltinShader lineParticlesRhiShader;
-        BuiltinShader lineParticlesMappedRhiShader;
-        BuiltinShader lineParticlesAnimatedRhiShader;
-        BuiltinShader lineParticlesVLightRhiShader;
-        BuiltinShader lineParticlesMappedVLightRhiShader;
-        BuiltinShader lineParticlesAnimatedVLightRhiShader;
+        BuiltinShader particlesNoLightingSimpleRhiShader[particleShaderCount];
+        BuiltinShader particlesNoLightingMappedRhiShader[particleShaderCount];
+        BuiltinShader particlesNoLightingAnimatedRhiShader[particleShaderCount];
+        BuiltinShader particlesVLightingSimpleRhiShader[particleShaderCount];
+        BuiltinShader particlesVLightingMappedRhiShader[particleShaderCount];
+        BuiltinShader particlesVLightingAnimatedRhiShader[particleShaderCount];
+        BuiltinShader lineParticlesRhiShader[particleShaderCount];
+        BuiltinShader lineParticlesMappedRhiShader[particleShaderCount];
+        BuiltinShader lineParticlesAnimatedRhiShader[particleShaderCount];
+        BuiltinShader lineParticlesVLightRhiShader[particleShaderCount];
+        BuiltinShader lineParticlesMappedVLightRhiShader[particleShaderCount];
+        BuiltinShader lineParticlesAnimatedVLightRhiShader[particleShaderCount];
+
+        BuiltinShader clearMRTShader;
+        BuiltinShader oitCompositeShader[compositeShaderCount];
     } m_cache;
 };
 

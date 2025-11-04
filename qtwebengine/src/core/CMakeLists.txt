@@ -1,10 +1,10 @@
 # Copyright (C) 2022 The Qt Company Ltd.
 # SPDX-License-Identifier: BSD-3-Clause
 
-cmake_minimum_required(VERSION 3.19)
+cmake_minimum_required(VERSION ${QT_CONFIGURE_CHECK_cmake_version})
 
-find_package(Ninja 1.7.2 REQUIRED)
-find_package(Nodejs 14.19 REQUIRED)
+find_package(Ninja ${QT_CONFIGURE_CHECK_ninja_version} REQUIRED)
+find_package(Nodejs ${QT_CONFIGURE_CHECK_nodejs_version} REQUIRED)
 find_package(Perl)
 find_package(PkgConfig)
 if(PkgConfig_FOUND)
@@ -21,7 +21,7 @@ add_subdirectory(tools/qwebengine_convert_dict)
 #   TOOLCHAIN SETUP
 ##
 
-if(LINUX)
+if(LINUX OR WIN32)
     setup_toolchains()
 endif()
 
@@ -195,50 +195,48 @@ foreach(arch ${archs})
                 authenticator_request_dialog_controller.cpp authenticator_request_dialog_controller.h authenticator_request_dialog_controller_p.h
         )
 
+        extend_gn_target(${buildGn} CONDITION config STREQUAL "Debug"
+            DEFINES
+                QT_USE_DEBUG_RESOURCES
+        )
+
         extend_gn_target(${buildGn} CONDITION QT_FEATURE_accessibility
             SOURCES
                 accessibility_activation_observer.cpp accessibility_activation_observer.h
         )
 
-        extend_gn_target(${buildGn} CONDITION LINUX OR WIN32
-            SOURCES
-                compositor/content_gpu_client_qt.cpp compositor/content_gpu_client_qt.h
-                ozone/gl_context_qt.cpp ozone/gl_context_qt.h
-                ozone/gl_share_context_qt.cpp ozone/gl_share_context_qt.h
-                ozone/gl_surface_qt.cpp ozone/gl_surface_qt.h
-        )
-
-        extend_gn_target(${buildGn} CONDITION WIN32
-            SOURCES
-                ozone/gl_surface_wgl_qt.cpp ozone/gl_surface_wgl_qt.h
-        )
-
         extend_gn_target(${buildGn} CONDITION LINUX
             SOURCES
                 ozone/gl_ozone_angle_qt.cpp ozone/gl_ozone_angle_qt.h
-                ozone/gl_ozone_egl_qt.cpp ozone/gl_ozone_egl_qt.h
-                ozone/gl_surface_egl_qt.cpp ozone/gl_surface_egl_qt.h
+                ozone/ozone_util_qt.cpp ozone/ozone_util_qt.h
                 ozone/platform_window_qt.cpp ozone/platform_window_qt.h
                 ozone/surface_factory_qt.cpp ozone/surface_factory_qt.h
         )
 
-        extend_gn_target(${buildGn} CONDITION QT_FEATURE_webengine_ozone_x11
+        extend_gn_target(${buildGn} CONDITION LINUX AND QT_FEATURE_opengl
             SOURCES
-                ozone/gl_ozone_glx_qt.cpp ozone/gl_ozone_glx_qt.h
-                ozone/gl_surface_glx_qt.cpp ozone/gl_surface_glx_qt.h
+                ozone/gl_helper.cpp ozone/gl_helper.h
+        )
+
+        extend_gn_target(${buildGn} CONDITION LINUX AND QT_FEATURE_opengl AND QT_FEATURE_webengine_ozone_x11 AND QT_FEATURE_xcb_glx_plugin
+            SOURCES
+                ozone/glx_helper.cpp ozone/glx_helper.h
+        )
+
+        extend_gn_target(${buildGn} CONDITION LINUX AND QT_FEATURE_opengl AND QT_FEATURE_egl
+            SOURCES
+                ozone/egl_helper.cpp ozone/egl_helper.h
+        )
+
+        extend_gn_target(${buildGn} CONDITION QT_FEATURE_opengl
+            SOURCES
+                compositor/native_skia_output_device_opengl.cpp compositor/native_skia_output_device_opengl.h
         )
 
         extend_gn_target(${buildGn} CONDITION QT_FEATURE_webengine_vulkan
             SOURCES
                 compositor/native_skia_output_device_vulkan.cpp compositor/native_skia_output_device_vulkan.h
                 compositor/vulkan_implementation_qt.cpp compositor/vulkan_implementation_qt.h
-        )
-
-        extend_gn_target(${buildGn} CONDITION QT_FEATURE_opengl
-            SOURCES
-                compositor/compositor_resource_fence.cpp compositor/compositor_resource_fence.h
-                compositor/display_skia_output_device.cpp compositor/display_skia_output_device.h
-                compositor/native_skia_output_device_opengl.cpp compositor/native_skia_output_device_opengl.h
         )
 
         extend_gn_target(${buildGn} CONDITION MACOS
@@ -290,9 +288,8 @@ foreach(arch ${archs})
                 extensions/mime_handler_view_guest_delegate_qt.cpp extensions/mime_handler_view_guest_delegate_qt.h
                 extensions/plugin_service_filter_qt.cpp extensions/plugin_service_filter_qt.h
                 net/plugin_response_interceptor_url_loader_throttle.cpp net/plugin_response_interceptor_url_loader_throttle.h
-                renderer/extensions/extensions_dispatcher_delegate_qt.cpp renderer/extensions/extensions_dispatcher_delegate_qt.h
+                renderer/extensions/extensions_renderer_api_provider_qt.cpp renderer/extensions/extensions_renderer_api_provider_qt.h
                 renderer/extensions/extensions_renderer_client_qt.cpp renderer/extensions/extensions_renderer_client_qt.h
-                renderer/extensions/renderer_permissions_policy_delegate_qt.cpp renderer/extensions/renderer_permissions_policy_delegate_qt.h
                 renderer/extensions/resource_request_policy_qt.cpp renderer/extensions/resource_request_policy_qt.h
         )
 
@@ -307,6 +304,11 @@ foreach(arch ${archs})
             SOURCES
                 clipboard_util_win.cpp
                 compositor/native_skia_output_device_direct3d11.cpp compositor/native_skia_output_device_direct3d11.h
+        )
+
+        extend_gn_target(${buildGn} CONDITION WIN32 AND QT_FEATURE_opengl
+            SOURCES
+                compositor/wgl_helper.cpp compositor/wgl_helper.h
         )
 
         ##
@@ -325,11 +327,17 @@ foreach(arch ${archs})
             qtwebengine_target="${buildDir}/${config}/${arch}:QtWebEngineCore"
             build_dawn_tests=false
             build_with_tflite_lib=false
+            is_qtwebengine=true
+            is_qtpdf=false
+            chrome_pgo_phase=0
+            disable_fieldtrial_testing_config=true
             enable_background_contents=false
             enable_background_mode=false
+            enable_bluetooth_emulation=false
             enable_ipc_fuzzer=false
             enable_ipc_logging=false
             enable_java_templates=false
+            enable_library_cdms=true
             enable_media_remoting=false
             enable_message_center=false
             enable_nacl=false
@@ -342,37 +350,36 @@ foreach(arch ${archs})
             enable_supervised_users=false
             enable_swiftshader=false
             enable_swiftshader_vulkan=false
+            enable_nocompile_tests=false
             angle_enable_swiftshader=false
             dawn_use_swiftshader=false
+            pdf_enable_fontations=false
             enable_vr=false
             enable_web_speech=false
             enable_widevine=true
-            enable_library_cdms=true
+            enable_bound_session_credentials=false
             fatal_linker_warnings=false
             has_native_accessibility=false
-            safe_browsing_mode=0
-            toolkit_views=false
-            chrome_pgo_phase=0
             optimize_webui=false
+            safe_browsing_mode=0
             strip_absolute_paths_from_debug_symbols=false
+            toolkit_views=false
             pdf_use_skia=true
             use_cups=false
             use_dawn=false
             skia_use_dawn=false
+            use_static_angle=true
             devtools_fast_bundle=false
             devtools_skip_typecheck=false
-            use_static_angle=true
-            use_perfetto_client_library=false
             content_enable_legacy_ipc=true
-            enable_extensions_legacy_ipc=true
-            enable_bound_session_credentials=false
+            headless_use_policy=false
         )
         extend_gn_list(gnArgArg
             ARGS use_v8_context_snapshot v8_use_external_startup_data
             CONDITION QT_FEATURE_webengine_v8_context_snapshot
         )
         extend_gn_list(gnArgArg
-            ARGS enable_printing enable_basic_printing enable_print_preview enable_pdf
+            ARGS enable_printing enable_print_preview enable_pdf
             CONDITION QT_FEATURE_webengine_printing_and_pdf
         )
         extend_gn_list(gnArgArg
@@ -445,7 +452,6 @@ foreach(arch ${archs})
                 use_bundled_fontconfig=false
                 use_glib=false
                 use_bluez=false
-                use_udev=true
                 is_cfi=false
                 use_ozone=true
                 ozone_auto_platforms=false
@@ -521,6 +527,10 @@ foreach(arch ${archs})
                 ARGS rtc_use_x11
                 CONDITION QT_FEATURE_webengine_ozone_x11 AND QT_FEATURE_webengine_webrtc
             )
+            extend_gn_list(gnArgArg
+                ARGS use_udev
+                CONDITION QT_FEATURE_webengine_system_libudev
+            )
 
             if(QT_FEATURE_webengine_kerberos)
                 list(APPEND gnArgArg
@@ -528,11 +538,24 @@ foreach(arch ${archs})
                 )
             endif()
             get_gn_arch(cpu ${TEST_architecture_arch})
-            if(CMAKE_CROSSCOMPILING AND cpu STREQUAL "arm")
+
+            if(cpu STREQUAL "arm" AND
+               CMAKE_CXX_COMPILER_ID STREQUAL "GNU" AND
+               CMAKE_CXX_COMPILER_VERSION VERSION_LESS "11.0.0")
+                list(APPEND gnArgArg libyuv_use_neon=false)
+                #TODO check if libyuv really uses udot in case of arm32
+            endif()
+            if(cpu STREQUAL "arm64" AND NOT QT_FEATURE_webengine_arm64_udot_support)
+                list(APPEND gnArgArg libyuv_use_neon=false)
+            endif()
+            if(cpu STREQUAL "arm")
                 check_thumb(armThumb)
                 if(NOT armThumb AND NOT QT_FEATURE_webengine_system_ffmpeg)
                     list(APPEND gnArgArg media_use_ffmpeg=false use_webaudio_ffmpeg=false)
                 endif()
+                # sme and sve depend on armv9
+                list(APPEND gnArgArg libyuv_use_sme=false
+                                     libyuv_use_sve=false)
             endif()
 
             if(CMAKE_CROSSCOMPILING AND cpu STREQUAL "arm64")
@@ -542,6 +565,14 @@ foreach(arch ${archs})
                         v8_enable_sandbox=false
                         arm_control_flow_integrity="none"
                     )
+                endif()
+            endif()
+            if(cpu STREQUAL "arm64")
+                if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" AND CMAKE_CXX_COMPILER_VERSION VERSION_LESS "14.0.0")
+                    list(APPEND gnArgArg libyuv_use_sme=false)
+                endif()
+                if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" AND CMAKE_CXX_COMPILER_VERSION VERSION_LESS "12.0.0")
+                    list(APPEND gnArgArg libyuv_use_sve=false)
                 endif()
             endif()
             unset(cpu)
@@ -556,7 +587,6 @@ foreach(arch ${archs})
 
         if(WIN32)
             list(APPEND gnArgArg
-                ninja_use_custom_environment_files=false
                 com_init_check_hook_disabled=true
                 heterogeneous_executables=true
             )
@@ -589,8 +619,9 @@ target_include_directories(WebEngineCore PRIVATE
 )
 
 set(stamps QtWebEngineCore.stamp)
+set(dataStampOption "")
 if(QT_FEATURE_webengine_v8_context_snapshot)
-    set(dataStamp obj/tools/v8_context_snapshot/v8_context_snapshot.stamp)
+    set(dataStampOption NINJA_DATA_STAMP obj/tools/v8_context_snapshot/v8_context_snapshot.stamp)
 endif()
 
 add_gn_build_artifacts_to_target(
@@ -601,7 +632,7 @@ add_gn_build_artifacts_to_target(
     BUILDDIR ${buildDir}
     COMPLETE_STATIC FALSE
     NINJA_STAMP QtWebEngineCore.stamp
-    NINJA_DATA_STAMP ${dataStamp}
+    ${dataStampOption}
 )
 add_dependencies(WebEngineCore run_core_NinjaDone)
 if(COIN_BUG_699)
@@ -620,8 +651,10 @@ if(WIN32)
             TARGET QtWebEngineCoreSandbox
             OUTPUT QtWebEngineCoreSandbox.lib
             BUILDDIR ${buildDir}/${config}/${arch}
+            DEPENDS WebEngineCore_sync_headers
             MODULE core
         )
+        qt_webengine_add_gn_target_to_sbom(QtWebEngineCoreSandbox ${buildDir}/${config}/${arch})
         set(sandboxLibraryPath ${buildDir}/${config}/${arch}/QtWebEngineCoreSandbox.lib)
         set_property(TARGET WebEngineCoreSandbox
             PROPERTY IMPORTED_LOCATION_${cfg} ${sandboxLibraryPath}
@@ -669,6 +702,7 @@ if(QT_FEATURE_webenginedriver)
         BUILDDIR ${buildDir}/$<CONFIG>/${arch}
         MODULE core
     )
+    qt_webengine_add_gn_target_to_sbom(webenginedriver_group ${buildDir}/$<CONFIG>/${arch})
     add_custom_target(webenginedriver
         DEPENDS
             ${buildDir}/$<CONFIG>/${arch}/${WEBENGINEDRIVER_EXECUTABLE})

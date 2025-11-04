@@ -8,6 +8,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -27,7 +28,6 @@
 #include "media/formats/mp4/eac3.h"
 #include "media/formats/mp4/fourccs.h"
 #include "media/media_buildflags.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 
 namespace media {
 namespace mp4 {
@@ -94,7 +94,7 @@ struct MEDIA_EXPORT SampleEncryptionEntry {
 
   // Parse SampleEncryptionEntry from |reader|.
   // |iv_size| specifies the size of initialization vector. |has_subsamples|
-  // indicates whether this sample encryption entry constains subsamples.
+  // indicates whether this sample encryption entry contains subsamples.
   // Returns false if parsing fails.
   bool Parse(BufferReader* reader, uint8_t iv_size, bool has_subsamples);
 
@@ -352,8 +352,8 @@ struct MEDIA_EXPORT VideoSampleEntry : Box {
   // When set and found on a Dolby Vision source buffer, `dv_info`
   // will be used to upgrade `video_info` from its backwards
   // compatible codec (e.g., H.264, H.265) to a Dolby Vision codec.
-  absl::optional<CodecProfileLevel> dv_info;
-  absl::optional<gfx::HDRMetadata> hdr_metadata;
+  std::optional<CodecProfileLevel> dv_info;
+  std::optional<gfx::HDRMetadata> hdr_metadata;
 
   bool IsFormatValid() const;
 
@@ -475,7 +475,7 @@ struct MEDIA_EXPORT AudioSampleEntry : Box {
   AC4SpecificBox ac4;
 #endif  // BUILDFLAG(ENABLE_PLATFORM_AC4_AUDIO)
 #if BUILDFLAG(ENABLE_PLATFORM_IAMF_AUDIO)
-  IamfSpecificBox iamf;
+  IamfSpecificBox iacb;
 #endif  // BUILDFLAG(ENABLE_PLATFORM_IAMF_AUDIO)
 };
 

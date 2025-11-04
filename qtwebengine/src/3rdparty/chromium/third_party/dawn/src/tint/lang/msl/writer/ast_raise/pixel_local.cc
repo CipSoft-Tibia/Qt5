@@ -89,26 +89,26 @@ struct PixelLocal::State {
             }
         }
 
-        // Find the single entry point
-        const sem::Function* entry_point = nullptr;
+        /// The pixel local struct
+        Hashset<const sem::Struct*, 1> pixel_local_structs;
+
+        // Find the entry points
         for (auto* fn : src.AST().Functions()) {
-            if (fn->IsEntryPoint()) {
-                if (entry_point != nullptr) {
-                    TINT_ICE() << "PixelLocal transform requires that the SingleEntryPoint "
-                                  "transform has already been run";
-                    return SkipTransform;
+            if (!fn->IsEntryPoint()) {
+                continue;
+            }
+
+            auto* entry_point = sem.Get(fn);
+
+            // Look for a `var<pixel_local>` used by the entry point...
+            for (auto* global : entry_point->TransitivelyReferencedGlobals()) {
+                if (global->AddressSpace() != core::AddressSpace::kPixelLocal) {
+                    continue;
                 }
-                entry_point = sem.Get(fn);
 
-                // Look for a `var<pixel_local>` used by the entry point...
-                for (auto* global : entry_point->TransitivelyReferencedGlobals()) {
-                    if (global->AddressSpace() != core::AddressSpace::kPixelLocal) {
-                        continue;
-                    }
-
-                    // Obtain struct of the pixel local.
-                    auto* pixel_local_str = global->Type()->UnwrapRef()->As<sem::Struct>();
-
+                // Obtain struct of the pixel local.
+                auto* pixel_local_str = global->Type()->UnwrapRef()->As<sem::Struct>();
+                if (pixel_local_structs.Add(pixel_local_str)) {
                     // Add an Color attribute to each member of the pixel_local structure.
                     for (auto* member : pixel_local_str->Members()) {
                         ctx.InsertBack(member->Declaration()->attributes,
@@ -116,12 +116,11 @@ struct PixelLocal::State {
                         ctx.InsertBack(member->Declaration()->attributes,
                                        b.Disable(ast::DisabledValidation::kEntryPointParameter));
                     }
-
-                    TransformEntryPoint(entry_point, global, pixel_local_str);
-                    made_changes = true;
-
-                    break;  // Only a single `var<pixel_local>` can be used by an entry point.
                 }
+
+                TransformEntryPoint(entry_point, global, pixel_local_str);
+                made_changes = true;
+                break;  // Only a single `var<pixel_local>` can be used by an entry point.
             }
         }
 
@@ -218,14 +217,6 @@ struct PixelLocal::State {
                     auto& member_attrs = member->Declaration()->attributes;
                     add_member(member->Type(), ctx.Clone(member_attrs));
                     return_args.Push(b.MemberAccessor(call_result, ctx.Clone(member->Name())));
-                    if (auto* location = ast::GetAttribute<ast::LocationAttribute>(member_attrs)) {
-                        // Remove the @location attribute from the member of the inner function's
-                        // output structure.
-                        // Note: This will break other entry points that share the same output
-                        // structure, however this transform assumes that the SingleEntryPoint
-                        // transform will have already been run.
-                        ctx.Remove(member_attrs, location);
-                    }
                 }
             } else {
                 // The entry point returned a non-structure
@@ -256,10 +247,9 @@ struct PixelLocal::State {
     /// @param field_index the pixel local field index
     uint32_t AttachmentIndex(uint32_t field_index) {
         auto idx = cfg.attachments.Get(field_index);
-        if (TINT_UNLIKELY(!idx)) {
-            b.Diagnostics().add_error(diag::System::Transform,
-                                      "PixelLocal::Config::attachments missing entry for field " +
-                                          std::to_string(field_index));
+        if (DAWN_UNLIKELY(!idx)) {
+            b.Diagnostics().AddError(Source{})
+                << "PixelLocal::Config::attachments missing entry for field " << field_index;
             return 0;
         }
         return *idx;
@@ -276,8 +266,7 @@ ast::transform::Transform::ApplyResult PixelLocal::Apply(const Program& src,
     auto* cfg = inputs.Get<Config>();
     if (!cfg) {
         ProgramBuilder b;
-        b.Diagnostics().add_error(diag::System::Transform,
-                                  "missing transform data for " + std::string(TypeInfo().name));
+        b.Diagnostics().AddError(Source{}) << "missing transform data for " << TypeInfo().name;
         return resolver::Resolve(b);
     }
 

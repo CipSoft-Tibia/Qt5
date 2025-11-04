@@ -17,12 +17,14 @@
 
 #include <QtGui/private/qtguiglobal_p.h>
 #include "QtGui/qfont.h"
+#include "QtCore/qbasictimer.h"
 #include "QtCore/qmap.h"
 #include "QtCore/qhash.h"
 #include "QtCore/qobject.h"
 #include "QtCore/qstringlist.h"
 #include <QtGui/qfontdatabase.h>
 #include "private/qfixed_p.h"
+#include "private/qfontdatabase_p.h"
 
 QT_BEGIN_NAMESPACE
 
@@ -152,8 +154,7 @@ public:
     QAtomicInt ref;
     const int fontCacheId;
 
-    QFontEngine *engines[QChar::ScriptCount];
-
+    QFontEngine *engines[QFontDatabasePrivate::ScriptCount];
 private:
     Q_DISABLE_COPY_MOVE(QFontEngineData)
 };
@@ -288,7 +289,7 @@ private:
     uint current_timestamp;
     bool fast;
     const bool autoClean;
-    int timer_id;
+    QBasicTimer timer;
     const int m_id;
 };
 

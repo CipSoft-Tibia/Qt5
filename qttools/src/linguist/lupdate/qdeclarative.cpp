@@ -96,6 +96,14 @@ protected:
                                       .arg(name));
                     return;
                 }
+                if (auto expr = AST::cast<AST::TemplateLiteral *>(node->arguments->expression)) {
+                    if (expr->next) {
+                        yyMsg(identLineNo)
+                        << qPrintable(QStringLiteral("%1() template strings with "
+                                    "arguments are not supported for translation.\n").arg(name));
+                        return;
+                    }
+                }
 
                 QString source;
                 if (!createString(node->arguments->expression, &source))
@@ -414,7 +422,13 @@ private:
     int lastOffset;
 };
 
-static bool load(Translator &translator, const QString &filename, ConversionData &cd, bool qmlMode)
+enum CodeType {
+    QMLCode,
+    JSCode,
+    MJSCode,
+};
+
+static bool load(Translator &translator, const QString &filename, ConversionData &cd, CodeType mode)
 {
     cd.m_sourceFileName = filename;
     QFile file(filename);
@@ -424,7 +438,7 @@ static bool load(Translator &translator, const QString &filename, ConversionData
     }
 
     QString code;
-    if (!qmlMode) {
+    if (mode != QMLCode) {
         code = QTextStream(&file).readAll();
     } else {
         QTextStream ts(&file);
@@ -435,10 +449,18 @@ static bool load(Translator &translator, const QString &filename, ConversionData
     Parser parser(&driver);
 
     Lexer lexer(&driver);
-    lexer.setCode(code, /*line = */ 1, qmlMode);
+    lexer.setCode(code, /*line = */ 1, mode == QMLCode);
     driver.setLexer(&lexer);
 
-    if (qmlMode ? parser.parse() : parser.parseProgram()) {
+    bool rc;
+    if (mode == QMLCode)
+        rc = parser.parse();
+    else if (mode == JSCode)
+        rc = parser.parseProgram();
+    else
+        rc = parser.parseModule();
+
+    if (rc) {
         FindTrCalls trCalls(&driver, cd);
 
         //find all tr calls in the code
@@ -453,12 +475,17 @@ static bool load(Translator &translator, const QString &filename, ConversionData
 
 bool loadQml(Translator &translator, const QString &filename, ConversionData &cd)
 {
-    return load(translator, filename, cd, /*qmlMode=*/ true);
+    return load(translator, filename, cd, /*qmlMode=*/ QMLCode);
 }
 
 bool loadQScript(Translator &translator, const QString &filename, ConversionData &cd)
 {
-    return load(translator, filename, cd, /*qmlMode=*/ false);
+    return load(translator, filename, cd, /*qmlMode=*/ JSCode);
+}
+
+bool loadJSModule(Translator &translator, const QString &filename, ConversionData &cd)
+{
+    return load(translator, filename, cd, /*qmlMode=*/ MJSCode);
 }
 
 QT_END_NAMESPACE

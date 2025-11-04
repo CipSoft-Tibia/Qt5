@@ -50,7 +50,7 @@
   --network-frame-divider-color: var(--ref-palette-yellow60);
 }
 
-.-theme-with-dark-background {
+.theme-with-dark-background {
   --network-grid-initiator-path-color: var(--ref-palette-green40);
   --network-grid-initiated-path-color: var(--ref-palette-error20);
   --network-grid-from-frame-color: var(--ref-palette-neutral50);
@@ -58,11 +58,11 @@
 }
 
 .network-details-view {
-  background: var(--sys-color-cdt-base);
+  background: var(--app-color-toolbar-background);
 }
 
 .network-details-view-tall-header {
-  border-top: 4px solid var(--sys-color-cdt-base);
+  border-top: 4px solid var(--app-color-toolbar-background);
 }
 
 .network-item-view {

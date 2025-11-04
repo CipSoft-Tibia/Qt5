@@ -81,30 +81,42 @@ private:
 
         QList<int> intValues = tst_qgeosatelliteinfo_intTestValues();
 
-        for (int i=0; i<intValues.size(); i++) {
+        for (int rssi : intValues) {
             QGeoSatelliteInfo info;
-            info.setSignalStrength(intValues[i]);
-            QTest::newRow("signal strength") << info;
+            info.setSignalStrength(rssi);
+            QTest::addRow("signal_strength_%d", rssi) << info;
         }
 
-        for (int i=0; i<intValues.size(); i++) {
+        for (int satId : intValues) {
             QGeoSatelliteInfo info;
-            info.setSatelliteIdentifier(intValues[i]);
-            QTest::newRow("satellite identifier") << info;
+            info.setSatelliteIdentifier(satId);
+            QTest::addRow("satellite_identifier_%d", satId) << info;
         }
 
+        auto satSystemMetaEnum = QMetaEnum::fromType<QGeoSatelliteInfo::SatelliteSystem>();
+        for (auto system : {QGeoSatelliteInfo::GPS, QGeoSatelliteInfo::GLONASS}) {
             QGeoSatelliteInfo info;
-            info.setSatelliteSystem(QGeoSatelliteInfo::GPS);
-            QTest::newRow("satellite system") << info;
-            info.setSatelliteSystem(QGeoSatelliteInfo::GLONASS);
-            QTest::newRow("satellite system") << info;
+            info.setSatelliteSystem(system);
+            QTest::addRow("satellite_system_%s", satSystemMetaEnum.valueToKey(system)) << info;
+        }
 
         QList<QGeoSatelliteInfo::Attribute> attributes = tst_qgeosatelliteinfo_getAttributes();
         QList<qreal> qrealValues = tst_qgeosatelliteinfo_qrealTestValues();
-        for (int i=0; i<attributes.size(); i++) {
-            QTest::newRow(qPrintable(QString("Attribute %1 = %2").arg(attributes[i]).arg(qrealValues[i])))
+        QCOMPARE_GE(qrealValues.size(), attributes.size()); // we need to have enough values
+        auto attributesMetaEnum = QMetaEnum::fromType<QGeoSatelliteInfo::Attribute>();
+        for (qsizetype i = 0; i < attributes.size(); ++i) {
+            QTest::addRow("%s=%g", attributesMetaEnum.valueToKey(attributes[i]), qrealValues[i])
                     << updateWithAttribute(attributes[i], qrealValues[i]);
         }
+    }
+
+    void testIntData()
+    {
+        QTest::addColumn<int>("value");
+
+        QList<int> intValues = tst_qgeosatelliteinfo_intTestValues();
+        for (int val : intValues)
+            QTest::addRow("%d", val) << val;
     }
 
 private slots:
@@ -114,9 +126,8 @@ private slots:
         QCOMPARE(info.signalStrength(), -1);
         QCOMPARE(info.satelliteIdentifier(), -1);
         QCOMPARE(info.satelliteSystem(), QGeoSatelliteInfo::Undefined);
-        QList<QGeoSatelliteInfo::Attribute> attributes = tst_qgeosatelliteinfo_getAttributes();
-        for (int i=0; i<attributes.size(); i++)
-            QCOMPARE(info.attribute(attributes[i]), qreal(-1.0));
+        for (auto attr : tst_qgeosatelliteinfo_getAttributes())
+            QCOMPARE(info.attribute(attr), qreal(-1.0));
     }
     void constructor_copy()
     {
@@ -196,46 +207,39 @@ private slots:
 
     void setSignalStrength()
     {
-        QFETCH(int, signal);
+        QFETCH(int, value);
 
         QGeoSatelliteInfo info;
         QCOMPARE(info.signalStrength(), -1);
 
-        info.setSignalStrength(signal);
-        QCOMPARE(info.signalStrength(), signal);
+        info.setSignalStrength(value);
+        QCOMPARE(info.signalStrength(), value);
     }
 
     void setSignalStrength_data()
     {
-        QTest::addColumn<int>("signal");
-
-        QList<int> intValues = tst_qgeosatelliteinfo_intTestValues();
-        for (int i=0; i<intValues.size(); i++)
-            QTest::newRow(qPrintable(QString("%1").arg(intValues[i]))) << intValues[i];
+        testIntData();
     }
+
     void setSatelliteIdentifier()
     {
-        QFETCH(int, satId);
+        QFETCH(int, value);
 
         QGeoSatelliteInfo info;
         QCOMPARE(info.satelliteIdentifier(), -1);
 
-        info.setSatelliteIdentifier(satId);
-        QCOMPARE(info.satelliteIdentifier(), satId);
+        info.setSatelliteIdentifier(value);
+        QCOMPARE(info.satelliteIdentifier(), value);
     }
 
     void setSatelliteIdentifier_data()
     {
-        QTest::addColumn<int>("satId");
-
-        QList<int> intValues = tst_qgeosatelliteinfo_intTestValues();
-        for (int i=0; i<intValues.size(); i++)
-            QTest::newRow(qPrintable(QString("%1").arg(intValues[i]))) << intValues[i];
+        testIntData();
     }
 
     void setSatelliteSystem()
     {
-        QFETCH(int, system);
+        QFETCH(QGeoSatelliteInfo::SatelliteSystem, system);
 
         QGeoSatelliteInfo info;
         QCOMPARE(info.satelliteSystem(), QGeoSatelliteInfo::Undefined);
@@ -246,14 +250,13 @@ private slots:
 
     void setSatelliteSystem_data()
     {
-        QTest::addColumn<int>("system");
+        QTest::addColumn<QGeoSatelliteInfo::SatelliteSystem>("system");
 
-        QTest::newRow("Sat system undefined")
-        << int(QGeoSatelliteInfo::Undefined);
-        QTest::newRow("Sat system GPS")
-        << int(QGeoSatelliteInfo::GPS);
-        QTest::newRow("Sat system GLONASS")
-        << int(QGeoSatelliteInfo::GLONASS);
+        const auto metaEnum = QMetaEnum::fromType<QGeoSatelliteInfo::SatelliteSystem>();
+        for (int i = 0; i < metaEnum.keyCount(); ++i) {
+            QTest::newRow(metaEnum.key(i))
+                    << static_cast<QGeoSatelliteInfo::SatelliteSystem>(metaEnum.value(i));
+        }
     }
 
     void attribute()
@@ -275,19 +278,12 @@ private slots:
         QTest::addColumn<QGeoSatelliteInfo::Attribute>("attribute");
         QTest::addColumn<qreal>("value");
 
-        QList<QGeoSatelliteInfo::Attribute> props;
-        props << QGeoSatelliteInfo::Elevation
-              << QGeoSatelliteInfo::Azimuth;
-        for (int i=0; i<props.size(); i++) {
-            QTest::newRow(qPrintable(QString("Attribute %1 = -1.0").arg(props[i])))
-                << props[i]
-                << qreal(-1.0);
-            QTest::newRow(qPrintable(QString("Attribute %1 = 0.0").arg(props[i])))
-                << props[i]
-                << qreal(0.0);
-            QTest::newRow(qPrintable(QString("Attribute %1 = 1.0").arg(props[i])))
-                << props[i]
-                << qreal(1.0);
+        const auto metaEnum = QMetaEnum::fromType<QGeoSatelliteInfo::Attribute>();
+        for (int i = 0; i < metaEnum.keyCount(); ++i) {
+            for (qreal val : tst_qgeosatelliteinfo_qrealTestValues()) {
+                QTest::addRow("%s=%g", metaEnum.key(i), val)
+                        << static_cast<QGeoSatelliteInfo::Attribute>(metaEnum.value(i)) << val;
+            }
         }
     }
 
@@ -379,37 +375,37 @@ private slots:
 
         info = QGeoSatelliteInfo();
         info.setSignalStrength(1);
-        QTest::newRow("with SignalStrength") << info << 60
+        QTest::newRow("with_SignalStrength") << info << 60
                 << QByteArray("QGeoSatelliteInfo(system=QGeoSatelliteInfo::Undefined, "
                               "satId=-1, signal-strength=1) 60");
 
         info = QGeoSatelliteInfo();
         info.setSatelliteIdentifier(1);
-        QTest::newRow("with SatelliteIdentifier") << info << -1
+        QTest::newRow("with_SatelliteIdentifier") << info << -1
                 << QByteArray("QGeoSatelliteInfo(system=QGeoSatelliteInfo::Undefined, "
                               "satId=1, signal-strength=-1) -1");
 
         info = QGeoSatelliteInfo();
         info.setSatelliteSystem(QGeoSatelliteInfo::GPS);
-        QTest::newRow("with System GPS") << info << 1
+        QTest::newRow("with_System_GPS") << info << 1
                 << QByteArray("QGeoSatelliteInfo(system=QGeoSatelliteInfo::GPS, "
                               "satId=-1, signal-strength=-1) 1");
 
         info = QGeoSatelliteInfo();
         info.setSatelliteSystem(QGeoSatelliteInfo::GLONASS);
-        QTest::newRow("with System GLONASS") << info << 56
+        QTest::newRow("with_System_GLONASS") << info << 56
                 << QByteArray("QGeoSatelliteInfo(system=QGeoSatelliteInfo::GLONASS, "
                               "satId=-1, signal-strength=-1) 56");
 
         info = QGeoSatelliteInfo();
         info.setAttribute(QGeoSatelliteInfo::Elevation, 1.1);
-        QTest::newRow("with Elevation") << info << 0
+        QTest::newRow("with_Elevation") << info << 0
                 << QByteArray("QGeoSatelliteInfo(system=QGeoSatelliteInfo::Undefined, "
                               "satId=-1, signal-strength=-1, Elevation=1.1) 0");
 
         info = QGeoSatelliteInfo();
         info.setAttribute(QGeoSatelliteInfo::Azimuth, 1.1);
-        QTest::newRow("with Azimuth") << info << 45
+        QTest::newRow("with_Azimuth") << info << 45
                 << QByteArray("QGeoSatelliteInfo(system=QGeoSatelliteInfo::Undefined, "
                               "satId=-1, signal-strength=-1, Azimuth=1.1) 45");
     }

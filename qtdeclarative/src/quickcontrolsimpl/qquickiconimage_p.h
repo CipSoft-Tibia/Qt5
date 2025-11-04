@@ -49,8 +49,9 @@ Q_SIGNALS:
 
 protected:
     void componentComplete() override;
+    void load() override;
+
     void geometryChange(const QRectF &newGeometry, const QRectF &oldGeometry) override;
-    void itemChange(ItemChange change, const ItemChangeData &value) override;
     void pixmapChange() override;
 
 private:

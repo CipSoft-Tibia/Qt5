@@ -24,14 +24,19 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+#ifdef UNSAFE_BUFFERS_BUILD
+// TODO(crbug.com/351564777): Remove this and convert code to safer constructs.
+#pragma allow_unsafe_buffers
+#endif
+
 #include "third_party/blink/renderer/core/typed_arrays/array_buffer/array_buffer_contents.h"
 
 #include <cstring>
 
-#include "base/allocator/partition_allocator/src/partition_alloc/partition_alloc.h"
 #include "base/bits.h"
 #include "base/system/sys_info.h"
 #include "gin/array_buffer.h"
+#include "partition_alloc/partition_alloc.h"
 #include "third_party/blink/renderer/platform/instrumentation/instance_counters.h"
 #include "third_party/blink/renderer/platform/wtf/allocator/partitions.h"
 
@@ -48,7 +53,7 @@ ArrayBufferContents::ArrayBufferContents(
   uint64_t real_offset = offset - offset_rounding;
   size_t real_length = length + offset_rounding;
 
-  absl::optional<base::span<uint8_t>> result = region.MapAt(
+  std::optional<base::span<uint8_t>> result = region.MapAt(
       real_offset, real_length, gin::GetSharedMemoryMapperForArrayBuffers());
   if (!result.has_value()) {
     return;
@@ -69,7 +74,7 @@ ArrayBufferContents::ArrayBufferContents(
 
 ArrayBufferContents::ArrayBufferContents(
     size_t num_elements,
-    absl::optional<size_t> max_num_elements,
+    std::optional<size_t> max_num_elements,
     size_t element_byte_size,
     SharingType is_shared,
     ArrayBufferContents::InitializationPolicy policy) {

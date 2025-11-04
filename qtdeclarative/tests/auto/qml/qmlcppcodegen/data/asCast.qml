@@ -1,13 +1,20 @@
 // Copyright (C) 2021 The Qt Company Ltd.
 
 pragma Strict
+pragma ValueTypeBehavior: Assertable
+
 import QtQuick
+import QtQml as QQ
 
 Item {
     QtObject { id: object }
     Item { id: item }
     Rectangle { id: rectangle }
     Dummy { id: dummy }
+
+    property string string: "a"
+    property url url: "http://example.com"
+    property date date: new Date(1996, 2, 3)
 
     property QtObject objectAsObject: object as QtObject
     property QtObject objectAsItem: object as Item
@@ -38,4 +45,8 @@ Item {
     property QtObject undefinedAsItem: undefined as Item
     property QtObject undefinedAsRectangle: undefined as Rectangle
     property QtObject undefinedAsDummy: undefined as Dummy
+
+    property var stringAsString: string as QQ.string
+    property var urlAsUrl: url as QQ.url
+    property var dateAsDate: date as QQ.date
 }

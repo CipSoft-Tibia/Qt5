@@ -7,6 +7,7 @@
 #include <string>
 #include <vector>
 
+#include "base/containers/fixed_flat_map.h"
 #include "base/strings/string_split.h"
 #include "base/strings/string_util.h"
 #include "net/base/mime_sniffer.h"
@@ -104,71 +105,42 @@ bool AreRequestHeadersSafe(const net::HttpRequestHeaders& request_headers) {
   return true;
 }
 
-// TODO(https://crbug.com/1302851): Consider merging this with
-// ProcessReferrerPolicyHeaderOnRedirect() in //net and/or
-// blink::SecurityPolicy::ReferrerPolicyFromString().
 mojom::ReferrerPolicy ParseReferrerPolicy(
     const net::HttpResponseHeaders& response_headers) {
-  mojom::ReferrerPolicy policy = mojom::ReferrerPolicy::kDefault;
-
   std::string referrer_policy_header;
   if (!response_headers.GetNormalizedHeader("Referrer-Policy",
                                             &referrer_policy_header)) {
-    return policy;
+    return mojom::ReferrerPolicy::kDefault;
   }
 
-  std::vector<std::string_view> policy_tokens =
-      base::SplitStringPiece(referrer_policy_header, ",", base::TRIM_WHITESPACE,
-                             base::SPLIT_WANT_NONEMPTY);
+  std::optional<net::ReferrerPolicy> net_policy =
+      net::ReferrerPolicyFromHeader(referrer_policy_header);
 
-  // Per https://w3c.github.io/webappsec-referrer-policy/#unknown-policy-values,
-  // use the last recognized policy value, and ignore unknown policies.
-  for (const auto& token : policy_tokens) {
-    if (base::CompareCaseInsensitiveASCII(token, "no-referrer") == 0) {
-      policy = mojom::ReferrerPolicy::kNever;
-      continue;
-    }
-
-    if (base::CompareCaseInsensitiveASCII(token,
-                                          "no-referrer-when-downgrade") == 0) {
-      policy = mojom::ReferrerPolicy::kNoReferrerWhenDowngrade;
-      continue;
-    }
-
-    if (base::CompareCaseInsensitiveASCII(token, "origin") == 0) {
-      policy = mojom::ReferrerPolicy::kOrigin;
-      continue;
-    }
-
-    if (base::CompareCaseInsensitiveASCII(token, "origin-when-cross-origin") ==
-        0) {
-      policy = mojom::ReferrerPolicy::kOriginWhenCrossOrigin;
-      continue;
-    }
-
-    if (base::CompareCaseInsensitiveASCII(token, "unsafe-url") == 0) {
-      policy = mojom::ReferrerPolicy::kAlways;
-      continue;
-    }
-
-    if (base::CompareCaseInsensitiveASCII(token, "same-origin") == 0) {
-      policy = mojom::ReferrerPolicy::kSameOrigin;
-      continue;
-    }
-
-    if (base::CompareCaseInsensitiveASCII(token, "strict-origin") == 0) {
-      policy = mojom::ReferrerPolicy::kStrictOrigin;
-      continue;
-    }
-
-    if (base::CompareCaseInsensitiveASCII(
-            token, "strict-origin-when-cross-origin") == 0) {
-      policy = mojom::ReferrerPolicy::kStrictOriginWhenCrossOrigin;
-      continue;
-    }
+  if (!net_policy) {
+    return mojom::ReferrerPolicy::kDefault;
   }
 
-  return policy;
+  switch (net_policy.value()) {
+    case net::ReferrerPolicy::NO_REFERRER:
+      return mojom::ReferrerPolicy::kNever;
+    case net::ReferrerPolicy::CLEAR_ON_TRANSITION_FROM_SECURE_TO_INSECURE:
+      return mojom::ReferrerPolicy::kNoReferrerWhenDowngrade;
+    case net::ReferrerPolicy::ORIGIN:
+      return mojom::ReferrerPolicy::kOrigin;
+    case net::ReferrerPolicy::ORIGIN_ONLY_ON_TRANSITION_CROSS_ORIGIN:
+      return mojom::ReferrerPolicy::kOriginWhenCrossOrigin;
+    case net::ReferrerPolicy::CLEAR_ON_TRANSITION_CROSS_ORIGIN:
+      return mojom::ReferrerPolicy::kSameOrigin;
+    case net::ReferrerPolicy::
+        ORIGIN_CLEAR_ON_TRANSITION_FROM_SECURE_TO_INSECURE:
+      return mojom::ReferrerPolicy::kStrictOrigin;
+    case net::ReferrerPolicy::REDUCE_GRANULARITY_ON_TRANSITION_CROSS_ORIGIN:
+      return mojom::ReferrerPolicy::kStrictOriginWhenCrossOrigin;
+    case net::ReferrerPolicy::NEVER_CLEAR:
+      return mojom::ReferrerPolicy::kAlways;
+  }
+
+  NOTREACHED();
 }
 
 bool ShouldSniffContent(const GURL& url,

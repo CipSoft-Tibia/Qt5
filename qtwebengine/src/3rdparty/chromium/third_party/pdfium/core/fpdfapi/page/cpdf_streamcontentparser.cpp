@@ -7,6 +7,7 @@
 #include "core/fpdfapi/page/cpdf_streamcontentparser.h"
 
 #include <algorithm>
+#include <array>
 #include <map>
 #include <memory>
 #include <utility>
@@ -37,22 +38,20 @@
 #include "core/fpdfapi/parser/fpdf_parser_utility.h"
 #include "core/fxcrt/autonuller.h"
 #include "core/fxcrt/bytestring.h"
+#include "core/fxcrt/check.h"
+#include "core/fxcrt/compiler_specific.h"
+#include "core/fxcrt/containers/contains.h"
 #include "core/fxcrt/fx_safe_types.h"
+#include "core/fxcrt/notreached.h"
 #include "core/fxcrt/scoped_set_insertion.h"
+#include "core/fxcrt/span.h"
 #include "core/fxcrt/stl_util.h"
 #include "core/fxge/cfx_graphstate.h"
 #include "core/fxge/cfx_graphstatedata.h"
-#include "third_party/base/check.h"
-#include "third_party/base/containers/contains.h"
-#include "third_party/base/containers/span.h"
-#include "third_party/base/notreached.h"
 
 namespace {
 
 constexpr int kMaxFormLevel = 40;
-
-// Upper limit for the number of form XObjects within a form XObject.
-constexpr int kFormCountLimit = 8192;
 
 constexpr int kSingleCoordinatePair = 1;
 constexpr int kTensorCoordinatePairs = 16;
@@ -407,6 +406,10 @@ CPDF_StreamContentParser::CPDF_StreamContentParser(
 
   // Add the sentinel.
   m_ContentMarksStack.push(std::make_unique<CPDF_ContentMarks>());
+
+  // Initialize `m_AllCTMs`, as there is a CTM, even if the stream contains no
+  // cm operators.
+  m_AllCTMs[0] = m_pCurStates->current_transformation_matrix();
 }
 
 CPDF_StreamContentParser::~CPDF_StreamContentParser() {
@@ -688,6 +691,8 @@ void CPDF_StreamContentParser::Handle_CurveTo_123() {
 
 void CPDF_StreamContentParser::Handle_ConcatMatrix() {
   m_pCurStates->prepend_to_current_transformation_matrix(GetMatrix());
+  m_AllCTMs[GetCurrentStreamIndex()] =
+      m_pCurStates->current_transformation_matrix();
   OnChangeTextMatrix();
 }
 
@@ -746,21 +751,9 @@ void CPDF_StreamContentParser::Handle_ExecuteXObject() {
   if (!pXObject)
     return;
 
-  ByteString type;
-  if (pXObject->GetDict())
-    type = pXObject->GetDict()->GetByteStringFor("Subtype");
-
+  const ByteString type = pXObject->GetDict()->GetByteStringFor("Subtype");
   if (type == "Form") {
-    if (m_RecursionState->form_count > kFormCountLimit) {
-      return;
-    }
-
-    const bool is_first = m_RecursionState->form_count == 0;
-    ++m_RecursionState->form_count;
     AddForm(std::move(pXObject), name);
-    if (is_first) {
-      m_RecursionState->form_count = 0;
-    }
     return;
   }
 
@@ -1002,10 +995,14 @@ void CPDF_StreamContentParser::Handle_SaveGraphState() {
 }
 
 void CPDF_StreamContentParser::Handle_RestoreGraphState() {
-  if (m_StateStack.empty())
+  if (m_StateStack.empty()) {
     return;
+  }
+
   *m_pCurStates = *m_StateStack.back();
   m_StateStack.pop_back();
+  m_AllCTMs[GetCurrentStreamIndex()] =
+      m_pCurStates->current_transformation_matrix();
 }
 
 void CPDF_StreamContentParser::Handle_Rectangle() {
@@ -1190,6 +1187,12 @@ RetainPtr<CPDF_Font> CPDF_StreamContentParser::FindFont(
   return pFont;
 }
 
+CPDF_PageObjectHolder::CTMMap CPDF_StreamContentParser::TakeAllCTMs() {
+  CPDF_PageObjectHolder::CTMMap all_ctms;
+  all_ctms.swap(m_AllCTMs);
+  return all_ctms;
+}
+
 RetainPtr<CPDF_ColorSpace> CPDF_StreamContentParser::FindColorSpace(
     const ByteString& name) {
   if (name == "Pattern")
@@ -1238,24 +1241,26 @@ RetainPtr<CPDF_ShadingPattern> CPDF_StreamContentParser::FindShading(
       ->GetShading(std::move(pPattern), m_pCurStates->parent_matrix());
 }
 
-void CPDF_StreamContentParser::AddTextObject(const ByteString* pStrs,
-                                             float fInitKerning,
-                                             const std::vector<float>& kernings,
-                                             size_t nSegs) {
+void CPDF_StreamContentParser::AddTextObject(
+    pdfium::span<const ByteString> strings,
+    pdfium::span<const float> kernings,
+    float initial_kerning) {
   RetainPtr<CPDF_Font> pFont = m_pCurStates->text_state().GetFont();
-  if (!pFont)
+  if (!pFont) {
     return;
-
-  if (fInitKerning != 0) {
-    if (pFont->IsVertWriting())
-      m_pCurStates->IncrementTextPositionY(-GetVerticalTextSize(fInitKerning));
-    else
-      m_pCurStates->IncrementTextPositionX(
-          -GetHorizontalTextSize(fInitKerning));
   }
-  if (nSegs == 0)
+  if (initial_kerning != 0) {
+    if (pFont->IsVertWriting()) {
+      m_pCurStates->IncrementTextPositionY(
+          -GetVerticalTextSize(initial_kerning));
+    } else {
+      m_pCurStates->IncrementTextPositionX(
+          -GetHorizontalTextSize(initial_kerning));
+    }
+  }
+  if (strings.empty()) {
     return;
-
+  }
   const TextRenderingMode text_mode =
       pFont->IsType3Font() ? TextRenderingMode::MODE_FILL
                            : m_pCurStates->text_state().GetTextMode();
@@ -1272,7 +1277,7 @@ void CPDF_StreamContentParser::AddTextObject(const ByteString* pStrs,
       text_ctm[2] = ctm.b;
       text_ctm[3] = ctm.d;
     }
-    pText->SetSegments(pStrs, kernings, nSegs);
+    pText->SetSegments(strings, kernings);
     pText->SetPosition(m_mtContentToUser.Transform(
         m_pCurStates->GetTransformedTextPosition()));
 
@@ -1284,13 +1289,13 @@ void CPDF_StreamContentParser::AddTextObject(const ByteString* pStrs,
       m_ClipTextList.push_back(pText->Clone());
     m_pObjectHolder->AppendPageObject(std::move(pText));
   }
-  if (!kernings.empty() && kernings[nSegs - 1] != 0) {
+  if (!kernings.empty() && kernings.back() != 0) {
     if (pFont->IsVertWriting())
       m_pCurStates->IncrementTextPositionY(
-          -GetVerticalTextSize(kernings[nSegs - 1]));
+          -GetVerticalTextSize(kernings.back()));
     else
       m_pCurStates->IncrementTextPositionX(
-          -GetHorizontalTextSize(kernings[nSegs - 1]));
+          -GetHorizontalTextSize(kernings.back()));
   }
 }
 
@@ -1311,8 +1316,9 @@ int32_t CPDF_StreamContentParser::GetCurrentStreamIndex() {
 
 void CPDF_StreamContentParser::Handle_ShowText() {
   ByteString str = GetString(0);
-  if (!str.IsEmpty())
-    AddTextObject(&str, 0, std::vector<float>(), 1);
+  if (!str.IsEmpty()) {
+    AddTextObject(pdfium::span_from_ref(str), pdfium::span<float>(), 0.0f);
+  }
 }
 
 void CPDF_StreamContentParser::Handle_ShowText_Positioning() {
@@ -1358,7 +1364,8 @@ void CPDF_StreamContentParser::Handle_ShowText_Positioning() {
         kernings[iSegment - 1] += num;
     }
   }
-  AddTextObject(strs.data(), fInitKerning, kernings, iSegment);
+  AddTextObject(pdfium::make_span(strs).first(iSegment), kernings,
+                fInitKerning);
 }
 
 void CPDF_StreamContentParser::Handle_SetTextLeading() {
@@ -1602,7 +1609,7 @@ uint32_t CPDF_StreamContentParser::Parse(
 }
 
 void CPDF_StreamContentParser::ParsePathObject() {
-  float params[6] = {};
+  std::array<float, 6> params = {};
   int nParams = 0;
   int last_pos = m_pSyntax->GetPos();
   while (true) {

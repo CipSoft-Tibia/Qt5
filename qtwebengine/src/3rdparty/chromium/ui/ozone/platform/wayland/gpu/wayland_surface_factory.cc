@@ -9,6 +9,7 @@
 #include "base/memory/ptr_util.h"
 #include "base/memory/raw_ptr.h"
 #include "ui/gfx/linux/client_native_pixmap_dmabuf.h"
+#include "ui/gfx/linux/native_pixmap_dmabuf.h"
 #include "ui/gl/gl_bindings.h"
 #include "ui/gl/gl_surface_egl.h"
 #include "ui/gl/presenter.h"
@@ -52,7 +53,7 @@ class GLOzoneEGLWayland : public GLOzoneEGL {
 
   ~GLOzoneEGLWayland() override {}
 
-  bool CanImportNativePixmap() override;
+  bool CanImportNativePixmap(gfx::BufferFormat format) override;
 
   std::unique_ptr<NativePixmapGLBinding> ImportNativePixmap(
       scoped_refptr<gfx::NativePixmap> pixmap,
@@ -85,9 +86,13 @@ class GLOzoneEGLWayland : public GLOzoneEGL {
       buffer_manager_;
 };
 
-bool GLOzoneEGLWayland::CanImportNativePixmap() {
-  return gl::GLSurfaceEGL::GetGLDisplayEGL()
-      ->ext->b_EGL_EXT_image_dma_buf_import;
+bool GLOzoneEGLWayland::CanImportNativePixmap(gfx::BufferFormat format) {
+  if (!gl::GLSurfaceEGL::GetGLDisplayEGL()
+           ->ext->b_EGL_EXT_image_dma_buf_import) {
+    return false;
+  }
+
+  return NativePixmapEGLBinding::IsBufferFormatSupported(format);
 }
 
 std::unique_ptr<NativePixmapGLBinding> GLOzoneEGLWayland::ImportNativePixmap(
@@ -113,8 +118,8 @@ scoped_refptr<gl::GLSurface> GLOzoneEGLWayland::CreateViewGLSurface(
             display->GetAs<gl::GLDisplayEGL>(), widget, buffer_manager_));
   }
 
-  // Only EGLGLES2 is supported with surfaceless view gl.
-  if ((gl::GetGLImplementation() != gl::kGLImplementationEGLGLES2) ||
+  if ((gl::GetGLImplementation() != gl::kGLImplementationEGLGLES2 &&
+       gl::GetGLImplementation() != gl::kGLImplementationEGLANGLE) ||
       !connection_) {
     return nullptr;
   }
@@ -168,8 +173,7 @@ scoped_refptr<gl::GLSurface> GLOzoneEGLWayland::CreateOffscreenGLSurface(
 
 gl::EGLDisplayPlatform GLOzoneEGLWayland::GetNativeDisplay() {
   if (connection_) {
-    return gl::EGLDisplayPlatform(
-        reinterpret_cast<EGLNativeDisplayType>(connection_->display()));
+    return connection_->GetNativeDisplay();
   }
   return gl::EGLDisplayPlatform(EGL_DEFAULT_DISPLAY);
 }
@@ -203,12 +207,14 @@ std::vector<gl::GLImplementationParts>
 WaylandSurfaceFactory::GetAllowedGLImplementations() {
   std::vector<gl::GLImplementationParts> impls;
   if (egl_implementation_) {
-    // Add only supported ANGLE implementations. Otherwise, angle-vulkan might
-    // be requested, which is not supported with this backend yet.
+    // Allow for Angle-vulkan implementation.
+#if BUILDFLAG(IS_CHROMEOS_LACROS)
+    impls.emplace_back(gl::kGLImplementationEGLANGLE);
+#endif
     impls.emplace_back(gl::ANGLEImplementation::kOpenGL);
     impls.emplace_back(gl::ANGLEImplementation::kOpenGLES);
     impls.emplace_back(gl::ANGLEImplementation::kSwiftShader);
-    impls.emplace_back(gl::kGLImplementationEGLGLES2);
+    impls.emplace_back(gl::ANGLEImplementation::kVulkan);
   }
   return impls;
 }
@@ -238,7 +244,7 @@ scoped_refptr<gfx::NativePixmap> WaylandSurfaceFactory::CreateNativePixmap(
     gfx::Size size,
     gfx::BufferFormat format,
     gfx::BufferUsage usage,
-    absl::optional<gfx::Size> framebuffer_size) {
+    std::optional<gfx::Size> framebuffer_size) {
   if (framebuffer_size &&
       !gfx::Rect(size).Contains(gfx::Rect(*framebuffer_size))) {
     return nullptr;
@@ -277,17 +283,25 @@ WaylandSurfaceFactory::CreateNativePixmapFromHandle(
     gfx::BufferFormat format,
     gfx::NativePixmapHandle handle) {
 #if defined(WAYLAND_GBM)
-  scoped_refptr<GbmPixmapWayland> pixmap =
-      base::MakeRefCounted<GbmPixmapWayland>(buffer_manager_);
-
-  if (!pixmap->InitializeBufferFromHandle(widget, size, format,
-                                          std::move(handle))) {
-    return nullptr;
+  auto* gbm_device = buffer_manager_->GetGbmDevice();
+  if (gbm_device->CanCreateBufferForFormat(
+          GetFourCCFormatFromBufferFormat(format))) {
+    scoped_refptr<GbmPixmapWayland> pixmap =
+        base::MakeRefCounted<GbmPixmapWayland>(buffer_manager_);
+    if (pixmap->InitializeBufferFromHandle(widget, size, format,
+                                           std::move(handle))) {
+      return pixmap;
+    }
+  } else {
+    scoped_refptr<gfx::NativePixmapDmaBuf> pixmap =
+        base::MakeRefCounted<gfx::NativePixmapDmaBuf>(size, format,
+                                                      std::move(handle));
+    if (pixmap->AreDmaBufFdsValid()) {
+      return pixmap;
+    }
   }
-  return pixmap;
-#else
+#endif  //  defined(WAYLAND_GBM)
   return nullptr;
-#endif
 }
 
 bool WaylandSurfaceFactory::SupportsNativePixmaps() const {
@@ -302,7 +316,7 @@ bool WaylandSurfaceFactory::SupportsNativePixmaps() const {
   return supports_native_pixmaps;
 }
 
-absl::optional<gfx::BufferFormat>
+std::optional<gfx::BufferFormat>
 WaylandSurfaceFactory::GetPreferredFormatForSolidColor() const {
   if (!buffer_manager_->SupportsFormat(gfx::BufferFormat::RGBA_8888)) {
     return gfx::BufferFormat::BGRA_8888;

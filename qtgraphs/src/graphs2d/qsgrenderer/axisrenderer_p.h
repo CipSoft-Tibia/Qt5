@@ -31,6 +31,7 @@ class QBarCategoryAxis;
 class QValueAxis;
 class QGraphsTheme;
 class QDateTimeAxis;
+class QQuickDragHandler;
 
 class AxisRenderer : public QQuickItem
 {
@@ -46,13 +47,19 @@ public:
     void updateAxisGrid();
     void updateAxisGridShadow();
     void updateAxisTitles(const QRectF xAxisRect, const QRectF yAxisRect);
+#ifdef USE_BARGRAPH
     void updateBarXAxisLabels(QBarCategoryAxis *axis, const QRectF rect);
     void updateBarYAxisLabels(QBarCategoryAxis *axis, const QRectF rect);
+#endif
     void updateValueYAxisLabels(QValueAxis *axis, const QRectF rect);
     void updateValueXAxisLabels(QValueAxis *axis, const QRectF rect);
     void updateDateTimeYAxisLabels(QDateTimeAxis *axis, const QRectF rect);
     void updateDateTimeXAxisLabels(QDateTimeAxis *axis, const QRectF rect);
     void initialize();
+
+    bool handleWheel(QWheelEvent *event);
+    void handlePinchScale(qreal delta);
+    void handlePinchGrab(QPointingDevice::GrabTransition transition, QEventPoint point);
 
 Q_SIGNALS:
 
@@ -63,12 +70,17 @@ private:
     friend class PointRenderer;
     friend class AreaRenderer;
 
+    void onTranslationChanged(QVector2D delta);
+    void onGrabChanged(QPointingDevice::GrabTransition transition, QEventPoint point);
+
     double getValueStepsFromRange(double range);
     int getValueDecimalsFromRange(double range);
     void setLabelTextProperties(QQuickItem *item, const QString &text, bool xAxis,
                                 QQuickText::HAlignment hAlign = QQuickText::HAlignment::AlignHCenter,
                                 QQuickText::VAlignment vAlign = QQuickText::VAlignment::AlignVCenter);
     void updateAxisLabelItems(QList<QQuickItem *> &textItems, qsizetype neededSize, QQmlComponent *component);
+    QVector2D windowToAxisCoords(QVector2D coords);
+    bool zoom(qreal delta);
 
     QGraphsView *m_graph = nullptr;
     QGraphsTheme *theme();
@@ -111,7 +123,7 @@ private:
     double m_axisYDisplacement = 0;
     // The value of smallest label
     double m_axisVerticalMinLabel = 0;
-
+    double m_axisVerticalValueRangeZoomless = 0;
 
     // Horizontal axis
     // Max value
@@ -128,6 +140,7 @@ private:
     double m_axisXDisplacement = 0;
     // The value of smallest label
     double m_axisHorizontalMinLabel = 0;
+    double m_axisHorizontalValueRangeZoomless = 0;
 
     double m_axisVerticalSubGridScale = 0.5;
     double m_axisHorizontalSubGridScale = 0.5;
@@ -135,6 +148,18 @@ private:
     bool m_gridVerticalLinesVisible = true;
     bool m_gridHorizontalSubLinesVisible = false;
     bool m_gridVerticalSubLinesVisible = false;
+
+    QQuickDragHandler *m_dragHandler = nullptr;
+
+    struct DragState
+    {
+        bool dragging = false;
+        QVector2D touchPositionAtPress;
+        QVector2D panAtPress;
+        QVector2D delta;
+    };
+
+    DragState m_dragState;
 };
 
 QT_END_NAMESPACE

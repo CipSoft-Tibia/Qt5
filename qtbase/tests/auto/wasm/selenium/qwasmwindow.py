@@ -11,22 +11,45 @@ from selenium.webdriver.common.actions.pointer_input import PointerInput
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.expected_conditions import presence_of_element_located
 from selenium.webdriver.support.ui import WebDriverWait
-from webdriver_manager.chrome import ChromeDriverManager
 
+import os
 import time
 import unittest
 from enum import Enum, auto
 
 class WidgetTestCase(unittest.TestCase):
     def setUp(self):
-        self._driver = Chrome(service=ChromeService(ChromeDriverManager().install()))
+        chromedriver_path = os.getenv('CHROMEDRIVER_PATH')
+        if chromedriver_path:
+            self._driver = Chrome(service=ChromeService(executable_path=chromedriver_path))
+        else:
+            self._driver = Chrome()
+        self._driver.maximize_window()
         self._driver.get(
-            'http://localhost:8001/tst_qwasmwindow_harness.html')
+            'http://localhost:8001/tst_qwasmwindow_harness_run.html')
         self._test_sandbox_element = WebDriverWait(self._driver, 30).until(
             presence_of_element_located((By.ID, 'test-sandbox'))
         )
         self.addTypeEqualityFunc(Color, assert_colors_equal)
         self.addTypeEqualityFunc(Rect, assert_rects_equal)
+
+    #
+    #  This is a manual test
+    # The reason is that the color readback works
+    # even if the display is incorrect
+    #
+    def test_native_widgets(self):
+        screen = Screen(self._driver, ScreenPosition.FIXED,
+                    x=0, y=0, width=600, height=1200)
+
+        w0 = Widget(self._driver, "w0", 1)
+        w0.show()
+        #time.sleep(3600)
+        color = w0.color_at(100, 150)
+        self.assertEqual(color.r, 255)
+        self.assertEqual(color.g, 255)
+        self.assertEqual(color.b, 255)
+        self.assertEqual(w0.hasFocus(), True)
 
     def test_hasFocus_returnsFalse_whenSetNoFocusShowWasCalled(self):
         screen = Screen(self._driver, ScreenPosition.FIXED,
@@ -90,23 +113,28 @@ class WidgetTestCase(unittest.TestCase):
 
         w0 = Widget(self._driver, "w0")
         w0.show()
+        w0.showContextMenu()
         w0.showToolTip()
 
         w1 = Widget(self._driver, "w1")
         w1.setNoFocusShow()
         w1.show()
+        w1.showContextMenu()
         w1.showToolTip()
 
         w2 = Widget(self._driver, "w2")
         w2.show()
+        w2.showContextMenu()
         w2.showToolTip()
 
         w3 = Widget(self._driver,  "w3")
         w3.setNoFocusShow()
         w3.show()
+        w3.showContextMenu()
         w3.showToolTip()
 
         w3.activate();
+        w3.showContextMenu()
         w3.showToolTip();
 
         clearWidgets(self._driver)
@@ -139,7 +167,7 @@ class WidgetTestCase(unittest.TestCase):
         window.drag(Handle.BOTTOM_LEFT, direction=DOWN(10) + LEFT(10))
         self.assertEqual(window.rect, Rect(x=80, y=95, width=210, height=230))
 
-        window.drag(Handle.LEFT, direction=DOWN(343) + LEFT(5))
+        window.drag(Handle.LEFT, direction=DOWN(30) + LEFT(5))
         self.assertEqual(window.rect, Rect(x=75, y=95, width=215, height=230))
 
         window.drag(Handle.BOTTOM_RIGHT, direction=UP(150) + LEFT(150))
@@ -222,8 +250,6 @@ class WidgetTestCase(unittest.TestCase):
         self.assertEqual(windows[1].rect, Rect(x=380, y=420, width=100, height=100))
         self.assertEqual(windows[2].rect, Rect(x=70, y=380, width=100, height=100))
 
-    #TODO FIX IN CI
-    @unittest.skip('Skip temporarily')
     def test_multitouch_window_resize(self):
         screen = Screen(self._driver, ScreenPosition.FIXED,
                         x=0, y=0, width=800, height=800)
@@ -655,15 +681,30 @@ def clearWidgets(driver):
         )
 
 class Widget:
-    def __init__(self, driver, name):
+    def __init__(self, driver, name, isNative=0):
         self.name=name
         self.driver=driver
 
-        self.driver.execute_script(
-            f'''
-                instance.createWidget('{self.name}');
-            '''
-        )
+        if isNative == 0:
+            self.driver.execute_script(
+                f'''
+                    instance.createWidget('{self.name}');
+                '''
+            )
+        if isNative == 1:
+            self.driver.execute_script(
+                f'''
+                    instance.createNativeWidget('{self.name}');
+                '''
+            )
+
+        if isNative == 1:
+            information = self.__window_information()
+            self.screen = Screen(self.driver, screen_name=information['screen']['name'])
+
+            self._window_id = self.__window_information()['id']
+            self.element = self.screen.find_element(
+                    By.CSS_SELECTOR, f'#qt-window-{self._window_id}')
 
     def setNoFocusShow(self):
         self.driver.execute_script(
@@ -688,6 +729,18 @@ class Widget:
                 instance.activateWidget('{self.name}');
             '''
         )
+
+    def color_at(self, x, y):
+        raw = self.driver.execute_script(
+            f'''
+                return arguments[0].querySelector('canvas')
+                    .getContext('2d').getImageData({x}, {y}, 1, 1).data;
+            ''', self.element)
+        return Color(r=raw[0], g=raw[1], b=raw[2])
+
+    def __window_information(self):
+        information = call_instance_function(self.driver, 'windowInformation')
+        return next(filter(lambda e: e['title'] == "Dialog", information))
 
     def showContextMenu(self):
         self.driver.execute_script(

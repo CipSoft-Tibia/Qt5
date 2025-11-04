@@ -28,6 +28,7 @@
 #include "libavutil/cpu.h"
 #include "libavutil/emms.h"
 #include "libavutil/intreadwrite.h"
+#include "libavutil/mem.h"
 #include "libavutil/mem_internal.h"
 #include "libavutil/pixdesc.h"
 #include "config.h"
@@ -904,7 +905,8 @@ static int scale_internal(SwsContext *c,
 
     if ((srcSliceY  & (macro_height_src - 1)) ||
         ((srcSliceH & (macro_height_src - 1)) && srcSliceY + srcSliceH != c->srcH) ||
-        srcSliceY + srcSliceH > c->srcH) {
+        srcSliceY + srcSliceH > c->srcH ||
+        (isBayer(c->srcFormat) && srcSliceH <= 1)) {
         av_log(c, AV_LOG_ERROR, "Slice parameters %d, %d are invalid\n", srcSliceY, srcSliceH);
         return AVERROR(EINVAL);
     }
@@ -1016,7 +1018,7 @@ static int scale_internal(SwsContext *c,
     reset_ptr(src2, c->srcFormat);
     reset_ptr((void*)dst2, c->dstFormat);
 
-    if (c->convert_unscaled && !c->lumConvertRange && !c->chrConvertRange) {
+    if (c->convert_unscaled) {
         int offset  = srcSliceY_internal;
         int slice_h = srcSliceH;
 

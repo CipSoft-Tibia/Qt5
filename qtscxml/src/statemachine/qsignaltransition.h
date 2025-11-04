@@ -7,8 +7,6 @@
 #include <QtCore/qmetaobject.h>
 #include <QtStateMachine/qabstracttransition.h>
 
-QT_REQUIRE_CONFIG(statemachine);
-
 QT_BEGIN_NAMESPACE
 
 class QSignalTransitionPrivate;

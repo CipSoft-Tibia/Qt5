@@ -110,7 +110,7 @@ set(planets-qml-images_resource_files
     "images/solarsystemscope/earthspec2k.jpg"
     "images/solarsystemscope/galaxy_starfield.jpg"
     "images/solarsystemscope/jupitermap.jpg"
-    "images/solarsystemscope/license.txt"
+    "images/solarsystemscope/LICENSE.txt"
     "images/solarsystemscope/marsmap2k.jpg"
     "images/solarsystemscope/marsnormal2k.jpg"
     "images/solarsystemscope/mercurymap.jpg"

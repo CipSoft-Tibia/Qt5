@@ -37,7 +37,7 @@ Item {
             Model {
                 source: "#Cube"
                 scale: Qt.vector3d(0.1, 0.1, 0.1)
-                materials: DefaultMaterial {
+                materials: PrincipledMaterial {
                 }
             }
         }

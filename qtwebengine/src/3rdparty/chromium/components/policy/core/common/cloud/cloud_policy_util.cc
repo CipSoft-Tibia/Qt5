@@ -46,6 +46,8 @@
 #include "base/notreached.h"
 #include "base/system/sys_info.h"
 #if BUILDFLAG(IS_WIN)
+#include "base/functional/callback.h"
+#include "base/task/thread_pool.h"
 #include "base/win/wmi.h"
 #endif
 #include "components/version_info/version_info.h"
@@ -113,7 +115,7 @@ std::string GetMachineName() {
   // If all else fails, return to using a slightly nicer version of the hardware
   // model. Warning: This will soon return just a useless "Mac" string.
   std::string model = base::SysInfo::HardwareModelName();
-  absl::optional<base::SysInfo::HardwareModelNameSplit> split =
+  std::optional<base::SysInfo::HardwareModelNameSplit> split =
       base::SysInfo::SplitHardwareModelNameDoNotUse(model);
 
   if (!split) {
@@ -134,7 +136,7 @@ std::string GetMachineName() {
 #elif BUILDFLAG(IS_ANDROID)
   return std::string();
 #elif BUILDFLAG(IS_CHROMEOS)
-  NOTREACHED();
+  NOTREACHED_IN_MIGRATION();
   return std::string();
 #else
 #error Unsupported platform
@@ -152,7 +154,7 @@ std::string GetOSVersion() {
                             version_number.minor, version_number.build,
                             version_number.patch);
 #else
-  NOTREACHED();
+  NOTREACHED_IN_MIGRATION();
   return std::string();
 #endif
 }
@@ -205,11 +207,11 @@ std::string GetOSUsername() {
 
   return creds->pw_name;
 #elif BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_FUCHSIA)
-  // TODO(crbug.com/1257674): This should be fully implemented when there is
+  // TODO(crbug.com/40200780): This should be fully implemented when there is
   // support in fuchsia.
   return std::string();
 #else
-  NOTREACHED();
+  NOTREACHED_IN_MIGRATION();
   return std::string();
 #endif
 }
@@ -260,18 +262,21 @@ std::unique_ptr<em::BrowserDeviceIdentifier> GetBrowserDeviceIdentifier() {
   return device_identifier;
 }
 
-bool IsMachineLevelUserCloudPolicyType(const std::string& type) {
-  return type == GetMachineLevelUserCloudPolicyTypeForCurrentOS();
+#if BUILDFLAG(IS_WIN)
+void GetBrowserDeviceIdentifierAsync(
+    base::OnceCallback<
+        void(std::unique_ptr<enterprise_management::BrowserDeviceIdentifier>)>
+        callback) {
+  base::ThreadPool::CreateCOMSTATaskRunner(
+      {base::MayBlock(), base::TaskShutdownBehavior::CONTINUE_ON_SHUTDOWN})
+      ->PostTaskAndReplyWithResult(FROM_HERE,
+                                   base::BindOnce(&GetBrowserDeviceIdentifier),
+                                   std::move(callback));
 }
+#endif  // BUILDFLAG(IS_WIN)
 
-std::string GetMachineLevelUserCloudPolicyTypeForCurrentOS() {
-#if BUILDFLAG(IS_IOS)
-  return dm_protocol::kChromeMachineLevelUserCloudPolicyIOSType;
-#elif BUILDFLAG(IS_ANDROID)
-  return dm_protocol::kChromeMachineLevelUserCloudPolicyAndroidType;
-#else
-  return dm_protocol::kChromeMachineLevelUserCloudPolicyType;
-#endif
+bool IsMachineLevelUserCloudPolicyType(const std::string& type) {
+  return type == dm_protocol::kChromeMachineLevelUserCloudPolicyType;
 }
 
 }  // namespace policy

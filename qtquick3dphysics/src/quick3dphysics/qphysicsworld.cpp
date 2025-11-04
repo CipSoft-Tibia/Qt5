@@ -27,6 +27,8 @@
 #include <QtQuick3D/private/qquick3ddefaultmaterial_p.h>
 #include <QtQuick3DUtils/private/qssgutils_p.h>
 
+#include <QtGui/qquaternion.h>
+
 #include <QtEnvironmentVariables>
 
 #define PHYSX_ENABLE_PVD 0
@@ -212,6 +214,18 @@ QT_BEGIN_NAMESPACE
 
 Q_LOGGING_CATEGORY(lcQuick3dPhysics, "qt.quick3d.physics");
 
+// Setting QT_PHYSICS_TIMINGS_FILE to a filepath will generate a csv file with frame timings.
+// Note that if running several PhysicsWorld's the last one to be destructed will overwrite
+// the output file.
+//
+// To view it in gnuplot, run these two commands:
+//
+// set datafile separator ','
+// plot '<QT_PHYSICS_TIMINGS_FILE>' using 1:2 with lines
+//
+// Security note: This file is trusted since it is opened as write-only
+static const QString qtPhysicsTimingsFile = qEnvironmentVariable("QT_PHYSICS_TIMINGS_FILE");
+
 /////////////////////////////////////////////////////////////////////////////
 
 class SimulationWorker : public QObject
@@ -219,7 +233,7 @@ class SimulationWorker : public QObject
     Q_OBJECT
 public:
     SimulationWorker(QPhysXWorld *physx) : m_physx(physx) { }
-
+    QList<float> m_frameTimings;
 public slots:
     void simulateFrame(float minTimestep, float maxTimestep)
     {
@@ -244,6 +258,10 @@ public slots:
         auto deltaSecs = qMin(float(deltaMS), maxTimestep) * 0.001f;
         m_physx->scene->simulate(deltaSecs);
         m_physx->scene->fetchResults(true);
+
+        if (Q_UNLIKELY(!qtPhysicsTimingsFile.isEmpty())) {
+            m_frameTimings.append(m_timer.nsecsElapsed() * MILLIONTH);
+        }
 
         emit frameDone(deltaSecs);
     }
@@ -426,6 +444,20 @@ QPhysicsWorld::~QPhysicsWorld()
     m_physx->deleteWorld();
     delete m_physx;
     worldManager.worlds.removeAll(this);
+
+    if (!qtPhysicsTimingsFile.isEmpty()) {
+        if (!m_simulationWorker) {
+            qWarning() << "No simulation running, no timings saved.";
+        } else if (auto csvFile = QFile(qtPhysicsTimingsFile); csvFile.open(QIODevice::WriteOnly)) {
+            QTextStream out(&csvFile);
+            for (int i = 1; i < m_simulationWorker->m_frameTimings.size(); i++) {
+                out << i << "," << m_simulationWorker->m_frameTimings[i] << '\n';
+            }
+            csvFile.close();
+        } else {
+            qWarning() << "Could not open timings file " << qtPhysicsTimingsFile;
+        }
+    }
 }
 
 void QPhysicsWorld::classBegin() {}
@@ -1189,17 +1221,19 @@ void QPhysicsWorld::initPhysics()
     m_physx->createScene(m_typicalLength, m_typicalSpeed, m_gravity, m_enableCCD, this, numThreads);
 
     // Setup worker thread
-    SimulationWorker *worker = new SimulationWorker(m_physx);
-    worker->moveToThread(&m_workerThread);
-    connect(&m_workerThread, &QThread::finished, worker, &QObject::deleteLater);
+    Q_ASSERT(!m_simulationWorker);
+    m_simulationWorker = new SimulationWorker(m_physx);
+    m_simulationWorker->moveToThread(&m_workerThread);
     if (m_inDesignStudio) {
-        connect(this, &QPhysicsWorld::simulateFrame, worker,
+        connect(this, &QPhysicsWorld::simulateFrame, m_simulationWorker,
                 &SimulationWorker::simulateFrameDesignStudio);
-        connect(worker, &SimulationWorker::frameDoneDesignStudio, this,
+        connect(m_simulationWorker, &SimulationWorker::frameDoneDesignStudio, this,
                 &QPhysicsWorld::frameFinishedDesignStudio);
     } else {
-        connect(this, &QPhysicsWorld::simulateFrame, worker, &SimulationWorker::simulateFrame);
-        connect(worker, &SimulationWorker::frameDone, this, &QPhysicsWorld::frameFinished);
+        connect(this, &QPhysicsWorld::simulateFrame, m_simulationWorker,
+                &SimulationWorker::simulateFrame);
+        connect(m_simulationWorker, &SimulationWorker::frameDone, this,
+                &QPhysicsWorld::frameFinished);
     }
     m_workerThread.start();
 

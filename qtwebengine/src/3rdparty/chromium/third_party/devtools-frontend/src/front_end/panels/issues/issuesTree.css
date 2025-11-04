@@ -20,6 +20,7 @@
 .issues li {
   white-space: normal;
   align-items: flex-start;
+  min-height: var(--sys-size-13);
 }
 
 /* Hide toggle for tree items which cannot be collapsed */
@@ -28,7 +29,7 @@
 }
 
 .issues li.parent::before {
-  margin-top: 8px;
+  margin-top: 10px;
 }
 
 .issues .affected-resources li.parent::before {
@@ -86,7 +87,6 @@
 
 .unhide-all-issues-button {
   margin: 0;
-  height: 20px;
 }
 
 p {
@@ -109,6 +109,10 @@ p {
   padding: 4px 0;
   cursor: pointer;
   width: 100%;
+
+  & > :not(.unhide-all-issues-button) {
+    margin-top: var(--sys-size-2);
+  }
 }
 
 .header devtools-hide-issues-menu {
@@ -117,10 +121,6 @@ p {
 
 .header:hover devtools-hide-issues-menu,
 .issue.selected devtools-hide-issues-menu {
-  visibility: visible;
-}
-
-.header devtools-hide-issues-menu.has-context-menu-opened {
   visibility: visible;
 }
 
@@ -137,7 +137,7 @@ p {
   font-weight: 450;
 }
 
-.body.children {
+.issue-body.children {
   border-bottom: 1px solid var(--sys-color-divider);
   padding: 6px 0;
   position: relative;
@@ -154,7 +154,7 @@ p {
 }
 
 /* Show a colored border on the left side of opened issues. */
-.body::before {
+.issue-body::before {
   content: "";
   display: block;
   position: absolute;
@@ -164,16 +164,20 @@ p {
   width: 2px;
 }
 
-.issue-kind-breaking-change.body::before {
+.issue-kind-breaking-change.issue-body::before {
   border-left: 2px solid var(--issue-color-yellow);
 }
 
-.issue-kind-page-error.body::before {
+.issue-kind-page-error.issue-body::before {
   border-left: 2px solid var(--issue-color-red);
 }
 
-.issue-kind-improvement.body::before {
+.issue-kind-improvement.issue-body::before {
   border-left: 2px solid var(--issue-color-blue);
+}
+
+.tree-outline .issue-body li:hover:not(:has(span[is="dt-checkbox"])) .selection {
+  background-color: unset;
 }
 
 devtools-icon.leading-issue-icon {
@@ -418,7 +422,6 @@ ul > li.plain-enum::before {
 .affected-resources > .children.expanded {
   background: var(--sys-color-cdt-base-container);
   padding: 6px 0 9px 5px;
-  margin-bottom: 10px;
 }
 
 .aggregated-issues-count {

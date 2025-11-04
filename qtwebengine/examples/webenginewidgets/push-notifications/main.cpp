@@ -7,6 +7,7 @@
 #include <QWebEngineProfile>
 #include <QWebEnginePage>
 #include <QWebEngineView>
+#include <QWebEngineProfileBuilder>
 
 int main(int argc, char *argv[])
 {
@@ -16,7 +17,8 @@ int main(int argc, char *argv[])
     const QString name =
             QString::fromLatin1("push-notifications.%1").arg(qWebEngineChromiumVersion());
 
-    QScopedPointer<QWebEngineProfile> profile(new QWebEngineProfile(name));
+    QWebEngineProfileBuilder profileBuilder;
+    QScopedPointer<QWebEngineProfile> profile(profileBuilder.createProfile(name));
     QWebEngineView view(profile.data());
     auto popup = new NotificationPopup(&view);
 

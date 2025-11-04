@@ -13,33 +13,28 @@
 // limitations under the License.
 
 import m from 'mithril';
-
 import {currentTargetOffset} from '../base/dom_utils';
 import {Icons} from '../base/semantic_icons';
 import {Time} from '../base/time';
 import {Actions} from '../common/actions';
-import {randomColor} from '../common/colorizer';
-import {AreaNote, Note} from '../common/state';
+import {randomColor} from '../core/colorizer';
+import {SpanNote, Note} from '../public/note';
 import {raf} from '../core/raf_scheduler';
-import {Button} from '../widgets/button';
-
-import {
-  BottomTab,
-  bottomTabRegistry,
-  NewBottomTabArgs,
-} from './bottom_tab';
+import {Button, ButtonBar} from '../widgets/button';
+import {TextInput} from '../widgets/text_input';
 import {TRACK_SHELL_WIDTH} from './css_constants';
 import {globals} from './globals';
-import {
-  getMaxMajorTicks,
-  TickGenerator,
-  TickType,
-  timeScaleForVisibleWindow,
-} from './gridline_helper';
-import {PanelSize} from './panel';
+import {getMaxMajorTicks, generateTicks, TickType} from './gridline_helper';
+import {Size2D} from '../base/geom';
 import {Panel} from './panel_container';
-import {isTraceLoaded} from './sidebar';
 import {Timestamp} from './widgets/timestamp';
+import {uuidv4} from '../base/uuid';
+import {assertUnreachable} from '../base/logging';
+import {DetailsPanel} from '../public/details_panel';
+import {TimeScale} from '../base/time_scale';
+import {canvasClip} from '../base/canvas_utils';
+import {isTraceLoaded} from './trace_attrs';
+import {Selection} from '../public/selection';
 
 const FLAG_WIDTH = 16;
 const AREA_TRIANGLE_WIDTH = 10;
@@ -50,96 +45,147 @@ function toSummary(s: string) {
   return s.slice(0, Math.min(newlineIndex, s.length, 16));
 }
 
-function getStartTimestamp(note: Note|AreaNote) {
-  if (note.noteType === 'AREA') {
-    return globals.state.areas[note.areaId].start;
-  } else {
-    return note.timestamp;
+function getStartTimestamp(note: Note | SpanNote) {
+  const noteType = note.noteType;
+  switch (noteType) {
+    case 'SPAN':
+      return note.start;
+    case 'DEFAULT':
+      return note.timestamp;
+    default:
+      assertUnreachable(noteType);
   }
 }
 
 export class NotesPanel implements Panel {
   readonly kind = 'panel';
   readonly selectable = false;
-  readonly trackKey = undefined;
+  private timescale?: TimeScale; // The timescale from the last render()
+  private hoveredX: null | number = null;
+  private mouseDragging = false;
 
-  hoveredX: null|number = null;
-
-  constructor(readonly key: string) {}
-
-  get mithril(): m.Children {
-    const allCollapsed = Object.values(globals.state.trackGroups)
-                             .every((group) => group.collapsed);
+  render(): m.Children {
+    const allCollapsed = globals.workspace.flatGroups.every((n) => n.collapsed);
 
     return m(
-        '.notes-panel',
-        {
-          onclick: (e: MouseEvent) => {
-            const {x, y} = currentTargetOffset(e);
-            this.onClick(x - TRACK_SHELL_WIDTH, y);
-            e.stopPropagation();
-          },
-          onmousemove: (e: MouseEvent) => {
-            this.hoveredX = currentTargetOffset(e).x - TRACK_SHELL_WIDTH;
-            raf.scheduleRedraw();
-          },
-          mouseenter: (e: MouseEvent) => {
-            this.hoveredX = currentTargetOffset(e).x - TRACK_SHELL_WIDTH;
-            raf.scheduleRedraw();
-          },
-          onmouseout: () => {
-            this.hoveredX = null;
-            globals.dispatch(
-                Actions.setHoveredNoteTimestamp({ts: Time.INVALID}));
-          },
+      '.notes-panel',
+      {
+        onmousedown: () => {
+          // If the user clicks & drags, very likely they just want to measure
+          // the time horizontally, not set a flag. This debouncing is done to
+          // avoid setting accidental flags like measuring the time on the brush
+          // timeline.
+          this.mouseDragging = false;
         },
-        isTraceLoaded() ?
-            [
-              m('button',
-                {
-                  onclick: (e: Event) => {
-                    e.preventDefault();
-                    globals.dispatch(Actions.toggleAllTrackGroups(
-                        {collapsed: !allCollapsed}));
-                  },
-                },
-                m('i.material-icons',
-                  {title: allCollapsed ? 'Expand all' : 'Collapse all'},
-                  allCollapsed ? 'unfold_more' : 'unfold_less')),
-              m('button',
-                {
-                  onclick: (e: Event) => {
-                    e.preventDefault();
-                    globals.dispatch(Actions.clearAllPinnedTracks({}));
-                  },
-                },
-                m('i.material-icons',
-                  {title: 'Clear all pinned tracks'},
-                  'clear_all')),
-            ] :
-            '');
+        onclick: (e: MouseEvent) => {
+          if (!this.mouseDragging) {
+            const x = currentTargetOffset(e).x - TRACK_SHELL_WIDTH;
+            this.onClick(x);
+            e.stopPropagation();
+          }
+        },
+        onmousemove: (e: MouseEvent) => {
+          this.mouseDragging = true;
+          this.hoveredX = currentTargetOffset(e).x - TRACK_SHELL_WIDTH;
+          raf.scheduleRedraw();
+        },
+        onmouseenter: (e: MouseEvent) => {
+          this.hoveredX = currentTargetOffset(e).x - TRACK_SHELL_WIDTH;
+          raf.scheduleRedraw();
+        },
+        onmouseout: () => {
+          this.hoveredX = null;
+          globals.dispatch(Actions.setHoveredNoteTimestamp({ts: Time.INVALID}));
+        },
+      },
+      isTraceLoaded() &&
+        m(
+          ButtonBar,
+          {className: 'pf-toolbar'},
+          m(Button, {
+            onclick: (e: Event) => {
+              e.preventDefault();
+              if (allCollapsed) {
+                globals.commandManager.runCommand(
+                  'perfetto.CoreCommands#ExpandAllGroups',
+                );
+              } else {
+                globals.commandManager.runCommand(
+                  'perfetto.CoreCommands#CollapseAllGroups',
+                );
+              }
+            },
+            title: allCollapsed ? 'Expand all' : 'Collapse all',
+            icon: allCollapsed ? 'unfold_more' : 'unfold_less',
+            compact: true,
+          }),
+          m(Button, {
+            onclick: (e: Event) => {
+              e.preventDefault();
+              globals.workspace.pinnedTracks.forEach((t) =>
+                globals.workspace.unpinTrack(t),
+              );
+              raf.scheduleFullRedraw();
+            },
+            title: 'Clear all pinned tracks',
+            icon: 'clear_all',
+            compact: true,
+          }),
+          m(TextInput, {
+            placeholder: 'Filter tracks...',
+            title:
+              'Track filter - enter one or more comma-separated search terms',
+            value: globals.state.trackFilterTerm,
+            oninput: (e: Event) => {
+              const filterTerm = (e.target as HTMLInputElement).value;
+              globals.dispatch(Actions.setTrackFilterTerm({filterTerm}));
+            },
+          }),
+          m(Button, {
+            type: 'reset',
+            icon: 'backspace',
+            onclick: () => {
+              globals.dispatch(
+                Actions.setTrackFilterTerm({filterTerm: undefined}),
+              );
+            },
+            title: 'Clear track filter',
+          }),
+        ),
+    );
   }
 
-  renderCanvas(ctx: CanvasRenderingContext2D, size: PanelSize) {
-    let aNoteIsHovered = false;
-
+  renderCanvas(ctx: CanvasRenderingContext2D, size: Size2D) {
     ctx.fillStyle = '#999';
     ctx.fillRect(TRACK_SHELL_WIDTH - 2, 0, 2, size.height);
 
-    ctx.save();
-    ctx.beginPath();
-    ctx.rect(TRACK_SHELL_WIDTH, 0, size.width - TRACK_SHELL_WIDTH, size.height);
-    ctx.clip();
+    const trackSize = {...size, width: size.width - TRACK_SHELL_WIDTH};
 
-    const span = globals.timeline.visibleTimeSpan;
-    const {visibleTimeScale} = globals.timeline;
-    if (size.width > TRACK_SHELL_WIDTH && span.duration > 0n) {
-      const maxMajorTicks = getMaxMajorTicks(size.width - TRACK_SHELL_WIDTH);
-      const map = timeScaleForVisibleWindow(TRACK_SHELL_WIDTH, size.width);
+    ctx.save();
+    ctx.translate(TRACK_SHELL_WIDTH, 0);
+    canvasClip(ctx, 0, 0, trackSize.width, trackSize.height);
+    this.renderPanel(ctx, trackSize);
+    ctx.restore();
+  }
+
+  private renderPanel(ctx: CanvasRenderingContext2D, size: Size2D): void {
+    let aNoteIsHovered = false;
+
+    const visibleWindow = globals.timeline.visibleWindow;
+    const timescale = new TimeScale(visibleWindow, {
+      left: 0,
+      right: size.width,
+    });
+    const timespan = visibleWindow.toTimeSpan();
+
+    this.timescale = timescale;
+
+    if (size.width > 0 && timespan.duration > 0n) {
+      const maxMajorTicks = getMaxMajorTicks(size.width);
       const offset = globals.timestampOffset();
-      const tickGen = new TickGenerator(span, maxMajorTicks, offset);
+      const tickGen = generateTicks(timespan, maxMajorTicks, offset);
       for (const {type, time} of tickGen) {
-        const px = Math.floor(map.timeToPx(time));
+        const px = Math.floor(timescale.timeToPx(time));
         if (type === TickType.MAJOR) {
           ctx.fillRect(px, 0, 1, size.height);
         }
@@ -149,36 +195,36 @@ export class NotesPanel implements Panel {
     ctx.textBaseline = 'bottom';
     ctx.font = '10px Helvetica';
 
-    for (const note of Object.values(globals.state.notes)) {
+    for (const note of globals.noteManager.notes.values()) {
       const timestamp = getStartTimestamp(note);
       // TODO(hjd): We should still render area selection marks in viewport is
       // *within* the area (e.g. both lhs and rhs are out of bounds).
-      if ((note.noteType !== 'AREA' && !span.contains(timestamp)) ||
-          (note.noteType === 'AREA' &&
-           !span.contains(globals.state.areas[note.areaId].end) &&
-           !span.contains(globals.state.areas[note.areaId].start))) {
+      if (
+        (note.noteType === 'DEFAULT' &&
+          !visibleWindow.contains(note.timestamp)) ||
+        (note.noteType === 'SPAN' &&
+          !visibleWindow.overlaps(note.start, note.end))
+      ) {
         continue;
       }
       const currentIsHovered =
-          this.hoveredX !== null && this.mouseOverNote(this.hoveredX, note);
+        this.hoveredX !== null && this.hitTestNote(this.hoveredX, note);
       if (currentIsHovered) aNoteIsHovered = true;
 
-      const selection = globals.state.currentSelection;
-      const isSelected = selection !== null &&
-          ((selection.kind === 'NOTE' && selection.id === note.id) ||
-           (selection.kind === 'AREA' && selection.noteId === note.id));
-      const x = visibleTimeScale.timeToPx(timestamp);
-      const left = Math.floor(x + TRACK_SHELL_WIDTH);
+      const selection = globals.selectionManager.selection;
+      const isSelected = selection.kind === 'note' && selection.id === note.id;
+      const x = timescale.timeToPx(timestamp);
+      const left = Math.floor(x);
 
       // Draw flag or marker.
-      if (note.noteType === 'AREA') {
-        const area = globals.state.areas[note.areaId];
+      if (note.noteType === 'SPAN') {
         this.drawAreaMarker(
-            ctx,
-            left,
-            Math.floor(visibleTimeScale.timeToPx(area.end) + TRACK_SHELL_WIDTH),
-            note.color,
-            isSelected);
+          ctx,
+          left,
+          Math.floor(timescale.timeToPx(note.end)),
+          note.color,
+          isSelected,
+        );
       } else {
         this.drawFlag(ctx, left, size.height, note.color, isSelected);
       }
@@ -189,7 +235,11 @@ export class NotesPanel implements Panel {
         // Add a white semi-transparent background for the text.
         ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
         ctx.fillRect(
-            left + FLAG_WIDTH + 2, size.height + 2, measured.width + 2, -12);
+          left + FLAG_WIDTH + 2,
+          size.height + 2,
+          measured.width + 2,
+          -12,
+        );
         ctx.fillStyle = '#3c4b5d';
         ctx.fillText(summary, left + FLAG_WIDTH + 3, size.height + 1);
       }
@@ -203,11 +253,11 @@ export class NotesPanel implements Panel {
 
     // View preview note flag when hovering on notes panel.
     if (!aNoteIsHovered && this.hoveredX !== null) {
-      const timestamp = visibleTimeScale.pxToHpTime(this.hoveredX).toTime();
-      if (span.contains(timestamp)) {
+      const timestamp = timescale.pxToHpTime(this.hoveredX).toTime();
+      if (visibleWindow.contains(timestamp)) {
         globals.dispatch(Actions.setHoveredNoteTimestamp({ts: timestamp}));
-        const x = visibleTimeScale.timeToPx(timestamp);
-        const left = Math.floor(x + TRACK_SHELL_WIDTH);
+        const x = timescale.timeToPx(timestamp);
+        const left = Math.floor(x);
         this.drawFlag(ctx, left, size.height, '#aaa', /* fill */ true);
       }
     }
@@ -216,13 +266,17 @@ export class NotesPanel implements Panel {
   }
 
   private drawAreaMarker(
-      ctx: CanvasRenderingContext2D, x: number, xEnd: number, color: string,
-      fill: boolean) {
+    ctx: CanvasRenderingContext2D,
+    x: number,
+    xEnd: number,
+    color: string,
+    fill: boolean,
+  ) {
     ctx.fillStyle = color;
     ctx.strokeStyle = color;
     const topOffset = 10;
     // Don't draw in the track shell section.
-    if (x >= TRACK_SHELL_WIDTH) {
+    if (x >= 0) {
       // Draw left triangle.
       ctx.beginPath();
       ctx.moveTo(x, topOffset);
@@ -242,7 +296,7 @@ export class NotesPanel implements Panel {
     ctx.stroke();
 
     // Start line after track shell section, join triangles.
-    const startDraw = Math.max(x, TRACK_SHELL_WIDTH);
+    const startDraw = Math.max(x, 0);
     ctx.beginPath();
     ctx.moveTo(startDraw, topOffset);
     ctx.lineTo(xEnd, topOffset);
@@ -250,8 +304,12 @@ export class NotesPanel implements Panel {
   }
 
   private drawFlag(
-      ctx: CanvasRenderingContext2D, x: number, height: number, color: string,
-      fill?: boolean) {
+    ctx: CanvasRenderingContext2D,
+    x: number,
+    height: number,
+    color: string,
+    fill?: boolean,
+  ) {
     const prevFont = ctx.font;
     const prevBaseline = ctx.textBaseline;
     ctx.textBaseline = 'alphabetic';
@@ -271,34 +329,39 @@ export class NotesPanel implements Panel {
     ctx.textBaseline = prevBaseline;
   }
 
+  private onClick(x: number) {
+    if (!this.timescale) {
+      return;
+    }
 
-  private onClick(x: number, _: number) {
+    // Select the hovered note, or create a new single note & select it
     if (x < 0) return;
-    const {visibleTimeScale} = globals.timeline;
-    const timestamp = visibleTimeScale.pxToHpTime(x).toTime();
-    for (const note of Object.values(globals.state.notes)) {
-      if (this.hoveredX !== null && this.mouseOverNote(this.hoveredX, note)) {
-        if (note.noteType === 'AREA') {
-          globals.makeSelection(
-              Actions.reSelectArea({areaId: note.areaId, noteId: note.id}));
-        } else {
-          globals.makeSelection(Actions.selectNote({id: note.id}));
-        }
+    for (const note of globals.noteManager.notes.values()) {
+      if (this.hoveredX !== null && this.hitTestNote(this.hoveredX, note)) {
+        globals.selectionManager.setNote({id: note.id});
         return;
       }
     }
+    const timestamp = this.timescale.pxToHpTime(x).toTime();
+    const id = uuidv4();
     const color = randomColor();
-    globals.makeSelection(Actions.addNote({timestamp, color}));
+    const noteId = globals.noteManager.addNote({id, timestamp, color});
+    globals.selectionManager.setNote({id: noteId});
   }
 
-  private mouseOverNote(x: number, note: AreaNote|Note): boolean {
-    const timeScale = globals.timeline.visibleTimeScale;
-    const noteX = timeScale.timeToPx(getStartTimestamp(note));
-    if (note.noteType === 'AREA') {
-      const noteArea = globals.state.areas[note.areaId];
-      return (noteX <= x && x < noteX + AREA_TRIANGLE_WIDTH) ||
-          (timeScale.timeToPx(noteArea.end) > x &&
-           x > timeScale.timeToPx(noteArea.end) - AREA_TRIANGLE_WIDTH);
+  private hitTestNote(x: number, note: SpanNote | Note): boolean {
+    if (!this.timescale) {
+      return false;
+    }
+
+    const timescale = this.timescale;
+    const noteX = timescale.timeToPx(getStartTimestamp(note));
+    if (note.noteType === 'SPAN') {
+      return (
+        (noteX <= x && x < noteX + AREA_TRIANGLE_WIDTH) ||
+        (timescale.timeToPx(note.end) > x &&
+          x > timescale.timeToPx(note.end) - AREA_TRIANGLE_WIDTH)
+      );
     } else {
       const width = FLAG_WIDTH;
       return noteX <= x && x < noteX + width;
@@ -306,69 +369,63 @@ export class NotesPanel implements Panel {
   }
 }
 
-interface NotesEditorTabConfig {
-  id: string;
-}
+export class NotesEditorTab implements DetailsPanel {
+  render(selection: Selection) {
+    if (selection.kind !== 'note') {
+      return undefined;
+    }
 
-export class NotesEditorTab extends BottomTab<NotesEditorTabConfig> {
-  static readonly kind = 'org.perfetto.NotesEditorTab';
+    const id = selection.id;
 
-  static create(args: NewBottomTabArgs): NotesEditorTab {
-    return new NotesEditorTab(args);
-  }
-
-  constructor(args: NewBottomTabArgs) {
-    super(args);
-  }
-
-  getTitle() {
-    return 'Current Selection';
-  }
-
-  viewTab() {
-    const note = globals.state.notes[this.config.id];
+    const note = globals.noteManager.getNote(id);
     if (note === undefined) {
-      return m('.', `No Note with id ${this.config.id}`);
+      return m('.', `No Note with id ${id}`);
     }
     const startTime = getStartTimestamp(note);
     return m(
-        '.notes-editor-panel',
-        m('.notes-editor-panel-heading-bar',
-          m('.notes-editor-panel-heading',
-            `Annotation at `,
-            m(Timestamp, {ts: startTime})),
-          m('input[type=text]', {
-            value: note.text,
-            onchange: (e: InputEvent) => {
-              const newText = (e.target as HTMLInputElement).value;
-              globals.dispatch(Actions.changeNoteText({
-                id: this.config.id,
-                newText,
-              }));
+      '.notes-editor-panel',
+      {
+        key: id, // Every note shoul get its own brand new DOM.
+      },
+      m(
+        '.notes-editor-panel-heading-bar',
+        m(
+          '.notes-editor-panel-heading',
+          `Annotation at `,
+          m(Timestamp, {ts: startTime}),
+        ),
+        m('input[type=text]', {
+          oncreate: (v: m.VnodeDOM) => {
+            // NOTE: due to bad design decisions elsewhere this component is
+            // rendered every time the mouse moves on the canvas. We cannot set
+            // `value: note.text` as an input as that will clobber the input
+            // value as we move the mouse.
+            const inputElement = v.dom as HTMLInputElement;
+            inputElement.value = note.text;
+            inputElement.focus();
+          },
+          onchange: (e: InputEvent) => {
+            const newText = (e.target as HTMLInputElement).value;
+            globals.noteManager.changeNote(id, {text: newText});
+          },
+        }),
+        m(
+          'span.color-change',
+          `Change color: `,
+          m('input[type=color]', {
+            value: note.color,
+            onchange: (e: Event) => {
+              const newColor = (e.target as HTMLInputElement).value;
+              globals.noteManager.changeNote(id, {color: newColor});
             },
           }),
-          m('span.color-change', `Change color: `, m('input[type=color]', {
-              value: note.color,
-              onchange: (e: Event) => {
-                const newColor = (e.target as HTMLInputElement).value;
-                globals.dispatch(Actions.changeNoteColor({
-                  id: this.config.id,
-                  newColor,
-                }));
-              },
-            })),
-          m(Button, {
-            label: 'Remove',
-            icon: Icons.Delete,
-            minimal: true,
-            onclick: () => {
-              globals.dispatch(Actions.removeNote({id: this.config.id}));
-              globals.dispatch(Actions.setCurrentTab({tab: undefined}));
-              raf.scheduleFullRedraw();
-            },
-          })),
+        ),
+        m(Button, {
+          label: 'Remove',
+          icon: Icons.Delete,
+          onclick: () => globals.noteManager.removeNote(id),
+        }),
+      ),
     );
   }
 }
-
-bottomTabRegistry.register(NotesEditorTab);

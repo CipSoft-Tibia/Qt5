@@ -47,9 +47,12 @@ class CORE_EXPORT HTMLButtonElement final : public HTMLFormControlElement {
                          mojom::blink::FocusType,
                          InputDeviceCapabilities*) override;
 
-  // This return a <selectlist> if this button has type=selectlist and is a
+  // This returns a <selectlist> if this button has type=selectlist and is a
   // descendant of a <selectlist>.
   HTMLSelectListElement* OwnerSelectList() const;
+  // This returns a <select> if this button has type=select and is a direct
+  // child of a <select>.
+  HTMLSelectElement* OwnerSelect() const;
 
  private:
   // The type attribute of HTMLButtonElement is an enumerated attribute:
@@ -68,6 +71,7 @@ class CORE_EXPORT HTMLButtonElement final : public HTMLFormControlElement {
   const AtomicString& FormControlTypeAsString() const override;
 
   LayoutObject* CreateLayoutObject(const ComputedStyle&) override;
+  void AdjustStyle(ComputedStyleBuilder&) override;
 
   // HTMLFormControlElement always creates one, but buttons don't need it.
   bool AlwaysCreateUserAgentShadowRoot() const override { return false; }

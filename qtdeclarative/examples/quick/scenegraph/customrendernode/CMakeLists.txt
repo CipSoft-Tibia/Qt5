@@ -6,7 +6,7 @@ project(customrendernode LANGUAGES CXX)
 
 find_package(Qt6 REQUIRED COMPONENTS Core Gui Qml Quick ShaderTools)
 
-qt_standard_project_setup()
+qt_standard_project_setup(REQUIRES 6.9)
 
 qt_add_executable(customrendernode WIN32 MACOSX_BUNDLE
     main.cpp

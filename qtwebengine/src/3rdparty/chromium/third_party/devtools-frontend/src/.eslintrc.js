@@ -49,6 +49,8 @@ module.exports = {
     'func-call-spacing': 'error',
     'arrow-parens': ['error', 'as-needed'],
     'eol-last': 'error',
+    'object-shorthand': ['error', 'properties'],
+    'no-useless-rename': 'error',
 
     // anti-patterns
     'no-caller': 'error',
@@ -100,8 +102,8 @@ module.exports = {
 
     // key-spacing is disabled, as some objects use value-aligned spacing, some not.
     'key-spacing': ['off', {'beforeColon': false, 'afterColon': true, 'align': 'value'}],
-    // quote-props is diabled, as property quoting styles are too varied to enforce.
-    'quote-props': ['off', 'as-needed'],
+
+    'quote-props': ['error', 'as-needed'],
 
     // no-implicit-globals will prevent accidental globals
     'no-implicit-globals': 'off',
@@ -196,7 +198,117 @@ module.exports = {
       'rulesdir/prefer_readonly_keyword': 'error',
       'rulesdir/inline_type_imports': 'error',
     }
-  }]
+  }, {
+    'files': "test/shared/mocha-interface.ts",
+    'rules': {
+      'rulesdir/es_modules_import': 'off',
+    }
+  }, {
+    'files' : ['*.ts'],
+    'rules' : {
+      '@typescript-eslint/naming-convention' :
+      [
+        'error', {
+          'selector' : ['function', 'accessor', 'method', 'property', 'parameterProperty'],
+          'format' : ['camelCase'],
+        },
+        {
+          'selector': 'variable',
+          'filter': {
+            // Ignore localization variables.
+            'regex': '^(UIStrings|str_)$',
+            'match': false
+          },
+          'format': ['camelCase'],
+        },
+        {
+          // We are using camelCase, PascalCase and UPPER_CASE for top-level constants, allow the for now.
+          'selector': 'variable',
+          'modifiers': ['const'],
+          'filter': {
+            // Ignore localization variables.
+            'regex': '^(UIStrings|str_)$',
+            'match': false
+          },
+          'format': ['camelCase', 'UPPER_CASE', 'PascalCase'],
+        },
+        {
+          'selector' : 'classProperty',
+          'modifiers' : ['static', 'readonly'],
+          'format' : ['UPPER_CASE', 'camelCase'],
+        },
+        {
+          'selector' : 'enumMember',
+          'format' : ['UPPER_CASE'],
+        },
+        {
+          'selector' : ['typeLike'],
+          'format' : ['PascalCase'],
+        },
+        {
+          'selector' : 'parameter',
+          'format' : ['camelCase'],
+          'leadingUnderscore' : 'allow',
+        },
+        {
+          // Public methods are currently in transition and may still have leading underscores.
+          'selector': 'method',
+          'modifiers': ['public'],
+          'format': ['camelCase'],
+          'leadingUnderscore': 'allow',
+        },
+        {
+          'selector': 'property',
+          'modifiers': ['public'],
+          'format': ['camelCase'],
+          'leadingUnderscore': 'allow',
+        },
+        {
+          // Object literals may be constructed as arguments to external libraries which follow different styles.
+          'selector': ['objectLiteralMethod', 'objectLiteralProperty'],
+          'modifiers': ['public'],
+          'format': null,
+        },
+        {
+          // Ignore type properties that require quotes
+          'selector' : 'typeProperty',
+          'format' : null,
+          'modifiers' : ['requiresQuotes']
+        }
+      ]
+    }
+  }, {
+    'files': ['*.test.ts', 'test/**/*.ts', '**/testing/*.ts'],
+    'rules': {
+      // errors on it('test') with no body
+      'mocha/no-pending-tests' : 'error',
+
+      // errors on {describe, it}.only
+      'mocha/no-exclusive-tests' : 'error',
+
+      'mocha/no-async-describe': 'error',
+      'mocha/no-global-tests': 'error',
+      'mocha/no-nested-tests': 'error',
+
+      'rulesdir/check_test_definitions' : 'error',
+      'rulesdir/avoid_assert_equal' : 'error',
+      'rulesdir/no_repeated_tests' : 'error',
+      'rulesdir/compare_arrays_with_assert_deepequal' : 'error',
+      'rulesdir/ban_screenshot_test_outside_perf_panel' : 'error',
+      'rulesdir/trace_engine_test_timeouts' : 'error',
+      '@typescript-eslint/no-non-null-assertion' : 'off',
+    },
+    'settings': {
+      'mocha/additionalCustomNames': [
+        { 'name': 'describeWithDevtoolsExtension', 'type': 'suite', 'interfaces': [ 'BDD', 'TDD' ] },
+        { 'name': 'describeWithEnvironment', 'type': 'suite', 'interfaces': [ 'BDD', 'TDD' ] },
+        { 'name': 'describeWithLocale', 'type': 'suite', 'interfaces': [ 'BDD', 'TDD' ] },
+        { 'name': 'describeWithMockConnection', 'type': 'suite', 'interfaces': [ 'BDD', 'TDD' ] },
+        { 'name': 'describeWithRealConnection', 'type': 'suite', 'interfaces': [ 'BDD', 'TDD' ] },
+        { 'name': 'itScreenshot', 'type': 'testCase', 'interfaces': [ 'BDD', 'TDD' ] },
+      ]
+    }
+  }],
 };
 
 // clang-format on

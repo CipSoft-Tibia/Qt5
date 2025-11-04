@@ -23,7 +23,6 @@ qt_internal_add_qml_module(MultimediaQuickPrivate
     SOURCES
         qquickimagecapture.cpp qquickimagecapture_p.h
         qquickimagepreviewprovider.cpp qquickimagepreviewprovider_p.h
-#        qquickplaylist.cpp qquickplaylist_p.h
         qquickmediaplayer.cpp qquickmediaplayer_p.h
         qquickscreencapture.cpp qquickscreencapture_p.h
         qquicksoundeffect.cpp qquicksoundeffect_p.h
@@ -32,6 +31,9 @@ qt_internal_add_qml_module(MultimediaQuickPrivate
         qsgvideotexture.cpp qsgvideotexture_p.h
         qtmultimediaquickglobal_p.h
         qtmultimediaquicktypes.cpp qtmultimediaquicktypes_p.h
+    DEFINES
+        QT_NO_CAST_FROM_ASCII
+        QT_NO_CAST_TO_ASCII
     QML_FILES
         ${qml_files}
     PUBLIC_LIBRARIES

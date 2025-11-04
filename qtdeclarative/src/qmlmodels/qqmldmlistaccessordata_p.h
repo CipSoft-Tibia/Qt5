@@ -280,7 +280,11 @@ public:
 
     int metaCall(QObject *object, QMetaObject::Call call, int id, void **arguments) final;
     int createProperty(const char *name, const char *) final;
+#if QT_VERSION >= QT_VERSION_CHECK(7, 0, 0)
+    const QMetaObject *toDynamicMetaObject(QObject *accessors) const final;
+#else
     QMetaObject *toDynamicMetaObject(QObject *accessors) final;
+#endif
 
     QMetaObjectBuilder builder;
     QQmlAdaptorModel *model = nullptr;

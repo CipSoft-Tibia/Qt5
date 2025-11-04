@@ -44,12 +44,13 @@ QT_BEGIN_NAMESPACE
  * \qmlsignal Category3DAxis::rowLabelsChanged()
  *
  * This signal is emitted when row \l labels change.
-*/
+ */
+
 /*!
  * \qmlsignal Category3DAxis::columnLabelsChanged()
  *
  * This signal is emitted when column \l labels change.
-*/
+ */
 
 /*!
  * Constructs a category 3D axis with the parent \a parent.

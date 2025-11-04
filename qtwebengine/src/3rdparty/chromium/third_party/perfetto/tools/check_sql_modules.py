@@ -14,7 +14,7 @@
 # limitations under the License.
 
 # This tool checks that every SQL object created without prefix
-# 'internal_' is documented with proper schema.
+# '_' is documented with proper schema.
 
 import argparse
 from typing import List, Tuple
@@ -25,35 +25,13 @@ import re
 ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(os.path.join(ROOT_DIR))
 
-from python.generators.sql_processing.docs_parse import ParsedFile
+from python.generators.sql_processing.docs_parse import ParsedModule
 from python.generators.sql_processing.docs_parse import parse_file
 from python.generators.sql_processing.utils import check_banned_create_table_as
 from python.generators.sql_processing.utils import check_banned_create_view_as
 from python.generators.sql_processing.utils import check_banned_words
+from python.generators.sql_processing.utils import check_banned_drop
 from python.generators.sql_processing.utils import check_banned_include_all
-
-# Allowlist path are relative to the stdlib root.
-CREATE_TABLE_ALLOWLIST = {
-    '/android/binder.sql': [
-        'internal_oom_score', 'internal_async_binder_reply',
-        'internal_binder_async_txn_raw'
-    ],
-    '/android/monitor_contention.sql': [
-        'internal_isolated', 'android_monitor_contention_chain',
-        'android_monitor_contention'
-    ],
-    '/chrome/tasks.sql': [
-        'internal_chrome_mojo_slices', 'internal_chrome_java_views',
-        'internal_chrome_scheduler_tasks', 'internal_chrome_tasks'
-    ],
-    ('/experimental/'
-     'thread_executing_span.sql'): [
-        'internal_wakeup', 'experimental_thread_executing_span_graph',
-        'internal_critical_path', 'internal_wakeup_graph',
-        'experimental_thread_executing_span_graph'
-    ],
-    '/experimental/flat_slices.sql': ['experimental_slice_flattened']
-}
 
 
 def main():
@@ -74,8 +52,7 @@ def main():
       help='Filter the name of the modules to check (regex syntax)')
 
   args = parser.parse_args()
-  errors = []
-  modules: List[Tuple[str, str, ParsedFile]] = []
+  modules: List[Tuple[str, str, ParsedModule]] = []
   for root, _, files in os.walk(args.stdlib_sources, topdown=True):
     for f in files:
       path = os.path.join(root, f)
@@ -87,46 +64,79 @@ def main():
         if not pattern.match(rel_path):
           continue
 
-      if args.verbose:
-        print(f'Parsing {rel_path}:')
-
       with open(path, 'r') as f:
         sql = f.read()
 
-      parsed = parse_file(path, sql)
+      parsed = parse_file(rel_path, sql)
+
+      # Some modules (i.e. `deprecated`) should not be checked.
+      if not parsed:
+        continue
+
       modules.append((path, sql, parsed))
 
       if args.verbose:
-        function_count = len(parsed.functions) + len(parsed.table_functions)
-        print(f'Parsed {function_count} functions'
-              f', {len(parsed.table_views)} tables/views'
-              f' ({len(parsed.errors)} errors).')
+        obj_count = len(parsed.functions) + len(parsed.table_functions) + len(
+            parsed.table_views) + len(parsed.macros)
+        print(
+            f"Parsing '{rel_path}' ({obj_count} objects, "
+            f"{len(parsed.errors)} errors) - "
+            f"{len(parsed.functions)} functions, "
+            f"{len(parsed.table_functions)} table functions, "
+            f"{len(parsed.table_views)} tables/views, "
+            f"{len(parsed.macros)} macros.")
 
+  all_errors = 0
   for path, sql, parsed in modules:
+    errors = []
     lines = [l.strip() for l in sql.split('\n')]
     for line in lines:
       if line.startswith('--'):
         continue
-      if 'RUN_METRIC' in line:
-        errors.append(f"RUN_METRIC is banned in standard library.\n"
-                      f"Offending file: {path}\n")
+      if 'run_metric' in line.casefold():
+        errors.append("RUN_METRIC is banned in standard library.")
       if 'insert into' in line.casefold():
-        errors.append(f"INSERT INTO table is not allowed in standard library.\n"
-                      f"Offending file: {path}\n")
+        errors.append("INSERT INTO table is not allowed in standard library.")
 
-    errors += parsed.errors
-    errors += check_banned_words(sql, path)
-    errors += check_banned_create_table_as(
-        sql,
-        path.split(ROOT_DIR)[1],
-        args.stdlib_sources.split(ROOT_DIR)[1], CREATE_TABLE_ALLOWLIST)
-    errors += check_banned_create_view_as(sql, path.split(ROOT_DIR)[1])
-    errors += check_banned_include_all(sql, path.split(ROOT_DIR)[1])
+    # Validate includes
+    package = parsed.package_name
+    for include in parsed.includes:
+      package = package.lower()
+      include_package = include.package.lower()
 
-  if errors:
-    sys.stderr.write("\n".join(errors))
-    sys.stderr.write("\n")
-  return 0 if not errors else 1
+      if (include_package == "common"):
+        errors.append(
+            "Common module has been deprecated in the standard library.")
+
+      if (package != "viz" and include_package == "viz"):
+        errors.append("No modules can depend on 'viz' outside 'viz' package.")
+
+      if (package == "chrome" and include_package == "android"):
+        errors.append(
+            f"Modules from package 'chrome' can't include '{include.module}' "
+            f"from package 'android'")
+
+      if (package == "android" and include_package == "chrome"):
+        errors.append(
+            f"Modules from package 'android' can't include '{include.module}' "
+            f"from package 'chrome'")
+
+    errors += [
+        *parsed.errors, *check_banned_words(sql),
+        *check_banned_create_table_as(sql), *check_banned_create_view_as(sql),
+        *check_banned_include_all(sql), *check_banned_drop(sql)
+    ]
+
+    if errors:
+      sys.stderr.write(
+          f"\nFound {len(errors)} errors in file '{path.split(ROOT_DIR)[1]}':\n- "
+      )
+      sys.stderr.write("\n- ".join(errors))
+      sys.stderr.write("\n\n")
+
+    all_errors += len(errors)
+
+  return 0 if not all_errors else 1
 
 
 if __name__ == "__main__":

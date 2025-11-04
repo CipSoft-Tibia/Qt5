@@ -42,6 +42,9 @@ class Q_GRAPHS_EXPORT QAbstractAxis : public QObject
     Q_PROPERTY(bool titleVisible READ isTitleVisible WRITE setTitleVisible NOTIFY
                    titleVisibleChanged FINAL)
     Q_PROPERTY(QFont titleFont READ titleFont WRITE setTitleFont NOTIFY titleFontChanged FINAL)
+    //alignment
+    Q_PROPERTY(Qt::Alignment alignment READ alignment WRITE setAlignment NOTIFY
+                       alignmentChanged REVISION(6, 9))
     QML_FOREIGN(QAbstractAxis)
     QML_UNCREATABLE("")
     QML_NAMED_ELEMENT(AbstractAxis)
@@ -97,6 +100,9 @@ public:
     void setTitleText(const QString &title);
     QString titleText() const;
 
+    Qt::Alignment alignment() const;
+    void setAlignment(Qt::Alignment alignment);
+
     //range handling
     void setMin(const QVariant &min);
     void setMax(const QVariant &max);
@@ -114,6 +120,7 @@ Q_SIGNALS:
     void titleColorChanged(QColor color);
     void titleVisibleChanged(bool visible);
     void titleFontChanged(const QFont &font);
+    Q_REVISION(6, 9) void alignmentChanged(Qt::Alignment alignment);
     void update();
     void rangeChanged(qreal min, qreal max);
 

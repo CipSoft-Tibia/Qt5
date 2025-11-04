@@ -5,6 +5,7 @@
 #include "net/network_error_logging/network_error_logging_service.h"
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -15,6 +16,7 @@
 #include "base/logging.h"
 #include "base/memory/raw_ptr.h"
 #include "base/metrics/histogram_macros.h"
+#include "base/not_fatal_until.h"
 #include "base/rand_util.h"
 #include "base/time/clock.h"
 #include "base/time/default_clock.h"
@@ -28,7 +30,7 @@
 #include "net/base/url_util.h"
 #include "net/log/net_log.h"
 #include "net/reporting/reporting_service.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
+#include "net/reporting/reporting_target_type.h"
 #include "url/gurl.h"
 #include "url/origin.h"
 
@@ -307,7 +309,8 @@ class NetworkErrorLoggingServiceImpl : public NetworkErrorLoggingService {
   // Policies in the map are unowned; they are pointers to the original in
   // the PolicyMap.
   using WildcardPolicyMap =
-      std::map<WildcardNelPolicyKey, std::set<const NelPolicy*>>;
+      std::map<WildcardNelPolicyKey,
+               std::set<raw_ptr<const NelPolicy, SetExperimental>>>;
 
   PolicyMap policies_;
   WildcardPolicyMap wildcard_policies_;
@@ -475,7 +478,7 @@ class NetworkErrorLoggingServiceImpl : public NetworkErrorLoggingService {
     }
 
     bool success = (type == OK) && !IsHttpError(details);
-    const absl::optional<double> sampling_fraction =
+    const std::optional<double> sampling_fraction =
         SampleAndReturnFraction(*policy, success);
     if (!sampling_fraction.has_value())
       return;
@@ -488,11 +491,11 @@ class NetworkErrorLoggingServiceImpl : public NetworkErrorLoggingService {
     // A null reporting source token is used since this report is not associated
     // with any particular document.
     reporting_service_->QueueReport(
-        details.uri, absl::nullopt, details.network_anonymization_key,
+        details.uri, std::nullopt, details.network_anonymization_key,
         details.user_agent, policy->report_to, kReportType,
         CreateReportBody(phase_string, type_string, sampling_fraction.value(),
                          details),
-        details.reporting_upload_depth);
+        details.reporting_upload_depth, ReportingTargetType::kDeveloper);
   }
 
   void DoQueueSignedExchangeReport(SignedExchangeReportDetails details,
@@ -526,7 +529,7 @@ class NetworkErrorLoggingServiceImpl : public NetworkErrorLoggingService {
           RequestOutcome::kDiscardedIPAddressMismatch);
       return;
     }
-    const absl::optional<double> sampling_fraction =
+    const std::optional<double> sampling_fraction =
         SampleAndReturnFraction(*policy, details.success);
     if (!sampling_fraction.has_value()) {
       RecordSignedExchangeRequestOutcome(
@@ -538,10 +541,10 @@ class NetworkErrorLoggingServiceImpl : public NetworkErrorLoggingService {
     // A null reporting source token is used since this report is not associated
     // with any particular document.
     reporting_service_->QueueReport(
-        details.outer_url, absl::nullopt, details.network_anonymization_key,
+        details.outer_url, std::nullopt, details.network_anonymization_key,
         details.user_agent, policy->report_to, kReportType,
         CreateSignedExchangeReportBody(details, sampling_fraction.value()),
-        0 /* depth */);
+        0 /* depth */, ReportingTargetType::kDeveloper);
     RecordSignedExchangeRequestOutcome(RequestOutcome::kQueued);
   }
 
@@ -586,7 +589,7 @@ class NetworkErrorLoggingServiceImpl : public NetworkErrorLoggingService {
     if (json_value.size() > kMaxJsonSize)
       return false;
 
-    absl::optional<base::Value> value =
+    std::optional<base::Value> value =
         base::JSONReader::Read(json_value, base::JSON_PARSE_RFC, kMaxJsonDepth);
     if (!value)
       return false;
@@ -684,9 +687,8 @@ class NetworkErrorLoggingServiceImpl : public NetworkErrorLoggingService {
     if (PoliciesArePersisted() && initialized_)
       store_->AddNelPolicy(policy);
 
-    auto iter_and_result =
-        policies_.insert(std::make_pair(policy.key, std::move(policy)));
-    // TODO(crbug.com/1326282): Change this to a DCHECK when we're sure the bug
+    auto iter_and_result = policies_.emplace(policy.key, std::move(policy));
+    // TODO(crbug.com/40225752): Change this to a DCHECK when we're sure the bug
     // is fixed.
     CHECK(iter_and_result.second);
 
@@ -712,7 +714,7 @@ class NetworkErrorLoggingServiceImpl : public NetworkErrorLoggingService {
   // Removes the policy pointed to by |policy_it|. Invalidates |policy_it|.
   // Returns the iterator to the next element.
   PolicyMap::iterator RemovePolicy(PolicyMap::iterator policy_it) {
-    DCHECK(policy_it != policies_.end());
+    CHECK(policy_it != policies_.end(), base::NotFatalUntil::M130);
     NelPolicy* policy = &policy_it->second;
     MaybeRemoveWildcardPolicy(policy);
 
@@ -733,7 +735,7 @@ class NetworkErrorLoggingServiceImpl : public NetworkErrorLoggingService {
 
     auto wildcard_it =
         wildcard_policies_.find(WildcardNelPolicyKey(origin_key));
-    DCHECK(wildcard_it != wildcard_policies_.end());
+    CHECK(wildcard_it != wildcard_policies_.end(), base::NotFatalUntil::M130);
 
     size_t erased = wildcard_it->second.erase(policy);
     DCHECK_EQ(1u, erased);
@@ -766,7 +768,7 @@ class NetworkErrorLoggingServiceImpl : public NetworkErrorLoggingService {
 
     // This should only be called if we have hit the max policy limit, so there
     // should be at least one policy.
-    DCHECK(stalest_it != policies_.end());
+    CHECK(stalest_it != policies_.end(), base::NotFatalUntil::M130);
 
     RemovePolicy(stalest_it);
   }
@@ -826,20 +828,20 @@ class NetworkErrorLoggingServiceImpl : public NetworkErrorLoggingService {
   }
 
   // Returns a valid value of matching fraction iff the event should be sampled.
-  absl::optional<double> SampleAndReturnFraction(const NelPolicy& policy,
-                                                 bool success) const {
+  std::optional<double> SampleAndReturnFraction(const NelPolicy& policy,
+                                                bool success) const {
     const double sampling_fraction =
         success ? policy.success_fraction : policy.failure_fraction;
 
     // Sampling fractions are often either 0.0 or 1.0, so in those cases we
     // can avoid having to call RandDouble().
     if (sampling_fraction <= 0.0)
-      return absl::nullopt;
+      return std::nullopt;
     if (sampling_fraction >= 1.0)
       return sampling_fraction;
 
     if (base::RandDouble() >= sampling_fraction)
-      return absl::nullopt;
+      return std::nullopt;
     return sampling_fraction;
   }
 

@@ -5,6 +5,8 @@
 #ifndef QUICHE_QUIC_CORE_QUIC_CONNECTION_CONTEXT_H_
 #define QUICHE_QUIC_CORE_QUIC_CONNECTION_CONTEXT_H_
 
+#include <memory>
+
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "quiche/quic/platform/api/quic_export.h"
@@ -33,23 +35,6 @@ class QUICHE_EXPORT QuicConnectionTracer {
     std::string s = absl::StrFormat(format, args...);
     PrintString(s);
   }
-
- private:
-  friend class QuicConnectionContextSwitcher;
-
-  // Called by QuicConnectionContextSwitcher, when |this| becomes the current
-  // thread's QUIC connection tracer.
-  //
-  // Activate/Deactivate are only called by QuicConnectionContextSwitcher's
-  // constructor/destructor, they always come in pairs.
-  virtual void Activate() {}
-
-  // Called by QuicConnectionContextSwitcher, when |this| stops from being the
-  // current thread's QUIC connection tracer.
-  //
-  // Activate/Deactivate are only called by QuicConnectionContextSwitcher's
-  // constructor/destructor, they always come in pairs.
-  virtual void Deactivate() {}
 };
 
 // QuicBugListener is a helper class for implementing QUIC_BUG. The QUIC_BUG
@@ -61,21 +46,30 @@ class QUICHE_EXPORT QuicBugListener {
                          absl::string_view bug_message) = 0;
 };
 
-// QuicConnectionProcessPacketContext is a member of QuicConnectionContext that
-// contains information of the packet currently being processed by the owning
-// QuicConnection.
-struct QUICHE_EXPORT QuicConnectionProcessPacketContext final {
-  // If !empty(), the decrypted payload of the packet currently being processed.
-  absl::string_view decrypted_payload;
+// QuicConnectionContextListener provides the interfaces that are called when
+// a QuicConnection becomes active or inactive. If there are platform-specific
+// preparation or cleanup work needed for the members of QuicConnectionContext
+// to function, those work can be done in the implementation of this interface.
+class QUICHE_EXPORT QuicConnectionContextListener {
+ public:
+  virtual ~QuicConnectionContextListener() = default;
 
-  // The offset within |decrypted_payload|, if it's non-empty, that marks the
-  // start of the frame currently being processed.
-  // Should not be used when |decrypted_payload| is empty.
-  size_t current_frame_offset = 0;
+ private:
+  friend class QuicConnectionContextSwitcher;
 
-  // NOTE: This can be very expansive. If used in logs, make sure it is rate
-  // limited via QUIC_BUG etc.
-  std::string DebugString() const;
+  // Called by QuicConnectionContextSwitcher when a QUIC connection becomes
+  // active in the current thread.
+  //
+  // Activate/Deactivate are only called by QuicConnectionContextSwitcher's
+  // constructor/destructor, they always come in pairs.
+  virtual void Activate() = 0;
+
+  // Called by QuicConnectionContextSwitcher when a QUIC connection becomes
+  // inactive in the current thread.
+  //
+  // Activate/Deactivate are only called by QuicConnectionContextSwitcher's
+  // constructor/destructor, they always come in pairs.
+  virtual void Deactivate() = 0;
 };
 
 // QuicConnectionContext is a per-QuicConnection context that includes
@@ -93,11 +87,9 @@ struct QUICHE_EXPORT QuicConnectionContext final {
   // function is not called from a 'top-level' QuicConnection function.
   static QuicConnectionContext* Current();
 
+  std::unique_ptr<QuicConnectionContextListener> listener;
   std::unique_ptr<QuicConnectionTracer> tracer;
   std::unique_ptr<QuicBugListener> bug_listener;
-
-  // Information about the packet currently being processed.
-  QuicConnectionProcessPacketContext process_packet_context;
 };
 
 // QuicConnectionContextSwitcher is a RAII object used for maintaining the

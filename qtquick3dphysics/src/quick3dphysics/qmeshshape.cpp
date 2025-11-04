@@ -304,6 +304,8 @@ void QQuick3DPhysicsMesh::loadSsgMesh()
                                        "Int16", "UnsignedInt32", "Int32",   "UnsignedInt64",
                                        "Int64", "Float16",       "Float32", "Float64" };
 
+    // Security note: m_meshPath is a user provided file but QSSGMesh::Mesh::loadMesh is
+    // assumed to handle invalid meshes
     QFileInfo fileInfo = QFileInfo(m_meshPath);
     if (fileInfo.exists()) {
         QFile file(fileInfo.absoluteFilePath());

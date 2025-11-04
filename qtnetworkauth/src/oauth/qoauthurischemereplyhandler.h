@@ -27,6 +27,8 @@ public:
     void setRedirectUrl(const QUrl &url);
     QUrl redirectUrl() const;
 
+    bool handleAuthorizationRedirect(const QUrl &url);
+
     bool listen();
     void close();
     bool isListening() const noexcept;
@@ -38,7 +40,7 @@ private:
     Q_DISABLE_COPY(QOAuthUriSchemeReplyHandler)
     Q_DECLARE_PRIVATE(QOAuthUriSchemeReplyHandler)
     // Private slot for providing a callback slot for QDesktopServices::setUrlHandler
-    Q_PRIVATE_SLOT(d_func(), void _q_handleRedirectUrl(const QUrl &url))
+    Q_PRIVATE_SLOT(d_func(), bool _q_handleRedirectUrl(const QUrl &url))
 };
 
 QT_END_NAMESPACE

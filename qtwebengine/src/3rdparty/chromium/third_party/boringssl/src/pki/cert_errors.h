@@ -54,9 +54,10 @@
 #include "cert_error_id.h"
 #include "parsed_certificate.h"
 
-namespace bssl {
+BSSL_NAMESPACE_BEGIN
 
 class CertErrorParams;
+class CertPathErrors;
 
 // CertError represents either an error or a warning.
 struct OPENSSL_EXPORT CertError {
@@ -104,14 +105,20 @@ class OPENSSL_EXPORT CertErrors {
   // Dumps a textual representation of the errors for debugging purposes.
   std::string ToDebugString() const;
 
-  // Returns true if the error |id| was added to this CertErrors (of any
-  // severity).
+  // Returns true if the error |id| was added to this CertErrors at
+  // severity |severity|
+  bool ContainsErrorWithSeverity(CertErrorId id,
+                                 CertError::Severity severity) const;
+
+  // Returns true if the error |id| was added to this CertErrors at
+  // high serverity.
   bool ContainsError(CertErrorId id) const;
 
   // Returns true if this contains any errors of the given severity level.
   bool ContainsAnyErrorWithSeverity(CertError::Severity severity) const;
 
  private:
+ friend CertPathErrors;
   std::vector<CertError> nodes_;
 };
 
@@ -139,6 +146,7 @@ class OPENSSL_EXPORT CertPathErrors {
   // Returns a bucket to put errors that are not associated with a particular
   // certificate.
   CertErrors *GetOtherErrors();
+  const CertErrors *GetOtherErrors() const;
 
   // Returns true if CertPathErrors contains the specified error (of any
   // severity).
@@ -146,6 +154,13 @@ class OPENSSL_EXPORT CertPathErrors {
 
   // Returns true if this contains any errors of the given severity level.
   bool ContainsAnyErrorWithSeverity(CertError::Severity severity) const;
+
+  // If the path contains only one unique high severity error, return the
+  // error id and sets |out_depth| to the depth at which the error was
+  // first seen. A depth of -1 means the error is not associated with
+  // a single certificate of the path.
+  std::optional<CertErrorId> FindSingleHighSeverityError(
+      ptrdiff_t &out_depth) const;
 
   // Shortcut for ContainsAnyErrorWithSeverity(CertError::SEVERITY_HIGH).
   bool ContainsHighSeverityErrors() const {
@@ -161,6 +176,6 @@ class OPENSSL_EXPORT CertPathErrors {
   CertErrors other_errors_;
 };
 
-}  // namespace bssl
+BSSL_NAMESPACE_END
 
 #endif  // BSSL_PKI_CERT_ERRORS_H_

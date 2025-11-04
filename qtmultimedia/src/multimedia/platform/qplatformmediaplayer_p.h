@@ -20,7 +20,6 @@
 #include <QtMultimedia/qaudiodevice.h>
 #include <QtMultimedia/qmediametadata.h>
 
-#include <QtCore/qpair.h>
 #include <QtCore/private/qglobal_p.h>
 #include <QtCore/qobject.h>
 
@@ -116,7 +115,7 @@ public:
 
     void stateChanged(QMediaPlayer::PlaybackState newState);
     void mediaStatusChanged(QMediaPlayer::MediaStatus status);
-    void error(int error, const QString &errorString);
+    void error(QMediaPlayer::Error, const QString &errorString);
 
     void resetCurrentLoop() { m_currentLoop = 0; }
     bool doLoop() {
@@ -130,6 +129,8 @@ public:
         m_loops = loops;
         Q_EMIT player->loopsChanged();
     }
+
+    bool qmediaplayerDestructorCalled = false;
 
 protected:
     explicit QPlatformMediaPlayer(QMediaPlayer *parent = nullptr);

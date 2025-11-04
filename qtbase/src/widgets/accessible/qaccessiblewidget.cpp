@@ -28,7 +28,10 @@
 #if QT_CONFIG(menu)
 #include <QMenu>
 #endif
+#include <QtGui/private/qaccessiblehelper_p.h>
 #include <QtWidgets/private/qwidget_p.h>
+
+#include <qpa/qplatformwindow.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -90,16 +93,6 @@ static qsizetype qt_accAmpIndex(const QString &text)
     Q_UNUSED(text);
     return -1;
 #endif
-}
-
-QString qt_accStripAmp(const QString &text)
-{
-    QString newText(text);
-    qsizetype ampIndex = qt_accAmpIndex(newText);
-    if (ampIndex != -1)
-        newText.remove(ampIndex, 1);
-
-    return newText.replace("&&"_L1, "&"_L1);
 }
 
 QString qt_accHotKey(const QString &text)
@@ -353,9 +346,6 @@ int QAccessibleWidget::indexOfChild(const QAccessibleInterface *child) const
     return cl.indexOf(qobject_cast<QWidget *>(child->object()));
 }
 
-// from qwidget.cpp
-extern QString qt_setWindowTitle_helperHelper(const QString &, const QWidget*);
-
 /*! \reimp */
 QString QAccessibleWidget::text(QAccessible::Text t) const
 {
@@ -368,10 +358,10 @@ QString QAccessibleWidget::text(QAccessible::Text t) const
         } else if (!widget()->accessibleName().isEmpty()) {
             str = widget()->accessibleName();
         } else if (widget()->isWindow()) {
-            if (widget()->isMinimized())
-                str = qt_setWindowTitle_helperHelper(widget()->windowIconText(), widget());
-            else
-                str = qt_setWindowTitle_helperHelper(widget()->windowTitle(), widget());
+            if (QWindow *window = widget()->windowHandle()) {
+                if (QPlatformWindow *platformWindow = window->handle())
+                    str = platformWindow->windowTitle();
+            }
         } else {
             str = qt_accStripAmp(buddyString(widget()));
         }
@@ -382,6 +372,9 @@ QString QAccessibleWidget::text(QAccessible::Text t) const
         if (str.isEmpty())
             str = widget()->toolTip();
 #endif
+        break;
+    case QAccessible::Identifier:
+        str = widget()->accessibleIdentifier();
         break;
     case QAccessible::Help:
 #if QT_CONFIG(whatsthis)
@@ -406,6 +399,8 @@ QStringList QAccessibleWidget::actionNames() const
     if (widget()->isEnabled()) {
         if (widget()->focusPolicy() != Qt::NoFocus)
             names << setFocusAction();
+        if (widget()->contextMenuPolicy() == Qt::ActionsContextMenu && widget()->actions().size() > 0)
+            names << showMenuAction();
     }
     return names;
 }
@@ -420,6 +415,11 @@ void QAccessibleWidget::doAction(const QString &actionName)
         if (widget()->isWindow())
             widget()->activateWindow();
         widget()->setFocus();
+    } else if (actionName == showMenuAction()) {
+        QContextMenuEvent e(QContextMenuEvent::Other,
+            QPoint(), widget()->mapToGlobal(QPoint()),
+            QGuiApplication::keyboardModifiers());
+        QCoreApplication::sendEvent(widget(), &e);
     }
 }
 

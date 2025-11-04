@@ -28,11 +28,14 @@
 #ifndef SRC_TINT_LANG_CORE_IR_DISASSEMBLER_H_
 #define SRC_TINT_LANG_CORE_IR_DISASSEMBLER_H_
 
+#include <memory>
 #include <string>
+#include <string_view>
 
+#include "src/tint/lang/core/binary_op.h"
 #include "src/tint/lang/core/ir/binary.h"
 #include "src/tint/lang/core/ir/block.h"
-#include "src/tint/lang/core/ir/call.h"
+#include "src/tint/lang/core/ir/block_param.h"
 #include "src/tint/lang/core/ir/if.h"
 #include "src/tint/lang/core/ir/loop.h"
 #include "src/tint/lang/core/ir/module.h"
@@ -40,7 +43,7 @@
 #include "src/tint/lang/core/ir/unary.h"
 #include "src/tint/utils/containers/hashmap.h"
 #include "src/tint/utils/containers/hashset.h"
-#include "src/tint/utils/text/string_stream.h"
+#include "src/tint/utils/text/styled_text.h"
 
 // Forward declarations.
 namespace tint::core::type {
@@ -49,11 +52,7 @@ class Struct;
 
 namespace tint::core::ir {
 
-/// @returns the disassembly for the module @p mod
-/// @param mod the module to disassemble
-std::string Disassemble(const Module& mod);
-
-/// Helper class to disassemble the IR
+/// Disassembler is responsible for creating the disassembly of an IR module.
 class Disassembler {
   public:
     /// A reference to an instruction's operand or result.
@@ -64,7 +63,7 @@ class Disassembler {
         size_t index = 0u;
 
         /// @returns the hash code of the IndexedValue
-        size_t HashCode() const { return Hash(instruction, index); }
+        tint::HashCode HashCode() const { return Hash(instruction, index); }
 
         /// An equality helper for IndexedValue.
         /// @param other the IndexedValue to compare against
@@ -74,62 +73,88 @@ class Disassembler {
         }
     };
 
-    /// Constructor
-    /// @param mod the module
+    /// Constructor.
+    /// Performs the disassembly of the module @p mod, constructing a Source::File with the name @p
+    /// file_name.
+    /// @param mod the module to disassemble
     explicit Disassembler(const Module& mod);
+
+    /// Move constructor
+    Disassembler(Disassembler&&);
+
+    /// Destructor
     ~Disassembler();
 
-    /// Returns the module as a string
     /// @returns the string representation of the module
-    std::string Disassemble();
+    const StyledText& Text() const { return out_; }
 
-    /// @returns the string representation
-    std::string AsString() const { return out_.str(); }
+    /// @returns the string representation of the module as plain-text
+    std::string Plain() const { return out_.Plain(); }
+
+    /// @returns the disassembly file
+    const std::shared_ptr<Source::File>& File() const { return file_; }
+
+    /// @returns the disassembled name for the Type @p ty
+    StyledText NameOf(const type::Type* ty);
+
+    /// @returns the disassembled name for the Block @p blk
+    StyledText NameOf(const Block* blk);
+
+    /// @returns the disassembled name for the Value @p node
+    StyledText NameOf(const Value* node);
+
+    /// @returns the disassembled name for the If @p inst
+    StyledText NameOf(const If* inst);
+
+    /// @returns the disassembled name for the Loop @p inst
+    StyledText NameOf(const Loop* inst);
+
+    /// @returns the disassembled name for the Switch @p inst
+    StyledText NameOf(const Switch* inst);
+
+    /// @returns the disassembled name for the BinaryOp @p op
+    StyledText NameOf(BinaryOp op);
+
+    /// @returns the disassembled name for the UnaryOp @p op
+    StyledText NameOf(UnaryOp op);
 
     /// @param inst the instruction to retrieve
     /// @returns the source for the instruction
-    Source InstructionSource(const Instruction* inst) {
-        return instruction_to_src_.Get(inst).value_or(Source{});
+    Source InstructionSource(const Instruction* inst) const {
+        return instruction_to_src_.GetOr(inst, Source{});
     }
 
     /// @param operand the operand to retrieve
     /// @returns the source for the operand
-    Source OperandSource(IndexedValue operand) {
-        return operand_to_src_.Get(operand).value_or(Source{});
+    Source OperandSource(IndexedValue operand) const {
+        return operand_to_src_.GetOr(operand, Source{});
     }
 
     /// @param result the result to retrieve
     /// @returns the source for the result
-    Source ResultSource(IndexedValue result) {
-        return result_to_src_.Get(result).value_or(Source{});
+    Source ResultSource(IndexedValue result) const {
+        return result_to_src_.GetOr(result, Source{});
     }
 
-    /// @param blk teh block to retrieve
+    /// @param blk the block to retrieve
     /// @returns the source for the block
-    Source BlockSource(const Block* blk) { return block_to_src_.Get(blk).value_or(Source{}); }
+    Source BlockSource(const Block* blk) const { return block_to_src_.GetOr(blk, Source{}); }
 
-    /// Stores the given @p src location for @p inst instruction
-    /// @param inst the instruction to store
-    /// @param src the source location
-    void SetSource(const Instruction* inst, Source src) { instruction_to_src_.Add(inst, src); }
+    /// @param param the block parameter to retrieve
+    /// @returns the source for the parameter
+    Source BlockParamSource(const BlockParam* param) {
+        return block_param_to_src_.GetOr(param, Source{});
+    }
 
-    /// Stores the given @p src location for @p blk block
-    /// @param blk the block to store
-    /// @param src the source location
-    void SetSource(const Block* blk, Source src) { block_to_src_.Add(blk, src); }
+    /// @param func the function to retrieve
+    /// @returns the source for the function
+    Source FunctionSource(const Function* func) { return function_to_src_.GetOr(func, Source{}); }
 
-    /// Stores the given @p src location for @p op operand
-    /// @param op the operand to store
-    /// @param src the source location
-    void SetSource(IndexedValue op, Source src) { operand_to_src_.Add(op, src); }
-
-    /// Stores the given @p src location for @p result
-    /// @param result the result to store
-    /// @param src the source location
-    void SetResultSource(IndexedValue result, Source src) { result_to_src_.Add(result, src); }
-
-    /// @returns the source location for the current emission location
-    Source::Location MakeCurrentLocation();
+    /// @param param the function parameter to retrieve
+    /// @returns the source for the parameter
+    Source FunctionParamSource(const FunctionParam* param) {
+        return function_param_to_src_.GetOr(param, Source{});
+    }
 
   private:
     class SourceMarker {
@@ -140,6 +165,12 @@ class Disassembler {
         void Store(const Instruction* inst) { dis_->SetSource(inst, MakeSource()); }
 
         void Store(const Block* blk) { dis_->SetSource(blk, MakeSource()); }
+
+        void Store(const BlockParam* param) { dis_->SetSource(param, MakeSource()); }
+
+        void Store(const Function* func) { dis_->SetSource(func, MakeSource()); }
+
+        void Store(const FunctionParam* param) { dis_->SetSource(param, MakeSource()); }
 
         void Store(IndexedValue operand) { dis_->SetSource(operand, MakeSource()); }
 
@@ -154,25 +185,62 @@ class Disassembler {
         Source::Location begin_;
     };
 
-    StringStream& Indent();
+    /// Performs the disassembling of the module.
+    void Disassemble();
 
-    size_t IdOf(const Block* blk);
-    std::string IdOf(const Value* node);
-    std::string NameOf(const If* inst);
-    std::string NameOf(const Loop* inst);
-    std::string NameOf(const Switch* inst);
+    /// Stores the given @p src location for @p inst instruction
+    /// @param inst the instruction to store
+    /// @param src the source location
+    void SetSource(const Instruction* inst, Source src) { instruction_to_src_.Add(inst, src); }
+
+    /// Stores the given @p src location for @p blk block
+    /// @param blk the block to store
+    /// @param src the source location
+    void SetSource(const Block* blk, Source src) { block_to_src_.Add(blk, src); }
+
+    /// Stores the given @p src location for @p param block parameter
+    /// @param param the block parameter to store
+    /// @param src the source location
+    void SetSource(const BlockParam* param, Source src) { block_param_to_src_.Add(param, src); }
+
+    /// Stores the given @p src location for @p func function
+    /// @param func the function to store
+    /// @param src the source location
+    void SetSource(const Function* func, Source src) { function_to_src_.Add(func, src); }
+
+    /// Stores the given @p src location for @p param function parameter
+    /// @param param the function parameter to store
+    /// @param src the source location
+    void SetSource(const FunctionParam* param, Source src) {
+        function_param_to_src_.Add(param, src);
+    }
+
+    /// Stores the given @p src location for @p op operand
+    /// @param op the operand to store
+    /// @param src the source location
+    void SetSource(IndexedValue op, Source src) { operand_to_src_.Add(op, src); }
+
+    /// Stores the given @p src location for @p result
+    /// @param result the result to store
+    /// @param src the source location
+    void SetResultSource(IndexedValue result, Source src) { result_to_src_.Add(result, src); }
+
+    /// @returns the source location for the current emission location
+    Source::Location MakeCurrentLocation();
+
+    StyledText& Indent();
 
     void EmitBlock(const Block* blk, std::string_view comment = "");
     void EmitFunction(const Function* func);
     void EmitParamAttributes(const FunctionParam* p);
     void EmitReturnAttributes(const Function* func);
     void EmitBindingPoint(BindingPoint p);
-    void EmitLocation(Location loc);
+    void EmitInputAttachmentIndex(uint32_t i);
+    void EmitInterpolation(Interpolation interp);
     void EmitInstruction(const Instruction* inst);
     void EmitValueWithType(const Instruction* val);
     void EmitValueWithType(const Value* val);
     void EmitValue(const Value* val);
-    void EmitValueList(tint::Slice<const ir::Value* const> values);
     void EmitBinary(const Binary* b);
     void EmitUnary(const Unary* b);
     void EmitTerminator(const Terminator* b);
@@ -183,13 +251,12 @@ class Disassembler {
     void EmitLine();
     void EmitOperand(const Instruction* inst, size_t index);
     void EmitOperandList(const Instruction* inst, size_t start_index = 0);
+    void EmitOperandList(const Instruction* inst, size_t start_index, size_t count);
     void EmitInstructionName(const Instruction* inst);
 
     const Module& mod_;
-    StringStream out_;
-    Hashmap<const Block*, size_t, 32> block_ids_;
-    Hashmap<const Value*, std::string, 32> value_ids_;
-    Hashset<std::string, 32> ids_;
+    StyledText out_;
+    std::shared_ptr<Source::File> file_;
     uint32_t indent_size_ = 0;
     bool in_function_ = false;
 
@@ -197,12 +264,20 @@ class Disassembler {
     uint32_t current_output_start_pos_ = 0;
 
     Hashmap<const Block*, Source, 8> block_to_src_;
+    Hashmap<const BlockParam*, Source, 8> block_param_to_src_;
     Hashmap<const Instruction*, Source, 8> instruction_to_src_;
     Hashmap<IndexedValue, Source, 8> operand_to_src_;
     Hashmap<IndexedValue, Source, 8> result_to_src_;
+    Hashmap<const Function*, Source, 8> function_to_src_;
+    Hashmap<const FunctionParam*, Source, 8> function_param_to_src_;
+
+    // Names / IDs
+    Hashmap<const Block*, size_t, 32> block_ids_;
+    Hashmap<const Value*, std::string, 32> value_ids_;
     Hashmap<const If*, std::string, 8> if_names_;
     Hashmap<const Loop*, std::string, 8> loop_names_;
     Hashmap<const Switch*, std::string, 8> switch_names_;
+    Hashset<std::string, 32> ids_;
 };
 
 }  // namespace tint::core::ir

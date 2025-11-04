@@ -34,8 +34,10 @@ class MockVideoEncodeAccelerator : public VideoEncodeAccelerator {
   MOCK_METHOD3(RequestEncodingParametersChange,
                void(const Bitrate& bitrate,
                     uint32_t framerate,
-                    const absl::optional<gfx::Size>& size));
+                    const std::optional<gfx::Size>& size));
   MOCK_METHOD0(Destroy, void());
+  MOCK_METHOD1(Flush,
+               void(media::VideoEncodeAccelerator::FlushCallback callback));
 
  private:
   void DeleteThis();

@@ -3,9 +3,9 @@
 
 # Create a header containing a hash that describes this library.  For a
 # released version of Qt, we'll use the .tag file that is updated by git
-# archive with the tree hash. For unreleased versions, we'll ask git
-# rev-parse. If none of this works, we use CMake to hash all the files
-# in the src/qml/ directory.
+# archive with the tree hash. For unreleased versions, we'll do
+# "git show -s --format=format:%T" to get the tree hash. If none of this
+# works, we use CMake to hash all the files in the src/qml/ directory.
 # Skip recreation of the hash when doing a developer build.
 function(qt_declarative_write_tag_header target_name)
     set(out_file "${CMAKE_CURRENT_BINARY_DIR}/qml_compile_hash_p.h")
@@ -27,7 +27,7 @@ function(qt_declarative_write_tag_header target_name)
         set(QML_COMPILE_HASH "${tag_contents}")
     elseif(git_path AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../../.git")
         execute_process(
-            COMMAND ${git_path} rev-parse HEAD
+            COMMAND ${git_path} show -s --format=format:%T HEAD
             OUTPUT_VARIABLE QML_COMPILE_HASH
             OUTPUT_STRIP_TRAILING_WHITESPACE
             WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
@@ -74,7 +74,7 @@ function(qt_declarative_generate_reg_exp_jit_tables consuming_target)
     )
     target_sources(${consuming_target} PRIVATE ${output_file})
     target_include_directories(${consuming_target} PRIVATE $<BUILD_INTERFACE:${generate_dir}>)
+    _qt_internal_set_source_file_generated(SOURCES "${output_file}")
     set_source_files_properties(${output_file} PROPERTIES
-        GENERATED TRUE
         _qt_non_module_header TRUE)
 endfunction()

@@ -45,13 +45,13 @@ tint_add_target(tint_cmd_tint_cmd cmd
 tint_target_add_dependencies(tint_cmd_tint_cmd cmd
   tint_api
   tint_api_common
-  tint_api_options
   tint_cmd_common
   tint_lang_core
   tint_lang_core_constant
   tint_lang_core_ir
   tint_lang_core_type
   tint_lang_hlsl_writer_common
+  tint_lang_hlsl_writer_helpers
   tint_lang_wgsl
   tint_lang_wgsl_ast
   tint_lang_wgsl_ast_transform
@@ -80,6 +80,10 @@ tint_target_add_dependencies(tint_cmd_tint_cmd cmd
   tint_utils_traits
 )
 
+tint_target_add_external_dependencies(tint_cmd_tint_cmd cmd
+  "src_utils"
+)
+
 if(TINT_BUILD_GLSL_VALIDATOR)
   tint_target_add_dependencies(tint_cmd_tint_cmd cmd
     tint_lang_glsl_validate
@@ -90,6 +94,7 @@ if(TINT_BUILD_GLSL_WRITER)
   tint_target_add_dependencies(tint_cmd_tint_cmd cmd
     tint_lang_glsl_writer
     tint_lang_glsl_writer_common
+    tint_lang_glsl_writer_helpers
   )
 endif(TINT_BUILD_GLSL_WRITER)
 

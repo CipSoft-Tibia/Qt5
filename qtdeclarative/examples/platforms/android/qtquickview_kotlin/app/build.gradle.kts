@@ -6,18 +6,18 @@ plugins {
 
 QtBuild {
     // Relative for Qt (Installer or MaintenanceTool) installations.
-    qtPath = file("../../../../../../6.8.3")
+    qtPath = file("../../../../../../6.9.2")
     projectPath = file("../../qtquickview")
 }
 
 android {
     namespace = "com.example.qtquickview_kotlin"
-    compileSdk = 34
+    compileSdk = 35
 
     defaultConfig {
         applicationId = "com.example.qtquickview_kotlin"
         minSdk = 28
-        targetSdk = 34
+        targetSdk = 35
         versionCode = 1
         versionName = "1.0"
 
@@ -40,11 +40,6 @@ android {
     }
     kotlinOptions {
         jvmTarget = "17"
-    }
-    packaging {
-        jniLibs {
-            useLegacyPackaging = true
-        }
     }
 }
 

@@ -372,18 +372,6 @@ void QWinRTWebViewPrivate::setHttpUserAgent(const QString &userAgent)
 #endif
 }
 
-QUrl QWinRTWebViewPrivate::url() const
-{
-    ComPtr<IUriRuntimeClass> uri;
-    QEventDispatcherWinRT::runOnXamlThread([this, &uri]() {
-        HRESULT hr;
-        hr = d->base->get_Source(&uri);
-        Q_ASSERT_SUCCEEDED(hr);
-        return hr;
-    });
-    return qurlFromUri(uri.Get());
-}
-
 void QWinRTWebViewPrivate::setUrl(const QUrl &url)
 {
     QEventDispatcherWinRT::runOnXamlThread([this, &url]() {

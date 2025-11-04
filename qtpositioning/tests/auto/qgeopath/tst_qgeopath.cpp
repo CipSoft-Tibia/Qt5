@@ -322,8 +322,8 @@ void tst_QGeoPath::boundingGeoRectangle_data()
 
     QTest::newRow("One of the points") << c[0] << c[1] << c[2] << 0.0 << QGeoCoordinate(2, 2) << true;
     QTest::newRow("Not so far away") << c[0] << c[1] << c[2] << 0.0 << QGeoCoordinate(0, 0) << false;
-    QTest::newRow("Inside the bounds") << c[0] << c[1] << c[2] << 100.0 << QGeoCoordinate(1, 0) << true;
-    QTest::newRow("Inside the bounds") << c[0] << c[1] << c[2] << 100.0 << QGeoCoordinate(1.1, 0.1) << true;
+    QTest::newRow("Inside the bounds") << c[0] << c[1] << c[2] << 0.0 << QGeoCoordinate(2, 1) << true;
+    QTest::newRow("Inside the bounds considering width") << c[0] << c[1] << c[2] << 100.0 << QGeoCoordinate(1.1, 0.1) << true;
 }
 
 void tst_QGeoPath::boundingGeoRectangle()

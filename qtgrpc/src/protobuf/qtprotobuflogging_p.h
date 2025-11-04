@@ -22,7 +22,7 @@
 #include <QtCore/private/qglobal_p.h>
 
 QT_BEGIN_NAMESPACE
-Q_DECLARE_EXPORTED_LOGGING_CATEGORY(Protobuf, Q_PROTOBUF_EXPORT)
+QT_DECLARE_EXPORTED_QT_LOGGING_CATEGORY(Protobuf, Q_PROTOBUF_EXPORT)
 QT_END_NAMESPACE
 
 #define qProtoDebug(...) qCDebug(Protobuf, __VA_ARGS__)

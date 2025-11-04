@@ -15,5 +15,12 @@
 import("../../../../../gn/perfetto_sql.gni")
 
 perfetto_sql_source_set("prelude") {
-  sources = [ "slices.sql" ]
+  sources = [
+    "casts.sql",
+    "slices.sql",
+    "tables.sql",
+    "tables_views.sql",
+    "trace_bounds.sql",
+    "views.sql",
+  ]
 }

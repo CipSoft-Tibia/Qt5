@@ -1,5 +1,6 @@
 // Copyright (C) 2020 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include <QtNetwork/private/qtnetworkglobal_p.h>
 
@@ -64,13 +65,16 @@
 #include "qnetconmonitor_p.h"
 
 #include <mutex>
+#include <utility>
 
 QT_BEGIN_NAMESPACE
 
 using namespace Qt::StringLiterals;
 using namespace std::chrono_literals;
 
-Q_LOGGING_CATEGORY(lcQnam, "qt.network.access.manager")
+#if defined(Q_OS_MACOS)
+Q_STATIC_LOGGING_CATEGORY(lcQnam, "qt.network.access.manager")
+#endif
 
 Q_APPLICATION_STATIC(QNetworkAccessFileBackendFactory, fileBackend)
 
@@ -204,6 +208,11 @@ static void ensureInitialized()
     of requests executed in parallel is dependent on the protocol.
     Currently, for the HTTP protocol on desktop platforms, 6 requests are
     executed in parallel for one host/port combination.
+
+    \note QNetworkAccessManager doesn't handle RFC 2616 Section 8.2.2 properly,
+    in that it doesn't react to incoming data until it's done writing. For
+    example, the upload of a large file won't stop even if the server returns
+    a status code that instructs the client to not continue.
 
     A more involved example, assuming the manager is already existent,
     can be:
@@ -408,7 +417,7 @@ QNetworkAccessManager::QNetworkAccessManager(QObject *parent)
     qRegisterMetaType<QSslConfiguration>();
     qRegisterMetaType<QSslPreSharedKeyAuthenticator *>();
 #endif
-    qRegisterMetaType<QList<QPair<QByteArray,QByteArray> > >();
+    qRegisterMetaType<QList<std::pair<QByteArray, QByteArray>>>();
 #if QT_CONFIG(http)
     qRegisterMetaType<QHttpNetworkRequest>();
 #endif
@@ -730,7 +739,7 @@ bool QNetworkAccessManager::isStrictTransportSecurityStoreEnabled() const
     policies, but this information can be overridden by "Strict-Transport-Security"
     response headers.
 
-    \sa addStrictTransportSecurityHosts(), enableStrictTransportSecurityStore(), QHstsPolicy
+    \sa strictTransportSecurityHosts(), enableStrictTransportSecurityStore(), QHstsPolicy
 */
 
 void QNetworkAccessManager::addStrictTransportSecurityHosts(const QList<QHstsPolicy> &knownHosts)
@@ -1252,7 +1261,7 @@ QNetworkReply *QNetworkAccessManager::createRequest(QNetworkAccessManager::Opera
     auto h = request.headers();
 #ifndef Q_OS_WASM // Content-length header is not allowed to be set by user in wasm
     if (!h.contains(QHttpHeaders::WellKnownHeader::ContentLength) &&
-        outgoingData && !outgoingData->isSequential()) {
+        outgoingData && !outgoingData->isSequential() && outgoingData->size()) {
         // request has no Content-Length
         // but the data that is outgoing is random-access
         h.append(QHttpHeaders::WellKnownHeader::ContentLength,

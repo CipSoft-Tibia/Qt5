@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:data-parser
 
 #ifndef QJSONOBJECT_H
 #define QJSONOBJECT_H
@@ -126,7 +127,7 @@ public:
         inline iterator operator-(qsizetype j) const { return operator+(-j); }
         inline iterator &operator+=(qsizetype j) { item.index += quint64(j); return *this; }
         inline iterator &operator-=(qsizetype j) { item.index -= quint64(j); return *this; }
-        qsizetype operator-(iterator j) const { return item.index - j.item.index; }
+        qsizetype operator-(iterator j) const { return qsizetype(item.index - j.item.index); }
 
     public:
 #if QT_CORE_REMOVED_SINCE(6, 8)
@@ -238,7 +239,7 @@ public:
         inline const_iterator operator-(qsizetype j) const { return operator+(-j); }
         inline const_iterator &operator+=(qsizetype j) { item.index += quint64(j); return *this; }
         inline const_iterator &operator-=(qsizetype j) { item.index -= quint64(j); return *this; }
-        qsizetype operator-(const_iterator j) const { return item.index - j.item.index; }
+        qsizetype operator-(const_iterator j) const { return qsizetype(item.index - j.item.index); }
 #if QT_CORE_REMOVED_SINCE(6, 8)
         inline bool operator==(const iterator &other) const
         { return item.d == other.item.d && item.index == other.item.index; }
@@ -366,7 +367,7 @@ inline QJsonValueConstRef::QJsonValueConstRef(QJsonObject *o, qsizetype idx)
 
 Q_CORE_EXPORT size_t qHash(const QJsonObject &object, size_t seed = 0);
 
-#if !defined(QT_NO_DEBUG_STREAM) && !defined(QT_JSON_READONLY)
+#if !defined(QT_NO_DEBUG_STREAM)
 Q_CORE_EXPORT QDebug operator<<(QDebug, const QJsonObject &);
 #endif
 

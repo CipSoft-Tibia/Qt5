@@ -27,8 +27,9 @@ class QtSpinBoxFactory : public QtAbstractEditorFactory<QtIntPropertyManager>
 {
     Q_OBJECT
 public:
-    QtSpinBoxFactory(QObject *parent = 0);
-    ~QtSpinBoxFactory();
+    QtSpinBoxFactory(QObject *parent = nullptr);
+    ~QtSpinBoxFactory() override;
+
 protected:
     void connectPropertyManager(QtIntPropertyManager *manager) override;
     QWidget *createEditor(QtIntPropertyManager *manager, QtProperty *property,
@@ -46,8 +47,9 @@ class QtSliderFactory : public QtAbstractEditorFactory<QtIntPropertyManager>
 {
     Q_OBJECT
 public:
-    QtSliderFactory(QObject *parent = 0);
-    ~QtSliderFactory();
+    QtSliderFactory(QObject *parent = nullptr);
+    ~QtSliderFactory() override;
+
 protected:
     void connectPropertyManager(QtIntPropertyManager *manager) override;
     QWidget *createEditor(QtIntPropertyManager *manager, QtProperty *property,
@@ -65,8 +67,9 @@ class QtScrollBarFactory : public QtAbstractEditorFactory<QtIntPropertyManager>
 {
     Q_OBJECT
 public:
-    QtScrollBarFactory(QObject *parent = 0);
-    ~QtScrollBarFactory();
+    QtScrollBarFactory(QObject *parent = nullptr);
+    ~QtScrollBarFactory() override;
+
 protected:
     void connectPropertyManager(QtIntPropertyManager *manager) override;
     QWidget *createEditor(QtIntPropertyManager *manager, QtProperty *property,
@@ -84,8 +87,9 @@ class QtCheckBoxFactory : public QtAbstractEditorFactory<QtBoolPropertyManager>
 {
     Q_OBJECT
 public:
-    QtCheckBoxFactory(QObject *parent = 0);
-    ~QtCheckBoxFactory();
+    QtCheckBoxFactory(QObject *parent = nullptr);
+    ~QtCheckBoxFactory() override;
+
 protected:
     void connectPropertyManager(QtBoolPropertyManager *manager) override;
     QWidget *createEditor(QtBoolPropertyManager *manager, QtProperty *property,
@@ -103,8 +107,9 @@ class QtDoubleSpinBoxFactory : public QtAbstractEditorFactory<QtDoublePropertyMa
 {
     Q_OBJECT
 public:
-    QtDoubleSpinBoxFactory(QObject *parent = 0);
-    ~QtDoubleSpinBoxFactory();
+    QtDoubleSpinBoxFactory(QObject *parent = nullptr);
+    ~QtDoubleSpinBoxFactory() override;
+
 protected:
     void connectPropertyManager(QtDoublePropertyManager *manager) override;
     QWidget *createEditor(QtDoublePropertyManager *manager, QtProperty *property,
@@ -122,8 +127,9 @@ class QtLineEditFactory : public QtAbstractEditorFactory<QtStringPropertyManager
 {
     Q_OBJECT
 public:
-    QtLineEditFactory(QObject *parent = 0);
-    ~QtLineEditFactory();
+    QtLineEditFactory(QObject *parent = nullptr);
+    ~QtLineEditFactory() override;
+
 protected:
     void connectPropertyManager(QtStringPropertyManager *manager) override;
     QWidget *createEditor(QtStringPropertyManager *manager, QtProperty *property,
@@ -141,8 +147,9 @@ class QtDateEditFactory : public QtAbstractEditorFactory<QtDatePropertyManager>
 {
     Q_OBJECT
 public:
-    QtDateEditFactory(QObject *parent = 0);
-    ~QtDateEditFactory();
+    QtDateEditFactory(QObject *parent = nullptr);
+    ~QtDateEditFactory() override;
+
 protected:
     void connectPropertyManager(QtDatePropertyManager *manager) override;
     QWidget *createEditor(QtDatePropertyManager *manager, QtProperty *property,
@@ -160,8 +167,9 @@ class QtTimeEditFactory : public QtAbstractEditorFactory<QtTimePropertyManager>
 {
     Q_OBJECT
 public:
-    QtTimeEditFactory(QObject *parent = 0);
-    ~QtTimeEditFactory();
+    QtTimeEditFactory(QObject *parent = nullptr);
+    ~QtTimeEditFactory() override;
+
 protected:
     void connectPropertyManager(QtTimePropertyManager *manager) override;
     QWidget *createEditor(QtTimePropertyManager *manager, QtProperty *property,
@@ -179,8 +187,9 @@ class QtDateTimeEditFactory : public QtAbstractEditorFactory<QtDateTimePropertyM
 {
     Q_OBJECT
 public:
-    QtDateTimeEditFactory(QObject *parent = 0);
-    ~QtDateTimeEditFactory();
+    QtDateTimeEditFactory(QObject *parent = nullptr);
+    ~QtDateTimeEditFactory() override;
+
 protected:
     void connectPropertyManager(QtDateTimePropertyManager *manager) override;
     QWidget *createEditor(QtDateTimePropertyManager *manager, QtProperty *property,
@@ -198,8 +207,9 @@ class QtKeySequenceEditorFactory : public QtAbstractEditorFactory<QtKeySequenceP
 {
     Q_OBJECT
 public:
-    QtKeySequenceEditorFactory(QObject *parent = 0);
-    ~QtKeySequenceEditorFactory();
+    QtKeySequenceEditorFactory(QObject *parent = nullptr);
+    ~QtKeySequenceEditorFactory() override;
+
 protected:
     void connectPropertyManager(QtKeySequencePropertyManager *manager) override;
     QWidget *createEditor(QtKeySequencePropertyManager *manager, QtProperty *property,
@@ -217,8 +227,9 @@ class QtCharEditorFactory : public QtAbstractEditorFactory<QtCharPropertyManager
 {
     Q_OBJECT
 public:
-    QtCharEditorFactory(QObject *parent = 0);
-    ~QtCharEditorFactory();
+    QtCharEditorFactory(QObject *parent = nullptr);
+    ~QtCharEditorFactory() override;
+
 protected:
     void connectPropertyManager(QtCharPropertyManager *manager) override;
     QWidget *createEditor(QtCharPropertyManager *manager, QtProperty *property,
@@ -236,8 +247,9 @@ class QtEnumEditorFactory : public QtAbstractEditorFactory<QtEnumPropertyManager
 {
     Q_OBJECT
 public:
-    QtEnumEditorFactory(QObject *parent = 0);
-    ~QtEnumEditorFactory();
+    QtEnumEditorFactory(QObject *parent = nullptr);
+    ~QtEnumEditorFactory() override;
+
 protected:
     void connectPropertyManager(QtEnumPropertyManager *manager) override;
     QWidget *createEditor(QtEnumPropertyManager *manager, QtProperty *property,
@@ -255,8 +267,9 @@ class QtCursorEditorFactory : public QtAbstractEditorFactory<QtCursorPropertyMan
 {
     Q_OBJECT
 public:
-    QtCursorEditorFactory(QObject *parent = 0);
-    ~QtCursorEditorFactory();
+    QtCursorEditorFactory(QObject *parent = nullptr);
+    ~QtCursorEditorFactory() override;
+
 protected:
     void connectPropertyManager(QtCursorPropertyManager *manager) override;
     QWidget *createEditor(QtCursorPropertyManager *manager, QtProperty *property,
@@ -274,8 +287,9 @@ class QtColorEditorFactory : public QtAbstractEditorFactory<QtColorPropertyManag
 {
     Q_OBJECT
 public:
-    QtColorEditorFactory(QObject *parent = 0);
-    ~QtColorEditorFactory();
+    QtColorEditorFactory(QObject *parent = nullptr);
+    ~QtColorEditorFactory() override;
+
 protected:
     void connectPropertyManager(QtColorPropertyManager *manager) override;
     QWidget *createEditor(QtColorPropertyManager *manager, QtProperty *property,
@@ -293,8 +307,9 @@ class QtFontEditorFactory : public QtAbstractEditorFactory<QtFontPropertyManager
 {
     Q_OBJECT
 public:
-    QtFontEditorFactory(QObject *parent = 0);
-    ~QtFontEditorFactory();
+    QtFontEditorFactory(QObject *parent = nullptr);
+    ~QtFontEditorFactory() override;
+
 protected:
     void connectPropertyManager(QtFontPropertyManager *manager) override;
     QWidget *createEditor(QtFontPropertyManager *manager, QtProperty *property,

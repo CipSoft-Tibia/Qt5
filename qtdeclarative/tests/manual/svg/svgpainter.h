@@ -7,6 +7,7 @@
 #include <QWidget>
 #include <QUrl>
 #include <QtSvgWidgets/QSvgWidget>
+#include <QtSvg>
 
 // #define SVGWIDGET
 
@@ -44,6 +45,9 @@ private:
     QUrl m_source;
     QSize m_size;
     qreal m_scale;
+#ifndef SVGWIDGET
+    QSvgRenderer m_renderer;
+#endif
 };
 
 #endif // SVGPAINTER_H

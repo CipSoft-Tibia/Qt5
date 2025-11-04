@@ -13,10 +13,10 @@
 #include "chrome/browser/browser_process.h"
 #include "chrome/browser/feedback/feedback_uploader_chrome.h"
 #include "chrome/browser/feedback/feedback_uploader_factory_chrome.h"
+#include "chrome/browser/feedback/show_feedback_page.h"
 #include "chrome/browser/feedback/system_logs/chrome_system_logs_fetcher.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/signin/identity_manager_factory.h"
-#include "chrome/browser/ui/chrome_pages.h"
 #include "chrome/browser/ui/simple_message_box.h"
 #include "chrome/grit/generated_resources.h"
 #include "components/feedback/system_logs/system_logs_fetcher.h"
@@ -85,8 +85,6 @@ base::Value::Dict ChromeFeedbackPrivateDelegate::GetStrings(
   SET_STRING("userEmail", IDS_FEEDBACK_USER_EMAIL_LABEL);
   SET_STRING("anonymousUser", IDS_FEEDBACK_ANONYMOUS_EMAIL_OPTION);
   SET_STRING("sysInfo", GetSysInfoCheckboxStringId(browser_context));
-  SET_STRING("assistantInfo",
-             IDS_FEEDBACK_INCLUDE_ASSISTANT_INFORMATION_CHKBOX);
   SET_STRING("attachFileLabel", IDS_FEEDBACK_ATTACH_FILE_LABEL);
   SET_STRING("attachFileNote", IDS_FEEDBACK_ATTACH_FILE_NOTE);
   SET_STRING("attachFileToBig", IDS_FEEDBACK_ATTACH_FILE_TO_BIG);
@@ -94,11 +92,6 @@ base::Value::Dict ChromeFeedbackPrivateDelegate::GetStrings(
   SET_STRING("cancel", IDS_CANCEL);
   SET_STRING("noDescription", IDS_FEEDBACK_NO_DESCRIPTION);
   SET_STRING("privacyNote", IDS_FEEDBACK_PRIVACY_NOTE);
-  SET_STRING("performanceTrace",
-             IDS_FEEDBACK_INCLUDE_PERFORMANCE_TRACE_CHECKBOX);
-  SET_STRING("bluetoothLogsInfo", IDS_FEEDBACK_BLUETOOTH_LOGS_CHECKBOX);
-  SET_STRING("bluetoothLogsMessage", IDS_FEEDBACK_BLUETOOTH_LOGS_MESSAGE);
-  SET_STRING("assistantLogsMessage", IDS_FEEDBACK_ASSISTANT_LOGS_MESSAGE);
 
   // Add the localized strings needed for the "system information" page.
   SET_STRING("sysinfoPageTitle", IDS_FEEDBACK_SYSINFO_PAGE_TITLE);
@@ -124,8 +117,8 @@ void ChromeFeedbackPrivateDelegate::FetchSystemInformation(
     content::BrowserContext* context,
     system_logs::SysLogsFetcherCallback callback) const {
   // self-deleting object
-  auto* fetcher =
-      system_logs::BuildChromeSystemLogsFetcher(/*scrub_data=*/true);
+  auto* fetcher = system_logs::BuildChromeSystemLogsFetcher(
+      Profile::FromBrowserContext(context), /*scrub_data=*/true);
   fetcher->Fetch(std::move(callback));
 }
 
@@ -184,7 +177,7 @@ ChromeFeedbackPrivateDelegate::CreateSingleLogSource(
 
     case api::feedback_private::LogSource::kNone:
     default:
-      NOTREACHED() << "Unknown log source type.";
+      NOTREACHED_IN_MIGRATION() << "Unknown log source type.";
       return nullptr;
   }
 }
@@ -282,7 +275,7 @@ void ChromeFeedbackPrivateDelegate::OpenFeedback(
 
   Profile* profile = Profile::FromBrowserContext(context);
   chrome::ShowFeedbackPage(url, profile,
-                           /*source=*/chrome::kFeedbackSourceQuickOffice,
+                           /*source=*/feedback::kFeedbackSourceQuickOffice,
                            /*description_template=*/std::string(),
                            /*description_placeholder_text=*/std::string(),
                            /*category_tag=*/std::string(),

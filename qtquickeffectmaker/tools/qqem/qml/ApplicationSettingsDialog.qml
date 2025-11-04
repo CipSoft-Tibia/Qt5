@@ -21,12 +21,17 @@ Window {
     modality: Qt.ApplicationModal
     flags: Qt.Dialog
 
+    function addPreviewSourceImage() {
+        sourceImagesFileDialog.open();
+    }
+
     FileDialog {
         id: sourceImagesFileDialog
         currentFolder: effectManager.getDefaultImagesDirectory()
         onAccepted: {
             if (selectedFile) {
                 effectManager.settings.addSourceImage(selectedFile);
+                mainView.outputView.effectPreview.selectLastPreviewSource();
             }
         }
     }

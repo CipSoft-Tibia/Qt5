@@ -6,6 +6,7 @@
 
 #include <iterator>
 #include <memory>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -31,6 +32,7 @@
 #include "base/test/task_environment.h"
 #include "base/values.h"
 #include "base/version.h"
+#include "build/branding_buildflags.h"
 #include "components/component_updater/component_updater_paths.h"
 #include "components/component_updater/component_updater_service.h"
 #include "components/component_updater/component_updater_service_internal.h"
@@ -46,7 +48,6 @@
 #include "components/update_client/update_client_errors.h"
 #include "testing/gmock/include/gmock/gmock.h"
 #include "testing/gtest/include/gtest/gtest.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 
 using Configurator = update_client::Configurator;
 using CrxUpdateItem = update_client::CrxUpdateItem;
@@ -90,18 +91,9 @@ class MockUpdateClient : public UpdateClient {
     std::move(callback).Run(update_client::Error::NONE);
   }
 
-  void SendUninstallPing(const CrxComponent& crx_component,
-                         int reason,
-                         Callback callback) override {
-    DoSendUninstallPing(crx_component, reason);
-    std::move(callback).Run(update_client::Error::NONE);
-  }
-
-  MOCK_METHOD5(SendInstallPing,
+  MOCK_METHOD3(SendPing,
                void(const CrxComponent& crx_component,
-                    bool success,
-                    int error_code,
-                    int extra_code1,
+                    PingParams ping_params,
                     Callback callback));
   MOCK_METHOD1(AddObserver, void(Observer* observer));
   MOCK_METHOD1(RemoveObserver, void(Observer* observer));
@@ -121,8 +113,6 @@ class MockUpdateClient : public UpdateClient {
                      bool(const std::string& id, CrxUpdateItem* update_item));
   MOCK_CONST_METHOD1(IsUpdating, bool(const std::string& id));
   MOCK_METHOD0(Stop, void());
-  MOCK_METHOD2(DoSendUninstallPing,
-               void(const CrxComponent& crx_component, int reason));
 
  private:
   ~MockUpdateClient() override = default;
@@ -296,7 +286,7 @@ void ComponentInstallerTest::Schedule(
 
 }  // namespace
 
-absl::optional<base::FilePath> CreateComponentDirectory(
+std::optional<base::FilePath> CreateComponentDirectory(
     const base::FilePath& base_dir,
     const std::string& name,
     const std::string& version,
@@ -305,7 +295,7 @@ absl::optional<base::FilePath> CreateComponentDirectory(
       base_dir.AppendASCII(name).AppendASCII(version);
 
   if (!base::CreateDirectory(component_dir)) {
-    return absl::nullopt;
+    return std::nullopt;
   }
 
   static constexpr std::string_view kManifestData = R"({
@@ -317,8 +307,8 @@ absl::optional<base::FilePath> CreateComponentDirectory(
              component_dir.AppendASCII("manifest.json"),
              base::StringPrintf(kManifestData.data(), name.c_str(),
                                 version.c_str(), min_env_version.c_str()))
-             ? absl::make_optional(component_dir)
-             : absl::nullopt;
+             ? std::make_optional(component_dir)
+             : std::nullopt;
 }
 
 // Tests that the component metadata is propagated from the component installer
@@ -367,6 +357,13 @@ TEST_F(ComponentInstallerTest, RegisterComponent) {
   EXPECT_STREQ("fake name", component.name.c_str());
   EXPECT_EQ(expected_attrs, component.installer_attributes);
   EXPECT_TRUE(component.requires_network_encryption);
+
+#if BUILDFLAG(CHROME_FOR_TESTING)
+  // In Chrome for Testing component updates are disabled.
+  EXPECT_FALSE(component.updates_enabled);
+#else
+  EXPECT_TRUE(component.updates_enabled);
+#endif  // BUILDFLAG(CHROME_FOR_TESTING)
 }
 
 // Tests that `ComponentInstallerPolicy::ComponentReady` and the completion
@@ -419,7 +416,8 @@ TEST_F(ComponentInstallerTest, InstallerRegister_CheckSequence) {
         base::DoNothing(),
         base::BindLambdaForTesting(
             [&run_loop](const update_client::CrxInstaller::Result& result) {
-              ASSERT_EQ(result.error, 0);
+              ASSERT_EQ(result.result.category_,
+                        update_client::ErrorCategory::kNone);
               run_loop.QuitClosure().Run();
             }));
     run_loop.Run();
@@ -480,7 +478,7 @@ TEST_F(ComponentInstallerTest, UnpackPathInstallSuccess) {
   installer->Install(
       unpack_path, update_client::jebg_public_key, nullptr, base::DoNothing(),
       base::BindOnce([](const update_client::CrxInstaller::Result& result) {
-        EXPECT_EQ(0, result.error);
+        EXPECT_EQ(result.result.category_, update_client::ErrorCategory::kNone);
       }));
 
   task_environment_.RunUntilIdle();
@@ -510,14 +508,51 @@ TEST_F(ComponentInstallerTest, UnpackPathInstallError) {
   installer->Install(
       unpack_path, update_client::jebg_public_key, nullptr, base::DoNothing(),
       base::BindOnce([](const update_client::CrxInstaller::Result& result) {
-        EXPECT_EQ(static_cast<int>(
-                      update_client::InstallError::NO_DIR_COMPONENT_USER),
-                  result.error);
+        EXPECT_EQ(result.result.category_,
+                  update_client::ErrorCategory::kInstall);
+        EXPECT_EQ(result.result.code_,
+                  static_cast<int>(
+                      update_client::InstallError::NO_DIR_COMPONENT_USER));
       }));
 
   task_environment_.RunUntilIdle();
 
   EXPECT_FALSE(base::PathExists(unpack_path));
+  EXPECT_CALL(update_client(), Stop()).Times(1);
+  EXPECT_CALL(scheduler(), Stop()).Times(1);
+}
+
+TEST_F(ComponentInstallerTest, GetInstalledFile) {
+  auto installer = base::MakeRefCounted<ComponentInstaller>(
+      std::make_unique<MockInstallerPolicy>());
+
+  Unpack(
+      update_client::GetTestFilePath("jebgalgnebhfojomionfpkfelancnnkf.crx"));
+
+  const auto unpack_path = result().unpack_path;
+  EXPECT_TRUE(base::DirectoryExists(unpack_path));
+  EXPECT_EQ(update_client::jebg_public_key, result().public_key);
+
+  base::ScopedPathOverride scoped_path_override(DIR_COMPONENT_USER);
+  base::FilePath base_dir;
+  EXPECT_TRUE(base::PathService::Get(DIR_COMPONENT_USER, &base_dir));
+  base_dir = base_dir.Append(relative_install_dir);
+  EXPECT_TRUE(base::CreateDirectory(base_dir));
+  base::RunLoop runloop;
+  installer->Install(
+      unpack_path, update_client::jebg_public_key, nullptr, base::DoNothing(),
+      base::BindLambdaForTesting(
+          [&](const update_client::CrxInstaller::Result& result) {
+            EXPECT_EQ(result.result.category_,
+                      update_client::ErrorCategory::kNone);
+            runloop.Quit();
+          }));
+  runloop.Run();
+
+  EXPECT_EQ(installer->GetInstalledFile("a"),
+            base_dir.AppendASCII("1.0").AppendASCII("a"));
+  EXPECT_EQ(installer->GetInstalledFile("../a"), std::nullopt);
+
   EXPECT_CALL(update_client(), Stop()).Times(1);
   EXPECT_CALL(scheduler(), Stop()).Times(1);
 }
@@ -538,12 +573,13 @@ TEST_F(ComponentInstallerTest, SelectComponentVersion) {
 
   base_dir = base_dir.AppendASCII("test_component");
 
-  absl::optional<base::Version> selected_component;
+  std::optional<base::Version> selected_component;
 
   auto registration_info =
       base::MakeRefCounted<ComponentInstaller::RegistrationInfo>();
   selected_component = installer->SelectComponentVersion(
-      base::Version("1.0.0.0"), base_dir, registration_info);
+      base::Version("1.0.0.0"), base::Version("0.0.0.0"), base_dir,
+      registration_info);
   ASSERT_TRUE(selected_component &&
               selected_component == base::Version("1.0.0.0"));
   ASSERT_EQ(registration_info->version, base::Version("1.0.0.0"));
@@ -552,37 +588,58 @@ TEST_F(ComponentInstallerTest, SelectComponentVersion) {
   registration_info =
       base::MakeRefCounted<ComponentInstaller::RegistrationInfo>();
   selected_component = installer->SelectComponentVersion(
-      base::Version("0.0.0.0"), base_dir, registration_info);
+      base::Version("0.0.0.0"), base::Version("0.0.0.0"), base_dir,
+      registration_info);
   ASSERT_TRUE(selected_component &&
               *selected_component == base::Version("7.0.0.0"));
   ASSERT_EQ(registration_info->version, base::Version("7.0.0.0"));
 
   registration_info->version = base::Version("3.0.0.0");
   selected_component = installer->SelectComponentVersion(
-      base::Version("5.0.0.0"), base_dir, registration_info);
+      base::Version("5.0.0.0"), base::Version("0.0.0.0"), base_dir,
+      registration_info);
   ASSERT_TRUE(selected_component &&
               *selected_component == base::Version("5.0.0.0"));
   ASSERT_EQ(registration_info->version, base::Version("5.0.0.0"));
 
   registration_info->version = base::Version("4.0.0.0");
   selected_component = installer->SelectComponentVersion(
-      base::Version("0.0.0.0"), base_dir, registration_info);
+      base::Version("0.0.0.0"), base::Version("0.0.0.0"), base_dir,
+      registration_info);
   ASSERT_TRUE(selected_component &&
               *selected_component == base::Version("7.0.0.0"));
   ASSERT_EQ(registration_info->version, base::Version("7.0.0.0"));
 
   registration_info->version = base::Version("12.0.0.0");
   selected_component = installer->SelectComponentVersion(
-      base::Version("1.0.0.0"), base_dir, registration_info);
+      base::Version("1.0.0.0"), base::Version("0.0.0.0"), base_dir,
+      registration_info);
   ASSERT_FALSE(selected_component);
   ASSERT_EQ(registration_info->version, base::Version("12.0.0.0"));
 
   registration_info->version = base::Version("6.0.0.0");
   selected_component = installer->SelectComponentVersion(
-      base::Version("1.0.0.0"), base_dir, registration_info);
+      base::Version("1.0.0.0"), base::Version("0.0.0.0"), base_dir,
+      registration_info);
   ASSERT_TRUE(selected_component &&
               *selected_component == base::Version("7.0.0.0"));
   ASSERT_EQ(registration_info->version, base::Version("7.0.0.0"));
+
+  // Case where there is a version downgrade.
+  registration_info->version = base::Version("8.0.0.0");
+  selected_component = installer->SelectComponentVersion(
+      base::Version("1.0.0.0"), base::Version("8.0.0.0"), base_dir,
+      registration_info);
+  ASSERT_EQ(selected_component, base::Version("7.0.0.0"));
+  ASSERT_EQ(registration_info->version, base::Version("7.0.0.0"));
+
+  // New version available after downgrade. Use the new version.
+  registration_info->version = base::Version("9.0.0.0");
+  selected_component = installer->SelectComponentVersion(
+      base::Version("1.0.0.0"), base::Version("8.0.0.0"), base_dir,
+      registration_info);
+  ASSERT_EQ(selected_component, std::nullopt);
+  ASSERT_EQ(registration_info->version, base::Version("9.0.0.0"));
 }
 
 TEST_F(ComponentInstallerTest, Uninstall) {
@@ -606,13 +663,14 @@ TEST_F(ComponentInstallerTest, Uninstall) {
   EXPECT_TRUE(base::CreateDirectory(base_dir));
 
   installer->Register(
-      component_updater(), base::BindLambdaForTesting([&]() {
+      component_updater(), base::BindLambdaForTesting([&] {
         installer->Install(
             unpack_path, update_client::jebg_public_key, nullptr,
             base::DoNothing(),
             base::BindLambdaForTesting(
                 [&](const update_client::CrxInstaller::Result& result) {
-                  EXPECT_EQ(0, result.error);
+                  EXPECT_EQ(result.result.category_,
+                            update_client::ErrorCategory::kNone);
                   installer->Uninstall();
                 }));
       }));

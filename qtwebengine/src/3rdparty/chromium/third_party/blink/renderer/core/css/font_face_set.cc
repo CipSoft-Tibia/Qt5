@@ -181,32 +181,32 @@ void FontFaceSet::LoadFontPromiseResolver::LoadFonts() {
   }
 }
 
-ScriptPromise FontFaceSet::load(ScriptState* script_state,
-                                const String& font_string,
-                                const String& text) {
+ScriptPromise<IDLSequence<FontFace>> FontFaceSet::load(
+    ScriptState* script_state,
+    const String& font_string,
+    const String& text) {
   if (!InActiveContext()) {
-    return ScriptPromise();
+    return ScriptPromise<IDLSequence<FontFace>>();
   }
 
-  Font font;
-  if (!ResolveFontStyle(font_string, font)) {
-    auto* resolver = MakeGarbageCollected<ScriptPromiseResolver>(script_state);
-    ScriptPromise promise = resolver->Promise();
-    resolver->Reject(MakeGarbageCollected<DOMException>(
-        DOMExceptionCode::kSyntaxError,
-        "Could not resolve '" + font_string + "' as a font."));
-    return promise;
+  const Font* font = ResolveFontStyle(font_string);
+  if (!font) {
+    return ScriptPromise<IDLSequence<FontFace>>::RejectWithDOMException(
+        script_state,
+        MakeGarbageCollected<DOMException>(
+            DOMExceptionCode::kSyntaxError,
+            "Could not resolve '" + font_string + "' as a font."));
   }
 
   FontFaceCache* font_face_cache = GetFontSelector()->GetFontFaceCache();
   FontFaceArray* faces = MakeGarbageCollected<FontFaceArray>();
-  for (const FontFamily* f = &font.GetFontDescription().Family(); f;
+  for (const FontFamily* f = &font->GetFontDescription().Family(); f;
        f = f->Next()) {
     if (f->FamilyIsGeneric()) {
       continue;
     }
     CSSSegmentedFontFace* segmented_font_face =
-        font_face_cache->Get(font.GetFontDescription(), f->FamilyName());
+        font_face_cache->Get(font->GetFontDescription(), f->FamilyName());
     if (segmented_font_face) {
       segmented_font_face->Match(text, faces);
     }
@@ -214,7 +214,7 @@ ScriptPromise FontFaceSet::load(ScriptState* script_state,
 
   auto* resolver =
       MakeGarbageCollected<LoadFontPromiseResolver>(faces, script_state);
-  ScriptPromise promise = resolver->Promise();
+  auto promise = resolver->Promise();
   // After this, resolver->promise() may return null.
   resolver->LoadFonts();
   return promise;
@@ -227,8 +227,8 @@ bool FontFaceSet::check(const String& font_string,
     return false;
   }
 
-  Font font;
-  if (!ResolveFontStyle(font_string, font)) {
+  const Font* font = ResolveFontStyle(font_string);
+  if (!font) {
     exception_state.ThrowDOMException(
         DOMExceptionCode::kSyntaxError,
         "Could not resolve '" + font_string + "' as a font.");
@@ -243,15 +243,15 @@ bool FontFaceSet::check(const String& font_string,
     UChar32 c = text.CharacterStartingAt(index);
     index += U16_LENGTH(c);
 
-    for (const FontFamily* f = &font.GetFontDescription().Family(); f;
+    for (const FontFamily* f = &font->GetFontDescription().Family(); f;
          f = f->Next()) {
       if (f->FamilyIsGeneric() || font_selector->IsPlatformFamilyMatchAvailable(
-                                      font.GetFontDescription(), *f)) {
+                                      font->GetFontDescription(), *f)) {
         continue;
       }
 
       CSSSegmentedFontFace* face =
-          font_face_cache->Get(font.GetFontDescription(), f->FamilyName());
+          font_face_cache->Get(font->GetFontDescription(), f->FamilyName());
       if (face && !face->CheckFont(c)) {
         return false;
       }

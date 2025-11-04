@@ -1,20 +1,13 @@
 #include "quiche/http2/adapter/http2_protocol.h"
 
+#include <string>
+#include <utility>
+
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 
 namespace http2 {
 namespace adapter {
-
-ABSL_CONST_INIT const char kHttp2MethodPseudoHeader[] = ":method";
-ABSL_CONST_INIT const char kHttp2SchemePseudoHeader[] = ":scheme";
-ABSL_CONST_INIT const char kHttp2AuthorityPseudoHeader[] = ":authority";
-ABSL_CONST_INIT const char kHttp2PathPseudoHeader[] = ":path";
-ABSL_CONST_INIT const char kHttp2StatusPseudoHeader[] = ":status";
-
-ABSL_CONST_INIT const uint8_t kMetadataFrameType = 0x4d;
-ABSL_CONST_INIT const uint8_t kMetadataEndFlag = 0x04;
-ABSL_CONST_INIT const uint16_t kMetadataExtensionId = 0x4d44;
 
 std::pair<absl::string_view, bool> GetStringView(const HeaderRep& rep) {
   if (absl::holds_alternative<absl::string_view>(rep)) {

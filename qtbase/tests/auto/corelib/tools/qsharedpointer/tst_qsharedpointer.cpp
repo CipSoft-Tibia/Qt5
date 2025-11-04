@@ -6,6 +6,8 @@
 #define QT_SHAREDPOINTER_TRACK_POINTERS
 #include "qsharedpointer.h"
 #include <QTest>
+#include <QtTest/private/qcomparisontesthelper_p.h>
+
 #include <QPointer>
 #include <QRandomGenerator>
 #include <QtCore/QHash>
@@ -39,6 +41,7 @@ class tst_QSharedPointer: public QObject
 
 private slots:
     void initTestCase();
+    void compareCompiles();
     void basics_data();
     void basics();
     void operators();
@@ -223,6 +226,19 @@ struct NoDefaultConstructorRRef2
     NoDefaultConstructorRRef2(std::unique_ptr<int> &&i) : i(std::move(i)) {}
 };
 
+class DerivedData;
+
+void tst_QSharedPointer::compareCompiles()
+{
+    QTestPrivate::testAllComparisonOperatorsCompile<QSharedPointer<Data>>();
+    QTestPrivate::testAllComparisonOperatorsCompile<QSharedPointer<Data>, Data*>();
+    QTestPrivate::testAllComparisonOperatorsCompile<QSharedPointer<Data>, std::nullptr_t>();
+    QTestPrivate::testAllComparisonOperatorsCompile<QSharedPointer<QObject>,
+                                                    QSharedPointer<QWidget>>();
+    QTestPrivate::testAllComparisonOperatorsCompile<QSharedPointer<Data>, DerivedData*>();
+    QTestPrivate::testAllComparisonOperatorsCompile<QSharedPointer<DerivedData>, Data*>();
+}
+
 void tst_QSharedPointer::basics_data()
 {
     QTest::addColumn<bool>("isNull");
@@ -269,15 +285,9 @@ void tst_QSharedPointer::basics()
             QCOMPARE(&dataReference, aData);
         }
 
-        QVERIFY(ptr == aData);
-        QVERIFY(!(ptr != aData));
-        QVERIFY(aData == ptr);
-        QVERIFY(!(aData != ptr));
+        QT_TEST_ALL_COMPARISON_OPS(ptr, aData, Qt::strong_ordering::equal);
 
-        QVERIFY(ptr != otherData);
-        QVERIFY(otherData != ptr);
-        QVERIFY(! (ptr == otherData));
-        QVERIFY(! (otherData == ptr));
+        QT_TEST_EQUALITY_OPS(ptr, otherData, false);
     }
     QVERIFY(!refCountData(ptr) || refCountData(ptr)->weakref.loadRelaxed() == 1);
     QVERIFY(!refCountData(ptr) || refCountData(ptr)->strongref.loadRelaxed() == 1);
@@ -285,10 +295,7 @@ void tst_QSharedPointer::basics()
     {
         // create another object:
         QSharedPointer<Data> otherCopy(otherData);
-        QVERIFY(ptr != otherCopy);
-        QVERIFY(otherCopy != ptr);
-        QVERIFY(! (ptr == otherCopy));
-        QVERIFY(! (otherCopy == ptr));
+        QT_TEST_EQUALITY_OPS(ptr, otherCopy, false);
 
         // otherData is deleted here
     }
@@ -298,10 +305,7 @@ void tst_QSharedPointer::basics()
     {
         // create a copy:
         QSharedPointer<Data> copy(ptr);
-        QVERIFY(copy == ptr);
-        QVERIFY(ptr == copy);
-        QVERIFY(! (copy != ptr));
-        QVERIFY(! (ptr != copy));
+        QT_TEST_ALL_COMPARISON_OPS(ptr, copy, Qt::strong_ordering::equal);
         QCOMPARE(copy, ptr);
         QCOMPARE(ptr, copy);
 
@@ -378,10 +382,9 @@ void tst_QSharedPointer::operators()
     QVERIFY(p1 < p2.get());
     QVERIFY(p1.data() < p2);
     QVERIFY(p1.get() < p2);
-    QVERIFY(p1 < p2);
-    QVERIFY(!(p2 < p1));
-    QVERIFY(!(p2 < p2));
-    QVERIFY(!(p1 < p1));
+    QT_TEST_ALL_COMPARISON_OPS(p1, p2, Qt::strong_ordering::less);
+    QT_TEST_ALL_COMPARISON_OPS(p2, p2, Qt::strong_ordering::equal);
+    QT_TEST_ALL_COMPARISON_OPS(p1, p1, Qt::strong_ordering::equal);
 
     // qHash
     QCOMPARE(qHash(p1), qHash(p1.data()));
@@ -396,19 +399,18 @@ void tst_QSharedPointer::nullptrOps()
     QSharedPointer<char> p2 = nullptr;
     QSharedPointer<char> null;
 
-    QVERIFY(p1 == null);
-    QVERIFY(p1 == nullptr);
-    QVERIFY(nullptr == p1);
+    QT_TEST_ALL_COMPARISON_OPS(p1, null, Qt::strong_ordering::equal);
+    QT_TEST_ALL_COMPARISON_OPS(p1, nullptr, Qt::strong_ordering::equal);
     QVERIFY(!p1);
     QVERIFY(!p1.data());
     QVERIFY(!p1.get());
-    QVERIFY(p2 == null);
-    QVERIFY(p2 == nullptr);
-    QVERIFY(nullptr == p2);
+
+    QT_TEST_ALL_COMPARISON_OPS(p2, null, Qt::strong_ordering::equal);
+    QT_TEST_ALL_COMPARISON_OPS(p2, nullptr, Qt::strong_ordering::equal);
     QVERIFY(!p2);
     QVERIFY(!p2.data());
     QVERIFY(!p2.get());
-    QVERIFY(p1 == p2);
+    QT_TEST_ALL_COMPARISON_OPS(p1, p2, Qt::strong_ordering::equal);
 
     QWeakPointer<char> wp1 = p1;
     QVERIFY(wp1 == nullptr);
@@ -417,10 +419,9 @@ void tst_QSharedPointer::nullptrOps()
     QCOMPARE(nullptr, wp1);
 
     QSharedPointer<char> p3 = p1;
-    QVERIFY(p3 == p1);
-    QVERIFY(p3 == null);
-    QVERIFY(p3 == nullptr);
-    QVERIFY(nullptr == p3);
+    QT_TEST_ALL_COMPARISON_OPS(p1, p3, Qt::strong_ordering::equal);
+    QT_TEST_ALL_COMPARISON_OPS(p3, null, Qt::strong_ordering::equal);
+    QT_TEST_ALL_COMPARISON_OPS(p3, nullptr, Qt::strong_ordering::equal);
     QVERIFY(!p3.data());
     QVERIFY(!p3.get());
 
@@ -436,12 +437,11 @@ void tst_QSharedPointer::nullptrOps()
     QVERIFY(p4);
     QVERIFY(p4.data());
     QVERIFY(p4.get());
-    QVERIFY(p4 != nullptr);
-    QVERIFY(nullptr != p4);
-    QVERIFY(p4 != p1);
-    QVERIFY(p4 != p2);
-    QVERIFY(p4 != null);
-    QVERIFY(p4 != p3);
+    QT_TEST_EQUALITY_OPS(p4, nullptr, false);
+    QT_TEST_EQUALITY_OPS(p4, p1, false);
+    QT_TEST_EQUALITY_OPS(p4, p2, false);
+    QT_TEST_EQUALITY_OPS(p4, null, false);
+    QT_TEST_EQUALITY_OPS(p4, p3, false);
 
     QWeakPointer<char> wp2 = p4;
     QVERIFY(wp2 != nullptr);
@@ -849,7 +849,7 @@ void tst_QSharedPointer::downCast()
         {
             QSharedPointer<DerivedData> ptr = QSharedPointer<DerivedData>(new DerivedData);
             baseptr = ptr;
-            QVERIFY(baseptr == ptr);
+            QT_TEST_ALL_COMPARISON_OPS(baseptr, ptr, Qt::strong_ordering::equal);
         }
     }
     QCOMPARE(DerivedData::derivedDestructorCounter, destructorCount + 1);
@@ -1041,6 +1041,11 @@ void tst_QSharedPointer::objectCast()
         // again:
         ptr = qobject_cast<QSharedPointer<OtherObject> >(baseptr);
         QVERIFY(ptr == data);
+
+        // again:
+        ptr = qobject_cast<OtherObject *>(std::move(baseptr));
+        QVERIFY(ptr == data);
+        QVERIFY(!baseptr);
     }
     safetyCheck();
 
@@ -1067,6 +1072,11 @@ void tst_QSharedPointer::objectCast()
         // again:
         ptr = qobject_cast<QSharedPointer<const OtherObject> >(baseptr);
         QVERIFY(ptr == data);
+
+        // again:
+        ptr = qobject_cast<const OtherObject *>(std::move(baseptr));
+        QVERIFY(ptr == data);
+        QVERIFY(!baseptr);
     }
     safetyCheck();
 
@@ -1116,10 +1126,12 @@ void tst_QSharedPointer::objectCastFailureNoLeak()
     auto ptr = QSharedPointer<QObject>::create();
     auto qptr = QPointer(ptr.data());
     auto ptr2 = ptr.objectCast<tst_QSharedPointer>();
+    auto ptr3 = std::move(ptr).objectCast<tst_QSharedPointer>();
 
     QVERIFY(ptr);
     QVERIFY(qptr);
     QVERIFY(!ptr2);
+    QVERIFY(!ptr3);
 
     ptr.reset();
     QVERIFY(!ptr);
@@ -1405,6 +1417,12 @@ void tst_QSharedPointer::dynamicCast()
     }
     QCOMPARE(int(refCountData(baseptr)->weakref.loadRelaxed()), 1);
     QCOMPARE(int(refCountData(baseptr)->strongref.loadRelaxed()), 1);
+
+    {
+        QSharedPointer<DerivedData> derivedptr = std::move(baseptr).dynamicCast<DerivedData>();
+        QCOMPARE(derivedptr.data(), aData);
+    }
+    QVERIFY(!baseptr);
 }
 
 void tst_QSharedPointer::dynamicCastDifferentPointers()
@@ -1451,6 +1469,12 @@ void tst_QSharedPointer::dynamicCastDifferentPointers()
         QCOMPARE(otherbaseptr.data(), nakedptr);
         QCOMPARE(static_cast<DiffPtrDerivedData*>(otherbaseptr.data()), aData);
     }
+
+    {
+        QSharedPointer<DiffPtrDerivedData> derivedptr = std::move(baseptr).dynamicCast<DiffPtrDerivedData>();
+        QCOMPARE(derivedptr.data(), aData);
+    }
+    QVERIFY(!baseptr);
 }
 
 void tst_QSharedPointer::dynamicCastVirtualBase()

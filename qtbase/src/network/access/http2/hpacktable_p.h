@@ -1,5 +1,6 @@
 // Copyright (C) 2019 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef HPACKTABLE_P_H
 #define HPACKTABLE_P_H
@@ -16,13 +17,12 @@
 //
 
 #include <QtCore/qbytearray.h>
-#include <QtCore/private/qglobal_p.h>
-#include <QtCore/qpair.h>
 
 #include <vector>
 #include <memory>
 #include <deque>
 #include <set>
+#include <utility>
 
 QT_BEGIN_NAMESPACE
 
@@ -50,7 +50,7 @@ struct Q_AUTOTEST_EXPORT HeaderField
     QByteArray value;
 };
 
-using HeaderSize = QPair<bool, quint32>;
+using HeaderSize = std::pair<bool, quint32>;
 
 HeaderSize entry_size(QByteArrayView name, QByteArrayView value);
 

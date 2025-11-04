@@ -114,8 +114,6 @@ ${target} target will be a separate file.")
     endif()
     add_custom_command(TARGET ${target} POST_BUILD
         ${tlb_command_list}
-        DEPENDS
-            "${idc_target}"
         VERBATIM
         COMMAND_EXPAND_LISTS
     )

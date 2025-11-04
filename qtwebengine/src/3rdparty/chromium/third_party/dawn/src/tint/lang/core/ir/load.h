@@ -41,13 +41,21 @@ class Load final : public Castable<Load, OperandInstruction<1, 1>> {
     /// The offset in Operands() for the from value
     static constexpr size_t kFromOperandOffset = 0;
 
+    /// The fixed number of results returned by this instruction
+    static constexpr size_t kNumResults = 1;
+
+    /// The fixed number of operands used by this instruction
+    static constexpr size_t kNumOperands = 1;
+
     /// Constructor (no results, no operands)
-    Load();
+    /// @param id the instruction id
+    explicit Load(Id id);
 
     /// Constructor
+    /// @param id the instruction id
     /// @param result the result value
     /// @param from the value being loaded from
-    Load(InstructionResult* result, Value* from);
+    Load(Id id, InstructionResult* result, Value* from);
 
     ~Load() override;
 
@@ -55,10 +63,10 @@ class Load final : public Castable<Load, OperandInstruction<1, 1>> {
     Load* Clone(CloneContext& ctx) override;
 
     /// @returns the value being loaded from
-    Value* From() { return operands_[kFromOperandOffset]; }
+    Value* From() { return Operand(kFromOperandOffset); }
 
     /// @returns the value being loaded from
-    const Value* From() const { return operands_[kFromOperandOffset]; }
+    const Value* From() const { return Operand(kFromOperandOffset); }
 
     /// @returns the friendly name for the instruction
     std::string FriendlyName() const override { return "load"; }

@@ -31,8 +31,8 @@
 #include "p2p/base/turn_port.h"
 #include "p2p/base/udp_port.h"
 #include "rtc_base/checks.h"
+#include "rtc_base/crypto_random.h"
 #include "rtc_base/experiments/field_trial_parser.h"
-#include "rtc_base/helpers.h"
 #include "rtc_base/logging.h"
 #include "rtc_base/network_constants.h"
 #include "rtc_base/strings/string_builder.h"
@@ -42,6 +42,7 @@
 namespace cricket {
 namespace {
 using ::rtc::CreateRandomId;
+using ::webrtc::IceCandidateType;
 using ::webrtc::SafeTask;
 using ::webrtc::TimeDelta;
 
@@ -493,7 +494,7 @@ void BasicPortAllocatorSession::GetCandidateStatsFromReadyPorts(
   for (auto* port : ports) {
     auto candidates = port->Candidates();
     for (const auto& candidate : candidates) {
-      absl::optional<StunStats> stun_stats;
+      std::optional<StunStats> stun_stats;
       port->GetStunStats(&stun_stats);
       CandidateStats candidate_stats(allocator_->SanitizeCandidate(candidate),
                                      std::move(stun_stats));
@@ -503,15 +504,16 @@ void BasicPortAllocatorSession::GetCandidateStatsFromReadyPorts(
 }
 
 void BasicPortAllocatorSession::SetStunKeepaliveIntervalForReadyPorts(
-    const absl::optional<int>& stun_keepalive_interval) {
+    const std::optional<int>& stun_keepalive_interval) {
   RTC_DCHECK_RUN_ON(network_thread_);
   auto ports = ReadyPorts();
   for (PortInterface* port : ports) {
     // The port type and protocol can be used to identify different subclasses
     // of Port in the current implementation. Note that a TCPPort has the type
-    // LOCAL_PORT_TYPE but uses the protocol PROTO_TCP.
-    if (port->Type() == STUN_PORT_TYPE ||
-        (port->Type() == LOCAL_PORT_TYPE && port->GetProtocol() == PROTO_UDP)) {
+    // IceCandidateType::kHost but uses the protocol PROTO_TCP.
+    if (port->Type() == IceCandidateType::kSrflx ||
+        (port->Type() == IceCandidateType::kHost &&
+         port->GetProtocol() == PROTO_UDP)) {
       static_cast<UDPPort*>(port)->set_stun_keepalive_delay(
           stun_keepalive_interval);
     }
@@ -935,8 +937,6 @@ void BasicPortAllocatorSession::AddAllocatedPort(Port* port,
   port->set_content_name(content_name());
   port->set_component(component());
   port->set_generation(generation());
-  if (allocator_->proxy().type != rtc::PROXY_NONE)
-    port->set_proxy(allocator_->user_agent(), allocator_->proxy());
   port->set_send_retransmit_count_attribute(
       (flags() & PORTALLOCATOR_ENABLE_STUN_RETRANSMIT_ATTRIBUTE) != 0);
 
@@ -993,7 +993,7 @@ void BasicPortAllocatorSession::OnCandidateReady(Port* port,
   if (CandidatePairable(c, port) && !data->has_pairable_candidate()) {
     data->set_has_pairable_candidate(true);
 
-    if (port->Type() == RELAY_PORT_TYPE) {
+    if (port->Type() == IceCandidateType::kRelay) {
       if (turn_port_prune_policy_ == webrtc::KEEP_FIRST_READY) {
         pruned = PruneNewlyPairableTurnPort(data);
       } else if (turn_port_prune_policy_ == webrtc::PRUNE_BASED_ON_PRIORITY) {
@@ -1041,7 +1041,7 @@ Port* BasicPortAllocatorSession::GetBestTurnPortForNetwork(
   Port* best_turn_port = nullptr;
   for (const PortData& data : ports_) {
     if (data.port()->Network()->name() == network_name &&
-        data.port()->Type() == RELAY_PORT_TYPE && data.ready() &&
+        data.port()->Type() == IceCandidateType::kRelay && data.ready() &&
         (!best_turn_port || ComparePort(data.port(), best_turn_port) > 0)) {
       best_turn_port = data.port();
     }
@@ -1052,7 +1052,8 @@ Port* BasicPortAllocatorSession::GetBestTurnPortForNetwork(
 bool BasicPortAllocatorSession::PruneNewlyPairableTurnPort(
     PortData* newly_pairable_port_data) {
   RTC_DCHECK_RUN_ON(network_thread_);
-  RTC_DCHECK(newly_pairable_port_data->port()->Type() == RELAY_PORT_TYPE);
+  RTC_DCHECK(newly_pairable_port_data->port()->Type() ==
+             IceCandidateType::kRelay);
   // If an existing turn port is ready on the same network, prune the newly
   // pairable port.
   const std::string& network_name =
@@ -1060,7 +1061,7 @@ bool BasicPortAllocatorSession::PruneNewlyPairableTurnPort(
 
   for (PortData& data : ports_) {
     if (data.port()->Network()->name() == network_name &&
-        data.port()->Type() == RELAY_PORT_TYPE && data.ready() &&
+        data.port()->Type() == IceCandidateType::kRelay && data.ready() &&
         &data != newly_pairable_port_data) {
       RTC_LOG(LS_INFO) << "Port pruned: "
                        << newly_pairable_port_data->port()->ToString();
@@ -1085,7 +1086,7 @@ bool BasicPortAllocatorSession::PruneTurnPorts(Port* newly_pairable_turn_port) {
   std::vector<PortData*> ports_to_prune;
   for (PortData& data : ports_) {
     if (data.port()->Network()->name() == network_name &&
-        data.port()->Type() == RELAY_PORT_TYPE && !data.pruned() &&
+        data.port()->Type() == IceCandidateType::kRelay && !data.pruned() &&
         ComparePort(data.port(), best_turn_port) < 0) {
       pruned = true;
       if (data.port() != newly_pairable_turn_port) {
@@ -1354,7 +1355,8 @@ void AllocationSequence::DisableEquivalentPhases(const rtc::Network* network,
                      [this](const BasicPortAllocatorSession::PortData& p) {
                        return !p.pruned() && p.port()->Network() == network_ &&
                               p.port()->GetProtocol() == PROTO_UDP &&
-                              p.port()->Type() == LOCAL_PORT_TYPE && !p.error();
+                              p.port()->Type() == IceCandidateType::kHost &&
+                              !p.error();
                      })) {
     *flags |= PORTALLOCATOR_DISABLE_UDP;
   }
@@ -1364,7 +1366,8 @@ void AllocationSequence::DisableEquivalentPhases(const rtc::Network* network,
                      [this](const BasicPortAllocatorSession::PortData& p) {
                        return !p.pruned() && p.port()->Network() == network_ &&
                               p.port()->GetProtocol() == PROTO_TCP &&
-                              p.port()->Type() == LOCAL_PORT_TYPE && !p.error();
+                              p.port()->Type() == IceCandidateType::kHost &&
+                              !p.error();
                      })) {
     *flags |= PORTALLOCATOR_DISABLE_TCP;
   }
@@ -1467,23 +1470,29 @@ void AllocationSequence::CreateUDPPorts() {
       !IsFlagSet(PORTALLOCATOR_DISABLE_DEFAULT_LOCAL_CANDIDATE);
   if (IsFlagSet(PORTALLOCATOR_ENABLE_SHARED_SOCKET) && udp_socket_) {
     port = UDPPort::Create(
-        session_->network_thread(), session_->socket_factory(), network_,
-        udp_socket_.get(), session_->username(), session_->password(),
-        emit_local_candidate_for_anyaddress,
-        session_->allocator()->stun_candidate_keepalive_interval(),
-        session_->allocator()->field_trials());
+        {.network_thread = session_->network_thread(),
+         .socket_factory = session_->socket_factory(),
+         .network = network_,
+         .ice_username_fragment = session_->username(),
+         .ice_password = session_->password(),
+         .field_trials = session_->allocator()->field_trials()},
+        udp_socket_.get(), emit_local_candidate_for_anyaddress,
+        session_->allocator()->stun_candidate_keepalive_interval());
   } else {
     port = UDPPort::Create(
-        session_->network_thread(), session_->socket_factory(), network_,
+        {.network_thread = session_->network_thread(),
+         .socket_factory = session_->socket_factory(),
+         .network = network_,
+         .ice_username_fragment = session_->username(),
+         .ice_password = session_->password(),
+         .field_trials = session_->allocator()->field_trials()},
         session_->allocator()->min_port(), session_->allocator()->max_port(),
-        session_->username(), session_->password(),
         emit_local_candidate_for_anyaddress,
-        session_->allocator()->stun_candidate_keepalive_interval(),
-        session_->allocator()->field_trials());
+        session_->allocator()->stun_candidate_keepalive_interval());
   }
 
   if (port) {
-    port->SetIceTiebreaker(session_->ice_tiebreaker());
+    port->SetIceTiebreaker(session_->allocator()->ice_tiebreaker());
     // If shared socket is enabled, STUN candidate will be allocated by the
     // UDPPort.
     if (IsFlagSet(PORTALLOCATOR_ENABLE_SHARED_SOCKET)) {
@@ -1513,13 +1522,17 @@ void AllocationSequence::CreateTCPPorts() {
   }
 
   std::unique_ptr<Port> port = TCPPort::Create(
-      session_->network_thread(), session_->socket_factory(), network_,
+      {.network_thread = session_->network_thread(),
+       .socket_factory = session_->socket_factory(),
+       .network = network_,
+       .ice_username_fragment = session_->username(),
+       .ice_password = session_->password(),
+       .field_trials = session_->allocator()->field_trials()},
       session_->allocator()->min_port(), session_->allocator()->max_port(),
-      session_->username(), session_->password(),
-      session_->allocator()->allow_tcp_listen(),
-      session_->allocator()->field_trials());
+
+      session_->allocator()->allow_tcp_listen());
   if (port) {
-    port->SetIceTiebreaker(session_->ice_tiebreaker());
+    port->SetIceTiebreaker(session_->allocator()->ice_tiebreaker());
     session_->AddAllocatedPort(port.release(), this);
     // Since TCPPort is not created using shared socket, `port` will not be
     // added to the dequeue.
@@ -1543,13 +1556,17 @@ void AllocationSequence::CreateStunPorts() {
   }
 
   std::unique_ptr<StunPort> port = StunPort::Create(
-      session_->network_thread(), session_->socket_factory(), network_,
+      {.network_thread = session_->network_thread(),
+       .socket_factory = session_->socket_factory(),
+       .network = network_,
+       .ice_username_fragment = session_->username(),
+       .ice_password = session_->password(),
+       .field_trials = session_->allocator()->field_trials()},
       session_->allocator()->min_port(), session_->allocator()->max_port(),
-      session_->username(), session_->password(), config_->StunServers(),
-      session_->allocator()->stun_candidate_keepalive_interval(),
-      session_->allocator()->field_trials());
+      config_->StunServers(),
+      session_->allocator()->stun_candidate_keepalive_interval());
   if (port) {
-    port->SetIceTiebreaker(session_->ice_tiebreaker());
+    port->SetIceTiebreaker(session_->allocator()->ice_tiebreaker());
     session_->AddAllocatedPort(port.release(), this);
     // Since StunPort is not created using shared socket, `port` will not be
     // added to the dequeue.
@@ -1652,7 +1669,7 @@ void AllocationSequence::CreateTurnPort(const RelayServerConfig& config,
       }
     }
     RTC_DCHECK(port != NULL);
-    port->SetIceTiebreaker(session_->ice_tiebreaker());
+    port->SetIceTiebreaker(session_->allocator()->ice_tiebreaker());
     session_->AddAllocatedPort(port.release(), this);
   }
 }

@@ -58,6 +58,7 @@ class Q_GRAPHS_EXPORT QItemModelSurfaceDataProxy : public QSurfaceDataProxy
     Q_PROPERTY(
         QItemModelSurfaceDataProxy::MultiMatchBehavior multiMatchBehavior READ multiMatchBehavior
             WRITE setMultiMatchBehavior NOTIFY multiMatchBehaviorChanged FINAL)
+    QML_NAMED_ELEMENT(ItemModelSurfaceDataProxy)
 
 public:
     enum class MultiMatchBehavior {

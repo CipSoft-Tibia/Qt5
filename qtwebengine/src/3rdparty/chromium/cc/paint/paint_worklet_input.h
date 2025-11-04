@@ -5,11 +5,11 @@
 #ifndef CC_PAINT_PAINT_WORKLET_INPUT_H_
 #define CC_PAINT_PAINT_WORKLET_INPUT_H_
 
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
-#include <optional>
 #include "base/containers/flat_map.h"
 #include "base/memory/ref_counted.h"
 #include "cc/paint/element_id.h"
@@ -49,6 +49,9 @@ class CC_PAINT_EXPORT PaintWorkletInput
     PropertyKey(const std::string& custom_property_name, ElementId element_id);
     PropertyKey(NativePropertyType native_property_type, ElementId element_id);
     PropertyKey(const PropertyKey&);
+    PropertyKey(PropertyKey&&);
+    PropertyKey& operator=(PropertyKey&&);
+    PropertyKey& operator=(const PropertyKey&);
     ~PropertyKey();
 
     bool operator==(const PropertyKey& other) const;
@@ -88,6 +91,9 @@ class CC_PAINT_EXPORT PaintWorkletInput
   using PropertyKeys = std::vector<PropertyKey>;
   virtual const PropertyKeys& GetPropertyKeys() const = 0;
 
+  virtual bool NeedsLayer() const;
+
+  // Includes JavaScript and native paint worklets.
   virtual bool IsCSSPaintWorkletInput() const = 0;
 
   // True if all the animated frames are opaque. Can be false only if animated

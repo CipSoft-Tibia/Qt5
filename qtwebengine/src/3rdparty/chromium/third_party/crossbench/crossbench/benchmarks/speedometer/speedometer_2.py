@@ -5,14 +5,34 @@
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, Tuple
+from typing import TYPE_CHECKING, Any, Tuple
 
 from crossbench import helper
+from crossbench.benchmarks.speedometer.speedometer import (SpeedometerProbe,
+                                                           SpeedometerStory)
 
 if TYPE_CHECKING:
   from crossbench.runner.run import Run
 
-from .speedometer import SpeedometerStory
+
+class Speedometer2Probe(SpeedometerProbe):
+
+  def _valid_metric_key(self, metric_key: str) -> bool:
+    parts = metric_key.split("/")
+    if len(parts) == 2:
+      return True
+    if len(parts) == 1:
+      return parts[0] in ("Geomean", "Score")
+    return parts[-1] == "total"
+
+  def process_json_data(self, json_data) -> Any:
+    # Move aggregate scores to the end
+    for iteration_data in json_data:
+      iteration_data["Mean"] = iteration_data.pop("mean")
+      iteration_data["Total"] = iteration_data.pop("total")
+      iteration_data["Geomean"] = iteration_data.pop("geomean")
+      iteration_data["Score"] = iteration_data.pop("score")
+    return json_data
 
 
 class Speedometer2Story(SpeedometerStory):

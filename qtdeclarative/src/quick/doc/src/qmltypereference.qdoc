@@ -66,7 +66,7 @@ available when you import \c QtQuick.
     \qmlvaluetype color
     \ingroup qtquickvaluetypes
 
-    \brief an ARGB color value.
+    \brief An ARGB color value.
 
     The \c color type refers to an ARGB color value. It can be specified in a number of ways:
 
@@ -216,7 +216,7 @@ available when you import \c QtQuick.
     \li \l {QML Enumerations}{enumeration} \c font.hintingPreference
     \li \c object \l [QML] {QtQuick::Text::}{font.features}
     \li \l string \c font.styleName
-    \li \c object \c [QML] {QtQuick::Text::}{font.variableAxes}
+    \li \c object \l [QML] {QtQuick::Text::}{font.variableAxes}
     \li \l bool \c font.contextFontMerging
     \li \l bool \c font.preferTypoLineMetrics
     \endlist

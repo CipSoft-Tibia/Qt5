@@ -75,6 +75,10 @@ Item {
                                          ambientLightStrength: 0.5
                                          lightStrength: 10.0
                                          shadowStrength: 50.0
+                                         minCameraXRotation: 0.0
+                                         maxCameraXRotation: 90.0
+                                         minCameraYRotation: -90.0
+                                         maxCameraYRotation: 0.0
                                          }`, top)
         common_init.anchors.fill = top
     }
@@ -185,6 +189,10 @@ Item {
             compare(top.common.ambientLightStrength, 0.25, "ambientLightStrength")
             compare(top.common.lightStrength, 5.0, "lightStrength")
             compare(top.common.shadowStrength, 25.0, "shadowStrength")
+            compare(top.common.minCameraXRotation, -180.0, "minCameraXRotation")
+            compare(top.common.maxCameraXRotation, 180.0, "maxCameraXRotation")
+            compare(top.common.minCameraYRotation, 0.0, "minCameraYRotation")
+            compare(top.common.maxCameraYRotation, 90.0, "maxCameraYRotation")
             compare(top.common.cameraTargetPosition, Qt.vector3d(0, 0, 0),
                     "cameraTargetPosition")
         }
@@ -213,6 +221,10 @@ Item {
             top.common.ambientLightStrength = 0.5
             top.common.lightStrength = 10.0
             top.common.shadowStrength = 50.0
+            top.common.minCameraXRotation = 0
+            top.common.maxCameraXRotation = 90
+            top.common.minCameraYRotation = -90
+            top.common.maxCameraYRotation = 0
             top.common.cameraTargetPosition = Qt.vector3d(1.0, 0.0, -1.0)
             compare(top.common.selectionMode,
                     Graphs3D.SelectionFlag.Item | Graphs3D.SelectionFlag.Row
@@ -238,6 +250,10 @@ Item {
             compare(top.common.ambientLightStrength, 0.5, "ambientLightStrength")
             compare(top.common.lightStrength, 10.0, "lightStrength")
             compare(top.common.shadowStrength, 50.0, "shadowStrength")
+            compare(top.common.minCameraXRotation, 0.0, "minCameraXRotation")
+            compare(top.common.maxCameraXRotation, 90.0, "maxCameraXRotation")
+            compare(top.common.minCameraYRotation, -90.0, "minCameraYRotation")
+            compare(top.common.maxCameraYRotation, 0.0, "maxCameraYRotation")
             compare(top.common.cameraTargetPosition, Qt.vector3d(1.0, 0.0, -1.0),
                     "cameraTargetPosition")
         }
@@ -309,6 +325,10 @@ Item {
                     "ambientLightStrength")
             compare(top.common_init.lightStrength, 10.0, "lightStrength")
             compare(top.common_init.shadowStrength, 50.0, "shadowStrength")
+            compare(top.common_init.minCameraXRotation, 0.0, "minCameraXRotation")
+            compare(top.common_init.maxCameraXRotation, 90.0, "maxCameraXRotation")
+            compare(top.common_init.minCameraYRotation, -90.0, "minCameraYRotation")
+            compare(top.common_init.maxCameraYRotation, 0.0, "maxCameraYRotation")
         }
     }
 }

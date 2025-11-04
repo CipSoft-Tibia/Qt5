@@ -12,9 +12,8 @@ import {HandlerState} from './types.js';
  * See UserTimings.md in this directory for some handy documentation on
  * UserTimings and the trace events we parse currently.
  **/
-const syntheticEvents: Types.TraceEvents.SyntheticNestableAsyncEvent[] = [];
-const performanceMeasureEvents: (Types.TraceEvents.TraceEventPerformanceMeasureBegin|
-                                 Types.TraceEvents.TraceEventPerformanceMeasureEnd)[] = [];
+let syntheticEvents: Types.TraceEvents.SyntheticEventPair<Types.TraceEvents.TraceEventPairableAsync>[] = [];
+const performanceMeasureEvents: Types.TraceEvents.TraceEventPerformanceMeasure[] = [];
 const performanceMarkEvents: Types.TraceEvents.TraceEventPerformanceMark[] = [];
 
 const consoleTimings: (Types.TraceEvents.TraceEventConsoleTimeBegin|Types.TraceEvents.TraceEventConsoleTimeEnd)[] = [];
@@ -26,7 +25,7 @@ export interface UserTimingsData {
    * Events triggered with the performance.measure() API.
    * https://developer.mozilla.org/en-US/docs/Web/API/Performance/measure
    */
-  performanceMeasures: readonly Types.TraceEvents.SyntheticNestableAsyncEvent[];
+  performanceMeasures: readonly Types.TraceEvents.SyntheticUserTimingPair[];
   /**
    * Events triggered with the performance.mark() API.
    * https://developer.mozilla.org/en-US/docs/Web/API/Performance/mark
@@ -37,7 +36,7 @@ export interface UserTimingsData {
    * console.timeLog() API.
    * https://developer.mozilla.org/en-US/docs/Web/API/console/time
    */
-  consoleTimings: readonly Types.TraceEvents.SyntheticNestableAsyncEvent[];
+  consoleTimings: readonly Types.TraceEvents.SyntheticConsoleTimingPair[];
   /**
    * Events triggered with the console.timeStamp() API
    * https://developer.mozilla.org/en-US/docs/Web/API/console/timeStamp
@@ -93,17 +92,17 @@ const navTimingNames = [
   'loadEventStart',
   'loadEventEnd',
 ];
+// These are events dispatched under the blink.user_timing category
+// but that the user didn't add. Filter them out so that they do not
+// Appear in the timings track (they still appear in the main thread
+// flame chart).
+const ignoredNames = [...resourceTimingNames, ...navTimingNames];
 
 export function handleEvent(event: Types.TraceEvents.TraceEventData): void {
   if (handlerState !== HandlerState.INITIALIZED) {
     throw new Error('UserTimings handler is not initialized');
   }
 
-  // These are events dispatched under the blink.user_timing category
-  // but that the user didn't add. Filter them out so that they do not
-  // Appear in the timings track (they still appear in the main thread
-  // flame chart).
-  const ignoredNames = [...resourceTimingNames, ...navTimingNames];
   if (ignoredNames.includes(event.name)) {
     return;
   }
@@ -129,7 +128,7 @@ export async function finalize(): Promise<void> {
   }
 
   const asyncEvents = [...performanceMeasureEvents, ...consoleTimings];
-  syntheticEvents.push(...Helpers.Trace.createMatchedSortedSyntheticEvents(asyncEvents));
+  syntheticEvents = Helpers.Trace.createMatchedSortedSyntheticEvents(asyncEvents);
   handlerState = HandlerState.FINALIZED;
 }
 
@@ -139,8 +138,11 @@ export function data(): UserTimingsData {
   }
 
   return {
-    performanceMeasures: syntheticEvents.filter(Types.TraceEvents.isTraceEventPerformanceMeasure),
-    consoleTimings: syntheticEvents.filter(Types.TraceEvents.isTraceEventConsoleTime),
+    performanceMeasures: syntheticEvents.filter(e => e.cat === 'blink.user_timing') as
+        Types.TraceEvents.SyntheticUserTimingPair[],
+    consoleTimings: syntheticEvents.filter(e => e.cat === 'blink.console') as
+        Types.TraceEvents.SyntheticConsoleTimingPair[],
+    // TODO(crbug/41484172): UserTimingsHandler.test.ts fails if this is not copied.
     performanceMarks: [...performanceMarkEvents],
     timestampEvents: [...timestampEvents],
   };

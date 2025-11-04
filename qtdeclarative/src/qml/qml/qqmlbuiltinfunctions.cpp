@@ -36,7 +36,7 @@
 
 QT_BEGIN_NAMESPACE
 
-Q_LOGGING_CATEGORY(lcRootProperties, "qt.qml.rootObjectProperties");
+Q_STATIC_LOGGING_CATEGORY(lcRootProperties, "qt.qml.rootObjectProperties");
 Q_LOGGING_CATEGORY(lcQml, "qml");
 Q_LOGGING_CATEGORY(lcJs, "js");
 
@@ -714,7 +714,8 @@ QVariant QtObject::alpha(const QJSValue &baseColor, double value) const
         }
     }
     \endqml
-    \image declarative-rect_tint.png
+    \image declarative-rect_tint.png {Side-by-side representation of a light
+     steel blue square and a light steel blue square with a tint applied}
 
     Tint is most useful when a subtle change is intended to be conveyed due to some event;
     you can then use tinting to more effectively tune the visible color.
@@ -1375,7 +1376,14 @@ QObject *QtObject::createQmlObject(const QString &qml, QObject *parent, const QU
 
     QQmlRefPointer<QQmlTypeData> typeData = QQmlEnginePrivate::get(engine)->typeLoader.getType(
                 qml.toUtf8(), resolvedUrl, QQmlTypeLoader::Synchronous);
-    Q_ASSERT(typeData->isCompleteOrError());
+
+    if (!typeData->isCompleteOrError()) {
+        v4Engine()->throwError(
+                QStringLiteral("Qt.createQmlObject(): Failed to force synchronous loading "
+                               "of asynchronous URL '%1'").arg(resolvedUrl.toString()));
+        return nullptr;
+    }
+
     QQmlComponent component(engine);
     QQmlComponentPrivate *componentPrivate = QQmlComponentPrivate::get(&component);
     componentPrivate->fromTypeData(typeData);
@@ -1500,11 +1508,18 @@ QQmlComponent *QtObject::createComponent(const QUrl &url, QObject *parent) const
     return createComponent(url, QQmlComponent::PreferSynchronous, parent);
 }
 
+Q_DECL_COLD_FUNCTION
+static void throw_invalid_compilation_mode(QV4::ExecutionEngine *engine, QQmlComponent::CompilationMode mode)
+{
+    engine->throwError(QStringLiteral("Invalid compilation mode %1").arg(int(mode)));
+    //                                                                   ^ QTBUG-131906
+}
+
 QQmlComponent *QtObject::createComponent(const QUrl &url, QQmlComponent::CompilationMode mode,
                                          QObject *parent) const
 {
     if (mode != QQmlComponent::Asynchronous && mode != QQmlComponent::PreferSynchronous) {
-        v4Engine()->throwError(QStringLiteral("Invalid compilation mode %1").arg(mode));
+        throw_invalid_compilation_mode(v4Engine(), mode);
         return nullptr;
     }
 
@@ -1535,7 +1550,7 @@ QQmlComponent *QtObject::createComponent(const QString &moduleUri, const QString
 QQmlComponent *QtObject::createComponent(const QString &moduleUri, const QString &typeName, QQmlComponent::CompilationMode mode, QObject *parent) const
 {
     if (mode != QQmlComponent::Asynchronous && mode != QQmlComponent::PreferSynchronous) {
-        v4Engine()->throwError(QStringLiteral("Invalid compilation mode %1").arg(mode));
+        throw_invalid_compilation_mode(v4Engine(), mode);
         return nullptr;
     }
 
@@ -2012,7 +2027,7 @@ ReturnedValue ConsoleObject::method_trace(const FunctionObject *b, const Value *
     QV4::CppStackFrame *frame = v4->currentStackFrame;
     QMessageLogger(frame->source().toUtf8().constData(), frame->lineNumber(),
                    frame->function().toUtf8().constData())
-        .debug(v4->qmlEngine() ? lcQml : lcJs, "%s", qPrintable(stack));
+            .debug(v4->qmlEngine() ? lcQml() : lcJs(), "%s", qPrintable(stack));
 
     return QV4::Encode::undefined();
 }

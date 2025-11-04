@@ -122,9 +122,29 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="main.py" line="92"/>
+        <location filename="main.py" line="90"/>
         <source>msg4</source>
         <extracomment>Extra comment 4</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="main.py" line="91"/>
+        <source></source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="main.py" line="92"/>
+        <source>prefix&#xa0;&#xa0;postfix</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="main.py" line="93"/>
+        <source>before&#xa0;middle&#xa0;after</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="main.py" line="95"/>
+        <source>before&#xa0;&#xa0;middle<byte value="x1f"/>&#xa0;&#xa0;after</source>
         <translation type="unfinished"></translation>
     </message>
 </context>

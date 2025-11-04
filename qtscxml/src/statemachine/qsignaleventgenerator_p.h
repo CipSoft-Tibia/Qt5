@@ -18,7 +18,7 @@
 #include <QtCore/private/qglobal_p.h>
 #include <QtCore/qobject.h>
 
-#include <QtStateMachine/qstatemachineglobal.h>
+#include <private/qstatemachineglobal_p.h>
 
 QT_REQUIRE_CONFIG(statemachine);
 

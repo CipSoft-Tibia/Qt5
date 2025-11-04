@@ -195,6 +195,7 @@ class CommandBuffer : public WrappedObject<CommandBuffer, VkCommandBuffer>
     void beginQuery(const QueryPool &queryPool, uint32_t query, VkQueryControlFlags flags);
 
     void beginRenderPass(const VkRenderPassBeginInfo &beginInfo, VkSubpassContents subpassContents);
+    void beginRendering(const VkRenderingInfo &beginInfo);
 
     void bindDescriptorSets(const PipelineLayout &layout,
                             VkPipelineBindPoint pipelineBindPoint,
@@ -289,6 +290,7 @@ class CommandBuffer : public WrappedObject<CommandBuffer, VkCommandBuffer>
     VkResult end();
     void endQuery(const QueryPool &queryPool, uint32_t query);
     void endRenderPass();
+    void endRendering();
     void executeCommands(uint32_t commandBufferCount, const CommandBuffer *commandBuffers);
 
     void getMemoryUsageStats(size_t *usedMemoryOut, size_t *allocatedMemoryOut) const;
@@ -302,11 +304,16 @@ class CommandBuffer : public WrappedObject<CommandBuffer, VkCommandBuffer>
                       VkPipelineStageFlags dstStageMask,
                       const VkImageMemoryBarrier &imageMemoryBarrier);
 
+    void imageWaitEvent(const VkEvent &event,
+                        VkPipelineStageFlags srcStageMask,
+                        VkPipelineStageFlags dstStageMask,
+                        const VkImageMemoryBarrier &imageMemoryBarrier);
+
     void nextSubpass(VkSubpassContents subpassContents);
 
     void memoryBarrier(VkPipelineStageFlags srcStageMask,
                        VkPipelineStageFlags dstStageMask,
-                       const VkMemoryBarrier *memoryBarrier);
+                       const VkMemoryBarrier &memoryBarrier);
 
     void pipelineBarrier(VkPipelineStageFlags srcStageMask,
                          VkPipelineStageFlags dstStageMask,
@@ -341,6 +348,8 @@ class CommandBuffer : public WrappedObject<CommandBuffer, VkCommandBuffer>
     void setLogicOp(VkLogicOp logicOp);
     void setPrimitiveRestartEnable(VkBool32 primitiveRestartEnable);
     void setRasterizerDiscardEnable(VkBool32 rasterizerDiscardEnable);
+    void setRenderingAttachmentLocations(const VkRenderingAttachmentLocationInfoKHR *info);
+    void setRenderingInputAttachmentIndicates(const VkRenderingInputAttachmentIndexInfoKHR *info);
     void setScissor(uint32_t firstScissor, uint32_t scissorCount, const VkRect2D *scissors);
     void setStencilCompareMask(uint32_t compareFrontMask, uint32_t compareBackMask);
     void setStencilOp(VkStencilFaceFlags faceMask,
@@ -351,6 +360,10 @@ class CommandBuffer : public WrappedObject<CommandBuffer, VkCommandBuffer>
     void setStencilReference(uint32_t frontReference, uint32_t backReference);
     void setStencilTestEnable(VkBool32 stencilTestEnable);
     void setStencilWriteMask(uint32_t writeFrontMask, uint32_t writeBackMask);
+    void setVertexInput(uint32_t vertexBindingDescriptionCount,
+                        const VkVertexInputBindingDescription2EXT *vertexBindingDescriptions,
+                        uint32_t vertexAttributeDescriptionCount,
+                        const VkVertexInputAttributeDescription2EXT *vertexAttributeDescriptions);
     void setViewport(uint32_t firstViewport, uint32_t viewportCount, const VkViewport *viewports);
     VkResult reset();
     void resetEvent(VkEvent event, VkPipelineStageFlags stageMask);
@@ -785,10 +798,10 @@ ANGLE_INLINE void CommandBuffer::nextSubpass(VkSubpassContents subpassContents)
 
 ANGLE_INLINE void CommandBuffer::memoryBarrier(VkPipelineStageFlags srcStageMask,
                                                VkPipelineStageFlags dstStageMask,
-                                               const VkMemoryBarrier *memoryBarrier)
+                                               const VkMemoryBarrier &memoryBarrier)
 {
     ASSERT(valid());
-    vkCmdPipelineBarrier(mHandle, srcStageMask, dstStageMask, 0, 1, memoryBarrier, 0, nullptr, 0,
+    vkCmdPipelineBarrier(mHandle, srcStageMask, dstStageMask, 0, 1, &memoryBarrier, 0, nullptr, 0,
                          nullptr);
 }
 
@@ -815,6 +828,16 @@ ANGLE_INLINE void CommandBuffer::imageBarrier(VkPipelineStageFlags srcStageMask,
     ASSERT(valid());
     vkCmdPipelineBarrier(mHandle, srcStageMask, dstStageMask, 0, 0, nullptr, 0, nullptr, 1,
                          &imageMemoryBarrier);
+}
+
+ANGLE_INLINE void CommandBuffer::imageWaitEvent(const VkEvent &event,
+                                                VkPipelineStageFlags srcStageMask,
+                                                VkPipelineStageFlags dstStageMask,
+                                                const VkImageMemoryBarrier &imageMemoryBarrier)
+{
+    ASSERT(valid());
+    vkCmdWaitEvents(mHandle, 1, &event, srcStageMask, dstStageMask, 0, nullptr, 0, nullptr, 1,
+                    &imageMemoryBarrier);
 }
 
 ANGLE_INLINE void CommandBuffer::destroy(VkDevice device)
@@ -917,10 +940,22 @@ ANGLE_INLINE void CommandBuffer::beginRenderPass(const VkRenderPassBeginInfo &be
     vkCmdBeginRenderPass(mHandle, &beginInfo, subpassContents);
 }
 
+ANGLE_INLINE void CommandBuffer::beginRendering(const VkRenderingInfo &beginInfo)
+{
+    ASSERT(valid());
+    vkCmdBeginRenderingKHR(mHandle, &beginInfo);
+}
+
 ANGLE_INLINE void CommandBuffer::endRenderPass()
 {
-    ASSERT(mHandle != VK_NULL_HANDLE);
+    ASSERT(valid());
     vkCmdEndRenderPass(mHandle);
+}
+
+ANGLE_INLINE void CommandBuffer::endRendering()
+{
+    ASSERT(valid());
+    vkCmdEndRenderingKHR(mHandle);
 }
 
 ANGLE_INLINE void CommandBuffer::bindIndexBuffer(const Buffer &buffer,
@@ -1067,6 +1102,20 @@ ANGLE_INLINE void CommandBuffer::setRasterizerDiscardEnable(VkBool32 rasterizerD
     vkCmdSetRasterizerDiscardEnableEXT(mHandle, rasterizerDiscardEnable);
 }
 
+ANGLE_INLINE void CommandBuffer::setRenderingAttachmentLocations(
+    const VkRenderingAttachmentLocationInfoKHR *info)
+{
+    ASSERT(valid());
+    vkCmdSetRenderingAttachmentLocationsKHR(mHandle, info);
+}
+
+ANGLE_INLINE void CommandBuffer::setRenderingInputAttachmentIndicates(
+    const VkRenderingInputAttachmentIndexInfoKHR *info)
+{
+    ASSERT(valid());
+    vkCmdSetRenderingInputAttachmentIndicesKHR(mHandle, info);
+}
+
 ANGLE_INLINE void CommandBuffer::setScissor(uint32_t firstScissor,
                                             uint32_t scissorCount,
                                             const VkRect2D *scissors)
@@ -1113,6 +1162,17 @@ ANGLE_INLINE void CommandBuffer::setStencilWriteMask(uint32_t writeFrontMask,
     ASSERT(valid());
     vkCmdSetStencilWriteMask(mHandle, VK_STENCIL_FACE_FRONT_BIT, writeFrontMask);
     vkCmdSetStencilWriteMask(mHandle, VK_STENCIL_FACE_BACK_BIT, writeBackMask);
+}
+
+ANGLE_INLINE void CommandBuffer::setVertexInput(
+    uint32_t vertexBindingDescriptionCount,
+    const VkVertexInputBindingDescription2EXT *VertexBindingDescriptions,
+    uint32_t vertexAttributeDescriptionCount,
+    const VkVertexInputAttributeDescription2EXT *VertexAttributeDescriptions)
+{
+    ASSERT(valid());
+    vkCmdSetVertexInputEXT(mHandle, vertexBindingDescriptionCount, VertexBindingDescriptions,
+                           vertexAttributeDescriptionCount, VertexAttributeDescriptions);
 }
 
 ANGLE_INLINE void CommandBuffer::setViewport(uint32_t firstViewport,

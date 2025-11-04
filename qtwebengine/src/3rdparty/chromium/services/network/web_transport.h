@@ -76,14 +76,14 @@ class COMPONENT_EXPORT(NETWORK_SERVICE) WebTransport final
       scoped_refptr<net::HttpResponseHeaders> response_headers) override;
   void OnConnectionFailed(const net::WebTransportError& error) override;
   void OnClosed(
-      const absl::optional<net::WebTransportCloseInfo>& close_info) override;
+      const std::optional<net::WebTransportCloseInfo>& close_info) override;
   void OnError(const net::WebTransportError& error) override;
   void OnIncomingBidirectionalStreamAvailable() override;
   void OnIncomingUnidirectionalStreamAvailable() override;
   void OnDatagramReceived(std::string_view datagram) override;
   void OnCanCreateNewOutgoingBidirectionalStream() override;
   void OnCanCreateNewOutgoingUnidirectionalStream() override;
-  void OnDatagramProcessed(absl::optional<quic::MessageStatus> status) override;
+  void OnDatagramProcessed(std::optional<quic::MessageStatus> status) override;
 
   bool torn_down() const { return torn_down_; }
 
@@ -94,6 +94,11 @@ class COMPONENT_EXPORT(NETWORK_SERVICE) WebTransport final
   const std::unique_ptr<net::WebTransportClient> transport_;
   const raw_ptr<NetworkContext> context_;  // outlives |this|.
 
+  bool closing_ = false;
+  bool torn_down_ = false;
+
+  // Destroy `streams_` before `closing_` and `torn_down_`; its destructor
+  // calls back into `WebTransport` to check those flags.
   std::map<uint32_t, std::unique_ptr<Stream>> streams_;
 
   // These callbacks must be destroyed after |client_| because of mojo callback
@@ -107,9 +112,6 @@ class COMPONENT_EXPORT(NETWORK_SERVICE) WebTransport final
   mojo::Remote<mojom::WebTransportHandshakeClient> handshake_client_;
   mojo::Remote<mojom::WebTransportClient> client_;
   base::queue<base::OnceCallback<void(bool)>> datagram_callbacks_;
-
-  bool closing_ = false;
-  bool torn_down_ = false;
 
   // This must be the last member.
   base::WeakPtrFactory<WebTransport> weak_factory_{this};

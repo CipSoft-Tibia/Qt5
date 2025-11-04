@@ -4,13 +4,14 @@
 
 #include "third_party/blink/renderer/core/fetch/request.h"
 
+#include <optional>
+
 #include "mojo/public/cpp/bindings/pending_remote.h"
 #include "services/network/public/cpp/request_destination.h"
 #include "services/network/public/cpp/request_mode.h"
 #include "services/network/public/mojom/attribution.mojom-blink.h"
 #include "services/network/public/mojom/ip_address_space.mojom-blink.h"
 #include "services/network/public/mojom/trust_tokens.mojom-blink.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "third_party/blink/public/common/blob/blob_utils.h"
 #include "third_party/blink/public/mojom/fetch/fetch_api_request.mojom-blink.h"
 #include "third_party/blink/public/mojom/permissions_policy/permissions_policy_feature.mojom-blink.h"
@@ -56,6 +57,7 @@
 #include "third_party/blink/renderer/platform/scheduler/public/frame_or_worker_scheduler.h"
 #include "third_party/blink/renderer/platform/weborigin/origin_access_entry.h"
 #include "third_party/blink/renderer/platform/weborigin/referrer.h"
+#include "third_party/blink/renderer/platform/weborigin/security_origin.h"
 #include "third_party/blink/renderer/platform/weborigin/security_policy.h"
 
 namespace blink {
@@ -109,6 +111,7 @@ FetchRequestData* CreateCopyOfFetchRequestDataForFetch(
   request->SetTrustTokenParams(original->TrustTokenParams());
   request->SetAttributionReportingEligibility(
       original->AttributionReportingEligibility());
+  request->SetAttributionReportingSupport(original->AttributionSupport());
   request->SetServiceWorkerRaceNetworkRequestToken(
       original->ServiceWorkerRaceNetworkRequestToken());
 
@@ -578,7 +581,7 @@ Request* Request::CreateRequestWithRequestOrString(
           " in secure contexts.");
       return nullptr;
     }
-    if (origin->IsOpaque()) {
+    if (SecurityOrigin::Create(request->Url())->IsOpaque()) {
       exception_state.ThrowTypeError(
           "sharedStorageWritable: sharedStorage operations are not available"
           " for opaque origins.");
@@ -842,7 +845,7 @@ Request* Request::Create(ScriptState* script_state,
                     exception_state);
   }
 
-  NOTREACHED();
+  NOTREACHED_IN_MIGRATION();
   return nullptr;
 }
 
@@ -892,7 +895,7 @@ Request* Request::Create(
   return MakeGarbageCollected<Request>(script_state, data, signal);
 }
 
-absl::optional<network::mojom::CredentialsMode> Request::ParseCredentialsMode(
+std::optional<network::mojom::CredentialsMode> Request::ParseCredentialsMode(
     const String& credentials_mode) {
   if (credentials_mode == "omit")
     return network::mojom::CredentialsMode::kOmit;
@@ -900,8 +903,8 @@ absl::optional<network::mojom::CredentialsMode> Request::ParseCredentialsMode(
     return network::mojom::CredentialsMode::kSameOrigin;
   if (credentials_mode == "include")
     return network::mojom::CredentialsMode::kInclude;
-  NOTREACHED();
-  return absl::nullopt;
+  NOTREACHED_IN_MIGRATION();
+  return std::nullopt;
 }
 
 Request::Request(ScriptState* script_state,
@@ -964,7 +967,7 @@ String Request::mode() const {
     case network::mojom::RequestMode::kNavigate:
       return "navigate";
   }
-  NOTREACHED();
+  NOTREACHED_IN_MIGRATION();
   return "";
 }
 
@@ -981,7 +984,7 @@ String Request::credentials() const {
     case network::mojom::CredentialsMode::kInclude:
       return "include";
   }
-  NOTREACHED();
+  NOTREACHED_IN_MIGRATION();
   return "";
 }
 
@@ -1002,10 +1005,10 @@ String Request::cache() const {
       return "only-if-cached";
     case mojom::blink::FetchCacheMode::kUnspecifiedOnlyIfCachedStrict:
     case mojom::blink::FetchCacheMode::kUnspecifiedForceCacheMiss:
-      NOTREACHED();
+      NOTREACHED_IN_MIGRATION();
       break;
   }
-  NOTREACHED();
+  NOTREACHED_IN_MIGRATION();
   return "";
 }
 
@@ -1019,7 +1022,7 @@ String Request::redirect() const {
     case network::mojom::RedirectMode::kManual:
       return "manual";
   }
-  NOTREACHED();
+  NOTREACHED_IN_MIGRATION();
   return "";
 }
 
@@ -1041,7 +1044,7 @@ String Request::targetAddressSpace() const {
     case network::mojom::IPAddressSpace::kUnknown:
       return "unknown";
   }
-  NOTREACHED();
+  NOTREACHED_IN_MIGRATION();
   return "unknown";
 }
 

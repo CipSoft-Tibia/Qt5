@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016, Alliance for Open Media. All rights reserved
+ * Copyright (c) 2016, Alliance for Open Media. All rights reserved.
  *
  * This source code is subject to the terms of the BSD 2 Clause License and
  * the Alliance for Open Media Patent License 1.0. If the BSD 2 Clause License
@@ -23,7 +23,7 @@
 #include "aom_dsp/binary_codes_writer.h"
 #include "aom_ports/mem.h"
 #include "aom_ports/aom_timer.h"
-
+#include "aom_util/aom_pthread.h"
 #if CONFIG_MISMATCH_DEBUG
 #include "aom_util/debug_util.h"
 #endif  // CONFIG_MISMATCH_DEBUG
@@ -239,10 +239,10 @@ void av1_setup_src_planes(MACROBLOCK *x, const YV12_BUFFER_CONFIG *src,
  * \remark No return value but updates macroblock and thread data
  * related to the q / q delta to be used.
  */
-static AOM_INLINE void setup_delta_q(AV1_COMP *const cpi, ThreadData *td,
-                                     MACROBLOCK *const x,
-                                     const TileInfo *const tile_info,
-                                     int mi_row, int mi_col, int num_planes) {
+static inline void setup_delta_q(AV1_COMP *const cpi, ThreadData *td,
+                                 MACROBLOCK *const x,
+                                 const TileInfo *const tile_info, int mi_row,
+                                 int mi_col, int num_planes) {
   AV1_COMMON *const cm = &cpi->common;
   const CommonModeInfoParams *const mi_params = &cm->mi_params;
   const DeltaQInfo *const delta_q_info = &cm->delta_q_info;
@@ -434,8 +434,8 @@ static void init_ref_frame_space(AV1_COMP *cpi, ThreadData *td, int mi_row,
   }
 }
 
-static AOM_INLINE void adjust_rdmult_tpl_model(AV1_COMP *cpi, MACROBLOCK *x,
-                                               int mi_row, int mi_col) {
+static inline void adjust_rdmult_tpl_model(AV1_COMP *cpi, MACROBLOCK *x,
+                                           int mi_row, int mi_col) {
   const BLOCK_SIZE sb_size = cpi->common.seq_params->sb_size;
   const int orig_rdmult = cpi->rd.RDMULT;
 
@@ -512,10 +512,10 @@ static void get_estimated_pred(AV1_COMP *cpi, const TileInfo *const tile,
  * rd-based searches are allowed to adjust the initial pattern. It is only used
  * by realtime encoding.
  */
-static AOM_INLINE void encode_nonrd_sb(AV1_COMP *cpi, ThreadData *td,
-                                       TileDataEnc *tile_data, TokenExtra **tp,
-                                       const int mi_row, const int mi_col,
-                                       const int seg_skip) {
+static inline void encode_nonrd_sb(AV1_COMP *cpi, ThreadData *td,
+                                   TileDataEnc *tile_data, TokenExtra **tp,
+                                   const int mi_row, const int mi_col,
+                                   const int seg_skip) {
   AV1_COMMON *const cm = &cpi->common;
   MACROBLOCK *const x = &td->mb;
   const SPEED_FEATURES *const sf = &cpi->sf;
@@ -536,14 +536,16 @@ static AOM_INLINE void encode_nonrd_sb(AV1_COMP *cpi, ThreadData *td,
 #endif
   // Set the partition
   if (sf->part_sf.partition_search_type == FIXED_PARTITION || seg_skip ||
-      (sf->rt_sf.use_fast_fixed_part &&
-       x->content_state_sb.source_sad_nonrd < kMedSad)) {
+      (sf->rt_sf.use_fast_fixed_part && x->sb_force_fixed_part == 1 &&
+       (!frame_is_intra_only(cm) &&
+        (!cpi->ppi->use_svc ||
+         !cpi->svc.layer_context[cpi->svc.temporal_layer_id].is_key_frame)))) {
     // set a fixed-size partition
     av1_set_offsets(cpi, tile_info, x, mi_row, mi_col, sb_size);
     BLOCK_SIZE bsize_select = sf->part_sf.fixed_partition_size;
     if (sf->rt_sf.use_fast_fixed_part &&
         x->content_state_sb.source_sad_nonrd < kLowSad) {
-      bsize_select = BLOCK_64X64;
+      bsize_select = cm->seq_params->sb_size;
     }
     const BLOCK_SIZE bsize = seg_skip ? sb_size : bsize_select;
     av1_set_fixed_partitioning(cpi, tile_info, mi, mi_row, mi_col, bsize);
@@ -581,7 +583,7 @@ static AOM_INLINE void encode_nonrd_sb(AV1_COMP *cpi, ThreadData *td,
 }
 
 // This function initializes the stats for encode_rd_sb.
-static INLINE void init_encode_rd_sb(AV1_COMP *cpi, ThreadData *td,
+static inline void init_encode_rd_sb(AV1_COMP *cpi, ThreadData *td,
                                      const TileDataEnc *tile_data,
                                      SIMPLE_MOTION_DATA_TREE *sms_root,
                                      RD_STATS *rd_cost, int mi_row, int mi_col,
@@ -763,10 +765,10 @@ static int sb_qp_sweep(AV1_COMP *const cpi, ThreadData *td,
  * Conducts partition search for a superblock, based on rate-distortion costs,
  * from scratch or adjusting from a pre-calculated partition pattern.
  */
-static AOM_INLINE void encode_rd_sb(AV1_COMP *cpi, ThreadData *td,
-                                    TileDataEnc *tile_data, TokenExtra **tp,
-                                    const int mi_row, const int mi_col,
-                                    const int seg_skip) {
+static inline void encode_rd_sb(AV1_COMP *cpi, ThreadData *td,
+                                TileDataEnc *tile_data, TokenExtra **tp,
+                                const int mi_row, const int mi_col,
+                                const int seg_skip) {
   AV1_COMMON *const cm = &cpi->common;
   MACROBLOCK *const x = &td->mb;
   MACROBLOCKD *const xd = &x->e_mbd;
@@ -959,7 +961,7 @@ static AOM_INLINE void encode_rd_sb(AV1_COMP *cpi, ThreadData *td,
 }
 
 // Check if the cost update of symbols mode, coeff and dv are tile or off.
-static AOM_INLINE int is_mode_coeff_dv_upd_freq_tile_or_off(
+static inline int is_mode_coeff_dv_upd_freq_tile_or_off(
     const AV1_COMP *const cpi) {
   const INTER_MODE_SPEED_FEATURES *const inter_sf = &cpi->sf.inter_sf;
 
@@ -972,7 +974,7 @@ static AOM_INLINE int is_mode_coeff_dv_upd_freq_tile_or_off(
 // processing of current SB can start even before processing of top-right SB
 // is finished. This function checks if it is sufficient to wait for top SB
 // to finish processing before current SB starts processing.
-static AOM_INLINE int delay_wait_for_top_right_sb(const AV1_COMP *const cpi) {
+static inline int delay_wait_for_top_right_sb(const AV1_COMP *const cpi) {
   const MODE mode = cpi->oxcf.mode;
   if (mode == GOOD) return 0;
 
@@ -991,8 +993,8 @@ static AOM_INLINE int delay_wait_for_top_right_sb(const AV1_COMP *const cpi) {
  * \callgraph
  * \callergraph
  */
-static AOM_INLINE uint64_t get_sb_source_sad(const AV1_COMP *cpi, int mi_row,
-                                             int mi_col) {
+static inline uint64_t get_sb_source_sad(const AV1_COMP *cpi, int mi_row,
+                                         int mi_col) {
   if (cpi->src_sad_blk_64x64 == NULL) return UINT64_MAX;
 
   const AV1_COMMON *const cm = &cpi->common;
@@ -1006,12 +1008,16 @@ static AOM_INLINE uint64_t get_sb_source_sad(const AV1_COMP *cpi, int mi_row,
   const int blk_64x64_col_index = mi_col / blk_64x64_in_mis;
   const int blk_64x64_row_index = mi_row / blk_64x64_in_mis;
   uint64_t curr_sb_sad = UINT64_MAX;
+  // Avoid the border as sad_blk_64x64 may not be set for the border
+  // in the scene detection.
+  if ((blk_64x64_row_index >= num_blk_64x64_rows - 1) ||
+      (blk_64x64_col_index >= num_blk_64x64_cols - 1)) {
+    return curr_sb_sad;
+  }
   const uint64_t *const src_sad_blk_64x64_data =
       &cpi->src_sad_blk_64x64[blk_64x64_col_index +
                               blk_64x64_row_index * num_blk_64x64_cols];
-  if (cm->seq_params->sb_size == BLOCK_128X128 &&
-      blk_64x64_col_index + 1 < num_blk_64x64_cols &&
-      blk_64x64_row_index + 1 < num_blk_64x64_rows) {
+  if (cm->seq_params->sb_size == BLOCK_128X128) {
     // Calculate SB source SAD by accumulating source SAD of 64x64 blocks in the
     // superblock
     curr_sb_sad = src_sad_blk_64x64_data[0] + src_sad_blk_64x64_data[1] +
@@ -1029,9 +1035,9 @@ static AOM_INLINE uint64_t get_sb_source_sad(const AV1_COMP *cpi, int mi_row,
  * \callgraph
  * \callergraph
  */
-static AOM_INLINE bool is_calc_src_content_needed(AV1_COMP *cpi,
-                                                  MACROBLOCK *const x,
-                                                  int mi_row, int mi_col) {
+static inline bool is_calc_src_content_needed(AV1_COMP *cpi,
+                                              MACROBLOCK *const x, int mi_row,
+                                              int mi_col) {
   if (cpi->svc.spatial_layer_id < cpi->svc.number_spatial_layers - 1)
     return true;
   const uint64_t curr_sb_sad = get_sb_source_sad(cpi, mi_row, mi_col);
@@ -1054,8 +1060,13 @@ static AOM_INLINE bool is_calc_src_content_needed(AV1_COMP *cpi,
 
     // The threshold is determined based on kLowSad and kHighSad threshold and
     // test results.
-    const uint64_t thresh_low = 15000;
-    const uint64_t thresh_high = 40000;
+    uint64_t thresh_low = 15000;
+    uint64_t thresh_high = 40000;
+
+    if (cpi->sf.rt_sf.increase_source_sad_thresh) {
+      thresh_low = thresh_low << 1;
+      thresh_high = thresh_high << 1;
+    }
 
     if (avg_64x64_blk_sad > thresh_low && avg_64x64_blk_sad < thresh_high) {
       do_calc_src_content = false;
@@ -1075,10 +1086,9 @@ static AOM_INLINE bool is_calc_src_content_needed(AV1_COMP *cpi,
  * \callergraph
  */
 // TODO(any): consolidate sfs to make interface cleaner
-static AOM_INLINE void grade_source_content_sb(AV1_COMP *cpi,
-                                               MACROBLOCK *const x,
-                                               TileDataEnc *tile_data,
-                                               int mi_row, int mi_col) {
+static inline void grade_source_content_sb(AV1_COMP *cpi, MACROBLOCK *const x,
+                                           TileDataEnc *tile_data, int mi_row,
+                                           int mi_col) {
   AV1_COMMON *const cm = &cpi->common;
   if (cm->current_frame.frame_type == KEY_FRAME ||
       (cpi->ppi->use_svc &&
@@ -1114,9 +1124,9 @@ static AOM_INLINE void grade_source_content_sb(AV1_COMP *cpi,
  * Do partition and mode search for an sb row: one row of superblocks filling up
  * the width of the current tile.
  */
-static AOM_INLINE void encode_sb_row(AV1_COMP *cpi, ThreadData *td,
-                                     TileDataEnc *tile_data, int mi_row,
-                                     TokenExtra **tp) {
+static inline void encode_sb_row(AV1_COMP *cpi, ThreadData *td,
+                                 TileDataEnc *tile_data, int mi_row,
+                                 TokenExtra **tp) {
   AV1_COMMON *const cm = &cpi->common;
   const TileInfo *const tile_info = &tile_data->tile_info;
   MultiThreadInfo *const mt_info = &cpi->mt_info;
@@ -1203,6 +1213,10 @@ static AOM_INLINE void encode_sb_row(AV1_COMP *cpi, ThreadData *td,
     x->sb_me_block = 0;
     x->sb_me_partition = 0;
     x->sb_me_mv.as_int = 0;
+    x->sb_force_fixed_part = 1;
+    x->color_palette_thresh = 64;
+    x->nonrd_prune_ref_frame_search =
+        cpi->sf.rt_sf.nonrd_prune_ref_frame_search;
 
     if (cpi->oxcf.mode == ALLINTRA) {
       x->intra_sb_rdmult_modifier = 128;
@@ -1231,7 +1245,7 @@ static AOM_INLINE void encode_sb_row(AV1_COMP *cpi, ThreadData *td,
 
     // Grade the temporal variation of the sb, the grade will be used to decide
     // fast mode search strategy for coding blocks
-    grade_source_content_sb(cpi, x, tile_data, mi_row, mi_col);
+    if (!seg_skip) grade_source_content_sb(cpi, x, tile_data, mi_row, mi_col);
 
     // encode the superblock
     if (use_nonrd_mode) {
@@ -1257,7 +1271,7 @@ static AOM_INLINE void encode_sb_row(AV1_COMP *cpi, ThreadData *td,
 #endif
 }
 
-static AOM_INLINE void init_encode_frame_mb_context(AV1_COMP *cpi) {
+static inline void init_encode_frame_mb_context(AV1_COMP *cpi) {
   AV1_COMMON *const cm = &cpi->common;
   const int num_planes = av1_num_planes(cm);
   MACROBLOCK *const x = &cpi->td.mb;
@@ -1362,9 +1376,9 @@ void av1_init_tile_data(AV1_COMP *cpi) {
 }
 
 // Populate the start palette token info prior to encoding an SB row.
-static AOM_INLINE void get_token_start(AV1_COMP *cpi, const TileInfo *tile_info,
-                                       int tile_row, int tile_col, int mi_row,
-                                       TokenExtra **tp) {
+static inline void get_token_start(AV1_COMP *cpi, const TileInfo *tile_info,
+                                   int tile_row, int tile_col, int mi_row,
+                                   TokenExtra **tp) {
   const TokenInfo *token_info = &cpi->token_info;
   if (!is_token_info_allocated(token_info)) return;
 
@@ -1381,10 +1395,10 @@ static AOM_INLINE void get_token_start(AV1_COMP *cpi, const TileInfo *tile_info,
 }
 
 // Populate the token count after encoding an SB row.
-static AOM_INLINE void populate_token_count(AV1_COMP *cpi,
-                                            const TileInfo *tile_info,
-                                            int tile_row, int tile_col,
-                                            int mi_row, TokenExtra *tok) {
+static inline void populate_token_count(AV1_COMP *cpi,
+                                        const TileInfo *tile_info, int tile_row,
+                                        int tile_col, int mi_row,
+                                        TokenExtra *tok) {
   const TokenInfo *token_info = &cpi->token_info;
   if (!is_token_info_allocated(token_info)) return;
 
@@ -1468,7 +1482,7 @@ void av1_encode_tile(AV1_COMP *cpi, ThreadData *td, int tile_row,
  *
  * \param[in]    cpi    Top-level encoder structure
  */
-static AOM_INLINE void encode_tiles(AV1_COMP *cpi) {
+static inline void encode_tiles(AV1_COMP *cpi) {
   AV1_COMMON *const cm = &cpi->common;
   const int tile_cols = cm->tiles.cols;
   const int tile_rows = cm->tiles.rows;
@@ -1508,7 +1522,7 @@ static AOM_INLINE void encode_tiles(AV1_COMP *cpi) {
 }
 
 // Set the relative distance of a reference frame w.r.t. current frame
-static AOM_INLINE void set_rel_frame_dist(
+static inline void set_rel_frame_dist(
     const AV1_COMMON *const cm, RefFrameDistanceInfo *const ref_frame_dist_info,
     const int ref_frame_flags) {
   MV_REFERENCE_FRAME ref_frame;
@@ -1536,7 +1550,7 @@ static AOM_INLINE void set_rel_frame_dist(
   }
 }
 
-static INLINE int refs_are_one_sided(const AV1_COMMON *cm) {
+static inline int refs_are_one_sided(const AV1_COMMON *cm) {
   assert(!frame_is_intra_only(cm));
 
   int one_sided_refs = 1;
@@ -1553,7 +1567,7 @@ static INLINE int refs_are_one_sided(const AV1_COMMON *cm) {
   return one_sided_refs;
 }
 
-static INLINE void get_skip_mode_ref_offsets(const AV1_COMMON *cm,
+static inline void get_skip_mode_ref_offsets(const AV1_COMMON *cm,
                                              int ref_order_hint[2]) {
   const SkipModeInfo *const skip_mode_info = &cm->current_frame.skip_mode_info;
   ref_order_hint[0] = ref_order_hint[1] = 0;
@@ -1600,7 +1614,7 @@ static int check_skip_mode_enabled(AV1_COMP *const cpi) {
   return 1;
 }
 
-static AOM_INLINE void set_default_interp_skip_flags(
+static inline void set_default_interp_skip_flags(
     const AV1_COMMON *cm, InterpSearchFlags *interp_search_flags) {
   const int num_planes = av1_num_planes(cm);
   interp_search_flags->default_interp_skip_flags =
@@ -1608,7 +1622,7 @@ static AOM_INLINE void set_default_interp_skip_flags(
                         : INTERP_SKIP_LUMA_SKIP_CHROMA;
 }
 
-static AOM_INLINE void setup_prune_ref_frame_mask(AV1_COMP *cpi) {
+static inline void setup_prune_ref_frame_mask(AV1_COMP *cpi) {
   if ((!cpi->oxcf.ref_frm_cfg.enable_onesided_comp ||
        cpi->sf.inter_sf.disable_onesided_comp) &&
       cpi->all_one_sided_refs) {
@@ -1743,7 +1757,7 @@ static void free_block_hash_buffers(uint32_t *block_hash_values[2][2],
  *
  * \ingroup high_level_algo
  */
-static AOM_INLINE void encode_frame_internal(AV1_COMP *cpi) {
+static inline void encode_frame_internal(AV1_COMP *cpi) {
   ThreadData *const td = &cpi->td;
   MACROBLOCK *const x = &td->mb;
   AV1_COMMON *const cm = &cpi->common;
@@ -2097,7 +2111,8 @@ static AOM_INLINE void encode_frame_internal(AV1_COMP *cpi) {
       for (j = TX_TYPES - 1; j >= 0; j--) {
         int update_txtype_frameprobs = 1;
         const int new_prob =
-            sum ? MAX_TX_TYPE_PROB * cpi->td.rd_counts.tx_type_used[i][j] / sum
+            sum ? (int)((int64_t)MAX_TX_TYPE_PROB *
+                        cpi->td.rd_counts.tx_type_used[i][j] / sum)
                 : (j ? 0 : MAX_TX_TYPE_PROB);
 #if CONFIG_FPMT_TEST
         if (cpi->ppi->fpmt_unit_test_cfg == PARALLEL_SIMULATION_ENCODE) {
@@ -2337,7 +2352,7 @@ void av1_encode_frame(AV1_COMP *cpi) {
   // a source or a ref frame should have an image pyramid allocated.
   // Check here so that issues can be caught early in debug mode
 #if !defined(NDEBUG) && !CONFIG_REALTIME_ONLY
-  if (cpi->image_pyramid_levels > 0) {
+  if (cpi->alloc_pyramid) {
     assert(cpi->source->y_pyramid);
     for (int ref_frame = LAST_FRAME; ref_frame <= ALTREF_FRAME; ++ref_frame) {
       const RefCntBuffer *const buf = get_ref_frame_buf(cm, ref_frame);

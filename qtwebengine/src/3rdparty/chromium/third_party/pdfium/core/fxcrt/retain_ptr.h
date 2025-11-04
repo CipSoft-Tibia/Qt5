@@ -12,9 +12,8 @@
 #include <type_traits>
 #include <utility>
 
-#include "core/fxcrt/unowned_ptr.h"
-#include "third_party/base/check.h"
-#include "third_party/base/compiler_specific.h"
+#include "core/fxcrt/check.h"
+#include "core/fxcrt/compiler_specific.h"
 
 namespace fxcrt {
 
@@ -122,7 +121,6 @@ class TRIVIAL_ABI RetainPtr {
   operator T*() const noexcept { return Get(); }
   T* Get() const noexcept { return m_pObj.get(); }
 
-  UnownedPtr<T> BackPointer() const { return UnownedPtr<T>(Get()); }
   void Swap(RetainPtr& that) { m_pObj.swap(that.m_pObj); }
 
   // Useful for passing notion of object ownership across a C API.

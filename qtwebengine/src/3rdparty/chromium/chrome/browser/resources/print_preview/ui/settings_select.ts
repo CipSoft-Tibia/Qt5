@@ -8,7 +8,8 @@ import './print_preview_shared.css.js';
 import {assertNotReached} from 'chrome://resources/js/assert.js';
 import {PolymerElement} from 'chrome://resources/polymer/v3_0/polymer/polymer_bundled.min.js';
 
-import {CapabilityWithReset, SelectOption} from '../data/cdd.js';
+import type {CapabilityWithReset, SelectOption} from '../data/cdd.js';
+import type {Settings} from '../data/model.js';
 import {getStringForCurrentLocale} from '../print_preview_utils.js';
 
 import {SelectMixin} from './select_mixin.js';
@@ -42,7 +43,7 @@ export class PrintPreviewSettingsSelectElement extends
 
   override ariaLabel: string;
   capability: CapabilityWithReset&{option: SelectOption[]};
-  settingName: string;
+  settingName: keyof Settings;
   disabled: boolean;
 
   /**

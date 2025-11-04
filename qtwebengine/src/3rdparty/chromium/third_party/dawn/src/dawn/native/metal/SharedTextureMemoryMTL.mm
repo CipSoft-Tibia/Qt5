@@ -35,10 +35,19 @@
 #include "dawn/native/metal/QueueMTL.h"
 #include "dawn/native/metal/SharedFenceMTL.h"
 #include "dawn/native/metal/TextureMTL.h"
+#include "dawn/native/metal/UtilsMetal.h"
 
 namespace dawn::native::metal {
 
 namespace {
+// NOTE: When creating MTLTextures, we pass all Metal texture usages. See
+// discussion in https://bugs.chromium.org/p/dawn/issues/detail?id=2152#c14 and
+// following comments for both (a) why this is necessary and (b) why it is not
+// harmful to performance.
+const MTLTextureUsage kMetalTextureUsage = MTLTextureUsageShaderWrite | MTLTextureUsageShaderRead |
+                                           MTLTextureUsagePixelFormatView |
+                                           MTLTextureUsageRenderTarget;
+
 ResultOrError<wgpu::TextureFormat> GetFormatEquivalentToIOSurfaceFormat(uint32_t format) {
     switch (format) {
         case kCVPixelFormatType_64RGBAHalf:
@@ -63,8 +72,16 @@ ResultOrError<wgpu::TextureFormat> GetFormatEquivalentToIOSurfaceFormat(uint32_t
             return wgpu::TextureFormat::R16Unorm;
         case kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange:
             return wgpu::TextureFormat::R8BG8Biplanar420Unorm;
+        case kCVPixelFormatType_422YpCbCr8BiPlanarVideoRange:
+            return wgpu::TextureFormat::R8BG8Biplanar422Unorm;
+        case kCVPixelFormatType_444YpCbCr8BiPlanarVideoRange:
+            return wgpu::TextureFormat::R8BG8Biplanar444Unorm;
         case kCVPixelFormatType_420YpCbCr10BiPlanarVideoRange:
             return wgpu::TextureFormat::R10X6BG10X6Biplanar420Unorm;
+        case kCVPixelFormatType_422YpCbCr10BiPlanarVideoRange:
+            return wgpu::TextureFormat::R10X6BG10X6Biplanar422Unorm;
+        case kCVPixelFormatType_444YpCbCr10BiPlanarVideoRange:
+            return wgpu::TextureFormat::R10X6BG10X6Biplanar444Unorm;
         case kCVPixelFormatType_420YpCbCr8VideoRange_8A_TriPlanar:
             return wgpu::TextureFormat::R8BG8A8Triplanar420Unorm;
         default:
@@ -111,7 +128,8 @@ ResultOrError<Ref<SharedTextureMemory>> SharedTextureMemory::Create(
     properties.size = {static_cast<uint32_t>(width), static_cast<uint32_t>(height), 1};
 
     auto result = AcquireRef(new SharedTextureMemory(device, label, properties, ioSurface));
-    result->Initialize();
+    DAWN_TRY(result->Initialize());
+
     return result;
 }
 
@@ -126,8 +144,28 @@ void SharedTextureMemory::DestroyImpl() {
     mIOSurface = nullptr;
 }
 
+MaybeError SharedTextureMemory::Initialize() {
+    SharedTextureMemoryBase::Initialize();
+
+    DAWN_TRY(CreateMtlTextures());
+    return {};
+}
+
 IOSurfaceRef SharedTextureMemory::GetIOSurface() const {
     return mIOSurface.Get();
+}
+
+const absl::InlinedVector<NSPRef<id<MTLTexture>>, kMaxPlanesPerFormat>&
+SharedTextureMemory::GetMtlPlaneTextures() const {
+    return mMtlPlaneTextures;
+}
+
+MTLTextureUsage SharedTextureMemory::GetMtlTextureUsage() const {
+    return mMtlUsage;
+}
+
+MTLPixelFormat SharedTextureMemory::GetMtlPixelFormat() const {
+    return mMtlFormat;
 }
 
 ResultOrError<Ref<TextureBase>> SharedTextureMemory::CreateTextureImpl(
@@ -160,28 +198,68 @@ MaybeError SharedTextureMemory::BeginAccessImpl(
 
 ResultOrError<FenceAndSignalValue> SharedTextureMemory::EndAccessImpl(
     TextureBase* texture,
+    ExecutionSerial lastUsageSerial,
     UnpackedPtr<EndAccessState>& state) {
     DAWN_TRY(state.ValidateSubset<>());
     DAWN_INVALID_IF(!GetDevice()->HasFeature(Feature::SharedFenceMTLSharedEvent),
                     "Required feature (%s) is missing.",
                     wgpu::FeatureName::SharedFenceMTLSharedEvent);
+    Ref<SharedFence> fence;
+    DAWN_TRY_ASSIGN(fence, ToBackend(GetDevice()->GetQueue())->GetOrCreateSharedFence());
+    return FenceAndSignalValue{std::move(fence), static_cast<uint64_t>(lastUsageSerial)};
+}
 
-    if (@available(macOS 10.14, iOS 12.0, *)) {
-        ExternalImageIOSurfaceEndAccessDescriptor oldEndAccessDesc;
-        ToBackend(GetDevice()->GetQueue())->ExportLastSignaledEvent(&oldEndAccessDesc);
+MaybeError SharedTextureMemory::CreateMtlTextures() {
+    auto* device = static_cast<Device*>(GetDevice());
 
-        SharedFenceMTLSharedEventDescriptor newDesc;
-        newDesc.sharedEvent = oldEndAccessDesc.sharedEvent;
+    SharedTextureMemoryProperties properties;
+    APIGetProperties(&properties);
+    const Format* format;
+    DAWN_TRY_ASSIGN(format, device->GetInternalFormat(properties.format));
 
-        Ref<SharedFence> fence;
-        DAWN_TRY_ASSIGN(fence, SharedFence::Create(ToBackend(GetDevice()),
-                                                   "Internal MTLSharedEvent", &newDesc));
+    // NOTE: Per SharedTextureMemory semantics and validation, textures that it
+    // is asked to create must be 2D/single-sampled/array length of 1/single
+    // mipmap level.
+    if (!format->IsMultiPlanar()) {
+        // Create the descriptor for the Metal texture.
+        NSRef<MTLTextureDescriptor> mtlDescRef = AcquireNSRef([MTLTextureDescriptor new]);
+        MTLTextureDescriptor* mtlDesc = mtlDescRef.Get();
 
-        return FenceAndSignalValue{
-            std::move(fence),
-            static_cast<uint64_t>(texture->GetSharedTextureMemoryContents()->GetLastUsageSerial())};
+        mtlDesc.storageMode = IOSurfaceStorageMode();
+        mtlDesc.width = properties.size.width;
+        mtlDesc.height = properties.size.height;
+        // NOTE: MetalTextureDescriptor defaults to the values mentioned above
+        // for the given parameters, so none of these need to be set explicitly.
+
+        // Metal only allows format reinterpretation to happen on swizzle pattern or conversion
+        // between linear space and sRGB. For example, creating bgra8Unorm texture view on
+        // rgba8Unorm texture or creating rgba8Unorm_srgb texture view on rgab8Unorm texture.
+        mtlDesc.usage = kMetalTextureUsage;
+        mtlDesc.pixelFormat = MetalPixelFormat(device, format->format);
+
+        mMtlUsage = mtlDesc.usage;
+        mMtlFormat = mtlDesc.pixelFormat;
+        mMtlPlaneTextures.resize(1);
+        mMtlPlaneTextures[0] =
+            AcquireNSPRef([device->GetMTLDevice() newTextureWithDescriptor:mtlDesc
+                                                                 iosurface:mIOSurface.Get()
+                                                                     plane:0]);
+    } else {
+        mMtlUsage = kMetalTextureUsage;
+        // Multiplanar format doesn't have equivalent MTLPixelFormat so just set it to invalid.
+        mMtlFormat = MTLPixelFormatInvalid;
+        const size_t numPlanes = IOSurfaceGetPlaneCount(mIOSurface.Get());
+        mMtlPlaneTextures.resize(numPlanes);
+        for (size_t plane = 0; plane < numPlanes; ++plane) {
+            mMtlPlaneTextures[plane] = AcquireNSPRef(CreateTextureMtlForPlane(
+                mMtlUsage, *format, plane, device, /*sampleCount=*/1, mIOSurface.Get()));
+            if (mMtlPlaneTextures[plane] == nil) {
+                return DAWN_INTERNAL_ERROR("Failed to create MTLTexture plane view for IOSurface.");
+            }
+        }
     }
-    DAWN_UNREACHABLE();
+
+    return {};
 }
 
 }  // namespace dawn::native::metal

@@ -435,6 +435,9 @@ class PasswordsPrivateSwitchBiometricAuthBeforeFillingStateFunction
 
   // ExtensionFunction overrides.
   ResponseAction Run() override;
+
+ private:
+  void OnAuthenticationComplete(bool result);
 };
 
 class PasswordsPrivateShowAddShortcutDialogFunction : public ExtensionFunction {
@@ -460,6 +463,83 @@ class PasswordsPrivateShowExportedFileInShellFunction
 
   // ExtensionFunction overrides.
   ResponseAction Run() override;
+};
+
+class PasswordsPrivateChangePasswordManagerPinFunction
+    : public ExtensionFunction {
+ public:
+  DECLARE_EXTENSION_FUNCTION("passwordsPrivate.changePasswordManagerPin",
+                             PASSWORDSPRIVATE_CHANGEPASSWORDMANAGERPIN)
+
+ protected:
+  ~PasswordsPrivateChangePasswordManagerPinFunction() override = default;
+
+  // ExtensionFunction overrides.
+  ResponseAction Run() override;
+
+ private:
+  void OnPinChangeCompleted(bool success);
+};
+
+class PasswordsPrivateIsPasswordManagerPinAvailableFunction
+    : public ExtensionFunction {
+ public:
+  DECLARE_EXTENSION_FUNCTION("passwordsPrivate.isPasswordManagerPinAvailable",
+                             PASSWORDSPRIVATE_ISPASSWORDMANAGERPINAVAILABLE)
+
+ protected:
+  ~PasswordsPrivateIsPasswordManagerPinAvailableFunction() override = default;
+
+  // ExtensionFunction overrides.
+  ResponseAction Run() override;
+
+ private:
+  void OnPasswordManagerPinAvailabilityReceived(bool is_available);
+};
+
+class PasswordsPrivateDisconnectCloudAuthenticatorFunction
+    : public ExtensionFunction {
+ public:
+  DECLARE_EXTENSION_FUNCTION("passwordsPrivate.disconnectCloudAuthenticator",
+                             PASSWORDSPRIVATE_DISCONNECTCLOUDAUTHENTICATOR)
+
+ protected:
+  ~PasswordsPrivateDisconnectCloudAuthenticatorFunction() override = default;
+
+  // ExtensionFunction overrides.
+  ResponseAction Run() override;
+
+ private:
+  void OnDisconnectCloudAuthenticatorCompleted(bool success);
+};
+
+class PasswordsPrivateIsConnectedToCloudAuthenticatorFunction
+    : public ExtensionFunction {
+ public:
+  DECLARE_EXTENSION_FUNCTION("passwordsPrivate.isConnectedToCloudAuthenticator",
+                             PASSWORDSPRIVATE_ISCONNECTEDTOCLOUDAUTHENTICATOR)
+
+ protected:
+  ~PasswordsPrivateIsConnectedToCloudAuthenticatorFunction() override = default;
+
+  // ExtensionFunction overrides.
+  ResponseAction Run() override;
+};
+
+class PasswordsPrivateDeleteAllPasswordManagerDataFunction
+    : public ExtensionFunction {
+ public:
+  DECLARE_EXTENSION_FUNCTION("passwordsPrivate.deleteAllPasswordManagerData",
+                             PASSWORDSPRIVATE_DELETEALLPASSWORDMANAGERDATA)
+
+ protected:
+  ~PasswordsPrivateDeleteAllPasswordManagerDataFunction() override = default;
+
+  // ExtensionFunction overrides.
+  ResponseAction Run() override;
+
+ private:
+  void OnDeletionCompleted(bool success);
 };
 
 }  // namespace extensions

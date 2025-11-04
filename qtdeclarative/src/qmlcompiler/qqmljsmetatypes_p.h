@@ -277,6 +277,9 @@ public:
         m_isImplicitQmlPropertyChangeSignal = isPropertyChangeSignal;
     }
 
+    bool isConst() const {  return m_isConst; }
+    void setIsConst(bool isConst) { m_isConst = isConst; }
+
     bool isValid() const { return !m_name.isEmpty(); }
 
     const QVector<QQmlJSAnnotation>& annotations() const { return m_annotations; }
@@ -306,12 +309,29 @@ public:
         return m_relativeFunctionIndex;
     }
 
+    void setMethodIndex(RelativeFunctionIndex index)
+    {
+        Q_ASSERT(!m_isConstructor);
+        m_relativeFunctionIndex = index;
+    }
+
+    RelativeFunctionIndex methodIndex() const
+    {
+        Q_ASSERT(!m_isConstructor);
+        return m_relativeFunctionIndex;
+    }
+
     friend bool operator==(const QQmlJSMetaMethod &a, const QQmlJSMetaMethod &b)
     {
-        return a.m_name == b.m_name && a.m_returnType == b.m_returnType
-                && a.m_parameters == b.m_parameters && a.m_annotations == b.m_annotations
-                && a.m_methodType == b.m_methodType && a.m_methodAccess == b.m_methodAccess
-                && a.m_revision == b.m_revision && a.m_isConstructor == b.m_isConstructor;
+        return a.m_name == b.m_name && a.m_sourceLocation == b.m_sourceLocation
+                && a.m_returnType == b.m_returnType && a.m_parameters == b.m_parameters
+                && a.m_annotations == b.m_annotations && a.m_methodType == b.m_methodType
+                && a.m_methodAccess == b.m_methodAccess && a.m_revision == b.m_revision
+                && a.m_relativeFunctionIndex == b.m_relativeFunctionIndex
+                && a.m_isCloned == b.m_isCloned && a.m_isConstructor == b.m_isConstructor
+                && a.m_isJavaScriptFunction == b.m_isJavaScriptFunction
+                && a.m_isImplicitQmlPropertyChangeSignal == b.m_isImplicitQmlPropertyChangeSignal
+                && a.m_isConst == b.m_isConst;
     }
 
     friend bool operator!=(const QQmlJSMetaMethod &a, const QQmlJSMetaMethod &b)
@@ -324,16 +344,19 @@ public:
         QtPrivate::QHashCombine combine;
 
         seed = combine(seed, method.m_name);
+        seed = combine(seed, method.m_sourceLocation);
         seed = combine(seed, method.m_returnType);
+        seed = combine(seed, method.m_parameters);
         seed = combine(seed, method.m_annotations);
         seed = combine(seed, method.m_methodType);
         seed = combine(seed, method.m_methodAccess);
         seed = combine(seed, method.m_revision);
+        seed = combine(seed, method.m_relativeFunctionIndex);
+        seed = combine(seed, method.m_isCloned);
         seed = combine(seed, method.m_isConstructor);
-
-        for (const auto &type : method.m_parameters) {
-            seed = combine(seed, type);
-        }
+        seed = combine(seed, method.m_isJavaScriptFunction);
+        seed = combine(seed, method.m_isImplicitQmlPropertyChangeSignal);
+        seed = combine(seed, method.m_isConst);
 
         return seed;
     }
@@ -355,6 +378,7 @@ private:
     bool m_isConstructor = false;
     bool m_isJavaScriptFunction = false;
     bool m_isImplicitQmlPropertyChangeSignal = false;
+    bool m_isConst = false;
 };
 
 class QQmlJSMetaProperty
@@ -368,14 +392,17 @@ class QQmlJSMetaProperty
     QString m_notify;
     QString m_privateClass;
     QString m_aliasExpr;
+    QString m_aliasTargetName;
+    QWeakPointer<const QQmlJSScope> m_aliasTargetScope;
     QWeakPointer<const QQmlJSScope> m_type;
     QQmlJS::SourceLocation m_sourceLocation;
     QVector<QQmlJSAnnotation> m_annotations;
     bool m_isList = false;
     bool m_isWritable = false;
     bool m_isPointer = false;
+    bool m_isTypeConstant = false;
     bool m_isFinal = false;
-    bool m_isConstant = false;
+    bool m_isPropertyConstant = false;
     int m_revision = 0;
     int m_index = -1; // relative property index within owning QQmlJSScope
 
@@ -426,15 +453,30 @@ public:
     void setIsPointer(bool isPointer) { m_isPointer = isPointer; }
     bool isPointer() const { return m_isPointer; }
 
+    void setIsTypeConstant(bool isTypeConstant) { m_isTypeConstant = isTypeConstant; }
+    bool isTypeConstant() const { return m_isTypeConstant; }
+
     void setAliasExpression(const QString &aliasString) { m_aliasExpr = aliasString; }
     QString aliasExpression() const { return m_aliasExpr; }
     bool isAlias() const { return !m_aliasExpr.isEmpty(); } // exists for convenience
 
+    void setAliasTargetName(const QString &name) { m_aliasTargetName = name; }
+    QString aliasTargetName() const { return m_aliasTargetName; }
+
+    void setAliasTargetScope(const QSharedPointer<const QQmlJSScope> &scope)
+    {
+        m_aliasTargetScope = scope;
+    }
+    QSharedPointer<const QQmlJSScope> aliasTargetScope() const
+    {
+        return m_aliasTargetScope.toStrongRef();
+    }
+
     void setIsFinal(bool isFinal) { m_isFinal = isFinal; }
     bool isFinal() const { return m_isFinal; }
 
-    void setIsConstant(bool isConstant) { m_isConstant = isConstant; }
-    bool isConstant() const { return m_isConstant; }
+    void setIsPropertyConstant(bool isPropertyConstant) { m_isPropertyConstant = isPropertyConstant; }
+    bool isPropertyConstant() const { return m_isPropertyConstant; }
 
     void setRevision(int revision) { m_revision = revision; }
     int revision() const { return m_revision; }
@@ -587,7 +629,7 @@ class Q_QMLCOMPILER_EXPORT QQmlJSMetaPropertyBinding
                 ```
                 tells us that "Type" has an AttachedProperty binding with
                 property name "Keys". The attaching object of that binding
-                (binding.attachingType()) has type "Keys" and a BoolLiteral
+                (binding.attachedType()) has type "Keys" and a BoolLiteral
                 binding with property name "enabled".
             */
             friend bool operator==(AttachedProperty a, AttachedProperty b)
@@ -837,7 +879,7 @@ public:
         return {};
     }
 
-    QSharedPointer<const QQmlJSScope> attachingType() const
+    QSharedPointer<const QQmlJSScope> attachedType() const
     {
         if (auto *attached = std::get_if<Content::AttachedProperty>(&m_bindingContent))
             return attached->value.lock();

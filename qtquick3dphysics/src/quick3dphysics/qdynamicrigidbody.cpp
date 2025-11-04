@@ -249,6 +249,15 @@ QT_BEGIN_NAMESPACE
 */
 
 /*!
+    \qmlproperty bool DynamicRigidBody::isSleeping
+    \since 6.9
+
+    Is set to \c{true} if the body is sleeping. While it is technically possible to set this property
+    it should be seen as a read-only property that is set on every frame the physics simulation is
+    running.
+*/
+
+/*!
     \qmlmethod DynamicRigidBody::applyCentralForce(vector3d force)
 
     Applies  a \a force on the center of the body.
@@ -658,6 +667,20 @@ void QDynamicRigidBody::setKinematicPivot(const QVector3D &pivot)
 QVector3D QDynamicRigidBody::kinematicPivot() const
 {
     return m_kinematicPivot;
+}
+
+bool QDynamicRigidBody::isSleeping() const
+{
+    return m_isSleeping;
+}
+
+void QDynamicRigidBody::setIsSleeping(bool newIsSleeping)
+{
+    if (m_isSleeping == newIsSleeping)
+        return;
+
+    m_isSleeping = newIsSleeping;
+    emit isSleepingChanged(newIsSleeping);
 }
 
 QAbstractPhysXNode *QDynamicRigidBody::createPhysXBackend()

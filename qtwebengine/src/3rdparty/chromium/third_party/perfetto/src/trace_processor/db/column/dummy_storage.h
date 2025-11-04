@@ -16,45 +16,59 @@
 #ifndef SRC_TRACE_PROCESSOR_DB_COLUMN_DUMMY_STORAGE_H_
 #define SRC_TRACE_PROCESSOR_DB_COLUMN_DUMMY_STORAGE_H_
 
-#include "src/trace_processor/db/column/column.h"
+#include <cstdint>
+#include <memory>
+#include <optional>
+#include <string>
+
+#include "perfetto/base/logging.h"
+#include "perfetto/trace_processor/basic_types.h"
+#include "src/trace_processor/db/column/data_layer.h"
+#include "src/trace_processor/db/column/storage_layer.h"
 #include "src/trace_processor/db/column/types.h"
 
-namespace perfetto {
-
-namespace protos::pbzero {
-class SerializedColumn_Storage;
-}
-
-namespace trace_processor {
-namespace column {
+namespace perfetto::trace_processor::column {
 
 // Dummy storage. Used for columns that are not supposed to have operations done
 // on them.
-class DummyStorage final : public Column {
+class DummyStorage final : public StorageLayer {
  public:
-  DummyStorage() = default;
+  StoragePtr GetStoragePtr() override { PERFETTO_FATAL("Shouldn't be called"); }
 
-  RangeOrBitVector Search(FilterOp, SqlValue, Range) const override;
+  std::unique_ptr<DataLayerChain> MakeChain();
 
-  SearchValidationResult ValidateSearchConstraints(SqlValue,
-                                                   FilterOp) const override;
+ private:
+  class ChainImpl : public DataLayerChain {
+   public:
+    ChainImpl() = default;
 
-  RangeOrBitVector IndexSearch(FilterOp,
-                               SqlValue,
-                               uint32_t*,
-                               uint32_t,
-                               bool) const override;
+    SingleSearchResult SingleSearch(FilterOp,
+                                    SqlValue,
+                                    uint32_t) const override;
 
-  void StableSort(uint32_t*, uint32_t) const override;
+    SearchValidationResult ValidateSearchConstraints(FilterOp,
+                                                     SqlValue) const override;
 
-  void Sort(uint32_t*, uint32_t) const override;
+    RangeOrBitVector SearchValidated(FilterOp, SqlValue, Range) const override;
 
-  void Serialize(StorageProto*) const override;
+    void IndexSearchValidated(FilterOp, SqlValue, Indices&) const override;
 
-  uint32_t size() const override;
+    void StableSort(Token* start, Token* end, SortDirection) const override;
+
+    void Distinct(Indices&) const override;
+
+    std::optional<Token> MaxElement(Indices&) const override;
+
+    std::optional<Token> MinElement(Indices&) const override;
+
+    SqlValue Get_AvoidUsingBecauseSlow(uint32_t index) const override;
+
+    uint32_t size() const override;
+
+    std::string DebugString() const override { return "DummyStorage"; }
+  };
 };
 
-}  // namespace column
-}  // namespace trace_processor
-}  // namespace perfetto
+}  // namespace perfetto::trace_processor::column
+
 #endif  // SRC_TRACE_PROCESSOR_DB_COLUMN_DUMMY_STORAGE_H_

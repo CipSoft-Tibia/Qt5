@@ -8,11 +8,11 @@
 #include <stdint.h>
 
 #include <array>
+#include <optional>
 #include <string>
 #include <vector>
 
 #include "media/base/media_export.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "ui/gfx/geometry/size.h"
 
 namespace media {
@@ -52,13 +52,13 @@ struct MEDIA_EXPORT VideoEncoderInfo {
   // compression window. Equal to 0 if the encoder can produce a chunk of
   // output just from the frame submitted last.
   // If absent, the encoder client will assume some default value.
-  absl::optional<int> frame_delay;
+  std::optional<int> frame_delay;
 
   // The number of input frames the encoder can queue internally. Once this
   // number is reached, further encode requests can block until some output has
   // been produced.
   // If absent, the encoder client will assume some default value.
-  absl::optional<int> input_capacity;
+  std::optional<int> input_capacity;
 
   bool supports_native_handle = true;
   bool has_trusted_rate_controller = false;
@@ -72,6 +72,11 @@ struct MEDIA_EXPORT VideoEncoderInfo {
   bool apply_alignment_to_all_simulcast_layers = false;
   // True if encoder supports frame size change without re-initialization.
   bool supports_frame_size_change = false;
+
+  // Number of video encoder buffers (encoded frame slots) that
+  // are kept by the encoder and can be used to store encoded frames for
+  // future reference.
+  size_t number_of_manual_reference_buffers = 0;
 
   std::array<std::vector<uint8_t>, kMaxSpatialLayers> fps_allocation;
   std::vector<ResolutionBitrateLimit> resolution_bitrate_limits;

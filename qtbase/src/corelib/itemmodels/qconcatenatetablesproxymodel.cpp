@@ -1,5 +1,6 @@
 // Copyright (C) 2016 Klarälvdalens Datakonsult AB, a KDAB Group company, info@kdab.com, author David Faure <david.faure@kdab.com>
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qconcatenatetablesproxymodel.h"
 #include <private/qabstractitemmodel_p.h>
@@ -61,6 +62,7 @@ public:
         ConnArray connections;
     };
     QList<ModelInfo> m_models;
+    mutable QHash<int, QByteArray> m_roleNames;
 
     QList<ModelInfo>::const_iterator findSourceModel(const QAbstractItemModel *m) const
     {
@@ -77,6 +79,9 @@ public:
     // for columns{AboutToBe,}{Inserted,Removed}
     int m_newColumnCount;
 
+    mutable uint m_roleNamesDirty : 1;
+    uint m_reserved : 31;
+
     // for layoutAboutToBeChanged/layoutChanged
     QList<QPersistentModelIndex> layoutChangePersistentIndexes;
     QList<QModelIndex> layoutChangeProxyIndexes;
@@ -85,7 +90,9 @@ public:
 QConcatenateTablesProxyModelPrivate::QConcatenateTablesProxyModelPrivate()
     : m_rowCount(0),
       m_columnCount(0),
-      m_newColumnCount(0)
+      m_newColumnCount(0),
+      m_roleNamesDirty(true),
+      m_reserved(0)
 {
 }
 
@@ -507,6 +514,12 @@ void QConcatenateTablesProxyModel::addSourceModel(QAbstractItemModel *sourceMode
         QObjectPrivate::connect(sourceModel, &QAbstractItemModel::modelReset,
                                 d, &QConcatenateTablesProxyModelPrivate::slotModelReset),
     });
+    if (!d->m_roleNamesDirty) {
+        // do update immediately, since append() is a simple update:
+        const auto newRoleNames = sourceModel->roleNames();
+        for (const auto &[k, v] : newRoleNames.asKeyValueRange())
+            d->m_roleNames.insert_or_assign(k, v);
+    }
     if (newRows > 0)
         endInsertRows();
 
@@ -533,11 +546,32 @@ void QConcatenateTablesProxyModel::removeSourceModel(QAbstractItemModel *sourceM
     if (rowsRemoved > 0)
         beginRemoveRows(QModelIndex(), rowsPrior, rowsPrior + rowsRemoved - 1);
     d->m_models.erase(it);
+    d->m_roleNamesDirty = true;
     d->m_rowCount -= rowsRemoved;
     if (rowsRemoved > 0)
         endRemoveRows();
 
     d->updateColumnCount();
+}
+
+/*!
+    \since 6.9.0
+    \reimp
+    Returns the union of the roleNames() of the underlying models.
+
+    In case source models associate different names to the same role,
+    the name used in last source model overrides the name used in earlier models.
+*/
+QHash<int, QByteArray> QConcatenateTablesProxyModel::roleNames() const
+{
+    Q_D(const QConcatenateTablesProxyModel);
+    if (d->m_roleNamesDirty) {
+        d->m_roleNames = QAbstractItemModelPrivate::defaultRoleNames();
+        for (const auto &[model, _] : d->m_models)
+            d->m_roleNames.insert(model->roleNames());
+        d->m_roleNamesDirty = false;
+    }
+    return d->m_roleNames;
 }
 
 void QConcatenateTablesProxyModelPrivate::slotRowsAboutToBeInserted(const QModelIndex &parent,

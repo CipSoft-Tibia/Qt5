@@ -10,6 +10,7 @@
 #include <string>
 #include <utility>
 
+#include "base/compiler_specific.h"
 #import "base/mac/mac_util.h"
 #import "base/mac/scoped_sending_event.h"
 #import "base/message_loop/message_pump_apple.h"
@@ -60,8 +61,8 @@ namespace {
 // stream.
 void PromiseWriterHelper(const DropData& drop_data, base::File file) {
   DCHECK(file.IsValid());
-  file.WriteAtCurrentPos(drop_data.file_contents.data(),
-                         drop_data.file_contents.length());
+  UNSAFE_TODO(file.WriteAtCurrentPos(drop_data.file_contents.data(),
+                                     drop_data.file_contents.length()));
 }
 
 WebContentsViewMac::RenderWidgetHostViewCreateFunction
@@ -154,6 +155,11 @@ void WebContentsViewMac::UpdateWindowControlsOverlay(
   }
 }
 
+BackForwardTransitionAnimationManager*
+WebContentsViewMac::GetBackForwardTransitionAnimationManager() {
+  return nullptr;
+}
+
 void WebContentsViewMac::StartDragging(
     const DropData& drop_data,
     const url::Origin& source_origin,
@@ -182,7 +188,7 @@ void WebContentsViewMac::StartDragging(
   bool is_privileged =
       contents_delegate ? contents_delegate->IsPrivileged() : false;
 
-  // TODO(crbug.com/1302094): The param `drag_obj_rect` is unused.
+  // TODO(crbug.com/40825138): The param `drag_obj_rect` is unused.
 
   if (remote_ns_view_) {
     remote_ns_view_->StartDrag(drop_data, source_origin, mask, image,
@@ -243,11 +249,6 @@ void WebContentsViewMac::FocusThroughTabTraversal(bool reverse) {
 
 DropData* WebContentsViewMac::GetDropData() const {
   return [drag_dest_ currentDropData];
-}
-
-void WebContentsViewMac::TransferDragSecurityInfo(WebContentsView* view) {
-  WebContentsViewMac* view_mac = static_cast<WebContentsViewMac*>(view);
-  [drag_dest_ setDragSecurityInfo:[view_mac->drag_dest_ dragSecurityInfo]];
 }
 
 void WebContentsViewMac::UpdateDragOperation(ui::mojom::DragOperation operation,
@@ -453,12 +454,12 @@ std::list<RenderWidgetHostViewMac*> WebContentsViewMac::GetChildViews() {
 ////////////////////////////////////////////////////////////////////////////////
 // WebContentsViewMac, mojom::WebContentsNSViewHost:
 
-void WebContentsViewMac::OnMouseEvent(bool motion, bool exited) {
-  if (!web_contents_ || !web_contents_->GetDelegate())
+void WebContentsViewMac::OnMouseEvent(std::unique_ptr<ui::Event> event) {
+  if (!web_contents_ || !web_contents_->GetDelegate() || !event) {
     return;
+  }
 
-  web_contents_->GetDelegate()->ContentsMouseEvent(web_contents_, motion,
-                                                   exited);
+  web_contents_->GetDelegate()->ContentsMouseEvent(web_contents_, *event);
 }
 
 void WebContentsViewMac::OnBecameFirstResponder(SelectionDirection direction) {
@@ -667,7 +668,7 @@ void WebContentsViewMac::ViewsHostableAttach(
     [GetInProcessNSView() setHost:nullptr];
   }
 
-  // TODO(https://crbug.com/933679): WebContentsNSViewBridge::SetParentView
+  // TODO(crbug.com/41442285): WebContentsNSViewBridge::SetParentView
   // will look up the parent NSView by its id, but this has been observed to
   // fail in the field, so assume that the caller handles updating the NSView
   // hierarchy.

@@ -1,7 +1,8 @@
 // Copyright (C) 2017 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
-#include <QtTest>
+#include <QSignalSpy>
+#include <QTest>
 #include <QtQuick>
 #include <QtQuickControls2/qquickstyle.h>
 #include <QtQuickControls2/private/qquickstyle_p.h>
@@ -15,8 +16,8 @@ class tst_Snippets : public QObject
 private slots:
     void initTestCase();
 
-    void verify();
     void verify_data();
+    void verify();
 
 private:
     void loadSnippet(const QString &source);
@@ -59,10 +60,24 @@ void tst_Snippets::initTestCase()
 
 Q_DECLARE_METATYPE(QList<QQmlError>)
 
+void tst_Snippets::verify_data()
+{
+    QTest::addColumn<QString>("input");
+    QTest::addColumn<QString>("output");
+
+    QMap<QString, QStringPair>::const_iterator it;
+    for (it = snippetPaths.constBegin(); it != snippetPaths.constEnd(); ++it)
+        QTest::newRow(qPrintable(it.key())) << it.value().first << it.value().second;
+}
+
 void tst_Snippets::verify()
 {
     QFETCH(QString, input);
     QFETCH(QString, output);
+
+    // TODO: QTBUG-135009
+    if (QTest::currentDataTag() != QLatin1String("qtquickcontrols-spinbox-custom"))
+        QTest::failOnWarning();
 
     QQmlEngine engine;
     QQmlComponent component(&engine);
@@ -122,16 +137,6 @@ void tst_Snippets::verify()
 
         window->close();
     }
-}
-
-void tst_Snippets::verify_data()
-{
-    QTest::addColumn<QString>("input");
-    QTest::addColumn<QString>("output");
-
-    QMap<QString, QStringPair>::const_iterator it;
-    for (it = snippetPaths.constBegin(); it != snippetPaths.constEnd(); ++it)
-        QTest::newRow(qPrintable(it.key())) << it.value().first << it.value().second;
 }
 
 QTEST_MAIN(tst_Snippets)

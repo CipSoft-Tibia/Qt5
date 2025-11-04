@@ -4,8 +4,9 @@
 
 #include "components/app_restore/app_restore_utils.h"
 
-#include "ash/constants/app_types.h"
 #include "base/functional/bind.h"
+#include "chromeos/ui/base/app_types.h"
+#include "chromeos/ui/base/window_properties.h"
 #include "components/app_constants/constants.h"
 #include "components/app_restore/app_restore_info.h"
 #include "components/app_restore/desk_template_read_handler.h"
@@ -28,13 +29,13 @@ static int32_t session_id_counter = kArcSessionIdOffsetForRestoredLaunching;
 }  // namespace
 
 bool IsArcWindow(aura::Window* window) {
-  return window->GetProperty(aura::client::kAppType) ==
-         static_cast<int>(ash::AppType::ARC_APP);
+  return window->GetProperty(chromeos::kAppTypeKey) ==
+         chromeos::AppType::ARC_APP;
 }
 
 bool IsLacrosWindow(aura::Window* window) {
-  return window->GetProperty(aura::client::kAppType) ==
-         static_cast<int>(ash::AppType::LACROS);
+  return window->GetProperty(chromeos::kAppTypeKey) ==
+         chromeos::AppType::LACROS;
 }
 
 bool HasWindowInfo(int32_t restore_window_id) {
@@ -51,10 +52,8 @@ void ApplyProperties(app_restore::WindowInfo* window_info,
   DCHECK(window_info);
   DCHECK(property_handler);
 
-  // Create a clone so `property_handler` can have complete ownership of a copy
-  // of WindowInfo.
-  app_restore::WindowInfo* window_info_clone = window_info->Clone();
-  property_handler->SetProperty(app_restore::kWindowInfoKey, window_info_clone);
+  property_handler->SetProperty(app_restore::kWindowInfoKey,
+                                new WindowInfo(*window_info));
 
   if (window_info->activation_index) {
     const int32_t index = *window_info->activation_index;
@@ -81,7 +80,7 @@ void ModifyWidgetParams(int32_t restore_window_id,
 
   const bool is_arc_app =
       out_params->init_properties_container.GetProperty(
-          aura::client::kAppType) == static_cast<int>(ash::AppType::ARC_APP);
+          chromeos::kAppTypeKey) == chromeos::AppType::ARC_APP;
   std::unique_ptr<app_restore::WindowInfo> window_info;
   auto* full_restore_read_handler =
       full_restore::FullRestoreReadHandler::GetInstance();
@@ -233,19 +232,19 @@ std::tuple<int, int, int> GetWindowAndTabCount(
       restore_data.app_id_to_launch_list();
   for (const auto& [app_id, launch_list] : launch_list_map) {
     for (const auto& [window_id, app_restore_data] : launch_list) {
-      const std::optional<std::vector<GURL>>& urls = app_restore_data->urls;
+      const std::vector<GURL>& urls = app_restore_data->browser_extra_info.urls;
       // Url field could be empty if the app is not the browser, or if from full
       // restore. We check the app type also in case the url field is not set up
       // correctly.
-      if (!urls || urls->empty() || app_id != app_constants::kChromeAppId) {
+      if (urls.empty() || app_id != app_constants::kChromeAppId) {
         ++window_count;
         ++total_count;
         continue;
       }
 
       ++window_count;
-      tab_count += urls->size();
-      total_count += urls->size();
+      tab_count += urls.size();
+      total_count += urls.size();
     }
   }
 

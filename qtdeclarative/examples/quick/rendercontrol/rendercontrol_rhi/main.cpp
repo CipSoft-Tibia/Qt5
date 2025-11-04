@@ -489,7 +489,7 @@ void MainWindow::render()
                     QImage::Format_RGBA8888_Premultiplied);
     QImage result;
     if (rhi->isYUpInFramebuffer())
-        result = wrapperImage.mirrored();
+        result = wrapperImage.flipped();
     else
         result = wrapperImage.copy();
 

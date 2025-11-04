@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qthreadpool.h"
 #include "qthreadpool_p.h"
@@ -250,6 +251,7 @@ void QThreadPoolPrivate::startThread(QRunnable *runnable)
     if (objectName.isEmpty())
         objectName = u"Thread (pooled)"_s;
     thread->setObjectName(objectName);
+    thread->setServiceLevel(serviceLevel);
     Q_ASSERT(!allThreads.contains(thread.get())); // if this assert hits, we have an ABA problem (deleted threads don't get removed here)
     allThreads.insert(thread.get());
     ++activeThreads;
@@ -475,28 +477,6 @@ QThreadPool *QThreadPool::globalInstance()
 }
 
 /*!
-    Returns the QThreadPool instance for Qt Gui.
-    \internal
-*/
-QThreadPool *QThreadPoolPrivate::qtGuiInstance()
-{
-    Q_CONSTINIT static QPointer<QThreadPool> guiInstance;
-    Q_CONSTINIT static QBasicMutex theMutex;
-    const static bool runtime_disable = qEnvironmentVariableIsSet("QT_NO_GUI_THREADPOOL");
-    if (runtime_disable)
-        return nullptr;
-    const QMutexLocker locker(&theMutex);
-    if (guiInstance.isNull() && !QCoreApplication::closingDown()) {
-        guiInstance = new QThreadPool();
-        // Limit max thread to avoid too many parallel threads.
-        // We are not optimized for much more than 4 or 8 threads.
-        if (guiInstance && guiInstance->maxThreadCount() > 4)
-            guiInstance->setMaxThreadCount(qBound(4, guiInstance->maxThreadCount() / 2, 8));
-    }
-    return guiInstance;
-}
-
-/*!
     Reserves a thread and uses it to run \a runnable, unless this thread will
     make the current thread count exceed maxThreadCount().  In that case,
     \a runnable is added to a run queue instead. The \a priority argument can
@@ -533,11 +513,11 @@ void QThreadPool::start(QRunnable *runnable, int priority)
     \a callableToRun is added to a run queue instead. The \a priority argument can
     be used to control the run queue's order of execution.
 
-    \note This function participates in overload resolution only if \c Callable
-    is a function or function object which can be called with zero arguments.
-
     \note In Qt version prior to 6.6, this function took std::function<void()>,
     and therefore couldn't handle move-only callables.
+
+    \constraints \c Callable
+    is a function or function object which can be called with zero arguments.
 */
 
 /*!
@@ -579,11 +559,11 @@ bool QThreadPool::tryStart(QRunnable *runnable)
     does nothing and returns \c false.  Otherwise, \a callableToRun is run immediately
     using one available thread and this function returns \c true.
 
-    \note This function participates in overload resolution only if \c Callable
-    is a function or function object which can be called with zero arguments.
-
     \note In Qt version prior to 6.6, this function took std::function<void()>,
     and therefore couldn't handle move-only callables.
+
+    \constraints \c Callable
+    is a function or function object which can be called with zero arguments.
 */
 
 /*! \property QThreadPool::expiryTimeout
@@ -766,6 +746,38 @@ void QThreadPool::releaseThread()
 }
 
 /*!
+    \since 6.9
+
+    Sets the Quality of Service level of thread objects created after the call
+    to this setter to \a serviceLevel.
+
+    Support is not available on every platform. Consult
+    QThread::setServiceLevel() for details.
+
+    \sa serviceLevel(), QThread::serviceLevel()
+*/
+void QThreadPool::setServiceLevel(QThread::QualityOfService serviceLevel)
+{
+    Q_D(QThreadPool);
+    QMutexLocker locker(&d->mutex);
+    d->serviceLevel = serviceLevel;
+}
+
+/*!
+    \since 6.9
+
+    Returns the current Quality of Service level of the thread.
+
+    \sa setServiceLevel(), QThread::serviceLevel()
+*/
+QThread::QualityOfService QThreadPool::serviceLevel() const
+{
+    Q_D(const QThreadPool);
+    QMutexLocker locker(&d->mutex);
+    return d->serviceLevel;
+}
+
+/*!
     Releases a thread previously reserved with reserveThread() and uses it
     to run \a runnable.
 
@@ -809,11 +821,11 @@ void QThreadPool::startOnReservedThread(QRunnable *runnable)
     Releases a thread previously reserved with reserveThread() and uses it
     to run \a callableToRun.
 
-    \note This function participates in overload resolution only if \c Callable
-    is a function or function object which can be called with zero arguments.
-
     \note In Qt version prior to 6.6, this function took std::function<void()>,
     and therefore couldn't handle move-only callables.
+
+    \constraints \c Callable
+    is a function or function object which can be called with zero arguments.
 */
 
 /*!

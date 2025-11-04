@@ -5,8 +5,8 @@
 
 #pragma once
 
-#include <xnnpack.h>
-#include <xnnpack/subgraph.h>
+#include "xnnpack.h"
+#include "xnnpack/subgraph.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -55,14 +55,6 @@ enum xnn_status xnn_subgraph_check_quantization_parameter_matches(
   const struct xnn_value* input_value,
   uint32_t output_id,
   const struct xnn_value* output_value);
-
-// Check that two tensors have the same shape.
-enum xnn_status xnn_subgraph_check_all_dims_match(
-  enum xnn_node_type node_type,
-  uint32_t tensor1_id,
-  const struct xnn_value* tensor1_value,
-  uint32_t tensor2_id,
-  const struct xnn_value* tensor2_value);
 
 // Check that two tensors have the same batch dimensions.
 enum xnn_status xnn_subgraph_check_batch_dims_match(

@@ -26,11 +26,11 @@ PlatformSensorChromeOS::PlatformSensorChromeOS(
     int32_t iio_device_id,
     mojom::SensorType type,
     SensorReadingSharedBuffer* reading_buffer,
-    PlatformSensorProvider* provider,
+    base::WeakPtr<PlatformSensorProvider> provider,
     mojo::ConnectionErrorWithReasonCallback sensor_device_disconnect_callback,
     double scale,
     mojo::Remote<chromeos::sensors::mojom::SensorDevice> sensor_device_remote)
-    : PlatformSensor(type, reading_buffer, provider),
+    : PlatformSensor(type, reading_buffer, std::move(provider)),
       iio_device_id_(iio_device_id),
       sensor_device_disconnect_callback_(
           std::move(sensor_device_disconnect_callback)),
@@ -310,7 +310,7 @@ void PlatformSensorChromeOS::SetRequiredChannels() {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   DCHECK(required_channel_ids_.empty());  // Should only be called once.
 
-  absl::optional<std::string> axes_prefix = absl::nullopt;
+  std::optional<std::string> axes_prefix = std::nullopt;
   switch (GetType()) {
     case mojom::SensorType::AMBIENT_LIGHT:
       required_channel_ids_.push_back(chromeos::sensors::mojom::kLightChannel);

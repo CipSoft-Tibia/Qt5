@@ -10,7 +10,6 @@ import * as SDK from '../../../../core/sdk/sdk.js';
 import * as Protocol from '../../../../generated/protocol.js';
 import * as Logs from '../../../../models/logs/logs.js';
 import * as Buttons from '../../../../ui/components/buttons/buttons.js';
-import * as ComponentHelpers from '../../../../ui/components/helpers/helpers.js';
 import * as LegacyWrapper from '../../../../ui/components/legacy_wrapper/legacy_wrapper.js';
 import * as Coordinator from '../../../../ui/components/render_coordinator/render_coordinator.js';
 import * as ReportView from '../../../../ui/components/report_view/report_view.js';
@@ -94,24 +93,24 @@ class PreloadingUIUtils {
   static detailedStatus({status}: SDK.PreloadingModel.PreloadingAttempt): string {
     // See content/public/browser/preloading.h PreloadingAttemptOutcome.
     switch (status) {
-      case SDK.PreloadingModel.PreloadingStatus.NotTriggered:
+      case SDK.PreloadingModel.PreloadingStatus.NOT_TRIGGERED:
         return i18nString(UIStrings.detailedStatusNotTriggered);
-      case SDK.PreloadingModel.PreloadingStatus.Pending:
+      case SDK.PreloadingModel.PreloadingStatus.PENDING:
         return i18nString(UIStrings.detailedStatusPending);
-      case SDK.PreloadingModel.PreloadingStatus.Running:
+      case SDK.PreloadingModel.PreloadingStatus.RUNNING:
         return i18nString(UIStrings.detailedStatusRunning);
-      case SDK.PreloadingModel.PreloadingStatus.Ready:
+      case SDK.PreloadingModel.PreloadingStatus.READY:
         return i18nString(UIStrings.detailedStatusReady);
-      case SDK.PreloadingModel.PreloadingStatus.Success:
+      case SDK.PreloadingModel.PreloadingStatus.SUCCESS:
         return i18nString(UIStrings.detailedStatusSuccess);
-      case SDK.PreloadingModel.PreloadingStatus.Failure:
+      case SDK.PreloadingModel.PreloadingStatus.FAILURE:
         return i18nString(UIStrings.detailedStatusFailure);
       // NotSupported is used to handle unreachable case. For example,
       // there is no code path for
       // PreloadingTriggeringOutcome::kTriggeredButPending in prefetch,
       // which is mapped to NotSupported. So, we regard it as an
       // internal error.
-      case SDK.PreloadingModel.PreloadingStatus.NotSupported:
+      case SDK.PreloadingModel.PreloadingStatus.NOT_SUPPORTED:
         return i18n.i18n.lockedString('Internal error');
     }
   }
@@ -165,7 +164,7 @@ export class PreloadingDetailsReportView extends LegacyWrapper.LegacyWrapper.Wra
       // clang-format off
       LitHtml.render(LitHtml.html`
         <${ReportView.ReportView.Report.litTagName} .data=${{reportTitle: 'Speculative Loading Attempt'} as ReportView.ReportView.ReportData}
-        jslog=${VisualLogging.section().context('preloading-details')}>
+        jslog=${VisualLogging.section('preloading-details')}>
           <${ReportView.ReportView.ReportSectionHeader.litTagName}>${i18nString(UIStrings.detailsDetailedInformation)}</${
             ReportView.ReportView.ReportSectionHeader.litTagName}>
 
@@ -240,7 +239,7 @@ export class PreloadingDetailsReportView extends LegacyWrapper.LegacyWrapper.Wra
     const action = PreloadingString.capitalizedAction(this.#data.preloadingAttempt.action);
 
     let maybeInspectButton: LitHtml.LitTemplate = LitHtml.nothing;
-    ((): void => {
+    (() => {
       if (attempt.action !== Protocol.Preload.SpeculationAction.Prerender) {
         return;
       }
@@ -267,9 +266,9 @@ export class PreloadingDetailsReportView extends LegacyWrapper.LegacyWrapper.Wra
             @click=${inspect}
             .title=${i18nString(UIStrings.buttonClickToInspect)}
             .size=${Buttons.Button.Size.SMALL}
-            .variant=${Buttons.Button.Variant.SECONDARY}
+            .variant=${Buttons.Button.Variant.OUTLINED}
             .disabled=${disabled}
-            jslog=${VisualLogging.action().track({click: true}).context('inspect-prerendered-page')}
+            jslog=${VisualLogging.action('inspect-prerendered-page').track({click: true})}
           >
             ${i18nString(UIStrings.buttonInspect)}
           </${Buttons.Button.Button.litTagName}>
@@ -356,7 +355,7 @@ export class PreloadingDetailsReportView extends LegacyWrapper.LegacyWrapper.Wra
               color: 'var(--sys-color-primary)',
               'text-decoration': 'underline',
             })}
-            jslog=${VisualLogging.action().track({click: true}).context('reveal-rule-set')}
+            jslog=${VisualLogging.action('reveal-rule-set').track({click: true})}
           >
             ${location}
           </button>
@@ -367,11 +366,9 @@ export class PreloadingDetailsReportView extends LegacyWrapper.LegacyWrapper.Wra
   }
 }
 
-ComponentHelpers.CustomElements.defineComponent(
-    'devtools-resources-preloading-details-report-view', PreloadingDetailsReportView);
+customElements.define('devtools-resources-preloading-details-report-view', PreloadingDetailsReportView);
 
 declare global {
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   interface HTMLElementTagNameMap {
     'devtools-resources-preloading-details-report-view': PreloadingDetailsReportView;
   }

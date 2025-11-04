@@ -8,21 +8,25 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <stdlib.h>
+#include <string.h>
 
 #include <fp16/fp16.h>
-
-#include <xnnpack.h>
-#include <xnnpack/allocator.h>
-#include <xnnpack/config.h>
-#include <xnnpack/log.h>
-#include <xnnpack/operator.h>
-#include <xnnpack/operator-type.h>
-#include <xnnpack/microparams-init.h>
-#include <xnnpack/params.h>
-
+#include "xnnpack.h"
+#include "xnnpack/allocator.h"
+#include "xnnpack/common.h"
+#include "xnnpack/compute.h"
+#include "xnnpack/config-types.h"
+#include "xnnpack/config.h"
+#include "xnnpack/log.h"
+#include "xnnpack/math.h"
+#include "xnnpack/microparams-init.h"
+#include "xnnpack/microparams.h"
+#include "xnnpack/operator-type.h"
+#include "xnnpack/operator.h"
+#include "xnnpack/params.h"
+#include "pthreadpool.h"
 
 static enum xnn_status create_global_average_pooling_ncw(
-    size_t channels,
     uint32_t flags,
     uint32_t log2_element_size,
     size_t params_offset,
@@ -41,15 +45,6 @@ static enum xnn_status create_global_average_pooling_ncw(
     goto error;
   }
 
-  status = xnn_status_invalid_parameter;
-
-  if (channels == 0) {
-    xnn_log_error(
-      "failed to create %s operator with %zu channels: number of channels must be non-zero",
-      xnn_operator_type_to_string(operator_type), channels);
-    goto error;
-  }
-
   status = xnn_status_out_of_memory;
 
   global_average_pooling_op = xnn_allocate_zero_simd_memory(sizeof(struct xnn_operator));
@@ -60,7 +55,6 @@ static enum xnn_status create_global_average_pooling_ncw(
     goto error;
   }
 
-  global_average_pooling_op->channels = channels;
   memcpy((void*) ((uintptr_t) global_average_pooling_op + params_offset), params, params_size);
 
   global_average_pooling_op->type = operator_type;
@@ -78,7 +72,6 @@ error:
 }
 
 enum xnn_status xnn_create_global_average_pooling_ncw_f16(
-    size_t channels,
     float output_min,
     float output_max,
     uint32_t flags,
@@ -121,8 +114,7 @@ enum xnn_status xnn_create_global_average_pooling_ncw_f16(
   }
 
   return create_global_average_pooling_ncw(
-    channels, flags,
-    /*log2_element_size=*/XNN_LOG2_SIZEOF_HALF,
+    flags, /*log2_element_size=*/XNN_LOG2_SIZEOF_HALF,
     offsetof(struct xnn_operator, params.f16_gavgpool),
     &params, sizeof(params),
     xnn_operator_type_global_average_pooling_ncw_f16,
@@ -131,7 +123,6 @@ enum xnn_status xnn_create_global_average_pooling_ncw_f16(
 }
 
 enum xnn_status xnn_create_global_average_pooling_ncw_f32(
-    size_t channels,
     float output_min,
     float output_max,
     uint32_t flags,
@@ -151,9 +142,9 @@ enum xnn_status xnn_create_global_average_pooling_ncw_f32(
     return xnn_status_invalid_parameter;
   }
 
-  if (output_min >= output_max) {
+  if (output_min > output_max) {
     xnn_log_error(
-      "failed to create %s operator with [%.7g, %.7g] output range: lower bound must be below upper bound",
+      "failed to create %s operator with [%.7g, %.7g] output range: lower bound must be less than or equal to upper bound",
       xnn_operator_type_to_string(xnn_operator_type_global_average_pooling_ncw_f32), output_min, output_max);
     return xnn_status_invalid_parameter;
   }
@@ -170,8 +161,7 @@ enum xnn_status xnn_create_global_average_pooling_ncw_f32(
   gavgpool_cw_config->init.f32(&params, nanf(""), output_min, output_max, 0);
 
   return create_global_average_pooling_ncw(
-    channels, flags,
-    /*log2_element_size=*/XNN_LOG2_SIZEOF_FLOAT,
+    flags, /*log2_element_size=*/XNN_LOG2_SIZEOF_FLOAT,
     offsetof(struct xnn_operator, params.f32_gavgpool),
     &params, sizeof(params),
     xnn_operator_type_global_average_pooling_ncw_f32,
@@ -183,6 +173,7 @@ enum xnn_status xnn_reshape_global_average_pooling_ncw_f32(
     xnn_operator_t global_average_pooling_op,
     size_t batch_size,
     size_t width,
+    size_t channels,
     pthreadpool_t threadpool)
 {
   if (global_average_pooling_op->type != xnn_operator_type_global_average_pooling_ncw_f32) {
@@ -206,6 +197,14 @@ enum xnn_status xnn_reshape_global_average_pooling_ncw_f32(
     return xnn_status_invalid_parameter;
   }
 
+  if (channels == 0) {
+    xnn_log_error(
+      "failed to create %s operator with %zu channels: number of channels must be non-zero",
+      xnn_operator_type_to_string(xnn_operator_type_global_average_pooling_ncw_f32), channels);
+    return xnn_status_invalid_parameter;
+  }
+  global_average_pooling_op->channels = channels;
+
   if (batch_size == 0) {
     global_average_pooling_op->state = xnn_run_state_skip;
     return xnn_status_success;
@@ -213,8 +212,6 @@ enum xnn_status xnn_reshape_global_average_pooling_ncw_f32(
 
   xnn_update_f32_gavgpool_params(&global_average_pooling_op->params.f32_gavgpool,
     1.0f / (float) width, width);
-
-  const size_t channels = global_average_pooling_op->channels;
 
   global_average_pooling_op->context.global_average_pooling_ncw = (struct global_average_pooling_ncw_context) {
     .input_elements = width * sizeof(float),
@@ -232,18 +229,14 @@ enum xnn_status xnn_reshape_global_average_pooling_ncw_f32(
   global_average_pooling_op->compute[0].range[0] = batch_size;
   global_average_pooling_op->compute[0].range[1] = channels;
 
-  #if XNN_TEST_MODE
+  const size_t num_threads = pthreadpool_get_threads_count(threadpool);
+  if (num_threads > 1) {
+    const size_t target_channels_per_thread = 8;
+    global_average_pooling_op->compute[0].tile[0] =
+        divide_round_up(channels, num_threads * target_channels_per_thread);
+  } else {
     global_average_pooling_op->compute[0].tile[0] = channels;
-  #else
-    const size_t num_threads = pthreadpool_get_threads_count(threadpool);
-    if (num_threads > 1) {
-      const size_t target_channels_per_thread = 8;
-      global_average_pooling_op->compute[0].tile[0] =
-          divide_round_up(channels, num_threads * target_channels_per_thread);
-    } else {
-      global_average_pooling_op->compute[0].tile[0] = channels;
-    }
-  #endif  // XNN_TEST_MODE
+  }
 
   global_average_pooling_op->state = xnn_run_state_needs_setup;
 
@@ -254,6 +247,7 @@ enum xnn_status xnn_reshape_global_average_pooling_ncw_f16(
     xnn_operator_t global_average_pooling_op,
     size_t batch_size,
     size_t width,
+    size_t channels,
     pthreadpool_t threadpool)
 {
   if (global_average_pooling_op->type != xnn_operator_type_global_average_pooling_ncw_f16) {
@@ -277,6 +271,13 @@ enum xnn_status xnn_reshape_global_average_pooling_ncw_f16(
     return xnn_status_invalid_parameter;
   }
 
+  if (channels == 0) {
+    xnn_log_error(
+      "failed to create %s operator with %zu channels: number of channels must be non-zero",
+      xnn_operator_type_to_string(xnn_operator_type_global_average_pooling_ncw_f16), channels);
+    return xnn_status_invalid_parameter;
+  }
+  global_average_pooling_op->channels = channels;
   if (batch_size == 0) {
     global_average_pooling_op->state = xnn_run_state_skip;
     return xnn_status_success;
@@ -286,8 +287,6 @@ enum xnn_status xnn_reshape_global_average_pooling_ncw_f16(
     global_average_pooling_op->gavgpool_cw_config->update.f16(
       &global_average_pooling_op->params.f16_gavgpool, fp16_ieee_from_fp32_value(1.0f / (float) width), width);
   }
-
-  const size_t channels = global_average_pooling_op->channels;
 
   global_average_pooling_op->context.global_average_pooling_ncw = (struct global_average_pooling_ncw_context) {
     .input_elements = width * sizeof(uint16_t),
@@ -305,19 +304,14 @@ enum xnn_status xnn_reshape_global_average_pooling_ncw_f16(
   global_average_pooling_op->compute[0].range[0] = batch_size;
   global_average_pooling_op->compute[0].range[1] = channels;
 
-  #if XNN_TEST_MODE
+  const size_t num_threads = pthreadpool_get_threads_count(threadpool);
+  if (num_threads > 1) {
+    const size_t target_channels_per_thread = 8;
+    global_average_pooling_op->compute[0].tile[0] =
+        divide_round_up(channels, num_threads * target_channels_per_thread);
+  } else {
     global_average_pooling_op->compute[0].tile[0] = channels;
-  #else
-    const size_t num_threads = pthreadpool_get_threads_count(threadpool);
-    if (num_threads > 1) {
-      const size_t target_channels_per_thread = 8;
-      global_average_pooling_op->compute[0].tile[0] =
-          divide_round_up(channels, num_threads * target_channels_per_thread);
-    } else {
-      global_average_pooling_op->compute[0].tile[0] = channels;
-    }
-  #endif  // XNN_TEST_MODE
-
+  }
 
   global_average_pooling_op->state = xnn_run_state_needs_setup;
 

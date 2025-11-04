@@ -66,6 +66,9 @@ class DEVICE_BLUETOOTH_EXPORT FakeFlossAdapterClient
   void CreateBond(ResponseCallback<bool> callback,
                   FlossDeviceId device,
                   BluetoothTransport transport) override;
+  void CreateBond(ResponseCallback<FlossDBusClient::BtifStatus> callback,
+                  FlossDeviceId device,
+                  BluetoothTransport transport) override;
   void CancelBondProcess(ResponseCallback<bool> callback,
                          FlossDeviceId device) override;
   void RemoveBond(ResponseCallback<bool> callback,
@@ -84,10 +87,16 @@ class DEVICE_BLUETOOTH_EXPORT FakeFlossAdapterClient
   void GetRemoteVendorProductInfo(
       ResponseCallback<FlossAdapterClient::VendorProductInfo> callback,
       FlossDeviceId device) override;
+  void GetRemoteAddressType(
+      ResponseCallback<FlossAdapterClient::BtAddressType> callback,
+      FlossDeviceId device) override;
   void GetBondState(ResponseCallback<uint32_t> callback,
                     const FlossDeviceId& device) override;
   void ConnectAllEnabledProfiles(ResponseCallback<Void> callback,
                                  const FlossDeviceId& device) override;
+  void ConnectAllEnabledProfiles(
+      ResponseCallback<FlossDBusClient::BtifStatus> callback,
+      const FlossDeviceId& device) override;
   void DisconnectAllEnabledProfiles(ResponseCallback<Void> callback,
                                     const FlossDeviceId& device) override;
   void SetPairingConfirmation(ResponseCallback<Void> callback,
@@ -119,8 +128,8 @@ class DEVICE_BLUETOOTH_EXPORT FakeFlossAdapterClient
  private:
   std::unordered_set<std::string> bonded_addresses_;
   std::unordered_set<std::string> connected_addresses_;
-  absl::optional<bool> fail_discovery_;
-  absl::optional<bool> fail_bonding_;
+  std::optional<bool> fail_discovery_;
+  std::optional<bool> fail_bonding_;
   base::WeakPtrFactory<FakeFlossAdapterClient> weak_ptr_factory_{this};
 };
 

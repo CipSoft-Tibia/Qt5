@@ -19,8 +19,8 @@
 #include "ppapi/shared_impl/file_system_util.h"
 #include "ppapi/shared_impl/file_type_conversion.h"
 #include "storage/common/file_system/file_system_util.h"
-#include "third_party/blink/public/common/browser_interface_broker_proxy.h"
 #include "third_party/blink/public/mojom/filesystem/file_system.mojom.h"
+#include "third_party/blink/public/platform/browser_interface_broker_proxy.h"
 #include "third_party/blink/public/web/web_document.h"
 #include "third_party/blink/public/web/web_local_frame.h"
 #include "third_party/blink/public/web/web_view.h"
@@ -131,7 +131,8 @@ int32_t PepperFileSystemHost::OnHostMsgOpen(
 
   file_system_manager->Open(
       url::Origin::Create(document_url), file_system_type.value(),
-      base::BindOnce(&PepperFileSystemHost::DidOpenFileSystem, AsWeakPtr()));
+      base::BindOnce(&PepperFileSystemHost::DidOpenFileSystem,
+                     weak_ptr_factory_.GetWeakPtr()));
   return PP_OK_COMPLETIONPENDING;
 }
 
@@ -170,7 +171,7 @@ blink::mojom::FileSystemManager* PepperFileSystemHost::GetFileSystemManager() {
         renderer_ppapi_host_->GetRenderFrameForInstance(pp_instance());
     if (!frame)
       return nullptr;
-    frame->GetBrowserInterfaceBroker()->GetInterface(
+    frame->GetBrowserInterfaceBroker().GetInterface(
         file_system_manager_remote_.BindNewPipeAndPassReceiver());
   }
   return file_system_manager_remote_.get();

@@ -7,8 +7,6 @@
 #include <QtCore/qcoreevent.h>
 #include <QtStateMachine/qabstracttransition.h>
 
-QT_REQUIRE_CONFIG(qeventtransition);
-
 QT_BEGIN_NAMESPACE
 
 class QEventTransitionPrivate;

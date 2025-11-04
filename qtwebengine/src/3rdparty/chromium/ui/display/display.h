@@ -7,10 +7,11 @@
 
 #include <stdint.h>
 
+#include <optional>
+
 #include "base/memory/ref_counted.h"
 #include "base/memory/scoped_refptr.h"
 #include "mojo/public/cpp/bindings/struct_traits.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "ui/display/display_export.h"
 #include "ui/display/types/display_constants.h"
 #include "ui/gfx/display_color_spaces.h"
@@ -111,7 +112,7 @@ class DISPLAY_EXPORT Display final {
 
   // Converts the given angle to its corresponding Rotation. The angle is in
   // degrees, and the only valid values are 0, 90, 180, and 270.
-  // TODO(crbug.com/840189): we should never need to convert degrees to a
+  // TODO(crbug.com/41387359): we should never need to convert degrees to a
   // Rotation if we were to Rotations internally and only converted to numeric
   // values when required.
   static Rotation DegreesToRotation(int degrees);
@@ -286,6 +287,7 @@ class DISPLAY_EXPORT Display final {
 
   bool operator==(const Display& rhs) const;
   bool operator!=(const Display& rhs) const { return !(*this == rhs); }
+  static bool EqualExceptForHdrHeadroom(const Display& lhs, const Display& rhs);
 
  private:
   friend struct mojo::StructTraits<mojom::DisplayDataView, Display>;
@@ -328,7 +330,7 @@ class DISPLAY_EXPORT Display final {
   gfx::Rect work_area_;
   float device_scale_factor_;
   Rotation rotation_ = ROTATE_0;
-  absl::optional<Rotation> panel_rotation_;
+  std::optional<Rotation> panel_rotation_;
   TouchSupport touch_support_ = TouchSupport::UNKNOWN;
   AccelerometerSupport accelerometer_support_ = AccelerometerSupport::UNKNOWN;
   gfx::Size maximum_cursor_size_;

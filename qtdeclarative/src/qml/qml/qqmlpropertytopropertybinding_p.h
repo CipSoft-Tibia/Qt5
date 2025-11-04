@@ -26,7 +26,7 @@ class Q_QML_EXPORT QQmlPropertyToPropertyBinding
 {
 public:
     QQmlPropertyToPropertyBinding(
-            QQmlEngine *engine, QObject *sourceObject, int sourcePropertyIndex,
+            QQmlEngine *engine, QObject *sourceObject, QQmlPropertyIndex sourcePropertyIndex,
             QObject *targetObject, int targetPropertyIndex);
 
     Kind kind() const final;
@@ -54,7 +54,7 @@ private:
     std::unique_ptr<Observer> observer;
     QQmlEngine *m_engine = nullptr;
     QObject *m_sourceObject = nullptr;
-    int m_sourcePropertyIndex = -1;
+    QQmlPropertyIndex m_sourcePropertyIndex;
 };
 
 void QQmlPropertyGuard_callback(QQmlNotifierEndpoint *e, void **);

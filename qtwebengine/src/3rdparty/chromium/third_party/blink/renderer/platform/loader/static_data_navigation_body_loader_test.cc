@@ -19,7 +19,7 @@ class StaticDataNavigationBodyLoaderTest
 
   void Write(const String& buffer) {
     std::string string = buffer.Utf8();
-    loader_->Write(string.c_str(), string.length());
+    loader_->Write(string);
   }
 
   void BodyDataReceived(base::span<const char> data) override {
@@ -35,7 +35,7 @@ class StaticDataNavigationBodyLoaderTest
       int64_t total_encoded_data_length,
       int64_t total_encoded_body_length,
       int64_t total_decoded_body_length,
-      const absl::optional<blink::WebURLError>& error) override {
+      const std::optional<blink::WebURLError>& error) override {
     ASSERT_TRUE(expecting_finished_);
     expecting_finished_ = false;
     ASSERT_TRUE(!did_finish_);

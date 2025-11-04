@@ -11,7 +11,8 @@ function(_qt_internal_sbom_record_system_library_usage target)
 
     set(opt_args "")
     set(single_args
-        TYPE
+        TYPE # deprecated
+        SBOM_ENTITY_TYPE
         PACKAGE_VERSION
         FRIENDLY_PACKAGE_NAME
     )
@@ -19,8 +20,10 @@ function(_qt_internal_sbom_record_system_library_usage target)
     cmake_parse_arguments(PARSE_ARGV 1 arg "${opt_args}" "${single_args}" "${multi_args}")
     _qt_internal_validate_all_args_are_parsed(arg)
 
-    if(NOT arg_TYPE)
-        message(FATAL_ERROR "TYPE must be set")
+    _qt_internal_map_sbom_entity_type(sbom_entity_type ${ARGN})
+
+    if(NOT sbom_entity_type)
+        message(FATAL_ERROR "SBOM_ENTITY_TYPE is empty for target '${target}', but it must be set")
     endif()
 
     # A package might be looked up more than once, make sure to record it once.
@@ -40,7 +43,7 @@ function(_qt_internal_sbom_record_system_library_usage target)
     # has started, e.g. during _qt_internal_find_third_party_dependencies.
     set(spdx_options
         ${target}
-        TYPE "${arg_TYPE}"
+        SBOM_ENTITY_TYPE "${sbom_entity_type}"
         PACKAGE_NAME "${arg_FRIENDLY_PACKAGE_NAME}"
     )
 
@@ -77,10 +80,7 @@ function(_qt_internal_sbom_record_system_library_spdx_ids)
         # kind of zstd build was done. Make sure to check if the target exists before recording it.
         if(TARGET "${target}")
             set(target_unaliased "${target}")
-            get_target_property(aliased_target "${target}" ALIASED_TARGET)
-            if(aliased_target)
-                set(target_unaliased ${aliased_target})
-            endif()
+            _qt_internal_dealias_target(target_unaliased)
 
             _qt_internal_sbom_record_system_library_spdx_id(${target_unaliased} ${args})
         else()
@@ -127,10 +127,7 @@ function(_qt_internal_sbom_add_recorded_system_libraries)
         # Some system targets like qtspeech SpeechDispatcher::SpeechDispatcher might be aliased,
         # and we can't set properties on them, so unalias the target name.
         set(target_original "${target}")
-        get_target_property(aliased_target "${target}" ALIASED_TARGET)
-        if(aliased_target)
-            set(target ${aliased_target})
-        endif()
+        _qt_internal_dealias_target(target)
 
         get_property(args GLOBAL PROPERTY
             _qt_internal_sbom_recorded_system_library_options_${target})

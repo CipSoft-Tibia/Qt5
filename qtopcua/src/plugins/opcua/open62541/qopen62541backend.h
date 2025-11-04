@@ -26,6 +26,8 @@ public Q_SLOTS:
     void disconnectFromEndpoint();
     void requestEndpoints(const QUrl &url);
 
+    void handleConnectionSettingsChanged(const QOpcUaConnectionSettings &settings);
+
     // Node functions
     void browse(quint64 handle, UA_NodeId id, const QOpcUaBrowseRequest &request);
     void readAttributes(quint64 handle, UA_NodeId id, QOpcUa::NodeAttributes attr, QString indexRange);
@@ -56,6 +58,7 @@ public Q_SLOTS:
     QOpen62541Subscription *getSubscription(const QOpcUaMonitoringParameters &settings);
     bool removeSubscription(UA_UInt32 subscriptionId);
     void iterateClient();
+    void triggerIterateClient();
     void handleSubscriptionTimeout(QOpen62541Subscription *sub, QList<QPair<quint64, QOpcUa::NodeAttribute>> items);
     void cleanupSubscriptions();
 
@@ -83,7 +86,6 @@ public Q_SLOTS:
 public:
     UA_Client *m_uaclient;
     QOpen62541Client *m_clientImpl;
-    bool m_useStateCallback;
     quint32 m_clientIterateInterval;
     quint32 m_asyncRequestTimeout;
 
@@ -110,8 +112,17 @@ private:
 
     void disconnectInternal(QOpcUaClient::ClientError error = QOpcUaClient::ClientError::NoError);
 
+#ifdef UA_ENABLE_ENCRYPTION
+    bool loadPrivateKeyWithPotentialPassword(const QString &privateKeyPath, UA_ByteString &privateKey);
+    UA_StatusCode setSecurityPolicyInClientConfig(UA_ClientConfig *conf, const UA_ByteString &cert, const UA_ByteString &key,
+                                                  const QOpcUaEndpointDescription &desc, const QString &additionalAuthSecurityPolicy);
+    UA_StatusCode setAuthSecurityPolicyInClientConfig(UA_ClientConfig *conf, const UA_ByteString &cert, const UA_ByteString &key,
+                                                      const QOpcUaEndpointDescription &desc, QOpcUaUserTokenPolicy::TokenType tokenType,
+                                                      QString *addedSecurityPolicyUri);
+#endif
+
     QTimer m_clientIterateTimer;
-    QTimer m_disconnectAfterStateChangeTimer;
+    QTimer m_clientIterateOnDemandTimer;
 
     QHash<quint32, QOpen62541Subscription *> m_subscriptions;
 
@@ -119,7 +130,9 @@ private:
 
     double m_minPublishingInterval;
 
-    const UA_Logger m_open62541Logger {open62541LogHandler, nullptr, nullptr};
+    UA_Logger m_open62541Logger {open62541LogHandler, nullptr, nullptr};
+
+    QOpcUaConnectionSettings m_currentConnectionSettings;
 
     // Async contexts
 

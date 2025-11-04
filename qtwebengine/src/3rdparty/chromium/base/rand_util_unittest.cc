@@ -2,6 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#ifdef UNSAFE_BUFFERS_BUILD
+// TODO(crbug.com/40284755): Remove this and spanify to fix the errors.
+#pragma allow_unsafe_buffers
+#endif
+
 #include "base/rand_util.h"
 
 #include <stddef.h>
@@ -134,7 +139,6 @@ TEST(RandUtilTest, RandBytes) {
 // Verify that calling base::RandBytes with an empty buffer doesn't fail.
 TEST(RandUtilTest, RandBytes0) {
   base::RandBytes(span<uint8_t>());
-  base::RandBytes(nullptr, 0);
 }
 
 TEST(RandUtilTest, RandBytesAsVector) {
@@ -255,10 +259,11 @@ TEST(RandUtilTest, DISABLED_RandBytesPerf) {
   const int kTestIterations = 10;
   const size_t kTestBufferSize = 1 * 1024 * 1024;
 
-  std::unique_ptr<uint8_t[]> buffer(new uint8_t[kTestBufferSize]);
+  std::array<uint8_t, kTestBufferSize> buffer;
   const base::TimeTicks now = base::TimeTicks::Now();
-  for (int i = 0; i < kTestIterations; ++i)
-    base::RandBytes(make_span(buffer.get(), kTestBufferSize));
+  for (int i = 0; i < kTestIterations; ++i) {
+    base::RandBytes(buffer);
+  }
   const base::TimeTicks end = base::TimeTicks::Now();
 
   LOG(INFO) << "RandBytes(" << kTestBufferSize
@@ -384,4 +389,53 @@ TEST(RandUtilTest, InsecureRandomGeneratorRandDouble) {
     EXPECT_LT(x, 1.);
   }
 }
+
+TEST(RandUtilTest, MetricsSubSampler) {
+  MetricsSubSampler sub_sampler;
+  int true_count = 0;
+  int false_count = 0;
+  for (int i = 0; i < 1000; ++i) {
+    if (sub_sampler.ShouldSample(0.5)) {
+      ++true_count;
+    } else {
+      ++false_count;
+    }
+  }
+
+  // Validate that during normal operation MetricsSubSampler::ShouldSample()
+  // does not always give the same result. It's technically possible to fail
+  // this test during normal operation but if the sampling is realistic it
+  // should happen about once every 2^999 times (the likelihood of the [1,999]
+  // results being the same as [0], which can be either). This should not make
+  // this test flaky in the eyes of automated testing.
+  EXPECT_GT(true_count, 0);
+  EXPECT_GT(false_count, 0);
+}
+
+TEST(RandUtilTest, MetricsSubSamplerTestingSupport) {
+  MetricsSubSampler sub_sampler;
+
+  // ScopedAlwaysSampleForTesting makes ShouldSample() return true with
+  // any probability.
+  {
+    MetricsSubSampler::ScopedAlwaysSampleForTesting always_sample;
+    for (int i = 0; i < 100; ++i) {
+      EXPECT_TRUE(sub_sampler.ShouldSample(0));
+      EXPECT_TRUE(sub_sampler.ShouldSample(0.5));
+      EXPECT_TRUE(sub_sampler.ShouldSample(1));
+    }
+  }
+
+  // ScopedNeverSampleForTesting makes ShouldSample() return true with
+  // any probability.
+  {
+    MetricsSubSampler::ScopedNeverSampleForTesting always_sample;
+    for (int i = 0; i < 100; ++i) {
+      EXPECT_FALSE(sub_sampler.ShouldSample(0));
+      EXPECT_FALSE(sub_sampler.ShouldSample(0.5));
+      EXPECT_FALSE(sub_sampler.ShouldSample(1));
+    }
+  }
+}
+
 }  // namespace base

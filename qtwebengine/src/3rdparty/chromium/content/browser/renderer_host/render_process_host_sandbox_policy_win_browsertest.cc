@@ -62,10 +62,12 @@ IN_PROC_BROWSER_TEST_F(SandboxDiagnosticsBrowserTest, Navigate) {
   EXPECT_TRUE(NavigateToURL(
       shell(), embedded_test_server()->GetURL("foo.com", "/title1.html")));
 
-  // Multiple renderer processes might have started. It is safe to hold this Pid
-  // here because no renderers can start or stop while on the UI thread.
-  base::ProcessId renderer_process_id =
-      contents()->GetPrimaryMainFrame()->GetProcess()->GetProcess().Pid();
+  // Duplicate the base::Process to keep a valid Windows handle to to the
+  // process open, this ensures that even if the RPH gets destroyed during the
+  // runloop below, the handle to the process remains valid, and the pid is
+  // never reused by Windows.
+  const auto renderer_process =
+      contents()->GetPrimaryMainFrame()->GetProcess()->GetProcess().Duplicate();
 
   base::RunLoop run_loop;
   base::Value out_args;
@@ -87,18 +89,17 @@ IN_PROC_BROWSER_TEST_F(SandboxDiagnosticsBrowserTest, Navigate) {
     ASSERT_TRUE(process);
     std::optional<double> pid = process->FindDouble("processId");
     ASSERT_TRUE(pid.has_value());
-    if (base::checked_cast<base::ProcessId>(pid.value()) != renderer_process_id)
+    if (base::checked_cast<base::ProcessId>(pid.value()) !=
+        renderer_process.Pid()) {
       continue;
+    }
     found_renderer = true;
-    auto* rules = process->FindDict("handlesToClose");
+    auto* rules = process->FindList("handlesToClose");
     ASSERT_TRUE(rules);
-
-    const base::Value::List* handles_to_close = rules->FindList("File");
-    ASSERT_TRUE(handles_to_close);
 
     // Validate that there are a couple of listed handle names to be sure there
     // is something in the rule.
-    for (const base::Value& opcode : *handles_to_close) {
+    for (const base::Value& opcode : *rules) {
       auto* value = opcode.GetIfString();
       ASSERT_TRUE(value);
       if (value->find("DeviceApi") != value->npos) {

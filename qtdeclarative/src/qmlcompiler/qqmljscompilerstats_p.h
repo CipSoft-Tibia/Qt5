@@ -22,6 +22,7 @@
 #include <private/qqmljsdiagnosticmessage_p.h>
 #include <private/qqmljssourcelocation_p.h>
 
+#include <chrono>
 #include <memory>
 
 QT_BEGIN_NAMESPACE
@@ -76,8 +77,8 @@ public:
     static bool recordAotStats() { return s_recordAotStats; }
     static void setRecordAotStats(bool recordAotStats) { s_recordAotStats = recordAotStats; }
 
-    static const QString &moduleId() { return s_moduleId; }
-    static void setModuleId(QString moduleId) { s_moduleId = moduleId; }
+    static QString moduleId() { return s_moduleId; }
+    static void setModuleId(const QString &moduleId) { s_moduleId = moduleId; }
 
     static void registerFile(const QString &filepath);
     static void addEntry(const QString &filepath, const QQmlJS::AotStatsEntry &entry);

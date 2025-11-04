@@ -1,5 +1,6 @@
 // Copyright (C) 2020 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant
 
 #ifndef QQMLDOM_FWD_P_H
 #define QQMLDOM_FWD_P_H
@@ -22,9 +23,10 @@ QT_BEGIN_NAMESPACE
 
 namespace QQmlJS {
 namespace Dom {
-
+namespace FileLocations {
+class Node;
+}
 class AstComments;
-class AttachedInfo;
 class Binding;
 class Comment;
 class CommentedElement;
@@ -41,7 +43,6 @@ class Export;
 class ExternalItemInfoBase;
 class ExternalItemPairBase;
 class ExternalOwningItem;
-class FileLocations;
 enum FileLocationRegion : int;
 class FileWriter;
 class GlobalComponent;

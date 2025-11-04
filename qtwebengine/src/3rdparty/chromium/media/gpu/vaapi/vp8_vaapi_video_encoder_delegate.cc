@@ -2,6 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#ifdef UNSAFE_BUFFERS_BUILD
+// TODO(crbug.com/40285824): Remove this and convert code to safer constructs.
+#pragma allow_unsafe_buffers
+#endif
+
 #include "media/gpu/vaapi/vp8_vaapi_video_encoder_delegate.h"
 
 #include <va/va.h>
@@ -35,10 +40,11 @@ constexpr uint8_t kMinQP = 4;
 // resolution (180p).
 constexpr uint8_t kMaxQP = 117;
 
-// WebRTC's default qp values are 15 and 106 for screen sharing, respectively,
-// Set smaller qp values for zero hertz tab sharing, which is triggered when qp
-// values are consecutively less than or equal to 15.
-constexpr uint8_t kScreenMinQP = 8;
+// WebRTC's default quantizer values are 12 and 56 for screen sharing,
+// respectively; the corresponding quantization parameters are 15 and 106 for
+// screen sharing. Set smaller min qp value, 12, for zero hertz tab sharing,
+// which is triggered when qp values are consecutively less than or equal to 15.
+constexpr uint8_t kScreenMinQP = 12;
 constexpr uint8_t kScreenMaxQP = 106;
 
 // Convert Qindex, whose range is 0-127, to the quantizer parameter used in
@@ -103,6 +109,7 @@ libvpx::VP8RateControlRtcConfig CreateRateControlConfig(
   rc_cfg.max_intra_bitrate_pct = MaxSizeOfKeyframeAsPercentage(
       rc_cfg.buf_optimal_sz, encode_params.framerate);
   rc_cfg.framerate = encode_params.framerate;
+  rc_cfg.is_screen = encode_params.is_screen;
 
   // Fill temporal layers variables.
   rc_cfg.ts_number_layers = num_temporal_layers;
@@ -282,7 +289,7 @@ bool VP8VaapiVideoEncoderDelegate::Initialize(
   }
 
   if (config.bitrate.mode() == Bitrate::Mode::kVariable) {
-    DVLOGF(1) << "Invalid configuraiton. VBR is not supported for VP8.";
+    DVLOGF(1) << "Invalid configuration. VBR is not supported for VP8.";
     return false;
   }
 
@@ -328,6 +335,7 @@ bool VP8VaapiVideoEncoderDelegate::Initialize(
       VideoEncodeAccelerator::Config::ContentType::kDisplay) {
     current_params_.min_qp = kScreenMinQP;
     current_params_.max_qp = kScreenMaxQP;
+    current_params_.is_screen = true;
   }
 
   current_params_.drop_frame_thresh = config.drop_frame_thresh_percentage;
@@ -341,9 +349,7 @@ bool VP8VaapiVideoEncoderDelegate::Initialize(
       return false;
   }
 
-  return UpdateRates(initial_bitrate_allocation,
-                     config.initial_framerate.value_or(
-                         VideoEncodeAccelerator::kDefaultFramerate));
+  return UpdateRates(initial_bitrate_allocation, config.framerate);
 }
 
 gfx::Size VP8VaapiVideoEncoderDelegate::GetCodedSize() const {
@@ -406,15 +412,11 @@ BitstreamBufferMetadata VP8VaapiVideoEncoderDelegate::GetMetadata(
     const EncodeJob& encode_job,
     size_t payload_size) {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
-  auto metadata =
-      VaapiVideoEncoderDelegate::GetMetadata(encode_job, payload_size);
-  CHECK(metadata.end_of_picture);
-  if (metadata.dropped_frame()) {
-    // BitstreamBufferMetadata should not have a codec specific metadata,
-    // when a frame is dropped.
-    return metadata;
-  }
-
+  CHECK(!encode_job.IsFrameDropped());
+  CHECK_NE(payload_size, 0u);
+  BitstreamBufferMetadata metadata(
+      payload_size, encode_job.IsKeyframeRequested(), encode_job.timestamp());
+  CHECK(metadata.end_of_picture());
   auto picture = GetVP8Picture(encode_job);
   DCHECK(picture);
   metadata.vp8 = picture->metadata_for_encoding;
@@ -532,11 +534,22 @@ VP8VaapiVideoEncoderDelegate::SetFrameHeader(
     DVLOGF(3) << "Drop frame";
     return PrepareEncodeJobResult::kDrop;
   }
-  picture.frame_hdr->quantization_hdr.y_ac_qi = rate_ctrl_->GetQP();
+  picture.frame_hdr->quantization_hdr.y_ac_qi =
+      base::checked_cast<uint8_t>(rate_ctrl_->GetQP());
+  libvpx::UVDeltaQP uv_delta_qp = rate_ctrl_->GetUVDeltaQP();
+  picture.frame_hdr->quantization_hdr.uv_dc_delta =
+      base::checked_cast<int8_t>(uv_delta_qp.uvdc_delta_q);
+  picture.frame_hdr->quantization_hdr.uv_ac_delta =
+      base::checked_cast<int8_t>(uv_delta_qp.uvac_delta_q);
   picture.frame_hdr->loopfilter_hdr.level =
       base::checked_cast<uint8_t>(rate_ctrl_->GetLoopfilterLevel());
+
   DVLOGF(4) << "qp="
             << static_cast<int>(picture.frame_hdr->quantization_hdr.y_ac_qi)
+            << ", uv_dc_delta="
+            << static_cast<int>(picture.frame_hdr->quantization_hdr.uv_dc_delta)
+            << ", uv_ac_delta="
+            << static_cast<int>(picture.frame_hdr->quantization_hdr.uv_ac_delta)
             << ", filter_level="
             << static_cast<int>(picture.frame_hdr->loopfilter_hdr.level)
             << (keyframe ? " (keyframe)" : "")
@@ -575,20 +588,20 @@ bool VP8VaapiVideoEncoderDelegate::SubmitFrameParameters(
 
   VAEncPictureParameterBufferVP8 pic_param = {};
 
-  pic_param.reconstructed_frame = pic->AsVaapiVP8Picture()->GetVASurfaceID();
+  pic_param.reconstructed_frame = pic->AsVaapiVP8Picture()->va_surface_id();
   DCHECK_NE(pic_param.reconstructed_frame, VA_INVALID_ID);
 
   auto last_frame = ref_frames.GetFrame(Vp8RefType::VP8_FRAME_LAST);
   pic_param.ref_last_frame =
-      last_frame ? last_frame->AsVaapiVP8Picture()->GetVASurfaceID()
+      last_frame ? last_frame->AsVaapiVP8Picture()->va_surface_id()
                  : VA_INVALID_ID;
   auto golden_frame = ref_frames.GetFrame(Vp8RefType::VP8_FRAME_GOLDEN);
   pic_param.ref_gf_frame =
-      golden_frame ? golden_frame->AsVaapiVP8Picture()->GetVASurfaceID()
+      golden_frame ? golden_frame->AsVaapiVP8Picture()->va_surface_id()
                    : VA_INVALID_ID;
   auto alt_frame = ref_frames.GetFrame(Vp8RefType::VP8_FRAME_ALTREF);
   pic_param.ref_arf_frame =
-      alt_frame ? alt_frame->AsVaapiVP8Picture()->GetVASurfaceID()
+      alt_frame ? alt_frame->AsVaapiVP8Picture()->va_surface_id()
                 : VA_INVALID_ID;
   pic_param.coded_buf = job.coded_buffer_id();
   DCHECK_NE(pic_param.coded_buf, VA_INVALID_ID);

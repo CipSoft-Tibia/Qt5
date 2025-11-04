@@ -21,6 +21,8 @@
 #include <QtCore/QQueue>
 #include <QtQuick3DUtils/private/qssgutils_p.h>
 
+#include <QtGui/qquaternion.h>
+
 QT_BEGIN_NAMESPACE
 
 class QPhysicsCommand;
@@ -77,6 +79,9 @@ public:
                        NOTIFY kinematicRotationChanged REVISION(6, 5));
     Q_PROPERTY(QVector3D kinematicPivot READ kinematicPivot WRITE setKinematicPivot NOTIFY
                        kinematicPivotChanged REVISION(6, 5));
+
+    Q_PROPERTY(bool isSleeping READ isSleeping WRITE setIsSleeping NOTIFY isSleepingChanged
+                       REVISION(6, 9));
 
     // clang-format off
 //    // ??? separate simulation control object? --- some of these have default values in the engine, so we need tristate
@@ -156,6 +161,9 @@ public:
     Q_REVISION(6, 5) void setKinematicPivot(const QVector3D &pivot);
     Q_REVISION(6, 5) QVector3D kinematicPivot() const;
 
+    Q_REVISION(6, 9) void setIsSleeping(bool newIsSleeping);
+    Q_REVISION(6, 9) bool isSleeping() const;
+
     QAbstractPhysXNode *createPhysXBackend() final;
 
 Q_SIGNALS:
@@ -174,6 +182,7 @@ Q_SIGNALS:
     Q_REVISION(6, 5) void kinematicRotationChanged(const QQuaternion &kinematicRotation);
     Q_REVISION(6, 5) void kinematicEulerRotationChanged(const QVector3D &kinematicEulerRotation);
     Q_REVISION(6, 5) void kinematicPivotChanged(const QVector3D &kinematicPivot);
+    Q_REVISION(6, 9) void isSleepingChanged(bool isSleeping);
 
 private:
     float m_mass = 1.f;
@@ -194,6 +203,7 @@ private:
     QVector3D m_kinematicPosition;
     RotationData m_kinematicRotation;
     QVector3D m_kinematicPivot;
+    bool m_isSleeping = false;
 };
 
 QT_END_NAMESPACE

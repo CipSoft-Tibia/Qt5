@@ -1,5 +1,6 @@
 // Copyright (C) 2018 Intel Corporation.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:data-parser
 
 #ifndef QCBORSTREAMREADER_H
 #define QCBORSTREAMREADER_H
@@ -10,6 +11,8 @@
 #include <QtCore/qscopedpointer.h>
 #include <QtCore/qstring.h>
 #include <QtCore/qstringview.h>
+
+#include <memory>
 
 QT_REQUIRE_CONFIG(cborstreamreader);
 
@@ -194,16 +197,11 @@ private:
     friend QCborStreamReaderPrivate;
     friend class QCborContainerPrivate;
     quint64 value64;
-    QScopedPointer<QCborStreamReaderPrivate> d;
+    std::unique_ptr<QCborStreamReaderPrivate> d;
     quint8 type_;
     quint8 reserved[3] = {};
 };
 
 QT_END_NAMESPACE
-
-#if defined(QT_X11_DEFINES_FOUND)
-#  define True  1
-#  define False 0
-#endif
 
 #endif // QCBORSTREAMREADER_H

@@ -255,6 +255,10 @@ void tst_lupdate::good_data()
         qDebug("clangcpp tests are skipped on linux arm64, see also QTBUG-127751");
         return;
     }
+    if (QSysInfo::kernelType() == "darwin"_L1) {
+        qDebug("clangcpp tests are skipped on macOS, see also QTBUG-130006 and QTBUG-130096");
+        return;
+    }
 
     // Add test rows for the clang-based lupdate
     ignoredTests = {
@@ -262,9 +266,11 @@ void tst_lupdate::good_data()
         "parsecontexts"_L1,
         "parsecpp"_L1,
         "parsecpp2",
+        "parsecpp_template"_L1,
         "parseqrc_json"_L1,
         "prefix"_L1,
         "preprocess"_L1,
+        "using_namespaces"_L1,
         "proparsing2"_L1, // llvm8 cannot handle file name without extension
         "respfile"_L1, //@lst not supported with the new parser yet (include not properly set in the compile_command.json)
         "cmdline_deeppath"_L1, //no project file, new parser does not support (yet) this way of launching lupdate

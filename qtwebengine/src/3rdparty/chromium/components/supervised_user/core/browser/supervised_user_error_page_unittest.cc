@@ -9,8 +9,8 @@
 #include "base/test/scoped_feature_list.h"
 #include "components/grit/components_resources.h"
 #include "components/strings/grit/components_strings.h"
+#include "components/supervised_user/core/browser/supervised_user_utils.h"
 #include "components/supervised_user/core/common/features.h"
-#include "components/supervised_user/core/common/supervised_user_utils.h"
 #include "testing/gmock/include/gmock/gmock.h"
 #include "testing/gtest/include/gtest/gtest-param-test.h"
 #include "testing/gtest/include/gtest/gtest.h"
@@ -32,7 +32,7 @@ TEST_P(SupervisedUserErrorPageTest_GetBlockMessageID, GetBlockMessageID) {
   BlockMessageIDTestParameter param = GetParam();
   EXPECT_EQ(param.expected_result,
             GetBlockMessageID(param.reason, param.single_parent))
-      << "reason = " << FilteringBehaviorReasonToString(param.reason)
+      << "reason = " << int(param.reason)
       << " single parent = " << param.single_parent;
 }
 
@@ -58,8 +58,7 @@ INSTANTIATE_TEST_SUITE_P(GetBlockMessageIDParameterized,
 
 struct BuildHtmlTestParameter {
   bool allow_access_requests;
-  // These fields are not a raw_ref<> because they were filtered by the rewriter
-  // for: #constexpr-ctor-field-initializer, global-scope
+  // RAW_PTR_EXCLUSION: #global-scope
   RAW_PTR_EXCLUSION const std::string& profile_image_url;
   RAW_PTR_EXCLUSION const std::string& profile_image_url2;
   RAW_PTR_EXCLUSION const std::string& custodian;

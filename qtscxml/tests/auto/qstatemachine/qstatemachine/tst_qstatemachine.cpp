@@ -17,10 +17,8 @@
 #include "qstate.h"
 #include "qhistorystate.h"
 #include "qsignaltransition.h"
-#if QT_CONFIG(qeventtransition)
 #include "qkeyeventtransition.h"
 #include "qmouseeventtransition.h"
-#endif
 #include "private/qstate_p.h"
 #include "private/qstatemachine_p.h"
 

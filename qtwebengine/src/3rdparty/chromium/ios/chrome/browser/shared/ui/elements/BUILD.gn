@@ -4,8 +4,12 @@
 
 source_set("elements") {
   sources = [
+    "branded_navigation_item_title_view.h",
+    "branded_navigation_item_title_view.mm",
     "crossfade_label.h",
     "crossfade_label.mm",
+    "custom_highlight_button.h",
+    "custom_highlight_button.mm",
     "extended_touch_target_button.h",
     "extended_touch_target_button.mm",
     "fade_truncating_label+Testing.h",
@@ -41,6 +45,7 @@ source_set("elements") {
     "//ios/chrome/common/ui/colors",
     "//ios/chrome/common/ui/util",
     "//ios/chrome/common/ui/util:dynamic_type_util",
+    "//ios/public/provider/chrome/browser/font:font_api",
     "//ios/third_party/material_components_ios",
     "//ui/base",
   ]
@@ -84,7 +89,7 @@ source_set("unit_tests") {
     "//base",
     "//base/test:test_support",
     "//ios/chrome/browser/shared/model/browser/test:test_support",
-    "//ios/chrome/browser/shared/model/browser_state:test_support",
+    "//ios/chrome/browser/shared/model/profile/test",
     "//ios/chrome/browser/shared/public/features",
     "//ios/chrome/common/ui/colors",
     "//ios/chrome/test:test_support",

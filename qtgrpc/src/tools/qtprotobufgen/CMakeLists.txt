@@ -21,8 +21,8 @@ qt_internal_add_tool(${target_name}
     EXTRA_CMAKE_INCLUDES
         "${QT_CMAKE_EXPORT_NAMESPACE}ProtobufToolsMacros.cmake"
     LIBRARIES
-        WrapProtobuf::WrapLibProtobuf
-        WrapProtobuf::WrapLibProtoc
+        protobuf::libprotobuf
+        protobuf::libprotoc
         QtProtocCommon
     ATTRIBUTION_FILE_DIR_PATHS
         ../../../

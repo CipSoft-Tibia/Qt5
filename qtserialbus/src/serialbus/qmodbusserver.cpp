@@ -1,5 +1,6 @@
 // Copyright (C) 2017 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:data-parser
 
 #include "qmodbusdeviceidentification.h"
 #include "qmodbusserver.h"
@@ -677,7 +678,7 @@ QModbusResponse QModbusServerPrivate::readBits(const QModbusPdu &request,
                                                QModbusDataUnit::RegisterType unitType)
 {
     CHECK_SIZE_EQUALS(request);
-    quint16 address, count;
+    quint16 address = 0, count = 0;
     request.decodeData(&address, &count);
 
     if ((count < 0x0001) || (count > 0x07D0)) {
@@ -725,7 +726,7 @@ QModbusResponse QModbusServerPrivate::readBytes(const QModbusPdu &request,
                                                 QModbusDataUnit::RegisterType unitType)
 {
     CHECK_SIZE_EQUALS(request);
-    quint16 address, count;
+    quint16 address = 0, count = 0;
     request.decodeData(&address, &count);
 
     if ((count < 0x0001) || (count > 0x007D)) {
@@ -757,7 +758,7 @@ QModbusResponse QModbusServerPrivate::writeSingle(const QModbusPdu &request,
                                                   QModbusDataUnit::RegisterType unitType)
 {
     CHECK_SIZE_EQUALS(request);
-    quint16 address, value;
+    quint16 address = 0, value = 0xffff;
     request.decodeData(&address, &value);
 
     if ((unitType == QModbusDataUnit::Coils) && ((value != Coil::Off) && (value != Coil::On))) {
@@ -816,7 +817,7 @@ QModbusResponse QModbusServerPrivate::processDiagnosticsRequest(const QModbusReq
         } \
     } while (0)
 
-    quint16 subFunctionCode, data = 0xffff;
+    quint16 subFunctionCode = 0xffff, data = 0xffff;
     request.decodeData(&subFunctionCode, &data);
 
     switch (subFunctionCode) {
@@ -924,8 +925,8 @@ QModbusResponse QModbusServerPrivate::processGetCommEventLogRequest(const QModbu
 QModbusResponse QModbusServerPrivate::processWriteMultipleCoilsRequest(const QModbusRequest &request)
 {
     CHECK_SIZE_LESS_THAN(request);
-    quint16 address, numberOfCoils;
-    quint8 byteCount;
+    quint16 address = 0, numberOfCoils = 0;
+    quint8 byteCount = 0;
     request.decodeData(&address, &numberOfCoils, &byteCount);
 
     // byte count does not match number of data bytes following
@@ -977,8 +978,8 @@ QModbusResponse QModbusServerPrivate::processWriteMultipleRegistersRequest(
     const QModbusRequest &request)
 {
     CHECK_SIZE_LESS_THAN(request);
-    quint16 address, numberOfRegisters;
-    quint8 byteCount;
+    quint16 address = 0, numberOfRegisters = 0;
+    quint8 byteCount = 0;
     request.decodeData(&address, &numberOfRegisters, &byteCount);
 
     // byte count does not match number of data bytes following or register count
@@ -1051,7 +1052,7 @@ QModbusResponse QModbusServerPrivate::processReportServerIdRequest(const QModbus
 QModbusResponse QModbusServerPrivate::processMaskWriteRegisterRequest(const QModbusRequest &request)
 {
     CHECK_SIZE_EQUALS(request);
-    quint16 address, andMask, orMask;
+    quint16 address = 0, andMask = 0xffff, orMask = 0;
     request.decodeData(&address, &andMask, &orMask);
 
     quint16 reg;
@@ -1072,8 +1073,8 @@ QModbusResponse QModbusServerPrivate::processReadWriteMultipleRegistersRequest(
     const QModbusRequest &request)
 {
     CHECK_SIZE_LESS_THAN(request);
-    quint16 readStartAddress, readQuantity, writeStartAddress, writeQuantity;
-    quint8 byteCount;
+    quint16 readStartAddress = 0, readQuantity = 0, writeStartAddress = 0, writeQuantity = 0;
+    quint8 byteCount = 0;
     request.decodeData(&readStartAddress, &readQuantity,
                        &writeStartAddress, &writeQuantity, &byteCount);
 
@@ -1130,7 +1131,7 @@ QModbusResponse QModbusServerPrivate::processReadWriteMultipleRegistersRequest(
 QModbusResponse QModbusServerPrivate::processReadFifoQueueRequest(const QModbusRequest &request)
 {
     CHECK_SIZE_LESS_THAN(request);
-    quint16 address;
+    quint16 address = 0;
     request.decodeData(&address);
 
     quint16 fifoCount;
@@ -1158,7 +1159,7 @@ QModbusResponse QModbusServerPrivate::processEncapsulatedInterfaceTransportReque
                                                                      const QModbusRequest &request)
 {
     CHECK_SIZE_LESS_THAN(request);
-    quint8 MEIType;
+    quint8 MEIType = 0;
     request.decodeData(&MEIType);
 
     switch (MEIType) {
@@ -1184,7 +1185,7 @@ QModbusResponse QModbusServerPrivate::processEncapsulatedInterfaceTransportReque
                     QModbusExceptionResponse::ServerDeviceFailure);
             }
 
-            quint8 readDeviceIdCode, objectId;
+            quint8 readDeviceIdCode = 0, objectId = 0;
             request.decodeData(&MEIType, &readDeviceIdCode, &objectId);
             if (!objectPool.contains(objectId)) {
                 // Individual access requires the object Id to be present, so we will always fail.

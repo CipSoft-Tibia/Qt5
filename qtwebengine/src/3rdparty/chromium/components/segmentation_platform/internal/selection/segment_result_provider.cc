@@ -276,7 +276,9 @@ void SegmentResultProviderImpl::ExecuteModelAndGetScore(
   if (!segment_info) {
     VLOG(1) << __func__ << ": segment="
             << SegmentId_Name(request_state->options->segment_id)
-            << " default segment info not available";
+            << (model_source == ModelSource::SERVER_MODEL_SOURCE ? " server"
+                                                                 : " default")
+            << " segment info not available";
     auto state = model_source == ModelSource::SERVER_MODEL_SOURCE
                      ? ResultState::kServerModelSegmentInfoNotAvailable
                      : ResultState::kDefaultModelSegmentInfoNotAvailable;
@@ -371,7 +373,7 @@ void SegmentResultProviderImpl::OnModelExecuted(
   if (request_state->options->save_results_to_db) {
     segment_database_->SaveSegmentResult(
         segment_id, model_source,
-        success ? absl::make_optional(prediction_result) : absl::nullopt,
+        success ? std::make_optional(prediction_result) : std::nullopt,
         base::BindOnce(&SegmentResultProviderImpl::OnSavedSegmentResult,
                        weak_ptr_factory_.GetWeakPtr(),
                        segment_info->segment_id(), std::move(request_state),

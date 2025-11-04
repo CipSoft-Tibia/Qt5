@@ -2,6 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#ifdef UNSAFE_BUFFERS_BUILD
+// TODO(crbug.com/350788890): Remove this and spanify to fix the errors.
+#pragma allow_unsafe_buffers
+#endif
+
 #include "base/check.h"
 #include "base/cpu_reduction_experiment.h"
 #include "url/url_canon.h"
@@ -40,7 +45,7 @@ const unsigned char kHostCharLookup[0x80] = {
 // https://url.spec.whatwg.org/#forbidden-host-code-point
 const uint8_t kForbiddenHost = 0x1;
 
-// TODO(crbug.com/1416006): Merge other lookup tables into this table. That can
+// TODO(crbug.com/40063064): Merge other lookup tables into this table. That can
 // be probably done after https://crbug.com/1416013 is resolved.
 //
 // This table is currently only used for an opaque-host in non-special URLs.
@@ -509,15 +514,25 @@ void DoHost(const CHAR* spec,
             CanonHostInfo& host_info) {
   // URL Standard: https://url.spec.whatwg.org/#host-parsing
 
+  // Keep track of output's initial length, so we can rewind later.
+  const int output_begin = output.length();
+
   if (host.is_empty()) {
     // Empty hosts don't need anything.
     host_info.family = CanonHostInfo::NEUTRAL;
-    host_info.out_host = Component();
+    // Carry over the valid empty host for non-special URLs.
+    //
+    // Component(0, 0) should be considered invalid here for historical reasons.
+    //
+    // TODO(crbug.com/40063064): Update the callers so that they don't pass
+    // Component(0, 0) as an invalid `host`.
+    if (host.begin != 0 && host.len == 0) {
+      host_info.out_host = Component(output_begin, 0);
+    } else {
+      host_info.out_host = Component();
+    }
     return;
   }
-
-  // Keep track of output's initial length, so we can rewind later.
-  const int output_begin = output.length();
 
   bool success;
   if constexpr (canon_mode == CanonMode::kSpecialURL) {

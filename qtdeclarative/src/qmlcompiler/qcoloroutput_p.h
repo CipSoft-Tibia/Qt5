@@ -84,6 +84,9 @@ public:
                               const QString &prefix = QString());
     QString colorify(QStringView message, int color = -1) const;
 
+    void flushBuffer();
+    void discardBuffer();
+
 private:
     QScopedPointer<QColorOutputPrivate> d;
     Q_DISABLE_COPY_MOVE(QColorOutput)

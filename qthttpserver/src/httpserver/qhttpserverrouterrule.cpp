@@ -1,5 +1,6 @@
 // Copyright (C) 2019 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include <QtHttpServer/qhttpserverrouterrule.h>
 #include <QtHttpServer/qhttpserverresponder.h>
@@ -15,7 +16,7 @@
 
 QT_BEGIN_NAMESPACE
 
-Q_LOGGING_CATEGORY(lcRouterRule, "qt.httpserver.router.rule")
+Q_STATIC_LOGGING_CATEGORY(lcRouterRule, "qt.httpserver.router.rule")
 
 /*!
     \class QHttpServerRouterRule
@@ -35,36 +36,36 @@ Q_LOGGING_CATEGORY(lcRouterRule, "qt.httpserver.router.rule")
     the paths for which it can provide a response through its handler. The path
     can contain placeholders that are forwarded to the rule's handler. The
     following examples of path patterns are shown with the \l
-    QHttpServer::route convenience method, but can also be provided to the
+    QHttpServer::route() convenience method, but can also be provided to the
     QHttpServerRouterRule constructor.
 
-    In the simplest case the path is a string with a leading "/":
+    In the simplest case the path is a string with a leading \c "/":
     \code
     QHttpServer server;
     server.route("/user", [] () { return "hello user"; } );
     \endcode
-    This path pattern creates a rule that forwards all requests with "/user"
-    to the provided hanlder, which in this case is a simple lambda (Note that
-    the handler syntax would look different when using QHttpServerRouterRule
-    directly, see below).
+    This path pattern creates a rule that forwards all requests with \c
+    "/user" to the provided handler, which in this case is a simple lambda
+    (Note that the handler syntax would look different when using
+    QHttpServerRouterRule directly, see below).
 
-    The path pattern can further contain a trailing "/" to create a rule that
-    addresses a collection of paths with arguments after the trailing "/". The
-    argument will be forwarded to the Rule as a \l QRegularExpressionMatch.
-    Using the QHttpServer::route convenience method the argument is directly
-    forwarded to the lambda:
+    The path pattern can further contain a trailing \c "/" to create a rule
+    that addresses a collection of paths with arguments after the trailing
+    \c "/". Using the QHttpServer::route convenience method the argument is
+    directly forwarded to the lambda:
     \code
     server.route("/user/", [] ( qint64 id ) { return "hello user"; } );
     \endcode
-    This would match the request urls "/user/1", "/user/2" and so on.
+    This would match the request paths \c "/user/1", \c "/user/2" and so on.
 
-    The argument can be posititioned freely with the path pattern by using the
-    "<arg>" placeholder. This keyword further allows multiple placeholder.
+    The argument can be positioned freely within the path pattern by using
+    the \c "<arg>" placeholder. This keyword further allows multiple
+    placeholders.
     \code
     server.route("/user/<arg>/history", [] (qint64 id){ return "hello user"; } );
     server.route("/user/<arg>/history/", [] (qint64 id, qint64 page){ return "hello user"; } );
     \endcode
-    This would, for example, match the request url "/user/1/history/2".
+    This would, for example, match the request path \c "/user/1/history/2".
     All types which are registered in \l QHttpServerRouter::converters() can be
     used in the callback and the respective placeholder.
 
@@ -120,7 +121,7 @@ Q_LOGGING_CATEGORY(lcRouterRule, "qt.httpserver.router.rule")
     \note This is a low level API, see \l QHttpServer for higher level alternatives.
 
     \note Regular expressions in the path pattern are not supported, but
-    can be registered (to match a use of "<arg>" to a specific type) using
+    can be registered (to match a use of \c "<arg>" to a specific type) using
     \l QHttpServerRouter::addConverter().
 */
 
@@ -158,7 +159,7 @@ Q_LOGGING_CATEGORY(lcRouterRule, "qt.httpserver.router.rule")
 
     Constructs a rule for \a pathPattern, \a methods and connects it to \a
     receiver and \a slot. The \a slot can also be a function pointer,
-    non-mutable lambda, or any other copiable callable with const call
+    non-mutable lambda, or any other copyable callable with const call
     operator. In that case the \a receiver will be a context object. The
     handler will be valid until the receiver object is destroyed.
 
@@ -174,7 +175,7 @@ Q_LOGGING_CATEGORY(lcRouterRule, "qt.httpserver.router.rule")
     Constructs a rule for \a pathPattern, \l
     QHttpServerRequest::Method::AnyKnown and connects it to \a receiver and \a
     slot. The \a slot can also be a function pointer, non-mutable lambda, or
-    any other copiable callable with const call operator. In that case the \a
+    any other copyable callable with const call operator. In that case the \a
     receiver will be a context object. The handler will be valid until the
     receiver object is destroyed.
 */

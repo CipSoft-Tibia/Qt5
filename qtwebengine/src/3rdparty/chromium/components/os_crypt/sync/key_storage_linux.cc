@@ -78,7 +78,7 @@ constexpr BackendUsage SelectedBackendToMetric(
     case os_crypt::SelectedLinuxBackend::KWALLET6:
       return used ? BackendUsage::kKwallet6 : BackendUsage::kKwallet6Failed;
   }
-  NOTREACHED();
+  NOTREACHED_IN_MIGRATION();
   return BackendUsage::kDeferFailed;
 }
 
@@ -98,7 +98,7 @@ const char* SelectedLinuxBackendToString(
     case os_crypt::SelectedLinuxBackend::KWALLET6:
       return "KWALLET6";
   }
-  NOTREACHED();
+  NOTREACHED_IN_MIGRATION();
   return nullptr;
 }
 
@@ -118,7 +118,7 @@ std::unique_ptr<KeyStorageLinux> KeyStorageLinux::CreateService(
   VLOG(1) << "Selected backend for OSCrypt: "
           << SelectedLinuxBackendToString(selected_backend);
 
-  // TODO(crbug.com/782851) Schedule the initialisation on each backend's
+  // TODO(crbug.com/40548841) Schedule the initialisation on each backend's
   // favourite thread.
 
   // Try initializing the selected backend.
@@ -217,7 +217,7 @@ bool KeyStorageLinux::WaitForInitOnTaskRunner() {
   return success;
 }
 
-absl::optional<std::string> KeyStorageLinux::GetKey() {
+std::optional<std::string> KeyStorageLinux::GetKey() {
   base::ScopedAllowBaseSyncPrimitivesOutsideBlockingScope allow_sync_primitives;
   base::SequencedTaskRunner* task_runner = GetTaskRunner();
 
@@ -229,7 +229,7 @@ absl::optional<std::string> KeyStorageLinux::GetKey() {
   base::WaitableEvent password_loaded(
       base::WaitableEvent::ResetPolicy::MANUAL,
       base::WaitableEvent::InitialState::NOT_SIGNALED);
-  absl::optional<std::string> password;
+  std::optional<std::string> password;
   task_runner->PostTask(
       FROM_HERE,
       base::BindOnce(&KeyStorageLinux::BlockOnGetKeyImplThenSignal,
@@ -244,7 +244,7 @@ base::SequencedTaskRunner* KeyStorageLinux::GetTaskRunner() {
 
 void KeyStorageLinux::BlockOnGetKeyImplThenSignal(
     base::WaitableEvent* on_password_received,
-    absl::optional<std::string>* password) {
+    std::optional<std::string>* password) {
   *password = GetKeyImpl();
   on_password_received->Signal();
 }

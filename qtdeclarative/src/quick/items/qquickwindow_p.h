@@ -148,6 +148,8 @@ public:
     void clearFocusObject() override;
     void setFocusToTarget(FocusTarget, Qt::FocusReason) override;
 
+    void maybeSynthesizeContextMenuEvent(QMouseEvent *event) override;
+
     void dirtyItem(QQuickItem *);
     void cleanup(QSGNode *);
 
@@ -242,15 +244,6 @@ public:
     static bool defaultAlphaBuffer;
     static QQuickWindow::TextRenderType textRenderType;
 
-    // vvv currently in use in Controls 2; TODO remove
-    static bool dragOverThreshold(qreal d, Qt::Axis axis, const QEventPoint *tp, int startDragThreshold = -1)
-    { return QQuickDeliveryAgentPrivate::dragOverThreshold(d, axis, *tp, startDragThreshold); }
-    static bool dragOverThreshold(qreal d, Qt::Axis axis, QMouseEvent *event, int startDragThreshold = -1)
-    { return QQuickDeliveryAgentPrivate::dragOverThreshold(d, axis, event, startDragThreshold); }
-    void clearFocusInScope(QQuickItem *scope, QQuickItem *item, Qt::FocusReason reason)
-    { deliveryAgentPrivate()->clearFocusInScope(scope, item, reason); }
-    // ^^^ currently in use in Controls 2; TODO remove
-
     // data property
     static void data_append(QQmlListProperty<QObject> *, QObject *);
     static qsizetype data_count(QQmlListProperty<QObject> *);
@@ -286,6 +279,7 @@ public:
     uint updatesEnabled : 1;
     bool pendingFontUpdate = false;
     bool windowEventDispatch = false;
+    bool rmbContextMenuEventEnabled = false; // true after right-mouse press, false when menu opened
     QPointer<QQuickPalette> windowPaletteRef;
 
 private:

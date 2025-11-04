@@ -4,17 +4,18 @@
 
 from __future__ import annotations
 
-import pathlib
 from typing import TYPE_CHECKING, cast
 
 from crossbench import helper
 from crossbench.browsers.chromium.chromium import Chromium
 from crossbench.probes.chromium_probe import ChromiumProbe
 from crossbench.probes.probe import ProbeContext, ResultLocation
-from crossbench.probes.results import BrowserProbeResult, LocalProbeResult, ProbeResult
+from crossbench.probes.results import (BrowserProbeResult, LocalProbeResult,
+                                       ProbeResult)
 
 if TYPE_CHECKING:
   from crossbench.browsers.browser import Browser
+  from crossbench.path import RemotePath
   from crossbench.runner.run import Run
 
 
@@ -41,11 +42,11 @@ class V8TurbolizerProbe(ChromiumProbe):
 class V8TurbolizerProbeContext(ProbeContext[V8TurbolizerProbe]):
 
   @property
-  def results_dir(self) -> pathlib.Path:
+  def results_dir(self) -> RemotePath:
     # Put v8.turbolizer files into separate dirs in case we have
     # multiple isolates
     turbolizer_log_dir = super().result_path
-    turbolizer_log_dir.mkdir(exist_ok=True)
+    self.browser_platform.mkdir(turbolizer_log_dir, exist_ok=True)
     return turbolizer_log_dir
 
   def setup(self) -> None:
@@ -59,13 +60,13 @@ class V8TurbolizerProbeContext(ProbeContext[V8TurbolizerProbe]):
   def stop(self) -> None:
     pass
 
-  def tear_down(self) -> ProbeResult:
-    log_dir = self.result_path.parent
+  def teardown(self) -> ProbeResult:
+    log_dir = self.local_result_path.parent
     # Copy the files from a potentially remote browser to a the local result
     # dir.
     result: BrowserProbeResult = self.browser_result(file=(log_dir,))
     local_log_dir = result.file
-    assert local_log_dir.is_dir
+    assert local_log_dir.is_dir()
     # Sort files locally after transferring them.
     log_files = helper.sort_by_file_size(local_log_dir.glob("*"))
-    return LocalProbeResult(file=(log_files))
+    return LocalProbeResult(file=log_files)

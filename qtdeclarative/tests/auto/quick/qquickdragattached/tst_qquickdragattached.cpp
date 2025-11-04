@@ -1,10 +1,11 @@
 // Copyright (C) 2022 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
-#include <QtTest/QtTest>
+#include <QtTest/QTest>
 #include <QtTest/QSignalSpy>
 #include <QtQuick/qquickwindow.h>
 #include <QtQuick/private/qquickdrag_p_p.h>
+#include <QtQml/qqmlcontext.h>
 
 #include <QtQuickTestUtils/private/qmlutils_p.h>
 
@@ -132,7 +133,11 @@ void tst_QQuickDragAttached::imageSourceSize()
     QFETCH(QSize, expectedSourceSize);
     QFETCH(QSize, expectedImageSize);
 
-    QQuickDragAttached attached(nullptr);
+    QQmlEngine engine;
+    QQmlContext ctx(&engine);
+    QQuickItem attachee;
+    QQuickDragAttached attached(&attachee);
+    engine.setContextForObject(&attachee, &ctx);
     QSignalSpy spy(&attached, &QQuickDragAttached::imageSourceSizeChanged);
 
     if (sizeFirst)

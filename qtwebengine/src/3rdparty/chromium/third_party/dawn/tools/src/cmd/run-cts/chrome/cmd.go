@@ -38,6 +38,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 
 	"dawn.googlesource.com/dawn/tools/src/cmd/run-cts/common"
 	"dawn.googlesource.com/dawn/tools/src/fileutils"
@@ -196,9 +197,9 @@ func (c *cmd) runChromeInstance(
 	handler.HandleFunc("/test_page.html", serveFile("webgpu-cts/test_page.html"))
 	handler.HandleFunc("/test_runner.js", serveFile("webgpu-cts/test_runner.js"))
 	handler.HandleFunc("/third_party/webgpu-cts/resources/",
-		serveDir("/third_party/webgpu-cts/resources/", "third_party/webgpu-cts/out/resources/"))
+		serveDir("/third_party/webgpu-cts/resources/", c.flags.CTS+"/out/resources/"))
 	handler.HandleFunc("/third_party/webgpu-cts/src/",
-		serveDir("/third_party/webgpu-cts/src/", "third_party/webgpu-cts/out/"))
+		serveDir("/third_party/webgpu-cts/src/", c.flags.CTS+"/out/"))
 	handler.HandleFunc("/", websocket.Handler(func(ws *websocket.Conn) {
 		go func() {
 			d := json.NewDecoder(ws)
@@ -287,7 +288,7 @@ nextTestCase:
 		requests <- Request{Query: string(res.TestCase)}
 
 		for {
-			// TODO(bclayton): Implement timeouts, browser restarting.
+			// Future enhancements: Timeouts, browser restarting.
 			select {
 			case response := <-responses:
 				switch response.Type {
@@ -299,6 +300,7 @@ nextTestCase:
 				case "TEST_HEARTBEAT":
 				case "TEST_STATUS":
 					res.Status = common.Status(response.Status)
+					res.Duration = time.Duration(response.Duration) * time.Millisecond
 				case "TEST_FINISHED":
 					results <- res
 					continue nextTestCase
@@ -334,9 +336,8 @@ func serveFile(relPath string) func(http.ResponseWriter, *http.Request) {
 }
 
 func serveDir(remote, local string) func(http.ResponseWriter, *http.Request) {
-	dawnRoot := fileutils.DawnRoot()
 	return func(w http.ResponseWriter, r *http.Request) {
-		fullPath := filepath.Join(dawnRoot, local, strings.TrimPrefix(r.URL.Path, remote))
+		fullPath := filepath.Join(local, strings.TrimPrefix(r.URL.Path, remote))
 		if !fileutils.IsFile(fullPath) {
 			log.Printf("'%v' file does not exist", fullPath)
 		}

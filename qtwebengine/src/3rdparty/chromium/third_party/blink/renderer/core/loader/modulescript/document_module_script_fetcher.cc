@@ -8,6 +8,7 @@
 #include "third_party/blink/public/mojom/script/script_type.mojom-blink-forward.h"
 #include "third_party/blink/public/mojom/script/script_type.mojom-shared.h"
 #include "third_party/blink/renderer/bindings/core/v8/script_streamer.h"
+#include "third_party/blink/renderer/core/execution_context/execution_context.h"
 #include "third_party/blink/renderer/core/inspector/console_message.h"
 #include "third_party/blink/renderer/core/loader/resource/script_resource.h"
 #include "third_party/blink/renderer/core/script/pending_script.h"
@@ -19,8 +20,10 @@
 namespace blink {
 
 DocumentModuleScriptFetcher::DocumentModuleScriptFetcher(
+    ExecutionContext* execution_context,
     base::PassKey<ModuleScriptLoader> pass_key)
-    : ModuleScriptFetcher(pass_key) {}
+    : ModuleScriptFetcher(pass_key),
+      ExecutionContextClient(execution_context) {}
 
 void DocumentModuleScriptFetcher::Fetch(
     FetchParameters& fetch_params,
@@ -43,9 +46,14 @@ void DocumentModuleScriptFetcher::Fetch(
       kNoCompileHintsProducer = nullptr;
   constexpr v8_compile_hints::V8CrowdsourcedCompileHintsConsumer*
       kNoCompileHintsConsumer = nullptr;
+  const bool v8_compile_hints_magic_comment_runtime_enabled =
+      RuntimeEnabledFeatures::JavaScriptCompileHintsMagicRuntimeEnabled(
+          GetExecutionContext());
   ScriptResource::Fetch(fetch_params, fetch_client_settings_object_fetcher,
-                        this, streaming_allowed, kNoCompileHintsProducer,
-                        kNoCompileHintsConsumer);
+                        this, GetExecutionContext()->GetIsolate(),
+                        streaming_allowed, kNoCompileHintsProducer,
+                        kNoCompileHintsConsumer,
+                        v8_compile_hints_magic_comment_runtime_enabled);
 }
 
 void DocumentModuleScriptFetcher::NotifyFinished(Resource* resource) {
@@ -64,7 +72,7 @@ void DocumentModuleScriptFetcher::NotifyFinished(Resource* resource) {
   // Check if we can use the script streamer.
   ScriptStreamer* streamer;
   ScriptStreamer::NotStreamingReason not_streamed_reason;
-  std::tie(streamer, not_streamed_reason) = ResourceScriptStreamer::TakeFrom(
+  std::tie(streamer, not_streamed_reason) = ScriptStreamer::TakeFrom(
       script_resource, mojom::blink::ScriptType::kModule);
 
   ScriptStreamer::RecordStreamingHistogram(ScriptSchedulingType::kAsync,
@@ -104,6 +112,7 @@ void DocumentModuleScriptFetcher::Trace(Visitor* visitor) const {
   ModuleScriptFetcher::Trace(visitor);
   visitor->Trace(client_);
   ResourceClient::Trace(visitor);
+  ExecutionContextClient::Trace(visitor);
 }
 
 }  // namespace blink

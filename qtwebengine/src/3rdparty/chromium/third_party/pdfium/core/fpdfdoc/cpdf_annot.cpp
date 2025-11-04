@@ -9,6 +9,7 @@
 #include <algorithm>
 #include <utility>
 
+#include "build/build_config.h"
 #include "constants/annotation_common.h"
 #include "constants/annotation_flags.h"
 #include "core/fpdfapi/page/cpdf_form.h"
@@ -23,11 +24,11 @@
 #include "core/fpdfapi/render/cpdf_rendercontext.h"
 #include "core/fpdfapi/render/cpdf_renderoptions.h"
 #include "core/fpdfdoc/cpdf_generateap.h"
+#include "core/fxcrt/check.h"
 #include "core/fxge/cfx_fillrenderoptions.h"
 #include "core/fxge/cfx_graphstatedata.h"
 #include "core/fxge/cfx_path.h"
 #include "core/fxge/cfx_renderdevice.h"
-#include "third_party/base/check.h"
 
 namespace {
 
@@ -225,9 +226,9 @@ void CPDF_Annot::SetPopupAnnotOpenState(bool bOpenState) {
     m_pPopupAnnot->SetOpenState(bOpenState);
 }
 
-absl::optional<CFX_FloatRect> CPDF_Annot::GetPopupAnnotRect() const {
+std::optional<CFX_FloatRect> CPDF_Annot::GetPopupAnnotRect() const {
   if (!m_pPopupAnnot)
-    return absl::nullopt;
+    return std::nullopt;
   return m_pPopupAnnot->GetRect();
 }
 
@@ -467,13 +468,19 @@ void CPDF_Annot::DrawBorder(CFX_RenderDevice* pDevice,
   if (annot_flags & pdfium::annotation_flags::kHidden)
     return;
 
-  bool bPrinting = pDevice->GetDeviceType() == DeviceType::kPrinter;
-  if (bPrinting && (annot_flags & pdfium::annotation_flags::kPrint) == 0) {
+#if BUILDFLAG(IS_WIN)
+  bool is_printing = pDevice->GetDeviceType() == DeviceType::kPrinter;
+  if (is_printing && (annot_flags & pdfium::annotation_flags::kPrint) == 0) {
     return;
   }
-  if (!bPrinting && (annot_flags & pdfium::annotation_flags::kNoView)) {
+#else
+  const bool is_printing = false;
+#endif
+
+  if (!is_printing && (annot_flags & pdfium::annotation_flags::kNoView)) {
     return;
   }
+
   RetainPtr<const CPDF_Dictionary> pBS = m_pAnnotDict->GetDictFor("BS");
   char style_char;
   float width;

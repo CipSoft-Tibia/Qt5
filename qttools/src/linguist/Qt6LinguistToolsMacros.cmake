@@ -318,7 +318,7 @@ set(lupdate_subproject_count ${targets_length})
         set(sources "$<FILTER:$<TARGET_PROPERTY:${target},SOURCES>,EXCLUDE,${exclude_ts}>")
         set(excluded "$<TARGET_PROPERTY:${target},QT_EXCLUDE_SOURCES_FROM_TRANSLATION>")
         set(autogen_build_dir_genex "$<TARGET_PROPERTY:${target},AUTOGEN_BUILD_DIR>")
-        set(default_autogen_build_dir "$<TARGET_PROPERTY:${target},BINARY_DIR>/${target}_autogen")
+        _qt_internal_get_target_autogen_build_dir("${target}" default_autogen_build_dir)
         set(autogen_dir "$<IF:$<BOOL:${autogen_build_dir_genex}>,${autogen_build_dir_genex},${default_autogen_build_dir}>")
         string(APPEND content "
 set(lupdate_subproject${n}_source_dir \"$<TARGET_PROPERTY:${target},SOURCE_DIR>\")
@@ -401,6 +401,20 @@ function(_qt_internal_store_languages_from_ts_files_in_targets targets ts_files)
     endforeach()
 endfunction()
 
+# Read the 'language' attribute of the 'TS' tag from the given .ts file in a platform-independent
+# way. All our tools write the TS tag with its attributes in one line. We assume the following form:
+#     <TS version="2.1" language="de_DE">
+# If the language cannot be extracted then ${out_var} is set to the empty string.
+function(_qt_internal_read_language_from_ts_file out_var ts_file)
+    set(result "")
+    file(READ "${ts_file}" ts_file_content LIMIT 102400)
+    string(REGEX REPLACE "\r?\n" " " ts_file_content "${ts_file_content}")
+    if(ts_file_content MATCHES "< *TS( +| [^>]* )language *= *\"([^\"]+)\"")
+        set(result "${CMAKE_MATCH_2}")
+    endif()
+    set("${out_var}" "${result}" PARENT_SCOPE)
+endfunction()
+
 # Store in ${out_var} the file path to the .qm file that will be generated from the given .ts file.
 function(_qt_internal_generated_qm_file_path out_var ts_file default_out_dir)
     get_filename_component(qm ${ts_file} NAME_WLE)
@@ -418,18 +432,97 @@ function(_qt_internal_generated_qm_file_path out_var ts_file default_out_dir)
     set("${out_var}" "${qm}" PARENT_SCOPE)
 endfunction()
 
+# Find a Qt translation catalog, e.g. qtdeclarative_de.qm for a given catalog name (e.g.
+# "qtdeclarative") and a language (e.g. "de"). The .qm file is searched in Qt's installation prefix.
+# The result is stored in out_var.
+# If the catalog cannot be found, the empty string is returned.
+function(_qt_internal_find_qt_catalog out_var)
+    set(no_value_options "")
+    set(single_value_options
+        CATALOG
+        LANGUAGE
+    )
+    set(multi_value_options "")
+    cmake_parse_arguments(PARSE_ARGV 0 arg
+        "${no_value_options}" "${single_value_options}" "${multi_value_options}"
+    )
+
+    set(result "")
+    set(translations_dir ${QT_INTERNAL_ABSOLUTE_TRANSLATIONS_DIR})
+    if("${translations_dir}" STREQUAL "")
+        set(translations_dir "${QT6_INSTALL_PREFIX}/${QT6_INSTALL_TRANSLATIONS}")
+    endif()
+
+    # If arg_LANGUAGE is "de_DE" we want to try to match "de" as well as fallback.
+    set(languages "${arg_LANGUAGE}")
+    if(arg_LANGUAGE MATCHES "^([^_]+)_")
+        list(APPEND languages "${CMAKE_MATCH_1}")
+    endif()
+
+    foreach(language IN LISTS languages)
+        set(qm_file "${translations_dir}/${arg_CATALOG}_${language}.qm")
+        if(EXISTS "${qm_file}")
+            set(result "${qm_file}")
+            break()
+        endif()
+    endforeach()
+
+    set("${out_var}" "${result}" PARENT_SCOPE)
+endfunction()
+
+function(_qt_internal_apply_lrelease_xcode_workaround)
+    set(no_value_options "")
+    set(single_value_options
+        LRELEASE_TARGET
+        TARGETS
+    )
+    set(multi_value_options
+        QM_FILES
+    )
+    cmake_parse_arguments(PARSE_ARGV 0 arg
+        "${no_value_options}" "${single_value_options}" "${multi_value_options}"
+    )
+
+    if(NOT arg_LRELEASE_TARGET)
+        message(FATAL_ERROR "Missing LRELEASE_TARGET argument.")
+    endif()
+
+    # QTBUG-103470: Save the target responsible for driving the build of the custom command
+    # into an internal source file property. It will be added as a dependency for targets
+    # created by _qt_internal_process_resource, to avoid the Xcode issue of not allowing
+    # multiple targets depending on the output, without having a common target ancestor.
+    #
+    # We add the source file property to all target directory scopes given by the TARGETS
+    # option, which in one code path will be the qt_add_translations scope (usually root project
+    # scope), and in another case the target resource directory scope
+    # (which might be different).
+    set(scope_args "")
+    if(CMAKE_VERSION VERSION_GREATER_EQUAL "3.18" AND arg_TARGETS)
+        set(scope_args TARGET_DIRECTORY ${arg_TARGETS})
+    endif()
+    set_source_files_properties(${qm_files}
+        ${scope_args}
+        PROPERTIES
+            _qt_resource_target_dependency "${arg_LRELEASE_TARGET}"
+    )
+endfunction()
+
 function(qt6_add_lrelease)
     set(options
         NO_TARGET_DEPENDENCY        ### Qt7: remove together with legacy signature
         EXCLUDE_FROM_ALL
+        MERGE_QT_TRANSLATIONS
         NO_GLOBAL_TARGET)
     set(oneValueArgs
-        __QT_INTERNAL_DEFAULT_QM_OUT_DIR
         LRELEASE_TARGET
-        QM_FILES_OUTPUT_VARIABLE)
+        QM_OUTPUT_DIRECTORY
+        QM_FILES_OUTPUT_VARIABLE
+        __QT_INTERNAL_OUT_LRELEASE_TARGET
+    )
     set(multiValueArgs
         TS_FILES
-        OPTIONS)
+        OPTIONS
+        QT_TRANSLATION_CATALOGS)
     cmake_parse_arguments(arg "${options}" "${oneValueArgs}" "${multiValueArgs}" ${ARGN})
     qt_internal_make_paths_absolute(ts_files "${arg_TS_FILES}")
 
@@ -464,9 +557,17 @@ function(qt6_add_lrelease)
             "${tool_wrapper}"
             $<TARGET_FILE:${QT_CMAKE_EXPORT_NAMESPACE}::lrelease>)
 
+    set(qt_catalogs "${arg_QT_TRANSLATION_CATALOGS}")
+    if(arg_MERGE_QT_TRANSLATIONS AND qt_catalogs STREQUAL "")
+        _qt_internal_get_i18n_catalogs_for_modules(qt_catalogs
+            ${QT_ALL_MODULES_FOUND_VIA_FIND_PACKAGE})
+    endif()
+
     set(default_qm_out_dir "${CMAKE_CURRENT_BINARY_DIR}")
-    if(NOT "${arg___QT_INTERNAL_DEFAULT_QM_OUT_DIR}" STREQUAL "")
-        set(default_qm_out_dir "${arg___QT_INTERNAL_DEFAULT_QM_OUT_DIR}")
+    if(DEFINED arg_QM_OUTPUT_DIRECTORY)
+        get_filename_component(default_qm_out_dir "${arg_QM_OUTPUT_DIRECTORY}" ABSOLUTE
+            BASE_DIR "${CMAKE_CURRENT_BINARY_DIR}"
+        )
     endif()
 
     set(qm_files "")
@@ -475,26 +576,47 @@ function(qt6_add_lrelease)
             _qt_internal_ensure_ts_file(TS_FILE "${ts_file}")
         endif()
 
+        set(additional_lrelease_inputs "")
+        if(arg_MERGE_QT_TRANSLATIONS)
+            get_source_file_property(ts_file_language "${ts_file}" _qt_i18n_translated_language)
+            if(ts_file_language STREQUAL "" OR ts_file_language STREQUAL "NOTFOUND")
+                _qt_internal_read_language_from_ts_file(ts_file_language "${ts_file}")
+            endif()
+            if(ts_file_language STREQUAL "")
+                message(FATAL_ERROR
+                    "qt_add_lrelease was called with MERGE_QT_TRANSLATIONS but it cannot "
+                    "determine the language of '${ts_file}'. Make sure that the file has a "
+                    "proper 'language' attribute set."
+                )
+            endif()
+            foreach(catalog IN LISTS qt_catalogs)
+                _qt_internal_find_qt_catalog(qt_qm_file
+                    CATALOG ${catalog}
+                    LANGUAGE ${ts_file_language}
+                )
+                if("${qt_qm_file}" STREQUAL "")
+                    if(NOT QT_NO_MISSING_CATALOG_LANGUAGE_WARNING)
+                        message(WARNING
+                            "The language catalog '${catalog}' cannot be found for language "
+                            "'${ts_file_language}'. You can suppress this warning by setting "
+                            "QT_NO_MISSING_CATALOG_LANGUAGE_WARNING to ON."
+                        )
+                    endif()
+                else()
+                    list(APPEND additional_lrelease_inputs ${qt_qm_file})
+                endif()
+            endforeach()
+        endif()
+
         _qt_internal_generated_qm_file_path(qm "${ts_file}" "${default_qm_out_dir}")
         get_filename_component(qm_dir "${qm}" DIRECTORY)
         add_custom_command(OUTPUT ${qm}
             COMMAND "${CMAKE_COMMAND}" -E make_directory "${qm_dir}"
-            ${lrelease_command} ${arg_OPTIONS} ${ts_file} -qm ${qm}
+            ${lrelease_command} ${arg_OPTIONS} ${ts_file} ${additional_lrelease_inputs} -qm ${qm}
             DEPENDS ${QT_CMAKE_EXPORT_NAMESPACE}::lrelease "${ts_file}"
+                    ${additional_lrelease_inputs}
             VERBATIM)
         list(APPEND qm_files "${qm}")
-
-        # QTBUG-103470: Save the target responsible for driving the build of the custom command
-        # into an internal source file property. It will be added as a dependency for targets
-        # created by _qt_internal_process_resource, to avoid the Xcode issue of not allowing
-        # multiple targets depending on the output, without having a common target ancestor.
-        set(scope_args "")
-        if(legacy_signature_used AND CMAKE_VERSION VERSION_GREATER_EQUAL "3.18")
-            set(scope_args TARGET_DIRECTORY ${legacy_target})
-        endif()
-        set_source_files_properties("${qm}" ${scope_args} PROPERTIES
-            _qt_resource_target_dependency "${lrelease_target}"
-        )
     endforeach()
 
     if(legacy_signature_used)
@@ -514,6 +636,13 @@ function(qt6_add_lrelease)
         add_custom_target(${lrelease_target} ${maybe_all} DEPENDS ${qm_files})
     endif()
 
+    # Apply the workaround in the lrelease_target directory scope.
+    _qt_internal_apply_lrelease_xcode_workaround(
+        LRELEASE_TARGET "${lrelease_target}"
+        TARGETS "${lrelease_target}"
+        QM_FILES ${qm_files}
+    )
+
     if(NOT DEFINED QT_GLOBAL_LRELEASE_TARGET)
         set(QT_GLOBAL_LRELEASE_TARGET release_translations)
     endif()
@@ -528,19 +657,25 @@ function(qt6_add_lrelease)
     if(NOT "${arg_QM_FILES_OUTPUT_VARIABLE}" STREQUAL "")
         set("${arg_QM_FILES_OUTPUT_VARIABLE}" "${qm_files}" PARENT_SCOPE)
     endif()
+
+    if(NOT "${arg___QT_INTERNAL_OUT_LRELEASE_TARGET}" STREQUAL "")
+        set("${arg___QT_INTERNAL_OUT_LRELEASE_TARGET}" "${lrelease_target}" PARENT_SCOPE)
+    endif()
 endfunction()
 
 function(qt6_add_translations)
     set(options
         IMMEDIATE_CALL
+        MERGE_QT_TRANSLATIONS
         NO_GENERATE_PLURALS_TS_FILE)
     set(oneValueArgs
-        __QT_INTERNAL_DEFAULT_QM_OUT_DIR
         LUPDATE_TARGET
         LRELEASE_TARGET
-        TS_FILE_DIR
+        TS_FILE_DIR              # alias for TS_OUTPUT_DIRECTORY
         TS_FILES_OUTPUT_VARIABLE
+        TS_OUTPUT_DIRECTORY
         QM_FILES_OUTPUT_VARIABLE
+        QM_OUTPUT_DIRECTORY
         RESOURCE_PREFIX
         OUTPUT_TARGETS)
     set(multiValueArgs
@@ -552,7 +687,8 @@ function(qt6_add_translations)
         SOURCES
         INCLUDE_DIRECTORIES
         LUPDATE_OPTIONS
-        LRELEASE_OPTIONS)
+        LRELEASE_OPTIONS
+        QT_TRANSLATION_CATALOGS)
     cmake_parse_arguments(arg "${options}" "${oneValueArgs}" "${multiValueArgs}" ${ARGN})
 
     set(targets "${arg_TARGETS}")
@@ -577,6 +713,15 @@ function(qt6_add_translations)
         set(arg_RESOURCE_PREFIX "/i18n")
     endif()
 
+    if(DEFINED arg_QM_OUTPUT_DIRECTORY)
+        get_filename_component(qm_out_dir "${arg_QM_OUTPUT_DIRECTORY}" ABSOLUTE
+            BASE_DIR "${CMAKE_CURRENT_BINARY_DIR}"
+        )
+    else()
+        set(qm_out_dir "${CMAKE_CURRENT_BINARY_DIR}")
+        set(arg_QM_OUTPUT_DIRECTORY "${qm_out_dir}")
+    endif()
+
     set(scope_args)
     if(CMAKE_VERSION VERSION_GREATER_EQUAL "3.18")
         set(scope_args DIRECTORY ${PROJECT_SOURCE_DIR})
@@ -585,7 +730,11 @@ function(qt6_add_translations)
     # Determine the .ts file paths if necessary. This must happen before function deferral.
     if(NOT DEFINED arg_TS_FILES)
         if(NOT DEFINED arg_TS_FILE_DIR)
-            set(arg_TS_FILE_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
+            if(DEFINED arg_TS_OUTPUT_DIRECTORY)
+                set(arg_TS_FILE_DIR "${arg_TS_OUTPUT_DIRECTORY}")
+            else()
+                set(arg_TS_FILE_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
+            endif()
         endif()
         if(NOT DEFINED arg_TS_FILE_BASE)
             set(arg_TS_FILE_BASE "${PROJECT_NAME}")
@@ -648,7 +797,7 @@ function(qt6_add_translations)
                 set(qm_files "")
                 foreach(ts_file IN LISTS arg_TS_FILES arg_PLURALS_TS_FILE)
                     _qt_internal_generated_qm_file_path(qm_file "${ts_file}"
-                        "${CMAKE_CURRENT_BINARY_DIR}")
+                        "${qm_out_dir}")
                     list(APPEND qm_files "${qm_file}")
                 endforeach()
                 set("${arg_QM_FILES_OUTPUT_VARIABLE}" "${qm_files}" PARENT_SCOPE)
@@ -657,7 +806,6 @@ function(qt6_add_translations)
             # Forward options.
             set(forwarded_args
                 IMMEDIATE_CALL
-                __QT_INTERNAL_DEFAULT_QM_OUT_DIR "${CMAKE_CURRENT_BINARY_DIR}"
             )
             foreach(keyword IN LISTS options)
                 if(arg_${keyword})
@@ -724,12 +872,25 @@ function(qt6_add_translations)
         INCLUDE_DIRECTORIES "${arg_INCLUDE_DIRECTORIES}"
         OPTIONS "${arg_LUPDATE_OPTIONS}"
     )
+
+    set(additional_qt_add_lrelease_args "")
+    if(arg_MERGE_QT_TRANSLATIONS)
+        list(APPEND additional_qt_add_lrelease_args MERGE_QT_TRANSLATIONS)
+        if(arg_QT_TRANSLATION_CATALOGS)
+            list(APPEND additional_qt_add_lrelease_args
+                QT_TRANSLATION_CATALOGS ${arg_QT_TRANSLATION_CATALOGS}
+            )
+        endif()
+    endif()
+
     qt6_add_lrelease(
         LRELEASE_TARGET "${arg_LRELEASE_TARGET}"
         TS_FILES "${arg_TS_FILES}" ${arg_PLURALS_TS_FILE}
         QM_FILES_OUTPUT_VARIABLE qm_files
         OPTIONS "${arg_LRELEASE_OPTIONS}"
-        __QT_INTERNAL_DEFAULT_QM_OUT_DIR "${arg___QT_INTERNAL_DEFAULT_QM_OUT_DIR}"
+        QM_OUTPUT_DIRECTORY "${qm_out_dir}"
+        __QT_INTERNAL_OUT_LRELEASE_TARGET generated_lrelease_target
+        ${additional_qt_add_lrelease_args}
     )
 
     # Make the .ts files visible in IDEs.
@@ -753,12 +914,19 @@ function(qt6_add_translations)
     if(CMAKE_VERSION VERSION_GREATER_EQUAL "3.18")
         set(scope_args TARGET_DIRECTORY ${targets})
     endif()
-    set_source_files_properties(${qm_files}
+    _qt_internal_set_source_file_generated(
+        SOURCES ${qm_files}
         ${scope_args}
-        PROPERTIES GENERATED TRUE
     )
 
     if(NOT "${arg_RESOURCE_PREFIX}" STREQUAL "")
+        # Apply the workaround in the directory scope of all targets for which we create resources.
+        _qt_internal_apply_lrelease_xcode_workaround(
+            LRELEASE_TARGET "${generated_lrelease_target}"
+            TARGETS ${targets}
+            QM_FILES ${qm_files}
+        )
+
         set(accumulated_out_targets "")
         foreach(target IN LISTS targets)
             get_target_property(target_binary_dir ${target} BINARY_DIR)

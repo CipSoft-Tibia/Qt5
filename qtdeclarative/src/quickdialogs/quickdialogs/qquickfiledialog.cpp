@@ -14,8 +14,7 @@ QT_BEGIN_NAMESPACE
 
 using namespace Qt::StringLiterals;
 
-Q_DECLARE_LOGGING_CATEGORY(lcDialogs)
-Q_LOGGING_CATEGORY(lcFileDialog, "qt.quick.dialogs.filedialog")
+Q_STATIC_LOGGING_CATEGORY(lcFileDialog, "qt.quick.dialogs.filedialog")
 
 /*!
     \qmltype FileDialog
@@ -27,7 +26,7 @@ Q_LOGGING_CATEGORY(lcFileDialog, "qt.quick.dialogs.filedialog")
 
     The FileDialog type provides a QML API for file dialogs.
 
-    \image qtquickdialogs-filedialog-gtk.png
+    \image qtquickdialogs-filedialog-gtk.png {The file dialog type allow dialogs to copy the native look and feel of the platform}
 
     To show a file dialog, construct an instance of FileDialog, set the desired
     properties, and call \l {Dialog::}{open()}. The \l currentFolder property

@@ -46,8 +46,8 @@ QT_BEGIN_NAMESPACE
 
 using namespace Qt::StringLiterals;
 
-Q_LOGGING_CATEGORY(lcAccessibilityAtspi, "qt.accessibility.atspi")
-Q_LOGGING_CATEGORY(lcAccessibilityAtspiCreation, "qt.accessibility.atspi.creation")
+Q_STATIC_LOGGING_CATEGORY(lcAccessibilityAtspi, "qt.accessibility.atspi")
+Q_STATIC_LOGGING_CATEGORY(lcAccessibilityAtspiCreation, "qt.accessibility.atspi.creation")
 
 AtSpiAdaptor::AtSpiAdaptor(QAtSpiDBusConnection *connection, QObject *parent)
     : QDBusVirtualObject(parent), m_dbus(connection)
@@ -667,7 +667,7 @@ QString AtSpiAdaptor::introspect(const QString &path) const
         xml.append(tableCellIntrospection);
     if (interfaces.contains(ATSPI_DBUS_INTERFACE_VALUE ""_L1))
         xml.append(valueIntrospection);
-    if (path == QSPI_OBJECT_PATH_ROOT ""_L1)
+    if (path == ATSPI_DBUS_PATH_ROOT ""_L1)
         xml.append(applicationIntrospection);
 
     return xml;
@@ -913,7 +913,7 @@ bool AtSpiAdaptor::sendDBusSignal(const QString &path, const QString &interface,
 
 QAccessibleInterface *AtSpiAdaptor::interfaceFromPath(const QString& dbusPath) const
 {
-    if (dbusPath == QSPI_OBJECT_PATH_ROOT ""_L1)
+    if (dbusPath == ATSPI_DBUS_PATH_ROOT ""_L1)
         return QAccessible::queryAccessibleInterface(qApp);
 
     QStringList parts = dbusPath.split(u'/');
@@ -1383,10 +1383,10 @@ void AtSpiAdaptor::sendFocusChanged(QAccessibleInterface *interface) const
 void AtSpiAdaptor::childrenChanged(QAccessibleInterface *interface) const
 {
     QString parentPath = pathForInterface(interface);
-    int childCount = interface->childCount();
-    for (int i = 0; i < interface->childCount(); ++i) {
+    const int childCount = interface->childCount();
+    for (int i = 0; i < childCount; ++i) {
         QString childPath = pathForInterface(interface->child(i));
-        QVariantList args = packDBusSignalArguments("add"_L1, childCount, 0, childPath);
+        QVariantList args = packDBusSignalArguments("add"_L1, i, 0, childPath);
         sendDBusSignal(parentPath, ATSPI_DBUS_INTERFACE_EVENT_OBJECT ""_L1, "ChildrenChanged"_L1, args);
     }
 }
@@ -1400,9 +1400,9 @@ void AtSpiAdaptor::notifyAboutCreation(QAccessibleInterface *interface) const
         return;
     }
     QString path = pathForInterface(interface);
-    int childCount = parent->childCount();
+    const int childIndex = parent->indexOfChild(interface);
     QString parentPath = pathForInterface(parent);
-    QVariantList args = packDBusSignalArguments("add"_L1, childCount, 0, variantForPath(path));
+    QVariantList args = packDBusSignalArguments("add"_L1, childIndex, 0, variantForPath(path));
     sendDBusSignal(parentPath, ATSPI_DBUS_INTERFACE_EVENT_OBJECT ""_L1, "ChildrenChanged"_L1, args);
 }
 
@@ -1461,9 +1461,12 @@ bool AtSpiAdaptor::handleMessage(const QDBusMessage &message, const QDBusConnect
 
     // handle properties like regular functions
     if (interface == "org.freedesktop.DBus.Properties"_L1) {
-        interface = message.arguments().at(0).toString();
-        // Get/Set + Name
-        function = message.member() + message.arguments().at(1).toString();
+        const auto arguments = message.arguments();
+        if (arguments.size() > 0) {
+            interface = arguments.at(0).toString();
+            if (arguments.size() > 1) // e.g. Get/Set + Name
+                function = function + arguments.at(1).toString();
+        }
     }
 
     // switch interface to call
@@ -1512,6 +1515,12 @@ bool AtSpiAdaptor::applicationInterface(QAccessibleInterface *interface, const Q
         QDBusMessage reply = message.createReply(QVariant::fromValue(QDBusVariant(m_applicationId)));
         return connection.send(reply);
     }
+    if (function == "GetAtspiVersion"_L1) {
+        Q_ASSERT(message.signature() == "ss"_L1);
+        // return "2.1" as described in the Application interface spec
+        QDBusMessage reply = message.createReply(QVariant::fromValue(QDBusVariant("2.1"_L1)));
+        return connection.send(reply);
+    }
     if (function == "GetToolkitName"_L1) {
         Q_ASSERT(message.signature() == "ss"_L1);
         QDBusMessage reply = message.createReply(QVariant::fromValue(QDBusVariant("Qt"_L1)));
@@ -1537,16 +1546,16 @@ bool AtSpiAdaptor::applicationInterface(QAccessibleInterface *interface, const Q
 void AtSpiAdaptor::registerApplication()
 {
     OrgA11yAtspiSocketInterface *registry;
-    registry = new OrgA11yAtspiSocketInterface(QSPI_REGISTRY_NAME ""_L1,
-                                               QSPI_OBJECT_PATH_ROOT ""_L1, m_dbus->connection());
+    registry = new OrgA11yAtspiSocketInterface(ATSPI_DBUS_NAME_REGISTRY ""_L1,
+                                               ATSPI_DBUS_PATH_ROOT ""_L1, m_dbus->connection());
 
     QDBusPendingReply<QSpiObjectReference> reply;
-    QSpiObjectReference ref = QSpiObjectReference(m_dbus->connection(), QDBusObjectPath(QSPI_OBJECT_PATH_ROOT));
+    QSpiObjectReference ref = QSpiObjectReference(m_dbus->connection(), QDBusObjectPath(ATSPI_DBUS_PATH_ROOT));
     reply = registry->Embed(ref);
     reply.waitForFinished(); // TODO: make this async
     if (reply.isValid ()) {
         const QSpiObjectReference &socket = reply.value();
-        accessibilityRegistry = QSpiObjectReference(socket);
+        m_accessibilityRegistry = QSpiObjectReference(socket);
     } else {
         qCWarning(lcAccessibilityAtspi) << "Error in contacting registry:"
                    << reply.error().name()
@@ -1582,6 +1591,12 @@ bool AtSpiAdaptor::accessibleInterface(QAccessibleInterface *interface, const QS
         QString path;
         QAccessibleInterface * parent = interface->parent();
         if (!parent) {
+            if (interface->object() == qApp) {
+                sendReply(connection, message,
+                          QVariant::fromValue(QDBusVariant(QVariant::fromValue(m_accessibilityRegistry))));
+                return true;
+            }
+
             path = ATSPI_DBUS_PATH_NULL ""_L1;
         } else if (parent->role() == QAccessible::Application) {
             path = ATSPI_DBUS_PATH_ROOT ""_L1;
@@ -1632,7 +1647,7 @@ bool AtSpiAdaptor::accessibleInterface(QAccessibleInterface *interface, const QS
         sendReply(connection, message, QVariant::fromValue(relationSet(interface, connection)));
     } else if (function == "GetApplication"_L1) {
         sendReply(connection, message, QVariant::fromValue(
-                      QSpiObjectReference(connection, QDBusObjectPath(QSPI_OBJECT_PATH_ROOT))));
+                      QSpiObjectReference(connection, QDBusObjectPath(ATSPI_DBUS_PATH_ROOT))));
     } else if (function == "GetChildren"_L1) {
         QSpiObjectReferenceArray children;
         const int numChildren = interface->childCount();
@@ -1707,7 +1722,7 @@ QStringList AtSpiAdaptor::accessibleInterfaces(QAccessibleInterface *interface) 
 
 QSpiRelationArray AtSpiAdaptor::relationSet(QAccessibleInterface *interface, const QDBusConnection &connection) const
 {
-    typedef QPair<QAccessibleInterface*, QAccessible::Relation> RelationPair;
+    typedef std::pair<QAccessibleInterface*, QAccessible::Relation> RelationPair;
     const QList<RelationPair> relationInterfaces = interface->relations();
 
     QSpiRelationArray relations;
@@ -1749,7 +1764,7 @@ QString AtSpiAdaptor::pathForInterface(QAccessibleInterface *interface) const
     if (!interface || !interface->isValid())
         return u"" ATSPI_DBUS_PATH_NULL ""_s;
     if (interface->role() == QAccessible::Application)
-        return u"" QSPI_OBJECT_PATH_ROOT ""_s;
+        return u"" ATSPI_DBUS_PATH_ROOT ""_s;
 
     QAccessible::Id id = QAccessible::uniqueId(interface);
     Q_ASSERT((int)id < 0);
@@ -2195,7 +2210,7 @@ namespace
         QString name = ia2Name;
         QString value = ia2Value;
 
-        // IAccessible2: https://wiki.linuxfoundation.org/accessibility/iaccessible2/textattributes
+        // IAccessible2: https://github.com/LinuxA11y/IAccessible2/blob/master/spec/textattributes.md
         // ATK attribute names: https://gitlab.gnome.org/GNOME/orca/-/blob/master/src/orca/text_attribute_names.py
         // ATK attribute values: https://gnome.pages.gitlab.gnome.org/atk/AtkText.html#AtkTextAttribute
 

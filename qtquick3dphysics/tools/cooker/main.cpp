@@ -1,6 +1,8 @@
 // Copyright (C) 2021 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
+// Security note: This file reads and cooks meshes but since it is a tool it is safe
+
 #include "cooking/PxCooking.h"
 
 #include <QtQuick3DUtils/private/qssgmesh_p.h>

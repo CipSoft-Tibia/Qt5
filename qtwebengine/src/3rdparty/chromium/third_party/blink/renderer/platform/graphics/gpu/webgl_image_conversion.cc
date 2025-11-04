@@ -2,6 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#ifdef UNSAFE_BUFFERS_BUILD
+// TODO(crbug.com/351564777): Remove this and convert code to safer constructs.
+#pragma allow_unsafe_buffers
+#endif
+
 #include "third_party/blink/renderer/platform/graphics/gpu/webgl_image_conversion.h"
 
 #include <cstring>
@@ -855,7 +860,7 @@ float ConvertHalfFloatToFloat(uint16_t half) {
 // Pixel unpacking routines.
 template <int format, typename SourceType, typename DstType>
 void Unpack(const SourceType*, DstType*, unsigned) {
-  NOTREACHED();
+  NOTREACHED_IN_MIGRATION();
 }
 
 template <>
@@ -1186,7 +1191,7 @@ void Unpack<WebGLImageConversion::kDataFormatRGBA16F, uint16_t, uint8_t>(
 
 template <int format, int alphaOp, typename SourceType, typename DstType>
 void Pack(const SourceType*, DstType*, unsigned) {
-  NOTREACHED();
+  NOTREACHED_IN_MIGRATION();
 }
 
 template <>
@@ -3304,6 +3309,7 @@ void FormatConverter::Convert(WebGLImageConversion::DataFormat src_format,
     FORMATCONVERTER_CASE_SRCFORMAT(WebGLImageConversion::kDataFormatRA8)
     FORMATCONVERTER_CASE_SRCFORMAT(WebGLImageConversion::kDataFormatRA32F)
     FORMATCONVERTER_CASE_SRCFORMAT(WebGLImageConversion::kDataFormatRGBA8)
+    FORMATCONVERTER_CASE_SRCFORMAT(WebGLImageConversion::kDataFormatRGBA16)
     FORMATCONVERTER_CASE_SRCFORMAT(WebGLImageConversion::kDataFormatARGB8)
     FORMATCONVERTER_CASE_SRCFORMAT(WebGLImageConversion::kDataFormatABGR8)
     FORMATCONVERTER_CASE_SRCFORMAT(WebGLImageConversion::kDataFormatAR8)
@@ -3316,7 +3322,7 @@ void FormatConverter::Convert(WebGLImageConversion::DataFormat src_format,
     // Only used by ImageBitmap, when colorspace conversion is needed.
     FORMATCONVERTER_CASE_SRCFORMAT(WebGLImageConversion::kDataFormatRGBA16F)
     default:
-      NOTREACHED();
+      NOTREACHED_IN_MIGRATION();
   }
 #undef FORMATCONVERTER_CASE_SRCFORMAT
 }
@@ -3358,7 +3364,7 @@ void FormatConverter::Convert(WebGLImageConversion::DataFormat dst_format,
     FORMATCONVERTER_CASE_DSTFORMAT(WebGLImageConversion::kDataFormatRG16F)
     FORMATCONVERTER_CASE_DSTFORMAT(WebGLImageConversion::kDataFormatRG32F)
     default:
-      NOTREACHED();
+      NOTREACHED_IN_MIGRATION();
   }
 
 #undef FORMATCONVERTER_CASE_DSTFORMAT
@@ -3376,7 +3382,7 @@ void FormatConverter::Convert(WebGLImageConversion::AlphaOp alpha_op) {
     FORMATCONVERTER_CASE_ALPHAOP(WebGLImageConversion::kAlphaDoPremultiply)
     FORMATCONVERTER_CASE_ALPHAOP(WebGLImageConversion::kAlphaDoUnmultiply)
     default:
-      NOTREACHED();
+      NOTREACHED_IN_MIGRATION();
   }
 #undef FORMATCONVERTER_CASE_ALPHAOP
 }
@@ -3414,13 +3420,13 @@ void FormatConverter::Convert() {
   // try to return immediately in these cases to avoid generating useless code.
   if (SrcFormat == DstFormat &&
       alphaOp == WebGLImageConversion::kAlphaDoNothing) {
-    NOTREACHED();
+    NOTREACHED_IN_MIGRATION();
     return;
   }
   // Note that ImageBitmaps with SrcFormat==kDataFormatRGBA16F return
   // false for IsFloatFormat since the input data is uint16_t.
   if (!IsFloatFormat<DstFormat>::value && IsFloatFormat<SrcFormat>::value) {
-    NOTREACHED();
+    NOTREACHED_IN_MIGRATION();
     return;
   }
 
@@ -3430,25 +3436,25 @@ void FormatConverter::Convert() {
       WebGLImageConversion::SrcFormatComesFromDOMElementOrImageData(SrcFormat);
   if (!src_format_comes_from_dom_element_or_image_data &&
       SrcFormat != DstFormat) {
-    NOTREACHED();
+    NOTREACHED_IN_MIGRATION();
     return;
   }
   // Likewise, only textures uploaded from DOM elements or ImageData can
   // possibly need to be unpremultiplied.
   if (!src_format_comes_from_dom_element_or_image_data &&
       alphaOp == WebGLImageConversion::kAlphaDoUnmultiply) {
-    NOTREACHED();
+    NOTREACHED_IN_MIGRATION();
     return;
   }
   if (src_format_comes_from_dom_element_or_image_data &&
       alphaOp == WebGLImageConversion::kAlphaDoUnmultiply &&
       !SupportsConversionFromDomElements<DstFormat>::value) {
-    NOTREACHED();
+    NOTREACHED_IN_MIGRATION();
     return;
   }
   if ((!HasAlpha(SrcFormat) || !HasColor(SrcFormat) || !HasColor(DstFormat)) &&
       alphaOp != WebGLImageConversion::kAlphaDoNothing) {
-    NOTREACHED();
+    NOTREACHED_IN_MIGRATION();
     return;
   }
   // If converting DOM element data to UNSIGNED_INT_5_9_9_9_REV or
@@ -3458,7 +3464,7 @@ void FormatConverter::Convert() {
       SrcFormat != DstFormat &&
       (DstFormat == WebGLImageConversion::kDataFormatRGB5999 ||
        DstFormat == WebGLImageConversion::kDataFormatRGB10F11F11F)) {
-    NOTREACHED();
+    NOTREACHED_IN_MIGRATION();
     return;
   }
 
@@ -3535,20 +3541,6 @@ void FormatConverter::Convert() {
   return;
 }
 
-bool FrameIsValid(const SkBitmap& frame_bitmap) {
-  if (frame_bitmap.isNull()) {
-    return false;
-  }
-  if (frame_bitmap.empty()) {
-    return false;
-  }
-  if (frame_bitmap.colorType() != kN32_SkColorType &&
-      frame_bitmap.colorType() != kRGBA_F16_SkColorType) {
-    return false;
-  }
-  return true;
-}
-
 }  // anonymous namespace
 
 WebGLImageConversion::PixelStoreParams::PixelStoreParams()
@@ -3573,7 +3565,7 @@ WebGLImageConversion::DataFormat WebGLImageConversion::SkColorTypeToDataFormat(
     case kRGBA_F32_SkColorType:
       return kDataFormatRGBA32F;
     default:
-      NOTREACHED();
+      NOTREACHED_IN_MIGRATION();
       return kDataFormatNumFormats;
   }
 }
@@ -3792,122 +3784,6 @@ GLenum WebGLImageConversion::ComputeImageSizeInBytes(
   if (!checked_value.IsValid())
     return GL_INVALID_VALUE;
   return GL_NO_ERROR;
-}
-
-WebGLImageConversion::ImageExtractor::ImageExtractor(
-    Image* image,
-    bool premultiply_alpha,
-    sk_sp<SkColorSpace> target_color_space) {
-  if (!image)
-    return;
-
-  const auto& paint_image = image->PaintImageForCurrentFrame();
-  sk_sp<SkImage> skia_image = paint_image.GetSwSkImage();
-  if (skia_image && !skia_image->colorSpace())
-    skia_image = skia_image->reinterpretColorSpace(SkColorSpace::MakeSRGB());
-
-  if (image->HasData()) {
-    bool paint_image_is_f16 =
-        paint_image.GetColorType() == kRGBA_F16_SkColorType;
-
-    // If there already exists a decoded image in `skia_image`, determine if we
-    // can re-use that image. If we can't, then we need to re-decode the image
-    // here.
-    bool needs_redecode = false;
-    if (skia_image) {
-      // The `target_color_space` is set to nullptr iff
-      // UNPACK_COLORSPACE_CONVERSION is NONE, which means that the color
-      // profile of the image should be ignored. In this case, always re-decode,
-      // because we can't reliably know that `skia_image` ignored the image's
-      // color profile when it was created.
-      if (!target_color_space) {
-        needs_redecode = true;
-      }
-
-      // If there is a target color space, but the SkImage that was decoded is
-      // not already in this color space, then re-decode the image. The reason
-      // for this is that repeated color converisons may accumulate clamping and
-      // rounding errors.
-      if (target_color_space &&
-          !SkColorSpace::Equals(skia_image->colorSpace(),
-                                target_color_space.get())) {
-        needs_redecode = true;
-      }
-
-      // If the image was decoded with premultipled alpha and unpremultipled
-      // alpha was requested, then re-decode without premultiplying alpha. Don't
-      // bother re-decoding if premultiply alpha was requested, because we will
-      // do that lossy conversion later.
-      if (skia_image->alphaType() == kPremul_SkAlphaType &&
-          !premultiply_alpha) {
-        needs_redecode = true;
-      }
-
-      // If the image is high bit depth, but was not decoded as high bit depth,
-      // then re-decode the image.
-      if (paint_image_is_f16 &&
-          skia_image->colorType() != kRGBA_F16_SkColorType) {
-        needs_redecode = true;
-      }
-    } else {
-      // If the image has not been decoded yet, then it needs to be decoded.
-      needs_redecode = true;
-    }
-
-    if (needs_redecode) {
-      const bool data_complete = true;
-
-      // Always decode as unpremultiplied. If premultiplication is desired, it
-      // will be applied later.
-      const auto alpha_option = ImageDecoder::kAlphaNotPremultiplied;
-
-      // Decode to the paint image's bit depth. If conversion is needed, it will
-      // be applied later.
-      const auto bit_depth = paint_image_is_f16
-                                 ? ImageDecoder::kHighBitDepthToHalfFloat
-                                 : ImageDecoder::kDefaultBitDepth;
-
-      // If we are not ignoring the color space, then tag the image with the
-      // target color space. It will be converted later on.
-      const auto color_behavior =
-          target_color_space ? ColorBehavior::kTag : ColorBehavior::kIgnore;
-
-      // Decode the image here on the main thread.
-      std::unique_ptr<ImageDecoder> decoder(ImageDecoder::Create(
-          image->Data(), data_complete, alpha_option, bit_depth, color_behavior,
-          Platform::GetMaxDecodedImageBytes()));
-      if (!decoder || !decoder->FrameCount()) {
-        return;
-      }
-      ImageFrame* frame = decoder->DecodeFrameBufferAtIndex(0);
-      if (!frame || frame->GetStatus() != ImageFrame::kFrameComplete) {
-        return;
-      }
-      SkBitmap bitmap = frame->Bitmap();
-      if (!FrameIsValid(bitmap)) {
-        return;
-      }
-
-      // TODO(fmalita): Partial frames are not supported currently: only fully
-      // decoded frames make it through.  We could potentially relax this and
-      // use SkImages::RasterFromBitmap(bitmap) to make a copy.
-      skia_image = frame->FinalizePixelsAndGetImage();
-    }
-  }
-
-  if (!skia_image)
-    return;
-
-  DCHECK(skia_image->width());
-  DCHECK(skia_image->height());
-
-  // Fail if the image was downsampled because of memory limits.
-  if (skia_image->width() != image->width() ||
-      skia_image->height() != image->height()) {
-    return;
-  }
-
-  sk_image_ = std::move(skia_image);
 }
 
 unsigned WebGLImageConversion::GetChannelBitsByFormat(GLenum format) {

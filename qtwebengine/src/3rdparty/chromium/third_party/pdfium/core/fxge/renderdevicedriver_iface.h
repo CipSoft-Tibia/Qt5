@@ -11,16 +11,17 @@
 
 #include <memory>
 
+#include "build/build_config.h"
 #include "core/fxcrt/fx_coordinates.h"
 #include "core/fxcrt/retain_ptr.h"
+#include "core/fxcrt/span.h"
 #include "core/fxge/dib/fx_dib.h"
-#include "third_party/base/containers/span.h"
 
+class CFX_AggImageRenderer;
 class CFX_DIBBase;
 class CFX_DIBitmap;
 class CFX_Font;
 class CFX_GraphStateData;
-class CFX_ImageRenderer;
 class CFX_Matrix;
 class CFX_Path;
 class CPDF_ShadingPattern;
@@ -32,11 +33,30 @@ struct FX_RECT;
 
 enum class DeviceType : bool {
   kDisplay,
+#if BUILDFLAG(IS_WIN)
   kPrinter,
+#endif
 };
 
 class RenderDeviceDriverIface {
  public:
+  enum class Result {
+    kFailure,
+    kSuccess,
+#if BUILDFLAG(IS_WIN)
+    kNotSupported
+#endif
+  };
+
+  struct StartResult {
+    StartResult(Result result,
+                std::unique_ptr<CFX_AggImageRenderer> agg_image_renderer);
+    ~StartResult();
+
+    const Result result;
+    std::unique_ptr<CFX_AggImageRenderer> agg_image_renderer;
+  };
+
   virtual ~RenderDeviceDriverIface();
 
   virtual DeviceType GetDeviceType() const = 0;
@@ -57,22 +77,18 @@ class RenderDeviceDriverIface {
                         const CFX_GraphStateData* pGraphState,
                         uint32_t fill_color,
                         uint32_t stroke_color,
-                        const CFX_FillRenderOptions& fill_options,
-                        BlendMode blend_type) = 0;
-  virtual bool FillRectWithBlend(const FX_RECT& rect,
-                                 uint32_t fill_color,
-                                 BlendMode blend_type);
+                        const CFX_FillRenderOptions& fill_options) = 0;
+  virtual bool FillRect(const FX_RECT& rect, uint32_t fill_color);
   virtual bool DrawCosmeticLine(const CFX_PointF& ptMoveTo,
                                 const CFX_PointF& ptLineTo,
-                                uint32_t color,
-                                BlendMode blend_type);
+                                uint32_t color);
 
-  virtual bool GetClipBox(FX_RECT* pRect) = 0;
-  virtual bool GetDIBits(const RetainPtr<CFX_DIBitmap>& pBitmap,
+  virtual FX_RECT GetClipBox() const = 0;
+  virtual bool GetDIBits(RetainPtr<CFX_DIBitmap> bitmap,
                          int left,
-                         int top);
-  virtual RetainPtr<CFX_DIBitmap> GetBackDrop();
-  virtual bool SetDIBits(const RetainPtr<const CFX_DIBBase>& pBitmap,
+                         int top) const;
+  virtual RetainPtr<const CFX_DIBitmap> GetBackDrop() const;
+  virtual bool SetDIBits(RetainPtr<const CFX_DIBBase> bitmap,
                          uint32_t color,
                          const FX_RECT& src_rect,
                          int dest_left,
@@ -87,14 +103,13 @@ class RenderDeviceDriverIface {
                              const FX_RECT* pClipRect,
                              const FXDIB_ResampleOptions& options,
                              BlendMode blend_type) = 0;
-  virtual bool StartDIBits(RetainPtr<const CFX_DIBBase> bitmap,
-                           float alpha,
-                           uint32_t color,
-                           const CFX_Matrix& matrix,
-                           const FXDIB_ResampleOptions& options,
-                           std::unique_ptr<CFX_ImageRenderer>* handle,
-                           BlendMode blend_type) = 0;
-  virtual bool ContinueDIBits(CFX_ImageRenderer* handle,
+  virtual StartResult StartDIBits(RetainPtr<const CFX_DIBBase> bitmap,
+                                  float alpha,
+                                  uint32_t color,
+                                  const CFX_Matrix& matrix,
+                                  const FXDIB_ResampleOptions& options,
+                                  BlendMode blend_type) = 0;
+  virtual bool ContinueDIBits(CFX_AggImageRenderer* handle,
                               PauseIndicatorIface* pPause);
   virtual bool DrawDeviceText(pdfium::span<const TextCharPos> pCharPos,
                               CFX_Font* pFont,
@@ -103,12 +118,11 @@ class RenderDeviceDriverIface {
                               uint32_t color,
                               const CFX_TextRenderOptions& options);
   virtual int GetDriverType() const;
-  virtual bool DrawShading(const CPDF_ShadingPattern* pPattern,
-                           const CFX_Matrix* pMatrix,
-                           const FX_RECT& clip_rect,
-                           int alpha,
-                           bool bAlphaMode);
 #if defined(PDF_USE_SKIA)
+  virtual bool DrawShading(const CPDF_ShadingPattern& pattern,
+                           const CFX_Matrix& matrix,
+                           const FX_RECT& clip_rect,
+                           int alpha);
   virtual bool SetBitsWithMask(RetainPtr<const CFX_DIBBase> bitmap,
                                RetainPtr<const CFX_DIBBase> mask,
                                int left,
@@ -120,14 +134,27 @@ class RenderDeviceDriverIface {
   // For `CFX_SkiaDeviceDriver` only:
   // Syncs the current rendering result from the internal buffer to the output
   // bitmap if such internal buffer exists.
-  virtual bool SyncInternalBitmaps();
-#endif
+  virtual void SyncInternalBitmaps();
+#endif  // defined(PDF_USE_SKIA)
 
   // Multiplies the device by a constant alpha, returning `true` on success.
+  // Implementations CHECK the following conditions:
+  // - `this` is bitmap-based and `this` is not of a mask format.
+  //
+  // The backing bitmap for `this` will be converted to format
+  // `FXDIB_Format::kBgra` on success when `alpha` is not 1.
   virtual bool MultiplyAlpha(float alpha) = 0;
 
   // Multiplies the device by an alpha mask, returning `true` on success.
-  virtual bool MultiplyAlphaMask(const RetainPtr<const CFX_DIBBase>& mask) = 0;
+  // Implementations CHECK the following conditions:
+  // - `this` is bitmap-based and of format `FXDIB_Format::kBgra` or
+  //   `FXDIB_Format::kBgrx`.
+  // - `mask` must be of format `FXDIB_Format::k8bppMask`.
+  // - `mask` must have the same dimensions as `this`.
+  //
+  // The backing bitmap for `this` will be converted to format
+  // `FXDIB_Format::kBgra` on success.
+  virtual bool MultiplyAlphaMask(RetainPtr<const CFX_DIBitmap> mask) = 0;
 };
 
 #endif  // CORE_FXGE_RENDERDEVICEDRIVER_IFACE_H_

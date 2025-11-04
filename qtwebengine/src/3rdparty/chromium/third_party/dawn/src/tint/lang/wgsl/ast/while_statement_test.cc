@@ -26,7 +26,6 @@
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "gmock/gmock.h"
-#include "gtest/gtest-spi.h"
 #include "src/tint/lang/wgsl/ast/binary_expression.h"
 #include "src/tint/lang/wgsl/ast/helper_test.h"
 
@@ -36,6 +35,7 @@ namespace tint::ast {
 namespace {
 
 using WhileStatementTest = TestHelper;
+using WhileStatementDeathTest = WhileStatementTest;
 
 TEST_F(WhileStatementTest, Creation) {
     auto* cond = create<BinaryExpression>(core::BinaryOp::kLessThan, Expr("i"), Expr(5_u));
@@ -65,8 +65,8 @@ TEST_F(WhileStatementTest, Creation_WithAttributes) {
     EXPECT_THAT(l->attributes, testing::ElementsAre(attr1, attr2));
 }
 
-TEST_F(WhileStatementTest, Assert_Null_Cond) {
-    EXPECT_FATAL_FAILURE(
+TEST_F(WhileStatementDeathTest, Assert_Null_Cond) {
+    EXPECT_DEATH_IF_SUPPORTED(
         {
             ProgramBuilder b;
             auto* body = b.Block();
@@ -75,8 +75,8 @@ TEST_F(WhileStatementTest, Assert_Null_Cond) {
         "internal compiler error");
 }
 
-TEST_F(WhileStatementTest, Assert_Null_Body) {
-    EXPECT_FATAL_FAILURE(
+TEST_F(WhileStatementDeathTest, Assert_Null_Body) {
+    EXPECT_DEATH_IF_SUPPORTED(
         {
             ProgramBuilder b;
             auto* cond =
@@ -86,8 +86,8 @@ TEST_F(WhileStatementTest, Assert_Null_Body) {
         "internal compiler error");
 }
 
-TEST_F(WhileStatementTest, Assert_DifferentGenerationID_Condition) {
-    EXPECT_FATAL_FAILURE(
+TEST_F(WhileStatementDeathTest, Assert_DifferentGenerationID_Condition) {
+    EXPECT_DEATH_IF_SUPPORTED(
         {
             ProgramBuilder b1;
             ProgramBuilder b2;
@@ -96,8 +96,8 @@ TEST_F(WhileStatementTest, Assert_DifferentGenerationID_Condition) {
         "internal compiler error");
 }
 
-TEST_F(WhileStatementTest, Assert_DifferentGenerationID_Body) {
-    EXPECT_FATAL_FAILURE(
+TEST_F(WhileStatementDeathTest, Assert_DifferentGenerationID_Body) {
+    EXPECT_DEATH_IF_SUPPORTED(
         {
             ProgramBuilder b1;
             ProgramBuilder b2;

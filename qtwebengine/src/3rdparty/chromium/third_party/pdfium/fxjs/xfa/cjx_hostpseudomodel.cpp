@@ -6,13 +6,11 @@
 
 #include "fxjs/xfa/cjx_hostpseudomodel.h"
 
-#include <vector>
-
+#include "core/fxcrt/check.h"
+#include "core/fxcrt/span.h"
 #include "fxjs/fxv8.h"
 #include "fxjs/js_resources.h"
 #include "fxjs/xfa/cfxjse_engine.h"
-#include "third_party/base/check.h"
-#include "third_party/base/containers/span.h"
 #include "v8/include/v8-object.h"
 #include "xfa/fxfa/cxfa_ffdoc.h"
 #include "xfa/fxfa/cxfa_ffnotify.h"
@@ -29,10 +27,10 @@ size_t FilterName(WideStringView wsExpression,
     return nLength;
 
   size_t nCount = 0;
+  pdfium::span<const wchar_t> pSrc = wsExpression.span();
   {
     // Span's lifetime must end before ReleaseBuffer() below.
     pdfium::span<wchar_t> pBuf = wsFilter.GetBuffer(nLength - nStart);
-    const wchar_t* pSrc = wsExpression.unterminated_c_str();
     while (nStart < nLength) {
       wchar_t wCur = pSrc[nStart++];
       if (wCur == ',')
@@ -42,7 +40,7 @@ size_t FilterName(WideStringView wsExpression,
     }
   }
   wsFilter.ReleaseBuffer(nCount);
-  wsFilter.Trim();
+  wsFilter.TrimWhitespace();
   return nStart;
 }
 
@@ -300,7 +298,7 @@ CJS_Result CJX_HostPseudoModel::openList(
     constexpr Mask<XFA_ResolveFlag> kFlags = {XFA_ResolveFlag::kChildren,
                                               XFA_ResolveFlag::kParent,
                                               XFA_ResolveFlag::kSiblings};
-    absl::optional<CFXJSE_Engine::ResolveResult> maybeResult =
+    std::optional<CFXJSE_Engine::ResolveResult> maybeResult =
         runtime->ResolveObjects(
             pObject, runtime->ToWideString(params[0]).AsStringView(), kFlags);
     if (!maybeResult.has_value() ||
@@ -385,7 +383,7 @@ CJS_Result CJX_HostPseudoModel::resetData(
     constexpr Mask<XFA_ResolveFlag> kFlags = {XFA_ResolveFlag::kChildren,
                                               XFA_ResolveFlag::kParent,
                                               XFA_ResolveFlag::kSiblings};
-    absl::optional<CFXJSE_Engine::ResolveResult> maybeResult =
+    std::optional<CFXJSE_Engine::ResolveResult> maybeResult =
         runtime->ResolveObjects(pObject, wsName.AsStringView(), kFlags);
     if (!maybeResult.has_value() ||
         !maybeResult.value().objects.front()->IsNode())
@@ -448,7 +446,7 @@ CJS_Result CJX_HostPseudoModel::setFocus(
       constexpr Mask<XFA_ResolveFlag> kFlags = {XFA_ResolveFlag::kChildren,
                                                 XFA_ResolveFlag::kParent,
                                                 XFA_ResolveFlag::kSiblings};
-      absl::optional<CFXJSE_Engine::ResolveResult> maybeResult =
+      std::optional<CFXJSE_Engine::ResolveResult> maybeResult =
           runtime->ResolveObjects(
               pObject, runtime->ToWideString(params[0]).AsStringView(), kFlags);
       if (!maybeResult.has_value() ||

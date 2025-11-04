@@ -2,14 +2,49 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#ifdef UNSAFE_BUFFERS_BUILD
+// TODO(crbug.com/40285824): Remove this and convert code to safer constructs.
+#pragma allow_unsafe_buffers
+#endif
+
 #include "media/base/video_frame_converter.h"
 
+#include "base/trace_event/trace_event.h"
 #include "media/base/video_frame_converter_internals.h"
 #include "third_party/libyuv/include/libyuv.h"
 
 namespace media {
 
+namespace {
+
 constexpr auto kDefaultFiltering = libyuv::kFilterBox;
+
+std::optional<VideoPixelFormat> GetSourceFormatOverrideForABGRToARGB(
+    VideoPixelFormat src_format,
+    VideoPixelFormat dest_format) {
+  if ((src_format == PIXEL_FORMAT_XBGR || src_format == PIXEL_FORMAT_ABGR) &&
+      (dest_format == PIXEL_FORMAT_I444 || dest_format == PIXEL_FORMAT_I444A)) {
+    return src_format == PIXEL_FORMAT_XBGR ? PIXEL_FORMAT_XRGB
+                                           : PIXEL_FORMAT_ARGB;
+  }
+  return std::nullopt;
+}
+
+// Wraps `tmp_frame` in a new VideoFrame with pixel format `override_format`. No
+// ref is taken on `tmp_frame`, so callers must guarantee it outlives the
+// return frame.
+scoped_refptr<VideoFrame> WrapTempFrameForABGRToARGB(
+    VideoPixelFormat override_format,
+    scoped_refptr<VideoFrame> tmp_frame) {
+  return VideoFrame::WrapExternalData(
+      override_format, tmp_frame->coded_size(), tmp_frame->visible_rect(),
+      tmp_frame->natural_size(),
+      tmp_frame->writable_data(VideoFrame::Plane::kARGB),
+      VideoFrame::AllocationSize(override_format, tmp_frame->coded_size()),
+      tmp_frame->timestamp());
+}
+
+}  // namespace
 
 VideoFrameConverter::VideoFrameConverter()
     : frame_pool_(base::MakeRefCounted<FrameBufferPool>()) {}
@@ -20,6 +55,10 @@ VideoFrameConverter::~VideoFrameConverter() {
 
 EncoderStatus VideoFrameConverter::ConvertAndScale(const VideoFrame& src_frame,
                                                    VideoFrame& dest_frame) {
+  TRACE_EVENT2("media", "ConvertAndScale", "src_frame",
+               src_frame.AsHumanReadableString(), "dest_frame",
+               dest_frame.AsHumanReadableString());
+
   if (!IsOpaque(dest_frame.format()) && IsOpaque(src_frame.format())) {
     // We can drop an alpha channel, but we can't make it from nothing.
     return EncoderStatus(EncoderStatus::Codes::kUnsupportedFrameFormat)
@@ -36,6 +75,8 @@ EncoderStatus VideoFrameConverter::ConvertAndScale(const VideoFrame& src_frame,
 
     case PIXEL_FORMAT_I420:
     case PIXEL_FORMAT_I420A:
+    case PIXEL_FORMAT_I444:
+    case PIXEL_FORMAT_I444A:
       return ConvertAndScaleI4xxx(&src_frame, dest_frame);
 
     case PIXEL_FORMAT_NV12:
@@ -84,9 +125,9 @@ scoped_refptr<VideoFrame> VideoFrameConverter::WrapNV12xFrameInI420xFrame(
 
   // 1. Allocate scratch space for U, V planes.
   const auto u_plane_size = VideoFrame::PlaneSize(
-      PIXEL_FORMAT_I420, VideoFrame::kUPlane, frame.coded_size());
+      PIXEL_FORMAT_I420, VideoFrame::Plane::kU, frame.coded_size());
   const auto v_plane_size = VideoFrame::PlaneSize(
-      PIXEL_FORMAT_I420, VideoFrame::kVPlane, frame.coded_size());
+      PIXEL_FORMAT_I420, VideoFrame::Plane::kV, frame.coded_size());
 
   void* fb_id;
   auto* scratch_space = frame_pool_->GetFrameBuffer(
@@ -100,19 +141,19 @@ scoped_refptr<VideoFrame> VideoFrameConverter::WrapNV12xFrameInI420xFrame(
   if (IsOpaque(frame.format())) {
     wrapped_frame = VideoFrame::WrapExternalYuvData(
         PIXEL_FORMAT_I420, frame.coded_size(), frame.visible_rect(),
-        frame.natural_size(), frame.stride(VideoFrame::kYPlane),
+        frame.natural_size(), frame.stride(VideoFrame::Plane::kY),
         u_plane_size.width(), v_plane_size.width(),
-        frame.data(VideoFrame::kYPlane), scratch_space,
+        frame.data(VideoFrame::Plane::kY), scratch_space,
         scratch_space + u_plane_size.GetArea(), frame.timestamp());
   } else {
     wrapped_frame = VideoFrame::WrapExternalYuvaData(
         PIXEL_FORMAT_I420A, frame.coded_size(), frame.visible_rect(),
-        frame.natural_size(), frame.stride(VideoFrame::kYPlane),
+        frame.natural_size(), frame.stride(VideoFrame::Plane::kY),
         u_plane_size.width(), v_plane_size.width(),
-        frame.stride(VideoFrame::kAPlaneTriPlanar),
-        frame.data(VideoFrame::kYPlane), scratch_space,
+        frame.stride(VideoFrame::Plane::kATriPlanar),
+        frame.data(VideoFrame::Plane::kY), scratch_space,
         scratch_space + u_plane_size.GetArea(),
-        frame.data(VideoFrame::kAPlaneTriPlanar), frame.timestamp());
+        frame.data(VideoFrame::Plane::kATriPlanar), frame.timestamp());
   }
 
   if (wrapped_frame) {
@@ -144,13 +185,42 @@ EncoderStatus VideoFrameConverter::ConvertAndScaleRGB(
   switch (dest_frame.format()) {
     case PIXEL_FORMAT_I420:
     case PIXEL_FORMAT_I420A:
-      return internals::ARGBToI420x(*src_frame, dest_frame, kDefaultFiltering)
+      return internals::ARGBToI420x(*src_frame, dest_frame)
                  ? OkStatus()
                  : EncoderStatus(EncoderStatus::Codes::kFormatConversionError);
 
+    case PIXEL_FORMAT_I444:
+    case PIXEL_FORMAT_I444A: {
+      // libyuv lacks ABGRToI444 methods, so we convert ABGR to ARGB first.
+      scoped_refptr<VideoFrame> argb_tmp_frame;
+      if (auto src_format_override = GetSourceFormatOverrideForABGRToARGB(
+              src_frame->format(), dest_frame.format())) {
+        if (tmp_frame) {
+          // If we have an existing `tmp_frame`, we must wrap it to change its
+          // pixel format from xBGR to xRGB to avoid unnecessary copies.
+          argb_tmp_frame =
+              WrapTempFrameForABGRToARGB(*src_format_override, tmp_frame);
+        } else {
+          // Otherwise, if we don't already have a `tmp_frame` we must create a
+          // new one with the correct xRGB pixel format.
+          argb_tmp_frame = CreateTempFrame(
+              *src_format_override, dest_frame.coded_size(),
+              dest_frame.visible_rect(), dest_frame.natural_size());
+        }
+        if (!argb_tmp_frame ||
+            !internals::ABGRToARGB(*src_frame, *argb_tmp_frame)) {
+          return EncoderStatus::Codes::kScalingError;
+        }
+        src_frame = argb_tmp_frame.get();
+      }
+      return internals::ARGBToI444x(*src_frame, dest_frame)
+                 ? OkStatus()
+                 : EncoderStatus(EncoderStatus::Codes::kFormatConversionError);
+    }
+
     case PIXEL_FORMAT_NV12:
     case PIXEL_FORMAT_NV12A:
-      return internals::ARGBToNV12x(*src_frame, dest_frame, kDefaultFiltering)
+      return internals::ARGBToNV12x(*src_frame, dest_frame)
                  ? OkStatus()
                  : EncoderStatus(EncoderStatus::Codes::kFormatConversionError);
 
@@ -170,17 +240,20 @@ EncoderStatus VideoFrameConverter::ConvertAndScaleI4xxx(
   switch (dest_frame.format()) {
     case PIXEL_FORMAT_I420:
     case PIXEL_FORMAT_I420A:
-      internals::I4xxxScale(*src_frame, dest_frame, kDefaultFiltering);
+    case PIXEL_FORMAT_I444:
+    case PIXEL_FORMAT_I444A:
+      internals::I4xxxScale(*src_frame, dest_frame);
       return OkStatus();
 
     case PIXEL_FORMAT_NV12:
     case PIXEL_FORMAT_NV12A: {
       if (src_frame->visible_rect().size() ==
           dest_frame.visible_rect().size()) {
-        // Note: libyuv has I422ToNV12 and I444ToNV12 functions; though the I422
-        // one just converts to I420 internally first...
-        return internals::I420xToNV12x(*src_frame, dest_frame,
-                                       kDefaultFiltering)
+        auto convert_fn = src_frame->format() == PIXEL_FORMAT_I420 ||
+                                  src_frame->format() == PIXEL_FORMAT_I420A
+                              ? internals::I420xToNV12x
+                              : internals::I444xToNV12x;
+        return convert_fn(*src_frame, dest_frame)
                    ? OkStatus()
                    : EncoderStatus(
                          EncoderStatus::Codes::kFormatConversionError);
@@ -195,7 +268,7 @@ EncoderStatus VideoFrameConverter::ConvertAndScaleI4xxx(
 
       // Scale in I4xxx for simplicity. This will also take care of scaling the
       // Y, A planes directly into `dest_frame` due to the wrapper setup above.
-      internals::I4xxxScale(*src_frame, *tmp_frame, kDefaultFiltering);
+      internals::I4xxxScale(*src_frame, *tmp_frame);
       internals::MergeUV(*tmp_frame, dest_frame);
       return OkStatus();
     }
@@ -215,11 +288,15 @@ EncoderStatus VideoFrameConverter::ConvertAndScaleNV12x(
 
   switch (dest_frame.format()) {
     case PIXEL_FORMAT_I420:
-    case PIXEL_FORMAT_I420A: {
-      if (src_frame->visible_rect().size() ==
-          dest_frame.visible_rect().size()) {
-        return internals::NV12xToI420x(*src_frame, dest_frame,
-                                       kDefaultFiltering)
+    case PIXEL_FORMAT_I420A:
+    case PIXEL_FORMAT_I444:
+    case PIXEL_FORMAT_I444A: {
+      if ((src_frame->visible_rect().size() ==
+           dest_frame.visible_rect().size()) &&
+          // libyuv doesn't have a NV12ToI444 method.
+          (dest_frame.format() == PIXEL_FORMAT_I420 ||
+           dest_frame.format() == PIXEL_FORMAT_I420A)) {
+        return internals::NV12xToI420x(*src_frame, dest_frame)
                    ? OkStatus()
                    : EncoderStatus(
                          EncoderStatus::Codes::kFormatConversionError);
@@ -236,7 +313,7 @@ EncoderStatus VideoFrameConverter::ConvertAndScaleNV12x(
 
       // Scale in I4xxx for simplicity. This will also take care of scaling the
       // Y, A planes directly into `dest_frame` due to the wrapper setup above.
-      internals::I4xxxScale(*tmp_frame, dest_frame, kDefaultFiltering);
+      internals::I4xxxScale(*tmp_frame, dest_frame);
       return OkStatus();
     }
 

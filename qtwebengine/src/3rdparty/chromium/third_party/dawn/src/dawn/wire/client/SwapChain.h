@@ -28,7 +28,7 @@
 #ifndef SRC_DAWN_WIRE_CLIENT_SWAPCHAIN_H_
 #define SRC_DAWN_WIRE_CLIENT_SWAPCHAIN_H_
 
-#include "dawn/webgpu.h"
+#include <webgpu/webgpu.h>
 
 #include "dawn/wire/client/ObjectBase.h"
 
@@ -42,6 +42,8 @@ class SwapChain final : public ObjectBase {
               WGPUSurface surface,
               const WGPUSwapChainDescriptor* descriptor);
     ~SwapChain() override;
+
+    ObjectType GetObjectType() const override;
 
     WGPUTexture GetCurrentTexture();
 

@@ -132,6 +132,7 @@ class CORE_EXPORT BoxFragmentPainter : public BoxPainterBase {
 
   void PaintInternal(const PaintInfo&);
   void PaintAllPhasesAtomically(const PaintInfo&);
+  void PaintCurrentPageContainer(const PaintInfo&);
   void PaintBlockChildren(const PaintInfo&, PhysicalOffset);
   void PaintBlockChild(const PhysicalFragmentLink& child,
                        const PaintInfo& paint_info,
@@ -310,7 +311,7 @@ class CORE_EXPORT BoxFragmentPainter : public BoxPainterBase {
   const FragmentItem* box_item_ = nullptr;
   const InlineCursor* inline_box_cursor_ = nullptr;
   InlinePaintContext* inline_context_ = nullptr;
-  absl::optional<InlinePaintContext> inline_context_storage_;
+  std::optional<InlinePaintContext> inline_context_storage_;
 };
 
 inline BoxFragmentPainter::BoxFragmentPainter(

@@ -2,13 +2,20 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#ifdef UNSAFE_BUFFERS_BUILD
+// TODO(crbug.com/40284755): Remove this and spanify to fix the errors.
+#pragma allow_unsafe_buffers
+#endif
+
 #include "net/disk_cache/simple/simple_synchronous_entry.h"
 
 #include <cstring>
 #include <functional>
 #include <limits>
+#include <optional>
 
 #include "base/compiler_specific.h"
+#include "base/containers/span.h"
 #include "base/files/file_util.h"
 #include "base/hash/hash.h"
 #include "base/location.h"
@@ -20,7 +27,6 @@
 #include "base/numerics/checked_math.h"
 #include "base/numerics/safe_conversions.h"
 #include "base/ranges/algorithm.h"
-#include "base/strings/string_piece.h"
 #include "base/task/sequenced_task_runner.h"
 #include "base/timer/elapsed_timer.h"
 #include "crypto/secure_hash.h"
@@ -33,7 +39,6 @@
 #include "net/disk_cache/simple/simple_histogram_macros.h"
 #include "net/disk_cache/simple/simple_util.h"
 #include "third_party/abseil-cpp/absl/container/inlined_vector.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "third_party/zlib/zlib.h"
 
 using base::FilePath;
@@ -342,7 +347,7 @@ SimpleSynchronousEntry::SparseRequest::SparseRequest(int64_t sparse_offset_p,
 void SimpleSynchronousEntry::OpenEntry(
     net::CacheType cache_type,
     const FilePath& path,
-    const absl::optional<std::string>& key,
+    const std::optional<std::string>& key,
     const uint64_t entry_hash,
     SimpleFileTracker* file_tracker,
     std::unique_ptr<UnboundBackendFileOperations> file_operations,
@@ -1172,7 +1177,7 @@ void SimpleSynchronousEntry::Close(
 SimpleSynchronousEntry::SimpleSynchronousEntry(
     net::CacheType cache_type,
     const FilePath& path,
-    const absl::optional<std::string>& key,
+    const std::optional<std::string>& key,
     const uint64_t entry_hash,
     SimpleFileTracker* file_tracker,
     std::unique_ptr<UnboundBackendFileOperations> unbound_file_operations,
@@ -1413,8 +1418,10 @@ bool SimpleSynchronousEntry::CheckHeaderAndKey(base::File* file,
     header = reinterpret_cast<const SimpleFileHeader*>(header_data.data());
   }
 
-  char* key_data = header_data.data() + sizeof(*header);
-  if (base::PersistentHash(key_data, header->key_length) != header->key_hash) {
+  const char* key_data = header_data.data() + sizeof(*header);
+  base::span<const char> key_span =
+      base::make_span(key_data, header->key_length);
+  if (base::PersistentHash(base::as_bytes(key_span)) != header->key_hash) {
     RecordSyncOpenResult(cache_type_, OPEN_ENTRY_KEY_HASH_MISMATCH);
     return false;
   }
@@ -1984,7 +1991,7 @@ bool SimpleSynchronousEntry::ScanSparseFile(base::File* sparse_file,
     range.length = range_header.length;
     range.data_crc32 = range_header.data_crc32;
     range.file_offset = range_header_offset + sizeof(range_header);
-    sparse_ranges_.insert(std::make_pair(range.offset, range));
+    sparse_ranges_.emplace(range.offset, range);
 
     range_header_offset += sizeof(range_header) + range.length;
 
@@ -2105,7 +2112,7 @@ bool SimpleSynchronousEntry::AppendSparseRange(base::File* sparse_file,
   range.length = len;
   range.data_crc32 = data_crc32;
   range.file_offset = data_file_offset;
-  sparse_ranges_.insert(std::make_pair(offset, range));
+  sparse_ranges_.emplace(offset, range);
 
   return true;
 }

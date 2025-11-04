@@ -56,7 +56,7 @@ private slots:
     void testHidden();
 
 private:
-    void loadTestData(const QByteArray &filename);
+    void loadTestData(const QString &filename);
     void updateProperty(int frame);
 
     BMStroke *m_stroke = nullptr;
@@ -271,7 +271,7 @@ void tst_BMStroke::testHidden()
     QVERIFY(m_stroke->hidden() == true);
 }
 
-void tst_BMStroke::loadTestData(const QByteArray &filename)
+void tst_BMStroke::loadTestData(const QString &filename)
 {
     if (m_stroke) {
         delete m_stroke;

@@ -6,7 +6,6 @@ accept_configuration:
 
 instructions:
   Build:
-    # to be turned on when the module source SBOM pass the license check
     - type: EnvironmentVariable
       variableName: VERIFY_SOURCE_SBOM
       variableValue: "ON"
@@ -21,6 +20,7 @@ instructions:
     - type: Group
       instructions:
         - !include "{{qt/qtbase}}/coin_module_test_template_v3.yaml"
+        - !include "{{qt/qtbase}}/coin_module_test_docs.yaml"
       disable_if:
         condition: or
         conditions:

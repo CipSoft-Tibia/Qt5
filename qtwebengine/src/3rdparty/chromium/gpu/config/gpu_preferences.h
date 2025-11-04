@@ -62,11 +62,14 @@ enum class WebGPUPowerPreference : uint32_t {
 };
 
 enum class GrContextType : uint32_t {
+  kNone,
   kGL,      // Ganesh
   kVulkan,  // Ganesh
   kGraphiteDawn,
   kGraphiteMetal,
 };
+
+GPU_EXPORT std::string GrContextTypeToString(GrContextType type);
 
 enum class DawnBackendValidationLevel : uint32_t {
   kDisabled = 0,
@@ -201,14 +204,6 @@ struct GPU_EXPORT GpuPreferences {
   // tracking.
   bool use_passthrough_cmd_decoder = false;
 
-  // Disable using a single multiplanar GpuMemoryBuffer to store biplanar
-  // VideoFrames (e.g. NV12), see https://crbug.com/791676.
-  bool disable_biplanar_gpu_memory_buffers_for_video_frames = false;
-
-  // List of texture usage & formats that require use of a platform specific
-  // texture target.
-  std::vector<gfx::BufferUsageAndFormat> texture_target_exception_list;
-
   // ===================================
   // Settings from //gpu/config/gpu_switches.h
 
@@ -260,6 +255,10 @@ struct GPU_EXPORT GpuPreferences {
   // Enable usage of WebGPU features intended only for use during development.
   bool enable_webgpu_developer_features = false;
 
+  // Enable usage of experimental WebGPU features that would eventually land in
+  // the WebGPU spec.
+  bool enable_webgpu_experimental_features = false;
+
   // Enable validation layers in Dawn backends.
   DawnBackendValidationLevel enable_dawn_backend_validation =
       DawnBackendValidationLevel::kDisabled;
@@ -297,14 +296,6 @@ struct GPU_EXPORT GpuPreferences {
 
   // Enable native CPU-mappable GPU memory buffer support on Linux.
   bool enable_native_gpu_memory_buffers = false;
-
-  // ===================================
-  // Settings from //media/base/media_switches.h
-
-#if BUILDFLAG(IS_CHROMEOS)
-  // Enable the hardware-accelerated direct video decoder on ChromeOS.
-  bool enable_chromeos_direct_video_decoder = false;
-#endif
 
   // Disables oppr debug crash dumps.
   bool disable_oopr_debug_crash_dump = false;

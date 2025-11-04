@@ -9,20 +9,21 @@
 #include <cstdlib>
 #include <sstream>
 #include <string>
+#include <string_view>
+#include <vector>
 
 #include "base/at_exit.h"
 #include "base/command_line.h"
 #include "base/compiler_specific.h"
 #include "base/containers/contains.h"
-#include "base/containers/cxx20_erase.h"
 #include "base/logging.h"
-#include "base/strings/string_piece.h"
 #include "base/strings/string_split.h"
 #include "base/strings/string_util.h"
 #include "build/build_config.h"
 #include "build/chromeos_buildflags.h"
 #include "ui/gl/buildflags.h"
 #include "ui/gl/gl_bindings.h"
+#include "ui/gl/gl_features.h"
 #include "ui/gl/gl_gl_api_implementation.h"
 #include "ui/gl/gl_version_info.h"
 
@@ -75,10 +76,6 @@ std::string GLImplementationParts::GLString() const {
   switch (gl) {
     case GLImplementation::kGLImplementationNone:
       return "none";
-    case GLImplementation::kGLImplementationDesktopGL:
-      return "desktop-gl";
-    case GLImplementation::kGLImplementationDesktopGLCoreProfile:
-      return "desktop-gl-core-profile";
     case GLImplementation::kGLImplementationEGLGLES2:
       return "egl-gles2";
     case GLImplementation::kGLImplementationMockGL:
@@ -126,8 +123,6 @@ const struct {
   const char* angle_name;
   GLImplementationParts implementation;
 } kGLImplementationNamePairs[] = {
-    {kGLImplementationDesktopName, kANGLEImplementationNoneName,
-     GLImplementationParts(kGLImplementationDesktopGL)},
     {kGLImplementationEGLName, kANGLEImplementationNoneName,
      GLImplementationParts(kGLImplementationEGLGLES2)},
     {kGLImplementationANGLEName, kANGLEImplementationNoneName,
@@ -210,42 +205,16 @@ void CleanupNativeLibraries(void* due_to_fallback) {
   }
 }
 
-gfx::ExtensionSet GetGLExtensionsFromCurrentContext(
-    GLApi* api,
-    GLenum extensions_enum,
-    GLenum num_extensions_enum) {
-  if (WillUseGLGetStringForExtensions(api)) {
-    const char* extensions =
-        reinterpret_cast<const char*>(api->glGetStringFn(extensions_enum));
-    return extensions ? gfx::MakeExtensionSet(extensions) : gfx::ExtensionSet();
-  }
-
-  GLint num_extensions = 0;
-  api->glGetIntegervFn(num_extensions_enum, &num_extensions);
-
-  std::vector<base::StringPiece> exts(num_extensions);
-  for (GLint i = 0; i < num_extensions; ++i) {
-    const char* extension =
-        reinterpret_cast<const char*>(api->glGetStringiFn(extensions_enum, i));
-    DCHECK(extension != NULL);
-    exts[i] = extension;
-  }
-  return gfx::ExtensionSet(exts);
+gfx::ExtensionSet GetGLExtensionsFromCurrentContext(GLApi* api,
+                                                    GLenum extensions_enum) {
+  const char* extensions =
+      reinterpret_cast<const char*>(api->glGetStringFn(extensions_enum));
+  return extensions ? gfx::MakeExtensionSet(extensions) : gfx::ExtensionSet();
 }
 
 }  // namespace
 
-#if defined(USE_EGL)
 EGLApi* g_current_egl_context;
-#endif
-
-#if defined(OS_WIN)
-WGLApi* g_current_wgl_context;
-#endif
-
-#if defined(USE_GLX)
-GLXApi* g_current_glx_context;
-#endif
 
 GLImplementationParts GetNamedGLImplementation(const std::string& gl_name,
                                                const std::string& angle_name) {
@@ -279,11 +248,9 @@ void SetSoftwareWebGLCommandLineSwitches(base::CommandLine* command_line) {
                                   kANGLEImplementationSwiftShaderForWebGLName);
 }
 
-absl::optional<GLImplementationParts>
+std::optional<GLImplementationParts>
 GetRequestedGLImplementationFromCommandLine(
-    const base::CommandLine* command_line,
-    bool* fallback_to_software_gl) {
-  *fallback_to_software_gl = false;
+    const base::CommandLine* command_line) {
   bool overrideUseSoftwareGL =
       command_line->HasSwitch(switches::kOverrideUseSoftwareGLForTests);
 #if BUILDFLAG(IS_LINUX) || \
@@ -302,7 +269,7 @@ GetRequestedGLImplementationFromCommandLine(
 
   if (!command_line->HasSwitch(switches::kUseGL) &&
       !command_line->HasSwitch(switches::kUseANGLE)) {
-    return absl::nullopt;
+    return std::nullopt;
   }
 
   std::string gl_name = command_line->GetSwitchValueASCII(switches::kUseGL);
@@ -313,11 +280,6 @@ GetRequestedGLImplementationFromCommandLine(
   if (command_line->HasSwitch(switches::kUseANGLE) &&
       !command_line->HasSwitch(switches::kUseGL)) {
     gl_name = kGLImplementationANGLEName;
-  }
-
-  if (gl_name == "any") {
-    *fallback_to_software_gl = true;
-    return absl::nullopt;
   }
 
   if ((gl_name == kGLImplementationANGLEName) &&
@@ -375,11 +337,6 @@ ANGLEImplementation GetANGLEImplementation() {
   return g_gl_implementation.angle;
 }
 
-bool HasDesktopGLFeatures() {
-  return kGLImplementationDesktopGL == g_gl_implementation.gl ||
-         kGLImplementationDesktopGLCoreProfile == g_gl_implementation.gl;
-}
-
 void AddGLNativeLibrary(base::NativeLibrary library) {
   DCHECK(library);
 
@@ -435,13 +392,13 @@ std::string FilterGLExtensionList(
   if (extensions == NULL)
     return "";
 
-  std::vector<base::StringPiece> extension_vec = base::SplitStringPiece(
+  std::vector<std::string_view> extension_vec = base::SplitStringPiece(
       extensions, " ", base::TRIM_WHITESPACE, base::SPLIT_WANT_ALL);
 
-  auto is_disabled = [&disabled_extensions](const base::StringPiece& ext) {
+  auto is_disabled = [&disabled_extensions](std::string_view ext) {
     return base::Contains(disabled_extensions, ext);
   };
-  base::EraseIf(extension_vec, is_disabled);
+  std::erase_if(extension_vec, is_disabled);
 
   return base::JoinString(extension_vec, " ");
 }
@@ -462,23 +419,9 @@ std::string GetGLExtensionsFromCurrentContext() {
 }
 
 std::string GetGLExtensionsFromCurrentContext(GLApi* api) {
-  if (WillUseGLGetStringForExtensions(api)) {
-    const char* extensions =
-        reinterpret_cast<const char*>(api->glGetStringFn(GL_EXTENSIONS));
-    return extensions ? std::string(extensions) : std::string();
-  }
-
-  GLint num_extensions = 0;
-  api->glGetIntegervFn(GL_NUM_EXTENSIONS, &num_extensions);
-
-  std::vector<base::StringPiece> exts(num_extensions);
-  for (GLint i = 0; i < num_extensions; ++i) {
-    const char* extension =
-        reinterpret_cast<const char*>(api->glGetStringiFn(GL_EXTENSIONS, i));
-    DCHECK(extension != NULL);
-    exts[i] = extension;
-  }
-  return base::JoinString(exts, " ");
+  const char* extensions =
+      reinterpret_cast<const char*>(api->glGetStringFn(GL_EXTENSIONS));
+  return extensions ? std::string(extensions) : std::string();
 }
 
 gfx::ExtensionSet GetRequestableGLExtensionsFromCurrentContext() {
@@ -486,22 +429,8 @@ gfx::ExtensionSet GetRequestableGLExtensionsFromCurrentContext() {
 }
 
 gfx::ExtensionSet GetRequestableGLExtensionsFromCurrentContext(GLApi* api) {
-  return GetGLExtensionsFromCurrentContext(api, GL_REQUESTABLE_EXTENSIONS_ANGLE,
-                                           GL_NUM_REQUESTABLE_EXTENSIONS_ANGLE);
-}
-
-bool WillUseGLGetStringForExtensions() {
-  return WillUseGLGetStringForExtensions(g_current_gl_context);
-}
-
-bool WillUseGLGetStringForExtensions(GLApi* api) {
-  const char* version_str =
-      reinterpret_cast<const char*>(api->glGetStringFn(GL_VERSION));
-  const char* renderer_str =
-      reinterpret_cast<const char*>(api->glGetStringFn(GL_RENDERER));
-  gfx::ExtensionSet extensions;
-  GLVersionInfo version_info(version_str, renderer_str, extensions);
-  return version_info.is_es || version_info.major_version < 3;
+  return GetGLExtensionsFromCurrentContext(api,
+                                           GL_REQUESTABLE_EXTENSIONS_ANGLE);
 }
 
 base::NativeLibrary LoadLibraryAndPrintError(

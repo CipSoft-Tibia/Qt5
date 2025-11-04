@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:trusted-data
 
 #include "qleadvertiser_bluez_p.h"
 
@@ -413,7 +414,10 @@ void QLeAdvertiserBluez::handleCommandCompleted(quint16 opCode, quint8 status,
     switch (ocf) {
     case QBluezConst::OcfLeReadTxPowerLevel:
         if (m_sendPowerLevel) {
-            m_powerLevel = data.at(0);
+            if (!data.isEmpty())
+                m_powerLevel = data.at(0);
+            else
+                m_powerLevel = 0;
             qCDebug(QT_BT_BLUEZ) << "TX power level is" << m_powerLevel;
         }
         queueAdvertisingCommands();

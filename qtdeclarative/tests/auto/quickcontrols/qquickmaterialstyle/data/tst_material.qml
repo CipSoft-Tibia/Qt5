@@ -1317,6 +1317,68 @@ TestCase {
     }
 
     Component {
+        id: textFieldWithPlaceHolderComponent
+
+        Rectangle {
+            anchors.fill: parent
+            property alias textControl1: textControl1
+            property alias textControl2: textControl2
+
+            TextField{
+                id: textControl1
+                objectName: "textControl1"
+                width: 200
+                height: 50
+                placeholderText:"Placeholder"
+                onActiveFocusChanged:{
+                    if(!activeFocus)
+                        delayedTimer.start();
+                }
+            }
+
+            Timer {
+                id: delayedTimer
+                interval: 10
+                repeat: false
+                running: false
+                onTriggered: {
+                    textControl1.text = "test";
+                }
+            }
+
+            TextField{
+                id: textControl2
+                objectName: "textControl2"
+                anchors.top:textControl1.bottom
+                width: 200
+                height: 50
+            }
+
+            Component.onCompleted: {
+                textControl2.forceActiveFocus()
+            }
+        }
+    }
+
+    function test_textFieldPlaceHolderPosition() {
+        let window = createTemporaryObject(textFieldWithPlaceHolderComponent, testCase)
+        verify(window)
+
+        let textControl1 = window.textControl1
+        let textControl2 = window.textControl2
+        let placeholderTextItem = textControl1.children[0]
+        let y = placeholderTextItem.y
+
+        textControl1.forceActiveFocus()
+        verify(textControl1.activeFocus)
+        textControl2.forceActiveFocus()
+        verify(textControl2.activeFocus)
+        // y should be different because now text field has text assigned
+        // so placeholder should sit on top of the text field
+        tryVerify(() => { return placeholderTextItem.y != y; })
+    }
+
+    Component {
         id: childWindowComponent
 
         ApplicationWindow {
@@ -1416,5 +1478,114 @@ TestCase {
         busyIndicator.running = true
 
         tryCompare(busyIndicator.contentItem, "visible", true)
+    }
+
+    Component {
+        id: primaryColorAsBackgroundComponent
+
+        ApplicationWindow {
+            property alias container: container
+            property alias label: label
+            width: 200
+            height: 200
+            visible: true
+            Material.theme: Material.Dark
+            Material.background: Material.primary
+            Rectangle {
+                id: container
+                anchors.fill: parent
+                color: Material.background
+                Text {
+                    id: label
+                    text: "TEXT"
+                    color: Material.foreground
+                }
+            }
+        }
+    }
+
+    function test_primaryColorAsBackground_data() {
+        return [
+            { primary: Material.Red,        expectedForeground: "#ffffff" },
+            { primary: Material.Pink,       expectedForeground: "#ffffff" },
+            { primary: Material.Purple,     expectedForeground: "#ffffff" },
+            { primary: Material.DeepPurple, expectedForeground: "#ffffff" },
+            { primary: Material.Indigo,     expectedForeground: "#ffffff" },
+            { primary: Material.Blue,       expectedForeground: "#ffffff" },
+            { primary: Material.Teal,       expectedForeground: "#ffffff" },
+            { primary: Material.DeepOrange, expectedForeground: "#ffffff" },
+            { primary: Material.Brown,      expectedForeground: "#ffffff" },
+            { primary: Material.BlueGrey,   expectedForeground: "#ffffff" },
+            { primary: Material.LightBlue,  expectedForeground: "#dd000000" },
+            { primary: Material.Cyan,       expectedForeground: "#dd000000" },
+            { primary: Material.Green,      expectedForeground: "#dd000000" },
+            { primary: Material.LightGreen, expectedForeground: "#dd000000" },
+            { primary: Material.Lime,       expectedForeground: "#dd000000" },
+            { primary: Material.Yellow,     expectedForeground: "#dd000000" },
+            { primary: Material.Amber,      expectedForeground: "#dd000000" },
+            { primary: Material.Orange,     expectedForeground: "#dd000000" },
+            { primary: Material.Grey,       expectedForeground: "#dd000000" },
+            // The below color (#F44346) corresponds to Material.Red but still
+            // it shall be considered as the custom primary color
+            { primary: "#F44336",           expectedForegroundLight: "#dd000000",
+                                            expectedForegroundDark: "#ffffff"},
+            { primary: "#7938b6",           expectedForegroundLight: "#dd000000",
+                                            expectedForegroundDark: "#ffffff"}
+        ]
+    }
+
+    function test_primaryColorAsBackground(data) {
+        let window = createTemporaryObject(primaryColorAsBackgroundComponent, testCase)
+        verify(window)
+
+        window.Material.primary = data.primary
+        let customPrimary = !Number.isInteger(data.primary)
+        let expectedBackground = customPrimary ?  window.Material.primary :
+                            window.Material.color(data.primary, Material.Shade200)
+        let expectedForeground = customPrimary ? data.expectedForegroundDark : data.expectedForeground
+        compare(window.Material.background.toString(), expectedBackground)
+        compare(window.Material.foreground.toString(), expectedForeground)
+        compare(window.container.Material.background.toString(), expectedBackground)
+        compare(window.container.Material.foreground.toString(), expectedForeground)
+        compare(window.label.color.toString(), expectedForeground)
+
+        window.Material.theme = Material.Light
+        if (!customPrimary)
+            expectedBackground = window.Material.color(data.primary, Material.Shade500)
+        expectedForeground = customPrimary ? data.expectedForegroundLight : data.expectedForeground
+        compare(window.Material.background.toString(), expectedBackground)
+        compare(window.Material.foreground.toString(), expectedForeground)
+        compare(window.container.Material.background.toString(), expectedBackground)
+        compare(window.container.Material.foreground.toString(), expectedForeground)
+        compare(window.label.color.toString(), expectedForeground)
+    }
+
+    Component {
+        id: labelInPopupComponent
+
+        Popup {
+            id: popupInstance
+
+            property alias label: label
+
+            Material.theme: Material.Dark
+
+            Label {
+                id: label
+                text: "Should have a dark theme"
+            }
+        }
+    }
+
+    function test_popupPropagatesToChildItem() {
+        let popup = createTemporaryObject(labelInPopupComponent, testCase)
+        verify(popup)
+
+        compare(popup.Material.theme, Material.Dark)
+        compare(popup.label.Material.theme, Material.Dark)
+
+        popup.Material.theme = Material.Light
+        compare(popup.Material.theme, Material.Light)
+        compare(popup.label.Material.theme, Material.Light)
     }
 }

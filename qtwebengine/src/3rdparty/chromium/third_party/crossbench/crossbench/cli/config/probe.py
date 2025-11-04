@@ -3,23 +3,22 @@
 # found in the LICENSE file.
 
 from __future__ import annotations
+
 import argparse
 import dataclasses
 import re
+from typing import (TYPE_CHECKING, Any, Dict, Final, Iterable, List, Optional,
+                    Sequence, Type)
 
-from typing import TYPE_CHECKING, Any, Dict, Final, Iterable, List, Optional, TextIO, Type
-
-import hjson
 from crossbench import cli_helper, exception
-from crossbench.config import ConfigObject
-
+from crossbench.config import ConfigError, ConfigObject
 from crossbench.probes.all import GENERAL_PURPOSE_PROBES
 
 if TYPE_CHECKING:
   from crossbench.probes.probe import Probe
 
 
-class ProbeConfigError(argparse.ArgumentTypeError):
+class ProbeConfigError(ConfigError):
   pass
 
 
@@ -43,7 +42,7 @@ class ProbeConfig(ConfigObject):
       raise ValueError(f"{type(self).__name__}.config cannot be None.")
 
   @classmethod
-  def loads(cls, value: str) -> ProbeConfig:
+  def parse_str(cls, value: str) -> ProbeConfig:
     # 1. variant: known probe
     if value in PROBE_LOOKUP:
       return cls(PROBE_LOOKUP[value])
@@ -61,84 +60,91 @@ class ProbeConfig(ConfigObject):
       if "name" in inline_config:
         raise ProbeConfigError("Inline hjson cannot redefine 'name'.")
       config.update(inline_config)
-    return cls.load_dict(config)
+    return cls.parse_dict(config)
 
   @classmethod
-  def load_dict(cls, config: Dict[str, Any]) -> ProbeConfig:
-    probe_name = config.pop("name")
-    if probe_name not in PROBE_LOOKUP:
-      raise ProbeConfigError(f"Unknown probe: '{probe_name}'")
-    probe_cls = PROBE_LOOKUP[probe_name]
-    return cls(probe_cls, config)
+  def parse_dict(cls, config: Dict[str, Any]) -> ProbeConfig:
+    probe_name = cli_helper.parse_non_empty_str(config.pop("name"), "name")
+    return cls.parse_probe_dict(probe_name, config)
+
+  @classmethod
+  def parse_probe_dict(cls, probe_name: str, config: Dict[str,
+                                                          Any]) -> ProbeConfig:
+    if probe_cls := PROBE_LOOKUP.get(probe_name):
+      return cls(probe_cls, config)
+    raise cls._unknown_probe_error(probe_name)
+
+  @classmethod
+  def _unknown_probe_error(cls, probe_name: str) -> ProbeConfigError:
+    additional_msg = ""
+    if ":" in probe_name or "}" in probe_name:
+      additional_msg = "\n    Likely missing quotes for --probe argument"
+    msg = f"    Options are: {list(PROBE_LOOKUP.keys())}{additional_msg}"
+    return ProbeConfigError(f"Unknown probe name: '{probe_name}'\n{msg}")
 
   @property
   def name(self) -> str:
     return self.cls.NAME
 
 
-# TODO: Migrate to ConfigObject
-class ProbeListConfig:
-
-  _PROBE_RE: Final[re.Pattern] = re.compile(
-      r"(?P<probe_name>[\w.]+)(:?(?P<config>\{.*\}))?",
-      re.MULTILINE | re.DOTALL)
+class ProbeListConfig(ConfigObject):
 
   @classmethod
   def from_cli_args(cls, args: argparse.Namespace) -> ProbeListConfig:
     with exception.annotate_argparsing():
       if args.probe_config:
-        with args.probe_config.open(encoding="utf-8") as f:
-          return cls.load(f)
+        return cls.parse_path(args.probe_config)
       return cls(args.probe)
 
   @classmethod
-  def load(cls, file: TextIO) -> ProbeListConfig:
-    # Make sure we wrap any exception in a argparse.ArgumentTypeError)
-    with exception.annotate_argparsing():
-      probe_config = cls()
-      probe_config.load_config_file(file)
-      return probe_config
+  def parse_other(cls: Type[ProbeListConfig], value: Any) -> ProbeListConfig:
+    if isinstance(value, (tuple, list)):
+      return cls.parse_sequence(value)
+    return super().parse_other(value)
 
-  def __init__(self, probe_configs: Optional[Iterable[ProbeConfig]] = None):
+  @classmethod
+  def parse_sequence(cls: Type[ProbeListConfig],
+                     config: Sequence[Dict[str, Any]]) -> ProbeListConfig:
+    probe_configs: List[ProbeConfig] = []
+    for index, probe_config in enumerate(config):
+      probe_config = cli_helper.parse_dict(probe_config, f"probes[{index}]")
+      probe_configs.append(ProbeConfig.parse_dict(probe_config))
+    return cls(probe_configs)
+
+  @classmethod
+  def parse_dict(cls: Type[ProbeListConfig],
+                 config: Dict[str, Any]) -> ProbeListConfig:
+    # Support global configs with {"probes": ...}
+    if "probes" in config:
+      config = config["probes"]
+      if isinstance(config, (tuple, list)):
+        return cls.parse_sequence(config)
+    elif "browsers" in config or "flags" in config:
+      raise ProbeConfigError("Missing 'probes' property in global config.")
+    config = cli_helper.parse_dict(config, "probes")
+    probe_configs: List[ProbeConfig] = []
+    for probe_name, config_data in config.items():
+      with exception.annotate(f"Parsing probe config probes['{probe_name}']"):
+        probe_configs.append(
+            ProbeConfig.parse_probe_dict(probe_name, config_data))
+    return cls(probe_configs)
+
+  @classmethod
+  def parse_str(cls, value: str) -> ProbeListConfig:
+    raise NotImplementedError()
+
+  def __init__(self, probes: Optional[Iterable[ProbeConfig]] = None):
     self._probes: List[Probe] = []
-    if not probe_configs:
+    if not probes:
       return
-    for probe_config in probe_configs:
+    for probe_config in probes:
       with exception.annotate(f"Parsing --probe={probe_config.name}"):
-        self.add_probe(probe_config)
+        self._add_probe(probe_config)
 
   @property
   def probes(self) -> List[Probe]:
     return self._probes
 
-  def add_probe(self, probe_config: ProbeConfig) -> None:
+  def _add_probe(self, probe_config: ProbeConfig) -> None:
     probe: Probe = probe_config.cls.from_config(probe_config.config)
     self._probes.append(probe)
-
-  def load_config_file(self, file: TextIO) -> None:
-    with exception.annotate(f"Loading probe config file: {file.name}"):
-      data = None
-      with exception.annotate(f"Parsing {hjson.__name__}"):
-        try:
-          data = hjson.load(file)
-        except ValueError as e:
-          raise ProbeConfigError(f"Parsing error: {e}") from e
-      if not isinstance(data, dict) or "probes" not in data:
-        raise ProbeConfigError(
-            "Probe config file does not contain a 'probes' dict value.")
-      self.load_dict(data["probes"])
-
-  def load_dict(self, config: Dict[str, Any]) -> None:
-    for probe_name, config_data in config.items():
-      with exception.annotate(f"Parsing probe config probes['{probe_name}']"):
-        if probe_name not in PROBE_LOOKUP:
-          self.raise_unknown_probe(probe_name)
-        probe_cls = PROBE_LOOKUP[probe_name]
-        self._probes.append(probe_cls.from_config(config_data))
-
-  def raise_unknown_probe(self, probe_name: str) -> None:
-    additional_msg = ""
-    if ":" in probe_name or "}" in probe_name:
-      additional_msg = "\n    Likely missing quotes for --probe argument"
-    msg = f"    Options are: {list(PROBE_LOOKUP.keys())}{additional_msg}"
-    raise ProbeConfigError(f"Unknown probe name: '{probe_name}'\n{msg}")

@@ -91,8 +91,8 @@ Item {
             scale: Qt.vector3d(3, 3, 1)
             receivesShadows: true
             materials: [
-                DefaultMaterial {
-                    diffuseColor: "#0c100c"
+                PrincipledMaterial {
+                    baseColor: "#0c100c"
                 }
             ]
         }
@@ -112,8 +112,8 @@ Item {
                     scale: Qt.vector3d(0.5, 0.5, 1)
                     receivesShadows: false
                     materials: [
-                        DefaultMaterial {
-                            lighting: DefaultMaterial.NoLighting
+                        PrincipledMaterial {
+                            lighting: PrincipledMaterial.NoLighting
                             cullMode: Material.NoCulling
                             opacity: 0.25
                         }

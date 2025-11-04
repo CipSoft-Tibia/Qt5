@@ -22,7 +22,8 @@ export class ImagePreviewPopover {
       getDOMNode: (arg0: Element) => SDK.DOMModel.DOMNode | null) {
     this.getLinkElement = getLinkElement;
     this.getDOMNode = getDOMNode;
-    this.popover = new UI.PopoverHelper.PopoverHelper(container, this.handleRequest.bind(this));
+    this.popover =
+        new UI.PopoverHelper.PopoverHelper(container, this.handleRequest.bind(this), 'elements.image-preview');
     this.popover.setHasPadding(true);
     this.popover.setTimeout(0, 100);
   }
@@ -39,15 +40,18 @@ export class ImagePreviewPopover {
     return {
       box: link.boxInWindow(),
       hide: undefined,
-      show: async(popover: UI.GlassPane.GlassPane): Promise<boolean> => {
+      show: async (popover: UI.GlassPane.GlassPane) => {
         const node = this.getDOMNode((link as Element));
         if (!node) {
           return false;
         }
         const precomputedFeatures = await Components.ImagePreview.ImagePreview.loadDimensionsForNode(node);
         const preview = await Components.ImagePreview.ImagePreview.build(
-            node.domModel().target(), href as Platform.DevToolsPath.UrlString, true,
-            {imageAltText: undefined, precomputedFeatures});
+            node.domModel().target(), href as Platform.DevToolsPath.UrlString, true, {
+              imageAltText: undefined,
+              precomputedFeatures,
+              align: Components.ImagePreview.Align.CENTER,
+            });
         if (preview) {
           popover.contentElement.appendChild(preview);
         }

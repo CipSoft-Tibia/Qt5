@@ -5,6 +5,7 @@
 #include "iiosensorproxyorientationsensor.h"
 #include "iiosensorproxylightsensor.h"
 #include "iiosensorproxycompass.h"
+#include "iiosensorproxyproximitysensor.h"
 
 #include <qsensorplugin.h>
 #include <qsensorbackend.h>
@@ -31,6 +32,8 @@ public:
                 QSensorManager::registerBackend(QLightSensor::sensorType, IIOSensorProxyLightSensor::id, this);
             if (!QSensorManager::isBackendRegistered(QCompass::sensorType, IIOSensorProxyCompass::id))
                 QSensorManager::registerBackend(QCompass::sensorType, IIOSensorProxyCompass::id, this);
+            if (!QSensorManager::isBackendRegistered(QProximitySensor::sensorType, IIOSensorProxyProximitySensor::id))
+                QSensorManager::registerBackend(QProximitySensor::sensorType, IIOSensorProxyProximitySensor::id, this);
         }
     }
 
@@ -42,6 +45,8 @@ public:
             return new IIOSensorProxyLightSensor(sensor);
         else if (sensor->identifier() == IIOSensorProxyCompass::id)
             return new IIOSensorProxyCompass(sensor);
+        else if (sensor->identifier() == IIOSensorProxyProximitySensor::id)
+            return new IIOSensorProxyProximitySensor(sensor);
 
         return 0;
     }

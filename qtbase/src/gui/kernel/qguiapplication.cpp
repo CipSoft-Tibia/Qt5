@@ -99,6 +99,10 @@
 #include <private/qvulkandefaultinstance_p.h>
 #endif
 
+#if QT_CONFIG(thread)
+#include <QtCore/QThreadPool>
+#endif
+
 #include <qtgui_tracepoints_p.h>
 
 #include <private/qtools_p.h>
@@ -686,6 +690,20 @@ QGuiApplication::~QGuiApplication()
     d->cursor_list.clear();
 #endif
 
+#if QT_CONFIG(qtgui_threadpool)
+    // Synchronize and stop the gui thread pool threads.
+    QThreadPool *guiThreadPool = nullptr;
+    QT_TRY {
+        guiThreadPool = QGuiApplicationPrivate::qtGuiThreadPool();
+    } QT_CATCH (...) {
+        // swallow the exception, since destructors shouldn't throw
+    }
+    if (guiThreadPool) {
+        guiThreadPool->waitForDone();
+        delete guiThreadPool;
+    }
+#endif
+
     delete QGuiApplicationPrivate::app_icon;
     QGuiApplicationPrivate::app_icon = nullptr;
     delete QGuiApplicationPrivate::platform_name;
@@ -1259,9 +1277,9 @@ QString QGuiApplication::platformName()
     }
 }
 
-Q_LOGGING_CATEGORY(lcQpaPluginLoading, "qt.qpa.plugin");
-Q_LOGGING_CATEGORY(lcQpaTheme, "qt.qpa.theme");
-Q_LOGGING_CATEGORY(lcPtrDispatch, "qt.pointer.dispatch");
+Q_STATIC_LOGGING_CATEGORY(lcQpaPluginLoading, "qt.qpa.plugin");
+Q_STATIC_LOGGING_CATEGORY(lcQpaTheme, "qt.qpa.theme");
+Q_STATIC_LOGGING_CATEGORY(lcPtrDispatch, "qt.pointer.dispatch");
 
 static void init_platform(const QString &pluginNamesWithArguments, const QString &platformPluginPath, const QString &platformThemeName, int &argc, char **argv)
 {
@@ -1273,7 +1291,7 @@ static void init_platform(const QString &pluginNamesWithArguments, const QString
     QStringList plugins = pluginNamesWithArguments.split(u';', Qt::SkipEmptyParts);
     QStringList platformArguments;
     QStringList availablePlugins = QPlatformIntegrationFactory::keys(platformPluginPath);
-    for (const auto &pluginArgument : plugins) {
+    for (const auto &pluginArgument : std::as_const(plugins)) {
         // Split into platform name and arguments
         QStringList arguments = pluginArgument.split(u':', Qt::SkipEmptyParts);
         if (arguments.isEmpty())
@@ -1331,10 +1349,10 @@ static void init_platform(const QString &pluginNamesWithArguments, const QString
 
     // Create the platform theme:
 
-    // 1) Fetch the platform name from the environment if present.
+    // 1) Try the platform name from the environment if present
     QStringList themeNames;
     if (!platformThemeName.isEmpty()) {
-        qCDebug(lcQpaTheme) << "Adding" << platformThemeName << "from environment to list of theme names";
+        qCDebug(lcQpaTheme) << "Adding" << platformThemeName << "from environment";
         themeNames.append(platformThemeName);
     }
 
@@ -1347,32 +1365,25 @@ static void init_platform(const QString &pluginNamesWithArguments, const QString
     // 3) Ask the platform integration for a list of theme names
     const auto platformIntegrationThemeNames = QGuiApplicationPrivate::platform_integration->themeNames();
     qCDebug(lcQpaTheme) << "Adding platform integration's theme names to list of theme names:" << platformIntegrationThemeNames;
-    themeNames += platformIntegrationThemeNames;
+    themeNames.append(platformIntegrationThemeNames);
+
     // 4) Look for a theme plugin.
     for (const QString &themeName : std::as_const(themeNames)) {
         qCDebug(lcQpaTheme) << "Attempting to create platform theme" << themeName << "via QPlatformThemeFactory::create";
         QGuiApplicationPrivate::platform_theme = QPlatformThemeFactory::create(themeName, platformPluginPath);
         if (QGuiApplicationPrivate::platform_theme) {
-            qCDebug(lcQpaTheme) << "Successfully created platform theme" << themeName;
+            qCDebug(lcQpaTheme) << "Successfully created platform theme" << themeName << "via QPlatformThemeFactory::create";
+            break;
+        }
+        qCDebug(lcQpaTheme) << "Attempting to create platform theme" << themeName << "via createPlatformTheme";
+        QGuiApplicationPrivate::platform_theme = QGuiApplicationPrivate::platform_integration->createPlatformTheme(themeName);
+        if (QGuiApplicationPrivate::platform_theme) {
+            qCDebug(lcQpaTheme) << "Successfully created platform theme" << themeName << "via createPlatformTheme";
             break;
         }
     }
 
-    // 5) If no theme plugin was found ask the platform integration to
-    // create a theme
-    if (!QGuiApplicationPrivate::platform_theme) {
-        for (const QString &themeName : std::as_const(themeNames)) {
-            qCDebug(lcQpaTheme) << "Attempting to create platform theme" << themeName << "via createPlatformTheme";
-            QGuiApplicationPrivate::platform_theme = QGuiApplicationPrivate::platform_integration->createPlatformTheme(themeName);
-            if (QGuiApplicationPrivate::platform_theme) {
-                qCDebug(lcQpaTheme) << "Successfully created platform theme" << themeName;
-                break;
-            }
-        }
-        // No error message; not having a theme plugin is allowed.
-    }
-
-    // 6) Fall back on the built-in "null" platform theme.
+    // 5) Fall back on the built-in "null" platform theme.
     if (!QGuiApplicationPrivate::platform_theme) {
         qCDebug(lcQpaTheme) << "Failed to create platform theme; using \"null\" platform theme";
         QGuiApplicationPrivate::platform_theme = new QPlatformTheme;
@@ -1386,14 +1397,14 @@ static void init_platform(const QString &pluginNamesWithArguments, const QString
                 const qsizetype equalsPos = argument.indexOf(u'=');
                 const QByteArray name =
                     equalsPos != -1 ? argument.left(equalsPos).toUtf8() : argument.toUtf8();
-                const QVariant value =
+                QVariant value =
                     equalsPos != -1 ? QVariant(argument.mid(equalsPos + 1)) : QVariant(true);
-                nativeInterface->setProperty(name.constData(), value);
+                nativeInterface->setProperty(name.constData(), std::move(value));
             }
         }
     }
 
-    const auto platformIntegration = QGuiApplicationPrivate::platformIntegration();
+    const auto *platformIntegration = QGuiApplicationPrivate::platformIntegration();
     fontSmoothingGamma = platformIntegration->styleHint(QPlatformIntegration::FontSmoothingGamma).toReal();
     QCoreApplication::setAttribute(Qt::AA_DontShowShortcutsInContextMenus,
         !QGuiApplication::styleHints()->showShortcutsInContextMenus());
@@ -1481,7 +1492,7 @@ void QGuiApplicationPrivate::createPlatformIntegration()
     QHighDpiScaling::initHighDpiScaling();
 
     // Load the platform integration
-    QString platformPluginPath = QString::fromLocal8Bit(qgetenv("QT_QPA_PLATFORM_PLUGIN_PATH"));
+    QString platformPluginPath = qEnvironmentVariable("QT_QPA_PLATFORM_PLUGIN_PATH");
 
 
     QByteArray platformName;
@@ -2079,6 +2090,10 @@ bool QGuiApplication::event(QEvent *e)
                 postEvent(topLevelWindow, new QEvent(e->type()));
         }
         break;
+    case QEvent::ThemeChange:
+        for (auto *w : QGuiApplication::allWindows())
+            forwardEvent(w, e);
+        break;
     case QEvent::Quit:
         // Close open windows. This is done in order to deliver de-expose
         // events while the event loop is still running.
@@ -2381,8 +2396,8 @@ void QGuiApplicationPrivate::processMouseEvent(QWindowSystemInterfacePrivate::Mo
         mouse_buttons = e->buttons;
         if (mousePress) {
             ulong doubleClickInterval = static_cast<ulong>(QGuiApplication::styleHints()->mouseDoubleClickInterval());
-            doubleClick = e->timestamp - lastPressTimestamp
-                        < doubleClickInterval && button == mousePressButton;
+            const auto timestampDelta = e->timestamp - lastPressTimestamp;
+            doubleClick = timestampDelta > 0 && timestampDelta < doubleClickInterval && button == mousePressButton;
             mousePressButton = button;
             lastPressTimestamp = e ->timestamp;
         }
@@ -2781,10 +2796,10 @@ void QGuiApplicationPrivate::processSafeAreaMarginsChangedEvent(QWindowSystemInt
     if (wse->window.isNull())
         return;
 
-    // Handle by forwarding directly to QWindowPrivate, instead of sending spontaneous
-    // QEvent like most other functions, as there's no QEvent type for the safe area
-    // change, and we don't want to add one until we know that this is a good API.
-    qt_window_private(wse->window)->processSafeAreaMarginsChanged();
+    emit wse->window->safeAreaMarginsChanged(wse->window->safeAreaMargins());
+
+    QEvent event(QEvent::SafeAreaMarginsChange);
+    QGuiApplication::sendSpontaneousEvent(wse->window, &event);
 }
 
 void QGuiApplicationPrivate::processThemeChanged(QWindowSystemInterfacePrivate::ThemeChangeEvent *tce)
@@ -2795,9 +2810,10 @@ void QGuiApplicationPrivate::processThemeChanged(QWindowSystemInterfacePrivate::
     QIconPrivate::clearIconCache();
 
     QEvent themeChangeEvent(QEvent::ThemeChange);
-    const QWindowList windows = tce->window ? QWindowList{tce->window} : window_list;
-    for (auto *window : windows)
-        QGuiApplication::sendSpontaneousEvent(window, &themeChangeEvent);
+    if (tce->window)
+        QGuiApplication::sendSpontaneousEvent(tce->window, &themeChangeEvent);
+    else
+        QGuiApplication::sendSpontaneousEvent(qGuiApp, &themeChangeEvent);
 }
 
 void QGuiApplicationPrivate::handleThemeChanged()
@@ -4545,6 +4561,32 @@ QInputDeviceManager *QGuiApplicationPrivate::inputDeviceManager()
         m_inputDeviceManager = new QInputDeviceManager(QGuiApplication::instance());
 
     return m_inputDeviceManager;
+}
+
+/*!
+    Returns the QThreadPool instance for Qt Gui.
+    \internal
+*/
+QThreadPool *QGuiApplicationPrivate::qtGuiThreadPool()
+{
+#if QT_CONFIG(qtgui_threadpool)
+    Q_CONSTINIT static QPointer<QThreadPool> guiInstance;
+    Q_CONSTINIT static QBasicMutex theMutex;
+    const static bool runtime_disable = qEnvironmentVariableIsSet("QT_NO_GUI_THREADPOOL");
+    if (runtime_disable)
+        return nullptr;
+    const QMutexLocker locker(&theMutex);
+    if (guiInstance.isNull() && !QCoreApplication::closingDown()) {
+        guiInstance = new QThreadPool();
+        // Limit max thread to avoid too many parallel threads.
+        // We are not optimized for much more than 4 or 8 threads.
+        if (guiInstance && guiInstance->maxThreadCount() > 4)
+            guiInstance->setMaxThreadCount(qBound(4, guiInstance->maxThreadCount() / 2, 8));
+    }
+    return guiInstance;
+#else
+    return nullptr;
+#endif
 }
 
 /*!

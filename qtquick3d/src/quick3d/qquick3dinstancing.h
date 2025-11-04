@@ -24,6 +24,10 @@ class Q_QUICK3D_EXPORT QQuick3DInstancing : public QQuick3DObject
     Q_PROPERTY(int instanceCountOverride READ instanceCountOverride WRITE setInstanceCountOverride NOTIFY instanceCountOverrideChanged)
     Q_PROPERTY(bool hasTransparency READ hasTransparency WRITE setHasTransparency NOTIFY hasTransparencyChanged)
     Q_PROPERTY(bool depthSortingEnabled READ depthSortingEnabled WRITE setDepthSortingEnabled NOTIFY depthSortingEnabledChanged)
+    Q_PROPERTY(QVector3D shadowBoundsMinimum READ shadowBoundsMinimum WRITE setShadowBoundsMinimum NOTIFY
+                       shadowBoundsMinimumChanged REVISION(6, 9))
+    Q_PROPERTY(QVector3D shadowBoundsMaximum READ shadowBoundsMaximum WRITE setShadowBoundsMaximum NOTIFY
+                       shadowBoundsMaximumChanged REVISION(6, 9))
 
 public:
     struct Q_QUICK3D_EXPORT InstanceTableEntry {
@@ -46,6 +50,8 @@ public:
     int instanceCountOverride() const;
     bool hasTransparency() const;
     bool depthSortingEnabled() const;
+    Q_REVISION(6, 9) QVector3D shadowBoundsMinimum() const;
+    Q_REVISION(6, 9) QVector3D shadowBoundsMaximum() const;
 
     Q_REVISION(6, 3) Q_INVOKABLE QVector3D instancePosition(int index);
     Q_REVISION(6, 3) Q_INVOKABLE QVector3D instanceScale(int index);
@@ -57,6 +63,8 @@ public Q_SLOTS:
     void setInstanceCountOverride(int instanceCountOverride);
     void setHasTransparency(bool hasTransparency);
     void setDepthSortingEnabled(bool enabled);
+    Q_REVISION(6, 9) void setShadowBoundsMinimum(const QVector3D &newShadowBoundsMinimum);
+    Q_REVISION(6, 9) void setShadowBoundsMaximum(const QVector3D &newShadowBoundsMinimum);
 
 Q_SIGNALS:
     void instanceTableChanged();
@@ -64,6 +72,8 @@ Q_SIGNALS:
     void instanceCountOverrideChanged();
     void hasTransparencyChanged();
     void depthSortingEnabledChanged();
+    Q_REVISION(6, 9) void shadowBoundsMinimumChanged();
+    Q_REVISION(6, 9) void shadowBoundsMaximumChanged();
 
 protected:
     virtual QByteArray getInstanceBuffer(int *instanceCount) = 0;

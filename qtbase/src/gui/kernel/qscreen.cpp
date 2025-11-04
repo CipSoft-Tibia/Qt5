@@ -34,6 +34,12 @@ QT_BEGIN_NAMESPACE
     \note Both physical and logical DPI are expressed in device-independent dots.
     Multiply by QScreen::devicePixelRatio() to get device-dependent density.
 
+    To obtain a QScreen object, use QGuiApplication::primaryScreen() for the
+    primary screen, or QGuiApplication::screens() to get a list of all screens.
+
+    \sa QGuiApplication::primaryScreen()
+    \sa QGuiApplication::screens()
+
     \inmodule QtGui
 */
 
@@ -61,7 +67,8 @@ void QScreenPrivate::updateGeometry()
     qreal scaleFactor = QHighDpiScaling::factor(platformScreen);
     QRect nativeGeometry = platformScreen->geometry();
     geometry = QRect(nativeGeometry.topLeft(), QHighDpi::fromNative(nativeGeometry.size(), scaleFactor));
-    availableGeometry = QHighDpi::fromNative(platformScreen->availableGeometry(), scaleFactor, geometry.topLeft());
+    QRect nativeAvailableGeometry = platformScreen->availableGeometry();
+    availableGeometry = QRect(nativeAvailableGeometry.topLeft(), QHighDpi::fromNative(nativeAvailableGeometry.size(), scaleFactor));
 }
 
 /*!

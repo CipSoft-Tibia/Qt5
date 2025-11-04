@@ -1,5 +1,6 @@
 // Copyright (C) 2023 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
+// Qt-Security score:critical reason:data-parser
 
 #include "rainfalldata.h"
 #include <QtCore/qfile.h>
@@ -15,8 +16,6 @@ RainfallData::RainfallData()
     // In data file the months are in numeric format, so create custom list
     for (int i = 1; i <= 12; ++i)
         m_numericMonths << QString::number(i);
-
-    m_columnCount = m_numericMonths.size();
 
     updateYearsList(2010, 2022);
 
@@ -73,8 +72,6 @@ void RainfallData::updateYearsList(int start, int end)
 
     for (int i = start; i <= end; ++i)
         m_years << QString::number(i);
-
-    m_rowCount = m_years.size();
 }
 
 //! [1]

@@ -116,8 +116,9 @@ inline Q_DECL_CONSTEXPR QOpcUa::NodeAttributes QOpcUaNode::mandatoryBaseAttribut
 inline Q_DECL_CONSTEXPR QOpcUa::NodeAttributes QOpcUaNode::allBaseAttributes()
 {
     return QOpcUa::NodeAttribute::NodeId | QOpcUa::NodeAttribute::NodeClass | QOpcUa::NodeAttribute::BrowseName |
-            QOpcUa::NodeAttribute::DisplayName | QOpcUa::NodeAttribute::Description | QOpcUa::NodeAttribute::WriteMask |
-            QOpcUa::NodeAttribute::UserWriteMask;
+           QOpcUa::NodeAttribute::DisplayName | QOpcUa::NodeAttribute::Description | QOpcUa::NodeAttribute::WriteMask |
+           QOpcUa::NodeAttribute::UserWriteMask | QOpcUa::NodeAttribute::RolePermissions |
+           QOpcUa::NodeAttribute::UserRolePermissions | QOpcUa::NodeAttribute::AccessRestrictions;
 }
 
 #endif // QOPCUANODE_H

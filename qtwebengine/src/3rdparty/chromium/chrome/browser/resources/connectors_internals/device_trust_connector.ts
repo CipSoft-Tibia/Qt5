@@ -5,20 +5,12 @@
 import {CustomElement} from 'chrome://resources/js/custom_element.js';
 import {loadTimeData} from 'chrome://resources/js/load_time_data.js';
 
-import {ConsentMetadata, DeviceTrustState, Int32Value, KeyInfo, KeyManagerInitializedValue, KeyManagerPermanentFailure, KeyTrustLevel, KeyType, PageHandler, PageHandlerInterface} from './connectors_internals.mojom-webui.js';
+import {BrowserProxy} from './browser_proxy.js';
+import type {ConsentMetadata, DeviceTrustState, KeyInfo, PageHandlerInterface} from './connectors_internals.mojom-webui.js';
+import {KeyManagerInitializedValue, KeyManagerPermanentFailure} from './connectors_internals.mojom-webui.js';
+import * as utils from './connectors_utils.js';
 import {getTemplate} from './device_trust_connector.html.js';
 
-const TrustLevelStringMap = {
-  [KeyTrustLevel.UNSPECIFIED]: 'Unspecified',
-  [KeyTrustLevel.HW]: 'HW',
-  [KeyTrustLevel.OS]: 'OS',
-};
-
-const KeyTypeStringMap = {
-  [KeyType.UNKNOWN]: 'Unknown',
-  [KeyType.RSA]: 'RSA',
-  [KeyType.EC]: 'EC',
-};
 
 const KeyPermanentFailureMap = {
   [KeyManagerPermanentFailure.CREATION_UPLOAD_CONFLICT]:
@@ -60,9 +52,9 @@ export class DeviceTrustConnectorElement extends CustomElement {
     this.setValueToElement('#policy-enabled-levels', `${policyLevels}`);
   }
 
-  set consentMetadata(consentMetadata: ConsentMetadata|undefined) {
-    const consentDetailsEl = (this.$('#consent-details') as HTMLElement);
-    const noConsentDetailsEl = (this.$('#no-consent') as HTMLElement);
+  set consentMetadata(consentMetadata: ConsentMetadata|null) {
+    const consentDetailsEl = this.getRequiredElement('#consent-details');
+    const noConsentDetailsEl = this.getRequiredElement('#no-consent-details');
     if (!consentMetadata) {
       this.showElement(noConsentDetailsEl);
       this.hideElement(consentDetailsEl);
@@ -79,19 +71,19 @@ export class DeviceTrustConnectorElement extends CustomElement {
   }
 
   set keyInfo(keyInfo: KeyInfo) {
-    const keySectionEl = (this.$('#key-manager-section') as HTMLElement);
-    const initStateEl = (this.$('#key-manager-state') as HTMLElement);
+    const keySectionEl = this.getRequiredElement('#key-manager-section');
+    const initStateEl = this.getRequiredElement('#key-manager-state');
 
     const keyPermanentErrorRowEl =
-        (this.$('#key-permanent-failure-row') as HTMLElement);
+        this.getRequiredElement('#key-permanent-failure-row');
     const keyPermanentErrorValueEl =
-        (this.$('#key-permanent-failure') as HTMLElement);
+        this.getRequiredElement('#key-permanent-failure');
 
-    const keyLoadedRows = (this.$('#key-loaded-rows') as HTMLElement);
-    const trustLevelStateEl = (this.$('#key-trust-level') as HTMLElement);
-    const keyTypeStateEl = (this.$('#key-type') as HTMLElement);
-    const spkiHashStateEl = (this.$('#spki-hash') as HTMLElement);
-    const keySyncStateEl = (this.$('#key-sync') as HTMLElement);
+    const keyLoadedRows = this.getRequiredElement('#key-loaded-rows');
+    const trustLevelStateEl = this.getRequiredElement('#key-trust-level');
+    const keyTypeStateEl = this.getRequiredElement('#key-type');
+    const spkiHashStateEl = this.getRequiredElement('#spki-hash');
+    const keySyncStateEl = this.getRequiredElement('#key-sync');
 
     const initializedValue = keyInfo.isKeyManagerInitialized;
     if (initializedValue === KeyManagerInitializedValue.UNSUPPORTED) {
@@ -116,11 +108,11 @@ export class DeviceTrustConnectorElement extends CustomElement {
       const keyMetadata = keyInfo.loadedKeyInfo;
       if (keyMetadata) {
         trustLevelStateEl.innerText =
-            this.trustLevelToString(keyMetadata.trustLevel);
-        keyTypeStateEl.innerText = this.keyTypeToString(keyMetadata.keyType);
+            utils.trustLevelToString(keyMetadata.trustLevel);
+        keyTypeStateEl.innerText = utils.keyTypeToString(keyMetadata.keyType);
         spkiHashStateEl.innerText = keyMetadata.encodedSpkiHash;
-        keySyncStateEl.innerText =
-            this.keySyncCodeToString(keyMetadata.syncKeyResponseCode);
+        keySyncStateEl.innerText = utils.keySyncCodeToString(
+            keyMetadata.keyUploadStatus?.syncKeyResponseCode);
 
         this.showElement(keyLoadedRows);
       } else {
@@ -137,7 +129,7 @@ export class DeviceTrustConnectorElement extends CustomElement {
 
   private signalsString_: string = '';
   set signalsString(str: string) {
-    const signalsEl = (this.$('#signals') as HTMLElement);
+    const signalsEl = this.$<HTMLElement>('#signals');
     if (signalsEl) {
       signalsEl.innerText = str;
       this.signalsString_ = str;
@@ -145,7 +137,7 @@ export class DeviceTrustConnectorElement extends CustomElement {
       console.error('Could not find #signals element.');
     }
 
-    const signalsSection = (this.$('#signals-section') as HTMLElement);
+    const signalsSection = this.$<HTMLElement>('#signals-section');
     if (signalsSection) {
       str === '' ? this.hideElement(signalsSection) :
                    this.showElement(signalsSection);
@@ -166,11 +158,12 @@ export class DeviceTrustConnectorElement extends CustomElement {
     return this.signalsString_;
   }
 
-  private readonly pageHandler: PageHandlerInterface;
+  private get pageHandler(): PageHandlerInterface {
+    return BrowserProxy.getInstance().handler;
+  }
 
   constructor() {
     super();
-    this.pageHandler = PageHandler.getRemote();
 
     this.fetchDeviceTrustValues();
 
@@ -239,27 +232,6 @@ export class DeviceTrustConnectorElement extends CustomElement {
     } else {
       console.error(`Could not find ${elementId} element.`);
     }
-  }
-
-  private trustLevelToString(trustLevel: KeyTrustLevel): string {
-    return TrustLevelStringMap[trustLevel] || 'invalid';
-  }
-
-  private keyTypeToString(keyType: KeyType): string {
-    return KeyTypeStringMap[keyType] || 'invalid';
-  }
-
-  private keySyncCodeToString(syncKeyResponseCode: Int32Value|
-                              undefined): string {
-    if (!syncKeyResponseCode) {
-      return 'Undefined';
-    }
-
-    const value = syncKeyResponseCode.value;
-    if (value / 100 === 2) {
-      return `Success (${value})`;
-    }
-    return `Failure (${value})`;
   }
 }
 

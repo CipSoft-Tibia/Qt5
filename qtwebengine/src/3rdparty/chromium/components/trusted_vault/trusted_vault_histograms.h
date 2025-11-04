@@ -5,21 +5,25 @@
 #ifndef COMPONENTS_TRUSTED_VAULT_TRUSTED_VAULT_HISTOGRAMS_H_
 #define COMPONENTS_TRUSTED_VAULT_TRUSTED_VAULT_HISTOGRAMS_H_
 
+#include <optional>
+
 #include "components/trusted_vault/trusted_vault_server_constants.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 
 namespace trusted_vault {
 
 // These values are persisted to logs. Entries should not be renumbered and
 // numeric values should never be reused.
+// LINT.IfChange(TrustedVaultHintDegradedRecoverabilityChangedReason)
 enum class TrustedVaultHintDegradedRecoverabilityChangedReasonForUMA {
   kRecoveryMethodAdded = 0,
   kPersistentAuthErrorResolved = 1,
   kMaxValue = kPersistentAuthErrorResolved,
 };
+// LINT.ThenChange(/tools/metrics/histograms/metadata/sync/enums.xml:TrustedVaultHintDegradedRecoverabilityChangedReason)
 
 // These values are persisted to logs. Entries should not be renumbered and
 // numeric values should never be reused.
+// LINT.IfChange(TrustedVaultDeviceRegistrationState)
 enum class TrustedVaultDeviceRegistrationStateForUMA {
   kAlreadyRegisteredV0 = 0,
   kLocalKeysAreStale = 1,
@@ -32,9 +36,11 @@ enum class TrustedVaultDeviceRegistrationStateForUMA {
   kAlreadyRegisteredV1 = 6,
   kMaxValue = kAlreadyRegisteredV1,
 };
+// LINT.ThenChange(/tools/metrics/histograms/metadata/sync/enums.xml:TrustedVaultDeviceRegistrationState)
 
 // These values are persisted to logs. Entries should not be renumbered and
 // numeric values should never be reused.
+// LINT.IfChange(TrustedVaultDeviceRegistrationOutcome)
 enum class TrustedVaultDeviceRegistrationOutcomeForUMA {
   kSuccess = 0,
   kAlreadyRegistered = 1,
@@ -46,19 +52,29 @@ enum class TrustedVaultDeviceRegistrationOutcomeForUMA {
   kOtherError = 7,
   kMaxValue = kOtherError,
 };
+// LINT.ThenChange(/tools/metrics/histograms/metadata/sync/enums.xml:TrustedVaultDeviceRegistrationOutcome)
 
 // Used to provide UMA metric breakdowns.
 enum class TrustedVaultURLFetchReasonForUMA {
   kUnspecified,
   kRegisterDevice,
+  kRegisterLockScreenKnowledgeFactor,
   kRegisterUnspecifiedAuthenticationFactor,
   kDownloadKeys,
   kDownloadIsRecoverabilityDegraded,
   kDownloadAuthenticationFactorsRegistrationState,
+  kRegisterGpmPin,
+  kRegisterICloudKeychain,
+};
+
+// Used to provide UMA metric breakdowns.
+enum class RecoveryKeyStoreURLFetchReasonForUMA {
+  kUpdateRecoveryKeyStore,
 };
 
 // These values are persisted to logs. Entries should not be renumbered and
 // numeric values should never be reused.
+// LINT.IfChange(TrustedVaultDownloadKeysStatus)
 enum class TrustedVaultDownloadKeysStatusForUMA {
   kSuccess = 0,
   // Deprecated in favor of the more fine-grained buckets.
@@ -79,9 +95,11 @@ enum class TrustedVaultDownloadKeysStatusForUMA {
   kNetworkError = 15,
   kMaxValue = kNetworkError
 };
+// LINT.ThenChange(/tools/metrics/histograms/metadata/sync/enums.xml:TrustedVaultDownloadKeysStatus)
 
 // These values are persisted to logs. Entries should not be renumbered and
 // numeric values should never be reused.
+// LINT.IfChange(TrustedVaultFileReadStatus)
 enum class TrustedVaultFileReadStatusForUMA {
   kSuccess = 0,
   kNotFound = 1,
@@ -91,6 +109,7 @@ enum class TrustedVaultFileReadStatusForUMA {
   kDataProtoDeserializationFailed = 5,
   kMaxValue = kDataProtoDeserializationFailed
 };
+// LINT.ThenChange(/tools/metrics/histograms/metadata/sync/enums.xml:TrustedVaultFileReadStatus)
 
 void RecordTrustedVaultHintDegradedRecoverabilityChangedReason(
     TrustedVaultHintDegradedRecoverabilityChangedReasonForUMA
@@ -102,13 +121,23 @@ void RecordTrustedVaultDeviceRegistrationState(
 void RecordTrustedVaultDeviceRegistrationOutcome(
     TrustedVaultDeviceRegistrationOutcomeForUMA registration_outcome);
 
-// Records url fetch response status (combined http and net error code). If
-// |http_response_code| is non-zero, it will be recorded, otherwise |net_error|
-// will be recorded. Either |http_status| or |net_error| must be non zero.
-void RecordTrustedVaultURLFetchResponse(
+// Records url fetch response status (combined http and net error code) for
+// requests to security domain service. If |http_response_code| is non-zero, it
+// will be recorded, otherwise |net_error| will be recorded. Either
+// |http_status| or |net_error| must be non zero.
+void RecordTrustedVaultURLFetchResponse(SecurityDomainId security_domain_id,
+                                        TrustedVaultURLFetchReasonForUMA reason,
+                                        int http_response_code,
+                                        int net_error);
+
+// Records url fetch response status (combined http and net error code) for
+// requests to vault service. If |http_response_code| is non-zero, it
+// will be recorded, otherwise |net_error| will be recorded. Either
+// |http_status| or |net_error| must be non zero.
+void RecordRecoveryKeyStoreURLFetchResponse(
+    RecoveryKeyStoreURLFetchReasonForUMA reason,
     int http_response_code,
-    int net_error,
-    TrustedVaultURLFetchReasonForUMA reason);
+    int net_error);
 
 // Records the outcome of trying to download keys from the server.
 // |also_log_with_v1_suffix| allows the caller to determine whether the local
@@ -123,18 +152,33 @@ void RecordTrustedVaultFileReadStatus(TrustedVaultFileReadStatusForUMA status);
 enum class IsOffTheRecord { kNo, kYes };
 
 // Records a call to set security domain encryption keys in the browser.
-// `absl::nullopt` indicates the caller attempted to set keys for a security
+// `std::nullopt` indicates the caller attempted to set keys for a security
 // domain with a name that was not understood by this client.
 void RecordTrustedVaultSetEncryptionKeysForSecurityDomain(
-    absl::optional<SecurityDomainId> security_domain,
+    std::optional<SecurityDomainId> security_domain,
     IsOffTheRecord is_off_the_record);
 
 // Records a call to chrome.setClientEncryptionKeys() for the given security
-// domain in the renderer. `absl::nullopt` indicates the caller attempted to set
+// domain in the renderer. `std::nullopt` indicates the caller attempted to set
 // keys for a security domain with a name that was not understood by this
 // client.
 void RecordCallToJsSetClientEncryptionKeysWithSecurityDomainToUma(
-    absl::optional<SecurityDomainId> security_domain);
+    std::optional<SecurityDomainId> security_domain);
+
+// Returns a security domain name suitable for using in histograms. When
+// including this in a histogram, its name in the XML should have
+// "{SecurityDomainId}" where the returned string will be inserted (which
+// will include a leading period). For example:
+//   name="TrustedVault.Foo{SecurityDomainId}"
+// Will match a histogram name like:
+//   TrustedVault.Foo.ChromeSync
+//
+// Then there needs to be a <token> element in the XML entry like:
+//   <token key="SecurityDomainId" variants="SecurityDomainId"/>
+//
+// See
+// https://chromium.googlesource.com/chromium/src.git/+/HEAD/tools/metrics/histograms/README.md#patterned-histograms
+std::string GetSecurityDomainNameForUma(SecurityDomainId domain);
 
 }  // namespace trusted_vault
 

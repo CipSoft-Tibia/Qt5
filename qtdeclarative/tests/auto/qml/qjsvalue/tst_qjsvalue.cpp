@@ -7,8 +7,12 @@
 #include <private/qjsvalue_p.h>
 
 #include <QtWidgets/QPushButton>
+#include <QtCore/qbuffer.h>
 #include <QtCore/qdatetime.h>
+#include <QtCore/qmutex.h>
+#include <QtCore/qsequentialiterable.h>
 #include <QtCore/qthread.h>
+#include <QtCore/qwaitcondition.h>
 #include <QtQml/qqmlengine.h>
 #include <QtQml/qqmlcomponent.h>
 

@@ -8,7 +8,6 @@
 #include "third_party/blink/renderer/core/layout/block_break_token.h"
 #include "third_party/blink/renderer/core/layout/logical_box_fragment.h"
 #include "third_party/blink/renderer/core/layout/mathml/math_layout_utils.h"
-#include "third_party/blink/renderer/core/layout/out_of_flow_layout_part.h"
 #include "third_party/blink/renderer/core/layout/physical_box_fragment.h"
 #include "third_party/blink/renderer/core/mathml_names.h"
 
@@ -27,18 +26,18 @@ LayoutUnit MathPaddedLayoutAlgorithm::RequestedVOffset() const {
   return ValueForLength(Style().GetMathPaddedVOffset(), LayoutUnit());
 }
 
-absl::optional<LayoutUnit> MathPaddedLayoutAlgorithm::RequestedAscent(
+std::optional<LayoutUnit> MathPaddedLayoutAlgorithm::RequestedAscent(
     LayoutUnit content_ascent) const {
   if (Style().GetMathBaseline().IsAuto())
-    return absl::nullopt;
+    return std::nullopt;
   return std::max(LayoutUnit(),
                   ValueForLength(Style().GetMathBaseline(), content_ascent));
 }
 
-absl::optional<LayoutUnit> MathPaddedLayoutAlgorithm::RequestedDescent(
+std::optional<LayoutUnit> MathPaddedLayoutAlgorithm::RequestedDescent(
     LayoutUnit content_descent) const {
   if (Style().GetMathPaddedDepth().IsAuto())
-    return absl::nullopt;
+    return std::nullopt;
   return std::max(LayoutUnit(), ValueForLength(Style().GetMathPaddedDepth(),
                                                content_descent));
 }
@@ -95,13 +94,13 @@ const LayoutResult* MathPaddedLayoutAlgorithm::Layout() {
 
   LayoutUnit intrinsic_block_size = ascent + descent;
   LayoutUnit block_size = ComputeBlockSizeForFragment(
-      GetConstraintSpace(), Style(), BorderPadding(), intrinsic_block_size,
+      GetConstraintSpace(), Node(), BorderPadding(), intrinsic_block_size,
       container_builder_.InitialBorderBoxSize().inline_size);
 
   container_builder_.SetIntrinsicBlockSize(intrinsic_block_size);
   container_builder_.SetFragmentsTotalBlockSize(block_size);
 
-  OutOfFlowLayoutPart(Node(), GetConstraintSpace(), &container_builder_).Run();
+  container_builder_.HandleOofsAndSpecialDescendants();
 
   return container_builder_.ToBoxFragment();
 }

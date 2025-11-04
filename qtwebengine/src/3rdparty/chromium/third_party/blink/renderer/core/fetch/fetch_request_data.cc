@@ -43,7 +43,7 @@ namespace {
       return ::blink::ResourceLoadPriority::kVeryHigh;
   }
 
-  NOTREACHED() << priority;
+  NOTREACHED_IN_MIGRATION() << priority;
   return blink::ResourceLoadPriority::kUnresolved;
 }
 
@@ -202,13 +202,15 @@ FetchRequestData* FetchRequestData::Create(
       DCHECK(RuntimeEnabledFeatures::PrivateStateTokensEnabled(
           ExecutionContext::From(script_state)));
     }
-    absl::optional<network::mojom::blink::TrustTokenParams> trust_token_params =
+    std::optional<network::mojom::blink::TrustTokenParams> trust_token_params =
         std::move(*(fetch_api_request->trust_token_params->Clone().get()));
     request->SetTrustTokenParams(trust_token_params);
   }
 
   request->SetAttributionReportingEligibility(
       fetch_api_request->attribution_reporting_eligibility);
+  request->SetAttributionReportingSupport(
+      fetch_api_request->attribution_reporting_support);
 
   if (fetch_api_request->service_worker_race_network_request_token) {
     request->SetServiceWorkerRaceNetworkRequestToken(
@@ -248,6 +250,7 @@ FetchRequestData* FetchRequestData::CloneExceptBody() {
   request->trust_token_params_ = trust_token_params_;
   request->attribution_reporting_eligibility_ =
       attribution_reporting_eligibility_;
+  request->attribution_reporting_support_ = attribution_reporting_support_;
   request->service_worker_race_network_request_token_ =
       service_worker_race_network_request_token_;
   return request;

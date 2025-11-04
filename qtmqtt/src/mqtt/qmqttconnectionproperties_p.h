@@ -1,5 +1,6 @@
 // Copyright (C) 2018 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QMQTTCONNECTIONPROPERTIES_P_H
 #define QMQTTCONNECTIONPROPERTIES_P_H
@@ -18,7 +19,11 @@
 #include "qmqttconnectionproperties.h"
 #include "private/qglobal_p.h"
 
+#include <QtCore/QLoggingCategory>
+
 QT_BEGIN_NAMESPACE
+
+Q_DECLARE_LOGGING_CATEGORY(lcMqttConnection)
 
 class QMqttLastWillPropertiesData : public QSharedData
 {

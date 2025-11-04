@@ -6,9 +6,11 @@
 
 #include <QTimerEvent>
 
-static const int TransferTimeout = 30 * 1000;
-static const int PongTimeout = 60 * 1000;
-static const int PingInterval = 5 * 1000;
+using namespace std::chrono_literals;
+
+static constexpr auto TransferTimeout = 30s;
+static constexpr auto PongTimeout = 60s;
+static constexpr auto PingInterval = 5s;
 
 /*
  * Protocol is defined as follows, using the CBOR Data Definition Language:
@@ -85,10 +87,9 @@ bool Connection::sendMessage(const QString &message)
 
 void Connection::timerEvent(QTimerEvent *timerEvent)
 {
-    if (timerEvent->timerId() == transferTimerId) {
+    if (timerEvent->matches(transferTimer)) {
         abort();
-        killTimer(transferTimerId);
-        transferTimerId = -1;
+        transferTimer.stop();
     }
 }
 
@@ -159,10 +160,7 @@ void Connection::processReadyRead()
 
             // Next state: no command read
             reader.leaveContainer();
-            if (transferTimerId != -1) {
-                killTimer(transferTimerId);
-                transferTimerId = -1;
-            }
+            transferTimer.stop();
 
             processData();
         }
@@ -171,13 +169,13 @@ void Connection::processReadyRead()
     if (reader.lastError() != QCborError::EndOfFile)
         abort();       // parse error
 
-    if (transferTimerId != -1 && reader.containerDepth() > 1)
-        transferTimerId = startTimer(TransferTimeout);
+    if (transferTimer.isActive() && reader.containerDepth() > 1)
+        transferTimer.start(TransferTimeout, this);
 }
 
 void Connection::sendPing()
 {
-    if (pongTime.elapsed() > PongTimeout) {
+    if (pongTime.durationElapsed() > PongTimeout) {
         abort();
         return;
     }
@@ -239,7 +237,7 @@ void Connection::processData()
         writer.endMap();
         break;
     case Pong:
-        pongTime.restart();
+        pongTime.start();
         break;
     default:
         break;

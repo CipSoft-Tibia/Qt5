@@ -9,6 +9,7 @@
 
 qt_internal_add_3rdparty_library(BundledSpirv_Cross
     QMAKE_LIB_NAME spirv_cross
+    SKIP_AUTOMOC
     STATIC
     EXCEPTIONS
     SOURCES

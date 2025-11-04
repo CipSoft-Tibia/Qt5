@@ -4,7 +4,7 @@
 
 import("//mojo/public/tools/bindings/mojom.gni")
 
-assert(enable_extensions)
+#assert(enable_extensions)
 
 mojom("mojo_bindings") {
   sources = [ "tab_strip.mojom" ]
@@ -25,7 +25,7 @@ mojom("mojo_bindings") {
         },
       ]
       traits_headers = [ "tab_strip_mojom_traits.h" ]
-      traits_public_deps = [ "//chrome/browser/extensions:extensions" ]
+      traits_public_deps = [ "//chrome/browser/ui/tabs" ]
     },
   ]
 }

@@ -1376,6 +1376,7 @@ class AdvancedBlendEquations
     {}
 
     bool any() const;
+    bool all() const;
     bool anyHsl() const;
 
     void setAll();
@@ -1391,6 +1392,9 @@ class AdvancedBlendEquations
         mEnabledBlendEquations |= other.mEnabledBlendEquations;
         return *this;
     }
+
+    static const char *GetLayoutString(uint32_t blendEquation);
+    static const char *GetAllEquationsLayoutString();
 
   private:
     uint32_t mEnabledBlendEquations;
@@ -1676,6 +1680,9 @@ inline const char *getQualifierString(TQualifier q)
     case EvqLocalInvocationIndex:      return "LocalInvocationIndex";
     case EvqReadOnly:                  return "readonly";
     case EvqWriteOnly:                 return "writeonly";
+    case EvqCoherent:                  return "coherent";
+    case EvqRestrict:                  return "restrict";
+    case EvqVolatile:                  return "volatile";
     case EvqGeometryIn:                return "in";
     case EvqGeometryOut:               return "out";
     case EvqPerVertexIn:               return "gl_in";

@@ -6,7 +6,11 @@
 
 #include <QtOpcUa/qopcuamonitoringparameters.h>
 
+#ifdef USE_SYSTEM_OPEN62541
+#include <open62541/types.h>
+#else
 #include "qopen62541.h"
+#endif
 
 #include <QString>
 

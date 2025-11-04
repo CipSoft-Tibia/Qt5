@@ -14,6 +14,7 @@
 #pragma qt_sync_stop_processing
 #endif
 
+#include <QtCore/qflags.h>
 #include <QtCore/qoverload.h>
 #include <QtCore/qttypetraits.h>
 #include <QtCore/qtypeinfo.h>
@@ -31,16 +32,34 @@ QT_BEGIN_NAMESPACE
 class QPartialOrdering;
 
 namespace QtOrderingPrivate {
-#ifdef __cpp_lib_three_way_comparison
+template <typename T> struct is_std_ordering_type : std::false_type {};
+template <typename T> struct is_qt_ordering_type : std::false_type {};
+
+template <typename T> constexpr bool is_std_ordering_type_v = is_std_ordering_type<T>::value;
+template <typename T> constexpr bool is_qt_ordering_type_v = is_qt_ordering_type<T>::value;
+
+enum class QtOrderingType {
+    QtOrder =  0x00,
+    StdOrder = 0x01,
+    Partial = 0x00,
+    Weak = 0x20,
+    Strong = 0x40,
+    StrengthMask = Weak|Strong,
+};
+Q_DECLARE_FLAGS(QtOrderingTypeFlag, QtOrderingType)
+Q_DECLARE_OPERATORS_FOR_FLAGS(QtOrderingPrivate::QtOrderingTypeFlag)
 
 template <typename QtOrdering> struct StdOrdering;
 template <typename StdOrdering> struct QtOrdering;
 
+#ifdef __cpp_lib_three_way_comparison
 #define QT_STD_MAP(x) \
     template <> struct StdOrdering< Qt::x##_ordering> : q20::type_identity<std::x##_ordering> {};\
     template <> struct StdOrdering<std::x##_ordering> : q20::type_identity<std::x##_ordering> {};\
     template <> struct  QtOrdering<std::x##_ordering> : q20::type_identity< Qt::x##_ordering> {};\
     template <> struct  QtOrdering< Qt::x##_ordering> : q20::type_identity< Qt::x##_ordering> {};\
+    template <> struct is_std_ordering_type<std::x##_ordering> : std::true_type {};\
+    template <> struct is_qt_ordering_type< Qt::x##_ordering> : std::true_type {};\
     /* end */
 QT_STD_MAP(partial)
 QT_STD_MAP(weak)
@@ -49,6 +68,11 @@ QT_STD_MAP(strong)
 
 template <> struct StdOrdering<QPartialOrdering> : q20::type_identity<std::partial_ordering> {};
 template <> struct  QtOrdering<QPartialOrdering> : q20::type_identity< Qt::partial_ordering> {};
+#else
+template <> struct is_qt_ordering_type< Qt::partial_ordering> : std::true_type {};
+template <> struct is_qt_ordering_type< Qt::weak_ordering> : std::true_type {};
+template <> struct is_qt_ordering_type< Qt::strong_ordering> : std::true_type {};
+#endif // __cpp_lib_three_way_comparison
 
 template <typename In> constexpr auto to_std(In in) noexcept
     -> typename QtOrderingPrivate::StdOrdering<In>::type
@@ -58,7 +82,33 @@ template <typename In> constexpr auto to_Qt(In in) noexcept
     -> typename QtOrderingPrivate::QtOrdering<In>::type
 { return in; }
 
-#endif // __cpp_lib_three_way_comparison
+template <typename T>
+constexpr bool is_ordering_type_v
+        = std::disjunction_v<is_qt_ordering_type<T>, is_std_ordering_type<T>>;
+
+template <typename T>
+constexpr std::enable_if_t<is_qt_ordering_type_v<T>, QtOrderingTypeFlag>
+orderingFlagsFor(T t) noexcept
+{
+    QtOrderingTypeFlag flags = QtOrderingType::QtOrder;
+    Qt::partial_ordering convertedOrder(t);
+    if constexpr (std::is_same_v<T, Qt::strong_ordering>)
+        flags = flags | QtOrderingType::Strong;
+    else if constexpr (std::is_same_v<T, Qt::partial_ordering>)
+        flags = flags | QtOrderingType::Partial;
+    else if constexpr (std::is_same_v<T, Qt::weak_ordering>)
+        flags = flags | QtOrderingType::Weak;
+    return flags;
+}
+
+template <typename T>
+constexpr std::enable_if_t<is_std_ordering_type_v<T>, QtOrderingTypeFlag>
+orderingFlagsFor(T t) noexcept
+{
+    QtOrderingPrivate::QtOrderingTypeFlag flags = QtOrderingPrivate::QtOrderingType::StdOrder;
+    return QtOrderingTypeFlag(flags
+                              | QtOrderingPrivate::orderingFlagsFor(QtOrderingPrivate::to_Qt(t)));
+}
 } // namespace QtOrderingPrivate
 
 /*
@@ -74,9 +124,11 @@ template <typename In> constexpr auto to_Qt(In in) noexcept
                  because conditional noexcept is known to cause some issues.
                  However, internally we might want to pass a predicate here
                  for some specific classes (e.g. QList, etc).
-    * Attributes - an optional list of attributes. For example, pass
-                   \c QT_ASCII_CAST_WARN when defining comparisons between
-                   C-style string and an encoding-aware string type.
+    * Attributes... - an optional list of attributes. For example, pass
+                      \c QT_ASCII_CAST_WARN when defining comparisons between
+                      C-style string and an encoding-aware string type.
+                      This is a variable argument, and can now include up to 7
+                      comma-separated parameters.
 
     The macros require two helper functions. For operators to be constexpr,
     these must be constexpr, too. Additionally, other attributes (like
@@ -98,8 +150,11 @@ template <typename In> constexpr auto to_Qt(In in) noexcept
     This macro is needed to overcome such bugs and provide a noexcept check only
     on platforms that behave normally.
     It does nothing on the systems that have problems.
+
+    This hack is explicitly disabled for C++20 because we want the compilers
+    to fix the known issues before switching.
 */
-#if !defined(Q_OS_QNX) && !defined(Q_CC_GHS)
+#if defined(__cpp_lib_three_way_comparison) || !(defined(Q_OS_QNX) || defined(Q_CC_GHS))
 # define QT_COMPARISON_NOEXCEPT_CHECK(Noexcept, Func) \
     constexpr auto f = []() Noexcept {}; \
     static_assert(!noexcept(f()) || noexcept(Func(lhs, rhs)), \
@@ -118,16 +173,16 @@ template <typename In> constexpr auto to_Qt(In in) noexcept
 // C++20 - provide operator==() for equality, and operator<=>() for ordering
 
 #define QT_DECLARE_EQUALITY_OPERATORS_HELPER(LeftType, RightType, Constexpr, \
-                                             Noexcept, Attributes) \
-    Attributes \
+                                             Noexcept, ...) \
+    __VA_ARGS__ \
     friend Constexpr bool operator==(LeftType const &lhs, RightType const &rhs) Noexcept \
     { \
         QT_COMPARISON_NOEXCEPT_CHECK(Noexcept, comparesEqual); \
         return comparesEqual(lhs, rhs); \
     }
 
-#define QT_DECLARE_3WAY_HELPER_STRONG(LeftType, RightType, Constexpr, Noexcept, Attributes) \
-    Attributes \
+#define QT_DECLARE_ORDERING_HELPER_STRONG(LeftType, RightType, Constexpr, Noexcept, ...) \
+    __VA_ARGS__ \
     friend Constexpr std::strong_ordering \
     operator<=>(LeftType const &lhs, RightType const &rhs) Noexcept \
     { \
@@ -135,8 +190,8 @@ template <typename In> constexpr auto to_Qt(In in) noexcept
         return compareThreeWay(lhs, rhs); \
     }
 
-#define QT_DECLARE_3WAY_HELPER_WEAK(LeftType, RightType, Constexpr, Noexcept, Attributes) \
-    Attributes \
+#define QT_DECLARE_ORDERING_HELPER_WEAK(LeftType, RightType, Constexpr, Noexcept, ...) \
+    __VA_ARGS__ \
     friend Constexpr std::weak_ordering \
     operator<=>(LeftType const &lhs, RightType const &rhs) Noexcept \
     { \
@@ -144,8 +199,8 @@ template <typename In> constexpr auto to_Qt(In in) noexcept
         return compareThreeWay(lhs, rhs); \
     }
 
-#define QT_DECLARE_3WAY_HELPER_PARTIAL(LeftType, RightType, Constexpr, Noexcept, Attributes) \
-    Attributes \
+#define QT_DECLARE_ORDERING_HELPER_PARTIAL(LeftType, RightType, Constexpr, Noexcept, ...) \
+    __VA_ARGS__ \
     friend Constexpr std::partial_ordering \
     operator<=>(LeftType const &lhs, RightType const &rhs) Noexcept \
     { \
@@ -153,23 +208,33 @@ template <typename In> constexpr auto to_Qt(In in) noexcept
         return compareThreeWay(lhs, rhs); \
     }
 
+#define QT_DECLARE_ORDERING_HELPER_AUTO(LeftType, RightType, Constexpr, Noexcept, ...) \
+    __VA_ARGS__ \
+    friend Constexpr auto \
+    operator<=>(LeftType const &lhs, RightType const &rhs) Noexcept \
+    { \
+        QT_COMPARISON_NOEXCEPT_CHECK(Noexcept, compareThreeWay);\
+        return QtOrderingPrivate::to_std(compareThreeWay(lhs, rhs)); \
+    }
+
 #define QT_DECLARE_ORDERING_OPERATORS_HELPER(OrderingType, LeftType, RightType, Constexpr, \
-                                             Noexcept, Attributes) \
-    QT_DECLARE_EQUALITY_OPERATORS_HELPER(LeftType, RightType, Constexpr, Noexcept, Attributes) \
-    QT_DECLARE_3WAY_HELPER_ ## OrderingType (LeftType, RightType, Constexpr, Noexcept, Attributes)
+                                             Noexcept, ...) \
+    QT_DECLARE_EQUALITY_OPERATORS_HELPER(LeftType, RightType, Constexpr, Noexcept, __VA_ARGS__) \
+    QT_DECLARE_ORDERING_HELPER_ ## OrderingType (LeftType, RightType, Constexpr, Noexcept, \
+                                                 __VA_ARGS__)
 
 #ifdef Q_COMPILER_LACKS_THREE_WAY_COMPARE_SYMMETRY
 
 // define reversed versions of the operators manually, because buggy MSVC versions do not do it
 #define QT_DECLARE_EQUALITY_OPERATORS_REVERSED_HELPER(LeftType, RightType, Constexpr, \
-                                                      Noexcept, Attributes) \
-    Attributes \
+                                                      Noexcept, ...) \
+    __VA_ARGS__ \
     friend Constexpr bool operator==(RightType const &lhs, LeftType const &rhs) Noexcept \
     { return comparesEqual(rhs, lhs); }
 
-#define QT_DECLARE_REVERSED_3WAY_HELPER_STRONG(LeftType, RightType, Constexpr, \
-                                               Noexcept, Attributes) \
-    Attributes \
+#define QT_DECLARE_REVERSED_ORDERING_HELPER_STRONG(LeftType, RightType, Constexpr, \
+                                                   Noexcept, ...) \
+    __VA_ARGS__ \
     friend Constexpr std::strong_ordering \
     operator<=>(RightType const &lhs, LeftType const &rhs) Noexcept \
     { \
@@ -177,9 +242,9 @@ template <typename In> constexpr auto to_Qt(In in) noexcept
         return QtOrderingPrivate::reversed(r); \
     }
 
-#define QT_DECLARE_REVERSED_3WAY_HELPER_WEAK(LeftType, RightType, Constexpr, \
-                                             Noexcept, Attributes) \
-    Attributes \
+#define QT_DECLARE_REVERSED_ORDERING_HELPER_WEAK(LeftType, RightType, Constexpr, \
+                                                 Noexcept, ...) \
+    __VA_ARGS__ \
     friend Constexpr std::weak_ordering \
     operator<=>(RightType const &lhs, LeftType const &rhs) Noexcept \
     { \
@@ -187,9 +252,9 @@ template <typename In> constexpr auto to_Qt(In in) noexcept
         return QtOrderingPrivate::reversed(r); \
     }
 
-#define QT_DECLARE_REVERSED_3WAY_HELPER_PARTIAL(LeftType, RightType, Constexpr, \
-                                                Noexcept, Attributes) \
-    Attributes \
+#define QT_DECLARE_REVERSED_ORDERING_HELPER_PARTIAL(LeftType, RightType, Constexpr, \
+                                                    Noexcept, ...) \
+    __VA_ARGS__ \
     friend Constexpr std::partial_ordering \
     operator<=>(RightType const &lhs, LeftType const &rhs) Noexcept \
     { \
@@ -197,20 +262,29 @@ template <typename In> constexpr auto to_Qt(In in) noexcept
         return QtOrderingPrivate::reversed(r); \
     }
 
+#define QT_DECLARE_REVERSED_ORDERING_HELPER_AUTO(LeftType, RightType, Constexpr, Noexcept, ...) \
+    __VA_ARGS__ \
+    friend Constexpr auto \
+    operator<=>(RightType const &lhs, LeftType const &rhs) Noexcept \
+    { \
+        const auto r = compareThreeWay(rhs, lhs); \
+        return QtOrderingPrivate::to_std(QtOrderingPrivate::reversed(r)); \
+    }
+
 #define QT_DECLARE_ORDERING_OPERATORS_REVERSED_HELPER(OrderingString, LeftType, RightType, \
-                                                      Constexpr, Noexcept, Attributes) \
+                                                      Constexpr, Noexcept, ...) \
     QT_DECLARE_EQUALITY_OPERATORS_REVERSED_HELPER(LeftType, RightType, Constexpr, \
-                                                  Noexcept, Attributes) \
-    QT_DECLARE_REVERSED_3WAY_HELPER_ ## OrderingString (LeftType, RightType, Constexpr, \
-                                                        Noexcept, Attributes)
+                                                  Noexcept, __VA_ARGS__) \
+    QT_DECLARE_REVERSED_ORDERING_HELPER_ ## OrderingString (LeftType, RightType, Constexpr, \
+                                                            Noexcept, __VA_ARGS__)
 
 #else
 
 // dummy macros for C++17 compatibility, reversed operators are generated by the compiler
 #define QT_DECLARE_EQUALITY_OPERATORS_REVERSED_HELPER(LeftType, RightType, Constexpr, \
-                                                      Noexcept, Attributes)
+                                                      Noexcept, ...)
 #define QT_DECLARE_ORDERING_OPERATORS_REVERSED_HELPER(OrderingString, LeftType, RightType, \
-                                                      Constexpr, Noexcept, Attributes)
+                                                      Constexpr, Noexcept, ...)
 
 #endif // Q_COMPILER_LACKS_THREE_WAY_COMPARE_SYMMETRY
 
@@ -219,100 +293,105 @@ template <typename In> constexpr auto to_Qt(In in) noexcept
 // and all 4 comparison operators for ordering
 
 #define QT_DECLARE_EQUALITY_OPERATORS_HELPER(LeftType, RightType, Constexpr, \
-                                             Noexcept, Attributes) \
-    Attributes \
+                                             Noexcept, ...) \
+    __VA_ARGS__ \
     friend Constexpr bool operator==(LeftType const &lhs, RightType const &rhs) Noexcept \
     { \
         QT_COMPARISON_NOEXCEPT_CHECK(Noexcept, comparesEqual); \
         return comparesEqual(lhs, rhs); \
     } \
-    Attributes \
+    __VA_ARGS__ \
     friend Constexpr bool operator!=(LeftType const &lhs, RightType const &rhs) Noexcept \
     { return !comparesEqual(lhs, rhs); }
 
 // Helpers for reversed comparison, using the existing comparesEqual() function.
 #define QT_DECLARE_EQUALITY_OPERATORS_REVERSED_HELPER(LeftType, RightType, Constexpr, \
-                                                      Noexcept, Attributes) \
-    Attributes \
+                                                      Noexcept, ...) \
+    __VA_ARGS__ \
     friend Constexpr bool operator==(RightType const &lhs, LeftType const &rhs) Noexcept \
     { return comparesEqual(rhs, lhs); } \
-    Attributes \
+    __VA_ARGS__ \
     friend Constexpr bool operator!=(RightType const &lhs, LeftType const &rhs) Noexcept \
     { return !comparesEqual(rhs, lhs); }
 
 #define QT_DECLARE_ORDERING_HELPER_TEMPLATE(OrderingType, LeftType, RightType, Constexpr, \
-                                            Noexcept, Attributes) \
-    Attributes \
+                                            Noexcept, ...) \
+    __VA_ARGS__ \
     friend Constexpr bool operator<(LeftType const &lhs, RightType const &rhs) Noexcept \
     { \
         QT_COMPARISON_NOEXCEPT_CHECK(Noexcept, compareThreeWay); \
         return is_lt(compareThreeWay(lhs, rhs)); \
     } \
-    Attributes \
+    __VA_ARGS__ \
     friend Constexpr bool operator>(LeftType const &lhs, RightType const &rhs) Noexcept \
     { return is_gt(compareThreeWay(lhs, rhs)); } \
-    Attributes \
+    __VA_ARGS__ \
     friend Constexpr bool operator<=(LeftType const &lhs, RightType const &rhs) Noexcept \
     { return is_lteq(compareThreeWay(lhs, rhs)); } \
-    Attributes \
+    __VA_ARGS__ \
     friend Constexpr bool operator>=(LeftType const &lhs, RightType const &rhs) Noexcept \
     { return is_gteq(compareThreeWay(lhs, rhs)); }
 
-#define QT_DECLARE_ORDERING_HELPER_PARTIAL(LeftType, RightType, Constexpr, Noexcept, Attributes) \
+#define QT_DECLARE_ORDERING_HELPER_AUTO(LeftType, RightType, Constexpr, Noexcept, ...) \
+    QT_DECLARE_ORDERING_HELPER_TEMPLATE(auto, LeftType, RightType, Constexpr, Noexcept, \
+                                        __VA_ARGS__)
+
+#define QT_DECLARE_ORDERING_HELPER_PARTIAL(LeftType, RightType, Constexpr, Noexcept, ...) \
     QT_DECLARE_ORDERING_HELPER_TEMPLATE(Qt::partial_ordering, LeftType, RightType, Constexpr, \
-                                        Noexcept, Attributes)
+                                        Noexcept, __VA_ARGS__)
 
-#define QT_DECLARE_ORDERING_HELPER_WEAK(LeftType, RightType, Constexpr, Noexcept, Attributes) \
+#define QT_DECLARE_ORDERING_HELPER_WEAK(LeftType, RightType, Constexpr, Noexcept, ...) \
     QT_DECLARE_ORDERING_HELPER_TEMPLATE(Qt::weak_ordering, LeftType, RightType, Constexpr, \
-                                        Noexcept, Attributes)
+                                        Noexcept, __VA_ARGS__)
 
-#define QT_DECLARE_ORDERING_HELPER_STRONG(LeftType, RightType, Constexpr, Noexcept, Attributes) \
+#define QT_DECLARE_ORDERING_HELPER_STRONG(LeftType, RightType, Constexpr, Noexcept, ...) \
     QT_DECLARE_ORDERING_HELPER_TEMPLATE(Qt::strong_ordering, LeftType, RightType, Constexpr, \
-                                        Noexcept, Attributes)
+                                        Noexcept, __VA_ARGS__)
 
 #define QT_DECLARE_ORDERING_OPERATORS_HELPER(OrderingString, LeftType, RightType, Constexpr, \
-                                             Noexcept, Attributes) \
-    QT_DECLARE_EQUALITY_OPERATORS_HELPER(LeftType, RightType, Constexpr, Noexcept, Attributes) \
+                                             Noexcept, ...) \
+    QT_DECLARE_EQUALITY_OPERATORS_HELPER(LeftType, RightType, Constexpr, Noexcept, __VA_ARGS__) \
     QT_DECLARE_ORDERING_HELPER_ ## OrderingString (LeftType, RightType, Constexpr, Noexcept, \
-                                                   Attributes)
+                                                   __VA_ARGS__)
 
 // Helpers for reversed ordering, using the existing compareThreeWay() function.
 #define QT_DECLARE_REVERSED_ORDERING_HELPER_TEMPLATE(OrderingType, LeftType, RightType, Constexpr, \
-                                                     Noexcept, Attributes) \
-    Attributes \
+                                                     Noexcept, ...) \
+    __VA_ARGS__ \
     friend Constexpr bool operator<(RightType const &lhs, LeftType const &rhs) Noexcept \
     { return is_gt(compareThreeWay(rhs, lhs)); } \
-    Attributes \
+    __VA_ARGS__ \
     friend Constexpr bool operator>(RightType const &lhs, LeftType const &rhs) Noexcept \
     { return is_lt(compareThreeWay(rhs, lhs)); } \
-    Attributes \
+    __VA_ARGS__ \
     friend Constexpr bool operator<=(RightType const &lhs, LeftType const &rhs) Noexcept \
     { return is_gteq(compareThreeWay(rhs, lhs)); } \
-    Attributes \
+    __VA_ARGS__ \
     friend Constexpr bool operator>=(RightType const &lhs, LeftType const &rhs) Noexcept \
     { return is_lteq(compareThreeWay(rhs, lhs)); }
 
-#define QT_DECLARE_REVERSED_ORDERING_HELPER_PARTIAL(LeftType, RightType, Constexpr, Noexcept, \
-                                                    Attributes) \
+#define QT_DECLARE_REVERSED_ORDERING_HELPER_AUTO(LeftType, RightType, Constexpr, Noexcept, ...) \
+    QT_DECLARE_REVERSED_ORDERING_HELPER_TEMPLATE(auto, LeftType, RightType, Constexpr, Noexcept, \
+                                                 __VA_ARGS__)
+
+#define QT_DECLARE_REVERSED_ORDERING_HELPER_PARTIAL(LeftType, RightType, Constexpr, Noexcept, ...) \
     QT_DECLARE_REVERSED_ORDERING_HELPER_TEMPLATE(Qt::partial_ordering, LeftType, RightType, \
-                                                 Constexpr, Noexcept, Attributes)
+                                                 Constexpr, Noexcept, __VA_ARGS__)
 
-#define QT_DECLARE_REVERSED_ORDERING_HELPER_WEAK(LeftType, RightType, Constexpr, Noexcept, \
-                                                 Attributes) \
+#define QT_DECLARE_REVERSED_ORDERING_HELPER_WEAK(LeftType, RightType, Constexpr, Noexcept, ...) \
     QT_DECLARE_REVERSED_ORDERING_HELPER_TEMPLATE(Qt::weak_ordering, LeftType, RightType, \
-                                                 Constexpr, Noexcept, Attributes)
+                                                 Constexpr, Noexcept, __VA_ARGS__)
 
-#define QT_DECLARE_REVERSED_ORDERING_HELPER_STRONG(LeftType, RightType, Constexpr, Noexcept, \
-                                                   Attributes) \
+#define QT_DECLARE_REVERSED_ORDERING_HELPER_STRONG(LeftType, RightType, Constexpr, Noexcept, ...) \
     QT_DECLARE_REVERSED_ORDERING_HELPER_TEMPLATE(Qt::strong_ordering, LeftType, RightType, \
-                                                 Constexpr, Noexcept, Attributes)
+                                                 Constexpr, Noexcept, __VA_ARGS__)
 
 #define QT_DECLARE_ORDERING_OPERATORS_REVERSED_HELPER(OrderingString, LeftType, RightType, \
-                                                      Constexpr, Noexcept, Attributes) \
+                                                      Constexpr, Noexcept, ...) \
     QT_DECLARE_EQUALITY_OPERATORS_REVERSED_HELPER(LeftType, RightType, Constexpr, Noexcept, \
-                                                  Attributes) \
+                                                  __VA_ARGS__) \
     QT_DECLARE_REVERSED_ORDERING_HELPER_ ## OrderingString (LeftType, RightType, Constexpr, \
-                                                            Noexcept, Attributes)
+                                                            Noexcept, __VA_ARGS__)
 
 #endif // __cpp_lib_three_way_comparison
 
@@ -329,11 +408,24 @@ template <typename In> constexpr auto to_Qt(In in) noexcept
     QT_DECLARE_EQUALITY_OPERATORS_REVERSED_HELPER(LeftType, RightType, /* non-constexpr */, \
                                                   noexcept(true), /* no attributes */)
 
-#define QT_DECLARE_EQUALITY_COMPARABLE_3(LeftType, RightType, Attributes) \
+#define QT_DECLARE_EQUALITY_COMPARABLE_3(LeftType, RightType, ...) \
     QT_DECLARE_EQUALITY_OPERATORS_HELPER(LeftType, RightType, /* non-constexpr */, \
-                                         noexcept(true), Attributes) \
+                                         noexcept(true), __VA_ARGS__) \
     QT_DECLARE_EQUALITY_OPERATORS_REVERSED_HELPER(LeftType, RightType, /* non-constexpr */, \
-                                                  noexcept(true), Attributes)
+                                                  noexcept(true), __VA_ARGS__)
+
+#define QT_DECLARE_EQUALITY_COMPARABLE_4(...) \
+    QT_VA_ARGS_EXPAND(QT_DECLARE_EQUALITY_COMPARABLE_3(__VA_ARGS__))
+#define QT_DECLARE_EQUALITY_COMPARABLE_5(...) \
+    QT_VA_ARGS_EXPAND(QT_DECLARE_EQUALITY_COMPARABLE_3(__VA_ARGS__))
+#define QT_DECLARE_EQUALITY_COMPARABLE_6(...) \
+    QT_VA_ARGS_EXPAND(QT_DECLARE_EQUALITY_COMPARABLE_3(__VA_ARGS__))
+#define QT_DECLARE_EQUALITY_COMPARABLE_7(...) \
+    QT_VA_ARGS_EXPAND(QT_DECLARE_EQUALITY_COMPARABLE_3(__VA_ARGS__))
+#define QT_DECLARE_EQUALITY_COMPARABLE_8(...) \
+    QT_VA_ARGS_EXPAND(QT_DECLARE_EQUALITY_COMPARABLE_3(__VA_ARGS__))
+#define QT_DECLARE_EQUALITY_COMPARABLE_9(...) \
+    QT_VA_ARGS_EXPAND(QT_DECLARE_EQUALITY_COMPARABLE_3(__VA_ARGS__))
 
 #define Q_DECLARE_EQUALITY_COMPARABLE(...) \
     QT_OVERLOADED_MACRO(QT_DECLARE_EQUALITY_COMPARABLE, __VA_ARGS__)
@@ -348,11 +440,24 @@ template <typename In> constexpr auto to_Qt(In in) noexcept
     QT_DECLARE_EQUALITY_OPERATORS_REVERSED_HELPER(LeftType, RightType, constexpr, \
                                                   noexcept(true), /* no attributes */)
 
-#define QT_DECLARE_EQUALITY_COMPARABLE_LITERAL_TYPE_3(LeftType, RightType, Attributes) \
+#define QT_DECLARE_EQUALITY_COMPARABLE_LITERAL_TYPE_3(LeftType, RightType, ...) \
     QT_DECLARE_EQUALITY_OPERATORS_HELPER(LeftType, RightType, constexpr, noexcept(true), \
-                                         Attributes) \
+                                         __VA_ARGS__) \
     QT_DECLARE_EQUALITY_OPERATORS_REVERSED_HELPER(LeftType, RightType, constexpr, noexcept(true), \
-                                                  Attributes)
+                                                  __VA_ARGS__)
+
+#define QT_DECLARE_EQUALITY_COMPARABLE_LITERAL_TYPE_4(...) \
+    QT_VA_ARGS_EXPAND(QT_DECLARE_EQUALITY_COMPARABLE_LITERAL_TYPE_3(__VA_ARGS__))
+#define QT_DECLARE_EQUALITY_COMPARABLE_LITERAL_TYPE_5(...) \
+    QT_VA_ARGS_EXPAND(QT_DECLARE_EQUALITY_COMPARABLE_LITERAL_TYPE_3(__VA_ARGS__))
+#define QT_DECLARE_EQUALITY_COMPARABLE_LITERAL_TYPE_6(...) \
+    QT_VA_ARGS_EXPAND(QT_DECLARE_EQUALITY_COMPARABLE_LITERAL_TYPE_3(__VA_ARGS__))
+#define QT_DECLARE_EQUALITY_COMPARABLE_LITERAL_TYPE_7(...) \
+    QT_VA_ARGS_EXPAND(QT_DECLARE_EQUALITY_COMPARABLE_LITERAL_TYPE_3(__VA_ARGS__))
+#define QT_DECLARE_EQUALITY_COMPARABLE_LITERAL_TYPE_8(...) \
+    QT_VA_ARGS_EXPAND(QT_DECLARE_EQUALITY_COMPARABLE_LITERAL_TYPE_3(__VA_ARGS__))
+#define QT_DECLARE_EQUALITY_COMPARABLE_LITERAL_TYPE_9(...) \
+    QT_VA_ARGS_EXPAND(QT_DECLARE_EQUALITY_COMPARABLE_LITERAL_TYPE_3(__VA_ARGS__))
 
 #define Q_DECLARE_EQUALITY_COMPARABLE_LITERAL_TYPE(...) \
     QT_OVERLOADED_MACRO(QT_DECLARE_EQUALITY_COMPARABLE_LITERAL_TYPE, __VA_ARGS__)
@@ -367,14 +472,117 @@ template <typename In> constexpr auto to_Qt(In in) noexcept
     QT_DECLARE_EQUALITY_OPERATORS_REVERSED_HELPER(LeftType, RightType, /* non-constexpr */, \
                                                   noexcept(false), /* no attributes */)
 
-#define QT_DECLARE_EQUALITY_COMPARABLE_NON_NOEXCEPT_3(LeftType, RightType, Attributes) \
+#define QT_DECLARE_EQUALITY_COMPARABLE_NON_NOEXCEPT_3(LeftType, RightType, ...) \
     QT_DECLARE_EQUALITY_OPERATORS_HELPER(LeftType, RightType, /* non-constexpr */, \
-                                         noexcept(false), Attributes) \
+                                         noexcept(false), __VA_ARGS__) \
     QT_DECLARE_EQUALITY_OPERATORS_REVERSED_HELPER(LeftType, RightType, /* non-constexpr */, \
-                                                  noexcept(false), Attributes)
+                                                  noexcept(false), __VA_ARGS__)
+
+#define QT_DECLARE_EQUALITY_COMPARABLE_NON_NOEXCEPT_4(...) \
+    QT_VA_ARGS_EXPAND(QT_DECLARE_EQUALITY_COMPARABLE_NON_NOEXCEPT_3(__VA_ARGS__))
+#define QT_DECLARE_EQUALITY_COMPARABLE_NON_NOEXCEPT_5(...) \
+    QT_VA_ARGS_EXPAND(QT_DECLARE_EQUALITY_COMPARABLE_NON_NOEXCEPT_3(__VA_ARGS__))
+#define QT_DECLARE_EQUALITY_COMPARABLE_NON_NOEXCEPT_6(...) \
+    QT_VA_ARGS_EXPAND(QT_DECLARE_EQUALITY_COMPARABLE_NON_NOEXCEPT_3(__VA_ARGS__))
+#define QT_DECLARE_EQUALITY_COMPARABLE_NON_NOEXCEPT_7(...) \
+    QT_VA_ARGS_EXPAND(QT_DECLARE_EQUALITY_COMPARABLE_NON_NOEXCEPT_3(__VA_ARGS__))
+#define QT_DECLARE_EQUALITY_COMPARABLE_NON_NOEXCEPT_8(...) \
+    QT_VA_ARGS_EXPAND(QT_DECLARE_EQUALITY_COMPARABLE_NON_NOEXCEPT_3(__VA_ARGS__))
+#define QT_DECLARE_EQUALITY_COMPARABLE_NON_NOEXCEPT_9(...) \
+    QT_VA_ARGS_EXPAND(QT_DECLARE_EQUALITY_COMPARABLE_NON_NOEXCEPT_3(__VA_ARGS__))
 
 #define Q_DECLARE_EQUALITY_COMPARABLE_NON_NOEXCEPT(...) \
     QT_OVERLOADED_MACRO(QT_DECLARE_EQUALITY_COMPARABLE_NON_NOEXCEPT, __VA_ARGS__)
+
+// Ordering operators that automatically deduce the strength:
+#define QT_DECLARE_ORDERED_1(Type) \
+    QT_DECLARE_ORDERING_OPERATORS_HELPER(AUTO, Type, Type, /* non-constexpr */, noexcept(true), \
+                                         /* no attributes */)
+
+#define QT_DECLARE_ORDERED_2(LeftType, RightType) \
+    QT_DECLARE_ORDERING_OPERATORS_HELPER(AUTO, LeftType, RightType, /* non-constexpr */, \
+                                         noexcept(true), /* no attributes */) \
+    QT_DECLARE_ORDERING_OPERATORS_REVERSED_HELPER(AUTO, LeftType, RightType, /* non-constexpr */, \
+                                                  noexcept(true), /* no attributes */)
+
+#define QT_DECLARE_ORDERED_3(LeftType, RightType, ...) \
+    QT_DECLARE_ORDERING_OPERATORS_HELPER(AUTO, LeftType, RightType, /* non-constexpr */, \
+                                         noexcept(true), __VA_ARGS__) \
+    QT_DECLARE_ORDERING_OPERATORS_REVERSED_HELPER(AUTO, LeftType, RightType, /* non-constexpr */, \
+                                                  noexcept(true), __VA_ARGS__)
+
+#define QT_DECLARE_ORDERED_4(...) QT_VA_ARGS_EXPAND(QT_DECLARE_ORDERED_3(__VA_ARGS__))
+#define QT_DECLARE_ORDERED_5(...) QT_VA_ARGS_EXPAND(QT_DECLARE_ORDERED_3(__VA_ARGS__))
+#define QT_DECLARE_ORDERED_6(...) QT_VA_ARGS_EXPAND(QT_DECLARE_ORDERED_3(__VA_ARGS__))
+#define QT_DECLARE_ORDERED_7(...) QT_VA_ARGS_EXPAND(QT_DECLARE_ORDERED_3(__VA_ARGS__))
+#define QT_DECLARE_ORDERED_8(...) QT_VA_ARGS_EXPAND(QT_DECLARE_ORDERED_3(__VA_ARGS__))
+#define QT_DECLARE_ORDERED_9(...) QT_VA_ARGS_EXPAND(QT_DECLARE_ORDERED_3(__VA_ARGS__))
+
+#define Q_DECLARE_ORDERED(...) QT_OVERLOADED_MACRO(QT_DECLARE_ORDERED, __VA_ARGS__)
+
+#define QT_DECLARE_ORDERED_LITERAL_TYPE_1(Type) \
+    QT_DECLARE_ORDERING_OPERATORS_HELPER(AUTO, Type, Type, constexpr, noexcept(true), \
+                                         /* no attributes */)
+
+#define QT_DECLARE_ORDERED_LITERAL_TYPE_2(LeftType, RightType) \
+    QT_DECLARE_ORDERING_OPERATORS_HELPER(AUTO, LeftType, RightType, constexpr, \
+                                         noexcept(true), /* no attributes */) \
+    QT_DECLARE_ORDERING_OPERATORS_REVERSED_HELPER(AUTO, LeftType, RightType, constexpr, \
+                                                  noexcept(true), /* no attributes */)
+
+#define QT_DECLARE_ORDERED_LITERAL_TYPE_3(LeftType, RightType, ...) \
+    QT_DECLARE_ORDERING_OPERATORS_HELPER(AUTO, LeftType, RightType, constexpr, \
+                                         noexcept(true), __VA_ARGS__) \
+    QT_DECLARE_ORDERING_OPERATORS_REVERSED_HELPER(AUTO, LeftType, RightType, constexpr, \
+                                                  noexcept(true), __VA_ARGS__)
+
+#define QT_DECLARE_ORDERED_LITERAL_TYPE_4(...) \
+    QT_VA_ARGS_EXPAND(QT_DECLARE_ORDERED_LITERAL_TYPE_3(__VA_ARGS__))
+#define QT_DECLARE_ORDERED_LITERAL_TYPE_5(...) \
+    QT_VA_ARGS_EXPAND(QT_DECLARE_ORDERED_LITERAL_TYPE_3(__VA_ARGS__))
+#define QT_DECLARE_ORDERED_LITERAL_TYPE_6(...) \
+    QT_VA_ARGS_EXPAND(QT_DECLARE_ORDERED_LITERAL_TYPE_3(__VA_ARGS__))
+#define QT_DECLARE_ORDERED_LITERAL_TYPE_7(...) \
+    QT_VA_ARGS_EXPAND(QT_DECLARE_ORDERED_LITERAL_TYPE_3(__VA_ARGS__))
+#define QT_DECLARE_ORDERED_LITERAL_TYPE_8(...) \
+    QT_VA_ARGS_EXPAND(QT_DECLARE_ORDERED_LITERAL_TYPE_3(__VA_ARGS__))
+#define QT_DECLARE_ORDERED_LITERAL_TYPE_9(...) \
+    QT_VA_ARGS_EXPAND(QT_DECLARE_ORDERED_LITERAL_TYPE_3(__VA_ARGS__))
+
+#define Q_DECLARE_ORDERED_LITERAL_TYPE(...) \
+    QT_OVERLOADED_MACRO(QT_DECLARE_ORDERED_LITERAL_TYPE, __VA_ARGS__)
+
+#define QT_DECLARE_ORDERED_NON_NOEXCEPT_1(Type) \
+    QT_DECLARE_ORDERING_OPERATORS_HELPER(AUTO, Type, Type, /* non-constexpr */, noexcept(false), \
+                                         /* no attributes */)
+
+#define QT_DECLARE_ORDERED_NON_NOEXCEPT_2(LeftType, RightType) \
+    QT_DECLARE_ORDERING_OPERATORS_HELPER(AUTO, LeftType, RightType, /* non-constexpr */, \
+                                         noexcept(false), /* no attributes */) \
+    QT_DECLARE_ORDERING_OPERATORS_REVERSED_HELPER(AUTO, LeftType, RightType, /* non-constexpr */, \
+                                                  noexcept(false), /* no attributes */)
+
+#define QT_DECLARE_ORDERED_NON_NOEXCEPT_3(LeftType, RightType, ...) \
+    QT_DECLARE_ORDERING_OPERATORS_HELPER(AUTO, LeftType, RightType, /* non-constexpr */, \
+                                         noexcept(false), __VA_ARGS__) \
+    QT_DECLARE_ORDERING_OPERATORS_REVERSED_HELPER(AUTO, LeftType, RightType, /* non-constexpr */, \
+                                                  noexcept(false), __VA_ARGS__)
+
+#define QT_DECLARE_ORDERED_NON_NOEXCEPT_4(...) \
+    QT_VA_ARGS_EXPAND(QT_DECLARE_ORDERED_NON_NOEXCEPT_3(__VA_ARGS__))
+#define QT_DECLARE_ORDERED_NON_NOEXCEPT_5(...) \
+    QT_VA_ARGS_EXPAND(QT_DECLARE_ORDERED_NON_NOEXCEPT_3(__VA_ARGS__))
+#define QT_DECLARE_ORDERED_NON_NOEXCEPT_6(...) \
+    QT_VA_ARGS_EXPAND(QT_DECLARE_ORDERED_NON_NOEXCEPT_3(__VA_ARGS__))
+#define QT_DECLARE_ORDERED_NON_NOEXCEPT_7(...) \
+    QT_VA_ARGS_EXPAND(QT_DECLARE_ORDERED_NON_NOEXCEPT_3(__VA_ARGS__))
+#define QT_DECLARE_ORDERED_NON_NOEXCEPT_8(...) \
+    QT_VA_ARGS_EXPAND(QT_DECLARE_ORDERED_NON_NOEXCEPT_3(__VA_ARGS__))
+#define QT_DECLARE_ORDERED_NON_NOEXCEPT_9(...) \
+    QT_VA_ARGS_EXPAND(QT_DECLARE_ORDERED_NON_NOEXCEPT_3(__VA_ARGS__))
+
+#define Q_DECLARE_ORDERED_NON_NOEXCEPT(...) \
+    QT_OVERLOADED_MACRO(QT_DECLARE_ORDERED_NON_NOEXCEPT, __VA_ARGS__)
 
 // Partial ordering operators
 #define QT_DECLARE_PARTIALLY_ORDERED_1(Type) \
@@ -388,11 +596,24 @@ template <typename In> constexpr auto to_Qt(In in) noexcept
                                                   /* non-constexpr */, noexcept(true), \
                                                   /* no attributes */)
 
-#define QT_DECLARE_PARTIALLY_ORDERED_3(LeftType, RightType, Attributes) \
+#define QT_DECLARE_PARTIALLY_ORDERED_3(LeftType, RightType, ...) \
     QT_DECLARE_ORDERING_OPERATORS_HELPER(PARTIAL, LeftType, RightType, /* non-constexpr */, \
-                                         noexcept(true), Attributes) \
+                                         noexcept(true), __VA_ARGS__) \
     QT_DECLARE_ORDERING_OPERATORS_REVERSED_HELPER(PARTIAL, LeftType, RightType, \
-                                                  /* non-constexpr */, noexcept(true), Attributes)
+                                                  /* non-constexpr */, noexcept(true), __VA_ARGS__)
+
+#define QT_DECLARE_PARTIALLY_ORDERED_4(...) \
+    QT_VA_ARGS_EXPAND(QT_DECLARE_PARTIALLY_ORDERED_3(__VA_ARGS__))
+#define QT_DECLARE_PARTIALLY_ORDERED_5(...) \
+    QT_VA_ARGS_EXPAND(QT_DECLARE_PARTIALLY_ORDERED_3(__VA_ARGS__))
+#define QT_DECLARE_PARTIALLY_ORDERED_6(...) \
+    QT_VA_ARGS_EXPAND(QT_DECLARE_PARTIALLY_ORDERED_3(__VA_ARGS__))
+#define QT_DECLARE_PARTIALLY_ORDERED_7(...) \
+    QT_VA_ARGS_EXPAND(QT_DECLARE_PARTIALLY_ORDERED_3(__VA_ARGS__))
+#define QT_DECLARE_PARTIALLY_ORDERED_8(...) \
+    QT_VA_ARGS_EXPAND(QT_DECLARE_PARTIALLY_ORDERED_3(__VA_ARGS__))
+#define QT_DECLARE_PARTIALLY_ORDERED_9(...) \
+    QT_VA_ARGS_EXPAND(QT_DECLARE_PARTIALLY_ORDERED_3(__VA_ARGS__))
 
 #define Q_DECLARE_PARTIALLY_ORDERED(...) \
     QT_OVERLOADED_MACRO(QT_DECLARE_PARTIALLY_ORDERED, __VA_ARGS__)
@@ -407,11 +628,24 @@ template <typename In> constexpr auto to_Qt(In in) noexcept
     QT_DECLARE_ORDERING_OPERATORS_REVERSED_HELPER(PARTIAL, LeftType, RightType, constexpr, \
                                                   noexcept(true), /* no attributes */)
 
-#define QT_DECLARE_PARTIALLY_ORDERED_LITERAL_TYPE_3(LeftType, RightType, Attributes) \
+#define QT_DECLARE_PARTIALLY_ORDERED_LITERAL_TYPE_3(LeftType, RightType, ...) \
     QT_DECLARE_ORDERING_OPERATORS_HELPER(PARTIAL, LeftType, RightType, constexpr, noexcept(true), \
-                                         Attributes) \
+                                         __VA_ARGS__) \
     QT_DECLARE_ORDERING_OPERATORS_REVERSED_HELPER(PARTIAL, LeftType, RightType, constexpr, \
-                                                  noexcept(true), Attributes)
+                                                  noexcept(true), __VA_ARGS__)
+
+#define QT_DECLARE_PARTIALLY_ORDERED_LITERAL_TYPE_4(...) \
+    QT_VA_ARGS_EXPAND(QT_DECLARE_PARTIALLY_ORDERED_LITERAL_TYPE_3(__VA_ARGS__))
+#define QT_DECLARE_PARTIALLY_ORDERED_LITERAL_TYPE_5(...) \
+    QT_VA_ARGS_EXPAND(QT_DECLARE_PARTIALLY_ORDERED_LITERAL_TYPE_3(__VA_ARGS__))
+#define QT_DECLARE_PARTIALLY_ORDERED_LITERAL_TYPE_6(...) \
+    QT_VA_ARGS_EXPAND(QT_DECLARE_PARTIALLY_ORDERED_LITERAL_TYPE_3(__VA_ARGS__))
+#define QT_DECLARE_PARTIALLY_ORDERED_LITERAL_TYPE_7(...) \
+    QT_VA_ARGS_EXPAND(QT_DECLARE_PARTIALLY_ORDERED_LITERAL_TYPE_3(__VA_ARGS__))
+#define QT_DECLARE_PARTIALLY_ORDERED_LITERAL_TYPE_8(...) \
+    QT_VA_ARGS_EXPAND(QT_DECLARE_PARTIALLY_ORDERED_LITERAL_TYPE_3(__VA_ARGS__))
+#define QT_DECLARE_PARTIALLY_ORDERED_LITERAL_TYPE_9(...) \
+    QT_VA_ARGS_EXPAND(QT_DECLARE_PARTIALLY_ORDERED_LITERAL_TYPE_3(__VA_ARGS__))
 
 #define Q_DECLARE_PARTIALLY_ORDERED_LITERAL_TYPE(...) \
     QT_OVERLOADED_MACRO(QT_DECLARE_PARTIALLY_ORDERED_LITERAL_TYPE, __VA_ARGS__)
@@ -427,11 +661,24 @@ template <typename In> constexpr auto to_Qt(In in) noexcept
                                                   /* non-constexpr */, noexcept(false), \
                                                   /* no attributes */)
 
-#define QT_DECLARE_PARTIALLY_ORDERED_NON_NOEXCEPT_3(LeftType, RightType, Attributes) \
+#define QT_DECLARE_PARTIALLY_ORDERED_NON_NOEXCEPT_3(LeftType, RightType, ...) \
     QT_DECLARE_ORDERING_OPERATORS_HELPER(PARTIAL, LeftType, RightType, /* non-constexpr */, \
-                                         noexcept(false), Attributes) \
+                                         noexcept(false), __VA_ARGS__) \
     QT_DECLARE_ORDERING_OPERATORS_REVERSED_HELPER(PARTIAL, LeftType, RightType, \
-                                                  /* non-constexpr */, noexcept(false), Attributes)
+                                                  /* non-constexpr */, noexcept(false), __VA_ARGS__)
+
+#define QT_DECLARE_PARTIALLY_ORDERED_NON_NOEXCEPT_4(...) \
+    QT_VA_ARGS_EXPAND(QT_DECLARE_PARTIALLY_ORDERED_NON_NOEXCEPT_3(__VA_ARGS__))
+#define QT_DECLARE_PARTIALLY_ORDERED_NON_NOEXCEPT_5(...) \
+    QT_VA_ARGS_EXPAND(QT_DECLARE_PARTIALLY_ORDERED_NON_NOEXCEPT_3(__VA_ARGS__))
+#define QT_DECLARE_PARTIALLY_ORDERED_NON_NOEXCEPT_6(...) \
+    QT_VA_ARGS_EXPAND(QT_DECLARE_PARTIALLY_ORDERED_NON_NOEXCEPT_3(__VA_ARGS__))
+#define QT_DECLARE_PARTIALLY_ORDERED_NON_NOEXCEPT_7(...) \
+    QT_VA_ARGS_EXPAND(QT_DECLARE_PARTIALLY_ORDERED_NON_NOEXCEPT_3(__VA_ARGS__))
+#define QT_DECLARE_PARTIALLY_ORDERED_NON_NOEXCEPT_8(...) \
+    QT_VA_ARGS_EXPAND(QT_DECLARE_PARTIALLY_ORDERED_NON_NOEXCEPT_3(__VA_ARGS__))
+#define QT_DECLARE_PARTIALLY_ORDERED_NON_NOEXCEPT_9(...) \
+    QT_VA_ARGS_EXPAND(QT_DECLARE_PARTIALLY_ORDERED_NON_NOEXCEPT_3(__VA_ARGS__))
 
 #define Q_DECLARE_PARTIALLY_ORDERED_NON_NOEXCEPT(...) \
     QT_OVERLOADED_MACRO(QT_DECLARE_PARTIALLY_ORDERED_NON_NOEXCEPT, __VA_ARGS__)
@@ -447,11 +694,24 @@ template <typename In> constexpr auto to_Qt(In in) noexcept
     QT_DECLARE_ORDERING_OPERATORS_REVERSED_HELPER(WEAK, LeftType, RightType, /* non-constexpr */, \
                                                   noexcept(true), /* no attributes */)
 
-#define QT_DECLARE_WEAKLY_ORDERED_3(LeftType, RightType, Attributes) \
+#define QT_DECLARE_WEAKLY_ORDERED_3(LeftType, RightType, ...) \
     QT_DECLARE_ORDERING_OPERATORS_HELPER(WEAK, LeftType, RightType, /* non-constexpr */, \
-                                         noexcept(true), Attributes) \
+                                         noexcept(true), __VA_ARGS__) \
     QT_DECLARE_ORDERING_OPERATORS_REVERSED_HELPER(WEAK, LeftType, RightType, /* non-constexpr */, \
-                                                  noexcept(true), Attributes)
+                                                  noexcept(true), __VA_ARGS__)
+
+#define QT_DECLARE_WEAKLY_ORDERED_4(...) \
+    QT_VA_ARGS_EXPAND(QT_DECLARE_WEAKLY_ORDERED_3(__VA_ARGS__))
+#define QT_DECLARE_WEAKLY_ORDERED_5(...) \
+    QT_VA_ARGS_EXPAND(QT_DECLARE_WEAKLY_ORDERED_3(__VA_ARGS__))
+#define QT_DECLARE_WEAKLY_ORDERED_6(...) \
+    QT_VA_ARGS_EXPAND(QT_DECLARE_WEAKLY_ORDERED_3(__VA_ARGS__))
+#define QT_DECLARE_WEAKLY_ORDERED_7(...) \
+    QT_VA_ARGS_EXPAND(QT_DECLARE_WEAKLY_ORDERED_3(__VA_ARGS__))
+#define QT_DECLARE_WEAKLY_ORDERED_8(...) \
+    QT_VA_ARGS_EXPAND(QT_DECLARE_WEAKLY_ORDERED_3(__VA_ARGS__))
+#define QT_DECLARE_WEAKLY_ORDERED_9(...) \
+    QT_VA_ARGS_EXPAND(QT_DECLARE_WEAKLY_ORDERED_3(__VA_ARGS__))
 
 #define Q_DECLARE_WEAKLY_ORDERED(...) \
     QT_OVERLOADED_MACRO(QT_DECLARE_WEAKLY_ORDERED, __VA_ARGS__)
@@ -466,11 +726,24 @@ template <typename In> constexpr auto to_Qt(In in) noexcept
     QT_DECLARE_ORDERING_OPERATORS_REVERSED_HELPER(WEAK, LeftType, RightType, constexpr, \
                                                   noexcept(true), /* no attributes */)
 
-#define QT_DECLARE_WEAKLY_ORDERED_LITERAL_TYPE_3(LeftType, RightType, Attributes) \
+#define QT_DECLARE_WEAKLY_ORDERED_LITERAL_TYPE_3(LeftType, RightType, ...) \
     QT_DECLARE_ORDERING_OPERATORS_HELPER(WEAK, LeftType, RightType, constexpr, noexcept(true), \
-                                         Attributes) \
+                                         __VA_ARGS__) \
     QT_DECLARE_ORDERING_OPERATORS_REVERSED_HELPER(WEAK, LeftType, RightType, constexpr, \
-                                                  noexcept(true), Attributes)
+                                                  noexcept(true), __VA_ARGS__)
+
+#define QT_DECLARE_WEAKLY_ORDERED_LITERAL_TYPE_4(...) \
+    QT_VA_ARGS_EXPAND(QT_DECLARE_WEAKLY_ORDERED_LITERAL_TYPE_3(__VA_ARGS__))
+#define QT_DECLARE_WEAKLY_ORDERED_LITERAL_TYPE_5(...) \
+    QT_VA_ARGS_EXPAND(QT_DECLARE_WEAKLY_ORDERED_LITERAL_TYPE_3(__VA_ARGS__))
+#define QT_DECLARE_WEAKLY_ORDERED_LITERAL_TYPE_6(...) \
+    QT_VA_ARGS_EXPAND(QT_DECLARE_WEAKLY_ORDERED_LITERAL_TYPE_3(__VA_ARGS__))
+#define QT_DECLARE_WEAKLY_ORDERED_LITERAL_TYPE_7(...) \
+    QT_VA_ARGS_EXPAND(QT_DECLARE_WEAKLY_ORDERED_LITERAL_TYPE_3(__VA_ARGS__))
+#define QT_DECLARE_WEAKLY_ORDERED_LITERAL_TYPE_8(...) \
+    QT_VA_ARGS_EXPAND(QT_DECLARE_WEAKLY_ORDERED_LITERAL_TYPE_3(__VA_ARGS__))
+#define QT_DECLARE_WEAKLY_ORDERED_LITERAL_TYPE_9(...) \
+    QT_VA_ARGS_EXPAND(QT_DECLARE_WEAKLY_ORDERED_LITERAL_TYPE_3(__VA_ARGS__))
 
 #define Q_DECLARE_WEAKLY_ORDERED_LITERAL_TYPE(...) \
     QT_OVERLOADED_MACRO(QT_DECLARE_WEAKLY_ORDERED_LITERAL_TYPE, __VA_ARGS__)
@@ -485,11 +758,24 @@ template <typename In> constexpr auto to_Qt(In in) noexcept
     QT_DECLARE_ORDERING_OPERATORS_REVERSED_HELPER(WEAK, LeftType, RightType, /* non-constexpr */, \
                                                   noexcept(false), /* no attributes */)
 
-#define QT_DECLARE_WEAKLY_ORDERED_NON_NOEXCEPT_3(LeftType, RightType, Attributes) \
+#define QT_DECLARE_WEAKLY_ORDERED_NON_NOEXCEPT_3(LeftType, RightType, ...) \
     QT_DECLARE_ORDERING_OPERATORS_HELPER(WEAK, LeftType, RightType, /* non-constexpr */, \
-                                         noexcept(false), Attributes) \
+                                         noexcept(false), __VA_ARGS__) \
     QT_DECLARE_ORDERING_OPERATORS_REVERSED_HELPER(WEAK, LeftType, RightType, /* non-constexpr */, \
-                                                  noexcept(false), Attributes)
+                                                  noexcept(false), __VA_ARGS__)
+
+#define QT_DECLARE_WEAKLY_ORDERED_NON_NOEXCEPT_4(...) \
+    QT_VA_ARGS_EXPAND(QT_DECLARE_WEAKLY_ORDERED_NON_NOEXCEPT_3(__VA_ARGS__))
+#define QT_DECLARE_WEAKLY_ORDERED_NON_NOEXCEPT_5(...) \
+    QT_VA_ARGS_EXPAND(QT_DECLARE_WEAKLY_ORDERED_NON_NOEXCEPT_3(__VA_ARGS__))
+#define QT_DECLARE_WEAKLY_ORDERED_NON_NOEXCEPT_6(...) \
+    QT_VA_ARGS_EXPAND(QT_DECLARE_WEAKLY_ORDERED_NON_NOEXCEPT_3(__VA_ARGS__))
+#define QT_DECLARE_WEAKLY_ORDERED_NON_NOEXCEPT_7(...) \
+    QT_VA_ARGS_EXPAND(QT_DECLARE_WEAKLY_ORDERED_NON_NOEXCEPT_3(__VA_ARGS__))
+#define QT_DECLARE_WEAKLY_ORDERED_NON_NOEXCEPT_8(...) \
+    QT_VA_ARGS_EXPAND(QT_DECLARE_WEAKLY_ORDERED_NON_NOEXCEPT_3(__VA_ARGS__))
+#define QT_DECLARE_WEAKLY_ORDERED_NON_NOEXCEPT_9(...) \
+    QT_VA_ARGS_EXPAND(QT_DECLARE_WEAKLY_ORDERED_NON_NOEXCEPT_3(__VA_ARGS__))
 
 #define Q_DECLARE_WEAKLY_ORDERED_NON_NOEXCEPT(...) \
     QT_OVERLOADED_MACRO(QT_DECLARE_WEAKLY_ORDERED_NON_NOEXCEPT, __VA_ARGS__)
@@ -506,11 +792,24 @@ template <typename In> constexpr auto to_Qt(In in) noexcept
                                                   /* non-constexpr */, noexcept(true), \
                                                   /* no attributes */)
 
-#define QT_DECLARE_STRONGLY_ORDERED_3(LeftType, RightType, Attributes) \
+#define QT_DECLARE_STRONGLY_ORDERED_3(LeftType, RightType, ...) \
     QT_DECLARE_ORDERING_OPERATORS_HELPER(STRONG, LeftType, RightType, /* non-constexpr */, \
-                                         noexcept(true), Attributes) \
+                                         noexcept(true), __VA_ARGS__) \
     QT_DECLARE_ORDERING_OPERATORS_REVERSED_HELPER(STRONG, LeftType, RightType, \
-                                                  /* non-constexpr */, noexcept(true), Attributes)
+                                                  /* non-constexpr */, noexcept(true), __VA_ARGS__)
+
+#define QT_DECLARE_STRONGLY_ORDERED_4(...) \
+    QT_VA_ARGS_EXPAND(QT_DECLARE_STRONGLY_ORDERED_3(__VA_ARGS__))
+#define QT_DECLARE_STRONGLY_ORDERED_5(...) \
+    QT_VA_ARGS_EXPAND(QT_DECLARE_STRONGLY_ORDERED_3(__VA_ARGS__))
+#define QT_DECLARE_STRONGLY_ORDERED_6(...) \
+    QT_VA_ARGS_EXPAND(QT_DECLARE_STRONGLY_ORDERED_3(__VA_ARGS__))
+#define QT_DECLARE_STRONGLY_ORDERED_7(...) \
+    QT_VA_ARGS_EXPAND(QT_DECLARE_STRONGLY_ORDERED_3(__VA_ARGS__))
+#define QT_DECLARE_STRONGLY_ORDERED_8(...) \
+    QT_VA_ARGS_EXPAND(QT_DECLARE_STRONGLY_ORDERED_3(__VA_ARGS__))
+#define QT_DECLARE_STRONGLY_ORDERED_9(...) \
+    QT_VA_ARGS_EXPAND(QT_DECLARE_STRONGLY_ORDERED_3(__VA_ARGS__))
 
 #define Q_DECLARE_STRONGLY_ORDERED(...) \
     QT_OVERLOADED_MACRO(QT_DECLARE_STRONGLY_ORDERED, __VA_ARGS__)
@@ -525,11 +824,24 @@ template <typename In> constexpr auto to_Qt(In in) noexcept
     QT_DECLARE_ORDERING_OPERATORS_REVERSED_HELPER(STRONG, LeftType, RightType, constexpr, \
                                                   noexcept(true), /* no attributes */)
 
-#define QT_DECLARE_STRONGLY_ORDERED_LITERAL_TYPE_3(LeftType, RightType, Attributes) \
+#define QT_DECLARE_STRONGLY_ORDERED_LITERAL_TYPE_3(LeftType, RightType, ...) \
     QT_DECLARE_ORDERING_OPERATORS_HELPER(STRONG, LeftType, RightType, constexpr, noexcept(true), \
-                                         Attributes) \
+                                         __VA_ARGS__) \
     QT_DECLARE_ORDERING_OPERATORS_REVERSED_HELPER(STRONG, LeftType, RightType, constexpr, \
-                                                  noexcept(true), Attributes)
+                                                  noexcept(true), __VA_ARGS__)
+
+#define QT_DECLARE_STRONGLY_ORDERED_LITERAL_TYPE_4(...) \
+    QT_VA_ARGS_EXPAND(QT_DECLARE_STRONGLY_ORDERED_LITERAL_TYPE_3(__VA_ARGS__))
+#define QT_DECLARE_STRONGLY_ORDERED_LITERAL_TYPE_5(...) \
+    QT_VA_ARGS_EXPAND(QT_DECLARE_STRONGLY_ORDERED_LITERAL_TYPE_3(__VA_ARGS__))
+#define QT_DECLARE_STRONGLY_ORDERED_LITERAL_TYPE_6(...) \
+    QT_VA_ARGS_EXPAND(QT_DECLARE_STRONGLY_ORDERED_LITERAL_TYPE_3(__VA_ARGS__))
+#define QT_DECLARE_STRONGLY_ORDERED_LITERAL_TYPE_7(...) \
+    QT_VA_ARGS_EXPAND(QT_DECLARE_STRONGLY_ORDERED_LITERAL_TYPE_3(__VA_ARGS__))
+#define QT_DECLARE_STRONGLY_ORDERED_LITERAL_TYPE_8(...) \
+    QT_VA_ARGS_EXPAND(QT_DECLARE_STRONGLY_ORDERED_LITERAL_TYPE_3(__VA_ARGS__))
+#define QT_DECLARE_STRONGLY_ORDERED_LITERAL_TYPE_9(...) \
+    QT_VA_ARGS_EXPAND(QT_DECLARE_STRONGLY_ORDERED_LITERAL_TYPE_3(__VA_ARGS__))
 
 #define Q_DECLARE_STRONGLY_ORDERED_LITERAL_TYPE(...) \
     QT_OVERLOADED_MACRO(QT_DECLARE_STRONGLY_ORDERED_LITERAL_TYPE, __VA_ARGS__)
@@ -545,11 +857,24 @@ template <typename In> constexpr auto to_Qt(In in) noexcept
                                                   /* non-constexpr */, noexcept(false), \
                                                   /* no attributes */)
 
-#define QT_DECLARE_STRONGLY_ORDERED_NON_NOEXCEPT_3(LeftType, RightType, Attributes) \
+#define QT_DECLARE_STRONGLY_ORDERED_NON_NOEXCEPT_3(LeftType, RightType, ...) \
     QT_DECLARE_ORDERING_OPERATORS_HELPER(STRONG, LeftType, RightType, /* non-constexpr */, \
-                                         noexcept(false), Attributes) \
+                                         noexcept(false), __VA_ARGS__) \
     QT_DECLARE_ORDERING_OPERATORS_REVERSED_HELPER(STRONG, LeftType, RightType, \
-                                                  /* non-constexpr */, noexcept(false), Attributes)
+                                                  /* non-constexpr */, noexcept(false), __VA_ARGS__)
+
+#define QT_DECLARE_STRONGLY_ORDERED_NON_NOEXCEPT_4(...) \
+    QT_VA_ARGS_EXPAND(QT_DECLARE_STRONGLY_ORDERED_NON_NOEXCEPT_3(__VA_ARGS__))
+#define QT_DECLARE_STRONGLY_ORDERED_NON_NOEXCEPT_5(...) \
+    QT_VA_ARGS_EXPAND(QT_DECLARE_STRONGLY_ORDERED_NON_NOEXCEPT_3(__VA_ARGS__))
+#define QT_DECLARE_STRONGLY_ORDERED_NON_NOEXCEPT_6(...) \
+    QT_VA_ARGS_EXPAND(QT_DECLARE_STRONGLY_ORDERED_NON_NOEXCEPT_3(__VA_ARGS__))
+#define QT_DECLARE_STRONGLY_ORDERED_NON_NOEXCEPT_7(...) \
+    QT_VA_ARGS_EXPAND(QT_DECLARE_STRONGLY_ORDERED_NON_NOEXCEPT_3(__VA_ARGS__))
+#define QT_DECLARE_STRONGLY_ORDERED_NON_NOEXCEPT_8(...) \
+    QT_VA_ARGS_EXPAND(QT_DECLARE_STRONGLY_ORDERED_NON_NOEXCEPT_3(__VA_ARGS__))
+#define QT_DECLARE_STRONGLY_ORDERED_NON_NOEXCEPT_9(...) \
+    QT_VA_ARGS_EXPAND(QT_DECLARE_STRONGLY_ORDERED_NON_NOEXCEPT_3(__VA_ARGS__))
 
 #define Q_DECLARE_STRONGLY_ORDERED_NON_NOEXCEPT(...) \
     QT_OVERLOADED_MACRO(QT_DECLARE_STRONGLY_ORDERED_NON_NOEXCEPT, __VA_ARGS__)
@@ -866,9 +1191,15 @@ class QTypeInfo<Qt::totally_ordered_wrapper<P>> : public QTypeInfo<P> {};
 
 namespace QtOrderingPrivate {
 
+QT_WARNING_PUSH
+QT_WARNING_DISABLE_DEPRECATED // don't warn _here_ in case we hit the deprecated ptr/ptr overloads
+
 namespace CompareThreeWayTester {
 
 using Qt::compareThreeWay;
+
+template <typename T>
+using WrappedType = std::conditional_t<std::is_pointer_v<T>, Qt::totally_ordered_wrapper<T>, T>;
 
 // Check if compareThreeWay is implemented for the (LT, RT) argument
 // pair.
@@ -878,6 +1209,13 @@ struct HasCompareThreeWay : std::false_type {};
 template <typename LT, typename RT>
 struct HasCompareThreeWay<
         LT, RT, std::void_t<decltype(compareThreeWay(std::declval<LT>(), std::declval<RT>()))>
+    > : std::true_type {};
+
+template <typename LT, typename RT>
+struct HasCompareThreeWay<
+        LT*, RT*,
+        std::void_t<decltype(compareThreeWay(std::declval<WrappedType<LT>>(),
+                                             std::declval<WrappedType<RT>>()))>
     > : std::true_type {};
 
 template <typename LT, typename RT>
@@ -902,7 +1240,114 @@ constexpr bool compareThreeWayNoexcept() noexcept
 
 } // namespace CompareThreeWayTester
 
+QT_WARNING_POP // QT_WARNING_DISABLE_DEPRECATED
+
+#ifdef __cpp_lib_three_way_comparison
+[[maybe_unused]] inline constexpr struct { /* Niebloid */
+    template <typename LT, typename RT = LT>
+    [[maybe_unused]] constexpr auto operator()(const LT &lhs, const RT &rhs) const
+    {
+        // like [expos.only.entity]/2
+        if constexpr (QTypeTraits::has_operator_compare_three_way_with_v<LT, RT>) {
+            return lhs <=> rhs;
+        } else {
+            if (lhs < rhs)
+                return std::weak_ordering::less;
+            if (rhs < lhs)
+                return std::weak_ordering::greater;
+            return std::weak_ordering::equivalent;
+        }
+    }
+} synthThreeWay;
+
+template <typename Container, typename T>
+using if_has_op_less_or_op_compare_three_way =
+        std::enable_if_t<
+                std::disjunction_v<QTypeTraits::has_operator_less_than_container<Container, T>,
+                                   QTypeTraits::has_operator_compare_three_way<T>>,
+                bool>;
+#endif // __cpp_lib_three_way_comparison
+
+// These checks do not use Qt::compareThreeWay(), so only work for user-defined
+// compareThreeWay() helper functions.
+// We cannot use the same condition as in CompareThreeWayTester::hasCompareThreeWay,
+// because GCC seems to cache and re-use the result.
+// Created https://gcc.gnu.org/bugzilla/show_bug.cgi?id=117174
+// For now, modify the condition a bit without changing its meaning.
+template <typename LT, typename RT = LT, typename = void>
+struct HasCustomCompareThreeWay : std::false_type {};
+
+template <typename LT, typename RT>
+struct HasCustomCompareThreeWay<
+        LT, RT,
+        std::void_t<decltype(is_eq(compareThreeWay(std::declval<LT>(), std::declval<RT>())))>
+    > : std::true_type {};
+
+template <typename InputIt1, typename InputIt2, typename Compare>
+auto lexicographicalCompareThreeWay(InputIt1 first1, InputIt1 last1,
+                                    InputIt2 first2, InputIt2 last2,
+                                    Compare cmp)
+{
+    using R = decltype(cmp(*first1, *first2));
+
+    while (first1 != last1) {
+        if (first2 == last2)
+            return R::greater;
+        const auto r = cmp(*first1, *first2);
+        if (is_neq(r))
+            return r;
+        ++first1;
+        ++first2;
+    }
+    return first2 == last2 ? R::equivalent : R::less;
+}
+
+template <typename InputIt1, typename InputIt2>
+auto lexicographicalCompareThreeWay(InputIt1 first1, InputIt1 last1,
+                                    InputIt2 first2, InputIt2 last2)
+{
+    using LT = typename std::iterator_traits<InputIt1>::value_type;
+    using RT = typename std::iterator_traits<InputIt2>::value_type;
+
+    // if LT && RT are pointers, and there is no user-defined compareThreeWay()
+    // operation for the pointers, we need to wrap them into
+    // Qt::totally_ordered_wrapper.
+    constexpr bool UseWrapper =
+            std::conjunction_v<std::is_pointer<LT>, std::is_pointer<RT>,
+                               std::negation<HasCustomCompareThreeWay<LT, RT>>,
+                               std::negation<HasCustomCompareThreeWay<RT, LT>>>;
+    using WrapLT = std::conditional_t<UseWrapper,
+                                      Qt::totally_ordered_wrapper<LT>,
+                                      const LT &>;
+    using WrapRT = std::conditional_t<UseWrapper,
+                                      Qt::totally_ordered_wrapper<RT>,
+                                      const RT &>;
+
+    auto cmp = [](LT const &lhs, RT const &rhs) {
+        using Qt::compareThreeWay;
+        namespace Test = QtOrderingPrivate::CompareThreeWayTester;
+        // Need this because the user might provide only
+        // compareThreeWay(LT, RT), but not the reversed version.
+        if constexpr (Test::hasCompareThreeWay_v<WrapLT, WrapRT>)
+            return compareThreeWay(WrapLT(lhs), WrapRT(rhs));
+        else
+            return QtOrderingPrivate::reversed(compareThreeWay(WrapRT(rhs), WrapLT(lhs)));
+    };
+    return lexicographicalCompareThreeWay(first1, last1, first2, last2, cmp);
+}
+
 } // namespace QtOrderingPrivate
+
+namespace Qt {
+
+template <typename T, typename U>
+using if_has_qt_compare_three_way =
+        std::enable_if_t<
+            std::disjunction_v<QtOrderingPrivate::CompareThreeWayTester::HasCompareThreeWay<T, U>,
+                               QtOrderingPrivate::CompareThreeWayTester::HasCompareThreeWay<U, T>>,
+        bool>;
+
+} // namespace Qt
 
 QT_END_NAMESPACE
 

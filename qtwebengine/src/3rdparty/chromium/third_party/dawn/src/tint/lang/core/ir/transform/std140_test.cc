@@ -29,6 +29,8 @@
 
 #include <utility>
 
+#include "src/tint/lang/core/fluent_types.h"
+#include "src/tint/lang/core/ir/load_vector_element.h"
 #include "src/tint/lang/core/ir/transform/helper_test.h"
 #include "src/tint/lang/core/type/array.h"
 #include "src/tint/lang/core/type/matrix.h"
@@ -48,8 +50,8 @@ TEST_F(IR_Std140Test, NoRootBlock) {
     func->Block()->Append(b.Return(func));
 
     auto* expect = R"(
-%foo = func():void -> %b1 {
-  %b1 = block {
+%foo = func():void {
+  $B1: {
     ret
   }
 }
@@ -83,12 +85,12 @@ MyStruct = struct @align(16), @block {
   a:mat2x4<f32> @offset(0)
 }
 
-%b1 = block {  # root
+$B1: {  # root
   %buffer:ptr<uniform, MyStruct, read> = var @binding_point(0, 0)
 }
 
-%foo = func():mat2x4<f32> -> %b2 {
-  %b2 = block {
+%foo = func():mat2x4<f32> {
+  $B2: {
     %3:ptr<uniform, mat2x4<f32>, read> = access %buffer, 0u
     %4:mat2x4<f32> = load %3
     ret %4
@@ -127,12 +129,12 @@ MyStruct = struct @align(16), @block {
   a:mat2x4<f32> @offset(0)
 }
 
-%b1 = block {  # root
+$B1: {  # root
   %buffer:ptr<storage, MyStruct, read_write> = var @binding_point(0, 0)
 }
 
-%foo = func():mat2x4<f32> -> %b2 {
-  %b2 = block {
+%foo = func():mat2x4<f32> {
+  $B2: {
     %3:ptr<storage, mat2x4<f32>, read_write> = access %buffer, 0u
     %4:mat2x4<f32> = load %3
     ret %4
@@ -148,8 +150,7 @@ MyStruct = struct @align(16), @block {
     EXPECT_EQ(expect, str());
 }
 
-// Test that we do not decompose a mat2x2 that is used an array element type.
-TEST_F(IR_Std140Test, NoModify_Mat2x2_InsideArray) {
+TEST_F(IR_Std140Test, Load_Mat2x2f_InArray) {
     auto* mat = ty.mat2x2<f32>();
     auto* structure =
         ty.Struct(mod.symbols.New("MyStruct"), {
@@ -172,12 +173,12 @@ MyStruct = struct @align(8), @block {
   arr:array<mat2x2<f32>, 4> @offset(0)
 }
 
-%b1 = block {  # root
+$B1: {  # root
   %buffer:ptr<uniform, MyStruct, read> = var @binding_point(0, 0)
 }
 
-%foo = func():mat2x2<f32> -> %b2 {
-  %b2 = block {
+%foo = func():mat2x2<f32> {
+  $B2: {
     %3:ptr<uniform, mat2x2<f32>, read> = access %buffer, 0u, 2u
     %4:mat2x2<f32> = load %3
     ret %4
@@ -186,7 +187,35 @@ MyStruct = struct @align(8), @block {
 )";
     EXPECT_EQ(src, str());
 
-    auto* expect = src;
+    auto* expect = R"(
+MyStruct = struct @align(8), @block {
+  arr:array<mat2x2<f32>, 4> @offset(0)
+}
+
+mat2x2_f32_std140 = struct @align(8) {
+  col0:vec2<f32> @offset(0)
+  col1:vec2<f32> @offset(8)
+}
+
+MyStruct_std140 = struct @align(8), @block {
+  arr:array<mat2x2_f32_std140, 4> @offset(0)
+}
+
+$B1: {  # root
+  %buffer:ptr<uniform, MyStruct_std140, read> = var @binding_point(0, 0)
+}
+
+%foo = func():mat2x2<f32> {
+  $B2: {
+    %3:ptr<uniform, vec2<f32>, read> = access %buffer, 0u, 2u, 0u
+    %4:vec2<f32> = load %3
+    %5:ptr<uniform, vec2<f32>, read> = access %buffer, 0u, 2u, 1u
+    %6:vec2<f32> = load %5
+    %7:mat2x2<f32> = construct %4, %6
+    ret %7
+  }
+}
+)";
 
     Run(Std140);
 
@@ -216,12 +245,12 @@ MyStruct = struct @align(8), @block {
   a:mat3x2<f32> @offset(0)
 }
 
-%b1 = block {  # root
+$B1: {  # root
   %buffer:ptr<uniform, MyStruct, read> = var @binding_point(0, 0)
 }
 
-%foo = func():mat3x2<f32> -> %b2 {
-  %b2 = block {
+%foo = func():mat3x2<f32> {
+  $B2: {
     %3:ptr<uniform, mat3x2<f32>, read> = access %buffer, 0u
     %4:mat3x2<f32> = load %3
     ret %4
@@ -241,12 +270,12 @@ MyStruct_std140 = struct @align(8), @block {
   a_col2:vec2<f32> @offset(16)
 }
 
-%b1 = block {  # root
+$B1: {  # root
   %buffer:ptr<uniform, MyStruct_std140, read> = var @binding_point(0, 0)
 }
 
-%foo = func():mat3x2<f32> -> %b2 {
-  %b2 = block {
+%foo = func():mat3x2<f32> {
+  $B2: {
     %3:ptr<uniform, vec2<f32>, read> = access %buffer, 0u
     %4:vec2<f32> = load %3
     %5:ptr<uniform, vec2<f32>, read> = access %buffer, 1u
@@ -264,7 +293,7 @@ MyStruct_std140 = struct @align(8), @block {
     EXPECT_EQ(expect, str());
 }
 
-TEST_F(IR_Std140Test, Mat3x2_LoadColumn) {
+TEST_F(IR_Std140Test, Mat3x2_LoadConstantColumn) {
     auto* mat = ty.mat3x2<f32>();
     auto* structure = ty.Struct(mod.symbols.New("MyStruct"), {
                                                                  {mod.symbols.New("a"), mat},
@@ -287,12 +316,12 @@ MyStruct = struct @align(8), @block {
   a:mat3x2<f32> @offset(0)
 }
 
-%b1 = block {  # root
+$B1: {  # root
   %buffer:ptr<uniform, MyStruct, read> = var @binding_point(0, 0)
 }
 
-%foo = func():vec2<f32> -> %b2 {
-  %b2 = block {
+%foo = func():vec2<f32> {
+  $B2: {
     %3:ptr<uniform, vec2<f32>, read> = access %buffer, 0u, 1u
     %4:vec2<f32> = load %3
     ret %4
@@ -312,21 +341,89 @@ MyStruct_std140 = struct @align(8), @block {
   a_col2:vec2<f32> @offset(16)
 }
 
-%b1 = block {  # root
+$B1: {  # root
   %buffer:ptr<uniform, MyStruct_std140, read> = var @binding_point(0, 0)
 }
 
-%foo = func():vec2<f32> -> %b2 {
-  %b2 = block {
-    %3:ptr<uniform, vec2<f32>, read> = access %buffer, 0u
+%foo = func():vec2<f32> {
+  $B2: {
+    %3:ptr<uniform, vec2<f32>, read> = access %buffer, 1u
     %4:vec2<f32> = load %3
-    %5:ptr<uniform, vec2<f32>, read> = access %buffer, 1u
-    %6:vec2<f32> = load %5
-    %7:ptr<uniform, vec2<f32>, read> = access %buffer, 2u
-    %8:vec2<f32> = load %7
-    %9:mat3x2<f32> = construct %4, %6, %8
-    %10:vec2<f32> = access %9, 1u
-    ret %10
+    ret %4
+  }
+}
+)";
+
+    Run(Std140);
+
+    EXPECT_EQ(expect, str());
+}
+
+TEST_F(IR_Std140Test, Mat3x2_LoadDynamicColumn) {
+    auto* mat = ty.mat3x2<f32>();
+    auto* structure = ty.Struct(mod.symbols.New("MyStruct"), {
+                                                                 {mod.symbols.New("a"), mat},
+                                                             });
+    structure->SetStructFlag(core::type::kBlock);
+
+    auto* buffer = b.Var("buffer", ty.ptr(uniform, structure));
+    buffer->SetBindingPoint(0, 0);
+    mod.root_block->Append(buffer);
+
+    auto* func = b.Function("foo", mat->ColumnType());
+    auto* column = b.FunctionParam<i32>("column");
+    func->AppendParam(column);
+    b.Append(func->Block(), [&] {
+        auto* access = b.Access(ty.ptr(uniform, mat->ColumnType()), buffer, 0_u, column);
+        auto* load = b.Load(access);
+        b.Return(func, load);
+    });
+
+    auto* src = R"(
+MyStruct = struct @align(8), @block {
+  a:mat3x2<f32> @offset(0)
+}
+
+$B1: {  # root
+  %buffer:ptr<uniform, MyStruct, read> = var @binding_point(0, 0)
+}
+
+%foo = func(%column:i32):vec2<f32> {
+  $B2: {
+    %4:ptr<uniform, vec2<f32>, read> = access %buffer, 0u, %column
+    %5:vec2<f32> = load %4
+    ret %5
+  }
+}
+)";
+    EXPECT_EQ(src, str());
+
+    auto* expect = R"(
+MyStruct = struct @align(8), @block {
+  a:mat3x2<f32> @offset(0)
+}
+
+MyStruct_std140 = struct @align(8), @block {
+  a_col0:vec2<f32> @offset(0)
+  a_col1:vec2<f32> @offset(8)
+  a_col2:vec2<f32> @offset(16)
+}
+
+$B1: {  # root
+  %buffer:ptr<uniform, MyStruct_std140, read> = var @binding_point(0, 0)
+}
+
+%foo = func(%column:i32):vec2<f32> {
+  $B2: {
+    %4:ptr<uniform, vec2<f32>, read> = access %buffer, 0u
+    %5:vec2<f32> = load %4
+    %6:ptr<uniform, vec2<f32>, read> = access %buffer, 1u
+    %7:vec2<f32> = load %6
+    %8:ptr<uniform, vec2<f32>, read> = access %buffer, 2u
+    %9:vec2<f32> = load %8
+    %10:mat3x2<f32> = construct %5, %7, %9
+    %11:vec2<f32> = access %10, %column
+    ret %11
   }
 }
 )";
@@ -359,12 +456,12 @@ MyStruct = struct @align(8), @block {
   a:mat3x2<f32> @offset(0)
 }
 
-%b1 = block {  # root
+$B1: {  # root
   %buffer:ptr<uniform, MyStruct, read> = var @binding_point(0, 0)
 }
 
-%foo = func():f32 -> %b2 {
-  %b2 = block {
+%foo = func():f32 {
+  $B2: {
     %3:ptr<uniform, vec2<f32>, read> = access %buffer, 0u, 1u
     %4:f32 = load_vector_element %3, 1u
     ret %4
@@ -384,22 +481,15 @@ MyStruct_std140 = struct @align(8), @block {
   a_col2:vec2<f32> @offset(16)
 }
 
-%b1 = block {  # root
+$B1: {  # root
   %buffer:ptr<uniform, MyStruct_std140, read> = var @binding_point(0, 0)
 }
 
-%foo = func():f32 -> %b2 {
-  %b2 = block {
-    %3:ptr<uniform, vec2<f32>, read> = access %buffer, 0u
-    %4:vec2<f32> = load %3
-    %5:ptr<uniform, vec2<f32>, read> = access %buffer, 1u
-    %6:vec2<f32> = load %5
-    %7:ptr<uniform, vec2<f32>, read> = access %buffer, 2u
-    %8:vec2<f32> = load %7
-    %9:mat3x2<f32> = construct %4, %6, %8
-    %10:vec2<f32> = access %9, 1u
-    %11:f32 = access %10, 1u
-    ret %11
+%foo = func():f32 {
+  $B2: {
+    %3:ptr<uniform, vec2<f32>, read> = access %buffer, 1u
+    %4:f32 = load_vector_element %3, 1u
+    ret %4
   }
 }
 )";
@@ -431,12 +521,12 @@ MyStruct = struct @align(8), @block {
   a:mat3x2<f32> @offset(0)
 }
 
-%b1 = block {  # root
+$B1: {  # root
   %buffer:ptr<uniform, MyStruct, read> = var @binding_point(0, 0)
 }
 
-%foo = func():MyStruct -> %b2 {
-  %b2 = block {
+%foo = func():MyStruct {
+  $B2: {
     %3:MyStruct = load %buffer
     ret %3
   }
@@ -455,22 +545,22 @@ MyStruct_std140 = struct @align(8), @block {
   a_col2:vec2<f32> @offset(16)
 }
 
-%b1 = block {  # root
+$B1: {  # root
   %buffer:ptr<uniform, MyStruct_std140, read> = var @binding_point(0, 0)
 }
 
-%foo = func():MyStruct -> %b2 {
-  %b2 = block {
+%foo = func():MyStruct {
+  $B2: {
     %3:MyStruct_std140 = load %buffer
-    %4:MyStruct = call %convert_MyStruct, %3
+    %4:MyStruct = call %tint_convert_MyStruct, %3
     ret %4
   }
 }
-%convert_MyStruct = func(%input:MyStruct_std140):MyStruct -> %b3 {
-  %b3 = block {
-    %7:vec2<f32> = access %input, 0u
-    %8:vec2<f32> = access %input, 1u
-    %9:vec2<f32> = access %input, 2u
+%tint_convert_MyStruct = func(%tint_input:MyStruct_std140):MyStruct {
+  $B3: {
+    %7:vec2<f32> = access %tint_input, 0u
+    %8:vec2<f32> = access %tint_input, 1u
+    %9:vec2<f32> = access %tint_input, 2u
     %10:mat3x2<f32> = construct %7, %8, %9
     %11:MyStruct = construct %10
     ret %11
@@ -513,12 +603,12 @@ Outer = struct @align(8), @block {
   arr:array<Inner, 4> @offset(0)
 }
 
-%b1 = block {  # root
+$B1: {  # root
   %buffer:ptr<uniform, Outer, read> = var @binding_point(0, 0)
 }
 
-%foo = func():Outer -> %b2 {
-  %b2 = block {
+%foo = func():Outer {
+  $B2: {
     %3:Outer = load %buffer
     ret %3
   }
@@ -545,41 +635,41 @@ Outer_std140 = struct @align(8), @block {
   arr:array<Inner_std140, 4> @offset(0)
 }
 
-%b1 = block {  # root
+$B1: {  # root
   %buffer:ptr<uniform, Outer_std140, read> = var @binding_point(0, 0)
 }
 
-%foo = func():Outer -> %b2 {
-  %b2 = block {
+%foo = func():Outer {
+  $B2: {
     %3:Outer_std140 = load %buffer
-    %4:Outer = call %convert_Outer, %3
+    %4:Outer = call %tint_convert_Outer, %3
     ret %4
   }
 }
-%convert_Outer = func(%input:Outer_std140):Outer -> %b3 {
-  %b3 = block {
-    %7:array<Inner_std140, 4> = access %input, 0u
+%tint_convert_Outer = func(%tint_input:Outer_std140):Outer {
+  $B3: {
+    %7:array<Inner_std140, 4> = access %tint_input, 0u
     %8:ptr<function, array<Inner, 4>, read_write> = var
-    loop [i: %b4, b: %b5, c: %b6] {  # loop_1
-      %b4 = block {  # initializer
-        next_iteration %b5 0u
+    loop [i: $B4, b: $B5, c: $B6] {  # loop_1
+      $B4: {  # initializer
+        next_iteration 0u  # -> $B5
       }
-      %b5 = block (%idx:u32) {  # body
-        %10:bool = gte %idx:u32, 4u
-        if %10 [t: %b7] {  # if_1
-          %b7 = block {  # true
+      $B5 (%idx:u32): {  # body
+        %10:bool = gte %idx, 4u
+        if %10 [t: $B7] {  # if_1
+          $B7: {  # true
             exit_loop  # loop_1
           }
         }
-        %11:ptr<function, Inner, read_write> = access %8, %idx:u32
-        %12:Inner_std140 = access %7, %idx:u32
-        %13:Inner = call %convert_Inner, %12
+        %11:ptr<function, Inner, read_write> = access %8, %idx
+        %12:Inner_std140 = access %7, %idx
+        %13:Inner = call %tint_convert_Inner, %12
         store %11, %13
-        continue %b6
+        continue  # -> $B6
       }
-      %b6 = block {  # continuing
-        %15:u32 = add %idx:u32, 1u
-        next_iteration %b5 %15
+      $B6: {  # continuing
+        %15:u32 = add %idx, 1u
+        next_iteration %15  # -> $B5
       }
     }
     %16:array<Inner, 4> = load %8
@@ -587,11 +677,11 @@ Outer_std140 = struct @align(8), @block {
     ret %17
   }
 }
-%convert_Inner = func(%input_1:Inner_std140):Inner -> %b8 {  # %input_1: 'input'
-  %b8 = block {
-    %19:vec2<f32> = access %input_1, 0u
-    %20:vec2<f32> = access %input_1, 1u
-    %21:vec2<f32> = access %input_1, 2u
+%tint_convert_Inner = func(%tint_input_1:Inner_std140):Inner {  # %tint_input_1: 'tint_input'
+  $B8: {
+    %19:vec2<f32> = access %tint_input_1, 0u
+    %20:vec2<f32> = access %tint_input_1, 1u
+    %21:vec2<f32> = access %tint_input_1, 2u
     %22:mat3x2<f32> = construct %19, %20, %21
     %23:Inner = construct %22
     ret %23
@@ -633,12 +723,12 @@ Outer = struct @align(8), @block {
   inner:Inner @offset(0)
 }
 
-%b1 = block {  # root
+$B1: {  # root
   %buffer:ptr<uniform, Outer, read> = var @binding_point(0, 0)
 }
 
-%foo = func():Inner -> %b2 {
-  %b2 = block {
+%foo = func():Inner {
+  $B2: {
     %3:ptr<uniform, Inner, read> = access %buffer, 0u
     %4:Inner = load %3
     ret %4
@@ -666,23 +756,23 @@ Outer_std140 = struct @align(8), @block {
   inner:Inner_std140 @offset(0)
 }
 
-%b1 = block {  # root
+$B1: {  # root
   %buffer:ptr<uniform, Outer_std140, read> = var @binding_point(0, 0)
 }
 
-%foo = func():Inner -> %b2 {
-  %b2 = block {
+%foo = func():Inner {
+  $B2: {
     %3:ptr<uniform, Inner_std140, read> = access %buffer, 0u
     %4:Inner_std140 = load %3
-    %5:Inner = call %convert_Inner, %4
+    %5:Inner = call %tint_convert_Inner, %4
     ret %5
   }
 }
-%convert_Inner = func(%input:Inner_std140):Inner -> %b3 {
-  %b3 = block {
-    %8:vec2<f32> = access %input, 0u
-    %9:vec2<f32> = access %input, 1u
-    %10:vec2<f32> = access %input, 2u
+%tint_convert_Inner = func(%tint_input:Inner_std140):Inner {
+  $B3: {
+    %8:vec2<f32> = access %tint_input, 0u
+    %9:vec2<f32> = access %tint_input, 1u
+    %10:vec2<f32> = access %tint_input, 2u
     %11:mat3x2<f32> = construct %8, %9, %10
     %12:Inner = construct %11
     ret %12
@@ -725,12 +815,12 @@ Outer = struct @align(16), @block {
   inner:Inner @offset(32)
 }
 
-%b1 = block {  # root
+$B1: {  # root
   %buffer:ptr<uniform, Outer, read> = var @binding_point(0, 0)
 }
 
-%foo = func():Outer -> %b2 {
-  %b2 = block {
+%foo = func():Outer {
+  $B2: {
     %3:Outer = load %buffer
     ret %3
   }
@@ -755,26 +845,119 @@ Outer_std140 = struct @align(16), @block {
   inner:Inner @offset(32)
 }
 
-%b1 = block {  # root
+$B1: {  # root
   %buffer:ptr<uniform, Outer_std140, read> = var @binding_point(0, 0)
 }
 
-%foo = func():Outer -> %b2 {
-  %b2 = block {
+%foo = func():Outer {
+  $B2: {
     %3:Outer_std140 = load %buffer
-    %4:Outer = call %convert_Outer, %3
+    %4:Outer = call %tint_convert_Outer, %3
     ret %4
   }
 }
-%convert_Outer = func(%input:Outer_std140):Outer -> %b3 {
-  %b3 = block {
-    %7:vec2<f32> = access %input, 0u
-    %8:vec2<f32> = access %input, 1u
-    %9:vec2<f32> = access %input, 2u
+%tint_convert_Outer = func(%tint_input:Outer_std140):Outer {
+  $B3: {
+    %7:vec2<f32> = access %tint_input, 0u
+    %8:vec2<f32> = access %tint_input, 1u
+    %9:vec2<f32> = access %tint_input, 2u
     %10:mat3x2<f32> = construct %7, %8, %9
-    %11:Inner = access %input, 3u
+    %11:Inner = access %tint_input, 3u
     %12:Outer = construct %10, %11
     ret %12
+  }
+}
+)";
+
+    Run(Std140);
+
+    EXPECT_EQ(expect, str());
+}
+
+TEST_F(IR_Std140Test, Mat3x2_Nested_AccessInstructionWithManyIndices_LoadMatrix) {
+    auto* mat = ty.mat3x2<f32>();
+    auto* inner = ty.Struct(mod.symbols.New("Inner"), {
+                                                          {mod.symbols.New("m"), ty.array(mat, 4)},
+                                                      });
+    auto* arr = ty.array(inner, 4u);
+    auto* outer = ty.Struct(mod.symbols.New("Outer"), {
+                                                          {mod.symbols.New("arr"), arr},
+                                                      });
+    outer->SetStructFlag(core::type::kBlock);
+
+    auto* buffer = b.Var("buffer", ty.ptr(uniform, outer));
+    buffer->SetBindingPoint(0, 0);
+    mod.root_block->Append(buffer);
+
+    auto* func = b.Function("foo", ty.void_());
+    b.Append(func->Block(), [&] {
+        auto* mat_ptr = b.Access(ty.ptr(uniform, mat), buffer, 0_u, 1_u, 0_u, 2_u);
+        b.Let("mat", b.Load(mat_ptr));
+        b.Return(func);
+    });
+
+    auto* src = R"(
+Inner = struct @align(8) {
+  m:array<mat3x2<f32>, 4> @offset(0)
+}
+
+Outer = struct @align(8), @block {
+  arr:array<Inner, 4> @offset(0)
+}
+
+$B1: {  # root
+  %buffer:ptr<uniform, Outer, read> = var @binding_point(0, 0)
+}
+
+%foo = func():void {
+  $B2: {
+    %3:ptr<uniform, mat3x2<f32>, read> = access %buffer, 0u, 1u, 0u, 2u
+    %4:mat3x2<f32> = load %3
+    %mat:mat3x2<f32> = let %4
+    ret
+  }
+}
+)";
+    EXPECT_EQ(src, str());
+
+    auto* expect = R"(
+Inner = struct @align(8) {
+  m:array<mat3x2<f32>, 4> @offset(0)
+}
+
+Outer = struct @align(8), @block {
+  arr:array<Inner, 4> @offset(0)
+}
+
+mat3x2_f32_std140 = struct @align(8) {
+  col0:vec2<f32> @offset(0)
+  col1:vec2<f32> @offset(8)
+  col2:vec2<f32> @offset(16)
+}
+
+Inner_std140 = struct @align(8) {
+  m:array<mat3x2_f32_std140, 4> @offset(0)
+}
+
+Outer_std140 = struct @align(8), @block {
+  arr:array<Inner_std140, 4> @offset(0)
+}
+
+$B1: {  # root
+  %buffer:ptr<uniform, Outer_std140, read> = var @binding_point(0, 0)
+}
+
+%foo = func():void {
+  $B2: {
+    %3:ptr<uniform, vec2<f32>, read> = access %buffer, 0u, 1u, 0u, 2u, 0u
+    %4:vec2<f32> = load %3
+    %5:ptr<uniform, vec2<f32>, read> = access %buffer, 0u, 1u, 0u, 2u, 1u
+    %6:vec2<f32> = load %5
+    %7:ptr<uniform, vec2<f32>, read> = access %buffer, 0u, 1u, 0u, 2u, 2u
+    %8:vec2<f32> = load %7
+    %9:mat3x2<f32> = construct %4, %6, %8
+    %mat:mat3x2<f32> = let %9
+    ret
   }
 }
 )";
@@ -830,12 +1013,12 @@ Outer = struct @align(8), @block {
   d:i32 @offset(168)
 }
 
-%b1 = block {  # root
+$B1: {  # root
   %buffer:ptr<uniform, Outer, read> = var @binding_point(0, 0)
 }
 
-%foo = func():void -> %b2 {
-  %b2 = block {
+%foo = func():void {
+  $B2: {
     %3:ptr<uniform, array<Inner, 4>, read> = access %buffer, 1u
     %4:ptr<uniform, Inner, read> = access %3, 2u
     %5:ptr<uniform, mat3x2<f32>, read> = access %4, 1u
@@ -883,12 +1066,12 @@ Outer_std140 = struct @align(8), @block {
   d:i32 @offset(168)
 }
 
-%b1 = block {  # root
+$B1: {  # root
   %buffer:ptr<uniform, Outer_std140, read> = var @binding_point(0, 0)
 }
 
-%foo = func():void -> %b2 {
-  %b2 = block {
+%foo = func():void {
+  $B2: {
     %3:ptr<uniform, array<Inner_std140, 4>, read> = access %buffer, 1u
     %4:ptr<uniform, Inner_std140, read> = access %3, 2u
     %5:ptr<uniform, vec2<f32>, read> = access %4, 1u
@@ -901,32 +1084,32 @@ Outer_std140 = struct @align(8), @block {
     %12:vec2<f32> = access %11, 2u
     %13:array<Inner_std140, 4> = load %3
     %14:ptr<function, array<Inner, 4>, read_write> = var
-    loop [i: %b3, b: %b4, c: %b5] {  # loop_1
-      %b3 = block {  # initializer
-        next_iteration %b4 0u
+    loop [i: $B3, b: $B4, c: $B5] {  # loop_1
+      $B3: {  # initializer
+        next_iteration 0u  # -> $B4
       }
-      %b4 = block (%idx:u32) {  # body
-        %16:bool = gte %idx:u32, 4u
-        if %16 [t: %b6] {  # if_1
-          %b6 = block {  # true
+      $B4 (%idx:u32): {  # body
+        %16:bool = gte %idx, 4u
+        if %16 [t: $B6] {  # if_1
+          $B6: {  # true
             exit_loop  # loop_1
           }
         }
-        %17:ptr<function, Inner, read_write> = access %14, %idx:u32
-        %18:Inner_std140 = access %13, %idx:u32
-        %19:Inner = call %convert_Inner, %18
+        %17:ptr<function, Inner, read_write> = access %14, %idx
+        %18:Inner_std140 = access %13, %idx
+        %19:Inner = call %tint_convert_Inner, %18
         store %17, %19
-        continue %b5
+        continue  # -> $B5
       }
-      %b5 = block {  # continuing
-        %21:u32 = add %idx:u32, 1u
-        next_iteration %b4 %21
+      $B5: {  # continuing
+        %21:u32 = add %idx, 1u
+        next_iteration %21  # -> $B4
       }
     }
     %22:array<Inner, 4> = load %14
     %arr:array<Inner, 4> = let %22
     %24:Inner_std140 = load %4
-    %25:Inner = call %convert_Inner, %24
+    %25:Inner = call %tint_convert_Inner, %24
     %inner:Inner = let %25
     %mat:mat3x2<f32> = let %11
     %col:vec2<f32> = let %12
@@ -935,14 +1118,14 @@ Outer_std140 = struct @align(8), @block {
     ret
   }
 }
-%convert_Inner = func(%input:Inner_std140):Inner -> %b7 {
-  %b7 = block {
-    %32:i32 = access %input, 0u
-    %33:vec2<f32> = access %input, 1u
-    %34:vec2<f32> = access %input, 2u
-    %35:vec2<f32> = access %input, 3u
+%tint_convert_Inner = func(%tint_input:Inner_std140):Inner {
+  $B7: {
+    %32:i32 = access %tint_input, 0u
+    %33:vec2<f32> = access %tint_input, 1u
+    %34:vec2<f32> = access %tint_input, 2u
+    %35:vec2<f32> = access %tint_input, 3u
     %36:mat3x2<f32> = construct %33, %34, %35
-    %37:i32 = access %input, 4u
+    %37:i32 = access %tint_input, 4u
     %38:Inner = construct %32, %36, %37
     ret %38
   }
@@ -1001,12 +1184,12 @@ Outer = struct @align(8), @block {
   d:i32 @offset(168)
 }
 
-%b1 = block {  # root
+$B1: {  # root
   %buffer:ptr<uniform, Outer, read> = var @binding_point(0, 0)
 }
 
-%foo = func():void -> %b2 {
-  %b2 = block {
+%foo = func():void {
+  $B2: {
     %3:ptr<uniform, array<Inner, 4>, read> = access %buffer, 1u
     %arr_ptr:ptr<uniform, array<Inner, 4>, read> = let %3
     %5:ptr<uniform, Inner, read> = access %arr_ptr, 2u
@@ -1058,12 +1241,12 @@ Outer_std140 = struct @align(8), @block {
   d:i32 @offset(168)
 }
 
-%b1 = block {  # root
+$B1: {  # root
   %buffer:ptr<uniform, Outer_std140, read> = var @binding_point(0, 0)
 }
 
-%foo = func():void -> %b2 {
-  %b2 = block {
+%foo = func():void {
+  $B2: {
     %3:ptr<uniform, array<Inner_std140, 4>, read> = access %buffer, 1u
     %4:ptr<uniform, Inner_std140, read> = access %3, 2u
     %5:ptr<uniform, vec2<f32>, read> = access %4, 1u
@@ -1076,32 +1259,32 @@ Outer_std140 = struct @align(8), @block {
     %12:vec2<f32> = access %11, 2u
     %13:array<Inner_std140, 4> = load %3
     %14:ptr<function, array<Inner, 4>, read_write> = var
-    loop [i: %b3, b: %b4, c: %b5] {  # loop_1
-      %b3 = block {  # initializer
-        next_iteration %b4 0u
+    loop [i: $B3, b: $B4, c: $B5] {  # loop_1
+      $B3: {  # initializer
+        next_iteration 0u  # -> $B4
       }
-      %b4 = block (%idx:u32) {  # body
-        %16:bool = gte %idx:u32, 4u
-        if %16 [t: %b6] {  # if_1
-          %b6 = block {  # true
+      $B4 (%idx:u32): {  # body
+        %16:bool = gte %idx, 4u
+        if %16 [t: $B6] {  # if_1
+          $B6: {  # true
             exit_loop  # loop_1
           }
         }
-        %17:ptr<function, Inner, read_write> = access %14, %idx:u32
-        %18:Inner_std140 = access %13, %idx:u32
-        %19:Inner = call %convert_Inner, %18
+        %17:ptr<function, Inner, read_write> = access %14, %idx
+        %18:Inner_std140 = access %13, %idx
+        %19:Inner = call %tint_convert_Inner, %18
         store %17, %19
-        continue %b5
+        continue  # -> $B5
       }
-      %b5 = block {  # continuing
-        %21:u32 = add %idx:u32, 1u
-        next_iteration %b4 %21
+      $B5: {  # continuing
+        %21:u32 = add %idx, 1u
+        next_iteration %21  # -> $B4
       }
     }
     %22:array<Inner, 4> = load %14
     %arr:array<Inner, 4> = let %22
     %24:Inner_std140 = load %4
-    %25:Inner = call %convert_Inner, %24
+    %25:Inner = call %tint_convert_Inner, %24
     %inner:Inner = let %25
     %mat:mat3x2<f32> = let %11
     %col:vec2<f32> = let %12
@@ -1110,14 +1293,14 @@ Outer_std140 = struct @align(8), @block {
     ret
   }
 }
-%convert_Inner = func(%input:Inner_std140):Inner -> %b7 {
-  %b7 = block {
-    %32:i32 = access %input, 0u
-    %33:vec2<f32> = access %input, 1u
-    %34:vec2<f32> = access %input, 2u
-    %35:vec2<f32> = access %input, 3u
+%tint_convert_Inner = func(%tint_input:Inner_std140):Inner {
+  $B7: {
+    %32:i32 = access %tint_input, 0u
+    %33:vec2<f32> = access %tint_input, 1u
+    %34:vec2<f32> = access %tint_input, 2u
+    %35:vec2<f32> = access %tint_input, 3u
     %36:mat3x2<f32> = construct %33, %34, %35
-    %37:i32 = access %input, 4u
+    %37:i32 = access %tint_input, 4u
     %38:Inner = construct %32, %36, %37
     ret %38
   }
@@ -1179,12 +1362,12 @@ Outer = struct @align(8), @block {
   d:i32 @offset(168)
 }
 
-%b1 = block {  # root
+$B1: {  # root
   %buffer:ptr<uniform, Outer, read> = var @binding_point(0, 0)
 }
 
-%foo = func(%arr_idx:i32, %col_idx:i32, %el_idx:i32):void -> %b2 {
-  %b2 = block {
+%foo = func(%arr_idx:i32, %col_idx:i32, %el_idx:i32):void {
+  $B2: {
     %6:ptr<uniform, array<Inner, 4>, read> = access %buffer, 1u
     %7:ptr<uniform, Inner, read> = access %6, %arr_idx
     %8:ptr<uniform, mat3x2<f32>, read> = access %7, 1u
@@ -1232,12 +1415,12 @@ Outer_std140 = struct @align(8), @block {
   d:i32 @offset(168)
 }
 
-%b1 = block {  # root
+$B1: {  # root
   %buffer:ptr<uniform, Outer_std140, read> = var @binding_point(0, 0)
 }
 
-%foo = func(%arr_idx:i32, %col_idx:i32, %el_idx:i32):void -> %b2 {
-  %b2 = block {
+%foo = func(%arr_idx:i32, %col_idx:i32, %el_idx:i32):void {
+  $B2: {
     %6:ptr<uniform, array<Inner_std140, 4>, read> = access %buffer, 1u
     %7:ptr<uniform, Inner_std140, read> = access %6, %arr_idx
     %8:ptr<uniform, vec2<f32>, read> = access %7, 1u
@@ -1250,32 +1433,32 @@ Outer_std140 = struct @align(8), @block {
     %15:vec2<f32> = access %14, %col_idx
     %16:array<Inner_std140, 4> = load %6
     %17:ptr<function, array<Inner, 4>, read_write> = var
-    loop [i: %b3, b: %b4, c: %b5] {  # loop_1
-      %b3 = block {  # initializer
-        next_iteration %b4 0u
+    loop [i: $B3, b: $B4, c: $B5] {  # loop_1
+      $B3: {  # initializer
+        next_iteration 0u  # -> $B4
       }
-      %b4 = block (%idx:u32) {  # body
-        %19:bool = gte %idx:u32, 4u
-        if %19 [t: %b6] {  # if_1
-          %b6 = block {  # true
+      $B4 (%idx:u32): {  # body
+        %19:bool = gte %idx, 4u
+        if %19 [t: $B6] {  # if_1
+          $B6: {  # true
             exit_loop  # loop_1
           }
         }
-        %20:ptr<function, Inner, read_write> = access %17, %idx:u32
-        %21:Inner_std140 = access %16, %idx:u32
-        %22:Inner = call %convert_Inner, %21
+        %20:ptr<function, Inner, read_write> = access %17, %idx
+        %21:Inner_std140 = access %16, %idx
+        %22:Inner = call %tint_convert_Inner, %21
         store %20, %22
-        continue %b5
+        continue  # -> $B5
       }
-      %b5 = block {  # continuing
-        %24:u32 = add %idx:u32, 1u
-        next_iteration %b4 %24
+      $B5: {  # continuing
+        %24:u32 = add %idx, 1u
+        next_iteration %24  # -> $B4
       }
     }
     %25:array<Inner, 4> = load %17
     %arr:array<Inner, 4> = let %25
     %27:Inner_std140 = load %7
-    %28:Inner = call %convert_Inner, %27
+    %28:Inner = call %tint_convert_Inner, %27
     %inner:Inner = let %28
     %mat:mat3x2<f32> = let %14
     %col:vec2<f32> = let %15
@@ -1284,14 +1467,14 @@ Outer_std140 = struct @align(8), @block {
     ret
   }
 }
-%convert_Inner = func(%input:Inner_std140):Inner -> %b7 {
-  %b7 = block {
-    %35:i32 = access %input, 0u
-    %36:vec2<f32> = access %input, 1u
-    %37:vec2<f32> = access %input, 2u
-    %38:vec2<f32> = access %input, 3u
+%tint_convert_Inner = func(%tint_input:Inner_std140):Inner {
+  $B7: {
+    %35:i32 = access %tint_input, 0u
+    %36:vec2<f32> = access %tint_input, 1u
+    %37:vec2<f32> = access %tint_input, 2u
+    %38:vec2<f32> = access %tint_input, 3u
     %39:mat3x2<f32> = construct %36, %37, %38
-    %40:i32 = access %input, 4u
+    %40:i32 = access %tint_input, 4u
     %41:Inner = construct %35, %39, %40
     ret %41
   }
@@ -1309,11 +1492,11 @@ TEST_F(IR_Std140Test, NonDefaultAlignAndSize) {
         mod.symbols.New("MyStruct"),
         Vector{
             ty.Get<core::type::StructMember>(mod.symbols.New("a"), ty.i32(), 0u, 0u, 0u, 16u,
-                                             core::type::StructMemberAttributes{}),
+                                             core::IOAttributes{}),
             ty.Get<core::type::StructMember>(mod.symbols.New("m"), mat, 1u, 64u, 32u, 64u,
-                                             core::type::StructMemberAttributes{}),
+                                             core::IOAttributes{}),
             ty.Get<core::type::StructMember>(mod.symbols.New("b"), ty.i32(), 2u, 128u, 8u, 32u,
-                                             core::type::StructMemberAttributes{}),
+                                             core::IOAttributes{}),
         },
         128u, 256u, 160u);
     structure->SetStructFlag(core::type::kBlock);
@@ -1340,12 +1523,12 @@ MyStruct = struct @align(128), @block {
   b:i32 @offset(128)
 }
 
-%b1 = block {  # root
+$B1: {  # root
   %buffer:ptr<uniform, MyStruct, read> = var @binding_point(0, 0)
 }
 
-%foo = func():void -> %b2 {
-  %b2 = block {
+%foo = func():void {
+  $B2: {
     %3:ptr<uniform, i32, read> = access %buffer, 0u
     %4:i32 = load %3
     %a:i32 = let %4
@@ -1377,12 +1560,12 @@ MyStruct_std140 = struct @align(128), @block {
   b:i32 @offset(128)
 }
 
-%b1 = block {  # root
+$B1: {  # root
   %buffer:ptr<uniform, MyStruct_std140, read> = var @binding_point(0, 0)
 }
 
-%foo = func():void -> %b2 {
-  %b2 = block {
+%foo = func():void {
+  $B2: {
     %3:ptr<uniform, i32, read> = access %buffer, 0u
     %4:i32 = load %3
     %a:i32 = let %4
@@ -1432,12 +1615,12 @@ MyStruct = struct @align(16), @block {
   a:mat4x3<f32> @offset(0)
 }
 
-%b1 = block {  # root
+$B1: {  # root
   %buffer:ptr<uniform, MyStruct, read> = var @binding_point(0, 0)
 }
 
-%foo = func():mat4x3<f32> -> %b2 {
-  %b2 = block {
+%foo = func():mat4x3<f32> {
+  $B2: {
     %3:ptr<uniform, mat4x3<f32>, read> = access %buffer, 0u
     %4:mat4x3<f32> = load %3
     ret %4
@@ -1458,12 +1641,12 @@ MyStruct_std140 = struct @align(16), @block {
   a_col3:vec3<f32> @offset(48)
 }
 
-%b1 = block {  # root
+$B1: {  # root
   %buffer:ptr<uniform, MyStruct_std140, read> = var @binding_point(0, 0)
 }
 
-%foo = func():mat4x3<f32> -> %b2 {
-  %b2 = block {
+%foo = func():mat4x3<f32> {
+  $B2: {
     %3:ptr<uniform, vec3<f32>, read> = access %buffer, 0u
     %4:vec3<f32> = load %3
     %5:ptr<uniform, vec3<f32>, read> = access %buffer, 1u
@@ -1578,65 +1761,65 @@ MyStruct = struct @align(16), @block {
   b:mat3x2<f32> @offset(64)
 }
 
-%b1 = block {  # root
+$B1: {  # root
   %buffer:ptr<uniform, MyStruct, read> = var @binding_point(0, 0)
 }
 
-%load_struct_a = func():mat4x4<f32> -> %b2 {
-  %b2 = block {
+%load_struct_a = func():mat4x4<f32> {
+  $B2: {
     %3:MyStruct = load %buffer
     %4:mat4x4<f32> = access %3, 0u
     ret %4
   }
 }
-%load_struct_b = func():mat3x2<f32> -> %b3 {
-  %b3 = block {
+%load_struct_b = func():mat3x2<f32> {
+  $B3: {
     %6:MyStruct = load %buffer
     %7:mat3x2<f32> = access %6, 1u
     ret %7
   }
 }
-%load_mat_a = func():vec4<f32> -> %b4 {
-  %b4 = block {
+%load_mat_a = func():vec4<f32> {
+  $B4: {
     %9:ptr<uniform, mat4x4<f32>, read> = access %buffer, 0u
     %10:mat4x4<f32> = load %9
     %11:vec4<f32> = access %10, 0u
     ret %11
   }
 }
-%load_mat_b = func():vec2<f32> -> %b5 {
-  %b5 = block {
+%load_mat_b = func():vec2<f32> {
+  $B5: {
     %13:ptr<uniform, mat3x2<f32>, read> = access %buffer, 1u
     %14:mat3x2<f32> = load %13
     %15:vec2<f32> = access %14, 0u
     ret %15
   }
 }
-%load_vec_a = func():f32 -> %b6 {
-  %b6 = block {
+%load_vec_a = func():f32 {
+  $B6: {
     %17:ptr<uniform, vec4<f32>, read> = access %buffer, 0u, 1u
     %18:vec4<f32> = load %17
     %19:f32 = access %18, 1u
     ret %19
   }
 }
-%load_vec_b = func():f32 -> %b7 {
-  %b7 = block {
+%load_vec_b = func():f32 {
+  $B7: {
     %21:ptr<uniform, vec2<f32>, read> = access %buffer, 1u, 1u
     %22:vec2<f32> = load %21
     %23:f32 = access %22, 1u
     ret %23
   }
 }
-%lve_a = func():f32 -> %b8 {
-  %b8 = block {
+%lve_a = func():f32 {
+  $B8: {
     %25:ptr<uniform, vec4<f32>, read> = access %buffer, 0u, 1u
     %26:f32 = load_vector_element %25, 1u
     ret %26
   }
 }
-%lve_b = func():f32 -> %b9 {
-  %b9 = block {
+%lve_b = func():f32 {
+  $B9: {
     %28:ptr<uniform, vec2<f32>, read> = access %buffer, 1u, 1u
     %29:f32 = load_vector_element %28, 1u
     ret %29
@@ -1658,36 +1841,36 @@ MyStruct_std140 = struct @align(16), @block {
   b_col2:vec2<f32> @offset(80)
 }
 
-%b1 = block {  # root
+$B1: {  # root
   %buffer:ptr<uniform, MyStruct_std140, read> = var @binding_point(0, 0)
 }
 
-%load_struct_a = func():mat4x4<f32> -> %b2 {
-  %b2 = block {
+%load_struct_a = func():mat4x4<f32> {
+  $B2: {
     %3:MyStruct_std140 = load %buffer
-    %4:MyStruct = call %convert_MyStruct, %3
+    %4:MyStruct = call %tint_convert_MyStruct, %3
     %6:mat4x4<f32> = access %4, 0u
     ret %6
   }
 }
-%load_struct_b = func():mat3x2<f32> -> %b3 {
-  %b3 = block {
+%load_struct_b = func():mat3x2<f32> {
+  $B3: {
     %8:MyStruct_std140 = load %buffer
-    %9:MyStruct = call %convert_MyStruct, %8
+    %9:MyStruct = call %tint_convert_MyStruct, %8
     %10:mat3x2<f32> = access %9, 1u
     ret %10
   }
 }
-%load_mat_a = func():vec4<f32> -> %b4 {
-  %b4 = block {
+%load_mat_a = func():vec4<f32> {
+  $B4: {
     %12:ptr<uniform, mat4x4<f32>, read> = access %buffer, 0u
     %13:mat4x4<f32> = load %12
     %14:vec4<f32> = access %13, 0u
     ret %14
   }
 }
-%load_mat_b = func():vec2<f32> -> %b5 {
-  %b5 = block {
+%load_mat_b = func():vec2<f32> {
+  $B5: {
     %16:ptr<uniform, vec2<f32>, read> = access %buffer, 1u
     %17:vec2<f32> = load %16
     %18:ptr<uniform, vec2<f32>, read> = access %buffer, 2u
@@ -1699,58 +1882,45 @@ MyStruct_std140 = struct @align(16), @block {
     ret %23
   }
 }
-%load_vec_a = func():f32 -> %b6 {
-  %b6 = block {
+%load_vec_a = func():f32 {
+  $B6: {
     %25:ptr<uniform, vec4<f32>, read> = access %buffer, 0u, 1u
     %26:vec4<f32> = load %25
     %27:f32 = access %26, 1u
     ret %27
   }
 }
-%load_vec_b = func():f32 -> %b7 {
-  %b7 = block {
-    %29:ptr<uniform, vec2<f32>, read> = access %buffer, 1u
+%load_vec_b = func():f32 {
+  $B7: {
+    %29:ptr<uniform, vec2<f32>, read> = access %buffer, 2u
     %30:vec2<f32> = load %29
-    %31:ptr<uniform, vec2<f32>, read> = access %buffer, 2u
-    %32:vec2<f32> = load %31
-    %33:ptr<uniform, vec2<f32>, read> = access %buffer, 3u
-    %34:vec2<f32> = load %33
-    %35:mat3x2<f32> = construct %30, %32, %34
-    %36:vec2<f32> = access %35, 1u
-    %37:f32 = access %36, 1u
+    %31:f32 = access %30, 1u
+    ret %31
+  }
+}
+%lve_a = func():f32 {
+  $B8: {
+    %33:ptr<uniform, vec4<f32>, read> = access %buffer, 0u, 1u
+    %34:f32 = load_vector_element %33, 1u
+    ret %34
+  }
+}
+%lve_b = func():f32 {
+  $B9: {
+    %36:ptr<uniform, vec2<f32>, read> = access %buffer, 2u
+    %37:f32 = load_vector_element %36, 1u
     ret %37
   }
 }
-%lve_a = func():f32 -> %b8 {
-  %b8 = block {
-    %39:ptr<uniform, vec4<f32>, read> = access %buffer, 0u, 1u
-    %40:f32 = load_vector_element %39, 1u
-    ret %40
-  }
-}
-%lve_b = func():f32 -> %b9 {
-  %b9 = block {
-    %42:ptr<uniform, vec2<f32>, read> = access %buffer, 1u
-    %43:vec2<f32> = load %42
-    %44:ptr<uniform, vec2<f32>, read> = access %buffer, 2u
-    %45:vec2<f32> = load %44
-    %46:ptr<uniform, vec2<f32>, read> = access %buffer, 3u
-    %47:vec2<f32> = load %46
-    %48:mat3x2<f32> = construct %43, %45, %47
-    %49:vec2<f32> = access %48, 1u
-    %50:f32 = access %49, 1u
-    ret %50
-  }
-}
-%convert_MyStruct = func(%input:MyStruct_std140):MyStruct -> %b10 {
-  %b10 = block {
-    %52:mat4x4<f32> = access %input, 0u
-    %53:vec2<f32> = access %input, 1u
-    %54:vec2<f32> = access %input, 2u
-    %55:vec2<f32> = access %input, 3u
-    %56:mat3x2<f32> = construct %53, %54, %55
-    %57:MyStruct = construct %52, %56
-    ret %57
+%tint_convert_MyStruct = func(%tint_input:MyStruct_std140):MyStruct {
+  $B10: {
+    %39:mat4x4<f32> = access %tint_input, 0u
+    %40:vec2<f32> = access %tint_input, 1u
+    %41:vec2<f32> = access %tint_input, 2u
+    %42:vec2<f32> = access %tint_input, 3u
+    %43:mat3x2<f32> = construct %40, %41, %42
+    %44:MyStruct = construct %39, %43
+    ret %44
   }
 }
 )";
@@ -1792,12 +1962,12 @@ MyStruct = struct @align(8), @block {
   d:mat4x4<f16> @offset(56)
 }
 
-%b1 = block {  # root
+$B1: {  # root
   %buffer:ptr<uniform, MyStruct, read> = var @binding_point(0, 0)
 }
 
-%foo = func():void -> %b2 {
-  %b2 = block {
+%foo = func():void {
+  $B2: {
     %3:MyStruct = load %buffer
     %struct:MyStruct = let %3
     %5:ptr<uniform, mat4x4<f16>, read> = access %buffer, 3u
@@ -1838,14 +2008,14 @@ MyStruct_std140 = struct @align(8), @block {
   d_col3:vec4<f16> @offset(80)
 }
 
-%b1 = block {  # root
+$B1: {  # root
   %buffer:ptr<uniform, MyStruct_std140, read> = var @binding_point(0, 0)
 }
 
-%foo = func():void -> %b2 {
-  %b2 = block {
+%foo = func():void {
+  $B2: {
     %3:MyStruct_std140 = load %buffer
-    %4:MyStruct = call %convert_MyStruct, %3
+    %4:MyStruct = call %tint_convert_MyStruct, %3
     %struct:MyStruct = let %4
     %7:ptr<uniform, vec4<f16>, read> = access %buffer, 8u
     %8:vec4<f16> = load %7
@@ -1857,48 +2027,295 @@ MyStruct_std140 = struct @align(8), @block {
     %14:vec4<f16> = load %13
     %15:mat4x4<f16> = construct %8, %10, %12, %14
     %mat:mat4x4<f16> = let %15
-    %17:ptr<uniform, vec3<f16>, read> = access %buffer, 4u
+    %17:ptr<uniform, vec3<f16>, read> = access %buffer, 5u
     %18:vec3<f16> = load %17
-    %19:ptr<uniform, vec3<f16>, read> = access %buffer, 5u
-    %20:vec3<f16> = load %19
-    %21:ptr<uniform, vec3<f16>, read> = access %buffer, 6u
-    %22:vec3<f16> = load %21
-    %23:ptr<uniform, vec3<f16>, read> = access %buffer, 7u
-    %24:vec3<f16> = load %23
-    %25:mat4x3<f16> = construct %18, %20, %22, %24
-    %26:vec3<f16> = access %25, 1u
-    %col:vec3<f16> = let %26
-    %28:ptr<uniform, vec4<f16>, read> = access %buffer, 2u
-    %29:vec4<f16> = load %28
-    %30:ptr<uniform, vec4<f16>, read> = access %buffer, 3u
-    %31:vec4<f16> = load %30
-    %32:mat2x4<f16> = construct %29, %31
-    %33:vec4<f16> = access %32, 0u
-    %34:f16 = access %33, 3u
-    %el:f16 = let %34
+    %col:vec3<f16> = let %18
+    %20:ptr<uniform, vec4<f16>, read> = access %buffer, 2u
+    %21:f16 = load_vector_element %20, 3u
+    %el:f16 = let %21
     ret
   }
 }
-%convert_MyStruct = func(%input:MyStruct_std140):MyStruct -> %b3 {
-  %b3 = block {
-    %37:vec2<f16> = access %input, 0u
-    %38:vec2<f16> = access %input, 1u
-    %39:mat2x2<f16> = construct %37, %38
-    %40:vec4<f16> = access %input, 2u
-    %41:vec4<f16> = access %input, 3u
-    %42:mat2x4<f16> = construct %40, %41
-    %43:vec3<f16> = access %input, 4u
-    %44:vec3<f16> = access %input, 5u
-    %45:vec3<f16> = access %input, 6u
-    %46:vec3<f16> = access %input, 7u
-    %47:mat4x3<f16> = construct %43, %44, %45, %46
-    %48:vec4<f16> = access %input, 8u
-    %49:vec4<f16> = access %input, 9u
-    %50:vec4<f16> = access %input, 10u
-    %51:vec4<f16> = access %input, 11u
-    %52:mat4x4<f16> = construct %48, %49, %50, %51
-    %53:MyStruct = construct %39, %42, %47, %52
-    ret %53
+%tint_convert_MyStruct = func(%tint_input:MyStruct_std140):MyStruct {
+  $B3: {
+    %24:vec2<f16> = access %tint_input, 0u
+    %25:vec2<f16> = access %tint_input, 1u
+    %26:mat2x2<f16> = construct %24, %25
+    %27:vec4<f16> = access %tint_input, 2u
+    %28:vec4<f16> = access %tint_input, 3u
+    %29:mat2x4<f16> = construct %27, %28
+    %30:vec3<f16> = access %tint_input, 4u
+    %31:vec3<f16> = access %tint_input, 5u
+    %32:vec3<f16> = access %tint_input, 6u
+    %33:vec3<f16> = access %tint_input, 7u
+    %34:mat4x3<f16> = construct %30, %31, %32, %33
+    %35:vec4<f16> = access %tint_input, 8u
+    %36:vec4<f16> = access %tint_input, 9u
+    %37:vec4<f16> = access %tint_input, 10u
+    %38:vec4<f16> = access %tint_input, 11u
+    %39:mat4x4<f16> = construct %35, %36, %37, %38
+    %40:MyStruct = construct %26, %29, %34, %39
+    ret %40
+  }
+}
+)";
+
+    Run(Std140);
+
+    EXPECT_EQ(expect, str());
+}
+
+TEST_F(IR_Std140Test, Mat3x3f_And_ArrayMat4x3f) {  // crbug.com/338727551
+    auto* s =
+        ty.Struct(mod.symbols.New("S"), {
+                                            {mod.symbols.New("a"), ty.mat3x3<f32>()},
+                                            {mod.symbols.New("b"), ty.array<mat4x3<f32>, 3>()},
+                                        });
+    s->SetStructFlag(core::type::kBlock);
+
+    auto* u = b.Var("u", ty.ptr(uniform, s));
+    u->SetBindingPoint(0, 0);
+    mod.root_block->Append(u);
+
+    auto* f = b.Function("F", ty.f32());
+    b.Append(f->Block(), [&] {
+        auto* p = b.Access<ptr<uniform, vec3<f32>, read>>(u, 1_u, 0_u, 0_u);
+        auto* x = b.LoadVectorElement(p, 0_u);
+        b.Return(f, x);
+    });
+
+    auto* src = R"(
+S = struct @align(16), @block {
+  a:mat3x3<f32> @offset(0)
+  b:array<mat4x3<f32>, 3> @offset(48)
+}
+
+$B1: {  # root
+  %u:ptr<uniform, S, read> = var @binding_point(0, 0)
+}
+
+%F = func():f32 {
+  $B2: {
+    %3:ptr<uniform, vec3<f32>, read> = access %u, 1u, 0u, 0u
+    %4:f32 = load_vector_element %3, 0u
+    ret %4
+  }
+}
+)";
+    EXPECT_EQ(src, str());
+
+    auto* expect = R"(
+S = struct @align(16), @block {
+  a:mat3x3<f32> @offset(0)
+  b:array<mat4x3<f32>, 3> @offset(48)
+}
+
+mat4x3_f32_std140 = struct @align(16) {
+  col0:vec3<f32> @offset(0)
+  col1:vec3<f32> @offset(16)
+  col2:vec3<f32> @offset(32)
+  col3:vec3<f32> @offset(48)
+}
+
+S_std140 = struct @align(16), @block {
+  a_col0:vec3<f32> @offset(0)
+  a_col1:vec3<f32> @offset(16)
+  a_col2:vec3<f32> @offset(32)
+  b:array<mat4x3_f32_std140, 3> @offset(48)
+}
+
+$B1: {  # root
+  %u:ptr<uniform, S_std140, read> = var @binding_point(0, 0)
+}
+
+%F = func():f32 {
+  $B2: {
+    %3:ptr<uniform, vec3<f32>, read> = access %u, 3u, 0u, 0u
+    %4:f32 = load_vector_element %3, 0u
+    ret %4
+  }
+}
+)";
+
+    Run(Std140);
+
+    EXPECT_EQ(expect, str());
+}
+
+TEST_F(IR_Std140Test, Mat3x3f_And_ArrayStructMat4x3f) {
+    auto* s1 =
+        ty.Struct(mod.symbols.New("S1"), {
+                                             {mod.symbols.New("c"), ty.mat3x3<f32>()},
+                                             {mod.symbols.New("d"), ty.array<mat4x3<f32>, 3>()},
+                                         });
+    auto* s2 = ty.Struct(mod.symbols.New("S2"), {
+                                                    {mod.symbols.New("a"), ty.mat3x3<f32>()},
+                                                    {mod.symbols.New("b"), s1},
+                                                });
+    s2->SetStructFlag(core::type::kBlock);
+
+    auto* u = b.Var("u", ty.ptr(uniform, s2));
+    u->SetBindingPoint(0, 0);
+    mod.root_block->Append(u);
+
+    auto* f = b.Function("F", ty.f32());
+    b.Append(f->Block(), [&] {
+        auto* p = b.Access<ptr<uniform, vec3<f32>, read>>(u, 1_u, 1_u, 0_u, 0_u);
+        auto* x = b.LoadVectorElement(p, 0_u);
+        b.Return(f, x);
+    });
+
+    auto* src = R"(
+S1 = struct @align(16) {
+  c:mat3x3<f32> @offset(0)
+  d:array<mat4x3<f32>, 3> @offset(48)
+}
+
+S2 = struct @align(16), @block {
+  a:mat3x3<f32> @offset(0)
+  b:S1 @offset(48)
+}
+
+$B1: {  # root
+  %u:ptr<uniform, S2, read> = var @binding_point(0, 0)
+}
+
+%F = func():f32 {
+  $B2: {
+    %3:ptr<uniform, vec3<f32>, read> = access %u, 1u, 1u, 0u, 0u
+    %4:f32 = load_vector_element %3, 0u
+    ret %4
+  }
+}
+)";
+    EXPECT_EQ(src, str());
+
+    auto* expect = R"(
+S1 = struct @align(16) {
+  c:mat3x3<f32> @offset(0)
+  d:array<mat4x3<f32>, 3> @offset(48)
+}
+
+S2 = struct @align(16), @block {
+  a:mat3x3<f32> @offset(0)
+  b:S1 @offset(48)
+}
+
+mat4x3_f32_std140 = struct @align(16) {
+  col0:vec3<f32> @offset(0)
+  col1:vec3<f32> @offset(16)
+  col2:vec3<f32> @offset(32)
+  col3:vec3<f32> @offset(48)
+}
+
+S1_std140 = struct @align(16) {
+  c_col0:vec3<f32> @offset(0)
+  c_col1:vec3<f32> @offset(16)
+  c_col2:vec3<f32> @offset(32)
+  d:array<mat4x3_f32_std140, 3> @offset(48)
+}
+
+S2_std140 = struct @align(16), @block {
+  a_col0:vec3<f32> @offset(0)
+  a_col1:vec3<f32> @offset(16)
+  a_col2:vec3<f32> @offset(32)
+  b:S1_std140 @offset(48)
+}
+
+$B1: {  # root
+  %u:ptr<uniform, S2_std140, read> = var @binding_point(0, 0)
+}
+
+%F = func():f32 {
+  $B2: {
+    %3:ptr<uniform, vec3<f32>, read> = access %u, 3u, 3u, 0u, 0u
+    %4:f32 = load_vector_element %3, 0u
+    ret %4
+  }
+}
+)";
+
+    Run(Std140);
+
+    EXPECT_EQ(expect, str());
+}
+
+TEST_F(IR_Std140Test, Mat3x3f_And_ArrayStructMat2x2f) {
+    auto* s1 = ty.Struct(mod.symbols.New("S1"), {
+                                                    {mod.symbols.New("c"), ty.mat2x2<f32>()},
+                                                });
+    auto* s2 = ty.Struct(mod.symbols.New("S2"), {
+                                                    {mod.symbols.New("a"), ty.mat3x3<f32>()},
+                                                    {mod.symbols.New("b"), s1},
+                                                });
+    s2->SetStructFlag(core::type::kBlock);
+
+    auto* u = b.Var("u", ty.ptr(uniform, s2));
+    u->SetBindingPoint(0, 0);
+    mod.root_block->Append(u);
+
+    auto* f = b.Function("F", ty.f32());
+    b.Append(f->Block(), [&] {
+        auto* p = b.Access<ptr<uniform, vec2<f32>, read>>(u, 1_u, 0_u, 0_u);
+        auto* x = b.LoadVectorElement(p, 0_u);
+        b.Return(f, x);
+    });
+
+    auto* src = R"(
+S1 = struct @align(8) {
+  c:mat2x2<f32> @offset(0)
+}
+
+S2 = struct @align(16), @block {
+  a:mat3x3<f32> @offset(0)
+  b:S1 @offset(48)
+}
+
+$B1: {  # root
+  %u:ptr<uniform, S2, read> = var @binding_point(0, 0)
+}
+
+%F = func():f32 {
+  $B2: {
+    %3:ptr<uniform, vec2<f32>, read> = access %u, 1u, 0u, 0u
+    %4:f32 = load_vector_element %3, 0u
+    ret %4
+  }
+}
+)";
+    EXPECT_EQ(src, str());
+
+    auto* expect = R"(
+S1 = struct @align(8) {
+  c:mat2x2<f32> @offset(0)
+}
+
+S2 = struct @align(16), @block {
+  a:mat3x3<f32> @offset(0)
+  b:S1 @offset(48)
+}
+
+S1_std140 = struct @align(8) {
+  c_col0:vec2<f32> @offset(0)
+  c_col1:vec2<f32> @offset(8)
+}
+
+S2_std140 = struct @align(16), @block {
+  a_col0:vec3<f32> @offset(0)
+  a_col1:vec3<f32> @offset(16)
+  a_col2:vec3<f32> @offset(32)
+  b:S1_std140 @offset(48)
+}
+
+$B1: {  # root
+  %u:ptr<uniform, S2_std140, read> = var @binding_point(0, 0)
+}
+
+%F = func():f32 {
+  $B2: {
+    %3:ptr<uniform, vec2<f32>, read> = access %u, 3u, 0u
+    %4:f32 = load_vector_element %3, 0u
+    ret %4
   }
 }
 )";

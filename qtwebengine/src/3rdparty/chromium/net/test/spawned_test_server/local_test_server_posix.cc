@@ -2,6 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#ifdef UNSAFE_BUFFERS_BUILD
+// TODO(crbug.com/40284755): Remove this and spanify to fix the errors.
+#pragma allow_unsafe_buffers
+#endif
+
 #include "net/test/spawned_test_server/local_test_server.h"
 
 #include <poll.h>
@@ -138,7 +143,7 @@ bool LocalTestServer::LaunchPython(
     return false;
   }
 
-  options.fds_to_remap.push_back(std::make_pair(pipefd[1], pipefd[1]));
+  options.fds_to_remap.emplace_back(pipefd[1], pipefd[1]);
   LOG(ERROR) << "Running: " << python_command.GetCommandLineString();
   process_ = base::LaunchProcess(python_command, options);
   if (!process_.IsValid()) {

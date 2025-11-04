@@ -1657,12 +1657,12 @@ public:
     SourceLocation colonToken;
 };
 
-class QML_PARSER_EXPORT Expression: public ExpressionNode // ### rename
+class QML_PARSER_EXPORT CommaExpression: public ExpressionNode
 {
 public:
     QQMLJS_DECLARE_AST_NODE(Expression)
 
-    Expression(ExpressionNode *l, ExpressionNode *r):
+    CommaExpression(ExpressionNode *l, ExpressionNode *r):
         left (l), right (r) { kind = K; }
 
     void accept0(BaseVisitor *visitor) override;
@@ -2522,6 +2522,7 @@ public:
 // attributes
     PatternElement *element = nullptr;
     FormalParameterList *next;
+    SourceLocation commaToken;
 };
 
 class QML_PARSER_EXPORT ClassExpression : public ExpressionNode
@@ -3551,6 +3552,8 @@ public:
     SourceLocation identifierToken;
     SourceLocation colonToken;
     SourceLocation semicolonToken;
+    SourceLocation lparenToken;
+    SourceLocation rparenToken;
 private:
     union {
         SourceLocation m_propertyToken = SourceLocation {};
@@ -3776,7 +3779,9 @@ public:
     UiEnumMemberList *next;
     QStringView member;
     double value;
+    SourceLocation commaToken;
     SourceLocation memberToken;
+    SourceLocation equalToken;
     SourceLocation valueToken;
 };
 

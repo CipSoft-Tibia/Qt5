@@ -1,6 +1,7 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // Copyright (C) 2016 Intel Corporation.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:data-parsing
 
 #include "qdebug.h"
 #include "private/qdebug_p.h"
@@ -83,7 +84,7 @@ QByteArray QtDebugUtils::toPrintable(const char *data, qint64 len, qsizetype max
     \snippet qdebug/qdebugsnippet.cpp 1
 
     This constructs a QDebug object using the constructor that accepts a QtMsgType
-    value of QtDebugMsg. Similarly, the qWarning(), qCritical() and qFatal()
+    value of QtDebugMsg. Similarly, the qInfo(), qWarning(), qCritical() and qFatal()
     functions also return QDebug objects for the corresponding message types.
 
     The class also provides several constructors for other situations, including
@@ -198,8 +199,9 @@ static inline bool isPrintable(uchar c)
 template <typename Char>
 static inline void putEscapedString(QTextStreamPrivate *d, const Char *begin, size_t length, bool isUnicode = true)
 {
-    QChar quote(u'"');
-    d->write(&quote, 1);
+    constexpr char16_t quotes[] = uR"("")";
+    constexpr char16_t quote = quotes[0];
+    d->write(quote);
 
     bool lastWasHexEscape = false;
     const Char *end = begin + length;
@@ -208,26 +210,24 @@ static inline void putEscapedString(QTextStreamPrivate *d, const Char *begin, si
         if (Q_UNLIKELY(lastWasHexEscape)) {
             if (fromHex(*p) != -1) {
                 // yes, insert it
-                QChar quotes[] = { quote, quote };
-                d->write(quotes, 2);
+                d->write(quotes);
             }
             lastWasHexEscape = false;
         }
 
-        if (sizeof(Char) == sizeof(QChar)) {
+        if constexpr (sizeof(Char) == sizeof(QChar)) {
             // Surrogate characters are category Cs (Other_Surrogate), so isPrintable = false for them
             qsizetype runLength = 0;
             while (p + runLength != end &&
                    isPrintable(p[runLength]) && p[runLength] != '\\' && p[runLength] != '"')
                 ++runLength;
             if (runLength) {
-                d->write(reinterpret_cast<const QChar *>(p), runLength);
+                d->write(QStringView{p, runLength});
                 p += runLength - 1;
                 continue;
             }
         } else if (isPrintable(*p) && *p != '\\' && *p != '"') {
-            QChar c = QLatin1Char(*p);
-            d->write(&c, 1);
+            d->write(char16_t{uchar(*p)});
             continue;
         }
 
@@ -298,10 +298,10 @@ static inline void putEscapedString(QTextStreamPrivate *d, const Char *begin, si
             buf[5] = toHexUpper(*p);
             buflen = 6;
         }
-        d->write(reinterpret_cast<QChar *>(buf), buflen);
+        d->write(QStringView{buf, buflen});
     }
 
-    d->write(&quote, 1);
+    d->write(quote);
 }
 
 /*!
@@ -313,7 +313,7 @@ void QDebug::putString(const QChar *begin, size_t length)
     if (stream->noQuotes) {
         // no quotes, write the string directly too (no pretty-printing)
         // this respects the QTextStream state, though
-        stream->ts.d_ptr->putString(begin, qsizetype(length));
+        stream->ts.d_ptr->putString(QStringView{begin, qsizetype(length)});
     } else {
         // we'll reset the QTextStream formatting mechanisms, so save the state
         QDebugStateSaver saver(*this);
@@ -331,9 +331,14 @@ void QDebug::putByteArray(const char *begin, size_t length, Latin1Content conten
     if (stream->noQuotes) {
         // no quotes, write the string directly too (no pretty-printing)
         // this respects the QTextStream state, though
-        QString string = content == ContainsLatin1 ? QString::fromLatin1(begin, qsizetype(length))
-                                                   : QString::fromUtf8(begin, qsizetype(length));
-        stream->ts.d_ptr->putString(string);
+        switch (content) {
+        case Latin1Content::ContainsLatin1:
+            stream->ts.d_ptr->putString(QLatin1StringView{begin, qsizetype(length)});
+            break;
+        case Latin1Content::ContainsBinary:
+            stream->ts.d_ptr->putString(QUtf8StringView{begin, qsizetype(length)});
+            break;
+        }
     } else {
         // we'll reset the QTextStream formatting mechanisms, so save the state
         QDebugStateSaver saver(*this);
@@ -512,6 +517,46 @@ void QDebug::putUInt128([[maybe_unused]] const void *p)
     stream->ts << int128Warning();
 }
 
+/*!
+    \since 6.9
+    \internal
+    Helper to the <Std/Qt>::<>_ordering debug output.
+    It generates the string in following format:
+    <Qt/Std>::<weak/partial/strong>_ordering::<less/equal/greater/unordered>
+ */
+void QDebug::putQtOrdering(QtOrderingPrivate::QtOrderingTypeFlag flags, Qt::partial_ordering order)
+{
+    using QtOrderingPrivate::QtOrderingType;
+    std::string result;
+    if ((flags & QtOrderingType::StdOrder) == QtOrderingType::StdOrder)
+        result += "std";
+    else if ((flags & QtOrderingType::QtOrder) == QtOrderingType::QtOrder)
+        result += "Qt";
+
+    result += "::";
+    const bool isStrong = ((flags & QtOrderingType::Strong) == QtOrderingType::Strong);
+    if (isStrong)
+        result += "strong";
+    else if ((flags & QtOrderingType::Weak) == QtOrderingType::Weak)
+        result += "weak";
+    else if ((flags & QtOrderingType::Partial) == QtOrderingType::Partial)
+        result += "partial";
+    result += "_ordering::";
+
+    if (order == Qt::partial_ordering::equivalent) {
+        if (isStrong)
+            result += "equal";
+        else
+            result += "equivalent";
+    } else if (order == Qt::partial_ordering::greater) {
+        result += "greater";
+    } else if (order == Qt::partial_ordering::less) {
+        result += "less";
+    } else {
+        result += "unordered";
+    }
+    stream->ts << result.data();
+}
 
 /*!
     \fn QDebug::swap(QDebug &other)
@@ -948,6 +993,14 @@ QDebug &QDebug::resetFormat()
 */
 
 /*!
+    \fn template <typename T, QDebug::if_ordering_type<T>> QDebug::operator<<(QDebug debug, T t)
+    \since 6.9
+    Prints the Qt or std ordering value \a t to the \a debug object.
+
+    \constraints \c T is one of <Qt/Std>::<weak/partial/strong>_ordering.
+*/
+
+/*!
     \since 6.5
     \fn template <typename Char, typename...Args> QDebug &QDebug::operator<<(const std::basic_string<Char, Args...> &s)
     \fn template <typename Char, typename...Args> QDebug &QDebug::operator<<(std::basic_string_view<Char, Args...> s)
@@ -999,6 +1052,8 @@ QDebug &QDebug::resetFormat()
     \since 6.0
 
     \include qdebug-toString.qdocinc
+
+    \sa toBytes()
 */
 
 /*! \internal */
@@ -1010,6 +1065,54 @@ QString QDebug::toStringImpl(StreamTypeErased s, const void *obj)
         s(d.nospace(), obj);
     }
     return result;
+}
+
+/*!
+    \fn template <class T> QByteArray QDebug::toBytes(const T &object)
+    \since 6.9
+
+    This is equivalent to passing \a object to
+    \c{QDebug::toString(object).toUtf8()}, but more efficient.
+
+    \sa toString()
+*/
+
+/*! \internal */
+QByteArray QDebug::toBytesImpl(StreamTypeErased s, const void *obj)
+{
+    QByteArray result;
+    {
+        QDebug d(&result);
+        s(d.nospace(), obj);
+    }
+    return result;
+}
+
+/*!
+    \internal
+    \since 6.9
+
+    Outputs a heterogeneous product type (pair, tuple, or anything that
+    implements the Tuple Protocol). The class name is described by "\a ns
+    \c{::} \a what", while the addresses of the \a n elements are stored in the
+    array \a data. The formatters are stored in the array \a ops.
+
+    If \a ns is empty, only \a what is used.
+*/
+QDebug &QDebug::putTupleLikeImplImpl(const char *ns, const char *what,
+                                     size_t n, StreamTypeErased *ops, const void **data)
+{
+    const QDebugStateSaver saver(*this);
+    nospace();
+    if (ns && *ns)
+        *this << ns << "::";
+    *this << what << '(';
+    while (n--) {
+        (*ops++)(*this, *data++);
+        if (n)
+            *this << ", ";
+    }
+    return *this << ')';
 }
 
 /*!
@@ -1044,6 +1147,15 @@ QString QDebug::toStringImpl(StreamTypeErased s, const void *obj)
     \since 5.7
 
     Writes the contents of vector \a vec to \a debug. \c T needs to
+    support streaming into QDebug.
+*/
+
+/*!
+    \fn template <typename T, std::size_t N> QDebug operator<<(QDebug debug, const std::array<T, N> &array)
+    \relates QDebug
+    \since 6.9
+
+    Writes the contents of \a array to \a debug. \c T needs to
     support streaming into QDebug.
 */
 
@@ -1090,6 +1202,43 @@ QString QDebug::toStringImpl(StreamTypeErased s, const void *obj)
 */
 
 /*!
+    \fn template <typename Key, typename Compare, typename Alloc> QDebug operator<<(QDebug debug, const std::multiset<Key, Compare, Alloc> &multiset)
+    \relates QDebug
+    \since 6.9
+
+    Writes the contents of \a multiset to \a debug. The \c Key type
+    needs to support streaming into QDebug.
+*/
+
+/*!
+    \fn template <typename Key, typename Compare, typename Alloc> QDebug operator<<(QDebug debug, const std::set<Key, Compare, Alloc> &set)
+    \relates QDebug
+    \since 6.9
+
+    Writes the contents of \a set to \a debug. The \c Key type
+    needs to support streaming into QDebug.
+*/
+
+/*!
+    \fn template <typename Key, typename T, typename Hash, typename KeyEqual, typename Alloc> QDebug operator<<(QDebug debug, const std::unordered_map<Key, T, Hash, KeyEqual, Alloc> &map)
+    \relates QDebug
+    \since 6.9
+
+ Writes the contents of \a map to \a debug. Both \c Key and
+ \c T need to support streaming into QDebug.
+*/
+
+/*!
+    \fn template <typename Key, typename Hash, typename KeyEqual, typename Alloc> QDebug operator<<(QDebug debug, const std::unordered_set<Key, Hash, KeyEqual, Alloc> &unordered_set)
+    \relates QDebug
+    \since 6.9
+
+Writes the contents of \a unordered_set to \a debug. The \c Key type
+needs to support streaming into QDebug.
+*/
+
+
+/*!
     \fn template <class Key, class T> QDebug operator<<(QDebug debug, const QHash<Key, T> &hash)
     \relates QDebug
 
@@ -1106,6 +1255,14 @@ QString QDebug::toStringImpl(StreamTypeErased s, const void *obj)
 */
 
 /*!
+    \fn template <class...Ts, QDebug::if_streamable<Ts...>> QDebug &QDebug::operator<<(const std::tuple<Ts...> &tuple)
+    \since 6.9
+
+    Writes the contents of \a tuple to the stream. All \c Ts... need to support
+    streaming into QDebug.
+*/
+
+/*!
     \fn template <class T1, class T2> QDebug operator<<(QDebug debug, const std::pair<T1, T2> &pair)
     \relates QDebug
 
@@ -1115,10 +1272,9 @@ QString QDebug::toStringImpl(StreamTypeErased s, const void *obj)
 
 /*!
     \since 6.7
-    \fn template <class T> QDebug operator<<(QDebug debug, const std::optional<T> &opt)
-    \relates QDebug
+    \fn template <class T, QDebug::if_streamable<T>> QDebug::operator<<(const std::optional<T> &opt)
 
-    Writes the contents of \a opt (or \c nullopt if not set) to \a debug.
+    Writes the contents of \a opt (or \c nullopt if not set) to this stream.
     \c T needs to support streaming into QDebug.
 */
 
@@ -1255,8 +1411,18 @@ QDebugStateSaver::~QDebugStateSaver()
 */
 void qt_QMetaEnum_flagDebugOperator(QDebug &debug, size_t sizeofT, uint value)
 {
-    qt_QMetaEnum_flagDebugOperator<uint>(debug, sizeofT, value);
+    qt_QMetaEnum_flagDebugOperator(debug, sizeofT, quint64(value));
 }
+
+/*!
+    \internal
+    Ditto, for 64-bit.
+*/
+void qt_QMetaEnum_flagDebugOperator(QDebug &debug, size_t sizeofT, quint64 value)
+{
+    qt_QMetaEnum_flagDebugOperator<quint64>(debug, sizeofT, value);
+}
+
 
 #ifndef QT_NO_QOBJECT
 /*!
@@ -1375,13 +1541,148 @@ QDebug qt_QMetaEnum_flagDebugOperator(QDebug &debug, quint64 value, const QMetaO
         debug << '(';
     }
 
-    debug << me.valueToKeys(static_cast<int>(value));
+    debug << me.valueToKeys(value);
 
     if (enumScope)
         debug << ')';
 
     return debug;
 }
+
+/*!
+    \macro QDebug qDebug()
+    \relates QDebug
+    \threadsafe
+
+    Returns a QDebug object that logs a debug message to the central message handler.
+
+    Example:
+
+    \snippet code/src_corelib_global_qglobal.cpp 25
+
+    Using qDebug() is an alternative to \l{qDebug(const char *, ...)},
+    which follows the printf paradigm.
+
+    Note that QDebug and the type specific stream operators do add various
+    formatting to make the debug message easier to read. See the
+     \l{Formatting Options}{formatting options} documentation for more details.
+
+    This function does nothing if \c QT_NO_DEBUG_OUTPUT was defined during
+    compilation.
+
+    \sa {qDebug(const char *, ...)}, qCDebug()
+*/
+
+/*!
+    \macro QDebug qInfo()
+    \relates QDebug
+    \threadsafe
+
+    Returns a QDebug object that logs an informational message to the central message handler.
+
+    Example:
+
+    \snippet code/src_corelib_global_qglobal.cpp qInfo_stream
+
+    Using qInfo() is an alternative to \l{qInfo(const char *, ...)},
+    which follows the printf paradigm.
+
+    Note that QDebug and the type specific stream operators do add various
+    formatting to make the debug message easier to read. See the
+    \l{Formatting Options}{formatting options} documentation for more details.
+
+    This function does nothing if \c QT_NO_INFO_OUTPUT was defined during
+    compilation.
+
+    \sa {qInfo(const char *, ...)}, qCInfo()
+*/
+
+/*!
+    \macro QDebug qWarning()
+    \relates QDebug
+    \threadsafe
+
+    Returns a QDebug object that logs a warning message to the central message handler.
+
+    Example:
+
+    \snippet code/src_corelib_global_qglobal.cpp 27
+
+    Using qWarning() is an alternative to \l{qWarning(const char *, ...)},
+    which follows the printf paradigm.
+
+    Note that QDebug and the type specific stream operators do add various
+    formatting to make the debug message easier to read. See the
+    \l{Formatting Options}{formatting options} documentation for more details.
+
+    This function does nothing if \c QT_NO_WARNING_OUTPUT was defined during
+    compilation.
+
+    For debugging purposes, it is sometimes convenient to let the
+    program abort for warning messages. This allows you then
+    to inspect the core dump, or attach a debugger - see also \l{qFatal()}.
+    To enable this, set the environment variable \c{QT_FATAL_WARNINGS}
+    to a number \c n. The program terminates then for the n-th warning.
+    That is, if the environment variable is set to 1, it will terminate
+    on the first call; if it contains the value 10, it will exit on the 10th
+    call. Any non-numeric value in the environment variable is equivalent to 1.
+
+    \sa {qWarning(const char *, ...)}, qCWarning()
+*/
+
+/*!
+    \macro QDebug qCritical()
+    \relates QDebug
+    \threadsafe
+
+    Returns a QDebug object that logs a critical message to the central message handler.
+
+    Example:
+
+    \snippet code/src_corelib_global_qglobal.cpp 29
+
+    Using qCritical() is an alternative to \l{qCritical(const char *, ...)},
+    which follows the printf paradigm.
+
+    Note that QDebug and the type specific stream operators do add various
+    formatting to make the debug message easier to read. See the
+    \l{Formatting Options}{formatting options} documentation for more details.
+
+    For debugging purposes, it is sometimes convenient to let the
+    program abort for critical messages. This allows you then
+    to inspect the core dump, or attach a debugger - see also \l{qFatal()}.
+    To enable this, set the environment variable \c{QT_FATAL_CRITICALS}
+    to a number \c n. The program terminates then for the n-th critical
+    message.
+    That is, if the environment variable is set to 1, it will terminate
+    on the first call; if it contains the value 10, it will exit on the 10th
+    call. Any non-numeric value in the environment variable is equivalent to 1.
+
+    \sa {qCritical(const char *, ...)}, qCCritical()
+*/
+
+/*!
+    \macro QDebug qFatal()
+    \relates QDebug
+    \threadsafe
+
+    Returns a QDebug object that logs a fatal message to the central message handler.
+
+    Using qFatal() is an alternative to \l{qFatal(const char *, ...)},
+    which follows the printf paradigm.
+
+    Note that QDebug and the type specific stream operators do add various
+    formatting to make the debug message easier to read. See the
+    \l{Formatting Options}{formatting options} documentation for more details.
+
+    If you are using the \b{default message handler}, the returned stream will abort
+    to create a core dump. On Windows, for debug builds,
+    this function will report a _CRT_ERROR enabling you to connect a debugger
+    to the application.
+
+    \sa {qFatal(const char *, ...)}, qCFatal()
+*/
+
 #endif // !QT_NO_QOBJECT
 
 QT_END_NAMESPACE

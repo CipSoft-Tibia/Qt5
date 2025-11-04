@@ -49,6 +49,7 @@ struct HoverItem : public QQuickItem
     {
         hoverEnter = true;
         e->setAccepted(block);
+        globalHoverPosition = e->globalPosition();
     }
 
     void hoverLeaveEvent(QHoverEvent *e) override
@@ -57,9 +58,16 @@ struct HoverItem : public QQuickItem
         e->setAccepted(block);
     }
 
+    void mousePressEvent(QMouseEvent *e) override
+    {
+        globalMousePosition = e->globalPosition();
+    }
+
     bool hoverEnter = false;
     bool hoverLeave = false;
     bool block = false;
+    QPointF globalHoverPosition;
+    QPointF globalMousePosition;
 };
 
 // A QQuick3DViewport simulator
@@ -146,9 +154,10 @@ private slots:
     void clearItemsOnHoverLeave();
     void deleteTargetOnPress();
     void compoundControlsFocusInSubscene();
+    void hoverEventGlobalPosition();
 
 private:
-    QScopedPointer<QPointingDevice> touchDevice = QScopedPointer<QPointingDevice>(QTest::createTouchDevice());
+    std::unique_ptr<QPointingDevice> touchscreen{QTest::createTouchDevice()};
 };
 
 void tst_qquickdeliveryagent::passiveGrabberOrder()
@@ -426,7 +435,7 @@ void tst_qquickdeliveryagent::touchCompression()
     QVERIFY(root);
     QQuickPointHandler *rootHandler = root->findChild<QQuickPointHandler *>();
     QVERIFY(rootHandler);
-    QTest::QTouchEventSequence touch = QTest::touchEvent(&window, touchDevice.data());
+    QTest::QTouchEventSequence touch = QTest::touchEvent(&window, touchscreen.get());
     QPoint pt1(30, 50);
     QPoint pt2(70, 50);
     // Press and drag fast, alternating moving and stationary points
@@ -674,6 +683,31 @@ void tst_qquickdeliveryagent::compoundControlsFocusInSubscene()
     QCOMPARE(daPriv->activeFocusItem, textField);
     QCOMPARE(QQuickWindowPrivate::get(&window)->deliveryAgentPrivate()->activeFocusItem, textField);
     QCOMPARE(QQuickWindowPrivate::get(&window)->deliveryAgentPrivate()->rootItem->scopedFocusItem(), spinboxFocusScope);
+}
+
+void tst_qquickdeliveryagent::hoverEventGlobalPosition()
+{
+    QQuickWindow window;
+    window.resize(200, 200);
+    window.show();
+    QVERIFY(QTest::qWaitForWindowActive(&window));
+
+    HoverItem child(window.contentItem());
+    child.setAcceptHoverEvents(true);
+    child.setAcceptedMouseButtons(Qt::LeftButton);
+    child.setX(50);
+    child.setY(50);
+    child.setWidth(100);
+    child.setHeight(100);
+
+    QTest::mouseMove(&window, QPoint(25, 25));
+    QCOMPARE(child.hoverEnter, false);
+
+    QPoint point(100, 100);
+    QTest::mouseMove(&window, point);
+    QCOMPARE(child.hoverEnter, true);
+    QTest::mousePress(&window, Qt::LeftButton, {}, point);
+    QCOMPARE(child.globalHoverPosition, child.globalMousePosition);
 }
 
 QTEST_MAIN(tst_qquickdeliveryagent)

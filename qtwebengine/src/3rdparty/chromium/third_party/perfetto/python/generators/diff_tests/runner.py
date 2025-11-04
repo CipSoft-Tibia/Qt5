@@ -28,7 +28,8 @@ from google.protobuf import text_format, message_factory, descriptor_pool
 from python.generators.diff_tests.testing import TestCase, TestType, BinaryProto
 from python.generators.diff_tests.utils import (
     ColorFormatter, create_message_factory, get_env, get_trace_descriptor_path,
-    read_all_tests, serialize_python_trace, serialize_textproto_trace)
+    read_all_tests, serialize_python_trace, serialize_textproto_trace,
+    modify_trace)
 
 ROOT_DIR = os.path.dirname(
     os.path.dirname(
@@ -130,7 +131,8 @@ class TestResults:
         f"{c.green('[  PASSED  ]')} "
         f"{tests_no - len(self.test_failures)} tests.\n")
     if len(self.test_failures) > 0:
-      res += (f"{c.red('[  FAILED  ]')} " f"{len(self.test_failures)} tests.\n")
+      res += (f"{c.red('[  FAILED  ]')} "
+              f"{len(self.test_failures)} tests.\n")
       for failure in self.test_failures:
         res += f"{c.red('[  FAILED  ]')} {failure}\n"
     return res
@@ -201,6 +203,7 @@ class TestCaseRunner:
         self.trace_processor_path,
         '--analyze-trace-proto-content',
         '--crop-track-events',
+        '--extra-checks',
         '--run-metrics',
         self.test.blueprint.query.name,
         '--metrics-output=%s' % ('json' if is_json_output else 'binary'),
@@ -264,6 +267,7 @@ class TestCaseRunner:
         self.trace_processor_path,
         '--analyze-trace-proto-content',
         '--crop-track-events',
+        '--extra-checks',
         '-q',
         query,
         '--perf-file',
@@ -327,6 +331,19 @@ class TestCaseRunner:
       with open(gen_trace_file.name, 'w') as trace_file:
         trace_file.write(self.test.blueprint.trace.contents)
 
+    if self.test.blueprint.trace_modifier is not None:
+      if gen_trace_file:
+        # Overwrite |gen_trace_file|.
+        modify_trace(self.trace_descriptor_path, extension_descriptor_paths,
+                     gen_trace_file.name, gen_trace_file.name,
+                     self.test.blueprint.trace_modifier)
+      else:
+        # Create |gen_trace_file| to save the modified trace.
+        gen_trace_file = tempfile.NamedTemporaryFile(delete=False)
+        modify_trace(self.trace_descriptor_path, extension_descriptor_paths,
+                     self.test.trace_path, gen_trace_file.name,
+                     self.test.blueprint.trace_modifier)
+
     if gen_trace_file:
       trace_path = os.path.realpath(gen_trace_file.name)
     else:
@@ -365,6 +382,7 @@ class TestCaseRunner:
       return res
 
     if result.exit_code != 0 or not result.passed:
+      result.passed = False
       str += result.stderr
 
       if result.exit_code == 0:
@@ -437,7 +455,8 @@ class DiffTestsRunner:
 
   def run_all_tests(self, metrics_descriptor_paths: List[str],
                     chrome_extensions: str, test_extensions: str,
-                    keep_input: bool, rebase: bool) -> TestResults:
+                    winscope_extensions: str, keep_input: bool,
+                    rebase: bool) -> TestResults:
     perf_results = []
     failures = []
     rebased = []
@@ -445,7 +464,8 @@ class DiffTestsRunner:
 
     with concurrent.futures.ProcessPoolExecutor() as e:
       fut = [
-          e.submit(test.execute, [chrome_extensions, test_extensions],
+          e.submit(test.execute,
+                   [chrome_extensions, test_extensions, winscope_extensions],
                    metrics_descriptor_paths, keep_input, rebase)
           for test in self.test_runners
       ]

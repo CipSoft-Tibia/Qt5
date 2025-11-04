@@ -8,6 +8,9 @@ QT_BEGIN_NAMESPACE
 
 namespace QtWaylandClient {
 
+QWaylandShellIntegration::~QWaylandShellIntegration()
+    = default; // MUST stay empty until Qt 7 (was inline in Qt < 6.9)
+
 wl_surface *QWaylandShellIntegration::wlSurfaceForWindow(QWaylandWindow *window)
 {
     return window->wlSurface();

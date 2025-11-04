@@ -25,8 +25,6 @@
 // OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-#include "gtest/gtest-spi.h"
-
 #include "src/tint/lang/wgsl/ast/color_attribute.h"
 #include "src/tint/lang/wgsl/ast/helper_test.h"
 
@@ -36,6 +34,7 @@ namespace tint::ast {
 namespace {
 
 using ColorAttributeTest = TestHelper;
+using ColorAttributeDeathTest = ColorAttributeTest;
 
 TEST_F(ColorAttributeTest, Creation) {
     auto* expr = Expr(1_u);
@@ -43,8 +42,8 @@ TEST_F(ColorAttributeTest, Creation) {
     EXPECT_EQ(c->expr, expr);
 }
 
-TEST_F(ColorAttributeTest, Assert_Null_Builtin) {
-    EXPECT_FATAL_FAILURE(
+TEST_F(ColorAttributeDeathTest, Assert_Null_Builtin) {
+    EXPECT_DEATH_IF_SUPPORTED(
         {
             ProgramBuilder b;
             b.Color(nullptr);
@@ -52,8 +51,8 @@ TEST_F(ColorAttributeTest, Assert_Null_Builtin) {
         "internal compiler error");
 }
 
-TEST_F(ColorAttributeTest, Assert_DifferentGenerationID_Color) {
-    EXPECT_FATAL_FAILURE(
+TEST_F(ColorAttributeDeathTest, Assert_DifferentGenerationID_Color) {
+    EXPECT_DEATH_IF_SUPPORTED(
         {
             ProgramBuilder b1;
             ProgramBuilder b2;

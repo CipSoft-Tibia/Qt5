@@ -2,11 +2,18 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#ifdef UNSAFE_BUFFERS_BUILD
+// TODO(crbug.com/40285824): Remove this and convert code to safer constructs.
+#pragma allow_unsafe_buffers
+#endif
+
 #include "components/sessions/core/command_storage_backend.h"
 
 #include <stdint.h>
+
 #include <algorithm>
 #include <limits>
+#include <string_view>
 #include <utility>
 
 #include "base/feature_list.h"
@@ -333,8 +340,8 @@ SessionFileReader::CreateCommandFromEncrypted(const char* data,
   memset(nonce, 0, kNonceLength);
   memcpy(nonce, &command_counter_, sizeof(command_counter_));
   std::string plain_text;
-  if (!aead_->Open(base::StringPiece(data, length),
-                   base::StringPiece(nonce, kNonceLength), base::StringPiece(),
+  if (!aead_->Open(std::string_view(data, length),
+                   std::string_view(nonce, kNonceLength), std::string_view(),
                    &plain_text)) {
     DVLOG(1) << "SessionFileReader::ReadCommand, decryption failed";
     return nullptr;
@@ -626,7 +633,7 @@ void CommandStorageBackend::MoveCurrentSessionToLastSession() {
   DeleteLastSession();
 
   // Move current session to last.
-  absl::optional<SessionInfo> new_last_session_info;
+  std::optional<SessionInfo> new_last_session_info;
   if (last_or_current_path_with_valid_marker_) {
     new_last_session_info =
         SessionInfo{*last_or_current_path_with_valid_marker_, timestamp_};
@@ -821,8 +828,8 @@ bool CommandStorageBackend::AppendEncryptedCommandToFile(
          command_size);
 
   std::string cipher_text;
-  aead_->Seal(base::StringPiece(&command_and_id.front(), command_and_id.size()),
-              base::StringPiece(nonce, kNonceLength), base::StringPiece(),
+  aead_->Seal(std::string_view(&command_and_id.front(), command_and_id.size()),
+              std::string_view(nonce, kNonceLength), std::string_view(),
               &cipher_text);
   DCHECK_LE(cipher_text.size(), std::numeric_limits<size_type>::max());
   const size_type command_and_id_size =
@@ -843,7 +850,7 @@ bool CommandStorageBackend::AppendEncryptedCommandToFile(
   return true;
 }
 
-absl::optional<CommandStorageBackend::SessionInfo>
+std::optional<CommandStorageBackend::SessionInfo>
 CommandStorageBackend::FindLastSessionFile() const {
   // Determine the session with the most recent timestamp. This is called
   // at startup, before a file has been opened for writing.
@@ -860,7 +867,7 @@ CommandStorageBackend::FindLastSessionFile() const {
       GetLegacySessionPath(type_, supplied_path_, true);
   if (base::PathExists(legacy_session))
     return SessionInfo{legacy_session, base::Time()};
-  return absl::nullopt;
+  return std::nullopt;
 }
 
 void CommandStorageBackend::DeleteLastSessionFiles() const {

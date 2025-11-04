@@ -8,6 +8,7 @@
 #include <atk/atk.h>
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 
@@ -15,7 +16,6 @@
 #include "base/memory/raw_ptr.h"
 #include "base/memory/raw_ptr_exclusion.h"
 #include "base/strings/utf_offset_string_conversions.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "ui/accessibility/ax_enums.mojom-forward.h"
 #include "ui/accessibility/platform/ax_platform_node_base.h"
 
@@ -50,31 +50,6 @@ struct FindInPageResultInfo {
     return (node == other.node) && (start_offset == other.start_offset) &&
            (end_offset == other.end_offset);
   }
-};
-
-// AtkTableCell was introduced in ATK 2.12. Ubuntu Trusty has ATK 2.10.
-// Compile-time checks are in place for ATK versions that are older than 2.12.
-// However, we also need runtime checks in case the version we are building
-// against is newer than the runtime version. To prevent a runtime error, we
-// check that we have a version of ATK that supports AtkTableCell. If we do,
-// we dynamically load the symbol; if we don't, the interface is absent from
-// the accessible object and its methods will not be exposed or callable.
-// The definitions below ensure we have no missing symbols. Note that in
-// environments where we have ATK > 2.12, the definitions of AtkTableCell and
-// AtkTableCellIface below are overridden by the runtime version.
-// TODO(accessibility) Remove AtkTableCellInterface when 2.12 is the minimum
-// supported version.
-struct COMPONENT_EXPORT(AX_PLATFORM) AtkTableCellInterface {
-  typedef struct _AtkTableCell AtkTableCell;
-  static GType GetType();
-  static GPtrArray* GetColumnHeaderCells(AtkTableCell* cell);
-  static GPtrArray* GetRowHeaderCells(AtkTableCell* cell);
-  static bool GetRowColumnSpan(AtkTableCell* cell,
-                               gint* row,
-                               gint* column,
-                               gint* row_span,
-                               gint* col_span);
-  static bool Exists();
 };
 
 // This class with an enum is used to generate a bitmask which tracks the ATK
@@ -179,7 +154,7 @@ class COMPONENT_EXPORT(AX_PLATFORM) AXPlatformNodeAuraLinux
 #endif  // defined(ATK_CHECK_VERSION) && ATK_CHECK_VERSION(2, 30, 0)
 
 #if defined(ATK_CHECK_VERSION) && ATK_CHECK_VERSION(2, 32, 0)
-  absl::optional<gfx::Rect> GetUnclippedHypertextRangeBoundsRect(
+  std::optional<gfx::Rect> GetUnclippedHypertextRangeBoundsRect(
       int start_offset,
       int end_offset);
   bool ScrollSubstringIntoView(AtkScrollType atk_scroll_type,
@@ -240,7 +215,7 @@ class COMPONENT_EXPORT(AX_PLATFORM) AXPlatformNodeAuraLinux
 
   // AXPlatformNodeBase overrides.
   bool IsPlatformCheckable() const override;
-  absl::optional<size_t> GetIndexInParent() override;
+  std::optional<size_t> GetIndexInParent() override;
 
   bool IsNameExposed();
 
@@ -283,15 +258,15 @@ class COMPONENT_EXPORT(AX_PLATFORM) AXPlatformNodeAuraLinux
   void TerminateFindInPage();
 
   // If there is a find in page result for the toplevel document of this node,
-  // return it, otherwise return absl::nullopt;
-  absl::optional<FindInPageResultInfo> GetSelectionOffsetsFromFindInPage();
+  // return it, otherwise return std::nullopt;
+  std::optional<FindInPageResultInfo> GetSelectionOffsetsFromFindInPage();
 
   std::pair<int, int> GetSelectionOffsetsForAtk();
 
   // Get the embedded object ("hyperlink") indices for this object in the
   // parent. If this object doesn't have a parent or isn't embedded, return
   // nullopt.
-  absl::optional<std::pair<int, int>> GetEmbeddedObjectIndices();
+  std::optional<std::pair<int, int>> GetEmbeddedObjectIndices();
 
   std::string accessible_name_;
 
@@ -305,8 +280,8 @@ class COMPONENT_EXPORT(AX_PLATFORM) AXPlatformNodeAuraLinux
   // but the ATK APIs want all offsets to be in "characters," which we
   // understand to be Unicode character offsets. We keep a lazily generated set
   // of Adjustments to convert between UTF-16 and Unicode character offsets.
-  absl::optional<base::OffsetAdjuster::Adjustments> text_unicode_adjustments_ =
-      absl::nullopt;
+  std::optional<base::OffsetAdjuster::Adjustments> text_unicode_adjustments_ =
+      std::nullopt;
 
   void AddAttributeToList(const char* name,
                           const char* value,
@@ -327,7 +302,7 @@ class COMPONENT_EXPORT(AX_PLATFORM) AXPlatformNodeAuraLinux
                         AtkRelationType,
                         AXPlatformNode* target);
   bool IsInLiveRegion();
-  absl::optional<std::pair<int, int>> GetEmbeddedObjectIndicesForId(int id);
+  std::optional<std::pair<int, int>> GetEmbeddedObjectIndicesForId(int id);
 
   void ComputeStylesIfNeeded();
   int FindStartOfStyle(int start_offset, ax::mojom::MoveDirection direction);
@@ -384,8 +359,8 @@ class COMPONENT_EXPORT(AX_PLATFORM) AXPlatformNodeAuraLinux
   std::pair<int32_t, int> GetCurrentCaret() const { return current_caret_; }
 
   // If the given argument can be found as a child of this node, return its
-  // hypertext extents, otherwise return absl::nullopt;
-  absl::optional<std::pair<int, int>> GetHypertextExtentsOfChild(
+  // hypertext extents, otherwise return std::nullopt;
+  std::optional<std::pair<int, int>> GetHypertextExtentsOfChild(
       AXPlatformNodeAuraLinux* child);
 
   // The AtkStateType for a checkable node can vary depending on the role.
@@ -399,12 +374,12 @@ class COMPONENT_EXPORT(AX_PLATFORM) AXPlatformNodeAuraLinux
   ImplementedAtkInterfaces interface_mask_;
 
   // We own a reference to these ref-counted objects.
-  // RAW_PTR_EXCLUSION: in-out-arg usage.
-  RAW_PTR_EXCLUSION AtkObject* atk_object_ = nullptr;
-  RAW_PTR_EXCLUSION AtkHyperlink* atk_hyperlink_ = nullptr;
+  raw_ptr<AtkObject, DanglingUntriaged> atk_object_ = nullptr;
+  raw_ptr<AtkHyperlink, DanglingUntriaged> atk_hyperlink_ = nullptr;
 
-  // A weak pointers which help us track the ATK embeds relation.
-  // RAW_PTR_EXCLUSION: #addr-of
+  // A weak pointer which help us track the ATK embeds relation.
+  // RAW_PTR_EXCLUSION: #addr-of and not much we can do about it (see
+  // crbug.com/346693629).
   RAW_PTR_EXCLUSION AtkObject* document_parent_ = nullptr;
 
   // Whether or not this node (if it is a frame or a window) was

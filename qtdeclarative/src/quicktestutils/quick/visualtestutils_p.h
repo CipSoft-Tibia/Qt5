@@ -41,8 +41,16 @@ namespace QQuickVisualTestUtils
     template<typename F>
     void forEachStep(int steps, F &&func)
     {
+        if (steps == 1) {
+            // that's odd usage, but cut to the chase then
+            func(qreal(1));
+            return;
+        }
+
         for (int i = 0; i < steps; ++i) {
-            const qreal progress = qreal(i) / steps;
+            // - 1 because that gives us {0, 0.5, 1} for progress (if steps == 3),
+            // rather than {0, 0.33, 0.66}.
+            const qreal progress = qreal(i) / (steps - 1);
             func(progress);
         }
     }
@@ -53,6 +61,7 @@ namespace QQuickVisualTestUtils
     {
     public:
         PointLerper(QQuickWindow *window,
+            const QPoint &startingPosition = QPoint(0, 0),
             const QPointingDevice *pointingDevice = QPointingDevice::primaryPointingDevice());
 
         void move(const QPoint &pos, int steps = 10, int delayInMilliseconds = 1);
@@ -225,12 +234,17 @@ namespace QQuickVisualTestUtils
     QPoint mapToWindow(const QQuickItem *item, const QPointF &relativePos);
 }
 
-#define QQUICK_VERIFY_POLISH(item) \
-    QTRY_COMPARE(QQuickItemPrivate::get(item)->polishScheduled, false)
-
 #define SKIP_IF_NO_WINDOW_ACTIVATION \
-if (!(QGuiApplicationPrivate::platformIntegration()->hasCapability(QPlatformIntegration::WindowActivation))) \
-    QSKIP("Window activation is not supported on this platform");
+do { \
+    if (!(QGuiApplicationPrivate::platformIntegration()->hasCapability(QPlatformIntegration::WindowActivation))) \
+        QSKIP("Window activation is not supported on this platform"); \
+} while (false)
+
+#define SKIP_IF_NO_WINDOW_GRAB \
+do { \
+    if (QGuiApplication::platformName() == QLatin1String("minimal")) \
+        QSKIP("grabWindow is not supported on the minimal platform"); \
+} while (false)
 
 #define SKIP_IF_NO_MOUSE_HOVER \
 do { \

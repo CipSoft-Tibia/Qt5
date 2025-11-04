@@ -120,19 +120,7 @@ func (c Content) Write(w io.Writer) error {
 			}
 		}
 		for _, expectation := range chunk.Expectations {
-			parts := []string{}
-			if expectation.Bug != "" {
-				parts = append(parts, expectation.Bug)
-			}
-			if len(expectation.Tags) > 0 {
-				parts = append(parts, fmt.Sprintf("[ %v ]", strings.Join(expectation.Tags.List(), " ")))
-			}
-			parts = append(parts, expectation.Query)
-			parts = append(parts, fmt.Sprintf("[ %v ]", strings.Join(expectation.Status, " ")))
-			if expectation.Comment != "" {
-				parts = append(parts, expectation.Comment)
-			}
-			if _, err := fmt.Fprintln(w, strings.Join(parts, " ")); err != nil {
+			if _, err := fmt.Fprintln(w, expectation.AsExpectationFileString()); err != nil {
 				return err
 			}
 		}
@@ -145,6 +133,13 @@ func (c Content) String() string {
 	sb := strings.Builder{}
 	c.Write(&sb)
 	return sb.String()
+}
+
+// Format sorts each chunk of the Content in place.
+func (c *Content) Format() {
+	for _, chunk := range c.Chunks {
+		chunk.Expectations.Sort()
+	}
 }
 
 // IsCommentOnly returns true if the Chunk contains comments and no expectations.
@@ -163,6 +158,24 @@ func (c Chunk) Clone() Chunk {
 		expectations[i] = e.Clone()
 	}
 	return Chunk{comments, expectations}
+}
+
+// AsExpectationFileString returns the human-readable form of the expectation
+// that matches the syntax of the expectation files.
+func (e Expectation) AsExpectationFileString() string {
+	parts := []string{}
+	if e.Bug != "" {
+		parts = append(parts, e.Bug)
+	}
+	if len(e.Tags) > 0 {
+		parts = append(parts, fmt.Sprintf("[ %v ]", strings.Join(e.Tags.List(), " ")))
+	}
+	parts = append(parts, e.Query)
+	parts = append(parts, fmt.Sprintf("[ %v ]", strings.Join(e.Status, " ")))
+	if e.Comment != "" {
+		parts = append(parts, e.Comment)
+	}
+	return strings.Join(parts, " ")
 }
 
 // Clone makes a deep-copy of the Expectation.
@@ -188,23 +201,21 @@ func (e Expectation) Clone() Expectation {
 //	 1 if a should come after b
 //	 0 if a and b are identical
 //
-// Note: Only comparing bug, query, and tags (in that order).
-func (a Expectation) Compare(b Expectation) int {
-	switch strings.Compare(a.Bug, b.Bug) {
+// Note: Only comparing bug, tags, and query (in that order).
+func (e Expectation) Compare(b Expectation) int {
+	switch strings.Compare(e.Bug, b.Bug) {
 	case -1:
 		return -1
 	case 1:
 		return 1
 	}
-	switch strings.Compare(a.Query, b.Query) {
+	switch strings.Compare(result.TagsToString(e.Tags), result.TagsToString(b.Tags)) {
 	case -1:
 		return -1
 	case 1:
 		return 1
 	}
-	aTag := result.TagsToString(a.Tags)
-	bTag := result.TagsToString(b.Tags)
-	switch strings.Compare(aTag, bTag) {
+	switch strings.Compare(e.Query, b.Query) {
 	case -1:
 		return -1
 	case 1:
@@ -213,6 +224,7 @@ func (a Expectation) Compare(b Expectation) int {
 	return 0
 }
 
-func (l Expectations) Sort() {
-	sort.Slice(l, func(i, j int) bool { return l[i].Compare(l[j]) < 0 })
+// Sort sorts the expectations in-place
+func (e Expectations) Sort() {
+	sort.Slice(e, func(i, j int) bool { return e[i].Compare(e[j]) < 0 })
 }

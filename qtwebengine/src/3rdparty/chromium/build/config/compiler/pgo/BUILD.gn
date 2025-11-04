@@ -17,6 +17,12 @@ config("pgo_instrumentation_flags") {
   # are not required to be defined when we're not actually using PGO.
   if (chrome_pgo_phase == 1 && is_clang && !is_nacl && is_a_target_toolchain) {
     cflags = [ "-fprofile-generate" ]
+    if (temporal_pgo_profile) {
+      cflags += [
+        "-mllvm",
+        "-pgo-temporal-instrumentation",
+      ]
+    }
     if (!is_win) {
       # Windows directly calls link.exe instead of the compiler driver when
       # linking, and embeds the path to the profile runtime library as
@@ -58,7 +64,9 @@ config("pgo_optimization_flags") {
       _pgo_target = "linux"
     } else if (is_chromeos_lacros) {
       if (target_cpu == "arm") {
-        _pgo_target = "lacros-arm"
+        # We don't have the arm device to train arm pgo data. So Lacros arm
+        # would use arm64 profile.
+        _pgo_target = "lacros-arm64"
       } else if (target_cpu == "arm64") {
         _pgo_target = "lacros-arm64"
       } else {

@@ -27,13 +27,13 @@
 
 #include "src/tint/lang/wgsl/ast/break_if_statement.h"
 
-#include "gtest/gtest-spi.h"
 #include "src/tint/lang/wgsl/ast/helper_test.h"
 
 namespace tint::ast {
 namespace {
 
 using BreakIfStatementTest = TestHelper;
+using BreakIfStatementDeathTest = BreakIfStatementTest;
 
 TEST_F(BreakIfStatementTest, Creation) {
     auto* cond = Expr("cond");
@@ -48,8 +48,8 @@ TEST_F(BreakIfStatementTest, IsBreakIf) {
     EXPECT_TRUE(stmt->Is<BreakIfStatement>());
 }
 
-TEST_F(BreakIfStatementTest, Assert_Null_Condition) {
-    EXPECT_FATAL_FAILURE(
+TEST_F(BreakIfStatementDeathTest, Assert_Null_Condition) {
+    EXPECT_DEATH_IF_SUPPORTED(
         {
             ProgramBuilder b;
             b.BreakIf(nullptr);
@@ -57,8 +57,8 @@ TEST_F(BreakIfStatementTest, Assert_Null_Condition) {
         "internal compiler error");
 }
 
-TEST_F(BreakIfStatementTest, Assert_DifferentGenerationID_Cond) {
-    EXPECT_FATAL_FAILURE(
+TEST_F(BreakIfStatementDeathTest, Assert_DifferentGenerationID_Cond) {
+    EXPECT_DEATH_IF_SUPPORTED(
         {
             ProgramBuilder b1;
             ProgramBuilder b2;

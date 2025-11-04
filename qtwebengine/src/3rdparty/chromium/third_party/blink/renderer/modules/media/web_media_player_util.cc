@@ -26,7 +26,7 @@ void RunSetSinkIdCallback(blink::WebSetSinkIdCompleteCallback callback,
                           media::OutputDeviceStatus result) {
   switch (result) {
     case media::OUTPUT_DEVICE_STATUS_OK:
-      std::move(callback).Run(/*error =*/absl::nullopt);
+      std::move(callback).Run(/*error =*/std::nullopt);
       break;
     case media::OUTPUT_DEVICE_STATUS_ERROR_NOT_FOUND:
       std::move(callback).Run(blink::WebSetSinkIdError::kNotFound);
@@ -118,7 +118,7 @@ WebMediaPlayer::NetworkState PipelineErrorToNetworkState(
       return WebMediaPlayer::kNetworkStateDecodeError;
 
     case media::PIPELINE_OK:
-      NOTREACHED() << "Unexpected status! " << error;
+      NOTREACHED_IN_MIGRATION() << "Unexpected status! " << error;
   }
   return WebMediaPlayer::kNetworkStateFormatError;
 }

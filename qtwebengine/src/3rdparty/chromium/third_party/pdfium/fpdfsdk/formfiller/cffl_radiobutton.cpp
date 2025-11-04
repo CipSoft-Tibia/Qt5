@@ -10,11 +10,11 @@
 
 #include "constants/ascii.h"
 #include "core/fpdfdoc/cpdf_formcontrol.h"
+#include "core/fxcrt/check.h"
 #include "fpdfsdk/cpdfsdk_widget.h"
 #include "fpdfsdk/formfiller/cffl_formfield.h"
 #include "fpdfsdk/pwl/cpwl_special_button.h"
 #include "public/fpdf_fwlevent.h"
-#include "third_party/base/check.h"
 
 CFFL_RadioButton::CFFL_RadioButton(CFFL_InteractiveFormFiller* pFormFiller,
                                    CPDFSDK_Widget* pWidget)
@@ -28,7 +28,7 @@ std::unique_ptr<CPWL_Wnd> CFFL_RadioButton::NewPWLWindow(
   auto pWnd = std::make_unique<CPWL_RadioButton>(cp, std::move(pAttachedData));
   pWnd->Realize();
   pWnd->SetCheck(m_pWidget->IsChecked());
-  return std::move(pWnd);
+  return pWnd;
 }
 
 bool CFFL_RadioButton::OnKeyDown(FWL_VKEYCODE nKeyCode,
@@ -90,22 +90,22 @@ bool CFFL_RadioButton::IsDataChanged(const CPDFSDK_PageView* pPageView) {
 }
 
 void CFFL_RadioButton::SaveData(const CPDFSDK_PageView* pPageView) {
-  CPWL_RadioButton* pWnd = GetPWLRadioButton(pPageView);
-  if (!pWnd)
-    return;
-
-  bool bNewChecked = pWnd->IsChecked();
-  ObservedPtr<CPDFSDK_Widget> observed_widget(m_pWidget);
   ObservedPtr<CFFL_RadioButton> observed_this(this);
-  m_pWidget->SetCheck(bNewChecked);
-  if (!observed_widget)
+  CPWL_RadioButton* pWnd = observed_this->GetPWLRadioButton(pPageView);
+  if (!pWnd) {
     return;
-
-  m_pWidget->UpdateField();
-  if (!observed_widget || !observed_this)
+  }
+  bool bNewChecked = pWnd->IsChecked();
+  ObservedPtr<CPDFSDK_Widget> observed_widget(observed_this->m_pWidget);
+  observed_widget->SetCheck(bNewChecked);
+  if (!observed_widget) {
     return;
-
-  SetChangeMark();
+  }
+  observed_widget->UpdateField();
+  if (!observed_widget || !observed_this) {
+    return;
+  }
+  observed_this->SetChangeMark();
 }
 
 CPWL_RadioButton* CFFL_RadioButton::GetPWLRadioButton(

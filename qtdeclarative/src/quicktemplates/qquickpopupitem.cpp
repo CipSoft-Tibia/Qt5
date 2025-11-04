@@ -14,11 +14,12 @@
 
 QT_BEGIN_NAMESPACE
 
-Q_LOGGING_CATEGORY(lcPopupItem, "qt.quick.controls.popupitem")
+Q_STATIC_LOGGING_CATEGORY(lcPopupItem, "qt.quick.controls.popupitem")
 
 QQuickPopupItemPrivate::QQuickPopupItemPrivate(QQuickPopup *popup)
     : popup(popup)
 {
+    isTabFence = true;
 }
 
 QQuickPopupItemPrivate *QQuickPopupItemPrivate::get(QQuickPopupItem *popupItem)

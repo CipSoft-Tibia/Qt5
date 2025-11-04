@@ -41,7 +41,7 @@ export class ConsoleContextSelector implements SDK.TargetManager.SDKModelObserve
     this.toolbarItemInternal.setEnabled(false);
     this.toolbarItemInternal.setTitle(i18nString(UIStrings.javascriptContextNotSelected));
     this.items.addEventListener(
-        UI.ListModel.Events.ItemsReplaced, () => this.toolbarItemInternal.setEnabled(Boolean(this.items.length)));
+        UI.ListModel.Events.ITEMS_REPLACED, () => this.toolbarItemInternal.setEnabled(Boolean(this.items.length)));
 
     this.toolbarItemInternal.element.classList.add('toolbar-has-dropdown');
 
@@ -212,7 +212,7 @@ export class ConsoleContextSelector implements SDK.TargetManager.SDKModelObserve
 
   createElementForItem(item: SDK.RuntimeModel.ExecutionContext): Element {
     const element = document.createElement('div');
-    const shadowRoot = UI.Utils.createShadowRootWithCoreStyles(
+    const shadowRoot = UI.UIUtils.createShadowRootWithCoreStyles(
         element, {cssFile: [consoleContextSelectorStyles], delegatesFocus: undefined});
     const title = shadowRoot.createChild('div', 'title');
     UI.UIUtils.createTextChild(title, Platform.StringUtilities.trimEndWithMaxLength(this.titleFor(item), 100));

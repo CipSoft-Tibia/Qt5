@@ -1,5 +1,6 @@
 // Copyright (C) 2022 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qnetworkrequest.h"
 #include "qnetworkrequest_p.h"
@@ -424,7 +425,7 @@ QT_IMPL_METATYPE_EXTERN_TAGGED(QNetworkRequest::RedirectPolicy, QNetworkRequest_
     timeouts with a preset value.
 
     \value DefaultTransferTimeoutConstant     The transfer timeout in milliseconds.
-                                              Used if setTimeout() is called
+                                              Used if setTransferTimeout() is called
                                               without an argument.
 
     \sa QNetworkRequest::DefaultTransferTimeout

@@ -22,6 +22,7 @@ angle_translator_sources = [
   "include/GLES3/gl3platform.h",
   "include/KHR/khrplatform.h",
   "include/angle_gl.h",
+  "src/compiler/translator/AsNode.h",
   "src/compiler/translator/BaseTypes.cpp",
   "src/compiler/translator/BaseTypes.h",
   "src/compiler/translator/BuiltInFunctionEmulator.cpp",
@@ -62,8 +63,11 @@ angle_translator_sources = [
   "src/compiler/translator/InitializeGlobals.h",
   "src/compiler/translator/IntermNode.cpp",
   "src/compiler/translator/IntermNode.h",
+  "src/compiler/translator/IntermRebuild.cpp",
+  "src/compiler/translator/IntermRebuild.h",
   "src/compiler/translator/IsASTDepthBelowLimit.cpp",
   "src/compiler/translator/IsASTDepthBelowLimit.h",
+  "src/compiler/translator/NodeType.h",
   "src/compiler/translator/Operator.cpp",
   "src/compiler/translator/Operator_autogen.h",
   "src/compiler/translator/OutputTree.cpp",
@@ -175,8 +179,6 @@ angle_translator_sources = [
   "src/compiler/translator/tree_ops/RewriteArrayOfArrayOfOpaqueUniforms.h",
   "src/compiler/translator/tree_ops/RewriteAtomicCounters.cpp",
   "src/compiler/translator/tree_ops/RewriteAtomicCounters.h",
-  "src/compiler/translator/tree_ops/RewriteCubeMapSamplersAs2DArray.cpp",
-  "src/compiler/translator/tree_ops/RewriteCubeMapSamplersAs2DArray.h",
   "src/compiler/translator/tree_ops/RewriteDfdy.cpp",
   "src/compiler/translator/tree_ops/RewriteDfdy.h",
   "src/compiler/translator/tree_ops/RewritePixelLocalStorage.cpp",
@@ -187,6 +189,8 @@ angle_translator_sources = [
   "src/compiler/translator/tree_ops/RewriteTexelFetchOffset.h",
   "src/compiler/translator/tree_ops/SeparateDeclarations.cpp",
   "src/compiler/translator/tree_ops/SeparateDeclarations.h",
+  "src/compiler/translator/tree_ops/SeparateStructFromFunctionDeclarations.cpp",
+  "src/compiler/translator/tree_ops/SeparateStructFromFunctionDeclarations.h",
   "src/compiler/translator/tree_ops/SeparateStructFromUniformDeclarations.cpp",
   "src/compiler/translator/tree_ops/SeparateStructFromUniformDeclarations.h",
   "src/compiler/translator/tree_ops/SimplifyLoopConditions.cpp",
@@ -241,6 +245,7 @@ angle_translator_sources = [
   "src/compiler/translator/tree_util/Visit.h",
   "src/compiler/translator/util.cpp",
   "src/compiler/translator/util.h",
+  "src/compiler/translator/wgsl/TranslatorWGSL.h",
 ]
 angle_translator_glsl_base_sources = [
   "src/compiler/translator/glsl/OutputGLSLBase.cpp",
@@ -373,7 +378,6 @@ angle_translator_glsl_symbol_table_sources = [
 ]
 
 angle_translator_lib_msl_sources = [
-  "src/compiler/translator/msl/AsNode.h",
   "src/compiler/translator/msl/AstHelpers.cpp",
   "src/compiler/translator/msl/AstHelpers.h",
   "src/compiler/translator/msl/ConstantNames.cpp",
@@ -387,8 +391,6 @@ angle_translator_lib_msl_sources = [
   "src/compiler/translator/msl/EmitMetal.h",
   "src/compiler/translator/msl/IdGen.cpp",
   "src/compiler/translator/msl/IdGen.h",
-  "src/compiler/translator/msl/IntermRebuild.cpp",
-  "src/compiler/translator/msl/IntermRebuild.h",
   "src/compiler/translator/msl/Layout.cpp",
   "src/compiler/translator/msl/Layout.h",
   "src/compiler/translator/msl/MapFunctionsToDefinitions.cpp",
@@ -399,7 +401,6 @@ angle_translator_lib_msl_sources = [
   "src/compiler/translator/msl/ModifyStruct.h",
   "src/compiler/translator/msl/Name.cpp",
   "src/compiler/translator/msl/Name.h",
-  "src/compiler/translator/msl/NodeType.h",
   "src/compiler/translator/msl/Pipeline.cpp",
   "src/compiler/translator/msl/Pipeline.h",
   "src/compiler/translator/msl/ProgramPrelude.cpp",
@@ -447,6 +448,14 @@ angle_translator_lib_msl_sources = [
   "src/compiler/translator/tree_ops/msl/TransposeRowMajorMatrices.h",
   "src/compiler/translator/tree_ops/msl/WrapMain.cpp",
   "src/compiler/translator/tree_ops/msl/WrapMain.h",
+]
+
+angle_translator_lib_wgsl_sources = [
+  "src/compiler/translator/wgsl/RewritePipelineVariables.cpp",
+  "src/compiler/translator/wgsl/RewritePipelineVariables.h",
+  "src/compiler/translator/wgsl/TranslatorWGSL.cpp",
+  "src/compiler/translator/wgsl/WriteTypeName.cpp",
+  "src/compiler/translator/wgsl/WriteTypeName.h",
 ]
 
 angle_preprocessor_sources = [

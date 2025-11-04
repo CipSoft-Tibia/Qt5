@@ -9,15 +9,18 @@
 #include <algorithm>
 #include <utility>
 
+#include "core/fxcrt/check.h"
+#include "core/fxcrt/check_op.h"
+#include "core/fxcrt/compiler_specific.h"
 #include "core/fxcrt/fx_extension.h"
-#include "core/fxcrt/span_util.h"
+#include "core/fxcrt/numerics/safe_conversions.h"
+#include "core/fxcrt/stl_util.h"
 #include "core/fxge/text_char_pos.h"
-#include "third_party/base/check.h"
-#include "third_party/base/check_op.h"
-#include "third_party/base/numerics/safe_conversions.h"
 #include "xfa/fde/cfde_textout.h"
 #include "xfa/fde/cfde_wordbreak_data.h"
 #include "xfa/fgas/font/cfgas_gefont.h"
+
+namespace pdfium {
 
 namespace {
 
@@ -155,13 +158,14 @@ void CFDE_TextEditEngine::AdjustGap(size_t idx, size_t length) {
 
   // Move the gap, if necessary.
   if (idx < gap_position_) {
-    memmove(content_.data() + idx + gap_size_, content_.data() + idx,
-            (gap_position_ - idx) * char_size);
+    UNSAFE_TODO(FXSYS_memmove(content_.data() + idx + gap_size_,
+                              content_.data() + idx,
+                              (gap_position_ - idx) * char_size));
     gap_position_ = idx;
   } else if (idx > gap_position_) {
-    memmove(content_.data() + gap_position_,
-            content_.data() + gap_position_ + gap_size_,
-            (idx - gap_position_) * char_size);
+    UNSAFE_TODO(FXSYS_memmove(content_.data() + gap_position_,
+                              content_.data() + gap_position_ + gap_size_,
+                              (idx - gap_position_) * char_size));
     gap_position_ = idx;
   }
 
@@ -170,9 +174,9 @@ void CFDE_TextEditEngine::AdjustGap(size_t idx, size_t length) {
     size_t new_gap_size = length + kGapSize;
     content_.resize(text_length_ + new_gap_size);
 
-    memmove(content_.data() + gap_position_ + new_gap_size,
-            content_.data() + gap_position_ + gap_size_,
-            (text_length_ - gap_position_) * char_size);
+    UNSAFE_TODO(FXSYS_memmove(content_.data() + gap_position_ + new_gap_size,
+                              content_.data() + gap_position_ + gap_size_,
+                              (text_length_ - gap_position_) * char_size));
 
     gap_size_ = new_gap_size;
   }
@@ -283,14 +287,14 @@ void CFDE_TextEditEngine::Insert(size_t idx,
 
   if (validation_enabled_ || limit_horizontal_area_ || limit_vertical_area_) {
     WideString str;
-    if (gap_position_ > 0)
-      str += WideStringView(content_.data(), gap_position_);
-
+    if (gap_position_ > 0) {
+      str += WideStringView(make_span(content_).first(gap_position_));
+    }
     str += text;
 
     if (text_length_ - gap_position_ > 0) {
-      str += WideStringView(content_.data() + gap_position_ + gap_size_,
-                            text_length_ - gap_position_);
+      str += WideStringView(make_span(content_).subspan(
+          gap_position_ + gap_size_, text_length_ - gap_position_));
     }
 
     if (validation_enabled_ && delegate_ && !delegate_->OnValidate(str)) {
@@ -326,8 +330,9 @@ void CFDE_TextEditEngine::Insert(size_t idx,
     previous_text = GetText();
 
   // Copy the new text into the gap.
-  fxcrt::spancpy(pdfium::make_span(content_).subspan(gap_position_),
-                 text.span().first(length));
+  fxcrt::Copy(text.span().first(length),
+              make_span(content_).subspan(gap_position_));
+
   gap_position_ += length;
   gap_size_ -= length;
   text_length_ += length;
@@ -753,28 +758,28 @@ WideString CFDE_TextEditEngine::GetSelectedText() const {
   if (selection_.start_idx < gap_position_) {
     // Fully on left of gap.
     if (selection_.start_idx + selection_.count < gap_position_) {
-      text += WideStringView(content_.data() + selection_.start_idx,
-                             selection_.count);
+      text += WideStringView(
+          make_span(content_).subspan(selection_.start_idx, selection_.count));
       return text;
     }
 
     // Pre-gap text
-    text += WideStringView(content_.data() + selection_.start_idx,
-                           gap_position_ - selection_.start_idx);
+    text += WideStringView(make_span(content_).subspan(
+        selection_.start_idx, gap_position_ - selection_.start_idx));
 
     if (selection_.count - (gap_position_ - selection_.start_idx) > 0) {
       // Post-gap text
-      text += WideStringView(
-          content_.data() + gap_position_ + gap_size_,
-          selection_.count - (gap_position_ - selection_.start_idx));
+      text += WideStringView(make_span(content_).subspan(
+          gap_position_ + gap_size_,
+          selection_.count - (gap_position_ - selection_.start_idx)));
     }
 
     return text;
   }
 
   // Fully right of gap
-  text += WideStringView(content_.data() + gap_size_ + selection_.start_idx,
-                         selection_.count);
+  text += WideStringView(make_span(content_).subspan(
+      gap_size_ + selection_.start_idx, selection_.count));
   return text;
 }
 
@@ -817,8 +822,8 @@ WideString CFDE_TextEditEngine::Delete(size_t start_idx,
   length = std::min(length, text_length_ - start_idx);
   AdjustGap(start_idx + length, 0);
 
-  WideString ret;
-  ret += WideStringView(content_.data() + start_idx, length);
+  WideString ret(
+      WideStringView(make_span(content_).subspan(start_idx, length)));
 
   if (add_operation == RecordOperation::kInsertRecord) {
     AddOperationRecord(std::make_unique<DeleteOperation>(this, start_idx, ret));
@@ -873,11 +878,12 @@ void CFDE_TextEditEngine::ReplaceSelectedText(const WideString& requested_rep) {
 
 WideString CFDE_TextEditEngine::GetText() const {
   WideString str;
-  if (gap_position_ > 0)
-    str += WideStringView(content_.data(), gap_position_);
+  if (gap_position_ > 0) {
+    str += WideStringView(make_span(content_).first(gap_position_));
+  }
   if (text_length_ - gap_position_ > 0) {
-    str += WideStringView(content_.data() + gap_position_ + gap_size_,
-                          text_length_ - gap_position_);
+    str += WideStringView(make_span(content_).subspan(
+        gap_position_ + gap_size_, text_length_ - gap_position_));
   }
   return str;
 }
@@ -1030,8 +1036,8 @@ std::vector<TextCharPos> CFDE_TextEditEngine::GetDisplayPos(
   tr.dwCharStyles = piece.dwCharStyles;
   tr.pRect = &piece.rtPiece;
 
-  std::vector<TextCharPos> data(text_break_.GetDisplayPos(tr, nullptr));
-  text_break_.GetDisplayPos(tr, data.data());
+  std::vector<TextCharPos> data(text_break_.GetDisplayPos(tr, {}));
+  text_break_.GetDisplayPos(tr, data);
   return data;
 }
 
@@ -1071,8 +1077,7 @@ void CFDE_TextEditEngine::RebuildPieces() {
       txtEdtPiece.rtPiece.top = current_line_start;
       txtEdtPiece.rtPiece.width = piece->GetWidth() / 20000.0f;
       txtEdtPiece.rtPiece.height = line_spacing_;
-      txtEdtPiece.nStart =
-          pdfium::base::checked_cast<int32_t>(current_piece_start);
+      txtEdtPiece.nStart = checked_cast<int32_t>(current_piece_start);
       txtEdtPiece.nCount = piece->GetCharCount();
       txtEdtPiece.nBidiLevel = piece->GetBidiLevel();
       txtEdtPiece.dwCharStyles = piece->GetCharStyles();
@@ -1204,7 +1209,7 @@ wchar_t CFDE_TextEditEngine::Iterator::GetChar() const {
 
 void CFDE_TextEditEngine::Iterator::SetAt(size_t nIndex) {
   nIndex = std::min(nIndex, engine_->GetLength());
-  current_position_ = pdfium::base::checked_cast<int32_t>(nIndex);
+  current_position_ = checked_cast<int32_t>(nIndex);
 }
 
 bool CFDE_TextEditEngine::Iterator::IsEOF(bool bPrev) const {
@@ -1269,3 +1274,5 @@ size_t CFDE_TextEditEngine::Iterator::FindNextBreakPos(bool bPrev) {
   }
   return current_position_ > -1 ? current_position_ : 0;
 }
+
+}  // namespace pdfium

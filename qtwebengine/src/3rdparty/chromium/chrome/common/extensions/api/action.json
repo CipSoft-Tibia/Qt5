@@ -29,12 +29,23 @@
         "description": "The collection of user-specified settings relating to an extension's action."
       },
       {
+        "id": "UserSettingsChange",
+        "type": "object",
+        "properties": {
+          "isOnToolbar": {
+            "type": "boolean",
+            "description": "Whether the extension's action icon is visible on browser windows' top-level toolbar (i.e., whether the extension has been 'pinned' by the user).",
+            "optional": true
+          }
+        }
+      },
+      {
         "id": "OpenPopupOptions",
         "type": "object",
         "properties": {
           "windowId": {
             "type": "integer",
-            "description": "The id of the window to open the action popup in. Defaults to the currently-active window if unspecified.",
+            "description": "The ID of the window to open the action popup in. Defaults to the currently-active window if unspecified.",
             "optional": true
           }
         }
@@ -311,7 +322,7 @@
         "optional": true,
         "name": "tabId",
         "minimum": 0,
-        "description": "The id of the tab for which you want to modify the action."
+        "description": "The ID of the tab for which you want to modify the action."
       }],
       "returns_async": {
         "name": "callback",
@@ -327,7 +338,7 @@
         "optional": true,
         "name": "tabId",
         "minimum": 0,
-        "description": "The id of the tab for which you want to modify the action."
+        "description": "The ID of the tab for which you want to modify the action."
       }],
       "returns_async": {
         "name": "callback",
@@ -344,7 +355,7 @@
           "optional": true,
           "name": "tabId",
           "minimum": 0,
-          "description": "The id of the tab for which you want check enabled status."
+          "description": "The ID of the tab for which you want check enabled status."
         }
       ],
       "returns_async": {
@@ -372,7 +383,7 @@
     }, {
       "name": "openPopup",
       "type": "function",
-      "description": "Opens the extension's popup.",
+      "description": "Opens the extension's popup. Between Chrome 118 and Chrome 126, this is only available to policy installed extensions.",
       "parameters": [{
         "$ref": "OpenPopupOptions",
         "name": "options",
@@ -391,6 +402,14 @@
       "parameters": [{
         "name": "tab",
         "$ref": "tabs.Tab"
+      }]
+    }, {
+      "name": "onUserSettingsChanged",
+      "type": "function",
+      "description": "Fired when user-specified settings relating to an extension's action change.",
+      "parameters": [{
+        "name": "change",
+        "$ref": "UserSettingsChange"
       }]
     }]
   }

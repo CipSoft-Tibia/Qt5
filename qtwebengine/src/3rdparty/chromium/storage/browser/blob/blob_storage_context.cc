@@ -540,7 +540,7 @@ void BlobStorageContext::FinishBuilding(BlobEntry* entry) {
         case BlobDataItem::Type::kBytesDescription:
         case BlobDataItem::Type::kFileFilesystem:
         case BlobDataItem::Type::kReadableDataHandle:
-          NOTREACHED();
+          NOTREACHED_IN_MIGRATION();
           break;
       }
       copy.dest_item->set_state(ShareableBlobDataItem::POPULATED_WITH_QUOTA);
@@ -699,7 +699,7 @@ void BlobStorageContext::RegisterFromMemory(
 
   std::unique_ptr<BlobDataBuilder> builder =
       std::make_unique<BlobDataBuilder>(uuid);
-  builder->AppendData(data.byte_span());
+  builder->AppendData(data);
   std::unique_ptr<BlobDataHandle> handle = AddFinishedBlob(std::move(builder));
   BlobImpl::Create(std::move(handle), std::move(blob));
 }

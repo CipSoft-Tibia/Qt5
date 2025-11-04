@@ -1,9 +1,9 @@
 // Copyright (C) 2017 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
+// Qt-Security score:critical reason:authorization-protocol
 
 #include "qoauthoobreplyhandler.h"
 #include "qoauthoobreplyhandler_p.h"
-#include "qabstractoauthreplyhandler_p.h"
 
 #include <QtCore/qurlquery.h>
 #include <QtCore/qjsonobject.h>
@@ -25,6 +25,9 @@ QOAuthOobReplyHandler::QOAuthOobReplyHandler(QObject *parent)
 QOAuthOobReplyHandler::QOAuthOobReplyHandler(QOAuthOobReplyHandlerPrivate &d, QObject *parent)
     : QAbstractOAuthReplyHandler(d, parent)
 {}
+
+QOAuthOobReplyHandler::~QOAuthOobReplyHandler()
+    = default; // must be empty until Qt 7 (was inline until Qt 6.8)
 
 QString QOAuthOobReplyHandler::callback() const
 {

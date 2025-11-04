@@ -1,6 +1,7 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // Copyright (C) 2017 Intel Corporation.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qnetworkinterface.h"
 #include "qnetworkinterface_p.h"
@@ -29,8 +30,8 @@ static QList<QNetworkInterfacePrivate *> postProcess(QList<QNetworkInterfacePriv
     // The math is:
     //    broadcast = IP | ~netmask
 
-    for (QNetworkInterfacePrivate *interface : list) {
-        for (QNetworkAddressEntry &address : interface->addressEntries) {
+    for (QNetworkInterfacePrivate *iface : list) {
+        for (QNetworkAddressEntry &address : iface->addressEntries) {
             if (address.ip().protocol() != QAbstractSocket::IPv4Protocol)
                 continue;
 
@@ -62,11 +63,11 @@ QSharedDataPointer<QNetworkInterfacePrivate> QNetworkInterfaceManager::interface
     bool ok;
     uint index = name.toUInt(&ok);
 
-    for (const auto &interface : interfaceList) {
-        if (ok && interface->index == int(index))
-            return interface;
-        else if (interface->name == name)
-            return interface;
+    for (const auto &iface : interfaceList) {
+        if (ok && iface->index == int(index))
+            return iface;
+        else if (iface->name == name)
+            return iface;
     }
 
     return empty;
@@ -75,9 +76,9 @@ QSharedDataPointer<QNetworkInterfacePrivate> QNetworkInterfaceManager::interface
 QSharedDataPointer<QNetworkInterfacePrivate> QNetworkInterfaceManager::interfaceFromIndex(int index)
 {
     const auto interfaceList = allInterfaces();
-    for (const auto &interface : interfaceList) {
-        if (interface->index == index)
-            return interface;
+    for (const auto &iface : interfaceList) {
+        if (iface->index == index)
+            return iface;
     }
 
     return empty;

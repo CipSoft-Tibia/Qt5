@@ -49,6 +49,13 @@
   border: none;
   white-space: pre;
   overflow: hidden;
+  max-width: 100%;
+}
+
+devtools-adorner.fix-perf-icon {
+  --override-adorner-text-color: transparent;
+  --override-adorner-border-color: transparent;
+  --override-adorner-background-color: transparent;
 }
 
 .toolbar-item,
@@ -68,7 +75,6 @@ devtools-issue-counter.toolbar-item {
 }
 
 devtools-issue-counter.main-toolbar {
-  margin-top: 1px;
   margin-left: 1px;
   margin-right: 1px;
 }
@@ -76,7 +82,11 @@ devtools-issue-counter.main-toolbar {
 .toolbar-dropdown-arrow {
   pointer-events: none;
   flex: none;
-  margin-left: -4px;
+  top: 1px;
+}
+
+.toolbar-select-container .toolbar-dropdown-arrow {
+  left: -5px;
 }
 
 .toolbar-button.dark-text .toolbar-dropdown-arrow {
@@ -94,6 +104,18 @@ select.toolbar-item:disabled + .toolbar-dropdown-arrow {
   min-width: 28px;
   background: transparent;
   border-radius: 0;
+
+  &[aria-haspopup="true"][aria-expanded="true"] {
+    pointer-events: none;
+  }
+}
+
+.toolbar-item-search {
+  min-width: 5.2em;
+  max-width: 300px;
+  flex: 1 1 auto;
+  justify-content: start;
+  overflow: revert;
 }
 
 .toolbar-text {
@@ -108,8 +130,39 @@ select.toolbar-item:disabled + .toolbar-dropdown-arrow {
 
 .toolbar-has-dropdown {
   justify-content: space-between;
-  padding: 0 3px 0 5px;
-  border: 1px solid transparent;
+  height: var(--sys-size-9);
+  padding: 0 var(--sys-size-3) 0 var(--sys-size-5);
+  gap: var(--sys-size-2);
+  border-radius: var(--sys-shape-corner-extra-small);
+
+  &:hover::after,
+  &:active::before {
+    content: "";
+    height: 100%;
+    width: 100%;
+    border-radius: inherit;
+    position: absolute;
+    top: 0;
+    left: 0;
+  }
+
+  &:hover::after {
+    background-color: var(--sys-color-state-hover-on-subtle);
+  }
+
+  &:active::before {
+    background-color: var(--sys-color-state-ripple-neutral-on-subtle);
+  }
+
+  &:focus-visible {
+    border: 2px solid var(--sys-color-state-focus-ring);
+  }
+
+  &[disabled] {
+    pointer-events: none;
+    background-color: var(--sys-color-state-disabled-container);
+    color: var(--sys-color-state-disabled);
+  }
 }
 
 .toolbar-has-dropdown-shrinkable {
@@ -117,7 +170,7 @@ select.toolbar-item:disabled + .toolbar-dropdown-arrow {
 }
 
 .toolbar-has-dropdown .toolbar-text {
-  margin: 0 4px 0 0;
+  margin: 0;
   text-overflow: ellipsis;
   flex: auto;
   overflow: hidden;
@@ -140,7 +193,7 @@ select.toolbar-item:disabled + .toolbar-dropdown-arrow {
   outline: auto 5px -webkit-focus-ring-color;
 }
 
-:not(.toolbar-render-as-links) .toolbar-button:focus-visible::before {
+:not(.toolbar-render-as-links) .toolbar-button:not(.toolbar-has-dropdown):focus-visible::before {
   position: absolute;
   top: 2px;
   bottom: 2px;
@@ -211,24 +264,16 @@ select.toolbar-item:disabled + .toolbar-dropdown-arrow {
   font-weight: bold;
 }
 
-.toolbar-blue-on-hover .toolbar-button:not(.toolbar-state-on):enabled:hover:not(:active) {
-  background-color: var(--sys-color-state-hover-on-subtle);
-}
-
-.toolbar-blue-on-hover .toolbar-button:not(.toolbar-state-on):enabled:active:hover {
-  background-color: var(--sys-color-state-hover-on-subtle);
-}
-
-.toolbar-toggled-gray:not(.toolbar-render-as-links) .toolbar-button:not(.toolbar-has-glyph):not(.toolbar-has-dropdown):not(.largeicon-menu):hover {
-  background-color: var(--sys-color-state-hover-on-subtle);
-}
-
 .toolbar-button.dark-text .toolbar-text {
   color: var(--sys-color-on-surface) !important;  /* stylelint-disable-line declaration-no-important */
 }
 
 .toolbar-button.toolbar-state-on .toolbar-text {
   color: var(--sys-color-primary);
+}
+
+.toolbar-button.toolbar-state-on:enabled:active .toolbar-text {
+  color: var(--sys-color-primary-bright);
 }
 
 :not(.toolbar-render-as-links) .toolbar-button:enabled:hover:not(:active) .toolbar-glyph {
@@ -239,26 +284,18 @@ select.toolbar-item:disabled + .toolbar-dropdown-arrow {
   color: var(--sys-color-on-surface);
 }
 
-.toolbar-blue-on-hover .toolbar-button:not(.toolbar-state-on):enabled:hover .toolbar-text {
-  color: var(--sys-color-on-surface);
-}
-
 .toolbar-button.toolbar-state-on:enabled:hover:not(:active) .toolbar-glyph {
   color: var(--sys-color-primary);
 }
 
 .toolbar-button.toolbar-state-on:enabled:hover:not(:active) .toolbar-text {
-  color: var(--sys-color-on-surface);
-}
-
-.toolbar-toggled-gray .toolbar-button.toolbar-state-on {
-  background-color: var(--sys-color-neutral-container) !important; /* stylelint-disable-line declaration-no-important */
+  color: var(--sys-color-primary);
 }
 
 /* Checkbox */
 
 .toolbar-item.checkbox {
-  padding: 0 5px 0 2px;
+  padding: 0 5px 0 0;
 }
 
 /* Select */
@@ -281,60 +318,67 @@ select.toolbar-item {
   margin-bottom: 2px;
 }
 
-select.toolbar-item:disabled {
-  opacity: 50%;
-}
-
 button.toolbar-item:focus-visible,
 select.toolbar-item:focus-visible {
   background: var(--sys-color-state-hover-on-subtle);
   border-radius: 2px;
+
+  &.toolbar-has-dropdown {
+    background: none;
+    border-radius: var(--sys-shape-corner-extra-small);
+  }
 }
 
 select.toolbar-item:focus-visible > * {
   background: var(--sys-color-cdt-base-container);
   border-radius: 7px;
 }
+
+select.toolbar-item:not(.toolbar-has-dropdown):disabled {
+  opacity: 50%;
+}
 /* Input */
 
 .toolbar-input {
+  box-shadow: inset 0 0 0 2px transparent;
+  box-sizing: border-box;
   width: 120px;
-  height: 19px;
-  padding: 4px 3px 3px;
+  height: var(--sys-size-9);
+  padding: 0 var(--sys-size-2) 0 var(--sys-size-5);
   margin: 1px 3px;
-  background: var(--sys-color-cdt-base-container);
-  border: 1px solid var(--sys-color-neutral-outline);
-  border-radius: 4px;
+  border-radius: 100px;
   min-width: 35px;
+  position: relative;
 
-  &.focused,
-  &:not(.toolbar-input-empty) {
-    border-color: var(--sys-color-state-focus-ring);
+  &.focused {
+    box-shadow: inset 0 0 0 2px var(--sys-color-state-focus-ring);
   }
 
-  &:hover:not(.focused) {
-    background: var(--sys-color-state-hover-on-subtle);
+  &:not(:has(devtools-button:hover)):hover {
+    background-color: var(--sys-color-state-hover-on-subtle);
   }
 
-  & > input {
-    border: none;
-    flex-grow: 1;
+  &::before {
+    content: "";
+    box-sizing: inherit;
+    height: 100%;
+    width: 100%;
+    position: absolute;
+    left: 0;
+    background: var(--sys-color-cdt-base);
+    z-index: -1;
   }
-}
 
-.toolbar-input-clear-button {
-  opacity: 70%;
-  flex-basis: 13px;
-  flex-shrink: 0;
-  height: 16px;
-}
+  & > devtools-icon {
+    color: var(--sys-color-on-surface-subtle);
+    width: var(--sys-size-8);
+    height: var(--sys-size-8);
+    margin-right: var(--sys-size-3);
+  }
 
-.toolbar-input-clear-button > .search-cancel-button {
-  display: block;
-}
-
-.toolbar-input-clear-button:hover {
-  opacity: 99%;
+  &.disabled > devtools-icon {
+    color: var(--sys-color-state-disabled);
+  }
 }
 
 .toolbar-input-empty .toolbar-input-clear-button {
@@ -355,7 +399,7 @@ select.toolbar-item:focus-visible > * {
 /* Separator */
 
 .toolbar-divider {
-  background-color: var(--sys-color-on-base-divider);
+  background-color: var(--sys-color-divider);
   width: 1px;
   margin: 5px 4px;
   height: 16px;
@@ -363,13 +407,6 @@ select.toolbar-item:focus-visible > * {
 
 .toolbar-spacer {
   flex: auto;
-}
-/* Long click */
-
-.long-click-glyph {
-  position: absolute;
-  top: 2px;
-  left: 3px;
 }
 
 .toolbar-button.emulate-active {
@@ -401,7 +438,7 @@ input[is="history-input"] {
   border: 1px solid var(--sys-color-neutral-outline);
   border-radius: 4px;
   line-height: 16px;
-  padding: 1px;
+  padding: 1px 1px 1px 3px;
   color: var(--sys-color-on-surface);
 }
 
@@ -485,13 +522,6 @@ devtools-icon.leading-issue-icon {
   .toolbar-button:enabled.hover:not(:active) .toolbar-glyph {
     forced-color-adjust: none;
     color: Highlight;
-  }
-
-  .toolbar-button:focus,
-  .toolbar-button:hover:enabled,
-  .toolbar-toggled-gray:not(.toolbar-render-as-links) .toolbar-button:not(.toolbar-has-glyph):not(.toolbar-has-dropdown):not(.largeicon-menu):hover {
-    forced-color-adjust: none;
-    background-color: Highlight;
   }
 
   :not(.toolbar-render-as-links) .toolbar-button:enabled:hover .toolbar-glyph,

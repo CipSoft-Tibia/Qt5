@@ -15,13 +15,15 @@
 #include <vector>
 
 #include "gtest/gtest.h"
-#include "absl/flags/parse.h"
 #include "absl/strings/match.h"
 #include "./fuzztest/init_fuzztest.h"
 
 int main(int argc, char** argv) {
   testing::InitGoogleTest(&argc, argv);
-  absl::ParseCommandLine(argc, argv);
+  // We call fuzztest::ParseAbslFlagsrather than absl::ParseCommandLine
+  // since the latter would complain about any unknown flags that need
+  // to be passed to legacy fuzzing engines (e.g. libfuzzer).
+  fuzztest::ParseAbslFlags(argc, argv);
   fuzztest::InitFuzzTest(&argc, &argv);
   return RUN_ALL_TESTS();
 }

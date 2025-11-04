@@ -42,7 +42,6 @@ class PassManager;
 class PassManagerPrivate;
 class PropertyPass;
 class PropertyPrivate;
-struct BindingInfo;
 struct PropertyPassInfo;
 
 enum class MethodType { Signal, Slot, Method, StaticMethod };
@@ -79,10 +78,18 @@ public:
     ~Binding();
 
     Element groupType() const;
+    Element bindingScope() const;
     BindingType bindingType() const;
     QString stringValue() const;
     QString propertyName() const;
+    bool isAttached() const;
+    Element attachedType() const;
+
+#if QT_DEPRECATED_SINCE(6, 9)
+    QT_DEPRECATED_X("Use attachedType()")
     Element attachingType() const;
+#endif
+
     QQmlSA::SourceLocation sourceLocation() const;
     double numberValue() const;
     ScriptBindingKind scriptKind() const;
@@ -210,6 +217,7 @@ public:
     QString baseTypeName() const;
     Element parentScope() const;
     bool inherits(const Element &) const;
+    bool isFileRootComponent() const;
 
     bool isNull() const;
     QString internalId() const;
@@ -316,9 +324,7 @@ public:
 
     bool isCategoryEnabled(LoggerWarningId category) const;
 
-    std::vector<std::shared_ptr<ElementPass>> elementPasses() const;
-    std::multimap<QString, PropertyPassInfo> propertyPasses() const;
-    std::unordered_map<quint32, BindingInfo> bindingsByLocation() const;
+    std::unordered_map<quint32, Binding> bindingsByLocation() const;
 
 private:
     PassManager();
@@ -347,6 +353,8 @@ public:
                            const QQmlSA::Binding &binding, const QQmlSA::Element &bindingScope,
                            const QQmlSA::Element &value);
     virtual void onRead(const QQmlSA::Element &element, const QString &propertyName,
+                        const QQmlSA::Element &readScope, QQmlSA::SourceLocation location);
+    virtual void onCall(const QQmlSA::Element &element, const QString &propertyName,
                         const QQmlSA::Element &readScope, QQmlSA::SourceLocation location);
     virtual void onWrite(const QQmlSA::Element &element, const QString &propertyName,
                          const QQmlSA::Element &value, const QQmlSA::Element &writeScope,

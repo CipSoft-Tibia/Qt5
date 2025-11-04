@@ -820,7 +820,6 @@ void ReadEvent<KeymapNotifyEvent>(KeymapNotifyEvent* event_,
   auto& buf = *buffer;
 
   auto& keys = (*event_).keys;
-  size_t keys_len = keys.size();
 
   // response_type
   uint8_t response_type;
@@ -2970,21 +2969,21 @@ Future<void> XProto::CreateWindow(
     const uint16_t& border_width,
     const WindowClass& c_class,
     const VisualId& visual,
-    const absl::optional<Pixmap>& background_pixmap,
-    const absl::optional<uint32_t>& background_pixel,
-    const absl::optional<Pixmap>& border_pixmap,
-    const absl::optional<uint32_t>& border_pixel,
-    const absl::optional<Gravity>& bit_gravity,
-    const absl::optional<Gravity>& win_gravity,
-    const absl::optional<BackingStore>& backing_store,
-    const absl::optional<uint32_t>& backing_planes,
-    const absl::optional<uint32_t>& backing_pixel,
-    const absl::optional<Bool32>& override_redirect,
-    const absl::optional<Bool32>& save_under,
-    const absl::optional<EventMask>& event_mask,
-    const absl::optional<EventMask>& do_not_propogate_mask,
-    const absl::optional<ColorMap>& colormap,
-    const absl::optional<Cursor>& cursor) {
+    const std::optional<Pixmap>& background_pixmap,
+    const std::optional<uint32_t>& background_pixel,
+    const std::optional<Pixmap>& border_pixmap,
+    const std::optional<uint32_t>& border_pixel,
+    const std::optional<Gravity>& bit_gravity,
+    const std::optional<Gravity>& win_gravity,
+    const std::optional<BackingStore>& backing_store,
+    const std::optional<uint32_t>& backing_planes,
+    const std::optional<uint32_t>& backing_pixel,
+    const std::optional<Bool32>& override_redirect,
+    const std::optional<Bool32>& save_under,
+    const std::optional<EventMask>& event_mask,
+    const std::optional<EventMask>& do_not_propogate_mask,
+    const std::optional<ColorMap>& colormap,
+    const std::optional<Cursor>& cursor) {
   return XProto::CreateWindow(CreateWindowRequest{depth,
                                                   wid,
                                                   parent,
@@ -3182,21 +3181,21 @@ Future<void> XProto::ChangeWindowAttributes(
 
 Future<void> XProto::ChangeWindowAttributes(
     const Window& window,
-    const absl::optional<Pixmap>& background_pixmap,
-    const absl::optional<uint32_t>& background_pixel,
-    const absl::optional<Pixmap>& border_pixmap,
-    const absl::optional<uint32_t>& border_pixel,
-    const absl::optional<Gravity>& bit_gravity,
-    const absl::optional<Gravity>& win_gravity,
-    const absl::optional<BackingStore>& backing_store,
-    const absl::optional<uint32_t>& backing_planes,
-    const absl::optional<uint32_t>& backing_pixel,
-    const absl::optional<Bool32>& override_redirect,
-    const absl::optional<Bool32>& save_under,
-    const absl::optional<EventMask>& event_mask,
-    const absl::optional<EventMask>& do_not_propogate_mask,
-    const absl::optional<ColorMap>& colormap,
-    const absl::optional<Cursor>& cursor) {
+    const std::optional<Pixmap>& background_pixmap,
+    const std::optional<uint32_t>& background_pixel,
+    const std::optional<Pixmap>& border_pixmap,
+    const std::optional<uint32_t>& border_pixel,
+    const std::optional<Gravity>& bit_gravity,
+    const std::optional<Gravity>& win_gravity,
+    const std::optional<BackingStore>& backing_store,
+    const std::optional<uint32_t>& backing_planes,
+    const std::optional<uint32_t>& backing_pixel,
+    const std::optional<Bool32>& override_redirect,
+    const std::optional<Bool32>& save_under,
+    const std::optional<EventMask>& event_mask,
+    const std::optional<EventMask>& do_not_propogate_mask,
+    const std::optional<ColorMap>& colormap,
+    const std::optional<Cursor>& cursor) {
   return XProto::ChangeWindowAttributes(ChangeWindowAttributesRequest{
       window, background_pixmap, background_pixel, border_pixmap, border_pixel,
       bit_gravity, win_gravity, backing_store, backing_planes, backing_pixel,
@@ -3708,13 +3707,13 @@ Future<void> XProto::ConfigureWindow(const ConfigureWindowRequest& request) {
 
 Future<void> XProto::ConfigureWindow(
     const Window& window,
-    const absl::optional<int32_t>& x,
-    const absl::optional<int32_t>& y,
-    const absl::optional<uint32_t>& width,
-    const absl::optional<uint32_t>& height,
-    const absl::optional<uint32_t>& border_width,
-    const absl::optional<Window>& sibling,
-    const absl::optional<StackMode>& stack_mode) {
+    const std::optional<int32_t>& x,
+    const std::optional<int32_t>& y,
+    const std::optional<uint32_t>& width,
+    const std::optional<uint32_t>& height,
+    const std::optional<uint32_t>& border_width,
+    const std::optional<Window>& sibling,
+    const std::optional<StackMode>& stack_mode) {
   return XProto::ConfigureWindow(ConfigureWindowRequest{
       window, x, y, width, height, border_width, sibling, stack_mode});
 }
@@ -3914,7 +3913,7 @@ std::unique_ptr<QueryTreeReply> detail::ReadReply<QueryTreeReply>(
   Pad(&buf, 14);
 
   // children
-  children.resize(children_len);
+  children.resize(length);
   for (auto& children_elem : children) {
     // children_elem
     Read(&children_elem, &buf);
@@ -4126,7 +4125,7 @@ Future<void> XProto::ChangeProperty(const ChangePropertyRequest& request) {
   buf.Write(&data_len);
 
   // data
-  buf.AppendBuffer(data, ((data_len) * (format)) / (8));
+  buf.AppendSizedBuffer(data);
 
   Align(&buf, 4);
 
@@ -5695,7 +5694,6 @@ std::unique_ptr<QueryKeymapReply> detail::ReadReply<QueryKeymapReply>(
 
   auto& sequence = (*reply).sequence;
   auto& keys = (*reply).keys;
-  size_t keys_len = keys.size();
 
   // response_type
   uint8_t response_type;
@@ -6917,29 +6915,29 @@ Future<void> XProto::CreateGC(const CreateGCRequest& request) {
 Future<void> XProto::CreateGC(
     const GraphicsContext& cid,
     const Drawable& drawable,
-    const absl::optional<Gx>& function,
-    const absl::optional<uint32_t>& plane_mask,
-    const absl::optional<uint32_t>& foreground,
-    const absl::optional<uint32_t>& background,
-    const absl::optional<uint32_t>& line_width,
-    const absl::optional<LineStyle>& line_style,
-    const absl::optional<CapStyle>& cap_style,
-    const absl::optional<JoinStyle>& join_style,
-    const absl::optional<FillStyle>& fill_style,
-    const absl::optional<FillRule>& fill_rule,
-    const absl::optional<Pixmap>& tile,
-    const absl::optional<Pixmap>& stipple,
-    const absl::optional<int32_t>& tile_stipple_x_origin,
-    const absl::optional<int32_t>& tile_stipple_y_origin,
-    const absl::optional<Font>& font,
-    const absl::optional<SubwindowMode>& subwindow_mode,
-    const absl::optional<Bool32>& graphics_exposures,
-    const absl::optional<int32_t>& clip_x_origin,
-    const absl::optional<int32_t>& clip_y_origin,
-    const absl::optional<Pixmap>& clip_mask,
-    const absl::optional<uint32_t>& dash_offset,
-    const absl::optional<uint32_t>& dashes,
-    const absl::optional<ArcMode>& arc_mode) {
+    const std::optional<Gx>& function,
+    const std::optional<uint32_t>& plane_mask,
+    const std::optional<uint32_t>& foreground,
+    const std::optional<uint32_t>& background,
+    const std::optional<uint32_t>& line_width,
+    const std::optional<LineStyle>& line_style,
+    const std::optional<CapStyle>& cap_style,
+    const std::optional<JoinStyle>& join_style,
+    const std::optional<FillStyle>& fill_style,
+    const std::optional<FillRule>& fill_rule,
+    const std::optional<Pixmap>& tile,
+    const std::optional<Pixmap>& stipple,
+    const std::optional<int32_t>& tile_stipple_x_origin,
+    const std::optional<int32_t>& tile_stipple_y_origin,
+    const std::optional<Font>& font,
+    const std::optional<SubwindowMode>& subwindow_mode,
+    const std::optional<Bool32>& graphics_exposures,
+    const std::optional<int32_t>& clip_x_origin,
+    const std::optional<int32_t>& clip_y_origin,
+    const std::optional<Pixmap>& clip_mask,
+    const std::optional<uint32_t>& dash_offset,
+    const std::optional<uint32_t>& dashes,
+    const std::optional<ArcMode>& arc_mode) {
   return XProto::CreateGC(CreateGCRequest{cid,
                                           drawable,
                                           function,
@@ -7206,29 +7204,29 @@ Future<void> XProto::ChangeGC(const ChangeGCRequest& request) {
 
 Future<void> XProto::ChangeGC(
     const GraphicsContext& gc,
-    const absl::optional<Gx>& function,
-    const absl::optional<uint32_t>& plane_mask,
-    const absl::optional<uint32_t>& foreground,
-    const absl::optional<uint32_t>& background,
-    const absl::optional<uint32_t>& line_width,
-    const absl::optional<LineStyle>& line_style,
-    const absl::optional<CapStyle>& cap_style,
-    const absl::optional<JoinStyle>& join_style,
-    const absl::optional<FillStyle>& fill_style,
-    const absl::optional<FillRule>& fill_rule,
-    const absl::optional<Pixmap>& tile,
-    const absl::optional<Pixmap>& stipple,
-    const absl::optional<int32_t>& tile_stipple_x_origin,
-    const absl::optional<int32_t>& tile_stipple_y_origin,
-    const absl::optional<Font>& font,
-    const absl::optional<SubwindowMode>& subwindow_mode,
-    const absl::optional<Bool32>& graphics_exposures,
-    const absl::optional<int32_t>& clip_x_origin,
-    const absl::optional<int32_t>& clip_y_origin,
-    const absl::optional<Pixmap>& clip_mask,
-    const absl::optional<uint32_t>& dash_offset,
-    const absl::optional<uint32_t>& dashes,
-    const absl::optional<ArcMode>& arc_mode) {
+    const std::optional<Gx>& function,
+    const std::optional<uint32_t>& plane_mask,
+    const std::optional<uint32_t>& foreground,
+    const std::optional<uint32_t>& background,
+    const std::optional<uint32_t>& line_width,
+    const std::optional<LineStyle>& line_style,
+    const std::optional<CapStyle>& cap_style,
+    const std::optional<JoinStyle>& join_style,
+    const std::optional<FillStyle>& fill_style,
+    const std::optional<FillRule>& fill_rule,
+    const std::optional<Pixmap>& tile,
+    const std::optional<Pixmap>& stipple,
+    const std::optional<int32_t>& tile_stipple_x_origin,
+    const std::optional<int32_t>& tile_stipple_y_origin,
+    const std::optional<Font>& font,
+    const std::optional<SubwindowMode>& subwindow_mode,
+    const std::optional<Bool32>& graphics_exposures,
+    const std::optional<int32_t>& clip_x_origin,
+    const std::optional<int32_t>& clip_y_origin,
+    const std::optional<Pixmap>& clip_mask,
+    const std::optional<uint32_t>& dash_offset,
+    const std::optional<uint32_t>& dashes,
+    const std::optional<ArcMode>& arc_mode) {
   return XProto::ChangeGC(ChangeGCRequest{gc,
                                           function,
                                           plane_mask,
@@ -8244,7 +8242,7 @@ Future<void> XProto::PutImage(const PutImageRequest& request) {
   Pad(&buf, 2);
 
   // data
-  buf.AppendBuffer(data, data_len);
+  buf.AppendSizedBuffer(data);
 
   Align(&buf, 4);
 
@@ -8338,7 +8336,6 @@ std::unique_ptr<GetImageReply> detail::ReadReply<GetImageReply>(
   auto& sequence = (*reply).sequence;
   auto& visual = (*reply).visual;
   auto& data = (*reply).data;
-  size_t data_len = data ? data->size() : 0;
 
   // response_type
   uint8_t response_type;
@@ -10279,7 +10276,6 @@ std::unique_ptr<GetKeyboardMappingReply> detail::ReadReply<
   auto& keysyms_per_keycode = (*reply).keysyms_per_keycode;
   auto& sequence = (*reply).sequence;
   auto& keysyms = (*reply).keysyms;
-  size_t keysyms_len = keysyms.size();
 
   // response_type
   uint8_t response_type;
@@ -10412,14 +10408,14 @@ Future<void> XProto::ChangeKeyboardControl(
 }
 
 Future<void> XProto::ChangeKeyboardControl(
-    const absl::optional<int32_t>& key_click_percent,
-    const absl::optional<int32_t>& bell_percent,
-    const absl::optional<int32_t>& bell_pitch,
-    const absl::optional<int32_t>& bell_duration,
-    const absl::optional<uint32_t>& led,
-    const absl::optional<LedMode>& led_mode,
-    const absl::optional<KeyCode32>& key,
-    const absl::optional<AutoRepeatMode>& auto_repeat_mode) {
+    const std::optional<int32_t>& key_click_percent,
+    const std::optional<int32_t>& bell_percent,
+    const std::optional<int32_t>& bell_pitch,
+    const std::optional<int32_t>& bell_duration,
+    const std::optional<uint32_t>& led,
+    const std::optional<LedMode>& led_mode,
+    const std::optional<KeyCode32>& key,
+    const std::optional<AutoRepeatMode>& auto_repeat_mode) {
   return XProto::ChangeKeyboardControl(ChangeKeyboardControlRequest{
       key_click_percent, bell_percent, bell_pitch, bell_duration, led, led_mode,
       key, auto_repeat_mode});
@@ -10468,7 +10464,6 @@ std::unique_ptr<GetKeyboardControlReply> detail::ReadReply<
   auto& bell_pitch = (*reply).bell_pitch;
   auto& bell_duration = (*reply).bell_duration;
   auto& auto_repeats = (*reply).auto_repeats;
-  size_t auto_repeats_len = auto_repeats.size();
 
   // response_type
   uint8_t response_type;
@@ -11379,7 +11374,6 @@ std::unique_ptr<GetModifierMappingReply> detail::ReadReply<
   auto& keycodes_per_modifier = (*reply).keycodes_per_modifier;
   auto& sequence = (*reply).sequence;
   auto& keycodes = (*reply).keycodes;
-  size_t keycodes_len = keycodes.size();
 
   // response_type
   uint8_t response_type;

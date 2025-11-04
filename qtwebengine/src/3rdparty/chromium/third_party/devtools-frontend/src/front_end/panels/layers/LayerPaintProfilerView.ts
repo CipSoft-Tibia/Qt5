@@ -12,7 +12,7 @@ export class LayerPaintProfilerView extends UI.SplitWidget.SplitWidget {
   private readonly paintProfilerView: LayerViewer.PaintProfilerView.PaintProfilerView;
   constructor(showImageCallback: (arg0?: string|undefined) => void) {
     super(true, false);
-    this.element.setAttribute('jslog', `${VisualLogging.pane().context('layers-paint-profiler')}`);
+    this.element.setAttribute('jslog', `${VisualLogging.pane('layers.paint-profiler').track({resize: true})}`);
 
     this.logTreeView = new LayerViewer.PaintProfilerView.PaintProfilerCommandLogView();
     this.setSidebarWidget(this.logTreeView);
@@ -20,7 +20,7 @@ export class LayerPaintProfilerView extends UI.SplitWidget.SplitWidget {
     this.setMainWidget(this.paintProfilerView);
 
     this.paintProfilerView.addEventListener(
-        LayerViewer.PaintProfilerView.Events.WindowChanged, this.onWindowChanged, this);
+        LayerViewer.PaintProfilerView.Events.WINDOW_CHANGED, this.onWindowChanged, this);
 
     this.logTreeView.focus();
   }

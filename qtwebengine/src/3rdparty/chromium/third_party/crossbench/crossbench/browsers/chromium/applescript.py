@@ -4,8 +4,9 @@
 
 from __future__ import annotations
 
-from ..applescript import AppleScriptBrowser
-from .chromium import Chromium
+from crossbench.browsers.applescript import AppleScriptBrowser
+from crossbench.browsers.attributes import BrowserAttributes
+from crossbench.browsers.chromium.chromium import Chromium
 
 
 # TODO: fix https://source.chromium.org/chromium/chromium/src/+/main:chrome/browser/ui/browser_commands_mac.mm;drc=ddf482c0cf47fc8e47e5cfc5c112e2313e066cb8;bpv=1;bpt=1;l=38
@@ -21,3 +22,8 @@ class ChromiumAppleScript(Chromium, AppleScriptBrowser):
 
   def _setup_window(self) -> None:
     pass
+
+  @property
+  def attributes(self) -> BrowserAttributes:
+    return (BrowserAttributes.CHROMIUM | BrowserAttributes.CHROMIUM_BASED
+            | BrowserAttributes.APPLESCRIPT)

@@ -29,8 +29,14 @@ namespace {
 
 void handle_client_destroyed(struct wl_listener* listener, void* data) {
   TestServerListener* destroy_listener =
-      wl_container_of(listener, /*sample=*/destroy_listener,
-                      /*member=*/listener);
+      // SAFETY: wl_container_of is used to calculate the address of the
+      // containing TestServerListener struct, which uses unsafe pointer
+      // arithmetic. This is valid because `listener` is guaranteed to be
+      // contained inside a TestServerListener, which is true because of
+      // how handle_client_destroyed is registered, down in
+      // TestWaylandServerThread::Start
+      UNSAFE_BUFFERS(wl_container_of(listener, /*sample=*/destroy_listener,
+                                     /*member=*/listener));
   DCHECK(destroy_listener);
   destroy_listener->test_server->OnClientDestroyed(
       static_cast<struct wl_client*>(data));
@@ -50,9 +56,7 @@ TestWaylandServerThread::TestWaylandServerThread(const ServerConfig& config)
       client_destroy_listener_(this),
       config_(config),
       compositor_(config.compositor_version),
-      output_(base::BindRepeating(
-          &TestWaylandServerThread::OnTestOutputMetricsFlush,
-          base::Unretained(this))),
+      output_(this),
       zcr_text_input_extension_v1_(config.text_input_extension_version),
       controller_(FROM_HERE) {
   DETACH_FROM_THREAD(thread_checker_);
@@ -110,16 +114,10 @@ bool TestWaylandServerThread::Start() {
     return false;
 
   if (config_.enable_aura_shell == EnableAuraShellProtocol::kEnabled) {
-    if (config_.use_aura_output_manager) {
-      // zaura_output_manager should be initialized before any wl_output
-      // globals.
-      if (!zaura_output_manager_.Initialize(display_.get())) {
-        return false;
-      }
-    } else {
-      if (!zxdg_output_manager_.Initialize(display_.get())) {
-        return false;
-      }
+    // The aura output managers should be initialized before any wl_output
+    // globals.
+    if (!zaura_output_manager_v2_.Initialize(display_.get())) {
+      return false;
     }
 
     output_.set_aura_shell_enabled();
@@ -145,13 +143,18 @@ bool TestWaylandServerThread::Start() {
 
   if (!zcr_stylus_.Initialize(display_.get()))
     return false;
-
-  if (!zcr_text_input_extension_v1_.Initialize(display_.get())) {
-    return false;
+  if (config_.text_input_wrapper_type == ZWPTextInputWrapperType::kV3) {
+    if (!zwp_text_input_manager_v3_.Initialize(display_.get())) {
+      return false;
+    }
+  } else {
+    if (!zcr_text_input_extension_v1_.Initialize(display_.get())) {
+      return false;
+    }
+    if (!zwp_text_input_manager_v1_.Initialize(display_.get())) {
+      return false;
+    }
   }
-
-  if (!zwp_text_input_manager_v1_.Initialize(display_.get()))
-    return false;
   if (!SetupExplicitSynchronizationProtocol(
           config_.use_explicit_synchronization)) {
     return false;
@@ -168,6 +171,9 @@ bool TestWaylandServerThread::Start() {
   if (!xdg_activation_v1_.Initialize(display_.get())) {
     return false;
   }
+  if (!xdg_toplevel_icon_manager_v1_.Initialize(display_.get())) {
+    return false;
+  }
 
   client_ = wl_client_create(display_.get(), server_fd.release());
   if (!client_)
@@ -179,11 +185,19 @@ bool TestWaylandServerThread::Start() {
   protocol_logger_ = wl_display_add_protocol_logger(
       display_.get(), TestWaylandServerThread::ProtocolLogger, this);
 
+  // Setup a runloop that will be stopped when the message pump is finally
+  // created. This is required as getenv that a libevent calls internally is
+  // not thread-safe and may result in very rare crashes.
+  base::RunLoop run_loop;
+
   base::Thread::Options options;
-  options.message_pump_factory = base::BindRepeating(
-      &TestWaylandServerThread::CreateMessagePump, base::Unretained(this));
+  options.message_pump_factory =
+      base::BindRepeating(&TestWaylandServerThread::CreateMessagePump,
+                          base::Unretained(this), run_loop.QuitClosure());
   if (!base::Thread::StartWithOptions(std::move(options)))
     return false;
+
+  run_loop.Run();
 
   setenv("WAYLAND_SOCKET", base::NumberToString(client_fd.release()).c_str(),
          1);
@@ -209,6 +223,20 @@ void TestWaylandServerThread::RunAndWait(base::OnceClosure closure) {
   run_loop.Run();
 }
 
+void TestWaylandServerThread::Post(
+    base::OnceCallback<void(TestWaylandServerThread*)> callback) {
+  base::OnceClosure closure =
+      base::BindOnce(std::move(callback), base::Unretained(this));
+  Post(std::move(closure));
+}
+
+void TestWaylandServerThread::Post(base::OnceClosure closure) {
+  task_runner()->PostTask(
+      FROM_HERE,
+      base::BindOnce(&TestWaylandServerThread::DoRun,
+                     weak_ptr_factory_.GetWeakPtr(), std::move(closure)));
+}
+
 MockWpPresentation* TestWaylandServerThread::EnsureAndGetWpPresentation() {
   DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
   if (wp_presentation_.resource())
@@ -225,11 +253,18 @@ TestSurfaceAugmenter* TestWaylandServerThread::EnsureSurfaceAugmenter() {
   return nullptr;
 }
 
-void TestWaylandServerThread::OnTestOutputMetricsFlush(
-    wl_resource* output_resource,
+void TestWaylandServerThread::OnTestOutputFlush(
+    TestOutput* test_output,
     const TestOutputMetrics& metrics) {
-  if (zaura_output_manager_.resource()) {
-    zaura_output_manager_.SendOutputMetrics(output_resource, metrics);
+  if (zaura_output_manager_v2_.resource()) {
+    zaura_output_manager_v2_.SendOutputMetrics(test_output, metrics);
+  }
+}
+
+void TestWaylandServerThread::OnTestOutputGlobalDestroy(
+    TestOutput* test_output) {
+  if (zaura_output_manager_v2_.resource()) {
+    zaura_output_manager_v2_.OnTestOutputGlobalDestroy(test_output);
   }
 }
 
@@ -275,17 +310,18 @@ bool TestWaylandServerThread::SetupExplicitSynchronizationProtocol(
     case ShouldUseExplicitSynchronizationProtocol::kUse:
       return zwp_linux_explicit_synchronization_v1_.Initialize(display_.get());
   }
-  NOTREACHED();
+  NOTREACHED_IN_MIGRATION();
   return false;
 }
 
-std::unique_ptr<base::MessagePump>
-TestWaylandServerThread::CreateMessagePump() {
+std::unique_ptr<base::MessagePump> TestWaylandServerThread::CreateMessagePump(
+    base::OnceClosure closure) {
   DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
-  auto pump = std::make_unique<base::MessagePumpLibevent>();
+  auto pump = std::make_unique<base::MessagePumpEpoll>();
   pump->WatchFileDescriptor(wl_event_loop_get_fd(event_loop_), true,
-                            base::MessagePumpLibevent::WATCH_READ, &controller_,
+                            base::MessagePumpEpoll::WATCH_READ, &controller_,
                             this);
+  std::move(closure).Run();
   return std::move(pump);
 }
 

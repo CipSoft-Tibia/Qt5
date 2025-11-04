@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QTHREADSTORAGE_H
 #define QTHREADSTORAGE_H
@@ -26,9 +27,6 @@ public:
     static void finish(void**);
     int id;
 };
-
-#if !defined(QT_MOC_CPP)
-// MOC_SKIP_BEGIN
 
 // pointer specialization
 template <typename T>
@@ -85,10 +83,6 @@ template <typename T>
 inline
 void qThreadStorage_deleteData(void *d, T *)
 { delete static_cast<T *>(d); }
-
-
-// MOC_SKIP_END
-#endif
 
 template <class T>
 class QThreadStorage

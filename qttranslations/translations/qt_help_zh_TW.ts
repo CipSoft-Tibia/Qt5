@@ -50,7 +50,7 @@
     </message>
     <message>
         <source>Cannot load sqlite database driver.</source>
-        <translation>無法載入 sqlite 資料庫驅動程式。</translation>
+        <translation>無法載入 SQLite 資料庫驅動程式。</translation>
     </message>
     <message>
         <source>Cannot open collection file: %1</source>
@@ -126,7 +126,7 @@
     </message>
     <message>
         <source>Cannot load sqlite database driver!</source>
-        <translation type="vanished">無法載入 sqlite 資料庫驅動程式！</translation>
+        <translation type="vanished">無法載入 SQLite 資料庫驅動程式！</translation>
     </message>
     <message>
         <source>Cannot create tables in file %1!</source>

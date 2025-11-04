@@ -61,7 +61,7 @@ export class JSONView extends UI.Widget.VBox implements UI.SearchableView.Search
     this.parsedJSON = parsedJSON;
     this.startCollapsed = Boolean(startCollapsed);
     this.element.classList.add('json-view');
-    this.element.setAttribute('jslog', `${VisualLogging.section().context('json-view')}`);
+    this.element.setAttribute('jslog', `${VisualLogging.section('json-view')}`);
     this.currentSearchFocusIndex = 0;
     this.currentSearchTreeElements = [];
     this.searchRegex = null;
@@ -150,7 +150,7 @@ export class JSONView extends UI.Widget.VBox implements UI.SearchableView.Search
     if (start === -1 || end === -1 || end < start) {
       length = -1;
     }
-    return {start: start, end: end, length: length};
+    return {start, end, length};
   }
 
   override wasShown(): void {

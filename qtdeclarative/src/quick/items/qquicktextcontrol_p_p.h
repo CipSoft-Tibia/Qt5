@@ -132,6 +132,7 @@ public:
     bool hoveredMarker: 1;
     bool selectByTouchDrag: 1;
     bool imSelectionAfterPress: 1;
+    bool beingEdited;
 
     int lastSelectionStart;
     int lastSelectionEnd;

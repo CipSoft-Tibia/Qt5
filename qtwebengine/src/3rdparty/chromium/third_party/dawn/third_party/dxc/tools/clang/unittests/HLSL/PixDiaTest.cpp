@@ -156,8 +156,6 @@ public:
   TEST_METHOD(PixTypeManager_SamplersAndResources)
   TEST_METHOD(PixTypeManager_XBoxDiaAssert)
 
-  TEST_METHOD(DxcPixDxilDebugInfo_InstructionOffsets)
-
   TEST_METHOD(PixDebugCompileInfo)
 
   TEST_METHOD(SymbolManager_Embedded2DArray)
@@ -168,6 +166,9 @@ public:
       DxcPixDxilDebugInfo_GlobalBackedGlobalStaticEmbeddedArrays_WithDbgValue)
   TEST_METHOD(
       DxcPixDxilDebugInfo_GlobalBackedGlobalStaticEmbeddedArrays_ArrayInValues)
+
+  TEST_METHOD(DxcPixDxilDebugInfo_InstructionOffsets)
+  TEST_METHOD(DxcPixDxilDebugInfo_InstructionOffsetsInClassMethods)
   TEST_METHOD(DxcPixDxilDebugInfo_DuplicateGlobals)
   TEST_METHOD(DxcPixDxilDebugInfo_StructInheritance)
   TEST_METHOD(DxcPixDxilDebugInfo_StructContainedResource)
@@ -187,6 +188,8 @@ public:
   TEST_METHOD(DxcPixDxilDebugInfo_BitFields_Overlap)
   TEST_METHOD(DxcPixDxilDebugInfo_Min16SizesAndOffsets_Enabled)
   TEST_METHOD(DxcPixDxilDebugInfo_Min16SizesAndOffsets_Disabled)
+  TEST_METHOD(DxcPixDxilDebugInfo_Min16VectorOffsets_Enabled)
+  TEST_METHOD(DxcPixDxilDebugInfo_Min16VectorOffsets_Disabled)
   TEST_METHOD(
       DxcPixDxilDebugInfo_VariableScopes_InlinedFunctions_TwiceInlinedFunctions)
   TEST_METHOD(
@@ -587,7 +590,7 @@ public:
       CComPtr<IDxcBlobEncoding> pDisassembly;
       VERIFY_SUCCEEDED(pCompiler->Disassemble(pProgram, &pDisassembly));
       std::string disText = BlobToUtf8(pDisassembly);
-      CA2W disTextW(disText.c_str(), CP_UTF8);
+      CA2W disTextW(disText.c_str());
       // WEX::Logging::Log::Comment(disTextW);
     }
 
@@ -621,7 +624,7 @@ public:
       CComPtr<IDxcBlobEncoding> pDbgDisassembly;
       VERIFY_SUCCEEDED(pCompiler->Disassemble(pProgramPdb, &pDbgDisassembly));
       std::string disText = BlobToUtf8(pDbgDisassembly);
-      CA2W disTextW(disText.c_str(), CP_UTF8);
+      CA2W disTextW(disText.c_str());
       // WEX::Logging::Log::Comment(disTextW);
     }
 
@@ -660,6 +663,10 @@ public:
                                 std::array<DWORD, 4> const &memberSizes,
                                 std::vector<const wchar_t *> extraArgs = {
                                     L"-Od"});
+  void RunVectorSizeAndOffsetTestCase(const char *hlsl,
+                                      std::array<DWORD, 4> const &memberOffsets,
+                                      std::vector<const wchar_t *> extraArgs = {
+                                          L"-Od"});
   DebuggerInterfaces
   CompileAndCreateDxcDebug(const char *hlsl, const wchar_t *profile,
                            IDxcIncludeHandler *includer = nullptr,
@@ -940,7 +947,7 @@ TEST_F(PixDiaTest, CompileWhenDebugThenDIPresent) {
   CComPtr<IDxcBlob> pdbBlob;
   VERIFY_SUCCEEDED(pLib->CreateBlobFromFile(path, nullptr, &fxcBlob));
   std::string s = DumpParts(fxcBlob);
-  CA2W sW(s.c_str(), CP_UTF8);
+  CA2W sW(s.c_str());
   WEX::Logging::Log::Comment(sW);
   VERIFY_SUCCEEDED(CreateDiaSourceFromDxbcBlob(pLib, fxcBlob, &pDiaSource));
   WEX::Logging::Log::Comment(GetDebugInfoAsText(pDiaSource).c_str());
@@ -1916,6 +1923,105 @@ void MyMissShader(inout RayPayload payload)
   }
 }
 
+TEST_F(PixDiaTest, DxcPixDxilDebugInfo_InstructionOffsetsInClassMethods) {
+
+  if (m_ver.SkipDxilVersion(1, 5))
+    return;
+
+  const char *hlsl = R"(
+RWByteAddressBuffer RawUAV: register(u1);
+
+class AClass
+{
+  float Saturate(float f) // StartClassMethod
+  {
+    float l = RawUAV.Load(0);
+    return saturate(f * l);
+  } //EndClassMethod
+};
+
+[numthreads(1, 1, 1)]
+void main()
+{
+    uint orig;
+    AClass aClass;
+    float i = orig;
+    float f = aClass.Saturate(i);
+    uint fi = (uint)f;
+    RawUAV.InterlockedAdd(0, 42, fi);
+}
+
+)";
+
+  auto lines = SplitAndPreserveEmptyLines(std::string(hlsl), '\n');
+
+  CComPtr<IDiaDataSource> pDiaDataSource;
+  CompileAndRunAnnotationAndLoadDiaSource(m_dllSupport, hlsl, L"cs_6_6",
+                                          nullptr, &pDiaDataSource);
+
+  CComPtr<IDiaSession> session;
+  VERIFY_SUCCEEDED(pDiaDataSource->openSession(&session));
+
+  CComPtr<IDxcPixDxilDebugInfoFactory> Factory;
+  VERIFY_SUCCEEDED(session->QueryInterface(IID_PPV_ARGS(&Factory)));
+
+  CComPtr<IDxcPixDxilDebugInfo> dxilDebugger;
+  VERIFY_SUCCEEDED(Factory->NewDxcPixDxilDebugInfo(&dxilDebugger));
+
+  size_t lineAfterMethod = 0;
+  size_t lineBeforeMethod = static_cast<size_t>(-1);
+  for (size_t line = 0; line < lines.size(); ++line) {
+    if (lines[line].find("StartClassMethod") != std::string::npos)
+      lineBeforeMethod = line;
+    if (lines[line].find("EndClassMethod") != std::string::npos)
+      lineAfterMethod = line;
+  }
+
+  VERIFY_IS_TRUE(lineAfterMethod > lineBeforeMethod);
+
+  // For each source line, get the instruction numbers.
+  // For each instruction number, map back to source line.
+  // Some of them better be in the class method
+
+  bool foundClassMethodLines = false;
+
+  for (size_t line = 0; line < lines.size(); ++line) {
+
+    auto lineNumber = static_cast<DWORD>(line);
+
+    constexpr DWORD sourceLocationReaderOnlySupportsColumnZero = 0;
+    CComPtr<IDxcPixDxilInstructionOffsets> offsets;
+    dxilDebugger->InstructionOffsetsFromSourceLocation(
+        defaultFilename, lineNumber, sourceLocationReaderOnlySupportsColumnZero,
+        &offsets);
+
+    auto offsetCount = offsets->GetCount();
+    for (DWORD offsetOrdinal = 0; offsetOrdinal < offsetCount;
+         ++offsetOrdinal) {
+
+      DWORD instructionOffsetFromSource =
+          offsets->GetOffsetByIndex(offsetOrdinal);
+
+      CComPtr<IDxcPixDxilSourceLocations> sourceLocations;
+      VERIFY_SUCCEEDED(dxilDebugger->SourceLocationsFromInstructionOffset(
+          instructionOffsetFromSource, &sourceLocations));
+
+      auto count = sourceLocations->GetCount();
+      for (DWORD sourceLocationOrdinal = 0; sourceLocationOrdinal < count;
+           ++sourceLocationOrdinal) {
+        DWORD lineNumber =
+            sourceLocations->GetLineNumberByIndex(sourceLocationOrdinal);
+
+        if (lineNumber >= lineBeforeMethod && lineNumber <= lineAfterMethod) {
+          foundClassMethodLines = true;
+        }
+      }
+    }
+  }
+
+  VERIFY_IS_TRUE(foundClassMethodLines);
+}
+
 TEST_F(PixDiaTest, PixTypeManager_InheritancePointerTypedef) {
   if (m_ver.SkipDxilVersion(1, 5))
     return;
@@ -2857,7 +2963,6 @@ void PixDiaTest::RunSizeAndOffsetTestCase(
   VERIFY_SUCCEEDED(bf->GetType(&bfType));
   CComPtr<IDxcPixStructType> bfStructType;
   VERIFY_SUCCEEDED(bfType->QueryInterface(IID_PPV_ARGS(&bfStructType)));
-  const wchar_t *memberNames[] = {L"first", L"second", L"third", L"fourth"};
   for (size_t i = 0; i < memberOffsets.size(); ++i) {
     CComPtr<IDxcPixStructField> field;
     VERIFY_SUCCEEDED(
@@ -3061,6 +3166,83 @@ void main()
 
 )";
   RunSizeAndOffsetTestCase(hlsl, {0, 32, 64, 96}, {16, 16, 16, 16}, {L"-Od"});
+}
+
+TEST_F(PixDiaTest, DxcPixDxilDebugInfo_Min16VectorOffsets_Enabled) {
+  if (m_ver.SkipDxilVersion(1, 5))
+    return;
+
+  const char *hlsl = R"(
+RWStructuredBuffer<int> UAV: register(u0);
+
+[numthreads(1, 1, 1)]
+void main()
+{
+  min16float4 vector;
+  vector.x = UAV[0];
+  vector.y = UAV[1];
+  vector.z = UAV[2];
+  vector.w = UAV[3];
+  UAV[16] = vector.x + vector.y + vector.z + vector.w; //STOP_HERE
+}
+
+
+)";
+  RunVectorSizeAndOffsetTestCase(hlsl, {0, 16, 32, 48},
+                                 {L"-Od", L"-enable-16bit-types"});
+}
+
+TEST_F(PixDiaTest, DxcPixDxilDebugInfo_Min16VectorOffsets_Disabled) {
+  if (m_ver.SkipDxilVersion(1, 5))
+    return;
+
+  const char *hlsl = R"(
+RWStructuredBuffer<int> UAV: register(u0);
+
+[numthreads(1, 1, 1)]
+void main()
+{
+  min16float4 vector;
+  vector.x = UAV[0];
+  vector.y = UAV[1];
+  vector.z = UAV[2];
+  vector.w = UAV[3];
+  UAV[16] = vector.x + vector.y + vector.z + vector.w; //STOP_HERE
+}
+
+
+)";
+  RunVectorSizeAndOffsetTestCase(hlsl, {0, 32, 64, 96});
+}
+void PixDiaTest::RunVectorSizeAndOffsetTestCase(
+    const char *hlsl, std::array<DWORD, 4> const &memberOffsets,
+    std::vector<const wchar_t *> extraArgs) {
+  if (m_ver.SkipDxilVersion(1, 5))
+    return;
+  auto debugInfo =
+      CompileAndCreateDxcDebug(hlsl, L"cs_6_5", nullptr, extraArgs).debugInfo;
+  auto live = GetLiveVariablesAt(hlsl, "STOP_HERE", debugInfo);
+  CComPtr<IDxcPixVariable> variable;
+  VERIFY_SUCCEEDED(live->GetVariableByName(L"vector", &variable));
+  CComPtr<IDxcPixType> type;
+  VERIFY_SUCCEEDED(variable->GetType(&type));
+
+  CComPtr<IDxcPixType> unAliasedType;
+  VERIFY_SUCCEEDED(UnAliasType(type, &unAliasedType));
+  CComPtr<IDxcPixStructType> structType;
+  VERIFY_SUCCEEDED(unAliasedType->QueryInterface(IID_PPV_ARGS(&structType)));
+
+  DWORD fieldCount = 0;
+  VERIFY_SUCCEEDED(structType->GetNumFields(&fieldCount));
+  VERIFY_ARE_EQUAL(fieldCount, 4u);
+
+  for (size_t i = 0; i < memberOffsets.size(); i++) {
+    CComPtr<IDxcPixStructField> field;
+    VERIFY_SUCCEEDED(structType->GetFieldByIndex(i, &field));
+    DWORD offsetInBits = 0;
+    VERIFY_SUCCEEDED(field->GetOffsetInBits(&offsetInBits));
+    VERIFY_ARE_EQUAL(memberOffsets[i], offsetInBits);
+  }
 }
 
 TEST_F(PixDiaTest, DxcPixDxilDebugInfo_SubProgramsInNamespaces) {

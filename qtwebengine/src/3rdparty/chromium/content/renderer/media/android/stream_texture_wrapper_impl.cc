@@ -15,6 +15,7 @@
 #include "gpu/command_buffer/client/client_shared_image.h"
 #include "gpu/command_buffer/client/shared_image_interface.h"
 #include "gpu/command_buffer/common/shared_image_usage.h"
+#include "media/base/media_switches.h"
 
 namespace {
 // Non-member function to allow it to run even after this class is deleted.
@@ -66,21 +67,38 @@ void StreamTextureWrapperImpl::CreateVideoFrame(
     const gfx::Size& coded_size,
     const gfx::Rect& visible_rect,
     const std::optional<gpu::VulkanYCbCrInfo>& ycbcr_info) {
-  // This message comes from GPU process when the SharedImage is already
-  // created, so we don't need to wait on any synctoken, mailbox is ready to
-  // use.
-  gpu::MailboxHolder holders[media::VideoFrame::kMaxPlanes] = {
-      gpu::MailboxHolder(mailbox, gpu::SyncToken(), GL_TEXTURE_EXTERNAL_OES)};
-
   gpu::SharedImageInterface* sii = factory_->SharedImageInterface();
+  uint32_t texture_target = GL_TEXTURE_EXTERNAL_OES;
   // The SI backing this VideoFrame will be read by the display compositor and
   // raster. The latter will be over GL if not using OOP-R. NOTE: GL usage can
   // be eliminated once OOP-R ships definitively.
-  auto shared_image = sii->NotifyMailboxAdded(
-      mailbox, gpu::SHARED_IMAGE_USAGE_DISPLAY_READ |
-                   gpu::SHARED_IMAGE_USAGE_GLES2_READ |
-                   gpu::SHARED_IMAGE_USAGE_RASTER_READ |
-                   gpu::SHARED_IMAGE_USAGE_RASTER_WRITE);
+  scoped_refptr<gpu::ClientSharedImage> shared_image;
+  if (base::FeatureList::IsEnabled(
+          media::kVideoFrameUseClientSITextureTarget)) {
+    // If the VideoFrame will be using the texture target from this
+    // ClientSharedImage, then we need to ensure that the ClientSI holds the
+    // correct texture target (which is *not* the texture target that
+    // ClientSharedImage would compute internally for these parameters).
+    // NOTE: We do this only under the killswitch because it changes the texture
+    // target that the ClientSI is holding and thus has potential other
+    // behavioral implications.
+    shared_image =
+        sii->NotifyMailboxAdded(mailbox, viz::SinglePlaneFormat::kRGBA_8888,
+                                coded_size, gfx::ColorSpace::CreateSRGB(),
+                                kTopLeft_GrSurfaceOrigin, kPremul_SkAlphaType,
+                                gpu::SHARED_IMAGE_USAGE_DISPLAY_READ |
+                                    gpu::SHARED_IMAGE_USAGE_GLES2_READ |
+                                    gpu::SHARED_IMAGE_USAGE_RASTER_READ,
+                                texture_target);
+  } else {
+    shared_image =
+        sii->NotifyMailboxAdded(mailbox, viz::SinglePlaneFormat::kRGBA_8888,
+                                coded_size, gfx::ColorSpace::CreateSRGB(),
+                                kTopLeft_GrSurfaceOrigin, kPremul_SkAlphaType,
+                                gpu::SHARED_IMAGE_USAGE_DISPLAY_READ |
+                                    gpu::SHARED_IMAGE_USAGE_GLES2_READ |
+                                    gpu::SHARED_IMAGE_USAGE_RASTER_READ);
+  }
 
   // The pixel format doesn't matter here as long as it's valid for texture
   // frames. But SkiaRenderer wants to ensure that the format of the resource
@@ -89,9 +107,14 @@ void StreamTextureWrapperImpl::CreateVideoFrame(
   // image. crbug.com/1028746. Since we create all the textures/abstract
   // textures as well as shared images for video to be of format RGBA, we need
   // to use the pixel format as ABGR here(which corresponds to 32bpp RGBA).
+  //
+  // This message comes from GPU process when the SharedImage is already
+  // created, so we don't need to wait on any synctoken, mailbox is ready to
+  // use.
   scoped_refptr<media::VideoFrame> new_frame =
-      media::VideoFrame::WrapNativeTextures(
-          media::PIXEL_FORMAT_ABGR, holders,
+      media::VideoFrame::WrapSharedImage(
+          media::PIXEL_FORMAT_ABGR, shared_image, gpu::SyncToken(),
+          texture_target,
           base::BindPostTask(main_task_runner_,
                              base::BindOnce(&OnReleaseVideoFrame, factory_,
                                             std::move(shared_image))),

@@ -26,6 +26,7 @@ Rectangle {
             categories: [1, 2, 3, 4, 5, 6]
             gridVisible: checkBoxGridXMajor.checked
             subGridVisible: checkBoxGridXMinor.checked
+            alignment: checkBoxAxisXAlignment.checked ? Qt.AlignTop : Qt.AlignBottom
         }
         axisY: ValueAxis {
             id: yAxis
@@ -40,11 +41,12 @@ Rectangle {
             //labelDecimals: 3
             gridVisible: checkBoxGridYMajor.checked
             subGridVisible: checkBoxGridYMinor.checked
+            alignment: checkBoxAxisYAlignment.checked ? Qt.AlignRight : Qt.AlignLeft
         }
         theme: GraphsTheme {
             id: myTheme
             colorScheme: GraphsTheme.ColorScheme.Dark
-            backgroundColor: "#20000000"
+            backgroundColor: "#80000000"
             plotAreaBackgroundColor: "#20000000"
             seriesColors: ["#dd444444", "#dd555555", "#dd666666", "#dd777777", "#dd888888"]
             borderColors: ["#111111", "#222222", "#333333", "#444444", "#555555"]
@@ -69,8 +71,9 @@ Rectangle {
                 Rectangle {
                     id: comp
                     property color barColor
+                    property int barIndex
                     gradient: Gradient {
-                        GradientStop { position: 0.0; color: "red" }
+                        GradientStop { position: 0.0; color: (comp.barIndex % 2 === 0) ? "#f02020" : "#d0d020"}
                         GradientStop { position: 0.4; color: Qt.darker(comp.barColor, 2.0) }
                         GradientStop { position: 1.0; color: comp.barColor }
                     }
@@ -80,6 +83,16 @@ Rectangle {
                 }
             }
         }
+    }
+    Rectangle {
+        x: chartView.x + chartView.plotArea.x
+        y: chartView.y + chartView.plotArea.y
+        width: chartView.plotArea.width
+        height: chartView.plotArea.height
+        color: "transparent"
+        border.color: "red"
+        border.width: 2
+        visible: checkBoxShowPlotArea.checked
     }
 
     SettingsView {
@@ -164,6 +177,21 @@ Rectangle {
         CustomCheckBox {
             id: checkBoxCustomBars
             text: "Use Custom Bars"
+            checked: false
+        }
+        CustomCheckBox {
+            id: checkBoxShowPlotArea
+            text: "Show Plot Area"
+            checked: false
+        }
+        CustomCheckBox {
+            id: checkBoxAxisXAlignment
+            text: "Axis X: Bottom/Top"
+            checked: false
+        }
+        CustomCheckBox {
+            id: checkBoxAxisYAlignment
+            text: "Axis Y: Left/Right"
             checked: false
         }
         CustomCheckBox {

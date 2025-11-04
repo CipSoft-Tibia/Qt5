@@ -25,22 +25,23 @@ public:
 
     QQmlJSOptimizations(const QV4::Compiler::JSUnitGenerator *unitGenerator,
                         const QQmlJSTypeResolver *typeResolver, QQmlJSLogger *logger,
-                        BasicBlocks basicBlocks, InstructionAnnotations annotations,
+                        QList<QQmlJS::DiagnosticMessage> *errors, const BasicBlocks &basicBlocks,
+                        const InstructionAnnotations &annotations,
                         QList<ObjectOrArrayDefinition> objectAndArrayDefinitions)
-        : QQmlJSCompilePass(unitGenerator, typeResolver, logger, basicBlocks, annotations),
-          m_objectAndArrayDefinitions{ objectAndArrayDefinitions }
+        : QQmlJSCompilePass(unitGenerator, typeResolver, logger, errors, basicBlocks, annotations),
+          m_objectAndArrayDefinitions{ std::move(objectAndArrayDefinitions) }
     {
     }
 
     ~QQmlJSOptimizations() = default;
 
-    BlocksAndAnnotations run(const Function *function, QQmlJS::DiagnosticMessage *error);
+    BlocksAndAnnotations run(const Function *function);
 
 private:
     struct RegisterAccess
     {
-        QList<QQmlJSScope::ConstPtr> trackedTypes;
-        QHash<int, QQmlJSScope::ConstPtr> typeReaders;
+        QList<QQmlJSRegisterContent> trackedTypes;
+        QHash<int, QQmlJSRegisterContent> typeReaders;
         QHash<int, Conversions> registerReadersAndConversions;
         int trackedRegister;
     };
@@ -55,6 +56,10 @@ private:
     void populateReaderLocations();
     void adjustTypes();
     bool canMove(int instructionOffset, const RegisterAccess &access) const;
+
+    void removeReadsFromErasedInstructions(const QFlatMap<int, InstructionAnnotation>::const_iterator &it);
+    void removeDeadStoresUntilStable();
+    bool eraseDeadStore(const InstructionAnnotations::iterator &it, bool &erasedReaders);
 
     QHash<int, RegisterAccess> m_readerLocations;
     QList<ObjectOrArrayDefinition> m_objectAndArrayDefinitions;

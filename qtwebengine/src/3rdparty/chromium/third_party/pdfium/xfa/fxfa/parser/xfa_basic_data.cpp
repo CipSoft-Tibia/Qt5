@@ -9,6 +9,7 @@
 #include <iterator>
 #include <utility>
 
+#include "core/fxcrt/span.h"
 #include "fxjs/xfa/cjx_boolean.h"
 #include "fxjs/xfa/cjx_container.h"
 #include "fxjs/xfa/cjx_datawindow.h"
@@ -57,6 +58,8 @@ const PacketTableRecord kPacketTable[] = {
 #undef PCKT____
 };
 
+constexpr pdfium::span<const PacketTableRecord> kPacketSpan{kPacketTable};
+
 struct ElementRecord {
   uint32_t hash;  // Hashed as wide string.
   XFA_Element element;
@@ -72,12 +75,16 @@ constexpr ElementRecord kElementRecords[] = {
 #undef ELEM____
 };
 
+constexpr pdfium::span<const ElementRecord> kElementRecordSpan{kElementRecords};
+
 constexpr const char* kElementNames[] = {
 #undef ELEM____
 #define ELEM____(a, b, c, d) b,
 #include "xfa/fxfa/parser/elements.inc"
 #undef ELEM____
 };
+
+constexpr const pdfium::span<const char* const> kElementNameSpan{kElementNames};
 
 static_assert(std::size(kElementRecords) == std::size(kElementNames),
               "Size mismatch");
@@ -97,12 +104,17 @@ constexpr AttributeRecord kAttributeRecords[] = {
 #undef ATTR____
 };
 
+constexpr pdfium::span<const AttributeRecord> kAttributeRecordSpan{
+    kAttributeRecords};
+
 constexpr const char* kAttributeNames[] = {
 #undef ATTR____
 #define ATTR____(a, b, c, d) b,
 #include "xfa/fxfa/parser/attributes.inc"
 #undef ATTR____
 };
+
+constexpr pdfium::span<const char* const> kAttributeNameSpan{kAttributeNames};
 
 static_assert(std::size(kAttributeRecords) == std::size(kAttributeNames),
               "Size mismatch");
@@ -129,6 +141,9 @@ constexpr const char* kAttributeValueNames[] = {
 #undef VALUE____
 };
 
+constexpr pdfium::span<const char* const> kAttributeValueNameSpan{
+    kAttributeValueNames};
+
 static_assert(std::size(kAttributeValueRecords) ==
                   std::size(kAttributeValueNames),
               "Size mismatch");
@@ -154,6 +169,9 @@ constexpr XFA_ATTRIBUTE_CALLBACK kElementAttributeCallbacks[] = {
 #undef ELEM_ATTR____
 };
 
+constexpr pdfium::span<const XFA_ATTRIBUTE_CALLBACK>
+    kElementAttributeCallbackSpan{kElementAttributeCallbacks};
+
 static_assert(std::size(kElementAttributeRecords) ==
                   std::size(kElementAttributeCallbacks),
               "Size mismatch");
@@ -161,21 +179,21 @@ static_assert(std::size(kElementAttributeRecords) ==
 }  // namespace
 
 XFA_PACKETINFO XFA_GetPacketByIndex(XFA_PacketType ePacket) {
-  return kPacketTable[static_cast<uint8_t>(ePacket)].info;
+  return kPacketSpan[static_cast<uint8_t>(ePacket)].info;
 }
 
-absl::optional<XFA_PACKETINFO> XFA_GetPacketByName(WideStringView wsName) {
+std::optional<XFA_PACKETINFO> XFA_GetPacketByName(WideStringView wsName) {
   uint32_t hash = FX_HashCode_GetW(wsName);
   auto* elem = std::lower_bound(
       std::begin(kPacketTable), std::end(kPacketTable), hash,
       [](const PacketTableRecord& a, uint32_t hash) { return a.hash < hash; });
   if (elem != std::end(kPacketTable) && wsName.EqualsASCII(elem->info.name))
     return elem->info;
-  return absl::nullopt;
+  return std::nullopt;
 }
 
 ByteStringView XFA_ElementToName(XFA_Element elem) {
-  return kElementNames[static_cast<size_t>(elem)];
+  return kElementNameSpan[static_cast<size_t>(elem)];
 }
 
 XFA_Element XFA_GetElementByName(WideStringView name) {
@@ -187,26 +205,26 @@ XFA_Element XFA_GetElementByName(WideStringView name) {
     return XFA_Element::Unknown;
 
   size_t index = std::distance(std::begin(kElementRecords), elem);
-  return name.EqualsASCII(kElementNames[index]) ? elem->element
-                                                : XFA_Element::Unknown;
+  return name.EqualsASCII(kElementNameSpan[index]) ? elem->element
+                                                   : XFA_Element::Unknown;
 }
 
 ByteStringView XFA_AttributeToName(XFA_Attribute attr) {
-  return kAttributeNames[static_cast<size_t>(attr)];
+  return kAttributeNameSpan[static_cast<size_t>(attr)];
 }
 
-absl::optional<XFA_ATTRIBUTEINFO> XFA_GetAttributeByName(WideStringView name) {
+std::optional<XFA_ATTRIBUTEINFO> XFA_GetAttributeByName(WideStringView name) {
   uint32_t hash = FX_HashCode_GetW(name);
   auto* elem = std::lower_bound(
-      std::begin(kAttributeRecords), std::end(kAttributeRecords), hash,
+      kAttributeRecordSpan.begin(), kAttributeRecordSpan.end(), hash,
       [](const AttributeRecord& a, uint32_t hash) { return a.hash < hash; });
-  if (elem == std::end(kAttributeRecords))
-    return absl::nullopt;
-
-  size_t index = std::distance(std::begin(kAttributeRecords), elem);
-  if (!name.EqualsASCII(kAttributeNames[index]))
-    return absl::nullopt;
-
+  if (elem == kAttributeRecordSpan.end()) {
+    return std::nullopt;
+  }
+  size_t index = std::distance(kAttributeRecordSpan.begin(), elem);
+  if (!name.EqualsASCII(kAttributeNameSpan[index])) {
+    return std::nullopt;
+  }
   XFA_ATTRIBUTEINFO result;
   result.attribute = elem->attribute;
   result.eValueType = elem->script_type;
@@ -214,10 +232,10 @@ absl::optional<XFA_ATTRIBUTEINFO> XFA_GetAttributeByName(WideStringView name) {
 }
 
 ByteStringView XFA_AttributeValueToName(XFA_AttributeValue item) {
-  return kAttributeValueNames[static_cast<int32_t>(item)];
+  return kAttributeValueNameSpan[static_cast<int32_t>(item)];
 }
 
-absl::optional<XFA_AttributeValue> XFA_GetAttributeValueByName(
+std::optional<XFA_AttributeValue> XFA_GetAttributeValueByName(
     WideStringView name) {
   auto* it =
       std::lower_bound(std::begin(kAttributeValueRecords),
@@ -226,22 +244,23 @@ absl::optional<XFA_AttributeValue> XFA_GetAttributeValueByName(
                          return arg.uHash < hash;
                        });
   if (it == std::end(kAttributeValueRecords))
-    return absl::nullopt;
+    return std::nullopt;
 
   size_t index = std::distance(std::begin(kAttributeValueRecords), it);
-  if (!name.EqualsASCII(kAttributeValueNames[index]))
-    return absl::nullopt;
+  if (!name.EqualsASCII(kAttributeValueNameSpan[index])) {
+    return std::nullopt;
+  }
 
   return it->eName;
 }
 
-absl::optional<XFA_SCRIPTATTRIBUTEINFO> XFA_GetScriptAttributeByName(
+std::optional<XFA_SCRIPTATTRIBUTEINFO> XFA_GetScriptAttributeByName(
     XFA_Element element,
     WideStringView attribute_name) {
-  absl::optional<XFA_ATTRIBUTEINFO> attr =
+  std::optional<XFA_ATTRIBUTEINFO> attr =
       XFA_GetAttributeByName(attribute_name);
   if (!attr.has_value())
-    return absl::nullopt;
+    return std::nullopt;
 
   while (element != XFA_Element::Unknown) {
     auto compound_key = std::make_pair(element, attr.value().attribute);
@@ -258,10 +277,10 @@ absl::optional<XFA_SCRIPTATTRIBUTEINFO> XFA_GetScriptAttributeByName(
       result.attribute = attr.value().attribute;
       result.eValueType = attr.value().eValueType;
       size_t index = std::distance(std::begin(kElementAttributeRecords), it);
-      result.callback = kElementAttributeCallbacks[index];
+      result.callback = kElementAttributeCallbackSpan[index];
       return result;
     }
-    element = kElementRecords[static_cast<size_t>(element)].parent;
+    element = kElementRecordSpan[static_cast<size_t>(element)].parent;
   }
-  return absl::nullopt;
+  return std::nullopt;
 }

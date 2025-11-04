@@ -4,22 +4,6 @@
  * Copyright 2017 Google Inc.
  * SPDX-License-Identifier: Apache-2.0
  */
-var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    var desc = Object.getOwnPropertyDescriptor(m, k);
-    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
-      desc = { enumerable: true, get: function() { return m[k]; } };
-    }
-    Object.defineProperty(o, k2, desc);
-}) : (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    o[k2] = m[k];
-}));
-var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
-    Object.defineProperty(o, "default", { enumerable: true, value: v });
-}) : function(o, v) {
-    o["default"] = v;
-});
 var __runInitializers = (this && this.__runInitializers) || function (thisArg, initializers, value) {
     var useValue = arguments.length > 2;
     for (var i = 0; i < initializers.length; i++) {
@@ -53,13 +37,6 @@ var __esDecorate = (this && this.__esDecorate) || function (ctor, descriptorIn, 
     }
     if (target) Object.defineProperty(target, contextIn.name, descriptor);
     done = true;
-};
-var __importStar = (this && this.__importStar) || function (mod) {
-    if (mod && mod.__esModule) return mod;
-    var result = {};
-    if (mod != null) for (var k in mod) if (k !== "default" && Object.prototype.hasOwnProperty.call(mod, k)) __createBinding(result, mod, k);
-    __setModuleDefault(result, mod);
-    return result;
 };
 var __addDisposableResource = (this && this.__addDisposableResource) || function (env, value, async) {
     if (value !== null && value !== void 0) {
@@ -107,17 +84,16 @@ var __disposeResources = (this && this.__disposeResources) || (function (Suppres
     return e.name = "SuppressedError", e.error = error, e.suppressed = suppressed, e;
 });
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.unitToPixels = exports.supportedMetrics = exports.Page = exports.setDefaultScreenshotOptions = void 0;
+exports.supportedMetrics = exports.Page = exports.setDefaultScreenshotOptions = void 0;
 const rxjs_js_1 = require("../../third_party/rxjs/rxjs.js");
 const Errors_js_1 = require("../common/Errors.js");
 const EventEmitter_js_1 = require("../common/EventEmitter.js");
-const NetworkManagerEvents_js_1 = require("../common/NetworkManagerEvents.js");
-const PDFOptions_js_1 = require("../common/PDFOptions.js");
 const TimeoutSettings_js_1 = require("../common/TimeoutSettings.js");
 const util_js_1 = require("../common/util.js");
-const assert_js_1 = require("../util/assert.js");
+const environment_js_1 = require("../environment.js");
 const decorators_js_1 = require("../util/decorators.js");
 const disposable_js_1 = require("../util/disposable.js");
+const encoding_js_1 = require("../util/encoding.js");
 const locators_js_1 = require("./locators/locators.js");
 /**
  * @internal
@@ -200,11 +176,25 @@ let Page = (() => {
          */
         _timeoutSettings = new TimeoutSettings_js_1.TimeoutSettings();
         #requestHandlers = new WeakMap();
+        #inflight$ = new rxjs_js_1.ReplaySubject(1);
         /**
          * @internal
          */
         constructor() {
             super();
+            (0, util_js_1.fromEmitterEvent)(this, "request" /* PageEvent.Request */)
+                .pipe((0, rxjs_js_1.mergeMap)(originalRequest => {
+                return (0, rxjs_js_1.concat)((0, rxjs_js_1.of)(1), (0, rxjs_js_1.merge)((0, util_js_1.fromEmitterEvent)(this, "requestfailed" /* PageEvent.RequestFailed */), (0, util_js_1.fromEmitterEvent)(this, "requestfinished" /* PageEvent.RequestFinished */), (0, util_js_1.fromEmitterEvent)(this, "response" /* PageEvent.Response */).pipe((0, rxjs_js_1.map)(response => {
+                    return response.request();
+                }))).pipe((0, rxjs_js_1.filter)(request => {
+                    return request.id === originalRequest.id;
+                }), (0, rxjs_js_1.take)(1), (0, rxjs_js_1.map)(() => {
+                    return -1;
+                })));
+            }), (0, rxjs_js_1.mergeScan)((acc, addend) => {
+                return (0, rxjs_js_1.of)(acc + addend);
+            }, 0), (0, rxjs_js_1.takeUntil)((0, util_js_1.fromEmitterEvent)(this, "close" /* PageEvent.Close */)), (0, rxjs_js_1.startWith)(0))
+                .subscribe(this.#inflight$);
         }
         /**
          * Listen to page events.
@@ -241,6 +231,12 @@ let Page = (() => {
             }
             return super.off(type, handler);
         }
+        /**
+         * {@inheritDoc Accessibility}
+         */
+        get accessibility() {
+            return this.mainFrame().accessibility;
+        }
         locator(selectorOrFunc) {
             if (typeof selectorOrFunc === 'string') {
                 return locators_js_1.NodeLocator.create(this, selectorOrFunc);
@@ -258,28 +254,58 @@ let Page = (() => {
             return locators_js_1.Locator.race(locators);
         }
         /**
-         * Runs `document.querySelector` within the page. If no element matches the
-         * selector, the return value resolves to `null`.
+         * Finds the first element that matches the selector. If no element matches
+         * the selector, the return value resolves to `null`.
          *
-         * @param selector - A `selector` to query page for
-         * {@link https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_Selectors | selector}
-         * to query page for.
+         * @param selector -
+         * {@link https://pptr.dev/guides/page-interactions#selectors | selector}
+         * to query the page for.
+         * {@link https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_Selectors | CSS selectors}
+         * can be passed as-is and a
+         * {@link https://pptr.dev/guides/page-interactions#non-css-selectors | Puppeteer-specific selector syntax}
+         * allows quering by
+         * {@link https://pptr.dev/guides/page-interactions#text-selectors--p-text | text},
+         * {@link https://pptr.dev/guides/page-interactions#aria-selectors--p-aria | a11y role and name},
+         * and
+         * {@link https://pptr.dev/guides/page-interactions#xpath-selectors--p-xpath | xpath}
+         * and
+         * {@link https://pptr.dev/guides/page-interactions#querying-elements-in-shadow-dom | combining these queries across shadow roots}.
+         * Alternatively, you can specify the selector type using a
+         * {@link https://pptr.dev/guides/page-interactions#prefixed-selector-syntax | prefix}.
+         *
+         * @remarks
+         *
+         * Shortcut for {@link Frame.$ | Page.mainFrame().$(selector) }.
          */
         async $(selector) {
             return await this.mainFrame().$(selector);
         }
         /**
-         * The method runs `document.querySelectorAll` within the page. If no elements
+         * Finds elements on the page that match the selector. If no elements
          * match the selector, the return value resolves to `[]`.
          *
-         * @param selector - A `selector` to query page for
+         * @param selector -
+         * {@link https://pptr.dev/guides/page-interactions#selectors | selector}
+         * to query the page for.
+         * {@link https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_Selectors | CSS selectors}
+         * can be passed as-is and a
+         * {@link https://pptr.dev/guides/page-interactions#non-css-selectors | Puppeteer-specific selector syntax}
+         * allows quering by
+         * {@link https://pptr.dev/guides/page-interactions#text-selectors--p-text | text},
+         * {@link https://pptr.dev/guides/page-interactions#aria-selectors--p-aria | a11y role and name},
+         * and
+         * {@link https://pptr.dev/guides/page-interactions#xpath-selectors--p-xpath | xpath}
+         * and
+         * {@link https://pptr.dev/guides/page-interactions#querying-elements-in-shadow-dom | combining these queries across shadow roots}.
+         * Alternatively, you can specify the selector type using a
+         * {@link https://pptr.dev/guides/page-interactions#prefixed-selector-syntax | prefix}.
          *
          * @remarks
          *
          * Shortcut for {@link Frame.$$ | Page.mainFrame().$$(selector) }.
          */
-        async $$(selector) {
-            return await this.mainFrame().$$(selector);
+        async $$(selector, options) {
+            return await this.mainFrame().$$(selector, options);
         }
         /**
          * @remarks
@@ -343,8 +369,8 @@ let Page = (() => {
             return await this.mainFrame().evaluateHandle(pageFunction, ...args);
         }
         /**
-         * This method runs `document.querySelector` within the page and passes the
-         * result as the first argument to the `pageFunction`.
+         * This method finds the first element within the page that matches the selector
+         * and passes the result as the first argument to the `pageFunction`.
          *
          * @remarks
          *
@@ -392,11 +418,23 @@ let Page = (() => {
          * );
          * ```
          *
-         * @param selector - the
-         * {@link https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_Selectors | selector}
-         * to query for
+         * @param selector -
+         * {@link https://pptr.dev/guides/page-interactions#selectors | selector}
+         * to query the page for.
+         * {@link https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_Selectors | CSS selectors}
+         * can be passed as-is and a
+         * {@link https://pptr.dev/guides/page-interactions#non-css-selectors | Puppeteer-specific selector syntax}
+         * allows quering by
+         * {@link https://pptr.dev/guides/page-interactions#text-selectors--p-text | text},
+         * {@link https://pptr.dev/guides/page-interactions#aria-selectors--p-aria | a11y role and name},
+         * and
+         * {@link https://pptr.dev/guides/page-interactions#xpath-selectors--p-xpath | xpath}
+         * and
+         * {@link https://pptr.dev/guides/page-interactions#querying-elements-in-shadow-dom | combining these queries across shadow roots}.
+         * Alternatively, you can specify the selector type using a
+         * {@link https://pptr.dev/guides/page-interactions#prefixed-selector-syntax | prefix}.
          * @param pageFunction - the function to be evaluated in the page context.
-         * Will be passed the result of `document.querySelector(selector)` as its
+         * Will be passed the result of the element matching the selector as its
          * first argument.
          * @param args - any additional arguments to pass through to `pageFunction`.
          *
@@ -409,8 +447,8 @@ let Page = (() => {
             return await this.mainFrame().$eval(selector, pageFunction, ...args);
         }
         /**
-         * This method runs `Array.from(document.querySelectorAll(selector))` within
-         * the page and passes the result as the first argument to the `pageFunction`.
+         * This method returns all elements matching the selector and passes the
+         * resulting array as the first argument to the `pageFunction`.
          *
          * @remarks
          * If `pageFunction` returns a promise `$$eval` will wait for the promise to
@@ -436,9 +474,7 @@ let Page = (() => {
          * @example
          *
          * ```ts
-         * // if you don't provide HTMLInputElement here, TS will error
-         * // as `value` is not on `Element`
-         * await page.$$eval('input', (elements: HTMLInputElement[]) => {
+         * await page.$$eval('input', elements => {
          *   return elements.map(e => e.value);
          * });
          * ```
@@ -450,20 +486,28 @@ let Page = (() => {
          * @example
          *
          * ```ts
-         * // The compiler can infer the return type in this case, but if it can't
-         * // or if you want to be more explicit, provide it as the generic type.
-         * const allInputValues = await page.$$eval<string[]>(
-         *   'input',
-         *   (elements: HTMLInputElement[]) => elements.map(e => e.textContent)
+         * const allInputValues = await page.$$eval('input', elements =>
+         *   elements.map(e => e.textContent)
          * );
          * ```
          *
-         * @param selector - the
-         * {@link https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_Selectors | selector}
-         * to query for
+         * @param selector -
+         * {@link https://pptr.dev/guides/page-interactions#selectors | selector}
+         * to query the page for.
+         * {@link https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_Selectors | CSS selectors}
+         * can be passed as-is and a
+         * {@link https://pptr.dev/guides/page-interactions#non-css-selectors | Puppeteer-specific selector syntax}
+         * allows quering by
+         * {@link https://pptr.dev/guides/page-interactions#text-selectors--p-text | text},
+         * {@link https://pptr.dev/guides/page-interactions#aria-selectors--p-aria | a11y role and name},
+         * and
+         * {@link https://pptr.dev/guides/page-interactions#xpath-selectors--p-xpath | xpath}
+         * and
+         * {@link https://pptr.dev/guides/page-interactions#querying-elements-in-shadow-dom | combining these queries across shadow roots}.
+         * Alternatively, you can specify the selector type using a
+         * {@link https://pptr.dev/guides/page-interactions#prefixed-selector-syntax | prefix}.
          * @param pageFunction - the function to be evaluated in the page context.
-         * Will be passed the result of
-         * `Array.from(document.querySelectorAll(selector))` as its first argument.
+         * Will be passed an array of matching elements as its first argument.
          * @param args - any additional arguments to pass through to `pageFunction`.
          *
          * @returns The result of calling `pageFunction`. If it returns an element it
@@ -473,19 +517,6 @@ let Page = (() => {
         async $$eval(selector, pageFunction, ...args) {
             pageFunction = (0, util_js_1.withSourcePuppeteerURLIfNone)(this.$$eval.name, pageFunction);
             return await this.mainFrame().$$eval(selector, pageFunction, ...args);
-        }
-        /**
-         * The method evaluates the XPath expression relative to the page document as
-         * its context node. If there are no such elements, the method resolves to an
-         * empty array.
-         *
-         * @remarks
-         * Shortcut for {@link Frame.$x | Page.mainFrame().$x(expression) }.
-         *
-         * @param expression - Expression to evaluate
-         */
-        async $x(expression) {
-            return await this.mainFrame().$x(expression);
         }
         /**
          * Adds a `<script>` tag into the page with the desired URL or content.
@@ -525,68 +556,12 @@ let Page = (() => {
          *
          * @param html - HTML markup to assign to the page.
          * @param options - Parameters that has some properties.
-         *
-         * @remarks
-         *
-         * The parameter `options` might have the following options.
-         *
-         * - `timeout` : Maximum time in milliseconds for resources to load, defaults
-         *   to 30 seconds, pass `0` to disable timeout. The default value can be
-         *   changed by using the {@link Page.setDefaultNavigationTimeout} or
-         *   {@link Page.setDefaultTimeout} methods.
-         *
-         * - `waitUntil`: When to consider setting markup succeeded, defaults to
-         *   `load`. Given an array of event strings, setting content is considered
-         *   to be successful after all events have been fired. Events can be
-         *   either:<br/>
-         * - `load` : consider setting content to be finished when the `load` event
-         *   is fired.<br/>
-         * - `domcontentloaded` : consider setting content to be finished when the
-         *   `DOMContentLoaded` event is fired.<br/>
-         * - `networkidle0` : consider setting content to be finished when there are
-         *   no more than 0 network connections for at least `500` ms.<br/>
-         * - `networkidle2` : consider setting content to be finished when there are
-         *   no more than 2 network connections for at least `500` ms.
          */
         async setContent(html, options) {
             await this.mainFrame().setContent(html, options);
         }
         /**
-         * Navigates the page to the given `url`.
-         *
-         * @remarks
-         *
-         * Navigation to `about:blank` or navigation to the same URL with a different
-         * hash will succeed and return `null`.
-         *
-         * :::warning
-         *
-         * Headless mode doesn't support navigation to a PDF document. See the {@link
-         * https://bugs.chromium.org/p/chromium/issues/detail?id=761295 | upstream
-         * issue}.
-         *
-         * :::
-         *
-         * Shortcut for {@link Frame.goto | page.mainFrame().goto(url, options)}.
-         *
-         * @param url - URL to navigate page to. The URL should include scheme, e.g.
-         * `https://`
-         * @param options - Options to configure waiting behavior.
-         * @returns A promise which resolves to the main resource response. In case of
-         * multiple redirects, the navigation will resolve with the response of the
-         * last redirect.
-         * @throws If:
-         *
-         * - there's an SSL error (e.g. in case of self-signed certificates).
-         * - target URL is invalid.
-         * - the timeout is exceeded during navigation.
-         * - the remote server does not respond or is unreachable.
-         * - the main resource failed to load.
-         *
-         * This method will not throw an error when any valid HTTP status code is
-         * returned by the remote server, including 404 "Not Found" and 500 "Internal
-         * Server Error". The status code for such responses can be retrieved by
-         * calling {@link HTTPResponse.status}.
+         * {@inheritDoc Frame.goto}
          */
         async goto(url, options) {
             return await this.mainFrame().goto(url, options);
@@ -623,14 +598,103 @@ let Page = (() => {
             return await this.mainFrame().waitForNavigation(options);
         }
         /**
+         * @param urlOrPredicate - A URL or predicate to wait for
+         * @param options - Optional waiting parameters
+         * @returns Promise which resolves to the matched request
+         * @example
+         *
+         * ```ts
+         * const firstRequest = await page.waitForRequest(
+         *   'https://example.com/resource'
+         * );
+         * const finalRequest = await page.waitForRequest(
+         *   request => request.url() === 'https://example.com'
+         * );
+         * return finalRequest.response()?.ok();
+         * ```
+         *
+         * @remarks
+         * Optional Waiting Parameters have:
+         *
+         * - `timeout`: Maximum wait time in milliseconds, defaults to `30` seconds, pass
+         *   `0` to disable the timeout. The default value can be changed by using the
+         *   {@link Page.setDefaultTimeout} method.
+         */
+        waitForRequest(urlOrPredicate, options = {}) {
+            const { timeout: ms = this._timeoutSettings.timeout(), signal } = options;
+            if (typeof urlOrPredicate === 'string') {
+                const url = urlOrPredicate;
+                urlOrPredicate = (request) => {
+                    return request.url() === url;
+                };
+            }
+            const observable$ = (0, util_js_1.fromEmitterEvent)(this, "request" /* PageEvent.Request */).pipe((0, util_js_1.filterAsync)(urlOrPredicate), (0, rxjs_js_1.raceWith)((0, util_js_1.timeout)(ms), (0, util_js_1.fromAbortSignal)(signal), (0, util_js_1.fromEmitterEvent)(this, "close" /* PageEvent.Close */).pipe((0, rxjs_js_1.map)(() => {
+                throw new Errors_js_1.TargetCloseError('Page closed!');
+            }))));
+            return (0, rxjs_js_1.firstValueFrom)(observable$);
+        }
+        /**
+         * @param urlOrPredicate - A URL or predicate to wait for.
+         * @param options - Optional waiting parameters
+         * @returns Promise which resolves to the matched response.
+         * @example
+         *
+         * ```ts
+         * const firstResponse = await page.waitForResponse(
+         *   'https://example.com/resource'
+         * );
+         * const finalResponse = await page.waitForResponse(
+         *   response =>
+         *     response.url() === 'https://example.com' && response.status() === 200
+         * );
+         * const finalResponse = await page.waitForResponse(async response => {
+         *   return (await response.text()).includes('<html>');
+         * });
+         * return finalResponse.ok();
+         * ```
+         *
+         * @remarks
+         * Optional Parameter have:
+         *
+         * - `timeout`: Maximum wait time in milliseconds, defaults to `30` seconds,
+         *   pass `0` to disable the timeout. The default value can be changed by using
+         *   the {@link Page.setDefaultTimeout} method.
+         */
+        waitForResponse(urlOrPredicate, options = {}) {
+            const { timeout: ms = this._timeoutSettings.timeout(), signal } = options;
+            if (typeof urlOrPredicate === 'string') {
+                const url = urlOrPredicate;
+                urlOrPredicate = (response) => {
+                    return response.url() === url;
+                };
+            }
+            const observable$ = (0, util_js_1.fromEmitterEvent)(this, "response" /* PageEvent.Response */).pipe((0, util_js_1.filterAsync)(urlOrPredicate), (0, rxjs_js_1.raceWith)((0, util_js_1.timeout)(ms), (0, util_js_1.fromAbortSignal)(signal), (0, util_js_1.fromEmitterEvent)(this, "close" /* PageEvent.Close */).pipe((0, rxjs_js_1.map)(() => {
+                throw new Errors_js_1.TargetCloseError('Page closed!');
+            }))));
+            return (0, rxjs_js_1.firstValueFrom)(observable$);
+        }
+        /**
+         * Waits for the network to be idle.
+         *
+         * @param options - Options to configure waiting behavior.
+         * @returns A promise which resolves once the network is idle.
+         */
+        waitForNetworkIdle(options = {}) {
+            return (0, rxjs_js_1.firstValueFrom)(this.waitForNetworkIdle$(options));
+        }
+        /**
          * @internal
          */
-        _waitForNetworkIdle(networkManager, idleTime, requestsInFlight = 0) {
-            return (0, rxjs_js_1.merge)((0, rxjs_js_1.fromEvent)(networkManager, NetworkManagerEvents_js_1.NetworkManagerEvent.Request), (0, rxjs_js_1.fromEvent)(networkManager, NetworkManagerEvents_js_1.NetworkManagerEvent.Response), (0, rxjs_js_1.fromEvent)(networkManager, NetworkManagerEvents_js_1.NetworkManagerEvent.RequestFailed)).pipe((0, rxjs_js_1.startWith)(undefined), (0, rxjs_js_1.filter)(() => {
-                return networkManager.inFlightRequestsCount() <= requestsInFlight;
-            }), (0, rxjs_js_1.switchMap)(v => {
-                return (0, rxjs_js_1.of)(v).pipe((0, rxjs_js_1.delay)(idleTime));
-            }));
+        waitForNetworkIdle$(options = {}) {
+            const { timeout: ms = this._timeoutSettings.timeout(), idleTime = util_js_1.NETWORK_IDLE_TIME, concurrency = 0, signal, } = options;
+            return this.#inflight$.pipe((0, rxjs_js_1.switchMap)(inflight => {
+                if (inflight > concurrency) {
+                    return rxjs_js_1.EMPTY;
+                }
+                return (0, rxjs_js_1.timer)(idleTime);
+            }), (0, rxjs_js_1.map)(() => { }), (0, rxjs_js_1.raceWith)((0, util_js_1.timeout)(ms), (0, util_js_1.fromAbortSignal)(signal), (0, util_js_1.fromEmitterEvent)(this, "close" /* PageEvent.Close */).pipe((0, rxjs_js_1.map)(() => {
+                throw new Errors_js_1.TargetCloseError('Page closed!');
+            }))));
         }
         /**
          * Waits for a frame matching the given conditions to appear.
@@ -644,13 +708,13 @@ let Page = (() => {
          * ```
          */
         async waitForFrame(urlOrPredicate, options = {}) {
-            const { timeout: ms = this.getDefaultTimeout() } = options;
-            if ((0, util_js_1.isString)(urlOrPredicate)) {
-                urlOrPredicate = (frame) => {
+            const { timeout: ms = this.getDefaultTimeout(), signal } = options;
+            const predicate = (0, util_js_1.isString)(urlOrPredicate)
+                ? (frame) => {
                     return urlOrPredicate === frame.url();
-                };
-            }
-            return await (0, rxjs_js_1.firstValueFrom)((0, rxjs_js_1.merge)((0, rxjs_js_1.fromEvent)(this, "frameattached" /* PageEvent.FrameAttached */), (0, rxjs_js_1.fromEvent)(this, "framenavigated" /* PageEvent.FrameNavigated */), (0, rxjs_js_1.from)(this.frames())).pipe((0, rxjs_js_1.filterAsync)(urlOrPredicate), (0, rxjs_js_1.first)(), (0, rxjs_js_1.raceWith)((0, util_js_1.timeout)(ms), (0, rxjs_js_1.fromEvent)(this, "close" /* PageEvent.Close */).pipe((0, rxjs_js_1.map)(() => {
+                }
+                : urlOrPredicate;
+            return await (0, rxjs_js_1.firstValueFrom)((0, rxjs_js_1.merge)((0, util_js_1.fromEmitterEvent)(this, "frameattached" /* PageEvent.FrameAttached */), (0, util_js_1.fromEmitterEvent)(this, "framenavigated" /* PageEvent.FrameNavigated */), (0, rxjs_js_1.from)(this.frames())).pipe((0, util_js_1.filterAsync)(predicate), (0, rxjs_js_1.first)(), (0, rxjs_js_1.raceWith)((0, util_js_1.timeout)(ms), (0, util_js_1.fromAbortSignal)(signal), (0, util_js_1.fromEmitterEvent)(this, "close" /* PageEvent.Close */).pipe((0, rxjs_js_1.map)(() => {
                 throw new Errors_js_1.TargetCloseError('Page closed.');
             })))));
         }
@@ -671,7 +735,7 @@ let Page = (() => {
          *
          * ```ts
          * import {KnownDevices} from 'puppeteer';
-         * const iPhone = KnownDevices['iPhone 6'];
+         * const iPhone = KnownDevices['iPhone 15 Pro'];
          *
          * (async () => {
          *   const browser = await puppeteer.launch();
@@ -743,12 +807,11 @@ let Page = (() => {
         /**
          * @internal
          */
-        async _maybeWriteBufferToFile(path, buffer) {
+        async _maybeWriteTypedArrayToFile(path, typedArray) {
             if (!path) {
                 return;
             }
-            const fs = await (0, util_js_1.importFSPromises)();
-            await fs.writeFile(path, buffer);
+            await environment_js_1.environment.value.fs.promises.writeFile(path, typedArray);
         }
         /**
          * Captures a screencast of this {@link Page | page}.
@@ -791,10 +854,8 @@ let Page = (() => {
          * You must have {@link https://ffmpeg.org/ | ffmpeg} installed on your system.
          */
         async screencast(options = {}) {
-            const [{ ScreenRecorder }, [width, height, devicePixelRatio]] = await Promise.all([
-                Promise.resolve().then(() => __importStar(require('../node/ScreenRecorder.js'))),
-                this.#getNativePixelDimensions(),
-            ]);
+            const ScreenRecorder = environment_js_1.environment.value.ScreenRecorder;
+            const [width, height, devicePixelRatio] = await this.#getNativePixelDimensions();
             let crop;
             if (options.crop) {
                 const { x, y, width: cropWidth, height: cropHeight, } = roundRectangle(normalizeRectangle(options.crop));
@@ -838,7 +899,7 @@ let Page = (() => {
                 throw error;
             }
             if (options.path) {
-                const { createWriteStream } = await Promise.resolve().then(() => __importStar(require('fs')));
+                const { createWriteStream } = environment_js_1.environment.value.fs;
                 const stream = createWriteStream(options.path, 'binary');
                 recorder.pipe(stream);
             }
@@ -913,8 +974,8 @@ let Page = (() => {
         async screenshot(userOptions = {}) {
             const env_2 = { stack: [], error: void 0, hasError: false };
             try {
+                const _guard = __addDisposableResource(env_2, await this.browserContext().startScreenshot(), false);
                 await this.bringToFront();
-                // TODO: use structuredClone after Node 16 support is dropped.
                 const options = {
                     ...userOptions,
                     clip: userOptions.clip
@@ -925,7 +986,7 @@ let Page = (() => {
                 };
                 if (options.type === undefined && options.path !== undefined) {
                     const filePath = options.path;
-                    // Note we cannot use Node.js here due to browser compatability.
+                    // Note we cannot use Node.js here due to browser compatibility.
                     const extension = filePath
                         .slice(filePath.lastIndexOf('.') + 1)
                         .toLowerCase();
@@ -943,7 +1004,7 @@ let Page = (() => {
                     }
                 }
                 if (options.quality !== undefined) {
-                    if (options.quality < 0 && options.quality > 100) {
+                    if (options.quality < 0 || options.quality > 100) {
                         throw new Error(`Expected 'quality' (${options.quality}) to be between 0 and 100, inclusive.`);
                     }
                     if (options.type === undefined ||
@@ -988,15 +1049,7 @@ let Page = (() => {
                                 ...scrollDimensions,
                             });
                             stack.defer(async () => {
-                                if (viewport) {
-                                    await this.setViewport(viewport).catch(util_js_1.debugError);
-                                }
-                                else {
-                                    await this.setViewport({
-                                        width: 0,
-                                        height: 0,
-                                    }).catch(util_js_1.debugError);
-                                }
+                                await this.setViewport(viewport).catch(util_js_1.debugError);
                             });
                         }
                     }
@@ -1008,9 +1061,9 @@ let Page = (() => {
                 if (options.encoding === 'base64') {
                     return data;
                 }
-                const buffer = Buffer.from(data, 'base64');
-                await this._maybeWriteBufferToFile(options.path, buffer);
-                return buffer;
+                const typedArray = (0, encoding_js_1.stringToTypedArray)(data, true);
+                await this._maybeWriteTypedArrayToFile(options.path, typedArray);
+                return typedArray;
             }
             catch (e_2) {
                 env_2.error = e_2;
@@ -1021,50 +1074,6 @@ let Page = (() => {
                 if (result_1)
                     await result_1;
             }
-        }
-        /**
-         * @internal
-         */
-        _getPDFOptions(options = {}, lengthUnit = 'in') {
-            const defaults = {
-                scale: 1,
-                displayHeaderFooter: false,
-                headerTemplate: '',
-                footerTemplate: '',
-                printBackground: false,
-                landscape: false,
-                pageRanges: '',
-                preferCSSPageSize: false,
-                omitBackground: false,
-                timeout: 30000,
-                tagged: false,
-            };
-            let width = 8.5;
-            let height = 11;
-            if (options.format) {
-                const format = PDFOptions_js_1.paperFormats[options.format.toLowerCase()];
-                (0, assert_js_1.assert)(format, 'Unknown paper format: ' + options.format);
-                width = format.width;
-                height = format.height;
-            }
-            else {
-                width = convertPrintParameterToInches(options.width, lengthUnit) ?? width;
-                height =
-                    convertPrintParameterToInches(options.height, lengthUnit) ?? height;
-            }
-            const margin = {
-                top: convertPrintParameterToInches(options.margin?.top, lengthUnit) || 0,
-                left: convertPrintParameterToInches(options.margin?.left, lengthUnit) || 0,
-                bottom: convertPrintParameterToInches(options.margin?.bottom, lengthUnit) || 0,
-                right: convertPrintParameterToInches(options.margin?.right, lengthUnit) || 0,
-            };
-            return {
-                ...defaults,
-                ...options,
-                width,
-                height,
-                margin,
-            };
         }
         /**
          * The page's title
@@ -1078,7 +1087,7 @@ let Page = (() => {
         }
         /**
          * This method fetches an element with `selector`, scrolls it into view if
-         * needed, and then uses {@link Page | Page.mouse} to click in the center of the
+         * needed, and then uses {@link Page.mouse} to click in the center of the
          * element. If there's no element matching `selector`, the method throws an
          * error.
          *
@@ -1097,7 +1106,21 @@ let Page = (() => {
          * ```
          *
          * Shortcut for {@link Frame.click | page.mainFrame().click(selector[, options]) }.
-         * @param selector - A `selector` to search for element to click. If there are
+         * @param selector -
+         * {@link https://pptr.dev/guides/page-interactions#selectors | selector}
+         * to query the page for.
+         * {@link https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_Selectors | CSS selectors}
+         * can be passed as-is and a
+         * {@link https://pptr.dev/guides/page-interactions#non-css-selectors | Puppeteer-specific selector syntax}
+         * allows quering by
+         * {@link https://pptr.dev/guides/page-interactions#text-selectors--p-text | text},
+         * {@link https://pptr.dev/guides/page-interactions#aria-selectors--p-aria | a11y role and name},
+         * and
+         * {@link https://pptr.dev/guides/page-interactions#xpath-selectors--p-xpath | xpath}
+         * and
+         * {@link https://pptr.dev/guides/page-interactions#querying-elements-in-shadow-dom | combining these queries across shadow roots}.
+         * Alternatively, you can specify the selector type using a
+         * {@link https://pptr.dev/guides/page-interactions#prefixed-selector-syntax | prefix}. If there are
          * multiple elements satisfying the `selector`, the first will be clicked
          * @param options - `Object`
          * @returns Promise which resolves when the element matching `selector` is
@@ -1108,32 +1131,58 @@ let Page = (() => {
             return this.mainFrame().click(selector, options);
         }
         /**
-         * This method fetches an element with `selector` and focuses it. If there's no
-         * element matching `selector`, the method throws an error.
-         * @param selector - A
-         * {@link https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_Selectors | selector }
-         * of an element to focus. If there are multiple elements satisfying the
-         * selector, the first will be focused.
-         * @returns Promise which resolves when the element matching selector is
-         * successfully focused. The promise will be rejected if there is no element
-         * matching selector.
+         * This method fetches an element with `selector` and focuses it. If
+         * there's no element matching `selector`, the method throws an error.
+         * @param selector -
+         * {@link https://pptr.dev/guides/page-interactions#selectors | selector}
+         * to query the page for.
+         * {@link https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_Selectors | CSS selectors}
+         * can be passed as-is and a
+         * {@link https://pptr.dev/guides/page-interactions#non-css-selectors | Puppeteer-specific selector syntax}
+         * allows quering by
+         * {@link https://pptr.dev/guides/page-interactions#text-selectors--p-text | text},
+         * {@link https://pptr.dev/guides/page-interactions#aria-selectors--p-aria | a11y role and name},
+         * and
+         * {@link https://pptr.dev/guides/page-interactions#xpath-selectors--p-xpath | xpath}
+         * and
+         * {@link https://pptr.dev/guides/page-interactions#querying-elements-in-shadow-dom | combining these queries across shadow roots}.
+         * Alternatively, you can specify the selector type using a
+         * {@link https://pptr.dev/guides/page-interactions#prefixed-selector-syntax | prefix}.
+         * If there are multiple elements satisfying the selector, the first
+         * will be focused.
+         * @returns Promise which resolves when the element matching selector
+         * is successfully focused. The promise will be rejected if there is
+         * no element matching selector.
          *
          * @remarks
          *
-         * Shortcut for {@link Frame.focus | page.mainFrame().focus(selector)}.
+         * Shortcut for
+         * {@link Frame.focus | page.mainFrame().focus(selector)}.
          */
         focus(selector) {
             return this.mainFrame().focus(selector);
         }
         /**
          * This method fetches an element with `selector`, scrolls it into view if
-         * needed, and then uses {@link Page | Page.mouse}
+         * needed, and then uses {@link Page.mouse}
          * to hover over the center of the element.
          * If there's no element matching `selector`, the method throws an error.
-         * @param selector - A
-         * {@link https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_Selectors | selector}
-         * to search for element to hover. If there are multiple elements satisfying
-         * the selector, the first will be hovered.
+         * @param selector -
+         * {@link https://pptr.dev/guides/page-interactions#selectors | selector}
+         * to query the page for.
+         * {@link https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_Selectors | CSS selectors}
+         * can be passed as-is and a
+         * {@link https://pptr.dev/guides/page-interactions#non-css-selectors | Puppeteer-specific selector syntax}
+         * allows quering by
+         * {@link https://pptr.dev/guides/page-interactions#text-selectors--p-text | text},
+         * {@link https://pptr.dev/guides/page-interactions#aria-selectors--p-aria | a11y role and name},
+         * and
+         * {@link https://pptr.dev/guides/page-interactions#xpath-selectors--p-xpath | xpath}
+         * and
+         * {@link https://pptr.dev/guides/page-interactions#querying-elements-in-shadow-dom | combining these queries across shadow roots}.
+         * Alternatively, you can specify the selector type using a
+         * {@link https://pptr.dev/guides/page-interactions#prefixed-selector-syntax | prefix}. If there are
+         * multiple elements satisfying the `selector`, the first will be hovered.
          * @returns Promise which resolves when the element matching `selector` is
          * successfully hovered. Promise gets rejected if there's no element matching
          * `selector`.
@@ -1157,9 +1206,21 @@ let Page = (() => {
          * page.select('select#colors', 'red', 'green', 'blue'); // multiple selections
          * ```
          *
-         * @param selector - A
-         * {@link https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_Selectors | Selector}
-         * to query the page for
+         * @param selector -
+         * {@link https://pptr.dev/guides/page-interactions#selectors | selector}
+         * to query the page for.
+         * {@link https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_Selectors | CSS selectors}
+         * can be passed as-is and a
+         * {@link https://pptr.dev/guides/page-interactions#non-css-selectors | Puppeteer-specific selector syntax}
+         * allows quering by
+         * {@link https://pptr.dev/guides/page-interactions#text-selectors--p-text | text},
+         * {@link https://pptr.dev/guides/page-interactions#aria-selectors--p-aria | a11y role and name},
+         * and
+         * {@link https://pptr.dev/guides/page-interactions#xpath-selectors--p-xpath | xpath}
+         * and
+         * {@link https://pptr.dev/guides/page-interactions#querying-elements-in-shadow-dom | combining these queries across shadow roots}.
+         * Alternatively, you can specify the selector type using a
+         * {@link https://pptr.dev/guides/page-interactions#prefixed-selector-syntax | prefix}.
          * @param values - Values of options to select. If the `<select>` has the
          * `multiple` attribute, all values are considered, otherwise only the first one
          * is taken into account.
@@ -1174,12 +1235,24 @@ let Page = (() => {
         }
         /**
          * This method fetches an element with `selector`, scrolls it into view if
-         * needed, and then uses {@link Page | Page.touchscreen}
+         * needed, and then uses {@link Page.touchscreen}
          * to tap in the center of the element.
          * If there's no element matching `selector`, the method throws an error.
-         * @param selector - A
-         * {@link https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_Selectors | Selector}
-         * to search for element to tap. If there are multiple elements satisfying the
+         * @param selector -
+         * {@link https://pptr.dev/guides/page-interactions#selectors | selector}
+         * to query the page for.
+         * {@link https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_Selectors | CSS selectors}
+         * can be passed as-is and a
+         * {@link https://pptr.dev/guides/page-interactions#non-css-selectors | Puppeteer-specific selector syntax}
+         * allows quering by
+         * {@link https://pptr.dev/guides/page-interactions#text-selectors--p-text | text},
+         * {@link https://pptr.dev/guides/page-interactions#aria-selectors--p-aria | a11y role and name},
+         * and
+         * {@link https://pptr.dev/guides/page-interactions#xpath-selectors--p-xpath | xpath}
+         * and
+         * {@link https://pptr.dev/guides/page-interactions#querying-elements-in-shadow-dom | combining these queries across shadow roots}.
+         * Alternatively, you can specify the selector type using a
+         * {@link https://pptr.dev/guides/page-interactions#prefixed-selector-syntax | prefix}. If there are multiple elements satisfying the
          * selector, the first will be tapped.
          *
          * @remarks
@@ -1203,10 +1276,21 @@ let Page = (() => {
          * // Types slower, like a user
          * ```
          *
-         * @param selector - A
-         * {@link https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_Selectors | selector}
-         * of an element to type into. If there are multiple elements satisfying the
-         * selector, the first will be used.
+         * @param selector -
+         * {@link https://pptr.dev/guides/page-interactions#selectors | selector}
+         * to query the page for.
+         * {@link https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_Selectors | CSS selectors}
+         * can be passed as-is and a
+         * {@link https://pptr.dev/guides/page-interactions#non-css-selectors | Puppeteer-specific selector syntax}
+         * allows quering by
+         * {@link https://pptr.dev/guides/page-interactions#text-selectors--p-text | text},
+         * {@link https://pptr.dev/guides/page-interactions#aria-selectors--p-aria | a11y role and name},
+         * and
+         * {@link https://pptr.dev/guides/page-interactions#xpath-selectors--p-xpath | xpath}
+         * and
+         * {@link https://pptr.dev/guides/page-interactions#querying-elements-in-shadow-dom | combining these queries across shadow roots}.
+         * Alternatively, you can specify the selector type using a
+         * {@link https://pptr.dev/guides/page-interactions#prefixed-selector-syntax | prefix}.
          * @param text - A text to type into a focused element.
          * @param options - have property `delay` which is the Time to wait between
          * key presses in milliseconds. Defaults to `0`.
@@ -1214,30 +1298,6 @@ let Page = (() => {
          */
         type(selector, text, options) {
             return this.mainFrame().type(selector, text, options);
-        }
-        /**
-         * @deprecated Replace with `new Promise(r => setTimeout(r, milliseconds));`.
-         *
-         * Causes your script to wait for the given number of milliseconds.
-         *
-         * @remarks
-         *
-         * It's generally recommended to not wait for a number of seconds, but instead
-         * use {@link Frame.waitForSelector}, {@link Frame.waitForXPath} or
-         * {@link Frame.waitForFunction} to wait for exactly the conditions you want.
-         *
-         * @example
-         *
-         * Wait for 1 second:
-         *
-         * ```ts
-         * await page.waitForTimeout(1000);
-         * ```
-         *
-         * @param milliseconds - the number of milliseconds to wait.
-         */
-        waitForTimeout(milliseconds) {
-            return this.mainFrame().waitForTimeout(milliseconds);
         }
         /**
          * Wait for the `selector` to appear in page. If at the moment of calling the
@@ -1268,9 +1328,21 @@ let Page = (() => {
          * })();
          * ```
          *
-         * @param selector - A
-         * {@link https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_Selectors | selector}
-         * of an element to wait for
+         * @param selector -
+         * {@link https://pptr.dev/guides/page-interactions#selectors | selector}
+         * to query the page for.
+         * {@link https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_Selectors | CSS selectors}
+         * can be passed as-is and a
+         * {@link https://pptr.dev/guides/page-interactions#non-css-selectors | Puppeteer-specific selector syntax}
+         * allows quering by
+         * {@link https://pptr.dev/guides/page-interactions#text-selectors--p-text | text},
+         * {@link https://pptr.dev/guides/page-interactions#aria-selectors--p-aria | a11y role and name},
+         * and
+         * {@link https://pptr.dev/guides/page-interactions#xpath-selectors--p-xpath | xpath}
+         * and
+         * {@link https://pptr.dev/guides/page-interactions#querying-elements-in-shadow-dom | combining these queries across shadow roots}.
+         * Alternatively, you can specify the selector type using a
+         * {@link https://pptr.dev/guides/page-interactions#prefixed-selector-syntax | prefix}.
          * @param options - Optional waiting parameters
          * @returns Promise which resolves when element specified by selector string
          * is added to DOM. Resolves to `null` if waiting for hidden: `true` and
@@ -1293,60 +1365,6 @@ let Page = (() => {
          */
         async waitForSelector(selector, options = {}) {
             return await this.mainFrame().waitForSelector(selector, options);
-        }
-        /**
-         * Wait for the `xpath` to appear in page. If at the moment of calling the
-         * method the `xpath` already exists, the method will return immediately. If
-         * the `xpath` doesn't appear after the `timeout` milliseconds of waiting, the
-         * function will throw.
-         *
-         * @example
-         * This method works across navigation
-         *
-         * ```ts
-         * import puppeteer from 'puppeteer';
-         * (async () => {
-         *   const browser = await puppeteer.launch();
-         *   const page = await browser.newPage();
-         *   let currentURL;
-         *   page
-         *     .waitForXPath('//img')
-         *     .then(() => console.log('First URL with image: ' + currentURL));
-         *   for (currentURL of [
-         *     'https://example.com',
-         *     'https://google.com',
-         *     'https://bbc.com',
-         *   ]) {
-         *     await page.goto(currentURL);
-         *   }
-         *   await browser.close();
-         * })();
-         * ```
-         *
-         * @param xpath - A
-         * {@link https://developer.mozilla.org/en-US/docs/Web/XPath | xpath} of an
-         * element to wait for
-         * @param options - Optional waiting parameters
-         * @returns Promise which resolves when element specified by xpath string is
-         * added to DOM. Resolves to `null` if waiting for `hidden: true` and xpath is
-         * not found in DOM, otherwise resolves to `ElementHandle`.
-         * @remarks
-         * The optional Argument `options` have properties:
-         *
-         * - `visible`: A boolean to wait for element to be present in DOM and to be
-         *   visible, i.e. to not have `display: none` or `visibility: hidden` CSS
-         *   properties. Defaults to `false`.
-         *
-         * - `hidden`: A boolean wait for element to not be found in the DOM or to be
-         *   hidden, i.e. have `display: none` or `visibility: hidden` CSS properties.
-         *   Defaults to `false`.
-         *
-         * - `timeout`: A number which is maximum time to wait for in milliseconds.
-         *   Defaults to `30000` (30 seconds). Pass `0` to disable timeout. The default
-         *   value can be changed by using the {@link Page.setDefaultTimeout} method.
-         */
-        waitForXPath(xpath, options) {
-            return this.mainFrame().waitForXPath(xpath, options);
         }
         /**
          * Waits for the provided function, `pageFunction`, to return a truthy value when
@@ -1440,46 +1458,6 @@ exports.supportedMetrics = new Set([
     'JSHeapUsedSize',
     'JSHeapTotalSize',
 ]);
-/**
- * @internal
- */
-exports.unitToPixels = {
-    px: 1,
-    in: 96,
-    cm: 37.8,
-    mm: 3.78,
-};
-function convertPrintParameterToInches(parameter, lengthUnit = 'in') {
-    if (typeof parameter === 'undefined') {
-        return undefined;
-    }
-    let pixels;
-    if ((0, util_js_1.isNumber)(parameter)) {
-        // Treat numbers as pixel values to be aligned with phantom's paperSize.
-        pixels = parameter;
-    }
-    else if ((0, util_js_1.isString)(parameter)) {
-        const text = parameter;
-        let unit = text.substring(text.length - 2).toLowerCase();
-        let valueText = '';
-        if (unit in exports.unitToPixels) {
-            valueText = text.substring(0, text.length - 2);
-        }
-        else {
-            // In case of unknown unit try to parse the whole parameter as number of pixels.
-            // This is consistent with phantom's paperSize behavior.
-            unit = 'px';
-            valueText = text;
-        }
-        const value = Number(valueText);
-        (0, assert_js_1.assert)(!isNaN(value), 'Failed to parse parameter value: ' + text);
-        pixels = value * exports.unitToPixels[unit];
-    }
-    else {
-        throw new Error('page.pdf() Cannot handle parameter type: ' + typeof parameter);
-    }
-    return pixels / exports.unitToPixels[lengthUnit];
-}
 /** @see https://w3c.github.io/webdriver-bidi/#normalize-rect */
 function normalizeRectangle(clip) {
     return {

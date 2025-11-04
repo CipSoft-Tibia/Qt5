@@ -21,7 +21,10 @@ import {
 } from '../recording_interfaces_v2';
 
 export class AndroidVirtualTarget implements RecordingTargetV2 {
-  constructor(private name: string, private androidApiLevel: number) {}
+  constructor(
+    private name: string,
+    private androidApiLevel: number,
+  ) {}
 
   canConnectWithoutContention(): Promise<boolean> {
     return Promise.resolve(true);
@@ -33,7 +36,8 @@ export class AndroidVirtualTarget implements RecordingTargetV2 {
 
   createTracingSession(_: TracingSessionListener): Promise<TracingSession> {
     throw new RecordingError(
-        'Can not create tracing session for a virtual target');
+      'Can not create tracing session for a virtual target',
+    );
   }
 
   disconnect(_?: string): Promise<void> {

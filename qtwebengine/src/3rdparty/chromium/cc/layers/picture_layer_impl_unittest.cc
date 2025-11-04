@@ -2,6 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#ifdef UNSAFE_BUFFERS_BUILD
+// TODO(crbug.com/351564777): Remove this and convert code to safer constructs.
+#pragma allow_unsafe_buffers
+#endif
+
 #include "cc/layers/picture_layer_impl.h"
 
 #include <stddef.h>
@@ -16,6 +21,7 @@
 #include "base/memory/raw_ptr.h"
 #include "base/test/scoped_feature_list.h"
 #include "cc/animation/animation_host.h"
+#include "cc/base/features.h"
 #include "cc/base/math_util.h"
 #include "cc/layers/append_quads_data.h"
 #include "cc/layers/picture_layer.h"
@@ -197,8 +203,7 @@ class PictureLayerImplTest : public TestLayerTreeHostBase {
     auto prioritized_tiles =
         tiling->UpdateAndGetAllPrioritizedTilesForTesting();
     for (PictureLayerTiling::CoverageIterator iter(
-             tiling, tiling->contents_scale_key(),
-             gfx::Rect(tiling->tiling_size()));
+             tiling, tiling->contents_scale_key(), tiling->tiling_rect());
          iter; ++iter) {
       EXPECT_TRUE(*iter);
       EXPECT_EQ(raster_source, prioritized_tiles[*iter].raster_source());
@@ -216,9 +221,9 @@ class PictureLayerImplTest : public TestLayerTreeHostBase {
     layer->draw_properties().screen_space_transform_is_animating = true;
   }
 
-  void SetContentsScaleOnBothLayers(float contents_scale,
-                                    float device_scale_factor,
-                                    float page_scale_factor) {
+  void SetContentsScaleOnPendingLayer(float contents_scale,
+                                      float device_scale_factor,
+                                      float page_scale_factor) {
     // Sets arbitrary animation scale to ensure it's not used in any way.
     constexpr float kArbitraryScale = 12345.0f;
     SetMaximumAnimationToScreenScale(pending_layer(), kArbitraryScale, false);
@@ -226,11 +231,27 @@ class PictureLayerImplTest : public TestLayerTreeHostBase {
         false;
     SetupDrawPropertiesAndUpdateTiles(pending_layer(), contents_scale,
                                       device_scale_factor, page_scale_factor);
+  }
+
+  void SetContentsScaleOnActiveLayer(float contents_scale,
+                                     float device_scale_factor,
+                                     float page_scale_factor) {
+    // Sets arbitrary animation scale to ensure it's not used in any way.
+    constexpr float kArbitraryScale = 34567.0f;
     SetMaximumAnimationToScreenScale(active_layer(), kArbitraryScale, false);
     active_layer()->draw_properties().screen_space_transform_is_animating =
         false;
     SetupDrawPropertiesAndUpdateTiles(active_layer(), contents_scale,
                                       device_scale_factor, page_scale_factor);
+  }
+
+  void SetContentsScaleOnBothLayers(float contents_scale,
+                                    float device_scale_factor,
+                                    float page_scale_factor) {
+    SetContentsScaleOnPendingLayer(contents_scale, device_scale_factor,
+                                   page_scale_factor);
+    SetContentsScaleOnActiveLayer(contents_scale, device_scale_factor,
+                                  page_scale_factor);
   }
 
   void SetContentsAndAnimationScalesOnBothLayers(
@@ -476,8 +497,7 @@ TEST_F(LegacySWPictureLayerImplTest, ClonePartialInvalidation) {
     auto prioritized_tiles =
         tiling->UpdateAndGetAllPrioritizedTilesForTesting();
     for (PictureLayerTiling::CoverageIterator iter(
-             tiling, tiling->contents_scale_key(),
-             gfx::Rect(tiling->tiling_size()));
+             tiling, tiling->contents_scale_key(), tiling->tiling_rect());
          iter; ++iter) {
       // We don't always have a tile, but when we do it's because it was
       // invalidated and it has the latest raster source.
@@ -500,8 +520,7 @@ TEST_F(LegacySWPictureLayerImplTest, ClonePartialInvalidation) {
     auto prioritized_tiles =
         tiling->UpdateAndGetAllPrioritizedTilesForTesting();
     for (PictureLayerTiling::CoverageIterator iter(
-             tiling, tiling->contents_scale_key(),
-             gfx::Rect(tiling->tiling_size()));
+             tiling, tiling->contents_scale_key(), tiling->tiling_rect());
          iter; ++iter) {
       EXPECT_TRUE(*iter);
       EXPECT_FALSE(iter.geometry_rect().IsEmpty());
@@ -1615,18 +1634,19 @@ TEST_F(LegacySWPictureLayerImplTest, ResourcelessPartialRecording) {
   EXPECT_FALSE(quad->needs_blending);
 }
 
-TEST_F(LegacySWPictureLayerImplTest, ResourcelessEmptyRecording) {
+TEST_F(LegacySWPictureLayerImplTest, ResourcelessRecordingNotVisible) {
   auto render_pass = viz::CompositorRenderPass::Create();
 
-  gfx::Size layer_bounds(700, 650);
+  gfx::Size layer_bounds(1000, 1000);
   scoped_refptr<FakeRasterSource> active_raster_source =
-      FakeRasterSource::CreatePartiallyFilled(layer_bounds, gfx::Rect());
+      FakeRasterSource::CreatePartiallyFilled(layer_bounds,
+                                              gfx::Rect(0, 0, 300, 300));
   SetupPendingTree(active_raster_source);
   ActivateTree();
 
   active_layer()->SetContentsOpaque(true);
   active_layer()->draw_properties().visible_layer_rect =
-      gfx::Rect(layer_bounds);
+      gfx::Rect(500, 0, 1000, 500);
 
   AppendQuadsData data;
   active_layer()->WillDraw(DRAW_MODE_RESOURCELESS_SOFTWARE, nullptr);
@@ -1859,8 +1879,10 @@ TEST_F(NoLowResPictureLayerImplTest, MarkRequiredOffscreenTiles) {
   int num_visible = 0;
   int num_offscreen = 0;
 
-  std::unique_ptr<TilingSetRasterQueueAll> queue(new TilingSetRasterQueueAll(
-      pending_layer()->picture_layer_tiling_set(), false, false));
+  std::unique_ptr<TilingSetRasterQueueAll> queue =
+      TilingSetRasterQueueAll::Create(
+          pending_layer()->picture_layer_tiling_set(), false, false);
+  EXPECT_TRUE(queue);
   for (; !queue->IsEmpty(); queue->Pop()) {
     const PrioritizedTile& prioritized_tile = queue->Top();
     DCHECK(prioritized_tile.tile());
@@ -1945,8 +1967,9 @@ TEST_F(NoLowResPictureLayerImplTest,
   active_layer()->DidDraw(nullptr);
 
   // All tiles in activation rect is ready to draw.
-  EXPECT_EQ(0u, data.num_missing_tiles);
-  EXPECT_EQ(0u, data.num_incomplete_tiles);
+  EXPECT_EQ(0, data.num_missing_tiles);
+  EXPECT_EQ(0, data.num_incompletely_rastered_tiles);
+  EXPECT_EQ(0, data.num_incompletely_recorded_tiles);
   EXPECT_FALSE(active_layer()->only_used_low_res_last_append_quads());
 }
 
@@ -1975,8 +1998,9 @@ TEST_F(LegacySWPictureLayerImplTest, HighResTileIsComplete) {
 
   // All high res tiles drew, nothing was incomplete.
   EXPECT_EQ(9u, render_pass->quad_list.size());
-  EXPECT_EQ(0u, data.num_missing_tiles);
-  EXPECT_EQ(0u, data.num_incomplete_tiles);
+  EXPECT_EQ(0, data.num_missing_tiles);
+  EXPECT_EQ(0, data.num_incompletely_rastered_tiles);
+  EXPECT_EQ(0, data.num_incompletely_recorded_tiles);
   EXPECT_FALSE(active_layer()->only_used_low_res_last_append_quads());
 }
 
@@ -1998,8 +2022,9 @@ TEST_F(LegacySWPictureLayerImplTest, HighResTileIsIncomplete) {
   active_layer()->DidDraw(nullptr);
 
   EXPECT_EQ(1u, render_pass->quad_list.size());
-  EXPECT_EQ(1u, data.num_missing_tiles);
-  EXPECT_EQ(0u, data.num_incomplete_tiles);
+  EXPECT_EQ(1, data.num_missing_tiles);
+  EXPECT_EQ(0, data.num_incompletely_rastered_tiles);
+  EXPECT_EQ(0, data.num_incompletely_recorded_tiles);
   EXPECT_TRUE(active_layer()->only_used_low_res_last_append_quads());
 }
 
@@ -2026,8 +2051,9 @@ TEST_F(LegacySWPictureLayerImplTest, HighResTileIsIncompleteLowResComplete) {
   active_layer()->DidDraw(nullptr);
 
   EXPECT_EQ(1u, render_pass->quad_list.size());
-  EXPECT_EQ(0u, data.num_missing_tiles);
-  EXPECT_EQ(1u, data.num_incomplete_tiles);
+  EXPECT_EQ(0, data.num_missing_tiles);
+  EXPECT_EQ(1, data.num_incompletely_rastered_tiles);
+  EXPECT_EQ(0, data.num_incompletely_recorded_tiles);
   EXPECT_TRUE(active_layer()->only_used_low_res_last_append_quads());
 }
 
@@ -2063,8 +2089,9 @@ TEST_F(LegacySWPictureLayerImplTest, LowResTileIsIncomplete) {
 
   // The missing high res tile was replaced by a low res tile.
   EXPECT_EQ(9u, render_pass->quad_list.size());
-  EXPECT_EQ(0u, data.num_missing_tiles);
-  EXPECT_EQ(1u, data.num_incomplete_tiles);
+  EXPECT_EQ(0, data.num_missing_tiles);
+  EXPECT_EQ(1, data.num_incompletely_rastered_tiles);
+  EXPECT_EQ(0, data.num_incompletely_recorded_tiles);
   EXPECT_FALSE(active_layer()->only_used_low_res_last_append_quads());
 }
 
@@ -2127,8 +2154,9 @@ TEST_F(LegacySWPictureLayerImplTest,
                 ->tex_coord_rect);
 
   // Neither the high res nor the ideal tiles were considered as incomplete.
-  EXPECT_EQ(0u, data.num_missing_tiles);
-  EXPECT_EQ(0u, data.num_incomplete_tiles);
+  EXPECT_EQ(0, data.num_missing_tiles);
+  EXPECT_EQ(0, data.num_incompletely_rastered_tiles);
+  EXPECT_EQ(0, data.num_incompletely_recorded_tiles);
   EXPECT_FALSE(active_layer()->only_used_low_res_last_append_quads());
 }
 
@@ -2136,12 +2164,18 @@ TEST_F(LegacySWPictureLayerImplTest, AppendQuadsDataForCheckerboard) {
   host_impl()->AdvanceToNextFrame(base::Milliseconds(1));
 
   gfx::Size tile_size(100, 100);
-  gfx::Size layer_bounds(200, 200);
-  gfx::Rect recorded_viewport(0, 0, 150, 150);
+  gfx::Size layer_bounds(500, 500);
+  gfx::Rect recorded_bounds(0, 0, 150, 150);
 
   scoped_refptr<FakeRasterSource> pending_raster_source =
-      FakeRasterSource::CreatePartiallyFilled(layer_bounds, recorded_viewport);
+      FakeRasterSource::CreatePartiallyFilled(layer_bounds, recorded_bounds);
   SetupPendingTreeWithFixedTileSize(pending_raster_source, tile_size, Region());
+  host_impl()
+      ->pending_tree()
+      ->property_trees()
+      ->scroll_tree_mutable()
+      .SetScrollingContentsCullRect(pending_layer()->element_id(),
+                                    gfx::Rect(0, 0, 120, 120));
   ActivateTree();
 
   auto render_pass = viz::CompositorRenderPass::Create();
@@ -2150,13 +2184,80 @@ TEST_F(LegacySWPictureLayerImplTest, AppendQuadsDataForCheckerboard) {
   active_layer()->AppendQuads(render_pass.get(), &data);
   active_layer()->DidDraw(nullptr);
 
+  EXPECT_EQ(recorded_bounds, active_layer()->HighResTiling()->tiling_rect());
   EXPECT_EQ(1u, render_pass->quad_list.size());
-  EXPECT_EQ(1u, data.num_missing_tiles);
-  EXPECT_EQ(0u, data.num_incomplete_tiles);
-  EXPECT_EQ(40000, data.checkerboarded_visible_content_area);
-  EXPECT_EQ(17500, data.checkerboarded_no_recording_content_area);
+  EXPECT_EQ(1, data.num_missing_tiles);
+  EXPECT_EQ(0, data.num_incompletely_rastered_tiles);
+  EXPECT_EQ(1, data.num_incompletely_recorded_tiles);
+  EXPECT_EQ(22500, data.checkerboarded_visible_content_area);
+  EXPECT_EQ(8100, data.checkerboarded_needs_record_content_area);
   EXPECT_EQ(22500, data.checkerboarded_needs_raster_content_area);
   EXPECT_TRUE(active_layer()->only_used_low_res_last_append_quads());
+
+  recorded_bounds = gfx::Rect(30, 30, 150, 150);
+  SetupPendingTree(
+      FakeRasterSource::CreatePartiallyFilled(layer_bounds, recorded_bounds));
+  ActivateTree();
+
+  render_pass = viz::CompositorRenderPass::Create();
+  active_layer()->WillDraw(DRAW_MODE_SOFTWARE, nullptr);
+  data = AppendQuadsData();
+  active_layer()->AppendQuads(render_pass.get(), &data);
+  active_layer()->DidDraw(nullptr);
+
+  // Tiling rect origin is snapped.
+  EXPECT_EQ(gfx::Rect(0, 0, 180, 180),
+            active_layer()->HighResTiling()->tiling_rect());
+  EXPECT_EQ(1u, render_pass->quad_list.size());
+  EXPECT_EQ(1, data.num_missing_tiles);
+  EXPECT_EQ(0, data.num_incompletely_rastered_tiles);
+  EXPECT_EQ(1, data.num_incompletely_recorded_tiles);
+  EXPECT_EQ(32400, data.checkerboarded_visible_content_area);
+  EXPECT_EQ(18000, data.checkerboarded_needs_record_content_area);
+  EXPECT_EQ(22500, data.checkerboarded_needs_raster_content_area);
+  EXPECT_TRUE(active_layer()->only_used_low_res_last_append_quads());
+
+  // Initialize all tiles with resources.
+  for (size_t i = 0; i < active_layer()->tilings()->num_tilings(); i++) {
+    host_impl()->tile_manager()->InitializeTilesWithResourcesForTesting(
+        active_layer()->tilings()->tiling_at(i)->AllTilesForTesting());
+  }
+
+  render_pass = viz::CompositorRenderPass::Create();
+  active_layer()->WillDraw(DRAW_MODE_SOFTWARE, nullptr);
+  data = AppendQuadsData();
+  active_layer()->AppendQuads(render_pass.get(), &data);
+  active_layer()->DidDraw(nullptr);
+  EXPECT_EQ(4u, render_pass->quad_list.size());
+  EXPECT_EQ(0, data.num_missing_tiles);
+  EXPECT_EQ(0, data.num_incompletely_rastered_tiles);
+  EXPECT_EQ(3, data.num_incompletely_recorded_tiles);
+  EXPECT_EQ(18000, data.checkerboarded_visible_content_area);
+  EXPECT_EQ(18000, data.checkerboarded_needs_record_content_area);
+  EXPECT_EQ(0, data.checkerboarded_needs_raster_content_area);
+  EXPECT_FALSE(active_layer()->only_used_low_res_last_append_quads());
+
+  // Now the layer is fully recorded.
+  host_impl()
+      ->active_tree()
+      ->property_trees()
+      ->scroll_tree_mutable()
+      .SetScrollingContentsCullRect(active_layer()->element_id(),
+                                    gfx::Rect(layer_bounds));
+
+  render_pass = viz::CompositorRenderPass::Create();
+  active_layer()->WillDraw(DRAW_MODE_SOFTWARE, nullptr);
+  data = AppendQuadsData();
+  active_layer()->AppendQuads(render_pass.get(), &data);
+  active_layer()->DidDraw(nullptr);
+  EXPECT_EQ(4u, render_pass->quad_list.size());
+  EXPECT_EQ(0, data.num_missing_tiles);
+  EXPECT_EQ(0, data.num_incompletely_rastered_tiles);
+  EXPECT_EQ(0, data.num_incompletely_recorded_tiles);
+  EXPECT_EQ(0, data.checkerboarded_visible_content_area);
+  EXPECT_EQ(0, data.checkerboarded_needs_record_content_area);
+  EXPECT_EQ(0, data.checkerboarded_needs_raster_content_area);
+  EXPECT_FALSE(active_layer()->only_used_low_res_last_append_quads());
 }
 
 TEST_F(LegacySWPictureLayerImplTest, HighResRequiredWhenActiveAllReady) {
@@ -2248,32 +2349,33 @@ TEST_F(LegacySWPictureLayerImplTest, DisallowRequiredForActivation) {
 }
 
 TEST_F(LegacySWPictureLayerImplTest, NothingRequiredIfActiveMissingTiles) {
-  gfx::Size layer_bounds(400, 400);
+  gfx::Size layer_bounds(1000, 4000);
   gfx::Size tile_size(100, 100);
 
   scoped_refptr<FakeRasterSource> pending_raster_source =
       FakeRasterSource::CreateFilled(layer_bounds);
-  // This raster source will create tilings, but has no recordings so will not
-  // create any tiles.  This is attempting to simulate scrolling past the end of
-  // recorded content on the active layer, where the recordings are so far away
-  // that no tiles are created.
   scoped_refptr<FakeRasterSource> active_raster_source =
-      FakeRasterSource::CreatePartiallyFilled(layer_bounds, gfx::Rect());
+      FakeRasterSource::CreatePartiallyFilled(layer_bounds,
+                                              gfx::Rect(500, 500));
 
   SetupTreesWithFixedTileSize(pending_raster_source, active_raster_source,
                               tile_size, Region());
 
-  // Active layer has tilings, but no tiles due to missing recordings.
+  // Active layer has tilings.
   EXPECT_TRUE(active_layer()->CanHaveTilings());
   EXPECT_EQ(active_layer()->tilings()->num_tilings(), 2u);
+  // Simulate scrolling past the end of recorded content on the active layer,
+  // where the recordings are so far away that no tiles are created.
+  gfx::Rect visible_rect(0, 3000, 1000, 1000);
+  active_layer()->HighResTiling()->ComputeTilePriorityRects(
+      visible_rect, visible_rect, visible_rect, visible_rect, 1, Occlusion());
   EXPECT_EQ(active_layer()->HighResTiling()->AllTilesForTesting().size(), 0u);
 
   // Since the active layer has no tiles at all, the pending layer doesn't
   // need content in order to activate.
   pending_layer()->HighResTiling()->UpdateAllRequiredStateForTesting();
   EXPECT_FALSE(pending_layer()->LowResTiling());
-
-  AssertNoTilesRequired(pending_layer()->HighResTiling());
+  EXPECT_EQ(pending_layer()->HighResTiling()->AllTilesForTesting().size(), 0u);
 }
 
 TEST_F(LegacySWPictureLayerImplTest, HighResRequiredIfActiveCantHaveTiles) {
@@ -2567,9 +2669,8 @@ TEST_F(LegacySWPictureLayerImplTest,
   EXPECT_TRUE(active_layer()->tilings()->FindTilingWithScaleKey(1.0f));
 
   // Now, set the bounds to be 1x1, so that minimum contents scale becomes 1.
-  active_layer()->SetBounds(gfx::Size(1, 1));
-  active_layer()->SetRasterSource(
-      FakeRasterSource::CreateFilled(gfx::Size(1, 1)), Region());
+  SetupPendingTree(FakeRasterSource::CreateFilled(gfx::Size(1, 1)));
+  ActivateTree();
   active_layer()->AddLastAppendQuadsTilingForTesting(
       active_layer()->tilings()->FindTilingWithScaleKey(1.0f));
   active_layer()->UpdateTiles();
@@ -2598,12 +2699,10 @@ TEST_F(LegacySWPictureLayerImplTest, LowResTilingWithoutGpuRasterization) {
   EXPECT_EQ(2u, active_layer()->tilings()->num_tilings());
 }
 
-TEST_F(CommitToActiveTreePictureLayerImplTest,
-       NoLowResTilingWithGpuRasterization) {
+TEST_F(PictureLayerImplTest, NoLowResTilingWithGpuRasterization) {
   gfx::Size default_tile_size(host_impl()->settings().default_tile_size);
   gfx::Size layer_bounds(default_tile_size.width() * 4,
                          default_tile_size.height() * 4);
-  host_impl()->CommitComplete();
 
   SetupDefaultTrees(layer_bounds);
   EXPECT_TRUE(host_impl()->use_gpu_rasterization());
@@ -2614,10 +2713,7 @@ TEST_F(CommitToActiveTreePictureLayerImplTest,
   EXPECT_EQ(1u, active_layer()->tilings()->num_tilings());
 }
 
-TEST_F(CommitToActiveTreePictureLayerImplTest,
-       RequiredTilesWithGpuRasterization) {
-  host_impl()->CommitComplete();
-
+TEST_F(PictureLayerImplTest, RequiredTilesWithGpuRasterization) {
   gfx::Size viewport_size(1000, 1000);
   host_impl()->active_tree()->SetDeviceViewportRect(gfx::Rect(viewport_size));
 
@@ -2630,9 +2726,20 @@ TEST_F(CommitToActiveTreePictureLayerImplTest,
 
   active_layer()->HighResTiling()->UpdateAllRequiredStateForTesting();
 
-  // High res tiling should have 128 tiles (4x16 tile grid, plus another
-  // factor of 2 for half-width tiles).
-  EXPECT_EQ(128u, active_layer()->HighResTiling()->AllTilesForTesting().size());
+  EXPECT_EQ(ALLOW_PREPAINT_ONLY,
+            host_impl()->global_tile_state().memory_limit_policy);
+  if (!features::IsCCSlimmingEnabled()) {
+    // High res tiling should have 128 tiles (4x16 tile grid, plus another
+    // factor of 2 for half-width tiles).
+    EXPECT_EQ(128u,
+              active_layer()->HighResTiling()->AllTilesForTesting().size());
+  } else {
+    // Due to optimization in PictureLayerTiling::ComputeTilePriorityRects(),
+    // since the memory limit policy is ALLOW_PREPAINT_ONLY, |live_tiles_rect|
+    // does not include |eventually_rect|.
+    EXPECT_EQ(15u,
+              active_layer()->HighResTiling()->AllTilesForTesting().size());
+  }
 
   // Visible viewport should be covered by 8 tiles (4 high, half-width.
   // No other tiles should be required for activation.
@@ -2651,9 +2758,9 @@ TEST_F(CommitToActiveTreePictureLayerImplTest,
   SetupDefaultTrees(layer_bounds);
   EXPECT_TRUE(host_impl()->use_gpu_rasterization());
 
-  SetContentsScaleOnBothLayers(dsf /* contents_scale */,
-                               dsf /* device_scale_factor */,
-                               1.0f /* page_scale_factor */);
+  SetContentsScaleOnActiveLayer(dsf /* contents_scale */,
+                                dsf /* device_scale_factor */,
+                                1.0f /* page_scale_factor */);
 
   active_layer()->HighResTiling()->UpdateAllRequiredStateForTesting();
 
@@ -3243,8 +3350,7 @@ TEST_F(LegacySWPictureLayerImplTest,
   pending_layer()->picture_layer_tiling_set()->RemoveAllTiles();
   pending_layer()->SetBounds(layer_bounds);
   pending_layer()->UpdateRasterSource(
-      FakeRasterSource::CreateFilled(layer_bounds), &invalidation, nullptr,
-      nullptr);
+      FakeRasterSource::CreateFilled(layer_bounds), &invalidation);
   pending_layer()->PushPropertiesTo(active_layer());
   SetContentsAndAnimationScalesOnBothLayers(contents_scale, device_scale,
                                             page_scale, maximum_animation_scale,
@@ -3274,8 +3380,10 @@ TEST_F(LegacySWPictureLayerImplTest, TilingSetRasterQueue) {
   int low_res_tile_count = 0u;
   int high_res_tile_count = 0u;
   int high_res_now_tiles = 0u;
-  std::unique_ptr<TilingSetRasterQueueAll> queue(new TilingSetRasterQueueAll(
-      pending_layer()->picture_layer_tiling_set(), false, false));
+  std::unique_ptr<TilingSetRasterQueueAll> queue =
+      TilingSetRasterQueueAll::Create(
+          pending_layer()->picture_layer_tiling_set(), false, false);
+  EXPECT_TRUE(queue);
   while (!queue->IsEmpty()) {
     PrioritizedTile prioritized_tile = queue->Top();
     TilePriority priority = prioritized_tile.priority();
@@ -3313,15 +3421,17 @@ TEST_F(LegacySWPictureLayerImplTest, TilingSetRasterQueue) {
   EXPECT_EQ(low_res_tile_count + high_res_tile_count + non_ideal_tile_count,
             static_cast<int>(unique_tiles.size()));
 
-  std::unique_ptr<TilingSetRasterQueueRequired> required_queue(
-      new TilingSetRasterQueueRequired(
+  std::unique_ptr<TilingSetRasterQueueRequired> required_queue =
+      TilingSetRasterQueueRequired::Create(
           pending_layer()->picture_layer_tiling_set(),
-          RasterTilePriorityQueue::Type::REQUIRED_FOR_DRAW));
+          RasterTilePriorityQueue::Type::REQUIRED_FOR_DRAW);
+  EXPECT_TRUE(required_queue);
   EXPECT_TRUE(required_queue->IsEmpty());
 
-  required_queue = std::make_unique<TilingSetRasterQueueRequired>(
+  required_queue = TilingSetRasterQueueRequired::Create(
       pending_layer()->picture_layer_tiling_set(),
       RasterTilePriorityQueue::Type::REQUIRED_FOR_ACTIVATION);
+  EXPECT_TRUE(required_queue);
   EXPECT_FALSE(required_queue->IsEmpty());
   int required_for_activation_count = 0;
   while (!required_queue->IsEmpty()) {
@@ -3345,8 +3455,9 @@ TEST_F(LegacySWPictureLayerImplTest, TilingSetRasterQueue) {
 
   unique_tiles.clear();
   high_res_tile_count = 0u;
-  queue = std::make_unique<TilingSetRasterQueueAll>(
+  queue = TilingSetRasterQueueAll::Create(
       pending_layer()->picture_layer_tiling_set(), false, false);
+  EXPECT_TRUE(queue);
   while (!queue->IsEmpty()) {
     PrioritizedTile prioritized_tile = queue->Top();
     TilePriority priority = prioritized_tile.priority();
@@ -3381,8 +3492,9 @@ TEST_F(LegacySWPictureLayerImplTest, TilingSetRasterQueue) {
     draw_info.SetSolidColorForTesting(SkColors::kRed);
   }
 
-  queue = std::make_unique<TilingSetRasterQueueAll>(
+  queue = TilingSetRasterQueueAll::Create(
       pending_layer()->picture_layer_tiling_set(), true, false);
+  EXPECT_TRUE(queue);
   EXPECT_TRUE(queue->IsEmpty());
 }
 
@@ -3400,10 +3512,11 @@ TEST_F(LegacySWPictureLayerImplTest, TilingSetRasterQueueActiveTree) {
   ActivateTree();
   EXPECT_EQ(2u, active_layer()->num_tilings());
 
-  std::unique_ptr<TilingSetRasterQueueRequired> queue(
-      new TilingSetRasterQueueRequired(
+  std::unique_ptr<TilingSetRasterQueueRequired> queue =
+      TilingSetRasterQueueRequired::Create(
           active_layer()->picture_layer_tiling_set(),
-          RasterTilePriorityQueue::Type::REQUIRED_FOR_DRAW));
+          RasterTilePriorityQueue::Type::REQUIRED_FOR_DRAW);
+  EXPECT_TRUE(queue);
   EXPECT_FALSE(queue->IsEmpty());
   while (!queue->IsEmpty()) {
     PrioritizedTile prioritized_tile = queue->Top();
@@ -3412,10 +3525,15 @@ TEST_F(LegacySWPictureLayerImplTest, TilingSetRasterQueueActiveTree) {
     queue->Pop();
   }
 
-  queue = std::make_unique<TilingSetRasterQueueRequired>(
+  queue = TilingSetRasterQueueRequired::Create(
       active_layer()->picture_layer_tiling_set(),
       RasterTilePriorityQueue::Type::REQUIRED_FOR_ACTIVATION);
-  EXPECT_TRUE(queue->IsEmpty());
+  if (features::IsCCSlimmingEnabled()) {
+    EXPECT_FALSE(queue);
+  } else {
+    EXPECT_TRUE(queue);
+    EXPECT_TRUE(queue->IsEmpty());
+  }
 }
 
 TEST_F(LegacySWPictureLayerImplTest, TilingSetRasterQueueRequiredNoHighRes) {
@@ -3427,11 +3545,16 @@ TEST_F(LegacySWPictureLayerImplTest, TilingSetRasterQueueRequiredNoHighRes) {
       pending_layer()->picture_layer_tiling_set()->FindTilingWithResolution(
           HIGH_RESOLUTION));
 
-  std::unique_ptr<TilingSetRasterQueueRequired> queue(
-      new TilingSetRasterQueueRequired(
+  std::unique_ptr<TilingSetRasterQueueRequired> queue =
+      TilingSetRasterQueueRequired::Create(
           pending_layer()->picture_layer_tiling_set(),
-          RasterTilePriorityQueue::Type::REQUIRED_FOR_ACTIVATION));
-  EXPECT_TRUE(queue->IsEmpty());
+          RasterTilePriorityQueue::Type::REQUIRED_FOR_ACTIVATION);
+  if (features::IsCCSlimmingEnabled()) {
+    EXPECT_FALSE(queue);
+  } else {
+    EXPECT_TRUE(queue);
+    EXPECT_TRUE(queue->IsEmpty());
+  }
 }
 
 TEST_F(LegacySWPictureLayerImplTest, TilingSetEvictionQueue) {
@@ -3819,8 +3942,7 @@ TEST_F(LegacySWPictureLayerImplTest,
   pending_layer()->picture_layer_tiling_set()->RemoveAllTiles();
   pending_layer()->SetBounds(layer_bounds);
   pending_layer()->UpdateRasterSource(
-      FakeRasterSource::CreateFilled(layer_bounds), &invalidation, nullptr,
-      nullptr);
+      FakeRasterSource::CreateFilled(layer_bounds), &invalidation);
   pending_layer()->PushPropertiesTo(active_layer());
   SetContentsScaleOnBothLayers(contents_scale, device_scale, page_scale);
   EXPECT_BOTH_EQ(HighResTiling()->contents_scale_key(), 2.f);
@@ -4006,25 +4128,27 @@ TEST_F(NoLowResPictureLayerImplTest, AllHighResRequiredEvenIfNotChanged) {
 }
 
 TEST_F(NoLowResPictureLayerImplTest, NothingRequiredIfActiveMissingTiles) {
-  gfx::Size layer_bounds(400, 400);
+  gfx::Size layer_bounds(1000, 4000);
   gfx::Size tile_size(100, 100);
 
   scoped_refptr<FakeRasterSource> pending_raster_source =
       FakeRasterSource::CreateFilled(layer_bounds);
-  // This raster source will create tilings, but has no recordings so will not
-  // create any tiles.  This is attempting to simulate scrolling past the end of
-  // recorded content on the active layer, where the recordings are so far away
-  // that no tiles are created.
   scoped_refptr<FakeRasterSource> active_raster_source =
-      FakeRasterSource::CreatePartiallyFilled(layer_bounds, gfx::Rect());
+      FakeRasterSource::CreatePartiallyFilled(layer_bounds,
+                                              gfx::Rect(500, 500));
 
   SetupTreesWithFixedTileSize(pending_raster_source, active_raster_source,
                               tile_size, Region());
 
-  // Active layer has tilings, but no tiles due to missing recordings.
+  // Active layer has tilings.
   EXPECT_TRUE(active_layer()->CanHaveTilings());
   EXPECT_EQ(active_layer()->tilings()->num_tilings(),
             host_impl()->settings().create_low_res_tiling ? 2u : 1u);
+  // Simulate scrolling past the end of recorded content on the active layer,
+  // where the recordings are so far away that no tiles are created.
+  gfx::Rect visible_rect(0, 3000, 1000, 1000);
+  active_layer()->HighResTiling()->ComputeTilePriorityRects(
+      visible_rect, visible_rect, visible_rect, visible_rect, 1, Occlusion());
   EXPECT_EQ(active_layer()->HighResTiling()->AllTilesForTesting().size(), 0u);
 
   // Since the active layer has no tiles at all, the pending layer doesn't
@@ -4033,9 +4157,10 @@ TEST_F(NoLowResPictureLayerImplTest, NothingRequiredIfActiveMissingTiles) {
   if (host_impl()->settings().create_low_res_tiling)
     pending_layer()->LowResTiling()->UpdateAllRequiredStateForTesting();
 
-  AssertNoTilesRequired(pending_layer()->HighResTiling());
-  if (host_impl()->settings().create_low_res_tiling)
-    AssertNoTilesRequired(pending_layer()->LowResTiling());
+  EXPECT_EQ(pending_layer()->HighResTiling()->AllTilesForTesting().size(), 0u);
+  if (host_impl()->settings().create_low_res_tiling) {
+    EXPECT_EQ(pending_layer()->LowResTiling()->AllTilesForTesting().size(), 0u);
+  }
 }
 
 TEST_F(NoLowResPictureLayerImplTest, CleanUpTilings) {
@@ -4349,8 +4474,10 @@ TEST_F(OcclusionTrackingPictureLayerImplTest,
 
   // No occlusion.
   int unoccluded_tile_count = 0;
-  std::unique_ptr<TilingSetRasterQueueAll> queue(new TilingSetRasterQueueAll(
-      pending_layer()->picture_layer_tiling_set(), false, false));
+  std::unique_ptr<TilingSetRasterQueueAll> queue =
+      TilingSetRasterQueueAll::Create(
+          pending_layer()->picture_layer_tiling_set(), false, false);
+  EXPECT_TRUE(queue);
   while (!queue->IsEmpty()) {
     PrioritizedTile prioritized_tile = queue->Top();
     Tile* tile = prioritized_tile.tile();
@@ -4380,8 +4507,9 @@ TEST_F(OcclusionTrackingPictureLayerImplTest,
   UpdateDrawProperties(host_impl()->pending_tree());
 
   unoccluded_tile_count = 0;
-  queue = std::make_unique<TilingSetRasterQueueAll>(
+  queue = TilingSetRasterQueueAll::Create(
       pending_layer()->picture_layer_tiling_set(), false, false);
+  EXPECT_TRUE(queue);
   while (!queue->IsEmpty()) {
     PrioritizedTile prioritized_tile = queue->Top();
     Tile* tile = prioritized_tile.tile();
@@ -4404,8 +4532,9 @@ TEST_F(OcclusionTrackingPictureLayerImplTest,
   UpdateDrawProperties(host_impl()->pending_tree());
 
   unoccluded_tile_count = 0;
-  queue = std::make_unique<TilingSetRasterQueueAll>(
+  queue = TilingSetRasterQueueAll::Create(
       pending_layer()->picture_layer_tiling_set(), false, false);
+  EXPECT_TRUE(queue);
   while (!queue->IsEmpty()) {
     PrioritizedTile prioritized_tile = queue->Top();
     Tile* tile = prioritized_tile.tile();
@@ -4497,7 +4626,7 @@ TEST_F(OcclusionTrackingPictureLayerImplTest,
         EXPECT_EQ(occluded_tile_count, 2);
         break;
       default:
-        NOTREACHED();
+        NOTREACHED_IN_MIGRATION();
     }
   }
 
@@ -4534,7 +4663,7 @@ TEST_F(OcclusionTrackingPictureLayerImplTest,
         EXPECT_EQ(4, occluded_tile_count);
         break;
       default:
-        NOTREACHED();
+        NOTREACHED_IN_MIGRATION();
     }
   }
 }
@@ -4896,16 +5025,17 @@ TEST_F(LegacySWPictureLayerImplTest, PendingOrActiveTwinLayer) {
 
   // Make an empty pending tree.
   host_impl()->CreatePendingTree();
+  pending_layer_ = old_pending_layer_ = nullptr;
   host_impl()->pending_tree()->DetachLayers();
   EXPECT_FALSE(active_layer()->GetPendingOrActiveTwinLayer());
 }
 
-void GetClientDataAndUpdateInvalidation(RecordingSource* recording_source,
+void GetClientDataAndUpdateInvalidation(RecordingSource& recording_source,
                                         FakeContentLayerClient* client,
                                         gfx::Size layer_bounds) {
   Region invalidation;
-  recording_source->Update(layer_bounds, /*recording_scale_factor=*/1.f,
-                           *client, invalidation);
+  recording_source.Update(layer_bounds, /*recording_scale_factor=*/1.f, *client,
+                          invalidation);
 }
 
 void PictureLayerImplTest::TestQuadsForSolidColor(bool test_for_solid,
@@ -4925,7 +5055,7 @@ void PictureLayerImplTest::TestQuadsForSolidColor(bool test_for_solid,
   std::unique_ptr<FakeLayerTreeHost> host = FakeLayerTreeHost::Create(
       &host_client, &task_graph_runner, animation_host.get());
   host->SetRootLayer(layer);
-  RecordingSource* recording_source = layer->GetRecordingSourceForTesting();
+  RecordingSource& recording_source = layer->GetRecordingSourceForTesting();
 
   client.set_fill_with_nonsolid_color(!test_for_solid);
   PaintFlags flags;
@@ -4936,7 +5066,7 @@ void PictureLayerImplTest::TestQuadsForSolidColor(bool test_for_solid,
   GetClientDataAndUpdateInvalidation(recording_source, &client, layer_bounds);
 
   scoped_refptr<RasterSource> pending_raster_source =
-      recording_source->CreateRasterSource();
+      recording_source.CreateRasterSource();
 
   SetupPendingTreeWithFixedTileSize(pending_raster_source, tile_size, Region());
   ActivateTree();
@@ -5011,15 +5141,15 @@ TEST_F(LegacySWPictureLayerImplTest, NonSolidToSolidNoTilings) {
   std::unique_ptr<FakeLayerTreeHost> host = FakeLayerTreeHost::Create(
       &host_client, &task_graph_runner, animation_host.get());
   host->SetRootLayer(layer);
-  RecordingSource* recording_source = layer->GetRecordingSourceForTesting();
+  RecordingSource& recording_source = layer->GetRecordingSourceForTesting();
 
   client.set_fill_with_nonsolid_color(true);
 
-  recording_source->SetNeedsDisplayRect(layer_rect);
+  recording_source.SetNeedsDisplayRect(layer_rect);
   GetClientDataAndUpdateInvalidation(recording_source, &client, layer_bounds);
 
   scoped_refptr<RasterSource> raster_source1 =
-      recording_source->CreateRasterSource();
+      recording_source.CreateRasterSource();
 
   SetupPendingTree(raster_source1);
   ActivateTree();
@@ -5030,11 +5160,11 @@ TEST_F(LegacySWPictureLayerImplTest, NonSolidToSolidNoTilings) {
 
   client.set_fill_with_nonsolid_color(false);
 
-  recording_source->SetNeedsDisplayRect(layer_rect);
+  recording_source.SetNeedsDisplayRect(layer_rect);
   GetClientDataAndUpdateInvalidation(recording_source, &client, layer_bounds);
 
   scoped_refptr<RasterSource> raster_source2 =
-      recording_source->CreateRasterSource();
+      recording_source.CreateRasterSource();
 
   SetupPendingTree(raster_source2);
   ActivateTree();
@@ -5125,9 +5255,6 @@ TEST_F(LegacySWPictureLayerImplTest, CloneMissingRecordings) {
   SetupPendingTreeWithFixedTileSize(partial_raster_source, tile_size,
                                     Region(gfx::Rect(layer_bounds)));
   EXPECT_EQ(4u * 4u, pending_tiling->AllTilesForTesting().size());
-  EXPECT_FALSE(pending_tiling->TileAt(0, 0));
-  EXPECT_TRUE(pending_tiling->TileAt(1, 1));
-  EXPECT_TRUE(pending_tiling->TileAt(2, 2));
 
   // Active is not affected yet.
   EXPECT_EQ(5u * 5u, active_tiling->AllTilesForTesting().size());
@@ -5135,9 +5262,6 @@ TEST_F(LegacySWPictureLayerImplTest, CloneMissingRecordings) {
   // Activate the tree. The same tiles go missing on the active tree.
   ActivateTree();
   EXPECT_EQ(4u * 4u, active_tiling->AllTilesForTesting().size());
-  EXPECT_FALSE(active_tiling->TileAt(0, 0));
-  EXPECT_TRUE(active_tiling->TileAt(1, 1));
-  EXPECT_TRUE(active_tiling->TileAt(2, 2));
 
   // Now put a full recording on the pending tree again. We'll get all our tiles
   // back.
@@ -5166,15 +5290,19 @@ TEST_F(LegacySWPictureLayerImplTest,
 
   scoped_refptr<FakeRasterSource> filled_raster_source =
       FakeRasterSource::CreateFilled(layer_bounds);
+  filled_raster_source->SetDirectlyCompositedImageDefaultRasterScale(
+      gfx::Vector2dF(1, 1));
 
   scoped_refptr<FakeRasterSource> partial_raster_source =
       FakeRasterSource::CreatePartiallyFilled(layer_bounds,
                                               gfx::Rect(150, 150, 100, 100));
+  partial_raster_source->SetDirectlyCompositedImageDefaultRasterScale(
+      gfx::Vector2dF(1, 1));
 
   SetupPendingTreeWithFixedTileSize(filled_raster_source, tile_size, Region());
-  pending_layer()->SetDirectlyCompositedImageDefaultRasterScale(
-      gfx::Vector2dF(1, 1));
+  ASSERT_TRUE(pending_layer()->IsDirectlyCompositedImage());
   ActivateTree();
+  ASSERT_TRUE(active_layer()->IsDirectlyCompositedImage());
 
   PictureLayerTiling* pending_tiling = old_pending_layer()->HighResTiling();
   PictureLayerTiling* active_tiling = active_layer()->HighResTiling();
@@ -5189,6 +5317,8 @@ TEST_F(LegacySWPictureLayerImplTest,
   // tiles should be created.
   SetupPendingTreeWithFixedTileSize(partial_raster_source, tile_size,
                                     Region(gfx::Rect(layer_bounds)));
+  ASSERT_TRUE(pending_layer()->IsDirectlyCompositedImage());
+
   EXPECT_EQ(5u * 5u, pending_tiling->AllTilesForTesting().size());
 
   // Activate the tree. The same tiles should have been moved to active tree.
@@ -5723,25 +5853,13 @@ TEST_F(LegacySWPictureLayerImplTest, CompositedImageCalculateContentsScale) {
 
   scoped_refptr<FakeRasterSource> pending_raster_source =
       FakeRasterSource::CreateFilled(layer_bounds);
-  SetupPendingTree(pending_raster_source);
-
-  LayerTreeImpl* pending_tree = host_impl()->pending_tree();
-  const int kLayerId = 100;
-
-  std::unique_ptr<FakePictureLayerImpl> pending_layer =
-      FakePictureLayerImpl::Create(pending_tree, kLayerId,
-                                   pending_raster_source);
-  pending_layer->SetDirectlyCompositedImageDefaultRasterScale(
+  pending_raster_source->SetDirectlyCompositedImageDefaultRasterScale(
       gfx::Vector2dF(1, 1));
-  pending_layer->SetDrawsContent(true);
-  FakePictureLayerImpl* pending_layer_ptr = pending_layer.get();
-  pending_tree->AddLayer(std::move(pending_layer));
-  CopyProperties(pending_tree->root_layer(), pending_layer_ptr);
+  SetupPendingTree(pending_raster_source);
+  ASSERT_TRUE(pending_layer()->IsDirectlyCompositedImage());
 
-  UpdateDrawProperties(pending_tree);
-
-  SetupDrawPropertiesAndUpdateTiles(pending_layer_ptr, 2.f, 3.f, 4.f);
-  EXPECT_FLOAT_EQ(1.f, pending_layer_ptr->MaximumTilingContentsScale());
+  SetupDrawPropertiesAndUpdateTiles(pending_layer(), 2.f, 3.f, 4.f);
+  EXPECT_FLOAT_EQ(1.f, pending_layer()->MaximumTilingContentsScale());
 }
 
 TEST_F(LegacySWPictureLayerImplTest, CompositedImageIgnoreIdealContentsScale) {
@@ -5752,6 +5870,8 @@ TEST_F(LegacySWPictureLayerImplTest, CompositedImageIgnoreIdealContentsScale) {
 
   scoped_refptr<FakeRasterSource> pending_raster_source =
       FakeRasterSource::CreateFilled(layer_bounds);
+  pending_raster_source->SetDirectlyCompositedImageDefaultRasterScale(
+      gfx::Vector2dF(1, 1));
   SetupPendingTree(pending_raster_source);
 
   LayerTreeImpl* pending_tree = host_impl()->pending_tree();
@@ -5760,9 +5880,10 @@ TEST_F(LegacySWPictureLayerImplTest, CompositedImageIgnoreIdealContentsScale) {
   std::unique_ptr<FakePictureLayerImpl> pending_layer =
       FakePictureLayerImpl::Create(pending_tree, kLayerId,
                                    pending_raster_source);
-  pending_layer->SetDirectlyCompositedImageDefaultRasterScale(
-      gfx::Vector2dF(1, 1));
   pending_layer->SetDrawsContent(true);
+  // This is needed after SetDrawsContent(true) which changes CanHaveTilings().
+  pending_layer->UpdateDirectlyCompositedImageFromRasterSource();
+  ASSERT_TRUE(pending_layer->IsDirectlyCompositedImage());
   FakePictureLayerImpl* pending_layer_ptr = pending_layer.get();
   pending_tree->AddLayer(std::move(pending_layer));
   CopyProperties(pending_tree->root_layer(), pending_layer_ptr);
@@ -5806,17 +5927,18 @@ TEST_F(LegacySWPictureLayerImplTest, CompositedImageIgnoreIdealContentsScale) {
             render_pass->quad_list.front()->material);
 
   // Tiles are ready at correct scale, so should not set had_incomplete_tile.
-  EXPECT_EQ(0, data.num_incomplete_tiles);
+  EXPECT_EQ(0, data.num_incompletely_rastered_tiles);
 }
 
 TEST_F(LegacySWPictureLayerImplTest, CompositedImageRasterScaleChanges) {
   gfx::Size layer_bounds(400, 400);
   scoped_refptr<FakeRasterSource> pending_raster_source =
       FakeRasterSource::CreateFilled(layer_bounds);
+  pending_raster_source->SetDirectlyCompositedImageDefaultRasterScale(
+      gfx::Vector2dF(1, 1));
 
   SetupPendingTree(pending_raster_source);
-  pending_layer()->SetDirectlyCompositedImageDefaultRasterScale(
-      gfx::Vector2dF(1, 1));
+  ASSERT_TRUE(pending_layer()->IsDirectlyCompositedImage());
 
   float expected_contents_scale = 0.125f;
   for (int i = 1; i < 30; ++i) {
@@ -5869,12 +5991,13 @@ TEST_F(LegacySWPictureLayerImplTest, CompositedImageRasterOnChange) {
   gfx::Size layer_bounds(400, 400);
   scoped_refptr<FakeRasterSource> pending_raster_source =
       FakeRasterSource::CreateFilled(layer_bounds);
+  pending_raster_source->SetDirectlyCompositedImageDefaultRasterScale(
+      gfx::Vector2dF(0.5f, 0.5f));
 
   SetupPendingTree(pending_raster_source);
+  ASSERT_TRUE(pending_layer()->IsDirectlyCompositedImage());
 
   // The image is smaller than the layer bounds.
-  pending_layer()->SetDirectlyCompositedImageDefaultRasterScale(
-      gfx::Vector2dF(0.5f, 0.5f));
   SetupDrawPropertiesAndUpdateTiles(pending_layer(), 1.f, 1.f, 1.f);
   EXPECT_FLOAT_EQ(0.5f, pending_layer()
                             ->picture_layer_tiling_set()
@@ -5885,8 +6008,9 @@ TEST_F(LegacySWPictureLayerImplTest, CompositedImageRasterOnChange) {
   // scaling down code is triggered (we should halve the raster scale until it
   // is less than 2x the ideal source scale).
   pending_layer()->SetBounds(layer_bounds);
-  pending_layer()->SetDirectlyCompositedImageDefaultRasterScale(
-      gfx::Vector2dF(5, 5));
+  pending_raster_source->SetDirectlyCompositedImageDefaultRasterScale(
+      gfx::Vector2dF(5.f, 5.f));
+  pending_layer()->UpdateDirectlyCompositedImageFromRasterSource();
   SetupDrawPropertiesAndUpdateTiles(pending_layer(), 1.f, 1.f, 1.f);
   EXPECT_FLOAT_EQ(1.25f, pending_layer()
                              ->picture_layer_tiling_set()
@@ -5921,11 +6045,12 @@ TEST_F(LegacySWPictureLayerImplTest, CompositedImageTinyRasterScale) {
   gfx::Size layer_bounds(512, 512);
   scoped_refptr<FakeRasterSource> pending_raster_source =
       FakeRasterSource::CreateFilled(layer_bounds);
+  pending_raster_source->SetDirectlyCompositedImageDefaultRasterScale(
+      gfx::Vector2dF(1e-20f, 1e-20f));
 
   SetupPendingTree(pending_raster_source);
+  ASSERT_TRUE(pending_layer()->IsDirectlyCompositedImage());
 
-  pending_layer()->SetDirectlyCompositedImageDefaultRasterScale(
-      gfx::Vector2dF(1e-20f, 1e-20f));
   SetupDrawPropertiesAndUpdateTiles(pending_layer(), 1.f, 1.f, 1.f);
   EXPECT_FLOAT_EQ(1.f / 512, pending_layer()
                                  ->picture_layer_tiling_set()
@@ -5937,11 +6062,12 @@ TEST_F(LegacySWPictureLayerImplTest, CompositedImageHugeRasterScale) {
   gfx::Size layer_bounds(400, 400);
   scoped_refptr<FakeRasterSource> pending_raster_source =
       FakeRasterSource::CreateFilled(layer_bounds);
+  pending_raster_source->SetDirectlyCompositedImageDefaultRasterScale(
+      gfx::Vector2dF(1e20f, 1e20f));
 
   SetupPendingTree(pending_raster_source);
+  ASSERT_TRUE(pending_layer()->IsDirectlyCompositedImage());
 
-  pending_layer()->SetDirectlyCompositedImageDefaultRasterScale(
-      gfx::Vector2dF(1e20f, 1e20f));
   SetupDrawPropertiesAndUpdateTiles(pending_layer(), 1.f, 1.f, 1.f);
   EXPECT_FLOAT_EQ(1.0f, pending_layer()
                             ->picture_layer_tiling_set()
@@ -5953,13 +6079,14 @@ TEST_F(LegacySWPictureLayerImplTest, CompositedImageRasterHighResScreen) {
   gfx::Size layer_bounds(100, 100);
   scoped_refptr<FakeRasterSource> pending_raster_source =
       FakeRasterSource::CreateFilled(layer_bounds);
+  pending_raster_source->SetDirectlyCompositedImageDefaultRasterScale(
+      gfx::Vector2dF(5, 5));
 
   SetupPendingTree(pending_raster_source);
+  ASSERT_TRUE(pending_layer()->IsDirectlyCompositedImage());
 
   // Verify that device_scale=2.0 is handled correctly. The image is expected to
   // be downscaled not more than 4x, so content scale is above 1.0.
-  pending_layer()->SetDirectlyCompositedImageDefaultRasterScale(
-      gfx::Vector2dF(5, 5));
   SetupDrawPropertiesAndUpdateTiles(pending_layer(), 1.f, 2.f, 1.f);
   EXPECT_FLOAT_EQ(1.25f, pending_layer()
                              ->picture_layer_tiling_set()
@@ -5971,25 +6098,27 @@ TEST_F(LegacySWPictureLayerImplTest, CompositedImageRasterOptOutTransitions) {
   gfx::Size layer_bounds(6, 6);
   scoped_refptr<FakeRasterSource> pending_raster_source =
       FakeRasterSource::CreateFilled(layer_bounds);
+  pending_raster_source->SetDirectlyCompositedImageDefaultRasterScale(
+      gfx::Vector2dF(1, 1));
 
   SetupPendingTree(pending_raster_source);
+  ASSERT_TRUE(pending_layer()->IsDirectlyCompositedImage());
 
   // Start with image and bounds matching to have this layer initially opted
   // in to directly composited images.
-  pending_layer()->SetBounds(layer_bounds);
-  pending_layer()->SetDirectlyCompositedImageDefaultRasterScale(
-      gfx::Vector2dF(1, 1));
-  SetupDrawPropertiesAndUpdateTiles(pending_layer(), 0.3f, 1.f, 1.f);
-  EXPECT_FLOAT_EQ(0.5f, pending_layer()
-                            ->picture_layer_tiling_set()
-                            ->FindTilingWithResolution(HIGH_RESOLUTION)
-                            ->contents_scale_key());
+  EXPECT_EQ(layer_bounds, pending_layer()->bounds());
+  EXPECT_EQ(gfx::Vector2dF(1, 1), pending_layer()->GetIdealContentsScale());
+  EXPECT_FLOAT_EQ(1, pending_layer()
+                         ->picture_layer_tiling_set()
+                         ->FindTilingWithResolution(HIGH_RESOLUTION)
+                         ->contents_scale_key());
 
   // Change the image and bounds to values that make the layer not eligible for
   // direct compositing. This must be reflected by a |contents_scale_key()| of
   // 0.2f (matching the ideal source scale).
-  pending_layer()->SetDirectlyCompositedImageDefaultRasterScale(
+  pending_raster_source->SetDirectlyCompositedImageDefaultRasterScale(
       gfx::Vector2dF(50, 50));
+  pending_layer()->UpdateDirectlyCompositedImageFromRasterSource();
   SetupDrawPropertiesAndUpdateTiles(pending_layer(), 0.2f, 1.f, 1.f);
   EXPECT_FLOAT_EQ(0.2f, pending_layer()
                             ->picture_layer_tiling_set()
@@ -5999,8 +6128,9 @@ TEST_F(LegacySWPictureLayerImplTest, CompositedImageRasterOptOutTransitions) {
   // Ensure we get back to a directly composited image if the input values
   // change such that the optimization should apply.
   pending_layer()->SetBounds(ScaleToFlooredSize(layer_bounds, 2));
-  pending_layer()->SetDirectlyCompositedImageDefaultRasterScale(
+  pending_raster_source->SetDirectlyCompositedImageDefaultRasterScale(
       gfx::Vector2dF(2, 2));
+  pending_layer()->UpdateDirectlyCompositedImageFromRasterSource();
   SetupDrawPropertiesAndUpdateTiles(pending_layer(), 0.2f, 1.f, 1.f);
   EXPECT_FLOAT_EQ(0.25f, pending_layer()
                              ->picture_layer_tiling_set()
@@ -6140,18 +6270,17 @@ TEST_F(LegacySWPictureLayerImplTest, AnimatedImages) {
   gfx::Size layer_bounds(1000, 1000);
 
   // Set up a raster source with 2 animated images.
-  auto recording_source = FakeRecordingSource::CreateRecordingSource(
-      gfx::Rect(layer_bounds), layer_bounds);
+  FakeRecordingSource recording_source(layer_bounds);
   std::vector<FrameMetadata> frames = {
       FrameMetadata(true, base::Milliseconds(1)),
       FrameMetadata(true, base::Milliseconds(1))};
   PaintImage image1 = CreateAnimatedImage(gfx::Size(200, 200), frames);
   PaintImage image2 = CreateAnimatedImage(gfx::Size(200, 200), frames);
-  recording_source->add_draw_image(image1, gfx::Point(100, 100));
-  recording_source->add_draw_image(image2, gfx::Point(500, 500));
-  recording_source->Rerecord();
+  recording_source.add_draw_image(image1, gfx::Point(100, 100));
+  recording_source.add_draw_image(image2, gfx::Point(500, 500));
+  recording_source.Rerecord();
   scoped_refptr<RasterSource> raster_source =
-      recording_source->CreateRasterSource();
+      recording_source.CreateRasterSource();
 
   // All images should be registered on the pending layer.
   SetupPendingTree(raster_source, gfx::Size(), Region(gfx::Rect(layer_bounds)));
@@ -6197,15 +6326,14 @@ TEST_F(LegacySWPictureLayerImplTest, PaintWorkletInputPaintRecordInvalidation) {
       PaintWorkletInput::NativePropertyType::kClipPath, ElementId());
 
   // Set up a raster source with a PaintWorkletInput.
-  auto recording_source = FakeRecordingSource::CreateRecordingSource(
-      gfx::Rect(layer_bounds), layer_bounds);
+  FakeRecordingSource recording_source(layer_bounds);
   scoped_refptr<TestPaintWorkletInput> input1 =
       base::MakeRefCounted<TestPaintWorkletInput>(key, gfx::SizeF(100, 100));
   PaintImage image1 = CreatePaintWorkletPaintImage(input1);
-  recording_source->add_draw_image(image1, gfx::Point(100, 100));
-  recording_source->Rerecord();
+  recording_source.add_draw_image(image1, gfx::Point(100, 100));
+  recording_source.Rerecord();
   scoped_refptr<RasterSource> raster_source =
-      recording_source->CreateRasterSource();
+      recording_source.CreateRasterSource();
 
   // Ensure the input is registered
   SetupPendingTree(raster_source, gfx::Size(), Region(gfx::Rect(layer_bounds)));
@@ -6246,19 +6374,18 @@ TEST_F(LegacySWPictureLayerImplTest, PaintWorkletInputs) {
   gfx::Size layer_bounds(1000, 1000);
 
   // Set up a raster source with 2 PaintWorkletInputs.
-  auto recording_source = FakeRecordingSource::CreateRecordingSource(
-      gfx::Rect(layer_bounds), layer_bounds);
+  FakeRecordingSource recording_source(layer_bounds);
   scoped_refptr<TestPaintWorkletInput> input1 =
       base::MakeRefCounted<TestPaintWorkletInput>(gfx::SizeF(100, 100));
   PaintImage image1 = CreatePaintWorkletPaintImage(input1);
   scoped_refptr<TestPaintWorkletInput> input2 =
       base::MakeRefCounted<TestPaintWorkletInput>(gfx::SizeF(50, 50));
   PaintImage image2 = CreatePaintWorkletPaintImage(input2);
-  recording_source->add_draw_image(image1, gfx::Point(100, 100));
-  recording_source->add_draw_image(image2, gfx::Point(500, 500));
-  recording_source->Rerecord();
+  recording_source.add_draw_image(image1, gfx::Point(100, 100));
+  recording_source.add_draw_image(image2, gfx::Point(500, 500));
+  recording_source.Rerecord();
   scoped_refptr<RasterSource> raster_source =
-      recording_source->CreateRasterSource();
+      recording_source.CreateRasterSource();
 
   // All inputs should be registered on the pending layer.
   SetupPendingTree(raster_source, gfx::Size(), Region(gfx::Rect(layer_bounds)));
@@ -6281,14 +6408,13 @@ TEST_F(LegacySWPictureLayerImplTest, PaintWorkletInputs) {
 
   // Committing new PaintWorkletInputs (in a new raster source) should replace
   // the previous ones.
-  recording_source = FakeRecordingSource::CreateRecordingSource(
-      gfx::Rect(layer_bounds), layer_bounds);
+  FakeRecordingSource recording_source2(layer_bounds);
   scoped_refptr<TestPaintWorkletInput> input3 =
       base::MakeRefCounted<TestPaintWorkletInput>(gfx::SizeF(12, 12));
   PaintImage image3 = CreatePaintWorkletPaintImage(input3);
-  recording_source->add_draw_image(image3, gfx::Point(10, 10));
-  recording_source->Rerecord();
-  raster_source = recording_source->CreateRasterSource();
+  recording_source2.add_draw_image(image3, gfx::Point(10, 10));
+  recording_source2.Rerecord();
+  raster_source = recording_source2.CreateRasterSource();
 
   SetupPendingTree(raster_source, gfx::Size(), Region(gfx::Rect(layer_bounds)));
   EXPECT_EQ(pending_layer()->GetPaintWorkletRecordMap().size(), 1u);
@@ -6298,17 +6424,16 @@ TEST_F(LegacySWPictureLayerImplTest, PaintWorkletInputs) {
 TEST_F(LegacySWPictureLayerImplTest, PaintWorkletInputsIdenticalEntries) {
   gfx::Size layer_bounds(1000, 1000);
 
-  auto recording_source = FakeRecordingSource::CreateRecordingSource(
-      gfx::Rect(layer_bounds), layer_bounds);
+  FakeRecordingSource recording_source(layer_bounds);
   scoped_refptr<TestPaintWorkletInput> input =
       base::MakeRefCounted<TestPaintWorkletInput>(gfx::SizeF(100, 100));
   PaintImage image = CreatePaintWorkletPaintImage(input);
-  recording_source->add_draw_image(image, gfx::Point(100, 100));
-  recording_source->add_draw_image(image, gfx::Point(100, 100));
-  recording_source->Rerecord();
+  recording_source.add_draw_image(image, gfx::Point(100, 100));
+  recording_source.add_draw_image(image, gfx::Point(100, 100));
+  recording_source.Rerecord();
 
   // All inputs should be registered on the pending layer.
-  SetupPendingTree(recording_source->CreateRasterSource(), gfx::Size(),
+  SetupPendingTree(recording_source.CreateRasterSource(), gfx::Size(),
                    Region(gfx::Rect(layer_bounds)));
   EXPECT_EQ(pending_layer()->GetPaintWorkletRecordMap().size(), 1u);
   EXPECT_TRUE(pending_layer()->GetPaintWorkletRecordMap().contains(input));
@@ -6316,8 +6441,8 @@ TEST_F(LegacySWPictureLayerImplTest, PaintWorkletInputsIdenticalEntries) {
   PaintRecord record;
   pending_layer()->SetPaintWorkletRecord(input, record);
   pending_layer()->picture_layer_tiling_set()->RemoveAllTiles();
-  recording_source->Rerecord();
-  pending_layer()->SetRasterSource(recording_source->CreateRasterSource(),
+  recording_source.Rerecord();
+  pending_layer()->SetRasterSource(recording_source.CreateRasterSource(),
                                    Region());
   EXPECT_EQ(pending_layer()->GetPaintWorkletRecordMap().size(), 1u);
   auto it = pending_layer()->GetPaintWorkletRecordMap().find(input);
@@ -6335,12 +6460,15 @@ TEST_F(LegacySWPictureLayerImplTest, NoTilingsUsesScaleOne) {
   SetupPendingTree(active_raster_source);
   ActivateTree();
 
+  EXPECT_FALSE(active_raster_source->HasRecordings());
+  EXPECT_FALSE(active_layer()->CanHaveTilings());
   active_layer()->SetContentsOpaque(true);
   active_layer()->SetSafeOpaqueBackgroundColor(SkColors::kWhite);
   active_layer()->draw_properties().visible_layer_rect =
       gfx::Rect(0, 0, 1000, 1000);
   active_layer()->UpdateTiles();
 
+  ASSERT_EQ(0u, active_layer()->tilings()->num_tilings());
   ASSERT_FALSE(active_layer()->HighResTiling());
 
   AppendQuadsData data;
@@ -6348,10 +6476,11 @@ TEST_F(LegacySWPictureLayerImplTest, NoTilingsUsesScaleOne) {
   active_layer()->AppendQuads(render_pass.get(), &data);
   active_layer()->DidDraw(nullptr);
 
-  // One checkerboard quad.
-  EXPECT_EQ(1u, render_pass->quad_list.size());
+  // No checkerboard quads.
+  EXPECT_EQ(0u, render_pass->quad_list.size());
+  EXPECT_EQ(1u, render_pass->shared_quad_state_list.size());
 
-  auto* shared_quad_state = render_pass->quad_list.begin()->shared_quad_state;
+  auto* shared_quad_state = render_pass->shared_quad_state_list.front();
   // We should use scale 1 here, so the layer rect should be full layer bounds
   // and the transform should be identity.
   EXPECT_EQ(gfx::Rect(1000, 10000), shared_quad_state->quad_layer_rect);
@@ -6434,6 +6563,103 @@ TEST_F(LegacySWPictureLayerImplTest,
             pending_layer()->HighResTiling()->raster_transform().translation());
 }
 
+TEST_F(LegacySWPictureLayerImplTest, InvalidateRasterInducingScrolls) {
+  auto scroll_list1 = base::MakeRefCounted<DisplayItemList>();
+  PaintImage image = CreateDiscardablePaintImage(gfx::Size(300, 200));
+  scroll_list1->StartPaint();
+  scroll_list1->push<DrawImageOp>(image, 0.f, 0.f);
+  scroll_list1->EndPaintOfUnpaired(gfx::Rect(300, 200));
+  scroll_list1->Finalize();
+
+  auto scroll_list2 = base::MakeRefCounted<DisplayItemList>();
+  scroll_list2->StartPaint();
+  scroll_list2->push<DrawColorOp>(SkColors::kBlack, SkBlendMode::kSrcOver);
+  scroll_list2->EndPaintOfUnpaired(gfx::Rect(1000, 1000));
+  scroll_list2->Finalize();
+
+  ElementId scroll_element_id1(123);
+  ElementId scroll_element_id2(456);
+  auto display_list = base::MakeRefCounted<DisplayItemList>();
+  // Draw scrolling contents op under a clip.
+  display_list->StartPaint();
+  display_list->push<SaveOp>();
+  display_list->push<ClipRectOp>(SkRect::MakeWH(200, 200), SkClipOp::kIntersect,
+                                 false);
+  display_list->EndPaintOfPairedBegin();
+  display_list->PushDrawScrollingContentsOp(scroll_element_id1, scroll_list1,
+                                            gfx::Rect(200, 200));
+  display_list->StartPaint();
+  display_list->push<RestoreOp>();
+  display_list->EndPaintOfPairedEnd();
+  // Draw another scrolling contents op under a translate and a clip.
+  display_list->StartPaint();
+  display_list->push<SaveOp>();
+  display_list->push<TranslateOp>(100.f, 300.f);
+  display_list->push<ClipRectOp>(SkRect::MakeWH(200, 200), SkClipOp::kIntersect,
+                                 false);
+  display_list->EndPaintOfPairedBegin();
+  display_list->PushDrawScrollingContentsOp(scroll_element_id2, scroll_list2,
+                                            gfx::Rect(100, 300, 200, 200));
+  display_list->StartPaint();
+  display_list->push<RestoreOp>();
+  display_list->EndPaintOfPairedEnd();
+  display_list->Finalize();
+
+  EXPECT_EQ(2u, display_list->raster_inducing_scrolls().size());
+  auto& info1 = display_list->raster_inducing_scrolls().at(scroll_element_id1);
+  EXPECT_EQ(gfx::Rect(200, 200), info1.visual_rect);
+  EXPECT_TRUE(info1.has_discardable_images);
+  auto& info2 = display_list->raster_inducing_scrolls().at(scroll_element_id2);
+  EXPECT_EQ(gfx::Rect(100, 300, 200, 200), info2.visual_rect);
+  EXPECT_FALSE(info2.has_discardable_images);
+
+  FakeContentLayerClient client;
+  client.set_display_item_list(display_list);
+  gfx::Size layer_bounds(500, 500);
+  RecordingSource recording;
+  Region invalidation;
+  recording.Update(layer_bounds, 1, client, invalidation);
+  auto raster = FakeRasterSource::CreateFromRecordingSource(recording);
+  SetupTreesWithInvalidation(raster, raster, invalidation);
+  pending_layer()->set_invalidation(Region());
+
+  auto pending_image_map = pending_layer()->discardable_image_map();
+  auto active_image_map = active_layer()->discardable_image_map();
+  EXPECT_TRUE(pending_image_map);
+  EXPECT_EQ(pending_image_map, active_image_map);
+
+  // Invalidating scroll_element_id1 will invalidate both scroll visual rect
+  // and the discardable image map.
+  pending_layer()->InvalidateRasterInducingScrolls({scroll_element_id1});
+  EXPECT_EQ(info1.visual_rect, pending_layer()->invalidation().bounds());
+  EXPECT_TRUE(active_layer()->invalidation().IsEmpty());
+  pending_image_map = pending_layer()->discardable_image_map();
+  EXPECT_EQ(active_image_map, active_layer()->discardable_image_map());
+  EXPECT_NE(pending_image_map, active_image_map);
+
+  ActivateTree();
+  SetupPendingTreeWithInvalidation(raster, Region());
+  EXPECT_TRUE(pending_layer()->invalidation().IsEmpty());
+  EXPECT_EQ(info1.visual_rect, active_layer()->invalidation().bounds());
+  EXPECT_EQ(pending_image_map, pending_layer()->discardable_image_map());
+  active_image_map = active_layer()->discardable_image_map();
+  EXPECT_EQ(pending_image_map, active_image_map);
+
+  // scroll_list2 doesn't contain discardable images. Invalidating
+  // scroll_element_id2 will invalidate scroll visual rect only.
+  pending_layer()->InvalidateRasterInducingScrolls({scroll_element_id2});
+  EXPECT_EQ(info2.visual_rect, pending_layer()->invalidation().bounds());
+  EXPECT_EQ(pending_image_map, pending_layer()->discardable_image_map());
+  EXPECT_EQ(pending_image_map, active_layer()->discardable_image_map());
+
+  ActivateTree();
+  SetupPendingTreeWithInvalidation(raster, Region());
+  EXPECT_TRUE(pending_layer()->invalidation().IsEmpty());
+  EXPECT_EQ(info2.visual_rect, active_layer()->invalidation().bounds());
+  EXPECT_EQ(pending_image_map, pending_layer()->discardable_image_map());
+  EXPECT_EQ(pending_image_map, pending_layer()->discardable_image_map());
+}
+
 enum {
   kCanUseLCDText = 1 << 0,
   kLayersAlwaysAllowedLCDText = 1 << 1,
@@ -6470,8 +6696,7 @@ class LCDTextTest : public PictureLayerImplTest,
     descendant_->SetDrawsContent(true);
     descendant_->SetBounds(gfx::Size(200, 200));
     Region invalidation;
-    descendant_->UpdateRasterSource(raster_source, &invalidation, nullptr,
-                                    nullptr);
+    descendant_->UpdateRasterSource(raster_source, &invalidation);
     ASSERT_TRUE(layer_->CanHaveTilings());
 
     CreateTransformNode(layer_);
@@ -6479,6 +6704,13 @@ class LCDTextTest : public PictureLayerImplTest,
     CopyProperties(layer_, descendant_);
     CreateTransformNode(descendant_);
     CreateEffectNode(descendant_);
+  }
+
+  void TearDown() override {
+    descendant_ = nullptr;
+    layer_ = nullptr;
+    tree_ = nullptr;
+    PictureLayerImplTest::TearDown();
   }
 
   void CheckCanUseLCDText(LCDTextDisallowedReason expected_disallowed_reason,

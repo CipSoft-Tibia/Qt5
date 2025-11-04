@@ -23,7 +23,7 @@ avifResult ChangeBase(const avifImage& image, int depth,
   swapped->yuvFormat = yuvFormat;
 
   const float headroom =
-      static_cast<double>(image.gainMap->metadata.alternateHdrHeadroomN) /
+      static_cast<float>(image.gainMap->metadata.alternateHdrHeadroomN) /
       image.gainMap->metadata.alternateHdrHeadroomD;
   const bool tone_mapping_to_sdr = (headroom == 0.0f);
 
@@ -38,8 +38,9 @@ avifResult ChangeBase(const avifImage& image, int depth,
       AVIF_TRANSFER_CHARACTERISTICS_UNSPECIFIED) {
     // Default to PQ for HDR and sRGB for SDR if unspecified.
     const avifTransferCharacteristics transfer_characteristics =
-        tone_mapping_to_sdr ? AVIF_TRANSFER_CHARACTERISTICS_SRGB
-                            : AVIF_TRANSFER_CHARACTERISTICS_PQ;
+        static_cast<avifTransferCharacteristics>(
+            tone_mapping_to_sdr ? AVIF_TRANSFER_CHARACTERISTICS_SRGB
+                                : AVIF_TRANSFER_CHARACTERISTICS_PQ);
     swapped->transferCharacteristics = transfer_characteristics;
   }
 
@@ -98,7 +99,6 @@ avifResult ChangeBase(const avifImage& image, int depth,
 
   // Swap base and alternate in the gain map metadata.
   avifGainMapMetadata& metadata = swapped->gainMap->metadata;
-  metadata.backwardDirection = !metadata.backwardDirection;
   metadata.useBaseColorSpace = !metadata.useBaseColorSpace;
   std::swap(metadata.baseHdrHeadroomN, metadata.alternateHdrHeadroomN);
   std::swap(metadata.baseHdrHeadroomD, metadata.alternateHdrHeadroomD);

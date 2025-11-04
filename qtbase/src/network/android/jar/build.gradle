@@ -7,7 +7,7 @@ buildscript {
     }
 
     dependencies {
-        classpath 'com.android.tools.build:gradle:8.6.0'
+        classpath 'com.android.tools.build:gradle:8.8.0'
     }
 }
 
@@ -23,7 +23,7 @@ repositories {
 }
 
 android {
-    compileSdk 34
+    compileSdk 35
 
     defaultConfig {
         minSdkVersion 28
@@ -45,7 +45,7 @@ android {
 
     android {
         lintOptions {
-            abortOnError true
+            abortOnError = true
         }
     }
 }

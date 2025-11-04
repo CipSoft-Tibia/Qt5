@@ -18,6 +18,7 @@
 #include "qqmldom_global.h"
 #include "qqmldomfunctionref_p.h"
 
+#include <QtCore/QDebug>
 #include <QtCore/QFile>
 #include <QtCore/QStringList>
 #include <QtCore/QCoreApplication>
@@ -39,7 +40,7 @@ public:
     {
         if (!silentWarnings) {
             for (const QString &w : std::as_const(warnings))
-                qWarning() << w;
+                qWarning("%ls", qUtf16Printable(w));
         }
         if (shouldRemoveTempFile)
             tempFile.remove();

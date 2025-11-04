@@ -31,10 +31,10 @@
 
 QT_BEGIN_NAMESPACE
 
-Q_LOGGING_CATEGORY(lcDraw, "qt.text.drawing")
-Q_LOGGING_CATEGORY(lcHit, "qt.text.hittest")
+Q_STATIC_LOGGING_CATEGORY(lcDraw, "qt.text.drawing")
+Q_STATIC_LOGGING_CATEGORY(lcHit, "qt.text.hittest")
 Q_LOGGING_CATEGORY(lcLayout, "qt.text.layout")
-Q_LOGGING_CATEGORY(lcTable, "qt.text.layout.table")
+Q_STATIC_LOGGING_CATEGORY(lcTable, "qt.text.layout.table")
 
 // ################ should probably add frameFormatChange notification!
 
@@ -1894,7 +1894,7 @@ void QTextDocumentLayoutPrivate::drawTableCell(const QRectF &cellRect, QPainter 
     }
 
     // paint over the background - otherwise we would have to adjust the background paint cellRect for the border values
-    if (cellBorderConfigured)
+    if (cellBorderConfigured || (td->borderCollapse && td->border != 0))
         drawTableCellBorder(cellRect, painter, table, td, cell);
 
     const QFixed verticalOffset = td->cellVerticalOffsets.at(c + r * table->columns());

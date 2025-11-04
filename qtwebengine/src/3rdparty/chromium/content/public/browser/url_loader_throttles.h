@@ -5,11 +5,12 @@
 #ifndef CONTENT_PUBLIC_BROWSER_URL_LOADER_THROTTLES_H_
 #define CONTENT_PUBLIC_BROWSER_URL_LOADER_THROTTLES_H_
 
+#include <optional>
 #include <vector>
 
 #include "base/functional/callback.h"
 #include "content/common/content_export.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
+#include "content/public/browser/frame_tree_node_id.h"
 
 namespace blink {
 class URLLoaderThrottle;
@@ -34,8 +35,8 @@ CreateContentBrowserURLLoaderThrottles(
     BrowserContext* browser_context,
     const base::RepeatingCallback<WebContents*()>& wc_getter,
     NavigationUIData* navigation_ui_data,
-    int frame_tree_node_id,
-    absl::optional<int64_t> navigation_id);
+    FrameTreeNodeId frame_tree_node_id,
+    std::optional<int64_t> navigation_id);
 
 // Wrapper around `ContentBrowserClient::CreateURLLoaderThrottlesForKeepAlive()`
 // which inserts additional content specific throttles for handling fetch
@@ -46,7 +47,7 @@ CreateContentBrowserURLLoaderThrottlesForKeepAlive(
     const network::ResourceRequest& request,
     BrowserContext* browser_context,
     const base::RepeatingCallback<WebContents*()>& wc_getter,
-    int frame_tree_node_id);
+    FrameTreeNodeId frame_tree_node_id);
 
 }  // namespace content
 

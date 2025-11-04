@@ -24,10 +24,16 @@ qt_internal_add_module(Svg
         qsvgfilter.cpp qsvgfilter_p.h
         qsvgstyle.cpp qsvgstyle_p.h
         qsvgtinydocument.cpp qsvgtinydocument_p.h
+        qsvganimate.cpp qsvganimate_p.h
         qsvghelper_p.h
         qsvgdebug.cpp
         qsvgvisitor.cpp qsvgvisitor_p.h
         qtsvgglobal.h qtsvgglobal_p.h
+        animation/qsvganimator.cpp animation/qsvganimator_p.h
+        animation/qsvgabstractanimation.cpp animation/qsvgabstractanimation_p.h
+        animation/qsvganimatedproperty.cpp animation/qsvganimatedproperty_p.h
+        animation/qsvgcssanimation.cpp animation/qsvgcssanimation_p.h
+        qsvgutils_p.h qsvgutils.cpp
     DEFINES
         QT_NO_CONTEXTLESS_CONNECT
         QT_NO_USING_NAMESPACE
@@ -44,6 +50,11 @@ qt_internal_add_module(Svg
 
 ## Scopes:
 #####################################################################
+
+qt_internal_extend_target(Svg CONDITION QT_FEATURE_cssparser
+    SOURCES
+        qsvgcsshandler.cpp qsvgcsshandler_p.h
+)
 
 qt_internal_extend_target(Svg CONDITION MSVC AND (TEST_architecture_arch STREQUAL "i386")
     LINK_OPTIONS

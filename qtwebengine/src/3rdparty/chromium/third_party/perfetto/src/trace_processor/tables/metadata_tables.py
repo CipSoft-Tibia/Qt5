@@ -28,10 +28,30 @@ from python.generators.trace_processor_table.public import CppUint32
 from python.generators.trace_processor_table.public import CppSelfTableId
 from python.generators.trace_processor_table.public import WrappingSqlView
 
+MACHINE_TABLE = Table(
+    python_module=__file__,
+    class_name='MachineTable',
+    sql_name='machine',
+    columns=[
+        C('raw_id', CppUint32()),
+    ],
+    tabledoc=TableDoc(
+        doc='''
+          Contains raw machine_id of trace packets emitted from remote machines.
+        ''',
+        group='Metadata',
+        columns={
+            'raw_id':
+                '''
+                  Raw machine identifier in the trace packet, non-zero for
+                  remote machines.
+                '''
+        }))
+
 PROCESS_TABLE = Table(
     python_module=__file__,
     class_name='ProcessTable',
-    sql_name='internal_process',
+    sql_name='__intrinsic_process',
     columns=[
         C('upid', Alias(underlying_column='id')),
         C('pid', CppUint32()),
@@ -43,6 +63,7 @@ PROCESS_TABLE = Table(
         C('android_appid', CppOptional(CppUint32())),
         C('cmdline', CppOptional(CppString())),
         C('arg_set_id', CppUint32()),
+        C('machine_id', CppOptional(CppTableId(MACHINE_TABLE))),
     ],
     wrapping_sql_view=WrappingSqlView(view_name='process',),
     tabledoc=TableDoc(
@@ -98,12 +119,17 @@ PROCESS_TABLE = Table(
             'arg_set_id':
                 ColumnDoc(
                     'Extra args for this process.', joinable='args.arg_set_id'),
+            'machine_id':
+                '''
+                  Machine identifier, non-null for processes on a remote
+                  machine.
+                ''',
         }))
 
 THREAD_TABLE = Table(
     python_module=__file__,
     class_name='ThreadTable',
-    sql_name='internal_thread',
+    sql_name='__intrinsic_thread',
     columns=[
         C('utid', Alias(underlying_column='id')),
         C('tid', CppUint32()),
@@ -112,6 +138,7 @@ THREAD_TABLE = Table(
         C('end_ts', CppOptional(CppInt64())),
         C('upid', CppOptional(CppTableId(PROCESS_TABLE))),
         C('is_main_thread', CppOptional(CppUint32())),
+        C('machine_id', CppOptional(CppTableId(MACHINE_TABLE))),
     ],
     wrapping_sql_view=WrappingSqlView(view_name='thread',),
     tabledoc=TableDoc(
@@ -157,20 +184,61 @@ THREAD_TABLE = Table(
                 '''
                   Boolean indicating if this thread is the main thread
                   in the process.
+                ''',
+            'machine_id':
                 '''
+                  Machine identifier, non-null for threads on a remote machine.
+                ''',
+        }))
+
+CPU_TABLE = Table(
+    python_module=__file__,
+    class_name='CpuTable',
+    sql_name='__intrinsic_cpu',
+    columns=[
+        C('cpu', CppOptional(CppUint32())),
+        C('cluster_id', CppUint32()),
+        C('processor', CppString()),
+        C('machine_id', CppOptional(CppTableId(MACHINE_TABLE))),
+        C('capacity', CppOptional(CppUint32())),
+    ],
+    tabledoc=TableDoc(
+        doc='''
+          Contains information of processes seen during the trace
+        ''',
+        group='Misc',
+        columns={
+            'cpu':
+                '''the index (0-based) of the CPU core on the device''',
+            'cluster_id':
+                '''the cluster id is shared by CPUs in
+the same cluster''',
+            'processor':
+                '''a string describing this core''',
+            'machine_id':
+                '''
+                  Machine identifier, non-null for CPUs on a remote machine.
+                ''',
+            'capacity':
+                '''
+                  Capacity of a CPU of a device, a metric which indicates the
+                  relative performance of a CPU on a device
+                  For details see: 
+                  https://www.kernel.org/doc/Documentation/devicetree/bindings/arm/cpu-capacity.txt
+                ''',
         }))
 
 RAW_TABLE = Table(
     python_module=__file__,
     class_name='RawTable',
-    sql_name='raw',
+    sql_name='__intrinsic_raw',
     columns=[
         C('ts', CppInt64(), flags=ColumnFlag.SORTED),
         C('name', CppString()),
-        C('cpu', CppUint32()),
         C('utid', CppTableId(THREAD_TABLE)),
         C('arg_set_id', CppUint32()),
-        C('common_flags', CppUint32())
+        C('common_flags', CppUint32()),
+        C('ucpu', CppTableId(CPU_TABLE))
     ],
     tabledoc=TableDoc(
         doc='''
@@ -191,18 +259,23 @@ RAW_TABLE = Table(
                   The name of the event. For ftrace events, this will be the
                   ftrace event name.
                 ''',
-            'cpu':
-                'The CPU this event was emitted on.',
             'utid':
                 'The thread this event was emitted on.',
             'common_flags':
-                'Ftrace event flags for this event. Currently only emitted for sched_waking events.'
+                '''
+                  Ftrace event flags for this event. Currently only emitted for
+                  sched_waking events.
+                ''',
+            'ucpu':
+                '''
+                  The unique CPU indentifier.
+                ''',
         }))
 
 FTRACE_EVENT_TABLE = Table(
     python_module=__file__,
     class_name='FtraceEventTable',
-    sql_name='ftrace_event',
+    sql_name='__intrinsic_ftrace_event',
     parent=RAW_TABLE,
     columns=[],
     tabledoc=TableDoc(
@@ -218,7 +291,7 @@ FTRACE_EVENT_TABLE = Table(
 ARG_TABLE = Table(
     python_module=__file__,
     class_name='ArgTable',
-    sql_name='internal_args',
+    sql_name='__intrinsic_args',
     columns=[
         C('arg_set_id', CppUint32(), flags=ColumnFlag.SORTED),
         C('flat_key', CppString()),
@@ -317,39 +390,18 @@ EXP_MISSING_CHROME_PROC_TABLE = Table(
             'reliable_from': ''''''
         }))
 
-CPU_TABLE = Table(
-    python_module=__file__,
-    class_name='CpuTable',
-    sql_name='cpu',
-    columns=[
-        C('cluster_id', CppUint32()),
-        C('processor', CppString()),
-    ],
-    tabledoc=TableDoc(
-        doc='''
-          Contains information of processes seen during the trace
-        ''',
-        group='Misc',
-        columns={
-            'cluster_id':
-                '''the cluster id is shared by CPUs in
-the same cluster''',
-            'processor':
-                '''a string describing this core'''
-        }))
-
 CPU_FREQ_TABLE = Table(
     python_module=__file__,
     class_name='CpuFreqTable',
-    sql_name='cpu_freq',
+    sql_name='__intrinsic_cpu_freq',
     columns=[
-        C('cpu_id', CppTableId(CPU_TABLE)),
+        C('ucpu', CppTableId(CPU_TABLE)),
         C('freq', CppUint32()),
     ],
     tabledoc=TableDoc(
         doc='''''', group='Misc', columns={
-            'cpu_id': '''''',
-            'freq': ''''''
+            'ucpu': '''''',
+            'freq': '''''',
         }))
 
 CLOCK_SNAPSHOT_TABLE = Table(
@@ -362,6 +414,7 @@ CLOCK_SNAPSHOT_TABLE = Table(
         C('clock_name', CppOptional(CppString())),
         C('clock_value', CppInt64()),
         C('snapshot_id', CppUint32()),
+        C('machine_id', CppOptional(CppTableId(MACHINE_TABLE))),
     ],
     tabledoc=TableDoc(
         doc='''
@@ -382,7 +435,43 @@ otherwise.''',
             'clock_value':
                 '''timestamp of the snapshot in clock time.''',
             'snapshot_id':
-                '''the index of this snapshot (only useful for debugging)'''
+                '''the index of this snapshot (only useful for debugging)''',
+            'machine_id':
+                '''
+                  Machine identifier, non-null for clock snapshots on a remote
+                  machine.
+                ''',
+        }))
+
+TRACE_FILE_TABLE = Table(
+    python_module=__file__,
+    class_name='TraceFileTable',
+    sql_name='__intrinsic_trace_file',
+    columns=[
+        C('parent_id', CppOptional(CppSelfTableId())),
+        C('name', CppOptional(CppString())),
+        C('size', CppInt64()),
+        C('trace_type', CppString()),
+    ],
+    tabledoc=TableDoc(
+        doc='''
+            Metadata related to the trace file parsed. Note the order in which
+            the files appear in this table corresponds to the order in which
+            they are read and sent to the tokenization stage.
+        ''',
+        group='Misc',
+        columns={
+            'parent_id':
+                '''
+                  Parent file. E.g. files contained in a zip file will point to
+                  the zip file.
+                ''',
+            'name':
+                '''File name, if known, NULL otherwise''',
+            'size':
+                '''Size in bytes''',
+            'trace_type':
+                '''Trace type''',
         }))
 
 # Keep this list sorted.
@@ -393,9 +482,11 @@ ALL_TABLES = [
     CPU_TABLE,
     EXP_MISSING_CHROME_PROC_TABLE,
     FILEDESCRIPTOR_TABLE,
+    FTRACE_EVENT_TABLE,
+    MACHINE_TABLE,
     METADATA_TABLE,
     PROCESS_TABLE,
     RAW_TABLE,
     THREAD_TABLE,
-    FTRACE_EVENT_TABLE,
+    TRACE_FILE_TABLE,
 ]

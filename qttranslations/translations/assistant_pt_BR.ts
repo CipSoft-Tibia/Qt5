@@ -2,89 +2,6 @@
 <!DOCTYPE TS>
 <TS version="2.1" language="pt_BR">
 <context>
-    <name>AboutDialog</name>
-    <message>
-        <source>&amp;Close</source>
-        <translation>&amp;Fechar</translation>
-    </message>
-</context>
-<context>
-    <name>AboutLabel</name>
-    <message>
-        <source>Warning</source>
-        <translation>Aviso</translation>
-    </message>
-    <message>
-        <source>Unable to launch external application.</source>
-        <translation>Não foi possível iniciar o aplicativo externo.</translation>
-    </message>
-    <message>
-        <source>OK</source>
-        <translation>OK</translation>
-    </message>
-    <message>
-        <source>Unable to launch external application.
-</source>
-        <translation>Não foi possível iniciar o aplicativo externo.
-</translation>
-    </message>
-</context>
-<context>
-    <name>Assistant</name>
-    <message>
-        <source>Error registering documentation file &apos;%1&apos;: %2</source>
-        <translation>Erro ao registrar o arquivo de documentação: &apos;%1&apos;: %2</translation>
-    </message>
-    <message>
-        <source>Could not register documentation file
-%1
-
-Reason:
-%2</source>
-        <translation>Não foi possível registrar o arquivo de documentação
-%1
-
-Motivo:
-%2</translation>
-    </message>
-    <message>
-        <source>Documentation successfully registered.</source>
-        <translation>Documentação registrada com sucesso.</translation>
-    </message>
-    <message>
-        <source>Could not unregister documentation file
-%1
-
-Reason:
-%2</source>
-        <translation>Não foi possível cancelar o registro do arquivo de documentação
-%1
-
-Motivo:
-%2</translation>
-    </message>
-    <message>
-        <source>Documentation successfully unregistered.</source>
-        <translation>Registro da documentação cancelado com sucesso.</translation>
-    </message>
-    <message>
-        <source>Error reading collection file &apos;%1&apos;: %2.</source>
-        <translation>Erro ao ler o arquivo de coleção: &apos;%1&apos;: %2.</translation>
-    </message>
-    <message>
-        <source>Error creating collection file &apos;%1&apos;: %2.</source>
-        <translation>Erro ao criar o arquivo de coleção: &apos;%1&apos;: %2.</translation>
-    </message>
-    <message>
-        <source>Cannot load sqlite database driver!</source>
-        <translation>Não foi possível carregar o driver do banco de dados sqlite!</translation>
-    </message>
-    <message>
-        <source>Error: %1</source>
-        <translation>Erro: %1</translation>
-    </message>
-</context>
-<context>
     <name>BookmarkDialog</name>
     <message>
         <source>Add Bookmark</source>
@@ -109,68 +26,6 @@ Motivo:
     <message>
         <source>Rename Folder</source>
         <translation>Renomear pasta</translation>
-    </message>
-</context>
-<context>
-    <name>BookmarkItem</name>
-    <message>
-        <source>New Folder</source>
-        <translation>Nova pasta</translation>
-    </message>
-    <message>
-        <source>Untitled</source>
-        <translation>Sem título</translation>
-    </message>
-</context>
-<context>
-    <name>BookmarkManager</name>
-    <message>
-        <source>Untitled</source>
-        <translation>Sem título</translation>
-    </message>
-    <message>
-        <source>Remove</source>
-        <translation>Excluir</translation>
-    </message>
-    <message>
-        <source>You are going to delete a Folder, this will also&lt;br&gt;remove it&apos;s content. Are you sure to continue?</source>
-        <translation>Você está prestes a excluir uma pasta, isto também irá&lt;br&gt;excluir seu conteúdo. Deseja continuar?</translation>
-    </message>
-    <message>
-        <source>Manage Bookmarks...</source>
-        <translation>Gerenciar favoritos...</translation>
-    </message>
-    <message>
-        <source>Add Bookmark...</source>
-        <translation>Adicionar favorito...</translation>
-    </message>
-    <message>
-        <source>Ctrl+D</source>
-        <translation>Ctrl+D</translation>
-    </message>
-    <message>
-        <source>Delete Folder</source>
-        <translation>Excluir pasta</translation>
-    </message>
-    <message>
-        <source>Rename Folder</source>
-        <translation>Renomear pasta</translation>
-    </message>
-    <message>
-        <source>Show Bookmark</source>
-        <translation>Mostrar favorito</translation>
-    </message>
-    <message>
-        <source>Show Bookmark in New Tab</source>
-        <translation>Mostrar favorito em uma nova aba</translation>
-    </message>
-    <message>
-        <source>Delete Bookmark</source>
-        <translation>Excluir favorito</translation>
-    </message>
-    <message>
-        <source>Rename Bookmark</source>
-        <translation>Renomear favorito</translation>
     </message>
 </context>
 <context>
@@ -253,6 +108,292 @@ Motivo:
     </message>
 </context>
 <context>
+    <name>BookmarkWidget</name>
+    <message>
+        <source>Bookmarks</source>
+        <translation>Favoritos</translation>
+    </message>
+    <message>
+        <source>Filter:</source>
+        <translation>Filtro:</translation>
+    </message>
+    <message>
+        <source>Add</source>
+        <translation>Adicionar</translation>
+    </message>
+    <message>
+        <source>Remove</source>
+        <translation>Excluir</translation>
+    </message>
+</context>
+<context>
+    <name>HelpDocSettingsWidget</name>
+    <message>
+        <source>Form</source>
+        <translation>Formulário</translation>
+    </message>
+    <message>
+        <source>Registered Documentation</source>
+        <translation>Documentação registrada</translation>
+    </message>
+    <message>
+        <source>&lt;Filter&gt;</source>
+        <translation>&lt;Filtro&gt;</translation>
+    </message>
+    <message>
+        <source>Add...</source>
+        <translation>Adicionar...</translation>
+    </message>
+    <message>
+        <source>Remove</source>
+        <translation>Excluir</translation>
+    </message>
+    <message>
+        <source>Add Documentation</source>
+        <translation>Adicionar documentação</translation>
+    </message>
+    <message>
+        <source>Qt Compressed Help Files (*.qch)</source>
+        <translation>Arquivos de ajuda comprimidos do Qt (*.qch)</translation>
+    </message>
+</context>
+<context>
+    <name>PreferencesDialogClass</name>
+    <message>
+        <source>Preferences</source>
+        <translation>Preferências</translation>
+    </message>
+    <message>
+        <source>Fonts</source>
+        <translation>Fontes</translation>
+    </message>
+    <message>
+        <source>Font settings:</source>
+        <translation>Configurações da fonte:</translation>
+    </message>
+    <message>
+        <source>Browser</source>
+        <translation>Navegador</translation>
+    </message>
+    <message>
+        <source>Application</source>
+        <translation>Aplicativo</translation>
+    </message>
+    <message>
+        <source>Filters</source>
+        <translation>Filtros</translation>
+    </message>
+    <message>
+        <source>Documentation</source>
+        <translation>Documentação</translation>
+    </message>
+    <message>
+        <source>Options</source>
+        <translation>Opções</translation>
+    </message>
+    <message>
+        <source>On help start:</source>
+        <translation>No início da ajuda:</translation>
+    </message>
+    <message>
+        <source>Show my home page</source>
+        <translation>Mostrar minha página inicial</translation>
+    </message>
+    <message>
+        <source>Show a blank page</source>
+        <translation>Mostrar uma página em branco</translation>
+    </message>
+    <message>
+        <source>Show my tabs from last session</source>
+        <translation>Mostrar minhas abas da última sessão</translation>
+    </message>
+    <message>
+        <source>Homepage</source>
+        <translation>Página inicial</translation>
+    </message>
+    <message>
+        <source>Current Page</source>
+        <translation>Página atual</translation>
+    </message>
+    <message>
+        <source>Blank Page</source>
+        <translation>Página em branco</translation>
+    </message>
+    <message>
+        <source>Restore to default</source>
+        <translation>Restaurar padrões</translation>
+    </message>
+    <message>
+        <source>Appearance</source>
+        <translation>Aparência</translation>
+    </message>
+    <message>
+        <source>Show tabs for each individual page</source>
+        <translation>Mostrar abas para cada página individualmente</translation>
+    </message>
+    <message>
+        <source>Components:</source>
+        <translation>Componentes:</translation>
+    </message>
+    <message>
+        <source>Versions:</source>
+        <translation>Versões:</translation>
+    </message>
+    <message>
+        <source>Add...</source>
+        <translation>Adicionar...</translation>
+    </message>
+    <message>
+        <source>Rename...</source>
+        <translation>Renomear...</translation>
+    </message>
+    <message>
+        <source>Remove</source>
+        <translation>Excluir</translation>
+    </message>
+    <message>
+        <source>Filter:</source>
+        <translation>Filtro:</translation>
+    </message>
+    <message>
+        <source>Registered Documentation:</source>
+        <translation>Documentação registrada:</translation>
+    </message>
+    <message>
+        <source>&lt;Filter&gt;</source>
+        <translation>&lt;Filtro&gt;</translation>
+    </message>
+    <message>
+        <source>Attributes:</source>
+        <translation>Atributos:</translation>
+    </message>
+    <message>
+        <source>1</source>
+        <translation>1</translation>
+    </message>
+    <message>
+        <source>Add</source>
+        <translation>Adicionar</translation>
+    </message>
+</context>
+<context>
+    <name>TopicChooser</name>
+    <message>
+        <source>Choose Topic</source>
+        <translation>Escolher tópico</translation>
+    </message>
+    <message>
+        <source>&amp;Topics</source>
+        <translation>&amp;Tópicos</translation>
+    </message>
+    <message>
+        <source>&amp;Display</source>
+        <translation>&amp;Mostrar</translation>
+    </message>
+    <message>
+        <source>&amp;Close</source>
+        <translation>&amp;Fechar</translation>
+    </message>
+    <message>
+        <source>Filter</source>
+        <translation>Filtro</translation>
+    </message>
+    <message>
+        <source>Choose a topic for &lt;b&gt;%1&lt;/b&gt;:</source>
+        <translation>Escolha um tópico para &lt;b&gt;%1&lt;/b&gt;:</translation>
+    </message>
+</context>
+<context>
+    <name>AboutLabel</name>
+    <message>
+        <source>Warning</source>
+        <translation>Aviso</translation>
+    </message>
+    <message>
+        <source>Unable to launch external application.</source>
+        <translation>Não foi possível iniciar o aplicativo externo.</translation>
+    </message>
+    <message>
+        <source>OK</source>
+        <translation>OK</translation>
+    </message>
+    <message>
+        <source>Unable to launch external application.
+</source>
+        <translation>Não foi possível iniciar o aplicativo externo.
+</translation>
+    </message>
+</context>
+<context>
+    <name>AboutDialog</name>
+    <message>
+        <source>&amp;Close</source>
+        <translation>&amp;Fechar</translation>
+    </message>
+</context>
+<context>
+    <name>BookmarkItem</name>
+    <message>
+        <source>New Folder</source>
+        <translation>Nova pasta</translation>
+    </message>
+    <message>
+        <source>Untitled</source>
+        <translation>Sem título</translation>
+    </message>
+</context>
+<context>
+    <name>BookmarkManager</name>
+    <message>
+        <source>Untitled</source>
+        <translation>Sem título</translation>
+    </message>
+    <message>
+        <source>Remove</source>
+        <translation>Excluir</translation>
+    </message>
+    <message>
+        <source>You are going to delete a Folder, this will also&lt;br&gt;remove it&apos;s content. Are you sure to continue?</source>
+        <translation>Você está prestes a excluir uma pasta, isto também irá&lt;br&gt;excluir seu conteúdo. Deseja continuar?</translation>
+    </message>
+    <message>
+        <source>Manage Bookmarks...</source>
+        <translation>Gerenciar favoritos...</translation>
+    </message>
+    <message>
+        <source>Add Bookmark...</source>
+        <translation>Adicionar favorito...</translation>
+    </message>
+    <message>
+        <source>Ctrl+D</source>
+        <translation>Ctrl+D</translation>
+    </message>
+    <message>
+        <source>Delete Folder</source>
+        <translation>Excluir pasta</translation>
+    </message>
+    <message>
+        <source>Rename Folder</source>
+        <translation>Renomear pasta</translation>
+    </message>
+    <message>
+        <source>Show Bookmark</source>
+        <translation>Mostrar favorito</translation>
+    </message>
+    <message>
+        <source>Show Bookmark in New Tab</source>
+        <translation>Mostrar favorito em uma nova aba</translation>
+    </message>
+    <message>
+        <source>Delete Bookmark</source>
+        <translation>Excluir favorito</translation>
+    </message>
+    <message>
+        <source>Rename Bookmark</source>
+        <translation>Renomear favorito</translation>
+    </message>
+</context>
+<context>
     <name>BookmarkModel</name>
     <message>
         <source>Name</source>
@@ -272,22 +413,26 @@ Motivo:
     </message>
 </context>
 <context>
-    <name>BookmarkWidget</name>
+    <name>TabBar</name>
     <message>
-        <source>Bookmarks</source>
-        <translation>Favoritos</translation>
+        <source>(Untitled)</source>
+        <translation>(Sem título)</translation>
     </message>
     <message>
-        <source>Filter:</source>
-        <translation>Filtro:</translation>
+        <source>New &amp;Tab</source>
+        <translation>Nova &amp;aba</translation>
     </message>
     <message>
-        <source>Add</source>
-        <translation>Adicionar</translation>
+        <source>&amp;Close Tab</source>
+        <translation>&amp;Fechar aba</translation>
     </message>
     <message>
-        <source>Remove</source>
-        <translation>Excluir</translation>
+        <source>Close Other Tabs</source>
+        <translation>Fechar outras abas</translation>
+    </message>
+    <message>
+        <source>Add Bookmark for this Page...</source>
+        <translation>Adicionar favorito para esta página...</translation>
     </message>
 </context>
 <context>
@@ -509,29 +654,6 @@ Motivo:
     </message>
 </context>
 <context>
-    <name>FontPanel</name>
-    <message>
-        <source>Font</source>
-        <translation>Fonte</translation>
-    </message>
-    <message>
-        <source>&amp;Writing system</source>
-        <translation>Sistema de &amp;escrita</translation>
-    </message>
-    <message>
-        <source>&amp;Family</source>
-        <translation>&amp;Família</translation>
-    </message>
-    <message>
-        <source>&amp;Style</source>
-        <translation>E&amp;stilo</translation>
-    </message>
-    <message>
-        <source>&amp;Point size</source>
-        <translation>Tamanho do &amp;ponto</translation>
-    </message>
-</context>
-<context>
     <name>GlobalActions</name>
     <message>
         <source>&amp;Back</source>
@@ -572,40 +694,6 @@ Motivo:
     <message>
         <source>&amp;Find</source>
         <translation>&amp;Localizar</translation>
-    </message>
-</context>
-<context>
-    <name>HelpDocSettingsWidget</name>
-    <message>
-        <source>Form</source>
-        <translation>Formulário</translation>
-    </message>
-    <message>
-        <source>Registered Documentation</source>
-        <translation>Documentação registrada</translation>
-    </message>
-    <message>
-        <source>&lt;Filter&gt;</source>
-        <translation>&lt;Filtro&gt;</translation>
-    </message>
-    <message>
-        <source>Add...</source>
-        <translation>Adicionar...</translation>
-    </message>
-    <message>
-        <source>Remove</source>
-        <translation>Excluir</translation>
-    </message>
-</context>
-<context>
-    <name>HelpDocSettingsWidgetPrivate</name>
-    <message>
-        <source>Add Documentation</source>
-        <translation>Adicionar documentação</translation>
-    </message>
-    <message>
-        <source>Qt Compressed Help Files (*.qch)</source>
-        <translation>Arquivos de ajuda Qt comprimidos (*.qch)</translation>
     </message>
 </context>
 <context>
@@ -664,6 +752,33 @@ Motivo:
     </message>
 </context>
 <context>
+    <name>HelpViewerImpl</name>
+    <message>
+        <source>Open Link</source>
+        <translation>Abrir link</translation>
+    </message>
+    <message>
+        <source>Open Link in New Tab	Ctrl+LMB</source>
+        <translation>Abrir link em nova aba	Ctrl+LMB</translation>
+    </message>
+    <message>
+        <source>Copy &amp;Link Location</source>
+        <translation>Copiar localização do &amp;link</translation>
+    </message>
+    <message>
+        <source>Copy</source>
+        <translation>Copiar</translation>
+    </message>
+    <message>
+        <source>Reload</source>
+        <translation>Recarregar</translation>
+    </message>
+    <message>
+        <source>Open Link in New Page</source>
+        <translation>Abrir link em nova página</translation>
+    </message>
+</context>
+<context>
     <name>IndexWindow</name>
     <message>
         <source>&amp;Look for:</source>
@@ -676,6 +791,61 @@ Motivo:
     <message>
         <source>Open Link in New Tab</source>
         <translation>Abrir link em aba nova</translation>
+    </message>
+</context>
+<context>
+    <name>Assistant</name>
+    <message>
+        <source>Error registering documentation file &apos;%1&apos;: %2</source>
+        <translation>Erro ao registrar o arquivo de documentação: &apos;%1&apos;: %2</translation>
+    </message>
+    <message>
+        <source>Could not register documentation file
+%1
+
+Reason:
+%2</source>
+        <translation>Não foi possível registrar o arquivo de documentação
+%1
+
+Motivo:
+%2</translation>
+    </message>
+    <message>
+        <source>Documentation successfully registered.</source>
+        <translation>Documentação registrada com sucesso.</translation>
+    </message>
+    <message>
+        <source>Could not unregister documentation file
+%1
+
+Reason:
+%2</source>
+        <translation>Não foi possível cancelar o registro do arquivo de documentação
+%1
+
+Motivo:
+%2</translation>
+    </message>
+    <message>
+        <source>Documentation successfully unregistered.</source>
+        <translation>Registro da documentação cancelado com sucesso.</translation>
+    </message>
+    <message>
+        <source>Error reading collection file &apos;%1&apos;: %2.</source>
+        <translation>Erro ao ler o arquivo de coleção: &apos;%1&apos;: %2.</translation>
+    </message>
+    <message>
+        <source>Error creating collection file &apos;%1&apos;: %2.</source>
+        <translation>Erro ao criar o arquivo de coleção: &apos;%1&apos;: %2.</translation>
+    </message>
+    <message>
+        <source>Cannot load sqlite database driver!</source>
+        <translation>Não foi possível carregar o driver do banco de dados sqlite!</translation>
+    </message>
+    <message>
+        <source>Error: %1</source>
+        <translation>Erro: %1</translation>
     </message>
 </context>
 <context>
@@ -877,8 +1047,8 @@ Motivo:
         <translation>Não foi possível encontrar o item de conteúdo associado.</translation>
     </message>
     <message>
-        <source>&lt;center&gt;&lt;h3&gt;%1&lt;/h3&gt;&lt;p&gt;Version %2&lt;/p&gt;&lt;p&gt;Browser: %3&lt;/p&gt;&lt;/center&gt;&lt;p&gt;Copyright (C) %4 The Qt Company Ltd.&lt;/p&gt;</source>
-        <translation>&lt;center&gt;&lt;h3&gt;%1&lt;/h3&gt;&lt;p&gt;Versão %2&lt;/p&gt;&lt;p&gt;Navegador: %3&lt;/p&gt;&lt;/center&gt;&lt;p&gt;Copyright (C) %4 The Qt Company Ltd.&lt;/p&gt;</translation>
+        <source>&lt;center&gt;&lt;h3&gt;%1&lt;/h3&gt;&lt;p&gt;Version %2&lt;/p&gt;&lt;p&gt;Browser: %3&lt;/p&gt;&lt;/center&gt;&lt;p&gt;Copyright (C) The Qt Company Ltd. and other contributors.&lt;/p&gt;</source>
+        <translation>&lt;center&gt;&lt;h3&gt;%1&lt;/h3&gt;&lt;p&gt;Versão %2&lt;/p&gt;&lt;p&gt;Navegador: %3&lt;/p&gt;&lt;/center&gt;&lt;p&gt;Copyright (C) A Qt Company Ltd. e outros colaboradores.&lt;/p&gt;</translation>
     </message>
     <message>
         <source>About %1</source>
@@ -895,6 +1065,10 @@ Motivo:
     <message>
         <source>Could not register file &apos;%1&apos;: %2</source>
         <translation>Não foi possível registrar o arquivo &apos;%1&apos;: %2</translation>
+    </message>
+    <message>
+        <source>&lt;center&gt;&lt;h3&gt;%1&lt;/h3&gt;&lt;p&gt;Version %2&lt;/p&gt;&lt;p&gt;Browser: %3&lt;/p&gt;&lt;/center&gt;&lt;p&gt;Copyright (C) %4 The Qt Company Ltd.&lt;/p&gt;</source>
+        <translation>&lt;center&gt;&lt;h3&gt;%1&lt;/h3&gt;&lt;p&gt;Versão %2&lt;/p&gt;&lt;p&gt;Navegador: %3&lt;/p&gt;&lt;/center&gt;&lt;p&gt;Copyright (C) %4 The Qt Company Ltd.&lt;/p&gt;</translation>
     </message>
     <message>
         <source>&lt;center&gt;&lt;h3&gt;%1&lt;/h3&gt;&lt;p&gt;Version %2&lt;/p&gt;&lt;/center&gt;&lt;p&gt;Copyright (C) %3 Digia Plc and/or its subsidiary(-ies).&lt;/p&gt;</source>
@@ -996,125 +1170,6 @@ Motivo:
     </message>
 </context>
 <context>
-    <name>PreferencesDialogClass</name>
-    <message>
-        <source>Preferences</source>
-        <translation>Preferências</translation>
-    </message>
-    <message>
-        <source>Fonts</source>
-        <translation>Fontes</translation>
-    </message>
-    <message>
-        <source>Font settings:</source>
-        <translation>Configurações da fonte:</translation>
-    </message>
-    <message>
-        <source>Browser</source>
-        <translation>Navegador</translation>
-    </message>
-    <message>
-        <source>Application</source>
-        <translation>Aplicativo</translation>
-    </message>
-    <message>
-        <source>Filters</source>
-        <translation>Filtros</translation>
-    </message>
-    <message>
-        <source>Documentation</source>
-        <translation>Documentação</translation>
-    </message>
-    <message>
-        <source>Options</source>
-        <translation>Opções</translation>
-    </message>
-    <message>
-        <source>On help start:</source>
-        <translation>No início da ajuda:</translation>
-    </message>
-    <message>
-        <source>Show my home page</source>
-        <translation>Mostrar minha página inicial</translation>
-    </message>
-    <message>
-        <source>Show a blank page</source>
-        <translation>Mostrar uma página em branco</translation>
-    </message>
-    <message>
-        <source>Show my tabs from last session</source>
-        <translation>Mostrar minhas abas da última sessão</translation>
-    </message>
-    <message>
-        <source>Homepage</source>
-        <translation>Página inicial</translation>
-    </message>
-    <message>
-        <source>Current Page</source>
-        <translation>Página atual</translation>
-    </message>
-    <message>
-        <source>Blank Page</source>
-        <translation>Página em branco</translation>
-    </message>
-    <message>
-        <source>Restore to default</source>
-        <translation>Restaurar padrões</translation>
-    </message>
-    <message>
-        <source>Appearance</source>
-        <translation>Aparência</translation>
-    </message>
-    <message>
-        <source>Show tabs for each individual page</source>
-        <translation>Mostrar abas para cada página individualmente</translation>
-    </message>
-    <message>
-        <source>Components:</source>
-        <translation>Componentes:</translation>
-    </message>
-    <message>
-        <source>Versions:</source>
-        <translation>Versões:</translation>
-    </message>
-    <message>
-        <source>Add...</source>
-        <translation>Adicionar...</translation>
-    </message>
-    <message>
-        <source>Rename...</source>
-        <translation>Renomear...</translation>
-    </message>
-    <message>
-        <source>Remove</source>
-        <translation>Excluir</translation>
-    </message>
-    <message>
-        <source>Filter:</source>
-        <translation>Filtro:</translation>
-    </message>
-    <message>
-        <source>Registered Documentation:</source>
-        <translation>Documentação registrada:</translation>
-    </message>
-    <message>
-        <source>&lt;Filter&gt;</source>
-        <translation>&lt;Filtro&gt;</translation>
-    </message>
-    <message>
-        <source>Attributes:</source>
-        <translation>Atributos:</translation>
-    </message>
-    <message>
-        <source>1</source>
-        <translation>1</translation>
-    </message>
-    <message>
-        <source>Add</source>
-        <translation>Adicionar</translation>
-    </message>
-</context>
-<context>
     <name>RemoteControl</name>
     <message>
         <source>Debugging Remote Control</source>
@@ -1145,53 +1200,37 @@ Motivo:
     </message>
 </context>
 <context>
-    <name>TabBar</name>
+    <name>FontPanel</name>
     <message>
-        <source>(Untitled)</source>
-        <translation>(Sem título)</translation>
+        <source>Font</source>
+        <translation>Fonte</translation>
     </message>
     <message>
-        <source>New &amp;Tab</source>
-        <translation>Nova &amp;aba</translation>
+        <source>&amp;Writing system</source>
+        <translation>Sistema de &amp;escrita</translation>
     </message>
     <message>
-        <source>&amp;Close Tab</source>
-        <translation>&amp;Fechar aba</translation>
+        <source>&amp;Family</source>
+        <translation>&amp;Família</translation>
     </message>
     <message>
-        <source>Close Other Tabs</source>
-        <translation>Fechar outras abas</translation>
+        <source>&amp;Style</source>
+        <translation>E&amp;stilo</translation>
     </message>
     <message>
-        <source>Add Bookmark for this Page...</source>
-        <translation>Adicionar favorito para esta página...</translation>
+        <source>&amp;Point size</source>
+        <translation>Tamanho do &amp;ponto</translation>
     </message>
 </context>
 <context>
-    <name>TopicChooser</name>
+    <name>HelpDocSettingsWidgetPrivate</name>
     <message>
-        <source>Choose Topic</source>
-        <translation>Escolher tópico</translation>
+        <source>Add Documentation</source>
+        <translation>Adicionar documentação</translation>
     </message>
     <message>
-        <source>&amp;Topics</source>
-        <translation>&amp;Tópicos</translation>
-    </message>
-    <message>
-        <source>&amp;Display</source>
-        <translation>&amp;Mostrar</translation>
-    </message>
-    <message>
-        <source>&amp;Close</source>
-        <translation>&amp;Fechar</translation>
-    </message>
-    <message>
-        <source>Filter</source>
-        <translation>Filtro</translation>
-    </message>
-    <message>
-        <source>Choose a topic for &lt;b&gt;%1&lt;/b&gt;:</source>
-        <translation>Escolha um tópico para &lt;b&gt;%1&lt;/b&gt;:</translation>
+        <source>Qt Compressed Help Files (*.qch)</source>
+        <translation>Arquivos de ajuda Qt comprimidos (*.qch)</translation>
     </message>
 </context>
 <context>

@@ -36,6 +36,7 @@
 #include "components/sync/service/sync_service.h"
 #include "content/public/browser/web_contents.h"
 #include "content/public/test/browser_test.h"
+#include "content/public/test/browser_test_utils.h"
 #include "google_apis/gaia/gaia_auth_util.h"
 #include "google_apis/gaia/gaia_urls.h"
 #include "third_party/skia/include/core/SkColor.h"
@@ -493,7 +494,6 @@ IN_PROC_BROWSER_TEST_F(LiveSignInTest,
 
 IN_PROC_BROWSER_TEST_F(LiveSignInTest,
                        MANUAL_AccountCapabilities_FetchedOnSignIn) {
-  EnableAccountCapabilitiesFetches(identity_manager());
 
   // Test primary adult account.
   {
@@ -512,8 +512,10 @@ IN_PROC_BROWSER_TEST_F(LiveSignInTest,
     AccountInfo account_info =
         identity_manager()->FindExtendedAccountInfoByAccountId(
             core_account_info.account_id);
-    EXPECT_EQ(account_info.capabilities.can_offer_extended_chrome_sync_promos(),
-              Tribool::kTrue);
+    EXPECT_EQ(
+        account_info.capabilities
+            .can_show_history_sync_opt_ins_without_minor_mode_restrictions(),
+        Tribool::kTrue);
   }
 
   // Test secondary minor account.
@@ -533,8 +535,10 @@ IN_PROC_BROWSER_TEST_F(LiveSignInTest,
     AccountInfo account_info =
         identity_manager()->FindExtendedAccountInfoByAccountId(
             core_account_info.account_id);
-    EXPECT_EQ(account_info.capabilities.can_offer_extended_chrome_sync_promos(),
-              Tribool::kFalse);
+    EXPECT_EQ(
+        account_info.capabilities
+            .can_show_history_sync_opt_ins_without_minor_mode_restrictions(),
+        Tribool::kFalse);
   }
 }
 
@@ -579,7 +583,8 @@ IN_PROC_BROWSER_TEST_F(LiveSignInTest, MANUAL_CreateSignedInProfile) {
   ui_test_utils::BrowserChangeObserver browser_added_observer(
       nullptr, ui_test_utils::BrowserChangeObserver::ChangeType::kAdded);
   GURL sync_confirmation_url = AppendSyncConfirmationQueryParams(
-      GURL("chrome://sync-confirmation/"), SyncConfirmationStyle::kWindow);
+      GURL("chrome://sync-confirmation/"), SyncConfirmationStyle::kWindow,
+      /*is_sync_promo=*/true);
   profiles::testing::WaitForPickerLoadStop(sync_confirmation_url);
   LoginUIServiceFactory::GetForProfile(new_profile)
       ->SyncConfirmationUIClosed(LoginUIService::SYNC_WITH_DEFAULT_SETTINGS);

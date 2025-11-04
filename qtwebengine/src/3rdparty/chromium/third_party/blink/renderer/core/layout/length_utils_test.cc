@@ -41,28 +41,28 @@ static ConstraintSpace ConstructConstraintSpace(
 class LengthUtilsTest : public testing::Test {
  protected:
   void SetUp() override {
-    initial_style_ = ComputedStyle::CreateInitialStyleSingleton();
+    initial_style_ = ComputedStyle::GetInitialStyleSingleton();
   }
 
   LayoutUnit ResolveMainInlineLength(
       const Length& length,
-      const absl::optional<MinMaxSizes>& sizes = absl::nullopt,
+      const std::optional<MinMaxSizes>& sizes = std::nullopt,
       ConstraintSpace constraint_space = ConstructConstraintSpace(200, 300)) {
     return ::blink::ResolveMainInlineLength(
         constraint_space, *initial_style_, /* border_padding */ BoxStrut(),
-        [&](MinMaxSizesType) -> MinMaxSizesResult {
+        [&](SizeType) -> MinMaxSizesResult {
           return {*sizes, /* depends_on_block_constraints */ false};
         },
-        length);
+        length, /* auto_length */ nullptr);
   }
 
   LayoutUnit ResolveMinInlineLength(
       const Length& length,
-      const absl::optional<MinMaxSizes>& sizes = absl::nullopt,
+      const std::optional<MinMaxSizes>& sizes = std::nullopt,
       ConstraintSpace constraint_space = ConstructConstraintSpace(200, 300)) {
     return ::blink::ResolveMinInlineLength(
         constraint_space, *initial_style_, /* border_padding */ BoxStrut(),
-        [&](MinMaxSizesType) -> MinMaxSizesResult {
+        [&](SizeType) -> MinMaxSizesResult {
           return {*sizes, /* depends_on_block_constraints */ false};
         },
         length);
@@ -70,11 +70,11 @@ class LengthUtilsTest : public testing::Test {
 
   LayoutUnit ResolveMaxInlineLength(
       const Length& length,
-      const absl::optional<MinMaxSizes>& sizes = absl::nullopt,
+      const std::optional<MinMaxSizes>& sizes = std::nullopt,
       ConstraintSpace constraint_space = ConstructConstraintSpace(200, 300)) {
     return ::blink::ResolveMaxInlineLength(
         constraint_space, *initial_style_, /* border_padding */ BoxStrut(),
-        [&](MinMaxSizesType) -> MinMaxSizesResult {
+        [&](SizeType) -> MinMaxSizesResult {
           return {*sizes, /* depends_on_block_constraints */ false};
         },
         length);
@@ -85,7 +85,8 @@ class LengthUtilsTest : public testing::Test {
     ConstraintSpace constraint_space = ConstructConstraintSpace(200, 300);
     return ::blink::ResolveMainBlockLength(constraint_space, *initial_style_,
                                            /* border_padding */ BoxStrut(),
-                                           length, content_size);
+                                           length, /* auto_length */ nullptr,
+                                           content_size);
   }
 
   Persistent<const ComputedStyle> initial_style_;
@@ -108,12 +109,11 @@ class LengthUtilsTestWithNode : public RenderingTest {
       const BlockNode& node,
       ConstraintSpace constraint_space = ConstructConstraintSpace(200, 300),
       LayoutUnit content_size = LayoutUnit(),
-      absl::optional<LayoutUnit> inline_size = absl::nullopt) {
-    const auto& style = node.Style();
+      LayoutUnit inline_size = kIndefiniteSize) {
     BoxStrut border_padding = ComputeBorders(constraint_space, node) +
-                              ComputePadding(constraint_space, style);
+                              ComputePadding(constraint_space, node.Style());
     return ::blink::ComputeBlockSizeForFragment(
-        constraint_space, style, border_padding, content_size, inline_size);
+        constraint_space, node, border_padding, content_size, inline_size);
   }
 };
 
@@ -145,11 +145,11 @@ TEST_F(LengthUtilsTest, TestIndefiniteResolveInlineLength) {
   const ConstraintSpace space = ConstructConstraintSpace(-1, -1);
 
   EXPECT_EQ(LayoutUnit(0),
-            ResolveMinInlineLength(Length::Auto(), absl::nullopt, space));
+            ResolveMinInlineLength(Length::Auto(), std::nullopt, space));
   EXPECT_EQ(LayoutUnit::Max(),
-            ResolveMaxInlineLength(Length::Percent(30), absl::nullopt, space));
+            ResolveMaxInlineLength(Length::Percent(30), std::nullopt, space));
   EXPECT_EQ(LayoutUnit::Max(), ResolveMaxInlineLength(Length::FillAvailable(),
-                                                      absl::nullopt, space));
+                                                      std::nullopt, space));
 }
 
 TEST_F(LengthUtilsTest, TestResolveBlockLength) {
@@ -492,10 +492,10 @@ TEST_F(LengthUtilsTest, TestMargins) {
 
 TEST_F(LengthUtilsTest, TestBorders) {
   ComputedStyleBuilder builder(*initial_style_);
-  builder.SetBorderTopWidth(LayoutUnit(1));
-  builder.SetBorderRightWidth(LayoutUnit(2));
-  builder.SetBorderBottomWidth(LayoutUnit(3));
-  builder.SetBorderLeftWidth(LayoutUnit(4));
+  builder.SetBorderTopWidth(1);
+  builder.SetBorderRightWidth(2);
+  builder.SetBorderBottomWidth(3);
+  builder.SetBorderLeftWidth(4);
   builder.SetBorderTopStyle(EBorderStyle::kSolid);
   builder.SetBorderRightStyle(EBorderStyle::kSolid);
   builder.SetBorderBottomStyle(EBorderStyle::kSolid);

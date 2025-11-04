@@ -4,7 +4,13 @@
 
 #include "quiche/quic/core/http/quic_server_session_base.h"
 
+#include <algorithm>
+#include <cstdlib>
+#include <limits>
+#include <memory>
+#include <optional>
 #include <string>
+#include <utility>
 
 #include "quiche/quic/core/proto/cached_network_parameters_proto.h"
 #include "quiche/quic/core/quic_connection.h"
@@ -293,7 +299,7 @@ void QuicServerSessionBase::SendSettingsToCryptoStream() {
 QuicSSLConfig QuicServerSessionBase::GetSSLConfig() const {
   QUICHE_DCHECK(crypto_config_ && crypto_config_->proof_source());
 
-  QuicSSLConfig ssl_config = QuicSpdySession::GetSSLConfig();
+  QuicSSLConfig ssl_config = crypto_config_->ssl_config();
 
   ssl_config.disable_ticket_support =
       GetQuicFlag(quic_disable_server_tls_resumption);

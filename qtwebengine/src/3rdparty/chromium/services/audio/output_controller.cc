@@ -16,6 +16,7 @@
 #include "base/functional/callback_helpers.h"
 #include "base/logging.h"
 #include "base/metrics/histogram_macros.h"
+#include "base/not_fatal_until.h"
 #include "base/numerics/safe_conversions.h"
 #include "base/ranges/algorithm.h"
 #include "base/strings/stringprintf.h"
@@ -401,13 +402,15 @@ int OutputController::OnMoreData(base::TimeDelta delay,
                                  const media::AudioGlitchInfo& glitch_info,
                                  media::AudioBus* dest,
                                  bool is_mixing) {
-  TRACE_EVENT_BEGIN2("audio", "OutputController::OnMoreData", "glitches",
-                     glitch_info.count, "glitch_duration (ms)",
-                     glitch_info.duration.InMillisecondsF());
+  TRACE_EVENT("audio", "OutputController::OnMoreData", "this",
+              static_cast<void*>(this), "delay_timestamp (ms)",
+              (delay_timestamp - base::TimeTicks()).InMillisecondsF(),
+              "playout_delay (ms)", delay.InMillisecondsF());
+  glitch_info.MaybeAddTraceEvent();
 
   stats_tracker_->OnMoreDataCalled();
 
-  sync_reader_->Read(dest, is_mixing);
+  const bool received_data = sync_reader_->Read(dest, is_mixing);
 
   const base::TimeTicks reference_time = delay_timestamp + delay;
 
@@ -436,7 +439,9 @@ int OutputController::OnMoreData(base::TimeDelta delay,
   const bool is_bitstream = params_.IsBitstreamFormat();
 #endif
 
-  if (will_monitor_audio_levels() && !is_bitstream) {
+  // Skip scanning `dest` when it's zero'ed to due to timeout glitches. This
+  // gives more accurate results from `power_monitor_`.
+  if (will_monitor_audio_levels() && received_data && !is_bitstream) {
     // Note: this code path should never be hit when using bitstream streams.
     // Scan doesn't expect compressed audio, so it may go out of bounds trying
     // to read |frames| frames of PCM data.
@@ -450,9 +455,6 @@ int OutputController::OnMoreData(base::TimeDelta delay,
     }
   }
 
-  TRACE_EVENT_END2("audio", "OutputController::OnMoreData", "timestamp (ms)",
-                   (delay_timestamp - base::TimeTicks()).InMillisecondsF(),
-                   "delay (ms)", delay.InMillisecondsF());
   return frames;
 }
 
@@ -521,7 +523,7 @@ void OutputController::StopSnooping(Snooper* snooper) {
   // The list will only update on this thread, and only be read on the realtime
   // audio thread.
   const auto it = base::ranges::find(snoopers_, snooper);
-  DCHECK(it != snoopers_.end());
+  CHECK(it != snoopers_.end(), base::NotFatalUntil::M130);
   // We also don't care about ordering, so swap and pop rather than erase.
   base::AutoLock lock(snooper_lock_);
   *it = snoopers_.back();
@@ -585,6 +587,17 @@ void OutputController::ProcessDeviceChange() {
 std::pair<float, bool> OutputController::ReadCurrentPowerAndClip() {
   DCHECK(will_monitor_audio_levels());
   return power_monitor_.ReadCurrentPowerAndClip();
+}
+
+void OutputController::SwitchAudioOutputDeviceId(
+    const std::string& new_output_device_id) {
+  DCHECK(task_runner_->BelongsToCurrentThread());
+  if (output_device_id_ == new_output_device_id) {
+    return;
+  }
+
+  output_device_id_ = new_output_device_id;
+  ProcessDeviceChange();
 }
 
 }  // namespace audio

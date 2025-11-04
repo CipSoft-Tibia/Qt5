@@ -117,5 +117,21 @@ Section {
 
             ExpandingSpacer {}
         }
+
+        PropertyLabel {
+            text: qsTr("Lock Shadowmap Texels")
+            tooltip: qsTr("Locks the shadowmap texels for this light to remove shadow edge shimmering.")
+        }
+
+        SecondColumnLayout {
+            CheckBox {
+                id: lockShadowmapTexelsCheckBox
+                text: backendValues.lockShadowmapTexels.valueToString
+                backendValue: backendValues.lockShadowmapTexels
+                implicitWidth: StudioTheme.Values.twoControlColumnWidth
+                               + StudioTheme.Values.actionIndicatorWidth
+            }
+            ExpandingSpacer {}
+        }
     }
 }

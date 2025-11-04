@@ -32,8 +32,7 @@ TINT_INSTANTIATE_TYPEINFO(tint::resolver::IncompleteType);
 namespace tint::resolver {
 
 IncompleteType::IncompleteType(core::BuiltinType b)
-    : Base(static_cast<size_t>(tint::TypeInfo::Of<IncompleteType>().full_hashcode),
-           core::type::Flags{}),
+    : Base(static_cast<size_t>(tint::TypeCode::Of<IncompleteType>().bits), core::type::Flags{}),
       builtin(b) {}
 
 IncompleteType::~IncompleteType() = default;
@@ -52,15 +51,6 @@ uint32_t IncompleteType::Align() const {
 
 core::type::Type* IncompleteType::Clone(core::type::CloneContext&) const {
     TINT_ICE() << "IncompleteType does not support cloning";
-    return nullptr;
-}
-
-core::type::TypeAndCount IncompleteType::Elements(const Type*, uint32_t) const {
-    return {};
-}
-
-const core::type::Type* IncompleteType::Element(uint32_t) const {
-    return nullptr;
 }
 
 bool IncompleteType::Equals(const core::type::UniqueNode& other) const {

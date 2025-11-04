@@ -43,7 +43,7 @@ ThreadType PlatformThreadBase::GetCurrentThreadType() {
 }
 
 // static
-absl::optional<TimeDelta> PlatformThreadBase::GetThreadLeewayOverride() {
+std::optional<TimeDelta> PlatformThreadBase::GetThreadLeewayOverride() {
 #if BUILDFLAG(IS_FUCHSIA)
   // On Fuchsia, all audio threads run with the CPU scheduling profile that uses
   // an interval of |kAudioSchedulingPeriod|. Using the default leeway may lead
@@ -52,7 +52,7 @@ absl::optional<TimeDelta> PlatformThreadBase::GetThreadLeewayOverride() {
   if (GetCurrentThreadType() == ThreadType::kRealtimeAudio)
     return kAudioSchedulingPeriod;
 #endif
-  return absl::nullopt;
+  return std::nullopt;
 }
 
 // static

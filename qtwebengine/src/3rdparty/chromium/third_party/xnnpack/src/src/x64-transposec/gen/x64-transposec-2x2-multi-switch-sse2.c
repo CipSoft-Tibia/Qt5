@@ -11,10 +11,10 @@
 
 #include <assert.h>
 
-#include <xnnpack/common.h>
-#include <xnnpack/math.h>
-#include <xnnpack/transpose.h>
-#include <xnnpack/unaligned.h>
+#include "xnnpack/common.h"
+#include "xnnpack/math.h"
+#include "xnnpack/transpose.h"
+#include "xnnpack/unaligned.h"
 
 
 void xnn_x64_transposec_ukernel__2x2_multi_switch_sse2(
@@ -26,8 +26,8 @@ void xnn_x64_transposec_ukernel__2x2_multi_switch_sse2(
     size_t block_height,
     const union xnn_x64_transpose_params params[restrict XNN_MIN_ELEMENTS(1)]) XNN_OOB_READS
 {
-  assert(output_stride >= block_height * sizeof(uint64_t));
-  assert(input_stride >= block_width * sizeof(uint64_t));
+  assert(block_width == 1 || output_stride >= block_height * sizeof(uint64_t));
+  assert(block_height == 1 || input_stride >= block_width * sizeof(uint64_t));
 
   const size_t tile_height = 2;
   const size_t tile_width = 2;
@@ -61,6 +61,7 @@ void xnn_x64_transposec_ukernel__2x2_multi_switch_sse2(
       switch (rem) {
         case 1:
           _mm_storeu_si128((__m128i*) oN, v0_1);
+          XNN_FALLTHROUGH
         case 0:
           _mm_storeu_si128((__m128i*) o, v0_0);
           o = (uint64_t*) ((uintptr_t) o + tile_hbytes);
@@ -84,6 +85,7 @@ void xnn_x64_transposec_ukernel__2x2_multi_switch_sse2(
         switch (rem) {
           case 1:
             _mm_storel_epi64((__m128i*) oN, v0_1);
+            XNN_FALLTHROUGH
           case 0:
             _mm_storel_epi64((__m128i*) o, v0_0);
             break;

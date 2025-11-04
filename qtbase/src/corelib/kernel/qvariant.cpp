@@ -333,11 +333,6 @@ static QVariant::Private clonePrivate(const QVariant::Private &other)
 
     \compares equality
 
-    Because C++ forbids unions from including types that have
-    non-default constructors or destructors, most interesting Qt
-    classes cannot be used in unions. Without QVariant, this would be
-    a problem for QObject::property() and for database work, etc.
-
     A QVariant object holds a single value of a single typeId() at a
     time. (Some types are multi-valued, for example a string list.)
     You can find out what type, T, the variant holds, convert it to a
@@ -556,15 +551,14 @@ QVariant::QVariant(const QVariant &p)
 
     \since 6.6
     Constructs a new variant containing a value of type \c T. The contained
-    value is is initialized with the arguments
+    value is initialized with the arguments
     \c{std::forward<Args>(args)...}.
-
-    This overload only participates in overload resolution if \c T can be
-    constructed from \a args.
 
     This constructor is provided for STL/std::any compatibility.
 
     \overload
+
+    \constraints \c T can be constructed from \a args.
  */
 
 /*!
@@ -936,9 +930,8 @@ void *QVariant::prepareForEmplace(QMetaType type)
     \sa QVariant::fromMetaType, QVariant::fromValue(), QMetaType::Type
 */
 QVariant::QVariant(QMetaType type, const void *copy)
-    : d()
+    : QVariant(fromMetaType(type, copy))
 {
-    *this = fromMetaType(type, copy);
 }
 
 QVariant::QVariant(int val) noexcept : d(std::piecewise_construct_t{}, val) {}
@@ -2069,6 +2062,10 @@ QVariantList QVariant::toList() const
     type, \a type. Such casting is done automatically when calling the
     toInt(), toBool(), ... methods.
 
+    Note this function operates only on the variant's type, not the contents.
+    It indicates whether there is a conversion path from this variant to \a
+    type, not that the conversion will succeed when attempted.
+
     \sa QMetaType::canConvert()
 */
 
@@ -2211,6 +2208,7 @@ static bool qIsNumericType(uint tp)
             Q_UINT64_C(1) << QMetaType::QString |
             Q_UINT64_C(1) << QMetaType::Bool |
             Q_UINT64_C(1) << QMetaType::Double |
+            Q_UINT64_C(1) << QMetaType::Float16 |
             Q_UINT64_C(1) << QMetaType::Float |
             Q_UINT64_C(1) << QMetaType::Char |
             Q_UINT64_C(1) << QMetaType::Char16 |

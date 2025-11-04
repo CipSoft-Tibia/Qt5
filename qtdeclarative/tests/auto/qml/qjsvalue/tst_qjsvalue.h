@@ -8,7 +8,7 @@
 #include <QtCore/qnumeric.h>
 #include <qjsengine.h>
 #include <qjsvalue.h>
-#include <QtTest/QtTest>
+#include <QtTest/QTest>
 
 class tst_QJSValue : public QObject
 {

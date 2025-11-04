@@ -19,6 +19,7 @@ QT_BEGIN_NAMESPACE
     \inqmlmodule QtOpcUa
     \brief Represents a node on a server.
     \since QtOpcUa 5.12
+    \deprecated [6.9]
 
     \code
     import QtOpcUa as QtOpcUa

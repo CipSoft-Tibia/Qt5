@@ -40,7 +40,7 @@ Result<Output> Generate(core::ir::Module& ir, const Options& options, const std:
     Output output;
 
     // Raise from core-dialect to GLSL-dialect.
-    if (auto res = Raise(ir); res != Success) {
+    if (auto res = Raise(ir, options); res != Success) {
         return res.Failure();
     }
 
@@ -76,8 +76,6 @@ Result<Output> Generate(const Program& program,
     }
 
     output.glsl = impl->Result();
-    output.needs_internal_uniform_buffer = sanitized_result.needs_internal_uniform_buffer;
-    output.bindpoint_to_data = std::move(sanitized_result.bindpoint_to_data);
 
     return output;
 }

@@ -4,7 +4,7 @@
 
 import("//testing/libfuzzer/fuzzer_test.gni")
 
-if (is_win) {
+if (is_win && !is_mingw && !is_robolectric) {
   import("//build/config/win/visual_studio_version.gni")
 }
 
@@ -197,7 +197,7 @@ if (current_toolchain == host_toolchain) {
       "//build/win:default_exe_manifest",
     ]
 
-    if (is_win && visual_studio_version == "2015") {
+    if (is_win && !is_mingw && !is_robolectric && visual_studio_version == "2015") {
       # Disabling "result of 32-bit shift implicitly converted to 64 bits",
       # caused by code like: foo |= (1 << i);   // warning 4334
       cflags = [ "/wd4334" ]

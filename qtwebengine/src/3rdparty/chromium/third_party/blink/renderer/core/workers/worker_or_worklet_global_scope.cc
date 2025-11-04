@@ -6,6 +6,7 @@
 
 #include <utility>
 
+#include "base/metrics/histogram_functions.h"
 #include "base/task/single_thread_task_runner.h"
 #include "base/threading/thread_checker.h"
 #include "services/network/public/mojom/web_sandbox_flags.mojom-blink.h"
@@ -49,7 +50,6 @@
 #include "third_party/blink/renderer/platform/loader/fetch/resource_fetcher.h"
 #include "third_party/blink/renderer/platform/loader/fetch/resource_load_observer.h"
 #include "third_party/blink/renderer/platform/network/http_parsers.h"
-#include "third_party/blink/renderer/platform/runtime_enabled_features.h"
 #include "third_party/blink/renderer/platform/weborigin/scheme_registry.h"
 #include "third_party/blink/renderer/platform/wtf/cross_thread_functional.h"
 #include "third_party/blink/renderer/platform/wtf/functional.h"
@@ -116,10 +116,10 @@ class OutsideSettingsCSPDelegate final
     return nullptr;
   }
 
-  absl::optional<uint16_t> GetStatusCode() override {
+  std::optional<uint16_t> GetStatusCode() override {
     DCHECK_CALLED_ON_VALID_THREAD(worker_thread_checker_);
     // TODO(crbug/928965): Plumb the status code of the parent Document if any.
-    return absl::nullopt;
+    return std::nullopt;
   }
 
   String GetDocumentReferrer() override {
@@ -160,7 +160,7 @@ class OutsideSettingsCSPDelegate final
   void ReportBlockedScriptExecutionToInspector(
       const String& directive_text) override {
     // This shouldn't be called during top-level worker script fetch.
-    NOTREACHED();
+    NOTREACHED_IN_MIGRATION();
   }
 
   void DidAddContentSecurityPolicies(
@@ -189,6 +189,23 @@ class OutsideSettingsCSPDelegate final
   THREAD_CHECKER(worker_thread_checker_);
 };
 
+// These values are persisted to logs. Entries should not be renumbered and
+// numeric values should never be reused.
+enum class WorkerOrWorkletInterfaceNameType {
+  kOther = 0,
+  kDedicatedWorkerGlobalScope = 1,
+  kSharedWorkerGlobalScope = 2,
+  kServiceWorkerGlobalScope = 3,
+  kAnimationWorkletGlobalScope = 4,
+  kAudioWorkletGlobalScope = 5,
+  kLayoutWorkletGlobalScope = 6,
+  kPaintWorkletGlobalScope = 7,
+  kShadowRealmGlobalScope = 8,
+  kSharedStorageWorkletGlobalScope = 9,
+
+  kMaxValue = kSharedStorageWorkletGlobalScope,
+};
+
 }  // namespace
 
 WorkerOrWorkletGlobalScope::WorkerOrWorkletGlobalScope(
@@ -203,7 +220,8 @@ WorkerOrWorkletGlobalScope::WorkerOrWorkletGlobalScope(
     std::unique_ptr<WebContentSettingsClient> content_settings_client,
     scoped_refptr<WebWorkerFetchContext> web_worker_fetch_context,
     WorkerReportingProxy& reporting_proxy,
-    bool is_worker_loaded_from_data_url)
+    bool is_worker_loaded_from_data_url,
+    bool is_default_world_of_isolate)
     : ExecutionContext(isolate, agent),
       is_creator_secure_context_(is_creator_secure_context),
       name_(name),
@@ -211,8 +229,10 @@ WorkerOrWorkletGlobalScope::WorkerOrWorkletGlobalScope(
       worker_clients_(worker_clients),
       content_settings_client_(std::move(content_settings_client)),
       web_worker_fetch_context_(std::move(web_worker_fetch_context)),
-      script_controller_(
-          MakeGarbageCollected<WorkerOrWorkletScriptController>(this, isolate)),
+      script_controller_(MakeGarbageCollected<WorkerOrWorkletScriptController>(
+          this,
+          isolate,
+          /*is_default_world_of_isolate=*/is_default_world_of_isolate)),
       v8_cache_options_(v8_cache_options),
       reporting_proxy_(reporting_proxy) {
   GetSecurityContext().SetIsWorkerLoadedFromDataURL(
@@ -228,8 +248,9 @@ WorkerOrWorkletGlobalScope::~WorkerOrWorkletGlobalScope() = default;
 
 // EventTarget
 const AtomicString& WorkerOrWorkletGlobalScope::InterfaceName() const {
-  NOTREACHED() << "Each global scope that uses events should define its own "
-                  "interface name.";
+  NOTREACHED_IN_MIGRATION()
+      << "Each global scope that uses events should define its own "
+         "interface name.";
   return g_null_atom;
 }
 
@@ -258,16 +279,71 @@ void WorkerOrWorkletGlobalScope::CountUse(WebFeature feature) {
   if (IsContextDestroyed())
     return;
 
-  DCHECK_NE(WebFeature::kOBSOLETE_PageDestruction, feature);
-  DCHECK_GT(WebFeature::kNumberOfFeatures, feature);
+  DCHECK_NE(feature, WebFeature::kPageVisits);
+  DCHECK_LE(feature, WebFeature::kMaxValue);
   if (used_features_[static_cast<size_t>(feature)])
     return;
   used_features_.set(static_cast<size_t>(feature));
+
+  // Record CountUse users for investigating crbug.com/40918057.
+  base::UmaHistogramSparse("ServiceWorker.CountUse.WebFeature",
+                           static_cast<int>(feature));
+  {
+    WorkerOrWorkletInterfaceNameType type =
+        WorkerOrWorkletInterfaceNameType::kOther;
+    if (IsDedicatedWorkerGlobalScope()) {
+      type = WorkerOrWorkletInterfaceNameType::kDedicatedWorkerGlobalScope;
+      base::UmaHistogramSparse(
+          "ServiceWorker.CountUse.DedicatedWorker.WebFeature",
+          static_cast<int>(feature));
+    } else if (IsSharedWorkerGlobalScope()) {
+      type = WorkerOrWorkletInterfaceNameType::kSharedWorkerGlobalScope;
+    } else if (IsServiceWorkerGlobalScope()) {
+      type = WorkerOrWorkletInterfaceNameType::kServiceWorkerGlobalScope;
+    } else if (IsAnimationWorkletGlobalScope()) {
+      type = WorkerOrWorkletInterfaceNameType::kAnimationWorkletGlobalScope;
+    } else if (IsAudioWorkletGlobalScope()) {
+      type = WorkerOrWorkletInterfaceNameType::kAudioWorkletGlobalScope;
+    } else if (IsLayoutWorkletGlobalScope()) {
+      type = WorkerOrWorkletInterfaceNameType::kLayoutWorkletGlobalScope;
+    } else if (IsPaintWorkletGlobalScope()) {
+      type = WorkerOrWorkletInterfaceNameType::kPaintWorkletGlobalScope;
+    } else if (IsShadowRealmGlobalScope()) {
+      type = WorkerOrWorkletInterfaceNameType::kShadowRealmGlobalScope;
+    } else if (IsSharedStorageWorkletGlobalScope()) {
+      type = WorkerOrWorkletInterfaceNameType::kSharedStorageWorkletGlobalScope;
+    }
+
+    base::UmaHistogramEnumeration("ServiceWorker.CountUse.CallerInterface",
+                                  type);
+  }
+
   ReportingProxy().CountFeature(feature);
 }
 
 void WorkerOrWorkletGlobalScope::CountDeprecation(WebFeature feature) {
   Deprecation::CountDeprecation(this, feature);
+}
+
+void WorkerOrWorkletGlobalScope::CountWebDXFeature(WebDXFeature feature) {
+  DCHECK(IsContextThread());
+
+  // `reporting_proxy_` should outlive `this` but there seems a situation where
+  // the assumption is broken. Don't count features while the context is
+  // destroyed.
+  // TODO(https://crbug.com/40058806): Fix the lifetime of WorkerReportingProxy.
+  if (IsContextDestroyed()) {
+    return;
+  }
+
+  DCHECK_NE(feature, WebDXFeature::kPageVisits);
+  DCHECK_LE(feature, WebDXFeature::kMaxValue);
+  if (used_webdx_features_[static_cast<size_t>(feature)]) {
+    return;
+  }
+  used_webdx_features_.set(static_cast<size_t>(feature));
+
+  ReportingProxy().CountWebDXFeature(feature);
 }
 
 ResourceLoadScheduler::ThrottleOptionOverride

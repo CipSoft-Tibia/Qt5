@@ -5,7 +5,9 @@
 #                      \___/_/\_\ .__/ \__,_|\__|
 #                               |_| XML parser
 #
-# Copyright (c) 2021-2022 Sebastian Pipping <sebastian@pipping.org>
+# Copyright (c) 2021-2024 Sebastian Pipping <sebastian@pipping.org>
+# Copyright (c) 2023      Joyce Brum <joycebrum@google.com>
+# Copyright (c) 2024      Dag-Erling Smørgrav <des@des.dev>
 # Licensed under the MIT license:
 #
 # Permission is  hereby granted,  free of charge,  to any  person obtaining
@@ -34,6 +36,10 @@ on:
   push:
   schedule:
     - cron: '0 2 * * 5'  # Every Friday at 2am
+  workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
   checks:
@@ -42,17 +48,20 @@ jobs:
     env:
       CFLAGS: -g3 -pipe
     steps:
-    - uses: actions/checkout@v3.1.0
+    - uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332  # v4.1.7
     - name: Install build dependencies
       run: |-
         set -x -u
         source /etc/os-release
 
-        sudo apt-get update
+        # Unlock 32bit architecture (for Wine further down)
+        sudo dpkg --add-architecture i386  # for wine32
+        sudo apt-get update  # due to new architecture
+
         sudo apt-get install --yes --no-install-recommends -V \
             cmake \
+            docbook-xml \
             docbook2x \
-            dos2unix \
             gcc-multilib \
             g++-multilib \
             lcov \
@@ -61,8 +70,6 @@ jobs:
             moreutils
 
         # Install 32bit Wine
-        sudo dpkg --add-architecture i386  # for wine32
-        sudo apt-get update  # due to new architecture
         sudo apt-get install --yes --no-install-recommends -V \
             mingw-w64 \
             wine-stable \
@@ -73,12 +80,11 @@ jobs:
     - name: Collect test coverage
       env:
         MODE: coverage-sh
-        TRAVIS_OS_NAME: linux
       run: |
-        exec ./.travis.sh
+        exec ./.ci.sh
 
     - name: Store coverage .info and HTML report
-      uses: actions/upload-artifact@v3.1.1
+      uses: actions/upload-artifact@50769540e7f4bd5e21e526ee35c689e35e0d6874  # v4.4.0
       with:
         name: coverage
         path: expat/coverage__*/

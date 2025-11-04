@@ -10,6 +10,7 @@ QT_BEGIN_NAMESPACE
     \inqmlmodule QtOpcUa
     \brief Stores an attribute value and provides a changed signal.
     \internal
+    \deprecated [6.9]
 
     This class is just for internal use in the declarative backend and not exposed to users.
 

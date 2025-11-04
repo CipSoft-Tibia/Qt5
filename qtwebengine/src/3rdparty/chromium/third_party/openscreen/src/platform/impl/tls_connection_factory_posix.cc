@@ -45,24 +45,22 @@ ErrorOr<std::vector<uint8_t>> GetDEREncodedPeerCertificate(const SSL& ssl) {
 }  // namespace
 
 std::unique_ptr<TlsConnectionFactory> TlsConnectionFactory::CreateFactory(
-    Client* client,
+    Client& client,
     TaskRunner& task_runner) {
   return std::unique_ptr<TlsConnectionFactory>(
       new TlsConnectionFactoryPosix(client, task_runner));
 }
 
 TlsConnectionFactoryPosix::TlsConnectionFactoryPosix(
-    Client* client,
+    Client& client,
     TaskRunner& task_runner,
     PlatformClientPosix* platform_client)
     : client_(client),
       task_runner_(task_runner),
-      platform_client_(platform_client) {
-  OSP_DCHECK(client_);
-}
+      platform_client_(platform_client) {}
 
 TlsConnectionFactoryPosix::~TlsConnectionFactoryPosix() {
-  OSP_DCHECK(task_runner_.IsRunningOnTaskRunner());
+  OSP_CHECK(task_runner_.IsRunningOnTaskRunner());
   if (platform_client_) {
     platform_client_->tls_data_router()->DeregisterAcceptObserver(this);
   }
@@ -72,7 +70,7 @@ TlsConnectionFactoryPosix::~TlsConnectionFactoryPosix() {
 // TODO(issuetracker.google.com/281741213): Integrate with Auth.
 void TlsConnectionFactoryPosix::Connect(const IPEndpoint& remote_address,
                                         const TlsConnectOptions& options) {
-  OSP_DCHECK(task_runner_.IsRunningOnTaskRunner());
+  OSP_CHECK(task_runner_.IsRunningOnTaskRunner());
   TRACE_SCOPED1(TraceCategory::kSsl, "TlsConnectionFactoryPosix::Connect",
                 "remote_address", remote_address.ToString());
   IPAddress::Version version = remote_address.address.version();
@@ -102,7 +100,7 @@ void TlsConnectionFactoryPosix::Connect(const IPEndpoint& remote_address,
 
 void TlsConnectionFactoryPosix::SetListenCredentials(
     const TlsCredentials& credentials) {
-  OSP_DCHECK(task_runner_.IsRunningOnTaskRunner());
+  OSP_CHECK(task_runner_.IsRunningOnTaskRunner());
   EnsureInitialized();
 
   ErrorOr<bssl::UniquePtr<X509>> cert = ImportCertificate(
@@ -124,9 +122,9 @@ void TlsConnectionFactoryPosix::SetListenCredentials(
 
 void TlsConnectionFactoryPosix::Listen(const IPEndpoint& local_address,
                                        const TlsListenOptions& options) {
-  OSP_DCHECK(task_runner_.IsRunningOnTaskRunner());
+  OSP_CHECK(task_runner_.IsRunningOnTaskRunner());
   // Credentials must be set before Listen() is called.
-  OSP_DCHECK(listen_credentials_set_);
+  OSP_CHECK(listen_credentials_set_);
 
   auto socket = std::make_unique<StreamSocketPosix>(local_address);
   socket->Bind();
@@ -136,9 +134,8 @@ void TlsConnectionFactoryPosix::Listen(const IPEndpoint& local_address,
     TRACE_SET_RESULT(Error::Code::kSocketListenFailure);
     return;
   }
-  OSP_DCHECK(socket->state() == TcpSocketState::kListening);
+  OSP_CHECK(socket->state() == TcpSocketState::kListening);
 
-  OSP_DCHECK(platform_client_);
   if (platform_client_) {
     platform_client_->tls_data_router()->RegisterAcceptObserver(
         std::move(socket), this);
@@ -173,7 +170,7 @@ void TlsConnectionFactoryPosix::OnConnectionPending(StreamSocketPosix* socket) {
 
 void TlsConnectionFactoryPosix::OnSocketAccepted(
     std::unique_ptr<StreamSocket> socket) {
-  OSP_DCHECK(task_runner_.IsRunningOnTaskRunner());
+  OSP_CHECK(task_runner_.IsRunningOnTaskRunner());
 
   TRACE_SCOPED(TraceCategory::kSsl,
                "TlsConnectionFactoryPosix::OnSocketAccepted");
@@ -241,7 +238,7 @@ void TlsConnectionFactoryPosix::Connect(
   if (connection->socket_->state() == TcpSocketState::kClosed) {
     return;
   }
-  OSP_DCHECK(connection->socket_->state() == TcpSocketState::kConnected);
+  OSP_CHECK(connection->socket_->state() == TcpSocketState::kConnected);
   ClearOpenSSLERRStack(CURRENT_LOCATION);
   const int connection_status = SSL_connect(connection->ssl_.get());
   if (connection_status != 1) {
@@ -275,8 +272,8 @@ void TlsConnectionFactoryPosix::Connect(
                          der = std::move(der_peer_cert.value()),
                          moved_connection = std::move(connection)]() mutable {
     if (auto* self = weak_this.get()) {
-      self->client_->OnConnected(self, std::move(der),
-                                 std::move(moved_connection));
+      self->client_.OnConnected(self, std::move(der),
+                                std::move(moved_connection));
     }
   });
 }
@@ -286,7 +283,7 @@ void TlsConnectionFactoryPosix::Accept(
   if (connection->socket_->state() == TcpSocketState::kClosed) {
     return;
   }
-  OSP_DCHECK(connection->socket_->state() == TcpSocketState::kConnected);
+  OSP_CHECK(connection->socket_->state() == TcpSocketState::kConnected);
 
   ClearOpenSSLERRStack(CURRENT_LOCATION);
   const int connection_status = SSL_accept(connection->ssl_.get());
@@ -319,8 +316,8 @@ void TlsConnectionFactoryPosix::Accept(
                          der = std::move(der_peer_cert_value),
                          moved_connection = std::move(connection)]() mutable {
     if (auto* self = weak_this.get()) {
-      self->client_->OnAccepted(self, std::move(der),
-                                std::move(moved_connection));
+      self->client_.OnAccepted(self, std::move(der),
+                               std::move(moved_connection));
     }
   });
 }
@@ -330,7 +327,7 @@ void TlsConnectionFactoryPosix::DispatchConnectionFailed(
   task_runner_.PostTask(
       [weak_this = weak_factory_.GetWeakPtr(), remote = remote_endpoint] {
         if (auto* self = weak_this.get()) {
-          self->client_->OnConnectionFailed(self, remote);
+          self->client_.OnConnectionFailed(self, remote);
         }
       });
 }
@@ -339,7 +336,7 @@ void TlsConnectionFactoryPosix::DispatchError(Error error) {
   task_runner_.PostTask([weak_this = weak_factory_.GetWeakPtr(),
                          moved_error = std::move(error)]() mutable {
     if (auto* self = weak_this.get()) {
-      self->client_->OnError(self, std::move(moved_error));
+      self->client_.OnError(self, std::move(moved_error));
     }
   });
 }

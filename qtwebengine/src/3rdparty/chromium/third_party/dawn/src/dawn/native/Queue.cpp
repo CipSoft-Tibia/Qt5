@@ -27,14 +27,19 @@
 
 #include "dawn/native/Queue.h"
 
+#include <webgpu/webgpu.h>
+
 #include <algorithm>
 #include <cstring>
+#include <set>
+#include <string>
 #include <utility>
 #include <vector>
 
 #include "dawn/common/Constants.h"
 #include "dawn/common/FutureUtils.h"
 #include "dawn/common/ityp_span.h"
+#include "dawn/native/BlitBufferToDepthStencil.h"
 #include "dawn/native/Buffer.h"
 #include "dawn/native/CommandBuffer.h"
 #include "dawn/native/CommandEncoder.h"
@@ -54,7 +59,7 @@
 #include "dawn/native/Texture.h"
 #include "dawn/platform/DawnPlatform.h"
 #include "dawn/platform/tracing/TraceEvent.h"
-#include "dawn/webgpu.h"
+#include "partition_alloc/pointers/raw_ptr.h"
 
 namespace dawn::native {
 
@@ -163,18 +168,18 @@ struct SubmittedWorkDone : TrackTaskCallback {
         DAWN_ASSERT(mSerial != kMaxExecutionSerial);
         TRACE_EVENT1(mPlatform, General, "Queue::SubmittedWorkDone::Finished", "serial",
                      uint64_t(mSerial));
-        mCallback(WGPUQueueWorkDoneStatus_Success, mUserdata);
+        mCallback(WGPUQueueWorkDoneStatus_Success, mUserdata.ExtractAsDangling());
         mCallback = nullptr;
     }
     void HandleDeviceLossImpl() override {
         DAWN_ASSERT(mCallback != nullptr);
-        mCallback(WGPUQueueWorkDoneStatus_DeviceLost, mUserdata);
+        mCallback(WGPUQueueWorkDoneStatus_DeviceLost, mUserdata.ExtractAsDangling());
         mCallback = nullptr;
     }
     void HandleShutDownImpl() override { HandleDeviceLossImpl(); }
 
     WGPUQueueWorkDoneCallback mCallback = nullptr;
-    void* mUserdata;
+    raw_ptr<void> mUserdata;
 };
 
 class ErrorQueue : public QueueBase {
@@ -187,51 +192,13 @@ class ErrorQueue : public QueueBase {
         DAWN_UNREACHABLE();
     }
     bool HasPendingCommands() const override { DAWN_UNREACHABLE(); }
+    MaybeError SubmitPendingCommands() override { DAWN_UNREACHABLE(); }
     ResultOrError<ExecutionSerial> CheckAndUpdateCompletedSerials() override { DAWN_UNREACHABLE(); }
     void ForceEventualFlushOfCommands() override { DAWN_UNREACHABLE(); }
     ResultOrError<bool> WaitForQueueSerial(ExecutionSerial serial, Nanoseconds timeout) override {
         DAWN_UNREACHABLE();
     }
     MaybeError WaitForIdleForDestruction() override { DAWN_UNREACHABLE(); }
-};
-
-struct WorkDoneEvent final : public EventManager::TrackedEvent {
-    std::optional<wgpu::QueueWorkDoneStatus> mEarlyStatus;
-    WGPUQueueWorkDoneCallback mCallback;
-    void* mUserdata;
-
-    // Create an event backed by the given queue execution serial.
-    WorkDoneEvent(const QueueWorkDoneCallbackInfo& callbackInfo,
-                  QueueBase* queue,
-                  ExecutionSerial serial)
-        : TrackedEvent(callbackInfo.mode, queue, serial),
-          mCallback(callbackInfo.callback),
-          mUserdata(callbackInfo.userdata) {}
-
-    // Create an event that's ready at creation (for errors, etc.)
-    WorkDoneEvent(const QueueWorkDoneCallbackInfo& callbackInfo,
-                  QueueBase* queue,
-                  wgpu::QueueWorkDoneStatus earlyStatus)
-        : TrackedEvent(callbackInfo.mode, queue, kBeginningOfGPUTime),
-          mEarlyStatus(earlyStatus),
-          mCallback(callbackInfo.callback),
-          mUserdata(callbackInfo.userdata) {
-        CompleteIfSpontaneous();
-    }
-
-    ~WorkDoneEvent() override { EnsureComplete(EventCompletionType::Shutdown); }
-
-    void Complete(EventCompletionType completionType) override {
-        // WorkDoneEvent has no error cases other than the mEarlyStatus ones.
-        wgpu::QueueWorkDoneStatus status = wgpu::QueueWorkDoneStatus::Success;
-        if (completionType == EventCompletionType::Shutdown) {
-            status = wgpu::QueueWorkDoneStatus::Unknown;
-        } else if (mEarlyStatus) {
-            status = mEarlyStatus.value();
-        }
-
-        mCallback(ToAPI(status), mUserdata);
-    }
 };
 
 }  // namespace
@@ -267,6 +234,16 @@ ObjectType QueueBase::GetType() const {
     return ObjectType::Queue;
 }
 
+// It doesn't make much sense right now to mark the default queue as "unlabeled", so this override
+// prevents that. Consider removing when multiqueue is implemented.
+void QueueBase::FormatLabel(absl::FormatSink* s) const {
+    s->Append(ObjectTypeAsString(GetType()));
+    const std::string& label = GetLabel();
+    if (!label.empty()) {
+        s->Append(absl::StrFormat(" \"%s\"", label));
+    }
+}
+
 void QueueBase::APISubmit(uint32_t commandCount, CommandBufferBase* const* commands) {
     MaybeError result = SubmitInternal(commandCount, commands);
 
@@ -275,12 +252,16 @@ void QueueBase::APISubmit(uint32_t commandCount, CommandBufferBase* const* comma
         commands[i]->Destroy();
     }
 
-    DAWN_UNUSED(GetDevice()->ConsumedError(
+    [[maybe_unused]] bool hadError = GetDevice()->ConsumedError(
         std::move(result), "calling %s.Submit(%s)", this,
-        ityp::span<uint32_t, CommandBufferBase* const>(commands, commandCount)));
+        ityp::span<uint32_t, CommandBufferBase* const>(commands, commandCount));
 }
 
 void QueueBase::APIOnSubmittedWorkDone(WGPUQueueWorkDoneCallback callback, void* userdata) {
+    GetInstance()->EmitDeprecationWarning(
+        "Old OnSubmittedWorkDone APIs are deprecated. If using C please pass a CallbackInfo "
+        "struct that has two userdatas. Otherwise, if using C++, please use templated helpers.");
+
     // The error status depends on the type of error so we let the validation function choose it
     wgpu::QueueWorkDoneStatus status;
     if (GetDevice()->ConsumedError(ValidateOnSubmittedWorkDone(&status))) {
@@ -303,29 +284,89 @@ void QueueBase::APIOnSubmittedWorkDone(WGPUQueueWorkDoneCallback callback, void*
 }
 
 Future QueueBase::APIOnSubmittedWorkDoneF(const QueueWorkDoneCallbackInfo& callbackInfo) {
+    GetInstance()->EmitDeprecationWarning(
+        "Old OnSubmittedWorkDone APIs are deprecated. If using C please pass a CallbackInfo "
+        "struct that has two userdatas. Otherwise, if using C++, please use templated helpers.");
+
+    return APIOnSubmittedWorkDone2(
+        {ToAPI(callbackInfo.nextInChain), ToAPI(callbackInfo.mode),
+         [](WGPUQueueWorkDoneStatus status, void* callback, void* userdata) {
+             auto cb = reinterpret_cast<WGPUQueueWorkDoneCallback>(callback);
+             cb(status, userdata);
+         },
+         reinterpret_cast<void*>(callbackInfo.callback), callbackInfo.userdata});
+}
+
+Future QueueBase::APIOnSubmittedWorkDone2(const WGPUQueueWorkDoneCallbackInfo2& callbackInfo) {
+    struct WorkDoneEvent final : public EventManager::TrackedEvent {
+        std::optional<WGPUQueueWorkDoneStatus> mEarlyStatus;
+        WGPUQueueWorkDoneCallback2 mCallback;
+        raw_ptr<void> mUserdata1;
+        raw_ptr<void> mUserdata2;
+
+        // Create an event backed by the given queue execution serial.
+        WorkDoneEvent(const WGPUQueueWorkDoneCallbackInfo2& callbackInfo,
+                      QueueBase* queue,
+                      ExecutionSerial serial)
+            : TrackedEvent(static_cast<wgpu::CallbackMode>(callbackInfo.mode), queue, serial),
+              mCallback(callbackInfo.callback),
+              mUserdata1(callbackInfo.userdata1),
+              mUserdata2(callbackInfo.userdata2) {}
+
+        // Create an event that's ready at creation (for errors, etc.)
+        WorkDoneEvent(const WGPUQueueWorkDoneCallbackInfo2& callbackInfo,
+                      QueueBase* queue,
+                      wgpu::QueueWorkDoneStatus earlyStatus)
+            : TrackedEvent(static_cast<wgpu::CallbackMode>(callbackInfo.mode),
+                           queue,
+                           kBeginningOfGPUTime),
+              mEarlyStatus(ToAPI(earlyStatus)),
+              mCallback(callbackInfo.callback),
+              mUserdata1(callbackInfo.userdata1),
+              mUserdata2(callbackInfo.userdata2) {}
+
+        ~WorkDoneEvent() override { EnsureComplete(EventCompletionType::Shutdown); }
+
+        void Complete(EventCompletionType completionType) override {
+            // WorkDoneEvent has no error cases other than the mEarlyStatus ones.
+            WGPUQueueWorkDoneStatus status = WGPUQueueWorkDoneStatus_Success;
+            if (completionType == EventCompletionType::Shutdown) {
+                status = WGPUQueueWorkDoneStatus_InstanceDropped;
+            } else if (mEarlyStatus) {
+                status = mEarlyStatus.value();
+            }
+
+            mCallback(status, mUserdata1.ExtractAsDangling(), mUserdata2.ExtractAsDangling());
+        }
+    };
+
     // TODO(crbug.com/dawn/2052): Once we always return a future, change this to log to the instance
     // (note, not raise a validation error to the device) and return the null future.
     DAWN_ASSERT(callbackInfo.nextInChain == nullptr);
 
     Ref<EventManager::TrackedEvent> event;
+    {
+        // TODO(crbug.com/dawn/831) Manually acquire device lock instead of relying on code-gen for
+        // re-entrancy.
+        auto deviceLock(GetDevice()->GetScopedLock());
 
-    wgpu::QueueWorkDoneStatus validationEarlyStatus;
-    if (GetDevice()->ConsumedError(ValidateOnSubmittedWorkDone(&validationEarlyStatus))) {
-        // TODO(crbug.com/dawn/2021): This is here to pretend that things succeed when the device is
-        // lost. When the old OnSubmittedWorkDone is removed then we can update
-        // ValidateOnSubmittedWorkDone to just return the correct thing here.
-        if (validationEarlyStatus == wgpu::QueueWorkDoneStatus::DeviceLost) {
-            validationEarlyStatus = wgpu::QueueWorkDoneStatus::Success;
+        wgpu::QueueWorkDoneStatus validationEarlyStatus;
+        if (GetDevice()->ConsumedError(ValidateOnSubmittedWorkDone(&validationEarlyStatus))) {
+            // TODO(crbug.com/dawn/2021): This is here to pretend that things succeed when the
+            // device is lost. When the old OnSubmittedWorkDone is removed then we can update
+            // ValidateOnSubmittedWorkDone to just return the correct thing here.
+            if (validationEarlyStatus == wgpu::QueueWorkDoneStatus::DeviceLost) {
+                validationEarlyStatus = wgpu::QueueWorkDoneStatus::Success;
+            }
+
+            // Note: if the callback is spontaneous, it'll get called in here.
+            event = AcquireRef(new WorkDoneEvent(callbackInfo, this, validationEarlyStatus));
+        } else {
+            event = AcquireRef(new WorkDoneEvent(callbackInfo, this, GetScheduledWorkDoneSerial()));
         }
-
-        // Note: if the callback is spontaneous, it'll get called in here.
-        event = AcquireRef(new WorkDoneEvent(callbackInfo, this, validationEarlyStatus));
-    } else {
-        event = AcquireRef(new WorkDoneEvent(callbackInfo, this, GetScheduledWorkDoneSerial()));
     }
 
-    FutureID futureID =
-        GetInstance()->GetEventManager()->TrackEvent(callbackInfo.mode, std::move(event));
+    FutureID futureID = GetInstance()->GetEventManager()->TrackEvent(std::move(event));
 
     return {futureID};
 }
@@ -395,10 +436,10 @@ void QueueBase::APIWriteBuffer(BufferBase* buffer,
                                uint64_t bufferOffset,
                                const void* data,
                                size_t size) {
-    DAWN_UNUSED(
+    [[maybe_unused]] bool hadError =
         GetDevice()->ConsumedError(WriteBuffer(buffer, bufferOffset, data, size),
                                    "calling %s.WriteBuffer(%s, (%d bytes), data, (%d bytes))", this,
-                                   buffer, bufferOffset, size));
+                                   buffer, bufferOffset, size);
 }
 
 MaybeError QueueBase::WriteBuffer(BufferBase* buffer,
@@ -416,22 +457,7 @@ MaybeError QueueBase::WriteBufferImpl(BufferBase* buffer,
                                       uint64_t bufferOffset,
                                       const void* data,
                                       size_t size) {
-    if (size == 0) {
-        return {};
-    }
-
-    DeviceBase* device = GetDevice();
-
-    UploadHandle uploadHandle;
-    DAWN_TRY_ASSIGN(uploadHandle,
-                    device->GetDynamicUploader()->Allocate(size, GetPendingCommandSerial(),
-                                                           kCopyBufferToBufferOffsetAlignment));
-    DAWN_ASSERT(uploadHandle.mappedBuffer != nullptr);
-
-    memcpy(uploadHandle.mappedBuffer, data, size);
-
-    return device->CopyFromStagingToBuffer(uploadHandle.stagingBuffer, uploadHandle.startOffset,
-                                           buffer, bufferOffset, size);
+    return buffer->UploadData(bufferOffset, data, size);
 }
 
 void QueueBase::APIWriteTexture(const ImageCopyTexture* destination,
@@ -439,10 +465,10 @@ void QueueBase::APIWriteTexture(const ImageCopyTexture* destination,
                                 size_t dataSize,
                                 const TextureDataLayout* dataLayout,
                                 const Extent3D* writeSize) {
-    DAWN_UNUSED(GetDevice()->ConsumedError(
+    [[maybe_unused]] bool hadError = GetDevice()->ConsumedError(
         WriteTextureInternal(destination, data, dataSize, *dataLayout, writeSize),
         "calling %s.WriteTexture(%s, (%u bytes), %s, %s)", this, destination, dataSize, dataLayout,
-        writeSize));
+        writeSize);
 }
 
 MaybeError QueueBase::WriteTextureInternal(const ImageCopyTexture* destinationOrig,
@@ -462,11 +488,12 @@ MaybeError QueueBase::WriteTextureInternal(const ImageCopyTexture* destinationOr
         destination.texture->GetFormat().GetAspectInfo(destination.aspect).block;
     TextureDataLayout layout = dataLayout;
     ApplyDefaultTextureDataLayoutOptions(&layout, blockInfo, *writeSize);
-    return WriteTextureImpl(destination, data, layout, *writeSize);
+    return WriteTextureImpl(destination, data, dataSize, layout, *writeSize);
 }
 
 MaybeError QueueBase::WriteTextureImpl(const ImageCopyTexture& destination,
                                        const void* data,
+                                       size_t dataSize,
                                        const TextureDataLayout& dataLayout,
                                        const Extent3D& writeSizePixel) {
     const Format& format = destination.texture->GetFormat();
@@ -510,16 +537,16 @@ void QueueBase::APICopyTextureForBrowser(const ImageCopyTexture* source,
                                          const ImageCopyTexture* destination,
                                          const Extent3D* copySize,
                                          const CopyTextureForBrowserOptions* options) {
-    DAWN_UNUSED(GetDevice()->ConsumedError(
-        CopyTextureForBrowserInternal(source, destination, copySize, options)));
+    [[maybe_unused]] bool hadError = GetDevice()->ConsumedError(
+        CopyTextureForBrowserInternal(source, destination, copySize, options));
 }
 
 void QueueBase::APICopyExternalTextureForBrowser(const ImageCopyExternalTexture* source,
                                                  const ImageCopyTexture* destination,
                                                  const Extent3D* copySize,
                                                  const CopyTextureForBrowserOptions* options) {
-    DAWN_UNUSED(GetDevice()->ConsumedError(
-        CopyExternalTextureForBrowserInternal(source, destination, copySize, options)));
+    [[maybe_unused]] bool hadError = GetDevice()->ConsumedError(
+        CopyExternalTextureForBrowserInternal(source, destination, copySize, options));
 }
 
 MaybeError QueueBase::CopyTextureForBrowserInternal(const ImageCopyTexture* sourceOrig,
@@ -560,9 +587,15 @@ MaybeError QueueBase::ValidateSubmit(uint32_t commandCount,
     TRACE_EVENT0(GetDevice()->GetPlatform(), Validation, "Queue::ValidateSubmit");
     DAWN_TRY(GetDevice()->ValidateObject(this));
 
+    std::set<CommandBufferBase*> uniqueCommandBuffers;
+
     for (uint32_t i = 0; i < commandCount; ++i) {
         DAWN_TRY(GetDevice()->ValidateObject(commands[i]));
         DAWN_TRY(commands[i]->ValidateCanUseInSubmitNow());
+
+        auto insertResult = uniqueCommandBuffers.insert(commands[i]);
+        DAWN_INVALID_IF(!insertResult.second, "Submit contains duplicates of %s.", commands[i]);
+
         const CommandBufferResourceUsage& usages = commands[i]->GetResourceUsages();
 
         for (const BufferBase* buffer : usages.topLevelBuffers) {

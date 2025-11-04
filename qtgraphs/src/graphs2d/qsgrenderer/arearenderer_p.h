@@ -24,6 +24,7 @@ class QGraphsView;
 class QAreaSeries;
 class AxisRenderer;
 class QAbstractSeries;
+class QQuickTapHandler;
 
 class AreaRenderer : public QQuickItem
 {
@@ -36,7 +37,6 @@ public:
     void afterPolish(QList<QAbstractSeries *> &cleanupSeries);
     void afterUpdate(QList<QAbstractSeries *> &cleanupSeries);
     void updateSeries(QAreaSeries *series);
-    bool handleMousePress(QMouseEvent *event);
     bool handleHoverMove(QHoverEvent *event);
 
 Q_SIGNALS:
@@ -52,6 +52,10 @@ private:
         bool hover = false;
     };
 
+    void onSingleTapped(QEventPoint eventPoint, Qt::MouseButton button);
+    void onDoubleTapped(QEventPoint eventPoint, Qt::MouseButton button);
+    void onPressedChanged();
+
     QGraphsView *m_graph = nullptr;
     QQuickShape m_shape;
     QMap<QAreaSeries *, PointGroup *> m_groups;
@@ -63,6 +67,8 @@ private:
     qreal m_horizontalOffset = 0;
     qreal m_areaWidth = 0;
     qreal m_areaHeight = 0;
+
+    QQuickTapHandler *m_tapHandler = nullptr;
 
     void calculateRenderCoordinates(qreal origX, qreal origY, qreal *renderX, qreal *renderY) const;
     void calculateAxisCoordinates(qreal origX, qreal origY, qreal *axisX, qreal *axisY) const;

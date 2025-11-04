@@ -6,9 +6,10 @@ import type * as SDK from '../../../core/sdk/sdk.js';
 import type * as TextUtils from '../../../models/text_utils/text_utils.js';
 
 export const enum UIHeaderSection {
-  General = 'General',
-  Request = 'Request',
-  Response = 'Response',
+  GENERAL = 'General',
+  REQUEST = 'Request',
+  RESPONSE = 'Response',
+  EARLY_HINTS = 'EarlyHints',
 }
 
 interface UIHeaderLocation {
@@ -17,16 +18,16 @@ interface UIHeaderLocation {
 }
 
 export const enum UIRequestTabs {
-  Cookies = 'cookies',
-  EventSource = 'eventSource',
-  HeadersComponent = 'headersComponent',
-  Payload = 'payload',
-  Initiator = 'initiator',
-  Preview = 'preview',
-  Response = 'response',
-  Timing = 'timing',
-  TrustTokens = 'trustTokens',
-  WsFrames = 'webSocketFrames',
+  COOKIES = 'cookies',
+  EVENT_SOURCE = 'eventSource',
+  HEADERS_COMPONENT = 'headers-component',
+  PAYLOAD = 'payload',
+  INITIATOR = 'initiator',
+  PREVIEW = 'preview',
+  RESPONSE = 'response',
+  TIMING = 'timing',
+  TRUST_TOKENS = 'trust-tokens',
+  WS_FRAMES = 'web-socket-frames',
 }
 
 export interface FilterOptions {
@@ -56,13 +57,13 @@ export class UIRequestLocation {
   static requestHeaderMatch(request: SDK.NetworkRequest.NetworkRequest, header: SDK.NetworkRequest.NameValue|null):
       UIRequestLocation {
     return new UIRequestLocation(
-        request, {section: UIHeaderSection.Request, header}, null, false, undefined, undefined);
+        request, {section: UIHeaderSection.REQUEST, header}, null, false, undefined, undefined);
   }
 
   static responseHeaderMatch(request: SDK.NetworkRequest.NetworkRequest, header: SDK.NetworkRequest.NameValue|null):
       UIRequestLocation {
     return new UIRequestLocation(
-        request, {section: UIHeaderSection.Response, header}, null, false, undefined, undefined);
+        request, {section: UIHeaderSection.RESPONSE, header}, null, false, undefined, undefined);
   }
 
   static bodyMatch(request: SDK.NetworkRequest.NetworkRequest, searchMatch: TextUtils.ContentProvider.SearchMatch|null):

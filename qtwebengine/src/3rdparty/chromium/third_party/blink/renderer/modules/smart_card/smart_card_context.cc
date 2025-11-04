@@ -83,8 +83,7 @@ HeapVector<Member<SmartCardReaderStateOut>> ToV8ReaderStatesOut(
         ToV8ReaderStateFlagsOut(*mojom_state_out->event_state));
     state_out->setEventCount(mojom_state_out->event_count);
     state_out->setAnswerToReset(
-        DOMArrayBuffer::Create(mojom_state_out->answer_to_reset.data(),
-                               mojom_state_out->answer_to_reset.size()));
+        DOMArrayBuffer::Create(mojom_state_out->answer_to_reset));
     reader_states.push_back(state_out);
   }
 
@@ -109,15 +108,17 @@ SmartCardContext::SmartCardContext(
       &SmartCardContext::CloseMojoConnection, WrapWeakPersistent(this)));
 }
 
-ScriptPromise SmartCardContext::listReaders(ScriptState* script_state,
-                                            ExceptionState& exception_state) {
+ScriptPromise<IDLSequence<IDLString>> SmartCardContext::listReaders(
+    ScriptState* script_state,
+    ExceptionState& exception_state) {
   if (!EnsureMojoConnection(exception_state) ||
       !EnsureNoOperationInProgress(exception_state)) {
-    return ScriptPromise();
+    return ScriptPromise<IDLSequence<IDLString>>();
   }
 
-  ScriptPromiseResolver* resolver = MakeGarbageCollected<ScriptPromiseResolver>(
-      script_state, exception_state.GetContext());
+  auto* resolver =
+      MakeGarbageCollected<ScriptPromiseResolver<IDLSequence<IDLString>>>(
+          script_state, exception_state.GetContext());
 
   SetOperationInProgress(resolver);
   scard_context_->ListReaders(
@@ -127,19 +128,21 @@ ScriptPromise SmartCardContext::listReaders(ScriptState* script_state,
   return resolver->Promise();
 }
 
-ScriptPromise SmartCardContext::getStatusChange(
+ScriptPromise<IDLSequence<SmartCardReaderStateOut>>
+SmartCardContext::getStatusChange(
     ScriptState* script_state,
     const HeapVector<Member<SmartCardReaderStateIn>>& reader_states,
     SmartCardGetStatusChangeOptions* options,
     ExceptionState& exception_state) {
   if (!EnsureMojoConnection(exception_state) ||
       !EnsureNoOperationInProgress(exception_state)) {
-    return ScriptPromise();
+    return ScriptPromise<IDLSequence<SmartCardReaderStateOut>>();
   }
 
   AbortSignal* signal = options->getSignalOr(nullptr);
   if (signal && signal->aborted()) {
-    return ScriptPromise::Reject(script_state, signal->reason(script_state));
+    return ScriptPromise<IDLSequence<SmartCardReaderStateOut>>::Reject(
+        script_state, signal->reason(script_state));
   }
 
   base::TimeDelta timeout = base::TimeDelta::Max();
@@ -153,7 +156,8 @@ ScriptPromise SmartCardContext::getStatusChange(
         MakeGarbageCollected<SmartCardCancelAlgorithm>(this));
   }
 
-  ScriptPromiseResolver* resolver = MakeGarbageCollected<ScriptPromiseResolver>(
+  auto* resolver = MakeGarbageCollected<
+      ScriptPromiseResolver<IDLSequence<SmartCardReaderStateOut>>>(
       script_state, exception_state.GetContext());
 
   SetOperationInProgress(resolver);
@@ -166,18 +170,20 @@ ScriptPromise SmartCardContext::getStatusChange(
   return resolver->Promise();
 }
 
-ScriptPromise SmartCardContext::connect(ScriptState* script_state,
-                                        const String& reader_name,
-                                        V8SmartCardAccessMode access_mode,
-                                        SmartCardConnectOptions* options,
-                                        ExceptionState& exception_state) {
+ScriptPromise<SmartCardConnectResult> SmartCardContext::connect(
+    ScriptState* script_state,
+    const String& reader_name,
+    V8SmartCardAccessMode access_mode,
+    SmartCardConnectOptions* options,
+    ExceptionState& exception_state) {
   if (!EnsureMojoConnection(exception_state) ||
       !EnsureNoOperationInProgress(exception_state)) {
-    return ScriptPromise();
+    return EmptyPromise();
   }
 
-  ScriptPromiseResolver* resolver = MakeGarbageCollected<ScriptPromiseResolver>(
-      script_state, exception_state.GetContext());
+  auto* resolver =
+      MakeGarbageCollected<ScriptPromiseResolver<SmartCardConnectResult>>(
+          script_state, exception_state.GetContext());
 
   Vector<V8SmartCardProtocol> preferred_protocols =
       options->getPreferredProtocolsOr(Vector<V8SmartCardProtocol>());
@@ -219,12 +225,13 @@ bool SmartCardContext::EnsureNoOperationInProgress(
 }
 
 void SmartCardContext::SetConnectionOperationInProgress(
-    ScriptPromiseResolver* resolver) {
+    ScriptPromiseResolverBase* resolver) {
   SetOperationInProgress(resolver);
   is_connection_request_ = true;
 }
 
-void SmartCardContext::SetOperationInProgress(ScriptPromiseResolver* resolver) {
+void SmartCardContext::SetOperationInProgress(
+    ScriptPromiseResolverBase* resolver) {
   if (request_ == resolver) {
     // NOOP
     return;
@@ -237,14 +244,14 @@ void SmartCardContext::SetOperationInProgress(ScriptPromiseResolver* resolver) {
 }
 
 void SmartCardContext::ClearConnectionOperationInProgress(
-    ScriptPromiseResolver* resolver) {
+    ScriptPromiseResolverBase* resolver) {
   CHECK(is_connection_request_);
   is_connection_request_ = false;
   ClearOperationInProgress(resolver);
 }
 
 void SmartCardContext::ClearOperationInProgress(
-    ScriptPromiseResolver* resolver) {
+    ScriptPromiseResolverBase* resolver) {
   CHECK_EQ(request_, resolver);
   CHECK(!is_connection_request_);
   request_ = nullptr;
@@ -294,7 +301,7 @@ bool SmartCardContext::EnsureMojoConnection(
 }
 
 void SmartCardContext::OnListReadersDone(
-    ScriptPromiseResolver* resolver,
+    ScriptPromiseResolver<IDLSequence<IDLString>>* resolver,
     device::mojom::blink::SmartCardListReadersResultPtr result) {
   ClearOperationInProgress(resolver);
 
@@ -304,7 +311,7 @@ void SmartCardContext::OnListReadersDone(
     // error. In web API we want to return an empty list of readers instead.
     if (mojom_error ==
         device::mojom::blink::SmartCardError::kNoReadersAvailable) {
-      resolver->Resolve<IDLSequence<IDLString>>(Vector<String>());
+      resolver->Resolve(Vector<String>());
       return;
     }
 
@@ -312,11 +319,11 @@ void SmartCardContext::OnListReadersDone(
     return;
   }
 
-  resolver->Resolve<IDLSequence<IDLString>>(std::move(result->get_readers()));
+  resolver->Resolve(std::move(result->get_readers()));
 }
 
 void SmartCardContext::OnGetStatusChangeDone(
-    ScriptPromiseResolver* resolver,
+    ScriptPromiseResolver<IDLSequence<SmartCardReaderStateOut>>* resolver,
     AbortSignal* signal,
     AbortSignal::AlgorithmHandle* abort_handle,
     device::mojom::blink::SmartCardStatusChangeResultPtr result) {
@@ -348,7 +355,7 @@ void SmartCardContext::OnCancelDone(
 }
 
 void SmartCardContext::OnConnectDone(
-    ScriptPromiseResolver* resolver,
+    ScriptPromiseResolver<SmartCardConnectResult>* resolver,
     device::mojom::blink::SmartCardConnectResultPtr result) {
   ClearOperationInProgress(resolver);
 

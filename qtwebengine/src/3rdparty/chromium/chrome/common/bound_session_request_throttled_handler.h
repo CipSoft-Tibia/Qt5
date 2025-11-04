@@ -10,11 +10,14 @@
 #ifndef CHROME_COMMON_BOUND_SESSION_REQUEST_THROTTLED_HANDLER_H_
 #define CHROME_COMMON_BOUND_SESSION_REQUEST_THROTTLED_HANDLER_H_
 
+class GURL;
+
 class BoundSessionRequestThrottledHandler {
  public:
   enum class UnblockAction { kResume, kCancel };
   using ResumeOrCancelThrottledRequestCallback =
-      base::OnceCallback<void(UnblockAction)>;
+      base::OnceCallback<void(UnblockAction,
+                              chrome::mojom::ResumeBlockedRequestsTrigger)>;
 
   BoundSessionRequestThrottledHandler() = default;
   virtual ~BoundSessionRequestThrottledHandler() = default;
@@ -25,6 +28,7 @@ class BoundSessionRequestThrottledHandler {
       const BoundSessionRequestThrottledHandler&) = delete;
 
   virtual void HandleRequestBlockedOnCookie(
+      const GURL& untrusted_request_url,
       ResumeOrCancelThrottledRequestCallback callback) = 0;
 };
 #endif  // CHROME_COMMON_BOUND_SESSION_REQUEST_THROTTLED_HANDLER_H_

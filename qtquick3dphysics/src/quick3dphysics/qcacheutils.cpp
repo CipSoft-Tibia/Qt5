@@ -1,5 +1,10 @@
+// Qt-Security score:critical reason:data-parser
 // Copyright (C) 2022 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
+
+// Security note: This file reads user provided cooked mesh files which are then
+// fed to PhysX which creates meshes from these. This file also reads and writes
+// mesh cache files but that is assumed to be safe.
 
 #include "qcacheutils_p.h"
 

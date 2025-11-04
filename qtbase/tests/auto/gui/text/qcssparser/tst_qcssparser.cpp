@@ -21,6 +21,7 @@ private slots:
     void expr();
     void import();
     void media();
+    void animation();
     void page();
     void ruleset();
     void selector_data();
@@ -297,8 +298,12 @@ void tst_QCssParser::term_data()
     val.type = QCss::Value::Uri;
     val.variant = QString("www.kde.org");
     QTest::newRow("uri1") << true << "url(\"www.kde.org\")" << val;
-
     QTest::newRow("uri2") << true << "url(www.kde.org)" << val;
+
+    val.type = QCss::Value::Uri;
+    val.variant = QString("www.kde.org/test?key=value&v=123");
+    QTest::newRow("uri_query_quoted") << true << "url(\"www.kde.org/test?key=value&v=123\")" << val;
+    QTest::newRow("uri_query_unquoted") << true << "url(www.kde.org/test?key=value&v=123)" << val;
 
     val.type = QCss::Value::KnownIdentifier;
     val.variant = int(QCss::Value_Italic);
@@ -318,6 +323,7 @@ void tst_QCssParser::term()
     QCss::Parser parser(css);
     QCss::Value val;
     QVERIFY(parser.testTerm());
+    QEXPECT_FAIL("uri_query_unquoted", "QTBUG-131842", Abort);
     QCOMPARE(parser.parseTerm(&val), parseSuccess);
     if (parseSuccess) {
         QCOMPARE(int(val.type), int(expectedValue.type));
@@ -400,6 +406,52 @@ void tst_QCssParser::media()
     QCOMPARE(rule.media.at(0), QString("print"));
     QCOMPARE(rule.media.at(1), QString("screen"));
     QVERIFY(rule.styleRules.isEmpty());
+}
+
+void tst_QCssParser::animation()
+{
+    QCss::Parser parser("@keyframes emptyAnimation{} "
+                        "@keyframes motion{from {x : 10;} to {x : 50;}} "
+                        "@keyframes color{0% {fill : blue;} 25% {fill : yellow;} 100% {fill : red;}}");
+
+    {
+        QCss::AnimationRule rule;
+        QVERIFY(parser.testAnimation());
+        QVERIFY(parser.parseAnimation(&rule));
+        QCOMPARE(rule.animName, QStringLiteral("emptyAnimation"));
+        QCOMPARE(rule.ruleSets.size(), 0);
+    }
+
+    {
+        QCss::AnimationRule rule;
+        QVERIFY(parser.testAnimation());
+        QVERIFY(parser.parseAnimation(&rule));
+        QCOMPARE(rule.animName, QStringLiteral("motion"));
+        QCOMPARE(rule.ruleSets.size(), 2);
+        QCOMPARE(rule.ruleSets[0].keyFrame, 0);
+        QCOMPARE(rule.ruleSets[1].keyFrame, 1);
+        QCOMPARE(rule.ruleSets[0].declarations[0].d->property, QStringLiteral("x"));
+        QCOMPARE(rule.ruleSets[0].declarations[0].d->values[0].toString(), QStringLiteral("10"));
+        QCOMPARE(rule.ruleSets[1].declarations[0].d->property, QStringLiteral("x"));
+        QCOMPARE(rule.ruleSets[1].declarations[0].d->values[0].toString(), QStringLiteral("50"));
+    }
+
+    {
+        QCss::AnimationRule rule;
+        QVERIFY(parser.testAnimation());
+        QVERIFY(parser.parseAnimation(&rule));
+        QCOMPARE(rule.animName, QStringLiteral("color"));
+        QCOMPARE(rule.ruleSets.size(), 3);
+        QCOMPARE(rule.ruleSets[0].keyFrame, 0);
+        QCOMPARE(rule.ruleSets[1].keyFrame, 0.25);
+        QCOMPARE(rule.ruleSets[2].keyFrame, 1);
+        QCOMPARE(rule.ruleSets[0].declarations[0].d->property, QStringLiteral("fill"));
+        QCOMPARE(rule.ruleSets[0].declarations[0].d->values[0].toString(), QStringLiteral("blue"));
+        QCOMPARE(rule.ruleSets[1].declarations[0].d->property, QStringLiteral("fill"));
+        QCOMPARE(rule.ruleSets[1].declarations[0].d->values[0].toString(), QStringLiteral("yellow"));
+        QCOMPARE(rule.ruleSets[2].declarations[0].d->property, QStringLiteral("fill"));
+        QCOMPARE(rule.ruleSets[2].declarations[0].d->values[0].toString(), QStringLiteral("red"));
+    }
 }
 
 void tst_QCssParser::page()
@@ -847,6 +899,7 @@ void tst_QCssParser::colorValue_data()
     QTest::newRow("invalid7") << "color: hsla(1, a, 1, 21)" << QColor();
     QTest::newRow("role") << "color: palette(base)" << qApp->palette().color(QPalette::Base);
     QTest::newRow("role2") << "color: palette( window-text ) " << qApp->palette().color(QPalette::WindowText);
+    QTest::newRow("role3") << "color: palette(accent)" << qApp->palette().color(QPalette::Accent);
     QTest::newRow("transparent") << "color: transparent" << QColor(Qt::transparent);
 
     QTest::newRow("rgb-invalid") << "color: rgb(10, 20, 30, 40)" << QColor();
@@ -1368,6 +1421,12 @@ void tst_QCssParser::shorthandBackgroundProperty_data()
     QTest::newRow("multi") << "background: left url(blah.png) repeat-x" << QBrush() << QString("blah.png") << int(QCss::Repeat_X) << int(Qt::AlignLeft | Qt::AlignVCenter);
     QTest::newRow("multi2") << "background: url(blah.png) repeat-x top" << QBrush() << QString("blah.png") << int(QCss::Repeat_X) << int(Qt::AlignTop | Qt::AlignHCenter);
     QTest::newRow("multi3") << "background: url(blah.png) top right" << QBrush() << QString("blah.png") << int(QCss::Repeat_XY) << int(Qt::AlignTop | Qt::AlignRight);
+    QTest::newRow("url-query-quoted") << "background: url(\"https://placecats.com/300/200?fit=contain&position=top\")"
+                                                                    << QBrush() << QString("https://placecats.com/300/200?fit=contain&position=top")
+                                                                    << int(QCss::Repeat_XY) << int(Qt::AlignTop | Qt::AlignLeft);
+    QTest::newRow("url-query-unquoted") << "background: url(https://placecats.com/300/200?fit=contain&position=top)"
+                                                                    << QBrush() << QString("https://placecats.com/300/200?fit=contain&position=top")
+                                                                    << int(QCss::Repeat_XY) << int(Qt::AlignTop | Qt::AlignLeft);
 }
 
 void tst_QCssParser::shorthandBackgroundProperty()
@@ -1382,6 +1441,7 @@ void tst_QCssParser::shorthandBackgroundProperty()
 
     QCss::Parser parser(css);
     QCss::StyleSheet sheet;
+    QEXPECT_FAIL("url-query-unquoted", "QTBUG-131842", Abort);
     QVERIFY(parser.parse(&sheet));
 
     DomStyleSelector testSelector(doc, sheet);

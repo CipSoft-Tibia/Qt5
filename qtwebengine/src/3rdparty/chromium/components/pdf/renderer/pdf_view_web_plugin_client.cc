@@ -91,9 +91,14 @@ blink::WebURL PdfViewWebPluginClient::CompleteURL(
 }
 
 void PdfViewWebPluginClient::PostMessage(base::Value::Dict message) {
+  blink::WebLocalFrame* frame = GetFrame();
+  if (!frame) {
+    return;
+  }
+
   v8::Isolate::Scope isolate_scope(isolate_);
   v8::HandleScope handle_scope(isolate_);
-  v8::Local<v8::Context> context = GetFrame()->MainWorldScriptContext();
+  v8::Local<v8::Context> context = frame->MainWorldScriptContext();
   DCHECK_EQ(isolate_, context->GetIsolate());
   v8::Context::Scope context_scope(context);
 
@@ -182,7 +187,7 @@ void PdfViewWebPluginClient::TextSelectionChanged(
     uint32_t offset,
     const gfx::Range& range) {
   // Focus the plugin's containing frame before changing the text selection.
-  // TODO(crbug.com/1234559): Would it make more sense not to change the text
+  // TODO(crbug.com/40192026): Would it make more sense not to change the text
   // selection at all in this case? Maybe we only have this problem because we
   // support a "selectAll" message.
   blink::WebLocalFrame* frame = GetFrame();
@@ -262,9 +267,12 @@ void PdfViewWebPluginClient::RecordComputedAction(const std::string& action) {
 std::unique_ptr<chrome_pdf::PdfAccessibilityDataHandler>
 PdfViewWebPluginClient::CreateAccessibilityDataHandler(
     chrome_pdf::PdfAccessibilityActionHandler* action_handler,
-    chrome_pdf::PdfAccessibilityImageFetcher* image_fetcher) {
+    chrome_pdf::PdfAccessibilityImageFetcher* image_fetcher,
+    blink::WebPluginContainer* plugin_container,
+    bool print_preview) {
   return std::make_unique<PdfAccessibilityTree>(render_frame_, action_handler,
-                                                image_fetcher);
+                                                image_fetcher, plugin_container,
+                                                print_preview);
 }
 
 }  // namespace pdf

@@ -98,7 +98,8 @@ public:
                               QSSGRenderCamera *camera = nullptr,
                               QSSGRenderTextureCubeFace cubeFace = QSSGRenderTextureCubeFaceNone,
                               QMatrix4x4 *modelViewProjection = nullptr,
-                              QSSGReflectionMapEntry *entry = nullptr);
+                              QSSGReflectionMapEntry *entry = nullptr,
+                              bool oit = false);
     void applyRhiShaderPropertyValues(char *ubufData,
                                       const QSSGRenderCustomMaterial &inMaterial,
                                       QSSGRhiShaderPipeline &shaderPipeline);

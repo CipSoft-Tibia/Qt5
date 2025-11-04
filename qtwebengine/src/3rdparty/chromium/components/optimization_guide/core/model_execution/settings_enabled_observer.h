@@ -6,6 +6,7 @@
 #define COMPONENTS_OPTIMIZATION_GUIDE_CORE_MODEL_EXECUTION_SETTINGS_ENABLED_OBSERVER_H_
 
 #include "base/observer_list_types.h"
+#include "components/optimization_guide/core/model_execution/feature_keys.h"
 #include "components/optimization_guide/proto/model_execution.pb.h"
 
 namespace optimization_guide {
@@ -14,15 +15,8 @@ namespace optimization_guide {
 // `feature`.
 class SettingsEnabledObserver : public base::CheckedObserver {
  public:
-  explicit SettingsEnabledObserver(proto::ModelExecutionFeature feature);
+  explicit SettingsEnabledObserver(UserVisibleFeatureKey feature);
   ~SettingsEnabledObserver() override;
-
-  // Notifies `this` that the consumer feature team should prepare to enable
-  // their feature when browser restarts. After browser restart, the feature
-  // team should call `ShouldFeatureBeCurrentlyEnabledForUser` before displaying
-  // any feature functionality. TODO(rajendrant): Remove this once all the
-  // consumers stop using it.
-  virtual void PrepareToEnableOnRestart() {}
 
   // Notifies the consumers whenever the feature enabled state is changed.
   // `is_now_enabled` indicates the current enabled state of the feature. This
@@ -34,10 +28,10 @@ class SettingsEnabledObserver : public base::CheckedObserver {
   SettingsEnabledObserver(const SettingsEnabledObserver&) = delete;
   SettingsEnabledObserver& operator=(const SettingsEnabledObserver&) = delete;
 
-  proto::ModelExecutionFeature feature() const { return feature_; }
+  UserVisibleFeatureKey feature() const { return feature_; }
 
  private:
-  const proto::ModelExecutionFeature feature_;
+  const UserVisibleFeatureKey feature_;
 };
 
 }  // namespace optimization_guide

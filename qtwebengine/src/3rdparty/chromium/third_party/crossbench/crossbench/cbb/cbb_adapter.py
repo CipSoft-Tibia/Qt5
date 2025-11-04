@@ -10,8 +10,8 @@ Any breaking changes in the function definitions here need to be coordinated
 with corresponding changes in CBB in google3
 """
 
-import pathlib
-from typing import List, Optional, Type, Union
+import datetime as dt
+from typing import List, Optional, Type, TypeVar
 
 from selenium import webdriver
 
@@ -19,18 +19,24 @@ import crossbench.benchmarks.all as benchmarks
 import crossbench.browsers.browser
 import crossbench.browsers.webdriver as cb_webdriver
 import crossbench.env
-import crossbench.runner.run
 import crossbench.runner.runner
+from crossbench import path as pth
 from crossbench.benchmarks.base import PressBenchmark
+from crossbench.runner.groups.session import BrowserSessionRunGroup
+from crossbench.runner.run import Run
 from crossbench.stories.press_benchmark import PressBenchmarkStory
+from crossbench.stories.story import Story
 
-press_benchmarks = [
+press_benchmarks: List[Type[PressBenchmark]] = [
     benchmarks.Speedometer20Benchmark,
     benchmarks.Speedometer21Benchmark,
     benchmarks.Speedometer30Benchmark,
     benchmarks.MotionMark12Benchmark,
+    benchmarks.MotionMark13Benchmark,
     benchmarks.JetStream20Benchmark,
     benchmarks.JetStream21Benchmark,
+    benchmarks.JetStream22Benchmark,
+    benchmarks.JetStream30Benchmark,
 ]
 
 press_benchmarks_dict = {cls.NAME: cls for cls in press_benchmarks}
@@ -82,7 +88,7 @@ def create_remote_webdriver(driver: webdriver.Remote
 
 def get_probe_result_file(benchmark_name: str,
                           browser: crossbench.browsers.browser.Browser,
-                          output_dir: Union[str, pathlib.Path],
+                          output_dir: pth.LocalPathLike,
                           probe_name: Optional[str] = None) -> Optional[str]:
   """Returns the path to the probe result file.
 
@@ -94,35 +100,36 @@ def get_probe_result_file(benchmark_name: str,
     probe_name: Optional name of the probe for the result file. If not
                 specified, the first probe from the default benchmark story
                 will be used."""
-  output_dir_path = pathlib.Path(output_dir)
+  output_dir_path = pth.LocalPath(output_dir)
   if probe_name is None:
     if benchmark_name not in press_benchmarks_dict:
       return None
     benchmark_cls = press_benchmarks_dict[benchmark_name]
-    probe_cls = benchmark_cls.DEFAULT_STORY_CLS.PROBES[0]
+    probe_cls = benchmark_cls.PROBES[0]
     probe_name = probe_cls.NAME
 
-  result_file = (
+  result_file: pth.LocalPath = (
       output_dir_path / browser.unique_name / "stories" / f"{probe_name}.json")
   return str(result_file)
 
 
 class CbbRunner(crossbench.runner.runner.Runner):
 
-  def create_run(self, browser_session, story, repetition, temperature, index,
-                 name, timeout, throw) -> crossbench.runner.run.Run:
-    return CbbRun(self, browser_session, story, repetition, temperature, index,
-                  name, timeout, throw)
+  def create_run(self, browser_session: BrowserSessionRunGroup, story: Story,
+                 repetition: int, is_warmup: bool, temperature: str, index: int,
+                 name: str, timeout: dt.timedelta, throw: bool) -> Run:
+    return CbbRun(self, browser_session, story, repetition, is_warmup,
+                  temperature, index, name, timeout, throw)
 
 
-class CbbRun(crossbench.runner.run.Run):
+class CbbRun(Run):
 
   def _create_session_dir(self) -> None:
     # Don't create symlink loops and skip this step
     pass
 
 
-def run_benchmark(output_folder: Union[str, pathlib.Path],
+def run_benchmark(output_folder: pth.LocalPathLike,
                   browser_list: List[crossbench.browsers.browser.Browser],
                   benchmark: PressBenchmark) -> None:
   """Runs the benchmark using crossbench runner.
@@ -134,7 +141,7 @@ def run_benchmark(output_folder: Union[str, pathlib.Path],
     benchmark: The Benchmark instance to run.
   """
   runner = CbbRunner(
-      out_dir=pathlib.Path(output_folder),
+      out_dir=pth.LocalPath(output_folder),
       browsers=browser_list,
       benchmark=benchmark,
       env_validation_mode=crossbench.env.ValidationMode.SKIP)

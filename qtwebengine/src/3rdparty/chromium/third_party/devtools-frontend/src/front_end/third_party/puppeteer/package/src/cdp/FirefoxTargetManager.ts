@@ -63,11 +63,6 @@ export class FirefoxTargetManager
    * Tracks which sessions attach to which target.
    */
   #availableTargetsBySessionId = new Map<string, CdpTarget>();
-  /**
-   * If a target was filtered out by `targetFilterCallback`, we still receive
-   * events about it from CDP, but we don't forward them to the rest of Puppeteer.
-   */
-  #ignoredTargets = new Set<string>();
   #targetFilterCallback: TargetFilterCallback | undefined;
   #targetFactory: TargetFactory;
 
@@ -126,6 +121,10 @@ export class FirefoxTargetManager
     return this.#availableTargetsByTargetId;
   }
 
+  getChildTargets(_target: CdpTarget): ReadonlySet<CdpTarget> {
+    return new Set();
+  }
+
   dispose(): void {
     this.#connection.off('Target.targetCreated', this.#onTargetCreated);
     this.#connection.off('Target.targetDestroyed', this.#onTargetDestroyed);
@@ -162,7 +161,6 @@ export class FirefoxTargetManager
 
     const target = this.#targetFactory(event.targetInfo, undefined);
     if (this.#targetFilterCallback && !this.#targetFilterCallback(target)) {
-      this.#ignoredTargets.add(event.targetInfo.targetId);
       this.#finishInitializationIfReady(event.targetInfo.targetId);
       return;
     }

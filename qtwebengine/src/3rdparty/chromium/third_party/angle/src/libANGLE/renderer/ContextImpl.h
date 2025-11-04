@@ -26,6 +26,11 @@ class Semaphore;
 struct Workarounds;
 }  // namespace gl
 
+namespace angle
+{
+struct ImageLoadContext;
+}
+
 namespace rx
 {
 class ContextImpl : public GLImplFactory
@@ -36,7 +41,7 @@ class ContextImpl : public GLImplFactory
 
     virtual void onDestroy(const gl::Context *context) {}
 
-    virtual angle::Result initialize() = 0;
+    virtual angle::Result initialize(const angle::ImageLoadContext &imageLoadContext) = 0;
 
     // Flush and finish.
     virtual angle::Result flush(const gl::Context *context)  = 0;
@@ -197,6 +202,12 @@ class ContextImpl : public GLImplFactory
 
     // KHR_blend_equation_advanced
     virtual void blendBarrier() {}
+
+    // QCOM_tiled_rendering
+    virtual angle::Result startTiling(const gl::Context *context,
+                                      const gl::Rectangle &area,
+                                      GLbitfield preserveMask);
+    virtual angle::Result endTiling(const gl::Context *context, GLbitfield preserveMask);
 
     // State sync with dirty bits.
     virtual angle::Result syncState(const gl::Context *context,

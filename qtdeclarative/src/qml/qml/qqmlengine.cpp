@@ -29,9 +29,11 @@
 #include <QtCore/qcoreapplication.h>
 #include <QtCore/qcryptographichash.h>
 #include <QtCore/qdir.h>
+#include <QtCore/qdiriterator.h>
 #include <QtCore/qmetaobject.h>
 #include <QtCore/qmutex.h>
 #include <QtCore/qstandardpaths.h>
+#include <QtCore/qstorageinfo.h>
 #include <QtCore/qthread.h>
 
 #if QT_CONFIG(qml_network)
@@ -48,7 +50,13 @@
 #  endif
 #endif // Q_OS_WIN
 
+#ifdef Q_OS_DARWIN
+#  include <unistd.h>
+#endif
+
 QT_BEGIN_NAMESPACE
+
+using namespace Qt::StringLiterals;
 
 void qml_register_types_QML();
 
@@ -193,12 +201,9 @@ QQmlEnginePrivate::~QQmlEnginePrivate()
     if (incubationController) incubationController->d = nullptr;
     incubationController = nullptr;
 
-    QQmlMetaType::freeUnusedTypesAndCaches();
-
 #if QT_CONFIG(qml_debug)
     delete profiler;
 #endif
-    qDeleteAll(cachedValueTypeInstances);
 }
 
 void QQmlPrivate::qdeclarativeelement_destructor(QObject *o)
@@ -551,6 +556,10 @@ QQmlEngine::~QQmlEngine()
     d->rootContext = nullptr;
 
     d->typeLoader.invalidate();
+
+    // QQmlGadgetPtrWrapper can have QQmlData with various references.
+    qDeleteAll(d->cachedValueTypeInstances);
+    d->cachedValueTypeInstances.clear();
 }
 
 /*! \fn void QQmlEngine::quit()
@@ -1072,14 +1081,10 @@ QJSValue QQmlEngine::singletonInstance<QJSValue>(QAnyStringView uri, QAnyStringV
 {
     Q_D(QQmlEngine);
 
-    auto loadHelper = QQml::makeRefPointer<LoadHelper>(&d->typeLoader, uri);
+    auto loadHelper = QQml::makeRefPointer<LoadHelper>(
+            &d->typeLoader, uri, typeName, QQmlTypeLoader::Synchronous);
+    const QQmlType type = loadHelper->type();
 
-    auto [moduleStatus, type] = loadHelper->resolveType(typeName);
-
-    if (moduleStatus == LoadHelper::ResolveTypeResult::NoSuchModule)
-        return {};
-    if (!type.isValid())
-        return {};
     if (!type.isSingleton())
         return {};
 
@@ -1813,6 +1818,17 @@ QString QQmlEnginePrivate::offlineStorageDatabaseDirectory() const
     return q->offlineStoragePath() + QDir::separator() + QLatin1String("Databases") + QDir::separator();
 }
 
+static bool hasRequiredProperties(const QQmlPropertyCache::ConstPtr &propertyCache)
+{
+    bool requiredPropertiesFound = false;
+    // we don't expect to find any, so the loop has no early termination check
+    if (propertyCache) {
+        for (int idx = 0, count = propertyCache->propertyCount(); idx < count; ++idx)
+            requiredPropertiesFound |= propertyCache->property(idx)->isRequired();
+    }
+    return requiredPropertiesFound;
+}
+
 template<>
 QJSValue QQmlEnginePrivate::singletonInstance<QJSValue>(const QQmlType &type)
 {
@@ -1847,17 +1863,27 @@ QJSValue QQmlEnginePrivate::singletonInstance<QJSValue>(const QQmlType &type)
             type.createProxy(o);
 
             // if this object can use a property cache, create it now
-            QQmlData::ensurePropertyCache(o);
-
-            // even though the object is defined in C++, qmlContext(obj) and qmlEngine(obj)
-            // should behave identically to QML singleton types. You can, however, manually
-            // assign a context; and clearSingletons() retains the contexts, in which case
-            // we don't want to see warnings about the object already having a context.
-            QQmlData *data = QQmlData::get(o, true);
-            if (!data->context) {
-                auto contextData = QQmlContextData::get(new QQmlContext(q->rootContext(), q));
-                data->context = contextData.data();
-                contextData->addOwnedObject(data);
+            QQmlPropertyCache::ConstPtr propertyCache = QQmlData::ensurePropertyCache(o);
+            if (Q_UNLIKELY(hasRequiredProperties(propertyCache))) {
+                // there's no way to set required properties on a singleton
+                delete o;
+                o = nullptr;
+                QQmlError error;
+                error.setMessageType(QtMsgType::QtCriticalMsg);
+                error.setDescription(QString::asprintf("Singleton \"%s\" is not available because the type has unset required properties.",
+                                                       qPrintable(QString::fromUtf8(type.typeName()))));
+                warning(error);
+            } else {
+                // even though the object is defined in C++, qmlContext(obj) and qmlEngine(obj)
+                // should behave identically to QML singleton types. You can, however, manually
+                // assign a context; and clearSingletons() retains the contexts, in which case
+                // we don't want to see warnings about the object already having a context.
+                QQmlData *data = QQmlData::get(o, true);
+                if (!data->context) {
+                    auto contextData = QQmlContextData::get(new QQmlContext(q->rootContext(), q));
+                    data->context = contextData.data();
+                    contextData->addOwnedObject(data);
+                }
             }
         }
 
@@ -2055,12 +2081,31 @@ bool QQml_isFileCaseCorrect(const QString &fileName, int lengthIn /* = -1 */)
     QFileInfo info(fileName);
     const QString absolute = info.absoluteFilePath();
 
-#if defined(Q_OS_DARWIN)
-    const QString canonical = info.canonicalFilePath();
-#elif defined(Q_OS_WIN)
     // No difference if the path is qrc based
     if (absolute[0] == QLatin1Char(':'))
         return true;
+
+#if defined(Q_OS_DARWIN)
+    const QString canonical = info.canonicalFilePath();
+    if (const auto suffix = info.suffix();
+        (suffix == "qml"_L1 || suffix == "dylib"_L1) && info.exists()) {
+        // APFS and HFS+ are both case preserving, in which case we can trust that the
+        // canonical file path reported above is correct. But if any of these file systems
+        // are mounted via SMB or Virtiofs (Virtualization.framework) macOS will report
+        // that the canonical file name of "Foo" is "Foo", even if the underlying file
+        // on the host file system has a canonical name of "foo". As we can't trust the
+        // canonical name in this case, we go though QDirIterator instead, as the directory
+        // listing for the mounted filesystem _does_ report the correct canonical file name.
+        if (pathconf(canonical.toUtf8().constData(), _PC_CASE_PRESERVING) != 1) {
+            qCDebug(lcQmlImport) << "Detected QML file on non-case-preserving file system"
+                << QStorageInfo(canonical) << "Verifying file case via directory listing";
+            QDirIterator dirIterator(info.absolutePath(), { info.fileName() },
+                QDir::Files | QDir::CaseSensitive, QDirIterator::FollowSymlinks);
+            if (!dirIterator.hasNext())
+                return false;
+        }
+    }
+#elif defined(Q_OS_WIN)
     const QString canonical = shellNormalizeFileName(absolute);
 #endif
 
@@ -2124,10 +2169,69 @@ bool QQml_isFileCaseCorrect(const QString &fileName, int lengthIn /* = -1 */)
 
 void hasJsOwnershipIndicator(QQmlGuardImpl *) {};
 
-LoadHelper::LoadHelper(QQmlTypeLoader *loader, QAnyStringView uri)
+LoadHelper::LoadHelper(
+        QQmlTypeLoader *loader, QAnyStringView uri, QAnyStringView typeName,
+        QQmlTypeLoader::Mode mode)
     : QQmlTypeLoader::Blob({}, QQmlDataBlob::QmlFile, loader)
     , m_uri(uri.toString())
+    , m_typeName(typeName.toString())
+    , m_mode(mode)
+{
+    m_typeLoader->lock();
+    m_typeLoader->loadWithStaticData(this, QByteArray(), m_mode);
+    m_typeLoader->unlock();
+}
 
+void LoadHelper::registerCallback(QQmlComponentPrivate *callback)
+{
+    m_callback = callback;
+}
+
+void LoadHelper::unregisterCallback(QQmlComponentPrivate *callback)
+{
+    if (m_callback) {
+        Q_ASSERT(callback == m_callback);
+        m_callback = nullptr;
+    }
+}
+
+void LoadHelper::done()
+{
+    if (!couldFindModule()) {
+        m_resolveTypeResult = ResolveTypeResult::NoSuchModule;
+        return;
+    }
+
+    QQmlTypeModule *module = QQmlMetaType::typeModule(m_uri, QTypeRevision{});
+    if (module) {
+        m_type = module->type(m_typeName, {});
+        if (m_type.isValid()) {
+            m_resolveTypeResult = ResolveTypeResult::ModuleFound;
+            return;
+        }
+    }
+
+    // The module exists (see check above), but there is no QQmlTypeModule
+    // ==> pure QML module, attempt resolveType
+    QTypeRevision versionReturn;
+    QList<QQmlError> errors;
+    QQmlImportNamespace *ns_return = nullptr;
+    m_importCache->resolveType(
+            typeLoader(), m_typeName, &m_type, &versionReturn, &ns_return, &errors);
+    m_resolveTypeResult = ResolveTypeResult::ModuleFound;
+}
+
+void LoadHelper::completed()
+{
+    QQmlTypeLoader::Blob::completed();
+
+    if (m_callback) {
+        m_callback->completeLoadFromModule(m_uri, m_typeName);
+        m_callback = nullptr;
+    }
+}
+
+void LoadHelper::dataReceived(const SourceCodeData &)
 {
     auto import = std::make_shared<PendingImport>();
     import->uri = m_uri;
@@ -2136,27 +2240,6 @@ LoadHelper::LoadHelper(QQmlTypeLoader *loader, QAnyStringView uri)
         qCDebug(lcQmlImport) << "LoadHelper: Errors loading " << m_uri << errorList;
         m_uri.clear(); // reset m_uri to remember the failure
     }
-}
-
-LoadHelper::ResolveTypeResult LoadHelper::resolveType(QAnyStringView typeName)
-{
-    QQmlType type;
-    if (!couldFindModule())
-        return {ResolveTypeResult::NoSuchModule, type};
-    QQmlTypeModule *module = QQmlMetaType::typeModule(m_uri, QTypeRevision{});
-    if (module) {
-        type = module->type(typeName.toString(), {});
-        if (type.isValid())
-            return {ResolveTypeResult::ModuleFound, type};
-    }
-    // The module exists (see check above), but there is no QQmlTypeModule
-    // ==> pure QML module, attempt resolveType
-    QTypeRevision versionReturn;
-    QList<QQmlError> errors;
-    QQmlImportNamespace *ns_return = nullptr;
-    m_importCache->resolveType(
-            typeLoader(), typeName.toString(), &type, &versionReturn, &ns_return, &errors);
-    return {ResolveTypeResult::ModuleFound, type};
 }
 
 bool LoadHelper::couldFindModule() const

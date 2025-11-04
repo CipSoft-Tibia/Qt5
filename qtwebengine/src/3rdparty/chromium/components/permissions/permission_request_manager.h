@@ -6,6 +6,8 @@
 #define COMPONENTS_PERMISSIONS_PERMISSION_REQUEST_MANAGER_H_
 
 #include <algorithm>
+#include <optional>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -16,6 +18,9 @@
 #include "base/observer_list.h"
 #include "base/time/time.h"
 #include "base/timer/timer.h"
+#include "components/content_settings/browser/page_specific_content_settings.h"
+#include "components/content_settings/core/common/content_settings.h"
+#include "components/permissions/features.h"
 #include "components/permissions/permission_prompt.h"
 #include "components/permissions/permission_request_queue.h"
 #include "components/permissions/permission_ui_selector.h"
@@ -25,7 +30,6 @@
 #include "content/public/browser/web_contents.h"
 #include "content/public/browser/web_contents_observer.h"
 #include "content/public/browser/web_contents_user_data.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "ui/gfx/geometry/rect.h"
 
 class GURL;
@@ -171,7 +175,7 @@ class PermissionRequestManager
   bool WasCurrentRequestAlreadyDisplayed() override;
   bool ShouldDropCurrentRequestIfCannotShowQuietly() const override;
   bool ShouldCurrentRequestUseQuietUI() const override;
-  absl::optional<PermissionUiSelector::QuietUiReason> ReasonForUsingQuietUi()
+  std::optional<PermissionUiSelector::QuietUiReason> ReasonForUsingQuietUi()
       const override;
   void SetDismissOnTabClose() override;
   void SetPromptShown() override;
@@ -184,7 +188,7 @@ class PermissionRequestManager
 
   // Returns the bounds of the active permission prompt view if we're
   // displaying one.
-  absl::optional<gfx::Rect> GetPromptBubbleViewBoundsInScreen() const;
+  std::optional<gfx::Rect> GetPromptBubbleViewBoundsInScreen() const;
 
   void set_manage_clicked() { did_click_manage_ = true; }
   void set_learn_more_clicked() { did_click_learn_more_ = true; }
@@ -231,12 +235,12 @@ class PermissionRequestManager
     current_request_first_display_time_ = time;
   }
 
-  absl::optional<PermissionUmaUtil::PredictionGrantLikelihood>
+  std::optional<PermissionUmaUtil::PredictionGrantLikelihood>
   prediction_grant_likelihood_for_testing() const {
     return prediction_grant_likelihood_;
   }
 
-  absl::optional<permissions::PermissionPromptDisposition>
+  std::optional<permissions::PermissionPromptDisposition>
   current_request_prompt_disposition_for_testing() const {
     return current_request_prompt_disposition_;
   }
@@ -263,6 +267,10 @@ class PermissionRequestManager
   }
 
   void SetHatsShownCallback(base::OnceCallback<void()> callback) override;
+
+  // For permissions that have visible views, we should only record
+  // PromptResolved metrics, for ask prompts.
+  bool ShouldRecordUmaForCurrentPrompt() const;
 
  private:
   friend class test::PermissionRequestManagerTestApi;
@@ -296,8 +304,8 @@ class PermissionRequestManager
   // Return true if we keep showing the current request, otherwise return false
   bool ReprioritizeCurrentRequestIfNeeded();
 
-  // Validate the input request. If the request is invalid and |should_finalize|
-  // is set, cancel and remove it from *_map_ and *_set_.
+  // Validate the input request. If the request is invalid and
+  // |should_finalize| is set, cancel and remove it from *_map_ and *_set_.
   // Return true if the request is valid, otherwise false.
   bool ValidateRequest(PermissionRequest* request, bool should_finalize = true);
 
@@ -414,6 +422,14 @@ class PermissionRequestManager
       PermissionRequest* request,
       PermissionAction permission_action);
 
+  // Take a snapshot of the content setting status for the current requests,
+  // which can change based on the user's decision. Used in HaTS as a filter.
+  // This defaults to "DEFAULT" if there's no ContentSettingsType associated
+  // with the PermissionType.
+  void SetCurrentRequestsInitialStatuses();
+
+  ContentSetting GetRequestInitialStatus(PermissionRequest* request);
+
   // Factory to be used to create views when needed.
   PermissionPrompt::Factory view_factory_;
 
@@ -426,7 +442,7 @@ class PermissionRequestManager
   // The disposition for the currently active permission prompt, if any.
   // Recorded separately because the `view_` might not be available at prompt
   // resolution in order to determine the disposition.
-  absl::optional<permissions::PermissionPromptDisposition>
+  std::optional<permissions::PermissionPromptDisposition>
       current_request_prompt_disposition_;
 
   // We only show new prompts when |tab_is_hidden_| is false.
@@ -457,7 +473,7 @@ class PermissionRequestManager
   // we are extracting a group of requests from the queue to show to user. This
   // is an immature solution to avoid an infinitive loop of preempting, we would
   // not prempt a request if the incoming request is already validated.
-  std::set<PermissionRequest*> validated_requests_set_;
+  std::set<raw_ptr<PermissionRequest, SetExperimental>> validated_requests_set_;
 
   base::ObserverList<Observer> observer_list_;
   AutoResponseType auto_response_for_test_ = NONE;
@@ -474,7 +490,7 @@ class PermissionRequestManager
   // Holds the decisions returned by selectors. Needed in case a lower priority
   // selector returns a decision first and we need to wait for the decisions of
   // higher priority selectors before making use of it.
-  std::vector<absl::optional<PermissionUiSelector::Decision>>
+  std::vector<std::optional<PermissionUiSelector::Decision>>
       selector_decisions_;
 
   // Whether the view for the current |requests_| has been shown to the user at
@@ -488,16 +504,16 @@ class PermissionRequestManager
   // Whether to use the normal or quiet UI to display the current permission
   // |requests_|, and whether to show warnings. This will be nullopt if we are
   // still waiting on the result from |permission_ui_selectors_|.
-  absl::optional<UiDecision> current_request_ui_to_use_;
+  std::optional<UiDecision> current_request_ui_to_use_;
 
   // The likelihood value returned by the Web Permission Predictions Service,
   // to be recoreded in UKM.
-  absl::optional<PermissionUmaUtil::PredictionGrantLikelihood>
+  std::optional<PermissionUmaUtil::PredictionGrantLikelihood>
       prediction_grant_likelihood_;
 
   // Status of the decision made by the Web Permission Prediction Service, if
   // it was held back or not.
-  absl::optional<bool> was_decision_held_back_;
+  std::optional<bool> was_decision_held_back_;
 
   // True when the prompt is being temporary destroyed to be recreated for the
   // correct browser or when the tab is hidden. In those cases, callbacks from
@@ -523,17 +539,33 @@ class PermissionRequestManager
 
   bool did_click_learn_more_ = false;
 
-  absl::optional<base::TimeDelta> time_to_decision_for_test_;
+  // Whether the current request can be preempted or not. This is set when
+  // callbacks are being issued to prevent potential re-entrant behavior of
+  // those callbacks requesting a permission that would preempt the current one
+  // and thus invalidate the iterator being used to issue the callback.
+  bool can_preempt_current_request_ = true;
 
-  absl::optional<bool> enabled_app_level_notification_permission_for_testing_;
+  std::optional<base::TimeDelta> time_to_decision_for_test_;
 
-  absl::optional<GURL> embedding_origin_for_testing_;
+  std::optional<bool> enabled_app_level_notification_permission_for_testing_;
+
+  std::optional<GURL> embedding_origin_for_testing_;
 
   // A timer is used to pre-ignore the permission request if it's been displayed
   // as a quiet chip.
   base::OneShotTimer preignore_timer_;
 
-  absl::optional<base::OnceCallback<void()>> hats_shown_callback_;
+  std::optional<base::OnceCallback<void()>> hats_shown_callback_;
+
+  // Holds the position of the current prompt, only relevant for permission
+  // element prompts.
+  std::optional<feature_params::PermissionElementPromptPosition>
+      current_request_pepc_prompt_position_;
+
+  // Holds the initial statuses of the current requests, one for each request in
+  // |requests_|.
+  std::map<PermissionRequest*, ContentSetting>
+      current_requests_initial_statuses_;
 
   base::WeakPtrFactory<PermissionRequestManager> weak_factory_{this};
   WEB_CONTENTS_USER_DATA_KEY_DECL();

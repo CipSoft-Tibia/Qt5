@@ -21,6 +21,7 @@
 #include "base/memory/weak_ptr.h"
 #include "base/containers/span.h"
 #include "components/autofill/content/browser/content_autofill_client.h"
+#include "components/autofill/core/browser/autofill_manager.h"
 #include "content/public/browser/web_contents_observer.h"
 
 #include <QScopedPointer>
@@ -44,22 +45,19 @@ public:
     PrefService *GetPrefs() override;
     const PrefService *GetPrefs() const override;
 
-    void ShowAutofillPopup(const autofill::AutofillClient::PopupOpenArgs &open_args,
-                           base::WeakPtr<autofill::AutofillPopupDelegate> delegate) override;
-    void UpdateAutofillPopupDataListValues(
+    SuggestionUiSessionId
+    ShowAutofillSuggestions(const PopupOpenArgs &open_args,
+                            base::WeakPtr<autofill::AutofillSuggestionDelegate> delegate) override;
+    void UpdateAutofillDataListValues(
             base::span<const autofill::SelectOption> datalist) override;
-    void PinPopupView() override;
-    PopupOpenArgs GetReopenPopupArgs(
-            autofill::AutofillSuggestionTriggerSource trigger_source) const override;
-    std::vector<autofill::Suggestion> GetPopupSuggestions() const override;
-    void UpdatePopup(const std::vector<autofill::Suggestion> &suggestions,
-                     autofill::FillingProduct main_filling_product,
-                     autofill::AutofillSuggestionTriggerSource trigger_source) override{};
-    void HideAutofillPopup(autofill::PopupHidingReason reason) override;
+    void PinAutofillSuggestions() override;
+    base::span<const autofill::Suggestion> GetAutofillSuggestions() const override;
+    void HideAutofillSuggestions(autofill::SuggestionHidingReason reason) override;
     bool IsAutocompleteEnabled() const override;
     bool IsPasswordManagerEnabled() override;
-    bool IsOffTheRecord() override;
+    bool IsOffTheRecord() const override;
     scoped_refptr<network::SharedURLLoaderFactory> GetURLLoaderFactory() override;
+    std::unique_ptr<autofill::AutofillManager> CreateManager(base::PassKey<autofill::ContentAutofillDriver>, autofill::ContentAutofillDriver&) override;
 
 private:
     explicit AutofillClientQt(content::WebContents *webContents);

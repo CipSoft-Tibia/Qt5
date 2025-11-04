@@ -26,12 +26,12 @@ DownloadAndExtract () {
 aarch64le_toolchain="${BASH_SOURCE%/*}/../shared/cmake_toolchain_files/qnx-toolchain-aarch64le.cmake"
 armv7le_toolchain="${BASH_SOURCE%/*}/../shared/cmake_toolchain_files/qnx-toolchain-armv7le.cmake"
 x8664_toolchain="${BASH_SOURCE%/*}/../shared/cmake_toolchain_files/qnx-toolchain-x8664.cmake"
-QNX_qemu_bld_files_dir="${BASH_SOURCE%/*}/qnx_qemu_build_files/"
+QNX_qemu_bld_files_dir="${BASH_SOURCE%/*}/qnx_qemu_build_files/800/"
 
 targetFolder="/opt/"
 folderName="qnx800"
 targetPath="$targetFolder$folderName"
-qemuTargetPath="$HOME/QNX"
+qemuTargetPath="$HOME/QNX800"
 qemuIpAddress="172.31.1.10"
 export qemuNetwork="172.31.1.1"
 qemuSSHuser="root"
@@ -43,9 +43,9 @@ if [ ! -d "$targetFolder" ]; then
 fi
 
 # QNX SDP
-sourceFile="http://ci-files01-hki.ci.qt.io/input/qnx/qnx800-linux-20240510.tar.xz"
+sourceFile="http://ci-files01-hki.ci.qt.io/input/qnx/qnx800-windows-linux-20240930.tar.xz"
 targetFile="qnx800.tar.xz"
-sha1="93245a5bc11b88563328f0763573942fd25b5e18"
+sha1="a86d6e001e4ad46f50ed430fb85e8230e730751b"
 DownloadAndExtract "$sourceFile" "$sha1" "$targetFile" "$targetFolder"
 
 sudo cp "$aarch64le_toolchain" "$targetPath"
@@ -81,5 +81,11 @@ fi
 
 # Set env variables
 SetEnvVar "QNX_800" "$targetPath"
+SetEnvVar "QNX_800_QEMU" "$qemuTargetPath"
+# These are common defines with QNX710
+SetEnvVar "QNX_QEMU_IPADDR" "$qemuIpAddress"
+SetEnvVar "QNX_QEMU_SSH" "$qemuSSHurl"
+SetEnvVar "QNX_QEMU_LD_LIBRARY_PATH" "$qemuLDpath"
+
 
 echo "QNX SDP = 8.0.0" >> ~/versions.txt

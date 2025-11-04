@@ -24,7 +24,7 @@ struct TestCase {
     TestCase(const QString &test)
         : test(test) {}
 
-    enum State { Skipped, Passes, Fails, Crashes };
+    enum State { Skipped, Passes, Fails, Survives, Crashes };
 
     struct Result
     {
@@ -43,12 +43,42 @@ struct TestCase {
             case TestCase::Fails:
                 state = TestCase::Passes;
                 break;
-            case TestCase::Skipped:
             case TestCase::Crashes:
+                state = TestCase::Survives;
+                break;
+            case TestCase::Survives:
+                state = TestCase::Crashes;
+                break;
+            case TestCase::Skipped:
                 break;
             }
         }
+
+        bool matches(State expectation) const
+        {
+            // We must never expect a test to crash
+            Q_ASSERT(expectation != TestCase::Crashes);
+
+            switch (expectation) {
+            case TestCase::Skipped:
+                return true;
+            case TestCase::Survives:
+                return state == TestCase::Fails || state == TestCase::Passes;
+            default:
+                break;
+            }
+
+            return state == expectation;
+        }
+
+        void diagnose(const QString &test, const QString &mode, State expectation) const;
     };
+
+    bool matchesExpectation() const
+    {
+        return strictResult.matches(strictExpectation.state)
+                && sloppyResult.matches(sloppyExpectation.state);
+    }
 
     Result strictExpectation = Result(Passes);
     Result sloppyExpectation = Result(Passes);
@@ -140,7 +170,7 @@ private:
 
     QByteArray harness(const QByteArray &name);
 
-    void addResult(TestCase result);
+    void addResult(const TestData &result);
 
     QString command;
     QString testDir;

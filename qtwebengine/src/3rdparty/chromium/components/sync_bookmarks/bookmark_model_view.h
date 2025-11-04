@@ -67,7 +67,8 @@ class BookmarkModelView {
   void RemoveObserver(bookmarks::BookmarkModelObserver* observer);
   void BeginExtensiveChanges();
   void EndExtensiveChanges();
-  void Remove(const bookmarks::BookmarkNode* node);
+  void Remove(const bookmarks::BookmarkNode* node,
+              const base::Location& location);
   void Move(const bookmarks::BookmarkNode* node,
             const bookmarks::BookmarkNode* new_parent,
             size_t index);
@@ -80,16 +81,16 @@ class BookmarkModelView {
       size_t index,
       const std::u16string& title,
       const bookmarks::BookmarkNode::MetaInfoMap* meta_info,
-      absl::optional<base::Time> creation_time,
-      absl::optional<base::Uuid> uuid);
+      std::optional<base::Time> creation_time,
+      std::optional<base::Uuid> uuid);
   const bookmarks::BookmarkNode* AddURL(
       const bookmarks::BookmarkNode* parent,
       size_t index,
       const std::u16string& title,
       const GURL& url,
       const bookmarks::BookmarkNode::MetaInfoMap* meta_info,
-      absl::optional<base::Time> creation_time,
-      absl::optional<base::Uuid> uuid);
+      std::optional<base::Time> creation_time,
+      std::optional<base::Uuid> uuid);
   void ReorderChildren(
       const bookmarks::BookmarkNode* parent,
       const std::vector<const bookmarks::BookmarkNode*>& ordered_nodes);

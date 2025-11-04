@@ -56,6 +56,11 @@ public:
                               const std::set<std::string> &internal,
                               const utils::ExternalIncludesOrderedSet &external,
                               const std::set<std::string> &system);
+
+    static void printHeaderGuardBegin(google::protobuf::io::Printer *printer,
+                                      const std::string &guard);
+    static void printHeaderGuardEnd(google::protobuf::io::Printer *printer,
+                                    const std::string &guard);
     void OpenFileNamespaces(const ::google::protobuf::FileDescriptor *file,
                             google::protobuf::io::Printer *printer) const;
     void CloseFileNamespaces(const ::google::protobuf::FileDescriptor *file,

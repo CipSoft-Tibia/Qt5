@@ -680,7 +680,7 @@ QByteArray QSpirvShader::translateToGLSL(int version,
     spvc_compiler_options_set_bool(options, SPVC_COMPILER_OPTION_FIXUP_DEPTH_CONVENTION,
                                    flags.testFlag(GlslFlag::FixClipSpace));
     spvc_compiler_options_set_bool(options, SPVC_COMPILER_OPTION_GLSL_ES_DEFAULT_FLOAT_PRECISION_HIGHP,
-                                   !flags.testFlag(GlslFlag::FragDefaultMediump));
+                                   !flags.testFlag(GlslFlag::EsFragDefaultFloatPrecisionMedium));
     // The gl backend of QRhi is not prepared for UBOs atm. Have a uniform (heh)
     // behavior regardless of the GLSL version.
     spvc_compiler_options_set_bool(options, SPVC_COMPILER_OPTION_GLSL_EMIT_UNIFORM_BUFFER_AS_PLAIN_UNIFORMS,

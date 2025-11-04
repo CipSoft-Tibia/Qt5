@@ -27,7 +27,7 @@
 
 QT_BEGIN_NAMESPACE
 
-Q_LOGGING_CATEGORY(lcGestureManager, "qt.widgets.gestures")
+Q_STATIC_LOGGING_CATEGORY(lcGestureManager, "qt.widgets.gestures")
 
 #if !defined(Q_OS_MACOS)
 static inline int panTouchPoints()
@@ -115,6 +115,14 @@ void QGestureManager::unregisterGestureRecognizer(Qt::GestureType type)
                 }
             }
         }
+    }
+
+    for (QGestureRecognizer *recognizer : std::as_const(list)) {
+        const bool isObsolete = m_obsoleteGestures.contains(recognizer);
+        const bool isDeleted = m_deletedRecognizers.values().contains(recognizer);
+
+        if (!isObsolete && !isDeleted)
+            delete recognizer;
     }
 }
 

@@ -14,8 +14,8 @@ qt_add_library(QtProtocCommon STATIC
 
 target_link_libraries(QtProtocCommon
     PUBLIC
-        WrapProtobuf::WrapLibProtobuf
-        WrapProtobuf::WrapLibProtoc
+        protobuf::libprotobuf
+        protobuf::libprotoc
 )
 
 target_include_directories(QtProtocCommon PUBLIC

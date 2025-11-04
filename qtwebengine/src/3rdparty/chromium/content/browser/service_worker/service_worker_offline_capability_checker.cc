@@ -116,13 +116,15 @@ void ServiceWorkerOfflineCapabilityChecker::DidFindRegistration(
       blink::mojom::FetchAPIRequest::From(resource_request),
       resource_request.destination,
       base::Uuid::GenerateRandomV4().AsLowercaseString() /* client_id */,
+      base::Uuid::GenerateRandomV4()
+          .AsLowercaseString() /* resulting_client_id */,
       std::move(preferred_version), base::DoNothing() /* prepare callback */,
       base::BindOnce(&ServiceWorkerOfflineCapabilityChecker::OnFetchResult,
                      base::Unretained(this)),
       /*is_offline_capability_check=*/true);
 
   fetch_dispatcher_->MaybeStartNavigationPreload(
-      resource_request, context->wrapper(), /*frame_tree_node_id=*/-1);
+      resource_request, context->wrapper(), FrameTreeNodeId());
 
   fetch_dispatcher_->Run();
 }

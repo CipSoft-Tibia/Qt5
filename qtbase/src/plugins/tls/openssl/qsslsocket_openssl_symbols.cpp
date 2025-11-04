@@ -2,6 +2,7 @@
 // Copyright (C) 2014 BlackBerry Limited. All rights reserved.
 // Copyright (C) 2016 Richard J. Moore <rich@kde.org>
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:execute-external-code
 
 /****************************************************************************
 **
@@ -31,6 +32,7 @@
 #include <QtCore/qdatetime.h>
 #if defined(Q_OS_UNIX)
 #include <QtCore/qdir.h>
+#include <QtCore/qdirlisting.h>
 #endif
 #include <QtCore/private/qduplicatetracker_p.h>
 #if defined(Q_OS_LINUX) && !defined(Q_OS_ANDROID)
@@ -623,9 +625,11 @@ static QStringList findAllLibs(QLatin1StringView filter)
     QStringList found;
     const QStringList filters((QString(filter)));
 
+    using F = QDirListing::IteratorFlag;
     for (const QString &path : paths) {
-        QDir dir(path);
-        QStringList entryList = dir.entryList(filters, QDir::Files);
+        QStringList entryList;
+        for (const auto &dirEntry : QDirListing(path, filters, F::FilesOnly))
+            entryList.emplace_back(dirEntry.fileName());
 
         std::sort(entryList.begin(), entryList.end(), LibGreaterThan());
         for (const QString &entry : std::as_const(entryList))
@@ -814,7 +818,7 @@ static LoadedOpenSsl loadOpenSsl()
     for (const QString &crypto : cryptoList) {
 #ifdef Q_OS_DARWIN
         // Clients should not load the unversioned libcrypto dylib as it does not have a stable ABI
-        if (crypto.endsWith("libcrypto.dylib"))
+        if (crypto.endsWith("libcrypto.dylib"_L1))
             continue;
 #endif
         libcrypto->setFileNameAndVersion(crypto, -1);

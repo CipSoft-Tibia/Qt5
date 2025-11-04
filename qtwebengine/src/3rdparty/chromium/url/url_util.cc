@@ -2,6 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#ifdef UNSAFE_BUFFERS_BUILD
+// TODO(crbug.com/350788890): Remove this and spanify to fix the errors.
+#pragma allow_unsafe_buffers
+#endif
+
 #include "url/url_util.h"
 
 #include <stddef.h>
@@ -19,6 +24,7 @@
 #include "url/url_constants.h"
 #include "url/url_features.h"
 #include "url/url_file.h"
+#include "url/url_parse_internal.h"
 #include "url/url_util_internal.h"
 #include "url/url_util_qt.h"
 
@@ -116,6 +122,20 @@ struct SchemeRegistry {
       kAboutScheme,
   };
 
+  // Non-special schemes that should be treated as opaque path URLs for
+  // compatibility reasons.
+  std::vector<std::string> opaque_non_special_schemes = {
+      // See https://crrev.com/c/5465607 for the reason.
+      kAndroidScheme,
+      // Temporarily opted-out. See https://crrev.com/c/5569365.
+      kDrivefsScheme,
+      // Temporarily opted-out. See https://crrev.com/c/5568919.
+      kChromeosSteamScheme,
+      kSteamScheme,
+      // Temporarily opted-out. See https://crrev.com/c/5578066.
+      kMaterializedViewScheme,
+  };
+
   // Schemes with a predefined default custom handler.
   std::vector<SchemeWithHandler> predefined_handler_schemes;
 
@@ -189,6 +209,19 @@ bool DoIsStandard(const CHAR* spec, const Component& scheme, SchemeType* type) {
                        GetSchemeRegistry().standard_schemes);
 }
 
+template <typename CHAR>
+bool DoIsOpaqueNonSpecial(const CHAR* spec, const Component& scheme) {
+  if (scheme.is_empty()) {
+    return false;
+  }
+  for (const std::string& s : GetSchemeRegistry().opaque_non_special_schemes) {
+    if (base::EqualsCaseInsensitiveASCII(
+            std::basic_string_view(&spec[scheme.begin], scheme.len), s)) {
+      return true;
+    }
+  }
+  return false;
+}
 
 template<typename CHAR>
 bool DoFindAndCompareScheme(const CHAR* str,
@@ -239,7 +272,6 @@ bool DoCanonicalize(const CHAR* spec,
                                &output_parsed->potentially_dangling_markup);
   }
 
-  Parsed parsed_input;
 #ifdef WIN32
   // For Windows, we allow things that look like absolute Windows paths to be
   // fixed up magically to file URLs. This is done for IE compatibility. For
@@ -253,9 +285,9 @@ bool DoCanonicalize(const CHAR* spec,
   // doing so.
   if (DoesBeginUNCPath(spec, 0, spec_len, false) ||
       DoesBeginWindowsDriveSpec(spec, 0, spec_len)) {
-    ParseFileURL(spec, spec_len, &parsed_input);
-    return CanonicalizeFileURL(spec, spec_len, parsed_input, charset_converter,
-                               output, output_parsed);
+    return CanonicalizeFileURL(
+        spec, spec_len, ParseFileURL(std::basic_string_view(spec, spec_len)),
+        charset_converter, output, output_parsed);
   }
 #endif
 
@@ -269,43 +301,46 @@ bool DoCanonicalize(const CHAR* spec,
   SchemeType scheme_type = SCHEME_WITH_HOST_PORT_AND_USER_INFORMATION;
   if (DoCompareSchemeComponent(spec, scheme, url::kFileScheme)) {
     // File URLs are special.
-    ParseFileURL(spec, spec_len, &parsed_input);
-    success = CanonicalizeFileURL(spec, spec_len, parsed_input,
-                                  charset_converter, output, output_parsed);
+    success = CanonicalizeFileURL(
+        spec, spec_len, ParseFileURL(std::basic_string_view(spec, spec_len)),
+        charset_converter, output, output_parsed);
   } else if (DoCompareSchemeComponent(spec, scheme, url::kFileSystemScheme)) {
     // Filesystem URLs are special.
-    ParseFileSystemURL(spec, spec_len, &parsed_input);
-    success = CanonicalizeFileSystemURL(spec, parsed_input, charset_converter,
-                                        output, output_parsed);
+    success = CanonicalizeFileSystemURL(
+        spec, ParseFileSystemURL(std::basic_string_view(spec, spec_len)),
+        charset_converter, output, output_parsed);
 
   } else if (DoIsStandard(spec, scheme, &scheme_type)) {
     // All "normal" URLs.
-    ParseStandardURL(spec, spec_len, &parsed_input);
-    success = CanonicalizeStandardURL(spec, parsed_input, scheme_type,
-                                      charset_converter, output, output_parsed);
+    success = CanonicalizeStandardURL(
+        spec, ParseStandardURL(std::basic_string_view(spec, spec_len)),
+        scheme_type, charset_converter, output, output_parsed);
 
   } else if (!url::IsUsingStandardCompliantNonSpecialSchemeURLParsing() &&
              DoCompareSchemeComponent(spec, scheme, url::kMailToScheme)) {
     // Mailto URLs are treated like standard URLs, with only a scheme, path,
     // and query.
     //
-    // TODO(crbug.com/1416006): Remove the special handling of 'mailto:" scheme
+    // TODO(crbug.com/40063064): Remove the special handling of 'mailto:" scheme
     // URLs. "mailto:" is simply one of non-special URLs.
-    ParseMailtoURL(spec, spec_len, &parsed_input);
-    success = CanonicalizeMailtoURL(spec, spec_len, parsed_input, output,
-                                    output_parsed);
+    success = CanonicalizeMailtoURL(
+        spec, spec_len, ParseMailtoURL(std::basic_string_view(spec, spec_len)),
+        output, output_parsed);
 
   } else {
     // Non-special scheme URLs like data: and javascript:.
-    if (url::IsUsingStandardCompliantNonSpecialSchemeURLParsing()) {
-      ParseNonSpecialURL(spec, spec_len, &parsed_input);
-      success =
-          CanonicalizeNonSpecialURL(spec, spec_len, parsed_input,
-                                    charset_converter, *output, *output_parsed);
+    if (url::IsUsingStandardCompliantNonSpecialSchemeURLParsing() &&
+        !DoIsOpaqueNonSpecial(spec, scheme)) {
+      success = CanonicalizeNonSpecialURL(
+          spec, spec_len,
+          ParseNonSpecialURLInternal(std::basic_string_view(spec, spec_len),
+                                     trim_path_end),
+          charset_converter, *output, *output_parsed);
     } else {
-      ParsePathURL(spec, spec_len, trim_path_end, &parsed_input);
-      success = CanonicalizePathURL(spec, spec_len, parsed_input, output,
-                                    output_parsed);
+      success = CanonicalizePathURL(
+          spec, spec_len,
+          ParsePathURL(std::basic_string_view(spec, spec_len), trim_path_end),
+          output, output_parsed);
     }
   }
   return success;
@@ -343,23 +378,32 @@ bool DoResolveRelative(const char* base_spec,
     // schemes since the rest are already canonicalized to start with a slash.
     // The effect is to allow, for example, GURL("qrc:foo").Resolve("bar") to
     // return "qrc:bar" instead of just erroring out.
-    base::StringPiece scheme_piece(&base_spec[base_parsed.scheme.begin], base_parsed.scheme.len);
+    std::string_view scheme_piece(&base_spec[base_parsed.scheme.begin],
+                                  base_parsed.scheme.len);
     if (const CustomScheme* scheme = CustomScheme::FindScheme(scheme_piece)) {
-        base_is_hierarchical = true;
-        if (scheme->type == SCHEME_WITHOUT_AUTHORITY)
-          base_is_authority_based = false;
+      base_is_hierarchical = true;
+      if (scheme->type == SCHEME_WITHOUT_AUTHORITY) {
+        base_is_authority_based = false;
+      }
     }
   }
 
-  SchemeType unused_scheme_type = SCHEME_WITH_HOST_PORT_AND_USER_INFORMATION;
-  bool standard_base_scheme =
-      base_parsed.scheme.is_nonempty() &&
-      DoIsStandard(base_spec, base_parsed.scheme, &unused_scheme_type);
+  bool is_hierarchical_base;
+
+  if (url::IsUsingStandardCompliantNonSpecialSchemeURLParsing()) {
+    is_hierarchical_base =
+        base_parsed.scheme.is_nonempty() && !base_parsed.has_opaque_path;
+  } else {
+    SchemeType unused_scheme_type = SCHEME_WITH_HOST_PORT_AND_USER_INFORMATION;
+    is_hierarchical_base =
+        base_parsed.scheme.is_nonempty() &&
+        DoIsStandard(base_spec, base_parsed.scheme, &unused_scheme_type);
+  }
 
   bool is_relative;
   Component relative_component;
   if (!IsRelativeURL(base_spec, base_parsed, relative, relative_length,
-                     (base_is_hierarchical || standard_base_scheme),
+                     (base_is_hierarchical || is_hierarchical_base),
                      &is_relative, &relative_component)) {
     // Error resolving.
     return false;
@@ -371,9 +415,9 @@ bool DoResolveRelative(const char* base_spec,
   // Pretend for a moment that |base_spec| is a standard URL. Normally
   // non-standard URLs are treated as PathURLs, but if the base has an
   // authority we would like to preserve it.
-  if (is_relative && base_is_authority_based && !standard_base_scheme) {
-    Parsed base_parsed_authority;
-    ParseStandardURL(base_spec, base_spec_len, &base_parsed_authority);
+  if (is_relative && base_is_authority_based && !is_hierarchical_base) {
+    Parsed base_parsed_authority =
+        ParseStandardURL(std::string_view(base_spec, base_spec_len));
     if (base_parsed_authority.host.is_nonempty()) {
       STACK_UNINITIALIZED RawCanonOutputT<char> temporary_output;
       bool did_resolve_succeed =
@@ -392,9 +436,9 @@ bool DoResolveRelative(const char* base_spec,
     // Relative, resolve and canonicalize.
     bool file_base_scheme = base_parsed.scheme.is_nonempty() &&
         DoCompareSchemeComponent(base_spec, base_parsed.scheme, kFileScheme);
-    return ResolveRelativeURL(base_spec, base_parsed, file_base_scheme, relative,
-                              relative_component, charset_converter, output,
-                              output_parsed);
+    return ResolveRelativeURL(base_spec, base_parsed, file_base_scheme,
+                              relative, relative_component, charset_converter,
+                              output, output_parsed);
   }
 
   // Not relative, canonicalize the input.
@@ -498,11 +542,15 @@ bool DoReplaceComponents(const char* spec,
     return ReplaceStandardURL(spec, parsed, replacements, scheme_type,
                               charset_converter, output, out_parsed);
   }
-  if (DoCompareSchemeComponent(spec, parsed.scheme, url::kMailToScheme)) {
+  if (!IsUsingStandardCompliantNonSpecialSchemeURLParsing() &&
+      DoCompareSchemeComponent(spec, parsed.scheme, url::kMailToScheme)) {
     return ReplaceMailtoURL(spec, parsed, replacements, output, out_parsed);
   }
 
-  // Default is a path URL.
+  if (IsUsingStandardCompliantNonSpecialSchemeURLParsing()) {
+    return ReplaceNonSpecialURL(spec, parsed, replacements, charset_converter,
+                                *output, *out_parsed);
+  }
   return ReplacePathURL(spec, parsed, replacements, output, out_parsed);
 }
 
@@ -512,10 +560,11 @@ void DoSchemeModificationPreamble() {
   //
   // This normally means you're trying to set up a new scheme too late or using
   // the SchemeRegistry too early in your application's init process.
-// QWE: We violate this but it is harmless.
-//   DCHECK(!g_scheme_registries_used.load())
-//       << "Trying to add a scheme after the lists have been used. "
-//          "Make sure that you haven't added any static GURL initializers in tests.";
+  // QWE: We violate this but it is harmless.
+  //   DCHECK(!g_scheme_registries_used.load())
+  //       << "Trying to add a scheme after the lists have been used. "
+  //          "Make sure that you haven't added any static GURL initializers in
+  //          tests.";
 
   // If this assert triggers, it means you've called Add*Scheme after
   // LockSchemeRegistries has been called (see the header file for
@@ -707,6 +756,11 @@ void LockSchemeRegistries() {
 bool IsStandard(const char* spec, const Component& scheme) {
   SchemeType unused_scheme_type;
   return DoIsStandard(spec, scheme, &unused_scheme_type);
+}
+
+bool IsStandardScheme(std::string_view scheme) {
+  return IsStandard(scheme.data(),
+                    Component(0, base::checked_cast<int>(scheme.size())));
 }
 
 bool GetStandardSchemeType(const char* spec,
@@ -954,6 +1008,11 @@ bool HasInvalidURLEscapeSequences(std::string_view input) {
     }
   }
   return false;
+}
+
+bool IsAndroidWebViewHackEnabledScheme(std::string_view scheme) {
+  return AllowNonStandardSchemesForAndroidWebView() &&
+         !IsStandardScheme(scheme);
 }
 
 }  // namespace url

@@ -41,6 +41,10 @@ struct AstNode {
     kNumber,
     kText,
     kBytes,
+    kBool,
+    kFloat,
+    kFloat64,
+    kInt,
     kOther,
   };
 
@@ -137,6 +141,18 @@ inline std::ostream& operator<<(std::ostream& os, const AstNode::Type& which) {
       break;
     case AstNode::Type::kBytes:
       os << "kBytes";
+      break;
+    case AstNode::Type::kBool:
+      os << "kBool";
+      break;
+    case AstNode::Type::kFloat:
+      os << "kFloat";
+      break;
+    case AstNode::Type::kFloat64:
+      os << "kFloat64";
+      break;
+    case AstNode::Type::kInt:
+      os << "kInt";
       break;
     case AstNode::Type::kOther:
       os << "kOther";

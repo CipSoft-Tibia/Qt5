@@ -34,6 +34,8 @@ struct Bars3DChangeBitField
     bool itemChanged : 1;
     bool floorLevelChanged : 1;
     bool barSeriesMarginChanged : 1;
+    bool axisRangeChanged : 1;
+    bool floorChanged : 1;
 
     Bars3DChangeBitField()
         : multiSeriesScalingChanged(true)
@@ -43,6 +45,8 @@ struct Bars3DChangeBitField
         , itemChanged(false)
         , floorLevelChanged(false)
         , barSeriesMarginChanged(false)
+        , axisRangeChanged(false)
+        , floorChanged(true)
     {}
 };
 
@@ -152,6 +156,7 @@ public:
 protected:
     void componentComplete() override;
     void synchData() override;
+    void updateFloor();
     void updateParameters();
     void updateFloorLevel(float level);
     void updateGraph() override;
@@ -168,6 +173,7 @@ protected:
     void handleLabelCountChanged(QQuick3DRepeater *repeater, QColor axisLabelColor) override;
     void updateSelectionMode(QtGraphs3D::SelectionFlags mode) override;
     bool doPicking(QPointF position) override;
+    bool doRayPicking(QVector3D origin, QVector3D direction) override;
     QAbstract3DAxis *createDefaultAxis(QAbstract3DAxis::AxisOrientation orientation) override;
     void updateSliceItemLabel(const QString &label, QVector3D position) override;
 
@@ -187,6 +193,7 @@ public Q_SLOTS:
     void handleDataRowLabelsChanged();
     void handleDataColumnLabelsChanged();
     void handleRowColorsChanged();
+    void handleValueColoringChanged();
 
 Q_SIGNALS:
     void rowAxisChanged(QCategory3DAxis *axis);
@@ -249,8 +256,6 @@ private:
     float m_actualFloorLevel = 0.0f;
     float m_heightNormalizer = 1.0f;
     float m_backgroundAdjustment = 0.0f;
-
-    bool m_axisRangeChanged = false;
 
     QQuick3DModel *m_floorBackground = nullptr;
     QQuick3DNode *m_floorBackgroundScale = nullptr;

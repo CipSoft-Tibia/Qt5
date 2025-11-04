@@ -19,6 +19,7 @@ public:
   Q_INVOKABLE QString generatePDF(const QUrl &path, const QImage &image);
   Q_INVOKABLE QString print(const QImage &image, const QString printerName);
   Q_INVOKABLE QStringList getPrinters();
+  Q_INVOKABLE qreal maxTextureSize();
 };
 
 #endif // GRAPHPRINTER_H

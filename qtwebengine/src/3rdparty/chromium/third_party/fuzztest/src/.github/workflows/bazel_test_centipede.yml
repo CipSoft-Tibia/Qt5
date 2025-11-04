@@ -33,14 +33,19 @@ jobs:
       matrix:
         config: ['default', 'noriegeli', 'asan']
     steps:
+      # TODO(lszekeres): Remove once the following is fixed:
+      # https://github.com/actions/runner-images/issues/9491
+      - name: Reduce ASLR entropy as a temporary workaround
+        run: |
+          sudo sysctl -w vm.mmap_rnd_bits=28
       - name: Checkout repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
       - name: Install dependencies
         run: |
           sudo apt-get update && sudo apt-get install -yq \
             clang llvm libssl-dev
       - name: Restore latest cache
-        uses: actions/cache/restore@v3
+        uses: actions/cache/restore@v4
         with:
           path: "~/.cache/bazel"
           key: bazel-centipede-cache-${{ matrix.config }}
@@ -64,22 +69,22 @@ jobs:
       - name: Run unit tests without Riegeli
         if: matrix.config == 'noriegeli'
         run: |
-          bazel test --no//centipede:use_riegeli --local_test_jobs=1 --test_output=streamed centipede:all
+          bazel test --no//fuzztest:use_riegeli --local_test_jobs=1 --test_output=streamed centipede:all
       - name: Run e2e tests without Riegeli
         if: matrix.config == 'noriegeli'
         run: |
-          bazel test --no//centipede:use_riegeli --test_output=errors centipede/testing:instrumentation_test centipede/testing:runner_test
+          bazel test --no//fuzztest:use_riegeli --test_output=errors centipede/testing:instrumentation_test centipede/testing:runner_test
       - name: Run puzzles without Riegeli
         if: matrix.config == 'noriegeli'
         run: |
-          bazel test --no//centipede:use_riegeli --test_output=errors centipede/puzzles:all
+          bazel test --no//fuzztest:use_riegeli --test_output=errors centipede/puzzles:all
       - name: Run puzzles without Riegeli with ASAN
         if: matrix.config == 'noriegeli'
         run: |
-          bazel test --no//centipede:use_riegeli --test_output=errors --linkopt=-fsanitize=address --copt=-fsanitize=address centipede/puzzles:all
+          bazel test --no//fuzztest:use_riegeli --test_output=errors --linkopt=-fsanitize=address --copt=-fsanitize=address centipede/puzzles:all
       - name: Save new cache based on main
         if: github.ref == 'refs/heads/main'
-        uses: actions/cache/save@v3
+        uses: actions/cache/save@v4
         with:
           path: "~/.cache/bazel"
           key: bazel-centipede-cache-${{ matrix.config }}-${{ github.run_id }}

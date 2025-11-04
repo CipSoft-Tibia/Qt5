@@ -7,7 +7,6 @@ from __future__ import annotations
 import abc
 import atexit
 import logging
-import pathlib
 import time
 import traceback
 from typing import TYPE_CHECKING, Any, List, Optional, Sequence, cast
@@ -15,20 +14,18 @@ from typing import TYPE_CHECKING, Any, List, Optional, Sequence, cast
 import selenium.common.exceptions
 from selenium import webdriver
 
+from crossbench.browsers.attributes import BrowserAttributes
+from crossbench.browsers.browser import Browser
 from crossbench.types import JsonDict
-
-from .browser import Browser
 
 if TYPE_CHECKING:
   import datetime as dt
 
   from selenium.webdriver.common.timeouts import Timeouts
 
-  from crossbench import plt
-  from crossbench.browsers.splash_screen import SplashScreen
-  from crossbench.browsers.viewport import Viewport
-  from crossbench.flags import Flags
-  from crossbench.network.base import Network
+  from crossbench.browsers.settings import Settings
+  from crossbench.env import HostEnvironment
+  from crossbench.path import LocalPath, RemotePath
   from crossbench.runner.groups import BrowserSessionRunGroup
   from crossbench.runner.runner import Runner
 
@@ -51,53 +48,55 @@ class DriverException(RuntimeError):
 
 class WebDriverBrowser(Browser, metaclass=abc.ABCMeta):
   _driver: webdriver.Remote
-  _driver_path: Optional[pathlib.Path]
+  _driver_path: Optional[RemotePath]
   _driver_pid: int
   _pid: int
-  log_file: Optional[pathlib.Path]
+  log_file: Optional[LocalPath]
 
-  def __init__(
-      self,
-      label: str,
-      path: Optional[pathlib.Path] = None,
-      flags: Optional[Flags.InitialDataType] = None,
-      js_flags: Optional[Flags.InitialDataType] = None,
-      cache_dir: Optional[pathlib.Path] = None,
-      type: str = "webdriver",  # pylint: disable=redefined-builtin
-      network: Optional[Network] = None,
-      driver_path: Optional[pathlib.Path] = None,
-      viewport: Optional[Viewport] = None,
-      splash_screen: Optional[SplashScreen] = None,
-      platform: Optional[plt.Platform] = None):
-    super().__init__(label, path, flags, js_flags, cache_dir, type, network,
-                     None, viewport, splash_screen, platform)
-    self._driver_path = driver_path
+  def __init__(self,
+               label: str,
+               path: Optional[RemotePath] = None,
+               settings: Optional[Settings] = None):
+    super().__init__(label, path, settings)
+    self._driver_path = self._settings.driver_path
+
+  @property
+  def type_name(self) -> str:
+    return "webdriver"
+
+  @property
+  def attributes(self) -> BrowserAttributes:
+    return BrowserAttributes.WEBDRIVER
 
   @property
   def driver(self) -> webdriver.Remote:
     return self._driver
 
   @property
-  def driver_log_file(self) -> pathlib.Path:
+  def driver_log_file(self) -> LocalPath:
     log_file = self.log_file
     assert log_file
     return log_file.with_suffix(".driver.log")
 
   def setup_binary(self, runner: Runner) -> None:
-    self._driver_path = self._find_driver().absolute()
-    assert self._driver_path.exists(), (
+    self._driver_path = self.platform.absolute(self._find_driver())
+    # TODO: support remote chromedriver as well
+    assert self.platform.host_platform.exists(self._driver_path), (
         f"Webdriver path '{self._driver_path}' does not exist")
 
   @abc.abstractmethod
-  def _find_driver(self) -> pathlib.Path:
+  def _find_driver(self) -> RemotePath:
     pass
 
   @abc.abstractmethod
-  def _check_driver_version(self) -> None:
+  def _validate_driver_version(self) -> None:
     pass
 
+  def validate_env(self, env: HostEnvironment) -> None:
+    super().validate_env(env)
+    self._validate_driver_version()
+
   def start(self, session: BrowserSessionRunGroup) -> None:
-    self._check_driver_version()
     assert self._driver_path
     try:
       self._driver = self._start_driver(session, self._driver_path)
@@ -109,7 +108,6 @@ class WebDriverBrowser(Browser, metaclass=abc.ABCMeta):
     self._find_driver_pid()
     self._set_driver_timeouts(session)
     self._setup_window()
-    self._check_driver_version()
 
   def _find_driver_pid(self) -> None:
     service = getattr(self._driver, "service", None)
@@ -165,7 +163,7 @@ class WebDriverBrowser(Browser, metaclass=abc.ABCMeta):
 
   @abc.abstractmethod
   def _start_driver(self, session: BrowserSessionRunGroup,
-                    driver_path: pathlib.Path) -> webdriver.Remote:
+                    driver_path: RemotePath) -> webdriver.Remote:
     pass
 
   def details_json(self) -> JsonDict:
@@ -182,22 +180,41 @@ class WebDriverBrowser(Browser, metaclass=abc.ABCMeta):
     logging.debug("WebDriverBrowser.show_url(%s, %s)", url, target)
     handles = self._driver.window_handles
     assert handles, "Browser has no more opened windows."
-    self._driver.switch_to.window(handles[0])
+    self._driver.switch_to.window(handles[-1])
     try:
       self._driver.get(url)
     except selenium.common.exceptions.WebDriverException as e:
-      if e.msg and "net::ERR_CONNECTION_REFUSED" in e.msg:
-        # pylint: disable=raise-missing-from
-        raise DriverException(
-            f"Browser failed to load URL={url}. The URL is likely unreachable.",
-            self)
+      if msg := e.msg:
+        self._wrap_webdriver_exception(e, msg, url)
       raise
 
-  def js(self,
-         runner: Runner,
-         script: str,
-         timeout: Optional[dt.timedelta] = None,
-         arguments: Sequence[object] = ()) -> Any:
+  def switch_to_new_tab(self) -> None:
+    self._driver.switch_to.new_window("tab")
+
+  def screenshot(self, path: LocalPath) -> None:
+    if not self._driver.get_screenshot_as_file(path.as_posix()):
+      raise DriverException(
+          f"Browser failed to get_screenshot_as_file to file '{path}'", self)
+
+  def _wrap_webdriver_exception(
+      self, e: selenium.common.exceptions.WebDriverException, msg: str,
+      url: str) -> None:
+    if "net::ERR_CONNECTION_REFUSED" in msg:
+      raise DriverException(
+          f"Browser failed to load URL={url}. The URL is likely unreachable.",
+          self) from e
+    if "net::ERR_INTERNET_DISCONNECTED" in msg:
+      raise DriverException(
+          f"Browser failed to load URL={url}. "
+          f"The device is not connected to the internet.", self) from e
+
+  def js(
+      self,
+      runner: Runner,
+      script: str,
+      timeout: Optional[dt.timedelta] = None,
+      arguments: Sequence[object] = ()
+  ) -> Any:
     logging.debug("WebDriverBrowser.js() timeout=%s, script: %s", timeout,
                   script)
     assert self._is_running
@@ -211,8 +228,15 @@ class WebDriverBrowser(Browser, metaclass=abc.ABCMeta):
       # pylint: disable=raise-missing-from
       raise ValueError(f"Could not execute JS: {e.msg}")
 
+  def close_all_tabs(self) -> None:
+    if len(self._driver.window_handles) > 1:
+      for handle in self._driver.window_handles:
+        self._driver.switch_to.window(handle)
+        self._driver.close()
+
   def quit(self, runner: Runner) -> None:
     assert self._is_running
+    self.close_all_tabs()
     self.force_quit()
 
   def force_quit(self) -> None:
@@ -228,6 +252,9 @@ class WebDriverBrowser(Browser, metaclass=abc.ABCMeta):
       except selenium.common.exceptions.NoSuchWindowException:
         # No window is good.
         pass
+      except selenium.common.exceptions.InvalidSessionIdException:
+        # Closing the last tab will close the session as well.
+        return
       try:
         self._driver.quit()
       except selenium.common.exceptions.InvalidSessionIdException:
@@ -249,22 +276,30 @@ class RemoteWebDriver(WebDriverBrowser, Browser):
   """Represent a remote WebDriver that has already been started"""
 
   def __init__(self, label: str, driver: webdriver.Remote) -> None:
-    super().__init__(label=label, path=None, type="remote")
+    super().__init__(label=label, path=None)
     self._driver = driver
     self.version: str = driver.capabilities["browserVersion"]
     self.major_version: int = int(self.version.split(".")[0])
 
-  def _check_driver_version(self) -> None:
-    raise NotImplementedError()
+  @property
+  def type_name(self) -> str:
+    return "remote"
+
+  @property
+  def attributes(self) -> BrowserAttributes:
+    return BrowserAttributes.WEBDRIVER | BrowserAttributes.REMOTE
+
+  def _validate_driver_version(self) -> None:
+    pass
 
   def _extract_version(self) -> str:
     raise NotImplementedError()
 
-  def _find_driver(self) -> pathlib.Path:
+  def _find_driver(self) -> LocalPath:
     raise NotImplementedError()
 
   def _start_driver(self, session: BrowserSessionRunGroup,
-                    driver_path: pathlib.Path) -> webdriver.Remote:
+                    driver_path: RemotePath) -> webdriver.Remote:
     raise NotImplementedError()
 
   def setup_binary(self, runner: Runner) -> None:

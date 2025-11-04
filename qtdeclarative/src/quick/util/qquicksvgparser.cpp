@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:data-parser
 
 #include "qquicksvgparser_p.h"
 
@@ -159,6 +160,10 @@ void QQuickSvgParser::pathArc(QPainterPath &path,
                     qreal               y,
                     qreal curx, qreal cury)
 {
+    // Check if the start point is equal to the end point.
+    if (QPointF(curx, cury) == QPointF(x, y))
+        return;
+
     qreal sin_th, cos_th;
     qreal a00, a01, a10, a11;
     qreal x0, y0, x1, y1, xc, yc;
@@ -169,6 +174,14 @@ void QQuickSvgParser::pathArc(QPainterPath &path,
 
     rx = qAbs(rx);
     ry = qAbs(ry);
+    // Avoid nans and division by zero.
+    if (qFuzzyIsNull(rx) || qFuzzyIsNull(ry)) {
+        // https://www.w3.org/TR/SVG/paths.html#ArcOutOfRangeParameters says:
+        // "If either rx or ry is 0, then this arc is treated as a straight line
+        // segment (a "lineto") joining the endpoints."
+        path.lineTo(x, y);
+        return;
+    }
 
     sin_th = qSin(qDegreesToRadians(x_axis_rotation));
     cos_th = qCos(qDegreesToRadians(x_axis_rotation));

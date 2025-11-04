@@ -46,8 +46,8 @@
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
 #include "./centipede/early_exit.h"
-#include "./centipede/logging.h"
 #include "./centipede/util.h"
+#include "./common/logging.h"
 
 namespace centipede {
 
@@ -429,7 +429,7 @@ void Command::LogProblemInfo(std::string_view message) const {
 }
 
 void Command::VlogProblemInfo(std::string_view message, int vlog_level) const {
-  if (VLOG_IS_ON(vlog_level)) LogProblemInfo(message);
+  if (ABSL_VLOG_IS_ON(vlog_level)) LogProblemInfo(message);
 }
 
 }  // namespace centipede

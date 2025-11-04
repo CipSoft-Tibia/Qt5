@@ -7,6 +7,7 @@
 #include <string>
 #include <utility>
 
+#include "base/containers/span.h"
 #include "base/task/single_thread_task_runner.h"
 #include "base/test/scoped_feature_list.h"
 #include "mojo/public/c/system/data_pipe.h"
@@ -50,6 +51,7 @@ class MockUseCounter : public GarbageCollected<MockUseCounter>,
                        public UseCounter {
  public:
   MOCK_METHOD1(CountUse, void(mojom::WebFeature));
+  MOCK_METHOD1(CountWebDXFeature, void(mojom::blink::WebDXFeature));
   MOCK_METHOD1(CountDeprecation, void(mojom::WebFeature));
 };
 
@@ -92,7 +94,7 @@ class ResourceLoaderTest : public testing::Test {
         scoped_refptr<base::SingleThreadTaskRunner> freezable_task_runner,
         scoped_refptr<base::SingleThreadTaskRunner> unfreezable_task_runner,
         BackForwardCacheLoaderHelper* back_forward_cache_loader_helper,
-        const absl::optional<base::UnguessableToken>&
+        const std::optional<base::UnguessableToken>&
             service_worker_race_network_request_token,
         bool is_from_origin_dirty_style_sheet) override {
       return std::make_unique<NoopURLLoader>(std::move(freezable_task_runner));
@@ -165,21 +167,24 @@ TEST_F(ResourceLoaderTest, LoadResponseBody) {
 
   loader->DidReceiveResponse(WrappedResourceResponse(response),
                              std::move(consumer),
-                             /*cached_metadata=*/absl::nullopt);
+                             /*cached_metadata=*/std::nullopt);
   loader->DidFinishLoading(base::TimeTicks(), 0, 0, 0);
 
-  uint32_t num_bytes = 2;
-  result = producer->WriteData("he", &num_bytes, MOJO_WRITE_DATA_FLAG_NONE);
+  size_t actually_written_bytes = 0;
+  result =
+      producer->WriteData(base::byte_span_from_cstring("he"),
+                          MOJO_WRITE_DATA_FLAG_NONE, actually_written_bytes);
   ASSERT_EQ(result, MOJO_RESULT_OK);
-  ASSERT_EQ(num_bytes, 2u);
+  ASSERT_EQ(actually_written_bytes, 2u);
 
   static_cast<scheduler::FakeTaskRunner*>(fetcher->GetTaskRunner().get())
       ->RunUntilIdle();
 
-  num_bytes = 3;
-  result = producer->WriteData("llo", &num_bytes, MOJO_WRITE_DATA_FLAG_NONE);
+  result =
+      producer->WriteData(base::byte_span_from_cstring("llo"),
+                          MOJO_WRITE_DATA_FLAG_NONE, actually_written_bytes);
   ASSERT_EQ(result, MOJO_RESULT_OK);
-  ASSERT_EQ(num_bytes, 3u);
+  ASSERT_EQ(actually_written_bytes, 3u);
 
   static_cast<scheduler::FakeTaskRunner*>(fetcher->GetTaskRunner().get())
       ->RunUntilIdle();
@@ -557,7 +562,7 @@ class ResourceLoaderSubresourceFilterCnameAliasTest
     CreateMojoDataPipe();
     loader->DidReceiveResponse(WrappedResourceResponse(response),
                                /*body=*/mojo::ScopedDataPipeConsumerHandle(),
-                               /*cached_metadata=*/absl::nullopt);
+                               /*cached_metadata=*/std::nullopt);
   }
 
  protected:

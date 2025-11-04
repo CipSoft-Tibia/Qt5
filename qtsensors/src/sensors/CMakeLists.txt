@@ -92,3 +92,6 @@ qt_internal_add_docs(Sensors
     doc/qtsensors.qdocconf
 )
 
+if(QT_FEATURE_doc_snippets)
+    add_subdirectory(doc/snippets/sensors)
+endif()

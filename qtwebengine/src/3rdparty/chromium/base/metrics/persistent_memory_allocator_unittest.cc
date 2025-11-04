@@ -2,15 +2,22 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#ifdef UNSAFE_BUFFERS_BUILD
+// TODO(crbug.com/40284755): Remove this and spanify to fix the errors.
+#pragma allow_unsafe_buffers
+#endif
+
 #include "base/metrics/persistent_memory_allocator.h"
 
 #include <memory>
 
+#include "base/containers/heap_array.h"
 #include "base/files/file.h"
 #include "base/files/file_util.h"
 #include "base/files/memory_mapped_file.h"
 #include "base/files/scoped_temp_dir.h"
 #include "base/memory/raw_ptr.h"
+#include "base/memory/raw_span.h"
 #include "base/memory/read_only_shared_memory_region.h"
 #include "base/memory/shared_memory_mapping.h"
 #include "base/memory/writable_shared_memory_region.h"
@@ -20,6 +27,7 @@
 #include "base/strings/stringprintf.h"
 #include "base/synchronization/condition_variable.h"
 #include "base/synchronization/lock.h"
+#include "base/test/gtest_util.h"
 #include "base/threading/simple_thread.h"
 #include "build/build_config.h"
 #include "testing/gmock/include/gmock/gmock.h"
@@ -75,14 +83,14 @@ class PersistentMemoryAllocatorTest : public testing::Test {
 
   PersistentMemoryAllocatorTest() {
     kAllocAlignment = GetAllocAlignment();
-    mem_segment_.reset(new char[TEST_MEMORY_SIZE]);
+    mem_segment_ = base::HeapArray<char>::Uninit(TEST_MEMORY_SIZE);
   }
 
   void SetUp() override {
     allocator_.reset();
-    ::memset(mem_segment_.get(), 0, TEST_MEMORY_SIZE);
+    ::memset(mem_segment_.data(), 0, TEST_MEMORY_SIZE);
     allocator_ = std::make_unique<PersistentMemoryAllocator>(
-        mem_segment_.get(), TEST_MEMORY_SIZE, TEST_MEMORY_PAGE, TEST_ID,
+        mem_segment_.data(), TEST_MEMORY_SIZE, TEST_MEMORY_PAGE, TEST_ID,
         TEST_NAME, PersistentMemoryAllocator::kReadWrite);
   }
 
@@ -105,7 +113,7 @@ class PersistentMemoryAllocatorTest : public testing::Test {
   }
 
  protected:
-  std::unique_ptr<char[]> mem_segment_;
+  base::HeapArray<char> mem_segment_;
   std::unique_ptr<PersistentMemoryAllocator> allocator_;
 };
 
@@ -231,7 +239,7 @@ TEST_F(PersistentMemoryAllocatorTest, AllocateAndIterate) {
 
   // Create second allocator (read/write) using the same memory segment.
   std::unique_ptr<PersistentMemoryAllocator> allocator2(
-      new PersistentMemoryAllocator(mem_segment_.get(), TEST_MEMORY_SIZE,
+      new PersistentMemoryAllocator(mem_segment_.data(), TEST_MEMORY_SIZE,
                                     TEST_MEMORY_PAGE, 0, "",
                                     PersistentMemoryAllocator::kReadWrite));
   EXPECT_EQ(TEST_ID, allocator2->Id());
@@ -247,7 +255,7 @@ TEST_F(PersistentMemoryAllocatorTest, AllocateAndIterate) {
 
   // Create a third allocator (read-only) using the same memory segment.
   std::unique_ptr<const PersistentMemoryAllocator> allocator3(
-      new PersistentMemoryAllocator(mem_segment_.get(), TEST_MEMORY_SIZE,
+      new PersistentMemoryAllocator(mem_segment_.data(), TEST_MEMORY_SIZE,
                                     TEST_MEMORY_PAGE, 0, "",
                                     PersistentMemoryAllocator::kReadOnly));
   EXPECT_EQ(TEST_ID, allocator3->Id());
@@ -344,7 +352,7 @@ class AllocatorThread : public SimpleThread {
 // Test parallel allocation/iteration and ensure consistency across all
 // instances.
 TEST_F(PersistentMemoryAllocatorTest, ParallelismTest) {
-  void* memory = mem_segment_.get();
+  void* memory = mem_segment_.data();
   AllocatorThread t1("t1", memory, TEST_MEMORY_SIZE, TEST_MEMORY_PAGE);
   AllocatorThread t2("t2", memory, TEST_MEMORY_SIZE, TEST_MEMORY_PAGE);
   AllocatorThread t3("t3", memory, TEST_MEMORY_SIZE, TEST_MEMORY_PAGE);
@@ -374,6 +382,51 @@ TEST_F(PersistentMemoryAllocatorTest, ParallelismTest) {
   EXPECT_EQ(CountIterables(),
             t1.iterable() + t2.iterable() + t3.iterable() + t4.iterable() +
             t5.iterable());
+}
+
+// A simple thread that makes all objects passed iterable.
+class MakeIterableThread : public SimpleThread {
+ public:
+  MakeIterableThread(const std::string& name,
+                     PersistentMemoryAllocator* allocator,
+                     span<Reference> refs)
+      : SimpleThread(name, Options()), allocator_(allocator), refs_(refs) {}
+
+  void Run() override {
+    for (Reference ref : refs_) {
+      allocator_->MakeIterable(ref);
+    }
+  }
+
+ private:
+  raw_ptr<PersistentMemoryAllocator> allocator_;
+  raw_span<Reference> refs_;
+};
+
+// Verifies that multiple threads making the same objects iterable doesn't cause
+// any problems.
+TEST_F(PersistentMemoryAllocatorTest, MakeIterableSameRefsTest) {
+  std::vector<Reference> refs;
+
+  // Fill up the allocator until it is full.
+  Reference ref;
+  while ((ref = allocator_->Allocate(/*size=*/1, /*type=*/0)) != 0) {
+    refs.push_back(ref);
+  }
+
+  ASSERT_TRUE(allocator_->IsFull());
+  ASSERT_FALSE(allocator_->IsCorrupt());
+
+  // Run two threads in parallel to make all objects in the allocator iterable.
+  MakeIterableThread t1("t1", allocator_.get(), refs);
+  MakeIterableThread t2("t2", allocator_.get(), refs);
+  t1.Start();
+  t2.Start();
+
+  t1.Join();
+  t2.Join();
+
+  EXPECT_EQ(CountIterables(), refs.size());
 }
 
 // A simple thread that counts objects by iterating through an allocator.
@@ -501,9 +554,11 @@ TEST_F(PersistentMemoryAllocatorTest, DelayedAllocationTest) {
   std::atomic<Reference> ref1, ref2;
   ref1.store(0, std::memory_order_relaxed);
   ref2.store(0, std::memory_order_relaxed);
-  DelayedPersistentAllocation da1(allocator_.get(), &ref1, 1001, 100);
-  DelayedPersistentAllocation da2a(allocator_.get(), &ref2, 2002, 200, 0);
-  DelayedPersistentAllocation da2b(allocator_.get(), &ref2, 2002, 200, 5);
+  DelayedPersistentAllocation da1(allocator_.get(), &ref1, 1001u, 100u);
+  DelayedPersistentAllocation da2a(allocator_.get(), &ref2, 2002u, 200u, 0u);
+  DelayedPersistentAllocation da2b(allocator_.get(), &ref2, 2002u, 200u, 5u);
+  DelayedPersistentAllocation da2c(allocator_.get(), &ref2, 2002u, 200u, 8u);
+  DelayedPersistentAllocation da2d(allocator_.get(), &ref2, 2002u, 200u, 13u);
 
   // Nothing should yet have been allocated.
   uint32_t type;
@@ -512,10 +567,10 @@ TEST_F(PersistentMemoryAllocatorTest, DelayedAllocationTest) {
 
   // Do first delayed allocation and check that a new persistent object exists.
   EXPECT_EQ(0U, da1.reference());
-  void* mem1 = da1.Get();
-  ASSERT_TRUE(mem1);
+  span<uint8_t> mem1 = da1.Get<uint8_t>();
+  ASSERT_FALSE(mem1.empty());
   EXPECT_NE(0U, da1.reference());
-  EXPECT_EQ(allocator_->GetAsReference(mem1, 1001),
+  EXPECT_EQ(allocator_->GetAsReference(mem1.data(), 1001u),
             ref1.load(std::memory_order_relaxed));
   allocator_->MakeIterable(da1.reference());
   EXPECT_NE(0U, iter.GetNext(&type));
@@ -523,9 +578,9 @@ TEST_F(PersistentMemoryAllocatorTest, DelayedAllocationTest) {
   EXPECT_EQ(0U, iter.GetNext(&type));
 
   // Do second delayed allocation and check.
-  void* mem2a = da2a.Get();
-  ASSERT_TRUE(mem2a);
-  EXPECT_EQ(allocator_->GetAsReference(mem2a, 2002),
+  span<uint8_t> mem2a = da2a.Get<uint8_t>();
+  ASSERT_EQ(mem2a.size(), 200u);
+  EXPECT_EQ(allocator_->GetAsReference(mem2a.data(), 2002u),
             ref2.load(std::memory_order_relaxed));
   allocator_->MakeIterable(da2a.reference());
   EXPECT_NE(0U, iter.GetNext(&type));
@@ -533,12 +588,25 @@ TEST_F(PersistentMemoryAllocatorTest, DelayedAllocationTest) {
   EXPECT_EQ(0U, iter.GetNext(&type));
 
   // Third allocation should just return offset into second allocation.
-  void* mem2b = da2b.Get();
-  ASSERT_TRUE(mem2b);
+  span<uint8_t> mem2b = da2b.Get<uint8_t>();
+  ASSERT_EQ(mem2b.size(), 200u - 5u);
   allocator_->MakeIterable(da2b.reference());
   EXPECT_EQ(0U, iter.GetNext(&type));
-  EXPECT_EQ(reinterpret_cast<uintptr_t>(mem2a) + 5,
-            reinterpret_cast<uintptr_t>(mem2b));
+  EXPECT_EQ(reinterpret_cast<uintptr_t>(mem2a.data()) + 5u,
+            reinterpret_cast<uintptr_t>(mem2b.data()));
+
+  // Test Get<>() with a larger type than uint8_t, which gives us another
+  // span into the second allocation.
+  span<uint32_t> mem2c = da2c.Get<uint32_t>();
+  ASSERT_EQ(mem2c.size(), (200u - 8u) / sizeof(uint32_t));
+  allocator_->MakeIterable(da2c.reference());
+  EXPECT_EQ(0U, iter.GetNext(&type));
+  EXPECT_EQ(reinterpret_cast<uintptr_t>(mem2a.data()) + 8u,
+            reinterpret_cast<uintptr_t>(mem2c.data()));
+
+  // This allocation offset is misaligned for the uint32_t type, so it should
+  // not succeed.
+  EXPECT_CHECK_DEATH(da2d.Get<uint32_t>());
 }
 
 // This test doesn't verify anything other than it doesn't crash. Its goal
@@ -551,7 +619,7 @@ TEST_F(PersistentMemoryAllocatorTest, DelayedAllocationTest) {
 #define MAYBE_CorruptionTest CorruptionTest
 #endif
 TEST_F(PersistentMemoryAllocatorTest, MAYBE_CorruptionTest) {
-  char* memory = mem_segment_.get();
+  char* memory = mem_segment_.data();
   AllocatorThread t1("t1", memory, TEST_MEMORY_SIZE, TEST_MEMORY_PAGE);
   AllocatorThread t2("t2", memory, TEST_MEMORY_SIZE, TEST_MEMORY_PAGE);
   AllocatorThread t3("t3", memory, TEST_MEMORY_SIZE, TEST_MEMORY_PAGE);
@@ -597,7 +665,7 @@ TEST_F(PersistentMemoryAllocatorTest, MaliciousTest) {
   // Create loop in iterable list and ensure it doesn't hang. The return value
   // from CountIterables() in these cases is unpredictable. If there is a
   // failure, the call will hang and the test killed for taking too long.
-  uint32_t* header4 = (uint32_t*)(mem_segment_.get() + block4);
+  uint32_t* header4 = (uint32_t*)(mem_segment_.data() + block4);
   EXPECT_EQ(block5, header4[3]);
   header4[3] = block4;
   CountIterables();  // loop: 1-2-3-4-4
@@ -857,8 +925,8 @@ TEST(FilePersistentMemoryAllocatorTest, AcceptableTest) {
   local.MakeIterable(local.Allocate(1, 1));
   local.MakeIterable(local.Allocate(11, 11));
   const size_t minsize = local.used();
-  std::unique_ptr<char[]> garbage(new char[minsize]);
-  RandBytes(garbage.get(), minsize);
+  auto garbage = HeapArray<uint8_t>::Uninit(minsize);
+  RandBytes(garbage);
 
   std::unique_ptr<MemoryMappedFile> mmfile;
   char filename[100];
@@ -922,7 +990,7 @@ TEST(FilePersistentMemoryAllocatorTest, AcceptableTest) {
     {
       File writer(file_path, File::FLAG_CREATE | File::FLAG_WRITE);
       ASSERT_TRUE(writer.IsValid());
-      writer.Write(0, (const char*)garbage.get(), filesize);
+      writer.Write(0, garbage.first(filesize));
     }
     ASSERT_TRUE(PathExists(file_path));
 

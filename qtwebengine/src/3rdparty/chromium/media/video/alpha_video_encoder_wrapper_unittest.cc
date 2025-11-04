@@ -87,12 +87,12 @@ class AlphaVideoEncoderWrapperTest
     uint32_t y = color & 0xFF;
     uint32_t u = (color >> 8) & 0xFF;
     uint32_t v = (color >> 16) & 0xFF;
-    libyuv::I420Rect(frame->writable_data(VideoFrame::kYPlane),
-                     frame->stride(VideoFrame::kYPlane),
-                     frame->writable_data(VideoFrame::kUPlane),
-                     frame->stride(VideoFrame::kUPlane),
-                     frame->writable_data(VideoFrame::kVPlane),
-                     frame->stride(VideoFrame::kVPlane),
+    libyuv::I420Rect(frame->writable_data(VideoFrame::Plane::kY),
+                     frame->stride(VideoFrame::Plane::kY),
+                     frame->writable_data(VideoFrame::Plane::kU),
+                     frame->stride(VideoFrame::Plane::kU),
+                     frame->writable_data(VideoFrame::Plane::kV),
+                     frame->stride(VideoFrame::Plane::kV),
                      frame->visible_rect().x(),       // x
                      frame->visible_rect().y(),       // y
                      frame->visible_rect().width(),   // width
@@ -100,8 +100,8 @@ class AlphaVideoEncoderWrapperTest
                      y,                               // Y color
                      u,                               // U color
                      v);                              // V color
-    libyuv::SetPlane(frame->writable_data(VideoFrame::kAPlane),
-                     frame->stride(VideoFrame::kAPlane),
+    libyuv::SetPlane(frame->writable_data(VideoFrame::Plane::kA),
+                     frame->stride(VideoFrame::Plane::kA),
                      frame->visible_rect().width(),   // width
                      frame->visible_rect().height(),  // height
                      color);
@@ -162,7 +162,7 @@ TEST_P(AlphaVideoEncoderWrapperTest, InitializeAndFlush) {
   options.frame_size = gfx::Size(640, 480);
   bool output_called = false;
   VideoEncoder::OutputCB output_cb = base::BindLambdaForTesting(
-      [&](VideoEncoderOutput, absl::optional<VideoEncoder::CodecDescription>) {
+      [&](VideoEncoderOutput, std::optional<VideoEncoder::CodecDescription>) {
         output_called = true;
       });
 
@@ -185,7 +185,7 @@ TEST_P(AlphaVideoEncoderWrapperTest, ForceAllKeyFrames) {
 
   VideoEncoder::OutputCB output_cb = base::BindLambdaForTesting(
       [&](VideoEncoderOutput output,
-          absl::optional<VideoEncoder::CodecDescription> desc) {
+          std::optional<VideoEncoder::CodecDescription> desc) {
         EXPECT_TRUE(output.key_frame);
         outputs_count++;
       });
@@ -222,11 +222,9 @@ TEST_P(AlphaVideoEncoderWrapperTest, OutputCountEqualsFrameCount) {
 
   VideoEncoder::OutputCB output_cb = base::BindLambdaForTesting(
       [&](VideoEncoderOutput output,
-          absl::optional<VideoEncoder::CodecDescription> desc) {
-        EXPECT_NE(output.data, nullptr);
-        EXPECT_GT(output.size, 0u);
-        EXPECT_NE(output.alpha_data, nullptr);
-        EXPECT_GT(output.alpha_size, 0u);
+          std::optional<VideoEncoder::CodecDescription> desc) {
+        EXPECT_FALSE(output.data.empty());
+        EXPECT_FALSE(output.alpha_data.empty());
         EXPECT_EQ(output.timestamp, frame_duration * outputs_count);
         outputs_count++;
       });
@@ -264,17 +262,16 @@ TEST_P(AlphaVideoEncoderWrapperTest, EncodeAndDecode) {
 
   VideoEncoder::OutputCB encoder_output_cb = base::BindLambdaForTesting(
       [&, this](VideoEncoderOutput output,
-                absl::optional<VideoEncoder::CodecDescription> desc) {
-        auto buffer =
-            DecoderBuffer::FromArray(std::move(output.data), output.size);
+                std::optional<VideoEncoder::CodecDescription> desc) {
+        auto buffer = DecoderBuffer::FromArray(std::move(output.data));
         buffer->set_timestamp(output.timestamp);
         buffer->set_is_key_frame(output.key_frame);
-        EXPECT_NE(output.alpha_data, nullptr);
+        EXPECT_FALSE(output.alpha_data.empty());
         std::vector<uint8_t>& buf_alpha = buffer->WritableSideData().alpha_data;
         // Side data id for alpha. Big endian one.
         buf_alpha.assign({0, 0, 0, 0, 0, 0, 0, 1});
-        buf_alpha.insert(buf_alpha.end(), output.alpha_data.get(),
-                         output.alpha_data.get() + output.alpha_size);
+        buf_alpha.insert(buf_alpha.end(), output.alpha_data.begin(),
+                         output.alpha_data.end());
         decoder_->Decode(std::move(buffer), base::DoNothing());
       });
 

@@ -7,12 +7,14 @@
 #include <CoreFoundation/CoreFoundation.h>
 #import <Foundation/Foundation.h>
 
+#include <optional>
+#include <string_view>
+
 #import "base/apple/foundation_util.h"
 #include "base/apple/scoped_cftyperef.h"
 #include "base/files/file_path.h"
 #include "crypto/sha2.h"
 #include "net/cert/asn1_util.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 
 namespace device_signals {
 
@@ -36,10 +38,10 @@ base::FilePath GetBinaryFilePath(const base::FilePath& file_path) {
 }
 
 // Attempts to parse out the bundle path from a binary absolute path. Returns
-// absl::nullopt if there is no bundle path in `file_path`. Since bundle paths
+// std::nullopt if there is no bundle path in `file_path`. Since bundle paths
 // are solely used to get information about the bundle, the "path X is a bundle"
 // heuristic is based on whether bundle information is available at path X.
-absl::optional<base::FilePath> GetBundleFilePath(
+std::optional<base::FilePath> GetBundleFilePath(
     const base::FilePath& file_path) {
   @autoreleasepool {
     base::FilePath current_path = file_path;
@@ -54,7 +56,7 @@ absl::optional<base::FilePath> GetBundleFilePath(
       current_path = current_path.DirName();
     } while (current_path.GetComponents().size() > 1);
 
-    return absl::nullopt;
+    return std::nullopt;
   }
 }
 
@@ -78,7 +80,7 @@ bool MacPlatformDelegate::ResolveFilePath(const base::FilePath& file_path,
   return true;
 }
 
-absl::optional<PlatformDelegate::ProductMetadata>
+std::optional<PlatformDelegate::ProductMetadata>
 MacPlatformDelegate::GetProductMetadata(const base::FilePath& file_path) {
   // The implementation in BasePlatformDelegate requires that the given path
   // points to a bundle.
@@ -87,7 +89,7 @@ MacPlatformDelegate::GetProductMetadata(const base::FilePath& file_path) {
       bundle_path.value_or(file_path));
 }
 
-absl::optional<PlatformDelegate::SigningCertificatesPublicKeys>
+std::optional<PlatformDelegate::SigningCertificatesPublicKeys>
 MacPlatformDelegate::GetSigningCertificatesPublicKeys(
     const base::FilePath& file_path) {
   SigningCertificatesPublicKeys public_keys;
@@ -129,9 +131,9 @@ MacPlatformDelegate::GetSigningCertificatesPublicKeys(
     return public_keys;
   }
 
-  base::StringPiece spki_bytes;
+  std::string_view spki_bytes;
   if (!net::asn1::ExtractSPKIFromDERCert(
-          base::StringPiece(
+          std::string_view(
               reinterpret_cast<const char*>(CFDataGetBytePtr(der_data.get())),
               CFDataGetLength(der_data.get())),
           &spki_bytes)) {

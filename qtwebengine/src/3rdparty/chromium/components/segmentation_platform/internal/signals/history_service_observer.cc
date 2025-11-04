@@ -46,11 +46,11 @@ void HistoryServiceObserver::OnURLVisited(
   history_delegate_->OnUrlAdded(url_row.url());
 }
 
-void HistoryServiceObserver::OnURLsDeleted(
+void HistoryServiceObserver::OnHistoryDeletions(
     history::HistoryService* history_service,
     const history::DeletionInfo& deletion_info) {
   TRACE_EVENT0("segmentation_platform",
-               "HistoryServiceObserver::OnURLsDeleted");
+               "HistoryServiceObserver::OnHistoryDeletions");
 
   // If the history deletion was not from expiration or if the whole history
   // database was removed, delete the segment results computed based on URL
@@ -95,12 +95,12 @@ void HistoryServiceObserver::DeleteResultsForHistoryBasedSegments() {
   for (const auto segment_id : *history_based_segments_) {
     // For Server models.
     storage_service_->segment_info_database()->SaveSegmentResult(
-        segment_id, proto::ModelSource::SERVER_MODEL_SOURCE, absl::nullopt,
+        segment_id, proto::ModelSource::SERVER_MODEL_SOURCE, std::nullopt,
         base::DoNothing());
 
     // For Default models.
     storage_service_->segment_info_database()->SaveSegmentResult(
-        segment_id, proto::ModelSource::DEFAULT_MODEL_SOURCE, absl::nullopt,
+        segment_id, proto::ModelSource::DEFAULT_MODEL_SOURCE, std::nullopt,
         base::DoNothing());
   }
 

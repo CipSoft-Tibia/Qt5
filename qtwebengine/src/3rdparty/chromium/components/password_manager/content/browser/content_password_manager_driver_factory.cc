@@ -42,7 +42,7 @@ void ContentPasswordManagerDriverFactory::BindPasswordManagerDriver(
   // the request will be just dropped, this would cause closing the message pipe
   // which would raise connection error to peer side.
   // Peer side could reconnect later when needed.
-  // TODO(https://crbug.com/1286342): WebContents should never be null here; the
+  // TODO(crbug.com/40815551): WebContents should never be null here; the
   // helper function above only returns a null WebContents if
   // `render_frame_host` is null, but that should never be the case here.
   if (!web_contents)
@@ -96,18 +96,11 @@ void ContentPasswordManagerDriverFactory::DidFinishNavigation(
   if (navigation->IsSameDocument() || !navigation->HasCommitted()) {
     return;
   }
+  GetDriverForFrame(navigation->GetRenderFrameHost())->DidNavigate();
 
-  // Unbind receiver if the frame is anonymous, noted that anonymous frames are
-  // always iframes.
   if (!navigation->IsInPrimaryMainFrame()) {
-    if (auto* driver = GetDriverForFrame(navigation->GetRenderFrameHost())) {
-      if (navigation->GetRenderFrameHost()->IsCredentialless()) {
-        driver->UnbindReceiver();
-      }
-    }
     return;
   }
-
   // Clear page specific data after main frame navigation.
   NotifyDidNavigateMainFrame(navigation->IsRendererInitiated(),
                              navigation->GetPageTransition(),

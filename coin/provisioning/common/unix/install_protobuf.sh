@@ -92,6 +92,8 @@ cmake "$targetDir" -G"Ninja Multi-Config" \
 ninja all:all
 sudo env "PATH=$PATH" ninja install:all
 
+SetEnvVar "protobuf_ROOT" "$installPrefix"
+
 # Refresh shared library cache if OS isn't macOS
 if uname -a |grep -qv "Darwin"; then
     sudo ldconfig

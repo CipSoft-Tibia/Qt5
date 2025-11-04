@@ -80,7 +80,7 @@ std::string Message::GetMessageTypeAsString() {
     case MESSAGE_ERROR:
       return "MESSAGE_ERROR";
   }
-  NOTREACHED();
+  NOTREACHED_IN_MIGRATION();
   return std::string();
 }
 
@@ -513,10 +513,10 @@ void MessageWriter::AppendDouble(double value) {
   AppendBasic(DBUS_TYPE_DOUBLE, &value);
 }
 
-void MessageWriter::AppendString(std::string_view value) {
+void MessageWriter::AppendString(const std::string& value) {
   // D-Bus Specification (0.19) says a string "must be valid UTF-8".
   CHECK(base::IsStringUTF8(value));
-  const char* pointer = value.data() ? value.data() : "";
+  const char* pointer = value.c_str();
   AppendBasic(DBUS_TYPE_STRING, &pointer);
   // TODO(satorux): It may make sense to return an error here, as the
   // input string can be large. If needed, we could add something like

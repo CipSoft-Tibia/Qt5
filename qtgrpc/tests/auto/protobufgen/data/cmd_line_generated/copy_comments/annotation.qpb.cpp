@@ -88,6 +88,10 @@ AnnotatedMessage1 &AnnotatedMessage1::operator =(const AnnotatedMessage1 &other)
 }
 AnnotatedMessage1::AnnotatedMessage1(AnnotatedMessage1 &&other) noexcept
     = default;
+AnnotatedMessage1::operator QVariant() const
+{
+    return QVariant::fromValue(*this);
+}
 bool comparesEqual(const AnnotatedMessage1 &lhs, const AnnotatedMessage1 &rhs) noexcept
 {
     return operator ==(static_cast<const QProtobufMessage&>(lhs),
@@ -188,6 +192,10 @@ AnnotatedMessage2 &AnnotatedMessage2::operator =(const AnnotatedMessage2 &other)
 }
 AnnotatedMessage2::AnnotatedMessage2(AnnotatedMessage2 &&other) noexcept
     = default;
+AnnotatedMessage2::operator QVariant() const
+{
+    return QVariant::fromValue(*this);
+}
 bool comparesEqual(const AnnotatedMessage2 &lhs, const AnnotatedMessage2 &rhs) noexcept
 {
     return operator ==(static_cast<const QProtobufMessage&>(lhs),
@@ -288,6 +296,10 @@ AnnotatedMessage3 &AnnotatedMessage3::operator =(const AnnotatedMessage3 &other)
 }
 AnnotatedMessage3::AnnotatedMessage3(AnnotatedMessage3 &&other) noexcept
     = default;
+AnnotatedMessage3::operator QVariant() const
+{
+    return QVariant::fromValue(*this);
+}
 bool comparesEqual(const AnnotatedMessage3 &lhs, const AnnotatedMessage3 &rhs) noexcept
 {
     return operator ==(static_cast<const QProtobufMessage&>(lhs),
@@ -388,6 +400,10 @@ AnnotatedMessage4 &AnnotatedMessage4::operator =(const AnnotatedMessage4 &other)
 }
 AnnotatedMessage4::AnnotatedMessage4(AnnotatedMessage4 &&other) noexcept
     = default;
+AnnotatedMessage4::operator QVariant() const
+{
+    return QVariant::fromValue(*this);
+}
 bool comparesEqual(const AnnotatedMessage4 &lhs, const AnnotatedMessage4 &rhs) noexcept
 {
     return operator ==(static_cast<const QProtobufMessage&>(lhs),
@@ -488,6 +504,10 @@ AnnotatedMessage5 &AnnotatedMessage5::operator =(const AnnotatedMessage5 &other)
 }
 AnnotatedMessage5::AnnotatedMessage5(AnnotatedMessage5 &&other) noexcept
     = default;
+AnnotatedMessage5::operator QVariant() const
+{
+    return QVariant::fromValue(*this);
+}
 bool comparesEqual(const AnnotatedMessage5 &lhs, const AnnotatedMessage5 &rhs) noexcept
 {
     return operator ==(static_cast<const QProtobufMessage&>(lhs),
@@ -588,6 +608,10 @@ AnnotatedMessage6 &AnnotatedMessage6::operator =(const AnnotatedMessage6 &other)
 }
 AnnotatedMessage6::AnnotatedMessage6(AnnotatedMessage6 &&other) noexcept
     = default;
+AnnotatedMessage6::operator QVariant() const
+{
+    return QVariant::fromValue(*this);
+}
 bool comparesEqual(const AnnotatedMessage6 &lhs, const AnnotatedMessage6 &rhs) noexcept
 {
     return operator ==(static_cast<const QProtobufMessage&>(lhs),
@@ -688,6 +712,10 @@ AnnotatedMessage7 &AnnotatedMessage7::operator =(const AnnotatedMessage7 &other)
 }
 AnnotatedMessage7::AnnotatedMessage7(AnnotatedMessage7 &&other) noexcept
     = default;
+AnnotatedMessage7::operator QVariant() const
+{
+    return QVariant::fromValue(*this);
+}
 bool comparesEqual(const AnnotatedMessage7 &lhs, const AnnotatedMessage7 &rhs) noexcept
 {
     return operator ==(static_cast<const QProtobufMessage&>(lhs),
@@ -788,6 +816,10 @@ AnnotatedMessage8 &AnnotatedMessage8::operator =(const AnnotatedMessage8 &other)
 }
 AnnotatedMessage8::AnnotatedMessage8(AnnotatedMessage8 &&other) noexcept
     = default;
+AnnotatedMessage8::operator QVariant() const
+{
+    return QVariant::fromValue(*this);
+}
 bool comparesEqual(const AnnotatedMessage8 &lhs, const AnnotatedMessage8 &rhs) noexcept
 {
     return operator ==(static_cast<const QProtobufMessage&>(lhs),
@@ -888,6 +920,10 @@ AnnotatedMessage9 &AnnotatedMessage9::operator =(const AnnotatedMessage9 &other)
 }
 AnnotatedMessage9::AnnotatedMessage9(AnnotatedMessage9 &&other) noexcept
     = default;
+AnnotatedMessage9::operator QVariant() const
+{
+    return QVariant::fromValue(*this);
+}
 bool comparesEqual(const AnnotatedMessage9 &lhs, const AnnotatedMessage9 &rhs) noexcept
 {
     return operator ==(static_cast<const QProtobufMessage&>(lhs),

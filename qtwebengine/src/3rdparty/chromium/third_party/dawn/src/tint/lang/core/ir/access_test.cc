@@ -28,7 +28,7 @@
 #include "src/tint/lang/core/ir/access.h"
 
 #include "gmock/gmock.h"
-#include "gtest/gtest-spi.h"
+#include "gtest/gtest.h"
 #include "src/tint/lang/core/ir/ir_helper_test.h"
 
 using namespace tint::core::fluent_types;     // NOLINT
@@ -38,6 +38,7 @@ namespace tint::core::ir {
 namespace {
 
 using IR_AccessTest = IRTestHelper;
+using IR_AccessDeathTest = IR_AccessTest;
 
 TEST_F(IR_AccessTest, SetsUsage) {
     auto* type = ty.ptr<function, i32>();
@@ -45,8 +46,8 @@ TEST_F(IR_AccessTest, SetsUsage) {
     auto* idx = b.Constant(u32(1));
     auto* a = b.Access(ty.i32(), var, idx);
 
-    EXPECT_THAT(var->Result(0)->Usages(), testing::UnorderedElementsAre(Usage{a, 0u}));
-    EXPECT_THAT(idx->Usages(), testing::UnorderedElementsAre(Usage{a, 1u}));
+    EXPECT_THAT(var->Result(0)->UsagesUnsorted(), testing::UnorderedElementsAre(Usage{a, 0u}));
+    EXPECT_THAT(idx->UsagesUnsorted(), testing::UnorderedElementsAre(Usage{a, 1u}));
 }
 
 TEST_F(IR_AccessTest, Result) {
@@ -61,8 +62,8 @@ TEST_F(IR_AccessTest, Result) {
     EXPECT_EQ(a, a->Result(0)->Instruction());
 }
 
-TEST_F(IR_AccessTest, Fail_NullType) {
-    EXPECT_FATAL_FAILURE(
+TEST_F(IR_AccessDeathTest, Fail_NullType) {
+    EXPECT_DEATH_IF_SUPPORTED(
         {
             Module mod;
             Builder b{mod};
@@ -70,7 +71,7 @@ TEST_F(IR_AccessTest, Fail_NullType) {
             auto* var = b.Var(ty);
             b.Access(nullptr, var, u32(1));
         },
-        "");
+        "internal compiler error");
 }
 
 TEST_F(IR_AccessTest, Clone) {

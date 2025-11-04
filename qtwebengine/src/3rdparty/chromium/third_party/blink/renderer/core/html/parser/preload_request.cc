@@ -54,9 +54,11 @@ bool PreloadRequest::ExclusionInfo::ShouldExclude(
 }
 
 KURL PreloadRequest::CompleteURL(Document* document) {
-  if (!base_url_.IsEmpty())
-    return document->CompleteURLWithOverride(resource_url_, base_url_);
-  return document->CompleteURL(resource_url_);
+  if (!base_url_.IsEmpty()) {
+    return document->CompleteURLWithOverride(resource_url_, base_url_,
+                                             Document::kIsPreload);
+  }
+  return document->CompleteURL(resource_url_, Document::kIsPreload);
 }
 
 // static
@@ -68,8 +70,8 @@ std::unique_ptr<PreloadRequest> PreloadRequest::CreateIfNeeded(
     const network::mojom::ReferrerPolicy referrer_policy,
     ResourceFetcher::IsImageSet is_image_set,
     const ExclusionInfo* exclusion_info,
-    absl::optional<float> resource_width,
-    absl::optional<float> resource_height,
+    std::optional<float> resource_width,
+    std::optional<float> resource_height,
     RequestType request_type) {
   // Never preload data URLs. We also disallow relative ref URLs which become
   // data URLs if the document's URL is a data URL. We don't want to create
@@ -116,7 +118,7 @@ Resource* PreloadRequest::Start(Document* document) {
   if (is_attribution_reporting_eligible_img_or_script_ &&
       document->domWindow()->GetFrame()->GetAttributionSrcLoader()->CanRegister(
           url, /*element=*/nullptr,
-          /*request_id=*/absl::nullopt, /*log_issues=*/false)) {
+          /*request_id=*/std::nullopt, /*log_issues=*/false)) {
     resource_request.SetAttributionReportingEligibility(
         network::mojom::AttributionReportingEligibility::kEventSourceOrTrigger);
   }

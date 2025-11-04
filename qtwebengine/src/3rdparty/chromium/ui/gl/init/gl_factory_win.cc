@@ -10,15 +10,12 @@
 #include "ui/gl/gl_context.h"
 #include "ui/gl/gl_context_egl.h"
 #include "ui/gl/gl_context_stub.h"
-#include "ui/gl/gl_context_wgl.h"
 #include "ui/gl/gl_egl_api_implementation.h"
 #include "ui/gl/gl_implementation.h"
 #include "ui/gl/gl_share_group.h"
 #include "ui/gl/gl_surface.h"
 #include "ui/gl/gl_surface_egl.h"
 #include "ui/gl/gl_surface_stub.h"
-#include "ui/gl/gl_surface_wgl.h"
-#include "ui/gl/gl_wgl_api_implementation.h"
 #include "ui/gl/vsync_provider_win.h"
 
 namespace gl {
@@ -26,7 +23,6 @@ namespace init {
 
 std::vector<GLImplementationParts> GetAllowedGLImplementations() {
   std::vector<GLImplementationParts> impls;
-  impls.emplace_back(kGLImplementationDesktopGL);
   impls.emplace_back(kGLImplementationEGLANGLE);
   return impls;
 }
@@ -34,8 +30,6 @@ std::vector<GLImplementationParts> GetAllowedGLImplementations() {
 bool GetGLWindowSystemBindingInfo(const GLVersionInfo& gl_info,
                                   GLWindowSystemBindingInfo* info) {
   switch (GetGLImplementation()) {
-    case kGLImplementationDesktopGL:
-      return GetGLWindowSystemBindingInfoWGL(info);
     case kGLImplementationEGLANGLE:
       return GetGLWindowSystemBindingInfoEGL(info);
     default:
@@ -43,7 +37,6 @@ bool GetGLWindowSystemBindingInfo(const GLVersionInfo& gl_info,
   }
 }
 
-#if !BUILDFLAG(IS_QTWEBENGINE)
 scoped_refptr<GLContext> CreateGLContext(GLShareGroup* share_group,
                                          GLSurface* compatible_surface,
                                          const GLContextAttribs& attribs) {
@@ -52,21 +45,22 @@ scoped_refptr<GLContext> CreateGLContext(GLShareGroup* share_group,
     case kGLImplementationEGLANGLE:
       return InitializeGLContext(new GLContextEGL(share_group),
                                  compatible_surface, attribs);
-    case kGLImplementationDesktopGL:
-      return InitializeGLContext(new GLContextWGL(share_group),
-                                 compatible_surface, attribs);
     case kGLImplementationMockGL:
-      return new GLContextStub(share_group);
     case kGLImplementationStubGL: {
       scoped_refptr<GLContextStub> stub_context =
-          new GLContextStub(share_group);
-      stub_context->SetUseStubApi(true);
+          base::MakeRefCounted<GLContextStub>(share_group);
+      if (GetGLImplementation() == kGLImplementationStubGL) {
+        stub_context->SetUseStubApi(true);
+      }
+      // The stub ctx needs to be initialized so that the gl::GLContext can
+      // store the |compatible_surface|.
+      stub_context->Initialize(compatible_surface, attribs);
       return stub_context;
     }
     case kGLImplementationDisabled:
       return nullptr;
     default:
-      DUMP_WILL_BE_NOTREACHED_NORETURN();
+      DUMP_WILL_BE_NOTREACHED();
       return nullptr;
   }
 }
@@ -81,14 +75,11 @@ scoped_refptr<GLSurface> CreateViewGLSurface(GLDisplay* display,
           display->GetAs<gl::GLDisplayEGL>(), window,
           std::make_unique<VSyncProviderWin>(window)));
     }
-    case kGLImplementationDesktopGL:
-      return InitializeGLSurface(
-          base::MakeRefCounted<NativeViewGLSurfaceWGL>(window));
     case kGLImplementationMockGL:
     case kGLImplementationStubGL:
       return InitializeGLSurface(new GLSurfaceStub());
     default:
-      NOTREACHED();
+      NOTREACHED_IN_MIGRATION();
       return nullptr;
   }
 }
@@ -106,25 +97,19 @@ scoped_refptr<GLSurface> CreateOffscreenGLSurface(GLDisplay* display,
         return InitializeGLSurface(new PbufferGLSurfaceEGL(display_egl, size));
       }
     }
-    case kGLImplementationDesktopGL:
-      return InitializeGLSurfaceWithFormat(new PbufferGLSurfaceWGL(size));
     case kGLImplementationMockGL:
     case kGLImplementationStubGL:
       return InitializeGLSurface(new GLSurfaceStub());
     default:
-      NOTREACHED();
+      NOTREACHED_IN_MIGRATION();
       return nullptr;
   }
 }
-#endif  // !BUILDFLAG(IS_QTWEBENGINE)
 
 void SetDisabledExtensionsPlatform(const std::string& disabled_extensions) {
   GLImplementation implementation = GetGLImplementation();
   DCHECK_NE(kGLImplementationNone, implementation);
   switch (implementation) {
-    case kGLImplementationDesktopGL:
-      SetDisabledExtensionsWGL(disabled_extensions);
-      break;
     case kGLImplementationEGLANGLE:
       SetDisabledExtensionsEGL(disabled_extensions);
       break;
@@ -132,7 +117,7 @@ void SetDisabledExtensionsPlatform(const std::string& disabled_extensions) {
     case kGLImplementationStubGL:
       break;
     default:
-      NOTREACHED();
+      NOTREACHED_IN_MIGRATION();
   }
 }
 
@@ -140,8 +125,6 @@ bool InitializeExtensionSettingsOneOffPlatform(GLDisplay* display) {
   GLImplementation implementation = GetGLImplementation();
   DCHECK_NE(kGLImplementationNone, implementation);
   switch (implementation) {
-    case kGLImplementationDesktopGL:
-      return InitializeExtensionSettingsOneOffWGL();
     case kGLImplementationEGLANGLE:
       return InitializeExtensionSettingsOneOffEGL(
           display->GetAs<GLDisplayEGL>());
@@ -149,7 +132,7 @@ bool InitializeExtensionSettingsOneOffPlatform(GLDisplay* display) {
     case kGLImplementationStubGL:
       return true;
     default:
-      NOTREACHED();
+      NOTREACHED_IN_MIGRATION();
       return false;
   }
 }

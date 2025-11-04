@@ -247,6 +247,7 @@ private slots:
     void taskQTBUG_4679_selectToStartEndOfBlock();
 #ifndef QT_NO_CONTEXTMENU
     void taskQTBUG_7902_contextMenuCrash();
+    void contextMenu();
 #endif
     void taskQTBUG_7395_readOnlyShortcut();
     void QTBUG697_paletteCurrentColorGroup();
@@ -4027,6 +4028,20 @@ void tst_QLineEdit::taskQTBUG_7902_contextMenuCrash()
     QTest::qWait(300);
     // No crash, it's allright.
 }
+
+void tst_QLineEdit::contextMenu() // QTBUG-132066
+{
+    QLineEdit le;
+    le.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&le));
+
+    // right-click: QLineEdit::mousePressEvent() should ignore the mouse press;
+    // QLineEdit::contextMenuEvent() should then be called to create and open a context menu
+    QTest::mouseClick(le.windowHandle(), Qt::RightButton, {}, le.rect().center());
+    QTRY_VERIFY(le.findChild<QMenu *>());
+
+    // This test could be extended to check and activate menu items.
+}
 #endif
 
 void tst_QLineEdit::taskQTBUG_7395_readOnlyShortcut()
@@ -5081,7 +5096,7 @@ void tst_QLineEdit::testQuickSelectionWithMouse()
     QVERIFY(lineEdit.selectedText().endsWith(suffix));
     QTest::mouseMove(lineEdit.windowHandle(), center + QPoint(20, 0));
     qCDebug(lcTests) << "Selected text:" << lineEdit.selectedText();
-#ifdef Q_PROCESSOR_ARM_32
+#if defined(Q_PROCESSOR_ARM_32) && !defined(Q_OS_VXWORKS)
     QEXPECT_FAIL("", "Currently fails on gcc-armv7, needs investigation.", Continue);
 #endif
     QCOMPARE(lineEdit.selectedText(), partialSelection);

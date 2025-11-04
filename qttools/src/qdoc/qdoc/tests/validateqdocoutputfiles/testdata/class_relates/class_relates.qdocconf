@@ -1,4 +1,5 @@
 project = ClassRelates
+documentationinheaders = sure
 {headerdirs,sourcedirs} = .
 {HTML.nosubdirs,HTML.outputsubdir} = html
 

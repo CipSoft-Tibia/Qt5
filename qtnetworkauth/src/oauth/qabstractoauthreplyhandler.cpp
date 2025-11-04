@@ -4,9 +4,9 @@
 #include "qabstractoauthreplyhandler.h"
 #include "qabstractoauthreplyhandler_p.h"
 
-Q_LOGGING_CATEGORY(lcReplyHandler, "qt.networkauth.replyhandler")
-
 QT_BEGIN_NAMESPACE
+
+Q_LOGGING_CATEGORY(lcReplyHandler, "qt.networkauth.replyhandler")
 
 /*!
     \class QAbstractOAuthReplyHandler

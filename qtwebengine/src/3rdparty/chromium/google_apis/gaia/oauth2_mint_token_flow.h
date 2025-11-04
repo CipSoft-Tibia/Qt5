@@ -15,6 +15,7 @@
 #include "base/gtest_prod_util.h"
 #include "base/memory/raw_ptr.h"
 #include "base/memory/weak_ptr.h"
+#include "base/time/time.h"
 #include "base/values.h"
 #include "google_apis/gaia/oauth2_api_call_flow.h"
 #include "net/cookies/canonical_cookie.h"
@@ -108,7 +109,8 @@ class COMPONENT_EXPORT(GOOGLE_APIS) OAuth2MintTokenFlow
         base::span<const std::string_view> scopes,
         std::string_view version,
         std::string_view channel,
-        std::string_view device_id = {});
+        std::string_view device_id = {},
+        std::string_view bound_oauth_token = {});
 
     Parameters(Parameters&& other) noexcept;
     Parameters& operator=(Parameters&& other) noexcept;
@@ -131,6 +133,7 @@ class COMPONENT_EXPORT(GOOGLE_APIS) OAuth2MintTokenFlow
     std::string device_id;
     std::string selected_user_id;
     std::string consent_result;
+    std::string bound_oauth_token;
 
    private:
     // Only an explicit copy with `Clone()` is allowed.
@@ -138,13 +141,25 @@ class COMPONENT_EXPORT(GOOGLE_APIS) OAuth2MintTokenFlow
     Parameters& operator=(const Parameters&);
   };
 
+  // Result obtained from a successful OAuth2 flow.
+  struct COMPONENT_EXPORT(GOOGLE_APIS) MintTokenResult {
+    MintTokenResult();
+    ~MintTokenResult();
+
+    MintTokenResult(const MintTokenResult&) = delete;
+    MintTokenResult& operator=(const MintTokenResult&) = delete;
+    MintTokenResult(MintTokenResult&& other) noexcept;
+    MintTokenResult& operator=(MintTokenResult&& other) noexcept;
+
+    std::string access_token;
+    std::set<std::string> granted_scopes;
+    base::TimeDelta time_to_live;
+    bool is_token_encrypted = false;
+  };
+
   class COMPONENT_EXPORT(GOOGLE_APIS) Delegate {
    public:
-    // TODO(alexilin): change `time_to_live` parameter to be `base::TimeDelta`
-    // type.
-    virtual void OnMintTokenSuccess(const std::string& access_token,
-                                    const std::set<std::string>& granted_scopes,
-                                    int time_to_live) {}
+    virtual void OnMintTokenSuccess(const MintTokenResult& result) {}
     virtual void OnMintTokenFailure(const GoogleServiceAuthError& error) {}
     virtual void OnRemoteConsentSuccess(
         const RemoteConsentResolutionData& resolution_data) {}
@@ -165,7 +180,10 @@ class COMPONENT_EXPORT(GOOGLE_APIS) OAuth2MintTokenFlow
  protected:
   // Implementation of template methods in OAuth2ApiCallFlow.
   GURL CreateApiCallUrl() override;
+  net::HttpRequestHeaders CreateApiCallHeaders() override;
   std::string CreateApiCallBody() override;
+  std::string CreateAuthorizationHeaderValue(
+      const std::string& access_token) override;
 
   void ProcessApiCallSuccess(const network::mojom::URLResponseHead* head,
                              std::unique_ptr<std::string> body) override;
@@ -177,37 +195,8 @@ class COMPONENT_EXPORT(GOOGLE_APIS) OAuth2MintTokenFlow
 
  private:
   friend class OAuth2MintTokenFlowTest;
-  FRIEND_TEST_ALL_PREFIXES(OAuth2MintTokenFlowTest, ParseIssueAdviceResponse);
-  FRIEND_TEST_ALL_PREFIXES(OAuth2MintTokenFlowTest, ParseRemoteConsentResponse);
-  FRIEND_TEST_ALL_PREFIXES(OAuth2MintTokenFlowTest,
-                           ParseRemoteConsentResponse_EmptyCookies);
-  FRIEND_TEST_ALL_PREFIXES(OAuth2MintTokenFlowTest,
-                           ParseRemoteConsentResponse_NoResolutionData);
-  FRIEND_TEST_ALL_PREFIXES(OAuth2MintTokenFlowTest,
-                           ParseRemoteConsentResponse_NoUrl);
-  FRIEND_TEST_ALL_PREFIXES(OAuth2MintTokenFlowTest,
-                           ParseRemoteConsentResponse_BadUrl);
-  FRIEND_TEST_ALL_PREFIXES(OAuth2MintTokenFlowTest,
-                           ParseRemoteConsentResponse_NoApproach);
-  FRIEND_TEST_ALL_PREFIXES(OAuth2MintTokenFlowTest,
-                           ParseRemoteConsentResponse_BadApproach);
-  FRIEND_TEST_ALL_PREFIXES(OAuth2MintTokenFlowTest,
-                           ParseRemoteConsentResponse_NoCookies);
-  FRIEND_TEST_ALL_PREFIXES(
-      OAuth2MintTokenFlowTest,
-      ParseRemoteConsentResponse_BadCookie_MissingRequiredField);
-  FRIEND_TEST_ALL_PREFIXES(
-      OAuth2MintTokenFlowTest,
-      ParseRemoteConsentResponse_MissingCookieOptionalField);
-  FRIEND_TEST_ALL_PREFIXES(OAuth2MintTokenFlowTest,
-                           ParseRemoteConsentResponse_BadCookie_BadMaxAge);
-  FRIEND_TEST_ALL_PREFIXES(OAuth2MintTokenFlowTest,
-                           ParseRemoteConsentResponse_BadCookieList);
-  FRIEND_TEST_ALL_PREFIXES(OAuth2MintTokenFlowTest, ParseMintTokenResponse);
 
-  void ReportSuccess(const std::string& access_token,
-                     const std::set<std::string>& granted_scopes,
-                     int time_to_live);
+  void ReportSuccess(const MintTokenResult& result);
   void ReportRemoteConsentSuccess(
       const RemoteConsentResolutionData& resolution_data);
   void ReportFailure(const GoogleServiceAuthError& error);
@@ -216,10 +205,8 @@ class COMPONENT_EXPORT(GOOGLE_APIS) OAuth2MintTokenFlow
       const base::Value::Dict& dict,
       RemoteConsentResolutionData* resolution_data);
 
-  static bool ParseMintTokenResponse(const base::Value::Dict& dict,
-                                     std::string* access_token,
-                                     std::set<std::string>* granted_scopes,
-                                     int* time_to_live);
+  static std::optional<MintTokenResult> ParseMintTokenResponse(
+      const base::Value::Dict& dict);
 
   raw_ptr<Delegate> delegate_;
   Parameters parameters_;

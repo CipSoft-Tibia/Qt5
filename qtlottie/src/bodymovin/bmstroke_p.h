@@ -48,7 +48,7 @@ protected:
     BMProperty4D<QVector4D> m_color;
     Qt::PenCapStyle m_capStyle;
     Qt::PenJoinStyle m_joinStyle;
-    qreal m_miterLimit;
+    qreal m_miterLimit = 0;
     BMProperty<qreal> m_dashOffset;
     BMProperty<qreal> m_dashLength;
     BMProperty<qreal> m_dashGap;

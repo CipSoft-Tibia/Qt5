@@ -19,8 +19,9 @@ constexpr auto CallInterfaceDescriptor::DefaultRegisterArray() {
 }
 
 constexpr auto CallInterfaceDescriptor::DefaultDoubleRegisterArray() {
-  // xmm0 isn't allocatable.
-  auto registers = DoubleRegisterArray(xmm1, xmm2, xmm3, xmm4, xmm5, xmm6);
+  // xmm7 isn't allocatable.
+  auto registers =
+      DoubleRegisterArray(xmm0, xmm1, xmm2, xmm3, xmm4, xmm5, xmm6);
   return registers;
 }
 
@@ -76,6 +77,21 @@ constexpr Register KeyedLoadBaselineDescriptor::SlotRegister() { return ecx; }
 
 // static
 constexpr Register KeyedLoadWithVectorDescriptor::VectorRegister() {
+  return no_reg;
+}
+
+// static
+constexpr Register EnumeratedKeyedLoadBaselineDescriptor::EnumIndexRegister() {
+  return ecx;
+}
+
+// static
+constexpr Register EnumeratedKeyedLoadBaselineDescriptor::CacheTypeRegister() {
+  return no_reg;
+}
+
+// static
+constexpr Register EnumeratedKeyedLoadBaselineDescriptor::SlotRegister() {
   return no_reg;
 }
 
@@ -297,7 +313,8 @@ CallApiCallbackOptimizedDescriptor::ActualArgumentsCountRegister() {
   return ecx;
 }
 // static
-constexpr Register CallApiCallbackOptimizedDescriptor::CallDataRegister() {
+constexpr Register
+CallApiCallbackOptimizedDescriptor::FunctionTemplateInfoRegister() {
   return edx;
 }
 // static
@@ -316,7 +333,8 @@ CallApiCallbackGenericDescriptor::TopmostScriptHavingContextRegister() {
   return eax;
 }
 // static
-constexpr Register CallApiCallbackGenericDescriptor::CallHandlerInfoRegister() {
+constexpr Register
+CallApiCallbackGenericDescriptor::FunctionTemplateInfoRegister() {
   return edx;
 }
 // static

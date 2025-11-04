@@ -324,6 +324,8 @@ struct VulkanFunctions {
     VkFn<PFN_vkUnmapMemory> UnmapMemory = nullptr;
     VkFn<PFN_vkUpdateDescriptorSets> UpdateDescriptorSets = nullptr;
     VkFn<PFN_vkWaitForFences> WaitForFences = nullptr;
+    VkFn<PFN_vkCreateSamplerYcbcrConversion> CreateSamplerYcbcrConversion = nullptr;
+    VkFn<PFN_vkDestroySamplerYcbcrConversion> DestroySamplerYcbcrConversion = nullptr;
 
     // VK_KHR_external_memory_fd
     VkFn<PFN_vkGetMemoryFdKHR> GetMemoryFdKHR = nullptr;
@@ -347,6 +349,10 @@ struct VulkanFunctions {
     VkFn<PFN_vkGetSwapchainImagesKHR> GetSwapchainImagesKHR = nullptr;
     VkFn<PFN_vkAcquireNextImageKHR> AcquireNextImageKHR = nullptr;
     VkFn<PFN_vkQueuePresentKHR> QueuePresentKHR = nullptr;
+
+    // VK_KHR_draw_indirect_count
+    VkFn<PFN_vkCmdDrawIndirectCount> CmdDrawIndirectCountKHR = nullptr;
+    VkFn<PFN_vkCmdDrawIndexedIndirectCount> CmdDrawIndexedIndirectCountKHR = nullptr;
 
 #if VK_USE_PLATFORM_FUCHSIA
     // VK_FUCHSIA_external_memory

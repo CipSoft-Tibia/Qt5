@@ -17,7 +17,7 @@ qt_internal_add_module(QmlDomPrivate
         qqmldom_utils_p.h qqmldom_utils.cpp
         qqmldomastcreator.cpp qqmldomastcreator_p.h
         qqmldomastdumper.cpp qqmldomastdumper_p.h
-        qqmldomattachedinfo.cpp qqmldomattachedinfo_p.h
+        qqmldomfilelocations.cpp qqmldomfilelocations_p.h
         qqmldomcodeformatter.cpp qqmldomcodeformatter_p.h
         qqmldomcomments.cpp qqmldomcomments_p.h
         qqmldomcompare.cpp qqmldomcompare_p.h
@@ -41,6 +41,7 @@ qt_internal_add_module(QmlDomPrivate
         qqmldomtop.cpp qqmldomtop_p.h
         qqmldomtypesreader.cpp qqmldomtypesreader_p.h
         qqmldomscriptelements_p.h qqmldomscriptelements.cpp
+        qqmldomlinewriterfactory_p.h
     DEFINES
         QMLDOM_LIBRARY
     PUBLIC_LIBRARIES

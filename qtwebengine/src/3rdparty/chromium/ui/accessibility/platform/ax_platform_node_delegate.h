@@ -10,6 +10,7 @@
 #include <map>
 #include <memory>
 #include <new>
+#include <optional>
 #include <ostream>
 #include <set>
 #include <string>
@@ -18,7 +19,6 @@
 
 #include "base/component_export.h"
 #include "base/strings/string_split.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "third_party/skia/include/core/SkColor.h"
 #include "ui/accessibility/ax_clipping_behavior.h"
 #include "ui/accessibility/ax_coordinate_system.h"
@@ -32,7 +32,7 @@
 #include "ui/accessibility/ax_tree.h"
 #include "ui/accessibility/ax_tree_id.h"
 #include "ui/accessibility/platform/ax_platform_node.h"
-#include "ui/accessibility/platform/ax_unique_id.h"
+#include "ui/accessibility/platform/ax_platform_node_id.h"
 #include "ui/gfx/geometry/vector2d.h"
 #include "ui/gfx/native_widget_types.h"
 
@@ -72,8 +72,8 @@ using TextAttributeMap = std::map<int, TextAttributeList>;
 // otherwise.
 class COMPONENT_EXPORT(AX_PLATFORM) AXPlatformNodeDelegate {
  public:
-  using AXPosition = ui::AXNodePosition::AXPositionInstance;
-  using SerializedPosition = ui::AXNodePosition::SerializedPosition;
+  using AXPosition = AXNodePosition::AXPositionInstance;
+  using SerializedPosition = AXNodePosition::SerializedPosition;
   using AXRange = ui::AXRange<AXPosition::element_type>;
 
   AXPlatformNodeDelegate();
@@ -185,6 +185,7 @@ class COMPONENT_EXPORT(AX_PLATFORM) AXPlatformNodeDelegate {
   // attributes that is either not displayed on screen, or outside this node,
   // e.g. aria-label and HTML title, is not returned.
   virtual std::u16string GetTextContentUTF16() const;
+  virtual int GetTextContentLengthUTF16() const;
 
   // Returns the value of a control such as a text field, a slider, a <select>
   // element, a date picker or an ARIA combo box. In order to minimize
@@ -229,7 +230,7 @@ class COMPONENT_EXPORT(AX_PLATFORM) AXPlatformNodeDelegate {
   // Get the index in the parent's list of unignored children. Returns `nullopt`
   // if an unignored parent is unavailable, e.g. if this node is at the root of
   // all accessibility trees.
-  virtual absl::optional<size_t> GetIndexInParent() const;
+  virtual std::optional<size_t> GetIndexInParent() const;
 
   // Get the number of children of this node.
   //
@@ -391,13 +392,13 @@ class COMPONENT_EXPORT(AX_PLATFORM) AXPlatformNodeDelegate {
   gfx::Rect GetUnclippedScreenBoundsRect(
       AXOffscreenResult* offscreen_result = nullptr) const;
   gfx::Rect GetClippedRootFrameBoundsRect(
-      ui::AXOffscreenResult* offscreen_result = nullptr) const;
+      AXOffscreenResult* offscreen_result = nullptr) const;
   gfx::Rect GetUnclippedRootFrameBoundsRect(
-      ui::AXOffscreenResult* offscreen_result = nullptr) const;
+      AXOffscreenResult* offscreen_result = nullptr) const;
   gfx::Rect GetClippedFrameBoundsRect(
-      ui::AXOffscreenResult* offscreen_result = nullptr) const;
+      AXOffscreenResult* offscreen_result = nullptr) const;
   gfx::Rect GetUnclippedFrameBoundsRect(
-      ui::AXOffscreenResult* offscreen_result = nullptr) const;
+      AXOffscreenResult* offscreen_result = nullptr) const;
 
   // Return the bounds of the text range given by text offsets relative to
   // GetHypertext in the coordinate system indicated. If the clipping behavior
@@ -478,7 +479,7 @@ class COMPONENT_EXPORT(AX_PLATFORM) AXPlatformNodeDelegate {
   // Get a node from a different tree using a tree ID and node ID.
   // Note that this is only guaranteed to work if the other tree is of the
   // same type, i.e. it won't work between web and views or vice-versa.
-  virtual AXPlatformNode* GetFromTreeIDAndNodeID(const ui::AXTreeID& ax_tree_id,
+  virtual AXPlatformNode* GetFromTreeIDAndNodeID(const AXTreeID& ax_tree_id,
                                                  int32_t id);
 
   // Given a node ID attribute (one where IsNodeIdIntAttribute is true), return
@@ -519,13 +520,13 @@ class COMPONENT_EXPORT(AX_PLATFORM) AXPlatformNodeDelegate {
 
   // Returns an ID that is unique for this node across all accessibility trees
   // in the current application or desktop.
-  virtual const AXUniqueId& GetUniqueId() const;
+  virtual AXPlatformNodeId GetUniqueId() const;
 
   // Return a vector of all the descendants of this delegate's node. This method
   // is only meaningful for Windows UIA.
   virtual const std::vector<gfx::NativeViewAccessible>
-  GetUIADirectChildrenInRange(ui::AXPlatformNodeDelegate* start,
-                              ui::AXPlatformNodeDelegate* end);
+  GetUIADirectChildrenInRange(AXPlatformNodeDelegate* start,
+                              AXPlatformNodeDelegate* end);
 
   // Return a string representing the language code.
   //
@@ -541,13 +542,16 @@ class COMPONENT_EXPORT(AX_PLATFORM) AXPlatformNodeDelegate {
   //
   // Tables. All of these should be called on a node that has a table-like
   // role, otherwise they return nullopt.
+  // Methods with "Aria" in their name work with author-privided aria
+  // values, or computed values derived from the author-specified ones.
+  // Please note that aria has 1-based rows and columns.
   //
   bool IsTable() const;
-  virtual absl::optional<int> GetTableColCount() const;
-  virtual absl::optional<int> GetTableRowCount() const;
-  virtual absl::optional<int> GetTableAriaColCount() const;
-  virtual absl::optional<int> GetTableAriaRowCount() const;
-  virtual absl::optional<int> GetTableCellCount() const;
+  virtual std::optional<int> GetTableColCount() const;
+  virtual std::optional<int> GetTableRowCount() const;
+  virtual std::optional<int> GetTableAriaColCount() const;
+  virtual std::optional<int> GetTableAriaRowCount() const;
+  virtual std::optional<int> GetTableCellCount() const;
   virtual std::vector<int32_t> GetColHeaderNodeIds() const;
   virtual std::vector<int32_t> GetColHeaderNodeIds(int col_index) const;
   virtual std::vector<int32_t> GetRowHeaderNodeIds() const;
@@ -558,21 +562,23 @@ class COMPONENT_EXPORT(AX_PLATFORM) AXPlatformNodeDelegate {
   // Nodes with a table row-like role.
   //
   virtual bool IsTableRow() const;
-  virtual absl::optional<int> GetTableRowRowIndex() const;
+  virtual std::optional<int> GetTableRowRowIndex() const;
 
   //
   // Nodes with a table cell-like role.
   //
   virtual bool IsTableCellOrHeader() const;
-  virtual absl::optional<int> GetTableCellIndex() const;
-  virtual absl::optional<int> GetTableCellColIndex() const;
-  virtual absl::optional<int> GetTableCellRowIndex() const;
-  virtual absl::optional<int> GetTableCellColSpan() const;
-  virtual absl::optional<int> GetTableCellRowSpan() const;
-  virtual absl::optional<int> GetTableCellAriaColIndex() const;
-  virtual absl::optional<int> GetTableCellAriaRowIndex() const;
-  virtual absl::optional<int32_t> GetCellId(int row_index, int col_index) const;
-  virtual absl::optional<int32_t> CellIndexToId(int cell_index) const;
+  virtual std::optional<int> GetTableCellIndex() const;
+  virtual std::optional<int> GetTableCellColIndex() const;
+  virtual std::optional<int> GetTableCellRowIndex() const;
+  virtual std::optional<int> GetTableCellColSpan() const;
+  virtual std::optional<int> GetTableCellRowSpan() const;
+  virtual std::optional<int> GetTableCellAriaColIndex() const;
+  virtual std::optional<int> GetTableCellAriaRowIndex() const;
+  virtual std::optional<int32_t> GetCellId(int row_index, int col_index) const;
+  virtual std::optional<int32_t> GetCellIdAriaCoords(int aria_row_index,
+                                                     int aria_col_index) const;
+  virtual std::optional<int32_t> CellIndexToId(int cell_index) const;
 
   // Returns true if this node is a cell or a row/column header in an ARIA grid
   // or treegrid.
@@ -584,8 +590,8 @@ class COMPONENT_EXPORT(AX_PLATFORM) AXPlatformNodeDelegate {
   // Ordered-set-like and item-like nodes.
   virtual bool IsOrderedSetItem() const;
   virtual bool IsOrderedSet() const;
-  virtual absl::optional<int> GetPosInSet() const;
-  virtual absl::optional<int> GetSetSize() const;
+  virtual std::optional<int> GetPosInSet() const;
+  virtual std::optional<int> GetSetSize() const;
 
   // Computed colors, taking blending into account.
   virtual SkColor GetColor() const;
@@ -610,7 +616,6 @@ class COMPONENT_EXPORT(AX_PLATFORM) AXPlatformNodeDelegate {
   //
   // Localized strings.
   //
-
   virtual std::u16string GetLocalizedRoleDescriptionForUnlabeledImage() const;
   virtual std::u16string GetLocalizedStringForImageAnnotationStatus(
       ax::mojom::ImageAnnotationStatus status) const;
@@ -654,7 +659,7 @@ class COMPONENT_EXPORT(AX_PLATFORM) AXPlatformNodeDelegate {
 
   // Given a set of Blink node IDs, get their respective platform nodes and
   // return only those that are valid targets for a relation.
-  std::vector<ui::AXPlatformNode*> GetNodesFromRelationIdSet(
+  std::vector<AXPlatformNode*> GetNodesFromRelationIdSet(
       const std::set<AXNodeID>& ids);
 
  private:

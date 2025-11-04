@@ -33,6 +33,10 @@ jumbo_component("cpp") {
     "//url",
   ]
 
+  if (is_chromeos) {
+    deps += [ "//chromeos/constants" ]
+  }
+
   if (is_chromeos_ash) {
     deps += [ "//ash/constants" ]
   }

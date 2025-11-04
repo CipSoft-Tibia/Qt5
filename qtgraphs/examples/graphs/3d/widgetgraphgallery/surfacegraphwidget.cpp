@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
 #include "surfacegraphwidget.h"
 
-SurfaceGraphWidget::SurfaceGraphWidget() {}
+SurfaceGraphWidget::SurfaceGraphWidget() = default;
 
-SurfaceGraphWidget::~SurfaceGraphWidget() {}
+SurfaceGraphWidget::~SurfaceGraphWidget() = default;
 
 void SurfaceGraphWidget::initialize()
 {

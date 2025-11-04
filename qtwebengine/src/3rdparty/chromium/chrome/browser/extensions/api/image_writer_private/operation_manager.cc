@@ -24,6 +24,7 @@
 #include "extensions/browser/api/extensions_api_client.h"
 #include "extensions/browser/event_router.h"
 #include "extensions/browser/extension_host.h"
+#include "extensions/common/extension_id.h"
 #include "mojo/public/cpp/bindings/pending_remote.h"
 
 #if BUILDFLAG(IS_CHROMEOS_ASH)
@@ -61,10 +62,10 @@ crosapi::mojom::Stage ToMojo(image_writer_api::Stage stage) {
   }
 }
 
-bool IsRemoteClientToken(const std::string& id) {
+bool IsRemoteClientToken(const ExtensionId& id) {
   // CrosapiManager is not initialized for unit test cases, since we have
   // not enabled unit tests for Lacros.
-  // TODO(crbug.com/1222153): Always expect CrosapiManager::IsInitialized()
+  // TODO(crbug.com/40773848): Always expect CrosapiManager::IsInitialized()
   // once we enable unit test with Lacros integration.
   if (!crosapi::CrosapiManager::IsInitialized())
     return false;
@@ -81,7 +82,7 @@ void DispatchOnWriteProgressToRemoteClient(
     int progress) {
   // CrosapiManager is not initialized for unit test cases, since we have
   // not enabled unit tests for Lacros.
-  // TODO(crbug.com/1222153): Always expect CrosapiManager::IsInitialized()
+  // TODO(crbug.com/40773848): Always expect CrosapiManager::IsInitialized()
   // once we enable unit test with Lacros integration.
   if (crosapi::CrosapiManager::IsInitialized()) {
     crosapi::CrosapiManager::Get()
@@ -359,7 +360,7 @@ void OperationManager::OnShutdown(ExtensionRegistry* registry) {
   extension_registry_observation_.Reset();
 }
 
-void OperationManager::OnBackgroundHostClose(const std::string& extension_id) {
+void OperationManager::OnBackgroundHostClose(const ExtensionId& extension_id) {
   DeleteOperation(extension_id);
 }
 

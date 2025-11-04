@@ -6,8 +6,8 @@
     <message>
         <source>Esri plugin requires a &apos;esri.token&apos; parameter.
 Please visit https://developers.arcgis.com/authentication/accessing-arcgis-online-services/</source>
-        <translation>Esri eklentisi bir &apos;esri.token&apos; parametresi gerektirir.
-Lütfen https://developers.arcgis.com/authentication/accessing-arcgis-online-services/ adresini ziyaret edin</translation>
+        <translation>Esri eklentisi bir “esri.token” parametresi gerektirir.
+Lütfen https://developers.arcgis.com/authentication/accessing-arcgis-online-services/ adresini ziyaret edin.</translation>
     </message>
 </context>
 <context>
@@ -345,7 +345,7 @@ Lütfen https://developers.arcgis.com/authentication/accessing-arcgis-online-ser
     </message>
     <message>
         <source>Don&apos;t know what to say for &apos;%1&apos;</source>
-        <translation>&apos;%1&apos; için ne söyleyeceğimi bilmiyorum</translation>
+        <translation>“%1” için ne söyleyeceğimi bilmiyorum</translation>
     </message>
 </context>
 <context>
@@ -995,8 +995,8 @@ Lütfen https://developers.arcgis.com/authentication/accessing-arcgis-online-ser
     <message>
         <source>Mapbox plugin requires a &apos;mapbox.access_token&apos; parameter.
 Please visit https://www.mapbox.com</source>
-        <translation>Mapbox eklentisi bir &apos;mapbox.access_token&apos; parametresi gerektirir.
-Lütfen https://www.mapbox.com adresini ziyaret edin</translation>
+        <translation>Mapbox eklentisi bir “mapbox.access_token” parametresi gerektirir.
+Lütfen https://www.mapbox.com adresini ziyaret edin.</translation>
     </message>
 </context>
 <context>
@@ -1405,11 +1405,11 @@ Lütfen https://www.mapbox.com adresini ziyaret edin</translation>
     </message>
     <message>
         <source>Plugin Error (%1): %2</source>
-        <translation>Eklenti Hatası (%1): %2</translation>
+        <translation>Eklenti hatası (%1): %2</translation>
     </message>
     <message>
         <source>Plugin Error (%1): Could not instantiate provider</source>
-        <translation>Eklenti Hatası (%1): Sağlayıcı örneği oluşturulamadı</translation>
+        <translation>Eklenti hatası (%1): Sağlayıcı örneği oluşturulamadı</translation>
     </message>
     <message>
         <source>Plugin is not valid</source>
@@ -1425,7 +1425,7 @@ Lütfen https://www.mapbox.com adresini ziyaret edin</translation>
     </message>
     <message>
         <source>Index &apos;%1&apos; out of range</source>
-        <translation>&apos;%1&apos; dizini aralık dışında</translation>
+        <translation>“%1” dizini erim dışında</translation>
     </message>
     <message>
         <source>Qt Location requires app_id and token parameters.

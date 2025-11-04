@@ -13,7 +13,6 @@
 // limitations under the License.
 
 import m from 'mithril';
-
 import {HTMLAttrs} from './common';
 
 export interface SectionAttrs extends HTMLAttrs {
@@ -25,13 +24,10 @@ export class Section implements m.ClassComponent<SectionAttrs> {
   view({attrs, children}: m.CVnode<SectionAttrs>) {
     const {title, ...htmlAttrs} = attrs;
     return m(
-        'section.pf-section',
-        htmlAttrs,
-        m(
-            'header',
-            m('h1', title),
-            ),
-        m('article', children),
+      'section.pf-section',
+      htmlAttrs,
+      m('header', m('h1', title)),
+      m('article', children),
     );
   }
 }

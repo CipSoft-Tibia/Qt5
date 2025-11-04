@@ -13,10 +13,10 @@
 
 #include <memory>
 
+#include "api/audio/audio_device.h"
 #include "api/task_queue/task_queue_factory.h"
 #include "audio_device_ios.h"
 #include "modules/audio_device/audio_device_buffer.h"
-#include "modules/audio_device/include/audio_device.h"
 #include "rtc_base/checks.h"
 
 namespace webrtc {
@@ -29,7 +29,9 @@ class AudioDeviceModuleIOS : public AudioDeviceModule {
  public:
   int32_t AttachAudioBuffer();
 
-  explicit AudioDeviceModuleIOS(bool bypass_voice_processing);
+  explicit AudioDeviceModuleIOS(
+      bool bypass_voice_processing,
+      MutedSpeechEventHandler muted_speech_event_handler);
   ~AudioDeviceModuleIOS() override;
 
   // Retrieve the currently utilized audio layer
@@ -131,6 +133,7 @@ class AudioDeviceModuleIOS : public AudioDeviceModule {
 #endif  // WEBRTC_IOS
  private:
   const bool bypass_voice_processing_;
+  MutedSpeechEventHandler muted_speech_event_handler_;
   bool initialized_ = false;
   const std::unique_ptr<TaskQueueFactory> task_queue_factory_;
   std::unique_ptr<AudioDeviceIOS> audio_device_;

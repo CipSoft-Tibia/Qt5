@@ -95,9 +95,12 @@ private Q_SLOTS:
     void handleAnchorUpdated(QQuick3DXrSpatialAnchor* anchor);
 
 private:
+    bool matchesAnchorFilter(QQuick3DXrSpatialAnchor *anchor) const;
+    QList<QQuick3DXrSpatialAnchor *> anchorsFiltered() const;
+
     QPointer<QQuick3DXrAnchorManager> m_anchorManager;
     FilterMode m_filterMode = FilterMode::All;
-    QStringList m_uuids;
+    QSet<QString> m_uuids;
     ClassificationFlags m_classFilter;
     QSet<QString> m_classStringFilter;
 };

@@ -29,13 +29,24 @@ void TrimLine(std::string* line) {
 }
 
 std::string ReadLine(FILE* file) {
-  const char* line = fgets(line_buffer, kLineBufferLen - 1, file);
-  if (!line)
+  std::string result;
+  while (fgets(line_buffer, kLineBufferLen, file)) {
+    result.append(line_buffer);
+
+    size_t length = strlen(line_buffer);
+    // This should be true even with CRLF endings.
+    // Checking whether line is truncated.
+    if (length > 0 && line_buffer[length - 1] != '\n')
+      continue;
+
+    break;
+  }
+
+  if (result.empty())
     return std::string();
 
-  std::string str = line;
-  TrimLine(&str);
-  return str;
+  TrimLine(&result);
+  return result;
 }
 
 void StripComment(std::string* line) {

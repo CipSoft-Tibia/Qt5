@@ -23,10 +23,11 @@
 #include "components/viz/service/display_embedder/skia_render_copy_results.h"
 #include "gpu/command_buffer/common/mailbox.h"
 #include "gpu/command_buffer/common/mailbox_holder.h"
+#include "gpu/command_buffer/common/shared_image_usage.h"
+#include "gpu/command_buffer/service/shared_image/shared_image_factory.h"
 #include "gpu/vulkan/buildflags.h"
 #include "skia/buildflags.h"
 #include "third_party/abseil-cpp/absl/cleanup/cleanup.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "third_party/libyuv/include/libyuv/planar_functions.h"
 #include "third_party/skia/include/gpu/graphite/Context.h"
 #include "ui/gfx/color_space.h"
@@ -45,7 +46,7 @@ struct DebuggerCaptureBufferSharedImageInfo {
   gfx::ColorSpace color_space;
   GrSurfaceOrigin surface_origin;
   SkAlphaType alpha_type;
-  uint32_t usage;
+  gpu::SharedImageUsageSet usage;
   gpu::Mailbox mailbox;
 };
 

@@ -36,6 +36,8 @@
 #include "third_party/blink/renderer/core/editing/visible_units.h"
 #include "third_party/blink/renderer/core/html/html_br_element.h"
 #include "third_party/blink/renderer/core/html/html_element.h"
+#include "third_party/blink/renderer/core/html/html_li_element.h"
+#include "third_party/blink/renderer/core/html/html_olist_element.h"
 #include "third_party/blink/renderer/core/html/html_quote_element.h"
 #include "third_party/blink/renderer/core/html_names.h"
 #include "third_party/blink/renderer/core/layout/list/layout_list_item.h"
@@ -45,16 +47,16 @@ namespace blink {
 
 namespace {
 
-absl::optional<int> GetListItemNumber(const Node* node) {
+std::optional<int> GetListItemNumber(const Node* node) {
   if (!node)
-    return absl::nullopt;
+    return std::nullopt;
   // Because of elements with "display:list-item" has list item number,
   // we use layout object instead of checking |HTMLLIElement|.
   if (const auto* list_item =
           DynamicTo<LayoutListItem>(node->GetLayoutObject())) {
     return list_item->Value();
   }
-  return absl::nullopt;
+  return std::nullopt;
 }
 
 bool IsFirstVisiblePositionInNode(const VisiblePosition& visible_position,

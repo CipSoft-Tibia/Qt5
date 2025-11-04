@@ -9,6 +9,7 @@
 #include <limits>
 #include <random>
 
+#include "base/check_op.h"
 #include "base/compiler_specific.h"
 #include "components/gwp_asan/client/thread_local_random_bit_generator.h"
 #include "components/gwp_asan/client/thread_local_state.h"
@@ -21,6 +22,7 @@ enum ParentAllocator {
   MALLOC = 0,
   PARTITIONALLOC = 1,
   LIGHTWEIGHTDETECTOR = 2,
+  EXTREMELIGHTWEIGHTDETECTOR = 3,
 };
 
 // Class that encapsulates the current sampling state. Sampling is performed
@@ -52,11 +54,13 @@ class SamplingState : ThreadLocalState<SamplingState<PA>> {
     // Instead, use zero to mean 'get a new counter value' and one to mean
     // that this allocation should be sampled.
     size_t samples_left = TLS::GetState();
-    if (UNLIKELY(!samples_left))
+    if (samples_left == 0) [[unlikely]] {
       samples_left = NextSample();
+    }
 
-    TLS::SetState(samples_left - 1);
-    return (samples_left == 1);
+    --samples_left;
+    TLS::SetState(samples_left);
+    return samples_left == 0;
   }
 
  private:

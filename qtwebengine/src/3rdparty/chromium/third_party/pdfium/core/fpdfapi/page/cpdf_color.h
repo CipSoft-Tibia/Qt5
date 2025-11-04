@@ -10,10 +10,13 @@
 #include <stdint.h>
 
 #include <memory>
+#include <optional>
 #include <vector>
 
 #include "core/fxcrt/retain_ptr.h"
-#include "third_party/base/containers/span.h"
+#include "core/fxcrt/span.h"
+#include "core/fxge/dib/fx_dib.h"
+#include "third_party/abseil-cpp/absl/types/variant.h"
 
 class CPDF_ColorSpace;
 class CPDF_Pattern;
@@ -28,16 +31,21 @@ class CPDF_Color {
 
   CPDF_Color& operator=(const CPDF_Color& that);
 
-  bool IsNull() const { return m_Buffer.empty() && !m_pValue; }
+  bool IsNull() const;
   bool IsPattern() const;
   void SetColorSpace(RetainPtr<CPDF_ColorSpace> colorspace);
   void SetValueForNonPattern(std::vector<float> values);
   void SetValueForPattern(RetainPtr<CPDF_Pattern> pattern,
                           pdfium::span<float> values);
 
-  uint32_t CountComponents() const;
+  uint32_t ComponentCount() const;
   bool IsColorSpaceRGB() const;
-  bool GetRGB(int* R, int* G, int* B) const;
+  bool IsColorSpaceGray() const;
+  // Wrapper around GetRGB() that returns the RGB value as FX_COLORREF. The
+  // GetRGB() return value is clamped to fit into FX_COLORREF, where the color
+  // components are 8-bit fields within an unsigned integer.
+  std::optional<FX_COLORREF> GetColorRef() const;
+  std::optional<FX_RGB_STRUCT<float>> GetRGB() const;
 
   // Should only be called if IsPattern() returns true.
   RetainPtr<CPDF_Pattern> GetPattern() const;
@@ -45,9 +53,11 @@ class CPDF_Color {
  protected:
   bool IsPatternInternal() const;
 
-  std::vector<float> m_Buffer;             // Used for non-pattern colorspaces.
-  std::unique_ptr<PatternValue> m_pValue;  // Used for pattern colorspaces.
-  RetainPtr<CPDF_ColorSpace> m_pCS;
+  absl::variant<absl::monostate,
+                std::vector<float>,  // Used for non-pattern colorspaces.
+                std::unique_ptr<PatternValue>>  // Used for pattern colorspaces.
+      color_data_;
+  RetainPtr<CPDF_ColorSpace> cs_;
 };
 
 #endif  // CORE_FPDFAPI_PAGE_CPDF_COLOR_H_

@@ -12,6 +12,7 @@ qt_internal_add_cmake_library(preemptedStrictModule
     OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/../imports/org/qtproject/PreemptedStrictModule"
     SOURCES
         plugin.cpp
+    MOC_OPTIONS "-Muri=org.qtproject.PreemptedStrictModule"
     LIBRARIES
         Qt::Core
         Qt::CorePrivate
@@ -19,6 +20,11 @@ qt_internal_add_cmake_library(preemptedStrictModule
         Qt::Qml
         Qt::QmlPrivate
 )
+
+get_target_property(target_type preemptedStrictModule TYPE)
+if(target_type STREQUAL STATIC_LIBRARY)
+    target_compile_definitions(preemptedStrictModule PRIVATE QT_STATICPLUGIN)
+endif()
 
 #### Keys ignored in scope 1:.:.:preemptedStrictModule.pro:<TRUE>:
 # IMPORT_FILES = "qmldir"

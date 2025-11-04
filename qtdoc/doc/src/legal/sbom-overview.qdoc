@@ -38,7 +38,7 @@ ninja install
 cmake --install .
 \endcode
 
-In Qt 6.8, this build process creates SBOM documents in JSON and \c{tag:value}
+This build process creates SBOM documents in JSON and \c{tag:value}
 format as specified by the \l{SPDX Format}{SPDX} format.
 
 See \l{Building Qt Sources} and \l{Qt Configure Options} for more information
@@ -46,6 +46,24 @@ about the Qt build procedure.
 
 For Qt developers and maintainers, the \l{https://wiki.qt.io/SBOM}{SBOM Wiki}
 has specific information for creating SBOM documents.
+
+\section1 REUSE-compliant Qt modules
+
+\l{All Modules}{Qt modules} are \l REUSE compliant starting from Qt 6.9.
+Specifically, license documentation and license checks are part of Qt's
+development process. Various tools check Qt repositories for licenses in files
+or externally in REUSE.toml files.
+
+The \l{reuse-tool} checks for REUSE compliance and generates source SBOMs. An
+internal tool checks that the generated source SBOM files comply with the Qt
+license specification.
+
+For more information about licenses documentation in the Qt sources, visit the
+following:
+\list
+\li \l{QUIP 18: License specification in Qt's modules}
+\li \l{Licensing in Qt sources}
+\endlist
 
 \section1 SPDX Format
 
@@ -58,7 +76,7 @@ For a Qt installation, an SPDX package may be a:
 \li \l{All Modules}{Qt module}
 \li Qt plugin - for example, \l{Supported Platforms}{platform} plugins
 \li Qt tool - for example, \l{Using the Meta-Object Compiler (moc)}{moc}
-\li Qt application - for example, \l{Qt Designer}
+\li Qt application - for example, \l{Qt Widgets Designer}
 \li Third-party component - see \l{Third-Party Code Used in Qt}
 \li System library dependency - \l{Qt Configure Options}
 \endlist
@@ -83,8 +101,8 @@ An SPDX package typically contains at least:
     \endcode
 
     An example identifier for a \l{Qt Network Authorization} package is:
-    \badcode
-    cpe:2.3:a:qt:qtnetworkauth:6.8.0:*:*:*:*:*:*:*
+    \badcode \QtVersion
+    cpe:2.3:a:qt:qtnetworkauth:\1:*:*:*:*:*:*:*
     \endcode
     For more information, see
     \l{https://cpe.mitre.org/specification/}{CPE Specification} page.
@@ -95,8 +113,8 @@ An SPDX package typically contains at least:
     \endcode
 
     An example PURL for a package is:
-    \badcode
-    pkg:generic/TheQtCompany/qtnetworkauth@6.8.0
+    \badcode \QtVersion
+    pkg:generic/TheQtCompany/qtnetworkauth@\1
     \endcode
     For more information,
     \l{https://github.com/package-url/purl-spec}{Package URL} page.
@@ -127,7 +145,7 @@ code
 
 The following is an example of an SBOM document for the
 \l{Qt Network Authorization} module. The SBOM filename is
-\c qtnetworkauth-6.8.0.spdx and is in the installation's \c sbom directory.
+\c qtnetworkauth-6.9.0.spdx and is in the installation's \c sbom directory.
 Note that the SBOM document contains several other packages not listed in the
 following example.
 
@@ -135,19 +153,19 @@ following example.
 SPDXVersion: SPDX-2.3
 DataLicense: CC0-1.0
 SPDXID: SPDXRef-DOCUMENT
-DocumentName: qtnetworkauth-6.8.0
-DocumentNamespace: https://qt.io/spdxdocs/qtnetworkauth-6.8.0
+DocumentName: qtnetworkauth-6.9.0
+DocumentNamespace: https://qt.io/spdxdocs/qtnetworkauth-6.9.0
 Creator: Organization: TheQtCompany
 Creator: Tool: Qt Build System
 CreatorComment: <text>This SPDX document was created from CMake 3.27.7, using the qt
 build system from https://code.qt.io/cgit/qt/qtbase.git/tree/cmake/QtPublicSbomHelpers.cmake</text>
 Created: 2024-09-19T11:07:23Z
-ExternalDocumentRef: DocumentRef-qtbase https://qt.io/spdxdocs/qtbase-6.8.0 SHA1: 3dbc51259a07d458524a976da2e9607a76fab7e7
+ExternalDocumentRef: DocumentRef-qtbase https://qt.io/spdxdocs/qtbase-6.9.0 SHA1: 3dbc51259a07d458524a976da2e9607a76fab7e7
 
 PackageName: NetworkAuth
 SPDXID: SPDXRef-Package-qtnetworkauth-qt-module-NetworkAuth
 PackageDownloadLocation: git://code.qt.io/qt/qtnetworkauth.git
-PackageVersion: 6.8.0
+PackageVersion: 6.9.0
 PackageSupplier: Organization: TheQtCompany
 PackageLicenseConcluded: LicenseRef-Qt-Commercial OR GPL-3.0-only
 PackageLicenseDeclared: LicenseRef-Qt-Commercial OR GPL-3.0-only
@@ -156,14 +174,33 @@ ExternalRef: PACKAGE-MANAGER purl pkg:generic/TheQtCompany/qtnetworkauth-Network
 FilesAnalyzed: true
 PackageCopyrightText: <text>Copyright (C) 2024 The Qt Company Ltd.</text>
 PrimaryPackagePurpose: LIBRARY
-ExternalRef: SECURITY cpe23Type cpe:2.3:a:qt:qtnetworkauth:6.8.0:*:*:*:*:*:*:*
-ExternalRef: SECURITY cpe23Type cpe:2.3:a:qt:qt:6.8.0:*:*:*:*:*:*:*
+ExternalRef: SECURITY cpe23Type cpe:2.3:a:qt:qtnetworkauth:6.9.0:*:*:*:*:*:*:*
+ExternalRef: SECURITY cpe23Type cpe:2.3:a:qt:qt:6.9.0:*:*:*:*:*:*:*
 Relationship: SPDXRef-Package-qtnetworkauth-qt-module-NetworkAuth DEPENDS_ON DocumentRef-qtbase:SPDXRef-Package-qtbase-qt-module-Core
 Relationship: SPDXRef-Package-qtnetworkauth-qt-module-NetworkAuth DEPENDS_ON DocumentRef-qtbase:SPDXRef-Package-qtbase-qt-module-PlatformModuleInternal
 Relationship: SPDXRef-Package-qtnetworkauth-qt-module-NetworkAuth DEPENDS_ON DocumentRef-qtbase:SPDXRef-Package-qtbase-qt-module-Gui
 Relationship: SPDXRef-Package-qtnetworkauth-qt-module-NetworkAuth DEPENDS_ON DocumentRef-qtbase:SPDXRef-Package-qtbase-qt-module-Network
 Relationship: SPDXRef-Package-qtnetworkauth CONTAINS SPDXRef-Package-qtnetworkauth-qt-module-NetworkAuth
 \endcode
+
+\section1 Yocto builds with meta-qt6
+
+\l{Boot to Qt} uses the meta-qt6 layer to build all Qt modules and the
+generated SBOM documents are available as SPDX files when installing Boot to Qt
+through the \l{Using Qt Online Installer}{Qt Online Installer}.
+The install path depends on the Qt version and the target hardware.
+
+For example, for the Raspberry Pi target, the SBOM .spdx
+documents are at:
+\badcode \QtVersion
+<INSTALL_DIR>/\1/Boot2Qt/raspberrypi-armv8/toolchain/sysroots/cortexa53-poky-linux/usr/lib/sbom/
+\endcode
+
+For more information, visit the following pages:
+\list
+\li \l{Boot to Qt: Using meta-qt6}{Using meta-qt6}
+\li \l{meta-qt6 repository}
+\endlist
 
 \section1 Related Topics
 

@@ -5,10 +5,17 @@
  * found in the LICENSE file.
  */
 
-#include "include/core/SkGraphics.h"
-#include "include/private/base/SkMutex.h"
 #include "src/core/SkTypefaceCache.h"
+
+#include "include/core/SkFontStyle.h"
+#include "include/core/SkGraphics.h"
+#include "include/core/SkString.h"
+#include "include/private/base/SkDebug.h"
+#include "include/private/base/SkMutex.h"
+
 #include <atomic>
+#include <cstdint>
+#include <utility>
 
 SkTypefaceCache::SkTypefaceCache() {}
 
@@ -92,7 +99,7 @@ static bool DumpProc(SkTypeface* face, void* ctx) {
     face->getFamilyName(&n);
     SkFontStyle s = face->fontStyle();
     SkTypefaceID id = face->uniqueID();
-    SkDebugf("SkTypefaceCache: face %p typefaceID %d weight %d width %d style %d name %s\n",
+    SkDebugf("SkTypefaceCache: face %p typefaceID %u weight %d width %d style %d name %s\n",
              face, id, s.weight(), s.width(), s.slant(), n.c_str());
     return false;
 }

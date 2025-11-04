@@ -25,7 +25,7 @@ gfx::Size LayoutManager::GetMinimumSize(const View* host) const {
   // to call GetPreferredSize() on the host view instead. The default
   // views::View behavior will be to call GetPreferredSize() on this layout
   // manager, so the fallback behavior in all other cases is as expected.
-  return host->GetPreferredSize();
+  return host->GetPreferredSize({});
 }
 
 int LayoutManager::GetPreferredHeightForWidth(const View* host,
@@ -58,7 +58,7 @@ void LayoutManager::ViewVisibilitySet(View* host,
 void LayoutManager::SetViewVisibility(View* view, bool visible) {
   DCHECK(!view->parent() || view->parent()->GetLayoutManager() == this ||
          view->parent()->GetLayoutManager() == nullptr);
-  base::AutoReset<View*> setter(&view_setting_visibility_on_, view);
+  base::AutoReset<raw_ptr<View>> setter(&view_setting_visibility_on_, view);
   view->SetVisible(visible);
 }
 

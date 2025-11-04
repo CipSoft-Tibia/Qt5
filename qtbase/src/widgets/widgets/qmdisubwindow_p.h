@@ -26,8 +26,8 @@
 #if QT_CONFIG(sizegrip)
 #include <QSizeGrip>
 #endif
+#include <QBasicTimer>
 #include <QPointer>
-#include <QDebug>
 #include <private/qwidget_p.h>
 
 QT_REQUIRE_CONFIG(mdiarea);
@@ -172,7 +172,7 @@ public:
     bool isExplicitlyDeactivated;
     int keyboardSingleStep;
     int keyboardPageStep;
-    int resizeTimerId;
+    QBasicTimer resizeTimer;
     Operation currentOperation;
     QStyle::SubControl hoveredSubControl;
     QStyle::SubControl activeSubControl;

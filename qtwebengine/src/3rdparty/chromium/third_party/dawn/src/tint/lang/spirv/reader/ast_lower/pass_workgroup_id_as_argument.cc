@@ -70,7 +70,7 @@ struct PassWorkgroupIdAsArgument::State {
                 for (auto* param : func->params) {
                     if (auto* builtin =
                             ast::GetAttribute<ast::BuiltinAttribute>(param->attributes)) {
-                        if (sem.Get(builtin)->Value() == core::BuiltinValue::kWorkgroupId) {
+                        if (builtin->builtin == core::BuiltinValue::kWorkgroupId) {
                             ProcessBuiltin(func, param);
                             made_changes = true;
                         }
@@ -95,22 +95,26 @@ struct PassWorkgroupIdAsArgument::State {
 
         // The reader should only produce a single use of the parameter which assigns to a global.
         const auto& users = sem.Get(builtin)->Users();
-        TINT_ASSERT_OR_RETURN(users.Length() == 1u);
+        TINT_ASSERT(users.Length() == 1u);
         auto* assign = users[0]->Stmt()->Declaration()->As<ast::AssignmentStatement>();
         auto& stmts =
             sem.Get(assign)->Parent()->Declaration()->As<ast::BlockStatement>()->statements;
         auto* rhs = assign->rhs;
-        if (auto* bitcast = rhs->As<ast::BitcastExpression>()) {
-            // The RHS may be bitcast to a signed integer, so we capture that bitcast.
-            auto let = b.Symbols().New("tint_wgid_bitcast");
-            ctx.InsertBefore(stmts, assign, b.Decl(b.Let(let, ctx.Clone(bitcast))));
-            func_to_param.Replace(ep, let);
-            rhs = bitcast->expr;
+        if (auto* call = sem.Get<sem::Call>(rhs)) {
+            if (auto* builtin_fn = call->Target()->As<sem::BuiltinFn>()) {
+                if (builtin_fn->Fn() == wgsl::BuiltinFn::kBitcast) {
+                    // The RHS may be bitcast to a signed integer, so we capture that bitcast.
+                    auto let = b.Symbols().New("tint_wgid_bitcast");
+                    auto* val = call->Arguments()[0]->Declaration();
+                    ctx.InsertBefore(stmts, assign, b.Decl(b.Let(let, ctx.Clone(rhs))));
+                    func_to_param.Replace(ep, let);
+                    rhs = val;
+                }
+            }
         }
-        TINT_ASSERT_OR_RETURN(assign && rhs == users[0]->Declaration());
+        TINT_ASSERT(assign && rhs == users[0]->Declaration());
         auto* lhs = sem.GetVal(assign->lhs)->As<sem::VariableUser>();
-        TINT_ASSERT_OR_RETURN(lhs &&
-                              lhs->Variable()->AddressSpace() == core::AddressSpace::kPrivate);
+        TINT_ASSERT(lhs && lhs->Variable()->AddressSpace() == core::AddressSpace::kPrivate);
 
         // Replace all references to the global variable with a function parameter.
         for (auto* user : lhs->Variable()->Users()) {
@@ -133,7 +137,7 @@ struct PassWorkgroupIdAsArgument::State {
     /// @param type the type of the parameter
     /// @returns the name of the parameter
     Symbol GetParameter(const ast::Function* func, const ast::Type& type) {
-        return func_to_param.GetOrCreate(func, [&] {
+        return func_to_param.GetOrAdd(func, [&] {
             // Append a new parameter to the function.
             auto name = b.Symbols().New("tint_wgid");
             ctx.InsertBack(func->params, b.Param(name, ctx.Clone(type)));

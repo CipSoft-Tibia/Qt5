@@ -5,17 +5,17 @@
 #include "qpdflink.h"
 #include "qpdfsearchmodel.h"
 #include "qpdfsearchmodel_p.h"
+#include "qtpdfglobal_p.h"
 
 #include "third_party/pdfium/public/fpdf_text.h"
 #include "third_party/pdfium/public/fpdfview.h"
 
 #include <QtCore/qelapsedtimer.h>
-#include <QtCore/qloggingcategory.h>
 #include <QtCore/QMetaEnum>
 
 QT_BEGIN_NAMESPACE
 
-Q_LOGGING_CATEGORY(qLcS, "qt.pdf.search")
+Q_PDF_LOGGING_CATEGORY(qLcS, "qt.pdf.search")
 
 static const int UpdateTimerInterval = 100;
 static const int ContextChars = 64;

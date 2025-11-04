@@ -2,6 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#ifdef UNSAFE_BUFFERS_BUILD
+// TODO(crbug.com/40285824): Remove this and convert code to safer constructs.
+#pragma allow_unsafe_buffers
+#endif
+
 #include "media/video/openh264_video_encoder.h"
 
 #include <algorithm>
@@ -12,6 +17,7 @@
 #include "base/system/sys_info.h"
 #include "base/time/time.h"
 #include "base/trace_event/trace_event.h"
+#include "media/base/media_switches.h"
 #include "media/base/svc_scalability_mode.h"
 #include "media/base/video_frame.h"
 #include "media/base/video_util.h"
@@ -39,7 +45,9 @@ void SetUpOpenH264Params(VideoCodecProfile profile,
                          const VideoColorSpace& itu_cs,
                          SEncParamExt* params) {
   int threads = GetNumberOfThreadsForSoftwareEncoding(options.frame_size);
-  params->bEnableFrameSkip = false;
+  params->bEnableFrameSkip =
+      base::FeatureList::IsEnabled(kWebCodecsVideoEncoderFrameDrop) &&
+      options.latency_mode == VideoEncoder::LatencyMode::Realtime;
   params->iPaddingFlag = 0;
   params->iComplexityMode = MEDIUM_COMPLEXITY;
   params->iUsageType = options.content_hint == VideoEncoder::ContentHint::Screen
@@ -83,9 +91,9 @@ void SetUpOpenH264Params(VideoCodecProfile profile,
         num_temporal_layers = 3;
         break;
       default:
-        NOTREACHED() << "Unsupported SVC: "
-                     << GetScalabilityModeName(
-                            options.scalability_mode.value());
+        NOTREACHED_IN_MIGRATION()
+            << "Unsupported SVC: "
+            << GetScalabilityModeName(options.scalability_mode.value());
     }
   }
 
@@ -176,6 +184,15 @@ void OpenH264VideoEncoder::Initialize(VideoCodecProfile profile,
     return;
   }
 
+  if (options.subsampling.value_or(VideoChromaSampling::k420) !=
+          VideoChromaSampling::k420 ||
+      options.bit_depth.value_or(8) != 8) {
+    std::move(done_cb).Run(
+        EncoderStatus(EncoderStatus::Codes::kEncoderUnsupportedConfig,
+                      "Unsupported subsampling or bit depth"));
+    return;
+  }
+
   if (ToOpenH264Profile(profile) == PRO_UNKNOWN) {
     std::move(done_cb).Run(
         EncoderStatus(EncoderStatus::Codes::kEncoderUnsupportedProfile,
@@ -246,10 +263,12 @@ void OpenH264VideoEncoder::Initialize(VideoCodecProfile profile,
   output_cb_ = BindCallbackToCurrentLoopIfNeeded(std::move(output_cb));
   codec_ = std::move(codec);
 
-  VideoEncoderInfo info;
-  info.implementation_name = "OpenH264VideoEncoder";
-  info.is_hardware_accelerated = false;
-  BindCallbackToCurrentLoopIfNeeded(std::move(info_cb)).Run(info);
+  if (info_cb) {
+    VideoEncoderInfo info;
+    info.implementation_name = "OpenH264VideoEncoder";
+    info.is_hardware_accelerated = false;
+    BindCallbackToCurrentLoopIfNeeded(std::move(info_cb)).Run(info);
+  }
 
   std::move(done_cb).Run(EncoderStatus::Codes::kOk);
 }
@@ -258,14 +277,19 @@ EncoderStatus OpenH264VideoEncoder::DrainOutputs(const SFrameBSInfo& frame_info,
                                                  base::TimeDelta timestamp,
                                                  gfx::ColorSpace color_space) {
   VideoEncoderOutput result;
-  result.key_frame = (frame_info.eFrameType == videoFrameTypeIDR);
   result.timestamp = timestamp;
-  result.color_space = color_space;
 
-  DCHECK_GT(frame_info.iFrameSizeInBytes, 0);
-  size_t total_chunk_size = frame_info.iFrameSizeInBytes;
-  result.data = std::make_unique<uint8_t[]>(total_chunk_size);
-  auto* gather_buffer = result.data.get();
+  const size_t total_chunk_size = frame_info.iFrameSizeInBytes;
+  if (total_chunk_size == 0) {
+    // Drop frame.
+    output_cb_.Run(std::move(result), {});
+    return EncoderStatus::Codes::kOk;
+  }
+
+  result.key_frame = (frame_info.eFrameType == videoFrameTypeIDR);
+  result.color_space = color_space;
+  result.data = base::HeapArray<uint8_t>::Uninit(total_chunk_size);
+  auto* gather_buffer = result.data.data();
 
   if (h264_converter_) {
     // Copy data to a temporary buffer instead.
@@ -296,31 +320,34 @@ EncoderStatus OpenH264VideoEncoder::DrainOutputs(const SFrameBSInfo& frame_info,
   DCHECK_EQ(written_size, total_chunk_size);
 
   if (!h264_converter_) {
-    result.size = total_chunk_size;
-
-    output_cb_.Run(std::move(result), absl::optional<CodecDescription>());
+    output_cb_.Run(std::move(result), std::optional<CodecDescription>());
     return EncoderStatus::Codes::kOk;
   }
 
   size_t converted_output_size = 0;
   bool config_changed = false;
-  auto status = h264_converter_->ConvertChunk(
-      conversion_buffer_,
-      base::span<uint8_t>(result.data.get(), total_chunk_size), &config_changed,
-      &converted_output_size);
+  MP4Status status = OkStatus();
+  do {
+    status =
+        h264_converter_->ConvertChunk(conversion_buffer_, result.data,
+                                      &config_changed, &converted_output_size);
+    if (status.code() == MP4Status::Codes::kBufferTooSmall) {
+      result.data = base::HeapArray<uint8_t>::Uninit(converted_output_size);
+      continue;
+    } else if (!status.is_ok()) {
+      return EncoderStatus(EncoderStatus::Codes::kBitstreamConversionError)
+          .AddCause(std::move(status));
+    }
+  } while (!status.is_ok());
 
-  if (!status.is_ok())
-    return EncoderStatus(EncoderStatus::Codes::kEncoderFailedEncode)
-        .AddCause(std::move(status));
+  result.data = std::move(result.data).take_first(converted_output_size);
 
-  result.size = converted_output_size;
-
-  absl::optional<CodecDescription> desc;
+  std::optional<CodecDescription> desc;
   if (config_changed) {
     const auto& config = h264_converter_->GetCurrentConfig();
     desc = CodecDescription();
     if (!config.Serialize(desc.value())) {
-      return EncoderStatus(EncoderStatus::Codes::kEncoderFailedEncode,
+      return EncoderStatus(EncoderStatus::Codes::kBitstreamConversionError,
                            "Failed to serialize AVC decoder config");
     }
   }
@@ -341,7 +368,7 @@ void OpenH264VideoEncoder::Encode(scoped_refptr<VideoFrame> frame,
 
   if (!frame) {
     std::move(done_cb).Run(
-        EncoderStatus(EncoderStatus::Codes::kEncoderFailedEncode,
+        EncoderStatus(EncoderStatus::Codes::kInvalidInputFrame,
                       "No frame provided for encoding."));
     return;
   }
@@ -351,21 +378,22 @@ void OpenH264VideoEncoder::Encode(scoped_refptr<VideoFrame> frame,
                                 frame->format() == PIXEL_FORMAT_XRGB ||
                                 frame->format() == PIXEL_FORMAT_ABGR ||
                                 frame->format() == PIXEL_FORMAT_ARGB;
-  if ((!frame->IsMappable() && !frame->HasGpuMemoryBuffer()) ||
+  if ((!frame->IsMappable() && !frame->HasMappableGpuBuffer()) ||
       !supported_format) {
     std::move(done_cb).Run(
-        EncoderStatus(EncoderStatus::Codes::kEncoderFailedEncode,
+        EncoderStatus(EncoderStatus::Codes::kUnsupportedFrameFormat,
                       "Unexpected frame format.")
             .WithData("IsMappable", frame->IsMappable())
+            .WithData("storage type", frame->storage_type())
             .WithData("format", frame->format()));
     return;
   }
 
-  if (frame->format() == PIXEL_FORMAT_NV12 && frame->HasGpuMemoryBuffer()) {
+  if (frame->format() == PIXEL_FORMAT_NV12 && frame->HasMappableGpuBuffer()) {
     frame = ConvertToMemoryMappedFrame(frame);
     if (!frame) {
       std::move(done_cb).Run(
-          EncoderStatus(EncoderStatus::Codes::kEncoderFailedEncode,
+          EncoderStatus(EncoderStatus::Codes::kSystemAPICallError,
                         "Convert GMB frame to MemoryMappedFrame failed."));
       return;
     }
@@ -373,21 +401,19 @@ void OpenH264VideoEncoder::Encode(scoped_refptr<VideoFrame> frame,
 
   if (frame->format() != PIXEL_FORMAT_I420) {
     // OpenH264 can resize frame automatically, but since we're converting
-    // pixel fromat anyway we can do resize as well.
+    // pixel format anyway we can do resize as well.
     auto i420_frame = frame_pool_.CreateFrame(
         PIXEL_FORMAT_I420, options_.frame_size, gfx::Rect(options_.frame_size),
         options_.frame_size, frame->timestamp());
     if (!i420_frame) {
       std::move(done_cb).Run(
-          EncoderStatus(EncoderStatus::Codes::kEncoderFailedEncode,
+          EncoderStatus(EncoderStatus::Codes::kOutOfMemoryError,
                         "Can't allocate an I420 frame."));
       return;
     }
     auto status = frame_converter_.ConvertAndScale(*frame, *i420_frame);
     if (!status.is_ok()) {
-      std::move(done_cb).Run(
-          EncoderStatus(EncoderStatus::Codes::kEncoderFailedEncode)
-              .AddCause(std::move(status)));
+      std::move(done_cb).Run(status);
       return;
     }
     frame = std::move(i420_frame);
@@ -406,14 +432,14 @@ void OpenH264VideoEncoder::Encode(scoped_refptr<VideoFrame> frame,
   picture.iColorFormat = EVideoFormatType::videoFormatI420;
   picture.uiTimeStamp = frame->timestamp().InMilliseconds();
   picture.pData[0] =
-      const_cast<uint8_t*>(frame->visible_data(VideoFrame::kYPlane));
+      const_cast<uint8_t*>(frame->visible_data(VideoFrame::Plane::kY));
   picture.pData[1] =
-      const_cast<uint8_t*>(frame->visible_data(VideoFrame::kUPlane));
+      const_cast<uint8_t*>(frame->visible_data(VideoFrame::Plane::kU));
   picture.pData[2] =
-      const_cast<uint8_t*>(frame->visible_data(VideoFrame::kVPlane));
-  picture.iStride[0] = frame->stride(VideoFrame::kYPlane);
-  picture.iStride[1] = frame->stride(VideoFrame::kUPlane);
-  picture.iStride[2] = frame->stride(VideoFrame::kVPlane);
+      const_cast<uint8_t*>(frame->visible_data(VideoFrame::Plane::kV));
+  picture.iStride[0] = frame->stride(VideoFrame::Plane::kY);
+  picture.iStride[1] = frame->stride(VideoFrame::Plane::kU);
+  picture.iStride[2] = frame->stride(VideoFrame::Plane::kV);
 
   if (key_frame) {
     if (int err = codec_->ForceIntraFrame(true)) {

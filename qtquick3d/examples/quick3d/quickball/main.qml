@@ -155,14 +155,14 @@ Window {
             source: "#Sphere"
             scale: Qt.vector3d(ballScale, ballScale, ballScale)
 
-            materials: DefaultMaterial {
-                diffuseMap: Texture {
+            materials: PrincipledMaterial {
+                baseColorMap: Texture {
                     source: "images/ball.jpg"
                 }
                 normalMap: Texture {
                     source: "images/ball_n.jpg"
                 }
-                bumpAmount: 1.0
+                normalStrength: 1.0
             }
             //! [ball model]
 
@@ -382,14 +382,14 @@ Window {
                     source: "#Cube"
                     scale: Qt.vector3d(targetScale, targetScale, targetScale)
                     opacity: 0.99 - targetNode.hide * 2
-                    materials: DefaultMaterial {
-                        diffuseMap: Texture {
+                    materials: PrincipledMaterial {
+                        baseColorMap: Texture {
                             source: "images/qt_logo.jpg"
                         }
                         normalMap: Texture {
                             source: "images/qt_logo_n.jpg"
                         }
-                        bumpAmount: 1.0
+                        normalStrength: 1.0
                     }
                     Vector3dAnimation on eulerRotation {
                         loops: Animation.Infinite
@@ -417,8 +417,8 @@ Window {
             source: "#Rectangle"
             scale: Qt.vector3d(50, 50, 1)
             eulerRotation.x: -90
-            materials: DefaultMaterial {
-                diffuseMap: Texture {
+            materials: PrincipledMaterial {
+                baseColorMap: Texture {
                     source: "images/grass.jpg"
                     tilingModeHorizontal: Texture.Repeat
                     tilingModeVertical: Texture.Repeat
@@ -428,7 +428,7 @@ Window {
                 normalMap: Texture {
                     source: "images/grass_n.jpg"
                 }
-                bumpAmount: 0.6
+                normalStrength: 0.6
             }
         }
         //! [ground model]
@@ -443,8 +443,8 @@ Window {
             position: Qt.vector3d(0, 960, -2000)
             // We don't want shadows casted into sky
             receivesShadows: false
-            materials: DefaultMaterial {
-                diffuseMap: Texture {
+            materials: PrincipledMaterial {
+                baseColorMap: Texture {
                     source: "images/sky.jpg"
                 }
             }

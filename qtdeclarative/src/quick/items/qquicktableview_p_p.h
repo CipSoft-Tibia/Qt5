@@ -534,7 +534,6 @@ public:
     void updateExtents();
     void syncLoadedTableRectFromLoadedTable();
     void syncLoadedTableFromLoadRequest();
-    void shiftLoadedTableRect(const QPointF newPosition);
 
     int nextVisibleEdgeIndex(Qt::Edge edge, int startIndex) const;
     int nextVisibleEdgeIndexAroundLoadedTable(Qt::Edge edge) const;
@@ -656,6 +655,8 @@ public:
     bool setCurrentIndexFromKeyEvent(QKeyEvent *e);
     bool canEdit(const QModelIndex tappedIndex, bool warn);
     bool editFromKeyEvent(QKeyEvent *e);
+    void closeEditorAndCommit();
+    QObject *installEventFilterOnFocusObjectInsideEditItem();
 
     // QQuickSelectable
     QQuickItem *selectionPointerHandlerTarget() const override;

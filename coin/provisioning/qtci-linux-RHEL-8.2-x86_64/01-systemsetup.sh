@@ -17,10 +17,8 @@ export DISPLAY=:0
 
 # Set timezone to UTC.
 sudo timedatectl set-timezone Etc/UTC
-# disable Automatic screen lock
-gsettings set org.gnome.desktop.screensaver lock-enabled false
-# disable blank screen power saving
-gsettings set org.gnome.desktop.session idle-delay 0
+
+"$BASEDIR/../common/linux/configure-gnome-shell.sh"
 
 # Set Wayland enable as false.
 echo "Setting Wayland enable as false"

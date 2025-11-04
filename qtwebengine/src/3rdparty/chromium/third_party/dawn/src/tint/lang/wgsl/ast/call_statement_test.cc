@@ -27,13 +27,13 @@
 
 #include "src/tint/lang/wgsl/ast/call_statement.h"
 
-#include "gtest/gtest-spi.h"
 #include "src/tint/lang/wgsl/ast/helper_test.h"
 
 namespace tint::ast {
 namespace {
 
 using CallStatementTest = TestHelper;
+using CallStatementDeathTest = CallStatementTest;
 
 TEST_F(CallStatementTest, Creation) {
     auto* expr = Call("func");
@@ -47,8 +47,8 @@ TEST_F(CallStatementTest, IsCall) {
     EXPECT_TRUE(c->Is<CallStatement>());
 }
 
-TEST_F(CallStatementTest, Assert_Null_Call) {
-    EXPECT_FATAL_FAILURE(
+TEST_F(CallStatementDeathTest, Assert_Null_Call) {
+    EXPECT_DEATH_IF_SUPPORTED(
         {
             ProgramBuilder b;
             b.CallStmt(nullptr);
@@ -56,8 +56,8 @@ TEST_F(CallStatementTest, Assert_Null_Call) {
         "internal compiler error");
 }
 
-TEST_F(CallStatementTest, Assert_DifferentGenerationID_Call) {
-    EXPECT_FATAL_FAILURE(
+TEST_F(CallStatementDeathTest, Assert_DifferentGenerationID_Call) {
+    EXPECT_DEATH_IF_SUPPORTED(
         {
             ProgramBuilder b1;
             ProgramBuilder b2;

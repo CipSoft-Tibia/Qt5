@@ -1,5 +1,6 @@
-// Copyright (C) 2019 The Qt Company Ltd.
+// Copyright (C) 2025 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:data-parser
 
 #include "qstdweb_p.h"
 
@@ -365,7 +366,7 @@ void WebPromiseManager::adoptPromise(emscripten::val target, PromiseCallbacks ca
 
 EM_JS(bool, jsHaveAsyncify, (), { return typeof Asyncify !== "undefined"; });
 EM_JS(bool, jsHaveJspi, (),
-      { return typeof Asyncify !== "undefined" && !!Asyncify.makeAsyncFunction && !!WebAssembly.Function; });
+      { return typeof Asyncify !== "undefined" && !!Asyncify.makeAsyncFunction && (!!WebAssembly.Function || !!WebAssembly.Suspending); });
 
 #else
 

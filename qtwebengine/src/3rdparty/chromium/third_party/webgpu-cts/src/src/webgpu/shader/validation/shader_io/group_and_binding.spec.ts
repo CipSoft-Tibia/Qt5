@@ -95,12 +95,15 @@ g.test('single_entry_point')
       .combine('stage', ['vertex', 'fragment', 'compute'] as const)
       .combine('a_kind', kResourceKindsA)
       .combine('b_kind', kResourceKindsB)
+      .combine('usage', ['direct', 'transitive'] as const)
+      .filter(t => {
+        return !(t.stage === 'vertex' && t.b_kind === 'texture_storage_1d');
+      })
+      .beginSubcases()
       .combine('a_group', [0, 3] as const)
       .combine('b_group', [0, 3] as const)
       .combine('a_binding', [0, 3] as const)
       .combine('b_binding', [0, 3] as const)
-      .combine('usage', ['direct', 'transitive'] as const)
-      .beginSubcases()
   )
   .fn(t => {
     const resourceA = kResourceEmitters.get(t.params.a_kind) as ResourceDeclarationEmitter;
@@ -140,6 +143,9 @@ g.test('different_entry_points')
       .combine('a_kind', kResourceKindsA)
       .combine('b_kind', kResourceKindsB)
       .combine('usage', ['direct', 'transitive'] as const)
+      .filter(t => {
+        return !(t.b_stage === 'vertex' && t.b_kind === 'texture_storage_1d');
+      })
       .beginSubcases()
   )
   .fn(t => {

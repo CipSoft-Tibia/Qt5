@@ -306,8 +306,7 @@ static std::optional<QVersionNumber> convert(const QtProtobufPrivate::QtCore::QV
         return std::nullopt;
 
     QList<int> versionList;
-    const auto segments = from.segments();
-    for (const auto &segment : segments)
+    for (const auto &segment : from.segments())
         versionList.append(segment);
     return QVersionNumber(versionList);
 }

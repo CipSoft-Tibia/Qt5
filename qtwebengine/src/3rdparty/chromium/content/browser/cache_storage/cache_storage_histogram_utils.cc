@@ -3,9 +3,11 @@
 // found in the LICENSE file.
 
 #include "content/browser/cache_storage/cache_storage_histogram_utils.h"
+
+#include <string_view>
+
 #include "base/metrics/histogram_functions.h"
 #include "base/metrics/histogram_macros.h"
-#include "base/strings/string_piece.h"
 
 namespace content {
 
@@ -16,15 +18,14 @@ blink::mojom::CacheStorageError MakeErrorStorage(ErrorStorageType type) {
 
 namespace {
 
-// Helper macro to return a literal base::StringPiece.  Once
-// we can use c++17 we can use string view literals instead.
+// Helper macro to return a literal std::string_view.
 #define RETURN_LITERAL_STRING_PIECE(target)                \
   do {                                                     \
-    static constexpr base::StringPiece kValue("." target); \
+    static constexpr std::string_view kValue("." target); \
     return kValue;                                         \
   } while (0)
 
-base::StringPiece UMAToName(CacheStorageSchedulerUMA uma_type) {
+std::string_view UMAToName(CacheStorageSchedulerUMA uma_type) {
   switch (uma_type) {
     case CacheStorageSchedulerUMA::kOperationDuration:
       RETURN_LITERAL_STRING_PIECE("OperationDuration2");
@@ -35,7 +36,7 @@ base::StringPiece UMAToName(CacheStorageSchedulerUMA uma_type) {
   }
 }
 
-base::StringPiece ClientToName(CacheStorageSchedulerClient client_type) {
+std::string_view ClientToName(CacheStorageSchedulerClient client_type) {
   switch (client_type) {
     case CacheStorageSchedulerClient::kBackgroundSync:
       RETURN_LITERAL_STRING_PIECE("BackgroundSyncManager");
@@ -51,10 +52,10 @@ bool ShouldRecordOpUMA(CacheStorageSchedulerOp op_type) {
          op_type != CacheStorageSchedulerOp::kTest;
 }
 
-base::StringPiece OpToName(CacheStorageSchedulerOp op_type) {
+std::string_view OpToName(CacheStorageSchedulerOp op_type) {
   switch (op_type) {
     case CacheStorageSchedulerOp::kBackgroundSync:
-      NOTREACHED();
+      NOTREACHED_IN_MIGRATION();
       return "";
     case CacheStorageSchedulerOp::kClose:
       RETURN_LITERAL_STRING_PIECE("Close");
@@ -81,7 +82,7 @@ base::StringPiece OpToName(CacheStorageSchedulerOp op_type) {
     case CacheStorageSchedulerOp::kSizeThenClose:
       RETURN_LITERAL_STRING_PIECE("SizeThenClose");
     case CacheStorageSchedulerOp::kTest:
-      NOTREACHED();
+      NOTREACHED_IN_MIGRATION();
       return "";
     case CacheStorageSchedulerOp::kWriteIndex:
       RETURN_LITERAL_STRING_PIECE("WriteIndex");

@@ -27,18 +27,14 @@ if(NOT CMAKE_CROSSCOMPILING)
     # gives this possibility.
     set(__WrapProtoc_CMAKE_FIND_PACKAGE_PREFER_CONFIG_save ${CMAKE_FIND_PACKAGE_PREFER_CONFIG})
     set(CMAKE_FIND_PACKAGE_PREFER_CONFIG TRUE)
-    find_package(Protobuf ${WrapProtoc_FIND_VERSION} ${__WrapProtoc_find_package_args})
+    find_package(protobuf ${WrapProtoc_FIND_VERSION} NAMES protobuf Protobuf ${__WrapProtoc_find_package_args})
+    if(NOT protobuf_FOUND)
+        find_package(Protobuf ${__WrapProtoc_find_package_args})
+    endif()
     set(CMAKE_FIND_PACKAGE_PREFER_CONFIG ${__WrapProtoc_CMAKE_FIND_PACKAGE_PREFER_CONFIG_save})
     unset(__WrapProtoc_CMAKE_FIND_PACKAGE_PREFER_CONFIG_save)
 
-    if(TARGET protobuf::libprotobuf)
-        qt_internal_disable_find_package_global_promotion(protobuf::libprotobuf)
-    endif()
-    if(TARGET protobuf::libprotoc)
-        qt_internal_disable_find_package_global_promotion(protobuf::libprotoc)
-    endif()
-
-    if(Protobuf_FOUND AND TARGET protobuf::protoc)
+    if((protobuf_FOUND OR Protobuf_FOUND) AND TARGET protobuf::protoc)
         get_target_property(__WrapProtoc_is_protoc_imported protobuf::protoc IMPORTED)
         if(__WrapProtoc_is_protoc_imported)
             foreach(config IN ITEMS _RELWITHDEBINFO "" _RELEASE _MINSIZEREL _DEBUG)
@@ -65,11 +61,26 @@ endif()
 
 if(__WrapProtoc_protoc_imported_location)
     add_executable(WrapProtoc::WrapProtoc IMPORTED)
+    if(protobuf_VERSION)
+        set(__WrapProtoc_version_var protobuf_VERSION)
+    else()
+        set(__WrapProtoc_version_var Protobuf_VERSION)
+    endif()
     set_target_properties(WrapProtoc::WrapProtoc PROPERTIES
         IMPORTED_LOCATION "${__WrapProtoc_protoc_imported_location}"
-        _qt_internal_protobuf_version "${Protobuf_VERSION}"
+        _qt_internal_protobuf_version "${${__WrapProtoc_version_var}}"
     )
+    unset(__WrapProtoc_version_var)
     set(WrapProtoc_FOUND TRUE)
 endif()
 
+if(NOT WrapProtoc_FOUND)
+    if(NOT WrapProtoc_FIND_QUIETLY)
+        message(WARNING "'protoc' executable is not found. Install protobuf using this"
+            " instruction https://protobuf.dev/installation/ and"
+            " make sure 'protoc' executable is in PATH.")
+    endif()
+endif()
+
+unset(__WrapProtoc_protoc_imported_location)
 unset(__WrapProtoc_find_package_args)

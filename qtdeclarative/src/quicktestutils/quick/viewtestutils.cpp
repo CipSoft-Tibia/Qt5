@@ -485,14 +485,24 @@ namespace QQuickTest {
     */
     bool showView(QQuickView &view, const QUrl &url)
     {
-        if (!initView(view, url))
+        QByteArray errorMessage;
+        if (!initView(view, url, true, &errorMessage)) {
+            qCritical() << errorMessage;
             return false;
+        }
         const QPoint framePos(view.framePosition());
         view.show();
-        if (!QTest::qWaitForWindowExposed(&view))
+        if (!QTest::qWaitForWindowExposed(&view)) {
+            qCritical() << "qWaitForWindowExposed() failed";
             return false;
-        if (!view.rootObject())
+        }
+        if (!view.rootObject()) {
+            qCritical() << "View has no root object";
+            const auto errors = view.errors();
+            for (const auto &error : errors)
+                qCritical() << qPrintable(error.toString());
             return false;
+        }
         if (view.flags().testFlag(Qt::FramelessWindowHint))
             return true;
         const bool positionOk = QTest::qWaitFor([&]{ return framePos != view.position(); });

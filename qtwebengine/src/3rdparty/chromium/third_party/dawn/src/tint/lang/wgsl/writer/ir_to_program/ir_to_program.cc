@@ -68,15 +68,21 @@
 #include "src/tint/lang/core/ir/user_call.h"
 #include "src/tint/lang/core/ir/validator.h"
 #include "src/tint/lang/core/ir/var.h"
+#include "src/tint/lang/core/texel_format.h"
 #include "src/tint/lang/core/type/atomic.h"
 #include "src/tint/lang/core/type/depth_multisampled_texture.h"
 #include "src/tint/lang/core/type/depth_texture.h"
+#include "src/tint/lang/core/type/input_attachment.h"
 #include "src/tint/lang/core/type/multisampled_texture.h"
 #include "src/tint/lang/core/type/pointer.h"
 #include "src/tint/lang/core/type/reference.h"
 #include "src/tint/lang/core/type/sampler.h"
+#include "src/tint/lang/core/type/storage_texture.h"
 #include "src/tint/lang/core/type/texture.h"
+#include "src/tint/lang/core/type/type.h"
+#include "src/tint/lang/wgsl/ast/type.h"
 #include "src/tint/lang/wgsl/ir/builtin_call.h"
+#include "src/tint/lang/wgsl/ir/unary.h"
 #include "src/tint/lang/wgsl/program/program_builder.h"
 #include "src/tint/lang/wgsl/resolver/resolve.h"
 #include "src/tint/utils/containers/hashmap.h"
@@ -104,11 +110,19 @@ class State {
     explicit State(const core::ir::Module& m) : mod(m) {}
 
     Program Run(const ProgramOptions& options) {
-        if (auto res = core::ir::Validate(mod); res != Success) {
+        core::ir::Capabilities caps{core::ir::Capability::kAllowRefTypes};
+        if (auto res = core::ir::Validate(mod, caps); res != Success) {
             // IR module failed validation.
             b.Diagnostics() = res.Failure().reason;
             return Program{resolver::Resolve(b)};
         }
+
+        // Clone all symbols before we start.
+        // This ensures that we preserve the names of named values and prevents unnamed values
+        // receiving names that would conflict with named values that are emitted later than them.
+        mod.symbols.Foreach([&](Symbol s) {  //
+            b.Symbols().New(s.Name());
+        });
 
         RootBlock(mod.root_block);
 
@@ -127,12 +141,6 @@ class State {
     }
 
   private:
-    /// The AST representation for an IR pointer type
-    enum class PtrKind {
-        kPtr,  // IR pointer is represented in the AST as a pointer
-        kRef,  // IR pointer is represented in the AST as a reference
-    };
-
     /// The source IR module
     const core::ir::Module& mod;
 
@@ -142,13 +150,11 @@ class State {
     /// The structure for a value held by a 'let', 'var' or parameter.
     struct VariableValue {
         Symbol name;  // Name of the variable
-        PtrKind ptr_kind = PtrKind::kRef;
     };
 
     /// The structure for an inlined value
     struct InlinedValue {
         const ast::Expression* expr = nullptr;
-        PtrKind ptr_kind = PtrKind::kRef;
     };
 
     /// Empty struct used as a sentinel value to indicate that an ast::Value has been consumed by
@@ -177,9 +183,6 @@ class State {
     /// The current switch case block
     const core::ir::Block* current_switch_case_ = nullptr;
 
-    /// Values that can be inlined.
-    Hashset<const core::ir::Value*, 64> can_inline_;
-
     /// Set of enable directives emitted.
     Hashset<wgsl::Extension, 4> enables_;
 
@@ -206,7 +209,7 @@ class State {
             auto ty = Type(param->Type());
             auto name = NameFor(param);
             Vector<const ast::Attribute*, 1> attrs{};
-            Bind(param, name, PtrKind::kPtr);
+            Bind(param, name);
 
             // Emit parameter attributes.
             if (auto builtin = param->Builtin()) {
@@ -252,16 +255,23 @@ class State {
                         Enable(wgsl::Extension::kChromiumExperimentalSubgroups);
                         attrs.Push(b.Builtin(core::BuiltinValue::kSubgroupSize));
                         break;
+                    case core::BuiltinValue::kClipDistances:
+                        Enable(wgsl::Extension::kClipDistances);
+                        attrs.Push(b.Builtin(core::BuiltinValue::kClipDistances));
+                        break;
                     default:
                         TINT_UNIMPLEMENTED() << builtin.value();
-                        break;
                 }
             }
             if (auto loc = param->Location()) {
-                attrs.Push(b.Location(AInt(loc->value)));
-                if (auto interp = loc->interpolation) {
-                    attrs.Push(b.Interpolate(interp->type, interp->sampling));
-                }
+                attrs.Push(b.Location(u32(loc.value())));
+            }
+            if (auto color = param->Color()) {
+                Enable(wgsl::Extension::kChromiumExperimentalFramebufferFetch);
+                attrs.Push(b.Color(u32(color.value())));
+            }
+            if (auto interp = param->Interpolation()) {
+                attrs.Push(b.Interpolate(interp->type, interp->sampling));
             }
             if (param->Invariant()) {
                 attrs.Push(b.Invariant());
@@ -283,7 +293,7 @@ class State {
             case core::ir::Function::PipelineStage::kCompute: {
                 auto wgsize = fn->WorkgroupSize().value();
                 attrs.Push(b.Stage(ast::PipelineStage::kCompute));
-                attrs.Push(b.WorkgroupSize(AInt(wgsize[0]), AInt(wgsize[1]), AInt(wgsize[2])));
+                attrs.Push(b.WorkgroupSize(u32(wgsize[0]), u32(wgsize[1]), u32(wgsize[2])));
                 break;
             }
             case core::ir::Function::PipelineStage::kFragment:
@@ -308,14 +318,13 @@ class State {
                     break;
                 default:
                     TINT_UNIMPLEMENTED() << builtin.value();
-                    break;
             }
         }
         if (auto loc = fn->ReturnLocation()) {
-            ret_attrs.Push(b.Location(AInt(loc->value)));
-            if (auto interp = loc->interpolation) {
-                ret_attrs.Push(b.Interpolate(interp->type, interp->sampling));
-            }
+            ret_attrs.Push(b.Location(u32(loc.value())));
+        }
+        if (auto interp = fn->ReturnInterpolation()) {
+            ret_attrs.Push(b.Interpolate(interp->type, interp->sampling));
         }
         if (fn->ReturnInvariant()) {
             ret_attrs.Push(b.Invariant());
@@ -333,80 +342,12 @@ class State {
     StatementList Statements(const core::ir::Block* block) {
         StatementList stmts;
         if (block) {
-            MarkInlinable(block);
             TINT_SCOPED_ASSIGNMENT(statements_, &stmts);
             for (auto* inst : *block) {
                 Instruction(inst);
             }
         }
         return stmts;
-    }
-
-    void MarkInlinable(const core::ir::Block* block) {
-        // An ordered list of possibly-inlinable values returned by sequenced instructions that have
-        // not yet been marked-for or ruled-out-for inlining.
-        UniqueVector<const core::ir::Value*, 32> pending_resolution;
-
-        // Walk the instructions of the block starting with the first.
-        for (auto* inst : *block) {
-            // Is the instruction sequenced?
-            bool sequenced = inst->Sequenced();
-
-            // Walk the instruction's operands starting with the right-most.
-            auto operands = inst->Operands();
-            for (auto* operand : tint::Reverse(operands)) {
-                if (!pending_resolution.Contains(operand)) {
-                    continue;
-                }
-                // Operand is in 'pending_resolution'
-
-                if (pending_resolution.TryPop(operand)) {
-                    // Operand was the last sequenced value to be added to 'pending_resolution'
-                    // This operand can be inlined as it does not change the sequencing order.
-                    can_inline_.Add(operand);
-                    sequenced = true;  // Inherit the 'sequenced' flag from the inlined value
-                } else {
-                    // Operand was in 'pending_resolution', but was not the last sequenced value to
-                    // be added. Inlining this operand would break the sequencing order, so must be
-                    // emitted as a let. All preceding pending values must also be emitted as a
-                    // let to prevent them being inlined and breaking the sequencing order.
-                    // Remove all the values in pending upto and including 'operand'.
-                    for (size_t i = 0; i < pending_resolution.Length(); i++) {
-                        if (pending_resolution[i] == operand) {
-                            pending_resolution.Erase(0, i + 1);
-                            break;
-                        }
-                    }
-                }
-            }
-
-            if (inst->Results().Length() == 1) {
-                // Instruction has a single result value.
-                // Check to see if the result of this instruction is a candidate for inlining.
-                auto* result = inst->Result(0);
-                // Only values with a single usage can be inlined.
-                // Named values are not inlined, as we want to emit the name for a let.
-                if (result->NumUsages() == 1 && !mod.NameOf(result).IsValid()) {
-                    if (sequenced) {
-                        // The value comes from a sequenced instruction. We need to ensure
-                        // instruction ordering so add it to 'pending_resolution'.
-                        pending_resolution.Add(result);
-                    } else {
-                        // The value comes from an unsequenced instruction. Just inline.
-                        can_inline_.Add(result);
-                    }
-                    continue;
-                }
-            }
-
-            // At this point the value has been ruled out for inlining.
-
-            if (sequenced) {
-                // A sequenced instruction with zero or multiple return values cannot be inlined.
-                // All preceding sequenced instructions cannot be inlined past this point.
-                pending_resolution.Clear();
-            }
-        }
     }
 
     void Append(const ast::Statement* inst) { statements_->Push(inst); }
@@ -493,10 +434,9 @@ class State {
         const ast::Expression* cond = nullptr;
         StatementList body_stmts;
         {
-            MarkInlinable(l->Body());
             TINT_SCOPED_ASSIGNMENT(statements_, &body_stmts);
             for (auto* inst : *l->Body()) {
-                if (body_stmts.IsEmpty()) {
+                if (body_stmts.IsEmpty() && !cond) {
                     if (auto* if_ = inst->As<core::ir::If>()) {
                         if (if_->Results().IsEmpty() &&                          //
                             if_->True()->Length() == 1 &&                        //
@@ -618,7 +558,6 @@ class State {
         // Return has arguments - this is the return value.
         if (ret->Args().Length() != 1) {
             TINT_ICE() << "expected 1 value for return, got " << ret->Args().Length();
-            return;
         }
 
         Append(b.Return(Expr(ret->Args().Front())));
@@ -626,41 +565,51 @@ class State {
 
     void Var(const core::ir::Var* var) {
         auto* val = var->Result(0);
-        auto* ptr = As<core::type::Pointer>(val->Type());
-        auto ty = Type(ptr->StoreType());
+        auto* ref = As<core::type::Reference>(val->Type());
+        TINT_ASSERT(ref /* converted by PtrToRef */);
+        auto ty = Type(ref->StoreType());
         Symbol name = NameFor(var->Result(0));
-        Bind(var->Result(0), name, PtrKind::kRef);
+        Bind(var->Result(0), name);
 
         Vector<const ast::Attribute*, 4> attrs;
         if (auto bp = var->BindingPoint()) {
-            attrs.Push(b.Group(AInt(bp->group)));
-            attrs.Push(b.Binding(AInt(bp->binding)));
+            attrs.Push(b.Group(u32(bp->group)));
+            attrs.Push(b.Binding(u32(bp->binding)));
+        }
+
+        if (auto ii = var->InputAttachmentIndex()) {
+            attrs.Push(b.InputAttachmentIndex(u32(ii.value())));
         }
 
         const ast::Expression* init = nullptr;
         if (var->Initializer()) {
             init = Expr(var->Initializer());
         }
-        switch (ptr->AddressSpace()) {
+        switch (ref->AddressSpace()) {
             case core::AddressSpace::kFunction:
                 Append(b.Decl(b.Var(name, ty, init, std::move(attrs))));
                 return;
             case core::AddressSpace::kStorage:
-                b.GlobalVar(name, ty, init, ptr->Access(), ptr->AddressSpace(), std::move(attrs));
+                b.GlobalVar(name, ty, init, ref->Access(), ref->AddressSpace(), std::move(attrs));
                 return;
             case core::AddressSpace::kHandle:
                 b.GlobalVar(name, ty, init, std::move(attrs));
                 return;
             default:
-                b.GlobalVar(name, ty, init, ptr->AddressSpace(), std::move(attrs));
+                b.GlobalVar(name, ty, init, ref->AddressSpace(), std::move(attrs));
                 return;
         }
     }
 
     void Let(const core::ir::Let* let) {
-        Symbol name = NameFor(let->Result(0));
-        Append(b.Decl(b.Let(name, Expr(let->Value(), PtrKind::kPtr))));
-        Bind(let->Result(0), name, PtrKind::kPtr);
+        auto* result = let->Result(0);
+        if (mod.NameOf(result).IsValid() || result->NumUsages() > 0) {
+            Symbol name = NameFor(result);
+            Append(b.Decl(b.Let(name, Expr(let->Value()))));
+            Bind(result, name);
+        } else {
+            Append(b.Assign(b.Phony(), Expr(let->Value())));
+        }
     }
 
     void Store(const core::ir::Store* store) {
@@ -678,7 +627,7 @@ class State {
     void Call(const core::ir::Call* call) {
         auto args = tint::Transform<4>(call->Args(), [&](const core::ir::Value* arg) {
             // Pointer-like arguments are passed by pointer, never reference.
-            return Expr(arg, PtrKind::kPtr);
+            return Expr(arg);
         });
         tint::Switch(
             call,  //
@@ -688,7 +637,7 @@ class State {
                     Append(b.CallStmt(expr));
                     return;
                 }
-                Bind(c->Result(0), expr, PtrKind::kPtr);
+                Bind(c->Result(0), expr);
             },
             [&](const wgsl::ir::BuiltinCall* c) {
                 if (!disabled_derivative_uniformity_ && RequiresDerivativeUniformity(c->Func())) {
@@ -700,7 +649,28 @@ class State {
 
                 switch (c->Func()) {
                     case wgsl::BuiltinFn::kSubgroupBallot:
+                    case wgsl::BuiltinFn::kSubgroupElect:
                     case wgsl::BuiltinFn::kSubgroupBroadcast:
+                    case wgsl::BuiltinFn::kSubgroupBroadcastFirst:
+                    case wgsl::BuiltinFn::kSubgroupShuffle:
+                    case wgsl::BuiltinFn::kSubgroupShuffleXor:
+                    case wgsl::BuiltinFn::kSubgroupShuffleUp:
+                    case wgsl::BuiltinFn::kSubgroupShuffleDown:
+                    case wgsl::BuiltinFn::kSubgroupAdd:
+                    case wgsl::BuiltinFn::kSubgroupExclusiveAdd:
+                    case wgsl::BuiltinFn::kSubgroupMul:
+                    case wgsl::BuiltinFn::kSubgroupExclusiveMul:
+                    case wgsl::BuiltinFn::kSubgroupAnd:
+                    case wgsl::BuiltinFn::kSubgroupOr:
+                    case wgsl::BuiltinFn::kSubgroupXor:
+                    case wgsl::BuiltinFn::kSubgroupMin:
+                    case wgsl::BuiltinFn::kSubgroupMax:
+                    case wgsl::BuiltinFn::kSubgroupAny:
+                    case wgsl::BuiltinFn::kSubgroupAll:
+                    case wgsl::BuiltinFn::kQuadBroadcast:
+                    case wgsl::BuiltinFn::kQuadSwapX:
+                    case wgsl::BuiltinFn::kQuadSwapY:
+                    case wgsl::BuiltinFn::kQuadSwapDiagonal:
                         Enable(wgsl::Extension::kChromiumExperimentalSubgroups);
                         break;
                     default:
@@ -708,23 +678,23 @@ class State {
                 }
 
                 auto* expr = b.Call(c->Func(), std::move(args));
-                if (call->Results().IsEmpty() || call->Result(0)->Type()->Is<core::type::Void>()) {
+                if (call->Results().IsEmpty() || !call->Result(0)->IsUsed()) {
                     Append(b.CallStmt(expr));
                     return;
                 }
-                Bind(c->Result(0), expr, PtrKind::kPtr);
+                Bind(c->Result(0), expr);
             },
             [&](const core::ir::Construct* c) {
                 auto ty = Type(c->Result(0)->Type());
-                Bind(c->Result(0), b.Call(ty, std::move(args)), PtrKind::kPtr);
+                Bind(c->Result(0), b.Call(ty, std::move(args)));
             },
             [&](const core::ir::Convert* c) {
                 auto ty = Type(c->Result(0)->Type());
-                Bind(c->Result(0), b.Call(ty, std::move(args)), PtrKind::kPtr);
+                Bind(c->Result(0), b.Call(ty, std::move(args)));
             },
             [&](const core::ir::Bitcast* c) {
                 auto ty = Type(c->Result(0)->Type());
-                Bind(c->Result(0), b.Bitcast(ty, args[0]), PtrKind::kPtr);
+                Bind(c->Result(0), b.Bitcast(ty, args[0]));
             },
             [&](const core::ir::Discard*) { Append(b.Discard()); },  //
             TINT_ICE_ON_NO_MATCH);
@@ -732,9 +702,9 @@ class State {
 
     void Load(const core::ir::Load* l) { Bind(l->Result(0), Expr(l->From())); }
 
-    void LoadVectorElement(const core::ir::LoadVectorElement* load) {
-        auto* ptr = Expr(load->From());
-        Bind(load->Result(0), VectorMemberAccess(ptr, load->Index()));
+    void LoadVectorElement(const core::ir::LoadVectorElement* l) {
+        auto* vec = Expr(l->From());
+        Bind(l->Result(0), VectorMemberAccess(vec, l->Index()));
     }
 
     void Unary(const core::ir::Unary* u) {
@@ -746,8 +716,14 @@ class State {
             case core::UnaryOp::kNegation:
                 expr = b.Negation(Expr(u->Val()));
                 break;
-            default:
-                TINT_UNIMPLEMENTED() << u->Op();
+            case core::UnaryOp::kNot:
+                expr = b.Not(Expr(u->Val()));
+                break;
+            case core::UnaryOp::kAddressOf:
+                expr = b.AddressOf(Expr(u->Val()));
+                break;
+            case core::UnaryOp::kIndirection:
+                expr = b.Deref(Expr(u->Val()));
                 break;
         }
         Bind(u->Result(0), expr);
@@ -755,12 +731,12 @@ class State {
 
     void Access(const core::ir::Access* a) {
         auto* expr = Expr(a->Object());
-        auto* obj_ty = a->Object()->Type()->UnwrapPtr();
+        auto* obj_ty = a->Object()->Type()->UnwrapRef();
         for (auto* index : a->Indices()) {
             tint::Switch(
                 obj_ty,
                 [&](const core::type::Vector* vec) {
-                    TINT_DEFER(obj_ty = vec->type());
+                    TINT_DEFER(obj_ty = vec->Type());
                     expr = VectorMemberAccess(expr, index);
                 },
                 [&](const core::type::Matrix* mat) {
@@ -774,7 +750,7 @@ class State {
                 [&](const core::type::Struct* s) {
                     if (auto* c = index->As<core::ir::Constant>()) {
                         auto i = c->Value()->ValueAs<uint32_t>();
-                        TINT_ASSERT_OR_RETURN(i < s->Members().Length());
+                        TINT_ASSERT(i < s->Members().Length());
                         auto* member = s->Members()[i];
                         obj_ty = member->Type();
                         expr = b.MemberAccessor(expr, member->Name().NameView());
@@ -791,9 +767,8 @@ class State {
         auto* vec = Expr(s->Object());
         Vector<char, 4> components;
         for (uint32_t i : s->Indices()) {
-            if (TINT_UNLIKELY(i >= 4)) {
+            if (DAWN_UNLIKELY(i >= 4)) {
                 TINT_ICE() << "invalid swizzle index: " << i;
-                return;
             }
             components.Push("xyzw"[i]);
         }
@@ -876,32 +851,26 @@ class State {
 
     TINT_BEGIN_DISABLE_WARNING(UNREACHABLE_CODE);
 
-    const ast::Expression* Expr(const core::ir::Value* value,
-                                PtrKind want_ptr_kind = PtrKind::kRef) {
-        using ExprAndPtrKind = std::pair<const ast::Expression*, PtrKind>;
-
-        auto [expr, got_ptr_kind] = tint::Switch(
-            value,
-            [&](const core::ir::Constant* c) -> ExprAndPtrKind {
-                return {Constant(c), PtrKind::kRef};
-            },
-            [&](Default) -> ExprAndPtrKind {
-                auto lookup = bindings_.Find(value);
-                if (TINT_UNLIKELY(!lookup)) {
+    const ast::Expression* Expr(const core::ir::Value* value) {
+        auto expr = tint::Switch(
+            value,  //
+            [&](const core::ir::Constant* c) { return Constant(c); },
+            [&](Default) -> const ast::Expression* {
+                auto lookup = bindings_.Get(value);
+                if (DAWN_UNLIKELY(!lookup)) {
                     TINT_ICE() << "Expr(" << (value ? value->TypeInfo().name : "null")
                                << ") value has no expression";
-                    return {};
                 }
                 return std::visit(
-                    [&](auto&& got) -> ExprAndPtrKind {
+                    [&](auto&& got) -> const ast::Expression* {
                         using T = std::decay_t<decltype(got)>;
 
                         if constexpr (std::is_same_v<T, VariableValue>) {
-                            return {b.Expr(got.name), got.ptr_kind};
+                            return b.Expr(got.name);
                         }
 
                         if constexpr (std::is_same_v<T, InlinedValue>) {
-                            auto result = ExprAndPtrKind{got.expr, got.ptr_kind};
+                            auto result = got.expr;
                             // Single use (inlined) expression.
                             // Mark the bindings_ map entry as consumed.
                             *lookup = ConsumedValue{};
@@ -915,17 +884,13 @@ class State {
                             TINT_ICE()
                                 << "Expr(" << value->TypeInfo().name << ") has unhandled value";
                         }
-                        return {};
+                        return nullptr;
                     },
                     *lookup);
             });
 
         if (!expr) {
             return b.Expr("<error>");
-        }
-
-        if (value->Type()->Is<core::type::Pointer>()) {
-            return ToPtrKind(expr, got_ptr_kind, want_ptr_kind);
         }
 
         return expr;
@@ -1000,10 +965,10 @@ class State {
             [&](const core::type::F32*) { return b.ty.f32(); },  //
             [&](const core::type::Bool*) { return b.ty.bool_(); },
             [&](const core::type::Matrix* m) {
-                return b.ty.mat(Type(m->type()), m->columns(), m->rows());
+                return b.ty.mat(Type(m->Type()), m->Columns(), m->Rows());
             },
             [&](const core::type::Vector* v) {
-                auto el = Type(v->type());
+                auto el = Type(v->Type());
                 if (v->Packed()) {
                     TINT_ASSERT(v->Width() == 3u);
                     return b.ty(core::BuiltinType::kPackedVec3, el);
@@ -1013,6 +978,11 @@ class State {
             },
             [&](const core::type::Array* a) {
                 auto el = Type(a->ElemType());
+                if (!el) {
+                    // The element type is untypeable, so we need to infer it instead.
+                    return ast::Type{b.Expr(b.Ident("array"))};
+                }
+
                 Vector<const ast::Attribute*, 1> attrs;
                 if (!a->IsStrideImplicit()) {
                     attrs.Push(b.Stride(a->Stride()));
@@ -1021,31 +991,34 @@ class State {
                     return b.ty.array(el, std::move(attrs));
                 }
                 auto count = a->ConstantCount();
-                if (TINT_UNLIKELY(!count)) {
+                if (DAWN_UNLIKELY(!count)) {
                     TINT_ICE() << core::type::Array::kErrExpectedConstantCount;
-                    return b.ty.array(el, u32(1), std::move(attrs));
                 }
                 return b.ty.array(el, u32(count.value()), std::move(attrs));
             },
             [&](const core::type::Struct* s) { return Struct(s); },
             [&](const core::type::Atomic* a) { return b.ty.atomic(Type(a->Type())); },
-            [&](const core::type::DepthTexture* t) { return b.ty.depth_texture(t->dim()); },
+            [&](const core::type::DepthTexture* t) { return b.ty.depth_texture(t->Dim()); },
             [&](const core::type::DepthMultisampledTexture* t) {
-                return b.ty.depth_multisampled_texture(t->dim());
+                return b.ty.depth_multisampled_texture(t->Dim());
             },
             [&](const core::type::ExternalTexture*) { return b.ty.external_texture(); },
             [&](const core::type::MultisampledTexture* t) {
-                auto el = Type(t->type());
-                return b.ty.multisampled_texture(t->dim(), el);
+                auto el = Type(t->Type());
+                return b.ty.multisampled_texture(t->Dim(), el);
             },
             [&](const core::type::SampledTexture* t) {
-                auto el = Type(t->type());
-                return b.ty.sampled_texture(t->dim(), el);
+                auto el = Type(t->Type());
+                return b.ty.sampled_texture(t->Dim(), el);
             },
             [&](const core::type::StorageTexture* t) {
-                return b.ty.storage_texture(t->dim(), t->texel_format(), t->access());
+                if (RequiresChromiumInternalGraphite(t)) {
+                    Enable(wgsl::Extension::kChromiumInternalGraphite);
+                }
+
+                return b.ty.storage_texture(t->Dim(), t->TexelFormat(), t->Access());
             },
-            [&](const core::type::Sampler* s) { return b.ty.sampler(s->kind()); },
+            [&](const core::type::Sampler* s) { return b.ty.sampler(s->Kind()); },
             [&](const core::type::Pointer* p) {
                 // Note: type::Pointer always has an inferred access, but WGSL only allows an
                 // explicit access in the 'storage' address space.
@@ -1056,15 +1029,25 @@ class State {
                                   : core::Access::kUndefined;
                 return b.ty.ptr(address_space, el, access);
             },
-            [&](const core::type::Reference*) {
+            [&](const core::type::Reference*) -> ast::Type {
                 TINT_ICE() << "reference types should never appear in the IR";
-                return b.ty.i32();
+            },
+            [&](const core::type::InputAttachment* i) {
+                Enable(wgsl::Extension::kChromiumInternalInputAttachments);
+                auto el = Type(i->Type());
+                return b.ty.input_attachment(el);
             },  //
             TINT_ICE_ON_NO_MATCH);
     }
 
     ast::Type Struct(const core::type::Struct* s) {
-        auto n = structs_.GetOrCreate(s, [&] {
+        // Skip builtin structures.
+        // TODO(350778507): Consider using a struct flag for builtin structures instead.
+        if (tint::HasPrefix(s->Name().NameView(), "__")) {
+            return ast::Type{};
+        }
+
+        auto n = structs_.GetOrAdd(s, [&] {
             auto members = tint::Transform<8>(s->Members(), [&](const core::type::StructMember* m) {
                 auto ty = Type(m->Type());
                 const auto& ir_attrs = m->Attributes();
@@ -1078,13 +1061,19 @@ class State {
                 if (auto location = ir_attrs.location) {
                     ast_attrs.Push(b.Location(u32(*location)));
                 }
-                if (auto index = ir_attrs.index) {
-                    Enable(wgsl::Extension::kChromiumInternalDualSourceBlending);
-                    ast_attrs.Push(b.Index(u32(*index)));
+                if (auto blend_src = ir_attrs.blend_src) {
+                    Enable(wgsl::Extension::kDualSourceBlending);
+                    ast_attrs.Push(b.BlendSrc(u32(*blend_src)));
+                }
+                if (auto color = ir_attrs.color) {
+                    Enable(wgsl::Extension::kChromiumExperimentalFramebufferFetch);
+                    ast_attrs.Push(b.Color(u32(*color)));
                 }
                 if (auto builtin = ir_attrs.builtin) {
                     if (RequiresSubgroups(*builtin)) {
                         Enable(wgsl::Extension::kChromiumExperimentalSubgroups);
+                    } else if (*builtin == core::BuiltinValue::kClipDistances) {
+                        Enable(wgsl::Extension::kClipDistances);
                     }
                     ast_attrs.Push(b.Builtin(*builtin));
                 }
@@ -1108,16 +1097,6 @@ class State {
         return b.ty(n);
     }
 
-    const ast::Expression* ToPtrKind(const ast::Expression* in, PtrKind got, PtrKind want) {
-        if (want == PtrKind::kRef && got == PtrKind::kPtr) {
-            return b.Deref(in);
-        }
-        if (want == PtrKind::kPtr && got == PtrKind::kRef) {
-            return b.AddressOf(in);
-        }
-        return in;
-    }
-
     ////////////////////////////////////////////////////////////////////////////////////////////////
     // Bindings
     ////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1125,7 +1104,7 @@ class State {
     /// @returns the AST name for the given value, creating and returning a new name on the first
     /// call.
     Symbol NameFor(const core::ir::Value* value, std::string_view suggested = {}) {
-        return names_.GetOrCreate(value, [&] {
+        return names_.GetOrAdd(value, [&] {
             if (!suggested.empty()) {
                 return b.Symbols().Register(suggested);
             }
@@ -1136,46 +1115,25 @@ class State {
         });
     }
 
-    /// Associates the IR value @p value with the AST expression @p expr.
-    /// @p ptr_kind defines how pointer values are represented by @p expr.
-    void Bind(const core::ir::Value* value,
-              const ast::Expression* expr,
-              PtrKind ptr_kind = PtrKind::kRef) {
+    /// Associates the IR value @p value with the AST expression @p expr if it is used, otherwise
+    /// creates a phony assignment with @p expr.
+    void Bind(const core::ir::Value* value, const ast::Expression* expr) {
         TINT_ASSERT(value);
-        if (can_inline_.Remove(value)) {
+        if (value->IsUsed()) {
             // Value will be inlined at its place of usage.
-            if (TINT_LIKELY(bindings_.Add(value, InlinedValue{expr, ptr_kind}))) {
-                return;
+            if (DAWN_UNLIKELY(!bindings_.Add(value, InlinedValue{expr}))) {
+                TINT_ICE() << "Bind(" << value->TypeInfo().name << ") called twice for same value";
             }
         } else {
-            if (value->Type()->Is<core::type::Pointer>()) {
-                expr = ToPtrKind(expr, ptr_kind, PtrKind::kPtr);
-            }
-            auto mod_name = mod.NameOf(value);
-            if (!value->IsUsed() && !mod_name.IsValid()) {
-                // Value has no usages and no name.
-                // Assign to a phony. These support more data types than a 'let', and avoids
-                // allocation of unused names.
-                Append(b.Assign(b.Phony(), expr));
-            } else {
-                Symbol name = NameFor(value, mod_name.NameView());
-                Append(b.Decl(b.Let(name, expr)));
-                Bind(value, name, PtrKind::kPtr);
-            }
-            return;
+            Append(b.Assign(b.Phony(), expr));
         }
-
-        TINT_ICE() << "Bind(" << value->TypeInfo().name << ") called twice for same value";
     }
 
     /// Associates the IR value @p value with the AST 'var', 'let' or parameter with the name @p
     /// name.
-    /// @p ptr_kind defines how pointer values are represented by @p expr.
-    void Bind(const core::ir::Value* value, Symbol name, PtrKind ptr_kind) {
+    void Bind(const core::ir::Value* value, Symbol name) {
         TINT_ASSERT(value);
-
-        bool added = bindings_.Add(value, VariableValue{name, ptr_kind});
-        if (TINT_UNLIKELY(!added)) {
+        if (DAWN_UNLIKELY(!bindings_.Add(value, VariableValue{name}))) {
             TINT_ICE() << "Bind(" << value->TypeInfo().name << ") called twice for same value";
         }
     }
@@ -1300,6 +1258,12 @@ class State {
             default:
                 return false;
         }
+    }
+
+    /// @returns true if the storage texture type requires the kChromiumInternalGraphite extension
+    /// to be enabled.
+    bool RequiresChromiumInternalGraphite(const core::type::StorageTexture* tex) {
+        return tex->TexelFormat() == core::TexelFormat::kR8Unorm;
     }
 };
 

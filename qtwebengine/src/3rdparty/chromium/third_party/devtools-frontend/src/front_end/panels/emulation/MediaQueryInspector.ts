@@ -53,7 +53,7 @@ export class MediaQueryInspector extends UI.Widget.Widget implements
 
     SDK.TargetManager.TargetManager.instance().observeModels(SDK.CSSModel.CSSModel, this);
     UI.ZoomManager.ZoomManager.instance().addEventListener(
-        UI.ZoomManager.Events.ZoomChanged, this.renderMediaQueries.bind(this), this);
+        UI.ZoomManager.Events.ZOOM_CHANGED, this.renderMediaQueries.bind(this), this);
   }
 
   modelAdded(cssModel: SDK.CSSModel.CSSModel): void {
@@ -101,11 +101,11 @@ export class MediaQueryInspector extends UI.Widget.Widget implements
     const modelMaxWidth = model.maxWidthExpression();
     const modelMinWidth = model.minWidthExpression();
 
-    if (model.section() === Section.Max) {
+    if (model.section() === Section.MAX) {
       this.setWidthCallback(modelMaxWidth ? modelMaxWidth.computedLength() || 0 : 0);
       return;
     }
-    if (model.section() === Section.Min) {
+    if (model.section() === Section.MIN) {
       this.setWidthCallback(modelMinWidth ? modelMinWidth.computedLength() || 0 : 0);
       return;
     }
@@ -144,13 +144,13 @@ export class MediaQueryInspector extends UI.Widget.Widget implements
 
     const contextMenuItems = [...uiLocations.keys()].sort();
     const contextMenu = new UI.ContextMenu.ContextMenu(event);
-    const subMenuItem =
-        contextMenu.defaultSection().appendSubMenuItem(i18nString(UIStrings.revealInSourceCode), undefined);
+    const subMenuItem = contextMenu.defaultSection().appendSubMenuItem(
+        i18nString(UIStrings.revealInSourceCode), undefined, 'reveal-in-source-list');
     for (let i = 0; i < contextMenuItems.length; ++i) {
       const title = contextMenuItems[i];
       subMenuItem.defaultSection().appendItem(
           title, this.revealSourceLocation.bind(this, (uiLocations.get(title) as Workspace.UISourceCode.UILocation)),
-          {jslogContext: 'revealInSourceCode'});
+          {jslogContext: 'reveal-in-source'});
     }
     void contextMenu.show();
   }
@@ -229,8 +229,7 @@ export class MediaQueryInspector extends UI.Widget.Widget implements
       model: MediaQueryUIModel,
       locations: SDK.CSSModel.CSSLocation[],
     }|null = null;
-    for (let i = 0; i < this.cachedQueryModels.length; ++i) {
-      const model = this.cachedQueryModels[i];
+    for (const model of this.cachedQueryModels) {
       if (lastMarker && lastMarker.model.dimensionsEqual(model)) {
         lastMarker.active = lastMarker.active || model.active();
       } else {
@@ -284,7 +283,7 @@ export class MediaQueryInspector extends UI.Widget.Widget implements
     const result = document.createElement('div');
     result.classList.add('media-inspector-bar');
 
-    if (model.section() === Section.Max) {
+    if (model.section() === Section.MAX) {
       result.createChild('div', 'media-inspector-marker-spacer');
       const markerElement = result.createChild('div', 'media-inspector-marker media-inspector-marker-max-width');
       markerElement.style.width = maxWidthValue + 'px';
@@ -294,7 +293,7 @@ export class MediaQueryInspector extends UI.Widget.Widget implements
       result.createChild('div', 'media-inspector-marker-spacer');
     }
 
-    if (model.section() === Section.MinMax) {
+    if (model.section() === Section.MIN_MAX) {
       result.createChild('div', 'media-inspector-marker-spacer');
       const leftElement = result.createChild('div', 'media-inspector-marker media-inspector-marker-min-max-width');
       leftElement.style.width = (maxWidthValue - minWidthValue) * 0.5 + 'px';
@@ -310,7 +309,7 @@ export class MediaQueryInspector extends UI.Widget.Widget implements
       result.createChild('div', 'media-inspector-marker-spacer');
     }
 
-    if (model.section() === Section.Min) {
+    if (model.section() === Section.MIN) {
       const leftElement = result.createChild(
           'div', 'media-inspector-marker media-inspector-marker-min-width media-inspector-marker-min-width-left');
       UI.Tooltip.Tooltip.install(leftElement, model.mediaText());
@@ -346,9 +345,9 @@ export class MediaQueryInspector extends UI.Widget.Widget implements
 }
 
 export const enum Section {
-  Max = 0,
-  MinMax = 1,
-  Min = 2,
+  MAX = 0,
+  MIN_MAX = 1,
+  MIN = 2,
 }
 
 export class MediaQueryUIModel {
@@ -366,11 +365,11 @@ export class MediaQueryUIModel {
     this.maxWidthExpressionInternal = maxWidthExpression;
     this.activeInternal = active;
     if (maxWidthExpression && !minWidthExpression) {
-      this.sectionInternal = Section.Max;
+      this.sectionInternal = Section.MAX;
     } else if (minWidthExpression && maxWidthExpression) {
-      this.sectionInternal = Section.MinMax;
+      this.sectionInternal = Section.MIN_MAX;
     } else {
-      this.sectionInternal = Section.Min;
+      this.sectionInternal = Section.MIN;
     }
   }
 
@@ -468,10 +467,10 @@ export class MediaQueryUIModel {
     const thisMinLength = thisMinWidthExpression ? thisMinWidthExpression.computedLength() || 0 : 0;
     const otherMinLength = otherMinWidthExpression ? otherMinWidthExpression.computedLength() || 0 : 0;
 
-    if (this.section() === Section.Max) {
+    if (this.section() === Section.MAX) {
       return otherMaxLength - thisMaxLength;
     }
-    if (this.section() === Section.Min) {
+    if (this.section() === Section.MIN) {
       return thisMinLength - otherMinLength;
     }
     return thisMinLength - otherMinLength || otherMaxLength - thisMaxLength;

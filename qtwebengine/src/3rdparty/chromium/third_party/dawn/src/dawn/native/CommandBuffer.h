@@ -29,12 +29,14 @@
 #define SRC_DAWN_NATIVE_COMMANDBUFFER_H_
 
 #include <string>
+#include <vector>
 
 #include "dawn/native/dawn_platform.h"
 
 #include "dawn/native/CommandAllocator.h"
 #include "dawn/native/Error.h"
 #include "dawn/native/Forward.h"
+#include "dawn/native/IndirectDrawMetadata.h"
 #include "dawn/native/ObjectBase.h"
 #include "dawn/native/PassResourceUsage.h"
 #include "dawn/native/Texture.h"
@@ -43,6 +45,7 @@ namespace dawn::native {
 
 struct BeginRenderPassCmd;
 struct CopyTextureToBufferCmd;
+struct BufferCopy;
 struct TextureCopy;
 
 class CommandBufferBase : public ApiObjectBase {
@@ -61,6 +64,8 @@ class CommandBufferBase : public ApiObjectBase {
 
     const CommandBufferResourceUsage& GetResourceUsages() const;
 
+    const std::vector<IndirectDrawMetadata>& GetIndirectDrawMetadata();
+
     CommandIterator* GetCommandIteratorForTesting();
 
   protected:
@@ -72,7 +77,7 @@ class CommandBufferBase : public ApiObjectBase {
     CommandBufferBase(DeviceBase* device, ObjectBase::ErrorTag tag, const char* label);
 
     CommandBufferResourceUsage mResourceUsages;
-
+    std::vector<IndirectDrawMetadata> mIndirectDrawMetadata;
     std::string mEncoderLabel;
 };
 
@@ -89,6 +94,9 @@ SubresourceRange GetSubresourcesAffectedByCopy(const TextureCopy& copy, const Ex
 void LazyClearRenderPassAttachments(BeginRenderPassCmd* renderPass);
 
 bool IsFullBufferOverwrittenInTextureToBufferCopy(const CopyTextureToBufferCmd* copy);
+bool IsFullBufferOverwrittenInTextureToBufferCopy(const TextureCopy& source,
+                                                  const BufferCopy& destination,
+                                                  const Extent3D& copySize);
 
 std::array<float, 4> ConvertToFloatColor(dawn::native::Color color);
 std::array<int32_t, 4> ConvertToSignedIntegerColor(dawn::native::Color color);

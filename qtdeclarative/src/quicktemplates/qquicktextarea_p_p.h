@@ -28,7 +28,8 @@ QT_BEGIN_NAMESPACE
 
 class QQuickFlickable;
 
-class QQuickTextAreaPrivate : public QQuickTextEditPrivate, public QQuickItemChangeListener
+class QQuickTextAreaPrivate : public QQuickTextEditPrivate,
+                              public QSafeQuickItemChangeListener<QQuickTextAreaPrivate>
 {
 public:
     Q_DECLARE_PUBLIC(QQuickTextArea)

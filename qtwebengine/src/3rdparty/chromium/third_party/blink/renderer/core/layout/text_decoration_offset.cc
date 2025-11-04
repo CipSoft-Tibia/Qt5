@@ -31,11 +31,11 @@ int ComputeUnderlineOffsetAuto(const blink::FontMetrics& font_metrics,
   return font_metrics.Ascent() + gap + roundf(text_underline_offset);
 }
 
-absl::optional<int> ComputeUnderlineOffsetFromFont(
+std::optional<int> ComputeUnderlineOffsetFromFont(
     const blink::FontMetrics& font_metrics,
     float text_underline_offset) {
   if (!font_metrics.UnderlinePosition()) {
-    return absl::nullopt;
+    return std::nullopt;
   }
 
   return roundf(font_metrics.FloatAscent() + *font_metrics.UnderlinePosition() +
@@ -93,7 +93,7 @@ int TextDecorationOffset::ComputeUnderlineOffset(
 
   switch (underline_position) {
     default:
-      NOTREACHED();
+      NOTREACHED_IN_MIGRATION();
       [[fallthrough]];
     case ResolvedUnderlinePosition::kNearAlphabeticBaselineFromFont:
       return ComputeUnderlineOffsetFromFont(font_metrics,

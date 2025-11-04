@@ -8,7 +8,6 @@
 #include <memory>
 #include <utility>
 
-#include "ash/constants/app_types.h"
 #include "base/functional/bind.h"
 #include "base/no_destructor.h"
 #include "base/task/single_thread_task_runner.h"
@@ -333,7 +332,7 @@ void FullRestoreReadHandler::AddChromeBrowserLaunchInfoForTesting(
   auto session_id = SessionID::NewUnique();
   auto app_launch_info = std::make_unique<app_restore::AppLaunchInfo>(
       app_constants::kChromeAppId, session_id.id());
-  app_launch_info->app_type_browser = true;
+  app_launch_info->browser_extra_info.app_type_browser = true;
 
   if (profile_path_to_restore_data_.find(profile_path) ==
       profile_path_to_restore_data_.end()) {

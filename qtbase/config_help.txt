@@ -262,6 +262,9 @@ Component selection:
 Qt comes with bundled copies of some 3rd party libraries. These are used
 by default if auto-detection of the respective system library fails.
 
+  -force-bundled-libs .. Only use bundled 3rd party libraries [no]
+  -force-system-libs ... Do not use bundled 3rd party libraries [no]
+
 Core options:
 
   -doubleconversion .... Select used double conversion library [system/qt/no]
@@ -295,6 +298,7 @@ Gui, printing, widget options:
 
   -cups ................ Enable CUPS support [auto] (Unix only)
 
+  -emojisegmenter ...... Enable complex emoji sequences [yes]
   -fontconfig .......... Enable Fontconfig support [auto] (Unix only)
   -freetype ............ Select used FreeType [system/qt/no]
   -harfbuzz ............ Select used HarfBuzz-NG [system/qt/no]

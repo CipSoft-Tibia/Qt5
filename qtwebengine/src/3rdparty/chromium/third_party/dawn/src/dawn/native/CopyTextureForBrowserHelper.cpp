@@ -199,22 +199,18 @@ static const char sCopyForBrowserShader[] = R"(
             @fragment
             fn copyTexture(@location(0) texcoord : vec2f
             ) -> @location(0) vec4f {
-                var color = textureSample(mySourceTexture, mySampler, texcoord);
-
-                // TODO(crbug.com/tint/1723): Discard before sampling should be valid.
                 discardIfOutsideOfCopy(texcoord);
 
+                var color = textureSample(mySourceTexture, mySampler, texcoord);
                 return transform(color);
             }
 
             @fragment
             fn copyExternalTexture(@location(0) texcoord : vec2f
             ) -> @location(0) vec4f {
-                var color = textureSampleBaseClampToEdge(mySourceExternalTexture, mySampler, texcoord);
-
-                // TODO(crbug.com/tint/1723): Discard before sampling should be valid.
                 discardIfOutsideOfCopy(texcoord);
 
+                var color = textureSampleBaseClampToEdge(mySourceExternalTexture, mySampler, texcoord);
                 return transform(color);
             }
         )";
@@ -687,7 +683,8 @@ MaybeError ValidateCopyTextureForBrowser(DeviceBase* device,
     // Validate copy common rules and copySize.
     DAWN_INVALID_IF(copySize->depthOrArrayLayers > 1, "Copy is for more than one array layer (%u)",
                     copySize->depthOrArrayLayers);
-    DAWN_TRY(ValidateTextureToTextureCopyCommonRestrictions(*source, *destination, *copySize));
+    DAWN_TRY(
+        ValidateTextureToTextureCopyCommonRestrictions(device, *source, *destination, *copySize));
 
     // Validate options
     DAWN_TRY(ValidateCopyForBrowserOptions(*options));

@@ -9,8 +9,8 @@
 
 #include <assert.h>
 
-#include <xnnpack/common.h>
-#include <xnnpack/reduce.h>
+#include "xnnpack/common.h"
+#include "xnnpack/reduce.h"
 
 
 void xnn_f32_rsum_ukernel__scalar_u3_acc3(
@@ -49,5 +49,5 @@ void xnn_f32_rsum_ukernel__scalar_u3_acc3(
   }
   const float vscale = params->scalar.scale;
   vacc0 *= vscale;
-  *output = vacc0;
+  *output += vacc0;
 }

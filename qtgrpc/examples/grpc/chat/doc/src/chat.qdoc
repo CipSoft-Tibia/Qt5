@@ -4,7 +4,7 @@
 /*!
     \example chat
     \ingroup qtgrpc-examples
-    \examplecategory {Application Examples}
+    \examplecategory {Networking}
     \meta tag {network,protobuf,grpc,serialization,tcp,ssl,tls,quick}
     \title QtGrpc Chat
     \brief A chat application to share messages of any kind in a chat room.
@@ -15,13 +15,34 @@
     the \e ChatRoom, such as text messages, images, user activity or any other
     files from their disk with all other participants.
 
-    \inlineimage chat_room.webp
-    \inlineimage chat_login.webp
+    \inlineimage {chat_room.webp} {Mobile chat window}
+    \inlineimage {chat_login.webp} {Login window}
 
-    Some key topics covered in this example are:
+    \section1 Running the example
 
     \list
-        \li Communication through long-lived \l{QGrpcBidiStream}s.
+        \li Ensure that the \c{qtgrpc_chat_server} is running and successfully
+            listening.
+        \li If you are on the same machine as the server, the default
+            \c{localhost} address should suffice when running the
+            \c{qtgrpc_chat_client}. If you are using a device other than the
+            one hosting the server, specify the correct IP address of the host
+            running the server in the Settings dialog.
+        \li Ensure that the \c{GRPC_CHAT_USE_EMOJI_FONT} CMake option is
+            enabled on the client to build with a smooth emoji experience 🚀.
+    \endlist
+
+    \image {chat_settings.webp} {Connection settings window img}
+
+    To run the example from \l{\QC Documentation}{Qt Creator}, open the
+    \uicontrol Welcome mode and select the example from \uicontrol Examples.
+    For more information, see \l{\QC: Tutorial: Build and run}.
+
+    \section1 Relevant modules and classes.
+    This example introduces the following Qt modules and classes.
+
+    \list
+        \li Communication through long-lived \l{QGrpcBidiStream}.
         \li Using the QtGrpc client from a worker \l{QThread}{thread}.
         \li Using the QtProtobufQtCoreTypes module in the protobuf schema.
         \li Secure communication through \l{Secure Sockets Layer (SSL) Classes}{SSL}.
@@ -54,7 +75,7 @@
     through the \c{ChatRoom} streaming RPC. Every \c{ChatMessage} must include
     a \c{username} and \c{timestamp} to identify the sender.
 
-    We include the \c{QtCore/QtCore.proto} import to enable the types of the
+    You include the \c{QtCore/QtCore.proto} import to enable the types of the
     QtProtobufQtCoreTypes module, allowing seamless conversion between
     QtCore-specific types and their Protobuf equivalents.
 
@@ -79,12 +100,12 @@
 
     \snippet chat/server/main.cpp server-1
 
-    We declare the \c{QtGrpcChatService} class, which subclasses the
+    You declare the \c{QtGrpcChatService} class, which subclasses the
     \c{CallbackService} of the generated \c{QtGrpcChat} service.
 
     \snippet chat/server/main.cpp server-2
 
-    We override the virtual functions to implement the functionality for the
+    Also override the virtual functions to implement the functionality for the
     two \gRPC methods provided by the service:
 
     \list
@@ -105,9 +126,9 @@
     \snippet chat/server/main.cpp server-4
 
     The \c{startSharedWrite} method is a member function of the
-    \c{ChatRoomReactor}. If the reactor (i.e. the client) is currently writing,
-    the message is buffered in a queue. Otherwise, a write operation is
-    initiated. There is a single and unique message shared between all clients.
+    \c{ChatRoomReactor}. If the reactor is currently writing, the message is
+    buffered in a queue. Otherwise, a write operation is initiated. There is a
+    single and unique message shared between all clients.
     Each copy of the \c{response} message increases the \c{use_count}. Once all
     clients have finished writing the message, and its \c{use_count} drops to 0 its
     resources are freed.
@@ -139,15 +160,15 @@
 
     \snippet chat/client/CMakeLists.txt client-setup-1
 
-    First, we generate the source files from the Protobuf schema. Since the
+    First, generate the source files from the Protobuf schema. Since the
     \c{qtgrpcchat.proto} file does not contain any \c{message} definitions,
-    only \l{qt_add_grpc}{qtgrpcgen} generation is required. We also provide the
+    only \l{qt_add_grpc}{qtgrpcgen} generation is required. Also provide the
     \c{PROTO_INCLUDES} of the \c{ProtobufQtCoreTypes} module to ensure the
     \c{"QtCore/QtCore.proto"} import is valid.
 
     \snippet chat/client/CMakeLists.txt client-setup-2
 
-    We ensure that the independent \c{qtgrpc_chat_client_proto} target is
+    Ensure that the independent \c{qtgrpc_chat_client_proto} target is
     publicly linked against its dependencies, including the
     \c{ProtobufQtCoreTypes} module. The application target is then linked
     against this library.
@@ -183,7 +204,7 @@
     \snippet chat/client/chatengine.cpp client-3
     \dots 0
 
-    In the \c{ChatEngine} constructor, we assign the \c{ClientWorker} to its
+    In the \c{ChatEngine} constructor, assign the \c{ClientWorker} to its
     dedicated worker thread and continue handling and forwarding its signals to
     make them available on the QML side.
 
@@ -196,12 +217,12 @@
     own thread, it is important to use \l{QMetaObject::}{invokeMethod} to call
     its member functions safely.
 
-    In the \c{ClientWorker}, we check whether the client is uninitialized or if
-    the host URI has changed. If either condition is met, we call
+    In the \c{ClientWorker}, you check whether the client is uninitialized or if
+    the host URI has changed. If either condition is met, call
     \c{initializeClient}, which creates a new QGrpcHttp2Channel. Since this
-    is an expensive operation, we minimize its occurrences.
+    is an expensive operation, minimize its occurrences.
 
-    To handle the \c{Register} RPC, we use the
+    To handle the \c{Register} RPC, use the
     \l{QGrpcCallOptions::}{setDeadlineTimeout} option to guard against server
     inactivity. It is generally recommended to set a deadline for unary RPCs.
 
@@ -209,7 +230,7 @@
     \dots
     \snippet chat/client/clientworker.cpp client-5b
 
-    When logging into the \c{ChatRoom}, we use the
+    When logging into the \c{ChatRoom},you can use the
     \l{QGrpcCallOptions::}{setMetadata} option to provide user credentials, as
     required by the server for authentication. The actual call and connection
     setup are handled in the \c{connectStream} method.
@@ -221,8 +242,8 @@
     \snippet chat/client/clientworker.cpp client-6c
     \dots
 
-    We implement basic reconnection logic in case the stream finishes abruptly
-    while we are still connected. This is done by simply calling
+    To implement basic reconnection logic in case the stream finishes abruptly
+    while you are still connected. This is done by simply calling
     \c{connectStream} again with the \c{QGrpcCallOptions} from the initial
     call. This ensures that all required connections are also updated.
 
@@ -231,7 +252,7 @@
     mode can be triggered, e.g., by using the FileDialog or switching to
     another app. This mode shuts down network access, closing all active
     QTcpSocket connections and causing the stream to be
-    \l{QGrpcBidiStream::}{finished}. We address this issue with the
+    \l{QGrpcBidiStream::}{finished}. You can address this issue with the
     reconnection logic.
 
     \snippet chat/client/clientworker.cpp client-6d
@@ -242,7 +263,7 @@
 
     When messages are received, the \c{ClientWorker} performs some
     pre-processing, such as saving the \c{FileMessage} content, so that the
-    \c{ChatEngine} only needs to focus on the models. We use the \c{ContentFields}
+    \c{ChatEngine} only needs to focus on the models. Use the \c{ContentFields}
     enum to safely check the \c{oneof content} field of our ChatMessage sum type.
 
     \snippet chat/client/chatengine.cpp client-7a
@@ -272,7 +293,7 @@
 
     \snippet chat/client/Main.qml client-qml-2
 
-    In \c{Main.qml}, we handle core signals emitted by the \c{ChatEngine}. Most
+    \c{Main.qml} handles core signals emitted by the \c{ChatEngine}. Most
     of these signals are handled globally and are visualized in any state of
     the application.
 
@@ -302,11 +323,11 @@
     \snippet chat/client/ChatView.qml client-qml-4e
 
     In \c{ChatView.qml}, the ListView displays messages in the \c{ChatRoom}.
-    This is slightly more complex, as we need to handle the \c{ChatMessage} sum
+    This is slightly more complex, as you need to handle the \c{ChatMessage} sum
     type conditionally.
 
-    To handle this, we use a DelegateChooser, which allows us to select the
-    appropriate delegate based on the type of message. We use the default
+    You can use a DelegateChooser, which allows us to select the appropriate
+    delegate based on the type of message. Use the default
     \c{whatThis} role in the model, which provides the message type for each
     \c{ChatMessage} instance. The \c{DelegateBase} component then accesses the
     \c{display} role of the model, making the chatMessage data available for
@@ -354,14 +375,14 @@
             pre-installed in the client's trust store like those of public CAs.
     \endlist
 
-    We used \l{https://www.openssl.org/}{OpenSSL} to create these files and set
+    Use \l{https://www.openssl.org/}{OpenSSL} to create these files and set
     up our \gRPC communication to use SSL/TLS.
 
     \snippet chat/server/main.cpp server-ssl
 
-    We provide the \e{Private Key} and \e{Certificate} to the \gRPC server.
-    With that, we construct the \c{SslServerCredentials} to enable TLS on the
-    server-side. In addition to secure communication, we also allow unencrypted
+    You provide the \e{Private Key} and \e{Certificate} to the \gRPC server.
+    With that, you can construct the \c{SslServerCredentials} to enable TLS on the
+    server-side. In addition to secure communication, also allow unencrypted
     access.
 
     The server listens on the following addresses:
@@ -375,29 +396,13 @@
 
     \snippet chat/client/clientworker.cpp client-ssl
 
-    The client loads the \e{Root CA Certificate}, as we self-signed the CA.
+    The client loads the \e{Root CA Certificate}, as you self-signed the CA.
     This certificate is used to create the QSslCertificate. It is important to
     provide the \c{"h2"} protocol with
-    \l{QSslConfiguration::}{setAllowedNextProtocols}, as we are using HTTP/2.
+    \l{QSslConfiguration::}{setAllowedNextProtocols}, as you are using HTTP/2.
 
-    \section1 Running the example
+    \section1 Source files
 
-    \list
-        \li Ensure that the \c{qtgrpc_chat_server} is running and successfully
-            listening.
-        \li If you are on the same machine as the server, the default
-            \c{localhost} address should suffice when running the
-            \c{qtgrpc_chat_client}. If you are using a device other than the
-            one hosting the server, specify the correct IP address of the host
-            running the server in the Settings dialog.
-        \li Ensure that the \c{GRPC_CHAT_USE_EMOJI_FONT} CMake option is
-            enabled on the client to build with a smooth emoji experience 🚀.
-    \endlist
-
-    \image chat_settings.webp
-
-    To run the example from \l{\QC Documentation}{Qt Creator}, open the
-    \uicontrol Welcome mode and select the example from \uicontrol Examples.
-    For more information, see \l{\QC: Tutorial: Build and run}.
+    \sa {All Qt Examples}
 */
 

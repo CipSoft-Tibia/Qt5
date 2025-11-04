@@ -29,6 +29,7 @@
 #define SRC_TINT_LANG_WGSL_AST_TRANSFORM_BUILTIN_POLYFILL_H_
 
 #include "src/tint/lang/wgsl/ast/transform/transform.h"
+#include "src/tint/utils/reflection/reflection.h"
 
 namespace tint::ast::transform {
 
@@ -78,6 +79,8 @@ class BuiltinPolyfill final : public Castable<BuiltinPolyfill, Transform> {
         bool first_leading_bit = false;
         /// Should `firstTrailingBit()` be polyfilled?
         bool first_trailing_bit = false;
+        /// Should `fwidthFine()` be polyfilled?
+        bool fwidth_fine = false;
         /// Should `insertBits()` be polyfilled?
         Level insert_bits = Level::kNone;
         /// Should integer scalar / vector divides and modulos be polyfilled to avoid DBZ and
@@ -93,9 +96,6 @@ class BuiltinPolyfill final : public Castable<BuiltinPolyfill, Transform> {
         bool sign_int = false;
         /// Should `textureSampleBaseClampToEdge()` be polyfilled for texture_2d<f32> textures?
         bool texture_sample_base_clamp_to_edge_2d_f32 = false;
-        /// Should the vector form of `quantizeToF16()` be polyfilled with a scalar implementation?
-        /// See crbug.com/tint/1741
-        bool quantize_to_vec_f16 = false;
         /// Should `workgroupUniformLoad()` be polyfilled?
         bool workgroup_uniform_load = false;
         /// Should `dot4I8Packed()` and `dot4U8Packed()` be polyfilled?
@@ -106,11 +106,41 @@ class BuiltinPolyfill final : public Castable<BuiltinPolyfill, Transform> {
         /// Should `pack4xU8Clamp()` be polyfilled?
         /// TODO(tint:1497): remove the option once the bug in DXC is fixed.
         bool pack_4xu8_clamp = false;
+
+        /// Reflection for this struct
+        TINT_REFLECT(Builtins,
+                     acosh,
+                     asinh,
+                     atanh,
+                     bgra8unorm,
+                     bitshift_modulo,
+                     clamp_int,
+                     count_leading_zeros,
+                     count_trailing_zeros,
+                     conv_f32_to_iu32,
+                     extract_bits,
+                     first_leading_bit,
+                     first_trailing_bit,
+                     fwidth_fine,
+                     insert_bits,
+                     int_div_mod,
+                     precise_float_mod,
+                     reflect_vec2_f32,
+                     saturate,
+                     sign_int,
+                     texture_sample_base_clamp_to_edge_2d_f32,
+                     workgroup_uniform_load,
+                     dot_4x8_packed,
+                     pack_unpack_4x8,
+                     pack_4xu8_clamp);
     };
 
     /// Config is consumed by the BuiltinPolyfill transform.
     /// Config specifies the builtins that should be polyfilled.
     struct Config final : public Castable<Config, Data> {
+        /// Constructor
+        Config();
+
         /// Constructor
         /// @param b the list of builtins to polyfill
         explicit Config(const Builtins& b);
@@ -122,7 +152,10 @@ class BuiltinPolyfill final : public Castable<BuiltinPolyfill, Transform> {
         ~Config() override;
 
         /// The builtins to polyfill
-        const Builtins builtins;
+        Builtins builtins;
+
+        /// Reflection for this struct
+        TINT_REFLECT(Config, builtins);
     };
 
     /// @copydoc Transform::Apply
@@ -135,5 +168,12 @@ class BuiltinPolyfill final : public Castable<BuiltinPolyfill, Transform> {
 };
 
 }  // namespace tint::ast::transform
+
+namespace tint {
+
+/// Level reflection information
+TINT_REFLECT_ENUM_RANGE(ast::transform::BuiltinPolyfill::Level, kNone, kFull);
+
+}  // namespace tint
 
 #endif  // SRC_TINT_LANG_WGSL_AST_TRANSFORM_BUILTIN_POLYFILL_H_

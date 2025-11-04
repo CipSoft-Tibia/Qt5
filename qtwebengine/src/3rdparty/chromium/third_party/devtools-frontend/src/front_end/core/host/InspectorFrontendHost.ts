@@ -37,6 +37,7 @@ import * as Platform from '../platform/platform.js';
 import * as Root from '../root/root.js';
 
 import {
+  type AidaClientResult,
   type CanShowSurveyResult,
   type ChangeEvent,
   type ClickEvent,
@@ -53,6 +54,7 @@ import {
   type InspectorFrontendHostAPI,
   type KeyDownEvent,
   type LoadNetworkResourceResult,
+  type ResizeEvent,
   type ShowSurveyResult,
   type SyncInformation,
 } from './InspectorFrontendHostAPI.js';
@@ -187,13 +189,19 @@ export class InspectorFrontendHostStub implements InspectorFrontendHostAPI {
     window.open(url, '_blank');
   }
 
+  openSearchResultsInNewTab(query: string): void {
+    Common.Console.Console.instance().error(
+        'Search is not enabled in hosted mode. Please inspect using chrome://inspect');
+  }
+
   showItemInFolder(fileSystemPath: Platform.DevToolsPath.RawPathString): void {
     Common.Console.Console.instance().error(
         'Show item in folder is not enabled in hosted mode. Please inspect using chrome://inspect');
   }
 
-  save(url: Platform.DevToolsPath.RawPathString|Platform.DevToolsPath.UrlString, content: string, forceSaveAs: boolean):
-      void {
+  save(
+      url: Platform.DevToolsPath.RawPathString|Platform.DevToolsPath.UrlString, content: string, forceSaveAs: boolean,
+      isBase64: boolean): void {
     let buffer = this.#urlsBeingSaved.get(url);
     if (!buffer) {
       buffer = [];
@@ -385,10 +393,61 @@ export class InspectorFrontendHostStub implements InspectorFrontendHostAPI {
   }
 
   getSyncInformation(callback: (arg0: SyncInformation) => void): void {
+    if ('getSyncInformationForTesting' in globalThis) {
+      // @ts-ignore for testing
+      return callback(globalThis.getSyncInformationForTesting());
+    }
     callback({
       isSyncActive: false,
       arePreferencesSynced: false,
     });
+  }
+
+  getHostConfig(callback: (arg0: Root.Runtime.HostConfig) => void): void {
+    const result: Root.Runtime.HostConfig = {
+      aidaAvailability: {
+        enabled: true,
+        blockedByAge: false,
+        blockedByEnterprisePolicy: false,
+        blockedByGeo: false,
+        disallowLogging: false,
+      },
+      devToolsConsoleInsights: {
+        modelId: '',
+        temperature: 0,
+        enabled: false,
+      },
+      devToolsFreestylerDogfood: {
+        modelId: '',
+        temperature: 0,
+        enabled: false,
+      },
+      devToolsVeLogging: {
+        enabled: true,
+        testing: false,
+      },
+      devToolsPrivacyUI: {
+        enabled: false,
+      },
+      isOffTheRecord: false,
+    };
+    if ('hostConfigForTesting' in globalThis) {
+      const {hostConfigForTesting} = (globalThis as unknown as {hostConfigForTesting: Root.Runtime.HostConfig});
+      for (const key of Object.keys(hostConfigForTesting)) {
+        const mergeEntry = <K extends keyof Root.Runtime.HostConfig>(key: K): void => {
+          if (typeof result[key] === 'object' && typeof hostConfigForTesting[key] === 'object') {
+            // If the config is an object, merge the settings, but preferring
+            // the hostConfigForTesting values over the result values.
+            result[key] = {...result[key], ...hostConfigForTesting[key]};
+          } else {
+            // Override with the testing config if the value is present + not null/undefined.
+            result[key] = hostConfigForTesting[key] ?? result[key];
+          }
+        };
+        mergeEntry(key as keyof Root.Runtime.HostConfig);
+      }
+    }
+    callback(result);
   }
 
   upgradeDraggedFileSystemPermissions(fileSystem: FileSystem): void {
@@ -468,13 +527,21 @@ export class InspectorFrontendHostStub implements InspectorFrontendHostAPI {
     return null;
   }
 
-  doAidaConversation(request: string, callback: (result: DoAidaConversationResult) => void): void {
+  doAidaConversation(request: string, streamId: number, callback: (result: DoAidaConversationResult) => void): void {
     callback({
-      response: '{}',
+      error: 'Not implemented',
+    });
+  }
+
+  registerAidaClientEvent(request: string, callback: (result: AidaClientResult) => void): void {
+    callback({
+      error: 'Not implemented',
     });
   }
 
   recordImpression(event: ImpressionEvent): void {
+  }
+  recordResize(event: ResizeEvent): void {
   }
   recordClick(event: ClickEvent): void {
   }
@@ -538,12 +605,6 @@ function initializeInspectorFrontendHost(): void {
     // Instantiate stub for web-hosted mode if necessary.
     // @ts-ignore Global injected by devtools-compatibility.js
     globalThis.InspectorFrontendHost = InspectorFrontendHostInstance = new InspectorFrontendHostStub();
-    if ('doAidaConversationForTesting' in globalThis) {
-      InspectorFrontendHostInstance['doAidaConversation'] =
-          (globalThis as unknown as {
-            doAidaConversationForTesting: typeof InspectorFrontendHostInstance['doAidaConversation'],
-          }).doAidaConversationForTesting;
-    }
   } else {
     // Otherwise add stubs for missing methods that are declared in the interface.
     proto = InspectorFrontendHostStub.prototype;

@@ -1,5 +1,6 @@
 // Copyright (C) 2018 Intel Corporation.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:data-parser
 
 #ifndef QCBORSTREAMWRITER_H
 #define QCBORSTREAMWRITER_H
@@ -12,6 +13,8 @@
 #ifndef QT_BOOTSTRAPPED
 #include <QtCore/qfloat16.h>
 #endif
+
+#include <memory>
 
 QT_REQUIRE_CONFIG(cborstreamwriter);
 
@@ -81,14 +84,9 @@ public:
     // no API for encoding chunked strings
 
 private:
-    QScopedPointer<QCborStreamWriterPrivate> d;
+    std::unique_ptr<QCborStreamWriterPrivate> d;
 };
 
 QT_END_NAMESPACE
-
-#if defined(QT_X11_DEFINES_FOUND)
-#  define True  1
-#  define False 0
-#endif
 
 #endif // QCBORSTREAMWRITER_H

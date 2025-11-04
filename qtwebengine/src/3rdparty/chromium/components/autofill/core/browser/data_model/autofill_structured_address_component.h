@@ -6,12 +6,13 @@
 #define COMPONENTS_AUTOFILL_CORE_BROWSER_DATA_MODEL_AUTOFILL_STRUCTURED_ADDRESS_COMPONENT_H_
 
 #include <map>
+#include <memory>
 #include <optional>
 #include <string>
 #include <vector>
 
 #include "base/memory/raw_ptr.h"
-#include "base/strings/string_piece.h"
+#include "components/autofill/core/browser/country_type.h"
 #include "components/autofill/core/browser/data_model/autofill_i18n_parsing_expression_components.h"
 #include "components/autofill/core/browser/field_types.h"
 
@@ -217,7 +218,7 @@ class AddressComponent {
 
   // Wrapper function around
   // SetValueForTypeIfPossible(/*invalidate_child_nodes=*/true);
-  // TODO(1440504): Remove and merge with SetValueForType.
+  // TODO(crbug.com/40266145): Remove and merge with SetValueForType.
   bool SetValueForTypeAndResetSubstructure(FieldType field_type,
                                            const std::u16string& value,
                                            const VerificationStatus& status);
@@ -270,6 +271,11 @@ class AddressComponent {
   // Completes the full tree by calling |RecursivelyCompleteTree()| starting
   // form the root node. Returns true if the completion was successful.
   virtual bool CompleteFullTree();
+
+  // Generates values for the tree's synthesized nodes recursively, starting
+  // from the root. Values for synthesized nodes are generated using formatting
+  // expressions.
+  void GenerateTreeSynthesizedNodes();
 
   // Checks if a tree is completable in the sense that there are no conflicting
   // observed or verified types. This means that there is not more than one
@@ -328,6 +334,21 @@ class AddressComponent {
   // Returns a constant vector of pointers to the child nodes of the component.
   const SubcomponentsList& Subcomponents() const { return subcomponents_; }
 
+  // Returns a constant vector of pointers to the synthesized child nodes of the
+  // component.
+  const SubcomponentsList& SynthesizedSubcomponents() const {
+    return synthesized_subcomponents_;
+  }
+
+  // Returns a pointer to the parent node.
+  AddressComponent* Parent() const { return parent_; }
+
+  // Register a new synthesized component in the `synthesized_subcomponents_`
+  // list. Note that similarly as default subcomponents, synthesized
+  // subcomponents are owned by the corresponding `AddressComponentsStore` and
+  // not by `this`
+  void RegisterSynthesizedSubcomponent(AddressComponent* synthesized_component);
+
   // Returns a vector containing sorted normalized tokens of the
   // value of the component. The tokens are lazily calculated when first
   // needed.
@@ -344,7 +365,11 @@ class AddressComponent {
   // country set, the other should assume the non-empty one while merging. This
   // is required to do consistent address rewriting.
   // Returns the common country to be used.
-  std::u16string GetCommonCountry(const AddressComponent& other) const;
+  AddressCountryCode GetCommonCountry(const AddressComponent& other) const;
+
+  // If the tree this node is part of contains country code information, this
+  // function retrieves it. Otherwise it returns an empty country code.
+  AddressCountryCode GetCountryCode() const;
 
   // Deletes the stored structure and returns true if |IsStructureValid()|
   // returns false.
@@ -369,6 +394,11 @@ class AddressComponent {
 
   // Returns whether `field_type` is a supported type for the current node.
   bool IsSupportedType(FieldType field_type) const;
+
+  // Returns whether the node's value is read-only. If true, the node's value
+  // can only be set internally via `SetValue` but not from a caller outside of
+  // the AddressComponent tree.
+  virtual bool IsValueReadOnly() const;
 
   // Returns a vector containing the |storage_types_| of all direct
   // subcomponents.
@@ -475,7 +505,12 @@ class AddressComponent {
   // Function to be called by nodes to register new children in their
   // `subcomponents_` list. Note that children are owned by the corresponding
   // `AddressComponentsStore` and not by `this`.
-  void RegisterChildNode(AddressComponent* child);
+  // `set_as_parent_of_child` is used to prevent the child from setting its
+  // parent pointer to `this` when the child is already a child of another node.
+  // This is the case for the children of synthesized nodes that don't get a new
+  // parent assigned.
+  void RegisterChildNode(AddressComponent* child,
+                         bool set_as_parent_of_child = true);
 
   // Returns the node in the tree that supports `field_type`. This node, if it
   // exists, is unique by definition. Returns nullptr if no such node exists.
@@ -575,6 +610,15 @@ class AddressComponent {
 
   // A vector of children of the component.
   SubcomponentsList subcomponents_;
+
+  // A vector of synthesized nodes of the component.
+  //
+  // Nodes in the tree might have synthesized nodes linked to it. A synthesized
+  // node, is a node whose value is calculated from its constituents. While
+  // synthesized types are not directly part of the address hierarchy tree, its
+  // constituents are. Synthesized nodes, similarly as normal subcomponents are
+  // stored in the AddressComponentsStore.
+  SubcomponentsList synthesized_subcomponents_;
 
   // A vector that contains the tokens of |value_| after normalization,
   // meaning that it was converted to lower case and diacritics have been

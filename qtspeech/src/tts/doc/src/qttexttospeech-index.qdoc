@@ -70,8 +70,10 @@
     the \l{GNU General Public License, version 2}.
     See \l{Qt Licensing} for further details.
 
+\omit
     Furthermore, Qt TextToSpeech in Qt \QtVersion may contain third party
     modules under the following permissive licenses:
 
-    \generatelist{groupsbymodule attributions-qtspeech}
+    \annotatedlist attributions-qtspeech
+\endomit
 */

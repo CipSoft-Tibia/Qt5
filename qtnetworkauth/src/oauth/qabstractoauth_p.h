@@ -60,7 +60,6 @@ public:
     QUrl authorizationUrl;
     QVariantMap extraTokens;
     QAbstractOAuth::Status status = QAbstractOAuth::Status::NotAuthenticated;
-    QNetworkAccessManager::Operation operation;
     QPointer<QAbstractOAuthReplyHandler> replyHandler;
     QScopedPointer<QOAuthOobReplyHandler> defaultReplyHandler;
     QPointer<QNetworkAccessManager> networkAccessManagerPointer;

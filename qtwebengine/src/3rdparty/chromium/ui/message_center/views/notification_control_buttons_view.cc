@@ -18,6 +18,7 @@
 #include "ui/message_center/views/message_view.h"
 #include "ui/message_center/views/notification_control_button_factory.h"
 #include "ui/strings/grit/ui_strings.h"
+#include "ui/views/accessibility/view_accessibility.h"
 #include "ui/views/background.h"
 #include "ui/views/layout/box_layout.h"
 #include "ui/views/view_class_properties.h"
@@ -57,13 +58,13 @@ void NotificationControlButtonsView::ShowCloseButton(bool show) {
           ui::ImageModel::FromVectorIcon(
               GetCloseButtonIcon(), DetermineButtonIconColor(), icon_size_));
     }
-    close_button_->SetAccessibleName(l10n_util::GetStringUTF16(
+    close_button_->GetViewAccessibility().SetName(l10n_util::GetStringUTF16(
         IDS_MESSAGE_CENTER_CLOSE_NOTIFICATION_BUTTON_ACCESSIBLE_NAME));
     close_button_->SetTooltipText(l10n_util::GetStringUTF16(
         IDS_MESSAGE_CENTER_CLOSE_NOTIFICATION_BUTTON_TOOLTIP));
     close_button_->SetBackground(
         views::CreateSolidBackground(SK_ColorTRANSPARENT));
-    Layout();
+    DeprecatedLayoutImmediately();
   } else if (!show && close_button_) {
     DCHECK(Contains(close_button_));
     RemoveChildViewT(close_button_.get());
@@ -86,13 +87,13 @@ void NotificationControlButtonsView::ShowSettingsButton(bool show) {
           ui::ImageModel::FromVectorIcon(
               GetSettingsButtonIcon(), DetermineButtonIconColor(), icon_size_));
     }
-    settings_button_->SetAccessibleName(l10n_util::GetStringUTF16(
+    settings_button_->GetViewAccessibility().SetName(l10n_util::GetStringUTF16(
         IDS_MESSAGE_NOTIFICATION_SETTINGS_BUTTON_ACCESSIBLE_NAME));
     settings_button_->SetTooltipText(l10n_util::GetStringUTF16(
         IDS_MESSAGE_NOTIFICATION_SETTINGS_BUTTON_ACCESSIBLE_NAME));
     settings_button_->SetBackground(
         views::CreateSolidBackground(SK_ColorTRANSPARENT));
-    Layout();
+    DeprecatedLayoutImmediately();
   } else if (!show && settings_button_) {
     DCHECK(Contains(settings_button_));
     RemoveChildViewT(settings_button_.get());
@@ -114,13 +115,13 @@ void NotificationControlButtonsView::ShowSnoozeButton(bool show) {
           ui::ImageModel::FromVectorIcon(
               GetSnoozeButtonIcon(), DetermineButtonIconColor(), icon_size_));
     }
-    snooze_button_->SetAccessibleName(l10n_util::GetStringUTF16(
+    snooze_button_->GetViewAccessibility().SetName(l10n_util::GetStringUTF16(
         IDS_MESSAGE_CENTER_NOTIFICATION_SNOOZE_BUTTON_TOOLTIP));
     snooze_button_->SetTooltipText(l10n_util::GetStringUTF16(
         IDS_MESSAGE_CENTER_NOTIFICATION_SNOOZE_BUTTON_TOOLTIP));
     snooze_button_->SetBackground(
         views::CreateSolidBackground(SK_ColorTRANSPARENT));
-    Layout();
+    DeprecatedLayoutImmediately();
   } else if (!show && snooze_button_) {
     DCHECK(Contains(snooze_button_));
     RemoveChildViewT(snooze_button_.get());
@@ -249,7 +250,7 @@ const gfx::VectorIcon& NotificationControlButtonsView::GetSnoozeButtonIcon()
   return snooze_button_icon_ ? *snooze_button_icon_ : kDefaultSnoozeIcon;
 }
 
-BEGIN_METADATA(NotificationControlButtonsView, views::View)
+BEGIN_METADATA(NotificationControlButtonsView)
 END_METADATA
 
 }  // namespace message_center

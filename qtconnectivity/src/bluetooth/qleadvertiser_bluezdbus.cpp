@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qleadvertiser_bluezdbus_p.h"
-#include "bluez/leadvertisement1_p.h"
+#include "bluez/leadvertisement1adaptor_p.h"
 #include "bluez/leadvertisingmanager1_p.h"
 #include "bluez/bluez5_helper_p.h"
 
@@ -14,6 +14,7 @@ QT_BEGIN_NAMESPACE
 Q_DECLARE_LOGGING_CATEGORY(QT_BT_BLUEZ)
 
 using namespace Qt::StringLiterals;
+using namespace QtBluetoothPrivate; // for D-Bus wrappers
 
 // The advertisement dbus object path is freely definable, use as prefix
 static constexpr auto advObjectPathTemplate{"/qt/btle/advertisement/%1%2/%3"_L1};

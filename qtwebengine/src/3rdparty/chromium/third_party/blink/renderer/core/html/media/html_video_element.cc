@@ -32,7 +32,6 @@
 #include "cc/paint/paint_canvas.h"
 #include "media/base/video_frame.h"
 #include "third_party/blink/public/common/features.h"
-#include "third_party/blink/public/mojom/permissions_policy/permissions_policy_feature.mojom-blink.h"
 #include "third_party/blink/public/platform/web_fullscreen_video_status.h"
 #include "third_party/blink/renderer/bindings/core/v8/v8_fullscreen_options.h"
 #include "third_party/blink/renderer/bindings/core/v8/v8_image_bitmap_options.h"
@@ -47,6 +46,7 @@
 #include "third_party/blink/renderer/core/fullscreen/fullscreen.h"
 #include "third_party/blink/renderer/core/html/media/media_custom_controls_fullscreen_detector.h"
 #include "third_party/blink/renderer/core/html/media/media_remoting_interstitial.h"
+#include "third_party/blink/renderer/core/html/media/media_video_visibility_tracker.h"
 #include "third_party/blink/renderer/core/html/media/picture_in_picture_interstitial.h"
 #include "third_party/blink/renderer/core/html/media/video_frame_callback_requester.h"
 #include "third_party/blink/renderer/core/html/media/video_wake_lock.h"
@@ -72,6 +72,18 @@
 
 namespace blink {
 
+namespace {
+// Represents the visibility threshold to be used by the
+// |visibility_tracker_|. Where visibility is defined as: intersecting
+// with the viewport and not occluded by other html elements within the page,
+// with the exception of MediaControls.
+//
+// An HTMLVideoElement with visibility greater or equal than a given area
+// measured in square CSS pixels (`kVisibilityThreshold`) is considered visible,
+// and not visible otherwise.
+constexpr int kVisibilityThreshold = 10000;
+}  // namespace
+
 HTMLVideoElement::HTMLVideoElement(Document& document)
     : HTMLMediaElement(html_names::kVideoTag, document),
       remoting_interstitial_(nullptr),
@@ -79,10 +91,6 @@ HTMLVideoElement::HTMLVideoElement(Document& document)
       is_persistent_(false),
       is_auto_picture_in_picture_(false),
       is_effectively_fullscreen_(false),
-      is_default_overridden_intrinsic_size_(
-          !document.IsMediaDocument() && GetExecutionContext() &&
-          !GetExecutionContext()->IsFeatureEnabled(
-              mojom::blink::DocumentPolicyFeature::kUnsizedMedia)),
       video_has_played_(false),
       mostly_filling_viewport_(false) {
   if (document.GetSettings()) {
@@ -102,6 +110,7 @@ HTMLVideoElement::HTMLVideoElement(Document& document)
 void HTMLVideoElement::Trace(Visitor* visitor) const {
   visitor->Trace(image_loader_);
   visitor->Trace(custom_controls_fullscreen_detector_);
+  visitor->Trace(visibility_tracker_);
   visitor->Trace(wake_lock_);
   visitor->Trace(remoting_interstitial_);
   visitor->Trace(picture_in_picture_interstitial_);
@@ -119,18 +128,24 @@ Node::InsertionNotificationRequest HTMLVideoElement::InsertedInto(
   if (insertion_point.isConnected())
     custom_controls_fullscreen_detector_->Attach();
 
-  return HTMLMediaElement::InsertedInto(insertion_point);
+  auto insertion_notification_request =
+      HTMLMediaElement::InsertedInto(insertion_point);
+
+  UpdateVideoVisibilityTracker();
+
+  return insertion_notification_request;
 }
 
 void HTMLVideoElement::RemovedFrom(ContainerNode& insertion_point) {
   HTMLMediaElement::RemovedFrom(insertion_point);
   custom_controls_fullscreen_detector_->Detach();
-
+  UpdateVideoVisibilityTracker();
   SetPersistentState(false);
 }
 
 void HTMLVideoElement::ContextDestroyed() {
   custom_controls_fullscreen_detector_->ContextDestroyed();
+  UpdateVideoVisibilityTracker();
   HTMLMediaElement::ContextDestroyed();
 }
 
@@ -212,16 +227,12 @@ void HTMLVideoElement::ParseAttribute(
 }
 
 unsigned HTMLVideoElement::videoWidth() const {
-  if (is_default_overridden_intrinsic_size_)
-    return LayoutReplaced::kDefaultWidth;
   if (!GetWebMediaPlayer())
     return 0;
   return GetWebMediaPlayer()->NaturalSize().width();
 }
 
 unsigned HTMLVideoElement::videoHeight() const {
-  if (is_default_overridden_intrinsic_size_)
-    return LayoutReplaced::kDefaultHeight;
   if (!GetWebMediaPlayer())
     return 0;
   return GetWebMediaPlayer()->NaturalSize().height();
@@ -303,6 +314,32 @@ void HTMLVideoElement::SetPersistentStateInternal(bool persistent) {
     GetWebMediaPlayer()->OnDisplayTypeChanged(GetDisplayType());
 }
 
+void HTMLVideoElement::CreateVisibilityTrackerIfNeeded() {
+  if (!RuntimeEnabledFeatures::AutoPictureInPictureVideoHeuristicsEnabled()) {
+    return;
+  }
+
+  if (visibility_tracker_) {
+    return;
+  }
+
+  // Callback used by |MediaVideoVisibilityTracker| to report whether |this|
+  // meets/does not meet the visibility threshold (kVisibilityThreshold).
+  auto report_visibility_cb = WTF::BindRepeating(
+      &HTMLVideoElement::ReportVisibility, WrapWeakPersistent(this));
+
+  visibility_tracker_ = MakeGarbageCollected<MediaVideoVisibilityTracker>(
+      *this, kVisibilityThreshold, std::move(report_visibility_cb));
+}
+
+void HTMLVideoElement::ReportVisibility(bool meets_visibility_threshold) {
+  if (GetWebMediaPlayer()) {
+    for (auto& observer : GetMediaPlayerObserverRemoteSet()) {
+      observer->OnVideoVisibilityChanged(meets_visibility_threshold);
+    }
+  }
+}
+
 bool HTMLVideoElement::IsPersistent() const {
   return is_persistent_;
 }
@@ -312,6 +349,9 @@ void HTMLVideoElement::OnPlay() {
     video_has_played_ = true;
     UpdatePictureInPictureAvailability();
   }
+
+  CreateVisibilityTrackerIfNeeded();
+  UpdateVideoVisibilityTracker();
 
   if (!RuntimeEnabledFeatures::VideoAutoFullscreenEnabled() ||
       FastHasAttribute(html_names::kPlaysinlineAttr)) {
@@ -330,19 +370,24 @@ void HTMLVideoElement::OnLoadFinished() {
   // element actually becomes visible to complete the load.
   if (web_media_player_->DidLazyLoad() && !PotentiallyPlaying()) {
     lazy_load_intersection_observer_ = IntersectionObserver::Create(
-        /* (root) margin */ Vector<Length>(),
-        /* scroll_margin */ Vector<Length>(),
-        /* thresholds */ {IntersectionObserver::kMinimumThreshold},
-        /* document */ &GetDocument(),
-        /* callback */
+        GetDocument(),
         WTF::BindRepeating(&HTMLVideoElement::OnIntersectionChangedForLazyLoad,
                            WrapWeakPersistent(this)),
-        /* ukm_metric_id */
-        LocalFrameUkmAggregator::kMediaIntersectionObserver);
+        LocalFrameUkmAggregator::kMediaIntersectionObserver,
+        IntersectionObserver::Params{
+            .thresholds = {IntersectionObserver::kMinimumThreshold}});
     lazy_load_intersection_observer_->observe(this);
   }
 
   UpdatePictureInPictureAvailability();
+}
+
+void HTMLVideoElement::UpdateVideoVisibilityTracker() {
+  if (!visibility_tracker_) {
+    return;
+  }
+
+  visibility_tracker_->UpdateVisibilityTrackerState();
 }
 
 void HTMLVideoElement::RequestEnterPictureInPicture() {
@@ -352,6 +397,16 @@ void HTMLVideoElement::RequestEnterPictureInPicture() {
 
 void HTMLVideoElement::RequestMediaRemoting() {
   GetWebMediaPlayer()->RequestMediaRemoting();
+}
+
+void HTMLVideoElement::RequestVisibility(
+    RequestVisibilityCallback request_visibility_cb) {
+  if (!visibility_tracker_) {
+    std::move(request_visibility_cb).Run(false);
+    return;
+  }
+
+  visibility_tracker_->RequestVisibility(std::move(request_visibility_cb));
 }
 
 void HTMLVideoElement::PaintCurrentFrame(cc::PaintCanvas* canvas,
@@ -388,9 +443,6 @@ bool HTMLVideoElement::HasReadableVideoFrame() const {
 void HTMLVideoElement::OnFirstFrame(base::TimeTicks frame_time,
                                     size_t bytes_to_first_frame) {
   DCHECK(GetWebMediaPlayer());
-  if (!base::FeatureList::IsEnabled(features::kLCPVideoFirstFrame)) {
-    return;
-  }
   LayoutObject* layout_object = GetLayoutObject();
   // HasLocalBorderBoxProperties will be false in some cases, specifically
   // picture-in-picture video may return false here.
@@ -468,6 +520,17 @@ void HTMLVideoElement::DidMoveToNewDocument(Document& old_document) {
     image_loader_->ElementDidMoveToNewDocument();
 
   wake_lock_->ElementDidMoveToNewDocument();
+
+  if (visibility_tracker_) {
+    // Ensure that the |visibility_tracker_| is detached when |this| is moved to
+    // a new document. Calling |ElementDidMoveToNewDocument| on the tracker at
+    // this point prevents having the tracker attached to an old document. The
+    // subsequent call to |UpdateVideoVisibilityTracker| will re-attach
+    // the tracker to the new document if needed.
+    visibility_tracker_->ElementDidMoveToNewDocument();
+    UpdateVideoVisibilityTracker();
+  }
+
   HTMLMediaElement::DidMoveToNewDocument(old_document);
   if (image_loader_) {
     image_loader_->UpdateFromElement();
@@ -501,7 +564,7 @@ bool HTMLVideoElement::IsDefaultPosterImageURL() const {
 
 scoped_refptr<StaticBitmapImage> HTMLVideoElement::CreateStaticBitmapImage(
     bool allow_accelerated_images,
-    absl::optional<gfx::Size> size) {
+    std::optional<gfx::Size> size) {
   media::PaintCanvasVideoRenderer* video_renderer = nullptr;
   scoped_refptr<media::VideoFrame> media_video_frame;
   if (auto* wmp = GetWebMediaPlayer()) {
@@ -517,11 +580,11 @@ scoped_refptr<StaticBitmapImage> HTMLVideoElement::CreateStaticBitmapImage(
     return nullptr;
   }
 
-  // TODO(https://crbug.com/1341235): The choice of color type, alpha type,
-  // and color space is inappropriate in many circumstances.
-  const auto resource_provider_info =
-      SkImageInfo::Make(gfx::SizeToSkISize(dest_size), kN32_SkColorType,
-                        kPremul_SkAlphaType, nullptr);
+  // TODO(https://crbug.com/1341235): The choice of color type and alpha type
+  // is inappropriate in many circumstances.
+  const auto resource_provider_info = SkImageInfo::Make(
+      gfx::SizeToSkISize(dest_size), kN32_SkColorType, kPremul_SkAlphaType,
+      media_video_frame->CompatRGBColorSpace().ToSkColorSpace());
   if (!resource_provider_ ||
       allow_accelerated_images != resource_provider_->IsAccelerated() ||
       resource_provider_info != resource_provider_->GetSkImageInfo()) {
@@ -580,22 +643,22 @@ gfx::Size HTMLVideoElement::BitmapSourceSize() const {
   return gfx::Size(videoWidth(), videoHeight());
 }
 
-ScriptPromise HTMLVideoElement::CreateImageBitmap(
+ScriptPromise<ImageBitmap> HTMLVideoElement::CreateImageBitmap(
     ScriptState* script_state,
-    absl::optional<gfx::Rect> crop_rect,
+    std::optional<gfx::Rect> crop_rect,
     const ImageBitmapOptions* options,
     ExceptionState& exception_state) {
   if (getNetworkState() == HTMLMediaElement::kNetworkEmpty) {
     exception_state.ThrowDOMException(
         DOMExceptionCode::kInvalidStateError,
         "The provided element has not retrieved data.");
-    return ScriptPromise();
+    return EmptyPromise();
   }
   if (!HasAvailableVideoFrame()) {
     exception_state.ThrowDOMException(
         DOMExceptionCode::kInvalidStateError,
         "The provided element's player has no current data.");
-    return ScriptPromise();
+    return EmptyPromise();
   }
 
   return ImageBitmapSource::FulfillImageBitmap(
@@ -756,6 +819,17 @@ void HTMLVideoElement::OnWebMediaPlayerCreated() {
 void HTMLVideoElement::OnWebMediaPlayerCleared() {
   if (auto* vfc_requester = VideoFrameCallbackRequester::From(*this))
     vfc_requester->OnWebMediaPlayerCleared();
+
+  UpdateVideoVisibilityTracker();
+}
+
+void HTMLVideoElement::RecordVideoOcclusionState(
+    std::string_view occlusion_state) const {
+  if (!GetWebMediaPlayer()) {
+    return;
+  }
+
+  GetWebMediaPlayer()->RecordVideoOcclusionState(occlusion_state);
 }
 
 void HTMLVideoElement::AttributeChanged(

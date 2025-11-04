@@ -22,6 +22,8 @@ Some SVGs are already pretty minimal, like the ones at [the Material Design Icon
 
 + **My colors are inverted!** There is probably a surplus square path encompassing your icon. For example, `<path d="M0 0h16v16H0z"/>`. Delete this and try again.
 
++ **Nothing is rendering!** Lately, [Google repo icons](https://fonts.google.com/icons) have tended to include an odd viewbox directive: `viewBox="0 -960 960 960"`. Address this by entering 960 as the y offset in Skiafy (see "Translate" `<input>`). Bonus points for [patching Skiafy](https://github.com/evanstade/skiafy/issues/46) to do this automatically.
+
 ## Using .icon files
 
 ### Adding new icons
@@ -45,6 +47,16 @@ A sample call site to create an icon for the `foo_bar.icon` file looks something
 If the size argument is unspecified, the size will be taken from the smallest icon size in the `.icon` file.
 
 `CreateVectorIcon()` will use the icon definition that best matches the final pixel size required, which is the product of DIP and the device scale factor (DSF). For example, for a DIP size of 32 and DSF of 100%, a rep with `CANVAS_DIMENSIONS, 32,` would be used, whereas a configuration with DSF of 150% would prefer a rep with `CANVAS_DIMENSIONS, 48`.
+
+### Preparing for review
+
+1. Prefer to add new icons in the same commit that introduces the code which uses the icons, rather than as a standalone change. This will:
+    1. give reviewers a chance to verify that the icon is being used correctly and is added to the appropriate directory.
+    1. create an easily discoverable two-way connection between icon and code in git history.
+    1. ensure the icon is removed if the code change ends up being reverted for any reason.
+1. In the commit description,
+    1. reference the source SVG.
+    1. link to a screenshot, preferably hosted on a publicly visible site such as the Chromium issue tracker.
 
 ## FAQ
 

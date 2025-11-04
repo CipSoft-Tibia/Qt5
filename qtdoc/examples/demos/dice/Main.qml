@@ -18,22 +18,23 @@ ApplicationWindow {
         id: accelerometer
         dataRate: 25
         active: true
-        property real previousForce: 0
-        property real multiplier: 100
-        onReadingChanged: {
-            const accelerometerReading = reading as AccelerometerReading
-            let force = Qt.vector3d(accelerometerReading.x, accelerometerReading.y, accelerometerReading.z - 9.81)
-            if (isShake(force, previousForce)) {
-                tapLabel.hide()
-                force.x *= multiplier
-                force.y *= multiplier
-                force.z *= multiplier
-                scene.spawnDice(diceSlider.value, force, diceSize.value)
-            }
-            previousForce = force.length()
+        readonly property vector3d force: Qt.vector3d(reading.x, reading.y, reading.z)
+        readonly property bool highForce : Math.abs(force.length() - 9.81) > 16
+
+        onHighForceChanged: {
+            if (!highForce)
+                shakeTimeout.restart()
         }
-        function isShake(force, previousForce) {
-            return ((force.length() > 16) && (force.length() < previousForce))
+    }
+
+    Timer {
+        id: shakeTimeout
+        interval: 200
+        running: false
+        repeat: false;
+        onTriggered: {
+            scene.rollForce = accelerometer.force.times(100.0)
+            scene.spawnDice()
         }
     }
 
@@ -45,6 +46,9 @@ ApplicationWindow {
         settingsStaticFriction: staticFrictionSlider.value
         settingsDynamicFriction: dynamicFrictionSlider.value
         settingsRestitution: restitutionSlider.value
+        settingsDiceWidth: diceSize.value
+        settingsDiceCount: diceSlider.value
+        cameraControllerEnabled: !drawer.visible
 
         Label {
             id: tapLabel
@@ -60,29 +64,22 @@ ApplicationWindow {
             style: Text.Raised
             color: "white"
             minimumPixelSize: 10
-            NumberAnimation on opacity {
-                id: tapLabelAnimation
-                running: false
-                from: 1
-                to: 0
-                duration: 300
-            }
+            visible: opacity > 0
 
-            function hide() {
-                if (tapLabel.opacity >= 1) {
-                    tapLabelAnimation.running = true
+            Behavior on opacity {
+                NumberAnimation {
+                    duration: 300
+                    easing.type: Easing.OutCirc
                 }
             }
         }
 
         MouseArea {
-            anchors {
-                fill: parent
-            }
+            anchors.fill: parent
             onClicked: {
-                tapLabel.hide()
-                scene.spawnDice(diceSlider.value, Qt.vector3d(0, 0, 0),
-                                diceSize.value)
+                tapLabel.opacity = 0
+                scene.rollForce = Qt.vector3d(0, 0, 0)
+                scene.spawnDice()
             }
         }
 
@@ -118,14 +115,9 @@ ApplicationWindow {
                 anchors.horizontalCenter: parent.horizontalCenter
 
                 // Static friction
-                RowLayout {
-                    Label {
-                        text: qsTr("Static friction")
-                        Layout.fillWidth: true
-                    }
-                    Label {
-                        font.bold: true
-                    }
+                Label {
+                    text: qsTr("Static friction: %1").arg(staticFrictionSlider.value.toFixed(2))
+                    Layout.fillWidth: true
                 }
                 Slider {
                     id: staticFrictionSlider
@@ -133,42 +125,34 @@ ApplicationWindow {
                     from: 0
                     to: 1
                     value: 0.5
+                    stepSize: 0.05
                 }
 
                 // Dynamic friction
-                RowLayout {
-                    Label {
-                        text: qsTr("Dynamic friction")
-                        Layout.fillWidth: true
-                    }
-                    Label {
-                        font.bold: true
-                    }
+                Label {
+                    text: qsTr("Dynamic friction: %1").arg(dynamicFrictionSlider.value.toFixed(2))
+                    Layout.fillWidth: true
                 }
                 Slider {
                     id: dynamicFrictionSlider
                     focusPolicy: Qt.NoFocus
                     from: 0
                     to: 1
-                    value: 0.5
+                    value: 0.4
+                    stepSize: 0.05
                 }
 
                 // Restitution
-                RowLayout {
-                    Label {
-                        text: qsTr("Restitution")
-                        Layout.fillWidth: true
-                    }
-                    Label {
-                        font.bold: true
-                    }
+                Label {
+                    text: qsTr("Restitution: %1").arg(restitutionSlider.value.toFixed(2))
+                    Layout.fillWidth: true
                 }
                 Slider {
                     id: restitutionSlider
                     focusPolicy: Qt.NoFocus
                     from: 0
                     to: 1
-                    value: 0.8
+                    value: 0.4
                     stepSize: 0.05
                 }
 
@@ -202,30 +186,23 @@ ApplicationWindow {
                 }
 
                 // Number of dice
-                RowLayout {
-                    Label {
-                        text: qsTr("Number of dice")
-                        Layout.fillWidth: true
-                    }
+                Label {
+                    text: qsTr("Number of dice: %1").arg(diceSlider.value)
+                    Layout.fillWidth: true
                 }
                 Slider {
                     id: diceSlider
                     focusPolicy: Qt.NoFocus
                     from: 1
-                    to: 10
+                    to: 20
                     value: 5
                     stepSize: 1
-                    onValueChanged: scene.spawnDice(value,
-                                                    Qt.vector3d(0, 0, 0),
-                                                    diceSize.value)
                 }
 
                 // Dice size
-                RowLayout {
-                    Label {
-                        text: qsTr("Dice size")
-                        Layout.fillWidth: true
-                    }
+                Label {
+                    text: qsTr("Dice size: %1cm").arg(diceSize.value.toFixed(1))
+                    Layout.fillWidth: true
                 }
                 Slider {
                     id: diceSize
@@ -233,8 +210,7 @@ ApplicationWindow {
                     from: 1
                     to: 10
                     value: 3.5
-                    stepSize: 1
-                    onValueChanged: scene.setDiceWidth(value)
+                    stepSize: 0.5
                 }
 
                 // Throw dice
@@ -242,9 +218,10 @@ ApplicationWindow {
                     id: throwButton
                     Layout.alignment: Qt.AlignHCenter
                     text: qsTr("Throw dice")
-                    onClicked: scene.spawnDice(diceSlider.value,
-                                               Qt.vector3d(0, 0, 0),
-                                               diceSize.value)
+                    onClicked: {
+                        scene.rollForce = Qt.vector3d(0, 0, 0)
+                        scene.spawnDice()
+                    }
                 }
             }
         }
@@ -254,8 +231,11 @@ ApplicationWindow {
         id: iconOpen
         icon.source: "Menu_Icon.svg"
         x: root.currDrawerWidth
+        opacity: 1.0 - drawer.position
+        scale: opacity
+        transformOrigin: Item.Center
         onClicked: {
-            tapLabel.hide()
+            tapLabel.opacity = 0
             drawer.open()
         }
     }

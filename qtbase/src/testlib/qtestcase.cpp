@@ -11,6 +11,9 @@
 #include <QtCore/qdebug.h>
 #include <QtCore/qdir.h>
 #include <QtCore/qdirlisting.h>
+#if QT_CONFIG(future)
+#include <QtCore/qexception.h>
+#endif
 #include <QtCore/qfile.h>
 #include <QtCore/qfileinfo.h>
 #include <QtCore/qfloat16.h>
@@ -163,22 +166,36 @@ namespace QTestPrivate
 
 namespace {
 
-class TestFailedException : public std::exception // clazy:exclude=copyable-polymorphic
+#if !QT_CONFIG(future)
+using QException = std::exception;
+#endif
+
+class TestFailedException : public QException // clazy:exclude=copyable-polymorphic
 {
 public:
     TestFailedException() = default;
     ~TestFailedException() override = default;
 
     const char *what() const noexcept override { return "QtTest: test failed"; }
+
+#if QT_CONFIG(future)
+    TestFailedException *clone() const override { return new TestFailedException(); }
+    void raise() const override { throw TestFailedException(); }
+#endif
 };
 
-class TestSkippedException : public std::exception // clazy:exclude=copyable-polymorphic
+class TestSkippedException : public QException // clazy:exclude=copyable-polymorphic
 {
 public:
     TestSkippedException() = default;
     ~TestSkippedException() override = default;
 
     const char *what() const noexcept override { return "QtTest: test was skipped"; }
+
+#if QT_CONFIG(future)
+    TestSkippedException *clone() const override { return new TestSkippedException(); }
+    void raise() const override { throw TestSkippedException(); }
+#endif
 };
 
 } // unnamed namespace
@@ -204,22 +221,38 @@ void Internal::maybeThrowOnSkip()
         Internal::throwOnSkip();
 }
 
+/*
+//! [return-void]
+    Defining this macro is useful if you wish to use \1 in functions that have
+    a non-\c{void} return type. Without this macro defined, \2, for example,
+    expands to a statement including \c{return;}, so it cannot be used in
+    functions (or lambdas) that return something else than \c{void}, e.g.
+    \l{QString}. This includes the case where throwing exceptions is enabled
+    only at runtime (using \3). With this macro defined, \2 instead expands to
+    a statement without a \c{return;}, which is usable from any function.
+//! [return-void]
+*/
+
 /*!
     \since 6.8
     \macro QTEST_THROW_ON_FAIL
-    \relates <QTest>
+    \relates QTest
 
     When defined, QCOMPARE()/QVERIFY() etc always throw on failure.
-    QTest::throwOnFail() then no longer has any effect.
+    QTest::setThrowOnFail() then no longer has any effect.
+
+    \include qtestcase.cpp {return-void} {QCOMPARE() or QVERIFY()} {QCOMPARE()} {QTest::setThrowOnFail(true)}
 */
 
 /*!
     \since 6.8
     \macro QTEST_THROW_ON_SKIP
-    \relates <QTest>
+    \relates QTest
 
-    When defined, QSKIP() always throws. QTest::throwOnSkip() then no longer
+    When defined, QSKIP() always throws. QTest::setThrowOnSkip() then no longer
     has any effect.
+
+    \include qtestcase.cpp {return-void} {QSKIP()} {QSKIP()} {QTest::setThrowOnSkip(true)}
 */
 
 /*!
@@ -305,9 +338,6 @@ void Internal::maybeThrowOnSkip()
     with \c{true}, you need to call it \e{N} times with \c{false} to get back
     to where you started.
 
-    The default is \c{false}, unless the \l{Qt Test Environment Variables}
-    {QTEST_THROW_ON_FAIL environment variable} is set.
-
     This call has no effect when the \l{QTEST_THROW_ON_FAIL} C++ macro is
     defined.
 
@@ -332,9 +362,6 @@ void setThrowOnFail(bool enable) noexcept
     with \c{true}, you need to call it \e{N} times with \c{false} to get back
     to where you started.
 
-    The default is \c{false}, unless the \l{Qt Test Environment Variables}
-    {QTEST_THROW_ON_SKIP environment variable} is set.
-
     This call has no effect when the \l{QTEST_THROW_ON_SKIP} C++ macro is
     defined.
 
@@ -352,8 +379,7 @@ QString Internal::formatTryTimeoutDebugMessage(q_no_char8_t::QUtf8StringView exp
 {
     return "QTestLib: This test case check (\"%1\") failed because the requested timeout (%2 ms) "
            "was too short, %3 ms would have been sufficient this time."_L1
-            // ### Qt 7: remove the toString() (or earlier, when arg() can handle QUtf8StringView), passing the view directly
-            .arg(expr.toString(), QString::number(timeout), QString::number(actual));
+            .arg(expr, QString::number(timeout), QString::number(actual));
 }
 
 extern Q_TESTLIB_EXPORT int lastMouseTimestamp;
@@ -614,11 +640,6 @@ Q_TESTLIB_EXPORT void qtest_qParseArgs(int argc, const char *const argv[], bool 
     QTest::testFunctions.clear();
     QTest::testTags.clear();
 
-    if (qEnvironmentVariableIsSet("QTEST_THROW_ON_FAIL"))
-        QTest::setThrowOnFail(true);
-    if (qEnvironmentVariableIsSet("QTEST_THROW_ON_SKIP"))
-        QTest::setThrowOnSkip(true);
-
 #if defined(Q_OS_DARWIN) && defined(HAVE_XCTEST)
     if (QXcodeTestLogger::canLogTestProgress())
         logFormat = QTestLog::XCTest;
@@ -675,10 +696,6 @@ Q_TESTLIB_EXPORT void qtest_qParseArgs(int argc, const char *const argv[], bool 
          "                       repeated forever. This is intended as a developer tool, and\n"
          "                       is only supported with the plain text logger.\n"
          " -skipblacklisted    : Skip blacklisted tests. Useful for measuring test coverage.\n"
-         " -[no]throwonfail    : Enables/disables throwing on QCOMPARE()/QVERIFY()/etc.\n"
-         "                       Default: off,  unless QTEST_THROW_ON_FAIL is set.\n"
-         " -[no]throwonskip    : Enables/disables throwing on QSKIP().\n"
-         "                       Default: off,  unless QTEST_THROW_ON_SKIP is set.\n"
          "\n"
          " Benchmarking options:\n"
 #if QT_CONFIG(valgrind)
@@ -838,14 +855,6 @@ Q_TESTLIB_EXPORT void qtest_qParseArgs(int argc, const char *const argv[], bool 
             QTest::Internal::noCrashHandler = true;
         } else if (strcmp(argv[i], "-skipblacklisted") == 0) {
             QTest::skipBlacklisted = true;
-        } else if (strcmp(argv[i], "-throwonfail") == 0) {
-            QTest::setThrowOnFail(true);
-        } else if (strcmp(argv[i], "-nothrowonfail") == 0) {
-            QTest::setThrowOnFail(false);
-        } else if (strcmp(argv[i], "-throwonskip") == 0) {
-            QTest::setThrowOnSkip(true);
-        } else if (strcmp(argv[i], "-nothrowonskip") == 0) {
-            QTest::setThrowOnSkip(false);
 #if QT_CONFIG(valgrind)
         } else if (strcmp(argv[i], "-callgrind") == 0) {
             if (!QBenchmarkValgrindUtils::haveValgrind()) {
@@ -1200,10 +1209,10 @@ class WatchDog : public QThread
 
 public:
     WatchDog()
+        : expecting{ThreadStart}
     {
         setObjectName("QtTest Watchdog"_L1);
         auto locker = qt_unique_lock(mutex);
-        expecting.store(ThreadStart, std::memory_order_relaxed);
         start();
         waitFor(locker, ThreadStart);
     }
@@ -2211,6 +2220,8 @@ void QTest::qWarn(const char *message, const char *file, int line)
 
     The example above tests that QDir::mkdir() outputs the right warning when invoked
     with an invalid file name.
+
+    \note \a message will be interpreted as UTF-8.
 */
 void QTest::ignoreMessage(QtMsgType type, const char *message)
 {
@@ -2245,7 +2256,7 @@ void QTest::ignoreMessage(QtMsgType type, const QRegularExpression &messagePatte
 
     Appends a test failure to the test log if any warning is output.
 
-    \sa failOnWarning()
+    \sa failOnWarning(const char *)
 */
 void QTest::failOnWarning()
 {
@@ -2794,7 +2805,7 @@ void QTest::setMainSourcePath(const char *file, const char *builddir)
 
     If the caller creates a custom failure message showing the compared values,
     or if those values cannot be stringified, use the overload of the function
-    that takes no \a actualVal and \a expecetedVal parameters.
+    that takes no \a actualVal and \a expectedVal parameters.
 */
 bool QTest::compare_helper(bool success, const char *failureMsg,
                            char *actualVal, char *expectedVal,
@@ -2856,6 +2867,56 @@ bool QTest::compare_helper(bool success, const char *failureMsg,
                                      actual, expected,
                                      QTest::ComparisonOperation::CustomCompare,
                                      file, line, failureMsg);
+}
+
+
+/*! \internal
+    \since 6.9
+    This function reports the result of a three-way comparison, when needed.
+
+    Aside from logging every check if in verbose mode and reporting an
+    unexpected pass when failure was expected, if \a success is \c true
+    this produces no output. Otherwise, a failure is reported. The output
+    on failure reports the expressions compared, their values, the actual
+    result of the comparison and the expected result of comparison, along
+    with the supplied failure message \a failureMsg and the \a file and
+    \a line number at which the error arose.
+
+    The expressions compared are supplied as \a lhsExpression and
+    \a rhsExpression.
+    These are combined, with \c{"<=>"}, to obtain the actual comparison
+    expression. Their actual values are pointed to by \a lhsPtr and
+    \a rhsPtr, which are formatted by \a lhsFormatter and \a rhsFormatter
+    as, respectively, \c lhsFormatter(lhsPtr) and \c rhsFormatter(rhsPtr).
+    The actual comparison expression is contrasted,
+    in the output, with the expected comparison expression
+    \a expectedExpression. Their respective values are supplied by
+    \a actualOrderPtr and \a expectedOrderPtr pointers, which are
+    formatted by \a actualOrderFormatter and \a expectedOrderFormatter.
+
+    If \a failureMsg is \nullptr a default is used. If a formatter
+    function returns \a nullptr, the text \c{"<null>"} is used.
+*/
+bool QTest::compare_3way_helper(bool success, const char *failureMsg,
+                                const void *lhsPtr, const void *rhsPtr,
+                                const char *(*lhsFormatter)(const void*),
+                                const char *(*rhsFormatter)(const void*),
+                                const char *lhsExpression, const char *rhsExpression,
+                                const char *(*actualOrderFormatter)(const void *),
+                                const char *(*expectedOrderFormatter)(const void *),
+                                const void *actualOrderPtr, const void *expectedOrderPtr,
+                                const char *expectedExpression,
+                                const char *file, int line)
+{
+    return QTestResult::report3WayResult(success, failureMsg,
+                                         lhsPtr, rhsPtr,
+                                         lhsFormatter, rhsFormatter,
+                                         lhsExpression, rhsExpression,
+                                         actualOrderFormatter,
+                                         expectedOrderFormatter,
+                                         actualOrderPtr, expectedOrderPtr,
+                                         expectedExpression,
+                                         file, line);
 }
 
 /*! \internal

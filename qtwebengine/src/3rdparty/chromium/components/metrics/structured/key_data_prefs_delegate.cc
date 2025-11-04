@@ -5,18 +5,18 @@
 #include "components/metrics/structured/key_data_prefs_delegate.h"
 
 #include <optional>
+#include <string_view>
 #include <utility>
 
 #include "base/check.h"
 #include "base/logging.h"
 #include "base/values.h"
-#include "components/metrics/structured/key_data.h"
-#include "components/metrics/structured/key_util.h"
+#include "components/metrics/structured/lib/key_data.h"
+#include "components/metrics/structured/lib/key_util.h"
 #include "components/metrics/structured/lib/proto/key.pb.h"
 #include "components/metrics/structured/project_validator.h"
 #include "components/metrics/structured/structured_metrics_validator.h"
 #include "components/prefs/scoped_user_pref_update.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 
 namespace metrics::structured {
 
@@ -72,7 +72,7 @@ void KeyDataPrefsDelegate::LoadKeysFromPrefs() {
   auto* proto_keys = proto_.mutable_keys();
 
   for (const auto [project_name, project_keys] : keys_pref) {
-    absl::optional<const ProjectValidator*> project_validator =
+    std::optional<const ProjectValidator*> project_validator =
         validators->GetProjectValidator(project_name);
 
     // Check if a project was found for the name.
@@ -108,7 +108,7 @@ void KeyDataPrefsDelegate::UpdatePrefsByProject(uint64_t project_name_hash,
   // Get the name of the project for |project_name_hash| to be used to store the
   // keys in prefs.
   const validator::Validators* validators = validator::Validators::Get();
-  std::optional<base::StringPiece> project_name =
+  std::optional<std::string_view> project_name =
       validators->GetProjectName(project_name_hash);
 
   if (!project_name.has_value()) {

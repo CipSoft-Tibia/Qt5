@@ -14,28 +14,32 @@ namespace content {
 IdentityRegistry::IdentityRegistry(
     content::WebContents* web_contents,
     base::WeakPtr<FederatedIdentityModalDialogViewDelegate> delegate,
-    const url::Origin& registry_origin)
+    const GURL& idp_config_url)
     : content::WebContentsUserData<IdentityRegistry>(*web_contents),
       delegate_(delegate),
-      registry_origin_(registry_origin) {}
+      idp_config_url_(idp_config_url) {}
 
 IdentityRegistry::~IdentityRegistry() = default;
 
 void IdentityRegistry::NotifyClose(const url::Origin& notifier_origin) {
-  if (!registry_origin_.IsSameOriginWith(notifier_origin) || !delegate_) {
+  url::Origin idp_origin(url::Origin::Create(idp_config_url_));
+  if (!idp_origin.IsSameOriginWith(notifier_origin) || !delegate_) {
     return;
   }
 
-  delegate_->NotifyClose();
+  delegate_->OnClose();
 }
 
-bool IdentityRegistry::NotifyResolve(const url::Origin& notifier_origin,
-                                     const std::string& token) {
-  if (!registry_origin_.IsSameOriginWith(notifier_origin) || !delegate_) {
+bool IdentityRegistry::NotifyResolve(
+    const url::Origin& notifier_origin,
+    const std::optional<std::string>& account_id,
+    const std::string& token) {
+  url::Origin idp_origin(url::Origin::Create(idp_config_url_));
+  if (!idp_origin.IsSameOriginWith(notifier_origin) || !delegate_) {
     return false;
   }
 
-  return delegate_->NotifyResolve(token);
+  return delegate_->OnResolve(idp_config_url_, account_id, token);
 }
 
 WEB_CONTENTS_USER_DATA_KEY_IMPL(IdentityRegistry);

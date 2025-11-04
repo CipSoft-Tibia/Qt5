@@ -21,7 +21,7 @@ qt_internal_extend_target(tst_qwebview CONDITION TARGET Qt::WebViewQuick
         Qt::Qml
 )
 
-qt_internal_extend_target(tst_qwebview CONDITION TARGET Qt::WebEngineQuick
+qt_internal_extend_target(tst_qwebview CONDITION TARGET Qt::WebEngineQuick AND NOT APPLE
     DEFINES
         QT_WEBVIEW_WEBENGINE_BACKEND
     LIBRARIES

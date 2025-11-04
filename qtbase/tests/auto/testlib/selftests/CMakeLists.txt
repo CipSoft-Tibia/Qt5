@@ -51,7 +51,6 @@ qt_internal_apply_testlib_coverage_options(tst_selftests)
 set(subprograms
     assert
     badxml
-    benchlibcallgrind
     benchlibcounting
     benchlibeventcounter
     benchliboptions
@@ -111,6 +110,27 @@ set(subprograms
     warnings
     watchdog
 )
+
+if(NOT QT_FEATURE_sanitize_address)
+    list(APPEND subprograms
+        # valgrind and asan are incompatible:
+        #   "ASan runtime does not come first in initial library list;"
+        benchlibcallgrind
+    )
+endif()
+
+if(FEATURE_concurrent AND FEATURE_future)
+    list(APPEND subprograms
+        # This test needs exceptions, QException, and QtConcurrent::run()
+        throwonfailandskip
+    )
+endif()
+
+if(FEATURE_cxx20)
+  list(APPEND subprograms
+      threewaycompare
+  )
+endif()
 
 if(TARGET Qt::Gui)
     list(APPEND subprograms

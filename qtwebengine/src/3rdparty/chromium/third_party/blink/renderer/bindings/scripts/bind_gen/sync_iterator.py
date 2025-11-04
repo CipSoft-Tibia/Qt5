@@ -29,7 +29,7 @@ def make_constructors(cg_context):
     assert isinstance(cg_context, CodeGenContext)
 
     decls = ListNode([
-        CxxFuncDefNode(name=cg_context.class_name,
+        CxxFuncDefNode(name="SyncIterator",
                        arg_decls=["IterationSourceBase* source", "Kind kind"],
                        return_type="",
                        explicit=True,
@@ -75,9 +75,13 @@ def generate_sync_iterator_blink_impl_class(iterator_class_like=None,
     value_type = sync_iterator.value_type.unwrap(typedef=True)
     key_value_type_list = tuple(filter(None, [key_type, value_type]))
 
-    (header_forward_decls, header_include_headers, source_forward_decls,
-     source_include_headers
-     ) = collect_forward_decls_and_include_headers(key_value_type_list)
+    (
+        header_forward_decls,
+        header_include_headers,
+        header_stdcpp_include_headers,
+        source_forward_decls,
+        source_include_headers,
+    ) = collect_forward_decls_and_include_headers(key_value_type_list)
     class_def.accumulate(
         CodeGenAccumulator.require_class_decls(
             set.union(header_forward_decls, source_forward_decls)))
@@ -90,6 +94,9 @@ def generate_sync_iterator_blink_impl_class(iterator_class_like=None,
             headers.add(
                 "third_party/blink/renderer/bindings/core/v8/idl_types.h")
     class_def.accumulate(CodeGenAccumulator.require_include_headers(headers))
+    class_def.accumulate(
+        CodeGenAccumulator.require_stdcpp_include_headers(
+            header_stdcpp_include_headers))
 
     ctor_decls, ctor_defs = make_constructors(cg_context)
 

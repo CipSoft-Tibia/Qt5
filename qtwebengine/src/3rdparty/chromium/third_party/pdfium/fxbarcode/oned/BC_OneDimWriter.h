@@ -14,11 +14,11 @@
 
 #include "core/fxcrt/data_vector.h"
 #include "core/fxcrt/fx_string.h"
+#include "core/fxcrt/span.h"
 #include "core/fxcrt/unowned_ptr.h"
 #include "core/fxge/cfx_textrenderoptions.h"
 #include "fxbarcode/BC_Library.h"
 #include "fxbarcode/BC_Writer.h"
-#include "third_party/base/containers/span.h"
 
 class CFX_Font;
 class CFX_Matrix;
@@ -63,12 +63,12 @@ class CBC_OneDimWriter : public CBC_Writer {
                        const CFX_Matrix& matrix,
                        const ByteString str,
                        float geWidth,
-                       TextCharPos* pCharPos,
+                       pdfium::span<TextCharPos> pCharPos,
                        float locX,
                        float locY,
                        int32_t barWidth);
   void CalcTextInfo(const ByteString& text,
-                    TextCharPos* charPos,
+                    pdfium::span<TextCharPos> charPos,
                     CFX_Font* cFont,
                     float geWidth,
                     int32_t fontSize,

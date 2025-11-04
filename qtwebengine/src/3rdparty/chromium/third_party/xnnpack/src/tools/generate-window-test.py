@@ -29,7 +29,7 @@ parser.set_defaults(defines=list())
 def split_ukernel_name(name):
   shift = 0
   row_tile = 1
-  match = re.fullmatch(r"xnn_s16_window(_shift(\d+))?_ukernel__(.+)_u(\d+)", name)
+  match = re.fullmatch(r"xnn_s16_window(_shift(\d+))?_ukernel__(.+)_u(\d+)(v)?", name)
   assert match is not None
   if match.group(2):
     shift = int(match.group(2))
@@ -208,11 +208,9 @@ def main(args):
 
 
 #include <gtest/gtest.h>
-
-#include <xnnpack/common.h>
-#include <xnnpack/isa-checks.h>
-
-#include <xnnpack/window.h>
+#include "xnnpack/common.h"
+#include "xnnpack/isa-checks.h"
+#include "xnnpack/window.h"
 #include "window-microkernel-tester.h"
 """.format(specification=options.spec, generator=sys.argv[0])
 

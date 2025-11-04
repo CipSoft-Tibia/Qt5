@@ -21,12 +21,13 @@ if (NOT TARGET Test::HttpServer)
 
    add_library(Test::HttpServer ALIAS httpserver)
 
-   target_include_directories(httpserver INTERFACE
-       $<BUILD_INTERFACE:${CMAKE_CURRENT_LIST_DIR}>
+   target_include_directories(httpserver
+       PRIVATE $<TARGET_PROPERTY:${QT_CMAKE_EXPORT_NAMESPACE}::WebEngineCorePrivate,INTERFACE_INCLUDE_DIRECTORIES>
+       INTERFACE $<BUILD_INTERFACE:${CMAKE_CURRENT_LIST_DIR}>
    )
 
    target_link_libraries(httpserver PUBLIC
-      Qt::Core
+      Qt::CorePrivate
       Qt::Network
    )
 

@@ -2,20 +2,33 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#ifdef UNSAFE_BUFFERS_BUILD
+// TODO(crbug.com/40285824): Remove this and convert code to safer constructs.
+#pragma allow_unsafe_buffers
+#endif
+
 #include "ui/base/dragdrop/os_exchange_data_provider_win.h"
 
-#include <coml2api.h>
 #include <objbase.h>
+
+#include <shobjidl.h>
+
+#include <coml2api.h>
 #include <objidl.h>
 #include <shlobj.h>
-#include <shobjidl.h>
 #include <stdint.h>
 #include <wrl/client.h>
 
 #include <iterator>
+#include <optional>
+#include <string>
+#include <string_view>
+#include <utility>
 
 #include "base/check_op.h"
 #include "base/containers/span.h"
+#include "base/containers/to_vector.h"
+#include "base/feature_list.h"
 #include "base/files/file_path.h"
 #include "base/functional/callback.h"
 #include "base/i18n/file_util_icu.h"
@@ -30,7 +43,6 @@
 #include "base/win/shlwapi.h"
 #include "net/base/filename_util.h"
 #include "skia/ext/skia_utils_win.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "third_party/skia/include/core/SkBitmap.h"
 #include "ui/base/clipboard/clipboard_format_type.h"
 #include "ui/base/clipboard/clipboard_util_win.h"
@@ -38,6 +50,7 @@
 #include "ui/base/data_transfer_policy/data_transfer_policy_controller.h"
 #include "ui/base/l10n/l10n_util.h"
 #include "ui/base/l10n/l10n_util_win.h"
+#include "ui/base/ui_base_features.h"
 #include "ui/gfx/geometry/point.h"
 #include "ui/gfx/geometry/size.h"
 #include "ui/gfx/image/image_skia.h"
@@ -244,28 +257,6 @@ FormatEtcEnumerator* FormatEtcEnumerator::CloneFromOther(
 // OSExchangeDataProviderWin, public:
 
 // static
-bool OSExchangeDataProviderWin::HasPlainTextURL(IDataObject* source) {
-  std::u16string plain_text;
-  return (clipboard_util::GetPlainText(source, &plain_text) &&
-          !plain_text.empty() && GURL(plain_text).is_valid());
-}
-
-// static
-bool OSExchangeDataProviderWin::GetPlainTextURL(IDataObject* source,
-                                                GURL* url) {
-  std::u16string plain_text;
-  if (clipboard_util::GetPlainText(source, &plain_text) &&
-      !plain_text.empty()) {
-    GURL gurl(plain_text);
-    if (gurl.is_valid()) {
-      *url = gurl;
-      return true;
-    }
-  }
-  return false;
-}
-
-// static
 DataObjectImpl* OSExchangeDataProviderWin::GetDataObjectImpl(
     const OSExchangeData& data) {
   return static_cast<const OSExchangeDataProviderWin*>(&data.provider())->
@@ -309,18 +300,18 @@ bool OSExchangeDataProviderWin::IsRendererTainted() const {
   return HasCustomFormat(GetRendererTaintFormatType());
 }
 
-absl::optional<url::Origin>
-OSExchangeDataProviderWin::GetRendererTaintedOrigin() const {
+std::optional<url::Origin> OSExchangeDataProviderWin::GetRendererTaintedOrigin()
+    const {
   STGMEDIUM medium;
   FORMATETC format_etc = GetRendererTaintFormatType().ToFormatEtc();
   if (FAILED(source_object_->GetData(&format_etc, &medium))) {
-    return absl::nullopt;
+    return std::nullopt;
   }
   base::win::ScopedHGlobal<char*> data(medium.hGlobal);
   if (data.size() == 0) {
     return url::Origin();
   }
-  return url::Origin::Create(GURL(base::StringPiece(data.data(), data.size())));
+  return url::Origin::Create(GURL(std::string_view(data.data(), data.size())));
 }
 
 void OSExchangeDataProviderWin::MarkAsFromPrivileged() {
@@ -386,7 +377,7 @@ void OSExchangeDataProviderWin::SetURL(const GURL& url,
   data_->contents_.push_back(DataObjectImpl::StoredDataInfo::TakeStorageMedium(
       ClipboardFormatType::UrlAType().ToFormatEtc(), storage));
 
-  // TODO(https://crbug.com/6767): add CF_HTML.
+  // TODO(crbug.com/41292596): add CF_HTML.
 
   // Also add text representations (these should be last since they're the
   // least preferable).
@@ -411,6 +402,28 @@ void OSExchangeDataProviderWin::SetFilenames(
 
   data_->contents_.push_back(DataObjectImpl::StoredDataInfo::TakeStorageMedium(
       ClipboardFormatType::CFHDropType().ToFormatEtc(), storage));
+}
+
+bool OSExchangeDataProviderWin::HasPlainTextURL() const {
+  return GetPlainTextURL().has_value();
+}
+
+std::optional<GURL> OSExchangeDataProviderWin::GetPlainTextURL() const {
+  std::u16string plain_text;
+  if (clipboard_util::GetPlainText(source_object_.Get(), &plain_text) &&
+      !plain_text.empty()) {
+    GURL gurl(plain_text);
+    if (!gurl.is_valid()) {
+      return std::nullopt;
+    }
+    if (base::FeatureList::IsEnabled(
+            features::kDragDropOnlySynthesizeHttpOrHttpsUrlsFromText) &&
+        IsRendererTainted() && !gurl.SchemeIsHTTPOrHTTPS()) {
+      return std::nullopt;
+    }
+    return gurl;
+  }
+  return std::nullopt;
 }
 
 void OSExchangeDataProviderWin::SetVirtualFileContentsForTesting(
@@ -554,8 +567,7 @@ void OSExchangeDataProviderWin::SetHtml(const std::u16string& html,
   std::string utf8_html = base::UTF16ToUTF8(html);
   std::string url = base_url.is_valid() ? base_url.spec() : std::string();
 
-  std::string cf_html = clipboard_util::HtmlToCFHtml(
-      utf8_html, url, ClipboardContentType::kSanitized);
+  std::string cf_html = clipboard_util::HtmlToCFHtml(utf8_html, url);
   STGMEDIUM storage = CreateStorageForBytes(cf_html.c_str(), cf_html.size());
   data_->contents_.push_back(DataObjectImpl::StoredDataInfo::TakeStorageMedium(
       ClipboardFormatType::HtmlType().ToFormatEtc(), storage));
@@ -566,66 +578,98 @@ void OSExchangeDataProviderWin::SetHtml(const std::u16string& html,
       ClipboardFormatType::TextHtmlType().ToFormatEtc(), storage_plain));
 }
 
-bool OSExchangeDataProviderWin::GetString(std::u16string* data) const {
-  return clipboard_util::GetPlainText(source_object_.Get(), data);
-}
-
-bool OSExchangeDataProviderWin::GetURLAndTitle(FilenameToURLPolicy policy,
-                                               GURL* url,
-                                               std::u16string* title) const {
-  std::u16string url_str;
-  bool success = clipboard_util::GetUrl(
-      source_object_.Get(), url, title,
-      policy == FilenameToURLPolicy::CONVERT_FILENAMES ? true : false);
-  if (success) {
-    DCHECK(url->is_valid());
-    return true;
-  } else if (GetPlainTextURL(source_object_.Get(), url)) {
-    if (url->is_valid())
-      *title = net::GetSuggestedFilename(*url, "", "", "", "", std::string());
-    else
-      title->clear();
-    return true;
+std::optional<std::u16string> OSExchangeDataProviderWin::GetString() const {
+  std::u16string data;
+  if (clipboard_util::GetPlainText(source_object_.Get(), &data)) {
+    return std::move(data);
   }
-  return false;
+  return std::nullopt;
 }
 
-bool OSExchangeDataProviderWin::GetFilenames(
-    std::vector<FileInfo>* filenames) const {
+std::optional<OSExchangeDataProvider::UrlInfo>
+OSExchangeDataProviderWin::GetURLAndTitle(FilenameToURLPolicy policy) const {
+  GURL url;
+  std::u16string title;
+  if (clipboard_util::GetUrl(
+          source_object_.Get(), &url, &title,
+          policy == FilenameToURLPolicy::CONVERT_FILENAMES ? true : false)) {
+    DCHECK(url.is_valid());
+    return UrlInfo{std::move(url), std::move(title)};
+  } else if (std::optional<GURL> plaintext_url = GetPlainTextURL();
+             plaintext_url.has_value()) {
+    DCHECK(plaintext_url->is_valid());
+    title = net::GetSuggestedFilename(*plaintext_url, "", "", "", "",
+                                      std::string());
+    return UrlInfo{std::move(plaintext_url).value(), std::move(title)};
+  }
+  return std::nullopt;
+}
+
+std::optional<std::vector<GURL>> OSExchangeDataProviderWin::GetURLs(
+    FilenameToURLPolicy policy) const {
+  std::vector<GURL> local_urls;
+
+  if (std::optional<UrlInfo> url_info =
+          GetURLAndTitle(FilenameToURLPolicy::DO_NOT_CONVERT_FILENAMES);
+      url_info.has_value()) {
+    local_urls.push_back(url_info->url);
+  }
+
+  if (policy == FilenameToURLPolicy::CONVERT_FILENAMES) {
+    if (std::optional<std::vector<FileInfo>> fileinfos = GetFilenames();
+        fileinfos.has_value()) {
+      for (const auto& fileinfo : fileinfos.value()) {
+        local_urls.push_back(net::FilePathToFileURL(fileinfo.path));
+      }
+    }
+  }
+
+  if (local_urls.size()) {
+    return local_urls;
+  }
+  return std::nullopt;
+}
+
+std::optional<std::vector<FileInfo>> OSExchangeDataProviderWin::GetFilenames()
+    const {
   std::vector<std::wstring> filenames_local;
   bool success =
       clipboard_util::GetFilenames(source_object_.Get(), &filenames_local);
-  if (success) {
-    for (const std::wstring& filename_local : filenames_local)
-      filenames->push_back(
-          FileInfo(base::FilePath(filename_local), base::FilePath()));
+  if (!success) {
+    return std::nullopt;
   }
-  return success;
+
+  return base::ToVector(filenames_local, [](const std::wstring& filename) {
+    return FileInfo(base::FilePath(filename), base::FilePath());
+  });
 }
 
 bool OSExchangeDataProviderWin::HasVirtualFilenames() const {
   return clipboard_util::HasVirtualFilenames(source_object_.Get());
 }
 
-bool OSExchangeDataProviderWin::GetVirtualFilenames(
-    std::vector<FileInfo>* filenames) const {
+std::optional<std::vector<FileInfo>>
+OSExchangeDataProviderWin::GetVirtualFilenames() const {
   // ui_base_clipboard can't use FileInfo struct which is part of ui_base, so
   // use FilePath instead.
-  // TODO(https://crbug.com/950360): ui_base_clipboard can't use FileInfo struct
+  // TODO(crbug.com/41451590): ui_base_clipboard can't use FileInfo struct
   // which is part of ui_base (layering issue).
-  std::vector<base::FilePath> display_names;
-  bool success =
-      clipboard_util::GetVirtualFilenames(source_object_.Get(), &display_names);
-
-  if (success) {
-    // On dragenter scenarios, need a placeholder file path for drag metadata
-    // checks without actually creating the temp file.
-    base::FilePath temp_path(FILE_PATH_LITERAL("temp.tmp"));
-
-    for (const auto& display_name : display_names)
-      filenames->push_back(FileInfo(temp_path, display_name));
+  std::optional<std::vector<base::FilePath>> display_names =
+      clipboard_util::GetVirtualFilenames(source_object_.Get());
+  if (!display_names) {
+    return std::nullopt;
   }
-  return success;
+
+  // On dragenter scenarios, need a placeholder file path for drag metadata
+  // checks without actually creating the temp file.
+  base::FilePath temp_path(FILE_PATH_LITERAL("temp.tmp"));
+
+  std::vector<FileInfo> result;
+  for (const auto& display_name : display_names.value()) {
+    result.emplace_back(temp_path, display_name);
+  }
+
+  return result;
 }
 
 void OSExchangeDataProviderWin::GetVirtualFilesAsTempFiles(
@@ -636,47 +680,52 @@ void OSExchangeDataProviderWin::GetVirtualFilesAsTempFiles(
                                              std::move(callback));
 }
 
-bool OSExchangeDataProviderWin::GetPickledData(
-    const ClipboardFormatType& format,
-    base::Pickle* data) const {
-  DCHECK(data);
-  bool success = false;
+std::optional<base::Pickle> OSExchangeDataProviderWin::GetPickledData(
+    const ClipboardFormatType& format) const {
   STGMEDIUM medium;
   FORMATETC format_etc = format.ToFormatEtc();
   if (SUCCEEDED(source_object_->GetData(&format_etc, &medium))) {
     if (medium.tymed & TYMED_HGLOBAL) {
       base::win::ScopedHGlobal<char*> c_data(medium.hGlobal);
       DCHECK_GT(c_data.size(), 0u);
-      *data = base::Pickle(base::as_bytes(base::span(c_data)));
-      success = true;
+      return base::Pickle::WithData(base::as_bytes(base::span(c_data)));
     }
     ReleaseStgMedium(&medium);
   }
-  return success;
+  return std::nullopt;
 }
 
-bool OSExchangeDataProviderWin::GetFileContents(
-    base::FilePath* filename,
-    std::string* file_contents) const {
-  if (HasCustomFormat(GetIgnoreFileContentsFormatType()))
-    return false;
+std::optional<OSExchangeDataProvider::FileContentsInfo>
+OSExchangeDataProviderWin::GetFileContents() const {
+  if (HasCustomFormat(GetIgnoreFileContentsFormatType())) {
+    return std::nullopt;
+  }
 
   std::wstring filename_str;
+  std::string file_contents;
   if (!clipboard_util::GetFileContents(source_object_.Get(), &filename_str,
-                                       file_contents)) {
-    return false;
+                                       &file_contents) ||
+      filename_str.empty()) {
+    return std::nullopt;
   }
-  *filename = base::FilePath(filename_str);
-  return true;
+
+  return FileContentsInfo{.filename = base::FilePath(filename_str),
+                          .file_contents = std::move(file_contents)};
 }
 
-bool OSExchangeDataProviderWin::GetHtml(std::u16string* html,
-                                        GURL* base_url) const {
+std::optional<OSExchangeDataProvider::HtmlInfo>
+OSExchangeDataProviderWin::GetHtml() const {
+  std::u16string html;
   std::string url;
-  bool success = clipboard_util::GetHtml(source_object_.Get(), html, &url);
-  if (success)
-    *base_url = GURL(url);
-  return success;
+  bool success = clipboard_util::GetHtml(source_object_.Get(), &html, &url);
+  if (!success) {
+    return std::nullopt;
+  }
+
+  return HtmlInfo{
+      .html = html,
+      .base_url = GURL(url),
+  };
 }
 
 bool OSExchangeDataProviderWin::HasString() const {
@@ -688,7 +737,7 @@ bool OSExchangeDataProviderWin::HasURL(FilenameToURLPolicy policy) const {
       clipboard_util::HasUrl(
           source_object_.Get(),
           policy == FilenameToURLPolicy::CONVERT_FILENAMES ? true : false) ||
-      HasPlainTextURL(source_object_.Get()));
+      HasPlainTextURL());
 }
 
 bool OSExchangeDataProviderWin::HasFile() const {
@@ -768,7 +817,6 @@ gfx::ImageSkia OSExchangeDataProviderWin::GetDragImage() const {
   // situations where the drag image is later queried. In that case a different
   // OSExchangeDataProvider should be used.
   NOTREACHED();
-  return gfx::ImageSkia();
 }
 
 gfx::Vector2d OSExchangeDataProviderWin::GetDragImageOffset() const {
@@ -776,7 +824,6 @@ gfx::Vector2d OSExchangeDataProviderWin::GetDragImageOffset() const {
   // situations where the drag image is later queried. In that case a different
   // OSExchangeDataProvider should be used.
   NOTREACHED();
-  return gfx::Vector2d();
 }
 
 void OSExchangeDataProviderWin::SetSource(

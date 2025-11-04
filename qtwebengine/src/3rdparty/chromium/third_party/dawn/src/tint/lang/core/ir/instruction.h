@@ -47,8 +47,20 @@ namespace tint::core::ir {
 /// An instruction in the IR.
 class Instruction : public Castable<Instruction> {
   public:
+    using Id = uint32_t;
+
     /// Destructor
     ~Instruction() override;
+
+    /// An equality helper for Instructions.
+    /// @param other the instruction to compare against
+    /// @returns true if the two instructions have matching IDs
+    bool operator==(const Instruction& other) const { return id_ == other.id_; }
+
+    /// A comparison helper for Instruction.
+    /// @param other the instruction to compare against
+    /// @returns true if `this` is less then `other`.
+    bool operator<(const Instruction& other) const { return id_ < other.id_; }
 
     /// Set an operand at a given index.
     /// @param index the operand index
@@ -115,6 +127,10 @@ class Instruction : public Castable<Instruction> {
     /// Removes this instruction from the owning block
     void Remove();
 
+    /// Detach an instruction result from this instruction.
+    /// @returns the instruction result that was detached
+    InstructionResult* DetachResult();
+
     /// @param idx the index of the operand
     /// @returns the operand with index @p idx, or `nullptr` if there are no operands or the index
     /// is out of bounds.
@@ -162,7 +178,10 @@ class Instruction : public Castable<Instruction> {
     };
 
     /// Constructor
-    Instruction();
+    explicit Instruction(Id id);
+
+    /// The instruction id
+    Id id_;
 
     /// The block that owns this instruction
     ConstPropagatingPtr<ir::Block> block_;

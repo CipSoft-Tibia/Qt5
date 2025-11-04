@@ -7,29 +7,12 @@
 
 using openscreen::msgs::CborEncodeBuffer;
 using openscreen::msgs::HttpHeader;
+using openscreen::msgs::PresentationConnectionCloseEvent;
 using openscreen::msgs::PresentationConnectionMessage;
 using openscreen::msgs::PresentationStartRequest;
 using openscreen::msgs::PresentationUrlAvailabilityRequest;
 
 namespace openscreen::osp {
-
-// TODO(btolsch): This is in the current (draft) spec, but should we actually
-// allow this?
-TEST(PresentationMessagesTest, EncodeRequestZeroUrls) {
-  uint8_t buffer[256];
-  std::vector<std::string> urls;
-  ssize_t bytes_out = EncodePresentationUrlAvailabilityRequest(
-      PresentationUrlAvailabilityRequest{3, urls}, buffer, sizeof(buffer));
-  ASSERT_LE(bytes_out, static_cast<ssize_t>(sizeof(buffer)));
-  ASSERT_GT(bytes_out, 0);
-
-  PresentationUrlAvailabilityRequest decoded_request;
-  ssize_t bytes_read = DecodePresentationUrlAvailabilityRequest(
-      buffer, bytes_out, &decoded_request);
-  ASSERT_EQ(bytes_read, bytes_out);
-  EXPECT_EQ(3u, decoded_request.request_id);
-  EXPECT_EQ(urls, decoded_request.urls);
-}
 
 TEST(PresentationMessagesTest, EncodeRequestOneUrl) {
   uint8_t buffer[256];
@@ -41,7 +24,7 @@ TEST(PresentationMessagesTest, EncodeRequestOneUrl) {
 
   PresentationUrlAvailabilityRequest decoded_request;
   ssize_t bytes_read = DecodePresentationUrlAvailabilityRequest(
-      buffer, bytes_out, &decoded_request);
+      buffer, bytes_out, decoded_request);
   ASSERT_EQ(bytes_read, bytes_out);
   EXPECT_EQ(7u, decoded_request.request_id);
   EXPECT_EQ(urls, decoded_request.urls);
@@ -59,7 +42,7 @@ TEST(PresentationMessagesTest, EncodeRequestMultipleUrls) {
 
   PresentationUrlAvailabilityRequest decoded_request;
   ssize_t bytes_read = DecodePresentationUrlAvailabilityRequest(
-      buffer, bytes_out, &decoded_request);
+      buffer, bytes_out, decoded_request);
   ASSERT_EQ(bytes_read, bytes_out);
   EXPECT_EQ(7u, decoded_request.request_id);
   EXPECT_EQ(urls, decoded_request.urls);
@@ -94,7 +77,7 @@ TEST(PresentationMessagesTest, DecodeInvalidUtf8) {
 
   PresentationUrlAvailabilityRequest decoded_request;
   ssize_t bytes_read = DecodePresentationUrlAvailabilityRequest(
-      buffer, bytes_out, &decoded_request);
+      buffer, bytes_out, decoded_request);
   ASSERT_GT(0, bytes_read);
 }
 
@@ -111,7 +94,7 @@ TEST(PresentationMessagesTest, InitiationRequest) {
 
   PresentationStartRequest decoded_request;
   ssize_t bytes_read =
-      DecodePresentationStartRequest(buffer, bytes_out, &decoded_request);
+      DecodePresentationStartRequest(buffer, bytes_out, decoded_request);
   ASSERT_EQ(bytes_read, bytes_out);
   EXPECT_EQ(13u, decoded_request.request_id);
   EXPECT_EQ(kPresentationId, decoded_request.presentation_id);
@@ -132,7 +115,7 @@ TEST(PresentationMessagesTest, InitiationRequestWithoutOptional) {
 
   PresentationStartRequest decoded_request;
   ssize_t bytes_read =
-      DecodePresentationStartRequest(buffer, bytes_out, &decoded_request);
+      DecodePresentationStartRequest(buffer, bytes_out, decoded_request);
   ASSERT_EQ(bytes_read, bytes_out);
   EXPECT_EQ(13u, decoded_request.request_id);
   EXPECT_EQ(kPresentationId, decoded_request.presentation_id);
@@ -154,7 +137,7 @@ TEST(PresentationMessagesTest, EncodeConnectionMessageString) {
 
   PresentationConnectionMessage decoded_message;
   ssize_t bytes_read =
-      DecodePresentationConnectionMessage(buffer, bytes_out, &decoded_message);
+      DecodePresentationConnectionMessage(buffer, bytes_out, decoded_message);
   ASSERT_GT(bytes_read, 0);
   EXPECT_EQ(bytes_read, bytes_out);
   EXPECT_EQ(message.connection_id, decoded_message.connection_id);
@@ -176,7 +159,7 @@ TEST(PresentationMessagesTest, EncodeConnectionMessageBytes) {
 
   PresentationConnectionMessage decoded_message;
   ssize_t bytes_read =
-      DecodePresentationConnectionMessage(buffer, bytes_out, &decoded_message);
+      DecodePresentationConnectionMessage(buffer, bytes_out, decoded_message);
   ASSERT_GT(bytes_read, 0);
   EXPECT_EQ(bytes_read, bytes_out);
   EXPECT_EQ(message.connection_id, decoded_message.connection_id);
@@ -193,7 +176,7 @@ TEST(PresentationMessagesTest, CborEncodeBufferSmall) {
 
   PresentationUrlAvailabilityRequest decoded_request;
   size_t bytes_read = DecodePresentationUrlAvailabilityRequest(
-      buffer.data() + 1, buffer.size() - 1, &decoded_request);
+      buffer.data() + 1, buffer.size() - 1, decoded_request);
   EXPECT_EQ(bytes_read, buffer.size() - 1);
   EXPECT_EQ(request.request_id, decoded_request.request_id);
   EXPECT_EQ(request.urls, decoded_request.urls);
@@ -212,7 +195,7 @@ TEST(PresentationMessagesTest, CborEncodeBufferMedium) {
 
   PresentationUrlAvailabilityRequest decoded_request;
   ssize_t bytes_read = DecodePresentationUrlAvailabilityRequest(
-      buffer.data() + 1, buffer.size() - 1, &decoded_request);
+      buffer.data() + 1, buffer.size() - 1, decoded_request);
   ASSERT_GT(bytes_read, 0);
   EXPECT_EQ(static_cast<size_t>(bytes_read), buffer.size() - 1);
   EXPECT_EQ(request.request_id, decoded_request.request_id);
@@ -224,6 +207,47 @@ TEST(PresentationMessagesTest, CborEncodeBufferTooLarge) {
   PresentationUrlAvailabilityRequest request{7, urls};
   CborEncodeBuffer buffer{10, 30};
   ASSERT_FALSE(EncodePresentationUrlAvailabilityRequest(request, &buffer));
+}
+
+TEST(PresentationMessagesTest, EncodePresentationConnectionCloseEvent) {
+  uint8_t buffer[256];
+  PresentationConnectionCloseEvent event = {
+      .connection_id = 1,
+      .reason =
+          msgs::PresentationConnectionCloseEvent_reason::kCloseMethodCalled,
+      .connection_count = 1,
+      .has_error_message = false};
+  ssize_t bytes_out =
+      EncodePresentationConnectionCloseEvent(event, buffer, sizeof(buffer));
+  ASSERT_LE(bytes_out, static_cast<ssize_t>(sizeof(buffer)));
+  ASSERT_GT(bytes_out, 0);
+
+  PresentationConnectionCloseEvent decoded_event;
+  ssize_t bytes_read =
+      DecodePresentationConnectionCloseEvent(buffer, bytes_out, decoded_event);
+  ASSERT_EQ(bytes_read, bytes_out);
+  EXPECT_EQ(1u, decoded_event.connection_id);
+  EXPECT_EQ(1u, decoded_event.connection_count);
+
+  PresentationConnectionCloseEvent event_with_message = {
+      .connection_id = 2,
+      .reason =
+          msgs::PresentationConnectionCloseEvent_reason::kCloseMethodCalled,
+      .connection_count = 2,
+      .has_error_message = true,
+      .error_message = "test message"};
+  bytes_out = EncodePresentationConnectionCloseEvent(event_with_message, buffer,
+                                                     sizeof(buffer));
+  ASSERT_LE(bytes_out, static_cast<ssize_t>(sizeof(buffer)));
+  ASSERT_GT(bytes_out, 0);
+
+  PresentationConnectionCloseEvent decoded_event_with_message;
+  bytes_read = DecodePresentationConnectionCloseEvent(
+      buffer, bytes_out, decoded_event_with_message);
+  ASSERT_EQ(bytes_read, bytes_out);
+  EXPECT_EQ(2u, decoded_event_with_message.connection_id);
+  EXPECT_EQ(2u, decoded_event_with_message.connection_count);
+  EXPECT_EQ("test message", decoded_event_with_message.error_message);
 }
 
 }  // namespace openscreen::osp

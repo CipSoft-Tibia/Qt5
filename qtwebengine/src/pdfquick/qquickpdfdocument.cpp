@@ -10,6 +10,7 @@
 #include <QtQml/qqmlinfo.h>
 #include <QtQuick/qquickitem.h>
 #include <QtQml/qqmlfile.h>
+#include <QThread>
 
 QT_BEGIN_NAMESPACE
 
@@ -79,8 +80,12 @@ void QQuickPdfDocument::setSource(QUrl source)
 
     m_source = source;
     m_maxPageWidthHeight = QSizeF();
-    if (m_carrierFile)
-        m_carrierFile->deleteLater();
+    if (m_carrierFile) {
+        if (m_carrierFile->thread())
+            m_carrierFile->deleteLater(); // to be done in that thread
+        else
+            delete m_carrierFile; // avoid leaking if there's no thread affinity
+    }
     m_carrierFile = nullptr;
     emit sourceChanged();
     const QQmlContext *context = qmlContext(this);

@@ -80,7 +80,8 @@ public:
     QQuickScrollBar::Policy policy = QQuickScrollBar::AsNeeded;
 };
 
-class QQuickScrollBarAttachedPrivate : public QObjectPrivate, public QQuickItemChangeListener
+class QQuickScrollBarAttachedPrivate : public QObjectPrivate,
+                                       public QSafeQuickItemChangeListener<QQuickScrollBarAttachedPrivate>
 {
 public:
     static QQuickScrollBarAttachedPrivate *get(QQuickScrollBarAttached *attached)

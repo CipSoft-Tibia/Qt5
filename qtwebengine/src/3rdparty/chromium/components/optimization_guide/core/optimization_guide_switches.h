@@ -6,15 +6,14 @@
 #define COMPONENTS_OPTIMIZATION_GUIDE_CORE_OPTIMIZATION_GUIDE_SWITCHES_H_
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
 #include "base/component_export.h"
 #include "base/files/file_path.h"
 #include "base/time/time.h"
-#include "components/optimization_guide/core/page_content_annotation_type.h"
 #include "components/optimization_guide/proto/models.pb.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 
 namespace optimization_guide {
 namespace proto {
@@ -52,29 +51,29 @@ extern const char kModelOverride[];
 COMPONENT_EXPORT(OPTIMIZATION_GUIDE_FEATURES)
 extern const char kOnDeviceModelExecutionOverride[];
 COMPONENT_EXPORT(OPTIMIZATION_GUIDE_FEATURES)
+extern const char kOnDeviceModelAdaptationsOverride[];
+COMPONENT_EXPORT(OPTIMIZATION_GUIDE_FEATURES)
+extern const char kOnDeviceValidationRequestOverride[];
+COMPONENT_EXPORT(OPTIMIZATION_GUIDE_FEATURES)
+extern const char kOnDeviceValidationWriteToFile[];
+COMPONENT_EXPORT(OPTIMIZATION_GUIDE_FEATURES)
 extern const char kDebugLoggingEnabled[];
 COMPONENT_EXPORT(OPTIMIZATION_GUIDE_FEATURES)
 extern const char kModelValidate[];
 COMPONENT_EXPORT(OPTIMIZATION_GUIDE_FEATURES)
 extern const char kModelExecutionValidate[];
 COMPONENT_EXPORT(OPTIMIZATION_GUIDE_FEATURES)
-extern const char kPageContentAnnotationsLoggingEnabled[];
-COMPONENT_EXPORT(OPTIMIZATION_GUIDE_FEATURES)
-extern const char kPageContentAnnotationsValidationStartupDelaySeconds[];
-COMPONENT_EXPORT(OPTIMIZATION_GUIDE_FEATURES)
-extern const char kPageContentAnnotationsValidationBatchSizeOverride[];
-COMPONENT_EXPORT(OPTIMIZATION_GUIDE_FEATURES)
-extern const char kPageContentAnnotationsValidationPageEntities[];
-COMPONENT_EXPORT(OPTIMIZATION_GUIDE_FEATURES)
-extern const char kPageContentAnnotationsValidationContentVisibility[];
-COMPONENT_EXPORT(OPTIMIZATION_GUIDE_FEATURES)
-extern const char kPageContentAnnotationsValidationTextEmbedding[];
-COMPONENT_EXPORT(OPTIMIZATION_GUIDE_FEATURES)
-extern const char kPageContentAnnotationsValidationWriteToFile[];
-COMPONENT_EXPORT(OPTIMIZATION_GUIDE_FEATURES)
 extern const char kModelQualityServiceURL[];
 COMPONENT_EXPORT(OPTIMIZATION_GUIDE_FEATURES)
 extern const char kModelQualityServiceAPIKey[];
+COMPONENT_EXPORT(OPTIMIZATION_GUIDE_FEATURES)
+extern const char kEnableModelQualityDogfoodLogging[];
+COMPONENT_EXPORT(OPTIMIZATION_GUIDE_FEATURES)
+extern const char kGetFreeDiskSpaceWithUserVisiblePriorityTask[];
+COMPONENT_EXPORT(OPTIMIZATION_GUIDE_FEATURES)
+extern const char kOptimizationGuideLanguageOverride[];
+COMPONENT_EXPORT(OPTIMIZATION_GUIDE_FEATURES)
+extern const char kGoogleApiKeyConfigurationCheckOverride[];
 
 // The API key for the ModelQualityLoggingService.
 COMPONENT_EXPORT(OPTIMIZATION_GUIDE_FEATURES)
@@ -101,7 +100,7 @@ bool ShouldPurgeModelAndFeaturesStoreOnStartup();
 // of the first hints fetch and forces it to occur immediately. If no hosts are
 // provided, nullopt is returned.
 COMPONENT_EXPORT(OPTIMIZATION_GUIDE_FEATURES)
-absl::optional<std::vector<std::string>>
+std::optional<std::vector<std::string>>
 ParseHintsFetchOverrideFromCommandLine();
 
 // Whether the hints fetcher timer should be overridden.
@@ -144,45 +143,38 @@ bool ShouldValidateModelExecution();
 
 // Returns the model override command line switch.
 COMPONENT_EXPORT(OPTIMIZATION_GUIDE_FEATURES)
-absl::optional<std::string> GetModelOverride();
+std::optional<std::string> GetModelOverride();
 
 // Returns the on-device model execution override command line switch.
 COMPONENT_EXPORT(OPTIMIZATION_GUIDE_FEATURES)
-absl::optional<std::string> GetOnDeviceModelExecutionOverride();
+std::optional<std::string> GetOnDeviceModelExecutionOverride();
+
+// Returns the on-device model adaptations override command line switch.
+COMPONENT_EXPORT(OPTIMIZATION_GUIDE_FEATURES)
+std::optional<std::string> GetOnDeviceModelAdaptationsOverride();
+
+// Returns the file path to the text file to use for the on-device request
+// override.
+COMPONENT_EXPORT(OPTIMIZATION_GUIDE_FEATURES)
+std::optional<base::FilePath> GetOnDeviceValidationRequestOverride();
+
+// Returns the file path to write the on-device validation response to.
+COMPONENT_EXPORT(OPTIMIZATION_GUIDE_FEATURES)
+std::optional<base::FilePath> GetOnDeviceValidationWriteToFile();
 
 // Returns true if debug logs are enabled for the optimization guide.
 COMPONENT_EXPORT(OPTIMIZATION_GUIDE_FEATURES)
 bool IsDebugLogsEnabled();
 
-// Returns true if page content annotations input should be logged.
+// Returns whether to get free disk space with base::TaskPriority::USER_VISIBLE
+// task. This is about the freediskspace check in the context of the on-device
+// model eligibility check.
 COMPONENT_EXPORT(OPTIMIZATION_GUIDE_FEATURES)
-bool ShouldLogPageContentAnnotationsInput();
+bool ShouldGetFreeDiskSpaceWithUserVisiblePriorityTask();
 
-// Returns the delay to use for page content annotations validation, if given
-// and valid on the command line.
+// Returns true if Google API key configuration check should be skipped.
 COMPONENT_EXPORT(OPTIMIZATION_GUIDE_FEATURES)
-absl::optional<base::TimeDelta> PageContentAnnotationsValidationStartupDelay();
-
-// Returns the size of the batch to use for page content annotations validation,
-// if given and valid on the command line.
-COMPONENT_EXPORT(OPTIMIZATION_GUIDE_FEATURES)
-absl::optional<size_t> PageContentAnnotationsValidationBatchSize();
-
-// Whether the result of page content annotations validation should be sent to
-// the console. True when any one of the corresponding command line flags is
-// enabled.
-COMPONENT_EXPORT(OPTIMIZATION_GUIDE_FEATURES)
-bool LogPageContentAnnotationsValidationToConsole();
-
-// Returns a set on inputs to run the validation on for the given |type|,
-// using comma separated input from the command line.
-COMPONENT_EXPORT(OPTIMIZATION_GUIDE_FEATURES)
-absl::optional<std::vector<std::string>>
-PageContentAnnotationsValidationInputForType(AnnotationType type);
-
-// Returns the file path to write page content annotation validation results to.
-COMPONENT_EXPORT(OPTIMIZATION_GUIDE_FEATURES)
-absl::optional<base::FilePath> PageContentAnnotationsValidationWriteToFile();
+bool ShouldSkipGoogleApiKeyConfigurationCheck();
 
 }  // namespace switches
 }  // namespace optimization_guide

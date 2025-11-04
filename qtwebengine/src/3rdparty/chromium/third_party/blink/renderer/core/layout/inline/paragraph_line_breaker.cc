@@ -16,13 +16,6 @@ namespace blink {
 
 namespace {
 
-// Max number of lines to balance.
-wtf_size_t MaxLinesToBisectForBalance() {
-  return RuntimeEnabledFeatures::CSSTextWrapBalanceByScoreEnabled()
-             ? kMaxLinesForBalance
-             : 4;
-}
-
 struct LineBreakResult {
   LayoutUnit width;
 };
@@ -76,7 +69,7 @@ struct LineBreakResults {
       }
       break_token_ = line_info.GetBreakToken();
       lines_.push_back(LineBreakResult{line_info.Width()});
-      DCHECK_LE(lines_.size(), MaxLinesToBisectForBalance());
+      DCHECK_LE(lines_.size(), kMaxLinesForBalance);
       if (!break_token_ ||
           (stop_at && break_token_->Start() >= stop_at->Start())) {
         return Status::kFinished;
@@ -141,29 +134,30 @@ wtf_size_t EstimateNumLines(const String& text_content,
 }  // namespace
 
 // static
-absl::optional<LayoutUnit> ParagraphLineBreaker::AttemptParagraphBalancing(
+std::optional<LayoutUnit> ParagraphLineBreaker::AttemptParagraphBalancing(
     const InlineNode& node,
     const ConstraintSpace& space,
     const LineLayoutOpportunity& line_opportunity) {
   if (node.IsBisectLineBreakDisabled()) {
-    return absl::nullopt;
+    return std::nullopt;
   }
 
   const ComputedStyle& block_style = node.Style();
   const LayoutUnit available_width = line_opportunity.AvailableInlineSize();
   LineBreakResults normal_lines(node, space);
-  const wtf_size_t max_lines = MaxLinesToBisectForBalance();
-  const int lines_until_clamp = space.LinesUntilClamp().value_or(0);
+  constexpr wtf_size_t max_lines = kMaxLinesForBalance;
+  const int lines_until_clamp =
+      space.GetLineClampData().LinesUntilClamp().value_or(0);
   if (lines_until_clamp > 0 &&
       static_cast<unsigned>(lines_until_clamp) <= max_lines) {
     if (lines_until_clamp == 1) {
-      return absl::nullopt;  // Balancing not needed for single line paragraphs.
+      return std::nullopt;  // Balancing not needed for single line paragraphs.
     }
 
     const LineBreakResults::Status status =
         normal_lines.BreakLines(available_width, lines_until_clamp);
     if (status == LineBreakResults::Status::kNotApplicable) {
-      return absl::nullopt;
+      return std::nullopt;
     }
   } else {
     // Estimate the number of lines to see if the text is too long to balance.
@@ -171,24 +165,24 @@ absl::optional<LayoutUnit> ParagraphLineBreaker::AttemptParagraphBalancing(
     const InlineItemsData& items_data = node.ItemsData(
         /* use_first_line_style */ false);
     const wtf_size_t estimated_num_lines = EstimateNumLines(
-        items_data.text_content, block_style.GetFont().PrimaryFont(),
+        items_data.text_content, block_style.GetFont()->PrimaryFont(),
         line_opportunity.AvailableInlineSize());
     if (estimated_num_lines > max_lines * 2) {
-      return absl::nullopt;
+      return std::nullopt;
     }
 
     const LineBreakResults::Status status =
         normal_lines.BreakLines(available_width, max_lines);
     if (status != LineBreakResults::Status::kFinished) {
       // Abort if not applicable or `max_lines` exceeded.
-      return absl::nullopt;
+      return std::nullopt;
     }
     DCHECK(!normal_lines.BreakToken());
   }
   const wtf_size_t num_lines = normal_lines.Size();
   DCHECK_LE(num_lines, max_lines);
   if (num_lines <= 1) {
-    return absl::nullopt;  // Balancing not needed for single line paragraphs.
+    return std::nullopt;  // Balancing not needed for single line paragraphs.
   }
 
   // The bisect less than 1 pixel is worthless, so ignore. Use CSS pixels

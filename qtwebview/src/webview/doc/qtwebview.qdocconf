@@ -40,3 +40,6 @@ manifestmeta.highlighted.names = "QtWebView/Qt WebView Examples - Minibrowser"
 navigation.landingpage    = "Qt WebView"
 navigation.qmltypespage   = "Qt WebView QML Types"
 navigation.cppclassespage = "Qt WebView C++ Classes and Namespaces"
+
+# Allow zero warnings when testing documentation in CI
+warninglimit = 0

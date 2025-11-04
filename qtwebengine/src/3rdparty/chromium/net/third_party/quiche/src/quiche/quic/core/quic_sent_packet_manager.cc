@@ -6,7 +6,11 @@
 
 #include <algorithm>
 #include <cstddef>
+#include <memory>
+#include <optional>
 #include <string>
+#include <utility>
+#include <vector>
 
 #include "quiche/quic/core/congestion_control/general_loss_algorithm.h"
 #include "quiche/quic/core/congestion_control/pacing_sender.h"
@@ -82,7 +86,7 @@ QuicSentPacketManager::QuicSentPacketManager(
       largest_mtu_acked_(0),
       handshake_finished_(false),
       peer_max_ack_delay_(
-          QuicTime::Delta::FromMilliseconds(kDefaultDelayedAckTimeMs)),
+          QuicTime::Delta::FromMilliseconds(kDefaultPeerDelayedAckTimeMs)),
       rtt_updated_(false),
       acked_packets_iter_(last_ack_frame_.packets.rbegin()),
       consecutive_pto_count_(0),
@@ -637,7 +641,7 @@ QuicAckFrequencyFrame QuicSentPacketManager::GetUpdatedAckFrequencyFrame()
   frame.packet_tolerance = kMaxRetransmittablePacketsBeforeAck;
   auto rtt = use_smoothed_rtt_in_ack_delay_ ? rtt_stats_.SmoothedOrInitialRtt()
                                             : rtt_stats_.MinOrInitialRtt();
-  frame.max_ack_delay = rtt * kAckDecimationDelay;
+  frame.max_ack_delay = rtt * kPeerAckDecimationDelay;
   frame.max_ack_delay = std::max(frame.max_ack_delay, peer_min_ack_delay_);
   // TODO(haoyuewang) Remove this once kDefaultMinAckDelayTimeMs is updated to
   // 5 ms on the client side.
@@ -724,6 +728,24 @@ bool QuicSentPacketManager::OnPacketSent(
                                  in_flight, measure_rtt, ecn_codepoint);
   // Reset the retransmission timer anytime a pending packet is sent.
   return in_flight;
+}
+
+const QuicTransmissionInfo& QuicSentPacketManager::AddDispatcherSentPacket(
+    const DispatcherSentPacket& packet) {
+  QUIC_DVLOG(1) << "QuicSPM: Adding dispatcher sent packet "
+                << packet.packet_number << ", size: " << packet.bytes_sent
+                << ", sent_time: " << packet.sent_time
+                << ", largest_acked: " << packet.largest_acked;
+  if (using_pacing_) {
+    pacing_sender_.OnPacketSent(
+        packet.sent_time, unacked_packets_.bytes_in_flight(),
+        packet.packet_number, packet.bytes_sent, NO_RETRANSMITTABLE_DATA);
+  } else {
+    send_algorithm_->OnPacketSent(
+        packet.sent_time, unacked_packets_.bytes_in_flight(),
+        packet.packet_number, packet.bytes_sent, NO_RETRANSMITTABLE_DATA);
+  }
+  return unacked_packets_.AddDispatcherSentPacket(packet);
 }
 
 QuicSentPacketManager::RetransmissionTimeoutMode

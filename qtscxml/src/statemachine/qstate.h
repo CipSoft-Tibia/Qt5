@@ -9,8 +9,6 @@
 
 #include <QtStateMachine/qabstractstate.h>
 
-QT_REQUIRE_CONFIG(statemachine);
-
 QT_BEGIN_NAMESPACE
 
 class QAbstractTransition;

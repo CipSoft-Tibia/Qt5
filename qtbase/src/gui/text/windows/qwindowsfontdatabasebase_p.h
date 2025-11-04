@@ -75,6 +75,7 @@ public:
 
     static QString familyForStyleHint(QFont::StyleHint styleHint);
     static QStringList extraTryFontsForFamily(const QString &family);
+    static QStringList familiesForScript(QFontDatabasePrivate::ExtendedScript script);
 
     class FontTable{};
     class EmbeddedFont
@@ -98,6 +99,7 @@ protected:
 
 #if QT_CONFIG(directwrite)
     QList<IDWriteFontFace *> createDirectWriteFaces(const QByteArray &fontData,
+                                                    const QString &filename,
                                                     bool queryVariations = true) const;
     IDWriteFontFace *createDirectWriteFace(const QByteArray &fontData);
 #endif

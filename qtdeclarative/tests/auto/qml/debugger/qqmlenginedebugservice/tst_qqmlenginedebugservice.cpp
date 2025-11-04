@@ -137,6 +137,7 @@ private:
 
 private slots:
     void initTestCase() override;
+    void init() override;
 
     void watch_property();
     void watch_object();
@@ -319,42 +320,46 @@ void tst_QQmlEngineDebugService::getContexts()
 void tst_QQmlEngineDebugService::initTestCase()
 {
     QQmlDataTest::initTestCase();
+    bool ok = false;
+    int attempts = 0;
+    while (!ok) {
+        QVERIFY(++attempts < 16);
+        m_components.clear();
+        m_engine = std::make_unique<QQmlEngine>(this);
 
-    m_components.clear();
-    m_engine = std::make_unique<QQmlEngine>(this);
+        // The contents of these files was previously hardcoded as QList<QByteArray>
+        // directly in this test, but that fails on Android, because the required
+        // dependencies are not deployed. When the contents is moved to separate
+        // files, qmlimportscanner is capable of providing all the necessary
+        // dependencies.
+        // Note that the order of the files in this list matters! The test-cases
+        // expect Qml components to be created is certain order.
+        constexpr const char *fileNames[] = {
+            "complexItem.qml",
+            "emptyItem.qml",
+            "itemWithFunctions.qml",
+            "rectangleWithTransitions.qml",
+            "customTypes.qml",
+            "jsonTest.qml",
+            "debuggerCrashOnAttach.qml"
+        };
 
-    // The contents of these files was previously hardcoded as QList<QByteArray>
-    // directly in this test, but that fails on Android, because the required
-    // dependencies are not deployed. When the contents is moved to separate
-    // files, qmlimportscanner is capable of providing all the necessary
-    // dependencies.
-    // Note that the order of the files in this list matters! The test-cases
-    // expect Qml components to be created is certain order.
-    constexpr const char *fileNames[] = {
-        "complexItem.qml",
-        "emptyItem.qml",
-        "itemWithFunctions.qml",
-        "rectangleWithTransitions.qml",
-        "customTypes.qml",
-        "jsonTest.qml",
-        "debuggerCrashOnAttach.qml"
-    };
+        for (auto file : fileNames) {
+            QQmlComponent component(m_engine.get(), testFileUrl(file));
+            QVERIFY(component.isReady());  // fails if bad syntax
+            m_components.push_back(std::unique_ptr<QObject>(component.create()));
+        }
+        m_rootItem = qobject_cast<QQuickItem*>(m_components.at(0).get());
 
-    for (auto file : fileNames) {
-        QQmlComponent component(m_engine.get(), testFileUrl(file));
-        QVERIFY(component.isReady());  // fails if bad syntax
-        m_components.push_back(std::unique_ptr<QObject>(component.create()));
+        // add an extra context to test for multiple contexts
+        m_context = std::make_unique<QQmlContext>(m_engine->rootContext(), this);
+        m_context->setObjectName("tst_QQmlDebug_childContext");
+
+        m_conn = std::make_unique<QQmlDebugConnection>(this);
+        m_conn->connectToHost("127.0.0.1", 3768);
+        ok = m_conn->waitForConnected();
     }
-    m_rootItem = qobject_cast<QQuickItem*>(m_components.at(0).get());
 
-    // add an extra context to test for multiple contexts
-    m_context = std::make_unique<QQmlContext>(m_engine->rootContext(), this);
-    m_context->setObjectName("tst_QQmlDebug_childContext");
-
-    m_conn = std::make_unique<QQmlDebugConnection>(this);
-    m_conn->connectToHost("127.0.0.1", 3768);
-
-    bool ok = m_conn->waitForConnected();
     QVERIFY(ok);
     m_dbg = new QQmlEngineDebugClient(m_conn.get());
     const QList<QQmlDebugClient *> others = QQmlDebugTest::createOtherClients(m_conn.get());
@@ -362,6 +367,11 @@ void tst_QQmlEngineDebugService::initTestCase()
     for (QQmlDebugClient *other : others)
         QCOMPARE(other->state(), QQmlDebugClient::Unavailable);
     qDeleteAll(others);
+}
+
+void tst_QQmlEngineDebugService::init()
+{
+    QVERIFY(m_dbg);
 }
 
 void tst_QQmlEngineDebugService::setMethodBody()

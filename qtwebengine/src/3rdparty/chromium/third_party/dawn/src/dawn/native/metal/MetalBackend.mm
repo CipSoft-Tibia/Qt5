@@ -36,23 +36,15 @@
 
 namespace dawn::native::metal {
 
-ExternalImageDescriptorIOSurface::ExternalImageDescriptorIOSurface()
-    : ExternalImageDescriptor(ExternalImageType::IOSurface) {}
-
-ExternalImageDescriptorIOSurface::~ExternalImageDescriptorIOSurface() = default;
-
-void IOSurfaceEndAccess(WGPUTexture cTexture,
-                        ExternalImageIOSurfaceEndAccessDescriptor* descriptor) {
-    Texture* texture = ToBackend(FromAPI(cTexture));
-    auto device = texture->GetDevice();
-    auto deviceLock(device->GetScopedLock());
-    texture->IOSurfaceEndAccess(descriptor);
-}
-
 void WaitForCommandsToBeScheduled(WGPUDevice device) {
     Device* backendDevice = ToBackend(FromAPI(device));
     auto deviceLock(backendDevice->GetScopedLock());
     ToBackend(backendDevice->GetQueue())->WaitForCommandsToBeScheduled();
+}
+
+id<MTLDevice> GetMTLDevice(WGPUDevice device) {
+    Device* backendDevice = ToBackend(FromAPI(device));
+    return backendDevice->GetMTLDevice();
 }
 
 }  // namespace dawn::native::metal

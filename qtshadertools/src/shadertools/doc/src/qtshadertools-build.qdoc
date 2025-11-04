@@ -299,6 +299,9 @@ qt6_add_shaders(exampleapp "exampleapp_shaders"
     additional processing on these targets pass a value to the OUTPUT_TARGETS
     parameter.
 
+    \li \c MEDIUMP - Requests defaulting to medium precision for floats in GLSL
+    ES fragment shaders. Ignored for any other targets, including (non-ES) GLSL.
+
     \endlist
 
     \section1 Substituting Hand-Crafted Shaders

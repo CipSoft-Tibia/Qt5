@@ -138,6 +138,11 @@ Q_SIGNALS:
     void setValueRemoved(qsizetype index, qsizetype count, QBarSet *barset);
     void barSetsChanged();
 
+    Q_REVISION(6, 9) void clicked(qsizetype index, QBarSet *barset);
+    Q_REVISION(6, 9) void doubleClicked(qsizetype index, QBarSet *barset);
+    Q_REVISION(6, 9) void pressed(qsizetype index, QBarSet *barset);
+    Q_REVISION(6, 9) void released(qsizetype index, QBarSet *barset);
+
 private Q_SLOTS:
     void handleSetValueChange(qsizetype index);
     void handleSetValueAdd(qsizetype index, qsizetype count);

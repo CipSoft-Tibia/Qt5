@@ -120,7 +120,7 @@ Item {
             CustomScatter {
                 id: scatterSeries
 
-                pointMarker: Image {
+                pointDelegate: Image {
                     property bool selected: false
                     source: "qrc:/images/img.png"
                     width: 64

@@ -52,6 +52,7 @@ class Q_GRAPHS_EXPORT QItemModelBarDataProxy : public QBarDataProxy
                    NOTIFY rotationRoleReplaceChanged FINAL)
     Q_PROPERTY(QItemModelBarDataProxy::MultiMatchBehavior multiMatchBehavior READ multiMatchBehavior
                    WRITE setMultiMatchBehavior NOTIFY multiMatchBehaviorChanged FINAL)
+    QML_NAMED_ELEMENT(ItemModelBarDataProxy)
 
 public:
     enum class MultiMatchBehavior {

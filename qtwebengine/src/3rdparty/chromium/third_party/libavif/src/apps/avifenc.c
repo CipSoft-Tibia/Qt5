@@ -207,8 +207,8 @@ static void syntaxLong(void)
     printf("    -j,--jobs J                       : Number of jobs (worker threads). Use \"all\" to potentially use as many cores as possible (default: all)\n");
     printf("    --no-overwrite                    : Never overwrite existing output file\n");
     printf("    -o,--output FILENAME              : Instead of using the last filename given as output, use this filename\n");
-#if defined(AVIF_ENABLE_EXPERIMENTAL_AVIR)
-    printf("    --avir                            : Use reduced header if possible\n");
+#if defined(AVIF_ENABLE_EXPERIMENTAL_MINI)
+    printf("    --mini                            : Use reduced header if possible (experimental, backward-incompatible)\n");
 #endif
     printf("    -l,--lossless                     : Set all defaults to encode losslessly, and emit warnings when settings/input don't allow for it\n");
     printf("    -d,--depth D                      : Output depth [8,10,12]. (JPEG/PNG only; For y4m or stdin, depth is retained)\n");
@@ -582,7 +582,7 @@ static avifBool avifInputReadImage(avifInput * input,
         if (feof(stdin)) {
             return AVIF_FALSE;
         }
-        if (!y4mRead(NULL, AVIF_DEFAULT_IMAGE_SIZE_LIMIT, dstImage, dstSourceTiming, &input->frameIter)) {
+        if (!y4mRead(NULL, UINT32_MAX, dstImage, dstSourceTiming, &input->frameIter)) {
             fprintf(stderr, "ERROR: Cannot read y4m through standard input");
             return AVIF_FALSE;
         }
@@ -611,7 +611,7 @@ static avifBool avifInputReadImage(avifInput * input,
                                                             ignoreXMP,
                                                             allowChangingCicp,
                                                             ignoreGainMap,
-                                                            AVIF_DEFAULT_IMAGE_SIZE_LIMIT,
+                                                            UINT32_MAX,
                                                             dstImage,
                                                             dstDepth,
                                                             dstSourceTiming,
@@ -649,36 +649,6 @@ static avifBool avifInputReadImage(avifInput * input,
                                   sourceIsRGB,
                                   sourceTiming,
                                   chromaDownsampling);
-    }
-    return AVIF_TRUE;
-}
-
-static avifBool readEntireFile(const char * filename, avifRWData * raw)
-{
-    FILE * f = fopen(filename, "rb");
-    if (!f) {
-        return AVIF_FALSE;
-    }
-
-    fseek(f, 0, SEEK_END);
-    long pos = ftell(f);
-    if (pos <= 0) {
-        fclose(f);
-        return AVIF_FALSE;
-    }
-    size_t fileSize = (size_t)pos;
-    fseek(f, 0, SEEK_SET);
-
-    if (avifRWDataRealloc(raw, fileSize) != AVIF_RESULT_OK) {
-        fclose(f);
-        return AVIF_FALSE;
-    }
-    size_t bytesRead = fread(raw->data, 1, fileSize, f);
-    fclose(f);
-
-    if (bytesRead != fileSize) {
-        avifRWDataFree(raw);
-        return AVIF_FALSE;
     }
     return AVIF_TRUE;
 }
@@ -1507,10 +1477,10 @@ int main(int argc, char * argv[])
         } else if (!strcmp(arg, "-o") || !strcmp(arg, "--output")) {
             NEXTARG();
             outputFilename = arg;
-#if defined(AVIF_ENABLE_EXPERIMENTAL_AVIR)
-        } else if (!strcmp(arg, "--avir")) {
+#if defined(AVIF_ENABLE_EXPERIMENTAL_MINI)
+        } else if (!strcmp(arg, "--mini")) {
             settings.headerFormat = AVIF_HEADER_REDUCED;
-#endif // AVIF_ENABLE_EXPERIMENTAL_AVIR
+#endif // AVIF_ENABLE_EXPERIMENTAL_MINI
         } else if (!strcmp(arg, "-d") || !strcmp(arg, "--depth")) {
             NEXTARG();
             input.requestedDepth = atoi(arg);
@@ -1773,21 +1743,21 @@ int main(int argc, char * argv[])
             }
         } else if (!strcmp(arg, "--exif")) {
             NEXTARG();
-            if (!readEntireFile(arg, &exifOverride)) {
+            if (!avifReadEntireFile(arg, &exifOverride)) {
                 fprintf(stderr, "ERROR: Unable to read Exif metadata: %s\n", arg);
                 goto cleanup;
             }
             settings.ignoreExif = AVIF_TRUE;
         } else if (!strcmp(arg, "--xmp")) {
             NEXTARG();
-            if (!readEntireFile(arg, &xmpOverride)) {
+            if (!avifReadEntireFile(arg, &xmpOverride)) {
                 fprintf(stderr, "ERROR: Unable to read XMP metadata: %s\n", arg);
                 goto cleanup;
             }
             settings.ignoreXMP = AVIF_TRUE;
         } else if (!strcmp(arg, "--icc")) {
             NEXTARG();
-            if (!readEntireFile(arg, &iccOverride)) {
+            if (!avifReadEntireFile(arg, &iccOverride)) {
                 fprintf(stderr, "ERROR: Unable to read ICC profile: %s\n", arg);
                 goto cleanup;
             }
@@ -2160,7 +2130,7 @@ int main(int argc, char * argv[])
                 if (fileSettings->minQuantizerAlpha.set) {
                     assert(fileSettings->maxQuantizerAlpha.set);
                     if (!fileSettings->qualityAlpha.set) {
-                        const int quantizerAlpha = (fileSettings->minQuantizerAlpha.set + fileSettings->maxQuantizerAlpha.set) / 2;
+                        const int quantizerAlpha = (fileSettings->minQuantizerAlpha.value + fileSettings->maxQuantizerAlpha.value) / 2;
                         const int qualityAlpha = ((63 - quantizerAlpha) * 100 + 31) / 63;
                         fileSettings->qualityAlpha = intSettingsEntryOf(qualityAlpha);
                     }

@@ -834,8 +834,9 @@ void SpirvEmitter::EmitImageRead(const ImageInstruction &instruction)
 
 	// For subpass data, format in the instruction is spv::ImageFormatUnknown. Get it from
 	// the renderpass data instead. In all other cases, we can use the format in the instruction.
+	ASSERT(dim != spv::DimSubpassData || attachments != nullptr);
 	vk::Format imageFormat = (dim == spv::DimSubpassData)
-	                             ? shader.getInputAttachmentFormat(d.InputAttachmentIndex)
+	                             ? shader.getInputAttachmentFormat(*attachments, d.InputAttachmentIndex)
 	                             : SpirvFormatToVulkanFormat(static_cast<spv::ImageFormat>(instruction.imageFormat));
 
 	// Depth+Stencil image attachments select aspect based on the Sampled Type of the

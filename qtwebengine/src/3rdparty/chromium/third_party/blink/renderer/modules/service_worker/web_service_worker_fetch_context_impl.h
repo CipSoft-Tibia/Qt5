@@ -13,7 +13,6 @@
 #include "third_party/blink/public/mojom/renderer_preference_watcher.mojom-blink.h"
 #include "third_party/blink/public/mojom/service_worker/service_worker.mojom-forward.h"
 #include "third_party/blink/public/mojom/worker/subresource_loader_updater.mojom-blink.h"
-
 #include "third_party/blink/public/platform/modules/service_worker/web_service_worker_fetch_context.h"
 #include "third_party/blink/public/platform/web_common.h"
 #include "third_party/blink/renderer/platform/heap/persistent.h"
@@ -70,13 +69,13 @@ class BLINK_EXPORT WebServiceWorkerFetchContextImpl final
       CrossVariantMojoRemote<network::mojom::URLLoaderFactoryInterfaceBase>
           url_loader_factory) override;
   URLLoaderFactory* GetScriptLoaderFactory() override;
-  void WillSendRequest(WebURLRequest&) override;
+  void FinalizeRequest(WebURLRequest&) override;
   WebVector<std::unique_ptr<URLLoaderThrottle>> CreateThrottles(
       const network::ResourceRequest& request) override;
   mojom::ControllerServiceWorkerMode GetControllerServiceWorkerMode()
       const override;
   net::SiteForCookies SiteForCookies() const override;
-  absl::optional<WebSecurityOrigin> TopFrameOrigin() const override;
+  std::optional<WebSecurityOrigin> TopFrameOrigin() const override;
   std::unique_ptr<WebSocketHandshakeThrottle> CreateWebSocketHandshakeThrottle(
       scoped_refptr<base::SingleThreadTaskRunner> task_runner) override;
   WebString GetAcceptLanguages() const override;
@@ -134,8 +133,7 @@ class BLINK_EXPORT WebServiceWorkerFetchContextImpl final
       pending_subresource_loader_updater_;
 
   // This is owned by ThreadedMessagingProxyBase on the main thread.
-  raw_ptr<base::WaitableEvent, ExperimentalRenderer>
-      terminate_sync_load_event_ = nullptr;
+  raw_ptr<base::WaitableEvent> terminate_sync_load_event_ = nullptr;
 
   WeakPersistent<AcceptLanguagesWatcher> accept_languages_watcher_;
 

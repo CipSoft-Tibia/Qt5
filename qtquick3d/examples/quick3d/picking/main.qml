@@ -135,12 +135,11 @@ Window {
             scale.z: 1.5
 
             //! [picked color]
-            materials: DefaultMaterial {
-                diffuseColor: cubeModel.isPicked ? "#41cd52" : "#09102b"
+            materials: PrincipledMaterial {
+                baseColor: cubeModel.isPicked ? "#41cd52" : "#09102b"
                 //! [picked color]
-                specularAmount: 0.25
-                specularRoughness: 0.2
                 roughnessMap: Texture { source: "maps/roughness.jpg" }
+                roughness: 1
             }
 
             //! [picked animation]
@@ -170,11 +169,10 @@ Window {
             scale.y: 1.5
             scale.z: 2
 
-            materials: DefaultMaterial {
-                diffuseColor: coneModel.isPicked ? "#21be2b" : "#53586b"
-                specularAmount: 1
-                specularRoughness: 0.1
+            materials: PrincipledMaterial {
+                baseColor: coneModel.isPicked ? "#21be2b" : "#53586b"
                 roughnessMap: Texture { source: "maps/roughness.jpg" }
+                roughness: 1
             }
 
             SequentialAnimation on eulerRotation {
@@ -203,11 +201,10 @@ Window {
             scale.y: 3
             scale.z: 1
 
-            materials: DefaultMaterial {
-                diffuseColor: sphereModel.isPicked ? "#17a81a" : "#9d9faa"
-                specularAmount: 0.25
-                specularRoughness: 0.2
+            materials: PrincipledMaterial {
+                baseColor: sphereModel.isPicked ? "#17a81a" : "#9d9faa"
                 roughnessMap: Texture { source: "maps/roughness.jpg" }
+                roughness: 1
             }
 
             SequentialAnimation on eulerRotation.x {

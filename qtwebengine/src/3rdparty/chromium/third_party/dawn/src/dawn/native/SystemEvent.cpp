@@ -30,7 +30,10 @@
 #include "dawn/common/Assert.h"
 
 #if DAWN_PLATFORM_IS(WINDOWS)
-#include <windows.h>
+#include "dawn/common/windows_with_undefs.h"
+#elif DAWN_PLATFORM_IS(FUCHSIA)
+#include <poll.h>
+#include <unistd.h>
 #elif DAWN_PLATFORM_IS(POSIX)
 #include <sys/poll.h>
 #include <unistd.h>
@@ -55,6 +58,10 @@ SystemEventReceiver SystemEventReceiver::CreateAlreadySignaled() {
     std::tie(sender, receiver) = CreateSystemEventPipe();
     std::move(sender).Signal();
     return receiver;
+}
+
+const SystemHandle& SystemEventReceiver::GetPrimitive() const {
+    return mPrimitive;
 }
 
 // SystemEventPipeSender
@@ -128,6 +135,15 @@ Ref<SystemEvent> SystemEvent::CreateSignaled() {
     auto ev = AcquireRef(new SystemEvent());
     ev->Signal();
     return ev;
+}
+
+// static
+Ref<SystemEvent> SystemEvent::CreateNonProgressingEvent() {
+    return AcquireRef(new SystemEvent(kNonProgressingPayload));
+}
+
+bool SystemEvent::IsProgressing() const {
+    return GetRefCountPayload() != kNonProgressingPayload;
 }
 
 bool SystemEvent::IsSignaled() const {

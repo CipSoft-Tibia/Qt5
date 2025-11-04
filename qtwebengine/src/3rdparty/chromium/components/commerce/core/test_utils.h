@@ -5,15 +5,17 @@
 #ifndef COMPONENTS_COMMERCE_CORE_TEST_UTILS_H_
 #define COMPONENTS_COMMERCE_CORE_TEST_UTILS_H_
 
+#include <optional>
 #include <string>
 
+#include "components/commerce/core/commerce_types.h"
 #include "components/commerce/core/shopping_service.h"
 #include "components/commerce/core/subscriptions/commerce_subscription.h"
 #include "testing/gmock/include/gmock/gmock.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 
 class GURL;
-class PrefService;
+class PrefRegistrySimple;
+class TestingPrefServiceSimple;
 
 namespace bookmarks {
 class BookmarkModel;
@@ -57,8 +59,7 @@ const bookmarks::BookmarkNode* AddProductBookmark(
     bool is_price_tracked = false,
     const int64_t price_micros = 0L,
     const std::string& currency_code = "usd",
-    const absl::optional<int64_t>& last_subscription_change_time =
-        absl::nullopt);
+    const std::optional<int64_t>& last_subscription_change_time = std::nullopt);
 
 // Add product information to an existing bookmark node.
 void AddProductInfoToExistingBookmark(
@@ -69,25 +70,34 @@ void AddProductInfoToExistingBookmark(
     bool is_price_tracked = false,
     const int64_t price_micros = 0L,
     const std::string& currency_code = "usd",
-    const absl::optional<int64_t>& last_subscription_change_time =
-        absl::nullopt);
+    const std::optional<int64_t>& last_subscription_change_time = std::nullopt);
 
 // Sets the state of the enterprise policy for the shopping list feature for
 // testing.
-void SetShoppingListEnterprisePolicyPref(PrefService* prefs, bool enabled);
+void SetShoppingListEnterprisePolicyPref(TestingPrefServiceSimple* prefs,
+                                         bool enabled);
 
-absl::optional<PriceInsightsInfo> CreateValidPriceInsightsInfo(
+// Register prefs related to commerce in the provided prefs.
+void RegisterCommercePrefs(PrefRegistrySimple* registry);
+
+// Set the tab compare enterprise policy for testing.
+void SetTabCompareEnterprisePolicyPref(TestingPrefServiceSimple* prefs,
+                                       int enabled_state);
+
+std::optional<PriceInsightsInfo> CreateValidPriceInsightsInfo(
     bool has_price_range_data = false,
     bool has_price_history_data = false,
     PriceBucket price_bucket = PriceBucket::kUnknown);
 
-DiscountInfo CreateValidDiscountInfo(const std::string& detail,
-                                     const std::string& terms_and_conditions,
-                                     const std::string& value_in_text,
-                                     const std::string& discount_code,
-                                     int64_t id,
-                                     bool is_merchant_wide,
-                                     double expiry_time_sec);
+DiscountInfo CreateValidDiscountInfo(
+    const std::string& detail,
+    const std::string& terms_and_conditions,
+    const std::string& value_in_text,
+    const std::string& discount_code,
+    int64_t id,
+    bool is_merchant_wide,
+    double expiry_time_sec,
+    DiscountClusterType cluster_type = DiscountClusterType::kOfferLevel);
 
 }  // namespace commerce
 

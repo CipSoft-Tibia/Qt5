@@ -5,7 +5,9 @@
 #include "components/optimization_guide/core/hints_fetcher.h"
 
 #include <memory>
+#include <optional>
 
+#include "base/command_line.h"
 #include "base/functional/callback.h"
 #include "base/memory/raw_ptr.h"
 #include "base/memory/scoped_refptr.h"
@@ -16,19 +18,21 @@
 #include "base/test/simple_test_clock.h"
 #include "base/test/task_environment.h"
 #include "components/optimization_guide/core/hints_processing_util.h"
+#include "components/optimization_guide/core/optimization_guide_constants.h"
 #include "components/optimization_guide/core/optimization_guide_enums.h"
 #include "components/optimization_guide/core/optimization_guide_features.h"
 #include "components/optimization_guide/core/optimization_guide_prefs.h"
+#include "components/optimization_guide/core/optimization_guide_switches.h"
 #include "components/prefs/pref_service.h"
 #include "components/prefs/scoped_user_pref_update.h"
 #include "components/prefs/testing_pref_service.h"
 #include "components/variations/scoped_variations_ids_provider.h"
 #include "net/base/url_util.h"
+#include "net/http/http_request_headers.h"
 #include "services/network/public/cpp/shared_url_loader_factory.h"
 #include "services/network/public/cpp/weak_wrapper_shared_url_loader_factory.h"
 #include "services/network/test/test_url_loader_factory.h"
 #include "testing/gtest/include/gtest/gtest.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 
 namespace optimization_guide {
 
@@ -64,7 +68,7 @@ class HintsFetcherTest : public testing::Test,
 
   ~HintsFetcherTest() override = default;
 
-  void OnHintsFetched(absl::optional<std::unique_ptr<proto::GetHintsResponse>>
+  void OnHintsFetched(std::optional<std::unique_ptr<proto::GetHintsResponse>>
                           get_hints_response) {
     if (get_hints_response)
       hints_fetched_ = true;
@@ -110,7 +114,7 @@ class HintsFetcherTest : public testing::Test,
         /*access_token=*/std::string(), skip_cache,
         base::BindOnce(&HintsFetcherTest::OnHintsFetched,
                        base::Unretained(this)),
-        nullptr);
+        std::nullopt);
     RunUntilIdle();
     return status;
   }
@@ -138,6 +142,7 @@ class HintsFetcherTest : public testing::Test,
       }
       last_request_body_ =
           std::string(element.As<network::DataElementBytes>().AsStringPiece());
+      last_request_headers_ = pending_request.request.headers;
     }
   }
 
@@ -150,6 +155,10 @@ class HintsFetcherTest : public testing::Test,
 
   std::string last_request_body() const { return last_request_body_; }
 
+  net::HttpRequestHeaders last_request_headers() const {
+    return last_request_headers_;
+  }
+
  private:
   void RunUntilIdle() {
     task_environment_.RunUntilIdle();
@@ -161,15 +170,16 @@ class HintsFetcherTest : public testing::Test,
   bool hints_fetched_ = false;
   base::test::ScopedFeatureList scoped_list_;
   base::test::TaskEnvironment task_environment_;
+  std::unique_ptr<TestingPrefServiceSimple> pref_service_;
 
   std::unique_ptr<base::SimpleTestClock> alternative_clock_;
   std::unique_ptr<HintsFetcher> hints_fetcher_;
 
-  std::unique_ptr<TestingPrefServiceSimple> pref_service_;
   scoped_refptr<network::SharedURLLoaderFactory> shared_url_loader_factory_;
   network::TestURLLoaderFactory test_url_loader_factory_;
 
   std::string last_request_body_;
+  net::HttpRequestHeaders last_request_headers_;
 };
 
 INSTANTIATE_TEST_SUITE_P(WithPersistentStore,
@@ -380,7 +390,7 @@ TEST_P(HintsFetcherTest, HintsFetchSuccessfulHostsRecorded) {
 
   const base::Value::Dict& hosts_fetched =
       pref_service()->GetDict(prefs::kHintsFetcherHostsSuccessfullyFetched);
-  absl::optional<double> value;
+  std::optional<double> value;
   for (const std::string& host : hosts) {
     value = hosts_fetched.FindDouble(HashHostForDictionary(host));
     // This reduces the necessary precision for the check on the expiry time for
@@ -722,6 +732,30 @@ TEST_P(HintsFetcherTest, NoHostsOrURLsToFetch) {
       "OptimizationGuide.HintsFetcher.GetHintsRequest.RequestStatus."
       "BatchUpdateActiveTabs",
       static_cast<int>(FetcherRequestStatus::kNoHostsOrURLsToFetchHints), 1);
+}
+
+TEST_P(HintsFetcherTest, HintsLanguageOverrideHeader) {
+  base::CommandLine::ForCurrentProcess()->AppendSwitchASCII(
+      switches::kOptimizationGuideLanguageOverride, "en-CA");
+  EXPECT_TRUE(FetchHints({"foo.com"}, /*urls=*/{}));
+  VerifyHasPendingFetchRequests();
+  ResetHintsFetcher();
+
+  auto headers = last_request_headers();
+  EXPECT_TRUE(headers.HasHeader(kOptimizationGuideLanguageOverrideHeaderKey));
+
+  EXPECT_EQ(headers.GetHeader(kOptimizationGuideLanguageOverrideHeaderKey)
+                .value_or(std::string()),
+            "en-CA");
+}
+
+TEST_P(HintsFetcherTest, HintsLanguageOverrideDisabledByDefault) {
+  EXPECT_TRUE(FetchHints({"foo.com"}, /*urls=*/{}));
+  VerifyHasPendingFetchRequests();
+  ResetHintsFetcher();
+
+  auto headers = last_request_headers();
+  EXPECT_FALSE(headers.HasHeader(kOptimizationGuideLanguageOverrideHeaderKey));
 }
 
 }  // namespace optimization_guide

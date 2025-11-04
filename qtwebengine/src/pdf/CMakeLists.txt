@@ -3,7 +3,6 @@
 
 cmake_minimum_required(VERSION 3.19)
 find_package(Ninja 1.7.2 REQUIRED)
-find_package(Nodejs 14.19 REQUIRED)
 find_package(PkgConfig)
 if(PkgConfig_FOUND)
     create_pkg_config_host_wrapper(${CMAKE_CURRENT_BINARY_DIR})
@@ -27,7 +26,7 @@ qt_internal_add_module(Pdf
         qpdfpagerenderer.cpp qpdfpagerenderer.h
         qpdfsearchmodel.cpp qpdfsearchmodel.h qpdfsearchmodel_p.h
         qpdfselection.cpp qpdfselection.h qpdfselection_p.h
-        qtpdfglobal.h
+        qtpdfglobal.h qtpdfglobal_p.h
     INCLUDE_DIRECTORIES
         ../3rdparty/chromium
     DEFINES
@@ -70,7 +69,7 @@ add_dependencies(prepare_docs_Pdf generate_pdf_attributions)
 #   TOOLCHAIN SETUP
 ##
 
-if(LINUX OR MINGW OR ANDROID)
+if(LINUX OR MINGW OR ANDROID OR WIN32)
     setup_toolchains()
 endif()
 
@@ -120,13 +119,18 @@ foreach(arch ${archs})
           qt_libjpeg_config="${buildDir}/${config}/${arch}:qt_libjpeg_config"
           qt_harfbuzz_config="${buildDir}/${config}/${arch}:qt_harfbuzz_config"
           qt_freetype_config="${buildDir}/${config}/${arch}:qt_freetype_config"
+          is_qtwebengine=true
+          is_qtpdf=true
+          enable_bluetooth_emulation=false
           enable_swiftshader=false
           enable_swiftshader_vulkan=false
           angle_enable_swiftshader=false
           dawn_use_swiftshader=false
+          pdf_enable_fontations=false
           use_cups=false
           use_dawn=false
           build_dawn_tests=false
+          enable_nocompile_tests=false
           enable_ipc_fuzzer=false
           enable_remoting=false
           enable_resource_allowlist_generation=false
@@ -134,16 +138,24 @@ foreach(arch ${archs})
           enable_web_speech=false
           chrome_pgo_phase=0
           strip_absolute_paths_from_debug_symbols=false
-          use_perfetto_client_library=false
           v8_enable_webassembly=false
-        )
+          use_v8_context_snapshot=false
+          v8_use_external_startup_data=false
+  )
 
         if(LINUX OR ANDROID)
             list(APPEND gnArgArg
+                enable_vr=false
                 is_cfi=false
                 ozone_auto_platforms=false
                 enable_arcore=false
                 use_ml_inliner=false
+                use_udev=false
+                use_gio=false
+                use_glib=false
+                use_nss_certs=false
+                use_xkbcommon=false
+                v8_use_external_startup_data=false
             )
             extend_gn_list(gnArgArg
                 ARGS use_system_icu
@@ -153,7 +165,11 @@ foreach(arch ${archs})
                 ARGS use_system_libopenjpeg2
                 CONDITION QT_FEATURE_webengine_system_libopenjpeg2
             )
-        endif()
+            extend_gn_list(gnArgArg
+                ARGS is_gcc_legacy
+                CONDITION QT_FEATURE_webengine_gcc_legacy_support
+            )
+         endif()
         if(MACOS)
             list(APPEND gnArgArg angle_enable_vulkan=false)
         endif()
@@ -166,7 +182,6 @@ foreach(arch ${archs})
         endif()
         if(WIN32 OR ANDROID)
           list(APPEND gnArgArg
-              ninja_use_custom_environment_files=false
               safe_browsing_mode=0
           )
           extend_gn_list(gnArgArg

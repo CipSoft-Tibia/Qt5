@@ -7,6 +7,8 @@
 #include <QtQuick3DRuntimeRender/private/qssgrendereffect_p.h>
 #include <QtQuick3DRuntimeRender/private/qssglayerrenderdata_p.h>
 
+#include <QtGui/qquaternion.h>
+
 QT_BEGIN_NAMESPACE
 
 QSSGRenderLayer::QSSGRenderLayer()
@@ -18,6 +20,8 @@ QSSGRenderLayer::QSSGRenderLayer()
     , temporalAAStrength(0.3f)
     , ssaaMultiplier(1.5f)
     , specularAAEnabled(false)
+    , oitMethod(OITMethod::None)
+    , oitMethodDirty(false)
     , tonemapMode(TonemapMode::Linear)
 {
     flags = { FlagT(LocalState::Active) | FlagT(GlobalState::Active) }; // The layer node is alway active and not dirty.
@@ -27,6 +31,10 @@ QSSGRenderLayer::~QSSGRenderLayer()
 {
     delete importSceneNode;
     importSceneNode = nullptr;
+
+    if (renderData && renderData->renderer)
+        renderData->renderer->releaseItem2DData(*this);
+
     delete renderData;
 }
 

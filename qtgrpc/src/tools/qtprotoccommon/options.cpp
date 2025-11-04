@@ -3,10 +3,10 @@
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "options.h"
-
 #include "utils.h"
+
 #include <regex>
-#include <stdexcept>
+#include <string_view>
 
 using namespace ::qtprotoccommon;
 static const char QmlPluginOption[] = "QML";
@@ -15,8 +15,12 @@ static const char FolderGenerationOption[] = "GENERATE_PACKAGE_SUBFOLDERS";
 static const char FieldEnumGenerationOption[] = "FIELD_ENUM";
 static const char ExtraNamespaceGenerationOption[] = "EXTRA_NAMESPACE";
 static const char ExportMacroGenerationOption[] = "EXPORT_MACRO";
+static const char HeaderGuardOption[] = "HEADER_GUARD";
 
 static const char ExportSuffix[] = "_exports.qpb.h";
+
+static constexpr std::string_view HeaderGuardPragma = "pragma";
+static constexpr std::string_view HeaderGuardProtoFilename = "filename";
 
 Options::Options()
     : m_generateComments(false), m_isFolder(false), m_generateFieldEnum(true), m_generateMacroExportFile(false), m_qml(false)
@@ -48,7 +52,8 @@ std::string extractCompositeOptionValue(const std::string &option)
     return optionValue;
 }
 
-void Options::setFromString(const std::string &options, GeneratorType)
+void Options::setFromString(const std::string &options, GeneratorType /*unused*/,
+                            std::string *error)
 {
     Options &instance = mutableInstance();
     for (const auto &option : utils::split(options, ";")) {
@@ -72,8 +77,9 @@ void Options::setFromString(const std::string &options, GeneratorType)
             if (!export_macro_values.empty()) {
                 static const std::regex valid_c_identifier("[a-zA-Z_][0-9a-zA-Z_]*");
                 if (!std::regex_match(export_macro_values[0], valid_c_identifier)) {
-                    throw std::invalid_argument("EXPORT_MACRO '" + export_macro_values[0]
-                                                + "' is not a valid C identifier.");
+                    *error = "EXPORT_MACRO '" + export_macro_values[0]
+                        + "' is not a valid C identifier.";
+                    return;
                 }
                 instance.m_exportMacro = export_macro_values[0];
                 QT_PROTOBUF_DEBUG("set m_exportMacro: " << instance.m_exportMacro);
@@ -98,6 +104,13 @@ void Options::setFromString(const std::string &options, GeneratorType)
         } else if (option == QmlPluginOption) {
             instance.m_qml = true;
             QT_PROTOBUF_DEBUG("set m_qml: true");
+        } else if (option.find(HeaderGuardOption) == 0) {
+            const auto headerGuardValue = extractCompositeOptionValue(option);
+            if (headerGuardValue == HeaderGuardPragma) {
+                instance.m_headerGuard = Options::HeaderGuardType::Pragma;
+            } else if (headerGuardValue != HeaderGuardProtoFilename) {
+                QT_PROTOBUF_DEBUG("Unknown HEADER_GUARD option value");
+            }
         }
     }
 }

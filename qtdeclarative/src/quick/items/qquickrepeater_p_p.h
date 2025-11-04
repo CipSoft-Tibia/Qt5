@@ -18,6 +18,8 @@
 #include "qquickrepeater_p.h"
 #include "qquickitem_p.h"
 
+#include <private/qqmldelegatemodel_p.h>
+
 #include <QtCore/qpointer.h>
 
 QT_REQUIRE_CONFIG(quick_repeater);
@@ -35,7 +37,13 @@ public:
     ~QQuickRepeaterPrivate();
 
 private:
+    friend class QQmlDelegateModel;
+
     void requestItems();
+    void applyDelegateChange()
+    {
+        QQmlDelegateModel::applyDelegateChangeOnView(q_func(), this);
+    }
 
     QPointer<QQmlInstanceModel> model;
     QVariant dataSource;
@@ -43,6 +51,7 @@ private:
     bool ownModel : 1;
     bool dataSourceIsObject : 1;
     bool delegateValidated : 1;
+    bool explicitDelegate : 1;
     int itemCount;
 
     QVector<QPointer<QQuickItem> > deletables;

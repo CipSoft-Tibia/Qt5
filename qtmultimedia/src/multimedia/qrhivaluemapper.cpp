@@ -7,7 +7,6 @@
 #include <rhi/qrhi.h>
 #include <q20vector.h>
 
-#include <unordered_map>
 #include <vector>
 
 QT_BEGIN_NAMESPACE

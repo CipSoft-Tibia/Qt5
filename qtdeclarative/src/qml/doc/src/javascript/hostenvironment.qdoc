@@ -21,6 +21,8 @@ The QML runtime implements the 7th edition of the standard.
 \l{Nullish Coalescing} (\c{??}) (since Qt 5.15) and \l{Optional Chaining} (\c{?.}) (since Qt 6.2)
 are also implemented in the QML runtime.
 
+Moreover, numeric literal separators (the underscores in \c 1_000_000) are supported since Qt 6.8.
+
 The standard ECMAScript built-ins are not explicitly documented in the QML documentation. For more
 information on their use, please refer to the ECMA-262 7th edition standard or one of the many online
 JavaScript reference and tutorial sites, such as the \l{W3Schools JavaScript Reference} (JavaScript Objects
@@ -41,7 +43,8 @@ takes an \c int and a \c string parameter, and returns a \c QtObject:
 function doThings(a: int, b: string) : QtObject { ... }
 \endqml
 
-Type annotations help tools like \l{\QC Documentation}{\QC} and \l{qmllint} to make sense
+Type annotations help tools like \l{\QC Documentation}{\QC}
+and \l{qmllint} to make sense
 of the code and provide better diagnostics. Moreover, they make functions easier
 to use from C++. See
 \l {qtqml-cppintegration-interactqmlfromcpp.html}{Interacting with QML Objects from C++}
@@ -50,6 +53,9 @@ for more information.
 The exception to this rule are functions assigned to signal handlers: There, type annotations are
 forbidden to avoid a potential mismatch with the types of the signal. This does not cause issues for
 tooling, as the signal already provides the necessary information.
+
+\note In QML, enumerations are not types and can therefore not be used as type annotations. Their
+underlying numeric type, int or double, should be used instead.
 
 Type assertions (sometimes called \e as-casts) can also be used in order to cast an object to a
 different object type. If the object is actually of the given type, then the type assertion returns

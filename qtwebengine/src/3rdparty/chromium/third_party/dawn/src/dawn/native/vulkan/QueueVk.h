@@ -52,7 +52,7 @@ class Queue final : public QueueBase {
 
     CommandRecordingContext* GetPendingRecordingContext(SubmitMode submitMode = SubmitMode::Normal);
     MaybeError SplitRecordingContext(CommandRecordingContext* recordingContext);
-    MaybeError SubmitPendingCommands();
+    MaybeError SubmitPendingCommands() override;
 
     void RecycleCompletedCommands(ExecutionSerial completedSerial);
 
@@ -83,7 +83,7 @@ class Queue final : public QueueBase {
     // have finished.
     MutexProtected<std::deque<std::pair<VkFence, ExecutionSerial>>> mFencesInFlight;
     // Fences in the unused list aren't reset yet.
-    std::vector<VkFence> mUnusedFences;
+    MutexProtected<std::vector<VkFence>> mUnusedFences;
 
     MaybeError PrepareRecordingContext();
     ResultOrError<CommandPoolAndBuffer> BeginVkCommandBuffer();

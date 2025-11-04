@@ -38,22 +38,18 @@ void connectMultipleReceiveOperationFinished(QJSEngine *jsEngine,
     auto *operationPtr = operation.get();
     QtGrpcQuickFunctional::validateEngineAndOperation(jsEngine, operationPtr);
 
-    auto finishConnection = std::make_shared<QMetaObject::Connection>();
-    *finishConnection = QObject::connect(operationPtr, &QGrpcOperation::finished, jsEngine,
-                                         [successCallback, errorCallback, jsEngine,
-                                          finishConnection,
-                                          operation = std::move(operation)](const QGrpcStatus
-                                                                                &status) {
-                                             // We take 'operation' by copy so that its lifetime
-                                             // is extended until this lambda is destroyed.
-                                             if (QtGrpcQuickFunctional::
-                                                     checkReceivedStatus(jsEngine, status,
-                                                                         errorCallback)
-                                                 && successCallback.isCallable()) {
-                                                 successCallback.call();
-                                             }
-                                             QObject::disconnect(*finishConnection);
-                                         });
+    QObject::connect(
+        operationPtr, &QGrpcOperation::finished, jsEngine,
+        [successCallback, errorCallback, jsEngine,
+         operation = std::move(operation)](const QGrpcStatus &status) {
+            // We take 'operation' by copy so that its lifetime
+            // is extended until this lambda is destroyed.
+            if (QtGrpcQuickFunctional::checkReceivedStatus(jsEngine, status, errorCallback)
+                && successCallback.isCallable()) {
+                successCallback.call();
+            }
+        },
+        Qt::SingleShotConnection);
 }
 
 void handleReceivedMessageImpl(QJSEngine *jsEngine, std::optional<QJSValue> message,
@@ -66,6 +62,42 @@ void handleReceivedMessageImpl(QJSEngine *jsEngine, std::optional<QJSValue> mess
         successCallback.call(QJSValueList{ *message });
     else
         QtGrpcQuickFunctional::handleDeserializationError(jsEngine, errorCallback);
+}
+
+void Private::connectSingleReceiveOperationFinishedImpl(QJSEngine *jsEngine,
+                                                        HandleReceivedMessageImpl impl,
+                                                        std::unique_ptr<QGrpcOperation> &&operation,
+                                                        const QJSValue &successCallback,
+                                                        const QJSValue &errorCallback)
+{
+    auto *operationPtr = operation.get();
+    QtGrpcQuickFunctional::validateEngineAndOperation(jsEngine, operationPtr);
+
+    QObject::connect(
+        operationPtr, &QGrpcCallReply::finished, jsEngine,
+        [jsEngine, successCallback, errorCallback, impl,
+         operation = std::move(operation)](const QGrpcStatus &status) {
+            // We take 'operation' by copy so that its lifetime
+            // is extended until this lambda is destroyed.
+            if (QtGrpcQuickFunctional::checkReceivedStatus(jsEngine, status, errorCallback))
+                impl(jsEngine, operation.get(), successCallback, errorCallback);
+        },
+        Qt::SingleShotConnection);
+}
+
+void Private::makeServerStreamConnectionsImpl(QJSEngine *jsEngine,
+                                              HandleReceivedMessageImpl impl,
+                                              std::unique_ptr<QGrpcServerStream> &&stream,
+                                              const QJSValue &messageCallback,
+                                              const QJSValue &finishCallback,
+                                              const QJSValue &errorCallback)
+{
+    QObject::connect(stream.get(), &QGrpcServerStream::messageReceived, jsEngine,
+                     [streamPtr = stream.get(), impl, messageCallback, jsEngine, errorCallback]() {
+        impl(jsEngine, streamPtr, messageCallback, errorCallback);
+    });
+    QtGrpcQuickFunctional::connectMultipleReceiveOperationFinished(jsEngine, std::move(stream),
+                                                                   finishCallback, errorCallback);
 }
 
 } // namespace QtGrpcQuickFunctional

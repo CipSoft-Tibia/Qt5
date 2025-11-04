@@ -46,16 +46,6 @@ const OBJECT_GROUP_NAME = 'properties-sidebar-pane';
 
 const UIStrings = {
   /**
-   * @description Placeholder text for a text input used to filter which DOM element properties show up in
-   * the Properties tab of the Elements panel.
-   */
-  filter: 'Filter',
-  /**
-   * @description ARIA accessible name for the text input used to filter which DOM element properties show up
-   * in the Properties tab of the Elements panel.
-   */
-  filterProperties: 'Filter Properties',
-  /**
    * @description Text on the checkbox in the Properties tab of the Elements panel, which controls whether
    * all properties of the currently selected DOM element are shown, or only meaningful properties (i.e.
    * excluding properties whose values aren't set for example).
@@ -87,7 +77,7 @@ export class PropertiesWidget extends UI.ThrottledWidget.ThrottledWidget {
   constructor(throttlingTimeout?: number) {
     super(true /* isWebComponent */, throttlingTimeout);
 
-    this.showAllPropertiesSetting = Common.Settings.Settings.instance().createSetting('showAllProperties', false);
+    this.showAllPropertiesSetting = Common.Settings.Settings.instance().createSetting('show-all-properties', false);
     this.showAllPropertiesSetting.addChangeListener(this.filterList.bind(this));
 
     SDK.TargetManager.TargetManager.instance().addModelListener(
@@ -103,14 +93,13 @@ export class PropertiesWidget extends UI.ThrottledWidget.ThrottledWidget {
 
     const hbox = this.contentElement.createChild('div', 'hbox properties-widget-toolbar');
     const toolbar = new UI.Toolbar.Toolbar('styles-pane-toolbar', hbox);
-    const filterInput = new UI.Toolbar.ToolbarInput(
-        i18nString(UIStrings.filter), i18nString(UIStrings.filterProperties), 1, 1, undefined, undefined, false);
-    filterInput.addEventListener(UI.Toolbar.ToolbarInput.Event.TextChanged, this.onFilterChanged, this);
+    const filterInput = new UI.Toolbar.ToolbarFilter(undefined, 1, 1, undefined, undefined, false);
+    filterInput.addEventListener(UI.Toolbar.ToolbarInput.Event.TEXT_CHANGED, this.onFilterChanged, this);
     toolbar.appendToolbarItem(filterInput);
     toolbar.appendToolbarItem(new UI.Toolbar.ToolbarSettingCheckbox(
         this.showAllPropertiesSetting, i18nString(UIStrings.showAllTooltip), i18nString(UIStrings.showAll)));
 
-    this.contentElement.setAttribute('jslog', `${VisualLogging.pane().context('element-properties')}`);
+    this.contentElement.setAttribute('jslog', `${VisualLogging.pane('element-properties').track({resize: true})}`);
     this.noMatchesElement = this.contentElement.createChild('div', 'gray-info-message hidden');
     this.noMatchesElement.textContent = i18nString(UIStrings.noMatchingProperty);
 

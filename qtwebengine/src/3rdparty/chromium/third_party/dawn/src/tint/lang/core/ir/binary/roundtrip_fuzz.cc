@@ -34,20 +34,18 @@ namespace tint::core::ir::binary {
 namespace {
 
 void IRBinaryRoundtripFuzzer(core::ir::Module& module) {
-    auto encoded = Encode(module);
+    auto encoded = EncodeToBinary(module);
     if (encoded != Success) {
         TINT_ICE() << "Encode() failed\n" << encoded.Failure();
-        return;
     }
 
     auto decoded = Decode(encoded->Slice());
     if (decoded != Success) {
         TINT_ICE() << "Decode() failed\n" << decoded.Failure();
-        return;
     }
 
-    auto in = Disassemble(module);
-    auto out = Disassemble(decoded.Get());
+    auto in = Disassembler(module).Plain();
+    auto out = Disassembler(decoded.Get()).Plain();
     if (in != out) {
         TINT_ICE() << "Roundtrip produced different disassembly\n"
                    << "-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-\n"
@@ -59,7 +57,6 @@ void IRBinaryRoundtripFuzzer(core::ir::Module& module) {
                    << "-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-\n"
                    << out << "\n"
                    << "-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-\n";
-        return;
     }
 }
 

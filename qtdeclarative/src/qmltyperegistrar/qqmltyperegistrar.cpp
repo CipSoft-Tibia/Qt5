@@ -465,6 +465,10 @@ void QmlTypeRegistrar::write(QTextStream &output, QAnyStringView outFileName) co
                     }
             } else {
                 Q_ASSERT(!className.isEmpty());
+
+                // Since we don't have a QML name for this type, it can't refer to another type.
+                Q_ASSERT(className == targetName);
+
                 output << uR"(
     QMetaType::fromType<%1%2>().id();)"_s.arg(
                         className, classDef.kind() == MetaType::Kind::Object ? u" *" : u"");
@@ -474,11 +478,11 @@ void QmlTypeRegistrar::write(QTextStream &output, QAnyStringView outFileName) co
         const auto enums = target.native.enums();
         for (const auto &enumerator : enums) {
             output << uR"(
-    QMetaType::fromType<%1::%2>().id();)"_s.arg(
+    qmlRegisterEnum<%1::%2>("%1::%2");)"_s.arg(
                     targetName, enumerator.name.toString());
             if (!enumerator.alias.isEmpty()) {
                 output << uR"(
-    QMetaType::fromType<%1::%2>().id();)"_s.arg(
+    qmlRegisterEnum<%1::%2>("%1::%2");)"_s.arg(
                         targetName, enumerator.alias.toString());
             }
         }

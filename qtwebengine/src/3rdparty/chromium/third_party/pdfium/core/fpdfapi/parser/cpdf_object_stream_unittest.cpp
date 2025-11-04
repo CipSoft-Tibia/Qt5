@@ -80,11 +80,11 @@ TEST(ObjectStreamTest, StreamDictNormal) {
   EXPECT_FALSE(obj_stream->ParseObject(&holder, 12, 3));
 }
 
-TEST(ObjectStreamTest, StreamNoDict) {
+TEST(ObjectStreamTest, StreamEmptyDict) {
   ByteStringView contents_view(kNormalStreamContent);
   auto stream = pdfium::MakeRetain<CPDF_Stream>(
       DataVector<uint8_t>(contents_view.begin(), contents_view.end()),
-      /*pDict=*/nullptr);
+      pdfium::MakeRetain<CPDF_Dictionary>());
   EXPECT_FALSE(CPDF_ObjectStream::Create(std::move(stream)));
 }
 
@@ -101,7 +101,7 @@ TEST(ObjectStreamTest, StreamDictNoType) {
 
 TEST(ObjectStreamTest, StreamDictWrongType) {
   auto dict = pdfium::MakeRetain<CPDF_Dictionary>();
-  dict->SetNewFor<CPDF_String>("Type", "ObjStm", /*bHex=*/false);
+  dict->SetNewFor<CPDF_String>("Type", "ObjStm");
   dict->SetNewFor<CPDF_Number>("N", 3);
   dict->SetNewFor<CPDF_Number>("First", 5);
 

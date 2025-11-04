@@ -42,7 +42,7 @@ TEST_F(SpirvWriterTest, Discard) {
     front_facing->SetBuiltin(core::BuiltinValue::kFrontFacing);
     auto* ep = b.Function("ep", ty.f32(), core::ir::Function::PipelineStage::kFragment);
     ep->SetParams({front_facing});
-    ep->SetReturnLocation(0_u, {});
+    ep->SetReturnLocation(0_u);
 
     b.Append(ep->Block(), [&] {
         auto* ifelse = b.If(front_facing);
@@ -62,19 +62,19 @@ TEST_F(SpirvWriterTest, Discard) {
                OpSelectionMerge %18 None
                OpBranchConditional %front_facing %19 %18
          %19 = OpLabel
-               OpStore %continue_execution %false
+               OpStore %continue_execution %false None
                OpBranch %18
          %18 = OpLabel
          %21 = OpAccessChain %_ptr_StorageBuffer_int %1 %uint_0
-         %25 = OpLoad %bool %continue_execution
+         %25 = OpLoad %bool %continue_execution None
                OpSelectionMerge %26 None
                OpBranchConditional %25 %27 %26
          %27 = OpLabel
-               OpStore %21 %int_42
+               OpStore %21 %int_42 None
                OpBranch %26
          %26 = OpLabel
-         %29 = OpLoad %bool %continue_execution
-         %30 = OpLogicalEqual %bool %29 %false
+         %29 = OpLoad %bool %continue_execution None
+         %30 = OpLogicalNot %bool %29
                OpSelectionMerge %31 None
                OpBranchConditional %30 %32 %31
          %32 = OpLabel
@@ -94,7 +94,7 @@ TEST_F(SpirvWriterTest, DiscardBeforeAtomic) {
     front_facing->SetBuiltin(core::BuiltinValue::kFrontFacing);
     auto* ep = b.Function("ep", ty.f32(), core::ir::Function::PipelineStage::kFragment);
     ep->SetParams({front_facing});
-    ep->SetReturnLocation(0_u, {});
+    ep->SetReturnLocation(0_u);
 
     b.Append(ep->Block(), [&] {
         auto* ifelse = b.If(front_facing);
@@ -115,11 +115,11 @@ TEST_F(SpirvWriterTest, DiscardBeforeAtomic) {
                OpSelectionMerge %18 None
                OpBranchConditional %front_facing %19 %18
          %19 = OpLabel
-               OpStore %continue_execution %false
+               OpStore %continue_execution %false None
                OpBranch %18
          %18 = OpLabel
          %21 = OpAccessChain %_ptr_StorageBuffer_int %1 %uint_0
-         %25 = OpLoad %bool %continue_execution
+         %25 = OpLoad %bool %continue_execution None
                OpSelectionMerge %26 None
                OpBranchConditional %25 %27 %28
          %27 = OpLabel
@@ -129,8 +129,8 @@ TEST_F(SpirvWriterTest, DiscardBeforeAtomic) {
                OpBranch %26
          %26 = OpLabel
          %32 = OpPhi %int %29 %27 %33 %28
-         %34 = OpLoad %bool %continue_execution
-         %35 = OpLogicalEqual %bool %34 %false
+         %34 = OpLoad %bool %continue_execution None
+         %35 = OpLogicalNot %bool %34
                OpSelectionMerge %36 None
                OpBranchConditional %35 %37 %36
          %37 = OpLabel

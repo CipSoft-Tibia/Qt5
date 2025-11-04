@@ -14,9 +14,9 @@
 #ifndef QQUICKGRAPHSBARSSERIES_P_H
 #define QQUICKGRAPHSBARSSERIES_P_H
 
-#include "common/theme/qquickgraphscolor_p.h"
 #include "gradientholder_p.h"
 #include "qbar3dseries.h"
+#include "theme/qquickgraphscolor_p.h"
 
 #include <QtQml/qqml.h>
 #include <QtQuick/private/qquickrectangle_p.h>

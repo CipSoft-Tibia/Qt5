@@ -5,10 +5,12 @@
 #include "ui/events/devices/input_device_observer_android.h"
 
 #include "base/memory/singleton.h"
+
+// Must come after all headers that specialize FromJniType() / ToJniType().
 #include "ui/events/devices/ui_events_devices_jni_headers/InputDeviceObserver_jni.h"
 
-using base::android::AttachCurrentThread;
-using base::android::JavaParamRef;
+using jni_zero::AttachCurrentThread;
+using jni_zero::JavaParamRef;
 
 namespace ui {
 

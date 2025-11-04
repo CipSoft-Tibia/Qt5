@@ -16,20 +16,18 @@
 
 #include "src/trace_processor/importers/common/event_tracker.h"
 
-#include <math.h>
+#include <cinttypes>
+#include <cstdint>
 #include <optional>
 
 #include "perfetto/base/logging.h"
-#include "perfetto/ext/base/utils.h"
 #include "src/trace_processor/importers/common/args_tracker.h"
-#include "src/trace_processor/importers/common/process_tracker.h"
 #include "src/trace_processor/importers/common/track_tracker.h"
 #include "src/trace_processor/storage/stats.h"
+#include "src/trace_processor/storage/trace_storage.h"
 #include "src/trace_processor/types/trace_processor_context.h"
-#include "src/trace_processor/types/variadic.h"
 
-namespace perfetto {
-namespace trace_processor {
+namespace perfetto::trace_processor {
 
 EventTracker::EventTracker(TraceProcessorContext* context)
     : context_(context) {}
@@ -41,10 +39,11 @@ std::optional<CounterId> EventTracker::PushProcessCounterForThread(
     double value,
     StringId name_id,
     UniqueTid utid) {
+  const auto& counter = context_->storage->counter_table();
   auto opt_id = PushCounter(timestamp, value, kInvalidTrackId);
   if (opt_id) {
     PendingUpidResolutionCounter pending;
-    pending.row = *context_->storage->counter_table().id().IndexOf(*opt_id);
+    pending.row = counter.FindById(*opt_id)->ToRowNumber().row_number();
     pending.utid = utid;
     pending.name_id = name_id;
     pending_upid_resolution_counter_.emplace_back(pending);
@@ -65,7 +64,7 @@ std::optional<CounterId> EventTracker::PushCounter(int64_t timestamp,
   max_timestamp_ = timestamp;
 
   auto* counter_values = context_->storage->mutable_counter_table();
-  return counter_values->Insert({timestamp, track_id, value}).id;
+  return counter_values->Insert({timestamp, track_id, value, {}}).id;
 }
 
 std::optional<CounterId> EventTracker::PushCounter(
@@ -85,7 +84,7 @@ void EventTracker::FlushPendingEvents() {
   const auto& thread_table = context_->storage->thread_table();
   for (const auto& pending_counter : pending_upid_resolution_counter_) {
     UniqueTid utid = pending_counter.utid;
-    std::optional<UniquePid> upid = thread_table.upid()[utid];
+    std::optional<UniquePid> upid = thread_table[utid].upid();
 
     TrackId track_id = kInvalidTrackId;
     if (upid.has_value()) {
@@ -98,11 +97,10 @@ void EventTracker::FlushPendingEvents() {
       track_id = context_->track_tracker->InternThreadCounterTrack(
           pending_counter.name_id, utid);
     }
-    context_->storage->mutable_counter_table()->mutable_track_id()->Set(
-        pending_counter.row, track_id);
+    auto& counter = *context_->storage->mutable_counter_table();
+    counter[pending_counter.row].set_track_id(track_id);
   }
   pending_upid_resolution_counter_.clear();
 }
 
-}  // namespace trace_processor
-}  // namespace perfetto
+}  // namespace perfetto::trace_processor

@@ -29,6 +29,7 @@
 #include <vector>
 
 #include "dawn/wire/SupportedFeatures.h"
+#include "dawn/wire/server/ObjectStorage.h"
 #include "dawn/wire/server/Server.h"
 
 namespace dawn::wire::server {
@@ -37,18 +38,26 @@ WireResult Server::DoInstanceRequestAdapter(Known<WGPUInstance> instance,
                                             ObjectHandle eventManager,
                                             WGPUFuture future,
                                             ObjectHandle adapterHandle,
-                                            const WGPURequestAdapterOptions* options) {
-    Known<WGPUAdapter> adapter;
-    WIRE_TRY(AdapterObjects().Allocate(&adapter, adapterHandle, AllocationState::Reserved));
+                                            const WGPURequestAdapterOptions* options,
+                                            uint8_t userdataCount) {
+    Reserved<WGPUAdapter> adapter;
+    WIRE_TRY(Objects<WGPUAdapter>().Allocate(&adapter, adapterHandle, AllocationState::Reserved));
 
     auto userdata = MakeUserdata<RequestAdapterUserdata>();
     userdata->eventManager = eventManager;
     userdata->future = future;
     userdata->adapterObjectId = adapter.id;
 
-    mProcs.instanceRequestAdapter(instance->handle, options,
-                                  ForwardToServer<&Server::OnRequestAdapterCallback>,
-                                  userdata.release());
+    if (userdataCount == 1) {
+        mProcs.instanceRequestAdapter(instance->handle, options,
+                                      ForwardToServer<&Server::OnRequestAdapterCallback>,
+                                      userdata.release());
+    } else {
+        mProcs.instanceRequestAdapter2(
+            instance->handle, options,
+            {nullptr, WGPUCallbackMode_AllowSpontaneous,
+             ForwardToServer2<&Server::OnRequestAdapterCallback>, userdata.release(), nullptr});
+    }
     return WireResult::Success;
 }
 
@@ -63,15 +72,18 @@ void Server::OnRequestAdapterCallback(RequestAdapterUserdata* data,
     cmd.message = message;
 
     if (status != WGPURequestAdapterStatus_Success) {
-        // Free the ObjectId which will make it unusable.
-        AdapterObjects().Free(data->adapterObjectId);
         DAWN_ASSERT(adapter == nullptr);
         SerializeCommand(cmd);
         return;
     }
 
     // Assign the handle and allocated status if the adapter is created successfully.
-    AdapterObjects().FillReservation(data->adapterObjectId, adapter);
+    if (FillReservation(data->adapterObjectId, adapter) == WireResult::FatalError) {
+        cmd.status = WGPURequestAdapterStatus_Unknown;
+        cmd.message = "Destroyed before request was fulfilled.";
+        SerializeCommand(cmd);
+        return;
+    }
 
     // Query and report the adapter supported features.
     std::vector<WGPUFeatureName> features;
@@ -86,9 +98,9 @@ void Server::OnRequestAdapterCallback(RequestAdapterUserdata* data,
     cmd.featuresCount = std::distance(features.begin(), it);
     cmd.features = features.data();
 
-    // Query and report the adapter properties.
-    WGPUAdapterProperties properties = {};
-    WGPUChainedStructOut** propertiesChain = &properties.nextInChain;
+    // Query and report the adapter info.
+    WGPUAdapterInfo info = {};
+    WGPUChainedStructOut** propertiesChain = &info.nextInChain;
 
     // Query AdapterPropertiesMemoryHeaps if the feature is supported.
     WGPUAdapterPropertiesMemoryHeaps memoryHeapProperties = {};
@@ -106,8 +118,16 @@ void Server::OnRequestAdapterCallback(RequestAdapterUserdata* data,
         propertiesChain = &(*propertiesChain)->next;
     }
 
-    mProcs.adapterGetProperties(adapter, &properties);
-    cmd.properties = &properties;
+    // Query AdapterPropertiesVk if the feature is supported.
+    WGPUAdapterPropertiesVk vkProperties = {};
+    vkProperties.chain.sType = WGPUSType_AdapterPropertiesVk;
+    if (mProcs.adapterHasFeature(adapter, WGPUFeatureName_AdapterPropertiesVk)) {
+        *propertiesChain = &vkProperties.chain;
+        propertiesChain = &(*propertiesChain)->next;
+    }
+
+    mProcs.adapterGetInfo(adapter, &info);
+    cmd.info = &info;
 
     // Query and report the adapter limits, including DawnExperimentalSubgroupLimits.
     WGPUSupportedLimits limits = {};
@@ -120,7 +140,7 @@ void Server::OnRequestAdapterCallback(RequestAdapterUserdata* data,
     cmd.limits = &limits;
 
     SerializeCommand(cmd);
-    mProcs.adapterPropertiesFreeMembers(properties);
+    mProcs.adapterInfoFreeMembers(info);
     mProcs.adapterPropertiesMemoryHeapsFreeMembers(memoryHeapProperties);
 }
 

@@ -8,8 +8,8 @@
 
 QT_BEGIN_NAMESPACE // -- QtScxml
 
-// if the output revision changes, you MUST change it in qobjectdefs.h too
-enum { mocOutputRevision = 68 };          // moc format output revision
+// if the output revision changes, you MUST change it in qtmetamacros.h too
+enum { mocOutputRevision = 69 };          // moc format output revision
 
 QT_END_NAMESPACE // -- QtScxml
 

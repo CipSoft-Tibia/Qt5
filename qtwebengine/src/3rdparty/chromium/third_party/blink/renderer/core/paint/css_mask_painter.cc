@@ -32,51 +32,27 @@ bool HasSingleInvalidSVGMaskReferenceMaskLayer(const LayoutObject& object,
 
 }  // namespace
 
-absl::optional<gfx::RectF> CSSMaskPainter::MaskBoundingBox(
+std::optional<gfx::RectF> CSSMaskPainter::MaskBoundingBox(
     const LayoutObject& object,
     const PhysicalOffset& paint_offset) {
   if (!object.IsBoxModelObject() && !object.IsSVGChild())
-    return absl::nullopt;
+    return std::nullopt;
 
   const ComputedStyle& style = object.StyleRef();
-  if (!RuntimeEnabledFeatures::CSSMaskingInteropEnabled()) {
-    if (object.IsSVG()) {
-      if (SVGResourceClient* client = SVGResources::GetClient(object)) {
-        auto* masker = GetSVGResourceAsType<LayoutSVGResourceMasker>(
-            *client, style.MaskerResource());
-        if (masker) {
-          const gfx::RectF reference_box =
-              SVGResources::ReferenceBoxForEffects(object);
-          const float reference_box_zoom =
-              object.IsSVGForeignObject() ? object.StyleRef().EffectiveZoom()
-                                          : 1;
-          return masker->ResourceBoundingBox(reference_box, reference_box_zoom);
-        }
-      }
-    }
-
-    if (object.IsSVGChild() && !object.IsSVGForeignObject()) {
-      return absl::nullopt;
-    }
-  }
-
   if (!style.HasMask())
-    return absl::nullopt;
+    return std::nullopt;
 
-  if (RuntimeEnabledFeatures::CSSMaskingInteropEnabled()) {
-    if (object.IsSVGChild()) {
-      // This is a kludge. The spec[1] says that a non-existent <mask>
-      // reference should yield an image layer of transparent black.
-      //
-      // [1] https://drafts.fxtf.org/css-masking/#the-mask-image
-      if (HasSingleInvalidSVGMaskReferenceMaskLayer(object,
-                                                    style.MaskLayers())) {
-        return absl::nullopt;
-      }
-      // foreignObject handled by the regular box code.
-      if (!object.IsSVGForeignObject()) {
-        return SVGMaskPainter::ResourceBoundsForSVGChild(object);
-      }
+  if (object.IsSVGChild()) {
+    // This is a kludge. The spec[1] says that a non-existent <mask>
+    // reference should yield an image layer of transparent black.
+    //
+    // [1] https://drafts.fxtf.org/css-masking/#the-mask-image
+    if (HasSingleInvalidSVGMaskReferenceMaskLayer(object, style.MaskLayers())) {
+      return std::nullopt;
+    }
+    // foreignObject handled by the regular box code.
+    if (!object.IsSVGForeignObject()) {
+      return SVGMaskPainter::ResourceBoundsForSVGChild(object);
     }
   }
 

@@ -4,7 +4,8 @@
 
 import {assert} from 'chrome://resources/js/assert.js';
 import {loadTimeData} from 'chrome://resources/js/load_time_data.js';
-import {createEmptySearchBubble, highlight, Range, stripDiacritics} from 'chrome://resources/js/search_highlight_utils.js';
+import type {Range} from 'chrome://resources/js/search_highlight_utils.js';
+import {createEmptySearchBubble, highlight, stripDiacritics} from 'chrome://resources/js/search_highlight_utils.js';
 
 /**
  * @param element The element to update. Element should have a shadow root.
@@ -47,7 +48,7 @@ export function updateHighlights(
           // Note: The bubble's ::after element, a yellow arrow, will not
           // appear correctly in print preview without SPv175 enabled. See
           // https://crbug.com/817058.
-          // TODO(crbug.com/1038464): turn on horizontallyCenter when we fix
+          // TODO(crbug.com/40666299): turn on horizontallyCenter when we fix
           // incorrect positioning caused by scrollbar width changing after
           // search finishes.
           assert(node.parentNode);

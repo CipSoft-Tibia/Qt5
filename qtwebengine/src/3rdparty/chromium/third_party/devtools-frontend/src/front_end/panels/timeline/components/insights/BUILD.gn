@@ -1,0 +1,76 @@
+# Copyright 2024 The Chromium Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+import("../../../../../scripts/build/ninja/devtools_entrypoint.gni")
+import("../../../../../scripts/build/ninja/devtools_module.gni")
+import("../../../../../scripts/build/ninja/generate_css.gni")
+import("../../../../../scripts/build/typescript/typescript.gni")
+
+generate_css("css_files") {
+  sources = [
+    "lcpDiscovery.css",
+    "sidebarInsight.css",
+    "table.css",
+  ]
+}
+
+devtools_module("insights") {
+  sources = [
+    "CLSCulprits.ts",
+    "DocumentLatency.ts",
+    "Helpers.ts",
+    "InteractionToNextPaint.ts",
+    "LCPDiscovery.ts",
+    "LCPPhases.ts",
+    "NodeLink.ts",
+    "RenderBlocking.ts",
+    "SidebarInsight.ts",
+    "SlowCSSSelector.ts",
+    "Table.ts",
+    "ThirdParties.ts",
+    "Viewport.ts",
+    "types.ts",
+  ]
+
+  deps = [
+    "../../../../core/common:bundle",
+    "../../../../core/platform:bundle",
+    "../../../../models/trace:bundle",
+    "../../../../services/trace_bounds:bundle",
+    "../../../../third_party/marked:bundle",
+    "../../../../ui/components/buttons:bundle",
+    "../../../../ui/components/helpers:bundle",
+    "../../../../ui/components/icon_button:bundle",
+    "../../../../ui/components/markdown_view:bundle",
+    "../../../../ui/lit-html:bundle",
+    "../../overlays:bundle",
+  ]
+}
+
+devtools_entrypoint("bundle") {
+  entrypoint = "insights.ts"
+
+  deps = [
+    ":css_files",
+    ":insights",
+  ]
+
+  visibility = [
+    ":*",
+    "..:*",
+  ]
+}
+
+ts_library("unittests") {
+  testonly = true
+
+  sources = [ "SidebarInsight.test.ts" ]
+
+  deps = [
+    ":bundle",
+    "../../../../models/trace:bundle",
+    "../../../../testing",
+    "../../../../ui/components/render_coordinator:bundle",
+  ]
+}

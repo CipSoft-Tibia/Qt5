@@ -1,4 +1,4 @@
-// Copyright (C) 2019 The Qt Company Ltd.
+// Copyright (C) 2024 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qfont.h"
@@ -80,6 +80,9 @@ bool QFontDef::exactMatch(const QFontDef &other) const
         return false;
 
     if (stretch != 0 && other.stretch != 0 && stretch != other.stretch)
+        return false;
+
+    if (families.size() != other.families.size())
         return false;
 
     QString this_family, this_foundry, other_family, other_foundry;
@@ -383,13 +386,13 @@ void QFontPrivate::unsetFeature(QFont::Tag tag)
 QFontEngineData::QFontEngineData()
     : ref(0), fontCacheId(QFontCache::instance()->id())
 {
-    memset(engines, 0, QChar::ScriptCount * sizeof(QFontEngine *));
+    memset(engines, 0, QFontDatabasePrivate::ScriptCount * sizeof(QFontEngine *));
 }
 
 QFontEngineData::~QFontEngineData()
 {
     Q_ASSERT(ref.loadRelaxed() == 0);
-    for (int i = 0; i < QChar::ScriptCount; ++i) {
+    for (int i = 0; i < QFontDatabasePrivate::ScriptCount; ++i) {
         if (engines[i]) {
             if (!engines[i]->ref.deref())
                 delete engines[i];
@@ -2581,7 +2584,7 @@ void QFont::clearVariableAxes()
     kerning property is set to false. Similarly, if it is set to 0, then it will always be disabled.
     To reset a font feature to its default behavior, you can unset it using unsetFeature().
 
-    \sa QFont::Tag, clearFeatures(), setFeature(), unsetFeature(), featureTags()
+    \sa QFont::Tag, clearFeatures(), unsetFeature(), featureTags()
 */
 void QFont::setFeature(Tag tag, quint32 value)
 {
@@ -2678,8 +2681,10 @@ void QFont::clearFeatures()
     d->features.clear();
 }
 
-extern QStringList qt_fallbacksForFamily(const QString &family, QFont::Style style,
-                                         QFont::StyleHint styleHint, QChar::Script script);
+extern QStringList qt_fallbacksForFamily(const QString &family,
+                                         QFont::Style style,
+                                         QFont::StyleHint styleHint,
+                                         QFontDatabasePrivate::ExtendedScript script);
 
 /*!
     \fn QString QFont::defaultFamily() const
@@ -2691,8 +2696,10 @@ extern QStringList qt_fallbacksForFamily(const QString &family, QFont::Style sty
 */
 QString QFont::defaultFamily() const
 {
-    const QStringList fallbacks = qt_fallbacksForFamily(QString(), QFont::StyleNormal
-                                      , QFont::StyleHint(d->request.styleHint), QChar::Script_Common);
+    const QStringList fallbacks = qt_fallbacksForFamily(QString(),
+                                                        QFont::StyleNormal,
+                                                        QFont::StyleHint(d->request.styleHint),
+                                                        QFontDatabasePrivate::Script_Common);
     if (!fallbacks.isEmpty())
         return fallbacks.first();
     return QString();
@@ -3319,7 +3326,20 @@ bool QFontInfo::exactMatch() const
     return d->request.exactMatch(engine->fontDef);
 }
 
+/*!
+    \since 6.9
 
+    If the font is a variable font, this function will return the
+    list of axes the font supports.
+
+    See \l{QFont::}{setVariableAxis()} for more details on variable axes.
+*/
+QList<QFontVariableAxis> QFontInfo::variableAxes() const
+{
+    QFontEngine *engine = d->engineForScript(QChar::Script_Common);
+    Q_ASSERT(engine != nullptr);
+    return engine->variableAxes();
+}
 
 
 // **********************************************************************
@@ -3370,7 +3390,6 @@ QFontCache::QFontCache()
       current_timestamp(0), fast(false),
       autoClean(QGuiApplication::instance()
                 && (QGuiApplication::instance()->thread() == QThread::currentThread())),
-      timer_id(-1),
       m_id(font_cache_id.fetchAndAddRelaxed(1) + 1)
 {
 }
@@ -3387,7 +3406,7 @@ void QFontCache::clear()
                                  end = engineDataCache.end();
         while (it != end) {
             QFontEngineData *data = it.value();
-            for (int i = 0; i < QChar::ScriptCount; ++i) {
+            for (int i = 0; i < QFontDatabasePrivate::ScriptCount; ++i) {
                 if (data->engines[i]) {
                     if (!data->engines[i]->ref.deref()) {
                         Q_ASSERT(engineCacheCount.value(data->engines[i]) == 0);
@@ -3543,12 +3562,10 @@ void QFontCache::increaseCost(uint cost)
         if (!autoClean)
             return;
 
-        if (timer_id == -1 || ! fast) {
+        if (!timer.isActive() || ! fast) {
             FC_DEBUG("  TIMER: starting fast timer (%d s)", static_cast<int>(fast_timeout.count()));
 
-            if (timer_id != -1)
-                killTimer(timer_id);
-            timer_id = startTimer(fast_timeout);
+            timer.start(fast_timeout, this);
             fast = true;
         }
     }
@@ -3573,8 +3590,7 @@ void QFontCache::timerEvent(QTimerEvent *)
     if (total_cost <= max_cost && max_cost <= min_cost) {
         FC_DEBUG("  cache redused sufficiently, stopping timer");
 
-        killTimer(timer_id);
-        timer_id = -1;
+        timer.stop();
         fast = false;
 
         return;
@@ -3643,9 +3659,8 @@ void QFontCache::decreaseCache()
             if (fast) {
                 FC_DEBUG("  cannot shrink cache, slowing timer");
 
-                if (timer_id != -1) {
-                    killTimer(timer_id);
-                timer_id = startTimer(slow_timeout);
+                if (timer.isActive()) {
+                    timer.start(slow_timeout, this);
                 fast = false;
             }
 
@@ -3653,9 +3668,7 @@ void QFontCache::decreaseCache()
         } else if (! fast) {
             FC_DEBUG("  dropping into passing gear");
 
-            if (timer_id != -1)
-                killTimer(timer_id);
-            timer_id = startTimer(fast_timeout);
+            timer.start(fast_timeout, this);
             fast = true;        }
         }
     }

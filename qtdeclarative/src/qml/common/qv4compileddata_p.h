@@ -1298,7 +1298,7 @@ struct Unit
         QString qstr(str->size, Qt::Uninitialized);
         QChar *ch = qstr.data();
         for (int i = 0; i < str->size; ++i)
-             ch[i] = QChar(characters[i]);
+             ch[i] = QChar(quint16(characters[i]));
          return qstr;
 #endif
     }
@@ -1648,7 +1648,9 @@ public:
 
     QQmlPropertyCache::ConstPtr rootPropertyCache() const
     {
-        return propertyCaches.at(/*root object*/0);
+        return propertyCaches.isEmpty()
+                ? QQmlPropertyCache::ConstPtr()
+                : propertyCaches.at(/*root object*/0);
     }
 
     int objectCount() const { return qmlData->nObjects; }

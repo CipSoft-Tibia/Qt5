@@ -47,22 +47,10 @@ public:
     QLocale locale() const override;
     Qt::LayoutDirection inputDirection() const override;
 
-    void showInputPanel() override
-    {
-        show_input_panel();
-    }
-    void hideInputPanel() override
-    {
-        hide_input_panel();
-    }
-    void enableSurface(::wl_surface *surface) override
-    {
-        enable(surface);
-    }
-    void disableSurface(::wl_surface *surface) override
-    {
-        disable(surface);
-    }
+    void showInputPanel() override;
+    void hideInputPanel() override;
+    void enableSurface(::wl_surface *surface) override;
+    void disableSurface(::wl_surface *surface) override;
 
 protected:
     void zwp_text_input_v2_enter(uint32_t serial, struct ::wl_surface *surface) override;

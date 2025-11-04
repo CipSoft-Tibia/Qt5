@@ -31,6 +31,8 @@
 #include <sstream>
 #include <string>
 
+#include "dawn/common/windows_with_undefs.h"
+
 namespace dawn::native::d3d {
 const char* HRESULTAsString(HRESULT result) {
     // There's a lot of possible HRESULTS, but these ones are the ones specifically listed as
@@ -41,6 +43,12 @@ const char* HRESULTAsString(HRESULT result) {
             return "S_OK";
         case S_FALSE:
             return "S_FALSE";
+
+        // Wait results that are not errors:
+        case WAIT_ABANDONED:
+            return "WAIT_ABAONDONED";
+        case WAIT_TIMEOUT:
+            return "WAIT_TIMEOUT";
 
         // Generic errors:
         case E_FAIL:

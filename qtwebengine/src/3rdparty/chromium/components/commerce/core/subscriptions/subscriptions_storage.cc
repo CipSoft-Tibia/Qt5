@@ -15,7 +15,7 @@
 
 namespace commerce {
 
-absl::optional<CommerceSubscriptionProto> GetCommerceSubscriptionProto(
+std::optional<CommerceSubscriptionProto> GetCommerceSubscriptionProto(
     const CommerceSubscription& subscription) {
   SubscriptionTypeProto subscription_type = commerce_subscription_db::
       CommerceSubscriptionContentProto_SubscriptionType_TYPE_UNSPECIFIED;
@@ -36,11 +36,11 @@ absl::optional<CommerceSubscriptionProto> GetCommerceSubscriptionProto(
           SubscriptionManagementTypeToString(subscription.management_type),
           &management_type);
 
-  // TODO(crbug.com/1348024): Record metrics for failed parse.
+  // TODO(crbug.com/40233201): Record metrics for failed parse.
   if (!type_parse_succeeded || !id_type_parse_succeeded ||
       !management_type_parse_succeeded) {
     VLOG(1) << "Fail to get proto type";
-    return absl::nullopt;
+    return std::nullopt;
   }
 
   const std::string& key = GetStorageKeyForSubscription(subscription);
@@ -147,7 +147,7 @@ void SubscriptionsStorage::SaveSubscription(
     base::OnceCallback<void(bool)> callback) {
   auto proto = GetCommerceSubscriptionProto(subscription);
 
-  // TODO(crbug.com/1348024): Record metrics for failed parse.
+  // TODO(crbug.com/40233201): Record metrics for failed parse.
   if (!proto.has_value()) {
     std::move(callback).Run(false);
     return;

@@ -18,6 +18,7 @@
 
 #include "src/trace_processor/importers/common/args_tracker.h"
 #include "src/trace_processor/importers/common/global_args_tracker.h"
+#include "src/trace_processor/importers/common/process_track_translation_table.h"
 #include "src/trace_processor/importers/common/track_tracker.h"
 #include "src/trace_processor/types/trace_processor_context.h"
 #include "test/gtest_and_gmock.h"
@@ -34,6 +35,8 @@ class AsyncTrackSetTrackerUnittest : public testing::Test {
     context_.args_tracker.reset(new ArgsTracker(&context_));
     context_.track_tracker.reset(new TrackTracker(&context_));
     context_.async_track_set_tracker.reset(new AsyncTrackSetTracker(&context_));
+    context_.process_track_translation_table.reset(
+        new ProcessTrackTranslationTable(context_.storage.get()));
 
     storage_ = context_.storage.get();
     tracker_ = context_.async_track_set_tracker.get();
@@ -66,19 +69,19 @@ TEST_F(AsyncTrackSetTrackerUnittest, Smoke) {
 
   ASSERT_EQ(begin, end);
 
-  uint32_t row = *storage_->process_track_table().id().IndexOf(begin);
-  ASSERT_EQ(storage_->process_track_table().upid()[row], 1u);
-  ASSERT_EQ(storage_->process_track_table().name()[row],
-            storage_->InternString("test"));
+  const auto& process = storage_->process_track_table();
+  auto rr = *process.FindById(begin);
+  ASSERT_EQ(rr.upid(), 1u);
+  ASSERT_EQ(rr.name(), storage_->string_pool().GetId("test"));
 }
 
 TEST_F(AsyncTrackSetTrackerUnittest, EndFirst) {
   auto end = tracker_->End(nestable_id_, 1);
 
-  uint32_t row = *storage_->process_track_table().id().IndexOf(end);
-  ASSERT_EQ(storage_->process_track_table().upid()[row], 1u);
-  ASSERT_EQ(storage_->process_track_table().name()[row],
-            storage_->InternString("test"));
+  const auto& process = storage_->process_track_table();
+  auto rr = *process.FindById(end);
+  ASSERT_EQ(rr.upid(), 1u);
+  ASSERT_EQ(rr.name(), storage_->string_pool().GetId("test"));
 }
 
 TEST_F(AsyncTrackSetTrackerUnittest, LegacySaturating) {

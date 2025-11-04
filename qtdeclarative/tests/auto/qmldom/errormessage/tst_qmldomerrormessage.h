@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QtQmlDom/qqmldom_global.h>
-#include <QtTest/QtTest>
+#include <QtTest/QTest>
 
 QT_BEGIN_NAMESPACE
 namespace QQmlJS {

@@ -12,10 +12,11 @@ translation to the metadata serialization format and dealing with character
 escaping.
 """
 
+import collections
 import contextlib
 import functools
 import logging
-from typing import Container, List, Optional, Tuple
+from typing import Collection, List, Mapping, Optional, Tuple
 from urllib.parse import urlsplit
 
 from blinkpy.common import path_finder
@@ -29,16 +30,18 @@ from blinkpy.w3c.wpt_results_processor import (
 )
 from blinkpy.web_tests.models.test_expectations import TestExpectations
 from blinkpy.web_tests.models.testharness_results import (
-    TestharnessLine,
     LineType,
+    Status,
+    TestharnessLine,
     parse_testharness_baseline,
 )
-from blinkpy.web_tests.models.typ_types import Expectation, ResultType
+from blinkpy.web_tests.models.typ_types import (ExpectationType, ResultType)
 from blinkpy.web_tests.port.base import Port
 
 path_finder.bootstrap_wpt_imports()
+from manifest.item import ManifestItem
 from tools.manifest.manifest import Manifest
-from wptrunner import manifestexpected, testloader, wpttest
+from wptrunner import manifestexpected, testloader, testrunner, wpttest
 from wptrunner.wptmanifest import node as wptnode
 from wptrunner.wptmanifest.backends import static
 
@@ -52,12 +55,58 @@ class TestLoader(testloader.TestLoader):
                  port: Port,
                  *args,
                  expectations: Optional[TestExpectations] = None,
+                 include: Optional[Collection[str]] = None,
                  **kwargs):
         self._port = port
         self._expectations = expectations or TestExpectations(port)
+        self._include = include
         # Invoking the superclass constructor will immediately load tests, so
         # set `_port` and `_expectations` first.
         super().__init__(*args, **kwargs)
+
+    def _load_tests(self):
+        # Override the default implementation to provide a faster one that only
+        # handles test URLs (i.e., not files, directories, or globs).
+        # `WebTestFinder` already resolves files/directories to URLs.
+        self.tests, self.disabled_tests = {}, {}
+        items_by_url = self._load_items_by_url()
+        manifests_by_url_base = {
+            manifest.url_base: manifest
+            for manifest in self.manifests
+        }
+
+        for subsuite_name, subsuite in self.subsuites.items():
+            self.tests[subsuite_name] = collections.defaultdict(list)
+            self.disabled_tests[subsuite_name] = collections.defaultdict(list)
+
+            test_urls = subsuite.include or self._include or []
+            for test_url in test_urls:
+                if not test_url.startswith('/'):
+                    test_url = f'/{test_url}'
+                item = items_by_url.get(test_url)
+                # Skip items excluded by `run_wpt_tests.py --no-wpt-internal`.
+                if not item:
+                    continue
+                manifest = manifests_by_url_base[item.url_base]
+                test_root = self.manifests[manifest]
+                inherit_metadata, test_metadata = self.load_metadata(
+                    subsuite.run_info, manifest, test_root['metadata_path'],
+                    item.path)
+                test = self.get_test(manifest, item, inherit_metadata,
+                                     test_metadata)
+                # `WebTestFinder` should have already filtered out skipped
+                # tests, but add to `disabled_tests` anyway just in case.
+                tests = self.disabled_tests if test.disabled() else self.tests
+                tests[subsuite_name][item.item_type].append(test)
+
+    def _load_items_by_url(self) -> Mapping[str, ManifestItem]:
+        items_by_url = {}
+        for manifest, test_root in self.manifests.items():
+            items = manifest.itertypes(*self.test_types)
+            for test_type, test_path, tests in items:
+                for test in tests:
+                    items_by_url[test.id] = test
+        return items_by_url
 
     def load_dir_metadata(
         self,
@@ -94,11 +143,6 @@ class TestLoader(testloader.TestLoader):
             else:
                 testharness_lines = []
 
-            # A test file may be split between skipped and non-skipped variants.
-            # Since `WPTAdapter` should never pass skipped tests to wptrunner,
-            # there's no need to create their expectations here.
-            if ResultType.Skip in exp_line.results:
-                continue
             if exp_line.results == {ResultType.Pass} and not testharness_lines:
                 continue
             test_file_ast.append(
@@ -118,40 +162,41 @@ class TestLoader(testloader.TestLoader):
     def _build_test_ast(
         self,
         test_type: TestType,
-        exp_line: Expectation,
+        exp_line: ExpectationType,
         testharness_lines: List[TestharnessLine],
     ) -> wptnode.DataNode:
-        test_statuses = chromium_to_wptrunner_statuses(exp_line.results,
-                                                       test_type)
+        test_statuses = chromium_to_wptrunner_statuses(
+            exp_line.results - {ResultType.Skip}, test_type)
         harness_errors = {
             line
             for line in testharness_lines
             if line.line_type is LineType.HARNESS_ERROR
         }
-        if len(harness_errors) > 1:
+        if not can_have_subtests(test_type):
+            # Temporarily expect PASS so that unexpected passes don't contribute
+            # to retries or build failures.
+            test_statuses.add(Status.PASS.name)
+        elif ResultType.Failure in exp_line.results or not harness_errors:
+            # Add `OK` for `[ Failure ]` lines or no explicit harness error in
+            # the baseline.
+            test_statuses.update(
+                chromium_to_wptrunner_statuses(frozenset([ResultType.Pass]),
+                                               test_type))
+        elif len(harness_errors) > 1:
             raise ValueError(
                 f'testharness baseline for {exp_line.test!r} can only have up '
                 f'to one harness error; found {harness_errors!r}.')
-        elif harness_errors:
+        else:
             error = harness_errors.pop()
             test_statuses = test_statuses & {'CRASH', 'TIMEOUT'}
             test_statuses.update(status.name for status in error.statuses)
-        elif can_have_subtests(test_type) and exp_line.results == {
-                ResultType.Failure
-        }:
-            # The `[ Failure ]` line for this test was only masking subtest
-            # failures, but the harness is actually OK.
-            #
-            # ERROR and PRECONDITION_FAILED (if applicable) were already
-            # translated from `ResultType.Failure`.
-            test_statuses.add('OK')
 
         assert test_statuses, exp_line.to_string()
         test_ast = _build_expectation_ast(_test_basename(exp_line.test),
                                           normalize_statuses(test_statuses))
-        # If a `[ Failure ]` line exists, the baseline is allowed to be
-        # anything. To mimic this, skip creating any explicit subtests, and rely
-        # on implicit subtest creation.
+        # If `[ Failure ]` is expected, the baseline is allowed to be anything.
+        # To mimic this, skip creating any explicit subtests, and rely on
+        # implicit subtest creation.
         if ResultType.Failure in exp_line.results:
             expect_any = wptnode.KeyValueNode('expect_any_subtests')
             expect_any.append(wptnode.AtomNode(True))
@@ -168,14 +213,58 @@ class TestLoader(testloader.TestLoader):
         return test_ast
 
     @classmethod
-    def install(cls, port: Port, expectations: TestExpectations):
+    def install(cls, port: Port, expectations: TestExpectations,
+                include: List[str]):
+        """Patch overrides into the wptrunner API (may be unstable)."""
         testloader.TestLoader = functools.partial(cls,
                                                   port,
-                                                  expectations=expectations)
+                                                  expectations=expectations,
+                                                  include=include)
+
+        # Ideally, we would patch `executorchrome.*.convert_result`, but changes
+        # to the executor classes here in the main process don't persist to
+        # worker processes, which reload the module from source. Therefore,
+        # patch `TestRunnerManager`, which runs in the main process.
+        test_ended = testrunner.TestRunnerManager.test_ended
+
+        @functools.wraps(test_ended)
+        def wrapper(self, test, results):
+            return test_ended(self, test,
+                              allow_any_subtests_on_timeout(test, results))
+
+        testrunner.TestRunnerManager.test_ended = wrapper
+
+
+Results = Tuple[wpttest.Result, List[wpttest.SubtestResult]]
+
+
+def allow_any_subtests_on_timeout(test: wpttest.Test,
+                                  results: Results) -> Results:
+    """On timeout, suppress all subtest mismatches with added expectations.
+
+    When a test times out in `run_web_tests.py`, text mismatches don't affect
+    pass/fail status or trigger retries. This prevents the test from being
+    susceptible to flakiness due to variation in which subtest times out and
+    lets build gardeners suppress failures with just a `[ Timeout ]` line in
+    TestExpectations.
+
+    This converter injects extra expectations to mimic the `run_web_tests.py`
+    behavior. Note that, if the test expected to time out runs to completion,
+    the subtest results are then checked as usual.
+
+    See Also:
+        https://github.com/web-platform-tests/wpt/pull/44134
+    """
+    harness_result, subtest_results = results
+    if harness_result.status in {'CRASH', 'TIMEOUT'}:
+        for result in subtest_results:
+            result.expected, result.known_intermittent = result.status, []
+            result.message = test.expected_fail_message(result.name)
+    return harness_result, subtest_results
 
 
 def _build_expectation_ast(name: str,
-                           statuses: Container[str],
+                           statuses: Collection[str],
                            message: Optional[str] = None) -> wptnode.DataNode:
     """Build an in-memory syntax tree representing part of a metadata file:
 
@@ -224,7 +313,7 @@ class TestNode(manifestexpected.TestNode):
             # We still create PASS-only subtests in case the test can time out
             # overall (see below for adding TIMEOUT, NOTRUN).
             if self.get('expect_any_subtests'):
-                chromium_statuses = frozenset(WPTResult.status_priority)
+                chromium_statuses = frozenset(WPTResult.STATUSES)
         if name not in self.subtests and can_have_subtests(self.test_type):
             statuses = chromium_to_wptrunner_statuses(chromium_statuses,
                                                       self.test_type, True)
@@ -237,20 +326,7 @@ class TestNode(manifestexpected.TestNode):
                     expr_data={},
                     data_cls_getter=lambda x, y: manifestexpected.SubtestNode,
                     test_path=self.parent.test_path))
-        subtest = super().get_subtest(name)
-        # When a test times out in `run_web_tests.py`, the text output is still
-        # diffed but mismatches don't affect pass/fail status or retries. For
-        # wptrunner to mimic this behavior with variations in timing (i.e.,
-        # which subtest times out can differ between runs), any subtest is
-        # allowed to time out or not run if the overall test is expected to
-        # time out.
-        if subtest and 'TIMEOUT' in {self.expected, *self.known_intermittent}:
-            expected = [subtest.expected, *subtest.known_intermittent]
-            for status in ['TIMEOUT', 'NOTRUN']:
-                if status not in expected:
-                    expected.append(status)
-            subtest.set('expected', expected)
-        return subtest
+        return super().get_subtest(name)
 
 
 def _test_basename(test_id: str) -> str:

@@ -4,6 +4,7 @@
 
 #include "services/network/network_service_proxy_delegate.h"
 
+#include <optional>
 #include <string>
 
 #include "base/memory/raw_ptr.h"
@@ -24,7 +25,6 @@
 #include "services/network/public/cpp/features.h"
 #include "testing/gmock/include/gmock/gmock.h"
 #include "testing/gtest/include/gtest/gtest.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 
 namespace network {
 namespace {
@@ -41,8 +41,7 @@ MATCHER_P2(Contain,
            expected_value,
            std::string("headers ") + (negation ? "don't " : "") + "contain '" +
                expected_name + ": " + expected_value + "'") {
-  std::string value;
-  return arg.GetHeader(expected_name, &value) && value == expected_value;
+  return arg.GetHeader(expected_name) == expected_value;
 }
 
 struct HeadersReceived {
@@ -57,11 +56,11 @@ class TestCustomProxyConnectionObserver
   TestCustomProxyConnectionObserver() = default;
   ~TestCustomProxyConnectionObserver() override = default;
 
-  const absl::optional<std::pair<net::ProxyChain, int>>& FallbackArgs() const {
+  const std::optional<std::pair<net::ProxyChain, int>>& FallbackArgs() const {
     return fallback_;
   }
 
-  const absl::optional<HeadersReceived>& HeadersReceivedArgs() const {
+  const std::optional<HeadersReceived>& HeadersReceivedArgs() const {
     return headers_received_;
   }
 
@@ -78,8 +77,8 @@ class TestCustomProxyConnectionObserver
   }
 
  private:
-  absl::optional<std::pair<net::ProxyChain, int>> fallback_;
-  absl::optional<HeadersReceived> headers_received_;
+  std::optional<std::pair<net::ProxyChain, int>> fallback_;
+  std::optional<HeadersReceived> headers_received_;
 };
 
 class NetworkServiceProxyDelegateTest : public testing::Test {
@@ -498,52 +497,6 @@ TEST_F(NetworkServiceProxyDelegateTest, OnTunnelHeadersReceivedObserved) {
   EXPECT_EQ(
       TestObserver()->HeadersReceivedArgs()->response_headers->raw_headers(),
       headers->raw_headers());
-}
-
-TEST_F(NetworkServiceProxyDelegateTest, MergeProxyRules) {
-  net::ProxyChain chain1({
-      net::ProxyServer::FromSchemeHostAndPort(net::ProxyServer::SCHEME_HTTPS,
-                                              "proxy2a.com", 80),
-      net::ProxyServer::FromSchemeHostAndPort(net::ProxyServer::SCHEME_HTTPS,
-                                              "proxy2b.com", 80),
-  });
-  net::ProxyChain chain2(net::ProxyChain::Direct());
-  net::ProxyChain chain3({
-      net::ProxyServer::FromSchemeHostAndPort(net::ProxyServer::SCHEME_HTTPS,
-                                              "proxy1.com", 80),
-  });
-  net::ProxyList existing_proxy_list;
-  existing_proxy_list.AddProxyChain(chain1);
-  existing_proxy_list.AddProxyChain(chain2);
-  existing_proxy_list.AddProxyChain(chain3);
-
-  net::ProxyChain custom1({
-      net::ProxyServer::FromSchemeHostAndPort(net::ProxyServer::SCHEME_HTTPS,
-                                              "custom-a.com", 80),
-      net::ProxyServer::FromSchemeHostAndPort(net::ProxyServer::SCHEME_HTTPS,
-                                              "custom-b.com", 80),
-      net::ProxyServer::FromSchemeHostAndPort(net::ProxyServer::SCHEME_HTTPS,
-                                              "custom-c.com", 80),
-  });
-  net::ProxyChain custom2(net::ProxyChain::Direct());
-  net::ProxyList custom_proxy_list;
-  custom_proxy_list.AddProxyChain(custom1);
-  custom_proxy_list.AddProxyChain(custom2);
-
-  auto config = mojom::CustomProxyConfig::New();
-  auto delegate = CreateDelegate(std::move(config));
-
-  auto result =
-      delegate->MergeProxyRules(existing_proxy_list, custom_proxy_list);
-
-  // Custom chains replace `chain2`.
-  std::vector<net::ProxyChain> expected = {
-      chain1,
-      custom1,
-      custom2,
-      chain3,
-  };
-  EXPECT_EQ(result.AllChains(), expected);
 }
 
 }  // namespace network

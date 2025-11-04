@@ -45,9 +45,10 @@ void ComputePipeline::DestroyImpl() {
     DeleteProgram(ToBackend(GetDevice())->GetGL());
 }
 
-MaybeError ComputePipeline::Initialize() {
-    DAWN_TRY(
-        InitializeBase(ToBackend(GetDevice())->GetGL(), ToBackend(GetLayout()), GetAllStages()));
+MaybeError ComputePipeline::InitializeImpl() {
+    DAWN_TRY(InitializeBase(ToBackend(GetDevice())->GetGL(), ToBackend(GetLayout()), GetAllStages(),
+                            /* usesVertexIndex */ false, /* usesInstanceIndex */ false,
+                            /* usesFragDepth */ false));
     return {};
 }
 

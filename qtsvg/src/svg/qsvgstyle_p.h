@@ -630,111 +630,6 @@ private:
     QStack<QTransform> m_oldWorldTransform;
 };
 
-class Q_SVG_EXPORT QSvgAnimate : public QSvgStyleProperty
-{
-public:
-    QSvgAnimate();
-    void setRepeatCount(qreal repeatCount);
-    void setRunningTime(int startMs, int durMs, int endMs, int by = 0);
-
-protected:
-    qreal lerp(qreal a, qreal b, qreal t) const;
-    qreal currentIterTimeFraction(qreal elapsedTime);
-
-protected:
-    qreal m_from;
-    qreal m_totalRunningTime;
-    qreal m_end;
-    qreal m_repeatCount;
-    bool m_finished;
-};
-
-class Q_SVG_EXPORT QSvgAnimateTransform : public QSvgAnimate
-{
-public:
-    enum TransformType
-    {
-        Empty,
-        Translate,
-        Scale,
-        Rotate,
-        SkewX,
-        SkewY
-    };
-    enum Additive
-    {
-        Sum,
-        Replace
-    };
-public:
-    QSvgAnimateTransform();
-    void setArgs(TransformType type, Additive additive, const QList<qreal> &args);
-    void setFreeze(bool freeze);
-    void apply(QPainter *p, const QSvgNode *node, QSvgExtraStates &states) override;
-    void revert(QPainter *p, QSvgExtraStates &states) override;
-    Type type() const override;
-    QSvgAnimateTransform::Additive additiveType() const
-    {
-        return m_additive;
-    }
-
-    bool animActive(qreal totalTimeElapsed)
-    {
-        if (totalTimeElapsed < m_from)
-            return false;
-        if (m_freeze || m_repeatCount < 0) // fill="freeze" or repeat="indefinite"
-            return true;
-        if (m_totalRunningTime == 0)
-            return false;
-        qreal animationFrame = (totalTimeElapsed - m_from) / m_totalRunningTime;
-        if (animationFrame > m_repeatCount)
-            return false;
-        return true;
-    }
-
-    bool transformApplied() const
-    {
-        return m_transformApplied;
-    }
-
-    // Call this instead of revert if you know that revert is unnecessary.
-    void clearTransformApplied()
-    {
-        m_transformApplied = false;
-    }
-
-protected:
-    void resolveMatrix(const QSvgNode *node);
-private:
-    TransformType m_type;
-    Additive m_additive;
-    QList<qreal> m_args;
-    int m_count;
-    QTransform m_transform;
-    QTransform m_oldWorldTransform;
-    bool m_freeze;
-    bool m_transformApplied;
-};
-
-
-class Q_SVG_EXPORT QSvgAnimateColor : public QSvgAnimate
-{
-public:
-    QSvgAnimateColor();
-    void setArgs(bool fill, const QList<QColor> &colors);
-    void setFreeze(bool freeze);
-    void apply(QPainter *p, const QSvgNode *node, QSvgExtraStates &states) override;
-    void revert(QPainter *p, QSvgExtraStates &states) override;
-    Type type() const override;
-private:
-    QList<QColor> m_colors;
-    QBrush m_oldBrush;
-    QPen   m_oldPen;
-    bool m_fill;
-    bool m_freeze;
-};
-
-
 class Q_SVG_EXPORT QSvgCompOpStyle : public QSvgStyleProperty
 {
 public:
@@ -754,24 +649,11 @@ private:
     QPainter::CompositionMode m_oldMode;
 };
 
-
-class Q_SVG_EXPORT QSvgStyle
+class Q_SVG_EXPORT QSvgStaticStyle
 {
 public:
-    QSvgStyle()
-        : quality(0),
-          fill(0),
-          viewportFill(0),
-          font(0),
-          stroke(0),
-          solidColor(0),
-          gradient(0),
-          pattern(0),
-          transform(0),
-          opacity(0),
-          compop(0)
-    {}
-    ~QSvgStyle();
+    QSvgStaticStyle();
+    ~QSvgStaticStyle();
 
     void apply(QPainter *p, const QSvgNode *node, QSvgExtraStates &states);
     void revert(QPainter *p, QSvgExtraStates &states);
@@ -784,10 +666,29 @@ public:
     QSvgRefCounter<QSvgGradientStyle>     gradient;
     QSvgRefCounter<QSvgPatternStyle>      pattern;
     QSvgRefCounter<QSvgTransformStyle>    transform;
-    QList<QSvgRefCounter<QSvgAnimateColor> >   animateColors;
-    QList<QSvgRefCounter<QSvgAnimateTransform> >   animateTransforms;
     QSvgRefCounter<QSvgOpacityStyle>      opacity;
     QSvgRefCounter<QSvgCompOpStyle>       compop;
+};
+
+class QSvgAbstractAnimatedProperty;
+class Q_SVG_EXPORT QSvgAnimatedStyle
+{
+public:
+    QSvgAnimatedStyle();
+    ~QSvgAnimatedStyle();
+
+    void apply(QPainter *p, const QSvgNode *node, QSvgExtraStates &states);
+    void revert(QPainter *p, QSvgExtraStates &states);
+
+private:
+    void savePaintingState(const QPainter *p, const QSvgNode *node, QSvgExtraStates &states);
+    void applyPropertyAnimation(QPainter *p, QSvgAbstractAnimatedProperty *property, bool replace);
+
+private:
+    QBrush m_brush;
+    QPen m_pen;
+    QTransform m_worldTransform;
+    QTransform m_transformToNode;
 };
 
 /********************************************************/

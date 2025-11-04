@@ -2,13 +2,17 @@
 // Copyright (C) 2021 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
-#include <QtTest/QtTest>
+#include <QtTest/QTest>
 #include <QProcess>
 #include <QString>
 #include <QtQuickTestUtils/private/qmlutils_p.h>
 #include <QtQmlCompiler/private/qqmljslinter_p.h>
 #include <QtQmlCompiler/private/qqmlsa_p.h>
+#include <QtQmlToolingSettings/private/qqmltoolingsettings_p.h>
 #include <QtCore/qplugin.h>
+#include <QtCore/qcomparehelpers.h>
+#include <QtCore/qdiriterator.h>
+#include <QtCore/qlibraryinfo.h>
 
 Q_IMPORT_PLUGIN(LintPlugin)
 
@@ -30,11 +34,20 @@ public:
 
     struct Result
     {
-        enum Flag { ExitsNormally = 0x1, NoMessages = 0x2, AutoFixable = 0x4 };
+        enum Flag {
+            ExitsNormally = 0x1,
+            NoMessages = 0x2,
+            AutoFixable = 0x4,
+            UseSettings = 0x8
+        };
 
         Q_DECLARE_FLAGS(Flags, Flag)
 
         static Result clean() { return Result { {}, {}, {}, { NoMessages, ExitsNormally } }; }
+        static Result cleanWithSettings()
+        {
+            return Result{ {}, {}, {}, { NoMessages, ExitsNormally, UseSettings } };
+        }
 
         QList<Message> expectedMessages = {};
         QList<Message> badMessages = {};
@@ -59,6 +72,18 @@ private Q_SLOTS:
 
     void dirtyQmlCode_data();
     void dirtyQmlCode();
+
+    void dirtyQmlSnippet_data();
+    void dirtyQmlSnippet();
+
+    void cleanQmlSnippet_data();
+    void cleanQmlSnippet();
+
+    void dirtyJsSnippet_data();
+    void dirtyJsSnippet();
+
+    void cleanJsSnippet_data();
+    void cleanJsSnippet();
 
     void compilerWarnings_data();
     void compilerWarnings();
@@ -109,6 +134,8 @@ private Q_SLOTS:
     void maxWarnings();
 
 #if QT_CONFIG(library)
+    void hasTestPlugin();
+    void testPlugin_data();
     void testPlugin();
     void testPluginHelpCommandLine();
     void testPluginCommandLine();
@@ -149,7 +176,8 @@ private:
                      QStringList resources = {},
                      DefaultImportOption defaultImports = UseDefaultImports,
                      QList<QQmlJS::LoggerCategory> *categories = nullptr, bool autoFixable = false,
-                     LintType type = LintFile);
+                     LintType type = LintFile, bool readSettings = false,
+                     const QString *content = nullptr);
 
     void searchWarnings(const QJsonArray &warnings, const QString &string,
                         QtMsgType type = QtWarningMsg, quint32 line = 0, quint32 column = 0,
@@ -178,6 +206,7 @@ private:
 
     QStringList m_defaultImportPaths;
     QQmlJSLinter m_linter;
+    QList<QQmlJS::LoggerCategory> m_categories;
 };
 
 Q_DECLARE_METATYPE(TestQmllint::Result)
@@ -186,8 +215,9 @@ TestQmllint::TestQmllint()
     : QQmlDataTest(QT_QMLTEST_DATADIR),
       m_defaultImportPaths({ QLibraryInfo::path(QLibraryInfo::QmlImportsPath), dataDirectory() }),
       m_linter(m_defaultImportPaths)
-
 {
+    for (const QQmlJSLinter::Plugin &plugin : m_linter.plugins())
+        m_categories.append(plugin.categories());
 }
 
 void TestQmllint::initTestCase()
@@ -492,7 +522,7 @@ void TestQmllint::dirtyQmlCode_data()
                                             5, 5 } } };
     QTest::newRow("invalidAliasTarget1") << QStringLiteral("invalidAliasTarget.qml")
                                          << Result { { Message {
-                                            QStringLiteral("Invalid alias expression – an initalizer is needed."),
+                                            QStringLiteral("Invalid alias expression - an initalizer is needed."),
                                             6, 18 } } };
     QTest::newRow("invalidAliasTarget2") << QStringLiteral("invalidAliasTarget.qml")
                                          << Result { { Message {
@@ -558,14 +588,20 @@ void TestQmllint::dirtyQmlCode_data()
             << Result { { Message { QStringLiteral(
                        "Cannot assign binding of type QQuickItem to QQuickAnchorLine") } } };
     QTest::newRow("nanchors1") << QStringLiteral("nanchors1.qml")
-                               << Result { { Message { QStringLiteral(
-                                          "unknown grouped property scope nanchors.") } } };
+                               << Result{ { Message{ QStringLiteral(
+                                                  "unknown grouped property scope nanchors.") } },
+                                          {},
+                                          {} };
     QTest::newRow("nanchors2") << QStringLiteral("nanchors2.qml")
-                               << Result { { Message { QStringLiteral(
-                                          "unknown grouped property scope nanchors.") } } };
+                               << Result{ { Message{ QStringLiteral(
+                                                  "unknown grouped property scope nanchors.") } },
+                                          {},
+                                          {} };
     QTest::newRow("nanchors3") << QStringLiteral("nanchors3.qml")
-                               << Result { { Message { QStringLiteral(
-                                          "unknown grouped property scope nanchors.") } } };
+                               << Result{ { Message{ QStringLiteral(
+                                                  "unknown grouped property scope nanchors.") } },
+                                          {},
+                                          {} };
     QTest::newRow("badAliasObject")
             << QStringLiteral("badAliasObject.qml")
             << Result { { Message { QStringLiteral("Member \"wrongwrongwrong\" not "
@@ -717,7 +753,8 @@ void TestQmllint::dirtyQmlCode_data()
     QTest::newRow("badAttachedProperty")
             << QStringLiteral("badAttachedProperty.qml")
             << Result { { Message {
-                       QStringLiteral("Member \"progress\" not found on type \"TestType\"") } } };
+                       QStringLiteral("Member \"progress\" not found on type \"TestTypeAttached\"")
+               } } };
     QTest::newRow("badAttachedPropertyNested")
             << QStringLiteral("badAttachedPropertyNested.qml")
             << Result { { Message { QStringLiteral(
@@ -727,8 +764,9 @@ void TestQmllint::dirtyQmlCode_data()
                                     6, 37 } } };
     QTest::newRow("badAttachedPropertyTypeString")
             << QStringLiteral("badAttachedPropertyTypeString.qml")
-            << Result { { Message {
-                       QStringLiteral("Cannot assign literal of type string to int") } } };
+            << Result{ { Message{ QStringLiteral("Cannot assign literal of type string to int") } },
+                       {},
+                       {} };
     QTest::newRow("badAttachedPropertyTypeQtObject")
             << QStringLiteral("badAttachedPropertyTypeQtObject.qml")
             << Result{ { Message{
@@ -877,8 +915,11 @@ expression: \${expr} \${expr} \\\${expr} \\\${expr}`)",
                };
     QTest::newRow("AssignToReadOnlyProperty")
             << QStringLiteral("assignToReadOnlyProperty.qml")
-            << Result { { Message {
-                       QStringLiteral("Cannot assign to read-only property activeFocus") } } };
+            << Result{
+                   { Message{ QStringLiteral("Cannot assign to read-only property activeFocus") } },
+                   {},
+                   {}
+               };
     QTest::newRow("AssignToReadOnlyProperty")
             << QStringLiteral("assignToReadOnlyProperty2.qml")
             << Result { { Message {
@@ -1004,9 +1045,7 @@ expression: \${expr} \${expr} \\\${expr} \\\${expr}`)",
                                             "Cannot assign literal of type null to double") } } };
     QTest::newRow("missingRequiredAlias")
             << QStringLiteral("missingRequiredAlias.qml")
-            << Result { { Message {
-                       QStringLiteral("Component is missing required property requiredAlias from "
-                                      "RequiredWithRootLevelAlias") } } };
+            << Result{ { Message{ u"Component is missing required property foo from Item"_s } } };
     QTest::newRow("missingSingletonPragma")
             << QStringLiteral("missingSingletonPragma.qml")
             << Result { { Message { QStringLiteral(
@@ -1043,7 +1082,7 @@ expression: \${expr} \${expr} \\\${expr} \\\${expr}`)",
     QTest::newRow("callJSValue")
             << QStringLiteral("callJSValueProp.qml")
             << Result { { Message { QStringLiteral(
-                       "Property \"gradient\" is a QJSValue property. It may or may not be "
+                       "Property \"jsValue\" is a QJSValue property. It may or may not be "
                        "a method. Use a regular Q_INVOKABLE instead.") } } };
     QTest::newRow("assignNonExistingTypeToVarProp")
             << QStringLiteral("assignNonExistingTypeToVarProp.qml")
@@ -1068,7 +1107,9 @@ expression: \${expr} \${expr} \\\${expr} \\\${expr}`)",
     QTest::newRow("unresolvedArrayBinding")
             << QStringLiteral("unresolvedArrayBinding.qml")
             << Result{ { Message{ QStringLiteral(u"Declaring an object which is not an Qml object"
-                          " as a list member.") } } };
+                                                 " as a list member.") } },
+                       {},
+                       {} };
     QTest::newRow("duplicatedPropertyName")
             << QStringLiteral("duplicatedPropertyName.qml")
             << Result{ { Message{ QStringLiteral("Duplicated property name \"cat\"."), 5, 5 } } };
@@ -1090,10 +1131,10 @@ expression: \${expr} \${expr} \\\${expr} \\\${expr}`)",
             << Result{ {
                          Message {
                                   QStringLiteral("Member \"Mode\" not found on type \"Item\""), 12,
-                                  29, QtWarningMsg },
+                                  29},
                           Message{
                                   QStringLiteral("\"Hour\" is not an entry of enum \"Mode\"."), 13,
-                                  62, QtInfoMsg }
+                                  62}
                        },
                        {},
                        { Message{ QStringLiteral("Hours") } }
@@ -1109,26 +1150,43 @@ expression: \${expr} \${expr} \\\${expr} \\\${expr}`)",
                     QStringLiteral("Function without return type annotation returns double")
                } } };
 
+    QTest::newRow("annotatedDefaultParameter")
+            << QStringLiteral("annotatedDefaultParameter.qml")
+            << Result { { Message {
+                       QStringLiteral("Type annotations on default parameters are not supported")
+               } } };
+
+
     QTest::newRow("lowerCaseQualifiedImport")
             << QStringLiteral("lowerCaseQualifiedImport.qml")
-            << Result{ {
-                       Message{ u"Import qualifier 'test' must start with a capital letter."_s },
-                       Message{
-                               u"Namespace 'test' of 'test.Rectangle' must start with an upper case letter."_s },
-               } };
+            << Result{
+                   {
+                           Message{
+                                   u"Import qualifier 'test' must start with a capital letter."_s },
+                           Message{
+                                   u"Namespace 'test' of 'test.Rectangle' must start with an upper case letter."_s },
+                   },
+                   {},
+                   {}
+               };
     QTest::newRow("lowerCaseQualifiedImport2")
             << QStringLiteral("lowerCaseQualifiedImport2.qml")
-            << Result{ {
-                       Message{ u"Import qualifier 'test' must start with a capital letter."_s },
-                       Message{
-                               u"Namespace 'test' of 'test.Item' must start with an upper case letter."_s },
-                       Message{
-                               u"Namespace 'test' of 'test.Rectangle' must start with an upper case letter."_s },
-                       Message{
-                               u"Namespace 'test' of 'test.color' must start with an upper case letter."_s },
-                       Message{
-                               u"Namespace 'test' of 'test.Grid' must start with an upper case letter."_s },
-               } };
+            << Result{
+                   {
+                           Message{
+                                   u"Import qualifier 'test' must start with a capital letter."_s },
+                           Message{
+                                   u"Namespace 'test' of 'test.Item' must start with an upper case letter."_s },
+                           Message{
+                                   u"Namespace 'test' of 'test.Rectangle' must start with an upper case letter."_s },
+                           Message{
+                                   u"Namespace 'test' of 'test.color' must start with an upper case letter."_s },
+                           Message{
+                                   u"Namespace 'test' of 'test.Grid' must start with an upper case letter."_s },
+                   },
+                   {},
+                   {}
+               };
     QTest::newRow("notQmlRootMethods")
             << QStringLiteral("notQmlRootMethods.qml")
             << Result{ {
@@ -1187,6 +1245,29 @@ expression: \${expr} \${expr} \\\${expr} \\\${expr}`)",
                          Message { QStringLiteral(
                            "Type QQC2.Label is used but it is not resolved") } },
                        };
+
+    // The warning should show up only once even though
+    // we have to run the type propagator multiple times.
+    QTest::newRow("multiplePasses")
+            << testFile("multiplePasses.qml")
+            << Result {{ Message { QStringLiteral("Unqualified access") }}};
+    QTest::newRow("missingRequiredOnObjectDefinitionBinding")
+            << QStringLiteral("missingRequiredPropertyOnObjectDefinitionBinding.qml")
+            << Result{ { { uR"(Component is missing required property i from QtObject)"_s, 4, 26 } } };
+    QTest::newRow("inlineComponentSearchInfiniteLoop")
+            << QStringLiteral("InlineComponentSearchInfiniteLoop_Main.qml")
+            << Result{ { { "InlineComponentSearchInfiniteLoop_Other.a was not found. "
+                           "Did you add all imports and dependencies?"_L1, 5, 5 } } };
+    QTest::newRow("enumsAreNotTypes_functionAnnotations")
+            << QStringLiteral("EnumsAreNotTypes_functionAnnotations.qml")
+            << Result{ { { "QML enumerations are not types. Use underlying type "
+                           "(int or double) instead."_L1, 5, 17 },
+                         { "QML enumerations are not types. Use underlying type "
+                           "(int or double) instead."_L1, 6, 9 } } };
+
+    QTest::newRow("jsdeclInQmlScope")
+            << QStringLiteral("jsdeclInQmlScope.qml")
+            << Result{ { { "JavaScript declarations are not allowed in QML elements"_L1 , 4, 13 } } };
 }
 
 void TestQmllint::dirtyQmlCode()
@@ -1227,6 +1308,150 @@ void TestQmllint::dirtyQmlCode()
             });
 }
 
+static void addLocationOffsetTo(TestQmllint::Result *result, qsizetype lineOffset,
+                                qsizetype columnOffset = 0)
+{
+    for (auto *messages :
+         { &result->expectedMessages, &result->badMessages, &result->expectedReplacements }) {
+        for (auto &message : *messages) {
+            message.line += lineOffset;
+            message.column += columnOffset;
+        }
+    }
+}
+
+void TestQmllint::dirtyQmlSnippet_data()
+{
+    QTest::addColumn<QString>("code");
+    QTest::addColumn<Result>("result");
+
+    QTest::newRow("testSnippet") << u"property int qwer: \"Hello\""_s
+                                 << Result{ { { "Cannot assign literal of type string to int"_L1, 1, 20 } } };
+    QTest::newRow("requiredInInlineComponent")
+            << u"Item { component Foo: Item { required property var bla; } } Foo {}"_s
+            << Result{ { { "Component is missing required property bla from Foo"_L1, 1, 61 } } };
+
+    QTest::newRow("requiredPropertyOwnerMixup")
+            << u"component Foo: Item { required property var bla }\n"_s
+               u"Foo { Item { property int bla: 43 } }\n"_s
+               u"Foo {}\n"_s
+            << Result{ { { "Component is missing required property bla from Foo"_L1, 2, 1 },
+                         { "Component is missing required property bla from Foo"_L1, 3, 1 } } };
+}
+
+void TestQmllint::dirtyQmlSnippet()
+{
+    QFETCH(QString, code);
+    QFETCH(Result, result);
+
+    QString qmlCode = "import QtQuick\nItem {\n%1}"_L1.arg(code);
+
+    addLocationOffsetTo(&result, 2);
+
+    QJsonArray warnings;
+    callQmllint(QString(), result.flags.testFlag(Result::ExitsNormally), &warnings, {}, {}, {},
+                UseDefaultImports, nullptr, result.flags.testFlag(Result::Flag::AutoFixable),
+                LintFile, false, &qmlCode);
+
+    checkResult(warnings, result, [] { }, [] { }, [] { });
+}
+
+void TestQmllint::cleanQmlSnippet_data()
+{
+    QTest::addColumn<QString>("code");
+
+    QTest::newRow("testSnippet") << u"property int qwer: 123"_s;
+    QTest::newRow("requiredInComponent")
+            << u"Item { Component { id: comp; required property var bla; } }"_s;
+    QTest::newRow("requiredInInlineComponent")
+            << u"Item { component Foo: Item { required property var bla; } }"_s;
+}
+
+void TestQmllint::cleanQmlSnippet()
+{
+    QFETCH(QString, code);
+
+    const QString qmlCode = "import QtQuick\nItem {%1}"_L1.arg(code);
+    const Result result = Result::clean();
+
+    QJsonArray warnings;
+    callQmllint(QString(), result.flags.testFlag(Result::ExitsNormally), &warnings, {}, {}, {},
+                UseDefaultImports, nullptr, result.flags.testFlag(Result::Flag::AutoFixable),
+                LintFile, false, &qmlCode);
+    checkResult(warnings, result, [] { }, [] { }, [] { });
+}
+
+void TestQmllint::dirtyJsSnippet_data()
+{
+    QTest::addColumn<QString>("code");
+    QTest::addColumn<Result>("result");
+
+    QTest::newRow("doubleLet") << u"let x = 4; let x = 4;"_s
+                               << Result{
+                                      { { "Identifier 'x' has already been declared"_L1, 1, 16 },
+                                        { "Note: previous declaration of 'x' here"_L1, 1, 5 } }
+                                  };
+    QTest::newRow("doubleConst") << u"const x = 4; const x = 4;"_s
+                                 << Result{
+                                        { { "Identifier 'x' has already been declared"_L1, 1, 20 },
+                                          { "Note: previous declaration of 'x' here"_L1, 1, 7 } }
+                                    };
+    QTest::newRow("assignmentWarningLocation")
+            << u"console.log(a = 1)"_s
+            << Result{ { { "Unqualified access"_L1, 1, 13 } } };
+    QTest::newRow("math_typo")
+            << u"Math.minj(1,2)"_s
+            << Result{ { {"Member \"minj\" not found on Math object", 1, 6},
+                         {"Did you mean \"min\"?", 1, 6} }};
+}
+
+void TestQmllint::dirtyJsSnippet()
+{
+    QFETCH(QString, code);
+    QFETCH(Result, result);
+
+    static constexpr QLatin1StringView templateString =
+            "import QtQuick\nItem { function f() {\n%1}}"_L1;
+
+    // templateString adds 2 newlines before snippet
+    addLocationOffsetTo(&result, 2);
+
+    const QString qmlCode = templateString.arg(code);
+    QJsonArray warnings;
+    callQmllint(QString(), result.flags.testFlag(Result::ExitsNormally), &warnings, {}, {}, {},
+                UseDefaultImports, nullptr, result.flags.testFlag(Result::Flag::AutoFixable),
+                LintFile, false, &qmlCode);
+
+    checkResult(warnings, result, [] { }, [] { }, [] { });
+}
+
+void TestQmllint::cleanJsSnippet_data()
+{
+    QTest::addColumn<QString>("code");
+
+    QTest::newRow("testSnippet") << u"let x = 5"_s;
+    QTest::newRow("doubleVar") << u"var x = 5; var y = 5"_s;
+    QTest::newRow("doubleInDifferentScopes") << u"const a = 42; for (let a = 1; a < 10; ++a) {}"_s;
+
+    QTest::newRow("eval") << u"eval()"_s;
+    QTest::newRow("eval2") << u"eval(\"1 + 1\")"_s;
+}
+
+void TestQmllint::cleanJsSnippet()
+{
+    QFETCH(QString, code);
+
+    const QString qmlCode = "import QtQuick\nItem { function f() {%1}}"_L1.arg(code);
+    const Result result = Result::clean();
+
+    QJsonArray warnings;
+    callQmllint(QString(), result.flags.testFlag(Result::ExitsNormally), &warnings, {}, {}, {},
+                UseDefaultImports, nullptr, result.flags.testFlag(Result::Flag::AutoFixable),
+                LintFile, false, &qmlCode);
+    checkResult(warnings, result, [] { }, [] { }, [] { });
+}
+
+
 void TestQmllint::cleanQmlCode_data()
 {
     QTest::addColumn<QString>("filename");
@@ -1238,6 +1463,7 @@ void TestQmllint::cleanQmlCode_data()
     QTest::newRow("importWithPrefix")          << QStringLiteral("ImportWithPrefix.qml");
     QTest::newRow("catchIdentifier")           << QStringLiteral("catchIdentifierNoWarning.qml");
     QTest::newRow("qmldirAndQmltypes")         << QStringLiteral("qmldirAndQmltypes.qml");
+    QTest::newRow("enumList")                  << QStringLiteral("enumListTest.qml");
     QTest::newRow("forLoop")                   << QStringLiteral("forLoop.qml");
     QTest::newRow("esmodule")                  << QStringLiteral("esmodule.mjs");
     QTest::newRow("methodsInJavascript")       << QStringLiteral("javascriptMethods.qml");
@@ -1265,6 +1491,7 @@ void TestQmllint::cleanQmlCode_data()
     QTest::newRow("jsmoduleimport") << QStringLiteral("jsmoduleimport.qml");
     QTest::newRow("overridescript") << QStringLiteral("overridescript.qml");
     QTest::newRow("multiExtension") << QStringLiteral("multiExtension.qml");
+    QTest::newRow("retrieveFunction") << QStringLiteral("retrieveFunction.qml");
     QTest::newRow("segFault") << QStringLiteral("SegFault.qml");
     QTest::newRow("grouped scope failure") << QStringLiteral("groupedScope.qml");
     QTest::newRow("layouts depends quick") << QStringLiteral("layouts.qml");
@@ -1329,7 +1556,8 @@ void TestQmllint::cleanQmlCode_data()
     QTest::newRow("QQmlEasingEnums::Type") << QStringLiteral("animationEasing.qml");
     QTest::newRow("ValidLiterals") << QStringLiteral("validLiterals.qml");
     QTest::newRow("GoodModulePrefix") << QStringLiteral("goodModulePrefix.qml");
-    QTest::newRow("required property in Component") << QStringLiteral("requiredPropertyInComponent.qml");
+    QTest::newRow("required_property_in_Component") << QStringLiteral("requiredPropertyInComponent.qml");
+    QTest::newRow("requiredPropertyInGroupedPropertyScope") << QStringLiteral("requiredPropertyInGroupedPropertyScope.qml");
     QTest::newRow("bytearray") << QStringLiteral("bytearray.qml");
     QTest::newRow("initReadonly") << QStringLiteral("initReadonly.qml");
     QTest::newRow("connectionNoParent") << QStringLiteral("connectionNoParent.qml"); // QTBUG-97600
@@ -1389,14 +1617,17 @@ void TestQmllint::cleanQmlCode_data()
     QTest::newRow("aliasGroup") << QStringLiteral("aliasGroup.qml");
 
     QTest::addRow("deceptiveLayout") << u"deceptiveLayout.qml"_s;
+    QTest::addRow("regExp") << u"regExp.qml"_s;
+    QTest::newRow("aliasToRequiredProperty")
+            << QStringLiteral("aliasToRequiredPropertyIsNotRequiredItself.qml");
+    QTest::newRow("setRequiredTroughAlias") << QStringLiteral("setRequiredPropertyThroughAlias.qml");
+    QTest::newRow("setRequiredTroughAliasOfAlias")
+            << QStringLiteral("setRequiredPropertyThroughAliasOfAlias.qml");
 }
 
 void TestQmllint::cleanQmlCode()
 {
     QFETCH(QString, filename);
-
-    QJsonArray warnings;
-
     runTest(filename, Result::clean());
 }
 
@@ -1414,8 +1645,7 @@ void TestQmllint::compilerWarnings_data()
 
     QTest::newRow("shadowable")
             << QStringLiteral("shadowable.qml")
-            << Result { { Message {QStringLiteral(
-                       "with type NotSoSimple (stored as QQuickItem) can be shadowed") } } }
+            << Result { { Message {QStringLiteral("with type NotSoSimple can be shadowed") } } }
             << true;
     QTest::newRow("tooFewParameters")
             << QStringLiteral("tooFewParams.qml")
@@ -1457,20 +1687,20 @@ void TestQmllint::compilerWarnings_data()
             << QStringLiteral("returnTypeAnnotation_component.qml")
             << Result{ { { "Could not compile function comp: function without return type "
                            "annotation returns (component in" },
-                         { "returnTypeAnnotation_component.qml)::c with type Comp (stored as "
-                           "QQuickItem). This may prevent proper compilation to Cpp." } } }
+                         { "returnTypeAnnotation_component.qml)::c with type Comp. "
+                           "This may prevent proper compilation to Cpp." } } }
             << true;
     QTest::newRow("returnTypeAnnotation-enum")
             << QStringLiteral("returnTypeAnnotation_enum.qml")
             << Result{ { { "Could not compile function enumeration: function without return type "
-                           "annotation returns QQuickText::HAlignment::AlignRight (stored as int). "
+                           "annotation returns QQuickText::HAlignment::AlignRight. "
                            "This may prevent proper compilation to Cpp." } } }
             << true;
     QTest::newRow("returnTypeAnnotation-method")
             << QStringLiteral("returnTypeAnnotation_method.qml")
             << Result{ { { "Could not compile function method: function without return type "
                            "annotation returns (component in " }, // Don't check the build folder path
-                         { "returnTypeAnnotation_method.qml)::f(...) (stored as QJSValue). This may "
+                         { "returnTypeAnnotation_method.qml)::f(...). This may "
                            "prevent proper compilation to Cpp." } } }
             << true;
     QTest::newRow("returnTypeAnnotation-property")
@@ -1508,8 +1738,6 @@ void TestQmllint::compilerWarnings()
     QFETCH(QString, filename);
     QFETCH(Result, result);
     QFETCH(bool, enableCompilerWarnings);
-
-    QJsonArray warnings;
 
     auto categories = QQmlJSLogger::defaultCategories();
 
@@ -1622,7 +1850,7 @@ void TestQmllint::callQmllint(const QString &fileToLint, bool shouldSucceed, QJs
                               QStringList importPaths, QStringList qmldirFiles,
                               QStringList resources, DefaultImportOption defaultImports,
                               QList<QQmlJS::LoggerCategory> *categories, bool autoFixable,
-                              LintType type)
+                              LintType type, bool readSettings, const QString *content)
 {
     QJsonArray jsonOutput;
 
@@ -1635,10 +1863,17 @@ void TestQmllint::callQmllint(const QString &fileToLint, bool shouldSucceed, QJs
             ? m_defaultImportPaths + importPaths
             : importPaths;
     if (type == LintFile) {
-        const QList<QQmlJS::LoggerCategory> resolvedCategories =
-                categories != nullptr ? *categories : QQmlJSLogger::defaultCategories();
+        QList<QQmlJS::LoggerCategory> resolvedCategories =
+                categories != nullptr ? *categories : m_categories;
+
+        if (readSettings) {
+            QQmlToolingSettings settings(QLatin1String("qmllint"));
+            if (settings.search(lintedFile))
+                QQmlJS::LoggingUtils::updateLogLevels(resolvedCategories, settings, nullptr);
+        }
+
         lintResult = m_linter.lintFile(
-                    lintedFile, nullptr, true, &jsonOutput, resolvedImportPaths, qmldirFiles,
+                    lintedFile, content, true, &jsonOutput, resolvedImportPaths, qmldirFiles,
                     resources, resolvedCategories);
     } else {
         lintResult =
@@ -1704,9 +1939,58 @@ void TestQmllint::runTest(const QString &testFile, const Result &result, QString
     QJsonArray warnings;
     callQmllint(testFile, result.flags.testFlag(Result::Flag::ExitsNormally), &warnings, importDirs,
                 qmltypesFiles, resources, defaultImports, categories,
-                result.flags.testFlag(Result::Flag::AutoFixable));
+                result.flags.testFlag(Result::Flag::AutoFixable), LintFile,
+                result.flags.testFlag(Result::Flag::UseSettings));
     checkResult(warnings, result);
 }
+
+static QtMsgType typeStringToMsgType(const QString &type)
+{
+    if (type == u"debug")
+        return QtDebugMsg;
+    if (type == u"info")
+        return QtInfoMsg;
+    if (type == u"warning")
+        return QtWarningMsg;
+    if (type == u"critical")
+        return QtCriticalMsg;
+    if (type == u"fatal")
+        return QtFatalMsg;
+
+    Q_UNREACHABLE();
+}
+
+struct SimplifiedWarning
+{
+    QString message;
+    quint32 line;
+    quint32 column;
+    QtMsgType type;
+
+    SimplifiedWarning(QJsonValueConstRef warning)
+        : message(warning[u"message"].toString()),
+          line(warning[u"line"].toInt()),
+          column(warning[u"column"].toInt()),
+          type(typeStringToMsgType(warning[u"type"].toString()))
+    {
+    }
+
+    QString toString() const { return u"%1:%2: %3"_s.arg(line).arg(column).arg(message); }
+
+    std::tuple<QString, quint32, quint32, QtMsgType> asTuple() const
+    {
+        return std::make_tuple(message, line, column, type);
+    }
+
+    friend bool comparesEqual(const SimplifiedWarning& a, const SimplifiedWarning& b) noexcept
+    {
+        return a.asTuple() == b.asTuple();
+    }
+    friend Qt::strong_ordering compareThreeWay(const SimplifiedWarning& a, const SimplifiedWarning& b) noexcept {
+        return QtOrderingPrivate::compareThreeWayMulti(a.asTuple(), b.asTuple());
+    }
+    Q_DECLARE_STRONGLY_ORDERED(SimplifiedWarning)
+};
 
 template<typename ExpectedMessageFailureHandler, typename BadMessageFailureHandler,
          typename ReplacementFailureHandler>
@@ -1737,6 +2021,19 @@ void TestQmllint::checkResult(const QJsonArray &warnings, const Result &result,
         searchWarnings(warnings, replacement.text, replacement.severity, replacement.line,
                        replacement.column, StringContained, DoReplacementSearch);
     }
+
+    // check for duplicates
+    QList<SimplifiedWarning> sortedWarnings;
+    std::transform(warnings.begin(), warnings.end(), std::back_inserter(sortedWarnings),
+                   [](QJsonValueConstRef ref) { return SimplifiedWarning(ref); });
+    std::sort(sortedWarnings.begin(), sortedWarnings.end());
+    const auto firstDuplicate =
+            std::adjacent_find(sortedWarnings.constBegin(), sortedWarnings.constEnd());
+    for (auto it = firstDuplicate; it != sortedWarnings.constEnd();
+         it = std::adjacent_find(it + 1, sortedWarnings.constEnd())) {
+        qDebug() << "Found duplicate warning: " << it->toString();
+    }
+    QVERIFY2(firstDuplicate == sortedWarnings.constEnd(), "Found duplicate warnings!");
 }
 
 void TestQmllint::searchWarnings(const QJsonArray &warnings, const QString &substring,
@@ -1745,33 +2042,15 @@ void TestQmllint::searchWarnings(const QJsonArray &warnings, const QString &subs
 {
     bool contains = false;
 
-    auto typeStringToMsgType = [](const QString &type) -> QtMsgType {
-        if (type == u"debug")
-            return QtDebugMsg;
-        if (type == u"info")
-            return QtInfoMsg;
-        if (type == u"warning")
-            return QtWarningMsg;
-        if (type == u"critical")
-            return QtCriticalMsg;
-        if (type == u"fatal")
-            return QtFatalMsg;
+    for (const QJsonValueConstRef warningJson : warnings) {
+        SimplifiedWarning warning(warningJson);
 
-        Q_UNREACHABLE();
-    };
-
-    for (const QJsonValueConstRef warning : warnings) {
-        QString warningMessage = warning[u"message"].toString();
-        quint32 warningLine = warning[u"line"].toInt();
-        quint32 warningColumn = warning[u"column"].toInt();
-        QtMsgType warningType = typeStringToMsgType(warning[u"type"].toString());
-
-        if (warningMessage.contains(substring)) {
-            if (warningType != type) {
+        if (warning.message.contains(substring)) {
+            if (warning.type != type) {
                 continue;
             }
             if (line != 0 || column != 0) {
-                if (warningLine != line || warningColumn != column) {
+                if (warning.line != line || warning.column != column) {
                     continue;
                 }
             }
@@ -1780,7 +2059,7 @@ void TestQmllint::searchWarnings(const QJsonArray &warnings, const QString &subs
             break;
         }
 
-        for (const QJsonValueConstRef fix : warning[u"suggestions"].toArray()) {
+        for (const QJsonValueConstRef fix : warningJson[u"suggestions"].toArray()) {
             const QString fixMessage = fix[u"message"].toString();
             if (fixMessage.contains(substring)) {
                 contains = true;
@@ -1846,7 +2125,7 @@ void TestQmllint::requiredProperty()
             Result { { Message { QStringLiteral("Component is missing required property "
                                                 "required_now_string from Base") },
                        Message { QStringLiteral("Component is missing required property "
-                                                "required_defined_here_string from here") } } });
+                                                "required_defined_here_string from Derived") } } });
     runTest("requiredPropertyBindingsLater.qml",
             Result { { Message { QStringLiteral("Component is missing required property "
                                                 "required_later_string from "
@@ -2074,62 +2353,176 @@ void TestQmllint::valueTypesFromString()
                                     u"Construction from string is deprecated. Use structured value type construction instead for type \"QSizeF\""_s },
                             Message{
                                     u"Construction from string is deprecated. Use structured value type construction instead for type \"QRectF\""_s },
+                            Message{
+                                    u"Construction from string is deprecated. Use structured value type construction instead for type \"QVector2D\""_s },
+                            Message{
+                                    u"Construction from string is deprecated. Use structured value type construction instead for type \"QVector3D\""_s },
+                            Message{
+                                    u"Construction from string is deprecated. Use structured value type construction instead for type \"QVector4D\""_s },
+                            Message{
+                                    u"Construction from string is deprecated. Use structured value type construction instead for type \"QQuaternion\""_s },
+                            Message{
+                                    u"Construction from string is deprecated. Use structured value type construction instead for type \"QMatrix4x4\""_s },
                     },
                     { /*bad messages */ },
                     {
                             Message{ u"({ width: 30, height: 50 })"_s },
                             Message{ u"({ x: 10, y: 20, width: 30, height: 50 })"_s },
                             Message{ u"({ x: 30, y: 50 })"_s },
+                            Message{ u"({ x: 1, y: 2 })"_s },
+                            Message{ u"({ x: 1, y: 2 })"_s },
+                            Message{ u"({ x: 1, y: 2, z: 3 })"_s },
+                            Message{ u"({ x: 1, y: 2, z: 3, w: 4 })"_s },
+                            Message{ u"({ scalar: 1, x: 2, y: 3, z: 4 })"_s },
+                            Message{
+                                    u"({ m11: 1, m12: 2, m13: 3, m14: 4, m21: 5, m22: 6, m23: 7, m24: 8, m31: 9, m32: 10, m33: 11, m34: 12, m41: 13, m42: 14, m43: 15, m44: 16 })"_s },
                     } });
 }
 
 #if QT_CONFIG(library)
-void TestQmllint::testPlugin()
+void TestQmllint::hasTestPlugin()
 {
     bool pluginFound = false;
     for (const QQmlJSLinter::Plugin &plugin : m_linter.plugins()) {
-        if (plugin.name() == "testPlugin") {
-            pluginFound = true;
-            QCOMPARE(plugin.author(), u"Qt"_s);
-            QCOMPARE(plugin.description(), u"A test plugin for tst_qmllint"_s);
-            QCOMPARE(plugin.version(), u"1.0"_s);
-            break;
+        if (plugin.name() != "testPlugin")
+            continue;
+
+        pluginFound = true;
+        QCOMPARE(plugin.author(), u"Qt"_s);
+        QCOMPARE(plugin.description(), u"A test plugin for tst_qmllint"_s);
+        QCOMPARE(plugin.version(), u"1.0"_s);
+
+        for (auto &category : plugin.categories()) {
+            if (category.name() == u"testPlugin.TestDefaultValue") {
+                QCOMPARE(category.level(), QtCriticalMsg);
+                QCOMPARE(category.isIgnored(), true);
+            } else if (category.name() == u"testPlugin.TestDefaultValue2") {
+                QCOMPARE(category.level(), QtInfoMsg);
+                QCOMPARE(category.isIgnored(), false);
+            } else if (category.name() == u"testPlugin.test") {
+                QCOMPARE(category.level(), QtWarningMsg);
+                QCOMPARE(category.isIgnored(), false);
+            } else if (category.name() == u"testPlugin.TestDefaultValue3"){
+                QCOMPARE(category.level(), QtWarningMsg);
+                QCOMPARE(category.isIgnored(), false);
+            } else {
+                QFAIL("This category was not tested!");
+            }
         }
     }
     QVERIFY(pluginFound);
+}
+void TestQmllint::testPlugin_data()
+{
+    QTest::addColumn<QString>("fileName");
+    QTest::addColumn<Result>("expectedErrors");
 
-    runTest("elementpass_pluginTest.qml", Result { { Message { u"ElementTest OK"_s, 4, 5 } } });
-    runTest("propertypass_pluginTest.qml",
-            Result {
-                    { // Specific binding for specific property
-                      Message {
-                              u"Saw binding on Text property text with value NULL (and type 3) in scope Text"_s },
+    QTest::addRow("elementpass_pluginTest")
+            << testFile(u"testPluginData/elementpass_pluginTest.qml"_s)
+            << Result{ { Message{ u"ElementTest OK"_s, 4, 5 } } };
+    QTest::addRow("propertypass_pluginTest_read")
+            << testFile(u"testPluginData/propertypass_pluginTest.qml"_s)
+            << Result{
+                   {
+                       // Property on any type
+                       Message{ u"Saw read on Text property x in scope Text"_s, 8, 12 },
+                       Message{ u"Saw read on Text property x in scope Item"_s, 21, 25 },
+                       // JavaScript
+                       Message{ u"Saw read on ObjectPrototype property log in scope Item"_s, 21, 17 },
+                       Message{ u"Saw read on ObjectPrototype property log in scope Item"_s, 22, 14 },
+                   },
+               };
+    QTest::addRow("propertypass_pluginTest_write")
+            << testFile(u"testPluginData/propertypass_pluginTest.qml"_s)
+            << Result{
+                   {
+                       Message{ u"Saw write on Text property x with value int in scope Item"_s, 23, 9 },
+                   },
+               };
+    QTest::addRow("propertypass_pluginTest_binding")
+            << testFile(u"testPluginData/propertypass_pluginTest.qml"_s)
+            << Result{
+                   {
+                     // Specific binding for specific property
+                     Message{ u"Saw binding on Text property text with value NULL (and type 3) in scope Text"_s, 6, 15 },
+                     Message{ u"Saw binding on Text property x with value NULL (and type 2) in scope Text"_s, 7, 12 },
+                     Message{ u"Saw binding on Item property x with value NULL (and type 2) in scope Item"_s, 11, 8 },
+                     Message{ u"Saw binding on ListView property model with value ListModel (and type 8) in scope ListView"_s, 16, 16 },
+                     Message{ u"Saw binding on ListView property height with value NULL (and type 2) in scope ListView"_s, 17, 17 }
+                   },
+               };
 
-                      // Property on any type
-                      Message { u"Saw read on Text property x in scope Text"_s },
-                      Message {
-                              u"Saw binding on Text property x with value NULL (and type 2) in scope Text"_s },
-                      Message { u"Saw read on Text property x in scope Item"_s },
-                      Message { u"Saw write on Text property x with value int in scope Item"_s },
-                      Message {
-                              u"Saw binding on Item property x with value NULL (and type 2) in scope Item"_s },
-                      // JavaScript
-                      Message { u"Saw read on ObjectPrototype property log in scope Item"_s },
-                      Message { u"Saw read on ObjectPrototype property log in scope Item"_s },
-                      // ListModel
-                      Message {
-                              u"Saw binding on ListView property model with value ListModel (and type 8) in scope ListView"_s },
-                      Message {
-                              u"Saw binding on ListView property height with value NULL (and type 2) in scope ListView"_s } } });
-    runTest("controlsWithQuick_pluginTest.qml",
-            Result { { Message { u"QtQuick.Controls, QtQuick and QtQuick.Window present"_s } } });
-    runTest("controlsWithoutQuick_pluginTest.qml",
-            Result { { Message { u"QtQuick.Controls and NO QtQuick present"_s } } });
+    QTest::addRow("sourceLocations")
+            << testFile(u"testPluginData/sourceLocations_pluginTest.qml"_s)
+            << Result{
+                   {
+                     // Specific binding for specific property
+                     Message{ u"Saw binding on Item property x with value QString (and type 8) in scope Item"_s, 5, 12 },
+                     Message{ u"Saw binding on Item property EnterKey.type with value Qt::EnterKeyType (and type 8) in scope QQuickEnterKeyAttached"_s, 8, 24 },
+                     Message{ u"Saw binding on Item property x with value QJSPrimitiveValue (and type 8) in scope Item"_s, 11, 12 },
+                     Message{ u"Saw binding on Item property x with value NULL (and type 2) in scope Item"_s, 14, 12 },
+                     Message{ u"Saw binding on Item property onXChanged with value function (and type 8) in scope Item"_s, 18, 21 },
+                     Message{ u"Saw read on ObjectPrototype property log in scope Ite"_s, 21, 36 },
+                     Message{ u"Saw binding on Item property onXChanged with value QVariant (and type 8) in scope Item"_s, 22, 21 },
+                     Message{ u"Saw write on Item property x with value double in scope Item"_s, 30, 17 },
+                     Message{ u"Saw write on Item property x with value int in scope Item"_s, 35, 31 },
+                     Message{ u"Saw read on Item property x in scope Item"_s, 35, 46 },
+                   },
+               };
+    QTest::addRow("propertypass_pluginTest_call")
+            << testFile(u"testPluginData/propertypass_pluginTest.qml"_s)
+            << Result{
+                   {
+                        Message{ u"Saw call on ObjectPrototype property log in scope Item"_s, 21, 17 },
+                        Message{ u"Saw call on ObjectPrototype property log in scope Item"_s, 22, 14 },
+                        Message{ u"Saw call on ObjectPrototype property abs in scope Item"_s, 26, 22 },
+                        Message{ u"Saw call on Item property abs in scope Item"_s, 32, 16 },
+                        Message{ u"Saw call on  property now in scope Item"_s, 39, 22 }, // happening for Date.now()
+                   },
+               };
+    QTest::addRow("propertypass_pluginTest_translations")
+            << testFile(u"testPluginData/translations_pluginTest.qml"_s)
+            << Result{
+                   {
+                        // translations
+                        Message{ u"Saw call on ObjectPrototype property qsTr in scope Item"_s, 4, 34 },
+
+                        // should actually be qsTranslate, but better qsTr than nothing!
+                        // see also test "propertypass_pluginTest_qsTranslateEdgeCase" below
+                        Message{ u"Saw call on ObjectPrototype property qsTr in scope Item"_s, 5, 35 },
+
+                        Message{ u"Saw call on ObjectPrototype property qsTrId in scope Item"_s, 6, 36 },
+                        Message{ u"Saw call on ObjectPrototype property qsTr in scope Item"_s, 7, 46 },
+                        Message{ u"Saw call on ObjectPrototype property qsTranslate in scope Item"_s, 8, 47 },
+                        Message{ u"Saw call on ObjectPrototype property qsTrId in scope Item"_s, 9, 48 },
+                   },
+               };
+
+    QTest::addRow("controlsWithQuick_pluginTest")
+            << testFile(u"testPluginData/controlsWithQuick_pluginTest.qml"_s)
+            << Result{ { Message{ u"QtQuick.Controls, QtQuick and QtQuick.Window present"_s } } };
+    QTest::addRow("controlsWithoutQuick_pluginTest")
+            << testFile(u"testPluginData/controlsWithoutQuick_pluginTest.qml"_s)
+            << Result{ { Message{ u"QtQuick.Controls and NO QtQuick present"_s } } };
+
     // Verify that none of the passes do anything when they're not supposed to
-    runTest("nothing_pluginTest.qml", Result::clean());
+    QTest::addRow("nothing_pluginTest")
+            << testFile(u"testPluginData/nothing_pluginTest.qml"_s) << Result::clean();
+    QTest::addRow("settings_pluginTest")
+            << testFile(u"settings/plugin/elementpass_pluginTest.qml"_s) << Result::cleanWithSettings();
+    QTest::addRow("old_settings_pluginTest")
+            << testFile(u"settings/pluginOld/elementpass_pluginTest.qml"_s) << Result::cleanWithSettings();
+    QTest::addRow("nosettings_pluginTest")
+            << testFile(u"settings/plugin/elementpass_pluginTest.qml"_s)
+            << Result{ { Message{ u"ElementTest OK"_s } }, {}, {} };
+}
 
-    QVERIFY(runQmllint("settings/plugin/elemenpass_pluginSettingTest.qml", true, QStringList(), false)
-                    .isEmpty());
+void TestQmllint::testPlugin()
+{
+    QFETCH(QString, fileName);
+    QFETCH(Result, expectedErrors);
+
+    runTest(fileName, expectedErrors);
 }
 
 void TestQmllint::testPluginHelpCommandLine()
@@ -2138,7 +2531,7 @@ void TestQmllint::testPluginHelpCommandLine()
         QString output;
         QString errorOutput;
         runQmllint(
-                filename,
+                testFile(filename),
                 [&](QProcess &process) {
                     QVERIFY(process.waitForFinished());
                     QCOMPARE(process.exitStatus(), QProcess::NormalExit);
@@ -2151,7 +2544,7 @@ void TestQmllint::testPluginHelpCommandLine()
     };
     {
         // make sure plugin warnings are documented by --help
-        const auto [helpText, error] = qmllintOutput(u"nothing_pluginTest.qml"_s,
+        const auto [helpText, error] = qmllintOutput(u"testPluginData/nothing_pluginTest.qml"_s,
                                                      QStringList{ u"--help"_s });
         QVERIFY(helpText.contains(u"--Quick.property-changes-parsed"_s));
     }
@@ -2161,7 +2554,7 @@ void TestQmllint::testPluginCommandLine()
 {
     // make sure plugin warnings are accepted as options
     const QString warnings =
-            runQmllint(testFile(u"nothing_pluginTest.qml"_s), true,
+            runQmllint(testFile(u"testPluginData/nothing_pluginTest.qml"_s), true,
                        QStringList{ u"--Quick.property-changes-parsed"_s, u"disable"_s });
     // should not contain a warning about --Quick.property-changes-parsed being an unknown option
     // and no warnings
@@ -2217,21 +2610,20 @@ void TestQmllint::quickPlugin()
                               u"Cannot specify y for items inside Flow. Flow will not function."_s } } });
     runTest("pluginQuick_attached.qml",
             Result {
-                    { Message { u"ToolTip must be attached to an Item"_s },
-                      Message { u"SplitView attached property only works with Items"_s },
-                      Message { u"ScrollIndicator must be attached to a Flickable"_s },
-                      Message { u"ScrollBar must be attached to a Flickable or ScrollView"_s },
-                      Message { u"Accessible must be attached to an Item or an Action"_s },
-                      Message { u"EnterKey attached property only works with Items"_s },
+                    { Message { u"ToolTip attached property must be attached to an object deriving from Item"_s },
+                      Message { u"SplitView attached property must be attached to an object deriving from Item"_s },
+                      Message { u"ScrollIndicator attached property must be attached to an object deriving from Flickable"_s },
+                      Message { u"ScrollBar attached property must be attached to an object deriving from Flickable or ScrollView"_s },
+                      Message { u"Accessible attached property must be attached to an object deriving from Item or Action"_s },
+                      Message { u"EnterKey attached property must be attached to an object deriving from Item"_s },
                       Message {
-                              u"LayoutMirroring attached property only works with Items and Windows"_s },
-                      Message { u"Layout must be attached to Item elements"_s },
-                      Message { u"StackView attached property only works with Items"_s },
-                      Message { u"TextArea must be attached to a Flickable"_s },
-                      Message { u"StackLayout must be attached to an Item"_s },
-                      Message {
-                              u"Attached properties of SwipeDelegate must be accessed through an Item"_s },
-                      Message { u"SwipeView must be attached to an Item"_s } } });
+                              u"LayoutMirroring attached property must be attached to an object deriving from Item or Window"_s },
+                      Message { u"Layout attached property must be attached to an object deriving from Item"_s },
+                      Message { u"StackView attached property must be attached to an object deriving from Item"_s },
+                      Message { u"TextArea attached property must be attached to an object deriving from Flickable"_s },
+                      Message { u"StackLayout attached property must be attached to an object deriving from Item"_s },
+                      Message { u"SwipeDelegate attached property must be attached to an object deriving from Item"_s },
+                      Message { u"SwipeView attached property must be attached to an object deriving from Item"_s } } });
 
     {
         const Result result{ {}, { Message{ u"Tumbler"_s }, }, };
@@ -2294,6 +2686,7 @@ void TestQmllint::quickPlugin()
             } });
     runTest("pluginQuick_propertyChangesInvalidTarget.qml", Result {}); // we don't care about the specific warnings
 }
+#endif // QT_CONFIG(library)
 
 void TestQmllint::environment_data()
 {
@@ -2351,11 +2744,9 @@ void TestQmllint::maxWarnings()
     runQmllint(testFile("badScript.qml"), true, {"-W", "-1"});
     // 1 warning => should fail
     runQmllint(testFile("badScript.qml"), false, {"--max-warnings", "0"});
-    // only 1 warning => should exit normally
-    runQmllint(testFile("badScript.qml"), true, {"--max-warnings", "1"});
+    // only 2 warning => should exit normally
+    runQmllint(testFile("badScript.qml"), true, {"--max-warnings", "2"});
 }
-
-#endif
 
 void TestQmllint::ignoreSettingsNotCommandLineOptions()
 {

@@ -13,18 +13,17 @@
 // limitations under the License.
 
 import {createEmptyRecordConfig} from '../../controller/record_config_types';
-
 import {genTraceConfig} from './recording_config_utils';
 import {AndroidTargetInfo} from './recording_interfaces_v2';
 
 test('genTraceConfig() can run without manipulating the input config', () => {
   const config = createEmptyRecordConfig();
-  config.cpuSched = true;  // Exercise ftrace
+  config.cpuSched = true; // Exercise ftrace
 
   const targetInfo: AndroidTargetInfo = {
     name: 'test',
     targetType: 'ANDROID',
-    androidApiLevel: 31,  // >= 32 to exercise symbolizeKsyms
+    androidApiLevel: 31, // >= 32 to exercise symbolizeKsyms
     dataSources: [],
   };
 
@@ -32,37 +31,43 @@ test('genTraceConfig() can run without manipulating the input config', () => {
   const actual = genTraceConfig(config, targetInfo);
 
   const expected = {
-    'buffers': [
+    buffers: [
       {
-        'sizeKb': 63488,
-        'fillPolicy': 'DISCARD',
+        sizeKb: 63488,
+        fillPolicy: 'DISCARD',
       },
       {
-        'sizeKb': 2048,
-        'fillPolicy': 'DISCARD',
+        sizeKb: 2048,
+        fillPolicy: 'DISCARD',
       },
     ],
-    'dataSources': [
+    dataSources: [
       {
-        'config': {
-          'name': 'android.packages_list',
-          'targetBuffer': 1,
+        config: {
+          name: 'android.packages_list',
+          targetBuffer: 1,
         },
       },
       {
-        'config': {
-          'name': 'linux.process_stats',
-          'targetBuffer': 1,
-          'processStatsConfig': {
-            'scanAllProcessesOnStart': true,
+        config: {
+          name: 'linux.system_info',
+          targetBuffer: 1,
+        },
+      },
+      {
+        config: {
+          name: 'linux.process_stats',
+          targetBuffer: 1,
+          processStatsConfig: {
+            scanAllProcessesOnStart: true,
           },
         },
       },
       {
-        'config': {
-          'name': 'linux.ftrace',
-          'ftraceConfig': {
-            'ftraceEvents': [
+        config: {
+          name: 'linux.ftrace',
+          ftraceConfig: {
+            ftraceEvents: [
               'sched/sched_switch',
               'power/suspend_resume',
               'sched/sched_wakeup',
@@ -74,15 +79,15 @@ test('genTraceConfig() can run without manipulating the input config', () => {
               'task/task_rename',
               'sched/sched_blocked_reason',
             ],
-            'compactSched': {
-              'enabled': true,
+            compactSched: {
+              enabled: true,
             },
-            'symbolizeKsyms': true,
+            symbolizeKsyms: true,
           },
         },
       },
     ],
-    'durationMs': 10000,
+    durationMs: 10000,
   };
 
   // Compare stringified versions to void issues with JS objects.

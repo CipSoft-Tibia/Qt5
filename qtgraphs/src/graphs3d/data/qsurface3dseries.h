@@ -31,6 +31,8 @@ class Q_GRAPHS_EXPORT QSurface3DSeries : public QAbstract3DSeries
                    wireframeColorChanged FINAL)
     Q_PROPERTY(
         QSurfaceDataArray dataArray READ dataArray WRITE setDataArray NOTIFY dataArrayChanged FINAL)
+    QML_ELEMENT
+    QML_UNCREATABLE("Trying to create uncreatable: QSurface3DSeries, use Surface3DSeries instead.")
 
 public:
     enum DrawFlag {

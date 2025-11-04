@@ -16,11 +16,13 @@
 #include "base/logging.h"
 #include "base/strings/string_util.h"
 #include "media/base/android/media_codec_bridge.h"
-#include "media/base/android/media_jni_headers/CodecProfileLevelList_jni.h"
-#include "media/base/android/media_jni_headers/MediaCodecUtil_jni.h"
 #include "media/base/video_codecs.h"
 #include "third_party/re2/src/re2/re2.h"
 #include "url/gurl.h"
+
+// Must come after all headers that specialize FromJniType() / ToJniType().
+#include "media/base/android/media_jni_headers/CodecProfileLevelList_jni.h"
+#include "media/base/android/media_jni_headers/MediaCodecUtil_jni.h"
 
 using base::android::AttachCurrentThread;
 using base::android::ConvertJavaStringToUTF8;
@@ -286,9 +288,9 @@ bool MediaCodecUtil::IsPassthroughAudioFormat(AudioCodec codec) {
 }
 
 // static
-absl::optional<gfx::Size> MediaCodecUtil::LookupCodedSizeAlignment(
+std::optional<gfx::Size> MediaCodecUtil::LookupCodedSizeAlignment(
     std::string_view name,
-    absl::optional<int> host_sdk_int) {
+    std::optional<int> host_sdk_int) {
   // Below we build a map of codec names to coded size alignments. We do this on
   // a best effort basis to avoid glitches during a coded size change.
   //
@@ -310,6 +312,7 @@ absl::optional<gfx::Size> MediaCodecUtil::LookupCodedSizeAlignment(
   using base::android::SDK_VERSION_Q;
   using base::android::SDK_VERSION_R;
   using base::android::SDK_VERSION_Sv2;
+  using base::android::SDK_VERSION_U;
   constexpr CodecAlignment kCodecAlignmentMap[] = {
       // Codec2 software decoders.
       {"c2.android.avc", gfx::Size(128, 2), SDK_VERSION_Sv2},
@@ -324,6 +327,7 @@ absl::optional<gfx::Size> MediaCodecUtil::LookupCodedSizeAlignment(
       {"omx.google.(h264|hevc|vp8|vp9)", gfx::Size(2, 2)},
 
       // Google AV1 hardware decoder.
+      {"c2.google.av1", gfx::Size(64, 16), SDK_VERSION_U},
       {"c2.google.av1", gfx::Size(64, 8)},
 
       // Qualcomm
@@ -359,7 +363,7 @@ absl::optional<gfx::Size> MediaCodecUtil::LookupCodedSizeAlignment(
     }
   }
 
-  return absl::nullopt;
+  return std::nullopt;
 }
 
 // static

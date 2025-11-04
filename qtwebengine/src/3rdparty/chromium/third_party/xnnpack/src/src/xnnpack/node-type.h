@@ -9,7 +9,7 @@
 
 #pragma once
 
-#include <xnnpack/common.h>
+#include "xnnpack/common.h"
 
 
 #ifdef __cplusplus
@@ -29,25 +29,30 @@ enum xnn_node_type {
   xnn_node_type_concatenate2,
   xnn_node_type_concatenate3,
   xnn_node_type_concatenate4,
+  xnn_node_type_concatenate5,
   xnn_node_type_convert,
   xnn_node_type_convolution_2d,
   xnn_node_type_copy,
+  xnn_node_type_copysign,
   xnn_node_type_deconvolution_2d,
   xnn_node_type_depth_to_space_2d,
   xnn_node_type_depthwise_convolution_2d,
   xnn_node_type_divide,
   xnn_node_type_elu,
+  xnn_node_type_exp,
   xnn_node_type_even_split2,
   xnn_node_type_even_split3,
   xnn_node_type_even_split4,
   xnn_node_type_floor,
   xnn_node_type_fully_connected,
   xnn_node_type_fully_connected_sparse,
+  xnn_node_type_gelu,
   xnn_node_type_global_average_pooling_1d,
   xnn_node_type_global_average_pooling_2d,
   xnn_node_type_global_sum_pooling_1d,
   xnn_node_type_global_sum_pooling_2d,
   xnn_node_type_hardswish,
+  xnn_node_type_log,
   xnn_node_type_leaky_relu,
   xnn_node_type_max_pooling_2d,
   xnn_node_type_maximum2,
@@ -55,6 +60,8 @@ enum xnn_node_type {
   xnn_node_type_multiply2,
   xnn_node_type_negate,
   xnn_node_type_prelu,
+  xnn_node_type_reciprocal_square_root,
+  xnn_node_type_reshape_2d,
   xnn_node_type_rope,
   xnn_node_type_scaled_dot_product_attention,
   xnn_node_type_sigmoid,

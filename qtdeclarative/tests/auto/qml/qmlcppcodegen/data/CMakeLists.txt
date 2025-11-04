@@ -7,8 +7,11 @@ add_subdirectory(WithSubDir)
 set(cpp_sources
     ambiguous.h
     birthdayparty.cpp birthdayparty.h
+    collector.h
     convertQJSPrimitiveValueToIntegral.h
     cppbaseclass.h
+    cppobj.h
+    detachedreferences.h
     druggeljug.h
     dummyobjekt.h
     dynamicmeta.h
@@ -19,6 +22,7 @@ set(cpp_sources
     invisible.h
     largeValueType.h
     listprovider.h
+    listsingleton.h
     multiforeign.h
     objectwithmethod.h
     person.cpp person.h
@@ -48,17 +52,20 @@ set(qml_files
     BaseConstraint.qml
     BaseMember.qml
     BindingExpression.qml
+    Categorizer.qml
     CxxTypeFromDir.qml
     CxxTypeFromImplicit.qml
     Cycle1.qml
     Cycle2.qml
     Cycle3.qml
     CppMethodListReturnType.qml
+    DeduplicateConversionOrigins.qml
     Dummy.qml
     Dummy2.qml
     EditConstraint.qml
     Enums.qml
     Foozle.qml
+    GetOptionalLookupNonVoidableBase.qml
     GetOptionalLookupOnQJSValueNonStrict.qml
     GetOptionalLookupShadowed.qml
     Loopy.qml
@@ -104,10 +111,14 @@ set(qml_files
     blockComments.qml
     boolCoercions.qml
     boolPointerMerge.qml
+    brokenAs.qml
     boundComponents.qml
     callContextPropertyLookupResult.qml
+    callFactory.qml
+    callObjectLookupOnNull.qml
     callWithSpread.qml
     childobject.qml
+    collector.qml
     colorAsVariant.qml
     colorString.qml
     compareOriginals.qml
@@ -132,8 +143,12 @@ set(qml_files
     dateConversions.qml
     deadShoeSize.qml
     deadStoreLoop.qml
+    destroyAndToString.qml
+    detachOnAssignment.qml
+    detachedreferences.qml
     dialog.qml
     dialogButtonBox.qml
+    disappearingArrowFunction.qml
     dynamicscene.qml
     enforceSignature.qml
     enumConversion.qml
@@ -162,6 +177,7 @@ set(qml_files
     flagEnum.qml
     fromBoolValue.qml
     funcWithParams.qml
+    functionCallInitCrash.qml
     functionLookup.qml
     functionReturningVoid.qml
     functionTakingVar.qml
@@ -187,6 +203,7 @@ set(qml_files
     invisibleListElementType.qml
     invisibleTypes.qml
     isnan.qml
+    iterateUnknownValue.qml
     iteration.qml
     javaScriptArgument.qml
     jsArrayMethods.qml
@@ -211,6 +228,7 @@ set(qml_files
     mathMinMax.qml
     mathOperations.qml
     mathStaticProperties.qml
+    mergeSideEffects.qml
     mergedObjectRead.qml
     mergedObjectWrite.qml
     methodOnListLookup.qml
@@ -236,6 +254,7 @@ set(qml_files
     objectInVar.qml
     objectLookupOnListElement.qml
     objectWithStringListMethod.qml
+    oldEnum.qml
     optionalComparison.qml
     outOfBounds.qml
     overriddenMember.qml
@@ -247,6 +266,7 @@ set(qml_files
     pressAndHoldButton.qml
     qmlUsing.qml
     qtbug113150.qml
+    qtfont.qml
     reduceWithNullThis.qml
     readEnumFromInstance.qml
     readonlyListProperty.qml
@@ -262,6 +282,7 @@ set(qml_files
     script.js
     script.mjs
     sequenceToIterable.qml
+    sequenceToIterable2.qml
     setLookupConversion.qml
     setLookupOriginalScope.qml
     shadowedAsCasts.qml
@@ -300,6 +321,7 @@ set(qml_files
     undefinedToDouble.qml
     unknownAttached.qml
     unknownParameter.qml
+    unknownUnderlyingType.qml
     unstoredUndefined.qml
     unusedAttached.qml
     urlString.qml
@@ -408,6 +430,7 @@ set_target_properties(codegen_test_module PROPERTIES
 
 target_compile_definitions(codegen_test_module PUBLIC
     -DGENERATED_CPP_FOLDER="${CMAKE_CURRENT_BINARY_DIR}/.rcc/qmlcache"
+    -DQT_NO_CAST_FROM_ASCII
 )
 
 qt6_add_qml_module(codegen_test_module

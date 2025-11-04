@@ -54,7 +54,7 @@ private slots:
     void testDirection();
 
 private:
-    void loadTestData(const QByteArray &filename);
+    void loadTestData(const QString &filename);
     void updateProperty(int frame);
 
     BMRect *m_rect = nullptr;
@@ -271,7 +271,7 @@ void tst_BMRect::testDirection()
     QVERIFY(m_rect->direction() == 3);
 }
 
-void tst_BMRect::loadTestData(const QByteArray &filename)
+void tst_BMRect::loadTestData(const QString &filename)
 {
     if (m_rect) {
         delete m_rect;

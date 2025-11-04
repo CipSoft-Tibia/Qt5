@@ -17,6 +17,7 @@
 #include <private/qsgadaptationlayer_p.h>
 #include <private/qsgcontext_p.h>
 #include <private/qsgtexture_p.h>
+#include <private/qsgdefaultrendercontext_p.h>
 #include <rhi/qrhi.h>
 
 QT_BEGIN_NAMESPACE
@@ -64,6 +65,7 @@ public Q_SLOTS:
 private:
     void grab();
     void releaseResources();
+    void clearMainTexture();
 
     QSGNode *m_item = nullptr;
     QRectF m_logicalRect;
@@ -73,7 +75,8 @@ private:
 
     QSGRenderer *m_renderer = nullptr;
     QRhiTexture *m_texture = nullptr;
-    QRhiRenderBuffer *m_ds = nullptr;
+    QRhiTexture *m_prevTexture = nullptr;
+    QSharedPointer<QSGDepthStencilBuffer> m_ds;
     QRhiRenderBuffer *m_msaaColorBuffer = nullptr;
     QRhiTexture *m_secondaryTexture = nullptr;
     QRhiTextureRenderTarget *m_rt = nullptr;

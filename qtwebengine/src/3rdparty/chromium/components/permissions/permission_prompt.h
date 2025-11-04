@@ -6,12 +6,13 @@
 #define COMPONENTS_PERMISSIONS_PERMISSION_PROMPT_H_
 
 #include <memory>
+#include <optional>
 #include <vector>
 
 #include "base/functional/callback.h"
 #include "base/memory/raw_ptr.h"
+#include "components/permissions/features.h"
 #include "components/permissions/permission_ui_selector.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "ui/gfx/geometry/rect.h"
 #include "url/gurl.h"
 
@@ -85,9 +86,9 @@ class PermissionPrompt {
     virtual void PreIgnoreQuietPrompt() = 0;
 
     // If |ShouldCurrentRequestUseQuietUI| return true, this will provide a
-    // reason as to why the quiet UI needs to be used. Returns `absl::nullopt`
+    // reason as to why the quiet UI needs to be used. Returns `std::nullopt`
     // otherwise.
-    virtual absl::optional<PermissionUiSelector::QuietUiReason>
+    virtual std::optional<PermissionUiSelector::QuietUiReason>
     ReasonForUsingQuietUi() const = 0;
 
     // Notification permission requests might use a quiet UI when the
@@ -157,15 +158,27 @@ class PermissionPrompt {
   // Get the type of prompt UI shown for metrics.
   virtual PermissionPromptDisposition GetPromptDisposition() const = 0;
 
+  // Check if the view shown is an "Ask" prompt for metrics. Currently this only
+  // distinguishes different prompt views displayed through the Page Embedded
+  // Permission Element.
+  virtual bool IsAskPrompt() const = 0;
+
   // Get the prompt view bounds in screen coordinates.
-  virtual absl::optional<gfx::Rect> GetViewBoundsInScreen() const = 0;
+  virtual std::optional<gfx::Rect> GetViewBoundsInScreen() const = 0;
 
   // Get whether the permission request is allowed to be finalized as soon a
   // decision is transmitted. If this returns `false` the delegate should wait
   // for an explicit |Delegate::FinalizeCurrentRequests()| call to be made.
   virtual bool ShouldFinalizeRequestAfterDecided() const = 0;
-};
 
+  // Return what variant of the secondary UI is shown for Page Embedded
+  // Permission Element.
+  virtual std::vector<permissions::ElementAnchoredBubbleVariant>
+  GetPromptVariants() const = 0;
+
+  virtual std::optional<feature_params::PermissionElementPromptPosition>
+  GetPromptPosition() const = 0;
+};
 }  // namespace permissions
 
 #endif  // COMPONENTS_PERMISSIONS_PERMISSION_PROMPT_H_

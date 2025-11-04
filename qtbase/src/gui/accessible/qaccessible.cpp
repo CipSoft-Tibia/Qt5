@@ -1,5 +1,6 @@
 // Copyright (C) 2020 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:data-parser
 
 #include "qaccessible.h"
 
@@ -26,7 +27,7 @@ QT_BEGIN_NAMESPACE
 
 using namespace Qt::StringLiterals;
 
-Q_LOGGING_CATEGORY(lcAccessibilityCore, "qt.accessibility.core");
+Q_STATIC_LOGGING_CATEGORY(lcAccessibilityCore, "qt.accessibility.core");
 
 /*!
     \class QAccessible
@@ -278,6 +279,7 @@ Q_LOGGING_CATEGORY(lcAccessibilityCore, "qt.accessibility.core");
     \value Animation        An object that displays an animation.
     \value Application      The application's main window.
     \value Assistant        An object that provides interactive help.
+    \value [since 6.9] BlockQuote       A section of content that is quoted from another source.
     \value Border           An object that represents a border.
     \value ButtonDropDown   A button that drops down a list of items.
     \value ButtonDropGrid   A button that drops down a grid.
@@ -361,7 +363,7 @@ Q_LOGGING_CATEGORY(lcAccessibilityCore, "qt.accessibility.core");
     interfaces of the calling object, together with the relations
     for each object.
 
-    Each entry in the list is a QPair where the \c second member stores
+    Each entry in the list is a std::pair where the \c second member stores
     the relation type(s) between the \c returned object represented by the
     \c first member and the \c origin (the caller) interface/object.
 
@@ -949,7 +951,7 @@ void QAccessible::updateAccessibility(QAccessibleEvent *event)
     \param boundaryType the type of boundary to find
     \return the boundaries as pair
 */
-QPair< int, int > QAccessible::qAccessibleTextBoundaryHelper(const QTextCursor &offsetCursor, TextBoundaryType boundaryType)
+std::pair< int, int > QAccessible::qAccessibleTextBoundaryHelper(const QTextCursor &offsetCursor, TextBoundaryType boundaryType)
 {
     Q_ASSERT(!offsetCursor.isNull());
 
@@ -957,7 +959,7 @@ QPair< int, int > QAccessible::qAccessibleTextBoundaryHelper(const QTextCursor &
     endCursor.movePosition(QTextCursor::End);
     int characterCount = endCursor.position();
 
-    QPair<int, int> result;
+    std::pair<int, int> result;
     QTextCursor cursor = offsetCursor;
     switch (boundaryType) {
     case CharBoundary:
@@ -1157,7 +1159,7 @@ QPair< int, int > QAccessible::qAccessibleTextBoundaryHelper(const QTextCursor &
 
     \sa parent(), child()
 */
-QList<QPair<QAccessibleInterface*, QAccessible::Relation>>
+QList<std::pair<QAccessibleInterface*, QAccessible::Relation>>
 QAccessibleInterface::relations(QAccessible::Relation match) const
 {
     Q_UNUSED(match);

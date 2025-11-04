@@ -5,16 +5,16 @@
 #include "qpdflinkmodel.h"
 #include "qpdflinkmodel_p.h"
 #include "qpdfdocument_p.h"
+#include "qtpdfglobal_p.h"
 
 #include "third_party/pdfium/public/fpdf_doc.h"
 #include "third_party/pdfium/public/fpdf_text.h"
 
-#include <QLoggingCategory>
 #include <QMetaEnum>
 
 QT_BEGIN_NAMESPACE
 
-Q_LOGGING_CATEGORY(qLcLink, "qt.pdf.links")
+Q_PDF_LOGGING_CATEGORY(qLcLink, "qt.pdf.links")
 
 /*!
     \class QPdfLinkModel

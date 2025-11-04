@@ -63,19 +63,19 @@ void BackgroundDownloadServiceImpl::Initialize(base::OnceClosure callback) {
 }
 
 const ServiceConfig& BackgroundDownloadServiceImpl::GetConfig() {
-  NOTREACHED() << " This function is not supported on iOS.";
+  NOTREACHED_IN_MIGRATION() << " This function is not supported on iOS.";
   return service_config_;
 }
 
 void BackgroundDownloadServiceImpl::OnStartScheduledTask(
     DownloadTaskType task_type,
     TaskFinishedCallback callback) {
-  NOTREACHED() << " This function is not supported on iOS.";
+  NOTREACHED_IN_MIGRATION() << " This function is not supported on iOS.";
 }
 
 bool BackgroundDownloadServiceImpl::OnStopScheduledTask(
     DownloadTaskType task_type) {
-  NOTREACHED() << " This function is not supported on iOS.";
+  NOTREACHED_IN_MIGRATION() << " This function is not supported on iOS.";
   return true;
 }
 
@@ -119,11 +119,11 @@ void BackgroundDownloadServiceImpl::StartDownload(
 }
 
 void BackgroundDownloadServiceImpl::PauseDownload(const std::string& guid) {
-  NOTREACHED() << " This function is not supported on iOS.";
+  NOTREACHED_IN_MIGRATION() << " This function is not supported on iOS.";
 }
 
 void BackgroundDownloadServiceImpl::ResumeDownload(const std::string& guid) {
-  NOTREACHED() << " This function is not supported on iOS.";
+  NOTREACHED_IN_MIGRATION() << " This function is not supported on iOS.";
 }
 void BackgroundDownloadServiceImpl::CancelDownload(const std::string& guid) {
   cancelled_downloads_.emplace(guid);
@@ -131,7 +131,7 @@ void BackgroundDownloadServiceImpl::CancelDownload(const std::string& guid) {
 void BackgroundDownloadServiceImpl::ChangeDownloadCriteria(
     const std::string& guid,
     const SchedulingParams& params) {
-  NOTREACHED() << " This function is not supported on iOS.";
+  NOTREACHED_IN_MIGRATION() << " This function is not supported on iOS.";
 }
 
 Logger* BackgroundDownloadServiceImpl::GetLogger() {
@@ -298,17 +298,17 @@ BackgroundDownloadServiceImpl::GetServiceDownloads() {
   EntryDetailsList list;
   auto entries = model_->PeekEntries();
   for (download::Entry* entry : entries) {
-    list.push_back(std::make_pair(entry, absl::nullopt));
+    list.push_back(std::make_pair(entry, std::nullopt));
   }
   return list;
 }
 
-absl::optional<LogSource::EntryDetails>
+std::optional<LogSource::EntryDetails>
 BackgroundDownloadServiceImpl::GetServiceDownload(const std::string& guid) {
   auto* entry = model_->Get(guid);
 
-  return absl::optional<LogSource::EntryDetails>(
-      std::make_pair(entry, absl::nullopt));
+  return std::optional<LogSource::EntryDetails>(
+      std::make_pair(entry, std::nullopt));
 }
 
 void BackgroundDownloadServiceImpl::OnDownloadFinished(

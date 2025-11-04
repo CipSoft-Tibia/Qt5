@@ -13,18 +13,20 @@
 // limitations under the License.
 
 import {Time} from '../base/time';
-import {pluginManager} from '../common/plugins';
-import {Area} from '../common/state';
 import {featureFlags} from '../core/feature_flags';
 import {Flow, globals} from '../frontend/globals';
 import {publishConnectedFlows, publishSelectedFlows} from '../frontend/publish';
-import {asSliceSqlId} from '../frontend/sql_types';
+import {asSliceSqlId} from '../trace_processor/sql_utils/core_types';
 import {Engine} from '../trace_processor/engine';
 import {LONG, NUM, STR_NULL} from '../trace_processor/query_result';
-import {SLICE_TRACK_KIND} from '../tracks/chrome_slices';
-import {ACTUAL_FRAMES_SLICE_TRACK_KIND} from '../tracks/frames';
-
 import {Controller} from './controller';
+import {Monitor} from '../base/monitor';
+import {
+  ACTUAL_FRAMES_SLICE_TRACK_KIND,
+  THREAD_SLICE_TRACK_KIND,
+} from '../public/track_kinds';
+import {TrackDescriptor} from '../public/track';
+import {AreaSelection} from '../public/selection';
 
 export interface FlowEventsControllerArgs {
   engine: Engine;
@@ -33,15 +35,16 @@ export interface FlowEventsControllerArgs {
 const SHOW_INDIRECT_PRECEDING_FLOWS_FLAG = featureFlags.register({
   id: 'showIndirectPrecedingFlows',
   name: 'Show indirect preceding flows',
-  description: 'Show indirect preceding flows (connected through ancestor ' +
-      'slices) when a slice is selected.',
+  description:
+    'Show indirect preceding flows (connected through ancestor ' +
+    'slices) when a slice is selected.',
   defaultValue: false,
 });
 
 export class FlowEventsController extends Controller<'main'> {
-  private lastSelectedSliceId?: number;
-  private lastSelectedArea?: Area;
-  private lastSelectedKind: 'CHROME_SLICE'|'AREA'|'NONE' = 'NONE';
+  private readonly monitor = new Monitor([
+    () => globals.selectionManager.selection,
+  ]);
 
   constructor(private args: FlowEventsControllerArgs) {
     super('main');
@@ -103,11 +106,11 @@ export class FlowEventsController extends Controller<'main'> {
       flowToDescendant: NUM,
     });
 
-    const nullToStr = (s: null|string): string => {
+    const nullToStr = (s: null | string): string => {
       return s === null ? 'NULL' : s;
     };
 
-    const nullToUndefined = (s: null|string): undefined|string => {
+    const nullToUndefined = (s: null | string): undefined | string => {
       return s === null ? undefined : s;
     };
 
@@ -160,7 +163,6 @@ export class FlowEventsController extends Controller<'main'> {
       });
     }
 
-
     // Everything below here is a horrible hack to support flows for
     // async slice tracks.
     // In short the issue is this:
@@ -190,40 +192,39 @@ export class FlowEventsController extends Controller<'main'> {
     // We end up with one Info POJOs for each UI async slice track
     // which has at least  one flow {begin,end}ing in one of its slices.
     interface Info {
-      uiTrackId: string;
       siblingTrackIds: number[];
       sliceIds: number[];
       nodes: Array<{
-        sliceId: number,
-        depth: number,
+        sliceId: number;
+        depth: number;
       }>;
     }
 
-    const uiTrackIdToInfo = new Map<string, null|Info>();
-    const trackIdToInfo = new Map<number, null|Info>();
+    const trackUriToInfo = new Map<string, null | Info>();
+    const trackIdToInfo = new Map<number, null | Info>();
 
-    const trackIdToUiTrackId = globals.state.trackKeyByTrackId;
-    const tracks = globals.state.tracks;
+    const trackIdToTrack = new Map<number, TrackDescriptor>();
+    globals.trackManager
+      .getAllTracks()
+      .forEach((trackDescriptor) =>
+        trackDescriptor.tags?.trackIds?.forEach((trackId) =>
+          trackIdToTrack.set(trackId, trackDescriptor),
+        ),
+      );
 
-    const getInfo = (trackId: number): null|Info => {
+    const getInfo = (trackId: number): null | Info => {
       let info = trackIdToInfo.get(trackId);
       if (info !== undefined) {
         return info;
       }
 
-      const uiTrackId = trackIdToUiTrackId[trackId];
-      if (uiTrackId === undefined) {
+      const trackDescriptor = trackIdToTrack.get(trackId);
+      if (trackDescriptor === undefined) {
         trackIdToInfo.set(trackId, null);
         return null;
       }
 
-      const track = tracks[uiTrackId];
-      if (track === undefined) {
-        trackIdToInfo.set(trackId, null);
-        return null;
-      }
-
-      info = uiTrackIdToInfo.get(uiTrackId);
+      info = trackUriToInfo.get(trackDescriptor.uri);
       if (info !== undefined) {
         return info;
       }
@@ -233,22 +234,20 @@ export class FlowEventsController extends Controller<'main'> {
       // anything if there is only one TP track in this async track. In
       // that case experimental_slice_layout is just an expensive way
       // to find out depth === layout_depth.
-      const trackInfo = pluginManager.resolveTrackInfo(track.uri);
-      const trackIds = trackInfo?.trackIds;
+      const trackIds = trackDescriptor?.tags?.trackIds;
       if (trackIds === undefined || trackIds.length <= 1) {
-        uiTrackIdToInfo.set(uiTrackId, null);
+        trackUriToInfo.set(trackDescriptor.uri, null);
         trackIdToInfo.set(trackId, null);
         return null;
       }
 
       const newInfo = {
-        uiTrackId,
-        siblingTrackIds: trackIds,
+        siblingTrackIds: [...trackIds],
         sliceIds: [],
         nodes: [],
       };
 
-      uiTrackIdToInfo.set(uiTrackId, newInfo);
+      trackUriToInfo.set(trackDescriptor.uri, newInfo);
       trackIdToInfo.set(trackId, newInfo);
 
       return newInfo;
@@ -268,7 +267,7 @@ export class FlowEventsController extends Controller<'main'> {
     // Second pass, for each async track:
     // - Query to find the layout_depth for each relevant sliceId
     // - Iterate through the nodes updating the depth in place
-    for (const info of uiTrackIdToInfo.values()) {
+    for (const info of trackUriToInfo.values()) {
       if (info === null) {
         continue;
       }
@@ -306,22 +305,18 @@ export class FlowEventsController extends Controller<'main'> {
   }
 
   sliceSelected(sliceId: number) {
-    if (this.lastSelectedKind === 'CHROME_SLICE' &&
-        this.lastSelectedSliceId === sliceId) {
-      return;
-    }
-    this.lastSelectedSliceId = sliceId;
-    this.lastSelectedKind = 'CHROME_SLICE';
-
-    const connectedFlows = SHOW_INDIRECT_PRECEDING_FLOWS_FLAG.get() ?
-        `(
+    const connectedFlows = SHOW_INDIRECT_PRECEDING_FLOWS_FLAG.get()
+      ? `(
            select * from directly_connected_flow(${sliceId})
            union
            select * from preceding_flow(${sliceId})
-         )` :
-        `directly_connected_flow(${sliceId})`;
+         )`
+      : `directly_connected_flow(${sliceId})`;
 
     const query = `
+    -- Include slices.flow to initialise indexes on 'flow.slice_in' and 'flow.slice_out'.
+    INCLUDE PERFETTO MODULE slices.flow;
+
     select
       f.slice_out as beginSliceId,
       t1.track_id as beginTrackId,
@@ -357,35 +352,24 @@ export class FlowEventsController extends Controller<'main'> {
     left join process process_out on process_out.upid = thread_out.upid
     left join process process_in on process_in.upid = thread_in.upid
     `;
-    this.queryFlowEvents(
-        query, (flows: Flow[]) => publishConnectedFlows(flows));
+    this.queryFlowEvents(query, (flows: Flow[]) =>
+      publishConnectedFlows(flows),
+    );
   }
 
-  areaSelected(areaId: string) {
-    const area = globals.state.areas[areaId];
-    if (this.lastSelectedKind === 'AREA' && this.lastSelectedArea &&
-        this.lastSelectedArea.tracks.join(',') === area.tracks.join(',') &&
-        this.lastSelectedArea.end === area.end &&
-        this.lastSelectedArea.start === area.start) {
-      return;
-    }
-
-    this.lastSelectedArea = area;
-    this.lastSelectedKind = 'AREA';
-
+  private areaSelected(area: AreaSelection) {
     const trackIds: number[] = [];
 
-    for (const uiTrackId of area.tracks) {
-      const track = globals.state.tracks[uiTrackId];
-      if (track?.uri !== undefined) {
-        const trackInfo = pluginManager.resolveTrackInfo(track.uri);
-        const kind = trackInfo?.kind;
-        if (kind === SLICE_TRACK_KIND ||
-            kind === ACTUAL_FRAMES_SLICE_TRACK_KIND) {
-          if (trackInfo?.trackIds) {
-            for (const trackId of trackInfo.trackIds) {
-              trackIds.push(trackId);
-            }
+    for (const trackUri of area.trackUris) {
+      const trackInfo = globals.trackManager.getTrack(trackUri);
+      const kind = trackInfo?.tags?.kind;
+      if (
+        kind === THREAD_SLICE_TRACK_KIND ||
+        kind === ACTUAL_FRAMES_SLICE_TRACK_KIND
+      ) {
+        if (trackInfo?.tags?.trackIds) {
+          for (const trackId of trackInfo.tags.trackIds) {
+            trackIds.push(trackId);
           }
         }
       }
@@ -436,24 +420,32 @@ export class FlowEventsController extends Controller<'main'> {
   }
 
   refreshVisibleFlows() {
-    const selection = globals.state.currentSelection;
-    if (!selection) {
-      this.lastSelectedKind = 'NONE';
+    if (!this.monitor.ifStateChanged()) {
+      return;
+    }
+
+    const selection = globals.selectionManager.selection;
+    if (selection.kind === 'empty') {
       publishConnectedFlows([]);
       publishSelectedFlows([]);
       return;
     }
 
+    const legacySelection = globals.selectionManager.legacySelection;
     // TODO(b/155483804): This is a hack as annotation slices don't contain
     // flows. We should tidy this up when fixing this bug.
-    if (selection.kind === 'CHROME_SLICE' && selection.table !== 'annotation') {
-      this.sliceSelected(selection.id);
+    if (
+      legacySelection &&
+      legacySelection.kind === 'SLICE' &&
+      legacySelection.table !== 'annotation'
+    ) {
+      this.sliceSelected(legacySelection.id);
     } else {
       publishConnectedFlows([]);
     }
 
-    if (selection.kind === 'AREA') {
-      this.areaSelected(selection.areaId);
+    if (selection.kind === 'area') {
+      this.areaSelected(selection);
     } else {
       publishSelectedFlows([]);
     }

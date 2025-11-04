@@ -56,6 +56,7 @@ public:
     virtual void raise() {}
     virtual void lower() {}
     virtual void setContentOrientationMask(Qt::ScreenOrientations orientation) { Q_UNUSED(orientation); }
+    virtual void setContentGeometry(const QRect &rect) { Q_UNUSED(rect); }
 
     virtual void sendProperty(const QString &name, const QVariant &value);
 
@@ -66,8 +67,9 @@ public:
 
     virtual void propagateSizeHints() {}
 
-    virtual void setWindowGeometry(const QRect &rect) { Q_UNUSED(rect); }
+    virtual void setWindowGeometry(const QRect &rect);
     virtual void setWindowPosition(const QPoint &position) { Q_UNUSED(position); }
+    virtual void setWindowSize(const QSize &size) { Q_UNUSED(size); }
 
     virtual bool requestActivate() { return false; }
     virtual bool requestActivateOnShow() { return false; }
@@ -87,6 +89,8 @@ public:
 
     virtual void attachPopup(QWaylandShellSurface *popup) { Q_UNUSED(popup); }
     virtual void detachPopup(QWaylandShellSurface *popup) { Q_UNUSED(popup); }
+
+    virtual void setIcon(const QIcon &icon) { Q_UNUSED(icon); }
 
 protected:
     void resizeFromApplyConfigure(const QSize &sizeWithMargins, const QPoint &offset = {0, 0});

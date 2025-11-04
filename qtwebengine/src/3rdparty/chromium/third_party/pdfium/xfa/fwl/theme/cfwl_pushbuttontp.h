@@ -7,11 +7,14 @@
 #ifndef XFA_FWL_THEME_CFWL_PUSHBUTTONTP_H_
 #define XFA_FWL_THEME_CFWL_PUSHBUTTONTP_H_
 
+#include <array>
 #include <memory>
 
 #include "fxjs/gc/heap.h"
 #include "xfa/fwl/cfwl_themepart.h"
 #include "xfa/fwl/theme/cfwl_widgettp.h"
+
+namespace pdfium {
 
 class CFWL_PushButtonTP final : public CFWL_WidgetTP {
  public:
@@ -23,10 +26,10 @@ class CFWL_PushButtonTP final : public CFWL_WidgetTP {
 
  private:
   struct PBThemeData {
-    FX_ARGB clrBorder[5];
-    FX_ARGB clrStart[5];
-    FX_ARGB clrEnd[5];
-    FX_ARGB clrFill[5];
+    std::array<FX_ARGB, 5> clrBorder;
+    std::array<FX_ARGB, 5> clrStart;
+    std::array<FX_ARGB, 5> clrEnd;
+    std::array<FX_ARGB, 5> clrFill;
   };
 
   CFWL_PushButtonTP();
@@ -36,5 +39,10 @@ class CFWL_PushButtonTP final : public CFWL_WidgetTP {
 
   std::unique_ptr<PBThemeData> m_pThemeData;
 };
+
+}  // namespace pdfium
+
+// TODO(crbug.com/42271761): Remove.
+using pdfium::CFWL_PushButtonTP;
 
 #endif  // XFA_FWL_THEME_CFWL_PUSHBUTTONTP_H_

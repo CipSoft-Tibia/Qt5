@@ -185,8 +185,12 @@ class MockUDPSocket : public net::DatagramClientSocket {
     ADD_FAILURE() << "Called SetDoNotFragment()";
     return net::ERR_UNEXPECTED;
   }
-  int SetRecvEcn() override {
-    ADD_FAILURE() << "Called SetRecvEcn()";
+  int SetRecvTos() override {
+    ADD_FAILURE() << "Called SetRecvTos()";
+    return net::ERR_UNEXPECTED;
+  }
+  int SetTos(net::DiffServCodePoint dscp, net::EcnCodePoint ecn) override {
+    ADD_FAILURE() << "Called SetTos()";
     return net::ERR_UNEXPECTED;
   }
   void SetMsgConfirm(bool confirm) override {
@@ -258,6 +262,11 @@ class MockUDPSocket : public net::DatagramClientSocket {
   void SetAsyncConnect(base::OnceClosure* connect_callback) {
     connect_async_ = true;
     connect_callback_ = connect_callback;
+  }
+
+  net::DscpAndEcn GetLastTos() const override {
+    ADD_FAILURE() << "Called GetLastTos()";
+    return {net::DSCP_DEFAULT, net::ECN_DEFAULT};
   }
 
  private:
@@ -989,7 +998,7 @@ TEST_F(PacLibraryTest, DeleteMyIpAddressImpl) {
   mojo::PendingRemote<proxy_resolver::mojom::HostResolverRequestClient> remote;
   // NOTREACHED() because the request below should never complete.
   MockClient client(remote.InitWithNewPipeAndPassReceiver(),
-                    base::BindOnce([]() { NOTREACHED(); }));
+                    base::BindOnce([]() { NOTREACHED_IN_MIGRATION(); }));
   impl_->AddRequest(std::move(remote));
   // Once all the tasks are run, `impl_` is guaranteed to be deleted.
   task_environment_.RunUntilIdle();
@@ -1099,9 +1108,9 @@ TEST_F(PacLibraryTest, ConnectMultipleRemotesOneDisconnects) {
   // This second client will be disconnected as MyIpAddressImpl runs and should
   // never receive results.
   mojo::PendingRemote<proxy_resolver::mojom::HostResolverRequestClient> remote2;
-  std::unique_ptr<MockClient> client2 =
-      std::make_unique<MockClient>(remote2.InitWithNewPipeAndPassReceiver(),
-                                   base::BindOnce([]() { NOTREACHED(); }));
+  std::unique_ptr<MockClient> client2 = std::make_unique<MockClient>(
+      remote2.InitWithNewPipeAndPassReceiver(),
+      base::BindOnce([]() { NOTREACHED_IN_MIGRATION(); }));
 
   // Post a task that deletes |client2|.
   base::SequencedTaskRunner::GetCurrentDefault()->PostTask(
@@ -1147,16 +1156,16 @@ TEST_F(PacLibraryTest, ConnectMultipleRemotesButAllDisconnect) {
   impl_->SetHostResolverProcForTest(host_resolver_proc_);
 
   mojo::PendingRemote<proxy_resolver::mojom::HostResolverRequestClient> remote1;
-  std::unique_ptr<MockClient> client1 =
-      std::make_unique<MockClient>(remote1.InitWithNewPipeAndPassReceiver(),
-                                   base::BindOnce([]() { NOTREACHED(); }));
+  std::unique_ptr<MockClient> client1 = std::make_unique<MockClient>(
+      remote1.InitWithNewPipeAndPassReceiver(),
+      base::BindOnce([]() { NOTREACHED_IN_MIGRATION(); }));
 
   // This second client will be disconnected as MyIpAddressImpl runs and should
   // never receive results.
   mojo::PendingRemote<proxy_resolver::mojom::HostResolverRequestClient> remote2;
-  std::unique_ptr<MockClient> client2 =
-      std::make_unique<MockClient>(remote2.InitWithNewPipeAndPassReceiver(),
-                                   base::BindOnce([]() { NOTREACHED(); }));
+  std::unique_ptr<MockClient> client2 = std::make_unique<MockClient>(
+      remote2.InitWithNewPipeAndPassReceiver(),
+      base::BindOnce([]() { NOTREACHED_IN_MIGRATION(); }));
 
   // Post a task that deletes |client1|.
   base::SequencedTaskRunner::GetCurrentDefault()->PostTask(
@@ -1205,9 +1214,9 @@ TEST_F(PacLibraryTest, ConnectOneRemoteAndThenAnother) {
   // This client will be disconnected as MyIpAddressImpl runs and should never
   // receive results.
   mojo::PendingRemote<proxy_resolver::mojom::HostResolverRequestClient> remote1;
-  std::unique_ptr<MockClient> client1 =
-      std::make_unique<MockClient>(remote1.InitWithNewPipeAndPassReceiver(),
-                                   base::BindOnce([]() { NOTREACHED(); }));
+  std::unique_ptr<MockClient> client1 = std::make_unique<MockClient>(
+      remote1.InitWithNewPipeAndPassReceiver(),
+      base::BindOnce([]() { NOTREACHED_IN_MIGRATION(); }));
 
   // This client will receive the results.
   mojo::PendingRemote<proxy_resolver::mojom::HostResolverRequestClient> remote2;

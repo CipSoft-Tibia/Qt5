@@ -40,6 +40,7 @@
 #include "third_party/blink/renderer/platform/text/date_components.h"
 #include "third_party/blink/renderer/platform/text/platform_locale.h"
 #include "third_party/blink/renderer/platform/wtf/text/wtf_string.h"
+#include "ui/strings/grit/ax_strings.h"
 
 namespace blink {
 
@@ -58,7 +59,7 @@ double DateTimeLocalInputType::ValueAsDate() const {
 }
 
 void DateTimeLocalInputType::SetValueAsDate(
-    const absl::optional<base::Time>& value,
+    const std::optional<base::Time>& value,
     ExceptionState& exception_state) const {
   // valueAsDate doesn't work for the datetime-local type according to the
   // standard.

@@ -29,14 +29,17 @@
 #define SRC_DAWN_NATIVE_COMMANDENCODER_H_
 
 #include <string>
-
-#include "dawn/native/dawn_platform.h"
+#include <vector>
 
 #include "absl/container/flat_hash_set.h"
+#include "dawn/common/NonMovable.h"
+#include "dawn/common/StackAllocated.h"
 #include "dawn/native/EncodingContext.h"
 #include "dawn/native/Error.h"
 #include "dawn/native/ObjectBase.h"
 #include "dawn/native/PassResourceUsage.h"
+#include "dawn/native/dawn_platform.h"
+#include "partition_alloc/pointers/raw_ptr.h"
 
 namespace dawn::native {
 
@@ -58,6 +61,7 @@ class CommandEncoder final : public ApiObjectBase {
 
     CommandIterator AcquireCommands();
     CommandBufferResourceUsage AcquireResourceUsages();
+    std::vector<IndirectDrawMetadata> AcquireIndirectDrawMetadata();
 
     void TrackUsedQuerySet(QuerySetBase* querySet);
     void TrackQueryAvailability(QuerySetBase* querySet, uint32_t queryIndex);
@@ -87,10 +91,14 @@ class CommandEncoder final : public ApiObjectBase {
                                  const Extent3D* copySize);
     void APIClearBuffer(BufferBase* destination, uint64_t destinationOffset, uint64_t size);
 
-    void APIInjectValidationError(const char* message);
-    void APIInsertDebugMarker(const char* groupLabel);
+    // TODO(crbug.com/42241188): Remove const char* version of the methods.
+    void APIInjectValidationError(const char* message) { APIInjectValidationError2(message); }
+    void APIInjectValidationError2(std::string_view message);
+    void APIInsertDebugMarker(const char* groupLabel) { APIInsertDebugMarker2(groupLabel); }
+    void APIInsertDebugMarker2(std::string_view groupLabel);
     void APIPopDebugGroup();
-    void APIPushDebugGroup(const char* groupLabel);
+    void APIPushDebugGroup(const char* groupLabel) { APIPushDebugGroup2(groupLabel); }
+    void APIPushDebugGroup2(std::string_view groupLabel);
 
     void APIResolveQuerySet(QuerySetBase* querySet,
                             uint32_t firstQuery,
@@ -113,19 +121,16 @@ class CommandEncoder final : public ApiObjectBase {
     // `InternalUsageScope` is a scoped class that temporarily changes validation such that the
     // command encoder includes internal resource usages.
     friend class InternalUsageScope;
-    class [[nodiscard]] InternalUsageScope : public NonMovable {
+    class [[nodiscard]] InternalUsageScope : public NonMovable, public StackAllocated {
       public:
         ~InternalUsageScope();
 
       private:
-        // Disable heap allocation
-        void* operator new(size_t) = delete;
-
         // Only CommandEncoder can make this class.
         friend class CommandEncoder;
         InternalUsageScope(CommandEncoder* encoder);
 
-        CommandEncoder* mEncoder;
+        raw_ptr<CommandEncoder> mEncoder;
         UsageValidationMode mUsageValidationMode;
     };
 
@@ -136,12 +141,6 @@ class CommandEncoder final : public ApiObjectBase {
     CommandEncoder(DeviceBase* device, ObjectBase::ErrorTag tag, const char* label);
 
     void DestroyImpl() override;
-
-    ResultOrError<std::function<void()>> ApplyRenderPassWorkarounds(
-        DeviceBase* device,
-        RenderPassResourceUsageTracker* usageTracker,
-        BeginRenderPassCmd* cmd,
-        std::function<void()> passEndCallback = nullptr);
 
     MaybeError ValidateFinish() const;
 

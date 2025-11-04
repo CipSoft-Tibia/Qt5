@@ -87,19 +87,6 @@ struct TranslationRelatedStore
             break;
         case TrFunctionAliasManager::Function_tr:
         case TrFunctionAliasManager::Function_trUtf8:
-            if (lupdateSource.isEmpty()) {
-                if (printwarning) {
-                    std::stringstream warning;
-                    warning << qPrintable(lupdateLocationFile) << ":"
-                        << lupdateLocationLine << ":"
-                        << locationCol << ": "
-                        << " \'" << qPrintable(funcName)
-                        << "\' cannot be called without source."
-                        << " The call is ignored." << std::endl;
-                    lupdateWarning.append(QString::fromStdString(warning.str()));
-                }
-                return false;
-            }
             break;
         // two arguments: the context and the source
         case TrFunctionAliasManager::Function_QT_TRANSLATE_N_NOOP:
@@ -109,14 +96,14 @@ struct TranslationRelatedStore
         case TrFunctionAliasManager::Function_QT_TRANSLATE_NOOP_UTF8:
         case TrFunctionAliasManager::Function_QT_TRANSLATE_NOOP3:
         case TrFunctionAliasManager::Function_QT_TRANSLATE_NOOP3_UTF8:
-            if (contextArg.isEmpty() || lupdateSource.isEmpty()) {
+            if (contextArg.isEmpty()) {
                 if (printwarning) {
                     std::stringstream warning;
                     warning << qPrintable(lupdateLocationFile) << ":"
                         << lupdateLocationLine << ":"
                         << locationCol << ": "
                         << " \'" << qPrintable(funcName)
-                        << "\' cannot be called without context or source."
+                        << "\' cannot be called without context."
                         << " The call is ignored." << std::endl;
                     lupdateWarning.append(QString::fromStdString(warning.str()));
                 }
@@ -163,14 +150,30 @@ struct TranslationRelatedStore
     clang::SourceLocation callLocation(const clang::SourceManager &sourceManager)
     {
         if (sourceLocation.isInvalid()) {
+#if (LUPDATE_CLANG_VERSION >= LUPDATE_CLANG_VERSION_CHECK(21,0,0))
+            auto sourceFile = sourceManager.getFileManager()
+                .getFileRef(lupdateLocationFile.toStdString());
+            if (sourceFile)
+                sourceLocation = sourceManager.translateFileLineCol(&sourceFile->getFileEntry(),
+                    lupdateLocationLine, locationCol);
+#elif (LUPDATE_CLANG_VERSION >= LUPDATE_CLANG_VERSION_CHECK(16,0,0))
+            auto sourceFile = sourceManager.getFileManager()
+                .getOptionalFileRef(lupdateLocationFile.toStdString());
+            if (sourceFile)
+                sourceLocation = sourceManager.translateFileLineCol(&sourceFile->getFileEntry(),
+                    lupdateLocationLine, locationCol);
+#else
             auto sourceFile = sourceManager.getFileManager()
                 .getFile(lupdateLocationFile.toStdString());
 #if (LUPDATE_CLANG_VERSION >= LUPDATE_CLANG_VERSION_CHECK(10,0,0))
-            sourceLocation = sourceManager.translateFileLineCol(sourceFile.get(),
-                lupdateLocationLine, locationCol);
+            if (sourceFile)
+                sourceLocation = sourceManager.translateFileLineCol(sourceFile.get(),
+                    lupdateLocationLine, locationCol);
 #else
-            sourceLocation = sourceManager.translateFileLineCol(sourceFile, lupdateLocationLine,
-                locationCol);
+            if (sourceFile)
+                sourceLocation = sourceManager.translateFileLineCol(sourceFile, lupdateLocationLine,
+                    locationCol);
+#endif
 #endif
         }
         return sourceLocation;

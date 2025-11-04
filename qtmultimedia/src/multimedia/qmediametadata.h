@@ -8,16 +8,12 @@
 #pragma qt_class(QMediaMetaData)
 #endif
 
-#include <QtCore/qpair.h>
 #include <QtCore/qvariant.h>
 #include <QtCore/qstring.h>
 #include <QtCore/qhash.h>
 #include <QtMultimedia/qtmultimediaglobal.h>
 
 QT_BEGIN_NAMESPACE
-
-// Class forward declaration required for QDoc bug
-class QString;
 
 class Q_MULTIMEDIA_EXPORT QMediaMetaData
 {
@@ -80,7 +76,7 @@ public:
     Q_INVOKABLE static QString metaDataKeyToString(Key k);
 
     QT_POST_CXX17_API_IN_EXPORTED_CLASS // don't export QHash's key-value-range
-    QT_TECH_PREVIEW_API auto asKeyValueRange() const { return data.asKeyValueRange(); }
+    auto asKeyValueRange() const { return data.asKeyValueRange(); }
 
 protected:
     Q_MULTIMEDIA_EXPORT friend QDebug operator<<(QDebug, const QMediaMetaData &);

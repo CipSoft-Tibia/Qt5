@@ -8,28 +8,37 @@
 namespace chromeos::mojo_services {
 
 // Please keep alphabetized.
+constexpr char kChromiumArcBridgeHost[] = "ChromiumArcBridgeHost";
 constexpr char kChromiumCrosHealthdDataCollector[] =
     "ChromiumCrosHealthdDataCollector";
 constexpr char kChromiumNetworkDiagnosticsRoutines[] =
     "ChromiumNetworkDiagnosticsRoutines";
 constexpr char kChromiumNetworkHealth[] = "ChromiumNetworkHealth";
 constexpr char kCrosCameraAppDeviceBridge[] = "CrosCameraAppDeviceBridge";
+constexpr char kCrosCameraController[] = "CrosCameraController";
 constexpr char kCrosCameraDiagnostics[] = "CrosCameraDiagnostics";
+constexpr char kCrosCameraDiagnosticsService[] = "CrosCameraDiagnosticsService";
 constexpr char kCrosCameraHalDispatcher[] = "CrosCameraHalDispatcher";
 constexpr char kCrosCameraService[] = "CrosCameraService";
 constexpr char kCrosDcadService[] = "CrosDcadService";
+constexpr char kCrosDocumentScanner[] = "CrosDocumentScanner";
 constexpr char kCrosHealthdAshEventReporter[] = "CrosHealthdAshEventReporter";
 constexpr char kCrosHealthdDiagnostics[] = "CrosHealthdDiagnostics";
 constexpr char kCrosHealthdEvent[] = "CrosHealthdEvent";
 constexpr char kCrosHealthdProbe[] = "CrosHealthdProbe";
 constexpr char kCrosHealthdRoutines[] = "CrosHealthdRoutines";
-constexpr char kCrosHealthdSystem[] = "CrosHealthdSystem";
 constexpr char kCrosJpegAccelerator[] = "CrosJpegAccelerator";
 constexpr char kCrosPasspointService[] = "CrosPasspointService";
+constexpr char kCrosPortalService[] = "CrosPortalService";
 constexpr char kCrosSystemEventMonitor[] = "CrosSystemEventMonitor";
 constexpr char kHeartdControl[] = "HeartdControl";
 constexpr char kHeartdHeartbeatService[] = "HeartdHeartbeatService";
 constexpr char kIioSensor[] = "IioSensor";
+constexpr char kVideoCaptureDeviceInfoMonitor[] =
+    "VideoCaptureDeviceInfoMonitor";
+constexpr char kCrosOdmlService[] = "CrosOdmlService";
+constexpr char kCrosCoralService[] = "CrosCoralService";
+constexpr char kCrosEmbeddingModelService[] = "CrosEmbeddingModelService";
 
 }  // namespace chromeos::mojo_services
 

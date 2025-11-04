@@ -2,6 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#ifdef UNSAFE_BUFFERS_BUILD
+// TODO(crbug.com/351564777): Remove this and convert code to safer constructs.
+#pragma allow_unsafe_buffers
+#endif
+
 #include "google_apis/gcm/base/mcs_util.h"
 
 #include <stddef.h>
@@ -189,7 +194,7 @@ void SetPersistentId(const std::string& persistent_id,
         set_persistent_id(persistent_id);
     return;
   }
-  NOTREACHED();
+  NOTREACHED_IN_MIGRATION();
 }
 
 uint32_t GetLastStreamIdReceived(
@@ -237,7 +242,7 @@ void SetLastStreamIdReceived(uint32_t val,
         set_last_stream_id_received(val);
     return;
   }
-  NOTREACHED();
+  NOTREACHED_IN_MIGRATION();
 }
 
 bool HasTTLExpired(const google::protobuf::MessageLite& protobuf,

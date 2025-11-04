@@ -103,7 +103,7 @@ export class DebuggerWorkspaceBinding implements SDK.TargetManager.SDKModelObser
     }
     const pluginManager = this.pluginManager;
     let ranges: SDK.DebuggerModel.LocationRange[] = [];
-    if (mode === SDK.DebuggerModel.StepMode.StepOut) {
+    if (mode === SDK.DebuggerModel.StepMode.STEP_OUT) {
       // Step out of inline function.
       return await pluginManager.getInlinedFunctionRanges(rawLocation);
     }
@@ -114,7 +114,7 @@ export class DebuggerWorkspaceBinding implements SDK.TargetManager.SDKModelObser
           [];
       // TODO(bmeurer): Remove the {rawLocation} from the {ranges}?
       ranges = ranges.filter(range => contained(rawLocation, range));
-      if (mode === SDK.DebuggerModel.StepMode.StepOver) {
+      if (mode === SDK.DebuggerModel.StepMode.STEP_OVER) {
         // Step over an inlined function.
         ranges = ranges.concat(await pluginManager.getInlinedCalleesRanges(rawLocation));
       }
@@ -454,7 +454,7 @@ export class DebuggerWorkspaceBinding implements SDK.TargetManager.SDKModelObser
     }
     const functionLocation = frame.functionLocation();
     if (!autoSteppingContext || debuggerPausedDetails.reason !== Protocol.Debugger.PausedEventReason.Step ||
-        !functionLocation || !frame.script.isWasm() || !Common.Settings.moduleSetting('wasmAutoStepping').get() ||
+        !functionLocation || !frame.script.isWasm() || !Common.Settings.moduleSetting('wasm-auto-stepping').get() ||
         !this.pluginManager.hasPluginForScript(frame.script)) {
       return true;
     }

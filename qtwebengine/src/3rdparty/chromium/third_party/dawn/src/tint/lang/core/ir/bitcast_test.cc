@@ -26,7 +26,6 @@
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "gmock/gmock.h"
-#include "gtest/gtest-spi.h"
 #include "src/tint/lang/core/fluent_types.h"
 #include "src/tint/lang/core/ir/builder.h"
 #include "src/tint/lang/core/ir/constant.h"
@@ -40,6 +39,7 @@ namespace tint::core::ir {
 namespace {
 
 using IR_BitcastTest = IRTestHelper;
+using IR_BitcastDeathTest = IR_BitcastTest;
 
 TEST_F(IR_BitcastTest, Bitcast) {
     auto* inst = b.Bitcast(mod.Types().i32(), 4_i);
@@ -69,17 +69,17 @@ TEST_F(IR_BitcastTest, Bitcast_Usage) {
     auto args = inst->Args();
     ASSERT_EQ(args.Length(), 1u);
     ASSERT_NE(args[0], nullptr);
-    EXPECT_THAT(args[0]->Usages(), testing::UnorderedElementsAre(Usage{inst, 0u}));
+    EXPECT_THAT(args[0]->UsagesUnsorted(), testing::UnorderedElementsAre(Usage{inst, 0u}));
 }
 
-TEST_F(IR_BitcastTest, Fail_NullType) {
-    EXPECT_FATAL_FAILURE(
+TEST_F(IR_BitcastDeathTest, Fail_NullType) {
+    EXPECT_DEATH_IF_SUPPORTED(
         {
             Module mod;
             Builder b{mod};
             b.Bitcast(nullptr, 1_i);
         },
-        "");
+        "internal compiler error");
 }
 
 TEST_F(IR_BitcastTest, Clone) {

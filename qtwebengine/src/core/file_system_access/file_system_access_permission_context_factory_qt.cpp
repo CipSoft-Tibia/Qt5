@@ -1,5 +1,6 @@
 // Copyright (C) 2022 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "file_system_access_permission_context_factory_qt.h"
 
@@ -50,12 +51,6 @@ KeyedService *FileSystemAccessPermissionContextFactoryQt::BuildServiceInstanceFo
         content::BrowserContext *context) const
 {
     return new FileSystemAccessPermissionContextQt(context);
-}
-
-void FileSystemAccessPermissionContextFactoryQt::BrowserContextShutdown(
-        content::BrowserContext *context)
-{
-    Q_UNUSED(context);
 }
 
 } // namespace QtWebEngineCore

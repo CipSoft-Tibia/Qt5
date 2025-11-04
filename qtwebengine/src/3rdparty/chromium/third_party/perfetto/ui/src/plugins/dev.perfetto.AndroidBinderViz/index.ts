@@ -12,12 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import {
-  MetricVisualisation,
-  Plugin,
-  PluginContext,
-  PluginDescriptor,
-} from '../../public';
+import {MetricVisualisation} from '../../public/plugin';
+import {PerfettoPlugin, PluginDescriptor} from '../../public/plugin';
 
 const SPEC = `
 {
@@ -36,17 +32,15 @@ const SPEC = `
 }
 `;
 
-class AndroidBinderVizPlugin implements Plugin {
-  onActivate(_: PluginContext): void {
-    //
-  }
-
+class AndroidBinderVizPlugin implements PerfettoPlugin {
   metricVisualisations(): MetricVisualisation[] {
-    return [{
-      metric: 'android_binder',
-      spec: SPEC,
-      path: ['android_binder', 'unaggregated_txn_breakdown'],
-    }];
+    return [
+      {
+        metric: 'android_binder',
+        spec: SPEC,
+        path: ['android_binder', 'unaggregated_txn_breakdown'],
+      },
+    ];
   }
 }
 

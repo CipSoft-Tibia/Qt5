@@ -195,7 +195,7 @@ void ProcessedLocalAudioSource::SendLogMessageWithSessionId(
                  "]");
 }
 
-absl::optional<blink::AudioProcessingProperties>
+std::optional<blink::AudioProcessingProperties>
 ProcessedLocalAudioSource::GetAudioProcessingProperties() const {
   return audio_processing_properties_;
 }
@@ -567,12 +567,15 @@ void ProcessedLocalAudioSource::OnCaptureStarted() {
   started_callback_.Run(this, mojom::blink::MediaStreamRequestResult::OK, "");
 }
 
-void ProcessedLocalAudioSource::Capture(const media::AudioBus* audio_bus,
-                                        base::TimeTicks audio_capture_time,
-                                        double volume,
-                                        bool key_pressed) {
+void ProcessedLocalAudioSource::Capture(
+    const media::AudioBus* audio_bus,
+    base::TimeTicks audio_capture_time,
+    const media::AudioGlitchInfo& glitch_info,
+    double volume,
+    bool key_pressed) {
   TRACE_EVENT1("audio", "ProcessedLocalAudioSource::Capture", "capture-time",
                audio_capture_time);
+  glitch_info_accumulator_.Add(glitch_info);
   // Maximum number of channels used by the sinks.
   int num_preferred_channels = NumPreferredChannels();
   if (media_stream_audio_processor_) {
@@ -598,7 +601,7 @@ void ProcessedLocalAudioSource::Capture(const media::AudioBus* audio_bus,
   // along.
   force_report_nonzero_energy_ = false;
   DeliverProcessedAudio(*audio_bus, audio_capture_time,
-                        /*new_volume=*/absl::nullopt);
+                        /*new_volume=*/std::nullopt);
 }
 
 void ProcessedLocalAudioSource::OnCaptureError(
@@ -646,11 +649,15 @@ void ProcessedLocalAudioSource::SetOutputDeviceForAec(
 void ProcessedLocalAudioSource::DeliverProcessedAudio(
     const media::AudioBus& processed_audio,
     base::TimeTicks audio_capture_time,
-    absl::optional<double> new_volume) {
-  TRACE_EVENT1("audio", "ProcessedLocalAudioSource::DeliverProcessedAudio",
-               "capture-time", audio_capture_time);
+    std::optional<double> new_volume) {
+  TRACE_EVENT("audio", "ProcessedLocalAudioSource::DeliverProcessedAudio",
+              "capture_time (ms)",
+              (audio_capture_time - base::TimeTicks()).InMillisecondsF(),
+              "capture_delay (ms)",
+              (base::TimeTicks::Now() - audio_capture_time).InMillisecondsF());
   level_calculator_.Calculate(processed_audio, force_report_nonzero_energy_);
-  DeliverDataToTracks(processed_audio, audio_capture_time);
+  DeliverDataToTracks(processed_audio, audio_capture_time,
+                      glitch_info_accumulator_.GetAndReset());
 
   if (new_volume) {
     PostCrossThreadTask(

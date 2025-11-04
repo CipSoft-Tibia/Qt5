@@ -6,7 +6,8 @@
 
 #include "fxjs/fxv8.h"
 
-#include "third_party/base/numerics/safe_conversions.h"
+#include "core/fxcrt/compiler_specific.h"
+#include "core/fxcrt/numerics/safe_conversions.h"
 #include "v8/include/v8-container.h"
 #include "v8/include/v8-date.h"
 #include "v8/include/v8-exception.h"
@@ -82,9 +83,9 @@ v8::Local<v8::Boolean> NewBooleanHelper(v8::Isolate* pIsolate, bool b) {
 
 v8::Local<v8::String> NewStringHelper(v8::Isolate* pIsolate,
                                       ByteStringView str) {
-  return v8::String::NewFromUtf8(
-             pIsolate, str.unterminated_c_str(), v8::NewStringType::kNormal,
-             pdfium::base::checked_cast<int>(str.GetLength()))
+  return v8::String::NewFromUtf8(pIsolate, str.unterminated_c_str(),
+                                 v8::NewStringType::kNormal,
+                                 pdfium::checked_cast<int>(str.GetLength()))
       .ToLocalChecked();
 }
 
@@ -120,12 +121,14 @@ v8::Local<v8::Date> NewDateHelper(v8::Isolate* pIsolate, double d) {
 
 WideString ToWideString(v8::Isolate* pIsolate, v8::Local<v8::String> pValue) {
   v8::String::Utf8Value s(pIsolate, pValue);
-  return WideString::FromUTF8(ByteStringView(*s, s.length()));
+  // SAFETY: required from V8.
+  return WideString::FromUTF8(UNSAFE_BUFFERS(ByteStringView(*s, s.length())));
 }
 
 ByteString ToByteString(v8::Isolate* pIsolate, v8::Local<v8::String> pValue) {
   v8::String::Utf8Value s(pIsolate, pValue);
-  return ByteString(*s, s.length());
+  // SAFETY: required from V8.
+  return UNSAFE_BUFFERS(ByteString(*s, s.length()));
 }
 
 int ReentrantToInt32Helper(v8::Isolate* pIsolate, v8::Local<v8::Value> pValue) {
@@ -299,7 +302,7 @@ bool ReentrantPutArrayElementHelper(v8::Isolate* pIsolate,
   v8::TryCatch squash_exceptions(pIsolate);
   v8::Maybe<bool> result =
       pArray->Set(pIsolate->GetCurrentContext(),
-                  pdfium::base::checked_cast<uint32_t>(index), pValue);
+                  pdfium::checked_cast<uint32_t>(index), pValue);
   return result.IsJust() && result.FromJust();
 }
 
@@ -313,7 +316,7 @@ v8::Local<v8::Value> ReentrantGetArrayElementHelper(v8::Isolate* pIsolate,
   v8::Local<v8::Value> val;
   if (!pArray
            ->Get(pIsolate->GetCurrentContext(),
-                 pdfium::base::checked_cast<uint32_t>(index))
+                 pdfium::checked_cast<uint32_t>(index))
            .ToLocal(&val)) {
     return v8::Local<v8::Value>();
   }

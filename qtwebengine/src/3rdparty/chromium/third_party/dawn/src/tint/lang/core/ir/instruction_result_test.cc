@@ -26,7 +26,6 @@
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "gmock/gmock.h"
-#include "gtest/gtest-spi.h"
 #include "src/tint/lang/core/ir/ir_helper_test.h"
 
 using namespace tint::core::number_suffixes;  // NOLINT
@@ -36,16 +35,17 @@ namespace tint::core::ir {
 namespace {
 
 using IR_InstructionResultTest = IRTestHelper;
+using IR_InstructionResultDeathTest = IR_InstructionResultTest;
 
-TEST_F(IR_InstructionResultTest, Destroy_HasInstruction) {
-    EXPECT_FATAL_FAILURE(
+TEST_F(IR_InstructionResultDeathTest, Destroy_HasInstruction) {
+    EXPECT_DEATH_IF_SUPPORTED(
         {
             Module mod;
             Builder b{mod};
             auto* val = b.Add(mod.Types().i32(), 1_i, 2_i)->Result(0);
             val->Destroy();
         },
-        "");
+        "internal compiler error");
 }
 
 TEST_F(IR_InstructionResultTest, Clone) {

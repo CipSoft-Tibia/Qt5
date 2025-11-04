@@ -51,7 +51,7 @@ ScrollbarLayerImplBase* ScrollbarController::ScrollbarLayer() const {
   return nullptr;
 }
 
-PointerResultType ScrollbarController::HitTest(
+const ScrollbarLayerImplBase* ScrollbarController::HitTest(
     const gfx::PointF position_in_widget) const {
   // If a non-custom scrollbar layer was not found, we return early as there is
   // no point in setting additional state in the ScrollbarController. Return an
@@ -60,15 +60,12 @@ PointerResultType ScrollbarController::HitTest(
   // passed on to the main thread.
   const LayerImpl* layer_impl = GetLayerHitByPoint(position_in_widget);
   if (!(layer_impl && layer_impl->IsScrollbarLayer()))
-    return PointerResultType::kUnhandled;
+    return nullptr;
 
   // If the scrollbar layer has faded out (eg: Overlay scrollbars), don't
   // initiate a scroll.
   const ScrollbarLayerImplBase* scrollbar = ToScrollbarLayer(layer_impl);
-  if (scrollbar->OverlayScrollbarOpacity() == 0.f)
-    return PointerResultType::kUnhandled;
-
-  return PointerResultType::kScrollbarScroll;
+  return scrollbar->OverlayScrollbarOpacity() == 0.f ? nullptr : scrollbar;
 }
 
 // Performs hit test and prepares scroll deltas that will be used by GSB and
@@ -76,13 +73,11 @@ PointerResultType ScrollbarController::HitTest(
 InputHandlerPointerResult ScrollbarController::HandlePointerDown(
     const gfx::PointF position_in_widget,
     bool jump_key_modifier) {
-  if (HitTest(position_in_widget) != PointerResultType::kScrollbarScroll)
+  const ScrollbarLayerImplBase* scrollbar = HitTest(position_in_widget);
+  if (!scrollbar) {
     return InputHandlerPointerResult();
+  }
 
-  // TODO(arakeri): GetLayerHitByPoint should ideally be called only once per
-  // pointerdown. This needs to be optimized. See crbug.com/1156922.
-  const ScrollbarLayerImplBase* scrollbar =
-      ToScrollbarLayer(GetLayerHitByPoint(position_in_widget));
   captured_scrollbar_metadata_ = CapturedScrollbarMetadata();
   captured_scrollbar_metadata_->scroll_element_id =
       scrollbar->scroll_element_id();
@@ -91,7 +86,6 @@ InputHandlerPointerResult ScrollbarController::HandlePointerDown(
   InputHandlerPointerResult scroll_result;
   scroll_result.target_scroller = scrollbar->scroll_element_id();
   scroll_result.type = PointerResultType::kScrollbarScroll;
-  layer_tree_host_impl_->active_tree()->UpdateScrollbarGeometries();
   const ScrollbarPart scrollbar_part =
       GetScrollbarPartFromPointerDown(position_in_widget);
   const bool perform_jump_click_on_track =
@@ -179,7 +173,6 @@ bool ScrollbarController::SnapToDragOrigin(
   if (clipped)
     return false;
 
-  layer_tree_host_impl_->active_tree()->UpdateScrollbarGeometries();
   const ScrollbarOrientation orientation = scrollbar->orientation();
   const gfx::Rect forward_track_rect = scrollbar->ForwardTrackRect();
 
@@ -242,8 +235,6 @@ ui::ScrollGranularity ScrollbarController::Granularity(
 }
 
 float ScrollbarController::GetScrollDistanceForAbsoluteJump() const {
-  layer_tree_host_impl_->active_tree()->UpdateScrollbarGeometries();
-
   bool clipped = false;
   const gfx::PointF pointer_position_in_layer =
       GetScrollbarRelativePosition(last_known_pointer_position_, &clipped);
@@ -447,7 +438,6 @@ float ScrollbarController::GetScrollerToScrollbarRatio() const {
   //
   //          |<- scrollbar_thumb_length ->|
   //
-  layer_tree_host_impl_->active_tree()->UpdateScrollbarGeometries();
   const ScrollbarLayerImplBase* scrollbar = ScrollbarLayer();
   float scroll_layer_length = scrollbar->scroll_layer_length();
   float scrollbar_track_length = scrollbar->TrackLength();
@@ -508,8 +498,6 @@ void ScrollbarController::RecomputeAutoscrollStateIfNeeded() {
       autoscroll_state_->status != AutoScrollStatus::kAutoscrollScrolling) {
     return;
   }
-
-  layer_tree_host_impl_->active_tree()->UpdateScrollbarGeometries();
 
   bool clipped;
   gfx::PointF scroller_relative_position(
@@ -619,9 +607,7 @@ void ScrollbarController::StartAutoScrollAnimation() {
   if (!(scroll_node && scrollbar_scroll_is_active_))
     return;
 
-  layer_tree_host_impl_->active_tree()->UpdateScrollbarGeometries();
   float scroll_layer_length = scrollbar->scroll_layer_length();
-
   gfx::PointF current_offset =
       scroll_tree.current_scroll_offset(scroll_node->element_id);
 

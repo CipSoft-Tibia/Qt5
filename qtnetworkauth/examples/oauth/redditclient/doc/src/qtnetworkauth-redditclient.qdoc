@@ -14,9 +14,12 @@
     Reddit posts (in text format) associated with the authenticated user.
 
     To use this example, a consumer key from Reddit is needed.
-    To register the application visit https://www.reddit.com/prefs/apps/.
+    To register the application visit \l{https://www.reddit.com/prefs/apps/}.
     \note Choose \e {installed app} when creating the application.
     \note Set the redirect URI to \e http://localhost:1337/ in Reddit settings.
 
     \include examples-run.qdocinc
+
+    Before launching, add \c --client-id to the executable command line,
+    followed by your consumer key from \l {https://www.reddit.com/prefs/apps/}.
 */

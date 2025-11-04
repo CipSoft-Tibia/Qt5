@@ -129,13 +129,13 @@ private:
 
     It is not recommended to instantiate more than a single Scene3D instance
     per application. The reason for this is that a Scene3D instance
-    instantiates the entire Qt 3D engine (memory managers, thread pool, render
-    ...) under the scene.
+    instantiates the entire Qt 3D engine (for example, memory managers,
+    thread pool, render) under the scene.
 
-    \note Śetting the visibility of the Scene3D element to false will halt the
+    \note Setting the visibility of the Scene3D element to false will halt the
     Qt 3D simulation loop. This means that binding the visible property to an
     expression that depends on property updates driven by the Qt 3D simulation
-    loop (FrameAction) will never reavaluates.
+    loop (FrameAction) will never reevaluate.
  */
 Scene3DItem::Scene3DItem(QQuickItem *parent)
     : QQuickItem(parent)
@@ -150,7 +150,6 @@ Scene3DItem::Scene3DItem(QQuickItem *parent)
     , m_wasSGUpdated(false)
     , m_cameraAspectRatioMode(AutomaticAspectRatio)
     , m_compositingMode(FBO)
-    , m_dummySurface(nullptr)
     , m_framesToRender(ms_framesNeededToFlushPipeline)
 {
     setFlag(QQuickItem::ItemHasContents, true);
@@ -185,9 +184,6 @@ Scene3DItem::~Scene3DItem()
 
     if (m_aspectEngineDestroyer)
         m_aspectEngineDestroyer->allowRelease();
-
-    if (m_dummySurface)
-        m_dummySurface->deleteLater();
 }
 
 /*!
@@ -333,12 +329,13 @@ void Scene3DItem::setCompositingMode(Scene3DItem::CompositingMode mode)
 /*!
     \qmlproperty enumeration Scene3D::cameraAspectRatioMode
 
+    Defines how the aspect ratio of a camera found in the scene is computed.
+
     \value Scene3D.AutomaticAspectRatio
            Automatic aspect ratio.
 
     \value Scene3D.UserAspectRatio
            User defined aspect ratio.
-    \brief \TODO
  */
 Scene3DItem::CameraAspectRatioMode Scene3DItem::cameraAspectRatioMode() const
 {
@@ -500,14 +497,13 @@ void Scene3DItem::requestUpdate()
 
 void Scene3DItem::updateWindowSurface()
 {
-    if (!m_entity || !m_dummySurface)
+    if (!m_entity)
         return;
     Qt3DRender::QRenderSurfaceSelector *surfaceSelector =
         Qt3DRender::QRenderSurfaceSelectorPrivate::find(entity());
     if (surfaceSelector) {
         if (QWindow *rw = QQuickRenderControl::renderWindowFor(this->window())) {
-            m_dummySurface->deleteLater();
-            createDummySurface(rw, surfaceSelector);
+            surfaceSelector->setSurface(rw);
         }
     }
 }
@@ -522,25 +518,13 @@ void Scene3DItem::setWindowSurface(QObject *rootObject)
         // We may not have a real, exposed QQuickWindow when the Quick rendering
         // is redirected via QQuickRenderControl (f.ex. QQuickWidget).
         if (QWindow *rw = QQuickRenderControl::renderWindowFor(this->window())) {
-            createDummySurface(rw, surfaceSelector);
+            surfaceSelector->setSurface(rw);
         } else {
             surfaceSelector->setSurface(this->window());
         }
     }
 }
 
-void Scene3DItem::createDummySurface(QWindow *rw, Qt3DRender::QRenderSurfaceSelector *surfaceSelector)
-{
-    // rw is the top-level window that is backed by a native window. Do
-    // not use that though since we must not clash with e.g. the widget
-    // backingstore compositor in the gui thread.
-    m_dummySurface = new QOffscreenSurface;
-    m_dummySurface->setParent(qGuiApp); // parent to something suitably long-living
-    m_dummySurface->setFormat(rw->format());
-    m_dummySurface->setScreen(rw->screen());
-    m_dummySurface->create();
-    surfaceSelector->setSurface(m_dummySurface);
-}
 /*!
     \qmlmethod void Scene3D::setItemAreaAndDevicePixelRatio(size area, real devicePixelRatio)
 

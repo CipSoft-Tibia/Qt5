@@ -249,7 +249,7 @@ static void addTranslucencyIrradiance(QSSGStageGeneratorBase &infragmentShader,
 using ShadowNameMap = QHash<QPair<qsizetype, quint32>, QSSGMaterialShaderGenerator::ShadowVariableNames>;
 Q_GLOBAL_STATIC(ShadowNameMap, q3ds_shadowMapVariableNames);
 
-static const QSSGMaterialShaderGenerator::ShadowVariableNames& setupShadowMapVariableNames(qsizetype shadowMapIdx, quint32 shadowMapRes)
+static const QSSGMaterialShaderGenerator::ShadowVariableNames& setupShadowMapVariableNames(qsizetype shadowMapIdx, quint32 shadowMapRes, bool is32bit)
 {
     QSSGMaterialShaderGenerator::ShadowVariableNames &names = (*q3ds_shadowMapVariableNames)[{shadowMapIdx, shadowMapRes}];
     if (names.shadowMapTexture.isEmpty()) {
@@ -260,7 +260,7 @@ static const QSSGMaterialShaderGenerator::ShadowVariableNames& setupShadowMapVar
         names.shadowData = QByteArrayLiteral("ubShadows.shadowData");
         std::snprintf(buf, sizeof buf, "[%lld]", qlonglong(shadowMapIdx));
         names.shadowData.append(buf);
-        names.shadowMapTexture = QByteArrayLiteral("qt_shadowmap_texture_");
+        names.shadowMapTexture = is32bit ? QByteArrayLiteral("qt_shadowmap_texture_32_") : QByteArrayLiteral("qt_shadowmap_texture_16_");
         std::snprintf(buf, sizeof buf, "%d", shadowMapRes);
         names.shadowMapTexture.append(buf);
     }
@@ -348,6 +348,7 @@ static void generateShadowMapOcclusion(QSSGStageGeneratorBase &fragmentShader,
                                        QSSGMaterialVertexPipeline &vertexShader,
                                        quint32 shadowMapIdx,
                                        quint32 shadowMapRes,
+                                       bool is32bit,
                                        QSSGRenderLight::SoftShadowQuality softShadowQuality,
                                        bool inShadowEnabled,
                                        QSSGRenderLight::Type inType,
@@ -356,7 +357,7 @@ static void generateShadowMapOcclusion(QSSGStageGeneratorBase &fragmentShader,
 {
     if (inShadowEnabled) {
         vertexShader.generateWorldPosition(inKey);
-        const auto& names = setupShadowMapVariableNames(shadowMapIdx, shadowMapRes);
+        const auto& names = setupShadowMapVariableNames(shadowMapIdx, shadowMapRes, is32bit);
         fragmentShader.addInclude("shadowMapping.glsllib");
 
         QByteArray sampleFunctionSuffix;
@@ -630,6 +631,9 @@ static void handleDirectionalLight(QSSGStageGeneratorBase &fragmentShader,
         }
     }
 
+    // Since handleSpecularLight uses qt_lightAttenuation make sure to reset it
+    fragmentShader << "    qt_lightAttenuation = 1.0;\n";
+
     handleSpecularLight(fragmentShader,
                         lightVarNames,
                         materialAdapter,
@@ -812,8 +816,8 @@ static void generateMainLightCalculation(QSSGStageGeneratorBase &fragmentShader,
         bool castsShadow = enableShadowMaps && lightNode->m_castShadow && shadowMapCount < QSSG_MAX_NUM_SHADOW_MAPS;
 
         fragmentShader.append("");
-        char lightIdxStr[11];
-        std::snprintf(lightIdxStr, 11, "%d", lightIdx);
+        char lightIdxStr[12];
+        std::snprintf(lightIdxStr, 12, "%d", lightIdx);
 
         QByteArray lightVarPrefix = "light";
         lightVarPrefix.append(lightIdxStr);
@@ -831,7 +835,7 @@ static void generateMainLightCalculation(QSSGStageGeneratorBase &fragmentShader,
 
         lightVarPrefix.append("_");
 
-        generateShadowMapOcclusion(fragmentShader, vertexShader, shadowMapCount, lightNode->m_shadowMapRes, lightNode->m_softShadowQuality, castsShadow, lightNode->type, lightVarNames, inKey);
+        generateShadowMapOcclusion(fragmentShader, vertexShader, shadowMapCount, lightNode->m_shadowMapRes, lightNode->m_use32BitShadowmap, lightNode->m_softShadowQuality, castsShadow, lightNode->type, lightVarNames, inKey);
 
         generateTempLightColor(fragmentShader, lightVarNames, materialAdapter);
 
@@ -913,6 +917,7 @@ static void generateFragmentShader(QSSGStageGeneratorBase &fragmentShader,
     bool isDoubleSided = keyProps.m_isDoubleSided.getValue(inKey);
     bool hasImage = firstImage != nullptr;
 
+    QSSGRenderLayer::OITMethod oitMethod = static_cast<QSSGRenderLayer::OITMethod>(keyProps.m_orderIndependentTransparency.getValue(inKey));
     bool hasIblProbe = keyProps.m_hasIbl.getValue(inKey);
     bool specularLightingEnabled = metalnessEnabled || materialAdapter->isSpecularEnabled() || hasIblProbe; // always true for Custom, depends for others
     bool specularAAEnabled = keyProps.m_specularAAEnabled.getValue(inKey);
@@ -1027,6 +1032,7 @@ static void generateFragmentShader(QSSGStageGeneratorBase &fragmentShader,
     bool hasReflectionProbe = featureSet.isSet(QSSGShaderFeatures::Feature::ReflectionProbe);
     bool enableBumpNormal = normalImage || bumpImage;
     bool genBumpNormalImageCoords = false;
+    bool genClearcoatNormalImageCoords = false;
     bool enableParallaxMapping = heightImage != nullptr;
     const bool enableClearcoat = materialAdapter->isClearcoatEnabled();
     const bool enableTransmission = materialAdapter->isTransmissionEnabled();
@@ -1088,6 +1094,8 @@ static void generateFragmentShader(QSSGStageGeneratorBase &fragmentShader,
         metalnessEnabled = false;
         specularLightingEnabled = false;
 
+        oitMethod = QSSGRenderLayer::OITMethod::None;
+
         if (!isOpaqueDepthPrePass) {
             vertexColorsEnabled = false;
             baseImage = nullptr;
@@ -1097,7 +1105,7 @@ static void generateFragmentShader(QSSGStageGeneratorBase &fragmentShader,
 
     bool includeSSAOVars = enableSSAO || enableShadowMaps;
 
-    vertexShader.beginFragmentGeneration(shaderLibraryManager);
+    vertexShader.beginFragmentGeneration(shaderLibraryManager, oitMethod);
 
     // Unshaded custom materials need no code in main (apart from calling qt_customMain)
     const bool hasCustomFrag = materialAdapter->hasCustomShaderSnippet(QSSGShaderCache::ShaderType::Fragment);
@@ -1168,21 +1176,30 @@ static void generateFragmentShader(QSSGStageGeneratorBase &fragmentShader,
             bool genBinormal = false;
             vertexShader.generateVarTangentAndBinormal(inKey, genTangent, genBinormal);
 
-            if (enableBumpNormal && !genTangent) {
-                // Generate imageCoords for bump/normal map first.
-                // Some operations needs to use the TBN transform and if the
-                // tangent vector is not provided, it is necessary.
-                auto *bumpNormalImage = bumpImage != nullptr ? bumpImage : normalImage;
-                generateImageUVCoordinates(vertexShader, fragmentShader, inKey, *bumpNormalImage, true, bumpNormalImage->m_imageNode.m_indexUV);
-                genBumpNormalImageCoords = true;
-
-                int id = (bumpImage != nullptr) ? int(QSSGRenderableImage::Type::Bump) : int(QSSGRenderableImage::Type::Normal);
-                const auto &names = imageStringTable[id];
-                fragmentShader << "    vec2 dUVdx = dFdx(" << names.imageFragCoords << ");\n"
-                               << "    vec2 dUVdy = dFdy(" << names.imageFragCoords << ");\n";
-                fragmentShader << "    qt_tangent = (dUVdy.y * dFdx(qt_varWorldPos) - dUVdx.y * dFdy(qt_varWorldPos)) / (dUVdx.x * dUVdy.y - dUVdx.y * dUVdy.x);\n"
-                               << "    qt_tangent = qt_tangent - dot(qt_world_normal, qt_tangent) * qt_world_normal;\n"
-                               << "    qt_tangent = normalize(qt_tangent);\n";
+            if (!genTangent) {
+                int id = 0;
+                if (enableBumpNormal) {
+                    // Generate imageCoords for bump/normal map first.
+                    // Some operations needs to use the TBN transform and if the
+                    // tangent vector is not provided, it is necessary.
+                    auto *bumpNormalImage = bumpImage != nullptr ? bumpImage : normalImage;
+                    generateImageUVCoordinates(vertexShader, fragmentShader, inKey, *bumpNormalImage, true, bumpNormalImage->m_imageNode.m_indexUV);
+                    genBumpNormalImageCoords = true;
+                    id = (bumpImage != nullptr) ? int(QSSGRenderableImage::Type::Bump) : int(QSSGRenderableImage::Type::Normal);
+                } else if (clearcoatNormalImage) {
+                    // For the corner case that there is only a clearcoat normal map
+                    generateImageUVCoordinates(vertexShader, fragmentShader, inKey, *clearcoatNormalImage, true, clearcoatNormalImage->m_imageNode.m_indexUV);
+                    genClearcoatNormalImageCoords = true;
+                    id = int(QSSGRenderableImage::Type::ClearcoatNormal);
+                }
+                if (id > 0) {
+                    const auto &names = imageStringTable[id];
+                    fragmentShader << "    vec2 dUVdx = dFdx(" << names.imageFragCoords << ");\n"
+                                   << "    vec2 dUVdy = dFdy(" << names.imageFragCoords << ");\n";
+                    fragmentShader << "    qt_tangent = (dUVdy.y * dFdx(qt_varWorldPos) - dUVdx.y * dFdy(qt_varWorldPos)) / (dUVdx.x * dUVdy.y - dUVdx.y * dUVdy.x);\n"
+                                   << "    qt_tangent = qt_tangent - dot(qt_world_normal, qt_tangent) * qt_world_normal;\n"
+                                   << "    qt_tangent = normalize(qt_tangent);\n";
+                }
             }
             if (!genBinormal)
                 fragmentShader << "    qt_binormal = cross(qt_world_normal, qt_tangent);\n";
@@ -1335,12 +1352,13 @@ static void generateFragmentShader(QSSGStageGeneratorBase &fragmentShader,
                 fragmentShader << "    qt_clearcoatNormal = qt_customClearcoatNormal;\n";
             } else {
                 if (clearcoatNormalImage) {
-                    generateImageUVCoordinates(vertexShader, fragmentShader, inKey, *clearcoatNormalImage, enableParallaxMapping, clearcoatNormalImage->m_imageNode.m_indexUV);
+                    if (enableParallaxMapping || !genClearcoatNormalImageCoords)
+                        generateImageUVCoordinates(vertexShader, fragmentShader, inKey, *clearcoatNormalImage, enableParallaxMapping, clearcoatNormalImage->m_imageNode.m_indexUV);
                     const auto &names = imageStringTable[int(QSSGRenderableImage::Type::ClearcoatNormal)];
                     fragmentShader.addFunction("sampleNormalTexture");
                     fragmentShader << "    float qt_clearcoat_normal_strength = qt_material_clearcoat_normal_strength;\n";
                     maskVariableByVertexColorChannel( "qt_clearcoat_normal_strength", QSSGRenderDefaultMaterial::ClearcoatNormalStrengthMask  );
-                    fragmentShader << "    qt_clearcoatNormal = qt_sampleNormalTexture3(" << names.imageSampler << ", qt_clearcoat_normal_strength, " << names.imageFragCoords << ", qt_tangent, qt_binormal, qt_world_normal);\n";
+                    fragmentShader << "    qt_clearcoatNormal = qt_sampleNormalTexture(" << names.imageSampler << ", qt_clearcoat_normal_strength, " << names.imageFragCoords << ", qt_tangent, qt_binormal, qt_world_normal);\n";
 
                 } else {
                     // same as qt_world_normal then
@@ -1373,7 +1391,7 @@ static void generateFragmentShader(QSSGStageGeneratorBase &fragmentShader,
             fragmentShader.append("    float qt_normalStrength = qt_material_properties2.y;\n");
             maskVariableByVertexColorChannel( "qt_normalStrength", QSSGRenderDefaultMaterial::NormalStrengthMask );
             fragmentShader.addFunction("sampleNormalTexture");
-            fragmentShader << "    qt_world_normal = qt_sampleNormalTexture3(" << names.imageSampler << ", qt_normalStrength, " << names.imageFragCoords << ", qt_tangent, qt_binormal, qt_world_normal);\n";
+            fragmentShader << "    qt_world_normal = qt_sampleNormalTexture(" << names.imageSampler << ", qt_normalStrength, " << names.imageFragCoords << ", qt_tangent, qt_binormal, qt_world_normal);\n";
         }
 
         fragmentShader.append("    vec3 tmp_light_color;");
@@ -1964,9 +1982,20 @@ static void generateFragmentShader(QSSGStageGeneratorBase &fragmentShader,
         }
 
         Q_ASSERT(!isDepthPass && !isOrthoShadowPass && !isPerspectiveShadowPass);
-        fragmentShader.addInclude("tonemapping.glsllib");
-        fragmentShader.append("    fragOutput = vec4(qt_tonemap(qt_color_sum));");
 
+        if (oitMethod == QSSGRenderLayer::OITMethod::WeightedBlended) {
+            fragmentShader.addInclude("orderindependenttransparency.glsllib");
+            fragmentShader.addInclude("tonemapping.glsllib");
+            fragmentShader.addUniform("qt_cameraPosition", "vec3");
+            fragmentShader.addUniform("qt_cameraProperties", "vec2");
+            fragmentShader.append("    float z = abs(gl_FragCoord.z);");
+            fragmentShader.append("    qt_color_sum.rgb = qt_tonemap(qt_color_sum.rgb) * qt_color_sum.a;");
+            fragmentShader.append("    fragOutput = qt_color_sum * qt_transparencyWeight(z, qt_color_sum.a, qt_cameraProperties.y);");
+            fragmentShader.append("    revealageOutput = vec4(qt_color_sum.a);");
+        } else {
+            fragmentShader.addInclude("tonemapping.glsllib");
+            fragmentShader.append("    fragOutput = vec4(qt_tonemap(qt_color_sum));");
+        }
         // Debug Overrides for viewing various parts of the shading process
         if (Q_UNLIKELY(debugMode != QSSGRenderLayer::MaterialDebugMode::None)) {
             fragmentShader.append("    vec3 debugOutput = vec3(0.0);\n");
@@ -2036,8 +2065,18 @@ static void generateFragmentShader(QSSGStageGeneratorBase &fragmentShader,
                            << "    qt_shadowDist = (qt_shadowDist - qt_cameraProperties.x) / (qt_cameraProperties.y - qt_cameraProperties.x);\n"
                            << "    fragOutput = vec4(qt_shadowDist, qt_shadowDist, qt_shadowDist, 1.0);\n";
         } else {
-            fragmentShader.addInclude("tonemapping.glsllib");
-            fragmentShader.append("    fragOutput = vec4(qt_tonemap(qt_diffuseColor.rgb), qt_diffuseColor.a * qt_objectOpacity);");
+            if (oitMethod == QSSGRenderLayer::OITMethod::WeightedBlended) {
+                fragmentShader.addInclude("orderindependenttransparency.glsllib");
+                fragmentShader.addUniform("qt_cameraPosition", "vec3");
+                fragmentShader.addUniform("qt_cameraProperties", "vec2");
+                fragmentShader.append("    float z = abs(gl_FragCoord.z);");
+                fragmentShader.append("    vec4 color = vec4(qt_diffuseColor.rgb, qt_diffuseColor.a * qt_objectOpacity);");
+                fragmentShader.append("    fragOutput = qt_transparencyWeight(z, color.a, qt_cameraProperties.y) * color;");
+                fragmentShader.append("    revealageOutput = vec4(color.a);");
+            } else {
+                fragmentShader.addInclude("tonemapping.glsllib");
+                fragmentShader.append("    fragOutput = vec4(qt_tonemap(qt_diffuseColor.rgb), qt_diffuseColor.a * qt_objectOpacity);");
+            }
         }
     }
 }
@@ -2310,7 +2349,8 @@ void QSSGMaterialShaderGenerator::setRhiMaterialProperties(const QSSGRenderConte
             Q_ASSERT(pEntry);
 
             const int shadowMapIdx = shadowsUniformData.count;
-            const auto& names = setupShadowMapVariableNames(shadowMapIdx, theLight->m_shadowMapRes);
+            const bool is32bit = theLight->m_use32BitShadowmap;
+            const auto& names = setupShadowMapVariableNames(shadowMapIdx, theLight->m_shadowMapRes, is32bit);
 
             QSSGShaderShadowData &shadowData(shadowsUniformData.shadowData[shadowMapIdx]);
 

@@ -551,8 +551,8 @@ private:
     template <typename Format, typename Argument> void arg1_impl() const;
 
 private Q_SLOTS:
-    // let Formats = {QString, QStringView, QLatin1String}
-    // let Arguments = Formats ∪ {QByteArray, const char*, const char8_t*. const char16_t*, std::u16string, char, QChar, QLatin1Char, char16_t}
+    // let Formats = {QString, QStringView, QLatin1String, QUtf8StringView, QAnyStringView}
+    // let Arguments = Formats ∪ {QByteArray/View, const char*, const char8_t*, const char16_t*, std::u16string, char, QChar, QLatin1Char, char16_t}
     // test Formats × Arguments:
     void arg1_QString_QString_data() { arg1_data(); }
     void arg1_QString_QString() { arg1_impl<QString, QString>(); }
@@ -560,8 +560,18 @@ private Q_SLOTS:
     void arg1_QString_QStringView() { arg1_impl<QString, QStringView>(); }
     void arg1_QString_QLatin1StringView_data() { arg1_data(); }
     void arg1_QString_QLatin1StringView() { arg1_impl<QString, QLatin1StringView>(); }
+    void arg1_QString_QUtf8StringView_data() { arg1_data(); }
+    void arg1_QString_QUtf8StringView() { arg1_impl<QString, QUtf8StringView>(); }
+    void arg1_QString_QAnyStringViewUsingL1_data() { arg1_data(); }
+    void arg1_QString_QAnyStringViewUsingL1() { arg1_impl<QString, QAnyStringViewUsingL1>(); }
+    void arg1_QString_QAnyStringViewUsingU8_data() { arg1_data(); }
+    void arg1_QString_QAnyStringViewUsingU8() { arg1_impl<QString, QAnyStringViewUsingU8>(); }
+    void arg1_QString_QAnyStringViewUsingU16_data() { arg1_data(); }
+    void arg1_QString_QAnyStringViewUsingU16() { arg1_impl<QString, QAnyStringViewUsingU16>(); }
     void arg1_QString_QByteArray_data() { arg1_data(); }
     void arg1_QString_QByteArray() { arg1_impl<QString, QByteArray>(); }
+    void arg1_QString_QByteArrayView_data() { arg1_data(); }
+    void arg1_QString_QByteArrayView() { arg1_impl<QString, QByteArrayView>(); }
     void arg1_QString_const_char_star_data() { arg1_data(); }
     void arg1_QString_const_char_star() { arg1_impl<QString, const char*>(); }
     void arg1_QString_const_char8_t_star_data() { arg1_data(); }
@@ -578,8 +588,6 @@ private Q_SLOTS:
     void arg1_QString_QLatin1Char() { arg1_impl<QString, QLatin1Char>(); }
     void arg1_QString_char16_t_data() { arg1_data(false); }
     void arg1_QString_char16_t() {
-        QEXPECT_FAIL("%1/a", "QTBUG-125588", Continue);
-        QEXPECT_FAIL("%1/ä", "QTBUG-125588", Continue);
         arg1_impl<QString, char16_t>();
     }
 
@@ -589,8 +597,18 @@ private Q_SLOTS:
     void arg1_QStringView_QStringView() { arg1_impl<QStringView, QStringView>(); }
     void arg1_QStringView_QLatin1StringView_data() { arg1_data(); }
     void arg1_QStringView_QLatin1StringView() { arg1_impl<QStringView, QLatin1StringView>(); }
+    void arg1_QStringView_QUtf8StringView_data() { arg1_data(); }
+    void arg1_QStringView_QUtf8StringView() { arg1_impl<QStringView, QUtf8StringView>(); }
+    void arg1_QStringView_QAnyStringViewUsingL1_data() { arg1_data(); }
+    void arg1_QStringView_QAnyStringViewUsingL1() { arg1_impl<QStringView, QAnyStringViewUsingL1>(); }
+    void arg1_QStringView_QAnyStringViewUsingU8_data() { arg1_data(); }
+    void arg1_QStringView_QAnyStringViewUsingU8() { arg1_impl<QStringView, QAnyStringViewUsingU8>(); }
+    void arg1_QStringView_QAnyStringViewUsingU16_data() { arg1_data(); }
+    void arg1_QStringView_QAnyStringViewUsingU16() { arg1_impl<QStringView, QAnyStringViewUsingU16>(); }
     void arg1_QStringView_QByteArray_data() { arg1_data(); }
     void arg1_QStringView_QByteArray() { arg1_impl<QStringView, QByteArray>(); }
+    void arg1_QStringView_QByteArrayView_data() { arg1_data(); }
+    void arg1_QStringView_QByteArrayView() { arg1_impl<QStringView, QByteArrayView>(); }
     void arg1_QStringView_const_char_star_data() { arg1_data(); }
     void arg1_QStringView_const_char_star() { arg1_impl<QStringView, const char*>(); }
     void arg1_QStringView_const_char8_t_star_data() { arg1_data(); }
@@ -614,8 +632,18 @@ private Q_SLOTS:
     void arg1_QLatin1StringView_QStringView() { arg1_impl<QLatin1StringView, QStringView>(); }
     void arg1_QLatin1StringView_QLatin1StringView_data() { arg1_data(); }
     void arg1_QLatin1StringView_QLatin1StringView() { arg1_impl<QLatin1StringView, QLatin1StringView>(); }
+    void arg1_QLatin1StringView_QUtf8StringView_data() { arg1_data(); }
+    void arg1_QLatin1StringView_QUtf8StringView() { arg1_impl<QLatin1StringView, QUtf8StringView>(); }
+    void arg1_QLatin1StringView_QAnyStringViewUsingL1_data() { arg1_data(); }
+    void arg1_QLatin1StringView_QAnyStringViewUsingL1() { arg1_impl<QLatin1StringView, QAnyStringViewUsingL1>(); }
+    void arg1_QLatin1StringView_QAnyStringViewUsingU8_data() { arg1_data(); }
+    void arg1_QLatin1StringView_QAnyStringViewUsingU8() { arg1_impl<QLatin1StringView, QAnyStringViewUsingU8>(); }
+    void arg1_QLatin1StringView_QAnyStringViewUsingU16_data() { arg1_data(); }
+    void arg1_QLatin1StringView_QAnyStringViewUsingU16() { arg1_impl<QLatin1StringView, QAnyStringViewUsingU16>(); }
     void arg1_QLatin1StringView_QByteArray_data() { arg1_data(); }
     void arg1_QLatin1StringView_QByteArray() { arg1_impl<QLatin1StringView, QByteArray>(); }
+    void arg1_QLatin1StringView_QByteArrayView_data() { arg1_data(); }
+    void arg1_QLatin1StringView_QByteArrayView() { arg1_impl<QLatin1StringView, QByteArrayView>(); }
     void arg1_QLatin1StringView_const_char_star_data() { arg1_data(); }
     void arg1_QLatin1StringView_const_char_star() { arg1_impl<QLatin1StringView, const char*>(); }
     void arg1_QLatin1StringView_const_char8_t_star_data() { arg1_data(); }
@@ -632,6 +660,146 @@ private Q_SLOTS:
     void arg1_QLatin1StringView_QLatin1Char() { arg1_impl<QLatin1StringView, QLatin1Char>(); }
     void arg1_QLatin1StringView_char16_t_data() { arg1_data(false); }
     void arg1_QLatin1StringView_char16_t() { arg1_impl<QLatin1StringView, char16_t>(); }
+
+    void arg1_QUtf8StringView_QString_data() { arg1_data(); }
+    void arg1_QUtf8StringView_QString() { arg1_impl<QUtf8StringView, QString>(); }
+    void arg1_QUtf8StringView_QStringView_data() { arg1_data(); }
+    void arg1_QUtf8StringView_QStringView() { arg1_impl<QUtf8StringView, QStringView>(); }
+    void arg1_QUtf8StringView_QLatin1StringView_data() { arg1_data(); }
+    void arg1_QUtf8StringView_QLatin1StringView() { arg1_impl<QUtf8StringView, QLatin1StringView>(); }
+    void arg1_QUtf8StringView_QUtf8StringView_data() { arg1_data(); }
+    void arg1_QUtf8StringView_QUtf8StringView() { arg1_impl<QUtf8StringView, QUtf8StringView>(); }
+    void arg1_QUtf8StringView_QAnyStringViewUsingL1_data() { arg1_data(); }
+    void arg1_QUtf8StringView_QAnyStringViewUsingL1() { arg1_impl<QUtf8StringView, QAnyStringViewUsingL1>(); }
+    void arg1_QUtf8StringView_QAnyStringViewUsingU8_data() { arg1_data(); }
+    void arg1_QUtf8StringView_QAnyStringViewUsingU8() { arg1_impl<QUtf8StringView, QAnyStringViewUsingU8>(); }
+    void arg1_QUtf8StringView_QAnyStringViewUsingU16_data() { arg1_data(); }
+    void arg1_QUtf8StringView_QAnyStringViewUsingU16() { arg1_impl<QUtf8StringView, QAnyStringViewUsingU16>(); }
+    void arg1_QUtf8StringView_QByteArray_data() { arg1_data(); }
+    void arg1_QUtf8StringView_QByteArray() { arg1_impl<QUtf8StringView, QByteArray>(); }
+    void arg1_QUtf8StringView_QByteArrayView_data() { arg1_data(); }
+    void arg1_QUtf8StringView_QByteArrayView() { arg1_impl<QUtf8StringView, QByteArrayView>(); }
+    void arg1_QUtf8StringView_const_char_star_data() { arg1_data(); }
+    void arg1_QUtf8StringView_const_char_star() { arg1_impl<QUtf8StringView, const char*>(); }
+    void arg1_QUtf8StringView_const_char8_t_star_data() { arg1_data(); }
+    void arg1_QUtf8StringView_const_char8_t_star() { IF_CHAR8T((arg1_impl<QUtf8StringView, const char8_t*>())); }
+    void arg1_QUtf8StringView_const_char16_t_star_data() { arg1_data(); }
+    void arg1_QUtf8StringView_const_char16_t_star() { arg1_impl<QUtf8StringView, const char16_t*>(); }
+    void arg1_QUtf8StringView_stdu16string_data() { arg1_data(); }
+    void arg1_QUtf8StringView_stdu16string() { arg1_impl<QUtf8StringView, std::u16string>(); }
+    void arg1_QUtf8StringView_char_data() { arg1_data(false); }
+    void arg1_QUtf8StringView_char() { arg1_impl<QUtf8StringView, char>(); }
+    void arg1_QUtf8StringView_QChar_data() { arg1_data(false); }
+    void arg1_QUtf8StringView_QChar() { arg1_impl<QUtf8StringView, QChar>(); }
+    void arg1_QUtf8StringView_QLatin1Char_data() { arg1_data(false); }
+    void arg1_QUtf8StringView_QLatin1Char() { arg1_impl<QUtf8StringView, QLatin1Char>(); }
+    void arg1_QUtf8StringView_char16_t_data() { arg1_data(false); }
+    void arg1_QUtf8StringView_char16_t() { arg1_impl<QUtf8StringView, char16_t>(); }
+
+    void arg1_QAnyStringViewUsingL1_QString_data() { arg1_data(); }
+    void arg1_QAnyStringViewUsingL1_QString() { arg1_impl<QAnyStringViewUsingL1, QString>(); }
+    void arg1_QAnyStringViewUsingL1_QStringView_data() { arg1_data(); }
+    void arg1_QAnyStringViewUsingL1_QStringView() { arg1_impl<QAnyStringViewUsingL1, QStringView>(); }
+    void arg1_QAnyStringViewUsingL1_QLatin1StringView_data() { arg1_data(); }
+    void arg1_QAnyStringViewUsingL1_QLatin1StringView() { arg1_impl<QAnyStringViewUsingL1, QLatin1StringView>(); }
+    void arg1_QAnyStringViewUsingL1_QUtf8StringView_data() { arg1_data(); }
+    void arg1_QAnyStringViewUsingL1_QUtf8StringView() { arg1_impl<QAnyStringViewUsingL1, QUtf8StringView>(); }
+    void arg1_QAnyStringViewUsingL1_QAnyStringViewUsingL1_data() { arg1_data(); }
+    void arg1_QAnyStringViewUsingL1_QAnyStringViewUsingL1() { arg1_impl<QAnyStringViewUsingL1, QAnyStringViewUsingL1>(); }
+    void arg1_QAnyStringViewUsingL1_QAnyStringViewUsingU8_data() { arg1_data(); }
+    void arg1_QAnyStringViewUsingL1_QAnyStringViewUsingU8() { arg1_impl<QAnyStringViewUsingL1, QAnyStringViewUsingU8>(); }
+    void arg1_QAnyStringViewUsingL1_QAnyStringViewUsingU16_data() { arg1_data(); }
+    void arg1_QAnyStringViewUsingL1_QAnyStringViewUsingU16() { arg1_impl<QAnyStringViewUsingL1, QAnyStringViewUsingU16>(); }
+    void arg1_QAnyStringViewUsingL1_QByteArray_data() { arg1_data(); }
+    void arg1_QAnyStringViewUsingL1_QByteArray() { arg1_impl<QAnyStringViewUsingL1, QByteArray>(); }
+    void arg1_QAnyStringViewUsingL1_QByteArrayView_data() { arg1_data(); }
+    void arg1_QAnyStringViewUsingL1_QByteArrayView() { arg1_impl<QAnyStringViewUsingL1, QByteArrayView>(); }
+    void arg1_QAnyStringViewUsingL1_const_char_star_data() { arg1_data(); }
+    void arg1_QAnyStringViewUsingL1_const_char_star() { arg1_impl<QAnyStringViewUsingL1, const char*>(); }
+    void arg1_QAnyStringViewUsingL1_const_char8_t_star_data() { arg1_data(); }
+    void arg1_QAnyStringViewUsingL1_const_char8_t_star() { IF_CHAR8T((arg1_impl<QAnyStringViewUsingL1, const char8_t*>())); }
+    void arg1_QAnyStringViewUsingL1_const_char16_t_star_data() { arg1_data(); }
+    void arg1_QAnyStringViewUsingL1_const_char16_t_star() { arg1_impl<QAnyStringViewUsingL1, const char16_t*>(); }
+    void arg1_QAnyStringViewUsingL1_stdu16string_data() { arg1_data(); }
+    void arg1_QAnyStringViewUsingL1_stdu16string() { arg1_impl<QAnyStringViewUsingL1, std::u16string>(); }
+    void arg1_QAnyStringViewUsingL1_char_data() { arg1_data(false); }
+    void arg1_QAnyStringViewUsingL1_char() { arg1_impl<QAnyStringViewUsingL1, char>(); }
+    void arg1_QAnyStringViewUsingL1_QChar_data() { arg1_data(false); }
+    void arg1_QAnyStringViewUsingL1_QChar() { arg1_impl<QAnyStringViewUsingL1, QChar>(); }
+    void arg1_QAnyStringViewUsingL1_QLatin1Char_data() { arg1_data(false); }
+    void arg1_QAnyStringViewUsingL1_QLatin1Char() { arg1_impl<QAnyStringViewUsingL1, QLatin1Char>(); }
+    void arg1_QAnyStringViewUsingL1_char16_t_data() { arg1_data(false); }
+    void arg1_QAnyStringViewUsingL1_char16_t() { arg1_impl<QAnyStringViewUsingL1, char16_t>(); }
+
+    void arg1_QAnyStringViewUsingU8_QString_data() { arg1_data(); }
+    void arg1_QAnyStringViewUsingU8_QString() { arg1_impl<QAnyStringViewUsingU8, QString>(); }
+    void arg1_QAnyStringViewUsingU8_QStringView_data() { arg1_data(); }
+    void arg1_QAnyStringViewUsingU8_QStringView() { arg1_impl<QAnyStringViewUsingU8, QStringView>(); }
+    void arg1_QAnyStringViewUsingU8_QLatin1StringView_data() { arg1_data(); }
+    void arg1_QAnyStringViewUsingU8_QLatin1StringView() { arg1_impl<QAnyStringViewUsingU8, QLatin1StringView>(); }
+    void arg1_QAnyStringViewUsingU8_QUtf8StringView_data() { arg1_data(); }
+    void arg1_QAnyStringViewUsingU8_QUtf8StringView() { arg1_impl<QAnyStringViewUsingU8, QUtf8StringView>(); }
+    void arg1_QAnyStringViewUsingU8_QAnyStringViewUsingL1_data() { arg1_data(); }
+    void arg1_QAnyStringViewUsingU8_QAnyStringViewUsingL1() { arg1_impl<QAnyStringViewUsingU8, QAnyStringViewUsingL1>(); }
+    void arg1_QAnyStringViewUsingU8_QAnyStringViewUsingU8_data() { arg1_data(); }
+    void arg1_QAnyStringViewUsingU8_QAnyStringViewUsingU8() { arg1_impl<QAnyStringViewUsingU8, QAnyStringViewUsingU8>(); }
+    void arg1_QAnyStringViewUsingU8_QAnyStringViewUsingU16_data() { arg1_data(); }
+    void arg1_QAnyStringViewUsingU8_QAnyStringViewUsingU16() { arg1_impl<QAnyStringViewUsingU8, QAnyStringViewUsingU16>(); }
+    void arg1_QAnyStringViewUsingU8_QByteArray_data() { arg1_data(); }
+    void arg1_QAnyStringViewUsingU8_QByteArray() { arg1_impl<QAnyStringViewUsingU8, QByteArray>(); }
+    void arg1_QAnyStringViewUsingU8_QByteArrayView_data() { arg1_data(); }
+    void arg1_QAnyStringViewUsingU8_QByteArrayView() { arg1_impl<QAnyStringViewUsingU8, QByteArrayView>(); }
+    void arg1_QAnyStringViewUsingU8_const_char_star_data() { arg1_data(); }
+    void arg1_QAnyStringViewUsingU8_const_char_star() { arg1_impl<QAnyStringViewUsingU8, const char*>(); }
+    void arg1_QAnyStringViewUsingU8_const_char8_t_star_data() { arg1_data(); }
+    void arg1_QAnyStringViewUsingU8_const_char8_t_star() { IF_CHAR8T((arg1_impl<QAnyStringViewUsingU8, const char8_t*>())); }
+    void arg1_QAnyStringViewUsingU8_const_char16_t_star_data() { arg1_data(); }
+    void arg1_QAnyStringViewUsingU8_const_char16_t_star() { arg1_impl<QAnyStringViewUsingU8, const char16_t*>(); }
+    void arg1_QAnyStringViewUsingU8_stdu16string_data() { arg1_data(); }
+    void arg1_QAnyStringViewUsingU8_stdu16string() { arg1_impl<QAnyStringViewUsingU8, std::u16string>(); }
+    void arg1_QAnyStringViewUsingU8_char_data() { arg1_data(false); }
+    void arg1_QAnyStringViewUsingU8_char() { arg1_impl<QAnyStringViewUsingU8, char>(); }
+    void arg1_QAnyStringViewUsingU8_QChar_data() { arg1_data(false); }
+    void arg1_QAnyStringViewUsingU8_QChar() { arg1_impl<QAnyStringViewUsingU8, QChar>(); }
+    void arg1_QAnyStringViewUsingU8_QLatin1Char_data() { arg1_data(false); }
+    void arg1_QAnyStringViewUsingU8_QLatin1Char() { arg1_impl<QAnyStringViewUsingU8, QLatin1Char>(); }
+    void arg1_QAnyStringViewUsingU8_char16_t_data() { arg1_data(false); }
+    void arg1_QAnyStringViewUsingU8_char16_t() { arg1_impl<QAnyStringViewUsingU8, char16_t>(); }
+
+    void arg1_QAnyStringViewUsingU16_QString_data() { arg1_data(); }
+    void arg1_QAnyStringViewUsingU16_QString() { arg1_impl<QAnyStringViewUsingU16, QString>(); }
+    void arg1_QAnyStringViewUsingU16_QStringView_data() { arg1_data(); }
+    void arg1_QAnyStringViewUsingU16_QStringView() { arg1_impl<QAnyStringViewUsingU16, QStringView>(); }
+    void arg1_QAnyStringViewUsingU16_QLatin1StringView_data() { arg1_data(); }
+    void arg1_QAnyStringViewUsingU16_QLatin1StringView() { arg1_impl<QAnyStringViewUsingU16, QLatin1StringView>(); }
+    void arg1_QAnyStringViewUsingU16_QUtf8StringView_data() { arg1_data(); }
+    void arg1_QAnyStringViewUsingU16_QUtf8StringView() { arg1_impl<QAnyStringViewUsingU16, QUtf8StringView>(); }
+    void arg1_QAnyStringViewUsingU16_QAnyStringViewUsingL1_data() { arg1_data(); }
+    void arg1_QAnyStringViewUsingU16_QAnyStringViewUsingL1() { arg1_impl<QAnyStringViewUsingU16, QAnyStringViewUsingL1>(); }
+    void arg1_QAnyStringViewUsingU16_QAnyStringViewUsingU8_data() { arg1_data(); }
+    void arg1_QAnyStringViewUsingU16_QAnyStringViewUsingU8() { arg1_impl<QAnyStringViewUsingU16, QAnyStringViewUsingU8>(); }
+    void arg1_QAnyStringViewUsingU16_QAnyStringViewUsingU16_data() { arg1_data(); }
+    void arg1_QAnyStringViewUsingU16_QAnyStringViewUsingU16() { arg1_impl<QAnyStringViewUsingU16, QAnyStringViewUsingU16>(); }
+    void arg1_QAnyStringViewUsingU16_QByteArray_data() { arg1_data(); }
+    void arg1_QAnyStringViewUsingU16_QByteArray() { arg1_impl<QAnyStringViewUsingU16, QByteArray>(); }
+    void arg1_QAnyStringViewUsingU16_QByteArrayView_data() { arg1_data(); }
+    void arg1_QAnyStringViewUsingU16_QByteArrayView() { arg1_impl<QAnyStringViewUsingU16, QByteArrayView>(); }
+    void arg1_QAnyStringViewUsingU16_const_char_star_data() { arg1_data(); }
+    void arg1_QAnyStringViewUsingU16_const_char_star() { arg1_impl<QAnyStringViewUsingU16, const char*>(); }
+    void arg1_QAnyStringViewUsingU16_const_char8_t_star_data() { arg1_data(); }
+    void arg1_QAnyStringViewUsingU16_const_char8_t_star() { IF_CHAR8T((arg1_impl<QAnyStringViewUsingU16, const char8_t*>())); }
+    void arg1_QAnyStringViewUsingU16_const_char16_t_star_data() { arg1_data(); }
+    void arg1_QAnyStringViewUsingU16_const_char16_t_star() { arg1_impl<QAnyStringViewUsingU16, const char16_t*>(); }
+    void arg1_QAnyStringViewUsingU16_stdu16string_data() { arg1_data(); }
+    void arg1_QAnyStringViewUsingU16_stdu16string() { arg1_impl<QAnyStringViewUsingU16, std::u16string>(); }
+    void arg1_QAnyStringViewUsingU16_char_data() { arg1_data(false); }
+    void arg1_QAnyStringViewUsingU16_char() { arg1_impl<QAnyStringViewUsingU16, char>(); }
+    void arg1_QAnyStringViewUsingU16_QChar_data() { arg1_data(false); }
+    void arg1_QAnyStringViewUsingU16_QChar() { arg1_impl<QAnyStringViewUsingU16, QChar>(); }
+    void arg1_QAnyStringViewUsingU16_QLatin1Char_data() { arg1_data(false); }
+    void arg1_QAnyStringViewUsingU16_QLatin1Char() { arg1_impl<QAnyStringViewUsingU16, QLatin1Char>(); }
+    void arg1_QAnyStringViewUsingU16_char16_t_data() { arg1_data(false); }
+    void arg1_QAnyStringViewUsingU16_char16_t() { arg1_impl<QAnyStringViewUsingU16, char16_t>(); }
 
 private:
     void split_data(bool rhsHasVariableLength = true);
@@ -1209,7 +1377,7 @@ template <typename T> constexpr bool is_null(const T &str)
     else
         return str.isNull();
 }
-template <> constexpr bool is_null(const char &str) { return false; }
+template <> constexpr bool is_null(const char &) { return false; }
 
 } // namespace help
 
@@ -1563,11 +1731,10 @@ void tst_QStringApiSymmetry::localeAwareCompare_data()
     QTest::addColumn<int>("result");
 
 #if defined(Q_OS_WIN) || defined(Q_OS_DARWIN) || QT_CONFIG(icu)
-    // Although the test sets LC_ALL (and adds a suffix to wanted) test
-    // LC_COLLATE because setlocale(LC_ALL, nullptr) encodes the whole locale,
-    // it's not simply the value of LC_ALL. We need our own copy of the reported
-    // value, as later setlocale() calls may stomp the value:
-    const QByteArray current(setlocale(LC_COLLATE, nullptr));
+    // Pull out current system locale's collation locale using Qt APIs,
+    // so that we go though the relevant system backend, that will match
+    // the system collation logic in QString::localeAwareCompare_helper.
+    const QByteArray current = QLocale::system().collation().name().toUtf8();
     const auto canTest = [current](const char *wanted) {
 #  if QT_CONFIG(icu)
         // ICU will correctly use en when relevant environment variables are set

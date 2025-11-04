@@ -6,6 +6,7 @@
 #define COMPONENTS_SAFE_BROWSING_CORE_BROWSER_REALTIME_URL_LOOKUP_SERVICE_H_
 
 #include <memory>
+#include <optional>
 #include <string>
 
 #include "base/functional/callback.h"
@@ -14,12 +15,12 @@
 #include "base/task/sequenced_task_runner.h"
 #include "base/time/time.h"
 #include "base/timer/timer.h"
+#include "components/enterprise/common/proto/connectors.pb.h"
 #include "components/prefs/pref_change_registrar.h"
 #include "components/safe_browsing/core/browser/db/v4_protocol_manager_util.h"
 #include "components/safe_browsing/core/browser/realtime/url_lookup_service_base.h"
 #include "components/safe_browsing/core/common/proto/csd.pb.h"
 #include "components/safe_browsing/core/common/proto/realtimeapi.pb.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "url/gurl.h"
 
 namespace net {
@@ -65,7 +66,8 @@ class RealTimeUrlLookupService : public RealTimeUrlLookupServiceBase {
       const ClientConfiguredForTokenFetchesCallback&
           client_token_config_callback,
       bool is_off_the_record,
-      variations::VariationsService* variations_service,
+      base::RepeatingCallback<variations::VariationsService*()>
+          variations_service_getter,
       ReferrerChainProvider* referrer_chain_provider,
       WebUIDelegate* delegate);
 
@@ -76,11 +78,16 @@ class RealTimeUrlLookupService : public RealTimeUrlLookupServiceBase {
 
   // RealTimeUrlLookupServiceBase:
   bool CanPerformFullURLLookup() const override;
-  bool CanCheckSubresourceURL() const override;
+  bool CanIncludeSubframeUrlInReferrerChain() const override;
   bool CanCheckSafeBrowsingDb() const override;
   bool CanCheckSafeBrowsingHighConfidenceAllowlist() const override;
   void Shutdown() override;
   bool CanSendRTSampleRequest() const override;
+  std::string GetUserEmail() const override;
+  std::string GetBrowserDMTokenString() const override;
+  std::string GetProfileDMTokenString() const override;
+  std::unique_ptr<enterprise_connectors::ClientMetadata> GetClientMetadata()
+      const override;
   std::string GetMetricSuffix() const override;
 
 #if defined(UNIT_TEST)
@@ -100,14 +107,13 @@ class RealTimeUrlLookupService : public RealTimeUrlLookupServiceBase {
   bool CanSendPageLoadToken() const override;
   void GetAccessToken(
       const GURL& url,
-      const GURL& last_committed_url,
-      bool is_mainframe,
       RTLookupResponseCallback response_callback,
-      scoped_refptr<base::SequencedTaskRunner> callback_task_runner) override;
-  absl::optional<std::string> GetDMTokenString() const override;
+      scoped_refptr<base::SequencedTaskRunner> callback_task_runner,
+      SessionID tab_id) override;
+  std::optional<std::string> GetDMTokenString() const override;
   bool ShouldIncludeCredentials() const override;
   void OnResponseUnauthorized(const std::string& invalid_access_token) override;
-  absl::optional<base::Time> GetMinAllowedTimestampForReferrerChains()
+  std::optional<base::Time> GetMinAllowedTimestampForReferrerChains()
       const override;
   void MaybeLogLastProtegoPingTimeToPrefs(bool sent_with_token) override;
   void MaybeLogProtegoPingCookieHistograms(bool request_had_cookie,
@@ -120,11 +126,10 @@ class RealTimeUrlLookupService : public RealTimeUrlLookupServiceBase {
   // Called when the access token is obtained from |token_fetcher_|.
   void OnGetAccessToken(
       const GURL& url,
-      const GURL& last_committed_url,
-      bool is_mainframe,
       RTLookupResponseCallback response_callback,
       scoped_refptr<base::SequencedTaskRunner> callback_task_runner,
       base::TimeTicks get_token_start_time,
+      SessionID tab_id,
       const std::string& access_token);
 
   // Unowned object used for getting preference settings.
@@ -147,11 +152,12 @@ class RealTimeUrlLookupService : public RealTimeUrlLookupServiceBase {
 
   // The time that real time URL lookup is enabled. Not set if it is already
   // enabled at startup.
-  absl::optional<base::Time> url_lookup_enabled_timestamp_ = absl::nullopt;
+  std::optional<base::Time> url_lookup_enabled_timestamp_ = std::nullopt;
 
-  // Unowned. For checking whether real-time checks can be enabled in a given
-  // location.
-  raw_ptr<variations::VariationsService, DanglingUntriaged> variations_;
+  // Callback used to fetch the variations service to check whether real-time
+  // checks can be enabled in a given location.
+  base::RepeatingCallback<variations::VariationsService*()>
+      variations_service_getter_;
 
   // Bypasses the check for probability when sending Protego sample pings.
   // Only for unit tests.

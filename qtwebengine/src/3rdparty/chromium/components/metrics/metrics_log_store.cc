@@ -4,6 +4,8 @@
 
 #include "components/metrics/metrics_log_store.h"
 
+#include <string_view>
+
 #include "components/metrics/metrics_pref_names.h"
 #include "components/metrics/metrics_service_client.h"
 #include "components/metrics/unsent_log_store_metrics_impl.h"
@@ -153,7 +155,7 @@ const std::string& MetricsLogStore::staged_log_signature() const {
   return get_staged_log_queue()->staged_log_signature();
 }
 
-absl::optional<uint64_t> MetricsLogStore::staged_log_user_id() const {
+std::optional<uint64_t> MetricsLogStore::staged_log_user_id() const {
   return get_staged_log_queue()->staged_log_user_id();
 }
 
@@ -210,7 +212,7 @@ void MetricsLogStore::StageNextLog() {
     ongoing_log_queue_.StageNextLog();
 }
 
-void MetricsLogStore::DiscardStagedLog(base::StringPiece reason) {
+void MetricsLogStore::DiscardStagedLog(std::string_view reason) {
   DCHECK(has_staged_log());
   if (initial_log_queue_.has_staged_log())
     initial_log_queue_.DiscardStagedLog(reason);

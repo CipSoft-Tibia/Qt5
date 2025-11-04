@@ -5,6 +5,8 @@
 #ifndef COMPONENTS_OPTIMIZATION_GUIDE_CORE_TFLITE_MODEL_EXECUTOR_H_
 #define COMPONENTS_OPTIMIZATION_GUIDE_CORE_TFLITE_MODEL_EXECUTOR_H_
 
+#include <optional>
+
 #include "base/files/memory_mapped_file.h"
 #include "base/functional/bind.h"
 #include "base/functional/callback_forward.h"
@@ -25,7 +27,6 @@
 #include "components/optimization_guide/core/model_util.h"
 #include "components/optimization_guide/core/optimization_guide_features.h"
 #include "components/optimization_guide/machine_learning_tflite_buildflags.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "third_party/tflite/src/tensorflow/lite/c/common.h"
 #include "third_party/tflite_support/src/tensorflow_lite_support/cc/task/core/base_task_api.h"
 
@@ -91,19 +92,15 @@ class TFLiteModelExecutor : public ModelExecutor<OutputType, InputType> {
   ~TFLiteModelExecutor() override {
     DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
 
-    // Ensure the memory mapped file is deleted on a blockable sequence since
-    // the current sequence is not guaranteed to be blockable.
-    //
-    // |UnloadModel| is not used here since it may be overridden.
-    if (model_fb_) {
-      model_loading_task_runner_->DeleteSoon(FROM_HERE, std::move(model_fb_));
-    }
+    // Unload the model. Do not use `UnloadModel` since it may be overridden by
+    // a subclass and hence not available from this destructor.
+    model_fb_.reset();
   }
 
   // Should be called on the same sequence as the ctor, but once called |this|
   // must only be used from the |execution_task_runner| thread/sequence.
   void InitializeAndMoveToExecutionThread(
-      absl::optional<base::TimeDelta> model_inference_timeout,
+      std::optional<base::TimeDelta> model_inference_timeout,
       proto::OptimizationTarget optimization_target,
       scoped_refptr<base::SequencedTaskRunner> execution_task_runner,
       scoped_refptr<base::SequencedTaskRunner> reply_task_runner) override {
@@ -211,14 +208,13 @@ class TFLiteModelExecutor : public ModelExecutor<OutputType, InputType> {
     DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
 
     loaded_model_.reset();
-    // Ensure the memory mapped file is deleted on a blockable sequence.
-    model_loading_task_runner_->DeleteSoon(FROM_HERE, std::move(model_fb_));
+    model_fb_.reset();
   }
 
   using ExecutionCallback =
-      base::OnceCallback<void(const absl::optional<OutputType>&)>;
+      base::OnceCallback<void(const std::optional<OutputType>&)>;
   using BatchExecutionCallback =
-      base::OnceCallback<void(const std::vector<absl::optional<OutputType>>&)>;
+      base::OnceCallback<void(const std::vector<std::optional<OutputType>>&)>;
 
   // When complete, |callback_on_complete| will be run via |reply_task_runner_|
   // with the outputs of the model.
@@ -227,7 +223,7 @@ class TFLiteModelExecutor : public ModelExecutor<OutputType, InputType> {
                         InputType input) override {
     BatchExecutionCallback adapted_callback = base::BindOnce(
         [](ExecutionCallback callback,
-           const std::vector<absl::optional<OutputType>>& output) {
+           const std::vector<std::optional<OutputType>>& output) {
           CHECK_EQ(output.size(), 1U);
           std::move(callback).Run(output[0]);
         },
@@ -262,18 +258,18 @@ class TFLiteModelExecutor : public ModelExecutor<OutputType, InputType> {
 
   // Starts the synchronous execution of the model. Returns model outputs.
   // Model needs to be loaded. Synchronous calls do not load or unload model.
-  std::vector<absl::optional<OutputType>> SendForBatchExecutionSync(
+  std::vector<std::optional<OutputType>> SendForBatchExecutionSync(
       ModelExecutor<OutputType, InputType>::ConstRefInputVector inputs)
       override {
     DCHECK(execution_task_runner_->RunsTasksInCurrentSequence());
     DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
 
-    std::vector<absl::optional<OutputType>> outputs;
+    std::vector<std::optional<OutputType>> outputs;
     outputs.reserve(inputs.size());
     // If the model isn't loaded yet, return null results.
     if (!loaded_model_) {
       for (size_t i = 0; i < inputs.size(); i++) {
-        outputs.push_back(absl::nullopt);
+        outputs.push_back(std::nullopt);
         // If the model is not loaded in a batch context, this status would not
         // get recorded the same number of times as it would in success. Thus,
         // increment the bucket |inputs.size()| number of times to keep metrics
@@ -306,7 +302,7 @@ class TFLiteModelExecutor : public ModelExecutor<OutputType, InputType> {
 
   // Executes the model using |execution_task| on |args|, returning the model
   // output and setting |out_status| with the status of the execution attempt.
-  virtual absl::optional<OutputType> Execute(
+  virtual std::optional<OutputType> Execute(
       ModelExecutionTaskType* execution_task,
       ExecutionStatus* out_status,
       InputType args) = 0;
@@ -318,6 +314,14 @@ class TFLiteModelExecutor : public ModelExecutor<OutputType, InputType> {
   BuildModelExecutionTask(base::MemoryMappedFile* model_file) = 0;
 
  private:
+  using MemoryMappedFileDeleteOnTaskRunner =
+      std::unique_ptr<base::MemoryMappedFile, base::OnTaskRunnerDeleter>;
+
+  static MemoryMappedFileDeleteOnTaskRunner
+  NullMemoryMappedFileDeleteOnTaskRunner() {
+    return {nullptr, base::OnTaskRunnerDeleter(nullptr)};
+  }
+
   // Loads the model file in the background thread, and calls a callback on
   // model file loaded in memory on the model execution thread.
   void LoadModelFile(
@@ -347,21 +351,26 @@ class TFLiteModelExecutor : public ModelExecutor<OutputType, InputType> {
         // thread, which returns the memory-mapped model file or nullptr if
         // failed to load.
         base::BindOnce(
-            [](const absl::optional<base::FilePath> model_file_path,
-               proto::OptimizationTarget optimization_target)
+            [](const std::optional<base::FilePath> model_file_path,
+               proto::OptimizationTarget optimization_target,
+               scoped_refptr<base::SequencedTaskRunner>
+                   model_loading_task_runner)
                 -> std::pair<ExecutionStatus,
-                             std::unique_ptr<base::MemoryMappedFile>> {
+                             MemoryMappedFileDeleteOnTaskRunner> {
               base::TimeTicks loading_start_time = base::TimeTicks::Now();
               if (!model_file_path) {
                 return std::make_pair(
-                    ExecutionStatus::kErrorModelFileNotAvailable, nullptr);
+                    ExecutionStatus::kErrorModelFileNotAvailable,
+                    NullMemoryMappedFileDeleteOnTaskRunner());
               }
 
-              std::unique_ptr<base::MemoryMappedFile> model_fb =
-                  std::make_unique<base::MemoryMappedFile>();
+              MemoryMappedFileDeleteOnTaskRunner model_fb(
+                  new base::MemoryMappedFile(),
+                  base::OnTaskRunnerDeleter(
+                      std::move(model_loading_task_runner)));
               if (!model_fb->Initialize(*model_file_path)) {
                 return std::make_pair(ExecutionStatus::kErrorModelFileNotValid,
-                                      nullptr);
+                                      NullMemoryMappedFileDeleteOnTaskRunner());
               }
 
               // We only want to record successful loading times.
@@ -374,7 +383,7 @@ class TFLiteModelExecutor : public ModelExecutor<OutputType, InputType> {
               return std::make_pair(ExecutionStatus::kSuccess,
                                     std::move(model_fb));
             },
-            model_file_path_, optimization_target_),
+            model_file_path_, optimization_target_, model_loading_task_runner_),
         base::BindOnce(&TFLiteModelExecutor::OnModelFileLoadedInMemory,
                        GetWeakPtrForExecutionThread(),
                        std::move(model_loaded_callback)));
@@ -384,7 +393,9 @@ class TFLiteModelExecutor : public ModelExecutor<OutputType, InputType> {
   // the memory-mapped file, and calls `model_loaded_callback`.
   void OnModelFileLoadedInMemory(
       base::OnceCallback<void(ExecutionStatus)> model_loaded_callback,
-      std::pair<ExecutionStatus, std::unique_ptr<base::MemoryMappedFile>>
+      std::pair<
+          ExecutionStatus,
+          std::unique_ptr<base::MemoryMappedFile, base::OnTaskRunnerDeleter>>
           status_and_model_fb) {
     DCHECK(execution_task_runner_->RunsTasksInCurrentSequence());
     DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
@@ -439,7 +450,7 @@ class TFLiteModelExecutor : public ModelExecutor<OutputType, InputType> {
   // Batch executes the loaded model for inputs.
   void BatchExecuteLoadedModel(
       ModelExecutor<OutputType, InputType>::ConstRefInputVector inputs,
-      std::vector<absl::optional<OutputType>>* outputs) {
+      std::vector<std::optional<OutputType>>* outputs) {
     DCHECK(execution_task_runner_->RunsTasksInCurrentSequence());
     DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
     DCHECK(loaded_model_);
@@ -468,7 +479,7 @@ class TFLiteModelExecutor : public ModelExecutor<OutputType, InputType> {
                          optimization_target_));
         base::ElapsedThreadTimer execution_timer;
         base::ElapsedTimer elapsed_timer;
-        absl::optional<OutputType> output = Execute(
+        std::optional<OutputType> output = Execute(
             loaded_model_.get(), status_recorder.mutable_status(), input);
         DCHECK_NE(status_recorder.status(), ExecutionStatus::kUnknown);
         outputs->push_back(output);
@@ -503,11 +514,11 @@ class TFLiteModelExecutor : public ModelExecutor<OutputType, InputType> {
     DCHECK(execution_task_runner_->RunsTasksInCurrentSequence());
     DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
 
-    std::vector<absl::optional<OutputType>> outputs;
+    std::vector<std::optional<OutputType>> outputs;
     outputs.reserve(inputs.size());
     if (!loaded_model_) {
       for (size_t i = 0; i < inputs.size(); i++) {
-        outputs.push_back(absl::nullopt);
+        outputs.push_back(std::nullopt);
         // If the model fails to load in a batch context, this status would not
         // get recorded the same number of times as it would in success. Thus,
         // increment the bucket |inputs.size()| number of times to keep metrics
@@ -573,12 +584,12 @@ class TFLiteModelExecutor : public ModelExecutor<OutputType, InputType> {
 
   // The time that the model was last executed. Logged in metrics for the second
   // and following runs.
-  absl::optional<base::TimeTicks> last_execution_time_
+  std::optional<base::TimeTicks> last_execution_time_
       GUARDED_BY_CONTEXT(sequence_checker_);
 
   // The model file path to be loaded. May be nullopt if no model has been
   // downloaded yet.
-  absl::optional<base::FilePath> model_file_path_
+  std::optional<base::FilePath> model_file_path_
       GUARDED_BY_CONTEXT(sequence_checker_);
 
   // Note on lifetimes: |loaded_model_| and |model_fb_| both share the same
@@ -589,9 +600,11 @@ class TFLiteModelExecutor : public ModelExecutor<OutputType, InputType> {
       GUARDED_BY_CONTEXT(sequence_checker_);
 
   // This will only be non-null when |model_file_path_| is set, and while the
-  // model is loaded which is managed by a feature flag.
-  std::unique_ptr<base::MemoryMappedFile> model_fb_
-      GUARDED_BY_CONTEXT(sequence_checker_);
+  // model is loaded which is managed by a feature flag. `OnTaskRunnerDeleter`
+  // is used to ensure that destruction occurs on a sequence that allows
+  // blocking, since it involves closing a file handle.
+  MemoryMappedFileDeleteOnTaskRunner model_fb_ GUARDED_BY_CONTEXT(
+      sequence_checker_) = NullMemoryMappedFileDeleteOnTaskRunner();
 
   SEQUENCE_CHECKER(sequence_checker_);
 

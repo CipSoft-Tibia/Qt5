@@ -11,10 +11,10 @@
 
 #include <immintrin.h>
 
-#include <xnnpack/igemm.h>
-#include <xnnpack/intrinsics-polyfill.h>
-#include <xnnpack/math.h>
-#include <xnnpack/unaligned.h>
+#include "xnnpack/igemm.h"
+#include "xnnpack/intrinsics-polyfill.h"
+#include "xnnpack/math.h"
+#include "xnnpack/unaligned.h"
 
 
 void xnn_qd8_f32_qc8w_igemm_minmax_ukernel_2x8c8__avx2(
@@ -167,7 +167,6 @@ void xnn_qd8_f32_qc8w_igemm_minmax_ukernel_2x8c8__avx2(
       c0 = (float*) ((uintptr_t) c0 + cn_stride);
 
       a = (const int8_t**restrict) ((uintptr_t) a - ks);
-
       nc -= 8;
     } else {
       __m128 vout1x0123 = _mm256_castps256_ps128(vout1x01234567);

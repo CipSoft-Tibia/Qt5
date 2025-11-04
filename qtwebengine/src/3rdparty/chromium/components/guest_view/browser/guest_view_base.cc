@@ -5,6 +5,7 @@
 #include "components/guest_view/browser/guest_view_base.h"
 
 #include <memory>
+#include <optional>
 #include <utility>
 
 #include "base/functional/bind.h"
@@ -18,6 +19,7 @@
 #include "content/public/browser/file_select_listener.h"
 #include "content/public/browser/isolated_web_apps_policy.h"
 #include "content/public/browser/navigation_handle.h"
+#include "content/public/browser/permission_result.h"
 #include "content/public/browser/render_process_host.h"
 #include "content/public/browser/render_view_host.h"
 #include "content/public/browser/render_widget_host.h"
@@ -95,9 +97,10 @@ class GuestViewBase::OwnerContentsObserver : public WebContentsObserver {
   }
 
   void DidUpdateAudioMutingState(bool muted) override {
-    if (IsGuestInitialized()) {
-      guest_->web_contents()->SetAudioMuted(muted);
+    if (!IsGuestInitialized()) {
+      return;
     }
+    guest_->OnOwnerAudioMutedStateUpdated(muted);
   }
 
  private:
@@ -183,7 +186,7 @@ void GuestViewBase::Init(std::unique_ptr<GuestViewBase> owned_this,
 
 void GuestViewBase::InitWithWebContents(const base::Value::Dict& create_params,
                                         WebContents* guest_web_contents) {
-  DCHECK(guest_web_contents);
+  CHECK(guest_web_contents);
 
   // Create a ZoomController to allow the guest's contents to be zoomed.
   // Do this before adding the GuestView as a WebContents Observer so that
@@ -214,7 +217,7 @@ void GuestViewBase::InitWithWebContents(const base::Value::Dict& create_params,
   DidInitialize(create_params);
 }
 
-const absl::optional<
+const std::optional<
     std::pair<base::Value::Dict, content::WebContents::CreateParams>>&
 GuestViewBase::GetCreateParams() const {
   return create_params_;
@@ -267,8 +270,7 @@ void GuestViewBase::SetSize(const SetSizeParams& params) {
   enable_auto_size &= !min_auto_size_.IsEmpty() && !max_auto_size_.IsEmpty() &&
                       IsAutoSizeSupported();
 
-  content::RenderWidgetHostView* rwhv =
-      web_contents()->GetRenderWidgetHostView();
+  content::RenderWidgetHostView* rwhv = GetGuestMainFrame()->GetView();
   if (enable_auto_size) {
     // Autosize is being enabled.
     if (rwhv)
@@ -377,7 +379,7 @@ bool GuestViewBase::ZoomPropagatesFromEmbedderToGuest() const {
 }
 
 content::NavigationController& GuestViewBase::GetController() {
-  // TODO(crbug/1261928): Migrate the implementation for MPArch.
+  // TODO(crbug.com/40202416): Migrate the implementation for MPArch.
   return web_contents()->GetController();
 }
 
@@ -448,7 +450,7 @@ void GuestViewBase::AttachToOuterWebContentsFrame(
     GuestViewMessageHandler::AttachToEmbedderFrameCallback
         attachment_callback) {
   // Stop tracking the old embedder's zoom level.
-  // TODO(crbug.com/533069): We should assert that we're not tracking the
+  // TODO(crbug.com/40436245): We should assert that we're not tracking the
   // embedder at this point, since guest reattachment is no longer possible.
   StopTrackingEmbedderZoomLevel();
 
@@ -482,18 +484,12 @@ void GuestViewBase::AttachToOuterWebContentsFrame(
       std::move(owned_guest_contents_);
   DCHECK_EQ(owned_guest_contents.get(), web_contents());
   if (owned_guest_contents) {
-    owned_guest_contents->SetOwnerLocationForDebug(absl::nullopt);
+    owned_guest_contents->SetOwnerLocationForDebug(std::nullopt);
   }
 
-  // Since this inner WebContents is created from the browser side we do
-  // not have RemoteFrame mojo channels so we pass in
-  // NullAssociatedRemote/Receivers. New channels will be bound when the
-  // `CreateView` IPC is sent.
-  owner_web_contents()->AttachInnerWebContents(
-      std::move(owned_guest_contents), outer_contents_frame,
-      /*remote_frame=*/mojo::NullAssociatedRemote(),
-      /*remote_frame_host_receiver=*/mojo::NullAssociatedReceiver(),
-      is_full_page_plugin);
+  owner_web_contents()->AttachInnerWebContents(std::move(owned_guest_contents),
+                                               outer_contents_frame,
+                                               is_full_page_plugin);
 
   // We don't ACK until after AttachToOuterWebContentsFrame, so that
   // |outer_contents_frame| gets swapped before the AttachToEmbedderFrame
@@ -506,6 +502,11 @@ void GuestViewBase::AttachToOuterWebContentsFrame(
   // queued events.
   SignalWhenReady(base::BindOnce(&GuestViewBase::DidAttach,
                                  weak_ptr_factory_.GetWeakPtr()));
+}
+
+void GuestViewBase::OnOwnerAudioMutedStateUpdated(bool muted) {
+  CHECK(web_contents());
+  web_contents()->SetAudioMuted(muted);
 }
 
 void GuestViewBase::SignalWhenReady(base::OnceClosure callback) {
@@ -548,7 +549,7 @@ void GuestViewBase::WebContentsDestroyed() {
 
 void GuestViewBase::DidFinishNavigation(
     content::NavigationHandle* navigation_handle) {
-  // TODO(crbug.com/1261928): Due to the use of inner WebContents, a
+  // TODO(crbug.com/40202416): Due to the use of inner WebContents, a
   // GuestViewBase's main frame is considered primary. This will no
   // longer be the case once we migrate guest views to MPArch.
   if (!navigation_handle->IsInPrimaryMainFrame() ||
@@ -568,13 +569,12 @@ void GuestViewBase::ActivateContents(WebContents* web_contents) {
 }
 
 void GuestViewBase::ContentsMouseEvent(WebContents* source,
-                                       bool motion,
-                                       bool exited) {
+                                       const ui::Event& event) {
   if (!attached() || !embedder_web_contents()->GetDelegate())
     return;
 
   embedder_web_contents()->GetDelegate()->ContentsMouseEvent(
-      embedder_web_contents(), motion, exited);
+      embedder_web_contents(), event);
 }
 
 void GuestViewBase::ContentsZoomChange(bool zoom_in) {
@@ -585,7 +585,7 @@ void GuestViewBase::ContentsZoomChange(bool zoom_in) {
 
 bool GuestViewBase::HandleKeyboardEvent(
     WebContents* source,
-    const content::NativeWebKeyboardEvent& event) {
+    const input::NativeWebKeyboardEvent& event) {
   if (!attached() || !embedder_web_contents()->GetDelegate())
     return false;
 
@@ -666,8 +666,8 @@ void GuestViewBase::OnZoomChanged(
     // The embedder's zoom level has changed.
     auto* guest_zoom_controller =
         zoom::ZoomController::FromWebContents(web_contents());
-    if (blink::PageZoomValuesEqual(data.new_zoom_level,
-                                   guest_zoom_controller->GetZoomLevel())) {
+    if (blink::ZoomValuesEqual(data.new_zoom_level,
+                               guest_zoom_controller->GetZoomLevel())) {
       return;
     }
     // When the embedder's zoom level doesn't match the guest's, then update the
@@ -757,14 +757,14 @@ double GuestViewBase::GetEmbedderZoomFactor() const {
   if (!embedder_web_contents())
     return 1.0;
 
-  return blink::PageZoomLevelToZoomFactor(
+  return blink::ZoomLevelToZoomFactor(
       zoom::ZoomController::GetZoomLevelForWebContents(
           embedder_web_contents()));
 }
 
 void GuestViewBase::SetUpSizing(const base::Value::Dict& params) {
   // Read the autosize parameters passed in from the embedder.
-  absl::optional<bool> auto_size_enabled_opt =
+  std::optional<bool> auto_size_enabled_opt =
       params.FindBool(kAttributeAutoSize);
   bool auto_size_enabled = auto_size_enabled_opt.value_or(auto_size_enabled_);
 
@@ -787,7 +787,7 @@ void GuestViewBase::SetUpSizing(const base::Value::Dict& params) {
   int normal_width = normal_size_.width();
   // If the element size was provided in logical units (versus physical), then
   // it will be converted to physical units.
-  absl::optional<bool> element_size_is_logical_opt =
+  std::optional<bool> element_size_is_logical_opt =
       params.FindBool(kElementSizeIsLogical);
   bool element_size_is_logical = element_size_is_logical_opt.value_or(false);
   if (element_size_is_logical) {
@@ -899,8 +899,13 @@ bool GuestViewBase::IsPermissionRequestable(ContentSettingsType type) const {
   return true;
 }
 
+std::optional<content::PermissionResult>
+GuestViewBase::OverridePermissionResult(ContentSettingsType type) const {
+  return std::nullopt;
+}
+
 content::RenderFrameHost* GuestViewBase::GetGuestMainFrame() const {
-  // TODO(crbug/1261928): Migrate the implementation for MPArch.
+  // TODO(crbug.com/40202416): Migrate the implementation for MPArch.
   return web_contents()->GetPrimaryMainFrame();
 }
 

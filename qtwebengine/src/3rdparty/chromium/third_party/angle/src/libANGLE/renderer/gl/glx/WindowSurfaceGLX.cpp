@@ -6,12 +6,12 @@
 
 // WindowSurfaceGLX.cpp: GLX implementation of egl::Surface for windows
 
-#include "libANGLE/renderer/gl/glx/WindowSurfaceGLX.h"
-
 #include "common/debug.h"
 
 #include "libANGLE/renderer/gl/glx/DisplayGLX.h"
+
 #include "libANGLE/renderer/gl/glx/FunctionsGLX.h"
+#include "libANGLE/renderer/gl/glx/WindowSurfaceGLX.h"
 
 namespace rx
 {
@@ -199,7 +199,7 @@ egl::Error WindowSurfaceGLX::releaseTexImage(const gl::Context *context, EGLint 
     return egl::NoError();
 }
 
-void WindowSurfaceGLX::setSwapInterval(EGLint interval)
+void WindowSurfaceGLX::setSwapInterval(const egl::Display *display, EGLint interval)
 {
     mSwapControl.targetSwapInterval = interval;
 }

@@ -1,5 +1,6 @@
 // Copyright (C) 2020 Intel Corporation.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:data-parser
 
 #ifndef QCBORVALUE_P_H
 #define QCBORVALUE_P_H
@@ -89,7 +90,8 @@ struct ByteData
     QStringView asStringView() const{ return QStringView(utf16(), len / 2); }
     QString asQStringRaw() const    { return QString::fromRawData(utf16(), len / 2); }
 };
-static_assert(std::is_trivial<ByteData>::value);
+static_assert(std::is_trivially_default_constructible<ByteData>::value);
+static_assert(std::is_trivially_copyable<ByteData>::value);
 static_assert(std::is_standard_layout<ByteData>::value);
 } // namespace QtCbor
 
@@ -252,6 +254,12 @@ public:
     void append(const QCborValue &v)
     {
         insertAt(elements.size(), v);
+    }
+    void append(QCborValue &&v)
+    {
+        insertAt(elements.size(), v, MoveContainer);
+        v.container = nullptr;
+        v.t = QCborValue::Undefined;
     }
 
     QByteArray byteArrayAt(qsizetype idx) const

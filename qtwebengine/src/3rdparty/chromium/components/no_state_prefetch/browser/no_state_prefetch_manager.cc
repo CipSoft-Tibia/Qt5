@@ -7,6 +7,7 @@
 #include <stddef.h>
 
 #include <functional>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -15,7 +16,6 @@
 #include "base/command_line.h"
 #include "base/containers/adapters.h"
 #include "base/containers/contains.h"
-#include "base/containers/cxx20_erase.h"
 #include "base/functional/bind.h"
 #include "base/functional/callback_helpers.h"
 #include "base/location.h"
@@ -23,6 +23,7 @@
 #include "base/memory/raw_ptr.h"
 #include "base/memory/weak_ptr.h"
 #include "base/metrics/field_trial.h"
+#include "base/not_fatal_until.h"
 #include "base/notreached.h"
 #include "base/ranges/algorithm.h"
 #include "base/strings/string_util.h"
@@ -57,7 +58,6 @@
 #include "content/public/common/url_constants.h"
 #include "net/http/http_cache.h"
 #include "net/http/http_request_headers.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "ui/gfx/geometry/rect.h"
 
 using content::BrowserThread;
@@ -138,7 +138,7 @@ class NoStatePrefetchManager::OnCloseWebContentsDeleter final
  private:
   void ScheduleWebContentsForDeletion() {
     tab_->SetDelegate(nullptr);
-    tab_->SetOwnerLocationForDebug(absl::nullopt);
+    tab_->SetOwnerLocationForDebug(std::nullopt);
     manager_->ScheduleDeleteOldWebContents(std::move(tab_), this);
     // |this| is deleted at this point.
   }
@@ -183,7 +183,7 @@ NoStatePrefetchManager::~NoStatePrefetchManager() {
   DCHECK(active_prefetches_.empty());
   DCHECK(to_delete_prefetches_.empty());
 
-  for (auto* host : prerender_process_hosts_) {
+  for (content::RenderProcessHost* host : prerender_process_hosts_) {
     host->RemoveObserver(this);
   }
 }
@@ -243,41 +243,23 @@ NoStatePrefetchManager::StartPrefetchingFromLinkRelPrerender(
         content::PreloadingData::GetOrCreateForWebContents(source_web_contents);
     // In case of link-rel, the confidence is set as 100 as the URL
     // was not predicted and confidence in this case is not defined.
-    int64_t confidence = 100;
+    int confidence = 100;
 
     // Create PreloadingPrediction and PreloadingAttempt for NoStatePrefetch.
+    ukm::SourceId triggered_primary_page_source_id =
+        source_web_contents->GetPrimaryMainFrame()->GetPageUkmSourceId();
     preloading_data->AddPreloadingPrediction(
-        content::preloading_predictor::kLinkRel, confidence, same_url_matcher);
+        content::preloading_predictor::kLinkRel, confidence, same_url_matcher,
+        triggered_primary_page_source_id);
     attempt = preloading_data->AddPreloadingAttempt(
         content::preloading_predictor::kLinkRel,
         content::PreloadingType::kNoStatePrefetch, same_url_matcher,
-        source_web_contents->GetPrimaryMainFrame()->GetPageUkmSourceId());
+        /*planned_max_preloading_type=*/std::nullopt,
+        triggered_primary_page_source_id);
   }
   return StartPrefetchingWithPreconnectFallback(
       origin, url, referrer, initiator_origin, gfx::Rect(size),
       session_storage_namespace, attempt ? attempt->GetWeakPtr() : nullptr);
-}
-
-std::unique_ptr<NoStatePrefetchHandle>
-NoStatePrefetchManager::StartPrefetchingFromOmnibox(
-    const GURL& url,
-    SessionStorageNamespace* session_storage_namespace,
-    const gfx::Size& size,
-    PreloadingAttempt* attempt) {
-  return StartPrefetchingWithPreconnectFallback(
-      ORIGIN_OMNIBOX, url, content::Referrer(), absl::nullopt, gfx::Rect(size),
-      session_storage_namespace, attempt ? attempt->GetWeakPtr() : nullptr);
-}
-
-std::unique_ptr<NoStatePrefetchHandle>
-NoStatePrefetchManager::AddIsolatedPrerender(
-    const GURL& url,
-    SessionStorageNamespace* session_storage_namespace,
-    const gfx::Size& size) {
-  // The preconnect fallback won't happen.
-  return StartPrefetchingWithPreconnectFallback(
-      ORIGIN_ISOLATED_PRERENDER, url, content::Referrer(), absl::nullopt,
-      gfx::Rect(size), session_storage_namespace);
 }
 
 std::unique_ptr<NoStatePrefetchHandle>
@@ -290,28 +272,6 @@ NoStatePrefetchManager::AddSameOriginSpeculation(
   return StartPrefetchingWithPreconnectFallback(
       ORIGIN_SAME_ORIGIN_SPECULATION, url, content::Referrer(),
       initiator_origin, gfx::Rect(size), session_storage_namespace);
-}
-
-std::unique_ptr<NoStatePrefetchHandle>
-NoStatePrefetchManager::StartPrefetchingFromExternalRequest(
-    const GURL& url,
-    const content::Referrer& referrer,
-    SessionStorageNamespace* session_storage_namespace,
-    const gfx::Rect& bounds) {
-  return StartPrefetchingWithPreconnectFallback(ORIGIN_EXTERNAL_REQUEST, url,
-                                                referrer, absl::nullopt, bounds,
-                                                session_storage_namespace);
-}
-
-std::unique_ptr<NoStatePrefetchHandle>
-NoStatePrefetchManager::AddForcedPrerenderFromExternalRequest(
-    const GURL& url,
-    const content::Referrer& referrer,
-    SessionStorageNamespace* session_storage_namespace,
-    const gfx::Rect& bounds) {
-  return StartPrefetchingWithPreconnectFallback(
-      ORIGIN_EXTERNAL_REQUEST_FORCED_PRERENDER, url, referrer, absl::nullopt,
-      bounds, session_storage_namespace);
 }
 
 void NoStatePrefetchManager::CancelAllPrerenders() {
@@ -339,7 +299,7 @@ void NoStatePrefetchManager::MoveEntryToPendingDelete(
   DCHECK(entry);
 
   auto it = FindIteratorForNoStatePrefetchContents(entry);
-  DCHECK(it != active_prefetches_.end());
+  CHECK(it != active_prefetches_.end(), base::NotFatalUntil::M130);
   to_delete_prefetches_.push_back(std::move(*it));
   active_prefetches_.erase(it);
   // Destroy the old WebContents relatively promptly to reduce resource usage.
@@ -477,8 +437,6 @@ void NoStatePrefetchManager::NoStatePrefetchData::OnHandleNavigatedAway(
     NoStatePrefetchHandle* handle) {
   DCHECK_LT(0, handle_count_);
   DCHECK(contents_);
-  if (abandon_time_.is_null())
-    abandon_time_ = base::TimeTicks::Now();
   // We intentionally don't decrement the handle count here, so that the
   // prefetch won't be canceled until it times out.
   manager_->SourceNavigatedAway(this);
@@ -547,7 +505,7 @@ NoStatePrefetchManager::StartPrefetchingWithPreconnectFallback(
     Origin origin,
     const GURL& url_arg,
     const content::Referrer& referrer,
-    const absl::optional<url::Origin>& initiator_origin,
+    const std::optional<url::Origin>& initiator_origin,
     const gfx::Rect& bounds,
     SessionStorageNamespace* session_storage_namespace,
     base::WeakPtr<content::PreloadingAttempt> attempt) {
@@ -857,7 +815,7 @@ std::unique_ptr<NoStatePrefetchContents>
 NoStatePrefetchManager::CreateNoStatePrefetchContents(
     const GURL& url,
     const content::Referrer& referrer,
-    const absl::optional<url::Origin>& initiator_origin,
+    const std::optional<url::Origin>& initiator_origin,
     Origin origin) {
   DCHECK_CURRENTLY_ON(BrowserThread::UI);
   return base::WrapUnique(
@@ -950,18 +908,10 @@ void NoStatePrefetchManager::SetPrefetchFinalStatusForUrl(
   }
 }
 
-bool NoStatePrefetchManager::HasRecentlyPrefetchedUrlForTesting(
-    const GURL& url) {
-  return base::ranges::any_of(prefetches_, [url](const NavigationRecord& r) {
-    return r.url == url &&
-           r.final_status == FINAL_STATUS_NOSTATE_PREFETCH_FINISHED;
-  });
-}
-
 void NoStatePrefetchManager::OnPrefetchUsed(const GURL& url) {
   // Loading a prefetched URL resets the revalidation bypass. Remove all
   // matching urls from the prefetch list for more accurate metrics.
-  base::EraseIf(prefetches_,
+  std::erase_if(prefetches_,
                 [url](const NavigationRecord& r) { return r.url == url; });
 }
 
@@ -999,7 +949,7 @@ void NoStatePrefetchManager::ScheduleDeleteOldWebContents(
       return;
     }
   }
-  NOTREACHED();
+  NOTREACHED_IN_MIGRATION();
 }
 
 void NoStatePrefetchManager::AddToHistory(NoStatePrefetchContents* contents) {
@@ -1012,7 +962,7 @@ void NoStatePrefetchManager::AddToHistory(NoStatePrefetchContents* contents) {
 base::Value::List NoStatePrefetchManager::GetActivePrerenders() const {
   base::Value::List list;
   for (const auto& prefetch : active_prefetches_) {
-    if (absl::optional<base::Value::Dict> prefetch_value =
+    if (std::optional<base::Value::Dict> prefetch_value =
             prefetch->contents()->GetAsDict()) {
       list.Append(std::move(*prefetch_value));
     }
@@ -1029,8 +979,7 @@ void NoStatePrefetchManager::SkipNoStatePrefetchContentsAndMaybePreconnect(
   prefetch_history_->AddEntry(entry);
   histograms_->RecordFinalStatus(origin, final_status);
 
-  if (origin == ORIGIN_ISOLATED_PRERENDER ||
-      origin == ORIGIN_SAME_ORIGIN_SPECULATION) {
+  if (origin == ORIGIN_SAME_ORIGIN_SPECULATION) {
     // Prefetch Proxy should not preconnect since that can't be done in a fully
     // isolated way. Same origin speculation should already have an open
     // connection.
@@ -1049,13 +998,6 @@ void NoStatePrefetchManager::SkipNoStatePrefetchContentsAndMaybePreconnect(
   static_assert(
       FINAL_STATUS_MAX == FINAL_STATUS_PREFETCH_HOLDBACK + 1,
       "Consider whether a failed prefetch should fallback to preconnect");
-}
-
-void NoStatePrefetchManager::RecordNetworkBytesConsumed(
-    Origin origin,
-    int64_t prerender_bytes) {
-  last_recorded_browser_context_network_bytes_ = browser_context_network_bytes_;
-  histograms_->RecordNetworkBytesConsumed(origin, prerender_bytes);
 }
 
 void NoStatePrefetchManager::AddPrerenderProcessHost(
@@ -1094,7 +1036,7 @@ std::unique_ptr<NoStatePrefetchHandle>
 NoStatePrefetchManager::StartPrefetchingWithPreconnectFallbackForTesting(
     Origin origin,
     const GURL& url,
-    const absl::optional<url::Origin>& initiator_origin) {
+    const std::optional<url::Origin>& initiator_origin) {
   return StartPrefetchingWithPreconnectFallback(
       origin, url, content::Referrer(), initiator_origin, gfx::Rect(), nullptr);
 }

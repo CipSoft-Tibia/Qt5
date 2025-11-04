@@ -42,9 +42,10 @@ class DeviceSwitcherResultDispatcher
   virtual ClassificationResult GetCachedClassificationResult();
 
   // Called to get the classification results from prefs if it exists, else it
-  // will wait for results and return when available. Handles only one request
-  // at a time.
+  // will wait for results upto `timeout` and return when available. Handles only
+  // one request at a time. On timeout, returns a kNotReady result.
   virtual void WaitForClassificationResult(
+      base::TimeDelta timeout,
       ClassificationResultCallback callback);
 
   // Registers preferences used by this class in the provided |registry|.
@@ -55,10 +56,12 @@ class DeviceSwitcherResultDispatcher
 
  private:
   void SaveResultToPref(const ClassificationResult& result);
-  absl::optional<ClassificationResult> ReadResultFromPref() const;
+  std::optional<ClassificationResult> ReadResultFromPref() const;
 
   void RefreshSegmentResultIfNeeded();
   void OnGotResult(const ClassificationResult& result);
+
+  void OnWaitTimeout();
 
   void RegisterFieldTrials();
 
@@ -67,7 +70,7 @@ class DeviceSwitcherResultDispatcher
   const raw_ptr<PrefService> prefs_;
   const raw_ptr<FieldTrialRegister> field_trial_register_;
   ClassificationResultCallback waiting_callback_;
-  absl::optional<ClassificationResult> latest_result_;
+  std::optional<ClassificationResult> latest_result_;
 
   // Note that the observation is only active when the result is not computed
   // yet.

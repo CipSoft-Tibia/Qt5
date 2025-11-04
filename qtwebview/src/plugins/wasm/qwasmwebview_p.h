@@ -55,7 +55,6 @@ public:
 
     QString httpUserAgent() const final;
     void setHttpUserAgent(const QString &httpUserAgent) final;
-    QUrl url() const final;
     void setUrl(const QUrl &url) final;
     bool canGoBack() const final;
     bool canGoForward() const final;

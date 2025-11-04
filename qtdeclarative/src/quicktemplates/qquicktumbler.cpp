@@ -9,10 +9,11 @@
 #include <QtQuick/private/qquickflickable_p.h>
 #include <QtQuickTemplates2/private/qquickcontrol_p_p.h>
 #include <QtQuickTemplates2/private/qquicktumbler_p_p.h>
+#include <QtGui/private/qguiapplication_p.h>
 
 QT_BEGIN_NAMESPACE
 
-Q_LOGGING_CATEGORY(lcTumbler, "qt.quick.controls.tumbler")
+Q_STATIC_LOGGING_CATEGORY(lcTumbler, "qt.quick.controls.tumbler")
 
 /*!
     \qmltype Tumbler
@@ -61,6 +62,13 @@ namespace {
     static inline qreal delegateHeight(const QQuickTumbler *tumbler)
     {
         return tumbler->availableHeight() / tumbler->visibleItemCount();
+    }
+
+    static qreal defaultFlickDeceleration(bool wrap)
+    {
+        if (wrap)
+            return 100;
+        return QGuiApplicationPrivate::platformTheme()->themeHint(QPlatformTheme::FlickDeceleration).toReal();
     }
 }
 
@@ -436,7 +444,7 @@ bool QQuickTumbler::wrap() const
 void QQuickTumbler::setWrap(bool wrap)
 {
     Q_D(QQuickTumbler);
-    d->setWrap(wrap, true);
+    d->setWrap(wrap, QQml::PropertyUtils::State::ExplicitlySet);
 }
 
 void QQuickTumbler::resetWrap()
@@ -492,6 +500,46 @@ void QQuickTumbler::positionViewAtIndex(int index, QQuickTumbler::PositionMode m
     }
 
     QMetaObject::invokeMethod(d->view, "positionViewAtIndex", Q_ARG(int, index), Q_ARG(int, mode));
+}
+
+
+/*!
+    \qmlproperty int QtQuick.Controls::Tumbler::flickDeceleration
+
+    This property holds the rate at which a flick will decelerate:
+    the higher the number, the faster it slows down when the user stops
+    flicking via touch. For example, \c 0.0001 is nearly
+    "frictionless", and \c 10000 feels quite "sticky".
+
+    When \l wrap is true (the default), the default
+    \l flickDeceleration is \c 100. Otherwise, it is platform-dependent.
+    To override this behavior, explicitly set the value of this property.
+    To return to the default behavior, set this property to undefined.
+    Values of zero or less are not allowed.
+*/
+qreal QQuickTumbler::flickDeceleration() const
+{
+    Q_D(const QQuickTumbler);
+    return d->effectiveFlickDeceleration();
+}
+
+void QQuickTumbler::setFlickDeceleration(qreal flickDeceleration)
+{
+    Q_D(QQuickTumbler);
+    const qreal oldFlickDeceleration = d->effectiveFlickDeceleration();
+    flickDeceleration = qMax(0.001, flickDeceleration);
+    d->flickDeceleration = flickDeceleration;
+    if (!qFuzzyCompare(oldFlickDeceleration, flickDeceleration))
+        emit flickDecelerationChanged();
+}
+
+void QQuickTumbler::resetFlickDeceleration()
+{
+    Q_D(QQuickTumbler);
+    const qreal oldFlickDeceleration = d->effectiveFlickDeceleration();
+    d->flickDeceleration = 0.0;
+    if (!qFuzzyCompare(oldFlickDeceleration, d->effectiveFlickDeceleration()))
+        emit flickDecelerationChanged();
 }
 
 void QQuickTumbler::geometryChange(const QRectF &newGeometry, const QRectF &oldGeometry)
@@ -550,9 +598,6 @@ void QQuickTumbler::contentItemChange(QQuickItem *newItem, QQuickItem *oldItem)
             // Make sure we use the new content item and not the current one, as that won't
             // be changed until after contentItemChange() has finished.
             d->setupViewData(newItem);
-
-            d->_q_updateItemHeights();
-            d->_q_updateItemWidths();
         }
     }
 }
@@ -621,6 +666,11 @@ void QQuickTumblerPrivate::setupViewData(QQuickItem *newControlContentItem)
     syncCurrentIndex();
 
     calculateDisplacements();
+
+    if (q->isComponentComplete()) {
+        _q_updateItemWidths();
+        _q_updateItemHeights();
+    }
 }
 
 void QQuickTumblerPrivate::warnAboutIncorrectContentItem()
@@ -756,14 +806,14 @@ void QQuickTumblerPrivate::setWrapBasedOnCount()
     if (count == 0 || explicitWrap || modelBeingSet)
         return;
 
-    setWrap(count >= visibleItemCount, false);
+    setWrap(count >= visibleItemCount, QQml::PropertyUtils::State::ImplicitlySet);
 }
 
-void QQuickTumblerPrivate::setWrap(bool shouldWrap, bool isExplicit)
+void QQuickTumblerPrivate::setWrap(bool shouldWrap, QQml::PropertyUtils::State propertyState)
 {
-    qCDebug(lcTumbler) << "setting wrap to" << shouldWrap << "- explicit?" << isExplicit;
-    if (isExplicit)
+    if (isExplicitlySet(propertyState))
         explicitWrap = true;
+    qCDebug(lcTumbler) << "setting wrap to" << shouldWrap << "- explicit?" << explicitWrap;
 
     Q_Q(QQuickTumbler);
     if (q->isComponentComplete() && shouldWrap == wrap)
@@ -773,6 +823,9 @@ void QQuickTumblerPrivate::setWrap(bool shouldWrap, bool isExplicit)
     // ensure that we keep track of the currentIndex so it doesn't get lost
     // between view changes.
     const int oldCurrentIndex = currentIndex;
+
+    // changing wrap can change the implicit flickDeceleration
+    const qreal oldFlickDeceleration = effectiveFlickDeceleration();
 
     disconnectFromView();
 
@@ -800,6 +853,16 @@ void QQuickTumblerPrivate::setWrap(bool shouldWrap, bool isExplicit)
         setupViewData(contentItem);
 
     setCurrentIndex(oldCurrentIndex);
+
+    if (effectiveFlickDeceleration() != oldFlickDeceleration)
+        emit q->flickDecelerationChanged();
+}
+
+qreal QQuickTumblerPrivate::effectiveFlickDeceleration() const
+{
+    if (flickDeceleration == 0.0)
+        return defaultFlickDeceleration(wrap);
+    return flickDeceleration;
 }
 
 void QQuickTumblerPrivate::beginSetModel()

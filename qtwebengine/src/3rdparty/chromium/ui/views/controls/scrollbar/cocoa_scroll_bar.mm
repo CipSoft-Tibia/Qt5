@@ -55,7 +55,8 @@ class CocoaScrollBarThumb : public BaseScrollBarThumb {
 
  protected:
   // View:
-  gfx::Size CalculatePreferredSize() const override;
+  gfx::Size CalculatePreferredSize(
+      const SizeBounds& /*available_size*/) const override;
   void OnPaint(gfx::Canvas* canvas) override;
   bool OnMousePressed(const ui::MouseEvent& event) override;
   void OnMouseReleased(const ui::MouseEvent& event) override;
@@ -96,7 +97,8 @@ void CocoaScrollBarThumb::UpdateIsMouseOverTrack(bool mouse_over_track) {
   SetState(mouse_over_track ? Button::STATE_HOVERED : Button::STATE_NORMAL);
 }
 
-gfx::Size CocoaScrollBarThumb::CalculatePreferredSize() const {
+gfx::Size CocoaScrollBarThumb::CalculatePreferredSize(
+    const SizeBounds& /*available_size*/) const {
   int thickness = cocoa_scroll_bar_->ScrollbarThickness();
   return gfx::Size(thickness, thickness);
 }
@@ -144,8 +146,8 @@ void CocoaScrollBarThumb::OnMouseExited(const ui::MouseEvent& event) {
 //////////////////////////////////////////////////////////////////
 // CocoaScrollBar class
 
-CocoaScrollBar::CocoaScrollBar(bool horizontal)
-    : ScrollBar(horizontal),
+CocoaScrollBar::CocoaScrollBar(ScrollBar::Orientation orientation)
+    : ScrollBar(orientation),
       hide_scrollbar_timer_(FROM_HERE,
                             base::Milliseconds(500),
                             base::BindRepeating(&CocoaScrollBar::HideScrollbar,
@@ -187,12 +189,12 @@ bool CocoaScrollBar::OverlapsContent() const {
 //////////////////////////////////////////////////////////////////
 // CocoaScrollBar::View:
 
-void CocoaScrollBar::Layout() {
+void CocoaScrollBar::Layout(PassKey) {
   // Set the thickness of the thumb according to the track bounds.
   // The length of the thumb is set by ScrollBar::Update().
   gfx::Rect thumb_bounds(GetThumb()->bounds());
   gfx::Rect track_bounds(GetTrackBounds());
-  if (IsHorizontal()) {
+  if (GetOrientation() == Orientation::kHorizontal) {
     GetThumb()->SetBounds(thumb_bounds.x(),
                           track_bounds.y(),
                           thumb_bounds.width(),
@@ -205,7 +207,8 @@ void CocoaScrollBar::Layout() {
   }
 }
 
-gfx::Size CocoaScrollBar::CalculatePreferredSize() const {
+gfx::Size CocoaScrollBar::CalculatePreferredSize(
+    const SizeBounds& /*available_size*/) const {
   return gfx::Size();
 }
 
@@ -327,8 +330,10 @@ void CocoaScrollBar::ObserveScrollEvent(const ui::ScrollEvent& event) {
   // hide timer check because Update() is called asynchronously, after event
   // processing. So when |event| is the first event in a particular direction
   // the hide timer will not have started.
-  if ((IsHorizontal() ? event.x_offset() : event.y_offset()) != 0)
+  if ((GetOrientation() == Orientation::kHorizontal ? event.x_offset()
+                                                    : event.y_offset()) != 0) {
     return;
+  }
 
   // Otherwise, scrolling has started, but not in this scroller direction. If
   // already faded out, don't start another fade animation since that would
@@ -415,7 +420,7 @@ bool CocoaScrollBar::IsScrollbarFullyHidden() const {
 
 ui::NativeTheme::ExtraParams CocoaScrollBar::GetPainterParams() const {
   ui::NativeTheme::ScrollbarExtraParams scrollbar;
-  if (IsHorizontal()) {
+  if (GetOrientation() == Orientation::kHorizontal) {
     scrollbar.orientation = ui::NativeTheme::ScrollbarOrientation::kHorizontal;
   } else if (base::i18n::IsRTL()) {
     scrollbar.orientation =
@@ -479,10 +484,11 @@ bool CocoaScrollBar::IsHoverOrPressedState() const {
 
 void CocoaScrollBar::UpdateScrollbarThickness() {
   int thickness = ScrollbarThickness();
-  if (IsHorizontal())
+  if (GetOrientation() == Orientation::kHorizontal) {
     SetBounds(x(), bounds().bottom() - thickness, width(), thickness);
-  else
+  } else {
     SetBounds(bounds().right() - thickness, y(), thickness, height());
+  }
 }
 
 void CocoaScrollBar::ResetOverlayScrollbar() {

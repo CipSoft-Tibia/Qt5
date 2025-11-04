@@ -21,6 +21,11 @@
  * Boston, MA 02110-1301, USA.
  */
 
+#ifdef UNSAFE_BUFFERS_BUILD
+// TODO(crbug.com/351564777): Remove this and convert code to safer constructs.
+#pragma allow_unsafe_buffers
+#endif
+
 #include "third_party/blink/renderer/platform/graphics/filters/fe_color_matrix.h"
 
 #include "base/types/optional_util.h"
@@ -148,7 +153,7 @@ sk_sp<PaintFilter> FEColorMatrix::CreateImageFilter() {
   sk_sp<PaintFilter> input(paint_filter_builder::Build(
       InputEffect(0), OperatingInterpolationSpace()));
   sk_sp<cc::ColorFilter> filter = CreateColorFilter(type_, values_);
-  absl::optional<PaintFilter::CropRect> crop_rect = GetCropRect();
+  std::optional<PaintFilter::CropRect> crop_rect = GetCropRect();
   return sk_make_sp<ColorFilterPaintFilter>(std::move(filter), std::move(input),
                                             base::OptionalToPtr(crop_rect));
 }
@@ -188,7 +193,7 @@ static bool ValuesIsValidForType(ColorMatrixType type,
     case FECOLORMATRIX_TYPE_UNKNOWN:
       break;
   }
-  NOTREACHED();
+  NOTREACHED_IN_MIGRATION();
   return false;
 }
 

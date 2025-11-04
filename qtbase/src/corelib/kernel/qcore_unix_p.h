@@ -65,6 +65,44 @@ QT_BEGIN_NAMESPACE
 
 Q_DECLARE_TYPEINFO(pollfd, Q_PRIMITIVE_TYPE);
 
+static inline constexpr clockid_t SteadyClockClockId =
+#if !defined(CLOCK_MONOTONIC)
+        // we don't know how to set the monotonic clock
+        CLOCK_REALTIME
+#elif defined(_LIBCPP_VERSION) && defined(_LIBCPP_HAS_NO_MONOTONIC_CLOCK)
+        // libc++ falling back to system_clock
+        CLOCK_REALTIME
+#elif defined(__GLIBCXX__) && !defined(_GLIBCXX_USE_CLOCK_MONOTONIC)
+        // libstdc++ falling back to system_clock
+        CLOCK_REALTIME
+#elif defined(_LIBCPP_VERSION) && defined(Q_OS_DARWIN)
+        // on Apple systems, libc++ uses CLOCK_MONOTONIC_RAW since LLVM 11
+        // https://github.com/llvm/llvm-project/blob/llvmorg-11.0.0/libcxx/src/chrono.cpp#L117-L129
+        CLOCK_MONOTONIC_RAW
+#elif defined(__GLIBCXX__) || defined(_LIBCPP_VERSION)
+        // both libstdc++ and libc++ otherwise use CLOCK_MONOTONIC
+        CLOCK_MONOTONIC
+#else
+#  warning "Unknown C++ Standard Library implementation - code may be sub-optimal"
+        CLOCK_REALTIME
+#endif
+        ;
+
+static inline constexpr clockid_t QWaitConditionClockId =
+#if !QT_CONFIG(thread)
+        // bootstrap mode, there are no wait conditions
+        CLOCK_REALTIME
+#elif !QT_CONFIG(pthread_condattr_setclock)
+        // OSes that lack pthread_condattr_setclock() (e.g., Darwin)
+        CLOCK_REALTIME
+#elif defined(Q_OS_QNX)
+        // unknown why use of the monotonic clock causes failures
+        CLOCK_REALTIME
+#else
+        SteadyClockClockId;
+#endif
+        ;
+
 static constexpr auto OneSecAsNsecs = std::chrono::nanoseconds(std::chrono::seconds{ 1 }).count();
 
 inline timespec durationToTimespec(std::chrono::nanoseconds timeout) noexcept
@@ -180,6 +218,18 @@ inline timespec qAbsTimespec(timespec ts)
     return normalizedTimespec(ts);
 }
 
+template <clockid_t ClockId = SteadyClockClockId>
+inline timespec deadlineToAbstime(QDeadlineTimer deadline)
+{
+    using namespace std::chrono;
+    using Clock =
+        std::conditional_t<ClockId == CLOCK_REALTIME, system_clock, steady_clock>;
+    auto timePoint = deadline.deadline<Clock>();
+    if (timePoint < typename Clock::time_point{})
+        return {};
+    return durationToTimespec(timePoint.time_since_epoch());
+}
+
 Q_CORE_EXPORT void qt_ignore_sigpipe() noexcept;
 
 #if defined(Q_PROCESSOR_X86_32) && defined(__GLIBC__)
@@ -220,7 +270,6 @@ static inline int qt_safe_open(const char *pathname, int flags, mode_t mode = 07
 #undef QT_OPEN
 #define QT_OPEN         qt_safe_open
 
-#ifndef Q_OS_VXWORKS // no POSIX pipes in VxWorks
 // don't call ::pipe
 // call qt_safe_pipe
 static inline int qt_safe_pipe(int pipefd[2], int flags = 0)
@@ -249,8 +298,6 @@ static inline int qt_safe_pipe(int pipefd[2], int flags = 0)
 #endif
 }
 
-#endif // Q_OS_VXWORKS
-
 // don't call dup or fcntl(F_DUPFD)
 static inline int qt_safe_dup(int oldfd, int atleast = 0, int flags = FD_CLOEXEC)
 {
@@ -278,7 +325,7 @@ static inline int qt_safe_dup2(int oldfd, int newfd, int flags = FD_CLOEXEC)
     Q_ASSERT(flags == FD_CLOEXEC || flags == 0);
 
     int ret;
-#ifdef QT_THREADSAFE_CLOEXEC
+#if QT_CONFIG(dup3)
     // use dup3
     QT_EINTR_LOOP(ret, ::dup3(oldfd, newfd, flags ? O_CLOEXEC : 0));
     return ret;

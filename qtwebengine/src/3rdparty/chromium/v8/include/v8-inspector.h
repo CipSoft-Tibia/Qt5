@@ -139,6 +139,7 @@ struct V8_EXPORT V8StackFrame {
   StringView functionName;
   int lineNumber;
   int columnNumber;
+  int scriptId;
 };
 
 class V8_EXPORT V8StackTrace {
@@ -297,9 +298,12 @@ class V8_EXPORT V8InspectorClient {
     return v8::MaybeLocal<v8::Value>();
   }
 
-  virtual void consoleTime(const StringView& title) {}
-  virtual void consoleTimeEnd(const StringView& title) {}
-  virtual void consoleTimeStamp(const StringView& title) {}
+  virtual void consoleTime(v8::Isolate* isolate, v8::Local<v8::String> label);
+  virtual void consoleTimeEnd(v8::Isolate* isolate,
+                              v8::Local<v8::String> label);
+  virtual void consoleTimeStamp(v8::Isolate* isolate,
+                                v8::Local<v8::String> label);
+
   virtual void consoleClear(int contextGroupId) {}
   virtual double currentTimeMS() { return 0; }
   typedef void (*TimerCallback)(void*);

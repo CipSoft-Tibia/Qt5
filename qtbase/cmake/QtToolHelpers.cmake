@@ -211,7 +211,7 @@ function(qt_internal_add_tool target_name)
 
     if(QT_GENERATE_SBOM)
         set(sbom_args "")
-        list(APPEND sbom_args TYPE QT_TOOL)
+        list(APPEND sbom_args DEFAULT_SBOM_ENTITY_TYPE QT_TOOL)
     endif()
 
     if(NOT arg_NO_INSTALL AND arg_TOOLS_TARGET)
@@ -712,14 +712,14 @@ function(qt_internal_find_tool out_var target_name tools_target)
         set(${tools_package_name}_BACKUP_CMAKE_FIND_ROOT_PATH "${CMAKE_FIND_ROOT_PATH}")
         if(QT_HOST_PATH_CMAKE_DIR)
             set(qt_host_path_cmake_dir_absolute "${QT_HOST_PATH_CMAKE_DIR}")
-        elseif(Qt${PROJECT_VERSION_MAJOR}HostInfo_DIR)
+        elseif(${INSTALL_CMAKE_NAMESPACE}HostInfo_DIR)
             get_filename_component(qt_host_path_cmake_dir_absolute
-                "${Qt${PROJECT_VERSION_MAJOR}HostInfo_DIR}/.." ABSOLUTE)
+                "${${INSTALL_CMAKE_NAMESPACE}HostInfo_DIR}/.." ABSOLUTE)
         else()
             # This should never happen, serves as an assert.
             message(FATAL_ERROR
                 "Neither QT_HOST_PATH_CMAKE_DIR nor "
-                "Qt${PROJECT_VERSION_MAJOR}HostInfo_DIR available.")
+                "${INSTALL_CMAKE_NAMESPACE}HostInfo_DIR available.")
         endif()
         set(CMAKE_PREFIX_PATH "${qt_host_path_cmake_dir_absolute}")
 

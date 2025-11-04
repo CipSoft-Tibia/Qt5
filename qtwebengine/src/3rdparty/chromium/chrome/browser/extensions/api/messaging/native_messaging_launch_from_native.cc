@@ -5,6 +5,7 @@
 #include "chrome/browser/extensions/api/messaging/native_messaging_launch_from_native.h"
 
 #include <memory>
+#include <string_view>
 #include <utility>
 
 #include "base/functional/bind.h"
@@ -30,6 +31,7 @@
 #include "extensions/browser/extension_registry.h"
 #include "extensions/common/api/messaging/messaging_endpoint.h"
 #include "extensions/common/extension_features.h"
+#include "extensions/common/extension_id.h"
 #include "extensions/common/mojom/message_port.mojom-shared.h"
 #include "extensions/common/permissions/permission_set.h"
 #include "extensions/common/permissions/permissions_data.h"
@@ -62,7 +64,7 @@ class NativeMessagingHostErrorReporter : public NativeMessageHost::Client {
   NativeMessagingHostErrorReporter& operator=(
       const NativeMessagingHostErrorReporter&) = delete;
 
-  static void Report(const std::string& extension_id,
+  static void Report(const ExtensionId& extension_id,
                      const std::string& host_id,
                      const std::string& connection_id,
                      Profile* profile,
@@ -126,7 +128,7 @@ class NativeMessagingHostErrorReporter : public NativeMessageHost::Client {
 
 }  // namespace
 
-bool ExtensionSupportsConnectionFromNativeApp(const std::string& extension_id,
+bool ExtensionSupportsConnectionFromNativeApp(const ExtensionId& extension_id,
                                               const std::string& host_id,
                                               Profile* profile,
                                               bool log_errors) {
@@ -205,14 +207,14 @@ ScopedNativeMessagingErrorTimeoutOverrideForTest::
   g_native_messaging_host_timeout_override = nullptr;
 }
 
-bool IsValidConnectionId(const base::StringPiece connection_id) {
+bool IsValidConnectionId(const std::string_view connection_id) {
   return connection_id.size() <= 20 &&
          base::ContainsOnlyChars(
              connection_id,
              "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ-");
 }
 
-void LaunchNativeMessageHostFromNativeApp(const std::string& extension_id,
+void LaunchNativeMessageHostFromNativeApp(const ExtensionId& extension_id,
                                           const std::string& host_id,
                                           const std::string& connection_id,
                                           Profile* profile) {
@@ -234,7 +236,7 @@ void LaunchNativeMessageHostFromNativeApp(const std::string& extension_id,
       true /* is_opener */, extensions::mojom::SerializationFormat::kJson);
   extensions::MessageService* const message_service =
       extensions::MessageService::Get(profile);
-  // TODO(crbug.com/967262): Apply policy for allow_user_level.
+  // TODO(crbug.com/41461105): Apply policy for allow_user_level.
   auto native_message_host = NativeMessageProcessHost::CreateWithLauncher(
       extension_id, host_id,
       NativeProcessLauncher::CreateDefault(

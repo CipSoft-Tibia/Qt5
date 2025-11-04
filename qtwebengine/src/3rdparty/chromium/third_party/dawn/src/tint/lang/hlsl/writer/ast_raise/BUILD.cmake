@@ -51,8 +51,6 @@ tint_add_target(tint_lang_hlsl_writer_ast_raise lib
   lang/hlsl/writer/ast_raise/num_workgroups_from_uniform.h
   lang/hlsl/writer/ast_raise/pixel_local.cc
   lang/hlsl/writer/ast_raise/pixel_local.h
-  lang/hlsl/writer/ast_raise/remove_continue_in_switch.cc
-  lang/hlsl/writer/ast_raise/remove_continue_in_switch.h
   lang/hlsl/writer/ast_raise/truncate_interstage_variables.cc
   lang/hlsl/writer/ast_raise/truncate_interstage_variables.h
 )
@@ -85,6 +83,10 @@ tint_target_add_dependencies(tint_lang_hlsl_writer_ast_raise lib
   tint_utils_traits
 )
 
+tint_target_add_external_dependencies(tint_lang_hlsl_writer_ast_raise lib
+  "src_utils"
+)
+
 endif(TINT_BUILD_HLSL_WRITER)
 if(TINT_BUILD_HLSL_WRITER AND TINT_BUILD_WGSL_READER AND TINT_BUILD_WGSL_WRITER)
 ################################################################################
@@ -98,7 +100,6 @@ tint_add_target(tint_lang_hlsl_writer_ast_raise_test test
   lang/hlsl/writer/ast_raise/localize_struct_array_assignment_test.cc
   lang/hlsl/writer/ast_raise/num_workgroups_from_uniform_test.cc
   lang/hlsl/writer/ast_raise/pixel_local_test.cc
-  lang/hlsl/writer/ast_raise/remove_continue_in_switch_test.cc
   lang/hlsl/writer/ast_raise/truncate_interstage_variables_test.cc
 )
 
@@ -133,6 +134,7 @@ tint_target_add_dependencies(tint_lang_hlsl_writer_ast_raise_test test
 
 tint_target_add_external_dependencies(tint_lang_hlsl_writer_ast_raise_test test
   "gtest"
+  "src_utils"
 )
 
 if(TINT_BUILD_HLSL_WRITER)

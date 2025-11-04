@@ -4,12 +4,12 @@
 
 #include "third_party/blink/renderer/modules/payments/goods/digital_goods_type_converters.h"
 
+#include <optional>
 #include <utility>
 
 #include "base/notreached.h"
 #include "components/digital_goods/mojom/digital_goods.mojom-blink.h"
 #include "components/payments/mojom/payment_request_data.mojom-blink-forward.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "third_party/blink/public/mojom/digital_goods/digital_goods.mojom-blink.h"
 #include "third_party/blink/renderer/modules/payments/payment_event_data_conversion.h"
 #include "third_party/blink/renderer/platform/weborigin/kurl.h"
@@ -35,7 +35,7 @@ WTF::String TypeConverter<WTF::String, CreateDigitalGoodsResponseCode>::Convert(
     case CreateDigitalGoodsResponseCode::kUnsupportedContext:
       return "unsupported context";
   }
-  NOTREACHED();
+  NOTREACHED_IN_MIGRATION();
 }
 
 blink::ItemDetails* TypeConverter<blink::ItemDetails*, ItemDetailsPtr>::Convert(
@@ -105,7 +105,7 @@ WTF::String TypeConverter<WTF::String, BillingResponseCode>::Convert(
     case BillingResponseCode::kClientAppError:
       return "clientAppError";
   }
-  NOTREACHED();
+  NOTREACHED_IN_MIGRATION();
 }
 
 blink::PurchaseDetails*

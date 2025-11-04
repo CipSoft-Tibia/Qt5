@@ -19,13 +19,11 @@
 #include "extensions/browser/extension_host.h"
 #include "extensions/browser/extension_registry.h"
 #include "extensions/browser/guest_view/app_view/app_view_constants.h"
-#include "extensions/browser/guest_view/guest_view_feature_util.h"
 #include "extensions/browser/lazy_context_id.h"
 #include "extensions/browser/lazy_context_task_queue.h"
 #include "extensions/browser/process_manager.h"
 #include "extensions/browser/view_type_utils.h"
 #include "extensions/common/api/app_runtime.h"
-#include "extensions/common/extension_messages.h"
 #include "extensions/strings/grit/extensions_strings.h"
 #include "ipc/ipc_message_macros.h"
 
@@ -63,6 +61,8 @@ base::LazyInstance<PendingResponseMap>::DestructorAtExit
 
 // static.
 const char AppViewGuest::Type[] = "appview";
+const guest_view::GuestViewHistogramValue AppViewGuest::HistogramValue =
+    guest_view::GuestViewHistogramValue::kAppView;
 
 // static.
 bool AppViewGuest::CompletePendingRequest(
@@ -176,7 +176,7 @@ bool AppViewGuest::CheckMediaAccessPermission(
 void AppViewGuest::CreateWebContents(std::unique_ptr<GuestViewBase> owned_this,
                                      const base::Value::Dict& create_params,
                                      WebContentsCreatedCallback callback) {
-  const std::string* app_id = create_params.FindString(appview::kAppID);
+  const std::string* app_id = create_params.FindString(::appview::kAppID);
   if (!app_id) {
     std::move(callback).Run(std::move(owned_this), nullptr);
     return;
@@ -187,7 +187,7 @@ void AppViewGuest::CreateWebContents(std::unique_ptr<GuestViewBase> owned_this,
     return;
   }
 
-  const base::Value::Dict* data = create_params.FindDict(appview::kData);
+  const base::Value::Dict* data = create_params.FindDict(::appview::kData);
   if (!data) {
     std::move(callback).Run(std::move(owned_this), nullptr);
     return;
@@ -238,14 +238,12 @@ void AppViewGuest::DidInitialize(const base::Value::Dict& create_params) {
 
 void AppViewGuest::MaybeRecreateGuestContents(
     content::RenderFrameHost* outer_contents_frame) {
-  if (AreWebviewMPArchBehaviorsEnabled(browser_context())) {
-    // This situation is not possible for AppView.
-    NOTREACHED();
-  }
+  // This situation is not possible for AppView.
+  NOTREACHED_IN_MIGRATION();
 }
 
 const char* AppViewGuest::GetAPINamespace() const {
-  return appview::kEmbedderAPINamespace;
+  return ::appview::kEmbedderAPINamespace;
 }
 
 int AppViewGuest::GetTaskPrefix() const {
@@ -275,7 +273,9 @@ void AppViewGuest::CompleteCreateWebContents(
       content::SiteInstance::CreateForURL(browser_context(),
                                           guest_extension->url()));
   params.guest_delegate = this;
-  std::move(callback).Run(std::move(owned_this), WebContents::Create(params));
+  auto web_contents = WebContents::Create(params);
+  app_delegate_->InitWebContents(web_contents.get());
+  std::move(callback).Run(std::move(owned_this), std::move(web_contents));
 }
 
 void AppViewGuest::LaunchAppAndFireEvent(
@@ -303,9 +303,9 @@ void AppViewGuest::LaunchAppAndFireEvent(
                                      std::move(callback))));
 
   base::Value::Dict embed_request;
-  embed_request.Set(appview::kGuestInstanceID, guest_instance_id());
-  embed_request.Set(appview::kEmbedderID, owner_host());
-  embed_request.Set(appview::kData, std::move(data));
+  embed_request.Set(::appview::kGuestInstanceID, guest_instance_id());
+  embed_request.Set(::appview::kEmbedderID, owner_host());
+  embed_request.Set(::appview::kData, std::move(data));
   AppRuntimeEventRouter::DispatchOnEmbedRequestedEvent(
       browser_context(), std::move(embed_request), extension);
 }

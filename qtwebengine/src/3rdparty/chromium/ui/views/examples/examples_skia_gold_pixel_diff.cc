@@ -7,6 +7,8 @@
 #include <utility>
 
 #include "base/run_loop.h"
+#include "testing/gtest/include/gtest/gtest.h"
+#include "ui/native_theme/native_theme.h"
 #include "ui/snapshot/snapshot.h"
 #include "ui/views/examples/examples_window.h"
 
@@ -29,14 +31,19 @@ void ExamplesSkiaGoldPixelDiff::Init(const std::string& screenshot_prefix) {
 ExamplesExitCode ExamplesSkiaGoldPixelDiff::CompareScreenshot(
     const std::string& screenshot_name,
     const views::Widget* widget) const {
+  // If host is in dark mode skip the pixel comparison.
+  if (ui::NativeTheme::GetInstanceForNativeUi()->ShouldUseDarkColors()) {
+    return ExamplesExitCode::kNone;
+  }
+
   CHECK(pixel_diff_) << "Initialize the class before using this method.";
 
   base::RunLoop run_loop(base::RunLoop::Type::kNestableTasksAllowed);
   gfx::Rect widget_bounds = widget->GetRootView()->bounds();
 #if defined(USE_AURA)
-  ui::GrabWindowSnapshotAsyncAura(
+  ui::GrabWindowSnapshotAura(
 #else
-  ui::GrabWindowSnapshotAsync(
+  ui::GrabWindowSnapshot(
 #endif
       widget->GetNativeWindow(), widget_bounds,
       base::BindOnce(
@@ -59,7 +66,10 @@ ExamplesExitCode ExamplesSkiaGoldPixelDiff::CompareScreenshot(
 }
 
 void ExamplesSkiaGoldPixelDiff::DoScreenshot(views::Widget* widget) {
-  result_ = CompareScreenshot("ExampleWindow", widget);
+  const auto* const test_info =
+      testing::UnitTest::GetInstance()->current_test_info();
+  result_ = CompareScreenshot(test_info ? test_info->name() : "ExampleWindow",
+                              widget);
   widget->Close();
 }
 

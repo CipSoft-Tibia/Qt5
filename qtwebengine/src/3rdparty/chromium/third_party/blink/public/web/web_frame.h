@@ -44,7 +44,10 @@
 
 namespace blink {
 
+#if INSIDE_BLINK
 class Frame;
+#endif
+
 class WebLocalFrame;
 class WebRemoteFrame;
 class WebSecurityOrigin;
@@ -148,7 +151,6 @@ class BLINK_EXPORT WebFrame {
   // the root Document in a WebContents). See content::Page for detailed
   // documentation.
   // This is false for main frames created for fenced-frames.
-  // TODO(khushalsagar) : Should also be the case for portals.
   bool IsOutermostMainFrame() const;
 
   // Scripting ----------------------------------------------------------

@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QTCONCURRENT_THREADENGINE_H
 #define QTCONCURRENT_THREADENGINE_H
@@ -10,7 +11,6 @@
 
 #include <QtCore/qthreadpool.h>
 #include <QtCore/qfuture.h>
-#include <QtCore/qdebug.h>
 #include <QtCore/qexception.h>
 #include <QtCore/qwaitcondition.h>
 #include <QtCore/qatomic.h>

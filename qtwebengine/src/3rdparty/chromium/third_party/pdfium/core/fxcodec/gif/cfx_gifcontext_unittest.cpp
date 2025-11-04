@@ -6,11 +6,12 @@
 
 #include <stdint.h>
 
+#include <array>
 #include <utility>
 
 #include "core/fxcodec/cfx_codec_memory.h"
 #include "core/fxcrt/data_vector.h"
-#include "core/fxcrt/span_util.h"
+#include "core/fxcrt/stl_util.h"
 #include "testing/gtest/include/gtest/gtest.h"
 
 namespace fxcodec {
@@ -27,7 +28,7 @@ class CFX_GifContextForTest final : public CFX_GifContext {
   CFX_CodecMemory* InputBuffer() const { return input_buffer_.Get(); }
   void SetTestInputBuffer(pdfium::span<const uint8_t> input) {
     auto pMemory = pdfium::MakeRetain<CFX_CodecMemory>(input.size());
-    fxcrt::spancpy(pMemory->GetBufferSpan(), input);
+    fxcrt::Copy(input, pMemory->GetBufferSpan());
     SetInputBuffer(std::move(pMemory));
   }
 };
@@ -40,49 +41,40 @@ TEST(CFX_GifContext, SetInputBuffer) {
   EXPECT_EQ(0u, context.InputBuffer()->GetSize());
   EXPECT_EQ(0u, context.InputBuffer()->GetPosition());
 
-  context.SetTestInputBuffer({buffer, 0u});
+  context.SetTestInputBuffer(pdfium::make_span(buffer).first(0u));
   EXPECT_EQ(0u, context.InputBuffer()->GetSize());
   EXPECT_EQ(0u, context.InputBuffer()->GetPosition());
 
-  context.SetTestInputBuffer({buffer, 3u});
+  context.SetTestInputBuffer(buffer);
   EXPECT_EQ(3u, context.InputBuffer()->GetSize());
   EXPECT_EQ(0u, context.InputBuffer()->GetPosition());
 }
 
 TEST(CFX_GifContext, ReadAllOrNone) {
-  DataVector<uint8_t> dest_buffer;
-  uint8_t src_buffer[] = {0x00, 0x01, 0x02, 0x03, 0x04,
-                          0x05, 0x06, 0x07, 0x08, 0x09};
   CFX_GifContextForTest context;
-
   context.SetTestInputBuffer({});
-  EXPECT_FALSE(context.ReadAllOrNone(nullptr, 0));
-  EXPECT_FALSE(context.ReadAllOrNone(nullptr, 10));
+  EXPECT_FALSE(context.ReadAllOrNone(pdfium::span<uint8_t>()));
 
-  EXPECT_FALSE(context.ReadAllOrNone(dest_buffer.data(), 0));
-  EXPECT_FALSE(context.ReadAllOrNone(dest_buffer.data(), 10));
+  auto src_buffer = fxcrt::ToArray<const uint8_t>(
+      {0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09});
 
-  context.SetTestInputBuffer({src_buffer, 0u});
-  dest_buffer.resize(sizeof(src_buffer));
-  EXPECT_FALSE(context.ReadAllOrNone(dest_buffer.data(), sizeof(src_buffer)));
+  DataVector<uint8_t> dest_buffer(src_buffer.size());
+  auto dest_span = pdfium::make_span(dest_buffer);
 
-  context.SetTestInputBuffer({src_buffer, 1u});
-  EXPECT_FALSE(context.ReadAllOrNone(dest_buffer.data(), sizeof(src_buffer)));
+  context.SetTestInputBuffer(pdfium::make_span(src_buffer).first(1u));
+  EXPECT_FALSE(context.ReadAllOrNone(dest_buffer));
   EXPECT_EQ(0u, context.InputBuffer()->GetPosition());
-  EXPECT_FALSE(context.ReadAllOrNone(nullptr, sizeof(src_buffer)));
-  EXPECT_FALSE(context.ReadAllOrNone(nullptr, 1));
-  EXPECT_TRUE(context.ReadAllOrNone(dest_buffer.data(), 1));
+  EXPECT_TRUE(context.ReadAllOrNone(dest_span.first(1u)));
   EXPECT_EQ(src_buffer[0], dest_buffer[0]);
 
   context.SetTestInputBuffer(src_buffer);
-  EXPECT_FALSE(context.ReadAllOrNone(nullptr, sizeof(src_buffer)));
-  EXPECT_TRUE(context.ReadAllOrNone(dest_buffer.data(), sizeof(src_buffer)));
-  for (size_t i = 0; i < sizeof(src_buffer); i++)
+  EXPECT_TRUE(context.ReadAllOrNone(dest_span.first(src_buffer.size())));
+  for (size_t i = 0; i < src_buffer.size(); i++) {
     EXPECT_EQ(src_buffer[i], dest_buffer[i]);
-
+  }
   context.SetTestInputBuffer(src_buffer);
-  for (size_t i = 0; i < sizeof(src_buffer); i++) {
-    EXPECT_TRUE(context.ReadAllOrNone(dest_buffer.data(), 1));
+  for (size_t i = 0; i < src_buffer.size(); i++) {
+    EXPECT_TRUE(context.ReadAllOrNone(dest_span.first(1u)));
     EXPECT_EQ(src_buffer[i], dest_buffer[0]);
   }
 }
@@ -91,7 +83,7 @@ TEST(CFX_GifContext, ReadGifSignature) {
   CFX_GifContextForTest context;
   {
     uint8_t data[1];
-    context.SetTestInputBuffer({data, 0u});
+    context.SetTestInputBuffer(pdfium::make_span(data).first(0u));
     EXPECT_EQ(GifDecoder::Status::kUnfinished, context.ReadGifSignature());
     EXPECT_EQ(0u, context.InputBuffer()->GetPosition());
     context.SetTestInputBuffer({});
@@ -149,15 +141,14 @@ TEST(CFX_GifContext, ReadLocalScreenDescriptor) {
   CFX_GifContextForTest context;
   {
     uint8_t data[1];
-    context.SetTestInputBuffer({data, 0u});
+    context.SetTestInputBuffer(pdfium::make_span(data).first(0u));
     EXPECT_EQ(GifDecoder::Status::kUnfinished,
               context.ReadLogicalScreenDescriptor());
     context.SetTestInputBuffer({});
   }
   // LSD with all the values zero'd
   {
-    uint8_t lsd[sizeof(CFX_GifLocalScreenDescriptor)];
-    memset(&lsd, 0, sizeof(CFX_GifLocalScreenDescriptor));
+    uint8_t lsd[sizeof(CFX_GifLocalScreenDescriptor)] = {};
     context.SetTestInputBuffer(lsd);
 
     EXPECT_EQ(GifDecoder::Status::kSuccess,

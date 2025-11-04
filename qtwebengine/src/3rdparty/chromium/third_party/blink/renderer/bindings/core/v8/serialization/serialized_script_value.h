@@ -33,6 +33,7 @@
 
 #include <memory>
 
+#include "base/containers/heap_array.h"
 #include "base/containers/span.h"
 #include "base/dcheck_is_on.h"
 #include "base/functional/callback_forward.h"
@@ -169,6 +170,12 @@ class CORE_EXPORT SerializedScriptValue
       kBlockedInNonSecureContext  // Block transfer or serialization.
     };
 
+    // Whether to serialize or skip a ScriptWrappable if the object is a
+    // wrapper.
+    enum ScriptWrappablePolicy {
+      kSerializeWrappedObjects,
+      kOmitWrappedObjects,
+    };
     SerializeOptions() = default;
     explicit SerializeOptions(StoragePolicy for_storage)
         : for_storage(for_storage) {}
@@ -177,6 +184,7 @@ class CORE_EXPORT SerializedScriptValue
     WebBlobInfoArray* blob_info = nullptr;
     WasmSerializationPolicy wasm_policy = kTransfer;
     StoragePolicy for_storage = kNotForStorage;
+    ScriptWrappablePolicy script_wrappable_policy = kSerializeWrappedObjects;
   };
   static scoped_refptr<SerializedScriptValue> Serialize(v8::Isolate*,
                                                         v8::Local<v8::Value>,
@@ -188,8 +196,6 @@ class CORE_EXPORT SerializedScriptValue
 
   static scoped_refptr<SerializedScriptValue> Create();
   static scoped_refptr<SerializedScriptValue> Create(const String&);
-  static scoped_refptr<SerializedScriptValue> Create(
-      scoped_refptr<const SharedBuffer>);
   static scoped_refptr<SerializedScriptValue> Create(base::span<const uint8_t>);
 
   ~SerializedScriptValue();
@@ -200,7 +206,7 @@ class CORE_EXPORT SerializedScriptValue
   String ToWireString() const;
 
   base::span<const uint8_t> GetWireData() const {
-    return {data_buffer_.get(), data_buffer_size_};
+    return data_buffer_.as_span();
   }
 
   // Deserializes the value (in the current context). Returns a null value in
@@ -211,6 +217,9 @@ class CORE_EXPORT SerializedScriptValue
    public:
     MessagePortArray* message_ports = nullptr;
     const WebBlobInfoArray* blob_info = nullptr;
+    // Slow mode is intended to mitigate possible timing attacks on v8 string
+    // table.
+    bool slow_mode = false;
   };
   v8::Local<v8::Value> Deserialize(v8::Isolate* isolate) {
     return Deserialize(isolate, DeserializeOptions());
@@ -271,8 +280,8 @@ class CORE_EXPORT SerializedScriptValue
   // hence subsequent calls will be no-ops.
   void UnregisterMemoryAllocatedWithCurrentScriptContext();
 
-  const uint8_t* Data() const { return data_buffer_.get(); }
-  size_t DataLengthInBytes() const { return data_buffer_size_; }
+  const uint8_t* Data() const { return data_buffer_.data(); }
+  size_t DataLengthInBytes() const { return data_buffer_.size(); }
 
   TransferredWasmModulesArray& WasmModules() { return wasm_modules_; }
   SharedArrayBufferContentsArray& SharedArrayBuffersContents() {
@@ -361,17 +370,14 @@ class CORE_EXPORT SerializedScriptValue
   struct BufferDeleter {
     void operator()(uint8_t* buffer) { WTF::Partitions::BufferFree(buffer); }
   };
-  using DataBufferPtr = std::unique_ptr<uint8_t[], BufferDeleter>;
+  using DataBufferPtr = base::HeapArray<uint8_t, BufferDeleter>;
 
   SerializedScriptValue();
-  SerializedScriptValue(DataBufferPtr, size_t data_size);
+  explicit SerializedScriptValue(DataBufferPtr);
 
   static DataBufferPtr AllocateBuffer(size_t);
 
-  void SetData(DataBufferPtr data, size_t size) {
-    data_buffer_ = std::move(data);
-    data_buffer_size_ = size;
-  }
+  void SetData(DataBufferPtr data) { data_buffer_ = std::move(data); }
 
   void TransferArrayBuffers(v8::Isolate*,
                             const ArrayBufferArray&,
@@ -423,7 +429,7 @@ class CORE_EXPORT SerializedScriptValue
   FileSystemAccessTokensArray file_system_access_tokens_;
   HashMap<const void* const*, std::unique_ptr<Attachment>> attachments_;
 
-  absl::optional<v8::SharedValueConveyor> shared_value_conveyor_;
+  std::optional<v8::SharedValueConveyor> shared_value_conveyor_;
   bool has_registered_external_allocation_;
 #if DCHECK_IS_ON()
   bool was_unpacked_ = false;

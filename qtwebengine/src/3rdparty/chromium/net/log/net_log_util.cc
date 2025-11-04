@@ -371,7 +371,7 @@ NET_EXPORT base::Value::Dict GetNetInfo(URLRequestContext* context) {
     // Construct a list containing the names of the disabled DoH providers.
     base::Value::List disabled_doh_providers_list;
     for (const DohProviderEntry* provider : DohProviderEntry::GetList()) {
-      if (!base::FeatureList::IsEnabled(provider->feature)) {
+      if (!base::FeatureList::IsEnabled(provider->feature.get())) {
         disabled_doh_providers_list.Append(
             NetLogStringValue(provider->provider));
       }
@@ -419,9 +419,8 @@ NET_EXPORT base::Value::Dict GetNetInfo(URLRequestContext* context) {
     if (!application_settings.empty()) {
       base::Value::Dict application_settings_dict;
       for (const auto& setting : application_settings) {
-        application_settings_dict.Set(
-            NextProtoToString(setting.first),
-            base::HexEncode(setting.second.data(), setting.second.size()));
+        application_settings_dict.Set(NextProtoToString(setting.first),
+                                      base::HexEncode(setting.second));
       }
       status_dict.Set("application_settings",
                       std::move(application_settings_dict));
@@ -504,7 +503,7 @@ NET_EXPORT void CreateNetLogEntriesForActiveObjects(
     context->AssertCalledOnValidThread();
     // Contexts should all be using the same NetLog.
     DCHECK_EQ((*contexts.begin())->net_log(), context->net_log());
-    for (auto* request : *context->url_requests()) {
+    for (const URLRequest* request : *context->url_requests()) {
       requests.push_back(request);
     }
   }

@@ -13,31 +13,36 @@ Rectangle {
     Text {
         id: title
 
-        text: "Second QML component"
+        text: "Second QML View"
         color: "white"
-        font.pixelSize: 72
-        fontSizeMode: Text.VerticalFit
-        // Height is calculated based on display orientation
-        // from Screen height, dividing numbers are based on what seem
-        // to look good on most displays
-        height: Screen.width > Screen.height ? Screen.height / 8 : (Screen.height / 2) / 8
+        font.pointSize: 72
         font.bold: true
-        anchors.horizontalCenter: parent.horizontalCenter
-        anchors.top: parent.top
-        anchors.topMargin: 5
+        wrapMode: Text.WordWrap
+        width: secondaryRectangle.width
         horizontalAlignment: Text.AlignHCenter
+
+        anchors {
+            horizontalCenter: parent.horizontalCenter
+            top: parent.top
+            topMargin: secondaryRectangle.height / 40
+        }
     }
 
     Text {
         id: gridText
 
         text: "QML Grid type"
-        fontSizeMode: Text.VerticalFit
-        font.pixelSize: 48
+        font.pointSize: 48
         color: "white"
-        anchors.horizontalCenter: parent.horizontalCenter
-        anchors.top: title.bottom
-        anchors.topMargin: 100
+        width: secondaryRectangle.width
+        wrapMode: Text.WordWrap
+        horizontalAlignment: Text.AlignHCenter
+
+        anchors {
+            top: title.bottom
+            topMargin: secondaryRectangle.height / 10
+            horizontalCenter: parent.horizontalCenter
+        }
     }
 
     Grid {
@@ -45,11 +50,14 @@ Rectangle {
 
         columns: 3
         rows: 3
-        anchors.horizontalCenter: parent.horizontalCenter
-        anchors.top: gridText.bottom
-        anchors.topMargin: 50
-        spacing: 50
+        spacing: secondaryRectangle.height / 15
         rotation: gridRotation
+
+        anchors {
+            horizontalCenter: parent.horizontalCenter
+            top: gridText.bottom
+            topMargin: secondaryRectangle.height / 10
+        }
 
         Repeater {
             id: repeater
@@ -69,8 +77,8 @@ Rectangle {
             Rectangle {
                 required property string modelData
 
-                height: 50
-                width: 50
+                height: secondaryRectangle.height / 15
+                width: height
                 color: modelData
             }
         }

@@ -26,7 +26,6 @@
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "gmock/gmock.h"
-#include "gtest/gtest-spi.h"
 #include "src/tint/lang/wgsl/ast/helper_test.h"
 #include "src/tint/lang/wgsl/program/clone_context.h"
 #include "src/tint/lang/wgsl/resolver/resolve.h"
@@ -35,6 +34,7 @@ namespace tint::ast {
 namespace {
 
 using ModuleTest = TestHelper;
+using ModuleDeathTest = ModuleTest;
 
 TEST_F(ModuleTest, Creation) {
     EXPECT_EQ(resolver::Resolve(*this).AST().Functions().Length(), 0u);
@@ -52,8 +52,8 @@ TEST_F(ModuleTest, LookupFunctionMissing) {
     EXPECT_EQ(nullptr, program.AST().Functions().Find(program.Symbols().Get("Missing")));
 }
 
-TEST_F(ModuleTest, Assert_Null_GlobalVariable) {
-    EXPECT_FATAL_FAILURE(
+TEST_F(ModuleDeathTest, Assert_Null_GlobalVariable) {
+    EXPECT_DEATH_IF_SUPPORTED(
         {
             ProgramBuilder builder;
             builder.AST().AddGlobalVariable(nullptr);
@@ -61,8 +61,8 @@ TEST_F(ModuleTest, Assert_Null_GlobalVariable) {
         "internal compiler error");
 }
 
-TEST_F(ModuleTest, Assert_Null_TypeDecl) {
-    EXPECT_FATAL_FAILURE(
+TEST_F(ModuleDeathTest, Assert_Null_TypeDecl) {
+    EXPECT_DEATH_IF_SUPPORTED(
         {
             ProgramBuilder builder;
             builder.AST().AddTypeDecl(nullptr);
@@ -70,8 +70,8 @@ TEST_F(ModuleTest, Assert_Null_TypeDecl) {
         "internal compiler error");
 }
 
-TEST_F(ModuleTest, Assert_DifferentGenerationID_Function) {
-    EXPECT_FATAL_FAILURE(
+TEST_F(ModuleDeathTest, Assert_DifferentGenerationID_Function) {
+    EXPECT_DEATH_IF_SUPPORTED(
         {
             ProgramBuilder b1;
             ProgramBuilder b2;
@@ -81,8 +81,8 @@ TEST_F(ModuleTest, Assert_DifferentGenerationID_Function) {
         "internal compiler error");
 }
 
-TEST_F(ModuleTest, Assert_DifferentGenerationID_GlobalVariable) {
-    EXPECT_FATAL_FAILURE(
+TEST_F(ModuleDeathTest, Assert_DifferentGenerationID_GlobalVariable) {
+    EXPECT_DEATH_IF_SUPPORTED(
         {
             ProgramBuilder b1;
             ProgramBuilder b2;
@@ -91,8 +91,8 @@ TEST_F(ModuleTest, Assert_DifferentGenerationID_GlobalVariable) {
         "internal compiler error");
 }
 
-TEST_F(ModuleTest, Assert_Null_Function) {
-    EXPECT_FATAL_FAILURE(
+TEST_F(ModuleDeathTest, Assert_Null_Function) {
+    EXPECT_DEATH_IF_SUPPORTED(
         {
             ProgramBuilder builder;
             builder.AST().AddFunction(nullptr);

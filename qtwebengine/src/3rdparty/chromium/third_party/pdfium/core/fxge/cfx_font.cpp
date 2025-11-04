@@ -14,9 +14,12 @@
 #include <utility>
 
 #include "build/build_config.h"
+#include "core/fxcrt/check.h"
 #include "core/fxcrt/data_vector.h"
 #include "core/fxcrt/fx_codepage.h"
 #include "core/fxcrt/fx_stream.h"
+#include "core/fxcrt/numerics/safe_conversions.h"
+#include "core/fxcrt/span.h"
 #include "core/fxcrt/unowned_ptr.h"
 #include "core/fxge/cfx_fontcache.h"
 #include "core/fxge/cfx_fontmapper.h"
@@ -27,17 +30,31 @@
 #include "core/fxge/cfx_substfont.h"
 #include "core/fxge/fx_font.h"
 #include "core/fxge/scoped_font_transform.h"
-#include "third_party/base/check.h"
-#include "third_party/base/containers/span.h"
-#include "third_party/base/numerics/safe_conversions.h"
 
 namespace {
 
+const CFX_Font::CharsetFontMap kDefaultTTFMap[] = {
+    {static_cast<int>(FX_Charset::kANSI), CFX_Font::kDefaultAnsiFontName},
+    {static_cast<int>(FX_Charset::kChineseSimplified), "SimSun"},
+    {static_cast<int>(FX_Charset::kChineseTraditional), "MingLiU"},
+    {static_cast<int>(FX_Charset::kShiftJIS), "MS Gothic"},
+    {static_cast<int>(FX_Charset::kHangul), "Batang"},
+    {static_cast<int>(FX_Charset::kMSWin_Cyrillic), "Arial"},
+#if BUILDFLAG(IS_WIN)
+    {static_cast<int>(FX_Charset::kMSWin_EasternEuropean), "Tahoma"},
+#else
+    {static_cast<int>(FX_Charset::kMSWin_EasternEuropean), "Arial"},
+#endif
+    {static_cast<int>(FX_Charset::kMSWin_Arabic), "Arial"},
+    // TODO(crbug.com/348468114): Remove sentinel value when
+    // FPDF_GetDefaultTTFMap() gets removed.
+    {-1, nullptr}};
+
 FX_RECT FXRectFromFTPos(FT_Pos left, FT_Pos top, FT_Pos right, FT_Pos bottom) {
-  return FX_RECT(pdfium::base::checked_cast<int32_t>(left),
-                 pdfium::base::checked_cast<int32_t>(top),
-                 pdfium::base::checked_cast<int32_t>(right),
-                 pdfium::base::checked_cast<int32_t>(bottom));
+  return FX_RECT(pdfium::checked_cast<int32_t>(left),
+                 pdfium::checked_cast<int32_t>(top),
+                 pdfium::checked_cast<int32_t>(right),
+                 pdfium::checked_cast<int32_t>(bottom));
 }
 
 FX_RECT ScaledFXRectFromFTPos(FT_Pos left,
@@ -63,7 +80,12 @@ unsigned long FTStreamRead(FXFT_StreamRec* stream,
 
   IFX_SeekableReadStream* pFile =
       static_cast<IFX_SeekableReadStream*>(stream->descriptor.pointer);
-  return pFile && pFile->ReadBlockAtOffset({buffer, count}, offset) ? count : 0;
+
+  // SAFETY: caller ensures `buffer` points to at least `count` bytes.
+  return pFile && pFile->ReadBlockAtOffset(
+                      UNSAFE_BUFFERS(pdfium::make_span(buffer, count)), offset)
+             ? count
+             : 0;
 }
 
 void FTStreamClose(FXFT_StreamRec* stream) {}
@@ -75,21 +97,6 @@ bool ShouldAppendStyle(const ByteString& style) {
 
 }  // namespace
 
-const CFX_Font::CharsetFontMap CFX_Font::kDefaultTTFMap[] = {
-    {static_cast<int>(FX_Charset::kANSI), kDefaultAnsiFontName},
-    {static_cast<int>(FX_Charset::kChineseSimplified), "SimSun"},
-    {static_cast<int>(FX_Charset::kChineseTraditional), "MingLiU"},
-    {static_cast<int>(FX_Charset::kShiftJIS), "MS Gothic"},
-    {static_cast<int>(FX_Charset::kHangul), "Batang"},
-    {static_cast<int>(FX_Charset::kMSWin_Cyrillic), "Arial"},
-#if BUILDFLAG(IS_WIN)
-    {static_cast<int>(FX_Charset::kMSWin_EasternEuropean), "Tahoma"},
-#else
-    {static_cast<int>(FX_Charset::kMSWin_EasternEuropean), "Arial"},
-#endif
-    {static_cast<int>(FX_Charset::kMSWin_Arabic), "Arial"},
-    {-1, nullptr}};
-
 // static
 const char CFX_Font::kUntitledFontName[] = "Untitled";
 
@@ -100,10 +107,17 @@ const char CFX_Font::kDefaultAnsiFontName[] = "Helvetica";
 const char CFX_Font::kUniversalDefaultFontName[] = "Arial Unicode MS";
 
 // static
+pdfium::span<const CFX_Font::CharsetFontMap> CFX_Font::GetDefaultTTFMapSpan() {
+  auto map_with_sentinel_value = pdfium::make_span(kDefaultTTFMap);
+  return map_with_sentinel_value.first(map_with_sentinel_value.size() - 1);
+}
+
+// static
 ByteString CFX_Font::GetDefaultFontNameByCharset(FX_Charset nCharset) {
-  for (size_t i = 0; i < std::size(kDefaultTTFMap) - 1; ++i) {
-    if (static_cast<int>(nCharset) == kDefaultTTFMap[i].charset)
-      return kDefaultTTFMap[i].fontname;
+  for (const auto& entry : GetDefaultTTFMapSpan()) {
+    if (static_cast<int>(nCharset) == entry.charset) {
+      return entry.fontname;
+    }
   }
   return kUniversalDefaultFontName;
 }
@@ -169,7 +183,6 @@ int CFX_Font::GetSubstFontItalicAngle() const {
 #ifdef PDF_ENABLE_XFA
 bool CFX_Font::LoadFile(RetainPtr<IFX_SeekableReadStream> pFile,
                         int nFaceIndex) {
-  m_bEmbedded = false;
   m_ObjectTag = 0;
 
   auto pStreamRec = std::make_unique<FXFT_StreamRec>();
@@ -191,7 +204,7 @@ bool CFX_Font::LoadFile(RetainPtr<IFX_SeekableReadStream> pFile,
 
   m_pOwnedFile = std::move(pFile);
   m_pOwnedStreamRec = std::move(pStreamRec);
-  FT_Set_Pixel_Sizes(m_Face->GetRec(), 0, 64);
+  m_Face->SetPixelSize(0, 64);
   return true;
 }
 
@@ -224,7 +237,6 @@ void CFX_Font::LoadSubst(const ByteString& face_name,
                          int italic_angle,
                          FX_CodePage code_page,
                          bool bVertical) {
-  m_bEmbedded = false;
   m_bVertical = bVertical;
   m_ObjectTag = 0;
   m_pSubstFont = std::make_unique<CFX_SubstFont>();
@@ -265,7 +277,6 @@ bool CFX_Font::LoadEmbedded(pdfium::span<const uint8_t> src_span,
   m_FontDataAllocation = DataVector<uint8_t>(src_span.begin(), src_span.end());
   m_Face = CFX_GEModule::Get()->GetFontMgr()->NewFixedFace(
       nullptr, m_FontDataAllocation, 0);
-  m_bEmbedded = true;
   m_FontData = m_FontDataAllocation;
   return !!m_Face;
 }
@@ -275,31 +286,37 @@ bool CFX_Font::IsTTFont() const {
 }
 
 int CFX_Font::GetAscent() const {
-  return m_Face ? m_Face->GetAdjustedAscender() : 0;
+  if (!m_Face) {
+    return 0;
+  }
+  return NormalizeFontMetric(m_Face->GetAscender(), m_Face->GetUnitsPerEm());
 }
 
 int CFX_Font::GetDescent() const {
-  return m_Face ? m_Face->GetAdjustedDescender() : 0;
+  if (!m_Face) {
+    return 0;
+  }
+  return NormalizeFontMetric(m_Face->GetDescender(), m_Face->GetUnitsPerEm());
 }
 
-absl::optional<FX_RECT> CFX_Font::GetGlyphBBox(uint32_t glyph_index) {
+std::optional<FX_RECT> CFX_Font::GetGlyphBBox(uint32_t glyph_index) {
   if (!m_Face)
-    return absl::nullopt;
+    return std::nullopt;
 
   if (m_Face->IsTricky()) {
     int error = FT_Set_Char_Size(m_Face->GetRec(), 0, 1000 * 64, 72, 72);
     if (error)
-      return absl::nullopt;
+      return std::nullopt;
 
     error = FT_Load_Glyph(m_Face->GetRec(), glyph_index,
                           FT_LOAD_IGNORE_GLOBAL_ADVANCE_WIDTH);
     if (error)
-      return absl::nullopt;
+      return std::nullopt;
 
     FT_Glyph glyph;
     error = FT_Get_Glyph(m_Face->GetRec()->glyph, &glyph);
     if (error)
-      return absl::nullopt;
+      return std::nullopt;
 
     FT_BBox cbox;
     FT_Glyph_Get_CBox(glyph, FT_GLYPH_BBOX_PIXELS, &cbox);
@@ -311,13 +328,14 @@ absl::optional<FX_RECT> CFX_Font::GetGlyphBBox(uint32_t glyph_index) {
     result.bottom =
         std::max(result.bottom, static_cast<int>(m_Face->GetDescender()));
     FT_Done_Glyph(glyph);
-    if (FT_Set_Pixel_Sizes(m_Face->GetRec(), 0, 64) != 0)
-      return absl::nullopt;
+    if (!m_Face->SetPixelSize(0, 64)) {
+      return std::nullopt;
+    }
     return result;
   }
   constexpr int kFlag = FT_LOAD_NO_SCALE | FT_LOAD_IGNORE_GLOBAL_ADVANCE_WIDTH;
   if (FT_Load_Glyph(m_Face->GetRec(), glyph_index, kFlag) != 0)
-    return absl::nullopt;
+    return std::nullopt;
   int em = m_Face->GetUnitsPerEm();
   return ScaledFXRectFromFTPos(FXFT_Get_Glyph_HoriBearingX(m_Face->GetRec()),
                                FXFT_Get_Glyph_HoriBearingY(m_Face->GetRec()) -
@@ -378,19 +396,6 @@ ByteString CFX_Font::GetFamilyNameOrUntitled() const {
   return facename.IsEmpty() ? kUntitledFontName : facename;
 }
 
-ByteString CFX_Font::GetFaceName() const {
-  if (!m_Face && !m_pSubstFont)
-    return ByteString();
-  if (m_Face) {
-    ByteString style = m_Face->GetStyleName();
-    ByteString facename = GetFamilyNameOrUntitled();
-    if (ShouldAppendStyle(style))
-      facename += " " + style;
-    return facename;
-  }
-  return m_pSubstFont->m_Family;
-}
-
 ByteString CFX_Font::GetBaseFontName() const {
   ByteString psname = GetPsName();
   if (!psname.IsEmpty() && psname != kUntitledFontName)
@@ -409,24 +414,24 @@ ByteString CFX_Font::GetBaseFontName() const {
   return ByteString();
 }
 
-absl::optional<FX_RECT> CFX_Font::GetRawBBox() const {
+std::optional<FX_RECT> CFX_Font::GetRawBBox() const {
   if (!m_Face)
-    return absl::nullopt;
+    return std::nullopt;
   return m_Face->GetBBox();
 }
 
-absl::optional<FX_RECT> CFX_Font::GetBBox() const {
-  absl::optional<FX_RECT> result = GetRawBBox();
+std::optional<FX_RECT> CFX_Font::GetBBox() const {
+  std::optional<FX_RECT> result = GetRawBBox();
   if (!result.has_value())
     return result;
 
   int em = m_Face->GetUnitsPerEm();
   if (em != 0) {
     FX_RECT& bbox = result.value();
-    bbox.left = (bbox.left * 1000) / em;
-    bbox.top = (bbox.top * 1000) / em;
-    bbox.right = (bbox.right * 1000) / em;
-    bbox.bottom = (bbox.bottom * 1000) / em;
+    bbox.left = pdfium::saturated_cast<int32_t>((bbox.left * 1000.0f) / em);
+    bbox.top = pdfium::saturated_cast<int32_t>((bbox.top * 1000.0f) / em);
+    bbox.right = pdfium::saturated_cast<int32_t>((bbox.right * 1000.0f) / em);
+    bbox.bottom = pdfium::saturated_cast<int32_t>((bbox.bottom * 1000.0f) / em);
   }
   return result;
 }

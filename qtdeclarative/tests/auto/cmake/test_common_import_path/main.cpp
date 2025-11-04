@@ -5,7 +5,7 @@
 #include <QtQml/qqmlengine.h>
 #include <QtQml/qqmlcomponent.h>
 #include <QtQml/qqmlextensionplugin.h>
-#include <QtTest>
+#include <QTest>
 
 Q_IMPORT_QML_PLUGIN(duck_tickPlugin)
 Q_IMPORT_QML_PLUGIN(duck_trickPlugin)

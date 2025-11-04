@@ -5,19 +5,30 @@
 #ifndef THIRD_PARTY_BLINK_RENDERER_MODULES_MEDIASTREAM_IMAGE_CAPTURE_DEVICE_SETTINGS_H_
 #define THIRD_PARTY_BLINK_RENDERER_MODULES_MEDIASTREAM_IMAGE_CAPTURE_DEVICE_SETTINGS_H_
 
-#include "third_party/abseil-cpp/absl/types/optional.h"
+#include <optional>
+
 #include "third_party/blink/renderer/modules/modules_export.h"
 
 namespace blink {
 
 struct MODULES_EXPORT ImageCaptureDeviceSettings {
-  absl::optional<double> pan;
-  absl::optional<double> tilt;
-  absl::optional<double> zoom;
-  absl::optional<bool> torch;
-  absl::optional<bool> background_blur;
-  absl::optional<bool> eye_gaze_correction;
-  absl::optional<bool> face_framing;
+  std::optional<double> exposure_compensation;
+  std::optional<double> exposure_time;
+  std::optional<double> color_temperature;
+  std::optional<double> iso;
+  std::optional<double> brightness;
+  std::optional<double> contrast;
+  std::optional<double> saturation;
+  std::optional<double> sharpness;
+  std::optional<double> focus_distance;
+  std::optional<double> pan;
+  std::optional<double> tilt;
+  std::optional<double> zoom;
+  std::optional<bool> torch;
+  std::optional<bool> background_blur;
+  std::optional<bool> background_segmentation_mask;
+  std::optional<bool> eye_gaze_correction;
+  std::optional<bool> face_framing;
 };
 
 }  // namespace blink

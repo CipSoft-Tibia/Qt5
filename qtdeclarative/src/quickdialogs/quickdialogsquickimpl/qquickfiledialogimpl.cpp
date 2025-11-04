@@ -17,16 +17,17 @@
 
 #include "qquickfiledialogdelegate_p.h"
 #include "qquickfolderbreadcrumbbar_p.h"
+#include "qquicksidebar_p.h"
 
 QT_BEGIN_NAMESPACE
 
-Q_LOGGING_CATEGORY(lcCurrentFolder, "qt.quick.dialogs.quickfiledialogimpl.currentFolder")
-Q_LOGGING_CATEGORY(lcSelectedFile, "qt.quick.dialogs.quickfiledialogimpl.selectedFile")
-Q_LOGGING_CATEGORY(lcUpdateSelectedFile, "qt.quick.dialogs.quickfiledialogimpl.updateSelectedFile")
-Q_LOGGING_CATEGORY(lcOptions, "qt.quick.dialogs.quickfiledialogimpl.options")
-Q_LOGGING_CATEGORY(lcNameFilters, "qt.quick.dialogs.quickfiledialogimpl.namefilters")
-Q_LOGGING_CATEGORY(lcAttachedNameFilters, "qt.quick.dialogs.quickfiledialogimplattached.namefilters")
-Q_LOGGING_CATEGORY(lcAttachedCurrentIndex, "qt.quick.dialogs.quickfiledialogimplattached.currentIndex")
+Q_STATIC_LOGGING_CATEGORY(lcCurrentFolder, "qt.quick.dialogs.quickfiledialogimpl.currentFolder")
+Q_STATIC_LOGGING_CATEGORY(lcSelectedFile, "qt.quick.dialogs.quickfiledialogimpl.selectedFile")
+Q_STATIC_LOGGING_CATEGORY(lcUpdateSelectedFile, "qt.quick.dialogs.quickfiledialogimpl.updateSelectedFile")
+Q_STATIC_LOGGING_CATEGORY(lcOptions, "qt.quick.dialogs.quickfiledialogimpl.options")
+Q_STATIC_LOGGING_CATEGORY(lcNameFilters, "qt.quick.dialogs.quickfiledialogimpl.namefilters")
+Q_STATIC_LOGGING_CATEGORY(lcAttachedNameFilters, "qt.quick.dialogs.quickfiledialogimplattached.namefilters")
+Q_STATIC_LOGGING_CATEGORY(lcAttachedCurrentIndex, "qt.quick.dialogs.quickfiledialogimplattached.currentIndex")
 
 QQuickFileDialogImplPrivate::QQuickFileDialogImplPrivate()
 {
@@ -839,6 +840,23 @@ void QQuickFileDialogImplAttached::setOverwriteConfirmationDialog(QQuickDialog *
             QQuickFileDialogImplPrivate::get(fileDialogImpl), &QQuickFileDialogImplPrivate::selectFile, Qt::QueuedConnection);
 
     emit overwriteConfirmationDialogChanged();
+}
+
+QQuickSideBar *QQuickFileDialogImplAttached::sideBar() const
+{
+    Q_D(const QQuickFileDialogImplAttached);
+    return d->sideBar;
+}
+
+void QQuickFileDialogImplAttached::setSideBar(QQuickSideBar *sideBar)
+{
+    Q_D(QQuickFileDialogImplAttached);
+    if (sideBar == d->sideBar)
+        return;
+
+    d->sideBar = sideBar;
+
+    emit sideBarChanged();
 }
 
 QT_END_NAMESPACE

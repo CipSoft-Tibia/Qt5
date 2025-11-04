@@ -43,6 +43,7 @@
 #         versions. For the multiview versions the shading languages and versions are set automatically.
 #         Thus this is a simple drop-in option for existing qt_add_shaders() calls to get multiview versions
 #         generated. The additional, multiview qsb files will have a suffix of .mv2qsb.
+#     Specify MEDIUMP to inject "precision mediump float;" into GLSL ES fragment shaders instead of highp.
 #
 # The actual file name in the resource system is either :/PREFIX/FILES[i]-BASE+".qsb" or :/PREFIX/OUTPUTS[i]
 #
@@ -69,7 +70,7 @@
 function(_qt_internal_add_shaders_impl target resourcename)
     cmake_parse_arguments(
         arg
-        "BATCHABLE;PRECOMPILE;PERTARGETCOMPILE;NOGLSL;NOHLSL;NOMSL;DEBUGINFO;OPTIMIZED;SILENT;QUIET;TESSELLATION;MULTIVIEW;_QT_INTERNAL"
+        "BATCHABLE;PRECOMPILE;PERTARGETCOMPILE;NOGLSL;NOHLSL;NOMSL;DEBUGINFO;OPTIMIZED;SILENT;QUIET;TESSELLATION;MULTIVIEW;MEDIUMP;_QT_INTERNAL"
         "PREFIX;BASE;GLSL;HLSL;MSL;OUTPUT_TARGETS;TESSELLATION_VERTEX_COUNT;TESSELLATION_MODE;ZORDER_LOC;VIEW_COUNT"
         "FILES;OUTPUTS;DEFINES"
         ${ARGN}
@@ -206,6 +207,10 @@ function(_qt_internal_add_shaders_impl target resourcename)
             list(APPEND qsb_common_args "-D")
             list(APPEND qsb_common_args "${qsb_def}")
         endforeach()
+
+        if (arg_MEDIUMP)
+            list(APPEND qsb_common_args, "--mediump")
+        endif()
 
         list(APPEND qsb_args "${qsb_common_args}")
 

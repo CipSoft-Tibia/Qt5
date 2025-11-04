@@ -6,8 +6,7 @@ from __future__ import annotations
 
 import dataclasses
 import datetime as dt
-from typing import Union
-
+from typing import Dict, Union
 
 # Arbitrary very large number that doesn't break any browser driver protocol.
 # chromedriver likely uses an uint32 ms internally, 2**30ms == 12days.
@@ -80,3 +79,11 @@ class Timing:
   @property
   def has_no_timeout(self) -> bool:
     return self.timeout_unit == dt.timedelta.max
+
+  def to_json(self) -> Dict[str, float]:
+    return {
+        "coolDownTime": self.cool_down_time.total_seconds(),
+        "unit": self.unit.total_seconds(),
+        "timeoutUnit": self.timeout_unit.total_seconds(),
+        "runTimeout": self.run_timeout.total_seconds(),
+    }

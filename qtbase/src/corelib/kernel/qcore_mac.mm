@@ -337,6 +337,32 @@ bool qt_mac_runningUnderRosetta()
     return false;
 }
 
+bool qt_apple_runningWithLiquidGlass()
+{
+    static const bool runningWithLiquidGlass = []{
+        if (QMacVersion::buildSDK(QMacVersion::ApplicationBinary).majorVersion() < 26)
+            return false;
+
+        if (QMacVersion::currentRuntime().majorVersion() < 26)
+            return false;
+
+        // Word on the street is that the opt out will only work for
+        // macOS 26, but it's not clear whether building against the
+        // Xcode 27 SDK is what will disable it, or simply running on
+        // macOS 27. Let's go with the latter for now.
+        if (QMacVersion::currentRuntime().majorVersion() < 27) {
+            const id liquidGlassOptOut = [NSBundle.mainBundle
+                objectForInfoDictionaryKey:@"UIDesignRequiresCompatibility"];
+            if (liquidGlassOptOut && [liquidGlassOptOut boolValue])
+                return false;
+        }
+
+        return true;
+    }();
+
+    return runningWithLiquidGlass;
+}
+
 std::optional<uint32_t> qt_mac_sipConfiguration()
 {
     static auto configuration = []() -> std::optional<uint32_t> {
@@ -374,7 +400,7 @@ std::optional<uint32_t> qt_mac_sipConfiguration()
 }
 
 #define CHECK_SPAWN(expr) \
-    if (int err = (expr)) { \
+    if ((expr) != 0) { \
         posix_spawnattr_destroy(&attr); \
         return; \
     }
@@ -774,17 +800,39 @@ QMacVersion::VersionTuple QMacVersion::libraryVersion()
 
 // -------------------------------------------------------------------------
 
-#if !(__has_feature(objc_arc_weak) && __has_feature(objc_arc_fields))
-QT_END_NAMESPACE
-@implementation QT_MANGLE_NAMESPACE(WeakPointerLifetimeTracker)
-- (void)dealloc
+QObjCWeakPointerBase::QObjCWeakPointerBase(NSObject *object)
+    : m_weakReference(object)
 {
-    *self.pointer = {};
-    [super dealloc];
 }
-@end
-QT_BEGIN_NAMESPACE
-#endif
+
+QObjCWeakPointerBase::QObjCWeakPointerBase(const QObjCWeakPointerBase &other)
+{
+    QMacAutoReleasePool pool;
+    m_weakReference = other.m_weakReference;
+}
+
+QObjCWeakPointerBase &QObjCWeakPointerBase::operator=(const QObjCWeakPointerBase &other)
+{
+    QMacAutoReleasePool pool;
+    m_weakReference = other.m_weakReference;
+    return *this;
+}
+
+QObjCWeakPointerBase::~QObjCWeakPointerBase()
+{
+    QMacAutoReleasePool pool;
+    m_weakReference = nil;
+}
+
+NSObject *QObjCWeakPointerBase::get() const
+{
+    // Loading from a __weak variable will retain and auto-release (in non-ARC).
+    // Unlike cases above, we want the object to stay alive until the outer
+    // auto-release pool is drained, so that consumers of QObjCWeakPointer
+    // can trust that the variable they get back will be alive, similar to
+    // the semantics of loading from __weak.
+    return m_weakReference;
+}
 
 // -------------------------------------------------------------------------
 

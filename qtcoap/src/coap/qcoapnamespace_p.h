@@ -1,11 +1,14 @@
 // Copyright (C) 2019 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QCOAPNAMESPACE_P_H
 #define QCOAPNAMESPACE_P_H
 
 #include "qcoapnamespace.h"
 #include "private/qglobal_p.h"
+#include <QtCore/qloggingcategory.h>
+
 
 //
 //  W A R N I N G
@@ -19,6 +22,9 @@
 //
 
 QT_BEGIN_NAMESPACE
+
+Q_DECLARE_LOGGING_CATEGORY(lcCoapExchange)
+Q_DECLARE_LOGGING_CATEGORY(lcCoapConnection)
 
 namespace QtCoap
 {

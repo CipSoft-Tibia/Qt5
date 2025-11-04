@@ -56,6 +56,26 @@ python tools/fetch_dawn_dependencies.py --use-test-deps
 
 Use `python tools/fetch_dawn_dependencies.py -h` to know more about the available options. The `--use-test-deps` option used above specifies to also fetch dependencies needed by tests. Contrary to `depot_tools`, this scripts does not figure out option-dependent requirements automatically.
 
+### Linux dependencies
+
+The following packages are needed to build Dawn. (Package names are the Ubuntu names).
+
+* `libxrandr-dev`
+* `libxinerama-dev`
+* `libxcursor-dev`
+* `mesa-common-dev`
+* `libx11-xcb-dev`
+* `pkg-config`
+* `nodejs`
+* `npm`
+
+```sh
+sudo apt-get install libxrandr-dev libxinerama-dev libxcursor-dev mesa-common-dev libx11-xcb-dev pkg-config nodejs npm
+```
+
+Note, `nodejs` and `npm` are only needed if building `dawn.node`.
+
+
 ## Build Dawn
 
 ### Compiling using CMake + Ninja
@@ -90,6 +110,11 @@ On macOS you'll want to add the `use_system_xcode=true` in most cases.
 To generate a Microsoft Visual Studio solution, add `ide=vs2022` and
 `ninja-executable=<dawn parent directory>\dawn\third_party\ninja\ninja.exe`.
 The .sln file will be created in the output directory specified.
+
+For CMake builds, you can enable installation with the `DAWN_ENABLE_INSTALL` option
+and use `find_package(Dawn)` in your CMake project to discover Dawn and link with
+the `dawn::webgpu_dawn` target. Please see [Quickstart with CMake](./quickstart-cmake.md)
+for step-by-step instructions.
 
 ### Fuzzers on MacOS
 If you are attempting fuzz, using `TINT_BUILD_FUZZERS=ON`, the version of llvm

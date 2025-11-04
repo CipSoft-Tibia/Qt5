@@ -34,8 +34,10 @@ RetainPtr<CFX_DIBitmap> DrawPatternBitmap(
     int height,
     const CPDF_RenderOptions::Options& draw_options) {
   auto pBitmap = pdfium::MakeRetain<CFX_DIBitmap>();
+  // TODO(crbug.com/42271020): Consider adding support for
+  // `FXDIB_Format::kBgraPremul`
   if (!pBitmap->Create(width, height,
-                       pPattern->colored() ? FXDIB_Format::kArgb
+                       pPattern->colored() ? FXDIB_Format::kBgra
                                            : FXDIB_Format::k8bppMask)) {
     return nullptr;
   }
@@ -61,11 +63,6 @@ RetainPtr<CFX_DIBitmap> DrawPatternBitmap(
   context.AppendLayer(pPatternForm, mtPattern2Bitmap);
   context.Render(&bitmap_device, nullptr, &options, nullptr);
 
-#if defined(PDF_USE_SKIA)
-  if (CFX_DefaultRenderDevice::UseSkiaRenderer()) {
-    pBitmap->UnPreMultiply();
-  }
-#endif  // defined(PDF_USE_SKIA)
   return pBitmap;
 }
 
@@ -89,8 +86,8 @@ RetainPtr<CFX_DIBitmap> CPDF_RenderTiling::Draw(
   float ceil_width = std::ceil(cell_bbox.Width());
 
   // Validate the float will fit into the int when the conversion is done.
-  if (!pdfium::base::IsValueInRangeForNumericType<int>(ceil_height) ||
-      !pdfium::base::IsValueInRangeForNumericType<int>(ceil_width)) {
+  if (!pdfium::IsValueInRangeForNumericType<int>(ceil_height) ||
+      !pdfium::IsValueInRangeForNumericType<int>(ceil_width)) {
     return nullptr;
   }
 
@@ -122,9 +119,14 @@ RetainPtr<CFX_DIBitmap> CPDF_RenderTiling::Draw(
   if (width > clip_box.Width() || height > clip_box.Height() ||
       width * height > clip_box.Width() * clip_box.Height()) {
     std::unique_ptr<CPDF_GraphicStates> pStates;
-    if (!pPattern->colored())
+    if (!pPattern->colored()) {
       pStates = CPDF_RenderStatus::CloneObjStates(&pPageObj->graphic_states(),
                                                   bStroke);
+    } else if (pPageObj->AsPath()) {
+      pStates = std::make_unique<CPDF_GraphicStates>();
+      pStates->SetDefaultStates();
+      pStates->mutable_general_state().SetFillAlpha(pPageObj->general_state().GetFillAlpha());
+    }
 
     RetainPtr<const CPDF_Dictionary> pFormResource =
         pPatternForm->GetDict()->GetDictFor("Resources");
@@ -196,8 +198,9 @@ RetainPtr<CFX_DIBitmap> CPDF_RenderTiling::Draw(
   int clip_width = clip_box.right - clip_box.left;
   int clip_height = clip_box.bottom - clip_box.top;
   auto pScreen = pdfium::MakeRetain<CFX_DIBitmap>();
-  if (!pScreen->Create(clip_width, clip_height, FXDIB_Format::kArgb))
+  if (!pScreen->Create(clip_width, clip_height, FXDIB_Format::kBgra)) {
     return nullptr;
+  }
 
   pdfium::span<const uint8_t> src_buf = pPatternBitmap->GetBuffer();
   for (int col = min_col; col <= max_col; col++) {
@@ -229,8 +232,10 @@ RetainPtr<CFX_DIBitmap> CPDF_RenderTiling::Draw(
             start_y >= clip_box.Height()) {
           continue;
         }
-        uint32_t* dest_buf = reinterpret_cast<uint32_t*>(
-            pScreen->GetWritableScanline(start_y).subspan(start_x * 4).data());
+        uint32_t* dest_buf = fxcrt::reinterpret_span<uint32_t>(
+                                 pScreen->GetWritableScanline(start_y))
+                                 .subspan(start_x)
+                                 .data();
         if (pPattern->colored()) {
           const uint32_t* src_buf32 =
               fxcrt::reinterpret_span<const uint32_t>(src_buf).data();

@@ -8,6 +8,7 @@
 
 #include <memory>
 #include <numeric>
+#include <optional>
 #include <utility>
 #include <vector>
 
@@ -17,9 +18,10 @@
 #include "base/memory/ptr_util.h"
 #include "base/memory/ref_counted_memory.h"
 #include "base/ranges/algorithm.h"
+#include "base/strings/stringprintf.h"
 #include "services/device/public/cpp/usb/usb_utils.h"
 #include "services/device/usb/usb_device.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
+#include "third_party/blink/public/common/features.h"
 
 namespace device {
 
@@ -33,11 +35,13 @@ namespace usb {
 
 namespace {
 
+constexpr size_t kUsbTransferLengthLimit = 32 * 1024 * 1024;  // 32 MiB
+
 void OnTransferIn(mojom::UsbDevice::GenericTransferInCallback callback,
                   UsbTransferStatus status,
                   scoped_refptr<base::RefCountedBytes> buffer,
                   size_t buffer_size) {
-  auto data = buffer ? base::make_span(buffer->front(), buffer_size)
+  auto data = buffer ? base::span(*buffer).first(buffer_size)
                      : base::span<const uint8_t>();
   std::move(callback).Run(
       mojo::TypeConverter<mojom::UsbTransferStatus, UsbTransferStatus>::Convert(
@@ -63,7 +67,7 @@ void OnIsochronousTransferIn(
       [](const uint32_t& a, const UsbIsochronousPacketPtr& packet) {
         return a + packet->length;
       });
-  auto data = buffer ? base::make_span(buffer->front(), buffer_size)
+  auto data = buffer ? base::span(*buffer).first(buffer_size)
                      : base::span<const uint8_t>();
   std::move(callback).Run(data, std::move(packets));
 }
@@ -95,7 +99,7 @@ bool IsAndroidSecurityKeyRequest(
 }
 
 // Returns the sum of `packet_lengths`, or nullopt if the sum would overflow.
-absl::optional<uint32_t> TotalPacketLength(
+std::optional<uint32_t> TotalPacketLength(
     base::span<const uint32_t> packet_lengths) {
   uint32_t total_bytes = 0;
   for (const uint32_t packet_length : packet_lengths) {
@@ -338,6 +342,9 @@ void DeviceImpl::ControlTransferIn(UsbControlTransferParamsPtr params,
     std::move(callback).Run(mojom::UsbTransferStatus::TRANSFER_ERROR, {});
     return;
   }
+  if (ShouldRejectUsbTransferLengthAndReportBadMessage(length)) {
+    return;
+  }
 
   if (HasControlTransferPermission(params->recipient, params->index)) {
     auto buffer = base::MakeRefCounted<base::RefCountedBytes>(length);
@@ -356,6 +363,9 @@ void DeviceImpl::ControlTransferOut(UsbControlTransferParamsPtr params,
                                     ControlTransferOutCallback callback) {
   if (!device_handle_) {
     std::move(callback).Run(mojom::UsbTransferStatus::TRANSFER_ERROR);
+    return;
+  }
+  if (ShouldRejectUsbTransferLengthAndReportBadMessage(data.size())) {
     return;
   }
 
@@ -380,6 +390,9 @@ void DeviceImpl::GenericTransferIn(uint8_t endpoint_number,
     std::move(callback).Run(mojom::UsbTransferStatus::TRANSFER_ERROR, {});
     return;
   }
+  if (ShouldRejectUsbTransferLengthAndReportBadMessage(length)) {
+    return;
+  }
 
   uint8_t endpoint_address = endpoint_number | 0x80;
   auto buffer = base::MakeRefCounted<base::RefCountedBytes>(length);
@@ -394,6 +407,9 @@ void DeviceImpl::GenericTransferOut(uint8_t endpoint_number,
                                     GenericTransferOutCallback callback) {
   if (!device_handle_) {
     std::move(callback).Run(mojom::UsbTransferStatus::TRANSFER_ERROR);
+    return;
+  }
+  if (ShouldRejectUsbTransferLengthAndReportBadMessage(data.size())) {
     return;
   }
 
@@ -416,12 +432,15 @@ void DeviceImpl::IsochronousTransferIn(
     return;
   }
 
-  absl::optional<uint32_t> total_bytes = TotalPacketLength(packet_lengths);
+  std::optional<uint32_t> total_bytes = TotalPacketLength(packet_lengths);
   if (!total_bytes.has_value()) {
     mojo::ReportBadMessage("Invalid isochronous packet lengths.");
     std::move(callback).Run(
         {}, BuildIsochronousPacketArray(
                 packet_lengths, mojom::UsbTransferStatus::TRANSFER_ERROR));
+    return;
+  }
+  if (ShouldRejectUsbTransferLengthAndReportBadMessage(total_bytes.value())) {
     return;
   }
 
@@ -443,11 +462,14 @@ void DeviceImpl::IsochronousTransferOut(
     return;
   }
 
-  absl::optional<uint32_t> total_bytes = TotalPacketLength(packet_lengths);
+  std::optional<uint32_t> total_bytes = TotalPacketLength(packet_lengths);
   if (!total_bytes.has_value() || total_bytes.value() != data.size()) {
     mojo::ReportBadMessage("Invalid isochronous packet lengths.");
     std::move(callback).Run(BuildIsochronousPacketArray(
         packet_lengths, mojom::UsbTransferStatus::TRANSFER_ERROR));
+    return;
+  }
+  if (ShouldRejectUsbTransferLengthAndReportBadMessage(total_bytes.value())) {
     return;
   }
 
@@ -473,6 +495,21 @@ void DeviceImpl::OnClientConnectionError() {
   // Close the connection with Blink when WebUsbServiceImpl notifies the
   // permission revocation from settings UI.
   receiver_->Close();
+}
+
+bool DeviceImpl::ShouldRejectUsbTransferLengthAndReportBadMessage(
+    size_t length) {
+  if (!base::FeatureList::IsEnabled(
+          blink::features::kWebUSBTransferSizeLimit)) {
+    return false;
+  }
+
+  if (length <= kUsbTransferLengthLimit) {
+    return false;
+  }
+  receiver_->ReportBadMessage(
+      base::StringPrintf("Transfer size %zu is over the limit.", length));
+  return true;
 }
 
 }  // namespace usb

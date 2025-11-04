@@ -110,10 +110,13 @@ named using `snake_case()`. Virtual functions should never be declared this way.
 
 ## Logging
 
-Remove most logging calls before checking in. Unless you're adding temporary
-logging to track down a specific bug, and you have a plan for how to collect
-the logged data from user machines, you should generally not add logging
-statements.
+Remove all logging before checking in code. The exception is temporary logging
+to track down a specific bug. This should be a rare exception, and you should
+have a plan for how to manually collect/use the logged data. Afterwards you
+should remove the logging. Note that logs are not present in crashes. Use
+`base::debug::ScopedCrashKeyString`
+([link](https://chromium.googlesource.com/chromium/src/+/main/base/debug/crash_logging.h))
+for that.
 
 For the rare case when logging needs to stay in the codebase for a while,
 prefer `DVLOG(1)` to other logging methods. This avoids bloating the release
@@ -125,6 +128,14 @@ arguments:
     mod. Supplying the string foo for mod will affect all files named foo.cc,
     while supplying a wildcard like `*bar/baz*` will affect all files with
     `bar/baz` in their full pathnames.
+
+Rationale:
+* Logging is expensive: binary size, runtime.
+* Logging quickly loses utility as more components emit logs: too much noise,
+  not enough signal.
+* Logging is often used to document impossible edge cases which should be
+  enforced with CHECKs. The latter makes it easier to reason about the code, and
+  can result in more performant binaries.
 
 ## Platform-specific code
 
@@ -313,7 +324,7 @@ sections on these for the naming convention). Do not use `#pragma once`;
 historically it was not supported on all platforms, and it does not seem to
 outperform #include guards even on platforms which do support it.
 
-## CHECK(), DCHECK(), NOTREACHED_NORETURN() and NOTREACHED()
+## CHECK(), DCHECK() and NOTREACHED()
 
 Use the `CHECK()` family of macros to both document and verify invariants.
   * Exception: If the invariant is known to be too expensive to verify in
@@ -331,22 +342,18 @@ Use the `CHECK()` family of macros to both document and verify invariants.
     argument, as there's stability risk given the under-tested invariant, or add
     a comment explaining why DCHECK is appropriate given the current guidance.
 
-Use `NOTREACHED_NORETURN()` to indicate a piece of code is unreachable. Control
-flow does not leave this call, so there should be no executable statements after
-it (even return statements from non-void functions). The compiler will issue
-dead-code warnings.
+Use `NOTREACHED()` to indicate a piece of code is unreachable. Control flow does
+not leave this call, so there should be no executable statements after it (even
+return statements from non-void functions). The compiler will issue dead-code
+warnings.
   * Prefer to unconditionally `CHECK()` instead of conditionally hitting a
-    `NOTREACHED[_NORETURN]()`, where feasible.
+    `NOTREACHED()`, where feasible.
   * Exception: If your pre-stable coverage is too small to prevent a stability
-    risk once `NOTREACHED_NORETURN()`s hit stable, and failure doesn't obviously
+    risk once `NOTREACHED()`s hit stable, and failure doesn't obviously
     result in a crash or security risk, you may use `NOTREACHED(
     base::NotFatalUntil::M120)` with a future milestone to gather non-fatal
     diagnostics in stable before automatically turning fatal in a later
     milestone.
-  * Historically, Chromium code used `NOTREACHED()` for this purpose.
-    [Migrating this code](https://crbug.com/851128) to be fatal (and
-    `[[noreturn]]`) is part of a `kNotReachedIsFatal` experiment.
-
 
 Use `base::ImmediateCrash()` in the rare case where it's necessary to terminate
 the current process for reasons outside its control, that are not violations of
@@ -359,8 +366,8 @@ safe to continue execution.
 Use `DLOG(FATAL)` (does nothing in production) or `LOG(DFATAL)` (logs an error
 and continues running in production) if you need to log an error in tests from
 production code. From test code, use `ADD_FAILURE()` directly. Do not use these
-for invariant failures. Those should use `CHECK()` or `NOTREACHED_NORETURN()` as
-noted above.
+for invariant failures. Those should use `CHECK()` or `NOTREACHED()` as noted
+above.
 
 For more details, see [checks.md](checks.md).
 

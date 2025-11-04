@@ -978,8 +978,13 @@ bool QWindowsVistaStylePrivate::drawBackgroundThruNativeBuffer(QWindowsThemeData
             rotMatrix.rotate(themeData.rotate);
             imgCopy = imgCopy.transformed(rotMatrix);
         }
+        Qt::Orientations orient = {};
+        if (themeData.mirrorHorizontally)
+            orient |= Qt::Horizontal;
+        if (themeData.mirrorVertically)
+            orient |= Qt::Vertical;
         if (themeData.mirrorHorizontally || themeData.mirrorVertically)
-            imgCopy = imgCopy.mirrored(themeData.mirrorHorizontally, themeData.mirrorVertically);
+            imgCopy.flip(orient);
         painter->drawImage(themeData.rect, imgCopy);
     }
 
@@ -1271,7 +1276,7 @@ static inline bool supportsStateTransition(QStyle::PrimitiveElement element,
 /*!
   Constructs a QWindowsVistaStyle object.
 */
-QWindowsVistaStyle::QWindowsVistaStyle() : QWindowsStyle(*new QWindowsVistaStylePrivate)
+QWindowsVistaStyle::QWindowsVistaStyle() : QWindowsVistaStyle(*new QWindowsVistaStylePrivate)
 {
 }
 
@@ -1727,6 +1732,7 @@ void QWindowsVistaStyle::drawPrimitive(PrimitiveElement element, const QStyleOpt
 #endif // QT_CONFIG(dockwidget)
 
     case PE_FrameTabWidget:
+#if QT_CONFIG(tabwidget)
         if (const auto *tab = qstyleoption_cast<const QStyleOptionTabWidgetFrame *>(option)) {
             themeNumber = QWindowsVistaStylePrivate::TabTheme;
             partId = TABP_PANE;
@@ -1784,7 +1790,7 @@ void QWindowsVistaStyle::drawPrimitive(PrimitiveElement element, const QStyleOpt
             }
         }
         break;
-
+#endif  // QT_CONFIG(tabwidget)
     case PE_FrameStatusBarItem:
         themeNumber = QWindowsVistaStylePrivate::StatusTheme;
         partId = SP_PANE;
@@ -1903,10 +1909,10 @@ void QWindowsVistaStyle::drawPrimitive(PrimitiveElement element, const QStyleOpt
                 // we try to check if this lineedit is a delegate on a QAbstractItemView-derived class.
                 QPen oldPen = painter->pen();
                 // Inner white border
-                painter->setPen(QPen(option->palette.base().color(), 1));
+                painter->setPen(option->palette.base().color());
                 painter->drawRect(option->rect.adjusted(1, 1, -2, -2));
                 // Outer dark border
-                painter->setPen(QPen(option->palette.shadow().color(), 1));
+                painter->setPen(option->palette.shadow().color());
                 painter->drawRect(option->rect.adjusted(0, 0, -1, -1));
                 painter->setPen(oldPen);
                 return;
@@ -1996,6 +2002,7 @@ void QWindowsVistaStyle::drawPrimitive(PrimitiveElement element, const QStyleOpt
     }
 
     case PE_FrameTabBarBase:
+#if QT_CONFIG(tabbar)
         if (const auto *tbb = qstyleoption_cast<const QStyleOptionTabBarBase *>(option)) {
             painter->save();
             switch (tbb->shape) {
@@ -2026,6 +2033,7 @@ void QWindowsVistaStyle::drawPrimitive(PrimitiveElement element, const QStyleOpt
             }
             painter->restore();
         }
+#endif  // QT_CONFIG(tabbar)
         return;
 
     case PE_Widget: {
@@ -2033,10 +2041,6 @@ void QWindowsVistaStyle::drawPrimitive(PrimitiveElement element, const QStyleOpt
         const QDialogButtonBox *buttonBox = nullptr;
         if (qobject_cast<const QMessageBox *> (widget))
             buttonBox = widget->findChild<const QDialogButtonBox *>(QLatin1String("qt_msgbox_buttonbox"));
-#if QT_CONFIG(inputdialog)
-        else if (qobject_cast<const QInputDialog *> (widget))
-            buttonBox = widget->findChild<const QDialogButtonBox *>(QLatin1String("qt_inputdlg_buttonbox"));
-#endif // QT_CONFIG(inputdialog)
         if (buttonBox) {
             //draw white panel part
             QWindowsThemeData theme(widget, painter,
@@ -2528,11 +2532,14 @@ void QWindowsVistaStyle::drawControl(ControlElement element, const QStyleOption 
         return;
 
     case CE_TabBarTab:
+#if QT_CONFIG(tabwidget)
         if (const auto *tab = qstyleoption_cast<const QStyleOptionTab *>(option))
             stateId = tab->state & State_Enabled ? TIS_NORMAL : TIS_DISABLED;
+#endif  // QT_CONFIG(tabwidget)
         break;
 
     case CE_TabBarTabShape:
+#if QT_CONFIG(tabwidget)
         if (const auto *tab = qstyleoption_cast<const QStyleOptionTab *>(option)) {
             themeNumber = QWindowsVistaStylePrivate::TabTheme;
             const bool isDisabled = !(tab->state & State_Enabled);
@@ -2634,6 +2641,7 @@ void QWindowsVistaStyle::drawControl(ControlElement element, const QStyleOption 
                 }
             }
         }
+#endif  // QT_CONFIG(tabwidget)
         break;
 
     case CE_ProgressBarGroove: {
@@ -2774,7 +2782,9 @@ void QWindowsVistaStyle::drawControl(ControlElement element, const QStyleOption 
                 break;
 
             QPalette::ColorRole textRole = disabled ? QPalette::Text : QPalette::ButtonText;
-            QPixmap pix = mbi->icon.pixmap(proxy()->pixelMetric(PM_SmallIconSize, option, widget), QIcon::Normal);
+            const auto dpr = QStyleHelper::getDpr(widget);
+            const auto extent = proxy()->pixelMetric(PM_SmallIconSize, option, widget);
+            const auto pix = mbi->icon.pixmap(QSize(extent, extent), dpr, QIcon::Normal);
 
             int alignment = Qt::AlignCenter | Qt::TextShowMnemonic | Qt::TextDontClip | Qt::TextSingleLine;
             if (!proxy()->styleHint(SH_UnderlineShortcut, mbi, widget))
@@ -2923,13 +2933,10 @@ void QWindowsVistaStyle::drawControl(ControlElement element, const QStyleOption 
                 if (act && !dis)
                     mode = QIcon::Active;
                 const auto size = proxy()->pixelMetric(PM_SmallIconSize, option, widget);
-                const auto dpr = painter->device()->devicePixelRatio();
-                const auto pixmap = menuitem->icon.pixmap({size, size}, dpr, mode,
-                                                          checked ? QIcon::On : QIcon::Off);
-                QRect pmr(QPoint(0, 0), pixmap.deviceIndependentSize().toSize());
+                QRect pmr(QPoint(0, 0), QSize(size, size));
                 pmr.moveCenter(vCheckRect.center());
-                painter->setPen(menuitem->palette.text().color());
-                painter->drawPixmap(pmr.topLeft(), pixmap);
+                menuitem->icon.paint(painter, vCheckRect, Qt::AlignCenter, mode,
+                                     checked ? QIcon::On : QIcon::Off);
             }
 
             painter->setPen(menuitem->palette.buttonText().color());
@@ -3010,6 +3017,7 @@ void QWindowsVistaStyle::drawControl(ControlElement element, const QStyleOption 
     }
 
     case CE_ToolBar:
+#if QT_CONFIG(toolbar)
         if (const auto *toolbar = qstyleoption_cast<const QStyleOptionToolBar *>(option)) {
             QPalette pal = option->palette;
             pal.setColor(QPalette::Dark, option->palette.window().color().darker(130));
@@ -3017,6 +3025,7 @@ void QWindowsVistaStyle::drawControl(ControlElement element, const QStyleOption 
             copyOpt.palette = pal;
             QWindowsStyle::drawControl(element, &copyOpt, painter, widget);
         }
+#endif  // QT_CONFIG(toolbar)
         return;
 
 #if QT_CONFIG(dockwidget)
@@ -3073,7 +3082,6 @@ void QWindowsVistaStyle::drawControl(ControlElement element, const QStyleOption 
                 else
                     stateId = CS_INACTIVE;
 
-                int titleHeight = rect.height() - 2;
                 rect = rect.adjusted(-fw, -fw, fw, 0);
 
                 QWindowsThemeData theme(widget, painter, themeNumber, 0, stateId);
@@ -3090,7 +3098,9 @@ void QWindowsVistaStyle::drawControl(ControlElement element, const QStyleOption 
                 QIcon ico = widget->windowIcon();
                 bool hasIcon = (ico.cacheKey() != QApplication::windowIcon().cacheKey());
                 if (hasIcon) {
-                    QPixmap pxIco = ico.pixmap(titleHeight);
+                    const auto titleHeight = rect.height() - 2;
+                    const auto dpr = QStyleHelper::getDpr(widget);
+                    const auto pxIco = ico.pixmap(QSize(titleHeight, titleHeight), dpr);
                     if (!verticalTitleBar && dwOpt->direction == Qt::RightToLeft)
                         painter->drawPixmap(rect.width() - titleHeight - pxIco.width(), rect.bottom() - titleHeight - 2, pxIco);
                     else
@@ -3670,11 +3680,11 @@ void QWindowsVistaStyle::drawComplexControl(ComplexControl control, const QStyle
                     theme.partId = partId;
                     theme.stateId = stateId;
                     if (theme.size().isEmpty()) {
-                        int iconSize = proxy()->pixelMetric(PM_SmallIconSize, tb, widget);
-                        QPixmap pm = proxy()->standardIcon(SP_TitleBarMenuButton, tb, widget).pixmap(iconSize, iconSize);
-                        painter->save();
+                        const auto extent = proxy()->pixelMetric(PM_SmallIconSize, tb, widget);
+                        const auto dpr = QStyleHelper::getDpr(widget);
+                        const auto icon = proxy()->standardIcon(SP_TitleBarMenuButton, tb, widget);
+                        const auto pm = icon.pixmap(QSize(extent, extent), dpr);
                         drawItemPixmap(painter, theme.rect, Qt::AlignCenter, pm);
-                        painter->restore();
                     } else {
                         d->drawBackground(theme);
                     }
@@ -4154,6 +4164,7 @@ QRect QWindowsVistaStyle::subElementRect(SubElement element, const QStyleOption 
 
     case SE_TabWidgetTabContents:
         rect = QWindowsStyle::subElementRect(element, option, widget);
+#if QT_CONFIG(tabwidget)
         if (qstyleoption_cast<const QStyleOptionTabWidgetFrame *>(option))  {
             rect = QWindowsStyle::subElementRect(element, option, widget);
             if (const QTabWidget *tabWidget = qobject_cast<const QTabWidget *>(widget)) {
@@ -4162,10 +4173,12 @@ QRect QWindowsVistaStyle::subElementRect(SubElement element, const QStyleOption 
                 rect.adjust(0, 0, -2, -2);
             }
         }
+#endif // QT_CONFIG(tabwidget)
         break;
 
     case SE_TabWidgetTabBar: {
         rect = QWindowsStyle::subElementRect(element, option, widget);
+#if QT_CONFIG(tabwidget)
         const auto *twfOption = qstyleoption_cast<const QStyleOptionTabWidgetFrame *>(option);
         if (twfOption && twfOption->direction == Qt::RightToLeft
                 && (twfOption->shape == QTabBar::RoundedNorth
@@ -4178,6 +4191,7 @@ QRect QWindowsVistaStyle::subElementRect(SubElement element, const QStyleOption 
             int borderThickness = proxy()->pixelMetric(PM_DefaultFrameWidth, option, widget);
             rect.adjust(-overlap + borderThickness, 0, -overlap + borderThickness, 0);
         }
+#endif // QT_CONFIG(tabwidget)
         break;
     }
 
@@ -4233,12 +4247,6 @@ QRect QWindowsVistaStyle::subElementRect(SubElement element, const QStyleOption 
 
     case SE_ProgressBarContents:
         rect = QCommonStyle::subElementRect(SE_ProgressBarGroove, option, widget);
-        break;
-
-    case SE_ItemViewItemDecoration:
-        rect = QWindowsStyle::subElementRect(element, option, widget);
-        if (qstyleoption_cast<const QStyleOptionViewItem *>(option))
-            rect.adjust(-2, 0, 2, 0);
         break;
 
     case SE_ItemViewItemFocusRect:
@@ -4522,6 +4530,7 @@ int QWindowsVistaStyle::pixelMetric(PixelMetric metric, const QStyleOption *opti
         res = 2;
         break;
 
+#if QT_CONFIG(tabbar)
     case PM_TabBarBaseOverlap:
         if (const auto *tab = qstyleoption_cast<const QStyleOptionTab *>(option)) {
             switch (tab->shape) {
@@ -4542,6 +4551,7 @@ int QWindowsVistaStyle::pixelMetric(PixelMetric metric, const QStyleOption *opti
             }
         }
         break;
+#endif  // QT_CONFIG(tabbar)
 
     case PM_SplitterWidth:
         res = QStyleHelper::dpiScaled(5., option);
@@ -4562,10 +4572,12 @@ int QWindowsVistaStyle::pixelMetric(PixelMetric metric, const QStyleOption *opti
         res = int(QStyleHelper::dpiScaled(4., option));
         break;
 
+#if QT_CONFIG(toolbutton)
     case PM_ButtonShiftHorizontal:
     case PM_ButtonShiftVertical:
         res = qstyleoption_cast<const QStyleOptionToolButton *>(option) ? 1 : 0;
         break;
+#endif  // QT_CONFIG(toolbutton)
 
     default:
         res = QWindowsStyle::pixelMetric(metric, option, widget);
@@ -4580,15 +4592,16 @@ int QWindowsVistaStyle::pixelMetric(PixelMetric metric, const QStyleOption *opti
 void QWindowsVistaStyle::polish(QWidget *widget)
 {
     QWindowsStyle::polish(widget);
-    if (!QWindowsVistaStylePrivate::useVista())
-        return;
-
     if (false
 #if QT_CONFIG(abstractbutton)
         || qobject_cast<QAbstractButton*>(widget)
 #endif // QT_CONFIG(abstractbutton)
+#if QT_CONFIG(toolbutton)
         || qobject_cast<QToolButton*>(widget)
+#endif // QT_CONFIG(toolbutton)
+#if QT_CONFIG(tabbar)
         || qobject_cast<QTabBar*>(widget)
+#endif // QT_CONFIG(tabbar)
 #if QT_CONFIG(combobox)
         || qobject_cast<QComboBox*>(widget)
 #endif // QT_CONFIG(combobox)
@@ -4599,35 +4612,39 @@ void QWindowsVistaStyle::polish(QWidget *widget)
         || qobject_cast<QAbstractSpinBox*>(widget)
         || qobject_cast<QSpinBox*>(widget)
 #endif // QT_CONFIG(spinbox)
+#if QT_CONFIG(lineedit)
+        || qobject_cast<QLineEdit*>(widget)
+#endif // QT_CONFIG(lineedit)
+        || qobject_cast<QGroupBox*>(widget)
             ) {
         widget->setAttribute(Qt::WA_Hover);
+    } else if (QTreeView *tree = qobject_cast<QTreeView *> (widget)) {
+        tree->viewport()->setAttribute(Qt::WA_Hover);
+    } else if (QListView *list = qobject_cast<QListView *> (widget)) {
+        list->viewport()->setAttribute(Qt::WA_Hover);
     }
+
+    if (!QWindowsVistaStylePrivate::useVista())
+        return;
 
 #if QT_CONFIG(rubberband)
     if (qobject_cast<QRubberBand*>(widget))
         widget->setWindowOpacity(0.6);
-#endif
-
-#if QT_CONFIG(lineedit)
-    if (qobject_cast<QLineEdit*>(widget))
-        widget->setAttribute(Qt::WA_Hover);
     else
-#endif // QT_CONFIG(lineedit)
-        if (qobject_cast<QGroupBox*>(widget))
-            widget->setAttribute(Qt::WA_Hover);
+#endif
 #if QT_CONFIG(commandlinkbutton)
-        else if (qobject_cast<QCommandLinkButton*>(widget)) {
-            widget->setProperty("_qt_usingVistaStyle", true);
-            QFont buttonFont = widget->font();
-            buttonFont.setFamilies(QStringList{QLatin1String("Segoe UI")});
-            widget->setFont(buttonFont);
-            QPalette pal = widget->palette();
-            pal.setColor(QPalette::Active, QPalette::ButtonText, QColor(21, 28, 85));
-            pal.setColor(QPalette::Active, QPalette::BrightText, QColor(7, 64, 229));
-            widget->setPalette(pal);
-        }
+        if (qobject_cast<QCommandLinkButton*>(widget)) {
+                widget->setProperty("_qt_usingVistaStyle", true);
+                QFont buttonFont = widget->font();
+                buttonFont.setFamilies(QStringList{QLatin1String("Segoe UI")});
+                widget->setFont(buttonFont);
+                QPalette pal = widget->palette();
+                pal.setColor(QPalette::Active, QPalette::ButtonText, QColor(21, 28, 85));
+                pal.setColor(QPalette::Active, QPalette::BrightText, QColor(7, 64, 229));
+                widget->setPalette(pal);
+        } else
 #endif // QT_CONFIG(commandlinkbutton)
-        else if (widget->inherits("QTipLabel")) {
+        if (widget->inherits("QTipLabel")) {
             //note that since tooltips are not reused
             //we do not have to care about unpolishing
             widget->setContentsMargins(3, 0, 4, 0);
@@ -4647,22 +4664,6 @@ void QWindowsVistaStyle::polish(QWidget *widget)
             if (buttonBox)
                 buttonBox->setContentsMargins(0, 9, 0, 0);
 #endif
-        }
-#if QT_CONFIG(inputdialog)
-        else if (qobject_cast<QInputDialog *> (widget)) {
-            widget->setAttribute(Qt::WA_StyledBackground);
-#if QT_CONFIG(dialogbuttonbox)
-            QDialogButtonBox *buttonBox = widget->findChild<QDialogButtonBox *>(QLatin1String("qt_inputdlg_buttonbox"));
-            if (buttonBox)
-                buttonBox->setContentsMargins(0, 9, 0, 0);
-#endif
-        }
-#endif // QT_CONFIG(inputdialog)
-        else if (QTreeView *tree = qobject_cast<QTreeView *> (widget)) {
-            tree->viewport()->setAttribute(Qt::WA_Hover);
-        }
-        else if (QListView *list = qobject_cast<QListView *> (widget)) {
-            list->viewport()->setAttribute(Qt::WA_Hover);
         }
 }
 
@@ -4696,8 +4697,12 @@ void QWindowsVistaStyle::unpolish(QWidget *widget)
         #if QT_CONFIG(abstractbutton)
             || qobject_cast<QAbstractButton*>(widget)
         #endif
+        #if QT_CONFIG(toolbutton)
             || qobject_cast<QToolButton*>(widget)
+        #endif // QT_CONFIG(toolbutton)
+        #if QT_CONFIG(tabbar)
             || qobject_cast<QTabBar*>(widget)
+        #endif // QT_CONFIG(tabbar)
         #if QT_CONFIG(combobox)
             || qobject_cast<QComboBox*>(widget)
         #endif // QT_CONFIG(combobox)
@@ -4731,16 +4736,6 @@ void QWindowsVistaStyle::unpolish(QWidget *widget)
                 buttonBox->setContentsMargins(0, 0, 0, 0);
 #endif
         }
-#if QT_CONFIG(inputdialog)
-        else if (qobject_cast<QInputDialog *> (widget)) {
-            widget->setAttribute(Qt::WA_StyledBackground, false);
-#if QT_CONFIG(dialogbuttonbox)
-            QDialogButtonBox *buttonBox = widget->findChild<QDialogButtonBox *>(QLatin1String("qt_inputdlg_buttonbox"));
-            if (buttonBox)
-                buttonBox->setContentsMargins(0, 0, 0, 0);
-#endif
-        }
-#endif // QT_CONFIG(inputdialog)
         else if (QTreeView *tree = qobject_cast<QTreeView *> (widget)) {
             tree->viewport()->setAttribute(Qt::WA_Hover, false);
         }
@@ -4877,7 +4872,7 @@ QIcon QWindowsVistaStyle::standardIcon(StandardPixmap standardIcon,
     switch (standardIcon) {
     case SP_TitleBarMaxButton:
         if (qstyleoption_cast<const QStyleOptionDockWidget *>(option)) {
-            if (d->dockFloat.isNull()) {
+            if (d->m_titleBarMaxIcon.isNull()) {
                 QWindowsThemeData themeSize(nullptr, nullptr, QWindowsVistaStylePrivate::WindowTheme,
                                     WP_SMALLCLOSEBUTTON, CBS_NORMAL);
                 QWindowsThemeData theme(nullptr, nullptr, QWindowsVistaStylePrivate::WindowTheme,
@@ -4890,29 +4885,29 @@ QIcon QWindowsVistaStyle::standardIcon(StandardPixmap standardIcon,
                     theme.painter = &p;
                     theme.rect = QRect(QPoint(0, 0), size);
                     d->drawBackground(theme);
-                    d->dockFloat.addPixmap(pm, QIcon::Normal, QIcon::Off);    // Normal
+                    d->m_titleBarMaxIcon.addPixmap(pm, QIcon::Normal, QIcon::Off);    // Normal
                     pm.fill(Qt::transparent);
                     theme.stateId = MAXBS_PUSHED;
                     d->drawBackground(theme);
-                    d->dockFloat.addPixmap(pm, QIcon::Normal, QIcon::On);     // Pressed
+                    d->m_titleBarMaxIcon.addPixmap(pm, QIcon::Normal, QIcon::On);     // Pressed
                     pm.fill(Qt::transparent);
                     theme.stateId = MAXBS_HOT;
                     d->drawBackground(theme);
-                    d->dockFloat.addPixmap(pm, QIcon::Active, QIcon::Off);    // Hover
+                    d->m_titleBarMaxIcon.addPixmap(pm, QIcon::Active, QIcon::Off);    // Hover
                     pm.fill(Qt::transparent);
                     theme.stateId = MAXBS_INACTIVE;
                     d->drawBackground(theme);
-                    d->dockFloat.addPixmap(pm, QIcon::Disabled, QIcon::Off);  // Disabled
+                    d->m_titleBarMaxIcon.addPixmap(pm, QIcon::Disabled, QIcon::Off);  // Disabled
                 }
             }
             if (widget && widget->isWindow())
-                return d->dockFloat;
+                return d->m_titleBarMaxIcon;
         }
         break;
 
     case SP_TitleBarCloseButton:
         if (qstyleoption_cast<const QStyleOptionDockWidget *>(option)) {
-            if (d->dockClose.isNull()) {
+            if (d->m_titleBarCloseIcon.isNull()) {
                 QWindowsThemeData theme(nullptr, nullptr, QWindowsVistaStylePrivate::WindowTheme,
                                 WP_SMALLCLOSEBUTTON, CBS_NORMAL);
                 if (theme.isValid()) {
@@ -4924,29 +4919,29 @@ QIcon QWindowsVistaStyle::standardIcon(StandardPixmap standardIcon,
                     theme.partId = WP_CLOSEBUTTON; // ####
                     theme.rect = QRect(QPoint(0, 0), size);
                     d->drawBackground(theme);
-                    d->dockClose.addPixmap(pm, QIcon::Normal, QIcon::Off);    // Normal
+                    d->m_titleBarCloseIcon.addPixmap(pm, QIcon::Normal, QIcon::Off);    // Normal
                     pm.fill(Qt::transparent);
                     theme.stateId = CBS_PUSHED;
                     d->drawBackground(theme);
-                    d->dockClose.addPixmap(pm, QIcon::Normal, QIcon::On);     // Pressed
+                    d->m_titleBarCloseIcon.addPixmap(pm, QIcon::Normal, QIcon::On);     // Pressed
                     pm.fill(Qt::transparent);
                     theme.stateId = CBS_HOT;
                     d->drawBackground(theme);
-                    d->dockClose.addPixmap(pm, QIcon::Active, QIcon::Off);    // Hover
+                    d->m_titleBarCloseIcon.addPixmap(pm, QIcon::Active, QIcon::Off);    // Hover
                     pm.fill(Qt::transparent);
                     theme.stateId = CBS_INACTIVE;
                     d->drawBackground(theme);
-                    d->dockClose.addPixmap(pm, QIcon::Disabled, QIcon::Off);  // Disabled
+                    d->m_titleBarCloseIcon.addPixmap(pm, QIcon::Disabled, QIcon::Off);  // Disabled
                 }
             }
             if (widget && widget->isWindow())
-                return d->dockClose;
+                return d->m_titleBarCloseIcon;
         }
         break;
 
     case SP_TitleBarNormalButton:
         if (qstyleoption_cast<const QStyleOptionDockWidget *>(option)) {
-            if (d->dockFloat.isNull()) {
+            if (d->m_titleBarNormalIcon.isNull()) {
                 QWindowsThemeData themeSize(nullptr, nullptr, QWindowsVistaStylePrivate::WindowTheme,
                                     WP_SMALLCLOSEBUTTON, CBS_NORMAL);
                 QWindowsThemeData theme(nullptr, nullptr, QWindowsVistaStylePrivate::WindowTheme,
@@ -4959,23 +4954,23 @@ QIcon QWindowsVistaStyle::standardIcon(StandardPixmap standardIcon,
                     theme.painter = &p;
                     theme.rect = QRect(QPoint(0, 0), size);
                     d->drawBackground(theme);
-                    d->dockFloat.addPixmap(pm, QIcon::Normal, QIcon::Off);    // Normal
+                    d->m_titleBarNormalIcon.addPixmap(pm, QIcon::Normal, QIcon::Off);    // Normal
                     pm.fill(Qt::transparent);
                     theme.stateId = RBS_PUSHED;
                     d->drawBackground(theme);
-                    d->dockFloat.addPixmap(pm, QIcon::Normal, QIcon::On);     // Pressed
+                    d->m_titleBarNormalIcon.addPixmap(pm, QIcon::Normal, QIcon::On);     // Pressed
                     pm.fill(Qt::transparent);
                     theme.stateId = RBS_HOT;
                     d->drawBackground(theme);
-                    d->dockFloat.addPixmap(pm, QIcon::Active, QIcon::Off);    // Hover
+                    d->m_titleBarNormalIcon.addPixmap(pm, QIcon::Active, QIcon::Off);    // Hover
                     pm.fill(Qt::transparent);
                     theme.stateId = RBS_INACTIVE;
                     d->drawBackground(theme);
-                    d->dockFloat.addPixmap(pm, QIcon::Disabled, QIcon::Off);  // Disabled
+                    d->m_titleBarNormalIcon.addPixmap(pm, QIcon::Disabled, QIcon::Off);  // Disabled
                 }
             }
             if (widget && widget->isWindow())
-                return d->dockFloat;
+                return d->m_titleBarNormalIcon;
         }
         break;
 

@@ -33,7 +33,7 @@ enum class SyncConfirmationStyle;
 // WebUI controller for the sync confirmation dialog.
 //
 // Note: This controller does not set the WebUI message handler. It is
-// the responsability of the caller to pass the correct message handler.
+// the responsibility of the caller to pass the correct message handler.
 class SyncConfirmationUI : public SigninWebDialogUI {
  public:
   // Exposed for testing
@@ -57,7 +57,8 @@ class SyncConfirmationUI : public SigninWebDialogUI {
 
  private:
   void InitializeForSyncConfirmation(content::WebUIDataSource* source,
-                                     SyncConfirmationStyle style);
+                                     SyncConfirmationStyle style,
+                                     bool is_sync_promo);
   void InitializeForSyncDisabled(content::WebUIDataSource* source);
 
   // Adds a string resource with the given GRD |ids| to the WebUI data |source|

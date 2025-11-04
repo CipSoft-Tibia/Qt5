@@ -6,11 +6,20 @@
 
 #include <iterator>
 
+#include "core/fxcrt/compiler_specific.h"
+#include "core/fxcrt/span.h"
+#include "testing/gmock/include/gmock/gmock.h"
 #include "testing/gtest/include/gtest/gtest.h"
+
+using ::testing::ElementsAreArray;
 
 namespace {
 
 struct TestCase {
+  pdfium::span<const int32_t> pattern_span() const {
+    return UNSAFE_TODO(pdfium::make_span(patterns, num_patterns));
+  }
+
   const char* input;
   int32_t checksum;
   int32_t patterns[7];
@@ -18,7 +27,6 @@ struct TestCase {
 };
 
 TEST(OnedCode128WriterTest, Encode128B) {
-  char buf[100];
   static const TestCase kTestCases[] = {
       {"", 104, {104}, 1},
       {"a", 169, {104, 65}, 2},
@@ -33,25 +41,16 @@ TEST(OnedCode128WriterTest, Encode128B) {
       {"321ABC", 722, {104, 19, 18, 17, 33, 34, 35}, 7},
       {"XYZ", 448, {104, 56, 57, 58}, 4},
   };
-  for (size_t i = 0; i < std::size(kTestCases); ++i) {
-    FXSYS_snprintf(buf, sizeof(buf) - 1, "Test case %zu", i);
-    SCOPED_TRACE(buf);
-    const TestCase& test_case = kTestCases[i];
+  for (const auto& test_case : kTestCases) {
     std::vector<int32_t> patterns;
     int32_t checksum =
         CBC_OnedCode128Writer::Encode128B(test_case.input, &patterns);
     EXPECT_EQ(test_case.checksum, checksum);
-    ASSERT_EQ(test_case.num_patterns, patterns.size());
-    for (size_t j = 0; j < patterns.size(); ++j) {
-      FXSYS_snprintf(buf, sizeof(buf) - 1, "Comparison %zu", j);
-      SCOPED_TRACE(buf);
-      EXPECT_EQ(test_case.patterns[j], patterns[j]);
-    }
+    EXPECT_THAT(patterns, ElementsAreArray(test_case.pattern_span()));
   }
 }
 
 TEST(OnedCode128WriterTest, Encode128C) {
-  char buf[100];
   static const TestCase kTestCases[] = {
       {"", 105, {105}, 1},
       {"a", 202, {105, 97}, 2},
@@ -66,20 +65,12 @@ TEST(OnedCode128WriterTest, Encode128C) {
       {"321ABC", 933, {105, 32, 1, 65, 66, 67}, 6},
       {"XYZ", 641, {105, 88, 89, 90}, 4},
   };
-  for (size_t i = 0; i < std::size(kTestCases); ++i) {
-    FXSYS_snprintf(buf, sizeof(buf) - 1, "Test case %zu", i);
-    SCOPED_TRACE(buf);
-    const TestCase& test_case = kTestCases[i];
+  for (const auto& test_case : kTestCases) {
     std::vector<int32_t> patterns;
     int32_t checksum =
         CBC_OnedCode128Writer::Encode128C(test_case.input, &patterns);
     EXPECT_EQ(test_case.checksum, checksum);
-    ASSERT_EQ(test_case.num_patterns, patterns.size());
-    for (size_t j = 0; j < patterns.size(); ++j) {
-      FXSYS_snprintf(buf, sizeof(buf) - 1, "Comparison %zu", j);
-      SCOPED_TRACE(buf);
-      EXPECT_EQ(test_case.patterns[j], patterns[j]);
-    }
+    EXPECT_THAT(patterns, ElementsAreArray(test_case.pattern_span()));
   }
 }
 
@@ -109,21 +100,21 @@ TEST(OnedCode128WriterTest, CheckContentValidity) {
 TEST(OnedCode128WriterTest, FilterContents) {
   {
     CBC_OnedCode128Writer writer(BC_TYPE::kCode128B);
-    EXPECT_STREQ(L"", writer.FilterContents(L"").c_str());
-    EXPECT_STREQ(L"foo", writer.FilterContents(L"foo\x10").c_str());
-    EXPECT_STREQ(L"fool", writer.FilterContents(L"foo\x10l").c_str());
-    EXPECT_STREQ(L"foo", writer.FilterContents(L"foo\x10\x7F").c_str());
-    EXPECT_STREQ(L"foo", writer.FilterContents(L"foo\x10\x7F\x88").c_str());
-    EXPECT_STREQ(L"bar", writer.FilterContents(L"bar\x10\x7F\x88").c_str());
+    EXPECT_EQ(L"", writer.FilterContents(L""));
+    EXPECT_EQ(L"foo", writer.FilterContents(L"foo\x10"));
+    EXPECT_EQ(L"fool", writer.FilterContents(L"foo\x10l"));
+    EXPECT_EQ(L"foo", writer.FilterContents(L"foo\x10\x7F"));
+    EXPECT_EQ(L"foo", writer.FilterContents(L"foo\x10\x7F\x88"));
+    EXPECT_EQ(L"bar", writer.FilterContents(L"bar\x10\x7F\x88"));
   }
   {
     CBC_OnedCode128Writer writer(BC_TYPE::kCode128C);
-    EXPECT_STREQ(L"", writer.FilterContents(L"").c_str());
-    EXPECT_STREQ(L"f", writer.FilterContents(L"foo\x10").c_str());
-    EXPECT_STREQ(L"f", writer.FilterContents(L"foo\x10l").c_str());
-    EXPECT_STREQ(L"f", writer.FilterContents(L"foo\x10\x7F").c_str());
-    EXPECT_STREQ(L"f", writer.FilterContents(L"foo\x10\x7F\x88").c_str());
-    EXPECT_STREQ(L"ba", writer.FilterContents(L"bar\x10\x7F\x88").c_str());
+    EXPECT_EQ(L"", writer.FilterContents(L""));
+    EXPECT_EQ(L"f", writer.FilterContents(L"foo\x10"));
+    EXPECT_EQ(L"f", writer.FilterContents(L"foo\x10l"));
+    EXPECT_EQ(L"f", writer.FilterContents(L"foo\x10\x7F"));
+    EXPECT_EQ(L"f", writer.FilterContents(L"foo\x10\x7F\x88"));
+    EXPECT_EQ(L"ba", writer.FilterContents(L"bar\x10\x7F\x88"));
   }
 }
 

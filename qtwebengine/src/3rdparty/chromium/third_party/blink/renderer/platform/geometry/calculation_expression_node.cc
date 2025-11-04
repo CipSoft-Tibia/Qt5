@@ -18,18 +18,18 @@ namespace blink {
 
 // ------ CalculationExpressionNumberNode ------
 
-float CalculationExpressionNumberNode::Evaluate(
-    float max_value,
-    const Length::AnchorEvaluator*) const {
+float CalculationExpressionNumberNode::Evaluate(float max_value,
+                                                const EvaluationInput&) const {
   return value_;
 }
 
 bool CalculationExpressionNumberNode::Equals(
     const CalculationExpressionNode& other) const {
-  if (!other.IsNumber())
+  auto* other_number = DynamicTo<CalculationExpressionNumberNode>(other);
+  if (!other_number) {
     return false;
-  const auto& other_number = To<CalculationExpressionNumberNode>(other);
-  return value_ == other_number.Value();
+  }
+  return value_ == other_number->Value();
 }
 
 scoped_refptr<const CalculationExpressionNode>
@@ -44,22 +44,124 @@ CalculationExpressionNumberNode::ResolvedResultType() const {
 }
 #endif
 
+// ------ CalculationExpressionSizingKeywordNode ------
+
+CalculationExpressionSizingKeywordNode::CalculationExpressionSizingKeywordNode(
+    Keyword keyword)
+    : keyword_(keyword) {
+  if (keyword != Keyword::kSize && keyword != Keyword::kAny) {
+    if (keyword == Keyword::kAuto) {
+      has_auto_ = true;
+    } else if (keyword == Keyword::kWebkitFillAvailable) {
+      has_stretch_ = true;
+    } else {
+      has_content_or_intrinsic_ = true;
+    }
+  }
+#if DCHECK_IS_ON()
+  result_type_ = ResultType::kPixelsAndPercent;
+#endif
+}
+
+float CalculationExpressionSizingKeywordNode::Evaluate(
+    float max_value,
+    const EvaluationInput& input) const {
+  Length::Type intrinsic_type = Length::kFixed;
+  switch (keyword_) {
+    case Keyword::kSize:
+      CHECK(input.size_keyword_basis);
+      return *input.size_keyword_basis;
+    case Keyword::kAny:
+      return 0.0f;
+    case Keyword::kAuto:
+      intrinsic_type = Length::Type::kAuto;
+      break;
+    case Keyword::kContent:
+      intrinsic_type =
+          input.calc_size_keyword_behavior == CalcSizeKeywordBehavior::kAsAuto
+              ? Length::Type::kAuto
+              : Length::Type::kContent;
+      break;
+    case Keyword::kMinContent:
+    case Keyword::kWebkitMinContent:
+      CHECK_EQ(input.calc_size_keyword_behavior,
+               CalcSizeKeywordBehavior::kAsSpecified);
+      intrinsic_type = Length::Type::kMinContent;
+      break;
+    case Keyword::kMaxContent:
+    case Keyword::kWebkitMaxContent:
+      CHECK_EQ(input.calc_size_keyword_behavior,
+               CalcSizeKeywordBehavior::kAsSpecified);
+      intrinsic_type = Length::Type::kMaxContent;
+      break;
+    case Keyword::kFitContent:
+    case Keyword::kWebkitFitContent:
+      intrinsic_type =
+          input.calc_size_keyword_behavior == CalcSizeKeywordBehavior::kAsAuto
+              ? Length::Type::kAuto
+              : Length::Type::kFitContent;
+      break;
+    case Keyword::kWebkitFillAvailable:
+      intrinsic_type =
+          input.calc_size_keyword_behavior == CalcSizeKeywordBehavior::kAsAuto
+              ? Length::Type::kAuto
+              : Length::Type::kFillAvailable;
+      break;
+  }
+
+  if (!input.intrinsic_evaluator) {
+    // TODO(https://crbug.com/313072): I'd like to be able to CHECK() this
+    // instead.  However, we hit this code in three cases:
+    //  * the code in ContentMinimumInlineSize, which passes max_value of 0
+    //  * the (questionable) code in EvaluateValueIfNaNorInfinity(), which
+    //    passes max_value of 1 or -1
+    //  * the DCHECK()s in
+    //    CSSLengthInterpolationType::ApplyStandardPropertyValue pass a max
+    //    value of 100
+    // So we have to return something.  Return 0 for now, though this may
+    // not be ideal.
+    CHECK(max_value == 1.0f || max_value == -1.0f || max_value == 0.0f ||
+          max_value == 100.0f);
+    return 0.0f;
+  }
+  CHECK(input.intrinsic_evaluator);
+  return input.intrinsic_evaluator(Length(intrinsic_type));
+}
+
+// ------ CalculationExpressionColorChannelKeywordNode ------
+
+CalculationExpressionColorChannelKeywordNode::
+    CalculationExpressionColorChannelKeywordNode(ColorChannelKeyword channel)
+    : channel_(channel) {}
+
+float CalculationExpressionColorChannelKeywordNode::Evaluate(
+    float max_value,
+    const EvaluationInput& evaluation_input) const {
+  // If the calling code hasn't set up the input environment, then always
+  // return zero.
+  if (evaluation_input.color_channel_keyword_values.empty()) {
+    return 0;
+  }
+  return evaluation_input.color_channel_keyword_values.at(channel_);
+}
+
 // ------ CalculationExpressionPixelsAndPercentNode ------
 
 float CalculationExpressionPixelsAndPercentNode::Evaluate(
     float max_value,
-    const Length::AnchorEvaluator*) const {
+    const EvaluationInput&) const {
   return value_.pixels + value_.percent / 100 * max_value;
 }
 
 bool CalculationExpressionPixelsAndPercentNode::Equals(
     const CalculationExpressionNode& other) const {
-  if (!other.IsPixelsAndPercent())
+  auto* other_pixels_and_percent =
+      DynamicTo<CalculationExpressionPixelsAndPercentNode>(other);
+  if (!other_pixels_and_percent) {
     return false;
-  const auto& other_pixels_and_percent =
-      To<CalculationExpressionPixelsAndPercentNode>(other);
-  return value_.pixels == other_pixels_and_percent.value_.pixels &&
-         value_.percent == other_pixels_and_percent.value_.percent;
+  }
+  return value_.pixels == other_pixels_and_percent->value_.pixels &&
+         value_.percent == other_pixels_and_percent->value_.percent;
 }
 
 scoped_refptr<const CalculationExpressionNode>
@@ -259,7 +361,9 @@ CalculationExpressionOperationNode::CreateSimplified(Children&& children,
         }
       }
     }
-    case CalculationOperator::kProgress: {
+    case CalculationOperator::kProgress:
+    case CalculationOperator::kMediaProgress:
+    case CalculationOperator::kContainerProgress: {
       DCHECK_EQ(children.size(), 3u);
       Vector<float, 3> operand_pixels;
       bool can_simplify = true;
@@ -283,28 +387,18 @@ CalculationExpressionOperationNode::CreateSimplified(Children&& children,
       return base::MakeRefCounted<CalculationExpressionOperationNode>(
           std::move(children), op);
     }
+    case CalculationOperator::kCalcSize: {
+      DCHECK_EQ(children.size(), 2u);
+      // TODO(https://crbug.com/313072): It may be worth implementing
+      // simplification for calc-size(), but it's not likely to be possible to
+      // simplify calc-size() in any of its real use cases.
+      return base::MakeRefCounted<CalculationExpressionOperationNode>(
+          std::move(children), op);
+    }
     case CalculationOperator::kInvalid:
-      NOTREACHED();
+      NOTREACHED_IN_MIGRATION();
       return nullptr;
   }
-}
-
-bool CalculationExpressionOperationNode::ComputeHasAnchorQueries() const {
-  for (const auto& child : children_) {
-    if (child->HasAnchorQueries())
-      return true;
-  }
-  return false;
-}
-
-bool CalculationExpressionOperationNode::ComputeHasAutoAnchorPositioning()
-    const {
-  for (const auto& child : children_) {
-    if (child->HasAutoAnchorPositioning()) {
-      return true;
-    }
-  }
-  return false;
 }
 
 CalculationExpressionOperationNode::CalculationExpressionOperationNode(
@@ -315,55 +409,79 @@ CalculationExpressionOperationNode::CalculationExpressionOperationNode(
   result_type_ = ResolvedResultType();
   DCHECK_NE(result_type_, ResultType::kInvalid);
 #endif
-  has_anchor_queries_ = ComputeHasAnchorQueries();
-  has_auto_anchor_positioning_ = ComputeHasAutoAnchorPositioning();
+  if (op == CalculationOperator::kCalcSize) {
+    // "A calc-size() is treated, in all respects, as if it were its
+    // calc-size basis."  This is particularly relevant for ignoring the
+    // presence of percentages in the calculation.
+    CHECK_EQ(children_.size(), 2u);
+    const auto& basis = children_[0];
+    has_content_or_intrinsic_ = basis->HasContentOrIntrinsicSize();
+    has_auto_ = basis->HasAuto();
+    has_percent_ = basis->HasPercent();
+    has_stretch_ = basis->HasStretch();
+#if DCHECK_IS_ON()
+    {
+      const auto& calculation = children_[1];
+      DCHECK(!calculation->HasAuto());
+      DCHECK(!calculation->HasContentOrIntrinsicSize());
+      DCHECK(!calculation->HasStretch());
+    }
+#endif
+  } else {
+    for (const auto& child : children_) {
+      DCHECK(!child->HasAuto());
+      DCHECK(!child->HasContentOrIntrinsicSize());
+      DCHECK(!child->HasStretch());
+      if (child->HasPercent()) {
+        has_percent_ = true;
+      }
+    }
+  }
 }
 
 float CalculationExpressionOperationNode::Evaluate(
     float max_value,
-    const Length::AnchorEvaluator* anchor_evaluator) const {
+    const EvaluationInput& input) const {
   switch (operator_) {
     case CalculationOperator::kAdd: {
       DCHECK_EQ(children_.size(), 2u);
-      float left = children_[0]->Evaluate(max_value, anchor_evaluator);
-      float right = children_[1]->Evaluate(max_value, anchor_evaluator);
+      float left = children_[0]->Evaluate(max_value, input);
+      float right = children_[1]->Evaluate(max_value, input);
       return left + right;
     }
     case CalculationOperator::kSubtract: {
       DCHECK_EQ(children_.size(), 2u);
-      float left = children_[0]->Evaluate(max_value, anchor_evaluator);
-      float right = children_[1]->Evaluate(max_value, anchor_evaluator);
+      float left = children_[0]->Evaluate(max_value, input);
+      float right = children_[1]->Evaluate(max_value, input);
       return left - right;
     }
     case CalculationOperator::kMultiply: {
       DCHECK_EQ(children_.size(), 2u);
-      float left = children_[0]->Evaluate(max_value, anchor_evaluator);
-      float right = children_[1]->Evaluate(max_value, anchor_evaluator);
+      float left = children_[0]->Evaluate(max_value, input);
+      float right = children_[1]->Evaluate(max_value, input);
       return left * right;
     }
     case CalculationOperator::kMin: {
       DCHECK(!children_.empty());
-      float minimum = children_[0]->Evaluate(max_value, anchor_evaluator);
+      float minimum = children_[0]->Evaluate(max_value, input);
       for (auto& child : children_) {
-        minimum =
-            std::min(minimum, child->Evaluate(max_value, anchor_evaluator));
+        minimum = std::min(minimum, child->Evaluate(max_value, input));
       }
       return minimum;
     }
     case CalculationOperator::kMax: {
       DCHECK(!children_.empty());
-      float maximum = children_[0]->Evaluate(max_value, anchor_evaluator);
+      float maximum = children_[0]->Evaluate(max_value, input);
       for (auto& child : children_) {
-        maximum =
-            std::max(maximum, child->Evaluate(max_value, anchor_evaluator));
+        maximum = std::max(maximum, child->Evaluate(max_value, input));
       }
       return maximum;
     }
     case CalculationOperator::kClamp: {
       DCHECK(!children_.empty());
-      float min = children_[0]->Evaluate(max_value, anchor_evaluator);
-      float val = children_[1]->Evaluate(max_value, anchor_evaluator);
-      float max = children_[2]->Evaluate(max_value, anchor_evaluator);
+      float min = children_[0]->Evaluate(max_value, input);
+      float val = children_[1]->Evaluate(max_value, input);
+      float max = children_[2]->Evaluate(max_value, input);
       // clamp(MIN, VAL, MAX) is identical to max(MIN, min(VAL, MAX))
       return std::max(min, std::min(val, max));
     }
@@ -374,15 +492,15 @@ float CalculationExpressionOperationNode::Evaluate(
     case CalculationOperator::kMod:
     case CalculationOperator::kRem: {
       DCHECK_EQ(children_.size(), 2u);
-      float a = children_[0]->Evaluate(max_value, anchor_evaluator);
-      float b = children_[1]->Evaluate(max_value, anchor_evaluator);
+      float a = children_[0]->Evaluate(max_value, input);
+      float b = children_[1]->Evaluate(max_value, input);
       return EvaluateSteppedValueFunction(operator_, a, b);
     }
     case CalculationOperator::kHypot: {
       DCHECK_GE(children_.size(), 1u);
       float value = 0;
       for (scoped_refptr<const CalculationExpressionNode> operand : children_) {
-        float a = operand->Evaluate(max_value, anchor_evaluator);
+        float a = operand->Evaluate(max_value, input);
         value = std::hypot(value, a);
       }
       return value;
@@ -390,8 +508,7 @@ float CalculationExpressionOperationNode::Evaluate(
     case CalculationOperator::kAbs:
     case CalculationOperator::kSign: {
       DCHECK_EQ(children_.size(), 1u);
-      const float value =
-          children_.front()->Evaluate(max_value, anchor_evaluator);
+      const float value = children_.front()->Evaluate(max_value, input);
       if (operator_ == CalculationOperator::kAbs) {
         return std::abs(value);
       } else {
@@ -401,31 +518,49 @@ float CalculationExpressionOperationNode::Evaluate(
         return value > 0 ? 1 : -1;
       }
     }
-    case CalculationOperator::kProgress: {
+    case CalculationOperator::kCalcSize: {
+      DCHECK_EQ(children_.size(), 2u);
+      EvaluationInput calculation_input(input);
+      calculation_input.size_keyword_basis =
+          children_[0]->Evaluate(max_value, input);
+      if (max_value == kIndefiniteSize.ToFloat()) {
+        // "When evaluating the calc-size calculation, if percentages are not
+        // definite in the given context, the resolve to 0px. Otherwise, they
+        // resolve as normal."
+        //   -- https://drafts.csswg.org/css-values-5/#resolving-calc-size
+        max_value = 0.0f;
+      }
+      return children_[1]->Evaluate(max_value, calculation_input);
+    }
+    case CalculationOperator::kProgress:
+    case CalculationOperator::kMediaProgress:
+    case CalculationOperator::kContainerProgress: {
       DCHECK(!children_.empty());
-      float progress = children_[0]->Evaluate(max_value, anchor_evaluator);
-      float from = children_[1]->Evaluate(max_value, anchor_evaluator);
-      float to = children_[2]->Evaluate(max_value, anchor_evaluator);
+      float progress = children_[0]->Evaluate(max_value, input);
+      float from = children_[1]->Evaluate(max_value, input);
+      float to = children_[2]->Evaluate(max_value, input);
       return (progress - from) / (to - from);
     }
     case CalculationOperator::kInvalid:
       break;
       // TODO(crbug.com/1284199): Support other math functions.
   }
-  NOTREACHED();
+  NOTREACHED_IN_MIGRATION();
   return std::numeric_limits<float>::quiet_NaN();
 }
 
 bool CalculationExpressionOperationNode::Equals(
     const CalculationExpressionNode& other) const {
-  if (!other.IsOperation())
+  auto* other_operation = DynamicTo<CalculationExpressionOperationNode>(other);
+  if (!other_operation) {
     return false;
-  const auto& other_operation = To<CalculationExpressionOperationNode>(other);
-  if (operator_ != other_operation.GetOperator())
+  }
+  if (operator_ != other_operation->GetOperator()) {
     return false;
+  }
   using ValueType = Children::value_type;
   return base::ranges::equal(
-      children_, other_operation.GetChildren(),
+      children_, other_operation->GetChildren(),
       [](const ValueType& a, const ValueType& b) { return *a == *b; });
 }
 
@@ -446,6 +581,11 @@ CalculationExpressionOperationNode::Zoom(double factor) const {
       return CreateSimplified(
           Children({pixels_and_percent->Zoom(factor), number}), operator_);
     }
+    case CalculationOperator::kCalcSize: {
+      DCHECK_EQ(children_.size(), 2u);
+      return CreateSimplified(
+          Children({children_[0], children_[1]->Zoom(factor)}), operator_);
+    }
     case CalculationOperator::kMin:
     case CalculationOperator::kMax:
     case CalculationOperator::kClamp:
@@ -458,7 +598,9 @@ CalculationExpressionOperationNode::Zoom(double factor) const {
     case CalculationOperator::kHypot:
     case CalculationOperator::kAbs:
     case CalculationOperator::kSign:
-    case CalculationOperator::kProgress: {
+    case CalculationOperator::kProgress:
+    case CalculationOperator::kMediaProgress:
+    case CalculationOperator::kContainerProgress: {
       DCHECK(children_.size());
       Vector<scoped_refptr<const CalculationExpressionNode>> cloned_operands;
       cloned_operands.reserve(children_.size());
@@ -467,9 +609,36 @@ CalculationExpressionOperationNode::Zoom(double factor) const {
       return CreateSimplified(std::move(cloned_operands), operator_);
     }
     case CalculationOperator::kInvalid:
-      NOTREACHED();
+      NOTREACHED_IN_MIGRATION();
       return nullptr;
   }
+}
+
+bool CalculationExpressionOperationNode::HasMinContent() const {
+  if (operator_ != CalculationOperator::kCalcSize) {
+    return false;
+  }
+  CHECK_EQ(children_.size(), 2u);
+  const auto& basis = children_[0];
+  return basis->HasMinContent();
+}
+
+bool CalculationExpressionOperationNode::HasMaxContent() const {
+  if (operator_ != CalculationOperator::kCalcSize) {
+    return false;
+  }
+  CHECK_EQ(children_.size(), 2u);
+  const auto& basis = children_[0];
+  return basis->HasMaxContent();
+}
+
+bool CalculationExpressionOperationNode::HasFitContent() const {
+  if (operator_ != CalculationOperator::kCalcSize) {
+    return false;
+  }
+  CHECK_EQ(children_.size(), 2u);
+  const auto& basis = children_[0];
+  return basis->HasFitContent();
 }
 
 #if DCHECK_IS_ON()
@@ -505,6 +674,16 @@ CalculationExpressionOperationNode::ResolvedResultType() const {
 
       return ResultType::kNumber;
     }
+    case CalculationOperator::kCalcSize: {
+      DCHECK_EQ(children_.size(), 2u);
+      auto basis_type = children_[0]->ResolvedResultType();
+      auto calculation_type = children_[1]->ResolvedResultType();
+      if (basis_type != ResultType::kPixelsAndPercent ||
+          calculation_type != ResultType::kPixelsAndPercent) {
+        return ResultType::kInvalid;
+      }
+      return ResultType::kPixelsAndPercent;
+    }
     case CalculationOperator::kMin:
     case CalculationOperator::kMax:
     case CalculationOperator::kClamp:
@@ -526,10 +705,12 @@ CalculationExpressionOperationNode::ResolvedResultType() const {
       return first_child_type;
     }
     case CalculationOperator::kSign:
+    case CalculationOperator::kContainerProgress:
     case CalculationOperator::kProgress:
+    case CalculationOperator::kMediaProgress:
       return ResultType::kNumber;
     case CalculationOperator::kInvalid:
-      NOTREACHED();
+      NOTREACHED_IN_MIGRATION();
       return result_type_;
   }
 }

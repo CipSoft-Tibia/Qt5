@@ -26,12 +26,12 @@ DownloadAndExtract () {
 aarch64le_toolchain="${BASH_SOURCE%/*}/../shared/cmake_toolchain_files/qnx-toolchain-aarch64le.cmake"
 armv7le_toolchain="${BASH_SOURCE%/*}/../shared/cmake_toolchain_files/qnx-toolchain-armv7le.cmake"
 x8664_toolchain="${BASH_SOURCE%/*}/../shared/cmake_toolchain_files/qnx-toolchain-x8664.cmake"
-QNX_qemu_bld_files_dir="${BASH_SOURCE%/*}/qnx_qemu_build_files/"
+QNX_qemu_bld_files_dir="${BASH_SOURCE%/*}/qnx_qemu_build_files/710/"
 
 targetFolder="/opt/"
 folderName="qnx710"
 targetPath="$targetFolder$folderName"
-qemuTargetPath="$HOME/QNX"
+qemuTargetPath="$HOME/QNX710"
 qemuIpAddress="172.31.1.10"
 export qemuNetwork="172.31.1.1"
 qemuSSHuser="root"
@@ -81,7 +81,7 @@ fi
 
 # Set env variables
 SetEnvVar "QNX_710" "$targetPath"
-SetEnvVar "QNX_QEMU" "$qemuTargetPath"
+SetEnvVar "QNX_710_QEMU" "$qemuTargetPath"
 SetEnvVar "QNX_QEMU_IPADDR" "$qemuIpAddress"
 SetEnvVar "QNX_QEMU_SSH" "$qemuSSHurl"
 SetEnvVar "QNX_QEMU_LD_LIBRARY_PATH" "$qemuLDpath"

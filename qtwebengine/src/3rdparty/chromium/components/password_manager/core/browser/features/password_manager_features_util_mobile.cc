@@ -2,21 +2,22 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#include "components/password_manager/core/browser/features/password_manager_features_util.h"
-
 #include <algorithm>
 
 #include "base/memory/raw_ptr.h"
+#include "components/password_manager/core/browser/features/password_manager_features_util.h"
 #include "components/sync/service/sync_service.h"
 #include "components/sync/service/sync_user_settings.h"
 
 namespace password_manager::features_util {
 
-bool ShouldShowAccountStorageOptIn(const syncer::SyncService* sync_service) {
+bool ShouldShowAccountStorageOptIn(const PrefService* pref_service,
+                                   const syncer::SyncService* sync_service) {
   return false;
 }
 
-bool ShouldShowAccountStorageReSignin(const syncer::SyncService* sync_service,
+bool ShouldShowAccountStorageReSignin(const PrefService* pref_service,
+                                      const syncer::SyncService* sync_service,
                                       const GURL& current_page_url) {
   // On Android and iOS, there is no re-signin promo.
   return false;
@@ -27,11 +28,11 @@ PasswordForm::Store GetDefaultPasswordStore(
     const syncer::SyncService* sync_service) {
   DCHECK(pref_service);
 
-  if (!internal::IsUserEligibleForAccountStorage(sync_service)) {
+  if (!internal::IsUserEligibleForAccountStorage(pref_service, sync_service)) {
     return PasswordForm::Store::kProfileStore;
   }
 
-  return IsOptedInForAccountStorage(sync_service)
+  return IsOptedInForAccountStorage(pref_service, sync_service)
              ? PasswordForm::Store::kAccountStore
              : PasswordForm::Store::kProfileStore;
 }

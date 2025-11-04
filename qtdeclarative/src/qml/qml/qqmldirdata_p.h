@@ -24,15 +24,16 @@ class Q_AUTOTEST_EXPORT QQmlQmldirData : public QQmlTypeLoader::Blob
 private:
     friend class QQmlTypeLoader;
 
+public:
     QQmlQmldirData(const QUrl &, QQmlTypeLoader *);
 
-public:
     const QString &content() const;
     QV4::CompiledData::Location importLocation(Blob *blob) const;
 
     template<typename Callback>
     bool processImports(Blob *blob, const Callback &callback) const
     {
+        Q_ASSERT(isTypeLoaderThread());
         bool result = true;
         const auto range = m_imports.equal_range(blob);
         for (auto it = range.first; it != range.second; ++it) {
@@ -47,7 +48,7 @@ public:
         return result;
     }
 
-    void setPriority(Blob *, PendingImportPtr, int);
+    void setPriority(Blob *, const PendingImportPtr &, int);
 
 protected:
     void dataReceived(const SourceCodeData &) override;

@@ -1,34 +1,20 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
-//
-//  W A R N I N G
-//  -------------
-//
-// This file is not part of the Qt API.  It exists for the convenience
-// of other Qt classes.  This header file may change from version to
-// version without notice, or even be removed.
-//
-// INTERNAL USE ONLY: Do NOT use for any other purpose.
-//
-
 #include <QtCore/qcoreapplication.h>
 #include <QtCore/qvarlengtharray.h>
 #include <QtMultimedia/private/qaudiohelpers_p.h>
 #include "qalsaaudiosink_p.h"
-#include "qalsaaudiodevice_p.h"
 #include <QLoggingCategory>
 
 QT_BEGIN_NAMESPACE
 
-static Q_LOGGING_CATEGORY(lcAlsaOutput, "qt.multimedia.alsa.output")
+Q_STATIC_LOGGING_CATEGORY(lcAlsaOutput, "qt.multimedia.alsa.output");
 //#define DEBUG_AUDIO 1
 
-QAlsaAudioSink::QAlsaAudioSink(const QByteArray &device, QObject *parent)
-    : QPlatformAudioSink(parent)
+QAlsaAudioSink::QAlsaAudioSink(QAudioDevice device, const QAudioFormat &format, QObject *parent)
+    : QPlatformAudioSink(std::move(device), format, parent)
 {
-    m_device = device;
-
     timer = new QTimer(this);
     connect(timer, &QTimer::timeout, this, &QAlsaAudioSink::userFeed);
 }
@@ -38,21 +24,6 @@ QAlsaAudioSink::~QAlsaAudioSink()
     close();
     disconnect(timer, &QTimer::timeout, this, &QAlsaAudioSink::userFeed);
     delete timer;
-}
-
-void QAlsaAudioSink::setVolume(qreal vol)
-{
-    m_volume = vol;
-}
-
-qreal QAlsaAudioSink::volume() const
-{
-    return m_volume;
-}
-
-QAudio::Error QAlsaAudioSink::error() const
-{
-    return errorState;
 }
 
 QAudio::State QAlsaAudioSink::state() const
@@ -73,15 +44,15 @@ int QAlsaAudioSink::xrun_recovery(int err)
 
     if(err == -EPIPE) {
         errorState = QAudio::UnderrunError;
-        emit errorChanged(errorState);
+        setError(errorState);
         err = snd_pcm_prepare(handle);
         if(err < 0)
             reset = true;
 
     } else if ((err == -estrpipe)||(err == -EIO)) {
         errorState = QAudio::IOError;
-        emit errorChanged(errorState);
-        while((err = snd_pcm_resume(handle)) == -EAGAIN){
+        setError(errorState);
+        while ((err = snd_pcm_resume(handle)) == -EAGAIN) {
             usleep(100);
             count++;
             if(count > 5) {
@@ -108,7 +79,7 @@ int QAlsaAudioSink::setFormat()
 {
     snd_pcm_format_t pcmformat = SND_PCM_FORMAT_UNKNOWN;
 
-    switch (settings.sampleFormat()) {
+    switch (m_format.sampleFormat()) {
     case QAudioFormat::UInt8:
         pcmformat = SND_PCM_FORMAT_U8;
         break;
@@ -219,35 +190,19 @@ bool QAlsaAudioSink::open()
     elapsedTimeOffset = 0;
 
     int dir;
-    int err = 0;
+    int err = -1;
     int count=0;
-    unsigned int sampleRate = settings.sampleRate();
-
-    if (!settings.isValid()) {
-        qWarning("QAudioSink: open error, invalid format.");
-    } else if (settings.sampleRate() <= 0) {
-        qWarning("QAudioSink: open error, invalid sample rate (%d).",
-                 settings.sampleRate());
-    } else {
-        err = -1;
-    }
-
-    if (err == 0) {
-        errorState = QAudio::OpenError;
-        deviceState = QAudio::StoppedState;
-        emit errorChanged(errorState);
-        return false;
-    }
+    unsigned int sampleRate = m_format.sampleRate();
 
     // Step 1: try and open the device
     while((count < 5) && (err < 0)) {
-        err=snd_pcm_open(&handle, m_device.constData(),SND_PCM_STREAM_PLAYBACK,0);
+        err = snd_pcm_open(&handle, m_audioDevice.id().constData(), SND_PCM_STREAM_PLAYBACK, 0);
         if(err < 0)
             count++;
     }
     if (( err < 0)||(handle == 0)) {
         errorState = QAudio::OpenError;
-        emit errorChanged(errorState);
+        setError(errorState);
         deviceState = QAudio::StoppedState;
         return false;
     }
@@ -287,7 +242,8 @@ bool QAlsaAudioSink::open()
         }
     }
     if ( !fatal ) {
-        err = snd_pcm_hw_params_set_channels( handle, hwparams, (unsigned int)settings.channelCount() );
+        err = snd_pcm_hw_params_set_channels(handle, hwparams,
+                                             (unsigned int)m_format.channelCount());
         if ( err < 0 ) {
             fatal = true;
             errMessage = QString::fromLatin1("QAudioSink: snd_pcm_hw_params_set_channels: err = %1").arg(err);
@@ -367,7 +323,7 @@ bool QAlsaAudioSink::open()
     if( err < 0) {
         qWarning()<<errMessage;
         errorState = QAudio::OpenError;
-        emit errorChanged(errorState);
+        setError(errorState);
         deviceState = QAudio::StoppedState;
         return false;
     }
@@ -471,9 +427,9 @@ qint64 QAlsaAudioSink::write( const char *data, qint64 len )
 
     frames = snd_pcm_bytes_to_frames(handle, space);
 
-    if (m_volume < 1.0f) {
+    if (volume() < 1.0f) {
         QVarLengthArray<char, 4096> out(space);
-        QAudioHelperInternal::qMultiplySamples(m_volume, settings, data, out.data(), space);
+        QAudioHelperInternal::qMultiplySamples(volume(), m_format, data, out.data(), space);
         err = snd_pcm_writei(handle, out.constData(), frames);
     } else {
         err = snd_pcm_writei(handle, data, frames);
@@ -494,7 +450,7 @@ qint64 QAlsaAudioSink::write( const char *data, qint64 len )
     if(err < 0) {
         close();
         errorState = QAudio::FatalError;
-        emit errorChanged(errorState);
+        setError(errorState);
         deviceState = QAudio::StoppedState;
         emit stateChanged(deviceState);
     }
@@ -514,7 +470,7 @@ qsizetype QAlsaAudioSink::bufferSize() const
 
 qint64 QAlsaAudioSink::processedUSecs() const
 {
-    return qint64(1000000) * totalTimeValue / settings.sampleRate();
+    return qint64(1000000) * totalTimeValue / m_format.sampleRate();
 }
 
 void QAlsaAudioSink::resume()
@@ -540,16 +496,6 @@ void QAlsaAudioSink::resume()
         timer->start(period_time/1000);
         emit stateChanged(deviceState);
     }
-}
-
-void QAlsaAudioSink::setFormat(const QAudioFormat& fmt)
-{
-    settings = fmt;
-}
-
-QAudioFormat QAlsaAudioSink::format() const
-{
-    return settings;
 }
 
 void QAlsaAudioSink::suspend()
@@ -618,7 +564,7 @@ bool QAlsaAudioSink::deviceReady()
                 // Underrun
                 if (deviceState != QAudio::IdleState) {
                     errorState = audioSource->atEnd() ? QAudio::NoError : QAudio::UnderrunError;
-                    emit errorChanged(errorState);
+                    setError(errorState);
                     deviceState = QAudio::IdleState;
                     emit stateChanged(deviceState);
                 }
@@ -628,7 +574,7 @@ bool QAlsaAudioSink::deviceReady()
             close();
             deviceState = QAudio::StoppedState;
             errorState = QAudio::IOError;
-            emit errorChanged(errorState);
+            setError(errorState);
             emit stateChanged(deviceState);
         }
     } else {
@@ -637,7 +583,7 @@ bool QAlsaAudioSink::deviceReady()
             // Underrun
             if (deviceState != QAudio::IdleState) {
                 errorState = QAudio::UnderrunError;
-                emit errorChanged(errorState);
+                setError(errorState);
                 deviceState = QAudio::IdleState;
                 emit stateChanged(deviceState);
             }

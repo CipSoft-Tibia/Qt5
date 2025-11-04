@@ -9,17 +9,9 @@
 #include <QtQml/qqmlengine.h>
 #include <QtQuick/qquickview.h>
 
-#ifdef QMAKE_BUILD
-#include "datasource.h"
-#endif
-
 int main(int argc, char *argv[])
 {
     QGuiApplication app(argc, argv);
-
-#ifdef QMAKE_BUILD
-    qmlRegisterType<DataSource>("SurfaceGallery", 1, 0, "DataSource");
-#endif
 
     QQuickView viewer;
 

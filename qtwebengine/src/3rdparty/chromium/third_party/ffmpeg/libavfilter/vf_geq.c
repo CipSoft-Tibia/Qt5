@@ -29,6 +29,7 @@
 #include "libavutil/avassert.h"
 #include "libavutil/avstring.h"
 #include "libavutil/eval.h"
+#include "libavutil/mem.h"
 #include "libavutil/opt.h"
 #include "libavutil/pixdesc.h"
 #include "formats.h"
@@ -86,12 +87,12 @@ static const AVOption geq_options[] = {
     { "g",          "set green expression",       OFFSET(expr_str[G]), AV_OPT_TYPE_STRING, {.str=NULL}, 0, 0, FLAGS },
     { "blue_expr",  "set blue expression",        OFFSET(expr_str[B]), AV_OPT_TYPE_STRING, {.str=NULL}, 0, 0, FLAGS },
     { "b",          "set blue expression",        OFFSET(expr_str[B]), AV_OPT_TYPE_STRING, {.str=NULL}, 0, 0, FLAGS },
-    { "interpolation","set interpolation method", OFFSET(interpolation), AV_OPT_TYPE_INT, {.i64=INTERP_BILINEAR}, 0, NB_INTERP-1, FLAGS, "interp" },
-    { "i",          "set interpolation method",   OFFSET(interpolation), AV_OPT_TYPE_INT, {.i64=INTERP_BILINEAR}, 0, NB_INTERP-1, FLAGS, "interp" },
-    { "nearest",    "nearest interpolation",      0,                   AV_OPT_TYPE_CONST, {.i64=INTERP_NEAREST},  0, 0, FLAGS, "interp" },
-    { "n",          "nearest interpolation",      0,                   AV_OPT_TYPE_CONST, {.i64=INTERP_NEAREST},  0, 0, FLAGS, "interp" },
-    { "bilinear",   "bilinear interpolation",     0,                   AV_OPT_TYPE_CONST, {.i64=INTERP_BILINEAR}, 0, 0, FLAGS, "interp" },
-    { "b",          "bilinear interpolation",     0,                   AV_OPT_TYPE_CONST, {.i64=INTERP_BILINEAR}, 0, 0, FLAGS, "interp" },
+    { "interpolation","set interpolation method", OFFSET(interpolation), AV_OPT_TYPE_INT, {.i64=INTERP_BILINEAR}, 0, NB_INTERP-1, FLAGS, .unit = "interp" },
+    { "i",          "set interpolation method",   OFFSET(interpolation), AV_OPT_TYPE_INT, {.i64=INTERP_BILINEAR}, 0, NB_INTERP-1, FLAGS, .unit = "interp" },
+    { "nearest",    "nearest interpolation",      0,                   AV_OPT_TYPE_CONST, {.i64=INTERP_NEAREST},  0, 0, FLAGS, .unit = "interp" },
+    { "n",          "nearest interpolation",      0,                   AV_OPT_TYPE_CONST, {.i64=INTERP_NEAREST},  0, 0, FLAGS, .unit = "interp" },
+    { "bilinear",   "bilinear interpolation",     0,                   AV_OPT_TYPE_CONST, {.i64=INTERP_BILINEAR}, 0, 0, FLAGS, .unit = "interp" },
+    { "b",          "bilinear interpolation",     0,                   AV_OPT_TYPE_CONST, {.i64=INTERP_BILINEAR}, 0, 0, FLAGS, .unit = "interp" },
     {NULL},
 };
 
@@ -111,8 +112,12 @@ static inline double getpix(void *priv, double x, double y, int plane)
         return 0;
 
     if (geq->interpolation == INTERP_BILINEAR) {
-        xi = x = av_clipd(x, 0, w - 2);
-        yi = y = av_clipd(y, 0, h - 2);
+        int xn, yn;
+
+        xi = x = av_clipd(x, 0, w - 1);
+        yi = y = av_clipd(y, 0, h - 1);
+        xn = FFMIN(xi + 1, w - 1);
+        yn = FFMIN(yi + 1, h - 1);
 
         x -= xi;
         y -= yi;
@@ -121,17 +126,17 @@ static inline double getpix(void *priv, double x, double y, int plane)
             const uint16_t *src16 = (const uint16_t*)src;
             linesize /= 2;
 
-            return (1-y)*((1-x)*src16[xi +  yi    * linesize] + x*src16[xi + 1 +  yi    * linesize])
-                  +   y *((1-x)*src16[xi + (yi+1) * linesize] + x*src16[xi + 1 + (yi+1) * linesize]);
+            return (1-y)*((1-x)*src16[xi + yi * linesize] + x*src16[xn + yi * linesize])
+                  +   y *((1-x)*src16[xi + yn * linesize] + x*src16[xn + yn * linesize]);
         } else if (geq->bps == 32) {
             const float *src32 = (const float*)src;
             linesize /= 4;
 
-            return (1-y)*((1-x)*src32[xi +  yi    * linesize] + x*src32[xi + 1 +  yi    * linesize])
-                  +   y *((1-x)*src32[xi + (yi+1) * linesize] + x*src32[xi + 1 + (yi+1) * linesize]);
+            return (1-y)*((1-x)*src32[xi + yi * linesize] + x*src32[xn + yi * linesize])
+                  +   y *((1-x)*src32[xi + yn * linesize] + x*src32[xn + yn * linesize]);
         } else if (geq->bps == 8) {
-            return (1-y)*((1-x)*src[xi +  yi    * linesize] + x*src[xi + 1 +  yi    * linesize])
-                  +   y *((1-x)*src[xi + (yi+1) * linesize] + x*src[xi + 1 + (yi+1) * linesize]);
+            return (1-y)*((1-x)*src[xi + yi * linesize] + x*src[xn + yi * linesize])
+                  +   y *((1-x)*src[xi + yn * linesize] + x*src[xn + yn * linesize]);
         }
     } else {
         xi = av_clipd(x, 0, w - 1);

@@ -6,8 +6,9 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from ..applescript import AppleScriptBrowser
-from .safari import Safari
+from crossbench.browsers.applescript import AppleScriptBrowser
+from crossbench.browsers.attributes import BrowserAttributes
+from crossbench.browsers.safari.safari import Safari
 
 if TYPE_CHECKING:
   from crossbench.runner.runner import Runner
@@ -42,7 +43,8 @@ class SafariAppleScript(Safari, AppleScriptBrowser):
     else:
       bounds = (f"{self.viewport.x},{self.viewport.y},"
                 f"{self.viewport.width},{self.viewport.height}")
-      self._exec_apple_script(f"set the bounds of the first window to {bounds}")
+      self._exec_apple_script("set the bounds of the first window to {%s}" %
+                              bounds)
 
   def quit(self, runner: Runner) -> None:
     super().quit(runner)
@@ -51,3 +53,7 @@ class SafariAppleScript(Safari, AppleScriptBrowser):
         tell application "{self.bundle_name}"
           quit
         end tell""")
+
+  @property
+  def attributes(self) -> BrowserAttributes:
+    return BrowserAttributes.SAFARI | BrowserAttributes.APPLESCRIPT

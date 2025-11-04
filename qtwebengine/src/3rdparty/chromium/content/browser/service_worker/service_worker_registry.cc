@@ -2,16 +2,17 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#include "content/browser/service_worker/service_worker_registry.h"
+
 #include <type_traits>
 #include <utility>
-
-#include "content/browser/service_worker/service_worker_registry.h"
 
 #include "base/containers/contains.h"
 #include "base/memory/ptr_util.h"
 #include "base/memory/raw_ptr.h"
 #include "base/memory/weak_ptr.h"
 #include "base/metrics/histogram_functions.h"
+#include "base/not_fatal_until.h"
 #include "base/task/sequenced_task_runner.h"
 #include "base/task/single_thread_task_runner.h"
 #include "base/trace_event/trace_event.h"
@@ -98,12 +99,6 @@ void CompleteFindSoon(
 void RecordRetryCount(size_t retries, size_t queue_size) {
   base::UmaHistogramCounts100("ServiceWorker.Storage.RetryCountForRecovery",
                               retries);
-
-  // We've seen traces with 14,000 ServiceWorkerStorageControl tasks
-  // (https://crbug.com/1302111), so ensure more than that can fit in the
-  // histogram buckets in case those were queued retries.
-  base::UmaHistogramCounts100000(
-      "ServiceWorker.Storage.RetryQueueSizeForRecovery", queue_size);
 }
 
 // Notifies quota manager that a disk write operation failed so that it can
@@ -846,7 +841,7 @@ void ServiceWorkerRegistry::StoreUserData(
     return;
   }
   std::vector<storage::mojom::ServiceWorkerUserDataPtr> user_data;
-  // TODO(crbug.com/1055677): Change this method to take a vector of
+  // TODO(crbug.com/40120038): Change this method to take a vector of
   // storage::mojom::ServiceWorkerUserDataPtr instead of converting
   //|key_value_pairs|.
   for (const auto& kv : key_value_pairs) {
@@ -1017,7 +1012,7 @@ void ServiceWorkerRegistry::FindRegistrationForIdInternal(
         (*registration)->IsStored()) {
       // Can be nullptr in tests.
       if (quota_manager_proxy_) {
-        // TODO(crbug.com/1293510): pass correct bucket.
+        // TODO(crbug.com/40213545): pass correct bucket.
         quota_manager_proxy_->NotifyBucketAccessed(
             storage::BucketLocator::ForDefaultBucket((*registration)->key()),
             base::Time::Now());
@@ -1093,7 +1088,7 @@ ServiceWorkerRegistry::GetOrCreateRegistration(
 
   blink::mojom::ServiceWorkerRegistrationOptions options(
       data.scope, data.script_type, data.update_via_cache);
-  registration = base::MakeRefCounted<ServiceWorkerRegistration>(
+  registration = ServiceWorkerRegistration::Create(
       options, data.key, data.registration_id, context_->AsWeakPtr(),
       data.ancestor_frame_type);
   registration->SetStored();
@@ -1133,9 +1128,10 @@ ServiceWorkerRegistry::GetOrCreateRegistration(
               PolicyContainerPolicies(*data.policy_container_policies)));
     }
     if (data.router_rules && version->IsStaticRouterEnabled()) {
-      bool status = version->SetupRouterEvaluator(*data.router_rules);
-      DCHECK(status) << "Failed to setup RouterEvaluator from the provided "
-                     << "rules. Possibly the database is corrupted.";
+      auto error = version->SetupRouterEvaluator(*data.router_rules);
+      DCHECK_EQ(error, ServiceWorkerRouterEvaluatorErrorEnums::kNoError)
+          << "Failed to setup RouterEvaluator from the provided "
+          << "rules. Possibly the database is corrupted.";
     }
   }
   version->set_script_response_time_for_devtools(data.script_response_time);
@@ -1145,7 +1141,7 @@ ServiceWorkerRegistry::GetOrCreateRegistration(
   else if (version->status() == ServiceWorkerVersion::INSTALLED)
     registration->SetWaitingVersion(version);
   else
-    NOTREACHED();
+    NOTREACHED_IN_MIGRATION();
 
   registration->EnableNavigationPreload(data.navigation_preload_state->enabled);
   registration->SetNavigationPreloadHeader(
@@ -1291,7 +1287,7 @@ void ServiceWorkerRegistry::RunFindRegistrationCallbacks(
   DCHECK_CURRENTLY_ON(BrowserThread::UI);
   auto iter =
       find_registration_callbacks_.find(std::make_pair(client_url, key));
-  DCHECK(iter != find_registration_callbacks_.end());
+  CHECK(iter != find_registration_callbacks_.end(), base::NotFatalUntil::M130);
   std::vector<FindRegistrationCallback> callbacks = std::move(iter->second);
   find_registration_callbacks_.erase(iter);
   for (FindRegistrationCallback& callback : callbacks) {
@@ -1761,7 +1757,7 @@ void ServiceWorkerRegistry::DidGetUserDataForAllRegistrations(
     storage::mojom::ServiceWorkerDatabaseStatus status,
     std::vector<storage::mojom::ServiceWorkerUserDataPtr> entries) {
   DCHECK_CURRENTLY_ON(BrowserThread::UI);
-  // TODO(crbug.com/1055677): Update call sites of
+  // TODO(crbug.com/40120038): Update call sites of
   // GetUserDataForAllRegistrations so that we can avoid converting mojo struct
   // to a pair.
   std::vector<std::pair<int64_t, std::string>> user_data;
@@ -1784,7 +1780,7 @@ void ServiceWorkerRegistry::DidGetNewRegistrationId(
     std::move(callback).Run(nullptr);
     return;
   }
-  std::move(callback).Run(base::MakeRefCounted<ServiceWorkerRegistration>(
+  std::move(callback).Run(ServiceWorkerRegistration::Create(
       std::move(options), key, registration_id, context_->AsWeakPtr(),
       ancestor_frame_type));
 }
@@ -1892,7 +1888,7 @@ bool ServiceWorkerRegistry::ShouldPurgeOnShutdownForTesting(
 
 mojo::Remote<storage::mojom::ServiceWorkerStorageControl>&
 ServiceWorkerRegistry::GetRemoteStorageControl() {
-  // TODO(https://crbug.com/1282869): Replace CHECK with DCHECK_CURRENTLY_ON
+  // TODO(crbug.com/40813186): Replace CHECK with DCHECK_CURRENTLY_ON
   // once the cause is identified.
   CHECK(BrowserThread::CurrentlyOn(BrowserThread::UI));
 
@@ -1920,7 +1916,7 @@ ServiceWorkerRegistry::GetRemoteStorageControl() {
 void ServiceWorkerRegistry::OnRemoteStorageDisconnected() {
   const size_t kMaxRetryCounts = 100;
 
-  // TODO(https://crbug.com/1282869): Replace CHECK with DCHECK_CURRENTLY_ON
+  // TODO(crbug.com/40813186): Replace CHECK with DCHECK_CURRENTLY_ON
   // once the cause is identified.
   CHECK(BrowserThread::CurrentlyOn(BrowserThread::UI));
 

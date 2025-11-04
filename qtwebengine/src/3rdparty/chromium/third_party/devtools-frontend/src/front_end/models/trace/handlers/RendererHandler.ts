@@ -32,13 +32,13 @@ const compositorTileWorkers = Array<{
   pid: Types.TraceEvents.ProcessID,
   tid: Types.TraceEvents.ThreadID,
 }>();
-const entryToNode: Map<Types.TraceEvents.SyntheticTraceEntry, Helpers.TreeHelpers.TraceEntryNode> = new Map();
-let allTraceEntries: Types.TraceEvents.SyntheticTraceEntry[] = [];
+const entryToNode: Map<Types.TraceEvents.TraceEventData, Helpers.TreeHelpers.TraceEntryNode> = new Map();
+let allTraceEntries: Types.TraceEvents.TraceEventData[] = [];
 
 const completeEventStack: (Types.TraceEvents.SyntheticCompleteEvent)[] = [];
 
 let handlerState = HandlerState.UNINITIALIZED;
-let config: Types.Configuration.Configuration = Types.Configuration.DEFAULT;
+let config: Types.Configuration.Configuration = Types.Configuration.defaults();
 
 const makeRendererProcess = (): RendererProcess => ({
   url: null,
@@ -49,6 +49,7 @@ const makeRendererProcess = (): RendererProcess => ({
 const makeRendererThread = (): RendererThread => ({
   name: null,
   entries: [],
+  profileCalls: [],
 });
 
 const getOrCreateRendererProcess =
@@ -314,6 +315,7 @@ export function sanitizeThreads(processes: Map<Types.TraceEvents.ProcessID, Rend
 export function buildHierarchy(
     processes: Map<Types.TraceEvents.ProcessID, RendererProcess>,
     options?: {filter: {has: (name: Types.TraceEvents.KnownEventName) => boolean}}): void {
+  const samplesData = samplesHandlerData();
   for (const [pid, process] of processes) {
     for (const [tid, thread] of process.threads) {
       if (!thread.entries.length) {
@@ -323,13 +325,24 @@ export function buildHierarchy(
       // Step 1. Massage the data.
       Helpers.Trace.sortTraceEventsInPlace(thread.entries);
       // Step 2. Inject profile calls from samples
-      const cpuProfile = samplesHandlerData().profilesInProcess.get(pid)?.get(tid)?.parsedProfile;
-      const samplesIntegrator =
-          cpuProfile && new Helpers.SamplesIntegrator.SamplesIntegrator(cpuProfile, pid, tid, config);
-      const profileCalls = samplesIntegrator?.buildProfileCalls(thread.entries);
-      if (profileCalls) {
-        allTraceEntries = [...allTraceEntries, ...profileCalls];
-        thread.entries = Helpers.Trace.mergeEventsInOrder(thread.entries, profileCalls);
+      const samplesDataForThread = samplesData.profilesInProcess.get(pid)?.get(tid);
+      if (samplesDataForThread) {
+        const cpuProfile = samplesDataForThread.parsedProfile;
+        const samplesIntegrator = cpuProfile &&
+            new Helpers.SamplesIntegrator.SamplesIntegrator(
+                cpuProfile, samplesDataForThread.profileId, pid, tid, config);
+        const profileCalls = samplesIntegrator?.buildProfileCalls(thread.entries);
+        if (samplesIntegrator && profileCalls) {
+          allTraceEntries = [...allTraceEntries, ...profileCalls];
+          thread.entries = Helpers.Trace.mergeEventsInOrder(thread.entries, profileCalls);
+          thread.profileCalls = profileCalls;
+          // We'll also inject the instant JSSample events (in debug mode only)
+          const jsSamples = samplesIntegrator.jsSampleEvents;
+          if (jsSamples) {
+            allTraceEntries = [...allTraceEntries, ...jsSamples];
+            thread.entries = Helpers.Trace.mergeEventsInOrder(thread.entries, jsSamples);
+          }
+        }
       }
       // Step 3. Build the tree.
       const treeData = Helpers.TreeHelpers.treify(thread.entries, options);
@@ -386,12 +399,12 @@ export interface RendererHandlerData {
    * by the process ID.
    */
   compositorTileWorkers: Map<Types.TraceEvents.ProcessID, Types.TraceEvents.ThreadID[]>;
-  entryToNode: Map<Types.TraceEvents.SyntheticTraceEntry, Helpers.TreeHelpers.TraceEntryNode>;
+  entryToNode: Map<Types.TraceEvents.TraceEventData, Helpers.TreeHelpers.TraceEntryNode>;
   /**
    * All trace events and synthetic profile calls made from
    * samples.
    */
-  allTraceEntries: Types.TraceEvents.SyntheticTraceEntry[];
+  allTraceEntries: Types.TraceEvents.TraceEventData[];
 }
 
 export interface RendererProcess {
@@ -408,6 +421,7 @@ export interface RendererThread {
    * Contains trace events and synthetic profile calls made from
    * samples.
    */
-  entries: Types.TraceEvents.SyntheticTraceEntry[];
+  entries: Types.TraceEvents.TraceEventData[];
+  profileCalls: Types.TraceEvents.SyntheticProfileCall[];
   tree?: Helpers.TreeHelpers.TraceEntryTree;
 }

@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 /*!
     \namespace QtConcurrent
@@ -11,6 +12,38 @@
 
     See the \l {Qt Concurrent} module documentation for an overview of available
     functions, or see below for detailed information on each function.
+
+    \section1 Optimize includes
+
+    If you include the \c <QtConcurrent> header, the entire Qt Concurrent
+    module with the entire Qt Core module will be included, which may increase
+    compilation times and binary sizes. To use individual functions from the
+    QtConcurrent namespace, you can include more specific headers.
+
+    The table below lists the functions in the QtConcurrent namespace and
+    their corresponding headers:
+
+    \table
+    \header
+        \li Function
+        \li Header
+    \row
+        \li \l {QtConcurrent::run}{QtConcurrent::run()}
+        \li \c <QtConcurrentRun>
+    \row
+        \li \l {QtConcurrent::task}{QtConcurrent::task()}
+        \li \c <QtConcurrentTask>
+    \row
+        \li \l {QtConcurrent::filter}{QtConcurrent::filter()},
+            \l {QtConcurrent::filtered}{QtConcurrent::filtered()},
+            \l {QtConcurrent::filteredReduced}{QtConcurrent::filteredReduced()}
+        \li \c <QtConcurrentFilter>
+    \row
+        \li \l {QtConcurrent::map}{QtConcurrent::map()},
+            \l {QtConcurrent::mapped}{QtConcurrent::mapped()},
+            \l {QtConcurrent::mappedReduced}{QtConcurrent::mappedReduced()}
+        \li \c <QtConcurrentMap>
+    \endtable
 
     \inheaderfile QtConcurrent
     \ingroup thread
@@ -129,6 +162,20 @@
     Note that the result types above are not QFuture objects, but real result
     types (in this case, QList<QImage> and QImage).
 
+    \section1 Optimize includes
+
+    If you include the \c <QtConcurrent> header, the entire Qt Concurrent
+    module with the entire Qt Core module will be included, which may increase
+    compilation times and binary sizes. To use the
+    \l {QtConcurrent::map}{QtConcurrent::map()},
+    \l {QtConcurrent::mapped}{QtConcurrent::mapped()}, and
+    \l {QtConcurrent::mappedReduced}{QtConcurrent::mappedReduced()} functions,
+    you can include a more specific header:
+
+    \code
+    #include <QtConcurrentMap>
+    \endcode
+
     \section1 Concurrent Map
 
     QtConcurrent::mapped() takes an input sequence and a map function. This map
@@ -167,6 +214,18 @@
     Since the sequence is modified in place, QtConcurrent::map() does not
     return any results via QFuture. However, you can still use QFuture and
     QFutureWatcher to monitor the status of the map.
+
+    \section2 Concurrent Mapped and Continuations
+
+    The result of QtConcurrent::mapped() call is a QFuture that contains
+    multiple results. When attaching a \c {.then()} continuation to such
+    QFuture, make sure to use a continuation that takes QFuture as a parameter,
+    otherwise only the first result will be processed:
+
+    \snippet code/src_concurrent_qtconcurrentmap.cpp 18
+
+    In this example \c {badFuture} will only print a single result, while
+    \c {goodFuture} will print all results.
 
     \section1 Concurrent Map-Reduce
 

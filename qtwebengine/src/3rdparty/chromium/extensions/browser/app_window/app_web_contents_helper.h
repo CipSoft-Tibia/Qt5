@@ -19,7 +19,8 @@ class BrowserContext;
 class RenderFrameHost;
 struct OpenURLParams;
 class WebContents;
-}
+class NavigationHandle;
+}  // namespace content
 
 namespace extensions {
 
@@ -31,7 +32,7 @@ class Extension;
 class AppWebContentsHelper {
  public:
   AppWebContentsHelper(content::BrowserContext* browser_context,
-                       const std::string& extension_id,
+                       const ExtensionId& extension_id,
                        content::WebContents* web_contents,
                        AppDelegate* app_delegate);
 
@@ -43,10 +44,12 @@ class AppWebContentsHelper {
 
   // Opens a new URL inside the passed in WebContents. See WebContentsDelegate.
   content::WebContents* OpenURLFromTab(
-      const content::OpenURLParams& params) const;
+      const content::OpenURLParams& params,
+      base::OnceCallback<void(content::NavigationHandle&)>
+          navigation_handle_callback) const;
 
-  // Requests to lock the mouse. See WebContentsDelegate.
-  void RequestToLockMouse() const;
+  // Requests to lock the mouse pointer. See WebContentsDelegate.
+  void RequestPointerLock() const;
 
   // Asks permission to use the camera and/or microphone. See
   // WebContentsDelegate.

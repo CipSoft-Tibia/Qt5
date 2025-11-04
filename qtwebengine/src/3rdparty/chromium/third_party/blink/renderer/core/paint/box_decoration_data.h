@@ -5,7 +5,8 @@
 #ifndef THIRD_PARTY_BLINK_RENDERER_CORE_PAINT_BOX_DECORATION_DATA_H_
 #define THIRD_PARTY_BLINK_RENDERER_CORE_PAINT_BOX_DECORATION_DATA_H_
 
-#include "third_party/abseil-cpp/absl/types/optional.h"
+#include <optional>
+
 #include "third_party/blink/renderer/core/css/properties/longhands.h"
 #include "third_party/blink/renderer/core/layout/background_bleed_avoidance.h"
 #include "third_party/blink/renderer/core/layout/layout_box.h"
@@ -107,7 +108,18 @@ class BoxDecorationData {
   }
 
   bool ComputeShouldPaintBackground() const {
-    return style_.HasBackground() && !layout_box_.BackgroundTransfersToView() &&
+    // The page border box fragment paints the document background, so we cannot
+    // trust its computed style when it comes to background properties.
+    //
+    // See https://drafts.csswg.org/css-page-3/#painting
+    //
+    // TODO(crbug.com/40286153): This is a false positive. We should be able to
+    // remove this once we have a better way to determine whether there is a
+    // background.
+    bool has_background =
+        style_.HasBackground() ||
+        GetBoxFragmentType() == PhysicalFragment::kPageBorderBox;
+    return has_background && !layout_box_.BackgroundTransfersToView() &&
            !paint_info_.ShouldSkipBackground();
   }
 
@@ -126,6 +138,13 @@ class BoxDecorationData {
   bool BorderObscuresBackgroundEdge() const;
   BackgroundBleedAvoidance ComputeBleedAvoidance() const;
 
+  PhysicalFragment::BoxType GetBoxFragmentType() const {
+    if (!layout_box_.PhysicalFragmentCount()) {
+      return PhysicalFragment::kNormalBox;
+    }
+    return layout_box_.GetPhysicalFragment(0)->GetBoxType();
+  }
+
   // Inputs.
   const PaintInfo& paint_info_;
   const LayoutBox& layout_box_;
@@ -137,7 +156,7 @@ class BoxDecorationData {
   const bool should_paint_border_;
   const bool should_paint_shadow_;
   // This is lazily initialized.
-  mutable absl::optional<BackgroundBleedAvoidance> bleed_avoidance_;
+  mutable std::optional<BackgroundBleedAvoidance> bleed_avoidance_;
 };
 
 }  // namespace blink

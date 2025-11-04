@@ -46,7 +46,7 @@ class MEDIA_EXPORT FuchsiaVideoEncodeAccelerator final
   void RequestEncodingParametersChange(
       const Bitrate& bitrate,
       uint32_t framerate,
-      const absl::optional<gfx::Size>& size) override;
+      const std::optional<gfx::Size>& size) override;
   void Destroy() override;
   bool IsFlushSupported() override;
   bool IsGpuFrameResizeSupported() override;
@@ -77,10 +77,10 @@ class MEDIA_EXPORT FuchsiaVideoEncodeAccelerator final
   void OnError(EncoderStatus status);
   void OnInputBuffersAcquired(
       std::vector<VmoBuffer> buffers,
-      const fuchsia::sysmem::SingleBufferSettings& buffer_settings);
+      const fuchsia::sysmem2::SingleBufferSettings& buffer_settings);
   void OnOutputBuffersAcquired(
       std::vector<VmoBuffer> buffers,
-      const fuchsia::sysmem::SingleBufferSettings& buffer_settings);
+      const fuchsia::sysmem2::SingleBufferSettings& buffer_settings);
   fuchsia::media::FormatDetails CreateFormatDetails(
       VideoEncodeAccelerator::Config& config);
 

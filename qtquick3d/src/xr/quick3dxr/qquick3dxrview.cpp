@@ -8,6 +8,8 @@
 #include <QQuickItem>
 #include <QLoggingCategory>
 
+#include <QtQuick3DUtils/private/qssgassert_p.h>
+
 #include "qquick3dxrinputmanager_p.h"
 
 QT_BEGIN_NAMESPACE
@@ -160,14 +162,12 @@ void QQuick3DXrView::setPassthroughEnabled(bool enable)
         return;
     }
 
+    const bool orgPassthroughEnabled = m_xrManager.isPassthroughEnabled();
     // bail if passthrough is not supported
-    if (enable && !m_xrManager.supportsPassthrough()) {
+    if (!m_xrManager.setPassthroughEnabled(enable)) {
         qWarning("Enabling Passthrough is not supported.");
         return;
     }
-
-    const bool orgPassthroughEnabled = m_xrManager.isPassthroughEnabled();
-    m_xrManager.setPassthroughEnabled(enable);
 
     if (orgPassthroughEnabled != m_xrManager.isPassthroughEnabled())
         emit passthroughEnabledChanged();
@@ -508,9 +508,20 @@ QVariantMap QQuick3DXrView::touchpointState(int pointId) const
 
      It can be one of:
      \value XrView.ReferenceSpaceUnknown
-     \value XrView.ReferenceSpaceLocal
-     \value XrView.ReferenceSpaceStage
-     \value XrView.ReferenceSpaceLocalFloor
+     \value XrView.ReferenceSpaceLocal Origin is at the default view position (typically defined by a "reset view" operation).
+     \value XrView.ReferenceSpaceStage Origin is at floor height in the center of the user's defined area.
+     \value XrView.ReferenceSpaceLocalFloor Origin is at floor height, below the default view position.
+
+    \c ReferenceSpaceLocal is mainly useful for seated applications where the content is not positioned
+    relative to the floor, for example floating menus. The content will move when the user resets the view.
+
+    \c ReferenceSpaceStage is mainly useful for room-scale applications where the user will move freely within the
+    playing area. The content will not move when the user resets the view.
+
+    \c ReferenceSpaceLocalFloor is mainly useful for stationary applications (seated or standing) where the content is
+    positioned relative to the floor. The content will move when the user resets the view.
+
+    \default XrView.ReferenceSpaceLocal
 */
 
 QQuick3DXrView::ReferenceSpace QQuick3DXrView::referenceSpace() const
@@ -656,12 +667,6 @@ void QQuick3DXrView::setDepthSubmissionEnabled(bool enable)
         emit depthSubmissionEnabledChanged();
 }
 
-void QQuick3DXrView::setMultiViewRenderingEnabled(bool enable)
-{
-    Q_UNUSED(enable);
-    qWarning("Setting multiViewRenderingEnabled is not supported.");
-}
-
 void QQuick3DXrView::setXROrigin(QQuick3DXrOrigin *newXrOrigin)
 {
     if (m_xrOrigin == newXrOrigin)
@@ -678,6 +683,12 @@ void QQuick3DXrView::setXROrigin(QQuick3DXrOrigin *newXrOrigin)
     m_xrManager.setXROrigin(m_xrOrigin);
 
     emit xrOriginChanged();
+}
+
+QQuick3DViewport *QQuick3DXrViewPrivate::getView3d(QQuick3DXrView *view)
+{
+    QSSG_ASSERT(view != nullptr, return nullptr);
+    return view->view3d();
 }
 
 /*!

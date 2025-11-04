@@ -1,0 +1,94 @@
+/*
+ * Copyright 2024 The Chromium Authors. All rights reserved.
+ * Use of this source code is governed by a BSD-style license that can be
+ * found in the LICENSE file.
+ */
+
+:host {
+  display: flex;
+  overflow: hidden;
+  flex-direction: row;
+  justify-content: flex-end;
+  align-items: flex-end;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.timespan-breakdown-overlay-section {
+  border: solid;
+  border-color: var(--sys-color-on-surface);
+  border-left-width: 1px;
+  border-right-width: 1px;
+  border-top-width: 4px;
+  border-bottom: none;
+  align-content: flex-start;
+  text-align: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  background-image: linear-gradient(180deg, var(--sys-color-on-primary), transparent);
+  height: 90px;
+
+  &:nth-child(odd) {
+    height: 100px;
+  }
+
+  &:nth-child(even) {
+    border-left-width: 0;
+    border-right-width: 0;
+  }
+
+  &:first-child {
+    border-left-width: 1px;
+  }
+
+  &:last-child {
+    border-right-width: 1px;
+  }
+}
+
+.timespan-breakdown-overlay-label {
+  font-family: var(--default-font-family);
+  font-size: var(--sys-typescale-body2-size);
+  line-height: var(--sys-typescale-body4-line-height);
+  font-weight: var(--ref-typeface-weight-medium);
+  color: var(--sys-color-on-surface);
+  text-align: center;
+  box-sizing: border-box;
+  width: max-content;
+  padding: 0 3px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-wrap: nowrap;
+
+  .duration-text {
+    text-overflow: ellipsis;
+    overflow: hidden;
+    text-wrap: nowrap;
+    display: block;
+  }
+
+  .discovery-time-ms {
+    font-weight: var(--ref-typeface-weight-bold);
+  }
+
+  &.labelHidden {
+    /* Have to use this not display: none so it maintains its width */
+    user-select: none;
+    pointer-events: none;
+    visibility: hidden;
+  }
+
+  &.labelTruncated {
+    /* This means the label will show the text that fits with an ellipsis for
+     * the overflow */
+    max-width: 100%;
+  }
+
+  &.offScreenLeft {
+    text-align: left;
+  }
+
+  &.offScreenRight {
+    text-align: right;
+  }
+}

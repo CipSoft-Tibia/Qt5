@@ -4,11 +4,13 @@
 
 import 'chrome://resources/cr_elements/cr_tree/cr_tree.js';
 
-import {CrTreeElement} from 'chrome://resources/cr_elements/cr_tree/cr_tree.js';
-import {CrTreeItemElement, MAY_HAVE_CHILDREN_ATTR} from 'chrome://resources/cr_elements/cr_tree/cr_tree_item.js';
+import type {CrTreeElement} from 'chrome://resources/cr_elements/cr_tree/cr_tree.js';
+import type {CrTreeItemElement} from 'chrome://resources/cr_elements/cr_tree/cr_tree_item.js';
+import {MAY_HAVE_CHILDREN_ATTR} from 'chrome://resources/cr_elements/cr_tree/cr_tree_item.js';
 import {assert} from 'chrome://resources/js/assert.js';
 
-import {FrameInfo, FrameInfo_Type, ProcessInternalsHandler, ProcessInternalsHandlerRemote, WebContentsInfo} from './process_internals.mojom-webui.js';
+import type {FrameInfo, ProcessInternalsHandlerRemote, WebContentsInfo} from './process_internals.mojom-webui.js';
+import {FrameInfo_Type, ProcessInternalsHandler} from './process_internals.mojom-webui.js';
 
 /**
  * Reference to the backend providing all the data.
@@ -408,6 +410,14 @@ document.addEventListener('DOMContentLoaded', function() {
       document.querySelector<HTMLElement>('#refresh-process-info');
   assert(refreshProcessInfoButton);
   refreshProcessInfoButton.addEventListener('click', loadProcessCountInfo);
+
+  // Get the ProcessPerSite mode and populate it.
+  pageHandler.getProcessPerSiteMode().then((response) => {
+    const sharingMode =
+        document.querySelector<HTMLElement>('#process-per-site-mode');
+    assert(sharingMode);
+    sharingMode.innerText = response.mode;
+  });
 
   // Get the Site Isolation mode and populate it.
   pageHandler.getIsolationMode().then((response) => {

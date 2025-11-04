@@ -5,7 +5,7 @@
  *   PostScript name table processing for TrueType and OpenType fonts
  *   (body).
  *
- * Copyright (C) 1996-2023 by
+ * Copyright (C) 1996-2024 by
  * David Turner, Robert Wilhelm, and Werner Lemberg.
  *
  * This file is part of the FreeType project, and may only be used,
@@ -226,7 +226,7 @@
         FT_UInt  len = *p;
 
 
-        /* all names in Adobe Glyph List are shorter than 40 characters */
+        /* names in the Adobe Glyph List are shorter than 40 characters */
         if ( len >= 40U )
           FT_TRACE4(( "load_format_20: unusual %u-char name found\n", len ));
 
@@ -240,7 +240,7 @@
       if ( n < num_names )
       {
         FT_TRACE4(( "load_format_20: %hu PostScript names are truncated\n",
-                    num_names - n ));
+                    (FT_UShort)( num_names - n ) ));
 
         for ( ; n < num_names; n++ )
           name_strings[n] = p_end;

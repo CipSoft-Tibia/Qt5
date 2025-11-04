@@ -6,7 +6,9 @@ from __future__ import annotations
 
 import abc
 import collections.abc
+import contextlib
 import datetime as dt
+import functools
 import logging
 import os
 import pathlib
@@ -20,15 +22,23 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
-from typing import (TYPE_CHECKING, Any, Callable, Dict, Iterable, Iterator,
-                    List, Mapping, Optional, Sequence, Tuple, Union)
+from typing import (TYPE_CHECKING, Any, Callable, Dict, Generator, Iterable,
+                    Iterator, List, Mapping, Optional, Sequence, Tuple, Union)
 
 import psutil
 
-from .arch import MachineArch
+from crossbench import path as pth
+from crossbench.plt.arch import MachineArch
+from crossbench.plt.bin import Binary
 
 if TYPE_CHECKING:
   from crossbench.types import JsonDict
+
+
+CmdArg = pth.RemotePathLike
+ListCmdArgs = List[CmdArg]
+TupleCmdArgs = Tuple[CmdArg, ...]
+CmdArgs = Union[ListCmdArgs, TupleCmdArgs]
 
 
 class Environ(collections.abc.MutableMapping, metaclass=abc.ABCMeta):
@@ -74,6 +84,9 @@ class SubprocessError(subprocess.CalledProcessError):
 class Platform(abc.ABC):
   # pylint: disable=locally-disabled, redefined-builtin
 
+  def __init__(self) -> None:
+    self._binary_lookup_override: Dict[str, pth.RemotePath] = {}
+
   @property
   @abc.abstractmethod
   def name(self) -> str:
@@ -113,7 +126,7 @@ class Platform(abc.ABC):
   def host_platform(self) -> Platform:
     return self
 
-  @property
+  @functools.cached_property
   def machine(self) -> MachineArch:
     raw = self._raw_machine_arch()
     if raw in ("i386", "i686", "x86", "ia32"):
@@ -167,6 +180,10 @@ class Platform(abc.ABC):
     return False
 
   @property
+  def is_remote_ssh(self) -> bool:
+    return False
+
+  @property
   def environ(self) -> Environ:
     assert self.is_local, "Unsupported operation on remote platform"
     return LocalEnviron()
@@ -187,8 +204,8 @@ class Platform(abc.ABC):
       macos: Sequence[str],
       win: Sequence[str],
       linux: Sequence[str],
-      lookup_callable: Callable[[pathlib.Path], Optional[pathlib.Path]],
-  ) -> pathlib.Path:
+      lookup_callable: Callable[[pth.RemotePath], Optional[pth.RemotePath]],
+  ) -> pth.RemotePath:
     executables: Sequence[str] = []
     if self.is_macos:
       executables = macos
@@ -199,9 +216,9 @@ class Platform(abc.ABC):
     if not executables:
       raise ValueError(f"Executable {name} not supported on {self}")
     for name_or_path in executables:
-      path = pathlib.Path(name_or_path).expanduser()
+      path = self.local_path(name_or_path).expanduser()
       binary = lookup_callable(path)
-      if binary and binary.exists():
+      if binary and self.exists(binary):
         return binary
     raise ValueError(f"Executable {name} not found on {self}")
 
@@ -211,7 +228,7 @@ class Platform(abc.ABC):
       macos: Sequence[str] = (),
       win: Sequence[str] = (),
       linux: Sequence[str] = ()
-  ) -> pathlib.Path:
+  ) -> pth.RemotePath:
     return self._search_executable(name, macos, win, linux, self.search_app)
 
   def search_platform_binary(
@@ -220,24 +237,25 @@ class Platform(abc.ABC):
       macos: Sequence[str] = (),
       win: Sequence[str] = (),
       linux: Sequence[str] = ()
-  ) -> pathlib.Path:
+  ) -> pth.RemotePath:
     return self._search_executable(name, macos, win, linux, self.search_binary)
 
-  def search_app(self, app_or_bin: pathlib.Path) -> Optional[pathlib.Path]:
-    """Look up a application bundle (macos) or binary (all other platforms) in 
+  def search_app(self, app_or_bin: pth.RemotePath) -> Optional[pth.RemotePath]:
+    """Look up a application bundle (macos) or binary (all other platforms) in
     the common search paths.
     """
     return self.search_binary(app_or_bin)
 
   @abc.abstractmethod
-  def search_binary(self, app_or_bin: pathlib.Path) -> Optional[pathlib.Path]:
+  def search_binary(self,
+                    app_or_bin: pth.RemotePathLike) -> Optional[pth.RemotePath]:
     """Look up a binary in the common search paths based of a path or a single
     segment path with just the binary name.
     Returns the location of the binary (and not the .app bundle on macOS).
     """
 
   @abc.abstractmethod
-  def app_version(self, app_or_bin: pathlib.Path) -> str:
+  def app_version(self, app_or_bin: pth.RemotePathLike) -> str:
     pass
 
   @property
@@ -254,14 +272,53 @@ class Platform(abc.ABC):
     logging.debug("WAIT %ss", seconds)
     time.sleep(seconds)
 
-  def which(self, binary_name: str) -> Optional[pathlib.Path]:
+  def which(self, binary_name: pth.RemotePathLike) -> Optional[pth.RemotePath]:
     if not binary_name:
       raise ValueError("Got empty path")
     assert self.is_local, "Unsupported operation on remote platform"
-    result = shutil.which(binary_name)
-    if not result:
-      return None
-    return pathlib.Path(result)
+    if override := self.lookup_binary_override(binary_name):
+      return override
+    if result := shutil.which(binary_name):
+      return self.path(result)
+    return None
+
+  def lookup_binary_override(
+      self, binary_name: pth.RemotePathLike) -> Optional[pth.RemotePath]:
+    return self._binary_lookup_override.get(str(binary_name))
+
+  def set_binary_lookup_override(self, binary_name: pth.RemotePathLike,
+                                 new_path: Optional[pth.RemotePath]):
+    name = str(binary_name)
+    if new_path is None:
+      prev_result = self._binary_lookup_override.pop(name, None)
+      if prev_result is None:
+        logging.debug(
+            "Could not remove binary override for %s as it was never set",
+            binary_name)
+      return
+    if self.search_binary(new_path) is None:
+      raise ValueError(f"Suggested binary override for {repr(name)} "
+                       f"does not exist: {new_path}")
+    self._binary_lookup_override[name] = new_path
+
+  @contextlib.contextmanager
+  def override_binary(self, binary: Union[pth.RemotePathLike, Binary],
+                      result: Optional[pth.RemotePath]):
+    binary_name: pth.RemotePathLike = ""
+    if isinstance(binary, Binary):
+      if override := binary.platform_path(self):
+        binary_name = override
+      else:
+        raise RuntimeError("Cannot override binary:"
+                           f" {binary} is not supported supported on {self}")
+    else:
+      binary_name = binary
+    prev_override = self.lookup_binary_override(binary_name)
+    self.set_binary_lookup_override(binary_name, result)
+    try:
+      yield
+    finally:
+      self.set_binary_lookup_override(binary_name, prev_override)
 
   def processes(self,
                 attrs: Optional[List[str]] = None) -> List[Dict[str, Any]]:
@@ -314,85 +371,145 @@ class Platform(abc.ABC):
     process.terminate()
 
   @property
-  def default_tmp_dir(self) -> pathlib.Path:
+  def default_tmp_dir(self) -> pth.RemotePath:
     assert self.is_local, "Unsupported operation on remote platform"
-    return pathlib.Path(tempfile.gettempdir())
+    return self.path(tempfile.gettempdir())
 
-  def cat(self, file: Union[str, pathlib.Path], encoding: str = "utf-8") -> str:
-    """Meow! I return the file contents as a str."""
+  def reverse_port_forward(self, remote_port: int, local_port: int) -> None:
+    if remote_port != local_port:
+      raise ValueError("Cannot forward a remote port on a local platform.")
     assert self.is_local, "Unsupported operation on remote platform"
-    with pathlib.Path(file).open(encoding=encoding) as f:
+
+  def stop_reverse_port_forward(self, remote_port: int) -> None:
+    del remote_port
+    assert self.is_local, "Unsupported operation on remote platform"
+
+  def cat(self, file: pth.RemotePathLike, encoding: str = "utf-8") -> str:
+    """Meow! I return the file contents as a str."""
+    with self.local_path(file).open(encoding=encoding) as f:
       return f.read()
 
-  def set_filecontents(self, file: Union[str, pathlib.Path],
-                       data: str, encoding: str = "utf-8") -> None:
-    assert not self.is_remote, "Unsupported operation on remote platform"
-    with pathlib.Path(file).open("w", encoding=encoding) as f:
+  def set_file_contents(self,
+                        file: pth.RemotePathLike,
+                        data: str,
+                        encoding: str = "utf-8") -> None:
+    with self.local_path(file).open("w", encoding=encoding) as f:
       f.write(data)
 
-  def rsync(self, from_path: pathlib.Path,
-            to_path: pathlib.Path) -> pathlib.Path:
+  def rsync(self, from_path: pth.RemotePath,
+            to_path: pth.LocalPath) -> pth.LocalPath:
     """ Convenience implementation that works for copying local dirs """
     assert self.is_local, "Unsupported operation on remote platform"
-    if not from_path.exists():
+    if not self.exists(from_path):
       raise ValueError(f"Cannot copy non-existing source path: {from_path}")
     to_path.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copytree(from_path, to_path)
+    if self.is_dir(from_path):
+      shutil.copytree(from_path, to_path)
+    else:
+      shutil.copy2(from_path, to_path)
     return to_path
 
-  def rm(self, path: Union[str, pathlib.Path], dir: bool = False) -> None:
+  def rm(self,
+         path: pth.RemotePathLike,
+         dir: bool = False,
+         missing_ok: bool = False) -> None:
     """Remove a single file on this platform."""
-    assert self.is_local, "Unsupported operation on remote platform"
+    path = self.local_path(path)
     if dir:
+      if missing_ok and not self.exists(path):
+        return
       shutil.rmtree(path)
     else:
-      pathlib.Path(path).unlink()
+      path.unlink(missing_ok)
 
-  def symlink_or_copy(self, src: pathlib.Path,
-                      dst: pathlib.Path) -> pathlib.Path:
+  def rename(self, src_path: pth.RemotePathLike,
+             dst_path: pth.RemotePathLike) -> pth.RemotePath:
+    """Remove a single file on this platform."""
+    return self.local_path(src_path).rename(dst_path)
+
+  def symlink_or_copy(self, src: pth.RemotePathLike,
+                      dst: pth.RemotePathLike) -> pth.RemotePath:
     """Windows does not support symlinking without admin support.
-    Copy files on windows but symlink everywhere else."""
-    assert self.is_local, "Unsupported operation on remote platform"
+    Copy files on windows (see WinPlatform) but symlink everywhere else."""
     assert not self.is_win, "Unsupported operation on windows"
-    dst.symlink_to(src)
-    return dst
+    dst_path = self.local_path(dst)
+    dst_path.symlink_to(self.path(src))
+    return dst_path
 
-  def touch(self, path: Union[str, pathlib.Path]) -> None:
-    assert self.is_local, "Unsupported operation on remote platform"
-    pathlib.Path(path).touch(exist_ok=True)
+  def path(self, path: pth.RemotePathLike) -> pth.RemotePath:
+    """"Used to convert any paths and strings to a platform specific
+    remote path.
+    For instance a remote ADB platform on windows returns posix paths:
+      posix_path = adb_remote_platform.patch(windows_path)
+    This is used when passing out platform specific paths to remote shell
+    commands.
+    """
+    return self.local_path(path)
 
-  def mkdir(self, path: Union[str, pathlib.Path]) -> None:
+  def local_path(self, path: pth.RemotePathLike) -> pth.LocalPath:
     assert self.is_local, "Unsupported operation on remote platform"
-    pathlib.Path(path).mkdir(parents=True, exist_ok=True)
+    return pth.LocalPath(path)
+
+  def absolute(self, path: pth.RemotePathLike) -> pth.RemotePath:
+    """Convert an arbitrary path to a platform-specific absolute path"""
+    platform_path: pth.RemotePath = self.path(path)
+    if platform_path.is_absolute():
+      return platform_path
+    if self.is_local:
+      return self.local_path(platform_path).absolute()
+    raise RuntimeError(
+        f"Converting relative to absolute paths is not supported on {self}")
+
+  def home(self) -> pth.RemotePath:
+    return pathlib.Path.home()
+
+  def touch(self, path: pth.RemotePathLike) -> None:
+    self.local_path(path).touch(exist_ok=True)
+
+  def mkdir(self,
+            path: pth.RemotePathLike,
+            parents: bool = True,
+            exist_ok: bool = True) -> None:
+    self.local_path(path).mkdir(parents=parents, exist_ok=exist_ok)
 
   def mkdtemp(self,
               prefix: Optional[str] = None,
-              dir: Optional[Union[str, pathlib.Path]] = None) -> pathlib.Path:
+              dir: Optional[pth.RemotePathLike] = None) -> pth.RemotePath:
     assert self.is_local, "Unsupported operation on remote platform"
-    return pathlib.Path(tempfile.mkdtemp(prefix=prefix, dir=dir))
+    return self.path(tempfile.mkdtemp(prefix=prefix, dir=dir))
 
   def mktemp(self,
              prefix: Optional[str] = None,
-             dir: Optional[Union[str, pathlib.Path]] = None) -> pathlib.Path:
+             dir: Optional[pth.RemotePathLike] = None) -> pth.RemotePath:
     assert self.is_local, "Unsupported operation on remote platform"
     fd, name = tempfile.mkstemp(prefix=prefix, dir=dir)
     os.close(fd)
-    return pathlib.Path(name)
+    return self.path(name)
 
-  def exists(self, path: pathlib.Path) -> bool:
-    assert self.is_local, "Unsupported operation on remote platform"
-    return path.exists()
+  def exists(self, path: pth.RemotePathLike) -> bool:
+    return self.local_path(path).exists()
 
-  def is_file(self, path: pathlib.Path) -> bool:
-    assert self.is_local, "Unsupported operation on remote platform"
-    return path.is_file()
+  def is_file(self, path: pth.RemotePathLike) -> bool:
+    return self.local_path(path).is_file()
 
-  def is_dir(self, path: pathlib.Path) -> bool:
-    assert self.is_local, "Unsupported operation on remote platform"
-    return path.is_dir()
+  def is_dir(self, path: pth.RemotePathLike) -> bool:
+    return self.local_path(path).is_dir()
+
+  def iterdir(
+      self, path: pth.RemotePathLike) -> Generator[pth.RemotePath, None, None]:
+    return self.local_path(path).iterdir()
+
+  def glob(self, path: pth.RemotePathLike,
+           pattern: str) -> Generator[pth.RemotePath, None, None]:
+    # TODO: support remotely
+    return self.local_path(path).glob(pattern)
+
+  def file_size(self, path: pth.RemotePathLike) -> int:
+    # TODO: support remotely
+    return self.local_path(path).stat().st_size
 
   def sh_stdout(self,
-                *args: Union[str, pathlib.Path],
+                *args: CmdArg,
                 shell: bool = False,
                 quiet: bool = False,
                 encoding: str = "utf-8",
@@ -408,7 +525,7 @@ class Platform(abc.ABC):
     return completed_process.stdout.decode(encoding)
 
   def popen(self,
-            *args: Union[str, pathlib.Path],
+            *args: CmdArg,
             shell: bool = False,
             stdout=None,
             stderr=None,
@@ -428,7 +545,7 @@ class Platform(abc.ABC):
         env=env)
 
   def sh(self,
-         *args: Union[str, pathlib.Path],
+         *args: CmdArg,
          shell: bool = False,
          capture_output: bool = False,
          stdout=None,
@@ -481,9 +598,8 @@ class Platform(abc.ABC):
   def is_thermal_throttled(self) -> bool:
     return self.get_relative_cpu_speed() < 1
 
-  def disk_usage(self, path: pathlib.Path) -> psutil._common.sdiskusage:
-    assert self.is_local, "Unsupported operation on remote platform"
-    return psutil.disk_usage(str(path))
+  def disk_usage(self, path: pth.RemotePathLike) -> psutil._common.sdiskusage:
+    return psutil.disk_usage(str(self.local_path(path)))
 
   def cpu_usage(self) -> float:
     assert self.is_local, "Unsupported operation on remote platform"
@@ -542,7 +658,7 @@ class Platform(abc.ABC):
         "bits": 64 if sys.maxsize > 2**32 else 32,
     }
 
-  def download_to(self, url: str, path: pathlib.Path) -> pathlib.Path:
+  def download_to(self, url: str, path: pth.LocalPath) -> pth.LocalPath:
     assert self.is_local, "Unsupported operation on remote platform"
     logging.debug("DOWNLOAD: %s\n       TO: %s", url, path)
     assert not path.exists(), f"Download destination {path} exists already."
@@ -554,10 +670,14 @@ class Platform(abc.ABC):
         f"Downloading {url} failed. Downloaded file {path} doesn't exist.")
     return path
 
-  def concat_files(self, inputs: Iterable[pathlib.Path],
-                   output: pathlib.Path) -> pathlib.Path:
+  def concat_files(self,
+                   inputs: Iterable[pth.LocalPath],
+                   output: pth.LocalPath,
+                   prefix: str = "") -> pth.LocalPath:
     assert self.is_local, "Unsupported operation on remote platform"
     with output.open("w", encoding="utf-8") as output_f:
+      if prefix:
+        output_f.write(prefix)
       for input_file in inputs:
         assert input_file.is_file()
         with input_file.open(encoding="utf-8") as input_f:
@@ -573,5 +693,10 @@ class Platform(abc.ABC):
         "Implementation is only available on MacOS for now")
 
   def check_autobrightness(self) -> bool:
+    raise NotImplementedError(
+        "Implementation is only available on MacOS for now")
+
+  def screenshot(self, result_path: pth.RemotePath) -> None:
+    # TODO: support screen coordinates
     raise NotImplementedError(
         "Implementation is only available on MacOS for now")

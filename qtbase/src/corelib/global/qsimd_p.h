@@ -99,14 +99,18 @@ QT_WARNING_DISABLE_INTEL(103)
 
 #define QT_COMPILER_SUPPORTS(x)     (QT_COMPILER_SUPPORTS_ ## x - 0)
 
-#if defined(Q_PROCESSOR_ARM)
+#if defined(Q_PROCESSOR_ARM_64)
 #  define QT_COMPILER_SUPPORTS_HERE(x)    ((__ARM_FEATURE_ ## x) || (__ ## x ## __) || QT_COMPILER_SUPPORTS(x))
-#  if defined(Q_CC_GNU)
+#  if defined(Q_CC_GNU) || defined(Q_CC_CLANG)
      /* GCC requires attributes for a function */
 #    define QT_FUNCTION_TARGET(x)  __attribute__((__target__(QT_FUNCTION_TARGET_STRING_ ## x)))
 #  else
 #    define QT_FUNCTION_TARGET(x)
 #  endif
+#elif defined(Q_PROCESSOR_ARM_32)
+   /* We do not support for runtime CPU feature switching on ARM32 */
+#  define QT_COMPILER_SUPPORTS_HERE(x)    ((__ARM_FEATURE_ ## x) || (__ ## x ## __))
+#  define QT_FUNCTION_TARGET(x)
 #elif defined(Q_PROCESSOR_MIPS)
 #  define QT_COMPILER_SUPPORTS_HERE(x)    (__ ## x ## __)
 #  define QT_FUNCTION_TARGET(x)
@@ -116,13 +120,16 @@ QT_WARNING_DISABLE_INTEL(103)
 #  if !defined(__MIPS_DSPR2__) && defined(__mips_dspr2) && defined(Q_PROCESSOR_MIPS_32)
 #    define __MIPS_DSPR2__
 #  endif
+#elif defined(Q_PROCESSOR_LOONGARCH)
+#  define QT_COMPILER_SUPPORTS_HERE(x)    QT_COMPILER_SUPPORTS(x)
+#  define QT_FUNCTION_TARGET(x)
 #elif defined(Q_PROCESSOR_X86)
-#  if defined(Q_CC_CLANG) && defined(Q_CC_MSVC)
+#  if defined(Q_CC_CLANG) && defined(Q_CC_MSVC) && (Q_CC_CLANG < 1900)
 #    define QT_COMPILER_SUPPORTS_HERE(x)    (__ ## x ## __)
 #  else
 #    define QT_COMPILER_SUPPORTS_HERE(x)    ((__ ## x ## __) || QT_COMPILER_SUPPORTS(x))
 #  endif
-#  if defined(Q_CC_GNU)
+#  if defined(Q_CC_GNU) || defined(Q_CC_CLANG)
      /* GCC requires attributes for a function */
 #    define QT_FUNCTION_TARGET(x)  __attribute__((__target__(QT_FUNCTION_TARGET_STRING_ ## x)))
 #  else
@@ -345,14 +352,17 @@ inline uint32x4_t qvsetq_n_u32(uint32_t a, uint32_t b, uint32_t c, uint32_t d)
 
 #if defined(Q_PROCESSOR_ARM_64)
 #if defined(Q_CC_CLANG)
-#define QT_FUNCTION_TARGET_STRING_AES        "crypto"
+#define QT_FUNCTION_TARGET_STRING_AES        "aes"
 #define QT_FUNCTION_TARGET_STRING_CRC32      "crc"
+#define QT_FUNCTION_TARGET_STRING_SVE        "sve"
 #elif defined(Q_CC_GNU)
 #define QT_FUNCTION_TARGET_STRING_AES        "+crypto"
 #define QT_FUNCTION_TARGET_STRING_CRC32      "+crc"
+#define QT_FUNCTION_TARGET_STRING_SVE        "+sve"
 #elif defined(Q_CC_MSVC)
 #define QT_FUNCTION_TARGET_STRING_AES
 #define QT_FUNCTION_TARGET_STRING_CRC32
+#define QT_FUNCTION_TARGET_STRING_SVE
 #endif
 #elif defined(Q_PROCESSOR_ARM_32)
 #if defined(Q_CC_CLANG)
@@ -372,9 +382,13 @@ enum CPUFeatures {
     CpuFeatureCRC32         = 4,
     CpuFeatureAES           = 8,
     CpuFeatureARM_CRYPTO    = CpuFeatureAES,
+    CpuFeatureSVE           = 16,
 #elif defined(Q_PROCESSOR_MIPS)
     CpuFeatureDSP           = 2,
     CpuFeatureDSPR2         = 4,
+#elif defined(Q_PROCESSOR_LOONGARCH)
+    CpuFeatureLSX           = 2,
+    CpuFeatureLASX          = 4,
 #endif
 };
 
@@ -391,15 +405,24 @@ static const uint64_t qCompilerCpuFeatures = 0
 #if defined __ARM_FEATURE_CRC32
         | CpuFeatureCRC32
 #endif
-#if defined __ARM_FEATURE_CRYPTO
+#if defined (__ARM_FEATURE_CRYPTO) || defined(__ARM_FEATURE_AES)
         | CpuFeatureAES
 #endif
 #endif // Q_OS_LINUX && Q_PROCESSOR_ARM64
+#if defined(__ARM_FEATURE_SVE) && defined(Q_PROCESSOR_ARM_64)
+        | CpuFeatureSVE
+#endif
 #if defined __mips_dsp
         | CpuFeatureDSP
 #endif
 #if defined __mips_dspr2
         | CpuFeatureDSPR2
+#endif
+#if defined __loongarch_sx
+        | CpuFeatureLSX
+#endif
+#if defined __loongarch_asx
+        | CpuFeatureLASX
 #endif
         ;
 #endif

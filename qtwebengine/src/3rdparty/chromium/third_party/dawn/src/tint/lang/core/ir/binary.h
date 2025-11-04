@@ -49,15 +49,23 @@ class Binary : public Castable<Binary, OperandInstruction<2, 1>> {
     /// The offset in Operands() for the RHS
     static constexpr size_t kRhsOperandOffset = 1;
 
+    /// The fixed number of results returned by binary instructions
+    static constexpr size_t kNumResults = 1;
+
+    /// The fixed number of operands expected for binary instructions
+    static constexpr size_t kNumOperands = 2;
+
     /// Constructor (no results, no operands)
-    Binary();
+    /// @param id the instruction id
+    explicit Binary(Id id);
 
     /// Constructor
+    /// @param id the instruction id
     /// @param result the result value
     /// @param op the binary operator
     /// @param lhs the lhs of the instruction
     /// @param rhs the rhs of the instruction
-    Binary(InstructionResult* result, BinaryOp op, Value* lhs, Value* rhs);
+    Binary(Id id, InstructionResult* result, BinaryOp op, Value* lhs, Value* rhs);
     ~Binary() override;
 
     /// @returns the binary operator
@@ -67,16 +75,16 @@ class Binary : public Castable<Binary, OperandInstruction<2, 1>> {
     void SetOp(BinaryOp op) { op_ = op; }
 
     /// @returns the left-hand-side value for the instruction
-    Value* LHS() { return operands_[kLhsOperandOffset]; }
+    Value* LHS() { return Operand(kLhsOperandOffset); }
 
     /// @returns the left-hand-side value for the instruction
-    const Value* LHS() const { return operands_[kLhsOperandOffset]; }
+    const Value* LHS() const { return Operand(kLhsOperandOffset); }
 
     /// @returns the right-hand-side value for the instruction
-    Value* RHS() { return operands_[kRhsOperandOffset]; }
+    Value* RHS() { return Operand(kRhsOperandOffset); }
 
     /// @returns the right-hand-side value for the instruction
-    const Value* RHS() const { return operands_[kRhsOperandOffset]; }
+    const Value* RHS() const { return Operand(kRhsOperandOffset); }
 
     /// @returns the friendly name for the instruction
     std::string FriendlyName() const override { return "binary"; }

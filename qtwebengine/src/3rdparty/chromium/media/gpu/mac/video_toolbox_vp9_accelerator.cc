@@ -9,13 +9,14 @@
 
 #include "base/notreached.h"
 #include "media/base/media_log.h"
+#include "media/base/video_types.h"
 #include "media/gpu/mac/vt_config_util.h"
 
 namespace media {
 
 VideoToolboxVP9Accelerator::VideoToolboxVP9Accelerator(
     std::unique_ptr<MediaLog> media_log,
-    absl::optional<gfx::HDRMetadata> hdr_metadata,
+    std::optional<gfx::HDRMetadata> hdr_metadata,
     DecodeCB decode_cb,
     OutputCB output_cb)
     : media_log_(std::move(media_log)),
@@ -89,10 +90,10 @@ bool VideoToolboxVP9Accelerator::ProcessFrame(scoped_refptr<VP9Picture> pic) {
   }
 
   if (format_changed && frame_data_) {
-    // TODO(crbug.com/1331597): Consider dropping existing frame data. Doing so
+    // TODO(crbug.com/40227557): Consider dropping existing frame data. Doing so
     // probably requires handling output callbacks ourselves, so that we don't
     // have to figure out which ones are duplicates.
-    // TODO(crbug.com/1331597): Add Reset() to VP9Accelerator for resetting
+    // TODO(crbug.com/40227557): Add Reset() to VP9Accelerator for resetting
     // superframe state after Flush().
     MEDIA_LOG(WARNING, media_log_.get()) << "Format change inside superframe";
   }
@@ -130,9 +131,9 @@ bool VideoToolboxVP9Accelerator::ProcessFormat(scoped_refptr<VP9Picture> pic,
   DVLOG(4) << __func__;
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
 
-  // TODO(crbug.com/1331597): Consider merging with CreateFormatExtensions() to
+  // TODO(crbug.com/40227557): Consider merging with CreateFormatExtensions() to
   // avoid converting back and forth.
-  VideoColorSpace color_space = pic->frame_hdr->GetColorSpace();
+  VideoColorSpace color_space = pic->get_colorspace();
 
   VideoCodecProfile profile;
   switch (pic->frame_hdr->profile) {
@@ -153,7 +154,7 @@ bool VideoToolboxVP9Accelerator::ProcessFormat(scoped_refptr<VP9Picture> pic,
       break;
   }
 
-  absl::optional<gfx::HDRMetadata> hdr_metadata = pic->hdr_metadata();
+  std::optional<gfx::HDRMetadata> hdr_metadata = pic->hdr_metadata();
   if (!hdr_metadata) {
     hdr_metadata = hdr_metadata_;
   }
@@ -170,7 +171,7 @@ bool VideoToolboxVP9Accelerator::ProcessFormat(scoped_refptr<VP9Picture> pic,
     base::apple::ScopedCFTypeRef<CFDictionaryRef> format_config =
         CreateFormatExtensions(kCMVideoCodecType_VP9, profile,
                                pic->frame_hdr->bit_depth, color_space,
-                               hdr_metadata, absl::nullopt);
+                               hdr_metadata, std::nullopt);
     if (!format_config) {
       MEDIA_LOG(ERROR, media_log_.get())
           << "Failed to create format extensions";
@@ -195,7 +196,8 @@ bool VideoToolboxVP9Accelerator::ProcessFormat(scoped_refptr<VP9Picture> pic,
 
     session_metadata_ = VideoToolboxDecompressionSessionMetadata{
         /*allow_software_decoding=*/false,
-        /*is_hbd=*/pic->frame_hdr->bit_depth > 8,
+        /*bit_depth=*/pic->frame_hdr->bit_depth,
+        /*chroma_sampling=*/VideoChromaSampling::k420,
         /*has_alpha=*/false,
         /*visible_rect=*/pic->visible_rect()};
 

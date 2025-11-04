@@ -4,7 +4,8 @@
 #include <QtGui/qpa/qplatformintegration.h>
 #include <QtGui/qpa/qplatformtheme.h>
 #include <QtGui/private/qguiapplication_p.h>
-#include <QtTest>
+#include <QTest>
+#include <QSignalSpy>
 #include <QtQml>
 #include <QtQuickTestUtils/private/qmlutils_p.h>
 #include <QtQuickTestUtils/private/visualtestutils_p.h>
@@ -79,10 +80,10 @@ private slots:
     void invalidDelegate();
     void panMenuBar_data();
     void panMenuBar();
+    void clearMenus();
 
 private:
     bool nativeMenuBarSupported = false;
-    bool popupWindowsSupported = false;
     QScopedPointer<QPointingDevice> touchScreen = QScopedPointer<QPointingDevice>(QTest::createTouchDevice());
 };
 
@@ -97,9 +98,6 @@ tst_qquickmenubar::tst_qquickmenubar()
     qputenv("QML_NO_TOUCH_COMPRESSION", "1");
     QQuickMenuBar mb;
     nativeMenuBarSupported = QQuickMenuBarPrivate::get(&mb)->useNativeMenuBar();
-#if defined(Q_OS_WINDOWS) || defined(Q_OS_MACOS)
-    popupWindowsSupported = QGuiApplicationPrivate::platformIntegration()->hasCapability(QPlatformIntegration::Capability::MultipleWindows);
-#endif
 }
 
 void tst_qquickmenubar::init()
@@ -137,7 +135,7 @@ void tst_qquickmenubar::mouse_data()
     QTest::addColumn<QQuickPopup::PopupType>("popupType");
     QTest::newRow("Popup.Item") << QQuickPopup::Item;
     // Uncomment when popup windows work 100% (QTBUG-128479)
-    // if (popupWindowsSupported)
+    // if (arePopupWindowsSupported())
     //     QTest::newRow("Popup.Window") << QQuickPopup::Window;
 }
 
@@ -363,7 +361,7 @@ void tst_qquickmenubar::keys_data()
     QTest::addColumn<QQuickPopup::PopupType>("popupType");
     QTest::newRow("Popup.Item") << QQuickPopup::Item;
     // Uncomment when popup windows work 100% (QTBUG-128479)
-    // if (popupWindowsSupported)
+    // if (arePopupWindowsSupported())
     //     QTest::newRow("Popup.Window") << QQuickPopup::Window;
 }
 
@@ -373,7 +371,7 @@ void tst_qquickmenubar::keys()
     QCoreApplication::setAttribute(Qt::AA_DontUseNativeMenuBar);
     QCoreApplication::setAttribute(Qt::AA_DontUseNativeMenuWindows);
 
-    SKIP_IF_NO_WINDOW_ACTIVATION
+    SKIP_IF_NO_WINDOW_ACTIVATION;
 
     QQmlApplicationEngine engine(testFileUrl("menubaritems.qml"));
 
@@ -570,7 +568,7 @@ void tst_qquickmenubar::mnemonics_data()
     QTest::addColumn<QQuickPopup::PopupType>("popupType");
     QTest::newRow("Popup.Item") << QQuickPopup::Item;
     // Uncomment when popup windows work 100% (QTBUG-128479)
-    // if (popupWindowsSupported)
+    // if (arePopupWindowsSupported())
     //     QTest::newRow("Popup.Window") << QQuickPopup::Window;
 }
 
@@ -580,7 +578,7 @@ void tst_qquickmenubar::mnemonics()
     QCoreApplication::setAttribute(Qt::AA_DontUseNativeMenuBar);
     QCoreApplication::setAttribute(Qt::AA_DontUseNativeMenuWindows);
 
-    SKIP_IF_NO_WINDOW_ACTIVATION
+    SKIP_IF_NO_WINDOW_ACTIVATION;
 
 #if defined(Q_OS_MACOS) or defined(Q_OS_WEBOS)
     QSKIP("Mnemonics are not used on this platform");
@@ -1098,7 +1096,7 @@ void tst_qquickmenubar::addRemoveExistingMenus_data()
     if (nativeMenuBarSupported)
         QTest::newRow("native, native") << true << true;
     // Uncomment when popup windows work 100%
-    // if (popupWindowsSupported)
+    // if (arePopupWindowsSupported())
     //     QTest::newRow("non-native, popup window") << false << true;
 }
 
@@ -1135,7 +1133,7 @@ void tst_qquickmenubar::checkHighlightWhenMenuDismissed_data()
     QTest::addColumn<QQuickPopup::PopupType>("popupType");
     QTest::newRow("Popup.Item") << QQuickPopup::Item;
     // Uncomment when popup windows work 100% (QTBUG-128479)
-    // if (popupWindowsSupported)
+    // if (arePopupWindowsSupported())
     //     QTest::newRow("Popup.Window") << QQuickPopup::Window;
 }
 
@@ -1207,7 +1205,7 @@ void tst_qquickmenubar::hoverAfterClosingWithEscape_data()
     QTest::addColumn<bool>("usePopupWindow");
     QTest::newRow("in-scene popup") << false;
     // Uncomment when popup windows work 100%
-    // if (popupWindowsSupported)
+    // if (arePopupWindowsSupported())
     //     QTest::newRow("popup window") << true;
 }
 
@@ -1306,14 +1304,15 @@ void tst_qquickmenubar::AA_DontUseNativeMenuBar()
     QQuickMenuBar *menuBar = window->property("menuBar").value<QQuickMenuBar *>();
     QVERIFY(menuBar);
     auto menuBarPrivate = QQuickMenuBarPrivate::get(menuBar);
-    QQuickItem *contents = window->property("contents").value<QQuickItem *>();
+    QQuickItem *contents = window->contentItem();
     QVERIFY(contents);
 
     QVERIFY(!menuBarPrivate->nativeHandle());
     QVERIFY(menuBar->isVisible());
     QVERIFY(menuBar->count() > 0);
     QVERIFY(menuBar->height() > 0);
-    QCOMPARE(contents->height(), window->height() - menuBar->height());
+    auto bottomSafeMargin = window->safeAreaMargins().bottom();
+    QCOMPARE(contents->height(), window->height() - menuBar->height() - bottomSafeMargin);
 
     // If the menu bar is not native, the menus should not be native either.
     // The main reason for this limitation is that a native menu typically
@@ -1510,8 +1509,13 @@ void tst_qquickmenubar::applicationWindow()
     QQuickMenuBar *menuBar = window->property("menuBar").value<QQuickMenuBar *>();
     QVERIFY(menuBar);
     auto menuBarPrivate = QQuickMenuBarPrivate::get(menuBar);
-    QQuickItem *contents = window->property("contents").value<QQuickItem *>();
+    QQuickItem *contents = window->contentItem();
     QVERIFY(contents);
+
+    // The window may report safe area margins when invisible, but they will not
+    // propagate to the Quick SafeArea until shown.
+    auto topSafeMargin = initiallyVisible ? window->safeAreaMargins().top() : 0;
+    auto bottomSafeMargin = initiallyVisible ? window->safeAreaMargins().bottom() : 0;
 
     for (const bool visible : {initiallyVisible, !initiallyVisible, initiallyVisible}) {
         menuBar->setVisible(visible);
@@ -1522,14 +1526,14 @@ void tst_qquickmenubar::applicationWindow()
         if (!visible) {
             QVERIFY(!menuBar->isVisible());
             QVERIFY(!nativeMenuBarVisible);
-            QCOMPARE(contents->height(), window->height());
+            QCOMPARE(contents->height(), window->height() - topSafeMargin - bottomSafeMargin);
         } else if (nativeMenuBarVisible) {
             QVERIFY(menuBar->isVisible());
-            QCOMPARE(contents->height(), window->height());
+            QCOMPARE(contents->height(), window->height() - topSafeMargin - bottomSafeMargin);
         } else {
             QVERIFY(menuBar->isVisible());
             QVERIFY(menuBar->height() > 0);
-            QCOMPARE(contents->height(), window->height() - menuBar->height());
+            QCOMPARE(contents->height(), window->height() - menuBar->height() - bottomSafeMargin);
         }
     }
 }
@@ -1558,17 +1562,18 @@ void tst_qquickmenubar::menubarAsHeader()
     QQuickMenuBar *menuBar = window->property("header").value<QQuickMenuBar *>();
     QVERIFY(menuBar);
     auto menuBarPrivate = QQuickMenuBarPrivate::get(menuBar);
-    QQuickItem *contents = window->property("contents").value<QQuickItem *>();
+    QQuickItem *contents = window->contentItem();
     QVERIFY(contents);
     QVERIFY(menuBar->count() > 0);
     QCOMPARE(menuBarPrivate->nativeHandle() != nullptr, native);
 
     if (menuBarPrivate->nativeHandle()) {
         // Using native menubar
-        QCOMPARE(contents->height(), window->height());
+        QCOMPARE(contents->height(), window->height() - window->safeAreaMargins().top());
     } else {
         // Not using native menubar
-        QCOMPARE(contents->height(), window->height() - menuBar->height());
+        auto bottomSafeMargin = window->safeAreaMargins().bottom();
+        QCOMPARE(contents->height(), window->height() - menuBar->height() - bottomSafeMargin);
     }
 }
 
@@ -1576,7 +1581,7 @@ void tst_qquickmenubar::menuPosition_data()
 {
     QTest::addColumn<QQuickPopup::PopupType>("popupType");
     QTest::newRow("Popup.Item") << QQuickPopup::Item;
-    if (popupWindowsSupported)
+    if (arePopupWindowsSupported())
         QTest::newRow("Popup.Window") << QQuickPopup::Window;
 }
 
@@ -1815,7 +1820,7 @@ void tst_qquickmenubar::panMenuBar_data()
     QTest::addColumn<bool>("usePopupWindow");
     QTest::newRow("in-scene popup") << false;
     // Uncomment when popup windows work 100%
-    // if (popupWindowsSupported)
+    // if (arePopupWindowsSupported())
     //     QTest::newRow("popup window") << true;
 }
 
@@ -1864,6 +1869,16 @@ void tst_qquickmenubar::panMenuBar()
     QVERIFY(menuBar_d->currentMenuOpen);
     QTRY_VERIFY(menuBarItem1->menu()->isOpened());
     QTRY_VERIFY(!menuBarItem0->menu()->isOpened());
+}
+
+void tst_qquickmenubar::clearMenus()
+{
+    QQmlEngine engine;
+    QQmlComponent c(&engine, testFileUrl("clearMenus.qml"));
+    QVERIFY2(c.isReady(), qPrintable(c.errorString()));
+    QScopedPointer<QObject> o(c.create());
+    QVERIFY(!o.isNull());
+    QTRY_COMPARE(o->property("v").toInt(), 2);
 }
 
 QTEST_QUICKCONTROLS_MAIN(tst_qquickmenubar)

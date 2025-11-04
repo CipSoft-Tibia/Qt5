@@ -44,8 +44,8 @@
     Then we get into actual 3D models. Ball model is the biggest one, as it contains
     the logic how the ball behaves, its animations, and hit detection. Let's look into
     the ball properties first. Ball uses a built-in sphere model, scaled based on
-    \c ballSize. We use DefaultMaterial with a \l {DefaultMaterial::diffuseMap}
-    {diffuseMap} and a \l {DefaultMaterial::normalMap} {normalMap} to create tennis
+    \c ballSize. We use PrincipledMaterial with a \l {PrincipledMaterial::baseColorMap}
+    {baseColorMap} and a \l {PrincipledMaterial::normalMap} {normalMap} to create tennis
     ball appearance.
 
     \image quickball-ball.png
@@ -84,8 +84,8 @@
     \snippet quickball/main.qml targets node
 
     Targets are nodes with a cube model and a text element for showing points.
-    Similarly to the ball model, we use \l {DefaultMaterial::diffuseMap} {diffuseMap}
-    and \l {DefaultMaterial::normalMap} {normalMap} textures to create cubes with
+    Similarly to the ball model, we use \l {PrincipledMaterial::baseColorMap} {baseColorMap}
+    and \l {PrincipledMaterial::normalMap} {normalMap} textures to create cubes with
     a Qt logo. When the hit is detected, we sequentially animate the cube away and
     show the points gained from this target. Once the animation is finished, we will
     dynamically remove the target node.

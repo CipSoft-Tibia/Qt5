@@ -6,6 +6,7 @@
 
 #include "base/containers/contains.h"
 #include "base/metrics/histogram_functions.h"
+#include "base/not_fatal_until.h"
 #include "base/observer_list.h"
 #include "components/global_media_controls/public/media_item_manager.h"
 #include "components/global_media_controls/public/media_item_ui.h"
@@ -97,7 +98,7 @@ void MediaSessionItemProducer::Session::MediaSessionActionsChanged(
 }
 
 void MediaSessionItemProducer::Session::MediaSessionPositionChanged(
-    const absl::optional<media_session::MediaPosition>& position) {
+    const std::optional<media_session::MediaPosition>& position) {
   OnSessionInteractedWith();
 }
 
@@ -205,7 +206,7 @@ MediaSessionItemProducer::MediaSessionItemProducer(
     mojo::Remote<media_session::mojom::MediaControllerManager>
         controller_manager_remote,
     MediaItemManager* item_manager,
-    absl::optional<base::UnguessableToken> source_id)
+    std::optional<base::UnguessableToken> source_id)
     : audio_focus_remote_(std::move(audio_focus_remote)),
       controller_manager_remote_(std::move(controller_manager_remote)),
       item_manager_(item_manager),
@@ -411,7 +412,7 @@ void MediaSessionItemProducer::LogMediaSessionActionButtonPressed(
 void MediaSessionItemProducer::SetAudioSinkId(const std::string& id,
                                               const std::string& sink_id) {
   auto it = sessions_.find(id);
-  DCHECK(it != sessions_.end());
+  CHECK(it != sessions_.end(), base::NotFatalUntil::M130);
   it->second.SetAudioSinkId(sink_id);
 }
 
@@ -427,7 +428,7 @@ MediaSessionItemProducer::RegisterIsAudioOutputDeviceSwitchingSupportedCallback(
     const std::string& id,
     base::RepeatingCallback<void(bool)> callback) {
   auto it = sessions_.find(id);
-  DCHECK(it != sessions_.end());
+  CHECK(it != sessions_.end(), base::NotFatalUntil::M130);
 
   return it->second.RegisterIsAudioDeviceSwitchingSupportedCallback(
       std::move(callback));
@@ -451,7 +452,7 @@ void MediaSessionItemProducer::OnSessionBecameActive(const std::string& id) {
   DCHECK(base::Contains(inactive_session_ids_, id));
 
   auto it = sessions_.find(id);
-  DCHECK(it != sessions_.end());
+  CHECK(it != sessions_.end(), base::NotFatalUntil::M130);
 
   inactive_session_ids_.erase(id);
 

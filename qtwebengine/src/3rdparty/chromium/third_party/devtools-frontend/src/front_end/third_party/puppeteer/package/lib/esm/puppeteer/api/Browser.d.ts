@@ -56,6 +56,10 @@ export interface WaitForTargetOptions {
      * @defaultValue `30_000`
      */
     timeout?: number;
+    /**
+     * A signal object that allows you to cancel a waitFor call.
+     */
+    signal?: AbortSignal;
 }
 /**
  * All the events a {@link Browser | browser instance} may emit.
@@ -75,7 +79,7 @@ export declare const enum BrowserEvent {
      * Emitted when the URL of a target changes. Contains a {@link Target}
      * instance.
      *
-     * @remarks Note that this includes target changes in incognito browser
+     * @remarks Note that this includes target changes in all browser
      * contexts.
      */
     TargetChanged = "targetchanged",
@@ -86,7 +90,7 @@ export declare const enum BrowserEvent {
      *
      * Contains a {@link Target} instance.
      *
-     * @remarks Note that this includes target creations in incognito browser
+     * @remarks Note that this includes target creations in all browser
      * contexts.
      */
     TargetCreated = "targetcreated",
@@ -94,7 +98,7 @@ export declare const enum BrowserEvent {
      * Emitted when a target is destroyed, for example when a page is closed.
      * Contains a {@link Target} instance.
      *
-     * @remarks Note that this includes target destructions in incognito browser
+     * @remarks Note that this includes target destructions in all browser
      * contexts.
      */
     TargetDestroyed = "targetdestroyed",
@@ -103,11 +107,6 @@ export declare const enum BrowserEvent {
      */
     TargetDiscovered = "targetdiscovered"
 }
-export { 
-/**
- * @deprecated Use {@link BrowserEvent}.
- */
-BrowserEvent as BrowserEmittedEvents, };
 /**
  * @public
  */
@@ -122,12 +121,19 @@ export interface BrowserEvents extends Record<EventType, unknown> {
     [BrowserEvent.TargetDiscovered]: Protocol.Target.TargetInfo;
 }
 /**
+ * @public
+ * @experimental
+ */
+export interface DebugInfo {
+    pendingProtocolErrors: Error[];
+}
+/**
  * {@link Browser} represents a browser instance that is either:
  *
  * - connected to via {@link Puppeteer.connect} or
  * - launched by {@link PuppeteerNode.launch}.
  *
- * {@link Browser} {@link EventEmitter | emits} various events which are
+ * {@link Browser} {@link EventEmitter.emit | emits} various events which are
  * documented in the {@link BrowserEvent} enum.
  *
  * @example Using a {@link Browser} to create a {@link Page}:
@@ -174,7 +180,7 @@ export declare abstract class Browser extends EventEmitter<BrowserEvents> {
      */
     abstract process(): ChildProcess | null;
     /**
-     * Creates a new incognito {@link BrowserContext | browser context}.
+     * Creates a new {@link BrowserContext | browser context}.
      *
      * This won't share cookies/cache with other {@link BrowserContext | browser contexts}.
      *
@@ -184,15 +190,15 @@ export declare abstract class Browser extends EventEmitter<BrowserEvents> {
      * import puppeteer from 'puppeteer';
      *
      * const browser = await puppeteer.launch();
-     * // Create a new incognito browser context.
-     * const context = await browser.createIncognitoBrowserContext();
+     * // Create a new browser context.
+     * const context = await browser.createBrowserContext();
      * // Create a new page in a pristine context.
      * const page = await context.newPage();
      * // Do stuff
      * await page.goto('https://example.com');
      * ```
      */
-    abstract createIncognitoBrowserContext(options?: BrowserContextOptions): Promise<BrowserContext>;
+    abstract createBrowserContext(options?: BrowserContextOptions): Promise<BrowserContext>;
     /**
      * Gets a list of open {@link BrowserContext | browser contexts}.
      *
@@ -300,7 +306,7 @@ export declare abstract class Browser extends EventEmitter<BrowserEvents> {
     /**
      * Whether Puppeteer is connected to this {@link Browser | browser}.
      *
-     * @deprecated Use {@link Browser.connected}.
+     * @deprecated Use {@link Browser | Browser.connected}.
      */
     isConnected(): boolean;
     /**
@@ -315,5 +321,16 @@ export declare abstract class Browser extends EventEmitter<BrowserEvents> {
      * @internal
      */
     abstract get protocol(): ProtocolType;
+    /**
+     * Get debug information from Puppeteer.
+     *
+     * @remarks
+     *
+     * Currently, includes pending protocol calls. In the future, we might add more info.
+     *
+     * @public
+     * @experimental
+     */
+    abstract get debugInfo(): DebugInfo;
 }
 //# sourceMappingURL=Browser.d.ts.map

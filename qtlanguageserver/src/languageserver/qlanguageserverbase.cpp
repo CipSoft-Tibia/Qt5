@@ -76,10 +76,11 @@ void ProtocolBase::defaultUndispatchedNotificationHandler(
         msg.append("Unknown notification with method ");
         msg.append(method);
     } else {
-        msg.append("There was not handler registered with register");
+        msg.append("There was no handler registered with register");
         msg.append(cppBaseName);
-        msg.append("NotificationHandler to handle notification with method ");
+        msg.append("NotificationHandler to handle the \"");
         msg.append(method);
+        msg.append("\" notification");
     }
     if (method.startsWith("$"))
         qCDebug(lspLog) << QString::fromUtf8(msg);

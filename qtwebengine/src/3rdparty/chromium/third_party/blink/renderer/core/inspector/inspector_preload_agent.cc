@@ -9,6 +9,10 @@
 #include "third_party/blink/renderer/core/frame/local_dom_window.h"
 #include "third_party/blink/renderer/core/html/html_anchor_element.h"
 #include "third_party/blink/renderer/core/inspector/identifiers_factory.h"
+#include "third_party/blink/renderer/core/inspector/inspected_frames.h"
+#include "third_party/blink/renderer/core/inspector/inspector_base_agent.h"
+#include "third_party/blink/renderer/core/inspector/protocol/preload.h"
+#include "third_party/blink/renderer/core/speculation_rules/document_speculation_rules.h"
 #include "third_party/blink/renderer/core/speculation_rules/speculation_candidate.h"
 #include "third_party/blink/renderer/core/speculation_rules/speculation_rule_set.h"
 
@@ -16,11 +20,11 @@ namespace blink {
 
 namespace {
 
-absl::optional<protocol::Preload::RuleSetErrorType> GetProtocolRuleSetErrorType(
+std::optional<protocol::Preload::RuleSetErrorType> GetProtocolRuleSetErrorType(
     SpeculationRuleSetErrorType error_type) {
   switch (error_type) {
     case SpeculationRuleSetErrorType::kNoError:
-      return absl::nullopt;
+      return std::nullopt;
     case SpeculationRuleSetErrorType::kSourceIsNotJsonObject:
       return protocol::Preload::RuleSetErrorTypeEnum::SourceIsNotJsonObject;
     case SpeculationRuleSetErrorType::kInvalidRulesSkipped:
@@ -90,17 +94,17 @@ protocol::Preload::SpeculationAction GetProtocolSpeculationAction(
     case mojom::blink::SpeculationAction::kPrefetch:
       return protocol::Preload::SpeculationActionEnum::Prefetch;
     case mojom::blink::SpeculationAction::kPrefetchWithSubresources:
-      NOTREACHED();
+      NOTREACHED_IN_MIGRATION();
       return String();
   }
 }
 
-absl::optional<protocol::Preload::SpeculationTargetHint>
+std::optional<protocol::Preload::SpeculationTargetHint>
 GetProtocolSpeculationTargetHint(
     mojom::blink::SpeculationTargetHint target_hint) {
   switch (target_hint) {
     case mojom::blink::SpeculationTargetHint::kNoHint:
-      return absl::nullopt;
+      return std::nullopt;
     case mojom::blink::SpeculationTargetHint::kSelf:
       return protocol::Preload::SpeculationTargetHintEnum::Self;
     case mojom::blink::SpeculationTargetHint::kBlank:
@@ -117,7 +121,7 @@ BuildProtocolPreloadingAttemptKey(const PreloadingAttemptKey& key,
           .setAction(GetProtocolSpeculationAction(key.action))
           .setUrl(key.url)
           .build();
-  absl::optional<String> target_hint_str =
+  std::optional<String> target_hint_str =
       GetProtocolSpeculationTargetHint(key.target_hint);
   if (target_hint_str) {
     preloading_attempt_key->setTargetHint(target_hint_str.value());
@@ -195,8 +199,9 @@ std::unique_ptr<protocol::Preload::RuleSet> BuildProtocolRuleSet(
 
 }  // namespace internal
 
-InspectorPreloadAgent::InspectorPreloadAgent()
-    : enabled_(&agent_state_, /*default_value=*/false) {}
+InspectorPreloadAgent::InspectorPreloadAgent(InspectedFrames* inspected_frames)
+    : enabled_(&agent_state_, /*default_value=*/false),
+      inspected_frames_(inspected_frames) {}
 
 InspectorPreloadAgent::~InspectorPreloadAgent() = default;
 
@@ -267,6 +272,11 @@ void InspectorPreloadAgent::SpeculationCandidatesUpdated(
       std::move(preloading_attempt_sources));
 }
 
+void InspectorPreloadAgent::Trace(Visitor* visitor) const {
+  InspectorBaseAgent<protocol::Preload::Metainfo>::Trace(visitor);
+  visitor->Trace(inspected_frames_);
+}
+
 protocol::Response InspectorPreloadAgent::enable() {
   EnableInternal();
   return protocol::Response::Success();
@@ -283,6 +293,31 @@ void InspectorPreloadAgent::EnableInternal() {
 
   enabled_.Set(true);
   instrumenting_agents_->AddInspectorPreloadAgent(this);
+
+  ReportRuleSetsAndSources();
+}
+
+void InspectorPreloadAgent::ReportRuleSetsAndSources() {
+  for (LocalFrame* inspected_frame : *inspected_frames_) {
+    Document* document = inspected_frame->GetDocument();
+    String loader_id = IdentifiersFactory::LoaderId(document->Loader());
+    auto* speculation_rules = DocumentSpeculationRules::FromIfExists(*document);
+    if (!speculation_rules) {
+      continue;
+    }
+
+    // Report existing rule sets.
+    for (const SpeculationRuleSet* speculation_rule_set :
+         speculation_rules->rule_sets()) {
+      GetFrontend()->ruleSetUpdated(
+          internal::BuildProtocolRuleSet(*speculation_rule_set, loader_id));
+    }
+
+    // Queues an update that will result in `SpeculationCandidatesUpdated` being
+    // called asynchronously and sources being reported to the frontend.
+    speculation_rules->QueueUpdateSpeculationCandidates(
+        /*force_style_update=*/true);
+  }
 }
 
 }  // namespace blink

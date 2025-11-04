@@ -4,6 +4,8 @@
 
 #include "components/web_package/web_bundle_parser_factory.h"
 
+#include <optional>
+
 #include "base/files/file.h"
 #include "base/files/file_path.h"
 #include "base/files/file_util.h"
@@ -17,7 +19,6 @@
 #include "mojo/public/cpp/bindings/remote.h"
 #include "testing/gmock/include/gmock/gmock.h"
 #include "testing/gtest/include/gtest/gtest.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 
 namespace web_package {
 
@@ -47,7 +48,7 @@ class WebBundleParserFactoryTest : public testing::Test {
 
   void GetParserForFile(mojo::PendingReceiver<mojom::WebBundleParser> receiver,
                         base::File file,
-                        const absl::optional<GURL>& base_url) {
+                        const std::optional<GURL>& base_url) {
     mojom::WebBundleParserFactory* factory = factory_.get();
     mojo::PendingRemote<mojom::BundleDataSource>
         file_data_source_pending_remote;
@@ -75,24 +76,21 @@ TEST_F(WebBundleParserFactoryTest, FileDataSource) {
   constexpr int64_t test_length = 16;
   ASSERT_LE(test_length, file_length);
   std::vector<uint8_t> first16b(test_length);
-  ASSERT_EQ(test_length, file.Read(0, reinterpret_cast<char*>(first16b.data()),
-                                   first16b.size()));
+  ASSERT_TRUE(file.ReadAndCheck(0, first16b));
   std::vector<uint8_t> last16b(test_length);
-  ASSERT_EQ(test_length,
-            file.Read(file_length - test_length,
-                      reinterpret_cast<char*>(last16b.data()), last16b.size()));
+  ASSERT_TRUE(file.ReadAndCheck(file_length - test_length, last16b));
 
   auto data_source = CreateFileDataSource(std::move(file));
 
   {
-    base::test::TestFuture<const absl::optional<std::vector<uint8_t>>&> future;
+    base::test::TestFuture<const std::optional<std::vector<uint8_t>>&> future;
     data_source->Read(/*offset=*/0, test_length, future.GetCallback());
     ASSERT_TRUE(future.Get());
     EXPECT_EQ(first16b, *future.Get());
   }
 
   {
-    base::test::TestFuture<const absl::optional<std::vector<uint8_t>>&> future;
+    base::test::TestFuture<const std::optional<std::vector<uint8_t>>&> future;
     data_source->Read(file_length - test_length, test_length,
                       future.GetCallback());
     ASSERT_TRUE(future.Get());
@@ -100,7 +98,7 @@ TEST_F(WebBundleParserFactoryTest, FileDataSource) {
   }
 
   {
-    base::test::TestFuture<const absl::optional<std::vector<uint8_t>>&> future;
+    base::test::TestFuture<const std::optional<std::vector<uint8_t>>&> future;
     data_source->Read(file_length - test_length, test_length + 1,
                       future.GetCallback());
     ASSERT_TRUE(future.Get());
@@ -108,7 +106,7 @@ TEST_F(WebBundleParserFactoryTest, FileDataSource) {
   }
 
   {
-    base::test::TestFuture<const absl::optional<std::vector<uint8_t>>&> future;
+    base::test::TestFuture<const std::optional<std::vector<uint8_t>>&> future;
     data_source->Read(file_length + 1, test_length, future.GetCallback());
     ASSERT_FALSE(future.Get());
   }
@@ -141,14 +139,14 @@ TEST_F(WebBundleParserFactoryTest, GetParserForFile) {
 
   mojo::Remote<mojom::WebBundleParser> parser;
   GetParserForFile(parser.BindNewPipeAndPassReceiver(), std::move(file),
-                   absl::nullopt);
+                   std::nullopt);
 
   mojom::BundleMetadataPtr metadata;
   {
     base::test::TestFuture<mojom::BundleMetadataPtr,
                            mojom::BundleMetadataParseErrorPtr>
         future;
-    parser->ParseMetadata(/*offset=*/absl::nullopt, future.GetCallback());
+    parser->ParseMetadata(/*offset=*/std::nullopt, future.GetCallback());
     metadata = std::get<0>(future.Take());
   }
   ASSERT_TRUE(metadata);
@@ -191,7 +189,7 @@ TEST_F(WebBundleParserFactoryTest, GetParserForFileWithRelativeUrls) {
     base::test::TestFuture<mojom::BundleMetadataPtr,
                            mojom::BundleMetadataParseErrorPtr>
         future;
-    parser->ParseMetadata(/*offset=*/absl::nullopt, future.GetCallback());
+    parser->ParseMetadata(/*offset=*/std::nullopt, future.GetCallback());
     metadata = std::get<0>(future.Take());
   }
   ASSERT_TRUE(metadata);
@@ -217,7 +215,7 @@ TEST_F(WebBundleParserFactoryTest, DeleteFile) {
 
   mojo::Remote<mojom::WebBundleParser> parser;
   GetParserForFile(parser.BindNewPipeAndPassReceiver(), std::move(file),
-                   absl::nullopt);
+                   std::nullopt);
 
   base::test::TestFuture<void> future;
   parser->Close(future.GetCallback());

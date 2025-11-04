@@ -36,13 +36,14 @@ export class NetworkPanelIndicator {
       return;
     }
     const manager = SDK.NetworkManager.MultitargetNetworkManager.instance();
-    manager.addEventListener(SDK.NetworkManager.MultitargetNetworkManager.Events.ConditionsChanged, updateVisibility);
+    manager.addEventListener(SDK.NetworkManager.MultitargetNetworkManager.Events.CONDITIONS_CHANGED, updateVisibility);
     manager.addEventListener(
-        SDK.NetworkManager.MultitargetNetworkManager.Events.BlockedPatternsChanged, updateVisibility);
-    manager.addEventListener(SDK.NetworkManager.MultitargetNetworkManager.Events.InterceptorsChanged, updateVisibility);
+        SDK.NetworkManager.MultitargetNetworkManager.Events.BLOCKED_PATTERNS_CHANGED, updateVisibility);
     manager.addEventListener(
-        SDK.NetworkManager.MultitargetNetworkManager.Events.AcceptedEncodingsChanged, updateVisibility);
-    Common.Settings.Settings.instance().moduleSetting('cacheDisabled').addChangeListener(updateVisibility, this);
+        SDK.NetworkManager.MultitargetNetworkManager.Events.INTERCEPTORS_CHANGED, updateVisibility);
+    manager.addEventListener(
+        SDK.NetworkManager.MultitargetNetworkManager.Events.ACCEPTED_ENCODINGS_CHANGED, updateVisibility);
+    Common.Settings.Settings.instance().moduleSetting('cache-disabled').addChangeListener(updateVisibility, this);
 
     updateVisibility();
 

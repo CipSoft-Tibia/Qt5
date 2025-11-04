@@ -5,7 +5,7 @@
  *   FreeType glyph image formats and default raster interface
  *   (specification).
  *
- * Copyright (C) 1996-2023 by
+ * Copyright (C) 1996-2024 by
  * David Turner, Robert Wilhelm, and Werner Lemberg.
  *
  * This file is part of the FreeType project, and may only be used,
@@ -20,6 +20,11 @@
    *
    * Note: A 'raster' is simply a scan-line converter, used to render
    *       `FT_Outline`s into `FT_Bitmap`s.
+   *
+   * Note: This file can be used for `STANDALONE_` compilation of raster
+   *       (B/W) and smooth (anti-aliased) renderers.  Therefore, it must
+   *       rely on standard variable types only instead of aliases in
+   *       `fttypes.h`.
    *
    */
 
@@ -262,6 +267,10 @@ FT_BEGIN_HEADER
    *   *logical* one.  For example, if @FT_Pixel_Mode is set to
    *   `FT_PIXEL_MODE_LCD`, the logical width is a just a third of the
    *   physical one.
+   *
+   *   An empty bitmap with a NULL `buffer` is valid, with `rows` and/or
+   *   `pitch` also set to 0.  Such bitmaps might be produced while rendering
+   *   empty or degenerate outlines.
    */
   typedef struct  FT_Bitmap_
   {
@@ -341,14 +350,14 @@ FT_BEGIN_HEADER
    */
   typedef struct  FT_Outline_
   {
-    short       n_contours;      /* number of contours in glyph        */
-    short       n_points;        /* number of points in the glyph      */
+    unsigned short   n_contours;  /* number of contours in glyph        */
+    unsigned short   n_points;    /* number of points in the glyph      */
 
-    FT_Vector*  points;          /* the outline's points               */
-    char*       tags;            /* the points flags                   */
-    short*      contours;        /* the contour end points             */
+    FT_Vector*       points;      /* the outline's points               */
+    unsigned char*   tags;        /* the points flags                   */
+    unsigned short*  contours;    /* the contour end points             */
 
-    int         flags;           /* outline masks                      */
+    int              flags;       /* outline masks                      */
 
   } FT_Outline;
 
@@ -356,8 +365,8 @@ FT_BEGIN_HEADER
 
   /* Following limits must be consistent with */
   /* FT_Outline.{n_contours,n_points}         */
-#define FT_OUTLINE_CONTOURS_MAX  SHRT_MAX
-#define FT_OUTLINE_POINTS_MAX    SHRT_MAX
+#define FT_OUTLINE_CONTOURS_MAX  USHRT_MAX
+#define FT_OUTLINE_POINTS_MAX    USHRT_MAX
 
 
   /**************************************************************************

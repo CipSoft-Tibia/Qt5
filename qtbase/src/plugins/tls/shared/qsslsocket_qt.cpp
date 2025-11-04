@@ -1,5 +1,6 @@
 // Copyright (C) 2014 Jeremy Lainé <jeremy.laine@m4x.org>
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:cryptography
 
 #include "qasn1element_p.h"
 
@@ -134,7 +135,7 @@ static QByteArray _q_PKCS12_certBag(const QSslCertificate &cert)
     return ba;
 }
 
-static QAsn1Element _q_PKCS12_key(const QSslKey &key)
+QAsn1Element _q_PKCS12_key(const QSslKey &key)
 {
     Q_ASSERT(key.algorithm() == QSsl::Rsa || key.algorithm() == QSsl::Dsa);
 

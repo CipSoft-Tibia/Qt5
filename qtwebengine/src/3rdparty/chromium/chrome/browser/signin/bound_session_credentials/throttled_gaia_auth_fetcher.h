@@ -5,6 +5,8 @@
 #ifndef CHROME_BROWSER_SIGNIN_BOUND_SESSION_CREDENTIALS_THROTTLED_GAIA_AUTH_FETCHER_H_
 #define CHROME_BROWSER_SIGNIN_BOUND_SESSION_CREDENTIALS_THROTTLED_GAIA_AUTH_FETCHER_H_
 
+#include <vector>
+
 #include "base/memory/scoped_refptr.h"
 #include "base/memory/weak_ptr.h"
 #include "chrome/common/bound_session_request_throttled_handler.h"
@@ -27,7 +29,7 @@ class ThrottledGaiaAuthFetcher : public GaiaAuthFetcher {
       GaiaAuthConsumer* consumer,
       gaia::GaiaSource source,
       scoped_refptr<network::SharedURLLoaderFactory> url_loader_factory,
-      chrome::mojom::BoundSessionThrottlerParamsPtr
+      std::vector<chrome::mojom::BoundSessionThrottlerParamsPtr>
           bound_session_throttler_params,
       std::unique_ptr<BoundSessionRequestThrottledHandler>
           bound_session_request_throttled_handler);
@@ -50,9 +52,10 @@ class ThrottledGaiaAuthFetcher : public GaiaAuthFetcher {
       const GURL& gaia_gurl,
       network::mojom::CredentialsMode credentials_mode,
       const net::NetworkTrafficAnnotationTag& traffic_annotation,
-      BoundSessionRequestThrottledHandler::UnblockAction unblock_action);
+      BoundSessionRequestThrottledHandler::UnblockAction unblock_action,
+      chrome::mojom::ResumeBlockedRequestsTrigger resume_trigger);
 
-  const chrome::mojom::BoundSessionThrottlerParamsPtr
+  const std::vector<chrome::mojom::BoundSessionThrottlerParamsPtr>
       bound_session_throttler_params_;
   const std::unique_ptr<BoundSessionRequestThrottledHandler>
       bound_session_request_throttled_handler_;

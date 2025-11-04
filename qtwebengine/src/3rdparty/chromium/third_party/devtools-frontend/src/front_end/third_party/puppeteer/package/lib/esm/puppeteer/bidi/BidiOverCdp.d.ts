@@ -8,7 +8,5 @@ import { BidiConnection } from './Connection.js';
 /**
  * @internal
  */
-export declare function connectBidiOverCdp(cdp: CdpConnection, options: {
-    acceptInsecureCerts: boolean;
-}): Promise<BidiConnection>;
+export declare function connectBidiOverCdp(cdp: CdpConnection): Promise<BidiConnection>;
 //# sourceMappingURL=BidiOverCdp.d.ts.map

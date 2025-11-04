@@ -5,15 +5,16 @@
 #ifndef COMPONENTS_METRICS_METRICS_LOGS_EVENT_MANAGER_H_
 #define COMPONENTS_METRICS_METRICS_LOGS_EVENT_MANAGER_H_
 
+#include <optional>
+#include <string_view>
+
 #include "base/memory/raw_ptr.h"
 #include "base/observer_list.h"
-#include "base/strings/string_piece.h"
 #include "components/metrics/metrics_log.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 
 namespace metrics {
 
-// TODO(crbug/1363747): Add unit tests for the various calls to the notify
+// TODO(crbug.com/40238818): Add unit tests for the various calls to the notify
 // functions in ReportingService and UnsentLogStore.
 class MetricsLogsEventManager {
  public:
@@ -57,14 +58,14 @@ class MetricsLogsEventManager {
 
   class Observer : public base::CheckedObserver {
    public:
-    virtual void OnLogCreated(base::StringPiece log_hash,
-                              base::StringPiece log_data,
-                              base::StringPiece log_timestamp,
+    virtual void OnLogCreated(std::string_view log_hash,
+                              std::string_view log_data,
+                              std::string_view log_timestamp,
                               CreateReason reason) = 0;
     virtual void OnLogEvent(MetricsLogsEventManager::LogEvent event,
-                            base::StringPiece log_hash,
-                            base::StringPiece message) = 0;
-    virtual void OnLogType(absl::optional<MetricsLog::LogType> log_type) {}
+                            std::string_view log_hash,
+                            std::string_view message) = 0;
+    virtual void OnLogType(std::optional<MetricsLog::LogType> log_type) {}
 
    protected:
     Observer() = default;
@@ -109,9 +110,9 @@ class MetricsLogsEventManager {
   // NotifyLogEvent(). |log_data| is the compressed serialized log protobuf
   // (see UnsentLogStore::LogInfo for more details on the compression).
   // |log_timestamp| is the time at which the log was closed.
-  void NotifyLogCreated(base::StringPiece log_hash,
-                        base::StringPiece log_data,
-                        base::StringPiece log_timestamp,
+  void NotifyLogCreated(std::string_view log_hash,
+                        std::string_view log_data,
+                        std::string_view log_timestamp,
                         CreateReason reason);
 
   // Notifies observers that an event |event| occurred on the log associated
@@ -120,8 +121,8 @@ class MetricsLogsEventManager {
   // discarded (e.g., log is ill-formed). For |kLogTrimmed|, |message| is the
   // reason why the log was trimmed (e.g., log is too large).
   void NotifyLogEvent(LogEvent event,
-                      base::StringPiece log_hash,
-                      base::StringPiece message = "");
+                      std::string_view log_hash,
+                      std::string_view message = "");
 
   // Notifies observers that logs that are created after this function is called
   // are of the type |log_type|. This should only be used in UMA. This info is
@@ -130,7 +131,7 @@ class MetricsLogsEventManager {
   // different metrics collection services (e.g., UKM).
   // Note: Typically, this should not be called directly. Consider using
   // ScopedNotifyLogType.
-  void NotifyLogType(absl::optional<MetricsLog::LogType> log_type);
+  void NotifyLogType(std::optional<MetricsLog::LogType> log_type);
 
  private:
   base::ObserverList<Observer> observers_;

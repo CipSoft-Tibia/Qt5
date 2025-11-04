@@ -6,14 +6,15 @@
 
 #include <algorithm>
 #include <memory>
+#include <optional>
 #include <string>
+#include <string_view>
 
 #include "base/base64.h"
 #include "base/check.h"
 #include "base/strings/string_number_conversions.h"
 #include "base/values.h"
 #include "components/viz/service/debugger/viz_debugger.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "third_party/skia/include/codec/SkCodec.h"
 #include "third_party/skia/include/codec/SkPngDecoder.h"
 #include "ui/gfx/geometry/rect_f.h"
@@ -103,9 +104,8 @@ void VisualDebuggerTestBase::GetFrameData(bool clear_cache) {
   size_t const kNumLogSubmission = static_cast<size_t>(
       std::min(GetInternal()->GetLogsTailIdx(), GetInternal()->GetLogsSize()));
 
-  absl::optional<base::Value> maybe_global_dict_val =
-      GetInternal()->FrameAsJson(
-          frame_counter_, gfx::Size(window_x_, window_y_), base::TimeTicks());
+  std::optional<base::Value> maybe_global_dict_val = GetInternal()->FrameAsJson(
+      frame_counter_, gfx::Size(window_x_, window_y_), base::TimeTicks());
   EXPECT_TRUE(maybe_global_dict_val);
   EXPECT_TRUE(maybe_global_dict_val->is_dict());
   const base::Value::Dict& global_dict = maybe_global_dict_val->GetDict();
@@ -195,7 +195,7 @@ void VisualDebuggerTestBase::GetFrameData(bool clear_cache) {
       uv_size_h = (*list_uv_size)[1].GetIfDouble().value_or(1.0f);
     }
 
-    const absl::optional<int> buffer_id = local_dict.FindInt("buff_id");
+    const std::optional<int> buffer_id = local_dict.FindInt("buff_id");
     const std::string* text_str = local_dict.FindString("text");
     VizDebuggerInternal::DrawCall draw_call(
         draw_index, source_index, thread_id, option, gfx::SizeF(size_x, size_y),
@@ -218,9 +218,9 @@ void VisualDebuggerTestBase::GetFrameData(bool clear_cache) {
       // without extra metadata about the image.
       constexpr const char* kDataUriPrefix = "data:image/png;base64,";
       EXPECT_TRUE(image_data_uri.starts_with(kDataUriPrefix));
-      base::StringPiece image_base64_encoded =
-          base::StringPiece(image_data_uri).substr(strlen(kDataUriPrefix));
-      const absl::optional<std::vector<uint8_t>> image_bytes =
+      std::string_view image_base64_encoded =
+          std::string_view(image_data_uri).substr(strlen(kDataUriPrefix));
+      const std::optional<std::vector<uint8_t>> image_bytes =
           base::Base64Decode(image_base64_encoded);
       EXPECT_TRUE(image_bytes.has_value());
 

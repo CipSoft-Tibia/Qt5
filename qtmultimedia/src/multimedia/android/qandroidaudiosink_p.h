@@ -29,7 +29,7 @@ class QAndroidAudioSink : public QPlatformAudioSink
     Q_OBJECT
 
 public:
-    QAndroidAudioSink(const QByteArray &device, QObject *parent);
+    QAndroidAudioSink(QAudioDevice device, const QAudioFormat &, QObject *parent);
     ~QAndroidAudioSink();
 
     void start(QIODevice *device) override;
@@ -42,13 +42,9 @@ public:
     void setBufferSize(qsizetype value) override;
     qsizetype bufferSize() const override;
     qint64 processedUSecs() const override;
-    QAudio::Error error() const override;
     QAudio::State state() const override;
-    void setFormat(const QAudioFormat &format);
-    QAudioFormat format() const override;
 
-    void setVolume(qreal volume) override;
-    qreal volume() const override;
+    void setVolume(float volume) override;
 
 private:
     friend class SLIODevicePrivate;
@@ -68,16 +64,13 @@ private:
     qint64 writeData(const char *data, qint64 len);
 
     void setState(QAudio::State state);
-    void setError(QAudio::Error error);
 
-    SLmillibel adjustVolume(qreal vol);
+    SLmillibel adjustVolume(float vol);
 
     static constexpr int BufferCount = 4;
 
-    QByteArray m_deviceName;
     QAudio::State m_state = QAudio::StoppedState;
     QAudio::State m_suspendedInState = QAudio::SuspendedState;
-    QAudio::Error m_error = QAudio::NoError;
     SLObjectItf m_outputMixObject = nullptr;
     SLObjectItf m_playerObject = nullptr;
     SLPlayItf m_playItf = nullptr;
@@ -85,7 +78,6 @@ private:
     SLBufferQueueItf m_bufferQueueItf = nullptr;
     QIODevice *m_audioSource = nullptr;
     char *m_buffers = nullptr;
-    qreal m_volume = 1.0;
     bool m_pullMode = false;
     int m_nextBuffer = 0;
     int m_bufferSize = 0;
@@ -97,7 +89,6 @@ private:
     bool m_startRequiresInit = true;
 
     qint32 m_streamType;
-    QAudioFormat m_format;
 };
 
 class SLIODevicePrivate : public QIODevice

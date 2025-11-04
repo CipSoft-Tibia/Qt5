@@ -59,32 +59,30 @@ class QtActivityDelegate extends QtActivityDelegateBase
 
     void registerBackends()
     {
-        if (!m_backendsRegistered && !BackendRegister.isNull()) {
-            m_backendsRegistered = true;
-            BackendRegister.registerBackend(QtWindowInterface.class,
-                                            (QtWindowInterface)QtActivityDelegate.this);
-            BackendRegister.registerBackend(QtAccessibilityInterface.class,
-                                            (QtAccessibilityInterface)QtActivityDelegate.this);
-            BackendRegister.registerBackend(QtMenuInterface.class,
-                                            (QtMenuInterface)QtActivityDelegate.this);
-            BackendRegister.registerBackend(QtInputInterface.class,
-                                            (QtInputInterface)m_inputDelegate);
-        }
+        if (m_backendsRegistered || BackendRegister.isNull())
+            return;
+
+        m_backendsRegistered = true;
+        BackendRegister.registerBackend(QtWindowInterface.class, QtActivityDelegate.this);
+        BackendRegister.registerBackend(QtAccessibilityInterface.class, QtActivityDelegate.this);
+        BackendRegister.registerBackend(QtMenuInterface.class, QtActivityDelegate.this);
+        BackendRegister.registerBackend(QtInputInterface.class, m_inputDelegate);
     }
 
     void unregisterBackends()
     {
-        if (m_backendsRegistered) {
-            m_backendsRegistered = false;
+        if (!m_backendsRegistered)
+            return;
 
-            if (BackendRegister.isNull())
-                return;
+        m_backendsRegistered = false;
 
-            BackendRegister.unregisterBackend(QtWindowInterface.class);
-            BackendRegister.unregisterBackend(QtAccessibilityInterface.class);
-            BackendRegister.unregisterBackend(QtMenuInterface.class);
-            BackendRegister.unregisterBackend(QtInputInterface.class);
-        }
+        if (BackendRegister.isNull())
+            return;
+
+        BackendRegister.unregisterBackend(QtWindowInterface.class);
+        BackendRegister.unregisterBackend(QtAccessibilityInterface.class);
+        BackendRegister.unregisterBackend(QtMenuInterface.class);
+        BackendRegister.unregisterBackend(QtInputInterface.class);
     }
 
     @Override
@@ -97,7 +95,7 @@ class QtActivityDelegate extends QtActivityDelegateBase
             if (m_layout != null) {
                 m_displayManager.setSystemUiVisibility(isFullScreen, expandedToCutout);
                 m_layout.requestLayout();
-                QtNative.updateWindow();
+                QtWindow.updateWindows();
             }
         });
     }
@@ -278,6 +276,11 @@ class QtActivityDelegate extends QtActivityDelegateBase
         m_accessibilityDelegate.notifyValueChanged(viewId, value);
     }
 
+    @Override public void notifyDescriptionOrNameChanged(int viewId, String value)
+    {
+        m_accessibilityDelegate.notifyDescriptionOrNameChanged(viewId, value);
+    }
+
     @Override
     public void notifyScrolledEvent(int viewId)
     {
@@ -293,23 +296,29 @@ class QtActivityDelegate extends QtActivityDelegateBase
         });
     }
 
+    @Override
+    public void notifyAnnouncementEvent(int viewId, String message)
+    {
+        m_accessibilityDelegate.notifyAnnouncementEvent(viewId, message);
+    }
+
     // QtMenuInterface implementation begin
     @Override
     public void resetOptionsMenu()
     {
-        QtNative.runAction(() -> m_activity.invalidateOptionsMenu());
+        QtNative.runAction(m_activity::invalidateOptionsMenu);
     }
 
     @Override
     public void openOptionsMenu()
     {
-        QtNative.runAction(() -> m_activity.openOptionsMenu());
+        QtNative.runAction(m_activity::openOptionsMenu);
     }
 
     @Override
     public void closeContextMenu()
     {
-        QtNative.runAction(() -> m_activity.closeContextMenu());
+        QtNative.runAction(m_activity::closeContextMenu);
     }
 
     @Override
@@ -339,8 +348,7 @@ class QtActivityDelegate extends QtActivityDelegateBase
                         focusedEditText.getViewTreeObserver().removeOnGlobalLayoutListener(this);
                         PopupMenu popup = new PopupMenu(m_activity, focusedEditText);
                         QtActivityDelegate.this.onCreatePopupMenu(popup.getMenu());
-                        popup.setOnMenuItemClickListener(menuItem ->
-                                m_activity.onContextItemSelected(menuItem));
+                        popup.setOnMenuItemClickListener(m_activity::onContextItemSelected);
                         popup.setOnDismissListener(popupMenu ->
                                 m_activity.onContextMenuClosed(popupMenu.getMenu()));
                         popup.show();
@@ -378,7 +386,7 @@ class QtActivityDelegate extends QtActivityDelegateBase
             if (m_layout == null)
                 return;
 
-            if (m_topLevelWindows.size() == 0) {
+            if (m_topLevelWindows.isEmpty()) {
                 if (m_dummyView != null) {
                     m_layout.removeView(m_dummyView);
                     m_dummyView = null;
@@ -399,6 +407,7 @@ class QtActivityDelegate extends QtActivityDelegateBase
         QtNative.runAction(()-> {
             if (m_topLevelWindows.containsKey(id)) {
                 QtWindow window = m_topLevelWindows.remove(id);
+                window.setOnApplyWindowInsetsListener(null); // Set in QtWindow for safe margins
                 if (m_topLevelWindows.isEmpty()) {
                    // Keep last frame in stack until it is replaced to get correct
                    // shutdown transition

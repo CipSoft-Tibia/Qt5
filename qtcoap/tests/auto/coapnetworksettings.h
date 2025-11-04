@@ -151,7 +151,7 @@ bool waitForHost(const QUrl &url, QtCoap::SecurityMode security = QtCoap::Securi
         if (security != QtCoap::SecurityMode::NoSecurity)
             client.setSecurityConfiguration(createConfiguration(security));
 
-        QSignalSpy spyClientFinished(&client, SIGNAL(finished(QCoapReply *)));
+        QSignalSpy spyClientFinished(&client, SIGNAL(finished(QCoapReply*)));
         client.get(url);
 
         spyClientFinished.wait(1000);

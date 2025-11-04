@@ -1,0 +1,1 @@
+.*/lupdate/testdata/good/parseqml3/main.qml:17: qsTr\(\) template strings with arguments are not supported for translation.

@@ -37,7 +37,7 @@ export class ServiceWorkerCacheTreeElement extends ExpandableApplicationPanelTre
   private storageBucket?: Protocol.Storage.StorageBucket;
 
   constructor(resourcesPanel: ResourcesPanel, storageBucket?: Protocol.Storage.StorageBucket) {
-    super(resourcesPanel, i18nString(UIStrings.cacheStorage), 'CacheStorage');
+    super(resourcesPanel, i18nString(UIStrings.cacheStorage), 'cache-storage');
     const icon = IconButton.Icon.create('database');
     this.setLink(
         'https://developer.chrome.com/docs/devtools/storage/cache/?utm_source=devtools' as
@@ -52,9 +52,9 @@ export class ServiceWorkerCacheTreeElement extends ExpandableApplicationPanelTre
     this.swCacheModels.clear();
     this.swCacheTreeElements.clear();
     SDK.TargetManager.TargetManager.instance().observeModels(SDK.ServiceWorkerCacheModel.ServiceWorkerCacheModel, {
-      modelAdded: (model: SDK.ServiceWorkerCacheModel.ServiceWorkerCacheModel): void =>
+      modelAdded: (model: SDK.ServiceWorkerCacheModel.ServiceWorkerCacheModel) =>
           this.serviceWorkerCacheModelAdded(model),
-      modelRemoved: (model: SDK.ServiceWorkerCacheModel.ServiceWorkerCacheModel): void =>
+      modelRemoved: (model: SDK.ServiceWorkerCacheModel.ServiceWorkerCacheModel) =>
           this.serviceWorkerCacheModelRemoved(model),
     });
   }
@@ -66,7 +66,8 @@ export class ServiceWorkerCacheTreeElement extends ExpandableApplicationPanelTre
 
   private handleContextMenuEvent(event: MouseEvent): void {
     const contextMenu = new UI.ContextMenu.ContextMenu(event);
-    contextMenu.defaultSection().appendItem(i18nString(UIStrings.refreshCaches), this.refreshCaches.bind(this));
+    contextMenu.defaultSection().appendItem(
+        i18nString(UIStrings.refreshCaches), this.refreshCaches.bind(this), {jslogContext: 'refresh-caches'});
     void contextMenu.show();
   }
 
@@ -82,16 +83,16 @@ export class ServiceWorkerCacheTreeElement extends ExpandableApplicationPanelTre
     for (const cache of model.caches()) {
       this.addCache(model, cache);
     }
-    model.addEventListener(SDK.ServiceWorkerCacheModel.Events.CacheAdded, this.cacheAdded, this);
-    model.addEventListener(SDK.ServiceWorkerCacheModel.Events.CacheRemoved, this.cacheRemoved, this);
+    model.addEventListener(SDK.ServiceWorkerCacheModel.Events.CACHE_ADDED, this.cacheAdded, this);
+    model.addEventListener(SDK.ServiceWorkerCacheModel.Events.CACHE_REMOVED, this.cacheRemoved, this);
   }
 
   private serviceWorkerCacheModelRemoved(model: SDK.ServiceWorkerCacheModel.ServiceWorkerCacheModel): void {
     for (const cache of model.caches()) {
       this.removeCache(model, cache);
     }
-    model.removeEventListener(SDK.ServiceWorkerCacheModel.Events.CacheAdded, this.cacheAdded, this);
-    model.removeEventListener(SDK.ServiceWorkerCacheModel.Events.CacheRemoved, this.cacheRemoved, this);
+    model.removeEventListener(SDK.ServiceWorkerCacheModel.Events.CACHE_ADDED, this.cacheAdded, this);
+    model.removeEventListener(SDK.ServiceWorkerCacheModel.Events.CACHE_REMOVED, this.cacheRemoved, this);
     this.swCacheModels.delete(model);
   }
 
@@ -162,7 +163,7 @@ export class SWCacheTreeElement extends ApplicationPanelTreeElement {
     } else {
       cacheName = cache.cacheName;
     }
-    super(resourcesPanel, cacheName, false);
+    super(resourcesPanel, cacheName, false, 'cache-storage-instance');
     this.model = model;
     this.cache = cache;
     this.view = null;
@@ -182,7 +183,8 @@ export class SWCacheTreeElement extends ApplicationPanelTreeElement {
 
   private handleContextMenuEvent(event: MouseEvent): void {
     const contextMenu = new UI.ContextMenu.ContextMenu(event);
-    contextMenu.defaultSection().appendItem(i18nString(UIStrings.delete), this.clearCache.bind(this));
+    contextMenu.defaultSection().appendItem(
+        i18nString(UIStrings.delete), this.clearCache.bind(this), {jslogContext: 'delete'});
     void contextMenu.show();
   }
 
@@ -204,7 +206,7 @@ export class SWCacheTreeElement extends ApplicationPanelTreeElement {
     }
 
     this.showView(this.view);
-    Host.userMetrics.panelShown(Host.UserMetrics.PanelCodes[Host.UserMetrics.PanelCodes.service_worker_cache]);
+    Host.userMetrics.panelShown('service-worker-cache');
     return false;
   }
 

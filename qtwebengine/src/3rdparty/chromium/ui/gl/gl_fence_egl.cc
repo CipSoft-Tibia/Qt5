@@ -8,6 +8,8 @@
 #include "ui/gl/egl_util.h"
 #include "ui/gl/gl_bindings.h"
 #include "ui/gl/gl_bindings_autogen_gl.h"
+#include "ui/gl/gl_context.h"
+#include "ui/gl/gl_display.h"
 #include "ui/gl/gl_surface_egl.h"
 
 namespace gl {
@@ -21,7 +23,16 @@ GLFenceEGL::GLFenceEGL() = default;
 
 // static
 std::unique_ptr<GLFenceEGL> GLFenceEGL::Create() {
-  auto fence = Create(EGL_SYNC_FENCE_KHR, nullptr);
+  // Prefer EGL_ANGLE_global_fence_sync as it guarantees synchronization with
+  // past submissions from all contexts, rather than the current context.
+  gl::GLContext* context = gl::GLContext::GetCurrent();
+  gl::GLDisplayEGL* display = context ? context->GetGLDisplayEGL() : nullptr;
+  const EGLenum syncType =
+      display && display->ext->b_EGL_ANGLE_global_fence_sync
+          ? EGL_SYNC_GLOBAL_FENCE_ANGLE
+          : EGL_SYNC_FENCE_KHR;
+
+  auto fence = Create(syncType, nullptr);
   // Default creation isn't supposed to fail.
   DCHECK(fence);
   return fence;
@@ -57,15 +68,6 @@ bool GLFenceEGL::InitializeInternal(EGLenum type, EGLint* attribs) {
     glFlush();
   }
   return sync_ != EGL_NO_SYNC_KHR;
-}
-
-TransferableFence GLFenceEGL::Transfer() {
-  TransferableFence ret;
-  ret.type = TransferableFence::EglSync;
-  ret.egl.display = display_;
-  ret.egl.sync = sync_;
-  sync_ = EGL_NO_SYNC_KHR;
-  return ret;
 }
 
 bool GLFenceEGL::HasCompleted() {
@@ -127,8 +129,9 @@ void GLFenceEGL::Invalidate() {
 }
 
 GLFenceEGL::~GLFenceEGL() {
-  if (sync_ != EGL_NO_SYNC_KHR)
+  if (sync_ != EGL_NO_SYNC) {
     eglDestroySyncKHR(display_, sync_);
+  }
 }
 
 }  // namespace gl

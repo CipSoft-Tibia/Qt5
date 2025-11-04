@@ -14,11 +14,7 @@ static QString getPluginName()
 {
     static const QString name = !qEnvironmentVariableIsEmpty("QT_WEBVIEW_PLUGIN")
                                 ? QString::fromLatin1(qgetenv("QT_WEBVIEW_PLUGIN"))
-#ifdef Q_OS_MACOS
-                                : QStringLiteral("webengine");
-#else
                                 : QStringLiteral("native");
-#endif // Q_OS_MACOS
     return name;
 }
 
@@ -51,7 +47,6 @@ public:
 
     QString httpUserAgent() const override { return QString(); }
     void setHttpUserAgent(const QString &userAgent) override { Q_UNUSED(userAgent); }
-    QUrl url() const override { return QUrl(); }
     void setUrl(const QUrl &url) override { Q_UNUSED(url); }
     bool canGoBack() const override { return false; }
     bool canGoForward() const override { return false; }

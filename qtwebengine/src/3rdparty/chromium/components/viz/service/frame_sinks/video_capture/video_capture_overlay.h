@@ -8,11 +8,12 @@
 #include <stdint.h>
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
 #include "base/functional/callback.h"
-#include "base/memory/raw_ptr.h"
+#include "base/memory/raw_ref.h"
 #include "base/memory/ref_counted.h"
 #include "base/sequence_checker.h"
 #include "components/viz/service/frame_sinks/video_capture/capturable_frame_sink.h"
@@ -21,7 +22,6 @@
 #include "mojo/public/cpp/bindings/pending_receiver.h"
 #include "mojo/public/cpp/bindings/receiver.h"
 #include "services/viz/privileged/mojom/compositing/frame_sink_video_capture.mojom.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "third_party/skia/include/core/SkBitmap.h"
 #include "ui/gfx/color_space.h"
 #include "ui/gfx/color_transform.h"
@@ -145,7 +145,7 @@ class VIZ_SERVICE_EXPORT VideoCaptureOverlay
   // Computes information related to blending current overlay over the captured
   // frame described by |properties|. Returns nullopt if the blend needs to be
   // skipped (e.g. because it would be a no-op).
-  absl::optional<BlendInformation> CalculateBlendInformation(
+  std::optional<BlendInformation> CalculateBlendInformation(
       const CapturedFrameProperties& properties) const;
 
   // Returns a OnceCallback that renders all of the given |overlays| in

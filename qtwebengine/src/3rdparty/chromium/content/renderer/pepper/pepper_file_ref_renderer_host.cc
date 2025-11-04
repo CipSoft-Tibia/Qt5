@@ -26,7 +26,7 @@ PepperFileRefRendererHost::PepperFileRefRendererHost(
     return;
   ResourceHost* fs_host = host->GetPpapiHost()->GetResourceHost(file_system);
   if (fs_host && fs_host->IsFileSystemHost()) {
-    fs_host_ = base::AsWeakPtr(static_cast<PepperFileSystemHost*>(fs_host));
+    fs_host_ = static_cast<PepperFileSystemHost*>(fs_host)->AsWeakPtr();
     file_system_type_ = fs_host_->GetType();
   }
 }
@@ -71,7 +71,7 @@ int32_t PepperFileRefRendererHost::OnResourceMessageReceived(
     const IPC::Message& msg,
     ppapi::host::HostMessageContext* context) {
   // We don't handle any messages from the plugin in this host.
-  NOTREACHED();
+  NOTREACHED_IN_MIGRATION();
   return PP_ERROR_FAILED;
 }
 

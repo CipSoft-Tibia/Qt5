@@ -6,21 +6,24 @@
 #define THIRD_PARTY_BLINK_RENDERER_MODULES_MEDIARECORDER_MEDIA_RECORDER_HANDLER_H_
 
 #include <memory>
+#include <optional>
+#include <string_view>
 
 #include "base/feature_list.h"
-#include "base/strings/string_piece.h"
+#include "base/memory/weak_ptr.h"
 #include "base/task/single_thread_task_runner.h"
 #include "base/threading/thread_checker.h"
 #include "base/time/time.h"
 #include "media/base/video_encoder.h"
 #include "media/muxers/muxer_timestamp_adapter.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "third_party/blink/public/platform/modules/mediastream/web_media_stream.h"
 #include "third_party/blink/public/web/modules/mediastream/encoded_video_frame.h"
 #include "third_party/blink/renderer/modules/mediarecorder/audio_track_recorder.h"
 #include "third_party/blink/renderer/modules/mediarecorder/video_track_recorder.h"
 #include "third_party/blink/renderer/modules/modules_export.h"
 #include "third_party/blink/renderer/platform/heap/collection_support/heap_vector.h"
+#include "third_party/blink/renderer/platform/heap/persistent.h"
+#include "third_party/blink/renderer/platform/heap/weak_cell.h"
 #include "third_party/blink/renderer/platform/wtf/allocator/allocator.h"
 #include "third_party/blink/renderer/platform/wtf/text/wtf_string.h"
 #include "third_party/blink/renderer/platform/wtf/vector.h"
@@ -57,8 +60,7 @@ MODULES_EXPORT BASE_DECLARE_FEATURE(kMediaRecorderEnableMp4Muxer);
 class MODULES_EXPORT MediaRecorderHandler final
     : public GarbageCollected<MediaRecorderHandler>,
       public VideoTrackRecorder::CallbackInterface,
-      public AudioTrackRecorder::CallbackInterface,
-      public WebMediaStreamObserver {
+      public AudioTrackRecorder::CallbackInterface {
  public:
   MediaRecorderHandler(
       scoped_refptr<base::SingleThreadTaskRunner> main_thread_task_runner,
@@ -103,17 +105,41 @@ class MODULES_EXPORT MediaRecorderHandler final
  private:
   friend class MediaRecorderHandlerFixture;
   friend class MediaRecorderHandlerPassthroughTest;
+  friend class MediaStreamObserver;
 
-  // WebMediaStreamObserver overrides.
-  void TrackAdded(const WebString& track_id) override;
-  void TrackRemoved(const WebString& track_id) override;
+  class MediaStreamObserver : public WebMediaStreamObserver {
+   public:
+    explicit MediaStreamObserver(MediaRecorderHandler* handler)
+        : media_recorder_handler_(handler) {}
+
+    // WebMediaStreamObserver overrides.
+    void TrackAdded(const WebString& track_id) override {
+      CHECK(media_recorder_handler_);
+      media_recorder_handler_->TrackAdded(track_id);
+    }
+    void TrackRemoved(const WebString& track_id) override {
+      CHECK(media_recorder_handler_);
+      media_recorder_handler_->TrackRemoved(track_id);
+    }
+
+    base::WeakPtr<WebMediaStreamObserver> AsWeakPtr() {
+      return weak_factory_.GetWeakPtr();
+    }
+
+   private:
+    WeakPersistent<MediaRecorderHandler> media_recorder_handler_;
+    base::WeakPtrFactory<WebMediaStreamObserver> weak_factory_{this};
+  };
+
+  void TrackAdded(const WebString& track_id);
+  void TrackRemoved(const WebString& track_id);
 
   // VideoTrackRecorder::CallbackInterface overrides.
   void OnEncodedVideo(
       const media::Muxer::VideoParameters& params,
       std::string encoded_data,
       std::string encoded_alpha,
-      absl::optional<media::VideoEncoder::CodecDescription> codec_description,
+      std::optional<media::VideoEncoder::CodecDescription> codec_description,
       base::TimeTicks timestamp,
       bool is_key_frame) override;
   void OnPassthroughVideo(const media::Muxer::VideoParameters& params,
@@ -128,8 +154,9 @@ class MODULES_EXPORT MediaRecorderHandler final
   void OnEncodedAudio(
       const media::AudioParameters& params,
       std::string encoded_data,
-      absl::optional<media::AudioEncoder::CodecDescription> codec_description,
+      std::optional<media::AudioEncoder::CodecDescription> codec_description,
       base::TimeTicks timestamp) override;
+  void OnAudioEncodingError(media::EncoderStatus error_status) override;
   // [Audio/Video]TrackRecorder::CallbackInterface overrides.
   void OnSourceReadyStateChanged() override;
 
@@ -139,10 +166,10 @@ class MODULES_EXPORT MediaRecorderHandler final
       const media::Muxer::VideoParameters& params,
       std::string encoded_data,
       std::string encoded_alpha,
-      absl::optional<media::VideoEncoder::CodecDescription> codec_description,
+      std::optional<media::VideoEncoder::CodecDescription> codec_description,
       base::TimeTicks timestamp,
       bool is_key_frame);
-  void WriteData(base::StringPiece data);
+  void WriteData(std::string_view data);
 
   // Updates recorded tracks live and enabled.
   void UpdateTracksLiveAndEnabled();
@@ -189,9 +216,8 @@ class MODULES_EXPORT MediaRecorderHandler final
   base::TimeTicks slice_origin_timestamp_;
 
   // The last seen video codec of the last received encoded video frame.
-  absl::optional<media::VideoCodec> last_seen_codec_;
+  std::optional<media::VideoCodec> last_seen_codec_;
 
-  bool invalidated_ = false;
   bool recording_ = false;
 
   String type_;
@@ -213,6 +239,17 @@ class MODULES_EXPORT MediaRecorderHandler final
 #if BUILDFLAG(USE_PROPRIETARY_CODECS)
   std::unique_ptr<media::H264AnnexBToAvcBitstreamConverter> h264_converter_;
 #endif
+
+  std::unique_ptr<MediaStreamObserver> media_stream_observer_;
+
+  // For invalidation of in-flight callbacks back to ourselves. Need to track
+  // each callback interface specifically as there seem to be no automatic
+  // coercion.
+  WeakCellFactory<AudioTrackRecorder::CallbackInterface> weak_audio_factory_{
+      this};
+  WeakCellFactory<VideoTrackRecorder::CallbackInterface> weak_video_factory_{
+      this};
+  WeakCellFactory<MediaRecorderHandler> weak_factory_{this};
 };
 
 }  // namespace blink

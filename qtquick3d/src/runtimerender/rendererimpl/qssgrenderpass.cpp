@@ -374,14 +374,22 @@ void DepthMapPass::renderPrep(QSSGRenderer &renderer, QSSGLayerRenderData &data)
     const auto &layerPrepResult = data.layerPrepResult;
     bool ready = false;
     ps = data.getPipelineState();
-    rhiDepthTexture = data.getRenderResult(QSSGFrameData::RenderResult::DepthTexture);
-    if (Q_LIKELY(rhiDepthTexture && rhiPrepareDepthTexture(rhiCtx.get(), layerPrepResult.textureDimensions(), rhiDepthTexture, data.layer.viewCount))) {
+
+    if (m_multisampling) {
+        ps.samples = rhiCtx->mainPassSampleCount();
+        rhiDepthTexture = data.getRenderResult(QSSGFrameData::RenderResult::DepthTextureMS);
+    } else {
+        ps.samples = 1;
+        rhiDepthTexture = data.getRenderResult(QSSGFrameData::RenderResult::DepthTexture);
+    }
+
+    if (Q_LIKELY(rhiDepthTexture && rhiPrepareDepthTexture(rhiCtx.get(), layerPrepResult.textureDimensions(), rhiDepthTexture, data.layer.viewCount, ps.samples))) {
         sortedOpaqueObjects = data.getSortedOpaqueRenderableObjects(*camera);
         sortedTransparentObjects = data.getSortedTransparentRenderableObjects(*camera);
         // the depth texture is always non-MSAA, but is a 2D array with multiview
         ready = rhiPrepareDepthPass(rhiCtx.get(), this, ps, rhiDepthTexture->rpDesc, data,
                                     sortedOpaqueObjects, sortedTransparentObjects,
-                                    1, data.layer.viewCount);
+                                    ps.samples, data.layer.viewCount);
     }
 
     if (Q_UNLIKELY(!ready))
@@ -733,7 +741,8 @@ void TransparentPass::prep(const QSSGRenderContextInterface &ctx,
                            QSSGRhiGraphicsPipelineState &ps,
                            QSSGShaderFeatures shaderFeatures,
                            QRhiRenderPassDescriptor *rpDesc,
-                           const QSSGRenderableObjectList &sortedTransparentObjects)
+                           const QSSGRenderableObjectList &sortedTransparentObjects,
+                           bool oit)
 {
     const auto &rhiCtx = ctx.rhiContext();
     QSSG_ASSERT(rpDesc && rhiCtx->rhi()->isRecordingFrame(), return);
@@ -744,8 +753,10 @@ void TransparentPass::prep(const QSSGRenderContextInterface &ctx,
         const auto depthWriteMode = theObject->depthWriteMode;
         const bool curDepthWriteEnabled = (depthWriteMode == QSSGDepthDrawMode::Always && !zPrePassActive);
         ps.flags.setFlag(QSSGRhiGraphicsPipelineState::Flag::DepthWriteEnabled, curDepthWriteEnabled);
-        if (!(theObject->renderableFlags.isCompletelyTransparent()))
-            RenderHelpers::rhiPrepareRenderable(rhiCtx.get(), passKey, data, *theObject, rpDesc, &ps, shaderFeatures, ps.samples, ps.viewCount);
+        if (!(theObject->renderableFlags.isCompletelyTransparent())) {
+            RenderHelpers::rhiPrepareRenderable(rhiCtx.get(), passKey, data, *theObject, rpDesc, &ps, shaderFeatures,
+                                                ps.samples, ps.viewCount, nullptr, nullptr, QSSGRenderTextureCubeFaceNone, nullptr, oit);
+        }
     }
 }
 
@@ -926,16 +937,23 @@ void Item2DPass::renderPrep(QSSGRenderer &renderer, QSSGLayerRenderData &data)
     ps.flags.setFlag(QSSGRhiGraphicsPipelineState::Flag::BlendEnabled, false);
 
     item2Ds = data.getRenderableItem2Ds();
+    item2DDataMap.reserve(size_t(item2Ds.size()));
+    prepdItem2DRenderers.reserve(size_t(item2Ds.size()));
+    renderer.populateItem2DDataMapForLayer(data.layer, item2DDataMap);
     // NOTE: This marks the start of the 2D sub-scene rendering as it might result in
     // a nested 3D scene to be rendered and if we don't save the state here, we can
     // end up with a mismatched state in the QtQuick3D renderer.
     // See the end of this function for the corresponding end call (endSubLayerRender()).
     renderer.beginSubLayerRender(data);
     for (const auto &item2D: std::as_const(item2Ds)) {
-        // Set the projection matrix
-        if (!item2D->m_renderer)
-            continue;
-        if (item2D->m_renderer && item2D->m_renderer->currentRhi() != renderer.contextInterface()->rhiContext()->rhi()) {
+        // Find data for item
+        auto item2DData = getItem2DData(item2D);
+        const auto &mvps = item2DData.mvps;
+        QSGRenderer *renderer2d = item2DData.renderer;
+        QRhiRenderPassDescriptor *rpd = item2DData.rpd;
+
+        // NOTE: We shouldn't get into this state...
+        if (renderer2d && renderer2d->currentRhi() != rhiCtx->rhi()) {
             static bool contextWarningShown = false;
             if (!contextWarningShown) {
                 qWarning () << "Scene with embedded 2D content can only be rendered in one window.";
@@ -944,48 +962,35 @@ void Item2DPass::renderPrep(QSSGRenderer &renderer, QSSGLayerRenderData &data)
             continue;
         }
 
+        // Set the projection matrix
+
         auto layerPrepResult = data.layerPrepResult;
 
         QRhiRenderTarget *renderTarget = rhiCtx->renderTarget();
-        item2D->m_renderer->setDevicePixelRatio(renderTarget->devicePixelRatio());
+        renderer2d->setDevicePixelRatio(renderTarget->devicePixelRatio());
         const QRect deviceRect(QPoint(0, 0), renderTarget->pixelSize());
         const int viewCount = data.layer.viewCount;
-        QSSG_ASSERT(item2D->mvps.count() == viewCount, return);
         if (layer.scissorRect.isValid()) {
             QRect effScissor = layer.scissorRect & layerPrepResult.viewport.toRect();
             QMatrix4x4 correctionMat = correctMVPForScissor(layerPrepResult.viewport,
                                                             effScissor,
                                                             rhiCtx->rhi()->isYUpInNDC());
             for (int viewIndex = 0; viewIndex < viewCount; ++viewIndex) {
-                const QMatrix4x4 projectionMatrix = correctionMat * item2D->mvps[viewIndex];
-                item2D->m_renderer->setProjectionMatrix(projectionMatrix, viewIndex);
+                const QMatrix4x4 projectionMatrix = correctionMat * mvps[viewIndex];
+                renderer2d->setProjectionMatrix(projectionMatrix, viewIndex);
             }
-            item2D->m_renderer->setViewportRect(effScissor);
+            renderer2d->setViewportRect(effScissor);
         } else {
             for (int viewIndex = 0; viewIndex < viewCount; ++viewIndex)
-                item2D->m_renderer->setProjectionMatrix(item2D->mvps[viewIndex], viewIndex);
-            item2D->m_renderer->setViewportRect(RenderHelpers::correctViewportCoordinates(layerPrepResult.viewport, deviceRect));
+                renderer2d->setProjectionMatrix(mvps[viewIndex], viewIndex);
+            renderer2d->setViewportRect(RenderHelpers::correctViewportCoordinates(layerPrepResult.viewport, deviceRect));
         }
-        item2D->m_renderer->setDeviceRect(deviceRect);
-        QRhiRenderPassDescriptor *oldRp = nullptr;
-        if (item2D->m_rp) {
-            // Changing render target, and so incompatible renderpass
-            // descriptors should be uncommon, but possible.
-            if (!item2D->m_rp->isCompatible(rhiCtx->mainRenderPassDescriptor()))
-                std::swap(item2D->m_rp, oldRp);
-        }
-        if (!item2D->m_rp) {
-            // Do not pass our object to the Qt Quick scenegraph. It may
-            // hold on to it, leading to lifetime and ownership issues.
-            // Rather, create a dedicated, compatible object.
-            item2D->m_rp = rhiCtx->mainRenderPassDescriptor()->newCompatibleRenderPassDescriptor();
-            QSSG_CHECK(item2D->m_rp);
-        }
-        QSGRenderTarget sgRt(renderTarget, item2D->m_rp, rhiCtx->commandBuffer());
+        renderer2d->setDeviceRect(deviceRect);
+        QSGRenderTarget sgRt(renderTarget, rpd, rhiCtx->commandBuffer());
         sgRt.multiViewCount = data.layer.viewCount;
-        item2D->m_renderer->setRenderTarget(sgRt);
-        delete oldRp;
-        item2D->m_renderer->prepareSceneInline();
+        renderer2d->setRenderTarget(sgRt);
+        renderer2d->prepareSceneInline();
+        prepdItem2DRenderers.push_back(renderer2d);
     }
     renderer.endSubLayerRender(data);
 }
@@ -1003,11 +1008,8 @@ void Item2DPass::renderPass(QSSGRenderer &renderer)
     Q_TRACE_SCOPE(QSSG_renderPass, QStringLiteral("Quick3D render 2D sub-scene"));
     QSSGLayerRenderData *data = QSSGLayerRenderData::getCurrent(renderer);
     renderer.beginSubLayerRender(*data);
-    for (const auto &item : std::as_const(item2Ds)) {
-        QSSGRenderItem2D *item2D = static_cast<QSSGRenderItem2D *>(item);
-        if (item2D->m_renderer && item2D->m_renderer->currentRhi() == renderer.contextInterface()->rhiContext()->rhi())
-            item2D->m_renderer->renderSceneInline();
-    }
+    for (QSGRenderer *renderer2d : std::as_const(prepdItem2DRenderers))
+        renderer2d->renderSceneInline();
     renderer.endSubLayerRender(*data);
     cb->debugMarkEnd();
     Q_QUICK3D_PROFILE_END_WITH_STRING(QQuick3DProfiler::Quick3DRenderPass, 0, QByteArrayLiteral("2D_sub_scene"));
@@ -1016,7 +1018,15 @@ void Item2DPass::renderPass(QSSGRenderer &renderer)
 void Item2DPass::resetForFrame()
 {
     item2Ds.clear();
+    item2DDataMap.clear();
+    prepdItem2DRenderers.clear();
     ps = {};
+}
+
+QSSGRenderer::Item2DData Item2DPass::getItem2DData(QSSGRenderItem2D *item2D)
+{
+    const auto foundIt = item2DDataMap.find(item2D);
+    return (foundIt != item2DDataMap.cend()) ? foundIt->second : QSSGRenderer::Item2DData{};
 }
 
 void InfiniteGridPass::renderPrep(QSSGRenderer &renderer, QSSGLayerRenderData &data)
@@ -1160,6 +1170,229 @@ void UserPass::resetForFrame()
 
     // TODO: We should track if we need to update this list.
     extensions.clear();
+}
+
+void OITRenderPass::renderPrep(QSSGRenderer &renderer, QSSGLayerRenderData &data)
+{
+    auto *ctx = renderer.contextInterface();
+    const auto &rhiCtx = ctx->rhiContext();
+    auto *rhi = rhiCtx->rhi();
+
+    QSSG_ASSERT(!data.renderedCameras.isEmpty() && data.renderedCameraData.has_value() , return);
+    QSSGRenderCamera *camera = data.renderedCameras[0];
+
+    ps = data.getPipelineState();
+    ps.samples = rhiCtx->mainPassSampleCount();
+    ps.viewCount = rhiCtx->mainPassViewCount();
+
+    ps.flags.setFlag(QSSGRhiGraphicsPipelineState::Flag::BlendEnabled, true);
+    ps.flags.setFlag(QSSGRhiGraphicsPipelineState::Flag::DepthWriteEnabled, false);
+
+    shaderFeatures = data.getShaderFeatures();
+    sortedTransparentObjects = data.getSortedTransparentRenderableObjects(*camera);
+
+    if (method == QSSGRenderLayer::OITMethod::WeightedBlended) {
+        ps.colorAttachmentCount = 2;
+
+        rhiAccumTexture = data.getRenderResult(QSSGFrameData::RenderResult::AccumTexture);
+        rhiRevealageTexture = data.getRenderResult(QSSGFrameData::RenderResult::RevealageTexture);
+        if (ps.samples > 1)
+            rhiDepthTexture = data.getRenderResult(QSSGFrameData::RenderResult::DepthTextureMS);
+        else
+            rhiDepthTexture = data.getRenderResult(QSSGFrameData::RenderResult::DepthTexture);
+        if (!rhiDepthTexture->isValid())
+            return;
+        auto &oitrt = data.getOitRenderContext();
+        if (!oitrt.oitRenderTarget || oitrt.oitRenderTarget->pixelSize() != data.layerPrepResult.textureDimensions()
+            || rhiDepthTexture->texture != oitrt.oitRenderTarget->description().depthTexture()
+            || ps.samples != oitrt.oitRenderTarget->sampleCount()) {
+            if (oitrt.oitRenderTarget) {
+                rhiAccumTexture->texture->destroy();
+                rhiRevealageTexture->texture->destroy();
+                oitrt.oitRenderTarget->destroy();
+                oitrt.renderPassDescriptor->destroy();
+                oitrt.oitRenderTarget = nullptr;
+            }
+            const QRhiTexture::Flags textureFlags = QRhiTexture::RenderTarget;
+            if (ps.viewCount >= 2) {
+                rhiAccumTexture->texture = rhi->newTextureArray(QRhiTexture::RGBA16F, ps.viewCount, data.layerPrepResult.textureDimensions(), ps.samples, textureFlags);
+                rhiRevealageTexture->texture = rhi->newTextureArray(QRhiTexture::R16F, ps.viewCount, data.layerPrepResult.textureDimensions(), ps.samples, textureFlags);
+            } else {
+                rhiAccumTexture->texture = rhi->newTexture(QRhiTexture::RGBA16F, data.layerPrepResult.textureDimensions(), ps.samples, textureFlags);
+                rhiRevealageTexture->texture = rhi->newTexture(QRhiTexture::R16F, data.layerPrepResult.textureDimensions(), ps.samples, textureFlags);
+            }
+            rhiAccumTexture->texture->create();
+            rhiRevealageTexture->texture->create();
+
+            QRhiTextureRenderTargetDescription desc;
+            desc.setColorAttachments({{rhiAccumTexture->texture}, {rhiRevealageTexture->texture}});
+            desc.setDepthTexture(rhiDepthTexture->texture);
+
+            if (oitrt.oitRenderTarget == nullptr) {
+                oitrt.oitRenderTarget = rhi->newTextureRenderTarget(desc, QRhiTextureRenderTarget::PreserveDepthStencilContents);
+                oitrt.renderPassDescriptor = oitrt.oitRenderTarget->newCompatibleRenderPassDescriptor();
+                oitrt.oitRenderTarget->setRenderPassDescriptor(oitrt.renderPassDescriptor);
+                oitrt.oitRenderTarget->create();
+
+                renderTarget = oitrt.oitRenderTarget;
+            }
+        }
+        QSSGRhiContextPrivate *rhiCtxD = QSSGRhiContextPrivate::get(rhiCtx.get());
+        const auto &shaderCache = renderer.contextInterface()->shaderCache();
+        clearPipeline = shaderCache->getBuiltInRhiShaders().getRhiClearMRTShader();
+
+        QSSGRhiShaderResourceBindingList bindings;
+        QVector4D clearData[2];
+        clearData[0] = QVector4D(0.0, 0.0, 0.0, 0.0);
+        clearData[1] = QVector4D(1.0, 1.0, 1.0, 1.0);
+
+        QSSGRhiDrawCallData &dcd(rhiCtxD->drawCallData({ this, nullptr, nullptr, 0 }));
+        QRhiBuffer *&ubuf = dcd.ubuf;
+        const int ubufSize = sizeof(clearData);
+        if (!ubuf) {
+            ubuf = rhi->newBuffer(QRhiBuffer::Dynamic, QRhiBuffer::UniformBuffer, ubufSize);
+            ubuf->create();
+        }
+
+        QRhiResourceUpdateBatch *rub = rhi->nextResourceUpdateBatch();
+        rub->updateDynamicBuffer(ubuf, 0, ubufSize, &clearData);
+        renderer.rhiQuadRenderer()->prepareQuad(rhiCtx.get(), rub);
+
+        bindings.addUniformBuffer(0, QRhiShaderResourceBinding::FragmentStage, ubuf);
+
+        clearSrb = rhiCtxD->srb(bindings);
+
+        ps.targetBlend[0].srcAlpha = QRhiGraphicsPipeline::One;
+        ps.targetBlend[0].srcColor = QRhiGraphicsPipeline::One;
+        ps.targetBlend[0].dstAlpha = QRhiGraphicsPipeline::One;
+        ps.targetBlend[0].dstColor = QRhiGraphicsPipeline::One;
+        ps.targetBlend[1].srcAlpha = QRhiGraphicsPipeline::Zero;
+        ps.targetBlend[1].srcColor = QRhiGraphicsPipeline::Zero;
+        ps.targetBlend[1].dstAlpha = QRhiGraphicsPipeline::OneMinusSrcAlpha;
+        ps.targetBlend[1].dstColor = QRhiGraphicsPipeline::OneMinusSrcAlpha;
+
+        TransparentPass::prep(*ctx, data, this, ps, shaderFeatures, oitrt.renderPassDescriptor, sortedTransparentObjects, true);
+    }
+}
+
+void OITRenderPass::renderPass(QSSGRenderer &renderer)
+{
+    auto *ctx = renderer.contextInterface();
+    const auto &rhiCtx = ctx->rhiContext();
+    QSSG_ASSERT(rhiCtx->rhi()->isRecordingFrame(), return);
+    QRhiCommandBuffer *cb = rhiCtx->commandBuffer();
+
+    if (method == QSSGRenderLayer::OITMethod::WeightedBlended) {
+        if (Q_LIKELY(renderTarget)) {
+            cb->beginPass(renderTarget, Qt::black, {});
+
+            QRhiShaderResourceBindings *srb = clearSrb;
+            QSSG_ASSERT(srb, return);
+            ps.flags.setFlag(QSSGRhiGraphicsPipelineState::Flag::BlendEnabled, false);
+            QSSGRhiGraphicsPipelineStatePrivate::setShaderPipeline(ps, clearPipeline.get());
+            renderer.rhiQuadRenderer()->recordRenderQuad(rhiCtx.get(), &ps, srb, renderTarget->renderPassDescriptor(), {});
+            ps.flags.setFlag(QSSGRhiGraphicsPipelineState::Flag::BlendEnabled, true);
+
+            cb->debugMarkBegin(QByteArrayLiteral("Quick3D render order-independent alpha"));
+            Q_QUICK3D_PROFILE_START(QQuick3DProfiler::Quick3DRenderPass);
+            Q_TRACE(QSSG_renderPass_entry, QStringLiteral("Quick3D render order-independent alpha"));
+            ps.flags.setFlag(QSSGRhiGraphicsPipelineState::Flag::DepthTestEnabled, true);
+            ps.flags.setFlag(QSSGRhiGraphicsPipelineState::Flag::DepthWriteEnabled, false);
+            TransparentPass::render(*ctx, ps, sortedTransparentObjects);
+            cb->debugMarkEnd();
+            Q_QUICK3D_PROFILE_END_WITH_STRING(QQuick3DProfiler::Quick3DRenderPass, 0, QByteArrayLiteral("transparent_order_independent_pass"));
+            Q_TRACE(QSSG_renderPass_exit);
+
+            cb->endPass();
+        }
+    }
+}
+
+QSSGRenderPass::Type OITRenderPass::passType() const
+{
+    if (method == QSSGRenderLayer::OITMethod::WeightedBlended)
+        return Type::Standalone;
+    return Type::Main;
+}
+
+
+void OITRenderPass::resetForFrame()
+{
+    sortedTransparentObjects.clear();
+    ps = {};
+    shaderFeatures = {};
+    rhiAccumTexture = nullptr;
+    rhiRevealageTexture = nullptr;
+    rhiDepthTexture = nullptr;
+}
+
+void OITCompositePass::renderPrep(QSSGRenderer &renderer, QSSGLayerRenderData &data)
+{
+    using namespace RenderHelpers;
+
+    QSSG_ASSERT(!data.renderedCameras.isEmpty(), return);
+
+    const auto &rhiCtx = renderer.contextInterface()->rhiContext();
+    QSSG_ASSERT(rhiCtx->rhi()->isRecordingFrame(), return);
+    const auto &shaderCache = renderer.contextInterface()->shaderCache();
+
+    ps = data.getPipelineState();
+    ps.samples = rhiCtx->mainPassSampleCount();
+    ps.viewCount = rhiCtx->mainPassViewCount();
+
+    if (method == QSSGRenderLayer::OITMethod::WeightedBlended) {
+        rhiAccumTexture = data.getRenderResult(QSSGFrameData::RenderResult::AccumTexture);
+        rhiRevealageTexture = data.getRenderResult(QSSGFrameData::RenderResult::RevealageTexture);
+        compositeShaderPipeline = shaderCache->getBuiltInRhiShaders().getRhiOitCompositeShader(method, ps.samples > 1 ? true : false);
+    }
+}
+
+void OITCompositePass::renderPass(QSSGRenderer &renderer)
+{
+    using namespace RenderHelpers;
+
+    const auto &rhiCtx = renderer.contextInterface()->rhiContext();
+    QSSG_ASSERT(rhiCtx->rhi()->isRecordingFrame(), return);
+    QRhiCommandBuffer *cb = rhiCtx->commandBuffer();
+
+    QSSGRhiContextPrivate *rhiCtxD = QSSGRhiContextPrivate::get(rhiCtx.get());
+
+    if (!rhiAccumTexture->texture || !rhiRevealageTexture->texture)
+        return;
+
+    if (method == QSSGRenderLayer::OITMethod::WeightedBlended) {
+        QSSGRhiShaderResourceBindingList bindings;
+
+        QRhiSampler *sampler = rhiCtx->sampler({ QRhiSampler::Nearest,
+                                                 QRhiSampler::Nearest,
+                                                 QRhiSampler::None,
+                                                 QRhiSampler::ClampToEdge,
+                                                 QRhiSampler::ClampToEdge,
+                                                 QRhiSampler::ClampToEdge });
+        bindings.addTexture(1, QRhiShaderResourceBinding::FragmentStage, rhiAccumTexture->texture, sampler);
+        bindings.addTexture(2, QRhiShaderResourceBinding::FragmentStage, rhiRevealageTexture->texture, sampler);
+
+        compositeSrb = rhiCtxD->srb(bindings);
+
+        QRhiShaderResourceBindings *srb = compositeSrb;
+        QSSG_ASSERT(srb, return);
+
+        cb->debugMarkBegin(QByteArrayLiteral("Quick3D revealage"));
+        QSSGRhiGraphicsPipelineStatePrivate::setShaderPipeline(ps, compositeShaderPipeline.get());
+        ps.flags.setFlag(QSSGRhiGraphicsPipelineState::Flag::BlendEnabled, true);
+        renderer.rhiQuadRenderer()->recordRenderQuad(rhiCtx.get(), &ps, srb, rhiCtx->mainRenderPassDescriptor(),
+                                                     { QSSGRhiQuadRenderer::UvCoords | QSSGRhiQuadRenderer::DepthTest | QSSGRhiQuadRenderer::PremulBlend});
+        Q_QUICK3D_PROFILE_END_WITH_STRING(QQuick3DProfiler::Quick3DRenderPass, 0, QByteArrayLiteral("revealage"));
+        cb->debugMarkEnd();
+    }
+}
+
+void OITCompositePass::resetForFrame()
+{
+    ps = {};
+    shaderFeatures = {};
+    rhiAccumTexture = nullptr;
+    rhiRevealageTexture = nullptr;
 }
 
 QT_END_NAMESPACE

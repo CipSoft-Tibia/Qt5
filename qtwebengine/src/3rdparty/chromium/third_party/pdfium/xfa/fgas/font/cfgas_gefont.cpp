@@ -11,11 +11,11 @@
 
 #include "build/build_config.h"
 #include "core/fpdfapi/font/cpdf_font.h"
+#include "core/fxcrt/check.h"
 #include "core/fxge/cfx_font.h"
 #include "core/fxge/cfx_substfont.h"
 #include "core/fxge/cfx_unicodeencodingex.h"
 #include "core/fxge/fx_font.h"
-#include "third_party/base/check.h"
 #include "xfa/fgas/font/cfgas_fontmgr.h"
 #include "xfa/fgas/font/cfgas_gemodule.h"
 #include "xfa/fgas/font/fgas_fontutils.h"
@@ -150,46 +150,42 @@ uint32_t CFGAS_GEFont::GetFontStyles() const {
   return dwStyles;
 }
 
-absl::optional<uint16_t> CFGAS_GEFont::GetCharWidth(wchar_t wUnicode) {
+std::optional<uint16_t> CFGAS_GEFont::GetCharWidth(wchar_t wUnicode) {
   auto it = m_CharWidthMap.find(wUnicode);
   if (it != m_CharWidthMap.end())
     return it->second;
 
-  RetainPtr<CFGAS_GEFont> pFont;
-  int32_t glyph;
-  std::tie(glyph, pFont) = GetGlyphIndexAndFont(wUnicode, true);
+  auto [glyph, pFont] = GetGlyphIndexAndFont(wUnicode, true);
   if (!pFont || glyph == 0xffff) {
-    m_CharWidthMap[wUnicode] = absl::nullopt;
-    return absl::nullopt;
+    m_CharWidthMap[wUnicode] = std::nullopt;
+    return std::nullopt;
   }
   if (pFont != this)
     return pFont->GetCharWidth(wUnicode);
 
   int32_t width_from_cfx_font = m_pFont->GetGlyphWidth(glyph);
   if (width_from_cfx_font < 0) {
-    m_CharWidthMap[wUnicode] = absl::nullopt;
-    return absl::nullopt;
+    m_CharWidthMap[wUnicode] = std::nullopt;
+    return std::nullopt;
   }
   uint16_t width = static_cast<uint16_t>(width_from_cfx_font);
   m_CharWidthMap[wUnicode] = width;
   return width;
 }
 
-absl::optional<FX_RECT> CFGAS_GEFont::GetCharBBox(wchar_t wUnicode) {
+std::optional<FX_RECT> CFGAS_GEFont::GetCharBBox(wchar_t wUnicode) {
   auto it = m_BBoxMap.find(wUnicode);
   if (it != m_BBoxMap.end())
     return it->second;
 
-  RetainPtr<CFGAS_GEFont> pFont;
-  int32_t iGlyph;
-  std::tie(iGlyph, pFont) = GetGlyphIndexAndFont(wUnicode, true);
+  auto [iGlyph, pFont] = GetGlyphIndexAndFont(wUnicode, true);
   if (!pFont || iGlyph == 0xFFFF)
-    return absl::nullopt;
+    return std::nullopt;
 
   if (pFont.Get() != this)
     return pFont->GetCharBBox(wUnicode);
 
-  absl::optional<FX_RECT> rtBBox = m_pFont->GetGlyphBBox(iGlyph);
+  std::optional<FX_RECT> rtBBox = m_pFont->GetGlyphBBox(iGlyph);
   if (rtBBox.has_value())
     m_BBoxMap[wUnicode] = rtBBox.value();
 
@@ -197,10 +193,7 @@ absl::optional<FX_RECT> CFGAS_GEFont::GetCharBBox(wchar_t wUnicode) {
 }
 
 int32_t CFGAS_GEFont::GetGlyphIndex(wchar_t wUnicode) {
-  int32_t glyph;
-  RetainPtr<CFGAS_GEFont> font;
-  std::tie(glyph, font) = GetGlyphIndexAndFont(wUnicode, true);
-  return glyph;
+  return GetGlyphIndexAndFont(wUnicode, true).first;
 }
 
 std::pair<int32_t, RetainPtr<CFGAS_GEFont>> CFGAS_GEFont::GetGlyphIndexAndFont(

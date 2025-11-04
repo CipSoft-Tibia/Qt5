@@ -231,11 +231,12 @@
 @synthesize preferredStatusBarStyle;
 #endif
 
-- (instancetype)initWithWindow:(UIWindow*)window andScreen:(QT_PREPEND_NAMESPACE(QIOSScreen) *)screen
+- (instancetype)initWithWindow:(UIWindow*)window
 {
     if (self = [self init]) {
         self.window = window;
-        self.platformScreen = screen;
+        self.platformScreen = nil;
+        [self updatePlatformScreen];
 
         self.changingOrientation = NO;
 #ifndef Q_OS_TVOS
@@ -246,7 +247,7 @@
 #endif
 
         m_focusWindowChangeConnection = QObject::connect(qApp, &QGuiApplication::focusWindowChanged, [self]() {
-            [self updateProperties];
+            [self updateStatusBarProperties];
         });
 
         QIOSApplicationState *applicationState = &QIOSIntegration::instance()->applicationState;
@@ -314,6 +315,54 @@
 
 // -------------------------------------------------------------------------
 
+- (void)updatePlatformScreen
+{
+    auto *windowScene = self.window.windowScene;
+
+    QIOSScreen *newPlatformScreen = [&]{
+        for (auto *screen : qGuiApp->screens()) {
+            auto *platformScreen = static_cast<QIOSScreen*>(screen->handle());
+#if !defined(Q_OS_VISIONOS)
+            if (platformScreen->uiScreen() == windowScene.screen)
+#endif
+                return platformScreen;
+        }
+        Q_UNREACHABLE();
+    }();
+
+    if (newPlatformScreen != self.platformScreen) {
+        QIOSScreen *oldPlatformScreen = self.platformScreen;
+        self.platformScreen = newPlatformScreen;
+
+        qCDebug(lcQpaWindow) << "View controller" << self << "moved from"
+            << oldPlatformScreen << "to" << newPlatformScreen;
+
+        QScreen *newScreen = newPlatformScreen ? newPlatformScreen->screen() : nullptr;
+
+        const bool isPrimaryScene = !qt_apple_sharedApplication().supportsMultipleScenes
+            && windowScene.session.role == UIWindowSceneSessionRoleApplication;
+
+        if (isPrimaryScene) {
+            // When we only have a single application-role scene we treat the
+            // active screen as the primary one, so that windows shown on the
+            // primary screen end up in our view controller.
+            QWindowSystemInterface::handlePrimaryScreenChanged(newPlatformScreen);
+        }
+
+        for (auto *window : qGuiApp->topLevelWindows()) {
+            // Move window to new screen if it was on the old screen,
+            // or if we're setting up the primary scene, in which case
+            // we want to adopt all existing windows to this screen.
+            if ((window->screen()->handle() == oldPlatformScreen)
+                || (isPrimaryScene && !oldPlatformScreen)) {
+                QWindowSystemInterface::handleWindowScreenChanged(window, newScreen);
+            }
+        }
+    }
+}
+
+// -------------------------------------------------------------------------
+
 - (void)willRotateToInterfaceOrientation:(UIInterfaceOrientation)orientation duration:(NSTimeInterval)duration
 {
     self.changingOrientation = YES;
@@ -367,10 +416,12 @@
     // If the statusbar changes orientation due to auto-rotation we don't care,
     // there will be re-layout anyways. Only if the statusbar changes due to
     // reportContentOrientation, we need to update the window layout.
-    if (self.changingOrientation)
-        return;
+    if (!self.changingOrientation)
+        [self.view setNeedsLayout];
 
-    [self.view setNeedsLayout];
+    // But we always need to update the screen's orientation
+    if (self.platformScreen)
+        self.platformScreen->updateProperties();
 }
 #endif
 
@@ -379,13 +430,16 @@
     if (!QCoreApplication::instance())
         return;
 
+    // Make sure the screen properties are up to date before layout.
+    // We need this here, even if we also react to status bar orientation
+    // changes, as only the main screen on iOS has a statusbar.
     if (self.platformScreen)
         self.platformScreen->updateProperties();
 }
 
 // -------------------------------------------------------------------------
 
-- (void)updateProperties
+- (void)updateStatusBarProperties
 {
     if (!isQtApplication())
         return;
@@ -430,7 +484,7 @@
     // -------------- Status bar style and visbility ---------------
 
     UIStatusBarStyle oldStatusBarStyle = self.preferredStatusBarStyle;
-    if (focusWindow->flags() & Qt::MaximizeUsingFullscreenGeometryHint)
+    if (focusWindow->flags() & Qt::ExpandedClientAreaHint)
         self.preferredStatusBarStyle = UIStatusBarStyleDefault;
     else
         self.preferredStatusBarStyle = UIStatusBarStyleLightContent;

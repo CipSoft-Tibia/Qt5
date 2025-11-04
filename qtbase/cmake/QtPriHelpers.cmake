@@ -373,12 +373,18 @@ function(qt_generate_module_pri_file target)
         set(framework_base_path "$$QT_MODULE_LIB_BASE")
         set(public_module_includes "${framework_base_path}/${fw_header_dir}")
         set(public_module_frameworks "${framework_base_path}")
-        set(private_module_includes "${framework_base_path}/${fw_private_header_dir} \
+        set(private_module_includes "")
+        qt_internal_append_include_directories_with_headers_check(${target}
+            private_module_includes PRIVATE
+            "${framework_base_path}/${fw_private_header_dir} \
 ${framework_base_path}/${fw_private_module_header_dir}")
     else()
         set(public_module_includes "$$QT_MODULE_INCLUDE_BASE $$QT_MODULE_INCLUDE_BASE/${module}")
         set(public_module_frameworks "")
-        set(private_module_includes "$$QT_MODULE_INCLUDE_BASE/${module_versioned_include_dir} \
+        set(private_module_includes "")
+        qt_internal_append_include_directories_with_headers_check(${target}
+            private_module_includes PRIVATE
+            "$$QT_MODULE_INCLUDE_BASE/${module_versioned_include_dir} \
 $$QT_MODULE_INCLUDE_BASE/${module_versioned_inner_include_dir}")
     endif()
 
@@ -818,6 +824,13 @@ QT_PATCH_VERSION = ${PROJECT_VERSION_PATCH}
                  "QT_MAC_SDK_VERSION_MIN = ${QT_SUPPORTED_MIN_IOS_SDK_VERSION}")
             list(APPEND extra_statements
                  "QT_MAC_SDK_VERSION_MAX = ${QT_SUPPORTED_MAX_IOS_SDK_VERSION}")
+         elseif(CMAKE_SYSTEM_NAME STREQUAL visionOS)
+            list(APPEND extra_statements
+                "QMAKE_VISIONOS_DEPLOYMENT_TARGET = ${CMAKE_OSX_DEPLOYMENT_TARGET}")
+            list(APPEND extra_statements
+                 "QT_MAC_SDK_VERSION_MIN = ${QT_SUPPORTED_MIN_VISIONOS_SDK_VERSION}")
+            list(APPEND extra_statements
+                 "QT_MAC_SDK_VERSION_MAX = ${QT_SUPPORTED_MAX_VISIONOS_SDK_VERSION}")
         endif()
 
         if (CMAKE_OSX_ARCHITECTURES)

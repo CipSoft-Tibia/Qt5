@@ -33,7 +33,6 @@ else()
             utils/utils.cpp utils/utils_p.h
             utils/qgraphs3dnamespace.cpp utils/qgraphs3dnamespace.h
 
-            qml/foreigntypes_p.h
             qml/qquickgraphsitem.cpp qml/qquickgraphsitem_p.h
             qml/qquickgraphstexturedata.cpp qml/qquickgraphstexturedata_p.h
             qml/gradientholder_p.h
@@ -57,7 +56,6 @@ else()
 
             engine/barinstancing.cpp engine/barinstancing_p.h
 
-            qml/foreigntypesbars_p.h
             qml/qquickgraphsbars.cpp qml/qquickgraphsbars_p.h
             qml/qquickgraphsbarsseries.cpp qml/qquickgraphsbarsseries_p.h
         INCLUDE_DIRECTORIES
@@ -70,15 +68,16 @@ else()
         SOURCES
             data/qitemmodelscatterdataproxy.cpp data/qitemmodelscatterdataproxy.h data/qitemmodelscatterdataproxy_p.h
             data/qscatter3dseries.cpp data/qscatter3dseries.h data/qscatter3dseries_p.h
+            data/qspline3dseries.cpp data/qspline3dseries.h data/qspline3dseries_p.h
             data/qscatterdataitem.cpp data/qscatterdataitem.h
             data/qscatterdataproxy.cpp data/qscatterdataproxy.h data/qscatterdataproxy_p.h
             data/scatteritemmodelhandler.cpp data/scatteritemmodelhandler_p.h
 
             engine/scatterinstancing.cpp engine/scatterinstancing_p.h
 
-            qml/foreigntypesscatter_p.h
             qml/qquickgraphsscatter.cpp qml/qquickgraphsscatter_p.h
             qml/qquickgraphsscatterseries.cpp qml/qquickgraphsscatterseries_p.h
+            qml/qquickgraphssplineseries.cpp qml/qquickgraphssplineseries_p.h
         INCLUDE_DIRECTORIES
             data
             engine
@@ -94,7 +93,6 @@ else()
             data/qsurfacedataproxy.cpp data/qsurfacedataproxy.h data/qsurfacedataproxy_p.h
             data/surfaceitemmodelhandler.cpp data/surfaceitemmodelhandler_p.h
 
-            qml/foreigntypessurface_p.h
             qml/qquickgraphssurface.cpp qml/qquickgraphssurface_p.h
             qml/qquickgraphssurfaceseries.cpp qml/qquickgraphssurfaceseries_p.h
         INCLUDE_DIRECTORIES

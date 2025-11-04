@@ -5,13 +5,15 @@
 #ifndef THIRD_PARTY_BLINK_RENDERER_CORE_LAYOUT_INK_OVERFLOW_H_
 #define THIRD_PARTY_BLINK_RENDERER_CORE_LAYOUT_INK_OVERFLOW_H_
 
+#include <optional>
+
 #include "base/check_op.h"
 #include "base/dcheck_is_on.h"
 #include "build/build_config.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "third_party/blink/renderer/core/core_export.h"
 #include "third_party/blink/renderer/core/editing/markers/document_marker.h"
 #include "third_party/blink/renderer/core/layout/geometry/physical_rect.h"
+#include "third_party/blink/renderer/core/layout/inline/text_offset_range.h"
 
 namespace blink {
 
@@ -22,6 +24,7 @@ class Font;
 class FragmentItem;
 class InlineCursor;
 class InlinePaintContext;
+class ShadowList;
 class Text;
 struct LogicalRect;
 struct TextFragmentPaintInfo;
@@ -142,7 +145,7 @@ class CORE_EXPORT InkOverflow {
                              const AffineTransform& transform,
                              PhysicalRect* ink_overflow_out);
 
-  static absl::optional<PhysicalRect> ComputeTextInkOverflow(
+  static std::optional<PhysicalRect> ComputeTextInkOverflow(
       const InlineCursor& cursor,
       const TextFragmentPaintInfo& text_info,
       const ComputedStyle& style,
@@ -159,6 +162,11 @@ class CORE_EXPORT InkOverflow {
       const PhysicalSize& size,
       const LogicalRect& ink_overflow);
 
+  // Expands the given overflow to account for shadows.
+  static void ExpandForShadowOverflow(LogicalRect& ink_overflow,
+                                      const ShadowList& text_shadow,
+                                      const WritingMode writing_mode);
+
   // Returns ink-overflow with text decoration overflow in logical direction.
   // |inline_context| may be null.
   // Note: |ink_overflow| should be in logical direction.
@@ -170,7 +178,8 @@ class CORE_EXPORT InkOverflow {
       const Font& scaled_font,
       const PhysicalOffset& container_offset,
       const LogicalRect& ink_overflow,
-      const InlinePaintContext* inline_context);
+      const InlinePaintContext* inline_context,
+      const WritingMode writing_mode);
 
 #if DCHECK_IS_ON()
   struct ReadUnsetAsNoneScope {
@@ -199,16 +208,19 @@ class CORE_EXPORT InkOverflow {
       const DocumentMarkerVector& markers,
       const DocumentMarker::MarkerType type,
       const FragmentItem* fragment_item,
+      const TextOffsetRange& fragment_dom_offsets,
       Text* node,
       const ComputedStyle& style,
       const Font& scaled_font,
       const PhysicalOffset& offset_in_container,
       const LogicalRect& ink_overflow,
-      const InlinePaintContext* inline_context);
+      const InlinePaintContext* inline_context,
+      const WritingMode writing_mode);
 
   static LogicalRect ComputeCustomHighlightOverflow(
       const DocumentMarkerVector& markers,
       const FragmentItem* fragment_item,
+      const TextOffsetRange& fragment_dom_offsets,
       Text* text_node,
       const ComputedStyle& style,
       const Font& scaled_font,

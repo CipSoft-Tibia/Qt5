@@ -5,26 +5,22 @@
 #include <QtQml/qqml.h>
 #include <QDebug>
 
-class MyPluginType : public QObject
+class MyPluginTypeInvalidNamespace : public QObject
 {
     Q_OBJECT
-public:
-    MyPluginType(QObject *parent=nullptr) : QObject(parent) {}
 };
 
-
-class MyPlugin : public QQmlExtensionPlugin
+class MyPluginInvalidNamespace : public QQmlExtensionPlugin
 {
     Q_OBJECT
     Q_PLUGIN_METADATA(IID QQmlExtensionInterface_iid)
 
 public:
-    MyPlugin() {}
-
     void registerTypes(const char *uri) override
     {
-        Q_ASSERT(QLatin1String(uri) == "org.qtproject.InvalidStrictModule");
-        qmlRegisterType<MyPluginType>("org.qtproject.SomeOtherModule", 1, 0, "MyPluginType");
+        Q_ASSERT(QLatin1String(uri) == "org.qtproject.InvalidNamespaceModule");
+        qmlRegisterType<MyPluginTypeInvalidNamespace>("org.qtproject.SomeOtherModule", 1, 0,
+                                                      "MyPluginType");
     }
 };
 

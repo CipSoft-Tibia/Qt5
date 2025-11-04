@@ -1657,12 +1657,15 @@ void QMessageBox::open(QObject *receiver, const char *member)
 
 void QMessageBoxPrivate::setVisible(bool visible)
 {
-    Q_Q(QMessageBox);
-
     // Last minute setup
-    if (autoAddOkButton)
-        q->addButton(QMessageBox::Ok);
-    detectEscapeButton();
+    if (visible) {
+        Q_Q(QMessageBox);
+        if (autoAddOkButton)
+            q->addButton(QMessageBox::Ok);
+        detectEscapeButton();
+    }
+    // On hide, we may be called from ~QDialog(), so prevent accessing
+    // q_ptr as a QMessageBox!
 
     if (canBeNativeDialog())
         setNativeDialogVisible(visible);
@@ -1670,7 +1673,7 @@ void QMessageBoxPrivate::setVisible(bool visible)
     // Update WA_DontShowOnScreen based on whether the native dialog was shown,
     // so that QDialog::setVisible(visible) below updates the QWidget state correctly,
     // but skips showing the non-native version.
-    q->setAttribute(Qt::WA_DontShowOnScreen, nativeDialogInUse);
+    static_cast<QWidget*>(q_ptr)->setAttribute(Qt::WA_DontShowOnScreen, nativeDialogInUse);
 
     QDialogPrivate::setVisible(visible);
 }
@@ -1924,8 +1927,7 @@ void QMessageBox::about(QWidget *parent, const QString &title, const QString &te
     );
     msgBox->setAttribute(Qt::WA_DeleteOnClose);
     QIcon icon = msgBox->windowIcon();
-    QSize size = icon.actualSize(QSize(64, 64));
-    msgBox->setIconPixmap(icon.pixmap(size));
+    msgBox->setIconPixmap(icon.pixmap(QSize(64, 64), msgBox->devicePixelRatio()));
 
     // should perhaps be a style hint
 #ifdef Q_OS_MAC
@@ -2801,7 +2803,7 @@ bool QMessageBoxPrivate::canBeNativeDialog() const
 {
     // Don't use Q_Q here! This function is called from ~QDialog,
     // so Q_Q calling q_func() invokes undefined behavior (invalid cast in q_func()).
-    const QDialog * const q = static_cast<const QMessageBox*>(q_ptr);
+    const QDialog * const q = static_cast<const QDialog*>(q_ptr);
     if (nativeDialogInUse)
         return true;
     if (QCoreApplication::testAttribute(Qt::AA_DontUseNativeDialogs)

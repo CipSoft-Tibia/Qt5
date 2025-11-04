@@ -28,11 +28,12 @@
 #include "absl/log/log.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
-#include "./centipede/defs.h"
 #include "./centipede/feature.h"
 #include "./centipede/knobs.h"
-#include "./centipede/logging.h"
-#include "./centipede/remote_file.h"
+#include "./common/defs.h"
+#include "./common/logging.h"
+#include "./common/remote_file.h"
+#include "./common/status_macros.h"
 
 namespace centipede {
 
@@ -92,7 +93,8 @@ static bool GetBoolFlag(std::string_view value) {
 // Returns `value` as a size_t, CHECK-fails on parse error.
 static size_t GetIntFlag(std::string_view value) {
   size_t result{};
-  CHECK(std::from_chars(value.begin(), value.end(), result).ec == std::errc())
+  CHECK(std::from_chars(value.data(), value.data() + value.size(), result).ec ==
+        std::errc())
       << value;
   return result;
 }
@@ -191,10 +193,10 @@ void Environment::ReadKnobsFileIfSpecified() {
   const std::string_view knobs_file_path = knobs_file;
   if (knobs_file_path.empty()) return;
   ByteArray knob_bytes;
-  auto *f = RemoteFileOpen(knobs_file, "r");
+  auto *f = ValueOrDie(RemoteFileOpen(knobs_file, "r"));
   CHECK(f) << "Failed to open remote file " << knobs_file;
-  RemoteFileRead(f, knob_bytes);
-  RemoteFileClose(f);
+  CHECK_OK(RemoteFileRead(f, knob_bytes));
+  CHECK_OK(RemoteFileClose(f));
   VLOG(1) << "Knobs: " << knob_bytes.size() << " knobs read from "
           << knobs_file;
   knobs.Set(knob_bytes);

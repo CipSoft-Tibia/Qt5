@@ -6,8 +6,10 @@
 #define EXTENSIONS_BROWSER_API_DECLARATIVE_NET_REQUEST_INDEXED_RULE_H_
 
 #include <stdint.h>
+
 #include <optional>
 #include <string>
+
 #include "base/containers/flat_set.h"
 #include "components/url_pattern_index/flat/url_pattern_index_generated.h"
 #include "extensions/common/api/declarative_net_request.h"
@@ -15,8 +17,7 @@
 
 class GURL;
 
-namespace extensions {
-namespace declarative_net_request {
+namespace extensions::declarative_net_request {
 
 enum class ParseResult;
 
@@ -65,7 +66,7 @@ struct IndexedRule {
   std::vector<std::string> excluded_request_domains;
 
   // Note: For redirect rules, exactly one of |redirect_url|,
-  // |regex_substitution| or |url_transform|  will be set.
+  // |regex_substitution| or |url_transform| will be set.
   // The redirect url for the rule.
   std::optional<std::string> redirect_url;
   // The regex substitution for this rule.
@@ -92,7 +93,8 @@ struct IndexedRule {
   std::vector<api::declarative_net_request::HeaderInfo> response_headers;
 
   // List of response headers this rule doesn't apply to.
-  std::vector<std::string> excluded_response_headers;
+  std::vector<api::declarative_net_request::HeaderInfo>
+      excluded_response_headers;
 };
 
 // Compute the rule priority for indexing, by combining the priority from
@@ -101,7 +103,6 @@ uint64_t ComputeIndexedRulePriority(
     int parsed_rule_priority,
     api::declarative_net_request::RuleActionType action_type);
 
-}  // namespace declarative_net_request
-}  // namespace extensions
+}  // namespace extensions::declarative_net_request
 
 #endif  // EXTENSIONS_BROWSER_API_DECLARATIVE_NET_REQUEST_INDEXED_RULE_H_

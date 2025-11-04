@@ -13,7 +13,6 @@
 #include "content/public/browser/web_contents.h"
 #include "content/public/common/content_switches.h"
 #include "media/base/media_switches.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "third_party/blink/public/common/peerconnection/webrtc_ip_handling_policy.h"
 #include "third_party/blink/public/common/renderer_preferences/renderer_preferences.h"
 #include "third_party/blink/public/common/web_preferences/web_preferences.h"
@@ -35,27 +34,9 @@ QHash<QWebEngineSettings::FontSize, int> WebEngineSettings::s_defaultFontSizes;
 
 static const int batchTimerTimeout = 0;
 
-static inline bool isTouchEventsAPIEnabled() {
-    static bool initialized = false;
-    static bool touchEventsAPIEnabled = false;
-    if (!initialized) {
-        base::CommandLine *parsedCommandLine = base::CommandLine::ForCurrentProcess();
-
-        // By default the Touch Events API support (presence of 'ontouchstart' in 'window' object)
-        // will be determined based on the availability of touch screen devices.
-        const std::string touchEventsSwitchValue =
-            parsedCommandLine->HasSwitch(switches::kTouchEventFeatureDetection) ?
-                parsedCommandLine->GetSwitchValueASCII(switches::kTouchEventFeatureDetection) :
-                switches::kTouchEventFeatureDetectionAuto;
-
-        if (touchEventsSwitchValue == switches::kTouchEventFeatureDetectionEnabled)
-            touchEventsAPIEnabled = true;
-        else if (touchEventsSwitchValue == switches::kTouchEventFeatureDetectionAuto)
-            touchEventsAPIEnabled = (ui::GetTouchScreensAvailability() == ui::TouchScreensAvailability::ENABLED);
-
-        initialized = true;
-    }
-    return touchEventsAPIEnabled;
+static inline bool isTouchScreenDetected()
+{
+    return ui::GetTouchScreensAvailability() == ui::TouchScreensAvailability::ENABLED;
 }
 
 blink::mojom::ImageAnimationPolicy
@@ -303,6 +284,10 @@ void WebEngineSettings::initDefaults()
         s_defaultAttributes.insert(QWebEngineSettings::ReadingFromCanvasEnabled, !noReadingFromCanvas);
         bool forceDarkMode = commandLine->HasSwitch(switches::kForceDarkMode);
         s_defaultAttributes.insert(QWebEngineSettings::ForceDarkMode, forceDarkMode);
+        s_defaultAttributes.insert(QWebEngineSettings::PrintHeaderAndFooter, false);
+        s_defaultAttributes.insert(QWebEngineSettings::PreferCSSMarginsForPrinting, false);
+        s_defaultAttributes.insert(QWebEngineSettings::TouchEventsApiEnabled,
+                                   isTouchScreenDetected());
     }
 
     if (s_defaultFontFamilies.isEmpty()) {
@@ -367,7 +352,6 @@ void WebEngineSettings::applySettingsToWebPreferences(blink::web_pref::WebPrefer
     prefs->picture_in_picture_enabled = false;
 
     // Override for now
-    prefs->touch_event_feature_detection_enabled = isTouchEventsAPIEnabled();
 #if !QT_CONFIG(webengine_embedded_build)
     prefs->available_hover_types = (int)blink::mojom::HoverType::kHoverHoverType;
     prefs->primary_hover_type = blink::mojom::HoverType::kHoverHoverType;
@@ -417,6 +401,10 @@ void WebEngineSettings::applySettingsToWebPreferences(blink::web_pref::WebPrefer
     prefs->dns_prefetching_enabled = testAttribute(QWebEngineSettings::DnsPrefetchEnabled);
     prefs->disable_reading_from_canvas = !testAttribute(QWebEngineSettings::ReadingFromCanvasEnabled);
     prefs->animation_policy = toBlinkImageAnimationPolicy(imageAnimationPolicy());
+    bool touchEventsEnabled = isAttributeExplicitlySet(QWebEngineSettings::TouchEventsApiEnabled)
+            ? testAttribute(QWebEngineSettings::TouchEventsApiEnabled)
+            : isTouchScreenDetected();
+    prefs->touch_event_feature_detection_enabled = touchEventsEnabled;
 
     // Fonts settings.
     prefs->standard_font_family_map[blink::web_pref::kCommonScript] =
@@ -451,7 +439,7 @@ void WebEngineSettings::applySettingsToWebPreferences(blink::web_pref::WebPrefer
     }
 
     // Apply native CaptionStyle parameters.
-    absl::optional<ui::CaptionStyle> style;
+    std::optional<ui::CaptionStyle> style;
     if (base::CommandLine::ForCurrentProcess()->HasSwitch(switches::kForceCaptionStyle)) {
         style = ui::CaptionStyle::FromSpec(
                     base::CommandLine::ForCurrentProcess()->GetSwitchValueASCII(switches::kForceCaptionStyle));

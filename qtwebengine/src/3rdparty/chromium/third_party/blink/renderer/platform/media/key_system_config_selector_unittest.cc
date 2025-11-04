@@ -4,6 +4,7 @@
 
 #include "third_party/blink/public/platform/media/key_system_config_selector.h"
 
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -19,7 +20,6 @@
 #include "media/base/mime_util.h"
 #include "media/cdm/clear_key_cdm_common.h"
 #include "testing/gtest/include/gtest/gtest.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "third_party/blink/public/platform/web_content_settings_client.h"
 #include "third_party/blink/public/platform/web_encrypted_media_types.h"
 #include "third_party/blink/public/platform/web_media_key_system_configuration.h"
@@ -101,7 +101,7 @@ media::EncryptionScheme ConvertEncryptionScheme(
       break;
   }
 
-  NOTREACHED();
+  NOTREACHED_IN_MIGRATION();
   return media::EncryptionScheme::kUnencrypted;
 }
 
@@ -242,7 +242,7 @@ class FakeKeySystems : public media::KeySystems {
       case EmeInitDataType::KEYIDS:
         return init_data_type_keyids_supported_;
     }
-    NOTREACHED();
+    NOTREACHED_IN_MIGRATION();
     return false;
   }
 
@@ -348,7 +348,7 @@ class FakeKeySystems : public media::KeySystems {
       return EmeConfig::UnsupportedRule();
     }
 
-    NOTREACHED();
+    NOTREACHED_IN_MIGRATION();
     return EmeConfig::UnsupportedRule();
   }
 

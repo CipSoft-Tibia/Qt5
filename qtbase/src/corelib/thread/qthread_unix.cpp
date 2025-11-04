@@ -1,35 +1,28 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // Copyright (C) 2016 Intel Corporation.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qthread.h"
-
-#include "qplatformdefs.h"
+#include "qthread_p.h"
 
 #include <private/qcoreapplication_p.h>
 #include <private/qcore_unix_p.h>
+#include "qdebug.h"
 #include "qloggingcategory.h"
+#include "qthreadstorage.h"
 #include <private/qtools_p.h>
 
-#if defined(Q_OS_DARWIN)
-#  include <private/qeventdispatcher_cf_p.h>
-#elif defined(Q_OS_WASM)
-#    include <private/qeventdispatcher_wasm_p.h>
+#if defined(Q_OS_WASM)
+#  include <private/qeventdispatcher_wasm_p.h>
 #else
-#  if !defined(QT_NO_GLIB)
-#    include "../kernel/qeventdispatcher_glib_p.h"
+#  include <private/qeventdispatcher_unix_p.h>
+#  if defined(Q_OS_DARWIN)
+#    include <private/qeventdispatcher_cf_p.h>
+#  elif !defined(QT_NO_GLIB)
+#    include <private/qeventdispatcher_glib_p.h>
 #  endif
 #endif
-
-#if !defined(Q_OS_WASM)
-#  include <private/qeventdispatcher_unix_p.h>
-#endif
-
-#include "qthreadstorage.h"
-
-#include "qthread_p.h"
-
-#include "qdebug.h"
 
 #ifdef __GLIBCXX__
 #include <cxxabi.h>
@@ -37,6 +30,9 @@
 
 #include <sched.h>
 #include <errno.h>
+#if __has_include(<pthread_np.h>)
+#  include <pthread_np.h>
+#endif
 
 #if defined(Q_OS_FREEBSD)
 #  include <sys/cpuset.h>
@@ -71,6 +67,9 @@
 
 QT_BEGIN_NAMESPACE
 
+[[maybe_unused]]
+Q_STATIC_LOGGING_CATEGORY(lcQThread, "qt.core.thread", QtWarningMsg)
+
 using namespace QtMiscUtils;
 
 #if QT_CONFIG(thread)
@@ -78,6 +77,33 @@ using namespace QtMiscUtils;
 static_assert(sizeof(pthread_t) <= sizeof(Qt::HANDLE));
 
 enum { ThreadPriorityResetFlag = 0x80000000 };
+
+// If we have a way to perform a timed pthread_join(), we will do it if its
+// clock is not worse than the one QWaitCondition is using. This ensures that
+// QThread::wait() only returns after pthread_join() or equivalent has
+// returned, ensuring that the thread has definitely exited.
+//
+// Because only one thread can call this family of functions at a time, we
+// count how many threads are waiting and all but one of them wait on a
+// QWaitCondition, with the joining thread having the responsibility for waking
+// up all others when the joining concludes. If the joining times out, the
+// thread in charge wakes up one of the other waiters (if there's any) to
+// assume responsibility for joining.
+//
+// If we don't have a way to perform timed pthread_join(), then we don't try
+// joining a all. All waiting threads will wait for the launched thread to
+// call QWaitCondition::wakeAll(). Note in this case it is possible for the
+// waiting threads to conclude the launched thread has exited before it has.
+//
+// To support this scenario, we start the thread in detached state.
+static constexpr bool UsingPThreadTimedJoin = QT_CONFIG(pthread_clockjoin)
+        || (QT_CONFIG(pthread_timedjoin) && QWaitConditionClockId == CLOCK_REALTIME);
+#if !QT_CONFIG(pthread_clockjoin)
+int pthread_clockjoin_np(...) { return ENOSYS; }    // pretend
+#endif
+#if !QT_CONFIG(pthread_timedjoin)
+int pthread_timedjoin_np(...) { return ENOSYS; }    // pretend
+#endif
 
 #if QT_CONFIG(broken_threadlocal_dtors)
 // On most modern platforms, the C runtime has a helper function that helps the
@@ -98,22 +124,38 @@ enum { ThreadPriorityResetFlag = 0x80000000 };
 // https://github.com/llvm/llvm-project/blob/llvmorg-19.1.0/libcxxabi/src/cxa_thread_atexit.cpp#L118-L120
 #endif
 //
-// However, we can't destroy the QThreadData for the thread that called
-// ::exit() that early, because a lot of existing content (including in Qt)
-// runs when the static destructors are run and they do depend on QThreadData
-// being extant. Likewise, we can't destroy it at global static destructor time
-// because it's too late: the event dispatcher is usually a class found in a
-// plugin and the plugin's destructors (as well as QtGui's) will have run. So
-// we strike a middle-ground and destroy at function-local static destructor
-// time (see set_thread_data()), because those run after the thread_local ones,
-// before the global ones, and in reverse order of creation.
+// Thus, the destruction of QThreadData is split into 3 steps:
+// - finish()
+// - cleanup()
+// - deref & delete
+//
+// The reason for the first split is that user content may run as a result of
+// the finished() signal, in thread_local destructors or similar, so we don't
+// want to destroy the event dispatcher too soon. If we did, the event
+// dispatcher could get recreated.
+//
+// For auxiliary threads started with QThread, finish() is run as soon as run()
+// returns, while cleanup() and the deref happen at pthread_set_specific
+// destruction time (except for broken_threadlocal_dtors, see above).
+//
+// For auxiliary threads started with something else and adopted as a
+// QAdoptedThread, there's only one choice: all three steps happen at at
+// pthread_set_specific destruction time.
+//
+// Finally, for the thread that called ::exit() (which in most cases happens by
+// returning from the main() function), finish() and cleanup() happen at
+// function-local static destructor time, and the deref & delete happens later,
+// at global static destruction time. That way, we delete the event dispatcher
+// before QLibraryStore's clean up runs and unloads remaining plugins. This
+// strategy was chosen because of crashes observed while running the event
+// dispatcher's destructor, and though the cause of the crash was something
+// else (QFactoryLoader always loads with PreventUnloadHint set), other plugins
+// may still attempt to access QThreadData in their global destructors.
 
-// Always access this through the {get,set,clear}_thread_data() functions.
 Q_CONSTINIT static thread_local QThreadData *currentThreadData = nullptr;
 
-static void destroy_current_thread_data(void *p)
+static void destroy_current_thread_data(QThreadData *data)
 {
-    QThreadData *data = static_cast<QThreadData *>(p);
     QThread *thread = data->thread.loadAcquire();
 
 #ifdef Q_OS_APPLE
@@ -140,13 +182,23 @@ static void destroy_current_thread_data(void *p)
         // We may be racing the QThread destructor in another thread and it may
         // have begun destruction; we must not dereference the QThread pointer.
     }
+}
 
+static void deref_current_thread_data(QThreadData *data)
+{
     // the QThread object may still have a reference, so this may not delete
     data->deref();
 
     // ... but we must reset it to zero before returning so we aren't
     // leaving a dangling pointer.
     currentThreadData = nullptr;
+}
+
+static void destroy_auxiliary_thread_data(void *p)
+{
+    auto data = static_cast<QThreadData *>(p);
+    destroy_current_thread_data(data);
+    deref_current_thread_data(data);
 }
 
 // Utility functions for getting, setting and clearing thread specific data.
@@ -156,17 +208,36 @@ static QThreadData *get_thread_data()
 }
 
 namespace {
-struct PThreadTlsKey
+struct QThreadDataDestroyer
 {
     pthread_key_t key;
-    PThreadTlsKey() noexcept { pthread_key_create(&key, destroy_current_thread_data); }
-    ~PThreadTlsKey() { pthread_key_delete(key); }
+    QThreadDataDestroyer() noexcept
+    {
+        pthread_key_create(&key, &destroy_auxiliary_thread_data);
+    }
+    ~QThreadDataDestroyer()
+    {
+        // running global static destructors upon ::exit()
+        if (QThreadData *data = get_thread_data())
+            deref_current_thread_data(data);
+        pthread_key_delete(key);
+    }
+
+    struct EarlyMainThread {
+        EarlyMainThread() { QThreadStoragePrivate::init(); }
+        ~EarlyMainThread()
+        {
+            // running function-local destructors upon ::exit()
+            if (QThreadData *data = get_thread_data())
+                destroy_current_thread_data(data);
+        }
+    };
 };
 }
 #if QT_SUPPORTS_INIT_PRIORITY
 Q_DECL_INIT_PRIORITY(10)
 #endif
-static PThreadTlsKey pthreadTlsKey; // intentional non-trivial init & destruction
+static QThreadDataDestroyer threadDataDestroyer; // intentional non-trivial init & destruction
 
 static void set_thread_data(QThreadData *data) noexcept
 {
@@ -174,20 +245,10 @@ static void set_thread_data(QThreadData *data) noexcept
         // As noted above: one global static for the thread that called
         // ::exit() (which may not be a Qt thread) and the pthread_key_t for
         // all others.
-        static struct Cleanup {
-            ~Cleanup() {
-                if (QThreadData *data = get_thread_data())
-                    destroy_current_thread_data(data);
-            }
-        } currentThreadCleanup;
-        pthread_setspecific(pthreadTlsKey.key, data);
+        static QThreadDataDestroyer::EarlyMainThread currentThreadCleanup;
+        pthread_setspecific(threadDataDestroyer.key, data);
     }
     currentThreadData = data;
-}
-
-static void clear_thread_data()
-{
-    set_thread_data(nullptr);
 }
 
 template <typename T>
@@ -216,36 +277,31 @@ static typename std::enable_if<std::is_pointer_v<T>, T>::type from_HANDLE(Qt::HA
 
 void QThreadData::clearCurrentThreadData()
 {
-    clear_thread_data();
+    set_thread_data(nullptr);
 }
 
-QThreadData *QThreadData::current(bool createIfNecessary)
+QThreadData *QThreadData::currentThreadData() noexcept
 {
-    QThreadData *data = get_thread_data();
-    if (!data && createIfNecessary) {
-        data = new QThreadData;
-        QT_TRY {
-            set_thread_data(data);
-            data->thread.storeRelease(new QAdoptedThread(data));
-        } QT_CATCH(...) {
-            clear_thread_data();
-            data->deref();
-            data = nullptr;
-            QT_RETHROW;
-        }
-        data->deref();
-        data->isAdopted = true;
-        data->threadId.storeRelaxed(QThread::currentThreadId());
-        if (!QCoreApplicationPrivate::theMainThreadId.loadAcquire()) {
-            auto *mainThread = data->thread.loadRelaxed();
-            mainThread->setObjectName("Qt mainThread");
-            QCoreApplicationPrivate::theMainThread.storeRelease(mainThread);
-            QCoreApplicationPrivate::theMainThreadId.storeRelaxed(data->threadId.loadRelaxed());
-        }
-    }
-    return data;
+    return get_thread_data();
 }
 
+QThreadData *QThreadData::createCurrentThreadData()
+{
+    Q_ASSERT(!currentThreadData());
+    std::unique_ptr data = std::make_unique<QThreadData>();
+
+    // This needs to be called prior to new QAdoptedThread() to avoid
+    // recursion (see qobject.cpp).
+    set_thread_data(data.get());
+
+    QT_TRY {
+        data->thread.storeRelease(new QAdoptedThread(data.get()));
+    } QT_CATCH(...) {
+        clearCurrentThreadData();
+        QT_RETHROW;
+    }
+    return data.release();
+}
 
 void QAdoptedThread::init()
 {
@@ -318,7 +374,7 @@ void terminate_on_exception(T &&t)
         throw;
 #endif // __GLIBCXX__
     } catch (...) {
-        qTerminate();
+        std::terminate();
     }
 #endif // QT_NO_EXCEPTIONS
 }
@@ -344,6 +400,10 @@ void *QThreadPrivate::start(void *arg)
             if (thr->d_func()->priority & ThreadPriorityResetFlag) {
                 thr->d_func()->setPriority(QThread::Priority(thr->d_func()->priority & ~ThreadPriorityResetFlag));
             }
+#ifndef Q_OS_DARWIN // For Darwin we set it as an attribute when starting the thread
+            if (thr->d_func()->serviceLevel != QThread::QualityOfService::Auto)
+                thr->d_func()->setQualityOfServiceLevel(thr->d_func()->serviceLevel);
+#endif
 
             // threadId is set in QThread::start()
             Q_ASSERT(data->threadId.loadRelaxed() == QThread::currentThreadId());
@@ -396,8 +456,7 @@ void QThreadPrivate::finish()
 
         QMutexLocker locker(&d->mutex);
 
-        d->isInFinish = true;
-        d->priority = QThread::InheritPriority;
+        d->threadState = QThreadPrivate::Finishing;
         locker.unlock();
         emit thr->finished(QThread::QPrivateSignal());
         QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
@@ -433,13 +492,9 @@ void QThreadPrivate::cleanup()
             locker.relock();
         }
 
-        d->running = false;
-        d->finished = true;
         d->interruptionRequested.store(false, std::memory_order_relaxed);
 
-        d->isInFinish = false;
-
-        d->thread_done.wakeAll();
+        d->wakeAll();
     });
 }
 
@@ -664,7 +719,7 @@ static bool calculateUnixPriority(int priority, int *sched_policy, int *sched_pr
 
     int prio_min;
     int prio_max;
-#if defined(Q_OS_VXWORKS) && defined(VXWORKS_DKM)
+#if defined(Q_OS_VXWORKS)
     // for other scheduling policies than SCHED_RR or SCHED_FIFO
     prio_min = SCHED_FIFO_LOW_PRI;
     prio_max = SCHED_FIFO_HIGH_PRI;
@@ -695,14 +750,13 @@ void QThread::start(Priority priority)
     Q_D(QThread);
     QMutexLocker locker(&d->mutex);
 
-    if (d->isInFinish)
-        d->thread_done.wait(locker.mutex());
+    if (d->threadState == QThreadPrivate::Finishing)
+        d->wait(locker, QDeadlineTimer::Forever);
 
-    if (d->running)
+    if (d->threadState == QThreadPrivate::Running)
         return;
 
-    d->running = true;
-    d->finished = false;
+    d->threadState = QThreadPrivate::Running;
     d->returnCode = 0;
     d->exited = false;
     d->interruptionRequested.store(false, std::memory_order_relaxed);
@@ -710,7 +764,12 @@ void QThread::start(Priority priority)
 
     pthread_attr_t attr;
     pthread_attr_init(&attr);
-    pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
+    if constexpr (!UsingPThreadTimedJoin)
+        pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
+#ifdef Q_OS_DARWIN
+    if (d->serviceLevel != QThread::QualityOfService::Auto)
+        pthread_attr_set_qos_class_np(&attr, d->nativeQualityOfServiceClass(), 0);
+#endif
 
     d->priority = priority;
 
@@ -769,8 +828,7 @@ void QThread::start(Priority priority)
 
             // we failed to set the stacksize, and as the documentation states,
             // the thread will fail to run...
-            d->running = false;
-            d->finished = false;
+            d->threadState = QThreadPrivate::NotStarted;
             return;
         }
     }
@@ -803,8 +861,7 @@ void QThread::start(Priority priority)
     if (code) {
         qErrnoWarning(code, "QThread::start: Thread creation error");
 
-        d->running = false;
-        d->finished = false;
+        d->threadState = QThreadPrivate::NotStarted;
         d->data->threadId.storeRelaxed(nullptr);
     }
 }
@@ -842,33 +899,89 @@ void QThread::terminate()
 #endif
 }
 
-bool QThread::wait(QDeadlineTimer deadline)
+static void wakeAllInternal(QThreadPrivate *d)
 {
-    Q_D(QThread);
-    QMutexLocker locker(&d->mutex);
+    d->threadState = QThreadPrivate::Finished;
+    if (d->waiters)
+        d->thread_done.wakeAll();
+}
 
-    if (d->finished || !d->running)
-        return true;
-
-    if (isCurrentThread()) {
-        qWarning("QThread::wait: Thread tried to wait on itself");
-        return false;
-    }
-
-    return d->wait(locker, deadline);
+inline void QThreadPrivate::wakeAll()
+{
+    if (data->isAdopted || !UsingPThreadTimedJoin)
+        wakeAllInternal(this);
 }
 
 bool QThreadPrivate::wait(QMutexLocker<QMutex> &locker, QDeadlineTimer deadline)
 {
-    Q_ASSERT(locker.isLocked());
-    QThreadPrivate *d = this;
-
-    while (d->running) {
-        if (!d->thread_done.wait(locker.mutex(), deadline))
-            return false;
+    constexpr int HasJoinerBit = int(0x8000'0000);  // a.k.a. sign bit
+    struct timespec ts, *pts = nullptr;
+    if (!deadline.isForever()) {
+        ts = deadlineToAbstime(deadline);
+        pts = &ts;
     }
 
-    return true;
+    auto doJoin = [&] {
+        // pthread_join() & family are cancellation points
+        struct CancelState {
+            QThreadPrivate *d;
+            QMutexLocker<QMutex> *locker;
+            int joinResult = ETIMEDOUT;
+            static void run(void *arg) { static_cast<CancelState *>(arg)->run(); }
+            void run()
+            {
+                locker->relock();
+                if (joinResult == ETIMEDOUT && d->waiters)
+                    d->thread_done.wakeOne();
+                else if (joinResult == 0)
+                    wakeAllInternal(d);
+                d->waiters &= ~HasJoinerBit;
+            }
+        } nocancel = { this, &locker };
+        int &r = nocancel.joinResult;
+
+        // we're going to perform the join, so don't let other threads do it
+        waiters |= HasJoinerBit;
+        locker.unlock();
+
+        pthread_cleanup_push(&CancelState::run, &nocancel);
+        pthread_t thrId = from_HANDLE<pthread_t>(data->threadId.loadRelaxed());
+        if constexpr (QT_CONFIG(pthread_clockjoin))
+            r = pthread_clockjoin_np(thrId, nullptr, SteadyClockClockId, pts);
+        else
+            r = pthread_timedjoin_np(thrId, nullptr, pts);
+        Q_ASSERT(r == 0 || r == ETIMEDOUT);
+        pthread_cleanup_pop(1);
+
+        Q_ASSERT(waiters >= 0);
+        return r != ETIMEDOUT;
+    };
+    Q_ASSERT(threadState != QThreadPrivate::Finished);
+    Q_ASSERT(locker.isLocked());
+
+    bool result = false;
+
+    // both branches call cancellation points
+    ++waiters;
+    bool mustJoin = (waiters & HasJoinerBit) == 0;
+    pthread_cleanup_push([](void *ptr) {
+        --(*static_cast<decltype(waiters) *>(ptr));
+    }, &waiters);
+    for (;;) {
+        if (UsingPThreadTimedJoin && mustJoin && !data->isAdopted) {
+            result = doJoin();
+            break;
+        }
+        if (!thread_done.wait(locker.mutex(), deadline))
+            break;      // timed out
+        result = threadState == QThreadPrivate::Finished;
+        if (result)
+            break;      // success
+        mustJoin = (waiters & HasJoinerBit) == 0;
+    }
+    pthread_cleanup_pop(1);
+
+    return result;
 }
 
 void QThread::setTerminationEnabled(bool enabled)
@@ -929,6 +1042,39 @@ void QThreadPrivate::setPriority(QThread::Priority threadPriority)
 # endif // SCHED_IDLE
 #endif
 }
+
+void QThreadPrivate::setQualityOfServiceLevel(QThread::QualityOfService qosLevel)
+{
+    [[maybe_unused]]
+    Q_Q(QThread);
+    serviceLevel = qosLevel;
+#ifdef Q_OS_DARWIN
+    qCDebug(lcQThread) << "Setting thread QoS class to" << serviceLevel << "for thread" << q;
+    pthread_set_qos_class_self_np(nativeQualityOfServiceClass(), 0);
+#endif
+}
+
+#ifdef Q_OS_DARWIN
+qos_class_t QThreadPrivate::nativeQualityOfServiceClass() const
+{
+    // @note Consult table[0] to see what the levels mean
+    // [0] https://developer.apple.com/library/archive/documentation/Performance/Conceptual/power_efficiency_guidelines_osx/PrioritizeWorkAtTheTaskLevel.html#//apple_ref/doc/uid/TP40013929-CH35-SW5
+    // There are more levels but they have two other documented ones,
+    // QOS_CLASS_BACKGROUND, which is below UTILITY, but has no guarantees
+    // for scheduling (ie. the OS could choose to never give it CPU time),
+    // and QOS_CLASS_USER_INITIATED, documented as being intended for
+    // user-initiated actions, such as loading a text document.
+    switch (serviceLevel) {
+    case QThread::QualityOfService::Auto:
+        return QOS_CLASS_DEFAULT;
+    case QThread::QualityOfService::High:
+        return QOS_CLASS_USER_INTERACTIVE;
+    case QThread::QualityOfService::Eco:
+        return QOS_CLASS_UTILITY;
+    }
+    Q_UNREACHABLE_RETURN(QOS_CLASS_DEFAULT);
+}
+#endif
 
 #endif // QT_CONFIG(thread)
 

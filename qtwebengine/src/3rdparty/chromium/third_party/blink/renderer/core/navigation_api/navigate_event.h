@@ -5,8 +5,9 @@
 #ifndef THIRD_PARTY_BLINK_RENDERER_CORE_NAVIGATION_API_NAVIGATE_EVENT_H_
 #define THIRD_PARTY_BLINK_RENDERER_CORE_NAVIGATION_API_NAVIGATE_EVENT_H_
 
+#include <optional>
+
 #include "base/time/time.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "third_party/blink/public/web/web_frame_load_type.h"
 #include "third_party/blink/renderer/bindings/core/v8/script_promise.h"
 #include "third_party/blink/renderer/bindings/core/v8/serialization/serialized_script_value.h"
@@ -32,7 +33,7 @@ class NavigateEventInit;
 class NavigationInterceptOptions;
 class ExceptionState;
 class FormData;
-class ScriptPromise;
+class ScriptPromiseUntyped;
 class V8NavigationInterceptHandler;
 
 class NavigateEvent final : public Event,
@@ -119,9 +120,9 @@ class NavigateEvent final : public Event,
   ScriptValue info_;
   bool has_ua_visual_transition_ = false;
   Member<Element> source_element_;
-  absl::optional<V8NavigationFocusReset> focus_reset_behavior_ = absl::nullopt;
-  absl::optional<V8NavigationScrollBehavior> scroll_behavior_ = absl::nullopt;
-  absl::optional<V8NavigationCommitBehavior> commit_behavior_ = absl::nullopt;
+  std::optional<V8NavigationFocusReset> focus_reset_behavior_ = std::nullopt;
+  std::optional<V8NavigationScrollBehavior> scroll_behavior_ = std::nullopt;
+  std::optional<V8NavigationCommitBehavior> commit_behavior_ = std::nullopt;
 
   Member<NavigateEventDispatchParams> dispatch_params_;
 
@@ -134,7 +135,7 @@ class NavigateEvent final : public Event,
   };
   InterceptState intercept_state_ = InterceptState::kNone;
 
-  HeapVector<ScriptPromise> navigation_action_promises_list_;
+  HeapVector<ScriptPromiseUntyped> navigation_action_promises_list_;
   HeapVector<Member<V8NavigationInterceptHandler>>
       navigation_action_handlers_list_;
   bool did_change_focus_during_intercept_ = false;

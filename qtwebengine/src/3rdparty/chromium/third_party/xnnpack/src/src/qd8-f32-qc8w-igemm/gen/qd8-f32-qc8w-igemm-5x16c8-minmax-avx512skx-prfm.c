@@ -11,10 +11,10 @@
 
 #include <immintrin.h>
 
-#include <xnnpack/igemm.h>
-#include <xnnpack/intrinsics-polyfill.h>
-#include <xnnpack/math.h>
-#include <xnnpack/prefetch.h>
+#include "xnnpack/igemm.h"
+#include "xnnpack/intrinsics-polyfill.h"
+#include "xnnpack/math.h"
+#include "xnnpack/prefetch.h"
 
 
 void xnn_qd8_f32_qc8w_igemm_minmax_ukernel_5x16c8__avx512skx_prfm(
@@ -235,7 +235,7 @@ void xnn_qd8_f32_qc8w_igemm_minmax_ukernel_5x16c8__avx512skx_prfm(
     vscaled3x0123456789ABCDEF = _mm512_min_ps(vscaled3x0123456789ABCDEF, voutput_max);
     vscaled4x0123456789ABCDEF = _mm512_min_ps(vscaled4x0123456789ABCDEF, voutput_max);
 
-    if(nc >= 16) {
+    if XNN_LIKELY(nc >= 16) {
       _mm512_storeu_ps(c4, vscaled4x0123456789ABCDEF);
       c4 = (float*) ((uintptr_t) c4 + cn_stride);
       _mm512_storeu_ps(c3, vscaled3x0123456789ABCDEF);

@@ -1,5 +1,6 @@
 // Copyright (C) 2020 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant
 
 #include "qqmldomastdumper_p.h"
 #include "qqmldomerrormessage_p.h"
@@ -638,12 +639,12 @@ public:
     }
     void endVisit(AST::ConditionalExpression *) override { stop(u"ConditionalExpression"); }
 
-    bool visit(AST::Expression *el) override {
+    bool visit(AST::CommaExpression *el) override {
         start(QLatin1String("Expression commaToken=%1")
               .arg(loc(el->commaToken)));
         return true;
     }
-    void endVisit(AST::Expression *) override { stop(u"Expression"); }
+    void endVisit(AST::CommaExpression *) override { stop(u"Expression"); }
 
     bool visit(AST::Block *el) override {
         start(QLatin1String("Block lbraceToken=%1 rbraceToken=%2")
@@ -849,15 +850,21 @@ public:
     void endVisit(AST::FunctionDeclaration *) override { stop(u"FunctionDeclaration"); }
 
     bool visit(AST::FunctionExpression *el) override {
+
+        QString parentheses = options & AstDumperOption::NoLocations
+                ? QLatin1String()
+                : QLatin1String(" lparenToken=%1 rparenToken=%2")
+                          .arg(loc(el->lparenToken), loc(el->rparenToken));
+
         start(QLatin1String("FunctionExpression name=%1 isArrowFunction=%2 isGenerator=%3 "
                             "functionToken=%4 "
-                            "identifierToken=%5 lparenToken=%6 rparenToken=%7 lbraceToken=%8 "
-                            "rbraceToken=%9")
+                            "identifierToken=%5%6 lbraceToken=%7 "
+                            "rbraceToken=%8")
                       .arg(quotedString(el->name), boolStr(el->isArrowFunction),
                            boolStr(el->isGenerator),
                            loc(el->functionToken, options & AstDumperOption::SloppyCompare),
-                           loc(el->identifierToken), loc(el->lparenToken), loc(el->rparenToken),
-                           loc(el->lbraceToken), loc(el->rbraceToken)));
+                           loc(el->identifierToken), parentheses, loc(el->lbraceToken),
+                           loc(el->rbraceToken)));
         return true;
     }
     void endVisit(AST::FunctionExpression *) override { stop(u"FunctionExpression"); }

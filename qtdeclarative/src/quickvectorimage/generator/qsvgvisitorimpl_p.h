@@ -54,6 +54,9 @@ protected:
 
 private:
     void fillCommonNodeInfo(const QSvgNode *node, NodeInfo &info);
+    void fillAnimationInfo(const QSvgNode *node, NodeInfo &info);
+    void fillColorAnimationInfo(const QSvgNode *node, NodeInfo &info);
+    void fillTransformAnimationInfo(const QSvgNode *node, NodeInfo &info);
     void handleBaseNodeSetup(const QSvgNode *node);
     void handleBaseNode(const QSvgNode *node);
     void handleBaseNodeEnd(const QSvgNode *node);

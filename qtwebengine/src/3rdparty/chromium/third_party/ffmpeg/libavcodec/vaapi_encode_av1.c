@@ -23,6 +23,7 @@
 
 #include "libavutil/pixdesc.h"
 #include "libavutil/opt.h"
+#include "libavutil/mastering_display_metadata.h"
 
 #include "cbs_av1.h"
 #include "put_bits.h"
@@ -41,6 +42,8 @@ typedef struct VAAPIEncodeAV1Context {
     VAAPIEncodeContext common;
     AV1RawOBU sh; /**< sequence header.*/
     AV1RawOBU fh; /**< frame header.*/
+    AV1RawOBU mh[4]; /**< metadata header.*/
+    int nb_mh;
     CodedBitstreamContext *cbc;
     CodedBitstreamFragment current_obu;
     VAConfigAttribValEncAV1 attr;
@@ -154,6 +157,8 @@ static av_cold int vaapi_encode_av1_configure(AVCodecContext *avctx)
         /** Arbitrary value */
         priv->q_idx_idr = priv->q_idx_p = priv->q_idx_b = 128;
     }
+
+    ctx->roi_quant_range = AV1_MAX_QUANT;
 
     return 0;
 }
@@ -657,6 +662,68 @@ static int vaapi_encode_av1_init_picture_params(AVCodecContext *avctx,
                                                2 : 1));
     }
 
+    priv->nb_mh = 0;
+
+    if (pic->type == PICTURE_TYPE_IDR) {
+        AVFrameSideData *sd =
+            av_frame_get_side_data(pic->input_image,
+                                   AV_FRAME_DATA_MASTERING_DISPLAY_METADATA);
+        if (sd) {
+            AVMasteringDisplayMetadata *mdm =
+                (AVMasteringDisplayMetadata *)sd->data;
+            if (mdm->has_primaries && mdm->has_luminance) {
+                AV1RawOBU              *obu = &priv->mh[priv->nb_mh++];
+                AV1RawMetadata          *md = &obu->obu.metadata;
+                AV1RawMetadataHDRMDCV *mdcv = &md->metadata.hdr_mdcv;
+                const int        chroma_den = 1 << 16;
+                const int      max_luma_den = 1 << 8;
+                const int      min_luma_den = 1 << 14;
+
+                memset(obu, 0, sizeof(*obu));
+                obu->header.obu_type = AV1_OBU_METADATA;
+                md->metadata_type = AV1_METADATA_TYPE_HDR_MDCV;
+
+                for (i = 0; i < 3; i++) {
+                    mdcv->primary_chromaticity_x[i] =
+                        av_rescale(mdm->display_primaries[i][0].num, chroma_den,
+                                   mdm->display_primaries[i][0].den);
+                    mdcv->primary_chromaticity_y[i] =
+                        av_rescale(mdm->display_primaries[i][1].num, chroma_den,
+                                   mdm->display_primaries[i][1].den);
+                }
+
+                mdcv->white_point_chromaticity_x =
+                    av_rescale(mdm->white_point[0].num, chroma_den,
+                               mdm->white_point[0].den);
+                mdcv->white_point_chromaticity_y =
+                    av_rescale(mdm->white_point[1].num, chroma_den,
+                               mdm->white_point[1].den);
+
+                mdcv->luminance_max =
+                    av_rescale(mdm->max_luminance.num, max_luma_den,
+                               mdm->max_luminance.den);
+                mdcv->luminance_min =
+                    av_rescale(mdm->min_luminance.num, min_luma_den,
+                               mdm->min_luminance.den);
+            }
+        }
+
+        sd = av_frame_get_side_data(pic->input_image,
+                                    AV_FRAME_DATA_CONTENT_LIGHT_LEVEL);
+        if (sd) {
+            AVContentLightMetadata *cllm = (AVContentLightMetadata *)sd->data;
+            AV1RawOBU               *obu = &priv->mh[priv->nb_mh++];
+            AV1RawMetadata           *md = &obu->obu.metadata;
+            AV1RawMetadataHDRCLL    *cll = &md->metadata.hdr_cll;
+
+            memset(obu, 0, sizeof(*obu));
+            obu->header.obu_type = AV1_OBU_METADATA;
+            md->metadata_type    = AV1_METADATA_TYPE_HDR_CLL;
+            cll->max_cll         = cllm->MaxCLL;
+            cll->max_fall        = cllm->MaxFALL;
+        }
+    }
+
 end:
     ff_cbs_fragment_reset(obu);
     return ret;
@@ -733,6 +800,39 @@ end:
     return ret;
 }
 
+static int vaapi_encode_av1_write_extra_header(AVCodecContext *avctx,
+                                               VAAPIEncodePicture *pic,
+                                               int index, int *type,
+                                               char *data, size_t *data_len)
+{
+    VAAPIEncodeAV1Context  *priv = avctx->priv_data;
+    CodedBitstreamFragment *obu  = &priv->current_obu;
+    AV1RawOBU *mh_obu;
+    char mh_data[MAX_PARAM_BUFFER_SIZE];
+    size_t mh_data_len;
+    int ret = 0;
+
+    if (index >= priv->nb_mh)
+        return AVERROR_EOF;
+
+    mh_obu = &priv->mh[index];
+    ret = vaapi_encode_av1_add_obu(avctx, obu, AV1_OBU_METADATA, mh_obu);
+    if (ret < 0)
+        goto end;
+
+    ret = vaapi_encode_av1_write_obu(avctx, mh_data, &mh_data_len, obu);
+    if (ret < 0)
+        goto end;
+
+    memcpy(data, mh_data, MAX_PARAM_BUFFER_SIZE * sizeof(char));
+    *data_len = mh_data_len;
+    *type = VAEncPackedHeaderRawData;
+
+end:
+    ff_cbs_fragment_reset(obu);
+    return ret;
+}
+
 static const VAAPIEncodeProfile vaapi_encode_av1_profiles[] = {
     { AV_PROFILE_AV1_MAIN,  8, 3, 1, 1, VAProfileAV1Profile0 },
     { AV_PROFILE_AV1_MAIN, 10, 3, 1, 1, VAProfileAV1Profile0 },
@@ -760,6 +860,8 @@ static const VAAPIEncodeType vaapi_encode_type_av1 = {
 
     .slice_params_size = sizeof(VAEncTileGroupBufferAV1),
     .init_slice_params = &vaapi_encode_av1_init_slice_params,
+
+    .write_extra_header     = &vaapi_encode_av1_write_extra_header,
 };
 
 static av_cold int vaapi_encode_av1_init(AVCodecContext *avctx)
@@ -774,7 +876,8 @@ static av_cold int vaapi_encode_av1_init(AVCodecContext *avctx)
 
     ctx->desired_packed_headers =
         VA_ENC_PACKED_HEADER_SEQUENCE |
-        VA_ENC_PACKED_HEADER_PICTURE;
+        VA_ENC_PACKED_HEADER_PICTURE |
+        VA_ENC_PACKED_HEADER_MISC;      // Metadata
 
     if (avctx->profile == AV_PROFILE_UNKNOWN)
         avctx->profile = priv->profile;
@@ -866,27 +969,27 @@ static const AVOption vaapi_encode_av1_options[] = {
     VAAPI_ENCODE_RC_OPTIONS,
     { "profile", "Set profile (seq_profile)",
       OFFSET(profile), AV_OPT_TYPE_INT,
-      { .i64 = AV_PROFILE_UNKNOWN }, AV_PROFILE_UNKNOWN, 0xff, FLAGS, "profile" },
+      { .i64 = AV_PROFILE_UNKNOWN }, AV_PROFILE_UNKNOWN, 0xff, FLAGS, .unit = "profile" },
 
 #define PROFILE(name, value)  name, NULL, 0, AV_OPT_TYPE_CONST, \
-    { .i64 = value }, 0, 0, FLAGS, "profile"
+    { .i64 = value }, 0, 0, FLAGS, .unit = "profile"
     { PROFILE("main",               AV_PROFILE_AV1_MAIN) },
     { PROFILE("high",               AV_PROFILE_AV1_HIGH) },
     { PROFILE("professional",       AV_PROFILE_AV1_PROFESSIONAL) },
 #undef PROFILE
 
     { "tier", "Set tier (seq_tier)",
-      OFFSET(tier), AV_OPT_TYPE_INT, { .i64 = 0 }, 0, 1, FLAGS, "tier" },
+      OFFSET(tier), AV_OPT_TYPE_INT, { .i64 = 0 }, 0, 1, FLAGS, .unit = "tier" },
     { "main", NULL, 0, AV_OPT_TYPE_CONST,
-      { .i64 = 0 }, 0, 0, FLAGS, "tier" },
+      { .i64 = 0 }, 0, 0, FLAGS, .unit = "tier" },
     { "high", NULL, 0, AV_OPT_TYPE_CONST,
-      { .i64 = 1 }, 0, 0, FLAGS, "tier" },
+      { .i64 = 1 }, 0, 0, FLAGS, .unit = "tier" },
     { "level", "Set level (seq_level_idx)",
       OFFSET(level), AV_OPT_TYPE_INT,
-      { .i64 = AV_LEVEL_UNKNOWN }, AV_LEVEL_UNKNOWN, 0x1f, FLAGS, "level" },
+      { .i64 = AV_LEVEL_UNKNOWN }, AV_LEVEL_UNKNOWN, 0x1f, FLAGS, .unit = "level" },
 
 #define LEVEL(name, value) name, NULL, 0, AV_OPT_TYPE_CONST, \
-      { .i64 = value }, 0, 0, FLAGS, "level"
+      { .i64 = value }, 0, 0, FLAGS, .unit = "level"
     { LEVEL("2.0",  0) },
     { LEVEL("2.1",  1) },
     { LEVEL("3.0",  4) },

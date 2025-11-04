@@ -19,56 +19,30 @@
 #include <filesystem>  // NOLINT
 #include <map>
 #include <string>
-#include <thread>  // NOLINT(build/c++11)
 #include <vector>
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/log.h"
-#include "./centipede/defs.h"
 #include "./centipede/feature.h"
+#include "./centipede/thread_pool.h"
+#include "./common/defs.h"
+#include "./common/hash.h"
 
 namespace centipede {
 
-static void Append(ByteArray &to, const ByteArray &from) {
-  to.insert(to.end(), from.begin(), from.end());
-}
-
-TEST(UtilTest, AppendFile) {
-  ByteArray packed;
-  ByteArray a{1, 2, 3};
-  ByteArray b{3, 4, 5};
-  ByteArray c{111, 112, 113, 114, 115};
-  Append(packed, PackBytesForAppendFile(a));
-  Append(packed, PackBytesForAppendFile(b));
-  Append(packed, PackBytesForAppendFile(c));
-  std::vector<ByteArray> unpacked;
-  UnpackBytesFromAppendFile(packed, &unpacked);
-  EXPECT_EQ(a, unpacked[0]);
-  EXPECT_EQ(b, unpacked[1]);
-  EXPECT_EQ(c, unpacked[2]);
-}
-
-TEST(UtilTest, Hash) {
-  // The current implementation of Hash() is sha1.
-  // Here we test a couple of inputs against their known sha1 values
-  // obtained from the sha1sum command line utility.
-  EXPECT_EQ(Hash({'a', 'b', 'c'}), "a9993e364706816aba3e25717850c26c9cd0d89d");
-  EXPECT_EQ(Hash({'x', 'y'}), "5f8459982f9f619f4b0d9af2542a2086e56a4bef");
-}
-
 TEST(UtilTest, AsString) {
-  EXPECT_EQ(AsString({'a', 'b', 'c'}, 3), "abc");
-  EXPECT_EQ(AsString({'a', 'b', 'C'}, 4), "abC");
-  EXPECT_EQ(AsString({'a', 'b', 'c'}, 2), "ab");
+  EXPECT_EQ(AsPrintableString({'a', 'b', 'c'}, 3), "abc");
+  EXPECT_EQ(AsPrintableString({'a', 'b', 'C'}, 4), "abC");
+  EXPECT_EQ(AsPrintableString({'a', 'b', 'c'}, 2), "ab");
   // NOTE: Test both int (0xAB) and char ('\xAB') literals as ByteArray
   // initializers: the latter used to cause compilation failures with
   // Bazel/Clang default setup (without --cxxopt=--fno-signed-char in .bazelrc).
-  EXPECT_EQ(AsString({'a', 0xAB, 0xCD}, 3), "a\\xAB\\xCD");
-  EXPECT_EQ(AsString({'a', 0xAB, 0xCD}, 4), "a\\xAB\\xCD");
-  EXPECT_EQ(AsString({'a', '\xAB', '\xCD'}, 2), "a\\xAB");
-  EXPECT_EQ(AsString({'a', '\xAB', '\xCD', 'z'}, 5), "a\\xAB\\xCDz");
+  EXPECT_EQ(AsPrintableString({'a', 0xAB, 0xCD}, 3), "a\\xAB\\xCD");
+  EXPECT_EQ(AsPrintableString({'a', 0xAB, 0xCD}, 4), "a\\xAB\\xCD");
+  EXPECT_EQ(AsPrintableString({'a', '\xAB', '\xCD'}, 2), "a\\xAB");
+  EXPECT_EQ(AsPrintableString({'a', '\xAB', '\xCD', 'z'}, 5), "a\\xAB\\xCDz");
 }
 
 TEST(UtilTest, ExtractHashFromArray) {
@@ -119,10 +93,8 @@ TEST(UtilTest, PackAndUnpackFeaturesAsRawBytes) {
   const ByteArray kData{1, 2, 3, 4};
   std::string hash = Hash(kData);
   const FeatureVec kFeatures = {102, 30, 7, 15};
-  ByteSpan feature_bytes(reinterpret_cast<const uint8_t *>(kFeatures.data()),
-                         kFeatures.size() * sizeof(feature_t));
-  ByteArray packed = PackFeaturesAndHashAsRawBytes(kData, feature_bytes);
-
+  ByteArray packed =
+      PackFeaturesAndHashAsRawBytes(kData, AsByteSpan(kFeatures));
   FeatureVec unpacked_features;
   std::string unpacked_hash = UnpackFeaturesAndHash(packed, &unpacked_features);
   EXPECT_EQ(kFeatures, unpacked_features);
@@ -156,12 +128,19 @@ TEST(UtilTest, TemporaryLocalDirPath) {
   }
 
   {
-    // Create dir in a thread.
-    std::string temp_dir_from_other_thread;
-    std::thread get_temp_dir_thread(
-        [&]() { temp_dir_from_other_thread = TemporaryLocalDirPath(); });
-    get_temp_dir_thread.join();
-    EXPECT_NE(TemporaryLocalDirPath(), temp_dir_from_other_thread);
+    // Create dirs in two threads.
+    std::string temp_dir_1, temp_dir_2;
+    {
+      // NOTE: Not using a 2-threaded pool here because the scheduled tasks are
+      // too fast and can end up both running in the same thread. Also, not
+      // using `std::thread`.
+      ThreadPool thread1{1}, thread2{1};
+      thread1.Schedule(
+          [&temp_dir_1]() { temp_dir_1 = TemporaryLocalDirPath(); });
+      thread2.Schedule(
+          [&temp_dir_2]() { temp_dir_2 = TemporaryLocalDirPath(); });
+    }  // The threads join here.
+    EXPECT_NE(temp_dir_1, temp_dir_2);
   }
 }
 

@@ -20,10 +20,12 @@
 #include "base/time/time.h"
 #include "build/build_config.h"
 #include "components/device_event_log/device_event_log.h"
+#include "device/bluetooth/bluetooth_adapter.h"
 #include "device/bluetooth/bluetooth_adapter_factory.h"
 #include "device/bluetooth/bluetooth_advertisement.h"
 #include "device/bluetooth/bluetooth_discovery_session.h"
 #include "device/bluetooth/public/cpp/bluetooth_uuid.h"
+#include "device/fido/cable/fido_ble_connection.h"
 #include "device/fido/cable/fido_ble_uuids.h"
 #include "device/fido/cable/fido_cable_device.h"
 #include "device/fido/cable/fido_cable_handshake_handler.h"
@@ -126,7 +128,7 @@ FidoCableDiscovery::FidoCableDiscovery(
       discovery_data_(std::move(discovery_data)) {
 // Windows currently does not support multiple EIDs, thus we ignore any extra
 // discovery data.
-// TODO(https://crbug.com/837088): Add support for multiple EIDs on Windows.
+// TODO(crbug.com/40573698): Add support for multiple EIDs on Windows.
 #if BUILDFLAG(IS_WIN)
   if (discovery_data_.size() > 1u) {
     FIDO_LOG(ERROR) << "discovery_data_.size()=" << discovery_data_.size()
@@ -219,24 +221,16 @@ void FidoCableDiscovery::OnGetAdapter(scoped_refptr<BluetoothAdapter> adapter) {
   DCHECK(!adapter_);
   adapter_ = std::move(adapter);
   DCHECK(adapter_);
-  FIDO_LOG(DEBUG) << "BLE adapter address " << adapter_->GetAddress();
 
   adapter_->AddObserver(this);
-  if (adapter_->IsPowered()) {
-    OnSetPowered();
-  }
-
+  BluetoothAdapter::PermissionStatus bluetooth_permission =
+      BluetoothAdapter::PermissionStatus::kAllowed;
 #if BUILDFLAG(IS_MAC)
-  // TODO(crbug.com/1314404): turn this into a user-visible UI if we believe
-  // that it's a good signal.
   switch (fido::mac::ProcessIsSigned()) {
     case fido::mac::CodeSigningState::kSigned:
+      bluetooth_permission = adapter_->GetOsPermissionStatus();
       FIDO_LOG(DEBUG) << "Bluetooth authorized: "
-                      << static_cast<int>(adapter_->GetOsPermissionStatus());
-      if (adapter_->GetOsPermissionStatus() ==
-          BluetoothAdapter::PermissionStatus::kDenied) {
-        observer()->BleDenied();
-      }
+                      << static_cast<int>(bluetooth_permission);
       break;
     case fido::mac::CodeSigningState::kNotSigned:
       FIDO_LOG(DEBUG)
@@ -244,6 +238,13 @@ void FidoCableDiscovery::OnGetAdapter(scoped_refptr<BluetoothAdapter> adapter) {
       break;
   }
 #endif
+
+  if (bluetooth_permission == BluetoothAdapter::PermissionStatus::kAllowed) {
+    FIDO_LOG(DEBUG) << "BLE adapter address " << adapter_->GetAddress();
+    if (adapter_->IsPowered()) {
+      OnSetPowered();
+    }
+  }
 
   // FidoCableDiscovery blocks its transport availability callback on the
   // DiscoveryStarted() calls of all instantiated discoveries. Hence, this call
@@ -308,8 +309,8 @@ void FidoCableDiscovery::AdapterPoweredChanged(BluetoothAdapter* adapter,
   // the adapter, such that one of the WinRT API calls inside
   // BluetoothAdapter::StartDiscoverySessionWithFilter() can fail with "Device
   // not ready for use". So wait for things to actually be ready.
-  // TODO(crbug/1046140): Remove this delay once the Bluetooth layer handles
-  // the spurious failure.
+  // TODO(crbug.com/40670639): Remove this delay once the Bluetooth layer
+  // handles the spurious failure.
   base::SequencedTaskRunner::GetCurrentDefault()->PostDelayedTask(
       FROM_HERE,
       base::BindOnce(&FidoCableDiscovery::StartCableDiscovery,
@@ -346,7 +347,7 @@ void FidoCableDiscovery::OnDeviceLost(
 
 void FidoCableDiscovery::OnSessionStarted(
     device::BluetoothLowEnergyScanSession* scan_session,
-    absl::optional<device::BluetoothLowEnergyScanSession::ErrorCode>
+    std::optional<device::BluetoothLowEnergyScanSession::ErrorCode>
         error_code) {
   if (error_code) {
     FIDO_LOG(ERROR) << "Failed to start caBLE LE scan session, error_code = "
@@ -503,8 +504,7 @@ void FidoCableDiscovery::CableDeviceFound(BluetoothAdapter* adapter,
     return;
   }
 
-  absl::optional<V1DiscoveryDataAndEID> v1_match =
-      GetCableDiscoveryData(device);
+  std::optional<V1DiscoveryDataAndEID> v1_match = GetCableDiscoveryData(device);
   if (!v1_match) {
     return;
   }
@@ -554,7 +554,7 @@ void FidoCableDiscovery::ConductEncryptionHandshake(
 void FidoCableDiscovery::ValidateAuthenticatorHandshakeMessage(
     CableDiscoveryData::Version cable_version,
     FidoCableHandshakeHandler* handshake_handler,
-    absl::optional<std::vector<uint8_t>> handshake_response) {
+    std::optional<std::vector<uint8_t>> handshake_response) {
   const bool ok = handshake_response.has_value() &&
                   handshake_handler->ValidateAuthenticatorHandshakeMessage(
                       *handshake_response);
@@ -582,14 +582,14 @@ void FidoCableDiscovery::ValidateAuthenticatorHandshakeMessage(
   }
 }
 
-absl::optional<FidoCableDiscovery::V1DiscoveryDataAndEID>
+std::optional<FidoCableDiscovery::V1DiscoveryDataAndEID>
 FidoCableDiscovery::GetCableDiscoveryData(const BluetoothDevice* device) {
   const std::vector<uint8_t>* service_data =
       device->GetServiceDataForUUID(GoogleCableUUID());
   if (!service_data) {
     service_data = device->GetServiceDataForUUID(FIDOCableUUID());
   }
-  absl::optional<CableEidArray> maybe_eid_from_service_data =
+  std::optional<CableEidArray> maybe_eid_from_service_data =
       MaybeGetEidFromServiceData(device);
   std::vector<CableEidArray> uuids = GetUUIDs(device);
 
@@ -601,7 +601,7 @@ FidoCableDiscovery::GetCableDiscoveryData(const BluetoothDevice* device) {
     if (maybe_eid_from_service_data == data->service_data &&
         uuids == data->uuids) {
       // Duplicate data. Ignore.
-      return absl::nullopt;
+      return std::nullopt;
     }
   }
 
@@ -613,7 +613,7 @@ FidoCableDiscovery::GetCableDiscoveryData(const BluetoothDevice* device) {
     FIDO_LOG(DEBUG) << "New caBLE device " << address << ":";
   }
 
-  absl::optional<FidoCableDiscovery::V1DiscoveryDataAndEID> result;
+  std::optional<FidoCableDiscovery::V1DiscoveryDataAndEID> result;
   if (maybe_eid_from_service_data.has_value()) {
     result =
         GetCableDiscoveryDataFromAuthenticatorEid(*maybe_eid_from_service_data);
@@ -652,24 +652,24 @@ FidoCableDiscovery::GetCableDiscoveryData(const BluetoothDevice* device) {
 }
 
 // static
-absl::optional<CableEidArray> FidoCableDiscovery::MaybeGetEidFromServiceData(
+std::optional<CableEidArray> FidoCableDiscovery::MaybeGetEidFromServiceData(
     const BluetoothDevice* device) {
   const std::vector<uint8_t>* service_data =
       device->GetServiceDataForUUID(GoogleCableUUID());
   if (!service_data) {
-    return absl::nullopt;
+    return std::nullopt;
   }
 
   // Received service data from authenticator must have a flag that signals that
   // the service data includes Cable EID.
   if (service_data->empty() || !(service_data->at(0) >> 5 & 1u))
-    return absl::nullopt;
+    return std::nullopt;
 
   CableEidArray received_authenticator_eid;
   bool extract_success = fido_parsing_utils::ExtractArray(
       *service_data, 2, &received_authenticator_eid);
   if (!extract_success)
-    return absl::nullopt;
+    return std::nullopt;
   return received_authenticator_eid;
 }
 
@@ -692,7 +692,7 @@ std::vector<CableEidArray> FidoCableDiscovery::GetUUIDs(
   return ret;
 }
 
-absl::optional<FidoCableDiscovery::V1DiscoveryDataAndEID>
+std::optional<FidoCableDiscovery::V1DiscoveryDataAndEID>
 FidoCableDiscovery::GetCableDiscoveryDataFromAuthenticatorEid(
     CableEidArray authenticator_eid) {
   for (const auto& candidate : discovery_data_) {
@@ -702,7 +702,7 @@ FidoCableDiscovery::GetCableDiscoveryDataFromAuthenticatorEid(
     }
   }
 
-  return absl::nullopt;
+  return std::nullopt;
 }
 
 void FidoCableDiscovery::StartInternal() {
@@ -713,7 +713,7 @@ void FidoCableDiscovery::StartInternal() {
 // static
 std::string FidoCableDiscovery::ResultDebugString(
     const CableEidArray& eid,
-    const absl::optional<FidoCableDiscovery::V1DiscoveryDataAndEID>& result) {
+    const std::optional<FidoCableDiscovery::V1DiscoveryDataAndEID>& result) {
   static const uint8_t kAppleContinuity[16] = {
       0xd0, 0x61, 0x1e, 0x78, 0xbb, 0xb4, 0x45, 0x91,
       0xa5, 0xf8, 0x48, 0x79, 0x10, 0xae, 0x43, 0x66,

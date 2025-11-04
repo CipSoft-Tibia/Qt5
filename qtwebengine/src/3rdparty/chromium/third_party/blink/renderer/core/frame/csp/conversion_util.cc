@@ -42,7 +42,6 @@ WebCSPSourceList ConvertToPublic(
           std::move(hashes),
           source_list->allow_self,
           source_list->allow_star,
-          source_list->allow_response_redirects,
           source_list->allow_inline,
           source_list->allow_inline_speculation_rules,
           source_list->allow_eval,
@@ -55,10 +54,10 @@ WebCSPSourceList ConvertToPublic(
 
 // TODO(arthursonzogni): Remove this when BeginNavigation will be sent directly
 // from blink.
-absl::optional<WebCSPTrustedTypes> ConvertToPublic(
+std::optional<WebCSPTrustedTypes> ConvertToPublic(
     network::mojom::blink::CSPTrustedTypesPtr trusted_types) {
   if (!trusted_types)
-    return absl::nullopt;
+    return std::nullopt;
   return WebCSPTrustedTypes{std::move(trusted_types->list),
                             trusted_types->allow_any,
                             trusted_types->allow_duplicates};
@@ -106,8 +105,7 @@ network::mojom::blink::CSPSourceListPtr ConvertToMojoBlink(
 
   return network::mojom::blink::CSPSourceList::New(
       std::move(sources), ConvertToWTF(source_list.nonces), std::move(hashes),
-      source_list.allow_self, source_list.allow_star,
-      source_list.allow_response_redirects, source_list.allow_inline,
+      source_list.allow_self, source_list.allow_star, source_list.allow_inline,
       source_list.allow_inline_speculation_rules, source_list.allow_eval,
       source_list.allow_wasm_eval, source_list.allow_wasm_unsafe_eval,
       source_list.allow_dynamic, source_list.allow_unsafe_hashes,

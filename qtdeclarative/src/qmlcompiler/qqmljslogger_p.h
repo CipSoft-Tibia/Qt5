@@ -123,12 +123,13 @@ public:
     QQmlJSLogger();
     ~QQmlJSLogger() = default;
 
-    bool hasWarnings() const { return !m_warnings.isEmpty(); }
-    bool hasErrors() const { return !m_errors.isEmpty(); }
+    bool hasWarnings() const { return m_numWarnings > 0; }
+    bool hasErrors() const { return m_numErrors > 0; }
 
-    const QList<Message> &infos() const { return m_infos; }
-    const QList<Message> &warnings() const { return m_warnings; }
-    const QList<Message> &errors() const { return m_errors; }
+    qsizetype numWarnings() const { return m_numWarnings; }
+    qsizetype numErrors() const { return m_numErrors; }
+
+    const QList<Message> &messages() const { return m_committedMessages; }
 
     QtMsgType categoryLevel(QQmlJS::LoggerWarningId id) const
     {
@@ -199,6 +200,10 @@ public:
     void setFilePath(const QString &filePath) { m_filePath =  filePath; }
     QString filePath() const { return m_filePath; }
 
+    void startTransaction();
+    void commit();
+    void rollback();
+
 private:
     QMap<QString, QQmlJS::LoggerCategory> m_categories;
 
@@ -209,6 +214,8 @@ private:
              const QQmlJS::SourceLocation &srcLocation, QtMsgType type, bool showContext,
              bool showFileName, const std::optional<QQmlJSFixSuggestion> &suggestion,
              const QString overrideFileName);
+
+    void countMessage(const Message &message);
 
     QString m_filePath;
     QString m_code;
@@ -224,10 +231,13 @@ private:
 
     QHash<QString, bool> m_categoryChanged;
 
-    QList<Message> m_infos;
-    QList<Message> m_warnings;
-    QList<Message> m_errors;
+    QList<Message> m_pendingMessages;
+    QList<Message> m_committedMessages;
     QHash<uint32_t, QSet<QString>> m_ignoredWarnings;
+
+    qsizetype m_numWarnings = 0;
+    qsizetype m_numErrors = 0;
+    bool m_inTransaction = false;
 
     // the compiler needs private log() function at the moment
     friend class QQmlJSAotCompiler;

@@ -6,19 +6,23 @@
 
 #include <stdint.h>
 
+#include <algorithm>
 #include <memory>
+#include <optional>
 #include <utility>
+#include <vector>
 
 #include "base/check.h"
 #include "base/containers/contains.h"
-#include "base/containers/cxx20_erase_vector.h"
 #include "base/functional/bind.h"
 #include "base/functional/callback_helpers.h"
 #include "base/hash/md5.h"
 #include "base/location.h"
 #include "base/memory/ref_counted.h"
 #include "base/metrics/histogram_functions.h"
+#include "base/numerics/safe_conversions.h"
 #include "base/ranges/algorithm.h"
+#include "base/strings/string_number_conversions.h"
 #include "base/strings/string_util.h"
 #include "base/strings/utf_string_conversions.h"
 #include "base/task/sequenced_task_runner.h"
@@ -42,7 +46,6 @@
 #include "components/search_engines/search_terms_data.h"
 #include "components/search_engines/template_url.h"
 #include "components/search_engines/template_url_service.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "url/gurl.h"
 
 namespace history {
@@ -97,6 +100,20 @@ constexpr base::TimeDelta kDelayForUpdates = base::Minutes(60);
 // TODO(sky): rename actual value to 'most_visited_blocked_urls.'
 const char kBlockedUrlsPrefsKey[] = "ntp.most_visited_blacklist";
 
+void LogMostVisitedScores(const MostVisitedURLList& sites) {
+  // This needs to be kept in sync with the variants list in histograms.xml.
+  constexpr int kMaxTileIndexCount = 10;
+  int size = std::min(static_cast<int>(sites.size()), kMaxTileIndexCount);
+
+  for (int tile_index = 0; tile_index < size; ++tile_index) {
+    const auto& site = sites[tile_index];
+    std::string name = "NewTabPage.MostVisited.DeciScore." +
+                       base::NumberToString(tile_index) + ".Local";
+    base::UmaHistogramCounts1M(name,
+                               base::saturated_cast<int>(site.score * 10));
+  }
+}
+
 }  // namespace
 
 // Stores the most visited sites and the most repeated queries returned from
@@ -113,8 +130,8 @@ struct SitesAndQueriesRequest
     return sites.has_value() && queries.has_value();
   }
 
-  absl::optional<MostVisitedURLList> sites;
-  absl::optional<KeywordSearchTermVisitList> queries;
+  std::optional<MostVisitedURLList> sites;
+  std::optional<KeywordSearchTermVisitList> queries;
   base::TimeTicks begin_time{base::TimeTicks::Now()};
 
  private:
@@ -462,6 +479,8 @@ void TopSitesImpl::OnGotMostVisitedURLsFromHistory(
     MostVisitedURLList sites) {
   DCHECK(thread_checker_.CalledOnValidThread());
 
+  LogMostVisitedScores(sites);
+
   request->sites = std::move(sites);
   if (request->request_is_complete()) {
     SetTopSitesFromHistory(request);
@@ -506,23 +525,23 @@ void TopSitesImpl::SetTopSitesFromHistory(
     }
   }
 
-  auto most_visited_sites = std::move(*request->sites);
+  // Generate the final list of the most visited sites arranged in descending
+  // order of their scores. Exclude any site that is the search results page.
+  MostVisitedURLList most_visited_sites = std::move(*request->sites);
+  std::erase_if(most_visited_sites, [&](const auto& site) {
+    return (template_url_service_ &&
+            template_url_service_->IsSearchResultsPageFromDefaultSearchProvider(
+                site.url)) ||
+           IsBlocked(site.url);
+  });
+  if (most_visited_sites.size() > kTopSitesNumber) {
+    most_visited_sites.resize(kTopSitesNumber);
+  }
 
   // If there are no more queries left, there is nothing left to do.
   if (most_repeated_queries.empty()) {
     SetTopSites(std::move(most_visited_sites), CALL_LOCATION_FROM_OTHER_PLACES);
     return;
-  }
-
-  // Generate the final list of the most visited sites arranged in descending
-  // order of their scores. Exclude any site that is the search results page.
-  base::EraseIf(most_visited_sites, [&](const auto& site) {
-    return template_url_service_->IsSearchResultsPageFromDefaultSearchProvider(
-               site.url) ||
-           IsBlocked(site.url);
-  });
-  if (most_visited_sites.size() > kTopSitesNumber) {
-    most_visited_sites.resize(kTopSitesNumber);
   }
 
   // If there are no more sites left, there is nothing left to do.
@@ -566,8 +585,8 @@ void TopSitesImpl::SetTopSitesFromHistory(
   SetTopSites(std::move(merged_list), CALL_LOCATION_FROM_OTHER_PLACES);
 }
 
-void TopSitesImpl::OnURLsDeleted(HistoryService* history_service,
-                                 const DeletionInfo& deletion_info) {
+void TopSitesImpl::OnHistoryDeletions(HistoryService* history_service,
+                                      const DeletionInfo& deletion_info) {
   if (!loaded_)
     return;
 

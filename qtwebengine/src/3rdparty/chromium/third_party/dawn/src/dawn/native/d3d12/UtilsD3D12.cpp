@@ -118,6 +118,21 @@ D3D12_COMPARISON_FUNC ToD3D12ComparisonFunc(wgpu::CompareFunction func) {
     }
 }
 
+D3D12_SHADER_VISIBILITY ShaderVisibilityType(wgpu::ShaderStage visibility) {
+    DAWN_ASSERT(visibility != wgpu::ShaderStage::None);
+
+    if (visibility == wgpu::ShaderStage::Vertex) {
+        return D3D12_SHADER_VISIBILITY_VERTEX;
+    }
+
+    if (visibility == wgpu::ShaderStage::Fragment) {
+        return D3D12_SHADER_VISIBILITY_PIXEL;
+    }
+
+    // For compute or any two combination of stages, visibility must be ALL
+    return D3D12_SHADER_VISIBILITY_ALL;
+}
+
 D3D12_TEXTURE_COPY_LOCATION ComputeTextureCopyLocationForTexture(const Texture* texture,
                                                                  uint32_t level,
                                                                  uint32_t layer,
@@ -335,11 +350,15 @@ void RecordBufferTextureCopy(BufferTextureCopyDirection direction,
 }
 
 void SetDebugName(Device* device, ID3D12Object* object, const char* prefix, std::string label) {
+    if (!device->IsToggleEnabled(Toggle::UseUserDefinedLabelsInBackend)) {
+        return;
+    }
+
     if (!object) {
         return;
     }
 
-    if (label.empty() || !device->IsToggleEnabled(Toggle::UseUserDefinedLabelsInBackend)) {
+    if (label.empty()) {
         object->SetPrivateData(WKPDID_D3DDebugObjectName, strlen(prefix), prefix);
         return;
     }

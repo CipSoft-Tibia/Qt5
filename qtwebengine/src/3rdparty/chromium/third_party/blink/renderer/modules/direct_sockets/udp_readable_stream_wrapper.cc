@@ -135,8 +135,8 @@ void UDPReadableStreamWrapper::ErrorStream(int32_t error_code) {
 // services/network/public/mojom/udp_socket.mojom file.
 void UDPReadableStreamWrapper::OnReceived(
     int32_t result,
-    const absl::optional<::net::IPEndPoint>& src_addr,
-    absl::optional<::base::span<const ::uint8_t>> data) {
+    const std::optional<::net::IPEndPoint>& src_addr,
+    std::optional<::base::span<const ::uint8_t>> data) {
   if (result != net::Error::OK) {
     ErrorStream(result);
     return;
@@ -146,8 +146,7 @@ void UDPReadableStreamWrapper::OnReceived(
   DCHECK_GT(pending_receive_requests_, 0);
   pending_receive_requests_--;
 
-  auto* buffer = DOMUint8Array::Create(data->data(), data->size_bytes());
-
+  auto* buffer = DOMUint8Array::Create(data.value());
   auto* message = UDPMessage::Create();
   message->setData(MakeGarbageCollected<V8UnionArrayBufferOrArrayBufferView>(
       NotShared<DOMUint8Array>(buffer)));

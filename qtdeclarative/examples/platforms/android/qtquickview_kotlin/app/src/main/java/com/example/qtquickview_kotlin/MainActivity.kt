@@ -6,6 +6,7 @@ import android.graphics.Color
 import android.os.Bundle
 import android.util.Log
 import android.view.ViewGroup
+import android.widget.CompoundButton
 import android.widget.FrameLayout
 import androidx.appcompat.app.AppCompatActivity
 import com.example.qtquickview_kotlin.databinding.ActivityMainBinding
@@ -14,17 +15,16 @@ import org.qtproject.example.qtquickview.QmlModule.Second
 import org.qtproject.qt.android.QtQmlStatus
 import org.qtproject.qt.android.QtQmlStatusChangeListener
 import org.qtproject.qt.android.QtQuickView
+import org.qtproject.qt.android.QtQuickViewContent
 
 
 class MainActivity : AppCompatActivity(), QtQmlStatusChangeListener {
-
     private val TAG = "myTag"
     private val m_colors: Colors = Colors()
     private lateinit var m_binding: ActivityMainBinding
     private var m_qmlButtonSignalListenerId = 0
-    private var m_qtQuickView: QtQuickView? = null
     //! [qmlContent]
-    private var m_mainQmlContent: Main = Main()
+    private val m_firstQmlContent: Main = Main()
     private val m_secondQmlContent: Second = Second()
     //! [qmlContent]
     private val m_statusNames = hashMapOf(
@@ -42,16 +42,22 @@ class MainActivity : AppCompatActivity(), QtQmlStatusChangeListener {
         setContentView(view)
         //! [binding]
 
-        m_binding.disconnectQmlListenerSwitch.setOnClickListener { switchListener() }
+        m_binding.disconnectQmlListenerSwitch.setOnCheckedChangeListener { button, checked ->
+            switchListener(
+                button,
+                checked
+            )
+        }
 
         //! [m_qtQuickView]
-        m_qtQuickView = QtQuickView(this)
+        val firstQtQuickView = QtQuickView(this)
+        val secondQtQuickView = QtQuickView(this)
         //! [m_qtQuickView]
 
         // Set status change listener for m_qmlView
         // listener implemented below in OnStatusChanged
         //! [setStatusChangeListener]
-        m_mainQmlContent.setStatusChangeListener(this)
+        m_firstQmlContent.setStatusChangeListener(this)
         m_secondQmlContent.setStatusChangeListener(this)
         //! [setStatusChangeListener]
 
@@ -59,15 +65,15 @@ class MainActivity : AppCompatActivity(), QtQmlStatusChangeListener {
         val params: ViewGroup.LayoutParams = FrameLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT
         )
-        m_binding.qmlFrame.addView(m_qtQuickView, params)
+        m_binding.firstQmlFrame.addView(firstQtQuickView, params)
+        m_binding.secondQmlFrame.addView(secondQtQuickView, params)
         //! [layoutParams]
         //! [loadContent]
-        m_qtQuickView!!.loadContent(m_mainQmlContent)
+        firstQtQuickView.loadContent(m_firstQmlContent)
+        secondQtQuickView.loadContent(m_secondQmlContent)
         //! [loadContent]
 
         m_binding.changeQmlColorButton.setOnClickListener { onClickListener() }
-        m_binding.loadMainQml.setOnClickListener { loadMainQml() }
-        m_binding.loadSecondQml.setOnClickListener { loadSecondQml() }
         m_binding.rotateQmlGridButton.setOnClickListener { rotateQmlGrid() }
     }
     //! [onCreate]
@@ -76,13 +82,14 @@ class MainActivity : AppCompatActivity(), QtQmlStatusChangeListener {
     private fun onClickListener() {
         // Set the QML view root object property "colorStringFormat" value to
         // color from Colors.getColor()
-        m_mainQmlContent.colorStringFormat = m_colors.getColor()
+        m_firstQmlContent.colorStringFormat = m_colors.getColor()
+        updateColorDisplay()
+    }
 
-        val qmlBackgroundColor = m_mainQmlContent.colorStringFormat
-
+    private fun updateColorDisplay() {
+        val qmlBackgroundColor = m_firstQmlContent.colorStringFormat
         // Display the QML View background color code
-        m_binding.getPropertyValueText.text = qmlBackgroundColor
-
+        m_binding.qmlViewBackgroundText.text = qmlBackgroundColor
         // Display the QML View background color in a view
         // if qmlBackgroundColor is not null
         if (qmlBackgroundColor != null) {
@@ -91,74 +98,53 @@ class MainActivity : AppCompatActivity(), QtQmlStatusChangeListener {
     }
     //! [onClickListener]
 
-    private fun switchListener() {
+    private fun switchListener(buttonView: CompoundButton, isChecked: Boolean) {
         // Disconnect QML button signal listener if switch is On using the saved signal listener Id
         // and connect it again if switch is turned off
-        if (m_binding.disconnectQmlListenerSwitch.isChecked) {
-            Log.v(TAG, "QML button onClicked signal listener disconnected")
-            m_binding.switchText.setText(R.string.connect_qml_button_signal_listener)
-            //! [disconnect qml signal listener]
-            m_mainQmlContent.disconnectSignalListener(m_qmlButtonSignalListenerId)
-            //! [disconnect qml signal listener]
-        } else {
-            Log.v(TAG, "QML button onClicked signal listener connected")
-            m_binding.switchText.setText(R.string.disconnect_qml_button_signal_listener)
+        if (isChecked) {
             m_qmlButtonSignalListenerId =
-                m_mainQmlContent.connectOnClickedListener { _: String, _: Void? ->
-                    Log.i(TAG, "QML button clicked")
-                    m_binding.kotlinLinear.setBackgroundColor(
+                m_firstQmlContent.connectOnClickedListener { _: String, _: Void? ->
+                    m_binding.kotlinRelative.setBackgroundColor(
                         Color.parseColor(
                             m_colors.getColor()
                         )
                     )
                 }
+        } else {
+            //! [disconnect qml signal listener]
+            m_firstQmlContent.disconnectSignalListener(m_qmlButtonSignalListenerId)
+            //! [disconnect qml signal listener]
         }
     }
 
     //! [onStatusChanged]
-    override fun onStatusChanged(status: QtQmlStatus?) {
+    override fun onStatusChanged(status: QtQmlStatus?, content: QtQuickViewContent?) {
         Log.v(TAG, "Status of QtQuickView: $status")
 
-        val qmlStatus = (resources.getString(R.string.qml_view_status)
-                + m_statusNames[status])
-
         // Show current QML View status in a textview
-        m_binding.qmlStatusText.text = qmlStatus
+        m_binding.qmlStatusText.text = getString(R.string.qml_view_status, m_statusNames[status])
 
-        // Connect signal listener to "onClicked" signal from main.qml
-        // addSignalListener returns int which can be used later to identify the listener
-        //! [qml signal listener]
-        if (status == QtQmlStatus.READY && !m_binding.disconnectQmlListenerSwitch.isChecked) {
-            m_qmlButtonSignalListenerId =
-                m_mainQmlContent.connectOnClickedListener { _: String, _: Void? ->
-                    Log.i(TAG, "QML button clicked")
-                    m_binding.kotlinLinear.setBackgroundColor(
-                        Color.parseColor(
-                            m_colors.getColor()
+        updateColorDisplay()
+
+        if (content == m_firstQmlContent) {
+            // Connect signal listener to "onClicked" signal from main.qml
+            // addSignalListener returns int which can be used later to identify the listener
+            //! [qml signal listener]
+            if (status == QtQmlStatus.READY && m_binding.disconnectQmlListenerSwitch.isChecked) {
+                m_qmlButtonSignalListenerId =
+                    m_firstQmlContent.connectOnClickedListener { _: String, _: Void? ->
+                        Log.i(TAG, "QML button clicked")
+                        m_binding.kotlinRelative.setBackgroundColor(
+                            Color.parseColor(
+                                m_colors.getColor()
+                            )
                         )
-                    )
-                }
+                    }
+            }
+            //! [qml signal listener]
         }
-        //! [qml signal listener]
     }
     //! [onStatusChanged]
-    //! [switchLoadedContent]
-    private fun loadSecondQml() {
-        m_qtQuickView!!.loadContent(m_secondQmlContent)
-
-        // Reset box color and color text after component reload
-        m_binding.qmlColorBox.setBackgroundColor(Color.parseColor("#00ffffff"))
-        m_binding.getPropertyValueText.text = ""
-    }
-
-    private fun loadMainQml() {
-        m_qtQuickView!!.loadContent(m_mainQmlContent)
-
-        // Reset box color and color text after component reload
-        m_binding.qmlColorBox.setBackgroundColor(Color.parseColor("#00ffffff"))
-        m_binding.getPropertyValueText.text = ""
-    }
-    //! [switchLoadedContent]
     //! [gridRotate]
     private fun rotateQmlGrid() {
         val previousGridRotation = m_secondQmlContent.gridRotation

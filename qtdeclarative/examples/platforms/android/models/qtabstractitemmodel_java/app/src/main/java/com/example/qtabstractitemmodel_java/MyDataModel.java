@@ -9,23 +9,24 @@ import org.qtproject.qt.android.QtModelIndex;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.Objects;
 
 public class MyDataModel extends QtAbstractItemModel {
     // Representing a cell in the sheet
     private class Cell {
-        private int row;
-        private String column;
-        public Cell(int rowToSet, String columnToSet){
-            row = rowToSet;
-            column = columnToSet;
+        private String m_value;
+        public Cell(String value) {
+            m_value = value;
         }
-        public int getRow() { return row; }
-        public String getColumn() { return column; }
+        public String getValue() { return m_value; }
+        public void setValue(String value) {
+            m_value = value;
+        }
     }
 
     private static final String TAG = "QtAIM MyDataModel";
-    private static final int ROLE_ROW = 0;
-    private static final int ROLE_COLUMN = 1;
+    private static final int ROLE_DISPLAY = 0;
+    private static final int ROLE_EDIT = 1;
     private static final int MAX_ROWS_AND_COLUMNS = 26;
     private int m_columns = 4;
     /*
@@ -53,8 +54,7 @@ public class MyDataModel extends QtAbstractItemModel {
                 ArrayList<Cell> newRow = new ArrayList<>();
                 for (int columns = 0; columns < initializingRowAndColumnCount; columns++) {
                     String column = String.valueOf((char) (m_firstLatinLetter + columns));
-                    Cell newCell = new Cell((rows + 1), column);
-                    newRow.add(newCell);
+                    newRow.add(new Cell((rows + 1) + column));
                 }
                 m_dataList.add(newRow);
             }
@@ -89,19 +89,12 @@ public class MyDataModel extends QtAbstractItemModel {
     */
     @Override
     synchronized public Object data(QtModelIndex qtModelIndex, int role) {
-        switch (role) {
-            case ROLE_ROW:
-                Cell elementForRow = m_dataList.get(qtModelIndex.row()).get(qtModelIndex.column());
-                String row = String.valueOf(elementForRow.getRow());
-                return row;
-            case ROLE_COLUMN:
-                Cell elementForColumn = m_dataList.get(qtModelIndex.row()).get(qtModelIndex.column());
-                String column = elementForColumn.getColumn();
-                return column;
-            default:
-                Log.w(TAG, "data unrecognized role: " + role);
-                return null;
+        if (role == ROLE_DISPLAY) {
+            Cell elementForEdit = m_dataList.get(qtModelIndex.row()).get(qtModelIndex.column());
+            return elementForEdit.getValue();
         }
+        Log.w(TAG, "data(): unrecognized role: " + role);
+        return null;
     }
 
     /*
@@ -111,8 +104,8 @@ public class MyDataModel extends QtAbstractItemModel {
     @Override
     synchronized public HashMap<Integer, String> roleNames() {
         HashMap<Integer, String> roles = new HashMap<>();
-        roles.put(ROLE_ROW, "row");
-        roles.put(ROLE_COLUMN, "column");
+        roles.put(ROLE_DISPLAY, "display");
+        roles.put(ROLE_EDIT, "edit");
         return roles;
     }
 
@@ -137,13 +130,34 @@ public class MyDataModel extends QtAbstractItemModel {
 
     //! [4]
     /*
+    * Gets called when model data is edited from QML side.
+    * Sets the role data for the item at index to value,
+    * if given index is valid and if data in given index truly changed.
+    */
+    @Override
+    synchronized public boolean setData(QtModelIndex index, Object value, int role) {
+        Cell cellAtIndex = m_dataList.get(index.row()).get(index.column());
+        String cellValueAtIndex = cellAtIndex.getValue();
+        if (!index.isValid() || role != ROLE_EDIT
+                || Objects.equals(cellValueAtIndex, value.toString())) {
+            return false;
+        }
+        cellAtIndex.setValue(value.toString());
+        // Send dataChanged() when data was successfully set.
+        dataChanged(index, index, new int[]{role});
+        return true;
+    }
+    //! [4]
+
+    //! [5]
+    /*
     * Adds a row.
     * Threading: called in Android main thread context.
     */
     synchronized public void addRow() {
         if (m_columns > 0 && m_dataList.size() < MAX_ROWS_AND_COLUMNS) {
             beginInsertRows(new QtModelIndex(), m_dataList.size(), m_dataList.size());
-            m_dataList.add(generateRow());
+            m_dataList.add(generateNewRow());
             endInsertRows();
         }
     }
@@ -159,9 +173,9 @@ public class MyDataModel extends QtAbstractItemModel {
             endRemoveRows();
         }
     }
-    //! [4]
-
     //! [5]
+
+    //! [6]
     /*
     * Adds a column.
     * Threading: called in Android main thread context.
@@ -169,7 +183,7 @@ public class MyDataModel extends QtAbstractItemModel {
     synchronized public void addColumn() {
         if (!m_dataList.isEmpty() && m_columns < MAX_ROWS_AND_COLUMNS) {
             beginInsertColumns(new QtModelIndex(), m_columns, m_columns);
-            generateColumn();
+            generateNewColumn();
             m_columns += 1;
             endInsertColumns();
         }
@@ -183,62 +197,42 @@ public class MyDataModel extends QtAbstractItemModel {
         if (m_columns > 1) {
             int columnToRemove = m_columns - 1;
             beginRemoveColumns(new QtModelIndex(), columnToRemove, columnToRemove);
+            for (int row = 0; row < m_dataList.size(); row++)
+                m_dataList.get(row).remove(columnToRemove);
             m_columns -= 1;
             endRemoveColumns();
         }
     }
-    //! [5]
+    //! [6]
 
-    synchronized private void generateColumn() {
+    synchronized private void generateNewColumn() {
         int amountOfRows = m_dataList.size();
         ArrayList<Cell> lastRow = m_dataList.get(amountOfRows-1);
-        String lastColumn = "";
-        for (Cell column : lastRow) {
-            lastColumn = column.getColumn();
-        }
+        Cell lastCellOfLastRow = lastRow.get(m_columns-1);
+        String letterOfLastCell = lastCellOfLastRow.getValue().substring(1);
         // Next go through each row and add to each one of them a new column
         // If next char is not a letter we reached the end of amount of alphabets for that column
         int counter = 1;
         for (ArrayList<Cell> row : m_dataList) {
-            String newColumn = lastColumn;
-            int amountOfChars = (lastColumn.length());
-            char newColumnChar = lastColumn.charAt((amountOfChars-1));
-            if (Character.isLetter((char) newColumnChar+1)) {
+            String letterOfNewColumn = letterOfLastCell;
+            int amountOfChars = letterOfNewColumn.length();
+            char newColumnChar = letterOfNewColumn.charAt(amountOfChars-1);
+            if (Character.isLetter(newColumnChar+1)) {
                 newColumnChar = (char) (newColumnChar+1);
-                newColumn = String.valueOf((newColumnChar));
+                letterOfNewColumn = String.valueOf((newColumnChar));
             }
-            Cell newCell = new Cell((counter), (newColumn));
+            Cell newCell = new Cell(counter + letterOfNewColumn);
             row.add(newCell);
             counter++;
         }
     }
 
-    synchronized private ArrayList<Cell> generateRow() {
-        ArrayList<Cell> newRow = null;
+    synchronized private ArrayList<Cell> generateNewRow(){
         int amountOfRows = m_dataList.size();
-        if (amountOfRows == 0) {
-            newRow = generateFirstRow(amountOfRows);
-        }
-        else {
-            newRow = generateNewRow(amountOfRows);
-        }
-        return newRow;
-    }
-    synchronized private ArrayList<Cell> generateFirstRow(int amountOfRows){
         ArrayList<Cell> newRow = new ArrayList<Cell>();
         for (int count = 0; count < m_columns; count++) {
-            String column = String.valueOf((char) (m_firstLatinLetter + count));
-            Cell newCell = new Cell((amountOfRows + 1), column);
-            newRow.add(newCell);
-        }
-        return newRow;
-    }
-
-    synchronized private ArrayList<Cell> generateNewRow(int amountOfRows){
-        ArrayList<Cell> newRow = new ArrayList<Cell>();
-        ArrayList<Cell> lastRow = m_dataList.get(amountOfRows-1);
-        for (Cell column : lastRow) {
-            Cell newCell = new Cell((amountOfRows+1), column.getColumn());
+            String columnLetter = String.valueOf((char) (m_firstLatinLetter + count));
+            Cell newCell = new Cell((amountOfRows + 1) + columnLetter);
             newRow.add(newCell);
         }
         return newRow;

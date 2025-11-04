@@ -20,9 +20,7 @@
 #include <QPainterPath>
 #include <QMatrix4x4>
 #include <QQuickItem>
-#include <private/qquicktext_p.h>
-#include <private/qquicktranslate_p.h>
-#include <private/qquickimage_p.h>
+#include <QtGui/private/qfixed_p.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -31,11 +29,35 @@ struct NodeInfo
     QString nodeId;
     QString typeName;
     QTransform transform;
-    qreal opacity;
-    bool isDefaultTransform;
-    bool isDefaultOpacity;
-    bool isVisible;
-    bool isDisplayed; // TODO: Map to display enum in QtSvg
+    qreal opacity = 1.0;
+    bool isDefaultTransform = true;
+    bool isDefaultOpacity = true;
+    bool isVisible = true;
+    bool isDisplayed = true; // TODO: Map to display enum in QtSvg
+
+    struct AnimateColor {
+        int start = 0;
+        int repeatCount = 0;
+        bool fill = false;
+        bool freeze = false;
+        QList<QPair<qreal, QColor> > keyFrames;
+    };
+    QList<AnimateColor> animateColors;
+
+    struct TransformAnimation {
+        struct TransformKeyFrame {
+            TransformKeyFrame() = default;
+
+            QTransform baseMatrix;
+            QList<qreal> values; // animationTypes.size() * 3, content depends on each type
+            bool indefiniteAnimation = false;
+        };
+
+        QList<QTransform::TransformationType> animationTypes;
+        QMap<QFixed, TransformKeyFrame> keyFrames;
+    };
+
+    TransformAnimation transformAnimation;
 };
 
 struct ImageNodeInfo : NodeInfo
@@ -49,7 +71,7 @@ struct StrokeStyle
 {
     Qt::PenCapStyle lineCapStyle = Qt::SquareCap;
     Qt::PenJoinStyle lineJoinStyle = Qt::MiterJoin;
-    qreal miterLimit = 4;
+    int miterLimit = 4;
     qreal dashOffset = 0;
     QList<qreal> dashArray;
     QColor color = QColorConstants::Transparent;
@@ -60,7 +82,7 @@ struct StrokeStyle
         StrokeStyle style;
         style.lineCapStyle = p.capStyle();
         style.lineJoinStyle = p.joinStyle() == Qt::SvgMiterJoin ? Qt::MiterJoin : p.joinStyle(); //TODO support SvgMiterJoin
-        style.miterLimit = p.miterLimit();
+        style.miterLimit = qRound(p.miterLimit());
         style.dashOffset = p.dashOffset();
         style.dashArray = p.dashPattern();
         style.width = p.widthF();
@@ -92,6 +114,10 @@ struct TextNodeInfo : NodeInfo
     QColor strokeColor;
 };
 
+struct AnimateColorNodeInfo : NodeInfo
+{
+};
+
 enum class StructureNodeStage
 {
     Start,
@@ -106,11 +132,11 @@ struct UseNodeInfo : NodeInfo
 
 struct StructureNodeInfo : NodeInfo
 {
-    StructureNodeStage stage;
-    bool forceSeparatePaths;
+    StructureNodeStage stage = StructureNodeStage::Start;
+    bool forceSeparatePaths = false;
     QRectF viewBox;
     QSize size;
-    bool isPathContainer;
+    bool isPathContainer = false;
 };
 
 

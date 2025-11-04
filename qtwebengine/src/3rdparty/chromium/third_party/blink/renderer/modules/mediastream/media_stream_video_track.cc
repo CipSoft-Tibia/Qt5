@@ -2,6 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#ifdef UNSAFE_BUFFERS_BUILD
+// TODO(crbug.com/351564777): Remove this and convert code to safer constructs.
+#pragma allow_unsafe_buffers
+#endif
+
 #include "third_party/blink/renderer/modules/mediastream/media_stream_video_track.h"
 
 #include <string>
@@ -12,6 +17,7 @@
 #include "base/location.h"
 #include "base/metrics/histogram_functions.h"
 #include "base/metrics/histogram_macros.h"
+#include "base/not_fatal_until.h"
 #include "base/ranges/algorithm.h"
 #include "base/task/bind_post_task.h"
 #include "base/task/sequenced_task_runner.h"
@@ -56,8 +62,8 @@ using EncodedVideoFrameInternalCallback =
 
 base::TimeDelta ComputeRefreshIntervalFromBounds(
     const base::TimeDelta required_min_refresh_interval,
-    const absl::optional<double>& min_frame_rate,
-    const absl::optional<double>& max_frame_rate) {
+    const std::optional<double>& min_frame_rate,
+    const std::optional<double>& max_frame_rate) {
   // Start with the default required refresh interval, and refine based on
   // constraints. If a minimum frameRate is provided, use that. Otherwise, use
   // the maximum frameRate if it happens to be less than the default.
@@ -447,7 +453,7 @@ void MediaStreamVideoTrack::FrameDeliverer::RemoveCallbackOnVideoTaskRunner(
     VideoSinkId id,
     const scoped_refptr<base::SingleThreadTaskRunner>& task_runner) {
   DCHECK(video_task_runner_->RunsTasksInCurrentSequence());
-  auto* it = callbacks_.begin();
+  auto it = callbacks_.begin();
   for (; it != callbacks_.end(); ++it) {
     if (it->id == id) {
       // Callback destruction needs to happen on the specified task runner.
@@ -786,9 +792,9 @@ WebMediaStreamTrack MediaStreamVideoTrack::CreateVideoTrack(
 WebMediaStreamTrack MediaStreamVideoTrack::CreateVideoTrack(
     MediaStreamVideoSource* source,
     const VideoTrackAdapterSettings& adapter_settings,
-    const absl::optional<bool>& noise_reduction,
+    const std::optional<bool>& noise_reduction,
     bool is_screencast,
-    const absl::optional<double>& min_frame_rate,
+    const std::optional<double>& min_frame_rate,
     const ImageCaptureDeviceSettings* image_capture_device_settings,
     bool pan_tilt_zoom_allowed,
     MediaStreamVideoSource::ConstraintsOnceCallback callback,
@@ -855,9 +861,9 @@ MediaStreamVideoTrack::MediaStreamVideoTrack(
 MediaStreamVideoTrack::MediaStreamVideoTrack(
     MediaStreamVideoSource* source,
     const VideoTrackAdapterSettings& adapter_settings,
-    const absl::optional<bool>& noise_reduction,
+    const std::optional<bool>& noise_reduction,
     bool is_screen_cast,
-    const absl::optional<double>& min_frame_rate,
+    const std::optional<double>& min_frame_rate,
     const ImageCaptureDeviceSettings* image_capture_device_settings,
     bool pan_tilt_zoom_allowed,
     MediaStreamVideoSource::ConstraintsOnceCallback callback,
@@ -869,8 +875,8 @@ MediaStreamVideoTrack::MediaStreamVideoTrack(
       min_frame_rate_(min_frame_rate),
       image_capture_device_settings_(
           image_capture_device_settings
-              ? absl::make_optional(*image_capture_device_settings)
-              : absl::nullopt),
+              ? std::make_optional(*image_capture_device_settings)
+              : std::nullopt),
       pan_tilt_zoom_allowed_(pan_tilt_zoom_allowed),
       source_(source->GetWeakPtr()) {
   frame_deliverer_ =
@@ -943,8 +949,8 @@ static void AddSinkInternal(Vector<WebMediaStreamSink*>* sinks,
 
 static void RemoveSinkInternal(Vector<WebMediaStreamSink*>* sinks,
                                WebMediaStreamSink* sink) {
-  auto** it = base::ranges::find(*sinks, sink);
-  DCHECK(it != sinks->end());
+  auto it = base::ranges::find(*sinks, sink);
+  CHECK(it != sinks->end(), base::NotFatalUntil::M130);
   sinks->erase(it);
 }
 
@@ -1110,7 +1116,7 @@ void MediaStreamVideoTrack::GetSettings(
     settings.aspect_ratio = static_cast<double>(width_) / height_;
   }
 
-  if (absl::optional<media::VideoCaptureFormat> format =
+  if (std::optional<media::VideoCaptureFormat> format =
           source_->GetCurrentFormat()) {
     // For local capture-based tracks, the frame rate returned by
     // MediaStreamTrack.getSettings() must be the configured frame rate. In case
@@ -1119,7 +1125,7 @@ void MediaStreamVideoTrack::GetSettings(
     // configured frame rate is the frame rate reported by the device.
     // Decimation occurs only when the adapter frame rate is lower than the
     // device frame rate.
-    absl::optional<double> adapter_frame_rate =
+    std::optional<double> adapter_frame_rate =
         adapter_settings_.max_frame_rate();
     settings.frame_rate =
         (!adapter_frame_rate || *adapter_frame_rate > format->frame_rate)

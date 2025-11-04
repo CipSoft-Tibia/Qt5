@@ -6,6 +6,7 @@
 
 #include "base/check.h"
 #include "components/sessions/content/session_tab_helper.h"
+#include "content/public/browser/browser_context.h"
 #include "content/public/browser/child_process_security_policy.h"
 #include "content/public/browser/navigation_handle.h"
 #include "content/public/browser/render_frame_host.h"
@@ -14,6 +15,7 @@
 #include "content/public/common/url_constants.h"
 #include "extensions/browser/extension_api_frame_id_map.h"
 #include "extensions/browser/extension_frame_host.h"
+#include "extensions/browser/extension_navigation_registry.h"
 #include "extensions/browser/extension_prefs.h"
 #include "extensions/browser/extension_registry.h"
 #include "extensions/browser/extension_util.h"
@@ -25,7 +27,7 @@
 #include "extensions/browser/view_type_utils.h"
 #include "extensions/common/constants.h"
 #include "extensions/common/extension.h"
-#include "extensions/common/extension_messages.h"
+#include "extensions/common/extension_id.h"
 #include "extensions/common/mojom/view_type.mojom.h"
 #include "third_party/blink/public/common/associated_interfaces/associated_interface_provider.h"
 #include "third_party/blink/public/mojom/autoplay/autoplay.mojom.h"
@@ -85,18 +87,18 @@ void ExtensionWebContentsObserver::Initialize() {
 
   extension_frame_host_ = CreateExtensionFrameHost(web_contents());
 
+  content::RenderFrameHost* main_frame = web_contents()->GetPrimaryMainFrame();
+  // We only initialize the frame if the renderer counterpart is live;
+  // otherwise we wait for the RenderFrameCreated notification.
+  if (main_frame->IsRenderFrameLive()) {
+    InitializeRenderFrame(main_frame);
+  }
+
+  // At the point of initialization, the *only* frame that can exist is the
+  // main frame.
   web_contents()->ForEachRenderFrameHost(
-      [this](content::RenderFrameHost* render_frame_host) {
-        // ForEachRenderFrameHost descends into inner WebContents, so make sure
-        // the RenderFrameHost is actually one bound to this object.
-        if (content::WebContents::FromRenderFrameHost(render_frame_host) !=
-            web_contents()) {
-          return;
-        }
-        // We only initialize the frame if the renderer counterpart is live;
-        // otherwise we wait for the RenderFrameCreated notification.
-        if (render_frame_host->IsRenderFrameLive())
-          InitializeRenderFrame(render_frame_host);
+      [main_frame](content::RenderFrameHost* render_frame_host) {
+        CHECK_EQ(render_frame_host, main_frame);
       });
 
 #if !BUILDFLAG(IS_QTWEBENGINE)
@@ -258,6 +260,7 @@ void ExtensionWebContentsObserver::ReadyToCommitNavigation(
 
 void ExtensionWebContentsObserver::DidFinishNavigation(
     content::NavigationHandle* navigation_handle) {
+  DCHECK(navigation_handle);
   DCHECK(initialized_);
   if (!navigation_handle->HasCommitted())
     return;
@@ -277,6 +280,10 @@ void ExtensionWebContentsObserver::DidFinishNavigation(
     pm->RegisterRenderFrameHost(web_contents(), render_frame_host,
                                 frame_extension);
   }
+
+  // Delete the navigation id from ExtensionNavigationRegistry if it exists.
+  ExtensionNavigationRegistry::Get(web_contents()->GetBrowserContext())
+      ->Erase(navigation_handle->GetNavigationId());
 
   ScriptInjectionTracker::DidFinishNavigation(PassKey(), navigation_handle);
 }
@@ -333,7 +340,7 @@ const Extension* ExtensionWebContentsObserver::GetExtensionFromFrame(
     content::RenderFrameHost* render_frame_host,
     bool verify_url) const {
   DCHECK(initialized_);
-  std::string extension_id = util::GetExtensionIdFromFrame(render_frame_host);
+  ExtensionId extension_id = util::GetExtensionIdFromFrame(render_frame_host);
   if (extension_id.empty())
     return nullptr;
 
@@ -350,7 +357,8 @@ const Extension* ExtensionWebContentsObserver::GetExtensionFromFrame(
     // This check is needed to eliminate origins that are not within a
     // hosted-app's web extent, and sandboxed extension frames with an opaque
     // origin.
-    // TODO(1139108) See if extension check is still needed after bug is fixed.
+    // TODO(crbug.com/40725839) See if extension check is still needed after bug
+    // is fixed.
     auto* extension_for_origin = ExtensionRegistry::Get(browser_context)
                                      ->enabled_extensions()
                                      .GetExtensionOrAppByURL(origin.GetURL());

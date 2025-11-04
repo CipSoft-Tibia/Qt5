@@ -29,7 +29,8 @@
 
 QT_BEGIN_NAMESPACE
 
-class Q_AUTOTEST_EXPORT QQuickDragAttachedPrivate : public QObjectPrivate, public QQuickItemChangeListener
+class Q_AUTOTEST_EXPORT QQuickDragAttachedPrivate : public QObjectPrivate,
+                                                    public QSafeQuickItemChangeListener<QQuickDragAttachedPrivate>
 {
     Q_DECLARE_PUBLIC(QQuickDragAttached)
     QML_ANONYMOUS

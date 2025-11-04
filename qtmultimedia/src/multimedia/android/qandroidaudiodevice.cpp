@@ -4,6 +4,7 @@
 #include "qandroidaudiodevice_p.h"
 
 #include "qopenslesengine_p.h"
+#include <algorithm>
 
 QT_BEGIN_NAMESPACE
 
@@ -27,12 +28,11 @@ QOpenSLESDeviceInfo::QOpenSLESDeviceInfo(QByteArray device,
         minimumSampleRate = sampleRates.first();
         maximumSampleRate = sampleRates.last();
     }
-    if (mode == QAudioDevice::Input)
-        supportedSampleFormats.append(QAudioFormat::UInt8);
-    supportedSampleFormats.append(QAudioFormat::Int16);
 
-    preferredFormat.setChannelCount(2);
-    preferredFormat.setSampleRate(48000);
+    supportedSampleFormats = m_engine->supportedSampleFormats(mode);
+
+    preferredFormat.setChannelCount(std::clamp(2, minimumChannelCount, maximumChannelCount));
+    preferredFormat.setSampleRate(std::clamp(48000, minimumSampleRate, maximumSampleRate));
     QAudioFormat::SampleFormat f = QAudioFormat::Int16;
     if (!supportedSampleFormats.contains(f))
         f = supportedSampleFormats.value(0, QAudioFormat::Unknown);

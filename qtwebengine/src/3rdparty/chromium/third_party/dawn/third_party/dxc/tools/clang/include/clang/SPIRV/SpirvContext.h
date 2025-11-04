@@ -210,6 +210,10 @@ public:
                                      SpirvDebugInstruction *elemType,
                                      uint32_t elemCount);
 
+  SpirvDebugType *getDebugTypeMatrix(const SpirvType *spirvType,
+                                     SpirvDebugInstruction *vectorType,
+                                     uint32_t vectorCount);
+
   SpirvDebugType *getDebugTypeFunction(const SpirvType *spirvType,
                                        uint32_t flags, SpirvDebugType *ret,
                                        llvm::ArrayRef<SpirvDebugType *> params);
@@ -286,9 +290,12 @@ public:
 
   const RayQueryTypeKHR *getRayQueryTypeKHR() const { return rayQueryTypeKHR; }
 
-  const SpirvIntrinsicType *
-  getSpirvIntrinsicType(unsigned typeId, unsigned typeOpCode,
-                        llvm::ArrayRef<SpvIntrinsicTypeOperand> operands);
+  const SpirvIntrinsicType *getOrCreateSpirvIntrinsicType(
+      unsigned typeId, unsigned typeOpCode,
+      llvm::ArrayRef<SpvIntrinsicTypeOperand> operands);
+
+  const SpirvIntrinsicType *getOrCreateSpirvIntrinsicType(
+      unsigned typeOpCode, llvm::ArrayRef<SpvIntrinsicTypeOperand> operands);
 
   SpirvIntrinsicType *getCreatedSpirvIntrinsicType(unsigned typeId);
 
@@ -471,7 +478,8 @@ private:
   llvm::DenseMap<const SpirvType *, SCToPtrTyMap> pointerTypes;
   llvm::SmallVector<const HybridPointerType *, 8> hybridPointerTypes;
   llvm::DenseSet<FunctionType *, FunctionTypeMapInfo> functionTypes;
-  llvm::DenseMap<unsigned, SpirvIntrinsicType *> spirvIntrinsicTypes;
+  llvm::DenseMap<unsigned, SpirvIntrinsicType *> spirvIntrinsicTypesById;
+  llvm::SmallVector<const SpirvIntrinsicType *, 8> spirvIntrinsicTypes;
   const AccelerationStructureTypeNV *accelerationStructureTypeNV;
   const RayQueryTypeKHR *rayQueryTypeKHR;
 

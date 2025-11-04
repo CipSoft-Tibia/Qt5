@@ -204,8 +204,7 @@
 
     The behavior is undefined if \a len is negative or, when positive, if \a data is \nullptr.
 
-    This constructor only participates in overload resolution if \c Byte is a compatible
-    byte type.
+    \constraints \c Byte is a compatible byte type.
 
     \sa {Compatible Byte Types}
 */
@@ -224,8 +223,7 @@
     The behavior is undefined if \a last precedes \a first, or \a first
     is \nullptr and \a last is not.
 
-    This constructor only participates in overload resolution if \c Byte is
-    a compatible byte type.
+    \constraints \c Byte is a compatible byte type.
 
     \sa {Compatible Byte Types}
 */
@@ -240,8 +238,22 @@
 
     Passing \nullptr as \a data is safe and results in a null byte array view.
 
-    This constructor only participates in overload resolution if \a data is not
-    an array and if \c Byte is a compatible byte type.
+    \constraints \a data is not an array and \c Byte is a
+    compatible byte type.
+
+    \sa {Compatible Byte Types}
+*/
+
+/*!
+    \fn template <typename Byte, QByteArrayView::if_compatible_byte<Byte>> QByteArrayView::QByteArrayView(const Byte (&data)[])
+    \since 6.9
+
+    Constructs a byte array view on \a data, an array of unknown size. The
+    length is determined by scanning for the first \c{Byte(0)}.
+
+    \a data must remain valid for the lifetime of this byte array view object.
+
+    \constraints \c Byte is a compatible byte type.
 
     \sa {Compatible Byte Types}
 */
@@ -264,6 +276,9 @@
     implicit constructor overload, we need to stop at the first
     \c{char(0)}. This is logical for a char array, but not
     for a \c{std::byte} array.
+    It is, however, inconsistent with the corresponding pointer (\c{Byte*}) and
+    unknown-length-array (\c{Byte[]}) constructors, and so might change in a
+    future version of Qt.
 
     \sa fromArray
 */
@@ -286,7 +301,7 @@
 
     The container's data must remain valid for the lifetime of this byte array view object.
 
-    This constructor participates in overload resolution if \a c is any contiguous
+    \constraints \a c is any contiguous
     container with elements of a compatible byte type.
 
     \sa {Compatible Byte Types}

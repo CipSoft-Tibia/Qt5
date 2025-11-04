@@ -19,6 +19,7 @@ qt_internal_add_module(BodymovinPrivate
         bmimagelayer.cpp bmimagelayer_p.h
         bmlayer.cpp bmlayer_p.h
         bmpathtrimmer.cpp bmpathtrimmer_p.h
+        bmpolystar.cpp bmpolystar_p.h
         bmproperty_p.h
         bmrect.cpp bmrect_p.h
         bmrepeater.cpp bmrepeater_p.h

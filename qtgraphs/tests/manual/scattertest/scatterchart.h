@@ -26,6 +26,7 @@ public:
     void changeLabelStyle();
     void changeFont(const QFont &font);
     void changeFontSize(int fontSize);
+    void changeLabelSize(int labelSize);
     void changePointSize(int pointSize);
     void setBackgroundVisible(int visible);
     void setGridVisible(int visible);
@@ -78,6 +79,7 @@ public Q_SLOTS:
     void changeRadialLabelOffset(int offset);
     void toggleAxisTitleVisibility(int enabled);
     void toggleAxisTitleFixed(int enabled);
+    void toggleLabelAdjustment(int enabled);
     void renderToImage();
     void togglePolar(int enable);
     void toggleLegacy(int enable);

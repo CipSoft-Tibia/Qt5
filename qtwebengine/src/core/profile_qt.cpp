@@ -51,9 +51,6 @@ ProfileQt::ProfileQt(ProfileAdapter *profileAdapter)
     : m_profileIOData(new ProfileIODataQt(this))
     , m_profileAdapter(profileAdapter)
     , m_userAgentMetadata(embedder_support::GetUserAgentMetadata())
-#if BUILDFLAG(ENABLE_EXTENSIONS)
-    , m_extensionSystem(nullptr)
-#endif // BUILDFLAG(ENABLE_EXTENSIONS)
 {
     profile_metrics::SetBrowserProfileType(this, IsOffTheRecord()
         ? profile_metrics::BrowserProfileType::kIncognito
@@ -69,8 +66,7 @@ ProfileQt::ProfileQt(ProfileAdapter *profileAdapter)
     BrowserContextDependencyManager::GetInstance()->MarkBrowserContextLive(this);
 
 #if BUILDFLAG(ENABLE_EXTENSIONS)
-    m_extensionSystem = static_cast<extensions::ExtensionSystemQt*>(extensions::ExtensionSystem::Get(this));
-    m_extensionSystem->InitForRegularProfile(true);
+    static_cast<extensions::ExtensionSystemQt*>(extensions::ExtensionSystem::Get(this))->InitForRegularProfile(true);
 #endif
 }
 
@@ -211,13 +207,6 @@ void ProfileQt::FailedToLoadDictionary(const std::string &language)
 }
 #endif // QT_CONFIG(webengine_spellchecker)
 
-#if BUILDFLAG(ENABLE_EXTENSIONS)
-extensions::ExtensionSystemQt* ProfileQt::GetExtensionSystem()
-{
-    return m_extensionSystem;
-}
-#endif // BUILDFLAG(ENABLE_EXTENSIONS)
-
 std::string ProfileQt::GetMediaDeviceIDSalt()
 {
     return m_prefServiceAdapter.mediaDeviceIdSalt();
@@ -278,7 +267,8 @@ void ProfileQt::setupStoragePath()
     auto it = std::find(storagePaths.begin(), storagePaths.end(), thisStoragePath);
     if (it == storagePaths.end()) {
         if (storagePaths.size() >= (PATH_QT_END - PATH_QT_START)) {
-            qWarning() << "Number of profile paths exceeded " << PATH_QT_END - PATH_QT_START << ", storage may break";
+            qWarning("Number of profile paths exceeded %ull, storage may break",
+                     static_cast<qulonglong>(PATH_QT_END - PATH_QT_START));
             return;
         }
 

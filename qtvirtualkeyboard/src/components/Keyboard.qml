@@ -652,8 +652,8 @@ Item {
         anchors.right: parent.right
         anchors.bottom: wordCandidateView.top
         height: keyboard.screenHeight -
-                keyboard.height -
-                wordCandidateView.height
+                keyboard.height +
+                wordCandidateView.y
         visible: fullScreenMode && (shadowInputControlVisibleTimer.running || InputContext.animating)
 
         Connections {
@@ -694,11 +694,11 @@ Item {
         clip: true
         z: -2
         property bool empty: true
-        readonly property bool visibleCondition: (((!wordCandidateView.empty || wordCandidateViewAutoHideTimer.running) &&
-                                                   InputContext.inputEngine.wordCandidateListVisibleHint) || VirtualKeyboardSettings.wordCandidateList.alwaysVisible) &&
-                                                 keyboard.active
+        readonly property bool visibleCondition: keyboard.active && InputContext.inputEngine.wordCandidateListVisibleHint &&
+                                                 (!wordCandidateView.empty || wordCandidateViewAutoHideTimer.running)
+        readonly property bool alwaysVisibleCondition: InputContext.inputEngine.wordCandidateListVisibleHint &&
+                                                       (keyboard.fullScreenMode || VirtualKeyboardSettings.wordCandidateList.alwaysVisible)
         readonly property real visibleYOffset: -height
-        readonly property real currentYOffset: visibleCondition ? visibleYOffset : 0
         height: style ? style.selectionListHeight : 0
         anchors.left: parent.left
         anchors.right: parent.right
@@ -760,7 +760,7 @@ Item {
             },
             State {
                 name: "alwaysVisible"
-                when: keyboard.fullScreenMode || VirtualKeyboardSettings.wordCandidateList.alwaysVisible
+                when: wordCandidateView.alwaysVisibleCondition
                 PropertyChanges {
                     target: wordCandidateView
                     y: wordCandidateView.visibleYOffset
@@ -808,8 +808,10 @@ Item {
                 var multiSoundEffect = __sounds[soundId]
                 if (!multiSoundEffect)
                     multiSoundEffect = register(sound)
-                if (multiSoundEffect)
+                if (multiSoundEffect) {
+                    multiSoundEffect.soundVolume = VirtualKeyboardSettings.convertVolume(VirtualKeyboardSettings.keySoundVolume)
                     multiSoundEffect.play()
+                }
             }
         }
 
@@ -1257,14 +1259,14 @@ Item {
         }
 
         function show(locales, parentItem, customLayoutsOnly) {
+            let currentIndex = -1
             if (!languagePopupList.enabled) {
                 languageListModel.clear()
                 for (var i = 0; i < locales.length; i++) {
                     languageListModel.append({localeName: locales[i].name, displayName: locales[i].locale.nativeLanguageName, localeIndex: locales[i].index})
                     if (locales[i].index === keyboard.localeIndex)
-                        languagePopupList.currentIndex = i
+                        currentIndex = i
                 }
-                languagePopupList.positionViewAtIndex(languagePopupList.currentIndex, ListView.Center)
                 if (parentItem) {
                     languagePopupList.anchors.leftMargin = Qt.binding(function() {
                         const newLeftMargin = Math.round(keyboard.mapFromItem(parentItem, (parentItem.width - languagePopupList.width) / 2, 0).x)
@@ -1277,6 +1279,11 @@ Item {
                 }
             }
             languagePopupList.enabled = true
+            if (currentIndex !== -1) {
+                languagePopupList.currentIndex = currentIndex
+                languagePopupList.forceLayout()
+                languagePopupList.positionViewAtIndex(currentIndex, ListView.Center)
+            }
         }
 
         function hide() {
@@ -1343,6 +1350,13 @@ Item {
                                                wordCandidateContextMenuList.height)
         }
 
+        Loader {
+            sourceComponent: keyboard.style.popupListBackground
+            anchors.fill: wordCandidateContextMenuList
+            z: -1
+            visible: wordCandidateContextMenuList.visible
+        }
+
         ListModel {
             id: wordCandidateContextMenuListModel
 
@@ -1399,6 +1413,7 @@ Item {
             })
 
             wordCandidateContextMenuList.enabled = true
+            wordCandidateContextMenuList.currentIndex = 0
         }
 
         function hide() {

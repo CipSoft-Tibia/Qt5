@@ -3,7 +3,7 @@
 // found in the LICENSE file.
 
 /** @fileoverview Definitions for chrome.autofillPrivate API */
-// TODO(crbug.com/1203307): Auto-generate this file.
+// TODO(crbug.com/40179454): Auto-generate this file.
 
 import {ChromeEvent} from './chrome_event.js';
 
@@ -15,6 +15,8 @@ declare global {
         email: string;
         isSyncEnabledForAutofillProfiles: boolean;
         isEligibleForAddressAccountStorage: boolean;
+        isAutofillSyncToggleEnabled: boolean;
+        isAutofillSyncToggleAvailable: boolean;
       }
 
       /**
@@ -91,10 +93,6 @@ declare global {
         ADDRESS_HOME_ADDRESS,
         ADDRESS_HOME_ADDRESS_WITH_NAME,
         ADDRESS_HOME_FLOOR,
-        NAME_FULL_WITH_HONORIFIC_PREFIX,
-        BIRTHDATE_DAY,
-        BIRTHDATE_MONTH,
-        BIRTHDATE_4_DIGIT_YEAR,
         PHONE_HOME_CITY_CODE_WITH_TRUNK_PREFIX,
         PHONE_HOME_CITY_AND_NUMBER_WITHOUT_TRUNK_PREFIX,
         PHONE_HOME_NUMBER_PREFIX,
@@ -116,10 +114,12 @@ declare global {
         SINGLE_USERNAME_FORGOT_PASSWORD,
         ADDRESS_HOME_APT,
         ADDRESS_HOME_APT_TYPE,
+        ADDRESS_HOME_HOUSE_NUMBER_AND_APT,
         SINGLE_USERNAME_WITH_INTERMEDIATE_VALUES,
+        IMPROVED_PREDICTION,
       }
 
-      export enum AddressSource {
+      export enum AddressRecordType {
         LOCAL_OR_SYNCABLE = 'LOCAL_OR_SYNCABLE',
         ACCOUNT = 'ACCOUNT',
       }
@@ -127,9 +127,8 @@ declare global {
       export interface AutofillMetadata {
         summaryLabel: string;
         summarySublabel?: string;
-        source?: AddressSource;
+        recordType?: AddressRecordType;
         isLocal?: boolean;
-        isCached?: boolean;
         isMigratable?: boolean;
         isVirtualCardEnrollmentEligible?: boolean;
         isVirtualCardEnrolled?: boolean;
@@ -182,6 +181,7 @@ declare global {
         network?: string;
         imageSrc?: string;
         cvc?: string;
+        productTermsUrl?: string;
         metadata?: AutofillMetadata;
       }
 
@@ -198,9 +198,16 @@ declare global {
         countryCode: string;
       }
 
+      export interface UserAnnotationsEntry {
+        entryId: number;
+        key: string;
+        value: string;
+      }
+
       export function getAccountInfo(): Promise<AccountInfo|undefined>;
       export function saveAddress(address: AddressEntry): void;
-      export function getCountryList(): Promise<CountryEntry[]>;
+      export function getCountryList(forAccountAddressProfile: boolean):
+          Promise<CountryEntry[]>;
       export function getAddressComponents(
           countryCode: string): Promise<AddressComponents>;
       export function getAddressList(): Promise<AddressEntry[]>;
@@ -212,17 +219,20 @@ declare global {
       export function getCreditCardList(): Promise<CreditCardEntry[]>;
       export function getIbanList(): Promise<IbanEntry[]>;
       export function isValidIban(ibanValue: string): Promise<boolean>;
-      export function maskCreditCard(guid: string): void;
       export function migrateCreditCards(): void;
       export function logServerCardLinkClicked(): void;
       export function logServerIbanLinkClicked(): void;
-      export function setCreditCardFIDOAuthEnabledState(enabled: boolean): void;
       export function addVirtualCard(cardId: string): void;
       export function removeVirtualCard(cardId: string): void;
       export function authenticateUserAndFlipMandatoryAuthToggle(): void;
       export function getLocalCard(guid: string): Promise<CreditCardEntry|null>;
       export function checkIfDeviceAuthAvailable(): Promise<boolean>;
       export function bulkDeleteAllCvcs(): void;
+      export function setAutofillSyncToggleEnabled(enabled: boolean): void;
+      export function getUserAnnotationsEntries():
+          Promise<UserAnnotationsEntry[]>;
+      export function deleteUserAnnotationsEntry(entryId: number): void;
+      export function deleteAllUserAnnotationsEntries(): void;
 
       export const onPersonalDataChanged: ChromeEvent<
           (addresses: AddressEntry[], creditCards: CreditCardEntry[],

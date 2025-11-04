@@ -2,8 +2,9 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-import {Action, DeferredAction, Store} from '//resources/js/store.js';
-import {dedupingMixin, PolymerElement} from '//resources/polymer/v3_0/polymer/polymer_bundled.min.js';
+import type {Action, DeferredAction, Store} from '//resources/js/store.js';
+import type {PolymerElement} from '//resources/polymer/v3_0/polymer/polymer_bundled.min.js';
+import {dedupingMixin} from '//resources/polymer/v3_0/polymer/polymer_bundled.min.js';
 
 /**
  * @fileoverview defines a helper function `makeStoreClientMixin` to create a
@@ -107,18 +108,18 @@ export function makeStoreClientMixin<S, A extends Action>(
       }
 
       onStateChanged(state: S) {
-        // Collect all changes and batch them together. This reduces visual
-        // churn on the polymer component if a single store change results in
-        // multiple polymer properties changing.
-        const changes: Record<string, any> = {};
-        for (const [localProperty, valueGetter] of this.propertyWatches_) {
+        this.propertyWatches_.forEach((valueGetter, localProperty) => {
           const oldValue = this.get(localProperty);
           const newValue = valueGetter(state);
-          if (newValue !== oldValue && newValue !== undefined) {
-            changes[localProperty] = newValue;
+          // Avoid poking Polymer unless something has actually changed.
+          // Reducers must return new objects rather than mutating existing
+          // objects, so any real changes will pass through correctly.
+          if (oldValue === newValue || newValue === undefined) {
+            return;
           }
-        }
-        this.setProperties(changes);
+
+          this.set(localProperty, newValue);
+        });
       }
 
       updateFromStore(): void {

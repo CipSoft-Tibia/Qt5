@@ -7,19 +7,30 @@
 #include <iterator>
 
 #include "core/fpdfapi/parser/cpdf_simple_parser.h"
+#include "core/fxcrt/compiler_specific.h"
+#include "core/fxcrt/span.h"
 #include "testing/gtest/include/gtest/gtest.h"
 #include "testing/test_support.h"
-#include "third_party/base/containers/span.h"
+
+namespace {
+
+struct FindTagTestStruct {
+  pdfium::span<const uint8_t> input_span() const {
+    // SAFETY: STR_IN_TEST_CASE macro extracts size of literal.
+    return UNSAFE_BUFFERS(pdfium::make_span(input, input_size));
+  }
+  const unsigned char* input;
+  unsigned int input_size;
+  const char* token;
+  int num_params;
+  bool result;
+  unsigned int result_position;
+};
+
+}  // namespace
 
 TEST(CPDFDefaultAppearanceTest, FindTagParamFromStart) {
-  static const struct FindTagTestStruct {
-    const unsigned char* input;
-    unsigned int input_size;
-    const char* token;
-    int num_params;
-    bool result;
-    unsigned int result_pos;
-  } test_data[] = {
+  const FindTagTestStruct test_data[] = {
       // Empty strings.
       STR_IN_TEST_CASE("", "Tj", 1, false, 0),
       STR_IN_TEST_CASE("", "", 1, false, 0),
@@ -38,13 +49,13 @@ TEST(CPDFDefaultAppearanceTest, FindTagParamFromStart) {
       STR_IN_TEST_CASE("1 2 3 4 5 6 7 8 cm", "cm", 6, true, 3),
   };
 
-  for (size_t i = 0; i < std::size(test_data); ++i) {
-    CPDF_SimpleParser parser(
-        pdfium::make_span(test_data[i].input, test_data[i].input_size));
-    EXPECT_EQ(test_data[i].result,
+  for (const auto& item : test_data) {
+    CPDF_SimpleParser parser(item.input_span());
+    EXPECT_EQ(item.result,
               CPDF_DefaultAppearance::FindTagParamFromStartForTesting(
-                  &parser, test_data[i].token, test_data[i].num_params))
-        << " for case " << i;
-    EXPECT_EQ(test_data[i].result_pos, parser.GetCurPos()) << " for case " << i;
+                  &parser, item.token, item.num_params))
+        << " for case " << item.input;
+    EXPECT_EQ(item.result_position, parser.GetCurrentPosition())
+        << " for case " << item.input;
   }
 }

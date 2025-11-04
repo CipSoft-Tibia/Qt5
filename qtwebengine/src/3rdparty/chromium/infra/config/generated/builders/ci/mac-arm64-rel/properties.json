@@ -10,7 +10,7 @@
             "builder_id": {
               "bucket": "ci",
               "builder": "mac-arm64-rel",
-              "project": "chromium-m122"
+              "project": "chromium-m130"
             },
             "builder_spec": {
               "builder_group": "chromium.mac",
@@ -26,6 +26,9 @@
                 "target_platform": "mac"
               },
               "legacy_gclient_config": {
+                "apply_configs": [
+                  "chromium_with_telemetry_dependencies"
+                ],
                 "config": "chromium"
               }
             }
@@ -34,7 +37,7 @@
             "builder_id": {
               "bucket": "ci",
               "builder": "mac11-arm64-rel-tests",
-              "project": "chromium-m122"
+              "project": "chromium-m130"
             },
             "builder_spec": {
               "builder_group": "chromium.mac",
@@ -55,7 +58,7 @@
               "parent": {
                 "bucket": "ci",
                 "builder": "mac-arm64-rel",
-                "project": "chromium-m122"
+                "project": "chromium-m130"
               }
             }
           },
@@ -63,7 +66,7 @@
             "builder_id": {
               "bucket": "ci",
               "builder": "mac12-arm64-rel-tests",
-              "project": "chromium-m122"
+              "project": "chromium-m130"
             },
             "builder_spec": {
               "builder_group": "chromium.mac",
@@ -84,7 +87,7 @@
               "parent": {
                 "bucket": "ci",
                 "builder": "mac-arm64-rel",
-                "project": "chromium-m122"
+                "project": "chromium-m130"
               }
             }
           },
@@ -92,7 +95,7 @@
             "builder_id": {
               "bucket": "ci",
               "builder": "mac13-arm64-rel-tests",
-              "project": "chromium-m122"
+              "project": "chromium-m130"
             },
             "builder_spec": {
               "builder_group": "chromium.mac",
@@ -113,7 +116,36 @@
               "parent": {
                 "bucket": "ci",
                 "builder": "mac-arm64-rel",
-                "project": "chromium-m122"
+                "project": "chromium-m130"
+              }
+            }
+          },
+          {
+            "builder_id": {
+              "bucket": "ci",
+              "builder": "mac14-arm64-rel-tests",
+              "project": "chromium-m130"
+            },
+            "builder_spec": {
+              "builder_group": "chromium.mac",
+              "execution_mode": "TEST",
+              "legacy_chromium_config": {
+                "apply_configs": [
+                  "mb"
+                ],
+                "build_config": "Release",
+                "config": "chromium",
+                "target_arch": "arm",
+                "target_bits": 64,
+                "target_platform": "mac"
+              },
+              "legacy_gclient_config": {
+                "config": "chromium"
+              },
+              "parent": {
+                "bucket": "ci",
+                "builder": "mac-arm64-rel",
+                "project": "chromium-m130"
               }
             }
           }
@@ -123,24 +155,29 @@
         {
           "bucket": "ci",
           "builder": "mac-arm64-rel",
-          "project": "chromium-m122"
+          "project": "chromium-m130"
         }
       ],
       "builder_ids_in_scope_for_testing": [
         {
           "bucket": "ci",
           "builder": "mac11-arm64-rel-tests",
-          "project": "chromium-m122"
+          "project": "chromium-m130"
         },
         {
           "bucket": "ci",
           "builder": "mac12-arm64-rel-tests",
-          "project": "chromium-m122"
+          "project": "chromium-m130"
         },
         {
           "bucket": "ci",
           "builder": "mac13-arm64-rel-tests",
-          "project": "chromium-m122"
+          "project": "chromium-m130"
+        },
+        {
+          "bucket": "ci",
+          "builder": "mac14-arm64-rel-tests",
+          "project": "chromium-m130"
         }
       ],
       "mirroring_builder_group_and_names": [
@@ -155,15 +192,29 @@
         {
           "builder": "mac13-arm64-rel",
           "group": "tryserver.chromium.mac"
+        },
+        {
+          "builder": "mac14-arm64-rel",
+          "group": "tryserver.chromium.mac"
         }
-      ]
+      ],
+      "retry_failed_shards": true
     }
   },
   "$build/reclient": {
     "instance": "rbe-chromium-trusted",
-    "jobs": 250,
     "metrics_project": "chromium-reclient-metrics",
     "scandeps_server": true
+  },
+  "$build/siso": {
+    "configs": [
+      "builder"
+    ],
+    "enable_cloud_profiler": true,
+    "enable_cloud_trace": true,
+    "experiments": [],
+    "project": "rbe-chromium-trusted",
+    "remote_jobs": 250
   },
   "$recipe_engine/resultdb/test_presentation": {
     "column_keys": [],
@@ -173,6 +224,9 @@
     ]
   },
   "builder_group": "chromium.mac",
+  "gardener_rotations": [
+    "chrome_browser_release"
+  ],
   "recipe": "chromium",
   "sheriff_rotations": [
     "chrome_browser_release"

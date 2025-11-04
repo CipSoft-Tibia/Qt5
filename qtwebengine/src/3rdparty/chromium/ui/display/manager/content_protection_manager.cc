@@ -7,7 +7,6 @@
 #include <utility>
 
 #include "base/check.h"
-#include "base/containers/cxx20_erase.h"
 #include "base/observer_list.h"
 #include "base/ranges/algorithm.h"
 #include "ui/display/manager/apply_content_protection_task.h"
@@ -38,7 +37,7 @@ ContentProtectionManager::~ContentProtectionManager() {
 
 ContentProtectionManager::ClientId ContentProtectionManager::RegisterClient() {
   if (disabled())
-    return absl::nullopt;
+    return std::nullopt;
 
   ClientId client_id = next_client_id_++;
   bool success = requests_.emplace(*client_id, ContentProtections()).second;
@@ -58,7 +57,7 @@ void ContentProtectionManager::UnregisterClient(ClientId client_id) {
       layout_manager_, native_display_delegate_, AggregateContentProtections(),
       base::BindOnce(&ContentProtectionManager::OnContentProtectionApplied,
                      weak_ptr_factory_.GetWeakPtr(),
-                     ApplyContentProtectionCallback(), absl::nullopt)));
+                     ApplyContentProtectionCallback(), std::nullopt)));
 
   ToggleDisplaySecurityPolling();
 }
@@ -229,12 +228,12 @@ void ContentProtectionManager::OnContentProtectionApplied(
     DequeueTask();
 }
 
-void ContentProtectionManager::OnDisplayModeChanged(
+void ContentProtectionManager::OnDisplayConfigurationChanged(
     const DisplayConfigurator::DisplayStateList&) {
   KillTasks();
 }
 
-void ContentProtectionManager::OnDisplayModeChangeFailed(
+void ContentProtectionManager::OnDisplayConfigurationChangeFailed(
     const DisplayConfigurator::DisplayStateList&,
     MultipleDisplayState) {
   KillTasks();
@@ -307,7 +306,7 @@ void ContentProtectionManager::OnDisplaySecurityQueried(
                          connection_mask == DISPLAY_CONNECTION_TYPE_INTERNAL);
 
     for (Observer& observer : observers_)
-      observer.OnDisplaySecurityChanged(display_id, secure);
+      observer.OnDisplaySecurityMaybeChanged(display_id, secure);
   }
 
   if (status != Task::Status::KILLED)

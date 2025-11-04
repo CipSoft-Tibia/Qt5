@@ -90,13 +90,13 @@ OwnedCompilationMessages::OwnedCompilationMessages() {
 
 OwnedCompilationMessages::~OwnedCompilationMessages() = default;
 
-void OwnedCompilationMessages::AddUnanchoredMessage(std::string message,
+void OwnedCompilationMessages::AddUnanchoredMessage(std::string_view message,
                                                     wgpu::CompilationMessageType type) {
     AddMessage(message, {nullptr, nullptr, static_cast<WGPUCompilationMessageType>(type), 0, 0, 0,
                          0, 0, 0, 0});
 }
 
-void OwnedCompilationMessages::AddMessageForTesting(std::string message,
+void OwnedCompilationMessages::AddMessageForTesting(std::string_view message,
                                                     wgpu::CompilationMessageType type,
                                                     uint64_t lineNum,
                                                     uint64_t linePos,
@@ -161,14 +161,14 @@ MaybeError OwnedCompilationMessages::AddMessage(const tint::diag::Diagnostic& di
     }
 
     AddMessage(
-        diagnostic.message,
+        diagnostic.message.Plain(),
         {nullptr, nullptr, tintSeverityToMessageType(diagnostic.severity), lineNum, linePosInBytes,
          offsetInBytes, lengthInBytes, linePosInUTF16, offsetInUTF16, lengthInUTF16});
 
     return {};
 }
 
-void OwnedCompilationMessages::AddMessage(std::string messageString,
+void OwnedCompilationMessages::AddMessage(std::string_view messageString,
                                           const WGPUCompilationMessage& message) {
     // Cannot add messages after GetCompilationInfo has been called.
     DAWN_ASSERT(mCompilationInfo.messages == nullptr);
@@ -177,7 +177,7 @@ void OwnedCompilationMessages::AddMessage(std::string messageString,
     // The message string won't be populated until GetCompilationInfo.
     DAWN_ASSERT(message.message == nullptr);
 
-    mMessageStrings.push_back(messageString);
+    mMessageStrings.push_back(std::string(messageString));
     mMessages.push_back(message);
 }
 
@@ -217,8 +217,18 @@ const WGPUCompilationInfo* OwnedCompilationMessages::GetCompilationInfo() {
     return &mCompilationInfo;
 }
 
-const std::vector<std::string>& OwnedCompilationMessages::GetFormattedTintMessages() {
+const std::vector<std::string>& OwnedCompilationMessages::GetFormattedTintMessages() const {
     return mFormattedTintMessages;
+}
+
+bool OwnedCompilationMessages::HasWarningsOrErrors() const {
+    for (const auto& message : mMessages) {
+        if (message.type == WGPUCompilationMessageType_Error ||
+            message.type == WGPUCompilationMessageType_Warning) {
+            return true;
+        }
+    }
+    return false;
 }
 
 void OwnedCompilationMessages::AddFormattedTintMessages(const tint::diag::List& diagnostics) {
@@ -227,20 +237,18 @@ void OwnedCompilationMessages::AddFormattedTintMessages(const tint::diag::List& 
     size_t errorCount = 0;
     for (auto& diag : diagnostics) {
         switch (diag.severity) {
-            case (tint::diag::Severity::Fatal):
-            case (tint::diag::Severity::Error):
-            case (tint::diag::Severity::InternalCompilerError): {
+            case tint::diag::Severity::Error: {
                 errorCount++;
-                messageList.add(tint::diag::Diagnostic(diag));
+                messageList.Add(diag);
                 break;
             }
-            case (tint::diag::Severity::Warning): {
+            case tint::diag::Severity::Warning: {
                 warningCount++;
-                messageList.add(tint::diag::Diagnostic(diag));
+                messageList.Add(diag);
                 break;
             }
-            case (tint::diag::Severity::Note): {
-                messageList.add(tint::diag::Diagnostic(diag));
+            case tint::diag::Severity::Note: {
+                messageList.Add(diag);
                 break;
             }
             default:
@@ -262,8 +270,8 @@ void OwnedCompilationMessages::AddFormattedTintMessages(const tint::diag::List& 
     if (warningCount > 0) {
         t << warningCount << " warning(s) ";
     }
-    t << "generated while compiling the shader:" << std::endl
-      << tint::diag::Formatter{style}.format(messageList);
+    t << "generated while compiling the shader:\n"
+      << tint::diag::Formatter{style}.Format(messageList).Plain();
     mFormattedTintMessages.push_back(t.str());
 }
 

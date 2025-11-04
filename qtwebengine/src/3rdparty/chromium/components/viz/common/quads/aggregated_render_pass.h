@@ -8,6 +8,7 @@
 #include <stddef.h>
 
 #include <memory>
+#include <optional>
 #include <utility>
 #include <vector>
 
@@ -21,7 +22,6 @@
 #include "components/viz/common/quads/quad_list.h"
 #include "components/viz/common/quads/render_pass_internal.h"
 #include "components/viz/common/viz_common_export.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "ui/gfx/display_color_spaces.h"
 #include "ui/gfx/geometry/rect.h"
 #include "ui/gfx/geometry/rrect_f.h"
@@ -59,7 +59,7 @@ class VIZ_COMMON_EXPORT AggregatedRenderPass : public RenderPassInternal {
               const gfx::Transform& transform_to_root_target,
               const cc::FilterOperations& filters,
               const cc::FilterOperations& backdrop_filters,
-              const absl::optional<gfx::RRectF>& backdrop_filter_bounds,
+              const std::optional<gfx::RRectF>& backdrop_filter_bounds,
               gfx::ContentColorUsage color_usage,
               bool has_transparent_background,
               bool cache_render_pass,
@@ -104,12 +104,29 @@ class VIZ_COMMON_EXPORT AggregatedRenderPass : public RenderPassInternal {
   // Indicates current RenderPass is a color conversion pass.
   bool is_color_conversion_pass = false;
 
+  // |true| if this render pass, prior to aggregation, was the root pass of a
+  // surface's resolved frame.
+  // TODO(crbug.com/324460866): Used for partially delegated compositing.
+  bool is_from_surface_root_pass = false;
+
+#if BUILDFLAG(IS_WIN)
+  // |true| if this render pass backing needs to be read by Viz to be composited
+  // correctly. If |DirectRenderer| will compose this render pass, this must be
+  // set to |true|.
+  //
+  // DComp surfaces on Windows do not allow reading, so this field is overridden
+  // during overlay processing to help us detect when we can back a render pass
+  // with a DComp surface to scanout directly.
+  // TODO(crbug.com/324460866): Used for partially delegated compositing.
+  bool will_backing_be_read_by_viz = true;
+
   // Windows only: Indicates that the render pass backing's updates need to be
   // synchronized with tree updates. A swap chain does not synchronize its
   // presents with DComp commits. This is needed when e.g. the render pass has
   // video holes that need to line up with other overlays or is itself presented
   // as an overlay.
   bool needs_synchronous_dcomp_commit = false;
+#endif
 
   // Indicates whether video capture has been enabled for this render pass.
   //

@@ -28,7 +28,7 @@ function(_qt_internal_grpc_preparse_proto_files type
         _qt_internal_preparse_proto_file_common(result proto_package "${f}" "service")
         if(NOT result)
             message(NOTICE "No services found in ${f}. Skipping.")
-            return()
+            continue()
         endif()
 
         get_filename_component(proto_file_base_dir "${f}" DIRECTORY)

@@ -136,7 +136,9 @@ public:
         RasterOp_SourceOrNotDestination,
         RasterOp_ClearDestination,
         RasterOp_SetDestination,
-        RasterOp_NotDestination
+        RasterOp_NotDestination,
+
+        NCompositionModes
     };
     void setCompositionMode(CompositionMode mode);
     CompositionMode compositionMode() const;
@@ -154,6 +156,8 @@ public:
 
     void setBrush(const QBrush &brush);
     void setBrush(Qt::BrushStyle style);
+    void setBrush(QColor color);
+    void setBrush(Qt::GlobalColor color) { setBrush(QColor(color)); }
     const QBrush &brush() const;
 
     // attributes/modes

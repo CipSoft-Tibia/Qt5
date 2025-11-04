@@ -112,6 +112,10 @@ Item {
             name: "PieModelMapping"
             file: "PieModelMapping.qml"
         }
+        ListElement {
+            name: "Custom Input"
+            file: "CustomInput.qml"
+        }
     }
 
     Component {

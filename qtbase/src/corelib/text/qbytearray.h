@@ -1,6 +1,7 @@
 // Copyright (C) 2022 The Qt Company Ltd.
 // Copyright (C) 2016 Intel Corporation.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:data-parser
 
 #ifndef QBYTEARRAY_H
 #define QBYTEARRAY_H
@@ -306,6 +307,8 @@ public:
     template <typename InputIterator, if_input_iterator<InputIterator> = true>
     QByteArray &assign(InputIterator first, InputIterator last)
     {
+        if constexpr (std::is_same_v<InputIterator, iterator> || std::is_same_v<InputIterator, const_iterator>)
+            return assign(QByteArrayView(first, last));
         d.assign(first, last);
         if (d.data())
             d.data()[d.size] = '\0';
@@ -687,6 +690,18 @@ inline QByteArray operator+(const char *a1, const QByteArray &a2)
 { return QByteArray(a1) += a2; }
 inline QByteArray operator+(char a1, const QByteArray &a2)
 { return QByteArray(&a1, 1) += a2; }
+Q_WEAK_OVERLOAD
+inline QByteArray operator+(const QByteArray &lhs, QByteArrayView rhs)
+{
+    QByteArray tmp{lhs.size() + rhs.size(), Qt::Uninitialized};
+    return tmp.assign(lhs).append(rhs);
+}
+Q_WEAK_OVERLOAD
+inline QByteArray operator+(QByteArrayView lhs, const QByteArray &rhs)
+{
+    QByteArray tmp{lhs.size() + rhs.size(), Qt::Uninitialized};
+    return tmp.assign(lhs).append(rhs);
+}
 #endif // QT_USE_QSTRINGBUILDER
 
 inline QByteArray &QByteArray::setNum(short n, int base)

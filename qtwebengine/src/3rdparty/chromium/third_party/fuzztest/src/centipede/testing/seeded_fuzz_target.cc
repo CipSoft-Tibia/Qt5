@@ -17,9 +17,10 @@
 #include <functional>
 #include <vector>
 
-#include "./centipede/defs.h"
+#include "absl/base/nullability.h"
 #include "./centipede/mutation_input.h"
 #include "./centipede/runner_interface.h"
+#include "./common/defs.h"
 
 using centipede::ByteSpan;
 
@@ -45,7 +46,7 @@ class SeededRunnerCallbacks : public centipede::RunnerCallbacks {
   }
 };
 
-int main(int argc, char **argv) {
+int main(int argc, absl::Nonnull<char **> argv) {
   SeededRunnerCallbacks runner_callbacks;
   return centipede::RunnerMain(argc, argv, runner_callbacks);
 }

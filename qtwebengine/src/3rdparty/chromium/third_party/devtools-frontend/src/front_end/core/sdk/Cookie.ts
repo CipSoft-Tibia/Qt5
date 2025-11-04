@@ -2,8 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-import type * as Platform from '../platform/platform.js';
 import type * as Protocol from '../../generated/protocol.js';
+import type * as Platform from '../platform/platform.js';
 
 const OPAQUE_PARTITION_KEY = '<opaque>';
 
@@ -11,56 +11,65 @@ export class Cookie {
   readonly #nameInternal: string;
   readonly #valueInternal: string;
   readonly #typeInternal: Type|null|undefined;
-  #attributes: {
-    [x: string]: string|number|boolean|undefined,
-  };
+  #attributes: Map<Attribute, string|number|boolean|undefined>;
   #sizeInternal: number;
   #priorityInternal: Protocol.Network.CookiePriority;
   #cookieLine: string|null;
-  constructor(name: string, value: string, type?: Type|null, priority?: Protocol.Network.CookiePriority) {
+  #partitionKey: Protocol.Network.CookiePartitionKey|undefined;
+
+  constructor(
+      name: string, value: string, type?: Type|null, priority?: Protocol.Network.CookiePriority,
+      partitionKey?: Protocol.Network.CookiePartitionKey) {
     this.#nameInternal = name;
     this.#valueInternal = value;
     this.#typeInternal = type;
-    this.#attributes = {};
+    this.#attributes = new Map();
     this.#sizeInternal = 0;
     this.#priorityInternal = (priority || 'Medium' as Protocol.Network.CookiePriority);
     this.#cookieLine = null;
+    this.#partitionKey = partitionKey;
   }
 
   static fromProtocolCookie(protocolCookie: Protocol.Network.Cookie): Cookie {
     const cookie = new Cookie(protocolCookie.name, protocolCookie.value, null, protocolCookie.priority);
-    cookie.addAttribute('domain', protocolCookie['domain']);
-    cookie.addAttribute('path', protocolCookie['path']);
+    cookie.addAttribute(Attribute.DOMAIN, protocolCookie['domain']);
+    cookie.addAttribute(Attribute.PATH, protocolCookie['path']);
     if (protocolCookie['expires']) {
-      cookie.addAttribute('expires', protocolCookie['expires'] * 1000);
+      cookie.addAttribute(Attribute.EXPIRES, protocolCookie['expires'] * 1000);
     }
     if (protocolCookie['httpOnly']) {
-      cookie.addAttribute('httpOnly');
+      cookie.addAttribute(Attribute.HTTP_ONLY);
     }
     if (protocolCookie['secure']) {
-      cookie.addAttribute('secure');
+      cookie.addAttribute(Attribute.SECURE);
     }
     if (protocolCookie['sameSite']) {
-      cookie.addAttribute('sameSite', protocolCookie['sameSite']);
+      cookie.addAttribute(Attribute.SAME_SITE, protocolCookie['sameSite']);
     }
     if ('sourcePort' in protocolCookie) {
-      cookie.addAttribute('sourcePort', protocolCookie.sourcePort);
+      cookie.addAttribute(Attribute.SOURCE_PORT, protocolCookie.sourcePort);
     }
     if ('sourceScheme' in protocolCookie) {
-      cookie.addAttribute('sourceScheme', protocolCookie.sourceScheme);
+      cookie.addAttribute(Attribute.SOURCE_SCHEME, protocolCookie.sourceScheme);
     }
     if ('partitionKey' in protocolCookie) {
-      cookie.addAttribute('partitionKey', protocolCookie.partitionKey);
+      if (protocolCookie.partitionKey) {
+        cookie.setPartitionKey(
+            protocolCookie.partitionKey.topLevelSite, protocolCookie.partitionKey.hasCrossSiteAncestor);
+      }
     }
     if ('partitionKeyOpaque' in protocolCookie && protocolCookie.partitionKeyOpaque) {
-      cookie.addAttribute('partitionKey', OPAQUE_PARTITION_KEY);
+      cookie.addAttribute(Attribute.PARTITION_KEY, OPAQUE_PARTITION_KEY);
     }
     cookie.setSize(protocolCookie['size']);
     return cookie;
   }
 
   key(): string {
-    return (this.domain() || '-') + ' ' + this.name() + ' ' + (this.path() || '-') + ' ' + (this.partitionKey() || '-');
+    return (this.domain() || '-') + ' ' + this.name() + ' ' + (this.path() || '-') + ' ' +
+        (this.partitionKey() ?
+             (this.topLevelSite() + ' ' + (this.hasCrossSiteAncestor() ? 'cross_site' : 'same_site')) :
+             '-');
   }
 
   name(): string {
@@ -76,37 +85,69 @@ export class Cookie {
   }
 
   httpOnly(): boolean {
-    return 'httponly' in this.#attributes;
+    return this.#attributes.has(Attribute.HTTP_ONLY);
   }
 
   secure(): boolean {
-    return 'secure' in this.#attributes;
+    return this.#attributes.has(Attribute.SECURE);
   }
 
   partitioned(): boolean {
-    return 'partitioned' in this.#attributes || Boolean(this.partitionKey()) || this.partitionKeyOpaque();
+    return this.#attributes.has(Attribute.PARTITIONED) || Boolean(this.partitionKey()) || this.partitionKeyOpaque();
   }
 
   sameSite(): Protocol.Network.CookieSameSite {
     // TODO(allada) This should not rely on #attributes and instead store them individually.
     // when #attributes get added via addAttribute() they are lowercased, hence the lowercasing of samesite here
-    return this.#attributes['samesite'] as Protocol.Network.CookieSameSite;
+    return this.#attributes.get(Attribute.SAME_SITE) as Protocol.Network.CookieSameSite;
   }
 
-  partitionKey(): string {
-    return this.#attributes['partitionkey'] as string;
+  partitionKey(): Protocol.Network.CookiePartitionKey {
+    return this.#partitionKey as Protocol.Network.CookiePartitionKey;
   }
 
-  setPartitionKey(key: string): void {
-    this.addAttribute('partitionKey', key);
+  setPartitionKey(topLevelSite: string, hasCrossSiteAncestor: boolean): void {
+    this.#partitionKey = {topLevelSite, hasCrossSiteAncestor};
+    if (!this.#attributes.has(Attribute.PARTITIONED)) {
+      this.addAttribute(Attribute.PARTITIONED);
+    }
+  }
+
+  topLevelSite(): string {
+    if (!this.#partitionKey) {
+      return '';
+    }
+    return this.#partitionKey?.topLevelSite as string;
+  }
+
+  setTopLevelSite(topLevelSite: string, hasCrossSiteAncestor: boolean): void {
+    this.setPartitionKey(topLevelSite, hasCrossSiteAncestor);
+  }
+
+  hasCrossSiteAncestor(): boolean {
+    if (!this.#partitionKey) {
+      return false;
+    }
+    return this.#partitionKey?.hasCrossSiteAncestor as boolean;
+  }
+
+  setHasCrossSiteAncestor(hasCrossSiteAncestor: boolean): void {
+    if (!this.partitionKey() || !Boolean(this.topLevelSite())) {
+      return;
+    }
+    this.setPartitionKey(this.topLevelSite(), hasCrossSiteAncestor);
   }
 
   partitionKeyOpaque(): boolean {
-    return (this.#attributes['partitionkey'] === OPAQUE_PARTITION_KEY);
+    if (!this.#partitionKey) {
+      return false;
+    }
+    return (this.topLevelSite() === OPAQUE_PARTITION_KEY);
   }
 
   setPartitionKeyOpaque(): void {
-    this.addAttribute('partitionKey', OPAQUE_PARTITION_KEY);
+    this.addAttribute(Attribute.PARTITION_KEY, OPAQUE_PARTITION_KEY);
+    this.setPartitionKey(OPAQUE_PARTITION_KEY, false);
   }
 
   priority(): Protocol.Network.CookiePriority {
@@ -116,31 +157,31 @@ export class Cookie {
   session(): boolean {
     // RFC 2965 suggests using Discard attribute to mark session cookies, but this does not seem to be widely used.
     // Check for absence of explicitly max-age or expiry date instead.
-    return !('expires' in this.#attributes || 'max-age' in this.#attributes);
+    return !(this.#attributes.has(Attribute.EXPIRES) || this.#attributes.has(Attribute.MAX_AGE));
   }
 
   path(): string {
-    return this.#attributes['path'] as string;
+    return this.#attributes.get(Attribute.PATH) as string;
   }
 
   domain(): string {
-    return this.#attributes['domain'] as string;
+    return this.#attributes.get(Attribute.DOMAIN) as string;
   }
 
   expires(): number {
-    return this.#attributes['expires'] as number;
+    return this.#attributes.get(Attribute.EXPIRES) as number;
   }
 
   maxAge(): number {
-    return this.#attributes['max-age'] as number;
+    return this.#attributes.get(Attribute.MAX_AGE) as number;
   }
 
   sourcePort(): number {
-    return this.#attributes['sourceport'] as number;
+    return this.#attributes.get(Attribute.SOURCE_PORT) as number;
   }
 
   sourceScheme(): Protocol.Network.CookieSourceScheme {
-    return this.#attributes['sourcescheme'] as Protocol.Network.CookieSourceScheme;
+    return this.#attributes.get(Attribute.SOURCE_SCHEME) as Protocol.Network.CookieSourceScheme;
   }
 
   size(): number {
@@ -183,14 +224,16 @@ export class Cookie {
     return null;
   }
 
-  addAttribute(key: string, value?: string|number|boolean): void {
-    const normalizedKey = key.toLowerCase();
-    switch (normalizedKey) {
-      case 'priority':
+  addAttribute(key: Attribute|null, value?: string|number|boolean): void {
+    if (!key) {
+      return;
+    }
+    switch (key) {
+      case Attribute.PRIORITY:
         this.#priorityInternal = (value as Protocol.Network.CookiePriority);
         break;
       default:
-        this.#attributes[normalizedKey] = value;
+        this.#attributes.set(key, value);
     }
   }
 
@@ -246,22 +289,26 @@ export class Cookie {
 }
 
 export const enum Type {
-  Request = 0,
-  Response = 1,
+  REQUEST = 0,
+  RESPONSE = 1,
 }
 
-export const enum Attributes {
-  Name = 'name',
-  Value = 'value',
-  Size = 'size',
-  Domain = 'domain',
-  Path = 'path',
-  Expires = 'expires',
-  HttpOnly = 'http-only',
-  Secure = 'secure',
-  SameSite = 'same-site',
-  SourceScheme = 'source-scheme',
-  SourcePort = 'source-port',
-  Priority = 'priority',
-  PartitionKey = 'partition-key',
+export const enum Attribute {
+  NAME = 'name',
+  VALUE = 'value',
+  SIZE = 'size',
+  DOMAIN = 'domain',
+  PATH = 'path',
+  EXPIRES = 'expires',
+  MAX_AGE = 'max-age',
+  HTTP_ONLY = 'http-only',
+  SECURE = 'secure',
+  SAME_SITE = 'same-site',
+  SOURCE_SCHEME = 'source-scheme',
+  SOURCE_PORT = 'source-port',
+  PRIORITY = 'priority',
+  PARTITIONED = 'partitioned',
+  PARTITION_KEY = 'partition-key',
+  PARTITION_KEY_SITE = 'partition-key-site',
+  HAS_CROSS_SITE_ANCESTOR = 'has-cross-site-ancestor',
 }

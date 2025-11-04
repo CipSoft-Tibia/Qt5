@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
 #include "scattergraphwidget.h"
 
-ScatterGraphWidget::ScatterGraphWidget() {}
+ScatterGraphWidget::ScatterGraphWidget() = default;
 
-ScatterGraphWidget::~ScatterGraphWidget() {}
+ScatterGraphWidget::~ScatterGraphWidget() = default;
 
 void ScatterGraphWidget::initialize()
 {

@@ -1,5 +1,6 @@
 // Copyright (C) 2019 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:network-protocol
 
 // based on chrome/browser/plugins/plugin_response_interceptor_url_loader_throttle.cc
 // Copyright 2018 The Chromium Authors. All rights reserved.
@@ -80,7 +81,7 @@ namespace QtWebEngineCore {
 
 PluginResponseInterceptorURLLoaderThrottle::PluginResponseInterceptorURLLoaderThrottle(
         network::mojom::RequestDestination request_destination,
-        int frame_tree_node_id)
+        content::FrameTreeNodeId frame_tree_node_id)
     : m_request_destination(request_destination), m_frame_tree_node_id(frame_tree_node_id)
 {}
 
@@ -147,10 +148,11 @@ void PluginResponseInterceptorURLLoaderThrottle::WillProcessResponse(const GURL 
     mojo::ScopedDataPipeConsumerHandle consumer_handle;
     CHECK_EQ(MOJO_RESULT_OK, mojo::CreateDataPipe(kFullPageMimeHandlerDataPipeSize, producer_handle, consumer_handle));
 
-    uint32_t len = static_cast<uint32_t>(payload.size());
+    size_t len = payload.size();
     CHECK_EQ(MOJO_RESULT_OK,
                 producer_handle->WriteData(
-                    payload.c_str(), &len, MOJO_WRITE_DATA_FLAG_ALL_OR_NONE));
+                     base::make_span(reinterpret_cast<const uint8_t*>(payload.data()), len),
+                     MOJO_WRITE_DATA_FLAG_ALL_OR_NONE, len));
 
     network::URLLoaderCompletionStatus status(net::OK);
     status.decoded_body_length = len;

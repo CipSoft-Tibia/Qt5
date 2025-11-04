@@ -14,6 +14,7 @@
 #include <string_view>
 #include <vector>
 
+#include "base/containers/span.h"
 #include "base/memory/raw_ptr.h"
 #include "base/time/time.h"
 #include "components/autofill/core/browser/autofill_type.h"
@@ -21,7 +22,6 @@
 #include "components/autofill/core/browser/data_model/address.h"
 #include "components/autofill/core/browser/data_model/autofill_data_model.h"
 #include "components/autofill/core/browser/data_model/autofill_i18n_api.h"
-#include "components/autofill/core/browser/data_model/birthdate.h"
 #include "components/autofill/core/browser/data_model/contact_info.h"
 #include "components/autofill/core/browser/data_model/phone_number.h"
 #include "components/autofill/core/browser/profile_token_quality.h"
@@ -33,6 +33,7 @@
 namespace autofill {
 
 class AutofillProfileComparator;
+class AutofillProfileTestApi;
 
 // A collection of FormGroups stored in a profile.  AutofillProfile also
 // implements the FormGroup interface so that owners of this object can request
@@ -42,23 +43,43 @@ class AutofillProfile : public AutofillDataModel {
  public:
   // Describes where the profile is stored and how it is synced.
   // GENERATED_JAVA_ENUM_PACKAGE: org.chromium.components.autofill
-  enum class Source {
+  // These values are persisted to logs. Entries should not be renumbered and
+  // numeric values should never be reused.
+  enum class RecordType {
     // Not synced at all or synced through the `AutofillProfileSyncBridge`. This
     // corresponds to profiles that local to Autofill only.
     kLocalOrSyncable = 0,
     // Synced through the `ContactInfoSyncBridge`. This corresponds to profiles
     // that are shared beyond Autofill across different services.
+    // kAccountHome and kAccountWork represent special account addresses, only a
+    // single one of which can exist each.
     kAccount = 1,
-    kMaxValue = kAccount,
+    kAccountHome = 2,
+    kAccountWork = 3,
+    kMaxValue = kAccountWork,
   };
+
+  // These fields are, by default, the only candidates for being added to the
+  // list of profile labels. Note that the call to generate labels can specify a
+  // custom set of fields, in which case such set would be used instead of this
+  // one.
+  // TODO(crbug.com/40285811): Change this into a FieldTypeSet once the priority
+  // is not decided by the order of these entries anymore.
+  static constexpr auto kDefaultDistinguishingFieldsForLabels =
+      std::to_array<FieldType>(
+          {NAME_FULL, ADDRESS_HOME_LINE1, ADDRESS_HOME_LINE2,
+           ADDRESS_HOME_DEPENDENT_LOCALITY, ADDRESS_HOME_CITY,
+           ADDRESS_HOME_STATE, ADDRESS_HOME_ZIP, ADDRESS_HOME_SORTING_CODE,
+           ADDRESS_HOME_COUNTRY, EMAIL_ADDRESS, PHONE_HOME_WHOLE_NUMBER,
+           COMPANY_NAME});
 
   // The values used to represent Autofill in the `initial_creator_id()` and
   // `last_modifier_id()`.
   static constexpr int kInitialCreatorOrModifierChrome = 70073;
   AutofillProfile(const std::string& guid,
-                  Source source,
+                  RecordType record_type,
                   AddressCountryCode country_code);
-  AutofillProfile(Source source, AddressCountryCode country_code);
+  AutofillProfile(RecordType record_type, AddressCountryCode country_code);
   explicit AutofillProfile(AddressCountryCode country_code);
 
   AutofillProfile(const AutofillProfile& profile);
@@ -89,28 +110,31 @@ class AutofillProfile : public AutofillDataModel {
       const std::string& app_locale);
 #endif  // BUILDFLAG(IS_ANDROID)
 
-  // AutofillDataModel:
-  double GetRankingScore(base::Time current_time) const override;
-
   // FormGroup:
-  void GetMatchingTypes(const std::u16string& text,
-                        const std::string& app_locale,
-                        FieldTypeSet* matching_types) const override;
+  void GetMatchingTypesWithProfileSources(
+      const std::u16string& text,
+      const std::string& app_locale,
+      FieldTypeSet* matching_types,
+      PossibleProfileValueSources* profile_value_sources) const override;
 
   std::u16string GetRawInfo(FieldType type) const override;
-
-  int GetRawInfoAsInt(FieldType type) const override;
 
   void SetRawInfoWithVerificationStatus(FieldType type,
                                         const std::u16string& value,
                                         VerificationStatus status) override;
 
-  void SetRawInfoAsIntWithVerificationStatus(
-      FieldType type,
-      int value,
-      VerificationStatus status) override;
-
   void GetSupportedTypes(FieldTypeSet* supported_types) const override;
+
+  // Calculates the ranking score used for ranking the profile suggestion. If
+  // `use_frecency` is true we use the new ranking algorithm.
+  double GetRankingScore(base::Time current_time,
+                         bool use_frecency = false) const;
+
+  // Compares two profiles and returns if the current profile has a greater
+  // ranking score than `other`.
+  bool HasGreaterRankingThan(const AutofillProfile* other,
+                             base::Time comparison_time,
+                             bool use_frecency = false) const;
 
   // Every `GetSupportedType()` is either a storable type or has a corresponding
   // storable type. For example, ADDRESS_HOME_LINE1 corresponds to the storable
@@ -144,10 +168,6 @@ class AutofillProfile : public AutofillDataModel {
   // the |new_profile|.
   bool EqualsForUpdatePurposes(const AutofillProfile& new_profile) const;
 
-  // Same as operator==, but cares about differences in usage stats.
-  bool EqualsIncludingUsageStatsForTesting(
-      const AutofillProfile& profile) const;
-
   // Equality operators compare GUIDs, origins, language code, and the contents
   // in the comparison. Usage metadata (use count, use date, modification date)
   // are NOT compared.
@@ -180,12 +200,6 @@ class AutofillProfile : public AutofillDataModel {
   bool MergeDataFrom(const AutofillProfile& profile,
                      const std::string& app_locale);
 
-  // Saves info from |profile| into |this|, provided |this| and |profile| do not
-  // have any direct conflicts (i.e. data is present but different).
-  // Returns true if |this| and |profile| are similar.
-  bool SaveAdditionalInfo(const AutofillProfile& profile,
-                          const std::string& app_locale);
-
   // Creates a differentiating label for each of the |profiles|.
   // Labels consist of the minimal differentiating combination of:
   // 1. Full name.
@@ -214,6 +228,7 @@ class AutofillProfile : public AutofillDataModel {
   // from it minus those in `excluded_fields`. Otherwise, the label fields are
   // drawn from a default set. Each label includes at least
   // `minimal_fields_shown` fields, if possible.
+  // TODO(crbug.com/40285811): Make `suggested_fields` non-optional.
   static void CreateInferredLabels(
       const std::vector<raw_ptr<const AutofillProfile, VectorExperimental>>&
           profiles,
@@ -222,15 +237,16 @@ class AutofillProfile : public AutofillDataModel {
       FieldTypeSet excluded_fields,
       size_t minimal_fields_shown,
       const std::string& app_locale,
-      std::vector<std::u16string>* labels);
+      std::vector<std::u16string>* labels,
+      bool use_improved_labels_order = false);
 
   // Builds inferred label from the first |num_fields_to_include| non-empty
   // fields in |label_fields|. Uses as many fields as possible if there are not
   // enough non-empty fields.
-  std::u16string ConstructInferredLabel(const FieldType* label_fields,
-                                        const size_t label_fields_size,
-                                        size_t num_fields_to_include,
-                                        const std::string& app_locale) const;
+  std::u16string ConstructInferredLabel(
+      base::span<const FieldType> label_fields,
+      size_t num_fields_to_include,
+      const std::string& app_locale) const;
 
   const std::string& language_code() const { return language_code_; }
   void set_language_code(const std::string& language_code) {
@@ -257,7 +273,7 @@ class AutofillProfile : public AutofillDataModel {
   // Returns true if the profile contains any structured data. This can be any
   // name type but the full name, or for addresses, the street name or house
   // number.
-  bool HasStructuredData();
+  bool HasStructuredData() const;
 
   // Returns a constant reference to the |name_| field.
   const NameInfo& GetNameInfo() const { return name_; }
@@ -274,10 +290,11 @@ class AutofillProfile : public AutofillDataModel {
   // Sets the label of the profile.
   void set_profile_label(const std::string& label) { profile_label_ = label; }
 
-  Source source() const { return source_; }
-  void set_source_for_testing(AutofillProfile::Source source) {
-    source_ = source;
-  }
+  RecordType record_type() const { return record_type_; }
+
+  // Returns true if the profile is stored in the user's account. Non-account
+  // profiles are considered local profiles.
+  bool IsAccountProfile() const;
 
   int initial_creator_id() const { return initial_creator_id_; }
   void set_initial_creator_id(int creator_id) {
@@ -291,7 +308,8 @@ class AutofillProfile : public AutofillDataModel {
 
   // Converts a kLocalOrSyncable profile to a kAccount profile and returns it.
   // The converted profile shares the same content, but with a different GUID
-  // and with `source_` kAccount. Additional kAccount-specific metadata is set.
+  // and with `record_type` kAccount. Additional kAccount-specific metadata is
+  // set.
   AutofillProfile ConvertToAccountProfile() const;
 
   // Checks for non-empty setting-inaccessible fields and returns all that were
@@ -307,9 +325,13 @@ class AutofillProfile : public AutofillDataModel {
   // Returns the type that should be used to fill a field given `field_type`.
   // It is possible that this type is not necessarily `field_type`, if it does
   // not yield a value for filling.
+  // TODO(crbug.com/40264633): Pass and return a `FieldType` instead of
+  // `AutofillType`.
   AutofillType GetFillingType(AutofillType field_type) const;
 
  private:
+  friend class AutofillProfileTestApi;
+
   // FormGroup:
   std::u16string GetInfoImpl(const AutofillType& type,
                              const std::string& app_locale) const override;
@@ -331,20 +353,20 @@ class AutofillProfile : public AutofillDataModel {
       const std::vector<raw_ptr<const AutofillProfile, VectorExperimental>>&
           profiles,
       const std::list<size_t>& indices,
-      const std::vector<FieldType>& fields,
+      const std::vector<FieldType>& field_types,
       size_t num_fields_to_include,
       const std::string& app_locale,
       std::vector<std::u16string>* labels);
 
   // Utilities for listing and lookup of the data members that constitute
   // user-visible profile information.
-  std::array<const FormGroup*, 6> FormGroups() const {
+  std::array<const FormGroup*, 5> FormGroups() const {
     // Adjust the return type size as necessary.
-    return {&name_, &email_, &company_, &phone_number_, &address_, &birthdate_};
+    return {&name_, &email_, &company_, &phone_number_, &address_};
   }
 
-  const FormGroup* FormGroupForType(const AutofillType& type) const;
-  FormGroup* MutableFormGroupForType(const AutofillType& type);
+  const FormGroup* FormGroupForType(FieldType type) const;
+  FormGroup* MutableFormGroupForType(FieldType type);
 
   // Same as operator==, but ignores differences in GUID.
   bool EqualsSansGuid(const AutofillProfile& profile) const;
@@ -362,7 +384,7 @@ class AutofillProfile : public AutofillDataModel {
 
   // A globally unique ID for this object. It identifies the profile across
   // browser restarts and is used as the primary key in the database.
-  // The `guid_` is unique across profile sources.
+  // The `guid_` is unique across profile record types.
   std::string guid_;
 
   // Personal information for this profile.
@@ -371,25 +393,22 @@ class AutofillProfile : public AutofillDataModel {
   CompanyInfo company_;
   PhoneNumber phone_number_;
   Address address_;
-  Birthdate birthdate_;
 
-  // The label is chosen by the user and can contain an arbitrary value.
-  // However, there are two labels that play a special role to indicate that an
-  // address is either a 'HOME' or a 'WORK' address. In this case, the value of
-  // the label is '$HOME$' or '$WORK$', respectively.
+  // A label intended to be chosen by the user. This was however never
+  // implemented and is currently unused.
   std::string profile_label_;
 
   // The BCP 47 language code that can be used to format |address_| for display.
   std::string language_code_;
 
-  Source source_;
+  RecordType record_type_;
 
   // Indicates the application that initially created the profile and the
   // application that performed the last non-metadata modification of it.
-  // Only relevant for `source_ == kAccount` profiles, since `kLocalOrSyncable`
-  // profiles are only used within Autofill.
-  // The integer values represent a server-side enum `BillableService`, which is
-  // not duplicated in Chromium. For Autofill, the exact application that
+  // Only relevant for `record_type_ == kAccount` profiles, since
+  // `kLocalOrSyncable` profiles are only used within Autofill. The integer
+  // values represent a server-side enum `BillableService`, which is not
+  // duplicated in Chromium. For Autofill, the exact application that
   // created/modified the profile is thus opaque. However, Autofill is
   // represented by the value `kInitialCreatorOrModifierChrome`.
   int initial_creator_id_ = 0;
@@ -397,7 +416,7 @@ class AutofillProfile : public AutofillDataModel {
 
   // Stores information about the quality of this profile's stored types.
   // Only used when `kAutofillTrackProfileTokenQuality` is enabled.
-  // TODO(crbug.com/1453650): Clean-up comment.
+  // TODO(crbug.com/40271999): Clean-up comment.
   ProfileTokenQuality token_quality_;
 };
 

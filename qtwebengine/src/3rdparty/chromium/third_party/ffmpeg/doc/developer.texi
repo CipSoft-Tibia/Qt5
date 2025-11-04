@@ -56,14 +56,8 @@ and should try to fix issues their commit causes.
 
 @section Language
 
-FFmpeg is mainly programmed in the ISO C99 language, extended with:
-@itemize @bullet
-@item
-Atomic operations from C11 @file{stdatomic.h}. They are emulated on
-architectures/compilers that do not support them, so all FFmpeg-internal code
-may use atomics without any extra checks. However, @file{stdatomic.h} must not
-be included in public headers, so they stay C99-compatible.
-@end itemize
+FFmpeg is mainly programmed in the ISO C11 language, except for the public
+headers which must stay C99 compatible.
 
 Compiler-specific extensions may be used with good reason, but must not be
 depended on, i.e. the code must still compile and work with compilers lacking
@@ -99,7 +93,7 @@ The specific syntax used for writing assembly is:
 NASM on x86;
 
 @item
-GAS on ARM.
+GAS on ARM and RISC-V.
 @end itemize
 
 A unit testing framework for assembly called @code{checkasm} lives under
@@ -395,6 +389,10 @@ Make sure the author of the commit is set correctly. (see git commit --author)
 If you apply a patch, send an
 answer to ffmpeg-devel (or wherever you got the patch from) saying that
 you applied the patch.
+
+@subheading Credit any researchers
+If a commit/patch fixes an issues found by some researcher, always credit the
+researcher in the commit message for finding/reporting the issue.
 
 @subheading Always wait long enough before pushing changes
 Do NOT commit to code actively maintained by others without permission.

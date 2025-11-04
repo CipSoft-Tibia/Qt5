@@ -8,8 +8,8 @@
 
         "Description": "Wayland is a protocol for a compositor to talk to its clients.",
         "Homepage": "https://wayland.freedesktop.org",
-        "Version": "1.19.0",
-        "DownloadLocation": "https://gitlab.freedesktop.org/wayland/wayland/raw/1.19.0/protocol/wayland.xml",
+        "Version": "1.23.0",
+        "DownloadLocation": "https://gitlab.freedesktop.org/wayland/wayland/raw/1.23.0/protocol/wayland.xml",
         "LicenseId": "MIT",
         "License": "MIT License",
         "LicenseFile": "../MIT_LICENSE.txt",

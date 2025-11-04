@@ -17,11 +17,12 @@
 #include "components/performance_manager/graph/graph_impl.h"
 #include "components/performance_manager/graph/process_node_impl.h"
 #include "components/performance_manager/public/resource_attribution/process_context.h"
+#include "components/performance_manager/resource_attribution/performance_manager_aliases.h"
 #include "components/performance_manager/resource_attribution/query_scheduler.h"
 #include "services/resource_coordinator/public/cpp/memory_instrumentation/global_memory_dump.h"
 #include "services/resource_coordinator/public/cpp/memory_instrumentation/memory_instrumentation.h"
 
-namespace performance_manager::resource_attribution {
+namespace resource_attribution {
 
 namespace {
 
@@ -62,7 +63,8 @@ void MemoryMeasurementDelegateImpl::RequestMemorySummary(
     std::move(callback).Run({});
     return;
   }
-  // TODO(crbug.com/1471683): Pass a set of processes to measure instead of all?
+  // TODO(crbug.com/40926264): Pass a set of processes to measure instead of
+  // all?
   mem_instrumentation->RequestPrivateMemoryFootprint(
       base::kNullProcessId,
       base::BindOnce(&MemoryMeasurementDelegateImpl::OnMemorySummary,
@@ -83,7 +85,7 @@ void MemoryMeasurementDelegateImpl::OnMemorySummary(
     ProcessNodeImpl* process_node =
         graph_impl_->GetProcessNodeByPid(process_dump.pid());
     if (!process_node) {
-      // TODO(crbug.com/1471683): Save ProcessContext by PID when the request
+      // TODO(crbug.com/40926264): Save ProcessContext by PID when the request
       // starts, so that ProcessNode's deleted before the result task runs can
       // be measured?
       continue;
@@ -132,4 +134,4 @@ MemoryMeasurementDelegate::GetDefaultFactory() {
   return default_factory.get();
 }
 
-}  // namespace performance_manager::resource_attribution
+}  // namespace resource_attribution

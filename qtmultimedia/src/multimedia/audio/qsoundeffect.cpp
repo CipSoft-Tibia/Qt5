@@ -1,47 +1,47 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
-#include <QtMultimedia/private/qtmultimediaglobal_p.h>
 #include "qsoundeffect.h"
-#include "qsamplecache_p.h"
-#include "qaudiodevice.h"
-#include "qaudiosink.h"
-#include "qmediadevices.h"
-#include "qaudiobuffer.h"
-#include <QtCore/qloggingcategory.h>
-#include <private/qplatformaudiodevices_p.h>
-#include <private/qplatformmediaintegration_p.h>
-#include <private/qplatformaudioresampler_p.h>
 
-static Q_LOGGING_CATEGORY(qLcSoundEffect, "qt.multimedia.soundeffect")
+#include <QtCore/qloggingcategory.h>
+#include <QtMultimedia/qaudiobuffer.h>
+#include <QtMultimedia/qaudiodevice.h>
+#include <QtMultimedia/qaudiosink.h>
+#include <QtMultimedia/qmediadevices.h>
+#include <QtMultimedia/private/qaudiosystem_p.h>
+#include <QtMultimedia/private/qplatformaudiodevices_p.h>
+#include <QtMultimedia/private/qplatformaudioresampler_p.h>
+#include <QtMultimedia/private/qplatformmediaintegration_p.h>
+#include <QtMultimedia/private/qsamplecache_p.h>
+#include <QtMultimedia/private/qtmultimediaglobal_p.h>
+
+#ifdef Q_OS_WIN
+#  include <QtMultimedia/private/qwindows_wasapi_warmup_client_p.h>
+#endif
+
+Q_STATIC_LOGGING_CATEGORY(qLcSoundEffect, "qt.multimedia.soundeffect")
 
 QT_BEGIN_NAMESPACE
 
 Q_GLOBAL_STATIC(QSampleCache, sampleCache)
 
-namespace
-{
-struct AudioSinkDeleter
-{
-    void operator ()(QAudioSink* sink) const
-    {
-        sink->stop();
-        // Investigate:should we just delete?
-        sink->deleteLater();
-    }
-};
-
-struct SampleDeleter
-{
-    void operator ()(QSample* sample) const
-    {
-        sample->release();
-    }
-};
-}
-
 class QSoundEffectPrivate : public QIODevice
 {
+    struct AudioSinkDeleter
+    {
+        void operator()(QAudioSink *sink) const
+        {
+            sink->stop();
+            // Investigate:should we just delete?
+            sink->deleteLater();
+        }
+    };
+
+    struct SampleDeleter
+    {
+        void operator()(QSample *sample) const { sample->release(); }
+    };
+
 public:
     QSoundEffectPrivate(QSoundEffect *q, const QAudioDevice &audioDevice = QAudioDevice());
     ~QSoundEffectPrivate() override = default;
@@ -100,8 +100,6 @@ QSoundEffectPrivate::QSoundEffectPrivate(QSoundEffect *q, const QAudioDevice &au
     , m_audioDevice(audioDevice)
 {
     open(QIODevice::ReadOnly);
-
-    QPlatformMediaIntegration::instance()->audioDevices()->prepareAudio();
 }
 
 void QSoundEffectPrivate::sampleReady(QSample *sample)
@@ -203,6 +201,9 @@ bool QSoundEffectPrivate::updateAudioOutput()
     else
         m_audioSink->setVolume(0);
 
+    QPlatformAudioSink *sinkPrivate = QPlatformAudioSink::get(*m_audioSink.get());
+    sinkPrivate->setRole(QtMultimediaPrivate::AudioEndpointRole::SoundEffect);
+
     return true;
 }
 
@@ -279,8 +280,12 @@ void QSoundEffectPrivate::setPlaying(bool playing)
         return;
     m_playing = playing;
 
-    if (m_audioSink && playing)
+    if (m_audioSink && playing) {
         m_audioSink->start(this);
+#ifdef Q_OS_WIN
+        QtMultimediaPrivate::refreshWarmupClient();
+#endif
+    }
 
     emit q_ptr->playingChanged();
 }

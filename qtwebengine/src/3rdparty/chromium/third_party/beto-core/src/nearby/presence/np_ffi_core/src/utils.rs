@@ -17,6 +17,10 @@ use handle_map::HandleLike;
 
 /// Type-level predicate for handle types which uniformly hold a lock
 /// for longer than some other handle type in API calls.
+///
+/// Largely an informative marker trait used to indicate the
+/// lock ordering on types.
+#[allow(dead_code)]
 pub(crate) trait LocksLongerThan<H: HandleLike>: HandleLike {}
 
 /// Trait which canonicalizes the relationship between FFI
@@ -37,6 +41,7 @@ pub trait FfiEnum {
 ///
 /// If the enclosing enum turns out to not be the requested
 /// variant, the generated method will return `None`.
+#[macro_export]
 macro_rules! declare_enum_cast {
     ($projection_method_name:ident, $variant_enum_name:ident, $variant_type_name:ty) => {
         #[doc = concat!("Attempts to cast `self` to the `", stringify!($variant_enum_name),

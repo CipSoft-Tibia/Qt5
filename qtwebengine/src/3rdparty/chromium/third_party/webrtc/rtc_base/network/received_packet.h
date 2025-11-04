@@ -11,10 +11,11 @@
 #define RTC_BASE_NETWORK_RECEIVED_PACKET_H_
 
 #include <cstdint>
+#include <optional>
 
-#include "absl/types/optional.h"
 #include "api/array_view.h"
 #include "api/units/timestamp.h"
+#include "rtc_base/network/ecn_marking.h"
 #include "rtc_base/socket_address.h"
 #include "rtc_base/system/rtc_export.h"
 
@@ -26,12 +27,22 @@ namespace rtc {
 // example it may contains STUN, SCTP, SRTP, RTP, RTCP.... etc.
 class RTC_EXPORT ReceivedPacket {
  public:
+  enum DecryptionInfo {
+    kNotDecrypted,   // Payload has not yet been decrypted or encryption is not
+                     // used.
+    kDtlsDecrypted,  // Payload has been Dtls decrypted
+    kSrtpEncrypted   // Payload is SRTP encrypted.
+  };
+
   // Caller must keep memory pointed to by payload and address valid for the
   // lifetime of this ReceivedPacket.
-  ReceivedPacket(
-      rtc::ArrayView<const uint8_t> payload,
-      const SocketAddress& source_address,
-      absl::optional<webrtc::Timestamp> arrival_time = absl::nullopt);
+  ReceivedPacket(rtc::ArrayView<const uint8_t> payload,
+                 const SocketAddress& source_address,
+                 std::optional<webrtc::Timestamp> arrival_time = std::nullopt,
+                 EcnMarking ecn = EcnMarking::kNotEct,
+                 DecryptionInfo decryption = kNotDecrypted);
+
+  ReceivedPacket CopyAndSet(DecryptionInfo decryption_info) const;
 
   // Address/port of the packet sender.
   const SocketAddress& source_address() const { return source_address_; }
@@ -39,9 +50,14 @@ class RTC_EXPORT ReceivedPacket {
 
   // Timestamp when this packet was received. Not available on all socket
   // implementations.
-  absl::optional<webrtc::Timestamp> arrival_time() const {
+  std::optional<webrtc::Timestamp> arrival_time() const {
     return arrival_time_;
   }
+
+  // L4S Explicit Congestion Notification.
+  EcnMarking ecn() const { return ecn_; }
+
+  const DecryptionInfo& decryption_info() const { return decryption_info_; }
 
   static ReceivedPacket CreateFromLegacy(
       const char* data,
@@ -60,8 +76,10 @@ class RTC_EXPORT ReceivedPacket {
 
  private:
   rtc::ArrayView<const uint8_t> payload_;
-  absl::optional<webrtc::Timestamp> arrival_time_;
+  std::optional<webrtc::Timestamp> arrival_time_;
   const SocketAddress& source_address_;
+  EcnMarking ecn_;
+  DecryptionInfo decryption_info_;
 };
 
 }  // namespace rtc

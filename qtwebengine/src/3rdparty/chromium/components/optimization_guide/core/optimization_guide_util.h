@@ -5,18 +5,19 @@
 #ifndef COMPONENTS_OPTIMIZATION_GUIDE_CORE_OPTIMIZATION_GUIDE_UTIL_H_
 #define COMPONENTS_OPTIMIZATION_GUIDE_CORE_OPTIMIZATION_GUIDE_UTIL_H_
 
+#include <optional>
 #include <string>
 #include <string_view>
 
 #include "base/strings/string_split.h"
 #include "base/time/time.h"
+#include "components/optimization_guide/core/model_execution/feature_keys.h"
 #include "components/optimization_guide/core/optimization_guide_enums.h"
 #include "components/optimization_guide/core/optimization_guide_permissions_util.h"
 #include "components/optimization_guide/core/optimization_guide_switches.h"
 #include "components/optimization_guide/proto/common_types.pb.h"
 #include "components/optimization_guide/proto/model_execution.pb.h"
 #include "components/optimization_guide/proto/models.pb.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 
 #define OPTIMIZATION_GUIDE_LOG(log_source, optimization_guide_logger, message) \
   do {                                                                         \
@@ -43,50 +44,48 @@ enum class OptimizationGuideDecision;
 // Returns the equivalent string name for a `feature`. The returned string can
 // be used to index persistent data (e.g., prefs, histograms etc.).
 std::string_view GetStringNameForModelExecutionFeature(
+    std::optional<UserVisibleFeatureKey> feature);
+std::string_view GetStringNameForModelExecutionFeature(
+    ModelBasedCapabilityKey feature);
+std::string_view GetStringNameForModelExecutionFeature(
     proto::ModelExecutionFeature feature);
 
 // Returns false if the host is an IP address, localhosts, or an invalid
 // host that is not supported by the remote optimization guide.
 bool IsHostValidToFetchFromRemoteOptimizationGuide(const std::string& host);
 
-// Returns the hashed client id with the feature and day.
-int64_t GetHashedModelQualityClientId(proto::ModelExecutionFeature feature,
-                                      base::Time day,
-                                      int64_t client_id);
-
-// Creates a new client id if not persisted to prefs. Returns a different ID for
-// different `feature` for each day.
-int64_t GetOrCreateModelQualityClientId(proto::ModelExecutionFeature feature,
-                                        PrefService* pref_service);
-
 // Validates that the metadata stored in |any_metadata_| is of the same type
 // and is parseable as |T|. Will return metadata if all checks pass.
 template <class T,
           class = typename std::enable_if<
               std::is_convertible<T*, google::protobuf::MessageLite*>{}>::type>
-absl::optional<T> ParsedAnyMetadata(const proto::Any& any_metadata) {
+std::optional<T> ParsedAnyMetadata(const proto::Any& any_metadata) {
   // Verify type is the same - the Any type URL should be wrapped as:
   // "type.googleapis.com/com.foo.Name".
   std::vector<std::string> any_type_parts =
       base::SplitString(any_metadata.type_url(), "./", base::TRIM_WHITESPACE,
                         base::SPLIT_WANT_NONEMPTY);
-  if (any_type_parts.empty())
-    return absl::nullopt;
+  if (any_type_parts.empty()) {
+    return std::nullopt;
+  }
   T metadata;
   std::vector<std::string> type_parts =
       base::SplitString(metadata.GetTypeName(), "./", base::TRIM_WHITESPACE,
                         base::SPLIT_WANT_NONEMPTY);
-  if (type_parts.empty())
-    return absl::nullopt;
+  if (type_parts.empty()) {
+    return std::nullopt;
+  }
   std::string any_type_name = any_type_parts.back();
   std::string type_name = type_parts.back();
-  if (type_name != any_type_name)
-    return absl::nullopt;
+  if (type_name != any_type_name) {
+    return std::nullopt;
+  }
 
   // Return metadata if parseable.
-  if (metadata.ParseFromString(any_metadata.value()))
+  if (metadata.ParseFromString(any_metadata.value())) {
     return metadata;
-  return absl::nullopt;
+  }
+  return std::nullopt;
 }
 
 // Returns a debug string for OptimizationGuideDecision.

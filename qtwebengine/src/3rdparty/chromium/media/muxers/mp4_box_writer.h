@@ -6,6 +6,7 @@
 #define MEDIA_MUXERS_MP4_BOX_WRITER_H_
 
 #include <memory>
+#include <optional>
 #include <vector>
 
 #include "base/memory/raw_ptr_exclusion.h"
@@ -13,7 +14,6 @@
 #include "base/sequence_checker.h"
 #include "media/base/media_export.h"
 #include "media/formats/mp4/fourccs.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 
 namespace media {
 
@@ -33,8 +33,6 @@ class Mp4MuxerContext;
     SEQUENCE_CHECKER(sequence_checker_);                 \
   }
 
-// |box_| field is not a raw_ref<> because it was filtered by the rewriter
-// for: #macro
 #define DECLARE_MP4_BOX_WRITER_CLASS(class_name, box_type)           \
   class MEDIA_EXPORT class_name : public Mp4BoxWriter {              \
    public:                                                           \
@@ -45,7 +43,7 @@ class Mp4MuxerContext;
     void Write(BoxByteStream& writer) override;                      \
                                                                      \
    private:                                                          \
-    RAW_PTR_EXCLUSION const box_type& box_;                          \
+    const raw_ref<const box_type> box_;                              \
     SEQUENCE_CHECKER(sequence_checker_);                             \
   }
 

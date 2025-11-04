@@ -24,7 +24,10 @@
 
 #include <stdint.h>
 
+#include <array>
+
 #include "core/fxcrt/data_vector.h"
+#include "core/fxcrt/span.h"
 
 namespace {
 
@@ -117,10 +120,11 @@ const uint16_t EC_LEVEL_8_COEFFICIENTS[512] = {
     647, 63,  310, 863, 251, 366, 304, 282, 738, 675, 410, 389, 244, 31,  121,
     303, 263};
 
-const uint16_t* const EC_COEFFICIENTS[9] = {
-    EC_LEVEL_0_COEFFICIENTS, EC_LEVEL_1_COEFFICIENTS, EC_LEVEL_2_COEFFICIENTS,
-    EC_LEVEL_3_COEFFICIENTS, EC_LEVEL_4_COEFFICIENTS, EC_LEVEL_5_COEFFICIENTS,
-    EC_LEVEL_6_COEFFICIENTS, EC_LEVEL_7_COEFFICIENTS, EC_LEVEL_8_COEFFICIENTS};
+constexpr std::array<pdfium::span<const uint16_t>, 9> EC_COEFFICIENTS = {
+    {EC_LEVEL_0_COEFFICIENTS, EC_LEVEL_1_COEFFICIENTS, EC_LEVEL_2_COEFFICIENTS,
+     EC_LEVEL_3_COEFFICIENTS, EC_LEVEL_4_COEFFICIENTS, EC_LEVEL_5_COEFFICIENTS,
+     EC_LEVEL_6_COEFFICIENTS, EC_LEVEL_7_COEFFICIENTS,
+     EC_LEVEL_8_COEFFICIENTS}};
 
 }  // namespace
 
@@ -133,12 +137,12 @@ int32_t CBC_PDF417ErrorCorrection::GetErrorCorrectionCodewordCount(
 }
 
 // static
-absl::optional<WideString> CBC_PDF417ErrorCorrection::GenerateErrorCorrection(
+std::optional<WideString> CBC_PDF417ErrorCorrection::GenerateErrorCorrection(
     const WideString& dataCodewords,
     int32_t errorCorrectionLevel) {
   int32_t k = GetErrorCorrectionCodewordCount(errorCorrectionLevel);
   if (k < 0)
-    return absl::nullopt;
+    return std::nullopt;
 
   DataVector<wchar_t> ech(k);
   size_t sld = dataCodewords.GetLength();

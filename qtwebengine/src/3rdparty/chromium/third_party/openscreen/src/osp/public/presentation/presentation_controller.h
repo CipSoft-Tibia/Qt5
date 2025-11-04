@@ -12,6 +12,7 @@
 #include <utility>
 #include <vector>
 
+#include "osp/public/presentation/presentation_common.h"
 #include "osp/public/presentation/presentation_connection.h"
 #include "osp/public/protocol_connection.h"
 #include "osp/public/service_listener.h"
@@ -24,7 +25,12 @@ class UrlAvailabilityRequester;
 
 class RequestDelegate {
  public:
-  virtual ~RequestDelegate() = default;
+  RequestDelegate();
+  RequestDelegate(const RequestDelegate&) = delete;
+  RequestDelegate& operator=(const RequestDelegate&) = delete;
+  RequestDelegate(RequestDelegate&&) noexcept = delete;
+  RequestDelegate& operator=(RequestDelegate&&) noexcept = delete;
+  virtual ~RequestDelegate();
 
   virtual void OnConnection(std::unique_ptr<Connection> connection) = 0;
   virtual void OnError(const Error& error) = 0;
@@ -32,25 +38,30 @@ class RequestDelegate {
 
 class ReceiverObserver {
  public:
-  virtual ~ReceiverObserver() = default;
+  ReceiverObserver();
+  ReceiverObserver(const ReceiverObserver&) = delete;
+  ReceiverObserver& operator=(const ReceiverObserver&) = delete;
+  ReceiverObserver(ReceiverObserver&&) noexcept = delete;
+  ReceiverObserver& operator=(ReceiverObserver&&) noexcept = delete;
+  virtual ~ReceiverObserver();
 
   // Called when there is an unrecoverable error in requesting availability.
   // This means the availability is unknown and there is no further response to
   // wait for.
   virtual void OnRequestFailed(const std::string& presentation_url,
-                               const std::string& service_id) = 0;
+                               const std::string& instance_name) = 0;
 
-  // Called when receivers compatible with |presentation_url| are known to be
+  // Called when receivers compatible with `presentation_url` are known to be
   // available.
   virtual void OnReceiverAvailable(const std::string& presentation_url,
-                                   const std::string& service_id) = 0;
-  // Only called for |service_id| values previously advertised as available.
+                                   const std::string& instance_name) = 0;
+  // Only called for `instance_name` values previously advertised as available.
   virtual void OnReceiverUnavailable(const std::string& presentation_url,
-                                     const std::string& service_id) = 0;
+                                     const std::string& instance_name) = 0;
 };
 
 class Controller final : public ServiceListener::Observer,
-                         public Connection::ParentDelegate {
+                         public Connection::Controller {
  public:
   class ReceiverWatch {
    public:
@@ -58,10 +69,11 @@ class Controller final : public ServiceListener::Observer,
     ReceiverWatch(Controller* controller,
                   const std::vector<std::string>& urls,
                   ReceiverObserver* observer);
+    ReceiverWatch(const ReceiverWatch&) = delete;
+    ReceiverWatch& operator=(const ReceiverWatch&) = delete;
     ReceiverWatch(ReceiverWatch&&) noexcept;
+    ReceiverWatch& operator=(ReceiverWatch&&) noexcept;
     ~ReceiverWatch();
-
-    ReceiverWatch& operator=(ReceiverWatch);
 
     explicit operator bool() const { return observer_; }
 
@@ -77,53 +89,66 @@ class Controller final : public ServiceListener::Observer,
    public:
     ConnectRequest();
     ConnectRequest(Controller* controller,
-                   const std::string& service_id,
+                   const std::string& instance_name,
                    bool is_reconnect,
                    std::optional<uint64_t> request_id);
+    ConnectRequest(const ConnectRequest&) = delete;
+    ConnectRequest& operator=(const ConnectRequest&) = delete;
     ConnectRequest(ConnectRequest&&) noexcept;
+    ConnectRequest& operator=(ConnectRequest&&) noexcept;
     ~ConnectRequest();
-
-    ConnectRequest& operator=(ConnectRequest);
 
     explicit operator bool() const { return request_id_.has_value(); }
 
     friend void swap(ConnectRequest& a, ConnectRequest& b);
 
    private:
-    std::string service_id_;
-    bool is_reconnect_;
+    std::string instance_name_;
+    bool is_reconnect_ = false;
     std::optional<uint64_t> request_id_;
-    Controller* controller_;
+    Controller* controller_ = nullptr;
   };
 
   explicit Controller(ClockNowFunctionPtr now_function);
+  Controller(const Controller&) = delete;
+  Controller& operator=(const Controller&) = delete;
+  Controller(Controller&&) noexcept = delete;
+  Controller& operator=(Controller&&) noexcept = delete;
   ~Controller();
 
-  // Requests receivers compatible with all urls in |urls| and registers
-  // |observer| for availability changes.  The screens will be a subset of the
+  // Connection::Controller overrides.
+  Error CloseConnection(Connection* connection,
+                        Connection::CloseReason reason) override;
+  Error OnPresentationTerminated(const std::string& presentation_id,
+                                 TerminationSource source,
+                                 TerminationReason reason) override;
+  void OnConnectionDestroyed(Connection* connection) override;
+
+  // Requests receivers compatible with all urls in `urls` and registers
+  // `observer` for availability changes.  The screens will be a subset of the
   // screen list maintained by the ServiceListener.  Returns an RAII object that
   // tracks the registration.
   ReceiverWatch RegisterReceiverWatch(const std::vector<std::string>& urls,
                                       ReceiverObserver* observer);
 
-  // Requests that a new presentation be created on |service_id| using
-  // |presentation_url|, with the result passed to |delegate|.
-  // |conn_delegate| is passed to the resulting connection.  The returned
-  // ConnectRequest object may be destroyed before any |delegate| methods are
+  // Requests that a new presentation be created on `instance_name` using
+  // `presentation_url`, with the result passed to `delegate`.
+  // `conn_delegate` is passed to the resulting connection.  The returned
+  // ConnectRequest object may be destroyed before any `delegate` methods are
   // called to cancel the request.
   ConnectRequest StartPresentation(const std::string& url,
-                                   const std::string& service_id,
+                                   const std::string& instance_name,
                                    RequestDelegate* delegate,
                                    Connection::Delegate* conn_delegate);
 
   // Requests reconnection to the presentation with the given id and URL running
-  // on |service_id|, with the result passed to |delegate|.  |conn_delegate| is
-  // passed to the resulting connection.  The returned ConnectRequest object may
-  // be destroyed before any |delegate| methods are called to cancel the
+  // on `instance_name`, with the result passed to `delegate`.  `conn_delegate`
+  // is passed to the resulting connection.  The returned ConnectRequest object
+  // may be destroyed before any `delegate` methods are called to cancel the
   // request.
   ConnectRequest ReconnectPresentation(const std::vector<std::string>& urls,
                                        const std::string& presentation_id,
-                                       const std::string& service_id,
+                                       const std::string& instance_name,
                                        RequestDelegate* delegate,
                                        Connection::Delegate* conn_delegate);
 
@@ -134,62 +159,22 @@ class Controller final : public ServiceListener::Observer,
   ConnectRequest ReconnectConnection(std::unique_ptr<Connection> connection,
                                      RequestDelegate* delegate);
 
-  // Connection::ParentDelegate overrides.
-  Error CloseConnection(Connection* connection,
-                        Connection::CloseReason reason) override;
-
-  // Also called by the embedder to report that a presentation has been
-  // terminated.
-  Error OnPresentationTerminated(const std::string& presentation_id,
-                                 TerminationReason reason) override;
-
-  void OnConnectionDestroyed(Connection* connection) override;
-
   // Returns an empty string if no such presentation ID is found.
   std::string GetServiceIdForPresentationId(
       const std::string& presentation_id) const;
 
   ProtocolConnection* GetConnectionRequestGroupStream(
-      const std::string& service_id);
-
-  // TODO(btolsch): still used?
-  void SetConnectionRequestGroupStreamForTest(
-      const std::string& service_id,
-      std::unique_ptr<ProtocolConnection> stream);
+      const std::string& instance_name);
 
  private:
   class TerminationListener;
   class MessageGroupStreams;
 
   struct ControlledPresentation {
-    std::string service_id;
+    std::string instance_name;
     std::string url;
     std::vector<Connection*> connections;
   };
-
-  static std::string MakePresentationId(const std::string& url,
-                                        const std::string& service_id);
-
-  void AddConnection(Connection* connection);
-  void OpenConnection(uint64_t connection_id,
-                      uint64_t endpoint_id,
-                      const std::string& service_id,
-                      RequestDelegate* request_delegate,
-                      std::unique_ptr<Connection>&& connection,
-                      std::unique_ptr<ProtocolConnection>&& stream);
-
-  void TerminatePresentationById(const std::string& presentation_id);
-
-  // Cancels compatible receiver monitoring for the given |urls|, |observer|
-  // pair.
-  void CancelReceiverWatch(const std::vector<std::string>& urls,
-                           ReceiverObserver* observer);
-
-  // Cancels a presentation connect request for the given |request_id| if one is
-  // pending.
-  void CancelConnectRequest(const std::string& service_id,
-                            bool is_reconnect,
-                            uint64_t request_id);
 
   // ServiceListener::Observer overrides.
   void OnStarted() override;
@@ -200,19 +185,40 @@ class Controller final : public ServiceListener::Observer,
   void OnReceiverChanged(const ServiceInfo& info) override;
   void OnReceiverRemoved(const ServiceInfo& info) override;
   void OnAllReceiversRemoved() override;
-  void OnError(Error) override;
+  void OnError(const Error& error) override;
   void OnMetrics(ServiceListener::Metrics) override;
 
-  std::map<std::string, uint64_t> next_connection_id_;
+  static std::string MakePresentationId(const std::string& url,
+                                        const std::string& instance_name);
 
-  std::map<std::string, ControlledPresentation> presentations_;
+  void AddConnection(Connection* connection);
+  void OpenConnection(uint64_t connection_id,
+                      uint64_t instance_id,
+                      const std::string& instance_name,
+                      RequestDelegate* request_delegate,
+                      std::unique_ptr<Connection>&& connection,
+                      std::unique_ptr<ProtocolConnection>&& stream);
+
+  void TerminatePresentationById(const std::string& presentation_id);
+
+  // Cancels compatible receiver monitoring for the given `urls`, `observer`
+  // pair.
+  void CancelReceiverWatch(const std::vector<std::string>& urls,
+                           ReceiverObserver* observer);
+
+  // Cancels a presentation connect request for the given `request_id` if one is
+  // pending.
+  void CancelConnectRequest(const std::string& instance_name,
+                            bool is_reconnect,
+                            uint64_t request_id);
 
   std::unique_ptr<ConnectionManager> connection_manager_;
-
   std::unique_ptr<UrlAvailabilityRequester> availability_requester_;
-  std::map<std::string, IPEndpoint> receiver_endpoints_;
 
-  std::map<std::string, std::unique_ptr<MessageGroupStreams>> group_streams_;
+  std::map<std::string, ControlledPresentation> presentations_by_id_;
+  // TODO(crbug.com/347268871): Replace instance_name as an agent identifier
+  std::map<std::string, std::unique_ptr<MessageGroupStreams>>
+      group_streams_by_instance_name_;
   std::map<std::string, std::unique_ptr<TerminationListener>>
       termination_listener_by_id_;
 };

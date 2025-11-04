@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016, Alliance for Open Media. All rights reserved
+ * Copyright (c) 2016, Alliance for Open Media. All rights reserved.
  *
  * This source code is subject to the terms of the BSD 2 Clause License and
  * the Alliance for Open Media Patent License 1.0. If the BSD 2 Clause License
@@ -156,7 +156,7 @@ typedef struct {
   int16_t *src_avg;
 } RestSearchCtxt;
 
-static AOM_INLINE void rsc_on_tile(void *priv) {
+static inline void rsc_on_tile(void *priv) {
   RestSearchCtxt *rsc = (RestSearchCtxt *)priv;
   set_default_wiener(&rsc->ref_wiener);
   set_default_sgrproj(&rsc->ref_sgrproj);
@@ -164,16 +164,16 @@ static AOM_INLINE void rsc_on_tile(void *priv) {
   set_default_sgrproj(&rsc->switchable_ref_sgrproj);
 }
 
-static AOM_INLINE void reset_rsc(RestSearchCtxt *rsc) {
+static inline void reset_rsc(RestSearchCtxt *rsc) {
   memset(rsc->total_sse, 0, sizeof(rsc->total_sse));
   memset(rsc->total_bits, 0, sizeof(rsc->total_bits));
 }
 
-static AOM_INLINE void init_rsc(const YV12_BUFFER_CONFIG *src,
-                                const AV1_COMMON *cm, const MACROBLOCK *x,
-                                const LOOP_FILTER_SPEED_FEATURES *lpf_sf,
-                                int plane, RestUnitSearchInfo *rusi,
-                                YV12_BUFFER_CONFIG *dst, RestSearchCtxt *rsc) {
+static inline void init_rsc(const YV12_BUFFER_CONFIG *src, const AV1_COMMON *cm,
+                            const MACROBLOCK *x,
+                            const LOOP_FILTER_SPEED_FEATURES *lpf_sf, int plane,
+                            RestUnitSearchInfo *rusi, YV12_BUFFER_CONFIG *dst,
+                            RestSearchCtxt *rsc) {
   rsc->src = src;
   rsc->dst = dst;
   rsc->cm = cm;
@@ -469,10 +469,12 @@ static int64_t signed_rounded_divide(int64_t dividend, int64_t divisor) {
     return (dividend + divisor / 2) / divisor;
 }
 
-static AOM_INLINE void calc_proj_params_r0_r1_c(
-    const uint8_t *src8, int width, int height, int src_stride,
-    const uint8_t *dat8, int dat_stride, int32_t *flt0, int flt0_stride,
-    int32_t *flt1, int flt1_stride, int64_t H[2][2], int64_t C[2]) {
+static inline void calc_proj_params_r0_r1_c(const uint8_t *src8, int width,
+                                            int height, int src_stride,
+                                            const uint8_t *dat8, int dat_stride,
+                                            int32_t *flt0, int flt0_stride,
+                                            int32_t *flt1, int flt1_stride,
+                                            int64_t H[2][2], int64_t C[2]) {
   const int size = width * height;
   const uint8_t *src = src8;
   const uint8_t *dat = dat8;
@@ -498,7 +500,8 @@ static AOM_INLINE void calc_proj_params_r0_r1_c(
   C[1] /= size;
 }
 
-static AOM_INLINE void calc_proj_params_r0_r1_high_bd_c(
+#if CONFIG_AV1_HIGHBITDEPTH
+static inline void calc_proj_params_r0_r1_high_bd_c(
     const uint8_t *src8, int width, int height, int src_stride,
     const uint8_t *dat8, int dat_stride, int32_t *flt0, int flt0_stride,
     int32_t *flt1, int flt1_stride, int64_t H[2][2], int64_t C[2]) {
@@ -526,13 +529,13 @@ static AOM_INLINE void calc_proj_params_r0_r1_high_bd_c(
   C[0] /= size;
   C[1] /= size;
 }
+#endif  // CONFIG_AV1_HIGHBITDEPTH
 
-static AOM_INLINE void calc_proj_params_r0_c(const uint8_t *src8, int width,
-                                             int height, int src_stride,
-                                             const uint8_t *dat8,
-                                             int dat_stride, int32_t *flt0,
-                                             int flt0_stride, int64_t H[2][2],
-                                             int64_t C[2]) {
+static inline void calc_proj_params_r0_c(const uint8_t *src8, int width,
+                                         int height, int src_stride,
+                                         const uint8_t *dat8, int dat_stride,
+                                         int32_t *flt0, int flt0_stride,
+                                         int64_t H[2][2], int64_t C[2]) {
   const int size = width * height;
   const uint8_t *src = src8;
   const uint8_t *dat = dat8;
@@ -550,7 +553,8 @@ static AOM_INLINE void calc_proj_params_r0_c(const uint8_t *src8, int width,
   C[0] /= size;
 }
 
-static AOM_INLINE void calc_proj_params_r0_high_bd_c(
+#if CONFIG_AV1_HIGHBITDEPTH
+static inline void calc_proj_params_r0_high_bd_c(
     const uint8_t *src8, int width, int height, int src_stride,
     const uint8_t *dat8, int dat_stride, int32_t *flt0, int flt0_stride,
     int64_t H[2][2], int64_t C[2]) {
@@ -570,13 +574,13 @@ static AOM_INLINE void calc_proj_params_r0_high_bd_c(
   H[0][0] /= size;
   C[0] /= size;
 }
+#endif  // CONFIG_AV1_HIGHBITDEPTH
 
-static AOM_INLINE void calc_proj_params_r1_c(const uint8_t *src8, int width,
-                                             int height, int src_stride,
-                                             const uint8_t *dat8,
-                                             int dat_stride, int32_t *flt1,
-                                             int flt1_stride, int64_t H[2][2],
-                                             int64_t C[2]) {
+static inline void calc_proj_params_r1_c(const uint8_t *src8, int width,
+                                         int height, int src_stride,
+                                         const uint8_t *dat8, int dat_stride,
+                                         int32_t *flt1, int flt1_stride,
+                                         int64_t H[2][2], int64_t C[2]) {
   const int size = width * height;
   const uint8_t *src = src8;
   const uint8_t *dat = dat8;
@@ -594,7 +598,8 @@ static AOM_INLINE void calc_proj_params_r1_c(const uint8_t *src8, int width,
   C[1] /= size;
 }
 
-static AOM_INLINE void calc_proj_params_r1_high_bd_c(
+#if CONFIG_AV1_HIGHBITDEPTH
+static inline void calc_proj_params_r1_high_bd_c(
     const uint8_t *src8, int width, int height, int src_stride,
     const uint8_t *dat8, int dat_stride, int32_t *flt1, int flt1_stride,
     int64_t H[2][2], int64_t C[2]) {
@@ -614,6 +619,7 @@ static AOM_INLINE void calc_proj_params_r1_high_bd_c(
   H[1][1] /= size;
   C[1] /= size;
 }
+#endif  // CONFIG_AV1_HIGHBITDEPTH
 
 // The function calls 3 subfunctions for the following cases :
 // 1) When params->r[0] > 0 and params->r[1] > 0. In this case all elements
@@ -639,6 +645,7 @@ void av1_calc_proj_params_c(const uint8_t *src8, int width, int height,
   }
 }
 
+#if CONFIG_AV1_HIGHBITDEPTH
 void av1_calc_proj_params_high_bd_c(const uint8_t *src8, int width, int height,
                                     int src_stride, const uint8_t *dat8,
                                     int dat_stride, int32_t *flt0,
@@ -658,14 +665,14 @@ void av1_calc_proj_params_high_bd_c(const uint8_t *src8, int width, int height,
                                   dat_stride, flt1, flt1_stride, H, C);
   }
 }
+#endif  // CONFIG_AV1_HIGHBITDEPTH
 
-static AOM_INLINE void get_proj_subspace(const uint8_t *src8, int width,
-                                         int height, int src_stride,
-                                         const uint8_t *dat8, int dat_stride,
-                                         int use_highbitdepth, int32_t *flt0,
-                                         int flt0_stride, int32_t *flt1,
-                                         int flt1_stride, int *xq,
-                                         const sgr_params_type *params) {
+static inline void get_proj_subspace(const uint8_t *src8, int width, int height,
+                                     int src_stride, const uint8_t *dat8,
+                                     int dat_stride, int use_highbitdepth,
+                                     int32_t *flt0, int flt0_stride,
+                                     int32_t *flt1, int flt1_stride, int *xq,
+                                     const sgr_params_type *params) {
   int64_t H[2][2] = { { 0, 0 }, { 0, 0 } };
   int64_t C[2] = { 0, 0 };
 
@@ -732,8 +739,7 @@ static AOM_INLINE void get_proj_subspace(const uint8_t *src8, int width,
   }
 }
 
-static AOM_INLINE void encode_xq(int *xq, int *xqd,
-                                 const sgr_params_type *params) {
+static inline void encode_xq(int *xq, int *xqd, const sgr_params_type *params) {
   if (params->r[0] == 0) {
     xqd[0] = 0;
     xqd[1] = clamp((1 << SGRPROJ_PRJ_BITS) - xq[1], SGRPROJ_PRJ_MIN1,
@@ -750,12 +756,11 @@ static AOM_INLINE void encode_xq(int *xq, int *xqd,
 }
 
 // Apply the self-guided filter across an entire restoration unit.
-static AOM_INLINE void apply_sgr(int sgr_params_idx, const uint8_t *dat8,
-                                 int width, int height, int dat_stride,
-                                 int use_highbd, int bit_depth, int pu_width,
-                                 int pu_height, int32_t *flt0, int32_t *flt1,
-                                 int flt_stride,
-                                 struct aom_internal_error_info *error_info) {
+static inline void apply_sgr(int sgr_params_idx, const uint8_t *dat8, int width,
+                             int height, int dat_stride, int use_highbd,
+                             int bit_depth, int pu_width, int pu_height,
+                             int32_t *flt0, int32_t *flt1, int flt_stride,
+                             struct aom_internal_error_info *error_info) {
   for (int i = 0; i < height; i += pu_height) {
     const int h = AOMMIN(pu_height, height - i);
     int32_t *flt0_row = flt0 + i * flt_stride;
@@ -776,7 +781,7 @@ static AOM_INLINE void apply_sgr(int sgr_params_idx, const uint8_t *dat8,
   }
 }
 
-static AOM_INLINE void compute_sgrproj_err(
+static inline void compute_sgrproj_err(
     const uint8_t *dat8, const int width, const int height,
     const int dat_stride, const uint8_t *src8, const int src_stride,
     const int use_highbitdepth, const int bit_depth, const int pu_width,
@@ -796,9 +801,9 @@ static AOM_INLINE void compute_sgrproj_err(
       flt_stride, flt1, flt_stride, 2, exqd, params);
 }
 
-static AOM_INLINE void get_best_error(int64_t *besterr, const int64_t err,
-                                      const int *exqd, int *bestxqd,
-                                      int *bestep, const int ep) {
+static inline void get_best_error(int64_t *besterr, const int64_t err,
+                                  const int *exqd, int *bestxqd, int *bestep,
+                                  const int ep) {
   if (*besterr == -1 || err < *besterr) {
     *bestep = ep;
     *besterr = err;
@@ -886,10 +891,10 @@ static int count_sgrproj_bits(SgrprojInfo *sgrproj_info,
   return bits;
 }
 
-static AOM_INLINE void search_sgrproj(
-    const RestorationTileLimits *limits, int rest_unit_idx, void *priv,
-    int32_t *tmpbuf, RestorationLineBuffers *rlbs,
-    struct aom_internal_error_info *error_info) {
+static inline void search_sgrproj(const RestorationTileLimits *limits,
+                                  int rest_unit_idx, void *priv,
+                                  int32_t *tmpbuf, RestorationLineBuffers *rlbs,
+                                  struct aom_internal_error_info *error_info) {
   (void)rlbs;
   RestSearchCtxt *rsc = (RestSearchCtxt *)priv;
   RestUnitSearchInfo *rusi = &rsc->rusi[rest_unit_idx];
@@ -1044,10 +1049,13 @@ void av1_compute_stats_c(int wiener_win, const uint8_t *dgd, const uint8_t *src,
 
 #if CONFIG_AV1_HIGHBITDEPTH
 void av1_compute_stats_highbd_c(int wiener_win, const uint8_t *dgd8,
-                                const uint8_t *src8, int h_start, int h_end,
+                                const uint8_t *src8, int16_t *dgd_avg,
+                                int16_t *src_avg, int h_start, int h_end,
                                 int v_start, int v_end, int dgd_stride,
                                 int src_stride, int64_t *M, int64_t *H,
                                 aom_bit_depth_t bit_depth) {
+  (void)dgd_avg;
+  (void)src_avg;
   int i, j, k, l;
   int32_t Y[WIENER_WIN2];
   const int wiener_win2 = wiener_win * wiener_win;
@@ -1098,9 +1106,33 @@ void av1_compute_stats_highbd_c(int wiener_win, const uint8_t *dgd8,
 }
 #endif  // CONFIG_AV1_HIGHBITDEPTH
 
-static INLINE int wrap_index(int i, int wiener_win) {
+static inline int wrap_index(int i, int wiener_win) {
   const int wiener_halfwin1 = (wiener_win >> 1) + 1;
   return (i >= wiener_halfwin1 ? wiener_win - 1 - i : i);
+}
+
+// Splits each w[i] into smaller components w1[i] and w2[i] such that
+// w[i] = w1[i] * WIENER_TAP_SCALE_FACTOR + w2[i].
+static inline void split_wiener_filter_coefficients(int wiener_win,
+                                                    const int32_t *w,
+                                                    int32_t *w1, int32_t *w2) {
+  for (int i = 0; i < wiener_win; i++) {
+    w1[i] = w[i] / WIENER_TAP_SCALE_FACTOR;
+    w2[i] = w[i] - w1[i] * WIENER_TAP_SCALE_FACTOR;
+    assert(w[i] == w1[i] * WIENER_TAP_SCALE_FACTOR + w2[i]);
+  }
+}
+
+// Calculates x * w / WIENER_TAP_SCALE_FACTOR, where
+// w = w1 * WIENER_TAP_SCALE_FACTOR + w2.
+//
+// The multiplication x * w may overflow, so we multiply x by the components of
+// w (w1 and w2) and combine the multiplication with the division.
+static inline int64_t multiply_and_scale(int64_t x, int32_t w1, int32_t w2) {
+  // Let y = x * w / WIENER_TAP_SCALE_FACTOR
+  //       = x * (w1 * WIENER_TAP_SCALE_FACTOR + w2) / WIENER_TAP_SCALE_FACTOR
+  const int64_t y = x * w1 + x * w2 / WIENER_TAP_SCALE_FACTOR;
+  return y;
 }
 
 // Solve linear equations to find Wiener filter tap values
@@ -1143,7 +1175,7 @@ static int linsolve_wiener(int n, int64_t *A, int stride, int64_t *b,
       if (abs_akj > max_abs_akj) max_abs_akj = abs_akj;
     }
     const int scale_threshold = 1 << 22;
-    const int scaler_A = max_abs_akj < scale_threshold ? 1 : (1 << 5);
+    const int scaler_A = max_abs_akj < scale_threshold ? 1 : (1 << 6);
     const int scaler_c = max_abs_akj < scale_threshold ? 1 : (1 << 7);
     const int scaler = scaler_c * scaler_A;
 
@@ -1174,11 +1206,12 @@ static int linsolve_wiener(int n, int64_t *A, int stride, int64_t *b,
 }
 
 // Fix vector b, update vector a
-static AOM_INLINE void update_a_sep_sym(int wiener_win, int64_t **Mc,
-                                        int64_t **Hc, int32_t *a, int32_t *b) {
+static inline void update_a_sep_sym(int wiener_win, int64_t **Mc, int64_t **Hc,
+                                    int32_t *a, const int32_t *b) {
   int i, j;
   int64_t S[WIENER_WIN];
   int64_t A[WIENER_HALFWIN1], B[WIENER_HALFWIN1 * WIENER_HALFWIN1];
+  int32_t b1[WIENER_WIN], b2[WIENER_WIN];
   const int wiener_win2 = wiener_win * wiener_win;
   const int wiener_halfwin1 = (wiener_win >> 1) + 1;
   memset(A, 0, sizeof(A));
@@ -1189,16 +1222,7 @@ static AOM_INLINE void update_a_sep_sym(int wiener_win, int64_t **Mc,
       A[jj] += Mc[i][j] * b[i] / WIENER_TAP_SCALE_FACTOR;
     }
   }
-
-  // b/274668506: This is the dual branch for the issue in b/272139363. The fix
-  // is similar. See comments in update_b_sep_sym() below.
-  int32_t max_b_l = 0;
-  for (int l = 0; l < wiener_win; ++l) {
-    const int32_t abs_b_l = abs(b[l]);
-    if (abs_b_l > max_b_l) max_b_l = abs_b_l;
-  }
-  const int scale_threshold = 128 * WIENER_TAP_SCALE_FACTOR;
-  const int scaler = max_b_l < scale_threshold ? 1 : 4;
+  split_wiener_filter_coefficients(wiener_win, b, b1, b2);
 
   for (i = 0; i < wiener_win; i++) {
     for (j = 0; j < wiener_win; j++) {
@@ -1207,10 +1231,17 @@ static AOM_INLINE void update_a_sep_sym(int wiener_win, int64_t **Mc,
         const int kk = wrap_index(k, wiener_win);
         for (l = 0; l < wiener_win; ++l) {
           const int ll = wrap_index(l, wiener_win);
-          B[ll * wiener_halfwin1 + kk] +=
-              Hc[j * wiener_win + i][k * wiener_win2 + l] * b[i] /
-              (scaler * WIENER_TAP_SCALE_FACTOR) * b[j] /
-              (WIENER_TAP_SCALE_FACTOR / scaler);
+          // Calculate
+          // B[ll * wiener_halfwin1 + kk] +=
+          //    Hc[j * wiener_win + i][k * wiener_win2 + l] * b[i] /
+          //    WIENER_TAP_SCALE_FACTOR * b[j] / WIENER_TAP_SCALE_FACTOR;
+          //
+          // The last multiplication may overflow, so we combine the last
+          // multiplication with the last division.
+          const int64_t x = Hc[j * wiener_win + i][k * wiener_win2 + l] * b[i] /
+                            WIENER_TAP_SCALE_FACTOR;
+          // b[j] = b1[j] * WIENER_TAP_SCALE_FACTOR + b2[j]
+          B[ll * wiener_halfwin1 + kk] += multiply_and_scale(x, b1[j], b2[j]);
         }
       }
     }
@@ -1245,11 +1276,12 @@ static AOM_INLINE void update_a_sep_sym(int wiener_win, int64_t **Mc,
 }
 
 // Fix vector a, update vector b
-static AOM_INLINE void update_b_sep_sym(int wiener_win, int64_t **Mc,
-                                        int64_t **Hc, int32_t *a, int32_t *b) {
+static inline void update_b_sep_sym(int wiener_win, int64_t **Mc, int64_t **Hc,
+                                    const int32_t *a, int32_t *b) {
   int i, j;
   int64_t S[WIENER_WIN];
   int64_t A[WIENER_HALFWIN1], B[WIENER_HALFWIN1 * WIENER_HALFWIN1];
+  int32_t a1[WIENER_WIN], a2[WIENER_WIN];
   const int wiener_win2 = wiener_win * wiener_win;
   const int wiener_halfwin1 = (wiener_win >> 1) + 1;
   memset(A, 0, sizeof(A));
@@ -1260,32 +1292,7 @@ static AOM_INLINE void update_b_sep_sym(int wiener_win, int64_t **Mc,
       A[ii] += Mc[i][j] * a[j] / WIENER_TAP_SCALE_FACTOR;
     }
   }
-
-  // b/272139363: The computation,
-  //   Hc[i * wiener_win + j][k * wiener_win2 + l] * a[k] /
-  //          WIENER_TAP_SCALE_FACTOR * a[l] / WIENER_TAP_SCALE_FACTOR;
-  // may generate a signed-integer-overflow. Conditionally scale the terms to
-  // avoid a potential overflow.
-  //
-  // Hc contains accumulated correlation statistics and it is desired to leave
-  // as much room as possible for Hc. It was experimentally observed that the
-  // primary issue manifests itself with the second, a[l], multiply. For
-  // max_a_l < WIENER_TAP_SCALE_FACTOR the first multiply with a[k] should not
-  // increase dynamic range and the second multiply should hence be safe.
-  // Thereafter a safe scale_threshold depends on the actual operational range
-  // of Hc. The largest scale_threshold is expected to depend on bit-depth
-  // (av1_compute_stats_highbd_c() scales highbd to 8-bit) and maximum
-  // restoration-unit size (256), leading up to 32-bit positive numbers in Hc.
-  // Noting that the caller, wiener_decompose_sep_sym(), initializes a[...]
-  // to a range smaller than 16 bits, the scale_threshold is set as below for
-  // convenience.
-  int32_t max_a_l = 0;
-  for (int l = 0; l < wiener_win; ++l) {
-    const int32_t abs_a_l = abs(a[l]);
-    if (abs_a_l > max_a_l) max_a_l = abs_a_l;
-  }
-  const int scale_threshold = 128 * WIENER_TAP_SCALE_FACTOR;
-  const int scaler = max_a_l < scale_threshold ? 1 : 4;
+  split_wiener_filter_coefficients(wiener_win, a, a1, a2);
 
   for (i = 0; i < wiener_win; i++) {
     const int ii = wrap_index(i, wiener_win);
@@ -1294,10 +1301,17 @@ static AOM_INLINE void update_b_sep_sym(int wiener_win, int64_t **Mc,
       int k, l;
       for (k = 0; k < wiener_win; ++k) {
         for (l = 0; l < wiener_win; ++l) {
-          B[jj * wiener_halfwin1 + ii] +=
-              Hc[i * wiener_win + j][k * wiener_win2 + l] * a[k] /
-              (scaler * WIENER_TAP_SCALE_FACTOR) * a[l] /
-              (WIENER_TAP_SCALE_FACTOR / scaler);
+          // Calculate
+          // B[jj * wiener_halfwin1 + ii] +=
+          //     Hc[i * wiener_win + j][k * wiener_win2 + l] * a[k] /
+          //     WIENER_TAP_SCALE_FACTOR * a[l] / WIENER_TAP_SCALE_FACTOR;
+          //
+          // The last multiplication may overflow, so we combine the last
+          // multiplication with the last division.
+          const int64_t x = Hc[i * wiener_win + j][k * wiener_win2 + l] * a[k] /
+                            WIENER_TAP_SCALE_FACTOR;
+          // a[l] = a1[l] * WIENER_TAP_SCALE_FACTOR + a2[l]
+          B[jj * wiener_halfwin1 + ii] += multiply_and_scale(x, a1[l], a2[l]);
         }
       }
     }
@@ -1405,8 +1419,8 @@ static int64_t compute_score(int wiener_win, int64_t *M, int64_t *H,
   return Score - iScore;
 }
 
-static AOM_INLINE void finalize_sym_filter(int wiener_win, int32_t *f,
-                                           InterpKernel fi) {
+static inline void finalize_sym_filter(int wiener_win, int32_t *f,
+                                       InterpKernel fi) {
   int i;
   const int wiener_halfwin = (wiener_win >> 1);
 
@@ -1583,10 +1597,10 @@ static int64_t finer_search_wiener(const RestSearchCtxt *rsc,
   return err;
 }
 
-static AOM_INLINE void search_wiener(
-    const RestorationTileLimits *limits, int rest_unit_idx, void *priv,
-    int32_t *tmpbuf, RestorationLineBuffers *rlbs,
-    struct aom_internal_error_info *error_info) {
+static inline void search_wiener(const RestorationTileLimits *limits,
+                                 int rest_unit_idx, void *priv, int32_t *tmpbuf,
+                                 RestorationLineBuffers *rlbs,
+                                 struct aom_internal_error_info *error_info) {
   (void)tmpbuf;
   (void)rlbs;
   (void)error_info;
@@ -1642,9 +1656,10 @@ static AOM_INLINE void search_wiener(
     // functions. Optimize intrinsics of HBD design similar to LBD (i.e.,
     // pre-calculate d and s buffers and avoid most of the C operations).
     av1_compute_stats_highbd(reduced_wiener_win, rsc->dgd_buffer,
-                             rsc->src_buffer, limits->h_start, limits->h_end,
-                             limits->v_start, limits->v_end, rsc->dgd_stride,
-                             rsc->src_stride, M, H, cm->seq_params->bit_depth);
+                             rsc->src_buffer, rsc->dgd_avg, rsc->src_avg,
+                             limits->h_start, limits->h_end, limits->v_start,
+                             limits->v_end, rsc->dgd_stride, rsc->src_stride, M,
+                             H, cm->seq_params->bit_depth);
   } else {
     av1_compute_stats(reduced_wiener_win, rsc->dgd_buffer, rsc->src_buffer,
                       rsc->dgd_avg, rsc->src_avg, limits->h_start,
@@ -1728,7 +1743,7 @@ static AOM_INLINE void search_wiener(
   if (cost_wiener < cost_none) rsc->ref_wiener = rusi->wiener;
 }
 
-static AOM_INLINE void search_norestore(
+static inline void search_norestore(
     const RestorationTileLimits *limits, int rest_unit_idx, void *priv,
     int32_t *tmpbuf, RestorationLineBuffers *rlbs,
     struct aom_internal_error_info *error_info) {
@@ -1746,7 +1761,7 @@ static AOM_INLINE void search_norestore(
   rsc->total_sse[RESTORE_NONE] += rsc->sse[RESTORE_NONE];
 }
 
-static AOM_INLINE void search_switchable(
+static inline void search_switchable(
     const RestorationTileLimits *limits, int rest_unit_idx, void *priv,
     int32_t *tmpbuf, RestorationLineBuffers *rlbs,
     struct aom_internal_error_info *error_info) {
@@ -1826,9 +1841,9 @@ static AOM_INLINE void search_switchable(
     rsc->switchable_ref_sgrproj = rusi->sgrproj;
 }
 
-static AOM_INLINE void copy_unit_info(RestorationType frame_rtype,
-                                      const RestUnitSearchInfo *rusi,
-                                      RestorationUnitInfo *rui) {
+static inline void copy_unit_info(RestorationType frame_rtype,
+                                  const RestUnitSearchInfo *rusi,
+                                  RestorationUnitInfo *rui) {
   assert(frame_rtype > 0);
   rui->restoration_type = rusi->best_rtype[frame_rtype - 1];
   if (rui->restoration_type == RESTORE_WIENER)
@@ -1929,7 +1944,7 @@ static void restoration_search(AV1_COMMON *cm, int plane, RestSearchCtxt *rsc,
   }
 }
 
-static INLINE void av1_derive_flags_for_lr_processing(
+static inline void av1_derive_flags_for_lr_processing(
     const LOOP_FILTER_SPEED_FEATURES *lpf_sf, bool *disable_lr_filter) {
   const bool is_wiener_disabled = lpf_sf->disable_wiener_filter;
   const bool is_sgr_disabled = lpf_sf->disable_sgr_filter;
@@ -2050,7 +2065,7 @@ void av1_pick_filter_restoration(const YV12_BUFFER_CONFIG *src, AV1_COMP *cpi) {
           &cpi->trial_frame_rst, cm->superres_upscaled_width,
           cm->superres_upscaled_height, seq_params->subsampling_x,
           seq_params->subsampling_y, highbd, AOM_RESTORATION_FRAME_BORDER,
-          cm->features.byte_alignment, NULL, NULL, NULL, 0, 0))
+          cm->features.byte_alignment, NULL, NULL, NULL, false, 0))
     aom_internal_error(cm->error, AOM_CODEC_MEM_ERROR,
                        "Failed to allocate trial restored frame buffer");
 
@@ -2064,11 +2079,17 @@ void av1_pick_filter_restoration(const YV12_BUFFER_CONFIG *src, AV1_COMP *cpi) {
   // and height aligned to multiple of 16 is considered for intrinsic purpose.
   rsc.dgd_avg = NULL;
   rsc.src_avg = NULL;
-#if HAVE_AVX2 || HAVE_NEON
-  // The buffers allocated below are used during Wiener filter processing of low
-  // bitdepth path. Hence, allocate the same when Wiener filter is enabled in
-  // low bitdepth path.
-  if (!cpi->sf.lpf_sf.disable_wiener_filter && !highbd) {
+#if HAVE_AVX2 || HAVE_SVE
+  // The buffers allocated below are used during Wiener filter processing.
+  // Hence, allocate the same when Wiener filter is enabled. Make sure to
+  // allocate these buffers only for the SIMD extensions that make use of them
+  // (i.e. AVX2 for low bitdepth and SVE for low and high bitdepth).
+#if HAVE_AVX2
+  bool allocate_buffers = !cpi->sf.lpf_sf.disable_wiener_filter && !highbd;
+#elif HAVE_SVE
+  bool allocate_buffers = !cpi->sf.lpf_sf.disable_wiener_filter;
+#endif
+  if (allocate_buffers) {
     const int buf_size = sizeof(*cpi->pick_lr_ctxt.dgd_avg) * 6 *
                          RESTORATION_UNITSIZE_MAX * RESTORATION_UNITSIZE_MAX;
     CHECK_MEM_ERROR(cm, cpi->pick_lr_ctxt.dgd_avg,
@@ -2204,8 +2225,13 @@ void av1_pick_filter_restoration(const YV12_BUFFER_CONFIG *src, AV1_COMP *cpi) {
                               best_luma_unit_size);
   }
 
-#if HAVE_AVX || HAVE_NEON
-  if (!cpi->sf.lpf_sf.disable_wiener_filter && !highbd) {
+#if HAVE_AVX2 || HAVE_SVE
+#if HAVE_AVX2
+  bool free_buffers = !cpi->sf.lpf_sf.disable_wiener_filter && !highbd;
+#elif HAVE_SVE
+  bool free_buffers = !cpi->sf.lpf_sf.disable_wiener_filter;
+#endif
+  if (free_buffers) {
     aom_free(cpi->pick_lr_ctxt.dgd_avg);
     cpi->pick_lr_ctxt.dgd_avg = NULL;
   }

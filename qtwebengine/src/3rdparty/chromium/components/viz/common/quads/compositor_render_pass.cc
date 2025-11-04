@@ -27,7 +27,6 @@
 #include "components/viz/common/quads/texture_draw_quad.h"
 #include "components/viz/common/quads/tile_draw_quad.h"
 #include "components/viz/common/quads/video_hole_draw_quad.h"
-#include "components/viz/common/quads/yuv_video_draw_quad.h"
 #include "components/viz/common/traced_value.h"
 
 namespace viz {
@@ -87,7 +86,7 @@ void CompositorRenderPass::SetAll(
     const gfx::Transform& transform_to_root_target,
     const cc::FilterOperations& filters,
     const cc::FilterOperations& backdrop_filters,
-    const absl::optional<gfx::RRectF>& backdrop_filter_bounds,
+    const std::optional<gfx::RRectF>& backdrop_filter_bounds,
     SubtreeCaptureId capture_id,
     gfx::Size subtree_capture_size,
     ViewTransitionElementResourceId resource_id,
@@ -165,9 +164,6 @@ DrawQuad* CompositorRenderPass::CopyFromAndAppendDrawQuad(
       break;
     case DrawQuad::Material::kVideoHole:
       quad_list.AllocateAndCopyFrom(VideoHoleDrawQuad::MaterialCast(quad));
-      break;
-    case DrawQuad::Material::kYuvVideoContent:
-      quad_list.AllocateAndCopyFrom(YUVVideoDrawQuad::MaterialCast(quad));
       break;
     case DrawQuad::Material::kSharedElement:
       quad_list.AllocateAndCopyFrom(SharedElementDrawQuad::MaterialCast(quad));

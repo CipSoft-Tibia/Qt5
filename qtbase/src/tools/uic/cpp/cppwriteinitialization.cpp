@@ -232,12 +232,15 @@ namespace {
                 qWarning("%s", qPrintable(msg));
                 return false;
             }
+            // Qt 7 separate layout size constraints (QTBUG-17730)
+            if (name == "verticalSizeConstraint"_L1 && className.contains("Layout"_L1))
+                return false;
             break;
         case DomProperty::IconSet:
             if (const DomResourceIcon *dri = p->elementIconSet()) {
                 if (!isIconFormat44(dri)) {
                     if (dri->text().isEmpty())  {
-                        const QString msg = QString::fromLatin1("%1: Warning: An invalid icon property '%2' was encountered.")
+                        const QString msg = "%1: Warning: An invalid icon property '%2' was encountered."_L1
                                             .arg(fileName, name);
                         qWarning("%s", qPrintable(msg));
                         return false;
@@ -248,7 +251,7 @@ namespace {
         case DomProperty::Pixmap:
             if (const DomResourcePixmap *drp = p->elementPixmap())
                 if (drp->text().isEmpty()) {
-                    const QString msg = QString::fromUtf8("%1: Warning: An invalid pixmap property '%2' was encountered.")
+                    const QString msg = "%1: Warning: An invalid pixmap property '%2' was encountered."_L1
                                         .arg(fileName, name);
                     qWarning("%s", qPrintable(msg));
                     return false;
@@ -1104,8 +1107,9 @@ void WriteInitialization::acceptSpacer(DomSpacer *node)
 static inline QString formLayoutRole(int column, int colspan)
 {
     if (colspan > 1)
-        return "QFormLayout::SpanningRole"_L1;
-    return column == 0 ? "QFormLayout::LabelRole"_L1 : "QFormLayout::FieldRole"_L1;
+        return "QFormLayout::ItemRole::SpanningRole"_L1;
+    return column == 0
+        ? "QFormLayout::ItemRole::LabelRole"_L1 : "QFormLayout::ItemRole::FieldRole"_L1;
 }
 
 static QString layoutAddMethod(DomLayoutItem::Kind kind, const QString &layoutClass)
@@ -1330,6 +1334,9 @@ void WriteInitialization::writeProperties(const QString &varName,
         if (!checkProperty(m_uic->customWidgetsInfo(), m_option.inputFile, className, p))
             continue;
         QString propertyName = p->attributeName();
+        // Qt 7 separate layout size constraints (QTBUG-17730)
+        if (propertyName == "horizontalSizeConstraint"_L1 && className.contains("Layout"_L1))
+            propertyName = "sizeConstraint"_L1;
         QString propertyValue;
         bool delayProperty = false;
 
@@ -1503,9 +1510,12 @@ void WriteInitialization::writeProperties(const QString &varName,
             const QString paletteName = m_driver->unique("palette"_L1);
             m_output << m_indent << language::stackVariable("QPalette", paletteName)
                 << language::eol;
-            writeColorGroup(pal->elementActive(), "QPalette::Active"_L1, paletteName);
-            writeColorGroup(pal->elementInactive(), "QPalette::Inactive"_L1, paletteName);
-            writeColorGroup(pal->elementDisabled(), "QPalette::Disabled"_L1, paletteName);
+            writeColorGroup(pal->elementActive(),
+                            "QPalette::ColorGroup::Active"_L1, paletteName);
+            writeColorGroup(pal->elementInactive(),
+                            "QPalette::ColorGroup::Inactive"_L1, paletteName);
+            writeColorGroup(pal->elementDisabled(),
+                            "QPalette::ColorGroup::Disabled"_L1, paletteName);
 
             propertyValue = paletteName;
             break;
@@ -2055,7 +2065,8 @@ void WriteInitialization::writeColorGroup(DomColorGroup *colorGroup, const QStri
         const DomColor *color = colors.at(i);
 
         m_output << m_indent << paletteName << ".setColor(" << group
-            << ", QPalette" << language::qualifier << language::paletteColorRole(i)
+            << ", QPalette" << language::qualifier << "ColorRole"
+            << language::qualifier << language::paletteColorRole(i)
             << ", " << domColor2QString(color)
             << ")" << language::eol;
     }
@@ -2074,8 +2085,8 @@ void WriteInitialization::writeColorGroup(DomColorGroup *colorGroup, const QStri
             }
             m_output << m_indent << paletteName << ".setBrush("
                 << language::enumValue(group) << ", "
-                << "QPalette" << language::qualifier << roleName
-                << ", " << brushName << ")" << language::eol;
+                << "QPalette" << language::qualifier << "ColorRole"
+                << language::qualifier << roleName << ", " << brushName << ')' << language::eol;
             if (!versionAdded.isNull())
                 m_output << "#endif\n";
         }
@@ -2144,13 +2155,13 @@ void WriteInitialization::writeBrush(const DomBrush *brush, const QString &brush
         }
 
         m_output << m_indent << gradientName << ".setSpread(QGradient"
-            << language::qualifier << gradient->attributeSpread()
+            << language::qualifier << "Spread" << language::qualifier << gradient->attributeSpread()
             << ')' << language::eol;
 
         if (gradient->hasAttributeCoordinateMode()) {
             m_output << m_indent << gradientName << ".setCoordinateMode(QGradient"
-                << language::qualifier << gradient->attributeCoordinateMode()
-                << ')' << language::eol;
+                << language::qualifier << "CoordinateMode" << language::qualifier
+                << gradient->attributeCoordinateMode() << ')' << language::eol;
         }
 
        const auto &stops = gradient->elementGradientStop();
@@ -2177,7 +2188,8 @@ void WriteInitialization::writeBrush(const DomBrush *brush, const QString &brush
             << domColor2QString(color) << ')' << language::eol;
 
         m_output << m_indent << brushName << ".setStyle("
-            << language::qtQualifier << style << ')' << language::eol;
+            << language::qtQualifier << "BrushStyle" << language::qualifier
+            << style << ')' << language::eol;
     }
 }
 

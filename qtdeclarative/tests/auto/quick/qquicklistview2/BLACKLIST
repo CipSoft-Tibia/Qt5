@@ -3,3 +3,7 @@ android # QTBUG-104471
 [flickDuringFlicking]
 android # QTBUG-104471
 macos ci # QTBUG-105190
+
+# QTBUG-132631
+[isCurrentItem_NoRegressionWithDelegateModelGroups]
+opensuse-leap

@@ -37,25 +37,32 @@ import * as Host from '../../core/host/host.js';
 import * as i18n from '../../core/i18n/i18n.js';
 import * as Platform from '../../core/platform/platform.js';
 import * as TextUtils from '../../models/text_utils/text_utils.js';
+import * as Buttons from '../components/buttons/buttons.js';
 import * as IconButton from '../components/icon_button/icon_button.js';
 import * as VisualLogging from '../visual_logging/visual_logging.js';
 
+import applicationColorTokensStyles from './applicationColorTokens.css.legacy.js';
 import * as ARIAUtils from './ARIAUtils.js';
 import checkboxTextLabelStyles from './checkboxTextLabel.css.legacy.js';
-import closeButtonStyles from './closeButton.css.legacy.js';
 import confirmDialogStyles from './confirmDialog.css.legacy.js';
+import designTokensStyles from './designTokens.css.legacy.js';
 import {Dialog} from './Dialog.js';
 import {Size} from './Geometry.js';
 import {GlassPane, PointerEventsBehavior, SizeBehavior} from './GlassPane.js';
 import inlineButtonStyles from './inlineButton.css.legacy.js';
+import inspectorCommonStyles from './inspectorCommon.css.legacy.js';
 import {KeyboardShortcut} from './KeyboardShortcut.js';
 import radioButtonStyles from './radioButton.css.legacy.js';
 import sliderStyles from './slider.css.legacy.js';
 import smallBubbleStyles from './smallBubble.css.legacy.js';
+import textButtonStyles from './textButton.css.legacy.js';
+import * as ThemeSupport from './theme_support/theme_support.js';
+import themeColorsStyles from './themeColors.css.legacy.js';
+import tokens from './tokens.css.legacy.js';
 import {Toolbar, type ToolbarButton} from './Toolbar.js';
 import {Tooltip} from './Tooltip.js';
 import {type TreeOutline} from './Treeoutline.js';
-import * as Utils from './utils/utils.js';
+import {Widget} from './Widget.js';
 
 const UIStrings = {
   /**
@@ -82,11 +89,6 @@ const UIStrings = {
    *@description Text in UIUtils
    */
   promiseRejectedAsync: 'Promise rejected (async)',
-  /**
-   *@description Text in UIUtils
-   *@example {Promise} PH1
-   */
-  sAsync: '{PH1} (async)',
   /**
    *@description Text for the title of asynchronous function calls group in Call Stack
    */
@@ -172,7 +174,7 @@ class DragHandler {
     this.glassPaneInUse = true;
     if (!DragHandler.glassPaneUsageCount++) {
       DragHandler.glassPane = new GlassPane();
-      DragHandler.glassPane.setPointerEventsBehavior(PointerEventsBehavior.BlockedByGlassPane);
+      DragHandler.glassPane.setPointerEventsBehavior(PointerEventsBehavior.BLOCKED_BY_GLASS_PANE);
       if (DragHandler.documentForMouseOut) {
         DragHandler.glassPane.show(DragHandler.documentForMouseOut);
       }
@@ -378,19 +380,23 @@ export const StyleValueDelimiters = ' \xA0\t\n"\':;,/()';
 
 export function getValueModificationDirection(event: Event): string|null {
   let direction: 'Up'|'Down'|null = null;
-  if (event.type === 'wheel') {
+  if (event instanceof WheelEvent) {
     // When shift is pressed while spinning mousewheel, delta comes as wheelDeltaX.
-    const wheelEvent = (event as WheelEvent);
-    if (wheelEvent.deltaY < 0 || wheelEvent.deltaX < 0) {
+    if (event.deltaY < 0 || event.deltaX < 0) {
       direction = 'Up';
-    } else if (wheelEvent.deltaY > 0 || wheelEvent.deltaX > 0) {
+    } else if (event.deltaY > 0 || event.deltaX > 0) {
       direction = 'Down';
     }
-  } else {
-    const keyEvent = (event as KeyboardEvent);
-    if (keyEvent.key === 'ArrowUp' || keyEvent.key === 'PageUp') {
+  } else if (event instanceof MouseEvent) {
+    if (event.movementX < 0) {
+      direction = 'Down';
+    } else if (event.movementX > 0) {
       direction = 'Up';
-    } else if (keyEvent.key === 'ArrowDown' || keyEvent.key === 'PageDown') {
+    }
+  } else if (event instanceof KeyboardEvent) {
+    if (event.key === 'ArrowUp' || event.key === 'PageUp') {
+      direction = 'Up';
+    } else if (event.key === 'ArrowDown' || event.key === 'PageDown') {
       direction = 'Down';
     }
   }
@@ -466,13 +472,13 @@ export function modifiedFloatNumber(number: number, event: Event, modifierMultip
   // When shift is pressed, increase by 10.
   // When alt is pressed, increase by 0.1.
   // Otherwise increase by 1.
-  let delta = 1;
+  let delta = mouseEvent.type === 'mousemove' ? Math.abs(mouseEvent.movementX) : 1;
   if (KeyboardShortcut.eventHasCtrlEquivalentKey(mouseEvent)) {
-    delta = 100;
+    delta *= 100;
   } else if (mouseEvent.shiftKey) {
-    delta = 10;
+    delta *= 10;
   } else if (mouseEvent.altKey) {
-    delta = 0.1;
+    delta *= 0.1;
   }
 
   if (direction === 'Down') {
@@ -522,11 +528,15 @@ export function createReplacementString(
 }
 
 export function isElementValueModification(event: Event): boolean {
-  const arrowKeyOrWheelEvent =
-      ((event as KeyboardEvent).key === 'ArrowUp' || (event as KeyboardEvent).key === 'ArrowDown' ||
-       event.type === 'wheel');
-  const pageKeyPressed = ((event as KeyboardEvent).key === 'PageUp' || (event as KeyboardEvent).key === 'PageDown');
-  return arrowKeyOrWheelEvent || pageKeyPressed;
+  if (event instanceof MouseEvent) {
+    const {type} = event;
+    return type === 'mousemove' || type === 'wheel';
+  }
+  if (event instanceof KeyboardEvent) {
+    const {key} = event;
+    return key === 'ArrowUp' || key === 'ArrowDown' || key === 'PageUp' || key === 'PageDown';
+  }
+  return false;
 }
 
 export function handleElementValueModifications(
@@ -536,6 +546,7 @@ export function handleElementValueModifications(
   if (!isElementValueModification(event)) {
     return false;
   }
+  void VisualLogging.logKeyDown(event.currentTarget, event, 'element-value-modification');
 
   const selection = element.getComponentSelection();
   if (!selection || !selection.rangeCount) {
@@ -608,24 +619,25 @@ export function asyncStackTraceLabel(
     if (description === 'Promise.reject') {
       return i18nString(UIStrings.promiseRejectedAsync);
     }
-    // TODO(crbug.com/1254259): Remove the check for 'async function'
-    // once the relevant V8 inspector CL rolls into Node LTS.
-    if ((description === 'await' || description === 'async function') && previousCallFrames.length !== 0) {
+    if (description === 'await' && previousCallFrames.length !== 0) {
       const lastPreviousFrame = previousCallFrames[previousCallFrames.length - 1];
       const lastPreviousFrameName = beautifyFunctionName(lastPreviousFrame.functionName);
       description = `await in ${lastPreviousFrameName}`;
     }
-    return i18nString(UIStrings.sAsync, {PH1: description});
+    return description;
   }
   return i18nString(UIStrings.asyncCall);
 }
 
-export function installComponentRootStyles(element: Element): void {
-  Utils.injectCoreStyles(element);
+export function addPlatformClass(element: HTMLElement): void {
   element.classList.add('platform-' + Host.Platform.platform());
+}
+
+export function installComponentRootStyles(element: HTMLElement): void {
+  injectCoreStyles(element);
 
   // Detect overlay scrollbar enable by checking for nonzero scrollbar width.
-  if (!Host.Platform.isMac() && Utils.measuredScrollbarWidth(element.ownerDocument) === 0) {
+  if (!Host.Platform.isMac() && measuredScrollbarWidth(element.ownerDocument) === 0) {
     element.classList.add('overlay-scrollbar-enabled');
   }
 }
@@ -951,7 +963,7 @@ export function animateFunction(
     }
   }
 
-  return (): void => window.cancelAnimationFrame(raf);
+  return () => window.cancelAnimationFrame(raf);
 }
 
 export class LongClickController {
@@ -1050,7 +1062,7 @@ export function initializeUIUtils(document: Document): void {
     document.defaultView.addEventListener('focus', windowFocused.bind(undefined, document), false);
     document.defaultView.addEventListener('blur', windowBlurred.bind(undefined, document), false);
   }
-  document.addEventListener('focus', Utils.focusChanged.bind(undefined), true);
+  document.addEventListener('focus', focusChanged.bind(undefined), true);
 
   const body = (document.body as Element);
   GlassPane.setContainer(body);
@@ -1075,25 +1087,26 @@ export const createTextChildren = (element: Element|DocumentFragment, ...childre
 export function createTextButton(text: string, clickHandler?: ((arg0: Event) => void), opts?: {
   className?: string,
   jslogContext?: string,
-  primary?: boolean,
-}): HTMLButtonElement {
-  const element = document.createElement('button');
+  variant?: Buttons.Button.Variant,
+  title?: string,
+}): Buttons.Button.Button {
+  const button = new Buttons.Button.Button();
   if (opts?.className) {
-    element.className = opts.className;
+    button.className = opts.className;
   }
-  element.textContent = text;
-  element.classList.add('text-button');
-  if (opts?.primary) {
-    element.classList.add('primary-button');
-  }
+  button.textContent = text;
+  button.variant = opts?.variant ? opts.variant : Buttons.Button.Variant.OUTLINED;
   if (clickHandler) {
-    element.addEventListener('click', clickHandler);
+    button.addEventListener('click', clickHandler);
   }
   if (opts?.jslogContext) {
-    element.setAttribute('jslog', `${VisualLogging.action().track({click: true}).context(opts.jslogContext)}`);
+    button.setAttribute('jslog', `${VisualLogging.action().track({click: true}).context(opts.jslogContext)}`);
   }
-  element.type = 'button';
-  return element;
+  if (opts?.title) {
+    button.setAttribute('title', opts.title);
+  }
+  button.type = 'button';
+  return button;
 }
 
 export function createInput(className?: string, type?: string, jslogContext?: string): HTMLInputElement {
@@ -1107,7 +1120,8 @@ export function createInput(className?: string, type?: string, jslogContext?: st
     element.type = type;
   }
   if (jslogContext) {
-    element.setAttribute('jslog', `${VisualLogging.textField().track({keydown: true}).context(jslogContext)}`);
+    element.setAttribute(
+        'jslog', `${VisualLogging.textField().track({keydown: 'Enter', change: true}).context(jslogContext)}`);
   }
   return element;
 }
@@ -1123,15 +1137,23 @@ export function createSelect(name: string, options: string[]|Map<string, string[
         optGroup.label = key;
         for (const child of value) {
           if (typeof child === 'string') {
-            optGroup.appendChild(new Option(child, child));
+            optGroup.appendChild(createOption(child, child, Platform.StringUtilities.toKebabCase(child)));
           }
         }
       }
     } else if (typeof option === 'string') {
-      select.add(new Option(option, option));
+      select.add(createOption(option, option, Platform.StringUtilities.toKebabCase(option)));
     }
   }
   return select;
+}
+
+export function createOption(title: string, value?: string, jslogContext?: string): HTMLOptionElement {
+  const result = new Option(title, value || title);
+  if (jslogContext) {
+    result.setAttribute('jslog', `${VisualLogging.item(jslogContext).track({click: true})}`);
+  }
+  return result;
 }
 
 export function createLabel(title: string, className?: string, associatedControl?: Element): Element {
@@ -1199,7 +1221,7 @@ export class CheckboxLabel extends HTMLSpanElement {
     CheckboxLabel.lastId = CheckboxLabel.lastId + 1;
     const id = 'ui-checkbox-label' + CheckboxLabel.lastId;
     this.shadowRootInternal =
-        Utils.createShadowRootWithCoreStyles(this, {cssFile: checkboxTextLabelStyles, delegatesFocus: undefined});
+        createShadowRootWithCoreStyles(this, {cssFile: checkboxTextLabelStyles, delegatesFocus: undefined});
     this.checkboxElement = (this.shadowRootInternal.createChild('input') as HTMLInputElement);
     this.checkboxElement.type = 'checkbox';
     this.checkboxElement.setAttribute('id', id);
@@ -1208,9 +1230,10 @@ export class CheckboxLabel extends HTMLSpanElement {
     this.shadowRootInternal.createChild('slot');
   }
 
-  static create(title?: string, checked?: boolean, subtitle?: string, jslogContext?: string): CheckboxLabel {
+  static create(title?: string, checked?: boolean, subtitle?: string, jslogContext?: string, small?: boolean):
+      CheckboxLabel {
     if (!CheckboxLabel.constructorInternal) {
-      CheckboxLabel.constructorInternal = Utils.registerCustomElement('span', 'dt-checkbox', CheckboxLabel);
+      CheckboxLabel.constructorInternal = registerCustomElement('span', 'dt-checkbox', CheckboxLabel);
     }
     const element = (CheckboxLabel.constructorInternal() as CheckboxLabel);
     element.checkboxElement.checked = Boolean(checked);
@@ -1225,6 +1248,7 @@ export class CheckboxLabel extends HTMLSpanElement {
         element.textElement.createChild('div', 'dt-checkbox-subtitle').textContent = subtitle;
       }
     }
+    element.checkboxElement.classList.toggle('small', small);
     return element;
   }
 
@@ -1237,7 +1261,7 @@ export class DevToolsIconLabel extends HTMLSpanElement {
 
   constructor() {
     super();
-    const root = Utils.createShadowRootWithCoreStyles(this, {
+    const root = createShadowRootWithCoreStyles(this, {
       cssFile: undefined,
       delegatesFocus: undefined,
     });
@@ -1275,7 +1299,7 @@ export class DevToolsRadioButton extends HTMLSpanElement {
     this.radioElement.id = id;
     this.radioElement.type = 'radio';
     this.labelElement.htmlFor = id;
-    const root = Utils.createShadowRootWithCoreStyles(this, {cssFile: radioButtonStyles, delegatesFocus: undefined});
+    const root = createShadowRootWithCoreStyles(this, {cssFile: radioButtonStyles, delegatesFocus: undefined});
     root.createChild('slot');
     this.addEventListener('click', this.radioClickHandler.bind(this), false);
   }
@@ -1289,15 +1313,15 @@ export class DevToolsRadioButton extends HTMLSpanElement {
   }
 }
 
-Utils.registerCustomElement('span', 'dt-radio', DevToolsRadioButton);
-Utils.registerCustomElement('span', 'dt-icon-label', DevToolsIconLabel);
+registerCustomElement('span', 'dt-radio', DevToolsRadioButton);
+registerCustomElement('span', 'dt-icon-label', DevToolsIconLabel);
 
 export class DevToolsSlider extends HTMLSpanElement {
   sliderElement: HTMLInputElement;
 
   constructor() {
     super();
-    const root = Utils.createShadowRootWithCoreStyles(this, {cssFile: sliderStyles, delegatesFocus: undefined});
+    const root = createShadowRootWithCoreStyles(this, {cssFile: sliderStyles, delegatesFocus: undefined});
     this.sliderElement = document.createElement('input');
     this.sliderElement.classList.add('dt-range-input');
     this.sliderElement.type = 'range';
@@ -1313,14 +1337,14 @@ export class DevToolsSlider extends HTMLSpanElement {
   }
 }
 
-Utils.registerCustomElement('span', 'dt-slider', DevToolsSlider);
+registerCustomElement('span', 'dt-slider', DevToolsSlider);
 
 export class DevToolsSmallBubble extends HTMLSpanElement {
   private textElement: Element;
 
   constructor() {
     super();
-    const root = Utils.createShadowRootWithCoreStyles(this, {cssFile: smallBubbleStyles, delegatesFocus: undefined});
+    const root = createShadowRootWithCoreStyles(this, {cssFile: smallBubbleStyles, delegatesFocus: undefined});
     this.textElement = root.createChild('div');
     this.textElement.className = 'info';
     this.textElement.createChild('slot');
@@ -1331,36 +1355,37 @@ export class DevToolsSmallBubble extends HTMLSpanElement {
   }
 }
 
-Utils.registerCustomElement('span', 'dt-small-bubble', DevToolsSmallBubble);
+registerCustomElement('span', 'dt-small-bubble', DevToolsSmallBubble);
 
 export class DevToolsCloseButton extends HTMLDivElement {
-  private buttonElement: HTMLElement;
+  private button: Buttons.Button.Button;
 
   constructor() {
     super();
-    const root = Utils.createShadowRootWithCoreStyles(this, {cssFile: closeButtonStyles, delegatesFocus: undefined});
-    this.buttonElement = (root.createChild('div', 'close-button') as HTMLElement);
-    Tooltip.install(this.buttonElement, i18nString(UIStrings.close));
-    ARIAUtils.setLabel(this.buttonElement, i18nString(UIStrings.close));
-    ARIAUtils.markAsButton(this.buttonElement);
-    const regularIcon = IconButton.Icon.create('cross');
-    this.buttonElement.appendChild(regularIcon);
+    const root = createShadowRootWithCoreStyles(this, {delegatesFocus: undefined});
+    this.button = new Buttons.Button.Button();
+    this.button.data = {variant: Buttons.Button.Variant.ICON, iconName: 'cross'};
+    this.button.classList.add('close-button');
+    this.button.setAttribute('jslog', `${VisualLogging.close().track({click: true})}`);
+    Tooltip.install(this.button, i18nString(UIStrings.close));
+    ARIAUtils.setLabel(this.button, i18nString(UIStrings.close));
+    root.appendChild(this.button);
   }
 
   setAccessibleName(name: string): void {
-    ARIAUtils.setLabel(this.buttonElement, name);
+    ARIAUtils.setLabel(this.button, name);
   }
 
   setTabbable(tabbable: boolean): void {
     if (tabbable) {
-      this.buttonElement.tabIndex = 0;
+      this.button.tabIndex = 0;
     } else {
-      this.buttonElement.tabIndex = -1;
+      this.button.tabIndex = -1;
     }
   }
 }
 
-Utils.registerCustomElement('div', 'dt-close-button', DevToolsCloseButton);
+registerCustomElement('div', 'dt-close-button', DevToolsCloseButton);
 
 export function bindInput(
     input: HTMLInputElement, apply: (arg0: string) => void, validate: (arg0: string) => {
@@ -1527,12 +1552,20 @@ export function loadImage(url: string): Promise<HTMLImageElement|null> {
   });
 }
 
-export function createFileSelectorElement(callback: (arg0: File) => void): HTMLInputElement {
+/**
+ * Creates a file selector element.
+ * @param callback - the function that will be called with the file the user selected
+ * @param accept - optionally used to set the [`accept`](https://developer.mozilla.org/en-US/docs/Web/HTML/Attributes/accept) parameter to limit file-types the user can pick.
+ */
+export function createFileSelectorElement(callback: (arg0: File) => void, accept?: string): HTMLInputElement {
   const fileSelectorElement = document.createElement('input');
   fileSelectorElement.type = 'file';
+  if (accept) {
+    fileSelectorElement.setAttribute('accept', accept);
+  }
   fileSelectorElement.style.display = 'none';
   fileSelectorElement.tabIndex = -1;
-  fileSelectorElement.onchange = (): void => {
+  fileSelectorElement.onchange = () => {
     if (fileSelectorElement.files) {
       callback(fileSelectorElement.files[0]);
     }
@@ -1544,15 +1577,16 @@ export function createFileSelectorElement(callback: (arg0: File) => void): HTMLI
 export const MaxLengthForDisplayedURLs = 150;
 
 export class MessageDialog {
-  static async show(message: string, where?: Element|Document): Promise<void> {
-    const dialog = new Dialog();
-    dialog.setSizeBehavior(SizeBehavior.MeasureContent);
+  static async show(message: string, where?: Element|Document, jslogContext?: string): Promise<void> {
+    const dialog = new Dialog(jslogContext);
+    dialog.setSizeBehavior(SizeBehavior.MEASURE_CONTENT);
     dialog.setDimmed(true);
-    const shadowRoot = Utils.createShadowRootWithCoreStyles(
+    const shadowRoot = createShadowRootWithCoreStyles(
         dialog.contentElement, {cssFile: confirmDialogStyles, delegatesFocus: undefined});
     const content = shadowRoot.createChild('div', 'widget');
     await new Promise(resolve => {
-      const okButton = createTextButton(i18nString(UIStrings.ok), resolve, {jslogContext: 'confirm', primary: true});
+      const okButton = createTextButton(
+          i18nString(UIStrings.ok), resolve, {jslogContext: 'confirm', variant: Buttons.Button.Variant.PRIMARY});
       content.createChild('div', 'message').createChild('span').textContent = message;
       content.createChild('div', 'button').appendChild(okButton);
       dialog.setOutsideClickCallback(event => {
@@ -1568,11 +1602,11 @@ export class MessageDialog {
 
 export class ConfirmDialog {
   static async show(message: string, where?: Element|Document, options?: ConfirmDialogOptions): Promise<boolean> {
-    const dialog = new Dialog();
-    dialog.setSizeBehavior(SizeBehavior.MeasureContent);
+    const dialog = new Dialog(options?.jslogContext);
+    dialog.setSizeBehavior(SizeBehavior.MEASURE_CONTENT);
     dialog.setDimmed(true);
     ARIAUtils.setLabel(dialog.contentElement, message);
-    const shadowRoot = Utils.createShadowRootWithCoreStyles(
+    const shadowRoot = createShadowRootWithCoreStyles(
         dialog.contentElement, {cssFile: confirmDialogStyles, delegatesFocus: undefined});
     const content = shadowRoot.createChild('div', 'widget');
     content.createChild('div', 'message').createChild('span').textContent = message;
@@ -1580,7 +1614,7 @@ export class ConfirmDialog {
     const result = await new Promise<boolean>(resolve => {
       const okButton = createTextButton(
           /* text= */ options?.okButtonLabel || i18nString(UIStrings.ok), /* clickHandler= */ () => resolve(true),
-          {jslogContext: 'confirm', primary: true});
+          {jslogContext: 'confirm', variant: Buttons.Button.Variant.PRIMARY});
       buttonsBar.appendChild(okButton);
       buttonsBar.appendChild(createTextButton(
           options?.cancelButtonLabel || i18nString(UIStrings.cancel), () => resolve(false), {jslogContext: 'cancel'}));
@@ -1598,8 +1632,7 @@ export class ConfirmDialog {
 
 export function createInlineButton(toolbarButton: ToolbarButton): Element {
   const element = document.createElement('span');
-  const shadowRoot =
-      Utils.createShadowRootWithCoreStyles(element, {cssFile: inlineButtonStyles, delegatesFocus: undefined});
+  const shadowRoot = createShadowRootWithCoreStyles(element, {cssFile: inlineButtonStyles, delegatesFocus: undefined});
   element.classList.add('inline-button');
   const toolbar = new Toolbar('');
   toolbar.appendToolbarItem(toolbarButton);
@@ -1744,7 +1777,133 @@ export interface RendererRegistration {
 export interface ConfirmDialogOptions {
   okButtonLabel?: string;
   cancelButtonLabel?: string;
+  jslogContext?: string;
 }
 
-VisualLogging.registerContextProvider(
-    'elementValueModification', e => Promise.resolve(isElementValueModification(e as Event) ? 1 : 0));
+function updateWidgetfocusWidgetForNode(node: Node|null): void {
+  while (node) {
+    if (Widget.get(node)) {
+      break;
+    }
+
+    node = node.parentNodeOrShadowHost();
+  }
+  if (!node) {
+    return;
+  }
+
+  let widget = Widget.get(node);
+  while (widget && widget.parentWidget()) {
+    const parentWidget = widget.parentWidget();
+    if (!parentWidget) {
+      break;
+    }
+
+    parentWidget.defaultFocusedChild = widget;
+    widget = parentWidget;
+  }
+}
+
+function updateXWidgetfocusWidgetForNode(node: Node|null): void {
+  node = node && node.parentNodeOrShadowHost();
+  const XWidgetCtor = customElements.get('x-widget');
+  let widget = null;
+  while (node) {
+    if (XWidgetCtor && node instanceof XWidgetCtor) {
+      if (widget) {
+        // TODO(crbug.com/1172300) Ignored during the jsdoc to ts migration
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (node as any).defaultFocusedElement = widget;
+      }
+      widget = node;
+    }
+    node = node.parentNodeOrShadowHost();
+  }
+}
+
+function focusChanged(event: Event): void {
+  const target = event.target as HTMLElement;
+  const document = target ? target.ownerDocument : null;
+  const element = document ? Platform.DOMUtilities.deepActiveElement(document) : null;
+  updateWidgetfocusWidgetForNode(element);
+  updateXWidgetfocusWidgetForNode(element);
+}
+
+export function injectCoreStyles(root: Element|ShadowRoot): void {
+  ThemeSupport.ThemeSupport.instance().appendStyle(root, applicationColorTokensStyles);
+  ThemeSupport.ThemeSupport.instance().appendStyle(root, designTokensStyles);
+  ThemeSupport.ThemeSupport.instance().appendStyle(root, inspectorCommonStyles);
+  ThemeSupport.ThemeSupport.instance().appendStyle(root, textButtonStyles);
+  ThemeSupport.ThemeSupport.instance().appendStyle(root, themeColorsStyles);
+  ThemeSupport.ThemeSupport.instance().appendStyle(root, tokens);
+
+  ThemeSupport.ThemeSupport.instance().injectHighlightStyleSheets(root);
+  ThemeSupport.ThemeSupport.instance().injectCustomStyleSheets(root);
+}
+
+export function injectTextButtonStyles(root: Element|ShadowRoot): void {
+  ThemeSupport.ThemeSupport.instance().appendStyle(root, textButtonStyles);
+}
+
+export function createShadowRootWithCoreStyles(
+    element: Element, options: {cssFile?: CSSStyleSheet[]|{cssContent: string}, delegatesFocus?: boolean} = {
+      delegatesFocus: undefined,
+      cssFile: undefined,
+    }): ShadowRoot {
+  const {
+    cssFile,
+    delegatesFocus,
+  } = options;
+
+  const shadowRoot = element.attachShadow({mode: 'open', delegatesFocus});
+  injectCoreStyles(shadowRoot);
+  if (cssFile) {
+    if ('cssContent' in cssFile) {
+      ThemeSupport.ThemeSupport.instance().appendStyle(shadowRoot, cssFile);
+    } else {
+      shadowRoot.adoptedStyleSheets = cssFile;
+    }
+  }
+  shadowRoot.addEventListener('focus', focusChanged, true);
+  return shadowRoot;
+}
+
+let cachedMeasuredScrollbarWidth: number|undefined;
+
+export function resetMeasuredScrollbarWidthForTest(): void {
+  cachedMeasuredScrollbarWidth = undefined;
+}
+
+export function measuredScrollbarWidth(document?: Document|null): number {
+  if (typeof cachedMeasuredScrollbarWidth === 'number') {
+    return cachedMeasuredScrollbarWidth;
+  }
+  if (!document) {
+    return 16;
+  }
+
+  const scrollDiv = document.createElement('div');
+  const innerDiv = document.createElement('div');
+  scrollDiv.setAttribute('style', 'display: block; width: 100px; height: 100px; overflow: scroll;');
+  innerDiv.setAttribute('style', 'height: 200px');
+  scrollDiv.appendChild(innerDiv);
+  document.body.appendChild(scrollDiv);
+  cachedMeasuredScrollbarWidth = scrollDiv.offsetWidth - scrollDiv.clientWidth;
+  document.body.removeChild(scrollDiv);
+  return cachedMeasuredScrollbarWidth;
+}
+
+export function registerCustomElement(
+    localName: string, typeExtension: string, definition: new () => HTMLElement): () => Element {
+  self.customElements.define(typeExtension, class extends definition {
+    constructor() {
+      // The JSDoc above does not allow the super call to have no params, but
+      // it seems to be the nearest to something both Closure and TS understand.
+      // @ts-ignore crbug.com/1011811: Fix after Closure has been removed.
+      super();
+      // TODO(einbinder) convert to classes and custom element tags
+      this.setAttribute('is', typeExtension);
+    }
+  }, {extends: localName});
+  return (): Element => document.createElement(localName, {is: typeExtension});
+}

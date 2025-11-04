@@ -3,10 +3,10 @@
 
 #include "redditmodel.h"
 
-#include <QtWidgets/qapplication.h>
-#include <QtWidgets/qlistview.h>
+#include <QCommandLineParser>
 
-#include <QtCore/qcommandlineparser.h>
+#include <QApplication>
+#include <QListView>
 
 using namespace Qt::StringLiterals;
 

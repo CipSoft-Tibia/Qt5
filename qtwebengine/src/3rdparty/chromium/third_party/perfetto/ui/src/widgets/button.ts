@@ -13,12 +13,11 @@
 // limitations under the License.
 
 import m from 'mithril';
-
 import {classNames} from '../base/classnames';
-
-import {HTMLButtonAttrs} from './common';
+import {HTMLAttrs, HTMLButtonAttrs, Intent, classForIntent} from './common';
 import {Icon} from './icon';
 import {Popup} from './popup';
+import {Spinner} from './spinner';
 
 interface CommonAttrs extends HTMLButtonAttrs {
   // Always show the button as if the "active" pseudo class were applied, which
@@ -30,9 +29,6 @@ interface CommonAttrs extends HTMLButtonAttrs {
   // Use minimal padding, reducing the overall size of the button by a few px.
   // Defaults to false.
   compact?: boolean;
-  // Reduces button decorations.
-  // Defaults to false.
-  minimal?: boolean;
   // Optional right icon.
   rightIcon?: string;
   // List of space separated class names forwarded to the icon.
@@ -40,6 +36,15 @@ interface CommonAttrs extends HTMLButtonAttrs {
   // Allow clicking this button to close parent popups.
   // Defaults to false.
   dismissPopup?: boolean;
+  // Show loading spinner instead of icon.
+  // Defaults to false.
+  loading?: boolean;
+  // Whether to use a filled icon
+  // Defaults to false;
+  iconFilled?: boolean;
+  // Indicate button colouring by intent.
+  // Defaults to undefined aka "None"
+  intent?: Intent;
 }
 
 interface IconButtonAttrs extends CommonAttrs {
@@ -54,7 +59,7 @@ interface LabelButtonAttrs extends CommonAttrs {
   icon?: string;
 }
 
-export type ButtonAttrs = LabelButtonAttrs|IconButtonAttrs;
+export type ButtonAttrs = LabelButtonAttrs | IconButtonAttrs;
 
 export class Button implements m.ClassComponent<ButtonAttrs> {
   view({attrs}: m.CVnode<ButtonAttrs>) {
@@ -62,33 +67,60 @@ export class Button implements m.ClassComponent<ButtonAttrs> {
       icon,
       active,
       compact,
-      minimal,
       rightIcon,
       className,
       dismissPopup,
+      iconFilled,
+      intent = Intent.None,
       ...htmlAttrs
     } = attrs;
 
     const label = 'label' in attrs ? attrs.label : undefined;
 
     const classes = classNames(
-        active && 'pf-active',
-        compact && 'pf-compact',
-        minimal && 'pf-minimal',
-        (icon && !label) && 'pf-icon-only',
-        dismissPopup && Popup.DISMISS_POPUP_GROUP_CLASS,
-        className,
+      active && 'pf-active',
+      compact && 'pf-compact',
+      classForIntent(intent),
+      icon && !label && 'pf-icon-only',
+      dismissPopup && Popup.DISMISS_POPUP_GROUP_CLASS,
+      className,
     );
 
     return m(
-        'button.pf-button',
-        {
-          ...htmlAttrs,
-          className: classes,
-        },
-        icon && m(Icon, {className: 'pf-left-icon', icon}),
-        rightIcon && m(Icon, {className: 'pf-right-icon', icon: rightIcon}),
-        label || '\u200B',  // Zero width space keeps button in-flow
+      'button.pf-button',
+      {
+        ...htmlAttrs,
+        className: classes,
+      },
+      this.renderIcon(attrs),
+      rightIcon &&
+        m(Icon, {
+          className: 'pf-right-icon',
+          icon: rightIcon,
+          filled: iconFilled,
+        }),
+      label || '\u200B', // Zero width space keeps button in-flow
     );
+  }
+
+  private renderIcon(attrs: ButtonAttrs): m.Children {
+    const {icon, iconFilled} = attrs;
+    const className = 'pf-left-icon';
+    if (attrs.loading) {
+      return m(Spinner, {className});
+    } else if (icon) {
+      return m(Icon, {className, icon, filled: iconFilled});
+    } else {
+      return undefined;
+    }
+  }
+}
+
+/**
+ * Space buttons out with a little gap between each one.
+ */
+export class ButtonBar implements m.ClassComponent<HTMLAttrs> {
+  view({attrs, children}: m.CVnode<HTMLAttrs>): m.Children {
+    return m('.pf-button-bar', attrs, children);
   }
 }

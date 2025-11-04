@@ -3,85 +3,124 @@
 
 
 function(qt_internal_set_warnings_are_errors_flags target target_scope)
-    set(flags "")
-    if (CLANG AND NOT MSVC)
-        list(APPEND flags -Werror -Wno-error=\#warnings -Wno-error=deprecated-declarations)
-        if ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang") # as in: not AppleClang
-            if (CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL "10.0.0")
-                # We do mixed enum arithmetic all over the place:
-                list(APPEND flags -Wno-error=deprecated-enum-enum-conversion)
-            endif()
-            if (CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL "14.0.0")
-                # Clang 14 introduced these two but we are not clean for it.
-                list(APPEND flags -Wno-error=deprecated-copy-with-user-provided-copy)
-                list(APPEND flags -Wno-error=unused-but-set-variable)
-            endif()
-        endif()
-    elseif ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU")
-        # using GCC
-        list(APPEND flags -Werror -Wno-error=cpp -Wno-error=deprecated-declarations)
-
-        # GCC prints this bogus warning, after it has inlined a lot of code
-        # error: assuming signed overflow does not occur when assuming that (X + c) < X is always false
-        list(APPEND flags -Wno-error=strict-overflow)
-
-        # GCC 7 includes -Wimplicit-fallthrough in -Wextra, but Qt is not yet free of implicit fallthroughs.
-        if (CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL "7.0.0")
-            list(APPEND flags -Wno-error=implicit-fallthrough)
-        endif()
-
-        if (CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL "9.0.0")
-            # GCC 9 introduced these but we are not clean for it.
-            list(APPEND flags -Wno-error=deprecated-copy -Wno-error=redundant-move -Wno-error=init-list-lifetime)
-            # GCC 9 introduced -Wformat-overflow in -Wall, but it is buggy:
-            list(APPEND flags -Wno-error=format-overflow)
-        endif()
-
-        if (CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL "10.0.0")
-            # GCC 10 has a number of bugs in -Wstringop-overflow. Do not make them an error.
-            # https://gcc.gnu.org/bugzilla/show_bug.cgi?id=92955
-            # https://gcc.gnu.org/bugzilla/show_bug.cgi?id=94335
-            # https://gcc.gnu.org/bugzilla/show_bug.cgi?id=101134
-            list(APPEND flags -Wno-error=stringop-overflow)
-        endif()
-
-        if (CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL "11.0.0")
-            # Ditto
-            list(APPEND flags -Wno-error=stringop-overread)
-
-            # We do mixed enum arithmetic all over the place:
-            list(APPEND flags -Wno-error=deprecated-enum-enum-conversion -Wno-error=deprecated-enum-float-conversion)
-        endif()
-
-        if (CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL "11.0.0" AND CMAKE_CXX_COMPILER_VERSION VERSION_LESS "11.2.0")
-            # GCC 11.1 has a regression in the integrated preprocessor, so disable it as a workaround (QTBUG-93360)
-            # https://gcc.gnu.org/bugzilla/show_bug.cgi?id=100796
-            # This in turn triggers a fallthrough warning in cborparser.c, so we disable this warning.
-            list(APPEND flags -no-integrated-cpp -Wno-implicit-fallthrough)
-        endif()
-
-        # Work-around for bug https://code.google.com/p/android/issues/detail?id=58135
-        if (ANDROID)
-            list(APPEND flags -Wno-error=literal-suffix)
-        endif()
-    elseif ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "MSVC")
-        # Only enable for versions of MSVC that are known to work
-        # 1939 is Visual Studio 2022 version 17.0
-        if(MSVC_VERSION LESS_EQUAL 1939)
-            list(APPEND flags /WX)
-        endif()
-    endif()
-    set(warnings_are_errors_enabled_genex
-        "$<NOT:$<BOOL:$<TARGET_PROPERTY:QT_SKIP_WARNINGS_ARE_ERRORS>>>")
-
+    # Gate everything by the target property
+    set(common_conditions "$<NOT:$<BOOL:$<TARGET_PROPERTY:QT_SKIP_WARNINGS_ARE_ERRORS>>>")
     # Apparently qmake only adds -Werror to CXX and OBJCXX files, not C files. We have to do the
     # same otherwise MinGW builds break when building 3rdparty\md4c\md4c.c (and probably on other
     # platforms too).
-    set(cxx_only_genex "$<COMPILE_LANGUAGE:CXX,OBJCXX>")
-    set(final_condition_genex "$<AND:${warnings_are_errors_enabled_genex},${cxx_only_genex}>")
-    set(flags_generator_expression "$<${final_condition_genex}:${flags}>")
-
-    target_compile_options("${target}" ${target_scope} "${flags_generator_expression}")
+    set(language_args LANGUAGES CXX OBJCXX)
+    # This property is set to True only if we are using Clang and frontend is MSVC
+    # Currently we do not set any error flags
+    set(clang_msvc_frontend_args
+        "$<NOT:$<BOOL:$<TARGET_PROPERTY:Qt6::PlatformCommonInternal,_qt_internal_clang_msvc_frontend>>>"
+    )
+    if(GCC OR CLANG OR WIN32)
+        # Note: the if check is included to mimic the previous selective gating. These need to
+        # balance reducing unnecessary compile flags that are evaluated by the genex, and making
+        # sure the developer has appropriate Werror flags enabled when building a module with
+        # different environment
+        qt_internal_add_compiler_dependent_flags("${target}" ${target_scope}
+            COMPILERS CLANG AppleClang
+                    OPTIONS
+                    -Werror -Wno-error=\#warnings -Wno-error=deprecated-declarations
+            COMPILERS CLANG
+                CONDITIONS VERSION_GREATER_EQUAL 10
+                    OPTIONS
+                    # We do mixed enum arithmetic all over the place:
+                    -Wno-error=deprecated-enum-enum-conversion
+                CONDITIONS VERSION_GREATER_EQUAL 14
+                    OPTIONS
+                    # Clang 14 introduced these two but we are not clean for it.
+                    -Wno-error=deprecated-copy-with-user-provided-copy
+                    -Wno-error=unused-but-set-variable
+            COMMON_CONDITIONS
+                ${common_conditions}
+                ${clang_msvc_frontend_args}
+            ${language_args}
+        )
+        qt_internal_add_compiler_dependent_flags("${target}" ${target_scope}
+            COMPILERS GNU
+                    OPTIONS
+                    -Werror -Wno-error=cpp -Wno-error=deprecated-declarations
+                    # GCC prints this bogus warning, after it has inlined a lot of code
+                    # error: assuming signed overflow does not occur when assuming that (X + c) < X
+                    #        is always false
+                    -Wno-error=strict-overflow
+                CONDITIONS VERSION_GREATER_EQUAL 7
+                    OPTIONS
+                    # GCC 7 includes -Wimplicit-fallthrough in -Wextra, but Qt is not yet free of
+                    # implicit fallthroughs.
+                    -Wno-error=implicit-fallthrough
+                CONDITIONS VERSION_GREATER_EQUAL 9
+                    OPTIONS
+                    # GCC 9 introduced these but we are not clean for it.
+                    -Wno-error=deprecated-copy
+                    -Wno-error=redundant-move
+                    -Wno-error=init-list-lifetime
+                    # GCC 9 introduced -Wformat-overflow in -Wall, but it is buggy:
+                    -Wno-error=format-overflow
+                CONDITIONS VERSION_GREATER_EQUAL 10
+                    OPTIONS
+                    # GCC 10 has a number of bugs in -Wstringop-overflow. Do not make them an error.
+                    # https://gcc.gnu.org/bugzilla/show_bug.cgi?id=92955
+                    # https://gcc.gnu.org/bugzilla/show_bug.cgi?id=94335
+                    # https://gcc.gnu.org/bugzilla/show_bug.cgi?id=101134
+                    -Wno-error=stringop-overflow
+                CONDITIONS VERSION_GREATER_EQUAL 11
+                    OPTIONS
+                    # Ditto
+                    -Wno-error=stringop-overread
+                    # We do mixed enum arithmetic all over the place:
+                    -Wno-error=deprecated-enum-enum-conversion
+                    -Wno-error=deprecated-enum-float-conversion
+                CONDITIONS VERSION_GREATER_EQUAL 11.0 AND VERSION_LESS 11.2
+                    OPTIONS
+                    # GCC 11.1 has a regression in the integrated preprocessor, so disable it as a
+                    # workaround (QTBUG-93360)
+                    # https://gcc.gnu.org/bugzilla/show_bug.cgi?id=100796
+                    # This in turn triggers a fallthrough warning in cborparser.c, so we disable
+                    # this warning.
+                    -no-integrated-cpp -Wno-implicit-fallthrough
+                CONDITIONS VERSION_LESS 15.1
+                    AND $<BOOL:${QT_FEATURE_sanitize_thread}>
+                    AND $<BOOL:${BUILD_WITH_PCH}>
+                    OPTIONS
+                    # GCC < 15 raises a TSAN warning from Qt's own PCHs, despite the warning
+                    # being suppressed (QTBUG-134415)
+                    # https://gcc.gnu.org/bugzilla/show_bug.cgi?id=64117
+                    -Wno-error=tsan
+            COMMON_CONDITIONS
+                ${common_conditions}
+            ${language_args}
+        )
+    endif()
+    # Other options are gated at compile time that are not likely to change between different build
+    # environments of other modules.
+    if(ANDROID)
+        qt_internal_add_compiler_dependent_flags("${target}" ${target_scope}
+            COMPILERS GNU
+                CONDITIONS $<PLATFORM_ID:ANDROID>
+                    OPTIONS
+                    # Work-around for bug https://code.google.com/p/android/issues/detail?id=58135
+                    -Wno-error=literal-suffix
+            COMMON_CONDITIONS
+                ${common_conditions}
+            ${language_args}
+        )
+    endif()
+    if(WIN32)
+        qt_internal_add_compiler_dependent_flags("${target}" ${target_scope}
+            COMPILERS MSVC
+                # Only enable for versions of MSVC that are known to work
+                # 1941 is Visual Studio 2022 version 17.11
+                CONDITIONS VERSION_LESS_EQUAL 17.11
+                    OPTIONS
+                    /WX
+            COMMON_CONDITIONS
+                ${common_conditions}
+            ${language_args}
+        )
+    endif()
 endfunction()
 
 # The function adds a global 'definition' to the platform internal targets and the target
@@ -97,7 +136,7 @@ endfunction()
 #            APP - set the definition for all Qt applications
 #        TODO: Add a tests specific platform target and the definition scope for it.
 function(qt_internal_add_global_definition definition)
-    set(optional_args)
+    set(optional_args "")
     set(single_value_args VALUE)
     set(multi_value_args SCOPE)
     cmake_parse_arguments(arg
@@ -111,6 +150,7 @@ function(qt_internal_add_global_definition definition)
     set(scope_PLUGIN PlatformPluginInternal)
     set(scope_TOOL PlatformToolInternal)
     set(scope_APP PlatformAppInternal)
+    set(scope_EXAMPLE PlatformExampleInternal)
 
     set(undef_property_name "QT_INTERNAL_UNDEF_${definition}")
 
@@ -148,6 +188,8 @@ target_link_libraries(PlatformAppInternal INTERFACE PlatformCommonInternal)
 qt_internal_add_platform_internal_target(PlatformToolInternal)
 target_link_libraries(PlatformToolInternal INTERFACE PlatformAppInternal)
 
+qt_internal_add_platform_internal_target(PlatformExampleInternal)
+
 qt_internal_add_global_definition(QT_NO_JAVA_STYLE_ITERATORS)
 qt_internal_add_global_definition(QT_NO_QASCONST)
 qt_internal_add_global_definition(QT_NO_QEXCHANGE)
@@ -156,12 +198,13 @@ qt_internal_add_global_definition(QT_NO_NARROWING_CONVERSIONS_IN_CONNECT)
 qt_internal_add_global_definition(QT_EXPLICIT_QFILE_CONSTRUCTION_FROM_PATH)
 qt_internal_add_global_definition(QT_USE_QSTRINGBUILDER SCOPE PLUGIN TOOL MODULE)
 qt_internal_add_global_definition(QT_NO_FOREACH)
+qt_internal_add_global_definition(QT_NO_STD_FORMAT_SUPPORT SCOPE PLUGIN TOOL MODULE)
 
-if(WARNINGS_ARE_ERRORS)
-    qt_internal_set_warnings_are_errors_flags(PlatformModuleInternal INTERFACE)
-    qt_internal_set_warnings_are_errors_flags(PlatformPluginInternal INTERFACE)
-    qt_internal_set_warnings_are_errors_flags(PlatformAppInternal INTERFACE)
-endif()
+qt_internal_set_warnings_are_errors_flags(PlatformModuleInternal INTERFACE)
+qt_internal_set_warnings_are_errors_flags(PlatformPluginInternal INTERFACE)
+qt_internal_set_warnings_are_errors_flags(PlatformAppInternal INTERFACE)
+qt_internal_set_warnings_are_errors_flags(PlatformExampleInternal INTERFACE)
+
 if(WIN32)
     # Needed for M_PI define. Same as mkspecs/features/qt_module.prf.
     # It's set for every module being built, but it's not propagated to user apps.
@@ -310,6 +353,16 @@ if (MSVC AND NOT CLANG)
     )
 endif()
 
+set(_qt_internal_clang_msvc_frontend False)
+if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang" AND
+    CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "MSVC")
+    set(_qt_internal_clang_msvc_frontend True)
+endif()
+set_target_properties(PlatformCommonInternal
+    PROPERTIES
+        _qt_internal_clang_msvc_frontend "${_qt_internal_clang_msvc_frontend}"
+)
+
 if(MINGW)
     target_compile_options(PlatformCommonInternal INTERFACE -Wa,-mbig-obj)
 endif()
@@ -354,7 +407,25 @@ if(QT_FEATURE_libstdcpp_assertions)
 endif()
 
 if(QT_FEATURE_libcpp_hardening)
-    target_compile_definitions(PlatformCommonInternal INTERFACE -D_LIBCPP_HARDENING_MODE=$<IF:$<CONFIG:Debug>,_LIBCPP_HARDENING_MODE_EXTENSIVE,_LIBCPP_HARDENING_MODE_FAST>)
+    string(JOIN "" hardening_flags
+        "$<$<NOT:$<STREQUAL:"
+            "$<TARGET_PROPERTY:"
+                "${QT_CMAKE_EXPORT_NAMESPACE}::PlatformCommonInternal,"
+                "_qt_internal_cmake_generator"
+            ">,"
+            "Xcode"
+        ">>:"
+            "_LIBCPP_HARDENING_MODE=$<IF:$<CONFIG:Debug>,"
+                "_LIBCPP_HARDENING_MODE_EXTENSIVE,"
+                "_LIBCPP_HARDENING_MODE_FAST"
+            ">"
+        ">"
+    )
+    set_target_properties(PlatformCommonInternal
+        PROPERTIES
+            _qt_internal_cmake_generator "${CMAKE_GENERATOR}"
+    )
+    target_compile_definitions(PlatformCommonInternal INTERFACE "${hardening_flags}")
 endif()
 
 if(QT_FEATURE_relro_now_linker)
@@ -384,6 +455,80 @@ if(DEFINED QT_EXTRA_FRAMEWORKPATHS AND APPLE)
     qt_internal_platform_link_options(PlatformCommonInternal INTERFACE ${__qt_fw_flags})
     unset(__qt_fw_flags)
 endif()
+
+function(qt_internal_add_exceptions_flags)
+    set(enable_defs "")
+    if(MSVC)
+        set(enable_flag "/EHsc")
+        if((MSVC_VERSION GREATER_EQUAL 1929) AND NOT CLANG)
+            # Use the undocumented compiler flag to make our binary smaller on x64.
+            # https://devblogs.microsoft.com/cppblog/making-cpp-exception-handling-smaller-x64/
+            # NOTE: It seems we'll use this new exception handling model unconditionally without
+            # this hack since some unknown MSVC version.
+            set(enable_flag "${enable_flag}" "/d2FH4")
+        endif()
+    elseif(WASM)
+        # Use native WebAssembly exceptions if enabled
+        if(QT_FEATURE_wasm_exceptions)
+            set(enable_flag "-fwasm-exceptions")
+        else()
+            set(enable_flag "-fexceptions")
+        endif()
+    else()
+        set(enable_flag "-fexceptions")
+    endif()
+
+    set(disable_defs "QT_NO_EXCEPTIONS")
+    if(MSVC)
+        set(disable_flag "/EHs-c-" "/wd4530" "/wd4577")
+    else()
+        set(disable_flag "-fno-exceptions")
+    endif()
+
+    if(QT_FEATURE_exceptions)
+        set(default_flag "${enable_flag}")
+        set(default_defs "${enable_defs}")
+    else()
+        set(default_flag "${disable_flag}")
+        set(default_defs "${disable_defs}")
+    endif()
+
+    string(JOIN "" check_default_genex
+        "$<OR:"
+            "$<STREQUAL:$<TARGET_PROPERTY:_qt_internal_use_exceptions>,DEFAULT>,"
+            "$<STREQUAL:$<TARGET_PROPERTY:_qt_internal_use_exceptions>,>"
+        ">"
+    )
+
+    string(JOIN "" flag_genex
+        "$<IF:"
+            "${check_default_genex},"
+            "${default_flag},"
+            "$<IF:"
+                "$<BOOL:$<TARGET_PROPERTY:_qt_internal_use_exceptions>>,"
+                "${enable_flag},"
+                "${disable_flag}"
+            ">"
+        ">"
+    )
+
+    string(JOIN "" defs_genex
+        "$<IF:"
+            "${check_default_genex},"
+            "${default_defs},"
+            "$<IF:"
+                "$<BOOL:$<TARGET_PROPERTY:_qt_internal_use_exceptions>>,"
+                "${enable_defs},"
+                "${disable_defs}"
+            ">"
+        ">"
+    )
+
+    target_compile_definitions(PlatformCommonInternal INTERFACE ${defs_genex})
+    target_compile_options(PlatformCommonInternal INTERFACE ${flag_genex})
+endfunction()
+
+qt_internal_add_exceptions_flags()
 
 qt_internal_get_active_linker_flags(__qt_internal_active_linker_flags)
 if(__qt_internal_active_linker_flags)

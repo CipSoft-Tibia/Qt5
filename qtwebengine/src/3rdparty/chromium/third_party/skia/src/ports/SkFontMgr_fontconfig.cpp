@@ -16,6 +16,7 @@
 #include "include/core/SkString.h"
 #include "include/core/SkTypeface.h"
 #include "include/core/SkTypes.h"
+#include "include/ports/SkFontMgr_fontconfig.h"
 #include "include/private/base/SkDebug.h"
 #include "include/private/base/SkMutex.h"
 #include "include/private/base/SkTArray.h"
@@ -492,7 +493,8 @@ public:
     }
 
     sk_sp<SkTypeface> onMakeClone(const SkFontArguments& args) const override {
-        std::unique_ptr<SkFontData> data = this->cloneFontData(args);
+        SkFontStyle style = this->fontStyle();
+        std::unique_ptr<SkFontData> data = this->cloneFontData(args, &style);
         if (!data) {
             return nullptr;
         }
@@ -501,7 +503,7 @@ public:
         SkString familyName;
         this->getFamilyName(&familyName);
         return sk_make_sp<SkTypeface_FreeTypeStream>(
-            std::move(data), familyName, this->fontStyle(), this->isFixedPitch());
+            std::move(data), familyName, style, this->isFixedPitch());
     }
 
     std::unique_ptr<SkFontData> onMakeFontData() const override {
@@ -966,6 +968,6 @@ protected:
     }
 };
 
-SK_API sk_sp<SkFontMgr> SkFontMgr_New_FontConfig(FcConfig* fc) {
+sk_sp<SkFontMgr> SkFontMgr_New_FontConfig(FcConfig* fc) {
     return sk_make_sp<SkFontMgr_fontconfig>(fc);
 }

@@ -104,6 +104,7 @@ private slots:
     void unnecessaryMapCreation();
     void resetInvalidate_data();
     void resetInvalidate();
+    void sourceModelInReset();
 
     void testMultipleProxiesWithSelection();
     void mapSelectionFromSource();
@@ -152,6 +153,8 @@ private slots:
     void autoAcceptChildRowsBinding();
     void filterCaseSensitivityBinding();
     void filterRegularExpressionBinding();
+
+    void filterChangeEmitsModelChangedSignals();
 
 protected:
     void buildHierarchy(const QStringList &data, QAbstractItemModel *model);

@@ -2,10 +2,15 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#ifdef UNSAFE_BUFFERS_BUILD
+// TODO(crbug.com/342213636): Remove this and spanify to fix the errors.
+#pragma allow_unsafe_buffers
+#endif
+
 #include "content/renderer/pepper/pepper_media_device_manager.h"
+#include <vector>
 
 #include "base/check.h"
-#include "base/containers/cxx20_erase.h"
 #include "base/feature_list.h"
 #include "base/functional/bind.h"
 #include "base/location.h"
@@ -37,10 +42,10 @@ PP_DeviceType_Dev FromMediaDeviceType(MediaDeviceType type) {
       return PP_DEVICETYPE_DEV_AUDIOCAPTURE;
     case MediaDeviceType::kMediaVideoInput:
       return PP_DEVICETYPE_DEV_VIDEOCAPTURE;
-    case MediaDeviceType::kMediaAudioOuput:
+    case MediaDeviceType::kMediaAudioOutput:
       return PP_DEVICETYPE_DEV_AUDIOOUTPUT;
     default:
-      NOTREACHED();
+      NOTREACHED_IN_MIGRATION();
       return PP_DEVICETYPE_DEV_INVALID;
   }
 }
@@ -52,10 +57,10 @@ MediaDeviceType ToMediaDeviceType(PP_DeviceType_Dev type) {
     case PP_DEVICETYPE_DEV_VIDEOCAPTURE:
       return MediaDeviceType::kMediaVideoInput;
     case PP_DEVICETYPE_DEV_AUDIOOUTPUT:
-      return MediaDeviceType::kMediaAudioOuput;
+      return MediaDeviceType::kMediaAudioOutput;
     default:
-      NOTREACHED();
-      return MediaDeviceType::kMediaAudioOuput;
+      NOTREACHED_IN_MIGRATION();
+      return MediaDeviceType::kMediaAudioOutput;
   }
 }
 
@@ -91,7 +96,7 @@ PepperMediaDeviceManager::GetForRenderFrame(
       PepperMediaDeviceManager::Get(render_frame);
   if (!handler)
     handler = new PepperMediaDeviceManager(render_frame);
-  return handler->AsWeakPtr();
+  return handler->weak_ptr_factory_.GetWeakPtr();
 }
 
 PepperMediaDeviceManager::PepperMediaDeviceManager(RenderFrame* render_frame)
@@ -113,15 +118,17 @@ void PepperMediaDeviceManager::EnumerateDevices(PP_DeviceType_Dev type,
       request_audio_input, request_video_input, request_audio_output,
       false /* request_video_input_capabilities */,
       false /* request_audio_input_capabilities */,
-      base::BindOnce(&PepperMediaDeviceManager::DevicesEnumerated, AsWeakPtr(),
-                     std::move(callback), ToMediaDeviceType(type)));
+      base::BindOnce(&PepperMediaDeviceManager::DevicesEnumerated,
+                     weak_ptr_factory_.GetWeakPtr(), std::move(callback),
+                     ToMediaDeviceType(type)));
 #else
   base::SingleThreadTaskRunner::GetCurrentDefault()->PostTask(
-      FROM_HERE, base::BindOnce(&PepperMediaDeviceManager::DevicesEnumerated,
-                                AsWeakPtr(), std::move(callback), ToMediaDeviceType(type),
-                                std::vector<blink::WebMediaDeviceInfoArray>(),
-                                std::vector<blink::mojom::VideoInputDeviceCapabilitiesPtr>(),
-                                std::vector<blink::mojom::AudioInputDeviceCapabilitiesPtr>()));
+      FROM_HERE,
+      base::BindOnce(&PepperMediaDeviceManager::DevicesEnumerated,
+                     weak_ptr_factory_.GetWeakPtr(), std::move(callback), ToMediaDeviceType(type),
+                     std::vector<blink::WebMediaDeviceInfoArray>(),
+                     std::vector<blink::mojom::VideoInputDeviceCapabilitiesPtr>(),
+                     std::vector<blink::mojom::AudioInputDeviceCapabilitiesPtr>()));
 #endif
 }
 
@@ -157,7 +164,7 @@ void PepperMediaDeviceManager::StopMonitoringDevices(PP_DeviceType_Dev type,
   SubscriptionList& subscriptions =
       device_change_subscriptions_[static_cast<size_t>(
           ToMediaDeviceType(type))];
-  base::EraseIf(subscriptions,
+  std::erase_if(subscriptions,
                 [subscription_id](const Subscription& subscription) {
                   return subscription.first == subscription_id;
                 });
@@ -182,9 +189,10 @@ int PepperMediaDeviceManager::OpenDevice(PP_DeviceType_Dev type,
           kPepperInsecureOriginMessage);
     }
     base::SingleThreadTaskRunner::GetCurrentDefault()->PostTask(
-        FROM_HERE, base::BindOnce(&PepperMediaDeviceManager::OnDeviceOpened,
-                                  AsWeakPtr(), request_id, false, std::string(),
-                                  blink::MediaStreamDevice()));
+        FROM_HERE,
+        base::BindOnce(&PepperMediaDeviceManager::OnDeviceOpened,
+                       weak_ptr_factory_.GetWeakPtr(), request_id, false,
+                       std::string(), blink::MediaStreamDevice()));
     return request_id;
   }
 
@@ -192,12 +200,12 @@ int PepperMediaDeviceManager::OpenDevice(PP_DeviceType_Dev type,
   GetMediaStreamDispatcherHost()->OpenDevice(
       request_id, device_id,
       PepperMediaDeviceManager::FromPepperDeviceType(type),
-      base::BindOnce(&PepperMediaDeviceManager::OnDeviceOpened, AsWeakPtr(),
-                     request_id));
+      base::BindOnce(&PepperMediaDeviceManager::OnDeviceOpened,
+                     weak_ptr_factory_.GetWeakPtr(), request_id));
 #else
   base::SingleThreadTaskRunner::GetCurrentDefault()->PostTask(
       FROM_HERE,
-      base::BindOnce(&PepperMediaDeviceManager::OnDeviceOpened, AsWeakPtr(),
+      base::BindOnce(&PepperMediaDeviceManager::OnDeviceOpened, weak_ptr_factory_.GetWeakPtr(),
                      request_id, false, std::string(), blink::MediaStreamDevice()));
 #endif
 
@@ -234,7 +242,7 @@ base::UnguessableToken PepperMediaDeviceManager::GetSessionID(
       return GetMediaStreamDeviceObserver()->GetVideoSessionId(
           blink::WebString::FromUTF8(label));
     default:
-      NOTREACHED();
+      NOTREACHED_IN_MIGRATION();
       return base::UnguessableToken();
   }
 #else
@@ -253,7 +261,7 @@ blink::mojom::MediaStreamType PepperMediaDeviceManager::FromPepperDeviceType(
     case PP_DEVICETYPE_DEV_VIDEOCAPTURE:
       return blink::mojom::MediaStreamType::DEVICE_VIDEO_CAPTURE;
     default:
-      NOTREACHED();
+      NOTREACHED_IN_MIGRATION();
       return blink::mojom::MediaStreamType::NO_SERVICE;
   }
 }
@@ -309,7 +317,7 @@ blink::mojom::MediaStreamDispatcherHost*
 PepperMediaDeviceManager::GetMediaStreamDispatcherHost() {
   if (!dispatcher_host_) {
     CHECK(render_frame());
-    render_frame()->GetBrowserInterfaceBroker()->GetInterface(
+    render_frame()->GetBrowserInterfaceBroker().GetInterface(
         dispatcher_host_.BindNewPipeAndPassReceiver());
   }
   return dispatcher_host_.get();
@@ -329,7 +337,7 @@ blink::mojom::MediaDevicesDispatcherHost*
 PepperMediaDeviceManager::GetMediaDevicesDispatcher() {
   if (!media_devices_dispatcher_) {
     CHECK(render_frame());
-    render_frame()->GetBrowserInterfaceBroker()->GetInterface(
+    render_frame()->GetBrowserInterfaceBroker().GetInterface(
         media_devices_dispatcher_.BindNewPipeAndPassReceiver());
   }
 

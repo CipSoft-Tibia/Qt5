@@ -12,10 +12,13 @@
 #include "base/scoped_observation.h"
 #include "build/build_config.h"
 #include "ui/base/owned_window_anchor.h"
-#include "ui/base/ui_base_types.h"
-#include "ui/gfx/geometry/rect.h"
 #include "ui/views/widget/widget.h"
 #include "ui/views/widget/widget_observer.h"
+
+namespace gfx {
+class Insets;
+class Rect;
+}  // namespace gfx
 
 namespace views {
 
@@ -47,7 +50,6 @@ class MenuHost : public Widget, public WidgetObserver {
     raw_ptr<View> contents_view = nullptr;
     bool do_capture = false;
     gfx::NativeView native_view_for_gestures;
-    ui::MenuType menu_type = ui::MenuType::kRootContextMenu;
     // Window that is stacked below a new menu window (can be different from the
     // |parent|).
     raw_ptr<Widget> context = nullptr;
@@ -101,6 +103,7 @@ class MenuHost : public Widget, public WidgetObserver {
   void OnDragWillStart() override;
   void OnDragComplete() override;
   Widget* GetPrimaryWindowWidget() override;
+  gfx::Insets GetCustomInsetsInDIP() const override;
 
   // WidgetObserver:
   void OnWidgetDestroying(Widget* widget) override;

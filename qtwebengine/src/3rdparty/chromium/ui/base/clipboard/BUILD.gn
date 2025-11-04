@@ -54,9 +54,9 @@ jumbo_component("clipboard_types") {
     frameworks += [ "Foundation.framework" ]
   }
   if (is_mac && !is_qtwebengine) {
-    frameworks += [ "AppKit.framework" ]
-    weak_frameworks = [
-      "UniformTypeIdentifiers.framework",  # macOS 11
+    frameworks += [
+      "AppKit.framework",
+      "UniformTypeIdentifiers.framework",
     ]
   }
 }
@@ -91,7 +91,6 @@ jumbo_component("clipboard") {
   sources = [
     "clipboard.cc",
     "clipboard.h",
-    "clipboard_content_type.h",
     "clipboard_metrics.cc",
     "clipboard_metrics.h",
     "clipboard_monitor.cc",
@@ -180,7 +179,7 @@ jumbo_component("clipboard") {
   }
 
   if (is_android) {
-    deps += [ "//ui/base:ui_base_jni_headers" ]
+    deps += [ "//ui/base:clipboard_jni_headers" ]
   }
 
   if (is_mac && !is_qtwebengine) {
@@ -188,9 +187,7 @@ jumbo_component("clipboard") {
     frameworks = [
       "AppKit.framework",
       "CoreFoundation.framework",
-    ]
-    weak_frameworks = [
-      "UniformTypeIdentifiers.framework",  # macOS 11
+      "UniformTypeIdentifiers.framework",
     ]
   }
   if (is_qtwebengine && is_mac) {

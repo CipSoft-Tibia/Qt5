@@ -11,8 +11,8 @@
 #include "base/ranges/algorithm.h"
 #include "base/strings/stringprintf.h"
 #include "components/browsing_data/core/browsing_data_utils.h"
-#include "components/browsing_data/core/features.h"
 #include "components/browsing_data/core/pref_names.h"
+#include "components/sync/base/user_selectable_type.h"
 #include "components/sync/service/sync_prefs.h"
 
 namespace browsing_data {
@@ -57,14 +57,15 @@ void AppendSyncTypesIfRequired(const base::Value& browsing_data_type,
             {syncer::UserSelectableType::kAutofill,
              syncer::UserSelectableType::kPayments}},
            {policy_data_types::kDownloadHistoryName, {}},
-           {policy_data_types::kCookiesAndOtherSiteDataName, {}},
+           {policy_data_types::kCookiesAndOtherSiteDataName,
+            {syncer::UserSelectableType::kCookies}},
            {policy_data_types::kCachedImagesAndFilesName, {}},
            {policy_data_types::kHostedAppDataName, {}}});
 
   // When a new sync type or browsing data type is introduced in the code,
   // kDataToSyncTypesMap should be updated if needed to ensure that browsing
   // data that can be cleared by policy is not already synced across devices.
-  static_assert(static_cast<int>(syncer::UserSelectableType::kLastType) == 11,
+  static_assert(static_cast<int>(syncer::UserSelectableType::kLastType) == 14,
                 "It looks like a sync type was added or removed. Please update "
                 "`kDataToSyncTypesMap` value maps above if it affects any of "
                 "the browsing data types.");
@@ -76,7 +77,7 @@ void AppendSyncTypesIfRequired(const base::Value& browsing_data_type,
       "added or removed. Please update `kDataToSyncTypesMap` above to include "
       "the new type and the sync types it maps to if this data is synced.");
 
-  const auto* it = kDataToSyncTypesMap.find(browsing_data_type.GetString());
+  const auto it = kDataToSyncTypesMap.find(browsing_data_type.GetString());
   if (it == kDataToSyncTypesMap.end()) {
     return;
   }
@@ -120,14 +121,14 @@ std::string DisableSyncTypes(const syncer::UserSelectableTypeSet& types_set,
   for (const syncer::UserSelectableType type : types_set) {
     syncer::SyncPrefs::SetTypeDisabledByPolicy(prefs, type);
   }
-  if (types_set.Size() > 0) {
+  if (types_set.size() > 0) {
     return base::StringPrintf(kDisabledSyncTypesLogFormat, policy_name.c_str(),
                               UserSelectableTypeSetToString(types_set).c_str());
   }
   return std::string();
 }
 
-absl::optional<PolicyDataType> NameToPolicyDataType(
+std::optional<PolicyDataType> NameToPolicyDataType(
     const std::string& type_name) {
   static constexpr auto kNameToDataType =
       base::MakeFixedFlatMap<std::string_view, PolicyDataType>({
@@ -147,9 +148,9 @@ absl::optional<PolicyDataType> NameToPolicyDataType(
            PolicyDataType::kCachedImagesAndFiles},
       });
 
-  const auto* it = kNameToDataType.find(type_name);
+  const auto it = kNameToDataType.find(type_name);
   if (it == kNameToDataType.end()) {
-    return absl::nullopt;
+    return std::nullopt;
   }
   return it->second;
 }

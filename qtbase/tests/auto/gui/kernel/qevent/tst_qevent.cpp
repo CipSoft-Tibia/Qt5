@@ -53,10 +53,22 @@
 #define X_QShortcutEvent(X)
 #endif
 
+#if QT_CONFIG(draganddrop)
+#define X_QDropEvent(X) X(QDropEvent, ({}, {}, {}, {}, {}))
+#define X_QDragMoveEvent(X) X(QDragMoveEvent, ({}, {}, {}, {}, {}))
+#define X_QDragEnterEvent(X) X(QDragEnterEvent, ({}, {}, {}, {}, {}))
+#define X_QDragLeaveEvent(X) X(QDragLeaveEvent, ())
+#else
+#define X_QDropEvent(X)
+#define X_QDragMoveEvent(X)
+#define X_QDragEnterEvent(X)
+#define X_QDragLeaveEvent(X)
+#endif
+
 #define FOR_EACH_CORE_EVENT(X) \
     /* qcoreevent.h */ \
     X(QEvent, (QEvent::None)) \
-    X(QTimerEvent, (42)) \
+    X(QTimerEvent, (Qt::TimerId{42})) \
     X(QChildEvent, (QEvent::ChildAdded, nullptr)) \
     X(QDynamicPropertyChangeEvent, ("size")) \
     /* qfutureinterface_p.h */ \
@@ -89,10 +101,10 @@
     X(QContextMenuEvent, (QContextMenuEvent::Reason::Keyboard, {}, {})) \
     X(QInputMethodEvent, ()) \
     X(QInputMethodQueryEvent, ({})) \
-    X(QDropEvent, ({}, {}, {}, {}, {})) \
-    X(QDragMoveEvent, ({}, {}, {}, {}, {})) \
-    X(QDragEnterEvent, ({}, {}, {}, {}, {})) \
-    X(QDragLeaveEvent, ()) \
+    X_QDropEvent(X) \
+    X_QDragMoveEvent(X) \
+    X_QDragEnterEvent(X) \
+    X_QDragLeaveEvent(X) \
     X(QHelpEvent, ({}, {}, {})) \
     X(QStatusTipEvent, ({})) \
     X_QWhatsThisClickedEvent(X) \

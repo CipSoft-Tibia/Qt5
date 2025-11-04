@@ -13,9 +13,6 @@
 
 #ifdef Q_OS_FREEBSD
 #include <dev/evdev/input.h>
-#elif defined(Q_OS_VXWORKS)
-#include <evdevLib.h>
-#define ABS_X           EV_DEV_PTR_ABS_X
 #else
 #include <linux/input.h>
 #endif
@@ -43,18 +40,16 @@
 #define LONG_BITS (sizeof(long) * 8 )
 #define LONG_FIELD_SIZE(bits) ((bits / LONG_BITS) + 1)
 
-#if !defined(Q_OS_VXWORKS)
 static bool testBit(long bit, const long *field)
 {
     return (field[bit / LONG_BITS] >> bit % LONG_BITS) & 1;
 }
-#endif
 
 QT_BEGIN_NAMESPACE
 
 using namespace Qt::StringLiterals;
 
-Q_LOGGING_CATEGORY(lcDD, "qt.qpa.input")
+Q_STATIC_LOGGING_CATEGORY(lcDD, "qt.qpa.input")
 
 QDeviceDiscovery *QDeviceDiscovery::create(QDeviceTypes types, QObject *parent)
 {
@@ -71,64 +66,24 @@ QStringList QDeviceDiscoveryStatic::scanConnectedDevices()
 {
     QStringList devices;
 
-#if defined(Q_OS_VXWORKS)
-
-    QStringList inputDevices;
-    UINT32 devCount = 0;
-    static const char* device = "/input/event";
-    int fd = QT_OPEN(device, O_RDONLY | O_NDELAY, 0);
-    if (fd >= 0) {
-        if (ERROR == ioctl(fd, EV_DEV_IO_GET_DEV_COUNT, (char *)&devCount)) {
-            qWarning() << "DeviceDiscovery cannot open device" << device;
-            return devices;
-        }
-        for (UINT32 i=0; i<devCount; i++)
-            inputDevices << QString::fromLatin1("/input/event%1").arg(i);
-
-    } else {
-        for (int i=0; i<=EV_DEV_DEVICE_MAX; i++)
-            inputDevices << QString::fromLatin1("/input/event%1").arg(i);
-    }
-    QT_CLOSE(fd);
-
-    // check for input devices
-    if (m_types & Device_InputMask) {
-        for (const auto& deviceFile : inputDevices) {
-            if (checkDeviceType(deviceFile))
-                devices << deviceFile;
-        }
-    }
-
-#else
-
-    QDir dir;
-    dir.setFilter(QDir::System);
-
-    // check for input devices
-    if (m_types & Device_InputMask) {
-        dir.setPath(QString::fromLatin1(QT_EVDEV_DEVICE_PATH));
-        const auto deviceFiles = dir.entryList();
-        for (const QString &deviceFile : deviceFiles) {
-            QString absoluteFilePath = dir.absolutePath() + u'/' + deviceFile;
+    auto addDevices = [this, &devices](const char *path) {
+        for (const auto &entry : QDirListing(QString::fromLatin1(path))) {
+            QString absoluteFilePath = entry.absoluteFilePath();
             if (checkDeviceType(absoluteFilePath))
-                devices << absoluteFilePath;
+                devices.emplace_back(std::move(absoluteFilePath));
         }
-    }
+    };
+
+    // check for input devices
+    if (m_types & Device_InputMask)
+        addDevices(QT_EVDEV_DEVICE_PATH);
 
     // check for drm devices
-    if (m_types & Device_VideoMask) {
-        dir.setPath(QString::fromLatin1(QT_DRM_DEVICE_PATH));
-        const auto deviceFiles = dir.entryList();
-        for (const QString &deviceFile : deviceFiles) {
-            QString absoluteFilePath = dir.absolutePath() + u'/' + deviceFile;
-            if (checkDeviceType(absoluteFilePath))
-                devices << absoluteFilePath;
-        }
-    }
+    if (m_types & Device_VideoMask)
+        addDevices(QT_DRM_DEVICE_PATH);
 
     qCDebug(lcDD) << "Found matching devices" << devices;
 
-#endif // Q_OS_VXWORKS
     return devices;
 }
 
@@ -136,15 +91,7 @@ bool QDeviceDiscoveryStatic::checkDeviceType(const QString &device)
 {
     int fd = QT_OPEN(device.toLocal8Bit().constData(), O_RDONLY | O_NDELAY, 0);
     if (Q_UNLIKELY(fd == -1)) {
-#if defined(Q_OS_VXWORKS)
-        // This is changed to debug type message due the nature of scanning
-        // and adding new device for VxWorks by getting dev count from
-        // dev /input/event0 which might be already in use
-        qCDebug(lcDD)
-#else
-        qWarning()
-#endif
-        << "Device discovery cannot open device" << device;
+        qWarning() << "Device discovery cannot open device" << device;
         return false;
     }
 
@@ -155,27 +102,6 @@ bool QDeviceDiscoveryStatic::checkDeviceType(const QString &device)
         return true;
     }
 
-#if defined(Q_OS_VXWORKS)
-    UINT32 devCap = 0;
-    if (ERROR != ioctl(fd, EV_DEV_IO_GET_CAP, (char *)&devCap)) {
-        if ((m_types & Device_Keyboard) && (devCap & EV_DEV_KEY)) {
-            if (!(devCap & EV_DEV_REL) && !(devCap & EV_DEV_ABS)) {
-                qCDebug(lcDD) << "DeviceDiscovery found keyboard at" << device;
-                QT_CLOSE(fd);
-                return true;
-            }
-        }
-
-        if (m_types & Device_Mouse) {
-            if ((devCap & EV_DEV_REL) && (devCap & EV_DEV_KEY)) {
-                qCDebug(lcDD) << "DeviceDiscovery found mouse at" << device;
-                QT_CLOSE(fd);
-                return true;
-            }
-        }
-    }
-    QT_CLOSE(fd);
-#else
     long bitsAbs[LONG_FIELD_SIZE(ABS_CNT)];
     long bitsKey[LONG_FIELD_SIZE(KEY_CNT)];
     long bitsRel[LONG_FIELD_SIZE(REL_CNT)];
@@ -228,7 +154,6 @@ bool QDeviceDiscoveryStatic::checkDeviceType(const QString &device)
             return true;
         }
     }
-#endif
 
     return false;
 }

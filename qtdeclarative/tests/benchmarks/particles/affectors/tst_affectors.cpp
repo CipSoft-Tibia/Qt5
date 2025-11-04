@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <qtest.h>
-#include <QtTest/QtTest>
+#include <QtTest/QTest>
 #include "../../../auto/particles/shared/particlestestsshared.h"
 #include <private/qquickparticlesystem_p.h>
 

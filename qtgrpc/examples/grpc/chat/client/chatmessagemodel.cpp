@@ -23,7 +23,7 @@ QVariant ChatMessageModel::data(const QModelIndex &index, int role) const
     const auto msg = m_chatMessages[index.row()];
     switch (static_cast<Qt::ItemDataRole>(role)) {
     case Qt::DisplayRole:
-        return QVariant::fromValue(msg);
+        return msg;
     case Qt::WhatsThisRole:
         switch (msg.contentField()) {
         case chat::ChatMessage::ContentFields::Text:

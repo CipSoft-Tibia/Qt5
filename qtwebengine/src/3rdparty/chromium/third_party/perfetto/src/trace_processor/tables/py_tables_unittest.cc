@@ -14,15 +14,19 @@
  * limitations under the License.
  */
 
+#include <cstdint>
+#include <utility>
+#include <vector>
+
+#include "src/trace_processor/containers/string_pool.h"
 #include "src/trace_processor/db/column.h"
+#include "src/trace_processor/db/column/types.h"
 #include "src/trace_processor/db/column_storage.h"
 #include "src/trace_processor/tables/py_tables_unittest_py.h"
 
 #include "test/gtest_and_gmock.h"
 
-namespace perfetto {
-namespace trace_processor {
-namespace tables {
+namespace perfetto::trace_processor::tables {
 
 TestEventTable::~TestEventTable() = default;
 TestEventChildTable::~TestEventChildTable() = default;
@@ -70,9 +74,9 @@ TEST_F(PyTablesUnittest, ArgsTableProprties) {
 TEST_F(PyTablesUnittest, InsertEvent) {
   event_.Insert(TestEventTable::Row(100, 0));
 
-  ASSERT_EQ(event_.type().GetString(0).ToStdString(), "event");
-  ASSERT_EQ(event_.ts()[0], 100);
-  ASSERT_EQ(event_.arg_set_id()[0], 0u);
+  ASSERT_EQ(pool_.Get(event_[0].type()).ToStdString(), "event");
+  ASSERT_EQ(event_[0].ts(), 100);
+  ASSERT_EQ(event_[0].arg_set_id(), 0u);
 }
 
 TEST_F(PyTablesUnittest, InsertEventSpecifyCols) {
@@ -81,16 +85,16 @@ TEST_F(PyTablesUnittest, InsertEventSpecifyCols) {
   row.arg_set_id = 0;
   event_.Insert(row);
 
-  ASSERT_EQ(event_.type().GetString(0).ToStdString(), "event");
-  ASSERT_EQ(event_.ts()[0], 100);
-  ASSERT_EQ(event_.arg_set_id()[0], 0u);
+  ASSERT_EQ(pool_.Get(event_[0].type()).ToStdString(), "event");
+  ASSERT_EQ(event_[0].ts(), 100);
+  ASSERT_EQ(event_[0].arg_set_id(), 0u);
 }
 
 TEST_F(PyTablesUnittest, MutableColumn) {
   event_.Insert(TestEventTable::Row(100, 0));
 
-  ASSERT_EQ((*event_.mutable_ts())[0], 100);
-  ASSERT_EQ((*event_.mutable_arg_set_id())[0], 0u);
+  ASSERT_EQ(event_[0].ts(), 100);
+  ASSERT_EQ(event_[0].arg_set_id(), 0u);
 }
 
 TEST_F(PyTablesUnittest, ShrinkToFit) {
@@ -139,32 +143,32 @@ TEST_F(PyTablesUnittest, ParentAndChildInsert) {
   slice_.Insert(TestSliceTable::Row(200, 3, 20));
 
   ASSERT_EQ(event_.row_count(), 4u);
-  ASSERT_EQ(event_.id()[0], TestEventTable::Id{0});
-  ASSERT_EQ(event_.type().GetString(0), "event");
-  ASSERT_EQ(event_.ts()[0], 50);
+  ASSERT_EQ(event_[0].id(), TestEventTable::Id{0});
+  ASSERT_EQ(pool_.Get(event_[0].type()), "event");
+  ASSERT_EQ(event_[0].ts(), 50);
 
-  ASSERT_EQ(event_.id()[1], TestEventTable::Id{1});
-  ASSERT_EQ(event_.type().GetString(1), "slice");
-  ASSERT_EQ(event_.ts()[1], 100);
+  ASSERT_EQ(event_[1].id(), TestEventTable::Id{1});
+  ASSERT_EQ(pool_.Get(event_[1].type()), "slice");
+  ASSERT_EQ(event_[1].ts(), 100);
 
-  ASSERT_EQ(event_.id()[2], TestEventTable::Id{2});
-  ASSERT_EQ(event_.type().GetString(2), "event");
-  ASSERT_EQ(event_.ts()[2], 150);
+  ASSERT_EQ(event_[2].id(), TestEventTable::Id{2});
+  ASSERT_EQ(pool_.Get(event_[2].type()), "event");
+  ASSERT_EQ(event_[2].ts(), 150);
 
-  ASSERT_EQ(event_.id()[3], TestEventTable::Id{3});
-  ASSERT_EQ(event_.type().GetString(3), "slice");
-  ASSERT_EQ(event_.ts()[3], 200);
+  ASSERT_EQ(event_[3].id(), TestEventTable::Id{3});
+  ASSERT_EQ(pool_.Get(event_[3].type()), "slice");
+  ASSERT_EQ(event_[3].ts(), 200);
 
   ASSERT_EQ(slice_.row_count(), 2u);
-  ASSERT_EQ(slice_.id()[0], TestEventTable::Id{1});
-  ASSERT_EQ(slice_.type().GetString(0), "slice");
-  ASSERT_EQ(slice_.ts()[0], 100);
-  ASSERT_EQ(slice_.dur()[0], 10);
+  ASSERT_EQ(slice_[0].id(), TestEventTable::Id{1});
+  ASSERT_EQ(pool_.Get(slice_[0].type()), "slice");
+  ASSERT_EQ(slice_[0].ts(), 100);
+  ASSERT_EQ(slice_[0].dur(), 10);
 
-  ASSERT_EQ(slice_.id()[1], TestEventTable::Id{3});
-  ASSERT_EQ(slice_.type().GetString(1), "slice");
-  ASSERT_EQ(slice_.ts()[1], 200);
-  ASSERT_EQ(slice_.dur()[1], 20);
+  ASSERT_EQ(slice_[1].id(), TestEventTable::Id{3});
+  ASSERT_EQ(pool_.Get(slice_[1].type()), "slice");
+  ASSERT_EQ(slice_[1].ts(), 200);
+  ASSERT_EQ(slice_[1].dur(), 20);
 }
 
 TEST_F(PyTablesUnittest, Extend) {
@@ -179,24 +183,12 @@ TEST_F(PyTablesUnittest, Extend) {
 
   auto slice_ext = TestSliceTable::ExtendParent(event_, std::move(dur));
   ASSERT_EQ(slice_ext->row_count(), 3u);
-  ASSERT_EQ(
-      slice_ext->columns()[TestSliceTable::ColumnIndex::ts].Get(0).AsLong(),
-      50);
-  ASSERT_EQ(
-      slice_ext->columns()[TestSliceTable::ColumnIndex::dur].Get(0).AsLong(),
-      512);
-  ASSERT_EQ(
-      slice_ext->columns()[TestSliceTable::ColumnIndex::ts].Get(1).AsLong(),
-      100);
-  ASSERT_EQ(
-      slice_ext->columns()[TestSliceTable::ColumnIndex::dur].Get(1).AsLong(),
-      1024);
-  ASSERT_EQ(
-      slice_ext->columns()[TestSliceTable::ColumnIndex::ts].Get(2).AsLong(),
-      150);
-  ASSERT_EQ(
-      slice_ext->columns()[TestSliceTable::ColumnIndex::dur].Get(2).AsLong(),
-      2048);
+  ASSERT_EQ((*slice_ext)[0].ts(), 50);
+  ASSERT_EQ((*slice_ext)[0].dur(), 512);
+  ASSERT_EQ((*slice_ext)[1].ts(), 100);
+  ASSERT_EQ((*slice_ext)[1].dur(), 1024);
+  ASSERT_EQ((*slice_ext)[2].ts(), 150);
+  ASSERT_EQ((*slice_ext)[2].dur(), 2048);
 }
 
 TEST_F(PyTablesUnittest, SelectAndExtend) {
@@ -205,19 +197,15 @@ TEST_F(PyTablesUnittest, SelectAndExtend) {
   event_.Insert(TestEventTable::Row(150, 2));
 
   std::vector<TestEventTable::RowNumber> rows;
-  rows.emplace_back(TestEventTable::RowNumber(1));
+  rows.emplace_back(1);
   ColumnStorage<int64_t> dur;
   dur.Append(1024);
 
   auto slice_ext = TestSliceTable::SelectAndExtendParent(
       event_, std::move(rows), std::move(dur));
   ASSERT_EQ(slice_ext->row_count(), 1u);
-  ASSERT_EQ(
-      slice_ext->columns()[TestSliceTable::ColumnIndex::ts].Get(0).AsLong(),
-      100);
-  ASSERT_EQ(
-      slice_ext->columns()[TestSliceTable::ColumnIndex::dur].Get(0).AsLong(),
-      1024);
+  ASSERT_EQ((*slice_ext)[0].ts(), 100);
+  ASSERT_EQ((*slice_ext)[0].dur(), 1024);
 }
 
 TEST_F(PyTablesUnittest, SetIdColumns) {
@@ -240,78 +228,65 @@ TEST_F(PyTablesUnittest, SetIdColumns) {
   // Verify that not-present ids are not returned.
   {
     static constexpr uint32_t kFilterArgSetId = 1;
-    auto res = table.Filter({table.arg_set_id().eq(kFilterArgSetId)});
-    ASSERT_EQ(res.row_count(), 0u);
+    Query q;
+    q.constraints = {table.arg_set_id().eq(kFilterArgSetId)};
+    auto res = table.FilterToIterator(q);
+    ASSERT_TRUE(!res);
   }
   {
     static constexpr uint32_t kFilterArgSetId = 9;
-    auto res = table.Filter({table.arg_set_id().eq(kFilterArgSetId)});
-    ASSERT_EQ(res.row_count(), 0u);
+    Query q;
+    q.constraints = {table.arg_set_id().eq(kFilterArgSetId)};
+    auto it = table.FilterToIterator(q);
+    ASSERT_TRUE(!it);
   }
-
-  // Verify that kSetId flag is correctly removed after filtering/sorting.
-  {
-    static constexpr uint32_t kFilterArgSetId = 3;
-    auto res = table.Filter({table.arg_set_id().eq(kFilterArgSetId)});
-    ASSERT_EQ(res.row_count(), 1u);
-    ASSERT_FALSE(res.GetColumnByName("arg_set_id")->IsSetId());
-  }
-  {
-    auto res = table.Sort({table.type().descending()});
-    ASSERT_FALSE(res.GetColumnByName("arg_set_id")->IsSetId());
-  }
-
-  uint32_t arg_set_id_col_idx =
-      static_cast<uint32_t>(TestArgsTable::ColumnIndex::arg_set_id);
 
   // Verify that filtering equality for real arg set ids works as expected.
   {
     static constexpr uint32_t kFilterArgSetId = 4;
-    auto res = table.Filter({table.arg_set_id().eq(kFilterArgSetId)});
-    ASSERT_EQ(res.row_count(), 4u);
-    for (auto it = res.IterateRows(); it; it.Next()) {
-      uint32_t arg_set_id =
-          static_cast<uint32_t>(it.Get(arg_set_id_col_idx).AsLong());
-      ASSERT_EQ(arg_set_id, kFilterArgSetId);
+    Query q;
+    q.constraints = {table.arg_set_id().eq(kFilterArgSetId)};
+    uint32_t cnt = 0;
+    for (auto it = table.FilterToIterator(q); it; ++it, ++cnt) {
+      ASSERT_EQ(it.arg_set_id(), kFilterArgSetId);
     }
+    ASSERT_EQ(cnt, 4u);
   }
   {
     static constexpr uint32_t kFilterArgSetId = 0;
-    auto res = table.Filter({table.arg_set_id().eq(kFilterArgSetId)});
-    ASSERT_EQ(res.row_count(), 2u);
-    for (auto it = res.IterateRows(); it; it.Next()) {
-      uint32_t arg_set_id =
-          static_cast<uint32_t>(it.Get(arg_set_id_col_idx).AsLong());
-      ASSERT_EQ(arg_set_id, kFilterArgSetId);
+    Query q;
+    q.constraints = {table.arg_set_id().eq(kFilterArgSetId)};
+    uint32_t cnt = 0;
+    for (auto it = table.FilterToIterator(q); it; ++it, ++cnt) {
+      ASSERT_EQ(it.arg_set_id(), kFilterArgSetId);
     }
+    ASSERT_EQ(cnt, 2u);
   }
   {
     static constexpr uint32_t kFilterArgSetId = 8;
-    auto res = table.Filter({table.arg_set_id().eq(kFilterArgSetId)});
-    ASSERT_EQ(res.row_count(), 1u);
-    for (auto it = res.IterateRows(); it; it.Next()) {
-      uint32_t arg_set_id =
-          static_cast<uint32_t>(it.Get(arg_set_id_col_idx).AsLong());
-      ASSERT_EQ(arg_set_id, kFilterArgSetId);
+    Query q;
+    q.constraints = {table.arg_set_id().eq(kFilterArgSetId)};
+    uint32_t cnt = 0;
+    for (auto it = table.FilterToIterator(q); it; ++it, ++cnt) {
+      ASSERT_EQ(it.arg_set_id(), kFilterArgSetId);
     }
+    ASSERT_EQ(cnt, 1u);
   }
 
   // Verify that filtering equality for arg set ids after filtering another
   // column works.
   {
     static constexpr uint32_t kFilterArgSetId = 4;
-    auto res = table.Filter(
-        {table.int_value().eq(200), table.arg_set_id().eq(kFilterArgSetId)});
-    ASSERT_EQ(res.row_count(), 2u);
-    for (auto it = res.IterateRows(); it; it.Next()) {
-      uint32_t arg_set_id =
-          static_cast<uint32_t>(it.Get(arg_set_id_col_idx).AsLong());
-      ASSERT_EQ(arg_set_id, kFilterArgSetId);
+    Query q;
+    q.constraints = {table.int_value().eq(200),
+                     table.arg_set_id().eq(kFilterArgSetId)};
+    uint32_t cnt = 0;
+    for (auto it = table.FilterToIterator(q); it; ++it, ++cnt) {
+      ASSERT_EQ(it.arg_set_id(), kFilterArgSetId);
     }
+    ASSERT_EQ(cnt, 2u);
   }
 }
 
 }  // namespace
-}  // namespace tables
-}  // namespace trace_processor
-}  // namespace perfetto
+}  // namespace perfetto::trace_processor::tables

@@ -19,7 +19,6 @@ import "components/chromeos_camera/common/mjpeg_decode_accelerator.mojom";
 [EnableIf=is_chromeos_ash]
 import "components/chromeos_camera/common/jpeg_encode_accelerator.mojom";
 import "gpu/ipc/common/device_perf_info.mojom";
-import "gpu/ipc/common/dx_diag_node.mojom";
 import "gpu/ipc/common/gpu_disk_cache_type.mojom";
 import "gpu/ipc/common/gpu_feature_info.mojom";
 import "gpu/ipc/common/gpu_info.mojom";
@@ -41,9 +40,9 @@ import "mojo/public/mojom/base/shared_memory.mojom";
 import "mojo/public/mojom/base/unguessable_token.mojom";
 [EnableIf=is_win]
 import "ui/gfx/mojom/dxgi_info.mojom";
-[EnableIfNot=is_chromeos]
-import "components/ml/webnn/features.mojom";
-[EnableIfNot=is_chromeos]
+[EnableIf=use_ml]
+import "services/webnn/public/mojom/features.mojom";
+[EnableIf=use_ml]
 import "services/webnn/public/mojom/webnn_context_provider.mojom";
 
 interface GpuService {
@@ -141,7 +140,7 @@ interface GpuService {
 
   // Binds the pending receiver used to access the hardware accelerated OS
   // machine learning APIs.
-  [EnableIfNot=is_chromeos,
+  [EnableIf=use_ml,
    RuntimeFeature=webnn.mojom.features.kWebMachineLearningNeuralNetwork]
   BindWebNNContextProvider(
       pending_receiver<webnn.mojom.WebNNContextProvider>? receiver, int32
@@ -189,7 +188,7 @@ interface GpuService {
   // host since multiple clients may be using the same physical disk path. Note
   // that this method is used only from a trusted process.
   LoadedBlob(gpu.mojom.GpuDiskCacheHandle cache_handle,
-             string key,
+             mojo_base.mojom.ByteString key,
              mojo_base.mojom.ByteString data);
 
   // Tells GPU to wake up the GPU because we're about to draw.

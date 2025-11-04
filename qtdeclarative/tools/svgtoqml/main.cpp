@@ -115,7 +115,7 @@ int main(int argc, char *argv[])
     generator.setAssetFileDirectory(assetOutputDirectory);
     generator.setAssetFilePrefix(assetOutputPrefix);
     generator.setRetainFilePaths(keepPaths);
-    bool ok = generator.generate();
+    bool ok = generator.generate() && generator.save();
 
 #ifdef ENABLE_GUI
     if (ok && (parser.isSet(guiOption) || outFileName.isEmpty())) {

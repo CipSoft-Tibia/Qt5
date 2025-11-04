@@ -3,22 +3,21 @@
 
 #include "redditmodel.h"
 
-#include <QtNetworkAuth/qoauthhttpserverreplyhandler.h>
+#include <QJsonArray>
 
-#include <QtGui/qdesktopservices.h>
+#include <QDesktopServices>
 
-#include <QtNetwork/qrestaccessmanager.h>
-#include <QtNetwork/qrestreply.h>
+#include <QNetworkAccessManager>
+#include <QRestAccessManager>
+#include <QRestReply>
 
-#include <QtCore/qjsonarray.h>
-#include <QtCore/qjsondocument.h>
+#include <QOAuthHttpServerReplyHandler>
 
 using namespace Qt::StringLiterals;
 
 static constexpr auto hotUrl = "https://oauth.reddit.com/hot"_L1;
 static constexpr auto authorizationUrl = "https://www.reddit.com/api/v1/authorize"_L1;
 static constexpr auto accessTokenUrl = "https://www.reddit.com/api/v1/access_token"_L1;
-static constexpr auto scope = "identity read"_L1;
 
 RedditModel::RedditModel(QObject *parent) : QAbstractTableModel(parent) {}
 
@@ -33,8 +32,8 @@ RedditModel::RedditModel(const QString &clientId, QObject *parent) :
     auto replyHandler = new QOAuthHttpServerReplyHandler(QHostAddress::Any, 1337, this);
     oauth2.setReplyHandler(replyHandler);
     oauth2.setAuthorizationUrl(QUrl(authorizationUrl));
-    oauth2.setAccessTokenUrl(QUrl(accessTokenUrl));
-    oauth2.setScope(scope);
+    oauth2.setTokenUrl(QUrl(accessTokenUrl));
+    oauth2.setRequestedScopeTokens({"identity", "read"});
     oauth2.setClientIdentifier(clientId);
 
     QObject::connect(&oauth2, &QAbstractOAuth::granted, this, [this] {

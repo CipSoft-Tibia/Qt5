@@ -1,5 +1,6 @@
 // Copyright (C) 2017 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:data-parser
 
 #ifndef QMODBUSRTUSERIALCLIENT_P_H
 #define QMODBUSRTUSERIALCLIENT_P_H
@@ -132,7 +133,8 @@ public:
             qCWarning(QT_MODBUS) << "(RTU client) Discarding response with wrong CRC, received:"
                 << adu.checksum<quint16>() << ", calculated CRC:"
                 << QModbusSerialAdu::calculateCRC(adu.data(), adu.size());
-            m_queue.first().reply->addIntermediateError(QModbusClient::ResponseCrcError);
+            if (!current.reply.isNull())
+                current.reply->addIntermediateError(QModbusClient::ResponseCrcError);
             return;
         }
 
@@ -140,7 +142,8 @@ public:
         if (!canMatchRequestAndResponse(response, adu.serverAddress())) {
             qCWarning(QT_MODBUS) << "(RTU client) Cannot match response with open request, "
                 "ignoring";
-            m_queue.first().reply->addIntermediateError(QModbusClient::ResponseRequestMismatch);
+            if (!current.reply.isNull())
+                current.reply->addIntermediateError(QModbusClient::ResponseRequestMismatch);
             return;
         }
 

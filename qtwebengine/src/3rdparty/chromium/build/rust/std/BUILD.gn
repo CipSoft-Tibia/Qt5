@@ -2,41 +2,41 @@
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
-# This file provides the ability for our C++ toolchain to successfully
-# link binaries containing arbitrary Rust code.
+# This file provides the Rust standard library for GN targets.
 #
-# By "arbitrary Rust code" I mean .rlib archives full of Rust code, which
-# is actually a static archive.
+# For Rust targets, it either copies a prebuilt stdlib or builds a stdlib, and
+# then points rustc to it with `--sysroot`.
 #
-# Those static libraries don't link as-is into a final executable because
-# they're designed for downstream processing by further invocations of rustc
-# which link into a final binary. That final invocation of rustc knows how
-# to do two things:
-# * Find the Rust standard library.
-# * Remap some generic allocator symbols to the specific allocator symbols
-#   in use.
-# This file takes care of equivalent tasks for our C++ toolchains.
-# C++ targets should depend upon either local_stdlib_for_clang or
-# prebuilt_stdlib_for_clang to ensure that Rust code can be linked into their
-# C++ executables.
+# When linking it ensures the libraries (and their C library dependencies) are
+# part of the linker line. If Rust drives the linking, this is redundant but if
+# Clang drives the linking it is required.
 #
-# This is obviously a bit fragile - rustc might do other magic in future.
-# But, linking with a final C++ toolchain is something often needed, and
-# https://github.com/rust-lang/rust/issues/64191 aims to make this
-# officially possible.
+# Part of the standard library provided here is "remap_alloc" which maps
+# allocator functions to PartitionAlloc when `use_partition_alloc_as_malloc` is
+# true, so that Rust and C++ use the same allocator backend.
 
+import("//base/allocator/partition_allocator/partition_alloc.gni")
 import("//build/config/compiler/compiler.gni")
 import("//build/config/coverage/coverage.gni")
 import("//build/config/rust.gni")
 import("//build/config/sanitizers/sanitizers.gni")
 
 if (toolchain_has_rust) {
-  # Equivalent of allocator symbols injected by rustc.
+  # If clang performs the link step, we need to provide the allocator symbols
+  # that are normally injected by rustc during linking.
+  #
+  # We also "happen to" use this to redirect allocations to PartitionAlloc,
+  # though that would be better done through a #[global_allocator] crate (see
+  # above).
   source_set("remap_alloc") {
+    public_deps = [ "//base/allocator/partition_allocator:buildflags" ]
+    if (use_partition_alloc_as_malloc) {
+      public_deps += [ "//base/allocator/partition_allocator:partition_alloc" ]
+    }
     sources = [
       # `alias.*`, `compiler_specific.h`, and `immediate_crash.*` have been
       # copied from `//base`.
-      # TODO(https://crbug.com/1475734): Avoid duplication / reuse code.
+      # TODO(crbug.com/40279749): Avoid duplication / reuse code.
       "alias.cc",
       "alias.h",
       "compiler_specific.h",
@@ -61,7 +61,6 @@ if (toolchain_has_rust) {
     "core",
     "getopts",
     "hashbrown",
-    "libc",
     "panic_abort",
     "panic_unwind",
     "rustc_demangle",
@@ -77,6 +76,7 @@ if (toolchain_has_rust) {
       "addr2line",
       "adler",
       "gimli",
+      "libc",
       "memchr",
       "miniz_oxide",
       "object",
@@ -107,7 +107,7 @@ if (toolchain_has_rust) {
   ]
 
   config("stdlib_dependent_libs") {
-    # TODO(crbug.com/1434092): These should really be `libs`, however that
+    # TODO(crbug.com/40264561): These should really be `libs`, however that
     # breaks. Normally, we specify lib files with the `.lib` suffix but
     # then when rustc links an EXE, it invokes lld-link with `.lib.lib`
     # instead.
@@ -126,7 +126,7 @@ if (toolchain_has_rust) {
     }
   }
   config("stdlib_public_dependent_libs") {
-    # TODO(crbug.com/1434092): These should really be `libs`, however that
+    # TODO(crbug.com/40264561): These should really be `libs`, however that
     # breaks. Normally, we specify lib files with the `.lib` suffix but
     # then when rustc links an EXE, it invokes lld-link with `.lib.lib`
     # instead.
@@ -144,6 +144,7 @@ if (toolchain_has_rust) {
         "bcrypt.lib",
         "kernel32.lib",
         "ntdll.lib",
+        "synchronization.lib",
         "userenv.lib",
         "ws2_32.lib",
       ]
@@ -277,36 +278,27 @@ if (toolchain_has_rust) {
       rustc_sanitizer_runtimes += [ ":sanitizer_rt_hwasan" ]
     }
 
-    group("local_stdlib_libs") {
+    # Builds and links against the Rust stdlib. Both Rust and C++ targets should
+    # depend on this, as it provides the path to the library and includes the
+    # allocator hooks.
+    group("std") {
       assert(toolchain_has_rust,
              "Some C++ target is depending on Rust code even though " +
                  "toolchain_has_rust=false. Usually this would mean" +
                  "a NaCl target is depending on Rust, as there's no Rust " +
                  "toolchain targetting NaCl.")
-      all_dependent_configs = [ ":stdlib_dependent_libs" ]
+      all_dependent_configs = [
+        ":stdlib_public_dependent_libs",
+        ":local_stdlib_sysroot",
+        ":stdlib_dependent_libs",
+      ]
       deps = []
       foreach(libname, stdlib_files + skip_stdlib_files) {
         deps += [ "rules:$libname" ]
       }
       deps += rustc_sanitizer_runtimes
-      visibility = [ ":*" ]
-    }
 
-    # Builds the stdlib and points the rustc `--sysroot` to them. Used by
-    # targets for which linking is driven by Rust (bins and dylibs).
-    group("stdlib_for_rustc") {
-      all_dependent_configs = [ ":local_stdlib_sysroot" ]
-      public_deps = [ ":local_stdlib_libs" ]
-    }
-
-    # Builds and links against the Rust stdlib. Used by targets for which
-    # linking is driven by C++.
-    group("stdlib_for_clang") {
-      all_dependent_configs = [ ":stdlib_public_dependent_libs" ]
-      public_deps = [
-        ":local_stdlib_libs",
-        ":remap_alloc",
-      ]
+      public_deps = [ ":remap_alloc" ]
     }
   } else {
     action("find_stdlib") {
@@ -426,15 +418,7 @@ if (toolchain_has_rust) {
       visibility = [ ":*" ]
     }
 
-    # Use the sysroot generated by :prebuilt_rustc_copy_to_sysroot.
-    group("stdlib_for_rustc") {
-      all_dependent_configs = [ ":prebuilt_stdlib_sysroot" ]
-      deps = [ ":prebuilt_rustc_copy_to_sysroot" ]
-    }
-
-    # Links the Rust stdlib. Used by targets for which linking is driven by
-    # C++.
-    group("stdlib_for_clang") {
+    group("std") {
       all_dependent_configs = [
         ":prebuilt_stdlib_libs",
         ":stdlib_public_dependent_libs",

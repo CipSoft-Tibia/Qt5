@@ -28,6 +28,7 @@
 #define THIRD_PARTY_BLINK_RENDERER_CORE_WORKERS_WORKER_THREAD_H_
 
 #include <memory>
+#include <optional>
 
 #include "base/gtest_prod_util.h"
 #include "base/memory/scoped_refptr.h"
@@ -40,7 +41,6 @@
 #include "base/time/time.h"
 #include "base/unguessable_token.h"
 #include "services/network/public/mojom/fetch_api.mojom-blink-forward.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "third_party/blink/public/mojom/frame/lifecycle.mojom-blink-forward.h"
 #include "third_party/blink/public/platform/platform.h"
 #include "third_party/blink/public/platform/web_policy_container.h"
@@ -107,14 +107,14 @@ class CORE_EXPORT WorkerThread : public Thread::TaskObserver {
 
   // Starts the underlying thread and creates the global scope. Called on the
   // parent thread.
-  // Startup data for WorkerBackingThread is absl::nullopt if |this| doesn't own
+  // Startup data for WorkerBackingThread is std::nullopt if |this| doesn't own
   // the underlying WorkerBackingThread.
   // TODO(nhiroki): We could separate WorkerBackingThread initialization from
   // GlobalScope initialization sequence, that is, InitializeOnWorkerThread().
   // After that, we could remove this startup data for WorkerBackingThread.
   // (https://crbug.com/710364)
   void Start(std::unique_ptr<GlobalScopeCreationParams>,
-             const absl::optional<WorkerBackingThreadStartupData>&,
+             const std::optional<WorkerBackingThreadStartupData>&,
              std::unique_ptr<WorkerDevToolsParams>);
 
   // Posts a task to evaluate a top-level classic script on the worker thread.
@@ -167,7 +167,6 @@ class CORE_EXPORT WorkerThread : public Thread::TaskObserver {
   void DidProcessTask(const base::PendingTask&) override;
 
   virtual WorkerBackingThread& GetWorkerBackingThread() = 0;
-  virtual void ClearWorkerBackingThread() = 0;
   ConsoleMessageStorage* GetConsoleMessageStorage() const {
     return console_message_storage_.Get();
   }
@@ -322,6 +321,13 @@ class CORE_EXPORT WorkerThread : public Thread::TaskObserver {
     kTerminationUnnecessary,
   };
 
+  enum class TerminationProgress {
+    kNotRequested,
+    kRequested,
+    kPrepared,
+    kPerforming,
+  };
+
   // Returns true if we should synchronously terminate the script execution so
   // that a shutdown task can be handled by the thread event loop.
   TerminationState ShouldTerminateScriptExecution()
@@ -338,7 +344,7 @@ class CORE_EXPORT WorkerThread : public Thread::TaskObserver {
   void InitializeSchedulerOnWorkerThread(base::WaitableEvent*);
   void InitializeOnWorkerThread(
       std::unique_ptr<GlobalScopeCreationParams>,
-      const absl::optional<WorkerBackingThreadStartupData>&,
+      const std::optional<WorkerBackingThreadStartupData>&,
       std::unique_ptr<WorkerDevToolsParams>) LOCKS_EXCLUDED(lock_);
 
   void EvaluateClassicScriptOnWorkerThread(
@@ -418,8 +424,10 @@ class CORE_EXPORT WorkerThread : public Thread::TaskObserver {
   // A unique identifier among all WorkerThreads.
   const int worker_thread_id_;
 
-  // Set on the parent thread.
-  bool requested_to_terminate_ GUARDED_BY(lock_) = false;
+  // Represents progress after the Terminate() call.
+  TerminationProgress termination_progress_ GUARDED_BY(lock_) =
+      TerminationProgress::kNotRequested;
+  size_t num_child_threads_ GUARDED_BY(lock_) = 0;
 
   ThreadState thread_state_ GUARDED_BY(lock_) = ThreadState::kNotStarted;
   ExitCode exit_code_ GUARDED_BY(lock_) = ExitCode::kNotTerminated;
@@ -491,7 +499,7 @@ class CORE_EXPORT WorkerThread : public Thread::TaskObserver {
   // Since the WorkerThread is allocated and deallocated on the parent thread,
   // we need a WeakPtrFactory that is allocated and cleared on the backing
   // thread.
-  absl::optional<base::WeakPtrFactory<WorkerThread>>
+  std::optional<base::WeakPtrFactory<WorkerThread>>
       backing_thread_weak_factory_;
 
   THREAD_CHECKER(parent_thread_checker_);

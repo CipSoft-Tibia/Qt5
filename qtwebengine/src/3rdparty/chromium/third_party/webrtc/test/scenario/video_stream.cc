@@ -57,23 +57,7 @@ uint8_t CodecTypeToPayloadType(VideoCodecType codec_type) {
   }
   return {};
 }
-std::string CodecTypeToCodecName(VideoCodecType codec_type) {
-  switch (codec_type) {
-    case VideoCodecType::kVideoCodecGeneric:
-      return "";
-    case VideoCodecType::kVideoCodecVP8:
-      return cricket::kVp8CodecName;
-    case VideoCodecType::kVideoCodecVP9:
-      return cricket::kVp9CodecName;
-    case VideoCodecType::kVideoCodecH264:
-      return cricket::kH264CodecName;
-    case VideoCodecType::kVideoCodecH265:
-      return cricket::kH265CodecName;
-    default:
-      RTC_DCHECK_NOTREACHED();
-  }
-  return {};
-}
+
 VideoEncoderConfig::ContentType ConvertContentType(
     VideoStreamConfig::Encoder::ContentType content_type) {
   switch (content_type) {
@@ -208,9 +192,6 @@ CreateEncoderSpecificSettings(VideoStreamConfig config) {
     case Codec::kVideoCodecAV1:
     case Codec::kVideoCodecH265:
       return nullptr;
-    case Codec::kVideoCodecMultiplex:
-      RTC_DCHECK_NOTREACHED();
-      return nullptr;
   }
 }
 
@@ -226,19 +207,6 @@ VideoEncoderConfig CreateVideoEncoderConfig(VideoStreamConfig config) {
   encoder_config.simulcast_layers =
       std::vector<VideoStream>(encoder_config.number_of_streams);
   encoder_config.min_transmit_bitrate_bps = config.stream.pad_to_rate.bps();
-
-  std::string cricket_codec = CodecTypeToCodecName(config.encoder.codec);
-  if (!cricket_codec.empty()) {
-    bool screenshare = config.encoder.content_type ==
-                       VideoStreamConfig::Encoder::ContentType::kScreen;
-    encoder_config.video_stream_factory =
-        rtc::make_ref_counted<cricket::EncoderStreamFactory>(
-            cricket_codec, cricket::kDefaultVideoMaxQpVpx, screenshare,
-            screenshare, encoder_info);
-  } else {
-    encoder_config.video_stream_factory =
-        rtc::make_ref_counted<DefaultVideoStreamFactory>();
-  }
 
   // TODO(srte): Base this on encoder capabilities.
   encoder_config.max_bitrate_bps =
@@ -295,7 +263,7 @@ std::unique_ptr<FrameGeneratorInterface> CreateFrameGenerator(
     case Capture::kGenerator:
       return CreateSquareFrameGenerator(
           source.generator.width, source.generator.height,
-          source.generator.pixel_format, /*num_squares*/ absl::nullopt);
+          source.generator.pixel_format, /*num_squares*/ std::nullopt);
     case Capture::kVideoFile:
       RTC_CHECK(source.video_file.width && source.video_file.height);
       return CreateFromYuvFileFrameGenerator(
@@ -381,16 +349,14 @@ SendVideoStream::SendVideoStream(CallClient* sender,
   using Codec = VideoStreamConfig::Encoder::Codec;
   switch (config.encoder.implementation) {
     case Encoder::Implementation::kFake:
-      encoder_factory_ =
-          std::make_unique<FunctionVideoEncoderFactory>([this]() {
+      encoder_factory_ = std::make_unique<FunctionVideoEncoderFactory>(
+          [this](const Environment& env, const SdpVideoFormat& format) {
             MutexLock lock(&mutex_);
             std::unique_ptr<FakeEncoder> encoder;
             if (config_.encoder.codec == Codec::kVideoCodecVP8) {
-              encoder = std::make_unique<test::FakeVp8Encoder>(
-                  &sender_->env_.clock());
+              encoder = std::make_unique<test::FakeVp8Encoder>(env);
             } else if (config_.encoder.codec == Codec::kVideoCodecGeneric) {
-              encoder =
-                  std::make_unique<test::FakeEncoder>(&sender_->env_.clock());
+              encoder = std::make_unique<test::FakeEncoder>(env);
             } else {
               RTC_DCHECK_NOTREACHED();
             }
@@ -491,10 +457,6 @@ void SendVideoStream::UpdateConfig(
 void SendVideoStream::UpdateActiveLayers(std::vector<bool> active_layers) {
   sender_->task_queue_.PostTask([=] {
     MutexLock lock(&mutex_);
-    if (config_.encoder.codec ==
-        VideoStreamConfig::Encoder::Codec::kVideoCodecVP8) {
-      send_stream_->StartPerRtpStream(active_layers);
-    }
     VideoEncoderConfig encoder_config = CreateVideoEncoderConfig(config_);
     RTC_CHECK_EQ(encoder_config.simulcast_layers.size(), active_layers.size());
     for (size_t i = 0; i < encoder_config.simulcast_layers.size(); ++i)

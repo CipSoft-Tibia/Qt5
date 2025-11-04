@@ -12,41 +12,38 @@
 // We mean it.
 //
 
-
-#ifndef QWINDOWSAUDIODEVICEINFO_H
-#define QWINDOWSAUDIODEVICEINFO_H
+#ifndef QWINDOWSAUDIODEVICE_H
+#define QWINDOWSAUDIODEVICE_H
 
 #include <QtCore/qbytearray.h>
 #include <QtCore/qstring.h>
+#include <QtCore/private/qcomptr_p.h>
 
 #include <QtMultimedia/qaudiodevice.h>
-#include <private/qaudiosystem_p.h>
-#include <private/qaudiodevice_p.h>
-#include <QtCore/private/qcomptr_p.h>
+#include <QtMultimedia/private/qaudioformat_p.h>
+#include <QtMultimedia/private/qaudiosystem_p.h>
+#include <QtMultimedia/private/qaudiodevice_p.h>
 
 struct IMMDevice;
 
 QT_BEGIN_NAMESPACE
 
-class QWindowsAudioDeviceInfo : public QAudioDevicePrivate
+class QWindowsAudioDevice : public QAudioDevicePrivate
 {
 public:
-    QWindowsAudioDeviceInfo(QByteArray dev,
-                            ComPtr<IMMDevice> immdev,
-                            QString description,
-                            QAudioDevice::Mode mode);
-    ~QWindowsAudioDeviceInfo();
+    QWindowsAudioDevice(QByteArray deviceId, ComPtr<IMMDevice> immdev, QString description,
+                        QAudioDevice::Mode mode);
+    ~QWindowsAudioDevice();
 
-    bool open();
-    void close();
+    ComPtr<IMMDevice> open() const;
 
-    ComPtr<IMMDevice> immDev() const { return m_immDev; }
-
-private:
-    ComPtr<IMMDevice> m_immDev;
+    std::pair<int, int> m_probedChannelCountRange{ 1, 2 }; // fallback: mono/stereo
+    std::pair<int, int> m_probedSampleRateRange{
+        QtMultimediaPrivate::allSupportedSampleRates.front(),
+        QtMultimediaPrivate::allSupportedSampleRates.back(),
+    }; // fallback: full range
 };
 
 QT_END_NAMESPACE
 
-
-#endif // QWINDOWSAUDIODEVICEINFO_H
+#endif // QWINDOWSAUDIODEVICE_H

@@ -55,14 +55,22 @@ enum class IbanSuggestionsEvent {
   // suggestions for the same field, or if the user alternates between this IBAN
   // field and the other non-IBAN fields.
   kIbanSuggestionsShownOnce = 1,
-  // An individual IBAN suggestion was selected.
-  kIbanSuggestionSelected = 2,
-  // An individual IBAN suggestion was selected. Logged only once per IBAN
+  // An individual local IBAN suggestion was selected.
+  kLocalIbanSuggestionSelected = 2,
+  // An individual local IBAN suggestion was selected. Logged only once per IBAN
   // field. It won't log more than once if the user repeatedly selects IBAN
   // suggestion for the same field, or if the user alternates between this IBAN
   // field and the other non-IBAN fields and then click on IBAN suggestion.
-  kIbanSuggestionSelectedOnce = 3,
-  kMaxValue = kIbanSuggestionSelectedOnce,
+  kLocalIbanSuggestionSelectedOnce = 3,
+
+  // An individual server IBAN suggestion was selected.
+  kServerIbanSuggestionSelected = 4,
+  // An individual server IBAN suggestion was selected. Logged only once per
+  // IBAN field. It won't log more than once if the user repeatedly selects IBAN
+  // suggestion for the same field, or if the user alternates between this IBAN
+  // field and the other non-IBAN fields and then click on IBAN suggestion.
+  kServerIbanSuggestionSelectedOnce = 5,
+  kMaxValue = kServerIbanSuggestionSelectedOnce,
 };
 
 // Metrics to track the site blocklist status when showing IBAN suggestions.
@@ -91,11 +99,33 @@ enum class IbanUploadEnabledStatus {
   kMaxValue = kEnabled,
 };
 
-// Logs various metrics about the local IBANs associated with a profile. This
-// should be called each time a new Chrome profile is launched.
+// Metric to measure if an IBAN for which an upload action was taken (offered,
+// accepted, declined, ignored) is already stored as a local IBAN on the device
+// or if it's a new IBAN.
+enum class UploadIbanOriginMetric {
+  // IBAN upload action happened for a local IBAN already on the device.
+  kLocalIban = 0,
+  // IBAN upload action happened for a new IBAN.
+  kNewIban = 1,
+  kMaxValue = kNewIban,
+};
+
+// Metric to track the metrics for an IBAN upload offer.
+enum class UploadIbanActionMetric {
+  kOffered = 0,
+  kAccepted = 1,
+  kDeclined = 2,
+  kIgnored = 3,
+  kMaxValue = kIgnored,
+};
+
+// Logs various metrics about the local/server IBANs associated with a profile.
+// This should be called each time a new Chrome profile is launched.
 // `disused_data_threshold` is the time threshold to mark an IBAN as disused.
-void LogStoredIbanMetrics(const std::vector<std::unique_ptr<Iban>>& local_ibans,
-                          const base::TimeDelta& disused_data_threshold);
+void LogStoredIbanMetrics(
+    const std::vector<std::unique_ptr<Iban>>& local_ibans,
+    const std::vector<std::unique_ptr<Iban>>& server_ibans,
+    base::TimeDelta disused_data_threshold);
 
 // Logs the number of days since the given IBAN was last used.
 void LogDaysSinceLastIbanUse(const Iban& iban);
@@ -106,6 +136,12 @@ void LogStrikesPresentWhenIbanSaved(const int num_strikes, bool is_upload_save);
 // Logs whenever IBAN save is not offered due to max strikes.
 void LogIbanSaveNotOfferedDueToMaxStrikesMetric(
     AutofillMetrics::SaveTypeMetric metric);
+
+// When IBAN upload is offered/accepted/declined/ignored, logs whether the IBAN
+// being offered or accepted is already a local IBAN on the device or not, as
+// well as the user decision on the offer.
+void LogUploadIbanMetric(UploadIbanOriginMetric origin_metric,
+                         UploadIbanActionMetric action_metric);
 
 // Logs when IBAN save bubble is offered to users.
 void LogSaveIbanBubbleOfferMetric(SaveIbanPromptOffer metric,
@@ -146,6 +182,20 @@ void LogServerIbanUnmaskLatency(base::TimeDelta latency, bool is_successful);
 
 // Logs the status for fetching a server IBAN in IbanAccessManager.
 void LogServerIbanUnmaskStatus(bool is_successful);
+
+// Logs that IBAN save was offered for the given country.
+void LogIbanSaveOfferedCountry(std::string_view country_code);
+
+// Logs that IBAN save was accepted for the given country.
+void LogIbanSaveAcceptedCountry(std::string_view country_code);
+
+// Logs that an IBAN was selected to be filled for the given country.
+void LogIbanSelectedCountry(std::string_view country_code);
+
+// Logs whether an IBAN was saved locally after a server save failure.
+// If `iban_saved_locally` is true, a new IBAN was saved locally. Otherwise, it
+// indicates that an existing local IBAN was not saved again.
+void LogIbanUploadSaveFailed(bool iban_saved_locally);
 
 }  // namespace autofill::autofill_metrics
 

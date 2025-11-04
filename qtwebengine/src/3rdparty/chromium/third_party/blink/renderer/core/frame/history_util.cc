@@ -24,7 +24,8 @@ bool CanChangeToUrlForHistoryApi(const KURL& url,
   // host, or port components, then return false."
   if (url.Protocol() != document_url.Protocol() ||
       url.User() != document_url.User() || url.Pass() != document_url.Pass() ||
-      url.Host() != document_url.Host() || url.Port() != document_url.Port()) {
+      url.HostView() != document_url.HostView() ||
+      url.Port() != document_url.Port()) {
     return false;
   }
 
@@ -86,7 +87,8 @@ bool CanChangeToUrlForHistoryApi(const KURL& url,
   is_standard = url::IsStandard(
       protocol.data(), url::Component(0, static_cast<int>(protocol.size())));
   // Also allow registered QWE schemes
-  is_standard = is_standard || (url::CustomScheme::FindScheme(protocol) != nullptr);
+  is_standard =
+      is_standard || (url::CustomScheme::FindScheme(protocol) != nullptr);
   if (is_standard) {
     return true;
   }

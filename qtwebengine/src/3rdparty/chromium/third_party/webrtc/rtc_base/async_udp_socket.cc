@@ -10,7 +10,8 @@
 
 #include "rtc_base/async_udp_socket.h"
 
-#include "absl/types/optional.h"
+#include <optional>
+
 #include "api/units/time_delta.h"
 #include "rtc_base/checks.h"
 #include "rtc_base/logging.h"
@@ -20,12 +21,6 @@
 #include "system_wrappers/include/field_trial.h"
 
 namespace rtc {
-
-// Returns true if the experiement "WebRTC-SCM-Timestamp" is explicitly
-// disabled.
-static bool IsScmTimeStampExperimentDisabled() {
-  return webrtc::field_trial::IsDisabled("WebRTC-SCM-Timestamp");
-}
 
 AsyncUDPSocket* AsyncUDPSocket::Create(Socket* socket,
                                        const SocketAddress& bind_address) {
@@ -133,21 +128,15 @@ void AsyncUDPSocket::OnReadEvent(Socket* socket) {
     receive_buffer.arrival_time = webrtc::Timestamp::Micros(rtc::TimeMicros());
   } else {
     if (!socket_time_offset_) {
-      // Estimate timestamp offset from first packet arrival time unless
-      // disabled
-      bool estimate_time_offset = !IsScmTimeStampExperimentDisabled();
-      if (estimate_time_offset) {
-        socket_time_offset_ = webrtc::Timestamp::Micros(rtc::TimeMicros()) -
-                              *receive_buffer.arrival_time;
-      } else {
-        socket_time_offset_ = webrtc::TimeDelta::Micros(0);
-      }
+      // Estimate timestamp offset from first packet arrival time.
+      socket_time_offset_ = webrtc::Timestamp::Micros(rtc::TimeMicros()) -
+                            *receive_buffer.arrival_time;
     }
     *receive_buffer.arrival_time += *socket_time_offset_;
   }
-  NotifyPacketReceived(ReceivedPacket(receive_buffer.payload,
-                                      receive_buffer.source_address,
-                                      receive_buffer.arrival_time));
+  NotifyPacketReceived(
+      ReceivedPacket(receive_buffer.payload, receive_buffer.source_address,
+                     receive_buffer.arrival_time, receive_buffer.ecn));
 }
 
 void AsyncUDPSocket::OnWriteEvent(Socket* socket) {

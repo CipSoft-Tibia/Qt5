@@ -15,7 +15,7 @@
 
     \badcode
 Usage: qsb [options] file
-Qt Shader Baker (using QShader from Qt 6.8.0)
+Qt Shader Baker (using QShader from Qt 6.10.0)
 
 Options:
   -?, -h, --help               Displays help on commandline options.
@@ -104,20 +104,24 @@ Options:
                                <what>=spirv,<version>|glsl,<version>|...
   -s, --silent                 Enables silent mode. Only fatal errors will be
                                printed.
+  --mediump                    Default to medium precision for floats in
+                               fragment shaders instead of high. GLSL ES only;
+                               ignored for everything else, including GLSL.
   --depfile <depfile>          Enables generating the depfile for the input
                                shaders, using the #include statements.
 
 Arguments:
   file                         Vulkan GLSL source file to compile. The file
                                extension determines the shader stage, and can be
-                               one of .vert, .tesc, .tese, .frag, .comp. Note:
-                               Tessellation control/evaluation is not supported
-                               with HLSL, instead use -r to inject handcrafted
-                               hull/domain shaders. Some targets may need
-                               special arguments to be set, e.g. MSL
+                               one of .vert, .tesc, .tese, .geom, .frag, .comp.
+                               Note: Tessellation control/evaluation is not
+                               supported with HLSL, instead use -r to inject
+                               handcrafted hull/domain shaders. Some targets may
+                               need special arguments to be set, e.g. MSL
                                tessellation will likely need --msltess,
                                --tess-vertex-count, --tess-mode, depending on
-                               the stage.
+                               the stage. Geometry shaders are not supported
+                               with HLSL and MSL.
     \endcode
 
     \section1 Modes of Operation
@@ -543,6 +547,10 @@ Reflection info: {
     debugging. Also has an effect for Direct 3D when \c{-c} is specified,
     because \c fxc is then instructed to include debug information in the
     generated intermediate bytecode.
+
+    \li \c{--mediump} - requests defaulting to medium precision for floats in
+    GLSL ES fragment shaders. Ignored for any other targets, including (non-ES)
+    GLSL, and for non-fragment shaders.
 
     \endlist
 

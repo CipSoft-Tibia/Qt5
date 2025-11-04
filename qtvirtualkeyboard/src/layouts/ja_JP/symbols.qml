@@ -19,6 +19,8 @@ KeyboardLayoutLoader {
             return "アイウ"
         case InputEngine.Hiragana:
             return "あいう"
+        case InputEngine.HiraganaFlick:
+            return "FLK"
         default:
             return "ABC"
         }

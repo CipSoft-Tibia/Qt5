@@ -106,11 +106,11 @@ class ClientSidePhishingModel
   void MaybeOverrideModel();
 
   void OnModelAndVisualTfLiteFileLoaded(
-      absl::optional<optimization_guide::proto::Any> model_metadata,
+      std::optional<optimization_guide::proto::Any> model_metadata,
       std::pair<std::string, base::File> model_and_tflite);
 
   void OnImageEmbeddingModelLoaded(
-      absl::optional<optimization_guide::proto::Any> model_metadata,
+      std::optional<optimization_guide::proto::Any> model_metadata,
       base::File image_embedding_model_data);
 
   void SetModelAndVisualTfLiteForTesting(
@@ -144,11 +144,11 @@ class ClientSidePhishingModel
   std::string model_str_ GUARDED_BY_CONTEXT(sequence_checker_);
 
   // Visual TFLite model file. Guarded by sequence_checker_.
-  absl::optional<base::File> visual_tflite_model_
+  std::optional<base::File> visual_tflite_model_
       GUARDED_BY_CONTEXT(sequence_checker_);
 
   // Image Embedding TfLite model file. Guarded by sequence_checker_.
-  absl::optional<base::File> image_embedding_model_
+  std::optional<base::File> image_embedding_model_
       GUARDED_BY_CONTEXT(sequence_checker_);
 
   // Thresholds in visual TFLite model file to be used for comparison after
@@ -174,9 +174,17 @@ class ClientSidePhishingModel
   // These two integer values will be set from reading the metadata specified
   // under each optimization target. These two are used to match the model
   // pairings properly. If the two values match, then the image embedding model
-  // will be sent to the renderer process along with the trigger models.
-  absl::optional<int> trigger_model_version_;
-  absl::optional<int> embedding_model_version_;
+  // will be sent to the renderer process along with the trigger models. They do
+  // not reflect any versions used in the model file itself.
+  std::optional<int> trigger_model_opt_guide_metadata_image_embedding_version_;
+  std::optional<int>
+      embedding_model_opt_guide_metadata_image_embedding_version_;
+
+  // This value is set from a version set in the model file's metadata. This
+  // value will be used to send to the CSD service class so that it can be added
+  // to the debugging metadata so that we can understand what version has been
+  // sent to the renderer.
+  std::optional<int> trigger_model_version_;
 
   scoped_refptr<base::SequencedTaskRunner> background_task_runner_;
 

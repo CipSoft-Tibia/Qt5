@@ -1,14 +1,14 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
-
-#include "qaudio.h"
-#include "qaudiodevice.h"
-#include "qaudiosystem_p.h"
 #include "qaudiosink.h"
 
-#include <private/qplatformaudiodevices_p.h>
-#include <private/qplatformmediaintegration_p.h>
+#include <QtMultimedia/qaudio.h>
+#include <QtMultimedia/qaudiodevice.h>
+#include <QtMultimedia/private/qaudiosystem_p.h>
+#include <QtMultimedia/private/qaudiohelpers_p.h>
+#include <QtMultimedia/private/qplatformaudiodevices_p.h>
+#include <QtMultimedia/private/qplatformmediaintegration_p.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -87,16 +87,12 @@ QAudioSink::QAudioSink(const QAudioFormat &format, QObject *parent)
 QAudioSink::QAudioSink(const QAudioDevice &audioDevice, const QAudioFormat &format, QObject *parent):
     QObject(parent)
 {
-    d = QPlatformMediaIntegration::instance()->audioDevices()->audioOutputDevice(format, audioDevice, parent);
+    d = QPlatformMediaIntegration::instance()->audioDevices()->audioOutputDevice(format,
+                                                                                 audioDevice, this);
     if (d)
-        connect(d, &QPlatformAudioSink::stateChanged, this, [this](QAudio::State state) {
-            // if the signal has been emitted from another thread,
-            // the state may be already changed by main one
-            if (state == d->state())
-                emit stateChanged(state);
-        });
+        connect(d, &QPlatformAudioSink::stateChanged, this, &QAudioSink::stateChanged);
     else
-        qWarning() << ("No audio device detected");
+        qWarning("No audio device detected");
 }
 
 /*!
@@ -125,6 +121,22 @@ QAudioFormat QAudioSink::format() const
     return d ? d->format() : QAudioFormat();
 }
 
+static bool validateFormatAtStart(QPlatformAudioSink *d)
+{
+    if (!d->format().isValid()) {
+        qWarning() << "QAudioSink::start: QAudioFormat not valid";
+        d->setError(QAudio::OpenError);
+        return false;
+    }
+
+    if (!d->isFormatSupported(d->format())) {
+        qWarning() << "QAudioSink::start: QAudioFormat not supported by QAudioDevice";
+        d->setError(QAudio::OpenError);
+        return false;
+    }
+    return true;
+};
+
 /*!
     Starts transferring audio data from the \a device to the system's audio output.
     The \a device must have been opened in the \l{QIODevice::ReadOnly}{ReadOnly} or
@@ -144,13 +156,18 @@ void QAudioSink::start(QIODevice* device)
     if (!d)
         return;
 
+    d->setError(QAudio::NoError);
+
     if (!device->isReadable()) {
         qWarning() << "QAudioSink::start: QIODevice is not readable";
         d->setError(QAudio::OpenError);
         return;
     }
 
-    d->elapsedTime.restart();
+    if (!validateFormatAtStart(d))
+        return;
+
+    d->elapsedTime.start();
     d->start(device);
 }
 
@@ -175,7 +192,13 @@ QIODevice* QAudioSink::start()
 {
     if (!d)
         return nullptr;
-    d->elapsedTime.restart();
+
+    d->setError(QAudio::NoError);
+
+    if (!validateFormatAtStart(d))
+        return nullptr;
+
+    d->elapsedTime.start();
     return d->start();
 }
 
@@ -327,8 +350,10 @@ void QAudioSink::setVolume(qreal volume)
 {
     if (!d)
         return;
-    qreal v = qBound(qreal(0.0), volume, qreal(1.0));
-    d->setVolume(v);
+
+    std::optional<float> newVolume = QAudioHelperInternal::sanitizeVolume(volume, this->volume());
+    if (newVolume)
+        d->setVolume(*newVolume);
 }
 
 /*!

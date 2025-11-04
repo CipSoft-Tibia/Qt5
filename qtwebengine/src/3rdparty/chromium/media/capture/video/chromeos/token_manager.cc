@@ -2,6 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#ifdef UNSAFE_BUFFERS_BUILD
+// TODO(crbug.com/40285824): Remove this and convert code to safer constructs.
+#pragma allow_unsafe_buffers
+#endif
+
 #include "media/capture/video/chromeos/token_manager.h"
 
 #include <grp.h>
@@ -58,8 +63,7 @@ bool WriteTokenToFile(const base::FilePath& token_path,
                << token_path.AsUTF8Unsafe();
     return false;
   }
-  std::string token_string = token.ToString();
-  token_file.WriteAtCurrentPos(token_string.c_str(), token_string.length());
+  token_file.WriteAtCurrentPos(base::as_byte_span(token.ToString()));
   return true;
 }
 
@@ -123,7 +127,7 @@ bool TokenManager::AuthenticateServer(const base::UnguessableToken& token) {
   return server_token_ == token;
 }
 
-absl::optional<cros::mojom::CameraClientType> TokenManager::AuthenticateClient(
+std::optional<cros::mojom::CameraClientType> TokenManager::AuthenticateClient(
     cros::mojom::CameraClientType type,
     const base::UnguessableToken& token) {
   base::AutoLock l(client_token_map_lock_);
@@ -133,11 +137,11 @@ absl::optional<cros::mojom::CameraClientType> TokenManager::AuthenticateClient(
         return client_type;
       }
     }
-    return absl::nullopt;
+    return std::nullopt;
   }
   auto& token_set = client_token_map_[type];
   if (token_set.find(token) == token_set.end()) {
-    return absl::nullopt;
+    return std::nullopt;
   }
   return type;
 }

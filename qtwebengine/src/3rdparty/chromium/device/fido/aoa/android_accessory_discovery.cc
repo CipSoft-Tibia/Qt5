@@ -2,10 +2,19 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#ifdef UNSAFE_BUFFERS_BUILD
+// TODO(crbug.com/351564777): Remove this and convert code to safer constructs.
+#pragma allow_unsafe_buffers
+#endif
+
 #include "device/fido/aoa/android_accessory_discovery.h"
 
+#include <utility>
+
 #include "base/containers/contains.h"
+#include "base/containers/extend.h"
 #include "base/containers/flat_set.h"
+#include "base/functional/bind.h"
 #include "base/location.h"
 #include "base/metrics/histogram_functions.h"
 #include "base/no_destructor.h"
@@ -15,10 +24,6 @@
 #include "device/fido/aoa/android_accessory_device.h"
 #include "services/device/public/mojom/usb_manager.mojom.h"
 #include "services/device/public/mojom/usb_manager_client.mojom.h"
-
-#include <utility>
-
-#include "base/functional/bind.h"
 
 // See https://source.android.com/devices/accessories/aoa for details on the
 // protocol used to talk to apps on the phone here.
@@ -115,7 +120,7 @@ void AndroidAccessoryDiscovery::OnDeviceAdded(
                                   std::move(device)));
 }
 
-static absl::optional<AndroidAccessoryDiscovery::InterfaceInfo>
+static std::optional<AndroidAccessoryDiscovery::InterfaceInfo>
 FindAccessoryInterface(const device::mojom::UsbDeviceInfoPtr& device_info) {
   for (const device::mojom::UsbConfigurationInfoPtr& config :
        device_info->configurations) {
@@ -131,8 +136,8 @@ FindAccessoryInterface(const device::mojom::UsbDeviceInfoPtr& device_info) {
       if (info->class_code == 0xff && info->subclass_code == 0xff &&
           info->endpoints.size() == 2) {
         // This is the AOA interface. (ADB, if enabled, has a subclass of 66.)
-        absl::optional<uint8_t> in_endpoint_num;
-        absl::optional<uint8_t> out_endpoint_num;
+        std::optional<uint8_t> in_endpoint_num;
+        std::optional<uint8_t> out_endpoint_num;
 
         for (const device::mojom::UsbEndpointInfoPtr& endpoint :
              info->endpoints) {
@@ -158,7 +163,7 @@ FindAccessoryInterface(const device::mojom::UsbDeviceInfoPtr& device_info) {
     }
   }
 
-  return absl::nullopt;
+  return std::nullopt;
 }
 
 void AndroidAccessoryDiscovery::HandleAccessoryDevice(
@@ -261,11 +266,11 @@ void AndroidAccessoryDiscovery::OnAccessoryInterfaceClaimed(
   }
 
   std::array<uint8_t, kSyncNonceLength> nonce;
-  base::RandBytes(&nonce[0], kSyncNonceLength);
+  base::RandBytes(nonce);
 
   std::vector<uint8_t> packet;
   packet.push_back(AndroidAccessoryDevice::kCoaoaSync);
-  packet.insert(packet.end(), nonce.begin(), nonce.end());
+  base::Extend(packet, nonce);
 
   auto* device_ptr = device.get();
   const uint8_t out_endpoint = interface_info.out_endpoint;

@@ -153,9 +153,16 @@ function(__qt_internal_walk_libs
                     lib "${lib}")
             endwhile()
 
-            # Skip static plugins.
+            # Skip processing static plugins.
+            # There are some abuses of this genex marker, because the more generic one below did
+            # not exist yet.
             set(_is_plugin_marker_genex "\\$<BOOL:QT_IS_PLUGIN_GENEX>")
-            if(lib MATCHES "${_is_plugin_marker_genex}")
+
+            # Skip any genex expressions that contain the marker. Useful in cases like processing
+            # link expressions for prl file generation, where some link expressions should be
+            # skipped either because they don't make sense or they are handled differently.
+            set(_is_skip_marker_genex "\\$<BOOL:QT_SKIP_WALK_LIBS_PROCESSING>")
+            if(lib MATCHES "${_is_plugin_marker_genex}" OR lib MATCHES "${_is_skip_marker_genex}")
                 continue()
             endif()
 
@@ -172,10 +179,24 @@ function(__qt_internal_walk_libs
             if(lib MATCHES "^\\$<TARGET_OBJECTS:")
                 # Skip object files.
                 continue()
-            elseif(lib MATCHES "^\\$<LINK_ONLY:(.*)>$")
-                set(lib_target ${CMAKE_MATCH_1})
-            else()
-                set(lib_target ${lib})
+            endif()
+
+            set(lib_target "${lib}")
+
+            # Unwrap targets like $<LINK_ONLY:$<BUILD_INTERFACE:Qt6::CorePrivate>>
+            while(lib_target
+                    MATCHES "^\\$<(LINK_ONLY|BUILD_INTERFACE|BUILD_LOCAL_INTERFACE):(.*)>$")
+                set(lib_target "${CMAKE_MATCH_2}")
+            endwhile()
+
+            # If one of the values is "$<LINK_ONLY:$<BUILD_LOCAL_INTERFACE:Foo>>", this will be
+            # exported by cmake as "$<LINK_ONLY:>", which will become an empty value after the
+            # unwrapping above.
+            # In that case, skip the processing. Otherwise in some weird unknown conditions,
+            # CMake might consider the empty name to be a valid target, and cause errors further
+            # down.
+            if("${lib_target}" STREQUAL "")
+                continue()
             endif()
 
             # Skip CMAKE_DIRECTORY_ID_SEP. If a target_link_libraries is applied to a target
@@ -240,10 +261,7 @@ function(__qt_internal_walk_libs
                 endif()
                 if(operation STREQUAL "promote_3rd_party_global")
                     set(lib_target_unaliased "${lib_target}")
-                    get_target_property(aliased_target ${lib_target} ALIASED_TARGET)
-                    if(aliased_target)
-                        set(lib_target_unaliased ${aliased_target})
-                    endif()
+                    _qt_internal_dealias_target(lib_target_unaliased)
 
                     get_property(is_imported TARGET ${lib_target_unaliased} PROPERTY IMPORTED)
 

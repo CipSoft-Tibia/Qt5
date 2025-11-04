@@ -28,6 +28,8 @@
 #include <vector>
 
 #include "dawn/wire/SupportedFeatures.h"
+#include "dawn/wire/WireResult.h"
+#include "dawn/wire/server/ObjectStorage.h"
 #include "dawn/wire/server/Server.h"
 
 namespace dawn::wire::server {
@@ -36,18 +38,45 @@ WireResult Server::DoAdapterRequestDevice(Known<WGPUAdapter> adapter,
                                           ObjectHandle eventManager,
                                           WGPUFuture future,
                                           ObjectHandle deviceHandle,
-                                          const WGPUDeviceDescriptor* descriptor) {
-    Known<WGPUDevice> device;
-    WIRE_TRY(DeviceObjects().Allocate(&device, deviceHandle, AllocationState::Reserved));
+                                          WGPUFuture deviceLostFuture,
+                                          const WGPUDeviceDescriptor* descriptor,
+                                          uint8_t userdataCount) {
+    Reserved<WGPUDevice> device;
+    WIRE_TRY(Objects<WGPUDevice>().Allocate(&device, deviceHandle, AllocationState::Reserved));
 
     auto userdata = MakeUserdata<RequestDeviceUserdata>();
     userdata->eventManager = eventManager;
     userdata->future = future;
     userdata->deviceObjectId = device.id;
+    userdata->deviceLostFuture = deviceLostFuture;
 
-    mProcs.adapterRequestDevice(adapter->handle, descriptor,
-                                ForwardToServer<&Server::OnRequestDeviceCallback>,
-                                userdata.release());
+    // Update the descriptor with the device lost callback associated with this request.
+    auto deviceLostUserdata = MakeUserdata<DeviceLostUserdata>();
+    deviceLostUserdata->eventManager = eventManager;
+    deviceLostUserdata->future = deviceLostFuture;
+
+    WGPUDeviceDescriptor desc = *descriptor;
+    desc.deviceLostCallbackInfo2 = {nullptr, WGPUCallbackMode_AllowProcessEvents,
+                                    ForwardToServer2<&Server::OnDeviceLost>,
+                                    deviceLostUserdata.release(), nullptr};
+    desc.uncapturedErrorCallbackInfo2 = {
+        nullptr,
+        [](WGPUDevice const*, WGPUErrorType type, const char* message, void*, void* userdata) {
+            DeviceInfo* info = static_cast<DeviceInfo*>(userdata);
+            info->server->OnUncapturedError(info->self, type, message);
+        },
+        nullptr, device->info.get()};
+
+    if (userdataCount == 1) {
+        mProcs.adapterRequestDevice(adapter->handle, &desc,
+                                    ForwardToServer<&Server::OnRequestDeviceCallback>,
+                                    userdata.release());
+    } else {
+        mProcs.adapterRequestDevice2(
+            adapter->handle, &desc,
+            {nullptr, WGPUCallbackMode_AllowSpontaneous,
+             ForwardToServer2<&Server::OnRequestDeviceCallback>, userdata.release(), nullptr});
+    }
     return WireResult::Success;
 }
 
@@ -62,8 +91,6 @@ void Server::OnRequestDeviceCallback(RequestDeviceUserdata* data,
     cmd.message = message;
 
     if (status != WGPURequestDeviceStatus_Success) {
-        // Free the ObjectId which will make it unusable.
-        DeviceObjects().Free(data->deviceObjectId);
         DAWN_ASSERT(device == nullptr);
         SerializeCommand(cmd);
         return;
@@ -83,8 +110,7 @@ void Server::OnRequestDeviceCallback(RequestDeviceUserdata* data,
         if (!IsFeatureSupported(f)) {
             // Release the device.
             mProcs.deviceRelease(device);
-            // Free the ObjectId which will make it unusable.
-            DeviceObjects().Free(data->deviceObjectId);
+            device = nullptr;
 
             cmd.status = WGPURequestDeviceStatus_Error;
             cmd.message = "Requested feature not supported.";
@@ -105,12 +131,17 @@ void Server::OnRequestDeviceCallback(RequestDeviceUserdata* data,
     cmd.limits = &limits;
 
     // Assign the handle and allocated status if the device is created successfully.
-    Known<WGPUDevice> reservation = DeviceObjects().FillReservation(data->deviceObjectId, device);
+    Known<WGPUDevice> reservation;
+    if (FillReservation(data->deviceObjectId, device, &reservation) == WireResult::FatalError) {
+        cmd.status = WGPURequestDeviceStatus_Unknown;
+        cmd.message = "Destroyed before request was fulfilled.";
+        SerializeCommand(cmd);
+        return;
+    }
     DAWN_ASSERT(reservation.data != nullptr);
     reservation->info->server = this;
     reservation->info->self = reservation.AsHandle();
     SetForwardingDeviceCallbacks(reservation);
-
     SerializeCommand(cmd);
 }
 

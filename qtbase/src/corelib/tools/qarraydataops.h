@@ -38,20 +38,6 @@ public:
 
     using QArrayDataPointer<T>::QArrayDataPointer;
 
-    void appendInitialize(qsizetype newSize) noexcept
-    {
-        Q_ASSERT(this->isMutable());
-        Q_ASSERT(!this->isShared());
-        Q_ASSERT(newSize > this->size);
-        Q_ASSERT(newSize - this->size <= this->freeSpaceAtEnd());
-
-        T *where = this->end();
-        this->size = newSize;
-        const T *e = this->end();
-        while (where != e)
-            *where++ = T();
-    }
-
     void copyAppend(const T *b, const T *e) noexcept
     {
         Q_ASSERT(this->isMutable() || b == e);
@@ -96,7 +82,7 @@ public:
     void destroyAll() noexcept // Call from destructors, ONLY!
     {
         Q_ASSERT(this->d);
-        Q_ASSERT(this->d->ref_.loadRelaxed() == 0);
+        Q_ASSERT(this->d->m_ref.loadRelaxed() == 0);
 
         // As this is to be called only from destructor, it doesn't need to be
         // exception safe; size not updated.
@@ -293,19 +279,6 @@ protected:
 public:
     typedef typename QArrayDataPointer<T>::parameter_type parameter_type;
 
-    void appendInitialize(qsizetype newSize)
-    {
-        Q_ASSERT(this->isMutable());
-        Q_ASSERT(!this->isShared());
-        Q_ASSERT(newSize > this->size);
-        Q_ASSERT(newSize - this->size <= this->freeSpaceAtEnd());
-
-        T *const b = this->begin();
-        do {
-            new (b + this->size) T;
-        } while (++this->size != newSize);
-    }
-
     void copyAppend(const T *b, const T *e)
     {
         Q_ASSERT(this->isMutable() || b == e);
@@ -372,7 +345,7 @@ public:
         // As this is to be called only from destructor, it doesn't need to be
         // exception safe; size not updated.
 
-        Q_ASSERT(this->d->ref_.loadRelaxed() == 0);
+        Q_ASSERT(this->d->m_ref.loadRelaxed() == 0);
 
         std::destroy(this->begin(), this->end());
     }
@@ -661,65 +634,60 @@ public:
 
     struct Inserter
     {
-        QArrayDataPointer<T> *data;
+        QArrayDataPointer<T> * const data;
         T *displaceFrom;
-        T *displaceTo;
-        qsizetype nInserts = 0;
-        qsizetype bytes;
+        T * const displaceTo;
+        const qsizetype nInserts = 0;
+        const size_t bytes;
 
-        Inserter(QArrayDataPointer<T> *d) : data(d) { }
+        void verifyPost()
+        { Q_ASSERT(displaceFrom == displaceTo); }
+
+        explicit Inserter(QArrayDataPointer<T> *d, qsizetype pos, qsizetype n)
+            : data{d},
+              displaceFrom{d->ptr + pos},
+              displaceTo{displaceFrom + n},
+              nInserts{n},
+              bytes{(data->size - pos) * sizeof(T)}
+        {
+            ::memmove(static_cast<void *>(displaceTo), static_cast<void *>(displaceFrom), bytes);
+        }
         ~Inserter() {
+            auto inserts = nInserts;
             if constexpr (!std::is_nothrow_copy_constructible_v<T>) {
                 if (displaceFrom != displaceTo) {
                     ::memmove(static_cast<void *>(displaceFrom), static_cast<void *>(displaceTo), bytes);
-                    nInserts -= qAbs(displaceFrom - displaceTo);
+                    inserts -= qAbs(displaceFrom - displaceTo);
                 }
             }
-            data->size += nInserts;
+            data->size += inserts;
         }
         Q_DISABLE_COPY(Inserter)
 
-        T *displace(qsizetype pos, qsizetype n)
+        void insertRange(const T *source, qsizetype n)
         {
-            nInserts = n;
-            T *insertionPoint = data->ptr + pos;
-            displaceFrom = data->ptr + pos;
-            displaceTo = displaceFrom + n;
-            bytes = data->size - pos;
-            bytes *= sizeof(T);
-            ::memmove(static_cast<void *>(displaceTo), static_cast<void *>(displaceFrom), bytes);
-            return insertionPoint;
-        }
-
-        void insert(qsizetype pos, const T *source, qsizetype n)
-        {
-            T *where = displace(pos, n);
-
             while (n--) {
-                new (where) T(*source);
-                ++where;
+                new (displaceFrom) T(*source);
                 ++source;
                 ++displaceFrom;
             }
+            verifyPost();
         }
 
-        void insert(qsizetype pos, const T &t, qsizetype n)
+        void insertFill(const T &t, qsizetype n)
         {
-            T *where = displace(pos, n);
-
             while (n--) {
-                new (where) T(t);
-                ++where;
+                new (displaceFrom) T(t);
                 ++displaceFrom;
             }
+            verifyPost();
         }
 
-        void insertOne(qsizetype pos, T &&t)
+        void insertOne(T &&t)
         {
-            T *where = displace(pos, 1);
-            new (where) T(std::move(t));
+            new (displaceFrom) T(std::move(t));
             ++displaceFrom;
-            Q_ASSERT(displaceFrom == displaceTo);
+            verifyPost();
         }
 
     };
@@ -745,7 +713,7 @@ public:
                 ++this->size;
             }
         } else {
-            Inserter(this).insert(i, data, n);
+            Inserter(this, i, n).insertRange(data, n);
         }
     }
 
@@ -769,7 +737,7 @@ public:
                 ++this->size;
             }
         } else {
-            Inserter(this).insert(i, copy, n);
+            Inserter(this, i, n).insertFill(copy, n);
         }
     }
 
@@ -801,7 +769,7 @@ public:
             --this->ptr;
             ++this->size;
         } else {
-            Inserter(this).insertOne(i, std::move(tmp));
+            Inserter(this, i, 1).insertOne(std::move(tmp));
         }
     }
 

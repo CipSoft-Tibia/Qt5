@@ -64,6 +64,10 @@ enum class Aspect : uint8_t;
 class DeviceBase;
 
 // This mirrors wgpu::TextureSampleType as a bitmask instead.
+// NOTE: SampleTypeBit::External does not have an equivalent TextureSampleType. All future
+// additions to SampleTypeBit that have an equivalent TextureSampleType should use
+// SampleTypeBit::External's value and update SampleTypeBit::External to a higher value.
+// TODO(crbug.com/dawn/2476): Validate SampleTypeBit::External is compatible with Sampler.
 enum class SampleTypeBit : uint8_t {
     None = 0x0,
     Float = 0x1,
@@ -71,6 +75,7 @@ enum class SampleTypeBit : uint8_t {
     Depth = 0x4,
     Sint = 0x8,
     Uint = 0x10,
+    External = 0x20,
 };
 
 // Converts a wgpu::TextureSampleType to its bitmask representation.
@@ -86,6 +91,13 @@ enum class TextureComponentType {
     Float,
     Sint,
     Uint,
+};
+
+enum class TextureSubsampling {
+    Undefined,
+    e420,
+    e422,
+    e444,
 };
 
 struct RequiresFeature {
@@ -106,7 +118,9 @@ struct AspectInfo {
 
 // The number of formats Dawn knows about. Asserts in BuildFormatTable ensure that this is the
 // exact number of known format.
-static constexpr uint32_t kKnownFormatCount = 104;
+static constexpr uint32_t kWebGPUFormatCount = 95;
+static constexpr uint32_t kDawnFormatCount = 14;
+static constexpr uint32_t kKnownFormatCount = kWebGPUFormatCount + kDawnFormatCount;
 
 using FormatIndex = TypedInteger<struct FormatIndexT, uint32_t>;
 
@@ -162,6 +176,9 @@ struct Format {
     // formats. Only stores a single view format because Dawn currently only supports sRGB format
     // reinterpretation.
     wgpu::TextureFormat baseViewFormat = wgpu::TextureFormat::Undefined;
+    // Chroma subsampling used by multi-planar formats (e.g. 4:2:0 is 1/2 horizontal and 1/2
+    // vertical resolution for UV plane, 4:2:2 is 1/2 horizontal and 1/1 vertical resolution).
+    TextureSubsampling subSampling = TextureSubsampling::Undefined;
 
     // Returns true if the formats are copy compatible.
     // Currently means they differ only in sRGB-ness.

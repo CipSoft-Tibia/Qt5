@@ -2,13 +2,24 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#include "base/memory/raw_ptr.h"
-#include "base/threading/platform_thread.h"
 #include "chrome/renderer/accessibility/read_anything_app_model.h"
 
+#include <string>
+#include <vector>
+
+#include "base/memory/raw_ptr.h"
+#include "base/threading/platform_thread.h"
+#include "chrome/renderer/accessibility/read_anything_node_utils.h"
+#include "chrome/renderer/accessibility/read_anything_test_utils.h"
 #include "chrome/test/base/chrome_render_view_test.h"
+#include "read_anything_test_utils.h"
+#include "services/strings/grit/services_strings.h"
 #include "ui/accessibility/ax_enums.mojom-shared.h"
+#include "ui/accessibility/ax_event.h"
+#include "ui/accessibility/ax_node_id_forward.h"
 #include "ui/accessibility/ax_serializable_tree.h"
+#include "ui/accessibility/ax_updates_and_events.h"
+#include "ui/base/l10n/l10n_util.h"
 
 class ReadAnythingAppModelTest : public ChromeRenderViewTest {
  public:
@@ -25,64 +36,27 @@ class ReadAnythingAppModelTest : public ChromeRenderViewTest {
     tree_id_ = ui::AXTreeID::CreateNewAXTreeID();
 
     // Create simple AXTreeUpdate with a root node and 3 children.
-    ui::AXTreeUpdate snapshot;
-    ui::AXNodeData node1;
-    node1.id = 2;
+    std::unique_ptr<ui::AXTreeUpdate> snapshot = test::CreateInitialUpdate();
+    SetUpdateTreeID(snapshot.get());
 
-    ui::AXNodeData node2;
-    node2.id = 3;
-
-    ui::AXNodeData node3;
-    node3.id = 4;
-
-    ui::AXNodeData root;
-    root.id = 1;
-    root.child_ids = {node1.id, node2.id, node3.id};
-    snapshot.root_id = root.id;
-    snapshot.nodes = {root, node1, node2, node3};
-    SetUpdateTreeID(&snapshot);
-
-    AccessibilityEventReceived({snapshot});
+    AccessibilityEventReceived({*snapshot});
     SetActiveTreeId(tree_id_);
     Reset({});
   }
 
-  ui::AXTreeID SetUpPdfTrees() {
-    SetIsPdf(GURL("http://www.google.com/foo/bar.pdf"));
-
-    // PDF set up required for formatting checks.
-    ui::AXTreeID pdf_iframe_tree_id = ui::AXTreeID::CreateNewAXTreeID();
-    ui::AXTreeID pdf_web_contents_tree_id = ui::AXTreeID::CreateNewAXTreeID();
-
-    // Send update for main web content with child tree (pdf web contents).
-    ui::AXTreeUpdate main_web_contents_update;
-    SetUpdateTreeID(&main_web_contents_update);
-    ui::AXNodeData node;
-    node.id = 1;
-    node.AddChildTreeId(pdf_web_contents_tree_id);
-    main_web_contents_update.nodes = {node};
-    AccessibilityEventReceived({main_web_contents_update});
-
-    // Send update for pdf web contents with child tree (iframe).
-    ui::AXTreeUpdate pdf_web_contents_update;
-    ui::AXNodeData pdf_node;
-    pdf_node.id = 1;
-    pdf_node.AddChildTreeId(pdf_iframe_tree_id);
-    pdf_web_contents_update.root_id = pdf_node.id;
-    pdf_web_contents_update.nodes = {pdf_node};
-    SetUpdateTreeID(&pdf_web_contents_update, pdf_web_contents_tree_id);
-    AccessibilityEventReceived({pdf_web_contents_update});
-
-    return pdf_iframe_tree_id;
-  }
-
   void SetUpdateTreeID(ui::AXTreeUpdate* update) {
-    SetUpdateTreeID(update, tree_id_);
+    test::SetUpdateTreeID(update, tree_id_);
   }
 
-  void SetDistillationInProgress(bool distillation) {
-    model_->SetDistillationInProgress(distillation);
+  void set_distillation_in_progress(bool distillation) {
+    model_->set_distillation_in_progress(distillation);
   }
+
+  void SetLastExpandedNodeId(ui::AXNodeID id) {
+    model_->set_last_expanded_node_id(id);
+  }
+
+  ui::AXNodeID LastExpandedNodeId() { return model_->last_expanded_node_id(); }
 
   bool AreAllPendingUpdatesEmpty() {
     size_t count = 0;
@@ -93,46 +67,41 @@ class ReadAnythingAppModelTest : public ChromeRenderViewTest {
     return count == 0;
   }
 
-  void SetUpdateTreeID(ui::AXTreeUpdate* update, ui::AXTreeID tree_id) {
-    ui::AXTreeData tree_data;
-    tree_data.tree_id = tree_id;
-    update->has_tree_data = true;
-    update->tree_data = tree_data;
-  }
-
-  void SetThemeForTesting(const std::string& font_name,
-                          float font_size,
-                          bool links_enabled,
-                          SkColor foreground_color,
-                          SkColor background_color,
-                          int line_spacing,
-                          int letter_spacing) {
-    auto line_spacing_enum =
-        static_cast<read_anything::mojom::LineSpacing>(line_spacing);
-    auto letter_spacing_enum =
-        static_cast<read_anything::mojom::LetterSpacing>(letter_spacing);
-    model_->OnThemeChanged(read_anything::mojom::ReadAnythingTheme::New(
-        font_name, font_size, links_enabled, foreground_color, background_color,
-        line_spacing_enum, letter_spacing_enum));
-  }
-
-  void SetLineAndLetterSpacing(
+  void OnSettingsRestoredFromPrefs(
+      read_anything::mojom::LineSpacing line_spacing,
       read_anything::mojom::LetterSpacing letter_spacing,
-      read_anything::mojom::LineSpacing line_spacing) {
-    model_->OnThemeChanged(read_anything::mojom::ReadAnythingTheme::New(
-        "Arial", 15.0, false, SkColorSetRGB(0x33, 0x40, 0x36),
-        SkColorSetRGB(0xDF, 0xD2, 0x63), line_spacing, letter_spacing));
+      const std::string& font,
+      double font_size,
+      bool links_enabled,
+      bool images_enabled,
+      read_anything::mojom::Colors color) {
+    model_->OnSettingsRestoredFromPrefs(line_spacing, letter_spacing, font,
+                                        font_size, links_enabled,
+                                        images_enabled, color);
   }
 
-  void AccessibilityEventReceived(
-      const std::vector<ui::AXTreeUpdate>& updates) {
-    AccessibilityEventReceived(updates[0].tree_data.tree_id, updates);
+  void AccessibilityEventReceived(const std::vector<ui::AXTreeUpdate>& updates,
+                                  bool speech_playing = false) {
+    AccessibilityEventReceived(updates[0].tree_data.tree_id, updates,
+                               speech_playing);
   }
 
-  void AccessibilityEventReceived(
-      const ui::AXTreeID& tree_id,
-      const std::vector<ui::AXTreeUpdate>& updates) {
-    model_->AccessibilityEventReceived(tree_id, updates, {});
+  void AccessibilityEventReceived(const ui::AXTreeID& tree_id,
+                                  const std::vector<ui::AXTreeUpdate>& updates,
+                                  bool speech_playing = false) {
+    std::vector<ui::AXEvent> events;
+    model_->AccessibilityEventReceived(
+        tree_id, const_cast<std::vector<ui::AXTreeUpdate>&>(updates), events,
+        speech_playing);
+  }
+
+  void AccessibilityEventReceived(const ui::AXTreeID& tree_id,
+                                  const std::vector<ui::AXTreeUpdate>& updates,
+                                  const std::vector<ui::AXEvent>& events,
+                                  bool speech_playing = false) {
+    model_->AccessibilityEventReceived(
+        tree_id, const_cast<std::vector<ui::AXTreeUpdate>&>(updates),
+        const_cast<std::vector<ui::AXEvent>&>(events), speech_playing);
   }
 
   void SetActiveTreeId(ui::AXTreeID tree_id) {
@@ -147,17 +116,19 @@ class ReadAnythingAppModelTest : public ChromeRenderViewTest {
 
   std::string FontName() { return model_->font_name(); }
 
+  void SetFontName(std::string font) { model_->set_font_name(font); }
+
   float FontSize() { return model_->font_size(); }
 
   bool LinksEnabled() { return model_->links_enabled(); }
 
-  SkColor ForegroundColor() { return model_->foreground_color(); }
+  bool ImagesEnabled() { return model_->images_enabled(); }
 
-  SkColor BackgroundColor() { return model_->background_color(); }
+  int LineSpacing() { return model_->line_spacing(); }
 
-  float LineSpacing() { return model_->line_spacing(); }
+  int LetterSpacing() { return model_->letter_spacing(); }
 
-  float LetterSpacing() { return model_->letter_spacing(); }
+  int ColorTheme() { return model_->color_theme(); }
 
   bool DistillationInProgress() { return model_->distillation_in_progress(); }
 
@@ -170,7 +141,8 @@ class ReadAnythingAppModelTest : public ChromeRenderViewTest {
   int32_t EndOffset() { return model_->end_offset(); }
 
   bool IsNodeIgnoredForReadAnything(ui::AXNodeID ax_node_id) {
-    return model_->IsNodeIgnoredForReadAnything(ax_node_id);
+    return a11y::IsNodeIgnoredForReadAnything(model_->GetAXNode(ax_node_id),
+                                              model_->is_pdf());
   }
 
   size_t GetNumTrees() { return model_->GetTreesForTesting()->size(); }
@@ -200,9 +172,13 @@ class ReadAnythingAppModelTest : public ChromeRenderViewTest {
     return base::Contains(model_->display_node_ids(), ax_node_id);
   }
 
+  bool DisplayNodeIdsIsEmpty() { return model_->display_node_ids().empty(); }
+
   bool SelectionNodeIdsContains(ui::AXNodeID ax_node_id) {
     return base::Contains(model_->selection_node_ids(), ax_node_id);
   }
+
+  bool SelectionNodeIdsEmpty() { return model_->selection_node_ids().empty(); }
 
   void ProcessDisplayNodes(const std::vector<ui::AXNodeID>& content_node_ids) {
     Reset(content_node_ids);
@@ -212,6 +188,10 @@ class ReadAnythingAppModelTest : public ChromeRenderViewTest {
   bool ProcessSelection() { return model_->PostProcessSelection(); }
 
   bool RequiresDistillation() { return model_->requires_distillation(); }
+
+  bool RequiresRedraw() { return model_->redraw_required(); }
+
+  bool DrawTimerReset() { return model_->reset_draw_timer(); }
 
   bool RequiresPostProcessSelection() {
     return model_->requires_post_process_selection();
@@ -224,63 +204,88 @@ class ReadAnythingAppModelTest : public ChromeRenderViewTest {
     model_->set_selection_from_action(selection_from_action);
   }
 
+  void OnSelection(ax::mojom::EventFrom event_from) {
+    model_->OnSelection(event_from);
+  }
+
   void IncreaseTextSize() { model_->IncreaseTextSize(); }
 
   void DecreaseTextSize() { model_->DecreaseTextSize(); }
 
   void ResetTextSize() { model_->ResetTextSize(); }
 
-  std::string DefaultLanguageCode() { return model_->default_language_code(); }
-  void SetLanguageCode(std::string code) {
-    model_->set_default_language_code(code);
-  }
+  std::string LanguageCode() { return model_->base_language_code(); }
+  void SetLanguageCode(std::string code) { model_->SetBaseLanguageCode(code); }
 
   std::vector<std::string> GetSupportedFonts() {
     return model_->GetSupportedFonts();
   }
 
-  bool IsPDFFormatted() { return model_->IsPDFFormatted(); }
-  void SetIsPdf(const GURL& url) { return model_->SetIsPdf(url); }
-  bool IsPdf() { return model_->is_pdf(); }
-  ui::AXTreeID GetPDFWebContents() { return model_->GetPDFWebContents(); }
+  void set_is_pdf(bool is_pdf) { return model_->set_is_pdf(is_pdf); }
+
+  std::vector<int> SendSimpleUpdateAndGetChildIds() {
+    // Set the name of each node to be its id.
+    ui::AXTreeUpdate initial_update;
+    SetUpdateTreeID(&initial_update);
+    initial_update.root_id = 1;
+    initial_update.nodes.resize(3);
+    std::vector<int> child_ids;
+    for (int i = 0; i < 3; i++) {
+      int id = i + 2;
+      child_ids.push_back(id);
+      initial_update.nodes[i] = test::TextNodeWithTextFromId(id);
+    }
+    AccessibilityEventReceived({initial_update});
+    return child_ids;
+  }
+
+  std::vector<ui::AXTreeUpdate> CreateSimpleUpdateList(
+      std::vector<int> child_ids) {
+    return test::CreateSimpleUpdateList(child_ids, tree_id_);
+  }
 
   ui::AXTreeID tree_id_;
 
  private:
   // ReadAnythingAppModel constructor and destructor are private so it's
   // not accessible by std::make_unique.
-  raw_ptr<ReadAnythingAppModel, ExperimentalRenderer> model_ = nullptr;
+  raw_ptr<ReadAnythingAppModel> model_ = nullptr;
 };
 
-TEST_F(ReadAnythingAppModelTest, Theme) {
+TEST_F(ReadAnythingAppModelTest, FontName) {
+  EXPECT_EQ(string_constants::kReadAnythingPlaceholderFontName, FontName());
+
+  std::string font_name = "Montserrat";
+  SetFontName(font_name);
+  EXPECT_EQ(font_name, FontName());
+}
+
+TEST_F(ReadAnythingAppModelTest, OnSettingsRestoredFromPrefs) {
+  auto line_spacing = read_anything::mojom::LineSpacing::kDefaultValue;
+  auto letter_spacing = read_anything::mojom::LetterSpacing::kDefaultValue;
   std::string font_name = "Roboto";
-  float font_size = 18.0;
+  double font_size = 18.0;
   bool links_enabled = false;
-  SkColor foreground = SkColorSetRGB(0x33, 0x36, 0x39);
-  SkColor background = SkColorSetRGB(0xFD, 0xE2, 0x93);
-  int letter_spacing =
-      static_cast<int>(read_anything::mojom::LetterSpacing::kDefaultValue);
-  float letter_spacing_value = 0.0;
-  int line_spacing =
-      static_cast<int>(read_anything::mojom::LineSpacing::kDefaultValue);
-  float line_spacing_value = 1.5;
-  SetThemeForTesting(font_name, font_size, links_enabled, foreground,
-                     background, line_spacing, letter_spacing);
+  bool images_enabled = true;
+  auto color = read_anything::mojom::Colors::kDefaultValue;
+  int color_value = 0;
+
+  OnSettingsRestoredFromPrefs(line_spacing, letter_spacing, font_name,
+                              font_size, links_enabled, images_enabled, color);
+
+  EXPECT_EQ(static_cast<int>(line_spacing), LineSpacing());
+  EXPECT_EQ(static_cast<int>(letter_spacing), LetterSpacing());
   EXPECT_EQ(font_name, FontName());
   EXPECT_EQ(font_size, FontSize());
   EXPECT_EQ(links_enabled, LinksEnabled());
-  EXPECT_EQ(foreground, ForegroundColor());
-  EXPECT_EQ(background, BackgroundColor());
-  EXPECT_EQ(line_spacing_value, LineSpacing());
-  EXPECT_EQ(letter_spacing_value, LetterSpacing());
+  EXPECT_EQ(images_enabled, ImagesEnabled());
+  EXPECT_EQ(color_value, ColorTheme());
 }
 
 TEST_F(ReadAnythingAppModelTest, IsNodeIgnoredForReadAnything) {
   ui::AXTreeUpdate update;
   SetUpdateTreeID(&update);
-  ui::AXNodeData static_text_node;
-  static_text_node.id = 2;
-  static_text_node.role = ax::mojom::Role::kStaticText;
+  ui::AXNodeData static_text_node = test::TextNode(/* id = */ 2);
 
   ui::AXNodeData combobox_node;
   combobox_node.id = 3;
@@ -322,30 +327,26 @@ TEST_F(ReadAnythingAppModelTest,
 
 TEST_F(ReadAnythingAppModelTest,
        IsNodeIgnoredForReadAnything_InaccessiblePDFPageNodes) {
-  ui::AXTreeID pdf_iframe_tree_id = SetUpPdfTrees();
+  set_is_pdf(true);
 
   // PDF OCR output contains kBanner and kContentInfo (each with a static text
   // node child) to mark page start/end.
   ui::AXTreeUpdate update;
-  SetUpdateTreeID(&update, pdf_iframe_tree_id);
+  test::SetUpdateTreeID(&update, tree_id_);
   ui::AXNodeData banner_node;
   banner_node.id = 2;
   banner_node.role = ax::mojom::Role::kBanner;
 
-  ui::AXNodeData static_text_start_node;
-  static_text_start_node.id = 3;
-  static_text_start_node.role = ax::mojom::Role::kStaticText;
-  static_text_start_node.SetNameChecked(string_constants::kPDFPageStart);
+  ui::AXNodeData static_text_start_node = test::TextNode(
+      /* id= */ 3, l10n_util::GetStringUTF16(IDS_PDF_OCR_RESULT_BEGIN));
   banner_node.child_ids = {static_text_start_node.id};
 
   ui::AXNodeData content_info_node;
   content_info_node.id = 4;
   content_info_node.role = ax::mojom::Role::kContentInfo;
 
-  ui::AXNodeData static_text_end_node;
-  static_text_end_node.id = 5;
-  static_text_end_node.role = ax::mojom::Role::kStaticText;
-  static_text_end_node.SetNameChecked(string_constants::kPDFPageEnd);
+  ui::AXNodeData static_text_end_node = test::TextNode(
+      /* id= */ 5, l10n_util::GetStringUTF16(IDS_PDF_OCR_RESULT_END));
   content_info_node.child_ids = {static_text_end_node.id};
 
   ui::AXNodeData root;
@@ -405,7 +406,7 @@ TEST_F(ReadAnythingAppModelTest, AddAndRemoveTrees) {
   std::vector<ui::AXTreeUpdate> updates;
   for (int i = 0; i < 2; i++) {
     ui::AXTreeUpdate update;
-    SetUpdateTreeID(&update, tree_ids[i]);
+    test::SetUpdateTreeID(&update, tree_ids[i]);
     ui::AXNodeData node;
     node.id = 1;
     update.nodes = {node};
@@ -447,7 +448,7 @@ TEST_F(ReadAnythingAppModelTest,
   // Create a new tree.
   ui::AXTreeID tree_id_2 = ui::AXTreeID::CreateNewAXTreeID();
   ui::AXTreeUpdate update_2;
-  SetUpdateTreeID(&update_2, tree_id_2);
+  test::SetUpdateTreeID(&update_2, tree_id_2);
   ui::AXNodeData node;
   node.id = 1;
   update_2.root_id = node.id;
@@ -461,40 +462,8 @@ TEST_F(ReadAnythingAppModelTest,
 
 TEST_F(ReadAnythingAppModelTest,
        AddPendingUpdatesAfterUnserializingOnSameTree_DoesNotCrash) {
-  // Set the name of each node to be its id.
-  ui::AXTreeUpdate initial_update;
-  SetUpdateTreeID(&initial_update);
-  initial_update.root_id = 1;
-  initial_update.nodes.resize(3);
-  std::vector<int> child_ids;
-  for (int i = 0; i < 3; i++) {
-    int id = i + 2;
-    child_ids.push_back(id);
-    initial_update.nodes[i].id = id;
-    initial_update.nodes[i].role = ax::mojom::Role::kStaticText;
-    initial_update.nodes[i].SetNameChecked(base::NumberToString(id));
-  }
-  AccessibilityEventReceived({initial_update});
-
-  std::vector<ui::AXTreeUpdate> updates;
-  for (int i = 0; i < 3; i++) {
-    int id = i + 5;
-    child_ids.push_back(id);
-
-    ui::AXTreeUpdate update;
-    SetUpdateTreeID(&update);
-    update.root_id = 1;
-    ui::AXNodeData root;
-    root.id = 1;
-    root.child_ids = child_ids;
-
-    ui::AXNodeData node;
-    node.id = id;
-    node.role = ax::mojom::Role::kStaticText;
-    node.SetNameChecked(base::NumberToString(id));
-    update.nodes = {root, node};
-    updates.push_back(update);
-  }
+  std::vector<int> child_ids = SendSimpleUpdateAndGetChildIds();
+  std::vector<ui::AXTreeUpdate> updates = CreateSimpleUpdateList(child_ids);
 
   // Send update 0, which starts distillation.
   AccessibilityEventReceived({updates[0]});
@@ -503,54 +472,22 @@ TEST_F(ReadAnythingAppModelTest,
 
   // Send update 1. Since distillation is in progress, this will not be
   // unserialized yet.
-  SetDistillationInProgress(true);
+  set_distillation_in_progress(true);
   AccessibilityEventReceived({updates[1]});
   EXPECT_EQ(1u, GetNumPendingUpdates(tree_id_));
 
   // Ensure that there are no crashes after an accessibility event is received
   // immediately after unserializing.
   UnserializePendingUpdates(tree_id_);
-  SetDistillationInProgress(true);
+  set_distillation_in_progress(true);
   AccessibilityEventReceived({updates[2]});
   EXPECT_EQ(1u, GetNumPendingUpdates(tree_id_));
   ASSERT_FALSE(AreAllPendingUpdatesEmpty());
 }
 
 TEST_F(ReadAnythingAppModelTest, OnTreeErased_ClearsPendingUpdates) {
-  // Set the name of each node to be its id.
-  ui::AXTreeUpdate initial_update;
-  SetUpdateTreeID(&initial_update);
-  initial_update.root_id = 1;
-  initial_update.nodes.resize(3);
-  std::vector<int> child_ids;
-  for (int i = 0; i < 3; i++) {
-    int id = i + 2;
-    child_ids.push_back(id);
-    initial_update.nodes[i].id = id;
-    initial_update.nodes[i].role = ax::mojom::Role::kStaticText;
-    initial_update.nodes[i].SetNameChecked(base::NumberToString(id));
-  }
-  AccessibilityEventReceived({initial_update});
-
-  std::vector<ui::AXTreeUpdate> updates;
-  for (int i = 0; i < 3; i++) {
-    int id = i + 5;
-    child_ids.push_back(id);
-
-    ui::AXTreeUpdate update;
-    SetUpdateTreeID(&update);
-    ui::AXNodeData root;
-    root.id = 1;
-    root.child_ids = child_ids;
-
-    ui::AXNodeData node;
-    node.id = id;
-    node.role = ax::mojom::Role::kStaticText;
-    node.SetNameChecked(base::NumberToString(id));
-    update.root_id = root.id;
-    update.nodes = {root, node};
-    updates.push_back(update);
-  }
+  std::vector<int> child_ids = SendSimpleUpdateAndGetChildIds();
+  std::vector<ui::AXTreeUpdate> updates = CreateSimpleUpdateList(child_ids);
 
   // Send update 0, which starts distillation.
   AccessibilityEventReceived({updates[0]});
@@ -559,7 +496,7 @@ TEST_F(ReadAnythingAppModelTest, OnTreeErased_ClearsPendingUpdates) {
 
   // Send update 1. Since distillation is in progress, this will not be
   // unserialized yet.
-  SetDistillationInProgress(true);
+  set_distillation_in_progress(true);
   AccessibilityEventReceived({updates[1]});
   EXPECT_EQ(1u, GetNumPendingUpdates(tree_id_));
 
@@ -570,40 +507,8 @@ TEST_F(ReadAnythingAppModelTest, OnTreeErased_ClearsPendingUpdates) {
 
 TEST_F(ReadAnythingAppModelTest,
        DistillationInProgress_TreeUpdateReceivedOnActiveTree) {
-  // Set the name of each node to be its id.
-  ui::AXTreeUpdate initial_update;
-  SetUpdateTreeID(&initial_update);
-  initial_update.root_id = 1;
-  initial_update.nodes.resize(3);
-  std::vector<int> child_ids;
-  for (int i = 0; i < 3; i++) {
-    int id = i + 2;
-    child_ids.push_back(id);
-    initial_update.nodes[i].id = id;
-    initial_update.nodes[i].role = ax::mojom::Role::kStaticText;
-    initial_update.nodes[i].SetNameChecked(base::NumberToString(id));
-  }
-  AccessibilityEventReceived({initial_update});
-
-  std::vector<ui::AXTreeUpdate> updates;
-  for (int i = 0; i < 3; i++) {
-    int id = i + 5;
-    child_ids.push_back(id);
-
-    ui::AXTreeUpdate update;
-    SetUpdateTreeID(&update);
-    ui::AXNodeData root;
-    root.id = 1;
-    root.child_ids = child_ids;
-
-    ui::AXNodeData node;
-    node.id = id;
-    node.role = ax::mojom::Role::kStaticText;
-    node.SetNameChecked(base::NumberToString(id));
-    update.root_id = root.id;
-    update.nodes = {root, node};
-    updates.push_back(update);
-  }
+  std::vector<int> child_ids = SendSimpleUpdateAndGetChildIds();
+  std::vector<ui::AXTreeUpdate> updates = CreateSimpleUpdateList(child_ids);
 
   // Send update 0, which starts distillation.
   AccessibilityEventReceived({updates[0]});
@@ -612,7 +517,7 @@ TEST_F(ReadAnythingAppModelTest,
 
   // Send update 1. Since distillation is in progress, this will not be
   // unserialized yet.
-  SetDistillationInProgress(true);
+  set_distillation_in_progress(true);
   AccessibilityEventReceived({updates[1]});
   EXPECT_EQ(1u, GetNumPendingUpdates(tree_id_));
 
@@ -627,34 +532,41 @@ TEST_F(ReadAnythingAppModelTest,
   ASSERT_TRUE(AreAllPendingUpdatesEmpty());
 }
 
+TEST_F(ReadAnythingAppModelTest, SpeechPlaying_TreeUpdateReceivedOnActiveTree) {
+  std::vector<int> child_ids = SendSimpleUpdateAndGetChildIds();
+  std::vector<ui::AXTreeUpdate> updates = CreateSimpleUpdateList(child_ids);
+
+  // Send update 0, which starts distillation.
+  AccessibilityEventReceived({updates[0]});
+  EXPECT_EQ(0u, GetNumPendingUpdates(tree_id_));
+  ASSERT_TRUE(AreAllPendingUpdatesEmpty());
+
+  // Send update 1. Since speech is in progress, this will not be
+  // unserialized yet.
+  AccessibilityEventReceived({updates[1]}, /*speech_playing=*/true);
+  EXPECT_EQ(1u, GetNumPendingUpdates(tree_id_));
+
+  // Send update 2. This is still not unserialized yet.
+  AccessibilityEventReceived({updates[2]}, /*speech_playing=*/true);
+  EXPECT_EQ(2u, GetNumPendingUpdates(tree_id_));
+
+  // Complete distillation which unserializes the pending updates and distills
+  // them.
+  UnserializePendingUpdates(tree_id_);
+  EXPECT_EQ(0u, GetNumPendingUpdates(tree_id_));
+  ASSERT_TRUE(AreAllPendingUpdatesEmpty());
+}
+
 TEST_F(ReadAnythingAppModelTest, ClearPendingUpdates_DeletesPendingUpdates) {
   EXPECT_EQ(0u, GetNumPendingUpdates(tree_id_));
 
   // Create a couple of updates which add additional nodes to the tree.
-  std::vector<ui::AXTreeUpdate> updates;
   std::vector<int> child_ids = {2, 3, 4};
-  for (int i = 0; i < 3; i++) {
-    int id = i + 5;
-    child_ids.push_back(id);
-
-    ui::AXTreeUpdate update;
-    SetUpdateTreeID(&update);
-    ui::AXNodeData root;
-    root.id = 1;
-    root.child_ids = child_ids;
-
-    ui::AXNodeData node;
-    node.id = id;
-    node.role = ax::mojom::Role::kStaticText;
-    node.SetNameChecked(base::NumberToString(id));
-    update.root_id = root.id;
-    update.nodes = {root, node};
-    updates.push_back(update);
-  }
+  std::vector<ui::AXTreeUpdate> updates = CreateSimpleUpdateList(child_ids);
 
   AccessibilityEventReceived({updates[0]});
   EXPECT_EQ(0u, GetNumPendingUpdates(tree_id_));
-  SetDistillationInProgress(true);
+  set_distillation_in_progress(true);
   AccessibilityEventReceived({updates[1]});
   EXPECT_EQ(1u, GetNumPendingUpdates(tree_id_));
   AccessibilityEventReceived({updates[2]});
@@ -670,32 +582,12 @@ TEST_F(ReadAnythingAppModelTest, ChangeActiveTreeWithPendingUpdates_UnknownID) {
   ASSERT_TRUE(AreAllPendingUpdatesEmpty());
 
   // Create a couple of updates which add additional nodes to the tree.
-  std::vector<ui::AXTreeUpdate> updates;
   std::vector<int> child_ids = {2, 3, 4};
-  for (int i = 0; i < 2; i++) {
-    int id = i + 5;
-    child_ids.push_back(id);
-
-    ui::AXTreeUpdate update;
-    SetUpdateTreeID(&update);
-    ui::AXNodeData root;
-    root.id = 1;
-    root.child_ids = child_ids;
-
-    ui::AXNodeData node;
-    node.id = id;
-    node.role = ax::mojom::Role::kStaticText;
-    node.SetNameChecked(base::NumberToString(id));
-    update.root_id = root.id;
-    update.nodes = {root, node};
-    updates.push_back(update);
-  }
+  std::vector<ui::AXTreeUpdate> updates = CreateSimpleUpdateList(child_ids);
 
   // Create an update which has no tree id.
   ui::AXTreeUpdate update;
-  ui::AXNodeData node;
-  node.id = 1;
-  node.role = ax::mojom::Role::kGenericContainer;
+  ui::AXNodeData node = test::GenericContainerNode(/* id= */ 1);
   update.nodes = {node};
   updates.push_back(update);
 
@@ -703,7 +595,7 @@ TEST_F(ReadAnythingAppModelTest, ChangeActiveTreeWithPendingUpdates_UnknownID) {
   AccessibilityEventReceived({updates[0]});
   EXPECT_EQ(0u, GetNumPendingUpdates(tree_id_));
   ASSERT_TRUE(AreAllPendingUpdatesEmpty());
-  SetDistillationInProgress(true);
+  set_distillation_in_progress(true);
   AccessibilityEventReceived(tree_id_, {updates[1], updates[2]});
   EXPECT_EQ(2u, GetNumPendingUpdates(tree_id_));
 
@@ -753,6 +645,51 @@ TEST_F(ReadAnythingAppModelTest,
   EXPECT_TRUE(DisplayNodeIdsContains(2));
   EXPECT_FALSE(DisplayNodeIdsContains(3));
   EXPECT_FALSE(DisplayNodeIdsContains(4));
+}
+
+TEST_F(ReadAnythingAppModelTest,
+       DisplayNodeIdsEmpty_WhenContentNodesAreAllHeadings) {
+  ui::AXTreeUpdate update;
+  SetUpdateTreeID(&update);
+
+  // All content nodes are heading nodes.
+  update.nodes.resize(3);
+  update.nodes[0].id = 2;
+  update.nodes[0].role = ax::mojom::Role::kHeading;
+  update.nodes[1].id = 3;
+  update.nodes[1].role = ax::mojom::Role::kHeading;
+  update.nodes[2].id = 4;
+  update.nodes[2].role = ax::mojom::Role::kHeading;
+  AccessibilityEventReceived({update});
+  ProcessDisplayNodes({2, 3, 4});
+  EXPECT_TRUE(DisplayNodeIdsIsEmpty());
+
+  // Content node is static text node with heading parent.
+  update.nodes.resize(3);
+  update.nodes[0].id = 1;
+  update.nodes[0].child_ids = {2};
+  update.nodes[1].id = 2;
+  update.nodes[1].role = ax::mojom::Role::kHeading;
+  update.nodes[1].child_ids = {3};
+  update.nodes[2] = test::TextNode(/* id= */ 3);
+  AccessibilityEventReceived({update});
+  ProcessDisplayNodes({3});
+  EXPECT_TRUE(DisplayNodeIdsIsEmpty());
+
+  // Content node is inline text box with heading grandparent.
+  update.nodes.resize(4);
+  update.nodes[0].id = 1;
+  update.nodes[0].child_ids = {2};
+  update.nodes[1].id = 2;
+  update.nodes[1].role = ax::mojom::Role::kHeading;
+  update.nodes[1].child_ids = {3};
+  update.nodes[2] = test::TextNode(/* id= */ 3);
+  update.nodes[2].child_ids = {4};
+  update.nodes[3].id = 4;
+  update.nodes[3].role = ax::mojom::Role::kInlineTextBox;
+  AccessibilityEventReceived({update});
+  ProcessDisplayNodes({4});
+  EXPECT_TRUE(DisplayNodeIdsIsEmpty());
 }
 
 TEST_F(ReadAnythingAppModelTest,
@@ -814,19 +751,6 @@ TEST_F(ReadAnythingAppModelTest,
   EXPECT_FALSE(SelectionNodeIdsContains(4));
 }
 
-TEST_F(ReadAnythingAppModelTest, SetTheme_LineAndLetterSpacingCorrect) {
-  SetLineAndLetterSpacing(read_anything::mojom::LetterSpacing::kStandard,
-                          read_anything::mojom::LineSpacing::kLoose);
-  ASSERT_EQ(LineSpacing(), 1.5);
-  ASSERT_EQ(LetterSpacing(), 0);
-
-  // Ensure the line and letter spacing are updated.
-  SetLineAndLetterSpacing(read_anything::mojom::LetterSpacing::kWide,
-                          read_anything::mojom::LineSpacing::kVeryLoose);
-  ASSERT_EQ(LineSpacing(), 2.0);
-  ASSERT_EQ(LetterSpacing(), 0.05f);
-}
-
 TEST_F(ReadAnythingAppModelTest, Reset_ResetsState) {
   // Initial state.
   ui::AXTreeUpdate update;
@@ -844,7 +768,7 @@ TEST_F(ReadAnythingAppModelTest, Reset_ResetsState) {
 
   AccessibilityEventReceived({update});
   ProcessDisplayNodes({3, 4});
-  SetDistillationInProgress(true);
+  set_distillation_in_progress(true);
 
   // Assert initial state before resetting.
   ASSERT_TRUE(DistillationInProgress());
@@ -962,35 +886,564 @@ TEST_F(ReadAnythingAppModelTest, PostProcessSelectionFromAction_DoesNotDraw) {
 }
 
 TEST_F(ReadAnythingAppModelTest,
+       PostProcessSelection_OnFirstOpen_DrawsWithNonEmptySelectionInside) {
+  ProcessDisplayNodes({2, 3});
+  ui::AXTreeUpdate update;
+  SetUpdateTreeID(&update);
+  update.tree_data.sel_anchor_object_id = 2;
+  update.tree_data.sel_focus_object_id = 2;
+  update.tree_data.sel_anchor_offset = 0;
+  update.tree_data.sel_focus_offset = 5;
+  update.tree_data.sel_is_backward = false;
+  AccessibilityEventReceived({update});
+  SetSelectionFromAction(false);
+
+  ASSERT_TRUE(ProcessSelection());
+}
+
+TEST_F(ReadAnythingAppModelTest,
+       PostProcessSelection_OnFirstOpen_DrawsWithEmptySelectionInside) {
+  ProcessDisplayNodes({2, 3});
+  ui::AXTreeUpdate update;
+  SetUpdateTreeID(&update);
+  update.tree_data.sel_anchor_object_id = 2;
+  update.tree_data.sel_focus_object_id = 2;
+  update.tree_data.sel_anchor_offset = 5;
+  update.tree_data.sel_focus_offset = 5;
+  update.tree_data.sel_is_backward = false;
+  AccessibilityEventReceived({update});
+  SetSelectionFromAction(false);
+
+  ASSERT_TRUE(ProcessSelection());
+}
+
+TEST_F(ReadAnythingAppModelTest,
+       PostProcessSelection_OnFirstOpen_DrawsWithNonEmptySelectionOutside) {
+  ProcessDisplayNodes({2, 3});
+  ui::AXTreeUpdate update;
+  SetUpdateTreeID(&update);
+  update.tree_data.sel_anchor_object_id = 4;
+  update.tree_data.sel_focus_object_id = 4;
+  update.tree_data.sel_anchor_offset = 0;
+  update.tree_data.sel_focus_offset = 5;
+  update.tree_data.sel_is_backward = false;
+  AccessibilityEventReceived({update});
+  SetSelectionFromAction(false);
+
+  ASSERT_TRUE(ProcessSelection());
+}
+
+TEST_F(ReadAnythingAppModelTest,
+       PostProcessSelection__OnFirstOpen_DrawsWithEmptySelectionOutside) {
+  ProcessDisplayNodes({2, 3});
+  ui::AXTreeUpdate update;
+  SetUpdateTreeID(&update);
+  update.tree_data.sel_anchor_object_id = 4;
+  update.tree_data.sel_focus_object_id = 4;
+  update.tree_data.sel_anchor_offset = 0;
+  update.tree_data.sel_focus_offset = 0;
+  update.tree_data.sel_is_backward = false;
+  AccessibilityEventReceived({update});
+  SetSelectionFromAction(false);
+
+  ASSERT_TRUE(ProcessSelection());
+}
+
+TEST_F(ReadAnythingAppModelTest,
+       PostProcessSelection_EmptyInside_AfterNonEmptyInside_DoesNotDraw) {
+  ProcessDisplayNodes({2, 3});
+
+  // Non-empty selection inside display nodes.
+  ui::AXTreeUpdate update1;
+  SetUpdateTreeID(&update1);
+  update1.tree_data.sel_anchor_object_id = 2;
+  update1.tree_data.sel_focus_object_id = 2;
+  update1.tree_data.sel_anchor_offset = 0;
+  update1.tree_data.sel_focus_offset = 5;
+  update1.tree_data.sel_is_backward = false;
+  AccessibilityEventReceived({update1});
+  SetSelectionFromAction(false);
+  ProcessSelection();
+
+  // Empty selection inside display nodes.
+  ui::AXTreeUpdate update2;
+  SetUpdateTreeID(&update2);
+  update2.tree_data.sel_anchor_object_id = 3;
+  update2.tree_data.sel_focus_object_id = 3;
+  update2.tree_data.sel_anchor_offset = 2;
+  update2.tree_data.sel_focus_offset = 2;
+  update2.tree_data.sel_is_backward = false;
+  AccessibilityEventReceived({update2});
+  SetSelectionFromAction(false);
+
+  ASSERT_FALSE(ProcessSelection());
+}
+
+TEST_F(ReadAnythingAppModelTest,
+       PostProcessSelection_EmptyInside_AfterEmptyInside_DoesNotDraw) {
+  ProcessDisplayNodes({2, 3});
+
+  // Empty selection inside display nodes.
+  ui::AXTreeUpdate update1;
+  SetUpdateTreeID(&update1);
+  update1.tree_data.sel_anchor_object_id = 2;
+  update1.tree_data.sel_focus_object_id = 2;
+  update1.tree_data.sel_anchor_offset = 0;
+  update1.tree_data.sel_focus_offset = 0;
+  update1.tree_data.sel_is_backward = false;
+  AccessibilityEventReceived({update1});
+  SetSelectionFromAction(false);
+  ProcessSelection();
+
+  // Different empty selection inside display nodes.
+  ui::AXTreeUpdate update2;
+  SetUpdateTreeID(&update2);
+  update2.tree_data.sel_anchor_object_id = 3;
+  update2.tree_data.sel_focus_object_id = 3;
+  update2.tree_data.sel_anchor_offset = 2;
+  update2.tree_data.sel_focus_offset = 2;
+  update2.tree_data.sel_is_backward = false;
+  AccessibilityEventReceived({update2});
+  SetSelectionFromAction(false);
+
+  ASSERT_FALSE(ProcessSelection());
+}
+
+TEST_F(ReadAnythingAppModelTest,
+       PostProcessSelection_NonEmptyInside_AfterEmptyInside_DoesNotDraw) {
+  ProcessDisplayNodes({2, 3});
+
+  // Empty selection inside display nodes.
+  ui::AXTreeUpdate update1;
+  SetUpdateTreeID(&update1);
+  update1.tree_data.sel_anchor_object_id = 3;
+  update1.tree_data.sel_focus_object_id = 3;
+  update1.tree_data.sel_anchor_offset = 2;
+  update1.tree_data.sel_focus_offset = 2;
+  update1.tree_data.sel_is_backward = false;
+  AccessibilityEventReceived({update1});
+  SetSelectionFromAction(false);
+  ProcessSelection();
+
+  // Non-empty selection inside display nodes.
+  ui::AXTreeUpdate update2;
+  SetUpdateTreeID(&update2);
+  update2.tree_data.sel_anchor_object_id = 2;
+  update2.tree_data.sel_focus_object_id = 2;
+  update2.tree_data.sel_anchor_offset = 0;
+  update2.tree_data.sel_focus_offset = 5;
+  update2.tree_data.sel_is_backward = false;
+  AccessibilityEventReceived({update2});
+  SetSelectionFromAction(false);
+
+  ASSERT_FALSE(ProcessSelection());
+}
+
+TEST_F(ReadAnythingAppModelTest,
+       PostProcessSelection_NonEmptyInside_AfterNonEmptyInside_DoesNotDraw) {
+  ProcessDisplayNodes({2, 3});
+
+  // Non-empty selection inside display nodes.
+  ui::AXTreeUpdate update1;
+  SetUpdateTreeID(&update1);
+  update1.tree_data.sel_anchor_object_id = 3;
+  update1.tree_data.sel_focus_object_id = 3;
+  update1.tree_data.sel_anchor_offset = 2;
+  update1.tree_data.sel_focus_offset = 6;
+  update1.tree_data.sel_is_backward = false;
+  AccessibilityEventReceived({update1});
+  SetSelectionFromAction(false);
+  ProcessSelection();
+
+  // Different non-empty selection inside display nodes.
+  ui::AXTreeUpdate update2;
+  SetUpdateTreeID(&update2);
+  update2.tree_data.sel_anchor_object_id = 2;
+  update2.tree_data.sel_focus_object_id = 3;
+  update2.tree_data.sel_anchor_offset = 0;
+  update2.tree_data.sel_focus_offset = 5;
+  update2.tree_data.sel_is_backward = false;
+  AccessibilityEventReceived({update2});
+  SetSelectionFromAction(false);
+
+  ASSERT_FALSE(ProcessSelection());
+}
+
+TEST_F(ReadAnythingAppModelTest,
+       PostProcessSelection_EmptyOutside_AfterNonEmptyOutside_DoesDraw) {
+  ProcessDisplayNodes({2, 3});
+
+  // Non-empty selection outside display nodes.
+  ui::AXTreeUpdate update1;
+  SetUpdateTreeID(&update1);
+  update1.tree_data.sel_anchor_object_id = 4;
+  update1.tree_data.sel_focus_object_id = 4;
+  update1.tree_data.sel_anchor_offset = 0;
+  update1.tree_data.sel_focus_offset = 5;
+  update1.tree_data.sel_is_backward = false;
+  AccessibilityEventReceived({update1});
+  SetSelectionFromAction(false);
+  ProcessSelection();
+
+  // Empty selection outside display nodes.
+  ui::AXTreeUpdate update2;
+  SetUpdateTreeID(&update2);
+  update2.tree_data.sel_anchor_object_id = 4;
+  update2.tree_data.sel_focus_object_id = 4;
+  update2.tree_data.sel_anchor_offset = 2;
+  update2.tree_data.sel_focus_offset = 2;
+  update2.tree_data.sel_is_backward = false;
+  AccessibilityEventReceived({update2});
+  SetSelectionFromAction(false);
+
+  ASSERT_TRUE(ProcessSelection());
+}
+
+TEST_F(ReadAnythingAppModelTest,
+       PostProcessSelection_EmptyOutside_AfterEmptyOutside_DoesNotDraw) {
+  ProcessDisplayNodes({2, 3});
+
+  // Empty selection outside display nodes.
+  ui::AXTreeUpdate update1;
+  SetUpdateTreeID(&update1);
+  update1.tree_data.sel_anchor_object_id = 4;
+  update1.tree_data.sel_focus_object_id = 4;
+  update1.tree_data.sel_anchor_offset = 0;
+  update1.tree_data.sel_focus_offset = 0;
+  update1.tree_data.sel_is_backward = false;
+  AccessibilityEventReceived({update1});
+  SetSelectionFromAction(false);
+  ProcessSelection();
+
+  // Different empty selection outside display nodes.
+  ui::AXTreeUpdate update2;
+  SetUpdateTreeID(&update2);
+  update2.tree_data.sel_anchor_object_id = 4;
+  update2.tree_data.sel_focus_object_id = 4;
+  update2.tree_data.sel_anchor_offset = 2;
+  update2.tree_data.sel_focus_offset = 2;
+  update2.tree_data.sel_is_backward = false;
+  AccessibilityEventReceived({update2});
+  SetSelectionFromAction(false);
+
+  ASSERT_FALSE(ProcessSelection());
+}
+
+TEST_F(ReadAnythingAppModelTest,
+       PostProcessSelection_NonEmptyOutside_AfterEmptyOutside_DoesDraw) {
+  ProcessDisplayNodes({2, 3});
+
+  // Empty selection outside display nodes.
+  ui::AXTreeUpdate update1;
+  SetUpdateTreeID(&update1);
+  update1.tree_data.sel_anchor_object_id = 4;
+  update1.tree_data.sel_focus_object_id = 4;
+  update1.tree_data.sel_anchor_offset = 2;
+  update1.tree_data.sel_focus_offset = 2;
+  update1.tree_data.sel_is_backward = false;
+  AccessibilityEventReceived({update1});
+  SetSelectionFromAction(false);
+  ProcessSelection();
+
+  // Non-empty selection outside display nodes.
+  ui::AXTreeUpdate update2;
+  SetUpdateTreeID(&update2);
+  update2.tree_data.sel_anchor_object_id = 4;
+  update2.tree_data.sel_focus_object_id = 4;
+  update2.tree_data.sel_anchor_offset = 0;
+  update2.tree_data.sel_focus_offset = 5;
+  update2.tree_data.sel_is_backward = false;
+  AccessibilityEventReceived({update2});
+  SetSelectionFromAction(false);
+
+  ASSERT_TRUE(ProcessSelection());
+}
+
+TEST_F(ReadAnythingAppModelTest,
+       PostProcessSelection_NonEmptyOutside_AfterNonEmptyOutside_DoesDraw) {
+  ProcessDisplayNodes({2, 3});
+
+  // Non-empty selection outside display nodes.
+  ui::AXTreeUpdate update1;
+  SetUpdateTreeID(&update1);
+  update1.tree_data.sel_anchor_object_id = 4;
+  update1.tree_data.sel_focus_object_id = 4;
+  update1.tree_data.sel_anchor_offset = 2;
+  update1.tree_data.sel_focus_offset = 6;
+  update1.tree_data.sel_is_backward = false;
+  AccessibilityEventReceived({update1});
+  SetSelectionFromAction(false);
+  ProcessSelection();
+
+  // Different non-empty selection outside display nodes.
+  ui::AXTreeUpdate update2;
+  SetUpdateTreeID(&update2);
+  update2.tree_data.sel_anchor_object_id = 4;
+  update2.tree_data.sel_focus_object_id = 4;
+  update2.tree_data.sel_anchor_offset = 0;
+  update2.tree_data.sel_focus_offset = 5;
+  update2.tree_data.sel_is_backward = false;
+  AccessibilityEventReceived({update2});
+  SetSelectionFromAction(false);
+
+  ASSERT_TRUE(ProcessSelection());
+}
+
+TEST_F(ReadAnythingAppModelTest,
+       PostProcessSelection_EmptyInside_AfterNonEmptyOutside_DoesDraw) {
+  ProcessDisplayNodes({2, 3});
+
+  // Non-empty selection outside display nodes.
+  ui::AXTreeUpdate update1;
+  SetUpdateTreeID(&update1);
+  update1.tree_data.sel_anchor_object_id = 4;
+  update1.tree_data.sel_focus_object_id = 4;
+  update1.tree_data.sel_anchor_offset = 0;
+  update1.tree_data.sel_focus_offset = 5;
+  update1.tree_data.sel_is_backward = false;
+  AccessibilityEventReceived({update1});
+  SetSelectionFromAction(false);
+  ProcessSelection();
+
+  // Empty selection inside display nodes.
+  ui::AXTreeUpdate update2;
+  SetUpdateTreeID(&update2);
+  update2.tree_data.sel_anchor_object_id = 2;
+  update2.tree_data.sel_focus_object_id = 2;
+  update2.tree_data.sel_anchor_offset = 2;
+  update2.tree_data.sel_focus_offset = 2;
+  update2.tree_data.sel_is_backward = false;
+  AccessibilityEventReceived({update2});
+  SetSelectionFromAction(false);
+
+  ASSERT_TRUE(ProcessSelection());
+}
+
+TEST_F(ReadAnythingAppModelTest,
+       PostProcessSelection_EmptyInside_AfterEmptyOutside_DoesNotDraw) {
+  ProcessDisplayNodes({2, 3});
+
+  // Empty selection outside display nodes.
+  ui::AXTreeUpdate update1;
+  SetUpdateTreeID(&update1);
+  update1.tree_data.sel_anchor_object_id = 4;
+  update1.tree_data.sel_focus_object_id = 4;
+  update1.tree_data.sel_anchor_offset = 0;
+  update1.tree_data.sel_focus_offset = 0;
+  update1.tree_data.sel_is_backward = false;
+  AccessibilityEventReceived({update1});
+  SetSelectionFromAction(false);
+  ProcessSelection();
+
+  // Empty selection inside display nodes.
+  ui::AXTreeUpdate update2;
+  SetUpdateTreeID(&update2);
+  update2.tree_data.sel_anchor_object_id = 2;
+  update2.tree_data.sel_focus_object_id = 2;
+  update2.tree_data.sel_anchor_offset = 2;
+  update2.tree_data.sel_focus_offset = 2;
+  update2.tree_data.sel_is_backward = false;
+  AccessibilityEventReceived({update2});
+  SetSelectionFromAction(false);
+
+  ASSERT_FALSE(ProcessSelection());
+}
+
+TEST_F(ReadAnythingAppModelTest,
+       PostProcessSelection_NonEmptyInside_AfterEmptyOutside_DoesNotDraw) {
+  ProcessDisplayNodes({2, 3});
+
+  // Empty selection outside display nodes.
+  ui::AXTreeUpdate update1;
+  SetUpdateTreeID(&update1);
+  update1.tree_data.sel_anchor_object_id = 4;
+  update1.tree_data.sel_focus_object_id = 4;
+  update1.tree_data.sel_anchor_offset = 2;
+  update1.tree_data.sel_focus_offset = 2;
+  update1.tree_data.sel_is_backward = false;
+  AccessibilityEventReceived({update1});
+  SetSelectionFromAction(false);
+  ProcessSelection();
+
+  // Non-empty selection inside display nodes.
+  ui::AXTreeUpdate update2;
+  SetUpdateTreeID(&update2);
+  update2.tree_data.sel_anchor_object_id = 2;
+  update2.tree_data.sel_focus_object_id = 3;
+  update2.tree_data.sel_anchor_offset = 0;
+  update2.tree_data.sel_focus_offset = 5;
+  update2.tree_data.sel_is_backward = false;
+  AccessibilityEventReceived({update2});
+  SetSelectionFromAction(false);
+
+  ASSERT_FALSE(ProcessSelection());
+}
+
+TEST_F(ReadAnythingAppModelTest,
+       PostProcessSelection_NonEmptyInside_AfterNonEmptyOutside_DoesDraw) {
+  ProcessDisplayNodes({2, 3});
+
+  // Non-empty selection outside display nodes.
+  ui::AXTreeUpdate update1;
+  SetUpdateTreeID(&update1);
+  update1.tree_data.sel_anchor_object_id = 4;
+  update1.tree_data.sel_focus_object_id = 4;
+  update1.tree_data.sel_anchor_offset = 2;
+  update1.tree_data.sel_focus_offset = 6;
+  update1.tree_data.sel_is_backward = false;
+  AccessibilityEventReceived({update1});
+  SetSelectionFromAction(false);
+  ProcessSelection();
+
+  // Non-empty selection inside display nodes.
+  ui::AXTreeUpdate update2;
+  SetUpdateTreeID(&update2);
+  update2.tree_data.sel_anchor_object_id = 2;
+  update2.tree_data.sel_focus_object_id = 2;
+  update2.tree_data.sel_anchor_offset = 0;
+  update2.tree_data.sel_focus_offset = 5;
+  update2.tree_data.sel_is_backward = false;
+  AccessibilityEventReceived({update2});
+  SetSelectionFromAction(false);
+
+  ASSERT_TRUE(ProcessSelection());
+}
+
+TEST_F(ReadAnythingAppModelTest,
+       PostProcessSelection_EmptyOutside_AfterNonEmptyInside_DoesNotDraw) {
+  ProcessDisplayNodes({2, 3});
+
+  // Non-empty selection inside display nodes.
+  ui::AXTreeUpdate update1;
+  SetUpdateTreeID(&update1);
+  update1.tree_data.sel_anchor_object_id = 2;
+  update1.tree_data.sel_focus_object_id = 3;
+  update1.tree_data.sel_anchor_offset = 0;
+  update1.tree_data.sel_focus_offset = 5;
+  update1.tree_data.sel_is_backward = false;
+  AccessibilityEventReceived({update1});
+  SetSelectionFromAction(false);
+  ProcessSelection();
+
+  // Empty selection outside display nodes.
+  ui::AXTreeUpdate update2;
+  SetUpdateTreeID(&update2);
+  update2.tree_data.sel_anchor_object_id = 4;
+  update2.tree_data.sel_focus_object_id = 4;
+  update2.tree_data.sel_anchor_offset = 2;
+  update2.tree_data.sel_focus_offset = 2;
+  update2.tree_data.sel_is_backward = false;
+  AccessibilityEventReceived({update2});
+  SetSelectionFromAction(false);
+
+  ASSERT_FALSE(ProcessSelection());
+}
+
+TEST_F(ReadAnythingAppModelTest,
+       PostProcessSelection_EmptyOutside_AfterEmptyInside_DoesNotDraw) {
+  ProcessDisplayNodes({2, 3});
+
+  // Empty selection inside display nodes.
+  ui::AXTreeUpdate update1;
+  SetUpdateTreeID(&update1);
+  update1.tree_data.sel_anchor_object_id = 2;
+  update1.tree_data.sel_focus_object_id = 2;
+  update1.tree_data.sel_anchor_offset = 0;
+  update1.tree_data.sel_focus_offset = 0;
+  update1.tree_data.sel_is_backward = false;
+  AccessibilityEventReceived({update1});
+  SetSelectionFromAction(false);
+  ProcessSelection();
+
+  // Empty selection outside display nodes.
+  ui::AXTreeUpdate update2;
+  SetUpdateTreeID(&update2);
+  update2.tree_data.sel_anchor_object_id = 4;
+  update2.tree_data.sel_focus_object_id = 4;
+  update2.tree_data.sel_anchor_offset = 2;
+  update2.tree_data.sel_focus_offset = 2;
+  update2.tree_data.sel_is_backward = false;
+  AccessibilityEventReceived({update2});
+  SetSelectionFromAction(false);
+
+  ASSERT_FALSE(ProcessSelection());
+}
+
+TEST_F(ReadAnythingAppModelTest,
+       PostProcessSelection_NonEmptyOutside_AfterEmptyInside_DoesDraw) {
+  ProcessDisplayNodes({2, 3});
+
+  // Empty selection inside display nodes.
+  ui::AXTreeUpdate update1;
+  SetUpdateTreeID(&update1);
+  update1.tree_data.sel_anchor_object_id = 2;
+  update1.tree_data.sel_focus_object_id = 2;
+  update1.tree_data.sel_anchor_offset = 2;
+  update1.tree_data.sel_focus_offset = 2;
+  update1.tree_data.sel_is_backward = false;
+  AccessibilityEventReceived({update1});
+  SetSelectionFromAction(false);
+  ProcessSelection();
+
+  // Non-empty selection outside display nodes.
+  ui::AXTreeUpdate update2;
+  SetUpdateTreeID(&update2);
+  update2.tree_data.sel_anchor_object_id = 4;
+  update2.tree_data.sel_focus_object_id = 4;
+  update2.tree_data.sel_anchor_offset = 0;
+  update2.tree_data.sel_focus_offset = 5;
+  update2.tree_data.sel_is_backward = false;
+  AccessibilityEventReceived({update2});
+  SetSelectionFromAction(false);
+
+  ASSERT_TRUE(ProcessSelection());
+}
+
+TEST_F(ReadAnythingAppModelTest,
+       PostProcessSelection_NonEmptyOutside_AfterNonEmptyInside_DoesDraw) {
+  ProcessDisplayNodes({2, 3});
+
+  // Non-empty selection inside display nodes.
+  ui::AXTreeUpdate update1;
+  SetUpdateTreeID(&update1);
+  update1.tree_data.sel_anchor_object_id = 2;
+  update1.tree_data.sel_focus_object_id = 2;
+  update1.tree_data.sel_anchor_offset = 2;
+  update1.tree_data.sel_focus_offset = 6;
+  update1.tree_data.sel_is_backward = false;
+  AccessibilityEventReceived({update1});
+  SetSelectionFromAction(false);
+  ProcessSelection();
+
+  // Non-empty selection outside display nodes.
+  ui::AXTreeUpdate update2;
+  SetUpdateTreeID(&update2);
+  update2.tree_data.sel_anchor_object_id = 4;
+  update2.tree_data.sel_focus_object_id = 4;
+  update2.tree_data.sel_anchor_offset = 0;
+  update2.tree_data.sel_focus_offset = 5;
+  update2.tree_data.sel_is_backward = false;
+  AccessibilityEventReceived({update2});
+  SetSelectionFromAction(false);
+
+  ASSERT_TRUE(ProcessSelection());
+}
+
+TEST_F(ReadAnythingAppModelTest,
        StartAndEndNodesHaveDifferentParents_SelectionStateCorrect) {
   ui::AXTreeUpdate update;
   SetUpdateTreeID(&update);
 
-  ui::AXNodeData static_text_node1;
-  static_text_node1.id = 2;
-  static_text_node1.role = ax::mojom::Role::kStaticText;
+  ui::AXNodeData static_text_node1 = test::TextNode(/* id= */ 2);
+  ui::AXNodeData static_text_node2 = test::TextNode(/* id= */ 3);
+  ui::AXNodeData generic_container_node =
+      test::GenericContainerNode(/*id= */ 4);
+  ui::AXNodeData static_text_child_node1 = test::TextNode(/* id= */ 5);
+  ui::AXNodeData static_text_child_node2 = test::TextNode(/* id= */ 6);
 
-  ui::AXNodeData static_text_node2;
-  static_text_node2.id = 3;
-  static_text_node2.role = ax::mojom::Role::kStaticText;
-
-  ui::AXNodeData generic_container_node;
-  generic_container_node.id = 4;
-  generic_container_node.role = ax::mojom::Role::kGenericContainer;
-
-  ui::AXNodeData static_text_child_node1;
-  static_text_child_node1.id = 5;
-  static_text_child_node1.role = ax::mojom::Role::kStaticText;
-
-  ui::AXNodeData static_text_child_node2;
-  static_text_child_node2.id = 6;
-  static_text_child_node2.role = ax::mojom::Role::kStaticText;
-
-  ui::AXNodeData parent_node;
-  parent_node.id = 1;
+  ui::AXNodeData parent_node = test::TextNode(/* id= */ 1);
   parent_node.child_ids = {static_text_node1.id, static_text_node2.id,
                            generic_container_node.id};
-  parent_node.role = ax::mojom::Role::kStaticText;
   generic_container_node.child_ids = {static_text_child_node1.id,
                                       static_text_child_node2.id};
   update.nodes = {parent_node,
@@ -1021,8 +1474,9 @@ TEST_F(ReadAnythingAppModelTest,
   ASSERT_TRUE(SelectionNodeIdsContains(5));
   ASSERT_TRUE(SelectionNodeIdsContains(6));
 
-  // Even though 3 is a generic container with more than one child, its sibling
-  // nodes are included in the selection because the start node includes it.
+  // Even though 3 is a generic container with more than one child, its
+  // sibling nodes are included in the selection because the start node
+  // includes it.
   ASSERT_TRUE(SelectionNodeIdsContains(2));
   ASSERT_TRUE(SelectionNodeIdsContains(3));
 }
@@ -1032,26 +1486,20 @@ TEST_F(ReadAnythingAppModelTest,
   ui::AXTreeUpdate update;
   SetUpdateTreeID(&update);
 
-  ui::AXNodeData static_text_node;
-  static_text_node.id = 2;
-  static_text_node.role = ax::mojom::Role::kStaticText;
+  ui::AXNodeData static_text_node = test::TextNode(/* id= */ 2);
 
   ui::AXNodeData link_node;
   link_node.id = 3;
   link_node.role = ax::mojom::Role::kLink;
   link_node.AddStringAttribute(ax::mojom::StringAttribute::kDisplay, "block");
 
-  ui::AXNodeData inline_block_node;
-  inline_block_node.id = 4;
-  inline_block_node.role = ax::mojom::Role::kStaticText;
+  ui::AXNodeData inline_block_node = test::TextNode(/* id= */ 4);
   inline_block_node.AddStringAttribute(ax::mojom::StringAttribute::kDisplay,
                                        "inline-block");
   link_node.child_ids = {inline_block_node.id};
 
-  ui::AXNodeData root;
-  root.id = 1;
+  ui::AXNodeData root = test::TextNode(/* id= */ 1);
   root.child_ids = {static_text_node.id, link_node.id};
-  root.role = ax::mojom::Role::kStaticText;
   update.nodes = {root, static_text_node, link_node, inline_block_node};
 
   AccessibilityEventReceived({update});
@@ -1079,26 +1527,20 @@ TEST_F(ReadAnythingAppModelTest,
   ui::AXTreeUpdate update;
   SetUpdateTreeID(&update);
 
-  ui::AXNodeData static_text_node;
-  static_text_node.id = 2;
-  static_text_node.role = ax::mojom::Role::kStaticText;
+  ui::AXNodeData static_text_node = test::TextNode(/* id= */ 2);
 
   ui::AXNodeData link_node;
   link_node.id = 3;
   link_node.role = ax::mojom::Role::kLink;
   link_node.AddStringAttribute(ax::mojom::StringAttribute::kDisplay, "block");
 
-  ui::AXNodeData static_text_list_node;
-  static_text_list_node.id = 4;
-  static_text_list_node.role = ax::mojom::Role::kStaticText;
+  ui::AXNodeData static_text_list_node = test::TextNode(/* id= */ 4);
   static_text_list_node.AddStringAttribute(ax::mojom::StringAttribute::kDisplay,
                                            "list-item");
   link_node.child_ids = {static_text_list_node.id};
 
-  ui::AXNodeData parent_node;
-  parent_node.id = 1;
+  ui::AXNodeData parent_node = test::TextNode(/* id= */ 1);
   parent_node.child_ids = {static_text_node.id, link_node.id};
-  parent_node.role = ax::mojom::Role::kStaticText;
   update.nodes = {parent_node, static_text_node, link_node,
                   static_text_list_node};
 
@@ -1126,26 +1568,19 @@ TEST_F(ReadAnythingAppModelTest,
        SelectionParentIsGenericContainerAndInline_SelectionStateCorrect) {
   ui::AXTreeUpdate update;
   SetUpdateTreeID(&update);
-  ui::AXNodeData static_text_node;
-  static_text_node.id = 2;
-  static_text_node.role = ax::mojom::Role::kStaticText;
+  ui::AXNodeData static_text_node = test::TextNode(/* id= */ 2);
 
-  ui::AXNodeData generic_container_node;
-  generic_container_node.id = 3;
-  generic_container_node.role = ax::mojom::Role::kGenericContainer;
+  ui::AXNodeData generic_container_node =
+      test::GenericContainerNode(/*id= */ 3);
   generic_container_node.AddStringAttribute(
       ax::mojom::StringAttribute::kDisplay, "block");
-  ui::AXNodeData inline_node;
-  inline_node.id = 4;
-  inline_node.role = ax::mojom::Role::kStaticText;
+  ui::AXNodeData inline_node = test::TextNode(/* id= */ 4);
   inline_node.AddStringAttribute(ax::mojom::StringAttribute::kDisplay,
                                  "inline");
   generic_container_node.child_ids = {inline_node.id};
 
-  ui::AXNodeData parent_node;
-  parent_node.id = 1;
+  ui::AXNodeData parent_node = test::TextNode(/* id= */ 1);
   parent_node.child_ids = {static_text_node.id, generic_container_node.id};
-  parent_node.role = ax::mojom::Role::kStaticText;
   update.nodes = {parent_node, static_text_node, generic_container_node,
                   inline_node};
 
@@ -1173,27 +1608,15 @@ TEST_F(
     SelectionParentIsGenericContainerWithMultipleChildren_SelectionStateCorrect) {
   ui::AXTreeUpdate update;
   SetUpdateTreeID(&update);
-  ui::AXNodeData static_text_node;
-  static_text_node.id = 2;
-  static_text_node.role = ax::mojom::Role::kStaticText;
-
-  ui::AXNodeData generic_container_node;
-  generic_container_node.role = ax::mojom::Role::kGenericContainer;
-  generic_container_node.id = 3;
-
-  ui::AXNodeData static_text_child_node1;
-  static_text_child_node1.id = 4;
-  static_text_child_node1.role = ax::mojom::Role::kStaticText;
-
-  ui::AXNodeData static_text_child_node2;
-  static_text_child_node2.id = 5;
-  static_text_child_node2.role = ax::mojom::Role::kStaticText;
+  ui::AXNodeData static_text_node = test::TextNode(/* id= */ 2);
+  ui::AXNodeData generic_container_node =
+      test::GenericContainerNode(/* id= */ 3);
+  ui::AXNodeData static_text_child_node1 = test::TextNode(/* id= */ 4);
+  ui::AXNodeData static_text_child_node2 = test::TextNode(/* id= */ 5);
   generic_container_node.child_ids = {static_text_child_node1.id,
                                       static_text_child_node2.id};
 
-  ui::AXNodeData parent_node;
-  parent_node.id = 1;
-  parent_node.role = ax::mojom::Role::kStaticText;
+  ui::AXNodeData parent_node = test::TextNode(/* id= */ 1);
   parent_node.child_ids = {static_text_node.id, generic_container_node.id};
   update.nodes = {parent_node, static_text_node, generic_container_node,
                   static_text_child_node1, static_text_child_node2};
@@ -1241,12 +1664,11 @@ TEST_F(ReadAnythingAppModelTest, ResetTextSize_ReturnsTextSizeToDefault) {
   ASSERT_EQ(FontSize(), kReadAnythingDefaultFontScale);
 }
 
-TEST_F(ReadAnythingAppModelTest,
-       SupportedFonts_SetDefaultLanguageCode_ReturnsCorrectCode) {
-  ASSERT_EQ(DefaultLanguageCode(), "en-US");
+TEST_F(ReadAnythingAppModelTest, LanguageCode_ReturnsCorrectCode) {
+  ASSERT_EQ(LanguageCode(), "en");
 
   SetLanguageCode("es");
-  ASSERT_EQ(DefaultLanguageCode(), "es");
+  ASSERT_EQ(LanguageCode(), "es");
 }
 
 TEST_F(ReadAnythingAppModelTest,
@@ -1263,7 +1685,10 @@ TEST_F(ReadAnythingAppModelTest,
 
 TEST_F(ReadAnythingAppModelTest,
        SupportedFonts_BeforeLanguageSet_ReturnsDefaultFonts) {
-  std::vector<std::string> expectedFonts = {"Sans-serif", "Serif"};
+  std::vector<std::string> expectedFonts = {
+      "Poppins",       "Sans-serif",  "Serif",
+      "Comic Neue",    "Lexend Deca", "EB Garamond",
+      "STIX Two Text", "Andika",      "Atkinson Hyperlegible"};
   std::vector<std::string> fonts = GetSupportedFonts();
 
   EXPECT_EQ(fonts.size(), expectedFonts.size());
@@ -1273,12 +1698,13 @@ TEST_F(ReadAnythingAppModelTest,
 }
 
 TEST_F(ReadAnythingAppModelTest,
-       SupportedFonts_SetDefaultLanguageCode_ReturnsExpectedDefaultFonts) {
-  // English
-  SetLanguageCode("en");
+       SupportedFonts_SetLanguageCode_ReturnsExpectedDefaultFonts) {
+  // Spanish
+  SetLanguageCode("es");
   std::vector<std::string> expectedFonts = {
-      "Poppins",     "Sans-serif",  "Serif",         "Comic Neue",
-      "Lexend Deca", "EB Garamond", "STIX Two Text", "Andika"};
+      "Poppins",       "Sans-serif",  "Serif",
+      "Comic Neue",    "Lexend Deca", "EB Garamond",
+      "STIX Two Text", "Andika",      "Atkinson Hyperlegible"};
   std::vector<std::string> fonts = GetSupportedFonts();
 
   EXPECT_EQ(fonts.size(), expectedFonts.size());
@@ -1308,86 +1734,8 @@ TEST_F(ReadAnythingAppModelTest,
   }
 }
 
-TEST_F(ReadAnythingAppModelTest, IsPdf) {
-  GURL webpage_url("http://images.google.com/foo.html");
-  SetIsPdf(webpage_url);
-  ASSERT_FALSE(IsPdf());
-
-  GURL pdf_url("http://www.google.com/foo/bar.pdf");
-  SetIsPdf(pdf_url);
-  ASSERT_TRUE(IsPdf());
-}
-
-TEST_F(ReadAnythingAppModelTest, ValidPDF) {
-  // Need to set is_pdf_ for DCHECK in GetPDFWebContents().
-  GURL pdf_url("http://www.google.com/foo/bar.pdf");
-  SetIsPdf(pdf_url);
-
-  ui::AXTreeID pdf_web_contents_tree_id = ui::AXTreeID::CreateNewAXTreeID();
-  ui::AXTreeID pdf_iframe_tree_id = ui::AXTreeID::CreateNewAXTreeID();
-
-  // Main web contents should have one child.
-  ui::AXTreeUpdate update;
-  ui::AXNodeData node;
-  node.id = 1;
-  node.AddChildTreeId(pdf_web_contents_tree_id);
-  update.nodes = {node};
-  SetUpdateTreeID(&update);
-  AccessibilityEventReceived({update});
-
-  // IsPDFFormatted() should return true if tree updates from the pdf web
-  // contents and/or the pdf iframe haven't been sent yet.
-  ASSERT_TRUE(IsPDFFormatted());
-
-  // Pdf web contents should have one child.
-  ui::AXNodeData root;
-  root.id = 1;
-  root.AddChildTreeId(pdf_iframe_tree_id);
-  update.root_id = root.id;
-  update.nodes = {root};
-  SetUpdateTreeID(&update, pdf_web_contents_tree_id);
-  AccessibilityEventReceived({update});
-
-  ASSERT_TRUE(IsPDFFormatted());
-
-  // Send pdf iframe tree to model.
-  ui::AXNodeData update_root;
-  update_root.id = 1;
-  update.root_id = update_root.id;
-  update.nodes = {update_root};
-  SetUpdateTreeID(&update, pdf_iframe_tree_id);
-  AccessibilityEventReceived({update});
-
-  ASSERT_TRUE(IsPDFFormatted());
-  EXPECT_EQ(pdf_web_contents_tree_id, GetPDFWebContents());
-}
-
-TEST_F(ReadAnythingAppModelTest, InvalidPDFFormat) {
-  // Main web contents should have one child, the pdf web contents.
-  ui::AXTreeID pdf_web_contents_tree_id = ui::AXTreeID::CreateNewAXTreeID();
-  ui::AXTreeUpdate update;
-  ui::AXNodeData node;
-  node.id = 1;
-  node.AddChildTreeId(pdf_web_contents_tree_id);
-  update.nodes = {node};
-  SetUpdateTreeID(&update);
-  AccessibilityEventReceived({update});
-
-  // This pdf web contents has no children, so this is an invalid PDF.
-  ui::AXTreeUpdate pdf_web_contents_update;
-  ui::AXNodeData empty_root;
-  empty_root.id = 1;
-  pdf_web_contents_update.root_id = empty_root.id;
-  pdf_web_contents_update.nodes = {empty_root};
-
-  SetUpdateTreeID(&pdf_web_contents_update, pdf_web_contents_tree_id);
-  AccessibilityEventReceived({pdf_web_contents_update});
-
-  ASSERT_FALSE(IsPDFFormatted());
-}
-
 TEST_F(ReadAnythingAppModelTest, PdfEvents_SetRequiresDistillation) {
-  SetIsPdf(GURL("http://www.google.com/foo/bar.pdf"));
+  set_is_pdf(true);
 
   ui::AXTreeUpdate initial_update;
   SetUpdateTreeID(&initial_update);
@@ -1419,18 +1767,14 @@ TEST_F(ReadAnythingAppModelTest, PdfEvents_SetRequiresDistillation) {
   ui::AXTreeUpdate update2;
   SetUpdateTreeID(&update2);
   update2.root_id = 1;
-  ui::AXNodeData static_text_node1;
-  static_text_node1.id = 1;
-  static_text_node1.role = ax::mojom::Role::kStaticText;
+  ui::AXNodeData static_text_node1 = test::TextNode(/* id= */ 1);
 
   ui::AXNodeData updated_embedded_node;
   updated_embedded_node.id = 2;
   updated_embedded_node.role = ax::mojom::Role::kEmbeddedObject;
   static_text_node1.child_ids = {updated_embedded_node.id};
 
-  ui::AXNodeData static_text_node2;
-  static_text_node2.id = 3;
-  static_text_node2.role = ax::mojom::Role::kStaticText;
+  ui::AXNodeData static_text_node2 = test::TextNode(/* id= */ 3);
   updated_embedded_node.child_ids = {static_text_node2.id};
   update2.nodes = {static_text_node1, updated_embedded_node, static_text_node2};
 
@@ -1439,7 +1783,7 @@ TEST_F(ReadAnythingAppModelTest, PdfEvents_SetRequiresDistillation) {
 }
 
 TEST_F(ReadAnythingAppModelTest, PdfEvents_DontSetRequiresDistillation) {
-  SetIsPdf(GURL("http://www.google.com/foo/bar.pdf"));
+  set_is_pdf(true);
 
   ui::AXTreeUpdate initial_update;
   SetUpdateTreeID(&initial_update);
@@ -1454,11 +1798,110 @@ TEST_F(ReadAnythingAppModelTest, PdfEvents_DontSetRequiresDistillation) {
   // not set requires_distillation_.
   ui::AXTreeUpdate update;
   SetUpdateTreeID(&update);
-  ui::AXNodeData static_text_node;
-  static_text_node.id = 1;
-  static_text_node.role = ax::mojom::Role::kStaticText;
+  ui::AXNodeData static_text_node = test::TextNode(/* id= */ 1);
   update.root_id = static_text_node.id;
   update.nodes = {static_text_node};
   AccessibilityEventReceived({update});
   ASSERT_FALSE(RequiresDistillation());
+}
+
+TEST_F(ReadAnythingAppModelTest, OnSelection_HandlesClickAndDragEvents) {
+  ui::AXTreeUpdate update;
+  SetUpdateTreeID(&update);
+  update.tree_data.sel_anchor_object_id = 2;
+  update.tree_data.sel_focus_object_id = 3;
+  update.tree_data.sel_anchor_offset = 0;
+  update.tree_data.sel_focus_offset = 0;
+  update.tree_data.sel_is_backward = false;
+  AccessibilityEventReceived({update});
+  ProcessSelection();
+
+  // If there is a click and drag selection (the anchor object id and offset are
+  // the same as the prev selection received), the event_from eventually changes
+  // from kUser to kPage. Post process selection should be required in either
+  // case.
+  // SetRequiresPostProcessSelection(false) is needed to reset the flag to check
+  // that OnSelection(...) properly sets (or doesn't set) the flag.
+  update.tree_data.sel_anchor_object_id = 2;
+  update.tree_data.sel_focus_object_id = 3;
+  update.tree_data.sel_anchor_offset = 0;
+  update.tree_data.sel_focus_offset = 1;
+  update.tree_data.sel_is_backward = false;
+  AccessibilityEventReceived({update});
+
+  SetRequiresPostProcessSelection(false);
+  OnSelection(ax::mojom::EventFrom::kUser);
+  EXPECT_TRUE(RequiresPostProcessSelection());
+
+  SetRequiresPostProcessSelection(false);
+  OnSelection(ax::mojom::EventFrom::kPage);
+  EXPECT_TRUE(RequiresPostProcessSelection());
+
+  // If the user drags the selection so that it is backwards, post process
+  // selection should still be required.
+  update.tree_data.sel_anchor_object_id = 2;
+  update.tree_data.sel_focus_object_id = 1;
+  update.tree_data.sel_anchor_offset = 0;
+  update.tree_data.sel_focus_offset = 2;
+  update.tree_data.sel_is_backward = true;
+  AccessibilityEventReceived({update});
+  SetRequiresPostProcessSelection(false);
+  OnSelection(ax::mojom::EventFrom::kPage);
+  EXPECT_TRUE(RequiresPostProcessSelection());
+
+  // If the anchor changes (the user stopped dragging their cursor) and we
+  // receive an event with event_from kPage, post process selection should not
+  // be set to true.
+  update.tree_data.sel_anchor_object_id = 2;
+  update.tree_data.sel_focus_object_id = 3;
+  update.tree_data.sel_anchor_offset = 1;
+  update.tree_data.sel_focus_offset = 0;
+  update.tree_data.sel_is_backward = false;
+  AccessibilityEventReceived({update});
+  SetRequiresPostProcessSelection(false);
+  OnSelection(ax::mojom::EventFrom::kPage);
+  EXPECT_FALSE(RequiresPostProcessSelection());
+}
+
+TEST_F(ReadAnythingAppModelTest, LastExpandedNodeNamedChanged_TriggersRedraw) {
+  ui::AXTreeUpdate initial_update;
+  SetUpdateTreeID(&initial_update);
+  ui::AXNodeData initial_node = test::TextNode(/* id= */ 2, u"Old Name");
+  initial_update.nodes = {initial_node};
+  AccessibilityEventReceived({initial_update});
+
+  ui::AXTreeUpdate update;
+  SetUpdateTreeID(&update);
+  ui::AXNodeData updated_node = test::TextNode(initial_node.id, u"New Name");
+  update.nodes = {updated_node};
+  SetLastExpandedNodeId(initial_node.id);
+  EXPECT_EQ(LastExpandedNodeId(), initial_node.id);
+  AccessibilityEventReceived({update});
+
+  EXPECT_FALSE(RequiresPostProcessSelection());
+  EXPECT_TRUE(RequiresRedraw());
+  EXPECT_EQ(LastExpandedNodeId(), ui::kInvalidAXNodeID);
+  // Check selection reset.
+  EXPECT_FALSE(HasSelection());
+  EXPECT_EQ(StartOffset(), -1);
+  EXPECT_EQ(EndOffset(), -1);
+  EXPECT_EQ(StartNodeId(), ui::kInvalidAXNodeID);
+  EXPECT_EQ(EndNodeId(), ui::kInvalidAXNodeID);
+  EXPECT_TRUE(SelectionNodeIdsEmpty());
+}
+
+TEST_F(ReadAnythingAppModelTest, ContentEditableValueChanged_ResetsDrawTimer) {
+  ui::AXTreeUpdate update;
+  SetUpdateTreeID(&update);
+  ui::AXNodeData node1;
+  node1.id = 1;
+  update.nodes = {node1};
+
+  ui::AXEvent event;
+  event.id = node1.id;
+  event.event_type = ax::mojom::Event::kValueChanged;
+  // This update changes the structure of the tree. When the controller receives
+  // it in AccessibilityEventReceived, it will re-distill the tree.
+  AccessibilityEventReceived(update.tree_data.tree_id, {update}, {event});
+  EXPECT_TRUE(DrawTimerReset());
 }

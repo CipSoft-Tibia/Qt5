@@ -108,7 +108,7 @@ uint16_t BluetoothDeviceCast::GetAppearance() const {
   return 0;
 }
 
-absl::optional<std::string> BluetoothDeviceCast::GetName() const {
+std::optional<std::string> BluetoothDeviceCast::GetName() const {
   return name_;
 }
 
@@ -125,7 +125,7 @@ bool BluetoothDeviceCast::IsGattConnected() const {
 }
 
 bool BluetoothDeviceCast::IsConnectable() const {
-  NOTREACHED() << "This is only called on ChromeOS";
+  NOTREACHED_IN_MIGRATION() << "This is only called on ChromeOS";
   return true;
 }
 
@@ -133,12 +133,12 @@ bool BluetoothDeviceCast::IsConnecting() const {
   return pending_connect_;
 }
 
-absl::optional<int8_t> BluetoothDeviceCast::GetInquiryRSSI() const {
+std::optional<int8_t> BluetoothDeviceCast::GetInquiryRSSI() const {
   // TODO(slan): Plumb this from the type_to_data field of ScanResult.
   return BluetoothDevice::GetInquiryRSSI();
 }
 
-absl::optional<int8_t> BluetoothDeviceCast::GetInquiryTxPower() const {
+std::optional<int8_t> BluetoothDeviceCast::GetInquiryTxPower() const {
   // TODO(slan): Remove if we do not need this.
   return BluetoothDevice::GetInquiryTxPower();
 }
@@ -188,24 +188,24 @@ void BluetoothDeviceCast::Pair(PairingDelegate* pairing_delegate,
 }
 
 void BluetoothDeviceCast::SetPinCode(const std::string& pincode) {
-  NOTREACHED() << "Pairing not supported.";
+  NOTREACHED_IN_MIGRATION() << "Pairing not supported.";
 }
 
 void BluetoothDeviceCast::SetPasskey(uint32_t passkey) {
-  NOTREACHED() << "Pairing not supported.";
+  NOTREACHED_IN_MIGRATION() << "Pairing not supported.";
 }
 
 void BluetoothDeviceCast::ConfirmPairing() {
-  NOTREACHED() << "Pairing not supported.";
+  NOTREACHED_IN_MIGRATION() << "Pairing not supported.";
 }
 
 // Rejects a pairing or connection request from a remote device.
 void BluetoothDeviceCast::RejectPairing() {
-  NOTREACHED() << "Pairing not supported.";
+  NOTREACHED_IN_MIGRATION() << "Pairing not supported.";
 }
 
 void BluetoothDeviceCast::CancelPairing() {
-  NOTREACHED() << "Pairing not supported.";
+  NOTREACHED_IN_MIGRATION() << "Pairing not supported.";
 }
 
 void BluetoothDeviceCast::Disconnect(base::OnceClosure callback,
@@ -242,7 +242,7 @@ bool BluetoothDeviceCast::UpdateWithScanResult(
   DVLOG(3) << __func__;
   bool changed = false;
 
-  absl::optional<std::string> result_name = result.Name();
+  std::optional<std::string> result_name = result.Name();
 
   // Advertisements for the same device can use different names. For now, the
   // last name wins. An empty string represents no name.
@@ -293,7 +293,7 @@ bool BluetoothDeviceCast::SetConnected(bool connected) {
   // Update state in the base class. This will cause pending callbacks to be
   // fired.
   if (!was_connected && connected) {
-    DidConnectGatt(/*error_code=*/absl::nullopt);
+    DidConnectGatt(/*error_code=*/std::nullopt);
     remote_device_->GetServices(base::BindOnce(
         &BluetoothDeviceCast::OnGetServices, weak_factory_.GetWeakPtr()));
   } else if (was_connected && !connected) {
@@ -345,7 +345,7 @@ bool BluetoothDeviceCast::UpdateCharacteristicValue(
 }
 
 void BluetoothDeviceCast::CreateGattConnectionImpl(
-    absl::optional<BluetoothUUID> service_uuid) {
+    std::optional<BluetoothUUID> service_uuid) {
   DVLOG(2) << __func__ << " " << pending_connect_;
   if (pending_connect_)
     return;

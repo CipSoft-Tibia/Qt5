@@ -12,10 +12,10 @@
 #include <vector>
 
 #include "build/build_config.h"
+#include "core/fxcrt/check.h"
+#include "core/fxcrt/numerics/safe_conversions.h"
 #include "core/fxge/cfx_renderdevice.h"
 #include "core/fxge/text_char_pos.h"
-#include "third_party/base/check.h"
-#include "third_party/base/numerics/safe_conversions.h"
 #include "v8/include/cppgc/visitor.h"
 #include "xfa/fde/cfde_textout.h"
 #include "xfa/fgas/font/cfgas_gefont.h"
@@ -34,6 +34,8 @@
 #include "xfa/fwl/fwl_widgetdef.h"
 #include "xfa/fwl/ifwl_themeprovider.h"
 #include "xfa/fwl/theme/cfwl_utils.h"
+
+namespace pdfium {
 
 namespace {
 
@@ -204,16 +206,16 @@ void CFWL_Edit::SetAliasChar(wchar_t wAlias) {
   m_pEditEngine->SetAliasChar(wAlias);
 }
 
-absl::optional<WideString> CFWL_Edit::Copy() {
+std::optional<WideString> CFWL_Edit::Copy() {
   if (!m_pEditEngine->HasSelection())
-    return absl::nullopt;
+    return std::nullopt;
 
   return m_pEditEngine->GetSelectedText();
 }
 
-absl::optional<WideString> CFWL_Edit::Cut() {
+std::optional<WideString> CFWL_Edit::Cut() {
   if (!m_pEditEngine->HasSelection())
-    return absl::nullopt;
+    return std::nullopt;
 
   WideString cut_text = m_pEditEngine->DeleteSelectedText();
   UpdateCaret();
@@ -342,12 +344,9 @@ void CFWL_Edit::DrawContentNonComb(CFGAS_GEGraphics* pGraphics,
 
   bool bShowSel = !!(m_Properties.m_dwStates & FWL_STATE_WGT_Focused);
   if (bShowSel && m_pEditEngine->HasSelection()) {
-    size_t sel_start;
-    size_t count;
-    std::tie(sel_start, count) = m_pEditEngine->GetSelection();
+    auto [sel_start, count] = m_pEditEngine->GetSelection();
     std::vector<CFX_RectF> rects = m_pEditEngine->GetCharacterRectsInRange(
-        pdfium::base::checked_cast<int32_t>(sel_start),
-        pdfium::base::checked_cast<int32_t>(count));
+        checked_cast<int32_t>(sel_start), checked_cast<int32_t>(count));
 
     CFGAS_GEPath path;
     for (auto& rect : rects) {
@@ -757,7 +756,7 @@ void CFWL_Edit::UpdateCursorRect() {
   int32_t bidi_level;
   if (m_pEditEngine->CanGenerateCharacterInfo()) {
     std::tie(bidi_level, m_CaretRect) = m_pEditEngine->GetCharacterInfo(
-        pdfium::base::checked_cast<int32_t>(m_CursorPosition));
+        checked_cast<int32_t>(m_CursorPosition));
   } else {
     bidi_level = 0;
     m_CaretRect = CFX_RectF();
@@ -916,9 +915,7 @@ void CFWL_Edit::OnLButtonUp(CFWL_MessageMouse* pMsg) {
 void CFWL_Edit::OnButtonDoubleClick(CFWL_MessageMouse* pMsg) {
   size_t click_idx =
       m_pEditEngine->GetIndexForPoint(DeviceToEngine(pMsg->m_pos));
-  size_t start_idx;
-  size_t count;
-  std::tie(start_idx, count) = m_pEditEngine->BoundsForWordAt(click_idx);
+  auto [start_idx, count] = m_pEditEngine->BoundsForWordAt(click_idx);
 
   m_pEditEngine->SetSelection(start_idx, count);
   m_CursorPosition = start_idx + count;
@@ -958,9 +955,7 @@ void CFWL_Edit::OnKeyDown(CFWL_MessageKey* pMsg) {
 
   size_t sel_start = m_CursorPosition;
   if (m_pEditEngine->HasSelection()) {
-    size_t start_idx;
-    size_t count;
-    std::tie(start_idx, count) = m_pEditEngine->GetSelection();
+    auto [start_idx, count] = m_pEditEngine->GetSelection();
     sel_start = start_idx;
   }
 
@@ -1115,3 +1110,5 @@ bool CFWL_Edit::OnScroll(CFWL_ScrollBar* pScrollBar,
   RepaintRect(CFX_RectF(0, 0, rect.width + 2, rect.height + 2));
   return true;
 }
+
+}  // namespace pdfium

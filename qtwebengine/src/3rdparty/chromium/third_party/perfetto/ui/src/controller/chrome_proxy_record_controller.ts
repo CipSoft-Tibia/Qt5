@@ -14,7 +14,6 @@
 
 import {binaryDecode, binaryEncode} from '../base/string_utils';
 import {TRACE_SUFFIX} from '../common/constants';
-
 import {
   ConsumerPortResponse,
   hasProperty,
@@ -35,16 +34,21 @@ export interface GetCategoriesResponse extends Typed {
   categories: string[];
 }
 
-export type ChromeExtensionMessage = ChromeExtensionError|ChromeExtensionStatus|
-    ConsumerPortResponse|GetCategoriesResponse;
+export type ChromeExtensionMessage =
+  | ChromeExtensionError
+  | ChromeExtensionStatus
+  | ConsumerPortResponse
+  | GetCategoriesResponse;
 
-export function isChromeExtensionError(obj: Typed):
-    obj is ChromeExtensionError {
+export function isChromeExtensionError(
+  obj: Typed,
+): obj is ChromeExtensionError {
   return obj.type === 'ChromeExtensionError';
 }
 
-export function isChromeExtensionStatus(obj: Typed):
-    obj is ChromeExtensionStatus {
+export function isChromeExtensionStatus(
+  obj: Typed,
+): obj is ChromeExtensionStatus {
   return obj.type === 'ChromeExtensionStatus';
 }
 
@@ -52,10 +56,16 @@ function isObject(obj: unknown): obj is object {
   return typeof obj === 'object' && obj !== null;
 }
 
-export function isGetCategoriesResponse(obj: unknown):
-    obj is GetCategoriesResponse {
-  if (!(isObject(obj) && hasProperty(obj, 'type') &&
-        obj.type === 'GetCategoriesResponse')) {
+export function isGetCategoriesResponse(
+  obj: unknown,
+): obj is GetCategoriesResponse {
+  if (
+    !(
+      isObject(obj) &&
+      hasProperty(obj, 'type') &&
+      obj.type === 'GetCategoriesResponse'
+    )
+  ) {
     return false;
   }
 

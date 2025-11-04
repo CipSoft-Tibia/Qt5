@@ -34,7 +34,7 @@ void URLLoaderMock::ServeAsynchronousRequest(
     URLLoaderTestDelegate* delegate,
     const WebURLResponse& response,
     const scoped_refptr<SharedBuffer>& data,
-    const absl::optional<WebURLError>& error) {
+    const std::optional<WebURLError>& error) {
   if (!client_) {
     return;
   }
@@ -64,7 +64,7 @@ void URLLoaderMock::ServeAsynchronousRequest(
 
   if (data) {
     for (const auto& span : *data) {
-      delegate->DidReceiveData(client_, span.data(), span.size());
+      delegate->DidReceiveData(client_, span);
       // DidReceiveData() may clear the |self| weak ptr.  We stop iterating
       // when that happens.
       if (!self) {
@@ -111,7 +111,7 @@ void URLLoaderMock::LoadSynchronously(
     base::TimeDelta timeout_interval,
     URLLoaderClient* client,
     WebURLResponse& response,
-    absl::optional<WebURLError>& error,
+    std::optional<WebURLError>& error,
     scoped_refptr<SharedBuffer>& data,
     int64_t& encoded_data_length,
     uint64_t& encoded_body_length,

@@ -1,6 +1,6 @@
 <!-- mdformat off(generated) -->
 <!-- mdlint off(generated) -->
-Version: 15
+Version: 17
 
 SHA 256 Hash | Subject | NotBefore | NotAfter
 ---|---|---|---
@@ -87,7 +87,6 @@ c741f70f4b2a8d88bf2e71c14122ef53ef10eba0cfa5e64cfa20f418853073e0 | CN=Microsoft 
 8a866fd1b276b57e578e921c65828a2bed58e9f2f288054134b7f1f4bfc9cc74 | CN=QuoVadis Root CA 1 G3,O=QuoVadis Limited,C=BM | 2012-01-12 | 2042-01-12
 8fe4fb0af93a4d0d67db0bebb23e37c71bf325dcbcdd240ea04daf58b47e1840 | CN=QuoVadis Root CA 2 G3,O=QuoVadis Limited,C=BM | 2012-01-12 | 2042-01-12
 513b2cecb810d4cde5dd85391adfc6c2dd60d87bb736d2b521484aa47a0ebef6 | OU=Security Communication RootCA2,O=SECOM Trust Systems CO.\,LTD.,C=JP | 2009-05-29 | 2029-05-29
-e75e72ed9f560eec6eb4800073a43fc3ad19195a392282017895974a99026b6c | OU=Security Communication RootCA1,O=SECOM Trust.net,C=JP | 2003-09-30 | 2023-09-30
 1a0d20445de5ba1862d19ef880858cbce50102b36e8f0a040c3c69e74522fe6e | CN=COMODO Certification Authority,O=COMODO CA Limited,L=Salford,ST=Greater Manchester,C=GB | 2011-01-01 | 2030-12-31
 1793927a0614549789adce2f8f34f7f0b66d0f3ae3a3b84d21ec15dbba4fadc7 | CN=COMODO ECC Certification Authority,O=COMODO CA Limited,L=Salford,ST=Greater Manchester,C=GB | 2008-03-06 | 2038-01-18
 4ff460d54b9c86dabfbcfc5712e0400d2bed3fbc4d4fbdaa86e06adcd2a9ad7a | CN=USERTrust ECC Certification Authority,O=The USERTRUST Network,L=Jersey City,ST=New Jersey,C=US | 2010-02-01 | 2038-01-18
@@ -107,7 +106,6 @@ d43af9b35473755c9684fc06d7d8cb70ee5c28e773fb294eb41ee71722924d24 | CN=UCA Extend
 3417bb06cc6007da1b961c920b8ab4ce3fad820e4aa30b9acbc4a74ebdcebc65 | CN=SSL.com Root Certification Authority ECC,O=SSL Corporation,L=Houston,ST=Texas,C=US | 2016-02-12 | 2041-02-12
 85666a562ee0be5ce925c1d8890a6f76a87ec16d4d7d5f29ea7419cf20123b69 | CN=SSL.com Root Certification Authority RSA,O=SSL Corporation,L=Houston,ST=Texas,C=US | 2016-02-12 | 2041-02-12
 62dd0be9b9f50a163ea0f8e75c053b1eca57ea55c8688f647c6881f2c8357b95 | CN=SwissSign Gold CA - G2,O=SwissSign AG,C=CH | 2006-10-25 | 2036-10-25
-be6c4da2bbb9ba59b6f3939768374246c3c005993fa98f020d1dedbed48a81d5 | CN=SwissSign Silver CA - G2,O=SwissSign AG,C=CH | 2006-10-25 | 2036-10-25
 59769007f7685d0fcd50872f9f95d5755a5b2b457d81f3692b610a98672f0e1b | CN=TWCA Global Root CA,OU=Root CA,O=TAIWAN-CA,C=TW | 2012-06-27 | 2030-12-31
 bfd88fe1101c41ae3e801bf8be56350ee9bad1a6b9bd515edc5c6d5b8711ac44 | CN=TWCA Root Certification Authority,OU=Root CA,O=TAIWAN-CA,C=TW | 2008-08-28 | 2030-12-31
 dd6936fe21f8f077c123a1a521c12224f72255b73e03a7260693e8a24b0fa389 | CN=TeliaSonera Root CA v1,O=TeliaSonera | 2007-10-18 | 2032-10-18

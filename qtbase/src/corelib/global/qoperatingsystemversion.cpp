@@ -547,7 +547,7 @@ const QOperatingSystemVersion QOperatingSystemVersion::MacOSCatalina =
     \since 6.0
  */
 const QOperatingSystemVersion QOperatingSystemVersion::MacOSBigSur =
-    QOperatingSystemVersion(QOperatingSystemVersion::MacOS, 11, 0);
+    QOperatingSystemVersion(QOperatingSystemVersion::MacOS, 11);
 
 /*!
     \variable QOperatingSystemVersion::MacOSMonterey
@@ -555,7 +555,7 @@ const QOperatingSystemVersion QOperatingSystemVersion::MacOSBigSur =
     \since 6.3
  */
 const QOperatingSystemVersion QOperatingSystemVersion::MacOSMonterey =
-    QOperatingSystemVersion(QOperatingSystemVersion::MacOS, 12, 0);
+    QOperatingSystemVersion(QOperatingSystemVersion::MacOS, 12);
 
 /*!
     \variable QOperatingSystemVersion::MacOSVentura
@@ -574,6 +574,12 @@ const QOperatingSystemVersionBase QOperatingSystemVersion::MacOSVentura;
     \variable QOperatingSystemVersion::MacOSSequoia
     \brief a version corresponding to macOS Sequoia (version 15).
     \since 6.8
+*/
+
+/*!
+    \variable QOperatingSystemVersion::MacOSTahoe
+    \brief a version corresponding to macOS Tahoe (version 26).
+    \since 6.10
 */
 
 /*!

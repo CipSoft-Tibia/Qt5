@@ -90,7 +90,7 @@ Item {
                 Model {
                     source: "#Cube"
                     opacity: 0.4
-                    materials: DefaultMaterial {
+                    materials: PrincipledMaterial {
                     }
                 }
             }
@@ -108,7 +108,7 @@ Item {
                 Model {
                     source: "#Sphere"
                     opacity: 0.4
-                    materials: DefaultMaterial {
+                    materials: PrincipledMaterial {
                     }
                 }
             }
@@ -126,7 +126,7 @@ Item {
                 Model {
                     source: "#Cylinder"
                     opacity: 0.4
-                    materials: DefaultMaterial {
+                    materials: PrincipledMaterial {
                     }
                 }
             }

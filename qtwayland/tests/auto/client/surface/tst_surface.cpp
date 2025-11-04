@@ -26,6 +26,7 @@ private slots:
     // Subsurfaces
     void createSubsurface();
     void createSubsurfaceForHiddenParent();
+    void changeToSubsurface();
 };
 
 tst_surface::tst_surface()
@@ -150,6 +151,9 @@ void tst_surface::negotiateShmFormat()
 
 void tst_surface::createSubsurface()
 {
+    m_config.autoFrameCallback = true;
+    auto autoFrameCallback = qScopeGuard([&] { m_config.autoFrameCallback = false; });
+
     QRasterWindow window;
     window.setObjectName("main");
     window.resize(200, 200);
@@ -210,6 +214,33 @@ void tst_surface::createSubsurfaceForHiddenParent()
     // Make sure the subsurface was actually created
     const Subsurface *subsurface = exec([&] {return subSurface(0);});
     QVERIFY(subsurface);
+}
+
+void tst_surface::changeToSubsurface()
+{
+    QRasterWindow window1;
+    window1.resize(64, 64);
+    window1.show();
+
+    QRasterWindow window2;
+    window2.resize(64, 64);
+    window2.show();
+
+    window2.setParent(&window1);
+    QCOMPOSITOR_TRY_VERIFY(subSurface());
+
+    window2.setParent(nullptr);
+    QCOMPOSITOR_TRY_VERIFY(xdgToplevel(1));
+
+    window2.hide();
+    window2.setParent(&window1);
+    window2.show();
+    QCOMPOSITOR_TRY_VERIFY(subSurface());
+
+    window2.hide();
+    window2.setParent(nullptr);
+    window2.show();
+    QCOMPOSITOR_TRY_VERIFY(xdgToplevel(1));
 }
 
 QCOMPOSITOR_TEST_MAIN(tst_surface)

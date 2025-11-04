@@ -23,13 +23,14 @@ class Q_QMLCOMPILER_EXPORT QQmlJSShadowCheck : public QQmlJSCompilePass
 public:
     QQmlJSShadowCheck(const QV4::Compiler::JSUnitGenerator *jsUnitGenerator,
                       const QQmlJSTypeResolver *typeResolver, QQmlJSLogger *logger,
-                      BasicBlocks basicBlocks, InstructionAnnotations annotations)
-        : QQmlJSCompilePass(jsUnitGenerator, typeResolver, logger, basicBlocks, annotations)
+                      QList<QQmlJS::DiagnosticMessage> *errors, const BasicBlocks &basicBlocks,
+                      const InstructionAnnotations &annotations)
+        : QQmlJSCompilePass(jsUnitGenerator, typeResolver, logger, errors, basicBlocks, annotations)
     {}
 
     ~QQmlJSShadowCheck() = default;
 
-    BlocksAndAnnotations run(const Function *function, QQmlJS::DiagnosticMessage *error);
+    BlocksAndAnnotations run(const Function *function);
 
 private:
     struct ResettableStore {
@@ -52,11 +53,11 @@ private:
 
     enum Shadowability { NotShadowable, Shadowable };
     Shadowability checkShadowing(
-            const QQmlJSRegisterContent &baseType, const QString &propertyName, int baseRegister);
+            QQmlJSRegisterContent baseType, const QString &propertyName, int baseRegister);
 
-    void checkResettable(const QQmlJSRegisterContent &accumulatorIn, int instructionOffset);
+    void checkResettable(QQmlJSRegisterContent accumulatorIn, int instructionOffset);
 
-    Shadowability checkBaseType(const QQmlJSRegisterContent &baseType);
+    Shadowability checkBaseType(QQmlJSRegisterContent baseType);
 
     QList<ResettableStore> m_resettableStores;
     QList<QQmlJSRegisterContent> m_baseTypes;

@@ -131,47 +131,62 @@ QSSGRhiShaderPipelinePtr QSSGBuiltInRhiShaderCache::getRhiProgressiveAAShader()
     return getBuiltinRhiShader(QByteArrayLiteral("progressiveaa"), m_cache.progressiveAARhiShader);
 }
 
-QSSGRhiShaderPipelinePtr QSSGBuiltInRhiShaderCache::getRhiParticleShader(QSSGRenderParticles::FeatureLevel featureLevel, int viewCount)
+static QByteArray appendOitMethod(const QByteArray &name, QSSGRenderLayer::OITMethod method)
 {
+    switch (method) {
+    case QSSGRenderLayer::OITMethod::WeightedBlended:
+        return name + QByteArrayLiteral("_oit_weightedblended");
+    case QSSGRenderLayer::OITMethod::None:
+    default: break;
+    }
+    return name;
+}
+
+QSSGRhiShaderPipelinePtr QSSGBuiltInRhiShaderCache::getRhiParticleShader(QSSGRenderParticles::FeatureLevel featureLevel, int viewCount, QSSGRenderLayer::OITMethod method)
+{
+#define particleShaderName(name, oit) \
+    appendOitMethod(QByteArrayLiteral(name), oit)
+
+    const uint idx = uint(method);
     switch (featureLevel) {
     case QSSGRenderParticles::FeatureLevel::Simple:
-        return getBuiltinRhiShader(QByteArrayLiteral("particlesnolightsimple"), m_cache.particlesNoLightingSimpleRhiShader, viewCount);
+        return getBuiltinRhiShader(particleShaderName("particles_nolight_simple", method), m_cache.particlesNoLightingSimpleRhiShader[idx], viewCount);
         break;
     case QSSGRenderParticles::FeatureLevel::Mapped:
-        return getBuiltinRhiShader(QByteArrayLiteral("particlesnolightmapped"), m_cache.particlesNoLightingMappedRhiShader, viewCount);
+        return getBuiltinRhiShader(particleShaderName("particles_nolight_mapped", method), m_cache.particlesNoLightingMappedRhiShader[idx], viewCount);
         break;
     case QSSGRenderParticles::FeatureLevel::Animated:
-        return getBuiltinRhiShader(QByteArrayLiteral("particlesnolightanimated"), m_cache.particlesNoLightingAnimatedRhiShader, viewCount);
+        return getBuiltinRhiShader(particleShaderName("particles_nolight_animated", method), m_cache.particlesNoLightingAnimatedRhiShader[idx], viewCount);
         break;
     case QSSGRenderParticles::FeatureLevel::SimpleVLight:
-        return getBuiltinRhiShader(QByteArrayLiteral("particlesvlightsimple"), m_cache.particlesVLightingSimpleRhiShader, viewCount);
+        return getBuiltinRhiShader(particleShaderName("particles_vlight_simple", method), m_cache.particlesVLightingSimpleRhiShader[idx], viewCount);
         break;
     case QSSGRenderParticles::FeatureLevel::MappedVLight:
-        return getBuiltinRhiShader(QByteArrayLiteral("particlesvlightmapped"), m_cache.particlesVLightingMappedRhiShader, viewCount);
+        return getBuiltinRhiShader(particleShaderName("particles_vlight_mapped", method), m_cache.particlesVLightingMappedRhiShader[idx], viewCount);
         break;
     case QSSGRenderParticles::FeatureLevel::AnimatedVLight:
-        return getBuiltinRhiShader(QByteArrayLiteral("particlesvlightanimated"), m_cache.particlesVLightingAnimatedRhiShader, viewCount);
+        return getBuiltinRhiShader(particleShaderName("particles_vlight_animated", method), m_cache.particlesVLightingAnimatedRhiShader[idx], viewCount);
         break;
     case QSSGRenderParticles::FeatureLevel::Line:
-        return getBuiltinRhiShader(QByteArrayLiteral("lineparticles"), m_cache.lineParticlesRhiShader, viewCount);
+        return getBuiltinRhiShader(particleShaderName("lineparticles_nolight_simple", method), m_cache.lineParticlesRhiShader[idx], viewCount);
         break;
     case QSSGRenderParticles::FeatureLevel::LineMapped:
-        return getBuiltinRhiShader(QByteArrayLiteral("lineparticlesmapped"), m_cache.lineParticlesMappedRhiShader, viewCount);
+        return getBuiltinRhiShader(particleShaderName("lineparticles_nolight_mapped", method), m_cache.lineParticlesMappedRhiShader[idx], viewCount);
         break;
     case QSSGRenderParticles::FeatureLevel::LineAnimated:
-        return getBuiltinRhiShader(QByteArrayLiteral("lineparticlesanimated"), m_cache.lineParticlesAnimatedRhiShader, viewCount);
+        return getBuiltinRhiShader(particleShaderName("lineparticles_nolight_animated", method), m_cache.lineParticlesAnimatedRhiShader[idx], viewCount);
         break;
     case QSSGRenderParticles::FeatureLevel::LineVLight:
-        return getBuiltinRhiShader(QByteArrayLiteral("lineparticlesvlightsimple"), m_cache.lineParticlesVLightRhiShader, viewCount);
+        return getBuiltinRhiShader(particleShaderName("lineparticles_vlight_simple", method), m_cache.lineParticlesVLightRhiShader[idx], viewCount);
         break;
     case QSSGRenderParticles::FeatureLevel::LineMappedVLight:
-        return getBuiltinRhiShader(QByteArrayLiteral("lineparticlesvlightmapped"), m_cache.lineParticlesMappedVLightRhiShader, viewCount);
+        return getBuiltinRhiShader(particleShaderName("lineparticles_vlight_mapped", method), m_cache.lineParticlesMappedVLightRhiShader[idx], viewCount);
         break;
     case QSSGRenderParticles::FeatureLevel::LineAnimatedVLight:
-        return getBuiltinRhiShader(QByteArrayLiteral("lineparticlesvlightanimated"), m_cache.lineParticlesAnimatedVLightRhiShader, viewCount);
+        return getBuiltinRhiShader(particleShaderName("lineparticles_vlight_animated", method), m_cache.lineParticlesAnimatedVLightRhiShader[idx], viewCount);
         break;
     }
-    return getBuiltinRhiShader(QByteArrayLiteral("particlesnolightanimated"), m_cache.particlesNoLightingAnimatedRhiShader, viewCount);
+    return getBuiltinRhiShader(particleShaderName("particles_nolight_animated", method), m_cache.particlesNoLightingAnimatedRhiShader[idx], viewCount);
 }
 
 QSSGRhiShaderPipelinePtr QSSGBuiltInRhiShaderCache::getRhiSimpleQuadShader(int viewCount)
@@ -218,6 +233,22 @@ QSSGRhiShaderPipelinePtr QSSGBuiltInRhiShaderCache::getRhienvironmentmapPreFilte
 QSSGRhiShaderPipelinePtr QSSGBuiltInRhiShaderCache::getRhiEnvironmentmapShader()
 {
     return getBuiltinRhiShader(QByteArrayLiteral("environmentmap"), m_cache.environmentmapShader);
+}
+
+QSSGRhiShaderPipelinePtr QSSGBuiltInRhiShaderCache::getRhiClearMRTShader()
+{
+    return getBuiltinRhiShader(QByteArrayLiteral("clear_mrt"), m_cache.clearMRTShader);
+}
+
+QSSGRhiShaderPipelinePtr QSSGBuiltInRhiShaderCache::getRhiOitCompositeShader(QSSGRenderLayer::OITMethod method, bool multisample)
+{
+    if (method == QSSGRenderLayer::OITMethod::WeightedBlended){
+        if (multisample)
+            return getBuiltinRhiShader(QByteArrayLiteral("oitcomposite_weightedblended_ms"), m_cache.oitCompositeShader[1]);
+        else
+            return getBuiltinRhiShader(QByteArrayLiteral("oitcomposite_weightedblended"), m_cache.oitCompositeShader[0]);
+    }
+    Q_UNREACHABLE_RETURN(getBuiltinRhiShader(QByteArrayLiteral("oitcomposite_weightedblended"), m_cache.oitCompositeShader[0]));
 }
 
 QT_END_NAMESPACE

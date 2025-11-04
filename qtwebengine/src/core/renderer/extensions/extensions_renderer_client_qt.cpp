@@ -1,5 +1,6 @@
 // Copyright (C) 2018 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 // based on chrome/renderer/extensions/chrome_extensions_renderer_client.cc:
 // Copyright (c) 2014 The Chromium Authors. All rights reserved.
@@ -8,9 +9,7 @@
 
 #include "extensions_renderer_client_qt.h"
 
-#include "extensions_dispatcher_delegate_qt.h"
 #include "renderer/render_configuration.h"
-#include "renderer_permissions_policy_delegate_qt.h"
 #include "resource_request_policy_qt.h"
 
 #include "base/command_line.h"
@@ -71,66 +70,14 @@ ExtensionsRendererClientQt *ExtensionsRendererClientQt::GetInstance()
     return client.Pointer();
 }
 
-extensions::Dispatcher *ExtensionsRendererClientQt::GetDispatcher()
+void ExtensionsRendererClientQt::FinishInitialization()
 {
-    return extension_dispatcher_.get();
-}
-
-void ExtensionsRendererClientQt::OnExtensionLoaded(const extensions::Extension &extension)
-{
-    resource_request_policy_->OnExtensionLoaded(extension);
-}
-
-void ExtensionsRendererClientQt::OnExtensionUnloaded(const extensions::ExtensionId &extension_id)
-{
-    resource_request_policy_->OnExtensionUnloaded(extension_id);
-}
-
-bool ExtensionsRendererClientQt::ExtensionAPIEnabledForServiceWorkerScript(const GURL &scope, const GURL &script_url) const
-{
-    if (!script_url.SchemeIs(extensions::kExtensionScheme))
-        return false;
-
-    const extensions::Extension* extension =
-            extensions::RendererExtensionRegistry::Get()->GetExtensionOrAppByURL(script_url);
-
-    if (!extension || !extensions::BackgroundInfo::IsServiceWorkerBased(extension))
-        return false;
-
-    if (scope != extension->url())
-        return false;
-
-    const std::string& sw_script = extensions::BackgroundInfo::GetBackgroundServiceWorkerScript(extension);
-
-    return extension->GetResourceURL(sw_script) == script_url;
-}
-
-void ExtensionsRendererClientQt::RenderThreadStarted()
-{
-    content::RenderThread *thread = content::RenderThread::Get();
-    if (!extension_dispatcher_)
-        extension_dispatcher_.reset(new extensions::Dispatcher(
-                std::make_unique<ExtensionsDispatcherDelegateQt>(),
-                std::vector<std::unique_ptr<extensions::ExtensionsRendererAPIProvider>>()));
-    extension_dispatcher_->OnRenderThreadStarted(thread);
-    permissions_policy_delegate_.reset(new RendererPermissionsPolicyDelegateQt(extension_dispatcher_.get()));
-    resource_request_policy_.reset(new extensions::ResourceRequestPolicyQt(extension_dispatcher_.get()));
-
-    thread->AddObserver(extension_dispatcher_.get());
+    resource_request_policy_.reset(new extensions::ResourceRequestPolicyQt(dispatcher()));
 }
 
 void ExtensionsRendererClientQt::WebViewCreated(blink::WebView *web_view, const url::Origin *outermost_origin)
 {
     new extensions::ExtensionWebViewHelper(web_view, outermost_origin);
-}
-
-void ExtensionsRendererClientQt::RenderFrameCreated(content::RenderFrame *render_frame,
-                                                    service_manager::BinderRegistry *registry)
-{
-    new extensions::ExtensionsRenderFrameObserver(render_frame, registry);
-    new extensions::ExtensionFrameHelper(render_frame,
-                                         extension_dispatcher_.get());
-    extension_dispatcher_->OnRenderFrameCreated(render_frame);
 }
 
 bool ExtensionsRendererClientQt::OverrideCreatePlugin(content::RenderFrame *render_frame,
@@ -157,28 +104,19 @@ void ExtensionsRendererClientQt::WillSendRequest(blink::WebLocalFrame *frame,
     }
 }
 
-bool ExtensionsRendererClientQt::ShouldFork(blink::WebLocalFrame *frame,
-                                            const GURL &url,
-                                            bool is_initial_navigation,
-                                            bool is_server_redirect,
-                                            bool *send_referrer)
-{
-    return false; // TODO: Fix this to a sensible value
-}
-
 void ExtensionsRendererClientQt::RunScriptsAtDocumentStart(content::RenderFrame *render_frame)
 {
-    extension_dispatcher_->RunScriptsAtDocumentStart(render_frame);
+    dispatcher()->RunScriptsAtDocumentStart(render_frame);
 }
 
 void ExtensionsRendererClientQt::RunScriptsAtDocumentEnd(content::RenderFrame *render_frame)
 {
-    extension_dispatcher_->RunScriptsAtDocumentEnd(render_frame);
+    dispatcher()->RunScriptsAtDocumentEnd(render_frame);
 }
 
 void ExtensionsRendererClientQt::RunScriptsAtDocumentIdle(content::RenderFrame *render_frame)
 {
-    extension_dispatcher_->RunScriptsAtDocumentIdle(render_frame);
+    dispatcher()->RunScriptsAtDocumentIdle(render_frame);
 }
 
 

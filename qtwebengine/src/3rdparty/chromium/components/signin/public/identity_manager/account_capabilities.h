@@ -5,6 +5,7 @@
 #ifndef COMPONENTS_SIGNIN_PUBLIC_IDENTITY_MANAGER_ACCOUNT_CAPABILITIES_H_
 #define COMPONENTS_SIGNIN_PUBLIC_IDENTITY_MANAGER_ACCOUNT_CAPABILITIES_H_
 
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -12,7 +13,6 @@
 #include "base/values.h"
 #include "build/build_config.h"
 #include "components/signin/public/identity_manager/tribool.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 
 #if BUILDFLAG(IS_ANDROID)
 #include "base/android/scoped_java_ref.h"
@@ -21,6 +21,10 @@
 namespace ios {
 class AccountCapabilitiesFetcherIOS;
 }  // namespace ios
+
+namespace supervised_user {
+class SupervisedUserCapabilitiesObserver;
+}  // namespace supervised_user
 
 // Stores the information about account capabilities. Capabilities provide
 // information about state and features of Gaia accounts.
@@ -48,12 +52,17 @@ class AccountCapabilities {
 #endif
   // Keep sorted alphabetically.
 
+  // Chrome can fetch information related to the family group for accounts
+  // with this capability.
+  signin::Tribool can_fetch_family_member_info() const;
+
   // Chrome can display the email address for accounts with this capability.
   signin::Tribool can_have_email_address_displayed() const;
 
-  // Chrome can offer extended promos for turning on Sync to accounts with this
-  // capability.
-  signin::Tribool can_offer_extended_chrome_sync_promos() const;
+  // Chrome can show history sync opt in screens without minor mode
+  // restrictions with this capability.
+  signin::Tribool
+  can_show_history_sync_opt_ins_without_minor_mode_restrictions() const;
 
   // Chrome can run privacy sandbox trials for accounts with this capability.
   signin::Tribool can_run_chrome_privacy_sandbox_trials() const;
@@ -67,6 +76,15 @@ class AccountCapabilities {
 
   // The user account is able to use IP Protection.
   signin::Tribool can_use_chrome_ip_protection() const;
+
+  // The user account is able to use DevTools AI features.
+  signin::Tribool can_use_devtools_generative_ai_features() const;
+
+  // The user account is able to use edu features.
+  signin::Tribool can_use_edu_features() const;
+
+  // The user account is able to use manta service.
+  signin::Tribool can_use_manta_service() const;
 
   // The user account is able to use model execution features.
   signin::Tribool can_use_model_execution_features() const;
@@ -86,6 +104,12 @@ class AccountCapabilities {
   // Chrome applies parental controls to accounts with this capability.
   signin::Tribool is_subject_to_parental_controls() const;
 
+  // The user account is able to use speaker label in recorder app.
+  signin::Tribool can_use_speaker_label_in_recorder_app() const;
+
+  // The user account is able to use generative AI in recorder app.
+  signin::Tribool can_use_generative_ai_in_recorder_app() const;
+
   // Whether at least one of the capabilities is not
   // `signin::Tribool::kUnknown`.
   bool AreAnyCapabilitiesKnown() const;
@@ -99,17 +123,18 @@ class AccountCapabilities {
   bool UpdateWith(const AccountCapabilities& other);
 
   bool operator==(const AccountCapabilities& other) const;
-  bool operator!=(const AccountCapabilities& other) const;
 
  private:
-  friend absl::optional<AccountCapabilities> AccountCapabilitiesFromValue(
+  friend std::optional<AccountCapabilities> AccountCapabilitiesFromValue(
       const base::Value::Dict& account_capabilities);
   friend class AccountCapabilitiesFetcherGaia;
 #if BUILDFLAG(IS_IOS)
+  friend const std::vector<std::string>& GetAccountCapabilityNamesForPrefetch();
   friend class ios::AccountCapabilitiesFetcherIOS;
 #endif
   friend class AccountCapabilitiesTestMutator;
   friend class AccountTrackerService;
+  friend class supervised_user::SupervisedUserCapabilitiesObserver;
 
   // Returns the capability state using the service name.
   signin::Tribool GetCapabilityByName(const std::string& name) const;

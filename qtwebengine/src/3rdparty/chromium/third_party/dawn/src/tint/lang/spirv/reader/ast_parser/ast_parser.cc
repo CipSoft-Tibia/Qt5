@@ -29,7 +29,7 @@
 
 #include <algorithm>
 #include <limits>
-#include <locale>
+#include <string_view>
 #include <utility>
 
 #include "source/opt/build_module.h"
@@ -39,7 +39,6 @@
 #include "src/tint/lang/core/type/sampled_texture.h"
 #include "src/tint/lang/core/type/texture_dimension.h"
 #include "src/tint/lang/spirv/reader/ast_parser/function.h"
-#include "src/tint/lang/wgsl/ast/bitcast_expression.h"
 #include "src/tint/lang/wgsl/ast/disable_validation_attribute.h"
 #include "src/tint/lang/wgsl/ast/id_attribute.h"
 #include "src/tint/lang/wgsl/ast/interpolate_attribute.h"
@@ -776,11 +775,10 @@ bool ASTParser::RegisterUserAndStructMemberNames() {
     return true;
 }
 
-bool ASTParser::IsValidIdentifier(const std::string& str) {
+bool ASTParser::IsValidIdentifier(std::string_view str) {
     if (str.empty()) {
         return false;
     }
-    std::locale c_locale("C");
     if (str[0] == '_') {
         if (str.length() == 1u || str[1] == '_') {
             // https://www.w3.org/TR/WGSL/#identifiers
@@ -788,14 +786,28 @@ bool ASTParser::IsValidIdentifier(const std::string& str) {
             // must not start with two underscores
             return false;
         }
-    } else if (!std::isalpha(str[0], c_locale)) {
-        return false;
     }
-    for (const char& ch : str) {
-        if ((ch != '_') && !std::isalnum(ch, c_locale)) {
+
+    // Must begin with an XID_Source unicode character, or underscore
+    {
+        auto* utf8 = reinterpret_cast<const uint8_t*>(str.data());
+        auto [code_point, n] = tint::utf8::Decode(utf8, str.size());
+        if (code_point != tint::CodePoint('_') && !code_point.IsXIDStart()) {
             return false;
         }
+        str = str.substr(n);
     }
+
+    // Must continue with an XID_Continue unicode character
+    while (!str.empty()) {
+        auto* utf8 = reinterpret_cast<const uint8_t*>(str.data());
+        auto [code_point, n] = tint::utf8::Decode(utf8, str.size());
+        if (!code_point.IsXIDContinue()) {
+            return false;
+        }
+        str = str.substr(n);
+    }
+
     return true;
 }
 
@@ -1522,14 +1534,14 @@ bool ASTParser::EmitModuleScopeVariables() {
             // here.)
             ast_initializer = MakeConstantExpression(var.GetSingleWordInOperand(1)).expr;
         }
-        auto ast_access = VarAccess(ast_store_type, ast_address_space);
-        auto* ast_var = MakeVar(var.result_id(), ast_address_space, ast_access, ast_store_type,
-                                ast_initializer, Attributes{});
+        auto* ast_var = MakeVar(var.result_id(), ast_address_space, ast_store_type, ast_initializer,
+                                Attributes{});
         // TODO(dneto): initializers (a.k.a. initializer expression)
         if (ast_var) {
             builder_.AST().AddGlobalVariable(ast_var);
-            module_variable_.GetOrCreate(var.result_id(), [&] {
-                return ModuleVariable{ast_var, ast_address_space, ast_access};
+            module_variable_.GetOrAdd(var.result_id(), [&] {
+                auto access = VarAccess(var.result_id(), ast_store_type, ast_address_space);
+                return ModuleVariable{ast_var, ast_address_space, access};
             });
         }
     }
@@ -1559,12 +1571,11 @@ bool ASTParser::EmitModuleScopeVariables() {
         }
         auto storage_type = ConvertType(builtin_position_.position_member_type_id);
         auto ast_address_space = enum_converter_.ToAddressSpace(builtin_position_.storage_class);
-        auto ast_access = VarAccess(storage_type, ast_address_space);
-        auto* ast_var = MakeVar(builtin_position_.per_vertex_var_id, ast_address_space, ast_access,
+        auto* ast_var = MakeVar(builtin_position_.per_vertex_var_id, ast_address_space,
                                 storage_type, ast_initializer, {});
 
         builder_.AST().AddGlobalVariable(ast_var);
-        module_variable_.GetOrCreate(builtin_position_.per_vertex_var_id, [&] {
+        module_variable_.GetOrAdd(builtin_position_.per_vertex_var_id, [&] {
             return ModuleVariable{ast_var, ast_address_space};
         });
     }
@@ -1594,14 +1605,16 @@ const spvtools::opt::analysis::IntConstant* ASTParser::GetArraySize(uint32_t var
     return size->AsIntConstant();
 }
 
-core::Access ASTParser::VarAccess(const Type* storage_type, core::AddressSpace address_space) {
+core::Access ASTParser::VarAccess(uint32_t var_id,
+                                  const Type* storage_type,
+                                  core::AddressSpace address_space) {
     if (address_space != core::AddressSpace::kStorage) {
         return core::Access::kUndefined;
     }
 
-    bool read_only = false;
+    bool read_only = read_only_vars_.count(var_id) > 0;
     if (auto* tn = storage_type->As<Named>()) {
-        read_only = read_only_struct_types_.count(tn->name) > 0;
+        read_only = read_only || read_only_struct_types_.count(tn->name) > 0;
     }
 
     // Apply the access(read) or access(read_write) modifier.
@@ -1610,7 +1623,6 @@ core::Access ASTParser::VarAccess(const Type* storage_type, core::AddressSpace a
 
 const ast::Var* ASTParser::MakeVar(uint32_t id,
                                    core::AddressSpace address_space,
-                                   core::Access access,
                                    const Type* storage_type,
                                    const ast::Expression* initializer,
                                    Attributes attrs) {
@@ -1629,6 +1641,8 @@ const ast::Var* ASTParser::MakeVar(uint32_t id,
                                        address_space != core::AddressSpace::kPrivate)) {
         return nullptr;
     }
+
+    const auto access = VarAccess(id, storage_type, address_space);
 
     // Use type inference if there is an initializer.
     auto sym = builder_.Symbols().Register(namer_.Name(id));
@@ -1742,6 +1756,9 @@ bool ASTParser::ConvertDecorationsForVariable(uint32_t id,
                 return Fail() << "malformed Binding decoration on ID " << id << ": has no operand";
             }
             attrs.Add(builder_.Binding(Source{}, AInt(deco[1])));
+        }
+        if (deco[0] == uint32_t(spv::Decoration::NonWritable)) {
+            read_only_vars_.insert(id);
         }
     }
 

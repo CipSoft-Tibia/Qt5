@@ -6,6 +6,7 @@
 
 #include <string.h>
 
+#include "core/fxcrt/compiler_specific.h"
 #include "core/fxcrt/data_vector.h"
 #include "testing/gtest/include/gtest/gtest.h"
 
@@ -40,8 +41,9 @@ TEST(OnedUPCAWriterTest, Encode) {
       "# #";     // End
   DataVector<uint8_t> encoded = writer.Encode("123456789012");
   ASSERT_EQ(strlen(kExpected1), encoded.size());
-  for (size_t i = 0; i < strlen(kExpected1); i++)
-    EXPECT_EQ(kExpected1[i] != ' ', !!encoded[i]) << i;
+  for (size_t i = 0; i < strlen(kExpected1); i++) {
+    UNSAFE_TODO(EXPECT_EQ(kExpected1[i] != ' ', !!encoded[i])) << i;
+  }
 
   encoded = writer.Encode("777666555440");
   static const char kExpected2[] =
@@ -61,8 +63,9 @@ TEST(OnedUPCAWriterTest, Encode) {
       "###  # "  // 0 R
       "# #";     // End
   ASSERT_EQ(strlen(kExpected2), encoded.size());
-  for (size_t i = 0; i < strlen(kExpected2); i++)
-    EXPECT_EQ(kExpected2[i] != ' ', !!encoded[i]) << i;
+  for (size_t i = 0; i < strlen(kExpected2); i++) {
+    UNSAFE_TODO(EXPECT_EQ(kExpected2[i] != ' ', !!encoded[i])) << i;
+  }
 }
 
 TEST(OnedUPCAWriterTest, Checksum) {

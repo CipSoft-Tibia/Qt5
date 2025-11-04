@@ -6,7 +6,7 @@
 
 #include "third_party/blink/renderer/core/frame/settings.h"
 #include "third_party/blink/renderer/core/layout/layout_embedded_object.h"
-#include "third_party/blink/renderer/core/layout/layout_theme.h"
+#include "third_party/blink/renderer/core/layout/layout_theme_font_provider.h"
 #include "third_party/blink/renderer/core/paint/box_painter.h"
 #include "third_party/blink/renderer/core/paint/embedded_content_painter.h"
 #include "third_party/blink/renderer/core/paint/paint_auto_dark_mode.h"
@@ -26,14 +26,19 @@ static const float kReplacementTextRoundedRectOpacity = 0.20f;
 static const float kReplacementTextRoundedRectRadius = 5;
 static const float kReplacementTextTextOpacity = 0.55f;
 
-static Font ReplacementTextFont(const Document* document) {
+static Font* ReplacementTextFont(const Document* document) {
+  const AtomicString& family = LayoutThemeFontProvider::SystemFontFamily(
+      CSSValueID::kWebkitSmallControl);
+  const float size = LayoutThemeFontProvider::SystemFontSize(
+      CSSValueID::kWebkitSmallControl, document);
+
   FontDescription font_description;
-  LayoutTheme::GetTheme().SystemFont(CSSValueID::kWebkitSmallControl,
-                                     font_description, document);
+  font_description.SetFamily(
+      FontFamily(family, FontFamily::InferredTypeFor(family)));
   font_description.SetWeight(kBoldWeightValue);
-  font_description.SetComputedSize(font_description.SpecifiedSize());
-  Font font(font_description);
-  return font;
+  font_description.SetSpecifiedSize(size);
+  font_description.SetComputedSize(size);
+  return MakeGarbageCollected<Font>(font_description);
 }
 
 void EmbeddedObjectPainter::PaintReplaced(const PaintInfo& paint_info,
@@ -57,14 +62,14 @@ void EmbeddedObjectPainter::PaintReplaced(const PaintInfo& paint_info,
   BoxDrawingRecorder recorder(context, layout_embedded_object_,
                               paint_info.phase, paint_offset);
 
-  Font font = ReplacementTextFont(&layout_embedded_object_.GetDocument());
-  const SimpleFontData* font_data = font.PrimaryFont();
+  Font* font = ReplacementTextFont(&layout_embedded_object_.GetDocument());
+  const SimpleFontData* font_data = font->PrimaryFont();
   DCHECK(font_data);
   if (!font_data)
     return;
 
   TextRun text_run(layout_embedded_object_.UnavailablePluginReplacementText());
-  gfx::SizeF text_geometry(font.Width(text_run),
+  gfx::SizeF text_geometry(font->Width(text_run),
                            font_data->GetFontMetrics().Height());
 
   PhysicalRect background_rect(
@@ -90,7 +95,7 @@ void EmbeddedObjectPainter::PaintReplaced(const PaintInfo& paint_info,
   context.SetFillColor(Color::FromSkColor(
       ScaleAlpha(SK_ColorBLACK, kReplacementTextTextOpacity)));
   context.DrawBidiText(
-      font, run_info,
+      *font, run_info,
       text_rect.origin() +
           gfx::Vector2dF(0, font_data->GetFontMetrics().Ascent()),
       auto_dark_mode);

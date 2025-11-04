@@ -29,6 +29,7 @@
 
 #include "libavutil/channel_layout.h"
 #include "libavutil/float_dsp.h"
+#include "libavutil/mem.h"
 #include "libavutil/mem_internal.h"
 #include "libavutil/opt.h"
 #include "bytestream.h"
@@ -163,6 +164,7 @@ static void celt_apply_preemph_filter(OpusEncContext *s, CeltFrame *f)
 {
     const int subframesize = s->avctx->frame_size;
     const int subframes = OPUS_BLOCK_SIZE(s->packet.framesize) / subframesize;
+    const float c = ff_opus_deemph_weights[0];
 
     /* Filter overlap */
     for (int ch = 0; ch < f->channels; ch++) {
@@ -171,7 +173,7 @@ static void celt_apply_preemph_filter(OpusEncContext *s, CeltFrame *f)
         for (int i = 0; i < CELT_OVERLAP; i++) {
             float sample = b->overlap[i];
             b->overlap[i] = sample - m;
-            m = sample * CELT_EMPH_COEFF;
+            m = sample * c;
         }
         b->emph_coeff = m;
     }
@@ -184,7 +186,7 @@ static void celt_apply_preemph_filter(OpusEncContext *s, CeltFrame *f)
             for (int i = 0; i < subframesize; i++) {
                 float sample = b->samples[sf*subframesize + i];
                 b->samples[sf*subframesize + i] = sample - m;
-                m = sample * CELT_EMPH_COEFF;
+                m = sample * c;
             }
             if (sf != (subframes - 1))
                 b->emph_coeff = m;
@@ -712,8 +714,8 @@ static av_cold int opus_encode_init(AVCodecContext *avctx)
 
 #define OPUSENC_FLAGS AV_OPT_FLAG_ENCODING_PARAM | AV_OPT_FLAG_AUDIO_PARAM
 static const AVOption opusenc_options[] = {
-    { "opus_delay", "Maximum delay in milliseconds", offsetof(OpusEncContext, options.max_delay_ms), AV_OPT_TYPE_FLOAT, { .dbl = OPUS_MAX_LOOKAHEAD }, 2.5f, OPUS_MAX_LOOKAHEAD, OPUSENC_FLAGS, "max_delay_ms" },
-    { "apply_phase_inv", "Apply intensity stereo phase inversion", offsetof(OpusEncContext, options.apply_phase_inv), AV_OPT_TYPE_BOOL, { .i64 = 1 }, 0, 1, OPUSENC_FLAGS, "apply_phase_inv" },
+    { "opus_delay", "Maximum delay in milliseconds", offsetof(OpusEncContext, options.max_delay_ms), AV_OPT_TYPE_FLOAT, { .dbl = OPUS_MAX_LOOKAHEAD }, 2.5f, OPUS_MAX_LOOKAHEAD, OPUSENC_FLAGS, .unit = "max_delay_ms" },
+    { "apply_phase_inv", "Apply intensity stereo phase inversion", offsetof(OpusEncContext, options.apply_phase_inv), AV_OPT_TYPE_BOOL, { .i64 = 1 }, 0, 1, OPUSENC_FLAGS, .unit = "apply_phase_inv" },
     { NULL },
 };
 
@@ -745,7 +747,6 @@ const FFCodec ff_opus_encoder = {
     .close          = opus_encode_end,
     .caps_internal  = FF_CODEC_CAP_INIT_CLEANUP,
     .p.supported_samplerates = (const int []){ 48000, 0 },
-    CODEC_OLD_CHANNEL_LAYOUTS(AV_CH_LAYOUT_MONO, AV_CH_LAYOUT_STEREO)
     .p.ch_layouts    = (const AVChannelLayout []){ AV_CHANNEL_LAYOUT_MONO,
                                                    AV_CHANNEL_LAYOUT_STEREO, { 0 } },
     .p.sample_fmts  = (const enum AVSampleFormat[]){ AV_SAMPLE_FMT_FLTP,

@@ -17,15 +17,22 @@
 //! Commonly used DEs have dedicated types (e.g. [TxPowerDataElement], etc), but if another DE is
 //! needed, [GenericDataElement] will allow constructing any type of DE.
 
-use crate::extended::{
-    de_type::DeType,
-    deserialize::DataElement,
-    serialize::{DeHeader, SingleTypeDataElement, WriteDataElement},
-    DeLength, ENCRYPTION_INFO_DE_TYPE, MAX_DE_LEN,
+use crate::{
+    extended::{
+        de_type::DeType,
+        deserialize::data_element::DataElement,
+        serialize::{DeHeader, SingleTypeDataElement, WriteDataElement},
+        MAX_DE_LEN,
+    },
+    shared_data::*,
 };
-use crate::shared_data::*;
 use array_view::ArrayView;
 use sink::Sink;
+
+mod actions;
+pub use actions::ActionId;
+pub use actions::ActionsDataElement;
+pub use actions::DeserializedActionsDE;
 
 #[cfg(test)]
 mod tests;
@@ -97,92 +104,6 @@ impl WriteDataElement for TxPowerDataElement {
 
     fn write_de_contents<S: Sink<u8>>(&self, sink: &mut S) -> Option<()> {
         sink.try_push(self.tx_power.as_i8() as u8)
-    }
-}
-
-/// List of actions
-pub struct ActionsDataElement {
-    actions: tinyvec::ArrayVec<[u8; MAX_DE_LEN]>,
-}
-
-impl ActionsDataElement {
-    /// Returns `Some` if the actions will fit in a DE, `None` otherwise
-    pub fn try_from_actions(actions: &[u8]) -> Result<Self, ActionsDataElementError> {
-        let mut de = Self { actions: tinyvec::ArrayVec::new() };
-
-        de.actions
-            .try_extend_from_slice(actions)
-            .map(|_| de)
-            .ok_or(ActionsDataElementError::ActionsTooLong)
-    }
-}
-
-impl SingleTypeDataElement for ActionsDataElement {
-    const DE_TYPE: DeType = DeType::const_from(0x06);
-}
-
-impl WriteDataElement for ActionsDataElement {
-    fn de_header(&self) -> DeHeader {
-        DeHeader::new(Self::DE_TYPE, self.actions.len().try_into().expect("always <= max length"))
-    }
-
-    fn write_de_contents<S: Sink<u8>>(&self, sink: &mut S) -> Option<()> {
-        sink.try_extend_from_slice(&self.actions)
-    }
-}
-
-/// Errors that can occur constructing an [ActionsDataElement].
-#[derive(Debug, PartialEq, Eq)]
-pub enum ActionsDataElementError {
-    /// Too many action bytes.
-    ActionsTooLong,
-}
-
-pub(crate) const SIGNATURE_ENCRYPTION_SCHEME: u8 = 0b00001000;
-pub(crate) const MIC_ENCRYPTION_SCHEME: u8 = 0b00000000;
-
-/// Determines whether a signature or mic encryption scheme is used
-pub(crate) struct EncryptionInfoDataElement {
-    /// First byte is bESSSSRRR where SSSS is the encryption scheme, rest are the salt
-    pub info: [u8; 17],
-}
-
-impl SingleTypeDataElement for EncryptionInfoDataElement {
-    const DE_TYPE: DeType = ENCRYPTION_INFO_DE_TYPE;
-}
-
-impl EncryptionInfoDataElement {
-    pub(crate) fn serialize(&self) -> [u8; 19] {
-        let mut buffer = [0_u8; 19];
-        buffer[0..2].copy_from_slice(self.de_header().serialize().as_slice());
-        buffer[2..19].copy_from_slice(&self.info);
-        buffer
-    }
-
-    fn de_header(&self) -> DeHeader {
-        DeHeader::new(
-            Self::DE_TYPE,
-            DeLength {
-                len: self.info.len().try_into().expect("encryption info is a valid length"),
-            },
-        )
-    }
-
-    /// Constructs the signature encryption scheme variant
-    pub fn signature(salt_bytes: &[u8; 16]) -> Self {
-        Self::new(SIGNATURE_ENCRYPTION_SCHEME, salt_bytes)
-    }
-
-    /// Constructs the mic encryption scheme variant
-    pub fn mic(salt_bytes: &[u8; 16]) -> Self {
-        Self::new(MIC_ENCRYPTION_SCHEME, salt_bytes)
-    }
-
-    fn new(scheme: u8, salt_bytes: &[u8; 16]) -> Self {
-        let mut sig_info = [0_u8; 17];
-        sig_info[0] = scheme;
-        sig_info[1..].copy_from_slice(salt_bytes);
-        Self { info: sig_info }
     }
 }
 

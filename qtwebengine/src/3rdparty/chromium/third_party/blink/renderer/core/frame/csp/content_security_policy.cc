@@ -26,14 +26,15 @@
 #include "third_party/blink/renderer/core/frame/csp/content_security_policy.h"
 
 #include <memory>
+#include <optional>
 #include <utility>
 
 #include "base/containers/contains.h"
 #include "base/debug/dump_without_crashing.h"
+#include "base/ranges/algorithm.h"
 #include "services/network/public/cpp/web_sandbox_flags.h"
 #include "services/network/public/mojom/content_security_policy.mojom-blink-forward.h"
 #include "services/network/public/mojom/web_sandbox_flags.mojom-blink.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "third_party/blink/public/common/security_context/insecure_request_policy.h"
 #include "third_party/blink/public/mojom/devtools/inspector_issue.mojom-shared.h"
 #include "third_party/blink/public/mojom/fetch/fetch_api_request.mojom-blink.h"
@@ -117,7 +118,7 @@ bool CheckHeaderTypeMatches(
           return header_type == ContentSecurityPolicyType::kEnforce;
       }
   }
-  NOTREACHED();
+  NOTREACHED_IN_MIGRATION();
   return false;
 }
 
@@ -130,6 +131,54 @@ int32_t HashAlgorithmsUsed(
     hash_algorithms_used |= static_cast<int32_t>(hash->algorithm);
   }
   return hash_algorithms_used;
+}
+
+// 3. If request’s destination is "fencedframe", and this directive’s value does
+//    not contain either "https:", "https://*:*", or "*", return "Blocked".
+// https://wicg.github.io/fenced-frame/#csp-algorithms
+bool AllowOpaqueFencedFrames(
+    const network::mojom::blink::CSPSourcePtr& source) {
+  if (source->scheme != url::kHttpsScheme) {
+    return false;
+  }
+
+  // "https:" is allowed.
+  if (source->host.empty() && !source->is_host_wildcard) {
+    return true;
+  }
+
+  // "https://*:*" is allowed.
+  if (source->is_host_wildcard && source->is_port_wildcard) {
+    return true;
+  }
+
+  // "https://*" is not allowed as it could leak data about ports.
+
+  return false;
+}
+
+// Returns true if the CSP for the document loading the fenced frame allows all
+// HTTPS origins for "fenced-frame-src".
+bool AllowOpaqueFencedFrames(
+    const network::mojom::blink::ContentSecurityPolicyPtr& policy) {
+  CSPOperativeDirective directive = CSPDirectiveListOperativeDirective(
+      *policy, network::mojom::CSPDirectiveName::FencedFrameSrc);
+  if (directive.type == network::mojom::CSPDirectiveName::Unknown) {
+    return true;
+  }
+
+  // "*" is allowed.
+  if (directive.source_list->allow_star) {
+    return true;
+  }
+
+  for (const auto& source : directive.source_list->sources) {
+    if (AllowOpaqueFencedFrames(source)) {
+      return true;
+    }
+  }
+
+  return false;
 }
 
 }  // namespace
@@ -182,8 +231,10 @@ static WebFeature GetUseCounterType(ContentSecurityPolicyType type) {
     case ContentSecurityPolicyType::kReport:
       return WebFeature::kContentSecurityPolicyReportOnly;
   }
-  NOTREACHED();
-  return WebFeature::kNumberOfFeatures;
+  NOTREACHED_IN_MIGRATION();
+  // Use kPageVisits here which is not a valid use counter, as this is never
+  // supposed to be reached.
+  return WebFeature::kPageVisits;
 }
 
 ContentSecurityPolicy::ContentSecurityPolicy()
@@ -332,6 +383,31 @@ void ContentSecurityPolicy::AddPolicies(
     policies_.push_back(std::move(policy));
   }
 
+  // Reevaluate whether the composite set of enforced policies are "strict"
+  // after these new policies have been added. Since additional policies can
+  // only tighten the composite policy, we only need to check this if the policy
+  // isn't already "strict".
+  if (!enforces_strict_policy_) {
+    const bool is_object_restriction_reasonable =
+        base::ranges::any_of(policies_, [](const auto& policy) {
+          return !CSPDirectiveListIsReportOnly(*policy) &&
+                 CSPDirectiveListIsObjectRestrictionReasonable(*policy);
+        });
+    const bool is_base_restriction_reasonable =
+        base::ranges::any_of(policies_, [](const auto& policy) {
+          return !CSPDirectiveListIsReportOnly(*policy) &&
+                 CSPDirectiveListIsBaseRestrictionReasonable(*policy);
+        });
+    const bool is_script_restriction_reasonable =
+        base::ranges::any_of(policies_, [](const auto& policy) {
+          return !CSPDirectiveListIsReportOnly(*policy) &&
+                 CSPDirectiveListIsScriptRestrictionReasonable(*policy);
+        });
+    enforces_strict_policy_ = is_object_restriction_reasonable &&
+                              is_base_restriction_reasonable &&
+                              is_script_restriction_reasonable;
+  }
+
   // If this ContentSecurityPolicy is not bound to a delegate yet, return. The
   // following logic will be executed in BindToDelegate when that will happen.
   if (!delegate_)
@@ -429,9 +505,8 @@ void ContentSecurityPolicy::FillInCSPHashValues(
     DigestValue digest;
     if (static_cast<int32_t>(algorithm_map.csp_hash_algorithm) &
         hash_algorithms_used) {
-      bool digest_success =
-          ComputeDigest(algorithm_map.algorithm, utf8_source.data(),
-                        utf8_source.size(), digest);
+      bool digest_success = ComputeDigest(
+          algorithm_map.algorithm, base::as_byte_span(utf8_source), digest);
       if (digest_success) {
         csp_hash_values.push_back(network::mojom::blink::CSPHashSource::New(
             algorithm_map.csp_hash_algorithm, Vector<uint8_t>(digest)));
@@ -559,7 +634,7 @@ String ContentSecurityPolicy::WasmEvalDisabledErrorMessage() const {
 }
 
 namespace {
-absl::optional<CSPDirectiveName> GetDirectiveTypeFromRequestContextType(
+std::optional<CSPDirectiveName> GetDirectiveTypeFromRequestContextType(
     mojom::blink::RequestContextType context) {
   switch (context) {
     case mojom::blink::RequestContextType::AUDIO:
@@ -627,7 +702,7 @@ absl::optional<CSPDirectiveName> GetDirectiveTypeFromRequestContextType(
     case mojom::blink::RequestContextType::LOCATION:
     case mojom::blink::RequestContextType::PLUGIN:
     case mojom::blink::RequestContextType::UNSPECIFIED:
-      return absl::nullopt;
+      return std::nullopt;
   }
 }
 
@@ -705,7 +780,7 @@ bool ContentSecurityPolicy::AllowRequest(
     });
   }
 
-  absl::optional<CSPDirectiveName> type =
+  std::optional<CSPDirectiveName> type =
       GetDirectiveTypeFromRequestContextType(context);
 
   if (!type)
@@ -857,7 +932,7 @@ bool ContentSecurityPolicy::AllowTrustedTypePolicy(
     const String& policy_name,
     bool is_duplicate,
     AllowTrustedTypePolicyDetails& violation_details,
-    absl::optional<base::UnguessableToken> issue_id) {
+    std::optional<base::UnguessableToken> issue_id) {
   bool is_allowed = true;
   violation_details = AllowTrustedTypePolicyDetails::kAllowed;
   for (const auto& policy : policies_) {
@@ -886,7 +961,7 @@ bool ContentSecurityPolicy::AllowTrustedTypeAssignmentFailure(
     const String& message,
     const String& sample,
     const String& sample_prefix,
-    absl::optional<base::UnguessableToken> issue_id) {
+    std::optional<base::UnguessableToken> issue_id) {
   bool allow = true;
   for (const auto& policy : policies_) {
     allow &= CSPDirectiveListAllowTrustedTypeAssignmentFailure(
@@ -1046,7 +1121,7 @@ std::unique_ptr<SourceLocation> GatherSecurityPolicyViolationEventData(
 
   // Step 4. Set violation’s status to the HTTP status code for the resource
   // associated with violation’s global object. [spec text]
-  absl::optional<uint16_t> status_code = delegate->GetStatusCode();
+  std::optional<uint16_t> status_code = delegate->GetStatusCode();
   if (status_code)
     init->setStatusCode(*status_code);
 
@@ -1123,7 +1198,7 @@ void ContentSecurityPolicy::ReportViolation(
     Element* element,
     const String& source,
     const String& source_prefix,
-    absl::optional<base::UnguessableToken> issue_id) {
+    std::optional<base::UnguessableToken> issue_id) {
   DCHECK(violation_type == kURLViolation || blocked_url.IsEmpty());
 
   // TODO(crbug.com/1279745): Remove/clarify what this block is about.
@@ -1328,13 +1403,20 @@ bool ContentSecurityPolicy::ExperimentalFeaturesEnabled() const {
       ExperimentalContentSecurityPolicyFeaturesEnabled();
 }
 
+bool ContentSecurityPolicy::RequiresTrustedTypes() const {
+  return base::ranges::any_of(policies_, [](const auto& policy) {
+    return !CSPDirectiveListIsReportOnly(*policy) &&
+           CSPDirectiveListRequiresTrustedTypes(*policy);
+  });
+}
+
 // static
 bool ContentSecurityPolicy::ShouldBypassMainWorldDeprecated(
     const ExecutionContext* context) {
   if (!context)
     return false;
 
-  return ShouldBypassMainWorldDeprecated(context->GetCurrentWorld().get());
+  return ShouldBypassMainWorldDeprecated(context->GetCurrentWorld());
 }
 
 // static
@@ -1385,8 +1467,6 @@ const char* ContentSecurityPolicy::GetDirectiveName(CSPDirectiveName type) {
       return "manifest-src";
     case CSPDirectiveName::MediaSrc:
       return "media-src";
-    case CSPDirectiveName::NavigateTo:
-      return "navigate-to";
     case CSPDirectiveName::ObjectSrc:
       return "object-src";
     case CSPDirectiveName::ReportTo:
@@ -1419,11 +1499,11 @@ const char* ContentSecurityPolicy::GetDirectiveName(CSPDirectiveName type) {
       return "worker-src";
 
     case CSPDirectiveName::Unknown:
-      NOTREACHED();
+      NOTREACHED_IN_MIGRATION();
       return "";
   }
 
-  NOTREACHED();
+  NOTREACHED_IN_MIGRATION();
   return "";
 }
 
@@ -1454,8 +1534,6 @@ CSPDirectiveName ContentSecurityPolicy::GetDirectiveType(const String& name) {
     return CSPDirectiveName::ManifestSrc;
   if (name == "media-src")
     return CSPDirectiveName::MediaSrc;
-  if (name == "navigate-to")
-    return CSPDirectiveName::NavigateTo;
   if (name == "object-src")
     return CSPDirectiveName::ObjectSrc;
   if (name == "report-to")
@@ -1523,6 +1601,24 @@ bool ContentSecurityPolicy::HasPolicyFromSource(
       return true;
   }
   return false;
+}
+
+bool ContentSecurityPolicy::AllowFencedFrameOpaqueURL() const {
+  for (const auto& policy : GetParsedPolicies()) {
+    if (!AllowOpaqueFencedFrames(policy)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+bool ContentSecurityPolicy::HasEnforceFrameAncestorsDirectives() {
+  return base::ranges::any_of(policies_, [](const auto& csp) {
+    return csp->header->type ==
+               network::mojom::ContentSecurityPolicyType::kEnforce &&
+           csp->directives.Contains(
+               network::mojom::CSPDirectiveName::FrameAncestors);
+  });
 }
 
 void ContentSecurityPolicy::Count(WebFeature feature) const {

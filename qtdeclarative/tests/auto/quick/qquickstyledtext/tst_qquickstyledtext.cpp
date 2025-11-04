@@ -1,7 +1,7 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 #include <qtest.h>
-#include <QtTest/QtTest>
+#include <QtTest/QTest>
 #include <QtGui/QTextLayout>
 #include <QtCore/QList>
 #include <QtQuick/private/qquickstyledtext_p.h>

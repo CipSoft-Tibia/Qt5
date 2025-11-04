@@ -21,8 +21,15 @@ instructions:
     variableValue: " {{.SourceDir}}/coin_qnx_qemu_runner.sh"
     enable_if:
       condition: property
+      property: target.os
+      equals_value: QNX
+  - type: AppendToEnvironmentVariable
+    variableName: TESTRUNNER
+    variableValue: " {{.AgentWorkingDir}}/coin_vxworks_qemu_runner.sh"
+    enable_if:
+      condition: property
       property: target.osVersion
-      in_values: [QNX_710]
+      in_values: [VxWorks]
   - type: Group
     enable_if:
       condition: property
@@ -52,22 +59,26 @@ instructions:
       property: host.os
       equals_value: Windows
 
-    # Keep the testrun quiet for ASAN testruns, since there are FAILs happening all over the place...
-  - type: EnvironmentVariable
+  - !include "{{qt/qtbase}}/vxworks_test_env_setup.yaml"
+
+  # Only output verbose test output for failures, unless
+  # the VerboseCTestOutput feature is enabled. The full
+  # test output for all tests are still stored and uploaded
+  # to coin for deeper investigations (see LastTest.log below)
+  - type: AppendToEnvironmentVariable
     variableName: CTEST_ARGS
-    variableValue: "-V"
+    variableValue: " --output-on-failure"
     disable_if:
       condition: property
       property: features
-      contains_value: UseAddressSanitizer
-    # ...and only print the output from a failing test, i.e. test with ASAN errors.
-  - type: EnvironmentVariable
-    variableName: CTEST_OUTPUT_ON_FAILURE
-    variableValue: "1"
+      contains_value: VerboseCTestOutput
+  - type: AppendToEnvironmentVariable
+    variableName: CTEST_ARGS
+    variableValue: " -V"
     enable_if:
       condition: property
       property: features
-      contains_value: UseAddressSanitizer
+      contains_value: VerboseCTestOutput
 
   - type: AppendToEnvironmentVariable
     variableName: CTEST_ARGS
@@ -77,14 +88,23 @@ instructions:
       property: features
       contains_value: AbortTestingOnFirstFailure
 
-    # Enable CTest's JUnit XML summary only for recent versions
+  - type: AppendToEnvironmentVariable
+    variableName: CTEST_ARGS
+    variableValue: " --no-label-summary"
+
+    # Enable CTest's JUnit XML summary
   - type: AppendToEnvironmentVariable
     variableName: CTEST_ARGS
     variableValue: " --output-junit {{.Env.COIN_CTEST_RESULTSDIR}}{{.Env.CI_PATH_SEP}}test_summary.ctest_junit_xml"
-    enable_if:
-      condition: runtime
-      env_var: CMAKE_MIN_SUPPORTED_BIN_PATH
-      equals_value: null
+    disable_if:    # CMake < v3.21 does not support it
+      condition: and
+      conditions:
+        - condition: runtime
+          env_var: CMAKE_MIN_SUPPORTED_BIN_PATH
+          not_equals_value: null
+        - condition: runtime
+          env_var: PATH
+          contains_value: "{{.Env.CMAKE_MIN_SUPPORTED_BIN_PATH}}"
 
   - !include "{{qt/qtbase}}/coin_module_test_android_start_emulator.yaml"
 
@@ -117,10 +137,22 @@ instructions:
         command: "{{.Env.TESTS_ENV_PREFIX}} ctest {{.Env.CTEST_ARGS}}"
         executeCommandArgumentSplitingBehavior: SplitAfterVariableSubstitution
         ignoreExitCode: false
-        maxTimeInSeconds: 10800
-        maxTimeBetweenOutput: "{{.Env.COIN_COMMAND_OUTPUT_TIMEOUT}}"
+        maxTimeInSeconds: 14400
+        maxTimeBetweenOutput: 14400
         userMessageOnFailure: >
           Failed to run tests.
+      - type: ExecuteCommand
+        command: >
+          cmake -E copy
+            Testing{{.Env.CI_PATH_SEP}}Temporary{{.Env.CI_PATH_SEP}}LastTest.log
+            {{.Env.COIN_CTEST_RESULTSDIR}}{{.Env.CI_PATH_SEP}}CTest.log
+        executeCommandArgumentSplitingBehavior: SplitAfterVariableSubstitution
+        ignoreExitCode: false
+        userMessageOnFailure: >
+          Failed to copy LastTest.log to testresults directory.
+        executeOn: always
+        maxTimeInSeconds: 20
+        maxTimeBetweenOutput: 20
   - type: Group
     enable_if:
       condition: runtime
@@ -131,10 +163,20 @@ instructions:
         command: "{{.Env.TESTS_ENV_PREFIX}} ctest {{.Env.CTEST_ARGS}}"
         executeCommandArgumentSplitingBehavior: SplitAfterVariableSubstitution
         ignoreExitCode: true
-        maxTimeInSeconds: 10800
-        maxTimeBetweenOutput: "{{.Env.COIN_COMMAND_OUTPUT_TIMEOUT}}"
+        maxTimeInSeconds: 14400
+        maxTimeBetweenOutput: 14400
         userMessageOnFailure: >
           Failed to run tests.
+      - type: ExecuteCommand
+        command: >
+          cmake -E copy
+            Testing{{.Env.CI_PATH_SEP}}Temporary{{.Env.CI_PATH_SEP}}LastTest.log
+            {{.Env.COIN_CTEST_RESULTSDIR}}{{.Env.CI_PATH_SEP}}CTest.log
+        executeCommandArgumentSplitingBehavior: SplitAfterVariableSubstitution
+        ignoreExitCode: true
+        userMessageOnFailure: >
+          Failed to copy LastTest.log to testresults directory.
+        executeOn: always
 
   - type: Group
     instructions:

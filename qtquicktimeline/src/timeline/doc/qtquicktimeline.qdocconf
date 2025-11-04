@@ -15,7 +15,7 @@ qhp.QtQuickTimeline.virtualFolder       = qtquicktimeline
 qhp.QtQuickTimeline.indexTitle          = Qt Quick Timeline
 qhp.QtQuickTimeline.indexRoot           =
 
-qhp.QtQuickTimeline.subprojects         = qmltypes
+qhp.QtQuickTimeline.subprojects = manual qmltypes
 
 qhp.QtQuickTimeline.subprojects.qmltypes.title      = QML Types
 qhp.QtQuickTimeline.subprojects.qmltypes.indexTitle = Qt Quick Timeline QML Types
@@ -24,8 +24,12 @@ qhp.QtQuickTimeline.subprojects.qmltypes.sortPages  = true
 
 #qhp.QtQuickTimeline.subprojects.examples.title         = Examples
 #qhp.QtQuickTimeline.subprojects.examples.indexTitle    = Qt Qt Quick Timeline Examples
-#qhp.QtQuickTimeline.subprojects.examples.selectors     = fake:example
+#qhp.QtQuickTimeline.subprojects.examples.selectors     = example
 #qhp.QtQuickTimeline.subprojects.examples.sortPages     = true
+
+qhp.QtQuickTimeline.subprojects.manual.title = Qt Quick Timeline
+qhp.QtQuickTimeline.subprojects.manual.indexTitle = Qt Quick Timeline module topics
+qhp.QtQuickTimeline.subprojects.manual.type = manual
 
 headerdirs  += ..
 sourcedirs  += ..
@@ -41,3 +45,9 @@ tagfile  = qtquicktimeline.tags
 
 navigation.landingpage = "Qt Quick Timeline"
 navigation.qmltypespage = "Qt Quick Timeline QML Types"
+# Auto-generate navigation linking based on "Qt Quick Timeline module topics":
+navigation.toctitles = "Qt Quick Timeline module topics"
+navigation.toctitles.inclusive = false
+
+# Allow zero warnings when testing documentation in CI
+warninglimit = 0

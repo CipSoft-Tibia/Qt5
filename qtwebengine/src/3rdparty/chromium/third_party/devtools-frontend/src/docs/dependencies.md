@@ -11,7 +11,7 @@ gclient setdep -r DEP@REV # for example build@afe0125ef9e10b400d9ec145aa18fca932
 ```
 This will simultaneously update both the DEPS entry as well as the gitlink entry for the corresponding git submodule.
 
-To sync dependencies from Chromium to DevTools frontend, use `scripts/deps/roll_deps.py && npm run generate-protocol-resources`.
+To sync dependencies from Chromium to DevTools frontend, use `scripts/deps/roll_deps.py`.
 Note that this may:
 - Introduce unneeded whitespace/formatting changes. Presubmit scripts (e.g. invoked via `git cl upload`) will automatically fix these locally, so just apply the changes directly to your change (e.g. with `git commit --amend`) afterwards.
 - Introduce breaking changes to the devtools protocol, causing compilation failures. Unfortunately these need to be handled manually as there are some changes (e.g. removing an enum value) that cannot fail gracefully.
@@ -55,7 +55,7 @@ Chromium licensing to be used, on the basis that it enforces all packages have a
 license that is compatible with a set of pre-defined licensees.
 
 If you want to use a new package as tooling process in engineer workflows, you
-can add the package to the `DEPS` in the script and run `npm run install-deps`
+can add the package to the `package.json` and run `npm run install-deps`
 to check in the new contents.
 
 Only add new license types to `LICENSES` after you received approval

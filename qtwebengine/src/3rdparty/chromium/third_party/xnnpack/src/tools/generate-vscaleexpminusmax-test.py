@@ -27,7 +27,7 @@ parser.set_defaults(defines=list())
 
 
 def split_ukernel_name(name):
-  match = re.fullmatch(r"xnn_(f16|f32)_vscaleexpminusmax_ukernel__(.+)_u(\d+)", name)
+  match = re.fullmatch(r"xnn_(f16|f32)_vscaleexpminusmax_ukernel__(.+)_u(\d+)(v)?", name)
   if match is None:
     raise ValueError("Unexpected microkernel name: " + name)
   elements_tile = int(match.group(3))
@@ -137,11 +137,9 @@ def main(args):
 
 
 #include <gtest/gtest.h>
-
-#include <xnnpack/common.h>
-#include <xnnpack/isa-checks.h>
-
-#include <xnnpack/vscaleexpminusmax.h>
+#include "xnnpack/common.h"
+#include "xnnpack/isa-checks.h"
+#include "xnnpack/vscaleexpminusmax.h"
 #include "vscaleexpminusmax-microkernel-tester.h"
 """.format(specification=options.spec, generator=sys.argv[0])
 

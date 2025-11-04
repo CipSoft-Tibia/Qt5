@@ -472,12 +472,20 @@ void JSGenericLowering::LowerJSSetNamedProperty(Node* node) {
     // the paths are controlled by feedback.
     // TODO(v8:12548): refactor SetNamedIC as a subclass of StoreIC, which can
     // be called here.
-    ReplaceWithBuiltinCall(node, Builtin::kStoreICTrampoline);
+    ReplaceWithBuiltinCall(
+        node, ShouldUseMegamorphicAccessBuiltin(p.feedback(), {},
+                                                AccessMode::kStore, broker())
+                  ? Builtin::kStoreICTrampoline_Megamorphic
+                  : Builtin::kStoreICTrampoline);
   } else {
     node->InsertInput(zone(), 1, jsgraph()->ConstantNoHole(p.name(), broker()));
     node->InsertInput(zone(), 3,
                       jsgraph()->TaggedIndexConstant(p.feedback().index()));
-    ReplaceWithBuiltinCall(node, Builtin::kStoreIC);
+    ReplaceWithBuiltinCall(
+        node, ShouldUseMegamorphicAccessBuiltin(p.feedback(), {},
+                                                AccessMode::kStore, broker())
+                  ? Builtin::kStoreIC_Megamorphic
+                  : Builtin::kStoreIC);
   }
 }
 
@@ -592,6 +600,9 @@ void JSGenericLowering::LowerJSStoreContext(Node* node) {
   UNREACHABLE();  // Eliminated in typed lowering.
 }
 
+void JSGenericLowering::LowerJSStoreScriptContext(Node* node) {
+  UNREACHABLE();  // Eliminated in context specialization.
+}
 
 void JSGenericLowering::LowerJSCreate(Node* node) {
   ReplaceWithBuiltinCall(node, Builtin::kFastNewObject);
@@ -661,6 +672,10 @@ void JSGenericLowering::LowerJSObjectIsArray(Node* node) {
 
 void JSGenericLowering::LowerJSCreateObject(Node* node) {
   ReplaceWithBuiltinCall(node, Builtin::kCreateObjectWithoutProperties);
+}
+
+void JSGenericLowering::LowerJSCreateStringWrapper(Node* node) {
+  UNREACHABLE();  // Eliminated in typed lowering.
 }
 
 void JSGenericLowering::LowerJSParseInt(Node* node) {
@@ -751,7 +766,7 @@ void JSGenericLowering::LowerJSCreateLiteralArray(Node* node) {
       p.length() < ConstructorBuiltins::kMaximumClonedShallowArrayElements) {
     ReplaceWithBuiltinCall(node, Builtin::kCreateShallowArrayLiteral);
   } else {
-    ReplaceWithRuntimeCall(node, Runtime::kCreateArrayLiteral);
+    ReplaceWithBuiltinCall(node, Builtin::kCreateArrayFromSlowBoilerplate);
   }
 }
 
@@ -805,7 +820,7 @@ void JSGenericLowering::LowerJSCreateLiteralObject(Node* node) {
           ConstructorBuiltins::kMaximumClonedShallowObjectProperties) {
     ReplaceWithBuiltinCall(node, Builtin::kCreateShallowObjectLiteral);
   } else {
-    ReplaceWithRuntimeCall(node, Runtime::kCreateObjectLiteral);
+    ReplaceWithBuiltinCall(node, Builtin::kCreateObjectFromSlowBoilerplate);
   }
 }
 

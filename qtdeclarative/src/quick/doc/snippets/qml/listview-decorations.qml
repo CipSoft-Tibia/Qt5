@@ -27,6 +27,7 @@ Component {
         required property string name
         text: name
         font.pixelSize: 24
+        width: ListView.view.width
     }
 }
 //! [delegate]
@@ -43,7 +44,6 @@ ListView {
         gradient: clubcolors
     }
     highlight: Rectangle {
-        width: parent.width
         color: "lightgray"
     }
 }

@@ -35,7 +35,7 @@ export type ConsoleMessageType =
   | 'debug'
   | 'info'
   | 'error'
-  | 'warning'
+  | 'warn'
   | 'dir'
   | 'dirxml'
   | 'table'
@@ -62,7 +62,7 @@ export class ConsoleMessage {
   #stackTraceLocations: ConsoleMessageLocation[];
 
   /**
-   * @public
+   * @internal
    */
   constructor(
     type: ConsoleMessageType,

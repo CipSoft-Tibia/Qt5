@@ -97,6 +97,7 @@ llvm_include_dirs = [
   "llvm/include/",
   "llvm/lib/Target/AArch64/",
   "llvm/lib/Target/ARM/",
+  "llvm/lib/Target/LoongArch/",
   "llvm/lib/Target/Mips/",
   "llvm/lib/Target/PowerPC/",
   "llvm/lib/Target/RISCV/",
@@ -106,6 +107,7 @@ llvm_include_dirs = [
   "configs/common/lib/IR/",
   "configs/common/lib/Target/AArch64/",
   "configs/common/lib/Target/ARM/",
+  "configs/common/lib/Target/LoongArch/",
   "configs/common/lib/Target/Mips/",
   "configs/common/lib/Target/PowerPC/",
   "configs/common/lib/Target/RISCV/",
@@ -158,10 +160,16 @@ swiftshader_llvm_source_set("swiftshader_llvm") {
 
   ]
 
+  if (is_debug) {
+    deps += [ ":swiftshader_llvm_debug" ]
+  }
+
   if (current_cpu == "arm64") {
     deps += [ ":swiftshader_llvm_aarch64" ]
   } else if (current_cpu == "arm") {
     deps += [ ":swiftshader_llvm_arm" ]
+  } else if (current_cpu == "loong64") {
+    deps += [ ":swiftshader_llvm_loongarch64" ]
   } else if (current_cpu == "mipsel" || current_cpu == "mips64el") {
     deps += [ ":swiftshader_llvm_mips" ]
   } else if (current_cpu == "ppc64") {
@@ -613,7 +621,6 @@ swiftshader_llvm_source_set("swiftshader_llvm_source_set_0") {
     "llvm/lib/DebugInfo/DWARF/DWARFAbbreviationDeclaration.cpp",
     "llvm/lib/DebugInfo/DWARF/DWARFAcceleratorTable.cpp",
     "llvm/lib/DebugInfo/DWARF/DWARFAddressRange.cpp",
-    "llvm/lib/DebugInfo/DWARF/DWARFCompileUnit.cpp",
     "llvm/lib/DebugInfo/DWARF/DWARFContext.cpp",
     "llvm/lib/DebugInfo/DWARF/DWARFDataExtractor.cpp",
     "llvm/lib/DebugInfo/DWARF/DWARFDebugAbbrev.cpp",
@@ -629,13 +636,11 @@ swiftshader_llvm_source_set("swiftshader_llvm_source_set_0") {
     "llvm/lib/DebugInfo/DWARF/DWARFDebugRangeList.cpp",
     "llvm/lib/DebugInfo/DWARF/DWARFDebugRnglists.cpp",
     "llvm/lib/DebugInfo/DWARF/DWARFDie.cpp",
-    "llvm/lib/DebugInfo/DWARF/DWARFExpression.cpp",
     "llvm/lib/DebugInfo/DWARF/DWARFFormValue.cpp",
     "llvm/lib/DebugInfo/DWARF/DWARFGdbIndex.cpp",
     "llvm/lib/DebugInfo/DWARF/DWARFListTable.cpp",
     "llvm/lib/DebugInfo/DWARF/DWARFTypePrinter.cpp",
     "llvm/lib/DebugInfo/DWARF/DWARFTypeUnit.cpp",
-    "llvm/lib/DebugInfo/DWARF/DWARFUnit.cpp",
     "llvm/lib/DebugInfo/DWARF/DWARFUnitIndex.cpp",
     "llvm/lib/DebugInfo/DWARF/DWARFVerifier.cpp",
     "llvm/lib/Demangle/DLangDemangle.cpp",
@@ -1256,6 +1261,9 @@ swiftshader_llvm_source_set("swiftshader_llvm_source_set_0") {
 }
 swiftshader_llvm_source_set("swiftshader_llvm_source_set_1") {
   sources = [
+    "llvm/lib/DebugInfo/DWARF/DWARFCompileUnit.cpp",
+    "llvm/lib/DebugInfo/DWARF/DWARFExpression.cpp",
+    "llvm/lib/DebugInfo/DWARF/DWARFUnit.cpp",
     "llvm/lib/ExecutionEngine/JITLink/COFF.cpp",
     "llvm/lib/ExecutionEngine/JITLink/MachO.cpp",
     "llvm/lib/IRPrinter/IRPrintingPasses.cpp",
@@ -1269,6 +1277,13 @@ swiftshader_llvm_source_set("swiftshader_llvm_source_set_1") {
   ]
 }
 
+
+swiftshader_llvm_source_set("swiftshader_llvm_debug") {
+  sources = [
+    "llvm/lib/Analysis/RegionPrinter.cpp",
+    "llvm/lib/MC/MCDisassembler/MCDisassembler.cpp",
+  ]
+}
 
 swiftshader_llvm_source_set("swiftshader_llvm_aarch64") {
   sources = [
@@ -1430,6 +1445,38 @@ swiftshader_llvm_source_set("swiftshader_llvm_arm") {
   if (!is_ubsan_vptr) {
     sources += [ "llvm/lib/Target/ARM/MCTargetDesc/ARMTargetStreamer.cpp" ]
   }
+}
+
+swiftshader_llvm_source_set("swiftshader_llvm_loongarch64") {
+  sources = [
+    "llvm/lib/Target/LoongArch/AsmParser/LoongArchAsmParser.cpp",
+    "llvm/lib/Target/LoongArch/Disassembler/LoongArchDisassembler.cpp",
+    "llvm/lib/Target/LoongArch/LoongArchAsmPrinter.cpp",
+    "llvm/lib/Target/LoongArch/LoongArchExpandAtomicPseudoInsts.cpp",
+    "llvm/lib/Target/LoongArch/LoongArchExpandPseudoInsts.cpp",
+    "llvm/lib/Target/LoongArch/LoongArchFrameLowering.cpp",
+    "llvm/lib/Target/LoongArch/LoongArchISelDAGToDAG.cpp",
+    "llvm/lib/Target/LoongArch/LoongArchISelLowering.cpp",
+    "llvm/lib/Target/LoongArch/LoongArchInstrInfo.cpp",
+    "llvm/lib/Target/LoongArch/LoongArchMCInstLower.cpp",
+    "llvm/lib/Target/LoongArch/LoongArchRegisterInfo.cpp",
+    "llvm/lib/Target/LoongArch/LoongArchSubtarget.cpp",
+    "llvm/lib/Target/LoongArch/LoongArchTargetMachine.cpp",
+    "llvm/lib/Target/LoongArch/MCTargetDesc/LoongArchAsmBackend.cpp",
+    "llvm/lib/Target/LoongArch/MCTargetDesc/LoongArchBaseInfo.cpp",
+    "llvm/lib/Target/LoongArch/MCTargetDesc/LoongArchELFObjectWriter.cpp",
+    "llvm/lib/Target/LoongArch/MCTargetDesc/LoongArchELFStreamer.cpp",
+    "llvm/lib/Target/LoongArch/MCTargetDesc/LoongArchInstPrinter.cpp",
+    "llvm/lib/Target/LoongArch/MCTargetDesc/LoongArchMCAsmInfo.cpp",
+    "llvm/lib/Target/LoongArch/MCTargetDesc/LoongArchMCCodeEmitter.cpp",
+    "llvm/lib/Target/LoongArch/MCTargetDesc/LoongArchMCExpr.cpp",
+    "llvm/lib/Target/LoongArch/MCTargetDesc/LoongArchMCTargetDesc.cpp",
+    "llvm/lib/Target/LoongArch/MCTargetDesc/LoongArchMatInt.cpp",
+    "llvm/lib/Target/LoongArch/MCTargetDesc/LoongArchTargetStreamer.cpp",
+    "llvm/lib/Target/LoongArch/TargetInfo/LoongArchTargetInfo.cpp",
+    "llvm/lib/TargetParser/LoongArchTargetParser.cpp",
+    "llvm/lib/Transforms/IPO/BarrierNoopPass.cpp",
+  ]
 }
 
 swiftshader_llvm_source_set("swiftshader_llvm_mips") {

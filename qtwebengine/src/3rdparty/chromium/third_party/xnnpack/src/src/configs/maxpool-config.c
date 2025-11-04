@@ -12,11 +12,11 @@
   #include <pthread.h>
 #endif
 
-#include <xnnpack/common.h>
-#include <xnnpack/config.h>
-#include <xnnpack/microparams-init.h>
-#include <xnnpack/maxpool.h>
-
+#include "xnnpack/common.h"
+#include "xnnpack/config.h"
+#include "xnnpack/maxpool.h"
+#include "xnnpack/microfnptr.h"
+#include "xnnpack/microparams-init.h"
 
 static struct xnn_maxpool_config f16_maxpool_config = {0};
 static struct xnn_maxpool_config f32_maxpool_config = {0};
@@ -57,7 +57,7 @@ static void init_f16_maxpool_config(void) {
   #elif (XNN_ARCH_X86 || XNN_ARCH_X86_64) && !XNN_PLATFORM_MOBILE
     const struct xnn_hardware_config* hardware_config = xnn_init_hardware_config();
     assert(hardware_config != NULL);
-    if (hardware_config->use_x86_avx2) {
+    if (hardware_config->use_x86_f16c) {
       f16_maxpool_config.ukernel = (xnn_maxpool_ukernel_fn) xnn_f16_maxpool_minmax_ukernel_9p8x__f16c_c8;
       f16_maxpool_config.init.f16 = xnn_init_f16_minmax_avx_params;
       f16_maxpool_config.first_pass_tile_size = 9;
@@ -110,12 +110,12 @@ static void init_f32_maxpool_config(void) {
     f32_maxpool_config.init.f32 = xnn_init_f32_minmax_scalar_params;
     f32_maxpool_config.first_pass_tile_size = 9;
     f32_maxpool_config.remainder_pass_tile_size = 8;
-  #elif XNN_ARCH_RISCV
-    f32_maxpool_config.ukernel = (xnn_maxpool_ukernel_fn) xnn_f32_maxpool_minmax_ukernel_9p8x__scalar_c1;
+  #elif XNN_ARCH_RISCV && XNN_ENABLE_RISCV_VECTOR
+    f32_maxpool_config.ukernel = (xnn_maxpool_ukernel_fn) xnn_f32_maxpool_minmax_ukernel_9p8x__rvv_c2v;
     f32_maxpool_config.init.f32 = xnn_init_f32_minmax_scalar_params;
     f32_maxpool_config.first_pass_tile_size = 9;
     f32_maxpool_config.remainder_pass_tile_size = 8;
-  #elif XNN_ARCH_PPC64
+  #else
     f32_maxpool_config.ukernel = (xnn_maxpool_ukernel_fn) xnn_f32_maxpool_minmax_ukernel_9p8x__scalar_c1;
     f32_maxpool_config.init.f32 = xnn_init_f32_minmax_scalar_params;
     f32_maxpool_config.first_pass_tile_size = 9;
@@ -162,17 +162,7 @@ static void init_s8_maxpool_config(void) {
     s8_maxpool_config.init.s8 = xnn_init_s8_minmax_wasmsimd_params;
     s8_maxpool_config.first_pass_tile_size = 9;
     s8_maxpool_config.remainder_pass_tile_size = 8;
-  #elif XNN_ARCH_WASM
-    s8_maxpool_config.ukernel = (xnn_maxpool_ukernel_fn) xnn_s8_maxpool_minmax_ukernel_9p8x__scalar_c1;
-    s8_maxpool_config.init.s8 = xnn_init_s8_minmax_scalar_params;
-    s8_maxpool_config.first_pass_tile_size = 9;
-    s8_maxpool_config.remainder_pass_tile_size = 8;
-  #elif XNN_ARCH_RISCV
-    s8_maxpool_config.ukernel = (xnn_maxpool_ukernel_fn) xnn_s8_maxpool_minmax_ukernel_9p8x__scalar_c1;
-    s8_maxpool_config.init.s8 = xnn_init_s8_minmax_scalar_params;
-    s8_maxpool_config.first_pass_tile_size = 9;
-    s8_maxpool_config.remainder_pass_tile_size = 8;
-  #elif XNN_ARCH_PPC64
+  #else
     s8_maxpool_config.ukernel = (xnn_maxpool_ukernel_fn) xnn_s8_maxpool_minmax_ukernel_9p8x__scalar_c1;
     s8_maxpool_config.init.s8 = xnn_init_s8_minmax_scalar_params;
     s8_maxpool_config.first_pass_tile_size = 9;
@@ -210,17 +200,7 @@ static void init_u8_maxpool_config(void) {
     u8_maxpool_config.init.u8 = xnn_init_u8_minmax_wasmsimd_params;
     u8_maxpool_config.first_pass_tile_size = 9;
     u8_maxpool_config.remainder_pass_tile_size = 8;
-  #elif XNN_ARCH_WASM
-    u8_maxpool_config.ukernel = (xnn_maxpool_ukernel_fn) xnn_u8_maxpool_minmax_ukernel_9p8x__scalar_c1;
-    u8_maxpool_config.init.u8 = xnn_init_u8_minmax_scalar_params;
-    u8_maxpool_config.first_pass_tile_size = 9;
-    u8_maxpool_config.remainder_pass_tile_size = 8;
-  #elif XNN_ARCH_RISCV
-    u8_maxpool_config.ukernel = (xnn_maxpool_ukernel_fn) xnn_u8_maxpool_minmax_ukernel_9p8x__scalar_c1;
-    u8_maxpool_config.init.u8 = xnn_init_u8_minmax_scalar_params;
-    u8_maxpool_config.first_pass_tile_size = 9;
-    u8_maxpool_config.remainder_pass_tile_size = 8;
-  #elif XNN_ARCH_PPC64
+  #else
     u8_maxpool_config.ukernel = (xnn_maxpool_ukernel_fn) xnn_u8_maxpool_minmax_ukernel_9p8x__scalar_c1;
     u8_maxpool_config.init.u8 = xnn_init_u8_minmax_scalar_params;
     u8_maxpool_config.first_pass_tile_size = 9;

@@ -76,7 +76,7 @@ class AbstractInlineBox {
       case InstanceType::kNG:
         return line_cursor_ == other.line_cursor_;
     }
-    NOTREACHED();
+    NOTREACHED_IN_MIGRATION();
     return false;
   }
 
@@ -171,7 +171,7 @@ bool IsAtFragmentStart(const InlineCaretPosition& caret_position) {
       return *caret_position.text_offset ==
              caret_position.cursor.Current().TextStartOffset();
   }
-  NOTREACHED();
+  NOTREACHED_IN_MIGRATION();
   return false;
 }
 
@@ -187,7 +187,7 @@ bool IsAtFragmentEnd(const InlineCaretPosition& caret_position) {
       return *caret_position.text_offset ==
              caret_position.cursor.Current().TextEndOffset();
   }
-  NOTREACHED();
+  NOTREACHED_IN_MIGRATION();
   return false;
 }
 
@@ -229,7 +229,7 @@ class AbstractInlineBoxAndSideAffinity {
       return {cursor,
               is_at_start ? InlineCaretPositionType::kBeforeBox
                           : InlineCaretPositionType::kAfterBox,
-              absl::nullopt};
+              std::nullopt};
     }
 
     return {cursor, InlineCaretPositionType::kAtTextOffset,

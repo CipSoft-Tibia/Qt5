@@ -19,7 +19,7 @@ declare_args() {
   if (!build_with_chromium && is_android) {
     assert(
         !is_official_build,
-        "is_official_build not supported by ANGLE for Android (https://anglebug.com/7381)")
+        "is_official_build not supported by ANGLE for Android (https://anglebug.com/42265853)")
   }
 }
 
@@ -145,6 +145,9 @@ template("angle_common_test_utils") {
     if (angle_enable_vulkan_validation_layers) {
       data_deps += [ "$angle_root/src/common/vulkan:vulkan_validation_layers" ]
     }
+    if (angle_enable_vulkan_api_dump_layer) {
+      data_deps += [ "$angle_root/src/common/vulkan:lunarg_vulkantools" ]
+    }
   }
 }
 
@@ -193,13 +196,20 @@ angle_test("angle_unittests") {
     sources += angle_unittests_gl_sources
   }
 
+  if (angle_enable_wgpu) {
+    sources += angle_unittests_wgsl_sources
+  }
+
   deps = [
     ":angle_test_expectations",
-    "$angle_root:angle_json_serializer",
     "$angle_root:angle_static",
     "$angle_root:libfeature_support",
     "$angle_root/util:angle_util_static",
   ]
+
+  if (angle_has_rapidjson) {
+    deps += [ "$angle_root:angle_json_serializer" ]
+  }
 
   if (angle_enable_vulkan) {
     sources += [ "compiler_tests/Precise_test.cpp" ]
@@ -215,6 +225,10 @@ angle_test("angle_unittests") {
     # SystemUtils.RunApp, the only unittest using a helper binary, is not supported on these
     # platforms yet.
     data_deps = [ ":test_utils_unittest_helper" ]
+  }
+
+  if (is_android) {
+    data += [ "$angle_root/src/tests/angle_android_test_runner.py" ]
   }
 
   if (angle_has_rapidjson) {
@@ -239,6 +253,7 @@ if (is_win || is_linux || is_chromeos || is_android || is_fuchsia || is_apple) {
 
     sources = angle_end2end_tests_sources + [ "angle_end2end_tests_main.cpp" ]
     libs = []
+    defines = []
     configs += [ "${angle_root}:libANGLE_config" ]
 
     if (is_ios) {
@@ -287,24 +302,28 @@ if (is_win || is_linux || is_chromeos || is_android || is_fuchsia || is_apple) {
       deps += [ "$angle_root:angle_json_serializer" ]
     }
 
-    if (is_android) {
-      include_dirs += [ "${android_ndk_root}/sysroot/usr/includes" ]
-    }
+    if (build_angle_end2end_tests_aosp) {
+      # AOSP end2end tests builds don't bundle ANGLE libs or Vulkan tests and don't need the NDK path
+    } else {
+      if (is_android) {
+        include_dirs += [ "${android_ndk_root}/sysroot/usr/includes" ]
+      }
 
-    data_deps = [ "$angle_root:angle" ]
+      data_deps = [ "$angle_root:angle" ]
+
+      if (angle_enable_vulkan) {
+        sources += [
+          "gl_tests/VulkanExternalImageTest.cpp",
+          "gl_tests/VulkanImageTest.cpp",
+          "test_utils/VulkanHelper.cpp",
+          "test_utils/VulkanHelper.h",
+        ]
+        deps += [ "$angle_root/src/common/vulkan" ]
+      }
+    }
 
     if (angle_build_mesa) {
       data_deps += [ "$angle_root/third_party/mesa" ]
-    }
-
-    if (angle_enable_vulkan) {
-      sources += [
-        "gl_tests/VulkanExternalImageTest.cpp",
-        "gl_tests/VulkanImageTest.cpp",
-        "test_utils/VulkanHelper.cpp",
-        "test_utils/VulkanHelper.h",
-      ]
-      deps += [ "$angle_root/src/common/vulkan" ]
     }
 
     if (is_fuchsia) {
@@ -324,6 +343,10 @@ if (is_win || is_linux || is_chromeos || is_android || is_fuchsia || is_apple) {
 
       # Need to bundle the libraries inside the .app.
       deps += [ "$angle_root:angle" ]
+    }
+
+    if (angle_enable_gl_desktop_frontend) {
+      defines += [ "ANGLE_ENABLE_GL_DESKTOP_FRONTEND" ]
     }
   }
 }
@@ -502,7 +525,7 @@ if (build_angle_perftests) {
 
 if (build_angle_trace_tests) {
   angle_test("angle_trace_tests") {
-    # http://anglebug.com/6009: Traces with long shaders are hitting string literal
+    # http://anglebug.com/42264541: Traces with long shaders are hitting string literal
     # limit in MSVC, so only compile them when using clang
     assert(is_clang, "angle trace tests require clang")
 
@@ -526,6 +549,7 @@ if (build_angle_trace_tests) {
     # If this flag is set, we want to build the trace libraries independent of the APK, i.e. not packaged.
     # We're doing this for size reasons - the APK is too large if you include all the traces.
     if (restricted_traces_outside_of_apk) {
+      defines = [ "ANGLE_TRACE_EXTERNAL_BINARIES" ]
       deps += [ "$angle_root/util:angle_trace_loader" ]
     } else {
       deps += [
@@ -1497,16 +1521,12 @@ if (build_angle_deqp_tests && !is_fuchsia) {
   }
 
   _android_mustpass = "$deqp_path/android/cts/main"
-  _aosp_egl_mustpass =
-      "$deqp_path/external/openglcts/data/mustpass/egl/aosp_mustpass/main"
-  _aosp_gles_mustpass =
-      "$deqp_path/external/openglcts/data/mustpass/gles/aosp_mustpass/main"
-  _khronos_gl_mustpass =
-      "$deqp_path/external/openglcts/data/mustpass/gl/khronos_mustpass/main"
-  _khronos_gles_mustpass =
-      "$deqp_path/external/openglcts/data/mustpass/gles/khronos_mustpass/main"
-  _khronos_gles_noctx_mustpass = "$deqp_path/external/openglcts/data/mustpass/gles/khronos_mustpass_noctx/main"
-  _khronos_gles_single_mustpass = "$deqp_path/external/openglcts/data/mustpass/gles/khronos_mustpass_single/main"
+  _aosp_egl_mustpass = "$deqp_path/external/openglcts/data/gl_cts/data/mustpass/egl/aosp_mustpass/main"
+  _aosp_gles_mustpass = "$deqp_path/external/openglcts/data/gl_cts/data/mustpass/gles/aosp_mustpass/main"
+  _khronos_gl_mustpass = "$deqp_path/external/openglcts/data/gl_cts/data/mustpass/gl/khronos_mustpass/main"
+  _khronos_gles_mustpass = "$deqp_path/external/openglcts/data/gl_cts/data/mustpass/gles/khronos_mustpass/main"
+  _khronos_gles_noctx_mustpass = "$deqp_path/external/openglcts/data/gl_cts/data/mustpass/gles/khronos_mustpass_noctx/main"
+  _khronos_gles_single_mustpass = "$deqp_path/external/openglcts/data/gl_cts/data/mustpass/gles/khronos_mustpass_single/main"
 
   angle_deqp_source_set("angle_deqp_gles2_common") {
     sources = deqp_gles2_sources
@@ -1665,13 +1685,13 @@ if (build_angle_deqp_tests && !is_fuchsia) {
         data = [ "$root_gen_dir/vk_gl_cts_data/data/gles2/shaders/misc.test" ]
         mustpass_dir = _khronos_gles_mustpass
       } else if (api == "gles3") {
-        data = angle_deqp_external_openglcts_data_gles3
+        data = angle_deqp_external_openglcts_data_gl_cts_data_gles3
         mustpass_dir = _khronos_gles_mustpass
       } else if (api == "gles31") {
-        data = angle_deqp_external_openglcts_data_gles31
+        data = angle_deqp_external_openglcts_data_gl_cts_data_gles31
         mustpass_dir = _khronos_gles_mustpass
       } else if (api == "gles32") {
-        data = angle_deqp_external_openglcts_data_gles32
+        data = angle_deqp_external_openglcts_data_gl_cts_data_gles32
         mustpass_dir = _khronos_gles_mustpass
       } else if (api == "gl46") {
         # Use this as a placeholder, the gl46 test suite does not need data
@@ -1723,7 +1743,7 @@ if (build_angle_deqp_tests && !is_fuchsia) {
         data = [ "$root_gen_dir/vk_gl_cts_data/data/gles2/shaders/misc.test" ]
         mustpass_dir = _khronos_gles_noctx_mustpass
       } else if (api == "gles32") {
-        data = angle_deqp_external_openglcts_data_gles32
+        data = angle_deqp_external_openglcts_data_gl_cts_data_gles32
         mustpass_dir = _khronos_gles_noctx_mustpass
       } else {
         assert(false)
@@ -1749,7 +1769,7 @@ if (build_angle_deqp_tests && !is_fuchsia) {
       deps = [ ":angle_deqp_khr_common" ]
       deps += angle_deqp_data_copy_targets
       if (api == "gles32") {
-        data = angle_deqp_external_openglcts_data_gles32
+        data = angle_deqp_external_openglcts_data_gl_cts_data_gles32
         mustpass_dir = _khronos_gles_single_mustpass
       } else {
         assert(false)
@@ -1850,9 +1870,10 @@ group("angle_tests") {
   }
   if (build_angle_trace_tests) {
     deps += [ ":angle_trace_perf_tests" ]
-    deps += [ "capture_tests:angle_capture_tests_trace" ]
+    deps += [ "capture_tests:angle_capture_tests_multi_frame_trace" ]
+    deps += [ "capture_tests:angle_capture_tests_active_textures_trace" ]
   }
-  if (is_clang) {
+  if (is_clang && angle_has_frame_capture) {
     deps += [ "capture_replay_tests" ]
   }
   if (!is_fuchsia) {

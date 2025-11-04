@@ -27,6 +27,7 @@ public:
     void render(const BMLayer &layer) override;
     void render(const BMRect &rect) override;
     void render(const BMEllipse &ellipse) override;
+    void render(const BMPolyStar &star) override;
     void render(const BMRound &round) override;
     void render(const BMFill &fill) override;
     void render(const BMGFill &shape) override;

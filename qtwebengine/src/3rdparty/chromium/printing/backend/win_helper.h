@@ -17,6 +17,7 @@
 #include <xpsprint.h>
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -161,7 +162,7 @@ void SetGetDisplayNameFunction(
     std::string (*get_display_name_func)(const std::string& printer_name));
 
 COMPONENT_EXPORT(PRINT_BACKEND)
-bool InitBasicPrinterInfo(HANDLE printer, PrinterBasicInfo* printer_info);
+std::optional<PrinterBasicInfo> GetBasicPrinterInfo(HANDLE printer);
 
 COMPONENT_EXPORT(PRINT_BACKEND)
 std::vector<std::string> GetDriverInfo(HANDLE printer);

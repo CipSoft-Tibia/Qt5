@@ -20,11 +20,12 @@
 
     \snippet xr_input/main.qml picking
 
-    This performs two functions:
-    \list 1
-        \li If we hit anything, we change the color of the \c pickRay to green, and
-            we set its length so it touches the thing we hit. The \c pickRay is a semi-transparent
-            cylinder that shows where the user is aiming.
+    This performs the following functions:
+    \list
+        \li If we hit anything, we change the length of the \c pickRay to so it touches the
+            thing we hit. The \c pickRay is a semi-transparent cone (a tapered cylinder)
+            that shows where the user is aiming. We also move \c cursorSphere to the point
+            where the ray hits. (\c cursorSphere is a semi-transparent sphere which is a child of the XrView).
         \li We set the property \c hitObject to the object that we hit.
     \endlist
     We also use a black cylinder as a generic representation of the controller.
@@ -47,6 +48,12 @@
     an XrVirtualMouse, using the XrController as a position source. We use the \c rightTrigger action
     we made earlier to generate mouse presses/releases and use the thumbstick actions to generate
     mouse wheel events.
+
+    Finally, we add some haptic feedback when the \c pickRay hits an object:
+
+    \snippet xr_input/main.qml haptics
+
+    The haptic effect will trigger each time the \c pickRay.hit property goes from \c false to \c true.
 
     \section1 XrItem
 

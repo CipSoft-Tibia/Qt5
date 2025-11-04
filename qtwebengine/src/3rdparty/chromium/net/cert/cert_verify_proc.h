@@ -12,8 +12,10 @@
 #include "base/gtest_prod_util.h"
 #include "base/memory/ref_counted.h"
 #include "build/build_config.h"
+#include "components/network_time/time_tracker/time_tracker.h"
 #include "crypto/crypto_buildflags.h"
 #include "net/base/hash_value.h"
+#include "net/base/ip_address.h"
 #include "net/base/net_export.h"
 #include "net/cert/ct_log_verifier.h"
 #include "net/cert/ct_policy_enforcer.h"
@@ -91,12 +93,36 @@ class NET_EXPORT CertVerifyProc
     scoped_refptr<CRLSet> crl_set;
     std::vector<scoped_refptr<const net::CTLogVerifier>> ct_logs;
     scoped_refptr<net::CTPolicyEnforcer> ct_policy_enforcer;
+    std::optional<network_time::TimeTracker> time_tracker;
 #if BUILDFLAG(CHROME_ROOT_STORE_SUPPORTED)
-    absl::optional<net::ChromeRootStoreData> root_store_data;
+    std::optional<net::ChromeRootStoreData> root_store_data;
 #endif
 #if BUILDFLAG(CHROME_ROOT_STORE_OPTIONAL)
     bool use_chrome_root_store;
 #endif
+  };
+
+  // CIDR, consisting of an IP and a netmask.
+  struct NET_EXPORT CIDR {
+    net::IPAddress ip;
+    net::IPAddress mask;
+  };
+
+  // Single certificate, with constraints.
+  struct NET_EXPORT CertificateWithConstraints {
+    CertificateWithConstraints();
+    ~CertificateWithConstraints();
+    CertificateWithConstraints(const CertificateWithConstraints&);
+    CertificateWithConstraints& operator=(
+        const CertificateWithConstraints& other);
+    CertificateWithConstraints(CertificateWithConstraints&&);
+    CertificateWithConstraints& operator=(CertificateWithConstraints&& other);
+
+    std::shared_ptr<const bssl::ParsedCertificate> certificate;
+
+    std::vector<std::string> permitted_dns_names;
+
+    std::vector<CIDR> permitted_cidrs;
   };
 
   // The set of parameters that are variable over time and can differ between
@@ -120,6 +146,11 @@ class NET_EXPORT CertVerifyProc
     bssl::ParsedCertificateList
         additional_trust_anchors_with_enforced_constraints;
 
+    // Additional trust anchors to consider during path validation, but with
+    // name constraints specified outside of the certificate.
+    std::vector<CertificateWithConstraints>
+        additional_trust_anchors_with_constraints;
+
     // Additional temporary certs to consider as intermediates during path
     // validation. Ordinarily, implementations of CertVerifier use intermediate
     // certs from the configured system store. This is implementation-specific
@@ -129,10 +160,12 @@ class NET_EXPORT CertVerifyProc
     //  Additional SPKIs to consider as distrusted during path validation.
     std::vector<std::vector<uint8_t>> additional_distrusted_spkis;
 
+#if !BUILDFLAG(IS_CHROMEOS)
     // If true, use the user-added certs in the system trust store for path
     // validation.
     // This only has an impact if the Chrome Root Store is being used.
     bool include_system_trust_store = true;
+#endif
   };
 
   // These values are persisted to logs. Entries should not be renumbered and
@@ -161,7 +194,8 @@ class NET_EXPORT CertVerifyProc
       scoped_refptr<CRLSet> crl_set,
       std::unique_ptr<CTVerifier> ct_verifier,
       scoped_refptr<CTPolicyEnforcer> ct_policy_enforcer,
-      const InstanceParams instance_params);
+      const InstanceParams instance_params,
+      std::optional<network_time::TimeTracker> time_tracker);
 #endif
 
 #if BUILDFLAG(CHROME_ROOT_STORE_SUPPORTED)
@@ -174,7 +208,8 @@ class NET_EXPORT CertVerifyProc
       std::unique_ptr<CTVerifier> ct_verifier,
       scoped_refptr<CTPolicyEnforcer> ct_policy_enforcer,
       const ChromeRootStoreData* root_store_data,
-      const InstanceParams instance_params);
+      const InstanceParams instance_params,
+      std::optional<network_time::TimeTracker> time_tracker);
 #endif
 
   CertVerifyProc(const CertVerifyProc&) = delete;
@@ -195,6 +230,9 @@ class NET_EXPORT CertVerifyProc
   // extension as described in RFC6962 section 3.3.1.
   //
   // |flags| is bitwise OR'd of VerifyFlags:
+  //
+  // If |time_now| is set it will be used as the current time, otherwise the
+  // system time will be used.
   //
   // If VERIFY_REV_CHECKING_ENABLED is set in |flags|, online certificate
   // revocation checking is performed (i.e. OCSP and downloading CRLs). CRLSet
@@ -245,6 +283,11 @@ class NET_EXPORT CertVerifyProc
   // which will be filled in by |Verify()|. If an error code is returned,
   // |verify_result->cert_status| should be non-zero, indicating an
   // error occurred.
+  //
+  // If |time_now| is not nullopt, it will be used as the current time for
+  // certificate verification, if it is nullopt, the system time will be used
+  // instead. If a certificate verification fails with a NotBefore/NotAfter
+  // error when |time_now| is set, it will be retried with the system time.
   //
   // On success, net::OK should be returned, with |verify_result| updated to
   // reflect the successfully verified chain.

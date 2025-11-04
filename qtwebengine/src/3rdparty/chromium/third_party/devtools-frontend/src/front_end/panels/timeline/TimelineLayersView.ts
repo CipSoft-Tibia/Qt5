@@ -9,22 +9,18 @@ import * as UI from '../../ui/legacy/legacy.js';
 import * as LayerViewer from '../layer_viewer/layer_viewer.js';
 
 export class TimelineLayersView extends UI.SplitWidget.SplitWidget {
-  private readonly model: TimelineModel.TimelineModel.TimelineModelImpl;
   private readonly showPaintProfilerCallback: (arg0: SDK.PaintProfiler.PaintProfilerSnapshot) => void;
   private readonly rightSplitWidget: UI.SplitWidget.SplitWidget;
   private readonly layerViewHost: LayerViewer.LayerViewHost.LayerViewHost;
   private readonly layers3DView: LayerViewer.Layers3DView.Layers3DView;
   private frameLayerTree?: TimelineModel.TracingLayerTree.TracingFrameLayerTree;
   private updateWhenVisible?: boolean;
-  constructor(
-      model: TimelineModel.TimelineModel.TimelineModelImpl,
-      showPaintProfilerCallback: (arg0: SDK.PaintProfiler.PaintProfilerSnapshot) => void) {
-    super(true, false, 'timelineLayersView');
-    this.model = model;
+  constructor(showPaintProfilerCallback: (arg0: SDK.PaintProfiler.PaintProfilerSnapshot) => void) {
+    super(true, false, 'timeline-layers-view');
     this.showPaintProfilerCallback = showPaintProfilerCallback;
 
     this.element.classList.add('timeline-layers-view');
-    this.rightSplitWidget = new UI.SplitWidget.SplitWidget(true, true, 'timelineLayersViewDetails');
+    this.rightSplitWidget = new UI.SplitWidget.SplitWidget(true, true, 'timeline-layers-view-details');
     this.rightSplitWidget.element.classList.add('timeline-layers-view-properties');
     this.setMainWidget(this.rightSplitWidget);
 
@@ -38,13 +34,13 @@ export class TimelineLayersView extends UI.SplitWidget.SplitWidget {
 
     this.layers3DView = new LayerViewer.Layers3DView.Layers3DView(this.layerViewHost);
     this.layers3DView.addEventListener(
-        LayerViewer.Layers3DView.Events.PaintProfilerRequested, this.onPaintProfilerRequested, this);
+        LayerViewer.Layers3DView.Events.PAINT_PROFILER_REQUESTED, this.onPaintProfilerRequested, this);
     this.rightSplitWidget.setMainWidget(this.layers3DView);
 
     const layerDetailsView = new LayerViewer.LayerDetailsView.LayerDetailsView(this.layerViewHost);
     this.rightSplitWidget.setSidebarWidget(layerDetailsView);
     layerDetailsView.addEventListener(
-        LayerViewer.LayerDetailsView.Events.PaintProfilerRequested, this.onPaintProfilerRequested, this);
+        LayerViewer.LayerDetailsView.Events.PAINT_PROFILER_REQUESTED, this.onPaintProfilerRequested, this);
   }
 
   showLayerTree(frameLayerTree: TimelineModel.TracingLayerTree.TracingFrameLayerTree): void {

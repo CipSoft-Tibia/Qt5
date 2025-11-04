@@ -33,7 +33,6 @@ namespace dawn::wire {
 // of limit structs on Adapter/Device initialization.
 bool IsFeatureSupported(WGPUFeatureName feature) {
     switch (feature) {
-        case WGPUFeatureName_Undefined:
         case WGPUFeatureName_Force32:
         case WGPUFeatureName_DawnNative:
         case WGPUFeatureName_ImplicitDeviceSynchronization:
@@ -41,6 +40,8 @@ bool IsFeatureSupported(WGPUFeatureName feature) {
         case WGPUFeatureName_D3D11MultithreadProtected:
         case WGPUFeatureName_HostMappedPointer:
         case WGPUFeatureName_BufferMapExtendedUsages:
+        case WGPUFeatureName_FormatCapabilities:
+        case WGPUFeatureName_DrmFormatCapabilities:
             return false;
         // NOTE: SharedTextureMemory/SharedFence are not actually intended
         // for usage over the wire (and are not exposed over the wire as
@@ -63,6 +64,7 @@ bool IsFeatureSupported(WGPUFeatureName feature) {
         case WGPUFeatureName_SharedFenceVkSemaphoreZirconHandle:
         case WGPUFeatureName_SharedFenceDXGISharedHandle:
         case WGPUFeatureName_SharedFenceMTLSharedEvent:
+        case WGPUFeatureName_SharedBufferMemoryD3D12Resource:
 
         case WGPUFeatureName_Depth32FloatStencil8:
         case WGPUFeatureName_TimestampQuery:
@@ -74,8 +76,13 @@ bool IsFeatureSupported(WGPUFeatureName feature) {
         case WGPUFeatureName_DepthClipControl:
         case WGPUFeatureName_DawnInternalUsages:
         case WGPUFeatureName_DawnMultiPlanarFormats:
+        case WGPUFeatureName_MultiDrawIndirect:
         case WGPUFeatureName_MultiPlanarFormatExtendedUsages:
         case WGPUFeatureName_MultiPlanarFormatP010:
+        case WGPUFeatureName_MultiPlanarFormatP210:
+        case WGPUFeatureName_MultiPlanarFormatP410:
+        case WGPUFeatureName_MultiPlanarFormatNv16:
+        case WGPUFeatureName_MultiPlanarFormatNv24:
         case WGPUFeatureName_MultiPlanarFormatNv12a:
         case WGPUFeatureName_MultiPlanarRenderTargets:
         case WGPUFeatureName_ShaderF16:
@@ -91,9 +98,21 @@ bool IsFeatureSupported(WGPUFeatureName feature) {
         case WGPUFeatureName_PixelLocalStorageCoherent:
         case WGPUFeatureName_PixelLocalStorageNonCoherent:
         case WGPUFeatureName_Norm16TextureFormats:
+        case WGPUFeatureName_Unorm16TextureFormats:
+        case WGPUFeatureName_Snorm16TextureFormats:
         case WGPUFeatureName_FramebufferFetch:
         case WGPUFeatureName_AdapterPropertiesMemoryHeaps:
         case WGPUFeatureName_AdapterPropertiesD3D:
+        case WGPUFeatureName_AdapterPropertiesVk:
+        case WGPUFeatureName_R8UnormStorage:
+        case WGPUFeatureName_StaticSamplers:
+        case WGPUFeatureName_YCbCrVulkanSamplers:
+        case WGPUFeatureName_ShaderModuleCompilationOptions:
+        case WGPUFeatureName_DawnLoadResolveTexture:
+        case WGPUFeatureName_DawnPartialLoadResolveTexture:
+        case WGPUFeatureName_Subgroups:
+        case WGPUFeatureName_SubgroupsF16:
+        case WGPUFeatureName_ClipDistances:
             return true;
     }
 

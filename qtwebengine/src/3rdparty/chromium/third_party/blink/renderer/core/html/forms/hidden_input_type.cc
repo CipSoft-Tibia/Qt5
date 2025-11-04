@@ -66,7 +66,7 @@ bool HiddenInputType::SupportsValidation() const {
 }
 
 LayoutObject* HiddenInputType::CreateLayoutObject(const ComputedStyle&) const {
-  NOTREACHED();
+  NOTREACHED_IN_MIGRATION();
   return nullptr;
 }
 
@@ -102,16 +102,14 @@ bool HiddenInputType::ShouldRespectHeightAndWidthAttributes() {
 }
 
 bool HiddenInputType::IsAutoDirectionalityFormAssociated() const {
-  return RuntimeEnabledFeatures::DirnameMoreInputTypesEnabled();
+  return true;
 }
 
 void HiddenInputType::ValueAttributeChanged() {
   UpdateView();
   // Hidden input need to adjust directionality explicitly since it has no
   // descendant to propagate dir from.
-  if (RuntimeEnabledFeatures::CSSPseudoDirEnabled() &&
-      RuntimeEnabledFeatures::DirnameMoreInputTypesEnabled() &&
-      GetElement().HasDirectionAuto()) {
+  if (GetElement().HasDirectionAuto()) {
     GetElement().UpdateAncestorWithDirAuto(
         Element::UpdateAncestorTraversal::IncludeSelf);
   }

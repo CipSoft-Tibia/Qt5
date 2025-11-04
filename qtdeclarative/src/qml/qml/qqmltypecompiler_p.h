@@ -160,8 +160,11 @@ public:
     bool resolveSignalHandlerExpressions();
 
 private:
-    bool resolveSignalHandlerExpressions(const QmlIR::Object *obj, const QString &typeName,
-                                         const QQmlPropertyCache::ConstPtr &propertyCache);
+    bool resolveSignalHandlerExpressions(
+            const QmlIR::Object *obj, const QString &typeName,
+            const QQmlPropertyCache::ConstPtr &propertyCache,
+            QQmlPropertyResolver::RevisionCheck revisionCheck
+                    = QQmlPropertyResolver::CheckRevision);
 
     QQmlEnginePrivate *enginePrivate;
     const QVector<QmlIR::Object*> &qmlObjects;

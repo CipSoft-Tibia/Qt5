@@ -2,6 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#ifdef UNSAFE_BUFFERS_BUILD
+// TODO(crbug.com/351564777): Remove this and convert code to safer constructs.
+#pragma allow_unsafe_buffers
+#endif
+
 #include "extensions/renderer/dom_activity_logger.h"
 
 #include <memory>
@@ -10,6 +15,7 @@
 #include "content/public/renderer/render_frame.h"
 #include "content/public/renderer/v8_value_converter.h"
 #include "extensions/common/dom_action_types.h"
+#include "extensions/common/extension_id.h"
 #include "extensions/renderer/activity_log_converter_strategy.h"
 #include "extensions/renderer/extension_frame_helper.h"
 #include "extensions/renderer/script_context.h"
@@ -46,13 +52,13 @@ void AppendV8Value(v8::Isolate* isolate,
 
 }  // namespace
 
-DOMActivityLogger::DOMActivityLogger(const std::string& extension_id)
+DOMActivityLogger::DOMActivityLogger(const ExtensionId& extension_id)
     : extension_id_(extension_id) {}
 
 DOMActivityLogger::~DOMActivityLogger() = default;
 
 void DOMActivityLogger::AttachToWorld(int32_t world_id,
-                                      const std::string& extension_id) {
+                                      const ExtensionId& extension_id) {
   // If there is no logger registered for world_id, construct a new logger
   // and register it with world_id.
   if (!blink::HasDOMActivityLogger(world_id,

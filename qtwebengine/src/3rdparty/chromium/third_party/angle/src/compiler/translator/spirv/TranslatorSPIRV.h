@@ -12,6 +12,7 @@
 #ifndef COMPILER_TRANSLATOR_SPIRV_TRANSLATORSPIRV_H_
 #define COMPILER_TRANSLATOR_SPIRV_TRANSLATORSPIRV_H_
 
+#include "common/hash_containers.h"
 #include "compiler/translator/Compiler.h"
 
 namespace sh
@@ -20,6 +21,9 @@ namespace sh
 class TOutputVulkanGLSL;
 class SpecConst;
 class DriverUniform;
+
+// An index -> TVariable map, tracking the declarated input attachments.
+using InputAttachmentMap = TUnorderedMap<uint32_t, const TVariable *>;
 
 class TranslatorSPIRV final : public TCompiler
 {
@@ -39,6 +43,7 @@ class TranslatorSPIRV final : public TCompiler
                                      PerformanceDiagnostics *perfDiagnostics,
                                      SpecConst *specConst,
                                      DriverUniform *driverUniforms);
+    void assignInputAttachmentIds(const InputAttachmentMap &inputAttachmentMap);
     void assignSpirvIds(TIntermBlock *root);
 
     // A map from TSymbolUniqueId::mId to SPIR-V reserved ids.  Used by the SPIR-V generator to

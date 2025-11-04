@@ -7,7 +7,7 @@
 \examplecategory {Web Technologies}
 \brief Example of how to create a RESTful API server using the QHttpServer.
 
-\image restful-color-palette-server-example.png
+\image restful-color-palette-server-example.png {Qt HTTP RESTful API server}
 \example colorpalette
 
 This example shows how to create and host simple RESTful web APIs in a small

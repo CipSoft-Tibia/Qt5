@@ -1252,9 +1252,9 @@ static WebInputEvent::Modifiers lockKeyModifiers(const quint32 nativeModifiers)
 {
     unsigned result = 0;
     if (keyboardDriver() == KeyboardDriver::Xkb) {
-        if (nativeModifiers & 0x42) /* Caps_Lock */
+        if (nativeModifiers & 0x2) /* XCB_MOD_MASK_LOCK */
             result |= WebInputEvent::kCapsLockOn;
-        if (nativeModifiers & 0x4d) /* Num_Lock */
+        if (nativeModifiers & 0x10) /* XCB_MOD_MASK_2 */
             result |= WebInputEvent::kNumLockOn;
     } else if (keyboardDriver() == KeyboardDriver::Windows) {
         if (nativeModifiers & 0x100) /* CapsLock */
@@ -1567,8 +1567,7 @@ blink::WebMouseWheelEvent::Phase toBlinkPhase(QWheelEvent *ev)
     case Qt::ScrollEnd:
         return blink::WebMouseWheelEvent::kPhaseEnded;
     }
-    Q_UNREACHABLE();
-    return blink::WebMouseWheelEvent::kPhaseNone;
+    Q_UNREACHABLE_RETURN(blink::WebMouseWheelEvent::kPhaseNone);
 }
 
 blink::WebMouseWheelEvent::Phase getMomentumPhase(QWheelEvent *ev)
@@ -1583,8 +1582,7 @@ blink::WebMouseWheelEvent::Phase getMomentumPhase(QWheelEvent *ev)
     case Qt::ScrollUpdate:
         return blink::WebMouseWheelEvent::kPhaseNone;
     }
-    Q_UNREACHABLE();
-    return blink::WebMouseWheelEvent::kPhaseNone;
+    Q_UNREACHABLE_RETURN(blink::WebMouseWheelEvent::kPhaseNone);
 }
 
 blink::WebMouseWheelEvent WebEventFactory::toWebWheelEvent(QWheelEvent *ev)
@@ -1663,9 +1661,9 @@ void WebEventFactory::sendUnhandledWheelEvent(const blink::WebGestureEvent &even
     delegate->unhandledWheelEvent(&ev);
 }
 
-content::NativeWebKeyboardEvent WebEventFactory::toWebKeyboardEvent(QKeyEvent *ev)
+input::NativeWebKeyboardEvent WebEventFactory::toWebKeyboardEvent(QKeyEvent *ev)
 {
-    content::NativeWebKeyboardEvent webKitEvent(ToNativeEvent(ev));
+    input::NativeWebKeyboardEvent webKitEvent(ToNativeEvent(ev));
     webKitEvent.SetTimeStamp(base::TimeTicks::Now());
     bool isBackTabWithoutModifier =
             ev->key() == Qt::Key_Backtab && ev->modifiers() == Qt::NoModifier;

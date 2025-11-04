@@ -15,6 +15,7 @@ Configurations:
         'QT_CMAKE_DIR=/opt/cmake-3.30.5/bin',
         'QNX_TEST_ENV=LD_LIBRARY_PATH={{.Env.QNX_QEMU_LD_LIBRARY_PATH}} QSG_RHI_BACKEND=software QT_QPA_PLATFORM=offscreen QTEST_ENVIRONMENT=ci',
         'NON_QTBASE_TARGET_CMAKE_ARGS= -DQT_PROTOBUF_WELL_KNOWN_TYPES_PROTO_DIR=/usr/local/include',
+        'QNX_QEMU={{.Env.QNX_710_QEMU}}',
     ]
 -
     Id: 'qnx-710-arm64-on-linux'

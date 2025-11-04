@@ -10,6 +10,7 @@
 qt_internal_add_3rdparty_library(BundledGlslang_Spirv
     QMAKE_LIB_NAME glslang_spirv
     STATIC
+    SKIP_AUTOMOC
     SOURCES
         ../3rdparty/glslang/SPIRV/GlslangToSpv.cpp
         ../3rdparty/glslang/SPIRV/InReadableOrder.cpp
@@ -58,6 +59,7 @@ endif()
 qt_internal_add_3rdparty_library(BundledGlslang_Osdependent
     QMAKE_LIB_NAME glslang_osdependent
     STATIC
+    SKIP_AUTOMOC
     SOURCES
         ${GLSLANG_OSDEP_PATH}/ossource.cpp # special case
     INCLUDE_DIRECTORIES
@@ -102,6 +104,7 @@ qt_internal_extend_target(BundledGlslang_Osdependent CONDITION LINUX
 qt_internal_add_3rdparty_library(BundledGlslang_Glslang
     QMAKE_LIB_NAME glslang_glslang
     STATIC
+    SKIP_AUTOMOC
     SOURCES
         ../3rdparty/glslang/glslang/GenericCodeGen/CodeGen.cpp
         ../3rdparty/glslang/glslang/GenericCodeGen/Link.cpp

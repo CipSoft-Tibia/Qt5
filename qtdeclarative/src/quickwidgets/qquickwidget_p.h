@@ -40,7 +40,7 @@ class QQuickRenderControl;
 
 class QQuickWidgetPrivate
         : public QWidgetPrivate,
-          public QQuickItemChangeListener
+          public QSafeQuickItemChangeListener<QQuickWidgetPrivate>
 {
     Q_DECLARE_PUBLIC(QQuickWidget)
 public:
@@ -49,14 +49,16 @@ public:
 
     QQuickWidgetPrivate();
 
+    void executeHelper();
     void destroy();
     void execute();
+    void execute(QAnyStringView uri, QAnyStringView typeName);
     void itemGeometryChanged(QQuickItem *item, QQuickGeometryChange change, const QRectF &oldGeometry) override;
     void initResize();
     void updateSize();
     void updatePosition();
     void updateFrambufferObjectSize();
-    void setRootObject(QObject *);
+    bool setRootObject(QObject *);
     void render(bool needsSync);
     void renderSceneGraph();
     void initializeWithRhi();
@@ -111,6 +113,8 @@ public:
     bool deviceLost;
 
     QBackingStoreRhiSupport offscreenRenderer;
+
+    QVariantMap initialProperties;
 };
 
 class QQuickWidgetOffscreenWindow: public QQuickWindow

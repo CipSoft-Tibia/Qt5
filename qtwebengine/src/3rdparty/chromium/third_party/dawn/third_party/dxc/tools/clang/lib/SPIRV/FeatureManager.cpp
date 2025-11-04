@@ -35,6 +35,15 @@ constexpr std::array<std::pair<spv_target_env, const char *>, 6>
          {SPV_ENV_VULKAN_1_3, "Vulkan 1.3"},
          {SPV_ENV_UNIVERSAL_1_5, "SPIR-V 1.5"}}};
 
+constexpr std::array<std::pair<spv_target_env, std::pair<uint32_t, uint32_t>>,
+                     6>
+    kTargetEnvToSpirvVersion = {{{SPV_ENV_VULKAN_1_0, {1, 0}},
+                                 {SPV_ENV_VULKAN_1_1, {1, 3}},
+                                 {SPV_ENV_VULKAN_1_1_SPIRV_1_4, {1, 4}},
+                                 {SPV_ENV_VULKAN_1_2, {1, 5}},
+                                 {SPV_ENV_VULKAN_1_3, {1, 6}},
+                                 {SPV_ENV_UNIVERSAL_1_5, {1, 5}}}};
+
 static_assert(
     kKnownTargetEnv.size() == kHumanReadableTargetEnv.size(),
     "kKnownTargetEnv and kHumanReadableTargetEnv should remain in sync.");
@@ -50,6 +59,16 @@ FeatureManager::stringToSpvEnvironment(const std::string &target_env) {
   return it == kKnownTargetEnv.end()
              ? llvm::None
              : llvm::Optional<spv_target_env>(it->second);
+}
+
+clang::VersionTuple FeatureManager::getSpirvVersion(spv_target_env env) {
+  auto it = std::find_if(kTargetEnvToSpirvVersion.cbegin(),
+                         kTargetEnvToSpirvVersion.cend(),
+                         [&](const auto &pair) { return pair.first == env; });
+
+  return it == kTargetEnvToSpirvVersion.end()
+             ? clang::VersionTuple()
+             : clang::VersionTuple(it->second.first, it->second.second);
 }
 
 llvm::Optional<std::string>
@@ -87,6 +106,12 @@ FeatureManager::FeatureManager(DiagnosticsEngine &de,
   } else {
     for (auto ext : opts.allowedExtensions)
       allowExtension(ext);
+
+    // The option to use the vulkan memory model implies the extension is
+    // available.
+    if (opts.useVulkanMemoryModel) {
+      allowExtension("SPV_KHR_vulkan_memory_model");
+    }
   }
 }
 
@@ -196,6 +221,9 @@ Extension FeatureManager::getExtensionSymbol(llvm::StringRef name) {
             Extension::KHR_fragment_shader_barycentric)
       .Case("SPV_KHR_maximal_reconvergence",
             Extension::KHR_maximal_reconvergence)
+      .Case("SPV_KHR_float_controls", Extension::KHR_float_controls)
+      .Case("SPV_NV_shader_subgroup_partitioned",
+            Extension::NV_shader_subgroup_partitioned)
       .Default(Extension::Unknown);
 }
 
@@ -261,6 +289,10 @@ const char *FeatureManager::getExtensionName(Extension symbol) {
     return "SPV_KHR_fragment_shader_barycentric";
   case Extension::KHR_maximal_reconvergence:
     return "SPV_KHR_maximal_reconvergence";
+  case Extension::KHR_float_controls:
+    return "SPV_KHR_float_controls";
+  case Extension::NV_shader_subgroup_partitioned:
+    return "SPV_NV_shader_subgroup_partitioned";
   default:
     break;
   }

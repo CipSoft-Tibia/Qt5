@@ -31,13 +31,6 @@
 #include <string>
 #include <utility>
 
-#include "src/tint/lang/wgsl/ast/pipeline_stage.h"
-
-// Forward declarations
-namespace tint {
-class Program;
-}  // namespace tint
-
 namespace tint::msl::validate {
 
 /// The version of MSL to validate against.
@@ -45,6 +38,7 @@ namespace tint::msl::validate {
 enum class MslVersion {
     kMsl_1_2,
     kMsl_2_1,
+    kMsl_2_2,
     kMsl_2_3,
 };
 
@@ -69,14 +63,14 @@ struct Result {
 /// @return the result of the compile
 Result Validate(const std::string& xcrun_path, const std::string& source, MslVersion version);
 
-#ifdef __APPLE__
+#if TINT_BUILD_IS_MAC
 /// ValidateUsingMetal attempts to compile the shader with the runtime Metal Shader Compiler
 /// API, verifying that the shader compiles successfully.
 /// @param source the generated MSL source
 /// @param version the version of MSL to validate against
 /// @return the result of the compile
 Result ValidateUsingMetal(const std::string& source, MslVersion version);
-#endif  // __APPLE__
+#endif  // TINT_BUILD_IS_MAC
 
 }  // namespace tint::msl::validate
 

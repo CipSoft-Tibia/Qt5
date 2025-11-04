@@ -42,6 +42,8 @@ private:
     int m_decimals;
     qreal m_tickAnchor;
     qreal m_tickInterval;
+    qreal m_zoom = 1.0;
+    qreal m_pan = 0.0;
     Q_DECLARE_PUBLIC(QValueAxis)
 };
 

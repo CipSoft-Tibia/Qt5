@@ -24,8 +24,13 @@
 # include <stdlib.h>
 # include <limits.h>
 # include <assert.h>
-# include "console_io.h"
 # include "sqlite3.h"
+#endif
+#ifndef HAVE_CONSOLE_IO_H
+# include "console_io.h"
+#endif
+#if defined(_MSC_VER)
+# pragma warning(disable : 4204)
 #endif
 
 #ifndef SQLITE_CIO_NO_TRANSLATE
@@ -124,6 +129,10 @@ static short streamOfConsole(FILE *pf, /* out */ PerStreamTags *ppst){
   return ppst->reachesConsole;
 # endif
 }
+
+# ifndef ENABLE_VIRTUAL_TERMINAL_PROCESSING
+#  define ENABLE_VIRTUAL_TERMINAL_PROCESSING  (0x4)
+# endif
 
 # if CIO_WIN_WC_XLATE
 /* Define console modes for use with the Windows Console API. */
@@ -549,12 +558,11 @@ zSkipValidUtf8(const char *z, int nAccept, long ccm){
 #endif /*!(defined(SQLITE_CIO_NO_UTF8SCAN)&&defined(SQLITE_CIO_NO_TRANSLATE))*/
 
 #ifndef SQLITE_CIO_NO_TRANSLATE
-
-#ifdef CONSIO_SPUTB
+# ifdef CONSIO_SPUTB
 SQLITE_INTERNAL_LINKAGE int
 fPutbUtf8(FILE *pfO, const char *cBuf, int nAccept){
   assert(pfO!=0);
-# if CIO_WIN_WC_XLATE
+#  if CIO_WIN_WC_XLATE
   PerStreamTags pst = PST_INITIALIZER; /* for unknown streams */
   PerStreamTags *ppst = getEmitStreamInfo(0, &pst, &pfO);
   if( pstReachesConsole(ppst) ){
@@ -564,13 +572,13 @@ fPutbUtf8(FILE *pfO, const char *cBuf, int nAccept){
     if( 0 == isKnownWritable(ppst->pf) ) restoreConsoleArb(ppst);
     return rv;
   }else {
-# endif
+#  endif
     return (int)fwrite(cBuf, 1, nAccept, pfO);
-# if CIO_WIN_WC_XLATE
+#  if CIO_WIN_WC_XLATE
   }
-# endif
+#  endif
 }
-#endif /* defined(CONSIO_SPUTB) */
+# endif
 
 SQLITE_INTERNAL_LINKAGE int
 oPutbUtf8(const char *cBuf, int nAccept){
@@ -675,5 +683,9 @@ SQLITE_INTERNAL_LINKAGE char* fGetsUtf8(char *cBuf, int ncMax, FILE *pfIn){
 # endif
 }
 #endif /* !defined(SQLITE_CIO_NO_TRANSLATE) */
+
+#if defined(_MSC_VER)
+# pragma warning(default : 4204)
+#endif
 
 #undef SHELL_INVALID_FILE_PTR

@@ -14,6 +14,8 @@ if(DEFINED QT_REPO_DEPENDENCIES
     endif()
 endif()
 
+@skip_internal_test_plugin@
+
 @PACKAGE_INIT@
 
 cmake_minimum_required(VERSION @min_new_policy_version@...@max_new_policy_version@)

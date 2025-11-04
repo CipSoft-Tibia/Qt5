@@ -6,7 +6,9 @@
 #include "qeglfskmsgbmscreen_p.h"
 #include "qeglfskmsgbmdevice_p.h"
 #include "qeglfskmsgbmcursor_p.h"
+
 #include <private/qeglfsintegration_p.h>
+#include <private/qeglfskmsintegration_p.h>
 
 #include <QtCore/QLoggingCategory>
 
@@ -17,8 +19,6 @@
 #include <errno.h>
 
 QT_BEGIN_NAMESPACE
-
-Q_DECLARE_LOGGING_CATEGORY(qLcEglfsKmsDebug)
 
 QMutex QEglFSKmsGbmScreen::m_nonThreadedFlipMutex;
 
@@ -158,6 +158,7 @@ gbm_surface *QEglFSKmsGbmScreen::createSurface(EGLConfig eglConfig)
                                            gbmFlags());
         }
 
+#ifndef Q_OS_VXWORKS
         // Fallback for some drivers, its required to request with modifiers
         if (!m_gbm_surface) {
             uint64_t modifier = DRM_FORMAT_MOD_LINEAR;
@@ -168,6 +169,7 @@ gbm_surface *QEglFSKmsGbmScreen::createSurface(EGLConfig eglConfig)
                                     gbmFormat,
                                     &modifier, 1);
         }
+#endif
         // Fail here, as it would fail with the next usage of the GBM surface, which is very unexpected
         if (!m_gbm_surface)
             qFatal("Could not create GBM surface!");

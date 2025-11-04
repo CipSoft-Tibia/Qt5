@@ -92,3 +92,5 @@ qsTrId("qtn_bar_baz", 10);
 
 //~ quoted " string with spaces "
 qsTr("translation with extras-quoted field");
+//~ quoted "empty string"
+qsTr("");

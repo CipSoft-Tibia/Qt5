@@ -892,8 +892,7 @@ void QtLineEditFactoryPrivate::slotRegExpChanged(QtProperty *property,
             newValidator = new QRegularExpressionValidator(regExp, editor);
         }
         editor->setValidator(newValidator);
-        if (oldValidator)
-            delete oldValidator;
+        delete oldValidator;
         editor->blockSignals(false);
     }
 }
@@ -1462,7 +1461,7 @@ class QtCharEdit : public QWidget
 {
     Q_OBJECT
 public:
-    QtCharEdit(QWidget *parent = 0);
+    QtCharEdit(QWidget *parent = nullptr);
 
     QChar value() const;
     bool eventFilter(QObject *o, QEvent *e) override;
@@ -1507,13 +1506,13 @@ bool QtCharEdit::eventFilter(QObject *o, QEvent *e)
         for (QAction *action : actions) {
             action->setShortcut(QKeySequence());
             QString actionString = action->text();
-            const int pos = actionString.lastIndexOf(QLatin1Char('\t'));
+            const auto pos = actionString.lastIndexOf(QLatin1Char('\t'));
             if (pos > 0)
                 actionString = actionString.remove(pos, actionString.size() - pos);
             action->setText(actionString);
         }
         QAction *actionBefore = nullptr;
-        if (actions.size() > 0)
+        if (!actions.empty())
             actionBefore = actions[0];
         auto *clearAction = new QAction(tr("Clear Char"), menu);
         menu->insertAction(actionBefore, clearAction);
@@ -1778,8 +1777,8 @@ void QtEnumEditorFactoryPrivate::slotEnumNamesChanged(QtProperty *property,
         editor->blockSignals(true);
         editor->clear();
         editor->addItems(enumNames);
-        const int nameCount = enumNames.size();
-        for (int i = 0; i < nameCount; i++)
+        const auto nameCount = enumNames.size();
+        for (qsizetype i = 0; i < nameCount; i++)
             editor->setItemIcon(i, enumIcons.value(i));
         editor->setCurrentIndex(manager->value(property));
         editor->blockSignals(false);
@@ -1800,8 +1799,8 @@ void QtEnumEditorFactoryPrivate::slotEnumIconsChanged(QtProperty *property,
     const QStringList enumNames = manager->enumNames(property);
     for (QComboBox *editor : it.value()) {
         editor->blockSignals(true);
-        const int nameCount = enumNames.size();
-        for (int i = 0; i < nameCount; i++)
+        const auto nameCount = enumNames.size();
+        for (qsizetype i = 0; i < nameCount; i++)
             editor->setItemIcon(i, enumIcons.value(i));
         editor->setCurrentIndex(manager->value(property));
         editor->blockSignals(false);
@@ -1881,8 +1880,8 @@ QWidget *QtEnumEditorFactory::createEditor(QtEnumPropertyManager *manager, QtPro
     QStringList enumNames = manager->enumNames(property);
     editor->addItems(enumNames);
     QMap<int, QIcon> enumIcons = manager->enumIcons(property);
-    const int enumNamesCount = enumNames.size();
-    for (int i = 0; i < enumNamesCount; i++)
+    const auto enumNamesCount = enumNames.size();
+    for (qsizetype i = 0; i < enumNamesCount; i++)
         editor->setItemIcon(i, enumIcons.value(i));
     editor->setCurrentIndex(manager->value(property));
 
@@ -1911,27 +1910,19 @@ class QtCursorEditorFactoryPrivate
     QtCursorEditorFactory *q_ptr = nullptr;
     Q_DECLARE_PUBLIC(QtCursorEditorFactory)
 public:
-    QtCursorEditorFactoryPrivate();
-
     void slotPropertyChanged(QtProperty *property, const QCursor &cursor);
     void slotEnumChanged(QtProperty *property, int value);
     void slotEditorDestroyed(QObject *object);
 
-    QtEnumEditorFactory *m_enumEditorFactory;
-    QtEnumPropertyManager *m_enumPropertyManager;
+    QtEnumEditorFactory *m_enumEditorFactory = nullptr;
+    QtEnumPropertyManager *m_enumPropertyManager = nullptr;
 
     QHash<QtProperty *, QtProperty *> m_propertyToEnum;
     QHash<QtProperty *, QtProperty *> m_enumToProperty;
     QHash<QtProperty *, QWidgetList > m_enumToEditors;
     QHash<QWidget *, QtProperty *> m_editorToEnum;
-    bool m_updatingEnum;
+    bool m_updatingEnum = false;
 };
-
-QtCursorEditorFactoryPrivate::QtCursorEditorFactoryPrivate()
-    : m_updatingEnum(false)
-{
-
-}
 
 void QtCursorEditorFactoryPrivate::slotPropertyChanged(QtProperty *property, const QCursor &cursor)
 {
@@ -2016,9 +2007,7 @@ QtCursorEditorFactory::QtCursorEditorFactory(QObject *parent)
 /*!
     Destroys this factory, and all the widgets it has created.
 */
-QtCursorEditorFactory::~QtCursorEditorFactory()
-{
-}
+QtCursorEditorFactory::~QtCursorEditorFactory() = default;
 
 /*!
     \internal
@@ -2040,10 +2029,8 @@ void QtCursorEditorFactory::connectPropertyManager(QtCursorPropertyManager *mana
 QWidget *QtCursorEditorFactory::createEditor(QtCursorPropertyManager *manager, QtProperty *property,
         QWidget *parent)
 {
-    QtProperty *enumProp = nullptr;
-    if (d_ptr->m_propertyToEnum.contains(property)) {
-        enumProp = d_ptr->m_propertyToEnum[property];
-    } else {
+    QtProperty *enumProp = d_ptr->m_propertyToEnum.value(property, nullptr);
+    if (enumProp == nullptr) {
         enumProp = d_ptr->m_enumPropertyManager->addProperty(property->propertyName());
         auto *cdb = QtCursorDatabase::instance();
         d_ptr->m_enumPropertyManager->setEnumNames(enumProp, cdb->cursorShapeNames());

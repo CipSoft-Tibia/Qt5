@@ -22,8 +22,6 @@
 #include "QtCore/qshareddata.h"
 #include "QtCore/qvarlengtharray.h"
 
-#include <qdebug.h>
-
 #include <private/qvectorpath_p.h>
 #include <private/qstroker_p.h>
 
@@ -101,7 +99,6 @@ public:
     friend class QPainterPathStrokerPrivate;
     friend class QTransform;
     friend class QVectorPath;
-    friend struct QPainterPathPrivateDeleter;
 #ifndef QT_NO_DATASTREAM
     friend Q_GUI_EXPORT QDataStream &operator<<(QDataStream &, const QPainterPath &);
     friend Q_GUI_EXPORT QDataStream &operator>>(QDataStream &, QPainterPath &);

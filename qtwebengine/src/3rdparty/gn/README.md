@@ -13,7 +13,7 @@ Related resources:
        (all builtin help converted to a single file).
   * An introductory [presentation](https://docs.google.com/presentation/d/15Zwb53JcncHfEwHpnG_PoIbbzQ3GQi_cpujYwbpcbZo/edit?usp=sharing).
   * The [mailing list](https://groups.google.com/a/chromium.org/forum/#!forum/gn-dev).
-  * The [bug database](https://bugs.chromium.org/p/gn/issues/list).
+  * The [bug database](https://gn.issues.chromium.org/issues?q=status:open).
 
 ## What GN is for
 
@@ -106,6 +106,10 @@ similar.
 On Linux, Mac and z/OS, the default compiler is `clang++`, a recent version is
 expected to be found in `PATH`. This can be overridden by setting the `CC`, `CXX`,
 and `AR` environment variables.
+
+On MSYS and MinGW, the default compiler is `g++`, a recent version is
+expected to be found in `PATH`. This can be overridden by setting the `CC`, `CXX`,
+`LD` and `AR` environment variables.
 
 On z/OS, building GN requires [ZOSLIB](https://github.com/ibmruntimes/zoslib) to be
 installed, as described at that URL. When building with `build/gen.py`, use the option

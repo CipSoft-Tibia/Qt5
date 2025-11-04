@@ -1,9 +1,10 @@
 // Copyright (C) 2019 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
-#include <QtTest/QtTest>
+#include <QtTest/QTest>
 #include <QDir>
 #include <QFile>
+#include <QLibraryInfo>
 #include <QProcess>
 #include <QString>
 #include <QTemporaryDir>
@@ -13,6 +14,8 @@
 #include <QtQmlDom/private/qqmldomlinewriter_p.h>
 #include <QtQmlDom/private/qqmldomoutwriter_p.h>
 #include <QtQmlDom/private/qqmldomtop_p.h>
+#include <QtQmlToolingSettings/private/qqmltoolingsettings_p.h>
+#include <QtQmlFormat/private/qqmlformatoptions_p.h>
 
 using namespace QQmlJS::Dom;
 
@@ -67,6 +70,15 @@ private Q_SLOTS:
     void plainJS();
 
     void ecmascriptModule();
+    void writeDefaults();
+
+    void commandLineOptions_data();
+    void commandLineOptions();
+
+    void settingsFromFileOrCommandLine_data();
+    void settingsFromFileOrCommandLine();
+
+    void multipleSettingsFiles();
 
 private:
     QString readTestFile(const QString &path);
@@ -424,25 +436,33 @@ void TestQmlformat::testFormat_data()
             << "noSuperfluousSpaceInsertions.fail_id.qml"
             << "noSuperfluousSpaceInsertions.fail_id.formatted.qml"
             << QStringList{} << RunOption::OnCopy;
-    QTest::newRow("noSuperfluousSpaceInsertions.fail_QtObject")
-            << "noSuperfluousSpaceInsertions.fail_QtObject.qml"
-            << "noSuperfluousSpaceInsertions.fail_QtObject.formatted.qml"
+    QTest::newRow("noSuperfluousSpaceInsertions_QtObject")
+            << "noSuperfluousSpaceInsertions_QtObject.qml"
+            << "noSuperfluousSpaceInsertions_QtObject.formatted.qml"
             << QStringList{} << RunOption::OnCopy;
-    QTest::newRow("noSuperfluousSpaceInsertions.fail_signal")
-            << "noSuperfluousSpaceInsertions.fail_signal.qml"
-            << "noSuperfluousSpaceInsertions.fail_signal.formatted.qml"
+    QTest::newRow("noSuperfluousSpaceInsertions_signal")
+            << "noSuperfluousSpaceInsertions_signal.qml"
+            << "noSuperfluousSpaceInsertions_signal.formatted.qml"
             << QStringList{} << RunOption::OnCopy;
-    QTest::newRow("noSuperfluousSpaceInsertions.fail_enum")
-            << "noSuperfluousSpaceInsertions.fail_enum.qml"
-            << "noSuperfluousSpaceInsertions.fail_enum.formatted.qml"
+    QTest::newRow("noSuperfluousSpaceInsertions_enum")
+            << "noSuperfluousSpaceInsertions_enum.qml"
+            << "noSuperfluousSpaceInsertions_enum.formatted.qml"
             << QStringList{} << RunOption::OnCopy;
     QTest::newRow("noSuperfluousSpaceInsertions.fail_parameters")
             << "noSuperfluousSpaceInsertions.fail_parameters.qml"
             << "noSuperfluousSpaceInsertions.fail_parameters.formatted.qml"
             << QStringList{} << RunOption::OnCopy;
+    QTest::newRow("nonInitializedPropertyInComponent")
+            << "nonInitializedPropertyInComponent.qml"
+            << "nonInitializedPropertyInComponent.formatted.qml"
+            << QStringList{} << RunOption::OnCopy;
     QTest::newRow("fromAsIdentifier")
             << "fromAsIdentifier.qml"
             << "fromAsIdentifier.formatted.qml"
+            << QStringList{} << RunOption::OnCopy;
+    QTest::newRow("commentsStressTest_enum")
+            << "commentsStressTest_enum.qml"
+            << "commentsStressTest_enum.formatted.qml"
             << QStringList{} << RunOption::OnCopy;
 }
 
@@ -457,12 +477,6 @@ void TestQmlformat::testFormat()
     QEXPECT_FAIL("normalizedFunctionSpacing",
                  "Normalize && function spacing are not yet supported for JS", Abort);
     QEXPECT_FAIL("noSuperfluousSpaceInsertions.fail_id",
-                 "Not all cases have been covered yet (QTBUG-133315, QTBUG-123386)", Abort);
-    QEXPECT_FAIL("noSuperfluousSpaceInsertions.fail_QtObject",
-                 "Not all cases have been covered yet (QTBUG-133315, QTBUG-123386)", Abort);
-    QEXPECT_FAIL("noSuperfluousSpaceInsertions.fail_signal",
-                 "Not all cases have been covered yet (QTBUG-133315, QTBUG-123386)", Abort);
-    QEXPECT_FAIL("noSuperfluousSpaceInsertions.fail_enum",
                  "Not all cases have been covered yet (QTBUG-133315, QTBUG-123386)", Abort);
     QEXPECT_FAIL("noSuperfluousSpaceInsertions.fail_parameters",
                  "Not all cases have been covered yet (QTBUG-133315, QTBUG-123386)", Abort);
@@ -506,6 +520,10 @@ void TestQmlformat::plainJS_data()
             << "noSuperfluousSpaceInsertions.fail_pragma.formatted.js";
     QTest::newRow("fromAsIdentifier") << "fromAsIdentifier.js"
                                       << "fromAsIdentifier.formatted.js";
+    QTest::newRow("caseWithComment") << "caseWithComment.js"
+                                     << "caseWithComment.formatted.js";
+    QTest::newRow("longStatementList") << "longStatementList.js"
+                                       << "longStatementList.formatted.js";
 }
 
 void TestQmlformat::plainJS()
@@ -731,6 +749,216 @@ void TestQmlformat::testFilesOption()
     }
 }
 
+void TestQmlformat::commandLineOptions_data()
+{
+    QTest::addColumn<QStringList>("args");
+    QTest::addColumn<QString>("expectedErrorMessage");
+
+    const QString dummy = testFile("dummy.qml");
+    const QString empty = testFile("empty");
+    QTest::newRow("columnWidthError")
+            << QStringList{ dummy, "-W", "-11111" }
+            << "Error: Invalid value passed to -W. Must be an integer >= -1\n";
+    QTest::newRow("columnWidthNoError")
+            << QStringList{ dummy, "-W", "80" } << "";
+    QTest::newRow("indentWidthError")
+            << QStringList{ dummy, "--indent-width", "expect integer" }
+            << "Error: Invalid value passed to -w\n";
+    QTest::newRow("indentWidthNoError")
+            << QStringList{ dummy, "--indent-width", "4" } << "";
+    QTest::newRow("noInputFiles.qml")
+            << QStringList{} << "Error: Expected at least one input file.\n";
+    QTest::newRow("fOptionFileDoesNotExist")
+            << QStringList{ "-F", "nope" }
+            << "Error: Could not open file \"nope\" for option -F.\n";
+    QTest::newRow("fOptionFileIsEmpty")
+            << QStringList{ "-F", empty }
+            << "Error: File \"" + empty + "\" for option -F is empty.\n";
+    QTest::newRow("fOptionFileContainsNope")
+            << QStringList{ "-F", testFile("filesToFormatNope") }
+            << "Error: Entry \"nope\" of file \"" + testFile("filesToFormatNope")
+                    + "\" passed to option -F could not be found.\n";
+    QTest::newRow("positionalArgumentDoesNotExist")
+            << QStringList{ "nope" }
+            << "Error: Could not find file \"nope\".\n";
+}
+
+void TestQmlformat::commandLineOptions()
+{
+    QFETCH(QStringList, args);
+    QFETCH(QString, expectedErrorMessage);
+
+    auto verify = [&]() {
+        QTemporaryDir tempDir;
+        const QString tempFile = tempDir.path() + QDir::separator() + "test_0.qml";
+
+        QProcess process;
+        process.setStandardOutputFile(tempFile);
+        process.start(m_qmlformatPath, args);
+        QVERIFY(process.waitForFinished());
+        QCOMPARE(process.exitStatus(), QProcess::NormalExit);
+        // normalized error message
+        auto rawError = process.readAllStandardError();
+        QTextStream stream(&rawError, QIODeviceBase::ReadOnly | QIODeviceBase::Text);
+        QCOMPARE(stream.readAll(), expectedErrorMessage.toUtf8());
+        if (expectedErrorMessage.isEmpty())
+            QCOMPARE(process.exitCode(), 0);
+        else
+            QCOMPARE_NE(process.exitCode(), 0);
+    };
+
+    verify();
+}
+
+void TestQmlformat::writeDefaults()
+{
+    auto verify = [&]() {
+        QTemporaryDir tempDir;
+        const QString qmlformatIni = tempDir.path() + QDir::separator() + ".qmlformat.ini";
+
+        QProcess process;
+        process.setWorkingDirectory(tempDir.path());
+        process.start(m_qmlformatPath, QStringList{ "--write-defaults" });
+        QVERIFY(process.waitForFinished());
+        QCOMPARE(process.exitStatus(), QProcess::NormalExit);
+
+        QQmlToolingSettings settings("qmlformat");
+        QVERIFY(settings.search(qmlformatIni));
+
+        QCOMPARE(settings.value("UseTabs").toBool(), false);
+        QCOMPARE(settings.value("IndentWidth").toInt(), 4);
+        QCOMPARE(settings.value("MaxColumnWidth").toInt(), -1);
+        QCOMPARE(settings.value("NormalizeOrder").toBool(), false);
+        QCOMPARE(settings.value("NewlineType").toString(), "native");
+        QCOMPARE(settings.value("ObjectSpacing").toBool(), false);
+        QCOMPARE(settings.value("FunctionsSpacing").toBool(), false);
+        QCOMPARE(settings.value("SortImports").toBool(), false);
+    };
+
+    verify();
+}
+
+void TestQmlformat::settingsFromFileOrCommandLine_data()
+{
+    QTest::addColumn<QString>("qmlformatIniPath");
+    QTest::addColumn<QStringList>("qmlformatInitOptions");
+    QTest::addColumn<QQmlFormatOptions>("expectedOptions");
+
+    {
+        QQmlFormatOptions options;
+        options.setIndentWidth(20);
+        // In settings file, indentwidth is set to 4000, while cli overrides it to 20
+        // 20 should be the final value
+        QTest::newRow("clOverridesIndentWidth")
+                << testFile("iniFiles/dummySettingsFile.ini")
+                << QStringList{ m_qmlformatPath, "--indent-width", "20" } << options;
+        options.setIndentWidth(4000);
+        // In settings file, indentwidth is set to 4000, and nothing overrides it.
+        // 4000 should be the final value
+        QTest::newRow("iniFileIndentWidth") << testFile("iniFiles/dummySettingsFile.ini")
+                                            << QStringList{ m_qmlformatPath } << options;
+        options.setMaxColumnWidth(100);
+        // In settings file, maxcolumnwidth is set to -1, but cli overrides it 100.
+        // 100 should be the final value
+        QTest::newRow("clOverridesColumnWidth")
+                << testFile("iniFiles/dummySettingsFile.ini")
+                << QStringList{ m_qmlformatPath, "-W", "100" } << options;
+    }
+    {
+        QQmlFormatOptions options;
+        // settings file sets all bools excepts Tabs to true.
+        options.setTabsEnabled(false);
+        options.setNormalizeEnabled(true);
+        options.setObjectsSpacing(true);
+        options.setFunctionsSpacing(true);
+        QTest::newRow("iniFileSetsBools") << testFile("iniFiles/toggledBools.ini")
+                                          << QStringList{ m_qmlformatPath } << options;
+
+        // cli overrides the Tabs option to true
+        options.setTabsEnabled(true);
+        QTest::newRow("cliOverridesTabs") << testFile("iniFiles/toggledBools.ini")
+                                          << QStringList{ m_qmlformatPath, "--tabs" } << options;
+    }
+    {
+        // settings should apply when -F is passed
+        QQmlFormatOptions options;
+        options.setIndentWidth(4000);
+        QTest::newRow("settingOnFilesOption")
+                << testFile("iniFiles/dummySettingsFile.ini")
+                << QStringList{ m_qmlformatPath, "-F", "dummyFilesPath" } << options;
+    }
+}
+
+void TestQmlformat::settingsFromFileOrCommandLine()
+{
+    QFETCH(QString, qmlformatIniPath);
+    QFETCH(QStringList, qmlformatInitOptions);
+    QFETCH(QQmlFormatOptions, expectedOptions);
+
+    auto verify = [&]() {
+        QTemporaryDir tempDir;
+        const QString qmlformatIni = tempDir.path() + QDir::separator() + ".qmlformat.ini";
+        const QString dummyQmlFile = tempDir.path() + QDir::separator() + "test.qml";
+
+        QFile::copy(qmlformatIniPath, qmlformatIni);
+        QQmlFormatSettings settings("qmlformat");
+        QStringList cmdlineOptions;
+        if ((qstrcmp(QTest::currentDataTag(), "settingOnFilesOption") == 0))
+            cmdlineOptions = qmlformatInitOptions << "-F" << dummyQmlFile;
+        else
+            cmdlineOptions = QStringList(dummyQmlFile) << qmlformatInitOptions;
+
+        QQmlFormatOptions options = QQmlFormatOptions::buildCommandLineOptions(cmdlineOptions);
+        auto overridenOptions = options.optionsForFile(dummyQmlFile, &settings);
+
+        QCOMPARE(overridenOptions.tabsEnabled(), expectedOptions.tabsEnabled());
+        QCOMPARE(overridenOptions.indentWidth(), expectedOptions.indentWidth());
+        QCOMPARE(overridenOptions.maxColumnWidth(), expectedOptions.maxColumnWidth());
+        QCOMPARE(overridenOptions.normalizeEnabled(), expectedOptions.normalizeEnabled());
+        QCOMPARE(overridenOptions.newline(), expectedOptions.newline());
+        QCOMPARE(overridenOptions.objectsSpacing(), expectedOptions.objectsSpacing());
+        QCOMPARE(overridenOptions.functionsSpacing(), expectedOptions.functionsSpacing());
+    };
+
+    verify();
+}
+
+/*
+* Create a temporary directory with the following structure
+|--dir1
+|  |--.qmlformat.ini
+|  |-- test1.qml
+|--dir2
+|  |-- test2.qml
+
+* test2.qml should differ from the test2.qml options on indentwidth, because test1 gets it from
+* its settings file.
+*/
+void TestQmlformat::multipleSettingsFiles()
+{
+    QTemporaryDir tempDir;
+    QTemporaryDir dir1(tempDir.path() + "/dir1");
+    QTemporaryDir dir2(tempDir.path() + "/dir2");
+    const QString qmlformat1Ini = dir1.path() + "/.qmlformat.ini";
+    const QString test1Qml = dir1.path() + "/test.qml";
+    const QString test2Qml = dir2.path() + "/test.qml";
+
+    QFile::copy(testFile("iniFiles/dummySettingsFile.ini"), qmlformat1Ini);
+    QQmlFormatSettings settings("qmlformat");
+    QQmlFormatOptions options =
+            QQmlFormatOptions::buildCommandLineOptions(QStringList{ m_qmlformatPath });
+    auto test1Options = options.optionsForFile(test1Qml, &settings);
+    auto test2Options = options.optionsForFile(test2Qml, &settings);
+
+    QCOMPARE(test1Options.tabsEnabled(), test2Options.tabsEnabled());
+    QCOMPARE_NE(test1Options.indentWidth(), test2Options.indentWidth());
+    QCOMPARE(test1Options.maxColumnWidth(), test2Options.maxColumnWidth());
+    QCOMPARE(test1Options.normalizeEnabled(), test2Options.normalizeEnabled());
+    QCOMPARE(test1Options.newline(), test2Options.newline());
+    QCOMPARE(test1Options.objectsSpacing(), test2Options.objectsSpacing());
+    QCOMPARE(test1Options.functionsSpacing(), test2Options.functionsSpacing());
+}
+
 QString TestQmlformat::runQmlformat(const QString &fileToFormat, QStringList args,
                                     bool shouldSucceed, RunOption rOptions, QStringView ext)
 {
@@ -781,7 +1009,7 @@ QString TestQmlformat::formatInMemory(const QString &fileToFormat, bool *didSucc
     env->loadPendingDependencies();
     MutableDomItem myFile = tFile.field(Fields::currentItem);
 
-    bool writtenOut;
+    bool writtenOut = false;
     QString resultStr;
     if (myFile.field(Fields::isValid).value().toBool()) {
         WriteOutChecks checks = extraChecks;

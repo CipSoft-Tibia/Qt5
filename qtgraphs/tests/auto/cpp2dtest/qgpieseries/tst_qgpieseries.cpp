@@ -105,11 +105,11 @@ void tst_qgpieseries::properties()
 
     m_series->setHoleSize(0.8);
     QCOMPARE(m_series->holeSize(), 0.8);
-    QCOMPARE(m_series->pieSize(), 0.8);
+    QCOMPARE(m_series->pieSize(), 0.7);
 
     m_series->setPieSize(0.4);
     QCOMPARE(m_series->pieSize(), 0.4);
-    QCOMPARE(m_series->holeSize(), 0.4);
+    QCOMPARE(m_series->holeSize(), 0.8);
 
     m_series->setStartAngle(0);
     m_series->setStartAngle(-180);
@@ -155,7 +155,7 @@ void tst_qgpieseries::properties()
 
 void tst_qgpieseries::append()
 {
-    QSignalSpy addedSpy(m_series, SIGNAL(added(QList<QPieSlice *>)));
+    QSignalSpy addedSpy(m_series, SIGNAL(added(QList<QPieSlice*>)));
 
     // append pointer
     QPieSlice *slice1 = 0;
@@ -220,7 +220,7 @@ void tst_qgpieseries::append()
 
 void tst_qgpieseries::insert()
 {
-    QSignalSpy addedSpy(m_series, SIGNAL(added(QList<QPieSlice *>)));
+    QSignalSpy addedSpy(m_series, SIGNAL(added(QList<QPieSlice*>)));
 
     // insert one slice
     QPieSlice *slice1 = 0;
@@ -271,7 +271,7 @@ void tst_qgpieseries::insert()
 
 void tst_qgpieseries::remove()
 {
-    QSignalSpy removedSpy(m_series, SIGNAL(removed(QList<QPieSlice *>)));
+    QSignalSpy removedSpy(m_series, SIGNAL(removed(QList<QPieSlice*>)));
 
     // add some slices
     QPieSlice *slice1 = m_series->append("slice 1", 1);
@@ -336,8 +336,8 @@ void tst_qgpieseries::replace()
 {
     QVERIFY(m_series);
 
-    QSignalSpy removedSpy(m_series, SIGNAL(removed(QList<QPieSlice *>)));
-    QSignalSpy replacedSpy(m_series, SIGNAL(replaced(QList<QPieSlice *>)));
+    QSignalSpy removedSpy(m_series, SIGNAL(removed(QList<QPieSlice*>)));
+    QSignalSpy replacedSpy(m_series, SIGNAL(replaced(QList<QPieSlice*>)));
 
     QPieSeries series2;
     auto slice1 = new QPieSlice("slice 1", 1);
@@ -434,7 +434,7 @@ void tst_qgpieseries::replace()
 
 void tst_qgpieseries::take()
 {
-    QSignalSpy removedSpy(m_series, SIGNAL(removed(QList<QPieSlice *>)));
+    QSignalSpy removedSpy(m_series, SIGNAL(removed(QList<QPieSlice*>)));
 
     // add some slices
     QPieSlice *slice1 = m_series->append("slice 1", 1);

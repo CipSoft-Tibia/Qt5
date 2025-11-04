@@ -10,17 +10,19 @@
 #include <concepts>
 #include <ostream>
 #include <string>
+#include <string_view>
 #include <type_traits>
 #include <utility>
 #include <vector>
 
 #include "base/check.h"
+#include "base/location.h"
 #include "base/notreached.h"
-#include "base/strings/string_piece.h"
 #include "gin/gin_export.h"
 #include "v8/include/v8-container.h"
 #include "v8/include/v8-forward.h"
 #include "v8/include/v8-isolate.h"
+#include "v8/include/v8-source-location.h"
 
 namespace base {
 class TimeTicks;
@@ -117,11 +119,11 @@ struct GIN_EXPORT Converter<double> {
                      double* out);
 };
 
-template<>
-struct GIN_EXPORT Converter<base::StringPiece> {
+template <>
+struct GIN_EXPORT Converter<std::string_view> {
   // This crashes when val.size() > v8::String::kMaxLength.
   static v8::Local<v8::Value> ToV8(v8::Isolate* isolate,
-                                    const base::StringPiece& val);
+                                   const std::string_view& val);
   // No conversion out is possible because StringPiece does not contain storage.
 };
 
@@ -224,7 +226,8 @@ struct Converter<std::vector<T> > {
       if (!result->CreateDataProperty(context, i, element)
                .To(&property_created) ||
           !property_created) {
-        NOTREACHED() << "CreateDataProperty should always succeed here.";
+        NOTREACHED_IN_MIGRATION()
+            << "CreateDataProperty should always succeed here.";
       }
     }
     return result;
@@ -274,7 +277,8 @@ struct Converter<v8::LocalVector<T>> {
       if (!result->CreateDataProperty(context, i, element)
                .To(&property_created) ||
           !property_created) {
-        NOTREACHED() << "CreateDataProperty should always succeed here.";
+        NOTREACHED_IN_MIGRATION()
+            << "CreateDataProperty should always succeed here.";
       }
     }
     return result;
@@ -331,17 +335,19 @@ bool TryConvertToV8(v8::Isolate* isolate,
 // This crashes when input.size() > v8::String::kMaxLength.
 GIN_EXPORT inline v8::Local<v8::String> StringToV8(
     v8::Isolate* isolate,
-    const base::StringPiece& input) {
+    const std::string_view& input) {
   return ConvertToV8(isolate, input).As<v8::String>();
 }
 
 // This crashes when input.size() > v8::String::kMaxLength.
 GIN_EXPORT v8::Local<v8::String> StringToSymbol(v8::Isolate* isolate,
-                                                 const base::StringPiece& val);
+                                                const std::string_view& val);
 
 // This crashes when input.size() > v8::String::kMaxLength.
 GIN_EXPORT v8::Local<v8::String> StringToSymbol(v8::Isolate* isolate,
-                                                const base::StringPiece16& val);
+                                                const std::u16string_view& val);
+
+GIN_EXPORT base::Location V8ToBaseLocation(const v8::SourceLocation& location);
 
 template<typename T>
 bool ConvertFromV8(v8::Isolate* isolate, v8::Local<v8::Value> input,

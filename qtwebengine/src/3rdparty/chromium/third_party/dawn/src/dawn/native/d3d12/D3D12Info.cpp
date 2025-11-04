@@ -86,23 +86,20 @@ ResultOrError<D3D12DeviceInfo> GatherDeviceInfo(const PhysicalDevice& physicalDe
         // featureOptions4.MSAA64KBAlignedTextureSupported indicates whether 64KB-aligned MSAA
         // textures are supported.
         info.use64KBAlignedMSAATexture = featureOptions4.MSAA64KBAlignedTextureSupported;
+
+        // To support shader f16 feature, both featureOptions4.Native16BitShaderOpsSupported and
+        // using shader model version >= 6.2 are required.
+        info.supportsNative16BitShaderOps = featureOptions4.Native16BitShaderOpsSupported;
     }
 
-    // Windows builds 1809 and above can use the D3D12 render pass API. If we query
-    // CheckFeatureSupport for D3D12_FEATURE_D3D12_OPTIONS5 successfully, then we can use
-    // the render pass API.
+    // Per https://microsoft.github.io/DirectX-Specs/d3d/RenderPasses.html#checking-for-support,
+    // render passes on Windows originally shipped in an incomplete form that drivers could not take
+    // advantage of. The feature has been repaired now but to detect whether you're getting the
+    // fixed version, you need to query for the D3D12_FEATURE_DATA_D3D12_OPTIONS18 structure and
+    // check the RenderPassesValid field inside. Until we upgrade Dawn to use a version of the
+    // header file with the structure, we force render passes to be disabled. See
+    // https://issues.chromium.org/issues/348202695 for additional information.
     info.supportsRenderPass = false;
-    D3D12_FEATURE_DATA_D3D12_OPTIONS5 featureOptions5 = {};
-    if (SUCCEEDED(physicalDevice.GetDevice()->CheckFeatureSupport(
-            D3D12_FEATURE_D3D12_OPTIONS5, &featureOptions5, sizeof(featureOptions5)))) {
-        // Performance regressions been observed when using a render pass on Intel graphics
-        // with RENDER_PASS_TIER_1 available, so fall back to a software emulated render
-        // pass on these platforms.
-        if (featureOptions5.RenderPassesTier < D3D12_RENDER_PASS_TIER_1 ||
-            !gpu_info::IsIntel(physicalDevice.GetVendorId())) {
-            info.supportsRenderPass = true;
-        }
-    }
 
     // D3D12_HEAP_FLAG_CREATE_NOT_ZEROED is available anytime that ID3D12Device8 is exposed, or a
     // check for D3D12_FEATURE_D3D12_OPTIONS7 succeeds.
@@ -155,23 +152,7 @@ ResultOrError<D3D12DeviceInfo> GatherDeviceInfo(const PhysicalDevice& physicalDe
 
     DAWN_ASSERT(shaderModelMajor < 10);
     DAWN_ASSERT(shaderModelMinor < 10);
-    info.shaderModel = 10 * shaderModelMajor + shaderModelMinor;
-
-    // Profiles are always <stage>s_<minor>_<major> so we build the s_<minor>_major and add
-    // it to each of the stage's suffix.
-    std::wstring profileSuffix = L"s_M_n";
-    profileSuffix[2] = wchar_t('0' + shaderModelMajor);
-    profileSuffix[4] = wchar_t('0' + shaderModelMinor);
-
-    info.shaderProfiles[SingleShaderStage::Vertex] = L"v" + profileSuffix;
-    info.shaderProfiles[SingleShaderStage::Fragment] = L"p" + profileSuffix;
-    info.shaderProfiles[SingleShaderStage::Compute] = L"c" + profileSuffix;
-
-    info.supportsShaderF16 =
-        driverShaderModel >= D3D_SHADER_MODEL_6_2 && featureOptions4.Native16BitShaderOpsSupported;
-
-    info.supportsPacked4x8IntegerDotProduct = driverShaderModel >= D3D_SHADER_MODEL_6_4;
-    info.supportsPackUnpack4x8Intrinsics = driverShaderModel >= D3D_SHADER_MODEL_6_6;
+    info.highestSupportedShaderModel = 10 * shaderModelMajor + shaderModelMinor;
 
     // Device support wave intrinsics if shader model >= SM6.0 and capabilities flag WaveOps is set.
     // https://github.com/Microsoft/DirectXShaderCompiler/wiki/Wave-Intrinsics

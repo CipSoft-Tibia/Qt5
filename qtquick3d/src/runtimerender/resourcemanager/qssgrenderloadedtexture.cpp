@@ -1,6 +1,7 @@
 // Copyright (C) 2008-2012 NVIDIA Corporation.
 // Copyright (C) 2019 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
+// Qt-Security score:critical reason:data-parser
 
 #include <QtQuick3DRuntimeRender/private/qssgrenderloadedtexture_p.h>
 #include <QtQuick3DRuntimeRender/private/qssgrendererutil_p.h>
@@ -285,7 +286,7 @@ static QImage loadImage(const QString &inPath, bool flipVertical)
 
     image.convertTo(targetFormat); // convert to a format mappable to QRhiTexture::Format
     if (flipVertical)
-        image.mirror(); // Flip vertically to the conventional Y-up orientation
+        image.flip(); // Flip vertically to the conventional Y-up orientation
     return image;
 }
 
@@ -335,6 +336,11 @@ QSSGLoadedTexture *QSSGLoadedTexture::loadCompressedImage(const QString &inPath)
             ? retval->textureFileData.glInternalFormat()
             : retval->textureFileData.glFormat();
     retval->format = fromGLtoTextureFormat(glFormat);
+
+    // SRGB8 ASTC formats are always sRGB
+    if ((retval->format.format >= QSSGRenderTextureFormat::SRGB8_Alpha8_ASTC_4x4) &&
+        (retval->format.format <= QSSGRenderTextureFormat::SRGB8_Alpha8_ASTC_12x12))
+        retval->isSRGB = true;
 
     delete reader;
     imageFile.close();

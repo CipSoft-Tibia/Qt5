@@ -51,6 +51,7 @@ enum class Attribute : uint8_t {
     kUndefined,
     kAlign,
     kBinding,
+    kBlendSrc,
     kBuiltin,
     kColor,
     kCompute,
@@ -58,7 +59,7 @@ enum class Attribute : uint8_t {
     kFragment,
     kGroup,
     kId,
-    kIndex,
+    kInputAttachmentIndex,
     kInterpolate,
     kInvariant,
     kLocation,
@@ -86,9 +87,24 @@ auto& operator<<(STREAM& out, Attribute value) {
 Attribute ParseAttribute(std::string_view str);
 
 constexpr std::string_view kAttributeStrings[] = {
-    "align",    "binding",  "builtin", "color",  "compute",        "diagnostic",
-    "fragment", "group",    "id",      "index",  "interpolate",    "invariant",
-    "location", "must_use", "size",    "vertex", "workgroup_size",
+    "align",
+    "binding",
+    "blend_src",
+    "builtin",
+    "color",
+    "compute",
+    "diagnostic",
+    "fragment",
+    "group",
+    "id",
+    "input_attachment_index",
+    "interpolate",
+    "invariant",
+    "location",
+    "must_use",
+    "size",
+    "vertex",
+    "workgroup_size",
 };
 
 }  // namespace tint::core

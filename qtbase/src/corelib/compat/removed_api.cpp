@@ -11,15 +11,9 @@ QT_USE_NAMESPACE
 
 #include "qmetatype.h"
 
-// keep in sync with version in header
 int QMetaType::id() const
 {
-    if (d_ptr) {
-        if (int id = d_ptr->typeId.loadRelaxed())
-            return id;
-        return idHelper();
-    }
-    return 0;
+    return registerHelper();
 }
 
 #endif // QT_CORE_REMOVED_SINCE(6, 1)
@@ -934,6 +928,8 @@ QUrl QUrl::fromEncoded(const QByteArray &input, ParsingMode mode)
 #endif // QT_CORE_REMOVED_SINCE(6, 7)
 
 #if QT_CORE_REMOVED_SINCE(6, 8)
+
+#if QT_CONFIG(itemmodel)
 #include "qabstractitemmodel.h"
 
 bool QPersistentModelIndex::operator<(const QPersistentModelIndex &other) const noexcept
@@ -955,6 +951,8 @@ bool QPersistentModelIndex::operator!=(const QModelIndex &other) const noexcept
 {
     return !comparesEqual(*this, other);
 }
+
+#endif // QT_CONFIG(itemmodel)
 
 #include "qbitarray.h" // inlined API
 
@@ -1167,6 +1165,7 @@ auto QStringConverter::encodingForName(const char *name) noexcept -> std::option
 #endif
 
 #include "qtimer.h" // inlined API
+                    // removed inline API (MSVC)
 
 void QTimer::singleShot(std::chrono::milliseconds interval, Qt::TimerType timerType,
                         const QObject *receiver, const char *member)
@@ -1206,6 +1205,18 @@ bool QUrlQuery::operator==(const QUrlQuery &other) const
     return comparesEqual(*this, other);
 }
 
+#include "qbasictimer.h"
+
+void QBasicTimer::start(std::chrono::milliseconds duration, QObject *object)
+{
+    start(std::chrono::nanoseconds(duration), object);
+}
+
+void QBasicTimer::start(std::chrono::milliseconds duration, Qt::TimerType timerType, QObject *obj)
+{
+    start(std::chrono::nanoseconds(duration), timerType, obj);
+}
+
 #include "quuid.h"
 
 bool QUuid::operator<(const QUuid &other) const noexcept
@@ -1237,3 +1248,139 @@ QUuid QUuid::createUuidV5(const QUuid &ns, const QByteArray &baseData) noexcept
 // order sections alphabetically to reduce chances of merge conflicts
 
 #endif // QT_CORE_REMOVED_SINCE(6, 8)
+
+#if QT_CORE_REMOVED_SINCE(6, 9)
+
+#include "qchar.h" // inlined API
+
+
+#include "qexceptionhandling.h"
+
+Q_NORETURN void qTerminate() noexcept
+{
+    std::terminate();
+}
+
+
+#include "qmetatype.h"
+
+bool QMetaType::isRegistered() const
+{
+    return isRegistered(QT6_CALL_NEW_OVERLOAD);
+}
+
+bool QMetaType::isValid() const
+{
+    return isValid(QT6_CALL_NEW_OVERLOAD);
+}
+
+
+#include "qmetaobject.h"
+
+const char *QMetaEnum::valueToKey(int value) const
+{
+    return valueToKey(quint64(uint(value)));
+}
+
+QByteArray QMetaEnum::valueToKeys(int value) const
+{
+    return valueToKeys(quint64(uint(value)));
+}
+
+
+#include "qmutex.h"
+
+#if QT_CONFIG(thread)
+void QBasicMutex::destroyInternal(QMutexPrivate *d)
+{
+    destroyInternal(static_cast<void *>(d));
+}
+#endif
+
+
+#include "qobject.h"
+
+#ifdef Q_COMPILER_MANGLES_RETURN_TYPE
+QMetaObject *QObjectData::dynamicMetaObject() const
+{
+    // ### keep in sync with the master version in qobject.cpp
+    return metaObject->toDynamicMetaObject(q_ptr);
+}
+#endif // Q_COMPILER_MANGLES_RETURN_TYPE
+
+
+#include "qstring.h"
+
+QString QString::arg(qlonglong a, int fieldWidth, int base, QChar fillChar) const
+{
+    return arg_impl(a, fieldWidth, base, fillChar);
+}
+
+QString QString::arg(qulonglong a, int fieldWidth, int base, QChar fillChar) const
+{
+    return arg_impl(a, fieldWidth, base, fillChar);
+}
+
+QString QString::arg(double a, int fieldWidth, char format, int precision, QChar fillChar) const
+{
+    return arg_impl(a, fieldWidth, format, precision, fillChar);
+}
+
+QString QString::arg(char a, int fieldWidth, QChar fillChar) const
+{
+    return arg_impl(QAnyStringView(a), fieldWidth, fillChar);
+}
+
+QString QString::arg(QChar a, int fieldWidth, QChar fillChar) const
+{
+    return arg_impl(QAnyStringView{a}, fieldWidth, fillChar);
+}
+
+QString QString::arg(const QString &a, int fieldWidth, QChar fillChar) const
+{
+    return arg_impl(qToAnyStringViewIgnoringNull(a), fieldWidth, fillChar);
+}
+
+QString QString::arg(QStringView a, int fieldWidth, QChar fillChar) const
+{
+    return arg_impl(QAnyStringView(a), fieldWidth, fillChar);
+}
+
+QString QString::arg(QLatin1StringView a, int fieldWidth, QChar fillChar) const
+{
+    return arg(QAnyStringView(a), fieldWidth, fillChar);
+}
+
+QString QtPrivate::argToQString(QStringView pattern, size_t n, const ArgBase **args)
+{
+    return argToQString(QAnyStringView{pattern}, n, args);
+}
+
+QString QtPrivate::argToQString(QLatin1StringView pattern, size_t n, const ArgBase **args)
+{
+    return argToQString(QAnyStringView{pattern}, n, args);
+}
+
+
+#include "quuid.h"
+
+bool QUuid::isNull() const noexcept
+{
+    return isNull(QT6_CALL_NEW_OVERLOAD);
+}
+
+QUuid::Variant QUuid::variant() const noexcept
+{
+    return variant(QT6_CALL_NEW_OVERLOAD);
+}
+
+QUuid::Version QUuid::version() const noexcept
+{
+    return version(QT6_CALL_NEW_OVERLOAD);
+}
+
+// #include "qotherheader.h"
+// // implement removed functions from qotherheader.h
+// order sections alphabetically to reduce chances of merge conflicts
+
+#endif // QT_CORE_REMOVED_SINCE(6, 9)

@@ -84,16 +84,16 @@ uint16_t BluetoothLowEnergyDeviceMac::GetDeviceID() const {
 }
 
 uint16_t BluetoothLowEnergyDeviceMac::GetAppearance() const {
-  // TODO(crbug.com/588083): Implementing GetAppearance()
+  // TODO(crbug.com/41240161): Implementing GetAppearance()
   // on mac, win, and android platforms for chrome
   NOTIMPLEMENTED();
   return 0;
 }
 
-absl::optional<std::string> BluetoothLowEnergyDeviceMac::GetName() const {
+std::optional<std::string> BluetoothLowEnergyDeviceMac::GetName() const {
   if ([peripheral_ name])
     return base::SysNSStringToUTF8([peripheral_ name]);
-  return absl::nullopt;
+  return std::nullopt;
 }
 
 bool BluetoothLowEnergyDeviceMac::IsPaired() const {
@@ -201,7 +201,7 @@ bool BluetoothLowEnergyDeviceMac::IsLowEnergyDevice() {
 }
 
 void BluetoothLowEnergyDeviceMac::CreateGattConnectionImpl(
-    absl::optional<BluetoothUUID> serivce_uuid) {
+    std::optional<BluetoothUUID> serivce_uuid) {
   if (!IsGattConnected()) {
     GetLowEnergyAdapter()->CreateGattConnection(this);
   }
@@ -409,16 +409,16 @@ std::string BluetoothLowEnergyDeviceMac::GetPeripheralHashAddress(
 std::string BluetoothLowEnergyDeviceMac::GetPeripheralHashAddress(
     std::string_view device_identifier) {
   const size_t kCanonicalAddressNumberOfBytes = 6;
-  char raw[kCanonicalAddressNumberOfBytes];
+  uint8_t raw[kCanonicalAddressNumberOfBytes];
   crypto::SHA256HashString(device_identifier, raw, sizeof(raw));
-  return CanonicalizeBluetoothAddress(base::HexEncode(raw, sizeof(raw)));
+  return CanonicalizeBluetoothAddress(base::HexEncode(raw));
 }
 
 void BluetoothLowEnergyDeviceMac::DidConnectPeripheral() {
   DVLOG(1) << *this << ": GATT connected.";
   if (!connected_) {
     connected_ = true;
-    DidConnectGatt(/*error_code=*/absl::nullopt);
+    DidConnectGatt(/*error_code=*/std::nullopt);
     DiscoverPrimaryServices();
   } else {
     // -[<CBCentralManagerDelegate> centralManager:didConnectPeripheral:] can be
@@ -537,9 +537,9 @@ void BluetoothLowEnergyDeviceMac::DidDisconnectPeripheral(NSError* error) {
 
 std::ostream& operator<<(std::ostream& out,
                          const BluetoothLowEnergyDeviceMac& device) {
-  // TODO(crbug.com/703878): Should use
+  // TODO(crbug.com/40511884): Should use
   // BluetoothLowEnergyDeviceMac::GetNameForDisplay() instead.
-  absl::optional<std::string> name = device.GetName();
+  std::optional<std::string> name = device.GetName();
   const char* is_gatt_connected =
       device.IsGattConnected() ? "GATT connected" : "GATT disconnected";
   return out << "<BluetoothLowEnergyDeviceMac " << device.GetAddress() << "/"

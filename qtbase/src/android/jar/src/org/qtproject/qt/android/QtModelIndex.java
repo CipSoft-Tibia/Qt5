@@ -5,7 +5,7 @@ package org.qtproject.qt.android;
 
 /**
  * Represents an index in a custom item model, similar to
- * <a href="https://doc.qt.io/qt-6/https://doc.qt.io/qt-6/qmodelindex.html">QModelindex</a>
+ * <a href="https://doc.qt.io/qt-6/qmodelindex.html">QModelindex</a>
  * in C++.
  */
 public class QtModelIndex
@@ -52,7 +52,7 @@ public class QtModelIndex
      */
     public int row() { return (int)m_privateData[0]; }
 
-    private long[] m_privateData = { -1 /*row*/, -1 /*column*/, 0 /*internalId*/,
+    private final long[] m_privateData = { -1 /*row*/, -1 /*column*/, 0 /*internalId*/,
                                      0 /*modelReference*/ };
     private QtModelIndex m_parent = null;
     private QtModelIndex(int row, int column, long internalId, long modelReference)
@@ -77,5 +77,5 @@ public class QtModelIndex
         m_privateData[1] = -1;
         m_privateData[2] = 0;
         m_privateData[3] = 0;
-    };
+    }
 }

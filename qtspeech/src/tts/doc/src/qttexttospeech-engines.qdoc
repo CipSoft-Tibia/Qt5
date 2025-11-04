@@ -59,20 +59,6 @@
 
     The Darwin engine does not support any engine specific parameters.
 
-    \section1 macOS
-
-    The "macos" engine uses the \l{https://developer.apple.com/documentation/appkit/nsspeechsynthesizer?language=objc}
-    {NSSpeechDispatcher} framework from AppKit. It is only available on macOS systems, but
-    works out of the box on macOS 10.14. The number of available voices is limited compared
-    to the iOS engine.
-
-    The macOS engine does not support any engine specific parameters.
-
-    \note The "macos" engine does not have the \l{QTextToSpeech::Capabilities}{Synthesize}
-    capability. The "darwin" engine is the default and preferred engine on all macOS and
-    iOS systems supported by Qt. The macOS engine should not be used anymore and will be
-    removed in Qt 6.8.
-
     \section1 Android
 
     The "android" engine is the only engine available on the Android platform. It uses the

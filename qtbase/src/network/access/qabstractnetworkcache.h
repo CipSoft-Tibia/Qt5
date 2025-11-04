@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QABSTRACTNETWORKCACHE_H
 #define QABSTRACTNETWORKCACHE_H
@@ -7,8 +8,9 @@
 #include <QtNetwork/qtnetworkglobal.h>
 #include <QtCore/qobject.h>
 #include <QtCore/qshareddata.h>
-#include <QtCore/qpair.h>
 #include <QtNetwork/qnetworkrequest.h>
+
+#include <utility>
 
 QT_BEGIN_NAMESPACE
 
@@ -22,7 +24,7 @@ class Q_NETWORK_EXPORT QNetworkCacheMetaData
 {
 
 public:
-    typedef QPair<QByteArray, QByteArray> RawHeader;
+    typedef std::pair<QByteArray, QByteArray> RawHeader;
     typedef QList<RawHeader> RawHeaderList;
     typedef QHash<QNetworkRequest::Attribute, QVariant> AttributesMap;
 

@@ -30,10 +30,7 @@ class MyChildPlugin : public QQmlExtensionPlugin
     Q_PLUGIN_METADATA(IID QQmlExtensionInterface_iid)
 
 public:
-    MyChildPlugin()
-    {
-        qWarning("child plugin created");
-    }
+    MyChildPlugin() { qWarning("child plugin created"); }
 
     void registerTypes(const char *uri) override
     {

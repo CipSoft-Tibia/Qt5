@@ -28,6 +28,8 @@ class QLineSeries;
 class QScatterSeries;
 class QSplineSeries;
 class AxisRenderer;
+class QQuickTapHandler;
+class QQuickDragHandler;
 struct QLegendData;
 
 class PointRenderer : public QQuickItem
@@ -41,9 +43,6 @@ public:
     void afterPolish(QList<QAbstractSeries *> &cleanupSeries);
     void updateSeries(QXYSeries *series);
     void afterUpdate(QList<QAbstractSeries *> &cleanupSeries);
-    bool handleMouseMove(QMouseEvent *event);
-    bool handleMousePress(QMouseEvent *event);
-    bool handleMouseRelease(QMouseEvent *event);
     bool handleHoverMove(QHoverEvent *event);
 
 private:
@@ -53,6 +52,7 @@ private:
         QQuickShapePath *shapePath = nullptr;
         QPainterPath painterPath;
         QList<QQuickItem *> markers;
+        QList<QQuickDragHandler *> dragHandlers;
         QQmlComponent *currentMarker = nullptr;
         QQmlComponent *previousMarker = nullptr;
         QList<QRectF> rects;
@@ -68,9 +68,7 @@ private:
     qsizetype m_currentColorIndex = 0;
 
     // Point drag variables
-    bool m_pointPressed = false;
-    bool m_pointDragging = false;
-    QPoint m_pressStart;
+    QPoint m_previousDelta;
     PointGroup *m_pressedGroup = nullptr;
     qsizetype m_pressedPointIndex = 0;
 
@@ -81,6 +79,8 @@ private:
     qreal m_horizontalOffset = 0;
     qreal m_areaWidth = 0;
     qreal m_areaHeight = 0;
+
+    QQuickTapHandler *m_tapHandler = nullptr;
 
     qreal defaultSize(QXYSeries *series = nullptr);
 
@@ -102,9 +102,19 @@ private:
     void hidePointDelegates(QXYSeries *series);
     void updateLegendData(QXYSeries *series, QLegendData &legendData);
 
+    void onSingleTapped(QEventPoint eventPoint, Qt::MouseButton button);
+    void onDoubleTapped(QEventPoint eventPoint, Qt::MouseButton button);
+    void onPressedChanged();
+
+#ifdef USE_SCATTERGRAPH
     void updateScatterSeries(QScatterSeries *scatter, QLegendData &legendData);
+#endif
+#ifdef USE_LINEGRAPH
     void updateLineSeries(QLineSeries *line, QLegendData &legendData);
+#endif
+#ifdef USE_SPLINEGRAPH
     void updateSplineSeries(QSplineSeries *spline, QLegendData &legendData);
+#endif
 };
 
 QT_END_NAMESPACE

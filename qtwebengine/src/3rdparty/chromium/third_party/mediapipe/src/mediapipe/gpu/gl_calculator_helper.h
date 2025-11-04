@@ -176,6 +176,10 @@ class GlCalculatorHelper {
   // ImageFrame.
   GlTexture CreateDestinationTexture(const ImageFrame& image_frame);
 
+  // Creates the framebuffer for rendering. Use this when the calculator
+  // needs a managed framebuffer but manages its own textures.
+  void CreateFramebuffer();
+
   // The OpenGL name of the output framebuffer.
   GLuint framebuffer() const;
 
@@ -184,6 +188,8 @@ class GlCalculatorHelper {
   void BindFramebuffer(const GlTexture& dst);
 
   GlContext& GetGlContext() const { return *gl_context_; }
+
+  std::shared_ptr<GlContext> GetSharedGlContext() const { return gl_context_; }
 
   GlVersion GetGlVersion() const { return gl_context_->GetGlVersion(); }
 
@@ -199,9 +205,6 @@ class GlCalculatorHelper {
   // Makes a GpuBuffer accessible as a texture in the GL context.
   GlTexture MapGpuBuffer(const GpuBuffer& gpu_buffer, GlTextureView view);
 
-  // Create the framebuffer for rendering.
-  void CreateFramebuffer();
-
   std::shared_ptr<GlContext> gl_context_;
 
   GLuint framebuffer_ = 0;
@@ -210,8 +213,8 @@ class GlCalculatorHelper {
 };
 
 // Represents an OpenGL texture, and is a 'view' into the memory pool.
-// It's more like a GlTextureLock, because it's main purpose (in conjunction
-// with the helper): to manage GL sync points in the gl command queue.
+// It's more like a GlTextureLock, because its main purpose (in conjunction
+// with the helper) is: to manage GL sync points in the gl command queue.
 //
 // This class should be the main way to interface with GL memory within a single
 // calculator. This is the preferred way to utilize the memory pool inside of
@@ -259,15 +262,15 @@ class GlTexture {
 // same thing.
 template <typename T>
 ABSL_DEPRECATED("Only for legacy calculators")
-auto TagOrIndex(const T& collection, const std::string& tag, int index)
-    -> decltype(collection.Tag(tag)) {
+auto TagOrIndex(const T& collection, const std::string& tag,
+                int index) -> decltype(collection.Tag(tag)) {
   return collection.UsesTags() ? collection.Tag(tag) : collection.Index(index);
 }
 
 template <typename T>
 ABSL_DEPRECATED("Only for legacy calculators")
-auto TagOrIndex(T* collection, const std::string& tag, int index)
-    -> decltype(collection->Tag(tag)) {
+auto TagOrIndex(T* collection, const std::string& tag,
+                int index) -> decltype(collection->Tag(tag)) {
   return collection->UsesTags() ? collection->Tag(tag)
                                 : collection->Index(index);
 }

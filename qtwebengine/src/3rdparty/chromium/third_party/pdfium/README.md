@@ -78,7 +78,7 @@ support code only works if one follows this convention.
 A typical `<directory>` name is `out/Debug`.
 
 ```
-use_goma = false  # Googlers only. Ensure goma is installed and running first.
+use_remoteexec = false # Approved users only.  Do necessary setup & authentication first.
 is_debug = true  # Enable debugging features.
 
 # Set true to enable experimental Skia backend.
@@ -93,7 +93,7 @@ pdf_is_standalone = true  # Set for a non-embedded build.
 is_component_build = false # Disable component build (Though it should work)
 ```
 
-For sample applications like `pdfium_test` to build, one must set
+For test applications like `pdfium_test` to build, one must set
 `pdf_is_standalone = true`.
 
 By default, the entire project builds with C++20.
@@ -110,11 +110,12 @@ use\_sysroot as indicated above.
 
 ## Building the code
 
-You can build the sample program by running: `ninja -C <directory> pdfium_test`
+You can build the standalone test program by running:
+`ninja -C <directory> pdfium_test`
 You can build the entire product (which includes a few unit tests) by running:
-`ninja -C <directory> pdfium_all`.
+`ninja -C <directory> pdfium_all`
 
-## Running the sample program
+## Running the standalone test program
 
 The pdfium\_test program supports reading, parsing, and rasterizing the pages of
 a .pdf file to .ppm or .png output image files (Windows supports two other

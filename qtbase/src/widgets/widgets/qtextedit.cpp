@@ -21,7 +21,6 @@
 #include <qmenu.h>
 #endif
 #include <qstyle.h>
-#include <qtimer.h>
 #if QT_CONFIG(accessibility)
 #include <qaccessible.h>
 #endif
@@ -713,7 +712,14 @@ bool QTextEdit::fontItalic() const
 QColor QTextEdit::textColor() const
 {
     Q_D(const QTextEdit);
-    return d->control->textCursor().charFormat().foreground().color();
+
+    const auto fg = d->control->textCursor().charFormat().foreground();
+    if (fg.style() == Qt::NoBrush) {
+        const auto context = d->control->getPaintContext(const_cast<QTextEdit *>(this));
+        return context.palette.color(QPalette::Text);
+    }
+
+    return fg.color();
 }
 
 /*!
@@ -1313,8 +1319,7 @@ void QTextEdit::keyPressEvent(QKeyEvent *e)
             break;
         case Qt::Key_Back:
         case Qt::Key_No:
-            if (!QApplicationPrivate::keypadNavigationEnabled()
-                    || (QApplicationPrivate::keypadNavigationEnabled() && !hasEditFocus())) {
+            if (!QApplicationPrivate::keypadNavigationEnabled() || !hasEditFocus()) {
                 e->ignore();
                 return;
             }

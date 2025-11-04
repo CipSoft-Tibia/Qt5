@@ -28,6 +28,7 @@
 #ifndef SRC_DAWN_NATIVE_TEXTURE_H_
 #define SRC_DAWN_NATIVE_TEXTURE_H_
 
+#include <string>
 #include <vector>
 
 #include "dawn/common/WeakRef.h"
@@ -39,6 +40,7 @@
 #include "dawn/native/ObjectBase.h"
 #include "dawn/native/SharedTextureMemory.h"
 #include "dawn/native/Subresource.h"
+#include "partition_alloc/pointers/raw_ref.h"
 
 #include "dawn/native/dawn_platform.h"
 
@@ -46,6 +48,7 @@ namespace dawn::native {
 
 enum class AllowMultiPlanarTextureFormat {
     No,
+    SingleLayerOnly,
     Yes,
 };
 
@@ -56,7 +59,7 @@ MaybeError ValidateTextureDescriptor(
     std::optional<wgpu::TextureUsage> allowedSharedTextureMemoryUsage = std::nullopt);
 MaybeError ValidateTextureViewDescriptor(const DeviceBase* device,
                                          const TextureBase* texture,
-                                         const TextureViewDescriptor* descriptor);
+                                         const UnpackedPtr<TextureViewDescriptor>& descriptor);
 ResultOrError<TextureViewDescriptor> GetTextureViewDescriptorWithDefaults(
     const TextureBase* texture,
     const TextureViewDescriptor* descriptor);
@@ -76,13 +79,14 @@ static constexpr wgpu::TextureUsage kShaderTextureUsages =
     wgpu::TextureUsage::TextureBinding | kReadOnlyStorageTexture |
     wgpu::TextureUsage::StorageBinding | kWriteOnlyStorageTexture;
 
-class TextureBase : public ApiObjectBase {
+class TextureBase : public SharedResource {
   public:
     enum class ClearValue { Zero, NonZero };
 
     static Ref<TextureBase> MakeError(DeviceBase* device, const TextureDescriptor* descriptor);
 
     ObjectType GetType() const override;
+    void FormatLabel(absl::FormatSink* s) const override;
 
     wgpu::TextureDimension GetDimension() const;
     wgpu::TextureViewDimension GetCompatibilityTextureBindingViewDimension() const;
@@ -109,9 +113,15 @@ class TextureBase : public ApiObjectBase {
     wgpu::TextureUsage GetUsage() const;
     wgpu::TextureUsage GetInternalUsage() const;
 
-    bool IsDestroyed() const;
-    void SetHasAccess(bool hasAccess);
-    bool HasAccess() const;
+    // SharedResource implementation
+    ExecutionSerial OnEndAccess() override;
+    void OnBeginAccess() override;
+    bool HasAccess() const override;
+    bool IsDestroyed() const override;
+    bool IsInitialized() const override;
+    void SetInitialized(bool initialized) override;
+
+    bool IsReadOnly() const;
     uint32_t GetSubresourceIndex(uint32_t mipLevel, uint32_t arraySlice, Aspect aspect) const;
     bool IsSubresourceContentInitialized(const SubresourceRange& range) const;
     void SetIsSubresourceContentInitialized(bool isInitialized, const SubresourceRange& range);
@@ -119,7 +129,6 @@ class TextureBase : public ApiObjectBase {
     MaybeError ValidateCanUseInSubmitNow() const;
 
     bool IsMultisampledTexture() const;
-    bool IsReadOnly() const;
 
     // Returns true if the size covers the whole subresource.
     bool CoversFullSubresource(uint32_t mipLevel, Aspect aspect, const Extent3D& size) const;
@@ -146,7 +155,9 @@ class TextureBase : public ApiObjectBase {
 
     bool IsImplicitMSAARenderTextureViewSupported() const;
 
-    SharedTextureMemoryContents* GetSharedTextureMemoryContents() const;
+    void DumpMemoryStatistics(dawn::native::MemoryDump* dump, const char* prefix) const;
+
+    uint64_t ComputeEstimatedByteSize() const;
 
     // Dawn API
     TextureViewBase* APICreateView(const TextureViewDescriptor* descriptor = nullptr);
@@ -167,9 +178,9 @@ class TextureBase : public ApiObjectBase {
 
     void DestroyImpl() override;
     void AddInternalUsage(wgpu::TextureUsage usage);
+    void SetSharedResourceMemoryContentsForTesting(Ref<SharedResourceMemoryContents> contents);
 
-    // The shared texture memory state the texture was created from. May be null.
-    Ref<SharedTextureMemoryContents> mSharedTextureMemoryContents;
+    ExecutionSerial mLastSharedTextureMemoryUsageSerial{kBeginningOfGPUTime};
 
   private:
     struct TextureState {
@@ -183,10 +194,13 @@ class TextureBase : public ApiObjectBase {
 
     TextureBase(DeviceBase* device, const TextureDescriptor* descriptor, ObjectBase::ErrorTag tag);
 
+    std::string GetSizeLabel() const;
+
     wgpu::TextureDimension mDimension;
-    wgpu::TextureViewDimension
-        mCompatibilityTextureBindingViewDimension;  // only used for compatibility mode
-    const Format& mFormat;
+    // Only used for compatibility mode
+    wgpu::TextureViewDimension mCompatibilityTextureBindingViewDimension =
+        wgpu::TextureViewDimension::Undefined;
+    const raw_ref<const Format> mFormat;
     FormatSet mViewFormats;
     Extent3D mBaseSize;
     uint32_t mMipLevelCount;
@@ -206,7 +220,7 @@ class TextureBase : public ApiObjectBase {
 
 class TextureViewBase : public ApiObjectBase {
   public:
-    TextureViewBase(TextureBase* texture, const TextureViewDescriptor* descriptor);
+    TextureViewBase(TextureBase* texture, const UnpackedPtr<TextureViewDescriptor>& descriptor);
     ~TextureViewBase() override;
 
     static Ref<TextureViewBase> MakeError(DeviceBase* device, const char* label = nullptr);
@@ -239,7 +253,7 @@ class TextureViewBase : public ApiObjectBase {
 
     Ref<TextureBase> mTexture;
 
-    const Format& mFormat;
+    const raw_ref<const Format> mFormat;
     wgpu::TextureViewDimension mDimension;
     SubresourceRange mRange;
 };

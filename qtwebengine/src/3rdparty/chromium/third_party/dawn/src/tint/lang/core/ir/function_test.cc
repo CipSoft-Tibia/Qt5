@@ -27,7 +27,6 @@
 
 #include <string>
 
-#include "gtest/gtest-spi.h"
 #include "src/tint/lang/core/ir/function.h"
 #include "src/tint/lang/core/ir/ir_helper_test.h"
 
@@ -36,19 +35,20 @@ namespace {
 
 using namespace tint::core::number_suffixes;  // NOLINT
 using IR_FunctionTest = IRTestHelper;
+using IR_FunctionDeathTest = IR_FunctionTest;
 
-TEST_F(IR_FunctionTest, Fail_NullReturnType) {
-    EXPECT_FATAL_FAILURE(
+TEST_F(IR_FunctionDeathTest, Fail_NullReturnType) {
+    EXPECT_DEATH_IF_SUPPORTED(
         {
             Module mod;
             Builder b{mod};
             b.Function("my_func", nullptr);
         },
-        "");
+        "internal compiler error");
 }
 
-TEST_F(IR_FunctionTest, Fail_DoubleReturnBuiltin) {
-    EXPECT_FATAL_FAILURE(
+TEST_F(IR_FunctionDeathTest, Fail_DoubleReturnBuiltin) {
+    EXPECT_DEATH_IF_SUPPORTED(
         {
             Module mod;
             Builder b{mod};
@@ -56,37 +56,38 @@ TEST_F(IR_FunctionTest, Fail_DoubleReturnBuiltin) {
             f->SetReturnBuiltin(BuiltinValue::kFragDepth);
             f->SetReturnBuiltin(BuiltinValue::kPosition);
         },
-        "");
+        "internal compiler error");
 }
 
-TEST_F(IR_FunctionTest, Fail_NullParam) {
-    EXPECT_FATAL_FAILURE(
+TEST_F(IR_FunctionDeathTest, Fail_NullParam) {
+    EXPECT_DEATH_IF_SUPPORTED(
         {
             Module mod;
             Builder b{mod};
             auto* f = b.Function("my_func", mod.Types().void_());
             f->SetParams({nullptr});
         },
-        "");
+        "internal compiler error");
 }
 
-TEST_F(IR_FunctionTest, Fail_NullBlock) {
-    EXPECT_FATAL_FAILURE(
+TEST_F(IR_FunctionDeathTest, Fail_NullBlock) {
+    EXPECT_DEATH_IF_SUPPORTED(
         {
             Module mod;
             Builder b{mod};
             auto* f = b.Function("my_func", mod.Types().void_());
             f->SetBlock(nullptr);
         },
-        "");
+        "internal compiler error");
 }
 
 TEST_F(IR_FunctionTest, Clone) {
     auto* f =
         b.Function("my_func", mod.Types().i32(), Function::PipelineStage::kCompute, {{2, 3, 4}});
     f->SetReturnBuiltin(BuiltinValue::kFragDepth);
-    f->SetReturnLocation(
-        1, Interpolation{core::InterpolationType::kFlat, core::InterpolationSampling::kCentroid});
+    f->SetReturnLocation(1);
+    f->SetReturnInterpolation(
+        Interpolation{core::InterpolationType::kFlat, core::InterpolationSampling::kCentroid});
     f->SetReturnInvariant(true);
 
     auto* param1 = b.FunctionParam("a", mod.Types().i32());
@@ -112,11 +113,11 @@ TEST_F(IR_FunctionTest, Clone) {
     EXPECT_TRUE(new_f->ReturnBuiltin().has_value());
     EXPECT_EQ(BuiltinValue::kFragDepth, new_f->ReturnBuiltin().value());
 
-    EXPECT_TRUE(new_f->ReturnLocation().has_value());
-    auto loc = new_f->ReturnLocation().value();
-    EXPECT_EQ(1u, loc.value);
-    EXPECT_EQ(core::InterpolationType::kFlat, loc.interpolation->type);
-    EXPECT_EQ(core::InterpolationSampling::kCentroid, loc.interpolation->sampling);
+    EXPECT_EQ(new_f->ReturnLocation(), 1u);
+    auto interp = new_f->ReturnInterpolation();
+    EXPECT_TRUE(interp.has_value());
+    EXPECT_EQ(interp->type, core::InterpolationType::kFlat);
+    EXPECT_EQ(interp->sampling, core::InterpolationSampling::kCentroid);
 
     EXPECT_TRUE(new_f->ReturnInvariant());
 
@@ -126,6 +127,12 @@ TEST_F(IR_FunctionTest, Clone) {
 
     // Cloned functions are not automatically added to the module.
     EXPECT_EQ(mod.functions.Length(), 1u);
+
+    // Check parameter ownership is correct.
+    EXPECT_EQ(param1->Function(), f);
+    EXPECT_EQ(param2->Function(), f);
+    EXPECT_EQ(new_param1->Function(), new_f);
+    EXPECT_EQ(new_param2->Function(), new_f);
 }
 
 TEST_F(IR_FunctionTest, CloneWithExits) {
@@ -136,6 +143,36 @@ TEST_F(IR_FunctionTest, CloneWithExits) {
     EXPECT_EQ(1u, new_f->Block()->Length());
     EXPECT_TRUE(new_f->Block()->Front()->Is<Return>());
     EXPECT_EQ(new_f, new_f->Block()->Front()->As<Return>()->Func());
+}
+
+TEST_F(IR_FunctionTest, Parameters) {
+    auto* f = b.Function("my_func", mod.Types().void_());
+
+    auto* param1 = b.FunctionParam("a", mod.Types().i32());
+    auto* param2 = b.FunctionParam("b", mod.Types().f32());
+    auto* param3 = b.FunctionParam("b", mod.Types().f32());
+
+    f->SetParams({param1, param2});
+    EXPECT_EQ(param1->Function(), f);
+    EXPECT_EQ(param2->Function(), f);
+    EXPECT_EQ(param3->Function(), nullptr);
+    EXPECT_EQ(param1->Index(), 0u);
+    EXPECT_EQ(param2->Index(), 1u);
+
+    f->SetParams({param1, param3});
+    EXPECT_EQ(param1->Function(), f);
+    EXPECT_EQ(param2->Function(), nullptr);
+    EXPECT_EQ(param3->Function(), f);
+    EXPECT_EQ(param1->Index(), 0u);
+    EXPECT_EQ(param3->Index(), 1u);
+
+    f->AppendParam(param2);
+    EXPECT_EQ(param1->Function(), f);
+    EXPECT_EQ(param2->Function(), f);
+    EXPECT_EQ(param3->Function(), f);
+    EXPECT_EQ(param1->Index(), 0u);
+    EXPECT_EQ(param3->Index(), 1u);
+    EXPECT_EQ(param2->Index(), 2u);
 }
 
 }  // namespace

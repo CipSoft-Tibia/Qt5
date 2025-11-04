@@ -62,11 +62,10 @@
  * Codec initializes slice-based threading with a main function
  */
 #define FF_CODEC_CAP_SLICE_THREAD_HAS_MF    (1 << 5)
-/*
- * The codec supports frame threading and has inter-frame dependencies, so it
- * uses ff_thread_report/await_progress().
+/**
+ * The decoder might make use of the ProgressFrame API.
  */
-#define FF_CODEC_CAP_ALLOCATE_PROGRESS      (1 << 6)
+#define FF_CODEC_CAP_USES_PROGRESSFRAMES    (1 << 6)
 /**
  * Codec handles avctx->thread_count == 0 (auto) internally.
  */
@@ -282,25 +281,6 @@ typedef struct FFCodec {
         .update_thread_context          = NULL
 #define UPDATE_THREAD_CONTEXT_FOR_USER(func) \
         .update_thread_context_for_user = NULL
-#endif
-
-#if FF_API_OLD_CHANNEL_LAYOUT
-#define CODEC_OLD_CHANNEL_LAYOUTS(...) CODEC_OLD_CHANNEL_LAYOUTS_ARRAY(((const uint64_t[]) { __VA_ARGS__, 0 }))
-#if defined(__clang__)
-#define CODEC_OLD_CHANNEL_LAYOUTS_ARRAY(array) \
-        FF_DISABLE_DEPRECATION_WARNINGS \
-        .p.channel_layouts = (array), \
-        FF_ENABLE_DEPRECATION_WARNINGS
-#else
-#define CODEC_OLD_CHANNEL_LAYOUTS_ARRAY(array) .p.channel_layouts = (array),
-#endif
-#else
-/* This is only provided to allow to test disabling FF_API_OLD_CHANNEL_LAYOUT
- * without removing all the FF_API_OLD_CHANNEL_LAYOUT codeblocks.
- * It is of course still expected to be removed when FF_API_OLD_CHANNEL_LAYOUT
- * will be finally removed (along with all usages of these macros). */
-#define CODEC_OLD_CHANNEL_LAYOUTS(...)
-#define CODEC_OLD_CHANNEL_LAYOUTS_ARRAY(array)
 #endif
 
 #define FF_CODEC_DECODE_CB(func)                          \

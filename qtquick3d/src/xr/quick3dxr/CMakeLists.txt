@@ -25,6 +25,7 @@ qt_internal_add_qml_module(Quick3DXr
         qquick3dxrinputmanager.cpp qquick3dxrinputmanager_p.h
         qquick3dxrspatialanchor_p.h qquick3dxrspatialanchor.cpp
         qquick3dxrspatialanchorlistmodel_p.h qquick3dxrspatialanchorlistmodel.cpp
+        qquick3dxrabstracthapticeffect_p.h qquick3dxrabstracthapticeffect.cpp
         qtquick3dxrglobal_p.h
         qtquick3dxrglobal.h
     QML_FILES

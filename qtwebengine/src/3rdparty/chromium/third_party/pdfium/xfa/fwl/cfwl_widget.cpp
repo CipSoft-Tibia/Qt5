@@ -10,7 +10,7 @@
 #include <utility>
 #include <vector>
 
-#include "third_party/base/check.h"
+#include "core/fxcrt/check.h"
 #include "v8/include/cppgc/visitor.h"
 #include "xfa/fde/cfde_textout.h"
 #include "xfa/fwl/cfwl_app.h"
@@ -28,6 +28,8 @@
 #include "xfa/fwl/cfwl_themetext.h"
 #include "xfa/fwl/cfwl_widgetmgr.h"
 #include "xfa/fwl/ifwl_themeprovider.h"
+
+namespace pdfium {
 
 namespace {
 
@@ -351,3 +353,5 @@ CFWL_Widget::ScopedUpdateLock::ScopedUpdateLock(CFWL_Widget* widget)
 CFWL_Widget::ScopedUpdateLock::~ScopedUpdateLock() {
   widget_->UnlockUpdate();
 }
+
+}  // namespace pdfium

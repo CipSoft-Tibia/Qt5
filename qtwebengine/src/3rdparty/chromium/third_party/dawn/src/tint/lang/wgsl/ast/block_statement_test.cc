@@ -26,7 +26,6 @@
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "gmock/gmock.h"
-#include "gtest/gtest-spi.h"
 #include "src/tint/lang/wgsl/ast/discard_statement.h"
 #include "src/tint/lang/wgsl/ast/helper_test.h"
 #include "src/tint/lang/wgsl/ast/if_statement.h"
@@ -35,6 +34,7 @@ namespace tint::ast {
 namespace {
 
 using BlockStatementTest = TestHelper;
+using BlockStatementDeathTest = BlockStatementTest;
 
 TEST_F(BlockStatementTest, Creation) {
     auto* d = create<DiscardStatement>();
@@ -72,8 +72,8 @@ TEST_F(BlockStatementTest, IsBlock) {
     EXPECT_TRUE(b->Is<BlockStatement>());
 }
 
-TEST_F(BlockStatementTest, Assert_Null_Statement) {
-    EXPECT_FATAL_FAILURE(
+TEST_F(BlockStatementDeathTest, Assert_Null_Statement) {
+    EXPECT_DEATH_IF_SUPPORTED(
         {
             ProgramBuilder b;
             b.create<BlockStatement>(tint::Vector<const Statement*, 1>{nullptr}, tint::Empty);
@@ -81,8 +81,8 @@ TEST_F(BlockStatementTest, Assert_Null_Statement) {
         "internal compiler error");
 }
 
-TEST_F(BlockStatementTest, Assert_DifferentGenerationID_Statement) {
-    EXPECT_FATAL_FAILURE(
+TEST_F(BlockStatementDeathTest, Assert_DifferentGenerationID_Statement) {
+    EXPECT_DEATH_IF_SUPPORTED(
         {
             ProgramBuilder b1;
             ProgramBuilder b2;

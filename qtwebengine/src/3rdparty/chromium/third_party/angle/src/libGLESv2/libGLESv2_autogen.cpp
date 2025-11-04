@@ -2849,6 +2849,8 @@ glMultiDrawElementsInstancedBaseVertexBaseInstanceANGLE(GLenum mode,
         mode, counts, type, indices, instanceCounts, baseVertices, baseInstances, drawcount);
 }
 
+// GL_ANGLE_client_arrays
+
 // GL_ANGLE_clip_cull_distance
 
 // GL_ANGLE_copy_texture_3d
@@ -2939,6 +2941,8 @@ void GL_APIENTRY glGetRenderbufferImageANGLE(GLenum target,
     return GL_GetRenderbufferImageANGLE(target, format, type, pixels);
 }
 
+// GL_ANGLE_get_serialized_context_string
+
 // GL_ANGLE_get_tex_level_parameter
 void GL_APIENTRY glGetTexLevelParameterivANGLE(GLenum target,
                                                GLint level,
@@ -2984,6 +2988,8 @@ void GL_APIENTRY glLogicOpANGLE(GLenum opcode)
 {
     return GL_LogicOpANGLE(opcode);
 }
+
+// GL_ANGLE_lossy_etc_decode
 
 // GL_ANGLE_memory_object_flags
 void GL_APIENTRY glTexStorageMemFlags2DANGLE(GLenum target,
@@ -3062,6 +3068,8 @@ void GL_APIENTRY glImportMemoryZirconHandleANGLE(GLuint memory,
     return GL_ImportMemoryZirconHandleANGLE(memory, size, handleType, handle);
 }
 
+// GL_ANGLE_memory_size
+
 // GL_ANGLE_multi_draw
 void GL_APIENTRY glMultiDrawArraysANGLE(GLenum mode,
                                         const GLint *firsts,
@@ -3110,6 +3118,10 @@ void GL_APIENTRY glPolygonModeANGLE(GLenum face, GLenum mode)
 
 // GL_ANGLE_program_binary
 
+// GL_ANGLE_program_binary_readiness_query
+
+// GL_ANGLE_program_cache_control
+
 // GL_ANGLE_provoking_vertex
 void GL_APIENTRY glProvokingVertexANGLE(GLenum provokeMode)
 {
@@ -3128,6 +3140,8 @@ void GL_APIENTRY glDisableExtensionANGLE(const GLchar *name)
 {
     return GL_DisableExtensionANGLE(name);
 }
+
+// GL_ANGLE_rgbx_internal_format
 
 // GL_ANGLE_robust_client_memory
 void GL_APIENTRY glGetBooleanvRobustANGLE(GLenum pname,
@@ -3769,6 +3783,8 @@ void GL_APIENTRY glGetQueryObjectui64vRobustANGLE(GLuint id,
     return GL_GetQueryObjectui64vRobustANGLE(id, pname, bufSize, length, params);
 }
 
+// GL_ANGLE_robust_fragment_shader_output
+
 // GL_ANGLE_robust_resource_initialization
 
 // GL_ANGLE_semaphore_fuchsia
@@ -3778,6 +3794,8 @@ void GL_APIENTRY glImportSemaphoreZirconHandleANGLE(GLuint semaphore,
 {
     return GL_ImportSemaphoreZirconHandleANGLE(semaphore, handleType, handle);
 }
+
+// GL_ANGLE_shader_binary
 
 // GL_ANGLE_shader_pixel_local_storage
 void GL_APIENTRY glFramebufferMemorylessPixelLocalStorageANGLE(GLint plane, GLenum internalformat)
@@ -3938,6 +3956,8 @@ void GL_APIENTRY glReleaseTexturesANGLE(GLuint numTextures, const GLuint *textur
     return GL_ReleaseTexturesANGLE(numTextures, textures, layouts);
 }
 
+// GL_ANGLE_yuv_internal_format
+
 // GL_APPLE_clip_distance
 
 // GL_ARB_sync
@@ -4092,6 +4112,29 @@ void GL_APIENTRY glBufferStorageEXT(GLenum target,
                                     GLbitfield flags)
 {
     return GL_BufferStorageEXT(target, size, data, flags);
+}
+
+// GL_EXT_clear_texture
+void GL_APIENTRY
+glClearTexImageEXT(GLuint texture, GLint level, GLenum format, GLenum type, const void *data)
+{
+    return GL_ClearTexImageEXT(texture, level, format, type, data);
+}
+
+void GL_APIENTRY glClearTexSubImageEXT(GLuint texture,
+                                       GLint level,
+                                       GLint xoffset,
+                                       GLint yoffset,
+                                       GLint zoffset,
+                                       GLsizei width,
+                                       GLsizei height,
+                                       GLsizei depth,
+                                       GLenum format,
+                                       GLenum type,
+                                       const void *data)
+{
+    return GL_ClearTexSubImageEXT(texture, level, xoffset, yoffset, zoffset, width, height, depth,
+                                  format, type, data);
 }
 
 // GL_EXT_clip_control
@@ -4652,6 +4695,8 @@ void GL_APIENTRY glImportSemaphoreFdEXT(GLuint semaphore, GLenum handleType, GLi
     return GL_ImportSemaphoreFdEXT(semaphore, handleType, fd);
 }
 
+// GL_EXT_separate_depth_stencil
+
 // GL_EXT_separate_shader_objects
 void GL_APIENTRY glActiveShaderProgramEXT(GLuint pipeline, GLuint program)
 {
@@ -5069,6 +5114,8 @@ void GL_APIENTRY glTexBufferRangeEXT(GLenum target,
 
 // GL_EXT_texture_sRGB_decode
 
+// GL_EXT_texture_shadow_lod
+
 // GL_EXT_texture_storage
 void GL_APIENTRY glTexStorage1DEXT(GLenum target,
                                    GLsizei levels,
@@ -5110,6 +5157,8 @@ void GL_APIENTRY glBlendBarrierKHR()
 {
     return GL_BlendBarrierKHR();
 }
+
+// GL_KHR_blend_equation_advanced_coherent
 
 // GL_KHR_debug
 void GL_APIENTRY glDebugMessageCallbackKHR(GLDEBUGPROCKHR callback, const void *userParam)
@@ -5204,6 +5253,45 @@ void GL_APIENTRY glMaxShaderCompilerThreadsKHR(GLuint count)
 }
 
 // GL_KHR_robust_buffer_access_behavior
+
+// GL_KHR_robustness
+GLenum GL_APIENTRY glGetGraphicsResetStatusKHR()
+{
+    return GL_GetGraphicsResetStatusKHR();
+}
+
+void GL_APIENTRY glGetnUniformfvKHR(GLuint program,
+                                    GLint location,
+                                    GLsizei bufSize,
+                                    GLfloat *params)
+{
+    return GL_GetnUniformfvKHR(program, location, bufSize, params);
+}
+
+void GL_APIENTRY glGetnUniformivKHR(GLuint program, GLint location, GLsizei bufSize, GLint *params)
+{
+    return GL_GetnUniformivKHR(program, location, bufSize, params);
+}
+
+void GL_APIENTRY glGetnUniformuivKHR(GLuint program,
+                                     GLint location,
+                                     GLsizei bufSize,
+                                     GLuint *params)
+{
+    return GL_GetnUniformuivKHR(program, location, bufSize, params);
+}
+
+void GL_APIENTRY glReadnPixelsKHR(GLint x,
+                                  GLint y,
+                                  GLsizei width,
+                                  GLsizei height,
+                                  GLenum format,
+                                  GLenum type,
+                                  GLsizei bufSize,
+                                  void *data)
+{
+    return GL_ReadnPixelsKHR(x, y, width, height, format, type, bufSize, data);
+}
 
 // GL_KHR_texture_compression_astc_hdr
 
@@ -5574,6 +5662,8 @@ void GL_APIENTRY glProgramBinaryOES(GLuint program,
     return GL_ProgramBinaryOES(program, binaryFormat, binary, length);
 }
 
+// GL_OES_gpu_shader5
+
 // GL_OES_mapbuffer
 void GL_APIENTRY glGetBufferPointervOES(GLenum target, GLenum pname, void **params)
 {
@@ -5662,6 +5752,12 @@ void GL_APIENTRY glMinSampleShadingOES(GLfloat value)
 // GL_OES_standard_derivatives
 
 // GL_OES_surfaceless_context
+
+// GL_OES_tessellation_shader
+void GL_APIENTRY glPatchParameteriOES(GLenum pname, GLint value)
+{
+    return GL_PatchParameteriOES(pname, value);
+}
 
 // GL_OES_texture_3D
 void GL_APIENTRY glCompressedTexImage3DOES(GLenum target,
@@ -5962,6 +6058,18 @@ void GL_APIENTRY glTextureFoveationParametersQCOM(GLuint texture,
 {
     return GL_TextureFoveationParametersQCOM(texture, layer, focalPoint, focalX, focalY, gainX,
                                              gainY, foveaArea);
+}
+
+// GL_QCOM_tiled_rendering
+void GL_APIENTRY glEndTilingQCOM(GLbitfield preserveMask)
+{
+    return GL_EndTilingQCOM(preserveMask);
+}
+
+void GL_APIENTRY
+glStartTilingQCOM(GLuint x, GLuint y, GLuint width, GLuint height, GLbitfield preserveMask)
+{
+    return GL_StartTilingQCOM(x, y, width, height, preserveMask);
 }
 
 #if defined(ANGLE_ENABLE_GL_DESKTOP_FRONTEND)

@@ -6,7 +6,11 @@
 # QT_REPO_PUBLIC_NAMESPACE_REGEX cache variable, that can be set by repository in .cmake.conf file.
 # The variable tells the syncqt program, what namespaces are treated as public. Symbols in public
 # namespaces are considered when generating CaMeL case header files.
-function(qt_internal_target_sync_headers target module_headers module_headers_generated)
+function(qt_internal_target_sync_headers target
+        module_headers
+        module_headers_generated
+        module_headers_exclude_from_docs
+    )
     if(NOT TARGET ${QT_CMAKE_EXPORT_NAMESPACE}::syncqt)
         message(FATAL_ERROR "${QT_CMAKE_EXPORT_NAMESPACE}::syncqt is not a target.")
     endif()
@@ -80,6 +84,13 @@ function(qt_internal_target_sync_headers target module_headers module_headers_ge
     # std::filesystem API
     get_filename_component(source_dir_real "${sync_source_directory}" REALPATH)
     get_filename_component(binary_dir_real "${CMAKE_CURRENT_BINARY_DIR}" REALPATH)
+    if(QT6_INSTALL_PREFIX)
+        get_filename_component(install_dir_real "${QT6_INSTALL_PREFIX}" REALPATH)
+        set(install_include_dir_argument
+            -installIncludeDir "${install_dir_real}/${QT6_INSTALL_HEADERS}")
+    else()
+        set(install_include_dir_argument "")
+    endif()
 
     if(QT_REPO_PUBLIC_NAMESPACE_REGEX)
         set(public_namespaces_filter -publicNamespaceFilter "${QT_REPO_PUBLIC_NAMESPACE_REGEX}")
@@ -109,6 +120,7 @@ function(qt_internal_target_sync_headers target module_headers module_headers_ge
         -binaryDir "${binary_dir_real}"
         -privateHeadersFilter "${private_filter_regex}"
         -includeDir "${module_build_interface_include_dir}"
+        ${install_include_dir_argument}
         -privateIncludeDir "${module_build_interface_private_include_dir}"
         -qpaIncludeDir "${module_build_interface_qpa_include_dir}"
         -rhiIncludeDir "${module_build_interface_rhi_include_dir}"
@@ -145,6 +157,13 @@ function(qt_internal_target_sync_headers target module_headers module_headers_ge
     # Filter the generated ui_ header files and header files located in the 'doc/' subdirectory.
     list(FILTER module_headers EXCLUDE REGEX
         "(.+/(ui_)[^/]+\\.h|${CMAKE_CURRENT_SOURCE_DIR}(/.+)?/doc/+\\.h)")
+
+    # Filter out all headers that should be excluded from documentation generation.
+    # Documentation generation shouldn't depend on headers like the dbus-generated ones.
+    set(module_headers_for_docs "${module_headers}")
+    if(module_headers_exclude_from_docs)
+        list(REMOVE_ITEM module_headers_for_docs ${module_headers_exclude_from_docs})
+    endif()
 
     set(syncqt_staging_dir "${module_build_interface_include_dir}/.syncqt_staging")
 
@@ -225,10 +244,16 @@ function(qt_internal_target_sync_headers target module_headers module_headers_ge
             "@${syncqt_all_args_rsp}"
         ${external_headers_dir_copy_cmd}
         DEPENDS
-            ${module_headers}
+            # Note, we don't depend anymore on ${target}_sync_headers so that we don't bring
+            # in the headers that are usually excluded from docs.
+            # This means if someone manually calls
+            # `ninja sync_all_public_headers Gui_sync_headers` it will cause havoc due to two
+            # syncqt calls accessing the same files concurrently. This is an edge case that should
+            # not happen, but it ends up happening, we will have to implement some kind of lock
+            # file mechanism.
+            ${module_headers_for_docs}
             ${syncqt_all_args_rsp}
             ${QT_CMAKE_EXPORT_NAMESPACE}::syncqt
-            ${target}_sync_headers
         VERBATIM
     )
 

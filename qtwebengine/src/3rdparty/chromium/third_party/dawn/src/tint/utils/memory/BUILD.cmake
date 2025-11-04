@@ -39,6 +39,7 @@
 # Kind:      lib
 ################################################################################
 tint_add_target(tint_utils_memory lib
+  utils/memory/aligned_storage.h
   utils/memory/bitcast.h
   utils/memory/block_allocator.h
   utils/memory/bump_allocator.h
@@ -48,6 +49,10 @@ tint_add_target(tint_utils_memory lib
 tint_target_add_dependencies(tint_utils_memory lib
   tint_utils_macros
   tint_utils_math
+)
+
+tint_target_add_external_dependencies(tint_utils_memory lib
+  "src_utils"
 )
 
 ################################################################################
@@ -68,4 +73,5 @@ tint_target_add_dependencies(tint_utils_memory_test test
 
 tint_target_add_external_dependencies(tint_utils_memory_test test
   "gtest"
+  "src_utils"
 )

@@ -59,6 +59,9 @@ namespace QtAndroidQuickViewEmbedding
                 for (const QString &path : importPaths)
                     engine->addImportPath(path);
 
+                QObject::connect(engine, &QQmlEngine::quit, QCoreApplication::instance(),
+                                 &QCoreApplication::quit);
+
                 const QtJniTypes::QtWindow window = reinterpret_cast<jobject>(view->winId());
                 qtViewObject.callMethod<void>("addQtWindow",
                                               window,
@@ -97,7 +100,6 @@ namespace QtAndroidQuickViewEmbedding
             return;
         }
 
-        QMetaProperty metaProperty = rootMetaObject->property(propertyIndex);
         const QJniObject propertyValue(value);
         const QVariant variantToWrite = QAndroidTypeConverter::toQVariant(propertyValue);
 
@@ -105,7 +107,12 @@ namespace QtAndroidQuickViewEmbedding
             qWarning("Setting the property type of %s is not supported.",
                      propertyValue.className().data());
         } else {
-            metaProperty.write(rootObject, variantToWrite);
+            QMetaObject::invokeMethod(rootObject,
+                [metaProperty = rootMetaObject->property(propertyIndex),
+                 rootObject = rootObject,
+                 variantToWrite] {
+                    metaProperty.write(rootObject, variantToWrite);
+                });
         }
     }
 
@@ -131,7 +138,15 @@ namespace QtAndroidQuickViewEmbedding
         }
 
         QMetaProperty metaProperty = rootMetaObject->property(propertyIndex);
-        const QVariant propertyValue = metaProperty.read(rootObject);
+        QVariant propertyValue;
+        if (QCoreApplication::instance()->thread()->isCurrentThread()) {
+            propertyValue = metaProperty.read(rootObject);
+        } else {
+            QMetaObject::invokeMethod(rootObject,
+                [&propertyValue, &metaProperty, rootObject = rootObject] {
+                    propertyValue = metaProperty.read(rootObject);
+                }, Qt::BlockingQueuedConnection);
+        }
         jobject jObject = QAndroidTypeConverter::toJavaObject(propertyValue, env);
         if (!jObject) {
             qWarning("Property %s cannot be converted to a supported Java data type.",

@@ -76,6 +76,7 @@ qt_internal_add_qml_module(Quick
         items/qquickrendercontrol.cpp items/qquickrendercontrol.h items/qquickrendercontrol_p.h
         items/qquickrendertarget.cpp items/qquickrendertarget.h items/qquickrendertarget_p.h
         items/qquickrhiitem.cpp items/qquickrhiitem.h items/qquickrhiitem_p.h
+        items/qquicksafearea.cpp items/qquicksafearea_p.h
         items/qquickscalegrid.cpp
         items/qquickscalegrid_p_p.h
         items/qquickscreen.cpp items/qquickscreen_p.h
@@ -192,6 +193,7 @@ qt_internal_add_qml_module(Quick
         util/qquickapplication.cpp util/qquickapplication_p.h
         util/qquickbehavior.cpp util/qquickbehavior_p.h
         util/qquickdeliveryagent.cpp util/qquickdeliveryagent_p.h util/qquickdeliveryagent_p_p.h
+        util/qquickfontinfo.cpp util/qquickfontinfo_p.h
         util/qquickfontloader.cpp util/qquickfontloader_p.h
         util/qquickfontmetrics.cpp util/qquickfontmetrics_p.h
         util/qquickforeignutils.cpp util/qquickforeignutils_p.h
@@ -350,9 +352,13 @@ qt_internal_add_shaders(Quick "scenegraph_curve_shaders_derivatives"
     FILES
         "scenegraph/shaders_ng/shapecurve.frag"
         "scenegraph/shaders_ng/shapecurve.vert"
+        "scenegraph/shaders_ng/shapestroke.frag"
+        "scenegraph/shaders_ng/shapestroke.vert"
     OUTPUTS
         "scenegraph/shaders_ng/shapecurve_derivatives.frag.qsb"
         "scenegraph/shaders_ng/shapecurve_derivatives.vert.qsb"
+        "scenegraph/shaders_ng/shapestroke_derivatives.frag.qsb"
+        "scenegraph/shaders_ng/shapestroke_derivatives.vert.qsb"
 )
 
 qt_internal_add_shaders(Quick "scenegraph_curve_shaders_lg"
@@ -519,6 +525,16 @@ qt_internal_extend_target(Quick CONDITION MSVC
     DEFINES
         _CRT_SECURE_NO_WARNINGS
 )
+
+# work around a likely compiler error: QTBUG-133494
+if(MSVC)
+    set_target_properties(Quick PROPERTIES
+        INTERPROCEDURAL_OPTIMIZATION OFF
+        INTERPROCEDURAL_OPTIMIZATION_RELEASE OFF
+        INTERPROCEDURAL_OPTIMIZATION_RELWITHDEBINFO OFF
+        INTERPROCEDURAL_OPTIMIZATION_MINSIZEREL OFF
+    )
+endif()
 
 #### Keys ignored in scope 5:.:.:quick.pro:solaris-cc_x_:
 # QMAKE_CXXFLAGS_RELEASE = "--O2"

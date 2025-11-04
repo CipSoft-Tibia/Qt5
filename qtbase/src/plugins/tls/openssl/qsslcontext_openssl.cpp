@@ -3,6 +3,7 @@
 // Copyright (C) 2014 Governikus GmbH & Co. KG.
 // Copyright (C) 2016 Richard J. Moore <rich@kde.org>
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:cryptography
 
 #include <QtNetwork/qsslsocket.h>
 #include <QtNetwork/qssldiffiehellmanparameters.h>
@@ -772,8 +773,7 @@ void QSslContext::applyBackendConfig(QSslContext *sslContext)
             if (!i.value().canConvert(QMetaType(QMetaType::QByteArray))) {
                 sslContext->errorCode = QSslError::UnspecifiedError;
                 sslContext->errorStr = msgErrorSettingBackendConfig(
-                QSslSocket::tr("Expecting QByteArray for %1").arg(
-                               QString::fromUtf8(i.key())));
+                QSslSocket::tr("Expecting QByteArray for %1").arg(i.key()));
                 return;
             }
 
@@ -786,18 +786,16 @@ void QSslContext::applyBackendConfig(QSslContext *sslContext)
             switch (result) {
             case 0:
                 sslContext->errorStr = msgErrorSettingBackendConfig(
-                    QSslSocket::tr("An error occurred attempting to set %1 to %2").arg(
-                        QString::fromUtf8(i.key()), QString::fromUtf8(value)));
+                    QSslSocket::tr("An error occurred attempting to set %1 to %2")
+                            .arg(i.key(), value));
                 return;
             case 1:
                 sslContext->errorStr = msgErrorSettingBackendConfig(
-                    QSslSocket::tr("Wrong value for %1 (%2)").arg(
-                        QString::fromUtf8(i.key()), QString::fromUtf8(value)));
+                    QSslSocket::tr("Wrong value for %1 (%2)").arg(i.key(), value));
                 return;
             default:
                 sslContext->errorStr = msgErrorSettingBackendConfig(
-                    QSslSocket::tr("Unrecognized command %1 = %2").arg(
-                        QString::fromUtf8(i.key()), QString::fromUtf8(value)));
+                    QSslSocket::tr("Unrecognized command %1 = %2").arg(i.key(), value));
                 return;
             }
         }

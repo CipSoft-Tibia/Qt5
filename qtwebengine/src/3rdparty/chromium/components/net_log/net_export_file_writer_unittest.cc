@@ -2,11 +2,17 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#ifdef UNSAFE_BUFFERS_BUILD
+// TODO(crbug.com/40285824): Remove this and convert code to safer constructs.
+#pragma allow_unsafe_buffers
+#endif
+
 #include "components/net_log/net_export_file_writer.h"
 
 #include <stdint.h>
 
 #include <memory>
+#include <optional>
 
 #include "base/command_line.h"
 #include "base/files/file_path.h"
@@ -40,7 +46,6 @@
 #include "services/network/test/fake_test_cert_verifier_params_factory.h"
 #include "services/network/test/test_network_context.h"
 #include "testing/gtest/include/gtest/gtest.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 
 namespace {
 
@@ -212,7 +217,7 @@ bool SetPathToGivenAndReturnTrue(const base::FilePath& path_to_return,
     return ::testing::AssertionFailure()
            << log_path.value() << " could not be read.";
   }
-  absl::optional<base::Value> log_parsed = base::JSONReader::Read(log_string);
+  std::optional<base::Value> log_parsed = base::JSONReader::Read(log_string);
   if (!log_parsed || !log_parsed->is_dict()) {
     return ::testing::AssertionFailure()
            << "Contents of " << log_path.value()
@@ -754,7 +759,7 @@ TEST_F(NetExportFileWriterTest, StartWithNetworkContextActive) {
   auto url_loader_factory_params =
       network::mojom::URLLoaderFactoryParams::New();
   url_loader_factory_params->process_id = network::mojom::kBrowserProcessId;
-  url_loader_factory_params->is_corb_enabled = false;
+  url_loader_factory_params->is_orb_enabled = false;
   network_context()->CreateURLLoaderFactory(
       url_loader_factory.BindNewPipeAndPassReceiver(),
       std::move(url_loader_factory_params));

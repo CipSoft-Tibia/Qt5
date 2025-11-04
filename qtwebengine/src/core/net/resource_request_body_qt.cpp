@@ -1,5 +1,6 @@
 // Copyright (C) 2023 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:data-parser
 
 #include "resource_request_body_qt.h"
 #include "type_conversion.h"
@@ -152,39 +153,29 @@ ResourceRequestBody::getConsumerHandleFromPipeGetter(
 
 void ResourceRequestBody::readDataElementPipe(
         const mojo::ScopedHandleBase<mojo::DataPipeConsumerHandle> &consumerHandle,
-        qint64 &bytesRead, const qint64 &maxSize, char **data)
+        qint64 &bytesRead, qint64 maxSize, char **data)
 {
     MojoResult result;
     do {
-        uint32_t bytesToRead = 1;
-        result = consumerHandle->ReadData(*data, &bytesToRead, MOJO_READ_DATA_FLAG_NONE);
+        size_t bytesToRead = 1;
+        base::span<uint8_t> buffer = base::make_span(reinterpret_cast<uint8_t*>(*data), reinterpret_cast<uint8_t*>(*data) + maxSize);
+        result = consumerHandle->ReadData(MOJO_READ_DATA_FLAG_NONE, buffer, bytesToRead);
 
         if (result == MOJO_RESULT_OK) {
             *data += bytesToRead;
             bytesRead += bytesToRead;
+            maxSize -= bytesToRead;
         } else if (result != MOJO_RESULT_SHOULD_WAIT && result != MOJO_RESULT_FAILED_PRECONDITION) {
             setErrorString("Error while reading from data pipe, skipping "
                            "remaining content of data pipe. Mojo error code: "_L1
                            + QString::number(result));
         }
     } while ((result == MOJO_RESULT_SHOULD_WAIT || result == MOJO_RESULT_OK)
-             && bytesRead < maxSize);
+             && maxSize > 0);
 
     m_dataElementsIdx++;
 }
 
 void ResourceRequestBody::pipeGetterOnReadComplete(int32_t status, uint64_t size) { }
-
-void ResourceRequestBody::appendFilesForTest(const QString &path)
-{
-    if (!m_requestBody)
-        return;
-
-    base::FilePath filePath = toFilePath(path);
-    m_requestBody->elements_mutable()->push_back(static_cast<network::DataElement>(
-            network::DataElementFile(filePath, 0, 23, base::Time())));
-    m_requestBody->elements_mutable()->push_back(static_cast<network::DataElement>(
-            network::DataElementFile(filePath, 10, 23, base::Time())));
-}
 
 } // namespace QtWebEngineCore

@@ -25,13 +25,13 @@
 // OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-#include "gtest/gtest-spi.h"
 #include "src/tint/lang/wgsl/ast/helper_test.h"
 
 namespace tint::ast {
 namespace {
 
 using MemberAccessorExpressionTest = TestHelper;
+using MemberAccessorExpressionDeathTest = MemberAccessorExpressionTest;
 
 TEST_F(MemberAccessorExpressionTest, Creation) {
     auto* str = Expr("structure");
@@ -55,8 +55,8 @@ TEST_F(MemberAccessorExpressionTest, IsMemberAccessor) {
     EXPECT_TRUE(stmt->Is<MemberAccessorExpression>());
 }
 
-TEST_F(MemberAccessorExpressionTest, Assert_Null_Struct) {
-    EXPECT_FATAL_FAILURE(
+TEST_F(MemberAccessorExpressionDeathTest, Assert_Null_Struct) {
+    EXPECT_DEATH_IF_SUPPORTED(
         {
             ProgramBuilder b;
             b.create<MemberAccessorExpression>(nullptr, b.Ident("member"));
@@ -64,8 +64,8 @@ TEST_F(MemberAccessorExpressionTest, Assert_Null_Struct) {
         "internal compiler error");
 }
 
-TEST_F(MemberAccessorExpressionTest, Assert_Null_Member) {
-    EXPECT_FATAL_FAILURE(
+TEST_F(MemberAccessorExpressionDeathTest, Assert_Null_Member) {
+    EXPECT_DEATH_IF_SUPPORTED(
         {
             ProgramBuilder b;
             b.create<MemberAccessorExpression>(b.Expr("struct"), nullptr);
@@ -73,8 +73,8 @@ TEST_F(MemberAccessorExpressionTest, Assert_Null_Member) {
         "internal compiler error");
 }
 
-TEST_F(MemberAccessorExpressionTest, Assert_DifferentGenerationID_Struct) {
-    EXPECT_FATAL_FAILURE(
+TEST_F(MemberAccessorExpressionDeathTest, Assert_DifferentGenerationID_Struct) {
+    EXPECT_DEATH_IF_SUPPORTED(
         {
             ProgramBuilder b1;
             ProgramBuilder b2;
@@ -83,8 +83,8 @@ TEST_F(MemberAccessorExpressionTest, Assert_DifferentGenerationID_Struct) {
         "internal compiler error");
 }
 
-TEST_F(MemberAccessorExpressionTest, Assert_DifferentGenerationID_Member) {
-    EXPECT_FATAL_FAILURE(
+TEST_F(MemberAccessorExpressionDeathTest, Assert_DifferentGenerationID_Member) {
+    EXPECT_DEATH_IF_SUPPORTED(
         {
             ProgramBuilder b1;
             ProgramBuilder b2;
@@ -93,8 +93,8 @@ TEST_F(MemberAccessorExpressionTest, Assert_DifferentGenerationID_Member) {
         "internal compiler error");
 }
 
-TEST_F(MemberAccessorExpressionTest, Assert_MemberNotTemplated) {
-    EXPECT_FATAL_FAILURE(
+TEST_F(MemberAccessorExpressionDeathTest, Assert_MemberNotTemplated) {
+    EXPECT_DEATH_IF_SUPPORTED(
         {
             ProgramBuilder b;
             b.create<MemberAccessorExpression>(b.Expr("structure"),

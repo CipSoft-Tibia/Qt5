@@ -27,7 +27,7 @@ jobs:
       run:
         shell: msys2 {0}
     steps:
-    - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
+    - uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
     - uses: msys2/setup-msys2@v2
       with:
         msystem: ${{ matrix.sys }}
@@ -46,40 +46,27 @@ jobs:
           libyuv:p
           ninja:p
           zlib:p
-    - name: Cache external dependencies
-      id: cache-ext
-      uses: actions/cache@704facf57e6136b1bc63b828d79edcd491f0ee84 # v3.3.2
+    - uses: ./.github/actions/cache
       with:
-        path: ext
-        key: ${{ matrix.sys }}-mingw-${{ hashFiles('ext/*.cmd') }}
+        extra-key: ${{ matrix.sys }}
     - name: Print cmake version
       run: cmake --version
-    - name: Build libsharpyuv
-      if: steps.cache-ext.outputs.cache-hit != 'true'
-      working-directory: ./ext
-      run: ./libsharpyuv.cmd
-    - name: Build GoogleTest
-      if: steps.cache-ext.outputs.cache-hit != 'true'
-      working-directory: ./ext
-      run: ./googletest.cmd
 
     - name: Prepare libavif (cmake)
       run: >
-        mkdir build && cd build
-
-        cmake .. -G Ninja
+        cmake -G Ninja -S . -B build
         -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF
         -DAVIF_CODEC_AOM=SYSTEM
         -DAVIF_CODEC_AOM_DECODE=OFF -DAVIF_CODEC_AOM_ENCODE=ON
         -DAVIF_CODEC_DAV1D=SYSTEM
         -DAVIF_LIBSHARPYUV=LOCAL -DAVIF_LIBYUV=SYSTEM
         -DAVIF_BUILD_EXAMPLES=ON -DAVIF_BUILD_APPS=ON
-        -DAVIF_BUILD_TESTS=ON -DAVIF_ENABLE_GTEST=ON -DAVIF_LOCAL_GTEST=ON
-        -DAVIF_BUILD_GDK_PIXBUF=ON -DCMAKE_INSTALL_PREFIX=./install
+        -DAVIF_BUILD_TESTS=ON -DAVIF_ENABLE_GTEST=ON -DAVIF_GTEST=LOCAL
+        -DAVIF_BUILD_GDK_PIXBUF=ON
         -DAVIF_ENABLE_WERROR=ON
     - name: Build libavif (ninja)
       working-directory: ./build
       run: ninja
     - name: Run AVIF Tests
       working-directory: ./build
-      run: ctest -j $Env:NUMBER_OF_PROCESSORS --output-on-failure
+      run: ctest -j --output-on-failure

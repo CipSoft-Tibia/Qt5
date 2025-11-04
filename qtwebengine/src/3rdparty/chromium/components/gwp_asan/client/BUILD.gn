@@ -40,6 +40,8 @@ component("client") {
     "lightweight_detector/poison_metadata_recorder.cc",
     "lightweight_detector/poison_metadata_recorder.h",
     "lightweight_detector/shared_state.h",
+    "sampling_helpers.cc",
+    "sampling_helpers.h",
     "sampling_state.h",
     "thread_local_random_bit_generator.h",
     "thread_local_state.h",
@@ -55,6 +57,8 @@ component("client") {
 
   if (use_allocator_shim) {
     sources += [
+      "extreme_lightweight_detector_malloc_shims.cc",
+      "extreme_lightweight_detector_malloc_shims.h",
       "lightweight_detector/malloc_shims.cc",
       "lightweight_detector/malloc_shims.h",
       "lightweight_detector/random_eviction_quarantine.cc",
@@ -96,10 +100,12 @@ source_set("unit_tests") {
     "guarded_page_allocator_unittest.cc",
     "gwp_asan_unittest.cc",
     "lightweight_detector/poison_metadata_recorder_unittest.cc",
+    "sampling_helpers_unittest.cc",
   ]
 
   if (use_allocator_shim) {
     sources += [
+      "extreme_lightweight_detector_malloc_shims_unittest.cc",
       "lightweight_detector/malloc_shims_unittest.cc",
       "lightweight_detector/random_eviction_quarantine_unittest.cc",
       "sampling_malloc_shims_unittest.cc",

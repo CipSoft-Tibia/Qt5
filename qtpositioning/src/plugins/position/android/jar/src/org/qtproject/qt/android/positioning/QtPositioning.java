@@ -112,6 +112,8 @@ class QtPositioning implements LocationListener
     static private void addMslAltitude(Location location)
     {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            if (location.hasMslAltitude()) // Nothing to be done
+                return;
             if (altitudeConverter == null)
                 altitudeConverter = new AltitudeConverter();
             try {

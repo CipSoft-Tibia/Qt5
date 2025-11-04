@@ -54,7 +54,6 @@ public:
     void removeNativeMenu();
     void syncWithNativeMenu();
     void syncWithUseNativeMenu();
-    static void recursivelyDestroyNativeSubMenus(QQuickMenu *menu);
     void setNativeMenuVisible(bool visible);
 
     QQuickItem *itemAt(int index) const;
@@ -67,7 +66,11 @@ public:
     };
     void removeItem(int index, QQuickItem *item,
         DestructionPolicy destructionPolicy = DestructionPolicy::DoNotDestroy);
-    void removeNativeItem(int index);
+    enum class SyncPolicy {
+        Sync,
+        DoNotSync
+    };
+    void removeNativeItem(int index, SyncPolicy syncPolicy = SyncPolicy::Sync);
     void resetNativeData();
 
     static void recursivelyCreateNativeMenuItems(QQuickMenu *menu);
@@ -105,6 +108,8 @@ public:
     void setParentMenu(QQuickMenu *parent);
     void resolveParentItem();
 
+    void popup(QQuickItem *menuItem = nullptr);
+
     void propagateKeyEvent(QKeyEvent *event);
 
     void startHoverTimer();
@@ -124,6 +129,8 @@ public:
     QPalette defaultPalette() const override;
     virtual QQuickPopup::PopupType resolvedPopupType() const override;
 
+    void resetContentItem();
+
     bool cascade = false;
     bool triedToCreateNativeMenu = false;
     int hoverTimer = 0;
@@ -132,9 +139,9 @@ public:
     qreal textPadding = 0;
     QPointer<QQuickMenu> parentMenu;
     QPointer<QQuickMenuItem> currentItem;
-    QQuickItem *contentItem = nullptr; // TODO: cleanup
+    QPointer<QQuickItem> contentItem;
     QList<QObject *> contentData;
-    QQmlObjectModel *contentModel;
+    QPointer<QQmlObjectModel> contentModel;
     QQmlComponent *delegate = nullptr;
     QString title;
     QQuickIcon icon;

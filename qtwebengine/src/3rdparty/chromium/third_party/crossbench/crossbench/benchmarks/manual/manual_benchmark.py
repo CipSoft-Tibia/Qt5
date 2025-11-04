@@ -16,6 +16,7 @@ from crossbench.stories.story import Story
 if TYPE_CHECKING:
   import argparse
 
+  from crossbench.cli.parser import CrossBenchArgumentParser
   from crossbench.runner.run import Run
 
 
@@ -89,7 +90,7 @@ class ManualBenchmark(Benchmark, metaclass=abc.ABCMeta):
   @classmethod
   def add_cli_parser(
       cls, subparsers: argparse.ArgumentParser, aliases: Sequence[str] = ()
-  ) -> cli_helper.CrossBenchArgumentParser:
+  ) -> CrossBenchArgumentParser:
     parser = super().add_cli_parser(subparsers, aliases)
     parser.add_argument(
         "--start-after",

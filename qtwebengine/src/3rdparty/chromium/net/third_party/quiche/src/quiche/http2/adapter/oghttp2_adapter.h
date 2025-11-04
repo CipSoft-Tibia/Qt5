@@ -38,6 +38,7 @@ class QUICHE_EXPORT OgHttp2Adapter : public Http2Adapter {
                           int window_increment) override;
   void SubmitMetadata(Http2StreamId stream_id, size_t max_frame_size,
                       std::unique_ptr<MetadataSource> source) override;
+  void SubmitMetadata(Http2StreamId stream_id, size_t num_frames) override;
   int Send() override;
   int GetSendWindowSize() const override;
   int GetStreamSendWindowSize(Http2StreamId stream_id) const override;
@@ -54,9 +55,10 @@ class QUICHE_EXPORT OgHttp2Adapter : public Http2Adapter {
   void SubmitRst(Http2StreamId stream_id, Http2ErrorCode error_code) override;
   int32_t SubmitRequest(absl::Span<const Header> headers,
                         std::unique_ptr<DataFrameSource> data_source,
-                        void* user_data) override;
+                        bool end_stream, void* user_data) override;
   int SubmitResponse(Http2StreamId stream_id, absl::Span<const Header> headers,
-                     std::unique_ptr<DataFrameSource> data_source) override;
+                     std::unique_ptr<DataFrameSource> data_source,
+                     bool end_stream) override;
 
   int SubmitTrailer(Http2StreamId stream_id,
                     absl::Span<const Header> trailers) override;

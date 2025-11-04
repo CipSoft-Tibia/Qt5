@@ -29,6 +29,12 @@ export class DropdownOption extends MenuItem implements SelectOption {
 
   private internalValue: string|null = null;
 
+  constructor() {
+    super();
+
+    this.type = 'option';
+  }
+
   /**
    * The value of the dropdown option. If unsupplied defaults to `headline`.
    * @export

@@ -9,7 +9,7 @@
 
 QT_BEGIN_NAMESPACE
 
-Q_LOGGING_CATEGORY(lcPane, "qt.quick.controls.pane")
+Q_STATIC_LOGGING_CATEGORY(lcPane, "qt.quick.controls.pane")
 
 /*!
     \qmltype Pane
@@ -176,6 +176,9 @@ qreal QQuickPanePrivate::getContentWidth() const
     if (!contentItem)
         return 0;
 
+    if (hasContentWidth)
+        return contentWidth;
+
     const qreal cw = contentItem->implicitWidth();
     if (!qFuzzyIsNull(cw))
         return cw;
@@ -201,6 +204,9 @@ qreal QQuickPanePrivate::getContentHeight() const
 {
     if (!contentItem)
         return 0;
+
+    if (hasContentHeight)
+        return contentHeight;
 
     const qreal ch = contentItem->implicitHeight();
     if (!qFuzzyIsNull(ch))
@@ -305,8 +311,8 @@ void QQuickPane::resetContentWidth()
     if (!d->hasContentWidth)
         return;
 
-    d->hasContentHeight = false;
-    d->updateContentWidth();
+    d->hasContentWidth = false;
+    d->updateImplicitContentWidth();
 }
 
 /*!
@@ -345,7 +351,7 @@ void QQuickPane::resetContentHeight()
         return;
 
     d->hasContentHeight = false;
-    d->updateContentHeight();
+    d->updateImplicitContentHeight();
 }
 
 /*!
@@ -421,6 +427,12 @@ void QQuickPane::contentSizeChange(const QSizeF &newSize, const QSizeF &oldSize)
 {
     Q_UNUSED(newSize);
     Q_UNUSED(oldSize);
+
+    Q_D(QQuickPane);
+    if (d->hasContentWidth)
+        d->updateImplicitContentWidth();
+    if (d->hasContentHeight)
+        d->updateImplicitContentHeight();
 }
 
 #if QT_CONFIG(accessibility)

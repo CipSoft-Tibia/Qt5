@@ -2,12 +2,19 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#ifdef UNSAFE_BUFFERS_BUILD
+// TODO(crbug.com/40285824): Remove this and convert code to safer constructs.
+#pragma allow_unsafe_buffers
+#endif
+
 #include "media/webrtc/audio_processor.h"
 
 #include <stddef.h>
 #include <stdint.h>
 
+#include <optional>
 #include <string>
+#include <string_view>
 
 #include "base/files/file_path.h"
 #include "base/files/file_util.h"
@@ -28,7 +35,6 @@
 #include "media/webrtc/constants.h"
 #include "media/webrtc/webrtc_features.h"
 #include "testing/gtest/include/gtest/gtest.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "third_party/webrtc/api/make_ref_counted.h"
 #include "third_party/webrtc/modules/audio_processing/include/mock_audio_processing.h"
 
@@ -47,11 +53,11 @@ static const int kSupportedSampleRates[] = {8000,  11025, 16000, 22050, 24000,
 using MockProcessedCaptureCallback =
     base::MockRepeatingCallback<void(const media::AudioBus& audio_bus,
                                      base::TimeTicks audio_capture_time,
-                                     absl::optional<double> new_volume)>;
+                                     std::optional<double> new_volume)>;
 
 AudioProcessor::LogCallback LogCallbackForTesting() {
   return base::BindRepeating(
-      [](base::StringPiece message) { VLOG(1) << (message); });
+      [](std::string_view message) { VLOG(1) << (message); });
 }
 
 // The number of packets used for testing.
@@ -131,7 +137,7 @@ class AudioProcessorTest : public ::testing::Test {
       EXPECT_CALL(mock_capture_callback, Run(_, _, _))
           .WillRepeatedly([&](const media::AudioBus& processed_audio,
                               base::TimeTicks audio_capture_time,
-                              absl::optional<double> new_volume) {
+                              std::optional<double> new_volume) {
             EXPECT_EQ(processed_audio.channels(), output_params.channels());
             EXPECT_EQ(processed_audio.frames(),
                       output_params.frames_per_buffer());
@@ -161,11 +167,11 @@ class AudioProcessorTest : public ::testing::Test {
     EXPECT_TRUE(config.echo_canceller.enabled);
 
 #if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
-    EXPECT_TRUE(config.gain_controller1.enabled);
+    EXPECT_FALSE(config.gain_controller1.enabled);
     EXPECT_TRUE(config.gain_controller2.enabled);
 #elif BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_FUCHSIA)
-    EXPECT_TRUE(config.gain_controller1.enabled);
-    EXPECT_FALSE(config.gain_controller2.enabled);
+    EXPECT_FALSE(config.gain_controller1.enabled);
+    EXPECT_TRUE(config.gain_controller2.enabled);
 #elif BUILDFLAG(IS_CASTOS) || BUILDFLAG(IS_CAST_ANDROID)
     EXPECT_TRUE(config.gain_controller1.enabled);
     EXPECT_FALSE(config.gain_controller2.enabled);
@@ -181,13 +187,10 @@ class AudioProcessorTest : public ::testing::Test {
               webrtc::AudioProcessing::Config::NoiseSuppression::kHigh);
 
 #if BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_IOS)
-    // Android and iOS use echo cancellation optimized for mobiles, and does not
-    // support keytap suppression.
+    // Android and iOS use echo cancellation optimized for mobiles.
     EXPECT_TRUE(config.echo_canceller.mobile_mode);
-    EXPECT_FALSE(config.transient_suppression.enabled);
 #else
     EXPECT_FALSE(config.echo_canceller.mobile_mode);
-    EXPECT_TRUE(config.transient_suppression.enabled);
 #endif
   }
 
@@ -364,7 +367,7 @@ TEST_P(AudioProcessorTestMultichannelAndFormat, TestStereoAudio) {
   // Test without and with audio processing enabled.
   constexpr bool kUseApmValues[] =
 #if BUILDFLAG(IS_IOS)
-      // TODO(https://crbug.com/1417474): `false` fails on ios-blink platform
+      // TODO(crbug.com/40257333): `false` fails on ios-blink platform
       // due to a special case for iOS in settings.NeedWebrtcAudioProcessing()
       {true};
 #else
@@ -413,7 +416,7 @@ TEST_P(AudioProcessorTestMultichannelAndFormat, TestStereoAudio) {
       EXPECT_CALL(mock_capture_callback_, Run(_, _, _))
           .WillRepeatedly([&](const media::AudioBus& processed_audio,
                               base::TimeTicks audio_capture_time,
-                              absl::optional<double> new_volume) {
+                              std::optional<double> new_volume) {
             EXPECT_EQ(audio_capture_time, pushed_capture_time);
             if (!use_apm) {
               EXPECT_FALSE(new_volume.has_value());
@@ -479,9 +482,9 @@ TEST_P(AudioProcessorDefaultOutputFormatTest, GetDefaultOutputFormat) {
   // https://crrev.com/c/3621456/comments/2e73cc96_0e9773cd for details.
   const int expected_sample_rate =
 #if BUILDFLAG(IS_CASTOS) || BUILDFLAG(IS_CAST_ANDROID)
-      std::min(sample_rate, media::kAudioProcessingSampleRateHz);
+      std::min(sample_rate, media::WebRtcAudioProcessingSampleRateHz());
 #else
-      media::kAudioProcessingSampleRateHz;
+      media::WebRtcAudioProcessingSampleRateHz();
 #endif
   const int expected_output_channels =
       settings.multi_channel_capture_processing ? input_params.channels() : 1;
@@ -606,7 +609,7 @@ TEST(AudioProcessorCallbackTest,
   data_bus->Zero();
 
   auto check_audio_length = [&](const media::AudioBus& processed_audio,
-                                base::TimeTicks, absl::optional<double>) {
+                                base::TimeTicks, std::optional<double>) {
     EXPECT_EQ(processed_audio.frames(), output_sample_rate * 10 / 1000);
   };
 
@@ -656,7 +659,7 @@ TEST(AudioProcessorCallbackTest,
   data_bus->Zero();
 
   auto check_audio_length = [&](const media::AudioBus& processed_audio,
-                                base::TimeTicks, absl::optional<double>) {
+                                base::TimeTicks, std::optional<double>) {
     EXPECT_EQ(processed_audio.frames(), output_sample_rate * 10 / 1000);
   };
 
@@ -696,7 +699,7 @@ TEST(AudioProcessorCallbackTest,
   data_bus->Zero();
 
   auto check_audio_length = [&](const media::AudioBus& processed_audio,
-                                base::TimeTicks, absl::optional<double>) {
+                                base::TimeTicks, std::optional<double>) {
     EXPECT_EQ(processed_audio.frames(), output_sample_rate * 4 / 1000);
   };
 
@@ -733,7 +736,7 @@ TEST(AudioProcessorCallbackTest,
   data_bus->Zero();
 
   auto check_audio_length = [&](const media::AudioBus& processed_audio,
-                                base::TimeTicks, absl::optional<double>) {
+                                base::TimeTicks, std::optional<double>) {
     EXPECT_EQ(processed_audio.frames(), output_sample_rate * 10 / 1000);
   };
 

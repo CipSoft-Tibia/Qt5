@@ -575,7 +575,8 @@ void tst_QQuickDrawer::header()
     // must be possible to interact with the header when the drawer is below the header
     QSignalSpy clickSpy(button, SIGNAL(clicked()));
     QVERIFY(clickSpy.isValid());
-    QTest::mouseClick(window, Qt::LeftButton, Qt::NoModifier, QPoint(button->x() + button->width() / 2, button->y() + button->height() / 2));
+    QPoint p = button->mapToScene(QPointF(button->width() / 2, button->height() / 2)).toPoint();
+    QTest::mouseClick(window, Qt::LeftButton, Qt::NoModifier, p);
     QCOMPARE(clickSpy.size(), 1);
 }
 
@@ -638,7 +639,8 @@ void tst_QQuickDrawer::hover()
     QVERIFY(openedSpy.size() == 1 || openedSpy.wait());
 
     // hover the background button outside the drawer
-    QTest::mouseMove(window, QPoint(window->width() - 1, window->height() - 1));
+    auto topSafeMargin = window->safeAreaMargins().top();
+    QTest::mouseMove(window, QPoint(window->width() - 1, window->height() - topSafeMargin - 1));
     QCOMPARE(backgroundButton->isHovered(), !modal);
     QVERIFY(!drawerButton->isHovered());
     QVERIFY(!drawerItem->isHovered());
@@ -742,7 +744,8 @@ void tst_QQuickDrawer::wheel()
         qreal oldContentValue = contentSlider->value();
         qreal oldDrawerValue = drawerSlider->value();
 
-        QVERIFY(sendWheelEvent(QQuickOverlay::overlay(window), QPoint(0, 0), 15));
+        auto *overlay = QQuickOverlay::overlay(window);
+        QVERIFY(sendWheelEvent(overlay, QPoint(0, overlay->height() / 2), 15));
 
         if (modal) {
             // the content below a modal overlay must not move
@@ -1103,7 +1106,7 @@ void tst_QQuickDrawer::interactive_data()
 
 void tst_QQuickDrawer::interactive()
 {
-    SKIP_IF_NO_WINDOW_ACTIVATION
+    SKIP_IF_NO_WINDOW_ACTIVATION;
 
     QFETCH(QString, source);
     QQuickControlsApplicationHelper helper(this, source);

@@ -25,7 +25,6 @@
 // OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-#include "gtest/gtest-spi.h"
 #include "src/tint/lang/core/fluent_types.h"
 #include "src/tint/lang/wgsl/ast/discard_statement.h"
 #include "src/tint/lang/wgsl/ast/helper_test.h"
@@ -39,6 +38,7 @@ namespace tint::ast {
 namespace {
 
 using FunctionTest = TestHelper;
+using FunctionDeathTest = FunctionTest;
 
 TEST_F(FunctionTest, Creation_i32ReturnType) {
     tint::Vector params{Param("var", ty.i32())};
@@ -113,8 +113,8 @@ TEST_F(FunctionTest, Creation_WithSource) {
     EXPECT_EQ(src.range.begin.column, 2u);
 }
 
-TEST_F(FunctionTest, Assert_NullName) {
-    EXPECT_FATAL_FAILURE(
+TEST_F(FunctionDeathTest, Assert_NullName) {
+    EXPECT_DEATH_IF_SUPPORTED(
         {
             ProgramBuilder b;
             b.Func(static_cast<Identifier*>(nullptr), tint::Empty, b.ty.void_(), tint::Empty);
@@ -122,8 +122,8 @@ TEST_F(FunctionTest, Assert_NullName) {
         "internal compiler error");
 }
 
-TEST_F(FunctionTest, Assert_TemplatedName) {
-    EXPECT_FATAL_FAILURE(
+TEST_F(FunctionDeathTest, Assert_TemplatedName) {
+    EXPECT_DEATH_IF_SUPPORTED(
         {
             ProgramBuilder b;
             b.Func(b.Ident("a", "b"), tint::Empty, b.ty.void_(), tint::Empty);
@@ -131,9 +131,9 @@ TEST_F(FunctionTest, Assert_TemplatedName) {
         "internal compiler error");
 }
 
-TEST_F(FunctionTest, Assert_NullParam) {
+TEST_F(FunctionDeathTest, Assert_NullParam) {
     using ParamList = tint::Vector<const Parameter*, 2>;
-    EXPECT_FATAL_FAILURE(
+    EXPECT_DEATH_IF_SUPPORTED(
         {
             ProgramBuilder b;
             ParamList params;
@@ -144,8 +144,8 @@ TEST_F(FunctionTest, Assert_NullParam) {
         "internal compiler error");
 }
 
-TEST_F(FunctionTest, Assert_DifferentGenerationID_Symbol) {
-    EXPECT_FATAL_FAILURE(
+TEST_F(FunctionDeathTest, Assert_DifferentGenerationID_Symbol) {
+    EXPECT_DEATH_IF_SUPPORTED(
         {
             ProgramBuilder b1;
             ProgramBuilder b2;
@@ -154,8 +154,8 @@ TEST_F(FunctionTest, Assert_DifferentGenerationID_Symbol) {
         "internal compiler error");
 }
 
-TEST_F(FunctionTest, Assert_DifferentGenerationID_Param) {
-    EXPECT_FATAL_FAILURE(
+TEST_F(FunctionDeathTest, Assert_DifferentGenerationID_Param) {
+    EXPECT_DEATH_IF_SUPPORTED(
         {
             ProgramBuilder b1;
             ProgramBuilder b2;
@@ -168,8 +168,8 @@ TEST_F(FunctionTest, Assert_DifferentGenerationID_Param) {
         "internal compiler error");
 }
 
-TEST_F(FunctionTest, Assert_DifferentGenerationID_Attr) {
-    EXPECT_FATAL_FAILURE(
+TEST_F(FunctionDeathTest, Assert_DifferentGenerationID_Attr) {
+    EXPECT_DEATH_IF_SUPPORTED(
         {
             ProgramBuilder b1;
             ProgramBuilder b2;
@@ -181,8 +181,8 @@ TEST_F(FunctionTest, Assert_DifferentGenerationID_Attr) {
         "internal compiler error");
 }
 
-TEST_F(FunctionTest, Assert_DifferentGenerationID_ReturnType) {
-    EXPECT_FATAL_FAILURE(
+TEST_F(FunctionDeathTest, Assert_DifferentGenerationID_ReturnType) {
+    EXPECT_DEATH_IF_SUPPORTED(
         {
             ProgramBuilder b1;
             ProgramBuilder b2;
@@ -191,8 +191,8 @@ TEST_F(FunctionTest, Assert_DifferentGenerationID_ReturnType) {
         "internal compiler error");
 }
 
-TEST_F(FunctionTest, Assert_DifferentGenerationID_ReturnAttr) {
-    EXPECT_FATAL_FAILURE(
+TEST_F(FunctionDeathTest, Assert_DifferentGenerationID_ReturnAttr) {
+    EXPECT_DEATH_IF_SUPPORTED(
         {
             ProgramBuilder b1;
             ProgramBuilder b2;

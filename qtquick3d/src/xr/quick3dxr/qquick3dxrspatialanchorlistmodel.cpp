@@ -39,6 +39,56 @@ QT_BEGIN_NAMESPACE
     \endqml
 */
 
+static QString getClassificationString(QQuick3DXrSpatialAnchorListModel::ClassificationFlag classification)
+{
+    switch (classification) {
+        case QQuick3DXrSpatialAnchorListModel::ClassificationFlag::Wall:
+            return QStringLiteral("wall");
+        case QQuick3DXrSpatialAnchorListModel::ClassificationFlag::Ceiling:
+            return QStringLiteral("ceiling");
+        case QQuick3DXrSpatialAnchorListModel::ClassificationFlag::Floor:
+            return QStringLiteral("floor");
+        case QQuick3DXrSpatialAnchorListModel::ClassificationFlag::Table:
+            return QStringLiteral("table");
+        case QQuick3DXrSpatialAnchorListModel::ClassificationFlag::Seat:
+            return QStringLiteral("seat");
+        case QQuick3DXrSpatialAnchorListModel::ClassificationFlag::Window:
+            return QStringLiteral("window");
+        case QQuick3DXrSpatialAnchorListModel::ClassificationFlag::Door:
+            return QStringLiteral("door");
+        case QQuick3DXrSpatialAnchorListModel::ClassificationFlag::Other:
+            return QStringLiteral("other");
+    }
+
+    return {};
+}
+
+static QQuick3DXrSpatialAnchorListModel::ClassificationFlag getClassificationFlagType(QQuick3DXrSpatialAnchor::Classification classification)
+{
+    switch (classification) {
+        case QQuick3DXrSpatialAnchor::Classification::Unknown:
+            return QQuick3DXrSpatialAnchorListModel::ClassificationFlag::Other;
+        case QQuick3DXrSpatialAnchor::Classification::Wall:
+            return QQuick3DXrSpatialAnchorListModel::ClassificationFlag::Wall;
+        case QQuick3DXrSpatialAnchor::Classification::Ceiling:
+            return QQuick3DXrSpatialAnchorListModel::ClassificationFlag::Ceiling;
+        case QQuick3DXrSpatialAnchor::Classification::Floor:
+            return QQuick3DXrSpatialAnchorListModel::ClassificationFlag::Floor;
+        case QQuick3DXrSpatialAnchor::Classification::Table:
+            return QQuick3DXrSpatialAnchorListModel::ClassificationFlag::Table;
+        case QQuick3DXrSpatialAnchor::Classification::Seat:
+            return QQuick3DXrSpatialAnchorListModel::ClassificationFlag::Seat;
+        case QQuick3DXrSpatialAnchor::Classification::Window:
+            return QQuick3DXrSpatialAnchorListModel::ClassificationFlag::Window;
+        case QQuick3DXrSpatialAnchor::Classification::Door:
+            return QQuick3DXrSpatialAnchorListModel::ClassificationFlag::Door;
+        case QQuick3DXrSpatialAnchor::Classification::Other:
+            return QQuick3DXrSpatialAnchorListModel::ClassificationFlag::Other;
+    }
+
+        Q_UNREACHABLE_RETURN(QQuick3DXrSpatialAnchorListModel::ClassificationFlag::Other);
+}
+
 QQuick3DXrSpatialAnchorListModel::QQuick3DXrSpatialAnchorListModel(QObject *parent)
     : QAbstractListModel{parent}
 {
@@ -47,6 +97,7 @@ QQuick3DXrSpatialAnchorListModel::QQuick3DXrSpatialAnchorListModel(QObject *pare
         connect(m_anchorManager, &QQuick3DXrAnchorManager::anchorAdded, this, &QQuick3DXrSpatialAnchorListModel::handleAnchorAdded);
         connect(m_anchorManager, &QQuick3DXrAnchorManager::anchorUpdated, this, &QQuick3DXrSpatialAnchorListModel::handleAnchorUpdated);
         connect(m_anchorManager, &QQuick3DXrAnchorManager::anchorRemoved, this, &QQuick3DXrSpatialAnchorListModel::handleAnchorRemoved);
+        connect(m_anchorManager, &QQuick3DXrAnchorManager::sceneCaptureCompleted, this, [this]{queryAnchors();});
         queryAnchors();
     } else {
         qWarning("SpatialAnchorModel: Failed to get anchor manager instance");
@@ -58,7 +109,9 @@ int QQuick3DXrSpatialAnchorListModel::rowCount(const QModelIndex &parent) const
     if (parent.isValid() || m_anchorManager == nullptr)
         return 0;
 
-    return m_anchorManager->anchorCount();
+    const auto &anchors = anchorsFiltered();
+
+    return anchors.size();
 }
 
 QVariant QQuick3DXrSpatialAnchorListModel::data(const QModelIndex &index, int role) const
@@ -66,7 +119,7 @@ QVariant QQuick3DXrSpatialAnchorListModel::data(const QModelIndex &index, int ro
     if (!index.isValid() || m_anchorManager == nullptr)
         return QVariant();
 
-    const auto &anchors = m_anchorManager->anchors();
+    const auto &anchors = anchorsFiltered();
 
     // check bounds
     if (index.row() < 0 || index.row() >= anchors.count())
@@ -88,6 +141,18 @@ QHash<int, QByteArray> QQuick3DXrSpatialAnchorListModel::roleNames() const
     return roles;
 }
 
+/*!
+    \qmlmethod void XrSpatialAnchorListModel::requestSceneCapture()
+    \brief  This method triggers a scan to capture or update spatial data for the current environment.
+
+    This method triggers the underlying XR system to perform a scene capture of the user's current physical environment,
+    to update or refine the spatial mesh, enabling more accurate placement and tracking of spatial anchors.
+
+    \note Some platforms do not perform this operation automatically.
+    For example, on Quest 3, if the user is in a previously uncaptured space, this method will not be called automatically,
+    resulting in no available anchors until a capture is manually triggered.
+ */
+
 void QQuick3DXrSpatialAnchorListModel::requestSceneCapture()
 {
     if (m_anchorManager == nullptr)
@@ -108,9 +173,11 @@ void QQuick3DXrSpatialAnchorListModel::queryAnchors()
 void QQuick3DXrSpatialAnchorListModel::handleAnchorAdded(QQuick3DXrSpatialAnchor *anchor)
 {
     Q_UNUSED(anchor)
-    // Brute Force :-p
-    beginResetModel();
-    endResetModel();
+    if (matchesAnchorFilter(anchor)) {
+        // Brute Force :-p
+        beginResetModel();
+        endResetModel();
+    }
 }
 
 void QQuick3DXrSpatialAnchorListModel::handleAnchorRemoved(QUuid uuid)
@@ -124,25 +191,22 @@ void QQuick3DXrSpatialAnchorListModel::handleAnchorRemoved(QUuid uuid)
 void QQuick3DXrSpatialAnchorListModel::handleAnchorUpdated(QQuick3DXrSpatialAnchor *anchor)
 {
     Q_UNUSED(anchor)
-    // Brute Force :-p
-    beginResetModel();
-    endResetModel();
+    if (matchesAnchorFilter(anchor)) {
+        // Brute Force :-p
+        beginResetModel();
+        endResetModel();
+    }
 }
 
-// NOTE: filtering is not implemented yet, so the associated properties are left
-// undocumented in this version. They are not removed completely since filtering
-// will definitely be implemented in a future release.
-
-/*
+/*!
     \qmlproperty enumeration XrSpatialAnchorListModel::filterMode
     \brief Specifies the filter mode for spatial anchors.
-    \internal
 
     Holds the filter mode.
     The filter mode can be one of the following:
-    \value All Show all spatial anchors.
-    \value Classification Show spatial anchors based on the provided classification filter flag.
-    \value Identifier Show spatial anchors based on matching the provided Identifiers.
+    \value XrSpatialAnchorListModel.All Show all spatial anchors.
+    \value XrSpatialAnchorListModel.Classification Show spatial anchors based on the provided classification filter flag.
+    \value XrSpatialAnchorListModel.Identifier Show spatial anchors based on matching the provided Identifiers.
  */
 
 QQuick3DXrSpatialAnchorListModel::FilterMode QQuick3DXrSpatialAnchorListModel::filterMode() const
@@ -155,43 +219,52 @@ void QQuick3DXrSpatialAnchorListModel::setFilterMode(FilterMode newFilterMode)
     if (m_filterMode == newFilterMode)
         return;
     m_filterMode = newFilterMode;
+
+    // Make sure we reset the model when changing filter mode.
+    handleAnchorRemoved({});
+
     emit filterModeChanged();
 }
 
-/*
+/*!
     \qmlproperty list<string> XrSpatialAnchorListModel::identifierFilter
     \brief Holds the list of identifiers for filtering spatial anchors.
-    \internal
  */
 
 QStringList QQuick3DXrSpatialAnchorListModel::identifierFilter() const
 {
-    return m_uuids;
+    return m_uuids.values();
 }
 
 void QQuick3DXrSpatialAnchorListModel::setIdentifierFilter(const QStringList &filter)
 {
-    if (m_uuids == filter)
+    QSet<QString> newFilter { filter.cbegin(), filter.cend() };
+
+    if (m_uuids == newFilter)
         return;
-    m_uuids = filter;
+
+    m_uuids = newFilter;
+
+    // Make sure we reset the model.
+    handleAnchorRemoved({});
+
     emit identifierFilterChanged();
 }
 
-/*
+/*!
     \qmlproperty enumeration XrSpatialAnchorListModel::classificationFilter
     \brief  Holds the classification flag used for filtering spatial anchors.
-    \internal
 
     The ClassificationFlag filter is represented as a combination of flags:
 
-    \value Wall
-    \value Ceiling
-    \value Floor
-    \value Table
-    \value Seat
-    \value Window
-    \value Door
-    \value Other
+    \value XrSpatialAnchorListModel.Wall
+    \value XrSpatialAnchorListModel.Ceiling
+    \value XrSpatialAnchorListModel.Floor
+    \value XrSpatialAnchorListModel.Table
+    \value XrSpatialAnchorListModel.Seat
+    \value XrSpatialAnchorListModel.Window
+    \value XrSpatialAnchorListModel.Door
+    \value XrSpatialAnchorListModel.Other
  */
 
 QQuick3DXrSpatialAnchorListModel::ClassificationFlags QQuick3DXrSpatialAnchorListModel::classificationFilter() const
@@ -203,23 +276,36 @@ void QQuick3DXrSpatialAnchorListModel::setClassificationFilter(ClassificationFla
 {
     if (m_classFilter == newClassFilter)
         return;
+
     m_classFilter = newClassFilter;
+
+    m_classStringFilter.clear();
+
+    constexpr size_t classifcationCount = (sizeof(std::underlying_type_t<ClassificationFlag>) * 8) - 1;
+    for (size_t i = 0; i < classifcationCount; ++i) {
+        ClassificationFlag classification = static_cast<ClassificationFlag>(size_t(m_classFilter) & (size_t(1) << i));
+        auto name = getClassificationString(classification);
+        if (!name.isEmpty())
+            m_classStringFilter.insert(name);
+    }
+
+    // Make sure we reset the model.
+    handleAnchorRemoved({});
+
     emit classificationFilterChanged();
 }
 
-/*
+/*!
     \qmlproperty list<string> XrSpatialAnchorListModel::classificationStringFilter
     \brief Holds the classification strings used for filtering spatial anchors.
-    \internal
 
-    If the \l FilterMode is set to \c Classification, this property can be used to provide a
+    If the \l filterMode is set to \c Classification, this property can be used to provide a
     list of additional classification string to filter on. These labels will then be matched against
     the same value as reported by \l {XrSpatialAnchor::classificationString} property
     of the spatial anchor.
 
     \note Only \l {XrSpatialAnchor}{spatial anchors} that are classified as
-    \l {XrSpatialAnchor::Classification::Other}{Other}
-    will be checked against this filter.
+    \l {XrSpatialAnchor::Classification}{Other} will be checked against this filter.
  */
 QStringList QQuick3DXrSpatialAnchorListModel::classificationStringFilter() const
 {
@@ -228,13 +314,54 @@ QStringList QQuick3DXrSpatialAnchorListModel::classificationStringFilter() const
 
 void QQuick3DXrSpatialAnchorListModel::setClassificationStringFilter(const QStringList &newClassStringFilter)
 {
-    QSet<QString> newFilter { newClassStringFilter.cbegin(), newClassStringFilter.cend()};
+    for (const auto &entry : newClassStringFilter) {
+        if (!entry.isEmpty())
+             m_classStringFilter.insert(entry.toLower());
+    }
 
-    if (m_classStringFilter == newFilter)
-        return;
+    // Make sure we reset the model.
+    handleAnchorRemoved({});
 
-    m_classStringFilter = newFilter;
     emit classificationStringFilterChanged();
+}
+
+bool QQuick3DXrSpatialAnchorListModel::matchesAnchorFilter(QQuick3DXrSpatialAnchor *anchor) const
+{
+    if (m_filterMode == FilterMode::Classification) {
+        QString classificationString;
+        const auto classification = anchor->classification();
+        if (classification != QQuick3DXrSpatialAnchor::Classification::Other) {
+            const auto classificationFlagType = getClassificationFlagType(classification);
+            classificationString = getClassificationString(classificationFlagType);
+        } else {
+            // NOTE: Other can mean there is no classification or the classification is not one that
+            // we have defined in our enums, so we will use the string as the user can specify any string.
+            classificationString = anchor->classificationString().toLower();
+        }
+        return m_classStringFilter.contains(classificationString.toLower());
+    } else if (m_filterMode == FilterMode::Identifier) {
+        const auto uuid = anchor->identifier();
+        return m_uuids.contains(uuid);
+    }
+
+    // 'All' mode
+    return true;
+}
+
+QList<QQuick3DXrSpatialAnchor *> QQuick3DXrSpatialAnchorListModel::anchorsFiltered() const
+{
+    QList<QQuick3DXrSpatialAnchor *> anchors;
+    const auto &unfilteredAnchors = m_anchorManager->anchors();
+    if (m_filterMode == FilterMode::All) {
+        anchors = unfilteredAnchors;
+    } else {
+        for (const auto &anchor : unfilteredAnchors) {
+            if (matchesAnchorFilter(anchor))
+                anchors.push_back(anchor);
+        }
+    }
+
+    return anchors;
 }
 
 QT_END_NAMESPACE

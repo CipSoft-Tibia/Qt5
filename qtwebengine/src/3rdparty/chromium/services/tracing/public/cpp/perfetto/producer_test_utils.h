@@ -6,6 +6,7 @@
 #define SERVICES_TRACING_PUBLIC_CPP_PERFETTO_PRODUCER_TEST_UTILS_H_
 
 #include <memory>
+#include <optional>
 #include <vector>
 
 #include "base/files/file_path.h"
@@ -16,7 +17,6 @@
 #include "base/tracing/perfetto_task_runner.h"
 #include "services/tracing/public/cpp/perfetto/perfetto_config.h"
 #include "services/tracing/public/cpp/perfetto/producer_client.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "third_party/perfetto/include/perfetto/ext/tracing/core/trace_writer.h"
 #include "third_party/perfetto/include/perfetto/protozero/root_message.h"
 #include "third_party/perfetto/include/perfetto/protozero/scattered_stream_null_delegate.h"
@@ -91,7 +91,7 @@ class TestProducerClient : public ProducerClient {
   int empty_finalized_packets_count_ = 0;
   PacketVector legacy_metadata_packets_;
   PacketVector proto_metadata_packets_;
-  absl::optional<protozero::RootMessage<perfetto::protos::pbzero::TracePacket>>
+  std::optional<protozero::RootMessage<perfetto::protos::pbzero::TracePacket>>
       trace_packet_;
   protozero::ScatteredStreamWriterNullDelegate delegate_;
   protozero::ScatteredStreamWriter stream_;
@@ -141,25 +141,15 @@ class DataSourceTester {
   const perfetto::protos::TracePacket* GetFinalizedPacket(
       size_t packet_index = 0);
 
-#if !BUILDFLAG(USE_PERFETTO_CLIENT_LIBRARY)
-  TestProducerClient* GetProducerClient() { return producer_.get(); }
-#endif  // !BUILDFLAG(USE_PERFETTO_CLIENT_LIBRARY)
 
  private:
-#if BUILDFLAG(USE_PERFETTO_CLIENT_LIBRARY)
   void OnTraceData(base::RepeatingClosure quit_closure,
                    const scoped_refptr<base::RefCountedString>& chunk,
                    bool has_more_events);
-#endif  // BUILDFLAG(USE_PERFETTO_CLIENT_LIBRARY)
 
   base::test::ScopedFeatureList features_;
-#if BUILDFLAG(USE_PERFETTO_CLIENT_LIBRARY)
   std::vector<std::unique_ptr<perfetto::protos::TracePacket>>
       finalized_packets_;
-#else   // !BUILDFLAG(USE_PERFETTO_CLIENT_LIBRARY)
-  std::unique_ptr<tracing::TestProducerClient> producer_;
-  raw_ptr<tracing::PerfettoTracedProcess::DataSourceBase> data_source_;
-#endif  // !BUILDFLAG(USE_PERFETTO_CLIENT_LIBRARY)
 };
 
 }  // namespace tracing

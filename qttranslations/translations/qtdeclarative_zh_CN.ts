@@ -1848,8 +1848,8 @@
         <translation>无效的分组属性访问权限</translation>
     </message>
     <message>
-        <source>Invalid grouped property access: Property &quot;%1&quot; with primitive type &quot;%2&quot;.</source>
-        <translation type="unfinished"></translation>
+        <source>Invalid grouped property access: Property &quot;%1&quot; with primitive type &quot;%2&quot;</source>
+        <translation>无效的分组属性访问：属性“%1”具有原始类型“%2”</translation>
     </message>
     <message>
         <source>Invalid grouped property access: Property &quot;%1&quot; with type &quot;%2&quot;, which is not a value type</source>
@@ -1989,11 +1989,11 @@
     </message>
     <message>
         <source>Can not assign value of type &quot;%1&quot; to property &quot;%2&quot;, expecting &quot;%3&quot;</source>
-        <translation type="unfinished"></translation>
+        <translation>无法将类型为“%1”的值分配给属性“%2”，预期为“%3”</translation>
     </message>
     <message>
         <source>Can not assign value of type &quot;%1&quot; to property &quot;%2&quot;, expecting an object</source>
-        <translation type="unfinished"></translation>
+        <translation>无法将类型为“%1”的值分配给属性“%2”，预期为对象</translation>
     </message>
     <message>
         <source>Invalid property assignment: script expected</source>

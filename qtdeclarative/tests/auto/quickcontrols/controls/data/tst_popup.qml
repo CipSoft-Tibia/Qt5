@@ -6,7 +6,6 @@ import QtTest
 import QtQuick.Controls
 import QtQuick.Layouts
 import QtQuick.Templates as T
-import QtQuick.NativeStyle as NativeStyle
 import Qt.test.controls
 
 TestCase {
@@ -1344,8 +1343,9 @@ TestCase {
         let expectedX = (overlay.width - (control.width * control.scale)) / 2
         let expectedY = (overlay.height - (control.height * control.scale)) / 2
         // translate to the parent's (anotherItem's) co-ordinate system
-        expectedX -= anotherItem.x
-        expectedY -= anotherItem.y
+        let anotherItemScenePos = anotherItem.mapToItem(null, 0, 0);
+        expectedX -= anotherItemScenePos.x
+        expectedY -= anotherItemScenePos.y
         compare(currentPos.x, expectedX)
         compare(currentPos.y, expectedY)
     }
@@ -1545,10 +1545,6 @@ TestCase {
     }
 
     function test_popupOverlayCenterIn() {
-        if (Qt.platform.os === "linux") {
-            // So far observed timeout in Imagine and FluentWinUI3 style
-            skip("This function times out with some styles on RHEL 8.10")
-        }
         let control = createTemporaryObject(popupOverlay, testCase)
         verify(control)
 
@@ -1603,5 +1599,40 @@ TestCase {
 
         loader.active = false
         tryCompare(overlay, "visible", false)
+    }
+
+    Component {
+        id: contentSizePopup
+        Popup {
+            Item {
+                implicitWidth: 100
+                implicitHeight: 30
+            }
+        }
+    }
+
+    function test_contentSize() {
+        let control = createTemporaryObject(contentSizePopup, testCase)
+        verify(control)
+
+        compare(control.contentWidth, 100)
+        compare(control.contentHeight, 30)
+        compare(control.implicitContentWidth, 100)
+        compare(control.implicitContentHeight, 30)
+        verify(control.implicitWidth > 100)
+        verify(control.implicitHeight > 30)
+
+        control.contentWidth = 150
+        control.contentHeight = 50
+
+        compare(control.contentWidth, 150)
+        compare(control.contentHeight, 50)
+        compare(control.implicitContentWidth, 150)
+        compare(control.implicitContentHeight, 50)
+        verify(control.implicitWidth > 150)
+        verify(control.implicitHeight > 50)
+
+        // No reset for Popup's contentWidth/Height,
+        // so can't test that.
     }
 }

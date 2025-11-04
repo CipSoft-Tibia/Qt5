@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
 
 import QtQuick
-import QtQuick.Controls
+import QtQuick.Controls.Basic
 import QtGraphs
 //! [0]
 import SurfaceGalleryExample
@@ -82,7 +82,8 @@ Item {
                         x: sampleSlider.leftPadding
                         y: sampleSlider.topPadding + sampleSlider.availableHeight / 2
                            - height / 2
-                        implicitWidth: 200
+                        implicitWidth: samples.width > 300 ? 200 : samples.width
+                                        - samplesText.width - 20
                         implicitHeight: 4
                         width: sampleSlider.availableWidth
                         height: implicitHeight
@@ -154,7 +155,8 @@ Item {
                         x: frequencySlider.leftPadding
                         y: frequencySlider.topPadding + frequencySlider.availableHeight / 2
                            - height / 2
-                        implicitWidth: 200
+                        implicitWidth: frequency.width > 300 ? 200 : frequency.width
+                                        - frequencyText.width - 20
                         implicitHeight: 4
                         width: frequencySlider.availableWidth
                         height: implicitHeight

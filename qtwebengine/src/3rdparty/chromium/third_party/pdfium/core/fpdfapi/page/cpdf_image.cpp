@@ -9,6 +9,7 @@
 #include <stdint.h>
 
 #include <algorithm>
+#include <array>
 #include <memory>
 #include <utility>
 
@@ -26,15 +27,16 @@
 #include "core/fpdfapi/parser/cpdf_stream.h"
 #include "core/fpdfapi/parser/cpdf_string.h"
 #include "core/fxcodec/jpeg/jpegmodule.h"
+#include "core/fxcrt/check.h"
+#include "core/fxcrt/compiler_specific.h"
 #include "core/fxcrt/data_vector.h"
 #include "core/fxcrt/fx_2d_size.h"
-#include "core/fxcrt/fx_memory_wrappers.h"
 #include "core/fxcrt/fx_stream.h"
+#include "core/fxcrt/numerics/safe_conversions.h"
 #include "core/fxcrt/span_util.h"
+#include "core/fxcrt/stl_util.h"
 #include "core/fxge/dib/cfx_dibitmap.h"
 #include "core/fxge/dib/fx_dib.h"
-#include "third_party/base/check.h"
-#include "third_party/base/numerics/safe_conversions.h"
 
 // static
 bool CPDF_Image::IsValidJpegComponent(int32_t comps) {
@@ -76,9 +78,7 @@ void CPDF_Image::FinishInitialization() {
 }
 
 void CPDF_Image::ConvertStreamToIndirectObject() {
-  if (!m_pStream->IsInline())
-    return;
-
+  CHECK(m_pStream->IsInline());
   m_pDocument->AddIndirectObject(m_pStream);
 }
 
@@ -96,7 +96,7 @@ RetainPtr<const CPDF_Dictionary> CPDF_Image::GetOC() const {
 
 RetainPtr<CPDF_Dictionary> CPDF_Image::InitJPEG(
     pdfium::span<uint8_t> src_span) {
-  absl::optional<JpegModule::ImageInfo> info_opt =
+  std::optional<JpegModule::ImageInfo> info_opt =
       JpegModule::LoadInfo(src_span);
   if (!info_opt.has_value())
     return nullptr;
@@ -133,48 +133,53 @@ RetainPtr<CPDF_Dictionary> CPDF_Image::InitJPEG(
   m_bIsMask = false;
   m_Width = info.width;
   m_Height = info.height;
-  if (!m_pStream)
-    m_pStream = pdfium::MakeRetain<CPDF_Stream>();
   return pDict;
 }
 
 void CPDF_Image::SetJpegImage(RetainPtr<IFX_SeekableReadStream> pFile) {
-  uint32_t size = pdfium::base::checked_cast<uint32_t>(pFile->GetSize());
-  if (!size)
+  uint32_t size = pdfium::checked_cast<uint32_t>(pFile->GetSize());
+  if (!size) {
     return;
+  }
 
   uint32_t dwEstimateSize = std::min(size, 8192U);
   DataVector<uint8_t> data(dwEstimateSize);
-  if (!pFile->ReadBlockAtOffset(data, 0))
+  if (!pFile->ReadBlockAtOffset(data, 0)) {
     return;
-
-  RetainPtr<CPDF_Dictionary> pDict = InitJPEG(data);
-  if (!pDict && size > dwEstimateSize) {
-    data.resize(size);
-    if (pFile->ReadBlockAtOffset(data, 0))
-      pDict = InitJPEG(data);
   }
-  if (!pDict)
-    return;
 
-  m_pStream->InitStreamFromFile(std::move(pFile), std::move(pDict));
+  RetainPtr<CPDF_Dictionary> dict = InitJPEG(data);
+  if (!dict && size > dwEstimateSize) {
+    data.resize(size);
+    if (pFile->ReadBlockAtOffset(data, 0)) {
+      dict = InitJPEG(data);
+    }
+  }
+  if (!dict) {
+    return;
+  }
+
+  m_pStream =
+      pdfium::MakeRetain<CPDF_Stream>(std::move(pFile), std::move(dict));
 }
 
 void CPDF_Image::SetJpegImageInline(RetainPtr<IFX_SeekableReadStream> pFile) {
-  uint32_t size = pdfium::base::checked_cast<uint32_t>(pFile->GetSize());
-  if (!size)
+  uint32_t size = pdfium::checked_cast<uint32_t>(pFile->GetSize());
+  if (!size) {
     return;
+  }
 
   DataVector<uint8_t> data(size);
-  if (!pFile->ReadBlockAtOffset(data, 0))
+  if (!pFile->ReadBlockAtOffset(data, 0)) {
     return;
+  }
 
-  RetainPtr<CPDF_Dictionary> pDict = InitJPEG(data);
-  if (!pDict)
+  RetainPtr<CPDF_Dictionary> dict = InitJPEG(data);
+  if (!dict) {
     return;
+  }
 
-  m_pStream =
-      pdfium::MakeRetain<CPDF_Stream>(std::move(data), std::move(pDict));
+  m_pStream = pdfium::MakeRetain<CPDF_Stream>(std::move(data), std::move(dict));
 }
 
 void CPDF_Image::SetImage(const RetainPtr<CFX_DIBitmap>& pBitmap) {
@@ -189,23 +194,15 @@ void CPDF_Image::SetImage(const RetainPtr<CFX_DIBitmap>& pBitmap) {
   size_t dest_pitch = 0;
   bool bCopyWithoutAlpha = true;
   if (bpp == 1) {
-    int32_t reset_a = 0;
-    int32_t reset_r = 0;
-    int32_t reset_g = 0;
-    int32_t reset_b = 0;
-    int32_t set_a = 0;
-    int32_t set_r = 0;
-    int32_t set_g = 0;
-    int32_t set_b = 0;
+    FX_BGRA_STRUCT<uint8_t> reset_bgra;
+    FX_BGRA_STRUCT<uint8_t> set_bgra;
     if (!pBitmap->IsMaskFormat()) {
-      std::tie(reset_a, reset_r, reset_g, reset_b) =
-          ArgbDecode(pBitmap->GetPaletteArgb(0));
-      std::tie(set_a, set_r, set_g, set_b) =
-          ArgbDecode(pBitmap->GetPaletteArgb(1));
+      reset_bgra = ArgbToBGRAStruct(pBitmap->GetPaletteArgb(0));
+      set_bgra = ArgbToBGRAStruct(pBitmap->GetPaletteArgb(1));
     }
-    if (set_a == 0 || reset_a == 0) {
+    if (set_bgra.alpha == 0 || reset_bgra.alpha == 0) {
       pDict->SetNewFor<CPDF_Boolean>("ImageMask", true);
-      if (reset_a == 0) {
+      if (reset_bgra.alpha == 0) {
         auto pArray = pDict->SetNewFor<CPDF_Array>("Decode");
         pArray->AppendNew<CPDF_Number>(1);
         pArray->AppendNew<CPDF_Number>(0);
@@ -215,19 +212,9 @@ void CPDF_Image::SetImage(const RetainPtr<CFX_DIBitmap>& pBitmap) {
       pCS->AppendNew<CPDF_Name>("Indexed");
       pCS->AppendNew<CPDF_Name>("DeviceRGB");
       pCS->AppendNew<CPDF_Number>(1);
-      ByteString ct;
-      {
-        // Span's lifetime must end before ReleaseBuffer() below.
-        pdfium::span<char> pBuf = ct.GetBuffer(6);
-        pBuf[0] = static_cast<char>(reset_r);
-        pBuf[1] = static_cast<char>(reset_g);
-        pBuf[2] = static_cast<char>(reset_b);
-        pBuf[3] = static_cast<char>(set_r);
-        pBuf[4] = static_cast<char>(set_g);
-        pBuf[5] = static_cast<char>(set_b);
-      }
-      ct.ReleaseBuffer(6);
-      pCS->AppendNew<CPDF_String>(ct, true);
+      const uint8_t ct[6] = {reset_bgra.red, reset_bgra.green, reset_bgra.blue,
+                             set_bgra.red,   set_bgra.green,   set_bgra.blue};
+      pCS->AppendNew<CPDF_String>(ct, CPDF_String::DataType::kIsHex);
     }
     pDict->SetNewFor<CPDF_Number>("BitsPerComponent", 1);
     dest_pitch = (BitmapWidth + 7) / 8;
@@ -281,12 +268,12 @@ void CPDF_Image::SetImage(const RetainPtr<CFX_DIBitmap>& pBitmap) {
     if (pMaskBitmap->GetFormat() != FXDIB_Format::k1bppMask) {
       mask_buf.resize(Fx2DSizeOrDie(mask_width, mask_height));
       for (int32_t a = 0; a < mask_height; a++) {
-        fxcrt::spancpy(pdfium::make_span(mask_buf).subspan(a * mask_width),
-                       pMaskBitmap->GetScanline(a).first(mask_width));
+        fxcrt::Copy(pMaskBitmap->GetScanline(a).first(mask_width),
+                    pdfium::make_span(mask_buf).subspan(a * mask_width));
       }
     }
     pMaskDict->SetNewFor<CPDF_Number>(
-        "Length", pdfium::base::checked_cast<int>(mask_buf.size()));
+        "Length", pdfium::checked_cast<int>(mask_buf.size()));
     auto pNewStream = m_pDocument->NewIndirect<CPDF_Stream>(
         std::move(mask_buf), std::move(pMaskDict));
     pDict->SetNewFor<CPDF_Reference>("SMask", m_pDocument,
@@ -299,8 +286,7 @@ void CPDF_Image::SetImage(const RetainPtr<CFX_DIBitmap>& pBitmap) {
   const int32_t src_pitch = pBitmap->GetPitch();
   if (bCopyWithoutAlpha) {
     for (int32_t i = 0; i < BitmapHeight; i++) {
-      fxcrt::spancpy(dest_span, src_span.first(dest_pitch));
-      dest_span = dest_span.subspan(dest_pitch);
+      dest_span = fxcrt::spancpy(dest_span, src_span.first(dest_pitch));
       src_span = src_span.subspan(src_pitch);
     }
   } else {
@@ -309,11 +295,13 @@ void CPDF_Image::SetImage(const RetainPtr<CFX_DIBitmap>& pBitmap) {
       uint8_t* dest_ptr = dest_span.data();
       const uint8_t* src_ptr = src_span.data();
       for (int32_t column = 0; column < BitmapWidth; column++) {
-        dest_ptr[0] = src_ptr[2];
-        dest_ptr[1] = src_ptr[1];
-        dest_ptr[2] = src_ptr[0];
-        dest_ptr += 3;
-        src_ptr += src_step;
+        UNSAFE_TODO({
+          dest_ptr[0] = src_ptr[2];
+          dest_ptr[1] = src_ptr[1];
+          dest_ptr[2] = src_ptr[0];
+          dest_ptr += 3;
+          src_ptr += src_step;
+        });
       }
       dest_span = dest_span.subspan(dest_pitch);
       src_span = src_span.subspan(src_pitch);
@@ -330,6 +318,10 @@ void CPDF_Image::SetImage(const RetainPtr<CFX_DIBitmap>& pBitmap) {
 void CPDF_Image::ResetCache(CPDF_Page* pPage) {
   RetainPtr<CPDF_Image> pHolder(this);
   pPage->GetPageImageCache()->ResetBitmapForImage(std::move(pHolder));
+}
+
+void CPDF_Image::WillBeDestroyed() {
+  m_bWillBeDestroyed = true;
 }
 
 RetainPtr<CPDF_DIB> CPDF_Image::CreateNewDIB() const {

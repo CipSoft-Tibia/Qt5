@@ -1,5 +1,6 @@
 // Copyright (C) 2018 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qmqttpublishproperties.h"
 #include "qmqttpublishproperties_p.h"
@@ -8,8 +9,6 @@
 #include <QtCore/QLoggingCategory>
 
 QT_BEGIN_NAMESPACE
-
-Q_DECLARE_LOGGING_CATEGORY(lcMqttClient)
 
 /*!
     \class QMqttPublishProperties

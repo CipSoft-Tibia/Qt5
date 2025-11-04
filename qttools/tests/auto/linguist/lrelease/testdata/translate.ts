@@ -132,5 +132,10 @@ NEWLINE AT THE START</translation>
         <source>Chinese symbol:</source>
         <translation>Chinese symbol:&#x7c1f;</translation>
     </message>
+    <message>
+        <location filename="tst_lrelease.cpp" line="51"/>
+        <source></source>
+        <translation>Chinese translation:&#x7c1f;</translation>
+    </message>
 </context>
 </TS>

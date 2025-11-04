@@ -14,7 +14,6 @@
 
 #include "base/time/time.h"
 #include "components/sessions/core/sessions_export.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "ui/base/page_transition_types.h"
 #include "url/gurl.h"
 

@@ -3,6 +3,10 @@
 
 #version 440
 
+#extension GL_GOOGLE_include_directive : enable
+
+#include "../effectlib/oitcommon.glsllib"
+
 layout(std140, binding = 0) uniform buf {
     mat4 qt_modelMatrix;
 #if QSHADER_VIEW_COUNT >= 2
@@ -37,6 +41,9 @@ layout(std140, binding = 0) uniform buf {
 #ifdef QSSG_PARTICLES_ENABLE_VERTEX_LIGHTING
     bool qt_pointLights;
     bool qt_spotLights;
+#endif
+#if QSSG_OIT_METHOD == QSSG_OIT_WEIGHTED_BLENDED
+    vec2 qt_cameraProperties;
 #endif
 } ubuf;
 

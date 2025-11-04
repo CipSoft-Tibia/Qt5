@@ -23,6 +23,11 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+#ifdef UNSAFE_BUFFERS_BUILD
+// TODO(crbug.com/351564777): Remove this and convert code to safer constructs.
+#pragma allow_unsafe_buffers
+#endif
+
 #include "third_party/blink/renderer/platform/wtf/text/encoding_tables.h"
 
 #include <memory>
@@ -256,7 +261,7 @@ const EucKrEncodeIndex& EnsureEucKrEncodeIndexForDecode() {
     DCHECK(U_SUCCESS(error));
     auto get_pair =
         [&icu_converter](
-            uint16_t pointer) -> absl::optional<std::pair<uint16_t, UChar>> {
+            uint16_t pointer) -> std::optional<std::pair<uint16_t, UChar>> {
       std::array<uint8_t, 2> icu_input{
           static_cast<uint8_t>(pointer / 190u + 0x81),
           static_cast<uint8_t>(pointer % 190u + 0x41)};
@@ -268,7 +273,7 @@ const EucKrEncodeIndex& EnsureEucKrEncodeIndexForDecode() {
                      input + sizeof(icu_input), nullptr, true, &error);
       DCHECK(U_SUCCESS(error));
       if (icu_output[0] == kReplacementCharacter)
-        return absl::nullopt;
+        return std::nullopt;
       return {{pointer, icu_output[0]}};
     };
     size_t array_index = 0;
@@ -333,29 +338,27 @@ const Gb18030EncodeTable& EnsureGb18030EncodeTable() {
     DCHECK_EQ((*array)[6555], 0x3000);
   });
 
-  if (base::FeatureList::IsEnabled(blink::features::kGb18030_2022Enabled)) {
-    constexpr std::array<std::pair<size_t, UChar>, 18> kGb18030_2022Differences{
-        {{7182, 0xfe10},
-         {7183, 0xfe12},
-         {7184, 0xfe11},
-         {7185, 0xfe13},
-         {7186, 0xfe14},
-         {7187, 0xfe15},
-         {7188, 0xfe16},
-         {7201, 0xfe17},
-         {7202, 0xfe18},
-         {7208, 0xfe19},
-         {23775, 0x9fb4},
-         {23783, 0x9fb5},
-         {23788, 0x9fb6},
-         {23789, 0x9fb7},
-         {23795, 0x9fb8},
-         {23812, 0x9fb9},
-         {23829, 0x9fba},
-         {23845, 0x9fbb}}};
-    for (auto& pair : kGb18030_2022Differences) {
-      (*array)[pair.first] = pair.second;
-    }
+  constexpr std::array<std::pair<size_t, UChar>, 18> kGb18030_2022Differences{
+      {{7182, 0xfe10},
+       {7183, 0xfe12},
+       {7184, 0xfe11},
+       {7185, 0xfe13},
+       {7186, 0xfe14},
+       {7187, 0xfe15},
+       {7188, 0xfe16},
+       {7201, 0xfe17},
+       {7202, 0xfe18},
+       {7208, 0xfe19},
+       {23775, 0x9fb4},
+       {23783, 0x9fb5},
+       {23788, 0x9fb6},
+       {23789, 0x9fb7},
+       {23795, 0x9fb8},
+       {23812, 0x9fb9},
+       {23829, 0x9fba},
+       {23845, 0x9fbb}}};
+  for (auto& pair : kGb18030_2022Differences) {
+    (*array)[pair.first] = pair.second;
   }
 
   return *array;

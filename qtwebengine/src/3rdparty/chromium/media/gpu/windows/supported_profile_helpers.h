@@ -12,7 +12,7 @@
 #include "media/base/video_codecs.h"
 #include "media/base/video_types.h"
 #include "media/gpu/media_gpu_export.h"
-#include "media/gpu/windows/d3d11_com_defs.h"
+#include "media/gpu/windows/d3d_com_defs.h"
 #include "media/media_buildflags.h"
 #include "ui/gfx/geometry/size.h"
 
@@ -148,6 +148,11 @@ using SupportedResolutionRangeMap =
 MEDIA_GPU_EXPORT
 SupportedResolutionRangeMap GetSupportedD3D11VideoDecoderResolutions(
     ComD3D11Device device,
+    const gpu::GpuDriverBugWorkarounds& workarounds);
+
+MEDIA_GPU_EXPORT
+SupportedResolutionRangeMap GetSupportedD3D12VideoDecoderResolutions(
+    ComD3D12Device device,
     const gpu::GpuDriverBugWorkarounds& workarounds);
 
 }  // namespace media

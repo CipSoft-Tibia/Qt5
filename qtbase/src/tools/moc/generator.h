@@ -26,22 +26,23 @@ public:
 private:
     bool registerableMetaType(const QByteArray &propertyType);
     void registerClassInfoStrings();
-    void generateClassInfos();
     void registerFunctionStrings(const QList<FunctionDef> &list);
     void registerByteArrayVector(const QList<QByteArray> &list);
-    void generateFunctions(const QList<FunctionDef> &list, const char *functype, int type,
-                           int &paramsIndex, int &initialMetatypeOffset);
-    void generateFunctionRevisions(const QList<FunctionDef> &list, const char *functype);
-    void generateFunctionParameters(const QList<FunctionDef> &list, const char *functype);
+    void addStrings(const QByteArrayList &strings);
+    void addProperties();
+    void addEnums();
+    void addFunctions(const QList<FunctionDef> &list, const char *functype);
+    void addClassInfos();
     void generateTypeInfo(const QByteArray &typeName, bool allowEmptyName = false);
     void registerEnumStrings();
-    void generateEnums(int index);
     void registerPropertyStrings();
-    void generateProperties();
     void generateMetacall();
     void generateStaticMetacall();
     void generateSignal(const FunctionDef *def, int index);
     void generatePluginMetaData();
+    QByteArray disambiguatedTypeName(const QByteArray &name);
+    QByteArray disambiguatedTypeName(const QByteArray &name, TypeTags tag);
+    QByteArray disambiguatedTypeNameForCast(const QByteArray &name);
     QMultiMap<QByteArray, int> automaticPropertyMetaTypesHelper();
     QMap<int, QMultiMap<QByteArray, int>>
     methodsWithAutomaticTypesHelper(const QList<FunctionDef> &methodList);

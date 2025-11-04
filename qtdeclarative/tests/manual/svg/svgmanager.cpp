@@ -70,6 +70,7 @@ QString SvgManager::qmlSource() const
             QQuickQmlGenerator generator(currentSource().toLocalFile(), QQuickVectorImageGenerator::CurveRenderer, tempFile.fileName());
             generator.setCommentString(QStringLiteral("Generated"));
             generator.generate();
+            generator.save();
         }
         tempFile.close();
 

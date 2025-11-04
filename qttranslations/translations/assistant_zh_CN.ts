@@ -71,7 +71,7 @@ Reason:
     </message>
     <message>
         <source>Cannot load sqlite database driver!</source>
-        <translation>无法加载 sqlite 数据库驱动程序！</translation>
+        <translation>无法加载 SQLite 数据库驱动程序！</translation>
     </message>
 </context>
 <context>
@@ -214,7 +214,7 @@ Reason:
         <translation>无法保存书签。</translation>
     </message>
     <message>
-        <source>You are goingto delete a Folder, this will also&lt;br&gt; remove it&apos;s content. Are you sure to continue?</source>
+        <source>You are going to delete a Folder, this will also&lt;br&gt; remove it&apos;s content. Are you sure to continue?</source>
         <translation>将要删除一个文件夹，这也将&lt;br&gt;删除它的内容。确定要继续吗？</translation>
     </message>
     <message>
@@ -613,7 +613,7 @@ Reason:
     </message>
     <message>
         <source>Looking for Qt Documentation...</source>
-        <translation>寻找 Qt 文档...</translation>
+        <translation>正在查找 Qt 文档...</translation>
     </message>
     <message>
         <source>&amp;File</source>

@@ -17,6 +17,7 @@
 #include "extensions/browser/extension_event_histogram_value.h"
 #include "extensions/browser/extension_function.h"
 #include "extensions/browser/extension_host_registry.h"
+#include "extensions/common/extension_id.h"
 #include "third_party/skia/include/core/SkColor.h"
 
 namespace content {
@@ -79,6 +80,12 @@ class ExtensionActionAPI : public BrowserContextKeyedAPI {
                                       content::WebContents* web_contents,
                                       const Extension* extension);
 
+  // Called when the action for the given extension is pinned or unpinned from
+  // the toolbar. Dispatches the onUserSettingsChanged event for extension that
+  // owns the given action.
+  void OnActionPinnedStateChanged(const ExtensionId& extension_id,
+                                  bool is_pinned);
+
   // Clears the values for all ExtensionActions for the tab associated with the
   // given |web_contents| (and signals that page actions changed).
   void ClearAllValuesForTab(content::WebContents* web_contents);
@@ -95,7 +102,7 @@ class ExtensionActionAPI : public BrowserContextKeyedAPI {
 
   // The DispatchEvent methods forward events to the |context|'s event router.
   void DispatchEventToExtension(content::BrowserContext* context,
-                                const std::string& extension_id,
+                                const ExtensionId& extension_id,
                                 events::HistogramValue histogram_value,
                                 const std::string& event_name,
                                 base::Value::List event_args);

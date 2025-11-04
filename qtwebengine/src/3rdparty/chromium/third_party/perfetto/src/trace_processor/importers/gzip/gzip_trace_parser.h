@@ -17,11 +17,15 @@
 #ifndef SRC_TRACE_PROCESSOR_IMPORTERS_GZIP_GZIP_TRACE_PARSER_H_
 #define SRC_TRACE_PROCESSOR_IMPORTERS_GZIP_GZIP_TRACE_PARSER_H_
 
+#include <cstddef>
+#include <cstdint>
+#include <memory>
+
+#include "perfetto/base/status.h"
 #include "src/trace_processor/importers/common/chunked_trace_reader.h"
 #include "src/trace_processor/util/gzip_utils.h"
 
-namespace perfetto {
-namespace trace_processor {
+namespace perfetto::trace_processor {
 
 class TraceProcessorContext;
 
@@ -32,12 +36,10 @@ class GzipTraceParser : public ChunkedTraceReader {
   ~GzipTraceParser() override;
 
   // ChunkedTraceReader implementation
-  util::Status Parse(TraceBlobView) override;
-  void NotifyEndOfFile() override;
+  base::Status Parse(TraceBlobView) override;
+  base::Status NotifyEndOfFile() override;
 
-  util::Status ParseUnowned(const uint8_t*, size_t);
-
-  bool needs_more_input() const { return needs_more_input_; }
+  base::Status ParseUnowned(const uint8_t*, size_t);
 
  private:
   TraceProcessorContext* const context_;
@@ -48,10 +50,9 @@ class GzipTraceParser : public ChunkedTraceReader {
   size_t bytes_written_ = 0;
 
   bool first_chunk_parsed_ = false;
-  bool needs_more_input_ = false;
+  enum { kStreamBoundary, kMidStream } output_state_ = kStreamBoundary;
 };
 
-}  // namespace trace_processor
-}  // namespace perfetto
+}  // namespace perfetto::trace_processor
 
 #endif  // SRC_TRACE_PROCESSOR_IMPORTERS_GZIP_GZIP_TRACE_PARSER_H_

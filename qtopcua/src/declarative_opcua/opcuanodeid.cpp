@@ -10,6 +10,7 @@ QT_BEGIN_NAMESPACE
     \inqmlmodule QtOpcUa
     \brief Specifies a node by an identifier.
     \since QtOpcUa 5.12
+    \deprecated [6.9]
 
     \code
     import QtOpcUa as QtOpcUa

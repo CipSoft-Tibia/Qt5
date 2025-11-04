@@ -44,8 +44,10 @@ class V8RCSProbe(ChromiumProbe):
     merged_result_path = group.get_local_probe_result_path(self)
     result_files = (run.results[self].file for run in group.runs)
     result_file = self.runner_platform.concat_files(
-        inputs=result_files, output=merged_result_path)
-    return LocalProbeResult(file=[result_file])
+        inputs=result_files,
+        output=merged_result_path,
+        prefix=f"\n== Page: {group.story.name}\n")
+    return LocalProbeResult(file=(result_file,))
 
   def merge_stories(self, group: StoriesRunGroup) -> ProbeResult:
     merged_result_path = group.get_local_probe_result_path(self)
@@ -56,10 +58,9 @@ class V8RCSProbe(ChromiumProbe):
           logging.info("Probe %s: skipping non-existing results file: %s",
                        self.NAME, merged_repetitions_file)
           continue
-        merged_file.write(f"\n== Page: {repetition_group.story.name}\n")
         with merged_repetitions_file.open(encoding="utf-8") as f:
           merged_file.write(f.read())
-    return LocalProbeResult(file=[merged_result_path])
+    return LocalProbeResult(file=(merged_result_path,))
 
   def merge_browsers(self, group: BrowsersRunGroup) -> ProbeResult:
     # We put all the fils by in a toplevel v8.rcs folder
@@ -93,13 +94,13 @@ class V8RCSProbeContext(ProbeContext[V8RCSProbe]):
     with self.run.actions("Extract RCS") as actions:
       self._rcs_table = actions.js("return %GetAndResetRuntimeCallStats();")
 
-  def tear_down(self) -> ProbeResult:
+  def teardown(self) -> ProbeResult:
     if not self._rcs_table:
       raise ProbeMissingDataError(
           "Chrome didn't produce any RCS data. "
           "Use Chrome Canary or make sure to enable the "
           "v8_enable_runtime_call_stats compile-time flag.")
-    rcs_file = self.result_path
+    rcs_file = self.local_result_path
     with rcs_file.open("a") as f:
       f.write(self._rcs_table)
     return LocalProbeResult(file=(rcs_file,))

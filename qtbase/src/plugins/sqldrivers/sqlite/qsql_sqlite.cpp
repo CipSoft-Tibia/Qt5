@@ -39,7 +39,7 @@ Q_DECLARE_METATYPE(sqlite3_stmt*)
 
 QT_BEGIN_NAMESPACE
 
-static Q_LOGGING_CATEGORY(lcSqlite, "qt.sql.sqlite")
+Q_STATIC_LOGGING_CATEGORY(lcSqlite, "qt.sql.sqlite")
 
 using namespace Qt::StringLiterals;
 
@@ -134,7 +134,7 @@ QSqlIndex QSQLiteDriverPrivate::getTableInfo(QSqlQuery &query, const QString &ta
         }
     }
 
-    query.exec("PRAGMA "_L1 + schema + "table_info ("_L1 + table + u')');
+    query.exec("PRAGMA "_L1 + schema + "table_xinfo ("_L1 + table + u')');
     QSqlIndex ind;
     while (query.next()) {
         bool isPk = query.value(5).toInt();

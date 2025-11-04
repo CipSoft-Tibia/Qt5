@@ -22,6 +22,7 @@
 #include <QtCore/qspan.h>
 #include <QtCore/private/quniquehandle_p.h>
 #include <QtMultimedia/qaudioformat.h>
+#include <QtMultimedia/qaudiodevice.h>
 
 #include <CoreAudioTypes/CoreAudioTypes.h>
 #ifdef Q_OS_MACOS
@@ -30,21 +31,19 @@
 
 QT_BEGIN_NAMESPACE
 
-namespace QCoreAudioUtils
-{
+namespace QCoreAudioUtils {
 
 struct QFreeDeleter
 {
     template <typename T>
-    void operator()(T*t)
+    void operator()(T *t)
     {
         ::free(t);
     }
 };
 
-
-Q_MULTIMEDIA_EXPORT QAudioFormat toQAudioFormat(const AudioStreamBasicDescription& streamFormat);
-AudioStreamBasicDescription toAudioStreamBasicDescription(QAudioFormat const& audioFormat);
+Q_MULTIMEDIA_EXPORT QAudioFormat toQAudioFormat(const AudioStreamBasicDescription &streamFormat);
+AudioStreamBasicDescription toAudioStreamBasicDescription(QAudioFormat const &audioFormat);
 
 Q_MULTIMEDIA_EXPORT std::unique_ptr<AudioChannelLayout, QFreeDeleter>
 toAudioChannelLayout(const QAudioFormat &format, UInt32 *size);
@@ -83,7 +82,45 @@ struct AudioUnitHandleTraits
     static bool close(Type handle) { return AudioComponentInstanceDispose(handle) == noErr; }
 };
 
-using AudioUnitHandle = QUniqueHandle<AudioUnitHandleTraits>;
+struct AudioUnitHandle : QUniqueHandle<AudioUnitHandleTraits>
+{
+    using QUniqueHandle::QUniqueHandle;
+    AudioUnitHandle(AudioUnitHandle &&) = default;
+    AudioUnitHandle &operator=(AudioUnitHandle &&) = default;
+    ~AudioUnitHandle();
+
+    bool initialize();
+    void deinitialize();
+    bool isInitialized() const { return m_initialized; }
+
+private:
+    bool m_initialized{};
+};
+
+// AudioUnit helpers
+std::optional<AudioUnitHandle> makeAudioUnitForIO();
+bool audioUnitSetInputEnabled(AudioUnitHandle &, bool);
+bool audioUnitSetOutputEnabled(AudioUnitHandle &, bool);
+bool audioUnitSetInputStreamFormat(AudioUnitHandle &, AudioUnitElement,
+                                   const AudioStreamBasicDescription &);
+bool audioUnitSetOutputStreamFormat(AudioUnitHandle &, AudioUnitElement,
+                                    const AudioStreamBasicDescription &);
+bool audioUnitIsRunning(AudioUnitHandle &);
+bool audioUnitSetRenderCallback(AudioUnitHandle &, AURenderCallbackStruct &);
+
+std::optional<AudioStreamBasicDescription> audioUnitGetInputStreamFormat(AudioUnitHandle &,
+                                                                         AudioUnitElement);
+
+std::optional<int> audioUnitGetFramesPerSlice(AudioUnitHandle &);
+
+#if defined(Q_OS_MACOS)
+bool audioUnitSetCurrentDevice(AudioUnitHandle &, AudioObjectID);
+std::optional<int> audioUnitGetFramesPerBuffer(AudioUnitHandle &);
+bool audioObjectSetSamplingRate(AudioObjectID, int);
+std::optional<int> audioObjectFindBestNominalSampleRate(AudioObjectID, QAudioDevice::Mode,
+                                                        int rate);
+bool audioObjectSetFramesPerBuffer(AudioObjectID, int32_t bufferFrames);
+#endif
 
 } // namespace QCoreAudioUtils
 

@@ -7,7 +7,6 @@
 #include "chrome/browser/signin/identity_manager_factory.h"
 #include "chrome/browser/sync/sync_service_factory.h"
 #include "chrome/grit/generated_resources.h"
-#include "components/password_manager/core/browser/features/password_features.h"
 #include "components/password_manager/core/browser/features/password_manager_features_util.h"
 #include "components/signin/public/identity_manager/identity_manager.h"
 #include "components/sync/service/sync_service.h"
@@ -92,7 +91,7 @@ bool MovePasswordsPromo::ShouldShowPromo() const {
   syncer::SyncService* sync_service = GetSyncService(profile_);
   if (!sync_service ||
       !password_manager::features_util::IsOptedInForAccountStorage(
-          sync_service)) {
+          profile_->GetPrefs(), sync_service)) {
     return false;
   }
 
@@ -106,9 +105,7 @@ bool MovePasswordsPromo::ShouldShowPromo() const {
       !should_suppress ||
       base::Time().Now() - last_time_shown_ > kMovePasswordsPromoPeriod;
 
-  return bubble_is_not_over_prompted && HasLocalPasswords(delegate_.get()) &&
-         base::FeatureList::IsEnabled(
-             password_manager::features::kButterOnDesktopFollowup);
+  return bubble_is_not_over_prompted && HasLocalPasswords(delegate_.get());
 }
 
 std::u16string MovePasswordsPromo::GetTitle() const {

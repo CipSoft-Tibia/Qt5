@@ -10,7 +10,6 @@
 #include "qquickwebengineprofile.h"
 #include "qquickwebengineprofile_p.h"
 #include "qquickwebenginescriptcollection_p.h"
-#include "qquickwebenginescriptcollection_p_p.h"
 #include "qquickwebenginesettings_p.h"
 #include "qquickwebenginetouchhandleprovider_p_p.h"
 #include "qquickwebenginetouchhandle_p.h"
@@ -345,13 +344,8 @@ void QQuickWebEngineViewPrivate::initializeProfile()
         Q_ASSERT(!adapter->isInitialized());
         m_profileInitialized = true;
 
-        if (!m_profile) {
+        if (!m_profile)
             m_profile = QQuickWebEngineProfile::defaultProfile();
-
-            // MEMO first ever call to default profile will create one without context
-            // it needs something to get qml engine from (and view is created in qml land)
-            m_profile->ensureQmlContext(q_ptr);
-        }
 
         m_profile->d_ptr->addWebContentsAdapterClient(this);
         m_settings.reset(new QQuickWebEngineSettings(m_profile->settings()));
@@ -516,8 +510,7 @@ static QQuickWebEngineView::Feature toDeprecatedFeature(QWebEnginePermission::Pe
         break;
     }
 
-    Q_UNREACHABLE();
-    return QQuickWebEngineView::Feature(-1);
+    Q_UNREACHABLE_RETURN(QQuickWebEngineView::Feature(-1));
 }
 QT_WARNING_POP
 #endif // QT_DEPRECATED_SINCE(6, 8)
@@ -879,6 +872,7 @@ QObject *QQuickWebEngineViewPrivate::accessibilityParentObject()
 
 ProfileAdapter *QQuickWebEngineViewPrivate::profileAdapter()
 {
+    initializeProfile();
     return m_profile->d_ptr->profileAdapter();
 }
 
@@ -1201,16 +1195,12 @@ void QQuickWebEngineViewPrivate::updateEditActions()
 
 QQuickWebEngineScriptCollection *QQuickWebEngineViewPrivate::getUserScripts()
 {
-    Q_Q(QQuickWebEngineView);
     if (!m_scriptCollection)
         m_scriptCollection.reset(
             new QQuickWebEngineScriptCollection(
-                new QQuickWebEngineScriptCollectionPrivate(
+                new QWebEngineScriptCollection(
                     new QWebEngineScriptCollectionPrivate(
                         profileAdapter()->userResourceController(), adapter))));
-
-    if (!m_scriptCollection->qmlEngine())
-        m_scriptCollection->setQmlEngine(qmlEngine(q));
 
     return m_scriptCollection.data();
 }
@@ -1381,7 +1371,7 @@ void QQuickWebEngineViewPrivate::printToPdf(
         const QPageRanges &ranges, quint64 frameId)
 {
     adapter->printToPDFCallbackResult(std::move(callback), layout, ranges, /*colorMode*/ true,
-                                      /*useCustomMargins*/ true, frameId);
+                                      frameId);
 }
 
 void QQuickWebEngineViewPrivate::didPrintPageToPdf(const QString &filePath, bool success)
@@ -1450,8 +1440,9 @@ QQuickWebEngineViewPrivate::createTouchHandleDelegate(const QMap<int, QImage> &i
 {
     Q_Q(QQuickWebEngineView);
     // lifecycle managed by Chromium's TouchHandleDrawable
-    QQuickWebEngineTouchHandle *handle = new QQuickWebEngineTouchHandle();
+    QQuickWebEngineTouchHandle *handle(nullptr);
     if (m_touchHandleDelegate) {
+        handle = new QQuickWebEngineTouchHandle();
         QQmlContext *qmlContext = QQmlEngine::contextForObject(q);
         QQmlContext *context = new QQmlContext(qmlContext, handle);
         context->setContextObject(handle);
@@ -1462,7 +1453,9 @@ QQuickWebEngineViewPrivate::createTouchHandleDelegate(const QMap<int, QImage> &i
         handle->setItem(item, false);
     } else {
         QQuickItem *item = ui()->createTouchHandle();
-        Q_ASSERT(item);
+        if (!item) {
+            return nullptr;
+        }
         QQmlEngine *engine = qmlEngine(item);
         Q_ASSERT(engine);
         QQuickWebEngineTouchHandleProvider *touchHandleProvider =
@@ -1470,6 +1463,7 @@ QQuickWebEngineViewPrivate::createTouchHandleDelegate(const QMap<int, QImage> &i
                         engine->imageProvider(QQuickWebEngineTouchHandleProvider::identifier()));
         Q_ASSERT(touchHandleProvider);
         touchHandleProvider->init(images);
+        handle = new QQuickWebEngineTouchHandle();
         handle->setItem(item, true);
     }
     return handle;
@@ -1681,7 +1675,7 @@ void QQuickWebEngineView::printToPdf(const QJSValue &callback, PrintedPageSizeId
 
     // Call back with null result.
     QJSValueList args;
-    args.append(QJSValue(QByteArray().data()));
+    args.append(QJSValue(QLatin1String("")));
     QJSValue callbackCopy = callback;
     callbackCopy.call(args);
 #endif

@@ -17,6 +17,8 @@
 #include "device/bluetooth/bluetooth_adapter_android.h"
 #include "device/bluetooth/bluetooth_remote_gatt_descriptor_android.h"
 #include "device/bluetooth/bluetooth_remote_gatt_service_android.h"
+
+// Must come after all headers that specialize FromJniType() / ToJniType().
 #include "device/bluetooth/jni_headers/ChromeBluetoothRemoteGattCharacteristic_jni.h"
 
 using base::android::AttachCurrentThread;
@@ -238,7 +240,7 @@ void BluetoothRemoteGattCharacteristicAndroid::OnRead(
 
   if (status == 0) {  // android.bluetooth.BluetoothGatt.GATT_SUCCESS
     base::android::JavaByteArrayToByteVector(env, value, &value_);
-    std::move(read_callback).Run(/*error_code=*/absl::nullopt, value_);
+    std::move(read_callback).Run(/*error_code=*/std::nullopt, value_);
   } else {
     std::move(read_callback)
         .Run(BluetoothRemoteGattServiceAndroid::GetGattErrorCode(status),

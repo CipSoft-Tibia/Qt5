@@ -466,9 +466,9 @@ std::vector<GProfileBuilder::Line> GProfileBuilder::GetLinesForSymbolSetId(
   using RowRef =
       perfetto::trace_processor::tables::SymbolTable::ConstRowReference;
   std::vector<RowRef> symbol_set;
-  for (auto it = symbols.FilterToIterator(
-           {symbols.symbol_set_id().eq(*symbol_set_id)});
-       it; ++it) {
+  Query q;
+  q.constraints = {symbols.symbol_set_id().eq(*symbol_set_id)};
+  for (auto it = symbols.FilterToIterator(q); it; ++it) {
     symbol_set.push_back(it.row_reference());
   }
 
@@ -480,7 +480,7 @@ std::vector<GProfileBuilder::Line> GProfileBuilder::GetLinesForSymbolSetId(
     if (uint64_t function_id =
             WriteFunctionIfNeeded(symbol, annotation, mapping_id);
         function_id != kNullFunctionId) {
-      lines.push_back({function_id, symbol.line_number()});
+      lines.push_back({function_id, symbol.line_number().value_or(0)});
     }
   }
 
@@ -502,7 +502,9 @@ uint64_t GProfileBuilder::WriteFunctionIfNeeded(
     CallsiteAnnotation annotation,
     uint64_t mapping_id) {
   int64_t name = string_table_.GetAnnotatedString(symbol.name(), annotation);
-  int64_t filename = string_table_.InternString(symbol.source_file());
+  int64_t filename = symbol.source_file().has_value()
+                         ? string_table_.InternString(*symbol.source_file())
+                         : kEmptyStringIndex;
 
   auto ins = functions_.insert(
       {Function{name, kEmptyStringIndex, filename}, functions_.size() + 1});

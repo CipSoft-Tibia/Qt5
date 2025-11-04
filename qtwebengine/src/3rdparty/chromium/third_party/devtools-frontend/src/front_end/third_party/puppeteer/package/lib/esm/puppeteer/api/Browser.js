@@ -3,10 +3,9 @@
  * Copyright 2017 Google Inc.
  * SPDX-License-Identifier: Apache-2.0
  */
-import { firstValueFrom, from, merge, raceWith, filterAsync, fromEvent, } from '../../third_party/rxjs/rxjs.js';
+import { firstValueFrom, from, merge, raceWith, } from '../../third_party/rxjs/rxjs.js';
 import { EventEmitter } from '../common/EventEmitter.js';
-import { debugError } from '../common/util.js';
-import { timeout } from '../common/util.js';
+import { debugError, fromEmitterEvent, filterAsync, timeout, fromAbortSignal, } from '../common/util.js';
 import { asyncDisposeSymbol, disposeSymbol } from '../util/disposable.js';
 /**
  * @internal
@@ -40,7 +39,7 @@ export const WEB_PERMISSION_TO_PROTOCOL_PERMISSION = new Map([
  * - connected to via {@link Puppeteer.connect} or
  * - launched by {@link PuppeteerNode.launch}.
  *
- * {@link Browser} {@link EventEmitter | emits} various events which are
+ * {@link Browser} {@link EventEmitter.emit | emits} various events which are
  * documented in the {@link BrowserEvent} enum.
  *
  * @example Using a {@link Browser} to create a {@link Page}:
@@ -96,8 +95,8 @@ export class Browser extends EventEmitter {
      * ```
      */
     async waitForTarget(predicate, options = {}) {
-        const { timeout: ms = 30000 } = options;
-        return await firstValueFrom(merge(fromEvent(this, "targetcreated" /* BrowserEvent.TargetCreated */), fromEvent(this, "targetchanged" /* BrowserEvent.TargetChanged */), from(this.targets())).pipe(filterAsync(predicate), raceWith(timeout(ms))));
+        const { timeout: ms = 30000, signal } = options;
+        return await firstValueFrom(merge(fromEmitterEvent(this, "targetcreated" /* BrowserEvent.TargetCreated */), fromEmitterEvent(this, "targetchanged" /* BrowserEvent.TargetChanged */), from(this.targets())).pipe(filterAsync(predicate), raceWith(fromAbortSignal(signal), timeout(ms))));
     }
     /**
      * Gets a list of all open {@link Page | pages} inside this {@link Browser}.
@@ -121,18 +120,24 @@ export class Browser extends EventEmitter {
     /**
      * Whether Puppeteer is connected to this {@link Browser | browser}.
      *
-     * @deprecated Use {@link Browser.connected}.
+     * @deprecated Use {@link Browser | Browser.connected}.
      */
     isConnected() {
         return this.connected;
     }
     /** @internal */
     [disposeSymbol]() {
-        return void this.close().catch(debugError);
+        if (this.process()) {
+            return void this.close().catch(debugError);
+        }
+        return void this.disconnect().catch(debugError);
     }
     /** @internal */
     [asyncDisposeSymbol]() {
-        return this.close();
+        if (this.process()) {
+            return this.close();
+        }
+        return this.disconnect();
     }
 }
 //# sourceMappingURL=Browser.js.map

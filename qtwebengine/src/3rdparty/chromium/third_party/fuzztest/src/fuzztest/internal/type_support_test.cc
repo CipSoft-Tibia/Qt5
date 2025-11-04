@@ -18,13 +18,14 @@
 #include <array>
 #include <cmath>
 #include <complex>
+#include <cstdint>
 #include <limits>
 #include <list>
 #include <map>
 #include <memory>
 #include <optional>
-#include <ostream>
 #include <set>
+#include <sstream>
 #include <string>
 #include <tuple>
 #include <type_traits>
@@ -41,11 +42,16 @@
 #include "absl/strings/strip.h"
 #include "absl/time/time.h"
 #include "./fuzztest/domain.h"
+#include "./fuzztest/internal/meta.h"
+#include "./fuzztest/internal/printer.h"
 #include "./fuzztest/internal/test_protobuf.pb.h"
+#include "google/protobuf/text_format.h"
 
 namespace fuzztest::internal {
 namespace {
 
+using ::fuzztest::domain_implementor::PrintMode;
+using ::fuzztest::domain_implementor::PrintValue;
 using ::testing::AllOf;
 using ::testing::Contains;
 using ::testing::Each;
@@ -193,6 +199,14 @@ TEST(StringTest, Printer) {
                           R"("printf(\"Hello, world!\");")"));
 }
 
+TEST(ByteArrayTest, Printer) {
+  EXPECT_THAT(
+      TestPrintValue(std::vector<uint8_t>{'\0', 'a', 0223, 'b', '\"'}),
+      ElementsAre(R"("\000a\223b"")",
+                  R"(fuzztest::ToByteArray(std::string("\000a\223b\"", 5)))"));
+  EXPECT_EQ(std::string("\000a\223b\"", 5).size(), 5);
+}
+
 TEST(CompoundTest, Printer) {
   EXPECT_THAT(
       TestPrintValue(std::pair(1, 1.5), Arbitrary<std::pair<int, double>>()),
@@ -217,10 +231,13 @@ TEST(ProtobufTest, Printer) {
   internal::TestProtobuf proto;
   proto.set_b(true);
   proto.add_rep_subproto()->set_subproto_i32(17);
+  std::string proto_text;
+  ASSERT_TRUE(google::protobuf::TextFormat::PrintToString(proto, &proto_text));
   EXPECT_THAT(TestPrintValue(proto),
-              ElementsAre(absl::StrCat("(", proto.ShortDebugString(), ")"),
-                          absl::StrCat("ParseTestProto(R\"pb(",
-                                       proto.ShortDebugString(), ")pb\")")));
+              ElementsAre(absl::StrCat("(", proto_text, ")"),
+                          MatchesRegex(absl::StrCat(
+                              R"re(.*ParseTe[sx]tProto.*\(R"pb\()re",
+                              proto_text, R"re(\)pb"\))re"))));
 }
 
 TEST(ProtobufEnumTest, Printer) {
@@ -305,11 +322,16 @@ TEST(VariantTest, Printer) {
 TEST(OptionalTest, Printer) {
   auto optional_int_domain = OptionalOf(Arbitrary<int>());
   EXPECT_THAT(TestPrintValue({}, optional_int_domain), Each("std::nullopt"));
-  EXPECT_THAT(TestPrintValue(1, optional_int_domain), ElementsAre("(1)", "1"));
+  EXPECT_THAT(
+      TestPrintValue(Domain<int>::corpus_type(std::in_place_type<int>, 1),
+                     optional_int_domain),
+      ElementsAre("(1)", "1"));
 
   auto optional_string_domain = OptionalOf(Arbitrary<std::string>());
   EXPECT_THAT(TestPrintValue({}, optional_string_domain), Each("std::nullopt"));
-  EXPECT_THAT(TestPrintValue("ABC", optional_string_domain),
+  EXPECT_THAT(TestPrintValue(Domain<std::string>::corpus_type(
+                                 std::in_place_type<std::string>, "ABC"),
+                             optional_string_domain),
               ElementsAre("(\"ABC\")", "\"ABC\""));
 }
 

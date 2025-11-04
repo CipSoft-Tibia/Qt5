@@ -11,19 +11,19 @@
 #include "base/strings/escape.h"
 #include "base/strings/stringprintf.h"
 #include "base/task/sequenced_task_runner.h"
-#include "components/safe_browsing/core/browser/hashprefix_realtime/hash_realtime_utils.h"
 #include "components/safe_browsing/core/browser/hashprefix_realtime/ohttp_key_service.h"
 #include "components/safe_browsing/core/browser/verdict_cache_manager.h"
 #include "components/safe_browsing/core/common/features.h"
+#include "components/safe_browsing/core/common/hashprefix_realtime/hash_realtime_utils.h"
 #include "components/safe_browsing/core/common/proto/safebrowsingv5.pb.h"
 #include "components/safe_browsing/core/common/utils.h"
 #include "google_apis/google_api_keys.h"
 #include "net/base/load_flags.h"
+#include "net/base/net_errors.h"
 #include "net/http/http_request_headers.h"
 #include "net/http/http_status_code.h"
 #include "net/traffic_annotation/network_traffic_annotation.h"
 #include "services/network/public/cpp/resource_request.h"
-#include "services/network/public/mojom/fetch_api.mojom-shared.h"
 #include "services/network/public/mojom/oblivious_http_request.mojom.h"
 #include "services/network/public/mojom/url_response_head.mojom.h"
 
@@ -66,8 +66,8 @@ SBThreatType MapFullHashDetailToSbThreatType(
     default:
       // Using "default" because exhaustive switch statements are not
       // recommended for proto3 enums.
-      NOTREACHED() << "Unexpected ThreatType encountered: "
-                   << detail.threat_type();
+      NOTREACHED_IN_MIGRATION()
+          << "Unexpected ThreatType encountered: " << detail.threat_type();
       return SBThreatType::SB_THREAT_TYPE_UNUSED;
   }
 }
@@ -78,7 +78,7 @@ SBThreatType MapFullHashDetailToSbThreatType(
 class ObliviousHttpClient : public network::mojom::ObliviousHttpClient {
  public:
   using OnCompletedCallback =
-      base::OnceCallback<void(const absl::optional<std::string>&,
+      base::OnceCallback<void(const std::optional<std::string>&,
                               int,
                               int,
                               scoped_refptr<net::HttpResponseHeaders>,
@@ -89,7 +89,7 @@ class ObliviousHttpClient : public network::mojom::ObliviousHttpClient {
 
   ~ObliviousHttpClient() override {
     if (!called_) {
-      std::move(callback_).Run(absl::nullopt, net::ERR_FAILED,
+      std::move(callback_).Run(std::nullopt, net::ERR_FAILED,
                                /*response_code=*/0, /*headers=*/nullptr,
                                /*ohttp_client_destructed_early=*/true);
     }
@@ -103,7 +103,7 @@ class ObliviousHttpClient : public network::mojom::ObliviousHttpClient {
     }
     called_ = true;
 
-    absl::optional<std::string> response_body;
+    std::optional<std::string> response_body;
     int net_error;
     int response_code;
     scoped_refptr<net::HttpResponseHeaders> response_headers;
@@ -164,13 +164,11 @@ HashRealTimeService::HashRealTimeService(
 HashRealTimeService::~HashRealTimeService() = default;
 
 // static
-bool HashRealTimeService::CanCheckUrl(
-    const GURL& url,
-    network::mojom::RequestDestination request_destination) {
+bool HashRealTimeService::CanCheckUrl(const GURL& url) {
   if (VerdictCacheManager::has_artificial_cached_url()) {
     return true;
   }
-  return hash_realtime_utils::CanCheckUrl(url, request_destination);
+  return hash_realtime_utils::CanCheckUrl(url);
 }
 
 HashRealTimeService::SBThreatInfo::SBThreatInfo(SBThreatType threat_type,
@@ -224,8 +222,8 @@ int HashRealTimeService::GetThreatSeverity(
     default:
       // Using "default" because exhaustive switch statements are not
       // recommended for proto3 enums.
-      NOTREACHED() << "Unexpected ThreatType encountered: "
-                   << detail.threat_type();
+      NOTREACHED_IN_MIGRATION()
+          << "Unexpected ThreatType encountered: " << detail.threat_type();
       return kLeastSeverity;
   }
 }
@@ -318,7 +316,7 @@ void HashRealTimeService::StartLookupInternal(
   base::UmaHistogramBoolean("SafeBrowsing.HPRT.BackoffState", in_backoff);
   if (in_backoff) {
     lookup_completer->CompleteLookup(/*is_lookup_successful=*/false,
-                                     /*sb_threat_type=*/absl::nullopt,
+                                     /*sb_threat_type=*/std::nullopt,
                                      OperationOutcome::kServiceInBackoffMode);
     return;
   }
@@ -346,14 +344,11 @@ void HashRealTimeService::OnGetOhttpKey(
     std::vector<V5::FullHash> result_full_hashes,
     base::TimeTicks request_start_time,
     std::unique_ptr<LookupCompleter> lookup_completer,
-    absl::optional<std::string> key) {
+    std::optional<std::string> key) {
   base::UmaHistogramBoolean("SafeBrowsing.HPRT.HasOhttpKey", key.has_value());
   if (!key.has_value()) {
-    backoff_operator_->ReportError();
-    base::UmaHistogramEnumeration("SafeBrowsing.HPRT.BackoffReportErrorReason",
-                                  BackoffReportErrorReason::kInvalidKey);
     lookup_completer->CompleteLookup(/*is_lookup_successful=*/false,
-                                     /*sb_threat_type=*/absl::nullopt,
+                                     /*sb_threat_type=*/std::nullopt,
                                      OperationOutcome::kOhttpKeyFetchFailed);
     return;
   }
@@ -376,10 +371,10 @@ void HashRealTimeService::OnGetOhttpKey(
       pending_receiver.InitWithNewPipeAndPassRemote());
   // The following |webui_delegate_| call is to log this HPRT lookup request on
   // any open chrome://safe-browsing pages.
-  absl::optional<int> webui_delegate_token =
+  std::optional<int> webui_delegate_token =
       webui_delegate_ ? webui_delegate_->AddToHPRTLookupPings(
                             request.get(), relay_url.spec(), key.value())
-                      : absl::nullopt;
+                      : std::nullopt;
   ohttp_client_receivers_.Add(
       std::make_unique<ObliviousHttpClient>(base::BindOnce(
           &HashRealTimeService::OnOhttpComplete, weak_factory_.GetWeakPtr(),
@@ -396,8 +391,8 @@ void HashRealTimeService::OnOhttpComplete(
     base::TimeTicks request_start_time,
     std::unique_ptr<LookupCompleter> lookup_completer,
     std::string ohttp_key,
-    absl::optional<int> webui_delegate_token,
-    const absl::optional<std::string>& response_body,
+    std::optional<int> webui_delegate_token,
+    const std::optional<std::string>& response_body,
     int net_error,
     int response_code,
     scoped_refptr<net::HttpResponseHeaders> headers,
@@ -422,11 +417,11 @@ void HashRealTimeService::OnURLLoaderComplete(
     std::unique_ptr<std::string> response_body,
     int net_error,
     int response_code,
-    absl::optional<int> webui_delegate_token,
+    std::optional<int> webui_delegate_token,
     bool ohttp_client_destructed_early) {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
-  base::UmaHistogramTimes("SafeBrowsing.HPRT.Network.Time",
-                          base::TimeTicks::Now() - request_start_time);
+  base::TimeDelta network_time = base::TimeTicks::Now() - request_start_time;
+  base::UmaHistogramTimes("SafeBrowsing.HPRT.Network.Time", network_time);
   RecordHttpResponseOrErrorCode("SafeBrowsing.HPRT.Network.Result", net_error,
                                 response_code);
   if (net_error == net::ERR_INTERNET_DISCONNECTED) {
@@ -444,12 +439,20 @@ void HashRealTimeService::OnURLLoaderComplete(
         "SafeBrowsing.HPRT.FailedNetResultIsFromEarlyOhttpClientDestruct",
         ohttp_client_destructed_early);
   }
+  if (net_error == net::ERR_NAME_NOT_RESOLVED) {
+    base::UmaHistogramTimes("SafeBrowsing.HPRT.Network.Time.NameNotResolved",
+                            network_time);
+  }
+  if (net_error == net::ERR_CONNECTION_CLOSED) {
+    base::UmaHistogramTimes("SafeBrowsing.HPRT.Network.Time.ConnectionClosed",
+                            network_time);
+  }
 
   base::expected<std::unique_ptr<V5::SearchHashesResponse>, OperationOutcome>
       response = ParseResponseAndUpdateBackoff(net_error, response_code,
                                                std::move(response_body),
                                                hash_prefixes_in_request);
-  absl::optional<SBThreatType> sb_threat_type;
+  std::optional<SBThreatType> sb_threat_type;
   bool is_lookup_successful = response.has_value();
   if (is_lookup_successful) {
     if (cache_manager_) {
@@ -502,8 +505,6 @@ HashRealTimeService::ParseResponseAndUpdateBackoff(
           "SafeBrowsing.HPRT.Network.Result.WhenEnteringBackoff", net_error,
           response_code);
     }
-    base::UmaHistogramEnumeration("SafeBrowsing.HPRT.BackoffReportErrorReason",
-                                  BackoffReportErrorReason::kResponseError);
   }
   return response;
 }
@@ -695,7 +696,7 @@ HashRealTimeService::LookupCompleter::~LookupCompleter() = default;
 
 void HashRealTimeService::LookupCompleter::CompleteLookup(
     bool is_lookup_successful,
-    absl::optional<SBThreatType> sb_threat_type,
+    std::optional<SBThreatType> sb_threat_type,
     OperationOutcome operation_outcome) {
   CHECK(!is_call_complete_);
   is_call_complete_ = true;

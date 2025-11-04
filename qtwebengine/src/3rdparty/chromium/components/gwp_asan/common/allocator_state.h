@@ -44,7 +44,7 @@ class AllocatorState {
 
   // Maximum number of virtual memory slots (guard-page buffered pages) this
   // class can allocate.
-  static constexpr size_t kMaxRequestedSlots = 4096;
+  static constexpr size_t kMaxRequestedSlots = 8192;
   // When PartitionAlloc is used as the backing allocator, we might have to
   // reserve extra slots to store PA metadata. Therefore, the number of reserved
   // slots might be higher than the number of requested slots. Note that the
@@ -70,6 +70,8 @@ class AllocatorState {
   static_assert(kInvalidMetadataIdx >= kMaxMetadata,
                 "kInvalidMetadataIdx can not reference a real index");
 
+  // These should not be renumbered and should be kept in sync with
+  // Crash::ErrorType in crash.proto
   enum class ErrorType {
     kUseAfterFree = 0,
     kBufferUnderflow = 1,

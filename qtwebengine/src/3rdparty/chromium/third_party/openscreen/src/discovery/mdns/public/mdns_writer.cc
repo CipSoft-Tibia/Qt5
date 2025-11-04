@@ -12,7 +12,7 @@
 #include "absl/hash/hash.h"
 #include "util/hashing.h"
 #include "util/osp_logging.h"
-#include "util/stringutil.h"
+#include "util/string_util.h"
 
 namespace openscreen::discovery {
 
@@ -24,7 +24,7 @@ std::vector<uint64_t> ComputeDomainNameSubhashes(const DomainName& name) {
   std::vector<uint64_t> subhashes(labels.size());
   for (size_t i = labels.size(); i-- > 0;) {
     hash_value = ComputeAggregateHash(hash_value,
-                                      stringutil::AsciiStrToLower(labels[i]));
+                                      string_util::AsciiStrToLower(labels[i]));
     subhashes[i] = hash_value;
   }
   return subhashes;
@@ -35,7 +35,7 @@ std::vector<uint64_t> ComputeDomainNameSubhashes(const DomainName& name) {
 // method returns true if the number of bytes between |begin| and |end| fits in
 // uint16_t type, returns false otherwise.
 bool UpdateRecordLength(const uint8_t* end, uint8_t* begin) {
-  OSP_DCHECK_LE(begin + sizeof(uint16_t), end);
+  OSP_CHECK_LE(begin + sizeof(uint16_t), end);
   ptrdiff_t record_length = end - begin - sizeof(uint16_t);
   if (record_length <= std::numeric_limits<uint16_t>::max()) {
     WriteBigEndian<uint16_t>(record_length, begin);

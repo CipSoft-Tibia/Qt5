@@ -101,6 +101,7 @@ void tst_xyseries::appendInsertRemove()
     QVERIFY(m_series);
     QSignalSpy updateSpy(m_series, &QXYSeries::update);
     QSignalSpy pointAddedSpy(m_series, &QXYSeries::pointAdded);
+    QSignalSpy pointsAddedSpy(m_series, &QXYSeries::pointsAdded);
     QSignalSpy pointRemovedSpy(m_series, &QXYSeries::pointRemoved);
     QSignalSpy pointsRemovedSpy(m_series, &QXYSeries::pointsRemoved);
 
@@ -122,15 +123,15 @@ void tst_xyseries::appendInsertRemove()
     // Append 3 more
     m_series->append(morepoints);
 
-    QCOMPARE(updateSpy.count(), 6);
+    QCOMPARE(updateSpy.count(), 4);
     QCOMPARE(m_series->points(), allpoints);
-    QCOMPARE(pointAddedSpy.size(), 6);
+    QCOMPARE(pointsAddedSpy.size(), 1);
 
     // Remove the first 3 one by one
     for (int i = 2; i >= 0; --i)
         m_series->remove(i);
 
-    QCOMPARE(updateSpy.count(), 9);
+    QCOMPARE(updateSpy.count(), 7);
     QCOMPARE(m_series->points(), morepoints);
     QCOMPARE(pointRemovedSpy.size(), 3);
 
@@ -139,14 +140,14 @@ void tst_xyseries::appendInsertRemove()
     m_series->insert(2, points[1]);
     m_series->insert(4, points[2]);
 
-    QCOMPARE(updateSpy.count(), 12);
+    QCOMPARE(updateSpy.count(), 10);
     QCOMPARE(m_series->points(), mixedpoints);
-    QCOMPARE(pointAddedSpy.size(), 9);
+    QCOMPARE(pointAddedSpy.size(), 6);
 
     // Remove first 3
     m_series->removeMultiple(0, 3);
 
-    QCOMPARE(updateSpy.count(), 13);
+    QCOMPARE(updateSpy.count(), 11);
     QCOMPARE(m_series->count(), 3);
     QCOMPARE(pointsRemovedSpy.size(), 1);
 
@@ -154,15 +155,15 @@ void tst_xyseries::appendInsertRemove()
     for (int i = 10; i < 13; ++i)
         m_series->append(i, i);
 
-    QCOMPARE(updateSpy.count(), 16);
+    QCOMPARE(updateSpy.count(), 14);
     QCOMPARE(m_series->count(), 6);
-    QCOMPARE(pointAddedSpy.size(), 12);
+    QCOMPARE(pointAddedSpy.size(), 9);
 
     // Remove 3 by qreals
     for (int i = 10; i < 13; ++i)
         m_series->remove(i, i);
 
-    QCOMPARE(updateSpy.count(), 19);
+    QCOMPARE(updateSpy.count(), 17);
     QCOMPARE(m_series->count(), 3);
     QCOMPARE(pointRemovedSpy.size(), 6);
 }

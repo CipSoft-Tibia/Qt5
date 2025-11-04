@@ -53,12 +53,12 @@ class UniformityAnalysisTestBase {
     /// @param program the program
     /// @param should_pass true if `builder` program should pass the analysis, otherwise false
     void RunTest(Program&& program, bool should_pass) {
-        error_ = program.Diagnostics().str();
+        error_ = program.Diagnostics().Str();
 
         bool valid = program.IsValid();
         if (should_pass) {
             EXPECT_TRUE(valid) << error_;
-            EXPECT_FALSE(program.Diagnostics().contains_errors());
+            EXPECT_FALSE(program.Diagnostics().ContainsErrors());
         } else {
             if (kUniformityFailuresAsError) {
                 EXPECT_FALSE(valid);
@@ -433,9 +433,9 @@ test:5:3 note: control flow depends on possibly non-uniform value
   if (i == 0) {
   ^^
 
-test:5:7 note: parameter 'i' of 'foo' may be non-uniform
-  if (i == 0) {
-      ^
+test:4:8 note: parameter 'i' of 'foo' may be non-uniform
+fn foo(i : i32) {
+       ^
 
 test:11:7 note: possibly non-uniform value passed here
   foo(rw);
@@ -514,7 +514,11 @@ struct BuiltinEntry {
 class ComputeBuiltin : public UniformityAnalysisTestBase,
                        public ::testing::TestWithParam<BuiltinEntry> {};
 TEST_P(ComputeBuiltin, AsParam) {
-    std::string src = R"(
+    std::string src = std::string((GetParam().name == "subgroup_size")
+                                      ? R"(enable chromium_experimental_subgroups;
+)"
+                                      : "") +
+                      R"(
 @compute @workgroup_size(64)
 fn main(@builtin()" + GetParam().name +
                       R"() b : )" + GetParam().type + R"() {
@@ -545,7 +549,11 @@ test:4:16 note: builtin 'b' of 'main' may be non-uniform
 }
 
 TEST_P(ComputeBuiltin, InStruct) {
-    std::string src = R"(
+    std::string src = std::string((GetParam().name == "subgroup_size")
+                                      ? R"(enable chromium_experimental_subgroups;
+)"
+                                      : "") +
+                      R"(
 struct S {
   @builtin()" + GetParam().name +
                       R"() b : )" + GetParam().type + R"(
@@ -585,7 +593,8 @@ INSTANTIATE_TEST_SUITE_P(UniformityAnalysisTest,
                                            BuiltinEntry{"local_invocation_index", "u32", false},
                                            BuiltinEntry{"global_invocation_id", "vec3<u32>", false},
                                            BuiltinEntry{"workgroup_id", "vec3<u32>", true},
-                                           BuiltinEntry{"num_workgroups", "vec3<u32>", true}),
+                                           BuiltinEntry{"num_workgroups", "vec3<u32>", true},
+                                           BuiltinEntry{"subgroup_size", "u32", true}),
                          [](const ::testing::TestParamInfo<ComputeBuiltin::ParamType>& p) {
                              return p.param.name;
                          });
@@ -626,7 +635,12 @@ test:9:7 note: parameter 's' of 'main' may be non-uniform
 class FragmentBuiltin : public UniformityAnalysisTestBase,
                         public ::testing::TestWithParam<BuiltinEntry> {};
 TEST_P(FragmentBuiltin, AsParam) {
-    std::string src = R"(
+    std::string src = std::string((GetParam().name == "subgroup_size")
+                                      ? R"(enable chromium_experimental_subgroups;
+)"
+                                      : R"(
+                                      )") +
+                      R"(
 @fragment
 fn main(@builtin()" + GetParam().name +
                       R"() b : )" + GetParam().type + R"() {
@@ -640,15 +654,15 @@ fn main(@builtin()" + GetParam().name +
     RunTest(src, should_pass);
     if (!should_pass) {
         EXPECT_EQ(error_,
-                  R"(test:5:9 error: 'dpdx' must only be called from uniform control flow
+                  R"(test:6:9 error: 'dpdx' must only be called from uniform control flow
     _ = dpdx(0.5);
         ^^^^^^^^^
 
-test:4:3 note: control flow depends on possibly non-uniform value
+test:5:3 note: control flow depends on possibly non-uniform value
   if (u32(vec4(b).x) == 0u) {
   ^^
 
-test:4:16 note: builtin 'b' of 'main' may be non-uniform
+test:5:16 note: builtin 'b' of 'main' may be non-uniform
   if (u32(vec4(b).x) == 0u) {
                ^
 )");
@@ -656,7 +670,12 @@ test:4:16 note: builtin 'b' of 'main' may be non-uniform
 }
 
 TEST_P(FragmentBuiltin, InStruct) {
-    std::string src = R"(
+    std::string src = std::string((GetParam().name == "subgroup_size")
+                                      ? R"(enable chromium_experimental_subgroups;
+)"
+                                      : R"(
+                                      )") +
+                      R"(
 struct S {
   @builtin()" + GetParam().name +
                       R"() b : )" + GetParam().type + R"(
@@ -674,15 +693,15 @@ fn main(s : S) {
     RunTest(src, should_pass);
     if (!should_pass) {
         EXPECT_EQ(error_,
-                  R"(test:9:9 error: 'dpdx' must only be called from uniform control flow
+                  R"(test:10:9 error: 'dpdx' must only be called from uniform control flow
     _ = dpdx(0.5);
         ^^^^^^^^^
 
-test:8:3 note: control flow depends on possibly non-uniform value
+test:9:3 note: control flow depends on possibly non-uniform value
   if (u32(vec4(s.b).x) == 0u) {
   ^^
 
-test:8:16 note: parameter 's' of 'main' may be non-uniform
+test:9:16 note: parameter 's' of 'main' may be non-uniform
   if (u32(vec4(s.b).x) == 0u) {
                ^
 )");
@@ -694,7 +713,8 @@ INSTANTIATE_TEST_SUITE_P(UniformityAnalysisTest,
                          ::testing::Values(BuiltinEntry{"position", "vec4<f32>", false},
                                            BuiltinEntry{"front_facing", "bool", false},
                                            BuiltinEntry{"sample_index", "u32", false},
-                                           BuiltinEntry{"sample_mask", "u32", false}),
+                                           BuiltinEntry{"sample_mask", "u32", false},
+                                           BuiltinEntry{"subgroup_size", "u32", false}),
                          [](const ::testing::TestParamInfo<FragmentBuiltin::ParamType>& p) {
                              return p.param.name;
                          });
@@ -3744,8 +3764,8 @@ test:5:3 note: control flow depends on possibly non-uniform value
   if (*p == 0) {
   ^^
 
-test:5:8 note: parameter 'p' of 'bar' may be non-uniform
-  if (*p == 0) {
+test:4:8 note: parameter 'p' of 'bar' may point to a non-uniform value
+fn bar(p : ptr<function, i32>) {
        ^
 
 test:12:7 note: possibly non-uniform value passed via pointer here
@@ -3875,8 +3895,8 @@ test:5:3 note: control flow depends on possibly non-uniform value
   if (*p == 0) {
   ^^
 
-test:5:8 note: parameter 'p' of 'bar' may be non-uniform
-  if (*p == 0) {
+test:4:8 note: parameter 'p' of 'bar' may point to a non-uniform value
+fn bar(p : ptr<function, i32>) {
        ^
 
 test:13:7 note: possibly non-uniform value passed via pointer here
@@ -3916,8 +3936,8 @@ test:5:3 note: control flow depends on possibly non-uniform value
   if (*p == 0) {
   ^^
 
-test:5:8 note: parameter 'p' of 'bar' may be non-uniform
-  if (*p == 0) {
+test:4:8 note: parameter 'p' of 'bar' may point to a non-uniform value
+fn bar(p : ptr<function, i32>) {
        ^
 
 test:12:7 note: possibly non-uniform value passed via pointer here
@@ -4074,8 +4094,8 @@ test:5:3 note: control flow depends on possibly non-uniform value
   if (*p == 0) {
   ^^
 
-test:5:8 note: parameter 'p' of 'zoo' may be non-uniform
-  if (*p == 0) {
+test:4:8 note: parameter 'p' of 'zoo' may point to a non-uniform value
+fn zoo(p : ptr<function, i32>) {
        ^
 
 test:11:7 note: possibly non-uniform value passed via pointer here
@@ -4162,8 +4182,8 @@ test:6:3 note: control flow depends on possibly non-uniform value
   if (*p == 0) {
   ^^
 
-test:6:8 note: parameter 'p' of 'zoo' may be non-uniform
-  if (*p == 0) {
+test:5:8 note: parameter 'p' of 'zoo' may point to a non-uniform value
+fn zoo(p : ptr<function, i32>) {
        ^
 
 test:12:7 note: possibly non-uniform value passed via pointer here
@@ -5477,7 +5497,7 @@ fn foo() {
 
 TEST_F(UniformityAnalysisTest, VectorElement_NonUniform) {
     std::string src = R"(
-@group(0) @binding(0) var<storage, read_write> v : array<i32>;
+@group(0) @binding(0) var<storage, read_write> v : vec4<i32>;
 
 fn foo() {
   if (v[2] == 0) {
@@ -5499,6 +5519,60 @@ test:5:3 note: control flow depends on possibly non-uniform value
 test:5:7 note: reading from read_write storage buffer 'v' may result in a non-uniform value
   if (v[2] == 0) {
       ^
+)");
+}
+
+TEST_F(UniformityAnalysisTest, VectorSwizzle_NonUniform) {
+    std::string src = R"(
+@group(0) @binding(0) var<storage, read_write> v : vec4<i32>;
+
+fn foo() {
+  if (any(v.xy == vec2())) {
+    workgroupBarrier();
+  }
+}
+)";
+
+    RunTest(src, false);
+    EXPECT_EQ(error_,
+              R"(test:6:5 error: 'workgroupBarrier' must only be called from uniform control flow
+    workgroupBarrier();
+    ^^^^^^^^^^^^^^^^
+
+test:5:3 note: control flow depends on possibly non-uniform value
+  if (any(v.xy == vec2())) {
+  ^^
+
+test:5:11 note: reading from read_write storage buffer 'v' may result in a non-uniform value
+  if (any(v.xy == vec2())) {
+          ^
+)");
+}
+
+TEST_F(UniformityAnalysisTest, VectorSwizzleFromPointer_NonUniform) {
+    std::string src = R"(
+@group(0) @binding(0) var<storage, read_write> v : vec4<i32>;
+
+fn foo() {
+  if (any((&v).xy == vec2())) {
+    workgroupBarrier();
+  }
+}
+)";
+
+    RunTest(src, false);
+    EXPECT_EQ(error_,
+              R"(test:6:5 error: 'workgroupBarrier' must only be called from uniform control flow
+    workgroupBarrier();
+    ^^^^^^^^^^^^^^^^
+
+test:5:3 note: control flow depends on possibly non-uniform value
+  if (any((&v).xy == vec2())) {
+  ^^
+
+test:5:13 note: reading from read_write storage buffer 'v' may result in a non-uniform value
+  if (any((&v).xy == vec2())) {
+            ^
 )");
 }
 
@@ -8032,8 +8106,8 @@ test:7:3 note: control flow depends on possibly non-uniform value
   if (*p == 0) {
   ^^
 
-test:7:8 note: parameter 'p' of 'bar' may be non-uniform
-  if (*p == 0) {
+test:6:8 note: parameter 'p' of 'bar' may point to a non-uniform value
+fn bar(p : ptr<function, i32>) -> i32 {
        ^
 
 test:15:9 note: possibly non-uniform value passed via pointer here
@@ -8108,8 +8182,8 @@ test:7:3 note: control flow depends on possibly non-uniform value
   if (*p == 0) {
   ^^
 
-test:7:8 note: parameter 'p' of 'bar' may be non-uniform
-  if (*p == 0) {
+test:6:8 note: parameter 'p' of 'bar' may point to a non-uniform value
+fn bar(p : ptr<function, i32>) -> i32 {
        ^
 
 test:15:9 note: possibly non-uniform value passed via pointer here
@@ -8181,9 +8255,9 @@ test:10:3 note: control flow depends on possibly non-uniform value
   if (*p == 0) {
   ^^
 
-test:10:8 note: parameter 'p' of 'b' may be non-uniform
-  if (*p == 0) {
-       ^
+test:9:6 note: parameter 'p' of 'b' may point to a non-uniform value
+fn b(p : ptr<function, i32>) -> i32 {
+     ^
 
 test:19:22 note: possibly non-uniform value passed via pointer here
   arr[a(&i)] = arr[b(&i)];
@@ -8222,9 +8296,9 @@ test:5:3 note: control flow depends on possibly non-uniform value
   if (cond == 0) {
   ^^
 
-test:5:7 note: parameter 'cond' of 'bar' may be non-uniform
-  if (cond == 0) {
-      ^^^^
+test:4:8 note: parameter 'cond' of 'bar' may be non-uniform
+fn bar(cond : i32) -> i32 {
+       ^^^^
 
 test:13:11 note: possibly non-uniform value passed here
   arr[bar(non_uniform)] = 0;
@@ -8263,9 +8337,9 @@ test:5:3 note: control flow depends on possibly non-uniform value
   if (cond == 0) {
   ^^
 
-test:5:7 note: parameter 'cond' of 'bar' may be non-uniform
-  if (cond == 0) {
-      ^^^^
+test:4:8 note: parameter 'cond' of 'bar' may be non-uniform
+fn bar(cond : i32) -> i32 {
+       ^^^^
 
 test:13:14 note: possibly non-uniform value passed here
   *&(arr[bar(non_uniform)]) = 0;
@@ -8304,9 +8378,9 @@ test:5:3 note: control flow depends on possibly non-uniform value
   if (cond == 0) {
   ^^
 
-test:5:7 note: parameter 'cond' of 'bar' may be non-uniform
-  if (cond == 0) {
-      ^^^^
+test:4:8 note: parameter 'cond' of 'bar' may be non-uniform
+fn bar(cond : i32) -> i32 {
+       ^^^^
 
 test:13:14 note: possibly non-uniform value passed here
   (&arr)[bar(non_uniform)] = 0;
@@ -8345,9 +8419,9 @@ test:5:3 note: control flow depends on possibly non-uniform value
   if (cond == 0) {
   ^^
 
-test:5:7 note: parameter 'cond' of 'bar' may be non-uniform
-  if (cond == 0) {
-      ^^^^
+test:4:8 note: parameter 'cond' of 'bar' may be non-uniform
+fn bar(cond : i32) -> i32 {
+       ^^^^
 
 test:13:14 note: possibly non-uniform value passed here
   (&(arr[bar(non_uniform)])).y = 0;
@@ -8418,9 +8492,9 @@ test:10:3 note: control flow depends on possibly non-uniform value
   if (*p == 0) {
   ^^
 
-test:10:8 note: parameter 'p' of 'b' may be non-uniform
-  if (*p == 0) {
-       ^
+test:9:6 note: parameter 'p' of 'b' may point to a non-uniform value
+fn b(p : ptr<function, i32>) -> i32 {
+     ^
 
 test:19:23 note: possibly non-uniform value passed via pointer here
   arr[a(&i)] += arr[b(&i)];
@@ -9086,8 +9160,7 @@ class UniformityAnalysisDiagnosticFilterTest
 TEST_P(UniformityAnalysisDiagnosticFilterTest, Directive) {
     auto& param = GetParam();
     StringStream ss;
-    ss << "diagnostic(" << param << ", derivative_uniformity);"
-       << R"(
+    ss << "diagnostic(" << param << ", derivative_uniformity);" << R"(
 @group(0) @binding(0) var<storage, read_write> non_uniform : i32;
 @group(0) @binding(1) var t : texture_2d<f32>;
 @group(0) @binding(2) var s : sampler;
@@ -9117,9 +9190,8 @@ TEST_P(UniformityAnalysisDiagnosticFilterTest, AttributeOnFunction) {
 @group(0) @binding(0) var<storage, read_write> non_uniform : i32;
 @group(0) @binding(1) var t : texture_2d<f32>;
 @group(0) @binding(2) var s : sampler;
-)"
-       << "@diagnostic(" << param << ", derivative_uniformity)"
-       <<
+)" << "@diagnostic("
+       << param << ", derivative_uniformity)" <<
         R"(fn foo() {
   if (non_uniform == 42) {
     let color = textureSample(t, s, vec2(0, 0));
@@ -9146,8 +9218,7 @@ TEST_P(UniformityAnalysisDiagnosticFilterTest, AttributeOnBlock) {
 @group(0) @binding(2) var s : sampler;
 fn foo() {
   if (non_uniform == 42))"
-       << "@diagnostic(" << param << ", derivative_uniformity)"
-       << R"({
+       << "@diagnostic(" << param << ", derivative_uniformity)" << R"({
     let color = textureSample(t, s, vec2(0, 0));
   }
 }
@@ -9169,8 +9240,8 @@ TEST_P(UniformityAnalysisDiagnosticFilterTest, AttributeOnForStatement_CallInIni
     ss << R"(
 @group(0) @binding(0) var<storage, read_write> non_uniform : i32;
 fn foo() {
-  )"
-       << "@diagnostic(" << param << ", derivative_uniformity)"
+  )" << "@diagnostic("
+       << param << ", derivative_uniformity)"
        << R"(for (var b = (non_uniform == 42 && dpdx(1.0) > 0.0); false;) {
   }
 }
@@ -9192,9 +9263,8 @@ TEST_P(UniformityAnalysisDiagnosticFilterTest, AttributeOnForStatement_CallInCon
     ss << R"(
 @group(0) @binding(0) var<storage, read_write> non_uniform : i32;
 fn foo() {
-  )"
-       << "@diagnostic(" << param << ", derivative_uniformity)"
-       << R"(for (; non_uniform == 42 && dpdx(1.0) > 0.0;) {
+  )" << "@diagnostic("
+       << param << ", derivative_uniformity)" << R"(for (; non_uniform == 42 && dpdx(1.0) > 0.0;) {
   }
 }
 )";
@@ -9215,8 +9285,8 @@ TEST_P(UniformityAnalysisDiagnosticFilterTest, AttributeOnForStatement_CallInInc
     ss << R"(
 @group(0) @binding(0) var<storage, read_write> non_uniform : i32;
 fn foo() {
-  )"
-       << "@diagnostic(" << param << ", derivative_uniformity)"
+  )" << "@diagnostic("
+       << param << ", derivative_uniformity)"
        << R"(for (var b = false; false; b = (non_uniform == 42 && dpdx(1.0) > 0.0)) {
   }
 }
@@ -9240,9 +9310,8 @@ TEST_P(UniformityAnalysisDiagnosticFilterTest, AttributeOnForStatement_CallInBod
 @group(0) @binding(1) var t : texture_2d<f32>;
 @group(0) @binding(2) var s : sampler;
 fn foo() {
-  )"
-       << "@diagnostic(" << param << ", derivative_uniformity)"
-       << R"(for (; non_uniform == 42;) {
+  )" << "@diagnostic("
+       << param << ", derivative_uniformity)" << R"(for (; non_uniform == 42;) {
     let color = textureSample(t, s, vec2(0, 0));
   }
 }
@@ -9264,9 +9333,8 @@ TEST_P(UniformityAnalysisDiagnosticFilterTest, AttributeOnIfStatement_CallInCond
     ss << R"(
 @group(0) @binding(0) var<storage, read_write> non_uniform : i32;
 fn foo() {
-  )"
-       << "@diagnostic(" << param << ", derivative_uniformity)"
-       << R"(if (non_uniform == 42 && dpdx(1.0) > 0.0) {
+  )" << "@diagnostic("
+       << param << ", derivative_uniformity)" << R"(if (non_uniform == 42 && dpdx(1.0) > 0.0) {
   }
 }
 )";
@@ -9289,9 +9357,8 @@ TEST_P(UniformityAnalysisDiagnosticFilterTest, AttributeOnIfStatement_CallInBody
 @group(0) @binding(1) var t : texture_2d<f32>;
 @group(0) @binding(2) var s : sampler;
 fn foo() {
-  )"
-       << "@diagnostic(" << param << ", derivative_uniformity)"
-       << R"(if (non_uniform == 42) {
+  )" << "@diagnostic("
+       << param << ", derivative_uniformity)" << R"(if (non_uniform == 42) {
     let color = textureSample(t, s, vec2(0, 0));
   }
 }
@@ -9315,9 +9382,8 @@ TEST_P(UniformityAnalysisDiagnosticFilterTest, AttributeOnIfStatement_CallInElse
 @group(0) @binding(1) var t : texture_2d<f32>;
 @group(0) @binding(2) var s : sampler;
 fn foo() {
-  )"
-       << "@diagnostic(" << param << ", derivative_uniformity)"
-       << R"(if (non_uniform == 42) {
+  )" << "@diagnostic("
+       << param << ", derivative_uniformity)" << R"(if (non_uniform == 42) {
   } else {
     let color = textureSample(t, s, vec2(0, 0));
   }
@@ -9340,9 +9406,8 @@ TEST_P(UniformityAnalysisDiagnosticFilterTest, AttributeOnLoopStatement_CallInBo
     ss << R"(
 @group(0) @binding(0) var<storage, read_write> non_uniform : i32;
 fn foo() {
-  )"
-       << "@diagnostic(" << param << ", derivative_uniformity)"
-       << R"(loop {
+  )" << "@diagnostic("
+       << param << ", derivative_uniformity)" << R"(loop {
     _ = dpdx(1.0);
     continuing {
       break if non_uniform == 0;
@@ -9367,9 +9432,8 @@ TEST_P(UniformityAnalysisDiagnosticFilterTest, AttributeOnLoopStatement_CallInCo
     ss << R"(
 @group(0) @binding(0) var<storage, read_write> non_uniform : i32;
 fn foo() {
-  )"
-       << "@diagnostic(" << param << ", derivative_uniformity)"
-       << R"(loop {
+  )" << "@diagnostic("
+       << param << ", derivative_uniformity)" << R"(loop {
     continuing {
       _ = dpdx(1.0);
       break if non_uniform == 0;
@@ -9395,8 +9459,7 @@ TEST_P(UniformityAnalysisDiagnosticFilterTest, AttributeOnLoopBody_CallInBody) {
 @group(0) @binding(0) var<storage, read_write> non_uniform : i32;
 fn foo() {
   loop )"
-       << "@diagnostic(" << param << ", derivative_uniformity)"
-       << R"( {
+       << "@diagnostic(" << param << ", derivative_uniformity)" << R"( {
     _ = dpdx(1.0);
     continuing {
       break if non_uniform == 0;
@@ -9422,8 +9485,7 @@ TEST_P(UniformityAnalysisDiagnosticFilterTest, AttributeOnLoopBody_CallInContinu
 @group(0) @binding(0) var<storage, read_write> non_uniform : i32;
 fn foo() {
   loop )"
-       << "@diagnostic(" << param << ", derivative_uniformity)"
-       << R"( {
+       << "@diagnostic(" << param << ", derivative_uniformity)" << R"( {
     continuing {
       _ = dpdx(1.0);
       break if non_uniform == 0;
@@ -9450,8 +9512,7 @@ TEST_P(UniformityAnalysisDiagnosticFilterTest, AttributeOnLoopContinuing_CallInC
 fn foo() {
   loop {
     continuing )"
-       << "@diagnostic(" << param << ", derivative_uniformity)"
-       << R"( {
+       << "@diagnostic(" << param << ", derivative_uniformity)" << R"( {
       _ = dpdx(1.0);
       break if non_uniform == 0;
     }
@@ -9475,8 +9536,8 @@ TEST_P(UniformityAnalysisDiagnosticFilterTest, AttributeOnSwitchStatement_CallIn
     ss << R"(
 @group(0) @binding(0) var<storage, read_write> non_uniform : i32;
 fn foo() {
-  )"
-       << "@diagnostic(" << param << ", derivative_uniformity)"
+  )" << "@diagnostic("
+       << param << ", derivative_uniformity)"
        << R"(switch (i32(non_uniform == 42 && dpdx(1.0) > 0.0)) {
     default {}
   }
@@ -9501,9 +9562,8 @@ TEST_P(UniformityAnalysisDiagnosticFilterTest, AttributeOnSwitchStatement_CallIn
 @group(0) @binding(1) var t : texture_2d<f32>;
 @group(0) @binding(2) var s : sampler;
 fn foo() {
-  )"
-       << "@diagnostic(" << param << ", derivative_uniformity)"
-       << R"(switch (non_uniform) {
+  )" << "@diagnostic("
+       << param << ", derivative_uniformity)" << R"(switch (non_uniform) {
     default {
       let color = textureSample(t, s, vec2(0, 0));
     }
@@ -9530,8 +9590,7 @@ TEST_P(UniformityAnalysisDiagnosticFilterTest, AttributeOnSwitchBody_CallInBody)
 @group(0) @binding(2) var s : sampler;
 fn foo() {
   switch (non_uniform))"
-       << "@diagnostic(" << param << ", derivative_uniformity)"
-       << R"( {
+       << "@diagnostic(" << param << ", derivative_uniformity)" << R"( {
     default {
       let color = textureSample(t, s, vec2(0, 0));
     }
@@ -9555,9 +9614,8 @@ TEST_P(UniformityAnalysisDiagnosticFilterTest, AttributeOnWhileStatement_CallInC
     ss << R"(
 @group(0) @binding(0) var<storage, read_write> non_uniform : i32;
 fn foo() {
-  )"
-       << "@diagnostic(" << param << ", derivative_uniformity)"
-       << R"(while (non_uniform == 42 && dpdx(1.0) > 0.0) {
+  )" << "@diagnostic("
+       << param << ", derivative_uniformity)" << R"(while (non_uniform == 42 && dpdx(1.0) > 0.0) {
   }
 }
 )";
@@ -9580,9 +9638,8 @@ TEST_P(UniformityAnalysisDiagnosticFilterTest, AttributeOnWhileStatement_CallInB
 @group(0) @binding(1) var t : texture_2d<f32>;
 @group(0) @binding(2) var s : sampler;
 fn foo() {
-  )"
-       << "@diagnostic(" << param << ", derivative_uniformity)"
-       << R"(while (non_uniform == 42) {
+  )" << "@diagnostic("
+       << param << ", derivative_uniformity)" << R"(while (non_uniform == 42) {
     let color = textureSample(t, s, vec2(0, 0));
   }
 }
@@ -9988,9 +10045,9 @@ test:5:3 note: control flow depends on possibly non-uniform value
   if (a == 42) {
   ^^
 
-test:5:7 note: parameter 'a' of 'zoo' may be non-uniform
-  if (a == 42) {
-      ^
+test:4:8 note: parameter 'a' of 'zoo' may be non-uniform
+fn zoo(a : i32) {
+       ^
 
 test:11:7 note: possibly non-uniform value passed here
   zoo(b);
@@ -10093,6 +10150,53 @@ test:11:3 note: control flow depends on possibly non-uniform value
 test:11:7 note: reading from read_write storage buffer 'non_uniform' may result in a non-uniform value
   if (non_uniform == 42) {
       ^^^^^^^^^^^
+)");
+}
+
+TEST_F(UniformityAnalysisTest, Error_PointerParameterContentsRequiresUniformity_AfterControlFlow) {
+    // Test that we can find the correct source of uniformity inside a function called with a
+    // pointer parameter, when the pointer contents is used after control flow that introduces extra
+    // nodes for merging the pointer contents.
+    std::string src = R"(
+var<private> non_uniform : i32;
+
+fn foo(p : ptr<function, i32>) {
+  for (var i = 0; i < 3; i++) {
+    continue;
+  }
+  if (*p == 0) {
+    return;
+  }
+  _ = dpdx(1.0);
+}
+
+fn main() {
+  var f = non_uniform;
+  foo(&f);
+}
+)";
+
+    RunTest(src, false);
+    EXPECT_EQ(error_,
+              R"(test:11:7 error: 'dpdx' must only be called from uniform control flow
+  _ = dpdx(1.0);
+      ^^^^^^^^^
+
+test:8:3 note: control flow depends on possibly non-uniform value
+  if (*p == 0) {
+  ^^
+
+test:4:8 note: parameter 'p' of 'foo' may point to a non-uniform value
+fn foo(p : ptr<function, i32>) {
+       ^
+
+test:16:7 note: possibly non-uniform value passed via pointer here
+  foo(&f);
+      ^^
+
+test:15:11 note: reading from module-scope private variable 'non_uniform' may result in a non-uniform value
+  var f = non_uniform;
+          ^^^^^^^^^^^
 )");
 }
 

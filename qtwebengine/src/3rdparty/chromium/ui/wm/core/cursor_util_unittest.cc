@@ -2,11 +2,17 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#ifdef UNSAFE_BUFFERS_BUILD
+// TODO(crbug.com/351564777): Remove this and convert code to safer constructs.
+#pragma allow_unsafe_buffers
+#endif
+
 #include "ui/wm/core/cursor_util.h"
+
+#include <optional>
 
 #include "base/numerics/safe_conversions.h"
 #include "testing/gtest/include/gtest/gtest.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "third_party/skia/include/core/SkBitmap.h"
 #include "ui/base/cursor/cursor.h"
 #include "ui/base/cursor/cursor_size.h"
@@ -103,8 +109,8 @@ TEST(CursorUtil, GetCursorData) {
       for (const auto& test : kTestCases) {
         SCOPED_TRACE(test.cursor);
         constexpr auto kDefaultRotation = display::Display::ROTATE_0;
-        const auto pointer_data =
-            GetCursorData(test.cursor, size, scale, kDefaultRotation);
+        const auto pointer_data = GetCursorData(test.cursor, size, scale,
+                                                std::nullopt, kDefaultRotation);
         ASSERT_TRUE(pointer_data);
         ASSERT_GT(pointer_data->bitmaps.size(), 0u);
         EXPECT_EQ(gfx::SkISizeToSize(pointer_data->bitmaps[0].dimensions()),

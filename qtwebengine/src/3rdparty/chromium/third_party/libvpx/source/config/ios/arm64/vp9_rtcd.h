@@ -1,3 +1,13 @@
+/*
+ *  Copyright (c) 2024 The WebM project authors. All Rights Reserved.
+ *
+ *  Use of this source code is governed by a BSD-style license
+ *  that can be found in the LICENSE file in the root of the source
+ *  tree. An additional intellectual property rights grant can be found
+ *  in the file PATENTS.  All contributing project authors may
+ *  be found in the AUTHORS file in the root of the source tree.
+ */
+
 // This file is generated. Do not edit.
 #ifndef VP9_RTCD_H_
 #define VP9_RTCD_H_
@@ -41,7 +51,14 @@ int64_t vp9_block_error_neon(const tran_low_t* coeff,
                              const tran_low_t* dqcoeff,
                              intptr_t block_size,
                              int64_t* ssz);
-#define vp9_block_error vp9_block_error_neon
+int64_t vp9_block_error_sve(const tran_low_t* coeff,
+                            const tran_low_t* dqcoeff,
+                            intptr_t block_size,
+                            int64_t* ssz);
+RTCD_EXTERN int64_t (*vp9_block_error)(const tran_low_t* coeff,
+                                       const tran_low_t* dqcoeff,
+                                       intptr_t block_size,
+                                       int64_t* ssz);
 
 int64_t vp9_block_error_fp_c(const tran_low_t* coeff,
                              const tran_low_t* dqcoeff,
@@ -49,7 +66,12 @@ int64_t vp9_block_error_fp_c(const tran_low_t* coeff,
 int64_t vp9_block_error_fp_neon(const tran_low_t* coeff,
                                 const tran_low_t* dqcoeff,
                                 int block_size);
-#define vp9_block_error_fp vp9_block_error_fp_neon
+int64_t vp9_block_error_fp_sve(const tran_low_t* coeff,
+                               const tran_low_t* dqcoeff,
+                               int block_size);
+RTCD_EXTERN int64_t (*vp9_block_error_fp)(const tran_low_t* coeff,
+                                          const tran_low_t* dqcoeff,
+                                          int block_size);
 
 int vp9_denoiser_filter_c(const uint8_t* sig,
                           int sig_stride,
@@ -226,6 +248,15 @@ static void setup_rtcd_internal(void) {
   int flags = arm_cpu_caps();
 
   (void)flags;
+
+  vp9_block_error = vp9_block_error_neon;
+  if (flags & HAS_SVE) {
+    vp9_block_error = vp9_block_error_sve;
+  }
+  vp9_block_error_fp = vp9_block_error_fp_neon;
+  if (flags & HAS_SVE) {
+    vp9_block_error_fp = vp9_block_error_fp_sve;
+  }
 }
 #endif
 
@@ -233,4 +264,4 @@ static void setup_rtcd_internal(void) {
 }  // extern "C"
 #endif
 
-#endif
+#endif  // VP9_RTCD_H_

@@ -11,7 +11,6 @@ QT_BEGIN_NAMESPACE
 
 QPlatformMediaPlayer::QPlatformMediaPlayer(QMediaPlayer *parent) : player(parent)
 {
-    QPlatformMediaIntegration::instance()->audioDevices()->prepareAudio();
 }
 
 QPlatformMediaPlayer::~QPlatformMediaPlayer() = default;
@@ -32,9 +31,9 @@ void QPlatformMediaPlayer::mediaStatusChanged(QMediaPlayer::MediaStatus status)
     player->d_func()->setStatus(status);
 }
 
-void QPlatformMediaPlayer::error(int error, const QString &errorString)
+void QPlatformMediaPlayer::error(QMediaPlayer::Error error, const QString &errorString)
 {
-    player->d_func()->setError(QMediaPlayer::Error(error), errorString);
+    player->d_func()->setError(error, errorString);
 }
 
 QT_END_NAMESPACE

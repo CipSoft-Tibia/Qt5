@@ -5,20 +5,36 @@ import './value_display.js';
 import './mojo_timestamp.js';
 import './mojo_timedelta.js';
 
-import {Time, TimeDelta} from '//resources/mojo/mojo/public/mojom/base/time.mojom-webui.js';
+import type {Time, TimeDelta} from '//resources/mojo/mojo/public/mojom/base/time.mojom-webui.js';
 import {CustomElement} from 'chrome://resources/js/custom_element.js';
-import {Value} from 'chrome://resources/mojo/mojo/public/mojom/base/values.mojom-webui.js';
+import type {Value} from 'chrome://resources/mojo/mojo/public/mojom/base/values.mojom-webui.js';
 
 import {getTemplate} from './content_setting_pattern_source.html.js';
-import {ContentSetting, ContentSettingPatternSource, SessionModel} from './content_settings.mojom-webui.js';
-import {PageHandlerInterface} from './privacy_sandbox_internals.mojom-webui.js';
-import {defaultLogicalFn, LogicalFn} from './value_display.js';
+import type {ContentSettingPatternSource} from './content_settings.mojom-webui.js';
+import {ContentSetting} from './content_settings.mojom-webui.js';
+import {ProviderType, SessionModel} from './content_settings_enums.mojom-webui.js';
+import type {PageHandlerInterface} from './privacy_sandbox_internals.mojom-webui.js';
+import type {LogicalFn} from './value_display.js';
+import {defaultLogicalFn} from './value_display.js';
 
 function contentSettingLogicalValue(v: Value) {
   if (v.intValue === undefined) {
     return undefined;
   }
   const s = ContentSetting[v.intValue];
+  if (s === undefined) {
+    return undefined;
+  }
+  const el = document.createElement('span');
+  el.textContent = s;
+  return el;
+}
+
+function providerTypeLogicalValue(v: Value) {
+  if (v.intValue === undefined) {
+    return undefined;
+  }
+  const s = ProviderType[v.intValue];
   if (s === undefined) {
     return undefined;
   }
@@ -110,7 +126,11 @@ export class ContentSettingPatternSourceElement extends CustomElement {
       console.error('Error parsing secondary pattern ', e);
     }
     this.setFieldValue('value', cs.settingValue, contentSettingLogicalValue);
-    this.setField('source', cs.source);
+    const source: Value = {} as Value;
+    if (cs.source != null) {
+      source.intValue = cs.source;
+    }
+    this.setFieldValue('source', source, providerTypeLogicalValue);
 
     const incognito: Value = {} as Value;
     incognito.boolValue = cs.incognito;

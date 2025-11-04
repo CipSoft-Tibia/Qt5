@@ -20,6 +20,8 @@
 #include "core/fpdfapi/parser/cpdf_string.h"
 #include "core/fpdfdoc/cpdf_interactiveform.h"
 #include "core/fpdfdoc/cpdf_nametree.h"
+#include "core/fxcrt/check.h"
+#include "core/fxcrt/span.h"
 #include "fpdfsdk/cpdfsdk_annotiteration.h"
 #include "fpdfsdk/cpdfsdk_formfillenvironment.h"
 #include "fpdfsdk/cpdfsdk_interactiveform.h"
@@ -31,8 +33,6 @@
 #include "fxjs/cjs_field.h"
 #include "fxjs/cjs_icon.h"
 #include "fxjs/js_resources.h"
-#include "third_party/base/check.h"
-#include "third_party/base/containers/span.h"
 #include "v8/include/v8-container.h"
 
 const JSPropertySpec CJS_Document::PropertySpecs[] = {
@@ -260,7 +260,7 @@ CJS_Result CJS_Document::getField(CJS_Runtime* pRuntime,
     return CJS_Result::Failure(JSMessage::kBadObjectError);
 
   auto* pJSField = static_cast<CJS_Field*>(
-      CFXJS_Engine::GetObjectPrivate(pRuntime->GetIsolate(), pFieldObj));
+      CFXJS_Engine::GetBinding(pRuntime->GetIsolate(), pFieldObj));
   if (!pJSField)
     return CJS_Result::Failure(JSMessage::kBadObjectError);
 
@@ -363,8 +363,9 @@ CJS_Result CJS_Document::mailForm(CJS_Runtime* pRuntime,
 
   CPDFSDK_InteractiveForm* pInteractiveForm = GetSDKInteractiveForm();
   ByteString sTextBuf = pInteractiveForm->ExportFormToFDFTextBuf();
-  if (sTextBuf.IsEmpty())
-    return CJS_Result::Failure(L"Bad FDF format.");
+  if (sTextBuf.IsEmpty()) {
+    return CJS_Result::Failure(WideString::FromASCII("Bad FDF format."));
+  }
 
   v8::LocalVector<v8::Value> newParams = ExpandKeywordParams(
       pRuntime, params, 6, "bUI", "cTo", "cCc", "cBcc", "cSubject", "cMsg");
@@ -394,8 +395,8 @@ CJS_Result CJS_Document::mailForm(CJS_Runtime* pRuntime,
     cMsg = pRuntime->ToWideString(newParams[5]);
 
   pRuntime->BeginBlock();
-  m_pFormFillEnv->JS_docmailForm(sTextBuf.raw_span(), bUI, cTo, cSubject, cCc,
-                                 cBcc, cMsg);
+  m_pFormFillEnv->JS_docmailForm(sTextBuf.unsigned_span(), bUI, cTo, cSubject,
+                                 cCc, cBcc, cMsg);
   pRuntime->EndBlock();
   return CJS_Result::Success();
 }
@@ -1017,7 +1018,7 @@ CJS_Result CJS_Document::getAnnot(CJS_Runtime* pRuntime,
     return CJS_Result::Failure(JSMessage::kBadObjectError);
 
   auto* pJS_Annot = static_cast<CJS_Annot*>(
-      CFXJS_Engine::GetObjectPrivate(pRuntime->GetIsolate(), pObj));
+      CFXJS_Engine::GetBinding(pRuntime->GetIsolate(), pObj));
   if (!pJS_Annot)
     return CJS_Result::Failure(JSMessage::kBadObjectError);
 
@@ -1051,7 +1052,7 @@ CJS_Result CJS_Document::getAnnots(CJS_Runtime* pRuntime,
         return CJS_Result::Failure(JSMessage::kBadObjectError);
 
       auto* pJS_Annot = static_cast<CJS_Annot*>(
-          CFXJS_Engine::GetObjectPrivate(pRuntime->GetIsolate(), pObj));
+          CFXJS_Engine::GetBinding(pRuntime->GetIsolate(), pObj));
       pJS_Annot->SetSDKAnnot(pSDKAnnotCur->AsBAAnnot());
       pRuntime->PutArrayElement(
           annots, i,
@@ -1115,7 +1116,7 @@ CJS_Result CJS_Document::get_icons(CJS_Runtime* pRuntime) {
       return CJS_Result::Failure(JSMessage::kBadObjectError);
 
     auto* pJS_Icon = static_cast<CJS_Icon*>(
-        CFXJS_Engine::GetObjectPrivate(pRuntime->GetIsolate(), pObj));
+        CFXJS_Engine::GetBinding(pRuntime->GetIsolate(), pObj));
     pJS_Icon->SetIconName(name);
     pRuntime->PutArrayElement(Icons, i++,
                               pJS_Icon
@@ -1146,7 +1147,7 @@ CJS_Result CJS_Document::getIcon(CJS_Runtime* pRuntime,
     return CJS_Result::Failure(JSMessage::kBadObjectError);
 
   auto* pJSIcon = static_cast<CJS_Icon*>(
-      CFXJS_Engine::GetObjectPrivate(pRuntime->GetIsolate(), pObj));
+      CFXJS_Engine::GetBinding(pRuntime->GetIsolate(), pObj));
   if (!pJSIcon)
     return CJS_Result::Failure(JSMessage::kBadObjectError);
 
@@ -1246,7 +1247,7 @@ CJS_Result CJS_Document::getPageNthWord(
   }
 
   if (bStrip)
-    swRet.Trim();
+    swRet.TrimWhitespace();
   return CJS_Result::Success(pRuntime->NewString(swRet.AsStringView()));
 }
 

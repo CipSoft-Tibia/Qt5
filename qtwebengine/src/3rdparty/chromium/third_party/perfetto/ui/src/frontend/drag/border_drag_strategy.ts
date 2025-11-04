@@ -11,32 +11,33 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-import {TimeScale} from '../time_scale';
+import {TimeScale} from '../../base/time_scale';
 import {DragStrategy} from './drag_strategy';
 
 export class BorderDragStrategy extends DragStrategy {
   private moveStart = false;
 
-  constructor(map: TimeScale, private pixelBounds: [number, number]) {
+  constructor(
+    map: TimeScale,
+    private pixelBounds: [number, number],
+  ) {
     super(map);
   }
 
   onDrag(x: number) {
-    let tStart = this.map.pxToHpTime(this.moveStart ? x : this.pixelBounds[0]);
-    let tEnd = this.map.pxToHpTime(!this.moveStart ? x : this.pixelBounds[1]);
-    if (tStart.gt(tEnd)) {
+    const moveStartPx = this.moveStart ? x : this.pixelBounds[0];
+    const moveEndPx = !this.moveStart ? x : this.pixelBounds[1];
+    const tStart = this.map.pxToHpTime(Math.min(moveStartPx, moveEndPx));
+    const tEnd = this.map.pxToHpTime(Math.max(moveStartPx, moveEndPx));
+    if (moveStartPx > moveEndPx) {
       this.moveStart = !this.moveStart;
-      [tEnd, tStart] = [tStart, tEnd];
     }
     super.updateGlobals(tStart, tEnd);
-    this.pixelBounds = [
-      this.map.hpTimeToPx(tStart),
-      this.map.hpTimeToPx(tEnd),
-    ];
+    this.pixelBounds = [this.map.hpTimeToPx(tStart), this.map.hpTimeToPx(tEnd)];
   }
 
   onDragStart(x: number) {
     this.moveStart =
-        Math.abs(x - this.pixelBounds[0]) < Math.abs(x - this.pixelBounds[1]);
+      Math.abs(x - this.pixelBounds[0]) < Math.abs(x - this.pixelBounds[1]);
   }
 }

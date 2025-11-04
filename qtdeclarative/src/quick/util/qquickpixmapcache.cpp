@@ -58,8 +58,6 @@ QT_BEGIN_NAMESPACE
 
 using namespace Qt::Literals::StringLiterals;
 
-Q_DECLARE_LOGGING_CATEGORY(lcQsgLeak)
-
 #if defined(QT_DEBUG) && QT_CONFIG(thread)
 class ThreadAffinityMarker
 {
@@ -98,7 +96,7 @@ private:
 
 const QLatin1String QQuickPixmap::itemGrabberScheme = QLatin1String("itemgrabber");
 
-Q_LOGGING_CATEGORY(lcImg, "qt.quick.image")
+Q_STATIC_LOGGING_CATEGORY(lcImg, "qt.quick.image")
 
 /*! \internal
     The maximum currently-unused image data that can be stored for potential
@@ -1892,7 +1890,11 @@ void QQuickPixmap::load(QQmlEngine *engine, const QUrl &url, const QRect &reques
         iter = store->m_cache.find(key);
 
     if (iter == store->m_cache.end()) {
+        if (!engine)
+            return;
+
         locker.unlock();
+
         if (url.scheme() == QLatin1String("image")) {
             QQmlEnginePrivate *enginePrivate = QQmlEnginePrivate::get(engine);
             if (auto provider = enginePrivate->imageProvider(imageProviderId(url)).staticCast<QQuickImageProvider>()) {
@@ -1924,10 +1926,6 @@ void QQuickPixmap::load(QQmlEngine *engine, const QUrl &url, const QRect &reques
                 return;
             }
         }
-
-        if (!engine)
-            return;
-
 
         d = new QQuickPixmapData(url, requestRegion, requestSize, providerOptions,
                                  QQuickImageProviderOptions::UsePluginDefaultTransform, frame, frameCount);
@@ -2088,4 +2086,5 @@ QT_END_NAMESPACE
 
 #include <qquickpixmapcache.moc>
 
+#include "moc_qquickpixmap_p.cpp"
 #include "moc_qquickpixmapcache_p.cpp"

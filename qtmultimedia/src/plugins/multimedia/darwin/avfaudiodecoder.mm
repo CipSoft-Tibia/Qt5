@@ -3,21 +3,24 @@
 
 #include "avfaudiodecoder_p.h"
 
-#include <QtCore/qmutex.h>
 #include <QtCore/qiodevice.h>
-#include <QMimeDatabase>
-#include <QThread>
-#include "private/qcoreaudioutils_p.h"
 #include <QtCore/qloggingcategory.h>
+#include <QtCore/qmimedatabase.h>
+#include <QtCore/qmutex.h>
+#include <QtCore/qthread.h>
+#include <QtCore/private/qcore_mac_p.h>
+
+#include "private/qcoreaudioutils_p.h"
 
 #include <AVFoundation/AVFoundation.h>
 
 QT_USE_NAMESPACE
 
-static Q_LOGGING_CATEGORY(qLcAVFAudioDecoder, "qt.multimedia.darwin.AVFAudioDecoder")
+Q_STATIC_LOGGING_CATEGORY(qLcAVFAudioDecoder, "qt.multimedia.darwin.AVFAudioDecoder");
 constexpr static int MAX_BUFFERS_IN_QUEUE = 5;
+using namespace Qt::Literals;
 
-QAudioBuffer handleNextSampleBuffer(CMSampleBufferRef sampleBuffer)
+static QAudioBuffer handleNextSampleBuffer(CMSampleBufferRef sampleBuffer)
 {
     if (!sampleBuffer)
         return {};
@@ -46,7 +49,7 @@ QAudioBuffer handleNextSampleBuffer(CMSampleBufferRef sampleBuffer)
     if (err != noErr)
         return {};
 
-    CMBlockBufferRef blockBuffer = NULL;
+    CMBlockBufferRef blockBuffer = nullptr;
     AudioBufferList* audioBufferList = (AudioBufferList*) malloc(audioBufferListSize);
     // This ensures the buffers placed in audioBufferList are contiguous
     err = CMSampleBufferGetAudioBufferListWithRetainedBlockBuffer(sampleBuffer,
@@ -123,10 +126,11 @@ QAudioBuffer handleNextSampleBuffer(CMSampleBufferRef sampleBuffer)
     if (loadingRequest.dataRequest) {
         NSInteger requestedLength = loadingRequest.dataRequest.requestedLength;
         int maxBytes = qMin(32 * 1024, int(requestedLength));
-        char buffer[maxBytes];
+        QByteArray buffer;
+        buffer.resize(maxBytes);
         NSInteger submitted = 0;
         while (submitted < requestedLength) {
-            qint64 len = device->read(buffer, maxBytes);
+            qint64 len = device->read(buffer.data(), maxBytes);
             if (len < 1)
                 break;
 
@@ -179,7 +183,7 @@ QAudioFormat qt_format_for_audio_track(AVAssetTrack *track)
     return format;
 }
 
-}
+} // namespace
 
 struct AVFAudioDecoder::DecodingContext
 {
@@ -261,7 +265,7 @@ void AVFAudioDecoder::setSourceDevice(QIODevice *device)
 
     if (m_device) {
         const QString ext = QMimeDatabase().mimeTypeForData(m_device).preferredSuffix();
-        const QString url = "iodevice:///iodevice." + ext;
+        const QString url = u"iodevice:///iodevice."_s + ext;
         NSString *urlString = url.toNSString();
         NSURL *nsURL = [NSURL URLWithString:urlString];
 
@@ -292,7 +296,7 @@ void AVFAudioDecoder::start()
     m_decodingContext = std::make_shared<DecodingContext>();
     std::weak_ptr<DecodingContext> weakContext(m_decodingContext);
 
-    auto handleLoadingResult = [=]() {
+    auto handleLoadingResult = [=, this]() {
         NSError *error = nil;
         AVKeyValueStatus status = [m_asset statusOfValueForKey:@"tracks" error:&error];
 
@@ -313,9 +317,9 @@ void AVFAudioDecoder::start()
     };
 
     [m_asset loadValuesAsynchronouslyForKeys:@[ @"tracks" ]
-                           completionHandler:[=]() {
-                               invokeWithDecodingContext(weakContext, handleLoadingResult);
-                           }];
+                           completionHandler:[=, this]() {
+        invokeWithDecodingContext(weakContext, handleLoadingResult);
+    }];
 }
 
 void AVFAudioDecoder::decBuffersCounter(uint val)
@@ -397,20 +401,15 @@ void AVFAudioDecoder::onFinished()
         finished();
 }
 
-void AVFAudioDecoder::initAssetReader()
+void AVFAudioDecoder::initAssetReaderImpl(AVAssetTrack *track, NSError *error)
 {
-    qCDebug(qLcAVFAudioDecoder()) << "Init asset reader";
+    Q_ASSERT(track != nullptr);
 
-    Q_ASSERT(m_asset);
-    Q_ASSERT(QThread::currentThread() == thread());
-
-    NSArray<AVAssetTrack *> *tracks = [m_asset tracksWithMediaType:AVMediaTypeAudio];
-    if (!tracks.count) {
-        processInvalidMedia(QAudioDecoder::FormatError, tr("No audio tracks found"));
+    if (error) {
+        processInvalidMedia(QAudioDecoder::ResourceError, QString::fromNSString(error.localizedDescription));
         return;
     }
 
-    AVAssetTrack *track = [tracks objectAtIndex:0];
     QAudioFormat format = m_format.isValid() ? m_format : qt_format_for_audio_track(track);
     if (!format.isValid()) {
         processInvalidMedia(QAudioDecoder::FormatError, tr("Unsupported source format"));
@@ -419,12 +418,16 @@ void AVFAudioDecoder::initAssetReader()
 
     durationChanged(CMTimeGetSeconds(track.timeRange.duration) * 1000);
 
-    NSError *error = nil;
     NSDictionary *audioSettings = av_audio_settings_for_format(format);
 
     AVAssetReaderTrackOutput *readerOutput =
             [[AVAssetReaderTrackOutput alloc] initWithTrack:track outputSettings:audioSettings];
     AVAssetReader *reader = [[AVAssetReader alloc] initWithAsset:m_asset error:&error];
+    auto cleanup = qScopeGuard([&] {
+        [readerOutput release];
+        [reader release];
+    });
+
     if (error) {
         processInvalidMedia(QAudioDecoder::ResourceError, QString::fromNSString(error.localizedDescription));
         return;
@@ -437,10 +440,36 @@ void AVFAudioDecoder::initAssetReader()
     [reader addOutput:readerOutput];
 
     Q_ASSERT(m_decodingContext);
+    cleanup.dismiss();
+
     m_decodingContext->m_reader = reader;
     m_decodingContext->m_readerOutput = readerOutput;
 
     startReading();
+}
+
+void AVFAudioDecoder::initAssetReader()
+{
+    qCDebug(qLcAVFAudioDecoder()) << "Init asset reader";
+
+    Q_ASSERT(m_asset);
+    Q_ASSERT(QThread::currentThread() == thread());
+
+#if defined(Q_OS_VISIONOS)
+    [m_asset loadTracksWithMediaType:AVMediaTypeAudio completionHandler:[=](NSArray<AVAssetTrack *> *tracks, NSError *error) {
+                       if (tracks && tracks.count > 0) {
+                           if (AVAssetTrack *track = [tracks objectAtIndex:0])
+                               QMetaObject::invokeMethod(this, &AVFAudioDecoder::initAssetReaderImpl, Qt::QueuedConnection, track, error);
+                       }
+    }];
+#else
+    NSArray<AVAssetTrack *> *tracks = [m_asset tracksWithMediaType:AVMediaTypeAudio];
+    if (tracks && tracks.count > 0) {
+        if (AVAssetTrack *track = [tracks objectAtIndex:0])
+            initAssetReaderImpl(track, nullptr /*error*/);
+    }
+#endif
+
 }
 
 void AVFAudioDecoder::startReading()
@@ -462,31 +491,32 @@ void AVFAudioDecoder::startReading()
     // Since copyNextSampleBuffer is synchronous, submit it to an async dispatch queue
     // to run in a separate thread. Call the handleNextSampleBuffer "callback" on another
     // thread when new audio sample is read.
-    auto copyNextSampleBuffer = [=]() {
+    auto copyNextSampleBuffer = [=, this]() {
         auto decodingContext = weakContext.lock();
         if (!decodingContext)
             return false;
 
-        CMSampleBufferRef sampleBuffer = [decodingContext->m_readerOutput copyNextSampleBuffer];
+        QCFType<CMSampleBufferRef> sampleBuffer{
+            [decodingContext->m_readerOutput copyNextSampleBuffer],
+        };
         if (!sampleBuffer)
             return false;
 
-        dispatch_async(m_decodingQueue, [=]() {
+        dispatch_async(m_decodingQueue, [=, this]() {
             if (!weakContext.expired() && CMSampleBufferDataIsReady(sampleBuffer)) {
                 auto audioBuffer = handleNextSampleBuffer(sampleBuffer);
 
                 if (audioBuffer.isValid())
-                    invokeWithDecodingContext(weakContext,
-                                              [=]() { handleNewAudioBuffer(audioBuffer); });
+                    invokeWithDecodingContext(weakContext, [=, this]() {
+                        handleNewAudioBuffer(audioBuffer);
+                    });
             }
-
-            CFRelease(sampleBuffer);
         });
 
         return true;
     };
 
-    dispatch_async(m_readingQueue, [=]() {
+    dispatch_async(m_readingQueue, [=, this]() {
         qCDebug(qLcAVFAudioDecoder()) << "start reading thread";
 
         do {
@@ -515,7 +545,7 @@ void AVFAudioDecoder::waitUntilBuffersCounterLessMax()
 
 void AVFAudioDecoder::handleNewAudioBuffer(QAudioBuffer buffer)
 {
-    m_cachedBuffers.enqueue(buffer);
+    m_cachedBuffers.enqueue(std::move(buffer));
     ++m_buffersCounter;
 
     Q_ASSERT(m_cachedBuffers.size() == m_buffersCounter);
@@ -533,7 +563,8 @@ template<typename F>
 void AVFAudioDecoder::invokeWithDecodingContext(std::weak_ptr<DecodingContext> weakContext, F &&f)
 {
     if (!weakContext.expired())
-        QMetaObject::invokeMethod(this, [=]() {
+        QMetaObject::invokeMethod(
+                this, [this, f = std::forward<F>(f), weakContext = std::move(weakContext)]() {
             // strong check: compare with actual decoding context.
             // Otherwise, the context can be temporary locked by one of dispatch queues.
             if (auto context = weakContext.lock(); context && context == m_decodingContext)

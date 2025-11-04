@@ -951,10 +951,6 @@ Alle Dateien (*)</translation>
         <translation>Qt Linguist ist ein Werkzeug zum Hinzufügen von Übersetzungen zu Qt-Anwendungen</translation>
     </message>
     <message>
-        <source>Copyright (C) %1 The Qt Company Ltd.</source>
-        <translation>Copyright (C) %1 The Qt Company Ltd.</translation>
-    </message>
-    <message>
         <source>Do you want to save the modified files?</source>
         <translation>Möchten Sie die geänderten Dateien speichern?</translation>
     </message>
@@ -1330,6 +1326,14 @@ Alle Dateien (*)</translation>
         <translation>Dieser Bereich zeigt eventuelle Kommentare und den Kontext, in dem der Text auftritt.</translation>
     </message>
     <message>
+        <source>NCR mode</source>
+        <translation>NCR-Modus</translation>
+    </message>
+    <message>
+        <source>Toggles Numeric Character Reference Mode for displaying the source text and the translations.</source>
+        <translation>Schaltet den Modus für numerische Zeichen zur Anzeige von Quelltext und Übersetzung um.</translation>
+    </message>
+    <message>
         <source>Here you can enter comments for your own use. They have no effect on the translated applications.</source>
         <translation>Hier können Sie Hinweise für den eigenen Gebrauch eintragen. Diese haben keinen Einflusse auf die Übersetzung.</translation>
     </message>
@@ -1380,14 +1384,6 @@ Zeile: %2</translation>
             <numerusform>Es ist noch eine unerledigte Nachricht vorhanden.</numerusform>
             <numerusform>Es sind noch %n unerledigte Nachrichten vorhanden.</numerusform>
         </translation>
-    </message>
-</context>
-<context>
-    <name>MsgEdit</name>
-    <message>
-        <source></source>
-        <comment>This is the right panel of the main window.</comment>
-        <translation></translation>
     </message>
 </context>
 <context>

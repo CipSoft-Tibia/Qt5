@@ -39,23 +39,36 @@ source_set("base") {
     "certificate_helpers.h",
     "chromoting_event.cc",
     "chromoting_event.h",
+    "cloud_service_client.cc",
+    "cloud_service_client.h",
     "compound_buffer.cc",
     "compound_buffer.h",
     "constants.cc",
     "constants.h",
+    "corp_auth_util.cc",
+    "corp_auth_util.h",
+    "corp_logging_service_client.cc",
+    "corp_logging_service_client.h",
     "corp_service_client.cc",
     "corp_service_client.h",
+    "corp_session_authz_service_client.cc",
+    "corp_session_authz_service_client.h",
+    "corp_session_authz_service_client_factory.cc",
+    "corp_session_authz_service_client_factory.h",
     "cpu_utils.cc",
     "cpu_utils.h",
     "directory_service_client.cc",
     "directory_service_client.h",
-    "hostname.cc",
-    "hostname.h",
+    "fqdn.cc",
+    "fqdn.h",
+    "internal_headers.h",
     "is_google_email.cc",
     "is_google_email.h",
     "leaky_bucket.cc",
     "leaky_bucket.h",
-    "name_value_map.h",
+    "local_session_policies_provider.cc",
+    "local_session_policies_provider.h",
+    "logging_service_client.h",
     "protobuf_http_client.cc",
     "protobuf_http_client.h",
     "protobuf_http_request.cc",
@@ -83,6 +96,8 @@ source_set("base") {
     "scoped_protobuf_http_request.h",
     "service_urls.cc",
     "service_urls.h",
+    "session_authz_service_client.h",
+    "session_authz_service_client_factory.h",
     "session_options.cc",
     "session_options.h",
     "socket_reader.cc",
@@ -119,15 +134,21 @@ source_set("base") {
     ":authorization",
     ":buildflags",
     ":logging",
+    ":name_value_map",
     ":protobuf_http_client_messages_proto",
     ":remoting_base_version",
-    "//base/third_party/dynamic_annotations",
+    ":session_policies",
     "//build:chromeos_buildflags",
     "//google_apis",
+    "//google_apis/common:request_util",
+    "//remoting/proto:internal_structs",
+    "//remoting/proto/google/internal/remoting/cloud/v1alpha:messages",
+    "//remoting/proto/remoting/v1:cloud_proto",
     "//remoting/proto/remoting/v1:directory_proto",
     "//remoting/proto/remoting/v1:telemetry_messages",
     "//services/network/public/cpp",
     "//services/network/public/mojom",
+    "//third_party/abseil-cpp:absl",
     "//third_party/libvpx",
     "//third_party/libyuv",
     "//third_party/webrtc_overrides:webrtc_component",
@@ -140,7 +161,10 @@ source_set("base") {
       "//remoting/internal/proto",
     ]
   } else {
-    deps += [ "//remoting/proto:internal_stubs" ]
+    deps += [
+      ":api_key_stubs",
+      "//remoting/proto:internal_stubs",
+    ]
   }
 
   if (is_win) {
@@ -152,6 +176,35 @@ source_set("base") {
       "file_path_util_linux.h",
     ]
   }
+}
+
+source_set("name_value_map") {
+  sources = [ "name_value_map.h" ]
+  deps = [ "//base" ]
+}
+
+source_set("errors") {
+  sources = [
+    "errors.cc",
+    "errors.h",
+  ]
+  deps = [
+    ":name_value_map",
+    "//base",
+    "//remoting/proto:error_code_proto",
+  ]
+}
+
+source_set("session_policies") {
+  public = [
+    "port_range.h",
+    "session_policies.h",
+  ]
+  sources = [
+    "port_range.cc",
+    "session_policies.cc",
+  ]
+  deps = [ "//base" ]
 }
 
 source_set("authorization") {
@@ -187,31 +240,33 @@ source_set("authorization") {
 }
 
 source_set("breakpad") {
-  sources = [ "breakpad.h" ]
+  sources = [
+    "breakpad.h",
+    "breakpad_utils.cc",
+    "breakpad_utils.h",
+  ]
 
   configs += [ "//build/config/compiler:wexit_time_destructors" ]
 
-  deps = [ "//base" ]
+  deps = [
+    ":remoting_base_version",
+    "//base",
+  ]
 
   if (is_linux || is_chromeos) {
+    sources += [ "breakpad_linux.cc" ]
+    deps += [ "//third_party/breakpad:client" ]
+  } else if (is_mac) {
+    sources += [ "breakpad_mac.mm" ]
+  } else if (is_win) {
     sources += [
-      "breakpad_linux.cc",
-      "breakpad_utils_linux.cc",
-      "breakpad_utils_linux.h",
+      "breakpad_server.cc",
+      "breakpad_win.cc",
     ]
     deps += [
-      ":remoting_base_version",
-      "//third_party/breakpad:client",
+      ":logging",
+      "//third_party/breakpad:breakpad_handler",
     ]
-  }
-
-  if (is_mac) {
-    sources += [ "breakpad_mac.mm" ]
-  }
-
-  if (is_win) {
-    sources += [ "breakpad_win.cc" ]
-    deps += [ "//third_party/breakpad:breakpad_handler" ]
   }
 }
 
@@ -283,6 +338,8 @@ static_library("test_support") {
     "fake_oauth_token_getter.h",
     "mock_oauth_client.cc",
     "mock_oauth_client.h",
+    "mock_session_authz_service_client.cc",
+    "mock_session_authz_service_client.h",
     "protobuf_http_test_responder.cc",
     "protobuf_http_test_responder.h",
     "test_rsa_key_pair.h",
@@ -293,7 +350,9 @@ static_library("test_support") {
     ":protobuf_http_client_messages_proto",
     "//base/test:test_support",
     "//remoting/proto",
+    "//remoting/proto:internal_structs",
     "//services/network:test_support",
+    "//testing/gmock",
   ]
   public_deps = [
     ":authorization",
@@ -310,6 +369,15 @@ proto_library("test_proto") {
   testonly = true
 
   sources = [ "protobuf_http_client_test_messages.proto" ]
+}
+
+source_set("api_key_stubs") {
+  public = [ "api_key_stubs.h" ]
+
+  sources = [
+    "api_key_stubs.cc",
+    "api_key_stubs.h",
+  ]
 }
 
 source_set("run_all_unittests") {
@@ -348,7 +416,9 @@ source_set("unit_tests") {
     "capabilities_unittest.cc",
     "compound_buffer_unittest.cc",
     "leaky_bucket_unittest.cc",
+    "local_session_policies_provider_unittest.cc",
     "oauth_token_getter_proxy_unittest.cc",
+    "port_range_unittest.cc",
     "protobuf_http_client_unittest.cc",
     "protobuf_http_stream_parser_unittest.cc",
     "queued_task_poster_unittest.cc",
@@ -357,6 +427,7 @@ source_set("unit_tests") {
     "rsa_key_pair_unittest.cc",
     "running_samples_unittest.cc",
     "session_options_unittest.cc",
+    "session_policies_unittest.cc",
     "telemetry_log_writer_unittest.cc",
     "typed_buffer_unittest.cc",
     "util_unittest.cc",
@@ -367,6 +438,7 @@ source_set("unit_tests") {
     ":logging",
     ":protobuf_http_client_messages_proto",
     ":run_all_unittests",
+    ":session_policies",
     ":test_proto",
     ":test_support",
     "//base",
@@ -380,12 +452,6 @@ source_set("unit_tests") {
 
   if (is_win || is_chromeos_ash) {
     deps += [ "//third_party/breakpad:client" ]
-  }
-
-  if (is_win) {
-    sources += [ "breakpad_win_unittest.cc" ]
-    deps += [ "//third_party/breakpad:breakpad_handler" ]
-    libs = [ "rpcrt4.lib" ]  # For UuidCreate in breakpad_win_unittest.cc.
   }
 }
 

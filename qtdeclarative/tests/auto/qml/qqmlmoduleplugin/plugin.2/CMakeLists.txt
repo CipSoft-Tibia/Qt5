@@ -12,6 +12,7 @@ qt_internal_add_cmake_library(plugin.2
     OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/../imports/org/qtproject/AutoTestQmlPluginType.2"
     SOURCES
         plugin.cpp
+    MOC_OPTIONS "-Muri=org.qtproject.AutoTestQmlPluginType"
     LIBRARIES
         Qt::Core
         Qt::CorePrivate
@@ -19,6 +20,11 @@ qt_internal_add_cmake_library(plugin.2
         Qt::Qml
         Qt::QmlPrivate
 )
+
+get_target_property(target_type plugin.2 TYPE)
+if(target_type STREQUAL STATIC_LIBRARY)
+    target_compile_definitions(plugin.2 PRIVATE QT_STATICPLUGIN)
+endif()
 
 #### Keys ignored in scope 1:.:.:plugin.2.pro:<TRUE>:
 # IMPORT_FILES = "qmldir"

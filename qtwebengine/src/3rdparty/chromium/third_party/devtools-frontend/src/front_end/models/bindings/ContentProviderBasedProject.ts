@@ -62,36 +62,13 @@ export class ContentProviderBasedProject extends Workspace.Workspace.ProjectStor
   }
 
   async requestFileContent(uiSourceCode: Workspace.UISourceCode.UISourceCode):
-      Promise<TextUtils.ContentProvider.DeferredContent> {
+      Promise<TextUtils.ContentData.ContentDataOrError> {
     const {contentProvider} = this.#uiSourceCodeToData.get(uiSourceCode) as UISourceCodeData;
     try {
-      const content = await contentProvider.requestContent();
-      if ('error' in content) {
-        return {
-          error: content.error,
-          isEncoded: content.isEncoded,
-          content: null,
-        };
-      }
-      const wasmDisassemblyInfo = 'wasmDisassemblyInfo' in content ? content.wasmDisassemblyInfo : undefined;
-
-      if (wasmDisassemblyInfo && content.isEncoded === false) {
-        return {
-          content: '',
-          wasmDisassemblyInfo,
-          isEncoded: false,
-        };
-      }
-
-      return {
-        content: content.content,
-        isEncoded: content.isEncoded,
-      };
+      return await contentProvider.requestContentData();
     } catch (err) {
       // TODO(rob.paveza): CRBug 1013683 - Consider propagating exceptions full-stack
       return {
-        content: null,
-        isEncoded: false,
         error: err ? String(err) : i18nString(UIStrings.unknownErrorLoadingFile),
       };
     }
@@ -139,7 +116,7 @@ export class ContentProviderBasedProject extends Workspace.Workspace.ProjectStor
           (arg0: boolean, arg1?: string|undefined, arg2?: Platform.DevToolsPath.UrlString|undefined,
            arg3?: Common.ResourceType.ResourceType|undefined) => void): void {
     const path = uiSourceCode.url();
-    this.performRename(path, newName, (success: boolean, newName?: string): void => {
+    this.performRename(path, newName, (success: boolean, newName?: string) => {
       if (success && newName) {
         this.renameUISourceCode(uiSourceCode, newName);
       }

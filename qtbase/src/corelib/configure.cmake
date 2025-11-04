@@ -131,6 +131,59 @@ int pipes[2];
 }
 ")
 
+# dup3
+qt_config_compile_test(dup3
+    LABEL "dup3"
+    CODE
+"#define _GNU_SOURCE 1
+#include <fcntl.h>
+#include <unistd.h>
+
+int main(void)
+{
+    /* BEGIN TEST: */
+(void) dup3(0, 3, O_CLOEXEC);
+    /* END TEST: */
+    return 0;
+}
+")
+
+# acccept4
+qt_config_compile_test(accept4
+    LABEL "accept4"
+    CODE
+"#define _GNU_SOURCE 1
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <fcntl.h>
+#include <unistd.h>
+
+int main(void)
+{
+    /* BEGIN TEST: */
+#if defined(__NetBSD__)
+(void) paccept(0, 0, 0, NULL, SOCK_CLOEXEC | SOCK_NONBLOCK);
+#else
+(void) accept4(0, 0, 0, SOCK_CLOEXEC | SOCK_NONBLOCK);
+#endif
+    /* END TEST: */
+    return 0;
+}
+")
+
+# copy_file_range
+qt_config_compile_test(copy_file_range
+    LABEL "copy_file_range()"
+    CODE
+"#include <unistd.h>
+
+int main()
+{
+    off_t off_in = 0, off_out = 1024;
+    return copy_file_range(0, &off_in, 1, &off_out, 2147483647, 0) != 0;
+}
+")
+
 # Check if __cxa_thread_atexit{,_impl} are present in the C library (hence why
 # PROJECT_PATH instead of CODE for C++). Either one suffices to disable
 # FEATURE_broken_threadlocal_dtors. See details in qthread_unix.cpp.
@@ -440,6 +493,58 @@ poll(&pfd, 1, 0);
 }
 ")
 
+# pthread_clockjoin
+# As of GCC 15, TSAN does not support pthread_clockjoin_np,
+# so disable it in a TSAN build. Unfortunately there doesn't
+# seem to be a version check possible, just check the
+# TSAN_INTERCEPT macros into tsan_interceptors_posix.cpp.
+qt_config_compile_test(pthread_clockjoin
+    LABEL "pthread_clockjoin()"
+    LIBRARIES Threads::Threads
+    CODE
+"#include <pthread.h>
+#if __has_feature(thread_sanitizer) || defined(__SANITIZE_THREAD__)
+#error
+#endif
+int main()
+{
+    void *ret;
+    const struct timespec ts = {};
+    return pthread_clockjoin_np(pthread_self(), &ret, CLOCK_MONOTONIC, &ts);
+}
+")
+
+# pthread_condattr_setclock
+qt_config_compile_test(pthread_condattr_setclock
+    LABEL "pthread_condattr_setclock()"
+    LIBRARIES Threads::Threads
+    CODE
+"#include <pthread.h>
+#include <time.h>
+int main()
+{
+    pthread_condattr_t condattr;
+    return pthread_condattr_setclock(&condattr, CLOCK_REALTIME);
+}
+")
+
+# pthread_timedjoin
+qt_config_compile_test(pthread_timedjoin
+    LABEL "pthread_timedjoin()"
+    LIBRARIES Threads::Threads
+    CODE
+"#include <pthread.h>
+#if __has_include(<pthread_np.h>)
+#  include <pthread_np.h>
+#endif
+int main()
+{
+    void *ret;
+    const struct timespec ts = {};
+    return pthread_timedjoin_np(pthread_self(), &ret, &ts);
+}
+")
+
 # renameat2
 qt_config_compile_test(renameat2
     LABEL "renameat2()"
@@ -471,6 +576,28 @@ int main(void)
     return 0;
 }
 ")
+
+# std::format support
+qt_config_compile_test(cxx20_format
+    LABEL "C++20 std::format support"
+    CODE
+"#include <format>
+#include <string>
+
+#if !defined(__cpp_lib_format) || (__cpp_lib_format < 202106L)
+#error
+#endif
+
+int main(void)
+{
+    /* BEGIN TEST: */
+const auto s = std::format(\"{}\", 1);
+    /* END TEST: */
+    return 0;
+}
+"
+    CXX_STANDARD 20
+)
 
 # <stacktrace>
 qt_config_compile_test(cxx23_stacktrace
@@ -520,6 +647,28 @@ int main(int argc, char** argv) {
 }
 ")
 
+# <chrono>
+qt_config_compile_test(chrono_tzdb
+    LABEL "Support for timezones in C++20 <chrono>"
+    CODE
+"#include <chrono>
+#if __cpp_lib_chrono < 201907L
+#error
+#endif
+
+int main(void)
+{
+    /* BEGIN TEST: */
+    const std::chrono::tzdb &tzdb = std::chrono::get_tzdb();
+    auto when = std::chrono::system_clock::now();
+    const std::chrono::time_zone *currentZone = tzdb.current_zone();
+    auto zoneInfo = currentZone->get_info(when);
+    /* END TEST: */
+    return 0;
+}
+"
+)
+
 #### Features
 
 qt_feature("clock-gettime" PRIVATE
@@ -535,7 +684,7 @@ qt_feature("doubleconversion" PRIVATE
     LABEL "DoubleConversion"
 )
 qt_feature_definition("doubleconversion" "QT_NO_DOUBLECONVERSION" NEGATE VALUE "1")
-qt_feature("system-doubleconversion" PRIVATE
+qt_feature("system-doubleconversion" PRIVATE SYSTEM_LIBRARY
     LABEL "  Using system DoubleConversion"
     CONDITION QT_FEATURE_doubleconversion AND WrapSystemDoubleConversion_FOUND
     ENABLE INPUT_doubleconversion STREQUAL 'system'
@@ -551,7 +700,7 @@ qt_feature("cxx17_filesystem" PUBLIC
 )
 qt_feature("broken-threadlocal-dtors" PRIVATE
     LABEL "Broken execution of thread_local destructors at exit() time"
-    # Windows broken in different ways from Unix
+    # Windows is broken in different ways from Unix
     CONDITION WIN32 OR NOT (TEST_cxa_thread_atexit OR TEST_cxa_thread_atexit_impl)
 )
 qt_feature("dladdr" PRIVATE
@@ -604,7 +753,7 @@ qt_feature("journald" PRIVATE
     CONDITION Libsystemd_FOUND
 )
 # Used by QCryptographicHash for the BLAKE2 hashing algorithms
-qt_feature("system-libb2" PRIVATE
+qt_feature("system-libb2" PRIVATE SYSTEM_LIBRARY
     LABEL "Using system libb2"
     CONDITION Libb2_FOUND
     ENABLE INPUT_libb2 STREQUAL 'system'
@@ -644,7 +793,7 @@ qt_feature("pcre2"
     DISABLE INPUT_pcre STREQUAL 'no'
 )
 qt_feature_config("pcre2" QMAKE_PRIVATE_CONFIG)
-qt_feature("system-pcre2" PRIVATE
+qt_feature("system-pcre2" PRIVATE SYSTEM_LIBRARY
     LABEL "  Using system PCRE2"
     CONDITION WrapSystemPCRE2_FOUND
     ENABLE INPUT_pcre STREQUAL 'system'
@@ -679,6 +828,21 @@ qt_feature("posix_shm" PRIVATE
     LABEL "POSIX shared memory"
     CONDITION TEST_posix_shm AND UNIX
 )
+qt_feature("pthread_clockjoin" PRIVATE
+    LABEL "pthread_clockjoin() function"
+    AUTODETECT UNIX
+    CONDITION UNIX AND QT_FEATURE_thread AND TEST_pthread_clockjoin
+)
+qt_feature("pthread_condattr_setclock" PRIVATE
+    LABEL "pthread_condattr_setclock() function"
+    AUTODETECT UNIX
+    CONDITION UNIX AND QT_FEATURE_thread AND TEST_pthread_condattr_setclock
+)
+qt_feature("pthread_timedjoin" PRIVATE
+    LABEL "pthread_timedjoin() function"
+    AUTODETECT UNIX
+    CONDITION UNIX AND QT_FEATURE_thread AND TEST_pthread_timedjoin
+)
 qt_feature("qqnx_pps" PRIVATE
     LABEL "PPS"
     CONDITION PPS_FOUND
@@ -710,6 +874,19 @@ qt_feature("threadsafe-cloexec"
 )
 qt_feature_definition("threadsafe-cloexec" "QT_THREADSAFE_CLOEXEC" VALUE "1")
 qt_feature_config("threadsafe-cloexec" QMAKE_PUBLIC_QT_CONFIG)
+qt_feature("dup3" PRIVATE
+    LABEL "dup3 support"
+    CONDITION TEST_dup3
+)
+qt_feature("accept4" PRIVATE
+    LABEL "accept4 support"
+    CONDITION TEST_accept4
+)
+qt_feature("vxpipedrv" PRIVATE
+    LABEL "Use pipedrv pipes on VxWorks"
+    AUTODETECT OFF
+    CONDITION VXWORKS
+)
 qt_feature("regularexpression" PUBLIC
     SECTION "Kernel"
     LABEL "QRegularExpression"
@@ -720,6 +897,11 @@ qt_feature_definition("regularexpression" "QT_NO_REGULAREXPRESSION" NEGATE VALUE
 qt_feature("backtrace" PRIVATE
     LABEL "backtrace"
     CONDITION UNIX AND QT_FEATURE_regularexpression AND WrapBacktrace_FOUND
+)
+qt_feature("cxx20_format" PRIVATE
+    LABEL "C++20 std::format support"
+    CONDITION TEST_cxx20_format # intentionally not checking QT_FEATURE_cxx20!
+    AUTODETECT TRUE
 )
 qt_feature("cxx23_stacktrace" PRIVATE
     LABEL "C++23 <stacktrace>"
@@ -932,10 +1114,19 @@ qt_feature("timezone" PUBLIC
 )
 qt_feature("timezone_locale" PRIVATE
     SECTION "Utilities"
-    LABEL "QTimeZone"
+    LABEL "QTimeZoneLocale"
     PURPOSE "Provides support for localized time-zone display names."
     CONDITION
-        QT_FEATURE_timezone AND ( ( UNIX AND NOT APPLE AND NOT ANDROID ) OR QT_FEATURE_icu )
+        QT_FEATURE_timezone AND NOT APPLE AND NOT ANDROID
+)
+qt_feature("timezone_tzdb" PUBLIC
+    SECTION "Utilities"
+    LABEL "std::chrono::tzdb QTZ backend"
+    PURPOSE "Provides support for a timezone backend using std::chrono."
+    CONDITION TEST_chrono_tzdb
+    # See QTBUG-127598 for gcc's libstdc++'s deficiencies.
+    # Update src/corelib/doc/src/cpp20-overview.qdoc before enabling this:
+    AUTODETECT OFF
 )
 qt_feature("datetimeparser" PRIVATE
     SECTION "Utilities"
@@ -984,7 +1175,7 @@ qt_feature("cborstreamwriter" PUBLIC
 )
 qt_feature("poll-exit-on-error" PRIVATE
     LABEL "Poll exit on error"
-    AUTODETECT OFF
+    AUTODETECT VXWORKS
     CONDITION UNIX
     PURPOSE "Exit on error instead of just printing the error code and continue."
 )
@@ -1008,6 +1199,7 @@ qt_configure_add_summary_entry(ARGS "system-doubleconversion")
 qt_configure_add_summary_entry(ARGS "forkfd_pidfd" CONDITION LINUX)
 qt_configure_add_summary_entry(ARGS "glib")
 qt_configure_add_summary_entry(ARGS "icu")
+qt_configure_add_summary_entry(ARGS "timezone_tzdb")
 qt_configure_add_summary_entry(ARGS "system-libb2")
 qt_configure_add_summary_entry(ARGS "mimetype-database")
 qt_configure_add_summary_entry(ARGS "permissions")
@@ -1037,7 +1229,7 @@ qt_configure_add_report_entry(
 )
 qt_configure_add_report_entry(
     TYPE ERROR
-    MESSAGE "detected a std::atomic implementation that fails for function pointers.  Please apply the patch corresponding to your Standard Library vendor, found in qtbase/config.tests/atomicfptr"
+    MESSAGE "detected a std::atomic implementation that fails for function pointers."
     CONDITION NOT TEST_atomicfptr
 )
 qt_configure_add_report_entry(

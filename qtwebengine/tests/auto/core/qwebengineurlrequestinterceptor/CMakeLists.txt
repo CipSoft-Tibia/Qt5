@@ -38,7 +38,6 @@ set(tst_qwebengineurlrequestinterceptor_resource_files
     "resources/style.css"
     "resources/sw.html"
     "resources/sw.js"
-    "resources/postBodyFile.txt"
 )
 
 qt_internal_add_resource(tst_qwebengineurlrequestinterceptor "tst_qwebengineurlrequestinterceptor"

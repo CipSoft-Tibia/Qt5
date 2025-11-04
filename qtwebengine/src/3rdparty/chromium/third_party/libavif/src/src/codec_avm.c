@@ -53,7 +53,6 @@ static avifResult avifCheckCodecVersionAVM()
 }
 
 static avifBool avmCodecGetNextImage(struct avifCodec * codec,
-                                     struct avifDecoder * decoder,
                                      const avifDecodeSample * sample,
                                      avifBool alpha,
                                      avifBool * isLimitedRangeAlpha,
@@ -64,7 +63,7 @@ static avifBool avmCodecGetNextImage(struct avifCodec * codec,
 
         aom_codec_dec_cfg_t cfg;
         memset(&cfg, 0, sizeof(aom_codec_dec_cfg_t));
-        cfg.threads = decoder->maxThreads;
+        cfg.threads = codec->maxThreads;
 
         aom_codec_iface_t * decoder_interface = aom_codec_av1_dx();
         if (aom_codec_dec_init(&codec->internal->decoder, decoder_interface, &cfg, 0)) {
@@ -710,7 +709,7 @@ static avifResult avmCodecEncodeImage(avifCodec * codec,
             int layerCount = encoder->extraLayerCount + 1;
             if (aom_codec_control(&codec->internal->encoder, AOME_SET_NUMBER_SPATIAL_LAYERS, layerCount) != AOM_CODEC_OK) {
                 return AVIF_RESULT_UNKNOWN_ERROR;
-            };
+            }
         }
         if (aomCpuUsed != -1) {
             if (aom_codec_control(&codec->internal->encoder, AOME_SET_CPUUSED, aomCpuUsed) != AOM_CODEC_OK) {

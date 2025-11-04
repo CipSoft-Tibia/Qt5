@@ -8,10 +8,10 @@
 #include <memory>
 #include <vector>
 
-#include "base/strings/string_piece.h"
 #include "chrome/browser/net/dns_probe_runner.h"
 #include "net/dns/public/dns_over_https_config.h"
 #include "net/dns/public/doh_provider_entry.h"
+#include "services/network/public/cpp/network_context_getter.h"
 
 class PrefRegistrySimple;
 class PrefService;
@@ -35,17 +35,17 @@ void UpdateProbeHistogram(bool success);
 // Returns a DNS prober configured for testing DoH servers
 std::unique_ptr<DnsProbeRunner> MakeProbeRunner(
     net::DnsOverHttpsConfig doh_config,
-    const DnsProbeRunner::NetworkContextGetter& network_context_getter);
+    const network::NetworkContextGetter& network_context_getter);
 
 // Registers the backup preference required for the DNS probes setting reset.
-// TODO(crbug.com/1062698): Remove this once the privacy settings redesign
+// TODO(crbug.com/40122991): Remove this once the privacy settings redesign
 // is fully launched.
 void RegisterProbesSettingBackupPref(PrefRegistrySimple* registry);
 
 // Backs up the unneeded preference controlling DNS and captive portal probes
 // once the privacy settings redesign is enabled, or restores the backup
 // in case the feature is rolled back.
-// TODO(crbug.com/1062698): Remove this once the privacy settings redesign
+// TODO(crbug.com/40122991): Remove this once the privacy settings redesign
 // is fully launched.
 void MigrateProbesSettingToOrFromBackup(PrefService* prefs);
 

@@ -46,12 +46,13 @@ class CORE_EXPORT IntersectionGeometry {
     // instead of BorderBoundingBox().
     kUseOverflowClipEdge = 1 << 5,
     kRespectFilters = 1 << 6,
+    kScrollAndVisibilityOnly = 1 << 7,
 
     // These flags will be computed
-    kShouldUseCachedRects = 1 << 7,
-    kRootIsImplicit = 1 << 8,
-    kDidComputeGeometry = 1 << 9,
-    kIsVisible = 1 << 10
+    kShouldUseCachedRects = 1 << 8,
+    kRootIsImplicit = 1 << 9,
+    kDidComputeGeometry = 1 << 10,
+    kIsVisible = 1 << 11,
   };
 
   struct RootGeometry {
@@ -63,8 +64,11 @@ class CORE_EXPORT IntersectionGeometry {
 
     float zoom = 1.0f;
     // The root object's content rect in the root object's own coordinate system
+    gfx::RectF pre_margin_local_root_rect;
     gfx::RectF local_root_rect;
     gfx::Transform root_to_view_transform;
+
+    void UpdateMargin(const Vector<Length>& margin);
   };
 
   struct CachedRects {
@@ -103,7 +107,7 @@ class CORE_EXPORT IntersectionGeometry {
                        const Vector<Length>& target_margin,
                        const Vector<Length>& scroll_margin,
                        unsigned flags,
-                       absl::optional<RootGeometry>& root_geometry,
+                       std::optional<RootGeometry>& root_geometry,
                        CachedRects* cached_rects = nullptr);
 
   IntersectionGeometry(const IntersectionGeometry&) = default;
@@ -208,6 +212,7 @@ class CORE_EXPORT IntersectionGeometry {
                   const Vector<Length>& scroll_margin,
                   CachedRects* cached_rects);
   bool ApplyClip(const LayoutObject* target,
+                 const LayoutBox* local_ancestor,
                  const LayoutObject* root,
                  const gfx::RectF& root_rect,
                  gfx::RectF& unclipped_intersection_rect,

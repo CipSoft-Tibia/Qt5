@@ -52,12 +52,14 @@ class CONTENT_EXPORT AudioContextManagerImpl final
       mojo::PendingReceiver<blink::mojom::AudioContextManager> receiver);
   ~AudioContextManagerImpl() override;
 
+#if !BUILDFLAG(IS_QTWEBENGINE)
   // Send measured audible duration to UKM database.
   void RecordAudibleTime(base::TimeDelta);
 
   // To track pending audible time. Stores ID of AudioContext (int32_t) and
   // the start time of audible period (base::TimeTicks).
   base::flat_map<int32_t, base::TimeTicks> pending_audible_durations_;
+#endif  // !BUILDFLAG(IS_QTWEBENGINE)
 
   // Clock used to calculate time between start and stop event. Can be override
   // by tests.

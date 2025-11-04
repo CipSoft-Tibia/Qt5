@@ -7,6 +7,7 @@
 #include <QtCore/qobject.h>
 #include <QtCore/qscopedpointer.h>
 #include <QtGraphs/qgraphsglobal.h>
+#include <QtQmlIntegration/qqmlintegration.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -18,6 +19,8 @@ class Q_GRAPHS_EXPORT QAbstractDataProxy : public QObject
     Q_DECLARE_PRIVATE(QAbstractDataProxy)
     Q_CLASSINFO("RegisterEnumClassesUnscoped", "false")
     Q_PROPERTY(QAbstractDataProxy::DataType type READ type CONSTANT)
+    QML_NAMED_ELEMENT(AbstractDataProxy)
+    QML_UNCREATABLE("Uncreatable base type")
 
 public:
     enum class DataType {

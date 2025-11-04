@@ -72,7 +72,9 @@ if(TARGET Qt::Gui AND TARGET Qt::qsb AND QT_FEATURE_qml_animation)
     if(QT_FEATURE_quicktemplates2_container)
         add_subdirectory(quickdialogs)
     endif()
-    add_subdirectory(quicknativestyle)
+    if (QT_FEATURE_quickcontrols2_macos OR QT_FEATURE_quickcontrols2_windows)
+        add_subdirectory(quicknativestyle)
+    endif()
 
     if(QT_FEATURE_testlib AND QT_FEATURE_network AND QT_FEATURE_quick_itemview AND TARGET Qt::Test AND TARGET Qt::QuickControls2 AND NOT (WASM AND BUILD_SHARED_LIBS))
         add_subdirectory(quickcontrolstestutils)
@@ -94,6 +96,7 @@ add_subdirectory(labs)
 
 add_subdirectory(qmlcompiler)
 add_subdirectory(qmldom)
+add_subdirectory(qmlformat)
 
 # Build qmlcachegen now, so that we can use it in src/imports.
 if(QT_FEATURE_xmlstreamwriter)
@@ -117,7 +120,5 @@ if(QT_FEATURE_qml_network)
         add_subdirectory(qmldebug)
     endif()
 endif()
-
-add_subdirectory(assets)
 
 # special case end

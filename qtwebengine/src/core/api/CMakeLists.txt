@@ -43,8 +43,10 @@ qt_internal_add_module(WebEngineCore
         qwebengineurlschemehandler.cpp qwebengineurlschemehandler.h
         qwebengineglobalsettings.cpp qwebengineglobalsettings.h qwebengineglobalsettings_p.h
         qwebenginewebauthuxrequest.cpp qwebenginewebauthuxrequest.h qwebenginewebauthuxrequest_p.h
+        qwebengineprofilebuilder.cpp qwebengineprofilebuilder.h qwebengineprofilebuilder_p.h
     DEFINES
         BUILDING_CHROMIUM
+        TOOLKIT_QT
     INCLUDE_DIRECTORIES
         ../
         ../../3rdparty/chromium
@@ -135,10 +137,10 @@ set(localeList am ar bg bn ca cs da de el en-GB en-US es-419 es et fa fi fil fr
     gu he hi hr hu id it ja kn ko lt lv ml mr ms nb nl pl pt-BR pt-PT ro ru sk
     sl sr sv sw ta te th tr uk vi zh-CN zh-TW)
 
-set(resourceList qtwebengine_resources.pak
-    qtwebengine_resources_100p.pak
-    qtwebengine_resources_200p.pak
-    qtwebengine_devtools_resources.pak)
+set(resourceList qtwebengine_resources
+    qtwebengine_resources_100p
+    qtwebengine_resources_200p
+    qtwebengine_devtools_resources)
 
 set(stamps ${buildDir}/${config}/${arch}/QtWebEngineCore.stamp)
 
@@ -175,9 +177,16 @@ foreach(loc ${localeList})
     list(APPEND localeFiles ${locSourcePath})
 endforeach()
 
-foreach(res ${resourceList})
-    get_filename_component(resSourcePath ${buildDir}/${config}/${arch}/${res} ${path_mode})
-    list(APPEND resourceFiles ${resSourcePath})
+foreach(config ${configs})
+    if("${config}" STREQUAL "Debug")
+        set(ext_debug ".debug")
+    else()
+        unset(ext_debug)
+    endif()
+    foreach(res ${resourceList})
+        get_filename_component(resSourcePath ${buildDir}/${config}/${arch}/${res}${ext_debug}.pak ${path_mode})
+        list(APPEND resourceFiles ${resSourcePath})
+    endforeach()
 endforeach()
 
 
@@ -213,14 +222,28 @@ if(QT_FEATURE_framework)
     )
 
 else()
+    set(locale_install_path "${INSTALL_TRANSLATIONSDIR}/qtwebengine_locales")
     install(FILES ${localeFiles}
-        DESTINATION ${INSTALL_TRANSLATIONSDIR}/qtwebengine_locales
+        DESTINATION ${locale_install_path}
         CONFIGURATIONS ${config}
     )
+    qt_internal_sbom_add_files(WebEngineCore
+        FILES "${localeFiles}"
+        FILE_TYPE "TRANSLATIONS"
+        INSTALL_PATH "${locale_install_path}"
+    )
+
+    qt_path_join(resource_install_path "${INSTALL_DATADIR}" "resources")
     install(FILES ${resourceFiles}
-        DESTINATION ${INSTALL_DATADIR}/resources
+        DESTINATION ${resource_install_path}
         CONFIGURATIONS ${config}
     )
+    qt_internal_sbom_add_files(WebEngineCore
+        FILES "${resourceFiles}"
+        FILE_TYPE "RESOURCES"
+        INSTALL_PATH "${resource_install_path}"
+    )
+
     if(QT_SUPERBUILD OR NOT QT_WILL_INSTALL)
         addCopyCommand(WebEngineCore "${localeFiles}"
             ${QT_BUILD_DIR}/${INSTALL_TRANSLATIONSDIR}/qtwebengine_locales

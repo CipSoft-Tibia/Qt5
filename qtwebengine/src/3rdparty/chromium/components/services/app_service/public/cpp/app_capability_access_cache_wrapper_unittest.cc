@@ -25,13 +25,13 @@ class AppCapabilityAccessCacheWrapperTest
 
   void OnAppCapabilityAccessCacheWillBeDestroyed(
       AppCapabilityAccessCache* cache) override {
-    NOTREACHED();
+    NOTREACHED_IN_MIGRATION();
   }
 
   static CapabilityAccessPtr MakeCapabilityAccess(
       const char* app_id,
-      absl::optional<bool> camera,
-      absl::optional<bool> microphone) {
+      std::optional<bool> camera,
+      std::optional<bool> microphone) {
     auto access = std::make_unique<CapabilityAccess>(app_id);
     access->camera = camera;
     access->microphone = microphone;

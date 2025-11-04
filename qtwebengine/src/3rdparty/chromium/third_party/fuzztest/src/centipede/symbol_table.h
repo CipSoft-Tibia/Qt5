@@ -23,13 +23,8 @@
 #include <vector>
 
 #include "absl/container/node_hash_set.h"
-#include "absl/log/check.h"
-#include "absl/log/log.h"
-#include "absl/status/status.h"
 #include "absl/strings/match.h"
-#include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
-#include "absl/strings/str_split.h"
 #include "absl/types/span.h"
 #include "./centipede/control_flow.h"
 #include "./centipede/pc_info.h"
@@ -46,20 +41,17 @@ class SymbolTable {
     std::string_view file;
     int line = -1;
     int col = -1;
-    bool operator==(const Entry &other) const = default;
+
     std::string file_line_col() const {
-      if (absl::StrContains(file, "?")) {
-        return std::string{file};
-      }
-      std::string ret = std::string{file};
-      if (line >= 0) {
-        absl::StrAppend(&ret, ":", line);
-      }
-      if (col >= 0) {
-        absl::StrAppend(&ret, ":", col);
-      }
-      return ret;
+      const bool file_known = !absl::StrContains(file, '?');
+      const std::string line_str =
+          (file_known && line >= 0) ? absl::StrCat(":", line) : "";
+      const std::string col_str =
+          (file_known && col >= 0) ? absl::StrCat(":", col) : "";
+      return absl::StrCat(file, line_str, col_str);
     }
+
+    friend bool operator==(const Entry &, const Entry &) = default;
   };
 
   SymbolTable() = default;
@@ -67,7 +59,9 @@ class SymbolTable {
   SymbolTable(SymbolTable &&) = default;
   SymbolTable &operator=(SymbolTable &&) = default;
 
-  bool operator==(const SymbolTable &other) const;
+  friend bool operator==(const SymbolTable &a, const SymbolTable &b) {
+    return a.entries_ == b.entries_;
+  }
 
   // Reads the symbols from a stream produced by `llvm-symbolizer --no-inlines`.
   // https://llvm.org/docs/CommandGuide/llvm-symbolizer.html.
@@ -83,20 +77,21 @@ class SymbolTable {
   void WriteToLLVMSymbolizer(std::ostream &out);
 
   // Invokes `symbolizer_path --no-inlines` on all binaries from `dso_table`,
-  // pipes through it all PCs in pc_table that correspond to each of the
-  // binaries and calls ReadFromLLVMSymbolizer() on the output.
-  // Possibly uses files `tmp_path1` and `tmp_path2` for temporary storage.
+  // pipes through it all the PCs in `pc_table` that correspond to each of the
+  // binaries, and calls `ReadFromLLVMSymbolizer()` on the output.
+  // Possibly uses files `pcs_tmp_path` and `symbols_tmp_path` for temporary
+  // storage.
   void GetSymbolsFromBinary(const PCTable &pc_table, const DsoTable &dso_table,
                             std::string_view symbolizer_path,
-                            std::string_view tmp_path1,
-                            std::string_view tmp_path2);
+                            std::string_view tmp_dir_path);
 
-  // Helper for GetSymbolsFromBinary: symbolizes `pc_infos` for `dso_path`.
+  // Helper for `GetSymbolsFromBinary()`: symbolizes `pc_infos` for `dso_path`.
+  // Possibly uses files `pcs_tmp_path` and `symbols_tmp_path` for temporary
+  // storage.
   void GetSymbolsFromOneDso(absl::Span<const PCInfo> pc_infos,
                             std::string_view dso_path,
                             std::string_view symbolizer_path,
-                            std::string_view tmp_path1,
-                            std::string_view tmp_path2);
+                            std::string_view tmp_dir_path);
 
   // Sets the table to `size` symbols all of which are unknown.
   void SetAllToUnknown(size_t size);
@@ -104,7 +99,7 @@ class SymbolTable {
   // Returns the number of symbol entries.
   size_t size() const { return entries_.size(); }
 
-  // Returns "FunctionName" for idx-th entry.
+  // Returns the function name for idx-th entry.
   std::string_view func(size_t idx) const { return entries_[idx].func; }
 
   Entry entry(size_t idx) const { return entries_[idx]; }
@@ -121,6 +116,9 @@ class SymbolTable {
 
   // Add function name and file location to symbol table.
   void AddEntry(std::string_view func, std::string_view file_line_col);
+
+  // Add all the entries from the other symbol table into this one.
+  void AddEntries(const SymbolTable &other);
 
  private:
   void AddEntryInternal(std::string_view func, std::string_view file,

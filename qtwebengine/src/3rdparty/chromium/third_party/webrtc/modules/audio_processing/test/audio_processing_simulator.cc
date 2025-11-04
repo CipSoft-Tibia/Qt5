@@ -19,11 +19,11 @@
 #include <vector>
 
 #include "absl/strings/string_view.h"
+#include "api/audio/audio_processing.h"
 #include "api/audio/echo_canceller3_factory.h"
 #include "api/audio/echo_detector_creator.h"
 #include "modules/audio_processing/aec_dump/aec_dump_factory.h"
 #include "modules/audio_processing/echo_control_mobile_impl.h"
-#include "modules/audio_processing/include/audio_processing.h"
 #include "modules/audio_processing/logging/apm_data_dumper.h"
 #include "modules/audio_processing/test/echo_canceller3_config_json.h"
 #include "modules/audio_processing/test/fake_recording_device.h"
@@ -514,6 +514,10 @@ void AudioProcessingSimulator::ConfigureAudioProcessor() {
     if (settings_.agc2_use_adaptive_gain) {
       apm_config.gain_controller2.adaptive_digital.enabled =
           *settings_.agc2_use_adaptive_gain;
+    }
+    if (settings_.agc2_use_input_volume_controller) {
+      apm_config.gain_controller2.input_volume_controller.enabled =
+          *settings_.agc2_use_input_volume_controller;
     }
   }
   if (settings_.use_pre_amplifier) {

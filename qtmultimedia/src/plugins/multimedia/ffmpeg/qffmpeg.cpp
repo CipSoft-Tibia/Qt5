@@ -3,12 +3,14 @@
 
 #include "qffmpeg_p.h"
 
-#include <qdebug.h>
-#include <qloggingcategory.h>
+#include <QtCore/qdebug.h>
+#include <QtCore/qloggingcategory.h>
+#include <QtCore/qscopeguard.h>
 
 extern "C" {
 #include <libavutil/pixdesc.h>
 #include <libavutil/samplefmt.h>
+#include <libavutil/error.h>
 
 #ifdef Q_OS_DARWIN
 #include <libavutil/hwcontext_videotoolbox.h>
@@ -17,7 +19,7 @@ extern "C" {
 
 QT_BEGIN_NAMESPACE
 
-static Q_LOGGING_CATEGORY(qLcFFmpegUtils, "qt.multimedia.ffmpeg.utils");
+Q_STATIC_LOGGING_CATEGORY(qLcFFmpegUtils, "qt.multimedia.ffmpeg.utils");
 
 namespace QFFmpeg {
 
@@ -164,7 +166,13 @@ SwrContextUPtr createResampleContext(const AVAudioFormat &inputFormat,
 
 #endif
 
-    swr_init(resampler);
+    auto error = QFFmpeg::AVError{
+        swr_init(resampler),
+    };
+    if (error != QFFmpeg::AVError::Success) {
+        qCWarning(qLcFFmpegUtils) << "Failed to initialize audio resampler:" << error;
+        return nullptr;
+    }
     return SwrContextUPtr(resampler);
 }
 
@@ -338,6 +346,37 @@ std::string cvFormatToString(uint32_t cvFormat)
 QDebug operator<<(QDebug dbg, const AVRational &value)
 {
     dbg << value.num << "/" << value.den;
+    return dbg;
+}
+
+QDebug operator<<(QDebug dbg, const AVDictionary &dict)
+{
+    char *buffer = 0;
+    auto freeBuffer = QScopeGuard([&] {
+        av_free(buffer);
+    });
+
+    int status = av_dict_get_string(&dict, &buffer, '=', ',');
+    if (status < 0 || !buffer)
+        return dbg << "Failed to print AVDictionary";
+
+    dbg << buffer;
+    return dbg;
+}
+
+QDebug operator<<(QDebug dbg, const QFFmpeg::AVDictionaryHolder &dict)
+{
+    const AVDictionary *rawDict = dict.opts;
+    if (rawDict)
+        return dbg << *rawDict;
+    else
+        return dbg << "Empty AVDictionaryHolder";
+}
+
+QDebug operator<<(QDebug dbg, QFFmpeg::AVError error)
+{
+    char errBuf[AV_ERROR_MAX_STRING_SIZE];
+    dbg << av_make_error_string(errBuf, AV_ERROR_MAX_STRING_SIZE, qToUnderlying(error));
     return dbg;
 }
 

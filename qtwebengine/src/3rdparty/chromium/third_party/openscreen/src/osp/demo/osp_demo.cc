@@ -23,6 +23,8 @@
 #include "osp/public/protocol_connection_client_factory.h"
 #include "osp/public/protocol_connection_server.h"
 #include "osp/public/protocol_connection_server_factory.h"
+#include "osp/public/protocol_connection_service_observer.h"
+#include "osp/public/service_config.h"
 #include "osp/public/service_listener.h"
 #include "osp/public/service_listener_factory.h"
 #include "osp/public/service_publisher.h"
@@ -33,7 +35,6 @@
 #include "platform/impl/platform_client_posix.h"
 #include "platform/impl/task_runner.h"
 #include "platform/impl/text_trace_logging_platform.h"
-#include "platform/impl/udp_socket_reader_posix.h"
 #include "third_party/tinycbor/src/src/cbor.h"
 #include "util/trace_logging.h"
 
@@ -95,18 +96,18 @@ class DemoListenerObserver final : public ServiceListener::Observer {
     OSP_LOG_INFO << "removed! " << info.friendly_name;
   }
   void OnAllReceiversRemoved() override { OSP_LOG_INFO << "all removed!"; }
-  void OnError(Error) override {}
+  void OnError(const Error&) override {}
   void OnMetrics(ServiceListener::Metrics) override {}
 };
 
-std::string SanitizeServiceId(std::string_view service_id) {
-  std::string safe_service_id(service_id);
-  for (auto& c : safe_service_id) {
+std::string SanitizeInstanceName(std::string_view instance_name) {
+  std::string safe_instance_name(instance_name);
+  for (auto& c : safe_instance_name) {
     if (c < ' ' || c > '~') {
       c = '.';
     }
   }
-  return safe_service_id;
+  return safe_instance_name;
 }
 
 class DemoReceiverObserver final : public ReceiverObserver {
@@ -114,33 +115,33 @@ class DemoReceiverObserver final : public ReceiverObserver {
   ~DemoReceiverObserver() override = default;
 
   void OnRequestFailed(const std::string& presentation_url,
-                       const std::string& service_id) override {
-    std::string safe_service_id = SanitizeServiceId(service_id);
+                       const std::string& instance_name) override {
+    std::string safe_instance_name = SanitizeInstanceName(instance_name);
     OSP_LOG_WARN << "request failed: (" << presentation_url << ", "
-                 << safe_service_id << ")";
+                 << safe_instance_name << ")";
   }
   void OnReceiverAvailable(const std::string& presentation_url,
-                           const std::string& service_id) override {
-    std::string safe_service_id = SanitizeServiceId(service_id);
-    safe_service_ids_.emplace(safe_service_id, service_id);
-    OSP_LOG_INFO << "available! " << safe_service_id;
+                           const std::string& instance_name) override {
+    std::string safe_instance_name = SanitizeInstanceName(instance_name);
+    safe_instance_names_.emplace(safe_instance_name, instance_name);
+    OSP_LOG_INFO << "available! " << safe_instance_name;
   }
   void OnReceiverUnavailable(const std::string& presentation_url,
-                             const std::string& service_id) override {
-    std::string safe_service_id = SanitizeServiceId(service_id);
-    safe_service_ids_.erase(safe_service_id);
-    OSP_LOG_INFO << "unavailable! " << safe_service_id;
+                             const std::string& instance_name) override {
+    std::string safe_instance_name = SanitizeInstanceName(instance_name);
+    safe_instance_names_.erase(safe_instance_name);
+    OSP_LOG_INFO << "unavailable! " << safe_instance_name;
   }
 
-  const std::string& GetServiceId(const std::string& safe_service_id) {
-    OSP_DCHECK(safe_service_ids_.find(safe_service_id) !=
-               safe_service_ids_.end())
-        << safe_service_id << " not found in map";
-    return safe_service_ids_[safe_service_id];
+  const std::string& GetInstanceName(const std::string& safe_instance_name) {
+    OSP_CHECK(safe_instance_names_.find(safe_instance_name) !=
+              safe_instance_names_.end())
+        << safe_instance_name << " not found in map";
+    return safe_instance_names_[safe_instance_name];
   }
 
  private:
-  std::map<std::string, std::string> safe_service_ids_;
+  std::map<std::string, std::string> safe_instance_names_;
 };
 
 class DemoPublisherObserver final : public ServicePublisher::Observer {
@@ -151,7 +152,7 @@ class DemoPublisherObserver final : public ServicePublisher::Observer {
   void OnStopped() override { OSP_LOG_INFO << "publisher stopped!"; }
   void OnSuspended() override { OSP_LOG_INFO << "publisher suspended!"; }
 
-  void OnError(Error error) override {
+  void OnError(const Error& error) override {
     OSP_LOG_ERROR << "publisher error: " << error;
   }
   void OnMetrics(ServicePublisher::Metrics) override {}
@@ -160,25 +161,14 @@ class DemoPublisherObserver final : public ServicePublisher::Observer {
 class DemoConnectionClientObserver final
     : public ProtocolConnectionServiceObserver {
  public:
-  ~DemoConnectionClientObserver() override = default;
-  void OnRunning() override {}
-  void OnStopped() override {}
-
-  void OnMetrics(const NetworkMetrics& metrics) override {}
-  void OnError(const Error& error) override {}
-};
-
-class DemoConnectionServerObserver final
-    : public ProtocolConnectionServer::Observer {
- public:
   class ConnectionObserver final : public ProtocolConnection::Observer {
    public:
-    explicit ConnectionObserver(DemoConnectionServerObserver* parent)
+    explicit ConnectionObserver(DemoConnectionClientObserver& parent)
         : parent_(parent) {}
     ~ConnectionObserver() override = default;
 
     void OnConnectionClosed(const ProtocolConnection& connection) override {
-      auto& connections = parent_->connections_;
+      auto& connections = parent_.connections_;
       connections.erase(
           std::remove_if(
               connections.begin(), connections.end(),
@@ -190,7 +180,53 @@ class DemoConnectionServerObserver final
     }
 
    private:
-    DemoConnectionServerObserver* const parent_;
+    DemoConnectionClientObserver& parent_;
+  };
+
+  ~DemoConnectionClientObserver() override = default;
+  void OnRunning() override {}
+  void OnStopped() override {}
+  void OnSuspended() override {}
+
+  void OnMetrics(const NetworkMetrics& metrics) override {}
+  void OnError(const Error& error) override {}
+
+  void OnIncomingConnection(
+      std::unique_ptr<ProtocolConnection> connection) override {
+    auto observer = std::make_unique<ConnectionObserver>(*this);
+    connection->SetObserver(observer.get());
+    connections_.emplace_back(std::move(observer), std::move(connection));
+  }
+
+ private:
+  std::vector<std::pair<std::unique_ptr<ConnectionObserver>,
+                        std::unique_ptr<ProtocolConnection>>>
+      connections_;
+};
+
+class DemoConnectionServerObserver final
+    : public ProtocolConnectionServiceObserver {
+ public:
+  class ConnectionObserver final : public ProtocolConnection::Observer {
+   public:
+    explicit ConnectionObserver(DemoConnectionServerObserver& parent)
+        : parent_(parent) {}
+    ~ConnectionObserver() override = default;
+
+    void OnConnectionClosed(const ProtocolConnection& connection) override {
+      auto& connections = parent_.connections_;
+      connections.erase(
+          std::remove_if(
+              connections.begin(), connections.end(),
+              [this](const std::pair<std::unique_ptr<ConnectionObserver>,
+                                     std::unique_ptr<ProtocolConnection>>& p) {
+                return p.first.get() == this;
+              }),
+          connections.end());
+    }
+
+   private:
+    DemoConnectionServerObserver& parent_;
   };
 
   ~DemoConnectionServerObserver() override = default;
@@ -204,10 +240,9 @@ class DemoConnectionServerObserver final
 
   void OnIncomingConnection(
       std::unique_ptr<ProtocolConnection> connection) override {
-    auto observer = std::make_unique<ConnectionObserver>(this);
+    auto observer = std::make_unique<ConnectionObserver>(*this);
     connection->SetObserver(observer.get());
     connections_.emplace_back(std::move(observer), std::move(connection));
-    connections_.back().second->CloseWriteEnd();
   }
 
  private:
@@ -321,8 +356,9 @@ class DemoReceiverDelegate final : public ReceiverDelegate {
   }
 
   void TerminatePresentation(const std::string& id,
+                             TerminationSource source,
                              TerminationReason reason) override {
-    receiver_->OnPresentationTerminated(id, reason);
+    receiver_->OnPresentationTerminated(id, source, reason);
   }
 
   Receiver* receiver_;
@@ -400,12 +436,12 @@ void RunControllerPollLoop(Controller* controller) {
       const std::string_view& argument_tail =
           command_result.command_line.argument_tail;
       size_t next_split = argument_tail.find_first_of(' ');
-      const std::string& service_id = receiver_observer.GetServiceId(
+      const std::string& instance_name = receiver_observer.GetInstanceName(
           std::string(argument_tail.substr(next_split + 1)));
       const std::string url =
           static_cast<std::string>(argument_tail.substr(0, next_split));
       connect_request = controller->StartPresentation(
-          url, service_id, &request_delegate, &connection_delegate);
+          url, instance_name, &request_delegate, &connection_delegate);
     } else if (command_result.command_line.command == "msg") {
       request_delegate.connection_->SendString(
           command_result.command_line.argument_tail);
@@ -416,7 +452,8 @@ void RunControllerPollLoop(Controller* controller) {
           std::move(request_delegate.connection_), &request_delegate);
     } else if (command_result.command_line.command == "term") {
       request_delegate.connection_->Terminate(
-          TerminationReason::kControllerTerminateCalled);
+          TerminationSource::kController,
+          TerminationReason::kApplicationTerminated);
     }
   }
 
@@ -427,25 +464,30 @@ void ListenerDemo() {
   SignalThings();
 
   ServiceListener::Config listener_config;
+  ServiceConfig client_config;
   for (const InterfaceInfo& interface : GetNetworkInterfaces()) {
     OSP_VLOG << "Found interface: " << interface;
-    if (!interface.addresses.empty()) {
+    if (!interface.addresses.empty() &&
+        interface.type != InterfaceInfo::Type::kLoopback) {
       listener_config.network_interfaces.push_back(interface);
+      client_config.connection_endpoints.push_back(
+          {interface.addresses[0].address, 0});
     }
   }
   OSP_LOG_IF(WARN, listener_config.network_interfaces.empty())
       << "No network interfaces had usable addresses for mDNS Listening.";
 
+  DemoConnectionClientObserver client_observer;
+  auto connection_client = ProtocolConnectionClientFactory::Create(
+      client_config, client_observer,
+      PlatformClientPosix::GetInstance()->GetTaskRunner(),
+      MessageDemuxer::kDefaultBufferLimit);
+
   DemoListenerObserver listener_observer;
   auto service_listener = ServiceListenerFactory::Create(
       listener_config, PlatformClientPosix::GetInstance()->GetTaskRunner());
-  service_listener->AddObserver(&listener_observer);
-
-  MessageDemuxer demuxer(Clock::now, MessageDemuxer::kDefaultBufferLimit);
-  DemoConnectionClientObserver client_observer;
-  auto connection_client = ProtocolConnectionClientFactory::Create(
-      &demuxer, &client_observer,
-      PlatformClientPosix::GetInstance()->GetTaskRunner());
+  service_listener->AddObserver(listener_observer);
+  service_listener->AddObserver(*connection_client);
 
   auto* network_service =
       NetworkServiceManager::Create(std::move(service_listener), nullptr,
@@ -486,7 +528,8 @@ void HandleReceiverCommand(std::string_view command,
     delegate.connection_->SendString(argument_tail);
   } else if (command == "term") {
     delegate.receiver_->OnPresentationTerminated(
-        delegate.presentation_id_, TerminationReason::kReceiverUserTerminated);
+        delegate.presentation_id_, TerminationSource::kReceiver,
+        TerminationReason::kUserTerminated);
   } else {
     OSP_LOG_FATAL << "Received unknown receiver command: " << command;
   }
@@ -522,35 +565,40 @@ void PublisherDemo(std::string_view friendly_name) {
 
   constexpr uint16_t server_port = 6667;
 
-  // TODO(btolsch): aggregate initialization probably better?
-  ServicePublisher::Config publisher_config;
-  publisher_config.friendly_name = std::string(friendly_name);
-  publisher_config.hostname = "turtle-deadbeef";
-  publisher_config.service_instance_name = "deadbeef";
-  publisher_config.connection_server_port = server_port;
+  ServicePublisher::Config publisher_config = {
+      .friendly_name = std::string(friendly_name),
+      .instance_name = "deadbeef",
+      .connection_server_port = server_port};
 
-  ServerConfig server_config;
+  ServiceConfig server_config = {.instance_name =
+                                     publisher_config.instance_name};
   for (const InterfaceInfo& interface : GetNetworkInterfaces()) {
     OSP_VLOG << "Found interface: " << interface;
-    if (!interface.addresses.empty()) {
+    if (!interface.addresses.empty() &&
+        interface.type != InterfaceInfo::Type::kLoopback) {
       server_config.connection_endpoints.push_back(
           IPEndpoint{interface.addresses[0].address, server_port});
       publisher_config.network_interfaces.push_back(interface);
     }
   }
-  OSP_LOG_IF(WARN, server_config.connection_endpoints.empty())
+  OSP_LOG_IF(WARN, publisher_config.network_interfaces.empty())
       << "No network interfaces had usable addresses for mDNS publishing.";
+
+  DemoConnectionServerObserver server_observer;
+  auto connection_server = ProtocolConnectionServerFactory::Create(
+      server_config, server_observer,
+      PlatformClientPosix::GetInstance()->GetTaskRunner(),
+      MessageDemuxer::kDefaultBufferLimit);
+
+  publisher_config.fingerprint = connection_server->GetAgentFingerprint();
+  OSP_CHECK(!publisher_config.fingerprint.empty());
+  publisher_config.auth_token = connection_server->GetAuthToken();
+  OSP_CHECK(!publisher_config.auth_token.empty());
 
   DemoPublisherObserver publisher_observer;
   auto service_publisher = ServicePublisherFactory::Create(
-      publisher_config, &publisher_observer,
-      PlatformClientPosix::GetInstance()->GetTaskRunner());
-
-  MessageDemuxer demuxer(Clock::now, MessageDemuxer::kDefaultBufferLimit);
-  DemoConnectionServerObserver server_observer;
-  auto connection_server = ProtocolConnectionServerFactory::Create(
-      server_config, &demuxer, &server_observer,
-      PlatformClientPosix::GetInstance()->GetTaskRunner());
+      publisher_config, PlatformClientPosix::GetInstance()->GetTaskRunner());
+  service_publisher->AddObserver(publisher_observer);
 
   auto* network_service =
       NetworkServiceManager::Create(nullptr, std::move(service_publisher),

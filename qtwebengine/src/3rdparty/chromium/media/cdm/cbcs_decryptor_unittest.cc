@@ -7,15 +7,16 @@
 #include <algorithm>
 #include <array>
 #include <memory>
+#include <optional>
 
 #include "base/containers/span.h"
+#include "base/containers/to_vector.h"
 #include "base/time/time.h"
 #include "crypto/encryptor.h"
 #include "crypto/symmetric_key.h"
 #include "media/base/decoder_buffer.h"
 #include "media/base/decrypt_config.h"
 #include "testing/gtest/include/gtest/gtest.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 
 namespace media {
 
@@ -95,7 +96,7 @@ class CbcsDecryptorTest : public testing::Test {
     std::string ciphertext;
     EXPECT_TRUE(encryptor.Encrypt(MakeString(original), &ciphertext));
 
-    // CBC encyption adds a block of padding at the end, so discard it.
+    // CBC encryption adds a block of padding at the end, so discard it.
     DCHECK_GT(ciphertext.size(), original.size());
     ciphertext.resize(original.size());
 
@@ -107,11 +108,11 @@ class CbcsDecryptorTest : public testing::Test {
       const std::vector<uint8_t>& data,
       const std::string& iv,
       const std::vector<SubsampleEntry>& subsample_entries,
-      absl::optional<EncryptionPattern> encryption_pattern) {
+      std::optional<EncryptionPattern> encryption_pattern) {
     EXPECT_FALSE(data.empty());
     EXPECT_FALSE(iv.empty());
 
-    auto encrypted_buffer = DecoderBuffer::CopyFrom(data.data(), data.size());
+    auto encrypted_buffer = DecoderBuffer::CopyFrom(data);
 
     // Key_ID is never used.
     encrypted_buffer->set_decrypt_config(DecryptConfig::CreateCbcsConfig(
@@ -127,9 +128,8 @@ class CbcsDecryptorTest : public testing::Test {
 
     std::vector<uint8_t> decrypted_data;
     if (decrypted.get()) {
-      EXPECT_TRUE(decrypted->data_size());
-      decrypted_data.assign(decrypted->data(),
-                            decrypted->data() + decrypted->data_size());
+      EXPECT_FALSE(decrypted->empty());
+      decrypted_data = base::ToVector(base::span(*decrypted));
     }
 
     return decrypted_data;

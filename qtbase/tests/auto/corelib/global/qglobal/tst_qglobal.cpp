@@ -11,6 +11,7 @@
 #include <QLatin1String>
 #include <QString>
 #include <QtVersion>
+#include <QtCore/qttypetraits.h>
 
 #include <cmath>
 #include <limits>
@@ -22,6 +23,8 @@
 static_assert(std::is_signed_v<qint128>);
 static_assert(std::is_integral_v<qint128>);
 static_assert(std::is_integral_v<quint128>);
+static_assert(QtPrivate::is_standard_or_extended_integer_type_v<qint128>);
+static_assert(QtPrivate::is_standard_or_extended_integer_type_v<quint128>);
 static_assert(std::numeric_limits<qint128>::is_signed);
 static_assert(std::numeric_limits<qint128>::is_specialized);
 static_assert(std::numeric_limits<quint128>::is_specialized);
@@ -110,6 +113,7 @@ private slots:
     void testqToUnderlying();
     void nodiscard();
     void tagStructDefinitions();
+    void CXX20_constexpr_dtor();
 };
 
 extern "C" {        // functions in qglobal.c
@@ -1028,6 +1032,22 @@ void tst_QGlobal::tagStructDefinitions()
         [[maybe_unused]] constexpr auto tag = MyTag;
         static_assert(std::is_same_v<decltype(tag), const MyTag_t>);
     }
+}
+
+class DestructorTest {
+public:
+    explicit constexpr DestructorTest(int *arr) : m_arr(arr) {}
+    Q_DECL_CONSTEXPR_DTOR ~DestructorTest() { delete[] m_arr; }
+private:
+    int *m_arr;
+};
+
+void tst_QGlobal::CXX20_constexpr_dtor()
+{
+    [[maybe_unused]] Q_CONSTEXPR_DTOR DestructorTest tmp0(nullptr);
+#if __cpp_constexpr >= 201907L
+    [[maybe_unused]] constexpr DestructorTest tmp(nullptr);
+#endif
 }
 
 QT_BEGIN_NAMESPACE

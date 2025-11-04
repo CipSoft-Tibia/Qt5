@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QtCore>
-#include <QtTest>
+#include <QTest>
 #include <QtQml>
 
 #if defined(Q_OS_WIN)

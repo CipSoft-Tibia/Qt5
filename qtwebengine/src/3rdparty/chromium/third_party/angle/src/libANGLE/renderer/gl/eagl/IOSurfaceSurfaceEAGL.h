@@ -49,7 +49,7 @@ class IOSurfaceSurfaceEAGL : public SurfaceGL
                             gl::Texture *texture,
                             EGLint buffer) override;
     egl::Error releaseTexImage(const gl::Context *context, EGLint buffer) override;
-    void setSwapInterval(EGLint interval) override;
+    void setSwapInterval(const egl::Display *display, EGLint interval) override;
 
     EGLint getWidth() const override;
     EGLint getHeight() const override;
@@ -73,7 +73,7 @@ class IOSurfaceSurfaceEAGL : public SurfaceGL
     IOSurfaceLockOptions getIOSurfaceLockOptions() const;
 #endif
     // TODO(geofflang): Don't store these, they are potentially specific to a single GL context.
-    // http://anglebug.com/2464
+    // http://anglebug.com/40096492
     const FunctionsGL *mFunctions;
     StateManagerGL *mStateManager;
 

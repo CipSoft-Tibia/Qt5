@@ -523,6 +523,7 @@ CursorHandlePtr QWindowsCursor::standardWindowCursor(Qt::CursorShape shape)
 
 HCURSOR QWindowsCursor::m_overriddenCursor = nullptr;
 HCURSOR QWindowsCursor::m_overrideCursor = nullptr;
+POINT QWindowsCursor::m_cursorPositionCache = {0,0};
 
 /*!
     \brief Return cached pixmap cursor or create new one.
@@ -633,8 +634,9 @@ void QWindowsCursor::clearOverrideCursor()
 QPoint QWindowsCursor::mousePosition()
 {
     POINT p;
-    GetCursorPos(&p);
-    return QPoint(p.x, p.y);
+    if (GetCursorPos(&p))
+        m_cursorPositionCache = p;
+    return QPoint(m_cursorPositionCache.x, m_cursorPositionCache.y);
 }
 
 QWindowsCursor::State QWindowsCursor::cursorState()
@@ -658,6 +660,7 @@ QPoint QWindowsCursor::pos() const
 
 void QWindowsCursor::setPos(const QPoint &pos)
 {
+    m_cursorPositionCache = {pos.x(), pos.y()};
     SetCursorPos(pos.x() , pos.y());
 }
 
@@ -705,6 +708,7 @@ QPixmap QWindowsCursor::dragDefaultCursor(Qt::DropAction action) const
         break;
     }
 
+#if QT_CONFIG(imageformat_xpm)
     static const char * const ignoreDragCursorXpmC[] = {
     "24 30 3 1",
     ".        c None",
@@ -740,6 +744,7 @@ QPixmap QWindowsCursor::dragDefaultCursor(Qt::DropAction action) const
     "............XaaaaaaaaX..",
     ".............XXaaaaXX...",
     "...............XXXX....."};
+#endif
 
     if (m_ignoreDragCursor.isNull()) {
         HCURSOR cursor = LoadCursor(nullptr, IDC_NO);
@@ -758,8 +763,10 @@ QPixmap QWindowsCursor::dragDefaultCursor(Qt::DropAction action) const
 
             m_ignoreDragCursor = QPixmap::fromImage(colorImage);
             delete [] colorBits;
+#if QT_CONFIG(imageformat_xpm)
         } else {
             m_ignoreDragCursor = QPixmap(ignoreDragCursorXpmC);
+#endif
         }
 
         DeleteObject(iconInfo.hbmMask);

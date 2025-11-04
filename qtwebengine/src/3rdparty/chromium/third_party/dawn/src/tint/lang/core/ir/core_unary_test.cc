@@ -26,7 +26,6 @@
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "gmock/gmock.h"
-#include "gtest/gtest-spi.h"
 #include "src/tint/lang/core/fluent_types.h"
 #include "src/tint/lang/core/ir/builder.h"
 #include "src/tint/lang/core/ir/instruction.h"
@@ -39,6 +38,7 @@ namespace tint::core::ir {
 namespace {
 
 using IR_UnaryTest = IRTestHelper;
+using IR_UnaryDeathTest = IR_UnaryTest;
 
 TEST_F(IR_UnaryTest, CreateComplement) {
     auto* inst = b.Complement(mod.Types().i32(), 4_i);
@@ -64,13 +64,25 @@ TEST_F(IR_UnaryTest, CreateNegation) {
     EXPECT_EQ(4_i, lhs->As<core::constant::Scalar<i32>>()->ValueAs<i32>());
 }
 
+TEST_F(IR_UnaryTest, CreateNot) {
+    auto* inst = b.Not(mod.Types().bool_(), true);
+
+    ASSERT_TRUE(inst->Is<Unary>());
+    EXPECT_EQ(inst->Op(), UnaryOp::kNot);
+
+    ASSERT_TRUE(inst->Val()->Is<Constant>());
+    auto lhs = inst->Val()->As<Constant>()->Value();
+    ASSERT_TRUE(lhs->Is<core::constant::Scalar<bool>>());
+    EXPECT_EQ(true, lhs->As<core::constant::Scalar<bool>>()->ValueAs<bool>());
+}
+
 TEST_F(IR_UnaryTest, Usage) {
     auto* inst = b.Negation(mod.Types().i32(), 4_i);
 
     EXPECT_EQ(inst->Op(), UnaryOp::kNegation);
 
     ASSERT_NE(inst->Val(), nullptr);
-    EXPECT_THAT(inst->Val()->Usages(), testing::UnorderedElementsAre(Usage{inst, 0u}));
+    EXPECT_THAT(inst->Val()->UsagesUnsorted(), testing::UnorderedElementsAre(Usage{inst, 0u}));
 }
 
 TEST_F(IR_UnaryTest, Result) {
@@ -80,14 +92,14 @@ TEST_F(IR_UnaryTest, Result) {
     EXPECT_EQ(inst->Result(0)->Instruction(), inst);
 }
 
-TEST_F(IR_UnaryTest, Fail_NullType) {
-    EXPECT_FATAL_FAILURE(
+TEST_F(IR_UnaryDeathTest, Fail_NullType) {
+    EXPECT_DEATH_IF_SUPPORTED(
         {
             Module mod;
             Builder b{mod};
             b.Negation(nullptr, 1_i);
         },
-        "");
+        "internal compiler error");
 }
 
 TEST_F(IR_UnaryTest, Clone) {

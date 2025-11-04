@@ -14,10 +14,6 @@ EnumTraits<gl::mojom::GLImplementation, gl::GLImplementation>::ToMojom(
   switch (impl) {
     case gl::kGLImplementationNone:
       return gl::mojom::GLImplementation::kGLImplementationNone;
-    case gl::kGLImplementationDesktopGL:
-      return gl::mojom::GLImplementation::kGLImplementationDesktopGL;
-    case gl::kGLImplementationDesktopGLCoreProfile:
-      return gl::mojom::GLImplementation::kGLImplementationDesktopGLCoreProfile;
     case gl::kGLImplementationEGLGLES2:
       return gl::mojom::GLImplementation::kGLImplementationEGLGLES2;
     case gl::kGLImplementationMockGL:
@@ -30,7 +26,6 @@ EnumTraits<gl::mojom::GLImplementation, gl::GLImplementation>::ToMojom(
       return gl::mojom::GLImplementation::kGLImplementationEGLANGLE;
   }
   NOTREACHED();
-  return gl::mojom::GLImplementation::kGLImplementationNone;
 }
 
 // static
@@ -40,12 +35,6 @@ bool EnumTraits<gl::mojom::GLImplementation, gl::GLImplementation>::FromMojom(
   switch (input) {
     case gl::mojom::GLImplementation::kGLImplementationNone:
       *out = gl::kGLImplementationNone;
-      return true;
-    case gl::mojom::GLImplementation::kGLImplementationDesktopGL:
-      *out = gl::kGLImplementationDesktopGL;
-      return true;
-    case gl::mojom::GLImplementation::kGLImplementationDesktopGLCoreProfile:
-      *out = gl::kGLImplementationDesktopGLCoreProfile;
       return true;
     case gl::mojom::GLImplementation::kGLImplementationEGLGLES2:
       *out = gl::kGLImplementationEGLGLES2;
@@ -64,7 +53,6 @@ bool EnumTraits<gl::mojom::GLImplementation, gl::GLImplementation>::FromMojom(
       return true;
   }
   NOTREACHED();
-  return false;
 }
 
 // static
@@ -94,7 +82,6 @@ EnumTraits<gl::mojom::ANGLEImplementation, gl::ANGLEImplementation>::ToMojom(
       return gl::mojom::ANGLEImplementation::kDefault;
   }
   NOTREACHED();
-  return gl::mojom::ANGLEImplementation::kNone;
 }
 
 // static
@@ -134,7 +121,6 @@ bool EnumTraits<gl::mojom::ANGLEImplementation, gl::ANGLEImplementation>::
       return true;
   }
   NOTREACHED();
-  return false;
 }
 
 // static

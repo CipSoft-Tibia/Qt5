@@ -1,5 +1,6 @@
 // Copyright (C) 2021 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QX509_SCHANNEL_P_H
 #define QX509_SCHANNEL_P_H
@@ -40,8 +41,8 @@ public:
     static bool importPkcs12(QIODevice *device, QSslKey *key, QSslCertificate *cert,
                              QList<QSslCertificate> *caCertificates,
                              const QByteArray &passPhrase);
-private:
-    const CERT_CONTEXT *certificateContext = nullptr;
+
+    QPCCertContextPointer certificateContext;
 
     Q_DISABLE_COPY_MOVE(X509CertificateSchannel);
 };

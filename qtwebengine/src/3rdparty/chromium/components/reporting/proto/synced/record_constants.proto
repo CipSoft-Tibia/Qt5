@@ -9,8 +9,13 @@ option optimize_for = LITE_RUNTIME;
 package reporting;
 
 // |Destination| indicates which handler a |Record| should be delivered to.
+// These values are persisted to logs. Entries should not be renumbered and
+// numeric values should never be reused.
 // This must be kept in sync with EnterpriseCloudReportingDestination in
-// //tools/metrics/histograms/metadata/browser/enums.xml in the Chromium repo.
+// //tools/metrics/histograms/enums.xml in the Chromium repo.
+// You must also add any new destinations to
+// `Browser.ERP.EventEnqueueResult.{Destination}` in
+// //tools/metrics/histograms/metadata/browser/histograms.xml
 enum Destination {
   UNDEFINED_DESTINATION = 0;
 
@@ -20,6 +25,10 @@ enum Destination {
   // |MEET_DEVICE_TELEMETRY| handler is for telemetry data sent by Meet
   // Devices. For more information, see go/reliable-meet-device-telemetry.
   MEET_DEVICE_TELEMETRY = 2;
+
+  // |WEB_PROTECT| legacy web protect event handler that will be deleted and
+  // replaced by the |CHROME_BROWSER_ENTERPRISE| destination.
+  WEB_PROTECT = 3 [deprecated = true];
 
   // |ARC_INSTALL| legacy arc app installation event handler
   ARC_INSTALL = 4;
@@ -112,8 +121,13 @@ enum Destination {
   // |CRASH_EVENTS| is for fatal crash events.
   CRASH_EVENTS = 31;
 
-  reserved 3, 8;
-  reserved "WEB_PROTECT";
+  // |CHROME_CRASH_EVENTS| is for fatal chrome crash events.
+  CHROME_CRASH_EVENTS = 32;
+
+  // |CROS_SECURITY_FILE| is for events that read or modify sensitive files.
+  CROS_SECURITY_FILE = 33;
+
+  reserved 8;
 }
 
 // |Priority| is used to determine when items from the queue should be rate

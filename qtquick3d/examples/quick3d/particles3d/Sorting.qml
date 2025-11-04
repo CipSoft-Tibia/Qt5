@@ -22,8 +22,8 @@ Item {
             source: "#Rectangle"
             eulerRotation: Qt.vector3d(-90, 0, 0)
             scale: Qt.vector3d(10, 10, 1)
-            materials: [ DefaultMaterial {
-                    diffuseColor: "red"
+            materials: [ PrincipledMaterial {
+                    baseColor: "red"
                 }
             ]
         }
@@ -31,8 +31,8 @@ Item {
         Model {
             source: "#Cube"
             scale: Qt.vector3d(0.3, 0.3, 0.3)
-            materials: [DefaultMaterial {
-                    diffuseColor: "white"
+            materials: [PrincipledMaterial {
+                    baseColor: "white"
                 }
             ]
         }

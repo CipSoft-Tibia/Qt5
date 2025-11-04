@@ -3,6 +3,8 @@
 
 #include "qquicklabsplatformfolderdialog_p.h"
 
+#if QT_DEPRECATED_SINCE(6, 9)
+
 QT_BEGIN_NAMESPACE
 
 /*!
@@ -11,11 +13,12 @@ QT_BEGIN_NAMESPACE
 //!     \nativetype QQuickLabsPlatformFolderDialog
     \inqmlmodule Qt.labs.platform
     \since 5.8
+    \deprecated [6.9] Use QtQuick.Dialogs::FolderDialog instead.
     \brief A native folder dialog.
 
     The FolderDialog type provides a QML API for native platform folder dialogs.
 
-    \image qtlabsplatform-folderdialog-gtk.png
+    \image {qtlabsplatform-folderdialog-gtk.png} {A native folder dialog}
 
     To show a folder dialog, construct an instance of FolderDialog, set the
     desired properties, and call \l {Dialog::}{open()}. The \l currentFolder
@@ -57,7 +60,7 @@ QT_BEGIN_NAMESPACE
 
     \labs
 
-    \sa FileDialog, StandardPaths
+    \sa QtQuick.Dialogs::FolderDialog, FileDialog, StandardPaths
 */
 
 QQuickLabsPlatformFolderDialog::QQuickLabsPlatformFolderDialog(QObject *parent)
@@ -251,3 +254,5 @@ void QQuickLabsPlatformFolderDialog::accept()
 QT_END_NAMESPACE
 
 #include "moc_qquicklabsplatformfolderdialog_p.cpp"
+
+#endif // QT_DEPRECATED_SINCE(6, 9)

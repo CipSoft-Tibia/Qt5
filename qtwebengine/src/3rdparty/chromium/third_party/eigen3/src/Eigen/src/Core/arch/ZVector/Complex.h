@@ -60,6 +60,8 @@ struct packet_traits<std::complex<float> > : default_packet_traits {
     HasSub = 1,
     HasMul = 1,
     HasDiv = 1,
+    HasLog = 1,
+    HasExp = 1,
     HasNegate = 1,
     HasAbs = 0,
     HasAbs2 = 0,
@@ -83,6 +85,7 @@ struct packet_traits<std::complex<double> > : default_packet_traits {
     HasSub = 1,
     HasMul = 1,
     HasDiv = 1,
+    HasLog = 1,
     HasNegate = 1,
     HasAbs = 0,
     HasAbs2 = 0,
@@ -246,6 +249,11 @@ EIGEN_MAKE_CONJ_HELPER_CPLX_REAL(Packet1cd, Packet2d)
 template <>
 EIGEN_STRONG_INLINE Packet1cd pdiv<Packet1cd>(const Packet1cd& a, const Packet1cd& b) {
   return pdiv_complex(a, b);
+}
+
+template <>
+EIGEN_STRONG_INLINE Packet1cd plog<Packet1cd>(const Packet1cd& a, const Packet1cd& b) {
+  return plog_complex(a, b);
 }
 
 EIGEN_STRONG_INLINE Packet1cd pcplxflip /*<Packet1cd>*/ (const Packet1cd& x) {
@@ -422,6 +430,16 @@ EIGEN_MAKE_CONJ_HELPER_CPLX_REAL(Packet2cf, Packet4f)
 template <>
 EIGEN_STRONG_INLINE Packet2cf pdiv<Packet2cf>(const Packet2cf& a, const Packet2cf& b) {
   return pdiv_complex(a, b);
+}
+
+template <>
+EIGEN_STRONG_INLINE Packet2cf plog<Packet2cf>(const Packet2cf& a, const Packet2cf& b) {
+  return plog_complex(a, b);
+}
+
+template <>
+EIGEN_STRONG_INLINE Packet2cf pexp<Packet2cf>(const Packet2cf& a, const Packet2cf& b) {
+  return pexp_complex(a, b);
 }
 
 EIGEN_STRONG_INLINE Packet2cf pcplxflip /*<Packet2cf>*/ (const Packet2cf& x) {

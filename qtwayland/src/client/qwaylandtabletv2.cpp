@@ -113,7 +113,8 @@ void QWaylandTabletToolV2::updateCursor()
         return;
 
     // Set from shape using theme
-    uint time = m_tabletSeat->seat()->mCursor.animationTimer.elapsed();
+    QElapsedTimer &timer = m_tabletSeat->seat()->mCursor.animationTimer;
+    const uint time = timer.isValid() ? timer.elapsed() : 0;
 
     if (struct ::wl_cursor *waylandCursor = mCursor.theme->cursor(shape)) {
         uint duration = 0;
@@ -238,7 +239,7 @@ void QWaylandTabletSeatV2::zwp_tablet_seat_v2_pad_added(zwp_tablet_pad_v2 *id)
 QWaylandTabletV2::QWaylandTabletV2(::zwp_tablet_v2 *tablet, const QString &seatName)
     : QPointingDevice(u"unknown"_s, -1, DeviceType::Stylus, PointerType::Pen,
                       Capability::Position | Capability::Hover,
-                      1, 1)
+                      1, 1, seatName)
     , QtWayland::zwp_tablet_v2(tablet)
 {
     qCDebug(lcQpaInputDevices) << "new tablet on seat" << seatName;
@@ -295,7 +296,7 @@ void QWaylandTabletV2::zwp_tablet_v2_removed()
 QWaylandTabletToolV2::QWaylandTabletToolV2(QWaylandTabletSeatV2 *tabletSeat, ::zwp_tablet_tool_v2 *tool)
     : QPointingDevice(u"tool"_s, -1, DeviceType::Stylus, PointerType::Pen,
                       Capability::Position | Capability::Hover,
-                      1, 1)
+                      1, 1, tabletSeat->seat()->seatname())
     , QtWayland::zwp_tablet_tool_v2(tool)
     , m_tabletSeat(tabletSeat)
 {
@@ -545,9 +546,7 @@ void QWaylandTabletToolV2::zwp_tablet_tool_v2_frame(uint32_t time)
         ulong timestamp = time;
         const QPointF localPosition = waylandWindow->mapFromWlSurface(m_pending.surfacePosition);
 
-        QPointF delta = localPosition - localPosition.toPoint();
-        QPointF globalPosition = window->mapToGlobal(localPosition.toPoint());
-        globalPosition += delta;
+        const QPointF globalPosition = waylandWindow->mapToGlobalF(localPosition);
 
         Qt::MouseButtons buttons = m_pending.down ? Qt::MouseButton::LeftButton : Qt::MouseButton::NoButton;
         buttons |= m_pending.buttons;
@@ -562,7 +561,7 @@ void QWaylandTabletToolV2::zwp_tablet_tool_v2_frame(uint32_t time)
         // but we need surface coordinates to include the decoration
         bool decorationHandledEvent = waylandWindow->handleTabletEventDecoration(
                 m_tabletSeat->seat(), m_pending.surfacePosition,
-                window->mapToGlobal(m_pending.surfacePosition) + delta, buttons,
+                window->mapToGlobal(m_pending.surfacePosition), buttons,
                 m_tabletSeat->seat()->modifiers());
 
         if (!decorationHandledEvent) {

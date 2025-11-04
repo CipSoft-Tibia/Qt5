@@ -5,13 +5,14 @@
 #include "base/task/thread_pool/thread_pool_impl.h"
 
 #include <algorithm>
+#include <optional>
 #include <string>
+#include <string_view>
 #include <utility>
 
 #include "base/base_switches.h"
 #include "base/command_line.h"
 #include "base/compiler_specific.h"
-#include "base/debug/alias.h"
 #include "base/debug/leak_annotations.h"
 #include "base/feature_list.h"
 #include "base/functional/bind.h"
@@ -33,7 +34,6 @@
 #include "base/threading/platform_thread.h"
 #include "base/time/time.h"
 #include "build/build_config.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 
 namespace base {
 namespace internal {
@@ -68,14 +68,15 @@ bool g_synchronous_thread_start_for_testing = false;
 
 }  // namespace
 
-ThreadPoolImpl::ThreadPoolImpl(StringPiece histogram_label)
+ThreadPoolImpl::ThreadPoolImpl(std::string_view histogram_label)
     : ThreadPoolImpl(histogram_label, std::make_unique<TaskTrackerImpl>()) {}
 
-ThreadPoolImpl::ThreadPoolImpl(StringPiece histogram_label,
+ThreadPoolImpl::ThreadPoolImpl(std::string_view histogram_label,
                                std::unique_ptr<TaskTrackerImpl> task_tracker,
                                bool use_background_threads)
     : histogram_label_(histogram_label),
       task_tracker_(std::move(task_tracker)),
+      use_background_threads_(use_background_threads),
       single_thread_task_runner_manager_(task_tracker_->GetTrackedRef(),
                                          &delayed_task_manager_),
       has_disable_best_effort_switch_(HasDisableBestEffortTasksSwitch()),
@@ -186,26 +187,29 @@ void ThreadPoolImpl::Start(const ThreadPoolInstance::InitParams& init_params,
   // tasks that can run in foreground pools to ensure that there is always
   // room for incoming foreground tasks and to minimize the performance impact
   // of best-effort tasks.
-  static_cast<ThreadGroupImpl*>(foreground_thread_group_.get())
-      ->Start(foreground_threads, max_best_effort_tasks,
-              init_params.suggested_reclaim_time, service_thread_task_runner,
-              worker_thread_observer, worker_environment,
-              g_synchronous_thread_start_for_testing);
+  foreground_thread_group_.get()->Start(
+      foreground_threads, max_best_effort_tasks,
+      init_params.suggested_reclaim_time, service_thread_task_runner,
+      worker_thread_observer, worker_environment,
+      g_synchronous_thread_start_for_testing,
+      /*may_block_threshold=*/{});
 
   if (utility_thread_group_) {
-    static_cast<ThreadGroupImpl*>(utility_thread_group_.get())
-        ->Start(utility_threads, max_best_effort_tasks,
-                init_params.suggested_reclaim_time, service_thread_task_runner,
-                worker_thread_observer, worker_environment,
-                g_synchronous_thread_start_for_testing);
+    utility_thread_group_.get()->Start(
+        utility_threads, max_best_effort_tasks,
+        init_params.suggested_reclaim_time, service_thread_task_runner,
+        worker_thread_observer, worker_environment,
+        g_synchronous_thread_start_for_testing,
+        /*may_block_threshold=*/{});
   }
 
   if (background_thread_group_) {
-    static_cast<ThreadGroupImpl*>(background_thread_group_.get())
-        ->Start(max_best_effort_tasks, max_best_effort_tasks,
-                init_params.suggested_reclaim_time, service_thread_task_runner,
-                worker_thread_observer, worker_environment,
-                g_synchronous_thread_start_for_testing);
+    background_thread_group_.get()->Start(
+        max_best_effort_tasks, max_best_effort_tasks,
+        init_params.suggested_reclaim_time, service_thread_task_runner,
+        worker_thread_observer, worker_environment,
+        g_synchronous_thread_start_for_testing,
+        /*may_block_threshold=*/{});
   }
 
   started_ = true;
@@ -218,6 +222,26 @@ bool ThreadPoolImpl::WasStarted() const {
 
 bool ThreadPoolImpl::WasStartedUnsafe() const {
   return TS_UNCHECKED_READ(started_);
+}
+
+void ThreadPoolImpl::BeginRestrictedTasks() {
+  foreground_thread_group_->SetMaxTasks(2);
+  if (utility_thread_group_) {
+    utility_thread_group_->SetMaxTasks(1);
+  }
+  if (background_thread_group_) {
+    background_thread_group_->SetMaxTasks(1);
+  }
+}
+
+void ThreadPoolImpl::EndRestrictedTasks() {
+  foreground_thread_group_->ResetMaxTasks();
+  if (utility_thread_group_) {
+    utility_thread_group_->ResetMaxTasks();
+  }
+  if (background_thread_group_) {
+    background_thread_group_->ResetMaxTasks();
+  }
 }
 
 bool ThreadPoolImpl::PostDelayedTask(const Location& from_here,
@@ -264,7 +288,7 @@ ThreadPoolImpl::CreateUpdateableSequencedTaskRunner(const TaskTraits& traits) {
   return MakeRefCounted<PooledSequencedTaskRunner>(traits, this);
 }
 
-absl::optional<TimeTicks> ThreadPoolImpl::NextScheduledRunTimeForTesting()
+std::optional<TimeTicks> ThreadPoolImpl::NextScheduledRunTimeForTesting()
     const {
   if (task_tracker_->HasIncompleteTaskSourcesForTesting())
     return TimeTicks::Now();
@@ -416,15 +440,6 @@ bool ThreadPoolImpl::PostTaskWithSequence(Task task,
   // for details.
   CHECK(task.task);
   DCHECK(sequence);
-
-#if BUILDFLAG(IS_WIN) && !defined(TOOLKIT_QT)
-  // Force reading |task.posted_from.file_name()| to produce a useful crash
-  // report if the address is invalid. A crash report generated later when the
-  // task is executed would not contain the PostTask stack.
-  //
-  // TODO(crbug.com/1224432): Remove after resolving the crash.
-  DEBUG_ALIAS_FOR_CSTR(task_posted_from, task.posted_from.file_name(), 32);
-#endif
 
   if (!task_tracker_->WillPostTask(&task, sequence->shutdown_behavior())) {
     // `task`'s destructor may run sequence-affine code, so it must be leaked

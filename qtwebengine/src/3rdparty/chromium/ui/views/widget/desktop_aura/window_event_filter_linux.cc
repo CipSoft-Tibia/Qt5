@@ -4,7 +4,8 @@
 
 #include "ui/views/widget/desktop_aura/window_event_filter_linux.h"
 
-#include "third_party/abseil-cpp/absl/types/optional.h"
+#include <optional>
+
 #include "ui/aura/client/aura_constants.h"
 #include "ui/aura/env.h"
 #include "ui/aura/window.h"
@@ -38,8 +39,9 @@ WindowEventFilterLinux::~WindowEventFilterLinux() {
 void WindowEventFilterLinux::HandleLocatedEventWithHitTest(
     int hit_test,
     ui::LocatedEvent* event) {
-  if (event->type() != ui::ET_MOUSE_PRESSED)
+  if (event->type() != ui::EventType::kMousePressed) {
     return;
+  }
 
   if (event->IsMouseEvent() &&
       HandleMouseEventWithHitTest(hit_test, event->AsMouseEvent())) {
@@ -219,7 +221,7 @@ void WindowEventFilterLinux::OnGestureEvent(ui::GestureEvent* event) {
           : HTNOWHERE;
 
   // Double tap to maximize.
-  if (event->type() == ui::ET_GESTURE_TAP) {
+  if (event->type() == ui::EventType::kGestureTap) {
     int previous_click_component = click_component_;
     click_component_ = hit_test_code;
 
@@ -234,8 +236,9 @@ void WindowEventFilterLinux::OnGestureEvent(ui::GestureEvent* event) {
   }
 
   // Interactive window move.
-  if (event->type() == ui::ET_GESTURE_SCROLL_BEGIN)
+  if (event->type() == ui::EventType::kGestureScrollBegin) {
     MaybeDispatchHostWindowDragMovement(hit_test_code, event);
+  }
 }
 
 }  // namespace views

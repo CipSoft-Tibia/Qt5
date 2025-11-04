@@ -6,34 +6,38 @@
 
 #include "ash/components/arc/arc_features.h"
 #include "ash/components/arc/arc_util.h"
+#include "ash/constants/ash_features.h"
 #include "base/feature_list.h"
 #include "chrome/browser/ash/app_restore/full_restore_service_factory.h"
 #include "chrome/browser/ash/arc/arc_util.h"
-#include "chrome/browser/ash/login/users/chrome_user_manager.h"
 #include "chrome/browser/enterprise/browser_management/management_service_factory.h"
 #include "chrome/browser/policy/profile_policy_connector.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/profiles/profile_manager.h"
+#include "chromeos/ash/components/install_attributes/install_attributes.h"
 #include "components/policy/core/common/management/management_service.h"
 #include "components/user_manager/user_manager.h"
 
 namespace ash::settings {
 
 bool IsGuestModeActive() {
-  return ash::ChromeUserManager::Get()->IsLoggedInAsGuest() ||
-         ash::ChromeUserManager::Get()->IsLoggedInAsManagedGuestSession();
+  auto* user_manager = user_manager::UserManager::Get();
+  return user_manager->IsLoggedInAsGuest() ||
+         user_manager->IsLoggedInAsManagedGuestSession();
 }
 
 bool IsChildUser() {
-  return ash::ChromeUserManager::Get()->IsLoggedInAsChildUser();
-}
-
-bool IsDeviceEnterpriseManaged() {
-  return ash::ChromeUserManager::Get()->IsEnterpriseManaged();
+  return user_manager::UserManager::Get()->IsLoggedInAsChildUser();
 }
 
 bool IsPowerwashAllowed() {
-  return !IsDeviceEnterpriseManaged() && !IsGuestModeActive() && !IsChildUser();
+  return !ash::InstallAttributes::Get()->IsEnterpriseManaged() &&
+         !IsGuestModeActive() && !IsChildUser();
+}
+
+bool IsSanitizeAllowed() {
+  return IsPowerwashAllowed() &&
+         base::FeatureList::IsEnabled(ash::features::kSanitize);
 }
 
 bool ShouldShowParentalControlSettings(const Profile* profile) {
@@ -51,7 +55,10 @@ bool ShouldShowParentalControlSettings(const Profile* profile) {
 
 bool IsExternalStorageEnabled(const Profile* profile) {
   return base::FeatureList::IsEnabled(arc::kUsbStorageUIFeature) &&
-         arc::IsArcPlayStoreEnabledForProfile(profile);
+         (arc::IsArcPlayStoreEnabledForProfile(profile) ||
+          // Show external storage if ARC is supposed to always start, which is
+          // used in Tast tests with fake login.
+          arc::ShouldArcAlwaysStart());
 }
 
 bool IsAppRestoreAvailableForProfile(const Profile* profile) {
@@ -63,6 +70,14 @@ bool IsPerAppLanguageEnabled(const Profile* profile) {
   return base::FeatureList::IsEnabled(arc::kPerAppLanguage) &&
          (arc::ShouldArcAlwaysStart() ||
           arc::IsArcPlayStoreEnabledForProfile(profile));
+}
+
+bool ShouldShowMultitasking() {
+  return ash::features::IsOsSettingsRevampWayfindingEnabled();
+}
+
+bool ShouldShowMultitaskingInPersonalization() {
+  return !ash::features::IsOsSettingsRevampWayfindingEnabled();
 }
 
 }  // namespace ash::settings

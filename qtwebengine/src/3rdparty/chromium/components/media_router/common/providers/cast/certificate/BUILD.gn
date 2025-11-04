@@ -3,14 +3,6 @@
 # found in the LICENSE file.
 
 import("//build/config/jumbo.gni")
-import("//third_party/openscreen/src/build/config/cast.gni")
-
-config("developer_certificate_config") {
-  defines = []
-  if (cast_allow_developer_certificate) {
-    defines += [ "CAST_ALLOW_DEVELOPER_CERTIFICATE" ]
-  }
-}
 
 jumbo_source_set("certificate_reader") {
   sources = [
@@ -24,7 +16,7 @@ jumbo_source_set("certificate_reader") {
   configs += [ "//build/config/compiler:wexit_time_destructors" ]
 }
 
-source_set("certificate_roots") {
+jumbo_source_set("certificate_roots") {
   sources = [
     "cast_fallback_crl.h",
     "cast_root_ca_cert_der-inc.h",
@@ -41,24 +33,19 @@ jumbo_static_library("certificate") {
     "cast_cert_validator.h",
     "cast_crl.cc",
     "cast_crl.h",
+    "cast_trust_store.cc",
+    "cast_trust_store.h",
     "switches.cc",
     "switches.h",
   ]
-  configs += [
-    ":developer_certificate_config",
-    "//build/config/compiler:wexit_time_destructors",
-  ]
+  configs += [ "//build/config/compiler:wexit_time_destructors" ]
   deps = [
+    ":certificate_reader",
     ":certificate_roots",
     "//base",
     "//net",
     "//third_party/boringssl",
     "//third_party/openscreen/src/cast/common/certificate/proto:certificate_proto",
-
-    # Although we won't use the reader unless cast_allow_developer_certificate
-    # is enabled, the buildfiles generation step requires the inclusion
-    # anyway since it doesn't check preprocesser macros.
-    ":certificate_reader",
   ]
 }
 

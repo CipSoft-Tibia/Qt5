@@ -8,6 +8,7 @@ QT_BEGIN_NAMESPACE
 
 /*!
    \qmlproperty enumeration Constants::NodeAttribute
+   \deprecated [6.9]
 
    Attributes of a node
 

@@ -27,6 +27,10 @@ const kSizeTests = {
     src: `@size(z)`,
     pass: true,
   },
+  const_expr: {
+    src: `@size(z + 4)`,
+    pass: true,
+  },
   trailing_comma: {
     src: `@size(4,)`,
     pass: true,
@@ -92,7 +96,11 @@ const kSizeTests = {
     src: `@size(4f)`,
     pass: false,
   },
-  duplicate: {
+  duplicate1: {
+    src: `@size(4) @size(4)`,
+    pass: false,
+  },
+  duplicate2: {
     src: `@size(4) @size(8)`,
     pass: false,
   },
@@ -103,7 +111,7 @@ const kSizeTests = {
 };
 
 g.test('size')
-  .desc(`Test validation of ize`)
+  .desc(`Test validation of size`)
   .params(u => u.combine('attr', keysOf(kSizeTests)))
   .fn(t => {
     const code = `
@@ -209,4 +217,22 @@ g.test('size_non_struct')
     code += '}';
 
     t.expectCompileResult(data.pass, code);
+  });
+
+g.test('size_creation_fixed_footprint')
+  .desc(`Test that @size is only valid on types that have creation-fixed footprint.`)
+  .params(u => u.combine('array_size', [', 4', '']))
+  .fn(t => {
+    const code = `
+struct S {
+  @size(64) a: array<f32${t.params.array_size}>,
+};
+@group(0) @binding(0)
+var<storage> a: S;
+
+@workgroup_size(1)
+@compute fn main() {
+  _ = a.a[0];
+}`;
+    t.expectCompileResult(t.params.array_size !== '', code);
   });

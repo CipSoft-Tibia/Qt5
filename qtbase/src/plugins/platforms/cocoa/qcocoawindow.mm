@@ -132,6 +132,15 @@ void QCocoaWindow::initialize()
 
         setMask(QHighDpi::toNativeLocalRegion(window()->mask(), window()));
 
+        m_safeAreaInsetsObserver = QMacKeyValueObserver(
+            m_view, @"safeAreaInsets", [this] {
+                // Defer to next runloop pass, so that any changes to the
+                // margins during resizing have settled down.
+                QMetaObject::invokeMethod(this, [this]{
+                    updateSafeAreaMarginsIfNeeded();
+                }, Qt::QueuedConnection);
+            }, NSKeyValueObservingOptionNew);
+
     } else {
         // Pick up essential foreign window state
         QPlatformWindow::setGeometry(QRectF::fromCGRect(m_view.frame).toRect());
@@ -151,6 +160,8 @@ QCocoaWindow::~QCocoaWindow()
     QMacAutoReleasePool pool;
     [m_nsWindow makeFirstResponder:nil];
     [m_nsWindow setContentView:nil];
+
+    m_safeAreaInsetsObserver = {};
 
     // Remove from superview only if we have a Qt window parent,
     // as we don't want to affect window container foreign windows.
@@ -179,6 +190,11 @@ QCocoaWindow::~QCocoaWindow()
 
     [m_view release];
     [m_nsWindow closeAndRelease];
+
+    // Disposing of the view and window should have resulted in an
+    // expose event with isExposed=false, but just in case we try
+    // to stop the display link here as well.
+    static_cast<QCocoaScreen *>(screen())->maybeStopDisplayLink();
 }
 
 QSurfaceFormat QCocoaWindow::format() const
@@ -209,8 +225,6 @@ void QCocoaWindow::setGeometry(const QRect &rectIn)
         const QMargins margins = frameMargins();
         rect.moveTopLeft(rect.topLeft() + QPoint(margins.left(), margins.top()));
     }
-    if (geometry() == rect)
-        return;
 
     setCocoaGeometry(rect);
 }
@@ -341,6 +355,14 @@ QMargins QCocoaWindow::safeAreaMargins() const
     };
 
     return (screenSafeAreaMargins | viewSafeAreaMargins).toMargins();
+}
+
+void QCocoaWindow::updateSafeAreaMarginsIfNeeded()
+{
+    if (safeAreaMargins() != m_lastReportedSafeAreaMargins) {
+        m_lastReportedSafeAreaMargins = safeAreaMargins();
+        QWindowSystemInterface::handleSafeAreaMarginsChanged(window());
+    }
 }
 
 bool QCocoaWindow::startSystemMove()
@@ -620,15 +642,20 @@ NSUInteger QCocoaWindow::windowStyleMask(Qt::WindowFlags flags)
     if (type == Qt::Tool)
         styleMask |= NSWindowStyleMaskUtilityWindow;
 
-    // FIXME: Remove use of deprecated style mask
+    // FIXME (QTBUG-138829)
     if (m_drawContentBorderGradient)
-        styleMask |= NSWindowStyleMaskTexturedBackground;
+        styleMask |= QT_IGNORE_DEPRECATIONS(NSWindowStyleMaskTexturedBackground);
 
-    // Don't wipe existing states
-    if (m_view.window.styleMask & NSWindowStyleMaskFullScreen)
-        styleMask |= NSWindowStyleMaskFullScreen;
-    if (m_view.window.styleMask & NSWindowStyleMaskFullSizeContentView)
+    if (flags & Qt::ExpandedClientAreaHint)
         styleMask |= NSWindowStyleMaskFullSizeContentView;
+
+    // Don't wipe existing states for style flags we don't control here
+    styleMask |= (m_view.window.styleMask & (
+          NSWindowStyleMaskFullScreen
+        | NSWindowStyleMaskUnifiedTitleAndToolbar
+        | NSWindowStyleMaskDocModalWindow
+        | NSWindowStyleMaskNonactivatingPanel
+        | NSWindowStyleMaskHUDWindow));
 
     return styleMask;
 }
@@ -740,6 +767,10 @@ void QCocoaWindow::setWindowFlags(Qt::WindowFlags flags)
     bool ignoreMouse = flags & Qt::WindowTransparentForInput;
     if (m_view.window.ignoresMouseEvents != ignoreMouse)
         m_view.window.ignoresMouseEvents = ignoreMouse;
+
+    // FIXME (QTBUG-138829)
+    m_view.window.titlebarAppearsTransparent = (flags & Qt::NoTitleBarBackgroundHint)
+        || (m_view.window.styleMask & QT_IGNORE_DEPRECATIONS(NSWindowStyleMaskTexturedBackground));
 }
 
 // ----------------------- Window state -----------------------
@@ -1298,12 +1329,12 @@ void QCocoaWindow::windowWillStartLiveResize()
     m_inLiveResize = true;
 }
 
-bool QCocoaWindow::inLiveResize() const
+bool QCocoaWindow::allowsIndependentThreadedRendering() const
 {
     // Use member variable to track this instead of reflecting
     // NSView.inLiveResize directly, so it can be called from
     // non-main threads.
-    return m_inLiveResize;
+    return !m_inLiveResize;
 }
 
 void QCocoaWindow::windowDidEndLiveResize()
@@ -1478,18 +1509,6 @@ bool QCocoaWindow::windowShouldClose()
 
 void QCocoaWindow::handleGeometryChange()
 {
-    // Prevent geometry change during initialization, as that will result
-    // in a resize event, and Qt expects those to come after the show event.
-    // FIXME: Remove once we've clarified the Qt behavior for this.
-    if (!m_initialized)
-        return;
-
-    // It can happen that the current NSWindow is nil (if we are changing styleMask
-    // from/to borderless, and the content view is being re-parented), which results
-    // in invalid coordinates.
-    if (m_inSetStyleMask && !m_view.window)
-        return;
-
     QRect newGeometry;
     if (isContentView() && !isEmbedded()) {
         // Content views are positioned at (0, 0) in the window, so we resolve via the window
@@ -1505,13 +1524,28 @@ void QCocoaWindow::handleGeometryChange()
     qCDebug(lcQpaWindow) << "QCocoaWindow::handleGeometryChange" << window()
                                << "current" << geometry() << "new" << newGeometry;
 
+    // It can happen that the current NSWindow is nil (if we are changing styleMask
+    // from/to borderless, and the content view is being re-parented), which results
+    // in invalid coordinates.
+    if (m_inSetStyleMask && !m_view.window) {
+        qCDebug(lcQpaWindow) << "Lacking window during style mask update, ignoring geometry change";
+        return;
+    }
+
+    // Prevent geometry change during initialization, as that will result
+    // in a resize event, and Qt expects those to come after the show event.
+    // FIXME: Remove once we've clarified the Qt behavior for this.
+    if (!m_initialized) {
+        // But update the QPlatformWindow reality
+        QPlatformWindow::setGeometry(newGeometry);
+        qCDebug(lcQpaWindow) << "Window still initializing, skipping event";
+        return;
+    }
+
     QWindowSystemInterface::handleGeometryChange(window(), newGeometry);
 
     // Changing the window geometry may affect the safe area margins
-    if (safeAreaMargins() != m_lastReportedSafeAreaMargins) {
-        m_lastReportedSafeAreaMargins = safeAreaMargins();
-        QWindowSystemInterface::handleSafeAreaMarginsChanged(window());
-    }
+    updateSafeAreaMarginsIfNeeded();
 
     // Guard against processing window system events during QWindow::setGeometry
     // calls, which Qt and Qt applications do not expect.
@@ -1542,6 +1576,9 @@ void QCocoaWindow::handleExposeEvent(const QRegion &region)
 
     qCDebug(lcQpaDrawing) << "QCocoaWindow::handleExposeEvent" << window() << region << "isExposed" << isExposed();
     QWindowSystemInterface::handleExposeEvent<QWindowSystemInterface::SynchronousDelivery>(window(), region);
+
+    if (!isExposed())
+        static_cast<QCocoaScreen *>(screen())->maybeStopDisplayLink();
 }
 
 // --------------------------------------------------------------------------
@@ -2019,9 +2056,10 @@ void QCocoaWindow::applyContentBorderThickness(NSWindow *window)
         return;
 
     if (!m_drawContentBorderGradient) {
-        window.styleMask = window.styleMask & ~NSWindowStyleMaskTexturedBackground;
+        // FIXME (QTBUG-138829)
+        window.styleMask = window.styleMask & QT_IGNORE_DEPRECATIONS(~NSWindowStyleMaskTexturedBackground);
+        setWindowFlags(QPlatformWindow::window()->flags());
         [window.contentView.superview setNeedsDisplay:YES];
-        window.titlebarAppearsTransparent = NO;
         return;
     }
 
@@ -2045,8 +2083,9 @@ void QCocoaWindow::applyContentBorderThickness(NSWindow *window)
 
     int effectiveBottomContentBorderThickness = 0;
 
-    [window setStyleMask:[window styleMask] | NSWindowStyleMaskTexturedBackground];
-    window.titlebarAppearsTransparent = YES;
+    // FIXME (QTBUG-138829)
+    [window setStyleMask:[window styleMask] | QT_IGNORE_DEPRECATIONS(NSWindowStyleMaskTexturedBackground)];
+    setWindowFlags(QPlatformWindow::window()->flags());
 
     // Setting titlebarAppearsTransparent to YES means that the border thickness has to account
     // for the title bar height as well, otherwise sheets will not be presented at the correct

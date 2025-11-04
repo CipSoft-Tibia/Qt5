@@ -77,7 +77,7 @@ bool IsValidBitDepth(uint8_t bit_depth, VideoCodecProfile profile) {
     case VP9PROFILE_PROFILE3:
       return bit_depth == 10u || bit_depth == 12u;
     default:
-      NOTREACHED_NORETURN();
+      NOTREACHED();
   }
 }
 
@@ -121,7 +121,7 @@ VP9Decoder::~VP9Decoder() = default;
 
 void VP9Decoder::SetStream(int32_t id, const DecoderBuffer& decoder_buffer) {
   const uint8_t* ptr = decoder_buffer.data();
-  const size_t size = decoder_buffer.data_size();
+  const size_t size = decoder_buffer.size();
   const DecryptConfig* decrypt_config = decoder_buffer.decrypt_config();
 
   DCHECK(ptr);
@@ -431,9 +431,9 @@ VideoColorSpace VP9Decoder::GetVideoColorSpace() const {
   return picture_color_space_;
 }
 
-absl::optional<gfx::HDRMetadata> VP9Decoder::GetHDRMetadata() const {
+std::optional<gfx::HDRMetadata> VP9Decoder::GetHDRMetadata() const {
   // VP9 only allow HDR metadata exists in the container.
-  return absl::nullopt;
+  return std::nullopt;
 }
 
 size_t VP9Decoder::GetRequiredNumOfPictures() const {

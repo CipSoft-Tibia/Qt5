@@ -4,13 +4,13 @@
 
 #include "net/cert/internal/revocation_checker.h"
 
+#include <optional>
 #include <string>
 #include <string_view>
 
 #include "base/logging.h"
 #include "crypto/sha2.h"
 #include "net/cert/cert_net_fetcher.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "third_party/boringssl/src/pki/common_cert_errors.h"
 #include "third_party/boringssl/src/pki/crl.h"
 #include "third_party/boringssl/src/pki/ocsp.h"
@@ -39,7 +39,8 @@ bool CheckCertRevocation(const bssl::ParsedCertificateList& certs,
                          const RevocationPolicy& policy,
                          base::TimeTicks deadline,
                          std::string_view stapled_ocsp_response,
-                         absl::optional<int64_t> max_age_seconds,
+                         std::optional<int64_t> max_age_seconds,
+                         base::Time current_time,
                          CertNetFetcher* net_fetcher,
                          bssl::CertErrors* cert_errors,
                          bssl::OCSPVerifyResult* stapled_ocsp_verify_result) {
@@ -49,12 +50,14 @@ bool CheckCertRevocation(const bssl::ParsedCertificateList& certs,
       target_cert_index + 1 < certs.size() ? certs[target_cert_index + 1].get()
                                            : nullptr;
 
+  time_t time_now = current_time.ToTimeT();
+
   // Check using stapled OCSP, if available.
   if (!stapled_ocsp_response.empty() && issuer_cert) {
     bssl::OCSPVerifyResult::ResponseStatus response_details;
-    bssl::OCSPRevocationStatus ocsp_status = bssl::CheckOCSP(
-        stapled_ocsp_response, cert, issuer_cert, base::Time::Now().ToTimeT(),
-        max_age_seconds, &response_details);
+    bssl::OCSPRevocationStatus ocsp_status =
+        bssl::CheckOCSP(stapled_ocsp_response, cert, issuer_cert, time_now,
+                        max_age_seconds, &response_details);
     if (stapled_ocsp_verify_result) {
       stapled_ocsp_verify_result->response_status = response_details;
       stapled_ocsp_verify_result->revocation_status = ocsp_status;
@@ -110,7 +113,7 @@ bool CheckCertRevocation(const bssl::ParsedCertificateList& certs,
 
       // TODO(eroman): Duplication of work if there are multiple URLs to try.
       // TODO(eroman): Are there cases where we would need to POST instead?
-      absl::optional<std::string> get_url_str =
+      std::optional<std::string> get_url_str =
           CreateOCSPGetURL(cert, issuer_cert, ocsp_uri);
       if (!get_url_str.has_value()) {
         // An unexpected failure from BoringSSL, or the input was too large to
@@ -145,8 +148,7 @@ bool CheckCertRevocation(const bssl::ParsedCertificateList& certs,
           std::string_view(
               reinterpret_cast<const char*>(ocsp_response_bytes.data()),
               ocsp_response_bytes.size()),
-          cert, issuer_cert, base::Time::Now().ToTimeT(), max_age_seconds,
-          &response_details);
+          cert, issuer_cert, time_now, max_age_seconds, &response_details);
 
       switch (ocsp_status) {
         case bssl::OCSPRevocationStatus::REVOKED:
@@ -235,8 +237,8 @@ bool CheckCertRevocation(const bssl::ParsedCertificateList& certs,
               std::string_view(
                   reinterpret_cast<const char*>(crl_response_bytes.data()),
                   crl_response_bytes.size()),
-              certs, target_cert_index, distribution_point,
-              base::Time::Now().ToTimeT(), max_age_seconds);
+              certs, target_cert_index, distribution_point, time_now,
+              max_age_seconds);
 
           switch (crl_status) {
             case bssl::CRLRevocationStatus::REVOKED:
@@ -285,6 +287,7 @@ void CheckValidatedChainRevocation(
     const RevocationPolicy& policy,
     base::TimeTicks deadline,
     std::string_view stapled_leaf_ocsp_response,
+    base::Time current_time,
     CertNetFetcher* net_fetcher,
     bssl::CertPathErrors* errors,
     bssl::OCSPVerifyResult* stapled_ocsp_verify_result) {
@@ -308,7 +311,7 @@ void CheckValidatedChainRevocation(
     std::string_view stapled_ocsp =
         (i == 0) ? stapled_leaf_ocsp_response : std::string_view();
 
-    absl::optional<int64_t> max_age_seconds;
+    std::optional<int64_t> max_age_seconds;
     if (policy.enforce_baseline_requirements) {
       max_age_seconds = ((i == 0) ? kMaxRevocationLeafUpdateAge
                                   : kMaxRevocationIntermediateUpdateAge)
@@ -318,8 +321,8 @@ void CheckValidatedChainRevocation(
     // Check whether this certificate's revocation status complies with the
     // policy.
     bool cert_ok = CheckCertRevocation(
-        certs, i, policy, deadline, stapled_ocsp, max_age_seconds, net_fetcher,
-        errors->GetErrorsForCert(i),
+        certs, i, policy, deadline, stapled_ocsp, max_age_seconds, current_time,
+        net_fetcher, errors->GetErrorsForCert(i),
         (i == 0) ? stapled_ocsp_verify_result : nullptr);
 
     if (!cert_ok) {

@@ -1881,6 +1881,19 @@ TEST_F(SpirvWriterTest, Builtin_StorageBarrier) {
     EXPECT_INST("OpControlBarrier %uint_2 %uint_2 %uint_72");
 }
 
+TEST_F(SpirvWriterTest, Builtin_StorageBarrier_VulkanMemoryModel) {
+    auto* func = b.Function("foo", ty.void_());
+    b.Append(func->Block(), [&] {
+        b.Call(ty.void_(), core::BuiltinFn::kStorageBarrier);
+        b.Return(func);
+    });
+
+    Options opts{};
+    opts.use_vulkan_memory_model = true;
+    ASSERT_TRUE(Generate(opts)) << Error() << output_;
+    EXPECT_INST("OpControlBarrier %uint_2 %uint_2 %uint_24648");
+}
+
 TEST_F(SpirvWriterTest, Builtin_TextureBarrier) {
     auto* func = b.Function("foo", ty.void_());
     b.Append(func->Block(), [&] {
@@ -1890,6 +1903,19 @@ TEST_F(SpirvWriterTest, Builtin_TextureBarrier) {
 
     ASSERT_TRUE(Generate()) << Error() << output_;
     EXPECT_INST("OpControlBarrier %uint_2 %uint_2 %uint_2056");
+}
+
+TEST_F(SpirvWriterTest, Builtin_TextureBarrier_Vulkan) {
+    auto* func = b.Function("foo", ty.void_());
+    b.Append(func->Block(), [&] {
+        b.Call(ty.void_(), core::BuiltinFn::kTextureBarrier);
+        b.Return(func);
+    });
+
+    Options opts{};
+    opts.use_vulkan_memory_model = true;
+    ASSERT_TRUE(Generate(opts)) << Error() << output_;
+    EXPECT_INST("OpControlBarrier %uint_2 %uint_2 %uint_26632");
 }
 
 TEST_F(SpirvWriterTest, Builtin_WorkgroupBarrier) {
@@ -1903,10 +1929,23 @@ TEST_F(SpirvWriterTest, Builtin_WorkgroupBarrier) {
     EXPECT_INST("OpControlBarrier %uint_2 %uint_2 %uint_264");
 }
 
+TEST_F(SpirvWriterTest, Builtin_WorkgroupBarrier_VulkanMemoryModel) {
+    auto* func = b.Function("foo", ty.void_());
+    b.Append(func->Block(), [&] {
+        b.Call(ty.void_(), core::BuiltinFn::kWorkgroupBarrier);
+        b.Return(func);
+    });
+
+    Options opts{};
+    opts.use_vulkan_memory_model = true;
+    ASSERT_TRUE(Generate(opts)) << Error() << output_;
+    EXPECT_INST("OpControlBarrier %uint_2 %uint_2 %uint_24840");
+}
+
 TEST_F(SpirvWriterTest, Builtin_SubgroupBallot) {
     auto* func = b.Function("foo", ty.vec4<u32>());
     b.Append(func->Block(), [&] {
-        auto* result = b.Call(ty.vec4<u32>(), core::BuiltinFn::kSubgroupBallot);
+        auto* result = b.Call(ty.vec4<u32>(), core::BuiltinFn::kSubgroupBallot, true);
         mod.SetName(result, "result");
         b.Return(func, result);
     });
@@ -2022,10 +2061,10 @@ TEST_F(SpirvWriterTest, Builtin_Dot4I8Packed) {
                OpExecutionMode %unused_entry_point LocalSize 1 1 1
 
                ; Debug Information
-               OpName %foo "foo"  ; id %1
-               OpName %arg1 "arg1"  ; id %4
-               OpName %arg2 "arg2"  ; id %5
-               OpName %result "result"  ; id %8
+               OpName %foo "foo"                    ; id %1
+               OpName %arg1 "arg1"                  ; id %4
+               OpName %arg2 "arg2"                  ; id %5
+               OpName %result "result"              ; id %8
                OpName %unused_entry_point "unused_entry_point"  ; id %9
 
                ; Types, variables and constants
@@ -2067,10 +2106,10 @@ TEST_F(SpirvWriterTest, Builtin_Dot4U8Packed) {
                OpExecutionMode %unused_entry_point LocalSize 1 1 1
 
                ; Debug Information
-               OpName %foo "foo"  ; id %1
-               OpName %arg1 "arg1"  ; id %3
-               OpName %arg2 "arg2"  ; id %4
-               OpName %result "result"  ; id %7
+               OpName %foo "foo"                    ; id %1
+               OpName %arg1 "arg1"                  ; id %3
+               OpName %arg2 "arg2"                  ; id %4
+               OpName %result "result"              ; id %7
                OpName %unused_entry_point "unused_entry_point"  ; id %8
 
                ; Types, variables and constants

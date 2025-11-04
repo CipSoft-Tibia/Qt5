@@ -84,7 +84,7 @@ class ExternalTextureCache : public GarbageCollected<ExternalTextureCache> {
   Member<GPUDevice> device_;
 };
 
-class GPUExternalTexture : public DawnObject<WGPUExternalTexture> {
+class GPUExternalTexture : public DawnObject<wgpu::ExternalTexture> {
   DEFINE_WRAPPERTYPEINFO();
 
  public:
@@ -104,11 +104,12 @@ class GPUExternalTexture : public DawnObject<WGPUExternalTexture> {
       ExceptionState& exception_state);
   explicit GPUExternalTexture(
       ExternalTextureCache* cache,
-      WGPUExternalTexture external_texture,
+      wgpu::ExternalTexture external_texture,
       scoped_refptr<WebGPUMailboxTexture> mailbox_texture,
       bool is_zero_copy,
       bool read_lock_fences_enabled,
-      absl::optional<media::VideoFrame::ID> media_video_frame_unique_id);
+      std::optional<media::VideoFrame::ID> media_video_frame_unique_id,
+      const String& label);
 
   GPUExternalTexture(const GPUExternalTexture&) = delete;
   GPUExternalTexture& operator=(const GPUExternalTexture&) = delete;
@@ -156,12 +157,12 @@ class GPUExternalTexture : public DawnObject<WGPUExternalTexture> {
       const GPUExternalTextureDescriptor* webgpu_desc,
       scoped_refptr<media::VideoFrame> media_video_frame,
       media::PaintCanvasVideoRenderer* video_renderer,
-      absl::optional<media::VideoFrame::ID> media_video_frame_unique_id,
+      std::optional<media::VideoFrame::ID> media_video_frame_unique_id,
       ExceptionState& exception_state);
 
   void setLabelImpl(const String& value) override {
     std::string utf8_label = value.Utf8();
-    GetProcs().externalTextureSetLabel(GetHandle(), utf8_label.c_str());
+    GetHandle().SetLabel(utf8_label.c_str());
   }
 
   bool IsCurrentFrameFromHTMLVideoElementValid();
@@ -189,7 +190,7 @@ class GPUExternalTexture : public DawnObject<WGPUExternalTexture> {
   // execution complete before returning video frame to producer.
   bool read_lock_fences_enabled_ = false;
 
-  absl::optional<media::VideoFrame::ID> media_video_frame_unique_id_;
+  std::optional<media::VideoFrame::ID> media_video_frame_unique_id_;
   WeakMember<HTMLVideoElement> video_;
   WeakMember<VideoFrame> frame_;
   WeakMember<ExternalTextureCache> cache_;

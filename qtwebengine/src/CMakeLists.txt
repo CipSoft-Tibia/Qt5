@@ -1,63 +1,22 @@
 # Copyright (C) 2022 The Qt Company Ltd.
 # SPDX-License-Identifier: BSD-3-Clause
 
-##
-#  MAIN CONFIGURE
-##
-
 qt_internal_get_filename_path_mode(path_mode)
-
 get_filename_component(WEBENGINE_ROOT_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/.." ${path_mode})
 get_filename_component(WEBENGINE_ROOT_BUILD_DIR "${PROJECT_BINARY_DIR}" ${path_mode})
 
-# Note this is configure that does not belong to any module
-qt_feature_module_begin(ONLY_EVALUATE_FEATURES)
-# Enable printing of feature summary by forcing qt_configure_record_command
-# to work in spite of ONLY_EVALUATE_FEATURES.
-set(__QtFeature_only_evaluate_features OFF)
-include(../configure.cmake)
-qt_feature_module_end(ONLY_EVALUATE_FEATURES)
 
 ##
-#  SUPPORT CHECK
+#  RUN CONFIGURE
 ##
 
-# TODO: here we should return FATAL_ERROR and ask user to define
-# FEATURE_qtwebenignebuild=OFF if one wants to only build qtpdf,
-# however our ci setup is not flexible enough and configure step must succeed
-
-if(NOT ${QtWebEngine_SUPPORT})
-    add_custom_target(WebEngineErrorMessage ALL
-        ${CMAKE_COMMAND} -E cmake_echo_color --red "QtWebEngine will not be built: ${QtWebEngine_ERROR}"
-        COMMENT "Check QtWebEngine support"
-        VERBATIM
-    )
-    message("-- Support check for QtWebEngine failed: ${QtWebEngine_ERROR}")
-    set(QT_FEATURE_qtwebengine_build OFF CACHE BOOL "Build QtWebEngine Modules" FORCE)
-    set(QT_FEATURE_qtwebengine_core_build OFF CACHE BOOL "Build QtWebEngineCore" FORCE)
-    set(QT_FEATURE_qtwebengine_widgets_build OFF CACHE BOOL "Build QtWebEngineWidgets" FORCE)
-    set(QT_FEATURE_qtwebengine_quick_build OFF CACHE BOOL "Build QtWebEngineQuick" FORCE)
-
-endif()
-
-if(NOT ${QtPdf_SUPPORT})
-    add_custom_target(PdfErrorMessage ALL
-        ${CMAKE_COMMAND} -E cmake_echo_color --red "QtPdf will not be built: ${QtPdf_ERROR}"
-        COMMENT "Check QtPdf support"
-        VERBATIM
-    )
-    message("-- Support check for QtPdf failed: ${QtPdf_ERROR}")
-    set(QT_FEATURE_qtpdf_build OFF CACHE BOOL "Build QtPdf" FORCE)
-    set(QT_FEATURE_qtpdf_widgets_build OFF CACHE BOOL "Build QtPdfWidgets" FORCE)
-    set(QT_FEATURE_qtpdf_quick_build OFF CACHE BOOL "Build QtPdfQuick" FORCE)
-endif()
+qt_webengine_configure_begin()
+qt_webengine_run_configure(../configure.cmake)
 
 if(NOT QT_FEATURE_qtwebengine_build AND NOT QT_FEATURE_qtpdf_build)
+    qt_webengine_configure_end()
     return()
 endif()
-
-# Upgrade CMake policies to the minimum supported version.
-cmake_minimum_required(VERSION ${QT_SUPPORTED_MIN_CMAKE_VERSION_FOR_BUILDING_WEBENGINE})
 
 ##
 #  MODULES
@@ -66,74 +25,62 @@ cmake_minimum_required(VERSION ${QT_SUPPORTED_MIN_CMAKE_VERSION_FOR_BUILDING_WEB
 if(QT_FEATURE_qtwebengine_build)
     # Use implicit PROJECT_NAME.
     qt_internal_sbom_begin_qt_repo_project()
+    qt_webengine_sbom_project_begin(WebEngine WebEngineCore)
 endif()
 if(QT_FEATURE_qtwebengine_core_build)
-   add_subdirectory(core)
-   add_subdirectory(process)
+    add_subdirectory(core)
+    add_subdirectory(process)
+    qt_webengine_generate_documentation(
+        core/doc/src/qtwebengine-platform-notes.qdoc.in
+        core/api/qtwebengine-platform-notes.qdoc
+    )
 endif()
 if(QT_FEATURE_qtwebengine_widgets_build)
-   add_subdirectory(webenginewidgets)
+    add_subdirectory(webenginewidgets)
 endif()
 if(QT_FEATURE_qtwebengine_quick_build)
-   add_subdirectory(webenginequick)
+    add_subdirectory(webenginequick)
 endif()
 if(QT_FEATURE_qtwebengine_build)
+    qt_webengine_sbom_project_end()
     qt_internal_sbom_end_qt_repo_project()
 endif()
 
 if(QT_FEATURE_qtpdf_build)
-   qt_internal_sbom_begin_qt_repo_project(SBOM_PROJECT_NAME QtPdf)
-   add_subdirectory(pdf)
-   # keep log order, pdf build after webengine
-   if(QT_FEATURE_qtwebengine_core_build)
-       add_dependencies(run_pdf_NinjaReady WebEngineCore)
-   endif()
-   if(QT_FEATURE_qtwebengine_widgets_build)
-       add_dependencies(run_pdf_NinjaReady WebEngineWidgets)
-   endif()
-   if(QT_FEATURE_qtwebengine_quick_build)
-       add_dependencies(run_pdf_NinjaReady WebEngineQuick)
-   endif()
-   if(QT_FEATURE_qtpdf_widgets_build)
-       add_subdirectory(pdfwidgets)
-   endif()
-   if(QT_FEATURE_qtpdf_quick_build)
-       add_subdirectory(pdfquick)
-   endif()
+    qt_internal_sbom_begin_qt_repo_project(SBOM_PROJECT_NAME QtPdf)
+    qt_webengine_sbom_project_begin(Pdf Pdf)
+    add_subdirectory(pdf)
+endif()
+if(QT_FEATURE_qtpdf_widgets_build)
+    add_subdirectory(pdfwidgets)
+endif()
+if(QT_FEATURE_qtpdf_quick_build)
+    add_subdirectory(pdfquick)
 endif()
 
-##
-#  NINJA PROJECT
-##
+# Keep log order, pdf build after webengine
+
+if(QT_FEATURE_qtpdf_build)
+    if(QT_FEATURE_qtwebengine_core_build)
+        add_dependencies(run_pdf_NinjaReady WebEngineCore)
+    endif()
+    if(QT_FEATURE_qtwebengine_widgets_build)
+        add_dependencies(run_pdf_NinjaReady WebEngineWidgets)
+    endif()
+    if(QT_FEATURE_qtwebengine_quick_build)
+        add_dependencies(run_pdf_NinjaReady WebEngineQuick)
+    endif()
+endif()
 
 # No SBOM information will be generated for any targets created past this point in the file
 # or any add_subdirectory calls. For the external project GN, we'll have to come up with some
 # additional API.
 if(QT_FEATURE_qtpdf_build)
+    qt_webengine_sbom_project_end()
     qt_internal_sbom_end_qt_repo_project()
 endif()
 
 set(installDir ${PROJECT_BINARY_DIR}/install)
-
-if(NOT Ninja_FOUND)
-    externalproject_add(ninja
-        SOURCE_DIR  ${CMAKE_CURRENT_LIST_DIR}/ninja
-        BINARY_DIR  ${CMAKE_CURRENT_BINARY_DIR}/ninja
-        INSTALL_DIR ${installDir}
-        PREFIX      ninja
-        USES_TERMINAL_BUILD TRUE
-        EXCLUDE_FROM_ALL TRUE
-        CMAKE_ARGS -DCMAKE_BUILD_TYPE=Release
-                   -DCMAKE_INSTALL_PREFIX:PATH=<INSTALL_DIR>
-                   -DCMAKE_PREFIX_PATH:PATH=<INSTALL_DIR>
-    )
-    if(QT_FEATURE_qtwebengine_core_build)
-        add_dependencies(run_core_NinjaReady ninja)
-    endif()
-    if(QT_FEATURE_qtpdf_build)
-        add_dependencies(run_pdf_NinjaReady ninja)
-    endif()
-endif()
 
 ##
 #  GN PROJECT
@@ -167,7 +114,7 @@ endif()
 #  HOST PROJECT
 ##
 
-if(CMAKE_CROSSCOMPILING AND NOT IOS AND NOT MACOS)
+if(CMAKE_CROSSCOMPILING AND NOT IOS AND NOT MACOS AND NOT WIN32)
 
     if(NOT Gn_FOUND)
         message(FATAL_ERROR "\nHost gn not found - cross compilation not possible")
@@ -188,6 +135,7 @@ if(CMAKE_CROSSCOMPILING AND NOT IOS AND NOT MACOS)
                    -DCMAKE_CXX_FLAGS=
                    -DQT_FEATURE_qtwebengine_build=${QT_FEATURE_qtwebengine_build}
                    -DQT_FEATURE_qtpdf_build=${QT_FEATURE_qtpdf_build}
+                   -DGCC_LEGACY_SUPPORT=${QT_FEATURE_webengine_gcc_legacy_support}
     )
     if(QT_FEATURE_qtwebengine_build)
         add_dependencies(run_core_GnReady hostBuild)
@@ -227,3 +175,4 @@ if((LINUX OR MACOS OR WIN32) AND INSTALL_GN)
     endif()
 endif()
 
+qt_webengine_configure_end()

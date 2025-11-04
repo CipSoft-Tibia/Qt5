@@ -578,12 +578,12 @@ void QWindowsStyle::drawPrimitive(PrimitiveElement pe, const QStyleOption *opt, 
             QPen oldPen = p->pen();
             if (opt->state & State_Horizontal){
                 const int offset = rect.width()/2;
-                p->setPen(QPen(opt->palette.dark().color()));
+                p->setPen(opt->palette.dark().color());
                 p->drawLine(rect.bottomLeft().x() + offset,
                             rect.bottomLeft().y() - margin,
                             rect.topLeft().x() + offset,
                             rect.topLeft().y() + margin);
-                p->setPen(QPen(opt->palette.light().color()));
+                p->setPen(opt->palette.light().color());
                 p->drawLine(rect.bottomLeft().x() + offset + 1,
                             rect.bottomLeft().y() - margin,
                             rect.topLeft().x() + offset + 1,
@@ -591,12 +591,12 @@ void QWindowsStyle::drawPrimitive(PrimitiveElement pe, const QStyleOption *opt, 
             }
             else{ //Draw vertical separator
                 const int offset = rect.height()/2;
-                p->setPen(QPen(opt->palette.dark().color()));
+                p->setPen(opt->palette.dark().color());
                 p->drawLine(rect.topLeft().x() + margin ,
                             rect.topLeft().y() + offset,
                             rect.topRight().x() - margin,
                             rect.topRight().y() + offset);
-                p->setPen(QPen(opt->palette.light().color()));
+                p->setPen(opt->palette.light().color());
                 p->drawLine(rect.topLeft().x() + margin ,
                             rect.topLeft().y() + offset + 1,
                             rect.topRight().x() - margin,
@@ -766,7 +766,7 @@ void QWindowsStyle::drawPrimitive(PrimitiveElement pe, const QStyleOption *opt, 
             points[4] = { points[3].x(),                points[3].y() - 2 * scalev };
             points[5] = { points[4].x() - 4 * scaleh,   points[4].y() + 4 * scalev };
             p->setPen(QPen(opt->palette.text().color(), 0));
-            p->setBrush(opt->palette.text().color());
+            p->setBrush(opt->palette.text());
             p->drawPolygon(points.data(), static_cast<int>(points.size()));
         }
         if (doRestore)
@@ -824,18 +824,18 @@ void QWindowsStyle::drawPrimitive(PrimitiveElement pe, const QStyleOption *opt, 
 
             p->setClipRegion(QRegion(topLeftPol));
             p->setPen(opt->palette.dark().color());
-            p->setBrush(opt->palette.dark().color());
+            p->setBrush(opt->palette.dark());
             p->drawPath(path1);
             p->setPen(opt->palette.shadow().color());
-            p->setBrush(opt->palette.shadow().color());
+            p->setBrush(opt->palette.shadow());
             p->drawPath(path2);
 
             p->setClipRegion(QRegion(bottomRightPol));
             p->setPen(opt->palette.light().color());
-            p->setBrush(opt->palette.light().color());
+            p->setBrush(opt->palette.light());
             p->drawPath(path1);
             p->setPen(opt->palette.midlight().color());
-            p->setBrush(opt->palette.midlight().color());
+            p->setBrush(opt->palette.midlight());
             p->drawPath(path2);
 
             QColor fillColor = ((opt->state & State_Sunken) || !(opt->state & State_Enabled)) ?
@@ -1002,7 +1002,7 @@ void QWindowsStyle::drawControl(ControlElement ce, const QStyleOption *opt, QPai
         if (widget && qobject_cast<const QMainWindow *>(widget->parentWidget())) {
             p->fillRect(opt->rect, opt->palette.button());
             QPen oldPen = p->pen();
-            p->setPen(QPen(opt->palette.dark().color()));
+            p->setPen(opt->palette.dark().color());
             p->drawLine(opt->rect.bottomLeft(), opt->rect.bottomRight());
             p->setPen(oldPen);
         }
@@ -1055,11 +1055,10 @@ void QWindowsStyle::drawControl(ControlElement ce, const QStyleOption *opt, QPai
                 QIcon::Mode mode = dis ? QIcon::Disabled : QIcon::Normal;
                 if (act && !dis)
                     mode = QIcon::Active;
-                QPixmap pixmap;
-                if (checked)
-                    pixmap = menuitem->icon.pixmap(proxy()->pixelMetric(PM_SmallIconSize, opt, widget), mode, QIcon::On);
-                else
-                    pixmap = menuitem->icon.pixmap(proxy()->pixelMetric(PM_SmallIconSize, opt, widget), mode);
+                const auto size = proxy()->pixelMetric(PM_SmallIconSize, opt, widget);
+                const auto dpr = QStyleHelper::getDpr(p);
+                const auto state = checked ? QIcon::On : QIcon::Off;
+                const auto pixmap = menuitem->icon.pixmap(QSize(size, size), dpr, mode, state);
                 QRect pmr(QPoint(0, 0), pixmap.deviceIndependentSize().toSize());
                 pmr.moveCenter(vCheckRect.center());
                 p->setPen(menuitem->palette.text().color());
@@ -1548,34 +1547,22 @@ void QWindowsStyle::drawControl(ControlElement ce, const QStyleOption *opt, QPai
 
 
             //draw top border
-            p->setPen(QPen(opt->palette.light().color()));
-            p->drawLine(rect.topLeft().x(),
-                        rect.topLeft().y(),
-                        rect.topRight().x(),
-                        rect.topRight().y());
+            p->setPen(opt->palette.light().color());
+            p->drawLine(rect.topLeft(), rect.topRight());
 
             if (paintLeftBorder){
-                p->setPen(QPen(opt->palette.light().color()));
-                p->drawLine(rect.topLeft().x(),
-                            rect.topLeft().y(),
-                            rect.bottomLeft().x(),
-                            rect.bottomLeft().y());
+                p->setPen(opt->palette.light().color());
+                p->drawLine(rect.topLeft(), rect.bottomLeft());
             }
 
             if (paintRightBorder){
-                p->setPen(QPen(opt->palette.dark().color()));
-                p->drawLine(rect.topRight().x(),
-                            rect.topRight().y(),
-                            rect.bottomRight().x(),
-                            rect.bottomRight().y());
+                p->setPen(opt->palette.dark().color());
+                p->drawLine(rect.topRight(), rect.bottomRight());
             }
 
             if (paintBottomBorder){
-                p->setPen(QPen(opt->palette.dark().color()));
-                p->drawLine(rect.bottomLeft().x(),
-                            rect.bottomLeft().y(),
-                            rect.bottomRight().x(),
-                            rect.bottomRight().y());
+                p->setPen(opt->palette.dark().color());
+                p->drawLine(rect.bottomLeft(), rect.bottomRight());
             }
         }
         break;
@@ -2273,8 +2260,10 @@ QSize QWindowsStyle::sizeFromContents(ContentsType ct, const QStyleOption *opt,
         break;
 #endif
     case CT_ToolButton:
+#if QT_CONFIG(toolbutton)
         if (qstyleoption_cast<const QStyleOptionToolButton *>(opt))
             return sz += QSize(7, 6);
+#endif  // QT_CONFIG(toolbutton)
         Q_FALLTHROUGH();
 
     default:

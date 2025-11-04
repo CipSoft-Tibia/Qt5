@@ -51,13 +51,12 @@ TEST_F(FXJSEngineUnitTest, GC) {
       "perm", FXJSOBJTYPE_DYNAMIC,
       [](CFXJS_Engine* pEngine, v8::Local<v8::Object> obj,
          v8::Local<v8::Object> proxy) {
-        pEngine->SetObjectPrivate(obj,
-                                  std::make_unique<CJS_Object>(proxy, nullptr));
+        pEngine->SetBinding(obj, std::make_unique<CJS_Object>(proxy, nullptr));
         perm_created = true;
       },
       [](v8::Local<v8::Object> obj) {
         perm_destroyed = true;
-        CFXJS_Engine::SetObjectPrivate(obj, nullptr);
+        CFXJS_Engine::SetBinding(obj, nullptr);
       });
 
   // Object: 2
@@ -65,13 +64,12 @@ TEST_F(FXJSEngineUnitTest, GC) {
       "temp", FXJSOBJTYPE_DYNAMIC,
       [](CFXJS_Engine* pEngine, v8::Local<v8::Object> obj,
          v8::Local<v8::Object> proxy) {
-        pEngine->SetObjectPrivate(obj,
-                                  std::make_unique<CJS_Object>(proxy, nullptr));
+        pEngine->SetBinding(obj, std::make_unique<CJS_Object>(proxy, nullptr));
         temp_created = true;
       },
       [](v8::Local<v8::Object> obj) {
         temp_destroyed = true;
-        CFXJS_Engine::SetObjectPrivate(obj, nullptr);
+        CFXJS_Engine::SetBinding(obj, nullptr);
       });
 
   engine()->InitializeEngine();
@@ -92,7 +90,7 @@ TEST_F(FXJSEngineUnitTest, GC) {
     EXPECT_FALSE(temp_destroyed);
   }
 
-  absl::optional<IJS_Runtime::JS_Error> err = engine()->Execute(L"gc();");
+  std::optional<IJS_Runtime::JS_Error> err = engine()->Execute(L"gc();");
   EXPECT_FALSE(err);
 
   EXPECT_TRUE(perm_created);

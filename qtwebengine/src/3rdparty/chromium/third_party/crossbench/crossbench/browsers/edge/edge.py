@@ -4,86 +4,65 @@
 
 from __future__ import annotations
 
-import pathlib
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
-import crossbench
-import crossbench.exception
-import crossbench.flags
-from crossbench import helper, plt
+from crossbench import plt
+from crossbench.browsers.attributes import BrowserAttributes
 from crossbench.browsers.chromium.chromium import Chromium
 
 if TYPE_CHECKING:
-  import crossbench.flags
-  import crossbench.runner
-  from crossbench import plt
-  from crossbench.browsers.splash_screen import SplashScreen
-  from crossbench.browsers.viewport import Viewport
-  from crossbench.network.base import Network
-  FlagsInitialDataType = crossbench.flags.Flags.InitialDataType
+  from crossbench.path import RemotePath
 
 
-class Edge(Chromium):
-  DEFAULT_FLAGS = [
-      "--enable-benchmarking",
-      "--disable-extensions",
-      "--no-first-run",
-  ]
+class EdgePathMixin:
+  @classmethod
+  def default_path(cls, platform: plt.Platform) -> RemotePath:
+    return cls.stable_path(platform)
 
   @classmethod
-  def default_path(cls) -> pathlib.Path:
-    return cls.stable_path()
-
-  @classmethod
-  def stable_path(cls) -> pathlib.Path:
-    return plt.PLATFORM.search_app_or_executable(
+  def stable_path(cls, platform: plt.Platform) -> RemotePath:
+    return platform.search_app_or_executable(
         "Edge Stable",
         macos=["Microsoft Edge.app"],
         linux=["microsoft-edge"],
         win=["Microsoft/Edge/Application/msedge.exe"])
 
   @classmethod
-  def beta_path(cls) -> pathlib.Path:
-    return plt.PLATFORM.search_app_or_executable(
+  def beta_path(cls, platform: plt.Platform) -> RemotePath:
+    return platform.search_app_or_executable(
         "Edge Beta",
         macos=["Microsoft Edge Beta.app"],
         linux=["microsoft-edge-beta"],
         win=["Microsoft/Edge Beta/Application/msedge.exe"])
 
   @classmethod
-  def dev_path(cls) -> pathlib.Path:
-    return plt.PLATFORM.search_app_or_executable(
+  def dev_path(cls, platform: plt.Platform) -> RemotePath:
+    return platform.search_app_or_executable(
         "Edge Dev",
         macos=["Microsoft Edge Dev.app"],
         linux=["microsoft-edge-dev"],
         win=["Microsoft/Edge Dev/Application/msedge.exe"])
 
   @classmethod
-  def canary_path(cls) -> pathlib.Path:
-    return plt.PLATFORM.search_app_or_executable(
+  def canary_path(cls, platform: plt.Platform) -> RemotePath:
+    return platform.search_app_or_executable(
         "Edge Canary",
         macos=["Microsoft Edge Canary.app"],
         linux=[],
         win=["Microsoft/Edge SxS/Application/msedge.exe"])
 
-  def __init__(self,
-               label: str,
-               path: pathlib.Path,
-               js_flags: FlagsInitialDataType = None,
-               flags: FlagsInitialDataType = None,
-               cache_dir: Optional[pathlib.Path] = None,
-               network: Optional[Network] = None,
-               viewport: Optional[Viewport] = None,
-               splash_screen: Optional[SplashScreen] = None,
-               platform: Optional[plt.Platform] = None):
-    super().__init__(
-        label,
-        path,
-        js_flags,
-        flags,
-        cache_dir,
-        type="edge",
-        network=network,
-        viewport=viewport,
-        splash_screen=splash_screen,
-        platform=platform)
+  @property
+  def type_name(self) -> str:
+    return "edge"
+
+
+class Edge(EdgePathMixin, Chromium):
+  DEFAULT_FLAGS = (
+      "--enable-benchmarking",
+      "--disable-extensions",
+      "--no-first-run",
+  )
+
+  @property
+  def attributes(self) -> BrowserAttributes:
+    return BrowserAttributes.EDGE | BrowserAttributes.CHROMIUM_BASED

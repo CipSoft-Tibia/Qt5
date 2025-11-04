@@ -79,11 +79,6 @@ namespace blink {
 
 namespace {
 
-base::Lock& CreationLock() {
-  DEFINE_THREAD_SAFE_STATIC_LOCAL(base::Lock, lock, ());
-  return lock;
-}
-
 LocalFrame* ToFrame(ExecutionContext* context) {
   if (!context)
     return nullptr;
@@ -95,20 +90,11 @@ LocalFrame* ToFrame(ExecutionContext* context) {
 }
 }
 
-MainThreadDebugger* MainThreadDebugger::instance_ = nullptr;
-
 MainThreadDebugger::MainThreadDebugger(v8::Isolate* isolate)
     : ThreadDebuggerCommonImpl(isolate), paused_(false) {
-  base::AutoLock locker(CreationLock());
-  DCHECK(!instance_);
-  instance_ = this;
 }
 
-MainThreadDebugger::~MainThreadDebugger() {
-  base::AutoLock locker(CreationLock());
-  DCHECK_EQ(instance_, this);
-  instance_ = nullptr;
-}
+MainThreadDebugger::~MainThreadDebugger() = default;
 
 void MainThreadDebugger::ReportConsoleMessage(
     ExecutionContext* context,
@@ -147,12 +133,13 @@ void MainThreadDebugger::ContextCreated(ScriptState* script_state,
   StringBuilder aux_data_builder;
   aux_data_builder.Append("{\"isDefault\":");
   aux_data_builder.Append(world.IsMainWorld() ? "true" : "false");
-  if (world.IsMainWorld())
+  if (world.IsMainWorld()) {
     aux_data_builder.Append(",\"type\":\"default\"");
-  else if (world.IsIsolatedWorld())
+  } else if (world.IsIsolatedWorld()) {
     aux_data_builder.Append(",\"type\":\"isolated\"");
-  else if (world.IsWorkerWorld())
+  } else if (world.IsWorkerOrWorkletWorld()) {
     aux_data_builder.Append(",\"type\":\"worker\"");
+  }
   aux_data_builder.Append(",\"frameId\":\"");
   aux_data_builder.Append(IdentifiersFactory::FrameId(frame));
   aux_data_builder.Append("\"}");
@@ -191,7 +178,7 @@ void MainThreadDebugger::ExceptionThrown(ExecutionContext* context,
       return;
     script_state = scope->ScriptController()->GetScriptState();
   } else {
-    NOTREACHED();
+    NOTREACHED_IN_MIGRATION();
   }
 
   frame->Console().ReportMessageToClient(
@@ -413,7 +400,7 @@ v8::MaybeLocal<v8::Value> MainThreadDebugger::memoryInfo(
     v8::Local<v8::Context> context) {
   DCHECK(ToLocalDOMWindow(context));
   return ToV8Traits<MemoryInfo>::ToV8(
-      ScriptState::From(context),
+      ScriptState::From(isolate, context),
       MakeGarbageCollected<MemoryInfo>(MemoryInfo::Precision::kBucketized));
 }
 
@@ -458,7 +445,7 @@ void MainThreadDebugger::QuerySelectorCallback(
   if (!container_node)
     return;
   ExceptionState exception_state(info.GetIsolate(),
-                                 ExceptionContextType::kOperationInvoke,
+                                 v8::ExceptionContext::kOperation,
                                  "CommandLineAPI", "$");
   Element* element =
       container_node->QuerySelector(AtomicString(selector), exception_state);
@@ -466,7 +453,7 @@ void MainThreadDebugger::QuerySelectorCallback(
     return;
   if (element) {
     ScriptState* script_state =
-        ScriptState::From(info.Holder()->GetCreationContextChecked());
+        ScriptState::ForRelevantRealm(info.GetIsolate(), info.This());
     info.GetReturnValue().Set(ToV8Traits<Element>::ToV8(script_state, element));
   } else {
     info.GetReturnValue().Set(v8::Null(info.GetIsolate()));
@@ -485,7 +472,7 @@ void MainThreadDebugger::QuerySelectorAllCallback(
   if (!container_node)
     return;
   ExceptionState exception_state(info.GetIsolate(),
-                                 ExceptionContextType::kOperationInvoke,
+                                 v8::ExceptionContext::kOperation,
                                  "CommandLineAPI", "$$");
   // ToV8(elementList) doesn't work here, since we need a proper Array instance,
   // not NodeList.
@@ -497,7 +484,7 @@ void MainThreadDebugger::QuerySelectorAllCallback(
   v8::Local<v8::Context> context = isolate->GetCurrentContext();
   v8::Local<v8::Array> nodes = v8::Array::New(isolate, element_list->length());
   ScriptState* script_state =
-      ScriptState::From(info.Holder()->GetCreationContextChecked());
+      ScriptState::ForRelevantRealm(info.GetIsolate(), info.This());
   for (wtf_size_t i = 0; i < element_list->length(); ++i) {
     Element* element = element_list->item(i);
     v8::Local<v8::Value> value =
@@ -522,7 +509,7 @@ void MainThreadDebugger::XpathSelectorCallback(
     return;
 
   ExceptionState exception_state(info.GetIsolate(),
-                                 ExceptionContextType::kOperationInvoke,
+                                 v8::ExceptionContext::kOperation,
                                  "CommandLineAPI", "$x");
   XPathResult* result = XPathEvaluator::Create()->evaluate(
       nullptr, selector, node, nullptr, XPathResult::kAnyType, ScriptValue(),
@@ -530,14 +517,15 @@ void MainThreadDebugger::XpathSelectorCallback(
   if (exception_state.HadException() || !result)
     return;
   ScriptState* script_state =
-      ScriptState::From(info.Holder()->GetCreationContextChecked());
+      ScriptState::ForRelevantRealm(info.GetIsolate(), info.This());
   if (result->resultType() == XPathResult::kNumberType) {
-    V8SetReturnValue(info, result->numberValue(exception_state));
+    bindings::V8SetReturnValue(info, result->numberValue(exception_state));
   } else if (result->resultType() == XPathResult::kStringType) {
-    V8SetReturnValue(info, result->stringValue(exception_state),
-                     info.GetIsolate(), bindings::V8ReturnValue::kNonNullable);
+    bindings::V8SetReturnValue(info, result->stringValue(exception_state),
+                               info.GetIsolate(),
+                               bindings::V8ReturnValue::kNonNullable);
   } else if (result->resultType() == XPathResult::kBooleanType) {
-    V8SetReturnValue(info, result->booleanValue(exception_state));
+    bindings::V8SetReturnValue(info, result->booleanValue(exception_state));
   } else {
     v8::Isolate* isolate = info.GetIsolate();
     v8::Local<v8::Context> context = isolate->GetCurrentContext();

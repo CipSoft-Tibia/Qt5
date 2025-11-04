@@ -10,13 +10,13 @@ void cpuinfo_arm_decode_cache(
 	enum cpuinfo_uarch uarch,
 	uint32_t cluster_cores,
 	uint32_t midr,
-	const struct cpuinfo_arm_chipset chipset[restrict static 1],
+	const struct cpuinfo_arm_chipset chipset[1],
 	uint32_t cluster_id,
 	uint32_t arch_version,
-	struct cpuinfo_cache l1i[restrict static 1],
-	struct cpuinfo_cache l1d[restrict static 1],
-	struct cpuinfo_cache l2[restrict static 1],
-	struct cpuinfo_cache l3[restrict static 1]) {
+	struct cpuinfo_cache l1i[1],
+	struct cpuinfo_cache l1d[1],
+	struct cpuinfo_cache l2[1],
+	struct cpuinfo_cache l3[1]) {
 	switch (uarch) {
 #if CPUINFO_ARCH_ARM && !defined(__ARM_ARCH_7A__) && !defined(__ARM_ARCH_8A__)
 		case cpuinfo_uarch_xscale:

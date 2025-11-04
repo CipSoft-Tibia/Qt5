@@ -34,7 +34,7 @@ static const qreal gradientTextureHeight = 1.;
 static const qreal gradientTextureWidth = 4096.;
 // Tag to be used to hide a log axis label when edgeLabelsVisible is set to false
 // or when an item selection label should not be shown
-static const QString hiddenLabelTag = QStringLiteral("õ");
+static constexpr auto hiddenLabelTag = u"õ";
 
 QT_END_NAMESPACE
 

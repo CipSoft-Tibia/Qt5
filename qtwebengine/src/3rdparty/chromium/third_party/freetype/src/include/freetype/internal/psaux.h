@@ -5,7 +5,7 @@
  *   Auxiliary functions and data structures related to PostScript fonts
  *   (specification).
  *
- * Copyright (C) 1996-2023 by
+ * Copyright (C) 1996-2024 by
  * David Turner, Robert Wilhelm, and Werner Lemberg.
  *
  * This file is part of the FreeType project, and may only be used,
@@ -225,6 +225,7 @@ FT_BEGIN_HEADER
 
   typedef enum  T1_FieldLocation_
   {
+    T1_FIELD_LOCATION_NONE = 0,
     T1_FIELD_LOCATION_CID_INFO,
     T1_FIELD_LOCATION_FONT_DICT,
     T1_FIELD_LOCATION_FONT_EXTRA,
@@ -359,7 +360,12 @@ FT_BEGIN_HEADER
 #define T1_FIELD_CALLBACK( _ident, _name, _dict )       \
           T1_NEW_CALLBACK_FIELD( _ident, _name, _dict )
 
-#define T1_FIELD_ZERO  { 0, NULL, 0, 0, NULL, 0, 0, 0, 0, 0 }
+#define T1_FIELD_ZERO                                         \
+          {                                                   \
+            0,                                                \
+            NULL, T1_FIELD_LOCATION_NONE, T1_FIELD_TYPE_NONE, \
+            NULL, 0, 0, 0, 0, 0                               \
+          }
 
 
   /*************************************************************************/

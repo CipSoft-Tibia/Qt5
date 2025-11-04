@@ -20,7 +20,7 @@ PendingImportMap* PendingImportMap::CreateInline(ScriptElementBase& element,
                                                  const KURL& base_url) {
   ExecutionContext* context = element.GetExecutionContext();
 
-  absl::optional<ImportMapError> error_to_rethrow;
+  std::optional<ImportMapError> error_to_rethrow;
   ImportMap* import_map =
       ImportMap::Parse(import_map_text, base_url, *context, &error_to_rethrow);
   return MakeGarbageCollected<PendingImportMap>(
@@ -30,15 +30,16 @@ PendingImportMap* PendingImportMap::CreateInline(ScriptElementBase& element,
 PendingImportMap::PendingImportMap(
     ScriptElementBase& element,
     ImportMap* import_map,
-    absl::optional<ImportMapError> error_to_rethrow,
+    std::optional<ImportMapError> error_to_rethrow,
     const ExecutionContext& original_context)
     : element_(&element),
       import_map_(import_map),
       error_to_rethrow_(std::move(error_to_rethrow)),
       original_execution_context_(&original_context) {}
 
-// <specdef href="https://wicg.github.io/import-maps/#register-an-import-map">
-// This is parallel to PendingScript::ExecuteScriptBlock().
+// <specdef
+// href="https://html.spec.whatwg.org/C#register-an-import-map"> This is
+// parallel to PendingScript::ExecuteScriptBlock().
 void PendingImportMap::RegisterImportMap() {
   // <spec step="1">If element’s the script’s result is null, then fire an event
   // named error at element, and return.</spec>

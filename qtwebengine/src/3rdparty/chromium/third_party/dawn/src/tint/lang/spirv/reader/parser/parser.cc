@@ -118,7 +118,6 @@ class Parser {
             default:
                 TINT_UNIMPLEMENTED()
                     << "unhandled SPIR-V storage class: " << static_cast<uint32_t>(sc);
-                return core::AddressSpace::kUndefined;
         }
     }
 
@@ -156,7 +155,6 @@ class Parser {
                 return core::BuiltinValue::kWorkgroupId;
             default:
                 TINT_UNIMPLEMENTED() << "unhandled SPIR-V BuiltIn: " << static_cast<uint32_t>(b);
-                return core::BuiltinValue::kUndefined;
         }
     }
 
@@ -165,7 +163,7 @@ class Parser {
     /// @returns a Tint type object
     const core::type::Type* Type(const spvtools::opt::analysis::Type* type,
                                  core::Access access_mode = core::Access::kUndefined) {
-        return types_.GetOrCreate(TypeKey{type, access_mode}, [&]() -> const core::type::Type* {
+        return types_.GetOrAdd(TypeKey{type, access_mode}, [&]() -> const core::type::Type* {
             switch (type->kind()) {
                 case spvtools::opt::analysis::Type::kVoid:
                     return ty_.void_();
@@ -173,7 +171,7 @@ class Parser {
                     return ty_.bool_();
                 case spvtools::opt::analysis::Type::kInteger: {
                     auto* int_ty = type->AsInteger();
-                    TINT_ASSERT_OR_RETURN_VALUE(int_ty->width() == 32, ty_.void_());
+                    TINT_ASSERT(int_ty->width() == 32);
                     if (int_ty->IsSigned()) {
                         return ty_.i32();
                     } else {
@@ -189,17 +187,16 @@ class Parser {
                     } else {
                         TINT_UNREACHABLE()
                             << "unsupported floating point type width: " << float_ty->width();
-                        return ty_.void_();
                     }
                 }
                 case spvtools::opt::analysis::Type::kVector: {
                     auto* vec_ty = type->AsVector();
-                    TINT_ASSERT_OR_RETURN_VALUE(vec_ty->element_count() <= 4, ty_.void_());
+                    TINT_ASSERT(vec_ty->element_count() <= 4);
                     return ty_.vec(Type(vec_ty->element_type()), vec_ty->element_count());
                 }
                 case spvtools::opt::analysis::Type::kMatrix: {
                     auto* mat_ty = type->AsMatrix();
-                    TINT_ASSERT_OR_RETURN_VALUE(mat_ty->element_count() <= 4, ty_.void_());
+                    TINT_ASSERT(mat_ty->element_count() <= 4);
                     return ty_.mat(As<core::type::Vector>(Type(mat_ty->element_type())),
                                    mat_ty->element_count());
                 }
@@ -214,7 +211,6 @@ class Parser {
                 }
                 default:
                     TINT_UNIMPLEMENTED() << "unhandled SPIR-V type: " << type->str();
-                    return ty_.void_();
             }
         });
     }
@@ -230,18 +226,17 @@ class Parser {
     /// @returns a Tint array object
     const core::type::Type* EmitArray(const spvtools::opt::analysis::Array* arr_ty) {
         const auto& length = arr_ty->length_info();
-        TINT_ASSERT_OR_RETURN_VALUE(!length.words.empty(), ty_.void_());
+        TINT_ASSERT(!length.words.empty());
         if (length.words[0] != spvtools::opt::analysis::Array::LengthInfo::kConstant) {
             TINT_UNIMPLEMENTED() << "specialized array lengths";
-            return ty_.void_();
         }
 
         // Get the value from the constant used for the element count.
         const auto* count_const =
             spirv_context_->get_constant_mgr()->FindDeclaredConstant(length.id);
-        TINT_ASSERT_OR_RETURN_VALUE(count_const, ty_.void_());
+        TINT_ASSERT(count_const);
         const uint64_t count_val = count_const->GetZeroExtendedValue();
-        TINT_ASSERT_OR_RETURN_VALUE(count_val <= UINT32_MAX, ty_.void_());
+        TINT_ASSERT(count_val <= UINT32_MAX);
 
         // TODO(crbug.com/1907): Handle decorations that affect the array layout.
 
@@ -253,7 +248,6 @@ class Parser {
     const core::type::Type* EmitStruct(const spvtools::opt::analysis::Struct* struct_ty) {
         if (struct_ty->NumberOfComponents() == 0) {
             TINT_ICE() << "empty structures are not supported";
-            return ty_.void_();
         }
 
         // Build a list of struct members.
@@ -263,7 +257,7 @@ class Parser {
             auto* member_ty = Type(struct_ty->element_types()[i]);
             uint32_t align = std::max<uint32_t>(member_ty->Align(), 1u);
             uint32_t offset = tint::RoundUp(align, current_size);
-            core::type::StructMemberAttributes attributes;
+            core::IOAttributes attributes;
             auto interpolation = [&]() -> core::Interpolation& {
                 // Create the interpolation field with the default values on first call.
                 if (!attributes.interpolation.has_value()) {
@@ -305,7 +299,6 @@ class Parser {
 
                         default:
                             TINT_UNIMPLEMENTED() << "unhandled member decoration: " << deco[0];
-                            break;
                     }
                 }
             }
@@ -324,7 +317,7 @@ class Parser {
     /// @param id a SPIR-V result ID for a function declaration instruction
     /// @returns a Tint function object
     core::ir::Function* Function(uint32_t id) {
-        return functions_.GetOrCreate(id, [&] {
+        return functions_.GetOrAdd(id, [&] {
             return b_.Function(ty_.void_(), core::ir::Function::PipelineStage::kUndefined,
                                std::nullopt);
         });
@@ -333,12 +326,11 @@ class Parser {
     /// @param id a SPIR-V result ID
     /// @returns a Tint value object
     core::ir::Value* Value(uint32_t id) {
-        return values_.GetOrCreate(id, [&]() -> core::ir::Value* {
+        return values_.GetOrAdd(id, [&]() -> core::ir::Value* {
             if (auto* c = spirv_context_->get_constant_mgr()->FindDeclaredConstant(id)) {
                 return b_.Constant(Constant(c));
             }
             TINT_UNREACHABLE() << "missing value for result ID " << id;
-            return nullptr;
         });
     }
 
@@ -355,7 +347,7 @@ class Parser {
         }
         if (auto* i = constant->AsIntConstant()) {
             auto* int_ty = i->type()->AsInteger();
-            TINT_ASSERT_OR_RETURN_VALUE(int_ty->width() == 32, nullptr);
+            TINT_ASSERT(int_ty->width() == 32);
             if (int_ty->IsSigned()) {
                 return b_.ConstantValue(i32(i->GetS32BitValue()));
             } else {
@@ -370,7 +362,6 @@ class Parser {
                 return b_.ConstantValue(f32(f->GetFloat()));
             } else {
                 TINT_UNREACHABLE() << "unsupported floating point type width";
-                return nullptr;
             }
         }
         if (auto* v = constant->AsVectorConstant()) {
@@ -402,7 +393,6 @@ class Parser {
             return ir_.constant_values.Composite(Type(s->type()), std::move(elements));
         }
         TINT_UNIMPLEMENTED() << "unhandled constant type";
-        return nullptr;
     }
 
     /// Register an IR value for a SPIR-V result ID.
@@ -416,7 +406,7 @@ class Parser {
     void Emit(core::ir::Instruction* inst, uint32_t result_id = 0) {
         current_block_->Append(inst);
         if (result_id != 0) {
-            TINT_ASSERT_OR_RETURN(inst->Results().Length() == 1u);
+            TINT_ASSERT(inst->Results().Length() == 1u);
             AddValue(result_id, inst->Result(0));
         }
     }
@@ -477,9 +467,9 @@ class Parser {
 
         // Handle OpExecutionMode declarations.
         for (auto& execution_mode : spirv_context_->module()->execution_modes()) {
-            auto* func = functions_.Get(execution_mode.GetSingleWordInOperand(0)).value_or(nullptr);
+            auto* func = functions_.GetOr(execution_mode.GetSingleWordInOperand(0), nullptr);
             auto mode = execution_mode.GetSingleWordInOperand(1);
-            TINT_ASSERT_OR_RETURN(func);
+            TINT_ASSERT(func);
 
             switch (spv::ExecutionMode(mode)) {
                 case spv::ExecutionMode::LocalSize:
@@ -487,7 +477,9 @@ class Parser {
                                            execution_mode.GetSingleWordInOperand(3),
                                            execution_mode.GetSingleWordInOperand(4));
                     break;
+                case spv::ExecutionMode::DepthReplacing:
                 case spv::ExecutionMode::OriginUpperLeft:
+                    // These are ignored as they are implicitly supported by Tint IR.
                     break;
                 default:
                     TINT_UNIMPLEMENTED() << "unhandled execution mode: " << mode;
@@ -512,8 +504,17 @@ class Parser {
                 case spv::Op::OpCompositeExtract:
                     EmitCompositeExtract(inst);
                     break;
+                case spv::Op::OpFAdd:
+                    EmitBinary(inst, core::BinaryOp::kAdd);
+                    break;
+                case spv::Op::OpFMul:
+                    EmitBinary(inst, core::BinaryOp::kMultiply);
+                    break;
                 case spv::Op::OpFunctionCall:
                     EmitFunctionCall(inst);
+                    break;
+                case spv::Op::OpIAdd:
+                    EmitBinary(inst, core::BinaryOp::kAdd);
                     break;
                 case spv::Op::OpLoad:
                     Emit(b_.Load(Value(inst.GetSingleWordOperand(2))), inst.result_id());
@@ -556,6 +557,15 @@ class Parser {
         Emit(access, inst.result_id());
     }
 
+    /// @param inst the SPIR-V instruction
+    /// @param op the binary operator to use
+    void EmitBinary(const spvtools::opt::Instruction& inst, core::BinaryOp op) {
+        auto* lhs = Value(inst.GetSingleWordOperand(2));
+        auto* rhs = Value(inst.GetSingleWordOperand(3));
+        auto* binary = b_.Binary(op, Type(inst.type_id()), lhs, rhs);
+        Emit(binary, inst.result_id());
+    }
+
     /// @param inst the SPIR-V instruction for OpCompositeExtract
     void EmitCompositeExtract(const spvtools::opt::Instruction& inst) {
         Vector<core::ir::Value*, 4> indices;
@@ -593,7 +603,7 @@ class Parser {
         std::optional<uint32_t> group;
         std::optional<uint32_t> binding;
         core::Access access_mode = core::Access::kUndefined;
-        core::ir::IOAttributes io_attributes;
+        core::IOAttributes io_attributes;
         auto interpolation = [&]() -> core::Interpolation& {
             // Create the interpolation field with the default values on first call.
             if (!io_attributes.interpolation.has_value()) {
@@ -638,7 +648,6 @@ class Parser {
                     break;
                 default:
                     TINT_UNIMPLEMENTED() << "unhandled decoration " << d;
-                    break;
             }
         }
 
@@ -669,14 +678,8 @@ class Parser {
             return type == other.type && access_mode == other.access_mode;
         }
 
-        /// Hasher provides a hash function for the TypeKey.
-        struct Hasher {
-            /// @param tk the TypeKey to create a hash for
-            /// @return the hash value
-            inline std::size_t operator()(const TypeKey& tk) const {
-                return HashCombine(Hash(tk.type), tk.access_mode);
-            }
-        };
+        /// @returns the hash code of the TypeKey
+        tint::HashCode HashCode() const { return Hash(type, access_mode); }
     };
 
     /// The generated IR module.
@@ -691,7 +694,7 @@ class Parser {
     /// The Tint IR block that is currently being emitted.
     core::ir::Block* current_block_ = nullptr;
     /// A map from a SPIR-V type declaration to the corresponding Tint type object.
-    Hashmap<TypeKey, const core::type::Type*, 16, TypeKey::Hasher> types_;
+    Hashmap<TypeKey, const core::type::Type*, 16> types_;
     /// A map from a SPIR-V function definition result ID to the corresponding Tint function object.
     Hashmap<uint32_t, core::ir::Function*, 8> functions_;
     /// A map from a SPIR-V result ID to the corresponding Tint value object.

@@ -65,7 +65,7 @@ class TeeEngine::PullAlgorithm final : public StreamAlgorithm {
     }
 
     ExceptionState exception_state(script_state->GetIsolate(),
-                                   ExceptionContextType::kUnknown, "", "");
+                                   v8::ExceptionContext::kUnknown, "", "");
 
     //   b. Set reading to true.
     engine_->reading_ = true;
@@ -149,7 +149,7 @@ class TeeEngine::PullAlgorithm final : public StreamAlgorithm {
                                      exception_context);
 
       // 2. Let chunk1 and chunk2 be chunk.
-      v8::Local<v8::Value> chunk[2];
+      std::array<v8::Local<v8::Value>, 2> chunk;
       chunk[0] = value.Get(script_state->GetIsolate());
       chunk[1] = chunk[0];
 
@@ -176,8 +176,9 @@ class TeeEngine::PullAlgorithm final : public StreamAlgorithm {
           //     iii. Resolve cancelPromise with !
           //     ReadableStreamCancel(stream, cloneResult.[[Value]]).
           engine_->cancel_promise_->Resolve(
-              script_state, ReadableStream::Cancel(
-                                script_state, engine_->stream_, exception));
+              script_state,
+              ReadableStream::Cancel(script_state, engine_->stream_, exception)
+                  .V8Promise());
           //     iv. Return.
           exception_state.ClearException();
           return;
@@ -266,7 +267,8 @@ class TeeEngine::CancelAlgorithm final : public StreamAlgorithm {
       // ii. Let cancelResult be ! ReadableStreamCancel(stream,
       //    compositeReason).
       auto cancel_result = ReadableStream::Cancel(
-          script_state, engine_->stream_, composite_reason);
+                               script_state, engine_->stream_, composite_reason)
+                               .V8Promise();
 
       // iii. Resolve cancelPromise with cancelResult.
       engine_->cancel_promise_->Resolve(script_state, cancel_result);
@@ -411,8 +413,8 @@ void TeeEngine::Start(ScriptState* script_state,
 
   // 19. Upon rejection of reader.[[closedPromise]] with reason r,
   StreamThenPromise(
-      script_state->GetContext(),
-      reader_->ClosedPromise()->V8Promise(script_state->GetIsolate()), nullptr,
+      script_state->GetContext(), reader_->closed(script_state).V8Promise(),
+      nullptr,
       MakeGarbageCollected<ScriptFunction>(
           script_state, MakeGarbageCollected<RejectFunction>(this)));
 

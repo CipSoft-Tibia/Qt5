@@ -5,14 +5,14 @@
 #include <QtQml/qqml.h>
 #include <QDebug>
 
-class MyChildPluginType : public QObject
+class MyChildPluginTypeV2_1 : public QObject
 {
     Q_OBJECT
     Q_PROPERTY(int value READ value WRITE setValue)
     Q_PROPERTY(int valueOnlyIn2 READ value WRITE setValue)
 
 public:
-    MyChildPluginType(QObject *parent=nullptr) : QObject(parent)
+    MyChildPluginTypeV2_1(QObject *parent = nullptr) : QObject(parent)
     {
         qWarning("child import2.1 worked");
     }
@@ -24,22 +24,18 @@ private:
     int v;
 };
 
-
-class MyChildPlugin : public QQmlExtensionPlugin
+class MyChildPluginV2_1 : public QQmlExtensionPlugin
 {
     Q_OBJECT
     Q_PLUGIN_METADATA(IID QQmlExtensionInterface_iid)
 
 public:
-    MyChildPlugin()
-    {
-        qWarning("child plugin2.1 created");
-    }
+    MyChildPluginV2_1() { qWarning("child plugin2.1 created"); }
 
     void registerTypes(const char *uri) override
     {
         Q_ASSERT(QLatin1String(uri) == "org.qtproject.AutoTestQmlPluginType.ChildPlugin");
-        qmlRegisterType<MyChildPluginType>(uri, 2, 1, "MyChildPluginType");
+        qmlRegisterType<MyChildPluginTypeV2_1>(uri, 2, 1, "MyChildPluginType");
     }
 };
 

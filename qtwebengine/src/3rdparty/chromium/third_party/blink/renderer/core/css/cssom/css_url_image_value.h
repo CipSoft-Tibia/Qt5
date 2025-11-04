@@ -21,7 +21,7 @@ class CORE_EXPORT CSSURLImageValue final : public CSSStyleImageValue {
   const String& url() const;
 
   // CSSStyleImageValue
-  absl::optional<gfx::Size> IntrinsicSize() const final;
+  std::optional<gfx::Size> IntrinsicSize() const final;
 
   // CanvasImageSource
   ResourceStatus Status() const final;
@@ -29,7 +29,7 @@ class CORE_EXPORT CSSURLImageValue final : public CSSStyleImageValue {
       FlushReason,
       SourceImageStatus*,
       const gfx::SizeF&,
-      const AlphaDisposition alpha_disposition = kPremultiplyAlpha) final;
+      const AlphaDisposition alpha_disposition) final;
   bool IsAccelerated() const final;
 
   // CSSStyleValue

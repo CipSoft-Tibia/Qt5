@@ -217,7 +217,7 @@ public:
             const QQmlType &targetType, const QV4::Value &source, QV4::ExecutionEngine *engine);
     static QVariant constructValueType(
             QMetaType targetMetaType, const QMetaObject *targetMetaObject,
-            int ctorIndex, void *ctorArg);
+            int ctorIndex, void **args);
 
     static QVariant createValueType(const QJSValue &, QMetaType);
     static QVariant createValueType(const QString &, QMetaType);

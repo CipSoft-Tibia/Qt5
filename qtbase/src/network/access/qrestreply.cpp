@@ -1,10 +1,12 @@
 // Copyright (C) 2023 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:data-parser
 
 #include "qrestreply.h"
 #include "qrestreply_p.h"
 
 #include <QtNetwork/private/qnetworkreply_p.h>
+#include <QtNetwork/private/qrestaccessmanager_p.h>
 
 #include <QtCore/qbytearrayview.h>
 #include <QtCore/qjsondocument.h>
@@ -18,7 +20,6 @@
 QT_BEGIN_NAMESPACE
 
 using namespace Qt::StringLiterals;
-Q_DECLARE_LOGGING_CATEGORY(lcQrest)
 
 /*!
     \class QRestReply

@@ -395,6 +395,29 @@ QT_BEGIN_NAMESPACE
 */
 
 /*!
+    \qmlsignal PieSeries::clicked(PieSlice slice)
+    This signal is emitted when the \a slice is clicked or tapped.
+*/
+
+/*!
+    \qmlsignal PieSeries::doubleClicked(PieSlice slice)
+    This signal is emitted when the \a slice is double-clicked or double-tapped.
+    This signal always occurs after \l clicked.
+*/
+
+/*!
+    \qmlsignal PieSeries::pressed(PieSlice slice)
+    This signal is emitted when the user clicks or taps the \a slice
+    and holds down the mouse button or gesture.
+*/
+
+/*!
+    \qmlsignal PieSeries::released(PieSlice slice)
+    This signal is emitted when the user releases a previously pressed mouse button
+    or gesture on the \a slice.
+*/
+
+/*!
     Constructs a series object that is a child of \a parent.
 */
 QPieSeries::QPieSeries(QObject *parent)
@@ -430,7 +453,8 @@ QPieSlice *QPieSeries::at(qsizetype index)
 */
 QPieSlice *QPieSeries::find(const QString &label)
 {
-    for (QPieSlice *slice : slices()) {
+    auto slicelist = slices();
+    for (QPieSlice *slice : std::as_const(slicelist)) {
         if (slice->label() == label)
             return slice;
     }
@@ -875,7 +899,7 @@ void QPieSeries::setPieSize(qreal relativeSize)
 {
     Q_D(QPieSeries);
     relativeSize = qBound((qreal)0.0, relativeSize, (qreal)1.0);
-    d->setSizes(qMin(d->m_holeRelativeSize, relativeSize), relativeSize);
+    d->setSizes(d->m_holeRelativeSize, relativeSize);
 }
 
 qreal QPieSeries::pieSize() const
@@ -1005,7 +1029,7 @@ void QPieSeries::setHoleSize(qreal holeSize)
 {
     Q_D(QPieSeries);
     holeSize = qBound((qreal)0.0, holeSize, (qreal)1.0);
-    d->setSizes(holeSize, qMax(d->m_pieRelativeSize, holeSize));
+    d->setSizes(holeSize, d->m_pieRelativeSize);
 }
 
 qreal QPieSeries::holeSize() const
@@ -1015,7 +1039,8 @@ qreal QPieSeries::holeSize() const
 }
 
 QPieSeriesPrivate::QPieSeriesPrivate()
-    : m_pieRelativeHorPos(.5)
+    : QAbstractSeriesPrivate(QAbstractSeries::SeriesType::Pie)
+    , m_pieRelativeHorPos(.5)
     , m_pieRelativeVerPos(.5)
     , m_pieRelativeSize(.7)
     , m_pieStartAngle(0)

@@ -10,10 +10,10 @@
 #include "libANGLE/renderer/vulkan/RenderTargetVk.h"
 
 #include "libANGLE/renderer/vulkan/ContextVk.h"
-#include "libANGLE/renderer/vulkan/ResourceVk.h"
 #include "libANGLE/renderer/vulkan/TextureVk.h"
 #include "libANGLE/renderer/vulkan/vk_format_utils.h"
 #include "libANGLE/renderer/vulkan/vk_helpers.h"
+#include "libANGLE/renderer/vulkan/vk_resource.h"
 
 namespace rx
 {
@@ -64,12 +64,17 @@ void RenderTargetVk::init(vk::ImageHelper *image,
     mTransience = transience;
 }
 
+void RenderTargetVk::invalidateImageAndViews()
+{
+    mImage             = nullptr;
+    mImageViews        = nullptr;
+    mResolveImage      = nullptr;
+    mResolveImageViews = nullptr;
+}
+
 void RenderTargetVk::reset()
 {
-    mImage              = nullptr;
-    mImageViews         = nullptr;
-    mResolveImage       = nullptr;
-    mResolveImageViews  = nullptr;
+    invalidateImageAndViews();
     mImageSiblingSerial = {};
     mLevelIndexGL       = gl::LevelIndex(0);
     mLayerIndex         = 0;
@@ -114,15 +119,20 @@ void RenderTargetVk::onColorDraw(ContextVk *contextVk,
     ASSERT(mResolveImage == nullptr || framebufferLayerCount == 1);
 }
 
-void RenderTargetVk::onColorResolve(ContextVk *contextVk, uint32_t framebufferLayerCount)
+void RenderTargetVk::onColorResolve(ContextVk *contextVk,
+                                    uint32_t framebufferLayerCount,
+                                    size_t readColorIndexGL,
+                                    const vk::ImageView &view)
 {
     ASSERT(!mImage->getActualFormat().hasDepthOrStencilBits());
     ASSERT(framebufferLayerCount <= mLayerCount);
     ASSERT(mResolveImage == nullptr);
 
-    contextVk->onImageRenderPassWrite(mLevelIndexGL, mLayerIndex, framebufferLayerCount,
-                                      VK_IMAGE_ASPECT_COLOR_BIT, vk::ImageLayout::ColorWrite,
-                                      mImage);
+    // The currently open render pass is from the read framebuffer.  This is the draw framebuffer's
+    // render target.  Ask the context to add this image as the resolve attachment to the read
+    // framebuffer's render pass, at the given color index.
+    contextVk->onColorResolve(mLevelIndexGL, mLayerIndex, framebufferLayerCount, mImage,
+                              view.getHandle(), mImageSiblingSerial, readColorIndexGL);
 }
 
 void RenderTargetVk::onDepthStencilDraw(ContextVk *contextVk, uint32_t framebufferLayerCount)
@@ -133,6 +143,19 @@ void RenderTargetVk::onDepthStencilDraw(ContextVk *contextVk, uint32_t framebuff
 
     contextVk->onDepthStencilDraw(mLevelIndexGL, mLayerIndex, framebufferLayerCount, mImage,
                                   mResolveImage, mImageSiblingSerial);
+}
+
+void RenderTargetVk::onDepthStencilResolve(ContextVk *contextVk,
+                                           uint32_t framebufferLayerCount,
+                                           VkImageAspectFlags aspects,
+                                           const vk::ImageView &view)
+{
+    ASSERT(mImage->getActualFormat().hasDepthOrStencilBits());
+    ASSERT(framebufferLayerCount <= mLayerCount);
+    ASSERT(mResolveImage == nullptr);
+
+    contextVk->onDepthStencilResolve(mLevelIndexGL, mLayerIndex, framebufferLayerCount, aspects,
+                                     mImage, view.getHandle(), mImageSiblingSerial);
 }
 
 vk::ImageHelper &RenderTargetVk::getImageForRenderPass()
@@ -166,7 +189,7 @@ angle::Result RenderTargetVk::getImageViewImpl(vk::Context *context,
                                                const vk::ImageView **imageViewOut) const
 {
     ASSERT(image.valid() && imageViews);
-    vk::LevelIndex levelVk = mImage->toVkLevel(mLevelIndexGL);
+    vk::LevelIndex levelVk = image.toVkLevel(getLevelIndexForImage(image));
     if (mLayerCount == 1)
     {
         return imageViews->getLevelLayerDrawImageView(context, image, levelVk, mLayerIndex, mode,
@@ -272,6 +295,12 @@ gl::Extents RenderTargetVk::getRotatedExtents() const
     ASSERT(mImage && mImage->valid());
     vk::LevelIndex levelVk = mImage->toVkLevel(mLevelIndexGL);
     return mImage->getRotatedLevelExtents2D(levelVk);
+}
+
+gl::LevelIndex RenderTargetVk::getLevelIndexForImage(const vk::ImageHelper &image) const
+{
+    return (getOwnerOfData()->getImageSerial() == image.getImageSerial()) ? mLevelIndexGL
+                                                                          : gl::LevelIndex(0);
 }
 
 void RenderTargetVk::updateSwapchainImage(vk::ImageHelper *image,

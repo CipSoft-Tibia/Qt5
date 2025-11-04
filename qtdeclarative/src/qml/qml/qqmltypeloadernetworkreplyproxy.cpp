@@ -6,8 +6,9 @@
 
 QT_BEGIN_NAMESPACE
 
-QQmlTypeLoaderNetworkReplyProxy::QQmlTypeLoaderNetworkReplyProxy(QQmlTypeLoader *l)
-    : l(l)
+QQmlTypeLoaderNetworkReplyProxy::QQmlTypeLoaderNetworkReplyProxy(
+        QQmlTypeLoader *l, QObject *parent)
+    : QObject(parent), l(l)
 {
 }
 

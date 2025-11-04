@@ -2,6 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#ifdef UNSAFE_BUFFERS_BUILD
+// TODO(crbug.com/40285824): Remove this and convert code to safer constructs.
+#pragma allow_unsafe_buffers
+#endif
+
 #include "chrome/renderer/pepper/pepper_uma_host.h"
 
 #include <stddef.h>
@@ -59,7 +64,7 @@ std::string HashPrefix(const std::string& histogram) {
   const std::string id_hash =
       base::SHA1HashString(histogram.substr(0, histogram.find('.')));
   DCHECK_EQ(id_hash.length(), base::kSHA1Length);
-  return base::HexEncode(id_hash.c_str(), id_hash.length());
+  return base::HexEncode(id_hash);
 }
 
 }  // namespace

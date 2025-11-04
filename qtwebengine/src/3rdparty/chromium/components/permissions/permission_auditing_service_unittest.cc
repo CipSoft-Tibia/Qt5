@@ -2,6 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#ifdef UNSAFE_BUFFERS_BUILD
+// TODO(crbug.com/40285824): Remove this and convert code to safer constructs.
+#pragma allow_unsafe_buffers
+#endif
+
 #include "components/permissions/permission_auditing_service.h"
 
 #include <memory>
@@ -117,7 +122,7 @@ class PermissionAuditingServiceTest : public testing::Test {
     base::Time last_usage_time;
     service().GetLastPermissionUsageTime(
         type, origin,
-        base::BindLambdaForTesting([&](absl::optional<base::Time> time) {
+        base::BindLambdaForTesting([&](std::optional<base::Time> time) {
           last_usage_time = time.value_or(base::Time());
           run_loop.QuitWhenIdle();
         }));

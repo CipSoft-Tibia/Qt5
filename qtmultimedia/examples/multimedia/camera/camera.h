@@ -11,9 +11,9 @@
 #include <QMediaDevices>
 #include <QMediaMetaData>
 #include <QMediaRecorder>
-#include <QScopedPointer>
-
 #include <QMainWindow>
+
+#include <memory>
 
 QT_BEGIN_NAMESPACE
 namespace Ui {
@@ -62,7 +62,6 @@ private slots:
     void updateCameraActive(bool active);
     void updateCaptureMode();
     void updateRecorderState(QMediaRecorder::RecorderState state);
-    void setExposureCompensation(int index);
 
     void updateRecordTime();
 
@@ -88,11 +87,11 @@ private:
     QActionGroup *videoDevicesGroup = nullptr;
 
     QMediaDevices m_devices;
-    QScopedPointer<QImageCapture> m_imageCapture;
+    std::unique_ptr<QImageCapture> m_imageCapture;
     QMediaCaptureSession m_captureSession;
-    QScopedPointer<QCamera> m_camera;
-    QScopedPointer<QAudioInput> m_audioInput;
-    QScopedPointer<QMediaRecorder> m_mediaRecorder;
+    std::unique_ptr<QCamera> m_camera;
+    std::unique_ptr<QAudioInput> m_audioInput;
+    std::unique_ptr<QMediaRecorder> m_mediaRecorder;
 
     bool m_isCapturingImage = false;
     bool m_applicationExiting = false;

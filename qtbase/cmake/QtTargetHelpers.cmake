@@ -148,6 +148,7 @@ function(qt_internal_extend_target target)
 
         list(TRANSFORM arg_PUBLIC_LIBRARIES REPLACE "^Qt::" "${QT_CMAKE_EXPORT_NAMESPACE}::")
         list(TRANSFORM arg_LIBRARIES REPLACE "^Qt::" "${QT_CMAKE_EXPORT_NAMESPACE}::")
+        qt_internal_wrap_private_modules(arg_LIBRARIES ${arg_LIBRARIES})
 
         # Set-up the target
 
@@ -194,9 +195,11 @@ function(qt_internal_extend_target target)
                             ${private_visibility_option} ${arg_LINK_OPTIONS})
 
         if(NOT is_interface_lib)
+            _qt_internal_get_moc_compiler_flavor_flags(flavor_flags)
             set_property(TARGET "${target}" APPEND PROPERTY
-                AUTOMOC_MOC_OPTIONS "${arg_MOC_OPTIONS}"
+                AUTOMOC_MOC_OPTIONS "${arg_MOC_OPTIONS}" ${flavor_flags}
             )
+
             # Plugin types associated to a module
             if(NOT "x${arg_PLUGIN_TYPES}" STREQUAL "x")
                 qt_internal_add_plugin_types("${target}" "${arg_PLUGIN_TYPES}")
@@ -232,7 +235,7 @@ function(qt_internal_extend_target target)
         endif()
 
         set(all_libraries ${arg_LIBRARIES} ${arg_PUBLIC_LIBRARIES})
-        qt_internal_work_around_autogen_discarded_dependencies(${target} ${all_libraries})
+        _qt_internal_work_around_autogen_discarded_dependencies(${target} ${all_libraries})
 
         if(QT_GENERATE_SBOM)
             set(sbom_args "")
@@ -247,7 +250,12 @@ function(qt_internal_extend_target target)
                 FORWARD_MULTI
                     ${__qt_internal_sbom_multi_args}
             )
-            _qt_internal_extend_sbom(${target} ${sbom_args})
+            # Don't call extend_sbom unless we actually have any SBOM args, to prevent
+            # recording of a target if it has no SBOM info. Relevant for QtFooModulePrivate targets
+            # which don't appear in the SBOM atm.
+            if(sbom_args)
+                _qt_internal_extend_sbom(${target} ${sbom_args})
+            endif()
         endif()
 
         set(target_private "${target}Private")
@@ -260,6 +268,9 @@ function(qt_internal_extend_target target)
         if(TARGET "${target_private}")
             target_link_libraries("${target_private}"
                                   INTERFACE ${arg_PRIVATE_MODULE_INTERFACE})
+            qt_internal_register_target_dependencies("${target_private}"
+                PUBLIC ${arg_PRIVATE_MODULE_INTERFACE}
+            )
         elseif(arg_PRIVATE_MODULE_INTERFACE)
             set(warning_message "")
             string(APPEND warning_message
@@ -269,10 +280,18 @@ function(qt_internal_extend_target target)
                 "Ensure the target exists or remove the option.")
             message(AUTHOR_WARNING "${warning_message}")
         endif()
-        qt_register_target_dependencies("${target}"
-                                        "${arg_PUBLIC_LIBRARIES};${arg_PRIVATE_MODULE_INTERFACE}"
-                                        "${qt_libs_private};${arg_LIBRARIES}")
 
+        set(qt_register_target_dependencies_args "")
+        if(arg_PUBLIC_LIBRARIES)
+            list(APPEND qt_register_target_dependencies_args
+                PUBLIC ${arg_PUBLIC_LIBRARIES})
+        endif()
+        if(qt_libs_private OR arg_LIBRARIES)
+            list(APPEND qt_register_target_dependencies_args
+                PRIVATE ${qt_libs_private} ${arg_LIBRARIES})
+        endif()
+        qt_internal_register_target_dependencies("${target}"
+            ${qt_register_target_dependencies_args})
 
         qt_autogen_tools(${target}
                          ENABLE_AUTOGEN_TOOLS ${arg_ENABLE_AUTOGEN_TOOLS}
@@ -330,6 +349,43 @@ function(qt_internal_extend_target target)
         # For executables collect static plugins that these targets depend on.
         qt_internal_import_plugins(${target} ${linked_libs})
     endif()
+endfunction()
+
+# Takes an output variable and a list of libraries.
+#
+# Every library that is a private module is wrapped in $<BUILD_INTERFACE> or
+# $<BUILD_LOCAL_INTERFACE> if CMake is new enough.
+#
+# This is necessary for static builds, because if Qt6Foo links to Qt6BarPrivate, this link
+# dependency is purely internal. If we don't do this, CMake adds a target check for Qt6BarPrivate
+# in Qt6FooTargets.cmake. This breaks if Qt6BarPrivate is not find_package'ed before.
+function(qt_internal_wrap_private_modules out_var)
+    set(result "")
+
+    if(CMAKE_VERSION VERSION_LESS "3.26")
+        set(wrapper_genex "BUILD_INTERFACE")
+    else()
+        set(wrapper_genex "BUILD_LOCAL_INTERFACE")
+    endif()
+
+    foreach(lib IN LISTS ARGN)
+        if(TARGET "${lib}")
+            get_target_property(lib_is_private_module ${lib} _qt_is_private_module)
+            if(lib_is_private_module)
+                # Add the public module as non-wrapped link dependency. This is necessary for
+                # targets that link only to the private module. Consumers of this target would then
+                # get a linker error about missing symbols from that Qt module.
+                get_target_property(lib_public_module_target ${lib} _qt_public_module_target_name)
+                list(APPEND result "${INSTALL_CMAKE_NAMESPACE}::${lib_public_module_target}")
+
+                # Wrap the private module in BUILD_LOCAL_INTERFACE.
+                set(lib "$<${wrapper_genex}:${lib}>")
+            endif()
+        endif()
+        list(APPEND result "${lib}")
+    endforeach()
+
+    set("${out_var}" "${result}" PARENT_SCOPE)
 endfunction()
 
 # Given CMAKE_CONFIG and ALL_CMAKE_CONFIGS, determines if a directory suffix needs to be appended
@@ -1469,6 +1525,7 @@ function(qt_internal_is_target_skipped_for_examples target out_var)
 endfunction()
 
 function(qt_internal_link_internal_platform_for_object_library target)
+    cmake_parse_arguments(arg "" "PARENT_TARGET" "" ${ARGN})
     # We need to apply iOS bitcode flags to object libraries that are associated with internal
     # modules or plugins (e.g. object libraries added by qt_internal_add_resource,
     # qt_internal_add_plugin, etc.)
@@ -1476,6 +1533,13 @@ function(qt_internal_link_internal_platform_for_object_library target)
     # present by default.
     # Achieve this by compiling the cpp files with the PlatformModuleInternal compile flags.
     target_link_libraries("${target}" PRIVATE Qt::PlatformModuleInternal)
+
+    if(arg_PARENT_TARGET AND TARGET "${arg_PARENT_TARGET}")
+        foreach(property QT_SKIP_WARNINGS_ARE_ERRORS _qt_internal_use_exceptions)
+            set_property(TARGET "${target}" PROPERTY
+                ${property} "$<BOOL:$<TARGET_PROPERTY:${arg_PARENT_TARGET},${property}>>")
+        endforeach()
+    endif()
 endfunction()
 
 # Use ${dep_target}'s include dirs when building ${target}.
@@ -1766,7 +1830,6 @@ function(qt_internal_add_platform_internal_target target)
     qt_internal_mark_as_internal_library("${target}")
 
     qt_internal_add_sbom("${target}"
-        TYPE QT_MODULE
-        IMMEDIATE_FINALIZATION
+        SBOM_ENTITY_TYPE QT_MODULE
     )
 endfunction()

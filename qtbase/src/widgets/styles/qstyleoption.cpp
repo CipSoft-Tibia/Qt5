@@ -1401,6 +1401,8 @@ QStyleOptionTab::QStyleOptionTab(int version)
 
     \value None A normal tab button.
     \value HasFrame The tab button is positioned on a tab frame
+    \value [since 6.9] MinimumSizeHint The tab button's minimum size hint is being measured,
+           in contrast to its regular size hint.
 
     \sa QStyleOptionToolBar::features
 */
@@ -2283,6 +2285,7 @@ QStyleOptionDockWidget::QStyleOptionDockWidget(int version)
     The default value is true.
 */
 
+#if QT_CONFIG(toolbutton)
 /*!
     \class QStyleOptionToolButton
     \brief The QStyleOptionToolButton class is used to describe the
@@ -2443,6 +2446,7 @@ QStyleOptionToolButton::QStyleOptionToolButton(int version)
     Qt::ToolButtonTextOnly. By default, the application's default font
     is used.
 */
+#endif  // QT_CONFIG(toolbutton)
 
 /*!
     \class QStyleOptionComboBox
@@ -3091,6 +3095,10 @@ QStyleOptionViewItem::QStyleOptionViewItem(int version)
     \value HasCheckIndicator Indicates that the item has a check state indicator.
     \value HasDisplay        Indicates that the item has a display role.
     \value HasDecoration     Indicates that the item has a decoration role.
+    \value [since 6.9] IsDecoratedRootColumn  Indicates that the item has a tree view branch
+    part for painting.
+    \value [since 6.9] IsDecorationForRootColumn  Indicates that the item contains the
+    information to draw the tree view branch part.
 */
 
 /*!

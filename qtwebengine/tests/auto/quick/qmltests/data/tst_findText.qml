@@ -56,7 +56,7 @@ TestWebEngineView {
             runJavaScript("document.getElementById('list').getElementsByTagName('li')[" + index + "].innerText;", function(result) {
                 listItemText = result;
             });
-            tryVerify(function() { return listItemText != undefined; }, 20000);
+            tryVerify(function() { return listItemText != undefined; }, 30000);
             return listItemText;
         }
 
@@ -74,7 +74,7 @@ TestWebEngineView {
             runJavaScript(script, function(result) { itemIndex = result; });
             tryVerify(function() { return itemIndex != undefined; }, 20000);
             // Make sure the DOM is up-to-date.
-            tryVerify(function() { return getListItemText(itemIndex).length == text.length; }, 20000);
+            tryVerify(function() { return getListItemText(itemIndex).length == text.length; }, 30000);
         }
 
         function test_findText() {

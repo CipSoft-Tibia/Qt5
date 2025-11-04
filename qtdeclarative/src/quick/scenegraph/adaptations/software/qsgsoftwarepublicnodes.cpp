@@ -101,7 +101,10 @@ void QSGSoftwareImageNode::updateCachedMirroredPixmap()
                 mirrorTransform = mirrorTransform.scale(-1, 1);
             m_cachedPixmap = pt->pixmap().transformed(mirrorTransform);
         } else if (QSGPlainTexture *pt = qobject_cast<QSGPlainTexture *>(m_texture)) {
-            m_cachedPixmap = QPixmap::fromImage(pt->image().mirrored(m_transformMode.testFlag(MirrorHorizontally), m_transformMode.testFlag(MirrorVertically)));
+            static constexpr Qt::Orientation none = Qt::Orientation(0);
+            const auto orientation = (m_transformMode.testFlag(MirrorHorizontally) ? Qt::Horizontal : none)
+                                   | (m_transformMode.testFlag(MirrorVertically) ? Qt::Vertical : none);
+            m_cachedPixmap = QPixmap::fromImage(pt->image().flipped(orientation));
         } else {
             m_cachedPixmap = QPixmap();
         }

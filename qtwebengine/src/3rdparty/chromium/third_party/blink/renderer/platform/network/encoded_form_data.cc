@@ -26,6 +26,7 @@
 #include "third_party/blink/renderer/platform/file_metadata.h"
 #include "third_party/blink/renderer/platform/network/form_data_encoder.h"
 #include "third_party/blink/renderer/platform/network/wrapped_data_pipe_getter.h"
+#include "third_party/blink/renderer/platform/wtf/shared_buffer.h"
 #include "third_party/blink/renderer/platform/wtf/text/text_encoding.h"
 
 namespace blink {
@@ -35,11 +36,14 @@ FormDataElement::FormDataElement() : type_(kData) {}
 FormDataElement::FormDataElement(const Vector<char>& array)
     : type_(kData), data_(array) {}
 
+FormDataElement::FormDataElement(Vector<char>&& array)
+    : type_(kData), data_(std::move(array)) {}
+
 FormDataElement::FormDataElement(
     const String& filename,
     int64_t file_start,
     int64_t file_length,
-    const absl::optional<base::Time>& expected_file_modification_time)
+    const std::optional<base::Time>& expected_file_modification_time)
     : type_(kEncodedFile),
       filename_(filename),
       file_start_(file_start),
@@ -116,6 +120,12 @@ scoped_refptr<EncodedFormData> EncodedFormData::Create(
   return result;
 }
 
+scoped_refptr<EncodedFormData> EncodedFormData::Create(SegmentedBuffer&& data) {
+  scoped_refptr<EncodedFormData> result = Create();
+  result->AppendData(std::move(data));
+  return result;
+}
+
 scoped_refptr<EncodedFormData> EncodedFormData::Copy() const {
   return base::AdoptRef(new EncodedFormData(*this));
 }
@@ -157,6 +167,30 @@ scoped_refptr<EncodedFormData> EncodedFormData::DeepCopy() const {
   return form_data;
 }
 
+EncodedFormData::FormDataType EncodedFormData::GetType() const {
+  FormDataType type = FormDataType::kDataOnly;
+  for (const auto& element : Elements()) {
+    switch (element.type_) {
+      case FormDataElement::kData:
+        break;
+      case FormDataElement::kEncodedFile:
+      case FormDataElement::kEncodedBlob:
+        if (type == FormDataType::kDataAndDataPipe) {
+          return FormDataType::kInvalid;
+        }
+        type = FormDataType::kDataAndEncodedFileOrBlob;
+        break;
+      case FormDataElement::kDataPipe:
+        if (type == FormDataType::kDataAndEncodedFileOrBlob) {
+          return FormDataType::kInvalid;
+        }
+        type = FormDataType::kDataAndDataPipe;
+        break;
+    }
+  }
+  return type;
+}
+
 void EncodedFormData::AppendData(const void* data, wtf_size_t size) {
   if (elements_.empty() || elements_.back().type_ != FormDataElement::kData)
     elements_.push_back(FormDataElement());
@@ -164,9 +198,16 @@ void EncodedFormData::AppendData(const void* data, wtf_size_t size) {
   e.data_.Append(static_cast<const char*>(data), size);
 }
 
+void EncodedFormData::AppendData(SegmentedBuffer&& buffer) {
+  Vector<Vector<char>> data_list = std::move(buffer).TakeData();
+  for (auto& data : data_list) {
+    elements_.push_back(FormDataElement(std::move(data)));
+  }
+}
+
 void EncodedFormData::AppendFile(
     const String& filename,
-    const absl::optional<base::Time>& expected_modification_time) {
+    const std::optional<base::Time>& expected_modification_time) {
   elements_.push_back(FormDataElement(filename, 0, BlobData::kToEndOfFile,
                                       expected_modification_time));
 }
@@ -175,7 +216,7 @@ void EncodedFormData::AppendFileRange(
     const String& filename,
     int64_t start,
     int64_t length,
-    const absl::optional<base::Time>& expected_modification_time) {
+    const std::optional<base::Time>& expected_modification_time) {
   elements_.push_back(
       FormDataElement(filename, start, length, expected_modification_time));
 }
@@ -196,7 +237,7 @@ void EncodedFormData::Flatten(Vector<char>& data) const {
   data.clear();
   for (const FormDataElement& e : elements_) {
     if (e.type_ == FormDataElement::kData)
-      data.Append(e.data_.data(), e.data_.size());
+      data.AppendVector(e.data_);
   }
 }
 

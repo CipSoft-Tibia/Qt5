@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016, Alliance for Open Media. All rights reserved
+ * Copyright (c) 2016, Alliance for Open Media. All rights reserved.
  *
  * This source code is subject to the terms of the BSD 2 Clause License and
  * the Alliance for Open Media Patent License 1.0. If the BSD 2 Clause License
@@ -63,7 +63,7 @@ static double flow_upscale_filter[2][FLOW_UPSCALE_TAPS] = {
   { -9 / 128., 111 / 128., 29 / 128., -3 / 128. }
 };
 
-static INLINE void get_cubic_kernel_dbl(double x, double kernel[4]) {
+static inline void get_cubic_kernel_dbl(double x, double kernel[4]) {
   // Check that the fractional position is in range.
   //
   // Note: x is calculated from, e.g., `u_frac = u - floor(u)`.
@@ -80,7 +80,7 @@ static INLINE void get_cubic_kernel_dbl(double x, double kernel[4]) {
   kernel[3] = -0.5 * x2 + 0.5 * x3;
 }
 
-static INLINE void get_cubic_kernel_int(double x, int kernel[4]) {
+static inline void get_cubic_kernel_int(double x, int kernel[4]) {
   double kernel_dbl[4];
   get_cubic_kernel_dbl(x, kernel_dbl);
 
@@ -90,18 +90,18 @@ static INLINE void get_cubic_kernel_int(double x, int kernel[4]) {
   kernel[3] = (int)rint(kernel_dbl[3] * (1 << DISFLOW_INTERP_BITS));
 }
 
-static INLINE double get_cubic_value_dbl(const double *p,
+static inline double get_cubic_value_dbl(const double *p,
                                          const double kernel[4]) {
   return kernel[0] * p[0] + kernel[1] * p[1] + kernel[2] * p[2] +
          kernel[3] * p[3];
 }
 
-static INLINE int get_cubic_value_int(const int *p, const int kernel[4]) {
+static inline int get_cubic_value_int(const int *p, const int kernel[4]) {
   return kernel[0] * p[0] + kernel[1] * p[1] + kernel[2] * p[2] +
          kernel[3] * p[3];
 }
 
-static INLINE double bicubic_interp_one(const double *arr, int stride,
+static inline double bicubic_interp_one(const double *arr, int stride,
                                         const double h_kernel[4],
                                         const double v_kernel[4]) {
   double tmp[1 * 4];
@@ -191,7 +191,7 @@ static int determine_disflow_correspondence(const ImagePyramid *src_pyr,
 // (x, y) in src and the other at (x + u, y + v) in ref.
 // This function returns the sum of squared pixel differences between
 // the two regions.
-static INLINE void compute_flow_vector(const uint8_t *src, const uint8_t *ref,
+static inline void compute_flow_vector(const uint8_t *src, const uint8_t *ref,
                                        int width, int height, int stride, int x,
                                        int y, double u, double v,
                                        const int16_t *dx, const int16_t *dy,
@@ -278,7 +278,7 @@ static INLINE void compute_flow_vector(const uint8_t *src, const uint8_t *ref,
   }
 }
 
-static INLINE void sobel_filter(const uint8_t *src, int src_stride,
+static inline void sobel_filter(const uint8_t *src, int src_stride,
                                 int16_t *dst, int dst_stride, int dir) {
   int16_t tmp_[DISFLOW_PATCH_SIZE * (DISFLOW_PATCH_SIZE + 2)];
   int16_t *tmp = tmp_ + DISFLOW_PATCH_SIZE;
@@ -359,7 +359,7 @@ static INLINE void sobel_filter(const uint8_t *src, int src_stride,
 //
 //   b = |sum(dx * dt)|
 //       |sum(dy * dt)|
-static INLINE void compute_flow_matrix(const int16_t *dx, int dx_stride,
+static inline void compute_flow_matrix(const int16_t *dx, int dx_stride,
                                        const int16_t *dy, int dy_stride,
                                        double *M) {
   int tmp[4] = { 0 };
@@ -399,7 +399,7 @@ static INLINE void compute_flow_matrix(const int16_t *dx, int dx_stride,
 // The regularization term `+ k * I` further ensures that det M >= k^2.
 // As mentioned in compute_flow_matrix(), here we use k = 1, so det M >= 1.
 // So we don't have to worry about non-invertible matrices here.
-static INLINE void invert_2x2(const double *M, double *M_inv) {
+static inline void invert_2x2(const double *M, double *M_inv) {
   double det = (M[0] * M[3]) - (M[1] * M[2]);
   assert(det >= 1);
   const double det_inv = 1 / det;
@@ -603,9 +603,9 @@ static void upscale_flow_component(double *flow, int cur_width, int cur_height,
 
 // make sure flow_u and flow_v start at 0
 static bool compute_flow_field(const ImagePyramid *src_pyr,
-                               const ImagePyramid *ref_pyr, FlowField *flow) {
+                               const ImagePyramid *ref_pyr, int n_levels,
+                               FlowField *flow) {
   bool mem_status = true;
-  assert(src_pyr->n_levels == ref_pyr->n_levels);
 
   double *flow_u = flow->u;
   double *flow_v = flow->v;
@@ -613,7 +613,7 @@ static bool compute_flow_field(const ImagePyramid *src_pyr,
   double *tmpbuf0;
   double *tmpbuf;
 
-  if (src_pyr->n_levels < 2) {
+  if (n_levels < 2) {
     // tmpbuf not needed
     tmpbuf0 = NULL;
     tmpbuf = NULL;
@@ -639,7 +639,7 @@ static bool compute_flow_field(const ImagePyramid *src_pyr,
   // correspondences by interpolating this flow field, and then refine the
   // correspondences themselves. This is both faster and gives better output
   // compared to refining the flow field at level 0 and then interpolating.
-  for (int level = src_pyr->n_levels - 1; level >= 1; --level) {
+  for (int level = n_levels - 1; level >= 1; --level) {
     const PyramidLayer *cur_layer = &src_pyr->layers[level];
     const int cur_width = cur_layer->width;
     const int cur_height = cur_layer->height;
@@ -762,28 +762,30 @@ static void free_flow_field(FlowField *flow) {
 // Following the convention in flow_estimation.h, the flow vectors are computed
 // at fixed points in `src` and point to the corresponding locations in `ref`,
 // regardless of the temporal ordering of the frames.
-bool av1_compute_global_motion_disflow(TransformationType type,
-                                       YV12_BUFFER_CONFIG *src,
-                                       YV12_BUFFER_CONFIG *ref, int bit_depth,
-                                       MotionModel *motion_models,
-                                       int num_motion_models,
-                                       bool *mem_alloc_failed) {
+bool av1_compute_global_motion_disflow(
+    TransformationType type, YV12_BUFFER_CONFIG *src, YV12_BUFFER_CONFIG *ref,
+    int bit_depth, int downsample_level, MotionModel *motion_models,
+    int num_motion_models, bool *mem_alloc_failed) {
   // Precompute information we will need about each frame
   ImagePyramid *src_pyramid = src->y_pyramid;
   CornerList *src_corners = src->corners;
   ImagePyramid *ref_pyramid = ref->y_pyramid;
-  if (!aom_compute_pyramid(src, bit_depth, src_pyramid)) {
+
+  const int src_layers =
+      aom_compute_pyramid(src, bit_depth, DISFLOW_PYRAMID_LEVELS, src_pyramid);
+  const int ref_layers =
+      aom_compute_pyramid(ref, bit_depth, DISFLOW_PYRAMID_LEVELS, ref_pyramid);
+
+  if (src_layers < 0 || ref_layers < 0) {
     *mem_alloc_failed = true;
     return false;
   }
-  if (!av1_compute_corner_list(src_pyramid, src_corners)) {
+  if (!av1_compute_corner_list(src, bit_depth, downsample_level, src_corners)) {
     *mem_alloc_failed = true;
     return false;
   }
-  if (!aom_compute_pyramid(ref, bit_depth, ref_pyramid)) {
-    *mem_alloc_failed = true;
-    return false;
-  }
+
+  assert(src_layers == ref_layers);
 
   const int src_width = src_pyramid->layers[0].width;
   const int src_height = src_pyramid->layers[0].height;
@@ -796,7 +798,7 @@ bool av1_compute_global_motion_disflow(TransformationType type,
     return false;
   }
 
-  if (!compute_flow_field(src_pyramid, ref_pyramid, flow)) {
+  if (!compute_flow_field(src_pyramid, ref_pyramid, src_layers, flow)) {
     *mem_alloc_failed = true;
     free_flow_field(flow);
     return false;

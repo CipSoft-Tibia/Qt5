@@ -2,6 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#ifdef UNSAFE_BUFFERS_BUILD
+// TODO(crbug.com/351564777): Remove this and convert code to safer constructs.
+#pragma allow_unsafe_buffers
+#endif
+
 #include "device/bluetooth/bluetooth_device.h"
 
 #include <stddef.h>
@@ -154,12 +159,12 @@ TEST(BluetoothDeviceTest, GattConnectionErrorReentrancy) {
   EXPECT_CALL(device, CreateGattConnection(_, _))
       .Times(2)
       .WillRepeatedly([&](BluetoothDevice::GattConnectionCallback callback,
-                          absl::optional<BluetoothUUID> service_uuid) {
+                          std::optional<BluetoothUUID> service_uuid) {
         device.BluetoothDevice::CreateGattConnection(std::move(callback),
                                                      service_uuid);
       });
   EXPECT_CALL(device, CreateGattConnectionImpl(_))
-      .WillOnce([&](absl::optional<BluetoothUUID> service_uuid) {
+      .WillOnce([&](std::optional<BluetoothUUID> service_uuid) {
         device.DidConnectGatt(BluetoothDevice::ConnectErrorCode::ERROR_FAILED);
       });
   EXPECT_CALL(device, IsGattConnected())
@@ -171,21 +176,21 @@ TEST(BluetoothDeviceTest, GattConnectionErrorReentrancy) {
   device.CreateGattConnection(
       base::BindLambdaForTesting(
           [&](std::unique_ptr<BluetoothGattConnection> connection,
-              absl::optional<BluetoothDevice::ConnectErrorCode> error_code) {
+              std::optional<BluetoothDevice::ConnectErrorCode> error_code) {
             EXPECT_FALSE(connection);
             EXPECT_EQ(error_code,
                       BluetoothDevice::ConnectErrorCode::ERROR_FAILED);
             device.CreateGattConnection(
                 base::BindLambdaForTesting(
                     [&](std::unique_ptr<BluetoothGattConnection> connection,
-                        absl::optional<BluetoothDevice::ConnectErrorCode>
+                        std::optional<BluetoothDevice::ConnectErrorCode>
                             error_code) {
                       EXPECT_TRUE(connection);
                       EXPECT_FALSE(error_code);
                     }),
-                /*service_uuid=*/absl::nullopt);
+                /*service_uuid=*/std::nullopt);
           }),
-      /*service_uuid=*/absl::nullopt);
+      /*service_uuid=*/std::nullopt);
 }
 
 #if BUILDFLAG(IS_WIN)
@@ -234,7 +239,7 @@ TEST_P(BluetoothTestWinrt, DevicePairRequestPinCodeCorrect) {
   device->Pair(
       &pairing_delegate,
       base::BindLambdaForTesting(
-          [&](absl::optional<BluetoothDevice::ConnectErrorCode> error_code) {
+          [&](std::optional<BluetoothDevice::ConnectErrorCode> error_code) {
             EXPECT_FALSE(error_code.has_value());
             run_loop.Quit();
           }));
@@ -268,7 +273,7 @@ TEST_P(BluetoothTestWinrt, DevicePairRequestPinCodeWrong) {
   device->Pair(
       &pairing_delegate,
       base::BindLambdaForTesting(
-          [&](absl::optional<BluetoothDevice::ConnectErrorCode> error_code) {
+          [&](std::optional<BluetoothDevice::ConnectErrorCode> error_code) {
             EXPECT_EQ(BluetoothDevice::ERROR_FAILED, error_code);
             run_loop.Quit();
           }));
@@ -303,7 +308,7 @@ TEST_P(BluetoothTestWinrt, DevicePairRequestPinCodeRejectPairing) {
   device->Pair(
       &pairing_delegate,
       base::BindLambdaForTesting(
-          [&](absl::optional<BluetoothDevice::ConnectErrorCode> error_code) {
+          [&](std::optional<BluetoothDevice::ConnectErrorCode> error_code) {
             EXPECT_EQ(BluetoothDevice::ERROR_AUTH_REJECTED, error_code);
             run_loop.Quit();
           }));
@@ -339,7 +344,7 @@ TEST_P(BluetoothTestWinrt, DevicePairRequestPinCodeCancelPairing) {
   device->Pair(
       &pairing_delegate,
       base::BindLambdaForTesting(
-          [&](absl::optional<BluetoothDevice::ConnectErrorCode> error_code) {
+          [&](std::optional<BluetoothDevice::ConnectErrorCode> error_code) {
             EXPECT_EQ(BluetoothDevice::ERROR_AUTH_CANCELED, error_code);
             run_loop.Quit();
           }));
@@ -369,7 +374,7 @@ TEST_P(BluetoothTestWinrt, DevicePairRequestConfirmOnlyAccept) {
         device->ConfirmPairing();
       });
 
-  base::test::TestFuture<absl::optional<BluetoothDevice::ConnectErrorCode>>
+  base::test::TestFuture<std::optional<BluetoothDevice::ConnectErrorCode>>
       error_code_future;
   device->Pair(&pairing_delegate, error_code_future.GetCallback());
 
@@ -397,7 +402,7 @@ TEST_P(BluetoothTestWinrt, DevicePairRequestConfirmOnlyCancel) {
         ScheduleAsynchronousCancelPairing(device);
       });
 
-  base::test::TestFuture<absl::optional<BluetoothDevice::ConnectErrorCode>>
+  base::test::TestFuture<std::optional<BluetoothDevice::ConnectErrorCode>>
       error_code_future;
   device->Pair(&pairing_delegate, error_code_future.GetCallback());
 
@@ -426,7 +431,7 @@ TEST_P(BluetoothTestWinrt, DevicePairRequestConfirmPinAccept) {
         device->ConfirmPairing();
       });
 
-  base::test::TestFuture<absl::optional<BluetoothDevice::ConnectErrorCode>>
+  base::test::TestFuture<std::optional<BluetoothDevice::ConnectErrorCode>>
       error_code_future;
   device->Pair(&pairing_delegate, error_code_future.GetCallback());
 
@@ -455,7 +460,7 @@ TEST_P(BluetoothTestWinrt, DevicePairRequestConfirmPinCancel) {
         ScheduleAsynchronousCancelPairing(device);
       });
 
-  base::test::TestFuture<absl::optional<BluetoothDevice::ConnectErrorCode>>
+  base::test::TestFuture<std::optional<BluetoothDevice::ConnectErrorCode>>
       error_code_future;
   device->Pair(&pairing_delegate, error_code_future.GetCallback());
 
@@ -484,7 +489,7 @@ TEST_P(BluetoothTestWinrt, DevicePairRequestConfirmPinLeadingZeroAccept) {
         device->ConfirmPairing();
       });
 
-  base::test::TestFuture<absl::optional<BluetoothDevice::ConnectErrorCode>>
+  base::test::TestFuture<std::optional<BluetoothDevice::ConnectErrorCode>>
       error_code_future;
   device->Pair(&pairing_delegate, error_code_future.GetCallback());
 
@@ -509,7 +514,7 @@ TEST_P(BluetoothTestWinrt, DevicePairRequestConfirmPinInvalid) {
 
   EXPECT_CALL(pairing_delegate, ConfirmPasskey).Times(0);
 
-  base::test::TestFuture<absl::optional<BluetoothDevice::ConnectErrorCode>>
+  base::test::TestFuture<std::optional<BluetoothDevice::ConnectErrorCode>>
       error_code_future;
   device->Pair(&pairing_delegate, error_code_future.GetCallback());
 
@@ -562,7 +567,7 @@ TEST_F(BluetoothTest, DISABLED_LowEnergyDeviceNameDelayed) {
   StartLowEnergyDiscoverySession();
   BluetoothDevice* device = SimulateLowEnergyDevice(3);
   ASSERT_TRUE(device);
-  // GetName() returns a absl::optional<std:string> however some backends still
+  // GetName() returns a std::optional<std:string> however some backends still
   // return an empty string rather than nullopt when no name is available.
   EXPECT_TRUE(!device->GetName().has_value() || device->GetName()->empty());
 
@@ -606,7 +611,7 @@ TEST_F(BluetoothTest, MAYBE_GetServiceDataUUIDs_GetServiceDataForUUID) {
   InitWithFakeAdapter();
 
 #if !BUILDFLAG(IS_LINUX) && !BUILDFLAG(IS_CHROMEOS)
-  // TODO(crbug.com/706043): Remove #if once StartLowEnergyDiscoverySession is
+  // TODO(crbug.com/41309944): Remove #if once StartLowEnergyDiscoverySession is
   // implemented for bluez.
   StartLowEnergyDiscoverySession();
 #endif  // !BUILDFLAG(IS_LINUX) && !BUILDFLAG(IS_CHROMEOS)
@@ -636,7 +641,7 @@ TEST_F(BluetoothTest, MAYBE_GetServiceDataUUIDs_GetServiceDataForUUID) {
   // Receive Advertisement with no flags and no service and manufacturer data.
   SimulateLowEnergyDevice(3);
 
-// TODO(crbug.com/707039): Remove #if once the BlueZ caching behavior is
+// TODO(crbug.com/41310506): Remove #if once the BlueZ caching behavior is
 // changed.
 #if (BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_LINUX)) && \
     !defined(USE_CAST_BLUETOOTH_ADAPTER)
@@ -681,7 +686,7 @@ TEST_F(BluetoothTest, MAYBE_GetServiceDataUUIDs_GetServiceDataForUUID) {
       *device2->GetServiceDataForUUID(BluetoothUUID(kTestUUIDImmediateAlert)));
 
 #if !BUILDFLAG(IS_LINUX) && !BUILDFLAG(IS_CHROMEOS)
-  // TODO(crbug.com/706043): Remove #if once StartLowEnergyDiscoverySession is
+  // TODO(crbug.com/41309944): Remove #if once StartLowEnergyDiscoverySession is
   // implemented for bluez.
   // Stop discovery.
   discovery_sessions_[0]->Stop(GetCallback(Call::EXPECTED),
@@ -872,7 +877,7 @@ TEST_F(BluetoothTest, MAYBE_DeviceAdvertisementReceived) {
             observer.last_tx_power().value_or(-1));
 
   // BluetoothDevice::GetAppearance() is not implemented on all platforms.
-  // TODO(crbug.com/588083): Check this property when it is implemented.
+  // TODO(crbug.com/41240161): Check this property when it is implemented.
 
   const device::BluetoothDevice::UUIDList kTestAdvertisedUUIDs = {
       BluetoothUUID(kTestUUIDGenericAccess),
@@ -1406,7 +1411,7 @@ TEST_F(BluetoothTest, MAYBE_GetName_NullName) {
 
   // The check below is not currently working on Android and Mac because the
   // GetAppearance() method is not implemented on those platforms.
-  // TODO(https://crbug.com/588083): Enable the check below when GetAppearance()
+  // TODO(crbug.com/41240161): Enable the check below when GetAppearance()
   // is implemented for Android and Mac.
 #if !BUILDFLAG(IS_ANDROID) && !BUILDFLAG(IS_APPLE)
   EXPECT_EQ(device->GetNameForDisplay(),
@@ -1557,7 +1562,7 @@ TEST_F(BluetoothTest,
   ResetEventCounts();
 
   ASSERT_TRUE(
-      ConnectGatt(device, /*service_uuid=*/absl::nullopt,
+      ConnectGatt(device, /*service_uuid=*/std::nullopt,
                   base::BindLambdaForTesting([this](BluetoothDevice* device) {
                     SimulateGattConnection(device);
                     SimulateGattConnection(device);
@@ -1669,7 +1674,7 @@ TEST_F(BluetoothTest,
   // Create multiple connections and simulate connection complete:
   ASSERT_TRUE(
       ConnectGatt(device,
-                  /*service_uuid=*/absl::nullopt,
+                  /*service_uuid=*/std::nullopt,
                   base::BindLambdaForTesting([this](BluetoothDevice* device) {
                     ConnectGatt(device);
                   })));
@@ -1704,7 +1709,7 @@ TEST_F(BluetoothTest, MAYBE_BluetoothGattConnection_DisconnectInProgress) {
   // Create multiple connections and simulate connection complete:
   ASSERT_TRUE(
       ConnectGatt(device,
-                  /*service_uuid=*/absl::nullopt,
+                  /*service_uuid=*/std::nullopt,
                   base::BindLambdaForTesting([this](BluetoothDevice* device) {
                     ConnectGatt(device);
                   })));
@@ -1754,7 +1759,7 @@ TEST_F(BluetoothTest, MAYBE_BluetoothGattConnection_SimulateDisconnect) {
   ResetEventCounts();
   EXPECT_FALSE(
       ConnectGatt(device,
-                  /*service_uuid=*/absl::nullopt,
+                  /*service_uuid=*/std::nullopt,
                   base::BindLambdaForTesting([this](BluetoothDevice* device) {
                     SimulateGattDisconnection(device);
                   })));
@@ -1789,7 +1794,7 @@ TEST_F(BluetoothTest,
   ResetEventCounts();
   EXPECT_TRUE(
       ConnectGatt(device,
-                  /*service_uuid=*/absl::nullopt,
+                  /*service_uuid=*/std::nullopt,
                   base::BindLambdaForTesting([this](BluetoothDevice* device) {
 #if !BUILDFLAG(IS_WIN)
                     // On Windows there is currently no way to cancel a
@@ -1835,7 +1840,7 @@ TEST_F(BluetoothTest,
   ResetEventCounts();
   ASSERT_FALSE(
       ConnectGatt(device,
-                  /*service_uuid=*/absl::nullopt,
+                  /*service_uuid=*/std::nullopt,
                   base::BindLambdaForTesting([this](BluetoothDevice* device) {
                     device->DisconnectGatt();
                     SimulateGattDisconnection(device);
@@ -1844,7 +1849,7 @@ TEST_F(BluetoothTest,
   EXPECT_EQ(
 #if BUILDFLAG(IS_ANDROID)
       // Closing a GATT connection also disconnects on Android.
-      // TODO(crbug.com/1045648): this value probably shouldn't be different on
+      // TODO(crbug.com/40670359): this value probably shouldn't be different on
       // Android.
       2,
 #else
@@ -1938,7 +1943,7 @@ TEST_F(BluetoothTest, MAYBE_BluetoothGattConnection_ErrorAfterConnection) {
   ResetEventCounts();
   EXPECT_FALSE(ConnectGatt(
       device,
-      /*service_uuid=*/absl::nullopt,
+      /*service_uuid=*/std::nullopt,
       base::BindLambdaForTesting([this](BluetoothDevice* device) {
         SimulateGattConnectionError(device, BluetoothDevice::ERROR_AUTH_FAILED);
         SimulateGattConnectionError(device, BluetoothDevice::ERROR_FAILED);
@@ -1946,8 +1951,8 @@ TEST_F(BluetoothTest, MAYBE_BluetoothGattConnection_ErrorAfterConnection) {
 
   EXPECT_EQ(1, gatt_connection_attempts_);
 #if BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_WIN)
-  // TODO(crbug.com/578191): Change to ERROR_AUTH_FAILED. We should be getting a
-  // callback only with the first error, but our android framework doesn't yet
+  // TODO(crbug.com/40452547): Change to ERROR_AUTH_FAILED. We should be getting
+  // a callback only with the first error, but our android framework doesn't yet
   // support sending different errors.
   // On Windows, any GattConnectionError will result in ERROR_FAILED.
   EXPECT_EQ(BluetoothDevice::ERROR_FAILED, last_connect_error_code_);
@@ -2394,7 +2399,7 @@ TEST_F(BluetoothTest, DISABLED_GattConnectedNameChange) {
   StartLowEnergyDiscoverySession();
   BluetoothDevice* device = SimulateLowEnergyDevice(3);
   ASSERT_TRUE(ConnectGatt(device));
-  // GetName() returns a absl::optional<std:string> however some backends still
+  // GetName() returns a std::optional<std:string> however some backends still
   // return an empty string rather than nullopt when no name is available.
   EXPECT_TRUE(!device->GetName() || device->GetName()->empty());
 
@@ -2461,7 +2466,7 @@ TEST_P(BluetoothTestWinrt, ServiceSpecificDiscovery) {
 #else
   ASSERT_TRUE(device->supports_service_specific_discovery());
 
-  absl::optional<BluetoothUUID> service_uuid = GetTargetGattService(device);
+  std::optional<BluetoothUUID> service_uuid = GetTargetGattService(device);
   ASSERT_TRUE(service_uuid.has_value());
   EXPECT_EQ(*service_uuid, BluetoothUUID(kTestUUIDGenericAccess));
   EXPECT_FALSE(device->IsGattServicesDiscoveryComplete());

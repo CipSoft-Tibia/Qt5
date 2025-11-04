@@ -11,6 +11,7 @@
 #include "third_party/blink/renderer/core/core_export.h"
 #include "third_party/blink/renderer/core/dom/events/event_dispatcher.h"
 #include "third_party/blink/renderer/core/dom/events/event_target.h"
+#include "third_party/blink/renderer/core/fileapi/blob.h"
 #include "third_party/blink/renderer/core/html/canvas/canvas_image_source.h"
 #include "third_party/blink/renderer/core/html/canvas/ukm_parameters.h"
 #include "third_party/blink/renderer/platform/bindings/exception_state.h"
@@ -27,9 +28,7 @@ class CanvasRenderingContext;
 class CanvasResource;
 class CanvasResourceDispatcher;
 class FontSelector;
-class ImageEncodeOptions;
 class KURL;
-class ScriptState;
 class StaticBitmapImage;
 
 class CORE_EXPORT CanvasRenderingContextHost : public CanvasResourceHost,
@@ -81,13 +80,6 @@ class CORE_EXPORT CanvasRenderingContextHost : public CanvasResourceHost,
 
   virtual UkmParameters GetUkmParameters() = 0;
 
-  // For deferred canvases this will have the side effect of drawing recorded
-  // commands in order to finalize the frame.
-  ScriptPromise convertToBlob(ScriptState*,
-                              const ImageEncodeOptions*,
-                              ExceptionState&,
-                              const CanvasRenderingContext* const context);
-
   bool IsPaintable() const;
 
   bool PrintedInCurrentTask() const final;
@@ -116,6 +108,17 @@ class CORE_EXPORT CanvasRenderingContextHost : public CanvasResourceHost,
   // blink::CanvasImageSource
   bool IsOffscreenCanvas() const override;
 
+  // This method attempts to ensure that the canvas' resource exists on the GPU.
+  // A HTMLCanvasElement can downgrade itself from GPU to CPU when readback
+  // occurs too frequently, so a canvas may exist on the CPU even if the browser
+  // is normally GPU-capable.
+  // Returns true if the canvas resources live on the GPU. If the canvas needed
+  // to be migrated off of the CPU, the canvas resource provider and canvas 2D
+  // layer bridge will be destroyed and recreated; when this occurs, any
+  // existing pointers to these objects will be invalidated. If the canvas
+  // resource provider did not exist at all, it may be created.
+  virtual bool EnableAcceleration() = 0;
+
  protected:
   ~CanvasRenderingContextHost() override = default;
 
@@ -126,12 +129,16 @@ class CORE_EXPORT CanvasRenderingContextHost : public CanvasResourceHost,
   void CreateCanvasResourceProviderWebGL();
   void CreateCanvasResourceProviderWebGPU();
 
+  bool ContextHasOpenLayers(const CanvasRenderingContext*) const;
+
   // Computes the digest that corresponds to the "input" of this canvas,
   // including the context type, and if applicable, canvas digest, and taint
   // bits.
   IdentifiableToken IdentifiabilityInputDigest(
       const CanvasRenderingContext* const context) const;
 
+  // `did_fail_to_create_resource_provider_` prevents repeated attempts in
+  // allocating resources after the first attempt failed.
   bool did_fail_to_create_resource_provider_ = false;
   bool did_record_canvas_size_to_uma_ = false;
   HostType host_type_ = HostType::kNone;

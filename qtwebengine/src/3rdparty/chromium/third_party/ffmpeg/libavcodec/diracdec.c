@@ -26,6 +26,7 @@
  * @author Marco Gerards <marco@gnu.org>, David Conrad, Jordi Ortiz <nenjordi@gmail.com>
  */
 
+#include "libavutil/mem.h"
 #include "libavutil/mem_internal.h"
 #include "libavutil/pixdesc.h"
 #include "libavutil/thread.h"
@@ -36,13 +37,14 @@
 #include "golomb.h"
 #include "dirac_arith.h"
 #include "dirac_vlc.h"
-#include "mpegpicture.h"
 #include "mpegvideoencdsp.h"
 #include "dirac_dwt.h"
 #include "dirac.h"
 #include "diractab.h"
 #include "diracdsp.h"
 #include "videodsp.h"
+
+#define EDGE_WIDTH 16
 
 /**
  * The spec limits this to 3 for frame coding, but in practice can be as high as 6
@@ -2103,11 +2105,6 @@ static int get_delayed_pic(DiracContext *s, AVFrame *picture, int *got_frame)
         out->reference ^= DELAYED_PIC_REF;
         if((ret = av_frame_ref(picture, out->avframe)) < 0)
             return ret;
-#if FF_API_FRAME_PICTURE_NUMBER
-FF_DISABLE_DEPRECATION_WARNINGS
-        picture->display_picture_number = out->picture_number;
-FF_ENABLE_DEPRECATION_WARNINGS
-#endif
         *got_frame = 1;
     }
 
@@ -2350,11 +2347,6 @@ static int dirac_decode_frame(AVCodecContext *avctx, AVFrame *picture,
             if((ret = av_frame_ref(picture, delayed_frame->avframe)) < 0)
                 return ret;
             s->frame_number = delayed_frame->picture_number + 1LL;
-#if FF_API_FRAME_PICTURE_NUMBER
-FF_DISABLE_DEPRECATION_WARNINGS
-            picture->display_picture_number = delayed_frame->picture_number;
-FF_ENABLE_DEPRECATION_WARNINGS
-#endif
             *got_frame = 1;
         }
     } else if (s->current_picture->picture_number == s->frame_number) {
@@ -2362,11 +2354,6 @@ FF_ENABLE_DEPRECATION_WARNINGS
         if((ret = av_frame_ref(picture, s->current_picture->avframe)) < 0)
             return ret;
         s->frame_number = s->current_picture->picture_number + 1LL;
-#if FF_API_FRAME_PICTURE_NUMBER
-FF_DISABLE_DEPRECATION_WARNINGS
-        picture->display_picture_number = s->current_picture->picture_number;
-FF_ENABLE_DEPRECATION_WARNINGS
-#endif
         *got_frame = 1;
     }
 

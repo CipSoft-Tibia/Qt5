@@ -42,7 +42,7 @@ void tst_QAxObject::multiplePropertiesDuplicateName()
     // one for the setter and one for the getter
     QAxObject ax("MsTscAx.MsTscAx.4");
     if (ax.isNull())
-        QSKIP("MsTscAx control was not found so test cannot be run", SkipAll);
+        QSKIP("MsTscAx control was not found so test cannot be run");
     int newDesktopHeight = 768;
     QVERIFY(ax.setProperty("DesktopHeight", newDesktopHeight));
     QCOMPARE(ax.property("DesktopHeight").toInt(), newDesktopHeight);

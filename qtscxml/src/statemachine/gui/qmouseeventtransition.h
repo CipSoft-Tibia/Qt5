@@ -6,8 +6,6 @@
 
 #include <QtStateMachine/qeventtransition.h>
 
-QT_REQUIRE_CONFIG(qeventtransition);
-
 QT_BEGIN_NAMESPACE
 
 class QMouseEventTransitionPrivate;

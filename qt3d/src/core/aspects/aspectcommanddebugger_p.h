@@ -19,6 +19,7 @@
 
 #include <QTcpServer>
 #include <Qt3DCore/private/qt3dcore_global_p.h>
+#include <QtCore/QHash>
 
 QT_BEGIN_NAMESPACE
 

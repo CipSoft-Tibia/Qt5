@@ -932,7 +932,7 @@ private slots:
     void superAndForeignTypes();
     void accessSemantics();
     void isBindable();
-    void restrictToImportVersion();
+    void doNotRestrictToImportVersion();
     void pastMajorVersions();
     void implementsInterfaces();
     void namespacedElement();
@@ -984,6 +984,7 @@ private slots:
     void javaScriptExtension();
 
     void consistencyWarnings();
+    void deduplicateCleanPaths();
     void enumWarnings();
 
     void relatedAddedInVersion();

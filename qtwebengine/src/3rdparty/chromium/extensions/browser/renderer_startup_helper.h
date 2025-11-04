@@ -78,9 +78,7 @@ class RendererStartupHelper : public KeyedService,
                                  const GURL& url,
                                  const std::u16string& url_title,
                                  int32_t call_type) override;
-  void WakeEventPage(const std::string& extension_id,
-                     WakeEventPageCallback callback) override;
-  void GetMessageBundle(const std::string& extension_id,
+  void GetMessageBundle(const ExtensionId& extension_id,
                         GetMessageBundleCallback callback) override;
 
   // Sends a message to the specified |process| activating the given extension
@@ -99,11 +97,18 @@ class RendererStartupHelper : public KeyedService,
   // Sends a message to all renderers to update the developer mode.
   void OnDeveloperModeChanged(bool in_developer_mode);
 
-  // Sets properties for the user script world CSP for the given `extension`
-  // in all applicable renderers.
+  // Sets properties for the user script world of the given `world_id` for
+  // the given `extension` in all applicable renderers.
   void SetUserScriptWorldProperties(const Extension& extension,
+                                    std::optional<std::string> world_id,
                                     std::optional<std::string> csp,
                                     bool enable_messaging);
+
+  // Notifies renderers to clear any properties for the user script world
+  // associated with the given `extension` and `world_id`.
+  void ClearUserScriptWorldProperties(
+      const Extension& extension,
+      const std::optional<std::string>& world_id);
 
   // Returns mojom::Renderer* corresponding to |process|. This would return
   // nullptr when it's called before |process| is inserted to
@@ -138,7 +143,8 @@ class RendererStartupHelper : public KeyedService,
   raw_ptr<content::BrowserContext> browser_context_;  // Not owned.
 
   // Tracks the set of loaded extensions and the processes they are loaded in.
-  std::map<ExtensionId, std::set<content::RenderProcessHost*>>
+  std::map<ExtensionId,
+           std::set<raw_ptr<content::RenderProcessHost, SetExperimental>>>
       extension_process_map_;
 
   // The set of ids for extensions that are active in a process that has not

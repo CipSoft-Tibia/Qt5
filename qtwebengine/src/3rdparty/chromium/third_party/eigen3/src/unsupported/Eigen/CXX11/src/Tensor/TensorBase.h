@@ -618,16 +618,15 @@ class TensorBase<Derived, ReadOnlyAccessors>
     (isnan)() const {
       return unaryExpr(internal::scalar_isnan_op<Scalar, true>()).template cast<bool>();
     }
-
     EIGEN_DEVICE_FUNC
-    EIGEN_STRONG_INLINE const TensorCwiseUnaryOp<internal::scalar_isinf_op<Scalar>, const Derived>
+    EIGEN_STRONG_INLINE const TensorConversionOp<bool, const TensorCwiseUnaryOp<internal::scalar_isinf_op<Scalar, true>, const Derived>>
     (isinf)() const {
-      return unaryExpr(internal::scalar_isinf_op<Scalar>());
+      return unaryExpr(internal::scalar_isinf_op<Scalar, true>()).template cast<bool>();
     }
     EIGEN_DEVICE_FUNC
-    EIGEN_STRONG_INLINE const TensorCwiseUnaryOp<internal::scalar_isfinite_op<Scalar>, const Derived>
+    EIGEN_STRONG_INLINE const TensorConversionOp<bool, const TensorCwiseUnaryOp<internal::scalar_isfinite_op<Scalar, true>, const Derived>>
     (isfinite)() const {
-      return unaryExpr(internal::scalar_isfinite_op<Scalar>());
+      return unaryExpr(internal::scalar_isfinite_op<Scalar, true>()).template cast<bool>();
     }
 
     // Coefficient-wise ternary operators.
@@ -934,6 +933,7 @@ class TensorBase<Derived, ReadOnlyAccessors>
     template <Index DimId> EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE
     const TensorChippingOp<DimId, const Derived>
     chip(const Index offset) const {
+      EIGEN_STATIC_ASSERT(DimId < Derived::NumDimensions && DimId >= 0, Chip_Dim_out_of_range)
       return TensorChippingOp<DimId, const Derived>(derived(), offset, DimId);
     }
     EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE
@@ -998,21 +998,23 @@ class TensorBase<Derived, ReadOnlyAccessors>
     }
 
     // Returns a formatted tensor ready for printing to a stream
-    inline const TensorWithFormat<Derived,DerivedTraits::Layout,DerivedTraits::NumDimensions> format(const TensorIOFormat& fmt) const {
-      return TensorWithFormat<Derived,DerivedTraits::Layout,DerivedTraits::NumDimensions>(derived(), fmt);
+    template<typename Format>
+    inline const TensorWithFormat<Derived,DerivedTraits::Layout,DerivedTraits::NumDimensions, Format> format(const Format& fmt) const {
+      return TensorWithFormat<Derived,DerivedTraits::Layout,DerivedTraits::NumDimensions, Format>(derived(), fmt);
     }
 
     #ifdef EIGEN_READONLY_TENSORBASE_PLUGIN
     #include EIGEN_READONLY_TENSORBASE_PLUGIN
     #endif
 
+    EIGEN_DEVICE_FUNC
+    EIGEN_STRONG_INLINE const Derived& derived() const { return *static_cast<const Derived*>(this); }
+
   protected:
     template <typename Scalar, int NumIndices, int Options, typename IndexType> friend class Tensor;
     template <typename Scalar, typename Dimensions, int Option, typename IndexTypes> friend class TensorFixedSize;
     // the Eigen:: prefix is required to workaround a compilation issue with nvcc 9.0
     template <typename OtherDerived, int AccessLevel> friend class Eigen::TensorBase;
-    EIGEN_DEVICE_FUNC
-    EIGEN_STRONG_INLINE const Derived& derived() const { return *static_cast<const Derived*>(this); }
 };
 
 template<typename Derived, int AccessLevel = internal::accessors_level<Derived>::value>
@@ -1132,11 +1134,13 @@ class TensorBase : public TensorBase<Derived, ReadOnlyAccessors> {
     template <DenseIndex DimId> EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE
     const TensorChippingOp<DimId, const Derived>
     chip(const Index offset) const {
+      EIGEN_STATIC_ASSERT(DimId < Derived::NumDimensions && DimId >= 0, Chip_Dim_out_of_range)
       return TensorChippingOp<DimId, const Derived>(derived(), offset, DimId);
     }
     template <Index DimId> EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE
     TensorChippingOp<DimId, Derived>
     chip(const Index offset) {
+      EIGEN_STATIC_ASSERT(DimId < Derived::NumDimensions && DimId >= 0, Chip_Dim_out_of_range)
       return TensorChippingOp<DimId, Derived>(derived(), offset, DimId);
     }
 
@@ -1196,6 +1200,11 @@ class TensorBase : public TensorBase<Derived, ReadOnlyAccessors> {
       return TensorAsyncDevice<Derived, DeviceType, DoneCallback>(dev, derived(), std::move(done));
     }
 
+    EIGEN_DEVICE_FUNC
+    EIGEN_STRONG_INLINE Derived& derived() { return *static_cast<Derived*>(this); }
+    EIGEN_DEVICE_FUNC
+    EIGEN_STRONG_INLINE const Derived& derived() const { return *static_cast<const Derived*>(this); }
+
     #ifdef EIGEN_TENSORBASE_PLUGIN
     #include EIGEN_TENSORBASE_PLUGIN
     #endif
@@ -1212,10 +1221,6 @@ class TensorBase : public TensorBase<Derived, ReadOnlyAccessors> {
       internal::TensorExecutor<const Assign, DefaultDevice>::run(assign, DefaultDevice());
       return derived();
     }
-    EIGEN_DEVICE_FUNC
-    EIGEN_STRONG_INLINE Derived& derived() { return *static_cast<Derived*>(this); }
-    EIGEN_DEVICE_FUNC
-    EIGEN_STRONG_INLINE const Derived& derived() const { return *static_cast<const Derived*>(this); }
 };
 #endif // EIGEN_PARSED_BY_DOXYGEN
 } // end namespace Eigen

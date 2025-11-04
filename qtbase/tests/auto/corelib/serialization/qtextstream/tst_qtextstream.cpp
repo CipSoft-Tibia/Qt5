@@ -23,6 +23,8 @@
 #include "../../../network-settings.h"
 #include <QtTest/private/qemulationdetector_p.h>
 
+using namespace Qt::StringLiterals;
+
 QT_BEGIN_NAMESPACE
 template<> struct QMetaTypeId<QIODevice::OpenModeFlag>
 { enum { Defined = 1 }; static inline int qt_metatype_id() { return QMetaType::Int; } };
@@ -985,7 +987,7 @@ void tst_QTextStream::performance()
     };
     int elapsed[N] = {0, 0, 0};
 
-        stopWatch.restart();
+        stopWatch.start();
         int nlines1 = 0;
         QFile file(m_rfc3261FilePath);
         QVERIFY(file.open(QFile::ReadOnly));
@@ -995,8 +997,7 @@ void tst_QTextStream::performance()
             file.readLine();
         }
 
-        elapsed[0] = stopWatch.elapsed();
-        stopWatch.restart();
+        elapsed[0] = stopWatch.restart();
 
         int nlines2 = 0;
         QFile file2(m_rfc3261FilePath);
@@ -1008,8 +1009,7 @@ void tst_QTextStream::performance()
             stream.readLine();
         }
 
-        elapsed[1] = stopWatch.elapsed();
-        stopWatch.restart();
+        elapsed[1] = stopWatch.restart();
 
         int nlines3 = 0;
         QFile file3(m_rfc3261FilePath);
@@ -1020,7 +1020,7 @@ void tst_QTextStream::performance()
         while (stream2.readLineInto(&line))
             ++nlines3;
 
-        elapsed[2] = stopWatch.elapsed();
+        elapsed[2] = stopWatch.restart();
 
         QCOMPARE(nlines1, nlines2);
         QCOMPARE(nlines2, nlines3);
@@ -1123,6 +1123,7 @@ void tst_QTextStream::octTest_data()
     QTest::addColumn<QByteArray>("data");
 
     QTest::newRow("0") << 0 << QByteArray("00");
+    QTest::newRow("40") << 40 << QByteArray("050");
 }
 
 // ------------------------------------------------------------------------------
@@ -1404,17 +1405,14 @@ void tst_QTextStream::pos2()
 // ------------------------------------------------------------------------------
 void tst_QTextStream::pos3LargeFile()
 {
-    if (QTestPrivate::isRunningArmOnX86())
-        QSKIP("Running QTextStream::pos() in tight loop is too slow on emulator");
-
+    // NOTE: The unusual spacing is to ensure non-1-character whitespace.
+    constexpr auto lineString = " 0  1  2\t3  4\t \t5  6  7  8   9 \n"_L1;
     {
         QFile file(testFileName);
         QVERIFY(file.open(QIODevice::WriteOnly | QIODevice::Text));
         QTextStream out( &file );
-        // NOTE: The unusual spacing is to ensure non-1-character whitespace.
-        QString lineString = " 0  1  2\t3  4\t \t5  6  7  8   9 \n";
-        // Approximate 50kb text file
-        const int NbLines = (50*1024) / lineString.size() + 1;
+        // Approximately 5kb text file (more is too slow (QTBUG-138435))
+        const int NbLines = (5 * 1024) / lineString.size() + 1;
         for (int line = 0; line < NbLines; ++line)
             out << lineString;
         // File is automatically flushed and closed on destruction.
@@ -1422,11 +1420,18 @@ void tst_QTextStream::pos3LargeFile()
     QFile file(testFileName);
     QVERIFY(file.open(QIODevice::ReadOnly | QIODevice::Text));
     QTextStream in( &file );
-    const int testValues[] = { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9 };
-    int value;
+    constexpr int testValues[] = { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9 };
+    qint64 expectedLineEnd = 0;
+#ifdef Q_OS_WIN // CRLF platform
+    constexpr int crlfAdjustment = 1;
+#else
+    constexpr int crlfAdjustment = 0;
+#endif
+    const auto expectedLineLength = lineString.size() + crlfAdjustment;
+    QCOMPARE(in.pos(), 0);
     while (true) {
-        in.pos();
-        for ( int i = 0; i < 10; ++i ) {
+        for (size_t i = 0; i < std::size(testValues); ++i) {
+            int value = -42;
             in >> value;
             if (in.status() != QTextStream::Ok) {
                 // End case, i == 0 && eof reached.
@@ -1436,6 +1441,9 @@ void tst_QTextStream::pos3LargeFile()
             }
             QCOMPARE(value, testValues[i]);
         }
+        expectedLineEnd += expectedLineLength;
+        // Final space and newline are not consumed until next read.
+        QCOMPARE(in.pos(), expectedLineEnd - 2 - crlfAdjustment);
     }
 }
 
@@ -1443,7 +1451,7 @@ void tst_QTextStream::pos3LargeFile()
 void tst_QTextStream::readStdin()
 {
 #if !QT_CONFIG(process)
-    QSKIP("No qprocess support", SkipAll);
+    QSKIP("No qprocess support");
 #else
     QProcess stdinProcess;
     stdinProcess.start("stdinProcess/stdinProcess");
@@ -1470,7 +1478,7 @@ void tst_QTextStream::readStdin()
 void tst_QTextStream::readAllFromStdin()
 {
 #if !QT_CONFIG(process)
-    QSKIP("No qprocess support", SkipAll);
+    QSKIP("No qprocess support");
 #else
     QProcess stdinProcess;
     stdinProcess.start("readAllStdinProcess/readAllStdinProcess", {}, QIODevice::ReadWrite | QIODevice::Text);
@@ -1491,7 +1499,7 @@ void tst_QTextStream::readAllFromStdin()
 void tst_QTextStream::readLineFromStdin()
 {
 #if !QT_CONFIG(process)
-    QSKIP("No qprocess support", SkipAll);
+    QSKIP("No qprocess support");
 #else
     QProcess stdinProcess;
     stdinProcess.start("readLineStdinProcess/readLineStdinProcess", {}, QIODevice::ReadWrite | QIODevice::Text);
@@ -2428,8 +2436,8 @@ void tst_QTextStream::generateRealNumbersDataWrite()
     QTest::newRow("0") << 0.0 << QByteArray("0") << QByteArray("0");
     QTest::newRow("3.14") << 3.14 << QByteArray("3.14") << QByteArray("3.14");
     QTest::newRow("-3.14") << -3.14 << QByteArray("-3.14") << QByteArray("-3.14");
-    QTest::newRow("1.2e+10") << 1.2e+10 << QByteArray("1.2e+10") << QByteArray("1.2E+10");
-    QTest::newRow("-1.2e+10") << -1.2e+10 << QByteArray("-1.2e+10") << QByteArray("-1.2E+10");
+    QTest::newRow("1.2e+10") << 1.2e+10 << QByteArray("1.2e+10") << QByteArray("1.2e+10");
+    QTest::newRow("-1.2e+10") << -1.2e+10 << QByteArray("-1.2e+10") << QByteArray("-1.2e+10");
     QTest::newRow("12345") << 12345. << QByteArray("12345") << QByteArray("12,345");
 }
 
@@ -2447,7 +2455,7 @@ void tst_QTextStream::generateRealNumbersDataWrite()
         buffer.open(QBuffer::WriteOnly); \
         QTextStream stream(&buffer); \
         stream.setLocale(QLocale::c()); \
-        float f = (float)number; \
+        type f = type(number); \
         stream << f; \
         stream.flush(); \
         QCOMPARE(buffer.data().constData(), data.constData()); \
@@ -2459,7 +2467,7 @@ void tst_QTextStream::generateRealNumbersDataWrite()
         QCOMPARE(buffer.data(), dataWithSeparators); \
     }
 IMPLEMENT_STREAM_LEFT_REAL_OPERATOR_TEST(float, float)
-IMPLEMENT_STREAM_LEFT_REAL_OPERATOR_TEST(double, float)
+IMPLEMENT_STREAM_LEFT_REAL_OPERATOR_TEST(double, double)
     ;
 
 // ------------------------------------------------------------------------------
@@ -2716,7 +2724,6 @@ void tst_QTextStream::manipulators()
     stream << textData;
     stream.flush();
 
-    QEXPECT_FAIL("hex-negative", "Discovered while fixing QTBUG-133269", Continue);
     QCOMPARE(buffer.data(), result);
 }
 
@@ -3036,14 +3043,41 @@ void tst_QTextStream::int_write_with_locale_data()
     QTest::addColumn<int>("numberFlags");
     QTest::addColumn<int>("input");
     QTest::addColumn<QString>("output");
+    QTest::addColumn<int>("fieldWidth");
+    QTest::addColumn<QTextStream::FieldAlignment>("fieldAlignment");
 
-    QTest::newRow("C -123") << QString("C") << 0 << -123 << QString("-123");
-    QTest::newRow("C +123") << QString("C") << (int)QTextStream::ForceSign << 123 << QString("+123");
-    QTest::newRow("C 12345") << QString("C") << 0 << 12345 << QString("12345");
+    const auto alignDefault = QTextStream().fieldAlignment();
+    constexpr int forceSign = QTextStream::ForceSign;
 
-    QTest::newRow("de_DE -123") << QString("de_DE") << 0 << -123 << QString("-123");
-    QTest::newRow("de_DE +123") << QString("de_DE") << (int)QTextStream::ForceSign << 123 << QString("+123");
-    QTest::newRow("de_DE 12345") << QString("de_DE") << 0 << 12345 << QString("12.345");
+    QTest::newRow("C -123") << u"C"_s << 0 << -123 << u"-123"_s << 0 << alignDefault;
+    QTest::newRow("C +123") << u"C"_s << forceSign << 123 << u"+123"_s << 0 << alignDefault;
+    QTest::newRow("C 12345") << u"C"_s << 0 << 12345 << u"12345"_s << 0 << alignDefault;
+
+    QTest::newRow("de_DE -123") << u"de_DE"_s << 0 << -123 << u"-123"_s << 0 << alignDefault;
+    QTest::newRow("de_DE +123") << u"de_DE"_s << forceSign << 123 << u"+123"_s << 0 << alignDefault;
+    QTest::newRow("de_DE 12345") << u"de_DE"_s << 0 << 12345 << u"12.345"_s << 0 << alignDefault;
+
+    constexpr auto alignAccountingStyle = QTextStream::FieldAlignment::AlignAccountingStyle;
+
+    {
+        const QLocale loc("ar_EG"_L1);
+        // Arabic as spoken in Egypt has a two-code-point negativeSign():
+        const auto minus = loc.negativeSign();
+        QCOMPARE(minus.size(), 2);
+        // ditto positiveSign():
+        const auto plus = loc.positiveSign();
+        QCOMPARE(plus.size(), 2);
+
+        QTest::addRow("ar_EG -123") << u"ar_EG"_s << 0 << -123
+                                    << (minus + u"     ١٢٣")
+                                    << 10 << alignAccountingStyle;
+        QTest::newRow("ar_EG +123") << u"ar_EG"_s << forceSign << 123
+                                    << (plus + u"     ١٢٣")
+                                    << 10 << alignAccountingStyle;
+        QTest::newRow("ar_EG 12345") << u"ar_EG"_s << 0 << 12345
+                                     << u"    ١٢٬٣٤٥"_s
+                                     << 10 << alignAccountingStyle;
+    }
 }
 
 void tst_QTextStream::int_write_with_locale()
@@ -3052,12 +3086,18 @@ void tst_QTextStream::int_write_with_locale()
     QFETCH(int, numberFlags);
     QFETCH(int, input);
     QFETCH(QString, output);
+    QFETCH(const int, fieldWidth);
+    QFETCH(const QTextStream::FieldAlignment, fieldAlignment);
 
     QString result;
     QTextStream stream(&result);
     stream.setLocale(QLocale(locale));
+    stream.setFieldAlignment(fieldAlignment);
     if (numberFlags)
         stream.setNumberFlags(QTextStream::NumberFlags(numberFlags));
+    if (fieldWidth)
+        stream.setFieldWidth(fieldWidth);
+
     stream << input;
     QCOMPARE(result, output);
 }

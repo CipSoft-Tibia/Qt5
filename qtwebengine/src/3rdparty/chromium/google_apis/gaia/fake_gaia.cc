@@ -11,7 +11,6 @@
 #include "base/base64.h"
 #include "base/base_paths.h"
 #include "base/containers/contains.h"
-#include "base/containers/cxx20_erase.h"
 #include "base/files/file_path.h"
 #include "base/files/file_util.h"
 #include "base/functional/bind.h"
@@ -61,7 +60,6 @@ const char kTestReauthProofToken[] = "fake-reauth-proof-token";
 const char kTestCookieAttributes[] =
     "; Path=/; HttpOnly; SameSite=None; Secure";
 
-const char kDefaultGaiaId[] = "12345";
 const char kDefaultEmail[] = "email12345@foo.com";
 
 const base::FilePath::CharType kEmbeddedSetupChromeos[] =
@@ -537,6 +535,7 @@ void FakeGaia::HandleEmbeddedSetupChromeos(const HttpRequest& request,
 
   GetQueryParameter(request_url.query(), "Email", &prefilled_email_);
   GetQueryParameter(request_url.query(), "rart", &reauth_request_token_);
+  GetQueryParameter(request_url.query(), "pwl", &passwordless_support_level_);
 
   http_response->set_code(net::HTTP_OK);
   http_response->set_content(GetEmbeddedSetupChromeosResponseContent());
@@ -559,6 +558,7 @@ void FakeGaia::HandleEmbeddedReauthChromeos(const HttpRequest& request,
   GetQueryParameter(request_url.query(), "is_device_owner", &is_device_owner_);
   GetQueryParameter(request_url.query(), "Email", &prefilled_email_);
   GetQueryParameter(request_url.query(), "rart", &reauth_request_token_);
+  GetQueryParameter(request_url.query(), "pwl", &passwordless_support_level_);
 
   http_response->set_code(net::HTTP_OK);
   http_response->set_content(GetEmbeddedSetupChromeosResponseContent());
@@ -775,7 +775,7 @@ void FakeGaia::HandleListAccounts(const HttpRequest& request,
   std::vector<std::string> listed_accounts;
   listed_accounts.push_back(base::StringPrintf(
       kIndividualListedAccountResponseFormat, configuration_.email.c_str(),
-      kDefaultGaiaId, kAccountIsSignedIn));
+      kDefaultGaiaId.data(), kAccountIsSignedIn));
 
   for (const std::string& gaia_id : configuration_.signed_out_gaia_ids) {
     DCHECK_NE(kDefaultGaiaId, gaia_id);
@@ -923,7 +923,7 @@ void FakeGaia::HandleFakeRemoveLocalAccount(
   std::string gaia_id;
   GetQueryParameter(request.GetURL().query(), "gaia_id", &gaia_id);
 
-  if (!base::Erase(configuration_.signed_out_gaia_ids, gaia_id)) {
+  if (!std::erase(configuration_.signed_out_gaia_ids, gaia_id)) {
     http_response->set_code(net::HTTP_BAD_REQUEST);
     return;
   }

@@ -6,6 +6,7 @@
 #define MEDIA_BASE_ANDROID_MEDIA_CODEC_LOOP_H_
 
 #include <memory>
+#include <optional>
 #include <utility>
 #include <vector>
 
@@ -22,7 +23,6 @@
 #include "media/base/media_export.h"
 #include "media/base/subsample_entry.h"
 #include "media/base/waiting.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 
 // MediaCodecLoop is based on Android's MediaCodec API.
 // The MediaCodec API is required to play encrypted (as in EME) content on
@@ -114,7 +114,7 @@ class MEDIA_EXPORT MediaCodecLoop {
     InputData(const InputData&);
     ~InputData();
 
-    const uint8_t* memory = nullptr;
+    raw_ptr<const uint8_t> memory = nullptr;
     size_t length = 0;
 
     std::string key_id;
@@ -125,7 +125,7 @@ class MEDIA_EXPORT MediaCodecLoop {
 
     bool is_eos = false;
     EncryptionScheme encryption_scheme = EncryptionScheme::kUnencrypted;
-    absl::optional<EncryptionPattern> encryption_pattern;
+    std::optional<EncryptionPattern> encryption_pattern;
   };
 
   // Handy enum for "no buffer".
@@ -278,7 +278,7 @@ class MEDIA_EXPORT MediaCodecLoop {
 
   // Dequeues an empty input buffer from the codec and returns the information
   // about it. InputBuffer.index is the index of the dequeued buffer or -1 if
-  // the codec is busy or an error occured.  InputBuffer.is_pending is set to
+  // the codec is busy or an error occurred.  InputBuffer.is_pending is set to
   // true if we tried to enqueue this buffer before. In this case the buffer is
   // already filled with data.
   // In the case of an error sets STATE_ERROR.

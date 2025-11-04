@@ -8,12 +8,13 @@
 #include "content/browser/renderer_host/render_view_host_delegate_view.h"
 #include "content/public/browser/keyboard_event_processing_result.h"
 #include "services/metrics/public/cpp/ukm_source_id.h"
+#include "ui/base/mojom/window_show_state.mojom.h"
 #include "ui/gfx/geometry/rect.h"
 
 namespace content {
 
 KeyboardEventProcessingResult RenderWidgetHostDelegate::PreHandleKeyboardEvent(
-    const NativeWebKeyboardEvent& event) {
+    const input::NativeWebKeyboardEvent& event) {
   return KeyboardEventProcessingResult::NOT_HANDLED;
 }
 
@@ -28,7 +29,12 @@ bool RenderWidgetHostDelegate::HandleWheelEvent(
 }
 
 bool RenderWidgetHostDelegate::HandleKeyboardEvent(
-    const NativeWebKeyboardEvent& event) {
+    const input::NativeWebKeyboardEvent& event) {
+  return false;
+}
+
+bool RenderWidgetHostDelegate::ShouldIgnoreWebInputEvents(
+    const blink::WebInputEvent& event) {
   return false;
 }
 
@@ -45,19 +51,19 @@ double RenderWidgetHostDelegate::GetPendingPageZoomLevel() {
   return 0.0;
 }
 
-BrowserAccessibilityManager*
-    RenderWidgetHostDelegate::GetRootBrowserAccessibilityManager() {
+ui::BrowserAccessibilityManager*
+RenderWidgetHostDelegate::GetRootBrowserAccessibilityManager() {
   return nullptr;
 }
 
-BrowserAccessibilityManager*
-    RenderWidgetHostDelegate::GetOrCreateRootBrowserAccessibilityManager() {
+ui::BrowserAccessibilityManager*
+RenderWidgetHostDelegate::GetOrCreateRootBrowserAccessibilityManager() {
   return nullptr;
 }
 
 // If a delegate does not override this, the RenderWidgetHostView will
 // assume it is the sole platform event consumer.
-RenderWidgetHostInputEventRouter*
+input::RenderWidgetHostInputEventRouter*
 RenderWidgetHostDelegate::GetInputEventRouter() {
   return nullptr;
 }
@@ -87,7 +93,12 @@ blink::mojom::DisplayMode RenderWidgetHostDelegate::GetDisplayMode() const {
 }
 
 ui::WindowShowState RenderWidgetHostDelegate::GetWindowShowState() {
-  return ui::WindowShowState::SHOW_STATE_DEFAULT;
+  return ui::mojom::WindowShowState::kDefault;
+}
+
+blink::mojom::DevicePostureProvider*
+RenderWidgetHostDelegate::GetDevicePostureProvider() {
+  return nullptr;
 }
 
 bool RenderWidgetHostDelegate::GetResizable() {
@@ -102,12 +113,12 @@ gfx::Rect RenderWidgetHostDelegate::GetWindowsControlsOverlayRect() const {
   return gfx::Rect();
 }
 
-bool RenderWidgetHostDelegate::HasMouseLock(
+bool RenderWidgetHostDelegate::HasPointerLock(
     RenderWidgetHostImpl* render_widget_host) {
   return false;
 }
 
-RenderWidgetHostImpl* RenderWidgetHostDelegate::GetMouseLockWidget() {
+RenderWidgetHostImpl* RenderWidgetHostDelegate::GetPointerLockWidget() {
   return nullptr;
 }
 
@@ -139,6 +150,11 @@ bool RenderWidgetHostDelegate::IsWidgetForPrimaryMainFrame(
   return false;
 }
 
+gfx::mojom::DelegatedInkPointRenderer*
+RenderWidgetHostDelegate::GetDelegatedInkRenderer(ui::Compositor* compositor) {
+  return nullptr;
+}
+
 ukm::SourceId RenderWidgetHostDelegate::GetCurrentPageUkmSourceId() {
   return ukm::kInvalidSourceId;
 }
@@ -147,12 +163,12 @@ bool RenderWidgetHostDelegate::IsShowingContextMenuOnPage() const {
   return false;
 }
 
-bool RenderWidgetHostDelegate::IsPortal() {
-  return false;
-}
-
 int RenderWidgetHostDelegate::GetVirtualKeyboardResizeHeight() {
   return 0;
+}
+
+bool RenderWidgetHostDelegate::ShouldDoLearning() {
+  return true;
 }
 
 }  // namespace content

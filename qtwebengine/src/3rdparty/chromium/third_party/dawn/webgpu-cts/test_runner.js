@@ -34,8 +34,9 @@ import { Logger } from '../third_party/webgpu-cts/src/common/internal/logging/lo
 import { parseQuery } from '../third_party/webgpu-cts/src/common/internal/query/parseQuery.js';
 import { parseSearchParamLikeWithCTSOptions } from '../third_party/webgpu-cts/src/common/runtime/helper/options.js';
 import { setDefaultRequestAdapterOptions } from '../third_party/webgpu-cts/src/common/util/navigator_gpu.js';
+import { unreachable } from '../third_party/webgpu-cts/src/common/util/util.js';
 
-import { TestWorker } from '../third_party/webgpu-cts/src/common/runtime/helper/test_worker.js';
+import { TestDedicatedWorker, TestSharedWorker, TestServiceWorker } from '../third_party/webgpu-cts/src/common/runtime/helper/test_worker.js';
 
 // The Python-side websockets library has a max payload size of 72638. Set the
 // max allowable logs size in a single payload to a bit less than that.
@@ -115,7 +116,7 @@ async function setupWebsocket(port) {
 
 async function runCtsTestViaSocket(event) {
   let input = JSON.parse(event.data);
-  runCtsTest(input['q'], input['w']);
+  runCtsTest(input['q']);
 }
 
 dataCache.setStore({
@@ -174,11 +175,25 @@ if (!isWindows) {
   globalTestConfig.unrollConstEvalLoops = true;
 }
 
-// MAINTENANCE_TODO(gman): remove use_worker since you can use worker=1 instead
-async function runCtsTest(queryString, use_worker) {
+let lastOptionsKey, testWorker;
+
+async function runCtsTest(queryString) {
   const { queries, options } = parseSearchParamLikeWithCTSOptions(queryString);
-  const workerEnabled = use_worker || options.worker;
-  const worker = workerEnabled ? new TestWorker(options) : undefined;
+
+  // Set up a worker with the options passed into the test, avoiding creating
+  // a new worker if one was already set up for the last test.
+  // In practice, the options probably won't change between tests in a single
+  // invocation of run_gpu_integration_test.py, but this handles if they do.
+  const currentOptionsKey = JSON.stringify(options);
+  if (currentOptionsKey !== lastOptionsKey) {
+    lastOptionsKey = currentOptionsKey;
+    testWorker =
+      options.worker === null ? null :
+      options.worker === 'dedicated' ? new TestDedicatedWorker(options) :
+      options.worker === 'shared' ? new TestSharedWorker(options) :
+      options.worker === 'service' ? new TestServiceWorker(options) :
+      unreachable();
+  }
 
   const loader = new DefaultTestFileLoader();
   const filterQuery = parseQuery(queries[0]);
@@ -215,15 +230,20 @@ async function runCtsTest(queryString, use_worker) {
     const [rec, res] = log.record(name);
 
     beginHeartbeatScope();
-    if (worker) {
-      await worker.run(rec, name, expectations);
+    if (testWorker) {
+      await testWorker.run(rec, name, expectations);
     } else {
       await testcase.run(rec, expectations);
     }
     endHeartbeatScope();
 
     sendMessageTestStatus(res.status, res.timems);
-    sendMessageTestLog(res.logs);
+    if (res.status === 'pass') {
+      // Send an "OK" log. Passing tests don't report logs to Telemetry.
+      sendMessageTestLogOK();
+    } else {
+      sendMessageTestLog(res.logs ?? []);
+    }
     sendMessageTestFinished();
   };
   await wpt_fn();
@@ -269,8 +289,35 @@ function sendMessageTestStatus(status, jsDurationMs) {
   }));
 }
 
+function sendMessageTestLogOK() {
+  socket.send('{"type":"TEST_LOG","log":"OK"}');
+}
+
+// Logs look like: " - EXPECTATION FAILED: subcase: foobar=2;foo=a;bar=2\n...."
+// or "EXCEPTION: Name!: Message!\nsubcase: fail = true\n..."
+const kSubcaseLogPrefixRegex = /\bsubcase: .*$\n/m;
+
+/** Send logs with the most important log line on the first line as a "summary". */
 function sendMessageTestLog(logs) {
-  splitLogsForPayload((logs ?? []).map(prettyPrintLog).join('\n\n'))
+  // Find the first log that is max-severity (doesn't have its stack hidden)
+  let summary = '';
+  let details = [];
+  for (const log of logs) {
+    let detail = prettyPrintLog(log);
+    if (summary === '' && log.stackHiddenMessage === undefined) {
+      // First top-severity message (because its stack is not hidden).
+      // Clean up this message and pick it as the summary:
+      summary = '  ' + log.toJSON()
+        .replace(kSubcaseLogPrefixRegex, '')
+        .split('\n')[0] + '\n';
+      // Replace '  - ' with '--> ':
+      detail = '--> ' + detail.slice(4);
+    }
+    details.push(detail);
+  }
+
+  const outLogsString = summary + details.join('\n');
+  splitLogsForPayload(outLogsString)
     .forEach((piece) => {
       socket.send(JSON.stringify({
         'type': 'TEST_LOG',
@@ -290,5 +337,4 @@ function sendMessageInfraFailure(message) {
   }));
 }
 
-window.runCtsTest = runCtsTest;
 window.setupWebsocket = setupWebsocket

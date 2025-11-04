@@ -1,5 +1,6 @@
 // Copyright (C) 2021 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QNETWORKLISTMANAGEREVENTS_H
 #define QNETWORKLISTMANAGEREVENTS_H
@@ -16,7 +17,7 @@
 #include <objbase.h>
 #include <ocidl.h>
 #include <netlistmgr.h>
-#include <wrl/client.h>
+#include <QtCore/private/qcomptr_p.h>
 #include <wrl/wrappers/corewrappers.h>
 
 #if QT_CONFIG(cpp_winrt)

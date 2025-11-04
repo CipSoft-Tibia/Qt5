@@ -23,7 +23,7 @@ from typing import Any, Callable, Iterable, Iterator, NoReturn
 from xml.sax.saxutils import escape
 from xml.dom import minidom
 
-from localetools import Error
+from localetools import Error, qtVersion
 
 # Tools used by Locale:
 def camel(seq):
@@ -56,7 +56,7 @@ class QLocaleXmlReader (object):
         scripts = tuple(self.__loadMap('script', script_map))
         territories = tuple(self.__loadMap('territory', territory_map))
 
-        # as enum members, tuple[tuple[str, str, str], tuple[str, str, str]]
+        # as enum numeric values, tuple[tuple[int, int, int], tuple[int, int, int]]
         self.__likely = tuple(self.__likelySubtagsMap())
 
         # Mappings {ID: (enum name, code, en.xml name)}
@@ -70,14 +70,34 @@ class QLocaleXmlReader (object):
         self.__landByName = {v[1]: (v[0], v[2]) for v in territories}
         # Other properties:
         self.__dupes = set(v[1] for v in languages) & set(v[1] for v in territories)
-        self.cldrVersion = self.__firstChildText(self.root, "version")
 
-    def loadLocaleMap(self, calendars: Iterable[str], grumble = lambda text: None):
+        self.cldrVersion = self.root.attributes['versionCldr'].nodeValue
+        self.qtVersion: str = self.root.attributes['versionQt'].nodeValue
+        assert self.qtVersion == qtVersion, (
+            'Using QLocaleXml file from incompatible Qt version',
+            self.qtVersion, qtVersion
+        )
+
+    def loadLocaleMap(self, calendars: Iterable[str], grumble = lambda text: None
+                     ) -> Iterator[tuple[tuple[int, int, int], "Locale"]]:
+        """Yields id-triplet and locale object for each locale read.
+
+        The id-triplet gives the (language, script, territory) numeric
+        values for the QLocale enum members describing the
+        locale. Where the relevant enum value is zero (an Any* member
+        of the enum), likely subtag rules are used to fill in the
+        script or territory, if missing, in this triplet."""
         kid: Callable[[minidom.Element, str], str] = self.__firstChildText
-        likely: dict[tuple[str, str, str], tuple[str, str, str]] = dict(self.__likely)
-
+        likely: dict[tuple[int, int, int], tuple[int, int, int]] = dict(self.__likely)
         for elt in self.__eachEltInGroup(self.root, 'localeList', 'locale'):
             locale: Locale = Locale.fromXmlData(lambda k: kid(elt, k), calendars)
+            # region is tuple[str|None, ...]
+            # zone and meta are dict[str, dict[str, str | tuple[str | None, ...]]]
+            region, zone, meta = self.__zoneData(elt)
+            locale.update(regionFormats = region,
+                          zoneNaming = zone,
+                          metaNaming = meta)
+
             language: int = self.__langByName[locale.language][0]
             script: int = self.__textByName[locale.script][0]
             territory: int = self.__landByName[locale.territory][0]
@@ -91,32 +111,126 @@ class QLocaleXmlReader (object):
                     # http://www.unicode.org/reports/tr35/#Likely_Subtags
                     try:
                         try:
-                            to: tuple[str, str, str] = likely[(locale.language, 'AnyScript',
-                                                               locale.territory)]
+                            to: tuple[int, int, int] = likely[(language, 0, territory)]
                         except KeyError:
-                            to = likely[(locale.language, 'AnyScript', 'AnyTerritory')]
+                            to = likely[(language, 0, 0)]
                     except KeyError:
                         pass
                     else:
-                        locale.script = to[1]
-                        script = self.__textByName[locale.script][0]
+                        script = to[1]
+                        locale.script = self.scripts[script][0]
 
             yield (language, script, territory), locale
 
+    def pruneZoneNaming(self, locmap: dict[tuple[int, int, int], "Locale"],
+                        report=lambda *x: 0) -> None:
+        """Deduplicate zoneNaming and metaNaming mapings.
+
+        Where one locale would fall back to another via likely subtag
+        fallbacks, skip any entries in the former's zoneNaming and metaNaming
+        where it agrees with the latter.
+
+        This prunes over half of the (locale, zone) table and nearly two
+        thirds of the (locale, meta) table."""
+        likely: tuple[tuple[tuple[int, int, int], tuple[int, int, int]], ...
+                     ] = tuple((has, got) for have, has, give, got in self.likelyMap())
+        def fallbacks(key) -> Iterator[Locale]:
+            # Should match QtTimeZoneLocale::fallbackLocalesFor() in qlocale.cpp
+            tried: set[tuple[int, int, int]] = { key }
+            head =  2
+            while head > 0:
+                # Retain [:head] of key but use 0 (i.e. Any) for the rest:
+                it: tuple[int, int, int] = self.__fillLikely(key[:head] + (0,) * (3 - head), likely)
+                if it not in tried:
+                    tried.add(it)
+                    if it in locmap:
+                        yield locmap[it]
+                head -= 1
+
+        # TODO: fix case of later fallbacks lacking a short name for a
+        # metazone, where earlier ones with a short name all agree.  Maybe do
+        # similar for long names, and for zones as well as meta.
+        # For a metazone, the territories in its map to IANA ID, combined with
+        # the language and script of a locale that lacks names, give locales to
+        # consult that might fall back to it, and to which to pay particular
+        # attention.
+
+        zonePrior = metaPrior = 0
+        zoneCount = metaCount = locCount = 0
+        for key, loc in locmap.items():
+            zonePrior += len(loc.zoneNaming)
+            metaPrior += len(loc.metaNaming)
+            # Omit zoneNaming and metaNaming entries that match those
+            # of their likely sub-tag fallbacks.
+            filtered = False
+            for alt in fallbacks(key):
+                filtered = True
+                # Collect keys to purge before purging, so as not to
+                # modify mappings while iterating them.
+                purge = [zone for zone, data in loc.zoneNaming.items()
+                         if (zone in alt.zoneNaming
+                             and data == alt.zoneNaming[zone])]
+                zoneCount += len(purge)
+                for zone in purge:
+                    del loc.zoneNaming[zone]
+
+                purge = [meta for meta, data in loc.metaNaming.items()
+                         if (meta in alt.metaNaming
+                             and data == alt.metaNaming[meta])]
+                metaCount += len(purge)
+                for meta in purge:
+                    del loc.metaNaming[meta]
+            if filtered:
+                locCount += 1
+
+        report(f'Pruned duplicates: {zoneCount} (of {zonePrior}) zone '
+               f'and {metaCount} (of {metaPrior}) metazone '
+               f'entries from {locCount} (of {len(locmap)}) locales.\n')
+
     def aliasToIana(self) -> Iterator[tuple[str, str]]:
-        kid: Callable[[minidom.Element, str], str] = self.__firstChildText
+        def attr(elt: minidom.Element, key: str) -> str:
+            return elt.attributes[key].nodeValue
         for elt in self.__eachEltInGroup(self.root, 'zoneAliases', 'zoneAlias'):
-            yield kid(elt, 'alias'), kid(elt, 'iana')
+            yield attr(elt, 'alias'), attr(elt, 'iana')
 
     def msToIana(self) -> Iterator[tuple[str, str]]:
         kid: Callable[[minidom.Element, str], str] = self.__firstChildText
         for elt in self.__eachEltInGroup(self.root, 'windowsZone', 'msZoneIana'):
-            yield kid(elt, 'msid'), kid(elt, 'iana')
+            yield kid(elt, 'msid'), elt.attributes['iana'].nodeValue
 
     def msLandIanas(self) -> Iterator[tuple[str, str, str]]:
         kid: Callable[[minidom.Element, str], str] = self.__firstChildText
         for elt in self.__eachEltInGroup(self.root, 'windowsZone', 'msLandZones'):
-            yield kid(elt, 'msid'), kid(elt, 'territorycode'), kid(elt, 'ianaids')
+            land: str = elt.attributes['territory'].nodeValue
+            yield kid(elt, 'msid'), land, kid(elt, 'ianaids')
+
+    def territoryZone(self) -> Iterator[tuple[str, str]]:
+        for elt in self.__eachEltInGroup(self.root, 'landZones', 'landZone'):
+            iana, land = self.__textThenAttrs(elt, 'territory')
+            yield land, iana
+
+    def metaLandZone(self) -> Iterator[tuple[str, int, str, str]]:
+        kid: Callable[[minidom.Element, str], str] = self.__firstChildText
+        for elt in self.__eachEltInGroup(self.root, 'metaZones', 'metaZone'):
+            meta: str = kid(elt, 'metaname')
+            mkey: int = int(elt.attributes['metakey'].nodeValue)
+            node: minidom.Element = self.__firstChildElt(elt, 'landZone')
+            while node:
+                if self.__isNodeNamed(node, 'landZone'):
+                    iana, land = self.__textThenAttrs(node, 'territory')
+                    yield meta, mkey, land, iana
+                node = node.nextSibling
+
+    def zoneMetaStory(self) -> Iterator[tuple[str, int, int, int]]:
+        kid = lambda n, k: int(n.attributes[k].nodeValue)
+        for elt in self.__eachEltInGroup(self.root, 'zoneStories', 'zoneStory'):
+            iana: str = elt.attributes['iana'].nodeValue
+            node: minidom.Element = self.__firstChildElt(elt, 'metaInterval')
+            while node:
+                if self.__isNodeNamed(node, 'metaInterval'):
+                    meta: int = kid(node, 'metakey')
+                    yield iana, kid(node, 'start'), kid(node, 'stop'), meta
+                node = node.nextSibling
 
     def languageIndices(self, locales: tuple[int, ...]) -> Iterator[tuple[int, str]]:
         index = 0
@@ -138,11 +252,27 @@ class QLocaleXmlReader (object):
                 ) -> tuple[int, int, int]:
             return tuple(x[0] for x in t)
 
-        for pair in self.__likely:
-            have = self.__fromNames(pair[0])
-            give = self.__fromNames(pair[1])
-            yield ('_'.join(tag(have)), ids(have),
-                   '_'.join(tag(give)), ids(give))
+        def keyLikely(pair: tuple[tuple[tuple[int, str], tuple[int, str], tuple[int, str]],
+                                  tuple[tuple[int, str], tuple[int, str], tuple[int, str]]],
+                      kl=self.__keyLikely) -> tuple[int, int, int]:
+            """Sort by IDs from first entry in pair
+
+            We're passed a pair (h, g) of triplets (lang, script, territory) of
+            pairs (ID, name); we extract the ID from each entry in the first
+            triplet, then hand that triplet of IDs off to __keyLikely()."""
+            return kl(tuple(x[0] for x in pair[0]))
+
+        # Sort self.__likely to enable binary search in C++ code.
+        for have, give in sorted(((self.__fromIds(has),
+                                   self.__fromIds(got))
+                                  for has, got in self.__likely),
+                                 key = keyLikely):
+            try:
+                yield ('_'.join(tag(have)), ids(have),
+                       '_'.join(tag(give)), ids(give))
+            except TypeError as what:
+                what.args += (have, give)
+                raise
 
     def defaultMap(self) -> Iterator[tuple[tuple[int, int], int]]:
         """Map language and script to their default territory by ID.
@@ -151,13 +281,9 @@ class QLocaleXmlReader (object):
         sub-tags mapping says language's default locale uses the given
         script and territory."""
         for have, give in self.__likely:
-            if (have[0] != 'AnyLanguage'
-                    and have[1:] == ('AnyScript', 'AnyTerritory')
-                    and give[2] != 'AnyTerritory'):
+            if have[0] and have[1:] == (0, 0) and give[2]:
                 assert have[0] == give[0], (have, give)
-                yield ((self.__langByName[give[0]][0],
-                        self.__textByName[give[1]][0]),
-                       self.__landByName[give[2]][0])
+                yield (give[:2], give[2])
 
     def enumify(self, name: str, suffix: str) -> str:
         """Stick together the parts of an enumdata.py name.
@@ -188,24 +314,130 @@ class QLocaleXmlReader (object):
     # Implementation details:
     def __loadMap(self, category: str, enum: dict[int, tuple[str, str]]
                  ) -> Iterator[tuple[int, str, str, str]]:
-        kid = self.__firstChildText
-        for element in self.__eachEltInGroup(self.root, f'{category}List', category):
-            key = int(kid(element, 'id'))
-            yield key, enum[key][0], kid(element, 'code'), kid(element, 'name')
+        """Load the language-, script- or territory-map.
+
+        First parameter, category, names the map to load, second is the
+        enumdata.py map that corresponds to it.  Yields 4-tuples (id, enum,
+        code, name) where id and enum are the enumdata numeric index and name
+        (on which the QLocale enums are based), code is the ISO code and name
+        is CLDR's en.xml name for the language, script or territory."""
+        for element in self.__eachEltInGroup(self.root, f'{category}List', 'naming'):
+            name, key, code = self.__textThenAttrs(element, 'id', 'code')
+            key = int(key)
+            yield key, enum[key][0], code, name
+
+    def __fromIds(self, ids: tuple[int, int, int]
+                  ) -> tuple[tuple[int, str], tuple[int, str], tuple[int, str]]:
+        # Three (ID, code) pairs:
+        return ((ids[0], self.languages[ids[0]][1]),
+                (ids[1], self.scripts[ids[1]][1]),
+                (ids[2], self.territories[ids[2]][1]))
 
     # Likely subtag management:
-    def __likelySubtagsMap(self) -> Iterator[tuple[tuple[str, str, str], tuple[str, str, str]]]:
+    def __likelySubtagsMap(self) -> Iterator[tuple[tuple[int, int, int], tuple[int, int, int]]]:
         def triplet(element: minidom.Element,
-                    keys: tuple[str, str, str]=('language', 'script', 'territory'),
-                    kid = self.__firstChildText) -> tuple[str, str, str]:
-            return tuple(kid(element, key) for key in keys)
+                    keys: tuple[str, str, str]=('language', 'script', 'territory')
+                    ) -> tuple[int, int, int]:
+            return tuple(int(element.attributes[key].nodeValue) for key in keys)
 
         kid: Callable[[minidom.Element, str], minidom.Element] = self.__firstChildElt
         for elt in self.__eachEltInGroup(self.root, 'likelySubtags', 'likelySubtag'):
             yield triplet(kid(elt, "from")), triplet(kid(elt, "to"))
 
-    def __fromNames(self, names):
-        return self.__langByName[names[0]], self.__textByName[names[1]], self.__landByName[names[2]]
+    @staticmethod
+    def __keyLikely(key: tuple[int, int, int], huge: int=0x10000) -> tuple[int, int, int]:
+        """Sort order key for a likely subtag key
+
+        Although the entries are (lang, script, region), sort by (lang, region,
+        script) and sort 0 after all non-zero values, in each position. This
+        ensures that, when several mappings partially match a requested locale,
+        the one we should prefer to use appears first.
+
+        We use 0x10000 as replacement for 0, as all IDs are unsigned short, so
+        less than 2^16."""
+        # Map zero to huge:
+        have = tuple(x or huge for x in key)
+        # Use language, territory, script for sort order:
+        return have[0], have[2], have[1]
+
+    @classmethod
+    def __lowerLikely(cls, key: tuple[int, int, int],
+                      likely: tuple[tuple[tuple[int, int, int], tuple[int, int, int]], ...]
+                     ) -> int:
+        """Lower-bound index for key in the likely subtag table
+
+        Equivalent to the std::lower_bound() calls in
+        QLocaleId::withLikelySubtagsAdded()."""
+        lo, hi = 0, len(likely)
+        key: tuple[int, int, int] = cls.__keyLikely(key)
+        while lo + 1 < hi:
+            mid, rem = divmod(lo + hi, 2)
+            has: tuple[int, int, int] = cls.__keyLikely(likely[mid][0])
+            if has < key:
+                lo = mid
+            elif has > key:
+                hi = mid
+            else:
+                return mid
+        return hi
+
+    @classmethod
+    def __fillLikely(cls, key: tuple[int, int, int],
+                     likely: tuple[tuple[tuple[int, int, int], tuple[int, int, int]], ...]
+                     ) -> tuple[int, int, int]:
+        """Equivalent to QLocaleId::withLikelySubtagsAdded()
+
+        Takes one (language, script, territory) triple, key, of QLocale enum
+        numeric values and returns another that fills in any zero entries based
+        on the likely subtag data supplied as likely."""
+        lang, script, land = key
+        if lang and likely:
+            likely: tuple[tuple[tuple[int, int, int], tuple[int, int, int]], ...
+                          ] = likely[cls.__lowerLikely(key, likely):]
+            for entry in likely:
+                vox, txt, ter = entry[0]
+                if vox != lang:
+                    break
+                if land and ter != land:
+                    continue
+                if script and txt != script:
+                    continue
+
+                vox, txt, ter = entry[1]
+                return vox, txt or script, ter or land
+
+        if land and likely:
+            likely = likely[cls.__lowerLikely((0, script, land), likely):]
+            for entry in likely:
+                vox, txt, ter = entry[0]
+                assert not vox, (key, entry)
+                if ter != land:
+                    break
+                if txt != script:
+                    continue
+
+                vox, txt, ter = entry[1]
+                return lang or vox, txt or script, ter
+
+        if script and likely:
+            likely = likely[cls.__lowerLikely((0, script, 0), likely):]
+            for entry in likely:
+                vox, txt, ter = entry[0]
+                assert not (vox or ter), (key, entry)
+                if txt != script:
+                    break
+
+                vox, txt, ter = entry[1]
+                return lang or vox, txt, land or ter
+
+        if not any(key) and likely:
+            likely = likely[cls.__lowerLikely(key, likely):]
+            if likely:
+                assert len(likely) == 1
+                assert likely[0][0] == key
+                return likely[0][1]
+
+        return key
 
     # DOM access:
     from xml.dom import minidom
@@ -223,9 +455,9 @@ class QLocaleXmlReader (object):
     def __eltWords(elt: minidom.Element) -> Iterator[str]:
         child: minidom.Text|minidom.CDATASection|None = elt.firstChild
         while child:
-            if child.nodeType == elt.TEXT_NODE:
+            if child.nodeType in (elt.TEXT_NODE, elt.CDATA_SECTION_NODE):
                 # Note: do not strip(), as some group separators are
-                # non-breaking spaces, that strip() will discard.
+                # (non-breaking) spaces, that strip() will discard.
                 yield child.nodeValue
             child = child.nextSibling
 
@@ -242,6 +474,87 @@ class QLocaleXmlReader (object):
     @classmethod
     def __firstChildText(cls, elt: minidom.Element, key: str) -> str:
         return ' '.join(cls.__eltWords(cls.__firstChildElt(elt, key)))
+
+    @classmethod
+    def __textThenAttrs(cls, elt: minidom.Element, *names: str) -> Iterator[str]:
+        """Read an elements text than a sequence of its attributes.
+
+        First parameter is the XML element, subsequent parameters name
+        attributes of it. Yields the text of the element, followed by the text
+        of each of the attributes in turn."""
+        yield ' '.join(cls.__eltWords(elt))
+        for name in names:
+            yield elt.attributes[name].nodeValue
+
+    @classmethod
+    def __zoneData(cls, elt: minidom.Element
+                   ) -> tuple[tuple[str | None, ...],
+                              dict[str, dict[str, str | tuple[str | None, ...]]],
+                              dict[str, dict[str, str | tuple[str | None, ...]]]]:
+        # Inverse of writer's __writeLocaleZones()
+        region: tuple[str | None, ...] = cls.__readZoneForms(elt, 'regionZoneFormats')
+        try:
+            zone: minidom.Element = cls.__firstChildElt(elt, 'zoneNaming')
+        except Error as what:
+            if what.message != 'No zoneNaming child found':
+                raise
+            zone: dict[str, dict[str, str|tuple[str|None, ...]]] = {}
+        else:
+            zone = dict(cls.__readZoneNaming(zone))
+        try:
+            meta: minidom.Element = cls.__firstChildElt(elt, 'metaZoneNaming')
+        except Error as what:
+            if what.message != 'No metaZoneNaming child found':
+                raise
+            meta: dict[str, dict[str, str|tuple[str|None, ...]]] = {}
+        else:
+            meta = dict(cls.__readZoneNaming(meta))
+            assert not any('exemplarCity' in v for v in meta.values())
+        return region, zone, meta
+
+    @classmethod
+    def __readZoneNaming(cls, elt: minidom.Element
+                         ) -> Iterator[tuple[str, dict[str, str|tuple[str|None, ...]]]]:
+        # Inverse of writer's __writeZoneNaming()
+        child: minidom.Element = elt.firstChild
+        while child:
+            if cls.__isNodeNamed(child, 'zoneNames'):
+                iana: str = child.attributes['name'].nodeValue
+                try:
+                    city: str = cls.__firstChildText(child, 'exemplar')
+                except Error:
+                    data: dict[str, tuple[str|None, str|None, str|None]] = {}
+                else:
+                    assert city is not None
+                    data: dict[str, str|tuple[str|None, ...]] = { 'exemplarCity': city }
+                for form in ('short', 'long'):
+                    data[form] = cls.__readZoneForms(child, form)
+                yield iana, data
+
+            child = child.nextSibling
+
+    @classmethod
+    def __readZoneForms(cls, elt: minidom.Element, name: str
+                        ) -> tuple[str | None, ...]:
+        # Inverse of writer's __writeZoneForms()
+        child: minidom.Element = elt.firstChild
+        while child:
+            if (cls.__isNodeNamed(child, 'zoneForms')
+                and child.attributes['name'].nodeValue == name):
+                return tuple(cls.__scanZoneForms(child))
+            child = child.nextSibling
+        return (None, None, None)
+
+    @classmethod
+    def __scanZoneForms(cls, elt: minidom.Element) -> Iterator[str|None]:
+        # Read each entry in a zoneForms element, yield three forms:
+        for tag in ('generic', 'standard', 'daylightSaving'):
+            try:
+                node: minidom.Element = cls.__firstChildElt(elt, tag)
+            except Error:
+                yield None
+            else:
+                yield ' '.join(cls.__eltWords(node))
 
     @classmethod
     def __eachEltInGroup(cls, parent: minidom.Element, group: str, key: str
@@ -290,11 +603,12 @@ class Spacer (object):
         indent: str = self.current
         if line.startswith('</'):
             indent = self.current = indent[:-len(self.__each)]
-        elif line.startswith('<') and not line.startswith('<!'):
+        elif line.startswith('<') and line[1:2] not in '!?':
             cut = line.find('>')
-            tag = (line[1:] if cut < 0 else line[1 : cut]).strip().split()[0]
-            if f'</{tag}>' not in line:
-                self.current += self.__each
+            if cut < 1 or line[cut - 1] != '/':
+                tag = (line[1:] if cut < 0 else line[1 : cut]).strip().split()[0]
+                if f'</{tag}>' not in line:
+                    self.current += self.__each
         return indent + line + '\n'
 
     def __call__(self, line: str) -> str:
@@ -305,27 +619,32 @@ class QLocaleXmlWriter (object):
 
     The output saved by this should conform to qlocalexml.rnc's
     schema."""
-    def __init__(self, save: Callable[[str], int]|None = None, space: Spacer = Spacer(4)) -> None:
+    def __init__(self, cldrVersion: str, save: Callable[[str], int]|None = None,
+                 space: Spacer = Spacer('\t')) -> None:
         """Set up to write digested CLDR data as QLocale XML.
 
-        Arguments are both optional.
+        First argument is the version of CLDR whose data we'll be
+        writing. Other arguments are optional.
 
-        First argument, save, is None (its default) or a callable that
-        will write content to where you intend to save it. If None, it
-        is replaced with a callable that prints the given content,
-        suppressing the newline (but see the following); this is
-        equivalent to passing sys.stdout.write.
+        Second argument, save, is None (its default) or a callable that will
+        write content to where you intend to save it. If None, it is replaced
+        with a callable that prints the given content, suppressing the newline
+        (but see the following); this is equivalent to passing
+        sys.stdout.write.
 
-        Second argument, space, is an object to call on each text
-        output to prepend indentation and append newlines, or not as
-        the case may be. The default is a Spacer(4), which grows
-        indent by four spaces after each unmatched new tag and shrinks
-        back on a close-tag (its parsing is naive, but adequate to how
-        this class uses it), while adding a newline to each line.
-        """
+        Third argument, space, is an object to call on each text output to
+        prepend indentation and append newlines, or not as the case may be. The
+        default is a Spacer('\t'), which grows indent by a tab after each
+        unmatched new tag and shrinks back on a close-tag (its parsing is
+        naive, but adequate to how this class uses it), while adding a newline
+        to each line."""
         self.__rawOutput: Callable[[str], int] = self.__printit if save is None else save
         self.__wrap = space
-        self.__write('<localeDatabase>')
+        self.__write('<?xml version="1.0" encoding="UTF-8" ?>'
+                     # A hint to emacs to make display nicer:
+                     '<!--*- tab-width: 4 -*-->')
+        self.__openTag('localeDatabase', versionCldr = cldrVersion,
+                       versionQt = qtVersion)
 
     # Output of various sections, in their usual order:
     def enumData(self, code2name: Callable[[str], Callable[[str, str], str]]) -> None:
@@ -363,32 +682,59 @@ class QLocaleXmlWriter (object):
 
     def zoneData(self, alias: dict[str, str],
                  defaults: dict[str, str],
-                 windowsIds: dict[tuple[str, str], str]) -> None:
+                 windowsIds: dict[tuple[str, str], str],
+                 metamap: dict[str, dict[str, str]],
+                 zones: dict[str, tuple[tuple[int, int, str], ...]],
+                 territorial: dict[str, str]) -> None:
         self.__openTag('zoneAliases')
         # iana is a single IANA ID
         # name has the same form, but has been made redundant
+        # Do case-insensitive sorting, to match how lookup is done:
         for name, iana in sorted(alias.items(), key = lambda s: (s[0].lower(), s[1])):
-            self.__openTag('zoneAlias')
-            self.inTag('alias', name)
-            self.inTag('iana', iana)
-            self.__closeTag('zoneAlias')
+            if name == iana:
+                continue
+            self.asTag('zoneAlias', alias = name, iana = iana)
         self.__closeTag('zoneAliases')
 
         self.__openTag('windowsZone')
         for (msid, code), ids in windowsIds.items():
             # ianaids is a space-joined sequence of IANA IDs
-            self.__openTag('msLandZones')
+            self.__openTag('msLandZones', territory = code)
             self.inTag('msid', msid)
-            self.inTag('territorycode', code)
             self.inTag('ianaids', ids)
             self.__closeTag('msLandZones')
 
         for winid, iana in defaults.items():
-            self.__openTag('msZoneIana')
+            self.__openTag('msZoneIana', iana=iana)
             self.inTag('msid', winid)
-            self.inTag('iana', iana)
             self.__closeTag('msZoneIana')
         self.__closeTag('windowsZone')
+
+        self.__openTag('landZones')
+        for code, iana in territorial.items():
+            self.inTag('landZone', iana, territory = code)
+        self.__closeTag('landZones')
+
+        metaKey: dict[str, int] = {m: i for i, m in enumerate(sorted(
+            metamap, key = lambda m: m.lower()), 1)}
+
+        self.__openTag('metaZones')
+        for meta, bok in metamap.items():
+            self.__openTag('metaZone', metakey = metaKey[meta])
+            self.inTag('metaname', meta)
+            for code, iana in bok.items():
+                self.inTag('landZone', iana, territory = code)
+            self.__closeTag('metaZone')
+        self.__closeTag('metaZones')
+
+        self.__openTag('zoneStories')
+        for iana, story in sorted(zones.items()):
+            self.__openTag('zoneStory', iana = iana)
+            for start, stop, meta in story:
+                self.asTag('metaInterval', start = start,
+                           stop = stop, metakey = metaKey[meta])
+            self.__closeTag('zoneStory')
+        self.__closeTag('zoneStories')
 
     def locales(self, locales: dict[tuple[int, int, int, int], "Locale"], calendars: list[str],
                 en_US: tuple[int, int, int, int]) -> None:
@@ -401,32 +747,49 @@ class QLocaleXmlWriter (object):
         tuple of numeric IDs that corresponds to en_US (needed to
         provide fallbacks for the C locale)."""
 
+        def writeLocale(locale: "Locale", cal = calendars, this = self) -> None:
+            this.__openTag('locale')
+            this.__writeLocale(locale, cal)
+            this.__writeLocaleZones(locale)
+            this.__closeTag('locale')
+
         self.__openTag('localeList')
-        self.__openTag('locale')
-        self.__writeLocale(Locale.C(locales[en_US]), calendars)
-        self.__closeTag('locale')
+        writeLocale(Locale.C(locales[en_US]))
         for key in sorted(locales.keys()):
-            self.__openTag('locale')
-            self.__writeLocale(locales[key], calendars)
-            self.__closeTag('locale')
+            writeLocale(locales[key])
         self.__closeTag('localeList')
 
-    def version(self, cldrVersion: str) -> None:
-        self.inTag('version', cldrVersion)
+    def inTag(self, tag: str, text: str, **attrs: int|str) -> None:
+        """Writes an XML element with the given content.
 
-    def inTag(self, tag: str, text: str) -> None:
-        self.__write(f'<{tag}>{text}</{tag}>')
+        First parameter, tag, is the element type; second, text, is the content
+        of its body, which must be XML-safe (see safeInTag() for when that's
+        not assured). Any keyword parameters passed specify attributes to
+        include in the opening tag."""
+        self.__write(f'<{self.__attrJoin(tag, attrs)}>{text}</{tag}>')
+
+    def asTag(self, tag: str, **attrs: int|str) -> None:
+        """Similar to inTag(), but with no content for the element."""
+        assert attrs, tag # No point to this otherwise
+        self.__write(f'<{self.__attrJoin(tag, attrs)} />')
+
+    def safeInTag(self, tag: str, text: str, **attrs: int|str) -> None:
+        """Similar to inTag(), when text isn't known to be XML-safe."""
+        if text.isascii():
+            self.inTag(tag, self.__xmlSafe(text), **attrs)
+        else:
+            self.__cdataInTag(tag, text, **attrs)
 
     def close(self, grumble: Callable[[str], int]) -> None:
         """Finish writing and grumble about any issues discovered."""
         if self.__rawOutput != self.__complain:
-            self.__write('</localeDatabase>')
+            self.__closeTag('localeDatabase')
         self.__rawOutput = self.__complain
 
         if self.__languages or self.__scripts or self.__territories:
             grumble('Some enum members are unused, corresponding to these tags:\n')
             import textwrap
-            def kvetch(kind, seq, g = grumble, w = textwrap.wrap) -> None:
+            def kvetch(kind, seq, g = grumble, w = textwrap.wrap):
                 g('\n\t'.join(w(f' {kind}: {", ".join(sorted(seq))}', width=80)) + '\n')
             if self.__languages:
                 kvetch('Languages', self.__languages)
@@ -447,29 +810,38 @@ class QLocaleXmlWriter (object):
         raise Error('Attempted to write data after closing :-(')
 
     @staticmethod
+    def __attrJoin(tag: str, attrs: dict[str, int|str]) -> str:
+        # Content of open-tag with given tag and attributes
+        if not attrs:
+            return tag
+        tail = ' '.join(f'{k}="{v}"' for k, v in attrs.items())
+        return f'{tag} {tail}'
+
+    @staticmethod
     def __xmlSafe(text: str) -> str:
         return text.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
 
+    def __cdataInTag(self, tag: str, text: str, **attrs: int|str) -> None:
+        self.__write(f'<{self.__attrJoin(tag, attrs)}><![CDATA[{text}]]></{tag}>')
+
     def __enumTable(self, tag: str, table: dict[int, tuple[str, str]],
                     code2name: Callable[[str], Callable[[str, str], str]]) -> None:
+        """Writes a table of QLocale-enum-related data.
+
+        First parameter, tag, is 'language', 'script' or 'territory',
+        identifying the relevant table. Second, table, is the enumdata.py
+        mapping from numeric enum value to (enum name, ISO code) pairs for that
+        type. Last is the englishNaming method of the CldrAccess being used to
+        read CLDR data; it is used to map ISO codes to en.xml names."""
         self.__openTag(f'{tag}List')
         enname: Callable[[str, str], str] = code2name(tag)
-        safe: Callable[[str], str] = self.__xmlSafe
         for key, (name, code) in table.items():
-            self.__openTag(tag)
-            self.inTag('name', safe(enname(code, name)))
-            self.inTag('id', key)
-            self.inTag('code', code)
-            self.__closeTag(tag)
+            self.safeInTag('naming', enname(code, name), id = key, code = code)
         self.__closeTag(f'{tag}List')
 
     def __likelySubTag(self, tag: str, likely: tuple[int, int, int, int]) -> None:
-        self.__openTag(tag)
-        self.inTag('language', likely[0])
-        self.inTag('script', likely[1])
-        self.inTag('territory', likely[2])
-        # self.inTag('variant', likely[3])
-        self.__closeTag(tag)
+        self.asTag(tag, language = likely[0], script = likely[1],
+                   territory = likely[2]) # variant = likely[3]
 
     def __writeLocale(self, locale: "Locale", calendars: list[str]) -> None:
         locale.toXml(self.inTag, calendars)
@@ -477,12 +849,41 @@ class QLocaleXmlWriter (object):
         self.__scripts.discard(locale.script_code)
         self.__territories.discard(locale.territory_code)
 
+    def __writeLocaleZones(self, locale: "Locale") -> None:
+        self.__writeZoneForms('regionZoneFormats', locale.regionZoneFormats)
+        self.__writeZoneNaming('zoneNaming', locale.zoneNaming)
+        self.__writeZoneNaming('metaZoneNaming', locale.metaZoneNaming)
+
+    def __writeZoneNaming(self, group: str,
+                          naming: dict[str, dict[str, str|tuple[str|None, str|None, str|None]]]
+                          ) -> None:
+        if not naming:
+            return
+        self.__openTag(group)
+        for iana in sorted(naming.keys()):  # str
+            data: dict[str, str|tuple[str|None, str|None, str|None]] = naming[iana]
+            self.__openTag('zoneNames', name=iana)
+            if 'exemplarCity' in data:
+                self.safeInTag('exemplar', data['exemplarCity'])
+            for form in ('short', 'long'):
+                if form in data:
+                    self.__writeZoneForms(form, data[form])
+            self.__closeTag('zoneNames')
+        self.__closeTag(group)
+
+    def __writeZoneForms(self, group: str, forms: tuple[str|None, str|None, str|None]) -> None:
+        if all(x is None for x in forms):
+            return
+        self.__openTag('zoneForms', name=group)
+        for i, tag in enumerate(('generic', 'standard', 'daylightSaving')):
+            if forms[i]:
+                self.safeInTag(tag, forms[i])
+        self.__closeTag('zoneForms')
+
     def __openTag(self, tag: str, **attrs: int|str) -> None:
-        if attrs:
-            text: str = ', '.join(f'{k}="{v}"' for k, v in attrs.items())
-            tag = f'{tag} {text}'
-        self.__write(f'<{tag}>')
-    def __closeTag(self, tag):
+        self.__write(f'<{self.__attrJoin(tag, attrs)}>')
+
+    def __closeTag(self, tag: str) -> None:
         self.__write(f'</{tag}>')
 
     def __write(self, line: str) -> None:
@@ -529,7 +930,12 @@ class Locale (object):
                'byte_unit', 'byte_si_quantified', 'byte_iec_quantified',
                "currencyIsoCode", "currencySymbol", "currencyDisplayName",
                "currencyFormat", "currencyNegativeFormat",
+               # Formats, previously processed on reading from LDML:
+               'positiveOffsetFormat', 'negativeOffsetFormat',
+               'gmtOffsetFormat', 'fallbackZoneFormat',
                )
+    # Require special handling:
+    # 'regionZoneFormats', 'zoneNaming', 'metaZoneNaming'
 
     # Day-of-Week numbering used by Qt:
     __qDoW = {"mon": 1, "tue": 2, "wed": 3, "thu": 4, "fri": 5, "sat": 6, "sun": 7}
@@ -568,6 +974,7 @@ class Locale (object):
 
         return cls(data)
 
+    # NOTE: any change to the XML must be reflected in qlocalexml.rnc
     def toXml(self, write: Callable[[str, str], None], calendars: Iterable[str]=('gregorian',)
               ) -> None:
         """Writes its data as QLocale XML.
@@ -580,11 +987,8 @@ class Locale (object):
         form used by CLDR; its default is ('gregorian',).
         """
         get: Callable[[str], str | Iterable[int]] = lambda k: getattr(self, k)
-        for key in ('language', 'script', 'territory'):
-            write(key, get(key))
-            write(f'{key}code', get(f'{key}_code'))
-
-        for key in ('decimal', 'group', 'zero', 'list',
+        for key in ('language', 'script', 'territory',
+                    'decimal', 'group', 'zero', 'list',
                     'percent', 'minus', 'plus', 'exp'):
             write(key, get(key))
 
@@ -600,11 +1004,17 @@ class Locale (object):
                     'longTimeFormat', 'shortTimeFormat',
                     'currencyIsoCode', 'currencySymbol', 'currencyDisplayName',
                     'currencyFormat', 'currencyNegativeFormat',
+                    'positiveOffsetFormat', 'negativeOffsetFormat',
+                    'gmtOffsetFormat', 'fallbackZoneFormat',
                     ) + tuple(self.propsMonthDay('days')) + tuple(
                 '_'.join((k, cal))
                 for k in self.propsMonthDay('months')
                 for cal in calendars):
             write(key, escape(get(key)))
+
+        # The regionZoneFormats, zoneNaming and metaZoneNaming members
+        # are handled by QLocaleXmlWriter.__writeLocaleZones(). Their
+        # elements hold sub-elements.
 
         write('groupSizes', ';'.join(str(x) for x in get('groupSizes')))
         for key in ('currencyDigits', 'currencyRounding'):

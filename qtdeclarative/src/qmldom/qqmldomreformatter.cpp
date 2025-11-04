@@ -22,7 +22,7 @@ using namespace AST;
 
 bool ScriptFormatter::preVisit(Node *n)
 {
-    if (CommentedElement *c = comments->commentForNode(n)) {
+    if (const CommentedElement *c = comments->commentForNode(n, CommentAnchor{})) {
         c->writePre(lw);
         postOps[n].append([c, this]() { c->writePost(lw); });
     }
@@ -574,7 +574,12 @@ bool ScriptFormatter::visit(ForStatement *ast)
             out(pe->declarationKindToken);
             lw.lineWriter.ensureSpace();
         }
+        bool first = true;
         for (VariableDeclarationList *it = ast->declarations; it; it = it->next) {
+            if (!std::exchange(first, false)) {
+                out(",");
+                lw.lineWriter.ensureSpace();
+            }
             accept(it->declaration);
         }
     }
@@ -645,6 +650,19 @@ bool ScriptFormatter::visit(ReturnStatement *ast)
     return false;
 }
 
+bool ScriptFormatter::visit(YieldExpression *ast)
+{
+    out(ast->yieldToken);
+    if (ast->isYieldStar)
+        out("*");
+    if (ast->expression) {
+        if (ast->yieldToken.isValid())
+            lw.lineWriter.ensureSpace();;
+        accept(ast->expression);
+    }
+    return false;
+}
+
 bool ScriptFormatter::visit(ThrowStatement *ast)
 {
     out(ast->throwToken);
@@ -703,7 +721,7 @@ bool ScriptFormatter::visit(CaseClause *ast)
     out("case"); // ast->caseToken
     lw.lineWriter.ensureSpace();
     accept(ast->expression);
-    out(ast->colonToken);
+    outWithComments(ast->colonToken, ast);
     if (ast->statements)
         lnAcceptIndented(ast->statements);
     return false;
@@ -777,29 +795,25 @@ bool ScriptFormatter::visit(FunctionExpression *ast)
             out("function");
             lw.lineWriter.ensureSpace();
         }
-        if (!ast->name.isNull())
-            out(ast->identifierToken);
+        outWithComments(ast->identifierToken, ast);
     }
-    out(ast->lparenToken);
-    const bool needParentheses = ast->formals
-            && (ast->formals->next
-                || (ast->formals->element && ast->formals->element->bindingTarget));
-    if (ast->isArrowFunction && needParentheses)
-        out("(");
+
+    const bool removeParentheses = ast->isArrowFunction && ast->formals && !ast->formals->next
+            && (ast->formals->element && !ast->formals->element->bindingTarget);
+
+    // note: qmlformat removes the parentheses for "(x) => x". In that case, we still need
+    // to print potential comments attached to `(` or `)` via `OnlyComments` option.
+    outWithComments(ast->lparenToken, ast, removeParentheses ? OnlyComments : NoSpace);
     int baseIndent = lw.increaseIndent(1);
     accept(ast->formals);
     lw.decreaseIndent(1, baseIndent);
-    if (ast->isArrowFunction && needParentheses)
-        out(")");
-    out(ast->rparenToken);
-    if (ast->isArrowFunction && !ast->formals)
-        out("()");
+    outWithComments(ast->rparenToken, ast, removeParentheses ? OnlyComments : NoSpace);
     lw.lineWriter.ensureSpace();
     if (ast->isArrowFunction) {
         out("=>");
         lw.lineWriter.ensureSpace();
     }
-    out(ast->lbraceToken);
+    outWithComments(ast->lbraceToken, ast);
     if (ast->lbraceToken.length != 0)
         ++expressionDepth;
     if (ast->body) {
@@ -815,7 +829,7 @@ bool ScriptFormatter::visit(FunctionExpression *ast)
     }
     if (ast->lbraceToken.length != 0)
         --expressionDepth;
-    out(ast->rbraceToken);
+    outWithComments(ast->rbraceToken, ast);
     return false;
 }
 
@@ -862,8 +876,10 @@ bool ScriptFormatter::visit(StatementList *ast)
             // If any of those are present they will take care of
             // handling the spacing between the statements so we
             // don't need to push any newline.
-            auto *commentForCurrentStatement = comments->commentForNode(it->statement);
-            auto *commentForNextStatement = comments->commentForNode(it->next->statement);
+            auto *commentForCurrentStatement =
+                    comments->commentForNode(it->statement, CommentAnchor{});
+            auto *commentForNextStatement =
+                    comments->commentForNode(it->next->statement, CommentAnchor{});
 
             if (
                 (commentForCurrentStatement && !commentForCurrentStatement->postComments().empty())
@@ -906,15 +922,8 @@ bool ScriptFormatter::visit(CaseClauses *ast)
 bool ScriptFormatter::visit(FormalParameterList *ast)
 {
     for (FormalParameterList *it = ast; it; it = it->next) {
-        // compare FormalParameterList::finish
-        if (auto id = it->element->bindingIdentifier.toString(); !id.isEmpty())
-            out(id);
-        if (it->element->bindingTarget)
-            accept(it->element->bindingTarget);
-        if (it->next) {
-            out(",");
-            lw.lineWriter.ensureSpace();
-        }
+        accept(it->element);
+        outWithComments(it->commaToken, it, SpaceBeforePostComment);
     }
     return false;
 }
@@ -930,7 +939,7 @@ bool ScriptFormatter::visit(ComputedPropertyName *)
     out("[");
     return true;
 }
-bool ScriptFormatter::visit(Expression *el)
+bool ScriptFormatter::visit(CommaExpression *el)
 {
     accept(el->left);
     out(",");
@@ -948,10 +957,9 @@ bool ScriptFormatter::visit(ExpressionStatement *el)
 // Return false because we want to omit default function calls in accept0 implementation.
 bool ScriptFormatter::visit(ClassDeclaration *ast)
 {
-    preVisit(ast);
     out(ast->classToken);
     lw.lineWriter.ensureSpace();
-    out(ast->name);
+    outWithComments(ast->identifierToken, ast);
     if (ast->heritage) {
         lw.lineWriter.ensureSpace();
         out("extends");
@@ -959,7 +967,7 @@ bool ScriptFormatter::visit(ClassDeclaration *ast)
         accept(ast->heritage);
     }
     lw.lineWriter.ensureSpace();
-    out("{");
+    outWithComments(ast->lbraceToken, ast);
     int baseIndent = lw.increaseIndent();
     for (ClassElementList *it = ast->elements; it; it = it->next) {
         lw.newline();
@@ -971,8 +979,7 @@ bool ScriptFormatter::visit(ClassDeclaration *ast)
         lw.newline();
     }
     lw.decreaseIndent(1, baseIndent);
-    out("}");
-    postVisit(ast);
+    outWithComments(ast->rbraceToken, ast);
     return false;
 }
 

@@ -90,6 +90,8 @@ QT_BEGIN_NAMESPACE
 
     \image qtquickcontrols-scrollindicator-non-attached.png
 
+    \include varying-delegate-heights-section.qdocinc {file} {1} {ScrollIndicator}
+
     \sa ScrollBar, {Customizing ScrollIndicator}, {Indicator Controls}
 */
 
@@ -396,7 +398,8 @@ qreal QQuickScrollIndicator::visualPosition() const
     return d->visualArea().position;
 }
 
-class QQuickScrollIndicatorAttachedPrivate : public QObjectPrivate, public QQuickItemChangeListener
+class QQuickScrollIndicatorAttachedPrivate : public QObjectPrivate,
+                                             public QSafeQuickItemChangeListener<QQuickScrollIndicatorAttachedPrivate>
 {
 public:
     void activateHorizontal();
@@ -495,7 +498,7 @@ QQuickScrollIndicatorAttached::QQuickScrollIndicatorAttached(QObject *parent)
     if (d->flickable)
         QQuickItemPrivate::get(d->flickable)->updateOrAddGeometryChangeListener(d, QQuickGeometryChange::Size);
     else if (parent)
-        qmlWarning(parent) << "ScrollIndicator must be attached to a Flickable";
+        qmlWarning(parent) << "ScrollIndicator attached property must be attached to an object deriving from Flickable";
 }
 
 QQuickScrollIndicatorAttached::~QQuickScrollIndicatorAttached()

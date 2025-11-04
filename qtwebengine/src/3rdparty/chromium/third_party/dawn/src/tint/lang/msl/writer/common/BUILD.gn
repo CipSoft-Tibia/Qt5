@@ -34,6 +34,7 @@
 #                       Do not modify this file directly
 ################################################################################
 
+import("../../../../../../scripts/dawn_overrides_with_defaults.gni")
 import("../../../../../../scripts/tint_overrides_with_defaults.gni")
 
 import("${tint_src_dir}/tint.gni")
@@ -52,9 +53,10 @@ if (tint_build_msl_writer) {
       "printer_support.h",
     ]
     deps = [
+      "${dawn_root}/src/utils:utils",
       "${tint_src_dir}/api/common",
-      "${tint_src_dir}/api/options",
       "${tint_src_dir}/lang/core",
+      "${tint_src_dir}/lang/core/common",
       "${tint_src_dir}/lang/core/type",
       "${tint_src_dir}/utils/containers",
       "${tint_src_dir}/utils/diagnostic",
@@ -76,16 +78,24 @@ if (tint_build_msl_writer) {
 if (tint_build_unittests) {
   if (tint_build_msl_writer) {
     tint_unittests_source_set("unittests") {
-      sources = [ "printer_support_test.cc" ]
+      sources = [
+        "options_test.cc",
+        "printer_support_test.cc",
+      ]
       deps = [
+        "${dawn_root}/src/utils:utils",
         "${tint_src_dir}:gmock_and_gtest",
+        "${tint_src_dir}/api/common",
         "${tint_src_dir}/lang/core",
         "${tint_src_dir}/lang/core/type",
         "${tint_src_dir}/utils/containers",
+        "${tint_src_dir}/utils/diagnostic",
         "${tint_src_dir}/utils/ice",
         "${tint_src_dir}/utils/macros",
         "${tint_src_dir}/utils/math",
         "${tint_src_dir}/utils/memory",
+        "${tint_src_dir}/utils/reflection",
+        "${tint_src_dir}/utils/result",
         "${tint_src_dir}/utils/rtti",
         "${tint_src_dir}/utils/text",
         "${tint_src_dir}/utils/traits",

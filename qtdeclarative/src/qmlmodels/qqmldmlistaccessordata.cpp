@@ -124,7 +124,11 @@ int VDMListDelegateDataType::createProperty(const char *name, const char *)
     return propertyIndex + propertyOffset;
 }
 
+#if QT_VERSION >= QT_VERSION_CHECK(7, 0, 0)
+const QMetaObject *VDMListDelegateDataType::toDynamicMetaObject(QObject *object) const
+#else
 QMetaObject *VDMListDelegateDataType::toDynamicMetaObject(QObject *object)
+#endif
 {
     if (const QQmlRefPointer<QQmlContextData> &contextData
             = static_cast<QQmlDMListAccessorData *>(object)->contextData) {
@@ -139,8 +143,11 @@ QMetaObject *VDMListDelegateDataType::toDynamicMetaObject(QObject *object)
                     ddata->propertyCache = propertyCache;
             }
 
-            // ### Qt 7: Return const from toDynamicMetaObject() and drop the const_cast.
+#if QT_VERSION >= QT_VERSION_CHECK(7, 0, 0)
+            return &QQmlDMListAccessorData::staticMetaObject;
+#else
             return const_cast<QMetaObject *>(&QQmlDMListAccessorData::staticMetaObject);
+#endif
         }
     }
 

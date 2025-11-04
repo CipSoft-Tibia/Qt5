@@ -8,8 +8,8 @@
 #include <semaphore.h>
 
 #include "androidcontentfileengine.h"
+#include "qandroidapkfileengine.h"
 #include "androiddeadlockprotector.h"
-#include "androidjniaccessibility.h"
 #include "androidjniinput.h"
 #include "androidjnimain.h"
 #include "androidjnimenu.h"
@@ -18,7 +18,12 @@
 #include "qandroideventdispatcher.h"
 #include "qandroidplatformdialoghelpers.h"
 #include "qandroidplatformintegration.h"
+#if QT_CONFIG(clipboard)
 #include "qandroidplatformclipboard.h"
+#endif
+#if QT_CONFIG(accessibility)
+#include "androidjniaccessibility.h"
+#endif
 #include "qandroidplatformwindow.h"
 
 #include <android/api-level.h>
@@ -80,6 +85,7 @@ static double m_density = 1.0;
 
 static AndroidAssetsFileEngineHandler *m_androidAssetsFileEngineHandler = nullptr;
 static AndroidContentFileEngineHandler *m_androidContentFileEngineHandler = nullptr;
+static QAndroidApkFileEngineHandler *m_androidApkFileEngineHandler = nullptr;
 
 static AndroidBackendRegister *m_backendRegister = nullptr;
 
@@ -89,7 +95,9 @@ static const char m_methodErrorMsg[] = "Can't find method \"%s%s\"";
 
 Q_CONSTINIT static QBasicAtomicInt startQtAndroidPluginCalled = Q_BASIC_ATOMIC_INITIALIZER(0);
 
+#if QT_CONFIG(accessibility)
 Q_DECLARE_JNI_CLASS(QtAccessibilityInterface, "org/qtproject/qt/android/QtAccessibilityInterface");
+#endif
 
 namespace QtAndroid
 {
@@ -190,6 +198,7 @@ namespace QtAndroid
         return true;
     }
 
+#if QT_CONFIG(accessibility)
     void initializeAccessibility()
     {
         m_backendRegister->callInterface<QtJniTypes::QtAccessibilityInterface, void>(
@@ -226,11 +235,24 @@ namespace QtAndroid
                 "notifyValueChanged", accessibilityObjectId, value);
     }
 
+    void notifyDescriptionOrNameChanged(uint accessibilityObjectId, const QString &value)
+    {
+        m_backendRegister->callInterface<QtJniTypes::QtAccessibilityInterface, void>(
+                "notifyDescriptionOrNameChanged", accessibilityObjectId, value);
+    }
+
     void notifyScrolledEvent(uint accessibilityObjectId)
     {
         m_backendRegister->callInterface<QtJniTypes::QtAccessibilityInterface, void>(
                 "notifyScrolledEvent", accessibilityObjectId);
     }
+
+    void notifyAnnouncementEvent(uint accessibilityObjectId, const QString &message)
+    {
+        m_backendRegister->callInterface<QtJniTypes::QtAccessibilityInterface, void>(
+                "notifyAnnouncementEvent", accessibilityObjectId, message);
+    }
+#endif //QT_CONFIG(accessibility)
 
     void notifyNativePluginIntegrationReady(bool ready)
     {
@@ -382,6 +404,7 @@ static jboolean startQtAndroidPlugin(JNIEnv *env, jobject /*object*/, jstring pa
     m_androidPlatformIntegration = nullptr;
     m_androidAssetsFileEngineHandler = new AndroidAssetsFileEngineHandler();
     m_androidContentFileEngineHandler = new AndroidContentFileEngineHandler();
+    m_androidApkFileEngineHandler = new QAndroidApkFileEngineHandler();
     m_mainLibraryHnd = nullptr;
     m_backendRegister = new AndroidBackendRegister();
 
@@ -468,8 +491,10 @@ static void startQtApplication(JNIEnv */*env*/, jclass /*clazz*/)
             qWarning() << "dlclose failed:" << dlerror();
     }
 
-    if (m_applicationClass && QtAndroid::isQtApplication())
-        QJniObject::callStaticMethod<void>(m_applicationClass, "quitApp", "()V");
+    if (m_applicationClass) {
+        const auto quitMethodName = QtAndroid::isQtApplication() ? "quitApp" : "quitQt";
+        QJniObject::callStaticMethod<void>(m_applicationClass, quitMethodName);
+    }
 
     sem_post(&m_terminateSemaphore);
     sem_wait(&m_exitSemaphore);
@@ -494,6 +519,8 @@ static void quitQtAndroidPlugin(JNIEnv *env, jclass /*clazz*/)
     m_androidAssetsFileEngineHandler = nullptr;
     delete m_androidContentFileEngineHandler;
     m_androidContentFileEngineHandler = nullptr;
+    delete m_androidApkFileEngineHandler;
+    m_androidApkFileEngineHandler = nullptr;
 }
 
 static void clearJavaReferences(JNIEnv *env)
@@ -557,6 +584,8 @@ static void terminateQt(JNIEnv *env, jclass /*clazz*/)
     m_androidAssetsFileEngineHandler = nullptr;
     delete m_androidContentFileEngineHandler;
     m_androidContentFileEngineHandler = nullptr;
+    delete m_androidApkFileEngineHandler;
+    m_androidApkFileEngineHandler = nullptr;
     delete m_backendRegister;
     m_backendRegister = nullptr;
     sem_post(&m_exitSemaphore);
@@ -595,26 +624,6 @@ static void setDisplayMetrics(JNIEnv * /*env*/, jclass /*clazz*/, jint screenWid
     }
 }
 Q_DECLARE_JNI_NATIVE_METHOD(setDisplayMetrics)
-
-static void updateWindow(JNIEnv */*env*/, jobject /*thiz*/)
-{
-    if (!m_androidPlatformIntegration)
-        return;
-
-    if (QGuiApplication::instance() != nullptr) {
-        const auto tlw = QGuiApplication::topLevelWindows();
-        for (QWindow *w : tlw) {
-
-            // Skip non-platform windows, e.g., offscreen windows.
-            if (!w->handle())
-                continue;
-
-            QRect availableGeometry = w->screen()->availableGeometry();
-            if (w->geometry().width() > 0 && w->geometry().height() > 0 && availableGeometry.width() > 0 && availableGeometry.height() > 0)
-                QWindowSystemInterface::handleExposeEvent(w, QRegion(QRect(QPoint(), w->geometry().size())));
-        }
-    }
-}
 
 static void updateApplicationState(JNIEnv */*env*/, jobject /*thiz*/, jint state)
 {
@@ -760,7 +769,6 @@ static JNINativeMethod methods[] = {
     { "quitQtCoreApplication", "()V", (void *)quitQtCoreApplication },
     { "terminateQt", "()V", (void *)terminateQt },
     { "waitForServiceSetup", "()V", (void *)waitForServiceSetup },
-    { "updateWindow", "()V", (void *)updateWindow },
     { "updateApplicationState", "(I)V", (void *)updateApplicationState },
     { "onActivityResult", "(IILandroid/content/Intent;)V", (void *)onActivityResult },
     { "onNewIntent", "(Landroid/content/Intent;)V", (void *)onNewIntent },
@@ -824,9 +832,13 @@ static bool registerNatives(QJniEnvironment &env)
     success = success
         && QtAndroidInput::registerNatives(env)
         && QtAndroidMenu::registerNatives(env)
+#if QT_CONFIG(accessibility)
         && QtAndroidAccessibility::registerNatives(env)
+#endif
         && QtAndroidDialogHelpers::registerNatives(env)
+#if QT_CONFIG(clipboard)
         && QAndroidPlatformClipboard::registerNatives(env)
+#endif
         && QAndroidPlatformWindow::registerNatives(env)
         && QtAndroidWindowEmbedding::registerNatives(env)
         && AndroidBackendRegister::registerNatives()

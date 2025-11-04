@@ -2,6 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#ifdef UNSAFE_BUFFERS_BUILD
+// TODO(crbug.com/40285824): Remove this and convert code to safer constructs.
+#pragma allow_unsafe_buffers
+#endif
+
 #ifndef COMPONENTS_VIZ_COMMON_QUADS_DRAW_QUAD_H_
 #define COMPONENTS_VIZ_COMMON_QUADS_DRAW_QUAD_H_
 
@@ -50,7 +55,7 @@ class VIZ_COMMON_EXPORT DrawQuad {
     kSurfaceContent = 8,
     kTextureContent = 9,
     kTiledContent = 10,
-    kYuvVideoContent = 11,
+    // kYuvVideoContent = 11,  // Removed. kTextureContent used instead.
     kVideoHole = 12,
     kMaxValue = kVideoHole
   };
@@ -76,8 +81,8 @@ class VIZ_COMMON_EXPORT DrawQuad {
   // Stores state common to a large bundle of quads; kept separate for memory
   // efficiency. There is special treatment to reconstruct these pointers
   // during serialization.
-  // This field is not a raw_ptr<> because of missing |.get()| in not-rewritten
-  // platform specific code.
+  // RAW_PTR_EXCLUSION: Performance reasons (rendering.mobile,
+  // Graphics.Smoothness, see crbug.com/345298647)
   RAW_PTR_EXCLUSION const SharedQuadState* shared_quad_state;
 
   bool IsDebugQuad() const { return material == Material::kDebugBorder; }

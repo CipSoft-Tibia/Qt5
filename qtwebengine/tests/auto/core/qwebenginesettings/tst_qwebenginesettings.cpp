@@ -27,6 +27,7 @@
 
 #include <QtGui/qclipboard.h>
 #include <QtGui/qguiapplication.h>
+#include <QtGui/qpointingdevice.h>
 #include <QtWebEngineWidgets/qwebengineview.h>
 
 class tst_QWebEngineSettings: public QObject {
@@ -43,6 +44,8 @@ private Q_SLOTS:
     void disableReadingFromCanvas();
     void forceDarkMode();
     void forceDarkModeMultiView();
+    void javaScriptTouchEvents_data();
+    void javaScriptTouchEvents();
 };
 
 void tst_QWebEngineSettings::resetAttributes()
@@ -111,6 +114,9 @@ void tst_QWebEngineSettings::javascriptClipboard_data()
 
 void tst_QWebEngineSettings::javascriptClipboard()
 {
+    if (QGuiApplication::platformName().startsWith(QLatin1String("wayland"), Qt::CaseInsensitive))
+        QSKIP("Wayland: Manipulating the clipboard requires real input events. Can't auto test.");
+
     QFETCH(bool, javascriptCanAccessClipboard);
     QFETCH(bool, javascriptCanPaste);
     QFETCH(bool, copyResult);
@@ -300,6 +306,46 @@ void tst_QWebEngineSettings::forceDarkModeMultiView()
     // dark mode should apply only for view1
     QTRY_COMPARE(evaluateJavaScriptSync(page1, isAutoDark).toBool(), true);
     QTRY_COMPARE(evaluateJavaScriptSync(page2, isAutoDark).toBool(), false);
+}
+
+void tst_QWebEngineSettings::javaScriptTouchEvents_data()
+{
+    QTest::addColumn<bool>("isExplicitlySet");
+    QTest::addColumn<bool>("jsTouchEventsEnabled");
+    QTest::addColumn<bool>("touchDevicePresent");
+    QTest::newRow("NoSetting") << false << false << true;
+    QTest::newRow("NoSettingNoTouchDevice") << false << false << false;
+    QTest::newRow("Enabled") << true << true << true;
+    QTest::newRow("EnabledNoTouchDevice") << true << true << false;
+    QTest::newRow("Disabled") << true << false << true;
+    QTest::newRow("DisabledNoTouchDevice") << true << false << true;
+}
+
+void tst_QWebEngineSettings::javaScriptTouchEvents()
+{
+    QFETCH(bool, isExplicitlySet);
+    QFETCH(bool, jsTouchEventsEnabled);
+    QFETCH(bool, touchDevicePresent);
+
+    QScopedPointer<QPointingDevice> touchDevice(nullptr);
+    if (touchDevicePresent)
+        touchDevice.reset(QTest::createTouchDevice());
+
+    QWebEnginePage page;
+    QSignalSpy loadFinishedSpy(&page, SIGNAL(loadFinished(bool)));
+
+    if (isExplicitlySet)
+        page.settings()->setAttribute(QWebEngineSettings::TouchEventsApiEnabled,
+                                      jsTouchEventsEnabled);
+
+    page.settings()->setAttribute(QWebEngineSettings::JavascriptEnabled, true);
+    page.setHtml("<html></html>");
+    QVERIFY(loadFinishedSpy.wait());
+
+    bool res = isExplicitlySet ? jsTouchEventsEnabled : touchDevicePresent;
+
+    const QString isTouchAPIEnabled = QStringLiteral("'ontouchstart' in window");
+    QTRY_COMPARE(evaluateJavaScriptSync(&page, isTouchAPIEnabled).toBool(), res);
 }
 
 QTEST_MAIN(tst_QWebEngineSettings)

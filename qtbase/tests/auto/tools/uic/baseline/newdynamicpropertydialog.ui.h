@@ -44,7 +44,7 @@ public:
     {
         if (qdesigner_internal__NewDynamicPropertyDialog->objectName().isEmpty())
             qdesigner_internal__NewDynamicPropertyDialog->setObjectName("qdesigner_internal__NewDynamicPropertyDialog");
-        qdesigner_internal__NewDynamicPropertyDialog->resize(340, 118);
+        qdesigner_internal__NewDynamicPropertyDialog->resize(361, 130);
         verticalLayout = new QVBoxLayout(qdesigner_internal__NewDynamicPropertyDialog);
         verticalLayout->setObjectName("verticalLayout");
         formLayout = new QFormLayout();
@@ -53,7 +53,7 @@ public:
         m_lineEdit->setObjectName("m_lineEdit");
         m_lineEdit->setMinimumSize(QSize(220, 0));
 
-        formLayout->setWidget(0, QFormLayout::FieldRole, m_lineEdit);
+        formLayout->setWidget(0, QFormLayout::ItemRole::FieldRole, m_lineEdit);
 
         label = new QLabel(qdesigner_internal__NewDynamicPropertyDialog);
         label->setObjectName("label");
@@ -63,7 +63,7 @@ public:
         sizePolicy.setHeightForWidth(label->sizePolicy().hasHeightForWidth());
         label->setSizePolicy(sizePolicy);
 
-        formLayout->setWidget(0, QFormLayout::LabelRole, label);
+        formLayout->setWidget(0, QFormLayout::ItemRole::LabelRole, label);
 
         horizontalLayout = new QHBoxLayout();
         horizontalLayout->setObjectName("horizontalLayout");
@@ -77,14 +77,14 @@ public:
         horizontalLayout->addItem(horizontalSpacer);
 
 
-        formLayout->setLayout(1, QFormLayout::FieldRole, horizontalLayout);
+        formLayout->setLayout(1, QFormLayout::ItemRole::FieldRole, horizontalLayout);
 
         label_2 = new QLabel(qdesigner_internal__NewDynamicPropertyDialog);
         label_2->setObjectName("label_2");
         sizePolicy.setHeightForWidth(label_2->sizePolicy().hasHeightForWidth());
         label_2->setSizePolicy(sizePolicy);
 
-        formLayout->setWidget(1, QFormLayout::LabelRole, label_2);
+        formLayout->setWidget(1, QFormLayout::ItemRole::LabelRole, label_2);
 
 
         verticalLayout->addLayout(formLayout);
@@ -95,8 +95,8 @@ public:
 
         m_buttonBox = new QDialogButtonBox(qdesigner_internal__NewDynamicPropertyDialog);
         m_buttonBox->setObjectName("m_buttonBox");
-        m_buttonBox->setOrientation(Qt::Horizontal);
-        m_buttonBox->setStandardButtons(QDialogButtonBox::Cancel|QDialogButtonBox::Ok);
+        m_buttonBox->setOrientation(Qt::Orientation::Horizontal);
+        m_buttonBox->setStandardButtons(QDialogButtonBox::StandardButton::Cancel|QDialogButtonBox::StandardButton::Ok);
         m_buttonBox->setCenterButtons(false);
 
         verticalLayout->addWidget(m_buttonBox);

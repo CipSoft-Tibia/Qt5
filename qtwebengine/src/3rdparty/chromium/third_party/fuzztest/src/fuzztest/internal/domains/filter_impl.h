@@ -16,28 +16,29 @@
 #define FUZZTEST_FUZZTEST_INTERNAL_DOMAINS_FILTER_IMPL_H_
 
 #include <cstdint>
+#include <functional>
 #include <optional>
 
 #include "absl/random/bit_gen_ref.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_format.h"
+#include "./fuzztest/internal/domains/domain.h"
 #include "./fuzztest/internal/domains/domain_base.h"
 #include "./fuzztest/internal/logging.h"
 #include "./fuzztest/internal/serialization.h"
-#include "./fuzztest/internal/status.h"
-#include "./fuzztest/internal/type_support.h"
 
 namespace fuzztest::internal {
 
-template <typename Pred, typename Inner>
+template <typename T>
 class FilterImpl
-    : public DomainBase<FilterImpl<Pred, Inner>, value_type_t<Inner>,
-                        corpus_type_t<Inner>> {
+    : public domain_implementor::DomainBase<FilterImpl<T>, T,
+                                            GenericDomainCorpusType> {
  public:
   using typename FilterImpl::DomainBase::corpus_type;
   using typename FilterImpl::DomainBase::value_type;
 
   FilterImpl() = default;
-  explicit FilterImpl(Pred predicate, Inner inner)
+  explicit FilterImpl(std::function<bool(const T&)> predicate, Domain<T> inner)
       : predicate_(std::move(predicate)), inner_(std::move(inner)) {}
 
   corpus_type Init(absl::BitGenRef prng) {
@@ -86,8 +87,9 @@ class FilterImpl
     bool res = predicate_(GetValue(v));
     if (!res) {
       ++num_skips_;
-      if (num_skips_ > 100 && num_skips_ > .9 * num_values_) {
-        AbortInTest(absl::StrFormat(R"(
+      FUZZTEST_INTERNAL_CHECK_PRECONDITION(
+          num_skips_ <= 100 || num_skips_ <= .9 * num_values_,
+          absl::StrFormat(R"(
 
 [!] Ineffective use of Filter() detected!
 
@@ -98,14 +100,13 @@ Please use Filter() only to skip unlikely values. To filter out a significant
 chunk of the input domain, consider defining a custom domain by construction.
 See more details in the User Guide.
 )",
-                                    num_skips_, num_values_));
-      }
+                          num_skips_, num_values_));
     }
     return res;
   }
 
-  Pred predicate_;
-  Inner inner_;
+  std::function<bool(const T&)> predicate_;
+  Domain<T> inner_;
   uint64_t num_values_ = 0;
   uint64_t num_skips_ = 0;
 };

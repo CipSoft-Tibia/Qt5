@@ -6,9 +6,11 @@
 #define UI_OZONE_PLATFORM_WAYLAND_HOST_WAYLAND_TOPLEVEL_WINDOW_H_
 
 #include <memory>
+#include <optional>
 #include <ostream>
 
 #include "base/memory/raw_ptr.h"
+#include "base/memory/weak_ptr.h"
 #include "build/chromeos_buildflags.h"
 #include "ui/base/dragdrop/mojom/drag_drop_types.mojom-shared.h"
 #include "ui/gfx/geometry/insets.h"
@@ -39,7 +41,7 @@ class ShellToplevelWrapper;
 class WaylandToplevelWindow : public WaylandWindow,
                               public WmMoveResizeHandler,
                               public WmMoveLoopHandler,
-                              public WaylandExtension,
+                              public WaylandToplevelExtension,
                               public WorkspaceExtension,
                               public DeskExtension,
                               public PinnedModeExtension,
@@ -60,7 +62,8 @@ class WaylandToplevelWindow : public WaylandWindow,
   void UpdateWindowScale(bool update_bounds) override;
   void LockFrame() override;
   void UnlockFrame() override;
-  void OcclusionStateChanged(uint32_t mode) override;
+  void OcclusionStateChanged(
+      PlatformWindowOcclusionState occlusion_state) override;
   void DeskChanged(int state) override;
   void StartThrottle() override;
   void EndThrottle() override;
@@ -89,7 +92,7 @@ class WaylandToplevelWindow : public WaylandWindow,
   bool OnInitialize(PlatformWindowInitProperties properties,
                     PlatformWindowDelegate::State* state) override;
   bool IsActive() const override;
-  void SetWindowGeometry(gfx::Size size_dip) override;
+  void SetWindowGeometry(const PlatformWindowDelegate::State& state) override;
   bool IsScreenCoordinatesEnabled() const override;
   bool SupportsConfigureMinimizedState() const override;
   bool SupportsConfigurePinnedState() const override;
@@ -100,6 +103,7 @@ class WaylandToplevelWindow : public WaylandWindow,
                    const base::TimeDelta hide_delay) override;
   void HideTooltip() override;
   void PropagateBufferScale(float new_scale) override;
+  base::WeakPtr<WaylandWindow> AsWeakPtr() override;
   void OnRotateFocus(uint32_t serial, uint32_t direction, bool restart);
   void OnOverviewChange(uint32_t in_overview_as_int);
 
@@ -120,9 +124,10 @@ class WaylandToplevelWindow : public WaylandWindow,
   void Maximize() override;
   void Minimize() override;
   void Restore() override;
-  PlatformWindowState GetPlatformWindowState() const override;
   void Activate() override;
   void Deactivate() override;
+  void SetWindowIcons(const gfx::ImageSkia& window_icon,
+                      const gfx::ImageSkia& app_icon) override;
   void SizeConstraintsChanged() override;
   // `SetZOrderLevel()` must be called on `z_order_` in
   // `SetUpShellIntegration()`.
@@ -138,8 +143,8 @@ class WaylandToplevelWindow : public WaylandWindow,
   bool ShouldUpdateWindowShape() const override;
   bool CanSetDecorationInsets() const override;
   void SetOpaqueRegion(
-      absl::optional<std::vector<gfx::Rect>> region_px) override;
-  void SetInputRegion(absl::optional<gfx::Rect> region_px) override;
+      std::optional<std::vector<gfx::Rect>> region_px) override;
+  void SetInputRegion(std::optional<std::vector<gfx::Rect>> region_px) override;
   bool IsClientControlledWindowMovementSupported() const override;
   void NotifyStartupComplete(const std::string& startup_id) override;
   void SetAspectRatio(const gfx::SizeF& aspect_ratio) override;
@@ -150,7 +155,7 @@ class WaylandToplevelWindow : public WaylandWindow,
   bool RunMoveLoop(const gfx::Vector2d& drag_offset) override;
   void EndMoveLoop() override;
 
-  // WaylandExtension:
+  // WaylandToplevelExtension:
   void StartWindowDraggingSessionIfNeeded(
       ui::mojom::DragEventSource event_source,
       bool allow_system_drag) override;
@@ -204,7 +209,7 @@ class WaylandToplevelWindow : public WaylandWindow,
 
   void UpdateSystemModal();
 
-  void TriggerStateChanges();
+  void TriggerStateChanges(PlatformWindowState window_state);
 
   // Sets the new window `state` to the window. `target_display_id` gets ignored
   // unless the state is `PlatformWindowState::kFullscreen`.
@@ -212,6 +217,9 @@ class WaylandToplevelWindow : public WaylandWindow,
 
   bool ShouldTriggerStateChange(PlatformWindowState state,
                                 int64_t target_display_id) const;
+
+  // Activates the surface using XDG activation given an activation token.
+  void ActivateWithToken(std::string token);
 
   WaylandOutput* GetWaylandOutputForDisplayId(int64_t display_id);
 
@@ -222,11 +230,6 @@ class WaylandToplevelWindow : public WaylandWindow,
 
   // Propagates the minimum size and maximum size to the ShellToplevel.
   void SetSizeConstraints();
-
-  // If current state is not PlatformWindowState::kNormal, stores the current
-  // size into restored_bounds_dip_ so that they can be restored when the
-  // window gets back to normal state.  Otherwise, resets the restored bounds.
-  void SetOrResetRestoredBounds();
 
   // Initializes additional shell integration, if the appropriate interfaces are
   // available.
@@ -239,9 +242,6 @@ class WaylandToplevelWindow : public WaylandWindow,
   // previously locked state.
   void OnFrameLockingChanged(bool lock);
 
-  // Called when the occlusion state is updated.
-  void OnOcclusionStateChanged(PlatformWindowOcclusionState occlusion_state);
-
   // Called when a window is moved to another desk or assigned to
   // all desks state.
   void OnDeskChanged(int state);
@@ -253,10 +253,11 @@ class WaylandToplevelWindow : public WaylandWindow,
   // Wrappers around shell surface.
   std::unique_ptr<ShellToplevelWrapper> shell_toplevel_;
 
-  // Contains the current state of the window.
-  PlatformWindowState state_ = PlatformWindowState::kUnknown;
-  // Contains the previous state of the window.
-  PlatformWindowState previous_state_ = PlatformWindowState::kUnknown;
+  // True if it's maximized before requesting the window state change from the
+  // client.
+  // TODO(b/328109805): Move this logic to server side on Lacros.
+  bool previously_maximized_ = false;
+
   // The display ID to switch to in case the state is `kFullscreen`.
   int64_t fullscreen_display_id_ = display::kInvalidDisplayId;
 
@@ -268,9 +269,10 @@ class WaylandToplevelWindow : public WaylandWindow,
   bool is_active_ = false;
 
 #if BUILDFLAG(IS_CHROMEOS_LACROS)
-  // This is used to detect fullscreen type changes from the Aura side
-  // to inform Lacros clients from the asynchronous task completion.
-  PlatformFullscreenType fullscreen_type_ = PlatformFullscreenType::kNone;
+  // The flag that indicates the last requested immersive fullscreen status from
+  // SetImmersiveFullscreenStatue to detect the immersive status changes. Set to
+  // null if it had never been called.
+  std::optional<bool> last_requested_immersive_status_ = std::nullopt;
 
   // Unique ID for this window. May be shared over non-Wayland IPC transports
   // (e.g. mojo) to identify the window.
@@ -298,24 +300,14 @@ class WaylandToplevelWindow : public WaylandWindow,
   // e.g. lacros-taskmanager.
   bool use_native_frame_ = false;
 
-  absl::optional<std::vector<gfx::Rect>> opaque_region_px_;
-  absl::optional<gfx::Rect> input_region_px_;
-
-  // Tracks how many the window show state requests by made by the Browser
-  // are currently being processed by the Wayland Compositor. In practice,
-  // each individual increment corresponds to an explicit window show state
-  // change request, and gets a response by the Compositor.
-  //
-  // This mechanism allows Ozone/Wayland to filter out notifying the delegate
-  // (PlatformWindowDelegate) more than once, for the same window show state
-  // change.
-  uint32_t requested_window_show_state_count_ = 0;
+  std::optional<std::vector<gfx::Rect>> opaque_region_px_;
+  std::optional<std::vector<gfx::Rect>> input_region_px_;
 
   // Information used by the compositor to restore the window state upon
   // creation.
   int32_t restore_session_id_ = 0;
-  absl::optional<int32_t> restore_window_id_ = 0;
-  absl::optional<std::string> restore_window_id_source_;
+  std::optional<int32_t> restore_window_id_ = 0;
+  std::optional<std::string> restore_window_id_source_;
 
   // Information pertaining to a window's persistability.
   bool persistable_ = true;
@@ -325,7 +317,7 @@ class WaylandToplevelWindow : public WaylandWindow,
 
   // The desk index for the window.
   // If |workspace_| is -1, window is visible on all workspaces.
-  absl::optional<int> workspace_ = absl::nullopt;
+  std::optional<int> workspace_ = std::nullopt;
 
   // The z order for the window.
   ZOrderLevel z_order_ = ZOrderLevel::kNormal;
@@ -334,9 +326,11 @@ class WaylandToplevelWindow : public WaylandWindow,
   bool screen_coordinates_enabled_;
 
   // The last buffer scale sent to the wayland server.
-  absl::optional<float> last_sent_buffer_scale_;
+  std::optional<float> last_sent_buffer_scale_;
 
   raw_ptr<WorkspaceExtensionDelegate> workspace_extension_delegate_ = nullptr;
+
+  base::WeakPtrFactory<WaylandToplevelWindow> weak_ptr_factory_{this};
 };
 
 }  // namespace ui

@@ -129,10 +129,10 @@ static QString deviceModelIdentifier()
     size_t size;
     sysctlbyname(key, NULL, &size, NULL, 0);
 
-    char value[size];
-    sysctlbyname(key, &value, &size, NULL, 0);
+    QVarLengthArray<char> value(size);
+    sysctlbyname(key, value.data(), &size, NULL, 0);
 
-    return QString::fromLatin1(QByteArrayView(value, qsizetype(size)));
+    return QString::fromLatin1(QByteArrayView(value.constData(), qsizetype(size)));
 #endif
 }
 #endif // !defined(Q_OS_VISIONOS)
@@ -387,8 +387,32 @@ Qt::ScreenOrientation QIOSScreen::orientation() const
     // even if the orientation of the UI was locked to a subset
     // of the possible orientations via the app's Info.plist or
     // via [UIViewController supportedInterfaceOrientations].
-    return m_geometry.width() >= m_geometry.height() ?
-        Qt::LandscapeOrientation : Qt::PortraitOrientation;
+    auto *windowScene = rootViewForScreen(this).window.windowScene;
+    auto interfaceOrientation = windowScene ?
+        windowScene.interfaceOrientation : UIInterfaceOrientationUnknown;
+
+    // FIXME: On visionOS the interface orientation is reported
+    // as portrait, which seems strange, but at least it matches
+    // what we report as the native orientation.
+
+    switch (interfaceOrientation) {
+    case UIInterfaceOrientationPortrait:
+        return Qt::PortraitOrientation;
+    case UIInterfaceOrientationPortraitUpsideDown:
+        return Qt::InvertedPortraitOrientation;
+    case UIInterfaceOrientationLandscapeLeft:
+        return Qt::LandscapeOrientation;
+    case UIInterfaceOrientationLandscapeRight:
+        return Qt::InvertedLandscapeOrientation;
+    case UIInterfaceOrientationUnknown:
+    default:
+        // Fall back to the primary orientation, but with a concrete
+        // orientation instead of Qt::PrimaryOrientation, as when we
+        // report orientation changes the primary orientation has not
+        // been updated yet, so user's can't query it in response.
+        return m_geometry.width() >= m_geometry.height() ?
+            Qt::LandscapeOrientation : Qt::PortraitOrientation;
+    }
 }
 
 QPixmap QIOSScreen::grabWindow(WId window, int x, int y, int width, int height) const
@@ -407,19 +431,33 @@ QPixmap QIOSScreen::grabWindow(WId window, int x, int y, int width, int height) 
     CGRect captureRect = [view.window convertRect:CGRectMake(x, y, width, height) fromView:view];
     captureRect = CGRectIntersection(captureRect, view.window.bounds);
 
-    UIGraphicsBeginImageContextWithOptions(captureRect.size, NO, 0.0);
-    CGContextRef context = UIGraphicsGetCurrentContext();
-    CGContextTranslateCTM(context, -captureRect.origin.x, -captureRect.origin.y);
+    QMacAutoReleasePool autoReleasePool;
 
-    // Draws the complete view hierarchy of view.window into the given rect, which
-    // needs to be the same aspect ratio as the view.window's size. Since we've
-    // translated the graphics context, and are potentially drawing into a smaller
-    // context than the full window, the resulting image will be a subsection of the
-    // full screen.
-    [view.window drawViewHierarchyInRect:view.window.bounds afterScreenUpdates:NO];
+    UIGraphicsImageRendererFormat *format = [UIGraphicsImageRendererFormat defaultFormat];
+    format.opaque = NO;
+    format.scale = devicePixelRatio();
+    // Could be adjusted to support HDR in the future.
+    format.preferredRange = UIGraphicsImageRendererFormatRangeStandard;
 
-    UIImage *screenshot = UIGraphicsGetImageFromCurrentImageContext();
-    UIGraphicsEndImageContext();
+    UIGraphicsImageRenderer *renderer = [[[UIGraphicsImageRenderer alloc]
+        initWithSize:captureRect.size format:format]
+        autorelease];
+
+    UIImage *screenshot = [renderer imageWithActions:^(UIGraphicsImageRendererContext *rendererContext) {
+        CGContextRef context = rendererContext.CGContext;
+        CGContextTranslateCTM(context, -captureRect.origin.x, -captureRect.origin.y);
+
+        // Draws the complete view hierarchy of view.window into the given rect, which
+        // needs to be the same aspect ratio as the view.window's size. Since we've
+        // translated the graphics context, and are potentially drawing into a smaller
+        // context than the full window, the resulting image will be a subsection of the
+        // full screen.
+        //
+        // TODO: Should only be run on the UI thread in the future. At
+        // the time of writing, QScreen::grabWindow doesn't include any
+        // requirements as to which thread it can be called from.
+        [view.window drawViewHierarchyInRect:view.window.bounds afterScreenUpdates:NO];
+    }];
 
     return QPixmap::fromImage(qt_mac_toQImage(screenshot.CGImage));
 }

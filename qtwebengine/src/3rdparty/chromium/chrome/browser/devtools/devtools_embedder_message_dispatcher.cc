@@ -7,6 +7,7 @@
 #include <memory>
 
 #include "base/functional/bind.h"
+#include "base/logging.h"
 #include "base/values.h"
 #if !BUILDFLAG(IS_QTWEBENGINE)
 #include "chrome/browser/browser_features.h"
@@ -109,6 +110,36 @@ bool GetValue(const base::Value& value, ImpressionEvent* event) {
     if (context) {
       event->impressions.back().context = *context;
     }
+    std::optional<int> width = impression.GetDict().FindInt("width");
+    if (width) {
+      event->impressions.back().width = *width;
+    }
+    std::optional<int> height = impression.GetDict().FindInt("height");
+    if (height) {
+      event->impressions.back().height = *height;
+    }
+  }
+  return true;
+}
+
+bool GetValue(const base::Value& value, ResizeEvent* event) {
+  if (!value.is_dict()) {
+    return false;
+  }
+
+  std::optional<int> veid = value.GetDict().FindInt("veid");
+  if (!veid) {
+    return false;
+  }
+  event->veid = *veid;
+
+  std::optional<int> width = value.GetDict().FindInt("width");
+  if (width) {
+    event->width = *width;
+  }
+  std::optional<int> height = value.GetDict().FindInt("height");
+  if (height) {
+    event->height = *height;
   }
   return true;
 }
@@ -127,6 +158,10 @@ bool GetValue(const base::Value& value, ClickEvent* event) {
   std::optional<int> mouse_button = value.GetDict().FindInt("mouseButton");
   if (mouse_button) {
     event->mouse_button = *mouse_button;
+  }
+  std::optional<int> double_click = value.GetDict().FindInt("doubleClick");
+  if (double_click) {
+    event->double_click = *double_click;
   }
   std::optional<int> context = value.GetDict().FindInt("context");
   if (context) {
@@ -203,10 +238,9 @@ bool GetValue(const base::Value& value, KeyDownEvent* event) {
   }
 
   std::optional<int> veid = value.GetDict().FindInt("veid");
-  if (!veid) {
-    return false;
+  if (veid) {
+    event->veid = *veid;
   }
-  event->veid = *veid;
 
   std::optional<int> context = value.GetDict().FindInt("context");
   if (context) {
@@ -257,11 +291,15 @@ struct ParamTuple<T, Ts...> {
 
 template <typename... As>
 bool ParseAndHandle(const base::RepeatingCallback<void(As...)>& handler,
+                    const std::string& method,
                     DispatchCallback callback,
                     const base::Value::List& list) {
   ParamTuple<As...> tuple;
-  if (!tuple.Parse(list, list.begin()))
+  if (!tuple.Parse(list, list.begin())) {
+    LOG(ERROR) << "Failed to parse arguments for " << method
+               << " call: " << list.DebugString();
     return false;
+  }
   tuple.Apply(handler);
   return true;
 }
@@ -269,11 +307,15 @@ bool ParseAndHandle(const base::RepeatingCallback<void(As...)>& handler,
 template <typename... As>
 bool ParseAndHandleWithCallback(
     const base::RepeatingCallback<void(DispatchCallback, As...)>& handler,
+    const std::string& method,
     DispatchCallback callback,
     const base::Value::List& list) {
   ParamTuple<As...> tuple;
-  if (!tuple.Parse(list, list.begin()))
+  if (!tuple.Parse(list, list.begin())) {
+    LOG(ERROR) << "Failed to parse arguments for " << method
+               << " call: " << list.DebugString();
     return false;
+  }
   tuple.Apply(handler, std::move(callback));
   return true;
 }
@@ -305,7 +347,7 @@ class DispatcherImpl : public DevToolsEmbedderMessageDispatcher {
                        Delegate* delegate) {
     handlers_[method] = base::BindRepeating(
         &ParseAndHandle<As...>,
-        base::BindRepeating(handler, base::Unretained(delegate)));
+        base::BindRepeating(handler, base::Unretained(delegate)), method);
   }
 
   template <typename... As>
@@ -315,7 +357,7 @@ class DispatcherImpl : public DevToolsEmbedderMessageDispatcher {
                                    Delegate* delegate) {
     handlers_[method] = base::BindRepeating(
         &ParseAndHandleWithCallback<As...>,
-        base::BindRepeating(handler, base::Unretained(delegate)));
+        base::BindRepeating(handler, base::Unretained(delegate)), method);
   }
 
  private:
@@ -343,6 +385,8 @@ DevToolsEmbedderMessageDispatcher::CreateForDevToolsFrontend(
   d->RegisterHandlerWithCallback("setIsDocked",
                                  &Delegate::SetIsDocked, delegate);
   d->RegisterHandler("openInNewTab", &Delegate::OpenInNewTab, delegate);
+  d->RegisterHandler("openSearchResultsInNewTab",
+                     &Delegate::OpenSearchResultsInNewTab, delegate);
   d->RegisterHandler("showItemInFolder", &Delegate::ShowItemInFolder, delegate);
   d->RegisterHandler("save", &Delegate::SaveToFile, delegate);
   d->RegisterHandler("append", &Delegate::AppendToFile, delegate);
@@ -385,6 +429,7 @@ DevToolsEmbedderMessageDispatcher::CreateForDevToolsFrontend(
                      &Delegate::RecordUserMetricsAction, delegate);
 #if !BUILDFLAG(IS_QTWEBENGINE)
   d->RegisterHandler("recordImpression", &Delegate::RecordImpression, delegate);
+  d->RegisterHandler("recordResize", &Delegate::RecordResize, delegate);
   d->RegisterHandler("recordClick", &Delegate::RecordClick, delegate);
   d->RegisterHandler("recordHover", &Delegate::RecordHover, delegate);
   d->RegisterHandler("recordDrag", &Delegate::RecordDrag, delegate);
@@ -407,6 +452,8 @@ DevToolsEmbedderMessageDispatcher::CreateForDevToolsFrontend(
                      &Delegate::ClearPreferences, delegate);
   d->RegisterHandlerWithCallback("getSyncInformation",
                                  &Delegate::GetSyncInformation, delegate);
+  d->RegisterHandlerWithCallback("getHostConfig", &Delegate::GetHostConfig,
+                                 delegate);
   d->RegisterHandlerWithCallback("reattach",
                                  &Delegate::Reattach, delegate);
   d->RegisterHandler("readyForTest",
@@ -423,6 +470,9 @@ DevToolsEmbedderMessageDispatcher::CreateForDevToolsFrontend(
   if (base::FeatureList::IsEnabled(::features::kDevToolsConsoleInsights)) {
     d->RegisterHandlerWithCallback("doAidaConversation",
                                    &Delegate::DoAidaConversation, delegate);
+    d->RegisterHandlerWithCallback("registerAidaClientEvent",
+                                   &Delegate::RegisterAidaClientEvent,
+                                   delegate);
   }
 #endif  // !BUILDFLAG(IS_QTWEBENGINE)
   return d;

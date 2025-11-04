@@ -247,4 +247,4 @@ if (TARGET Qt::Qml)
 endif()
 
 qt_record_extra_qt_main_tools_package_dependency(WaylandCompositor WaylandScannerTools "${PROJECT_VERSION}")
-qt_record_extra_qt_package_dependency(WaylandCompositor WaylandGlobalPrivate "${PROJECT_VERSION}")
+qt_internal_register_target_dependencies(WaylandCompositor PUBLIC Qt6::WaylandGlobalPrivate)

@@ -430,9 +430,8 @@ Value *HLMatrixLowerPass::getLoweredByValOperand(Value *Val,
     return ConstantAggregateZero::get(LoweredTy);
 
   // Lower undef mat as undef vec
-  if (isa<UndefValue>(Val)) {
-      return UndefValue::get(LoweredTy);
-  }
+  if (isa<UndefValue>(Val))
+    return UndefValue::get(LoweredTy);
 
   // Return a mat-to-vec translation stub
   FunctionType *TranslationStubTy =
@@ -674,6 +673,10 @@ void HLMatrixLowerPass::lowerGlobal(GlobalVariable *Global) {
       Global->getLinkage(), LoweredInitVal, Global->getName() + ".v",
       /*InsertBefore*/ nullptr, Global->getThreadLocalMode(),
       Global->getType()->getAddressSpace());
+
+  // Calculate preferred alignment for the new global
+  const llvm::DataLayout &DL = m_pModule->getDataLayout();
+  LoweredGlobal->setAlignment(DL.getPreferredAlignment(LoweredGlobal));
 
   // Add debug info.
   if (m_HasDbgInfo) {

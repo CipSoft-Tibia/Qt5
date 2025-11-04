@@ -46,6 +46,7 @@ private slots:
     void storageBufferRuntimeArrayStride();
     void storageBufferQualifiers();
     void multiview();
+    void mediump();
 };
 
 void tst_QShaderBaker::initTestCase()
@@ -1403,6 +1404,51 @@ void tst_QShaderBaker::multiview()
     QVERIFY(s.isValid());
     QVERIFY(baker.errorMessage().isEmpty());
 }
+
+void tst_QShaderBaker::mediump()
+{
+    QShaderBaker baker;
+    baker.setSourceFileName(QLatin1String(":/data/color.vert"));
+    baker.setGeneratedShaderVariants({ QShader::StandardShader });
+    QList<QShaderBaker::GeneratedShader> targets;
+    targets.append({ QShader::SpirvShader, QShaderVersion(100) });
+    targets.append({ QShader::GlslShader, QShaderVersion(100, QShaderVersion::GlslEs) });
+    targets.append({ QShader::GlslShader, QShaderVersion(120) });
+    targets.append({ QShader::HlslShader, QShaderVersion(50) });
+    targets.append({ QShader::MslShader, QShaderVersion(12) });
+
+    baker.setGlslOptions(QShaderBaker::GlslOption::GlslEsFragDefaultFloatPrecisionMedium);
+
+    baker.setGeneratedShaders(targets);
+    QShader s = baker.bake();
+    QVERIFY(s.isValid());
+    QVERIFY(baker.errorMessage().isEmpty());
+    QCOMPARE(s.availableShaders().size(), 5);
+    QShaderCode shader = s.shader(QShaderKey(QShader::GlslShader, QShaderVersion(100, QShaderVersion::GlslEs)));
+    QVERIFY(!shader.shader().isEmpty());
+    QVERIFY(!shader.shader().contains("precision ")); // no effect for vertex shaders
+
+    baker.setSourceFileName(QLatin1String(":/data/color.frag"));
+
+    s = baker.bake();
+    QVERIFY(s.isValid());
+    QVERIFY(baker.errorMessage().isEmpty());
+    QCOMPARE(s.availableShaders().size(), 5);
+    shader = s.shader(QShaderKey(QShader::GlslShader, QShaderVersion(100, QShaderVersion::GlslEs)));
+    QVERIFY(!shader.shader().isEmpty());
+    QVERIFY(shader.shader().contains("precision mediump float;"));
+
+    // back to defaults
+    baker.setGlslOptions({});
+    s = baker.bake();
+    QVERIFY(s.isValid());
+    QVERIFY(baker.errorMessage().isEmpty());
+    QCOMPARE(s.availableShaders().size(), 5);
+    shader = s.shader(QShaderKey(QShader::GlslShader, QShaderVersion(100, QShaderVersion::GlslEs)));
+    QVERIFY(!shader.shader().isEmpty());
+    QVERIFY(shader.shader().contains("precision highp float;"));
+}
+
 
 #include <tst_qshaderbaker.moc>
 QTEST_MAIN(tst_QShaderBaker)

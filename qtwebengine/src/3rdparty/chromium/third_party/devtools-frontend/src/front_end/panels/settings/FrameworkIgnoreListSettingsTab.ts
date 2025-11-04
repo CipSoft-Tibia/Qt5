@@ -3,8 +3,10 @@
 // found in the LICENSE file.
 
 import * as Common from '../../core/common/common.js';
+import * as Host from '../../core/host/host.js';
 import * as i18n from '../../core/i18n/i18n.js';
-import * as IconButton from '../../ui/components/icon_button/icon_button.js';
+import type * as Platform from '../../core/platform/platform.js';
+import * as Buttons from '../../ui/components/buttons/buttons.js';
 import * as UI from '../../ui/legacy/legacy.js';
 import * as VisualLogging from '../../ui/visual_logging/visual_logging.js';
 
@@ -90,7 +92,7 @@ export class FrameworkIgnoreListSettingsTab extends UI.Widget.VBox implements
   constructor() {
     super(true);
 
-    this.element.setAttribute('jslog', `${VisualLogging.pane().context('blackbox')}`);
+    this.element.setAttribute('jslog', `${VisualLogging.pane('blackbox')}`);
 
     const header = this.contentElement.createChild('div', 'header');
     header.textContent = i18nString(UIStrings.frameworkIgnoreList);
@@ -99,7 +101,7 @@ export class FrameworkIgnoreListSettingsTab extends UI.Widget.VBox implements
     this.contentElement.createChild('div', 'intro').textContent = i18nString(UIStrings.debuggerWillSkipThroughThe);
 
     const enabledSetting =
-        Common.Settings.Settings.instance().moduleSetting('enableIgnoreListing') as Common.Settings.Setting<boolean>;
+        Common.Settings.Settings.instance().moduleSetting('enable-ignore-listing') as Common.Settings.Setting<boolean>;
     const enableIgnoreListing = this.contentElement.createChild('div', 'ignore-list-global-enable');
     enableIgnoreListing.appendChild(
         UI.SettingsUI.createSettingCheckbox(i18nString(UIStrings.enableIgnoreListing), enabledSetting, true));
@@ -113,22 +115,27 @@ export class FrameworkIgnoreListSettingsTab extends UI.Widget.VBox implements
     const ignoreListContentScripts = generalExclusionGroup.createChild('div', 'ignore-list-option');
     ignoreListContentScripts.appendChild(UI.SettingsUI.createSettingCheckbox(
         i18nString(UIStrings.ignoreListContentScripts),
-        Common.Settings.Settings.instance().moduleSetting('skipContentScripts'), true));
+        Common.Settings.Settings.instance().moduleSetting('skip-content-scripts'), true));
 
     const automaticallyIgnoreList = generalExclusionGroup.createChild('div', 'ignore-list-option');
     automaticallyIgnoreList.appendChild(UI.SettingsUI.createSettingCheckbox(
         i18nString(UIStrings.automaticallyIgnoreListKnownThirdPartyScripts),
-        Common.Settings.Settings.instance().moduleSetting('automaticallyIgnoreListKnownThirdPartyScripts'), true));
+        Common.Settings.Settings.instance().moduleSetting('automatically-ignore-list-known-third-party-scripts'),
+        true));
 
-    const automaticallyIgnoreLink =
-        UI.XLink.XLink.create('http://goo.gle/skip-third-party', undefined, undefined, undefined, 'learn-more');
-    automaticallyIgnoreLink.textContent = '';
-    automaticallyIgnoreLink.setAttribute('aria-label', i18nString(UIStrings.learnMore));
-
-    const automaticallyIgnoreLinkIcon = new IconButton.Icon.Icon();
-    automaticallyIgnoreLinkIcon.data = {iconName: 'help', color: 'var(--icon-default)', width: '16px', height: '16px'};
-    automaticallyIgnoreLink.prepend(automaticallyIgnoreLinkIcon);
-    automaticallyIgnoreList.appendChild(automaticallyIgnoreLink);
+    const automaticallyIgnoreLinkButton = new Buttons.Button.Button();
+    automaticallyIgnoreLinkButton.data = {
+      iconName: 'help',
+      variant: Buttons.Button.Variant.ICON,
+      size: Buttons.Button.Size.SMALL,
+      jslogContext: 'learn-more',
+      title: i18nString(UIStrings.learnMore),
+    };
+    automaticallyIgnoreLinkButton.addEventListener(
+        'click',
+        () => Host.InspectorFrontendHost.InspectorFrontendHostInstance.openInNewTab(
+            'http://goo.gle/skip-third-party' as Platform.DevToolsPath.UrlString));
+    automaticallyIgnoreList.appendChild(automaticallyIgnoreLinkButton);
 
     const customExclusionGroup = this.createSettingGroup(i18nString(UIStrings.customExclusionRules));
     ignoreListOptions.appendChild(customExclusionGroup);
@@ -146,7 +153,7 @@ export class FrameworkIgnoreListSettingsTab extends UI.Widget.VBox implements
     UI.ARIAUtils.setLabel(addPatternButton, i18nString(UIStrings.addFilenamePattern));
     customExclusionGroup.appendChild(addPatternButton);
     this.setting =
-        Common.Settings.Settings.instance().moduleSetting('skipStackFramesPattern') as Common.Settings.RegExpSetting;
+        Common.Settings.Settings.instance().moduleSetting('skip-stack-frames-pattern') as Common.Settings.RegExpSetting;
     this.setting.addChangeListener(this.settingUpdated, this);
 
     this.setDefaultFocusedElement(addPatternButton);

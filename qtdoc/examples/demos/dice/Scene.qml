@@ -8,16 +8,16 @@ import QtQuick3D.Helpers
 Item {
     id: item
     property real settingGravity: 980.7
-    property real settingsStaticFriction: 0.5
-    property real settingsDynamicFriction: 0.5
-    property real settingsRestitution: 0.5
+    property alias settingsStaticFriction: physicsMaterial.staticFriction
+    property alias settingsDynamicFriction: physicsMaterial.dynamicFriction
+    property alias settingsRestitution: physicsMaterial.restitution
+    property alias settingsDiceWidth: diceSpawner.diceWidth
+    property alias settingsDiceCount: diceSpawner.count
+    property alias rollForce: diceSpawner.rollForce
+    property alias cameraControllerEnabled : orbitCameraController.enabled
 
-    function spawnDice(numberOfDice, rollForce, diceWidth) {
-        diceSpawner.spawnDice(numberOfDice, physicsMaterial, rollForce, diceWidth)
-    }
-
-    function setDiceWidth(diceWidth) {
-        diceSpawner.setDiceWidth(diceWidth);
+    function spawnDice() {
+        diceSpawner.respawn()
     }
 
     Screen.onPrimaryOrientationChanged: {
@@ -41,15 +41,17 @@ Item {
 
     PhysicsMaterial {
         id: physicsMaterial
-        staticFriction: item.settingsStaticFriction
-        dynamicFriction: item.settingsDynamicFriction
-        restitution: item.settingsRestitution
+        staticFriction: 0.5
+        dynamicFriction: 0.5
+        restitution: 0.5
     }
 
     OrbitCameraController {
+        id: orbitCameraController
         anchors.fill: parent
         origin: originNode
         camera: camera
+        panEnabled: false
     }
 
     View3D {
@@ -86,16 +88,18 @@ Item {
         Node {
             id: scene
 
-            DirectionalLight {
-                eulerRotation: Qt.vector3d(-45, 25, 0)
+            PointLight {
+                y: 80
+                x: 80
+                z: 80
                 castsShadow: true
                 brightness: 1
                 shadowFactor: 100
                 shadowMapQuality: Light.ShadowMapQualityVeryHigh
-                softShadowQuality: Light.PCF4
-                shadowBias: 0.2
-                shadowMapFar: camera.clipFar
-                pcfFactor: 0.05
+                softShadowQuality: Light.PCF64
+                shadowBias: 0.4
+                pcfFactor: 0.01
+                quadraticFade: 0.001
             }
 
             PhysicalTable {
@@ -104,6 +108,9 @@ Item {
 
             DiceSpawner {
                 id: diceSpawner
+                physicsMaterial: physicsMaterial
+                diceWidth: 3.5
+                rollForce: Qt.vector3d(0, 0, 0)
             }
 
             Carpet {

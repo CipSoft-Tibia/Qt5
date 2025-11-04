@@ -54,12 +54,52 @@ class WebContentsAdapterClient;
 class Q_WEBENGINECORE_EXPORT ProfileAdapter : public QObject
 {
 public:
-    explicit ProfileAdapter(const QString &storagePrefix = QString());
+    // KEEP IN SYNC with API or add mapping layer
+    enum HttpCacheType { MemoryHttpCache = 0, DiskHttpCache, NoCache };
+
+    enum PersistentCookiesPolicy {
+        NoPersistentCookies = 0,
+        AllowPersistentCookies,
+        ForcePersistentCookies
+    };
+
+    enum VisitedLinksPolicy {
+        DoNotTrackVisitedLinks = 0,
+        TrackVisitedLinksInMemory,
+        TrackVisitedLinksOnDisk,
+    };
+
+    enum class PersistentPermissionsPolicy : quint8 {
+        AskEveryTime = 0,
+        StoreInMemory,
+        StoreOnDisk,
+    };
+
+    enum ClientHint : uchar {
+        UAArchitecture,
+        UAPlatform,
+        UAModel,
+        UAMobile,
+        UAFullVersion,
+        UAPlatformVersion,
+        UABitness,
+        UAFullVersionList,
+        UAWOW64,
+    };
+
+    explicit ProfileAdapter(
+            const QString &storageName = QString(), const QString &dataPath = QString(),
+            const QString &cachePath = QString(), HttpCacheType httpCacheType = DiskHttpCache,
+            PersistentCookiesPolicy persistentCookiesPolicy = AllowPersistentCookies,
+            int httpCacheMaximumSize = 0,
+            PersistentPermissionsPolicy persistentPermissionPolicy =
+                    PersistentPermissionsPolicy::StoreOnDisk);
     virtual ~ProfileAdapter();
 
     static ProfileAdapter* createDefaultProfileAdapter();
     static ProfileAdapter* defaultProfileAdapter();
     static QObject* globalQObjectRoot();
+    static bool profileExistOnPath(const QString &dataPath);
 
     VisitedLinksManagerQt *visitedLinksManager();
     DownloadManagerDelegateQt *downloadManagerDelegate();
@@ -77,6 +117,9 @@ public:
     void pauseDownload(quint32 downloadId);
     void resumeDownload(quint32 downloadId);
     void removeDownload(quint32 downloadId);
+    void acceptDownload(quint32 downloadId, bool accepted,
+                        bool useDownloadTargetCallback, const QString &path,
+                        int savePageFormat);
 
     ProfileQt *profile();
     bool ensureDataPathExists();
@@ -112,43 +155,6 @@ public:
     void addWebContentsAdapterClient(WebContentsAdapterClient *client);
     void removeWebContentsAdapterClient(WebContentsAdapterClient *client);
     void releaseAllWebContentsAdapterClients();
-
-    // KEEP IN SYNC with API or add mapping layer
-    enum HttpCacheType {
-        MemoryHttpCache = 0,
-        DiskHttpCache,
-        NoCache
-    };
-
-    enum PersistentCookiesPolicy {
-        NoPersistentCookies = 0,
-        AllowPersistentCookies,
-        ForcePersistentCookies
-    };
-
-    enum VisitedLinksPolicy {
-        DoNotTrackVisitedLinks = 0,
-        TrackVisitedLinksInMemory,
-        TrackVisitedLinksOnDisk,
-    };
-
-    enum class PersistentPermissionsPolicy : quint8 {
-        AskEveryTime = 0,
-        StoreInMemory,
-        StoreOnDisk,
-    };
-
-    enum ClientHint : uchar {
-        UAArchitecture,
-        UAPlatform,
-        UAModel,
-        UAMobile,
-        UAFullVersion,
-        UAPlatformVersion,
-        UABitness,
-        UAFullVersionList,
-        UAWOW64,
-    };
 
     HttpCacheType httpCacheType() const;
     void setHttpCacheType(ProfileAdapter::HttpCacheType);

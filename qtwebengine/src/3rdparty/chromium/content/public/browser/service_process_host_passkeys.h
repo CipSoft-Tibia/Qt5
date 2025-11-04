@@ -12,11 +12,9 @@ namespace screen_ai {
 class ScreenAIServiceRouter;
 }  // namespace screen_ai
 
-namespace chrome {
-class FileUtilServiceLauncher;
-}  // namespace chrome
-
 namespace content {
+class VideoCaptureServiceLauncher;
+
 class ServiceProcessHostPreloadLibraries {
  public:
   using PassKey = base::PassKey<ServiceProcessHostPreloadLibraries>;
@@ -39,20 +37,18 @@ class ServiceProcessHostPreloadLibraries {
                            PreloadLibraryBadPath);
 };
 
-class ServiceProcessHostPinUser32 {
+class ServiceProcessHostGpuClient {
  public:
-  using PassKey = base::PassKey<ServiceProcessHostPinUser32>;
+  using PassKey = base::PassKey<ServiceProcessHostGpuClient>;
 
  private:
   static PassKey GetPassKey() { return PassKey(); }
 
-  // Service launchers using `ServiceProcessHost::Options::WithPinUser32`
+  // Service launchers using `ServiceProcessHost::Options::WithGpuClient`
   // should be added here and must be reviewed by the security team.
-  friend class chrome::FileUtilServiceLauncher;
-
-  // Tests.
-  FRIEND_TEST_ALL_PREFIXES(ServiceProcessHostBrowserTest, PinUser32);
+  friend class content::VideoCaptureServiceLauncher;
 };
+
 }  // namespace content
 
 #endif  // CONTENT_PUBLIC_BROWSER_SERVICE_PROCESS_HOST_PASSKEYS_H_

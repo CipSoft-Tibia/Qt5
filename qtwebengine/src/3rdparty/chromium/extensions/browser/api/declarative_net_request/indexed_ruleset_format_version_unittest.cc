@@ -13,8 +13,7 @@
 #include "extensions/browser/api/declarative_net_request/utils.h"
 #include "testing/gtest/include/gtest/gtest.h"
 
-namespace extensions {
-namespace declarative_net_request {
+namespace extensions::declarative_net_request {
 namespace {
 
 const char* kFlatbufferSchemaExpected = R"(
@@ -62,13 +61,16 @@ table EmbedderConditions {
   tab_ids_included : [int];
   tab_ids_excluded : [int];
   response_headers: [HeaderCondition];
-  excluded_response_headers: [string];
+  excluded_response_headers: [HeaderCondition];
 }
 enum IndexType : ubyte {
   before_request_except_allow_all_requests = 0,
   allow_all_requests,
   modify_headers,
   count
+}
+table RegexFilterOptions {
+  match_all: bool = false;
 }
 enum HeaderOperation : ubyte {
   append,
@@ -79,6 +81,9 @@ table ModifyHeaderInfo {
   operation: HeaderOperation;
   header: string;
   value: string;
+  regex_filter: string;
+  regex_substitution: string;
+  regex_options: RegexFilterOptions;
 }
 table HeaderCondition {
   header: string;
@@ -115,8 +120,9 @@ std::string StripCommentsAndWhitespace(const std::string& input) {
                                       base::SPLIT_WANT_NONEMPTY)) {
     // Remove single line comments.
     size_t index = line.find(kSingleLineComment);
-    if (index != std::string::npos)
+    if (index != std::string::npos) {
       line.erase(index);
+    }
 
     // Remove any whitespace.
     std::string str;
@@ -127,13 +133,15 @@ std::string StripCommentsAndWhitespace(const std::string& input) {
   // Remove multi line comments.
   while (true) {
     size_t start = result.find(kMultiLineCommentStart);
-    if (start == std::string::npos)
+    if (start == std::string::npos) {
       break;
+    }
 
     size_t end = result.find(kMultiLineCommentEnd, start + 2);
     // No ending found for the comment.
-    if (end == std::string::npos)
+    if (end == std::string::npos) {
       break;
+    }
 
     size_t end_comment_index = end + 1;
     size_t comment_length = end_comment_index - start + 1;
@@ -164,7 +172,7 @@ TEST_F(IndexedRulesetFormatVersionTest, CheckVersionUpdated) {
   EXPECT_EQ(StripCommentsAndWhitespace(kFlatbufferSchemaExpected),
             StripCommentsAndWhitespace(flatbuffer_schema))
       << "Schema change detected; update this test and the schema version.";
-  EXPECT_EQ(30, GetIndexedRulesetFormatVersionForTesting())
+  EXPECT_EQ(34, GetIndexedRulesetFormatVersionForTesting())
       << "Update this test if you update the schema version.";
 }
 
@@ -184,5 +192,4 @@ TEST_F(IndexedRulesetFormatVersionTest, StripCommentsAndWhitespace) {
 }
 
 }  // namespace
-}  // namespace declarative_net_request
-}  // namespace extensions
+}  // namespace extensions::declarative_net_request

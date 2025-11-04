@@ -6,6 +6,7 @@
 
 #include "third_party/angle/include/EGL/egl.h"
 #include "third_party/angle/include/EGL/eglext.h"
+#include "third_party/angle/include/EGL/eglext_angle.h"
 #include "ui/gl/gl_bindings.h"
 #include "ui/gl/gl_surface_egl.h"
 
@@ -36,10 +37,15 @@ EGLDeviceEXT GetEGLDeviceFromANGLE() {
   return reinterpret_cast<EGLDeviceEXT>(egl_device);
 }
 
-gfx::ExtensionSet ToExtensionSet(const char* const* extensions) {
+gfx::ExtensionSet ToExtensionSet(intptr_t extensions) {
+  const char* const* extensions_ptr =
+      reinterpret_cast<const char* const*>(extensions);
   gfx::ExtensionSet extension_set;
-  for (const char* const* p = extensions; *p != nullptr; ++p)
+  // SAFETY: required from OpenGL C style API.
+  for (const char* const* p = extensions_ptr; *p != nullptr;
+       UNSAFE_BUFFERS(++p)) {
     extension_set.insert(*p);
+  }
   return extension_set;
 }
 
@@ -145,7 +151,7 @@ gfx::ExtensionSet QueryVkDeviceExtensionsFromANGLE() {
     return {};
   }
 
-  return ToExtensionSet(reinterpret_cast<const char* const*>(extensions));
+  return ToExtensionSet(extensions);
 }
 
 gfx::ExtensionSet QueryVkInstanceExtensionsFromANGLE() {
@@ -160,7 +166,7 @@ gfx::ExtensionSet QueryVkInstanceExtensionsFromANGLE() {
     return {};
   }
 
-  return ToExtensionSet(reinterpret_cast<const char* const*>(extensions));
+  return ToExtensionSet(extensions);
 }
 
 const VkPhysicalDeviceFeatures2KHR* QueryVkEnabledDeviceFeaturesFromANGLE() {

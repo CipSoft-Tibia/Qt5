@@ -3,6 +3,7 @@
 
 #include "qvulkanwindow_p.h"
 #include "qvulkanfunctions.h"
+#include "qvulkandefaultinstance_p.h"
 #include <QLoggingCategory>
 #include <QTimer>
 #include <QThread>
@@ -10,8 +11,6 @@
 #include <qevent.h>
 
 QT_BEGIN_NAMESPACE
-
-Q_DECLARE_LOGGING_CATEGORY(lcGuiVk)
 
 /*!
   \class QVulkanWindow
@@ -1563,6 +1562,7 @@ bool QVulkanWindow::event(QEvent *e)
     Q_D(QVulkanWindow);
 
     switch (e->type()) {
+    case QEvent::Paint:
     case QEvent::UpdateRequest:
         d->beginFrame();
         break;

@@ -36,8 +36,8 @@ Item {
             scale: Qt.vector3d(30, 15, 15)
             eulerRotation.x: -90
             materials: [
-                DefaultMaterial {
-                    diffuseColor: Qt.rgba(1.0, 1.0, 1.0, 1.0)
+                PrincipledMaterial {
+                    baseColor: Qt.rgba(1.0, 1.0, 1.0, 1.0)
                 }
             ]
         }
@@ -57,8 +57,8 @@ Item {
                 x: 300
                 source: "#Cube"
                 scale: Qt.vector3d(1.5, 1.5, 1.5)
-                materials: DefaultMaterial {
-                    diffuseColor: Qt.rgba(0.9, 0.9, 0.6, 1.0)
+                materials: PrincipledMaterial {
+                    baseColor: Qt.rgba(0.9, 0.9, 0.6, 1.0)
                 }
                 eulerRotation.x: rotatingNode.eulerRotation.y
                 eulerRotation.z: 20
@@ -67,8 +67,8 @@ Item {
                 x: -300
                 source: "#Sphere"
                 scale: Qt.vector3d(2.5, 2.5, 2.5)
-                materials: DefaultMaterial {
-                    diffuseColor: Qt.rgba(0.9, 0.6, 0.6, 1.0)
+                materials: PrincipledMaterial {
+                    baseColor: Qt.rgba(0.9, 0.6, 0.6, 1.0)
                     opacity: 0.4
                 }
             }

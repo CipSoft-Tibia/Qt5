@@ -60,7 +60,6 @@ public:
 
     QString httpUserAgent() const override;
     void setHttpUserAgent(const QString &httpUserAgent) override;
-    QUrl url() const override;
     void setUrl(const QUrl &url) override;
     bool canGoBack() const override;
     bool canGoForward() const override;

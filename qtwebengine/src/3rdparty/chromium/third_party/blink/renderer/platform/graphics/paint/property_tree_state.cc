@@ -6,8 +6,6 @@
 
 #include <memory>
 
-#include "third_party/blink/renderer/platform/runtime_enabled_features.h"
-
 namespace blink {
 
 namespace {
@@ -67,30 +65,7 @@ bool ClipChainInTransformCompositingBoundary(
 
 }  // namespace
 
-const PropertyTreeState& PropertyTreeStateOrAlias::Root() {
-  DEFINE_STATIC_LOCAL(
-      const PropertyTreeState, root,
-      (TransformPaintPropertyNode::Root(), ClipPaintPropertyNode::Root(),
-       EffectPaintPropertyNode::Root()));
-  return root;
-}
-
-bool PropertyTreeStateOrAlias::Changed(
-    PaintPropertyChangeType change,
-    const PropertyTreeState& relative_to) const {
-  return Transform().Changed(change, relative_to.Transform()) ||
-         Clip().Changed(change, relative_to, &Transform()) ||
-         Effect().Changed(change, relative_to, &Transform());
-}
-
-bool PropertyTreeStateOrAlias::ChangedExceptScrollAndEffect(
-    PaintPropertyChangeType change,
-    const PropertyTreeState& relative_to) const {
-  return Transform().ChangedExceptScroll(change, relative_to.Transform()) ||
-         Clip().ChangedExceptScroll(change, relative_to, &Transform());
-}
-
-absl::optional<PropertyTreeState> PropertyTreeState::CanUpcastWith(
+std::optional<PropertyTreeState> PropertyTreeState::CanUpcastWith(
     const PropertyTreeState& guest,
     IsCompositedScrollFunction is_composited_scroll) const {
   // A number of criteria need to be met:
@@ -112,11 +87,11 @@ absl::optional<PropertyTreeState> PropertyTreeState::CanUpcastWith(
   } else {
     if (!InSameTransformCompositingBoundary(Transform(), guest.Transform(),
                                             is_composited_scroll)) {
-      return absl::nullopt;
+      return std::nullopt;
     }
     if (Transform().IsBackfaceHidden() !=
         guest.Transform().IsBackfaceHidden()) {
-      return absl::nullopt;
+      return std::nullopt;
     }
     upcast_transform =
         &Transform().LowestCommonAncestor(guest.Transform()).Unalias();
@@ -132,7 +107,7 @@ absl::optional<PropertyTreeState> PropertyTreeState::CanUpcastWith(
         !ClipChainInTransformCompositingBoundary(guest.Clip(), *upcast_clip,
                                                  *upcast_transform,
                                                  is_composited_scroll)) {
-      return absl::nullopt;
+      return std::nullopt;
     }
   }
 
@@ -158,11 +133,6 @@ std::unique_ptr<JSONObject> PropertyTreeStateOrAlias::ToJSON() const {
   result->SetObject("clip", clip_->ToJSON());
   result->SetObject("effect", effect_->ToJSON());
   return result;
-}
-
-std::ostream& operator<<(std::ostream& os,
-                         const PropertyTreeStateOrAlias& state) {
-  return os << state.ToString().Utf8();
 }
 
 }  // namespace blink

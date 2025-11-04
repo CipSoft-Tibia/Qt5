@@ -78,7 +78,7 @@ private slots:
     void testActive();
 
 private:
-    void loadTestData(const QByteArray &filename);
+    void loadTestData(const QString &filename);
     void updateProperty(int frame);
 
     BMShapeTransform *m_transform = nullptr;
@@ -432,7 +432,7 @@ void tst_BMShapeTransform::testActive()
     QVERIFY(m_transform->active(100) == true);
 }
 
-void tst_BMShapeTransform::loadTestData(const QByteArray &filename)
+void tst_BMShapeTransform::loadTestData(const QString &filename)
 {
     if (m_transform) {
         delete m_transform;

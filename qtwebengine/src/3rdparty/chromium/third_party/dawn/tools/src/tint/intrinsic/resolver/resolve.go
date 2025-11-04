@@ -116,8 +116,14 @@ func Resolve(a *ast.AST) (*sem.Sem, error) {
 		}
 	}
 
+	var usages = ast.EnumDecl{}
+	for _, e := range a.Enums {
+		if e.Name == "usages" {
+			usages = e
+		}
+	}
 	// Calculate the unique parameter names
-	r.s.UniqueParameterNames = r.calculateUniqueParameterNames()
+	r.s.UniqueParameterNames = r.calculateUniqueParameterNames(usages)
 
 	return r.s, nil
 }
@@ -320,19 +326,26 @@ func (r *resolver) intrinsic(
 	// Create a new scope for resolving template parameters
 	s := newScope(&r.globals)
 
+	// Construct the semantic overload
+	overload := &sem.Overload{
+		Decl:       a,
+		Intrinsic:  intrinsic,
+		Parameters: make([]sem.Parameter, len(a.Parameters)),
+	}
+
 	// Resolve the declared template parameters
-	templateParams, err := r.templateParams(&s, a.TemplateParams)
+	// Explicit template types can use implicit templates, so resolve implicit first
+	implicitTemplates, err := r.templateParams(&s, a.ImplicitTemplateParams)
 	if err != nil {
 		return err
 	}
+	overload.ImplicitTemplates = implicitTemplates
 
-	// Construct the semantic overload
-	overload := &sem.Overload{
-		Decl:           a,
-		Intrinsic:      intrinsic,
-		Parameters:     make([]sem.Parameter, len(a.Parameters)),
-		TemplateParams: templateParams,
+	explicitTemplates, err := r.templateParams(&s, a.ExplicitTemplateParams)
+	if err != nil {
+		return err
 	}
+	overload.ExplicitTemplates = explicitTemplates
 
 	// Process overload attributes
 	if stageDeco := a.Attributes.Take("stage"); stageDeco != nil {
@@ -388,6 +401,15 @@ func (r *resolver) intrinsic(
 			return fmt.Errorf("%v too many values for @const attribute", constEvalFn.Source)
 		}
 	}
+	if memberFunction := a.Attributes.Take("member_function"); memberFunction != nil {
+		overload.MemberFunction = true
+		if len(memberFunction.Values) != 0 {
+			return fmt.Errorf("%v unexpected value for member_function attribute", memberFunction.Source)
+		}
+		if len(a.Parameters) < 1 {
+			return fmt.Errorf("%v @member_function can only be used on a function with at least one parameter", memberFunction.Source)
+		}
+	}
 	if deprecated := a.Attributes.Take("deprecated"); deprecated != nil {
 		overload.IsDeprecated = true
 		if len(deprecated.Values) != 0 {
@@ -401,23 +423,9 @@ func (r *resolver) intrinsic(
 	// Append the overload to the intrinsic
 	intrinsic.Overloads = append(intrinsic.Overloads, overload)
 
-	// Sort the template parameters by resolved type. Append these to
-	// sem.Overload.TemplateTypes or sem.Overload.TemplateNumbers based on their kind.
-	for _, param := range templateParams {
-		switch param := param.(type) {
-		case *sem.TemplateTypeParam:
-			overload.TemplateTypes = append(overload.TemplateTypes, param)
-		case *sem.TemplateEnumParam, *sem.TemplateNumberParam:
-			overload.TemplateNumbers = append(overload.TemplateNumbers, param)
-		}
-	}
-
-	// Update high-water marks of template types and numbers
-	if r.s.MaxTemplateTypes < len(overload.TemplateTypes) {
-		r.s.MaxTemplateTypes = len(overload.TemplateTypes)
-	}
-	if r.s.MaxTemplateNumbers < len(overload.TemplateNumbers) {
-		r.s.MaxTemplateNumbers = len(overload.TemplateNumbers)
+	// Update high-water mark of templates
+	if n := len(overload.AllTemplates()); r.s.MaxTemplates < n {
+		r.s.MaxTemplates = n
 	}
 
 	// Resolve the parameters
@@ -476,9 +484,6 @@ func (r *resolver) fullyQualifiedName(s *scope, arg ast.TemplatedName) (sem.Full
 	if err != nil {
 		return sem.FullyQualifiedName{}, err
 	}
-	if _, ok := target.(*sem.TypeMatcher); ok {
-		return sem.FullyQualifiedName{}, fmt.Errorf("%v type matcher cannot be used directly here. Use a matcher constrained template argument", arg.Source)
-	}
 	fqn := sem.FullyQualifiedName{
 		Target:            target,
 		TemplateArguments: make([]interface{}, len(arg.TemplateArgs)),
@@ -493,16 +498,18 @@ func (r *resolver) fullyQualifiedName(s *scope, arg ast.TemplatedName) (sem.Full
 	return fqn, nil
 }
 
-// templateParams() resolves the ast.TemplateParams into list of sem.TemplateParam.
+// templateParams() resolves the ast.TemplateParams list into a sem.TemplateParam list.
 // Each sem.TemplateParam is registered with the scope s.
-func (r *resolver) templateParams(s *scope, l ast.TemplateParams) ([]sem.TemplateParam, error) {
-	out := []sem.TemplateParam{}
+func (r *resolver) templateParams(s *scope, l []ast.TemplateParam) ([]sem.TemplateParam, error) {
+	out := make([]sem.TemplateParam, 0, len(l))
 	for _, ast := range l {
-		param, err := r.templateParam(ast)
+		param, err := r.templateParam(s, ast)
 		if err != nil {
 			return nil, err
 		}
-		s.declare(param, ast.Source)
+		if err := s.declare(param, ast.Source); err != nil {
+			return nil, err
+		}
 		out = append(out, param)
 	}
 	return out, nil
@@ -510,25 +517,25 @@ func (r *resolver) templateParams(s *scope, l ast.TemplateParams) ([]sem.Templat
 
 // templateParams() resolves the ast.TemplateParam into sem.TemplateParam, which
 // is either a sem.TemplateEnumParam or a sem.TemplateTypeParam.
-func (r *resolver) templateParam(a ast.TemplateParam) (sem.TemplateParam, error) {
+func (r *resolver) templateParam(s *scope, a ast.TemplateParam) (sem.TemplateParam, error) {
 	if a.Type.Name == "num" {
-		return &sem.TemplateNumberParam{Name: a.Name}, nil
+		return &sem.TemplateNumberParam{Name: a.Name, ASTParam: a}, nil
 	}
 
 	if a.Type.Name != "" {
-		resolved, err := r.lookupNamed(&r.globals, a.Type)
+		resolved, err := r.fullyQualifiedName(s, a.Type)
 		if err != nil {
 			return nil, err
 		}
-		switch r := resolved.(type) {
+		switch r := resolved.Target.(type) {
 		case *sem.Enum:
-			return &sem.TemplateEnumParam{Name: a.Name, Enum: r}, nil
+			return &sem.TemplateEnumParam{Name: a.Name, ASTParam: a, Enum: r}, nil
 		case *sem.EnumMatcher:
-			return &sem.TemplateEnumParam{Name: a.Name, Enum: r.Enum, Matcher: r}, nil
+			return &sem.TemplateEnumParam{Name: a.Name, ASTParam: a, Enum: r.Enum, Matcher: r}, nil
 		case *sem.TypeMatcher:
-			return &sem.TemplateTypeParam{Name: a.Name, Type: r}, nil
+			return &sem.TemplateTypeParam{Name: a.Name, ASTParam: a, Type: &resolved}, nil
 		case *sem.Type:
-			return &sem.TemplateTypeParam{Name: a.Name, Type: r}, nil
+			return &sem.TemplateTypeParam{Name: a.Name, ASTParam: a, Type: &resolved}, nil
 		default:
 			return nil, fmt.Errorf("%v invalid template parameter type '%v'", a.Source, a.Type.Name)
 		}
@@ -607,9 +614,15 @@ func (r *resolver) lookupNamed(s *scope, a ast.TemplatedName) (sem.Named, error)
 
 // calculateUniqueParameterNames() iterates over all the parameters of all
 // builtin overloads, calculating the list of unique parameter names
-func (r *resolver) calculateUniqueParameterNames() []string {
+func (r *resolver) calculateUniqueParameterNames(usages ast.EnumDecl) []string {
 	set := map[string]struct{}{"": {}}
 	names := []string{}
+
+	for _, e := range usages.Entries {
+		set[e.Name] = struct{}{}
+		names = append(names, e.Name)
+	}
+
 	for _, intrinsics := range [][]*sem.Intrinsic{
 		r.s.Builtins,
 		r.s.UnaryOperators,
@@ -682,8 +695,6 @@ func checkCompatible(arg, param sem.Named) error {
 
 	anyNumber := "any number"
 	// asNumber() returns anyNumber if n is a TemplateNumberParam.
-	// TODO(bclayton): Once we support number ranges [e.g.: fn F<N: 1..4>()], we
-	// should check number ranges are compatible
 	asNumber := func(n sem.Named) interface{} {
 		switch n.(type) {
 		case *sem.TemplateNumberParam:
@@ -708,7 +719,7 @@ func checkCompatible(arg, param sem.Named) error {
 		switch n := n.(type) {
 		case *sem.TemplateTypeParam:
 			if n.Type != nil {
-				return n.Type
+				return n.Type.Target.(sem.ResolvableType)
 			}
 			return anyType
 		case *sem.Type:

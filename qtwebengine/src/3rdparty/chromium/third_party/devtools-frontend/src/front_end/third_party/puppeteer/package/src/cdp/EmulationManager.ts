@@ -114,7 +114,7 @@ export class EmulatedState<T extends {active: boolean}> {
 /**
  * @internal
  */
-export class EmulationManager {
+export class EmulationManager implements ClientProvider {
   #client: CDPSession;
 
   #emulatingMobile = false;
@@ -231,14 +231,24 @@ export class EmulationManager {
     return this.#javascriptEnabledState.state.javaScriptEnabled;
   }
 
-  async emulateViewport(viewport: Viewport): Promise<boolean> {
-    await this.#viewportState.setState({
-      viewport,
-      active: true,
-    });
+  async emulateViewport(viewport: Viewport | null): Promise<boolean> {
+    const currentState = this.#viewportState.state;
+    if (!viewport && !currentState.active) {
+      return false;
+    }
+    await this.#viewportState.setState(
+      viewport
+        ? {
+            viewport,
+            active: true,
+          }
+        : {
+            active: false,
+          }
+    );
 
-    const mobile = viewport.isMobile || false;
-    const hasTouch = viewport.hasTouch || false;
+    const mobile = viewport?.isMobile || false;
+    const hasTouch = viewport?.hasTouch || false;
     const reloadNeeded =
       this.#emulatingMobile !== mobile || this.#hasTouch !== hasTouch;
     this.#emulatingMobile = mobile;
@@ -253,6 +263,12 @@ export class EmulationManager {
     viewportState: ViewportState
   ): Promise<void> {
     if (!viewportState.viewport) {
+      await Promise.all([
+        client.send('Emulation.clearDeviceMetricsOverride'),
+        client.send('Emulation.setTouchEmulationEnabled', {
+          enabled: false,
+        }),
+      ]).catch(debugError);
       return;
     }
     const {viewport} = viewportState;
@@ -267,13 +283,23 @@ export class EmulationManager {
     const hasTouch = viewport.hasTouch || false;
 
     await Promise.all([
-      client.send('Emulation.setDeviceMetricsOverride', {
-        mobile,
-        width,
-        height,
-        deviceScaleFactor,
-        screenOrientation,
-      }),
+      client
+        .send('Emulation.setDeviceMetricsOverride', {
+          mobile,
+          width,
+          height,
+          deviceScaleFactor,
+          screenOrientation,
+        })
+        .catch(err => {
+          if (
+            err.message.includes('Target does not support metrics override')
+          ) {
+            debugError(err);
+            return;
+          }
+          throw err;
+        }),
       client.send('Emulation.setTouchEmulationEnabled', {
         enabled: hasTouch,
       }),

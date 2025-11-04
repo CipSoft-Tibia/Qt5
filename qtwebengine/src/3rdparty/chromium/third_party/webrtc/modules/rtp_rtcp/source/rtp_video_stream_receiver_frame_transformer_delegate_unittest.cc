@@ -17,6 +17,7 @@
 
 #include "absl/memory/memory.h"
 #include "api/call/transport.h"
+#include "api/test/mock_frame_transformer.h"
 #include "api/test/mock_transformable_video_frame.h"
 #include "api/units/timestamp.h"
 #include "call/video_receive_stream.h"
@@ -24,7 +25,6 @@
 #include "rtc_base/event.h"
 #include "test/gmock.h"
 #include "test/gtest.h"
-#include "test/mock_frame_transformer.h"
 
 namespace webrtc {
 namespace {
@@ -50,7 +50,7 @@ std::unique_ptr<RtpFrameObject> CreateRtpFrameObject(
       /*last_packet_received_time=*/5, /*rtp_timestamp=*/6, /*ntp_time_ms=*/7,
       VideoSendTiming(), /*payload_type=*/8, video_header.codec,
       kVideoRotation_0, VideoContentType::UNSPECIFIED, video_header,
-      absl::nullopt, RtpPacketInfos({packet_info}),
+      std::nullopt, RtpPacketInfos({packet_info}),
       EncodedImageBuffer::Create(0));
 }
 
@@ -222,8 +222,8 @@ TEST(RtpVideoStreamReceiverFrameTransformerDelegateTest,
   // Checks that the recieved RTPFrameObject has the new metadata.
   EXPECT_CALL(receiver, ManageFrame)
       .WillOnce([&](std::unique_ptr<RtpFrameObject> frame) {
-        const absl::optional<RTPVideoHeader::GenericDescriptorInfo>&
-            descriptor = frame->GetRtpVideoHeader().generic;
+        const std::optional<RTPVideoHeader::GenericDescriptorInfo>& descriptor =
+            frame->GetRtpVideoHeader().generic;
         if (!descriptor.has_value()) {
           ADD_FAILURE() << "GenericDescriptorInfo in RTPVideoHeader doesn't "
                            "have a value.";

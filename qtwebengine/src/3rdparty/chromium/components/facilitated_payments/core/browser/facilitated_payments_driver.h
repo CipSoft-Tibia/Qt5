@@ -1,0 +1,64 @@
+// Copyright 2024 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#ifndef COMPONENTS_FACILITATED_PAYMENTS_CORE_BROWSER_FACILITATED_PAYMENTS_DRIVER_H_
+#define COMPONENTS_FACILITATED_PAYMENTS_CORE_BROWSER_FACILITATED_PAYMENTS_DRIVER_H_
+
+#include <memory>
+
+#include "base/functional/callback_forward.h"
+#include "components/facilitated_payments/core/mojom/facilitated_payments_agent.mojom.h"
+#include "services/metrics/public/cpp/ukm_source_id.h"
+
+class GURL;
+
+namespace payments::facilitated {
+
+class FacilitatedPaymentsManager;
+
+// A cross-platform interface which is a gateway for all PIX payments related
+// communication from the browser code to the DOM (`FacilitatedPaymentsAgent`).
+// There can be one instance for each outermost main frame. It is only created
+// if the main frame is active at the time of load.
+class FacilitatedPaymentsDriver {
+ public:
+  explicit FacilitatedPaymentsDriver(
+      std::unique_ptr<FacilitatedPaymentsManager> manager);
+  FacilitatedPaymentsDriver(const FacilitatedPaymentsDriver&) = delete;
+  FacilitatedPaymentsDriver& operator=(const FacilitatedPaymentsDriver&) =
+      delete;
+  virtual ~FacilitatedPaymentsDriver();
+
+  // Informs `FacilitatedPaymentsManager` that a navigation related event has
+  // taken place. The navigation could be to the currently displayed page, or
+  // away from the currently displayed page. It is invoked only for the primary
+  // main frame by the platform-specific implementation.
+  void DidNavigateToOrAwayFromPage() const;
+
+  // Informs `FacilitatedPaymentsManager` that the content has finished loading
+  // in the primary main frame. It is invoked by the platform-specific
+  // implementation.
+  virtual void OnContentLoadedInThePrimaryMainFrame(
+      const GURL& url,
+      ukm::SourceId ukm_source_id) const;
+
+  // Trigger PIX code detection on the page. The `callback` is called after
+  // running PIX code detection.
+  virtual void TriggerPixCodeDetection(
+      base::OnceCallback<void(mojom::PixCodeDetectionResult,
+                              const std::string&)> callback) = 0;
+
+  // Inform the `FacilitatedPaymentsManager` about `copied_text` being copied to
+  // the clipboard. It is invoked only for the primary main frame.
+  virtual void OnTextCopiedToClipboard(const GURL& render_frame_host_url,
+                                       const std::u16string& copied_text,
+                                       ukm::SourceId ukm_source_id);
+
+ private:
+  std::unique_ptr<FacilitatedPaymentsManager> manager_;
+};
+
+}  // namespace payments::facilitated
+
+#endif  // COMPONENTS_FACILITATED_PAYMENTS_CORE_BROWSER_FACILITATED_PAYMENTS_DRIVER_H_

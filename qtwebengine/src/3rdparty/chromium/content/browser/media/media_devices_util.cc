@@ -89,7 +89,7 @@ MediaDeviceType ConvertToMediaDeviceType(MediaStreamType stream_type) {
     case MediaStreamType::DEVICE_VIDEO_CAPTURE:
       return MediaDeviceType::kMediaVideoInput;
     default:
-      NOTREACHED();
+      NOTREACHED_IN_MIGRATION();
   }
 
   return MediaDeviceType::kNumMediaDeviceTypes;
@@ -258,7 +258,7 @@ std::string GetHMACForRawMediaDeviceID(
                                           : salt_and_origin.device_id_salt()),
           &digest[0], digest.size());
   DCHECK(result);
-  return base::ToLowerASCII(base::HexEncode(&digest[0], digest.size()));
+  return base::ToLowerASCII(base::HexEncode(digest));
 }
 
 bool DoesRawMediaDeviceIDMatchHMAC(

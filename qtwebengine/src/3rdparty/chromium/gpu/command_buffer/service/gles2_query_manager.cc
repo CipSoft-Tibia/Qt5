@@ -73,7 +73,7 @@ void AbstractIntegerQuery::End(base::subtle::Atomic32 submit_count) {
 }
 
 void AbstractIntegerQuery::QueryCounter(base::subtle::Atomic32 submit_count) {
-  NOTREACHED();
+  NOTREACHED_IN_MIGRATION();
 }
 
 void AbstractIntegerQuery::Pause() {
@@ -174,9 +174,8 @@ void SummedIntegerQuery::Process(bool did_finish) {
   MarkAsCompleted(summed_result);
 }
 
-class AsyncReadPixelsCompletedQuery
-    : public GLES2QueryManager::GLES2Query,
-      public base::SupportsWeakPtr<AsyncReadPixelsCompletedQuery> {
+class AsyncReadPixelsCompletedQuery final
+    : public GLES2QueryManager::GLES2Query {
  public:
   AsyncReadPixelsCompletedQuery(GLES2QueryManager* manager,
                                 GLenum target,
@@ -194,6 +193,7 @@ class AsyncReadPixelsCompletedQuery
  protected:
   void Complete();
   ~AsyncReadPixelsCompletedQuery() override;
+  base::WeakPtrFactory<AsyncReadPixelsCompletedQuery> weak_ptr_factory_{this};
 };
 
 AsyncReadPixelsCompletedQuery::AsyncReadPixelsCompletedQuery(
@@ -218,12 +218,13 @@ void AsyncReadPixelsCompletedQuery::Resume() {
 void AsyncReadPixelsCompletedQuery::End(base::subtle::Atomic32 submit_count) {
   MarkAsPending(submit_count);
   gles2_query_manager()->decoder()->WaitForReadPixels(
-      base::BindOnce(&AsyncReadPixelsCompletedQuery::Complete, AsWeakPtr()));
+      base::BindOnce(&AsyncReadPixelsCompletedQuery::Complete,
+                     weak_ptr_factory_.GetWeakPtr()));
 }
 
 void AsyncReadPixelsCompletedQuery::QueryCounter(
     base::subtle::Atomic32 submit_count) {
-  NOTREACHED();
+  NOTREACHED_IN_MIGRATION();
 }
 
 void AsyncReadPixelsCompletedQuery::Complete() {
@@ -231,7 +232,7 @@ void AsyncReadPixelsCompletedQuery::Complete() {
 }
 
 void AsyncReadPixelsCompletedQuery::Process(bool did_finish) {
-  NOTREACHED();
+  NOTREACHED_IN_MIGRATION();
 }
 
 void AsyncReadPixelsCompletedQuery::Destroy(bool /* have_context */) {
@@ -286,11 +287,11 @@ void GetErrorQuery::End(base::subtle::Atomic32 submit_count) {
 }
 
 void GetErrorQuery::QueryCounter(base::subtle::Atomic32 submit_count) {
-  NOTREACHED();
+  NOTREACHED_IN_MIGRATION();
 }
 
 void GetErrorQuery::Process(bool did_finish) {
-  NOTREACHED();
+  NOTREACHED_IN_MIGRATION();
 }
 
 void GetErrorQuery::Destroy(bool /* have_context */) {
@@ -344,7 +345,7 @@ void TimeElapsedQuery::End(base::subtle::Atomic32 submit_count) {
 }
 
 void TimeElapsedQuery::QueryCounter(base::subtle::Atomic32 submit_count) {
-  NOTREACHED();
+  NOTREACHED_IN_MIGRATION();
 }
 
 void TimeElapsedQuery::Pause() {
@@ -407,11 +408,11 @@ TimeStampQuery::TimeStampQuery(GLES2QueryManager* manager,
       gpu_timer_(manager->CreateGPUTimer(false)) {}
 
 void TimeStampQuery::Begin() {
-  NOTREACHED();
+  NOTREACHED_IN_MIGRATION();
 }
 
 void TimeStampQuery::End(base::subtle::Atomic32 submit_count) {
-  NOTREACHED();
+  NOTREACHED_IN_MIGRATION();
 }
 
 void TimeStampQuery::Pause() {
@@ -476,18 +477,10 @@ GLES2QueryManager::GLES2Query::~GLES2Query() = default;
 GLES2QueryManager::GLES2QueryManager(GLES2Decoder* decoder,
                                      FeatureInfo* feature_info)
     : decoder_(decoder),
-      use_arb_occlusion_query2_for_occlusion_query_boolean_(
-          feature_info->feature_flags()
-              .use_arb_occlusion_query2_for_occlusion_query_boolean),
-      use_arb_occlusion_query_for_occlusion_query_boolean_(
-          feature_info->feature_flags()
-              .use_arb_occlusion_query_for_occlusion_query_boolean),
       update_disjoints_continually_(false),
       disjoint_notify_shm_id_(-1),
       disjoint_notify_shm_offset_(0),
       disjoints_notified_(0) {
-  DCHECK(!(use_arb_occlusion_query_for_occlusion_query_boolean_ &&
-           use_arb_occlusion_query2_for_occlusion_query_boolean_));
   DCHECK(decoder);
   gl::GLContext* context = decoder_->GetGLContext();
   if (context) {
@@ -568,28 +561,6 @@ std::unique_ptr<gl::GPUTimer> GLES2QueryManager::CreateGPUTimer(
 
 bool GLES2QueryManager::GPUTimingAvailable() {
   return gpu_timing_client_->IsAvailable();
-}
-
-GLenum GLES2QueryManager::AdjustTargetForEmulation(GLenum target) {
-  switch (target) {
-    case GL_ANY_SAMPLES_PASSED_CONSERVATIVE_EXT:
-    case GL_ANY_SAMPLES_PASSED_EXT:
-      if (use_arb_occlusion_query2_for_occlusion_query_boolean_) {
-        // ARB_occlusion_query2 does not have a
-        // GL_ANY_SAMPLES_PASSED_CONSERVATIVE_EXT
-        // target.
-        target = GL_ANY_SAMPLES_PASSED_EXT;
-      } else if (use_arb_occlusion_query_for_occlusion_query_boolean_) {
-        // ARB_occlusion_query does not have a
-        // GL_ANY_SAMPLES_PASSED_EXT
-        // target.
-        target = GL_SAMPLES_PASSED_ARB;
-      }
-      break;
-    default:
-      break;
-  }
-  return target;
 }
 
 void GLES2QueryManager::UpdateDisjointValue() {

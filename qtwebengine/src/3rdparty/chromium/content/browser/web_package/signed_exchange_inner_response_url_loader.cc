@@ -54,13 +54,13 @@ SignedExchangeInnerResponseURLLoader::SignedExchangeInnerResponseURLLoader(
     const network::URLLoaderCompletionStatus& completion_status,
     mojo::PendingRemote<network::mojom::URLLoaderClient> client,
     bool is_navigation_request,
-    scoped_refptr<base::RefCountedData<network::corb::PerFactoryState>>
-        corb_state)
+    scoped_refptr<base::RefCountedData<network::orb::PerFactoryState>>
+        orb_state)
     : response_(std::move(inner_response)),
       blob_data_handle_(std::move(blob_data_handle)),
       completion_status_(completion_status),
       client_(std::move(client)),
-      corb_state_(std::move(corb_state)) {
+      orb_state_(std::move(orb_state)) {
   DCHECK(response_->headers);
 
   // The `request.request_initiator` is assumed to be present and trustworthy
@@ -78,7 +78,7 @@ SignedExchangeInnerResponseURLLoader::SignedExchangeInnerResponseURLLoader(
   // DevTools' Security panel.
   if (request.destination != network::mojom::RequestDestination::kDocument &&
       !request.devtools_request_id) {
-    response_->ssl_info = absl::nullopt;
+    response_->ssl_info = std::nullopt;
   }
   UpdateRequestResponseStartTime(response_.get());
   response_->encoded_data_length = 0;
@@ -103,8 +103,8 @@ SignedExchangeInnerResponseURLLoader::SignedExchangeInnerResponseURLLoader(
     }
   }
 
-  corb_checker_ = std::make_unique<CrossOriginReadBlockingChecker>(
-      request, *response_, *blob_data_handle_, &corb_state_->data,
+  orb_checker_ = std::make_unique<CrossOriginReadBlockingChecker>(
+      request, *response_, *blob_data_handle_, &orb_state_->data,
       base::BindOnce(&SignedExchangeInnerResponseURLLoader::
                          OnCrossOriginReadBlockingCheckComplete,
                      base::Unretained(this)));
@@ -114,14 +114,14 @@ SignedExchangeInnerResponseURLLoader::~SignedExchangeInnerResponseURLLoader() =
     default;
 
 // static
-absl::optional<std::string>
+std::optional<std::string>
 SignedExchangeInnerResponseURLLoader::GetHeaderString(
     const network::mojom::URLResponseHead& response,
     const std::string& header_name) {
   DCHECK(response.headers);
   std::string header_value;
   if (!response.headers->GetNormalizedHeader(header_name, &header_value)) {
-    return absl::nullopt;
+    return std::nullopt;
   }
   return header_value;
 }
@@ -135,7 +135,7 @@ void SignedExchangeInnerResponseURLLoader::
       return;
     case CrossOriginReadBlockingChecker::Result::kNetError:
       client_->OnComplete(
-          network::URLLoaderCompletionStatus(corb_checker_->GetNetError()));
+          network::URLLoaderCompletionStatus(orb_checker_->GetNetError()));
       return;
     case CrossOriginReadBlockingChecker::Result::kBlocked_ShouldReport:
       break;
@@ -144,7 +144,7 @@ void SignedExchangeInnerResponseURLLoader::
   }
 
   // Send sanitized response.
-  network::corb::SanitizeBlockedResponseHeaders(*response_);
+  network::orb::SanitizeBlockedResponseHeaders(*response_);
 
   // Send an empty response's body.
   mojo::ScopedDataPipeProducerHandle pipe_producer_handle;
@@ -157,12 +157,12 @@ void SignedExchangeInnerResponseURLLoader::
     return;
   }
   client_->OnReceiveResponse(std::move(response_),
-                             std::move(pipe_consumer_handle), absl::nullopt);
+                             std::move(pipe_consumer_handle), std::nullopt);
 
   // Send a dummy OnComplete message.
   network::URLLoaderCompletionStatus status =
       network::URLLoaderCompletionStatus(net::OK);
-  status.should_report_corb_blocking =
+  status.should_report_orb_blocking =
       result == CrossOriginReadBlockingChecker::Result::kBlocked_ShouldReport;
   client_->OnComplete(status);
 }
@@ -171,8 +171,8 @@ void SignedExchangeInnerResponseURLLoader::FollowRedirect(
     const std::vector<std::string>& removed_headers,
     const net::HttpRequestHeaders& modified_headers,
     const net::HttpRequestHeaders& modified_cors_exempt_headers,
-    const absl::optional<GURL>& new_url) {
-  NOTREACHED();
+    const std::optional<GURL>& new_url) {
+  NOTREACHED_IN_MIGRATION();
 }
 
 void SignedExchangeInnerResponseURLLoader::SetPriority(
@@ -217,7 +217,7 @@ void SignedExchangeInnerResponseURLLoader::SendResponseBody() {
           std::make_unique<storage::BlobDataHandle>(*blob_data_handle_)));
 
   client_->OnReceiveResponse(std::move(response_),
-                             std::move(pipe_consumer_handle), absl::nullopt);
+                             std::move(pipe_consumer_handle), std::nullopt);
 }
 
 void SignedExchangeInnerResponseURLLoader::BlobReaderComplete(

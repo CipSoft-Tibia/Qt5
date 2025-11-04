@@ -21,8 +21,8 @@
 #include "cast/standalone_sender/connection_settings.h"
 #include "cast/standalone_sender/looping_file_sender.h"
 #include "cast/standalone_sender/remoting_sender.h"
-#include "cast/streaming/environment.h"
-#include "cast/streaming/sender_session.h"
+#include "cast/streaming/public/environment.h"
+#include "cast/streaming/public/sender_session.h"
 #include "platform/base/error.h"
 #include "platform/base/interface_info.h"
 #include "platform/impl/task_runner.h"
@@ -93,11 +93,11 @@ class LoopingFileCastAgent final
                    std::unique_ptr<CastSocket> socket) override;
   void OnError(SenderSocketFactory* factory,
                const IPEndpoint& endpoint,
-               Error error) override;
+               const Error& error) override;
 
   // VirtualConnectionRouter::SocketErrorHandler overrides.
   void OnClose(CastSocket* cast_socket) override;
-  void OnError(CastSocket* socket, Error error) override;
+  void OnError(CastSocket* socket, const Error& error) override;
 
   // ConnectionNamespaceHandler::VirtualConnectionPolicy overrides.
   bool IsConnectionAllowed(
@@ -106,7 +106,7 @@ class LoopingFileCastAgent final
   // CastMessageHandler overrides.
   void OnMessage(VirtualConnectionRouter* router,
                  CastSocket* socket,
-                 ::cast::channel::CastMessage message) override;
+                 proto::CastMessage message) override;
 
   // RemotingSender::Client overrides.
   void OnReady() override;
@@ -139,7 +139,7 @@ class LoopingFileCastAgent final
                     SenderSession::ConfiguredSenders senders,
                     capture_recommendations::Recommendations
                         capture_recommendations) override;
-  void OnError(const SenderSession* session, Error error) override;
+  void OnError(const SenderSession* session, const Error& error) override;
 
   // SenderStatsClient overrides.
   void OnStatisticsUpdated(const SenderStats& updated_stats) override;

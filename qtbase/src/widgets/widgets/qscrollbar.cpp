@@ -23,6 +23,8 @@
 #include <limits.h>
 #include "qscrollbar_p.h"
 
+using namespace std::chrono_literals;
+
 QT_BEGIN_NAMESPACE
 
 /*!
@@ -120,8 +122,8 @@ QT_BEGIN_NAMESPACE
     ScrollBar inherits a comprehensive set of signals from QAbstractSlider:
     \list
     \li \l{QAbstractSlider::valueChanged()}{valueChanged()} is emitted when the
-       scroll bar's value has changed. The tracking() determines whether this
-       signal is emitted during user interaction.
+       scroll bar's value has changed. The \l{QAbstractSlider::}{tracking} property
+       determines whether this signal is emitted during user interaction.
     \li \l{QAbstractSlider::rangeChanged()}{rangeChanged()} is emitted when the
        scroll bar's range of values has changed.
     \li \l{QAbstractSlider::sliderPressed()}{sliderPressed()} is emitted when
@@ -214,8 +216,8 @@ void QScrollBarPrivate::flash()
         else
             q->update();
     }
-    if (!flashTimer)
-        flashTimer = q->startTimer(0);
+    if (!flashTimer.isActive())
+        flashTimer.start(0ns, q);
 }
 
 void QScrollBarPrivate::activateControl(uint control, int threshold)
@@ -352,7 +354,6 @@ void QScrollBarPrivate::init()
     opt.initFrom(q);
     transient = q->style()->styleHint(QStyle::SH_ScrollBar_Transient, &opt, q);
     flashed = false;
-    flashTimer = 0;
     q->setFocusPolicy(Qt::NoFocus);
     QSizePolicy sp(QSizePolicy::Minimum, QSizePolicy::Fixed, QSizePolicy::Slider);
     if (orientation == Qt::Vertical)
@@ -451,15 +452,14 @@ bool QScrollBar::event(QEvent *event)
         break;
     }
     case QEvent::Timer:
-        if (static_cast<QTimerEvent *>(event)->timerId() == d->flashTimer) {
+        if (static_cast<QTimerEvent *>(event)->id() == d->flashTimer.id()) {
             QStyleOptionSlider opt;
             initStyleOption(&opt);
             if (d->flashed && style()->styleHint(QStyle::SH_ScrollBar_Transient, &opt, this)) {
                 d->flashed = false;
                 update();
             }
-            killTimer(d->flashTimer);
-            d->flashTimer = 0;
+            d->flashTimer.stop();
         }
         break;
     default:
@@ -536,8 +536,10 @@ void QScrollBar::mousePressEvent(QMouseEvent *e)
 
     if (d->maximum == d->minimum // no range
         || (e->buttons() & (~e->button())) // another button was clicked before
-        || !(e->button() == Qt::LeftButton || (midButtonAbsPos && e->button() == Qt::MiddleButton)))
+        || !(e->button() == Qt::LeftButton || (midButtonAbsPos && e->button() == Qt::MiddleButton))) {
+        e->ignore();
         return;
+    }
 
     d->pressedControl = style()->hitTestComplexControl(QStyle::CC_ScrollBar, &opt, e->position().toPoint(), this);
     d->pointerOutsidePressedControl = false;

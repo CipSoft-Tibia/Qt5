@@ -27,8 +27,6 @@
 
 #include "src/tint/lang/core/ir/transform/binary_polyfill.h"
 
-#include <utility>
-
 #include "src/tint/lang/core/ir/builder.h"
 #include "src/tint/lang/core/ir/module.h"
 #include "src/tint/lang/core/ir/validator.h"
@@ -67,16 +65,13 @@ struct State {
     void Process() {
         // Find the binary instructions that need to be polyfilled.
         Vector<ir::CoreBinary*, 64> worklist;
-        for (auto* inst : ir.instructions.Objects()) {
-            if (!inst->Alive()) {
-                continue;
-            }
+        for (auto* inst : ir.Instructions()) {
             if (auto* binary = inst->As<ir::CoreBinary>()) {
                 switch (binary->Op()) {
                     case BinaryOp::kDivide:
                     case BinaryOp::kModulo:
                         if (config.int_div_mod &&
-                            binary->Result(0)->Type()->is_integer_scalar_or_vector()) {
+                            binary->Result(0)->Type()->IsIntegerScalarOrVector()) {
                             worklist.Push(binary);
                         }
                         break;
@@ -94,73 +89,36 @@ struct State {
 
         // Polyfill the binary instructions that we found.
         for (auto* binary : worklist) {
-            ir::Value* replacement = nullptr;
             switch (binary->Op()) {
                 case BinaryOp::kDivide:
                 case BinaryOp::kModulo:
-                    replacement = IntDivMod(binary);
+                    IntDivMod(binary);
                     break;
                 case BinaryOp::kShiftLeft:
                 case BinaryOp::kShiftRight:
-                    replacement = MaskShiftAmount(binary);
+                    MaskShiftAmount(binary);
                     break;
                 default:
                     break;
             }
-            TINT_ASSERT_OR_RETURN(replacement);
-
-            if (replacement != binary->Result(0)) {
-                // Replace the old binary instruction result with the new value.
-                if (auto name = ir.NameOf(binary->Result(0))) {
-                    ir.SetName(replacement, name);
-                }
-                binary->Result(0)->ReplaceAllUsesWith(replacement);
-                binary->Destroy();
-            }
         }
-    }
-
-    /// Return a type with element type @p type that has the same number of vector components as
-    /// @p match. If @p match is scalar just return @p type.
-    /// @param el_ty the type to extend
-    /// @param match the type to match the component count of
-    /// @returns a type with the same number of vector components as @p match
-    const core::type::Type* MatchWidth(const core::type::Type* el_ty,
-                                       const core::type::Type* match) {
-        if (auto* vec = match->As<core::type::Vector>()) {
-            return ty.vec(el_ty, vec->Width());
-        }
-        return el_ty;
-    }
-
-    /// Return a constant that has the same number of vector components as @p match, each with the
-    /// value @p element. If @p match is scalar just return @p element.
-    /// @param element the value to extend
-    /// @param match the type to match the component count of
-    /// @returns a value with the same number of vector components as @p match
-    ir::Constant* MatchWidth(ir::Constant* element, const core::type::Type* match) {
-        if (auto* vec = match->As<core::type::Vector>()) {
-            return b.Splat(MatchWidth(element->Type(), match), element, vec->Width());
-        }
-        return element;
     }
 
     /// Replace an integer divide or modulo with a call to helper function that prevents
     /// divide-by-zero and signed integer overflow.
     /// @param binary the binary instruction
-    /// @returns the replacement value
-    ir::Value* IntDivMod(ir::CoreBinary* binary) {
+    void IntDivMod(ir::CoreBinary* binary) {
         auto* result_ty = binary->Result(0)->Type();
         bool is_div = binary->Op() == BinaryOp::kDivide;
-        bool is_signed = result_ty->is_signed_integer_scalar_or_vector();
+        bool is_signed = result_ty->IsSignedIntegerScalarOrVector();
 
         auto& helpers = is_div ? int_div_helpers : int_mod_helpers;
-        auto* helper = helpers.GetOrCreate(result_ty, [&] {
+        auto* helper = helpers.GetOrAdd(result_ty, [&] {
             // Generate a name for the helper function.
             StringStream name;
             name << "tint_" << (is_div ? "div_" : "mod_");
             if (auto* vec = result_ty->As<type::Vector>()) {
-                name << "v" << vec->Width() << vec->type()->FriendlyName();
+                name << "v" << vec->Width() << vec->Type()->FriendlyName();
             } else {
                 name << result_ty->FriendlyName();
             }
@@ -175,20 +133,20 @@ struct State {
                 ir::Constant* one = nullptr;
                 ir::Constant* zero = nullptr;
                 if (is_signed) {
-                    one = MatchWidth(b.Constant(1_i), result_ty);
-                    zero = MatchWidth(b.Constant(0_i), result_ty);
+                    one = b.MatchWidth(1_i, result_ty);
+                    zero = b.MatchWidth(0_i, result_ty);
                 } else {
-                    one = MatchWidth(b.Constant(1_u), result_ty);
-                    zero = MatchWidth(b.Constant(0_u), result_ty);
+                    one = b.MatchWidth(1_u, result_ty);
+                    zero = b.MatchWidth(0_u, result_ty);
                 }
 
                 // Select either the RHS or a constant one value if the RHS is zero.
                 // If this is a signed operation, we also check for `INT_MIN / -1`.
-                auto* bool_ty = MatchWidth(ty.bool_(), result_ty);
+                auto* bool_ty = ty.match_width(ty.bool_(), result_ty);
                 auto* cond = b.Equal(bool_ty, rhs, zero);
                 if (is_signed) {
-                    auto* lowest = MatchWidth(b.Constant(i32::Lowest()), result_ty);
-                    auto* minus_one = MatchWidth(b.Constant(-1_i), result_ty);
+                    auto* lowest = b.MatchWidth(i32::Lowest(), result_ty);
+                    auto* minus_one = b.MatchWidth(-1_i, result_ty);
                     auto* lhs_is_lowest = b.Equal(bool_ty, lhs, lowest);
                     auto* rhs_is_minus_one = b.Equal(bool_ty, rhs, minus_one);
                     cond = b.Or(bool_ty, cond, b.And(bool_ty, lhs_is_lowest, rhs_is_minus_one));
@@ -220,26 +178,23 @@ struct State {
         };
 
         // Call the helper function, splatting the arguments to match the target vector width.
-        Value* result = nullptr;
         b.InsertBefore(binary, [&] {
             auto* lhs = maybe_splat(binary->LHS());
             auto* rhs = maybe_splat(binary->RHS());
-            result = b.Call(result_ty, helper, lhs, rhs)->Result(0);
+            b.CallWithResult(binary->DetachResult(), helper, lhs, rhs);
         });
-        return result;
+        binary->Destroy();
     }
 
     /// Mask the RHS of a shift instruction to ensure it is modulo the bitwidth of the LHS.
     /// @param binary the binary instruction
-    /// @returns the replacement value
-    ir::Value* MaskShiftAmount(ir::CoreBinary* binary) {
+    void MaskShiftAmount(ir::CoreBinary* binary) {
         auto* lhs = binary->LHS();
         auto* rhs = binary->RHS();
-        auto* mask = b.Constant(u32(lhs->Type()->DeepestElement()->Size() * 8 - 1));
-        auto* masked = b.And(rhs->Type(), rhs, MatchWidth(mask, rhs->Type()));
+        auto mask = u32(lhs->Type()->DeepestElement()->Size() * 8 - 1);
+        auto* masked = b.And(rhs->Type(), rhs, b.MatchWidth(mask, rhs->Type()));
         masked->InsertBefore(binary);
         binary->SetOperand(ir::CoreBinary::kRhsOperandOffset, masked->Result(0));
-        return binary->Result(0);
     }
 };
 

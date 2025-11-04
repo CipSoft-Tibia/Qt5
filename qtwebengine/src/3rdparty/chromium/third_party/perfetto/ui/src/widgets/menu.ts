@@ -13,10 +13,8 @@
 // limitations under the License.
 
 import m from 'mithril';
-
 import {classNames} from '../base/classnames';
 import {hasChildren} from '../base/mithril_utils';
-
 import {HTMLAttrs} from './common';
 import {Icon} from './icon';
 import {Popup, PopupAttrs, PopupPosition} from './popup';
@@ -56,23 +54,26 @@ export class MenuItem implements m.ClassComponent<MenuItemAttrs> {
   }
 
   private renderNested({attrs, children}: m.CVnode<MenuItemAttrs>) {
-    const {rightIcon = 'chevron_right', closePopupOnClick = false, ...rest} =
-        attrs;
+    const {
+      rightIcon = 'chevron_right',
+      closePopupOnClick = false,
+      ...rest
+    } = attrs;
 
     return m(
-        PopupMenu2,
-        {
-          popupPosition: PopupPosition.RightStart,
-          trigger: m(MenuItem, {
-            rightIcon: rightIcon,
-            closePopupOnClick,
-            ...rest,
-          }),
-          showArrow: false,
-          createNewGroup: false,
-          edgeOffset: 5,  // Adjust for popup padding & border.
-        },
-        children,
+      PopupMenu2,
+      {
+        popupPosition: PopupPosition.RightStart,
+        trigger: m(MenuItem, {
+          rightIcon: rightIcon,
+          closePopupOnClick,
+          ...rest,
+        }),
+        showArrow: false,
+        createNewGroup: false,
+        edgeOffset: 5, // Adjust for popup padding & border.
+      },
+      children,
     );
   }
 
@@ -89,39 +90,39 @@ export class MenuItem implements m.ClassComponent<MenuItemAttrs> {
     } = attrs;
 
     const classes = classNames(
-        active && 'pf-active',
-        !disabled && closePopupOnClick && Popup.DISMISS_POPUP_GROUP_CLASS,
-        className,
+      active && 'pf-active',
+      !disabled && closePopupOnClick && Popup.DISMISS_POPUP_GROUP_CLASS,
+      className,
     );
 
     return m(
-        'button.pf-menu-item' + (disabled ? '[disabled]' : ''),
-        {
-          ...htmlAttrs,
-          className: classes,
-        },
-        icon && m(Icon, {className: 'pf-left-icon', icon}),
-        rightIcon && m(Icon, {className: 'pf-right-icon', icon: rightIcon}),
-        label,
+      'button.pf-menu-item' + (disabled ? '[disabled]' : ''),
+      {
+        ...htmlAttrs,
+        className: classes,
+      },
+      icon && m(Icon, {className: 'pf-left-icon', icon}),
+      rightIcon && m(Icon, {className: 'pf-right-icon', icon: rightIcon}),
+      label,
     );
   }
-};
+}
 
 // An element which shows a dividing line between menu items.
 export class MenuDivider implements m.ClassComponent {
   view() {
     return m('.pf-menu-divider');
   }
-};
+}
 
 // A siple container for a menu.
 // The menu contents are passed in as children, and are typically MenuItems or
 // MenuDividers, but really they can be any Mithril component.
-export class Menu implements m.ClassComponent {
-  view({children}: m.CVnode) {
-    return m('.pf-menu', children);
+export class Menu implements m.ClassComponent<HTMLAttrs> {
+  view({attrs, children}: m.CVnode<HTMLAttrs>) {
+    return m('.pf-menu', attrs, children);
   }
-};
+}
 
 interface PopupMenu2Attrs extends PopupAttrs {
   // The trigger is mithril component which is used to toggle the popup when
@@ -155,17 +156,21 @@ interface PopupMenu2Attrs extends PopupAttrs {
 // MenuDividers, but really they can be any Mithril component.
 export class PopupMenu2 implements m.ClassComponent<PopupMenu2Attrs> {
   view({attrs, children}: m.CVnode<PopupMenu2Attrs>) {
-    const {trigger, popupPosition = PopupPosition.Bottom, ...popupAttrs} =
-        attrs;
+    const {
+      trigger,
+      popupPosition = PopupPosition.Bottom,
+      ...popupAttrs
+    } = attrs;
 
     return m(
-        Popup,
-        {
-          trigger,
-          position: popupPosition,
-          className: 'pf-popup-menu',
-          ...popupAttrs,
-        },
-        m(Menu, children));
+      Popup,
+      {
+        trigger,
+        position: popupPosition,
+        className: 'pf-popup-menu',
+        ...popupAttrs,
+      },
+      m(Menu, children),
+    );
   }
-};
+}

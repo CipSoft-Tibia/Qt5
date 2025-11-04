@@ -22,28 +22,34 @@
 #include <shlobj.h>
 #include <shlwapi.h>
 #include <strsafe.h>
+#include <wchar.h>
 
 #include <algorithm>
 #include <cctype>
 #include <fstream>
 #include <iterator>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "absl/strings/str_cat.h"
+#include "absl/types/span.h"
+#include "connections/implementation/flags/nearby_connections_feature_flags.h"
+#include "internal/flags/nearby_flags.h"
 #include "internal/platform/implementation/windows/utils.h"
 #include "internal/platform/logging.h"
 
 namespace nearby {
 namespace windows {
 
-const wchar_t* kUpOneLevel = L"/..";
+const wchar_t* kUpOneLevel = L"..";
+constexpr wchar_t kDot = L'.';
 constexpr wchar_t kPathDelimiter = L'/';
 constexpr wchar_t kReplacementChar = L'_';
 constexpr wchar_t kForwardSlash = L'/';
 constexpr wchar_t kBackSlash = L'\\';
 
-wchar_t const* kForbiddenPathNames[] = {
+constexpr std::wstring_view kForbiddenPathNames[] = {
     L"CON",  L"PRN",  L"AUX",  L"NUL",  L"COM1", L"COM2", L"COM3", L"COM4",
     L"COM5", L"COM6", L"COM7", L"COM8", L"COM9", L"LPT1", L"LPT2", L"LPT3",
     L"LPT4", L"LPT5", L"LPT6", L"LPT7", L"LPT8", L"LPT9"};
@@ -51,12 +57,14 @@ wchar_t const* kForbiddenPathNames[] = {
 std::wstring FilePath::GetCustomSavePath(std::wstring parent_folder,
                                          std::wstring file_name) {
   std::wstring path;
+  SanitizeFileName(file_name);
   path += parent_folder + kPathDelimiter + file_name;
   return CreateOutputFileWithRename(path);
 }
 
 std::wstring FilePath::GetDownloadPath(std::wstring parent_folder,
                                        std::wstring file_name) {
+  SanitizeFileName(file_name);
   return CreateOutputFileWithRename(
       GetDownloadPathInternal(parent_folder, file_name));
 }
@@ -198,16 +206,23 @@ std::wstring FilePath::MutateForbiddenPathElements(std::wstring& str) {
   if (lastToken.length() > 0) path_elements.push_back(lastToken);
 
   std::wstring processed_path;
+  absl::Span<const std::wstring_view> forbidden(kForbiddenPathNames);
 
   for (auto& path_element : path_elements) {
     auto tmp_path_element = path_element;
 
+    if (tmp_path_element.size() == 1 && tmp_path_element[0] == kDot) {
+      // Change the dot path name to an underscore.
+      tmp_path_element[0] = kReplacementChar;
+      NEARBY_LOGS(INFO) << "Renamed path element "
+                        << wstring_to_string(path_element) << " to "
+                        << wstring_to_string(tmp_path_element);
+      path_element[0] = kReplacementChar;
+    }
+
     std::transform(tmp_path_element.begin(), tmp_path_element.end(),
                    tmp_path_element.begin(),
                    [](wchar_t c) { return std::toupper(c); });
-
-    std::vector<std::wstring> forbidden(std::begin(kForbiddenPathNames),
-                                        std::end(kForbiddenPathNames));
 
     while (std::find(forbidden.begin(), forbidden.end(), tmp_path_element) !=
            forbidden.end()) {
@@ -227,16 +242,15 @@ std::wstring FilePath::MutateForbiddenPathElements(std::wstring& str) {
   return processed_path;
 }
 
-void FilePath::SanitizePath(std::wstring& path) {
-  size_t pos = std::wstring::npos;
-  // Search for the substring in string in a loop until nothing is found
-  while ((pos = path.find(kUpOneLevel)) != std::string::npos) {
-    // If found then erase it from string
-    path.erase(pos, wcslen(kUpOneLevel));
+void FilePath::SanitizeFileName(std::wstring& file_name) {
+  if (!file_name.empty() && file_name[file_name.size() - 1] == kDot) {
+    // Change the last dot to an underscore.
+    file_name[file_name.size() - 1] = kReplacementChar;
   }
+}
 
+void FilePath::SanitizePath(std::wstring& path) {
   path = MutateForbiddenPathElements(path);
-
   ReplaceInvalidCharacters(path);
 }
 
@@ -252,6 +266,12 @@ void FilePath::ReplaceInvalidCharacters(std::wstring& path) {
       NEARBY_LOGS(INFO) << "In path " << wstring_to_string(path)
                         << " replaced \'" << std::string(1, *it) << "\' with \'"
                         << std::string(1, kReplacementChar);
+      *it = kReplacementChar;
+    }
+    if (*it == 0) {  // character is null
+      NEARBY_LOGS(INFO) << "In path " << wstring_to_string(path)
+                        << " replaced \'NULL\' with \'"
+                        << std::string(1, kReplacementChar) << "\'";
       *it = kReplacementChar;
     }
     for (auto illegal_character : kIllegalFileCharacters) {

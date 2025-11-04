@@ -53,7 +53,7 @@ public:
 
     bool isValid() const;
 
-    void setPassthroughEnabled(bool enabled);
+    [[nodiscard]] bool setPassthroughEnabled(bool enabled);
     bool isPassthroughEnabled() const;
 
     QtQuick3DXr::FoveationLevel getFixedFoveationLevel() const;
@@ -100,7 +100,6 @@ private:
 
     bool setupGraphics();
 
-    void processXrEvents();
     void renderFrame();
 
     void preSetupQuickScene();

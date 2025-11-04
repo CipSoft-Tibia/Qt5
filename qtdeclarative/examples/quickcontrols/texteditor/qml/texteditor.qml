@@ -1,10 +1,9 @@
 // Copyright (C) 2021 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
 
-import QtQuick
 import QtCore
+import QtQuick
 import QtQuick.Controls
-import QtQuick.Window
 import QtQuick.Dialogs
 
 // TODO:
@@ -17,11 +16,6 @@ ApplicationWindow {
     visible: true
     title: textArea.textDocument.source +
            " - Text Editor Example" + (textArea.textDocument.modified ? " *" : "")
-
-    Component.onCompleted: {
-        x = Screen.width / 2 - width / 2
-        y = Screen.height / 2 - height / 2
-    }
 
     Action {
         id: openAction
@@ -87,7 +81,7 @@ ApplicationWindow {
         shortcut: StandardKey.Bold
         checkable: true
         checked: textArea.cursorSelection.font.bold
-        onTriggered: textArea.cursorSelection.font = Qt.font({ bold: checked })
+        onTriggered: textArea.cursorSelection.font.bold = checked
     }
 
     Action {
@@ -96,7 +90,7 @@ ApplicationWindow {
         shortcut: StandardKey.Italic
         checkable: true
         checked: textArea.cursorSelection.font.italic
-        onTriggered: textArea.cursorSelection.font = Qt.font({ italic: checked })
+        onTriggered: textArea.cursorSelection.font.italic = checked
     }
 
     Action {
@@ -105,7 +99,7 @@ ApplicationWindow {
         shortcut: StandardKey.Underline
         checkable: true
         checked: textArea.cursorSelection.font.underline
-        onTriggered: textArea.cursorSelection.font = Qt.font({ underline: checked })
+        onTriggered: textArea.cursorSelection.font.underline = checked
     }
 
     Action {
@@ -113,7 +107,7 @@ ApplicationWindow {
         text: qsTr("&Strikeout")
         checkable: true
         checked: textArea.cursorSelection.font.strikeout
-        onTriggered: textArea.cursorSelection.font = Qt.font({ strikeout: checked })
+        onTriggered: textArea.cursorSelection.font.strikeout = checked
     }
 
     Action {
@@ -150,6 +144,26 @@ ApplicationWindow {
         checkable: true
         checked: textArea.cursorSelection.alignment === Qt.AlignJustify
         onTriggered: textArea.cursorSelection.alignment = Qt.AlignJustify
+    }
+
+    Action {
+        id: fontDialogAction
+        text: qsTr("Fon&t…")
+        shortcut: "Ctrl+T"
+        onTriggered: {
+            fontDialog.selectedFont = textArea.cursorSelection.font
+            fontDialog.open()
+        }
+    }
+
+    Action {
+        id: colorDialogAction
+        text: qsTr("Color…")
+        shortcut: "Ctrl+Shift+C"
+        onTriggered: {
+            colorDialog.selectedColor = textArea.cursorSelection.color
+            colorDialog.open()
+        }
     }
 
     menuBar: MenuBar {
@@ -199,6 +213,12 @@ ApplicationWindow {
             MenuItem {
                 action: strikeoutAction
             }
+            MenuItem {
+                action: fontDialogAction
+            }
+            MenuItem {
+                action: colorDialogAction
+            }
 
             MenuSeparator {}
 
@@ -244,7 +264,7 @@ ApplicationWindow {
 
     ColorDialog {
         id: colorDialog
-        selectedColor: "black"
+        selectedColor: textArea.cursorSelection.color
         onAccepted: textArea.cursorSelection.color = selectedColor
     }
 
@@ -278,10 +298,7 @@ ApplicationWindow {
     }
 
     header: ToolBar {
-        leftPadding: 8
-
         Flow {
-            id: flow
             width: parent.width
 
             Row {

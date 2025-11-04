@@ -6,12 +6,12 @@
 
 #include <algorithm>
 #include <memory>
+#include <optional>
 #include <utility>
 
 #include "base/i18n/rtl.h"
 #include "base/memory/ptr_util.h"
 #include "base/notreached.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "ui/base/metadata/metadata_impl_macros.h"
 #include "ui/base/theme_provider.h"
 #include "ui/base/ui_base_features.h"
@@ -99,6 +99,7 @@ void FocusRing::Install(View* host) {
   auto ring = base::WrapUnique<FocusRing>(new FocusRing());
   ring->InvalidateLayout();
   ring->SchedulePaint();
+  ring->SetProperty(kViewIgnoredByLayoutKey, true);
   host->SetProperty(kFocusRingIdKey, host->AddChildView(std::move(ring)));
 }
 
@@ -139,11 +140,11 @@ void FocusRing::SetHasFocusPredicate(const ViewPredicate& predicate) {
   RefreshLayer();
 }
 
-absl::optional<ui::ColorId> FocusRing::GetColorId() const {
+std::optional<ui::ColorId> FocusRing::GetColorId() const {
   return color_id_;
 }
 
-void FocusRing::SetColorId(absl::optional<ui::ColorId> color_id) {
+void FocusRing::SetColorId(std::optional<ui::ColorId> color_id) {
   if (color_id_ == color_id)
     return;
   color_id_ = color_id;
@@ -183,14 +184,15 @@ bool FocusRing::ShouldPaintForTesting() {
   return ShouldPaint();
 }
 
-void FocusRing::Layout() {
+void FocusRing::Layout(PassKey) {
   // The focus ring handles its own sizing, which is simply to fill the parent
   // and extend a little beyond its borders.
   gfx::Rect focus_bounds = parent()->GetLocalBounds();
 
   // Make sure the focus-ring path fits.
   // TODO(pbos): Chase down use cases where this path is not in a usable state
-  // by the time layout happens. This may be due to synchronous Layout() calls.
+  // by the time layout happens. This may be due to synchronous
+  // DeprecatedLayoutImmediately() calls.
   const SkPath path = GetPath();
   if (IsPathUsable(path)) {
     const gfx::Rect path_bounds =
@@ -252,7 +254,7 @@ void FocusRing::OnPaint(gfx::Canvas* canvas) {
   paint.setAntiAlias(true);
   paint.setStyle(cc::PaintFlags::kStroke_Style);
   if (!ShouldSetOutsetFocusRing()) {
-    // TODO(crbug.com/1417057): kDrawFocusRingBackgroundOutline should be
+    // TODO(crbug.com/40257162): kDrawFocusRingBackgroundOutline should be
     // removed when ChromeRefresh is fully rolled out.
     if (parent()->GetProperty(kDrawFocusRingBackgroundOutline)) {
       // Draw with full stroke width + 2x outline thickness to effectively paint
@@ -307,12 +309,16 @@ void FocusRing::OnViewBlurred(View* view) {
   RefreshLayer();
 }
 
+void FocusRing::OnViewLayoutInvalidated(View* view) {
+  InvalidateLayout();
+}
+
 FocusRing::FocusRing() {
   // Don't allow the view to process events.
   SetCanProcessEventsWithinSubtree(false);
 
   // This should never be included in the accessibility tree.
-  GetViewAccessibility().OverrideIsIgnored(true);
+  GetViewAccessibility().SetIsIgnored(true);
 }
 
 void FocusRing::AdjustBounds(SkRect& rect) const {
@@ -363,11 +369,11 @@ void FocusRing::RefreshLayer() {
 }
 
 bool FocusRing::ShouldSetOutsetFocusRing() const {
-  // TODO(crbug.com/1417057): Some places set a custom `halo_inset_` value to
+  // TODO(crbug.com/40257162): Some places set a custom `halo_inset_` value to
   // move the focus ring away from the host. If those places want to outset the
   // focus ring in the chrome refresh style, they need to be audited separately
   // with UX.
-  return features::IsChromeRefresh2023() && !outset_focus_ring_disabled_ &&
+  return !outset_focus_ring_disabled_ &&
          halo_inset_ == FocusRing::kDefaultHaloInset;
 }
 
@@ -413,7 +419,7 @@ SkPath GetHighlightPath(const View* view, float halo_thickness) {
 }
 
 BEGIN_METADATA(FocusRing)
-ADD_PROPERTY_METADATA(absl::optional<ui::ColorId>, ColorId)
+ADD_PROPERTY_METADATA(std::optional<ui::ColorId>, ColorId)
 ADD_PROPERTY_METADATA(float, HaloInset)
 ADD_PROPERTY_METADATA(float, HaloThickness)
 ADD_PROPERTY_METADATA(bool, OutsetFocusRingDisabled)

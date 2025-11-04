@@ -2,6 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#ifdef UNSAFE_BUFFERS_BUILD
+// TODO(crbug.com/351564777): Remove this and convert code to safer constructs.
+#pragma allow_unsafe_buffers
+#endif
+
 #include "device/bluetooth/floss/floss_admin_client.h"
 
 #include <map>
@@ -92,7 +97,7 @@ class FlossAdminClientTest : public testing::Test,
   // AdminClientObserver overrides
   void DevicePolicyEffectChanged(
       const FlossDeviceId& device_id,
-      const absl::optional<PolicyEffect>& effect) override {
+      const std::optional<PolicyEffect>& effect) override {
     fake_device_policy_effect_info_ = {device_id, effect};
   }
 
@@ -214,7 +219,7 @@ class FlossAdminClientTest : public testing::Test,
   std::unique_ptr<FlossAdminClient> client_;
 
   // For observer test inspections.
-  absl::optional<std::tuple<FlossDeviceId, absl::optional<PolicyEffect>>>
+  std::optional<std::tuple<FlossDeviceId, std::optional<PolicyEffect>>>
       fake_device_policy_effect_info_;
   std::vector<device::BluetoothUUID> fake_service_allowlist_info_;
 

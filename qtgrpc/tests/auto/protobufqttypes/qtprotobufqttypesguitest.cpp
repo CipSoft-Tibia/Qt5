@@ -9,10 +9,13 @@
 #include <QProtobufSerializer>
 
 #include <QObject>
+
 #include <QtGui/qrgb.h>
 #include <QtGui/QPainter>
 #include <QtGui/QColor>
 #include <QtGui/QRgba64>
+#include <QtGui/qquaternion.h>
+
 #include <QtTest/QtTest>
 
 #include <memory>

@@ -7,12 +7,15 @@
 #include <QMetaObject>
 #include <QMetaProperty>
 #include <QProcess>
-#include <QTemporaryFile>
 #include <QTextStream>
 
 #include <private/qtools_p.h>
 
 QT_BEGIN_NAMESPACE
+
+using namespace Qt::StringLiterals;
+
+extern QByteArrayList qax_qualified_usertypes;
 
 QByteArray setterName(const QByteArray &propertyName)
 {
@@ -55,19 +58,82 @@ void formatCppEnums(QTextStream &str, const QMetaObject *mo,
         str << '\n';
 }
 
+// Create a set of type names that have been declared in the type library. Remove any "struct" or
+// "enum" prefixes. Also remove Qt-types that we hard-code in qaxbase.cpp.
+static QSet<QByteArray> collectKnownTypes()
+{
+    QSet<QByteArray> result;
+    for (const QByteArray &ba : qax_qualified_usertypes) {
+        if (ba == "struct QRect" || ba == "struct QSize" || ba == "struct QPoint")
+            continue;
+        if (ba.startsWith("enum "))
+            result.insert(ba.right(ba.length() - 5));
+        else if (ba.startsWith("struct "))
+            result.insert(ba.right(ba.length() - 7));
+        else
+            result.insert(ba);
+    }
+    return result;
+}
+
+static bool isKnownUserType(const QByteArray &name)
+{
+    static qsizetype nrOfQualifiedUserTypes = 0;
+    static QSet<QByteArray> knownTypes;
+    if (nrOfQualifiedUserTypes != qax_qualified_usertypes.size()) {
+        nrOfQualifiedUserTypes = qax_qualified_usertypes.size();
+        knownTypes = collectKnownTypes();
+    }
+    return knownTypes.contains(name);
+}
+
+static QByteArray cleanedType(QByteArray name)
+{
+    if (name.endsWith("*"))
+        name.chop(1);
+    return name;
+}
+
+// If 'name' is a type that's declared within the TLB then fully qualify it with the TLB namespace.
+static QByteArray maybeQualifyType(QByteArray name, const QByteArray &tlbNamespace)
+{
+    if (!name.contains("::") && isKnownUserType(cleanedType(name))) {
+        name.prepend("::");
+        name.prepend(tlbNamespace);
+    }
+    return name;
+}
+
+static void formatCppMethod(QTextStream &str, const QMetaMethod &mt, const QByteArray &tlbNamespace)
+{
+    str << "    " << maybeQualifyType(mt.typeName(), tlbNamespace) << ' ' << mt.name() << '(';
+    const auto paramTypes = mt.parameterTypes();
+    auto ptit = paramTypes.begin();
+    if (ptit != paramTypes.end()) {
+        while (true) {
+            str << maybeQualifyType(*ptit, tlbNamespace);
+            if (++ptit == paramTypes.end())
+                break;
+            str << ", ";
+        }
+    }
+    str << ");\n";
+}
+
 static void formatCppMethods(QTextStream &str, const QMetaObject *mo,
-                             QMetaMethod::MethodType filter)
+                             const QByteArray &tlbNamespace, QMetaMethod::MethodType filter)
 {
     for (int m = mo->methodOffset(), count = mo->methodCount(); m < count; ++m) {
         const auto &mt = mo->method(m);
         if (mt.methodType() == filter)
-            str << "    " << mt.typeName() << ' ' << mt.methodSignature() << ";\n";
+            formatCppMethod(str, mt, tlbNamespace);
     }
 }
 
-static void formatCppProperty(QTextStream &str, const QMetaProperty &p)
+static void formatCppProperty(QTextStream &str, const QMetaProperty &p,
+                              const QByteArray &tlbNamespace)
 {
-    str << "    Q_PROPERTY(" << p.typeName() << ' ' << p.name()
+    str << "    Q_PROPERTY(" << maybeQualifyType(p.typeName(), tlbNamespace) << ' ' << p.name()
         << " READ " << p.name();
     if (p.isWritable())
         str << " WRITE " << setterName(p.name());
@@ -94,6 +160,20 @@ static void formatCppQuotedString(QTextStream &str, const char *s)
         str << c;
     }
     str << '"';
+}
+
+static QByteArray extractNamespaceFromTypeName(const QStringList &name)
+{
+    QByteArray result;
+    if (name.size() < 2)
+        return result;
+
+    result = name.first().toUtf8();
+    for (int i = 1, count = name.size() - 1; i < count; ++i) {
+        result.append("::");
+        result.append(name.at(i).toUtf8());
+    }
+    return result;
 }
 
 // Generate C++ code from an ActiveQt QMetaObject to be parsed by moc
@@ -125,18 +205,19 @@ static QString mocHeader(const QMetaObject *mo, const QStringList &name,
         str << ")\n";
     }
 
+    const QByteArray tlbNamespace = extractNamespaceFromTypeName(name);
     for (int p = mo->propertyOffset(), count = mo-> propertyCount(); p < count; ++p)
-        formatCppProperty(str, mo->property(p));
+        formatCppProperty(str, mo->property(p), tlbNamespace);
 
     str << "public:\n";
 
     formatCppEnums(str, mo, "Q_ENUM");
 
-    formatCppMethods(str, mo, QMetaMethod::Constructor);
+    formatCppMethods(str, mo, tlbNamespace, QMetaMethod::Constructor);
     str << "\nQ_SIGNALS:\n";
-    formatCppMethods(str, mo, QMetaMethod::Signal);
+    formatCppMethods(str, mo, tlbNamespace, QMetaMethod::Signal);
     str << "\npublic Q_SLOTS:\n";
-    formatCppMethods(str, mo, QMetaMethod::Slot);
+    formatCppMethods(str, mo, tlbNamespace, QMetaMethod::Slot);
     str << "};\n";
 
     // The final part of "name" is the class name. It shouldn't be closed as a namespace
@@ -155,7 +236,7 @@ static QString processOutput(QByteArray output)
     return QString::fromUtf8(output);
 }
 
-static QString runProcess(const QString  &binary, const QStringList &args,
+static QString runProcess(const QString  &binary, const QStringList &args, const QByteArray &input,
                           QString *errorString)
 {
     QProcess process;
@@ -164,6 +245,8 @@ static QString runProcess(const QString  &binary, const QStringList &args,
         *errorString = QLatin1String("Cannot start ") + binary + QLatin1String(": ") + process.errorString();
         return QString();
     }
+    process.write(input);
+    process.closeWriteChannel();
     if (!process.waitForFinished()) {
         *errorString = binary + QLatin1String(" timed out: ") + process.errorString();
         return QString();
@@ -179,66 +262,6 @@ static QString runProcess(const QString  &binary, const QStringList &args,
     return processOutput(process.readAllStandardOutput());
 }
 
-static int lineStart(int pos, const QString *s)
-{
-    const int lineStart = s->lastIndexOf(QLatin1Char('\n'), pos);
-    return lineStart >= 0 ? lineStart + 1 : 0;
-}
-
-static int nextLineFeed(int pos, const QString *s)
-{
-    const int nextLineStart = s->indexOf(QLatin1Char('\n'), pos);
-    return nextLineStart >= 0 ? nextLineStart : s->size();
-}
-
-static void removeLines(const QString &start, const QString &end,
-                        QString *s, bool keepEnd = false)
-{
-    int startPos = s->indexOf(start);
-    if (startPos < 0)
-        return;
-    int endPos = s->indexOf(end, startPos + start.size());
-    if (endPos < 0)
-        return;
-
-    startPos = lineStart(startPos, s);
-    endPos = keepEnd
-        ? lineStart(endPos, s)
-        : nextLineFeed(endPos + end.size(), s);
-    s->remove(startPos, endPos - startPos);
-}
-
-static QString cleanCode(QString code, const QString &className, const QString &headerFileName)
-{
-    // remove include of temp file
-    code.remove(QLatin1String("#include \"") + headerFileName + QLatin1String("\"\n"));
-
-    const char *removeFunctions[] = {"metaObject", "qt_metacall", "qt_static_metacall"};
-
-    const QString funcStart = className + QLatin1String("::");
-    const QString nextFuncStart = QLatin1String("\n}");
-    for (auto function :  removeFunctions)
-        removeLines(funcStart + QLatin1String(function) + QLatin1Char('('), nextFuncStart, &code);
-
-    // qt_static_metacall is not implemented, cannot access private function of QAxObject
-    code.replace(QLatin1String("    qt_static_metacall,"), QLatin1String("    nullptr,"));
-
-    // Remove internal signals
-    removeLines(QLatin1String("// SIGNAL 0"), QLatin1String("QT_WARNING_POP"), &code, true);
-
-    // Fix enum uint(Namespace::Class::Value) -> uint(Namespace::Value) (dumpcpp convention)
-    const QString enumPrefix = QLatin1String("uint(");
-    QString parentName = className;
-    const int lastSep = parentName.lastIndexOf(QLatin1String("::"));
-    if (lastSep >= 0)
-        parentName.truncate(lastSep);
-    else
-        parentName.clear();
-    code.replace(enumPrefix + className + QLatin1String("::"),
-                 enumPrefix + parentName + QLatin1String("::"));
-    return code;
-}
-
 QString mocCode(const QMetaObject *mo, const QString &qualifiedClassName,
                 QString *errorString)
 {
@@ -248,28 +271,17 @@ QString mocCode(const QMetaObject *mo, const QString &qualifiedClassName,
 
     const QString baseClass = QLatin1String(mo->superClass()->className());
 
-    const QString tempPattern = QDir::tempPath() + QLatin1Char('/')
-        + name.constLast().toLower() + QLatin1String("_XXXXXX.h");
-    QTemporaryFile header(tempPattern);
-    if (!header.open()) {
-        *errorString = QLatin1String("Cannot open temporary file: ") + header.errorString();
-        return QString();
-    }
     const QString headerCode = mocHeader(mo, name, baseClass);
-    header.write(headerCode.toUtf8());
-    const QString headerFileName = header.fileName();
-    header.close();
 
     const QString binary = QLatin1String("moc.exe");
 
-    QString result = runProcess(binary, {header.fileName()}, errorString);
+    QString result = runProcess(binary, { u"--active-qt"_s }, headerCode.toUtf8(), errorString);
     if (result.isEmpty()) {
         errorString->append(QLatin1String("\n\nOffending code:\n"));
         errorString->append(headerCode);
-        return result;
     }
 
-    return cleanCode(result, name.join(QLatin1String("::")), headerFileName);
+    return result;
 }
 
 QT_END_NAMESPACE

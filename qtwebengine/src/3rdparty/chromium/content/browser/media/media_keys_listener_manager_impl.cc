@@ -7,6 +7,7 @@
 #include <memory>
 #include <utility>
 
+#include "base/metrics/histogram_functions.h"
 #include "base/observer_list.h"
 #include "build/build_config.h"
 #include "build/chromeos_buildflags.h"
@@ -20,9 +21,9 @@
 #include "ui/base/accelerators/accelerator.h"
 #include "ui/base/idle/idle.h"
 
-#if BUILDFLAG(IS_WIN)
+#if USE_INSTANCED_SYSTEM_MEDIA_CONTROLS_FOR_WEB_APPS
 #include "content/browser/media/web_app_system_media_controls_manager.h"
-#endif
+#endif  // USE_INSTANCED_SYSTEM_MEDIA_CONTROLS_FOR_WEB_APPS
 
 namespace content {
 
@@ -41,21 +42,22 @@ MediaKeysListenerManager* MediaKeysListenerManager::GetInstance() {
 MediaKeysListenerManagerImpl::MediaKeysListenerManagerImpl() {
   DCHECK(!MediaKeysListenerManager::GetInstance());
 
-#if BUILDFLAG(IS_WIN)
-  // If instanced system media controls are enabled, the
-  // web_app_system_media_controls_manager_ will handle creation of browser
-  // related classes such as the browser_active_media_session_controller_.
+#if USE_INSTANCED_SYSTEM_MEDIA_CONTROLS_FOR_WEB_APPS
+  // If instanced system media controls are enabled, create the
+  // web_app_system_media_controls_manager_ that handles web app related system
+  // media controls.
   if (ShouldUseWebAppSystemMediaControls()) {
     web_app_system_media_controls_manager_ =
         std::make_unique<WebAppSystemMediaControlsManager>();
     web_app_system_media_controls_manager_->Init();
-    return;
   }
-#endif
-  // If instanced web app system media controls aren't supported, create the
-  // single ActiveMediaSessionController that follows the active session.
-  // It can be unsupported due to feature flag being off or platform
+#endif  // USE_INSTANCED_SYSTEM_MEDIA_CONTROLS_FOR_WEB_APPS
+  // Create the single ActiveMediaSessionController that follows the active
+  // session. It can be unsupported due to feature flag being off or platform
   // constraints.
+  // When instanced system media controls are enabled, this AMSC follows only
+  // browser related sessions while web app related ones are handled by
+  // web_app_system_media_controls_manager_.
   browser_active_media_session_controller_ =
       std::make_unique<ActiveMediaSessionController>(
           base::UnguessableToken::Null());
@@ -205,6 +207,10 @@ void MediaKeysListenerManagerImpl::SetIsMediaPlaying(bool is_playing) {
 void MediaKeysListenerManagerImpl::OnNext(
     system_media_controls::SystemMediaControls* sender) {
   if (ShouldActiveMediaSessionControllerReceiveKey(ui::VKEY_MEDIA_NEXT_TRACK)) {
+#if USE_INSTANCED_SYSTEM_MEDIA_CONTROLS_FOR_WEB_APPS
+    MaybeSendWebAppControlsEvent(WebAppSystemMediaControlsEvent::kPwaSmcNext,
+                                 sender);
+#endif  // USE_INSTANCED_SYSTEM_MEDIA_CONTROLS_FOR_WEB_APPS
     GetControllerForSystemMediaControls(sender)->OnNext();
     return;
   }
@@ -214,6 +220,10 @@ void MediaKeysListenerManagerImpl::OnNext(
 void MediaKeysListenerManagerImpl::OnPrevious(
     system_media_controls::SystemMediaControls* sender) {
   if (ShouldActiveMediaSessionControllerReceiveKey(ui::VKEY_MEDIA_PREV_TRACK)) {
+#if USE_INSTANCED_SYSTEM_MEDIA_CONTROLS_FOR_WEB_APPS
+    MaybeSendWebAppControlsEvent(
+        WebAppSystemMediaControlsEvent::kPwaSmcPrevious, sender);
+#endif  // USE_INSTANCED_SYSTEM_MEDIA_CONTROLS_FOR_WEB_APPS
     GetControllerForSystemMediaControls(sender)->OnPrevious();
     return;
   }
@@ -223,6 +233,10 @@ void MediaKeysListenerManagerImpl::OnPrevious(
 void MediaKeysListenerManagerImpl::OnPlay(
     system_media_controls::SystemMediaControls* sender) {
   if (ShouldActiveMediaSessionControllerReceiveKey(ui::VKEY_MEDIA_PLAY_PAUSE)) {
+#if USE_INSTANCED_SYSTEM_MEDIA_CONTROLS_FOR_WEB_APPS
+    MaybeSendWebAppControlsEvent(WebAppSystemMediaControlsEvent::kPwaSmcPlay,
+                                 sender);
+#endif  // USE_INSTANCED_SYSTEM_MEDIA_CONTROLS_FOR_WEB_APPS
     GetControllerForSystemMediaControls(sender)->OnPlay();
     return;
   }
@@ -233,6 +247,10 @@ void MediaKeysListenerManagerImpl::OnPlay(
 void MediaKeysListenerManagerImpl::OnPause(
     system_media_controls::SystemMediaControls* sender) {
   if (ShouldActiveMediaSessionControllerReceiveKey(ui::VKEY_MEDIA_PLAY_PAUSE)) {
+#if USE_INSTANCED_SYSTEM_MEDIA_CONTROLS_FOR_WEB_APPS
+    MaybeSendWebAppControlsEvent(WebAppSystemMediaControlsEvent::kPwaSmcPause,
+                                 sender);
+#endif  // USE_INSTANCED_SYSTEM_MEDIA_CONTROLS_FOR_WEB_APPS
     GetControllerForSystemMediaControls(sender)->OnPause();
     return;
   }
@@ -243,6 +261,10 @@ void MediaKeysListenerManagerImpl::OnPause(
 void MediaKeysListenerManagerImpl::OnPlayPause(
     system_media_controls::SystemMediaControls* sender) {
   if (ShouldActiveMediaSessionControllerReceiveKey(ui::VKEY_MEDIA_PLAY_PAUSE)) {
+#if USE_INSTANCED_SYSTEM_MEDIA_CONTROLS_FOR_WEB_APPS
+    MaybeSendWebAppControlsEvent(
+        WebAppSystemMediaControlsEvent::kPwaSmcPlayPause, sender);
+#endif  // USE_INSTANCED_SYSTEM_MEDIA_CONTROLS_FOR_WEB_APPS
     GetControllerForSystemMediaControls(sender)->OnPlayPause();
     return;
   }
@@ -252,6 +274,10 @@ void MediaKeysListenerManagerImpl::OnPlayPause(
 void MediaKeysListenerManagerImpl::OnStop(
     system_media_controls::SystemMediaControls* sender) {
   if (ShouldActiveMediaSessionControllerReceiveKey(ui::VKEY_MEDIA_STOP)) {
+#if USE_INSTANCED_SYSTEM_MEDIA_CONTROLS_FOR_WEB_APPS
+    MaybeSendWebAppControlsEvent(WebAppSystemMediaControlsEvent::kPwaSmcStop,
+                                 sender);
+#endif  // USE_INSTANCED_SYSTEM_MEDIA_CONTROLS_FOR_WEB_APPS
     GetControllerForSystemMediaControls(sender)->OnStop();
     return;
   }
@@ -263,6 +289,10 @@ void MediaKeysListenerManagerImpl::OnSeek(
     const base::TimeDelta& time) {
   if (!CanActiveMediaSessionControllerReceiveEvents())
     return;
+#if USE_INSTANCED_SYSTEM_MEDIA_CONTROLS_FOR_WEB_APPS
+  MaybeSendWebAppControlsEvent(WebAppSystemMediaControlsEvent::kPwaSmcSeek,
+                               sender);
+#endif  // USE_INSTANCED_SYSTEM_MEDIA_CONTROLS_FOR_WEB_APPS
   GetControllerForSystemMediaControls(sender)->OnSeek(time);
 }
 
@@ -271,6 +301,10 @@ void MediaKeysListenerManagerImpl::OnSeekTo(
     const base::TimeDelta& time) {
   if (!CanActiveMediaSessionControllerReceiveEvents())
     return;
+#if USE_INSTANCED_SYSTEM_MEDIA_CONTROLS_FOR_WEB_APPS
+  MaybeSendWebAppControlsEvent(WebAppSystemMediaControlsEvent::kPwaSmcSeekTo,
+                               sender);
+#endif  // USE_INSTANCED_SYSTEM_MEDIA_CONTROLS_FOR_WEB_APPS
   GetControllerForSystemMediaControls(sender)->OnSeekTo(time);
 }
 
@@ -299,12 +333,20 @@ void MediaKeysListenerManagerImpl::StartListeningForMediaKeysIfNecessary() {
     return;
   }
 
-#if (BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS_LACROS)) || \
-    BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC)
+#if (BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS_LACROS)) || BUILDFLAG(IS_WIN)
   // Create SystemMediaControls with the SingletonHwnd.
   browser_system_media_controls_ =
       system_media_controls::SystemMediaControls::Create(
           media::AudioManager::GetGlobalAppName());
+#elif BUILDFLAG(IS_MAC)
+  browser_system_media_controls_ =
+      system_media_controls::SystemMediaControls::Create(
+          /*application_host=*/nullptr);
+  if (on_system_media_controls_bridge_created_callback_for_testing_) {
+    browser_system_media_controls_->SetOnBridgeCreatedCallbackForTesting(
+        std::move(
+            on_system_media_controls_bridge_created_callback_for_testing_));
+  }
 #endif
 
   if (browser_system_media_controls_) {
@@ -321,30 +363,6 @@ void MediaKeysListenerManagerImpl::StartListeningForMediaKeysIfNecessary() {
     DCHECK(media_keys_listener_);
   }
   EnsureAuxiliaryServices();
-}
-
-void MediaKeysListenerManagerImpl::SetBrowserActiveMediaRequestId(
-    base::UnguessableToken request_id) {
-  if (!browser_system_media_controls_) {
-    browser_system_media_controls_ =
-        system_media_controls::SystemMediaControls::Create(
-            media::AudioManager::GetGlobalAppName());
-
-    CHECK(browser_system_media_controls_);
-    browser_system_media_controls_->AddObserver(this);
-  }
-
-  // Recreate the notifier and controller so their mojo remotes get rebound
-  // appropriately.
-  browser_system_media_controls_notifier_ =
-      std::make_unique<SystemMediaControlsNotifier>(
-          browser_system_media_controls_.get(), request_id);
-  if (!browser_active_media_session_controller_) {
-    browser_active_media_session_controller_ =
-        std::make_unique<ActiveMediaSessionController>(request_id);
-  } else {
-    browser_active_media_session_controller_->RebindMojoForNewID(request_id);
-  }
 }
 
 MediaKeysListenerManagerImpl::ListeningData*
@@ -396,12 +414,12 @@ void MediaKeysListenerManagerImpl::UpdateSystemMediaControlsEnabledControls() {
           browser_system_media_controls_->SetIsStopEnabled(should_enable);
           break;
         default:
-          NOTREACHED();
+          NOTREACHED_IN_MIGRATION();
       }
     }
   }
 
-#if BUILDFLAG(IS_WIN)
+#if USE_INSTANCED_SYSTEM_MEDIA_CONTROLS_FOR_WEB_APPS
   // This loops over active web app instanced system media controls and updates
   // what controls are available on each set of controls.
   if (!ShouldUseWebAppSystemMediaControls()) {
@@ -438,11 +456,11 @@ void MediaKeysListenerManagerImpl::UpdateSystemMediaControlsEnabledControls() {
           smc->SetIsStopEnabled(should_enable);
           break;
         default:
-          NOTREACHED();
+          NOTREACHED_IN_MIGRATION();
       }
     }
   }
-#endif
+#endif  // USE_INSTANCED_SYSTEM_MEDIA_CONTROLS_FOR_WEB_APPS
 }
 
 void MediaKeysListenerManagerImpl::UpdateMediaKeysListener() {
@@ -461,7 +479,7 @@ void MediaKeysListenerManagerImpl::UpdateMediaKeysListener() {
 
 bool MediaKeysListenerManagerImpl::ShouldListenToKey(
     const ListeningData& listening_data) const {
-  // TODO(crbug.com/1502991) verify if this needs a PWA check.
+  // TODO(crbug.com/40943399) verify if this needs a PWA check.
   return !listening_data.listeners.empty() ||
          (listening_data.browser_active_media_session_controller_listening &&
           CanActiveMediaSessionControllerReceiveEvents());
@@ -500,16 +518,17 @@ bool MediaKeysListenerManagerImpl::ShouldActiveMediaSessionControllerReceiveKey(
 }
 
 bool MediaKeysListenerManagerImpl::ShouldUseWebAppSystemMediaControls() const {
-#if BUILDFLAG(IS_WIN)
-  return base::FeatureList::IsEnabled(features::kWebAppSystemMediaControlsWin);
+#if USE_INSTANCED_SYSTEM_MEDIA_CONTROLS_FOR_WEB_APPS
+  // This feature is enabled by default on Windows, disabled on mac.
+  return base::FeatureList::IsEnabled(features::kWebAppSystemMediaControls);
 #else
   return false;
-#endif
+#endif  // USE_INSTANCED_SYSTEM_MEDIA_CONTROLS_FOR_WEB_APPS
 }
 
 bool MediaKeysListenerManagerImpl::IsDelegateForWebAppSession(
     ui::MediaKeysListener::Delegate* delegate) {
-#if BUILDFLAG(IS_WIN)
+#if USE_INSTANCED_SYSTEM_MEDIA_CONTROLS_FOR_WEB_APPS
   std::vector<WebAppSystemMediaControls*> pwa_controls =
       web_app_system_media_controls_manager_->GetAllControls();
 
@@ -518,22 +537,37 @@ bool MediaKeysListenerManagerImpl::IsDelegateForWebAppSession(
       return true;
     }
   }
-#endif
+#endif  // USE_INSTANCED_SYSTEM_MEDIA_CONTROLS_FOR_WEB_APPS
   return false;
 }
+
+#if USE_INSTANCED_SYSTEM_MEDIA_CONTROLS_FOR_WEB_APPS
+void MediaKeysListenerManagerImpl::MaybeSendWebAppControlsEvent(
+    WebAppSystemMediaControlsEvent event,
+    system_media_controls::SystemMediaControls* sender) {
+  if (web_app_system_media_controls_manager_ &&
+      web_app_system_media_controls_manager_
+          ->GetWebAppSystemMediaControlsForSystemMediaControls(sender)) {
+    // Since the sender is registered with the
+    // web_app_system_media_controls_manager we're good to go ahead and fire the
+    // histogram for instanced pwa controls.
+    base::UmaHistogramEnumeration("WebApp.Media.SystemMediaControls", event);
+  }
+}
+#endif  // USE_INSTANCED_SYSTEM_MEDIA_CONTROLS_FOR_WEB_APPS
 
 ActiveMediaSessionController*
 MediaKeysListenerManagerImpl::GetControllerForSystemMediaControls(
     system_media_controls::SystemMediaControls* system_media_controls) {
   // Check if system_media_controls is browser box.
-  // If kWebAppSystemMediaControlsWin is not supported, we should always use the
+  // If kWebAppSystemMediaControls is not supported, we should always use the
   // browser controller.
   if (!ShouldUseWebAppSystemMediaControls() ||
       system_media_controls == browser_system_media_controls_.get()) {
     return browser_active_media_session_controller_.get();
   }
 
-#if BUILDFLAG(IS_WIN)
+#if USE_INSTANCED_SYSTEM_MEDIA_CONTROLS_FOR_WEB_APPS
   // Ask the manager for the appropriate ActiveMediaSessionController.
   WebAppSystemMediaControls* controls =
       web_app_system_media_controls_manager_
@@ -542,11 +576,11 @@ MediaKeysListenerManagerImpl::GetControllerForSystemMediaControls(
   if (controls) {
     return controls->GetController();
   }
-#endif
+#endif  // USE_INSTANCED_SYSTEM_MEDIA_CONTROLS_FOR_WEB_APPS
 
   // It's unexpected that any code asks for the controller for a
   // system_media_controls object we don't know about.
-  NOTREACHED_NORETURN();
+  NOTREACHED();
 }
 
 }  // namespace content

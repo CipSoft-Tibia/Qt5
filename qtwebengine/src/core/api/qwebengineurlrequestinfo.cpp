@@ -1,5 +1,6 @@
 // Copyright (C) 2019 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:network-protocol
 
 #include "qwebengineurlrequestinfo.h"
 #include "qwebengineurlrequestinfo_p.h"
@@ -81,7 +82,7 @@ QWebEngineUrlRequestInfoPrivate::QWebEngineUrlRequestInfoPrivate(
         QWebEngineUrlRequestInfo::ResourceType resource,
         QWebEngineUrlRequestInfo::NavigationType navigation, const QUrl &u, const QUrl &fpu,
         const QUrl &i, const QByteArray &m, QtWebEngineCore::ResourceRequestBody *const rb,
-        const QHash<QByteArray, QByteArray> &h)
+        const QHash<QByteArray, QByteArray> &h, bool isDownload)
     : resourceType(resource)
     , navigationType(navigation)
     , shouldBlockRequest(false)
@@ -93,6 +94,7 @@ QWebEngineUrlRequestInfoPrivate::QWebEngineUrlRequestInfoPrivate(
     , changed(false)
     , extraHeaders(h)
     , resourceRequestBody(rb)
+    , isDownload(isDownload)
 {}
 
 /*!
@@ -258,6 +260,20 @@ QIODevice *QWebEngineUrlRequestInfo::requestBody() const
 }
 
 /*!
+    Returns true if the request was initiated by an explicit download action
+    from the user.
+
+    A download can still occurs, even when this function return false.
+
+    \since 6.9
+*/
+
+bool QWebEngineUrlRequestInfo::isDownload() const
+{
+    return d_ptr->isDownload;
+}
+
+/*!
     \internal
 */
 bool QWebEngineUrlRequestInfo::changed() const
@@ -323,15 +339,6 @@ void QWebEngineUrlRequestInfo::setHttpHeader(const QByteArray &name, const QByte
 QHash<QByteArray, QByteArray> QWebEngineUrlRequestInfo::httpHeaders() const
 {
     return d_ptr->extraHeaders;
-}
-
-/*!
-    \internal
-*/
-void QWebEngineUrlRequestInfoPrivate::appendFileToResourceRequestBodyForTest(const QString &path)
-{
-    if (resourceRequestBody)
-        resourceRequestBody->appendFilesForTest(path);
 }
 
 QT_END_NAMESPACE

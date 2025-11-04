@@ -60,7 +60,7 @@ int ConvertHinting(gfx::FontRenderParams::Hinting hinting) {
     case gfx::FontRenderParams::HINTING_FULL:
       return 3;
   }
-  NOTREACHED() << "Unexpected hinting value " << hinting;
+  NOTREACHED_IN_MIGRATION() << "Unexpected hinting value " << hinting;
   return 0;
 }
 
@@ -75,7 +75,8 @@ font_service::mojom::RenderStyleSwitch ConvertSubpixelRendering(
     case gfx::FontRenderParams::SUBPIXEL_RENDERING_VBGR:
       return font_service::mojom::RenderStyleSwitch::ON;
   }
-  NOTREACHED() << "Unexpected subpixel rendering value " << rendering;
+  NOTREACHED_IN_MIGRATION()
+      << "Unexpected subpixel rendering value " << rendering;
   return font_service::mojom::RenderStyleSwitch::NO_PREFERENCE;
 }
 
@@ -235,7 +236,7 @@ void FontServiceApp::MatchFontByPostscriptNameOrFullFontName(
   TRACE_EVENT0("fonts",
                "FontServiceApp::MatchFontByPostscriptNameOrFullFontName");
 
-  absl::optional<FontConfigLocalMatching::FontConfigMatchResult> match_result =
+  std::optional<FontConfigLocalMatching::FontConfigMatchResult> match_result =
       FontConfigLocalMatching::FindFontByPostscriptNameOrFullFontName(family);
   if (match_result) {
     uint32_t fontconfig_interface_id = FindOrAddPath(match_result->file_path);

@@ -1,11 +1,11 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qfilesystemwatcher_polling_p.h"
 
 #include <QtCore/qlatin1stringview.h>
 #include <QtCore/qscopeguard.h>
-#include <QtCore/qtimer.h>
 
 #include <chrono>
 
@@ -89,7 +89,7 @@ QStringList QPollingFileSystemWatcherEngine::removePaths(const QStringList &path
 
 void QPollingFileSystemWatcherEngine::timerEvent(QTimerEvent *e)
 {
-    if (e->timerId() != timer.timerId())
+    if (e->id() != timer.id())
         return QFileSystemWatcherEngine::timerEvent(e);
 
     for (auto it = files.begin(), end = files.end(); it != end; /*erasing*/) {

@@ -10,6 +10,7 @@ QT_BEGIN_NAMESPACE
     \class OpcUaAttributeCache
     \inqmlmodule QtOpcUa
     \brief Flexible attribute value cache providing signals.
+    \deprecated [6.9]
     \internal
 
     This class is just for internal use in the declarative backend and not exposed to users.

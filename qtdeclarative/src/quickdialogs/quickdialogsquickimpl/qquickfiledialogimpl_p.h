@@ -32,6 +32,7 @@ class QQuickFileDialogImplAttachedPrivate;
 class QQuickFileDialogImplPrivate;
 class QQuickFileNameFilter;
 class QQuickFolderBreadcrumbBar;
+class QQuickSideBar;
 
 class Q_QUICKDIALOGS2QUICKIMPL_EXPORT QQuickFileDialogImpl : public QQuickDialog
 {
@@ -47,6 +48,7 @@ class Q_QUICKDIALOGS2QUICKIMPL_EXPORT QQuickFileDialogImpl : public QQuickDialog
     QML_ADDED_IN_VERSION(6, 2)
     Q_MOC_INCLUDE(<QtQuickDialogs2Utils/private/qquickfilenamefilter_p.h>)
     Q_MOC_INCLUDE(<QtQuickDialogs2QuickImpl/private/qquickfolderbreadcrumbbar_p.h>)
+    Q_MOC_INCLUDE(<QtQuickDialogs2QuickImpl/private/qquicksidebar_p.h>)
 
 public:
     explicit QQuickFileDialogImpl(QObject *parent = nullptr);
@@ -111,6 +113,7 @@ class Q_QUICKDIALOGS2QUICKIMPL_EXPORT QQuickFileDialogImplAttached : public QObj
     Q_PROPERTY(QQuickLabel *fileNameLabel READ fileNameLabel WRITE setFileNameLabel NOTIFY fileNameLabelChanged FINAL)
     Q_PROPERTY(QQuickTextField *fileNameTextField READ fileNameTextField WRITE setFileNameTextField NOTIFY fileNameTextFieldChanged FINAL)
     Q_PROPERTY(QQuickDialog *overwriteConfirmationDialog READ overwriteConfirmationDialog WRITE setOverwriteConfirmationDialog NOTIFY overwriteConfirmationDialogChanged FINAL)
+    Q_PROPERTY(QQuickSideBar *sideBar READ sideBar WRITE setSideBar NOTIFY sideBarChanged FINAL)
     Q_MOC_INCLUDE(<QtQuickTemplates2/private/qquickdialogbuttonbox_p.h>)
     Q_MOC_INCLUDE(<QtQuickTemplates2/private/qquickcombobox_p.h>)
     Q_MOC_INCLUDE(<QtQuickTemplates2/private/qquicktextfield_p.h>)
@@ -143,6 +146,9 @@ public:
     QQuickDialog *overwriteConfirmationDialog() const;
     void setOverwriteConfirmationDialog(QQuickDialog *dialog);
 
+    QQuickSideBar *sideBar() const;
+    void setSideBar(QQuickSideBar *sideBar);
+
 Q_SIGNALS:
     void buttonBoxChanged();
     void nameFiltersComboBoxChanged();
@@ -151,6 +157,7 @@ Q_SIGNALS:
     void fileNameLabelChanged();
     void fileNameTextFieldChanged();
     void overwriteConfirmationDialogChanged();
+    Q_REVISION(6, 9) void sideBarChanged();
 
 private:
     Q_DISABLE_COPY(QQuickFileDialogImplAttached)

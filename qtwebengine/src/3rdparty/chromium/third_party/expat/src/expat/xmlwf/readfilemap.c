@@ -13,6 +13,8 @@
    Copyright (c) 2016-2017 Sebastian Pipping <sebastian@pipping.org>
    Copyright (c) 2017      Rhodri James <rhodri@wildebeest.org.uk>
    Copyright (c) 2017      Franek Korta <fkorta@gmail.com>
+   Copyright (c) 2022      Sean McBride <sean@rogue-research.com>
+   Copyright (c) 2025      Hanno Böck <hanno@gentoo.org>
    Licensed under the MIT license:
 
    Permission is  hereby granted,  free of charge,  to any  person obtaining
@@ -54,7 +56,7 @@
 #  define EXPAT_read_count_t int
 #  define EXPAT_read_req_t unsigned int
 #else /* POSIX */
-/* http://pubs.opengroup.org/onlinepubs/009695399/functions/read.html */
+/* https://pubs.opengroup.org/onlinepubs/009695399/functions/read.html */
 #  define EXPAT_read read
 #  define EXPAT_read_count_t ssize_t
 #  define EXPAT_read_req_t size_t
@@ -67,7 +69,7 @@
 #  ifndef S_IFMT
 #    define S_IFMT _S_IFMT
 #  endif
-#  define S_ISREG(m) (((m)&S_IFMT) == S_IFREG)
+#  define S_ISREG(m) (((m) & S_IFMT) == S_IFREG)
 #endif /* not S_ISREG */
 
 #ifndef O_BINARY

@@ -166,7 +166,8 @@ void TParseVersions::initializeExtensionBehavior()
 
     const extensionData exts[] = { {E_GL_EXT_ray_tracing, EShTargetSpv_1_4},
                                    {E_GL_NV_ray_tracing_motion_blur, EShTargetSpv_1_4},
-                                   {E_GL_EXT_mesh_shader, EShTargetSpv_1_4}
+                                   {E_GL_EXT_mesh_shader, EShTargetSpv_1_4},
+                                   {E_GL_NV_cooperative_matrix2, EShTargetSpv_1_6}
                                  };
 
     for (size_t ii = 0; ii < sizeof(exts) / sizeof(exts[0]); ii++) {
@@ -266,6 +267,7 @@ void TParseVersions::initializeExtensionBehavior()
     extensionBehavior[E_GL_EXT_expect_assume]                           = EBhDisable;
 
     extensionBehavior[E_GL_EXT_control_flow_attributes2]                = EBhDisable;
+    extensionBehavior[E_GL_EXT_spec_constant_composites]                = EBhDisable;
 
     extensionBehavior[E_GL_KHR_cooperative_matrix]                      = EBhDisable;
 
@@ -310,6 +312,7 @@ void TParseVersions::initializeExtensionBehavior()
     extensionBehavior[E_GL_NV_shader_invocation_reorder]             = EBhDisable;
     extensionBehavior[E_GL_NV_displacement_micromap]                 = EBhDisable;
     extensionBehavior[E_GL_NV_shader_atomic_fp16_vector]             = EBhDisable;
+    extensionBehavior[E_GL_NV_cooperative_matrix2]                   = EBhDisable;
 
     // ARM
     extensionBehavior[E_GL_ARM_shader_core_builtins]                 = EBhDisable;
@@ -520,6 +523,7 @@ void TParseVersions::getPreamble(std::string& preamble)
             "#define GL_EXT_fragment_shading_rate 1\n"
             "#define GL_EXT_shared_memory_block 1\n"
             "#define GL_EXT_shader_integer_mix 1\n"
+            "#define GL_EXT_spec_constant_composites 1\n"
 
             // GL_KHR_shader_subgroup
             "#define GL_KHR_shader_subgroup_basic 1\n"
@@ -573,6 +577,7 @@ void TParseVersions::getPreamble(std::string& preamble)
             "#define GL_NV_cooperative_matrix 1\n"
             "#define GL_NV_integer_cooperative_matrix 1\n"
             "#define GL_NV_shader_invocation_reorder 1\n"
+            "#define GL_NV_cooperative_matrix2 1\n"
 
             "#define GL_QCOM_image_processing 1\n"
             "#define GL_QCOM_image_processing2 1\n"
@@ -774,7 +779,7 @@ void TParseVersions::profileRequires(const TSourceLoc& loc, int profileMask, int
         for (int i = 0; i < numExtensions; ++i) {
             switch (getExtensionBehavior(extensions[i])) {
             case EBhWarn:
-                infoSink.info.message(EPrefixWarning, ("extension " + TString(extensions[i]) + " is being used for " + featureDesc).c_str(), loc);
+                infoSink.info.message(EPrefixWarning, ("extension " + TString(extensions[i]) + " is being used for " + featureDesc).c_str(), loc, messages & EShMsgAbsolutePath, messages & EShMsgDisplayErrorColumn);
                 [[fallthrough]];
             case EBhRequire:
             case EBhEnable:
@@ -812,7 +817,8 @@ void TParseVersions::checkDeprecated(const TSourceLoc& loc, int profileMask, int
                 error(loc, "deprecated, may be removed in future release", featureDesc, "");
             else if (! suppressWarnings())
                 infoSink.info.message(EPrefixWarning, (TString(featureDesc) + " deprecated in version " +
-                                                       String(depVersion) + "; may be removed in future release").c_str(), loc);
+                                                       String(depVersion) + "; may be removed in future release").c_str(), 
+                                                       loc, messages & EShMsgAbsolutePath, messages & EShMsgDisplayErrorColumn);
         }
     }
 }
@@ -849,11 +855,14 @@ bool TParseVersions::checkExtensionsRequested(const TSourceLoc& loc, int numExte
     for (int i = 0; i < numExtensions; ++i) {
         TExtensionBehavior behavior = getExtensionBehavior(extensions[i]);
         if (behavior == EBhDisable && relaxedErrors()) {
-            infoSink.info.message(EPrefixWarning, "The following extension must be enabled to use this feature:", loc);
+            infoSink.info.message(EPrefixWarning, "The following extension must be enabled to use this feature:", loc,
+                                  messages & EShMsgAbsolutePath, messages & EShMsgDisplayErrorColumn);
             behavior = EBhWarn;
         }
         if (behavior == EBhWarn) {
-            infoSink.info.message(EPrefixWarning, ("extension " + TString(extensions[i]) + " is being used for " + featureDesc).c_str(), loc);
+            infoSink.info.message(EPrefixWarning,
+                                  ("extension " + TString(extensions[i]) + " is being used for " + featureDesc).c_str(),
+                                  loc, messages & EShMsgAbsolutePath, messages & EShMsgDisplayErrorColumn);
             warned = true;
         }
     }
@@ -1016,6 +1025,8 @@ void TParseVersions::updateExtensionBehavior(int line, const char* extension, co
         updateExtensionBehavior(line, "GL_EXT_buffer_reference", behaviorString);
     else if (strcmp(extension, "GL_NV_integer_cooperative_matrix") == 0)
         updateExtensionBehavior(line, "GL_NV_cooperative_matrix", behaviorString);
+    else if (strcmp(extension, "GL_NV_cooperative_matrix2") == 0)
+        updateExtensionBehavior(line, "GL_KHR_cooperative_matrix", behaviorString);
     // subgroup extended types to explicit types
     else if (strcmp(extension, "GL_EXT_shader_subgroup_extended_types_int8") == 0)
         updateExtensionBehavior(line, "GL_EXT_shader_explicit_arithmetic_types_int8", behaviorString);
@@ -1372,6 +1383,14 @@ void TParseVersions::coopmatCheck(const TSourceLoc& loc, const char* op, bool bu
 {
     if (!builtIn) {
         const char* const extensions[] = {E_GL_KHR_cooperative_matrix};
+        requireExtensions(loc, sizeof(extensions)/sizeof(extensions[0]), extensions, op);
+    }
+}
+
+void TParseVersions::tensorLayoutViewCheck(const TSourceLoc& loc, const char* op, bool builtIn)
+{
+    if (!builtIn) {
+        const char* const extensions[] = {E_GL_NV_cooperative_matrix2};
         requireExtensions(loc, sizeof(extensions)/sizeof(extensions[0]), extensions, op);
     }
 }

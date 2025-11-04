@@ -5,6 +5,7 @@
 import * as Common from '../../core/common/common.js';
 import * as Host from '../../core/host/host.js';
 import * as i18n from '../../core/i18n/i18n.js';
+import * as Platform from '../../core/platform/platform.js';
 import * as SDK from '../../core/sdk/sdk.js';
 import * as IconButton from '../../ui/components/icon_button/icon_button.js';
 import * as UI from '../../ui/legacy/legacy.js';
@@ -107,14 +108,15 @@ export class ThrottlingManager {
     this.cpuThrottlingManager = SDK.CPUThrottlingManager.CPUThrottlingManager.instance();
     this.cpuThrottlingControls = new Set();
     this.cpuThrottlingRates = ThrottlingPresets.cpuThrottlingPresets;
-    this.customNetworkConditionsSetting = Common.Settings.Settings.instance().moduleSetting('customNetworkConditions');
+    this.customNetworkConditionsSetting =
+        Common.Settings.Settings.instance().moduleSetting('custom-network-conditions');
     this.currentNetworkThrottlingConditionsSetting = Common.Settings.Settings.instance().createSetting(
-        'preferredNetworkCondition', SDK.NetworkManager.NoThrottlingConditions);
+        'preferred-network-condition', SDK.NetworkManager.NoThrottlingConditions);
 
     this.currentNetworkThrottlingConditionsSetting.setSerializer(new SDK.NetworkManager.ConditionsSerializer());
 
     SDK.NetworkManager.MultitargetNetworkManager.instance().addEventListener(
-        SDK.NetworkManager.MultitargetNetworkManager.Events.ConditionsChanged, () => {
+        SDK.NetworkManager.MultitargetNetworkManager.Events.CONDITIONS_CHANGED, () => {
           this.lastNetworkThrottlingConditions = this.currentNetworkThrottlingConditionsSetting.get();
           this.currentNetworkThrottlingConditionsSetting.set(
               SDK.NetworkManager.MultitargetNetworkManager.instance().networkConditions());
@@ -159,12 +161,19 @@ export class ThrottlingManager {
           const title = typeof conditions.title === 'function' ? conditions.title() : conditions.title;
           const option = new Option(title, title);
           UI.ARIAUtils.setLabel(option, i18nString(UIStrings.sS, {PH1: group.title, PH2: title}));
+          const jslogContext = i === groups.length - 1 ?
+              'custom-network-throttling-item' :
+              Platform.StringUtilities.toKebabCase(conditions.i18nTitleKey || title);
+          option.setAttribute('jslog', `${VisualLogging.item(jslogContext).track({
+                                click: true,
+                              })}`);
           groupElement.appendChild(option);
           options.push(conditions);
         }
         if (i === groups.length - 1) {
           const option = new Option(i18nString(UIStrings.add), i18nString(UIStrings.add));
           UI.ARIAUtils.setLabel(option, i18nString(UIStrings.addS, {PH1: group.title}));
+          option.setAttribute('jslog', `${VisualLogging.action('add').track({click: true})}`);
           groupElement.appendChild(option);
           options.push(null);
         }
@@ -193,10 +202,9 @@ export class ThrottlingManager {
   createOfflineToolbarCheckbox(): UI.Toolbar.ToolbarCheckbox {
     const checkbox = new UI.Toolbar.ToolbarCheckbox(
         i18nString(UIStrings.offline), i18nString(UIStrings.forceDisconnectedFromNetwork), forceOffline.bind(this));
-    checkbox.element.setAttribute(
-        'jslog', `${VisualLogging.toggle().track({click: true}).context('disconnect-from-network')}`);
+    checkbox.element.setAttribute('jslog', `${VisualLogging.toggle('disconnect-from-network').track({click: true})}`);
     SDK.NetworkManager.MultitargetNetworkManager.instance().addEventListener(
-        SDK.NetworkManager.MultitargetNetworkManager.Events.ConditionsChanged, networkConditionsChanged);
+        SDK.NetworkManager.MultitargetNetworkManager.Events.CONDITIONS_CHANGED, networkConditionsChanged);
     checkbox.setChecked(SDK.NetworkManager.MultitargetNetworkManager.instance().isOffline());
 
     function forceOffline(this: ThrottlingManager): void {
@@ -220,10 +228,8 @@ export class ThrottlingManager {
   }
 
   createMobileThrottlingButton(): UI.Toolbar.ToolbarMenuButton {
-    const button = new UI.Toolbar.ToolbarMenuButton(appendItems, undefined, 'mobileThrottling');
+    const button = new UI.Toolbar.ToolbarMenuButton(appendItems, undefined, undefined, 'mobile-throttling');
     button.setTitle(i18nString(UIStrings.throttling));
-    button.setGlyph('');
-    button.turnIntoSelect();
     button.setDarkText();
 
     let options: ConditionsList = [];
@@ -242,8 +248,8 @@ export class ThrottlingManager {
           continue;
         }
         contextMenu.defaultSection().appendCheckboxItem(
-            conditions.title, selector.optionSelected.bind(selector, conditions as Conditions), selectedIndex === index,
-            undefined, undefined, undefined, conditions.jslogContext);
+            conditions.title, selector.optionSelected.bind(selector, conditions as Conditions),
+            {checked: selectedIndex === index, jslogContext: conditions.jslogContext});
       }
     }
 
@@ -270,7 +276,7 @@ export class ThrottlingManager {
 
   private updatePanelIcon(): void {
     const warnings = [];
-    if (this.cpuThrottlingManager.cpuThrottlingRate() !== SDK.CPUThrottlingManager.CPUThrottlingRates.NoThrottling) {
+    if (this.cpuThrottlingManager.cpuThrottlingRate() !== SDK.CPUThrottlingManager.CPUThrottlingRates.NO_THROTTLING) {
       warnings.push(i18nString(UIStrings.cpuThrottlingIsEnabled));
     }
     if (this.hardwareConcurrencyOverrideEnabled) {
@@ -281,7 +287,7 @@ export class ThrottlingManager {
 
   setCPUThrottlingRate(rate: number): void {
     this.cpuThrottlingManager.setCPUThrottlingRate(rate);
-    if (rate !== SDK.CPUThrottlingManager.CPUThrottlingRates.NoThrottling) {
+    if (rate !== SDK.CPUThrottlingManager.CPUThrottlingRates.NO_THROTTLING) {
       Host.userMetrics.actionTaken(Host.UserMetrics.Action.CpuThrottlingEnabled);
     }
     const index = this.cpuThrottlingRates.indexOf(rate);
@@ -294,14 +300,15 @@ export class ThrottlingManager {
   createCPUThrottlingSelector(): UI.Toolbar.ToolbarComboBox {
     const control = new UI.Toolbar.ToolbarComboBox(
         event => this.setCPUThrottlingRate(this.cpuThrottlingRates[(event.target as HTMLSelectElement).selectedIndex]),
-        i18nString(UIStrings.cpuThrottling));
+        i18nString(UIStrings.cpuThrottling), '', 'cpu-throttling');
     this.cpuThrottlingControls.add(control);
     const currentRate = this.cpuThrottlingManager.cpuThrottlingRate();
 
     for (let i = 0; i < this.cpuThrottlingRates.length; ++i) {
       const rate = this.cpuThrottlingRates[i];
       const title = rate === 1 ? i18nString(UIStrings.noThrottling) : i18nString(UIStrings.dSlowdown, {PH1: rate});
-      const option = control.createOption(title);
+      const value = rate === 1 ? 'cpu-no-throttling' : `cpu-throttled-${rate}`;
+      const option = control.createOption(title, value);
       control.addOption(option);
       if (currentRate === rate) {
         control.setSelectedIndex(i);
@@ -316,15 +323,17 @@ export class ThrottlingManager {
     warning: UI.Toolbar.ToolbarItem,
     toggle: UI.Toolbar.ToolbarItem,
   } {
-    const input = new UI.Toolbar.ToolbarItem(UI.UIUtils.createInput('devtools-text-input', 'number'));
+    const input =
+        new UI.Toolbar.ToolbarItem(UI.UIUtils.createInput('devtools-text-input', 'number', 'hardware-concurrency'));
     input.setTitle(i18nString(UIStrings.hardwareConcurrencySettingTooltip));
     const inputElement = input.element as HTMLInputElement;
     inputElement.min = '1';
     input.setEnabled(false);
 
     const toggle = new UI.Toolbar.ToolbarCheckbox(
-        i18nString(UIStrings.hardwareConcurrency), i18nString(UIStrings.hardwareConcurrencySettingTooltip));
-    const reset = new UI.Toolbar.ToolbarButton('Reset concurrency', 'undo');
+        i18nString(UIStrings.hardwareConcurrency), i18nString(UIStrings.hardwareConcurrencySettingTooltip), undefined,
+        'hardware-concurrency');
+    const reset = new UI.Toolbar.ToolbarButton('Reset concurrency', 'undo', undefined, 'hardware-concurrency-reset');
     reset.setTitle(i18nString(UIStrings.resetConcurrency));
     const icon = new IconButton.Icon.Icon();
     icon.data = {iconName: 'warning-filled', color: 'var(--icon-warning)', width: '14px', height: '14px'};
@@ -357,7 +366,7 @@ export class ThrottlingManager {
       };
 
       inputElement.value = `${defaultValue}`;
-      inputElement.oninput = (): void => setHardwareConcurrency(Number(inputElement.value));
+      inputElement.oninput = () => setHardwareConcurrency(Number(inputElement.value));
       toggle.inputElement.disabled = false;
       toggle.inputElement.addEventListener('change', () => {
         this.#hardwareConcurrencyOverrideEnabled = toggle.checked();
@@ -367,7 +376,7 @@ export class ThrottlingManager {
         setHardwareConcurrency(this.hardwareConcurrencyOverrideEnabled ? Number(inputElement.value) : defaultValue);
       });
 
-      reset.addEventListener(UI.Toolbar.ToolbarButton.Events.Click, () => {
+      reset.addEventListener(UI.Toolbar.ToolbarButton.Events.CLICK, () => {
         inputElement.value = `${defaultValue}`;
         setHardwareConcurrency(defaultValue);
       });
@@ -399,7 +408,7 @@ export class ActionDelegate implements UI.ActionRegistration.ActionDelegate {
       return true;
     }
     if (actionId === 'network-conditions.network-mid-tier-mobile') {
-      SDK.NetworkManager.MultitargetNetworkManager.instance().setNetworkConditions(SDK.NetworkManager.Fast3GConditions);
+      SDK.NetworkManager.MultitargetNetworkManager.instance().setNetworkConditions(SDK.NetworkManager.Slow4GConditions);
       return true;
     }
     if (actionId === 'network-conditions.network-offline') {

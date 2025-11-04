@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:data-parser
 
 #include "qplatformdefs.h"
 #include "qdir.h"
@@ -1527,7 +1528,7 @@ bool QDir::mkdir(const QString &dirName, QFile::Permissions permissions) const
 
     QString fn = filePath(dirName);
     if (!d->fileEngine)
-        return QFileSystemEngine::createDirectory(QFileSystemEntry(fn), false, permissions);
+        return QFileSystemEngine::mkdir(QFileSystemEntry(fn), permissions);
     return d->fileEngine->mkdir(fn, false, permissions);
 }
 
@@ -1561,7 +1562,7 @@ bool QDir::mkdir(const QString &dirName) const
 
     QString fn = filePath(dirName);
     if (!d->fileEngine)
-        return QFileSystemEngine::createDirectory(QFileSystemEntry(fn), false);
+        return QFileSystemEngine::mkdir(QFileSystemEntry(fn));
     return d->fileEngine->mkdir(fn, false);
 }
 
@@ -1585,7 +1586,7 @@ bool QDir::rmdir(const QString &dirName) const
 
     QString fn = filePath(dirName);
     if (!d->fileEngine)
-        return QFileSystemEngine::removeDirectory(QFileSystemEntry(fn), false);
+        return QFileSystemEngine::rmdir(QFileSystemEntry(fn));
 
     return d->fileEngine->rmdir(fn, false);
 }
@@ -1614,7 +1615,7 @@ bool QDir::mkpath(const QString &dirPath) const
 
     QString fn = filePath(dirPath);
     if (!d->fileEngine)
-        return QFileSystemEngine::createDirectory(QFileSystemEntry(fn), true);
+        return QFileSystemEngine::mkpath(QFileSystemEntry(fn));
     return d->fileEngine->mkdir(fn, true);
 }
 
@@ -1640,7 +1641,7 @@ bool QDir::rmpath(const QString &dirPath) const
 
     QString fn = filePath(dirPath);
     if (!d->fileEngine)
-        return QFileSystemEngine::removeDirectory(QFileSystemEntry(fn), true);
+        return QFileSystemEngine::rmpath(QFileSystemEntry(fn));
     return d->fileEngine->rmdir(fn, true);
 }
 
@@ -2237,9 +2238,9 @@ bool QDir::match(const QString &filter, const QString &fileName)
     This method is shared with QUrl, so it doesn't deal with QDir::separator(),
     nor does it remove the trailing slash, if any.
 
-    When dealing with URLs, we are following section 5.2.4 (Remove dot
-    segments) from http://www.ietf.org/rfc/rfc3986.txt. URL mode differs from
-    from local path mode in these ways:
+    When dealing with URLs, we are following the "Remove dot segments"
+    algorithm from https://www.ietf.org/rfc/rfc3986.html#section-5.2.4
+    URL mode differs from local path mode in these ways:
     1) it can set *path to empty ("." becomes "")
     2) directory path outputs end in / ("a/.." becomes "a/" instead of "a")
     3) a sequence of "//" is treated as multiple path levels ("a/b//.." becomes
@@ -2304,7 +2305,7 @@ bool qt_normalizePathSegments(QString *path, QDirPrivate::PathNormalizations fla
                 if (isRemote)
                     *out++ = *in++;
                 else
-                    ++in;
+                    ++in; // Skip multiple slashes for local URLs
 
                 // Note: we may exit this loop with in == end, in which case we
                 // *shouldn't* dereference *in. But since we are pointing to a
@@ -2350,10 +2351,10 @@ bool qt_normalizePathSegments(QString *path, QDirPrivate::PathNormalizations fla
                     continue;
                 }
             }
-            while (out > start && *--out != u'/')
-                ;
-            while (!isRemote && out > start && out[-1] == u'/')
-                --out;
+
+            if (out > start)
+                --out; // backtrack the first dot
+            // backtrack the previous path segment
             while (out > start && out[-1] != u'/')
                 --out;
             in += 2;    // the two dots

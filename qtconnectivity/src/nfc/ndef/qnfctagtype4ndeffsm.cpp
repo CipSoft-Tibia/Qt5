@@ -1,5 +1,6 @@
 // Copyright (C) 2022 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:data-parser
 
 #include "qnfctagtype4ndeffsm_p.h"
 #include <QtCore/QtEndian>
@@ -7,7 +8,7 @@
 
 QT_BEGIN_NAMESPACE
 
-Q_LOGGING_CATEGORY(QT_NFC_T4T, "qt.nfc.t4t")
+Q_STATIC_LOGGING_CATEGORY(QT_NFC_T4T, "qt.nfc.t4t")
 
 /*
     NDEF support for NFC Type 4 tags.

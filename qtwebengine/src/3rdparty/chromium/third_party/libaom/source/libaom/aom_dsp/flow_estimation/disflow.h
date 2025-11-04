@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016, Alliance for Open Media. All rights reserved
+ * Copyright (c) 2016, Alliance for Open Media. All rights reserved.
  *
  * This source code is subject to the terms of the BSD 2 Clause License and
  * the Alliance for Open Media Patent License 1.0. If the BSD 2 Clause License
@@ -15,7 +15,6 @@
 #include <stdbool.h>
 
 #include "aom_dsp/flow_estimation/flow_estimation.h"
-#include "aom_dsp/rect.h"
 #include "aom_scale/yv12config.h"
 
 #ifdef __cplusplus
@@ -92,12 +91,10 @@ typedef struct {
   int stride;
 } FlowField;
 
-bool av1_compute_global_motion_disflow(TransformationType type,
-                                       YV12_BUFFER_CONFIG *src,
-                                       YV12_BUFFER_CONFIG *ref, int bit_depth,
-                                       MotionModel *motion_models,
-                                       int num_motion_models,
-                                       bool *mem_alloc_failed);
+bool av1_compute_global_motion_disflow(
+    TransformationType type, YV12_BUFFER_CONFIG *src, YV12_BUFFER_CONFIG *ref,
+    int bit_depth, int downsample_level, MotionModel *motion_models,
+    int num_motion_models, bool *mem_alloc_failed);
 
 #ifdef __cplusplus
 }

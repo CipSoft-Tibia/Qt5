@@ -1108,9 +1108,55 @@ ReturnedValue StringPrototype::method_toLowerCase(const FunctionObject *b, const
     return Encode(v4->newString(value.toLower()));
 }
 
+static const QLocale *getLocaleDataResource(const QV4::Value &val)
+{
+    if (const QV4::QQmlValueTypeWrapper *wrapper = val.as<QQmlValueTypeWrapper>())
+        return wrapper->cast<const QLocale>();
+
+    return nullptr;
+}
+
+static QLocale getLocaleFromArgs(const FunctionObject *b, const QV4::Value *argv, int argc)
+{
+    if (argc == 0)
+        return QLocale();
+
+    ExecutionEngine *v4 = b->engine();
+    Scope scope(b);
+    QString stringifiedLocale;
+    // First argument is a string, we check if it is a valid locale
+    if (const QV4::String *that = argv[0].as<QV4::String>()) {
+        stringifiedLocale = that->toQString();
+    } else if (const QLocale *locale = getLocaleDataResource(argv[0])) {
+        return *locale;
+    } else if (argv[0].isObject()) {
+        // First argument is an array, we check if the first element is
+        // a string and a valid locale.
+        ScopedObject arrayLike(scope, argv[0].toObject(scope.engine));
+        ScopedValue kValue(scope);
+        if (arrayLike->getLength() > 0) {
+            kValue = arrayLike->get(uint(0));
+            if (kValue->isString())
+                stringifiedLocale = kValue->toQString();
+            else if (const QLocale *locale = getLocaleDataResource(kValue))
+                return *locale;
+        }
+    } else {
+        v4->throwTypeError();
+    }
+
+    return QLocale(stringifiedLocale);
+}
+
 ReturnedValue StringPrototype::method_toLocaleLowerCase(const FunctionObject *b, const Value *thisObject, const Value *argv, int argc)
 {
-    return method_toLowerCase(b, thisObject, argv, argc);
+    ExecutionEngine *v4 = b->engine();
+    const QString value = getThisString(v4, thisObject);
+    if (v4->hasException)
+        return QV4::Encode::undefined();
+
+    QLocale locale = getLocaleFromArgs(b, argv, argc);
+    return Encode(v4->newString(locale.toLower(value)));
 }
 
 ReturnedValue StringPrototype::method_toUpperCase(const FunctionObject *b, const Value *thisObject, const Value *, int)
@@ -1125,7 +1171,13 @@ ReturnedValue StringPrototype::method_toUpperCase(const FunctionObject *b, const
 
 ReturnedValue StringPrototype::method_toLocaleUpperCase(const FunctionObject *b, const Value *thisObject, const Value *argv, int argc)
 {
-    return method_toUpperCase(b, thisObject, argv, argc);
+    ExecutionEngine *v4 = b->engine();
+    const QString value = getThisString(v4, thisObject);
+    if (v4->hasException)
+        return QV4::Encode::undefined();
+
+    QLocale locale = getLocaleFromArgs(b, argv, argc);
+    return Encode(v4->newString(locale.toUpper(value)));
 }
 
 ReturnedValue StringPrototype::method_trim(const FunctionObject *b, const Value *thisObject, const Value *, int)

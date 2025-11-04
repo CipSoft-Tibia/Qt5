@@ -4,8 +4,6 @@
 #include "svgpainter.h"
 #include "svgmanager.h"
 
-#include <QtSvg>
-
 SvgPainter::SvgPainter(QWidget *parent)
 #ifdef SVGWIDGET
     : QSvgWidget{parent}
@@ -15,7 +13,7 @@ SvgPainter::SvgPainter(QWidget *parent)
     , m_scale(10)
 {
 #ifndef SVGWIDGET
-    connect(this, SIGNAL(sourceChanged()), this, SLOT(update()));
+    connect(&m_renderer, SIGNAL(repaintNeeded()), this, SLOT(update()));
 #endif
 
     connect(this, SIGNAL(scaleChanged()), this, SLOT(update()));
@@ -33,6 +31,8 @@ void SvgPainter::setSource(const QUrl &newSource)
     m_source = newSource;
 #ifdef SVGWIDGET
     load(m_source.toLocalFile());
+#else
+    m_renderer.load(m_source.toLocalFile());
 #endif
     emit sourceChanged();
 }
@@ -61,14 +61,13 @@ void SvgPainter::paintEvent(QPaintEvent *event)
 {
 #ifndef SVGWIDGET
     Q_UNUSED(event)
-    if (!m_source.isEmpty()) {
+    if (m_renderer.isValid()) {
         QPainter p(this);
         p.fillRect(rect(), Qt::white);
-        QSvgRenderer renderer(m_source.toLocalFile());
 
-        renderer.setAspectRatioMode(Qt::KeepAspectRatio);
-        renderer.render(&p);
-        m_size = renderer.defaultSize();
+        m_renderer.setAspectRatioMode(Qt::KeepAspectRatio);
+        m_renderer.render(&p);
+        m_size = m_renderer.defaultSize();
         setFixedSize(m_size * m_scale / 10.0);
     }
 #else

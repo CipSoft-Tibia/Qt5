@@ -11,8 +11,8 @@
 
 #include <wasm_simd128.h>
 
-#include <xnnpack/common.h>
-#include <xnnpack/reduce.h>
+#include "xnnpack/common.h"
+#include "xnnpack/reduce.h"
 
 
 void xnn_f32_rsum_ukernel__wasmsimd_u16_acc2(
@@ -60,5 +60,5 @@ void xnn_f32_rsum_ukernel__wasmsimd_u16_acc2(
   }
   const v128_t vscale = wasm_v128_load32_zero(&params->scalar.scale);
   vacc0 = wasm_f32x4_mul(vacc0, vscale);
-  wasm_v128_store32_lane(output, vacc0, 0);
+  *output += wasm_f32x4_extract_lane(vacc0, 0);
 }

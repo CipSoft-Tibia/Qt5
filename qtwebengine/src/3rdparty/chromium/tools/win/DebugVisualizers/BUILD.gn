@@ -20,11 +20,11 @@ assert(is_win)
 config("chrome") {
   # chrome.natvis listed as an input in //base:base to guarantee relinking on
   # changes.
-  ldflags = [ "/NATVIS:" + rebase_path(get_path_info("chrome.natvis", "abspath")) ]
+  ldflags = [ "/NATVIS:" + rebase_path("chrome.natvis", root_build_dir) ]
 }
 
 config("blink") {
   # blink.natvis listed as an input in
   # //third_party/blink/renderer/platform/wtf to guarantee relinking on changes.
-  ldflags = [ "/NATVIS:" + rebase_path(get_path_info("blink.natvis", "abspath")) ]
+  ldflags = [ "/NATVIS:" + rebase_path("blink.natvis", root_build_dir) ]
 }

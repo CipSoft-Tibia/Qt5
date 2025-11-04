@@ -16,16 +16,17 @@
 #include <functional>
 #include <map>
 #include <memory>
+#include <optional>
 #include <string>
-#include <type_traits>
 #include <utility>
 #include <vector>
 
 #include "absl/functional/any_invocable.h"
-#include "absl/types/optional.h"
+#include "absl/strings/string_view.h"
 #include "api/async_dns_resolver.h"
 #include "api/candidate.h"
 #include "api/crypto/crypto_options.h"
+#include "api/environment/environment.h"
 #include "api/ice_transport_factory.h"
 #include "api/ice_transport_interface.h"
 #include "api/jsep.h"
@@ -36,7 +37,10 @@
 #include "api/sequence_checker.h"
 #include "api/transport/data_channel_transport_interface.h"
 #include "api/transport/sctp_transport_factory_interface.h"
-#include "media/sctp/sctp_transport_internal.h"
+#include "call/payload_type.h"
+#include "call/payload_type_picker.h"
+#include "media/base/codec.h"
+#include "modules/rtp_rtcp/source/rtp_packet_received.h"
 #include "p2p/base/dtls_transport.h"
 #include "p2p/base/dtls_transport_factory.h"
 #include "p2p/base/dtls_transport_internal.h"
@@ -58,9 +62,7 @@
 #include "pc/srtp_transport.h"
 #include "pc/transport_stats.h"
 #include "rtc_base/callback_list.h"
-#include "rtc_base/checks.h"
 #include "rtc_base/copy_on_write_buffer.h"
-#include "rtc_base/helpers.h"
 #include "rtc_base/rtc_certificate.h"
 #include "rtc_base/ssl_certificate.h"
 #include "rtc_base/ssl_stream_adapter.h"
@@ -75,7 +77,8 @@ class PacketTransportInternal;
 
 namespace webrtc {
 
-class JsepTransportController : public sigslot::has_slots<> {
+class JsepTransportController : public PayloadTypeSuggester,
+                                public sigslot::has_slots<> {
  public:
   // Used when the RtpTransport/DtlsTransport of the m= section is changed
   // because the section is rejected or BUNDLE is enabled.
@@ -138,9 +141,6 @@ class JsepTransportController : public sigslot::has_slots<> {
     // Factory for SCTP transports.
     SctpTransportFactoryInterface* sctp_factory = nullptr;
     std::function<void(rtc::SSLHandshakeError)> on_dtls_handshake_error_;
-
-    // Field trials.
-    const FieldTrialsView* field_trials;
   };
 
   // The ICE related events are fired on the `network_thread`.
@@ -148,9 +148,11 @@ class JsepTransportController : public sigslot::has_slots<> {
   // and destruction of the JsepTransportController must occur on the
   // `network_thread`.
   JsepTransportController(
+      const Environment& env,
       rtc::Thread* network_thread,
       cricket::PortAllocator* port_allocator,
       AsyncDnsResolverFactoryInterface* async_dns_resolver_factory,
+      PayloadTypePicker& payload_type_picker,
       Config config);
   virtual ~JsepTransportController();
 
@@ -233,7 +235,17 @@ class JsepTransportController : public sigslot::has_slots<> {
   std::unique_ptr<rtc::SSLCertChain> GetRemoteSSLCertChain(
       const std::string& mid) const;
   // Get negotiated role, if one has been negotiated.
-  absl::optional<rtc::SSLRole> GetDtlsRole(const std::string& mid) const;
+  std::optional<rtc::SSLRole> GetDtlsRole(const std::string& mid) const;
+
+  // Suggest a payload type for a given codec on a given media section.
+  // Media section is indicated by MID.
+  // The function will either return a PT already in use on the connection
+  // or a newly suggested one.
+  RTCErrorOr<PayloadType> SuggestPayloadType(const std::string& mid,
+                                             cricket::Codec codec) override;
+  RTCError AddLocalMapping(const std::string& mid,
+                           PayloadType payload_type,
+                           const cricket::Codec& codec) override;
 
   // TODO(deadbeef): GetStats isn't const because all the way down to
   // OpenSSLStreamAdapter, GetSslCipherSuite and GetDtlsSrtpCryptoSuite are not
@@ -483,6 +495,7 @@ class JsepTransportController : public sigslot::has_slots<> {
   bool OnTransportChanged(const std::string& mid,
                           cricket::JsepTransport* transport);
 
+  const Environment env_;
   rtc::Thread* const network_thread_ = nullptr;
   cricket::PortAllocator* const port_allocator_ = nullptr;
   AsyncDnsResolverFactoryInterface* const async_dns_resolver_factory_ = nullptr;
@@ -503,14 +516,15 @@ class JsepTransportController : public sigslot::has_slots<> {
   const Config config_;
   bool active_reset_srtp_params_ RTC_GUARDED_BY(network_thread_);
 
-  absl::optional<bool> initial_offerer_;
+  std::optional<bool> initial_offerer_;
 
   cricket::IceConfig ice_config_;
   cricket::IceRole ice_role_ = cricket::ICEROLE_CONTROLLING;
-  uint64_t ice_tiebreaker_ = rtc::CreateRandomId64();
   rtc::scoped_refptr<rtc::RTCCertificate> certificate_;
 
   BundleManager bundles_;
+  // Reference to the SdpOfferAnswerHandler's payload type picker.
+  PayloadTypePicker& payload_type_picker_;
 };
 
 }  // namespace webrtc

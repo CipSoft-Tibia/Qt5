@@ -5,11 +5,11 @@
 #ifndef DEVICE_FIDO_FIDO_TRANSPORT_PROTOCOL_H_
 #define DEVICE_FIDO_FIDO_TRANSPORT_PROTOCOL_H_
 
+#include <optional>
 #include <string_view>
 
 #include "base/component_export.h"
 #include "device/fido/fido_types.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 
 namespace device {
 
@@ -29,14 +29,14 @@ enum class FidoTransportProtocol : uint8_t {
 };
 
 // String representation of above FidoTransportProtocol enum.
-extern const char kUsbHumanInterfaceDevice[];
-extern const char kNearFieldCommunication[];
-extern const char kBluetoothLowEnergy[];
-extern const char kHybrid[];
-extern const char kInternal[];
+inline constexpr std::string_view kUsbHumanInterfaceDevice = "usb";
+inline constexpr std::string_view kNearFieldCommunication = "nfc";
+inline constexpr std::string_view kBluetoothLowEnergy = "ble";
+inline constexpr std::string_view kHybrid = "hybrid";
+inline constexpr std::string_view kInternal = "internal";
 
 COMPONENT_EXPORT(DEVICE_FIDO)
-absl::optional<FidoTransportProtocol> ConvertToFidoTransportProtocol(
+std::optional<FidoTransportProtocol> ConvertToFidoTransportProtocol(
     std::string_view protocol);
 
 COMPONENT_EXPORT(DEVICE_FIDO)

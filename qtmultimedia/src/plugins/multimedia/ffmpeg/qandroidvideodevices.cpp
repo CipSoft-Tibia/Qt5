@@ -13,9 +13,30 @@
 #include <QtCore/qjnienvironment.h>
 #include <jni.h>
 
+QT_BEGIN_NAMESPACE
+
 using namespace Qt::StringLiterals;
 
-static Q_LOGGING_CATEGORY(qLCAndroidVideoDevices, "qt.multimedia.ffmpeg.android.videoDevices")
+Q_STATIC_LOGGING_CATEGORY(qLCAndroidVideoDevices, "qt.multimedia.ffmpeg.android.videoDevices");
+
+Q_DECLARE_JNI_CLASS(
+    QtCameraAvailabilityListener,
+    "org/qtproject/qt/android/multimedia/QtCameraAvailabilityListener");
+
+QAndroidVideoDevices::QAndroidVideoDevices(QPlatformMediaIntegration *integration)
+    : QPlatformVideoDevices(integration)
+{
+    registerNativeMethods();
+
+    m_javaCameraAvailabilityListener = QtJniTypes::QtCameraAvailabilityListener(
+        QtAndroidPrivate::activity(),
+        static_cast<jlong>(reinterpret_cast<size_t>(this)));
+}
+
+QAndroidVideoDevices::~QAndroidVideoDevices()
+{
+    m_javaCameraAvailabilityListener.callMethod<void>("cleanup");
+}
 
 QCameraFormat createCameraFormat(int width, int height, int fpsMin, int fpsMax)
 {
@@ -52,26 +73,35 @@ QList<QCameraDevice> QAndroidVideoDevices::findVideoInputs() const
         if (!cameraId.isValid())
             continue;
 
-        QCameraDevicePrivate *info = new QCameraDevicePrivate;
+        auto info = std::make_unique<QCameraDevicePrivate>();
         info->id = cameraId.toString().toUtf8();
 
         info->orientation = deviceManager.callMethod<jint>("getSensorOrientation", cameraId);
 
-        int facing = deviceManager.callMethod<jint>("getLensFacing", cameraId);
+        // Will be set to -1 if facing can not be determined.
+        const int facing = deviceManager.callMethod<jint>("getLensFacing", cameraId);
 
-        const int LENS_FACING_FRONT = 0;
-        const int LENS_FACING_BACK = 1;
-        const int LENS_FACING_EXTERNAL = 2;
+        // Values grabbed from Android docs CameraCharacteristics.LENS_FACING
+        constexpr int LENS_FACING_FRONT = 0;
+        constexpr int LENS_FACING_BACK = 1;
+        constexpr int LENS_FACING_EXTERNAL = 2;
 
         switch (facing) {
         case LENS_FACING_EXTERNAL:
+            info->position = QCameraDevice::Position::UnspecifiedPosition;
+            info->description = QStringLiteral(u"External Camera: %1").arg(cameraIndex);
+            break;
         case LENS_FACING_BACK:
-            info->position = QCameraDevice::BackFace;
-            info->description = QString(u"Rear Camera: %1").arg(cameraIndex);
+            info->position = QCameraDevice::Position::BackFace;
+            info->description = QStringLiteral(u"Rear Camera: %1").arg(cameraIndex);
             break;
         case LENS_FACING_FRONT:
-            info->position = QCameraDevice::FrontFace;
-            info->description = QString(u"Front Camera: %1").arg(cameraIndex);
+            info->position = QCameraDevice::Position::FrontFace;
+            info->description = QStringLiteral(u"Front Camera: %1").arg(cameraIndex);
+            break;
+        default:
+            info->position = QCameraDevice::Position::UnspecifiedPosition;
+            info->description = QStringLiteral(u"Camera: %1").arg(cameraIndex);
             break;
         }
         ++cameraIndex;
@@ -95,7 +125,7 @@ QList<QCameraDevice> QAndroidVideoDevices::findVideoInputs() const
         }
 
         const static int imageFormat =
-                QJniObject::getStaticField<QtJniTypes::AndroidImageFormat, jint>("YUV_420_888");
+                QJniObject::getStaticField<QtJniTypes::ImageFormat, jint>("YUV_420_888");
 
         const QStringList sizes = deviceManager.callMethod<QStringList>(
                 "getStreamConfigurationsSizes", cameraId, imageFormat);
@@ -112,8 +142,42 @@ QList<QCameraDevice> QAndroidVideoDevices::findVideoInputs() const
             info->videoFormats.append(createCameraFormat(width, height, minFps, maxFps));
         }
 
-        devices.push_back(info->create());
+
+        devices.push_back(info.release()->create());
     }
 
     return devices;
 }
+
+// Called from main looper thread in Android
+static void onCameraAvailableNative(
+    JNIEnv*,
+    jobject,
+    jlong nativePtr)
+{
+    auto* videoDevices = reinterpret_cast<QAndroidVideoDevices*>(static_cast<size_t>(nativePtr));
+    videoDevices->onVideoInputsChanged();
+}
+Q_DECLARE_JNI_NATIVE_METHOD(onCameraAvailableNative)
+
+// Called from main looper thread in Android
+static void onCameraUnavailableNative(
+    JNIEnv*,
+    jobject,
+    jlong nativePtr)
+{
+    auto* videoDevices = reinterpret_cast<QAndroidVideoDevices*>(static_cast<size_t>(nativePtr));
+    videoDevices->onVideoInputsChanged();
+}
+Q_DECLARE_JNI_NATIVE_METHOD(onCameraUnavailableNative)
+
+void QAndroidVideoDevices::registerNativeMethods() {
+    QJniEnvironment().registerNativeMethods(
+        QtJniTypes::Traits<QtJniTypes::QtCameraAvailabilityListener>::className(),
+        {
+            Q_JNI_NATIVE_METHOD(onCameraAvailableNative),
+            Q_JNI_NATIVE_METHOD(onCameraUnavailableNative),
+        });
+}
+
+QT_END_NAMESPACE

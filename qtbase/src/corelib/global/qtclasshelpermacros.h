@@ -29,6 +29,15 @@ QT_BEGIN_NAMESPACE
     Class(Class &&) = delete; \
     Class &operator=(Class &&) = delete;
 
+#define Q_DISABLE_COPY_X(Class, reason) \
+    Class(const Class &) Q_DECL_EQ_DELETE_X(reason);\
+    Class &operator=(const Class &) Q_DECL_EQ_DELETE_X(reason);
+
+#define Q_DISABLE_COPY_MOVE_X(Class, reason) \
+    Q_DISABLE_COPY_X(Class, reason) \
+    Class(Class &&) Q_DECL_EQ_DELETE_X(reason); \
+    Class &operator=(Class &&) Q_DECL_EQ_DELETE_X(reason);
+
 /*
     Implementing a move assignment operator using an established
     technique (move-and-swap, pure swap) is just boilerplate.
@@ -89,7 +98,7 @@ QT_BEGIN_NAMESPACE
     defaulting all five is boilerplate, use this macro instead.
 
     Note that the default constructor is not covered, and this macro
-    will prevented its automatic generation.
+    will prevent its automatic generation.
 */
 
 #define QT_DECLARE_RO5_SMF_AS_DEFAULTED(Class) \

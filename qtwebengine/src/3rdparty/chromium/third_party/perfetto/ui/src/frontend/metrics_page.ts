@@ -13,7 +13,6 @@
 // limitations under the License.
 
 import m from 'mithril';
-
 import {
   error,
   isError,
@@ -24,20 +23,19 @@ import {
 } from '../base/result';
 import {pluginManager, PluginManager} from '../common/plugins';
 import {raf} from '../core/raf_scheduler';
-import {MetricVisualisation} from '../public';
-import {EngineProxy} from '../trace_processor/engine';
+import {MetricVisualisation} from '../public/plugin';
+import {Engine} from '../trace_processor/engine';
 import {STR} from '../trace_processor/query_result';
 import {Select} from '../widgets/select';
 import {Spinner} from '../widgets/spinner';
 import {VegaView} from '../widgets/vega_view';
-
 import {globals} from './globals';
 import {createPage} from './pages';
 
-type Format = 'json'|'prototext'|'proto';
+type Format = 'json' | 'prototext' | 'proto';
 const FORMATS: Format[] = ['json', 'prototext', 'proto'];
 
-function getEngine(): EngineProxy|undefined {
+function getEngine(): Engine | undefined {
   const engineId = globals.getCurrentEngine()?.id;
   if (engineId === undefined) {
     return undefined;
@@ -46,7 +44,7 @@ function getEngine(): EngineProxy|undefined {
   return engine;
 }
 
-async function getMetrics(engine: EngineProxy): Promise<string[]> {
+async function getMetrics(engine: Engine): Promise<string[]> {
   const metrics: string[] = [];
   const metricsResult = await engine.query('select name from trace_metrics');
   for (const it = metricsResult.iter({name: STR}); it.valid(); it.next()) {
@@ -56,7 +54,10 @@ async function getMetrics(engine: EngineProxy): Promise<string[]> {
 }
 
 async function getMetric(
-    engine: EngineProxy, metric: string, format: Format): Promise<string> {
+  engine: Engine,
+  metric: string,
+  format: Format,
+): Promise<string> {
   const result = await engine.computeMetric([metric], format);
   if (result instanceof Uint8Array) {
     return `Uint8Array<len=${result.length}>`;
@@ -66,7 +67,7 @@ async function getMetric(
 }
 
 class MetricsController {
-  engine: EngineProxy;
+  engine: Engine;
   plugins: PluginManager;
   private _metrics: string[];
   private _selected?: string;
@@ -75,7 +76,7 @@ class MetricsController {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private _json: any;
 
-  constructor(plugins: PluginManager, engine: EngineProxy) {
+  constructor(plugins: PluginManager, engine: Engine) {
     this.plugins = plugins;
     this.engine = engine;
     this._metrics = [];
@@ -92,11 +93,12 @@ class MetricsController {
   }
 
   get visualisations(): MetricVisualisation[] {
-    return this.plugins.metricVisualisations().filter(
-        (v) => v.metric === this.selected);
+    return this.plugins
+      .metricVisualisations()
+      .filter((v) => v.metric === this.selected);
   }
 
-  set selected(metric: string|undefined) {
+  set selected(metric: string | undefined) {
     if (this._selected === metric) {
       return;
     }
@@ -104,7 +106,7 @@ class MetricsController {
     this.update();
   }
 
-  get selected(): string|undefined {
+  get selected(): string | undefined {
     return this._selected;
   }
 
@@ -139,23 +141,23 @@ class MetricsController {
       this._result = pending();
       this._json = {};
       getMetric(this.engine, selected, format)
-          .then((result) => {
-            if (this._selected === selected && this._format === format) {
-              this._result = success(result);
-              if (format === 'json') {
-                this._json = JSON.parse(result);
-              }
+        .then((result) => {
+          if (this._selected === selected && this._format === format) {
+            this._result = success(result);
+            if (format === 'json') {
+              this._json = JSON.parse(result);
             }
-          })
-          .catch((e) => {
-            if (this._selected === selected && this._format === format) {
-              this._result = error(e);
-              this._json = {};
-            }
-          })
-          .finally(() => {
-            raf.scheduleFullRedraw();
-          });
+          }
+        })
+        .catch((e) => {
+          if (this._selected === selected && this._format === format) {
+            this._result = error(e);
+            this._json = {};
+          }
+        })
+        .finally(() => {
+          raf.scheduleFullRedraw();
+        });
     }
     raf.scheduleFullRedraw();
   }
@@ -188,65 +190,66 @@ class MetricPicker implements m.ClassComponent<MetricPickerAttrs> {
   view({attrs}: m.CVnode<MetricPickerAttrs>) {
     const {controller} = attrs;
     return m(
-        '.metrics-page-picker',
-        m(Select,
-          {
-            value: controller.selected,
-            oninput: (e: Event) => {
-              if (!e.target) return;
-              controller.selected = (e.target as HTMLSelectElement).value;
-            },
+      '.metrics-page-picker',
+      m(
+        Select,
+        {
+          value: controller.selected,
+          oninput: (e: Event) => {
+            if (!e.target) return;
+            controller.selected = (e.target as HTMLSelectElement).value;
           },
-          controller.metrics.map(
-              (metric) =>
-                  m('option',
-                    {
-                      value: metric,
-                      key: metric,
-                    },
-                    metric))),
-        m(
-            Select,
+        },
+        controller.metrics.map((metric) =>
+          m(
+            'option',
             {
-              oninput: (e: Event) => {
-                if (!e.target) return;
-                controller.format =
-                    (e.target as HTMLSelectElement).value as Format;
-              },
+              value: metric,
+              key: metric,
             },
-            FORMATS.map((f) => {
-              return m('option', {
-                selected: controller.format === f,
-                key: f,
-                value: f,
-                label: f,
-              });
-            }),
-            ),
+            metric,
+          ),
+        ),
+      ),
+      m(
+        Select,
+        {
+          oninput: (e: Event) => {
+            if (!e.target) return;
+            controller.format = (e.target as HTMLSelectElement).value as Format;
+          },
+        },
+        FORMATS.map((f) => {
+          return m('option', {
+            selected: controller.format === f,
+            key: f,
+            value: f,
+            label: f,
+          });
+        }),
+      ),
     );
   }
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 interface MetricVizViewAttrs {
   visualisation: MetricVisualisation;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  data: any;
+  data: unknown;
 }
 
 class MetricVizView implements m.ClassComponent<MetricVizViewAttrs> {
   view({attrs}: m.CVnode<MetricVizViewAttrs>) {
     return m(
-        '',
-        m(VegaView, {
-          spec: attrs.visualisation.spec,
-          data: {
-            metric: attrs.data,
-          },
-        }),
+      '',
+      m(VegaView, {
+        spec: attrs.visualisation.spec,
+        data: {
+          metric: attrs.data,
+        },
+      }),
     );
   }
-};
+}
 
 class MetricPageContents implements m.ClassComponent {
   controller?: MetricsController;
@@ -270,14 +273,14 @@ class MetricPageContents implements m.ClassComponent {
       m(MetricPicker, {
         controller,
       }),
-      (controller.format === 'json') &&
-          controller.visualisations.map((visualisation) => {
-            let data = json;
-            for (const p of visualisation.path) {
-              data = data[p] ?? [];
-            }
-            return m(MetricVizView, {visualisation, data});
-          }),
+      controller.format === 'json' &&
+        controller.visualisations.map((visualisation) => {
+          let data = json;
+          for (const p of visualisation.path) {
+            data = data[p] ?? [];
+          }
+          return m(MetricVizView, {visualisation, data});
+        }),
       m(MetricResultView, {result: controller.result}),
     ];
   }

@@ -19,8 +19,19 @@
 using namespace QtPrivate::DateTimeConstants;
 using namespace Qt::StringLiterals;
 
-#if defined(Q_OS_WIN) && !QT_CONFIG(icu)
-#  define USING_WIN_TZ
+#undef USING_MS_TZDB
+#undef USING_WIN_TZ
+#ifdef Q_OS_WIN
+#  if QT_CONFIG(timezone_tzdb)
+#    define USING_MS_TZDB
+#  elif !QT_CONFIG(icu)
+#    define USING_WIN_TZ
+#  endif
+#endif
+
+#undef GLIBC_TZDB_MISPARSE
+#if QT_CONFIG(timezone_tzdb) && defined(__GLIBCXX__) // && _GLIBCXX_RELEASE <= 14
+#  define GLIBC_TZDB_MISPARSE // QTBUG-127598
 #endif
 
 class tst_QDate : public QObject
@@ -192,7 +203,8 @@ void tst_QDate::isValid_data()
     QTest::newRow("jd latest formula")   << 1400000 << 12 << 31 << qint64(513060925) << true;
 }
 
-#if __cpp_lib_chrono >= 201907L
+// INTEGRITY incident-85878 (timezone and clock_cast are not supported)
+#if __cpp_lib_chrono >= 201907L && !defined(Q_OS_INTEGRITY)
 // QDate has a bigger range than year_month_date. The tests use this bigger
 // range. However building a year_month_time with "out of range" data has
 // unspecified results, so don't do that. See [time.cal.year],
@@ -237,7 +249,8 @@ void tst_QDate::isValid()
         QCOMPARE(d.year(), year);
         QCOMPARE(d.month(), month);
         QCOMPARE(d.day(), day);
-#if __cpp_lib_chrono >= 201907L
+// INTEGRITY incident-85878 (timezone and clock_cast are not supported)
+#if __cpp_lib_chrono >= 201907L && !defined(Q_OS_INTEGRITY)
         std::optional<std::chrono::year_month_day> ymd = convertToStdYearMonthDay(year, month, day);
         if (ymd) {
             QDate d = *ymd;
@@ -507,6 +520,7 @@ void tst_QDate::weekNumber_invalid()
 enum BackendKludge { IgnoreStart = 1, IgnoreEnd = 2, };
 Q_DECLARE_FLAGS(BackendKludges, BackendKludge)
 Q_DECLARE_OPERATORS_FOR_FLAGS(BackendKludges)
+#undef KLUDGING
 
 void tst_QDate::startOfDay_endOfDay_data()
 {
@@ -522,13 +536,28 @@ void tst_QDate::startOfDay_endOfDay_data()
     const QTime early(0, 0), late(23, 59, 59, 999), invalid(QDateTime().time());
     constexpr BackendKludges Clean = {};
     constexpr BackendKludges IgnoreBoth = IgnoreStart | IgnoreEnd;
+    // Use IgnoreBoth directly for the one transition Android lacks; the other
+    // two that need kludges also fail this one.
+#ifdef Q_OS_ANDROID
+#define KLUDGING
+#endif
 #ifdef USING_WIN_TZ
     constexpr BackendKludges MsNoStart = IgnoreStart;
     constexpr BackendKludges MsNoBoth = IgnoreBoth;
+#define KLUDGING
 #else
     constexpr BackendKludges MsNoStart = Clean;
     constexpr BackendKludges MsNoBoth = Clean;
-    // And use IgnoreBoth directly for the one transition Android lacks.
+#endif
+#if QT_CONFIG(timezone) && QT_CONFIG(timezone_tzdb) && defined(__GLIBCXX__)
+    // The IANA-DB parser in libstdc++ (at least up to _GLIBCXX_RELEASE == 14) gets
+    // a lot of zone-transitions wrong in C++20's tzdb :-(
+    constexpr BackendKludges GlibCxxNoStart = IgnoreStart;
+    constexpr BackendKludges GlibCxxNoBoth = IgnoreBoth;
+#define KLUDGING
+#else
+    constexpr BackendKludges GlibCxxNoStart = Clean;
+    constexpr BackendKludges GlibCxxNoBoth = Clean;
 #endif
     const QTimeZone UTC(QTimeZone::UTC);
 
@@ -564,7 +593,8 @@ void tst_QDate::startOfDay_endOfDay_data()
         // Two Pacific zones skipped days to get on the west of the
         // International Date Line; those days have neither start nor end.
         { "Kiritimati", "Pacific/Kiritimati", QDate(1994, 12, 31), invalid, invalid, IgnoreBoth },
-        { "Samoa", "Pacific/Apia", QDate(2011, 12, 30), invalid, invalid, MsNoBoth },
+        { "Samoa", "Pacific/Apia", QDate(2011, 12, 30), invalid, invalid,
+          MsNoBoth | GlibCxxNoBoth },
 
         // TODO: find other zones with transitions at/crossing midnight.
     };
@@ -607,7 +637,7 @@ void tst_QDate::startOfDay_endOfDay()
     QFETCH(const QTimeZone, zone);
     QFETCH(const QTime, start);
     QFETCH(const QTime, end);
-#if defined(USING_WIN_TZ) || defined(Q_OS_ANDROID) // Coping with backend limitations.
+#ifdef KLUDGING // Cope with backend limitations:
     QFETCH(const BackendKludges, kludge);
 #define UNLESSKLUDGE(flag) if (!kludge.testFlag(flag))
 #else
@@ -624,6 +654,9 @@ void tst_QDate::startOfDay_endOfDay()
     if (start.isValid()) {
         QVERIFY(front.isValid());
         QCOMPARE(front.date(), date);
+#ifdef USING_MS_TZDB
+        QEXPECT_FAIL("Brazil", "MS misreads the IANA DB", Continue);
+#endif
         UNLESSKLUDGE(IgnoreStart) QCOMPARE(front.time(), start);
     } else UNLESSKLUDGE(IgnoreStart) {
         auto report = qScopeGuard([front]() { qDebug() << "Start of day:" << front; });
@@ -641,6 +674,7 @@ void tst_QDate::startOfDay_endOfDay()
     }
 #undef UNLESSKLUDGE
 }
+#undef KLUDGING
 
 void tst_QDate::startOfDay_endOfDay_fixed_data()
 {
@@ -695,7 +729,7 @@ void tst_QDate::startOfDay_endOfDay_fixed()
     // Minimal testing for LocalTime and TimeZone
     QCOMPARE(date.startOfDay().date(), date);
     QCOMPARE(date.endOfDay().date(), date);
-#if QT_CONFIG(timezone)
+#if QT_CONFIG(timezone) && !defined(GLIBC_TZDB_MISPARSE)
     const QTimeZone cet("Europe/Oslo");
     if (cet.isValid()) {
         QCOMPARE(date.startOfDay(cet).date(), date);
@@ -817,8 +851,8 @@ void tst_QDate::addDays()
     QCOMPARE( dt2.year(), expectedYear );
     QCOMPARE( dt2.month(), expectedMonth );
     QCOMPARE( dt2.day(), expectedDay );
-
-#if __cpp_lib_chrono >= 201907L
+// INTEGRITY incident-85878 (timezone and clock_cast are not supported)
+#if __cpp_lib_chrono >= 201907L && !defined(Q_OS_INTEGRITY)
     QDate dt3 = dt.addDuration( std::chrono::days( amountToAdd ) );
 
     QCOMPARE( dt3.year(), expectedYear );
@@ -994,7 +1028,8 @@ void tst_QDate::daysTo()
 void tst_QDate::orderingCompiles()
 {
     QTestPrivate::testAllComparisonOperatorsCompile<QDate>();
-#if __cpp_lib_chrono >= 201907L
+// INTEGRITY incident-85878 (timezone and clock_cast are not supported)
+#if __cpp_lib_chrono >= 201907L && !defined(Q_OS_INTEGRITY)
     QTestPrivate::testAllComparisonOperatorsCompile<QDate, std::chrono::year_month_day>();
     QTestPrivate::testAllComparisonOperatorsCompile<QDate, std::chrono::year_month_day_last>();
     QTestPrivate::testAllComparisonOperatorsCompile<QDate, std::chrono::year_month_weekday>();
@@ -1077,7 +1112,8 @@ void tst_QDate::ordering()
 
 void tst_QDate::ordering_chrono_types()
 {
-#if __cpp_lib_chrono >= 201907L
+// INTEGRITY incident-85878 (timezone and clock_cast are not supported)
+#if __cpp_lib_chrono >= 201907L && !defined(Q_OS_INTEGRITY)
     using namespace std::chrono;
     QDate friday(2001, 11, 30); // the 5th Friday of November 2001
     // std::chrono::year_month_day
@@ -1210,6 +1246,7 @@ void tst_QDate::fromStringDateFormat_data()
     QTest::newRow("iso8") << QString("2000-01-01blah")  << Qt::ISODate << QDate(2000, 1, 1);
     QTest::newRow("iso9") << QString("-001-01-01")      << Qt::ISODate << QDate();
     QTest::newRow("iso10") << QString("99999-01-01")    << Qt::ISODate << QDate();
+    QTest::newRow("iso-yr-0") << QString("0000-01-01")  << Qt::ISODate << QDate();
 
     // Test Qt::RFC2822Date format (RFC 2822).
     QTest::newRow("RFC 2822") << QString::fromLatin1("13 Feb 1987 13:24:51 +0100")
@@ -1415,6 +1452,13 @@ void tst_QDate::fromStringFormat_data()
             << u"05--2006-21"_s << u"MM-yyyy-dd"_s << 1900 << QDate(-2006, 5, 21);
     QTest::newRow("-ve year: back, dash")
             << u"05-21--2006"_s << u"MM-dd-yyyy"_s << 1900 << QDate(-2006, 5, 21);
+    // zero year number is invalid
+    QTest::newRow("year-zero-front")
+            << u"0000-05-21"_s << u"yyyy-MM-dd"_s << 1900 << QDate();
+    QTest::newRow("year-zero-mid")
+            << u"05-0000-21"_s << u"MM-yyyy-dd"_s << 1900 << QDate();
+    QTest::newRow("year-zero-back")
+            << u"05-21-0000"_s << u"MM-dd-yyyy"_s << 1900 << QDate();
     // negative three digit year numbers should be rejected:
     QTest::newRow("-ve 3digit year: front")
             << u"-206-05-21"_s << u"yyyy-MM-dd"_s << 1900 << QDate();
@@ -1712,8 +1756,8 @@ void tst_QDate::roundtrip() const
         QCOMPARE(loopDate.toJulianDay(), testDate.toJulianDay());
         loopDate = loopDate.addDays(1);
     }
-
-#if __cpp_lib_chrono >= 201907L
+// INTEGRITY incident-85878 (timezone and clock_cast are not supported)
+#if __cpp_lib_chrono >= 201907L && !defined(Q_OS_INTEGRITY)
     // Test roundtrip for from/to std::chrono conversions.
     // Compile-time test, to verify it's all constexpr.
     using namespace std::chrono;

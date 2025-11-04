@@ -20,7 +20,7 @@
 
 QT_BEGIN_NAMESPACE
 
-Q_LOGGING_CATEGORY(lcPopupWindow, "qt.quick.controls.popup.window")
+Q_STATIC_LOGGING_CATEGORY(lcPopupWindow, "qt.quick.controls.popup.window")
 
 static bool s_popupGrabOk = false;
 static QWindow *s_grabbedWindow = nullptr;
@@ -154,6 +154,8 @@ void QQuickPopupWindowPrivate::setVisible(bool visible)
     // Pointer press and release events should also be filtered by the top-most popup window, and only be delivered to other windows in rare cases.
     if (visible && visibleChanged && QGuiApplicationPrivate::popupCount() == 1 && !s_popupGrabOk) {
         QWindow *win = m_popup->window();
+        if (QGuiApplication::platformName() == QStringLiteral("offscreen"))
+            return; // workaround for QTBUG-134009
         s_popupGrabOk = win->setKeyboardGrabEnabled(true);
         if (s_popupGrabOk) {
             s_popupGrabOk = win->setMouseGrabEnabled(true);
@@ -292,8 +294,10 @@ bool QQuickPopupWindowPrivate::filterPopupSpecialCases(QEvent *event)
        // To support opening a Menu on press (e.g on a MenuBarItem), followed by
        // a drag and release on a MenuItem inside the Menu, we ask the Menu to
        // perform a click on the active MenuItem, if any.
-        if (QQuickMenu *targetMenu = qobject_cast<QQuickMenu *>(targetPopup))
+        if (QQuickMenu *targetMenu = qobject_cast<QQuickMenu *>(targetPopup)) {
+            qCDebug(lcPopupWindow) << "forwarding" << pe << "to popup menu:" << targetMenu;
             QQuickMenuPrivate::get(targetMenu)->handleReleaseWithoutGrab(pe->point(0));
+        }
     }
 
     return false;

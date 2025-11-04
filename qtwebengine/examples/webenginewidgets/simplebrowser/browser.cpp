@@ -5,6 +5,7 @@
 #include "browserwindow.h"
 
 #include <QWebEngineSettings>
+#include <QWebEngineProfileBuilder>
 
 using namespace Qt::StringLiterals;
 
@@ -22,7 +23,8 @@ BrowserWindow *Browser::createHiddenWindow(bool offTheRecord)
 {
     if (!offTheRecord && !m_profile) {
         const QString name = u"simplebrowser."_s + QLatin1StringView(qWebEngineChromiumVersion());
-        m_profile.reset(new QWebEngineProfile(name));
+        QWebEngineProfileBuilder profileBuilder;
+        m_profile.reset(profileBuilder.createProfile(name));
         m_profile->settings()->setAttribute(QWebEngineSettings::PluginsEnabled, true);
         m_profile->settings()->setAttribute(QWebEngineSettings::DnsPrefetchEnabled, true);
         m_profile->settings()->setAttribute(QWebEngineSettings::LocalContentCanAccessRemoteUrls, true);

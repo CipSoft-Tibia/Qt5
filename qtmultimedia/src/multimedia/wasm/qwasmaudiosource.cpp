@@ -37,14 +37,6 @@ public:
     ALCcontext *context = nullptr;
 };
 
-void QWasmAudioSource::setError(const QAudio::Error &error)
-{
-    if (m_error == error)
-        return;
-    m_error = error;
-    emit errorChanged(error);
-}
-
 void QWasmAudioSource::writeBuffer()
 {
     int samples = 0;
@@ -58,18 +50,16 @@ void QWasmAudioSource::writeBuffer()
         qWarning() << alcGetString(aldata->device, err);
         return setError(QAudio::FatalError);
     }
-    if (m_volume < 1)
-        QAudioHelperInternal::qMultiplySamples(m_volume, m_format, m_tmpData, m_tmpData, bytes);
+    if (volume() < 1)
+        QAudioHelperInternal::qMultiplySamples(volume(), m_format, m_tmpData, m_tmpData, bytes);
     m_processed += bytes;
     m_device->write(m_tmpData,bytes);
 }
 
-QWasmAudioSource::QWasmAudioSource(const QByteArray &device , QObject *parent)
-    : QPlatformAudioSource(parent),
-      m_name(device),
-      m_timer(new QTimer(this))
+QWasmAudioSource::QWasmAudioSource(QAudioDevice device, const QAudioFormat &fmt, QObject *parent)
+    : QPlatformAudioSource(std::move(device), fmt, parent), m_timer(new QTimer(this))
 {
-    if (device.contains("Emscripten")) {
+    if (device.id().contains("Emscripten")) {
         aldata = new ALData();
         connect(m_timer, &QTimer::timeout, this, [this](){
             Q_ASSERT(m_running);
@@ -79,6 +69,7 @@ QWasmAudioSource::QWasmAudioSource(const QByteArray &device , QObject *parent)
                 emit m_device->readyRead();
         });
     }
+    m_bufferSize = m_format.bytesForDuration(DEFAULT_BUFFER_DURATION);
 }
 
 void QWasmAudioSource::start(QIODevice *device)
@@ -153,7 +144,7 @@ void QWasmAudioSource::start(bool mode)
     m_timer->start();
 
     alcGetError(aldata->device); // clear error state
-    aldata->device = alcCaptureOpenDevice(m_name.data(), m_format.sampleRate(), format,
+    aldata->device = alcCaptureOpenDevice(m_audioDevice.id().data(), m_format.sampleRate(), format,
                                           m_format.framesForBytes(m_bufferSize));
 
     auto err = alcGetError(aldata->device);
@@ -198,7 +189,7 @@ void QWasmAudioSource::reset()
     }
     m_running = false;
     m_processed = 0;
-    m_error = QAudio::NoError;
+    setError(QAudio::NoError);
 }
 
 void QWasmAudioSource::suspend()
@@ -245,38 +236,12 @@ qint64 QWasmAudioSource::processedUSecs() const
     return m_format.durationForBytes(m_processed);
 }
 
-QAudio::Error QWasmAudioSource::error() const
-{
-    return m_error;
-}
-
 QAudio::State QWasmAudioSource::state() const
 {
     if (m_running)
         return QAudio::ActiveState;
     else
         return QAudio::StoppedState;
-}
-
-void QWasmAudioSource::setFormat(const QAudioFormat &fmt)
-{
-    m_format = fmt;
-    m_bufferSize = m_format.bytesForDuration(DEFAULT_BUFFER_DURATION);
-}
-
-QAudioFormat QWasmAudioSource::format() const
-{
-    return m_format;
-}
-
-void QWasmAudioSource::setVolume(qreal volume)
-{
-    m_volume = volume;
-}
-
-qreal QWasmAudioSource::volume() const
-{
-    return m_volume;
 }
 
 QWasmAudioSourceDevice::QWasmAudioSourceDevice(QWasmAudioSource *in) : QIODevice(in), m_in(in)
@@ -292,8 +257,8 @@ qint64 QWasmAudioSourceDevice::readData(char *data, qint64 maxlen)
     auto bytes = m_in->m_format.bytesForFrames(samples);
     alcGetError(m_in->aldata->device);
     alcCaptureSamples(m_in->aldata->device, data, samples);
-    if (m_in->m_volume < 1)
-        QAudioHelperInternal::qMultiplySamples(m_in->m_volume, m_in->m_format, data, data, bytes);
+    if (m_in->volume() < 1)
+        QAudioHelperInternal::qMultiplySamples(m_in->volume(), m_in->m_format, data, data, bytes);
     auto err = alcGetError(m_in->aldata->device);
     if (err) {
         qWarning() << alcGetString(m_in->aldata->device, err);

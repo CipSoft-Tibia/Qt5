@@ -1,5 +1,6 @@
 // Copyright (C) 2021 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 // based on chrome/browser/net/system_network_context_manager.cc:
 // Copyright 2017 The Chromium Authors. All rights reserved.
@@ -150,7 +151,7 @@ network::mojom::URLLoaderFactory *SystemNetworkContextManager::GetURLLoaderFacto
 
     network::mojom::URLLoaderFactoryParamsPtr params = network::mojom::URLLoaderFactoryParams::New();
     params->process_id = network::mojom::kBrowserProcessId;
-    params->is_corb_enabled = false;
+    params->is_orb_enabled = false;
     GetContext()->CreateURLLoaderFactory(url_loader_factory_.BindNewPipeAndPassReceiver(), std::move(params));
     return url_loader_factory_.get();
 }
@@ -330,7 +331,7 @@ network::mojom::NetworkContextParamsPtr SystemNetworkContextManager::CreateNetwo
 
 bool isValidTemplates(std::string templates)
 {
-    absl::optional<net::DnsOverHttpsConfig> dnsOverHttpsConfig =
+    std::optional<net::DnsOverHttpsConfig> dnsOverHttpsConfig =
             net::DnsOverHttpsConfig::FromString(templates);
     return dnsOverHttpsConfig.has_value();
 }
@@ -343,7 +344,7 @@ void configureStubHostResolver(QWebEngineGlobalSettings::SecureDnsMode dnsMode,
     if (content::IsNetworkServiceCreated()) {
         network::mojom::NetworkService *networkService = content::GetNetworkService();
         if (networkService) {
-            absl::optional<net::DnsOverHttpsConfig> dohConfig = dnsOverHttpsTemplates.empty()
+            std::optional<net::DnsOverHttpsConfig> dohConfig = dnsOverHttpsTemplates.empty()
                     ? net::DnsOverHttpsConfig()
                     : net::DnsOverHttpsConfig::FromString(dnsOverHttpsTemplates);
             networkService->ConfigureStubHostResolver(insecureDnsClientEnabled,

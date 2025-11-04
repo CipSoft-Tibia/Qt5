@@ -15,12 +15,18 @@
 #include "connections/implementation/mediums/ble_v2.h"
 
 #include <algorithm>
+#include <iterator>
 #include <memory>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/base/thread_annotations.h"
+#include "absl/container/flat_hash_map.h"
+#include "absl/status/status.h"
 #include "absl/strings/escaping.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "absl/time/time.h"
 #include "absl/types/optional.h"
 #include "connections/implementation/flags/nearby_connections_feature_flags.h"
@@ -29,14 +35,22 @@
 #include "connections/implementation/mediums/ble_v2/ble_advertisement_header.h"
 #include "connections/implementation/mediums/ble_v2/ble_utils.h"
 #include "connections/implementation/mediums/ble_v2/bloom_filter.h"
+#include "connections/implementation/mediums/ble_v2/discovered_peripheral_tracker.h"
 #include "connections/implementation/mediums/bluetooth_radio.h"
 #include "connections/implementation/mediums/utils.h"
 #include "connections/power_level.h"
 #include "internal/flags/nearby_flags.h"
+#include "internal/platform/ble_v2.h"
 #include "internal/platform/byte_array.h"
 #include "internal/platform/cancelable_alarm.h"
+#include "internal/platform/cancellation_flag.h"
+#include "internal/platform/feature_flags.h"
+#include "internal/platform/implementation/ble_v2.h"
 #include "internal/platform/logging.h"
+#include "internal/platform/mutex.h"
 #include "internal/platform/mutex_lock.h"
+#include "internal/platform/runnable.h"
+#include "internal/platform/uuid.h"
 
 namespace nearby {
 namespace connections {
@@ -61,8 +75,15 @@ BleV2::BleV2(BluetoothRadio& radio)
 
 BleV2::~BleV2() {
   // Destructor is not taking locks, but methods it is calling are.
-  while (!scanned_service_ids_.empty()) {
-    StopScanning(*scanned_service_ids_.begin());
+  if (FeatureFlags::GetInstance().GetFlags().enable_ble_v2_async_scanning) {
+    // If using asynchronous scanning, check the corresponding map.
+    while (!service_ids_to_scanning_sessions_.empty()) {
+      StopScanning(service_ids_to_scanning_sessions_.begin()->first);
+    }
+  } else {
+    while (!scanned_service_ids_.empty()) {
+      StopScanning(*scanned_service_ids_.begin());
+    }
   }
   while (!advertising_infos_.empty()) {
     StopAdvertising(advertising_infos_.begin()->first);
@@ -74,6 +95,12 @@ BleV2::~BleV2() {
   serial_executor_.Shutdown();
   alarm_executor_.Shutdown();
   accept_loops_runner_.Shutdown();
+
+  if (NearbyFlags::GetInstance().GetBoolFlag(
+          config_package_nearby::nearby_connections_feature::
+              kEnableInstantOnLost)) {
+    instant_on_lost_manager_.Shutdown();
+  }
 }
 
 bool BleV2::IsAvailable() const {
@@ -95,10 +122,10 @@ bool BleV2::StartAdvertising(const std::string& service_id,
   }
 
   if (advertisement_bytes.size() > kMaxAdvertisementLength) {
-    NEARBY_LOG(INFO,
-               "Refusing to start BLE advertising because the advertisement "
-               "was too long. Expected at most %d bytes but received %d.",
-               kMaxAdvertisementLength, advertisement_bytes.size());
+    NEARBY_LOGS(INFO) << "Refusing to start BLE advertising because the "
+                         "advertisement was too long. Expected at most "
+                      << kMaxAdvertisementLength << " bytes but received "
+                      << advertisement_bytes.size() << " bytes.";
     return false;
   }
 
@@ -110,7 +137,7 @@ bool BleV2::StartAdvertising(const std::string& service_id,
 
   if (!radio_.IsEnabled()) {
     NEARBY_LOGS(INFO)
-        << "Can't start BLE scanning because Bluetooth was never turned on";
+        << "Can't start BLE advertising because Bluetooth was never turned on";
     return false;
   }
 
@@ -144,8 +171,13 @@ bool BleV2::StartAdvertising(const std::string& service_id,
                        .power_level = power_level,
                        .is_fast_advertisement = is_fast_advertisement}});
 
-  // Stop the pre-existing BLE advertisement if there is one.
-  medium_.StopAdvertising();
+  // TODO(hais): need to update here after cros support RAII StartAdvertising.
+  // After all platforms support RAII StartAdvertising, then we can stop
+  // advertising operations precisely without affect other advertising sessions.
+  // Currently, cros RAII StartAdvertising is not there yet. And the advertising
+  // for legacy device will be stopped from later StartAdvertising by this line
+  // below. Comment it out now.
+  // medium_.StopAdvertising();
 
   if (!StartAdvertisingLocked(service_id)) {
     advertising_infos_.erase(service_id);
@@ -202,10 +234,16 @@ bool BleV2::StopAdvertising(const std::string& service_id) {
   } else if (incoming_sockets_.empty()) {
     // Otherwise, if we aren't restarting the BLE advertisement, then shutdown
     // the gatt server if it's not in use.
-    NEARBY_LOGS(VERBOSE) << "Aggressively stopping any pre-existing "
-                            "advertisement GATT servers "
-                            "because no incoming BLE sockets are connected.";
+    NEARBY_VLOG(1) << "Aggressively stopping any pre-existing "
+                      "advertisement GATT servers "
+                      "because no incoming BLE sockets are connected.";
     StopAdvertisementGattServerLocked();
+  }
+
+  if (NearbyFlags::GetInstance().GetBoolFlag(
+          config_package_nearby::nearby_connections_feature::
+              kEnableInstantOnLost)) {
+    instant_on_lost_manager_.OnAdvertisingStopped(service_id);
   }
 
   return true;
@@ -215,6 +253,99 @@ bool BleV2::IsAdvertising(const std::string& service_id) const {
   MutexLock lock(&mutex_);
 
   return IsAdvertisingLocked(service_id);
+}
+
+bool BleV2::IsAdvertisingForLegacyDevice(const std::string& service_id) const {
+  MutexLock lock(&mutex_);
+
+  return IsAdvertisingForLegacyDeviceLocked(service_id);
+}
+
+bool BleV2::StartLegacyAdvertising(
+    const std::string& input_service_id, const std::string& local_endpoint_id,
+    const std::string& fast_advertisement_service_uuid) {
+  NEARBY_LOGS(INFO) << "StartLegacyAdvertising: " << input_service_id.c_str()
+                    << ", local_endpoint_id: " << local_endpoint_id.c_str();
+  MutexLock lock(&mutex_);
+
+  if (!radio_.IsEnabled()) {
+    NEARBY_LOGS(INFO) << "Can't start BLE v2 legacy advertising because "
+                         "Bluetooth was never turned on";
+    return false;
+  }
+  if (!IsAvailableLocked()) {
+    NEARBY_LOGS(INFO)
+        << "Can't turn on BLE v2 legacy advertising. BLE is not available.";
+    return false;
+  }
+  if (medium_.IsExtendedAdvertisementsAvailable()) {
+    NEARBY_LOGS(INFO) << "Skip dummy advertising for non legacy device";
+    return true;
+  }
+  std::string service_id = input_service_id + "-Legacy";
+  if (service_ids_to_advertising_sessions_.find(service_id) !=
+      service_ids_to_advertising_sessions_.end()) {
+    NEARBY_LOGS(INFO) << "Already started legacy device advertising for "
+                      << service_id;
+    return false;
+  }
+
+  std::unique_ptr<api::ble_v2::BleMedium::AdvertisingSession>
+      legacy_device_advertizing_session = medium_.StartAdvertising(
+          CreateAdvertisingDataForLegacyDevice(),
+          {.tx_power_level = TxPowerLevel::kMedium, .is_connectable = true},
+          api::ble_v2::BleMedium::AdvertisingCallback{
+              .start_advertising_result =
+                  [this, &service_id](absl::Status status) mutable {
+                    AssumeHeld(mutex_);
+                    if (status.ok()) {
+                      NEARBY_LOGS(INFO)
+                          << "BLE V2 advertising for legacy device started "
+                             "successfully for service ID "
+                          << &service_id;
+                    } else {
+                      NEARBY_LOGS(ERROR) << "BLE V2 advertising for legacy "
+                                            "device failed for service ID "
+                                         << &service_id << ": " << status;
+                      service_ids_to_advertising_sessions_.erase(service_id);
+                    }
+                  },
+          });
+  if (legacy_device_advertizing_session == nullptr) {
+    NEARBY_LOGS(ERROR) << "Failed to turn on BLE v2 advertising for legacy "
+                          "device for service ID "
+                       << service_id;
+    return false;
+  }
+
+  service_ids_to_advertising_sessions_.insert(
+      {std::string(service_id), std::move(legacy_device_advertizing_session)});
+  return true;
+}
+
+bool BleV2::StopLegacyAdvertising(const std::string& input_service_id) {
+  NEARBY_LOGS(INFO) << "StopLegacyAdvertising:" << input_service_id.c_str();
+  MutexLock lock(&mutex_);
+
+  std::string service_id = input_service_id + "-Legacy";
+  auto legacy_device_advertising_session =
+      service_ids_to_advertising_sessions_.find(service_id);
+  if (legacy_device_advertising_session ==
+      service_ids_to_advertising_sessions_.end()) {
+    NEARBY_LOGS(INFO) << "Can't find session to turn off legacy device BLE "
+                         "advertisingfor this service ID: "
+                      << service_id;
+    return false;
+  }
+  absl::Status status =
+      legacy_device_advertising_session->second->stop_advertising();
+
+  if (!status.ok()) {
+    NEARBY_LOGS(WARNING) << "StopLegacyAdvertising error: " << status;
+  }
+  service_ids_to_advertising_sessions_.erase(legacy_device_advertising_session);
+  NEARBY_LOGS(INFO) << "Removed advertising-session for " << service_id;
+  return status.ok();
 }
 
 bool BleV2::StartScanning(const std::string& service_id, PowerLevel power_level,
@@ -248,6 +379,10 @@ bool BleV2::StartScanning(const std::string& service_id, PowerLevel power_level,
   discovered_peripheral_tracker_.StartTracking(
       service_id, std::move(callback),
       mediums::bleutils::kCopresenceServiceUuid);
+
+  if (FeatureFlags::GetInstance().GetFlags().enable_ble_v2_async_scanning) {
+    return StartAsyncScanningLocked(service_id, power_level);
+  }
 
   // Check if scan has been activated, if yes, no need to notify client
   // to scan again.
@@ -320,6 +455,9 @@ bool BleV2::StartScanning(const std::string& service_id, PowerLevel power_level,
 
 bool BleV2::StopScanning(const std::string& service_id) {
   MutexLock lock(&mutex_);
+  if (FeatureFlags::GetInstance().GetFlags().enable_ble_v2_async_scanning) {
+    return StopAsyncScanningLocked(service_id);
+  }
 
   if (!IsScanningLocked(service_id)) {
     NEARBY_LOGS(INFO) << "Can't turn off BLE scanning because we never "
@@ -329,6 +467,7 @@ bool BleV2::StopScanning(const std::string& service_id) {
 
   discovered_peripheral_tracker_.StopTracking(service_id);
   NEARBY_LOGS(INFO) << "Turned off BLE scanning with service id=" << service_id;
+
   scanned_service_ids_.erase(service_id);
 
   // If still has scanner, don't stop the client scanning.
@@ -505,7 +644,17 @@ bool BleV2::IsAdvertisingLocked(const std::string& service_id) const {
   return advertising_infos_.contains(service_id);
 }
 
+bool BleV2::IsAdvertisingForLegacyDeviceLocked(
+    const std::string& service_id) const {
+  return service_ids_to_advertising_sessions_.contains(service_id + "-Legacy");
+}
+
 bool BleV2::IsScanningLocked(const std::string& service_id) const {
+  if (FeatureFlags::GetInstance().GetFlags().enable_ble_v2_async_scanning) {
+    // If using asynchronous scanning, check the corresponding map.
+    auto it = service_ids_to_scanning_sessions_.find(service_id);
+    return it != service_ids_to_scanning_sessions_.end();
+  }
   return scanned_service_ids_.contains(service_id);
 }
 
@@ -671,8 +820,7 @@ void BleV2::ProcessFetchGattAdvertisementsRequest(
     if (characteristic_byte.has_value()) {
       advertisement_read_result.AddAdvertisement(
           slot, ByteArray(characteristic_byte.value()));
-      NEARBY_LOGS(VERBOSE) << "Successfully read advertisement at slot="
-                           << slot;
+      NEARBY_VLOG(1) << "Successfully read advertisement at slot=" << slot;
     } else {
       NEARBY_LOGS(WARNING) << "Can't read advertisement for slot=" << slot;
       read_success = false;
@@ -731,6 +879,19 @@ ByteArray BleV2::CreateAdvertisementHeader(
       advertisement_hash, psm));
 }
 
+api::ble_v2::BleAdvertisementData
+BleV2::CreateAdvertisingDataForLegacyDevice() {
+  BleAdvertisementData advertising_data;
+  advertising_data.is_extended_advertisement = false;
+
+  ByteArray encoded_bytes{
+      mediums::DiscoveredPeripheralTracker::kDummyAdvertisementValue};
+
+  advertising_data.service_data.insert(
+      {mediums::bleutils::kCopresenceServiceUuid, encoded_bytes});
+  return advertising_data;
+}
+
 bool BleV2::StartAdvertisingLocked(const std::string& service_id) {
   const auto it = advertising_infos_.find(service_id);
   if (it == advertising_infos_.end()) {
@@ -741,7 +902,7 @@ bool BleV2::StartAdvertisingLocked(const std::string& service_id) {
 
   const AdvertisingInfo& info = it->second;
   if (info.is_fast_advertisement) {
-    return StartFastAdvertisingLocked(info.power_level,
+    return StartFastAdvertisingLocked(service_id, info.power_level,
                                       info.medium_advertisement);
   } else {
     return StartRegularAdvertisingLocked(service_id, info.power_level,
@@ -750,7 +911,7 @@ bool BleV2::StartAdvertisingLocked(const std::string& service_id) {
 }
 
 bool BleV2::StartFastAdvertisingLocked(
-    PowerLevel power_level,
+    const std::string& service_id, PowerLevel power_level,
     const mediums::BleAdvertisement& medium_advertisement) {
   // Begin building the fast BLE advertisement.
   BleAdvertisementData advertising_data;
@@ -770,6 +931,14 @@ bool BleV2::StartFastAdvertisingLocked(
                               medium_advertisement_bytes.data());
     return false;
   }
+
+  if (NearbyFlags::GetInstance().GetBoolFlag(
+          config_package_nearby::nearby_connections_feature::
+              kEnableInstantOnLost)) {
+    instant_on_lost_manager_.OnAdvertisingStarted(service_id,
+                                                  medium_advertisement_bytes);
+  }
+
   return true;
 }
 
@@ -801,10 +970,17 @@ bool BleV2::StartRegularAdvertisingLocked(
           << "Failed to turn on BLE extended regular advertising with "
              "advertisement bytes="
           << absl::BytesToHexString(medium_advertisement_bytes.data());
+    } else {
+      if (NearbyFlags::GetInstance().GetBoolFlag(
+              config_package_nearby::nearby_connections_feature::
+                  kEnableInstantOnLost)) {
+        instant_on_lost_manager_.OnAdvertisingStarted(
+            service_id, medium_advertisement_bytes);
+      }
     }
   }
 
-  // Start GATT advertisement no matter extended advertisment succeeded or not.
+  // Start GATT advertisement no matter extended advertisement succeeded or not.
   // This is to ensure that legacy devices which don't support extended
   // advertisement can get the advertisement via GATT connection.
   bool gatt_advertisement_success = StartGattAdvertisingLocked(
@@ -834,7 +1010,7 @@ bool BleV2::StartGattAdvertisingLocked(
   // remote device is indefinitely connected to this device's GATT server is
   // when it has a BLE socket connection.
   if (incoming_sockets_.empty()) {
-    NEARBY_LOGS(VERBOSE)
+    NEARBY_VLOG(1)
         << "Aggressively stopping any pre-existing advertisement GATT "
            "servers because no incoming BLE sockets are connected";
     StopAdvertisementGattServerLocked();
@@ -885,6 +1061,131 @@ bool BleV2::StartGattAdvertisingLocked(
     return false;
   }
 
+  if (NearbyFlags::GetInstance().GetBoolFlag(
+          config_package_nearby::nearby_connections_feature::
+              kEnableInstantOnLost)) {
+    for (const auto& item : advertising_data.service_data) {
+      instant_on_lost_manager_.OnAdvertisingStarted(service_id, item.second);
+    }
+  }
+
+  return true;
+}
+
+bool BleV2::StartAsyncScanningLocked(absl::string_view service_id,
+                                     PowerLevel power_level) {
+  CHECK(FeatureFlags::GetInstance().GetFlags().enable_ble_v2_async_scanning);
+
+  // Use the asynchronous StartScanning method instead of the synchronous one.
+  // Note: using FeatureFlags instead of NearbyFlags as there is no Mendel
+  // experiment associated with this change, which was driven by ChromeOS.
+
+  // Should we check if the map is not empty, and forego scanning if true?
+  // If so, do we store a nullptr instead of a scanning session ptr?
+
+  auto scanning_session = medium_.StartScanning(
+      mediums::bleutils::kCopresenceServiceUuid,
+      PowerLevelToTxPowerLevel(power_level),
+      api::ble_v2::BleMedium::ScanningCallback{
+          .start_scanning_result =
+              [this, &service_id](absl::Status status) mutable {
+                // The `mutex_` is already held here. Use
+                // `AssumeHeld` to tell the thread
+                // annotation static analysis that
+                // `mutex_` is already exclusively
+                // locked.
+                // Note: unsure if this is always the case, but when I
+                // attempted to acquire the lock here I hit a deadlock.
+                AssumeHeld(mutex_);
+                if (status.ok()) {
+                  NEARBY_LOGS(INFO) << "BLE V2 async StartScanning started "
+                                       "successfully for service ID"
+                                    << &service_id;
+                } else {
+                  NEARBY_LOGS(ERROR) << "BLE V2 async StartScanning "
+                                        "failed for service ID"
+                                     << &service_id << ": " << status;
+                  service_ids_to_scanning_sessions_.erase(service_id);
+                }
+              },
+          .advertisement_found_cb =
+              [this](api::ble_v2::BlePeripheral& peripheral,
+                     BleAdvertisementData advertisement_data) {
+                AssumeHeld(mutex_);
+                BleV2Peripheral proxy(medium_, peripheral);
+                RunOnBleThread([this, proxy = std::move(proxy),
+                                advertisement_data]() {
+                  MutexLock lock(&mutex_);
+                  discovered_peripheral_tracker_.ProcessFoundBleAdvertisement(
+                      std::move(proxy), advertisement_data,
+                      [this](BleV2Peripheral proxy, int num_slots, int psm,
+                             const std::vector<std::string>&
+                                 interesting_service_ids,
+                             mediums::AdvertisementReadResult&
+                                 advertisement_read_result) {
+                        // The `mutex_` is already held here. Use
+                        // `AssumeHeld` to tell the thread
+                        // annotation static analysis that
+                        // `mutex_` is already exclusively
+                        // locked.
+                        AssumeHeld(mutex_);
+                        ProcessFetchGattAdvertisementsRequest(
+                            std::move(proxy), num_slots, psm,
+                            interesting_service_ids, advertisement_read_result);
+                      });
+                });
+              },
+          .advertisement_lost_cb =
+              [](api::ble_v2::BlePeripheral& peripheral) {
+                // TODO(b/345514862): Implement.
+              },
+      });
+  service_ids_to_scanning_sessions_.insert(
+      {std::string(service_id), std::move(scanning_session)});
+  NEARBY_LOGS(INFO) << "Requested to start BLE scanning with service id="
+                    << service_id << " size "
+                    << service_ids_to_scanning_sessions_.size();
+
+  if (lost_alarm_ != nullptr && lost_alarm_->IsValid()) {
+    // We only use one lost alarm, which will check all service IDs for lost
+    // advertisements.
+    return true;
+  }
+
+  absl::Duration peripheral_lost_timeout =
+      absl::Milliseconds(NearbyFlags::GetInstance().GetInt64Flag(
+          config_package_nearby::nearby_connections_feature::
+              kBlePeripheralLostTimeoutMillis));
+  // Set up lost alarm.
+  lost_alarm_ = std::make_unique<CancelableAlarm>(
+      "BLE.StartScanning() onLost",
+      [this]() {
+        MutexLock lock(&mutex_);
+        discovered_peripheral_tracker_.ProcessLostGattAdvertisements();
+      },
+      peripheral_lost_timeout, &alarm_executor_, /*is_recurring=*/true);
+  return true;
+}
+
+bool BleV2::StopAsyncScanningLocked(absl::string_view service_id) {
+  CHECK(FeatureFlags::GetInstance().GetFlags().enable_ble_v2_async_scanning);
+  // If using asynchronous scanning, check the corresponding map.
+  auto scanning_session = service_ids_to_scanning_sessions_.find(service_id);
+  if (scanning_session == service_ids_to_scanning_sessions_.end()) {
+    NEARBY_LOGS(INFO) << "Can't turn off async BLE scanning because we never "
+                         "started scanning for this service ID.";
+    return false;
+  }
+  absl::Status status = scanning_session->second->stop_scanning();
+  if (!status.ok()) {
+    NEARBY_LOGS(WARNING) << "StopAsyncScanningLocked error: " << status;
+  }
+  service_ids_to_scanning_sessions_.erase(scanning_session);
+
+  NEARBY_LOGS(INFO) << "Turned off BLE client scanning";
+  if (lost_alarm_->IsValid()) {
+    lost_alarm_->Cancel();
+  }
   return true;
 }
 

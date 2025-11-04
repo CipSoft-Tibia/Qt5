@@ -6,6 +6,7 @@
 #define CONTENT_BROWSER_WEB_PACKAGE_SIGNED_EXCHANGE_INNER_RESPONSE_URL_LOADER_H_
 
 #include <memory>
+#include <optional>
 #include <string>
 
 #include "base/memory/ref_counted.h"
@@ -17,7 +18,7 @@
 #include "mojo/public/cpp/bindings/remote.h"
 #include "mojo/public/cpp/system/data_pipe.h"
 #include "net/base/net_errors.h"
-#include "services/network/public/cpp/corb/corb_api.h"
+#include "services/network/public/cpp/orb/orb_api.h"
 #include "services/network/public/cpp/resource_request.h"
 #include "services/network/public/cpp/url_loader_completion_status.h"
 #include "services/network/public/mojom/url_loader.mojom.h"
@@ -27,7 +28,8 @@
 namespace content {
 
 // A URLLoader which returns the inner response of signed exchange.
-class CONTENT_EXPORT SignedExchangeInnerResponseURLLoader : public network::mojom::URLLoader {
+class CONTENT_EXPORT SignedExchangeInnerResponseURLLoader
+    : public network::mojom::URLLoader {
  public:
   SignedExchangeInnerResponseURLLoader(
       const network::ResourceRequest& request,
@@ -36,8 +38,8 @@ class CONTENT_EXPORT SignedExchangeInnerResponseURLLoader : public network::mojo
       const network::URLLoaderCompletionStatus& completion_status,
       mojo::PendingRemote<network::mojom::URLLoaderClient> client,
       bool is_navigation_request,
-      scoped_refptr<base::RefCountedData<network::corb::PerFactoryState>>
-          corb_state);
+      scoped_refptr<base::RefCountedData<network::orb::PerFactoryState>>
+          orb_state);
 
   SignedExchangeInnerResponseURLLoader(
       const SignedExchangeInnerResponseURLLoader&) = delete;
@@ -52,7 +54,7 @@ class CONTENT_EXPORT SignedExchangeInnerResponseURLLoader : public network::mojo
       network::mojom::URLResponseHead* response_head);
 
  private:
-  static absl::optional<std::string> GetHeaderString(
+  static std::optional<std::string> GetHeaderString(
       const network::mojom::URLResponseHead& response,
       const std::string& header_name);
 
@@ -64,7 +66,7 @@ class CONTENT_EXPORT SignedExchangeInnerResponseURLLoader : public network::mojo
       const std::vector<std::string>& removed_headers,
       const net::HttpRequestHeaders& modified_headers,
       const net::HttpRequestHeaders& modified_cors_exempt_headers,
-      const absl::optional<GURL>& new_url) override;
+      const std::optional<GURL>& new_url) override;
   void SetPriority(net::RequestPriority priority,
                    int intra_priority_value) override;
   void PauseReadingBodyFromNet() override;
@@ -88,10 +90,10 @@ class CONTENT_EXPORT SignedExchangeInnerResponseURLLoader : public network::mojo
   const network::URLLoaderCompletionStatus completion_status_;
   mojo::Remote<network::mojom::URLLoaderClient> client_;
 
-  // `corb_checker_` references `corb_state_` so it needs to be destroyed first
-  // (and therefore `corb_checker_`'s field declaration has to appear last).
-  scoped_refptr<base::RefCountedData<network::corb::PerFactoryState>> corb_state_;
-  std::unique_ptr<CrossOriginReadBlockingChecker> corb_checker_;
+  // `orb_checker_` references `orb_state_` so it needs to be destroyed first
+  // (and therefore `orb_checker_`'s field declaration has to appear last).
+  scoped_refptr<base::RefCountedData<network::orb::PerFactoryState>> orb_state_;
+  std::unique_ptr<CrossOriginReadBlockingChecker> orb_checker_;
 
   base::WeakPtrFactory<SignedExchangeInnerResponseURLLoader> weak_factory_{
       this};

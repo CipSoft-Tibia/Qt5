@@ -197,7 +197,7 @@
 
     \snippet code/src_corelib_global_qglobal.cpp qlikely
 
-    \sa Q_UNLIKELY()
+    \sa Q_UNLIKELY(), Q_LIKELY_BRANCH, Q_UNLIKELY_BRANCH
 */
 
 /*!
@@ -214,7 +214,39 @@
 
     \snippet code/src_corelib_global_qglobal.cpp qunlikely
 
-    \sa Q_LIKELY()
+    \sa Q_LIKELY(), Q_LIKELY_BRANCH, Q_UNLIKELY_BRANCH
+*/
+
+/*!
+    \macro Q_LIKELY_BRANCH
+    \relates <QtCompilerDetection>
+    \since 6.9
+
+    \brief Hints to the compiler that the following block is likely to be
+    executed.
+
+    Use of this macro can help the compiler to optimize the code.
+
+    It is defined as the C++20 attribute \c{[[likely]]}, and is a no-op on
+    compilers that don't support it.
+
+    \sa Q_LIKELY(), Q_UNLIKELY(), Q_UNLIKELY_BRANCH
+*/
+
+/*!
+    \macro Q_UNLIKELY_BRANCH
+    \relates <QtCompilerDetection>
+    \since 6.9
+
+    \brief Hints to the compiler that the following block is unlikely to be
+    executed.
+
+    Use of this macro can help the compiler to optimize the code.
+
+    It is defined as the C++20 attribute \c{[[unlikely]]}, and is a no-op on
+    compilers that don't support it.
+
+    \sa Q_LIKELY(), Q_UNLIKELY(), Q_LIKELY_BRANCH
 */
 
 /*!
@@ -275,7 +307,7 @@
     This macro can be used to declare variable that should be constructed at compile-time,
     or an inline function that can be computed at compile-time.
 
-    \sa Q_DECL_RELAXED_CONSTEXPR
+    \sa Q_DECL_RELAXED_CONSTEXPR, Q_DECL_CONSTEXPR_DTOR
 */
 
 /*!
@@ -286,7 +318,51 @@
     This macro can be used to declare an inline function that can be computed
     at compile-time according to the relaxed rules from C++14.
 
-    \sa Q_DECL_CONSTEXPR
+    \sa Q_DECL_CONSTEXPR, Q_DECL_CONSTEXPR_DTOR
+*/
+
+/*!
+    \macro Q_DECL_CONSTEXPR_DTOR
+    \relates <QtCompilerDetection>
+    \since 6.9
+
+    Expands to \c{constexpr} on compilers that support C++20, where
+    \c{__cpp_constexpr} has a value greater than or equal to \c{201907L}.
+    Otherwise, it expands to \c{inline}.
+
+    Use this macro to declare a destructor that can be computed at
+    compile-time in C++20 or later.
+
+    \sa Q_CONSTEXPR_DTOR
+*/
+
+/*!
+    \macro Q_CONSTEXPR_DTOR
+    \relates <QtCompilerDetection>
+    \since 6.9
+
+    Expands to \c{constexpr} on compilers that support C++20, where
+    \c{__cpp_constexpr} has a value greater than or equal to \c{201907L}.
+    Otherwise, it expands to \c{const}.
+
+    Use this macro to declare a variable that can be constructed at compile-time
+    in C++20 or later.
+
+    \sa Q_DECL_CONSTEXPR_DTOR
+*/
+
+/*!
+    \macro Q_DECL_EQ_DELETE_X(reason)
+    \relates <QtCompilerDetection>
+    \since 6.9
+
+    Expands to \c{= delete(reason)} on compilers that support C++26, where
+    \c{__cpp_deleted_function} has a value greater than or equal to \c{202403L}.
+    Otherwise, it expands to \c{= delete}.
+
+    Use this macro to declare a deleted function and also supply an error
+    message (the \a reason) to the user in case the function gets used
+    (explaining why the function was deleted).
 */
 
 /*!

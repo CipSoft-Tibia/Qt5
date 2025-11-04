@@ -27,12 +27,13 @@
 
 #include "src/tint/utils/symbol/symbol_table.h"
 
-#include "gtest/gtest-spi.h"
+#include "gtest/gtest.h"
 
 namespace tint {
 namespace {
 
 using SymbolTableTest = testing::Test;
+using SymbolTableDeathTest = SymbolTableTest;
 
 TEST_F(SymbolTableTest, GeneratesSymbolForName) {
     auto generation_id = GenerationID::New();
@@ -49,8 +50,8 @@ TEST_F(SymbolTableTest, DeduplicatesNames) {
     EXPECT_EQ(Symbol(1, generation_id, "name"), s.Register("name"));
 }
 
-TEST_F(SymbolTableTest, AssertsForBlankString) {
-    EXPECT_FATAL_FAILURE(
+TEST_F(SymbolTableDeathTest, AssertsForBlankString) {
+    EXPECT_DEATH_IF_SUPPORTED(
         {
             auto generation_id = GenerationID::New();
             SymbolTable s{generation_id};

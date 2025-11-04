@@ -62,8 +62,8 @@ Window {
             y: -500
             scale: Qt.vector3d(12, 12, 12)
             eulerRotation.x: -90
-            materials: DefaultMaterial {
-                diffuseColor: Qt.rgba(0.5, 0.5, 0.5, 1.0)
+            materials: PrincipledMaterial {
+                baseColor: Qt.rgba(0.5, 0.5, 0.5, 1.0)
             }
         }
         Model {
@@ -71,16 +71,16 @@ Window {
             x: -600
             scale: Qt.vector3d(12, 10, 12)
             eulerRotation.y: 90
-            materials: DefaultMaterial {
-                diffuseColor: Qt.rgba(0.8, 0.8, 0.6, 1.0)
+            materials: PrincipledMaterial {
+                baseColor: Qt.rgba(0.8, 0.8, 0.6, 1.0)
             }
         }
         Model {
             source: "#Rectangle"
             z: -600
             scale: Qt.vector3d(12, 10, 12)
-            materials: DefaultMaterial {
-                diffuseColor: Qt.rgba(0.8, 0.8, 0.6, 1.0)
+            materials: PrincipledMaterial {
+                baseColor: Qt.rgba(0.8, 0.8, 0.6, 1.0)
             }
         }
         //! [walls models]
@@ -232,16 +232,16 @@ Window {
                 source: "#Cylinder"
                 y: -300
                 scale: Qt.vector3d(0.1, 6.1, 0.1)
-                materials: DefaultMaterial {
-                    diffuseColor: Qt.rgba(0.9, 0.9, 0.9, 1.0)
+                materials: PrincipledMaterial {
+                    baseColor: Qt.rgba(0.9, 0.9, 0.9, 1.0)
                 }
             }
             Model {
                 source: "#Sphere"
                 y: -700
                 scale: Qt.vector3d(2, 2, 2)
-                materials: DefaultMaterial {
-                    diffuseColor: Qt.rgba(0.4, 0.4, 0.4, 1.0)
+                materials: PrincipledMaterial {
+                    baseColor: Qt.rgba(0.4, 0.4, 0.4, 1.0)
                 }
             }
         }

@@ -5,6 +5,7 @@
 import("//build/config/cast.gni")
 import("//build/config/chrome_build.gni")
 import("//build/config/chromeos/ui_mode.gni")
+import("//build/config/ml.gni")
 import("//build/config/ui.gni")
 import("//gpu/vulkan/features.gni")
 import("//skia/features.gni")
@@ -99,7 +100,7 @@ if (enable_vulkan) {
 
     deps = [ "//gpu/ipc/common:vulkan_interface" ]
     public_deps = [
-      "//third_party/vulkan-deps/vulkan-headers/src:vulkan_headers",
+      "//third_party/vulkan-headers/src:vulkan_headers",
       "//ui/gfx",
     ]
 
@@ -121,7 +122,7 @@ source_set("webgpu_blocklist_impl") {
 
   deps = [ "//base" ]
 
-  public_deps = [ "//third_party/dawn/include/dawn:headers" ]
+  public_deps = [ "//third_party/dawn/include/dawn:cpp_headers" ]
 }
 
 source_set("config_sources") {
@@ -132,8 +133,6 @@ source_set("config_sources") {
   sources = [
     "device_perf_info.cc",
     "device_perf_info.h",
-    "dx_diag_node.cc",
-    "dx_diag_node.h",
     "gpu_blocklist.cc",
     "gpu_blocklist.h",
     "gpu_control_list.cc",
@@ -195,24 +194,31 @@ source_set("config_sources") {
     "//build:chromecast_buildflags",
     "//build:chromeos_buildflags",
     "//components/miracle_parameter/common",
+    "//components/ml:buildflags",
     "//gpu/command_buffer/common:common_sources",
     "//gpu/ipc/common:gpu_preferences_interface",
     "//gpu/vulkan:buildflags",
     "//media:media_buildflags",
     "//skia:buildflags",
     "//third_party/re2",
-    "//third_party/vulkan-deps/vulkan-headers/src:vulkan_headers",
+    "//third_party/vulkan-headers/src:vulkan_headers",
     "//ui/gfx",
     "//ui/gl",
     "//ui/gl:buildflags",
     "//ui/gl/init",
   ]
 
+  if (use_ml) {
+    deps += [
+      "//services/webnn/public/mojom",
+    ]
+  }
+
   if (use_dawn || skia_use_dawn) {
     public_deps += [ "//third_party/dawn/include/dawn:headers" ]
 
     deps += [
-      "//third_party/dawn/src/dawn:cpp",
+      "//third_party/dawn/include/dawn:cpp_headers",
       "//third_party/dawn/src/dawn:proc",
       "//third_party/dawn/src/dawn/native",
     ]
@@ -234,14 +240,11 @@ source_set("config_sources") {
     sources += [ "gpu_info_collector_android.cc" ]
   }
   if (is_win) {
-    sources += [
-      "gpu_dx_diagnostics_win.cc",
-      "gpu_info_collector_win.cc",
-    ]
-    libs = [
-      "dxgi.lib",
-      "dxguid.lib",
-    ]
+    sources += [ "gpu_info_collector_win.cc" ]
+    if (!is_qtwebengine) {
+      deps += [ "//third_party/microsoft_dxheaders:dxguids" ]
+    }
+    libs = [ "dxgi.lib" ]
 
     if (is_chrome_branded && is_official_build) {
       sources += [

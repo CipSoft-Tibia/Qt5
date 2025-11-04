@@ -189,6 +189,9 @@ private:
 /// type, the fields with attached semantics will need to be translated into
 /// stage variables per Vulkan's requirements.
 class DeclResultIdMapper {
+  /// \brief An internal class to handle binding number allocation.
+  class BindingSet;
+
 public:
   inline DeclResultIdMapper(ASTContext &context, SpirvContext &spirvContext,
                             SpirvBuilder &spirvBuilder, SpirvEmitter &emitter,
@@ -277,8 +280,16 @@ public:
   SpirvVariable *createFileVar(const VarDecl *var,
                                llvm::Optional<SpirvInstruction *> init);
 
+  /// Creates a global variable for resource heaps containing elements of type
+  /// |type|.
+  SpirvVariable *createResourceHeap(const VarDecl *var, QualType type);
+
   /// \brief Creates an external-visible variable and returns its instruction.
   SpirvVariable *createExternVar(const VarDecl *var);
+
+  /// \brief Creates an external-visible variable of type |type| and returns its
+  /// instruction.
+  SpirvVariable *createExternVar(const VarDecl *var, QualType type);
 
   /// \brief Returns an OpString instruction that represents the given VarDecl.
   /// VarDecl must be a variable of string type.
@@ -375,6 +386,10 @@ public:
                                           ContextUsageKind kind);
   SpirvVariable *createShaderRecordBuffer(const HLSLBufferDecl *decl,
                                           ContextUsageKind kind);
+
+  // Records the TypedefDecl or TypeAliasDecl of vk::SpirvType so that any
+  // required capabilities and extensions can be added if the type is used.
+  void recordsSpirvTypeAlias(const Decl *decl);
 
 private:
   /// The struct containing SPIR-V information of a AST Decl.
@@ -501,11 +516,6 @@ public:
   bool writeBackOutputStream(const NamedDecl *decl, QualType type,
                              SpirvInstruction *value, SourceRange range = {});
 
-  /// \brief Negates to get the additive inverse of SV_Position.y if requested.
-  SpirvInstruction *invertYIfRequested(SpirvInstruction *position,
-                                       SourceLocation loc,
-                                       SourceRange range = {});
-
   /// \brief Reciprocates to get the multiplicative inverse of SV_Position.w
   /// if requested.
   SpirvInstruction *invertWIfRequested(SpirvInstruction *position,
@@ -569,6 +579,12 @@ public:
 
   spv::ExecutionMode getInterlockExecutionMode();
 
+  /// Records any Spir-V capabilities and extensions for the given type so
+  /// they will be added to the SPIR-V module. The capabilities and extension
+  /// required for the type will be sourced from the decls that were recorded
+  /// using `recordSpirvTypeAlias`.
+  void registerCapabilitiesAndExtensionsForType(const TypedefType *type);
+
 private:
   /// \brief Wrapper method to create a fatal error message and report it
   /// in the diagnostic engine associated with this consumer.
@@ -626,6 +642,26 @@ private:
       llvm::function_ref<uint32_t(uint32_t)> nextLocs,
       llvm::DenseSet<StageVariableLocationInfo, StageVariableLocationInfo>
           *stageVariableLocationInfo);
+
+  /// \bried Decorates used Resource/Sampler descriptor heaps with the correct
+  /// binding/set decorations.
+  void decorateResourceHeapsBindings(BindingSet &bindingSet);
+
+  /// \brief Returns a map that divides all of the shader stage variables into
+  /// separate vectors for each entry point.
+  llvm::DenseMap<const SpirvFunction *, SmallVector<StageVar, 8>>
+  getStageVarsPerFunction();
+
+  /// \brief Decorates all stage variables in `functionStageVars` with proper
+  /// location and returns true on success.
+  ///
+  /// It is assumed that all variables in `functionStageVars` belong to the same
+  /// entry point.
+  ///
+  /// This method will write the location assignment into the module under
+  /// construction.
+  bool finalizeStageIOLocationsForASingleEntryPoint(
+      bool forInput, ArrayRef<StageVar> functionStageVars);
 
   /// \brief Decorates all stage input (if forInput is true) or output (if
   /// forInput is false) variables with proper location and returns true on
@@ -755,24 +791,40 @@ private:
   SpirvVariable *getInstanceIdFromIndexAndBase(SpirvVariable *instanceIndexVar,
                                                SpirvVariable *baseInstanceVar);
 
+  // Creates a function scope variable to represent the "SV_VertexID"
+  // semantic, which is not immediately available in SPIR-V. Its value will be
+  // set by subtracting the values of the given InstanceIndex and base instance
+  // variables.
+  //
+  // vertexIndexVar: The SPIR-V input variable decorated with
+  // vertexIndex.
+  //
+  // baseVertexVar: The SPIR-V input variable decorated with
+  // BaseVertex.
+  SpirvVariable *getVertexIdFromIndexAndBase(SpirvVariable *vertexIndexVar,
+                                             SpirvVariable *baseVertexVar);
+
   // Creates and returns a variable that is the BaseInstance builtin input. The
   // variable is also added to the list of stage variable `this->stageVars`. Its
   // type will be a 32-bit integer.
-  //
-  // The semantic is a lie. We currently give it the semantic for the
-  // InstanceID. I'm not sure what would happen if we did not use a semantic, or
-  // tried to generate the correct one. I'm guessing there would be some issue
-  // with reflection.
-  //
-  // semantic: the semantic to attach to this variable
   //
   // sigPoint: the signature point identifying which shader stage the variable
   // will be used in.
   //
   // type: The type to use for the new variable. Must be int or unsigned int.
-  SpirvVariable *getBaseInstanceVariable(SemanticInfo *semantic,
-                                         const hlsl::SigPoint *sigPoint,
+  SpirvVariable *getBaseInstanceVariable(const hlsl::SigPoint *sigPoint,
                                          QualType type);
+
+  // Creates and returns a variable that is the BaseVertex builtin input. The
+  // variable is also added to the list of stage variable `this->stageVars`. Its
+  // type will be a 32-bit integer.
+  //
+  // sigPoint: the signature point identifying which shader stage the variable
+  // will be used in.
+  //
+  // type: The type to use for the new variable. Must be int or unsigned int.
+  SpirvVariable *getBaseVertexVariable(const hlsl::SigPoint *sigPoint,
+                                       QualType type);
 
   // Creates and return a new interface variable from the information provided.
   // The new variable with be add to `this->StageVars`.
@@ -1041,6 +1093,8 @@ private:
   bool needsFlatteningCompositeResources;
 
   uint32_t perspBaryCentricsIndex, noPerspBaryCentricsIndex;
+
+  llvm::SmallVector<const TypedefNameDecl *, 4> typeAliasesWithAttributes;
 
 public:
   /// The gl_PerVertex structs for both input and output

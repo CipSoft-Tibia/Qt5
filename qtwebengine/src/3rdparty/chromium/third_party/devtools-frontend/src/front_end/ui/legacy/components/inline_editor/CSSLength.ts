@@ -3,15 +3,13 @@
 // found in the LICENSE file.
 
 import * as Host from '../../../../core/host/host.js';
-import * as ComponentHelpers from '../../../components/helpers/helpers.js';
+import * as UI from '../../../legacy/legacy.js';
 import * as LitHtml from '../../../lit-html/lit-html.js';
-import * as VisualLogging from '../../../visual_logging/visual_logging.js';
 
 import cssLengthStyles from './cssLength.css.js';
-import {type Length, LENGTH_UNITS, LengthUnit, parseText} from './CSSLengthUtils.js';
 import {ValueChangedEvent} from './InlineEditorUtils.js';
 
-const {render, html, Directives: {classMap}} = LitHtml;
+const {render, html} = LitHtml;
 
 export class DraggingFinishedEvent extends Event {
   static readonly eventName = 'draggingfinished';
@@ -20,14 +18,42 @@ export class DraggingFinishedEvent extends Event {
   }
 }
 
-export interface CSSLengthData {
-  lengthText: string;
-  overloaded: boolean;
+export enum CSSLengthUnit {
+  // absolute units
+  PIXEL = 'px',
+  CENTIMETER = 'cm',
+  MILLIMETER = 'mm',
+  QUARTERMILLIMETER = 'Q',
+  INCH = 'in',
+  PICA = 'pc',
+  POINT = 'pt',
+
+  // relative units
+  CAP = 'cap',
+  CH = 'ch',
+  EM = 'em',
+  EX = 'ex',
+  IC = 'ic',
+  LH = 'lh',
+  RCAP = 'rcap',
+  RCH = 'rch',
+  REM = 'rem',
+  REX = 'rex',
+  RIC = 'ric',
+  RLH = 'rlh',
+  VB = 'vb',
+  VH = 'vh',
+  VI = 'vi',
+  VW = 'vw',
+  VMIN = 'vmin',
+  VMAX = 'vmax',
 }
 
-const DefaultLength = {
-  value: 0,
-  unit: LengthUnit.PIXEL,
+export const CSS_LENGTH_REGEX =
+    new RegExp(`(?<value>[+-]?\\d*\\.?\\d+([Ee][+-]?\\d+)?)(?<unit>${Object.values(CSSLengthUnit).join('|')})`);
+
+type CSSLengthData = {
+  lengthText: string,
 };
 
 export class CSSLength extends HTMLElement {
@@ -35,32 +61,24 @@ export class CSSLength extends HTMLElement {
 
   private readonly shadow = this.attachShadow({mode: 'open'});
   private readonly onDraggingValue = this.dragValue.bind(this);
-  private length: Length = DefaultLength;
-  private overloaded: boolean = false;
+  private value = '';
+  private unit = CSSLengthUnit.PIXEL;
   private isEditingSlot = false;
   private isDraggingValue = false;
-  private currentMouseClientX = 0;
   #valueMousedownTime = 0;
 
-  set data(data: CSSLengthData) {
-    const parsedResult = parseText(data.lengthText);
-    if (!parsedResult) {
-      return;
+  set data({lengthText}: CSSLengthData) {
+    const groups = lengthText.match(CSS_LENGTH_REGEX)?.groups;
+    if (!groups) {
+      throw new Error();
     }
-    this.length = parsedResult;
-    this.overloaded = data.overloaded;
+    this.value = groups.value;
+    this.unit = groups.unit as CSSLengthUnit;
     this.render();
   }
 
   connectedCallback(): void {
     this.shadow.adoptedStyleSheets = [cssLengthStyles];
-  }
-
-  private onUnitChange(event: Event): void {
-    this.length.unit = (event.target as HTMLInputElement).value as LengthUnit;
-    this.dispatchEvent(new ValueChangedEvent(`${this.length.value}${this.length.unit}`));
-    this.dispatchEvent(new DraggingFinishedEvent());
-    this.render();
   }
 
   private dragValue(event: MouseEvent): void {
@@ -72,17 +90,13 @@ export class CSSLength extends HTMLElement {
     }
 
     this.isDraggingValue = true;
-    let displacement = event.clientX - this.currentMouseClientX;
-    this.currentMouseClientX = event.clientX;
-    if (event.shiftKey) {
-      displacement *= 10;
+    const newValue = UI.UIUtils.createReplacementString(this.value, event);
+    if (newValue) {
+      this.value = newValue;
+      this.dispatchEvent(new ValueChangedEvent(`${this.value}${this.unit}`));
+      Host.userMetrics.swatchActivated(Host.UserMetrics.SwatchType.LENGTH);
+      this.render();
     }
-    if (event.altKey) {
-      displacement *= 0.1;
-    }
-    this.length.value = this.length.value + displacement;
-    this.dispatchEvent(new ValueChangedEvent(`${this.length.value}${this.length.unit}`));
-    this.render();
   }
 
   private onValueMousedown(event: MouseEvent): void {
@@ -92,7 +106,6 @@ export class CSSLength extends HTMLElement {
 
     this.#valueMousedownTime = Date.now();
 
-    this.currentMouseClientX = event.clientX;
     const targetDocument = event.target instanceof Node && event.target.ownerDocument;
     if (targetDocument) {
       targetDocument.addEventListener('mousemove', this.onDraggingValue, {capture: true});
@@ -118,65 +131,26 @@ export class CSSLength extends HTMLElement {
     }
   }
 
-  private onUnitMouseup(event: MouseEvent): void {
-    event.preventDefault();
-    event.stopPropagation();
-
-    Host.userMetrics.swatchActivated(Host.UserMetrics.SwatchType.Length);
-  }
-
   private render(): void {
-    const classes = {
-      'css-length': true,
-      'overloaded': this.overloaded,
-    };
-
-    // Disabled until https://crbug.com/1079231 is fixed.
-    // clang-format off
-    render(html`
-      <div class=${classMap(classes)}>
-        ${this.renderContent()}
-      </div>
-    `, this.shadow, {
+    render(this.renderContent(), this.shadow, {
       host: this,
     });
-    // clang-format on
   }
 
   private renderContent(): LitHtml.TemplateResult {
     if (this.isEditingSlot) {
       return html`<slot></slot>`;
     }
-    const options = LENGTH_UNITS.map(unit => {
-      return html`
-          <option value=${unit} .selected=${this.length.unit === unit}>${unit}</option>
-        `;
-    });
     // Disabled until https://crbug.com/1079231 is fixed.
     // clang-format off
-      return html`
-        <span class="value"
-          @mousedown=${this.onValueMousedown}
-          @mouseup=${this.onValueMouseup}
-        >${this.length.value}</span><span class="unit">${this.length.unit}</span>
-        <div class="unit-dropdown">
-          <span class="icon"></span>
-          <select
-            jslog=${VisualLogging.dropDown().track({change: true}).context('unit')}
-            @mouseup=${this.onUnitMouseup}
-            @change=${this.onUnitChange}>
-            ${options}
-          </select>
-        </div>
-      `;
+      return html`<span class="value" @mousedown=${this.onValueMousedown} @mouseup=${this.onValueMouseup}>${this.value}</span><span class="unit">${this.unit}</span>`;
     // clang-format on
   }
 }
 
-ComponentHelpers.CustomElements.defineComponent('devtools-css-length', CSSLength);
+customElements.define('devtools-css-length', CSSLength);
 
 declare global {
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   interface HTMLElementTagNameMap {
     'devtools-css-length': CSSLength;
   }

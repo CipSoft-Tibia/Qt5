@@ -2,13 +2,17 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#ifdef UNSAFE_BUFFERS_BUILD
+// TODO(crbug.com/351564777): Remove this and convert code to safer constructs.
+#pragma allow_unsafe_buffers
+#endif
+
 #include "third_party/blink/renderer/modules/clipboard/clipboard_writer.h"
 
 #include "base/task/single_thread_task_runner.h"
 #include "third_party/blink/public/common/features.h"
 #include "third_party/blink/public/mojom/clipboard/clipboard.mojom-blink.h"
 #include "third_party/blink/public/platform/platform.h"
-#include "third_party/blink/renderer/bindings/core/v8/v8_parse_from_string_options.h"
 #include "third_party/blink/renderer/core/clipboard/clipboard_mime_types.h"
 #include "third_party/blink/renderer/core/clipboard/system_clipboard.h"
 #include "third_party/blink/renderer/core/dom/document_fragment.h"
@@ -69,7 +73,7 @@ class ClipboardImageWriter final : public ClipboardWriter {
             SkData::MakeWithoutCopy(png_data.Data(), png_data.DataLength())),
         /*data_complete=*/true, ImageDecoder::kAlphaPremultiplied,
         ImageDecoder::kDefaultBitDepth, ColorBehavior::kTag,
-        Platform::GetMaxDecodedImageBytes());
+        cc::AuxImage::kDefault, Platform::GetMaxDecodedImageBytes());
     sk_sp<SkImage> image = nullptr;
     // `decoder` is nullptr if `png_data` doesn't begin with the PNG signature.
     if (decoder) {
@@ -169,26 +173,11 @@ class ClipboardHtmlWriter final : public ClipboardWriter {
         String::FromUTF8(reinterpret_cast<const LChar*>(html_data->Data()),
                          html_data->ByteLength());
     const KURL& url = local_frame->GetDocument()->Url();
-    if (RuntimeEnabledFeatures::
-            ClipboardWellFormedHtmlSanitizationWriteEnabled()) {
-      DOMParser* dom_parser =
-          blink::DOMParser::Create(promise_->GetScriptState());
-      ParseFromStringOptions* options = blink::ParseFromStringOptions::Create();
-      const Document* doc =
-          dom_parser->parseFromString(html_string, "text/html", options);
-      DCHECK(doc);
-      String serialized_html = CreateMarkup(doc, kIncludeNode, kResolveAllURLs);
-      Write(serialized_html, url);
-      return;
-    }
-    // Sanitizing on the main thread because HTML DOM nodes can only be used on
-    // the main thread.
-    Document* document = local_frame->GetDocument();
-    String sanitized_html = CreateSanitizedMarkupWithContext(
-        *document, html_string, /*fragment_start=*/0,
-        /*fragment_end=*/html_string.length(), url, kIncludeNode,
-        kResolveAllURLs);
-    Write(sanitized_html, url);
+    DOMParser* dom_parser = DOMParser::Create(promise_->GetScriptState());
+    const Document* doc = dom_parser->parseFromString(html_string, "text/html");
+    DCHECK(doc);
+    String serialized_html = CreateMarkup(doc, kIncludeNode, kResolveAllURLs);
+    Write(serialized_html, url);
   }
 
   void Write(const String& serialized_html, const KURL& url) {
@@ -216,21 +205,15 @@ class ClipboardSvgWriter final : public ClipboardWriter {
         String::FromUTF8(reinterpret_cast<const LChar*>(svg_data->Data()),
                          svg_data->ByteLength());
 
-    // Sanitizing on the main thread because SVG/XML DOM nodes can only be used
-    // on the main thread.
-    KURL url;
-    unsigned fragment_start = 0;
-    unsigned fragment_end = svg_string.length();
-
     LocalFrame* local_frame = promise_->GetLocalFrame();
     if (!local_frame) {
       return;
     }
-    Document* document = local_frame->GetDocument();
-    String sanitized_svg = CreateSanitizedMarkupWithContext(
-        *document, svg_string, fragment_start, fragment_end, url, kIncludeNode,
-        kResolveAllURLs);
-    Write(sanitized_svg);
+
+    DOMParser* dom_parser = DOMParser::Create(promise_->GetScriptState());
+    const Document* doc =
+        dom_parser->parseFromString(svg_string, "image/svg+xml");
+    Write(CreateMarkup(doc, kIncludeNode, kResolveAllURLs));
   }
 
   void Write(const String& svg_html) {
@@ -286,7 +269,7 @@ class ClipboardCustomFormatWriter final : public ClipboardWriter {
 ClipboardWriter* ClipboardWriter::Create(SystemClipboard* system_clipboard,
                                          const String& mime_type,
                                          ClipboardPromise* promise) {
-  DCHECK(ClipboardWriter::IsValidType(mime_type));
+  CHECK(ClipboardItem::supports(mime_type));
   String web_custom_format = Clipboard::ParseWebCustomFormat(mime_type);
   if (!web_custom_format.empty()) {
     // We write the custom MIME type without the "web " prefix into the web
@@ -309,12 +292,11 @@ ClipboardWriter* ClipboardWriter::Create(SystemClipboard* system_clipboard,
     return MakeGarbageCollected<ClipboardHtmlWriter>(system_clipboard, promise);
   }
 
-  if (mime_type == kMimeTypeImageSvg &&
-      RuntimeEnabledFeatures::ClipboardSvgEnabled()) {
+  if (mime_type == kMimeTypeImageSvg) {
     return MakeGarbageCollected<ClipboardSvgWriter>(system_clipboard, promise);
   }
 
-  NOTREACHED()
+  NOTREACHED_IN_MIGRATION()
       << "IsValidType() and Create() have inconsistent implementations.";
   return nullptr;
 }
@@ -329,20 +311,6 @@ ClipboardWriter::ClipboardWriter(SystemClipboard* system_clipboard,
       system_clipboard_(system_clipboard) {}
 
 ClipboardWriter::~ClipboardWriter() = default;
-
-// static
-bool ClipboardWriter::IsValidType(const String& type) {
-  if (!Clipboard::ParseWebCustomFormat(type).empty()) {
-    return type.length() < mojom::blink::ClipboardHost::kMaxFormatSize;
-  }
-  if (type == kMimeTypeImageSvg) {
-    return RuntimeEnabledFeatures::ClipboardSvgEnabled();
-  }
-
-  // TODO(https://crbug.com/1029857): Add support for other types.
-  return type == kMimeTypeImagePng || type == kMimeTypeTextPlain ||
-         type == kMimeTypeTextHTML;
-}
 
 void ClipboardWriter::WriteToSystem(Blob* blob) {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);

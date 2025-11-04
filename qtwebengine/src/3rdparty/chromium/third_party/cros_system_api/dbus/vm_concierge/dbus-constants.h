@@ -16,6 +16,7 @@ const char kAddGroupPermissionMesaMethod[] = "AddGroupPermissionMesa";
 const char kAdjustVmMethod[] = "AdjustVm";
 const char kAggressiveBalloonMethod[] = "AggressiveBalloon";
 const char kArcVmCompleteBootMethod[] = "ArcVmCompleteBoot";
+const char kAttachKeyMethod[] = "AttachKey";
 const char kAttachNetDeviceMethod[] = "AttachNetDevice";
 const char kAttachUsbDeviceMethod[] = "AttachUsbDevice";
 const char kCancelDiskImageMethod[] = "CancelDiskImageOperation";

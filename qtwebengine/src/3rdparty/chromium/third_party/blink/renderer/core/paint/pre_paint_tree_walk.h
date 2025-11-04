@@ -5,13 +5,15 @@
 #ifndef THIRD_PARTY_BLINK_RENDERER_CORE_PAINT_PRE_PAINT_TREE_WALK_H_
 #define THIRD_PARTY_BLINK_RENDERER_CORE_PAINT_PRE_PAINT_TREE_WALK_H_
 
+#include <optional>
+
 #include "base/dcheck_is_on.h"
 #include "base/gtest_prod_util.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "third_party/blink/renderer/core/core_export.h"
 #include "third_party/blink/renderer/core/paint/paint_invalidator.h"
 #include "third_party/blink/renderer/core/paint/paint_property_tree_builder.h"
 #include "third_party/blink/renderer/platform/heap/collection_support/heap_hash_set.h"
+#include "third_party/blink/renderer/platform/runtime_enabled_features.h"
 #include "third_party/blink/renderer/platform/wtf/allocator/allocator.h"
 
 namespace blink {
@@ -126,7 +128,7 @@ class CORE_EXPORT PrePaintTreeWalk final {
           ;
     }
 
-    absl::optional<PaintPropertyTreeBuilderContext> tree_builder_context;
+    std::optional<PaintPropertyTreeBuilderContext> tree_builder_context;
   };
 
   static bool ContextRequiresChildPrePaint(const PrePaintTreeWalkContext&);
@@ -208,6 +210,15 @@ class CORE_EXPORT PrePaintTreeWalk final {
   void WalkFragmentationContextRootChildren(const LayoutObject&,
                                             const PhysicalBoxFragment&,
                                             const PrePaintTreeWalkContext&);
+  void WalkPageContainer(const PhysicalFragmentLink& page_container_link,
+                         const LayoutObject& parent_object,
+                         const PrePaintTreeWalkContext& parent_context,
+                         wtf_size_t fragmentainer_idx);
+  void WalkFragmentainer(const LayoutObject& parent_object,
+                         const PhysicalFragmentLink& child_link,
+                         const PrePaintTreeWalkContext& parent_context,
+                         wtf_size_t fragmentainer_idx);
+
   void WalkLayoutObjectChildren(const LayoutObject&,
                                 const PhysicalBoxFragment*,
                                 const PrePaintTreeWalkContext&);

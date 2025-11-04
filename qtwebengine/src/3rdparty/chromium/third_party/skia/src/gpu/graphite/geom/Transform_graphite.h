@@ -9,6 +9,11 @@
 #define skgpu_graphite_geom_Transform_DEFINED
 
 #include "include/core/SkM44.h"
+#include "include/core/SkMatrix.h"
+#include "include/private/base/SkAssert.h"
+#include "include/private/base/SkFloatingPoint.h"
+
+#include <utility>
 
 namespace skgpu::graphite {
 
@@ -31,12 +36,13 @@ public:
         // that space.
         kRectStaysRect,
         // The matrix transform may have skew or rotation, so a mapped rect does not fill space,
-        // but there is no need to perform perspective division or w-plane clipping.
+        // but there is no need to perform perspective division or w-plane clipping. This also
+        // includes orthographic projections.
         kAffine,
-        // The matrix includes perspective or modifies Z and requires further projection to 2D,
-        // so care must be taken when w is less than or near 0, and homogeneous division and
-        // perspective-correct interpolation are needed when rendering.
-        kProjection,
+        // The matrix includes perspective and requires further projection to 2D, so care must be
+        // taken when w is less than or near 0, and homogeneous division and perspective-correct
+        // interpolation are needed when rendering.
+        kPerspective,
         // The matrix is not invertible or not finite, so should not be used to draw.
         kInvalid,
     };
@@ -55,7 +61,7 @@ public:
     static inline Transform Translate(float x, float y) {
         if (x == 0.f && y == 0.f) {
             return Identity();
-        } else if (SkScalarsAreFinite(x, y)) {
+        } else if (SkIsFinite(x, y)) {
             return Transform(SkM44::Translate(x, y), SkM44::Translate(-x, -y),
                              Type::kSimpleRectStaysRect, 1.f, 1.f);
         } else {

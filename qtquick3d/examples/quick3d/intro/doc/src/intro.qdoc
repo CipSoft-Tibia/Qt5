@@ -50,14 +50,14 @@
 
     To add the meshes, we use two Model nodes, with \c #Sphere and \c #Cylinder as the
     \l{Model::source}{source} to load our built-in meshes. To give the model a color we
-    need to first specify a material. In this case we use a \l DefaultMaterial with a red
-    and blue diffuse color. There are three different materials available with different
-    properties, namely DefaultMaterial, PrincipledMaterial and CustomMaterial, see \l{Qt
+    need to first specify a material. In this case we use a \l PrincipledMaterial with a red
+    and blue base color. There are three different materials available with different
+    properties, namely PrincipledMaterial, SpecularGlossyMaterial and CustomMaterial, see \l{Qt
     Quick 3D - Principled Material Example} and \l{Programmable Materials, Effects,
     Geometry, and Texture data}. The mesh loaded by a \l Model can have multiple
     sub-meshes, and each sub-mesh needs to have a material specified. In the example only
     the built-in meshes are used, and those only have one sub-mesh each, and therefore it
-    is sufficient to specify a single DefaultMaterial in the
+    is sufficient to specify a single PrincipledMaterial in the
     \l{Model::materials}{materials} list.
 
     A \l Model is a \l Node, so it has an associated transformation. To apply a

@@ -27,13 +27,13 @@
 
 #include "src/tint/lang/wgsl/ast/variable_decl_statement.h"
 
-#include "gtest/gtest-spi.h"
 #include "src/tint/lang/wgsl/ast/helper_test.h"
 
 namespace tint::ast {
 namespace {
 
 using VariableDeclStatementTest = TestHelper;
+using VariableDeclStatementDeathTest = VariableDeclStatementTest;
 
 TEST_F(VariableDeclStatementTest, Creation) {
     auto* var = Var("a", ty.f32());
@@ -58,8 +58,8 @@ TEST_F(VariableDeclStatementTest, IsVariableDecl) {
     EXPECT_TRUE(stmt->Is<VariableDeclStatement>());
 }
 
-TEST_F(VariableDeclStatementTest, Assert_Null_Variable) {
-    EXPECT_FATAL_FAILURE(
+TEST_F(VariableDeclStatementDeathTest, Assert_Null_Variable) {
+    EXPECT_DEATH_IF_SUPPORTED(
         {
             ProgramBuilder b;
             b.create<VariableDeclStatement>(nullptr);
@@ -67,8 +67,8 @@ TEST_F(VariableDeclStatementTest, Assert_Null_Variable) {
         "internal compiler error");
 }
 
-TEST_F(VariableDeclStatementTest, Assert_DifferentGenerationID_Variable) {
-    EXPECT_FATAL_FAILURE(
+TEST_F(VariableDeclStatementDeathTest, Assert_DifferentGenerationID_Variable) {
+    EXPECT_DEATH_IF_SUPPORTED(
         {
             ProgramBuilder b1;
             ProgramBuilder b2;

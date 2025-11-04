@@ -71,8 +71,8 @@ Item {
                 source: "#Rectangle"
                 position: Qt.vector3d(200, 0, -300)
                 scale: Qt.vector3d(10.0, 10.0, 0.0)
-                materials: DefaultMaterial {
-                    diffuseColor: "#204020"
+                materials: PrincipledMaterial {
+                    baseColor: "#204020"
                 }
             }
             Model {
@@ -80,8 +80,8 @@ Item {
                 position: Qt.vector3d(200, -100, -300)
                 eulerRotation.x: -90
                 scale: Qt.vector3d(10.0, 10.0, 0.0)
-                materials: DefaultMaterial {
-                    diffuseColor: "#204020"
+                materials: PrincipledMaterial {
+                    baseColor: "#204020"
                 }
             }
             Model {
@@ -89,8 +89,8 @@ Item {
                 position: Qt.vector3d(-300, 0, -200)
                 eulerRotation.y: 90
                 scale: Qt.vector3d(10.0, 10.0, 0.0)
-                materials: DefaultMaterial {
-                    diffuseColor: "#204020"
+                materials: PrincipledMaterial {
+                    baseColor: "#204020"
                 }
             }
         }

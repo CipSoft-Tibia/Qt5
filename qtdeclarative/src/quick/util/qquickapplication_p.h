@@ -69,7 +69,7 @@ private Q_SLOTS:
 
 private:
     Q_DISABLE_COPY(QQuickApplication)
-    QVector<QQuickScreenInfo *> m_screens;
+    std::vector<std::unique_ptr<QQuickScreenInfo>> m_screens;
 };
 
 QT_END_NAMESPACE

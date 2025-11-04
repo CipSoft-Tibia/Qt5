@@ -26,6 +26,7 @@
 
 namespace media {
 
+class MailboxFrameRegistry;
 // A StableVideoDecoderService serves as an adapter between the
 // stable::mojom::StableVideoDecoder interface and the mojom::VideoDecoder
 // interface. This allows us to provide hardware video decoding capabilities to
@@ -56,7 +57,8 @@ class MEDIA_MOJO_EXPORT StableVideoDecoderService
       mojo::PendingRemote<stable::mojom::StableVideoDecoderTracker>
           tracker_remote,
       std::unique_ptr<mojom::VideoDecoder> dst_video_decoder,
-      MojoCdmServiceContext* cdm_service_context);
+      MojoCdmServiceContext* cdm_service_context,
+      scoped_refptr<const MailboxFrameRegistry> mailbox_frame_registry);
   StableVideoDecoderService(const StableVideoDecoderService&) = delete;
   StableVideoDecoderService& operator=(const StableVideoDecoderService&) =
       delete;
@@ -88,7 +90,7 @@ class MEDIA_MOJO_EXPORT StableVideoDecoderService
   void OnVideoFrameDecoded(
       const scoped_refptr<VideoFrame>& frame,
       bool can_read_without_stalling,
-      const absl::optional<base::UnguessableToken>& release_token) final;
+      const std::optional<base::UnguessableToken>& release_token) final;
   void OnWaiting(WaitingReason reason) final;
   void RequestOverlayInfo(bool restart_for_transitions) final;
 
@@ -154,7 +156,11 @@ class MEDIA_MOJO_EXPORT StableVideoDecoderService
       GUARDED_BY_CONTEXT(sequence_checker_);
 #endif  // BUILDFLAG(IS_CHROMEOS_ASH)
 
-  absl::optional<base::UnguessableToken> cdm_id_
+  // Used by OnVideoFrameDecoded() to convert media VideoFrames to a
+  // stable::mojo::VideoFrame.
+  const scoped_refptr<const MailboxFrameRegistry> mailbox_frame_registry_;
+
+  std::optional<base::UnguessableToken> cdm_id_
       GUARDED_BY_CONTEXT(sequence_checker_);
 
   SEQUENCE_CHECKER(sequence_checker_);

@@ -11,6 +11,7 @@
 #include "extensions/browser/extension_registry.h"
 #include "extensions/common/api/power.h"
 #include "extensions/common/extension.h"
+#include "extensions/common/extension_id.h"
 #include "services/device/public/mojom/wake_lock_provider.mojom.h"
 
 namespace extensions {
@@ -27,7 +28,8 @@ device::mojom::WakeLockType LevelToWakeLockType(api::power::Level level) {
     case api::power::Level::kNone:
       return device::mojom::WakeLockType::kPreventDisplaySleep;
   }
-  NOTREACHED() << "Unhandled power level: " << api::power::ToString(level);
+  NOTREACHED_IN_MIGRATION()
+      << "Unhandled power level: " << api::power::ToString(level);
   return device::mojom::WakeLockType::kPreventDisplaySleep;
 }
 
@@ -70,13 +72,13 @@ BrowserContextKeyedAPIFactory<PowerAPI>* PowerAPI::GetFactoryInstance() {
   return g_factory.Pointer();
 }
 
-void PowerAPI::AddRequest(const std::string& extension_id,
+void PowerAPI::AddRequest(const ExtensionId& extension_id,
                           api::power::Level level) {
   extension_levels_[extension_id] = level;
   UpdateWakeLock();
 }
 
-void PowerAPI::RemoveRequest(const std::string& extension_id) {
+void PowerAPI::RemoveRequest(const ExtensionId& extension_id) {
   extension_levels_.erase(extension_id);
   UpdateWakeLock();
 }
@@ -162,8 +164,9 @@ void PowerAPI::CancelWakeLock() {
 
 device::mojom::WakeLock* PowerAPI::GetWakeLock() {
   // Here is a lazy binding, and will not reconnect after connection error.
-  if (wake_lock_)
+  if (wake_lock_) {
     return wake_lock_.get();
+  }
 
   mojo::Remote<device::mojom::WakeLockProvider> wake_lock_provider;
   content::GetDeviceService().BindWakeLockProvider(

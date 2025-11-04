@@ -164,14 +164,17 @@ TEST_F(ResolverBuiltinValidationTest, BuiltinRedeclaredAsAliasUsedAsFunction) {
     WrapInFunction(Call(Source{{56, 78}}, "mix", 1_f, 2_f, 3_f));
 
     EXPECT_FALSE(r()->Resolve());
-    EXPECT_EQ(r()->error(), R"(56:78 error: no matching constructor for i32(f32, f32, f32)
+    EXPECT_EQ(r()->error(), R"(56:78 error: no matching constructor for 'i32(f32, f32, f32)'
 
 2 candidate constructors:
-  i32(i32) -> i32
-  i32() -> i32
+ • 'i32(i32  ✗ ) -> i32'
+ • 'i32() -> i32' where:
+      ✗  overload expects 0 arguments, call passed 3 arguments
 
 1 candidate conversion:
-  i32<T>(T) -> i32  where: T is abstract-int, abstract-float, f32, f16, u32 or bool
+ • 'i32(T  ✓ ) -> i32' where:
+      ✗  overload expects 1 argument, call passed 3 arguments
+      ✓  'T' is 'abstract-int', 'abstract-float', 'f32', 'f16', 'u32' or 'bool'
 )");
 }
 
@@ -572,7 +575,7 @@ TEST_F(ResolverPacked4x8IntegerDotProductValidationTest, Dot4I8Packed_FeatureDis
     EXPECT_FALSE(resolver.Resolve());
     EXPECT_EQ(resolver.error(),
               "12:34 error: built-in function 'dot4I8Packed' requires the "
-              "packed_4x8_integer_dot_product language feature, which is not allowed in the "
+              "'packed_4x8_integer_dot_product' language feature, which is not allowed in the "
               "current environment");
 }
 
@@ -601,7 +604,7 @@ TEST_F(ResolverPacked4x8IntegerDotProductValidationTest, Dot4U8Packed_FeatureDis
     EXPECT_FALSE(resolver.Resolve());
     EXPECT_EQ(resolver.error(),
               "12:34 error: built-in function 'dot4U8Packed' requires the "
-              "packed_4x8_integer_dot_product language feature, which is not allowed in the "
+              "'packed_4x8_integer_dot_product' language feature, which is not allowed in the "
               "current environment");
 }
 
@@ -628,7 +631,7 @@ TEST_F(ResolverPacked4x8IntegerDotProductValidationTest, Pack4xI8_FeatureDisallo
     EXPECT_FALSE(resolver.Resolve());
     EXPECT_EQ(resolver.error(),
               "12:34 error: built-in function 'pack4xI8' requires the "
-              "packed_4x8_integer_dot_product language feature, which is not allowed in the "
+              "'packed_4x8_integer_dot_product' language feature, which is not allowed in the "
               "current environment");
 }
 
@@ -655,7 +658,7 @@ TEST_F(ResolverPacked4x8IntegerDotProductValidationTest, Pack4xU8_FeatureDisallo
     EXPECT_FALSE(resolver.Resolve());
     EXPECT_EQ(resolver.error(),
               "12:34 error: built-in function 'pack4xU8' requires the "
-              "packed_4x8_integer_dot_product language feature, which is not allowed in the "
+              "'packed_4x8_integer_dot_product' language feature, which is not allowed in the "
               "current environment");
 }
 
@@ -682,7 +685,7 @@ TEST_F(ResolverPacked4x8IntegerDotProductValidationTest, Pack4xI8Clamp_FeatureDi
     EXPECT_FALSE(resolver.Resolve());
     EXPECT_EQ(resolver.error(),
               "12:34 error: built-in function 'pack4xI8Clamp' requires the "
-              "packed_4x8_integer_dot_product language feature, which is not allowed in the "
+              "'packed_4x8_integer_dot_product' language feature, which is not allowed in the "
               "current environment");
 }
 
@@ -709,7 +712,7 @@ TEST_F(ResolverPacked4x8IntegerDotProductValidationTest, Pack4xU8Clamp_FeatureDi
     EXPECT_FALSE(resolver.Resolve());
     EXPECT_EQ(resolver.error(),
               "12:34 error: built-in function 'pack4xU8Clamp' requires the "
-              "packed_4x8_integer_dot_product language feature, which is not allowed in the "
+              "'packed_4x8_integer_dot_product' language feature, which is not allowed in the "
               "current environment");
 }
 
@@ -736,7 +739,7 @@ TEST_F(ResolverPacked4x8IntegerDotProductValidationTest, Unpack4xI8_FeatureDisal
     EXPECT_FALSE(resolver.Resolve());
     EXPECT_EQ(resolver.error(),
               "12:34 error: built-in function 'unpack4xI8' requires the "
-              "packed_4x8_integer_dot_product language feature, which is not allowed in the "
+              "'packed_4x8_integer_dot_product' language feature, which is not allowed in the "
               "current environment");
 }
 
@@ -763,7 +766,7 @@ TEST_F(ResolverPacked4x8IntegerDotProductValidationTest, Unpack4xU8_FeatureDisal
     EXPECT_FALSE(resolver.Resolve());
     EXPECT_EQ(resolver.error(),
               "12:34 error: built-in function 'unpack4xU8' requires the "
-              "packed_4x8_integer_dot_product language feature, which is not allowed in the "
+              "'packed_4x8_integer_dot_product' language feature, which is not allowed in the "
               "current environment");
 }
 
@@ -778,10 +781,10 @@ TEST_F(ResolverBuiltinValidationTest, WorkgroupUniformLoad_WrongAddressSpace) {
 
     EXPECT_FALSE(r()->Resolve());
     EXPECT_EQ(r()->error(),
-              R"(error: no matching call to workgroupUniformLoad(ptr<storage, i32, read_write>)
+              R"(error: no matching call to 'workgroupUniformLoad(ptr<storage, i32, read_write>)'
 
 1 candidate function:
-  workgroupUniformLoad(ptr<workgroup, T, read_write>) -> T
+ • 'workgroupUniformLoad(ptr<workgroup, T, read_write>  ✗ ) -> T'
 )");
 }
 
@@ -832,26 +835,58 @@ TEST_F(ResolverBuiltinValidationTest, WorkgroupUniformLoad_AtomicInStruct) {
 }
 
 TEST_F(ResolverBuiltinValidationTest, SubgroupBallotWithoutExtension) {
-    // fn func { return subgroupBallot(); }
+    // fn func { return subgroupBallot(true); }
     Func("func", tint::Empty, ty.vec4<u32>(),
          Vector{
-             Return(Call(Source{Source::Location{12, 34}}, "subgroupBallot")),
+             Return(Call(Source{Source::Location{12, 34}}, "subgroupBallot", true)),
          });
 
     EXPECT_FALSE(r()->Resolve());
     EXPECT_EQ(
         r()->error(),
-        R"(12:34 error: cannot call built-in function 'subgroupBallot' without extension chromium_experimental_subgroups)");
+        R"(12:34 error: cannot call built-in function 'subgroupBallot' without extension 'subgroups')");
 }
 
 TEST_F(ResolverBuiltinValidationTest, SubgroupBallotWithExtension) {
-    // enable chromium_experimental_subgroups;
+    // enable subgroups;
+    // fn func -> vec4<u32> { return subgroupBallot(true); }
+    Enable(wgsl::Extension::kSubgroups);
+
+    Func("func", tint::Empty, ty.vec4<u32>(),
+         Vector{
+             Return(Call("subgroupBallot", true)),
+         });
+
+    EXPECT_TRUE(r()->Resolve());
+}
+
+TEST_F(ResolverBuiltinValidationTest, SubgroupBallotWithoutArgument) {
+    // enable subgroups;
     // fn func -> vec4<u32> { return subgroupBallot(); }
-    Enable(wgsl::Extension::kChromiumExperimentalSubgroups);
+    Enable(wgsl::Extension::kSubgroups);
 
     Func("func", tint::Empty, ty.vec4<u32>(),
          Vector{
              Return(Call("subgroupBallot")),
+         });
+
+    EXPECT_FALSE(r()->Resolve());
+    EXPECT_EQ(r()->error(),
+              R"(error: no matching call to 'subgroupBallot()'
+
+1 candidate function:
+ • 'subgroupBallot(bool  ✗ ) -> vec4<u32>'
+)");
+}
+
+TEST_F(ResolverBuiltinValidationTest, SubgroupBallotWithExperimentalExtension) {
+    // enable chromium_experimental_subgroups;
+    // fn func -> vec4<u32> { return subgroupBallot(true); }
+    Enable(wgsl::Extension::kChromiumExperimentalSubgroups);
+
+    Func("func", tint::Empty, ty.vec4<u32>(),
+         Vector{
+             Return(Call("subgroupBallot", true)),
          });
 
     EXPECT_TRUE(r()->Resolve());
@@ -867,10 +902,23 @@ TEST_F(ResolverBuiltinValidationTest, SubgroupBroadcastWithoutExtension) {
     EXPECT_FALSE(r()->Resolve());
     EXPECT_EQ(
         r()->error(),
-        R"(12:34 error: cannot call built-in function 'subgroupBroadcast' without extension chromium_experimental_subgroups)");
+        R"(12:34 error: cannot call built-in function 'subgroupBroadcast' without extension 'subgroups')");
 }
 
 TEST_F(ResolverBuiltinValidationTest, SubgroupBroadcastWithExtension) {
+    // enable subgroups;
+    // fn func -> i32 { return subgroupBroadcast(1,0); }
+    Enable(wgsl::Extension::kSubgroups);
+
+    Func("func", tint::Empty, ty.i32(),
+         Vector{
+             Return(Call("subgroupBroadcast", 1_i, 0_u)),
+         });
+
+    EXPECT_TRUE(r()->Resolve());
+}
+
+TEST_F(ResolverBuiltinValidationTest, SubgroupBroadcastWithExperimentalExtension) {
     // enable chromium_experimental_subgroups;
     // fn func -> i32 { return subgroupBroadcast(1,0); }
     Enable(wgsl::Extension::kChromiumExperimentalSubgroups);
@@ -883,10 +931,108 @@ TEST_F(ResolverBuiltinValidationTest, SubgroupBroadcastWithExtension) {
     EXPECT_TRUE(r()->Resolve());
 }
 
+TEST_F(ResolverBuiltinValidationTest, SubgroupBroadcastWithoutExtension_F16) {
+    // enable f16;
+    // enable subgroups;
+    // fn func -> f16 { return subgroupBroadcast(1.h,0); }
+    Enable(wgsl::Extension::kF16);
+    Enable(wgsl::Extension::kSubgroups);
+    Func("func", tint::Empty, ty.f16(),
+         Vector{
+             Return(Call(Source{{12, 34}}, "subgroupBroadcast", 1_h, 0_u)),
+         });
+
+    EXPECT_FALSE(r()->Resolve());
+    EXPECT_EQ(
+        r()->error(),
+        R"(12:34 error: cannot call built-in function 'subgroupBroadcast' without extension 'subgroups_f16')");
+}
+
+TEST_F(ResolverBuiltinValidationTest, SubgroupBroadcastWithExtensions_F16) {
+    // enable f16;
+    // enable subgroups;
+    // enable subgroups_f16;
+    // fn func -> f16 { return subgroupBroadcast(1.h,0); }
+    Enable(wgsl::Extension::kF16);
+    Enable(wgsl::Extension::kSubgroups);
+    Enable(wgsl::Extension::kSubgroupsF16);
+
+    Func("func", tint::Empty, ty.f16(),
+         Vector{
+             Return(Call("subgroupBroadcast", 1_h, 0_u)),
+         });
+
+    EXPECT_TRUE(r()->Resolve());
+}
+
+TEST_F(ResolverBuiltinValidationTest, SubgroupBroadcastWithExperimentalExtension_F16) {
+    // enable f16;
+    // enable chromium_experimental_subgroups;
+    // fn func -> f16 { return subgroupBroadcast(1.h,0); }
+    Enable(wgsl::Extension::kF16);
+    Enable(wgsl::Extension::kChromiumExperimentalSubgroups);
+
+    Func("func", tint::Empty, ty.f16(),
+         Vector{
+             Return(Call("subgroupBroadcast", 1_h, 0_u)),
+         });
+
+    EXPECT_TRUE(r()->Resolve());
+}
+
+TEST_F(ResolverBuiltinValidationTest, SubgroupBroadcastWithoutExtension_VecF16) {
+    // enable f16;
+    // enable subgroups;
+    // fn func -> vec4<f16> { return subgroupBroadcast(vec4(1.h),0); }
+    Enable(wgsl::Extension::kF16);
+    Enable(wgsl::Extension::kSubgroups);
+    Func("func", tint::Empty, ty.vec4<f16>(),
+         Vector{
+             Return(Call(Source{{12, 34}}, "subgroupBroadcast", Call(ty.vec4<f16>(), 1_h), 0_u)),
+         });
+
+    EXPECT_FALSE(r()->Resolve());
+    EXPECT_EQ(
+        r()->error(),
+        R"(12:34 error: cannot call built-in function 'subgroupBroadcast' without extension 'subgroups_f16')");
+}
+
+TEST_F(ResolverBuiltinValidationTest, SubgroupBroadcastWithExtensions_VecF16) {
+    // enable f16;
+    // enable subgroups;
+    // enable subgroups_f16;
+    // fn func -> vec4<f16> { return subgroupBroadcast(vec4(1.h),0); }
+    Enable(wgsl::Extension::kF16);
+    Enable(wgsl::Extension::kSubgroups);
+    Enable(wgsl::Extension::kSubgroupsF16);
+
+    Func("func", tint::Empty, ty.vec4<f16>(),
+         Vector{
+             Return(Call("subgroupBroadcast", Call(ty.vec4<f16>(), 1_h), 0_u)),
+         });
+
+    EXPECT_TRUE(r()->Resolve());
+}
+
+TEST_F(ResolverBuiltinValidationTest, SubgroupBroadcastWithExperimentalExtension_VecF16) {
+    // enable f16;
+    // enable chromium_experimental_subgroups;
+    // fn func -> vec4<f16> { return subgroupBroadcast(vec4(1.h),0); }
+    Enable(wgsl::Extension::kF16);
+    Enable(wgsl::Extension::kChromiumExperimentalSubgroups);
+
+    Func("func", tint::Empty, ty.vec4<f16>(),
+         Vector{
+             Return(Call("subgroupBroadcast", Call(ty.vec4<f16>(), 1_h), 0_u)),
+         });
+
+    EXPECT_TRUE(r()->Resolve());
+}
+
 TEST_F(ResolverBuiltinValidationTest, SubroupBroadcastInComputeStage) {
     // @vertex fn func { dpdx(1.0); }
 
-    Enable(wgsl::Extension::kChromiumExperimentalSubgroups);
+    Enable(wgsl::Extension::kSubgroups);
 
     auto* call = Call("subgroupBroadcast", 1_f, 0_u);
     Func(Source{{1, 2}}, "func", tint::Empty, ty.void_(), Vector{Ignore(call)},
@@ -901,7 +1047,7 @@ TEST_F(ResolverBuiltinValidationTest, SubroupBroadcastInComputeStage) {
 TEST_F(ResolverBuiltinValidationTest, SubroupBroadcastInVertexStageIsError) {
     // @vertex fn func { dpdx(1.0); }
 
-    Enable(wgsl::Extension::kChromiumExperimentalSubgroups);
+    Enable(wgsl::Extension::kSubgroups);
 
     auto* call = Call(Source{{3, 4}}, "subgroupBroadcast", 1_f, 0_u);
     Func("func", tint::Empty, ty.vec4<f32>(), Vector{Ignore(call), Return(Call(ty.vec4<f32>()))},
@@ -914,10 +1060,10 @@ TEST_F(ResolverBuiltinValidationTest, SubroupBroadcastInVertexStageIsError) {
     EXPECT_EQ(r()->error(), "3:4 error: built-in cannot be used by vertex pipeline stage");
 }
 
-TEST_F(ResolverBuiltinValidationTest, SubroupBroadcastInFragmentStageIsError) {
+TEST_F(ResolverBuiltinValidationTest, SubroupBroadcastInFragmentStageIsValid) {
     // @vertex fn func { dpdx(1.0); }
 
-    Enable(wgsl::Extension::kChromiumExperimentalSubgroups);
+    Enable(wgsl::Extension::kSubgroups);
 
     auto* call = Call(Source{{3, 4}}, "subgroupBroadcast", 1_f, 0_u);
     Func("func",
@@ -927,12 +1073,11 @@ TEST_F(ResolverBuiltinValidationTest, SubroupBroadcastInFragmentStageIsError) {
              Stage(ast::PipelineStage::kFragment),
          });
 
-    EXPECT_FALSE(r()->Resolve());
-    EXPECT_EQ(r()->error(), "3:4 error: built-in cannot be used by fragment pipeline stage");
+    EXPECT_TRUE(r()->Resolve());
 }
 
 TEST_F(ResolverBuiltinValidationTest, SubgroupBroadcastValueF32) {
-    Enable(wgsl::Extension::kChromiumExperimentalSubgroups);
+    Enable(wgsl::Extension::kSubgroups);
     Func("func", tint::Empty, ty.f32(),
          Vector{
              Return(Call("subgroupBroadcast", 1_f, 0_u)),
@@ -941,7 +1086,7 @@ TEST_F(ResolverBuiltinValidationTest, SubgroupBroadcastValueF32) {
 }
 
 TEST_F(ResolverBuiltinValidationTest, SubgroupBroadcastValueI32) {
-    Enable(wgsl::Extension::kChromiumExperimentalSubgroups);
+    Enable(wgsl::Extension::kSubgroups);
     Func("func", tint::Empty, ty.i32(),
          Vector{
              Return(Call("subgroupBroadcast", 1_i, 0_u)),
@@ -950,7 +1095,7 @@ TEST_F(ResolverBuiltinValidationTest, SubgroupBroadcastValueI32) {
 }
 
 TEST_F(ResolverBuiltinValidationTest, SubgroupBroadcastValueU32) {
-    Enable(wgsl::Extension::kChromiumExperimentalSubgroups);
+    Enable(wgsl::Extension::kSubgroups);
     Func("func", tint::Empty, ty.u32(),
          Vector{
              Return(Call("subgroupBroadcast", 1_u, 0_u)),
@@ -959,7 +1104,7 @@ TEST_F(ResolverBuiltinValidationTest, SubgroupBroadcastValueU32) {
 }
 
 TEST_F(ResolverBuiltinValidationTest, SubgroupBroadcastLaneArgMustBeConst) {
-    Enable(wgsl::Extension::kChromiumExperimentalSubgroups);
+    Enable(wgsl::Extension::kSubgroups);
     Func("func", tint::Empty, ty.void_(),
          Vector{
              Decl(Let("lane", Expr(1_u))),
@@ -969,6 +1114,42 @@ TEST_F(ResolverBuiltinValidationTest, SubgroupBroadcastLaneArgMustBeConst) {
     EXPECT_EQ(
         r()->error(),
         R"(12:34 error: the sourceLaneIndex argument of subgroupBroadcast must be a const-expression)");
+}
+
+TEST_F(ResolverBuiltinValidationTest, QuadBroadcastIdArgMustBeConst) {
+    Enable(wgsl::Extension::kSubgroups);
+    Func("func", tint::Empty, ty.void_(),
+         Vector{
+             Decl(Let("id", Expr(1_u))),
+             Ignore(Call("quadBroadcast", 1_f, Ident(Source{{12, 34}}, "id"))),
+         });
+    EXPECT_FALSE(r()->Resolve());
+    EXPECT_EQ(r()->error(),
+              R"(12:34 error: the id argument of quadBroadcast must be a const-expression)");
+}
+
+TEST_F(ResolverBuiltinValidationTest, SubgroupBroadcastLaneArgMustBeNonNeg) {
+    Enable(wgsl::Extension::kSubgroups);
+    Func("func", tint::Empty, ty.u32(),
+         Vector{
+             Return(Call("subgroupBroadcast", 1_u, Expr(Source{{12, 34}}, -1_i))),
+         });
+    EXPECT_FALSE(r()->Resolve());
+    EXPECT_EQ(
+        r()->error(),
+        R"(12:34 error: the sourceLaneIndex argument of subgroupBroadcast must be greater than or equal to zero)");
+}
+
+TEST_F(ResolverBuiltinValidationTest, QuadBroadcastIdArgMustBeNonNeg) {
+    Enable(wgsl::Extension::kSubgroups);
+    Func("func", tint::Empty, ty.u32(),
+         Vector{
+             Return(Call("quadBroadcast", 1_u, Expr(Source{{12, 34}}, -1_i))),
+         });
+    EXPECT_FALSE(r()->Resolve());
+    EXPECT_EQ(
+        r()->error(),
+        R"(12:34 error: the id argument of quadBroadcast must be greater than or equal to zero)");
 }
 
 TEST_F(ResolverBuiltinValidationTest, TextureBarrier) {
@@ -990,10 +1171,9 @@ TEST_F(ResolverBuiltinValidationTest, TextureBarrier_FeatureDisallowed) {
 
     Resolver resolver{this, wgsl::AllowedFeatures{}};
     EXPECT_FALSE(resolver.Resolve());
-    EXPECT_EQ(resolver.error(),
-              "12:34 error: built-in function 'textureBarrier' requires the "
-              "readonly_and_readwrite_storage_textures language feature, which is not allowed in "
-              "the current environment");
+    EXPECT_EQ(
+        resolver.error(),
+        R"(12:34 error: built-in function 'textureBarrier' requires the 'readonly_and_readwrite_storage_textures' language feature, which is not allowed in the current environment)");
 }
 
 }  // namespace

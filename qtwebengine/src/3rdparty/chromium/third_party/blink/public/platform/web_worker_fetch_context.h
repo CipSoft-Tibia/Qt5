@@ -6,12 +6,12 @@
 #define THIRD_PARTY_BLINK_PUBLIC_PLATFORM_WEB_WORKER_FETCH_CONTEXT_H_
 
 #include <memory>
+#include <optional>
 
 #include "base/memory/ref_counted.h"
 #include "base/memory/scoped_refptr.h"
 #include "base/task/single_thread_task_runner.h"
 #include "services/network/public/mojom/url_loader_factory.mojom-shared.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "third_party/blink/public/common/loader/url_loader_throttle.h"
 #include "third_party/blink/public/mojom/service_worker/controller_service_worker_mode.mojom-shared.h"
 #include "third_party/blink/public/platform/cross_variant_mojo_util.h"
@@ -82,10 +82,17 @@ class WebWorkerFetchContext : public base::RefCounted<WebWorkerFetchContext> {
   // The returned URLLoaderFactory is owned by |this|.
   virtual URLLoaderFactory* GetScriptLoaderFactory() { return nullptr; }
 
+  // Called before a request is looked up from the cache. Allows the worker
+  // to override the url.
+  virtual std::optional<WebURL> WillSendRequest(const WebURL& url) {
+    return std::nullopt;
+  }
+
   // Called when a request is about to be sent out to modify the request to
   // handle the request correctly in the loading stack later. (Example: service
-  // worker)
-  virtual void WillSendRequest(WebURLRequest&) = 0;
+  // worker). Clients that need to change the url should do it in
+  // OverrideRequestUrl(), not here.
+  virtual void FinalizeRequest(WebURLRequest&) = 0;
 
   // Creates URLLoaderThrottles for the `request`.
   virtual WebVector<std::unique_ptr<URLLoaderThrottle>> CreateThrottles(
@@ -109,7 +116,7 @@ class WebWorkerFetchContext : public base::RefCounted<WebWorkerFetchContext> {
   // The top-frame-origin for the worker. For a dedicated worker this is the
   // top-frame origin of the page that created the worker. For a shared worker
   // or a service worker this is unset.
-  virtual absl::optional<WebSecurityOrigin> TopFrameOrigin() const = 0;
+  virtual std::optional<WebSecurityOrigin> TopFrameOrigin() const = 0;
 
   // Sets the builder object of WebDocumentSubresourceFilter on the main thread
   // which will be used in TakeSubresourceFilter() to create a

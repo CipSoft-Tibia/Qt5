@@ -48,6 +48,7 @@
 #include "third_party/blink/renderer/modules/mediastream/media_device_info.h"
 #include "third_party/blink/renderer/modules/mediastream/restriction_target.h"
 #include "third_party/blink/renderer/platform/bindings/exception_state.h"
+#include "third_party/blink/renderer/platform/testing/runtime_enabled_features_test_helpers.h"
 #include "third_party/blink/renderer/platform/testing/testing_platform_support.h"
 #include "third_party/blink/renderer/platform/weborigin/security_origin.h"
 #include "third_party/blink/renderer/platform/wtf/functional.h"
@@ -90,7 +91,7 @@ class MockMediaDevicesDispatcherHost final
                media::CameraAvailability::kAvailable},
               {"fake_video_input_2", "Fake Video Input 2", "video_input_group",
                media::VideoCaptureControlSupport(),
-               blink::mojom::FacingMode::kUser, absl::nullopt},
+               blink::mojom::FacingMode::kUser, std::nullopt},
               {"fake_video_input_3", "Fake Video Input 3", "video_input_group 2",
                media::VideoCaptureControlSupport(),
                blink::mojom::FacingMode::kUser,
@@ -187,7 +188,7 @@ class MockMediaDevicesDispatcherHost final
     }
     if (request_audio_output) {
       wtf_size_t index = static_cast<wtf_size_t>(
-          blink::mojom::blink::MediaDeviceType::kMediaAudioOuput);
+          blink::mojom::blink::MediaDeviceType::kMediaAudioOutput);
       enumeration[index] = enumeration_[index];
     }
     std::move(callback).Run(std::move(enumeration),
@@ -196,23 +197,23 @@ class MockMediaDevicesDispatcherHost final
   }
 
   void GetVideoInputCapabilities(GetVideoInputCapabilitiesCallback) override {
-    NOTREACHED();
+    NOTREACHED_IN_MIGRATION();
   }
 
   void GetAllVideoInputDeviceFormats(
       const String&,
       GetAllVideoInputDeviceFormatsCallback) override {
-    NOTREACHED();
+    NOTREACHED_IN_MIGRATION();
   }
 
   void GetAvailableVideoInputDeviceFormats(
       const String&,
       GetAvailableVideoInputDeviceFormatsCallback) override {
-    NOTREACHED();
+    NOTREACHED_IN_MIGRATION();
   }
 
   void GetAudioInputCapabilities(GetAudioInputCapabilitiesCallback) override {
-    NOTREACHED();
+    NOTREACHED_IN_MIGRATION();
   }
 
   void AddMediaDevicesListener(
@@ -306,9 +307,9 @@ class MockMediaDevicesDispatcherHost final
     listener()->OnDevicesChanged(MediaDeviceType::kMediaVideoInput,
                                  enumeration_[static_cast<wtf_size_t>(
                                      MediaDeviceType::kMediaVideoInput)]);
-    listener()->OnDevicesChanged(MediaDeviceType::kMediaAudioOuput,
+    listener()->OnDevicesChanged(MediaDeviceType::kMediaAudioOutput,
                                  enumeration_[static_cast<wtf_size_t>(
-                                     MediaDeviceType::kMediaAudioOuput)]);
+                                     MediaDeviceType::kMediaAudioOutput)]);
   }
 
   Vector<WebMediaDeviceInfo>& AudioInputDevices() {
@@ -321,7 +322,7 @@ class MockMediaDevicesDispatcherHost final
   }
   Vector<WebMediaDeviceInfo>& AudioOutputDevices() {
     return enumeration_[static_cast<wtf_size_t>(
-        MediaDeviceType::kMediaAudioOuput)];
+        MediaDeviceType::kMediaAudioOutput)];
   }
 
   const Vector<mojom::blink::VideoInputDeviceCapabilitiesPtr>&
@@ -354,7 +355,7 @@ String ToString(MediaDeviceType type) {
       return "audioinput";
     case blink::MediaDeviceType::kMediaVideoInput:
       return "videoinput";
-    case blink::MediaDeviceType::kMediaAudioOuput:
+    case blink::MediaDeviceType::kMediaAudioOutput:
       return "audiooutput";
     default:
       return String();
@@ -447,7 +448,38 @@ SubCaptureTarget* ToSubCaptureTarget(const blink::ScriptValue& value) {
     return restriction_target;
   }
 
-  NOTREACHED_NORETURN();
+  NOTREACHED();
+}
+#endif  // !BUILDFLAG(IS_ANDROID) && !BUILDFLAG(IS_IOS)
+
+ScriptPromiseUntyped ProduceSubCaptureTargetAndGetPromise(
+    V8TestingScope& scope,
+    SubCaptureTarget::Type type,
+    MediaDevices* media_devices,
+    Element* element) {
+  switch (type) {
+    case SubCaptureTarget::Type::kCropTarget:
+      return media_devices->ProduceCropTarget(scope.GetScriptState(), element,
+                                              scope.GetExceptionState());
+
+    case SubCaptureTarget::Type::kRestrictionTarget:
+      return media_devices->ProduceRestrictionTarget(
+          scope.GetScriptState(), element, scope.GetExceptionState());
+  }
+
+  NOTREACHED();
+}
+
+#if !BUILDFLAG(IS_ANDROID) && !BUILDFLAG(IS_IOS)
+void ProduceSubCaptureTargetAndGetTester(
+    V8TestingScope& scope,
+    SubCaptureTarget::Type type,
+    MediaDevices* media_devices,
+    Element* element,
+    std::optional<ScriptPromiseTester>& tester) {
+  const ScriptPromiseUntyped promise =
+      ProduceSubCaptureTargetAndGetPromise(scope, type, media_devices, element);
+  tester.emplace(scope.GetScriptState(), promise);
 }
 #endif  // !BUILDFLAG(IS_ANDROID) && !BUILDFLAG(IS_IOS)
 
@@ -525,11 +557,12 @@ TEST_F(MediaDevicesTest, GetUserMediaCanBeCalled) {
   V8TestingScope scope;
   UserMediaStreamConstraints* constraints =
       UserMediaStreamConstraints::Create();
-  ScriptPromise promise =
+  ScriptPromiseUntyped promise =
       GetMediaDevices(scope.GetWindow())
           ->getUserMedia(scope.GetScriptState(), constraints,
                          scope.GetExceptionState());
-  ASSERT_TRUE(promise.IsEmpty());
+  // We return the created promise before it was resolved/rejected.
+  ASSERT_FALSE(promise.IsEmpty());
   // We expect a type error because the given constraints are empty.
   EXPECT_EQ(scope.GetExceptionState().Code(),
             ToExceptionCode(ESErrorType::kTypeError));
@@ -602,8 +635,9 @@ TEST_F(MediaDevicesTest, SetCaptureHandleConfigAfterConnectionError) {
   platform()->RunUntilIdle();
 
   // Note: SetCaptureHandleConfigEmpty proves the following is a valid call.
-  CaptureHandleConfig input_config;
-  media_devices->setCaptureHandleConfig(scope.GetScriptState(), &input_config,
+  CaptureHandleConfig* input_config =
+      MakeGarbageCollected<CaptureHandleConfig>();
+  media_devices->setCaptureHandleConfig(scope.GetScriptState(), input_config,
                                         scope.GetExceptionState());
   platform()->RunUntilIdle();
 }
@@ -713,7 +747,8 @@ TEST_F(MediaDevicesTest, SetCaptureHandleConfigEmpty) {
   V8TestingScope scope;
   auto* media_devices = GetMediaDevices(*GetDocument().domWindow());
 
-  CaptureHandleConfig input_config;
+  CaptureHandleConfig* input_config =
+      MakeGarbageCollected<CaptureHandleConfig>();
 
   // Expected output.
   auto expected_config = mojom::blink::CaptureHandleConfig::New();
@@ -723,7 +758,7 @@ TEST_F(MediaDevicesTest, SetCaptureHandleConfigEmpty) {
   expected_config->permitted_origins = {};
   dispatcher_host().ExpectSetCaptureHandleConfig(std::move(expected_config));
 
-  media_devices->setCaptureHandleConfig(scope.GetScriptState(), &input_config,
+  media_devices->setCaptureHandleConfig(scope.GetScriptState(), input_config,
                                         scope.GetExceptionState());
 
   platform()->RunUntilIdle();
@@ -735,8 +770,9 @@ TEST_F(MediaDevicesTest, SetCaptureHandleConfigWithExposeOrigin) {
   V8TestingScope scope;
   auto* media_devices = GetMediaDevices(*GetDocument().domWindow());
 
-  CaptureHandleConfig input_config;
-  input_config.setExposeOrigin(true);
+  CaptureHandleConfig* input_config =
+      MakeGarbageCollected<CaptureHandleConfig>();
+  input_config->setExposeOrigin(true);
 
   // Expected output.
   auto expected_config = mojom::blink::CaptureHandleConfig::New();
@@ -746,7 +782,7 @@ TEST_F(MediaDevicesTest, SetCaptureHandleConfigWithExposeOrigin) {
   expected_config->permitted_origins = {};
   dispatcher_host().ExpectSetCaptureHandleConfig(std::move(expected_config));
 
-  media_devices->setCaptureHandleConfig(scope.GetScriptState(), &input_config,
+  media_devices->setCaptureHandleConfig(scope.GetScriptState(), input_config,
                                         scope.GetExceptionState());
 
   platform()->RunUntilIdle();
@@ -758,8 +794,9 @@ TEST_F(MediaDevicesTest, SetCaptureHandleConfigCaptureWithHandle) {
   V8TestingScope scope;
   auto* media_devices = GetMediaDevices(*GetDocument().domWindow());
 
-  CaptureHandleConfig input_config;
-  input_config.setHandle("0xabcdef0123456789");
+  CaptureHandleConfig* input_config =
+      MakeGarbageCollected<CaptureHandleConfig>();
+  input_config->setHandle("0xabcdef0123456789");
 
   // Expected output.
   auto expected_config = mojom::blink::CaptureHandleConfig::New();
@@ -769,7 +806,7 @@ TEST_F(MediaDevicesTest, SetCaptureHandleConfigCaptureWithHandle) {
   expected_config->permitted_origins = {};
   dispatcher_host().ExpectSetCaptureHandleConfig(std::move(expected_config));
 
-  media_devices->setCaptureHandleConfig(scope.GetScriptState(), &input_config,
+  media_devices->setCaptureHandleConfig(scope.GetScriptState(), input_config,
                                         scope.GetExceptionState());
 
   platform()->RunUntilIdle();
@@ -783,8 +820,9 @@ TEST_F(MediaDevicesTest, SetCaptureHandleConfigCaptureWithMaxHandle) {
 
   const String maxHandle = MaxLengthCaptureHandle();
 
-  CaptureHandleConfig input_config;
-  input_config.setHandle(maxHandle);
+  CaptureHandleConfig* input_config =
+      MakeGarbageCollected<CaptureHandleConfig>();
+  input_config->setHandle(maxHandle);
 
   // Expected output.
   auto expected_config = mojom::blink::CaptureHandleConfig::New();
@@ -794,7 +832,7 @@ TEST_F(MediaDevicesTest, SetCaptureHandleConfigCaptureWithMaxHandle) {
   expected_config->permitted_origins = {};
   dispatcher_host().ExpectSetCaptureHandleConfig(std::move(expected_config));
 
-  media_devices->setCaptureHandleConfig(scope.GetScriptState(), &input_config,
+  media_devices->setCaptureHandleConfig(scope.GetScriptState(), input_config,
                                         scope.GetExceptionState());
 
   platform()->RunUntilIdle();
@@ -807,12 +845,13 @@ TEST_F(MediaDevicesTest,
   V8TestingScope scope;
   auto* media_devices = GetMediaDevices(*GetDocument().domWindow());
 
-  CaptureHandleConfig input_config;
-  input_config.setHandle(MaxLengthCaptureHandle() + "a");  // Over max length.
+  CaptureHandleConfig* input_config =
+      MakeGarbageCollected<CaptureHandleConfig>();
+  input_config->setHandle(MaxLengthCaptureHandle() + "a");  // Over max length.
 
   // Note: dispatcher_host().ExpectSetCaptureHandleConfig() not called.
 
-  media_devices->setCaptureHandleConfig(scope.GetScriptState(), &input_config,
+  media_devices->setCaptureHandleConfig(scope.GetScriptState(), input_config,
                                         scope.GetExceptionState());
 
   platform()->RunUntilIdle();
@@ -827,8 +866,9 @@ TEST_F(MediaDevicesTest,
   V8TestingScope scope;
   auto* media_devices = GetMediaDevices(*GetDocument().domWindow());
 
-  CaptureHandleConfig input_config;
-  input_config.setPermittedOrigins({"*"});
+  CaptureHandleConfig* input_config =
+      MakeGarbageCollected<CaptureHandleConfig>();
+  input_config->setPermittedOrigins({"*"});
 
   // Expected output.
   auto expected_config = mojom::blink::CaptureHandleConfig::New();
@@ -838,7 +878,7 @@ TEST_F(MediaDevicesTest,
   expected_config->permitted_origins = {};
   dispatcher_host().ExpectSetCaptureHandleConfig(std::move(expected_config));
 
-  media_devices->setCaptureHandleConfig(scope.GetScriptState(), &input_config,
+  media_devices->setCaptureHandleConfig(scope.GetScriptState(), input_config,
                                         scope.GetExceptionState());
 
   platform()->RunUntilIdle();
@@ -850,8 +890,9 @@ TEST_F(MediaDevicesTest, SetCaptureHandleConfigCaptureWithPermittedOrigins) {
   V8TestingScope scope;
   auto* media_devices = GetMediaDevices(*GetDocument().domWindow());
 
-  CaptureHandleConfig input_config;
-  input_config.setPermittedOrigins(
+  CaptureHandleConfig* input_config =
+      MakeGarbageCollected<CaptureHandleConfig>();
+  input_config->setPermittedOrigins(
       {"https://chromium.org", "ftp://chromium.org:1234"});
 
   // Expected output.
@@ -864,7 +905,7 @@ TEST_F(MediaDevicesTest, SetCaptureHandleConfigCaptureWithPermittedOrigins) {
       SecurityOrigin::CreateFromString("ftp://chromium.org:1234")};
   dispatcher_host().ExpectSetCaptureHandleConfig(std::move(expected_config));
 
-  media_devices->setCaptureHandleConfig(scope.GetScriptState(), &input_config,
+  media_devices->setCaptureHandleConfig(scope.GetScriptState(), input_config,
                                         scope.GetExceptionState());
 
   platform()->RunUntilIdle();
@@ -877,12 +918,13 @@ TEST_F(MediaDevicesTest,
   V8TestingScope scope;
   auto* media_devices = GetMediaDevices(*GetDocument().domWindow());
 
-  CaptureHandleConfig input_config;
-  input_config.setPermittedOrigins({"*", "https://chromium.org"});
+  CaptureHandleConfig* input_config =
+      MakeGarbageCollected<CaptureHandleConfig>();
+  input_config->setPermittedOrigins({"*", "https://chromium.org"});
 
   // Note: dispatcher_host().ExpectSetCaptureHandleConfig() not called.
 
-  media_devices->setCaptureHandleConfig(scope.GetScriptState(), &input_config,
+  media_devices->setCaptureHandleConfig(scope.GetScriptState(), input_config,
                                         scope.GetExceptionState());
 
   platform()->RunUntilIdle();
@@ -897,12 +939,14 @@ TEST_F(MediaDevicesTest,
   V8TestingScope scope;
   auto* media_devices = GetMediaDevices(*GetDocument().domWindow());
 
-  CaptureHandleConfig input_config;
-  input_config.setPermittedOrigins({"https://chromium.org:99999"});  // Invalid.
+  CaptureHandleConfig* input_config =
+      MakeGarbageCollected<CaptureHandleConfig>();
+  input_config->setPermittedOrigins(
+      {"https://chromium.org:99999"});  // Invalid.
 
   // Note: dispatcher_host().ExpectSetCaptureHandleConfig() not called.
 
-  media_devices->setCaptureHandleConfig(scope.GetScriptState(), &input_config,
+  media_devices->setCaptureHandleConfig(scope.GetScriptState(), input_config,
                                         scope.GetExceptionState());
 
   platform()->RunUntilIdle();
@@ -933,9 +977,8 @@ TEST_F(MediaDevicesTest, DistinctIdsForDistinctTypes) {
 
   Document& document = GetDocument();
   Element* const div = document.getElementById(AtomicString("test-div"));
-  const ScriptPromise first_promise = media_devices->ProduceSubCaptureTarget(
-      scope.GetScriptState(), div, scope.GetExceptionState(),
-      SubCaptureTarget::Type::kCropTarget);
+  const ScriptPromiseUntyped first_promise = media_devices->ProduceCropTarget(
+      scope.GetScriptState(), div, scope.GetExceptionState());
   ScriptPromiseTester first_tester(scope.GetScriptState(), first_promise);
   first_tester.WaitUntilSettled();
   EXPECT_TRUE(first_tester.IsFulfilled());
@@ -943,9 +986,9 @@ TEST_F(MediaDevicesTest, DistinctIdsForDistinctTypes) {
 
   // The second call to |produceSubCaptureTargetId|, given the different type,
   // should return a different ID.
-  const ScriptPromise second_promise = media_devices->ProduceSubCaptureTarget(
-      scope.GetScriptState(), div, scope.GetExceptionState(),
-      SubCaptureTarget::Type::kRestrictionTarget);
+  const ScriptPromiseUntyped second_promise =
+      media_devices->ProduceRestrictionTarget(scope.GetScriptState(), div,
+                                              scope.GetExceptionState());
   ScriptPromiseTester second_tester(scope.GetScriptState(), second_promise);
   second_tester.WaitUntilSettled();
   EXPECT_TRUE(second_tester.IsFulfilled());
@@ -996,8 +1039,8 @@ TEST_P(ProduceSubCaptureTargetTest, IdUnsupportedOnAndroid) {
 
 #if !BUILDFLAG(IS_ANDROID) && !BUILDFLAG(IS_IOS)
   // Note that the test will NOT produce false-positive on failure to call this.
-  // Rather, GTEST_FAIL would be called by ProduceSubCaptureTarget if it
-  // ends up being called.
+  // Rather, GTEST_FAIL would be called by ProduceCropTarget or
+  // ProduceRestrictionTarget if it ends up being called.
   dispatcher_host().SetNextId(
       type_, String(base::Uuid::GenerateRandomV4().AsLowercaseString()));
 #endif
@@ -1009,8 +1052,8 @@ TEST_P(ProduceSubCaptureTargetTest, IdUnsupportedOnAndroid) {
 
   Document& document = GetDocument();
   Element* const div = document.getElementById(AtomicString("test-div"));
-  const ScriptPromise div_promise = media_devices->ProduceSubCaptureTarget(
-      scope.GetScriptState(), div, scope.GetExceptionState(), type_);
+  const ScriptPromiseUntyped div_promise =
+      ProduceSubCaptureTargetAndGetPromise(scope, type_, media_devices, div);
   platform()->RunUntilIdle();
 #if BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_IOS)
   EXPECT_TRUE(scope.GetExceptionState().HadException());
@@ -1054,12 +1097,12 @@ TEST_P(ProduceSubCaptureTargetTest, IdWithValidElement) {
     Element* const element = document.getElementById(AtomicString(id));
     dispatcher_host().SetNextId(
         type_, String(base::Uuid::GenerateRandomV4().AsLowercaseString()));
-    const ScriptPromise promise = media_devices->ProduceSubCaptureTarget(
-        scope.GetScriptState(), element, scope.GetExceptionState(), type_);
-
-    ScriptPromiseTester script_promise_tester(scope.GetScriptState(), promise);
-    script_promise_tester.WaitUntilSettled();
-    EXPECT_TRUE(script_promise_tester.IsFulfilled())
+    std::optional<ScriptPromiseTester> tester;
+    ProduceSubCaptureTargetAndGetTester(scope, type_, media_devices, element,
+                                        tester);
+    ASSERT_TRUE(tester);
+    tester->WaitUntilSettled();
+    EXPECT_TRUE(tester->IsFulfilled())
         << "Failed promise for element id=" << id;
     EXPECT_FALSE(scope.GetExceptionState().HadException());
   }
@@ -1078,8 +1121,8 @@ TEST_P(ProduceSubCaptureTargetTest, IdRejectedIfDifferentWindow) {
 
   Document& document = GetDocument();
   Element* const div = document.getElementById(AtomicString("test-div"));
-  const ScriptPromise element_promise = media_devices->ProduceSubCaptureTarget(
-      scope.GetScriptState(), div, scope.GetExceptionState(), type_);
+  const ScriptPromiseUntyped element_promise =
+      ProduceSubCaptureTargetAndGetPromise(scope, type_, media_devices, div);
   platform()->RunUntilIdle();
   EXPECT_TRUE(element_promise.IsEmpty());
   EXPECT_TRUE(scope.GetExceptionState().HadException());
@@ -1109,27 +1152,29 @@ TEST_P(ProduceSubCaptureTargetTest, DuplicateId) {
 
   Document& document = GetDocument();
   Element* const div = document.getElementById(AtomicString("test-div"));
-  const ScriptPromise first_promise = media_devices->ProduceSubCaptureTarget(
-      scope.GetScriptState(), div, scope.GetExceptionState(), type_);
-  ScriptPromiseTester first_tester(scope.GetScriptState(), first_promise);
-  first_tester.WaitUntilSettled();
-  EXPECT_TRUE(first_tester.IsFulfilled());
+  std::optional<ScriptPromiseTester> first_tester;
+  ProduceSubCaptureTargetAndGetTester(scope, type_, media_devices, div,
+                                      first_tester);
+  ASSERT_TRUE(first_tester);
+  first_tester->WaitUntilSettled();
+  EXPECT_TRUE(first_tester->IsFulfilled());
   EXPECT_FALSE(scope.GetExceptionState().HadException());
 
   // The second call to |produceSubCaptureTargetId| should return the same ID.
-  const ScriptPromise second_promise = media_devices->ProduceSubCaptureTarget(
-      scope.GetScriptState(), div, scope.GetExceptionState(), type_);
-  ScriptPromiseTester second_tester(scope.GetScriptState(), second_promise);
-  second_tester.WaitUntilSettled();
-  EXPECT_TRUE(second_tester.IsFulfilled());
+  std::optional<ScriptPromiseTester> second_tester;
+  ProduceSubCaptureTargetAndGetTester(scope, type_, media_devices, div,
+                                      second_tester);
+  ASSERT_TRUE(second_tester);
+  second_tester->WaitUntilSettled();
+  EXPECT_TRUE(second_tester->IsFulfilled());
   EXPECT_FALSE(scope.GetExceptionState().HadException());
 
   const WTF::String first_result =
-      ToSubCaptureTarget(first_tester.Value())->GetId();
+      ToSubCaptureTarget(first_tester->Value())->GetId();
   ASSERT_FALSE(first_result.empty());
 
   const WTF::String second_result =
-      ToSubCaptureTarget(second_tester.Value())->GetId();
+      ToSubCaptureTarget(second_tester->Value())->GetId();
   ASSERT_FALSE(second_result.empty());
 
   EXPECT_EQ(first_result, second_result);
@@ -1149,16 +1194,15 @@ TEST_P(ProduceSubCaptureTargetTest, CorrectTokenClassInstantiated) {
   dispatcher_host().SetNextId(
       type_, String(base::Uuid::GenerateRandomV4().AsLowercaseString()));
 
-  const ScriptPromise promise = media_devices->ProduceSubCaptureTarget(
-      scope.GetScriptState(), div, scope.GetExceptionState(), type_);
-
-  ScriptPromiseTester tester(scope.GetScriptState(), promise);
-  tester.WaitUntilSettled();
-  ASSERT_TRUE(tester.IsFulfilled());
+  std::optional<ScriptPromiseTester> tester;
+  ProduceSubCaptureTargetAndGetTester(scope, type_, media_devices, div, tester);
+  ASSERT_TRUE(tester);
+  tester->WaitUntilSettled();
+  ASSERT_TRUE(tester->IsFulfilled());
   ASSERT_FALSE(scope.GetExceptionState().HadException());
 
   // Type instantiated if and only if it's the expected type.
-  const blink::ScriptValue value = tester.Value();
+  const blink::ScriptValue value = tester->Value();
   EXPECT_EQ(!!V8CropTarget::ToWrappable(value.GetIsolate(), value.V8Value()),
             type_ == SubCaptureTarget::Type::kCropTarget);
   EXPECT_EQ(
@@ -1179,14 +1223,14 @@ TEST_P(ProduceSubCaptureTargetTest, IdStringFormat) {
   Element* const div = document.getElementById(AtomicString("test-div"));
   dispatcher_host().SetNextId(
       type_, String(base::Uuid::GenerateRandomV4().AsLowercaseString()));
-  const ScriptPromise promise = media_devices->ProduceSubCaptureTarget(
-      scope.GetScriptState(), div, scope.GetExceptionState(), type_);
-  ScriptPromiseTester tester(scope.GetScriptState(), promise);
-  tester.WaitUntilSettled();
-  EXPECT_TRUE(tester.IsFulfilled());
+  std::optional<ScriptPromiseTester> tester;
+  ProduceSubCaptureTargetAndGetTester(scope, type_, media_devices, div, tester);
+  ASSERT_TRUE(tester);
+  tester->WaitUntilSettled();
+  EXPECT_TRUE(tester->IsFulfilled());
   EXPECT_FALSE(scope.GetExceptionState().HadException());
 
-  const SubCaptureTarget* const target = ToSubCaptureTarget(tester.Value());
+  const SubCaptureTarget* const target = ToSubCaptureTarget(tester->Value());
   const WTF::String& id = target->GetId();
   EXPECT_TRUE(id.ContainsOnlyASCIIOrEmpty());
   EXPECT_TRUE(base::Uuid::ParseLowercase(id.Ascii()).is_valid());

@@ -57,7 +57,7 @@ bool DumpParsedCertificateChain(const base::FilePath& file_path,
 // Returns a hex-encoded sha256 of the DER-encoding of |cert|.
 std::string FingerPrintParsedCertificate(const bssl::ParsedCertificate* cert) {
   std::string hash = crypto::SHA256HashString(cert->der_cert().AsStringView());
-  return base::HexEncode(hash.data(), hash.size());
+  return base::HexEncode(hash);
 }
 
 std::string SubjectToString(const bssl::RDNSequence& parsed_subject) {
@@ -96,7 +96,7 @@ void PrintResultPath(const bssl::CertPathBuilderResultPath* result_path,
     std::cout << "Certificate policies:\n";
     for (const auto& policy : result_path->user_constrained_policy_set) {
       CBS cbs;
-      CBS_init(&cbs, policy.UnsafeData(), policy.Length());
+      CBS_init(&cbs, policy.data(), policy.size());
       bssl::UniquePtr<char> policy_text(CBS_asn1_oid_to_text(&cbs));
       if (policy_text) {
         std::cout << " " << policy_text.get() << "\n";
@@ -126,7 +126,8 @@ std::shared_ptr<const bssl::ParsedCertificate> ParseCertificate(
     std::cout << errors.ToDebugString() << "\n";
   }
 
-  // TODO(crbug.com/634443): Print errors if there are any on success too (i.e.
+  // TODO(crbug.com/41267838): Print errors if there are any on success too
+  // (i.e.
   //                         warnings).
 
   return cert;
@@ -198,7 +199,7 @@ bool VerifyUsingPathBuilder(
   // Run the path builder.
   bssl::CertPathBuilder::Result result = path_builder.Run();
 
-  // TODO(crbug.com/634443): Display any errors/warnings associated with path
+  // TODO(crbug.com/41267838): Display any errors/warnings associated with path
   //                         building that were not part of a particular
   //                         PathResult.
   std::cout << "CertPathBuilder result: "

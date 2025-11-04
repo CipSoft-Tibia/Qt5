@@ -15,6 +15,7 @@
 #include <sys/prctl.h>
 #include <sys/ptrace.h>
 #include <sys/resource.h>
+#include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/time.h>
 #include <sys/types.h>
@@ -34,6 +35,10 @@
 #include "sandbox/linux/system_headers/linux_ptrace.h"
 #include "sandbox/linux/system_headers/linux_syscalls.h"
 #include "sandbox/linux/system_headers/linux_time.h"
+
+#if !defined(MAP_DROPPABLE)
+#define MAP_DROPPABLE	0x08    // Zero memory under memory pressure.
+#endif
 
 #if (BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS_LACROS)) && \
     !defined(__arm__) && !defined(__aarch64__) &&             \
@@ -238,7 +243,7 @@ ResultExpr RestrictMmapFlags() {
   // TODO(davidung), remove MAP_DENYWRITE with updated Tegra libraries.
   const uint64_t kAllowedMask = MAP_SHARED | MAP_PRIVATE | MAP_ANONYMOUS |
                                 MAP_STACK | MAP_NORESERVE | MAP_FIXED |
-                                MAP_DENYWRITE | MAP_LOCKED |
+                                MAP_DENYWRITE | MAP_LOCKED | MAP_DROPPABLE |
                                 kArchSpecificAllowedMask;
   const Arg<int> flags(3);
   return If((flags & ~kAllowedMask) == 0, Allow()).Else(CrashSIGSYS());
@@ -335,7 +340,7 @@ ResultExpr RestrictKillTarget(pid_t target_pid, int sysno) {
     case __NR_tkill:
       return CrashSIGSYSKill();
     default:
-      NOTREACHED();
+      NOTREACHED_IN_MIGRATION();
       return CrashSIGSYS();
   }
 }
@@ -384,7 +389,7 @@ ResultExpr RestrictSchedTarget(pid_t target_pid, int sysno) {
           .Default(RewriteSchedSIGSYS());
     }
     default:
-      NOTREACHED();
+      NOTREACHED_IN_MIGRATION();
       return CrashSIGSYS();
   }
 }
@@ -496,6 +501,38 @@ ResultExpr RestrictGoogle3Threading(int sysno) {
 ResultExpr RestrictPipe2() {
   const Arg<int> flags(1);
   return If((flags & ~(O_CLOEXEC|O_DIRECT|O_NONBLOCK)) == 0, Allow())
+      .Else(CrashSIGSYS());
+}
+
+SANDBOX_EXPORT bpf_dsl::ResultExpr RestrictSockSendFlags(int sysno) {
+  size_t argIndex;
+  switch (sysno) {
+#if defined(__arm__) || \
+    (defined(ARCH_CPU_MIPS_FAMILY) && defined(ARCH_CPU_32_BITS))
+    case __NR_send:
+      argIndex = 3;
+      break;
+#endif
+#if defined(__i386__) || defined(__x86_64__) || defined(__arm__) || \
+    defined(__mips__) || defined(__aarch64__)
+    case __NR_sendto:  // Could specify destination.
+      argIndex = 3;
+      break;
+    case __NR_sendmsg:  // Could specify destination.
+      argIndex = 2;
+      break;
+#endif
+    case __NR_sendmmsg:  // Could specify destination.
+      argIndex = 3;
+      break;
+    default:
+      NOTREACHED();
+  }
+
+  // In particular, does not include MSG_OOB due to its history of security
+  // vulnerabilities, see crbug.com/428177287.
+  const Arg<int> flags(argIndex);
+  return If((flags & ~(MSG_DONTWAIT | MSG_NOSIGNAL)) == 0, Allow())
       .Else(CrashSIGSYS());
 }
 

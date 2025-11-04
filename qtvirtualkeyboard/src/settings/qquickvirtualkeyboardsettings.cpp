@@ -99,6 +99,7 @@ public:
     \qmltype VirtualKeyboardSettings
     \inqmlmodule QtQuick.VirtualKeyboard.Settings
     \ingroup qtvirtualkeyboard-settings-qml
+    \ingroup qmlclass
     \since QtQuick.VirtualKeyboard 1.2
     \brief Provides settings for virtual keyboard.
 
@@ -152,6 +153,7 @@ QQuickVirtualKeyboardSettings::QQuickVirtualKeyboardSettings(QQmlEngine *engine,
     connect(settings, SIGNAL(defaultInputMethodDisabledChanged()), SIGNAL(defaultInputMethodDisabledChanged()));
     connect(settings, SIGNAL(defaultDictionaryDisabledChanged()), SIGNAL(defaultDictionaryDisabledChanged()));
     connect(settings, SIGNAL(visibleFunctionKeysChanged()), SIGNAL(visibleFunctionKeysChanged()));
+    connect(settings, &Settings::keySoundVolumeChanged, this, &QQuickVirtualKeyboardSettings::keySoundVolumeChanged);
 }
 
 /*!
@@ -372,6 +374,26 @@ void QQuickVirtualKeyboardSettings::setCloseOnReturn(bool closeOnReturn)
     Settings::instance()->setCloseOnReturn(closeOnReturn);
 }
 
+qreal QQuickVirtualKeyboardSettings::keySoundVolume() const
+{
+    return Settings::instance()->keySoundVolume();
+}
+
+void QQuickVirtualKeyboardSettings::setKeySoundVolume(qreal volume)
+{
+    Settings::instance()->setKeySoundVolume(volume);
+}
+
+/*!
+    \internal
+*/
+qreal QQuickVirtualKeyboardSettings::convertVolume(qreal volume) const
+{
+    // Equivalent to QAudio::convertVolume(volume / 100, QtAudio::LogarithmicVolumeScale, QtAudio::LinearVolumeScale)
+    constexpr qreal LOG100 = 4.60517018599;
+    return 1 - std::exp(-(volume / 100) * LOG100);
+}
+
 void QQuickVirtualKeyboardSettings::resetStyle()
 {
     Q_D(QQuickVirtualKeyboardSettings);
@@ -579,6 +601,13 @@ void QQuickVirtualKeyboardSettings::resetStyle()
 
     When this property is set to \c true, the virtual keyboard is hidden when \l Qt::Key_Enter
     or \l Qt::Key_Return key released. The default is \c false.
+*/
+
+/*!
+    \qmlproperty real VirtualKeyboardSettings::keySoundVolume
+    \since QtQuick.VirtualKeyboard.Settings 6.9
+
+    This property holds the keysound's volume level. The level is in the range [0,1]
 */
 
 /*!

@@ -6,10 +6,11 @@ from __future__ import annotations
 
 import abc
 import html
-import pathlib
 import urllib.parse
 from argparse import ArgumentTypeError
-from typing import TYPE_CHECKING, Dict
+from typing import TYPE_CHECKING, Any, Dict
+
+from crossbench import path as pth
 
 if TYPE_CHECKING:
   from crossbench.runner.run import Run
@@ -33,7 +34,7 @@ class SplashScreen:
       return cls.DETAILED
     if value.startswith("http:") or value.startswith("https:"):
       return URLSplashScreen(value)
-    maybe_path = pathlib.Path(value)
+    maybe_path = pth.LocalPath(value)
     if maybe_path.exists():
       return URLSplashScreen(maybe_path.absolute().as_uri())
     raise ArgumentTypeError(f"Unknown splashscreen: {value}")
@@ -43,7 +44,8 @@ class SplashScreen:
 
 
 _BLANK_PAGE_HTML = "<html></html>"
-_BLANK_PAGE_DATA_URL = f"data:text/html;charset=utf-8,{urllib.parse.quote(_BLANK_PAGE_HTML)}"
+_BLANK_PAGE_DATA_URL = (
+    f"data:text/html;charset=utf-8,{urllib.parse.quote(_BLANK_PAGE_HTML)}")
 
 
 class BaseURLSplashScreen(SplashScreen, metaclass=abc.ABCMeta):
@@ -69,28 +71,35 @@ class DetailedSplashScreen(BaseURLSplashScreen):
     browser = run.browser
     title = html.escape(browser.app_name.title())
     version = html.escape(browser.version)
-    page = ("<html><head>"
-            f"<title>Run Details</title>"
-            "<style>"
-            """
-            html { font-family: sans-serif; background-color: #000; color: #fff; }
-            dl {
-              display: grid;
-              grid-template-columns: max-content auto;
-            }
-            dt { grid-column-start: 1; }
-            dd { grid-column-start: 2;  font-family: monospace; }
-        """
-            "</style>"
-            "</head><body>"
-            f"<h1>{title} {version}</h1>")
-    page += self._render_browser_details(run)
-    page += self._render_run_details(run)
-    page += "</body></html>"
+    run_type = "Run"
+    bg_color = "#000"
+    if run.is_warmup:
+      title = f"Warmup: {title}"
+      run_type = "Warmup Run"
+      bg_color = "#444"
+    page = "".join((
+        "<html><head>"
+        f"<title>{run_type} Details</title>",
+        "<style>",
+        "html{"
+        "font-family:sans-serif;",
+        f"background-color:{bg_color};",
+        "color:#fff",
+        "}",
+        "dl{display:grid;grid-template-columns:max-content auto}",
+        "dt{grid-column-start:1}",
+        "dd{grid-column-start:2;font-family:monospace}",
+        "</style>",
+        "</head><body>",
+        f"<h1>{title} {version}</h1>",
+        self._render_browser_details(run),
+        self._render_run_details(run),
+        "</body></html>",
+    ))
     data_url = f"data:text/html;charset=utf-8,{urllib.parse.quote(page)}"
     return data_url
 
-  def _render_properties(self, title: str, properties: Dict[str, str]) -> str:
+  def _render_properties(self, title: str, properties: Dict[str, Any]) -> str:
     section = f"<h2>{html.escape(title)}</h2><dl>"
     for property_name, value in properties.items():
       section += f"<dt>{html.escape(property_name)}</dt>"

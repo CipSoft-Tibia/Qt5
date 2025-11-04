@@ -37,6 +37,7 @@
 #include "base/containers/contains.h"
 #include "net/base/url_util.h"
 #include "services/network/public/cpp/is_potentially_trustworthy.h"
+#include "third_party/blink/public/common/features.h"
 #include "third_party/blink/renderer/platform/blob/blob_url.h"
 #include "third_party/blink/renderer/platform/blob/blob_url_null_origin_map.h"
 #include "third_party/blink/renderer/platform/weborigin/known_ports.h"
@@ -49,6 +50,7 @@
 #include "third_party/blink/renderer/platform/wtf/text/string_utf8_adaptor.h"
 #include "third_party/blink/renderer/platform/wtf/text/wtf_string.h"
 #include "third_party/blink/renderer/platform/wtf/wtf.h"
+#include "url/scheme_host_port.h"
 #include "url/url_canon.h"
 #include "url/url_canon_ip.h"
 #include "url/url_util.h"
@@ -123,9 +125,8 @@ static bool ShouldTreatAsOpaqueOrigin(const KURL& url) {
                      relevant_url.Protocol().Ascii()))
     return true;
 
-  // Nonstandard schemes and unregistered schemes aren't known to contain hosts
-  // and/or ports, so they'll usually be placed in opaque origins.
-  if (!relevant_url.CanSetHostOrPort()) {
+  // Nonstandard schemes and unregistered schemes are placed in opaque origins.
+  if (!relevant_url.IsStandard()) {
     // A temporary exception is made for non-standard local schemes.
     // TODO: Migrate "content:" and "externalfile:" to be standard schemes, and
     // remove the local scheme exception.
@@ -143,17 +144,23 @@ static bool ShouldTreatAsOpaqueOrigin(const KURL& url) {
   return false;
 }
 
-SecurityOrigin::SecurityOrigin(const KURL& url)
-    : SecurityOrigin(
-          EnsureNonNull(url.Protocol()),
-          EnsureNonNull(url.Host()),
-          // This mimics the logic in url::SchemeHostPort(const GURL&). In
-          // particular, it ensures a URL with a port of 0 will translate into
-          // an origin with an effective port of 0.
-          (url.HasPort() || !url.IsValid() || !url.IsHierarchical())
-              ? url.Port()
-              : DefaultPortForProtocol(url.Protocol())) {
-  full_url_ = url;
+scoped_refptr<SecurityOrigin> SecurityOrigin::CreateInternal(const KURL& url) {
+  if (url::SchemeHostPort::ShouldDiscardHostAndPort(url.Protocol().Ascii())) {
+    return base::AdoptRef(
+        new SecurityOrigin(url.Protocol(), g_empty_string, 0));
+  }
+
+  // This mimics the logic in url::SchemeHostPort(const GURL&). In
+  // particular, it ensures a URL with a port of 0 will translate into
+  // an origin with an effective port of 0.
+  uint16_t port = (url.HasPort() || !url.IsValid() || !url.IsStandard())
+                      ? url.Port()
+                      : DefaultPortForProtocol(url.Protocol());
+  scoped_refptr<SecurityOrigin> origin =
+      base::AdoptRef(new SecurityOrigin(EnsureNonNull(url.Protocol()),
+                                           EnsureNonNull(url.Host()), port));
+  origin->full_url_ = url;
+  return origin;
 }
 
 SecurityOrigin::SecurityOrigin(const String& protocol,
@@ -167,14 +174,17 @@ SecurityOrigin::SecurityOrigin(const String& protocol,
   // extended, then SecurityOrigin would *almost* work without the following
   // code. The only problem is that can_load_local_resources_ would be set for
   // Local schemes and not LocalAccessAllowed schemes.
-  if (const url::CustomScheme* cs = url::CustomScheme::FindScheme(StringUTF8Adaptor(protocol_).AsStringPiece())) {
+  if (const url::CustomScheme* cs = url::CustomScheme::FindScheme(
+          StringUTF8Adaptor(protocol_).AsStringView())) {
     if (cs->has_port_component()) {
-      if (!port_)
+      if (!port_) {
         port_ = cs->default_port;
+      }
     } else {
       port_ = 0;
     }
-    can_load_local_resources_ = cs->flags & (url::CustomScheme::LocalAccessAllowed | url::CustomScheme::Local);
+    can_load_local_resources_ =
+        cs->flags & (url::CustomScheme::LocalAccessAllowed | url::CustomScheme::Local);
     return;
   }
   DCHECK(url::SchemeHostPort(protocol.Utf8(), host.Utf8(), port,
@@ -189,7 +199,7 @@ SecurityOrigin::SecurityOrigin(const url::Origin::Nonce& nonce,
     : nonce_if_opaque_(nonce), precursor_origin_(precursor) {}
 
 SecurityOrigin::SecurityOrigin(NewUniqueOpaque, const SecurityOrigin* precursor)
-    : nonce_if_opaque_(absl::in_place), precursor_origin_(precursor) {}
+    : nonce_if_opaque_(std::in_place), precursor_origin_(precursor) {}
 
 SecurityOrigin::SecurityOrigin(const SecurityOrigin* other,
                                ConstructIsolatedCopy)
@@ -253,9 +263,9 @@ scoped_refptr<SecurityOrigin> SecurityOrigin::CreateWithReferenceOrigin(
   }
 
   if (ShouldUseInnerURL(url))
-    return base::AdoptRef(new SecurityOrigin(ExtractInnerURL(url)));
+    return CreateInternal(ExtractInnerURL(url));
 
-  return base::AdoptRef(new SecurityOrigin(url));
+  return CreateInternal(url);
 }
 
 scoped_refptr<SecurityOrigin> SecurityOrigin::Create(const KURL& url) {
@@ -431,6 +441,12 @@ bool SecurityOrigin::CanDisplay(const KURL& url) const {
   if (universal_access_)
     return true;
 
+  // Data URLs can always be displayed.
+  if (base::FeatureList::IsEnabled(features::kOptimizeLoadingDataUrls) &&
+      url.ProtocolIsData()) {
+    return true;
+  }
+
   String protocol = url.Protocol();
   if (SchemeRegistry::CanDisplayOnlyIfCanRequest(protocol))
     return CanRequest(url);
@@ -527,15 +543,18 @@ void SecurityOrigin::BuildRawString(StringBuilder& builder) const {
   // NOTE(juvaldma)(Chromium 69.0.3497.128)
   //
   // Should match url::SchemeHostPort::Serialize().
-  if (const url::CustomScheme* cs = url::CustomScheme::FindScheme(StringUTF8Adaptor(protocol_).AsStringPiece())) {
+  if (const url::CustomScheme* cs = url::CustomScheme::FindScheme(
+          StringUTF8Adaptor(protocol_).AsStringView())) {
     builder.Append(protocol_);
     builder.Append(":");
-    if (!cs->has_host_component())
+    if (!cs->has_host_component()) {
       return;
+    }
     builder.Append("//");
     builder.Append(host_);
-    if (!cs->has_port_component() || port_ == cs->default_port)
+    if (!cs->has_port_component() || port_ == cs->default_port) {
       return;
+    }
     builder.Append(':');
     builder.AppendNumber(port_);
     return;
@@ -681,9 +700,11 @@ bool SecurityOrigin::IsSameSiteWith(const SecurityOrigin* other) const {
   // https://html.spec.whatwg.org/#schemelessly-same-site
   if (IsOpaque())
     return IsSameOriginWith(other);
-  if (RegistrableDomain().IsNull())
+  String registrable_domain = RegistrableDomain();
+  if (registrable_domain.IsNull()) {
     return Host() == other->Host();
-  return RegistrableDomain() == other->RegistrableDomain();
+  }
+  return registrable_domain == other->RegistrableDomain();
 }
 
 const KURL& SecurityOrigin::UrlWithUniqueOpaqueOrigin() {

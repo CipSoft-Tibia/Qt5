@@ -43,7 +43,7 @@ base::Value::List GetPrefsMetadata(
       metadata.Append("extension_controlled");
       metadata.Append("extension_modifiable");
 #else
-      NOTREACHED();
+      NOTREACHED_IN_MIGRATION();
 #endif
       break;
     case PrefValueStore::PrefStoreType::STANDALONE_BROWSER_STORE:
@@ -107,7 +107,7 @@ base::Value::List GetPrefsMetadata(
 
 }  // namespace
 
-absl::optional<std::string> GetPrefsAsJson(
+std::optional<std::string> GetPrefsAsJson(
     PrefService* pref_service,
     const std::vector<std::string>& accepted_prefixes) {
   std::vector<PrefService::PreferenceValueAndStore> values =
@@ -132,7 +132,7 @@ absl::optional<std::string> GetPrefsAsJson(
   if (!base::JSONWriter::WriteWithOptions(
           local_state_values, base::JSONWriter::OPTIONS_PRETTY_PRINT,
           &result)) {
-    return absl::nullopt;
+    return std::nullopt;
   }
   return result;
 }

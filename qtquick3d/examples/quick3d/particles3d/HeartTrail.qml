@@ -98,8 +98,8 @@ Item {
             scale: Qt.vector3d(80, 50, 0)
             z: -500
             y: -600
-            materials: DefaultMaterial {
-                diffuseColor: "#201010"
+            materials: PrincipledMaterial {
+                baseColor: "#201010"
             }
         }
 

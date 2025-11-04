@@ -33,15 +33,17 @@ class BluetoothAdvertisementServiceProviderImpl
       dbus::Bus* bus,
       const dbus::ObjectPath& object_path,
       Delegate* delegate,
+      bool adapter_support_ext_adv,
       AdvertisementType type,
-      absl::optional<UUIDList> service_uuids,
-      absl::optional<ManufacturerData> manufacturer_data,
-      absl::optional<UUIDList> solicit_uuids,
-      absl::optional<ServiceData> service_data,
-      absl::optional<ScanResponseData> scan_response_data)
+      std::optional<UUIDList> service_uuids,
+      std::optional<ManufacturerData> manufacturer_data,
+      std::optional<UUIDList> solicit_uuids,
+      std::optional<ServiceData> service_data,
+      std::optional<ScanResponseData> scan_response_data)
       : origin_thread_id_(base::PlatformThread::CurrentId()),
         bus_(bus),
         delegate_(delegate),
+        adapter_support_ext_adv_(adapter_support_ext_adv),
         type_(type),
         service_uuids_(std::move(service_uuids)),
         manufacturer_data_(std::move(manufacturer_data)),
@@ -178,6 +180,12 @@ class BluetoothAdvertisementServiceProviderImpl
                scan_response_data_) {
       writer.OpenVariant("o", &variant_writer);
       AppendScanResponseDataVariant(&variant_writer);
+    } else if ((property_name ==
+                bluetooth_advertisement::kSecondaryChannelProperty)) {
+      if (UseSecondaryChannel()) {
+        writer.OpenVariant("s", &variant_writer);
+        variant_writer.AppendString(bluetooth_advertisement::kPhy1M);
+      }
     } else {
       std::unique_ptr<dbus::ErrorResponse> error_response =
           dbus::ErrorResponse::FromMethodCall(
@@ -247,6 +255,7 @@ class BluetoothAdvertisementServiceProviderImpl
     writer.OpenArray("{sv}", &array_writer);
 
     AppendType(&array_writer);
+    AppendSecondaryChannel(&array_writer);
     AppendServiceUUIDs(&array_writer);
     AppendManufacturerData(&array_writer);
     AppendSolicitUUIDs(&array_writer);
@@ -292,6 +301,19 @@ class BluetoothAdvertisementServiceProviderImpl
     } else {
       dict_entry_writer.AppendVariantOfString("peripheral");
     }
+    array_writer->CloseContainer(&dict_entry_writer);
+  }
+
+  void AppendSecondaryChannel(dbus::MessageWriter* array_writer) {
+    if (!UseSecondaryChannel()) {
+      return;
+    }
+
+    dbus::MessageWriter dict_entry_writer(nullptr);
+    array_writer->OpenDictEntry(&dict_entry_writer);
+    dict_entry_writer.AppendString(
+        bluetooth_advertisement::kSecondaryChannelProperty);
+    dict_entry_writer.AppendVariantOfString(bluetooth_advertisement::kPhy1M);
     array_writer->CloseContainer(&dict_entry_writer);
   }
 
@@ -419,6 +441,25 @@ class BluetoothAdvertisementServiceProviderImpl
     writer->CloseContainer(&array_writer);
   }
 
+  bool UseSecondaryChannel() {
+    if (!adapter_support_ext_adv_) {
+      return false;
+    }
+
+    // Use |scan_response_data| to determine if upper layer wants to use ext adv
+    // because
+    // 1. chrome actually knows if it wants to use ext adv or legacy adv,
+    // but we are lack of interface to pass it to this object.
+    // 2. when chrome registers advertisements, if ext adv is used, it doesn't
+    // set scan response data (see
+    // BleV2Medium::StartAdvertising in
+    // /chrome/services/sharing/nearby/platform/ble_v2_medium.cc).
+    // 3. some combinations of adv data + parameters + type are reserved by
+    // the spec, which is usually disallowed by controllers, but it's not easy
+    // to find them all.
+    return !scan_response_data_;
+  }
+
   // Origin thread (i.e. the UI thread in production).
   base::PlatformThreadId origin_thread_id_;
 
@@ -431,13 +472,16 @@ class BluetoothAdvertisementServiceProviderImpl
   // owns this one, and must outlive it.
   raw_ptr<Delegate> delegate_;
 
+  // Whether the adapter support extended advertisement or not.
+  bool adapter_support_ext_adv_;
+
   // Advertisement data that needs to be provided to BlueZ when requested.
   AdvertisementType type_;
-  absl::optional<UUIDList> service_uuids_;
-  absl::optional<ManufacturerData> manufacturer_data_;
-  absl::optional<UUIDList> solicit_uuids_;
-  absl::optional<ServiceData> service_data_;
-  absl::optional<ScanResponseData> scan_response_data_;
+  std::optional<UUIDList> service_uuids_;
+  std::optional<ManufacturerData> manufacturer_data_;
+  std::optional<UUIDList> solicit_uuids_;
+  std::optional<ServiceData> service_data_;
+  std::optional<ScanResponseData> scan_response_data_;
 
   // D-Bus object we are exporting, owned by this object.
   scoped_refptr<dbus::ExportedObject> exported_object_;
@@ -462,17 +506,19 @@ BluetoothLEAdvertisementServiceProvider::Create(
     dbus::Bus* bus,
     const dbus::ObjectPath& object_path,
     Delegate* delegate,
+    bool adapter_support_ext_adv,
     AdvertisementType type,
-    absl::optional<UUIDList> service_uuids,
-    absl::optional<ManufacturerData> manufacturer_data,
-    absl::optional<UUIDList> solicit_uuids,
-    absl::optional<ServiceData> service_data,
-    absl::optional<ScanResponseData> scan_response_data) {
+    std::optional<UUIDList> service_uuids,
+    std::optional<ManufacturerData> manufacturer_data,
+    std::optional<UUIDList> solicit_uuids,
+    std::optional<ServiceData> service_data,
+    std::optional<ScanResponseData> scan_response_data) {
   if (!bluez::BluezDBusManager::Get()->IsUsingFakes()) {
     return std::make_unique<BluetoothAdvertisementServiceProviderImpl>(
-        bus, object_path, delegate, type, std::move(service_uuids),
-        std::move(manufacturer_data), std::move(solicit_uuids),
-        std::move(service_data), std::move(scan_response_data));
+        bus, object_path, delegate, adapter_support_ext_adv, type,
+        std::move(service_uuids), std::move(manufacturer_data),
+        std::move(solicit_uuids), std::move(service_data),
+        std::move(scan_response_data));
   }
 #if defined(USE_REAL_DBUS_CLIENTS)
   LOG(FATAL) << "Fake is unavailable if USE_REAL_DBUS_CLIENTS is defined.";

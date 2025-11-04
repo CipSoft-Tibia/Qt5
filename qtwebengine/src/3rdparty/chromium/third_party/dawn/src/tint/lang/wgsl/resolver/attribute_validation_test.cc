@@ -59,12 +59,13 @@ namespace {
 enum class AttributeKind {
     kAlign,
     kBinding,
+    kBlendSrc,
     kBuiltinPosition,
     kColor,
     kDiagnostic,
     kGroup,
     kId,
-    kIndex,
+    kInputAttachmentIndex,
     kInterpolate,
     kInvariant,
     kLocation,
@@ -81,6 +82,8 @@ static std::ostream& operator<<(std::ostream& o, AttributeKind k) {
             return o << "@align";
         case AttributeKind::kBinding:
             return o << "@binding";
+        case AttributeKind::kBlendSrc:
+            return o << "@blend_src";
         case AttributeKind::kBuiltinPosition:
             return o << "@builtin(position)";
         case AttributeKind::kColor:
@@ -91,8 +94,8 @@ static std::ostream& operator<<(std::ostream& o, AttributeKind k) {
             return o << "@group";
         case AttributeKind::kId:
             return o << "@id";
-        case AttributeKind::kIndex:
-            return o << "@index";
+        case AttributeKind::kInputAttachmentIndex:
+            return o << "@input_attachment_index";
         case AttributeKind::kInterpolate:
             return o << "@interpolate";
         case AttributeKind::kInvariant:
@@ -106,14 +109,13 @@ static std::ostream& operator<<(std::ostream& o, AttributeKind k) {
         case AttributeKind::kSize:
             return o << "@size";
         case AttributeKind::kStageCompute:
-            return o << "@stage(compute)";
+            return o << "@compute";
         case AttributeKind::kStride:
             return o << "@stride";
         case AttributeKind::kWorkgroupSize:
             return o << "@workgroup_size";
     }
     TINT_UNREACHABLE();
-    return o << "<unknown>";
 }
 
 static bool IsBindingAttribute(AttributeKind kind) {
@@ -136,19 +138,23 @@ static constexpr const char* Pass = "";
 static std::vector<TestParams> OnlyDiagnosticValidFor(std::string thing) {
     return {TestParams{
                 {AttributeKind::kAlign},
-                "1:2 error: @align is not valid for " + thing,
+                "1:2 error: '@align' is not valid for " + thing,
             },
             TestParams{
                 {AttributeKind::kBinding},
-                "1:2 error: @binding is not valid for " + thing,
+                "1:2 error: '@binding' is not valid for " + thing,
+            },
+            TestParams{
+                {AttributeKind::kBlendSrc},
+                "1:2 error: '@blend_src' is not valid for " + thing,
             },
             TestParams{
                 {AttributeKind::kBuiltinPosition},
-                "1:2 error: @builtin is not valid for " + thing,
+                "1:2 error: '@builtin' is not valid for " + thing,
             },
             TestParams{
                 {AttributeKind::kColor},
-                "1:2 error: @color is not valid for " + thing,
+                "1:2 error: '@color' is not valid for " + thing,
             },
             TestParams{
                 {AttributeKind::kDiagnostic},
@@ -156,55 +162,55 @@ static std::vector<TestParams> OnlyDiagnosticValidFor(std::string thing) {
             },
             TestParams{
                 {AttributeKind::kGroup},
-                "1:2 error: @group is not valid for " + thing,
+                "1:2 error: '@group' is not valid for " + thing,
             },
             TestParams{
                 {AttributeKind::kId},
-                "1:2 error: @id is not valid for " + thing,
+                "1:2 error: '@id' is not valid for " + thing,
             },
             TestParams{
-                {AttributeKind::kIndex},
-                "1:2 error: @index is not valid for " + thing,
+                {AttributeKind::kInputAttachmentIndex},
+                "1:2 error: '@input_attachment_index' is not valid for " + thing,
             },
             TestParams{
                 {AttributeKind::kInterpolate},
-                "1:2 error: @interpolate is not valid for " + thing,
+                "1:2 error: '@interpolate' is not valid for " + thing,
             },
             TestParams{
                 {AttributeKind::kInvariant},
-                "1:2 error: @invariant is not valid for " + thing,
+                "1:2 error: '@invariant' is not valid for " + thing,
             },
             TestParams{
                 {AttributeKind::kLocation},
-                "1:2 error: @location is not valid for " + thing,
+                "1:2 error: '@location' is not valid for " + thing,
             },
             TestParams{
                 {AttributeKind::kMustUse},
-                "1:2 error: @must_use is not valid for " + thing,
+                "1:2 error: '@must_use' is not valid for " + thing,
             },
             TestParams{
                 {AttributeKind::kOffset},
-                "1:2 error: @offset is not valid for " + thing,
+                "1:2 error: '@offset' is not valid for " + thing,
             },
             TestParams{
                 {AttributeKind::kSize},
-                "1:2 error: @size is not valid for " + thing,
+                "1:2 error: '@size' is not valid for " + thing,
             },
             TestParams{
                 {AttributeKind::kStageCompute},
-                "1:2 error: @stage is not valid for " + thing,
+                "1:2 error: '@compute' is not valid for " + thing,
             },
             TestParams{
                 {AttributeKind::kStride},
-                "1:2 error: @stride is not valid for " + thing,
+                "1:2 error: '@stride' is not valid for " + thing,
             },
             TestParams{
                 {AttributeKind::kWorkgroupSize},
-                "1:2 error: @workgroup_size is not valid for " + thing,
+                "1:2 error: '@workgroup_size' is not valid for " + thing,
             },
             TestParams{
                 {AttributeKind::kBinding, AttributeKind::kGroup},
-                "1:2 error: @binding is not valid for " + thing,
+                "1:2 error: '@binding' is not valid for " + thing,
             }};
 }
 
@@ -231,8 +237,10 @@ const ast::Attribute* CreateAttribute(const Source& source,
             return builder.Group(source, 1_a);
         case AttributeKind::kId:
             return builder.Id(source, 0_a);
-        case AttributeKind::kIndex:
-            return builder.Index(source, 0_a);
+        case AttributeKind::kInputAttachmentIndex:
+            return builder.InputAttachmentIndex(source, 2_a);
+        case AttributeKind::kBlendSrc:
+            return builder.BlendSrc(source, 0_a);
         case AttributeKind::kInterpolate:
             return builder.Interpolate(source, core::InterpolationType::kLinear,
                                        core::InterpolationSampling::kCenter);
@@ -254,7 +262,6 @@ const ast::Attribute* CreateAttribute(const Source& source,
             return builder.create<ast::WorkgroupAttribute>(source, builder.Expr(1_i));
     }
     TINT_UNREACHABLE() << kind;
-    return nullptr;
 }
 
 struct TestWithParams : ResolverTestWithParam<TestParams> {
@@ -263,8 +270,11 @@ struct TestWithParams : ResolverTestWithParam<TestParams> {
             case AttributeKind::kColor:
                 Enable(wgsl::Extension::kChromiumExperimentalFramebufferFetch);
                 break;
-            case AttributeKind::kIndex:
-                Enable(wgsl::Extension::kChromiumInternalDualSourceBlending);
+            case AttributeKind::kBlendSrc:
+                Enable(wgsl::Extension::kDualSourceBlending);
+                break;
+            case AttributeKind::kInputAttachmentIndex:
+                Enable(wgsl::Extension::kChromiumInternalInputAttachments);
                 break;
             default:
                 break;
@@ -316,19 +326,23 @@ INSTANTIATE_TEST_SUITE_P(
     testing::Values(
         TestParams{
             {AttributeKind::kAlign},
-            R"(1:2 error: @align is not valid for functions)",
+            R"(1:2 error: '@align' is not valid for functions)",
         },
         TestParams{
             {AttributeKind::kBinding},
-            R"(1:2 error: @binding is not valid for functions)",
+            R"(1:2 error: '@binding' is not valid for functions)",
+        },
+        TestParams{
+            {AttributeKind::kBlendSrc},
+            R"(1:2 error: '@blend_src' is not valid for functions)",
         },
         TestParams{
             {AttributeKind::kBuiltinPosition},
-            R"(1:2 error: @builtin is not valid for functions)",
+            R"(1:2 error: '@builtin' is not valid for functions)",
         },
         TestParams{
             {AttributeKind::kColor},
-            R"(1:2 error: @color is not valid for functions)",
+            R"(1:2 error: '@color' is not valid for functions)",
         },
         TestParams{
             {AttributeKind::kDiagnostic},
@@ -336,43 +350,43 @@ INSTANTIATE_TEST_SUITE_P(
         },
         TestParams{
             {AttributeKind::kGroup},
-            R"(1:2 error: @group is not valid for functions)",
+            R"(1:2 error: '@group' is not valid for functions)",
         },
         TestParams{
             {AttributeKind::kId},
-            R"(1:2 error: @id is not valid for functions)",
+            R"(1:2 error: '@id' is not valid for functions)",
         },
         TestParams{
-            {AttributeKind::kIndex},
-            R"(1:2 error: @index is not valid for functions)",
+            {AttributeKind::kInputAttachmentIndex},
+            R"(1:2 error: '@input_attachment_index' is not valid for functions)",
         },
         TestParams{
             {AttributeKind::kInterpolate},
-            R"(1:2 error: @interpolate is not valid for functions)",
+            R"(1:2 error: '@interpolate' is not valid for functions)",
         },
         TestParams{
             {AttributeKind::kInvariant},
-            R"(1:2 error: @invariant is not valid for functions)",
+            R"(1:2 error: '@invariant' is not valid for functions)",
         },
         TestParams{
             {AttributeKind::kLocation},
-            R"(1:2 error: @location is not valid for functions)",
+            R"(1:2 error: '@location' is not valid for functions)",
         },
         TestParams{
             {AttributeKind::kMustUse},
-            R"(1:2 error: @must_use can only be applied to functions that return a value)",
+            R"(1:2 error: '@must_use' can only be applied to functions that return a value)",
         },
         TestParams{
             {AttributeKind::kOffset},
-            R"(1:2 error: @offset is not valid for functions)",
+            R"(1:2 error: '@offset' is not valid for functions)",
         },
         TestParams{
             {AttributeKind::kSize},
-            R"(1:2 error: @size is not valid for functions)",
+            R"(1:2 error: '@size' is not valid for functions)",
         },
         TestParams{
             {AttributeKind::kStageCompute},
-            R"(9:9 error: a compute shader must include 'workgroup_size' in its attributes)",
+            R"(9:9 error: a compute shader must include '@workgroup_size' in its attributes)",
         },
         TestParams{
             {AttributeKind::kStageCompute, AttributeKind::kWorkgroupSize},
@@ -380,11 +394,11 @@ INSTANTIATE_TEST_SUITE_P(
         },
         TestParams{
             {AttributeKind::kStride},
-            R"(1:2 error: @stride is not valid for functions)",
+            R"(1:2 error: '@stride' is not valid for functions)",
         },
         TestParams{
             {AttributeKind::kWorkgroupSize},
-            R"(1:2 error: @workgroup_size is only valid for compute stages)",
+            R"(1:2 error: '@workgroup_size' is only valid for compute stages)",
         }));
 
 using NonVoidFunctionAttributeTest = TestWithParams;
@@ -395,81 +409,86 @@ TEST_P(NonVoidFunctionAttributeTest, IsValid) {
 
     CHECK();
 }
-INSTANTIATE_TEST_SUITE_P(ResolverAttributeValidationTest,
-                         NonVoidFunctionAttributeTest,
-                         testing::Values(
-                             TestParams{
-                                 {AttributeKind::kAlign},
-                                 R"(1:2 error: @align is not valid for functions)",
-                             },
-                             TestParams{
-                                 {AttributeKind::kBinding},
-                                 R"(1:2 error: @binding is not valid for functions)",
-                             },
-                             TestParams{
-                                 {AttributeKind::kBuiltinPosition},
-                                 R"(1:2 error: @builtin is not valid for functions)",
-                             },
-                             TestParams{
-                                 {AttributeKind::kColor},
-                                 R"(1:2 error: @color is not valid for functions)",
-                             },
-                             TestParams{
-                                 {AttributeKind::kDiagnostic},
-                                 Pass,
-                             },
-                             TestParams{
-                                 {AttributeKind::kGroup},
-                                 R"(1:2 error: @group is not valid for functions)",
-                             },
-                             TestParams{
-                                 {AttributeKind::kId},
-                                 R"(1:2 error: @id is not valid for functions)",
-                             },
-                             TestParams{
-                                 {AttributeKind::kIndex},
-                                 R"(1:2 error: @index is not valid for functions)",
-                             },
-                             TestParams{
-                                 {AttributeKind::kInterpolate},
-                                 R"(1:2 error: @interpolate is not valid for functions)",
-                             },
-                             TestParams{
-                                 {AttributeKind::kInvariant},
-                                 R"(1:2 error: @invariant is not valid for functions)",
-                             },
-                             TestParams{
-                                 {AttributeKind::kLocation},
-                                 R"(1:2 error: @location is not valid for functions)",
-                             },
-                             TestParams{
-                                 {AttributeKind::kMustUse},
-                                 Pass,
-                             },
-                             TestParams{
-                                 {AttributeKind::kOffset},
-                                 R"(1:2 error: @offset is not valid for functions)",
-                             },
-                             TestParams{
-                                 {AttributeKind::kSize},
-                                 R"(1:2 error: @size is not valid for functions)",
-                             },
-                             TestParams{
-                                 {AttributeKind::kStageCompute},
-                                 R"(9:9 error: missing entry point IO attribute on return type)",
-                             },
-                             TestParams{
-                                 {AttributeKind::kStageCompute, AttributeKind::kWorkgroupSize},
-                                 R"(9:9 error: missing entry point IO attribute on return type)",
-                             },
-                             TestParams{
-                                 {AttributeKind::kStride},
-                                 R"(1:2 error: @stride is not valid for functions)",
-                             },
-                             TestParams{
-                                 {AttributeKind::kWorkgroupSize},
-                                 R"(1:2 error: @workgroup_size is only valid for compute stages)",
-                             }));
+INSTANTIATE_TEST_SUITE_P(
+    ResolverAttributeValidationTest,
+    NonVoidFunctionAttributeTest,
+    testing::Values(
+        TestParams{
+            {AttributeKind::kAlign},
+            R"(1:2 error: '@align' is not valid for functions)",
+        },
+        TestParams{
+            {AttributeKind::kBinding},
+            R"(1:2 error: '@binding' is not valid for functions)",
+        },
+        TestParams{
+            {AttributeKind::kBlendSrc},
+            R"(1:2 error: '@blend_src' is not valid for functions)",
+        },
+        TestParams{
+            {AttributeKind::kBuiltinPosition},
+            R"(1:2 error: '@builtin' is not valid for functions)",
+        },
+        TestParams{
+            {AttributeKind::kColor},
+            R"(1:2 error: '@color' is not valid for functions)",
+        },
+        TestParams{
+            {AttributeKind::kDiagnostic},
+            Pass,
+        },
+        TestParams{
+            {AttributeKind::kGroup},
+            R"(1:2 error: '@group' is not valid for functions)",
+        },
+        TestParams{
+            {AttributeKind::kId},
+            R"(1:2 error: '@id' is not valid for functions)",
+        },
+        TestParams{
+            {AttributeKind::kInputAttachmentIndex},
+            R"(1:2 error: '@input_attachment_index' is not valid for functions)",
+        },
+        TestParams{
+            {AttributeKind::kInterpolate},
+            R"(1:2 error: '@interpolate' is not valid for functions)",
+        },
+        TestParams{
+            {AttributeKind::kInvariant},
+            R"(1:2 error: '@invariant' is not valid for functions)",
+        },
+        TestParams{
+            {AttributeKind::kLocation},
+            R"(1:2 error: '@location' is not valid for functions)",
+        },
+        TestParams{
+            {AttributeKind::kMustUse},
+            Pass,
+        },
+        TestParams{
+            {AttributeKind::kOffset},
+            R"(1:2 error: '@offset' is not valid for functions)",
+        },
+        TestParams{
+            {AttributeKind::kSize},
+            R"(1:2 error: '@size' is not valid for functions)",
+        },
+        TestParams{
+            {AttributeKind::kStageCompute},
+            R"(9:9 error: missing entry point IO attribute on return type)",
+        },
+        TestParams{
+            {AttributeKind::kStageCompute, AttributeKind::kWorkgroupSize},
+            R"(9:9 error: missing entry point IO attribute on return type)",
+        },
+        TestParams{
+            {AttributeKind::kStride},
+            R"(1:2 error: '@stride' is not valid for functions)",
+        },
+        TestParams{
+            {AttributeKind::kWorkgroupSize},
+            R"(1:2 error: '@workgroup_size' is only valid for compute stages)",
+        }));
 }  // namespace FunctionTests
 
 namespace FunctionInputAndOutputTests {
@@ -491,71 +510,75 @@ INSTANTIATE_TEST_SUITE_P(
     testing::Values(
         TestParams{
             {AttributeKind::kAlign},
-            R"(1:2 error: @align is not valid for function parameters)",
+            R"(1:2 error: '@align' is not valid for function parameters)",
         },
         TestParams{
             {AttributeKind::kBinding},
-            R"(1:2 error: @binding is not valid for function parameters)",
+            R"(1:2 error: '@binding' is not valid for function parameters)",
+        },
+        TestParams{
+            {AttributeKind::kBlendSrc},
+            R"(1:2 error: '@blend_src' is not valid for function parameters)",
         },
         TestParams{
             {AttributeKind::kBuiltinPosition},
-            R"(1:2 error: @builtin is not valid for non-entry point function parameters)",
+            R"(1:2 error: '@builtin' is not valid for non-entry point function parameters)",
         },
         TestParams{
             {AttributeKind::kColor},
-            R"(1:2 error: @color is not valid for function parameters)",
+            R"(1:2 error: '@color' is not valid for function parameters)",
         },
         TestParams{
             {AttributeKind::kDiagnostic},
-            R"(1:2 error: @diagnostic is not valid for function parameters)",
+            R"(1:2 error: '@diagnostic' is not valid for function parameters)",
         },
         TestParams{
             {AttributeKind::kGroup},
-            R"(1:2 error: @group is not valid for function parameters)",
+            R"(1:2 error: '@group' is not valid for function parameters)",
         },
         TestParams{
             {AttributeKind::kId},
-            R"(1:2 error: @id is not valid for function parameters)",
+            R"(1:2 error: '@id' is not valid for function parameters)",
         },
         TestParams{
-            {AttributeKind::kIndex},
-            R"(1:2 error: @index is not valid for function parameters)",
+            {AttributeKind::kInputAttachmentIndex},
+            R"(1:2 error: '@input_attachment_index' is not valid for function parameters)",
         },
         TestParams{
             {AttributeKind::kInterpolate},
-            R"(1:2 error: @interpolate is not valid for non-entry point function parameters)",
+            R"(1:2 error: '@interpolate' is not valid for non-entry point function parameters)",
         },
         TestParams{
             {AttributeKind::kInvariant},
-            R"(1:2 error: @invariant is not valid for non-entry point function parameters)",
+            R"(1:2 error: '@invariant' is not valid for non-entry point function parameters)",
         },
         TestParams{
             {AttributeKind::kLocation},
-            R"(1:2 error: @location is not valid for non-entry point function parameters)",
+            R"(1:2 error: '@location' is not valid for non-entry point function parameters)",
         },
         TestParams{
             {AttributeKind::kMustUse},
-            R"(1:2 error: @must_use is not valid for function parameters)",
+            R"(1:2 error: '@must_use' is not valid for function parameters)",
         },
         TestParams{
             {AttributeKind::kOffset},
-            R"(1:2 error: @offset is not valid for function parameters)",
+            R"(1:2 error: '@offset' is not valid for function parameters)",
         },
         TestParams{
             {AttributeKind::kSize},
-            R"(1:2 error: @size is not valid for function parameters)",
+            R"(1:2 error: '@size' is not valid for function parameters)",
         },
         TestParams{
             {AttributeKind::kStageCompute},
-            R"(1:2 error: @stage is not valid for function parameters)",
+            R"(1:2 error: '@compute' is not valid for function parameters)",
         },
         TestParams{
             {AttributeKind::kStride},
-            R"(1:2 error: @stride is not valid for function parameters)",
+            R"(1:2 error: '@stride' is not valid for function parameters)",
         },
         TestParams{
             {AttributeKind::kWorkgroupSize},
-            R"(1:2 error: @workgroup_size is not valid for function parameters)",
+            R"(1:2 error: '@workgroup_size' is not valid for function parameters)",
         }));
 
 using FunctionReturnTypeAttributeTest = TestWithParams;
@@ -576,71 +599,75 @@ INSTANTIATE_TEST_SUITE_P(
     testing::Values(
         TestParams{
             {AttributeKind::kAlign},
-            R"(1:2 error: @align is not valid for non-entry point function return types)",
+            R"(1:2 error: '@align' is not valid for non-entry point function return types)",
         },
         TestParams{
             {AttributeKind::kBinding},
-            R"(1:2 error: @binding is not valid for non-entry point function return types)",
+            R"(1:2 error: '@binding' is not valid for non-entry point function return types)",
+        },
+        TestParams{
+            {AttributeKind::kBlendSrc},
+            R"(1:2 error: '@blend_src' is not valid for non-entry point function return types)",
         },
         TestParams{
             {AttributeKind::kBuiltinPosition},
-            R"(1:2 error: @builtin is not valid for non-entry point function return types)",
+            R"(1:2 error: '@builtin' is not valid for non-entry point function return types)",
         },
         TestParams{
             {AttributeKind::kColor},
-            R"(1:2 error: @color is not valid for non-entry point function return types)",
+            R"(1:2 error: '@color' is not valid for non-entry point function return types)",
         },
         TestParams{
             {AttributeKind::kDiagnostic},
-            R"(1:2 error: @diagnostic is not valid for non-entry point function return types)",
+            R"(1:2 error: '@diagnostic' is not valid for non-entry point function return types)",
         },
         TestParams{
             {AttributeKind::kGroup},
-            R"(1:2 error: @group is not valid for non-entry point function return types)",
+            R"(1:2 error: '@group' is not valid for non-entry point function return types)",
         },
         TestParams{
             {AttributeKind::kId},
-            R"(1:2 error: @id is not valid for non-entry point function return types)",
+            R"(1:2 error: '@id' is not valid for non-entry point function return types)",
         },
         TestParams{
-            {AttributeKind::kIndex},
-            R"(1:2 error: @index is not valid for non-entry point function return types)",
+            {AttributeKind::kInputAttachmentIndex},
+            R"(1:2 error: '@input_attachment_index' is not valid for non-entry point function return types)",
         },
         TestParams{
             {AttributeKind::kInterpolate},
-            R"(1:2 error: @interpolate is not valid for non-entry point function return types)",
+            R"(1:2 error: '@interpolate' is not valid for non-entry point function return types)",
         },
         TestParams{
             {AttributeKind::kInvariant},
-            R"(1:2 error: @invariant is not valid for non-entry point function return types)",
+            R"(1:2 error: '@invariant' is not valid for non-entry point function return types)",
         },
         TestParams{
             {AttributeKind::kLocation},
-            R"(1:2 error: @location is not valid for non-entry point function return types)",
+            R"(1:2 error: '@location' is not valid for non-entry point function return types)",
         },
         TestParams{
             {AttributeKind::kMustUse},
-            R"(1:2 error: @must_use is not valid for non-entry point function return types)",
+            R"(1:2 error: '@must_use' is not valid for non-entry point function return types)",
         },
         TestParams{
             {AttributeKind::kOffset},
-            R"(1:2 error: @offset is not valid for non-entry point function return types)",
+            R"(1:2 error: '@offset' is not valid for non-entry point function return types)",
         },
         TestParams{
             {AttributeKind::kSize},
-            R"(1:2 error: @size is not valid for non-entry point function return types)",
+            R"(1:2 error: '@size' is not valid for non-entry point function return types)",
         },
         TestParams{
             {AttributeKind::kStageCompute},
-            R"(1:2 error: @stage is not valid for non-entry point function return types)",
+            R"(1:2 error: '@compute' is not valid for non-entry point function return types)",
         },
         TestParams{
             {AttributeKind::kStride},
-            R"(1:2 error: @stride is not valid for non-entry point function return types)",
+            R"(1:2 error: '@stride' is not valid for non-entry point function return types)",
         },
         TestParams{
             {AttributeKind::kWorkgroupSize},
-            R"(1:2 error: @workgroup_size is not valid for non-entry point function return types)",
+            R"(1:2 error: '@workgroup_size' is not valid for non-entry point function return types)",
         }));
 }  // namespace FunctionInputAndOutputTests
 
@@ -666,71 +693,75 @@ INSTANTIATE_TEST_SUITE_P(
     testing::Values(
         TestParams{
             {AttributeKind::kAlign},
-            R"(1:2 error: @align is not valid for function parameters)",
+            R"(1:2 error: '@align' is not valid for function parameters)",
         },
         TestParams{
             {AttributeKind::kBinding},
-            R"(1:2 error: @binding is not valid for function parameters)",
+            R"(1:2 error: '@binding' is not valid for function parameters)",
+        },
+        TestParams{
+            {AttributeKind::kBlendSrc},
+            R"(1:2 error: '@blend_src' is not valid for function parameters)",
         },
         TestParams{
             {AttributeKind::kBuiltinPosition},
-            R"(1:2 error: @builtin(position) cannot be used for compute shader input)",
+            R"(1:2 error: '@builtin(position)' cannot be used for compute shader input)",
         },
         TestParams{
             {AttributeKind::kColor},
-            R"(1:2 error: @color can only be used for fragment shader input)",
+            R"(1:2 error: '@color' can only be used for fragment shader input)",
         },
         TestParams{
             {AttributeKind::kDiagnostic},
-            R"(1:2 error: @diagnostic is not valid for function parameters)",
+            R"(1:2 error: '@diagnostic' is not valid for function parameters)",
         },
         TestParams{
             {AttributeKind::kGroup},
-            R"(1:2 error: @group is not valid for function parameters)",
+            R"(1:2 error: '@group' is not valid for function parameters)",
         },
         TestParams{
             {AttributeKind::kId},
-            R"(1:2 error: @id is not valid for function parameters)",
+            R"(1:2 error: '@id' is not valid for function parameters)",
         },
         TestParams{
-            {AttributeKind::kIndex},
-            R"(1:2 error: @index is not valid for function parameters)",
+            {AttributeKind::kInputAttachmentIndex},
+            R"(1:2 error: '@input_attachment_index' is not valid for function parameters)",
         },
         TestParams{
             {AttributeKind::kInterpolate},
-            R"(1:2 error: @interpolate cannot be used by compute shaders)",
+            R"(1:2 error: '@interpolate' cannot be used by compute shaders)",
         },
         TestParams{
             {AttributeKind::kInvariant},
-            R"(1:2 error: @invariant cannot be used by compute shaders)",
+            R"(1:2 error: '@invariant' cannot be used by compute shaders)",
         },
         TestParams{
             {AttributeKind::kLocation},
-            R"(1:2 error: @location cannot be used by compute shaders)",
+            R"(1:2 error: '@location' cannot be used by compute shaders)",
         },
         TestParams{
             {AttributeKind::kMustUse},
-            R"(1:2 error: @must_use is not valid for function parameters)",
+            R"(1:2 error: '@must_use' is not valid for function parameters)",
         },
         TestParams{
             {AttributeKind::kOffset},
-            R"(1:2 error: @offset is not valid for function parameters)",
+            R"(1:2 error: '@offset' is not valid for function parameters)",
         },
         TestParams{
             {AttributeKind::kSize},
-            R"(1:2 error: @size is not valid for function parameters)",
+            R"(1:2 error: '@size' is not valid for function parameters)",
         },
         TestParams{
             {AttributeKind::kStageCompute},
-            R"(1:2 error: @stage is not valid for function parameters)",
+            R"(1:2 error: '@compute' is not valid for function parameters)",
         },
         TestParams{
             {AttributeKind::kStride},
-            R"(1:2 error: @stride is not valid for function parameters)",
+            R"(1:2 error: '@stride' is not valid for function parameters)",
         },
         TestParams{
             {AttributeKind::kWorkgroupSize},
-            R"(1:2 error: @workgroup_size is not valid for function parameters)",
+            R"(1:2 error: '@workgroup_size' is not valid for function parameters)",
         }));
 
 using FragmentShaderParameterAttributeTest = TestWithParams;
@@ -750,11 +781,15 @@ INSTANTIATE_TEST_SUITE_P(
     testing::Values(
         TestParams{
             {AttributeKind::kAlign},
-            R"(1:2 error: @align is not valid for function parameters)",
+            R"(1:2 error: '@align' is not valid for function parameters)",
         },
         TestParams{
             {AttributeKind::kBinding},
-            R"(1:2 error: @binding is not valid for function parameters)",
+            R"(1:2 error: '@binding' is not valid for function parameters)",
+        },
+        TestParams{
+            {AttributeKind::kBlendSrc},
+            R"(1:2 error: '@blend_src' is not valid for function parameters)",
         },
         TestParams{
             {AttributeKind::kBuiltinPosition},
@@ -767,23 +802,23 @@ INSTANTIATE_TEST_SUITE_P(
         TestParams{
             {AttributeKind::kColor, AttributeKind::kLocation},
             R"(3:4 error: multiple entry point IO attributes
-1:2 note: previously consumed @color)",
+1:2 note: previously consumed '@color')",
         },
         TestParams{
             {AttributeKind::kDiagnostic},
-            R"(1:2 error: @diagnostic is not valid for function parameters)",
+            R"(1:2 error: '@diagnostic' is not valid for function parameters)",
         },
         TestParams{
             {AttributeKind::kGroup},
-            R"(1:2 error: @group is not valid for function parameters)",
+            R"(1:2 error: '@group' is not valid for function parameters)",
         },
         TestParams{
             {AttributeKind::kId},
-            R"(1:2 error: @id is not valid for function parameters)",
+            R"(1:2 error: '@id' is not valid for function parameters)",
         },
         TestParams{
-            {AttributeKind::kIndex},
-            R"(1:2 error: @index is not valid for function parameters)",
+            {AttributeKind::kInputAttachmentIndex},
+            R"(1:2 error: '@input_attachment_index' is not valid for function parameters)",
         },
         TestParams{
             {AttributeKind::kInterpolate},
@@ -791,7 +826,7 @@ INSTANTIATE_TEST_SUITE_P(
         },
         TestParams{
             {AttributeKind::kInterpolate, AttributeKind::kBuiltinPosition},
-            R"(1:2 error: @interpolate can only be used with @location)",
+            R"(1:2 error: '@interpolate' can only be used with '@location')",
         },
         TestParams{
             {AttributeKind::kInterpolate, AttributeKind::kLocation},
@@ -811,27 +846,27 @@ INSTANTIATE_TEST_SUITE_P(
         },
         TestParams{
             {AttributeKind::kMustUse},
-            R"(1:2 error: @must_use is not valid for function parameters)",
+            R"(1:2 error: '@must_use' is not valid for function parameters)",
         },
         TestParams{
             {AttributeKind::kOffset},
-            R"(1:2 error: @offset is not valid for function parameters)",
+            R"(1:2 error: '@offset' is not valid for function parameters)",
         },
         TestParams{
             {AttributeKind::kSize},
-            R"(1:2 error: @size is not valid for function parameters)",
+            R"(1:2 error: '@size' is not valid for function parameters)",
         },
         TestParams{
             {AttributeKind::kStageCompute},
-            R"(1:2 error: @stage is not valid for function parameters)",
+            R"(1:2 error: '@compute' is not valid for function parameters)",
         },
         TestParams{
             {AttributeKind::kStride},
-            R"(1:2 error: @stride is not valid for function parameters)",
+            R"(1:2 error: '@stride' is not valid for function parameters)",
         },
         TestParams{
             {AttributeKind::kWorkgroupSize},
-            R"(1:2 error: @workgroup_size is not valid for function parameters)",
+            R"(1:2 error: '@workgroup_size' is not valid for function parameters)",
         }));
 
 using VertexShaderParameterAttributeTest = TestWithParams;
@@ -858,35 +893,39 @@ INSTANTIATE_TEST_SUITE_P(
     testing::Values(
         TestParams{
             {AttributeKind::kAlign},
-            R"(1:2 error: @align is not valid for function parameters)",
+            R"(1:2 error: '@align' is not valid for function parameters)",
         },
         TestParams{
             {AttributeKind::kBinding},
-            R"(1:2 error: @binding is not valid for function parameters)",
+            R"(1:2 error: '@binding' is not valid for function parameters)",
+        },
+        TestParams{
+            {AttributeKind::kBlendSrc},
+            R"(1:2 error: '@blend_src' is not valid for function parameters)",
         },
         TestParams{
             {AttributeKind::kBuiltinPosition},
-            R"(1:2 error: @builtin(position) cannot be used for vertex shader input)",
+            R"(1:2 error: '@builtin(position)' cannot be used for vertex shader input)",
         },
         TestParams{
             {AttributeKind::kColor},
-            R"(1:2 error: @color can only be used for fragment shader input)",
+            R"(1:2 error: '@color' can only be used for fragment shader input)",
         },
         TestParams{
             {AttributeKind::kDiagnostic},
-            R"(1:2 error: @diagnostic is not valid for function parameters)",
+            R"(1:2 error: '@diagnostic' is not valid for function parameters)",
         },
         TestParams{
             {AttributeKind::kGroup},
-            R"(1:2 error: @group is not valid for function parameters)",
+            R"(1:2 error: '@group' is not valid for function parameters)",
         },
         TestParams{
             {AttributeKind::kId},
-            R"(1:2 error: @id is not valid for function parameters)",
+            R"(1:2 error: '@id' is not valid for function parameters)",
         },
         TestParams{
-            {AttributeKind::kIndex},
-            R"(1:2 error: @index is not valid for function parameters)",
+            {AttributeKind::kInputAttachmentIndex},
+            R"(1:2 error: '@input_attachment_index' is not valid for function parameters)",
         },
         TestParams{
             {AttributeKind::kInterpolate},
@@ -898,7 +937,7 @@ INSTANTIATE_TEST_SUITE_P(
         },
         TestParams{
             {AttributeKind::kInterpolate, AttributeKind::kBuiltinPosition},
-            R"(3:4 error: @builtin(position) cannot be used for vertex shader input)",
+            R"(3:4 error: '@builtin(position)' cannot be used for vertex shader input)",
         },
         TestParams{
             {AttributeKind::kInvariant},
@@ -906,11 +945,11 @@ INSTANTIATE_TEST_SUITE_P(
         },
         TestParams{
             {AttributeKind::kInvariant, AttributeKind::kLocation},
-            R"(1:2 error: @invariant must be applied to a position builtin)",
+            R"(1:2 error: '@invariant' must be applied to a '@builtin(position)')",
         },
         TestParams{
             {AttributeKind::kInvariant, AttributeKind::kBuiltinPosition},
-            R"(3:4 error: @builtin(position) cannot be used for vertex shader input)",
+            R"(3:4 error: '@builtin(position)' cannot be used for vertex shader input)",
         },
         TestParams{
             {AttributeKind::kLocation},
@@ -918,27 +957,27 @@ INSTANTIATE_TEST_SUITE_P(
         },
         TestParams{
             {AttributeKind::kMustUse},
-            R"(1:2 error: @must_use is not valid for function parameters)",
+            R"(1:2 error: '@must_use' is not valid for function parameters)",
         },
         TestParams{
             {AttributeKind::kOffset},
-            R"(1:2 error: @offset is not valid for function parameters)",
+            R"(1:2 error: '@offset' is not valid for function parameters)",
         },
         TestParams{
             {AttributeKind::kSize},
-            R"(1:2 error: @size is not valid for function parameters)",
+            R"(1:2 error: '@size' is not valid for function parameters)",
         },
         TestParams{
             {AttributeKind::kStageCompute},
-            R"(1:2 error: @stage is not valid for function parameters)",
+            R"(1:2 error: '@compute' is not valid for function parameters)",
         },
         TestParams{
             {AttributeKind::kStride},
-            R"(1:2 error: @stride is not valid for function parameters)",
+            R"(1:2 error: '@stride' is not valid for function parameters)",
         },
         TestParams{
             {AttributeKind::kWorkgroupSize},
-            R"(1:2 error: @workgroup_size is not valid for function parameters)",
+            R"(1:2 error: '@workgroup_size' is not valid for function parameters)",
         }));
 
 using ComputeShaderReturnTypeAttributeTest = TestWithParams;
@@ -963,71 +1002,75 @@ INSTANTIATE_TEST_SUITE_P(
     testing::Values(
         TestParams{
             {AttributeKind::kAlign},
-            R"(1:2 error: @align is not valid for entry point return types)",
+            R"(1:2 error: '@align' is not valid for entry point return types)",
         },
         TestParams{
             {AttributeKind::kBinding},
-            R"(1:2 error: @binding is not valid for entry point return types)",
+            R"(1:2 error: '@binding' is not valid for entry point return types)",
+        },
+        TestParams{
+            {AttributeKind::kBlendSrc},
+            R"(1:2 error: '@blend_src' is not valid for entry point return types)",
         },
         TestParams{
             {AttributeKind::kBuiltinPosition},
-            R"(1:2 error: @builtin(position) cannot be used for compute shader output)",
+            R"(1:2 error: '@builtin(position)' cannot be used for compute shader output)",
         },
         TestParams{
             {AttributeKind::kColor},
-            R"(1:2 error: @color is not valid for entry point return types)",
+            R"(1:2 error: '@color' is not valid for entry point return types)",
         },
         TestParams{
             {AttributeKind::kDiagnostic},
-            R"(1:2 error: @diagnostic is not valid for entry point return types)",
+            R"(1:2 error: '@diagnostic' is not valid for entry point return types)",
         },
         TestParams{
             {AttributeKind::kGroup},
-            R"(1:2 error: @group is not valid for entry point return types)",
+            R"(1:2 error: '@group' is not valid for entry point return types)",
         },
         TestParams{
             {AttributeKind::kId},
-            R"(1:2 error: @id is not valid for entry point return types)",
+            R"(1:2 error: '@id' is not valid for entry point return types)",
         },
         TestParams{
-            {AttributeKind::kIndex},
-            R"(1:2 error: @index can only be used for fragment shader output)",
+            {AttributeKind::kInputAttachmentIndex},
+            R"(1:2 error: '@input_attachment_index' is not valid for entry point return types)",
         },
         TestParams{
             {AttributeKind::kInterpolate},
-            R"(1:2 error: @interpolate cannot be used by compute shaders)",
+            R"(1:2 error: '@interpolate' cannot be used by compute shaders)",
         },
         TestParams{
             {AttributeKind::kInvariant},
-            R"(1:2 error: @invariant cannot be used by compute shaders)",
+            R"(1:2 error: '@invariant' cannot be used by compute shaders)",
         },
         TestParams{
             {AttributeKind::kLocation},
-            R"(1:2 error: @location cannot be used by compute shaders)",
+            R"(1:2 error: '@location' cannot be used by compute shaders)",
         },
         TestParams{
             {AttributeKind::kMustUse},
-            R"(1:2 error: @must_use is not valid for entry point return types)",
+            R"(1:2 error: '@must_use' is not valid for entry point return types)",
         },
         TestParams{
             {AttributeKind::kOffset},
-            R"(1:2 error: @offset is not valid for entry point return types)",
+            R"(1:2 error: '@offset' is not valid for entry point return types)",
         },
         TestParams{
             {AttributeKind::kSize},
-            R"(1:2 error: @size is not valid for entry point return types)",
+            R"(1:2 error: '@size' is not valid for entry point return types)",
         },
         TestParams{
             {AttributeKind::kStageCompute},
-            R"(1:2 error: @stage is not valid for entry point return types)",
+            R"(1:2 error: '@compute' is not valid for entry point return types)",
         },
         TestParams{
             {AttributeKind::kStride},
-            R"(1:2 error: @stride is not valid for entry point return types)",
+            R"(1:2 error: '@stride' is not valid for entry point return types)",
         },
         TestParams{
             {AttributeKind::kWorkgroupSize},
-            R"(1:2 error: @workgroup_size is not valid for entry point return types)",
+            R"(1:2 error: '@workgroup_size' is not valid for entry point return types)",
         }));
 
 using FragmentShaderReturnTypeAttributeTest = TestWithParams;
@@ -1049,39 +1092,43 @@ INSTANTIATE_TEST_SUITE_P(
     testing::Values(
         TestParams{
             {AttributeKind::kAlign},
-            R"(1:2 error: @align is not valid for entry point return types)",
+            R"(1:2 error: '@align' is not valid for entry point return types)",
         },
         TestParams{
             {AttributeKind::kBinding},
-            R"(1:2 error: @binding is not valid for entry point return types)",
+            R"(1:2 error: '@binding' is not valid for entry point return types)",
+        },
+        TestParams{
+            {AttributeKind::kBlendSrc},
+            R"(1:2 error: '@blend_src' is not valid for entry point return types)",
+        },
+        TestParams{
+            {AttributeKind::kBlendSrc, AttributeKind::kLocation},
+            R"(1:2 error: '@blend_src' is not valid for entry point return types)",
         },
         TestParams{
             {AttributeKind::kBuiltinPosition},
-            R"(1:2 error: @builtin(position) cannot be used for fragment shader output)",
+            R"(1:2 error: '@builtin(position)' cannot be used for fragment shader output)",
         },
         TestParams{
             {AttributeKind::kColor},
-            R"(1:2 error: @color is not valid for entry point return types)",
+            R"(1:2 error: '@color' is not valid for entry point return types)",
         },
         TestParams{
             {AttributeKind::kDiagnostic},
-            R"(1:2 error: @diagnostic is not valid for entry point return types)",
+            R"(1:2 error: '@diagnostic' is not valid for entry point return types)",
         },
         TestParams{
             {AttributeKind::kGroup},
-            R"(1:2 error: @group is not valid for entry point return types)",
+            R"(1:2 error: '@group' is not valid for entry point return types)",
         },
         TestParams{
             {AttributeKind::kId},
-            R"(1:2 error: @id is not valid for entry point return types)",
+            R"(1:2 error: '@id' is not valid for entry point return types)",
         },
         TestParams{
-            {AttributeKind::kIndex},
-            R"(9:9 error: missing entry point IO attribute on return type)",
-        },
-        TestParams{
-            {AttributeKind::kIndex, AttributeKind::kLocation},
-            Pass,
+            {AttributeKind::kInputAttachmentIndex},
+            R"(1:2 error: '@input_attachment_index' is not valid for entry point return types)",
         },
         TestParams{
             {AttributeKind::kInterpolate},
@@ -1097,7 +1144,7 @@ INSTANTIATE_TEST_SUITE_P(
         },
         TestParams{
             {AttributeKind::kInvariant, AttributeKind::kLocation},
-            R"(1:2 error: @invariant must be applied to a position builtin)",
+            R"(1:2 error: '@invariant' must be applied to a '@builtin(position)')",
         },
         TestParams{
             {AttributeKind::kLocation},
@@ -1105,35 +1152,31 @@ INSTANTIATE_TEST_SUITE_P(
         },
         TestParams{
             {AttributeKind::kMustUse},
-            R"(1:2 error: @must_use is not valid for entry point return types)",
+            R"(1:2 error: '@must_use' is not valid for entry point return types)",
         },
         TestParams{
             {AttributeKind::kOffset},
-            R"(1:2 error: @offset is not valid for entry point return types)",
+            R"(1:2 error: '@offset' is not valid for entry point return types)",
         },
         TestParams{
             {AttributeKind::kSize},
-            R"(1:2 error: @size is not valid for entry point return types)",
+            R"(1:2 error: '@size' is not valid for entry point return types)",
         },
         TestParams{
             {AttributeKind::kStageCompute},
-            R"(1:2 error: @stage is not valid for entry point return types)",
+            R"(1:2 error: '@compute' is not valid for entry point return types)",
         },
         TestParams{
             {AttributeKind::kStride},
-            R"(1:2 error: @stride is not valid for entry point return types)",
+            R"(1:2 error: '@stride' is not valid for entry point return types)",
         },
         TestParams{
             {AttributeKind::kWorkgroupSize},
-            R"(1:2 error: @workgroup_size is not valid for entry point return types)",
+            R"(1:2 error: '@workgroup_size' is not valid for entry point return types)",
         },
         TestParams{
             {AttributeKind::kBinding, AttributeKind::kGroup},
-            R"(1:2 error: @binding is not valid for entry point return types)",
-        },
-        TestParams{
-            {AttributeKind::kIndex, AttributeKind::kLocation},
-            Pass,
+            R"(1:2 error: '@binding' is not valid for entry point return types)",
         }));
 
 using VertexShaderReturnTypeAttributeTest = TestWithParams;
@@ -1161,11 +1204,15 @@ INSTANTIATE_TEST_SUITE_P(
     testing::Values(
         TestParams{
             {AttributeKind::kAlign},
-            R"(1:2 error: @align is not valid for entry point return types)",
+            R"(1:2 error: '@align' is not valid for entry point return types)",
         },
         TestParams{
             {AttributeKind::kBinding},
-            R"(1:2 error: @binding is not valid for entry point return types)",
+            R"(1:2 error: '@binding' is not valid for entry point return types)",
+        },
+        TestParams{
+            {AttributeKind::kBlendSrc},
+            R"(1:2 error: '@blend_src' is not valid for entry point return types)",
         },
         TestParams{
             {AttributeKind::kBuiltinPosition},
@@ -1173,27 +1220,27 @@ INSTANTIATE_TEST_SUITE_P(
         },
         TestParams{
             {AttributeKind::kColor},
-            R"(1:2 error: @color is not valid for entry point return types)",
+            R"(1:2 error: '@color' is not valid for entry point return types)",
         },
         TestParams{
             {AttributeKind::kDiagnostic},
-            R"(1:2 error: @diagnostic is not valid for entry point return types)",
+            R"(1:2 error: '@diagnostic' is not valid for entry point return types)",
         },
         TestParams{
             {AttributeKind::kGroup},
-            R"(1:2 error: @group is not valid for entry point return types)",
+            R"(1:2 error: '@group' is not valid for entry point return types)",
         },
         TestParams{
             {AttributeKind::kId},
-            R"(1:2 error: @id is not valid for entry point return types)",
+            R"(1:2 error: '@id' is not valid for entry point return types)",
         },
         TestParams{
-            {AttributeKind::kIndex},
-            R"(1:2 error: @index can only be used for fragment shader output)",
+            {AttributeKind::kInputAttachmentIndex},
+            R"(1:2 error: '@input_attachment_index' is not valid for entry point return types)",
         },
         TestParams{
             {AttributeKind::kInterpolate},
-            R"(1:2 error: @interpolate can only be used with @location)",
+            R"(1:2 error: '@interpolate' can only be used with '@location')",
         },
         TestParams{
             {AttributeKind::kInvariant},
@@ -1202,35 +1249,35 @@ INSTANTIATE_TEST_SUITE_P(
         TestParams{
             {AttributeKind::kLocation},
             R"(9:9 error: multiple entry point IO attributes
-1:2 note: previously consumed @location)",
+1:2 note: previously consumed '@location')",
         },
         TestParams{
             {AttributeKind::kMustUse},
-            R"(1:2 error: @must_use is not valid for entry point return types)",
+            R"(1:2 error: '@must_use' is not valid for entry point return types)",
         },
         TestParams{
             {AttributeKind::kOffset},
-            R"(1:2 error: @offset is not valid for entry point return types)",
+            R"(1:2 error: '@offset' is not valid for entry point return types)",
         },
         TestParams{
             {AttributeKind::kSize},
-            R"(1:2 error: @size is not valid for entry point return types)",
+            R"(1:2 error: '@size' is not valid for entry point return types)",
         },
         TestParams{
             {AttributeKind::kStageCompute},
-            R"(1:2 error: @stage is not valid for entry point return types)",
+            R"(1:2 error: '@compute' is not valid for entry point return types)",
         },
         TestParams{
             {AttributeKind::kStride},
-            R"(1:2 error: @stride is not valid for entry point return types)",
+            R"(1:2 error: '@stride' is not valid for entry point return types)",
         },
         TestParams{
             {AttributeKind::kWorkgroupSize},
-            R"(1:2 error: @workgroup_size is not valid for entry point return types)",
+            R"(1:2 error: '@workgroup_size' is not valid for entry point return types)",
         },
         TestParams{
             {AttributeKind::kBinding, AttributeKind::kGroup},
-            R"(1:2 error: @binding is not valid for entry point return types)",
+            R"(1:2 error: '@binding' is not valid for entry point return types)",
         },
         TestParams{
             {AttributeKind::kLocation, AttributeKind::kLocation},
@@ -1286,75 +1333,79 @@ INSTANTIATE_TEST_SUITE_P(
     testing::Values(
         TestParams{
             {AttributeKind::kAlign},
-            R"(1:2 error: @align is not valid for struct declarations)",
+            R"(1:2 error: '@align' is not valid for 'struct' declarations)",
         },
         TestParams{
             {AttributeKind::kBinding},
-            R"(1:2 error: @binding is not valid for struct declarations)",
+            R"(1:2 error: '@binding' is not valid for 'struct' declarations)",
+        },
+        TestParams{
+            {AttributeKind::kBlendSrc},
+            R"(1:2 error: '@blend_src' is not valid for 'struct' declarations)",
         },
         TestParams{
             {AttributeKind::kBuiltinPosition},
-            R"(1:2 error: @builtin is not valid for struct declarations)",
+            R"(1:2 error: '@builtin' is not valid for 'struct' declarations)",
         },
         TestParams{
             {AttributeKind::kDiagnostic},
-            R"(1:2 error: @diagnostic is not valid for struct declarations)",
+            R"(1:2 error: '@diagnostic' is not valid for 'struct' declarations)",
         },
         TestParams{
             {AttributeKind::kColor},
-            R"(1:2 error: @color is not valid for struct declarations)",
+            R"(1:2 error: '@color' is not valid for 'struct' declarations)",
         },
         TestParams{
             {AttributeKind::kGroup},
-            R"(1:2 error: @group is not valid for struct declarations)",
+            R"(1:2 error: '@group' is not valid for 'struct' declarations)",
         },
         TestParams{
             {AttributeKind::kId},
-            R"(1:2 error: @id is not valid for struct declarations)",
+            R"(1:2 error: '@id' is not valid for 'struct' declarations)",
         },
         TestParams{
-            {AttributeKind::kIndex},
-            R"(1:2 error: @index is not valid for struct declarations)",
+            {AttributeKind::kInputAttachmentIndex},
+            R"(1:2 error: '@input_attachment_index' is not valid for 'struct' declarations)",
         },
         TestParams{
             {AttributeKind::kInterpolate},
-            R"(1:2 error: @interpolate is not valid for struct declarations)",
+            R"(1:2 error: '@interpolate' is not valid for 'struct' declarations)",
         },
         TestParams{
             {AttributeKind::kInvariant},
-            R"(1:2 error: @invariant is not valid for struct declarations)",
+            R"(1:2 error: '@invariant' is not valid for 'struct' declarations)",
         },
         TestParams{
             {AttributeKind::kLocation},
-            R"(1:2 error: @location is not valid for struct declarations)",
+            R"(1:2 error: '@location' is not valid for 'struct' declarations)",
         },
         TestParams{
             {AttributeKind::kMustUse},
-            R"(1:2 error: @must_use is not valid for struct declarations)",
+            R"(1:2 error: '@must_use' is not valid for 'struct' declarations)",
         },
         TestParams{
             {AttributeKind::kOffset},
-            R"(1:2 error: @offset is not valid for struct declarations)",
+            R"(1:2 error: '@offset' is not valid for 'struct' declarations)",
         },
         TestParams{
             {AttributeKind::kSize},
-            R"(1:2 error: @size is not valid for struct declarations)",
+            R"(1:2 error: '@size' is not valid for 'struct' declarations)",
         },
         TestParams{
             {AttributeKind::kStageCompute},
-            R"(1:2 error: @stage is not valid for struct declarations)",
+            R"(1:2 error: '@compute' is not valid for 'struct' declarations)",
         },
         TestParams{
             {AttributeKind::kStride},
-            R"(1:2 error: @stride is not valid for struct declarations)",
+            R"(1:2 error: '@stride' is not valid for 'struct' declarations)",
         },
         TestParams{
             {AttributeKind::kWorkgroupSize},
-            R"(1:2 error: @workgroup_size is not valid for struct declarations)",
+            R"(1:2 error: '@workgroup_size' is not valid for 'struct' declarations)",
         },
         TestParams{
             {AttributeKind::kBinding, AttributeKind::kGroup},
-            R"(1:2 error: @binding is not valid for struct declarations)",
+            R"(1:2 error: '@binding' is not valid for 'struct' declarations)",
         }));
 
 using StructMemberAttributeTest = TestWithParams;
@@ -1364,94 +1415,99 @@ TEST_P(StructMemberAttributeTest, IsValid) {
 
     CHECK();
 }
-INSTANTIATE_TEST_SUITE_P(ResolverAttributeValidationTest,
-                         StructMemberAttributeTest,
-                         testing::Values(
-                             TestParams{
-                                 {AttributeKind::kAlign},
-                                 Pass,
-                             },
-                             TestParams{
-                                 {AttributeKind::kBinding},
-                                 R"(1:2 error: @binding is not valid for struct members)",
-                             },
-                             TestParams{
-                                 {AttributeKind::kBuiltinPosition},
-                                 Pass,
-                             },
-                             TestParams{
-                                 {AttributeKind::kColor},
-                                 Pass,
-                             },
-                             TestParams{
-                                 {AttributeKind::kDiagnostic},
-                                 R"(1:2 error: @diagnostic is not valid for struct members)",
-                             },
-                             TestParams{
-                                 {AttributeKind::kGroup},
-                                 R"(1:2 error: @group is not valid for struct members)",
-                             },
-                             TestParams{
-                                 {AttributeKind::kId},
-                                 R"(1:2 error: @id is not valid for struct members)",
-                             },
-                             TestParams{
-                                 {AttributeKind::kIndex},
-                                 R"(1:2 error: @index can only be used with @location(0))",
-                             },
-                             TestParams{
-                                 {AttributeKind::kInterpolate},
-                                 R"(1:2 error: @interpolate can only be used with @location)",
-                             },
-                             TestParams{
-                                 {AttributeKind::kInterpolate, AttributeKind::kLocation},
-                                 Pass,
-                             },
-                             TestParams{
-                                 {AttributeKind::kInvariant},
-                                 R"(1:2 error: @invariant must be applied to a position builtin)",
-                             },
-                             TestParams{
-                                 {AttributeKind::kInvariant, AttributeKind::kBuiltinPosition},
-                                 Pass,
-                             },
-                             TestParams{
-                                 {AttributeKind::kLocation},
-                                 Pass,
-                             },
-                             TestParams{
-                                 {AttributeKind::kMustUse},
-                                 R"(1:2 error: @must_use is not valid for struct members)",
-                             },
-                             TestParams{
-                                 {AttributeKind::kOffset},
-                                 Pass,
-                             },
-                             TestParams{
-                                 {AttributeKind::kSize},
-                                 Pass,
-                             },
-                             TestParams{
-                                 {AttributeKind::kStageCompute},
-                                 R"(1:2 error: @stage is not valid for struct members)",
-                             },
-                             TestParams{
-                                 {AttributeKind::kStride},
-                                 R"(1:2 error: @stride is not valid for struct members)",
-                             },
-                             TestParams{
-                                 {AttributeKind::kWorkgroupSize},
-                                 R"(1:2 error: @workgroup_size is not valid for struct members)",
-                             },
-                             TestParams{
-                                 {AttributeKind::kBinding, AttributeKind::kGroup},
-                                 R"(1:2 error: @binding is not valid for struct members)",
-                             },
-                             TestParams{
-                                 {AttributeKind::kAlign, AttributeKind::kAlign},
-                                 R"(3:4 error: duplicate align attribute
+INSTANTIATE_TEST_SUITE_P(
+    ResolverAttributeValidationTest,
+    StructMemberAttributeTest,
+    testing::Values(
+        TestParams{
+            {AttributeKind::kAlign},
+            Pass,
+        },
+        TestParams{
+            {AttributeKind::kBinding},
+            R"(1:2 error: '@binding' is not valid for 'struct' members)",
+        },
+        TestParams{
+            {AttributeKind::kBlendSrc},
+            R"(1:2 error: '@blend_src' can only be used with '@location(0)')",
+        },
+        TestParams{
+            {AttributeKind::kBuiltinPosition},
+            Pass,
+        },
+        TestParams{
+            {AttributeKind::kColor},
+            Pass,
+        },
+        TestParams{
+            {AttributeKind::kDiagnostic},
+            R"(1:2 error: '@diagnostic' is not valid for 'struct' members)",
+        },
+        TestParams{
+            {AttributeKind::kGroup},
+            R"(1:2 error: '@group' is not valid for 'struct' members)",
+        },
+        TestParams{
+            {AttributeKind::kId},
+            R"(1:2 error: '@id' is not valid for 'struct' members)",
+        },
+        TestParams{
+            {AttributeKind::kInputAttachmentIndex},
+            R"(1:2 error: '@input_attachment_index' is not valid for 'struct' members)",
+        },
+        TestParams{
+            {AttributeKind::kInterpolate},
+            R"(1:2 error: '@interpolate' can only be used with '@location')",
+        },
+        TestParams{
+            {AttributeKind::kInterpolate, AttributeKind::kLocation},
+            Pass,
+        },
+        TestParams{
+            {AttributeKind::kInvariant},
+            R"(1:2 error: '@invariant' must be applied to a position builtin)",
+        },
+        TestParams{
+            {AttributeKind::kInvariant, AttributeKind::kBuiltinPosition},
+            Pass,
+        },
+        TestParams{
+            {AttributeKind::kLocation},
+            Pass,
+        },
+        TestParams{
+            {AttributeKind::kMustUse},
+            R"(1:2 error: '@must_use' is not valid for 'struct' members)",
+        },
+        TestParams{
+            {AttributeKind::kOffset},
+            Pass,
+        },
+        TestParams{
+            {AttributeKind::kSize},
+            Pass,
+        },
+        TestParams{
+            {AttributeKind::kStageCompute},
+            R"(1:2 error: '@compute' is not valid for 'struct' members)",
+        },
+        TestParams{
+            {AttributeKind::kStride},
+            R"(1:2 error: '@stride' is not valid for 'struct' members)",
+        },
+        TestParams{
+            {AttributeKind::kWorkgroupSize},
+            R"(1:2 error: '@workgroup_size' is not valid for 'struct' members)",
+        },
+        TestParams{
+            {AttributeKind::kBinding, AttributeKind::kGroup},
+            R"(1:2 error: '@binding' is not valid for 'struct' members)",
+        },
+        TestParams{
+            {AttributeKind::kAlign, AttributeKind::kAlign},
+            R"(3:4 error: duplicate align attribute
 1:2 note: first attribute declared here)",
-                             }));
+        }));
 
 TEST_F(StructMemberAttributeTest, Align_Attribute_Const) {
     GlobalConst("val", ty.i32(), Expr(1_i));
@@ -1467,7 +1523,7 @@ TEST_F(StructMemberAttributeTest, Align_Attribute_ConstNegative) {
               Vector{Member("a", ty.f32(), Vector{MemberAlign(Source{{12, 34}}, "val")})});
     EXPECT_FALSE(r()->Resolve());
     EXPECT_EQ(r()->error(),
-              R"(12:34 error: @align value must be a positive, power-of-two integer)");
+              R"(12:34 error: '@align' value must be a positive, power-of-two integer)");
 }
 
 TEST_F(StructMemberAttributeTest, Align_Attribute_ConstPowerOfTwo) {
@@ -1477,7 +1533,7 @@ TEST_F(StructMemberAttributeTest, Align_Attribute_ConstPowerOfTwo) {
               Vector{Member("a", ty.f32(), Vector{MemberAlign(Source{{12, 34}}, "val")})});
     EXPECT_FALSE(r()->Resolve());
     EXPECT_EQ(r()->error(),
-              R"(12:34 error: @align value must be a positive, power-of-two integer)");
+              R"(12:34 error: '@align' value must be a positive, power-of-two integer)");
 }
 
 TEST_F(StructMemberAttributeTest, Align_Attribute_ConstF32) {
@@ -1486,7 +1542,7 @@ TEST_F(StructMemberAttributeTest, Align_Attribute_ConstF32) {
     Structure("mystruct",
               Vector{Member("a", ty.f32(), Vector{MemberAlign(Source{{12, 34}}, "val")})});
     EXPECT_FALSE(r()->Resolve());
-    EXPECT_EQ(r()->error(), R"(12:34 error: @align must be an i32 or u32 value)");
+    EXPECT_EQ(r()->error(), R"(12:34 error: '@align' value must be an 'i32' or 'u32')");
 }
 
 TEST_F(StructMemberAttributeTest, Align_Attribute_ConstU32) {
@@ -1511,7 +1567,7 @@ TEST_F(StructMemberAttributeTest, Align_Attribute_ConstAFloat) {
     Structure("mystruct",
               Vector{Member("a", ty.f32(), Vector{MemberAlign(Source{{12, 34}}, "val")})});
     EXPECT_FALSE(r()->Resolve());
-    EXPECT_EQ(r()->error(), R"(12:34 error: @align must be an i32 or u32 value)");
+    EXPECT_EQ(r()->error(), R"(12:34 error: '@align' value must be an 'i32' or 'u32')");
 }
 
 TEST_F(StructMemberAttributeTest, Align_Attribute_Var) {
@@ -1522,8 +1578,8 @@ TEST_F(StructMemberAttributeTest, Align_Attribute_Var) {
               Vector{Member(Source{{12, 5}}, "a", ty.f32(),
                             Vector{MemberAlign(Expr(Source{{12, 35}}, "val"))})});
     EXPECT_FALSE(r()->Resolve());
-    EXPECT_EQ(r()->error(), R"(12:35 error: var 'val' cannot be referenced at module-scope
-1:2 note: var 'val' declared here)");
+    EXPECT_EQ(r()->error(), R"(12:35 error: 'var val' cannot be referenced at module-scope
+1:2 note: 'var val' declared here)");
 }
 
 TEST_F(StructMemberAttributeTest, Align_Attribute_Override) {
@@ -1550,7 +1606,7 @@ TEST_F(StructMemberAttributeTest, Size_Attribute_ConstNegative) {
     Structure("mystruct",
               Vector{Member("a", ty.f32(), Vector{MemberSize(Source{{12, 34}}, "val")})});
     EXPECT_FALSE(r()->Resolve());
-    EXPECT_EQ(r()->error(), R"(12:34 error: @size must be a positive integer)");
+    EXPECT_EQ(r()->error(), R"(12:34 error: '@size' value must be a positive integer)");
 }
 
 TEST_F(StructMemberAttributeTest, Size_Attribute_ConstF32) {
@@ -1559,7 +1615,7 @@ TEST_F(StructMemberAttributeTest, Size_Attribute_ConstF32) {
     Structure("mystruct",
               Vector{Member("a", ty.f32(), Vector{MemberSize(Source{{12, 34}}, "val")})});
     EXPECT_FALSE(r()->Resolve());
-    EXPECT_EQ(r()->error(), R"(12:34 error: @size must be an i32 or u32 value)");
+    EXPECT_EQ(r()->error(), R"(12:34 error: '@size' value must be an 'i32' or 'u32')");
 }
 
 TEST_F(StructMemberAttributeTest, Size_Attribute_ConstU32) {
@@ -1584,7 +1640,7 @@ TEST_F(StructMemberAttributeTest, Size_Attribute_ConstAFloat) {
     Structure("mystruct",
               Vector{Member("a", ty.f32(), Vector{MemberSize(Source{{12, 34}}, "val")})});
     EXPECT_FALSE(r()->Resolve());
-    EXPECT_EQ(r()->error(), R"(12:34 error: @size must be an i32 or u32 value)");
+    EXPECT_EQ(r()->error(), R"(12:34 error: '@size' value must be an 'i32' or 'u32')");
 }
 
 TEST_F(StructMemberAttributeTest, Size_Attribute_Var) {
@@ -1595,8 +1651,8 @@ TEST_F(StructMemberAttributeTest, Size_Attribute_Var) {
               Vector{Member(Source{{12, 5}}, "a", ty.f32(),
                             Vector{MemberSize(Expr(Source{{12, 35}}, "val"))})});
     EXPECT_FALSE(r()->Resolve());
-    EXPECT_EQ(r()->error(), R"(12:35 error: var 'val' cannot be referenced at module-scope
-1:2 note: var 'val' declared here)");
+    EXPECT_EQ(r()->error(), R"(12:35 error: 'var val' cannot be referenced at module-scope
+1:2 note: 'var val' declared here)");
 }
 
 TEST_F(StructMemberAttributeTest, Size_Attribute_Override) {
@@ -1620,7 +1676,7 @@ TEST_F(StructMemberAttributeTest, Size_On_RuntimeSizedArray) {
     EXPECT_FALSE(r()->Resolve());
     EXPECT_EQ(
         r()->error(),
-        R"(12:34 error: @size can only be applied to members where the member's type size can be fully determined at shader creation time)");
+        R"(12:34 error: '@size' can only be applied to members where the member's type size can be fully determined at shader creation time)");
 }
 
 }  // namespace StructAndStructMemberTests
@@ -1636,82 +1692,87 @@ TEST_P(ArrayAttributeTest, IsValid) {
 
     CHECK();
 }
-INSTANTIATE_TEST_SUITE_P(ResolverAttributeValidationTest,
-                         ArrayAttributeTest,
-                         testing::Values(
-                             TestParams{
-                                 {AttributeKind::kAlign},
-                                 R"(1:2 error: @align is not valid for array types)",
-                             },
-                             TestParams{
-                                 {AttributeKind::kBinding},
-                                 R"(1:2 error: @binding is not valid for array types)",
-                             },
-                             TestParams{
-                                 {AttributeKind::kBuiltinPosition},
-                                 R"(1:2 error: @builtin is not valid for array types)",
-                             },
-                             TestParams{
-                                 {AttributeKind::kDiagnostic},
-                                 R"(1:2 error: @diagnostic is not valid for array types)",
-                             },
-                             TestParams{
-                                 {AttributeKind::kGroup},
-                                 R"(1:2 error: @group is not valid for array types)",
-                             },
-                             TestParams{
-                                 {AttributeKind::kId},
-                                 R"(1:2 error: @id is not valid for array types)",
-                             },
-                             TestParams{
-                                 {AttributeKind::kIndex},
-                                 R"(1:2 error: @index is not valid for array types)",
-                             },
-                             TestParams{
-                                 {AttributeKind::kInterpolate},
-                                 R"(1:2 error: @interpolate is not valid for array types)",
-                             },
-                             TestParams{
-                                 {AttributeKind::kInvariant},
-                                 R"(1:2 error: @invariant is not valid for array types)",
-                             },
-                             TestParams{
-                                 {AttributeKind::kLocation},
-                                 R"(1:2 error: @location is not valid for array types)",
-                             },
-                             TestParams{
-                                 {AttributeKind::kMustUse},
-                                 R"(1:2 error: @must_use is not valid for array types)",
-                             },
-                             TestParams{
-                                 {AttributeKind::kOffset},
-                                 R"(1:2 error: @offset is not valid for array types)",
-                             },
-                             TestParams{
-                                 {AttributeKind::kSize},
-                                 R"(1:2 error: @size is not valid for array types)",
-                             },
-                             TestParams{
-                                 {AttributeKind::kStageCompute},
-                                 R"(1:2 error: @stage is not valid for array types)",
-                             },
-                             TestParams{
-                                 {AttributeKind::kStride},
-                                 Pass,
-                             },
-                             TestParams{
-                                 {AttributeKind::kWorkgroupSize},
-                                 R"(1:2 error: @workgroup_size is not valid for array types)",
-                             },
-                             TestParams{
-                                 {AttributeKind::kBinding, AttributeKind::kGroup},
-                                 R"(1:2 error: @binding is not valid for array types)",
-                             },
-                             TestParams{
-                                 {AttributeKind::kStride, AttributeKind::kStride},
-                                 R"(3:4 error: duplicate stride attribute
+INSTANTIATE_TEST_SUITE_P(
+    ResolverAttributeValidationTest,
+    ArrayAttributeTest,
+    testing::Values(
+        TestParams{
+            {AttributeKind::kAlign},
+            R"(1:2 error: '@align' is not valid for 'array' types)",
+        },
+        TestParams{
+            {AttributeKind::kBinding},
+            R"(1:2 error: '@binding' is not valid for 'array' types)",
+        },
+        TestParams{
+            {AttributeKind::kBlendSrc},
+            R"(1:2 error: '@blend_src' is not valid for 'array' types)",
+        },
+        TestParams{
+            {AttributeKind::kBuiltinPosition},
+            R"(1:2 error: '@builtin' is not valid for 'array' types)",
+        },
+        TestParams{
+            {AttributeKind::kDiagnostic},
+            R"(1:2 error: '@diagnostic' is not valid for 'array' types)",
+        },
+        TestParams{
+            {AttributeKind::kGroup},
+            R"(1:2 error: '@group' is not valid for 'array' types)",
+        },
+        TestParams{
+            {AttributeKind::kId},
+            R"(1:2 error: '@id' is not valid for 'array' types)",
+        },
+        TestParams{
+            {AttributeKind::kInputAttachmentIndex},
+            R"(1:2 error: '@input_attachment_index' is not valid for 'array' types)",
+        },
+        TestParams{
+            {AttributeKind::kInterpolate},
+            R"(1:2 error: '@interpolate' is not valid for 'array' types)",
+        },
+        TestParams{
+            {AttributeKind::kInvariant},
+            R"(1:2 error: '@invariant' is not valid for 'array' types)",
+        },
+        TestParams{
+            {AttributeKind::kLocation},
+            R"(1:2 error: '@location' is not valid for 'array' types)",
+        },
+        TestParams{
+            {AttributeKind::kMustUse},
+            R"(1:2 error: '@must_use' is not valid for 'array' types)",
+        },
+        TestParams{
+            {AttributeKind::kOffset},
+            R"(1:2 error: '@offset' is not valid for 'array' types)",
+        },
+        TestParams{
+            {AttributeKind::kSize},
+            R"(1:2 error: '@size' is not valid for 'array' types)",
+        },
+        TestParams{
+            {AttributeKind::kStageCompute},
+            R"(1:2 error: '@compute' is not valid for 'array' types)",
+        },
+        TestParams{
+            {AttributeKind::kStride},
+            Pass,
+        },
+        TestParams{
+            {AttributeKind::kWorkgroupSize},
+            R"(1:2 error: '@workgroup_size' is not valid for 'array' types)",
+        },
+        TestParams{
+            {AttributeKind::kBinding, AttributeKind::kGroup},
+            R"(1:2 error: '@binding' is not valid for 'array' types)",
+        },
+        TestParams{
+            {AttributeKind::kStride, AttributeKind::kStride},
+            R"(3:4 error: duplicate stride attribute
 1:2 note: first attribute declared here)",
-                             }));
+        }));
 
 using VariableAttributeTest = TestWithParams;
 TEST_P(VariableAttributeTest, IsValid) {
@@ -1732,67 +1793,67 @@ INSTANTIATE_TEST_SUITE_P(
     testing::Values(
         TestParams{
             {AttributeKind::kAlign},
-            R"(1:2 error: @align is not valid for module-scope 'var')",
+            R"(1:2 error: '@align' is not valid for module-scope 'var')",
         },
         TestParams{
             {AttributeKind::kBinding},
-            R"(9:9 error: resource variables require @group and @binding attributes)",
+            R"(9:9 error: resource variables require '@group' and '@binding' attributes)",
+        },
+        TestParams{
+            {AttributeKind::kBlendSrc},
+            R"(1:2 error: '@blend_src' is not valid for module-scope 'var')",
         },
         TestParams{
             {AttributeKind::kBuiltinPosition},
-            R"(1:2 error: @builtin is not valid for module-scope 'var')",
+            R"(1:2 error: '@builtin' is not valid for module-scope 'var')",
         },
         TestParams{
             {AttributeKind::kDiagnostic},
-            R"(1:2 error: @diagnostic is not valid for module-scope 'var')",
+            R"(1:2 error: '@diagnostic' is not valid for module-scope 'var')",
         },
         TestParams{
             {AttributeKind::kGroup},
-            R"(9:9 error: resource variables require @group and @binding attributes)",
+            R"(9:9 error: resource variables require '@group' and '@binding' attributes)",
         },
         TestParams{
             {AttributeKind::kId},
-            R"(1:2 error: @id is not valid for module-scope 'var')",
-        },
-        TestParams{
-            {AttributeKind::kIndex},
-            R"(1:2 error: @index is not valid for module-scope 'var')",
+            R"(1:2 error: '@id' is not valid for module-scope 'var')",
         },
         TestParams{
             {AttributeKind::kInterpolate},
-            R"(1:2 error: @interpolate is not valid for module-scope 'var')",
+            R"(1:2 error: '@interpolate' is not valid for module-scope 'var')",
         },
         TestParams{
             {AttributeKind::kInvariant},
-            R"(1:2 error: @invariant is not valid for module-scope 'var')",
+            R"(1:2 error: '@invariant' is not valid for module-scope 'var')",
         },
         TestParams{
             {AttributeKind::kLocation},
-            R"(1:2 error: @location is not valid for module-scope 'var')",
+            R"(1:2 error: '@location' is not valid for module-scope 'var')",
         },
         TestParams{
             {AttributeKind::kMustUse},
-            R"(1:2 error: @must_use is not valid for module-scope 'var')",
+            R"(1:2 error: '@must_use' is not valid for module-scope 'var')",
         },
         TestParams{
             {AttributeKind::kOffset},
-            R"(1:2 error: @offset is not valid for module-scope 'var')",
+            R"(1:2 error: '@offset' is not valid for module-scope 'var')",
         },
         TestParams{
             {AttributeKind::kSize},
-            R"(1:2 error: @size is not valid for module-scope 'var')",
+            R"(1:2 error: '@size' is not valid for module-scope 'var')",
         },
         TestParams{
             {AttributeKind::kStageCompute},
-            R"(1:2 error: @stage is not valid for module-scope 'var')",
+            R"(1:2 error: '@compute' is not valid for module-scope 'var')",
         },
         TestParams{
             {AttributeKind::kStride},
-            R"(1:2 error: @stride is not valid for module-scope 'var')",
+            R"(1:2 error: '@stride' is not valid for module-scope 'var')",
         },
         TestParams{
             {AttributeKind::kWorkgroupSize},
-            R"(1:2 error: @workgroup_size is not valid for module-scope 'var')",
+            R"(1:2 error: '@workgroup_size' is not valid for module-scope 'var')",
         },
         TestParams{
             {AttributeKind::kBinding, AttributeKind::kGroup},
@@ -1810,7 +1871,7 @@ TEST_F(VariableAttributeTest, LocalVar) {
     WrapInFunction(v);
 
     EXPECT_FALSE(r()->Resolve());
-    EXPECT_EQ(r()->error(), "12:34 error: @binding is not valid for function-scope 'var'");
+    EXPECT_EQ(r()->error(), "12:34 error: '@binding' is not valid for function-scope 'var'");
 }
 
 TEST_F(VariableAttributeTest, LocalLet) {
@@ -1819,7 +1880,7 @@ TEST_F(VariableAttributeTest, LocalLet) {
     WrapInFunction(v);
 
     EXPECT_FALSE(r()->Resolve());
-    EXPECT_EQ(r()->error(), "12:34 error: @binding is not valid for 'let' declaration");
+    EXPECT_EQ(r()->error(), "12:34 error: '@binding' is not valid for 'let' declaration");
 }
 
 using ConstantAttributeTest = TestWithParams;
@@ -1836,71 +1897,75 @@ INSTANTIATE_TEST_SUITE_P(
     testing::Values(
         TestParams{
             {AttributeKind::kAlign},
-            R"(1:2 error: @align is not valid for 'const' declaration)",
+            R"(1:2 error: '@align' is not valid for 'const' declaration)",
         },
         TestParams{
             {AttributeKind::kBinding},
-            R"(1:2 error: @binding is not valid for 'const' declaration)",
+            R"(1:2 error: '@binding' is not valid for 'const' declaration)",
+        },
+        TestParams{
+            {AttributeKind::kBlendSrc},
+            R"(1:2 error: '@blend_src' is not valid for 'const' declaration)",
         },
         TestParams{
             {AttributeKind::kBuiltinPosition},
-            R"(1:2 error: @builtin is not valid for 'const' declaration)",
+            R"(1:2 error: '@builtin' is not valid for 'const' declaration)",
         },
         TestParams{
             {AttributeKind::kDiagnostic},
-            R"(1:2 error: @diagnostic is not valid for 'const' declaration)",
+            R"(1:2 error: '@diagnostic' is not valid for 'const' declaration)",
         },
         TestParams{
             {AttributeKind::kGroup},
-            R"(1:2 error: @group is not valid for 'const' declaration)",
+            R"(1:2 error: '@group' is not valid for 'const' declaration)",
         },
         TestParams{
             {AttributeKind::kId},
-            R"(1:2 error: @id is not valid for 'const' declaration)",
+            R"(1:2 error: '@id' is not valid for 'const' declaration)",
         },
         TestParams{
-            {AttributeKind::kIndex},
-            R"(1:2 error: @index is not valid for 'const' declaration)",
+            {AttributeKind::kInputAttachmentIndex},
+            R"(1:2 error: '@input_attachment_index' is not valid for 'const' declaration)",
         },
         TestParams{
             {AttributeKind::kInterpolate},
-            R"(1:2 error: @interpolate is not valid for 'const' declaration)",
+            R"(1:2 error: '@interpolate' is not valid for 'const' declaration)",
         },
         TestParams{
             {AttributeKind::kInvariant},
-            R"(1:2 error: @invariant is not valid for 'const' declaration)",
+            R"(1:2 error: '@invariant' is not valid for 'const' declaration)",
         },
         TestParams{
             {AttributeKind::kLocation},
-            R"(1:2 error: @location is not valid for 'const' declaration)",
+            R"(1:2 error: '@location' is not valid for 'const' declaration)",
         },
         TestParams{
             {AttributeKind::kMustUse},
-            R"(1:2 error: @must_use is not valid for 'const' declaration)",
+            R"(1:2 error: '@must_use' is not valid for 'const' declaration)",
         },
         TestParams{
             {AttributeKind::kOffset},
-            R"(1:2 error: @offset is not valid for 'const' declaration)",
+            R"(1:2 error: '@offset' is not valid for 'const' declaration)",
         },
         TestParams{
             {AttributeKind::kSize},
-            R"(1:2 error: @size is not valid for 'const' declaration)",
+            R"(1:2 error: '@size' is not valid for 'const' declaration)",
         },
         TestParams{
             {AttributeKind::kStageCompute},
-            R"(1:2 error: @stage is not valid for 'const' declaration)",
+            R"(1:2 error: '@compute' is not valid for 'const' declaration)",
         },
         TestParams{
             {AttributeKind::kStride},
-            R"(1:2 error: @stride is not valid for 'const' declaration)",
+            R"(1:2 error: '@stride' is not valid for 'const' declaration)",
         },
         TestParams{
             {AttributeKind::kWorkgroupSize},
-            R"(1:2 error: @workgroup_size is not valid for 'const' declaration)",
+            R"(1:2 error: '@workgroup_size' is not valid for 'const' declaration)",
         },
         TestParams{
             {AttributeKind::kBinding, AttributeKind::kGroup},
-            R"(1:2 error: @binding is not valid for 'const' declaration)",
+            R"(1:2 error: '@binding' is not valid for 'const' declaration)",
         }));
 
 using OverrideAttributeTest = TestWithParams;
@@ -1917,27 +1982,27 @@ INSTANTIATE_TEST_SUITE_P(
     testing::Values(
         TestParams{
             {AttributeKind::kAlign},
-            R"(1:2 error: @align is not valid for 'override' declaration)",
+            R"(1:2 error: '@align' is not valid for 'override' declaration)",
         },
         TestParams{
             {AttributeKind::kBinding},
-            R"(1:2 error: @binding is not valid for 'override' declaration)",
+            R"(1:2 error: '@binding' is not valid for 'override' declaration)",
+        },
+        TestParams{
+            {AttributeKind::kBlendSrc},
+            R"(1:2 error: '@blend_src' is not valid for 'override' declaration)",
         },
         TestParams{
             {AttributeKind::kBuiltinPosition},
-            R"(1:2 error: @builtin is not valid for 'override' declaration)",
+            R"(1:2 error: '@builtin' is not valid for 'override' declaration)",
         },
         TestParams{
             {AttributeKind::kDiagnostic},
-            R"(1:2 error: @diagnostic is not valid for 'override' declaration)",
+            R"(1:2 error: '@diagnostic' is not valid for 'override' declaration)",
         },
         TestParams{
             {AttributeKind::kGroup},
-            R"(1:2 error: @group is not valid for 'override' declaration)",
-        },
-        TestParams{
-            {AttributeKind::kIndex},
-            R"(1:2 error: @index is not valid for 'override' declaration)",
+            R"(1:2 error: '@group' is not valid for 'override' declaration)",
         },
         TestParams{
             {AttributeKind::kId},
@@ -1945,43 +2010,43 @@ INSTANTIATE_TEST_SUITE_P(
         },
         TestParams{
             {AttributeKind::kInterpolate},
-            R"(1:2 error: @interpolate is not valid for 'override' declaration)",
+            R"(1:2 error: '@interpolate' is not valid for 'override' declaration)",
         },
         TestParams{
             {AttributeKind::kInvariant},
-            R"(1:2 error: @invariant is not valid for 'override' declaration)",
+            R"(1:2 error: '@invariant' is not valid for 'override' declaration)",
         },
         TestParams{
             {AttributeKind::kLocation},
-            R"(1:2 error: @location is not valid for 'override' declaration)",
+            R"(1:2 error: '@location' is not valid for 'override' declaration)",
         },
         TestParams{
             {AttributeKind::kMustUse},
-            R"(1:2 error: @must_use is not valid for 'override' declaration)",
+            R"(1:2 error: '@must_use' is not valid for 'override' declaration)",
         },
         TestParams{
             {AttributeKind::kOffset},
-            R"(1:2 error: @offset is not valid for 'override' declaration)",
+            R"(1:2 error: '@offset' is not valid for 'override' declaration)",
         },
         TestParams{
             {AttributeKind::kSize},
-            R"(1:2 error: @size is not valid for 'override' declaration)",
+            R"(1:2 error: '@size' is not valid for 'override' declaration)",
         },
         TestParams{
             {AttributeKind::kStageCompute},
-            R"(1:2 error: @stage is not valid for 'override' declaration)",
+            R"(1:2 error: '@compute' is not valid for 'override' declaration)",
         },
         TestParams{
             {AttributeKind::kStride},
-            R"(1:2 error: @stride is not valid for 'override' declaration)",
+            R"(1:2 error: '@stride' is not valid for 'override' declaration)",
         },
         TestParams{
             {AttributeKind::kWorkgroupSize},
-            R"(1:2 error: @workgroup_size is not valid for 'override' declaration)",
+            R"(1:2 error: '@workgroup_size' is not valid for 'override' declaration)",
         },
         TestParams{
             {AttributeKind::kBinding, AttributeKind::kGroup},
-            R"(1:2 error: @binding is not valid for 'override' declaration)",
+            R"(1:2 error: '@binding' is not valid for 'override' declaration)",
         },
         TestParams{
             {AttributeKind::kId, AttributeKind::kId},
@@ -2011,7 +2076,7 @@ TEST_P(SwitchBodyAttributeTest, IsValid) {
 }
 INSTANTIATE_TEST_SUITE_P(ResolverAttributeValidationTest,
                          SwitchBodyAttributeTest,
-                         testing::ValuesIn(OnlyDiagnosticValidFor("switch body")));
+                         testing::ValuesIn(OnlyDiagnosticValidFor("'switch' body")));
 
 using IfStatementAttributeTest = TestWithParams;
 TEST_P(IfStatementAttributeTest, IsValid) {
@@ -2278,7 +2343,7 @@ TEST_F(ResourceAttributeTest, UniformBufferMissingBinding) {
 
     EXPECT_FALSE(r()->Resolve());
     EXPECT_EQ(r()->error(),
-              R"(12:34 error: resource variables require @group and @binding attributes)");
+              R"(12:34 error: resource variables require '@group' and '@binding' attributes)");
 }
 
 TEST_F(ResourceAttributeTest, StorageBufferMissingBinding) {
@@ -2289,7 +2354,7 @@ TEST_F(ResourceAttributeTest, StorageBufferMissingBinding) {
 
     EXPECT_FALSE(r()->Resolve());
     EXPECT_EQ(r()->error(),
-              R"(12:34 error: resource variables require @group and @binding attributes)");
+              R"(12:34 error: resource variables require '@group' and '@binding' attributes)");
 }
 
 TEST_F(ResourceAttributeTest, TextureMissingBinding) {
@@ -2297,7 +2362,7 @@ TEST_F(ResourceAttributeTest, TextureMissingBinding) {
 
     EXPECT_FALSE(r()->Resolve());
     EXPECT_EQ(r()->error(),
-              R"(12:34 error: resource variables require @group and @binding attributes)");
+              R"(12:34 error: resource variables require '@group' and '@binding' attributes)");
 }
 
 TEST_F(ResourceAttributeTest, SamplerMissingBinding) {
@@ -2305,7 +2370,7 @@ TEST_F(ResourceAttributeTest, SamplerMissingBinding) {
 
     EXPECT_FALSE(r()->Resolve());
     EXPECT_EQ(r()->error(),
-              R"(12:34 error: resource variables require @group and @binding attributes)");
+              R"(12:34 error: resource variables require '@group' and '@binding' attributes)");
 }
 
 TEST_F(ResourceAttributeTest, BindingPairMissingBinding) {
@@ -2313,7 +2378,7 @@ TEST_F(ResourceAttributeTest, BindingPairMissingBinding) {
 
     EXPECT_FALSE(r()->Resolve());
     EXPECT_EQ(r()->error(),
-              R"(12:34 error: resource variables require @group and @binding attributes)");
+              R"(12:34 error: resource variables require '@group' and '@binding' attributes)");
 }
 
 TEST_F(ResourceAttributeTest, BindingPairMissingGroup) {
@@ -2321,7 +2386,7 @@ TEST_F(ResourceAttributeTest, BindingPairMissingGroup) {
 
     EXPECT_FALSE(r()->Resolve());
     EXPECT_EQ(r()->error(),
-              R"(12:34 error: resource variables require @group and @binding attributes)");
+              R"(12:34 error: resource variables require '@group' and '@binding' attributes)");
 }
 
 TEST_F(ResourceAttributeTest, BindingPointUsedTwiceByEntryPoint) {
@@ -2346,7 +2411,7 @@ TEST_F(ResourceAttributeTest, BindingPointUsedTwiceByEntryPoint) {
     EXPECT_FALSE(r()->Resolve());
     EXPECT_EQ(
         r()->error(),
-        R"(56:78 error: entry point 'F' references multiple variables that use the same resource binding @group(2), @binding(1)
+        R"(56:78 error: entry point 'F' references multiple variables that use the same resource binding '@group(2)', '@binding(1)'
 12:34 note: first resource binding usage declared here)");
 }
 
@@ -2383,8 +2448,9 @@ TEST_F(ResourceAttributeTest, BindingPointOnNonResource) {
               Group(2_a));
 
     EXPECT_FALSE(r()->Resolve());
-    EXPECT_EQ(r()->error(),
-              R"(12:34 error: non-resource variables must not have @group or @binding attributes)");
+    EXPECT_EQ(
+        r()->error(),
+        R"(12:34 error: non-resource variables must not have '@group' or '@binding' attributes)");
 }
 
 }  // namespace
@@ -2401,7 +2467,7 @@ TEST_F(WorkgroupAttribute, NotAnEntryPoint) {
          });
 
     EXPECT_FALSE(r()->Resolve());
-    EXPECT_EQ(r()->error(), R"(12:34 error: @workgroup_size is only valid for compute stages)");
+    EXPECT_EQ(r()->error(), R"(12:34 error: '@workgroup_size' is only valid for compute stages)");
 }
 
 TEST_F(WorkgroupAttribute, NotAComputeShader) {
@@ -2412,7 +2478,7 @@ TEST_F(WorkgroupAttribute, NotAComputeShader) {
          });
 
     EXPECT_FALSE(r()->Resolve());
-    EXPECT_EQ(r()->error(), R"(12:34 error: @workgroup_size is only valid for compute stages)");
+    EXPECT_EQ(r()->error(), R"(12:34 error: '@workgroup_size' is only valid for compute stages)");
 }
 
 TEST_F(WorkgroupAttribute, DuplicateAttribute) {
@@ -2467,7 +2533,9 @@ TEST_P(InterpolateParameterTest, All) {
         EXPECT_FALSE(r()->Resolve());
         EXPECT_EQ(
             r()->error(),
-            R"(12:34 error: flat interpolation attribute must not have a sampling parameter)");
+            params.type == core::InterpolationType::kFlat
+                ? R"(12:34 error: flat interpolation can only use 'first' and 'either' sampling parameters)"
+                : R"(12:34 error: 'first' and 'either' sampling parameters can only be used with flat interpolation)");
     }
 }
 
@@ -2497,7 +2565,9 @@ TEST_P(InterpolateParameterTest, IntegerScalar) {
         EXPECT_FALSE(r()->Resolve());
         EXPECT_EQ(
             r()->error(),
-            R"(12:34 error: flat interpolation attribute must not have a sampling parameter)");
+            params.type == core::InterpolationType::kFlat
+                ? R"(12:34 error: flat interpolation can only use 'first' and 'either' sampling parameters)"
+                : R"(12:34 error: 'first' and 'either' sampling parameters can only be used with flat interpolation)");
     }
 }
 
@@ -2527,7 +2597,9 @@ TEST_P(InterpolateParameterTest, IntegerVector) {
         EXPECT_FALSE(r()->Resolve());
         EXPECT_EQ(
             r()->error(),
-            R"(12:34 error: flat interpolation attribute must not have a sampling parameter)");
+            params.type == core::InterpolationType::kFlat
+                ? R"(12:34 error: flat interpolation can only use 'first' and 'either' sampling parameters)"
+                : R"(12:34 error: 'first' and 'either' sampling parameters can only be used with flat interpolation)");
     }
 }
 
@@ -2540,15 +2612,22 @@ INSTANTIATE_TEST_SUITE_P(
         Params{core::InterpolationType::kPerspective, core::InterpolationSampling::kCenter, true},
         Params{core::InterpolationType::kPerspective, core::InterpolationSampling::kCentroid, true},
         Params{core::InterpolationType::kPerspective, core::InterpolationSampling::kSample, true},
+        Params{core::InterpolationType::kPerspective, core::InterpolationSampling::kFirst, false},
+        Params{core::InterpolationType::kPerspective, core::InterpolationSampling::kEither, false},
+
         Params{core::InterpolationType::kLinear, core::InterpolationSampling::kUndefined, true},
         Params{core::InterpolationType::kLinear, core::InterpolationSampling::kCenter, true},
         Params{core::InterpolationType::kLinear, core::InterpolationSampling::kCentroid, true},
         Params{core::InterpolationType::kLinear, core::InterpolationSampling::kSample, true},
-        // flat interpolation must not have a sampling type
+        Params{core::InterpolationType::kLinear, core::InterpolationSampling::kFirst, false},
+        Params{core::InterpolationType::kLinear, core::InterpolationSampling::kEither, false},
+
         Params{core::InterpolationType::kFlat, core::InterpolationSampling::kUndefined, true},
         Params{core::InterpolationType::kFlat, core::InterpolationSampling::kCenter, false},
         Params{core::InterpolationType::kFlat, core::InterpolationSampling::kCentroid, false},
-        Params{core::InterpolationType::kFlat, core::InterpolationSampling::kSample, false}));
+        Params{core::InterpolationType::kFlat, core::InterpolationSampling::kSample, false},
+        Params{core::InterpolationType::kFlat, core::InterpolationSampling::kFirst, true},
+        Params{core::InterpolationType::kFlat, core::InterpolationSampling::kEither, true}));
 
 TEST_F(InterpolateTest, FragmentInput_Integer_MissingFlatInterpolation) {
     Func("main", Vector{Param(Source{{12, 34}}, "a", ty.i32(), Vector{Location(0_a)})}, ty.void_(),
@@ -2560,7 +2639,7 @@ TEST_F(InterpolateTest, FragmentInput_Integer_MissingFlatInterpolation) {
     EXPECT_FALSE(r()->Resolve());
     EXPECT_EQ(
         r()->error(),
-        R"(12:34 error: integral user-defined fragment inputs must have a flat interpolation attribute)");
+        R"(12:34 error: integral user-defined fragment inputs must have a '@interpolate(flat)' attribute)");
 }
 
 TEST_F(InterpolateTest, VertexOutput_Integer_MissingFlatInterpolation) {
@@ -2580,7 +2659,7 @@ TEST_F(InterpolateTest, VertexOutput_Integer_MissingFlatInterpolation) {
     EXPECT_FALSE(r()->Resolve());
     EXPECT_EQ(
         r()->error(),
-        R"(12:34 error: integral user-defined vertex outputs must have a flat interpolation attribute
+        R"(12:34 error: integral user-defined vertex outputs must have a '@interpolate(flat)' attribute
 note: while analyzing entry point 'main')");
 }
 
@@ -2628,7 +2707,7 @@ TEST_F(GroupAndBindingTest, Binding_Negative) {
               Binding(Source{{12, 34}}, -2_i), Group(1_i));
 
     EXPECT_FALSE(r()->Resolve());
-    EXPECT_EQ(r()->error(), R"(12:34 error: @binding value must be non-negative)");
+    EXPECT_EQ(r()->error(), R"(12:34 error: '@binding' value must be non-negative)");
 }
 
 TEST_F(GroupAndBindingTest, Binding_F32) {
@@ -2636,7 +2715,7 @@ TEST_F(GroupAndBindingTest, Binding_F32) {
               Binding(Source{{12, 34}}, 2.0_f), Group(1_u));
 
     EXPECT_FALSE(r()->Resolve());
-    EXPECT_EQ(r()->error(), R"(12:34 error: @binding must be an i32 or u32 value)");
+    EXPECT_EQ(r()->error(), R"(12:34 error: '@binding' must be an 'i32' or 'u32' value)");
 }
 
 TEST_F(GroupAndBindingTest, Binding_AFloat) {
@@ -2644,7 +2723,7 @@ TEST_F(GroupAndBindingTest, Binding_AFloat) {
               Binding(Source{{12, 34}}, 2.0_a), Group(1_u));
 
     EXPECT_FALSE(r()->Resolve());
-    EXPECT_EQ(r()->error(), R"(12:34 error: @binding must be an i32 or u32 value)");
+    EXPECT_EQ(r()->error(), R"(12:34 error: '@binding' must be an 'i32' or 'u32' value)");
 }
 
 TEST_F(GroupAndBindingTest, Group_NonConstant) {
@@ -2662,7 +2741,7 @@ TEST_F(GroupAndBindingTest, Group_Negative) {
               Group(Source{{12, 34}}, -1_i));
 
     EXPECT_FALSE(r()->Resolve());
-    EXPECT_EQ(r()->error(), R"(12:34 error: @group value must be non-negative)");
+    EXPECT_EQ(r()->error(), R"(12:34 error: '@group' value must be non-negative)");
 }
 
 TEST_F(GroupAndBindingTest, Group_F32) {
@@ -2670,7 +2749,7 @@ TEST_F(GroupAndBindingTest, Group_F32) {
               Group(Source{{12, 34}}, 1.0_f));
 
     EXPECT_FALSE(r()->Resolve());
-    EXPECT_EQ(r()->error(), R"(12:34 error: @group must be an i32 or u32 value)");
+    EXPECT_EQ(r()->error(), R"(12:34 error: '@group' must be an 'i32' or 'u32' value)");
 }
 
 TEST_F(GroupAndBindingTest, Group_AFloat) {
@@ -2678,7 +2757,7 @@ TEST_F(GroupAndBindingTest, Group_AFloat) {
               Group(Source{{12, 34}}, 1.0_a));
 
     EXPECT_FALSE(r()->Resolve());
-    EXPECT_EQ(r()->error(), R"(12:34 error: @group must be an i32 or u32 value)");
+    EXPECT_EQ(r()->error(), R"(12:34 error: '@group' must be an 'i32' or 'u32' value)");
 }
 
 using IdTest = ResolverTest;
@@ -2709,19 +2788,19 @@ TEST_F(IdTest, NonConstant) {
 TEST_F(IdTest, Negative) {
     Override("val", ty.f32(), Vector{Id(Source{{12, 34}}, -1_i)});
     EXPECT_FALSE(r()->Resolve());
-    EXPECT_EQ(r()->error(), R"(12:34 error: @id value must be non-negative)");
+    EXPECT_EQ(r()->error(), R"(12:34 error: '@id' value must be non-negative)");
 }
 
 TEST_F(IdTest, F32) {
     Override("val", ty.f32(), Vector{Id(Source{{12, 34}}, 1_f)});
     EXPECT_FALSE(r()->Resolve());
-    EXPECT_EQ(r()->error(), R"(12:34 error: @id must be an i32 or u32 value)");
+    EXPECT_EQ(r()->error(), R"(12:34 error: '@id' must be an 'i32' or 'u32' value)");
 }
 
 TEST_F(IdTest, AFloat) {
     Override("val", ty.f32(), Vector{Id(Source{{12, 34}}, 1.0_a)});
     EXPECT_FALSE(r()->Resolve());
-    EXPECT_EQ(r()->error(), R"(12:34 error: @id must be an i32 or u32 value)");
+    EXPECT_EQ(r()->error(), R"(12:34 error: '@id' must be an 'i32' or 'u32' value)");
 }
 
 enum class LocationAttributeType {
@@ -2795,19 +2874,19 @@ TEST_P(LocationTest, NonConstant) {
 TEST_P(LocationTest, Negative) {
     Build(Expr(-1_a));
     EXPECT_FALSE(r()->Resolve());
-    EXPECT_EQ(r()->error(), R"(12:34 error: @location value must be non-negative)");
+    EXPECT_EQ(r()->error(), R"(12:34 error: '@location' value must be non-negative)");
 }
 
 TEST_P(LocationTest, F32) {
     Build(Expr(1_f));
     EXPECT_FALSE(r()->Resolve());
-    EXPECT_EQ(r()->error(), R"(12:34 error: @location must be an i32 or u32 value)");
+    EXPECT_EQ(r()->error(), R"(12:34 error: '@location' must be an 'i32' or 'u32' value)");
 }
 
 TEST_P(LocationTest, AFloat) {
     Build(Expr(1.0_a));
     EXPECT_FALSE(r()->Resolve());
-    EXPECT_EQ(r()->error(), R"(12:34 error: @location must be an i32 or u32 value)");
+    EXPECT_EQ(r()->error(), R"(12:34 error: '@location' must be an 'i32' or 'u32' value)");
 }
 
 INSTANTIATE_TEST_SUITE_P(LocationTest,

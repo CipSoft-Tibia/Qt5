@@ -92,6 +92,11 @@
             <numerusform></numerusform>
         </translation>
     </message>
+    <message>
+        <location filename="main.java" line="77"/>
+        <source></source>
+        <translation type="unfinished"></translation>
+    </message>
 </context>
 <context>
     <name>com.trolltech.examples.I18N$MainWindow</name>

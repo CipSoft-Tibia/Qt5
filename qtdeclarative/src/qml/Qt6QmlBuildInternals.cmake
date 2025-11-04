@@ -257,6 +257,10 @@ function(qt_internal_add_qml_module target)
                 )
         endif()
 
+        list(APPEND add_qml_module_args
+            INSTALLED_BACKING_TARGET "${QT_CMAKE_EXPORT_NAMESPACE}::${target}"
+        )
+
         if(NOT arg_PLUGIN_TARGET STREQUAL target)
             get_target_property(lib_type ${arg_PLUGIN_TARGET} TYPE)
             if(lib_type STREQUAL "STATIC_LIBRARY")
@@ -308,6 +312,12 @@ function(qt_internal_add_qml_module target)
         list(APPEND add_qml_module_args TYPE_COMPILER_NAMESPACE ${qt_namespace})
     endif()
 
+    if((NOT arg_NO_GENERATE_QMLDIR) OR arg_INSTALL_SOURCE_QMLDIR)
+        list(APPEND add_qml_module_args
+            INSTALLED_QMLDIR_PATH
+            "${arg_INSTALL_DIRECTORY}/qmldir")
+    endif()
+
     # Update the backing and plugin targets with qml-specific things.
     qt6_add_qml_module(${target}
         ${add_qml_module_args}
@@ -341,7 +351,8 @@ function(qt_internal_add_qml_module target)
 
                 # Plugin initializers associated with an internal module need the internal
                 # platform flags.
-                qt_internal_link_internal_platform_for_object_library("${output_target}")
+                qt_internal_link_internal_platform_for_object_library("${output_target}"
+                    PARENT_TARGET "${target}")
             else()
                 list(APPEND backing_lib_export_targets ${output_target})
             endif()

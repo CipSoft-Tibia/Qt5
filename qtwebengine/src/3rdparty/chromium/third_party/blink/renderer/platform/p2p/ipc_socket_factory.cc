@@ -2,6 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#ifdef UNSAFE_BUFFERS_BUILD
+// TODO(crbug.com/351564777): Remove this and convert code to safer constructs.
+#pragma allow_unsafe_buffers
+#endif
+
 #include "third_party/blink/renderer/platform/p2p/ipc_socket_factory.h"
 
 #include <stddef.h>
@@ -11,19 +16,25 @@
 #include <memory>
 
 #include "base/compiler_specific.h"
+#include "base/functional/bind.h"
+#include "base/functional/callback.h"
 #include "base/logging.h"
 #include "base/memory/weak_ptr.h"
 #include "base/strings/stringprintf.h"
+#include "base/task/bind_post_task.h"
 #include "base/threading/thread_checker.h"
 #include "base/trace_event/trace_event.h"
+#include "base/unguessable_token.h"
 #include "components/webrtc/net_address_utils.h"
 #include "net/base/ip_address.h"
 #include "net/base/port_util.h"
 #include "third_party/blink/public/platform/modules/webrtc/webrtc_logging.h"
+#include "third_party/blink/renderer/platform/heap/cross_thread_persistent.h"
 #include "third_party/blink/renderer/platform/p2p/host_address_request.h"
 #include "third_party/blink/renderer/platform/p2p/socket_client_delegate.h"
 #include "third_party/blink/renderer/platform/p2p/socket_client_impl.h"
 #include "third_party/blink/renderer/platform/p2p/socket_dispatcher.h"
+#include "third_party/blink/renderer/platform/wtf/casting.h"
 #include "third_party/blink/renderer/platform/wtf/functional.h"
 #include "third_party/blink/renderer/platform/wtf/vector.h"
 #include "third_party/webrtc/api/async_dns_resolver.h"
@@ -57,13 +68,16 @@ bool JingleSocketOptionToP2PSocketOption(rtc::Socket::Option option,
     case rtc::Socket::OPT_DSCP:
       *ipc_option = network::P2P_SOCKET_OPT_DSCP;
       break;
+    case rtc::Socket::OPT_RECV_ECN:
+      *ipc_option = network::P2P_SOCKET_OPT_RECV_ECN;
+      break;
     case rtc::Socket::OPT_DONTFRAGMENT:
     case rtc::Socket::OPT_NODELAY:
     case rtc::Socket::OPT_IPV6_V6ONLY:
     case rtc::Socket::OPT_RTP_SENDTIME_EXTN_ID:
       return false;  // Not supported by the chrome sockets.
     default:
-      NOTREACHED();
+      NOTREACHED_IN_MIGRATION();
       return false;
   }
   return true;
@@ -112,14 +126,18 @@ class IpcPacketSocket : public rtc::AsyncPacketSocket,
   typedef std::list<InFlightPacketRecord> InFlightPacketList;
 
   // Always takes ownership of client even if initialization fails.
-  bool Init(P2PSocketDispatcher* dispatcher,
-            const net::NetworkTrafficAnnotationTag& traffic_annotation,
-            network::P2PSocketType type,
-            std::unique_ptr<P2PSocketClientImpl> client,
-            const rtc::SocketAddress& local_address,
-            uint16_t min_port,
-            uint16_t max_port,
-            const rtc::SocketAddress& remote_address);
+  bool Init(
+      P2PSocketDispatcher* dispatcher,
+      const net::NetworkTrafficAnnotationTag& traffic_annotation,
+      network::P2PSocketType type,
+      std::unique_ptr<P2PSocketClientImpl> client,
+      const rtc::SocketAddress& local_address,
+      uint16_t min_port,
+      uint16_t max_port,
+      const rtc::SocketAddress& remote_address,
+      WTF::CrossThreadFunction<void(
+          base::OnceCallback<void(std::optional<base::UnguessableToken>)>)>&
+          devtools_token);
 
   // rtc::AsyncPacketSocket interface.
   rtc::SocketAddress GetLocalAddress() const override;
@@ -146,9 +164,21 @@ class IpcPacketSocket : public rtc::AsyncPacketSocket,
   void OnError() override;
   void OnDataReceived(const net::IPEndPoint& address,
                       base::span<const uint8_t> data,
-                      const base::TimeTicks& timestamp) override;
+                      const base::TimeTicks& timestamp,
+                      rtc::EcnMarking ecn) override;
 
  private:
+  static void DoCreateSocket(
+      network::P2PSocketType type,
+      P2PSocketDispatcher* dispatcher,
+      net::IPEndPoint local_endpoint,
+      uint16_t min_port,
+      uint16_t max_port,
+      network::P2PHostAndIPEndPoint remote_info,
+      net::NetworkTrafficAnnotationTag traffic_annotation,
+      mojo::PendingRemote<network::mojom::blink::P2PSocketClient> remote,
+      mojo::PendingReceiver<network::mojom::blink::P2PSocket> receiver,
+      std::optional<base::UnguessableToken> devtools_token);
   int SendToInternal(const void* pv,
                      size_t cb,
                      const rtc::SocketAddress& addr,
@@ -171,10 +201,6 @@ class IpcPacketSocket : public rtc::AsyncPacketSocket,
   // |in_flight_packet_records_|.
   void TraceSendThrottlingState() const;
 
-  void InitAcceptedTcp(std::unique_ptr<blink::P2PSocketClient> client,
-                       const rtc::SocketAddress& local_address,
-                       const rtc::SocketAddress& remote_address);
-
   int DoSetOption(network::P2PSocketOption option, int value);
 
   network::P2PSocketType type_;
@@ -183,7 +209,7 @@ class IpcPacketSocket : public rtc::AsyncPacketSocket,
   THREAD_CHECKER(thread_checker_);
 
   // Corresponding P2P socket client.
-  std::unique_ptr<blink::P2PSocketClient> client_;
+  std::unique_ptr<blink::P2PSocketClientImpl> client_;
 
   // Local address is allocated by the browser process, and the
   // renderer side doesn't know the address until it receives OnOpen()
@@ -305,12 +331,14 @@ bool IpcPacketSocket::Init(
     const rtc::SocketAddress& local_address,
     uint16_t min_port,
     uint16_t max_port,
-    const rtc::SocketAddress& remote_address) {
+    const rtc::SocketAddress& remote_address,
+    WTF::CrossThreadFunction<
+        void(base::OnceCallback<void(std::optional<base::UnguessableToken>)>)>&
+        devtools_token_getter) {
   DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
   DCHECK_EQ(state_, kIsUninitialized);
 
   type_ = type;
-  auto* client_ptr = client.get();
   client_ = std::move(client);
   local_address_ = local_address;
   remote_address_ = remote_address;
@@ -341,29 +369,35 @@ bool IpcPacketSocket::Init(
   // Certificate will be tied to domain name not to IP address.
   network::P2PHostAndIPEndPoint remote_info(remote_address.hostname(),
                                             remote_endpoint);
-  dispatcher->GetP2PSocketManager()->CreateSocket(
-      type, local_endpoint, network::P2PPortRange(min_port, max_port),
-      remote_info, net::MutableNetworkTrafficAnnotationTag(traffic_annotation),
-      client_ptr->CreatePendingRemote(), client_ptr->CreatePendingReceiver());
 
-  client_ptr->Init(this);
+  devtools_token_getter.Run(base::BindPostTaskToCurrentDefault(WTF::BindOnce(
+      &IpcPacketSocket::DoCreateSocket, type_,
+      WrapCrossThreadPersistent(dispatcher), local_endpoint, min_port, max_port,
+      remote_info, traffic_annotation, client_->CreatePendingRemote(),
+      client_->CreatePendingReceiver())));
+
+  client_->Init(this);
 
   return true;
 }
 
-void IpcPacketSocket::InitAcceptedTcp(
-    std::unique_ptr<blink::P2PSocketClient> client,
-    const rtc::SocketAddress& local_address,
-    const rtc::SocketAddress& remote_address) {
-  DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
-  DCHECK_EQ(state_, kIsUninitialized);
+void IpcPacketSocket::DoCreateSocket(
+    network::P2PSocketType type,
+    P2PSocketDispatcher* dispatcher,
+    net::IPEndPoint local_endpoint,
+    uint16_t min_port,
+    uint16_t max_port,
+    network::P2PHostAndIPEndPoint remote_info,
+    net::NetworkTrafficAnnotationTag traffic_annotation,
+    mojo::PendingRemote<network::mojom::blink::P2PSocketClient> remote,
+    mojo::PendingReceiver<network::mojom::blink::P2PSocket> receiver,
+    std::optional<base::UnguessableToken> devtools_token) {
+  CHECK(dispatcher);
 
-  client_ = std::move(client);
-  local_address_ = local_address;
-  remote_address_ = remote_address;
-  state_ = kIsOpen;
-  TraceSendThrottlingState();
-  client_->SetDelegate(this);
+  dispatcher->GetP2PSocketManager()->CreateSocket(
+      type, local_endpoint, network::P2PPortRange(min_port, max_port),
+      remote_info, net::MutableNetworkTrafficAnnotationTag(traffic_annotation),
+      devtools_token, std::move(remote), std::move(receiver));
 }
 
 // rtc::AsyncPacketSocket interface.
@@ -404,7 +438,7 @@ int IpcPacketSocket::SendToInternal(const void* data,
 
   switch (state_) {
     case kIsUninitialized:
-      NOTREACHED();
+      NOTREACHED_IN_MIGRATION();
       error_ = EWOULDBLOCK;
       return -1;
     case kIsOpening:
@@ -421,7 +455,7 @@ int IpcPacketSocket::SendToInternal(const void* data,
   }
 
   if (data_size == 0) {
-    NOTREACHED();
+    NOTREACHED_IN_MIGRATION();
     return 0;
   }
 
@@ -453,7 +487,7 @@ int IpcPacketSocket::SendToInternal(const void* data,
                    << address.ipaddr().ToSensitiveString()
                    << ", remote_address_="
                    << remote_address_.ipaddr().ToSensitiveString();
-      NOTREACHED();
+      NOTREACHED_IN_MIGRATION();
       error_ = EINVAL;
       return -1;
     }
@@ -464,8 +498,7 @@ int IpcPacketSocket::SendToInternal(const void* data,
 
   uint64_t packet_id = client_->Send(
       address_chrome,
-      base::make_span(reinterpret_cast<const uint8_t*>(data), data_size),
-      options);
+      base::make_span(static_cast<const uint8_t*>(data), data_size), options);
 
   // Ensure packet_id is not 0. It can't be the case according to
   // P2PSocketClientImpl::Send().
@@ -492,7 +525,7 @@ rtc::AsyncPacketSocket::State IpcPacketSocket::GetState() const {
 
   switch (state_) {
     case kIsUninitialized:
-      NOTREACHED();
+      NOTREACHED_IN_MIGRATION();
       return STATE_CLOSED;
 
     case kIsOpening:
@@ -510,7 +543,7 @@ rtc::AsyncPacketSocket::State IpcPacketSocket::GetState() const {
       return STATE_CLOSED;
   }
 
-  NOTREACHED();
+  NOTREACHED_IN_MIGRATION();
   return STATE_CLOSED;
 }
 
@@ -585,7 +618,7 @@ void IpcPacketSocket::OnOpen(const net::IPEndPoint& local_address,
 
   if (!webrtc::IPEndPointToSocketAddress(local_address, &local_address_)) {
     // Always expect correct IPv4 address to be allocated.
-    NOTREACHED();
+    NOTREACHED_IN_MIGRATION();
     OnError();
     return;
   }
@@ -667,7 +700,8 @@ void IpcPacketSocket::OnError() {
 
 void IpcPacketSocket::OnDataReceived(const net::IPEndPoint& address,
                                      base::span<const uint8_t> data,
-                                     const base::TimeTicks& timestamp) {
+                                     const base::TimeTicks& timestamp,
+                                     rtc::EcnMarking ecn) {
   DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
 
   rtc::SocketAddress address_lj;
@@ -680,13 +714,14 @@ void IpcPacketSocket::OnDataReceived(const net::IPEndPoint& address,
     if (!webrtc::IPEndPointToSocketAddress(address, &address_lj)) {
       // We should always be able to convert address here because we
       // don't expect IPv6 address on IPv4 connections.
-      NOTREACHED();
+      NOTREACHED_IN_MIGRATION();
       return;
     }
   }
   NotifyPacketReceived(rtc::ReceivedPacket(
       data, address_lj,
-      webrtc::Timestamp::Micros(timestamp.since_origin().InMicroseconds())));
+      webrtc::Timestamp::Micros(timestamp.since_origin().InMicroseconds()),
+      ecn));
 }
 
 AsyncDnsAddressResolverImpl::AsyncDnsAddressResolverImpl(
@@ -708,7 +743,7 @@ void AsyncDnsAddressResolverImpl::Start(const rtc::SocketAddress& addr,
   callback_ = std::move(callback);
 
   resolver_->Start(
-      addr, /*address_family=*/absl::nullopt,
+      addr, /*address_family=*/std::nullopt,
       WTF::BindOnce(&AsyncDnsAddressResolverImpl::OnAddressResolved,
                     weak_factory_.GetWeakPtr()));
 }
@@ -724,7 +759,7 @@ void AsyncDnsAddressResolverImpl::Start(const rtc::SocketAddress& addr,
   addr_ = addr;
   callback_ = std::move(callback);
   resolver_->Start(
-      addr, absl::make_optional(address_family),
+      addr, std::make_optional(address_family),
       WTF::BindOnce(&AsyncDnsAddressResolverImpl::OnAddressResolved,
                     weak_factory_.GetWeakPtr()));
 }
@@ -756,7 +791,7 @@ void AsyncDnsAddressResolverImpl::OnAddressResolved(
     rtc::SocketAddress socket_address;
     if (!webrtc::IPEndPointToSocketAddress(net::IPEndPoint(addresses[i], 0),
                                            &socket_address)) {
-      NOTREACHED();
+      NOTREACHED_IN_MIGRATION();
     }
     addresses_.push_back(socket_address.ipaddr());
   }
@@ -766,10 +801,14 @@ void AsyncDnsAddressResolverImpl::OnAddressResolved(
 }  // namespace
 
 IpcPacketSocketFactory::IpcPacketSocketFactory(
+    WTF::CrossThreadFunction<
+        void(base::OnceCallback<void(std::optional<base::UnguessableToken>)>)>
+        devtools_token_getter,
     P2PSocketDispatcher* socket_dispatcher,
     const net::NetworkTrafficAnnotationTag& traffic_annotation,
     bool batch_udp_packets)
-    : batch_udp_packets_(batch_udp_packets),
+    : devtools_token_getter_(std::move(devtools_token_getter)),
+      batch_udp_packets_(batch_udp_packets),
       socket_dispatcher_(socket_dispatcher),
       traffic_annotation_(traffic_annotation) {}
 
@@ -784,9 +823,11 @@ rtc::AsyncPacketSocket* IpcPacketSocketFactory::CreateUdpSocket(
   auto socket_client =
       std::make_unique<P2PSocketClientImpl>(batch_udp_packets_);
   std::unique_ptr<IpcPacketSocket> socket(new IpcPacketSocket());
+
   if (!socket->Init(socket_dispatcher, traffic_annotation_,
                     network::P2P_SOCKET_UDP, std::move(socket_client),
-                    local_address, min_port, max_port, rtc::SocketAddress())) {
+                    local_address, min_port, max_port, rtc::SocketAddress(),
+                    devtools_token_getter_)) {
     return nullptr;
   }
   return socket.release();
@@ -797,15 +838,13 @@ rtc::AsyncListenSocket* IpcPacketSocketFactory::CreateServerTcpSocket(
     uint16_t min_port,
     uint16_t max_port,
     int opts) {
-  NOTREACHED();
+  NOTREACHED_IN_MIGRATION();
   return nullptr;
 }
 
 rtc::AsyncPacketSocket* IpcPacketSocketFactory::CreateClientTcpSocket(
     const rtc::SocketAddress& local_address,
     const rtc::SocketAddress& remote_address,
-    const rtc::ProxyInfo& proxy_info,
-    const std::string& user_agent,
     const rtc::PacketSocketTcpOptions& opts) {
   if (!net::IsPortAllowedForScheme(remote_address.port(), "stun")) {
     // Attempt to create IPC TCP socket on blocked port
@@ -832,7 +871,7 @@ rtc::AsyncPacketSocket* IpcPacketSocketFactory::CreateClientTcpSocket(
   std::unique_ptr<IpcPacketSocket> socket(new IpcPacketSocket());
   if (!socket->Init(socket_dispatcher, traffic_annotation_, type,
                     std::move(socket_client), local_address, 0, 0,
-                    remote_address)) {
+                    remote_address, devtools_token_getter_)) {
     return nullptr;
   }
   return socket.release();

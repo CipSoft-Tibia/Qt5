@@ -37,7 +37,6 @@ public:
     void ensureSize() override;
 
     void updateSurface(bool create);
-    void setGeometry(const QRect &rect) override;
     QRect contentsRect() const;
 
     EGLSurface eglSurface() const;

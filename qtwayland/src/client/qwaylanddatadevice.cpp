@@ -98,6 +98,12 @@ bool QWaylandDataDevice::startDrag(QMimeData *mimeData, Qt::DropActions supporte
     if (mimeData->formats().isEmpty())
         mimeData->setData("application/x-qt-avoid-empty-placeholder"_L1, QByteArray("1"));
 
+    static const QString plain = QStringLiteral("text/plain");
+    static const QString utf8 = QStringLiteral("text/plain;charset=utf-8");
+
+    if (mimeData->hasFormat(plain) && !mimeData->hasFormat(utf8))
+        mimeData->setData(utf8, mimeData->data(plain));
+
     m_dragSource.reset(new QWaylandDataSource(m_display->dndSelectionHandler(), mimeData));
 
     if (version() >= 3)

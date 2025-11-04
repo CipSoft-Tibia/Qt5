@@ -19,7 +19,6 @@
 
 #include <stddef.h>
 
-#include "src/trace_processor/containers/string_pool.h"
 #include "src/trace_processor/types/variadic.h"
 
 namespace perfetto {
@@ -33,6 +32,10 @@ namespace metadata {
   F(all_data_source_started_ns,        KeyType::kSingle,  Variadic::kInt),    \
   F(android_build_fingerprint,         KeyType::kSingle,  Variadic::kString), \
   F(android_sdk_version,               KeyType::kSingle,  Variadic::kInt),    \
+  F(android_soc_model,                 KeyType::kSingle,  Variadic::kString), \
+  F(android_hardware_revision,         KeyType::kSingle,  Variadic::kString), \
+  F(android_storage_model,             KeyType::kSingle,  Variadic::kString), \
+  F(android_ram_model,                 KeyType::kSingle,  Variadic::kString), \
   F(benchmark_description,             KeyType::kSingle,  Variadic::kString), \
   F(benchmark_had_failures,            KeyType::kSingle,  Variadic::kInt),    \
   F(benchmark_label,                   KeyType::kSingle,  Variadic::kString), \
@@ -43,6 +46,7 @@ namespace metadata {
   F(benchmark_story_run_time_us,       KeyType::kSingle,  Variadic::kInt),    \
   F(benchmark_story_tags,              KeyType::kMulti,   Variadic::kString), \
   F(ftrace_setup_errors,               KeyType::kMulti,   Variadic::kString), \
+  F(ftrace_latest_data_start_ns,       KeyType::kSingle,  Variadic::kInt),    \
   F(range_of_interest_start_us,        KeyType::kSingle,  Variadic::kInt),    \
   F(statsd_triggering_subscription_id, KeyType::kSingle,  Variadic::kInt),    \
   F(system_machine,                    KeyType::kSingle,  Variadic::kString), \

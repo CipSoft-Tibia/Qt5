@@ -96,7 +96,9 @@ void FilePickerController::accepted(const QStringList &files)
                     absolutePath += scheme.at(5) + ":/"_L1;
                 } else {
 #endif
-                    qWarning("Ignoring invalid item in FilePickerController::accepted(QStringList): %s", qPrintable(urlString));
+                    qWarning("Ignoring invalid item in "
+                             "FilePickerController::accepted(QStringList): %ls",
+                             qUtf16Printable(urlString));
                     continue;
 #if defined(Q_OS_WIN)
                 }
@@ -115,7 +117,9 @@ void FilePickerController::accepted(const QStringList &files)
                     absolutePath += u'/';
 #endif
                 } else {
-                    qWarning("Ignoring invalid item in FilePickerController::accepted(QStringList): %s", qPrintable(urlString));
+                    qWarning("Ignoring invalid item in "
+                             "FilePickerController::accepted(QStringList): %ls",
+                             qUtf16Printable(urlString));
                     continue;
                 }
             }
@@ -132,7 +136,8 @@ void FilePickerController::accepted(const QStringList &files)
                 continue;
             }
         }
-        qWarning("Ignoring invalid item in FilePickerController::accepted(QStringList): %s", qPrintable(urlString));
+        qWarning("Ignoring invalid item in FilePickerController::accepted(QStringList): %ls",
+                 qUtf16Printable(urlString));
     }
 
     FilePickerController::filesSelectedInChooser(stringList);
@@ -218,13 +223,13 @@ void FilePickerController::filesSelectedInChooser(const QStringList &filesList)
         }
 
         if (files.empty())
-            d_ptr->fileSystemAccessDialogListener->FileSelectionCanceled(nullptr);
+            d_ptr->fileSystemAccessDialogListener->FileSelectionCanceled();
         else if (files.size() == 1)
             d_ptr->fileSystemAccessDialogListener->FileSelected(
-                    ui::SelectedFileInfo(files[0]), 0, nullptr);
+                    ui::SelectedFileInfo(files[0]), 0);
         else
             d_ptr->fileSystemAccessDialogListener->MultiFilesSelected(
-                    ui::FilePathListToSelectedFileInfoList(files), nullptr);
+                    ui::FilePathListToSelectedFileInfoList(files));
     }
 }
 

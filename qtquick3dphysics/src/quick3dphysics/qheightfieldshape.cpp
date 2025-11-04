@@ -133,6 +133,14 @@ QQuick3DPhysicsHeightField::~QQuick3DPhysicsHeightField()
 
 void QQuick3DPhysicsHeightField::writeSamples(const QImage &heightMap)
 {
+    if (Q_UNLIKELY(heightMap.isNull())) {
+        m_rows = 0;
+        m_columns = 0;
+        free(m_samples);
+        m_samples = nullptr;
+        return;
+    }
+
     m_rows = heightMap.height();
     m_columns = heightMap.width();
     int numRows = m_rows;
@@ -165,6 +173,9 @@ physx::PxHeightField *QQuick3DPhysicsHeightField::heightField()
     // Reading from image property has precedence
     const bool readFromFile = m_image == nullptr;
 
+    // Security note: This code reads user provided images and create heightfields from them.
+    // This is safe since we assume that QImage properly rejects invalid image files.
+    // It also reads cached and cooked heightfields but that file is marked.
     if (readFromFile) {
         // Try read cached file
         m_heightField = QCacheUtils::readCachedHeightField(m_sourcePath, *thePhysics);

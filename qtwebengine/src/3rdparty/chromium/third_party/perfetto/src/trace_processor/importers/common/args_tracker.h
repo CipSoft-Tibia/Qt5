@@ -17,6 +17,7 @@
 #ifndef SRC_TRACE_PROCESSOR_IMPORTERS_COMMON_ARGS_TRACKER_H_
 #define SRC_TRACE_PROCESSOR_IMPORTERS_COMMON_ARGS_TRACKER_H_
 
+#include <cstdint>
 #include "perfetto/ext/base/small_vector.h"
 #include "src/trace_processor/importers/common/global_args_tracker.h"
 #include "src/trace_processor/storage/trace_storage.h"
@@ -119,6 +120,21 @@ class ArgsTracker {
     return AddArgsTo(context_->storage->mutable_flow_table(), id);
   }
 
+  BoundInserter AddArgsTo(tables::InputMethodClientsTable::Id id) {
+    return AddArgsTo(context_->storage->mutable_inputmethod_clients_table(),
+                     id);
+  }
+
+  BoundInserter AddArgsTo(tables::InputMethodServiceTable::Id id) {
+    return AddArgsTo(context_->storage->mutable_inputmethod_service_table(),
+                     id);
+  }
+
+  BoundInserter AddArgsTo(tables::InputMethodManagerServiceTable::Id id) {
+    return AddArgsTo(
+        context_->storage->mutable_inputmethod_manager_service_table(), id);
+  }
+
   BoundInserter AddArgsTo(tables::MemorySnapshotNodeTable::Id id) {
     return AddArgsTo(context_->storage->mutable_memory_snapshot_node_table(),
                      id);
@@ -139,21 +155,43 @@ class ArgsTracker {
         context_->storage->mutable_surfaceflinger_transactions_table(), id);
   }
 
+  BoundInserter AddArgsTo(tables::ViewCaptureTable::Id id) {
+    return AddArgsTo(context_->storage->mutable_viewcapture_table(), id);
+  }
+
+  BoundInserter AddArgsTo(tables::WindowManagerTable::Id id) {
+    return AddArgsTo(context_->storage->mutable_windowmanager_table(), id);
+  }
+
   BoundInserter AddArgsTo(tables::WindowManagerShellTransitionsTable::Id id) {
     return AddArgsTo(
         context_->storage->mutable_window_manager_shell_transitions_table(),
         id);
   }
 
+  BoundInserter AddArgsTo(tables::AndroidKeyEventsTable::Id id) {
+    return AddArgsTo(context_->storage->mutable_android_key_events_table(), id);
+  }
+
+  BoundInserter AddArgsTo(tables::AndroidMotionEventsTable::Id id) {
+    return AddArgsTo(context_->storage->mutable_android_motion_events_table(),
+                     id);
+  }
+
+  BoundInserter AddArgsTo(tables::AndroidInputEventDispatchTable::Id id) {
+    return AddArgsTo(
+        context_->storage->mutable_android_input_event_dispatch_table(), id);
+  }
+
   BoundInserter AddArgsTo(MetadataId id) {
     auto* table = context_->storage->mutable_metadata_table();
-    uint32_t row = *table->id().IndexOf(id);
+    uint32_t row = table->FindById(id)->ToRowNumber().row_number();
     return BoundInserter(this, table->mutable_int_value(), row);
   }
 
   BoundInserter AddArgsTo(TrackId id) {
     auto* table = context_->storage->mutable_track_table();
-    uint32_t row = *table->id().IndexOf(id);
+    uint32_t row = table->FindById(id)->ToRowNumber().row_number();
     return BoundInserter(this, table->mutable_source_arg_set_id(), row);
   }
 
@@ -194,7 +232,7 @@ class ArgsTracker {
  private:
   template <typename Table>
   BoundInserter AddArgsTo(Table* table, typename Table::Id id) {
-    uint32_t row = *table->id().IndexOf(id);
+    uint32_t row = table->FindById(id)->ToRowNumber().row_number();
     return BoundInserter(this, table->mutable_arg_set_id(), row);
   }
 

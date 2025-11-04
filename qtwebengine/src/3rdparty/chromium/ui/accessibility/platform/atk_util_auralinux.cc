@@ -2,6 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#ifdef UNSAFE_BUFFERS_BUILD
+// TODO(crbug.com/40285824): Remove this and convert code to safer constructs.
+#pragma allow_unsafe_buffers
+#endif
+
 #include <atk/atk.h>
 #include <map>
 #include <memory>
@@ -17,6 +22,7 @@
 #include "base/memory/singleton.h"
 #include "base/no_destructor.h"
 #include "ui/accessibility/platform/atk_util_auralinux.h"
+#include "ui/accessibility/platform/ax_platform.h"
 #include "ui/accessibility/platform/ax_platform_node.h"
 #include "ui/accessibility/platform/ax_platform_node_auralinux.h"
 
@@ -204,9 +210,9 @@ DiscardAtkKeyEvent AtkUtilAuraLinux::HandleAtkKeyEvent(
     AtkKeyEventStruct* key_event) {
   DCHECK(key_event);
 
-  if (!ui::AXPlatformNode::GetAccessibilityMode().has_mode(
-          ui::AXMode::kNativeAPIs))
+  if (!AXPlatform::GetInstance().GetMode().has_mode(AXMode::kNativeAPIs)) {
     return DiscardAtkKeyEvent::Retain;
+  }
 
   GetInstance()->InitializeAsync();
 

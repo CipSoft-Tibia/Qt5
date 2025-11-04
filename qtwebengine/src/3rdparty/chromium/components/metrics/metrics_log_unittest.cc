@@ -165,6 +165,29 @@ class MetricsLogTest : public testing::Test {
   TestingPrefServiceSimple prefs_;
 };
 
+TEST_F(MetricsLogTest, FinalizedRecordId) {
+  MetricsLog log1(kClientId, kSessionId, MetricsLog::ONGOING_LOG, &client_);
+  MetricsLog log2(kClientId, kSessionId, MetricsLog::INDEPENDENT_LOG, &client_);
+  MetricsLog log3(kClientId, kSessionId, MetricsLog::INITIAL_STABILITY_LOG,
+                  &client_);
+
+  ASSERT_FALSE(log1.uma_proto()->has_finalized_record_id());
+  ASSERT_FALSE(log2.uma_proto()->has_finalized_record_id());
+  ASSERT_FALSE(log3.uma_proto()->has_finalized_record_id());
+
+  // Set an initial finalized record-id value in prefs, so test values are
+  // predictable.
+  prefs_.SetInteger(prefs::kMetricsLogFinalizedRecordId, 500);
+
+  log1.AssignFinalizedRecordId(&prefs_);
+  log2.AssignFinalizedRecordId(&prefs_);
+  log3.AssignFinalizedRecordId(&prefs_);
+
+  EXPECT_EQ(501, log1.uma_proto()->finalized_record_id());
+  EXPECT_EQ(502, log2.uma_proto()->finalized_record_id());
+  EXPECT_EQ(503, log3.uma_proto()->finalized_record_id());
+}
+
 TEST_F(MetricsLogTest, RecordId) {
   MetricsLog log1(kClientId, kSessionId, MetricsLog::ONGOING_LOG, &client_);
   MetricsLog log2(kClientId, kSessionId, MetricsLog::INDEPENDENT_LOG, &client_);
@@ -185,6 +208,17 @@ TEST_F(MetricsLogTest, RecordId) {
   EXPECT_EQ(501, log1.uma_proto()->record_id());
   EXPECT_EQ(502, log2.uma_proto()->record_id());
   EXPECT_EQ(503, log3.uma_proto()->record_id());
+}
+
+TEST_F(MetricsLogTest, SessionHash) {
+  MetricsLog log1(kClientId, kSessionId, MetricsLog::ONGOING_LOG, &client_);
+  MetricsLog log2(kClientId, kSessionId, MetricsLog::ONGOING_LOG, &client_);
+
+  // Verify that created logs are tagged with the same session hash.
+  EXPECT_TRUE(log1.uma_proto()->system_profile().has_session_hash());
+  EXPECT_TRUE(log2.uma_proto()->system_profile().has_session_hash());
+  EXPECT_EQ(log1.uma_proto()->system_profile().session_hash(),
+            log2.uma_proto()->system_profile().session_hash());
 }
 
 TEST_F(MetricsLogTest, LogType) {
@@ -245,6 +279,9 @@ TEST_F(MetricsLogTest, BasicRecord) {
   // Hashes of "mock-flag-1" and "mock-flag-2" from SetUpCommandLine.
   system_profile->add_command_line_key_hash(2578836236);
   system_profile->add_command_line_key_hash(2867288449);
+  // The session hash.
+  system_profile->set_session_hash(
+      log.uma_proto()->system_profile().session_hash());
 
 #if defined(ADDRESS_SANITIZER) || DCHECK_IS_ON()
   system_profile->set_is_instrumented_build(true);
@@ -379,7 +416,7 @@ TEST_F(MetricsLogTest, Timestamps_InitialStabilityLog) {
   std::string encoded;
   // Don't set the close_time param since this is an initial stability log.
   log.FinalizeLog(/*truncate_events=*/false, client_.GetVersionString(),
-                  /*close_time=*/absl::nullopt, &encoded);
+                  /*close_time=*/std::nullopt, &encoded);
   ChromeUserMetricsExtension parsed;
   ASSERT_TRUE(parsed.ParseFromString(encoded));
   EXPECT_FALSE(parsed.has_time_log_created());
@@ -398,7 +435,7 @@ TEST_F(MetricsLogTest, Timestamps_IndependentLog) {
   std::string encoded;
   // Don't set the close_time param since this is an independent log.
   log.FinalizeLog(/*truncate_events=*/false, client_.GetVersionString(),
-                  /*close_time=*/absl::nullopt, &encoded);
+                  /*close_time=*/std::nullopt, &encoded);
   ChromeUserMetricsExtension parsed;
   ASSERT_TRUE(parsed.ParseFromString(encoded));
   EXPECT_FALSE(parsed.has_time_log_created());
@@ -449,7 +486,7 @@ TEST_F(MetricsLogTest,
   network_time::NetworkTimeTracker network_time_tracker(
       std::make_unique<base::DefaultClock>(),
       std::make_unique<base::DefaultTickClock>(), &pref_service,
-      shared_url_loader_factory);
+      shared_url_loader_factory, /*fetch_behavior=*/std::nullopt);
 
   // Set up the backup client clock.
   TestMetricsServiceClient client;
@@ -506,7 +543,7 @@ TEST_F(
   network_time::NetworkTimeTracker network_time_tracker(
       std::unique_ptr<base::Clock>(clock),
       std::unique_ptr<const base::TickClock>(tick_clock), &pref_service,
-      shared_url_loader_factory);
+      shared_url_loader_factory, /*fetch_behavior=*/std::nullopt);
 
   // Should have times from regular (ongoing) logs.  The creation time should
   // come from the backup client clock; the closure time should come from the
@@ -563,7 +600,7 @@ TEST_F(MetricsLogTest,
   network_time::NetworkTimeTracker network_time_tracker(
       std::unique_ptr<base::Clock>(clock),
       std::unique_ptr<const base::TickClock>(tick_clock), &pref_service,
-      shared_url_loader_factory);
+      shared_url_loader_factory, /*fetch_behavior=*/std::nullopt);
 
   // Should have times from regular (ongoing) logs.  These times should come
   // from the network clock.

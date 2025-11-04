@@ -13,33 +13,24 @@
 // limitations under the License.
 
 import m from 'mithril';
-import {v4 as uuidv4} from 'uuid';
-
 import {isString} from '../base/object_utils';
 import {Icons} from '../base/semantic_icons';
 import {sqliteString} from '../base/string_utils';
 import {exists} from '../base/utils';
-import {Actions, AddTrackArgs} from '../common/actions';
-import {InThreadTrackSortKey} from '../common/state';
 import {ArgNode, convertArgsToTree, Key} from '../controller/args_parser';
-import {EngineProxy} from '../trace_processor/engine';
-import {NUM} from '../trace_processor/query_result';
-import {
-  VISUALISED_ARGS_SLICE_TRACK_URI,
-  VisualisedArgsState,
-} from '../tracks/visualised_args';
+import {Engine} from '../trace_processor/engine';
+import {addVisualisedArgTracks} from './visualized_args_tracks';
 import {Anchor} from '../widgets/anchor';
 import {MenuItem, PopupMenu2} from '../widgets/menu';
 import {TreeNode} from '../widgets/tree';
-
-import {addTab} from './bottom_tab';
+import {Arg} from '../trace_processor/sql_utils/args';
 import {globals} from './globals';
-import {Arg} from './sql/args';
-import {SqlTableTab} from './sql_table/tab';
-import {SqlTables} from './sql_table/well_known_tables';
+import {addSqlTableTab} from './sql_table_tab_command';
+import {assertExists} from '../base/logging';
+import {getSqlTableDescription} from './widgets/sql/table/sql_table_registry';
 
 // Renders slice arguments (key/value pairs) as a subtree.
-export function renderArguments(engine: EngineProxy, args: Arg[]): m.Children {
+export function renderArguments(engine: Engine, args: Arg[]): m.Children {
   if (args.length > 0) {
     const tree = convertArgsToTree(args);
     return renderArgTreeNodes(engine, tree);
@@ -52,8 +43,7 @@ export function hasArgs(args?: Arg[]): args is Arg[] {
   return exists(args) && args.length > 0;
 }
 
-function renderArgTreeNodes(
-    engine: EngineProxy, args: ArgNode<Arg>[]): m.Children {
+function renderArgTreeNodes(engine: Engine, args: ArgNode<Arg>[]): m.Children {
   return args.map((arg) => {
     const {key, value, children} = arg;
     if (children && children.length === 1) {
@@ -66,130 +56,74 @@ function renderArgTreeNodes(
       return renderArgTreeNodes(engine, [compositeArg]);
     } else {
       return m(
-          TreeNode,
-          {
-            left: renderArgKey(engine, stringifyKey(key), value),
-            right: exists(value) && renderArgValue(value),
-            summary: children && renderSummary(children),
-          },
-          children && renderArgTreeNodes(engine, children),
+        TreeNode,
+        {
+          left: renderArgKey(engine, stringifyKey(key), value),
+          right: exists(value) && renderArgValue(value),
+          summary: children && renderSummary(children),
+        },
+        children && renderArgTreeNodes(engine, children),
       );
     }
   });
 }
 
-function renderArgKey(
-    engine: EngineProxy, key: string, value?: Arg): m.Children {
+function renderArgKey(engine: Engine, key: string, value?: Arg): m.Children {
   if (value === undefined) {
     return key;
   } else {
     const {key: fullKey, displayValue} = value;
     return m(
-        PopupMenu2,
-        {trigger: m(Anchor, {icon: Icons.ContextMenu}, key)},
-        m(MenuItem, {
-          label: 'Copy full key',
-          icon: 'content_copy',
-          onclick: () => navigator.clipboard.writeText(fullKey),
-        }),
-        m(MenuItem, {
-          label: 'Find slices with same arg value',
-          icon: 'search',
-          onclick: () => {
-            addTab({
-              kind: SqlTableTab.kind,
-              config: {
-                table: SqlTables.slice,
-                filters: [{
-                  type: 'arg_filter',
-                  argSetIdColumn: 'arg_set_id',
-                  argName: fullKey,
-                  op: `= ${sqliteString(displayValue)}`,
-                }],
+      PopupMenu2,
+      {trigger: m(Anchor, {icon: Icons.ContextMenu}, key)},
+      m(MenuItem, {
+        label: 'Copy full key',
+        icon: 'content_copy',
+        onclick: () => navigator.clipboard.writeText(fullKey),
+      }),
+      m(MenuItem, {
+        label: 'Find slices with same arg value',
+        icon: 'search',
+        onclick: () => {
+          addSqlTableTab({
+            table: assertExists(getSqlTableDescription('slice')),
+            filters: [
+              {
+                op: (cols) => `${cols[0]} = ${sqliteString(displayValue)}`,
+                columns: [
+                  {
+                    column: 'display_value',
+                    source: {
+                      table: 'args',
+                      joinOn: {
+                        arg_set_id: 'arg_set_id',
+                        key: sqliteString(fullKey),
+                      },
+                    },
+                  },
+                ],
               },
-            });
-          },
-        }),
-        m(MenuItem, {
-          label: 'Visualise argument values',
-          icon: 'query_stats',
-          onclick: () => {
-            addVisualisedArg(engine, fullKey);
-          },
-        }),
+            ],
+          });
+        },
+      }),
+      m(MenuItem, {
+        label: 'Visualise argument values',
+        icon: 'query_stats',
+        onclick: () => {
+          addVisualisedArgTracks(
+            {
+              engine,
+              tracks: {
+                registerTrack: (t) => globals.trackManager.registerTrack(t),
+              },
+            },
+            fullKey,
+          );
+        },
+      }),
     );
   }
-}
-
-async function addVisualisedArg(engine: EngineProxy, argName: string) {
-  const escapedArgName = argName.replace(/[^a-zA-Z]/g, '_');
-  const tableName = `__arg_visualisation_helper_${escapedArgName}_slice`;
-
-  const result = await engine.query(`
-        drop table if exists ${tableName};
-
-        create table ${tableName} as
-        with slice_with_arg as (
-          select
-            slice.id,
-            slice.track_id,
-            slice.ts,
-            slice.dur,
-            slice.thread_dur,
-            NULL as cat,
-            args.display_value as name
-          from slice
-          join args using (arg_set_id)
-          where args.key='${argName}'
-        )
-        select
-          *,
-          (select count()
-           from ancestor_slice(s1.id) s2
-           join slice_with_arg s3 on s2.id=s3.id
-          ) as depth
-        from slice_with_arg s1
-        order by id;
-
-        select
-          track_id as trackId,
-          max(depth) as maxDepth
-        from ${tableName}
-        group by track_id;
-    `);
-
-  const tracksToAdd: AddTrackArgs[] = [];
-  const it = result.iter({'trackId': NUM, 'maxDepth': NUM});
-  const addedTrackKeys: string[] = [];
-  for (; it.valid(); it.next()) {
-    const track =
-        globals.state.tracks[globals.state.trackKeyByTrackId[it.trackId]];
-    const utid = (track.trackSortKey as {utid?: number}).utid;
-    const key = uuidv4();
-    addedTrackKeys.push(key);
-
-    const params: VisualisedArgsState = {
-      maxDepth: it.maxDepth,
-      trackId: it.trackId,
-      argName: argName,
-    };
-
-    tracksToAdd.push({
-      key,
-      trackGroup: track.trackGroup,
-      name: argName,
-      trackSortKey: utid === undefined ?
-          track.trackSortKey :
-          {utid, priority: InThreadTrackSortKey.VISUALISED_ARGS_TRACK},
-      params,
-      uri: VISUALISED_ARGS_SLICE_TRACK_URI,
-    });
-  }
-
-  globals.dispatchMultiple([
-    Actions.addTracks({tracks: tracksToAdd}),
-    Actions.sortThreadTracks({}),
-  ]);
 }
 
 function renderArgValue({value}: Arg): m.Children {
@@ -201,7 +135,10 @@ function renderArgValue({value}: Arg): m.Children {
 }
 
 function renderSummary(children: ArgNode<Arg>[]): m.Children {
-  const summary = children.slice(0, 2).map(({key}) => key).join(', ');
+  const summary = children
+    .slice(0, 2)
+    .map(({key}) => key)
+    .join(', ');
   const remaining = children.length - 2;
   if (remaining > 0) {
     return `{${summary}, ... (${remaining} more items)}`;
@@ -212,19 +149,21 @@ function renderSummary(children: ArgNode<Arg>[]): m.Children {
 
 function stringifyKey(...key: Key[]): string {
   return key
-      .map((element, index) => {
-        if (typeof element === 'number') {
-          return `[${element}]`;
-        } else {
-          return (index === 0 ? '' : '.') + element;
-        }
-      })
-      .join('');
+    .map((element, index) => {
+      if (typeof element === 'number') {
+        return `[${element}]`;
+      } else {
+        return (index === 0 ? '' : '.') + element;
+      }
+    })
+    .join('');
 }
 
 function isWebLink(value: unknown): value is string {
-  return isString(value) &&
-      (value.startsWith('http://') || value.startsWith('https://'));
+  return (
+    isString(value) &&
+    (value.startsWith('http://') || value.startsWith('https://'))
+  );
 }
 
 function renderWebLink(url: string): m.Children {

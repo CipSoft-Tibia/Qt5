@@ -2,7 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-import * as ComponentHelpers from '../../components/helpers/helpers.js';
 import * as LitHtml from '../../lit-html/lit-html.js';
 
 import {Icon, type IconData} from './Icon.js';
@@ -71,7 +70,7 @@ export class IconButton extends HTMLElement {
     const buttonClasses = LitHtml.Directives.classMap({
       'icon-button': true,
       'with-click-handler': Boolean(this.#clickHandler),
-      'compact': this.#compact,
+      compact: this.#compact,
     });
     const filteredGroups = this.#groups.filter(counter => counter.text !== undefined)
                                .filter((_, index) => this.#compact ? index === 0 : true);
@@ -94,10 +93,9 @@ export class IconButton extends HTMLElement {
   }
 }
 
-ComponentHelpers.CustomElements.defineComponent('icon-button', IconButton);
+customElements.define('icon-button', IconButton);
 
 declare global {
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   interface HTMLElementTagNameMap {
     'icon-button': IconButton;
   }

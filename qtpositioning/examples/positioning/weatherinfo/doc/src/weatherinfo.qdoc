@@ -20,7 +20,7 @@
     \li \l{QGeoPositionInfoSource}
     \endlist
 
-    \image ../images/example-weatherinfo.png
+    \image ../images/example-weatherinfo.png {Sample weather info screen}
 
     \include examples-run.qdocinc
 

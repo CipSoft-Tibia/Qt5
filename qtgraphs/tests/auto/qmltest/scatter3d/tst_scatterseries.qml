@@ -167,7 +167,7 @@ Item {
 
             // Signals
             compare(itemSizeSpy.count, 1)
-            compare(selectedItemSpy.count, 1)
+            compare(selectedItemSpy.count, 0)
             compare(dataProxySpy.count, 1)
         }
 
@@ -247,7 +247,7 @@ Item {
     SignalSpy {
         id: selectedItemSpy
         target: change
-        signalName: "selectedItemChanged"
+        signalName: "selectedItemsChanged"
     }
 
     SignalSpy {

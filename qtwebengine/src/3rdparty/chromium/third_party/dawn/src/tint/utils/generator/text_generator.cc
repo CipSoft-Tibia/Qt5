@@ -68,11 +68,10 @@ void TextGenerator::TextBuffer::Append(const std::string& line) {
 }
 
 void TextGenerator::TextBuffer::Insert(const std::string& line, size_t before, uint32_t indent) {
-    if (TINT_UNLIKELY(before > lines.size())) {
+    if (DAWN_UNLIKELY(before > lines.size())) {
         TINT_ICE() << "TextBuffer::Insert() called with before > lines.size()\n"
                    << "  before:" << before << "\n"
                    << "  lines.size(): " << lines.size();
-        return;
     }
     using DT = decltype(lines)::difference_type;
     lines.insert(lines.begin() + static_cast<DT>(before), LineInfo{indent, line});
@@ -80,21 +79,20 @@ void TextGenerator::TextBuffer::Insert(const std::string& line, size_t before, u
 
 void TextGenerator::TextBuffer::Append(const TextBuffer& tb) {
     for (auto& line : tb.lines) {
-        // TODO(bclayton): inefficient, consider optimizing
+        // TODO(crbug.com/tint/2222): inefficient, consider optimizing
         lines.emplace_back(LineInfo{current_indent + line.indent, line.content});
     }
 }
 
 void TextGenerator::TextBuffer::Insert(const TextBuffer& tb, size_t before, uint32_t indent) {
-    if (TINT_UNLIKELY(before > lines.size())) {
+    if (DAWN_UNLIKELY(before > lines.size())) {
         TINT_ICE() << "TextBuffer::Insert() called with before > lines.size()\n"
                    << "  before:" << before << "\n"
                    << "  lines.size(): " << lines.size();
-        return;
     }
     size_t idx = 0;
     for (auto& line : tb.lines) {
-        // TODO(bclayton): inefficient, consider optimizing
+        // TODO(crbug.com/tint/2222): inefficient, consider optimizing
         using DT = decltype(lines)::difference_type;
         lines.insert(lines.begin() + static_cast<DT>(before + idx),
                      LineInfo{indent + line.indent, line.content});
@@ -111,7 +109,7 @@ std::string TextGenerator::TextBuffer::String(uint32_t indent /* = 0 */) const {
             }
             ss << line.content;
         }
-        ss << std::endl;
+        ss << "\n";
     }
     return ss.str();
 }

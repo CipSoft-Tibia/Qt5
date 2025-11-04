@@ -23,6 +23,7 @@ from python.generators.trace_processor_table.public import TableDoc
 from python.generators.trace_processor_table.public import CppTableId
 from python.generators.trace_processor_table.public import CppUint32
 
+from src.trace_processor.tables.metadata_tables import MACHINE_TABLE
 from src.trace_processor.tables.track_tables import COUNTER_TRACK_TABLE
 
 COUNTER_TABLE = Table(

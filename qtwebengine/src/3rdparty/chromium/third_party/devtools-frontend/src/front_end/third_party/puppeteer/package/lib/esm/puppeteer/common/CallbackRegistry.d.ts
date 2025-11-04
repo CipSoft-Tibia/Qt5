@@ -3,7 +3,6 @@
  * Copyright 2023 Google Inc.
  * SPDX-License-Identifier: Apache-2.0
  */
-import { Deferred } from '../util/Deferred.js';
 import { ProtocolError } from './Errors.js';
 /**
  * Manages callbacks and their IDs for the protocol request/response communication.
@@ -17,6 +16,10 @@ export declare class CallbackRegistry {
     _reject(callback: Callback, errorMessage: string | ProtocolError, originalMessage?: string): void;
     resolve(id: number, value: unknown): void;
     clear(): void;
+    /**
+     * @internal
+     */
+    getPendingProtocolErrors(): Error[];
 }
 /**
  * @internal
@@ -27,7 +30,7 @@ export declare class Callback {
     resolve(value: unknown): void;
     reject(error: Error): void;
     get id(): number;
-    get promise(): Deferred<unknown>;
+    get promise(): Promise<unknown>;
     get error(): ProtocolError;
     get label(): string;
 }

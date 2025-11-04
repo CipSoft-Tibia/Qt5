@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QTNETWORKGLOBAL_P_H
 #define QTNETWORKGLOBAL_P_H
@@ -16,7 +17,7 @@
 //
 
 #include <QtNetwork/qtnetworkglobal.h>
-#include <QtCore/private/qglobal_p.h>
+#include <QtCore/private/qtcoreglobal_p.h>
 #include <QtNetwork/private/qtnetwork-config_p.h>
 
 QT_BEGIN_NAMESPACE

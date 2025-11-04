@@ -116,26 +116,24 @@
   do {                                                                         \
     ::perfetto::internal::ValidateEventNameType<decltype(name)>();             \
     namespace tns = PERFETTO_TRACK_EVENT_NAMESPACE;                            \
-    /* Compute the category index outside the lambda to work around a */       \
-    /* GCC 7 bug */                                                            \
-    constexpr auto PERFETTO_UID(                                               \
-        kCatIndex_ADD_TO_PERFETTO_DEFINE_CATEGORIES_IF_FAILS_) =               \
-        PERFETTO_GET_CATEGORY_INDEX(category);                                 \
     if (::PERFETTO_TRACK_EVENT_NAMESPACE::internal::IsDynamicCategory(         \
             category)) {                                                       \
       tns::TrackEvent::CallIfEnabled(                                          \
           [&](uint32_t instances) PERFETTO_NO_THREAD_SAFETY_ANALYSIS {         \
-            tns::TrackEvent::method(instances, category, name, ##__VA_ARGS__); \
+            tns::TrackEvent::method(                                           \
+                instances, category,                                           \
+                ::perfetto::internal::DecayEventNameType(name),                \
+                ##__VA_ARGS__);                                                \
           });                                                                  \
     } else {                                                                   \
       tns::TrackEvent::CallIfCategoryEnabled(                                  \
-          PERFETTO_UID(kCatIndex_ADD_TO_PERFETTO_DEFINE_CATEGORIES_IF_FAILS_), \
+          PERFETTO_GET_CATEGORY_INDEX(category),                               \
           [&](uint32_t instances) PERFETTO_NO_THREAD_SAFETY_ANALYSIS {         \
             tns::TrackEvent::method(                                           \
                 instances,                                                     \
-                PERFETTO_UID(                                                  \
-                    kCatIndex_ADD_TO_PERFETTO_DEFINE_CATEGORIES_IF_FAILS_),    \
-                name, ##__VA_ARGS__);                                          \
+                PERFETTO_GET_CATEGORY_INDEX(category),                         \
+                ::perfetto::internal::DecayEventNameType(name),                \
+                ##__VA_ARGS__);                                                \
           });                                                                  \
     }                                                                          \
   } while (false)
@@ -166,7 +164,9 @@
       /* that the scoped event is exactly ONE line and can't escape the    */ \
       /* scope if used in a single line if statement.                      */ \
       EventFinalizer(...) {}                                                  \
-      ~EventFinalizer() { TRACE_EVENT_END(category); }                        \
+      ~EventFinalizer() {                                                     \
+        TRACE_EVENT_END(category);                                            \
+      }                                                                       \
                                                                               \
       EventFinalizer(const EventFinalizer&) = delete;                         \
       inline EventFinalizer& operator=(const EventFinalizer&) = delete;       \

@@ -10,9 +10,10 @@
 #include "qrgba64_p.h"
 #include "qrgbafloat.h"
 
-#if QT_CONFIG(thread) && !defined(Q_OS_WASM)
+#if QT_CONFIG(qtgui_threadpool)
 #include <qsemaphore.h>
 #include <qthreadpool.h>
+#include <private/qguiapplication_p.h>
 #include <private/qthreadpool_p.h>
 #endif
 
@@ -257,6 +258,18 @@ void qt_qimageScaleAARGBA_down_xy_sse4(QImageScaleInfo *isi, unsigned int *dest,
                                        int dw, int dh, int dow, int sow);
 #endif
 
+#if defined(QT_COMPILER_SUPPORTS_LSX)
+template<bool RGB>
+void qt_qimageScaleAARGBA_up_x_down_y_lsx(QImageScaleInfo *isi, unsigned int *dest,
+                                          int dw, int dh, int dow, int sow);
+template<bool RGB>
+void qt_qimageScaleAARGBA_down_x_up_y_lsx(QImageScaleInfo *isi, unsigned int *dest,
+                                          int dw, int dh, int dow, int sow);
+template<bool RGB>
+void qt_qimageScaleAARGBA_down_xy_lsx(QImageScaleInfo *isi, unsigned int *dest,
+                                      int dw, int dh, int dow, int sow);
+#endif
+
 #if defined(__ARM_NEON__)
 template<bool RGB>
 void qt_qimageScaleAARGBA_up_x_down_y_neon(QImageScaleInfo *isi, unsigned int *dest,
@@ -272,10 +285,10 @@ void qt_qimageScaleAARGBA_down_xy_neon(QImageScaleInfo *isi, unsigned int *dest,
 template<typename T>
 static inline void multithread_pixels_function(QImageScaleInfo *isi, int dh, const T &scaleSection)
 {
-#if QT_CONFIG(thread) && !defined(Q_OS_WASM)
+#if QT_CONFIG(qtgui_threadpool)
     int segments = (qsizetype(isi->sh) * isi->sw) / (1<<16);
     segments = std::min(segments, dh);
-    QThreadPool *threadPool = QThreadPoolPrivate::qtGuiInstance();
+    QThreadPool *threadPool = QGuiApplicationPrivate::qtGuiThreadPool();
     if (segments > 1 && threadPool && !threadPool->contains(QThread::currentThread())) {
         QSemaphore semaphore;
         int y = 0;
@@ -351,6 +364,10 @@ static void qt_qimageScaleAARGBA(QImageScaleInfo *isi, unsigned int *dest,
         if (qCpuHasFeature(SSE4_1))
             qt_qimageScaleAARGBA_up_x_down_y_sse4<false>(isi, dest, dw, dh, dow, sow);
         else
+#elif defined(QT_COMPILER_SUPPORTS_LSX)
+        if (qCpuHasFeature(LSX))
+            qt_qimageScaleAARGBA_up_x_down_y_lsx<false>(isi, dest, dw, dh, dow, sow);
+        else
 #elif defined(__ARM_NEON__)
         if (qCpuHasFeature(NEON))
             qt_qimageScaleAARGBA_up_x_down_y_neon<false>(isi, dest, dw, dh, dow, sow);
@@ -364,6 +381,10 @@ static void qt_qimageScaleAARGBA(QImageScaleInfo *isi, unsigned int *dest,
         if (qCpuHasFeature(SSE4_1))
             qt_qimageScaleAARGBA_down_x_up_y_sse4<false>(isi, dest, dw, dh, dow, sow);
         else
+#elif defined(QT_COMPILER_SUPPORTS_LSX)
+        if (qCpuHasFeature(LSX))
+            qt_qimageScaleAARGBA_down_x_up_y_lsx<false>(isi, dest, dw, dh, dow, sow);
+        else
 #elif defined(__ARM_NEON__)
         if (qCpuHasFeature(NEON))
             qt_qimageScaleAARGBA_down_x_up_y_neon<false>(isi, dest, dw, dh, dow, sow);
@@ -376,6 +397,10 @@ static void qt_qimageScaleAARGBA(QImageScaleInfo *isi, unsigned int *dest,
 #ifdef QT_COMPILER_SUPPORTS_SSE4_1
         if (qCpuHasFeature(SSE4_1))
             qt_qimageScaleAARGBA_down_xy_sse4<false>(isi, dest, dw, dh, dow, sow);
+        else
+#elif defined(QT_COMPILER_SUPPORTS_LSX)
+        if (qCpuHasFeature(LSX))
+            qt_qimageScaleAARGBA_down_xy_lsx<false>(isi, dest, dw, dh, dow, sow);
         else
 #elif defined(__ARM_NEON__)
         if (qCpuHasFeature(NEON))
@@ -995,6 +1020,10 @@ static void qt_qimageScaleAARGB(QImageScaleInfo *isi, unsigned int *dest,
         if (qCpuHasFeature(SSE4_1))
             qt_qimageScaleAARGBA_up_x_down_y_sse4<true>(isi, dest, dw, dh, dow, sow);
         else
+#elif defined QT_COMPILER_SUPPORTS_LSX
+        if (qCpuHasFeature(LSX))
+            qt_qimageScaleAARGBA_up_x_down_y_lsx<true>(isi, dest, dw, dh, dow, sow);
+        else
 #elif defined(__ARM_NEON__)
         if (qCpuHasFeature(NEON))
             qt_qimageScaleAARGBA_up_x_down_y_neon<true>(isi, dest, dw, dh, dow, sow);
@@ -1008,6 +1037,10 @@ static void qt_qimageScaleAARGB(QImageScaleInfo *isi, unsigned int *dest,
         if (qCpuHasFeature(SSE4_1))
             qt_qimageScaleAARGBA_down_x_up_y_sse4<true>(isi, dest, dw, dh, dow, sow);
         else
+#elif defined QT_COMPILER_SUPPORTS_LSX
+        if (qCpuHasFeature(LSX))
+            qt_qimageScaleAARGBA_down_x_up_y_lsx<true>(isi, dest, dw, dh, dow, sow);
+        else
 #elif defined(__ARM_NEON__)
         if (qCpuHasFeature(NEON))
             qt_qimageScaleAARGBA_down_x_up_y_neon<true>(isi, dest, dw, dh, dow, sow);
@@ -1020,6 +1053,10 @@ static void qt_qimageScaleAARGB(QImageScaleInfo *isi, unsigned int *dest,
 #ifdef QT_COMPILER_SUPPORTS_SSE4_1
         if (qCpuHasFeature(SSE4_1))
             qt_qimageScaleAARGBA_down_xy_sse4<true>(isi, dest, dw, dh, dow, sow);
+        else
+#elif defined QT_COMPILER_SUPPORTS_LSX
+        if (qCpuHasFeature(LSX))
+            qt_qimageScaleAARGBA_down_xy_lsx<true>(isi, dest, dw, dh, dow, sow);
         else
 #elif defined(__ARM_NEON__)
         if (qCpuHasFeature(NEON))

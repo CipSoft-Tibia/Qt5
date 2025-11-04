@@ -52,6 +52,10 @@ CFStringRef GetPrimaries(media::VideoColorSpace::PrimaryID primary_id) {
       return kCMFormatDescriptionColorPrimaries_SMPTE_C;
 
     case media::VideoColorSpace::PrimaryID::BT470BG:
+    case media::VideoColorSpace::PrimaryID::EBU_3213_E:
+      // Based on ITU H.273 8.1, there is a slight discrepancy between BT470 BG
+      // and EBU 3213 E, but a careful reading of E.B.U Tech 3213-E (1975) shows
+      // the primaries are identical.
       return kCMFormatDescriptionColorPrimaries_EBU_3213;
 
     case media::VideoColorSpace::PrimaryID::SMPTEST431_2:
@@ -136,7 +140,7 @@ CFStringRef GetMatrix(media::VideoColorSpace::MatrixID matrix_id) {
 
 void SetContentLightLevelInfo(
     NSMutableDictionary<NSString*, id>* extensions,
-    const absl::optional<gfx::HDRMetadata>& hdr_metadata) {
+    const std::optional<gfx::HDRMetadata>& hdr_metadata) {
   SetDictionaryValue(
       extensions, kCMFormatDescriptionExtension_ContentLightLevelInfo,
       base::apple::CFToNSPtrCast(
@@ -145,7 +149,7 @@ void SetContentLightLevelInfo(
 
 void SetColorVolumeMetadata(
     NSMutableDictionary<NSString*, id>* extensions,
-    const absl::optional<gfx::HDRMetadata>& hdr_metadata) {
+    const std::optional<gfx::HDRMetadata>& hdr_metadata) {
   SetDictionaryValue(
       extensions, kCMFormatDescriptionExtension_MasteringDisplayColorVolume,
       base::apple::CFToNSPtrCast(
@@ -214,8 +218,8 @@ base::apple::ScopedCFTypeRef<CFDictionaryRef> CreateFormatExtensions(
     VideoCodecProfile profile,
     int bit_depth,
     const VideoColorSpace& color_space,
-    absl::optional<gfx::HDRMetadata> hdr_metadata,
-    absl::optional<base::span<const uint8_t>> csd_box) {
+    std::optional<gfx::HDRMetadata> hdr_metadata,
+    std::optional<base::span<const uint8_t>> csd_box) {
   NSMutableDictionary* extensions = [[NSMutableDictionary alloc] init];
 
   SetDictionaryValue(extensions, kCMFormatDescriptionExtension_FormatName,

@@ -2,15 +2,22 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
+#include <stddef.h>
+#include <sys/types.h>
+
 #include <memory>
+#include <stdexcept>
 #include <string>
 #include <tuple>
 #include <utility>
 #include <vector>
 
-#include <pybind11/pybind11.h>
-#include <pybind11/stl.h>
 #include "absl/strings/string_view.h"
+#include "pybind11/buffer_info.h"
+#include "pybind11/gil.h"
+#include "pybind11/pybind11.h"
+#include "pybind11/pytypes.h"
+#include "pybind11/stl.h"  // IWYU pragma: keep
 #include "re2/filtered_re2.h"
 #include "re2/re2.h"
 #include "re2/set.h"
@@ -219,6 +226,10 @@ class Filter {
   }
 
   std::vector<int> Match(py::buffer buffer, bool potential) const {
+    if (set_ == nullptr) {
+      py::pybind11_fail("Match() called before compiling");
+    }
+
     auto bytes = buffer.request();
     auto text = FromBytes(bytes);
     std::vector<int> atoms;
@@ -243,6 +254,9 @@ class Filter {
 };
 
 PYBIND11_MODULE(_re2, module) {
+  // Translate exceptions thrown by py::pybind11_fail() into Python.
+  py::register_local_exception<std::runtime_error>(module, "Error");
+
   module.def("CharLenToBytes", &CharLenToBytes);
   module.def("BytesToCharLen", &BytesToCharLen);
 

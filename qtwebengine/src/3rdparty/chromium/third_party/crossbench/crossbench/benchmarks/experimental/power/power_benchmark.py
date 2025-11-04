@@ -7,7 +7,6 @@ from __future__ import annotations
 import abc
 import datetime as dt
 import logging
-import pathlib
 import time
 from typing import TYPE_CHECKING, Sequence, Tuple
 
@@ -19,6 +18,7 @@ from selenium.webdriver.support import expected_conditions
 from selenium.webdriver.support.ui import WebDriverWait
 
 from crossbench import helper
+from crossbench import path as pth
 from crossbench.benchmarks.base import StoryFilter, SubStoryBenchmark
 from crossbench.browsers.webdriver import WebDriverBrowser
 from crossbench.stories.story import Story
@@ -66,7 +66,8 @@ class PowerBenchmarkStoryFilter(StoryFilter[PowerBenchmarkStory]):
       self.story_names = STORY_LIST
       return
     for story_name in patterns:
-      assert story_name in STORY_LIST, f"Could not find {story_name} in STORY_LIST"
+      assert story_name in STORY_LIST, (
+          f"Could not find {story_name} in STORY_LIST")
     self.story_names = patterns
 
   def create_stories(self, separate: bool) -> Sequence[PowerBenchmarkStory]:
@@ -76,11 +77,13 @@ class PowerBenchmarkStoryFilter(StoryFilter[PowerBenchmarkStory]):
       stories.append(globals()[story_name + "Story"](duration))
     return stories
 
+
 class BrowsingStory(PowerBenchmarkStory):
 
   def __init__(self, duration: dt.timedelta = dt.timedelta(minutes=15)):
     super().__init__("Browsing", duration)
-    self._url_file = pathlib.Path(__file__).parent.absolute() / "browsing_urls.txt"
+    self._url_file = pth.LocalPath(
+        __file__).parent.absolute() / "browsing_urls.txt"
     self._urls = self.get_urls()
     self._idx = 0
 
@@ -100,7 +103,7 @@ class BrowsingStory(PowerBenchmarkStory):
     try:
       self._driver.get(url)
     except WebDriverException as e:
-      logging.info("Error while loading {}, error: {}".format(url, e))
+      logging.info("Error while loading %s, error: %s", url, e)
 
   def run(self, run: Run) -> None:
     self.get_driver(run)

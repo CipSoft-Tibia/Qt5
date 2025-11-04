@@ -4,6 +4,7 @@
 
 #include "core/fpdfdoc/cpdf_filespec.h"
 
+#include <array>
 #include <memory>
 #include <utility>
 #include <vector>
@@ -16,7 +17,6 @@
 #include "core/fpdfapi/parser/cpdf_reference.h"
 #include "core/fpdfapi/parser/cpdf_stream.h"
 #include "core/fpdfapi/parser/cpdf_string.h"
-#include "core/fxcrt/data_vector.h"
 #include "testing/gtest/include/gtest/gtest.h"
 #include "testing/test_support.h"
 
@@ -52,11 +52,9 @@ TEST(cpdf_filespec, EncodeDecodeFileName) {
 #endif
   };
   for (const auto& data : test_data) {
-    EXPECT_STREQ(data.expected,
-                 CPDF_FileSpec::EncodeFileName(data.input).c_str());
+    EXPECT_EQ(data.expected, CPDF_FileSpec::EncodeFileName(data.input));
     // DecodeFileName is the reverse procedure of EncodeFileName.
-    EXPECT_STREQ(data.input,
-                 CPDF_FileSpec::DecodeFileName(data.expected).c_str());
+    EXPECT_EQ(data.input, CPDF_FileSpec::DecodeFileName(data.expected));
   }
 }
 
@@ -77,46 +75,47 @@ TEST(cpdf_filespec, GetFileName) {
     };
     auto str_obj = pdfium::MakeRetain<CPDF_String>(nullptr, test_data.input);
     CPDF_FileSpec file_spec(str_obj);
-    EXPECT_STREQ(test_data.expected, file_spec.GetFileName().c_str());
+    EXPECT_EQ(test_data.expected, file_spec.GetFileName());
   }
   {
     // Dictionary object.
-    static const pdfium::NullTermWstrFuncTestData test_data[] = {
+    static constexpr std::array<pdfium::NullTermWstrFuncTestData, 5> test_data =
+        {{
 #if BUILDFLAG(IS_WIN)
-      {L"/C/docs/test.pdf", L"C:\\docs\\test.pdf"},
-      {L"/D/docs/test.pdf", L"D:\\docs\\test.pdf"},
-      {L"/E/docs/test.pdf", L"E:\\docs\\test.pdf"},
-      {L"/F/docs/test.pdf", L"F:\\docs\\test.pdf"},
-      {L"/G/docs/test.pdf", L"G:\\docs\\test.pdf"},
+            {L"/C/docs/test.pdf", L"C:\\docs\\test.pdf"},
+            {L"/D/docs/test.pdf", L"D:\\docs\\test.pdf"},
+            {L"/E/docs/test.pdf", L"E:\\docs\\test.pdf"},
+            {L"/F/docs/test.pdf", L"F:\\docs\\test.pdf"},
+            {L"/G/docs/test.pdf", L"G:\\docs\\test.pdf"},
 #elif BUILDFLAG(IS_APPLE)
-      {L"/Mac HD/docs1/test.pdf", L"Mac HD:docs1:test.pdf"},
-      {L"/Mac HD/docs2/test.pdf", L"Mac HD:docs2:test.pdf"},
-      {L"/Mac HD/docs3/test.pdf", L"Mac HD:docs3:test.pdf"},
-      {L"/Mac HD/docs4/test.pdf", L"Mac HD:docs4:test.pdf"},
-      {L"/Mac HD/docs5/test.pdf", L"Mac HD:docs5:test.pdf"},
+            {L"/Mac HD/docs1/test.pdf", L"Mac HD:docs1:test.pdf"},
+            {L"/Mac HD/docs2/test.pdf", L"Mac HD:docs2:test.pdf"},
+            {L"/Mac HD/docs3/test.pdf", L"Mac HD:docs3:test.pdf"},
+            {L"/Mac HD/docs4/test.pdf", L"Mac HD:docs4:test.pdf"},
+            {L"/Mac HD/docs5/test.pdf", L"Mac HD:docs5:test.pdf"},
 #else
-      {L"/docs/a/test.pdf", L"/docs/a/test.pdf"},
-      {L"/docs/b/test.pdf", L"/docs/b/test.pdf"},
-      {L"/docs/c/test.pdf", L"/docs/c/test.pdf"},
-      {L"/docs/d/test.pdf", L"/docs/d/test.pdf"},
-      {L"/docs/e/test.pdf", L"/docs/e/test.pdf"},
+            {L"/docs/a/test.pdf", L"/docs/a/test.pdf"},
+            {L"/docs/b/test.pdf", L"/docs/b/test.pdf"},
+            {L"/docs/c/test.pdf", L"/docs/c/test.pdf"},
+            {L"/docs/d/test.pdf", L"/docs/d/test.pdf"},
+            {L"/docs/e/test.pdf", L"/docs/e/test.pdf"},
 #endif
-    };
+        }};
     // Keyword fields in reverse order of precedence to retrieve the file name.
-    const char* const keywords[] = {"Unix", "Mac", "DOS", "F", "UF"};
-    static_assert(std::size(test_data) == std::size(keywords), "size mismatch");
+    constexpr std::array<const char*, 5> keywords = {
+        {"Unix", "Mac", "DOS", "F", "UF"}};
     auto dict_obj = pdfium::MakeRetain<CPDF_Dictionary>();
     CPDF_FileSpec file_spec(dict_obj);
     EXPECT_TRUE(file_spec.GetFileName().IsEmpty());
     for (size_t i = 0; i < std::size(keywords); ++i) {
       dict_obj->SetNewFor<CPDF_String>(keywords[i], test_data[i].input);
-      EXPECT_STREQ(test_data[i].expected, file_spec.GetFileName().c_str());
+      EXPECT_EQ(test_data[i].expected, file_spec.GetFileName());
     }
 
     // With all the former fields and 'FS' field suggests 'URL' type.
-    dict_obj->SetNewFor<CPDF_String>("FS", "URL", false);
+    dict_obj->SetNewFor<CPDF_String>("FS", "URL");
     // Url string is not decoded.
-    EXPECT_STREQ(test_data[4].input, file_spec.GetFileName().c_str());
+    EXPECT_EQ(test_data[4].input, file_spec.GetFileName());
   }
   {
     // Invalid object.
@@ -132,7 +131,7 @@ TEST(cpdf_filespec, GetFileName) {
       dict_obj->SetNewFor<CPDF_Name>(key, "http://evil.org");
       EXPECT_TRUE(file_spec.GetFileName().IsEmpty());
     }
-    dict_obj->SetNewFor<CPDF_String>("FS", "URL", false);
+    dict_obj->SetNewFor<CPDF_String>("FS", "URL");
     EXPECT_TRUE(file_spec.GetFileName().IsEmpty());
   }
 }
@@ -165,8 +164,10 @@ TEST(cpdf_filespec, GetFileStream) {
     CPDF_FileSpec file_spec(dict_obj);
 
     const wchar_t file_name[] = L"test.pdf";
-    const char* const keys[] = {"Unix", "Mac", "DOS", "F", "UF"};
-    const char* const streams[] = {"test1", "test2", "test3", "test4", "test5"};
+    constexpr std::array<const char*, 5> keys = {
+        {"Unix", "Mac", "DOS", "F", "UF"}};
+    constexpr std::array<const char*, 5> streams = {
+        {"test1", "test2", "test3", "test4", "test5"}};
     static_assert(std::size(keys) == std::size(streams), "size mismatch");
     RetainPtr<CPDF_Dictionary> file_dict = dict_obj->GetMutableDictFor("EF");
 
@@ -176,10 +177,8 @@ TEST(cpdf_filespec, GetFileStream) {
       dict_obj->SetNewFor<CPDF_String>(keys[i], file_name);
 
       // Set the file stream.
-      size_t buf_len = strlen(streams[i]) + 1;
       auto stream_object = object_holder.NewIndirect<CPDF_Stream>(
-          DataVector<uint8_t>(streams[i], streams[i] + buf_len),
-          pdfium::MakeRetain<CPDF_Dictionary>());
+          ByteStringView(streams[i]).unsigned_span());
       ASSERT_TRUE(stream_object);
       const uint32_t stream_object_number = stream_object->GetObjNum();
       ASSERT_GT(stream_object_number, 0u);
@@ -187,12 +186,11 @@ TEST(cpdf_filespec, GetFileStream) {
                                            stream_object_number);
 
       // Check that the file content stream is as expected.
-      EXPECT_STREQ(
-          streams[i],
-          file_spec.GetFileStream()->GetUnicodeText().ToUTF8().c_str());
+      EXPECT_EQ(streams[i],
+                file_spec.GetFileStream()->GetUnicodeText().ToUTF8());
 
       if (i == 2) {
-        dict_obj->SetNewFor<CPDF_String>("FS", "URL", false);
+        dict_obj->SetNewFor<CPDF_String>("FS", "URL");
         EXPECT_FALSE(file_spec.GetFileStream());
       }
     }
@@ -219,9 +217,8 @@ TEST(cpdf_filespec, GetParamsDict) {
     // Add a file stream to the embedded files dictionary.
     RetainPtr<CPDF_Dictionary> file_dict = dict_obj->GetMutableDictFor("EF");
     static constexpr char kHello[] = "hello";
-    auto stream_object = object_holder.NewIndirect<CPDF_Stream>(
-        DataVector<uint8_t>(std::begin(kHello), std::end(kHello)),
-        pdfium::MakeRetain<CPDF_Dictionary>());
+    auto stream_object =
+        object_holder.NewIndirect<CPDF_Stream>(pdfium::as_byte_span(kHello));
     ASSERT_TRUE(stream_object);
     const uint32_t stream_object_number = stream_object->GetObjNum();
     ASSERT_GT(stream_object_number, 0u);

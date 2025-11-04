@@ -15,10 +15,7 @@
 import {fetchWithTimeout} from '../base/http_utils';
 import {assertExists} from '../base/logging';
 import {StatusResult} from '../protos';
-import {Engine, LoadingTracker} from '../trace_processor/engine';
-
-export const RPC_URL = 'http://127.0.0.1:9001/';
-export const WS_URL = 'ws://127.0.0.1:9001/websocket';
+import {EngineBase, LoadingTracker} from '../trace_processor/engine';
 
 const RPC_CONNECT_TIMEOUT_MS = 2000;
 
@@ -28,12 +25,15 @@ export interface HttpRpcState {
   failure?: string;
 }
 
-export class HttpRpcEngine extends Engine {
+export class HttpRpcEngine extends EngineBase {
   readonly id: string;
   errorHandler: (err: string) => void = () => {};
   private requestQueue = new Array<Uint8Array>();
   private websocket?: WebSocket;
   private connected = false;
+
+  // Can be changed by frontend/index.ts when passing ?rpc_port=1234 .
+  static rpcPort = '9001';
 
   constructor(id: string, loadingTracker?: LoadingTracker) {
     super(loadingTracker);
@@ -42,19 +42,21 @@ export class HttpRpcEngine extends Engine {
 
   rpcSendRequestBytes(data: Uint8Array): void {
     if (this.websocket === undefined) {
-      this.websocket = new WebSocket(WS_URL);
+      const wsUrl = `ws://${HttpRpcEngine.hostAndPort}/websocket`;
+      this.websocket = new WebSocket(wsUrl);
       this.websocket.onopen = () => this.onWebsocketConnected();
       this.websocket.onmessage = (e) => this.onWebsocketMessage(e);
-      this.websocket.onclose = (e) =>
-          this.errorHandler(`Websocket closed (${e.code}: ${e.reason})`);
+      this.websocket.onclose = (e) => this.onWebsocketClosed(e);
       this.websocket.onerror = (e) =>
-          this.errorHandler(`WebSocket error: ${e}`);
+        this.errorHandler(
+          `WebSocket error rs=${(e.target as WebSocket)?.readyState} (ERR:ws)`,
+        );
     }
 
     if (this.connected) {
       this.websocket.send(data);
     } else {
-      this.requestQueue.push(data);  // onWebsocketConnected() will flush this.
+      this.requestQueue.push(data); // onWebsocketConnected() will flush this.
     }
   }
 
@@ -67,23 +69,41 @@ export class HttpRpcEngine extends Engine {
     this.connected = true;
   }
 
+  private onWebsocketClosed(e: CloseEvent) {
+    if (e.code === 1006 && this.connected) {
+      // On macbooks the act of closing the lid / suspending often causes socket
+      // disconnections. Try to gracefully re-connect.
+      console.log('Websocket closed, reconnecting');
+      this.websocket = undefined;
+      this.connected = false;
+      this.rpcSendRequestBytes(new Uint8Array()); // Triggers a reconnection.
+    } else {
+      this.errorHandler(`Websocket closed (${e.code}: ${e.reason}) (ERR:ws)`);
+    }
+  }
+
   private onWebsocketMessage(e: MessageEvent) {
-    assertExists(e.data as Blob).arrayBuffer().then((buf) => {
-      super.onRpcResponseBytes(new Uint8Array(buf));
-    });
+    assertExists(e.data as Blob)
+      .arrayBuffer()
+      .then((buf) => {
+        super.onRpcResponseBytes(new Uint8Array(buf));
+      });
   }
 
   static async checkConnection(): Promise<HttpRpcState> {
+    const RPC_URL = `http://${HttpRpcEngine.hostAndPort}/`;
     const httpRpcState: HttpRpcState = {connected: false};
     console.info(
-        `It's safe to ignore the ERR_CONNECTION_REFUSED on ${RPC_URL} below. ` +
+      `It's safe to ignore the ERR_CONNECTION_REFUSED on ${RPC_URL} below. ` +
         `That might happen while probing the external native accelerator. The ` +
-        `error is non-fatal and unlikely to be the culprit for any UI bug.`);
+        `error is non-fatal and unlikely to be the culprit for any UI bug.`,
+    );
     try {
       const resp = await fetchWithTimeout(
-          RPC_URL + 'status',
-          {method: 'post', cache: 'no-cache'},
-          RPC_CONNECT_TIMEOUT_MS);
+        RPC_URL + 'status',
+        {method: 'post', cache: 'no-cache'},
+        RPC_CONNECT_TIMEOUT_MS,
+      );
       if (resp.status !== 200) {
         httpRpcState.failure = `${resp.status} - ${resp.statusText}`;
       } else {
@@ -95,5 +115,9 @@ export class HttpRpcEngine extends Engine {
       httpRpcState.failure = `${err}`;
     }
     return httpRpcState;
+  }
+
+  static get hostAndPort() {
+    return `127.0.0.1:${HttpRpcEngine.rpcPort}`;
   }
 }

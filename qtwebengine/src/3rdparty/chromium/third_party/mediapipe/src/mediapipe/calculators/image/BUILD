@@ -285,6 +285,7 @@ cc_test(
     data = ["//mediapipe/calculators/image/testdata:test_images"],
     tags = [
         "desktop_only_test",
+        "noasan",  # TODO: Remove noasan tag when SwiftShader supports sanitizers],
     ],
     deps = [
         ":image_transformation_calculator",
@@ -355,19 +356,22 @@ cc_library(
 cc_test(
     name = "image_cropping_calculator_test",
     srcs = ["image_cropping_calculator_test.cc"],
-    tags = ["not_run:arm"],
+    tags = [
+        "noasan",  # TODO: Remove noasan tag when SwiftShader supports sanitizers
+        "not_run:arm",
+    ],
     deps = [
         ":image_cropping_calculator",
         ":image_cropping_calculator_cc_proto",
         "//mediapipe/framework:calculator_framework",
         "//mediapipe/framework:calculator_runner",
+        "//mediapipe/framework:calculator_state",
         "//mediapipe/framework/formats:image_frame_opencv",
         "//mediapipe/framework/formats:rect_cc_proto",
         "//mediapipe/framework/port:gtest_main",
         "//mediapipe/framework/port:opencv_core",
         "//mediapipe/framework/port:opencv_imgproc",
         "//mediapipe/framework/port:parse_text_proto",
-        "//mediapipe/framework/port:status",
         "//mediapipe/framework/tool:tag_map",
         "//mediapipe/framework/tool:tag_map_helper",
         "//mediapipe/gpu:gpu_buffer_to_image_frame_calculator",
@@ -466,6 +470,21 @@ cc_library(
         "@libyuv",
     ],
     alwayslink = 1,
+)
+
+cc_test(
+    name = "scale_image_calculator_test",
+    srcs = ["scale_image_calculator_test.cc"],
+    deps = [
+        ":scale_image_calculator",
+        "//mediapipe/framework:calculator_runner",
+        "//mediapipe/framework:packet",
+        "//mediapipe/framework:timestamp",
+        "//mediapipe/framework/formats:image_frame",
+        "//mediapipe/framework/port:gtest_main",
+        "//mediapipe/framework/port:parse_text_proto",
+        "@com_google_absl//absl/status",
+    ],
 )
 
 mediapipe_proto_library(
@@ -692,7 +711,10 @@ cc_library(
 cc_test(
     name = "segmentation_smoothing_calculator_test",
     srcs = ["segmentation_smoothing_calculator_test.cc"],
-    tags = ["not_run:arm"],
+    tags = [
+        "noasan",  # TODO: Remove noasan tag when SwiftShader supports sanitizers
+        "not_run:arm",
+    ],
     deps = [
         ":image_clone_calculator",
         ":image_clone_calculator_cc_proto",
@@ -729,6 +751,7 @@ cc_library(
         "//mediapipe/gpu:gl_simple_shaders",
         "//mediapipe/gpu:gpu_buffer",
         "//mediapipe/gpu:gpu_origin_cc_proto",
+        "//mediapipe/gpu:gpu_origin_utils",
         "//mediapipe/gpu:shader_util",
         "@com_google_absl//absl/log:absl_log",
         "@com_google_absl//absl/memory",
@@ -819,7 +842,8 @@ cc_test(
     ],
     tags = [
         "desktop_only_test",
-        "not_run:arm",
+        "noasan",
+        "not_run:arm",  # TODO: Remove noasan tag when SwiftShader supports sanitizers
     ],
     deps = [
         ":affine_transformation",

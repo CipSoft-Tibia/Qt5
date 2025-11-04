@@ -21,8 +21,6 @@ jumbo_source_set("latency") {
   sources = [
     "latency_info.cc",
     "latency_info.h",
-    "latency_tracker.cc",
-    "latency_tracker.h",
   ]
   if (use_jank_tracker_for_experiments) {
     sources += [

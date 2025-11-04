@@ -30,6 +30,12 @@ class DISPLAY_TYPES_EXPORT GammaCurve {
   // `g`.
   static GammaCurve MakeConcat(const GammaCurve& f, const GammaCurve& g);
 
+  // Return a gamma curve with the specified exponent.
+  static GammaCurve MakeGamma(float gamma);
+
+  // Return a linear curve that scales each component as specified.
+  static GammaCurve MakeScale(float red, float green, float blue);
+
   // Returns true if this was set to an empty LUT and is therefore the identity
   // function.
   bool IsDefaultIdentity() const { return lut_.empty(); }
@@ -37,6 +43,10 @@ class DISPLAY_TYPES_EXPORT GammaCurve {
   // Evaluate at a point `x` in [0, 1]. If `x` is not in that interval then this
   // function will clamp `x` to [0, 1].
   void Evaluate(float x, uint16_t& r, uint16_t& g, uint16_t& b) const;
+
+  // Evaluate at the specified RGB values. Input values will be clamped to the
+  // [0, 1] interval.
+  void Evaluate(float rgb[3]) const;
 
   // Display as a string for debugging.
   std::string ToString() const;

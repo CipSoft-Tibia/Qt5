@@ -35,6 +35,7 @@
 #include "base/synchronization/waitable_event.h"
 #include "base/task/single_thread_task_runner.h"
 #include "base/threading/thread_restrictions.h"
+#include "third_party/blink/public/common/features.h"
 #include "third_party/blink/public/common/loader/worker_main_script_load_parameters.h"
 #include "third_party/blink/public/mojom/frame/lifecycle.mojom-shared.h"
 #include "third_party/blink/public/platform/platform.h"
@@ -167,7 +168,7 @@ WorkerThread::~WorkerThread() {
 
 void WorkerThread::Start(
     std::unique_ptr<GlobalScopeCreationParams> global_scope_creation_params,
-    const absl::optional<WorkerBackingThreadStartupData>& thread_startup_data,
+    const std::optional<WorkerBackingThreadStartupData>& thread_startup_data,
     std::unique_ptr<WorkerDevToolsParams> devtools_params) {
   DCHECK_CALLED_ON_VALID_THREAD(parent_thread_checker_);
   devtools_worker_token_ = devtools_params->devtools_worker_token;
@@ -193,7 +194,9 @@ void WorkerThread::Start(
       CrossThreadBindOnce(&WorkerThread::InitializeOnWorkerThread,
                           CrossThreadUnretained(this),
                           std::move(global_scope_creation_params),
-                          thread_startup_data, std::move(devtools_params)));
+                          IsOwningBackingThread() ?
+                              thread_startup_data : std::nullopt,
+                          std::move(devtools_params)));
 }
 
 void WorkerThread::EvaluateClassicScript(
@@ -277,9 +280,10 @@ void WorkerThread::Terminate() {
   DCHECK_CALLED_ON_VALID_THREAD(parent_thread_checker_);
   {
     base::AutoLock locker(lock_);
-    if (requested_to_terminate_)
+    if (termination_progress_ != TerminationProgress::kNotRequested) {
       return;
-    requested_to_terminate_ = true;
+    }
+    termination_progress_ = TerminationProgress::kRequested;
   }
 
   // Schedule a task to forcibly terminate the script execution in case that the
@@ -295,10 +299,33 @@ void WorkerThread::Terminate() {
       *task_runner, FROM_HERE,
       CrossThreadBindOnce(&WorkerThread::PrepareForShutdownOnWorkerThread,
                           CrossThreadUnretained(this)));
-  PostCrossThreadTask(
-      *task_runner, FROM_HERE,
-      CrossThreadBindOnce(&WorkerThread::PerformShutdownOnWorkerThread,
-                          CrossThreadUnretained(this)));
+
+  if (!base::FeatureList::IsEnabled(
+          blink::features::kWorkerThreadSequentialShutdown)) {
+    PostCrossThreadTask(
+        *task_runner, FROM_HERE,
+        CrossThreadBindOnce(&WorkerThread::PerformShutdownOnWorkerThread,
+                            CrossThreadUnretained(this)));
+    return;
+  }
+
+  bool perform_shutdown = false;
+  {
+    base::AutoLock locker(lock_);
+    CHECK_EQ(TerminationProgress::kRequested, termination_progress_);
+    termination_progress_ = TerminationProgress::kPrepared;
+    if (num_child_threads_ == 0) {
+      termination_progress_ = TerminationProgress::kPerforming;
+      perform_shutdown = true;
+    }
+  }
+
+  if (perform_shutdown) {
+    PostCrossThreadTask(
+        *task_runner, FROM_HERE,
+        CrossThreadBindOnce(&WorkerThread::PerformShutdownOnWorkerThread,
+                            CrossThreadUnretained(this)));
+  }
 }
 
 void WorkerThread::TerminateForTesting() {
@@ -407,7 +434,7 @@ bool WorkerThread::IsForciblyTerminated() {
     case ExitCode::kAsyncForciblyTerminated:
       return true;
   }
-  NOTREACHED() << static_cast<int>(exit_code_);
+  NOTREACHED_IN_MIGRATION() << static_cast<int>(exit_code_);
   return false;
 }
 
@@ -437,20 +464,48 @@ scoped_refptr<base::SingleThreadTaskRunner> WorkerThread::GetTaskRunner(
 
 void WorkerThread::ChildThreadStartedOnWorkerThread(WorkerThread* child) {
   DCHECK(IsCurrentThread());
-#if DCHECK_IS_ON()
+  child_threads_.insert(child);
   {
     base::AutoLock locker(lock_);
     DCHECK_EQ(ThreadState::kRunning, thread_state_);
+    CHECK_EQ(TerminationProgress::kNotRequested, termination_progress_);
+    if (base::FeatureList::IsEnabled(
+            blink::features::kWorkerThreadSequentialShutdown)) {
+      ++num_child_threads_;
+      CHECK_EQ(child_threads_.size(), num_child_threads_);
+    }
   }
-#endif
-  child_threads_.insert(child);
 }
 
 void WorkerThread::ChildThreadTerminatedOnWorkerThread(WorkerThread* child) {
   DCHECK(IsCurrentThread());
   child_threads_.erase(child);
-  if (child_threads_.empty() && CheckRequestedToTerminate())
-    PerformShutdownOnWorkerThread();
+  if (!base::FeatureList::IsEnabled(
+          blink::features::kWorkerThreadSequentialShutdown)) {
+    if (child_threads_.empty() && CheckRequestedToTerminate()) {
+      PerformShutdownOnWorkerThread();
+    }
+    return;
+  }
+
+  bool perform_shutdown = false;
+  {
+    base::AutoLock locker(lock_);
+    --num_child_threads_;
+    CHECK_EQ(child_threads_.size(), num_child_threads_);
+    if (num_child_threads_ == 0 &&
+        termination_progress_ == TerminationProgress::kPrepared) {
+      termination_progress_ = TerminationProgress::kPerforming;
+      perform_shutdown = true;
+    }
+  }
+  if (perform_shutdown) {
+    scoped_refptr<base::SingleThreadTaskRunner> task_runner =
+        GetWorkerBackingThread().BackingThread().GetTaskRunner();
+    GetWorkerBackingThread().BackingThread().GetTaskRunner()->PostTask(
+        FROM_HERE, WTF::BindOnce(&WorkerThread::PerformShutdownOnWorkerThread,
+                                 WTF::Unretained(this)));
+  }
 }
 
 WorkerThread::WorkerThread(WorkerReportingProxy& worker_reporting_proxy)
@@ -505,7 +560,7 @@ WorkerThread::TerminationState WorkerThread::ShouldTerminateScriptExecution() {
                  ? TerminationState::kTerminate
                  : TerminationState::kTerminationUnnecessary;
   }
-  NOTREACHED();
+  NOTREACHED_IN_MIGRATION();
   return TerminationState::kTerminationUnnecessary;
 }
 
@@ -568,6 +623,7 @@ void WorkerThread::InitializeSchedulerOnWorkerThread(
       TaskType::kJavascriptTimerDelayedLowNesting,
       TaskType::kJavascriptTimerDelayedHighNesting,
       TaskType::kMediaElementEvent,
+      TaskType::kMachineLearning,
       TaskType::kMicrotask,
       TaskType::kMiscPlatformAPI,
       TaskType::kNetworking,
@@ -596,8 +652,9 @@ void WorkerThread::InitializeSchedulerOnWorkerThread(
 
 void WorkerThread::InitializeOnWorkerThread(
     std::unique_ptr<GlobalScopeCreationParams> global_scope_creation_params,
-    const absl::optional<WorkerBackingThreadStartupData>& thread_startup_data,
+    const std::optional<WorkerBackingThreadStartupData>& thread_startup_data,
     std::unique_ptr<WorkerDevToolsParams> devtools_params) {
+  base::ElapsedTimer timer;
   DCHECK(IsCurrentThread());
   backing_thread_weak_factory_.emplace(this);
   worker_reporting_proxy_.WillInitializeWorkerContext();
@@ -607,6 +664,7 @@ void WorkerThread::InitializeOnWorkerThread(
     DCHECK_EQ(ThreadState::kNotStarted, thread_state_);
 
     if (IsOwningBackingThread()) {
+      global_scope_creation_params->is_default_world_of_isolate = true;
       DCHECK(thread_startup_data.has_value());
       GetWorkerBackingThread().InitializeOnBackingThread(*thread_startup_data);
     } else {
@@ -620,6 +678,12 @@ void WorkerThread::InitializeOnWorkerThread(
     const KURL url_for_debugger = global_scope_creation_params->script_url;
 
     console_message_storage_ = MakeGarbageCollected<ConsoleMessageStorage>();
+    // Record this only for the DedicatedWorker.
+    if (global_scope_creation_params->dedicated_worker_start_time.has_value()) {
+      base::UmaHistogramTimes(
+          "Worker.TopLevelScript.Initialization2GlobalScopeCreation",
+          timer.Elapsed());
+    }
     global_scope_ =
         CreateWorkerGlobalScope(std::move(global_scope_creation_params));
     worker_scheduler_->InitializeOnWorkerThread(global_scope_);
@@ -745,7 +809,7 @@ void WorkerThread::PrepareForShutdownOnWorkerThread() {
     SetThreadState(ThreadState::kReadyToShutdown);
   }
 
-  backing_thread_weak_factory_ = absl::nullopt;
+  backing_thread_weak_factory_ = std::nullopt;
   if (pause_or_freeze_count_ > 0) {
     DCHECK(nested_runner_);
     pause_or_freeze_count_ = 0;
@@ -776,18 +840,32 @@ void WorkerThread::PerformShutdownOnWorkerThread() {
   DCHECK(IsCurrentThread());
   {
     base::AutoLock locker(lock_);
-    DCHECK(requested_to_terminate_);
+    if (!base::FeatureList::IsEnabled(
+            blink::features::kWorkerThreadSequentialShutdown)) {
+      DCHECK_NE(TerminationProgress::kNotRequested, termination_progress_);
+    } else {
+      DCHECK_EQ(TerminationProgress::kPerforming, termination_progress_);
+    }
     DCHECK_EQ(ThreadState::kReadyToShutdown, thread_state_);
     if (exit_code_ == ExitCode::kNotTerminated)
       SetExitCode(ExitCode::kGracefullyTerminated);
   }
 
-  // When child workers are present, wait for them to shutdown before shutting
-  // down this thread. ChildThreadTerminatedOnWorkerThread() is responsible
-  // for completing shutdown on the worker thread after the last child shuts
-  // down.
-  if (!child_threads_.empty())
-    return;
+  if (!base::FeatureList::IsEnabled(
+          blink::features::kWorkerThreadSequentialShutdown)) {
+    // When child workers are present, wait for them to shutdown before shutting
+    // down this thread. ChildThreadTerminatedOnWorkerThread() is responsible
+    // for completing shutdown on the worker thread after the last child shuts
+    // down.
+    if (!child_threads_.empty()) {
+      return;
+    }
+  } else {
+    // Child workers must not exist when `PerformShutdownOnWorkerThread()`
+    // is called because it has already been checked before calling the
+    // function.
+    CHECK(child_threads_.empty());
+  }
 
   inspector_task_runner_->Dispose();
   if (worker_inspector_controller_) {
@@ -824,7 +902,7 @@ void WorkerThread::PerformShutdownOnWorkerThread() {
 void WorkerThread::SetThreadState(ThreadState next_thread_state) {
   switch (next_thread_state) {
     case ThreadState::kNotStarted:
-      NOTREACHED();
+      NOTREACHED_IN_MIGRATION();
       return;
     case ThreadState::kRunning:
       DCHECK_EQ(ThreadState::kNotStarted, thread_state_);
@@ -844,7 +922,7 @@ void WorkerThread::SetExitCode(ExitCode exit_code) {
 
 bool WorkerThread::CheckRequestedToTerminate() {
   base::AutoLock locker(lock_);
-  return requested_to_terminate_;
+  return termination_progress_ != TerminationProgress::kNotRequested;
 }
 
 void WorkerThread::PauseOrFreeze(mojom::blink::FrameLifecycleState state,

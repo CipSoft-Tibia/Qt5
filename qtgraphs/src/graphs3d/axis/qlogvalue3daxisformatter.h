@@ -18,6 +18,7 @@ class Q_GRAPHS_EXPORT QLogValue3DAxisFormatter : public QValue3DAxisFormatter
     Q_PROPERTY(bool autoSubGrid READ autoSubGrid WRITE setAutoSubGrid NOTIFY autoSubGridChanged FINAL)
     Q_PROPERTY(bool edgeLabelsVisible READ edgeLabelsVisible WRITE setEdgeLabelsVisible NOTIFY
                    edgeLabelsVisibleChanged FINAL)
+    QML_NAMED_ELEMENT(LogValue3DAxisFormatter)
 
 protected:
     explicit QLogValue3DAxisFormatter(QLogValue3DAxisFormatterPrivate &d, QObject *parent = nullptr);

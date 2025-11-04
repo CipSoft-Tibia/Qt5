@@ -79,16 +79,16 @@ InterpolableColor* InterpolableColor::Create(ColorKeyword color_keyword) {
   // the proper fraction of the keyword color is added in.
   switch (color_keyword) {
     case ColorKeyword::kCurrentcolor:
-      result->current_color_ = InlinedInterpolableNumber(1);
+      result->current_color_ = InlinedInterpolableDouble(1);
       break;
     case ColorKeyword::kWebkitActivelink:
-      result->webkit_active_link_ = InlinedInterpolableNumber(1);
+      result->webkit_active_link_ = InlinedInterpolableDouble(1);
       break;
     case ColorKeyword::kWebkitLink:
-      result->webkit_link_ = InlinedInterpolableNumber(1);
+      result->webkit_link_ = InlinedInterpolableDouble(1);
       break;
     case ColorKeyword::kQuirkInherit:
-      result->quirk_inherit_ = InlinedInterpolableNumber(1);
+      result->quirk_inherit_ = InlinedInterpolableDouble(1);
       break;
   }
   // Keyword colors are functionally legacy colors for interpolation.
@@ -97,7 +97,10 @@ InterpolableColor* InterpolableColor::Create(ColorKeyword color_keyword) {
   return result;
 }
 
-InterpolableColor* InterpolableColor::Create(CSSValueID keyword) {
+InterpolableColor* InterpolableColor::Create(
+    CSSValueID keyword,
+    mojom::blink::ColorScheme color_scheme,
+    const ui::ColorProvider* color_provider) {
   switch (keyword) {
     case CSSValueID::kCurrentcolor:
       return Create(ColorKeyword::kCurrentcolor);
@@ -108,26 +111,26 @@ InterpolableColor* InterpolableColor::Create(CSSValueID keyword) {
     case CSSValueID::kInternalQuirkInherit:
       return Create(ColorKeyword::kQuirkInherit);
     case CSSValueID::kWebkitFocusRingColor:
-      // TODO(crbug.com/929098) Need to pass an appropriate color scheme here.
-      return Create(LayoutTheme::GetTheme().FocusRingColor(
-          mojom::blink::ColorScheme::kLight));
+      return Create(LayoutTheme::GetTheme().FocusRingColor(color_scheme));
     default:
       DCHECK(StyleColor::IsColorKeyword(keyword));
-      // TODO(crbug.com/929098) Need to pass an appropriate color scheme here.
-      return Create(StyleColor::ColorFromKeyword(
-          keyword, mojom::blink::ColorScheme::kLight));
+      // TODO(crbug.com/40229450): Pass down if within installed webapp scope
+      // from Document.
+      return Create(
+          StyleColor::ColorFromKeyword(keyword, color_scheme, color_provider,
+                                       /*is_in_web_app_scope=*/false));
   }
 }
 
 InterpolableColor::InterpolableColor(
-    InlinedInterpolableNumber param0,
-    InlinedInterpolableNumber param1,
-    InlinedInterpolableNumber param2,
-    InlinedInterpolableNumber alpha,
-    InlinedInterpolableNumber current_color,
-    InlinedInterpolableNumber webkit_active_link,
-    InlinedInterpolableNumber webkit_link,
-    InlinedInterpolableNumber quirk_inherit,
+    InlinedInterpolableDouble param0,
+    InlinedInterpolableDouble param1,
+    InlinedInterpolableDouble param2,
+    InlinedInterpolableDouble alpha,
+    InlinedInterpolableDouble current_color,
+    InlinedInterpolableDouble webkit_active_link,
+    InlinedInterpolableDouble webkit_link,
+    InlinedInterpolableDouble quirk_inherit,
     Color::ColorSpace color_space)
     : param0_(std::move(param0)),
       param1_(std::move(param1)),
@@ -147,10 +150,10 @@ InterpolableColor* InterpolableColor::RawClone() const {
 
 InterpolableColor* InterpolableColor::RawCloneAndZero() const {
   return MakeGarbageCollected<InterpolableColor>(
-      InlinedInterpolableNumber(0), InlinedInterpolableNumber(0),
-      InlinedInterpolableNumber(0), InlinedInterpolableNumber(0),
-      InlinedInterpolableNumber(0), InlinedInterpolableNumber(0),
-      InlinedInterpolableNumber(0), InlinedInterpolableNumber(0), color_space_);
+      InlinedInterpolableDouble(0), InlinedInterpolableDouble(0),
+      InlinedInterpolableDouble(0), InlinedInterpolableDouble(0),
+      InlinedInterpolableDouble(0), InlinedInterpolableDouble(0),
+      InlinedInterpolableDouble(0), InlinedInterpolableDouble(0), color_space_);
 }
 
 Color InterpolableColor::GetColor() const {
@@ -173,7 +176,7 @@ Color InterpolableColor::GetColor() const {
     case Color::ColorSpace::kOklab:
       return Color::FromColorSpace(color_space_, param0, param1, param2, alpha);
     default:
-      NOTREACHED();
+      NOTREACHED_IN_MIGRATION();
       return Color();
   }
 }
@@ -319,7 +322,7 @@ Color InterpolableColor::Resolve(const Color& current_color,
       // used for interpolation, so sRGB (for legacy colors) and Oklab are
       // the only possibilities.
       // https://www.w3.org/TR/css-color-4/#interpolation-space
-      NOTREACHED();
+      NOTREACHED_IN_MIGRATION();
       return Color();
   }
 }

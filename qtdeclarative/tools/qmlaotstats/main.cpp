@@ -79,10 +79,10 @@ int main(int argc, char **argv)
         if (!aotstats.has_value())
             return EXIT_FAILURE;
 
-        const auto emptyModules = parser.isSet(emptyModulesOption)
+        const std::optional<QStringList> emptyModules = parser.isSet(emptyModulesOption)
                 ? QQmlJS::AotStats::readAllLines(parser.value(emptyModulesOption))
                 : QStringList();
-        const auto onlyBytecodeModules = parser.isSet(onlyBytecodeModulesOption)
+        const std::optional<QStringList> onlyBytecodeModules = parser.isSet(onlyBytecodeModulesOption)
                 ? QQmlJS::AotStats::readAllLines(parser.value(onlyBytecodeModulesOption))
                 : QStringList();
         if (!emptyModules || !onlyBytecodeModules)

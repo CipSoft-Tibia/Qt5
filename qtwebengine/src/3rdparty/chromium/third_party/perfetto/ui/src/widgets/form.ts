@@ -13,10 +13,10 @@
 // limitations under the License.
 
 import m from 'mithril';
-
 import {Button} from './button';
 import {HTMLAttrs, HTMLLabelAttrs} from './common';
 import {Popup} from './popup';
+import {Intent} from '../widgets/common';
 
 export interface FormAttrs extends HTMLAttrs {
   // Text to show on the "submit" button.
@@ -63,35 +63,36 @@ export class Form implements m.ClassComponent<FormAttrs> {
     } = attrs;
 
     return m(
-        'form.pf-form',
-        htmlAttrs,
-        children,
-        m(
-            '.pf-form-button-bar',
-            m(Button, {
-              type: 'submit',
-              label: submitLabel,
-              rightIcon: submitIcon,
-              className: Popup.DISMISS_POPUP_GROUP_CLASS,
-              onclick: (e: Event) => {
-                preventDefault && e.preventDefault();
-                onSubmit();
-              },
-            }),
-            // This cancel button just closes the popup if we are inside one.
-            cancelLabel && m(Button, {
-              type: 'button',
-              label: cancelLabel,
-              className: Popup.DISMISS_POPUP_GROUP_CLASS,
-              minimal: true,
-            }),
-            // This reset button just clears the form.
-            resetLabel && m(Button, {
-              label: resetLabel,
-              minimal: true,
-              type: 'reset',
-            }),
-            ),
+      'form.pf-form',
+      htmlAttrs,
+      children,
+      m(
+        '.pf-form-button-bar',
+        m(Button, {
+          type: 'submit',
+          label: submitLabel,
+          rightIcon: submitIcon,
+          className: Popup.DISMISS_POPUP_GROUP_CLASS,
+          intent: Intent.Primary,
+          onclick: (e: Event) => {
+            preventDefault && e.preventDefault();
+            onSubmit();
+          },
+        }),
+        // This cancel button just closes the popup if we are inside one.
+        cancelLabel &&
+          m(Button, {
+            type: 'button',
+            label: cancelLabel,
+            className: Popup.DISMISS_POPUP_GROUP_CLASS,
+          }),
+        // This reset button just clears the form.
+        resetLabel &&
+          m(Button, {
+            label: resetLabel,
+            type: 'reset',
+          }),
+      ),
     );
   }
 }

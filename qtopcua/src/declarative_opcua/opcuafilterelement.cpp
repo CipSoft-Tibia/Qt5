@@ -14,6 +14,7 @@ QT_BEGIN_NAMESPACE
     \inqmlmodule QtOpcUa
     \brief The OPC UA ContentFilterElement.
     \since QtOpcUa 5.13
+    \deprecated [6.9]
 
     A content filter element contains an operator and operands.
     There are four different operator types which contain literal values, references to
@@ -79,8 +80,6 @@ QT_BEGIN_NAMESPACE
     \l LiteralOperand or \l ElementOperand.
 */
 
-
-Q_DECLARE_LOGGING_CATEGORY(QT_OPCUA_PLUGINS_QML)
 
 OpcUaFilterElement::OpcUaFilterElement(QObject *parent)
     : QObject(parent)

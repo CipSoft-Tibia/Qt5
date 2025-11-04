@@ -6,7 +6,7 @@
 #include <QtQuick/private/qquickwindow_p.h>
 
 #include <qtest.h>
-#include <QtTest/QtTest>
+#include <QtTest/QTest>
 
 class tst_qquickwindow : public QObject
 {

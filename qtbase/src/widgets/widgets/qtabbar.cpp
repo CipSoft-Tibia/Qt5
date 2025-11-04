@@ -35,6 +35,7 @@
 QT_BEGIN_NAMESPACE
 
 using namespace Qt::StringLiterals;
+using namespace std::chrono_literals;
 
 namespace {
 class CloseButton : public QAbstractButton
@@ -105,14 +106,16 @@ void QTabBarPrivate::updateMacBorderMetrics()
     if (!function)
         return; // Not Cocoa platform plugin.
     typedef void (*RegisterContentBorderAreaFunction)(QWindow *window, quintptr identifier, int upper, int lower);
-    (reinterpret_cast<RegisterContentBorderAreaFunction>(function))(q->window()->windowHandle(), identifier, upper, lower);
+    (reinterpret_cast<RegisterContentBorderAreaFunction>(QFunctionPointer(function)))(
+        q->window()->windowHandle(), identifier, upper, lower);
 
     // Set visibility state
     function = nativeInterface->nativeResourceFunctionForIntegration("setContentBorderAreaEnabled");
     if (!function)
         return;
     typedef void (*SetContentBorderAreaEnabledFunction)(QWindow *window, quintptr identifier, bool enable);
-    (reinterpret_cast<SetContentBorderAreaEnabledFunction>(function))(q->window()->windowHandle(), identifier, q->isVisible());
+    (reinterpret_cast<SetContentBorderAreaEnabledFunction>(QFunctionPointer(function)))(
+        q->window()->windowHandle(), identifier, q->isVisible());
 #endif
 }
 
@@ -189,6 +192,8 @@ void QTabBarPrivate::initBasicStyleOption(QStyleOptionTab *option, int tabIndex)
             option->cornerWidgets |= QStyleOptionTab::RightCornerWidget;
     }
 #endif
+    if (tab.measuringMinimum)
+        option->features |= QStyleOptionTab::MinimumSizeHint;
     option->tabIndex = tabIndex;
 }
 
@@ -613,8 +618,11 @@ QRect QTabBarPrivate::normalizedScrollRect(int index)
             bottomEdge = scrollButtonRightRect.top();
         }
 
+        const auto lastTab = lastVisibleTab();
+        if (!lastTab)
+            return {};
         bool tearTopVisible = index != 0 && topEdge != -scrollOffset;
-        bool tearBottomVisible = index != tabList.size() - 1 && bottomEdge != tabList.constLast()->rect.bottom() + 1 - scrollOffset;
+        bool tearBottomVisible = index != tabList.size() - 1 && bottomEdge != lastTab->rect.bottom() + 1 - scrollOffset;
         if (tearTopVisible && !tearLeftRect.isNull())
             topEdge = tearLeftRect.bottom() + 1;
         if (tearBottomVisible && !tearRightRect.isNull())
@@ -644,8 +652,11 @@ QRect QTabBarPrivate::normalizedScrollRect(int index)
             rightEdge = scrollButtonRightRect.left();
         }
 
+        const auto lastTab = lastVisibleTab();
+        if (!lastTab)
+            return {};
         bool tearLeftVisible = index != 0 && leftEdge != -scrollOffset;
-        bool tearRightVisible = index != tabList.size() - 1 && rightEdge != tabList.constLast()->rect.right() + 1 - scrollOffset;
+        bool tearRightVisible = index != tabList.size() - 1 && rightEdge != lastTab->rect.right() + 1 - scrollOffset;
         if (tearLeftVisible && !tearLeftRect.isNull())
             leftEdge = tearLeftRect.right() + 1;
         if (tearRightVisible && !tearRightRect.isNull())
@@ -670,13 +681,14 @@ void QTabBarPrivate::makeVisible(int index)
     if (!validIndex(index))
         return;
 
+    const auto lastTab = lastVisibleTab();
     const QRect tabRect = tabList.at(index)->rect;
     const int oldScrollOffset = scrollOffset;
     const bool horiz = !verticalTabs(shape);
     const int available = horiz ? q->width() : q->height();
     const int tabStart = horiz ? tabRect.left() : tabRect.top();
     const int tabEnd = horiz ? tabRect.right() : tabRect.bottom();
-    const int lastTabEnd = horiz ? tabList.constLast()->rect.right() : tabList.constLast()->rect.bottom();
+    const int lastTabEnd = lastTab ? (horiz ? lastTab->rect.right() : lastTab->rect.bottom()) : 0;
     const QRect scrollRect = normalizedScrollRect(index);
     const QRect entireScrollRect = normalizedScrollRect(0); // ignore tears
     const int scrolledTabBarStart = qMax(1, scrollRect.left() + scrollOffset);
@@ -707,11 +719,7 @@ void QTabBarPrivate::makeVisible(int index)
 
 void QTabBarPrivate::killSwitchTabTimer()
 {
-    Q_Q(QTabBar);
-    if (switchTabTimerId) {
-        q->killTimer(switchTabTimerId);
-        switchTabTimerId = 0;
-    }
+    switchTabTimer.stop();
     switchTabCurrentIndex = -1;
 }
 
@@ -797,19 +805,23 @@ void QTabBarPrivate::scrollTabs()
     const bool horizontal = !verticalTabs(shape);
     const QRect scrollRect = normalizedScrollRect().translated(scrollOffset, 0);
 
-    int i = -1;
-
     if (sender == leftB) {
-        for (i = tabList.size() - 1; i >= 0; --i) {
-            int start = horizontal ? tabList.at(i)->rect.left() : tabList.at(i)->rect.top();
+        for (qsizetype i = tabList.size() - 1; i >= 0; --i) {
+            const auto *tab = tabList.at(i);
+            if (!tab->visible)
+                continue;
+            int start = horizontal ? tab->rect.left() : tab->rect.top();
             if (start < scrollRect.left()) {
                 makeVisible(i);
                 return;
             }
         }
     } else if (sender == rightB) {
-        for (i = 0; i < tabList.size(); ++i) {
-            const auto tabRect = tabList.at(i)->rect;
+        for (qsizetype i = 0; i < tabList.size(); ++i) {
+            const auto *tab = tabList.at(i);
+            if (!tab->visible)
+                continue;
+            const auto &tabRect = tab->rect;
             int start = horizontal ? tabRect.left() : tabRect.top();
             int end = horizontal ? tabRect.right() : tabRect.bottom();
             if (end > scrollRect.right() && start > scrollOffset) {
@@ -1554,8 +1566,10 @@ QSize QTabBar::minimumTabSizeHint(int index) const
     QTabBarPrivate::Tab *tab = d->tabList.at(index);
     QString oldText = tab->text;
     tab->text = computeElidedText(d->elideMode, oldText);
+    tab->measuringMinimum = true;
     QSize size = tabSizeHint(index);
     tab->text = oldText;
+    tab->measuringMinimum = false;
     return size;
 }
 
@@ -1756,9 +1770,8 @@ bool QTabBar::event(QEvent *event)
             const int tabIndex = tabAt(static_cast<QDragMoveEvent *>(event)->position().toPoint());
             if (isTabEnabled(tabIndex) && d->switchTabCurrentIndex != tabIndex) {
                 d->switchTabCurrentIndex = tabIndex;
-                if (d->switchTabTimerId)
-                    killTimer(d->switchTabTimerId);
-                d->switchTabTimerId = startTimer(style()->styleHint(QStyle::SH_TabBar_ChangeCurrentDelay));
+                d->switchTabTimer.start(
+                    style()->styleHint(QStyle::SH_TabBar_ChangeCurrentDelay, nullptr, this) * 1ms, this);
             }
             event->ignore();
         }
@@ -2378,7 +2391,7 @@ void QTabBar::keyPressEvent(QKeyEvent *event)
 void QTabBar::wheelEvent(QWheelEvent *event)
 {
     Q_D(QTabBar);
-    if (style()->styleHint(QStyle::SH_TabBar_AllowWheelScrolling)) {
+    if (style()->styleHint(QStyle::SH_TabBar_AllowWheelScrolling, nullptr, this)) {
         const bool wheelVertical = qAbs(event->angleDelta().y()) > qAbs(event->angleDelta().x());
         const bool tabsVertical = verticalTabs(d->shape);
         if (event->device()->capabilities().testFlag(QInputDevice::Capability::PixelScroll)) {
@@ -2475,9 +2488,8 @@ void QTabBar::changeEvent(QEvent *event)
 void QTabBar::timerEvent(QTimerEvent *event)
 {
     Q_D(QTabBar);
-    if (event->timerId() == d->switchTabTimerId) {
-        killTimer(d->switchTabTimerId);
-        d->switchTabTimerId = 0;
+    if (event->id() == d->switchTabTimer.id()) {
+        d->switchTabTimer.stop();
         setCurrentIndex(d->switchTabCurrentIndex);
         d->switchTabCurrentIndex = -1;
     }

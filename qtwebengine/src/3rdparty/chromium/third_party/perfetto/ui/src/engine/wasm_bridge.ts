@@ -53,11 +53,13 @@ export class WasmBridge {
     });
     this.whenInitialized = deferredRuntimeInitialized.then(() => {
       const fn = this.connection.addFunction(this.onReply.bind(this), 'vii');
-      this.reqBufferAddr = this.connection.ccall(
+      this.reqBufferAddr =
+        this.connection.ccall(
           'trace_processor_rpc_init',
           /* return=*/ 'number',
-          /* args=*/['number', 'number'],
-          [fn, REQ_BUF_SIZE]);
+          /* args=*/ ['number', 'number'],
+          [fn, REQ_BUF_SIZE],
+        ) >>> 0; // >>> 0 = static_cast<uint32_t> (see comment in onReply()).
     });
   }
 
@@ -87,10 +89,10 @@ export class WasmBridge {
       wrSize += sliceLen;
       try {
         this.connection.ccall(
-            'trace_processor_on_rpc_request',  // C function name.
-            'void',                            // Return type.
-            ['number'],                        // Arg types.
-            [sliceLen],                        // Args.
+          'trace_processor_on_rpc_request', // C function name.
+          'void', // Return type.
+          ['number'], // Arg types.
+          [sliceLen], // Args.
         );
       } catch (err) {
         this.aborted = true;
@@ -101,12 +103,20 @@ export class WasmBridge {
         abortReason += '\n\nstderr: \n' + this.lastStderr.join('\n');
         throw new Error(abortReason);
       }
-    }  // while(wrSize < data.length)
+    } // while(wrSize < data.length)
   }
 
   // This function is bound and passed to Initialize and is called by the C++
   // code while in the ccall(trace_processor_on_rpc_request).
   private onReply(heapPtr: number, size: number) {
+    // Force heapPtr to be a positive using an unsigned right shift.
+    // The issue here is the following: the matching code in wasm_bridge.cc
+    // invokes this function passing  arguments as uint32_t. However, in the
+    // wasm<>JS interop bindings, the uint32 args become Js numbers. If the
+    // pointer is > 2GB, this number will be negative, which causes the wrong
+    // behaviour on slice().
+    heapPtr = heapPtr >>> 0; // This is static_cast<uint32_t>(heapPtr).
+    size = size >>> 0;
     const data = this.connection.HEAPU8.slice(heapPtr, heapPtr + size);
     assertExists(this.messagePort).postMessage(data, [data.buffer]);
   }

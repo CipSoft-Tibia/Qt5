@@ -109,8 +109,8 @@ void TextIteratorTextState::ResetPositionContainerNode(
   position_node_type_ = node_type;
   position_container_node_ = nullptr;
   position_node_ = &node;
-  position_start_offset_ = absl::nullopt;
-  position_end_offset_ = absl::nullopt;
+  position_start_offset_ = std::nullopt;
+  position_end_offset_ = std::nullopt;
 }
 
 void TextIteratorTextState::UpdatePositionOffsets(
@@ -140,10 +140,10 @@ void TextIteratorTextState::UpdatePositionOffsets(
     case PositionNodeType::kBeforeChildren:
     case PositionNodeType::kInText:
     case PositionNodeType::kNone:
-      NOTREACHED();
+      NOTREACHED_IN_MIGRATION();
       return;
   }
-  NOTREACHED() << static_cast<int>(position_node_type_);
+  NOTREACHED_IN_MIGRATION() << static_cast<int>(position_node_type_);
 }
 
 void TextIteratorTextState::EmitAltText(const HTMLElement& element) {

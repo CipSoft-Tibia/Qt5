@@ -1,5 +1,6 @@
 // Copyright (C) 2021 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 
 #include "qsslkey.h"
@@ -84,8 +85,8 @@ Q_LOGGING_CATEGORY(lcSsl, "qt.network.ssl");
     \value DtlsV1_0OrLater DTLSv1.0 and later versions.
     \value DtlsV1_2 DTLSv1.2
     \value DtlsV1_2OrLater DTLSv1.2 and later versions.
-    \value TlsV1_3 TLSv1.3. (Since Qt 5.12)
-    \value TlsV1_3OrLater TLSv1.3 and later versions. (Since Qt 5.12)
+    \value [since 5.12] TlsV1_3 TLSv1.3.
+    \value [since 5.12] TlsV1_3OrLater TLSv1.3 and later versions.
     \value UnknownProtocol The cipher's protocol cannot be determined.
     \value AnyProtocol Any supported protocol. This value is used by QSslSocket only.
     \value SecureProtocols The default option, using protocols known to be secure.

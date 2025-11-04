@@ -1741,6 +1741,25 @@ void tst_QPainter::setClipRect()
         p.setClipRect(QRectF(10.5, 10.5, 10.5, -10.5));
         QVERIFY(p.clipRegion().isEmpty());
     }
+
+    // extreme transform, values reverse-engineered from oss-fuzz issue 406541912
+    // crashed with a failed assert due to an integer overflow
+    {
+        QPainter p(&img);
+        p.setTransform(QTransform(37.7, 0., 0.,
+                                  0., 233., 0.,
+                                  18.85, -163099999883.5, 1.));
+        p.setClipRect(QRect(0, 0, 10, 1), Qt::ReplaceClip);
+    }
+
+    // the same extreme transform, edited to overflow on the x-axis instead
+    {
+        QPainter p(&img);
+        p.setTransform(QTransform(233., 0., 0.,
+                                  0., 37.7, 0.,
+                                  -163099999883.5, 18.85, 1.));
+        p.setClipRect(QRect(0, 0, 1, 10), Qt::ReplaceClip);
+    }
 }
 
 /*
@@ -2848,7 +2867,7 @@ void tst_QPainter::monoImages()
 
 #if defined(Q_OS_DARWIN) || defined(Q_OS_FREEBSD) || defined(Q_OS_ANDROID)
 #  define TEST_FPE_EXCEPTIONS
-#elif defined(Q_OS_LINUX) && defined(__GLIBC__)
+#elif defined(__GLIBC__)
 #  define TEST_FPE_EXCEPTIONS
 #elif defined(Q_OS_WIN) && defined(Q_CC_GNU)
 #  define TEST_FPE_EXCEPTIONS
@@ -3865,7 +3884,7 @@ void tst_QPainter::linearGradientSymmetry()
     pb.fillRect(b.rect(), inverseGradient(gradient));
     pb.end();
 
-    b = b.mirrored(true);
+    b = b.flipped(Qt::Horizontal | Qt::Vertical);
     QCOMPARE(a, b);
 }
 

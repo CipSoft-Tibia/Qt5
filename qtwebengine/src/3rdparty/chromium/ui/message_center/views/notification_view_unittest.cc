@@ -9,6 +9,7 @@
 #include "base/memory/raw_ptr.h"
 #include "base/test/scoped_feature_list.h"
 #include "build/chromeos_buildflags.h"
+#include "ui/base/ui_base_features.h"
 #include "ui/color/color_id.h"
 #include "ui/color/color_provider.h"
 #include "ui/compositor/layer.h"
@@ -125,8 +126,7 @@ class NotificationViewTest : public views::ViewObserver,
 
     if (notification_view_) {
       static_cast<views::View*>(notification_view_)->RemoveObserver(this);
-      notification_view_->GetWidget()->Close();
-      notification_view_ = nullptr;
+      notification_view_.ExtractAsDangling()->GetWidget()->CloseNow();
     }
     MessageCenter::Shutdown();
     views::ViewsTestBase::TearDown();
@@ -147,8 +147,8 @@ class NotificationViewTest : public views::ViewObserver,
         u"display source", GURL(),
         NotifierId(NotifierType::APPLICATION, "extension_id"), optional_fields,
         delegate_);
-    notification->set_small_image(gfx::test::CreateImage(/*size=*/16));
-    notification->set_image(gfx::test::CreateImage(320, 240));
+    notification->SetSmallImage(gfx::test::CreateImage(/*size=*/16));
+    notification->SetImage(gfx::test::CreateImage(320, 240));
 
     return notification;
   }
@@ -168,7 +168,7 @@ class NotificationViewTest : public views::ViewObserver,
       widget->Init(std::move(init_params));
       notification_view_ =
           widget->SetContentsView(std::move(notification_view));
-      widget->SetSize(notification_view_->GetPreferredSize());
+      widget->SetSize(notification_view_->GetPreferredSize({}));
       widget->Show();
       widget->widget_delegate()->SetCanActivate(true);
       widget->Activate();
@@ -181,8 +181,9 @@ class NotificationViewTest : public views::ViewObserver,
   // been created by `gfx::test::CreateImage`) was scaled to.
   gfx::Size GetImagePaintSize(ProportionalImageView* view) {
     CHECK(view);
-    if (view->bounds().IsEmpty())
+    if (view->bounds().IsEmpty()) {
       return gfx::Size();
+    }
 
     gfx::Size canvas_size = view->bounds().size();
     gfx::Canvas canvas(canvas_size, 1.0 /* image_scale */,
@@ -200,17 +201,21 @@ class NotificationViewTest : public views::ViewObserver,
     const int kHalfHeight = canvas_size.height() / 2;
     gfx::Rect rect(canvas_size);
     while (rect.width() > 0 &&
-           bitmap.getColor(rect.x(), kHalfHeight) != kBitmapColor)
+           bitmap.getColor(rect.x(), kHalfHeight) != kBitmapColor) {
       rect.Inset(gfx::Insets::TLBR(0, 1, 0, 0));
+    }
     while (rect.height() > 0 &&
-           bitmap.getColor(kHalfWidth, rect.y()) != kBitmapColor)
+           bitmap.getColor(kHalfWidth, rect.y()) != kBitmapColor) {
       rect.Inset(gfx::Insets::TLBR(1, 0, 0, 0));
+    }
     while (rect.width() > 0 &&
-           bitmap.getColor(rect.right() - 1, kHalfHeight) != kBitmapColor)
+           bitmap.getColor(rect.right() - 1, kHalfHeight) != kBitmapColor) {
       rect.Inset(gfx::Insets::TLBR(0, 0, 0, 1));
+    }
     while (rect.height() > 0 &&
-           bitmap.getColor(kHalfWidth, rect.bottom() - 1) != kBitmapColor)
+           bitmap.getColor(kHalfWidth, rect.bottom() - 1) != kBitmapColor) {
       rect.Inset(gfx::Insets::TLBR(0, 0, 1, 0));
+    }
 
     return rect.size();
   }
@@ -259,7 +264,7 @@ class NotificationViewTest : public views::ViewObserver,
   void OnViewPreferredSizeChanged(views::View* observed_view) override {
     EXPECT_EQ(observed_view, notification_view());
     notification_view_->GetWidget()->SetSize(
-        notification_view()->GetPreferredSize());
+        notification_view()->GetPreferredSize({}));
   }
 
   void OnNotificationRemoved(const std::string& notification_id,
@@ -267,8 +272,7 @@ class NotificationViewTest : public views::ViewObserver,
     if (delete_on_notification_removed_) {
       views::InkDrop::Get(notification_view_)
           ->SetMode(views::InkDropHost::InkDropMode::OFF);
-      notification_view_->GetWidget()->CloseNow();
-      notification_view_ = nullptr;
+      notification_view_.ExtractAsDangling()->GetWidget()->CloseNow();
       return;
     }
   }
@@ -281,7 +285,7 @@ class NotificationViewTest : public views::ViewObserver,
     ink_drop_stopped_ = true;
   }
 
-  raw_ptr<NotificationView, DanglingUntriaged> notification_view_ = nullptr;
+  raw_ptr<NotificationView> notification_view_ = nullptr;
   bool delete_on_notification_removed_ = false;
   bool ink_drop_stopped_ = false;
   std::unique_ptr<base::test::ScopedFeatureList> scoped_feature_list_;
@@ -371,7 +375,7 @@ TEST_F(NotificationViewTest, LeftContentResizeForIcon) {
   // Create a notification without an icon.
   std::unique_ptr<Notification> notification = CreateSimpleNotification();
   notification->set_icon(ui::ImageModel());
-  notification->set_image(gfx::Image());
+  notification->SetImage(gfx::Image());
   UpdateNotificationViews(*notification);
 
   // Capture the width of the left content without an icon.
@@ -459,7 +463,8 @@ TEST_F(NotificationViewTest, InlineSettingsBlockAll) {
   EXPECT_TRUE(delegate_->disable_notification_called());
 }
 
-TEST_F(NotificationViewTest, TestAccentColor) {
+// TODO (crbug/1521442): Test fails post-ChromeRefresh2023. Fix and re-enable.
+TEST_F(NotificationViewTest, DISABLED_TestAccentColor) {
   std::unique_ptr<Notification> notification = CreateSimpleNotification();
   notification->set_buttons(CreateButtons(2));
 
@@ -471,8 +476,9 @@ TEST_F(NotificationViewTest, TestAccentColor) {
   notification_view()->GetWidget()->Show();
 
   // Action buttons are hidden by collapsed state.
-  if (!notification_view()->expanded_)
+  if (!notification_view()->expanded_) {
     ToggleExpanded();
+  }
   EXPECT_TRUE(notification_view()->actions_row_->GetVisible());
 
   const auto* color_provider = notification_view()->GetColorProvider();
@@ -577,7 +583,7 @@ TEST_F(NotificationViewTest, InkDropClipRect) {
 
   // Expect clip rect to honor the insets to draw the shadow.
   gfx::Insets insets = notification_view()->GetInsets();
-  EXPECT_EQ(notification_view()->GetPreferredSize() - insets.size(),
+  EXPECT_EQ(notification_view()->GetPreferredSize({}) - insets.size(),
             clip_rect.size());
   EXPECT_EQ(gfx::Point(insets.left(), insets.top()), clip_rect.origin());
 }
@@ -589,7 +595,7 @@ TEST_F(NotificationViewTest, AppIconWebAppNotification) {
   const GURL web_app_url(kWebAppUrl);
 
   NotifierId notifier_id(web_app_url, /*title=*/u"web app title",
-                         /*web_app_id=*/absl::nullopt);
+                         /*web_app_id=*/std::nullopt);
 
   SkBitmap small_bitmap = gfx::test::CreateBitmap(/*size=*/16, SK_ColorYELLOW);
   // Makes the center area transparent.
@@ -603,8 +609,8 @@ TEST_F(NotificationViewTest, AppIconWebAppNotification) {
       u"message",
       ui::ImageModel::FromImage(gfx::test::CreateImage(/*size=*/80)),
       u"display source", GURL(), notifier_id, data, delegate_);
-  notification->set_small_image(gfx::Image::CreateFrom1xBitmap(small_bitmap));
-  notification->set_image(gfx::test::CreateImage(320, 240));
+  notification->SetSmallImage(gfx::Image::CreateFrom1xBitmap(small_bitmap));
+  notification->SetImage(gfx::test::CreateImage(320, 240));
 
   notification->set_origin_url(web_app_url);
 
@@ -633,13 +639,13 @@ TEST_F(NotificationViewTest, PreferredSize) {
 
   // Collapsed preferred width is determined by the header view.
   notification_view()->SetExpanded(false);
-  EXPECT_EQ(kNotificationWidth,
-            notification_view()->GetPreferredSize().width());
+  EXPECT_EQ(GetNotificationWidth(),
+            notification_view()->GetPreferredSize({}).width());
 
   // Ensure expanded preferred width is not extended by the image view.
   notification_view()->SetExpanded(true);
-  EXPECT_EQ(kNotificationWidth,
-            notification_view()->GetPreferredSize().width());
+  EXPECT_EQ(GetNotificationWidth(),
+            notification_view()->GetPreferredSize({}).width());
 }
 
 TEST_F(NotificationViewTest, ExpandLongMessage) {
@@ -659,7 +665,7 @@ TEST_F(NotificationViewTest, ExpandLongMessage) {
   EXPECT_FALSE(notification_view()->expanded_);
   const int collapsed_height = message_label()->height();
   const int collapsed_preferred_height =
-      notification_view()->GetPreferredSize().height();
+      notification_view()->GetPreferredSize({}).height();
   EXPECT_LT(0, collapsed_height);
   EXPECT_LT(0, collapsed_preferred_height);
 
@@ -667,13 +673,13 @@ TEST_F(NotificationViewTest, ExpandLongMessage) {
   EXPECT_TRUE(notification_view()->expanded_);
   EXPECT_LT(collapsed_height, message_label()->height());
   EXPECT_LT(collapsed_preferred_height,
-            notification_view()->GetPreferredSize().height());
+            notification_view()->GetPreferredSize({}).height());
 
   ToggleExpanded();
   EXPECT_FALSE(notification_view()->expanded_);
   EXPECT_EQ(collapsed_height, message_label()->height());
   EXPECT_EQ(collapsed_preferred_height,
-            notification_view()->GetPreferredSize().height());
+            notification_view()->GetPreferredSize({}).height());
 }
 
 TEST_F(NotificationViewTest, UpdateType) {
@@ -692,7 +698,7 @@ TEST_F(NotificationViewTest, UpdateType) {
 }
 
 TEST_F(NotificationViewTest, InlineSettingsInkDropAnimation) {
-  // TODO(crbug/1264498): This test is currently broken.
+  // TODO(crbug.com/40203399): This test is currently broken.
   ui::ScopedAnimationDurationScaleMode zero_duration_scope(
       ui::ScopedAnimationDurationScaleMode::NORMAL_DURATION);
   std::unique_ptr<Notification> notification = CreateSimpleNotification();

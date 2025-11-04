@@ -46,6 +46,9 @@
                     <section ref="qml-qdoc-test-doctest.html" title="DocTest Type Reference">
                         <section ref="qml-qdoc-test-doctest-members.html" title="List of all members"/>
                     </section>
+                    <section ref="qml-qdoc-test-item.html" title="Item Type Reference">
+                        <section ref="qml-qdoc-test-item-members.html" title="List of all members"/>
+                    </section>
                     <section ref="qml-qdoc-test-oldtype.html" title="OldType Type Reference">
                         <section ref="qml-qdoc-test-oldtype-members.html" title="List of all members"/>
                     </section>
@@ -67,6 +70,7 @@
                         <section ref="qml-uicomponents-tabwidget-members.html" title="List of all members"/>
                     </section>
                 </section>
+                <section ref="autolinking.html" title="Autolinking"/>
             </section>
         </toc>
         <keywords>
@@ -81,6 +85,8 @@
             <keyword name="DocTest" id="QML.QDoc.Test1.DocTest" ref="qml-qdoc-test-doctest.html"/>
             <keyword name="DocTest" id="QML.DocTest" ref="qml-test-nover-doctest.html"/>
             <keyword name="DocTest" id="QML.Test.NoVer.DocTest" ref="qml-test-nover-doctest.html"/>
+            <keyword name="Item" id="QML.Item" ref="qml-qdoc-test-item.html"/>
+            <keyword name="Item" id="QML.QDoc.Test1.Item" ref="qml-qdoc-test-item.html"/>
             <keyword name="Obsolete Classes" id="Obsolete Classes" ref="obsolete-classes.html"/>
             <keyword name="OldType" id="QML.OldType" ref="qml-qdoc-test-oldtype.html"/>
             <keyword name="OldType" id="QML.QDoc.Test1.OldType" ref="qml-qdoc-test-oldtype.html"/>
@@ -149,6 +155,8 @@
             <keyword name="group.first" id="Type::group.first" ref="qml-qdoc-test-type.html#group.first-prop"/>
             <keyword name="group.second" id="Type::group.second" ref="qml-qdoc-test-type.html#group.second-prop"/>
             <keyword name="group.third" id="Type::group.third" ref="qml-qdoc-test-type.html#group.third-prop"/>
+            <keyword name="icon.name" id="DocTest::icon.name" ref="qml-qdoc-test-doctest.html#icon.name-prop"/>
+            <keyword name="icon.source" id="DocTest::icon.source" ref="qml-qdoc-test-doctest.html#icon.source-prop"/>
             <keyword name="id" id="Type::id" ref="qml-qdoc-test-type.html#id-prop"/>
             <keyword name="id" id="TestDerived::id" ref="testqdoc-testderived.html#id"/>
             <keyword name="indexedKeyword" id="indexedKeyword" ref="autolinking.html#indexedkeyword-property"/>
@@ -215,6 +223,8 @@
             <file>qml-qdoc-test-child.html</file>
             <file>qml-qdoc-test-doctest-members.html</file>
             <file>qml-qdoc-test-doctest.html</file>
+            <file>qml-qdoc-test-item-members.html</file>
+            <file>qml-qdoc-test-item.html</file>
             <file>qml-qdoc-test-oldtype-members.html</file>
             <file>qml-qdoc-test-oldtype.html</file>
             <file>qml-qdoc-test-type-members.html</file>

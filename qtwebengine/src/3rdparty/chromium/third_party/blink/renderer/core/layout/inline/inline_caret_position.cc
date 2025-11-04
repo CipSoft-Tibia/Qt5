@@ -160,7 +160,7 @@ unsigned GetTextOffsetBefore(const Node& node) {
   // atomic inline box.
   DCHECK(node.GetLayoutObject()->IsAtomicInlineLevel());
   const Position before_node = Position::BeforeNode(node);
-  absl::optional<unsigned> maybe_offset_before =
+  std::optional<unsigned> maybe_offset_before =
       OffsetMapping::GetFor(before_node)->GetTextContentOffset(before_node);
   // We should have offset mapping for atomic inline boxes.
   DCHECK(maybe_offset_before.has_value());
@@ -191,7 +191,7 @@ InlineCaretPositionResolution TryResolveInlineCaretPositionByBoxFragmentSide(
   const InlineCaretPositionType position_type =
       offset == offset_before ? InlineCaretPositionType::kBeforeBox
                               : InlineCaretPositionType::kAfterBox;
-  InlineCaretPosition candidate{cursor, position_type, absl::nullopt};
+  InlineCaretPosition candidate{cursor, position_type, std::nullopt};
 
   if (offset == offset_before &&
       CanResolveInlineCaretPositionBeforeFragment(cursor, affinity)) {
@@ -327,11 +327,11 @@ InlineCaretPosition ComputeInlineCaretPositionAfterInline(
         line.Current().BaseDirection() == cursor.Current().ResolvedDirection()
             ? InlineCaretPositionType::kAfterBox
             : InlineCaretPositionType::kBeforeBox;
-    return AdjustInlineCaretPositionForBidiText({cursor, type, absl::nullopt});
+    return AdjustInlineCaretPositionForBidiText({cursor, type, std::nullopt});
   }
 
   return AdjustInlineCaretPositionForBidiText(
-      {cursor, InlineCaretPositionType::kAfterBox, absl::nullopt});
+      {cursor, InlineCaretPositionType::kAfterBox, std::nullopt});
 }
 InlineCaretPosition ComputeInlineCaretPositionBeforeInline(
     const PositionWithAffinity& position_with_affinity) {
@@ -370,11 +370,11 @@ InlineCaretPosition ComputeInlineCaretPositionBeforeInline(
         line.Current().BaseDirection() == cursor.Current().ResolvedDirection()
             ? InlineCaretPositionType::kBeforeBox
             : InlineCaretPositionType::kAfterBox;
-    return AdjustInlineCaretPositionForBidiText({cursor, type, absl::nullopt});
+    return AdjustInlineCaretPositionForBidiText({cursor, type, std::nullopt});
   }
 
   return AdjustInlineCaretPositionForBidiText(
-      {cursor, InlineCaretPositionType::kBeforeBox, absl::nullopt});
+      {cursor, InlineCaretPositionType::kBeforeBox, std::nullopt});
 }
 
 }  // namespace
@@ -439,8 +439,8 @@ InlineCaretPosition ComputeInlineCaretPosition(
     if (position.IsAfterAnchor()) {
       return ComputeInlineCaretPositionAfterInline(position_with_affinity);
     }
-    NOTREACHED() << "Caller should not pass a position inside inline: "
-                 << position;
+    NOTREACHED_IN_MIGRATION()
+        << "Caller should not pass a position inside inline: " << position;
     return InlineCaretPosition();
   }
 
@@ -453,12 +453,11 @@ InlineCaretPosition ComputeInlineCaretPosition(
 
   const OffsetMapping* const mapping = InlineNode::GetOffsetMapping(context);
   if (!mapping) {
-    // TODO(yosin): We should find when we reach here[1].
-    // [1] http://crbug.com/1100481
-    NOTREACHED() << context;
+    // A block containing the position might be display-locked.
+    // See editing/caret/caret-display-locked-crash.html
     return InlineCaretPosition();
   }
-  const absl::optional<unsigned> maybe_offset =
+  const std::optional<unsigned> maybe_offset =
       mapping->GetTextContentOffset(position);
   if (!maybe_offset.has_value()) {
     // We can reach here with empty text nodes.
@@ -466,7 +465,7 @@ InlineCaretPosition ComputeInlineCaretPosition(
       DCHECK_EQ(data->length(), 0u);
     } else {
       // TODO(xiaochengh): Investigate if we reach here.
-      NOTREACHED();
+      NOTREACHED_IN_MIGRATION();
       return InlineCaretPosition();
     }
   }
@@ -523,7 +522,8 @@ PositionWithAffinity InlineCaretPosition::ToPositionInDOMTreeWithAffinity()
         // TODO(yosin): We're not sure why |mapping| is |nullptr|. It seems
         // we are attempt to use destroyed/moved |FragmentItem|.
         // See http://crbug.com/1145514
-        NOTREACHED() << cursor << " " << cursor.Current().GetLayoutObject();
+        DUMP_WILL_BE_NOTREACHED()
+            << cursor << " " << cursor.Current().GetLayoutObject();
         return PositionWithAffinity();
       }
       const TextAffinity affinity =
@@ -538,7 +538,7 @@ PositionWithAffinity InlineCaretPosition::ToPositionInDOMTreeWithAffinity()
       }
       return PositionWithAffinity(position, affinity);
   }
-  NOTREACHED();
+  NOTREACHED_IN_MIGRATION();
   return PositionWithAffinity();
 }
 

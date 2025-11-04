@@ -43,6 +43,7 @@ public:
     void _q_fixFocus(Qt::FocusReason reason);
     void _q_setChildrenEnabled(bool b);
     void click();
+    bool shouldHandleKeyEvent(const QKeyEvent *keyEvent) const;
     bool flat;
     bool checkable;
     bool checked;
@@ -327,10 +328,7 @@ bool QGroupBox::event(QEvent *e)
         return true;
     case QEvent::KeyPress: {
         QKeyEvent *k = static_cast<QKeyEvent*>(e);
-        const auto buttonPressKeys = QGuiApplicationPrivate::platformTheme()
-                                             ->themeHint(QPlatformTheme::ButtonPressKeys)
-                                             .value<QList<Qt::Key>>();
-        if (!k->isAutoRepeat() && buttonPressKeys.contains(k->key())) {
+        if (d->shouldHandleKeyEvent(k)) {
             d->pressedControl = QStyle::SC_GroupBoxCheckBox;
             update(style()->subControlRect(QStyle::CC_GroupBox, &box, QStyle::SC_GroupBoxCheckBox, this));
             return true;
@@ -339,10 +337,7 @@ bool QGroupBox::event(QEvent *e)
     }
     case QEvent::KeyRelease: {
         QKeyEvent *k = static_cast<QKeyEvent*>(e);
-        const auto buttonPressKeys = QGuiApplicationPrivate::platformTheme()
-                                             ->themeHint(QPlatformTheme::ButtonPressKeys)
-                                             .value<QList<Qt::Key>>();
-        if (!k->isAutoRepeat() && buttonPressKeys.contains(k->key())) {
+        if (d->shouldHandleKeyEvent(k)) {
             bool toggle = (d->pressedControl == QStyle::SC_GroupBoxLabel
                            || d->pressedControl == QStyle::SC_GroupBoxCheckBox);
             d->pressedControl = QStyle::SC_None;
@@ -601,6 +596,11 @@ bool QGroupBox::isChecked() const
 
     By default, checkable group boxes are also checked.
 
+    \note The group box itself will not be disabled when the box is unchecked,
+    and you can explicitly enable individual children in a group box that is
+    unchecked. This is however not recommended, as it could create a surprising
+    experience for the end user.
+
     \sa checkable
 */
 void QGroupBox::setChecked(bool b)
@@ -727,6 +727,21 @@ void QGroupBox::mouseReleaseEvent(QMouseEvent *event)
     else if (d->checkable)
         update(style()->subControlRect(QStyle::CC_GroupBox, &box, QStyle::SC_GroupBoxCheckBox, this));
 }
+
+
+bool QGroupBoxPrivate::shouldHandleKeyEvent(const QKeyEvent *keyEvent) const
+{
+    Q_Q(const QGroupBox);
+
+    if (!q->isEnabled() || !q->isCheckable() || keyEvent->isAutoRepeat())
+        return false;
+
+    const QList<Qt::Key> buttonPressKeys = QGuiApplicationPrivate::platformTheme()
+                                           ->themeHint(QPlatformTheme::ButtonPressKeys)
+                                           .value<QList<Qt::Key>>();
+    return buttonPressKeys.contains(keyEvent->key());
+}
+
 
 QT_END_NAMESPACE
 

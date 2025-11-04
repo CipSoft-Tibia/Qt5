@@ -17,9 +17,13 @@
 
 #include <filesystem>  // NOLINT
 #include <functional>
+#include <memory>
 #include <string>
 #include <utility>
 #include <vector>
+
+#include "absl/base/nullability.h"
+#include "./centipede/config_init.h"
 
 // TODO(ussuri): Move implementation-only functions to .cc.
 
@@ -36,12 +40,15 @@ class AugmentedArgvWithCleanup final {
   using BackingResourcesCleanup = std::function<void()>;
 
   // Ctor. The `orig_argc` and `orig_argv` are compatible with those passed to a
-  // main(). The `replacements` map should map an old substring to a new one.
-  // Only simple, one-stage string replacement is performed: no regexes,
-  // placeholders, envvars or recursion. The `cleanup` callback should clean up
-  // any temporary resources backing the modified flags, such as temporary
-  // files.
+  // main(). Each item in `orig_argv` is first processed with
+  // `flag_replacements` if the item has the format "-flag", "-flag=...",
+  // "--flag", or "--flag=", and the flag name matches. Then the `replacements`
+  // map should map an old substring to a new one. Only simple, one-stage string
+  // replacement is performed: no regexes, placeholders, envvars or recursion.
+  // The `cleanup` callback should clean up any temporary resources backing the
+  // modified flags, such as temporary files.
   AugmentedArgvWithCleanup(const std::vector<std::string>& orig_argv,
+                           const Replacements& flag_replacements,
                            const Replacements& replacements,
                            BackingResourcesCleanup&& cleanup);
   // Dtor. Invokes `cleanup_`.
@@ -97,8 +104,10 @@ std::filesystem::path MaybeSaveConfigToFile(
 // - Handles config-related flags: loads the config from --config, if any,
 //   and saves it to --save_config (or --update_config), if any.
 // - Logs the final resolved config.
-// - Returns the leftover positional command line arguments in
-[[nodiscard]] std::vector<std::string> InitCentipede(int argc, char** argv);
+// - Returns the runtime state that the caller should take ownership of and
+//    keep alive the duration of the process.
+[[nodiscard]] std::unique_ptr<RuntimeState> InitCentipede(
+    int argc, absl::Nonnull<char**> argv);
 
 }  // namespace centipede::config
 

@@ -45,8 +45,14 @@
 #include <QtCore/qpointer.h>
 
 #include <QtGui/private/qlayoutpolicy_p.h>
+#if QT_CONFIG(accessibility)
+#include <QtGui/qaccessible_base.h>
+#endif
 
 QT_BEGIN_NAMESPACE
+
+Q_DECLARE_LOGGING_CATEGORY(lcHandlerParent)
+Q_DECLARE_LOGGING_CATEGORY(lcVP)
 
 class QNetworkReply;
 class QQuickItemKeyFilter;
@@ -55,7 +61,7 @@ class QQuickEnterKeyAttached;
 class QQuickScreenAttached;
 class QQuickPointerHandler;
 
-class QQuickContents : public QQuickItemChangeListener
+class QQuickContents : public QSafeQuickItemChangeListener<QQuickContents>
 {
 public:
     QQuickContents(QQuickItem *item);
@@ -65,6 +71,8 @@ public:
 
     inline void calcGeometry(QQuickItem *changed = nullptr);
     void complete();
+
+    bool inDestructor = false;
 
 protected:
     void itemGeometryChanged(QQuickItem *item, QQuickGeometryChange change, const QRectF &) override;
@@ -103,7 +111,8 @@ public:
 
 #if QT_CONFIG(quick_shadereffect)
 
-class Q_QUICK_EXPORT QQuickItemLayer : public QObject, public QQuickItemChangeListener
+class Q_QUICK_EXPORT QQuickItemLayer : public QObject,
+                                       public QSafeQuickItemChangeListener<QQuickItemLayer>
 {
     Q_OBJECT
     Q_PROPERTY(bool enabled READ enabled WRITE setEnabled NOTIFY enabledChanged FINAL)
@@ -263,6 +272,8 @@ public:
     virtual void addPointerHandler(QQuickPointerHandler *h);
     virtual void removePointerHandler(QQuickPointerHandler *h);
 
+    QObject *setContextMenu(QObject *menu);
+
     // data property
     static void data_append(QQmlListProperty<QObject> *, QObject *);
     static qsizetype data_count(QQmlListProperty<QObject> *);
@@ -310,10 +321,38 @@ public:
         ImplicitHeight = 0x200,
         Enabled = 0x400,
         Focus = 0x800,
+        Scale = 0x1000,
+        Matrix = 0x2000,
         AllChanges = 0xFFFFFFFF
     };
 
     Q_DECLARE_FLAGS(ChangeTypes, ChangeType)
+    friend inline QDebug &operator<<(QDebug &dbg, QQuickItemPrivate::ChangeTypes types) {
+#define CHANGETYPE_OUTPUT(Type) if (types & QQuickItemPrivate::Type) { dbg << first << #Type ; first = '|'; }
+        QDebugStateSaver state(dbg);
+        dbg.noquote().nospace();
+        if (types == QQuickItemPrivate::AllChanges) {
+            dbg << " AllChanges";
+        } else {
+            char first = ' ';
+            CHANGETYPE_OUTPUT(Geometry);
+            CHANGETYPE_OUTPUT(SiblingOrder);
+            CHANGETYPE_OUTPUT(Visibility);
+            CHANGETYPE_OUTPUT(Opacity);
+            CHANGETYPE_OUTPUT(Destroyed);
+            CHANGETYPE_OUTPUT(Parent);
+            CHANGETYPE_OUTPUT(Children);
+            CHANGETYPE_OUTPUT(Rotation);
+            CHANGETYPE_OUTPUT(ImplicitWidth);
+            CHANGETYPE_OUTPUT(ImplicitHeight);
+            CHANGETYPE_OUTPUT(Enabled);
+            CHANGETYPE_OUTPUT(Focus);
+            CHANGETYPE_OUTPUT(Scale);
+            CHANGETYPE_OUTPUT(Matrix);
+#undef CHANGETYPE_OUTPUT
+        }
+        return dbg;
+    }
 
     struct ChangeListener {
         using ChangeTypes = QQuickItemPrivate::ChangeTypes;
@@ -347,17 +386,35 @@ public:
     template <typename Fn, typename ...Args>
     void notifyChangeListeners(QQuickItemPrivate::ChangeTypes changeTypes, Fn &&function, Args &&...args)
     {
+        Q_Q(QQuickItem);
         if (changeListeners.isEmpty())
             return;
 
         const auto listeners = changeListeners; // NOTE: intentional copy (QTBUG-54732)
         for (const QQuickItemPrivate::ChangeListener &change : listeners) {
+            Q_ASSERT(change.listener);
             if (change.types & changeTypes) {
+#ifdef QT_BUILD_INTERNAL
+                if (changeTypes == AllChanges && change.listener->anchorPrivate() == nullptr) {
+                    // Nothing to worry about as long as the lambdas in ~QQuickItem
+                    // don't mess around with the change.listener directly!
+                } else if (change.listener->baseDeleted(q)) {
+                    auto output = qCritical();
+                    output.noquote();
+                    output << "Listener already tagged as destroyed when called!"
+                           << "\n\tListener:" << change.listener->debugName()
+                           << "\n\tChanges:" << change.types
+                           << "\n\tCaller:  " << q
+                           << "\n\tChanges:" << changeTypes;
+                }
+#endif
                 if constexpr (std::is_member_function_pointer_v<Fn>)
                     (change.listener->*function)(args...);
                 else
                     function(change, args...);
             }
+            if (changeTypes & QQuickItemPrivate::Destroyed)
+                change.listener->removeSourceItem(q);
         }
     }
 
@@ -375,6 +432,7 @@ public:
         QQuickEnterKeyAttached *enterKeyAttached;
         QQuickItemKeyFilter *keyHandler;
         QVector<QQuickPointerHandler *> pointerHandlers;
+        QObject *contextMenu;
 #if QT_CONFIG(quick_shadereffect)
         mutable QQuickItemLayer *layer;
 #endif
@@ -655,6 +713,9 @@ public:
 
     bool anyPointerHandlerWants(const QPointerEvent *event, const QEventPoint &point) const;
     virtual bool handlePointerEvent(QPointerEvent *, bool avoidGrabbers = false);
+#if QT_VERSION < QT_VERSION_CHECK(7, 0, 0)
+    virtual bool handleContextMenuEvent(QContextMenuEvent *event);
+#endif
 
     virtual void setVisible(bool visible);
 

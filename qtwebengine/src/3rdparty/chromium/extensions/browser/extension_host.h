@@ -135,10 +135,6 @@ class ExtensionHost : public DeferredStartRenderHost,
   }
 
   // content::WebContentsObserver:
-#if BUILDFLAG(ENABLE_EXTENSIONS_LEGACY_IPC)
-  bool OnMessageReceived(const IPC::Message& message,
-                         content::RenderFrameHost* host) override;
-#endif
   void RenderFrameCreated(content::RenderFrameHost* frame_host) override;
   void RenderFrameHostChanged(content::RenderFrameHost* old_host,
                               content::RenderFrameHost* new_host) override;
@@ -150,13 +146,14 @@ class ExtensionHost : public DeferredStartRenderHost,
   // content::WebContentsDelegate:
   content::JavaScriptDialogManager* GetJavaScriptDialogManager(
       content::WebContents* source) override;
-  void AddNewContents(content::WebContents* source,
-                      std::unique_ptr<content::WebContents> new_contents,
-                      const GURL& target_url,
-                      WindowOpenDisposition disposition,
-                      const blink::mojom::WindowFeatures& window_features,
-                      bool user_gesture,
-                      bool* was_blocked) override;
+  content::WebContents* AddNewContents(
+      content::WebContents* source,
+      std::unique_ptr<content::WebContents> new_contents,
+      const GURL& target_url,
+      WindowOpenDisposition disposition,
+      const blink::mojom::WindowFeatures& window_features,
+      bool user_gesture,
+      bool* was_blocked) override;
   void CloseContents(content::WebContents* contents) override;
   void RequestMediaAccessPermission(
       content::WebContents* web_contents,

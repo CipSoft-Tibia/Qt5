@@ -16,6 +16,7 @@
 //
 
 #include <QtGui/private/qtguiglobal_p.h>
+#include <QtGui/qfontvariableaxis.h>
 #include "QtCore/qatomic.h"
 #include <QtCore/qvarlengtharray.h>
 #include <QtCore/qhashfunctions.h>
@@ -40,6 +41,8 @@ enum HB_Compat_Error {
 
 typedef void (*qt_destroy_func_t) (void *user_data);
 typedef bool (*qt_get_font_table_func_t) (void *user_data, uint tag, uchar *buffer, uint *length);
+
+Q_DECLARE_LOGGING_CATEGORY(lcColrv1)
 
 class Q_GUI_EXPORT QFontEngine
 {
@@ -156,10 +159,11 @@ public:
                || ucs4 == QChar::LineFeed
                || ucs4 == QChar::CarriageReturn
                || ucs4 == QChar::ParagraphSeparator
+               || (!disableEmojiSegmenter() && (ucs4 & 0xFFF0) == 0xFE00)
                || QChar::category(ucs4) == QChar::Other_Control;
     }
 
-    virtual QFixed emSquareSize() const { return ascent(); }
+    virtual QFixed emSquareSize() const;
 
     /* returns 0 as glyph index for non existent glyphs */
     virtual glyph_t glyphIndex(uint ucs4) const = 0;
@@ -230,6 +234,11 @@ public:
 
     virtual Qt::HANDLE handle() const;
 
+    virtual QList<QFontVariableAxis> variableAxes() const;
+
+    virtual QString glyphName(glyph_t index) const;
+    virtual glyph_t findGlyph(QLatin1StringView name) const;
+
     void *harfbuzzFont() const;
     void *harfbuzzFace() const;
     bool supportsScript(QChar::Script script) const;
@@ -253,6 +262,8 @@ public:
 
     virtual bool hasUnreliableGlyphOutline() const;
     virtual bool expectsGammaCorrectedBlending() const;
+
+    static bool disableEmojiSegmenter();
 
     enum HintStyle {
         HintNone,
@@ -414,6 +425,7 @@ public:
     virtual glyph_metrics_t boundingBox(glyph_t glyph) override;
     virtual QFontEngine *cloneWithSize(qreal pixelSize) const override;
 
+    virtual QFixed emSquareSize() const override { return _size; }
     virtual QFixed ascent() const override;
     virtual QFixed capHeight() const override;
     virtual QFixed descent() const override;
@@ -452,6 +464,7 @@ public:
     virtual void addOutlineToPath(qreal, qreal, const QGlyphLayout &, QPainterPath *, QTextItem::RenderFlags flags) override;
     virtual void getGlyphBearings(glyph_t glyph, qreal *leftBearing = nullptr, qreal *rightBearing = nullptr) override;
 
+    virtual QFixed emSquareSize() const override;
     virtual QFixed ascent() const override;
     virtual QFixed capHeight() const override;
     virtual QFixed descent() const override;
@@ -470,7 +483,11 @@ public:
     virtual qreal minLeftBearing() const override;
     virtual qreal minRightBearing() const override;
 
+    virtual QList<QFontVariableAxis> variableAxes() const override;
+
     virtual bool canRender(const QChar *string, int len) const override;
+    QString glyphName(glyph_t glyph) const override;
+    glyph_t findGlyph(QLatin1StringView name) const override;
 
     inline int fallbackFamilyCount() const { return m_fallbackFamilies.size(); }
     inline QString fallbackFamilyAt(int at) const { return m_fallbackFamilies.at(at); }

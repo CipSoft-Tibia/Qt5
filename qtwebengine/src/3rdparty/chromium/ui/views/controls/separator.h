@@ -5,7 +5,8 @@
 #ifndef UI_VIEWS_CONTROLS_SEPARATOR_H_
 #define UI_VIEWS_CONTROLS_SEPARATOR_H_
 
-#include "third_party/abseil-cpp/absl/types/optional.h"
+#include <optional>
+
 #include "ui/color/color_id.h"
 #include "ui/views/metadata/view_factory.h"
 #include "ui/views/view.h"
@@ -43,7 +44,8 @@ class VIEWS_EXPORT Separator : public View {
   void SetOrientation(Orientation orientation);
 
   // Overridden from View:
-  gfx::Size CalculatePreferredSize() const override;
+  gfx::Size CalculatePreferredSize(
+      const SizeBounds& /*available_size*/) const override;
   void OnPaint(gfx::Canvas* canvas) override;
 
  private:

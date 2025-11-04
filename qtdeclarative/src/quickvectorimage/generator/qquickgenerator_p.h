@@ -17,11 +17,13 @@
 
 #include <private/qquickvectorimageglobal_p.h>
 #include <QtCore/qstring.h>
+#include <QtCore/qloggingcategory.h>
 #include <QtCore/qrect.h>
 
 QT_BEGIN_NAMESPACE
 
-class QSvgVisitorImpl;
+QT_DECLARE_EXPORTED_QT_LOGGING_CATEGORY(lcQuickVectorImage, Q_QUICKVECTORIMAGEGENERATOR_EXPORT)
+
 class QPainterPath;
 class QGradient;
 class QQuickShapePath;
@@ -36,6 +38,7 @@ struct PathNodeInfo;
 struct TextNodeInfo;
 struct UseNodeInfo;
 struct StructureNodeInfo;
+struct AnimateColorNodeInfo;
 
 class Q_QUICKVECTORIMAGEGENERATOR_EXPORT QQuickGenerator
 {
@@ -48,7 +51,6 @@ public:
 
     bool generate();
 
-protected:
     virtual void generateNodeBase(const NodeInfo &info) = 0;
     virtual bool generateDefsNode(const NodeInfo &info) = 0;
     virtual void generateImageNode(const ImageNodeInfo &info) = 0;
@@ -63,13 +65,10 @@ protected:
     bool isNodeVisible(const NodeInfo &info);
 
 protected:
-    bool m_generationSucceeded = false;
     QQuickVectorImageGenerator::GeneratorFlags m_flags;
 
 private:
     QString m_fileName;
-    QSvgVisitorImpl *m_loader;
-    friend class QSvgVisitorImpl;
 };
 
 QT_END_NAMESPACE

@@ -21,6 +21,11 @@
  *
  */
 
+#ifdef UNSAFE_BUFFERS_BUILD
+// TODO(crbug.com/351564777): Remove this and convert code to safer constructs.
+#pragma allow_unsafe_buffers
+#endif
+
 #include "third_party/blink/renderer/platform/wtf/text/atomic_string.h"
 
 #include "base/numerics/safe_conversions.h"
@@ -82,9 +87,14 @@ AtomicString AtomicString::FromUTF8(const char* chars) {
   return AtomicString(AtomicStringTable::Instance().AddUTF8(chars, nullptr));
 }
 
+AtomicString AtomicString::FromUTF8(std::string_view string) {
+  return AtomicString::FromUTF8(string.data(), string.length());
+}
+
 AtomicString AtomicString::LowerASCII(AtomicString source) {
-  if (LIKELY(source.IsLowerASCII()))
+  if (source.IsLowerASCII()) [[likely]] {
     return source;
+  }
   StringImpl* impl = source.Impl();
   // if impl is null, then IsLowerASCII() should have returned true.
   DCHECK(impl);
@@ -98,8 +108,9 @@ AtomicString AtomicString::LowerASCII() const {
 
 AtomicString AtomicString::UpperASCII() const {
   StringImpl* impl = Impl();
-  if (UNLIKELY(!impl))
+  if (!impl) [[unlikely]] {
     return *this;
+  }
   return AtomicString(impl->UpperASCII());
 }
 

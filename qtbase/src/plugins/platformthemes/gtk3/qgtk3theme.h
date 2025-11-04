@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QGTK3THEME_H
 #define QGTK3THEME_H
@@ -19,6 +20,7 @@ public:
     virtual QString gtkFontName() const override;
 
     Qt::ColorScheme colorScheme() const override;
+    void requestColorScheme(Qt::ColorScheme scheme) override;
 
     bool usePlatformNativeDialog(DialogType type) const override;
     QPlatformDialogHelper *createPlatformDialogHelper(DialogType type) const override;
@@ -31,6 +33,7 @@ public:
 
     static const char *name;
 private:
+    Qt::ColorScheme m_requestedColorScheme = Qt::ColorScheme::Unknown;
     static bool useNativeFileDialog();
     std::unique_ptr<QGtk3Storage> m_storage;
 };

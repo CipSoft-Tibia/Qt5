@@ -6,6 +6,12 @@ project(qtshell LANGUAGES CXX)
 
 set(CMAKE_AUTOMOC ON)
 
+if(NOT DEFINED INSTALL_EXAMPLESDIR)
+    set(INSTALL_EXAMPLESDIR "examples")
+endif()
+
+set(INSTALL_EXAMPLEDIR "${INSTALL_EXAMPLESDIR}/wayland/qtshell")
+
 find_package(Qt6 REQUIRED COMPONENTS Core Gui Qml)
 
 qt_add_executable(qtshell
@@ -36,4 +42,10 @@ qt6_add_resources(qtshell "qtshell"
         "/"
     FILES
         ${qtshell_resource_files}
+)
+
+install(TARGETS qtshell
+    RUNTIME DESTINATION "${INSTALL_EXAMPLEDIR}"
+    BUNDLE DESTINATION "${INSTALL_EXAMPLEDIR}"
+    LIBRARY DESTINATION "${INSTALL_EXAMPLEDIR}"
 )

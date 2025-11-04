@@ -17,7 +17,7 @@ namespace wl {
 
 namespace {
 
-constexpr uint32_t kZAuraShellVersion = 60;
+constexpr uint32_t kZAuraShellVersion = 65;
 constexpr uint32_t kZAuraOutputVersion = 44;
 
 void GetAuraSurface(wl_client* client,
@@ -42,7 +42,7 @@ void GetAuraOutput(wl_client* client,
 
 void SurfaceSubmissionInPixelCoordinates(wl_client* client,
                                          wl_resource* resource) {
-  // TODO(crbug.com/1346347): Implement zaura-shell protocol requests and test
+  // TODO(crbug.com/40232463): Implement zaura-shell protocol requests and test
   // their usage.
   NOTIMPLEMENTED_LOG_ONCE();
 }

@@ -621,6 +621,11 @@ QBindable<QSerialPort::DataBits> QSerialPort::bindableDataBits()
     after that the opening of the port succeeds.
 
     The default value is NoParity, i.e. no parity.
+
+    \warning Some UNIX operating systems (i.e. \macOS) do not support
+    \l {https://www.man7.org/linux/man-pages/man3/termios.3.html#DESCRIPTION}
+    {the CMSPAR flag}. On such systems, setting \l {QSerialPort::Parity}
+    {Mark or Space} parity is not supported.
 */
 bool QSerialPort::setParity(Parity parity)
 {
@@ -1172,6 +1177,52 @@ bool QSerialPort::isBreakEnabled() const
 QBindable<bool> QSerialPort::bindableIsBreakEnabled()
 {
     return &d_func()->isBreakEnabled;
+}
+
+/*!
+    \fn void QSerialPort::settingsRestoredOnCloseChanged(bool restore)
+    \since 6.9
+
+    This signal is emitted after the settingsRestoredOnClose property is
+    changed. The \a restore parameter contains the new value of the property.
+
+    \sa QSerialPort::settingsRestoredOnClose
+*/
+
+/*!
+    \property QSerialPort::settingsRestoredOnClose
+    \since 6.9
+    \brief This property defines if the port parameters should be restored on
+    close or not
+
+    After the port is opened, the class caches its parameters before applying
+    the parameters that are defined by the user.
+
+    If the property is \c true, the serial port tries to restore the cached
+    parameters before closing the port; otherwise the caches parameters are
+    discarded.
+
+    The default value is \c true.
+
+    \note This property may have no effect on some operating systems.
+    For example, \macOS seems to always restore the default serial port settings
+    when the port is closed.
+*/
+bool QSerialPort::settingsRestoredOnClose() const
+{
+    Q_D(const QSerialPort);
+    return d->settingsRestoredOnClose;
+}
+
+void QSerialPort::setSettingsRestoredOnClose(bool restore)
+{
+    Q_D(QSerialPort);
+
+    if (d->settingsRestoredOnClose == restore)
+        return;
+
+    d->settingsRestoredOnClose = restore;
+    emit settingsRestoredOnCloseChanged(restore);
 }
 
 /*!

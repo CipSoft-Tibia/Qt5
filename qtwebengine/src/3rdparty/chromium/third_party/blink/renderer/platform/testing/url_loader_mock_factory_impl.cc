@@ -74,7 +74,7 @@ void URLLoaderMockFactoryImpl::RegisterErrorURL(const WebURL& url,
 
 void URLLoaderMockFactoryImpl::UnregisterURL(const blink::WebURL& url) {
   URLToResponseMap::iterator iter = url_to_response_info_.find(url);
-  DCHECK(iter != url_to_response_info_.end());
+  CHECK(iter != url_to_response_info_.end());
   url_to_response_info_.erase(iter);
 
   URLToErrorMap::iterator error_iter = url_to_error_info_.find(url);
@@ -105,7 +105,7 @@ void URLLoaderMockFactoryImpl::UnregisterURLProtocol(
     const WebString& protocol) {
   ProtocolToResponseMap::iterator iter =
       protocol_to_response_info_.find(protocol);
-  DCHECK(iter != protocol_to_response_info_.end());
+  CHECK(iter != protocol_to_response_info_.end());
   protocol_to_response_info_.erase(iter);
 }
 
@@ -128,7 +128,7 @@ void URLLoaderMockFactoryImpl::ServeAsynchronousRequests() {
     pending_loaders_.erase(loader.get());
 
     WebURLResponse response;
-    absl::optional<WebURLError> error;
+    std::optional<WebURLError> error;
     scoped_refptr<SharedBuffer> data;
     LoadRequest(WebURL(KURL(request->url)), &response, &error, data);
     // Follow any redirects while the loader is still active.
@@ -163,11 +163,9 @@ void URLLoaderMockFactoryImpl::FillNavigationParamsResponse(
     DCHECK(buffer);
     DCHECK_EQ(net::OK, result);
     params->response = WrappedResourceResponse(response);
-    auto body_loader = std::make_unique<StaticDataNavigationBodyLoader>();
-    body_loader->Write(*buffer);
-    body_loader->Finish();
     params->is_static_data = true;
-    params->body_loader = std::move(body_loader);
+    params->body_loader =
+        StaticDataNavigationBodyLoader::CreateWithData(std::move(buffer));
     return;
   }
 
@@ -175,7 +173,7 @@ void URLLoaderMockFactoryImpl::FillNavigationParamsResponse(
     return;
   }
 
-  absl::optional<WebURLError> error;
+  std::optional<WebURLError> error;
   scoped_refptr<SharedBuffer> data;
 
   size_t redirects = 0;
@@ -194,17 +192,13 @@ void URLLoaderMockFactoryImpl::FillNavigationParamsResponse(
     DCHECK(!error);
   }
 
-  auto body_loader = std::make_unique<StaticDataNavigationBodyLoader>();
-  if (data) {
-    body_loader->Write(*data);
-    body_loader->Finish();
-  }
   params->is_static_data = true;
-  params->body_loader = std::move(body_loader);
+  params->body_loader =
+      StaticDataNavigationBodyLoader::CreateWithData(std::move(data));
 }
 
 bool URLLoaderMockFactoryImpl::IsMockedURL(const blink::WebURL& url) {
-  absl::optional<WebURLError> error;
+  std::optional<WebURLError> error;
   ResponseInfo response_info;
   return LookupURL(url, &error, &response_info);
 }
@@ -216,7 +210,7 @@ void URLLoaderMockFactoryImpl::CancelLoad(URLLoaderMock* loader) {
 void URLLoaderMockFactoryImpl::LoadSynchronously(
     std::unique_ptr<network::ResourceRequest> request,
     WebURLResponse* response,
-    absl::optional<WebURLError>* error,
+    std::optional<WebURLError>* error,
     scoped_refptr<SharedBuffer>& data,
     int64_t* encoded_data_length) {
   LoadRequest(WebURL(KURL(request->url)), response, error, data);
@@ -240,17 +234,17 @@ void URLLoaderMockFactoryImpl::RunUntilIdle() {
 
 void URLLoaderMockFactoryImpl::LoadRequest(const WebURL& url,
                                            WebURLResponse* response,
-                                           absl::optional<WebURLError>* error,
+                                           std::optional<WebURLError>* error,
                                            scoped_refptr<SharedBuffer>& data) {
   ResponseInfo response_info;
   if (!LookupURL(url, error, &response_info)) {
     // Non mocked URLs should not have been passed to the default URLLoader.
-    NOTREACHED() << url;
+    NOTREACHED_IN_MIGRATION() << url;
     return;
   }
 
   if (!*error && !ReadFile(response_info.file_path, data)) {
-    NOTREACHED();
+    NOTREACHED_IN_MIGRATION();
     return;
   }
 
@@ -258,7 +252,7 @@ void URLLoaderMockFactoryImpl::LoadRequest(const WebURL& url,
 }
 
 bool URLLoaderMockFactoryImpl::LookupURL(const WebURL& url,
-                                         absl::optional<WebURLError>* error,
+                                         std::optional<WebURLError>* error,
                                          ResponseInfo* response_info) {
   URLToErrorMap::const_iterator error_iter = url_to_error_info_.find(url);
   if (error_iter != url_to_error_info_.end()) {

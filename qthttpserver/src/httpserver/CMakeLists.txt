@@ -11,9 +11,11 @@ qt_internal_add_module(HttpServer
     SOURCES
         qabstracthttpserver.cpp qabstracthttpserver.h qabstracthttpserver_p.h
         qhttpserver.cpp qhttpserver.h qhttpserver_p.h
+        qhttpserverconfiguration.cpp qhttpserverconfiguration.h
         qhttpserverhttp1protocolhandler.cpp qhttpserverhttp1protocolhandler_p.h
         qhttpserverliterals.cpp qhttpserverliterals_p.h
         qhttpserverrequest.cpp qhttpserverrequest.h qhttpserverrequest_p.h
+        qhttpserverrequestfilter.cpp qhttpserverrequestfilter_p.h
         qhttpserverresponder.cpp qhttpserverresponder.h qhttpserverresponder_p.h
         qhttpserverresponse.cpp qhttpserverresponse.h qhttpserverresponse_p.h
         qhttpserverrouter.cpp qhttpserverrouter.h qhttpserverrouter_p.h

@@ -77,7 +77,7 @@ class GPU_GLES2_EXPORT CopySharedImageHelper {
       GLboolean unpack_flip_y,
       const volatile GLbyte* mailboxes);
   // Only used by passthrough decoder.
-  // TODO(crbug.com/1444777): Handle this use-case for graphite.
+  // TODO(crbug.com/40064510): Handle this use-case for graphite.
   base::expected<void, GLError> CopySharedImageToGLTexture(
       GLuint texture_service_id,
       GLenum target,
@@ -120,6 +120,7 @@ class GPU_GLES2_EXPORT CopySharedImageHelper {
       GLenum subsampling,
       const volatile GLbyte* bytes_in,
       SkSurface* dest_surface,
+      bool dest_need_graphite_submit,
       std::vector<GrBackendSemaphore>& begin_semaphores,
       std::vector<GrBackendSemaphore>& end_semaphores,
       sk_sp<SkColorSpace> src_rgb_color_space,
@@ -127,7 +128,6 @@ class GPU_GLES2_EXPORT CopySharedImageHelper {
 
   raw_ptr<SharedImageRepresentationFactory> representation_factory_ = nullptr;
   raw_ptr<SharedContextState> shared_context_state_ = nullptr;
-  bool is_drdc_enabled_ = false;
 };
 
 }  // namespace gpu

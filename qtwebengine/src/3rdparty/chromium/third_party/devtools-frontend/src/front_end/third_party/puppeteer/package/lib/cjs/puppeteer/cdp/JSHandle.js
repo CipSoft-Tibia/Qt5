@@ -8,6 +8,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.releaseObject = exports.CdpJSHandle = void 0;
 const JSHandle_js_1 = require("../api/JSHandle.js");
 const util_js_1 = require("../common/util.js");
+const utils_js_1 = require("./utils.js");
 /**
  * @internal
  */
@@ -31,7 +32,7 @@ class CdpJSHandle extends JSHandle_js_1.JSHandle {
     }
     async jsonValue() {
         if (!this.#remoteObject.objectId) {
-            return (0, util_js_1.valueFromRemoteObject)(this.#remoteObject);
+            return (0, utils_js_1.valueFromRemoteObject)(this.#remoteObject);
         }
         const value = await this.evaluate(object => {
             return object;
@@ -57,7 +58,7 @@ class CdpJSHandle extends JSHandle_js_1.JSHandle {
     }
     toString() {
         if (!this.#remoteObject.objectId) {
-            return 'JSHandle:' + (0, util_js_1.valueFromRemoteObject)(this.#remoteObject);
+            return 'JSHandle:' + (0, utils_js_1.valueFromRemoteObject)(this.#remoteObject);
         }
         const type = this.#remoteObject.subtype || this.#remoteObject.type;
         return 'JSHandle@' + type;
@@ -67,6 +68,22 @@ class CdpJSHandle extends JSHandle_js_1.JSHandle {
     }
     remoteObject() {
         return this.#remoteObject;
+    }
+    async getProperties() {
+        // We use Runtime.getProperties rather than iterative version for
+        // improved performance as it allows getting everything at once.
+        const response = await this.client.send('Runtime.getProperties', {
+            objectId: this.#remoteObject.objectId,
+            ownProperties: true,
+        });
+        const result = new Map();
+        for (const property of response.result) {
+            if (!property.enumerable || !property.value) {
+                continue;
+            }
+            result.set(property.name, this.#world.createCdpHandle(property.value));
+        }
+        return result;
     }
 }
 exports.CdpJSHandle = CdpJSHandle;

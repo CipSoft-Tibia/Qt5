@@ -8,6 +8,7 @@
 #include <functional>
 #include <memory>
 #include <numeric>
+#include <optional>
 #include <utility>
 
 #include "base/check_op.h"
@@ -16,7 +17,6 @@
 #include "base/notreached.h"
 #include "base/numerics/safe_conversions.h"
 #include "base/ranges/algorithm.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "ui/gfx/geometry/insets.h"
 #include "ui/views/layout/layout_types.h"
 #include "ui/views/view.h"
@@ -145,7 +145,7 @@ void CalculateLocationAndSize(int pref_size,
         *location = *location + available_size - *size;
         break;
       default:
-        NOTREACHED_NORETURN();
+        NOTREACHED();
     }
   }
 }
@@ -189,7 +189,7 @@ class TableLayout::Column : public LayoutElement {
 
   // Determines the max size of all linked columns, and sets each column to that
   // size.
-  void UnifyLinkedColumnSizes(const absl::optional<int>& size_limit) {
+  void UnifyLinkedColumnSizes(const std::optional<int>& size_limit) {
     if (linked_columns_.empty() || linked_columns_.front() != this)
       return;
 
@@ -285,7 +285,7 @@ struct TableLayout::ViewState {
     DCHECK_GT(row_span, 0u);
   }
 
-  raw_ptr<View> view = nullptr;
+  raw_ptr<View, DanglingUntriaged> view = nullptr;
   size_t start_col = 0;
   size_t start_row = 0;
   size_t col_span = 0;
@@ -309,7 +309,7 @@ struct TableLayout::ViewState {
 
   // The baseline. Only used if the view is vertically aligned along the
   // baseline.
-  absl::optional<int> baseline;
+  std::optional<int> baseline;
 };
 
 TableLayout::TableLayout() = default;
@@ -382,8 +382,9 @@ ProposedLayout TableLayout::CalculateProposedLayout(
   layout.host_size.SetToMax(minimum_size_);
 
   for (View* child : GetChildViewsInPaintOrder(host_view())) {
-    if (!IsChildViewIgnoredByLayout(child))
+    if (!child->GetProperty(kViewIgnoredByLayoutKey)) {
       layout.child_layouts.push_back({child, true, {}, {}});
+    }
   }
 
   // Size each view.
@@ -580,20 +581,37 @@ gfx::Size TableLayout::SizeRowsAndColumns(const SizeBounds& bounds) const {
 }
 
 void TableLayout::DistributeRemainingHeight(ViewState& view_state) const {
+  // Given the set S of rows in (view_state.start_row, view_state.row_span):
+  //   If any member of S is resizable,
+  //     space is distributed between the resizable members of S
+  //   Otherwise, space is distributed between all members of S
   if (view_state.remaining_height <= 0) {
     return;
   }
 
   // Determine the number of resizable rows the view touches.
-  const base::span<Row> rows_to_resize = base::make_span(
-      rows_.begin() + static_cast<ptrdiff_t>(view_state.start_row),
-      view_state.row_span);
+  const base::span<Row> rows_to_resize =
+      base::span(rows_).subspan(view_state.start_row, view_state.row_span);
   const auto resizable_rows = static_cast<size_t>(
       base::ranges::count_if(rows_to_resize, &Row::resizable));
   size_t remaining_rows =
       resizable_rows ? resizable_rows : rows_to_resize.size();
   for (Row& row : rows_to_resize) {
     if (!resizable_rows || row.resizable()) {
+      // We have to recompute the delta each pass through the loop, rather than
+      // computing it up front. Although this math appears equivalent to giving
+      // each view an equal share of the initial remaining height, if we did do
+      // that, we'd end up with a rounding error. Recomputing the delta like
+      // this avoids accumulating that rounding error. For example, if we have
+      // n=4 rows and h=22 height to distribute:
+      //   delta = ClampRound(22 / 4) = 6 -> h = 16, d = 3
+      //   delta = ClampRound(16 / 3) = 5 -> h = 11, d = 2
+      //   delta = ClampRound(11 / 2) = 6 -> h = 5, d = 1
+      //   delta = ClampRound(5 / 1) = 5 -> h = 0, d = 0
+      // which is an optimal distribution; if we instead computed the delta
+      // upfront as ClampRound(22 / 4) = 5, we'd end up with d = 2 at the end,
+      // and have to either leave a rounding error or stick that leftover into
+      // the last row.
       const int delta = base::ClampRound(
           static_cast<float>(view_state.remaining_height) / remaining_rows);
       row.set_size(row.size() + delta);

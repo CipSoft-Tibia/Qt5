@@ -23,7 +23,11 @@ ListView {
         required property string title
         required property int index
 
-        ListView.onRemove: SequentialAnimation {
+        ListView.onRemove: removeAnimation.start()
+
+        SequentialAnimation {
+            id: removeAnimation
+
             PropertyAction {
                 target: swipeDelegate
                 property: "ListView.delayRemove"

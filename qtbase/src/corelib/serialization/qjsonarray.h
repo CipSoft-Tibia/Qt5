@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:data-parser
 
 #ifndef QJSONARRAY_H
 #define QJSONARRAY_H
@@ -325,7 +326,7 @@ inline QJsonValueConstRef::QJsonValueConstRef(QJsonArray *a, qsizetype idx)
 
 Q_CORE_EXPORT size_t qHash(const QJsonArray &array, size_t seed = 0);
 
-#if !defined(QT_NO_DEBUG_STREAM) && !defined(QT_JSON_READONLY)
+#if !defined(QT_NO_DEBUG_STREAM)
 Q_CORE_EXPORT QDebug operator<<(QDebug, const QJsonArray &);
 #endif
 

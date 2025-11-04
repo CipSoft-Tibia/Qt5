@@ -138,6 +138,7 @@ private slots:
 
     void exists_data();
     void exists();
+    void deletedFileLinuxProcExists();
 
     void absolutePath_data();
     void absolutePath();
@@ -207,9 +208,8 @@ private slots:
 
     void isHidden_data();
     void isHidden();
-#if defined(Q_OS_DARWIN)
+    void isHiddenFromFinder_data();
     void isHiddenFromFinder();
-#endif
 
     void isBundle_data();
     void isBundle();
@@ -501,6 +501,34 @@ void tst_QFileInfo::exists()
         QVERIFY2(exists, msgDoesNotExist(path).constData());
     else
         QVERIFY(!exists);
+}
+
+void tst_QFileInfo::deletedFileLinuxProcExists()
+{
+#ifdef Q_OS_LINUX
+    static const char msg[] = "Hello, World\n";
+    QFileInfo fi("/proc/self/fd/");
+    if (!fi.isDir())
+        QSKIP("/proc appears not to be mounted");
+
+    QFile f("removed_file.txt");
+    QVERIFY(f.open(QIODevice::ReadWrite | QIODevice::Unbuffered));
+    f.write(msg, strlen(msg));
+
+    fi.setFile(fi.filePath() + QString::number(f.handle()));
+    QVERIFY(fi.exists());
+    QCOMPARE(fi.size(), strlen(msg));
+
+    QFile::remove("removed_file.txt");
+    fi.refresh();
+    QVERIFY(fi.exists());
+
+    fi.refresh();
+    QCOMPARE(fi.size(), strlen(msg));   // this stats, so may change flags
+    QVERIFY(fi.exists());
+#else
+    QSKIP("Linux-only test");
+#endif
 }
 
 void tst_QFileInfo::absolutePath_data()
@@ -1311,7 +1339,7 @@ void tst_QFileInfo::isSymLink_data()
 void tst_QFileInfo::isSymLink()
 {
 #ifdef Q_NO_SYMLINKS
-    QSKIP("No symlink support", SkipAll);
+    QSKIP("No symlink support");
 #else
     QFETCH(QString, path);
     QFETCH(bool, isSymLink);
@@ -1551,14 +1579,26 @@ void tst_QFileInfo::isHidden_data()
 #if defined(Q_OS_WIN)
     QVERIFY(QDir("./hidden-directory").exists() || QDir().mkdir("./hidden-directory"));
     QVERIFY(SetFileAttributesW(reinterpret_cast<LPCWSTR>(QString("./hidden-directory").utf16()),FILE_ATTRIBUTE_HIDDEN));
+    QTest::newRow("hidden-directory") << QString::fromLatin1("hidden-directory") << true;
     QTest::newRow("C:/path/to/hidden-directory") << QDir::currentPath() + QString::fromLatin1("/hidden-directory") << true;
     QTest::newRow("C:/path/to/hidden-directory/.") << QDir::currentPath() + QString::fromLatin1("/hidden-directory/.") << true;
 #endif
 #if defined(Q_OS_UNIX)
     QVERIFY(QDir("./.hidden-directory").exists() || QDir().mkdir("./.hidden-directory"));
+    QTest::newRow(".hidden-directory") << QString(".hidden-directory") << true;
+    QTest::newRow(".hidden-directory/") << QString(".hidden-directory/") << true;
+    QTest::newRow(".hidden-directory//") << QString(".hidden-directory//") << true;
+    QTest::newRow(".hidden-directory/.") << QString(".hidden-directory/.") << true;
+    QTest::newRow(".hidden-directory//.") << QString(".hidden-directory//.") << true;
+    QTest::newRow(".hidden-directory/..") << QString(".hidden-directory/..") << true;
+    QTest::newRow(".hidden-directory//..") << QString(".hidden-directory//..") << true;
     QTest::newRow("/path/to/.hidden-directory") << QDir::currentPath() + QString("/.hidden-directory") << true;
+    QTest::newRow("/path/to/.hidden-directory/") << QDir::currentPath() + QString("/.hidden-directory/") << true;
+    QTest::newRow("/path/to/.hidden-directory//") << QDir::currentPath() + QString("/.hidden-directory//") << true;
     QTest::newRow("/path/to/.hidden-directory/.") << QDir::currentPath() + QString("/.hidden-directory/.") << true;
+    QTest::newRow("/path/to/.hidden-directory//.") << QDir::currentPath() + QString("/.hidden-directory//.") << true;
     QTest::newRow("/path/to/.hidden-directory/..") << QDir::currentPath() + QString("/.hidden-directory/..") << true;
+    QTest::newRow("/path/to/.hidden-directory//..") << QDir::currentPath() + QString("/.hidden-directory//..") << true;
 #endif
 
 #if defined(Q_OS_DARWIN)
@@ -1584,26 +1624,57 @@ void tst_QFileInfo::isHidden()
     QCOMPARE(fi.isHidden(), isHidden);
 }
 
-#if defined(Q_OS_DARWIN)
+void tst_QFileInfo::isHiddenFromFinder_data()
+{
+#ifndef UF_HIDDEN
+    QSKIP("Only supported on OSes with UF_HIDDEN flag");
+#endif
+    QTest::addColumn<bool>("isSymlink");
+    QTest::addColumn<bool>("isHidden");
+    QTest::newRow("regular-visible") << false << false;
+    QTest::newRow("symlink-visible") << true << false;
+    QTest::newRow("regular-hidden") << false << true;
+    QTest::newRow("symlink-hidden") << true << true;
+}
+
 void tst_QFileInfo::isHiddenFromFinder()
 {
+    auto setHiddenFromFinder = [](const char *filename) {
+#ifdef UF_HIDDEN
+        QT_STATBUF buf;
+        QT_STAT(filename, &buf);
+        lchflags(filename, buf.st_flags | UF_HIDDEN);
+#else
+        Q_UNUSED(filename);
+#endif
+    };
+
+    QFETCH(bool, isSymlink);
+    QFETCH(bool, isHidden);
     const char *filename = "test_foobar.txt";
+    const char *symlinkname = "test_foobar.lnk";
 
     QFile testFile(filename);
-    QVERIFY(testFile.open(QIODevice::WriteOnly | QIODevice::Append));
+    QVERIFY(testFile.open(QIODevice::WriteOnly | QIODevice::Truncate));
     testFile.write(QByteArray("world"));
     testFile.close();
 
-    struct stat buf;
-    stat(filename, &buf);
-    chflags(filename, buf.st_flags | UF_HIDDEN);
+    if (isSymlink) {
+        testFile.link(symlinkname);
+        if (!isHidden)
+            setHiddenFromFinder(filename);  // symlink points to hidden file!
+        filename = symlinkname;     // we're checking the symlink
+    }
+
+    if (isHidden)
+        setHiddenFromFinder(filename);
 
     QFileInfo fi(filename);
-    QCOMPARE(fi.isHidden(), true);
+    QCOMPARE(fi.isHidden(), isHidden);
 
     testFile.remove();
+    QFile::remove(symlinkname);
 }
-#endif
 
 void tst_QFileInfo::isBundle_data()
 {
@@ -1890,7 +1961,7 @@ void tst_QFileInfo::brokenShortcut()
     QString linkName("borkenlink.lnk");
     QFile::remove(linkName);
     QFile file(linkName);
-    file.open(QFile::WriteOnly);
+    QVERIFY(file.open(QFile::WriteOnly));
     file.write("b0rk");
     file.close();
 

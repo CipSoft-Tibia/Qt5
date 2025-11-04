@@ -44,6 +44,8 @@ public:
 
     [[nodiscard]] bool isFinished() const noexcept;
 
+    [[nodiscard]] QMetaType responseMetaType() const;
+
 Q_SIGNALS:
     void finished(const QGrpcStatus &status);
 

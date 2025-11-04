@@ -36,47 +36,23 @@
 
 namespace dawn::native::d3d {
 
-struct ExternalImageDescriptorDXGISharedHandle;
-struct ExternalImageDXGIFenceDescriptor;
-class ExternalImageDXGIImpl;
-class Fence;
 class PlatformFunctions;
 
 class Device : public DeviceBase {
   public:
     Device(AdapterBase* adapter,
            const UnpackedPtr<DeviceDescriptor>& descriptor,
-           const TogglesState& deviceToggles);
+           const TogglesState& deviceToggles,
+           Ref<DeviceBase::DeviceLostEvent>&& lostEvent);
     ~Device() override;
-
-    ResultOrError<wgpu::TextureUsage> GetSupportedSurfaceUsageImpl(
-        const Surface* surface) const override;
 
     const PlatformFunctions* GetFunctions() const;
     ComPtr<IDXGIFactory4> GetFactory() const;
 
-    std::unique_ptr<ExternalImageDXGIImpl> CreateExternalImageDXGIImpl(
-        const ExternalImageDescriptor* descriptor);
-
-    virtual ResultOrError<FenceAndSignalValue> CreateFence(
-        const ExternalImageDXGIFenceDescriptor* descriptor) = 0;
-
-    virtual Ref<TextureBase> CreateD3DExternalTexture(
-        const UnpackedPtr<TextureDescriptor>& descriptor,
-        ComPtr<IUnknown> d3dTexture,
-        std::vector<FenceAndSignalValue> waitFences,
-        bool isSwapChainTexture,
-        bool isInitialized) = 0;
+    virtual void DisposeKeyedMutex(ComPtr<IDXGIKeyedMutex> dxgiKeyedMutex) = 0;
 
   protected:
     void DestroyImpl() override;
-
-    virtual ResultOrError<std::unique_ptr<ExternalImageDXGIImpl>> CreateExternalImageDXGIImplImpl(
-        const ExternalImageDescriptor* descriptor) = 0;
-
-  private:
-    // List of external image resources opened using this device.
-    LinkedList<d3d::ExternalImageDXGIImpl> mExternalImageList;
 };
 
 }  // namespace dawn::native::d3d

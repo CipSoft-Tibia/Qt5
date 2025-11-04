@@ -1,6 +1,7 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // Copyright (C) 2016 Intel Corporation.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QTHREAD_P_H
 #define QTHREAD_P_H
@@ -17,18 +18,19 @@
 //
 //
 
-#include "qplatformdefs.h"
 #include "QtCore/qthread.h"
-#include "QtCore/qmutex.h"
-#include "QtCore/qstack.h"
-#if QT_CONFIG(thread)
-#include "QtCore/qwaitcondition.h"
-#endif
-#include "QtCore/qmap.h"
+
 #include "QtCore/qcoreapplication.h"
 #include "private/qobject_p.h"
+#include "QtCore/qmap.h"
+#include "QtCore/qmutex.h"
+#include "QtCore/qstack.h"
 
-#include <algorithm>
+#if QT_CONFIG(thread)
+#include "private/qthreadstorage_p.h"
+#include "QtCore/qwaitcondition.h"
+#endif
+
 #include <atomic>
 
 QT_BEGIN_NAMESPACE
@@ -184,25 +186,40 @@ public:
     mutable QMutex mutex;
     QAtomicInt quitLockRef;
 
-    bool running;
-    bool finished;
-    bool isInFinish; //when in QThreadPrivate::finish
+    enum State : quint8 {
+        // All state changes are imprecise
+        NotStarted = 0,     // before start() or if failed to start
+        Running = 1,        // in run()
+        Finishing = 2,      // in QThreadPrivate::finish()
+        Finished = 3,       // QThreadPrivate::finish() or cleanup() is done
+                            //    or, if using pthread_join, joining is done
+    };
+
+    State threadState = NotStarted;
+    bool exited = false;
     std::atomic<bool> interruptionRequested = false;
 #ifdef Q_OS_UNIX
     bool terminated = false; // when (the first) terminate has been called
 #endif
 
-    bool exited;
-    int returnCode;
+    int waiters = 0;
+    int returnCode = -1;
 
-    uint stackSize;
-    std::underlying_type_t<QThread::Priority> priority;
+    uint stackSize = 0;
+    std::underlying_type_t<QThread::Priority> priority = QThread::InheritPriority;
 
     bool wait(QMutexLocker<QMutex> &locker, QDeadlineTimer deadline);
+
+    QThread::QualityOfService serviceLevel = QThread::QualityOfService::Auto;
+    void setQualityOfServiceLevel(QThread::QualityOfService qosLevel);
+#ifdef Q_OS_DARWIN
+    qos_class_t nativeQualityOfServiceClass() const;
+#endif
 
 #ifdef Q_OS_UNIX
     QWaitCondition thread_done;
 
+    void wakeAll();
     static void *start(void *arg);
     void finish();          // happens early (before thread-local dtors)
     void cleanup();         // happens late (as a thread-local dtor, if possible)
@@ -213,8 +230,6 @@ public:
     void finish(bool lockAnyway = true) noexcept;
 
     Qt::HANDLE handle;
-    unsigned int id;
-    int waiters;
     bool terminationEnabled, terminatePending;
 #endif // Q_OS_WIN
 #ifdef Q_OS_WASM
@@ -231,7 +246,7 @@ public:
 
     void deref()
     {
-        if (!quitLockRef.deref() && running) {
+        if (!quitLockRef.deref() && threadState == Running) {
             QCoreApplication::instance()->postEvent(q_ptr, new QEvent(QEvent::Quit));
         }
     }
@@ -288,10 +303,19 @@ public:
 class QThreadData
 {
 public:
-    QThreadData(int initialRefCount = 1);
+    QThreadData(int initialRefCount = 1)
+        : _ref(initialRefCount)
+    {
+        // fprintf(stderr, "QThreadData %p created\n", this);
+    }
     ~QThreadData();
 
-    static Q_AUTOTEST_EXPORT QThreadData *current(bool createIfNecessary = true);
+    static QThreadData *current()
+    {
+        if (QThreadData *data = currentThreadData()) Q_LIKELY_BRANCH
+            return data;
+        return createCurrentThreadData();
+    }
     static void clearCurrentThreadData();
     static QThreadData *get2(QThread *thread)
     { Q_ASSERT_X(thread != nullptr, "QThread", "internal error"); return thread->d_func()->data; }
@@ -328,13 +352,6 @@ public:
         return canWait;
     }
 
-private:
-    QAtomicInt _ref;
-
-public:
-    int loopLevel;
-    int scopeLevel;
-
     QStack<QEventLoop *> eventLoops;
     QPostEventList postEventList;
     QAtomicPointer<QThread> thread;
@@ -342,10 +359,23 @@ public:
     QAtomicPointer<QAbstractEventDispatcher> eventDispatcher;
     QList<void *> tls;
 
-    bool quitNow;
-    bool canWait;
-    bool isAdopted;
-    bool requiresCoreApplication;
+private:
+    QAtomicInt _ref;
+
+public:
+    int loopLevel = 0;
+    int scopeLevel = 0;
+
+    bool quitNow = false;
+    bool canWait = true;
+    bool isAdopted = false;
+    bool requiresCoreApplication = true;
+
+private:
+    friend class QAbstractEventDispatcher;
+    friend class QBasicTimer;
+    static Q_AUTOTEST_EXPORT QThreadData *currentThreadData() noexcept Q_DECL_PURE_FUNCTION;
+    static Q_AUTOTEST_EXPORT QThreadData *createCurrentThreadData();
 };
 
 class QScopedScopeLevelCounter
@@ -365,7 +395,7 @@ class QAdoptedThread : public QThread
     Q_DECLARE_PRIVATE(QThread)
 
 public:
-    QAdoptedThread(QThreadData *data = nullptr);
+    QAdoptedThread(QThreadData *data);
     ~QAdoptedThread();
     void init();
 

@@ -43,6 +43,7 @@
 #include "src/tint/lang/wgsl/inspector/resource_binding.h"
 #include "src/tint/lang/wgsl/inspector/scalar.h"
 #include "src/tint/lang/wgsl/program/program.h"
+#include "src/tint/lang/wgsl/sem/call.h"
 #include "src/tint/lang/wgsl/sem/sampler_texture_pair.h"
 #include "src/tint/utils/containers/unique_vector.h"
 
@@ -62,9 +63,9 @@ class Inspector {
     ~Inspector();
 
     /// @returns error messages from the Inspector
-    std::string error() { return diagnostics_.str(); }
+    std::string error() { return diagnostics_.Str(); }
     /// @returns true if an error was encountered
-    bool has_error() const { return diagnostics_.contains_errors(); }
+    bool has_error() const { return diagnostics_.ContainsErrors(); }
 
     /// @returns vector of entry point information
     std::vector<EntryPoint> GetEntryPoints();
@@ -131,6 +132,13 @@ class Inspector {
     /// @returns vector of all of the bindings for external textures.
     std::vector<ResourceBinding> GetExternalTextureResourceBindings(const std::string& entry_point);
 
+    /// Gathers all the resource bindings of the input attachment type for the given
+    /// entry point.
+    /// @param entry_point name of the entry point to get information about.
+    /// texture type.
+    /// @returns vector of all of the bindings for input attachments.
+    std::vector<ResourceBinding> GetInputAttachmentResourceBindings(const std::string& entry_point);
+
     /// @param entry_point name of the entry point to get information about.
     /// @returns vector of all of the sampler/texture sampling pairs that are used
     /// by that entry point.
@@ -156,6 +164,31 @@ class Inspector {
     /// extension.
     std::vector<std::pair<std::string, Source>> GetEnableDirectives();
 
+    /// The information needed to be supplied.
+    enum class TextureQueryType : uint8_t {
+        /// Texture Num Levels
+        kTextureNumLevels,
+        /// Texture Num Samples
+        kTextureNumSamples,
+    };
+    /// Information on level and sample calls by a given texture binding point
+    struct LevelSampleInfo {
+        /// The type of function
+        TextureQueryType type = TextureQueryType::kTextureNumLevels;
+        /// The group number
+        uint32_t group = 0;
+        /// The binding number
+        uint32_t binding = 0;
+    };
+
+    /// @param ep the entry point to get the information for
+    /// @returns a vector of information for textures which call textureNumLevels and
+    /// textureNumSamples for backends which require additional support for those methods. Each
+    /// binding point will only be returned once regardless of the number of calls made. The
+    /// texture types for `textureNumSamples` is disjoint from the texture types in
+    /// `textureNumLevels` so the binding point will always be one or the other.
+    std::vector<LevelSampleInfo> GetTextureQueries(const std::string& ep);
+
   private:
     const Program& program_;
     diag::List diagnostics_;
@@ -176,6 +209,7 @@ class Inspector {
     /// @param attributes the variable attributes
     /// @param location the location attribute value if provided
     /// @param color the color attribute value if provided
+    /// @param blend_src the blend_src attribute value if provided
     /// @param variables the list to add the variables to
     void AddEntryPointInOutVariables(std::string name,
                                      std::string variable_name,
@@ -183,6 +217,7 @@ class Inspector {
                                      VectorRef<const ast::Attribute*> attributes,
                                      std::optional<uint32_t> location,
                                      std::optional<uint32_t> color,
+                                     std::optional<uint32_t> blend_src,
                                      std::vector<StageVariable>& variables) const;
 
     /// Recursively determine if the type contains builtin.
@@ -191,7 +226,10 @@ class Inspector {
     bool ContainsBuiltin(core::BuiltinValue builtin,
                          const core::type::Type* type,
                          VectorRef<const ast::Attribute*> attributes) const;
-
+    /// Get the array length of the builtin clip_distances when it is used.
+    /// @param type the type of the variable
+    /// @returns the array length of the builtin clip_distances or empty when it is not used
+    std::optional<uint32_t> GetClipDistancesBuiltinSize(const core::type::Type* type) const;
     /// Gathers all the texture resource bindings of the given type for the given
     /// entry point.
     /// @param entry_point name of the entry point to get information about.
@@ -228,16 +266,18 @@ class Inspector {
     /// Constructs |sampler_targets_| if it hasn't already been instantiated.
     void GenerateSamplerTargets();
 
-    /// @param type the type of the parameter or structure member
     /// @param attributes attributes associated with the parameter or structure member
     /// @returns the interpolation type and sampling modes for the value
     std::tuple<InterpolationType, InterpolationSampling> CalculateInterpolationData(
-        const core::type::Type* type,
         VectorRef<const ast::Attribute*> attributes) const;
 
     /// @param func the root function of the callgraph to consider for the computation.
     /// @returns the total size in bytes of all Workgroup storage-class storage accessed via func.
     uint32_t ComputeWorkgroupStorageSize(const ast::Function* func) const;
+
+    /// @param func the root function of the callgraph to consider for the computation.
+    /// @returns the total size in bytes of all push_constant variables accessed via func.
+    uint32_t ComputePushConstantSize(const ast::Function* func) const;
 
     /// @param func the root function of the callgraph to consider for the computation
     /// @returns the list of member types for the `pixel_local` variable accessed via func, if any.
@@ -260,6 +300,30 @@ class Inspector {
     /// @param func the function of the entry point. Must be non-nullptr and true for IsEntryPoint()
     /// @returns the entry point information
     EntryPoint GetEntryPoint(const tint::ast::Function* func);
+
+    /// The information needed to be supplied.
+    enum class TextureUsageType : uint8_t {
+        /// textureLoad
+        kTextureLoad,
+        /// textureNumLevels
+        kTextureNumLevels,
+        /// textureNumSamples
+        kTextureNumSamples,
+    };
+    /// Information on level and sample calls by a given texture binding point
+    struct TextureUsageInfo {
+        /// The type of function
+        TextureUsageType type = TextureUsageType::kTextureNumLevels;
+        /// The group number
+        uint32_t group = 0;
+        /// The binding number
+        uint32_t binding = 0;
+    };
+
+    std::vector<Inspector::TextureUsageInfo> GetTextureUsagesForEntryPoint(
+        const tint::ast::Function& ep,
+        std::function<std::optional<TextureUsageType>(const tint::sem::Call* call,
+                                                      tint::wgsl::BuiltinFn builtin_fn)> filter);
 };
 
 }  // namespace tint::inspector

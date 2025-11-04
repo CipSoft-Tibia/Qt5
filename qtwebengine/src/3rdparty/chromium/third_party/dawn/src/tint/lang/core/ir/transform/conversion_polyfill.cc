@@ -28,7 +28,6 @@
 #include "src/tint/lang/core/ir/transform/conversion_polyfill.h"
 
 #include <cmath>
-#include <utility>
 
 #include "src/tint/lang/core/ir/builder.h"
 #include "src/tint/lang/core/ir/module.h"
@@ -68,16 +67,13 @@ struct State {
     void Process() {
         // Find the conversion instructions that need to be polyfilled.
         Vector<ir::Convert*, 64> ftoi_worklist;
-        for (auto* inst : ir.instructions.Objects()) {
-            if (!inst->Alive()) {
-                continue;
-            }
+        for (auto* inst : ir.Instructions()) {
             if (auto* convert = inst->As<ir::Convert>()) {
                 auto* src_ty = convert->Args()[0]->Type();
                 auto* res_ty = convert->Result(0)->Type();
-                if (config.ftoi &&                          //
-                    src_ty->is_float_scalar_or_vector() &&  //
-                    res_ty->is_integer_scalar_or_vector()) {
+                if (config.ftoi &&                      //
+                    src_ty->IsFloatScalarOrVector() &&  //
+                    res_ty->IsIntegerScalarOrVector()) {
                     ftoi_worklist.Push(convert);
                 }
             }
@@ -85,13 +81,7 @@ struct State {
 
         // Polyfill the conversion instructions that we found.
         for (auto* convert : ftoi_worklist) {
-            auto* replacement = ftoi(convert);
-
-            // Replace the old conversion instruction result with the new value.
-            if (auto name = ir.NameOf(convert->Result(0))) {
-                ir.SetName(replacement, name);
-            }
-            convert->Result(0)->ReplaceAllUsesWith(replacement);
+            ftoi(convert);
             convert->Destroy();
         }
     }
@@ -99,25 +89,24 @@ struct State {
     /// Replace a conversion instruction with a call to helper function that manually clamps the
     /// result to within the limit of the destination type.
     /// @param convert the conversion instruction
-    /// @returns the replacement value
-    ir::Value* ftoi(ir::Convert* convert) {
+    void ftoi(ir::Convert* convert) {
         auto* res_ty = convert->Result(0)->Type();
         auto* src_ty = convert->Args()[0]->Type();
         auto* src_el_ty = src_ty->DeepestElement();
 
         auto& helpers = src_el_ty->Is<type::F32>() ? f32toi_helpers : f16toi_helpers;
-        auto* helper = helpers.GetOrCreate(res_ty, [&] {
+        auto* helper = helpers.GetOrAdd(res_ty, [&] {
             // Generate a name for the helper function.
             StringStream name;
             name << "tint_";
             if (auto* src_vec = src_ty->As<type::Vector>()) {
-                name << "v" << src_vec->Width() << src_vec->type()->FriendlyName();
+                name << "v" << src_vec->Width() << src_vec->Type()->FriendlyName();
             } else {
                 name << src_ty->FriendlyName();
             }
             name << "_to_";
             if (auto* res_vec = res_ty->As<type::Vector>()) {
-                name << "v" << res_vec->Width() << res_vec->type()->FriendlyName();
+                name << "v" << res_vec->Width() << res_vec->Type()->FriendlyName();
             } else {
                 name << res_ty->FriendlyName();
             }
@@ -131,38 +120,38 @@ struct State {
             } limits;
 
             // Integer limits.
-            if (res_ty->is_signed_integer_scalar_or_vector()) {
-                limits.low_limit_i = MatchWidth(b.Constant(i32(INT32_MIN)), res_ty);
-                limits.high_limit_i = MatchWidth(b.Constant(i32(INT32_MAX)), res_ty);
+            if (res_ty->IsSignedIntegerScalarOrVector()) {
+                limits.low_limit_i = b.MatchWidth(i32(INT32_MIN), res_ty);
+                limits.high_limit_i = b.MatchWidth(i32(INT32_MAX), res_ty);
             } else {
-                limits.low_limit_i = MatchWidth(b.Constant(u32(0)), res_ty);
-                limits.high_limit_i = MatchWidth(b.Constant(u32(UINT32_MAX)), res_ty);
+                limits.low_limit_i = b.MatchWidth(u32(0), res_ty);
+                limits.high_limit_i = b.MatchWidth(u32(UINT32_MAX), res_ty);
             }
 
             // Largest integers representable in the source floating point format.
             if (src_el_ty->Is<type::F32>()) {
-                if (res_ty->is_signed_integer_scalar_or_vector()) {
+                if (res_ty->IsSignedIntegerScalarOrVector()) {
                     // INT32_MIN is -(2^31), which is exactly representable as an f32.
                     // INT32_MAX is (2^31 - 1), which is not exactly representable as an f32, so we
                     // instead use the next highest integer value in the f32 domain.
                     const float kMaxI32AsF32 = std::nexttowardf(0x1p+31f, 0.0L);
-                    limits.low_limit_f = MatchWidth(b.Constant(f32(INT32_MIN)), res_ty);
-                    limits.high_limit_f = MatchWidth(b.Constant(f32(kMaxI32AsF32)), res_ty);
+                    limits.low_limit_f = b.MatchWidth(f32(INT32_MIN), res_ty);
+                    limits.high_limit_f = b.MatchWidth(f32(kMaxI32AsF32), res_ty);
                 } else {
                     // UINT32_MAX is (2^32 - 1), which is not exactly representable as an f32, so we
                     // instead use the next highest integer value in the f32 domain.
                     const float kMaxU32AsF32 = std::nexttowardf(0x1p+32f, 0.0L);
-                    limits.low_limit_f = MatchWidth(b.Constant(f32(0)), res_ty);
-                    limits.high_limit_f = MatchWidth(b.Constant(f32(kMaxU32AsF32)), res_ty);
+                    limits.low_limit_f = b.MatchWidth(f32(0), res_ty);
+                    limits.high_limit_f = b.MatchWidth(f32(kMaxU32AsF32), res_ty);
                 }
             } else if (src_el_ty->Is<type::F16>()) {
                 constexpr float MAX_F16 = 65504;
-                if (res_ty->is_signed_integer_scalar_or_vector()) {
-                    limits.low_limit_f = MatchWidth(b.Constant(f16(-MAX_F16)), res_ty);
-                    limits.high_limit_f = MatchWidth(b.Constant(f16(MAX_F16)), res_ty);
+                if (res_ty->IsSignedIntegerScalarOrVector()) {
+                    limits.low_limit_f = b.MatchWidth(f16(-MAX_F16), res_ty);
+                    limits.high_limit_f = b.MatchWidth(f16(MAX_F16), res_ty);
                 } else {
-                    limits.low_limit_f = MatchWidth(b.Constant(f16(0)), res_ty);
-                    limits.high_limit_f = MatchWidth(b.Constant(f16(MAX_F16)), res_ty);
+                    limits.low_limit_f = b.MatchWidth(f16(0), res_ty);
+                    limits.high_limit_f = b.MatchWidth(f16(MAX_F16), res_ty);
                 }
             } else {
                 TINT_UNIMPLEMENTED() << "unhandled floating-point type";
@@ -173,8 +162,7 @@ struct State {
             auto* value = b.FunctionParam("value", src_ty);
             func->SetParams({value});
             b.Append(func->Block(), [&] {
-                auto* bool_ty = MatchWidth(ty.bool_(), res_ty);
-
+                auto* bool_ty = ty.match_width(ty.bool_(), res_ty);
                 auto* converted = b.Convert(res_ty, value);
 
                 // low = select(low_limit_i, i32(value), value >= low_limit_f)
@@ -193,34 +181,8 @@ struct State {
         });
 
         // Call the helper function, splatting the arguments to match the target vector width.
-        auto* call = b.Call(res_ty, helper, convert->Args()[0]);
+        auto* call = b.CallWithResult(convert->DetachResult(), helper, convert->Args()[0]);
         call->InsertBefore(convert);
-        return call->Result(0);
-    }
-
-    /// Return a type with element type @p type that has the same number of vector components as
-    /// @p match. If @p match is scalar just return @p type.
-    /// @param el_ty the type to extend
-    /// @param match the type to match the component count of
-    /// @returns a type with the same number of vector components as @p match
-    const core::type::Type* MatchWidth(const core::type::Type* el_ty,
-                                       const core::type::Type* match) {
-        if (auto* vec = match->As<core::type::Vector>()) {
-            return ty.vec(el_ty, vec->Width());
-        }
-        return el_ty;
-    }
-
-    /// Return a constant that has the same number of vector components as @p match, each with the
-    /// value @p element. If @p match is scalar just return @p element.
-    /// @param element the value to extend
-    /// @param match the type to match the component count of
-    /// @returns a value with the same number of vector components as @p match
-    ir::Constant* MatchWidth(ir::Constant* element, const core::type::Type* match) {
-        if (auto* vec = match->As<core::type::Vector>()) {
-            return b.Splat(MatchWidth(element->Type(), match), element, vec->Width());
-        }
-        return element;
     }
 };
 

@@ -20,6 +20,13 @@ macro(add_RunCMake_test test)
   if(CMAKE_C_COMPILER_ID STREQUAL "LCC")
     list(APPEND TEST_ARGS -DRunCMake_TEST_LCC=1)
   endif()
+  if(NOT QT_RUN_CMAKE_SCRIPT_PATH)
+    set(QT_RUN_CMAKE_SCRIPT_PATH "${CMAKE_CURRENT_SOURCE_DIR}/${Test_Dir}/RunCMakeTest.cmake")
+  endif()
+  # Qt specific options
+  list(APPEND TEST_ARGS
+    -D_Qt6CTestMacros=${_Qt6CTestMacros}
+  )
   add_test(NAME RunCMake.${test} COMMAND ${CMAKE_COMMAND}
     -DCMAKE_MODULE_PATH=${RunCMakeDir}
     -DRunCMake_GENERATOR_IS_MULTI_CONFIG=${_isMultiConfig}
@@ -32,6 +39,7 @@ macro(add_RunCMake_test test)
     -DRunCMake_BINARY_DIR=${CMAKE_CURRENT_BINARY_DIR}/${test}
     ${${test}_ARGS}
     ${TEST_ARGS}
-    -P "${CMAKE_CURRENT_SOURCE_DIR}/${Test_Dir}/RunCMakeTest.cmake"
+    -P "${QT_RUN_CMAKE_SCRIPT_PATH}"
     )
+  unset(QT_RUN_CMAKE_SCRIPT_PATH)
 endmacro()

@@ -8,7 +8,6 @@
 #include "delegated_frame_host_client_qt.h"
 #include "render_widget_host_view_qt_delegate.h"
 
-#include "base/memory/weak_ptr.h"
 #include "components/viz/common/resources/transferable_resource.h"
 #include "components/viz/common/surfaces/parent_local_surface_id_allocator.h"
 #include "components/viz/host/host_frame_sink_client.h"
@@ -39,7 +38,6 @@ class WebContentsAdapterClient;
 class RenderWidgetHostViewQt
     : public content::RenderWidgetHostViewBase
     , public ui::GestureProviderClient
-    , public base::SupportsWeakPtr<RenderWidgetHostViewQt>
     , public content::TextInputManager::Observer
     , public content::RenderFrameMetadataProvider::Observer
     , public content::RenderWidgetHost::InputEventObserver
@@ -63,7 +61,7 @@ public:
     gfx::NativeViewAccessible GetNativeViewAccessible() override { return nullptr; }
     void Focus() override;
     bool HasFocus() override;
-    bool IsMouseLocked() override;
+    bool IsPointerLocked() override;
     viz::FrameSinkId GetRootFrameSinkId() override;
     bool IsSurfaceAvailableForCopy() override;
     void CopyFromSurface(const gfx::Rect &src_rect,
@@ -74,20 +72,20 @@ public:
     bool IsShowing() override;
     gfx::Rect GetViewBounds() override;
     void UpdateBackgroundColor() override;
-    blink::mojom::PointerLockResult LockMouse(bool) override;
-    blink::mojom::PointerLockResult ChangeMouseLock(bool) override;
-    void UnlockMouse() override;
+    blink::mojom::PointerLockResult LockPointer(bool) override;
+    blink::mojom::PointerLockResult ChangePointerLock(bool) override;
+    void UnlockPointer() override;
     void UpdateCursor(const ui::Cursor&) override;
     void DisplayCursor(const ui::Cursor&) override;
-    content::CursorManager *GetCursorManager() override;
+    input::CursorManager *GetCursorManager() override;
     void SetIsLoading(bool) override;
     void ImeCancelComposition() override;
     void ImeCompositionRangeChanged(const gfx::Range &,
-                                    const absl::optional<std::vector<gfx::Rect>> &,
-                                    const absl::optional<std::vector<gfx::Rect>> &) override;
+                                    const std::optional<std::vector<gfx::Rect>> &,
+                                    const std::optional<std::vector<gfx::Rect>> &) override;
     void RenderProcessGone() override;
     bool TransformPointToCoordSpaceForView(const gfx::PointF &point,
-                                           content::RenderWidgetHostViewBase *target_view,
+                                           input::RenderWidgetHostViewInput *target_view,
                                            gfx::PointF *transformed_point) override;
     void Destroy() override;
     void UpdateTooltipUnderCursor(const std::u16string &tooltip_text) override;
@@ -95,6 +93,7 @@ public:
     void WheelEventAck(const blink::WebMouseWheelEvent &event,
                        blink::mojom::InputEventResultState ack_result) override;
     void GestureEventAck(const blink::WebGestureEvent &event,
+                         blink::mojom::InputEventResultSource ack_source,
                          blink::mojom::InputEventResultState ack_result) override;
     content::MouseWheelPhaseHandler *GetMouseWheelPhaseHandler() override;
     viz::ScopedSurfaceIdAllocator DidUpdateVisualProperties(const cc::RenderFrameMetadata &metadata) override;
@@ -102,7 +101,7 @@ public:
 
     // Overridden from RenderWidgetHostViewBase:
     gfx::Rect GetBoundsInRootWindow() override;
-    void ProcessAckedTouchEvent(const content::TouchEventWithLatencyInfo &touch,
+    void ProcessAckedTouchEvent(const input::TouchEventWithLatencyInfo &touch,
                                 blink::mojom::InputEventResultState ack_result) override;
     viz::SurfaceId GetCurrentSurfaceId() const override;
     const viz::FrameSinkId &GetFrameSinkId() const override;
@@ -117,7 +116,7 @@ public:
     void DidStopFlinging() override;
     std::unique_ptr<content::SyntheticGestureTarget> CreateSyntheticGestureTarget() override;
     ui::Compositor *GetCompositor() override;
-    absl::optional<content::DisplayFeature> GetDisplayFeature() override;
+    std::optional<content::DisplayFeature> GetDisplayFeature() override;
     void SetDisplayFeatureForTesting(const content::DisplayFeature*) override;
     content::WebContentsAccessibility *GetWebContentsAccessibility() override;
 #if BUILDFLAG(IS_MAC)
@@ -131,6 +130,7 @@ public:
     void SpeakSelection() override { QT_NOT_YET_IMPLEMENTED }
     void ShowDefinitionForSelection() override { QT_NOT_YET_IMPLEMENTED }
     void SetWindowFrameInScreen(const gfx::Rect&) override { QT_NOT_YET_IMPLEMENTED }
+    uint64_t GetNSViewId() const override { QT_NOT_YET_IMPLEMENTED return 0; }
 #endif // BUILDFLAG(IS_MAC)
     void NotifyHostAndDelegateOnWasShown(blink::mojom::RecordContentToVisibleTimeRequestPtr) override { QT_NOT_YET_IMPLEMENTED }
     void RequestSuccessfulPresentationTimeFromHostOrDelegate(blink::mojom::RecordContentToVisibleTimeRequestPtr) override {}
@@ -179,7 +179,7 @@ public:
     ui::TextInputType getTextInputType() const;
 
     void synchronizeVisualProperties(
-            const absl::optional<viz::LocalSurfaceId> &childSurfaceId);
+            const std::optional<viz::LocalSurfaceId> &childSurfaceId);
 
     void resetTouchSelectionController();
 
@@ -193,7 +193,7 @@ private:
 
     scoped_refptr<base::SingleThreadTaskRunner> m_taskRunner;
 
-    std::unique_ptr<content::CursorManager> m_cursorManager;
+    std::unique_ptr<input::CursorManager> m_cursorManager;
 
     ui::FilteredGestureProvider m_gestureProvider;
 
@@ -231,8 +231,6 @@ private:
     std::unique_ptr<ui::TouchSelectionController> m_touchSelectionController;
     gfx::SelectionBound m_selectionStart;
     gfx::SelectionBound m_selectionEnd;
-
-    base::WeakPtrFactory<RenderWidgetHostViewQt> m_weakPtrFactory { this };
 };
 
 class WebContentsAccessibilityQt : public content::WebContentsAccessibility

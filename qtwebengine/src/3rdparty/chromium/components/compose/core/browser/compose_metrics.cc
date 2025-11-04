@@ -4,8 +4,11 @@
 
 #include "components/compose/core/browser/compose_metrics.h"
 
+#include "base/logging.h"
 #include "base/metrics/histogram_functions.h"
 #include "base/metrics/histogram_macros.h"
+#include "base/metrics/user_metrics.h"
+#include "base/strings/strcat.h"
 #include "base/time/time.h"
 #include "services/metrics/public/cpp/metrics_utils.h"
 #include "services/metrics/public/cpp/ukm_builders.h"
@@ -20,8 +23,8 @@ const char kComposeDialogInnerTextSize[] = "Compose.Dialog.InnerTextSize";
 const char kComposeDialogOpenLatency[] = "Compose.Dialog.OpenLatency";
 const char kComposeDialogSelectionLength[] = "Compose.Dialog.SelectionLength";
 const char kComposeRequestReason[] = "Compose.Request.Reason";
-const char kComposeRequestDurationOk[] = "Compose.Request.Duration.Ok";
-const char kComposeRequestDurationError[] = "Compose.Request.Duration.Error";
+const char kComposeRequestDurationOkSuffix[] = ".Request.Duration.Ok";
+const char kComposeRequestDurationErrorSuffix[] = ".Request.Duration.Error";
 const char kComposeRequestStatus[] = "Compose.Request.Status";
 const char kComposeSessionComposeCount[] = "Compose.Session.ComposeCount";
 const char kComposeSessionCloseReason[] = "Compose.Session.CloseReason";
@@ -45,8 +48,47 @@ const char kComposeFirstRunSessionDialogShownCount[] =
 const char kInnerTextNodeOffsetFound[] =
     "Compose.Dialog.InnerTextNodeOffsetFound";
 const char kComposeContextMenuCtr[] = "Compose.ContextMenu.CTR";
+const char kComposeProactiveNudgeCtr[] = "Compose.ProactiveNudge.CTR";
+const char kComposeSelectionNudgeCtr[] = "Compose.SelectionNudge.CTR";
+const char kComposeProactiveNudgeShowStatus[] =
+    "Compose.ProactiveNudge.ShowStatus";
 const char kOpenComposeDialogResult[] =
     "Compose.ContextMenu.OpenComposeDialogResult";
+const char kComposeSelectAll[] = "Compose.ContextMenu.SelectedAll";
+const char kComposeStartSessionEntryPoint[] = "Compose.EntryPoint.SessionStart";
+const char kComposeResumeSessionEntryPoint[] =
+    "Compose.EntryPoint.SessionResume";
+
+namespace {
+
+std::string_view EvalLocationString(EvalLocation location) {
+  switch (location) {
+    case compose::EvalLocation::kServer:
+      return "Server";
+    case EvalLocation::kOnDevice:
+      return "OnDevice";
+  }
+}
+
+std::string_view LanguageSupportedString(bool page_language_supported) {
+  return page_language_supported ? "PageLanguageSupported"
+                                 : "PageLanguageUnsupported";
+}
+
+bool HasAckedFreOrAcceptedMsbb(ComposeFreOrMsbbSessionCloseReason reason) {
+  switch (reason) {
+    case ComposeFreOrMsbbSessionCloseReason::kAckedOrAcceptedWithoutInsert:
+    case ComposeFreOrMsbbSessionCloseReason::kAckedOrAcceptedWithInsert:
+      return true;
+    case ComposeFreOrMsbbSessionCloseReason::kCloseButtonPressed:
+    case ComposeFreOrMsbbSessionCloseReason::kAbandoned:
+    case ComposeFreOrMsbbSessionCloseReason::kReplacedWithNewSession:
+    case ComposeFreOrMsbbSessionCloseReason::kExceededMaxDuration:
+      return false;
+  }
+}
+
+}  // namespace
 
 PageUkmTracker::PageUkmTracker(ukm::SourceId source_id)
     : source_id(source_id) {}
@@ -59,13 +101,40 @@ void PageUkmTracker::MenuItemShown() {
   event_was_recorded_ = true;
   ++menu_item_shown_count_;
 }
+
 void PageUkmTracker::MenuItemClicked() {
   event_was_recorded_ = true;
   ++menu_item_clicked_count_;
 }
+
 void PageUkmTracker::ComposeTextInserted() {
   event_was_recorded_ = true;
   ++compose_text_inserted_count_;
+}
+
+void PageUkmTracker::ComposeProactiveNudgeShouldShow() {
+  event_was_recorded_ = true;
+  ++proactive_nudge_should_show_count_;
+}
+
+void PageUkmTracker::ProactiveNudgeShown() {
+  event_was_recorded_ = true;
+  ++proactive_nudge_shown_count_;
+}
+
+void PageUkmTracker::ProactiveNudgeOpened() {
+  event_was_recorded_ = true;
+  ++proactive_nudge_opened_count_;
+}
+
+void PageUkmTracker::ProactiveNudgeDisabledGlobally() {
+  event_was_recorded_ = true;
+  proactive_nudge_disabled_globally_ = true;
+}
+
+void PageUkmTracker::ProactiveNudgeDisabledForSite() {
+  event_was_recorded_ = true;
+  proactive_nudge_disabled_for_site_ = true;
 }
 
 void PageUkmTracker::ShowDialogAbortedDueToMissingFormData() {
@@ -90,6 +159,14 @@ void PageUkmTracker::MaybeLogUkm() {
           ukm::GetExponentialBucketMinForCounts1000(menu_item_clicked_count_))
       .SetComposeTextInserted(ukm::GetExponentialBucketMinForCounts1000(
           compose_text_inserted_count_))
+      .SetProactiveNudgeShouldShow(ukm::GetExponentialBucketMinForCounts1000(
+          proactive_nudge_should_show_count_))
+      .SetProactiveNudgeShown(ukm::GetExponentialBucketMinForCounts1000(
+          proactive_nudge_shown_count_))
+      .SetProactiveNudgeOpened(ukm::GetExponentialBucketMinForCounts1000(
+          proactive_nudge_opened_count_))
+      .SetProactiveNudgeDisabledGlobally(proactive_nudge_disabled_globally_)
+      .SetProactiveNudgeDisabledForSite(proactive_nudge_disabled_for_site_)
       .SetMissingFormData(
           ukm::GetExponentialBucketMinForCounts1000(missing_form_data_count_))
       .SetMissingFormFieldData(ukm::GetExponentialBucketMinForCounts1000(
@@ -100,176 +177,224 @@ void PageUkmTracker::MaybeLogUkm() {
 ComposeSessionEvents::ComposeSessionEvents() {}
 
 void LogComposeContextMenuCtr(ComposeContextMenuCtrEvent event) {
-  UMA_HISTOGRAM_ENUMERATION(kComposeContextMenuCtr, event);
+  base::UmaHistogramEnumeration(kComposeContextMenuCtr, event);
 }
 
 void LogComposeContextMenuShowStatus(ComposeShowStatus status) {
-  UMA_HISTOGRAM_ENUMERATION(kComposeShowStatus, status);
+  base::UmaHistogramEnumeration(kComposeShowStatus, status);
+}
+
+void LogComposeProactiveNudgeCtr(ComposeNudgeCtrEvent event) {
+  base::UmaHistogramEnumeration(kComposeProactiveNudgeCtr, event);
+}
+
+void LogComposeSelectionNudgeCtr(ComposeNudgeCtrEvent event) {
+  base::UmaHistogramEnumeration(kComposeSelectionNudgeCtr, event);
+}
+
+void LogComposeProactiveNudgeShowStatus(ComposeShowStatus status) {
+  base::UmaHistogramEnumeration(kComposeProactiveNudgeShowStatus, status);
 }
 
 void LogOpenComposeDialogResult(OpenComposeDialogResult result) {
-  UMA_HISTOGRAM_ENUMERATION(kOpenComposeDialogResult, result);
+  base::UmaHistogramEnumeration(kOpenComposeDialogResult, result);
+}
+
+void LogStartSessionEntryPoint(ComposeEntryPoint entry_point) {
+  base::UmaHistogramEnumeration(kComposeStartSessionEntryPoint, entry_point);
+
+  switch (entry_point) {
+    case ComposeEntryPoint::kContextMenu:
+      base::RecordAction(
+          base::UserMetricsAction("Compose.StartedSession.ContextMenu"));
+      break;
+    case ComposeEntryPoint::kProactiveNudge:
+      base::RecordAction(
+          base::UserMetricsAction("Compose.StartedSession.ProactiveNudge"));
+      break;
+    case ComposeEntryPoint::kSelectionNudge:
+      base::RecordAction(
+          base::UserMetricsAction("Compose.StartedSession.SelectionNudge"));
+      break;
+    case ComposeEntryPoint::kSavedStateNudge:
+    case ComposeEntryPoint::kSavedStateNotification:
+      break;
+  }
+}
+
+void LogResumeSessionEntryPoint(ComposeEntryPoint entry_point) {
+  base::UmaHistogramEnumeration(kComposeResumeSessionEntryPoint, entry_point);
 }
 
 void LogComposeRequestReason(ComposeRequestReason reason) {
-  UMA_HISTOGRAM_ENUMERATION(kComposeRequestReason, reason);
+  base::UmaHistogramEnumeration(kComposeRequestReason, reason);
 }
 
-void LogComposeRequestDuration(base::TimeDelta duration, bool is_valid) {
+void LogComposeRequestReason(EvalLocation eval_location,
+                             ComposeRequestReason reason) {
+  base::UmaHistogramEnumeration(
+      base::StrCat(
+          {"Compose.", EvalLocationString(eval_location), ".Request.Reason"}),
+      reason);
+}
+
+void LogComposeRequestStatus(bool page_language_supported,
+                             compose::mojom::ComposeStatus status) {
+  base::UmaHistogramEnumeration(kComposeRequestStatus, status);
+  base::UmaHistogramEnumeration(
+      base::StrCat({"Compose.Request.",
+                    LanguageSupportedString(page_language_supported),
+                    ".Status"}),
+      status);
+}
+
+void LogComposeRequestStatus(EvalLocation eval_location,
+                             bool page_language_supported,
+                             compose::mojom::ComposeStatus status) {
+  base::UmaHistogramEnumeration(
+      base::StrCat(
+          {"Compose.", EvalLocationString(eval_location), ".Request.Status"}),
+      status);
+  base::UmaHistogramEnumeration(
+      base::StrCat({"Compose.", EvalLocationString(eval_location), ".Request.",
+                    LanguageSupportedString(page_language_supported),
+                    ".Status"}),
+      status);
+}
+
+void LogComposeRequestDuration(base::TimeDelta duration,
+                               EvalLocation eval_location,
+                               bool is_ok) {
+  std::string_view suffix =
+      is_ok ? std::string_view(kComposeRequestDurationOkSuffix)
+            : std::string_view(kComposeRequestDurationErrorSuffix);
+  base::UmaHistogramMediumTimes(base::StrCat({"Compose", suffix}), duration);
   base::UmaHistogramMediumTimes(
-      is_valid ? kComposeRequestDurationOk : kComposeRequestDurationError,
+      base::StrCat({"Compose.", EvalLocationString(eval_location), suffix}),
       duration);
 }
 
+void LogComposeSessionCloseReason(ComposeSessionCloseReason reason) {
+  base::UmaHistogramEnumeration(kComposeSessionCloseReason, reason);
+}
+
 void LogComposeFirstRunSessionCloseReason(
-    ComposeFirstRunSessionCloseReason reason) {
+    ComposeFreOrMsbbSessionCloseReason reason) {
   base::UmaHistogramEnumeration(kComposeFirstRunSessionCloseReason, reason);
 }
 
 void LogComposeFirstRunSessionDialogShownCount(
-    ComposeFirstRunSessionCloseReason reason,
+    ComposeFreOrMsbbSessionCloseReason reason,
     int dialog_shown_count) {
-  std::string status;
-  switch (reason) {
-    case ComposeFirstRunSessionCloseReason::
-        kFirstRunDisclaimerAcknowledgedWithoutInsert:
-    case ComposeFirstRunSessionCloseReason::
-        kFirstRunDisclaimerAcknowledgedWithInsert:
-      status = ".Acknowledged";
-      break;
-    case ComposeFirstRunSessionCloseReason::kCloseButtonPressed:
-    case ComposeFirstRunSessionCloseReason::kEndedImplicitly:
-    case ComposeFirstRunSessionCloseReason::kNewSessionWithSelectedText:
-      status = ".Ignored";
-  }
-  base::UmaHistogramCounts1000(kComposeFirstRunSessionDialogShownCount + status,
-                               dialog_shown_count);
+  std::string histogram_name = base::StrCat(
+      {kComposeFirstRunSessionDialogShownCount,
+       HasAckedFreOrAcceptedMsbb(reason) ? ".Acknowledged" : ".Ignored"});
+  base::UmaHistogramCounts1000(histogram_name, dialog_shown_count);
 }
 
-void LogComposeMSBBSessionCloseReason(ComposeMSBBSessionCloseReason reason) {
+void LogComposeMSBBSessionCloseReason(
+    ComposeFreOrMsbbSessionCloseReason reason) {
   base::UmaHistogramEnumeration(kComposeMSBBSessionCloseReason, reason);
 }
 
-void LogComposeMSBBSessionDialogShownCount(ComposeMSBBSessionCloseReason reason,
-                                           int dialog_shown_count) {
-  std::string status;
-  switch (reason) {
-    case ComposeMSBBSessionCloseReason::kMSBBAcceptedWithoutInsert:
-    case ComposeMSBBSessionCloseReason::kMSBBAcceptedWithInsert:
-      status = ".Accepted";
-      break;
-    case ComposeMSBBSessionCloseReason::kMSBBEndedImplicitly:
-    case ComposeMSBBSessionCloseReason::kMSBBCloseButtonPressed:
-      status = ".Ignored";
+void LogComposeMSBBSessionDialogShownCount(
+    ComposeFreOrMsbbSessionCloseReason reason,
+    int dialog_shown_count) {
+  std::string histogram_name = base::StrCat(
+      {kComposeMSBBSessionDialogShownCount,
+       HasAckedFreOrAcceptedMsbb(reason) ? ".Accepted" : ".Ignored"});
+  base::UmaHistogramCounts1000(histogram_name, dialog_shown_count);
+}
+
+SessionEvalLocation GetSessionEvalLocationFromEvents(
+    const ComposeSessionEvents& session_events) {
+  if (session_events.server_responses == 0 &&
+      session_events.on_device_responses == 0) {
+    return SessionEvalLocation::kNone;
+  } else if (session_events.server_responses > 0 &&
+             session_events.on_device_responses > 0) {
+    return SessionEvalLocation::kMixed;
+  } else if (session_events.server_responses > 0) {
+    return SessionEvalLocation::kServer;
+  } else {
+    return SessionEvalLocation::kOnDevice;
   }
-  base::UmaHistogramCounts1000(kComposeMSBBSessionDialogShownCount + status,
-                               dialog_shown_count);
+}
+
+std::optional<EvalLocation> GetEvalLocationFromEvents(
+    const ComposeSessionEvents& session_events) {
+  switch (GetSessionEvalLocationFromEvents(session_events)) {
+    case SessionEvalLocation::kNone:
+    case SessionEvalLocation::kMixed:
+      return std::nullopt;
+    case SessionEvalLocation::kServer:
+      return EvalLocation::kServer;
+    case SessionEvalLocation::kOnDevice:
+      return EvalLocation::kOnDevice;
+  }
 }
 
 void LogComposeSessionCloseMetrics(ComposeSessionCloseReason reason,
                                    const ComposeSessionEvents& session_events) {
-  base::UmaHistogramEnumeration(kComposeSessionCloseReason, reason);
-
   std::string status;
   switch (reason) {
-    case ComposeSessionCloseReason::kAcceptedSuggestion:
+    case ComposeSessionCloseReason::kInsertedResponse:
       status = ".Accepted";
       break;
     case ComposeSessionCloseReason::kCloseButtonPressed:
-    case ComposeSessionCloseReason::kEndedImplicitly:
-    case ComposeSessionCloseReason::kNewSessionWithSelectedText:
+    case ComposeSessionCloseReason::kAbandoned:
+    case ComposeSessionCloseReason::kReplacedWithNewSession:
     case ComposeSessionCloseReason::kCanceledBeforeResponseReceived:
+    case compose::ComposeSessionCloseReason::kExceededMaxDuration:
       status = ".Ignored";
+      break;
+    case compose::ComposeSessionCloseReason::kEndedAtFre:
+    case compose::ComposeSessionCloseReason::kAckedFreEndedAtMsbb:
+    case compose::ComposeSessionCloseReason::kEndedAtMsbb:
+      NOTREACHED_NORETURN();
   }
+
+  // Report all location-agnostic metrics.
+  LogComposeSessionCloseReason(reason);
   base::UmaHistogramCounts1000(kComposeSessionComposeCount + status,
-                               session_events.compose_count);
+                               session_events.compose_requests_count);
   base::UmaHistogramCounts1000(kComposeSessionDialogShownCount + status,
-                               session_events.dialog_shown_count);
+                               session_events.compose_prompt_view_count);
   base::UmaHistogramCounts1000(kComposeSessionUndoCount + status,
                                session_events.undo_count);
   base::UmaHistogramCounts1000(kComposeSessionUpdateInputCount + status,
                                session_events.update_input_count);
+  LogComposeSessionEventCounts(std::nullopt, session_events);
 
-  // Log all events that occurred during the session. Each event type can be
-  // logged at most once per session.
-  if (session_events.dialog_shown_count > 0) {
-    base::UmaHistogramEnumeration(kComposeSessionEventCounts,
-                                  ComposeSessionEventTypes::kDialogShown);
-  }
-  if (session_events.fre_dialog_shown_count > 0) {
-    base::UmaHistogramEnumeration(kComposeSessionEventCounts,
-                                  ComposeSessionEventTypes::kFREShown);
-  }
-  if (session_events.fre_completed_in_session) {
-    base::UmaHistogramEnumeration(kComposeSessionEventCounts,
-                                  ComposeSessionEventTypes::kFREAccepted);
-  }
-  if (session_events.msbb_dialog_shown_count > 0) {
-    base::UmaHistogramEnumeration(kComposeSessionEventCounts,
-                                  ComposeSessionEventTypes::kMSBBShown);
-  }
-  if (session_events.msbb_settings_opened) {
+  // Report all eval location specific metrics.
+  SessionEvalLocation session_eval_location =
+      GetSessionEvalLocationFromEvents(session_events);
+  std::optional<EvalLocation> eval_location =
+      GetEvalLocationFromEvents(session_events);
+  base::UmaHistogramEnumeration("Compose.Session.EvalLocation",
+                                session_eval_location);
+  if (eval_location) {
     base::UmaHistogramEnumeration(
-        kComposeSessionEventCounts,
-        ComposeSessionEventTypes::kMSBBSettingsOpened);
-  }
-  if (session_events.msbb_enabled_in_session) {
-    base::UmaHistogramEnumeration(kComposeSessionEventCounts,
-                                  ComposeSessionEventTypes::kMSBBEnabled);
-  }
-  if (session_events.has_initial_text) {
-    base::UmaHistogramEnumeration(
-        kComposeSessionEventCounts,
-        ComposeSessionEventTypes::kStartedWithSelection);
-  }
-  if (session_events.compose_count > 0) {
-    // The first Compose event has to be "Create".
-    base::UmaHistogramEnumeration(kComposeSessionEventCounts,
-                                  ComposeSessionEventTypes::kCreateClicked);
-  }
-  if (session_events.update_input_count > 0) {
-    base::UmaHistogramEnumeration(kComposeSessionEventCounts,
-                                  ComposeSessionEventTypes::kUpdateClicked);
-  }
-  if (session_events.regenerate_count > 0) {
-    base::UmaHistogramEnumeration(kComposeSessionEventCounts,
-                                  ComposeSessionEventTypes::kRetryClicked);
-  }
-  if (session_events.undo_count > 0) {
-    base::UmaHistogramEnumeration(kComposeSessionEventCounts,
-                                  ComposeSessionEventTypes::kUndoClicked);
-  }
-  if (session_events.shorten_count > 0) {
-    base::UmaHistogramEnumeration(kComposeSessionEventCounts,
-                                  ComposeSessionEventTypes::kShortenClicked);
-  }
-  if (session_events.lengthen_count > 0) {
-    base::UmaHistogramEnumeration(kComposeSessionEventCounts,
-                                  ComposeSessionEventTypes::kElaborateClicked);
-  }
-  if (session_events.casual_count > 0) {
-    base::UmaHistogramEnumeration(kComposeSessionEventCounts,
-                                  ComposeSessionEventTypes::kCasualClicked);
-  }
-  if (session_events.formal_count > 0) {
-    base::UmaHistogramEnumeration(kComposeSessionEventCounts,
-                                  ComposeSessionEventTypes::kFormalClicked);
-  }
-  if (session_events.has_thumbs_down) {
-    base::UmaHistogramEnumeration(kComposeSessionEventCounts,
-                                  ComposeSessionEventTypes::kThumbsDown);
-  }
-  if (session_events.has_thumbs_up) {
-    base::UmaHistogramEnumeration(kComposeSessionEventCounts,
-                                  ComposeSessionEventTypes::kThumbsUp);
-  }
-  if (session_events.inserted_results) {
-    base::UmaHistogramEnumeration(kComposeSessionEventCounts,
-                                  ComposeSessionEventTypes::kInsertClicked);
-  }
-  if (session_events.close_clicked) {
-    base::UmaHistogramEnumeration(kComposeSessionEventCounts,
-                                  ComposeSessionEventTypes::kCloseClicked);
+        base::StrCat({"Compose.", EvalLocationString(*eval_location),
+                      ".Session.CloseReason"}),
+        reason);
+    base::UmaHistogramCounts1000(
+        base::StrCat({"Compose.", EvalLocationString(*eval_location),
+                      ".Session.ComposeCount", status}),
+        session_events.compose_requests_count);
+    base::UmaHistogramCounts1000(
+        base::StrCat({"Compose.", EvalLocationString(*eval_location),
+                      ".Session.DialogShownCount", status}),
+        session_events.compose_prompt_view_count);
+    base::UmaHistogramCounts1000(
+        base::StrCat({"Compose.", EvalLocationString(*eval_location),
+                      ".Session.UndoCount", status}),
+        session_events.undo_count);
+    base::UmaHistogramCounts1000(
+        base::StrCat({"Compose.", EvalLocationString(*eval_location),
+                      ".Session.SubmitEditCount", status}),
+        session_events.update_input_count);
+    LogComposeSessionEventCounts(eval_location, session_events);
   }
 }
 
@@ -279,9 +404,9 @@ void LogComposeSessionCloseUkmMetrics(
   // Log the UKM metrics for this session.
   ukm::builders::Compose_SessionProgress(source_id)
       .SetDialogShownCount(ukm::GetExponentialBucketMinForCounts1000(
-          session_events.dialog_shown_count))
+          session_events.compose_prompt_view_count))
       .SetComposeCount(ukm::GetExponentialBucketMinForCounts1000(
-          session_events.compose_count))
+          session_events.compose_requests_count))
       .SetShortenCount(session_events.shorten_count)
       .SetLengthenCount(ukm::GetExponentialBucketMinForCounts1000(
           session_events.lengthen_count))
@@ -295,6 +420,7 @@ void LogComposeSessionCloseUkmMetrics(
           ukm::GetExponentialBucketMinForCounts1000(session_events.undo_count))
       .SetInsertedResults(session_events.inserted_results)
       .SetCanceled(session_events.close_clicked)
+      .SetStartedWithProactiveNudge(session_events.started_with_proactive_nudge)
       .Record(ukm::UkmRecorder::Get());
 }
 
@@ -326,9 +452,16 @@ void LogComposeDialogSelectionLength(int length) {
 }
 
 void LogComposeSessionDuration(base::TimeDelta session_duration,
-                               std::string session_suffix) {
+                               std::string session_suffix,
+                               std::optional<EvalLocation> eval_location) {
   base::UmaHistogramLongTimes100(kComposeSessionDuration + session_suffix,
                                  session_duration);
+  if (eval_location) {
+    base::UmaHistogramLongTimes100(
+        base::StrCat({"Compose.", EvalLocationString(*eval_location),
+                      ".Session.Duration", session_suffix}),
+        session_duration);
+  }
 
   if (session_duration.InDays() > 1) {
     base::UmaHistogramBoolean(kComposeSessionOverOneDay, true);
@@ -337,4 +470,144 @@ void LogComposeSessionDuration(base::TimeDelta session_duration,
   }
 }
 
+void LogComposeRequestFeedback(EvalLocation eval_location,
+                               ComposeRequestFeedback feedback) {
+  base::UmaHistogramEnumeration(
+      base::StrCat(
+          {"Compose.", EvalLocationString(eval_location), ".Request.Feedback"}),
+      feedback);
+}
+
+void LogComposeSelectAllStatus(ComposeSelectAllStatus select_all_status) {
+  base::UmaHistogramEnumeration(kComposeSelectAll, select_all_status);
+}
+
+void LogComposeSessionEventCounts(std::optional<EvalLocation> eval_location,
+                                  const ComposeSessionEvents& session_events) {
+  std::string histogram;
+  if (!eval_location) {
+    histogram = kComposeSessionEventCounts;
+  } else {
+    histogram = base::StrCat({"Compose.", EvalLocationString(*eval_location),
+                              ".Session.EventCounts"});
+  }
+  if (session_events.compose_dialog_open_count > 0) {
+    base::UmaHistogramEnumeration(
+        histogram, ComposeSessionEventTypes::kComposeDialogOpened);
+  }
+  if (session_events.compose_prompt_view_count > 0) {
+    base::UmaHistogramEnumeration(histogram,
+                                  ComposeSessionEventTypes::kMainDialogShown);
+  }
+  if (session_events.successful_requests_count > 0) {
+    base::UmaHistogramEnumeration(histogram,
+                                  ComposeSessionEventTypes::kSuccessfulRequest);
+  }
+  if (session_events.failed_requests_count > 0) {
+    base::UmaHistogramEnumeration(histogram,
+                                  ComposeSessionEventTypes::kFailedRequest);
+  }
+  if (session_events.fre_view_count > 0) {
+    base::UmaHistogramEnumeration(histogram,
+                                  ComposeSessionEventTypes::kFREShown);
+  }
+  if (session_events.fre_completed_in_session) {
+    base::UmaHistogramEnumeration(histogram,
+                                  ComposeSessionEventTypes::kFREAccepted);
+  }
+  if (session_events.msbb_view_count > 0) {
+    base::UmaHistogramEnumeration(histogram,
+                                  ComposeSessionEventTypes::kMSBBShown);
+  }
+  if (session_events.msbb_settings_opened) {
+    base::UmaHistogramEnumeration(
+        histogram, ComposeSessionEventTypes::kMSBBSettingsOpened);
+  }
+  if (session_events.msbb_enabled_in_session) {
+    base::UmaHistogramEnumeration(histogram,
+                                  ComposeSessionEventTypes::kMSBBEnabled);
+  }
+  if (session_events.has_initial_text) {
+    base::UmaHistogramEnumeration(
+        histogram, ComposeSessionEventTypes::kStartedWithSelection);
+  }
+  if (session_events.compose_requests_count > 0) {
+    // The first Compose event has to be "Create".
+    base::UmaHistogramEnumeration(histogram,
+                                  ComposeSessionEventTypes::kCreateClicked);
+  }
+  if (session_events.update_input_count > 0) {
+    base::UmaHistogramEnumeration(histogram,
+                                  ComposeSessionEventTypes::kUpdateClicked);
+  }
+  if (session_events.regenerate_count > 0) {
+    base::UmaHistogramEnumeration(histogram,
+                                  ComposeSessionEventTypes::kRetryClicked);
+  }
+  if (session_events.undo_count > 0) {
+    base::UmaHistogramEnumeration(histogram,
+                                  ComposeSessionEventTypes::kUndoClicked);
+  }
+  if (session_events.redo_count > 0) {
+    base::UmaHistogramEnumeration(histogram,
+                                  ComposeSessionEventTypes::kRedoClicked);
+  }
+  if (session_events.result_edit_count > 0) {
+    base::UmaHistogramEnumeration(histogram,
+                                  ComposeSessionEventTypes::kResultEdited);
+  }
+  bool has_used_modifier = false;
+  if (session_events.shorten_count > 0) {
+    has_used_modifier = true;
+    base::UmaHistogramEnumeration(histogram,
+                                  ComposeSessionEventTypes::kShortenClicked);
+  }
+  if (session_events.lengthen_count > 0) {
+    has_used_modifier = true;
+    base::UmaHistogramEnumeration(histogram,
+                                  ComposeSessionEventTypes::kElaborateClicked);
+  }
+  if (session_events.casual_count > 0) {
+    has_used_modifier = true;
+    base::UmaHistogramEnumeration(histogram,
+                                  ComposeSessionEventTypes::kCasualClicked);
+  }
+  if (session_events.formal_count > 0) {
+    has_used_modifier = true;
+    base::UmaHistogramEnumeration(histogram,
+                                  ComposeSessionEventTypes::kFormalClicked);
+  }
+  if (has_used_modifier) {
+    base::UmaHistogramEnumeration(histogram,
+                                  ComposeSessionEventTypes::kAnyModifierUsed);
+  }
+  if (session_events.has_thumbs_down) {
+    base::UmaHistogramEnumeration(histogram,
+                                  ComposeSessionEventTypes::kThumbsDown);
+  }
+  if (session_events.has_thumbs_up) {
+    base::UmaHistogramEnumeration(histogram,
+                                  ComposeSessionEventTypes::kThumbsUp);
+  }
+  if (session_events.inserted_results) {
+    base::UmaHistogramEnumeration(histogram,
+                                  ComposeSessionEventTypes::kInsertClicked);
+  }
+  if (session_events.edited_result_inserted) {
+    base::UmaHistogramEnumeration(
+        histogram, ComposeSessionEventTypes::kEditedResultInserted);
+  }
+  if (session_events.close_clicked) {
+    base::UmaHistogramEnumeration(histogram,
+                                  ComposeSessionEventTypes::kCloseClicked);
+  }
+  if (session_events.did_click_edit) {
+    base::UmaHistogramEnumeration(histogram,
+                                  ComposeSessionEventTypes::kEditClicked);
+  }
+  if (session_events.did_click_cancel_on_edit) {
+    base::UmaHistogramEnumeration(histogram,
+                                  ComposeSessionEventTypes::kCancelEditClicked);
+  }
+}
 }  // namespace compose

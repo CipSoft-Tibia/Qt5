@@ -16,7 +16,6 @@
 #include "base/memory/raw_ptr.h"
 #include "base/numerics/safe_conversions.h"
 #include "base/observer_list.h"
-#include "base/strings/string_piece.h"
 #include "base/strings/utf_string_conversions.h"
 #include "base/time/time.h"
 #include "build/build_config.h"
@@ -162,6 +161,18 @@ class PasswordsPrivateApiTest : public ExtensionApiTest {
 
   bool get_exported_file_shown_in_shell() const {
     return test_delegate_->get_exported_file_shown_in_shell();
+  }
+
+  bool get_change_password_manager_pin_called() const {
+    return test_delegate_->get_change_password_manager_pin_called();
+  }
+
+  bool get_disconnect_cloud_authenticator_called() const {
+    return test_delegate_->get_disconnect_cloud_authenticator_called();
+  }
+
+  bool get_delete_all_password_manager_data_called() const {
+    return test_delegate_->get_delete_all_password_manager_data_called();
   }
 
  private:
@@ -399,6 +410,7 @@ IN_PROC_BROWSER_TEST_F(PasswordsPrivateApiTest, ExtendAuthValidity) {
   EXPECT_TRUE(get_authenticator_interaction_status());
 }
 
+// TODO(crbug.com/367217970): Test is failing on Lacros, re-enable once fixed.
 #if BUILDFLAG(IS_MAC) || BUILDFLAG(IS_WIN)
 IN_PROC_BROWSER_TEST_F(PasswordsPrivateApiTest,
                        SwitchBiometricAuthBeforeFillingState) {
@@ -429,6 +441,29 @@ IN_PROC_BROWSER_TEST_F(PasswordsPrivateApiTest, ShowExportedFileInShell) {
   EXPECT_FALSE(get_exported_file_shown_in_shell());
   EXPECT_TRUE(RunPasswordsSubtest("showExportedFileInShell")) << message_;
   EXPECT_TRUE(get_exported_file_shown_in_shell());
+}
+
+IN_PROC_BROWSER_TEST_F(PasswordsPrivateApiTest, ChangePasswordManagerPin) {
+  EXPECT_TRUE(RunPasswordsSubtest("changePasswordManagerPin"));
+  EXPECT_TRUE(get_change_password_manager_pin_called());
+}
+
+IN_PROC_BROWSER_TEST_F(PasswordsPrivateApiTest, IsPasswordManagerPinAvailable) {
+  EXPECT_TRUE(RunPasswordsSubtest("isPasswordManagerPinAvailable"));
+}
+
+IN_PROC_BROWSER_TEST_F(PasswordsPrivateApiTest, DisconnectCloudAuthenticator) {
+  EXPECT_TRUE(RunPasswordsSubtest("disconnectCloudAuthenticator"));
+  EXPECT_TRUE(get_disconnect_cloud_authenticator_called());
+}
+
+IN_PROC_BROWSER_TEST_F(PasswordsPrivateApiTest,
+                       IsConnectedToCloudAuthenticator) {
+  EXPECT_TRUE(RunPasswordsSubtest("isConnectedToCloudAuthenticator"));
+}
+
+IN_PROC_BROWSER_TEST_F(PasswordsPrivateApiTest, DeleteAllPasswordManagerData) {
+  EXPECT_TRUE(RunPasswordsSubtest("deleteAllPasswordManagerData"));
 }
 
 }  // namespace extensions

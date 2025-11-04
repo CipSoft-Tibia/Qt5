@@ -22,9 +22,8 @@ struct COMPONENT_EXPORT(ON_DEVICE_MODEL_ASSETS_CPP) ModelAssetPaths {
     return !ts_data.empty() && !ts_sp_model.empty();
   }
 
-  base::FilePath sp_model;
-  base::FilePath model;
   base::FilePath weights;
+  base::FilePath sp_model;
   base::FilePath ts_data;
   base::FilePath ts_sp_model;
   base::FilePath language_detection_model;
@@ -38,9 +37,9 @@ struct COMPONENT_EXPORT(ON_DEVICE_MODEL_ASSETS_CPP) ModelAssets {
   ModelAssets& operator=(ModelAssets&&);
   ~ModelAssets();
 
-  base::File sp_model;
-  base::File model;
   base::File weights;
+  base::FilePath weights_path;
+  base::FilePath sp_model_path;
   base::File ts_data;
   base::File ts_sp_model;
   base::File language_detection_model;
@@ -50,6 +49,31 @@ struct COMPONENT_EXPORT(ON_DEVICE_MODEL_ASSETS_CPP) ModelAssets {
 COMPONENT_EXPORT(ON_DEVICE_MODEL_ASSETS_CPP)
 ModelAssets LoadModelAssets(const ModelAssetPaths& paths);
 
+// A bundle of file paths to use for loading an adaptation.
+struct COMPONENT_EXPORT(ON_DEVICE_MODEL_ASSETS_CPP) AdaptationAssetPaths {
+  AdaptationAssetPaths();
+  AdaptationAssetPaths(const AdaptationAssetPaths&);
+  ~AdaptationAssetPaths();
+
+  base::FilePath weights;
+};
+
+// A bundle of opened file assets comprising an adaptation description to use
+// for execution.
+struct COMPONENT_EXPORT(ON_DEVICE_MODEL_ASSETS_CPP) AdaptationAssets {
+  AdaptationAssets();
+  AdaptationAssets(AdaptationAssets&&);
+  AdaptationAssets& operator=(AdaptationAssets&&);
+  ~AdaptationAssets();
+
+  base::File weights;
+  base::FilePath weights_path;
+};
+
+// Helper to open files for AdaptationAssets given their containing paths.
+COMPONENT_EXPORT(ON_DEVICE_MODEL_ASSETS_CPP)
+AdaptationAssets LoadAdaptationAssets(const AdaptationAssetPaths& paths);
+
 }  // namespace on_device_model
 
-#endif  //  SERVICES_ON_DEVICE_MODEL_PUBLIC_CPP_MODEL_ASSETS_H_
+#endif  // SERVICES_ON_DEVICE_MODEL_PUBLIC_CPP_MODEL_ASSETS_H_

@@ -8,6 +8,7 @@
 
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -19,13 +20,15 @@
 #include "base/functional/callback.h"
 #include "base/location.h"
 #include "base/logging.h"
-#include "base/memory/raw_ptr.h"
+#include "base/memory/ref_counted.h"
+#include "base/memory/weak_ptr.h"
 #include "base/ranges/algorithm.h"
 #include "base/sequence_checker.h"
 #include "base/task/sequenced_task_runner.h"
 #include "base/task/thread_pool.h"
 #include "build/build_config.h"
 #include "components/update_client/activity_data_service.h"
+#include "components/update_client/cancellation.h"
 #include "components/update_client/component.h"
 #include "components/update_client/configurator.h"
 #include "components/update_client/persisted_data.h"
@@ -37,7 +40,6 @@
 #include "components/update_client/update_client.h"
 #include "components/update_client/update_engine.h"
 #include "components/update_client/utils.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "url/gurl.h"
 
 namespace update_client {
@@ -45,8 +47,7 @@ namespace {
 
 class UpdateCheckerImpl : public UpdateChecker {
  public:
-  UpdateCheckerImpl(scoped_refptr<Configurator> config,
-                    PersistedData* metadata);
+  explicit UpdateCheckerImpl(scoped_refptr<Configurator> config);
   UpdateCheckerImpl(const UpdateCheckerImpl&) = delete;
   UpdateCheckerImpl& operator=(const UpdateCheckerImpl&) = delete;
   ~UpdateCheckerImpl() override;
@@ -70,7 +71,7 @@ class UpdateCheckerImpl : public UpdateChecker {
       const std::set<std::string>& active_ids);
 
   void OnRequestSenderComplete(scoped_refptr<UpdateContext> context,
-                               absl::optional<base::OnceClosure> fallback,
+                               std::optional<base::OnceClosure> fallback,
                                int error,
                                const std::string& response,
                                int retry_after_sec);
@@ -85,17 +86,18 @@ class UpdateCheckerImpl : public UpdateChecker {
 
   SEQUENCE_CHECKER(sequence_checker_);
   const scoped_refptr<Configurator> config_;
-  raw_ptr<PersistedData> metadata_ = nullptr;
   UpdateCheckCallback update_check_callback_;
-  std::unique_ptr<RequestSender> request_sender_;
+  scoped_refptr<Cancellation> cancellation_ =
+      base::MakeRefCounted<Cancellation>();
+  base::WeakPtrFactory<UpdateCheckerImpl> weak_factory_{this};
 };
 
-UpdateCheckerImpl::UpdateCheckerImpl(scoped_refptr<Configurator> config,
-                                     PersistedData* metadata)
-    : config_(config), metadata_(metadata) {}
+UpdateCheckerImpl::UpdateCheckerImpl(scoped_refptr<Configurator> config)
+    : config_(config) {}
 
 UpdateCheckerImpl::~UpdateCheckerImpl() {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+  cancellation_->Cancel();
 }
 
 void UpdateCheckerImpl::CheckForUpdates(
@@ -107,7 +109,7 @@ void UpdateCheckerImpl::CheckForUpdates(
   update_check_callback_ = std::move(update_check_callback);
 
   auto check_for_updates_invoker = base::BindOnce(
-      &UpdateCheckerImpl::CheckForUpdatesHelper, base::Unretained(this),
+      &UpdateCheckerImpl::CheckForUpdatesHelper, weak_factory_.GetWeakPtr(),
       context, config_->UpdateUrl(), additional_attributes);
 
   base::ThreadPool::PostTaskAndReplyWithResult(
@@ -119,13 +121,13 @@ void UpdateCheckerImpl::CheckForUpdates(
           [](base::OnceCallback<void(const UpdaterStateAttributes&,
                                      const std::set<std::string>&)>
                  check_for_updates_invoker,
-             PersistedData* metadata, std::vector<std::string> ids,
+             scoped_refptr<Configurator> config, std::vector<std::string> ids,
              const UpdaterStateAttributes& updater_state_attributes) {
-            metadata->GetActiveBits(
+            config->GetPersistedData()->GetActiveBits(
                 ids, base::BindOnce(std::move(check_for_updates_invoker),
                                     updater_state_attributes));
           },
-          std::move(check_for_updates_invoker), base::Unretained(metadata_),
+          std::move(check_for_updates_invoker), config_,
           context->components_to_check_for_updates));
 }
 
@@ -170,6 +172,8 @@ void UpdateCheckerImpl::CheckForUpdatesHelper(
         return is_foreground == elem.second->is_foreground();
       }));
 
+  PersistedData* metadata = config_->GetPersistedData();
+
   std::vector<std::string> sent_ids;
 
   std::vector<protocol_request::App> apps;
@@ -196,10 +200,10 @@ void UpdateCheckerImpl::CheckForUpdatesHelper(
 
     apps.push_back(MakeProtocolApp(
         app_id, crx_component->version, crx_component->ap, crx_component->brand,
-        config_->GetLang(), metadata_->GetInstallDate(app_id), install_source,
+        config_->GetLang(), metadata->GetInstallDate(app_id), install_source,
         crx_component->install_location, crx_component->fingerprint,
-        crx_component->installer_attributes, metadata_->GetCohort(app_id),
-        metadata_->GetCohortHint(app_id), metadata_->GetCohortName(app_id),
+        crx_component->installer_attributes, metadata->GetCohort(app_id),
+        metadata->GetCohortHint(app_id), metadata->GetCohortName(app_id),
         crx_component->channel, crx_component->disabled_reasons,
         MakeProtocolUpdateCheck(
             !crx_component->updates_enabled ||
@@ -216,9 +220,9 @@ void UpdateCheckerImpl::CheckForUpdatesHelper(
             return {{"install", install_data_index, ""}};
           }
         }(crx_component->install_data_index),
-        MakeProtocolPing(app_id, metadata_,
+        MakeProtocolPing(app_id, config_->GetPersistedData(),
                          active_ids.find(app_id) != active_ids.end()),
-        absl::nullopt));
+        std::nullopt));
   }
 
   if (sent_ids.empty()) {
@@ -235,34 +239,38 @@ void UpdateCheckerImpl::CheckForUpdatesHelper(
       config_->IsMachineExternallyManaged(), additional_attributes,
       updater_state_attributes, std::move(apps));
 
-  request_sender_ = std::make_unique<RequestSender>(config_);
-  request_sender_->Send(
-      {url},
-      BuildUpdateCheckExtraRequestHeaders(config_->GetProdId(),
-                                          config_->GetBrowserVersion(),
-                                          sent_ids, is_foreground),
-      config_->GetProtocolHandlerFactory()->CreateSerializer()->Serialize(
-          request),
-      config_->EnabledCupSigning(),
-      base::BindOnce(&UpdateCheckerImpl::OnRequestSenderComplete,
-                     base::Unretained(this), context,
+  cancellation_->OnCancel(
+      base::MakeRefCounted<RequestSender>(config_->GetNetworkFetcherFactory())
+          ->Send({url},
+                 BuildUpdateCheckExtraRequestHeaders(
+                     config_->GetProdId(), config_->GetBrowserVersion(),
+                     sent_ids, is_foreground),
+                 config_->GetProtocolHandlerFactory()
+                     ->CreateSerializer()
+                     ->Serialize(request),
+                 config_->EnabledCupSigning(),
+                 base::BindOnce(
+                     &UpdateCheckerImpl::OnRequestSenderComplete,
+                     weak_factory_.GetWeakPtr(), context,
                      urls.size() > 1
-                         ? absl::optional<base::OnceClosure>(base::BindOnce(
+                         ? std::optional<base::OnceClosure>(base::BindOnce(
                                &UpdateCheckerImpl::CheckForUpdatesHelper,
-                               base::Unretained(this), context,
+                               weak_factory_.GetWeakPtr(), context,
                                std::vector<GURL>(urls.begin() + 1, urls.end()),
                                additional_attributes, updater_state_attributes,
                                active_ids))
-                         : absl::nullopt));
+                         : std::nullopt)));
 }
 
 void UpdateCheckerImpl::OnRequestSenderComplete(
     scoped_refptr<UpdateContext> context,
-    absl::optional<base::OnceClosure> fallback,
+    std::optional<base::OnceClosure> fallback,
     int error,
     const std::string& response,
     int retry_after_sec) {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+
+  cancellation_->Clear();
 
   if (error) {
     VLOG(1) << "RequestSender failed " << error;
@@ -293,32 +301,34 @@ void UpdateCheckerImpl::UpdateCheckSucceeded(
     int retry_after_sec) {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
 
+  PersistedData* metadata = config_->GetPersistedData();
   const int daynum = results.daystart_elapsed_days;
   for (const auto& result : results.list) {
     auto entry = result.cohort_attrs.find(ProtocolParser::Result::kCohort);
     if (entry != result.cohort_attrs.end()) {
-      metadata_->SetCohort(result.extension_id, entry->second);
+      metadata->SetCohort(result.extension_id, entry->second);
     }
     entry = result.cohort_attrs.find(ProtocolParser::Result::kCohortName);
     if (entry != result.cohort_attrs.end()) {
-      metadata_->SetCohortName(result.extension_id, entry->second);
+      metadata->SetCohortName(result.extension_id, entry->second);
     }
     entry = result.cohort_attrs.find(ProtocolParser::Result::kCohortHint);
     if (entry != result.cohort_attrs.end()) {
-      metadata_->SetCohortHint(result.extension_id, entry->second);
+      metadata->SetCohortHint(result.extension_id, entry->second);
     }
   }
 
   base::OnceClosure reply =
       base::BindOnce(std::move(update_check_callback_),
-                     absl::make_optional<ProtocolParser::Results>(results),
+                     std::make_optional<ProtocolParser::Results>(results),
                      ErrorCategory::kNone, 0, retry_after_sec);
 
   if (daynum != ProtocolParser::kNoDaystart) {
-    metadata_->SetDateLastData(context->components_to_check_for_updates, daynum,
-                               std::move(reply));
+    metadata->SetDateLastData(context->components_to_check_for_updates, daynum,
+                              std::move(reply));
     return;
   }
+  metadata->SetLastUpdateCheckError({});
 
   base::SequencedTaskRunner::GetCurrentDefault()->PostTask(FROM_HERE,
                                                            std::move(reply));
@@ -329,19 +339,19 @@ void UpdateCheckerImpl::UpdateCheckFailed(ErrorCategory error_category,
                                           int retry_after_sec) {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   CHECK_NE(0, error);
+  config_->GetPersistedData()->SetLastUpdateCheckError(
+      {.category_ = error_category, .code_ = error});
 
   base::SequencedTaskRunner::GetCurrentDefault()->PostTask(
-      FROM_HERE,
-      base::BindOnce(std::move(update_check_callback_), absl::nullopt,
-                     error_category, error, retry_after_sec));
+      FROM_HERE, base::BindOnce(std::move(update_check_callback_), std::nullopt,
+                                error_category, error, retry_after_sec));
 }
 
 }  // namespace
 
 std::unique_ptr<UpdateChecker> UpdateChecker::Create(
-    scoped_refptr<Configurator> config,
-    PersistedData* persistent) {
-  return std::make_unique<UpdateCheckerImpl>(config, persistent);
+    scoped_refptr<Configurator> config) {
+  return std::make_unique<UpdateCheckerImpl>(config);
 }
 
 }  // namespace update_client

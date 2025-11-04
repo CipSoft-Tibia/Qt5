@@ -51,11 +51,21 @@ export const markdownLinks = new Map<string, string>([
   ],
   ['PNASecureContextRestrictionFeatureStatus', 'https://chromestatus.com/feature/5954091755241472'],
   ['https://w3c.github.io/uievents/#legacy-event-types', 'https://w3c.github.io/uievents/#legacy-event-types'],
-  ['https://support.google.com/chrome/answer/95647', 'https://support.google.com/chrome/answer/95647'],
+  ['manageCookiesHelpPage', 'https://support.google.com/chrome/answer/95647'],
+  ['gracePeriodStagedControlExplainer', 'https://developers.google.com/privacy-sandbox/blog/grace-period-opt-out'],
 ]);
 
 export const getMarkdownLink = (key: string): string => {
-  if (/^https:\/\/www.chromestatus.com\/feature\/\d+$/.test(key)) {
+  if (/^https:\/\/www\.chromestatus\.com\//.test(key)) {
+    return key;
+  }
+  if (/^https:\/\/developer\.chrome\.com\//.test(key)) {
+    return key;
+  }
+  if (/^https:\/\/developers\.google\.com\//.test(key)) {
+    return key;
+  }
+  if (/^https:\/\/web\.dev\//.test(key)) {
     return key;
   }
   const link = markdownLinks.get(key);

@@ -27,6 +27,7 @@ class QQuickTextDocument;
 class QQuickTextEditPrivate;
 class QQuickTextSelection;
 class QTextBlock;
+class QQmlComponent;
 
 class QQuickTextBlockForeign
 {
@@ -335,6 +336,7 @@ Q_SIGNALS:
     Q_REVISION(2, 6) void rightPaddingChanged();
     Q_REVISION(2, 6) void bottomPaddingChanged();
     Q_REVISION(2, 10) void tabStopDistanceChanged(qreal distance);
+    Q_REVISION(6, 9) void textEdited();
 
 public Q_SLOTS:
     void selectAll();

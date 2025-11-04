@@ -8,7 +8,7 @@
 #include <QLibraryInfo>
 #include <QProcess>
 #include <QtQuickTestUtils/private/qmlutils_p.h>
-#include <QtTest/QtTest>
+#include <QtTest/QTest>
 
 #include "test262runner.h"
 #include "private/qqmlbuiltinfunctions_p.h"

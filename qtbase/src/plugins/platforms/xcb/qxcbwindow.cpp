@@ -41,6 +41,7 @@
 #include <qpa/qwindowsysteminterface.h>
 
 #include <stdio.h>
+#include <unistd.h>
 
 #if QT_CONFIG(xcb_xlib)
 #define register        /* C++17 deprecated register */
@@ -59,8 +60,8 @@ QT_BEGIN_NAMESPACE
 
 using namespace Qt::StringLiterals;
 
-Q_LOGGING_CATEGORY(lcQpaWindow, "qt.qpa.window");
-Q_LOGGING_CATEGORY(lcQpaXcbWindow, "qt.qpa.xcb.window");
+Q_STATIC_LOGGING_CATEGORY(lcQpaWindow, "qt.qpa.window");
+Q_STATIC_LOGGING_CATEGORY(lcQpaXcbWindow, "qt.qpa.xcb.window");
 
 Q_DECLARE_TYPEINFO(xcb_rectangle_t, Q_PRIMITIVE_TYPE);
 
@@ -805,7 +806,10 @@ void QXcbWindow::hide()
         }
     }
 
+    // Avoid race with requestActivate()
+    QMutexLocker locker(&m_mappedMutex);
     m_mapped = false;
+    m_deferredActivation = false;
 
     // Hiding a modal window doesn't send an enter event to its transient parent when the
     // mouse is already over the parent window, so the enter event must be emulated.
@@ -1094,6 +1098,7 @@ void QXcbWindow::setNetWmState(Qt::WindowFlags flags)
 
 void QXcbWindow::setNetWmStateOnUnmappedWindow()
 {
+    QMutexLocker locker(&m_mappedMutex);
     if (Q_UNLIKELY(m_mapped))
         qCDebug(lcQpaXcb()) << "internal info: " << Q_FUNC_INFO << "called on mapped window";
 
@@ -1334,6 +1339,11 @@ void QXcbWindow::setParent(const QPlatformWindow *parent)
 void QXcbWindow::setWindowTitle(const QString &title)
 {
     setWindowTitle(connection(), m_window, title);
+}
+
+QString QXcbWindow::windowTitle() const
+{
+    return windowTitle(connection(), m_window);
 }
 
 void QXcbWindow::setWindowIconText(const QString &title)

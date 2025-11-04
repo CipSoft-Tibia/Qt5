@@ -1,5 +1,5 @@
 ##
-## Copyright (c) 2017, Alliance for Open Media. All rights reserved
+## Copyright (c) 2017, Alliance for Open Media. All rights reserved.
 ##
 ## This source code is subject to the terms of the BSD 2 Clause License and
 ## the Alliance for Open Media Patent License 1.0. If the BSD 2 Clause License
@@ -492,27 +492,26 @@ if (aom_config("CONFIG_AV1_HIGHBITDEPTH") eq "yes") {
 #
 # Sub Pixel Filters
 #
-add_proto qw/void aom_convolve8/, "const uint8_t *src, ptrdiff_t src_stride, uint8_t *dst, ptrdiff_t dst_stride, const InterpKernel *filter, int x0_q4, int x_step_q4, int y0_q4, int y_step_q4, int w, int h";
 add_proto qw/void aom_convolve_copy/,             "const uint8_t *src, ptrdiff_t src_stride, uint8_t *dst, ptrdiff_t dst_stride, int w, int h";
 add_proto qw/void aom_convolve8_horiz/,           "const uint8_t *src, ptrdiff_t src_stride, uint8_t *dst, ptrdiff_t dst_stride, const int16_t *filter_x, int x_step_q4, const int16_t *filter_y, int y_step_q4, int w, int h";
 add_proto qw/void aom_convolve8_vert/,            "const uint8_t *src, ptrdiff_t src_stride, uint8_t *dst, ptrdiff_t dst_stride, const int16_t *filter_x, int x_step_q4, const int16_t *filter_y, int y_step_q4, int w, int h";
 
 specialize qw/aom_convolve_copy       neon                        sse2 avx2/;
-specialize qw/aom_convolve8_horiz     neon neon_dotprod neon_i8mm sse2 ssse3/, "$avx2_ssse3";
-specialize qw/aom_convolve8_vert      neon neon_dotprod neon_i8mm sse2 ssse3/, "$avx2_ssse3";
+specialize qw/aom_convolve8_horiz     neon neon_dotprod neon_i8mm ssse3/, "$avx2_ssse3";
+specialize qw/aom_convolve8_vert      neon neon_dotprod neon_i8mm ssse3/, "$avx2_ssse3";
 
 add_proto qw/void aom_scaled_2d/, "const uint8_t *src, ptrdiff_t src_stride, uint8_t *dst, ptrdiff_t dst_stride, const InterpKernel *filter, int x0_q4, int x_step_q4, int y0_q4, int y_step_q4, int w, int h";
-specialize qw/aom_scaled_2d ssse3 neon/;
+specialize qw/aom_scaled_2d ssse3 neon neon_dotprod neon_i8mm/;
 
 if (aom_config("CONFIG_AV1_HIGHBITDEPTH") eq "yes") {
   add_proto qw/void aom_highbd_convolve_copy/, "const uint16_t *src, ptrdiff_t src_stride, uint16_t *dst, ptrdiff_t dst_stride, int w, int h";
   specialize qw/aom_highbd_convolve_copy sse2 avx2 neon/;
 
   add_proto qw/void aom_highbd_convolve8_horiz/, "const uint8_t *src, ptrdiff_t src_stride, uint8_t *dst, ptrdiff_t dst_stride, const int16_t *filter_x, int x_step_q4, const int16_t *filter_y, int y_step_q4, int w, int h, int bd";
-  specialize qw/aom_highbd_convolve8_horiz sse2 avx2 neon/;
+  specialize qw/aom_highbd_convolve8_horiz sse2 avx2 neon sve/;
 
   add_proto qw/void aom_highbd_convolve8_vert/, "const uint8_t *src, ptrdiff_t src_stride, uint8_t *dst, ptrdiff_t dst_stride, const int16_t *filter_x, int x_step_q4, const int16_t *filter_y, int y_step_q4, int w, int h, int bd";
-  specialize qw/aom_highbd_convolve8_vert sse2 avx2 neon/;
+  specialize qw/aom_highbd_convolve8_vert sse2 avx2 neon sve/;
 }
 
 #
@@ -1044,7 +1043,6 @@ if (aom_config("CONFIG_AV1_ENCODER") eq "yes") {
     add_proto qw/void/, "aom_sad${w}x${h}x4d", "const uint8_t *src_ptr, int src_stride, const uint8_t * const ref_ptr[4], int ref_stride, uint32_t sad_array[4]";
     add_proto qw/void/, "aom_sad${w}x${h}x3d", "const uint8_t *src_ptr, int src_stride, const uint8_t * const ref_ptr[4], int ref_stride, uint32_t sad_array[4]";
     add_proto qw/void/, "aom_sad_skip_${w}x${h}x4d", "const uint8_t *src_ptr, int src_stride, const uint8_t * const ref_ptr[4], int ref_stride, uint32_t sad_array[4]";
-    add_proto qw/void/, "aom_masked_sad${w}x${h}x4d", "const uint8_t *src, int src_stride, const uint8_t *ref[4], int ref_stride, const uint8_t *second_pred, const uint8_t *msk, int msk_stride, int invert_mask, unsigned sads[4]";
   }
 
   specialize qw/aom_sad128x128x4d avx2 sse2 neon neon_dotprod/;
@@ -1087,7 +1085,7 @@ if (aom_config("CONFIG_AV1_ENCODER") eq "yes") {
   specialize qw/aom_sad_skip_16x32x4d   avx2 sse2 neon neon_dotprod/;
   specialize qw/aom_sad_skip_16x16x4d   avx2 sse2 neon neon_dotprod/;
   specialize qw/aom_sad_skip_16x8x4d    avx2 sse2 neon neon_dotprod/;
-  specialize qw/aom_sad_skip_16x4x4d              neon neon_dotprod/;
+  specialize qw/aom_sad_skip_16x4x4d    avx2      neon neon_dotprod/;
   specialize qw/aom_sad_skip_8x32x4d         sse2 neon/;
   specialize qw/aom_sad_skip_8x16x4d         sse2 neon/;
   specialize qw/aom_sad_skip_8x8x4d          sse2 neon/;
@@ -1116,37 +1114,10 @@ if (aom_config("CONFIG_AV1_ENCODER") eq "yes") {
   specialize qw/aom_sad64x16x3d   avx2 neon neon_dotprod/;
   specialize qw/aom_sad32x8x3d    avx2 neon neon_dotprod/;
   specialize qw/aom_sad16x64x3d   avx2 neon neon_dotprod/;
-  specialize qw/aom_sad16x4x3d         neon neon_dotprod/;
+  specialize qw/aom_sad16x4x3d    avx2 neon neon_dotprod/;
   specialize qw/aom_sad8x32x3d         neon/;
   specialize qw/aom_sad4x16x3d         neon/;
 
-  specialize qw/aom_masked_sad128x128x4d  ssse3 neon/;
-  specialize qw/aom_masked_sad128x64x4d   ssse3 neon/;
-  specialize qw/aom_masked_sad64x128x4d   ssse3 neon/;
-  specialize qw/aom_masked_sad64x64x4d    ssse3 neon/;
-  specialize qw/aom_masked_sad64x32x4d    ssse3 neon/;
-  specialize qw/aom_masked_sad64x16x4d    ssse3 neon/;
-  specialize qw/aom_masked_sad32x64x4d    ssse3 neon/;
-  specialize qw/aom_masked_sad32x32x4d    ssse3 neon/;
-  specialize qw/aom_masked_sad32x16x4d    ssse3 neon/;
-  specialize qw/aom_masked_sad32x8x4d     ssse3 neon/;
-  specialize qw/aom_masked_sad16x64x4d    ssse3 neon/;
-  specialize qw/aom_masked_sad16x32x4d    ssse3 neon/;
-  specialize qw/aom_masked_sad16x16x4d    ssse3 neon/;
-  specialize qw/aom_masked_sad16x8x4d     ssse3 neon/;
-
-  specialize qw/aom_masked_sad8x16x4d     ssse3 neon/;
-  specialize qw/aom_masked_sad8x8x4d      ssse3 neon/;
-  specialize qw/aom_masked_sad8x4x4d      ssse3 neon/;
-  specialize qw/aom_masked_sad4x16x4d     ssse3 neon/;
-  specialize qw/aom_masked_sad4x8x4d      ssse3 neon/;
-  specialize qw/aom_masked_sad4x4x4d      ssse3 neon/;
-
-  specialize qw/aom_masked_sad4x16x4d     ssse3 neon/;
-  specialize qw/aom_masked_sad16x4x4d     ssse3 neon/;
-  specialize qw/aom_masked_sad8x32x4d     ssse3 neon/;
-  specialize qw/aom_masked_sad32x8x4d     ssse3 neon/;
-  specialize qw/aom_masked_sad64x16x4d    ssse3 neon/;
   #
   # Multi-block SAD, comparing a reference to N independent blocks
   #
@@ -1264,8 +1235,6 @@ if (aom_config("CONFIG_AV1_ENCODER") eq "yes") {
 
   add_proto qw/int aom_vector_var/, "const int16_t *ref, const int16_t *src, int bwl";
   specialize qw/aom_vector_var avx2 sse4_1 neon sve/;
-  # TODO(kyslov@) bring back SSE2 by extending it to 128 block size
-  #specialize qw/aom_vector_var neon sse2/;
 
   #
   # hamadard transform and satd for implmenting temporal dependency model
@@ -1314,11 +1283,6 @@ if (aom_config("CONFIG_AV1_ENCODER") eq "yes") {
   add_proto qw/void aom_ssim_parms_8x8/, "const uint8_t *s, int sp, const uint8_t *r, int rp, uint32_t *sum_s, uint32_t *sum_r, uint32_t *sum_sq_s, uint32_t *sum_sq_r, uint32_t *sum_sxr";
   specialize qw/aom_ssim_parms_8x8/, "$sse2_x86_64";
 
-  if (aom_config("CONFIG_INTERNAL_STATS") eq "yes") {
-    add_proto qw/void aom_ssim_parms_16x16/, "const uint8_t *s, int sp, const uint8_t *r, int rp, uint32_t *sum_s, uint32_t *sum_r, uint32_t *sum_sq_s, uint32_t *sum_sq_r, uint32_t *sum_sxr";
-    specialize qw/aom_ssim_parms_16x16/, "$sse2_x86_64";
-  }
-
   if (aom_config("CONFIG_AV1_HIGHBITDEPTH") eq "yes") {
     add_proto qw/void aom_highbd_ssim_parms_8x8/, "const uint16_t *s, int sp, const uint16_t *r, int rp, uint32_t *sum_s, uint32_t *sum_r, uint32_t *sum_sq_s, uint32_t *sum_sq_r, uint32_t *sum_sxr";
   }
@@ -1357,6 +1321,11 @@ if (aom_config("CONFIG_AV1_ENCODER") eq "yes") {
         specialize "aom_highbd_${bd}_mse16x8", qw/neon neon_dotprod/;
         specialize "aom_highbd_${bd}_mse8x16", qw/neon neon_dotprod/;
         specialize "aom_highbd_${bd}_mse8x8", qw/sse2 neon neon_dotprod/;
+      } elsif ($bd eq 10) {
+        specialize "aom_highbd_${bd}_mse16x16", qw/avx2 sse2 neon sve/;
+        specialize "aom_highbd_${bd}_mse16x8", qw/neon sve/;
+        specialize "aom_highbd_${bd}_mse8x16", qw/neon sve/;
+        specialize "aom_highbd_${bd}_mse8x8", qw/sse2 neon sve/;
       } else {
         specialize "aom_highbd_${bd}_mse16x16", qw/sse2 neon sve/;
         specialize "aom_highbd_${bd}_mse16x8", qw/neon sve/;
@@ -1367,11 +1336,10 @@ if (aom_config("CONFIG_AV1_ENCODER") eq "yes") {
     }
   }
 
-  #
-  #
-  #
-  add_proto qw/unsigned int aom_get_mb_ss/, "const int16_t *";
-  specialize qw/aom_get_mb_ss sse2 neon/;
+  if (aom_config("CONFIG_REALTIME_ONLY") ne "yes") {
+    add_proto qw/unsigned int aom_get_mb_ss/, "const int16_t *";
+    specialize qw/aom_get_mb_ss sse2 neon/;
+  }
 
   #
   # Variance / Subpixel Variance / Subpixel Avg Variance
@@ -1406,39 +1374,39 @@ if (aom_config("CONFIG_AV1_ENCODER") eq "yes") {
   specialize qw/aom_variance4x8       sse2      neon neon_dotprod/;
   specialize qw/aom_variance4x4       sse2      neon neon_dotprod/;
 
-  specialize qw/aom_sub_pixel_variance128x128   avx2 neon sse2 ssse3/;
-  specialize qw/aom_sub_pixel_variance128x64    avx2 neon sse2 ssse3/;
-  specialize qw/aom_sub_pixel_variance64x128    avx2 neon sse2 ssse3/;
-  specialize qw/aom_sub_pixel_variance64x64     avx2 neon sse2 ssse3/;
-  specialize qw/aom_sub_pixel_variance64x32     avx2 neon sse2 ssse3/;
-  specialize qw/aom_sub_pixel_variance32x64     avx2 neon sse2 ssse3/;
-  specialize qw/aom_sub_pixel_variance32x32     avx2 neon sse2 ssse3/;
-  specialize qw/aom_sub_pixel_variance32x16     avx2 neon sse2 ssse3/;
-  specialize qw/aom_sub_pixel_variance16x32     avx2 neon sse2 ssse3/;
-  specialize qw/aom_sub_pixel_variance16x16     avx2 neon sse2 ssse3/;
-  specialize qw/aom_sub_pixel_variance16x8      avx2 neon sse2 ssse3/;
-  specialize qw/aom_sub_pixel_variance8x16           neon sse2 ssse3/;
-  specialize qw/aom_sub_pixel_variance8x8            neon sse2 ssse3/;
-  specialize qw/aom_sub_pixel_variance8x4            neon sse2 ssse3/;
-  specialize qw/aom_sub_pixel_variance4x8            neon sse2 ssse3/;
-  specialize qw/aom_sub_pixel_variance4x4            neon sse2 ssse3/;
+  specialize qw/aom_sub_pixel_variance128x128   avx2 neon ssse3/;
+  specialize qw/aom_sub_pixel_variance128x64    avx2 neon ssse3/;
+  specialize qw/aom_sub_pixel_variance64x128    avx2 neon ssse3/;
+  specialize qw/aom_sub_pixel_variance64x64     avx2 neon ssse3/;
+  specialize qw/aom_sub_pixel_variance64x32     avx2 neon ssse3/;
+  specialize qw/aom_sub_pixel_variance32x64     avx2 neon ssse3/;
+  specialize qw/aom_sub_pixel_variance32x32     avx2 neon ssse3/;
+  specialize qw/aom_sub_pixel_variance32x16     avx2 neon ssse3/;
+  specialize qw/aom_sub_pixel_variance16x32     avx2 neon ssse3/;
+  specialize qw/aom_sub_pixel_variance16x16     avx2 neon ssse3/;
+  specialize qw/aom_sub_pixel_variance16x8      avx2 neon ssse3/;
+  specialize qw/aom_sub_pixel_variance8x16           neon ssse3/;
+  specialize qw/aom_sub_pixel_variance8x8            neon ssse3/;
+  specialize qw/aom_sub_pixel_variance8x4            neon ssse3/;
+  specialize qw/aom_sub_pixel_variance4x8            neon ssse3/;
+  specialize qw/aom_sub_pixel_variance4x4            neon ssse3/;
 
-  specialize qw/aom_sub_pixel_avg_variance128x128 avx2 neon sse2 ssse3/;
-  specialize qw/aom_sub_pixel_avg_variance128x64  avx2 neon sse2 ssse3/;
-  specialize qw/aom_sub_pixel_avg_variance64x128  avx2 neon sse2 ssse3/;
-  specialize qw/aom_sub_pixel_avg_variance64x64   avx2 neon sse2 ssse3/;
-  specialize qw/aom_sub_pixel_avg_variance64x32   avx2 neon sse2 ssse3/;
-  specialize qw/aom_sub_pixel_avg_variance32x64   avx2 neon sse2 ssse3/;
-  specialize qw/aom_sub_pixel_avg_variance32x32   avx2 neon sse2 ssse3/;
-  specialize qw/aom_sub_pixel_avg_variance32x16   avx2 neon sse2 ssse3/;
-  specialize qw/aom_sub_pixel_avg_variance16x32        neon sse2 ssse3/;
-  specialize qw/aom_sub_pixel_avg_variance16x16        neon sse2 ssse3/;
-  specialize qw/aom_sub_pixel_avg_variance16x8         neon sse2 ssse3/;
-  specialize qw/aom_sub_pixel_avg_variance8x16         neon sse2 ssse3/;
-  specialize qw/aom_sub_pixel_avg_variance8x8          neon sse2 ssse3/;
-  specialize qw/aom_sub_pixel_avg_variance8x4          neon sse2 ssse3/;
-  specialize qw/aom_sub_pixel_avg_variance4x8          neon sse2 ssse3/;
-  specialize qw/aom_sub_pixel_avg_variance4x4          neon sse2 ssse3/;
+  specialize qw/aom_sub_pixel_avg_variance128x128 avx2 neon ssse3/;
+  specialize qw/aom_sub_pixel_avg_variance128x64  avx2 neon ssse3/;
+  specialize qw/aom_sub_pixel_avg_variance64x128  avx2 neon ssse3/;
+  specialize qw/aom_sub_pixel_avg_variance64x64   avx2 neon ssse3/;
+  specialize qw/aom_sub_pixel_avg_variance64x32   avx2 neon ssse3/;
+  specialize qw/aom_sub_pixel_avg_variance32x64   avx2 neon ssse3/;
+  specialize qw/aom_sub_pixel_avg_variance32x32   avx2 neon ssse3/;
+  specialize qw/aom_sub_pixel_avg_variance32x16   avx2 neon ssse3/;
+  specialize qw/aom_sub_pixel_avg_variance16x32        neon ssse3/;
+  specialize qw/aom_sub_pixel_avg_variance16x16        neon ssse3/;
+  specialize qw/aom_sub_pixel_avg_variance16x8         neon ssse3/;
+  specialize qw/aom_sub_pixel_avg_variance8x16         neon ssse3/;
+  specialize qw/aom_sub_pixel_avg_variance8x8          neon ssse3/;
+  specialize qw/aom_sub_pixel_avg_variance8x4          neon ssse3/;
+  specialize qw/aom_sub_pixel_avg_variance4x8          neon ssse3/;
+  specialize qw/aom_sub_pixel_avg_variance4x4          neon ssse3/;
 
   if (aom_config("CONFIG_REALTIME_ONLY") ne "yes") {
     specialize qw/aom_variance4x16  neon neon_dotprod sse2/;
@@ -1448,18 +1416,18 @@ if (aom_config("CONFIG_AV1_ENCODER") eq "yes") {
     specialize qw/aom_variance16x64 neon neon_dotprod sse2 avx2/;
     specialize qw/aom_variance64x16 neon neon_dotprod sse2 avx2/;
 
-    specialize qw/aom_sub_pixel_variance4x16 neon sse2 ssse3/;
-    specialize qw/aom_sub_pixel_variance16x4 neon avx2 sse2 ssse3/;
-    specialize qw/aom_sub_pixel_variance8x32 neon sse2 ssse3/;
-    specialize qw/aom_sub_pixel_variance32x8 neon sse2 ssse3/;
-    specialize qw/aom_sub_pixel_variance16x64 neon avx2 sse2 ssse3/;
-    specialize qw/aom_sub_pixel_variance64x16 neon sse2 ssse3/;
-    specialize qw/aom_sub_pixel_avg_variance4x16 neon sse2 ssse3/;
-    specialize qw/aom_sub_pixel_avg_variance16x4 neon sse2 ssse3/;
-    specialize qw/aom_sub_pixel_avg_variance8x32 neon sse2 ssse3/;
-    specialize qw/aom_sub_pixel_avg_variance32x8 neon sse2 ssse3/;
-    specialize qw/aom_sub_pixel_avg_variance16x64 neon sse2 ssse3/;
-    specialize qw/aom_sub_pixel_avg_variance64x16 neon sse2 ssse3/;
+    specialize qw/aom_sub_pixel_variance4x16 neon ssse3/;
+    specialize qw/aom_sub_pixel_variance16x4 neon avx2 ssse3/;
+    specialize qw/aom_sub_pixel_variance8x32 neon ssse3/;
+    specialize qw/aom_sub_pixel_variance32x8 neon ssse3/;
+    specialize qw/aom_sub_pixel_variance16x64 neon avx2 ssse3/;
+    specialize qw/aom_sub_pixel_variance64x16 neon ssse3/;
+    specialize qw/aom_sub_pixel_avg_variance4x16 neon ssse3/;
+    specialize qw/aom_sub_pixel_avg_variance16x4 neon ssse3/;
+    specialize qw/aom_sub_pixel_avg_variance8x32 neon ssse3/;
+    specialize qw/aom_sub_pixel_avg_variance32x8 neon ssse3/;
+    specialize qw/aom_sub_pixel_avg_variance16x64 neon ssse3/;
+    specialize qw/aom_sub_pixel_avg_variance64x16 neon ssse3/;
 
     specialize qw/aom_dist_wtd_sub_pixel_avg_variance4x16  neon ssse3/;
     specialize qw/aom_dist_wtd_sub_pixel_avg_variance16x4  neon ssse3/;
@@ -1789,11 +1757,14 @@ if (aom_config("CONFIG_AV1_ENCODER") eq "yes") {
 
   # Flow estimation library
   if (aom_config("CONFIG_REALTIME_ONLY") ne "yes") {
-    add_proto qw/double av1_compute_cross_correlation/, "const unsigned char *frame1, int stride1, int x1, int y1, const unsigned char *frame2, int stride2, int x2, int y2";
-    specialize qw/av1_compute_cross_correlation sse4_1 avx2/;
+    add_proto qw/bool aom_compute_mean_stddev/, "const unsigned char *frame, int stride, int x, int y, double *mean, double *one_over_stddev";
+    specialize qw/aom_compute_mean_stddev sse4_1 avx2/;
+
+    add_proto qw/double aom_compute_correlation/, "const unsigned char *frame1, int stride1, int x1, int y1, double mean1, double one_over_stddev1, const unsigned char *frame2, int stride2, int x2, int y2, double mean2, double one_over_stddev2";
+    specialize qw/aom_compute_correlation sse4_1 avx2/;
 
     add_proto qw/void aom_compute_flow_at_point/, "const uint8_t *src, const uint8_t *ref, int x, int y, int width, int height, int stride, double *u, double *v";
-    specialize qw/aom_compute_flow_at_point sse4_1 neon/;
+    specialize qw/aom_compute_flow_at_point sse4_1 avx2 neon sve/;
   }
 
 }  # CONFIG_AV1_ENCODER

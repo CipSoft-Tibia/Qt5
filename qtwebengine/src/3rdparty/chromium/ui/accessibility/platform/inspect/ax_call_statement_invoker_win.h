@@ -15,7 +15,7 @@
 namespace ui {
 
 // Optional tri-state object.
-using AXOptionalObject = ui::AXOptional<AXTargetWin>;
+using AXOptionalObject = AXOptional<AXTargetWin>;
 
 // Invokes a script instruction describing a call unit which represents
 // a sequence of calls.
@@ -108,7 +108,7 @@ class COMPONENT_EXPORT(AX_PLATFORM) AXCallStatementInvokerWin final {
     return queried_accessible;
   }
 
-  absl::optional<IA2TextSelection> PropertyNodeToIA2TextSelection(
+  std::optional<IA2TextSelection> PropertyNodeToIA2TextSelection(
       const AXPropertyNode& node) const;
 
   std::vector<IA2TextSelection> PropertyNodeToIA2TextSelectionArray(

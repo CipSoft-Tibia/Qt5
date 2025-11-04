@@ -567,6 +567,11 @@ QQuickShaderEffect::~QQuickShaderEffect()
     via the Qt resource system. The URL may be absolute, or relative to the URL
     of the component.
 
+    \warning Shaders, including \c{.qsb} files, are assumed to be trusted
+    content. Application developers are advised to carefully consider the
+    potential implications before allowing the loading of user-provided content
+    that is not part of the application.
+
     \sa vertexShader
 */
 
@@ -591,6 +596,11 @@ void QQuickShaderEffect::setFragmentShader(const QUrl &fileUrl)
     must either be a local file or use the qrc scheme to access files embedded
     via the Qt resource system. The URL may be absolute, or relative to the URL
     of the component.
+
+    \warning Shaders, including \c{.qsb} files, are assumed to be trusted
+    content. Application developers are advised to carefully consider the
+    potential implications before allowing the loading of user-provided content
+    that is not part of the application.
 
     \sa fragmentShader
 */
@@ -1171,7 +1181,9 @@ QSGGuiThreadShaderEffectManager *QQuickShaderEffectPrivate::shaderEffectManager(
             return m_mgr;
         QQuickWindow *w = q->window();
         if (w) { // note: just the window, don't care about isSceneGraphInitialized() here
-            m_mgr = QQuickWindowPrivate::get(w)->context->sceneGraphContext()->createGuiThreadShaderEffectManager();
+            QSGRenderContext *renderContext = QQuickWindowPrivate::get(w)->context;
+            if (QSGContext *sgContext = renderContext->sceneGraphContext())
+                m_mgr = sgContext->createGuiThreadShaderEffectManager();
             if (m_mgr) {
                 QObject::connect(m_mgr, &QSGGuiThreadShaderEffectManager::logAndStatusChanged, q, &QQuickShaderEffect::logChanged);
                 QObject::connect(m_mgr, &QSGGuiThreadShaderEffectManager::logAndStatusChanged, q, &QQuickShaderEffect::statusChanged);

@@ -21,6 +21,10 @@
 #include "media/base/media_export.h"
 #include "media/base/subsample_entry.h"
 #include "media/base/video_codecs.h"
+#include "media/base/video_color_space.h"
+#include "media/base/video_frame.h"
+#include "media/base/video_types.h"
+#include "media/base/win/dxgi_device_manager.h"
 #include "media/media_buildflags.h"
 
 struct ID3D11DeviceChild;
@@ -111,11 +115,7 @@ using ChannelConfig = uint32_t;
 // Converts Microsoft's channel configuration to ChannelLayout.
 // This mapping is not perfect but the best we can do given the current
 // ChannelLayout enumerator and the Windows-specific speaker configurations
-// defined in ksmedia.h. Don't assume that the channel ordering in
-// ChannelLayout is exactly the same as the Windows specific configuration.
-// As an example: KSAUDIO_SPEAKER_7POINT1_SURROUND is mapped to
-// CHANNEL_LAYOUT_7_1 but the positions of Back L, Back R and Side L, Side R
-// speakers are different in these two definitions.
+// defined in ksmedia.h.
 MEDIA_EXPORT ChannelLayout ChannelConfigToChannelLayout(ChannelConfig config);
 
 // Converts a GUID (little endian) to a bytes array (big endian).
@@ -180,6 +180,14 @@ MEDIA_EXPORT GUID
 VideoCodecToMFSubtype(VideoCodec codec,
                       VideoCodecProfile profile = VIDEO_CODEC_PROFILE_UNKNOWN);
 
+// Converts `video_pixel_format` into a MediaFoundation subtype.
+MEDIA_EXPORT GUID
+VideoPixelFormatToMFSubtype(VideoPixelFormat video_pixel_format);
+
+// Converts `primaries` into an MFVideoPrimaries value
+MEDIA_EXPORT MFVideoPrimaries
+VideoPrimariesToMFVideoPrimaries(VideoColorSpace::PrimaryID primaries);
+
 // Callback to transform a Media Foundation sample when converting from the
 // DecoderBuffer if needed.
 using TransformSampleCB =
@@ -199,6 +207,16 @@ MEDIA_EXPORT HRESULT
 CreateDecryptConfigFromSample(IMFSample* mf_sample,
                               const GUID& key_id,
                               std::unique_ptr<DecryptConfig>* decrypt_config);
+
+// Converts `frame` into an IMFSample, using an underlying D3D texture,
+// reading back from the GPU, or copying the frame contents as necessary.
+MEDIA_EXPORT HRESULT GenerateSampleFromVideoFrame(
+    const media::VideoFrame* frame,
+    DXGIDeviceManager* dxgi_device_manager,
+    bool use_dxgi_buffer,
+    Microsoft::WRL::ComPtr<ID3D11Texture2D>* staging_texture,
+    DWORD buffer_alignment,
+    IMFSample** sample_out);
 
 }  // namespace media
 

@@ -78,7 +78,7 @@ void NotifyStorageAccess(const content::GlobalRenderFrameHostToken& frame_token,
   }
 
   auto metrics_type =
-      ([storage_type]() -> absl::optional<page_load_metrics::StorageType> {
+      ([storage_type]() -> std::optional<page_load_metrics::StorageType> {
         switch (storage_type) {
           case StorageType::LOCAL_STORAGE:
             return page_load_metrics::StorageType::kLocalStorage;
@@ -92,7 +92,7 @@ void NotifyStorageAccess(const content::GlobalRenderFrameHostToken& frame_token,
             return page_load_metrics::StorageType::kCacheStorage;
           case StorageType::DATABASE:
           case StorageType::WEB_LOCKS:
-            return absl::nullopt;
+            return std::nullopt;
         }
       })();
 
@@ -156,7 +156,7 @@ void ContentSettingsManagerImpl::AllowStorageAccess(
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   GURL url = origin.GetURL();
 
-  // TODO(crbug.com/1386190): Consider whether the following check should
+  // TODO(crbug.com/40247160): Consider whether the following check should
   // get CookieSettingOverrides from the frame rather than default to none.
 
   CookieSettingsBase::CookieSettingWithMetadata cookie_settings;
@@ -217,7 +217,9 @@ ContentSettingsManagerImpl::ContentSettingsManagerImpl(
     scoped_refptr<CookieSettings> cookie_settings)
     : delegate_(std::move(delegate)),
       render_process_id_(render_process_id),
-      cookie_settings_(cookie_settings) {}
+      cookie_settings_(cookie_settings) {
+  CHECK(cookie_settings_);
+}
 
 ContentSettingsManagerImpl::ContentSettingsManagerImpl(
     const ContentSettingsManagerImpl& other)

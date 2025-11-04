@@ -235,9 +235,13 @@ installPackages+=(cifs-utils)
 installPackages+=(uml-utilities)
 # used for reading vcpkg packages version, from vcpkg.json
 installPackages+=(jq)
+# To save iptables rules
+installPackages+=(iptables-persistent)
 
 installPackages+=(patchelf)
 
+# For Firebird in RTA
+installPackages+=(libtommath-dev)
 # For tst_license.pl with all the machines generating SBOM
 installPackages+=(libjson-perl)
 
@@ -260,6 +264,12 @@ source "${BASH_SOURCE%/*}/../common/unix/SetEnvVar.sh"
 # 'The script sbom2doc is installed in '/home/qt/.local/bin' which is not on PATH.'
 # hence the explicit assignment to SBOM_PYTHON_APPS_PATH.
 SetEnvVar "SBOM_PYTHON_APPS_PATH" "/home/qt/.local/bin"
+
+gccVersion="$(gcc --version |grep -Eo '[0-9]+\.[0-9]+(\.[0-9]+)?' |head -n 1)"
+echo "GCC = $gccVersion" >> versions.txt
+
+glibcVersion="$(ldd --version |grep -Eo '[0-9]+\.[0-9]+(\.[0-9]+)?' |head -n 1)"
+echo "glibc = $glibcVersion" >> versions.txt
 
 OpenSSLVersion="$(openssl version |cut -b 9-14)"
 echo "System's OpenSSL = $OpenSSLVersion" >> ~/versions.txt

@@ -224,6 +224,22 @@ bool IsHLSLUnsigned(clang::QualType type) {
   return type->isUnsignedIntegerType();
 }
 
+bool IsHLSLMinPrecision(clang::QualType Ty) {
+  Ty = Ty.getCanonicalType().getNonReferenceType();
+  if (auto BT = Ty->getAs<clang::BuiltinType>()) {
+    switch (BT->getKind()) {
+    case clang::BuiltinType::Min12Int:
+    case clang::BuiltinType::Min16Int:
+    case clang::BuiltinType::Min16UInt:
+    case clang::BuiltinType::Min16Float:
+    case clang::BuiltinType::Min10Float:
+      return true;
+    }
+  }
+
+  return false;
+}
+
 bool HasHLSLUNormSNorm(clang::QualType type, bool *pIsSNorm) {
   // snorm/unorm can be on outer vector/matrix as well as element type
   // in the template form.  Outer-most type attribute wins.
@@ -413,15 +429,6 @@ void GetRowsAndColsForAny(QualType type, uint32_t &rowCount,
         const TemplateArgument &arg1 = argList[1];
         llvm::APSInt rowSize = arg1.getAsIntegral();
         colCount = rowSize.getLimitedValue();
-      } else if (templateDecl->getName().startswith("WaveMatrix")) {
-        auto name = templateDecl->getName();
-        if (name == "WaveMatrixLeft" || name == "WaveMatrixRight" ||
-            name == "WaveMatrixLeftColAcc" || name == "WaveMatrixRightRowAcc" ||
-            name == "WaveMatrixAccumulator") {
-          const TemplateArgumentList &argList = templateDecl->getTemplateArgs();
-          rowCount = argList[1].getAsIntegral().getLimitedValue();
-          colCount = argList[2].getAsIntegral().getLimitedValue();
-        }
       }
     }
   }

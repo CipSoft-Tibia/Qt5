@@ -476,6 +476,36 @@ bool QQuickWebEngineSettings::forceDarkMode() const
 }
 
 /*!
+    \qmlproperty bool WebEngineSettings::printHeaderAndFooter
+    \since QtWebEngine 6.9
+
+    Specifies that printing results will contain basic page information (URL,
+    title, date, page number) in header and footer area. It is the embedder's
+    responsibility to provide enough space for these texts by setting proper top
+    and bottom margins.
+
+    Disabled by default.
+ */
+bool QQuickWebEngineSettings::printHeaderAndFooter() const
+{
+    return d_ptr->testAttribute(QWebEngineSettings::PrintHeaderAndFooter);
+}
+
+/*!
+    \qmlproperty bool WebEngineSettings::preferCSSMarginsForPrinting
+    \since QtWebEngine 6.9
+
+    Turns on preferring CSS margins over the default (0, 0, 0, 0) sizes when
+    printing a web page.
+
+    Disabled by default.
+*/
+bool QQuickWebEngineSettings::preferCSSMarginsForPrinting() const
+{
+    return d_ptr->testAttribute(QWebEngineSettings::PreferCSSMarginsForPrinting);
+}
+
+/*!
     \qmlproperty bool WebEngineSettings::scrollAnimatorEnabled
     \since QtWebEngine 6.8
 
@@ -486,6 +516,25 @@ bool QQuickWebEngineSettings::forceDarkMode() const
 bool QQuickWebEngineSettings::scrollAnimatorEnabled() const
 {
     return d_ptr->testAttribute(QWebEngineSettings::ScrollAnimatorEnabled);
+}
+
+/*!
+    \qmlproperty bool WebEngineSettings::touchEventsApiEnabled
+    \since QtWebEngine 6.9
+
+    Enables support for JavaScript touch events API, meaning \c ontouchstart,
+    \c ontouchend and \c ontouchmove handlers will be present in the \c document.window object.
+
+    Note that some websites use this API to decide whether they run on a mobile device or on desktop
+    and base their design on it. This can cause unwanted results on touchscreen laptops or other
+    setups that emulate a fake touch device.
+
+    Enabled by default if a touch device detected by the system
+    and disabled otherwise.
+ */
+bool QQuickWebEngineSettings::touchEventsApiEnabled() const
+{
+    return d_ptr->testAttribute(QWebEngineSettings::TouchEventsApiEnabled);
 }
 
 /*!
@@ -815,6 +864,22 @@ void QQuickWebEngineSettings::setForceDarkMode(bool on)
         Q_EMIT forceDarkModeChanged();
 }
 
+void QQuickWebEngineSettings::setPrintHeaderAndFooter(bool on)
+{
+    bool wasOn = d_ptr->testAttribute(QWebEngineSettings::PrintHeaderAndFooter);
+    d_ptr->setAttribute(QWebEngineSettings::PrintHeaderAndFooter, on);
+    if (wasOn != on)
+        Q_EMIT printHeaderAndFooterChanged();
+}
+
+void QQuickWebEngineSettings::setPreferCSSMarginsForPrinting(bool on)
+{
+    bool wasOn = d_ptr->testAttribute(QWebEngineSettings::PreferCSSMarginsForPrinting);
+    d_ptr->setAttribute(QWebEngineSettings::PreferCSSMarginsForPrinting, on);
+    if (wasOn != on)
+        Q_EMIT preferCSSMarginsForPrintingChanged();
+}
+
 void QQuickWebEngineSettings::setScrollAnimatorEnabled(bool on)
 {
     bool wasOn = d_ptr->testAttribute(QWebEngineSettings::ScrollAnimatorEnabled);
@@ -854,6 +919,14 @@ void QQuickWebEngineSettings::setImageAnimationPolicy(
     d_ptr->setImageAnimationPolicy(newPolicy);
     if (oldPolicy != newPolicy)
         Q_EMIT imageAnimationPolicyChanged();
+}
+
+void QQuickWebEngineSettings::setTouchEventsApiEnabled(bool on)
+{
+    bool wasOn = d_ptr->testAttribute(QWebEngineSettings::TouchEventsApiEnabled);
+    d_ptr->setAttribute(QWebEngineSettings::TouchEventsApiEnabled, on);
+    if (wasOn != on)
+        Q_EMIT touchEventsApiEnabledChanged();
 }
 
 QT_END_NAMESPACE

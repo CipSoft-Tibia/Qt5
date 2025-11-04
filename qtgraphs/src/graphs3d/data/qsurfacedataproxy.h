@@ -24,6 +24,8 @@ class Q_GRAPHS_EXPORT QSurfaceDataProxy : public QAbstractDataProxy
     Q_PROPERTY(qsizetype rowCount READ rowCount NOTIFY rowCountChanged FINAL)
     Q_PROPERTY(qsizetype columnCount READ columnCount NOTIFY columnCountChanged FINAL)
     Q_PROPERTY(QSurface3DSeries *series READ series NOTIFY seriesChanged FINAL)
+    QML_NAMED_ELEMENT(SurfaceDataProxy)
+    QML_UNCREATABLE("")
 
 public:
     explicit QSurfaceDataProxy(QObject *parent = nullptr);

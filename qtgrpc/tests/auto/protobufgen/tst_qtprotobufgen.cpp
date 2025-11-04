@@ -85,8 +85,8 @@ void qtprotobufgenTest::initTestCase()
     QVERIFY(!cmakeGeneratedPath().isEmpty());
 #if QT_CONFIG(process)
     QVERIFY(!cmdLineGeneratedPath().isEmpty());
-#endif
     QVERIFY(protocolCompilerAvailableToRun(ProtocPath));
+#endif
 }
 
 void qtprotobufgenTest::cmakeGenerated_data()
@@ -174,6 +174,16 @@ void qtprotobufgenTest::cmdLineGenerated_data()
         << "export_macro_custom_file_name_skip_generate"
         << "qtprotobufgen.proto"
         << "EXPORT_MACRO=EXPORT_MACRO_WITH_FILE:custom_file_name.hxx:false";
+
+    QTest::addRow("header_guard_filename")
+        << "header_guard_filename"
+        << "qtprotobufgenminimal.proto"
+        << "HEADER_GUARD=filename";
+
+    QTest::addRow("header_guard_pragma")
+        << "header_guard_pragma"
+        << "qtprotobufgenminimal.proto"
+        << "HEADER_GUARD=pragma";
 }
 
 void qtprotobufgenTest::cmdLineGenerated()
@@ -242,9 +252,12 @@ void qtprotobufgenTest::cmdLineInvalidExportMacro()
 
     QProcess process;
     process.setWorkingDirectory(cmdLineGeneratedPath());
-    process.startCommand(ProtocPath + QString(" ") + PluginKey + QtprotobufgenPath + OptKey
-                         + exportMacroCmd + OutKey + outputDirectory.absolutePath() + IncludeKey
-                         + expectedResultPath() + "qtprotobufgen.proto" + allow_proto3_optional);
+    process.startCommand(ProtocPath + QString(" ") + PluginKey + QtprotobufgenPath
+                         + OptKey + exportMacroCmd
+                         + OutKey + outputDirectory.absolutePath()
+                         + IncludeKey + expectedResultPath() +
+                         + " " + expectedResultPath() + "/qtprotobufgen.proto"
+                         + allow_proto3_optional);
     QVERIFY2(process.waitForStarted(), msgProcessStartFailed(process).constData());
     if (!process.waitForFinished()) {
         process.kill();

@@ -9,6 +9,7 @@
 
 #include "common/vulkan/libvulkan_loader.h"
 
+#include "common/log_utils.h"
 #include "common/system_utils.h"
 
 namespace angle
@@ -30,6 +31,7 @@ void *OpenLibVulkan()
 #endif
     };
 
+#if !defined(TOOLKIT_QT)
     constexpr SearchType kSearchTypes[] = {
 // On Android, Fuchsia and GGP we use the system libvulkan.
 #if defined(ANGLE_USE_CUSTOM_LIBVULKAN)
@@ -38,6 +40,23 @@ void *OpenLibVulkan()
         SearchType::SystemDir,
 #endif  // defined(ANGLE_USE_CUSTOM_LIBVULKAN)
     };
+#else
+    std::string customLibraryName = angle::GetEnvironmentVar("QT_VULKAN_LIB");
+    if (!customLibraryName.empty()) {
+      std::string errorOut;
+      void *lib = OpenSystemLibraryWithExtensionAndGetError(customLibraryName.c_str(),
+                                                            SearchType::SystemDir,
+                                                            &errorOut);
+      if (!lib) {
+          ERR() << "Failed to load Vulkan library set by QT_VULKAN_LIB "
+                << "environment variable:\n" << errorOut;
+      }
+
+      return lib;
+    }
+
+    constexpr SearchType kSearchTypes[] = { SearchType::SystemDir };
+#endif  // !defined(TOOLKIT_QT)
 
     for (angle::SearchType searchType : kSearchTypes)
     {

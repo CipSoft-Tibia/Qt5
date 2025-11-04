@@ -13,12 +13,12 @@
 #include <benchmark/benchmark.h>
 #include "bench/utils.h"
 
-#include <xnnpack.h>
-#include <xnnpack/aligned-allocator.h>
-#include <xnnpack/common.h>
-#include <xnnpack/microfnptr.h>
-#include <xnnpack/microparams-init.h>
-#include <xnnpack/vbinary.h>
+#include "xnnpack.h"
+#include "xnnpack/aligned-allocator.h"
+#include "xnnpack/common.h"
+#include "xnnpack/microfnptr.h"
+#include "xnnpack/microparams-init.h"
+#include "xnnpack/vbinary.h"
 
 
 static void qs8_vadd(
@@ -144,31 +144,6 @@ static void qs8_vadd(
                     xnn_qs8_vadd_minmax_ukernel__avx2_mul32_ld64_u32,
                     xnn_init_qs8_add_minmax_avx2_params,
                     benchmark::utils::CheckAVX2)
-    ->Apply(benchmark::utils::BinaryElementwiseParameters<int8_t, int8_t>)
-    ->UseRealTime();
-
-  BENCHMARK_CAPTURE(qs8_vadd, xop_mul32_ld32_u8,
-                    xnn_qs8_vadd_minmax_ukernel__xop_mul32_ld32_u8,
-                    xnn_init_qs8_add_minmax_sse4_mul32_params,
-                    benchmark::utils::CheckXOP)
-    ->Apply(benchmark::utils::BinaryElementwiseParameters<int8_t, int8_t>)
-    ->UseRealTime();
-  BENCHMARK_CAPTURE(qs8_vadd, xop_mul32_ld32_u16,
-                    xnn_qs8_vadd_minmax_ukernel__xop_mul32_ld32_u16,
-                    xnn_init_qs8_add_minmax_sse4_mul32_params,
-                    benchmark::utils::CheckXOP)
-    ->Apply(benchmark::utils::BinaryElementwiseParameters<int8_t, int8_t>)
-    ->UseRealTime();
-  BENCHMARK_CAPTURE(qs8_vadd, xop_mul32_ld32_u24,
-                    xnn_qs8_vadd_minmax_ukernel__xop_mul32_ld32_u24,
-                    xnn_init_qs8_add_minmax_sse4_mul32_params,
-                    benchmark::utils::CheckXOP)
-    ->Apply(benchmark::utils::BinaryElementwiseParameters<int8_t, int8_t>)
-    ->UseRealTime();
-  BENCHMARK_CAPTURE(qs8_vadd, xop_mul32_ld32_u32,
-                    xnn_qs8_vadd_minmax_ukernel__xop_mul32_ld32_u32,
-                    xnn_init_qs8_add_minmax_sse4_mul32_params,
-                    benchmark::utils::CheckXOP)
     ->Apply(benchmark::utils::BinaryElementwiseParameters<int8_t, int8_t>)
     ->UseRealTime();
 

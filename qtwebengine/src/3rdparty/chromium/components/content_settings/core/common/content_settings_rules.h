@@ -13,9 +13,8 @@
 
 namespace content_settings {
 
-// Shared definitions for OriginIdentifierValueMap and
-// HostIndexedContentSettings to store a set of ContentSetting rules in order
-// of precedence.
+// Shared definitions for OriginValueMap and HostIndexedContentSettings to store
+// a set of ContentSetting rules in order of precedence.
 
 struct SortedPatternPair {
   ContentSettingsPattern primary_pattern;
@@ -41,4 +40,4 @@ typedef std::map<SortedPatternPair, ValueEntry> Rules;
 
 }  // namespace content_settings
 
-#endif
+#endif  // COMPONENTS_CONTENT_SETTINGS_CORE_COMMON_CONTENT_SETTINGS_RULES_H_

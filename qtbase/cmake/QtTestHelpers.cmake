@@ -151,7 +151,7 @@ function(qt_internal_setup_docker_test_fixture name)
 
     if(DEFINED QT_TESTSERVER_COMPOSE_FILE)
         set(TESTSERVER_COMPOSE_FILE ${QT_TESTSERVER_COMPOSE_FILE})
-    elseif(QNX)
+    elseif(QNX OR VXWORKS)
         set(TESTSERVER_COMPOSE_FILE "${QT_SOURCE_TREE}/tests/testserver/docker-compose-qemu-bridge-network.yml")
     else()
         set(TESTSERVER_COMPOSE_FILE "${QT_SOURCE_TREE}/tests/testserver/docker-compose-bridge-network.yml")
@@ -194,7 +194,7 @@ function(qt_internal_prepare_test_target_flags version_arg exceptions_text gui_t
     # Qt modules get compiled without exceptions enabled by default.
     # However, testcases should be still built with exceptions.
     set(${exceptions_text} "EXCEPTIONS" PARENT_SCOPE)
-    if (${arg_NO_EXCEPTIONS} OR WASM)
+    if (${arg_NO_EXCEPTIONS})
         set(${exceptions_text} "" PARENT_SCOPE)
     endif()
 
@@ -218,6 +218,7 @@ function(qt_internal_get_test_arg_definitions optional_args single_value_args mu
         NO_BATCH
         NO_INSTALL
         BUNDLE_ANDROID_OPENSSL_LIBS
+        NO_WASM_DEFAULT_FILES
         PARENT_SCOPE
     )
     set(${single_value_args}
@@ -277,6 +278,13 @@ function(qt_internal_add_test_to_batch batch_name name)
                     # multiple batches.
                     ${QT_CMAKE_EXPORT_NAMESPACE}::Gui
         )
+        # TODO: QTBUG-131745
+        # Emscripten runs out of memory in CI after upgrade to 3.1.70 when linking test_batch.
+        # In future we will disable test batching and use JSPI instead.
+        # For now disable optimizations for test_batch target so it can run in CI.
+        if(WASM)
+            target_compile_options(${target} PRIVATE "-O0")
+        endif()
 
         set_property(TARGET ${target} PROPERTY _qt_has_exceptions ${arg_EXCEPTIONS})
         set_property(TARGET ${target} PROPERTY _qt_has_gui ${arg_GUI})
@@ -603,6 +611,13 @@ function(qt_internal_add_test name)
         endif()
     endif()
 
+    if (arg_NO_WASM_DEFAULT_FILES)
+        set_target_properties(
+                ${name}
+            PROPERTIES
+                NO_WASM_DEFAULT_FILES  True)
+    endif()
+
     foreach(path IN LISTS arg_QML_IMPORTPATH)
         list(APPEND extra_test_args "-import" "${path}")
     endforeach()
@@ -662,7 +677,16 @@ function(qt_internal_add_test name)
             endif()
         endif()
         qt_internal_android_test_runner_arguments("${name}" test_executable extra_test_args)
-        list(APPEND extra_test_args "--timeout" "${android_timeout}" "--verbose")
+        list(APPEND extra_test_args "--timeout" "${android_timeout}")
+
+        set(build_environment "")
+        if(DEFINED ENV{QT_BUILD_ENVIRONMENT})
+            set(build_environment "$ENV{QT_BUILD_ENVIRONMENT}")
+        endif()
+
+        if(QT_ENABLE_VERBOSE_DEPLOYMENT OR build_environment STREQUAL "ci")
+            list(APPEND extra_test_args "--verbose")
+        endif()
 
         if(arg_ANDROID_TESTRUNNER_PRE_TEST_ADB_COMMANDS)
             foreach(command IN LISTS arg_ANDROID_TESTRUNNER_PRE_TEST_ADB_COMMANDS)
@@ -688,8 +712,17 @@ function(qt_internal_add_test name)
         list(APPEND extra_test_args "qtestname=${testname}")
         list(APPEND extra_test_args "--silence_timeout=60")
         # TODO: Add functionality to specify browser
-        list(APPEND extra_test_args "--browser=chrome")
-        list(APPEND extra_test_args "--browser_args=\"--password-store=basic\"")
+        if(DEFINED ENV{BROWSER_FOR_WASM})
+            set(browser $ENV{BROWSER_FOR_WASM})
+        else()
+            set(browser "chrome")
+        endif()
+        list(APPEND extra_test_args "--browser=${browser}")
+        if(DEFINED ENV{HEADLESS_CHROME_FOR_TESTING})
+            list(APPEND extra_test_args "--browser_args=\"--password-store=basic --headless\"")
+        else()
+            list(APPEND extra_test_args "--browser_args=\"--password-store=basic\"")
+        endif()
         list(APPEND extra_test_args "--kill_exit")
 
         # Tests may require asyncify if they use exec(). Enable asyncify for
@@ -709,8 +742,40 @@ function(qt_internal_add_test name)
         endif()
     else()
         if(arg_QMLTEST AND NOT arg_SOURCES)
+            set(qt_additional_libexec_paths "")
+
+            if(DEFINED QT_ADDITIONAL_PACKAGES_PREFIX_PATH)
+                foreach(additional_prefix IN LISTS QT_ADDITIONAL_PACKAGES_PREFIX_PATH)
+                    set(additional_libexec "${additional_prefix}/${QT6_INSTALL_LIBEXECS}")
+                    list(PREPEND qt_additional_libexec_paths "${additional_libexec}")
+                endforeach()
+            endif()
+
+            # First look for the scanner in the target qt libexec dir. We prefer this one
+            # over the tool target which might be for the host platform.
+            find_program(qmltestrunner_executable
+                NAMES qmltestrunner qmltestrunner.exe
+                PATHS "${QT6_INSTALL_PREFIX}/${QT6_INSTALL_LIBEXECS}"
+                    ${qt_additional_libexec_paths}
+                NO_DEFAULT_PATH
+            )
+
+            # If we don't find it in the paths, fallback to using target names.
+            if(NOT qmltestrunner_executable
+                    AND TARGET "${QT_CMAKE_EXPORT_NAMESPACE}::qmltestrunner")
+                set(qmltestrunner_executable ${QT_CMAKE_EXPORT_NAMESPACE}::qmltestrunner)
+            endif()
+
+            if(NOT qmltestrunner_executable AND TARGET qmltestrunner)
+                set(qmltestrunner_executable qmltestrunner)
+            endif()
+
+            if(NOT qmltestrunner_executable)
+                message(FATAL_ERROR "qmltestrunner not found.")
+            endif()
+
             set(test_working_dir "${CMAKE_CURRENT_SOURCE_DIR}")
-            set(test_executable ${QT_CMAKE_EXPORT_NAMESPACE}::qmltestrunner)
+            set(test_executable "${qmltestrunner_executable}")
         else()
             if (arg_WORKING_DIRECTORY)
                 set(test_working_dir "${arg_WORKING_DIRECTORY}")
@@ -928,12 +993,7 @@ endfunction()
 function(qt_internal_get_android_test_timeout input_timeout percentage output_timeout_var)
     set(actual_timeout "${input_timeout}")
     if(NOT actual_timeout)
-        # we have coin ci timeout set use that to avoid having the emulator killed
-        # so we can at least get some logs from the android test runner.
-        set(coin_timeout $ENV{COIN_COMMAND_OUTPUT_TIMEOUT})
-        if(coin_timeout)
-            set(actual_timeout "${coin_timeout}")
-        elseif(DART_TESTING_TIMEOUT)
+        if(DART_TESTING_TIMEOUT)
             # Related: https://gitlab.kitware.com/cmake/cmake/-/issues/20450
             set(actual_timeout "${DART_TESTING_TIMEOUT}")
         elseif(CTEST_TEST_TIMEOUT)
@@ -993,7 +1053,6 @@ for this function. Will be ignored")
     if(arg_ARGS)
         set(command_args ${arg_ARGS})# Avoid "${arg_ARGS}" usage and let cmake expand string to
                                     # semicolon-separated list
-        qt_internal_wrap_command_arguments(command_args)
     endif()
 
     if(TARGET ${arg_COMMAND})
@@ -1019,13 +1078,15 @@ for this function. Will be ignored")
         get_target_property(crosscompiling_emulator ${executable_name} CROSSCOMPILING_EMULATOR)
         if(NOT crosscompiling_emulator)
             set(crosscompiling_emulator "")
-        else()
-            qt_internal_wrap_command_arguments(crosscompiling_emulator)
         endif()
     endif()
 
-    _qt_internal_create_command_script(COMMAND "${crosscompiling_emulator} \${env_test_runner} \
-\"${executable_file}\" \${env_test_args} ${command_args}"
+    _qt_internal_create_command_script(COMMAND
+                                           ${crosscompiling_emulator}
+                                           "\${env_test_runner}"
+                                           "${executable_file}"
+                                           "\${env_test_args}"
+                                           ${command_args}
                                       OUTPUT_FILE "${arg_OUTPUT_FILE}"
                                       WORKING_DIRECTORY "${arg_WORKING_DIRECTORY}"
                                       ENVIRONMENT ${arg_ENVIRONMENT}
@@ -1087,12 +1148,6 @@ function(qt_internal_add_test_helper name)
     # Disable the QT_NO_NARROWING_CONVERSIONS_IN_CONNECT define for test helpers
     qt_internal_undefine_global_definition(${name} QT_NO_NARROWING_CONVERSIONS_IN_CONNECT)
 
-endfunction()
-
-function(qt_internal_wrap_command_arguments argument_list)
-    list(TRANSFORM ${argument_list} REPLACE "^(.+)$" "[=[\\1]=]")
-    list(JOIN ${argument_list} " " ${argument_list})
-    set(${argument_list} "${${argument_list}}" PARENT_SCOPE)
 endfunction()
 
 function(qt_internal_collect_command_environment out_path out_plugin_path)

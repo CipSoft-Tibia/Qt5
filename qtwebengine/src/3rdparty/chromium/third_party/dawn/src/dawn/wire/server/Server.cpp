@@ -30,16 +30,21 @@
 
 namespace dawn::wire::server {
 
-CallbackUserdata::CallbackUserdata(Server* server, const std::shared_ptr<bool>& serverIsAlive)
-    : server(server), serverIsAlive(serverIsAlive) {}
+CallbackUserdata::CallbackUserdata(const std::weak_ptr<Server>& server) : server(server) {}
+
+// static
+std::shared_ptr<Server> Server::Create(const DawnProcTable& procs,
+                                       CommandSerializer* serializer,
+                                       MemoryTransferService* memoryTransferService) {
+    auto server = std::shared_ptr<Server>(new Server(procs, serializer, memoryTransferService));
+    server->mSelf = server;
+    return server;
+}
 
 Server::Server(const DawnProcTable& procs,
                CommandSerializer* serializer,
                MemoryTransferService* memoryTransferService)
-    : mSerializer(serializer),
-      mProcs(procs),
-      mMemoryTransferService(memoryTransferService),
-      mIsAlive(std::make_shared<bool>(true)) {
+    : mSerializer(serializer), mProcs(procs), mMemoryTransferService(memoryTransferService) {
     if (mMemoryTransferService == nullptr) {
         // If a MemoryTransferService is not provided, fallback to inline memory.
         mOwnedMemoryTransferService = CreateInlineMemoryTransferService();
@@ -50,103 +55,127 @@ Server::Server(const DawnProcTable& procs,
 Server::~Server() {
     // Un-set the error and lost callbacks since we cannot forward them
     // after the server has been destroyed.
-    for (WGPUDevice device : DeviceObjects().GetAllHandles()) {
+    for (WGPUDevice device : Objects<WGPUDevice>().GetAllHandles()) {
         ClearDeviceCallbacks(device);
     }
     DestroyAllObjects(mProcs);
 }
 
-WireResult Server::InjectTexture(WGPUTexture texture,
-                                 uint32_t id,
-                                 uint32_t generation,
-                                 uint32_t deviceId,
-                                 uint32_t deviceGeneration) {
-    DAWN_ASSERT(texture != nullptr);
+WireResult Server::InjectBuffer(WGPUBuffer buffer,
+                                const Handle& handle,
+                                const Handle& deviceHandle) {
+    DAWN_ASSERT(buffer != nullptr);
     Known<WGPUDevice> device;
-    WIRE_TRY(DeviceObjects().Get(deviceId, &device));
-    if (device->generation != deviceGeneration) {
+    WIRE_TRY(Objects<WGPUDevice>().Get(deviceHandle.id, &device));
+    if (device->generation != deviceHandle.generation) {
         return WireResult::FatalError;
     }
 
-    Known<WGPUTexture> data;
-    WIRE_TRY(TextureObjects().Allocate(&data, ObjectHandle{id, generation}));
+    Reserved<WGPUBuffer> data;
+    WIRE_TRY(Objects<WGPUBuffer>().Allocate(&data, handle));
+
+    data->handle = buffer;
+    data->generation = handle.generation;
+    data->state = AllocationState::Allocated;
+
+    // The Buffer is externally owned so it shouldn't be destroyed when we receive a destroy
+    // message from the client. Add a reference to counterbalance the eventual release.
+    mProcs.bufferAddRef(buffer);
+
+    return WireResult::Success;
+}
+
+WireResult Server::InjectTexture(WGPUTexture texture,
+                                 const Handle& handle,
+                                 const Handle& deviceHandle) {
+    DAWN_ASSERT(texture != nullptr);
+    Known<WGPUDevice> device;
+    WIRE_TRY(Objects<WGPUDevice>().Get(deviceHandle.id, &device));
+    if (device->generation != deviceHandle.generation) {
+        return WireResult::FatalError;
+    }
+
+    Reserved<WGPUTexture> data;
+    WIRE_TRY(Objects<WGPUTexture>().Allocate(&data, handle));
 
     data->handle = texture;
-    data->generation = generation;
+    data->generation = handle.generation;
     data->state = AllocationState::Allocated;
 
     // The texture is externally owned so it shouldn't be destroyed when we receive a destroy
     // message from the client. Add a reference to counterbalance the eventual release.
-    mProcs.textureReference(texture);
+    mProcs.textureAddRef(texture);
 
     return WireResult::Success;
 }
 
 WireResult Server::InjectSwapChain(WGPUSwapChain swapchain,
-                                   uint32_t id,
-                                   uint32_t generation,
-                                   uint32_t deviceId,
-                                   uint32_t deviceGeneration) {
+                                   const Handle& handle,
+                                   const Handle& deviceHandle) {
     DAWN_ASSERT(swapchain != nullptr);
     Known<WGPUDevice> device;
-    WIRE_TRY(DeviceObjects().Get(deviceId, &device));
-    if (device->generation != deviceGeneration) {
+    WIRE_TRY(Objects<WGPUDevice>().Get(deviceHandle.id, &device));
+    if (device->generation != deviceHandle.generation) {
         return WireResult::FatalError;
     }
 
-    Known<WGPUSwapChain> data;
-    WIRE_TRY(SwapChainObjects().Allocate(&data, ObjectHandle{id, generation}));
+    Reserved<WGPUSwapChain> data;
+    WIRE_TRY(Objects<WGPUSwapChain>().Allocate(&data, handle));
 
     data->handle = swapchain;
-    data->generation = generation;
+    data->generation = handle.generation;
     data->state = AllocationState::Allocated;
 
-    // The texture is externally owned so it shouldn't be destroyed when we receive a destroy
+    // The swapchain is externally owned so it shouldn't be destroyed when we receive a destroy
     // message from the client. Add a reference to counterbalance the eventual release.
-    mProcs.swapChainReference(swapchain);
+    mProcs.swapChainAddRef(swapchain);
 
     return WireResult::Success;
 }
 
-WireResult Server::InjectDevice(WGPUDevice device, uint32_t id, uint32_t generation) {
-    DAWN_ASSERT(device != nullptr);
-    Known<WGPUDevice> data;
-    WIRE_TRY(DeviceObjects().Allocate(&data, ObjectHandle{id, generation}));
+WireResult Server::InjectSurface(WGPUSurface surface,
+                                 const Handle& handle,
+                                 const Handle& instanceHandle) {
+    DAWN_ASSERT(surface != nullptr);
+    Known<WGPUInstance> instance;
+    WIRE_TRY(Objects<WGPUInstance>().Get(instanceHandle.id, &instance));
+    if (instance->generation != instanceHandle.generation) {
+        return WireResult::FatalError;
+    }
 
-    data->handle = device;
-    data->generation = generation;
+    Reserved<WGPUSurface> data;
+    WIRE_TRY(Objects<WGPUSurface>().Allocate(&data, handle));
+
+    data->handle = surface;
+    data->generation = handle.generation;
     data->state = AllocationState::Allocated;
-    data->info->server = this;
-    data->info->self = data.AsHandle();
 
-    // The device is externally owned so it shouldn't be destroyed when we receive a destroy
+    // The surface is externally owned so it shouldn't be destroyed when we receive a destroy
     // message from the client. Add a reference to counterbalance the eventual release.
-    mProcs.deviceReference(device);
+    mProcs.surfaceAddRef(surface);
 
-    // Set callbacks to forward errors to the client.
-    SetForwardingDeviceCallbacks(data);
     return WireResult::Success;
 }
 
-WireResult Server::InjectInstance(WGPUInstance instance, uint32_t id, uint32_t generation) {
+WireResult Server::InjectInstance(WGPUInstance instance, const Handle& handle) {
     DAWN_ASSERT(instance != nullptr);
-    Known<WGPUInstance> data;
-    WIRE_TRY(InstanceObjects().Allocate(&data, ObjectHandle{id, generation}));
+    Reserved<WGPUInstance> data;
+    WIRE_TRY(Objects<WGPUInstance>().Allocate(&data, handle));
 
     data->handle = instance;
-    data->generation = generation;
+    data->generation = handle.generation;
     data->state = AllocationState::Allocated;
 
     // The instance is externally owned so it shouldn't be destroyed when we receive a destroy
     // message from the client. Add a reference to counterbalance the eventual release.
-    mProcs.instanceReference(instance);
+    mProcs.instanceAddRef(instance);
 
     return WireResult::Success;
 }
 
 WGPUDevice Server::GetDevice(uint32_t id, uint32_t generation) {
     Known<WGPUDevice> device;
-    if (DeviceObjects().Get(id, &device) != WireResult::Success ||
+    if (Objects<WGPUDevice>().Get(id, &device) != WireResult::Success ||
         device->generation != generation) {
         return nullptr;
     }
@@ -154,7 +183,7 @@ WGPUDevice Server::GetDevice(uint32_t id, uint32_t generation) {
 }
 
 bool Server::IsDeviceKnown(WGPUDevice device) const {
-    return DeviceObjects().IsKnown(device);
+    return Objects<WGPUDevice>().IsKnown(device);
 }
 
 void Server::SetForwardingDeviceCallbacks(Known<WGPUDevice> device) {
@@ -162,18 +191,11 @@ void Server::SetForwardingDeviceCallbacks(Known<WGPUDevice> device) {
     // free their userdata. Also unlike other callbacks, these are cleared and unset when
     // the server is destroyed, so we don't need to check if the server is still alive
     // inside them.
-    // Also, the device is special-cased in Server::DoDestroyObject to call
+    // Also, the device is special-cased in Server::DoUnregisterObject to call
     // ClearDeviceCallbacks. This ensures that callbacks will not fire after |deviceObject|
     // is freed.
-    mProcs.deviceSetUncapturedErrorCallback(
-        device->handle,
-        [](WGPUErrorType type, const char* message, void* userdata) {
-            DeviceInfo* info = static_cast<DeviceInfo*>(userdata);
-            info->server->OnUncapturedError(info->self, type, message);
-        },
-        device->info.get());
-    // Set callback to post warning and other infomation to client.
-    // Almost the same with UncapturedError.
+
+    // Set callback to post warning and other information to client.
     mProcs.deviceSetLoggingCallback(
         device->handle,
         [](WGPULoggingType type, const char* message, void* userdata) {
@@ -181,21 +203,11 @@ void Server::SetForwardingDeviceCallbacks(Known<WGPUDevice> device) {
             info->server->OnLogging(info->self, type, message);
         },
         device->info.get());
-    mProcs.deviceSetDeviceLostCallback(
-        device->handle,
-        [](WGPUDeviceLostReason reason, const char* message, void* userdata) {
-            DeviceInfo* info = static_cast<DeviceInfo*>(userdata);
-            info->server->OnDeviceLost(info->self, reason, message);
-        },
-        device->info.get());
 }
 
 void Server::ClearDeviceCallbacks(WGPUDevice device) {
-    // Un-set the error and lost callbacks since we cannot forward them
-    // after the server has been destroyed.
-    mProcs.deviceSetUncapturedErrorCallback(device, nullptr, nullptr);
+    // Un-set the logging callback since we cannot forward them after the server has been destroyed.
     mProcs.deviceSetLoggingCallback(device, nullptr, nullptr);
-    mProcs.deviceSetDeviceLostCallback(device, nullptr, nullptr);
 }
 
 }  // namespace dawn::wire::server

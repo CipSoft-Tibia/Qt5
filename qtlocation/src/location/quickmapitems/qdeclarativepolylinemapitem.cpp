@@ -189,18 +189,14 @@ static QList<QList<QDoubleVector2D> > clipLine(
     \brief The MapPolyline type displays a polyline on a map.
 
     The MapPolyline type displays a polyline on a map, specified in terms of an ordered list of
-    \l {coordinate}{coordinates}.  The \l {coordinate}{coordinates} on
-    the path cannot be directly changed after being added to the Polyline.  Instead, copy the
-    \l path into a var, modify the copy and reassign the copy back to the \l path.
+    \l {coordinate}{coordinates}.
+
+    Coordinates can be added or removed at any time using the \l addCoordinate and
+    \l removeCoordinate methods. They can also be modified like any other list element in QML:
 
     \code
-    var path = mapPolyline.path;
-    path[0].latitude = 5;
-    mapPolyline.path = path;
+    mapPolyline.path[0].latitude = 5;
     \endcode
-
-    Coordinates can also be added and removed at any time using the \l addCoordinate and
-    \l removeCoordinate methods.
 
     By default, the polyline is displayed as a 1-pixel thick black line. This
     can be changed using the \l line.width and \l line.color properties.
@@ -504,9 +500,9 @@ bool QDeclarativePolylineMapItemPrivateCPU::contains(const QPointF &point) const
     // m_shape->contains(m_poly.mapToItem(m_shape, point)) because that can
     // only do FillContains at best, whereas the polyline relies on stroking.
 
-    const QPainterPath &path = m_geometry.srcPath_;
+    const QPainterPath &path = m_shapePath->path();
     const double &lineWidth = m_poly.m_line.width();
-    const QPointF p = m_poly.mapToItem(m_shape, point) - QPointF(lineWidth, lineWidth) * 0.5;
+    const QPointF p = m_poly.mapToItem(m_shape, point);
 
     for (int i = 1; i < path.elementCount(); i++) {
         if (path.elementAt(i).type == QPainterPath::MoveToElement)

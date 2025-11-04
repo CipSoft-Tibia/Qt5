@@ -18,20 +18,22 @@
 #include <QtCore/qobject.h>
 #include <QtCore/qmutex.h>
 
-#if defined(Q_OS_IOS) || defined(Q_OS_TVOS)
+#if defined(QT_PLATFORM_UIKIT)
 #include <CoreVideo/CVBase.h>
 #else
 #include <QuartzCore/CVDisplayLink.h>
 #endif
 
+#include <optional>
+
 QT_BEGIN_NAMESPACE
 
-class AVFDisplayLink : public QObject
+class AVFDisplayLink final : public QObject
 {
     Q_OBJECT
 public:
     explicit AVFDisplayLink(QObject *parent = nullptr);
-    virtual ~AVFDisplayLink();
+    ~AVFDisplayLink() override;
     bool isValid() const;
     bool isActive() const;
 
@@ -46,18 +48,17 @@ public:
     void displayLinkEvent(const CVTimeStamp *);
 
 protected:
-    virtual bool event(QEvent *) override;
+    bool event(QEvent *) override;
 
 private:
-#if defined(Q_OS_IOS) || defined(Q_OS_TVOS)
-    void *m_displayLink;
+#if defined(QT_PLATFORM_UIKIT)
+    void *m_displayLink{};
 #else
-    CVDisplayLinkRef m_displayLink;
+    CVDisplayLinkRef m_displayLink{};
 #endif
     QMutex m_displayLinkMutex;
-    bool m_pendingDisplayLinkEvent;
-    bool m_isActive;
-    CVTimeStamp m_frameTimeStamp;
+    bool m_isActive{};
+    std::optional<CVTimeStamp> m_frameTimeStamp; // GUARDED_BY(m_displayLinkMutex)
 };
 
 QT_END_NAMESPACE

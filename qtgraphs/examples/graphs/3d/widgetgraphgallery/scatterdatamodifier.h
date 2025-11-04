@@ -11,11 +11,13 @@ class ScatterDataModifier : public QObject
 {
     Q_OBJECT
 
-    enum InputState { StateNormal = 0, StateDraggingX, StateDraggingZ, StateDraggingY };
+    enum InputState : unsigned short { StateNormal = 0, StateDraggingX, StateDraggingZ, StateDraggingY };
 
 public:
+    Q_DISABLE_COPY_MOVE(ScatterDataModifier)
+
     explicit ScatterDataModifier(Q3DScatterWidgetItem *scatter, QObject *parent);
-    ~ScatterDataModifier();
+    ~ScatterDataModifier() override;
 
     void addData();
 

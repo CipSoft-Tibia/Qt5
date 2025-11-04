@@ -34,6 +34,7 @@
 #                       Do not modify this file directly
 ################################################################################
 
+import("../../../../scripts/dawn_overrides_with_defaults.gni")
 import("../../../../scripts/tint_overrides_with_defaults.gni")
 
 import("${tint_src_dir}/tint.gni")
@@ -49,19 +50,28 @@ if (tint_build_unittests) {
     deps = [
       "${tint_src_dir}:gmock_and_gtest",
       "${tint_src_dir}/api",
-      "${tint_src_dir}/cmd/common:unittests",
+      "${tint_src_dir}/api/common:unittests",
       "${tint_src_dir}/lang/core:unittests",
       "${tint_src_dir}/lang/core/constant:unittests",
       "${tint_src_dir}/lang/core/intrinsic:unittests",
       "${tint_src_dir}/lang/core/ir:unittests",
       "${tint_src_dir}/lang/core/ir/transform:unittests",
+      "${tint_src_dir}/lang/core/ir/transform/common:unittests",
       "${tint_src_dir}/lang/core/type:unittests",
+      "${tint_src_dir}/lang/hlsl/ir:unittests",
+      "${tint_src_dir}/lang/hlsl/type:unittests",
+      "${tint_src_dir}/lang/hlsl/writer/common:unittests",
+      "${tint_src_dir}/lang/hlsl/writer/raise:unittests",
       "${tint_src_dir}/lang/msl/ir:unittests",
+      "${tint_src_dir}/lang/msl/type:unittests",
       "${tint_src_dir}/lang/spirv/ir:unittests",
       "${tint_src_dir}/lang/spirv/reader/lower:unittests",
+      "${tint_src_dir}/lang/spirv/type:unittests",
       "${tint_src_dir}/lang/wgsl:unittests",
       "${tint_src_dir}/lang/wgsl/ast:unittests",
+      "${tint_src_dir}/lang/wgsl/common:unittests",
       "${tint_src_dir}/lang/wgsl/helpers:unittests",
+      "${tint_src_dir}/lang/wgsl/intrinsic:unittests",
       "${tint_src_dir}/lang/wgsl/program:unittests",
       "${tint_src_dir}/lang/wgsl/reader/lower:unittests",
       "${tint_src_dir}/lang/wgsl/resolver:unittests",
@@ -74,9 +84,7 @@ if (tint_build_unittests) {
       "${tint_src_dir}/utils/containers:unittests",
       "${tint_src_dir}/utils/diagnostic:unittests",
       "${tint_src_dir}/utils/file:unittests",
-      "${tint_src_dir}/utils/ice",
       "${tint_src_dir}/utils/ice:unittests",
-      "${tint_src_dir}/utils/macros",
       "${tint_src_dir}/utils/macros:unittests",
       "${tint_src_dir}/utils/math:unittests",
       "${tint_src_dir}/utils/memory:unittests",
@@ -92,8 +100,13 @@ if (tint_build_unittests) {
     if (tint_build_glsl_writer) {
       deps += [
         "${tint_src_dir}/lang/glsl/writer/ast_printer:unittests",
-        "${tint_src_dir}/lang/glsl/writer/printer:unittests",
+        "${tint_src_dir}/lang/glsl/writer/common:unittests",
+        "${tint_src_dir}/lang/glsl/writer/raise:unittests",
       ]
+    }
+
+    if (tint_build_glsl_writer && tint_build_glsl_validator) {
+      deps += [ "${tint_src_dir}/lang/glsl/writer:unittests" ]
     }
 
     if (tint_build_glsl_writer && tint_build_wgsl_reader &&
@@ -102,7 +115,10 @@ if (tint_build_unittests) {
     }
 
     if (tint_build_hlsl_writer) {
-      deps += [ "${tint_src_dir}/lang/hlsl/writer/ast_printer:unittests" ]
+      deps += [
+        "${tint_src_dir}/lang/hlsl/writer:unittests",
+        "${tint_src_dir}/lang/hlsl/writer/ast_printer:unittests",
+      ]
     }
 
     if (tint_build_hlsl_writer && tint_build_wgsl_reader &&
@@ -116,9 +132,9 @@ if (tint_build_unittests) {
 
     if (tint_build_msl_writer) {
       deps += [
+        "${tint_src_dir}/lang/msl/writer:unittests",
         "${tint_src_dir}/lang/msl/writer/ast_printer:unittests",
         "${tint_src_dir}/lang/msl/writer/common:unittests",
-        "${tint_src_dir}/lang/msl/writer/printer:unittests",
         "${tint_src_dir}/lang/msl/writer/raise:unittests",
       ]
     }
@@ -152,20 +168,19 @@ if (tint_build_unittests) {
     if (tint_build_spv_writer) {
       deps += [
         "${tint_src_dir}/lang/spirv/writer:unittests",
-        "${tint_src_dir}/lang/spirv/writer/ast_printer:unittests",
         "${tint_src_dir}/lang/spirv/writer/common:unittests",
         "${tint_src_dir}/lang/spirv/writer/raise:unittests",
       ]
     }
 
-    if (tint_build_spv_writer && tint_build_wgsl_reader &&
-        tint_build_wgsl_writer) {
-      deps += [ "${tint_src_dir}/lang/spirv/writer/ast_raise:unittests" ]
+    if (tint_build_tintd && tint_build_wgsl_reader) {
+      deps += [ "${tint_src_dir}/lang/wgsl/ls:unittests" ]
     }
 
     if (tint_build_wgsl_reader) {
       deps += [
         "${tint_src_dir}/lang/wgsl/inspector:unittests",
+        "${tint_src_dir}/lang/wgsl/reader:unittests",
         "${tint_src_dir}/lang/wgsl/reader/parser:unittests",
         "${tint_src_dir}/lang/wgsl/reader/program_to_ir:unittests",
       ]
@@ -176,7 +191,10 @@ if (tint_build_unittests) {
     }
 
     if (tint_build_wgsl_writer) {
-      deps += [ "${tint_src_dir}/lang/wgsl/writer/ast_printer:unittests" ]
+      deps += [
+        "${tint_src_dir}/lang/wgsl/writer:unittests",
+        "${tint_src_dir}/lang/wgsl/writer/ast_printer:unittests",
+      ]
     }
     configs += [ "${tint_src_dir}:tint_unittests_config" ]
 

@@ -7,9 +7,9 @@
 \brief Shows how the QtHttpServer module logging can be configured.
 
 The Qt HTTP Server logs using the \l {QLoggingCategory} {QLoggingCategory}
-class. The logging categories starting with "qt.httpserver" are used by the
-different parts of the Qt Http Server. These can be enabled and disabled as
-described in \l {QLoggingCategory}.
+class. The logging categories starting with \c "qt.httpserver" are used by
+the different parts of the Qt Http Server. These can be enabled and disabled
+as described in \l{QLoggingCategory}.
 
 To dynamically enable or disable what is being logged call
 \l {QLoggingCategory::setFilterRules()}. A server can add a URL to change
@@ -45,10 +45,10 @@ int main(int argc, char** argv)
 }
 \endcode
 
-The filter rules can now be set using:
-"http://127.0.0.1:8000/loggingFilter?qt.httpserver=true&appname.access=true".
+The filter rules can now be set using: \c
+{"http://127.0.0.1:8000/loggingFilter?qt.httpserver=true&appname.access=true"}.
 In this case all Qt HTTP Server logging will be enabled, and in addition the
-hypothetical logging category "appname.access" is enabled.
+hypothetical logging category \c{appname.access} is enabled.
 
 \sa QLoggingCategory, QHttpServer
 */

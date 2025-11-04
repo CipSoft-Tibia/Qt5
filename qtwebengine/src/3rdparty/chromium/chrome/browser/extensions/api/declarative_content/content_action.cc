@@ -27,7 +27,6 @@
 #include "extensions/browser/user_script_manager.h"
 #include "extensions/common/api/declarative/declarative_constants.h"
 #include "extensions/common/extension.h"
-#include "extensions/common/extension_messages.h"
 #include "extensions/common/image_util.h"
 #include "extensions/common/mojom/host_id.mojom.h"
 #include "extensions/common/mojom/run_location.mojom-shared.h"
@@ -372,7 +371,7 @@ void RequestContentScript::InstructRenderProcessToInject(
       ExtensionWebContentsObserver::GetForWebContents(contents)->GetLocalFrame(
           contents->GetPrimaryMainFrame());
   if (!local_frame) {
-    // TODO(https://crbug.com/1203579): Need to review when this method is
+    // TODO(crbug.com/40763607): Need to review when this method is
     // called with non-live frame.
     return;
   }

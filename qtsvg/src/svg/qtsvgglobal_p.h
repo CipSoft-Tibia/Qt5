@@ -28,6 +28,11 @@ enum class UnitTypes : quint32 {
     userSpaceOnUse
 };
 
+enum class AnimatorType : quint32 {
+    Controlled,
+    Automatic,
+};
+
 }
 
 QT_END_NAMESPACE

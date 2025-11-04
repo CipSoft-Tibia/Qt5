@@ -4,6 +4,7 @@
 
 #include "third_party/blink/renderer/core/css/css_container_values.h"
 
+#include "third_party/blink/renderer/core/css/container_query_evaluator.h"
 #include "third_party/blink/renderer/core/dom/document.h"
 #include "third_party/blink/renderer/core/dom/element.h"
 #include "third_party/blink/renderer/core/dom/node_computed_style.h"
@@ -12,10 +13,11 @@ namespace blink {
 
 CSSContainerValues::CSSContainerValues(Document& document,
                                        Element& container,
-                                       absl::optional<double> width,
-                                       absl::optional<double> height,
+                                       std::optional<double> width,
+                                       std::optional<double> height,
                                        ContainerStuckPhysical stuck_horizontal,
-                                       ContainerStuckPhysical stuck_vertical)
+                                       ContainerStuckPhysical stuck_vertical,
+                                       ContainerSnappedFlags snapped)
     : MediaValuesDynamic(document.GetFrame()),
       element_(&container),
       width_(width),
@@ -23,17 +25,22 @@ CSSContainerValues::CSSContainerValues(Document& document,
       writing_direction_(container.ComputedStyleRef().GetWritingDirection()),
       stuck_horizontal_(stuck_horizontal),
       stuck_vertical_(stuck_vertical),
+      snapped_(snapped),
       font_sizes_(CSSToLengthConversionData::FontSizes(
           container.ComputedStyleRef().GetFontSizeStyle(),
           document.documentElement()->GetComputedStyle())),
       line_height_size_(CSSToLengthConversionData::LineHeightSize(
           container.ComputedStyleRef().GetFontSizeStyle(),
           document.documentElement()->GetComputedStyle())),
-      container_sizes_(container.ParentOrShadowHostElement()) {}
+      container_sizes_(
+          ContainerQueryEvaluator::ParentContainerCandidateElement(container)) {
+}
 
 void CSSContainerValues::Trace(Visitor* visitor) const {
   visitor->Trace(element_);
   visitor->Trace(container_sizes_);
+  visitor->Trace(font_sizes_);
+  visitor->Trace(line_height_size_);
   MediaValuesDynamic::Trace(visitor);
 }
 

@@ -4,7 +4,12 @@
 #ifndef QOPEN62541SUBSCRIPTION_H
 #define QOPEN62541SUBSCRIPTION_H
 
+#ifdef USE_SYSTEM_OPEN62541
+#include <open62541/client_subscriptions.h>
+#else
 #include "qopen62541.h"
+#endif
+
 #include <QtOpcUa/qopcuanode.h>
 
 QT_BEGIN_NAMESPACE

@@ -10,6 +10,8 @@ class SurfaceGraphWidget : public QQuickWidget
 {
     Q_OBJECT
 public:
+    Q_DISABLE_COPY_MOVE(SurfaceGraphWidget)
+
     SurfaceGraphWidget();
     ~SurfaceGraphWidget() override;
 

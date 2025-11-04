@@ -9,11 +9,11 @@
 #include "base/functional/bind.h"
 #include "base/memory/weak_ptr.h"
 #include "base/no_destructor.h"
+#include "base/not_fatal_until.h"
 #include "base/observer_list.h"
 #include "base/process/process.h"
 #include "base/strings/utf_string_conversions.h"
 #include "base/synchronization/lock.h"
-#include "build/chromecast_buildflags.h"
 #include "content/browser/utility_process_host.h"
 #include "content/common/child_process.mojom.h"
 #include "content/public/browser/browser_task_traits.h"
@@ -25,10 +25,6 @@
 #include "mojo/public/cpp/bindings/generic_pending_receiver.h"
 #include "mojo/public/cpp/bindings/remote.h"
 #include "sandbox/policy/mojom/sandbox.mojom.h"
-
-#if BUILDFLAG(IS_CASTOS) || BUILDFLAG(IS_CAST_ANDROID)
-#include "base/process/process_handle.h"
-#endif
 
 namespace content {
 
@@ -70,7 +66,7 @@ class ServiceProcessTracker {
   void NotifyTerminated(ServiceProcessId id) {
     DCHECK_CURRENTLY_ON(BrowserThread::UI);
     auto iter = processes_.find(id);
-    DCHECK(iter != processes_.end());
+    CHECK(iter != processes_.end(), base::NotFatalUntil::M130);
 
     for (auto& observer : observers_)
       observer.OnServiceProcessTerminatedNormally(iter->second.Duplicate());
@@ -80,7 +76,7 @@ class ServiceProcessTracker {
   void NotifyCrashed(ServiceProcessId id) {
     DCHECK_CURRENTLY_ON(BrowserThread::UI);
     auto iter = processes_.find(id);
-    DCHECK(iter != processes_.end());
+    CHECK(iter != processes_.end(), base::NotFatalUntil::M130);
     for (auto& observer : observers_)
       observer.OnServiceProcessCrashed(iter->second.Duplicate());
     processes_.erase(iter);
@@ -159,7 +155,7 @@ class UtilityProcessClient : public UtilityProcessHost::Client {
   }
 
   void OnProcessCrashed() override {
-    // TODO(https://crbug.com/1016027): It is unclear how we can observe
+    // TODO(crbug.com/40654042): It is unclear how we can observe
     // |OnProcessCrashed()| without observing |OnProcessLaunched()| first, but
     // it can happen on Android. Ignore the notification in this case.
     if (!process_info_)
@@ -179,7 +175,7 @@ class UtilityProcessClient : public UtilityProcessHost::Client {
   std::optional<ServiceProcessInfo> process_info_;
 };
 
-// TODO(crbug.com/977637): Once UtilityProcessHost is used only by service
+// TODO(crbug.com/40633267): Once UtilityProcessHost is used only by service
 // processes, its logic can be inlined here.
 void LaunchServiceProcess(mojo::GenericPendingReceiver receiver,
                           ServiceProcessHost::Options options,
@@ -204,10 +200,11 @@ void LaunchServiceProcess(mojo::GenericPendingReceiver receiver,
   if (!options.preload_libraries.empty()) {
     host->SetPreloadLibraries(options.preload_libraries);
   }
-  if (options.pin_user32) {
-    host->SetPinUser32();
-  }
 #endif  // BUILDFLAG(IS_WIN)
+  if (options.allow_gpu_client.has_value() &&
+      options.allow_gpu_client.value()) {
+    host->SetAllowGpuClient();
+  }
   host->Start();
   host->GetChildProcess()->BindServiceInterface(std::move(receiver));
 }
@@ -242,29 +239,5 @@ void ServiceProcessHost::Launch(mojo::GenericPendingReceiver receiver,
                                   std::move(options), sandbox));
   }
 }
-
-// TODO(crbug.com/1328879): Remove this method when fixing the bug.
-#if BUILDFLAG(IS_CASTOS) || BUILDFLAG(IS_CAST_ANDROID)
-void LaunchUtilityProcessServiceDeprecated(
-    const std::string& service_name,
-    const std::u16string& display_name,
-    sandbox::mojom::Sandbox sandbox_type,
-    mojo::ScopedMessagePipeHandle service_pipe,
-    base::OnceCallback<void(base::ProcessId)> callback) {
-  UtilityProcessHost* host = new UtilityProcessHost();
-  host->SetName(display_name);
-  host->SetMetricsName(service_name);
-  host->SetSandboxType(sandbox_type);
-  host->Start();
-  host->RunServiceDeprecated(
-      service_name, std::move(service_pipe),
-      base::BindOnce(
-          [](base::OnceCallback<void(base::ProcessId)> callback,
-             const std::optional<base::ProcessId> pid) {
-            std::move(callback).Run(pid.value_or(base::kNullProcessId));
-          },
-          std::move(callback)));
-}
-#endif
 
 }  // namespace content

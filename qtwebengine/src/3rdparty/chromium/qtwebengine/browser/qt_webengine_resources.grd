@@ -15,7 +15,8 @@
         <include name="IDR_PDF_MANIFEST" file="../../chrome/browser/resources/pdf/manifest.json" type="BINDATA" />
       </if>
       <if expr="enable_hangout_services_extension">
-        <include name="IDR_HANGOUT_SERVICES_MANIFEST" file="../../chrome/browser/resources/hangout_services/manifest.json" type="BINDATA" />
+        <include name="IDR_HANGOUT_SERVICES_MANIFEST_V2" file="../../chrome/browser/resources/hangout_services/manifest_v2.json" type="BINDATA" />
+        <include name="IDR_HANGOUT_SERVICES_MANIFEST_V3" file="../../chrome/browser/resources/hangout_services/manifest_v3.json" type="BINDATA" />
       </if>
       <include name="IDR_VERSION_UI_QT_HTML" file="version_ui/qt_version.html" preprocess="true" type="BINDATA" />
       <include name="IDR_VERSION_UI_QT_CSS" file="version_ui/qt_version.css" type="BINDATA" />

@@ -71,3 +71,24 @@
     specifies a variable that will store the list of generated targets. This
     list can be useful for defining custom project install rules.
 //! [output_targets-li]
+
+//! [header_guard-li]
+\li \c {HEADER_GUARD}
+    specifies the mechanism used for guarding generated header files from
+    multiple inclusion. Possible values are \c pragma, \c filename. Defaults
+    to \c {filename}.
+    Setting the option to \c pragma generates the modern pragma header guard:
+    \code
+    #pragma once
+    ...
+    \endcode
+    Omitting the option or setting the option to \c filename generates the
+    \c ifdef wrapping guard, and uses the '.proto' filename as the guard infix:
+    \code
+    #ifdef MYMESSAGES_QPB_H
+    #define MYMESSAGES_QPB_H
+    ...
+    #endif // MYMESSAGES_QPB_H
+    \endcode
+    Select the preferred guard style according to your project structure.
+//! [header_guard-li]

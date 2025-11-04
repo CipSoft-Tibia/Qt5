@@ -23,7 +23,6 @@ private:
     int v;
 };
 
-
 class MyPlugin : public QQmlExtensionPlugin
 {
     Q_OBJECT

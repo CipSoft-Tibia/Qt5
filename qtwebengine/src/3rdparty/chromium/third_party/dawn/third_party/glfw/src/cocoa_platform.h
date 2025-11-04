@@ -1,5 +1,5 @@
 //========================================================================
-// GLFW 3.4 macOS - www.glfw.org
+// GLFW 3.5 macOS - www.glfw.org
 //------------------------------------------------------------------------
 // Copyright (c) 2009-2019 Camilla Löwy <elmindreda@glfw.org>
 //
@@ -145,7 +145,7 @@ typedef struct _GLFWwindowNS
 
     GLFWbool        maximized;
     GLFWbool        occluded;
-    GLFWbool        retina;
+    GLFWbool        scaleFramebuffer;
 
     // Cached window properties to filter out duplicate events
     int             width, height;
@@ -214,7 +214,7 @@ GLFWbool _glfwConnectCocoa(int platformID, _GLFWplatform* platform);
 int _glfwInitCocoa(void);
 void _glfwTerminateCocoa(void);
 
-int _glfwCreateWindowCocoa(_GLFWwindow* window, const _GLFWwndconfig* wndconfig, const _GLFWctxconfig* ctxconfig, const _GLFWfbconfig* fbconfig);
+GLFWbool _glfwCreateWindowCocoa(_GLFWwindow* window, const _GLFWwndconfig* wndconfig, const _GLFWctxconfig* ctxconfig, const _GLFWfbconfig* fbconfig);
 void _glfwDestroyWindowCocoa(_GLFWwindow* window);
 void _glfwSetWindowTitleCocoa(_GLFWwindow* window, const char* title);
 void _glfwSetWindowIconCocoa(_GLFWwindow* window, int count, const GLFWimage* images);
@@ -235,12 +235,12 @@ void _glfwHideWindowCocoa(_GLFWwindow* window);
 void _glfwRequestWindowAttentionCocoa(_GLFWwindow* window);
 void _glfwFocusWindowCocoa(_GLFWwindow* window);
 void _glfwSetWindowMonitorCocoa(_GLFWwindow* window, _GLFWmonitor* monitor, int xpos, int ypos, int width, int height, int refreshRate);
-int _glfwWindowFocusedCocoa(_GLFWwindow* window);
-int _glfwWindowIconifiedCocoa(_GLFWwindow* window);
-int _glfwWindowVisibleCocoa(_GLFWwindow* window);
-int _glfwWindowMaximizedCocoa(_GLFWwindow* window);
-int _glfwWindowHoveredCocoa(_GLFWwindow* window);
-int _glfwFramebufferTransparentCocoa(_GLFWwindow* window);
+GLFWbool _glfwWindowFocusedCocoa(_GLFWwindow* window);
+GLFWbool _glfwWindowIconifiedCocoa(_GLFWwindow* window);
+GLFWbool _glfwWindowVisibleCocoa(_GLFWwindow* window);
+GLFWbool _glfwWindowMaximizedCocoa(_GLFWwindow* window);
+GLFWbool _glfwWindowHoveredCocoa(_GLFWwindow* window);
+GLFWbool _glfwFramebufferTransparentCocoa(_GLFWwindow* window);
 void _glfwSetWindowResizableCocoa(_GLFWwindow* window, GLFWbool enabled);
 void _glfwSetWindowDecoratedCocoa(_GLFWwindow* window, GLFWbool enabled);
 void _glfwSetWindowFloatingCocoa(_GLFWwindow* window, GLFWbool enabled);
@@ -261,8 +261,8 @@ void _glfwSetCursorPosCocoa(_GLFWwindow* window, double xpos, double ypos);
 void _glfwSetCursorModeCocoa(_GLFWwindow* window, int mode);
 const char* _glfwGetScancodeNameCocoa(int scancode);
 int _glfwGetKeyScancodeCocoa(int key);
-int _glfwCreateCursorCocoa(_GLFWcursor* cursor, const GLFWimage* image, int xhot, int yhot);
-int _glfwCreateStandardCursorCocoa(_GLFWcursor* cursor, int shape);
+GLFWbool _glfwCreateCursorCocoa(_GLFWcursor* cursor, const GLFWimage* image, int xhot, int yhot);
+GLFWbool _glfwCreateStandardCursorCocoa(_GLFWcursor* cursor, int shape);
 void _glfwDestroyCursorCocoa(_GLFWcursor* cursor);
 void _glfwSetCursorCocoa(_GLFWwindow* window, _GLFWcursor* cursor);
 void _glfwSetClipboardStringCocoa(const char* string);
@@ -273,7 +273,7 @@ EGLNativeDisplayType _glfwGetEGLNativeDisplayCocoa(void);
 EGLNativeWindowType _glfwGetEGLNativeWindowCocoa(_GLFWwindow* window);
 
 void _glfwGetRequiredInstanceExtensionsCocoa(char** extensions);
-int _glfwGetPhysicalDevicePresentationSupportCocoa(VkInstance instance, VkPhysicalDevice device, uint32_t queuefamily);
+GLFWbool _glfwGetPhysicalDevicePresentationSupportCocoa(VkInstance instance, VkPhysicalDevice device, uint32_t queuefamily);
 VkResult _glfwCreateWindowSurfaceCocoa(VkInstance instance, _GLFWwindow* window, const VkAllocationCallbacks* allocator, VkSurfaceKHR* surface);
 
 void _glfwFreeMonitorCocoa(_GLFWmonitor* monitor);
@@ -281,7 +281,7 @@ void _glfwGetMonitorPosCocoa(_GLFWmonitor* monitor, int* xpos, int* ypos);
 void _glfwGetMonitorContentScaleCocoa(_GLFWmonitor* monitor, float* xscale, float* yscale);
 void _glfwGetMonitorWorkareaCocoa(_GLFWmonitor* monitor, int* xpos, int* ypos, int* width, int* height);
 GLFWvidmode* _glfwGetVideoModesCocoa(_GLFWmonitor* monitor, int* count);
-void _glfwGetVideoModeCocoa(_GLFWmonitor* monitor, GLFWvidmode* mode);
+GLFWbool _glfwGetVideoModeCocoa(_GLFWmonitor* monitor, GLFWvidmode* mode);
 GLFWbool _glfwGetGammaRampCocoa(_GLFWmonitor* monitor, GLFWgammaramp* ramp);
 void _glfwSetGammaRampCocoa(_GLFWmonitor* monitor, const GLFWgammaramp* ramp);
 

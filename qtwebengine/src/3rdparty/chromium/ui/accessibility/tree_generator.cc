@@ -23,8 +23,7 @@ TreeGenerator::TreeGenerator(int max_node_count, bool permutations)
   }
 }
 
-TreeGenerator::~TreeGenerator() {
-}
+TreeGenerator::~TreeGenerator() = default;
 
 int TreeGenerator::UniqueTreeCount() const {
   return total_unique_tree_count_;
@@ -48,14 +47,14 @@ int TreeGenerator::IgnoredPermutationCountPerUniqueTree(int tree_index) const {
     unique_tree_count_so_far += unique_tree_count;
   }
 
-  NOTREACHED();
+  NOTREACHED_IN_MIGRATION();
   return 0;
 }
 
 void TreeGenerator::BuildUniqueTreeWithIgnoredNodes(
     int tree_index,
     int ignored_index,
-    absl::optional<int> focused_node,
+    std::optional<int> focused_node,
     AXTree* out_tree) const {
   // Enable the behavior whereby all focused nodes will be exposed to the
   // platform accessibility layer. This behavior is currently disabled in

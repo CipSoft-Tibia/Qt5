@@ -47,7 +47,8 @@ class Q_GRAPHS_EXPORT QAbstract3DSeries : public QObject
     Q_PROPERTY(QString itemLabel READ itemLabel NOTIFY itemLabelChanged)
     Q_PROPERTY(bool itemLabelVisible READ isItemLabelVisible WRITE setItemLabelVisible NOTIFY
                    itemLabelVisibleChanged)
-
+    QML_NAMED_ELEMENT(Abstract3DSeries)
+    QML_UNCREATABLE("Uncreatable base type")
 public:
     enum class SeriesType {
         None,

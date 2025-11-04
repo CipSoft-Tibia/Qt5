@@ -17,7 +17,7 @@ QT_BEGIN_NAMESPACE
 typedef QHash<QByteArray,QSensorBackendFactory*> FactoryForIdentifierMap;
 typedef QHash<QByteArray,FactoryForIdentifierMap> BackendIdentifiersForTypeMap;
 
-Q_LOGGING_CATEGORY(lcSensorManager, "qt.sensors");
+Q_STATIC_LOGGING_CATEGORY(lcSensorManager, "qt.sensors");
 
 class QSensorManagerPrivate : public QObject
 {

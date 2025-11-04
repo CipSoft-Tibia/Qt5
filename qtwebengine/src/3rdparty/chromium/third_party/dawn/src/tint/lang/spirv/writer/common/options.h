@@ -29,6 +29,7 @@
 #define SRC_TINT_LANG_SPIRV_WRITER_COMMON_OPTIONS_H_
 
 #include <unordered_map>
+#include <unordered_set>
 
 #include "src/tint/api/common/binding_point.h"
 #include "src/tint/utils/reflection/reflection.h"
@@ -54,14 +55,19 @@ struct BindingInfo {
     /// @returns true if this BindingInfo is not equal to `rhs`
     inline bool operator!=(const BindingInfo& rhs) const { return !(*this == rhs); }
 
+    /// @returns the hash code of the BindingInfo
+    tint::HashCode HashCode() const { return Hash(group, binding); }
+
     /// Reflect the fields of this class so that it can be used by tint::ForeachField()
-    TINT_REFLECT(group, binding);
+    TINT_REFLECT(BindingInfo, group, binding);
 };
+
 using Uniform = BindingInfo;
 using Storage = BindingInfo;
 using Texture = BindingInfo;
 using StorageTexture = BindingInfo;
 using Sampler = BindingInfo;
+using InputAttachment = BindingInfo;
 
 /// An external texture
 struct ExternalTexture {
@@ -73,7 +79,7 @@ struct ExternalTexture {
     BindingInfo plane1{};
 
     /// Reflect the fields of this class so that it can be used by tint::ForeachField()
-    TINT_REFLECT(metadata, plane0, plane1);
+    TINT_REFLECT(ExternalTexture, metadata, plane0, plane1);
 };
 
 }  // namespace binding
@@ -90,6 +96,8 @@ using StorageTextureBindings = std::unordered_map<BindingPoint, binding::Storage
 using SamplerBindings = std::unordered_map<BindingPoint, binding::Sampler>;
 // Maps the WGSL binding point to the plane0, plane1, and metadata information for external textures
 using ExternalTextureBindings = std::unordered_map<BindingPoint, binding::ExternalTexture>;
+// Maps the WGSL binding point to the SPIR-V group,binding for input attachments
+using InputAttachmentBindings = std::unordered_map<BindingPoint, binding::InputAttachment>;
 
 /// Binding information
 struct Bindings {
@@ -105,13 +113,31 @@ struct Bindings {
     SamplerBindings sampler{};
     /// External bindings
     ExternalTextureBindings external_texture{};
+    /// Input attachment bindings
+    InputAttachmentBindings input_attachment{};
 
     /// Reflect the fields of this class so that it can be used by tint::ForeachField()
-    TINT_REFLECT(uniform, storage, texture, storage_texture, sampler, external_texture);
+    TINT_REFLECT(Bindings,
+                 uniform,
+                 storage,
+                 texture,
+                 storage_texture,
+                 sampler,
+                 external_texture,
+                 input_attachment);
 };
 
 /// Configuration options used for generating SPIR-V.
 struct Options {
+    /// The bindings
+    Bindings bindings;
+
+    // BindingPoints for textures that are paired with static samplers in the
+    // BGL. These BindingPoints are the only ones that are allowed to map to
+    // duplicate spir-v bindings, since they must map to the spir-v bindings of
+    // the samplers with which they are paired.
+    std::unordered_set<BindingPoint> statically_paired_texture_binding_points = {};
+
     /// Set to `true` to disable software robustness that prevents out-of-bounds accesses.
     bool disable_robustness = false;
 
@@ -127,6 +153,9 @@ struct Options {
     /// Set to `true` to initialize workgroup memory with OpConstantNull when
     /// VK_KHR_zero_initialize_workgroup_memory is enabled.
     bool use_zero_initialize_workgroup_memory_extension = false;
+
+    /// Set to `true` to use the StorageInputOutput16 capability for shader IO that uses f16 types.
+    bool use_storage_input_output_16 = true;
 
     /// Set to `true` to generate a PointSize builtin and have it set to 1.0
     /// from all vertex shaders in the module.
@@ -149,21 +178,26 @@ struct Options {
     /// Set to `true` to disable the polyfills on integer division and modulo.
     bool disable_polyfill_integer_div_mod = false;
 
-    /// The bindings
-    Bindings bindings;
+    /// Set to `true` if the Vulkan Memory Model should be used
+    bool use_vulkan_memory_model = false;
 
     /// Reflect the fields of this class so that it can be used by tint::ForeachField()
-    TINT_REFLECT(disable_robustness,
+    TINT_REFLECT(Options,
+                 bindings,
+                 statically_paired_texture_binding_points,
+                 disable_robustness,
                  disable_image_robustness,
                  disable_runtime_sized_array_index_clamping,
                  disable_workgroup_init,
                  use_zero_initialize_workgroup_memory_extension,
+                 use_storage_input_output_16,
                  emit_vertex_point_size,
                  clamp_frag_depth,
+                 pass_matrix_by_pointer,
                  experimental_require_subgroup_uniform_control_flow,
                  polyfill_dot_4x8_packed,
                  disable_polyfill_integer_div_mod,
-                 bindings);
+                 use_vulkan_memory_model);
 };
 
 }  // namespace tint::spirv::writer

@@ -2,14 +2,21 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#ifdef UNSAFE_BUFFERS_BUILD
+// TODO(crbug.com/351564777): Remove this and convert code to safer constructs.
+#pragma allow_unsafe_buffers
+#endif
+
 #include "services/network/p2p/socket_manager.h"
 
 #include <stddef.h>
 
+#include <optional>
 #include <utility>
 
 #include "base/functional/bind.h"
 #include "base/memory/raw_ptr.h"
+#include "base/not_fatal_until.h"
 #include "base/task/single_thread_task_runner.h"
 #include "base/task/thread_pool.h"
 #include "net/base/address_family.h"
@@ -30,7 +37,6 @@
 #include "services/network/p2p/socket.h"
 #include "services/network/proxy_resolving_client_socket_factory.h"
 #include "services/network/public/cpp/p2p_param_traits.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "third_party/webrtc/media/base/rtp_utils.h"
 #include "third_party/webrtc/media/base/turn_utils.h"
 
@@ -91,7 +97,7 @@ class P2PSocketManager::DnsRequest {
       : resolver_(host_resolver), enable_mdns_(enable_mdns) {}
 
   void Resolve(const std::string& host_name,
-               absl::optional<int> family,
+               std::optional<int> family,
                const net::NetworkAnonymizationKey& network_anonymization_key,
                DoneCallback done_callback) {
     DCHECK(!done_callback.is_null());
@@ -234,7 +240,7 @@ void P2PSocketManager::AddAcceptedConnection(
 
 void P2PSocketManager::DestroySocket(P2PSocket* socket) {
   auto iter = sockets_.find(socket);
-  DCHECK(iter != sockets_.end());
+  CHECK(iter != sockets_.end(), base::NotFatalUntil::M130);
   sockets_.erase(iter);
 }
 
@@ -261,7 +267,7 @@ void P2PSocketManager::DumpPacket(base::span<const uint8_t> packet,
   bool valid = cricket::ValidateRtpHeader(rtp_packet.data(), rtp_packet.size(),
                                           &header_size);
   if (!valid) {
-    NOTREACHED();
+    NOTREACHED_IN_MIGRATION();
     return;
   }
 
@@ -389,7 +395,7 @@ void P2PSocketManager::GetHostAddress(
     const std::string& host_name,
     bool enable_mdns,
     mojom::P2PSocketManager::GetHostAddressCallback callback) {
-  DoGetHostAddress(host_name, /*address_family=*/absl::nullopt, enable_mdns,
+  DoGetHostAddress(host_name, /*address_family=*/std::nullopt, enable_mdns,
                    std::move(callback));
 }
 
@@ -398,13 +404,13 @@ void P2PSocketManager::GetHostAddressWithFamily(
     int address_family,
     bool enable_mdns,
     mojom::P2PSocketManager::GetHostAddressCallback callback) {
-  DoGetHostAddress(host_name, absl::make_optional(address_family), enable_mdns,
+  DoGetHostAddress(host_name, std::make_optional(address_family), enable_mdns,
                    std::move(callback));
 }
 
 void P2PSocketManager::DoGetHostAddress(
     const std::string& host_name,
-    absl::optional<int> address_family,
+    std::optional<int> address_family,
     bool enable_mdns,
     mojom::P2PSocketManager::GetHostAddressCallback callback) {
   auto request = std::make_unique<DnsRequest>(
@@ -423,6 +429,7 @@ void P2PSocketManager::CreateSocket(
     const P2PPortRange& port_range,
     const P2PHostAndIPEndPoint& remote_address,
     const net::MutableNetworkTrafficAnnotationTag& traffic_annotation,
+    const std::optional<base::UnguessableToken>& devtools_token,
     mojo::PendingRemote<mojom::P2PSocketClient> client,
     mojo::PendingReceiver<mojom::P2PSocket> receiver) {
   if (port_range.min_port > port_range.max_port ||
@@ -440,11 +447,11 @@ void P2PSocketManager::CreateSocket(
     LOG(ERROR) << "Too many sockets created";
     return;
   }
-  std::unique_ptr<P2PSocket> socket =
-      P2PSocket::Create(this, std::move(client), std::move(receiver), type,
-                        net::NetworkTrafficAnnotationTag(traffic_annotation),
-                        url_request_context_->net_log(),
-                        proxy_resolving_socket_factory_.get(), &throttler_);
+  std::unique_ptr<P2PSocket> socket = P2PSocket::Create(
+      this, std::move(client), std::move(receiver), type,
+      net::NetworkTrafficAnnotationTag(traffic_annotation),
+      url_request_context_->net_log(), proxy_resolving_socket_factory_.get(),
+      &throttler_, devtools_token);
 
   if (!socket)
     return;

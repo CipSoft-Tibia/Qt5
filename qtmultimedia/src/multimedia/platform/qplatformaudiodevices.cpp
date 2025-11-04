@@ -8,19 +8,25 @@
 #include <QtMultimedia/private/qaudiosystem_p.h>
 
 #if defined(Q_OS_ANDROID)
-#include <qandroidaudiodevices_p.h>
-#elif defined(Q_OS_DARWIN)
-#include <qdarwinaudiodevices_p.h>
-#elif defined(Q_OS_WINDOWS) && QT_CONFIG(wmf)
-#include <qwindowsaudiodevices_p.h>
-#elif QT_CONFIG(alsa)
-#include <qalsaaudiodevices_p.h>
-#elif QT_CONFIG(pulseaudio)
-#include <qpulseaudiodevices_p.h>
-#elif defined(Q_OS_QNX)
-#include <qqnxaudiodevices_p.h>
-#elif defined(Q_OS_WASM)
-#include <private/qwasmmediadevices_p.h>
+#  include <QtMultimedia/private/qandroidaudiodevices_p.h>
+#endif
+#if defined(Q_OS_DARWIN)
+#  include <QtMultimedia/private/qdarwinaudiodevices_p.h>
+#endif
+#if defined(Q_OS_WINDOWS)
+#  include <QtMultimedia/private/qwindowsaudiodevices_p.h>
+#endif
+#if QT_CONFIG(alsa)
+#  include <QtMultimedia/private/qalsaaudiodevices_p.h>
+#endif
+#if QT_CONFIG(pulseaudio)
+#  include <QtMultimedia/private/qpulseaudiodevices_p.h>
+#endif
+#if defined(Q_OS_QNX)
+#  include <QtMultimedia/private/qqnxaudiodevices_p.h>
+#endif
+#if defined(Q_OS_WASM)
+#  include <QtMultimedia/private/qwasmmediadevices_p.h>
 #endif
 
 QT_BEGIN_NAMESPACE
@@ -29,7 +35,7 @@ std::unique_ptr<QPlatformAudioDevices> QPlatformAudioDevices::create()
 {
 #ifdef Q_OS_DARWIN
     return std::make_unique<QDarwinAudioDevices>();
-#elif defined(Q_OS_WINDOWS) && QT_CONFIG(wmf)
+#elif defined(Q_OS_WINDOWS)
     return std::make_unique<QWindowsAudioDevices>();
 #elif defined(Q_OS_ANDROID)
     return std::make_unique<QAndroidAudioDevices>();
@@ -129,8 +135,6 @@ QPlatformAudioSink *QPlatformAudioDevices::audioOutputDevice(const QAudioFormat 
 
     return createAudioSink(device, format, parent);
 }
-
-void QPlatformAudioDevices::prepareAudio() { }
 
 QT_END_NAMESPACE
 

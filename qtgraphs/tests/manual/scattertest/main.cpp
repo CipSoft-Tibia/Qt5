@@ -168,6 +168,13 @@ int main(int argc, char **argv)
     fontSizeSlider->setValue(30);
     fontSizeSlider->setMaximum(200);
 
+    QSlider *labelSizeSlider = new QSlider(Qt::Horizontal, widget);
+    labelSizeSlider->setTickInterval(1);
+    labelSizeSlider->setTickPosition(QSlider::TicksBelow);
+    labelSizeSlider->setMinimum(1);
+    labelSizeSlider->setValue(10);
+    labelSizeSlider->setMaximum(30);
+
     QSlider *pointSizeSlider = new QSlider(Qt::Horizontal, widget);
     pointSizeSlider->setTickInterval(15);
     pointSizeSlider->setTickPosition(QSlider::TicksBelow);
@@ -246,6 +253,10 @@ int main(int argc, char **argv)
     QCheckBox *axisTitlesVisibleCB = new QCheckBox(widget);
     axisTitlesVisibleCB->setText(QStringLiteral("Axis titles visible"));
     axisTitlesVisibleCB->setChecked(false);
+
+    QCheckBox *labelAdjustCB = new QCheckBox(widget);
+    labelAdjustCB->setText(QStringLiteral("Use label adjustment"));
+    labelAdjustCB->setChecked(false);
 
     QCheckBox *axisTitlesFixedCB = new QCheckBox(widget);
     axisTitlesFixedCB->setText(QStringLiteral("Axis titles fixed"));
@@ -365,6 +376,8 @@ int main(int argc, char **argv)
     vLayout2->addWidget(fontList);
     vLayout2->addWidget(new QLabel(QStringLiteral("Adjust font size")));
     vLayout2->addWidget(fontSizeSlider);
+    vLayout2->addWidget(new QLabel(QStringLiteral("Adjust label size")));
+    vLayout2->addWidget(labelSizeSlider);
     vLayout2->addWidget(new QLabel(QStringLiteral("Adjust vertical aspect ratio")));
     vLayout2->addWidget(aspectRatioSlider);
     vLayout2->addWidget(new QLabel(QStringLiteral("Adjust horizontal aspect ratio")));
@@ -375,6 +388,7 @@ int main(int argc, char **argv)
     vLayout3->addWidget(polarCB);
     vLayout3->addWidget(axisTitlesVisibleCB);
     vLayout3->addWidget(axisTitlesFixedCB);
+    vLayout3->addWidget(labelAdjustCB);
     vLayout3->addWidget(new QLabel(QStringLiteral("Axis label rotation")));
     vLayout3->addWidget(axisLabelRotationSlider);
     vLayout3->addWidget(new QLabel(QStringLiteral("Axis title offset")));
@@ -402,8 +416,14 @@ int main(int argc, char **argv)
 
     QObject::connect(fontSizeSlider, &QSlider::valueChanged, modifier,
                      &ScatterDataModifier::changeFontSize);
-    QObject::connect(pointSizeSlider, &QSlider::valueChanged, modifier,
+    QObject::connect(pointSizeSlider,
+                     &QSlider::valueChanged,
+                     modifier,
                      &ScatterDataModifier::changePointSize);
+    QObject::connect(labelSizeSlider,
+                     &QSlider::valueChanged,
+                     modifier,
+                     &ScatterDataModifier::changeLabelSize);
 
     QObject::connect(styleButton, &QPushButton::clicked, modifier,
                      &ScatterDataModifier::changeStyle);
@@ -504,7 +524,13 @@ int main(int argc, char **argv)
                      &ScatterDataModifier::toggleAxisTitleVisibility);
     QObject::connect(axisTitlesFixedCB, &QCheckBox::checkStateChanged, modifier,
                      &ScatterDataModifier::toggleAxisTitleFixed);
-    QObject::connect(axisLabelRotationSlider, &QSlider::valueChanged, modifier,
+    QObject::connect(labelAdjustCB,
+                     &QCheckBox::checkStateChanged,
+                     modifier,
+                     &ScatterDataModifier::toggleLabelAdjustment);
+    QObject::connect(axisLabelRotationSlider,
+                     &QSlider::valueChanged,
+                     modifier,
                      &ScatterDataModifier::changeLabelRotation);
     QObject::connect(axisTitleOffsetSlider,
                      &QSlider::valueChanged,

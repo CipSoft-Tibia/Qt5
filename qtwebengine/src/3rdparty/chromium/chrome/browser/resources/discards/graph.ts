@@ -2,8 +2,9 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-import {FavIconInfo, FrameInfo, GraphChangeStreamInterface, PageInfo, ProcessInfo, WorkerInfo} from './discards.mojom-webui.js';
 import 'chrome://resources/d3/d3.min.js';
+
+import type {FavIconInfo, FrameInfo, GraphChangeStreamInterface, PageInfo, ProcessInfo, WorkerInfo} from './discards.mojom-webui.js';
 
 // Radius of a node circle.
 const kNodeRadius: number = 6;
@@ -799,11 +800,11 @@ export class Graph implements GraphChangeStreamInterface {
     this.render_();
   }
 
-  nodeDescriptions(nodeDescriptions: {[key: string]: any}) {
-    for (const nodeId in nodeDescriptions) {
-      const node = this.nodes_.get(BigInt(nodeId));
+  nodeDescriptions(nodeDescriptions: Map<bigint, any>) {
+    for (const [nodeId, nodeDescription] of nodeDescriptions) {
+      const node = this.nodes_.get(nodeId);
       if (node && node.tooltip) {
-        node.tooltip.onDescription(nodeDescriptions[nodeId]);
+        node.tooltip.onDescription(nodeDescription);
       }
     }
     this.render_();

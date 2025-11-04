@@ -60,7 +60,9 @@ class TCPClientSocketTest : public testing::Test {
   TCPClientSocketTest()
       : task_environment_(base::test::TaskEnvironment::MainThreadType::IO) {}
 
-  ~TCPClientSocketTest() override { base::PowerMonitor::ShutdownForTesting(); }
+  ~TCPClientSocketTest() override {
+    base::PowerMonitor::GetInstance()->ShutdownForTesting();
+  }
 
   void Suspend() { power_monitor_source_.Suspend(); }
   void Resume() { power_monitor_source_.Resume(); }
@@ -74,7 +76,7 @@ class TCPClientSocketTest : public testing::Test {
     std::unique_ptr<TCPServerSocket> server_socket =
         std::make_unique<TCPServerSocket>(nullptr, NetLogSource());
     ASSERT_THAT(server_socket->Listen(IPEndPoint(local_address, 0), 1,
-                                      /*ipv6_only=*/absl::nullopt),
+                                      /*ipv6_only=*/std::nullopt),
                 IsOk());
     IPEndPoint server_address;
     ASSERT_THAT(server_socket->GetLocalAddress(&server_address), IsOk());
@@ -118,7 +120,7 @@ TEST_F(TCPClientSocketTest, BindLoopbackToLoopback) {
 
   TCPServerSocket server(nullptr, NetLogSource());
   ASSERT_THAT(server.Listen(IPEndPoint(lo_address, 0), 1,
-                            /*ipv6_only=*/absl::nullopt),
+                            /*ipv6_only=*/std::nullopt),
               IsOk());
   IPEndPoint server_address;
   ASSERT_THAT(server.GetLocalAddress(&server_address), IsOk());
@@ -173,7 +175,7 @@ TEST_F(TCPClientSocketTest, BindLoopbackToIPv6) {
   TCPServerSocket server(nullptr, NetLogSource());
   int listen_result =
       server.Listen(IPEndPoint(IPAddress::IPv6Localhost(), 0), 1,
-                    /*ipv6_only=*/absl::nullopt);
+                    /*ipv6_only=*/std::nullopt);
   if (listen_result != OK) {
     LOG(ERROR) << "Failed to listen on ::1 - probably because IPv6 is disabled."
                   " Skipping the test";
@@ -197,7 +199,7 @@ TEST_F(TCPClientSocketTest, WasEverUsed) {
   IPAddress lo_address = IPAddress::IPv4Localhost();
   TCPServerSocket server(nullptr, NetLogSource());
   ASSERT_THAT(
-      server.Listen(IPEndPoint(lo_address, 0), 1, /*ipv6_only=*/absl::nullopt),
+      server.Listen(IPEndPoint(lo_address, 0), 1, /*ipv6_only=*/std::nullopt),
       IsOk());
   IPEndPoint server_address;
   ASSERT_THAT(server.GetLocalAddress(&server_address), IsOk());
@@ -247,7 +249,7 @@ TEST_F(TCPClientSocketTest, DnsAliasesPersistForReuse) {
   IPAddress lo_address = IPAddress::IPv4Localhost();
   TCPServerSocket server(nullptr, NetLogSource());
   ASSERT_THAT(
-      server.Listen(IPEndPoint(lo_address, 0), 1, /*ipv6_only=*/absl::nullopt),
+      server.Listen(IPEndPoint(lo_address, 0), 1, /*ipv6_only=*/std::nullopt),
       IsOk());
   IPEndPoint server_address;
   ASSERT_THAT(server.GetLocalAddress(&server_address), IsOk());
@@ -506,7 +508,7 @@ TEST_F(TCPClientSocketTest, SuspendBeforeConnect) {
 
   TCPServerSocket server(nullptr, NetLogSource());
   ASSERT_THAT(
-      server.Listen(IPEndPoint(lo_address, 0), 1, /*ipv6_only=*/absl::nullopt),
+      server.Listen(IPEndPoint(lo_address, 0), 1, /*ipv6_only=*/std::nullopt),
       IsOk());
   IPEndPoint server_address;
   ASSERT_THAT(server.GetLocalAddress(&server_address), IsOk());
@@ -546,7 +548,7 @@ TEST_F(TCPClientSocketTest, SuspendDuringConnect) {
 
   TCPServerSocket server(nullptr, NetLogSource());
   ASSERT_THAT(
-      server.Listen(IPEndPoint(lo_address, 0), 1, /*ipv6_only=*/absl::nullopt),
+      server.Listen(IPEndPoint(lo_address, 0), 1, /*ipv6_only=*/std::nullopt),
       IsOk());
   IPEndPoint server_address;
   ASSERT_THAT(server.GetLocalAddress(&server_address), IsOk());
@@ -573,7 +575,7 @@ TEST_F(TCPClientSocketTest, SuspendDuringConnectMultipleAddresses) {
 
   TCPServerSocket server(nullptr, NetLogSource());
   ASSERT_THAT(server.Listen(IPEndPoint(IPAddress(0, 0, 0, 0), 0), 1,
-                            /*ipv6_only=*/absl::nullopt),
+                            /*ipv6_only=*/std::nullopt),
               IsOk());
   IPEndPoint server_address;
   ASSERT_THAT(server.GetLocalAddress(&server_address), IsOk());

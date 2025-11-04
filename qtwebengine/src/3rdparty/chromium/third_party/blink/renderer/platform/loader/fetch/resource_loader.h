@@ -30,6 +30,7 @@
 #define THIRD_PARTY_BLINK_RENDERER_PLATFORM_LOADER_FETCH_RESOURCE_LOADER_H_
 
 #include <memory>
+
 #include "base/containers/span.h"
 #include "base/feature_list.h"
 #include "base/gtest_prod_util.h"
@@ -37,6 +38,7 @@
 #include "base/time/time.h"
 #include "mojo/public/cpp/base/big_buffer.h"
 #include "services/network/public/mojom/fetch_api.mojom-blink-forward.h"
+#include "third_party/abseil-cpp/absl/types/variant.h"
 #include "third_party/blink/public/mojom/blob/blob_registry.mojom-blink.h"
 #include "third_party/blink/renderer/platform/heap/garbage_collected.h"
 #include "third_party/blink/renderer/platform/heap/prefinalizer.h"
@@ -54,6 +56,7 @@
 #include "third_party/blink/renderer/platform/scheduler/public/frame_or_worker_scheduler.h"
 #include "third_party/blink/renderer/platform/wtf/forward.h"
 #include "third_party/blink/renderer/platform/wtf/gc_plugin.h"
+#include "third_party/blink/renderer/platform/wtf/shared_buffer.h"
 
 namespace base {
 class UnguessableToken;
@@ -143,9 +146,9 @@ class PLATFORM_EXPORT ResourceLoader final
                    uint64_t total_bytes_to_be_sent) override;
   void DidReceiveResponse(
       const WebURLResponse&,
-      mojo::ScopedDataPipeConsumerHandle body,
-      absl::optional<mojo_base::BigBuffer> cached_metadata) override;
-  void DidReceiveData(const char*, size_t) override;
+      absl::variant<mojo::ScopedDataPipeConsumerHandle, SegmentedBuffer>,
+      std::optional<mojo_base::BigBuffer> cached_metadata) override;
+  void DidReceiveDataForTesting(base::span<const char> data) override;
   void DidReceiveTransferSizeUpdate(int transfer_size_diff) override;
   void DidFinishLoading(base::TimeTicks response_end_time,
                         int64_t encoded_data_length,
@@ -184,6 +187,9 @@ class PLATFORM_EXPORT ResourceLoader final
   void DidFailLoadingBody() override;
   void DidCancelLoadingBody() override;
 
+  void DidReceiveDataImpl(
+      absl::variant<SegmentedBuffer, base::span<const char>> data);
+
   bool ShouldFetchCodeCache();
   void StartFetch();
 
@@ -208,7 +214,7 @@ class PLATFORM_EXPORT ResourceLoader final
 
   void DidReceiveResponseInternal(
       const ResourceResponse&,
-      absl::optional<mojo_base::BigBuffer> cached_metadata);
+      std::optional<mojo_base::BigBuffer> cached_metadata);
 
   void DidStartLoadingResponseBodyInternal(BytesConsumer& bytes_consumer);
 
@@ -217,7 +223,7 @@ class PLATFORM_EXPORT ResourceLoader final
   void OnProgress(uint64_t delta) override;
   void FinishedCreatingBlob(const scoped_refptr<BlobDataHandle>&);
 
-  absl::optional<ResourceRequestBlockedReason> CheckResponseNosniff(
+  std::optional<ResourceRequestBlockedReason> CheckResponseNosniff(
       mojom::blink::RequestContextType,
       const ResourceResponse&);
 
@@ -275,7 +281,7 @@ class PLATFORM_EXPORT ResourceLoader final
   struct DeferredFinishLoadingInfo {
     base::TimeTicks response_end_time;
   };
-  absl::optional<DeferredFinishLoadingInfo> deferred_finish_loading_info_;
+  std::optional<DeferredFinishLoadingInfo> deferred_finish_loading_info_;
   scoped_refptr<base::SingleThreadTaskRunner> task_runner_for_body_loader_;
 
   LoaderFreezeMode freeze_mode_ = LoaderFreezeMode::kNone;
@@ -293,6 +299,10 @@ class PLATFORM_EXPORT ResourceLoader final
   int64_t received_body_length_from_service_worker_ = 0;
   CnameAliasInfoForTesting cname_alias_info_for_testing_;
   bool finished_ = false;
+
+  // This is used to keep the body handle of 304 Not Modified response until
+  // Blink receives the URLLoaderClient's OnComplete IPC.
+  mojo::ScopedDataPipeConsumerHandle empty_body_handle_for_revalidation_;
 };
 
 }  // namespace blink

@@ -226,6 +226,10 @@ class Representation {
     UNREACHABLE();
   }
 
+  bool operator==(const Representation& other) const {
+    return kind_ == other.kind_;
+  }
+
  private:
   explicit constexpr Representation(Kind k) : kind_(k) {}
 
@@ -446,7 +450,7 @@ class PropertyDetails {
     kPrintRepresentation = 1 << 2,
     kPrintPointer = 1 << 3,
 
-    kForProperties = kPrintFieldIndex,
+    kForProperties = kPrintFieldIndex | kPrintAttributes,
     kForTransitions = kPrintAttributes,
     kPrintFull = -1,
   };

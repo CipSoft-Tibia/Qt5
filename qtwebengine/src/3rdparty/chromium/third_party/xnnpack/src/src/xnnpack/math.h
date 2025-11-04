@@ -8,17 +8,17 @@
 
 #pragma once
 
+#include <assert.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
-#include <assert.h>
 
 #ifdef _MSC_VER
   #include <intrin.h>
   #include <stdlib.h> // For _rotl.
 #endif
 
-#include <xnnpack/common.h>
+#include "xnnpack/common.h"
 
 
 // stdlib.h from Windows 10 SDK defines min & max macros.
@@ -112,6 +112,19 @@ XNN_INLINE static uint32_t math_abs_s32(int32_t n) {
   #else
     return XNN_UNPREDICTABLE(n >= 0) ? (uint32_t) n : -(uint32_t) n;
   #endif
+}
+
+// Flip low 15 bits based on high bit.  Reversible.
+XNN_INLINE static int16_t math_signcomplement_f16(uint16_t a) {
+  return (a & 0x7FFF) ^ -((int16_t) a < 0);
+}
+
+XNN_INLINE static int16_t math_min_s16(int16_t a, int16_t b) {
+  return XNN_UNPREDICTABLE(a < b) ? a : b;
+}
+
+XNN_INLINE static int16_t math_max_s16(int16_t a, int16_t b) {
+  return XNN_UNPREDICTABLE(a > b) ? a : b;
 }
 
 XNN_INLINE static int32_t math_min_s32(int32_t a, int32_t b) {
@@ -326,7 +339,7 @@ XNN_INLINE static uint32_t math_rotl_u32(uint32_t x, int8_t r)
 
 #ifndef __cplusplus
 XNN_INLINE static uint32_t math_cvt_sat_u32_f64(double x) {
-  #if defined(__GNUC__) && defined(__arm__)
+  #if defined(__GNUC__) && defined(__arm__) && (__GNUC__ >= 9)
     uint32_t i;
     __asm__ ("vcvt.u32.f64 %[i], %P[x]"
       : [i] "=t" (i)
@@ -353,3 +366,23 @@ XNN_INLINE static uint32_t math_cvt_sat_u32_f64(double x) {
   #endif
 }
 #endif
+
+XNN_INLINE static float math_cvt_fp32_bf16(uint16_t x) {
+   union {
+    float as_float;
+    uint32_t as_uint32;
+  } bits;
+  bits.as_uint32 = ((uint32_t) x) << 16;
+  return bits.as_float;
+}
+
+XNN_INLINE static float math_cvt_bf16_fp32(float x) {
+   union {
+    float as_float;
+    uint32_t as_uint32;
+  } bits;
+  bits.as_float = x;
+
+  // TODO Handle fraction rounding
+  return bits.as_uint32 >> 16;
+}

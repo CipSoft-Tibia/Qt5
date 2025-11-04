@@ -11,6 +11,8 @@
 
 #include "http2srv.h"
 
+#include <QtNetwork/private/qhttpnetworkconnection_p.h>
+#include <QtNetwork/private/qhttpnetworkreply_p.h>
 #include <QtNetwork/private/http2protocol_p.h>
 #include <QtNetwork/qnetworkaccessmanager.h>
 #include <QtNetwork/qhttp2configuration.h>
@@ -21,6 +23,8 @@
 #include <QtNetwork/qsslsocket.h>
 #endif
 
+#include <QtCore/private/qnoncontiguousbytedevice_p.h>
+#include <QtCore/qsemaphore.h>
 #include <QtCore/qglobal.h>
 #include <QtCore/qobject.h>
 #include <QtCore/qthread.h>
@@ -83,6 +87,8 @@ private slots:
     void goaway_data();
     void goaway();
     void earlyResponse();
+    void earlyError();
+    void abortReply();
     void connectToHost_data();
     void connectToHost();
     void maxFrameSize();
@@ -110,6 +116,8 @@ private slots:
     void duplicateRequestsWithAborts();
 
     void abortOnEncrypted();
+
+    void limitedConcurrentStreamsAllowed();
 
     void maxHeaderTableSize();
 
@@ -278,7 +286,8 @@ void tst_Http2::singleRequest_data()
     }
 
 #if QT_CONFIG(ssl)
-    QTest::addRow("h2-direct") << QNetworkRequest::Http2DirectAttribute << H2Type::h2Direct;
+    if (QSslSocket::supportsSsl())
+        QTest::addRow("h2-direct") << QNetworkRequest::Http2DirectAttribute << H2Type::h2Direct;
 #endif
 }
 
@@ -684,6 +693,151 @@ void tst_Http2::earlyResponse()
     QVERIFY(serverGotSettingsACK);
 }
 
+/*
+   Have the server return an error before we are done writing out POST data,
+   of course we should not crash if this happens. It's not guaranteed to
+   reproduce, so we run the request a few times to try to make it happen.
+
+   This is a race-condition, so the test is written using QHttpNetworkConnection
+   to have more influence over the timing.
+*/
+void tst_Http2::earlyError()
+{
+    clearHTTP2State();
+
+    serverPort = 0;
+
+    const auto serverConnectionType = defaultConnectionType() == H2Type::h2c ? H2Type::h2Direct
+                                                                             : H2Type::h2Alpn;
+    ServerPtr server(newServer(defaultServerSettings, serverConnectionType));
+    server->enableSendEarlyError(true);
+    QMetaObject::invokeMethod(server.data(), "startServer", Qt::QueuedConnection);
+    runEventLoop();
+    QCOMPARE_NE(serverPort, 0);
+
+    // SETUP create QHttpNetworkConnection primed for http2 usage
+    const auto connectionType = serverConnectionType == H2Type::h2Direct
+            ? QHttpNetworkConnection::ConnectionTypeHTTP2Direct
+            : QHttpNetworkConnection::ConnectionTypeHTTP2;
+    QHttpNetworkConnection connection(1, "127.0.0.1", serverPort, true, false, nullptr,
+                                      connectionType);
+    QSslConfiguration config = QSslConfiguration::defaultConfiguration();
+    config.setAllowedNextProtocols({"h2"});
+    connection.setSslConfiguration(config);
+    connection.ignoreSslErrors();
+
+    // SETUP manually setup the QHttpNetworkRequest
+    QHttpNetworkRequest req;
+    req.setSsl(true);
+    req.setHTTP2Allowed(true);
+    if (defaultConnectionType() == H2Type::h2c)
+        req.setH2cAllowed(true);
+    req.setOperation(QHttpNetworkRequest::Post);
+    req.setUrl(requestUrl(defaultConnectionType()));
+
+    // ^ All the above is set-up, the real code starts below v
+
+    // We need a sufficiently large payload so it can't be instantly transmitted
+    const QByteArray payload(1 * 1024 * 1024, 'a');
+    auto byteDevice = std::unique_ptr<QNonContiguousByteDevice>(
+            QNonContiguousByteDeviceFactory::create(payload));
+    req.setUploadByteDevice(byteDevice.get());
+
+    // Start sending the request. It needs to establish encryption so nothing
+    // happens right away (at time of writing...)
+    std::unique_ptr<QHttpNetworkReply> reply{connection.sendRequest(req)};
+    QVERIFY(reply);
+    QSemaphore sem;
+    int statusCode = 0;
+    QObject::connect(reply.get(), &QHttpNetworkReply::finished, reply.get(), [&](){
+        statusCode = reply->statusCode();
+        // Here we forcibly replicate what happens when we get into the bad
+        // state:
+        // 1. The reply is aborted & deleted, but was not removed from internal
+        // container.
+        reply.reset();
+        // 2. The byte-device is deleted afterwards, which would lead to
+        // use-after-free when we try to signal an error on the reply object.
+        byteDevice.reset();
+        // Let the main thread continue
+        sem.release();
+    });
+
+    using namespace std::chrono_literals;
+    QDeadlineTimer timer(5s);
+    while (!sem.tryAcquire() && !timer.hasExpired())
+        QCoreApplication::processEvents();
+    QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+    QVERIFY(!reply);
+    QCOMPARE(statusCode, 403);
+
+    QVERIFY(prefaceOK);
+    QTRY_VERIFY(serverGotSettingsACK);
+}
+
+/*
+    As above this test relies a bit on timing so we are
+    using QHttpNetworkRequest directly.
+*/
+void tst_Http2::abortReply()
+{
+    clearHTTP2State();
+    serverPort = 0;
+
+    const auto serverConnectionType = defaultConnectionType() == H2Type::h2c ? H2Type::h2Direct
+                                                                             : H2Type::h2Alpn;
+    ServerPtr targetServer(newServer(defaultServerSettings, serverConnectionType));
+
+    QMetaObject::invokeMethod(targetServer.data(), "startServer", Qt::QueuedConnection);
+    runEventLoop();
+
+    QVERIFY(serverPort != 0);
+
+    nRequests = 1;
+
+    // SETUP create QHttpNetworkConnection primed for http2 usage
+    const auto connectionType = serverConnectionType == H2Type::h2Direct
+            ? QHttpNetworkConnection::ConnectionTypeHTTP2Direct
+            : QHttpNetworkConnection::ConnectionTypeHTTP2;
+    QHttpNetworkConnection connection(1, "127.0.0.1", serverPort, true, false, nullptr,
+                                      connectionType);
+    QSslConfiguration config = QSslConfiguration::defaultConfiguration();
+    config.setAllowedNextProtocols({"h2"});
+    connection.setSslConfiguration(config);
+    connection.ignoreSslErrors();
+
+    // SETUP manually setup the QHttpNetworkRequest
+    QHttpNetworkRequest req;
+    req.setSsl(true);
+    req.setHTTP2Allowed(true);
+    if (defaultConnectionType() == H2Type::h2c)
+        req.setH2cAllowed(true);
+    req.setOperation(QHttpNetworkRequest::Post);
+    req.setUrl(requestUrl(defaultConnectionType()));
+    // ^ All the above is set-up, the real code starts below v
+
+    std::unique_ptr<QHttpNetworkReply> reply{connection.sendRequest(req)};
+    QVERIFY(reply);
+    QSemaphore sem;
+    QObject::connect(reply.get(), &QHttpNetworkReply::requestSent, reply.get(), [&](){
+        reply.reset();
+        sem.release();
+    });
+
+    // failOnWarning doesn't work for qCritical, so we set this env-var:
+    const char envvar[] = "QT_FATAL_CRITICALS";
+    auto restore = qScopeGuard([envvar, prev = qgetenv(envvar)]() {
+        qputenv(envvar, prev);
+    });
+    qputenv(envvar, "1");
+    QTest::failOnWarning(QRegularExpression("HEADERS on invalid stream"));
+    QVERIFY(QTest::qWaitFor([&sem]() { return sem.tryAcquire(); }));
+    using namespace std::chrono_literals;
+    // Process some extra events in case they trigger an error:
+    QTest::qWait(100ms);
+}
+
+
 void tst_Http2::connectToHost_data()
 {
     // The attribute to set on a new request:
@@ -693,9 +847,11 @@ void tst_Http2::connectToHost_data()
     QTest::addColumn<H2Type>("connectionType");
 
 #if QT_CONFIG(ssl)
-    QTest::addRow("encrypted-h2-direct") << QNetworkRequest::Http2DirectAttribute << H2Type::h2Direct;
-    if (!clearTextHTTP2)
-        QTest::addRow("encrypted-h2-ALPN") << QNetworkRequest::Http2AllowedAttribute << H2Type::h2Alpn;
+    if (QSslSocket::supportsSsl()) {
+        QTest::addRow("encrypted-h2-direct") << QNetworkRequest::Http2DirectAttribute << H2Type::h2Direct;
+        if (!clearTextHTTP2)
+            QTest::addRow("encrypted-h2-ALPN") << QNetworkRequest::Http2AllowedAttribute << H2Type::h2Alpn;
+    }
 #endif // QT_CONFIG(ssl)
     // This works for all configurations, tests 'preconnect-http' scheme:
     // h2 with protocol upgrade is not working for now (the logic is a bit
@@ -728,11 +884,15 @@ void tst_Http2::connectToHost()
     ServerPtr targetServer(newServer(defaultServerSettings, connectionType));
 
 #if QT_CONFIG(ssl)
-    Q_ASSERT(!clearTextHTTP2 || connectionType != H2Type::h2Alpn);
-#else
-    Q_ASSERT(connectionType == H2Type::h2c || connectionType == H2Type::h2cDirect);
-    Q_ASSERT(targetServer->isClearText());
-#endif // QT_CONFIG(ssl)
+    if (QSslSocket::supportsSsl())
+    {
+        Q_ASSERT(!clearTextHTTP2 || connectionType != H2Type::h2Alpn);
+    } else
+#endif
+    {
+        Q_ASSERT(connectionType == H2Type::h2c || connectionType == H2Type::h2cDirect);
+        Q_ASSERT(targetServer->isClearText());
+    }
 
     QMetaObject::invokeMethod(targetServer.data(), "startServer", Qt::QueuedConnection);
     runEventLoop();
@@ -959,8 +1119,10 @@ void tst_Http2::moreActivitySignals_data()
                 << QNetworkRequest::Http2AllowedAttribute << H2Type::h2Alpn;
 
 #if QT_CONFIG(ssl)
-    QTest::addRow("h2-direct")
-            << QNetworkRequest::Http2DirectAttribute << H2Type::h2Direct;
+    if (QSslSocket::supportsSsl()) {
+        QTest::addRow("h2-direct")
+                << QNetworkRequest::Http2DirectAttribute << H2Type::h2Direct;
+    }
 #endif
 }
 
@@ -1058,9 +1220,11 @@ void tst_Http2::contentEncoding_data()
                     << QNetworkRequest::Http2AllowedAttribute << H2Type::h2Alpn;
 
 #if QT_CONFIG(ssl)
-        QTest::addRow("%s-h2-direct", name)
-                << data.contentEncoding << data.body << data.expected
-                << QNetworkRequest::Http2DirectAttribute << H2Type::h2Direct;
+        if (QSslSocket::supportsSsl()) {
+            QTest::addRow("%s-h2-direct", name)
+                    << data.contentEncoding << data.body << data.expected
+                    << QNetworkRequest::Http2DirectAttribute << H2Type::h2Direct;
+        }
 #endif
     }
 }
@@ -1531,6 +1695,8 @@ void tst_Http2::abortOnEncrypted()
 #if !QT_CONFIG(ssl)
     QSKIP("TLS support is needed for this test");
 #else
+    if (!QSslSocket::supportsSsl())
+        QSKIP("TLS support is needed for this test");
 
     clearHTTP2State();
     serverPort = 0;
@@ -1567,6 +1733,61 @@ void tst_Http2::abortOnEncrypted()
             500);
     QVERIFY(!res);
 #endif // QT_CONFIG(ssl)
+}
+
+/*
+    While the standard heavily recommends allowing at _least_ 100 streams, let's
+    test how we cope with a very small number of streams allowed.
+
+    Basically we are just testing how we would handle the situation where we are
+    up against the limit of active streams, which should be well-behaved to
+    avoid having the server to close the connection.
+*/
+void tst_Http2::limitedConcurrentStreamsAllowed()
+{
+    clearHTTP2State();
+    serverPort = 0;
+
+    H2Type connectionType = H2Type::h2Direct;
+    RawSettings oneConcurrentStream{ { Http2::Settings::MAX_CONCURRENT_STREAMS_ID, 1 } };
+    ServerPtr targetServer(newServer(oneConcurrentStream, connectionType));
+
+    QMetaObject::invokeMethod(targetServer.data(), "startServer", Qt::QueuedConnection);
+    runEventLoop();
+
+    QVERIFY(serverPort != 0);
+
+    constexpr qint32 TotalRequests = 3;
+    nRequests = TotalRequests;
+
+    const auto url = requestUrl(connectionType);
+    QNetworkRequest request(url);
+    request.setAttribute(QNetworkRequest::Http2DirectAttribute, true);
+
+    qint32 finishedCount = 0;
+    qint32 errorCount = 0;
+    const auto onFinished = [&](QNetworkReply *reply) {
+        ++finishedCount;
+        if (reply->error() == QNetworkReply::NoError)
+            replyFinished();
+        else
+            ++errorCount;
+    };
+
+    std::vector<QNetworkReply *> replies;
+
+    for (qint32 i = 0; i < TotalRequests; ++i) {
+        auto *reply = replies.emplace_back(manager->get(request));
+        reply->ignoreSslErrors();
+        connect(reply, &QNetworkReply::finished, reply, [&,reply](){ onFinished(reply); });
+    }
+
+    runEventLoop();
+    STOP_ON_FAILURE
+
+    QCOMPARE(nRequests, 0);
+    QCOMPARE(errorCount, 0);
+    QCOMPARE(finishedCount, TotalRequests);
 }
 
 void tst_Http2::maxHeaderTableSize()

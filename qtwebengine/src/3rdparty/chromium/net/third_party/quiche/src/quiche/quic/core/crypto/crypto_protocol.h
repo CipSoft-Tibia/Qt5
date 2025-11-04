@@ -284,6 +284,9 @@ const QuicTag kSPA2 = TAG('S', 'P', 'A', '2');   // Start validating server
                                                  // preferred address once it is
                                                  // received. Send all coalesced
                                                  // packets to both addresses.
+const QuicTag kEVMB = TAG('E', 'V', 'M', 'B');
+
+const QuicTag kCRNT = TAG('C', 'R', 'N', 'T');
 
 // Optional support of truncated Connection IDs.  If sent by a peer, the value
 // is the minimum number of bytes allowed for the connection ID sent to the
@@ -298,6 +301,7 @@ const QuicTag kNCMR = TAG('N', 'C', 'M', 'R');   // Do not attempt connection
 
 // Allows disabling defer_send_in_response_to_packets in QuicConnection.
 const QuicTag kDFER = TAG('D', 'F', 'E', 'R');   // Do not defer sending.
+const QuicTag kCDFR = TAG('C', 'D', 'F', 'R');   // Defer sending on client.
 
 // Pacing options.
 const QuicTag kNPCO = TAG('N', 'P', 'C', 'O');  // No pacing offload.
@@ -439,6 +443,11 @@ const QuicTag kMPQM = TAG('M', 'P', 'Q', 'M');   // Enable multi-port QUIC
 const QuicTag kGWCH = TAG('G', 'W', 'C', 'H');
 const QuicTag kYTCH = TAG('Y', 'T', 'C', 'H');
 const QuicTag kACH0 = TAG('A', 'C', 'H', '0');
+
+// Client sends these connection options to express the intention of skipping IP
+// matching when trying to send a request on active sessions.
+const QuicTag kNOIP = TAG('N', 'O', 'I', 'P');
+const QuicTag kNIPA = TAG('N', 'I', 'P', 'A');  // Aggressively skip IP matching
 
 // Rejection tags
 const QuicTag kRREJ = TAG('R', 'R', 'E', 'J');   // Reasons for server sending

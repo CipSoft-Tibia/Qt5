@@ -12,108 +12,123 @@
 // We mean it.
 //
 
-#ifndef QWINDOWSAUDIOOUTPUT_H
-#define QWINDOWSAUDIOOUTPUT_H
+#ifndef QWINDOWSAUDIOSINK_H
+#define QWINDOWSAUDIOSINK_H
 
-#include <QtCore/qdebug.h>
-#include <QtCore/qelapsedtimer.h>
-#include <QtCore/qiodevice.h>
-#include <QtCore/qstring.h>
-#include <QtCore/qstringlist.h>
-#include <QtCore/qdatetime.h>
-#include <QtCore/qmutex.h>
-#include <QtCore/qtimer.h>
-#include <QtCore/qpointer.h>
-
-#include <QtMultimedia/qaudio.h>
-#include <QtMultimedia/qaudiodevice.h>
-#include <private/qaudiosystem_p.h>
+#include <QtCore/qthread.h>
+#include <QtCore/qtclasshelpermacros.h>
 #include <QtCore/private/qcomptr_p.h>
-#include <qwindowsresampler_p.h>
+#include <QtMultimedia/private/qaudiosystem_p.h>
+#include <QtMultimedia/private/qaudiosystem_platform_stream_support_p.h>
+#include <QtMultimedia/private/qaudio_platform_implementation_support_p.h>
+#include <QtMultimedia/private/qwindowsaudioutils_p.h>
 
-#include <audioclient.h>
-#include <mmdeviceapi.h>
-#include <chrono>
+#include <atomic>
+#include <memory>
+#include <memory_resource>
+
+struct IAudioRenderClient;
 
 QT_BEGIN_NAMESPACE
 
 class QWindowsResampler;
 
-class AudioClient
+namespace QtWASAPI {
+
+class QWindowsAudioSink;
+using namespace QtMultimediaPrivate;
+
+///////////////////////////////////////////////////////////////////////////////////////////////////
+
+struct QWASAPIAudioSinkStream final : std::enable_shared_from_this<QWASAPIAudioSinkStream>,
+                                      QPlatformAudioSinkStream
 {
-public:
-    static std::unique_ptr<AudioClient> create(const ComPtr<IMMDevice> &device,
-                                               const QAudioFormat &format, qsizetype &bufferSize);
-    std::chrono::microseconds remainingPlayTime();
-    quint64 bytesFree() const;
-    quint64 totalInputBytes() const;
-    qint64 render(const QAudioFormat &format, qreal volume, const char *data, qint64 len);
-    void start();
-    void stop();
-    bool resetResampler();
+    using SampleFormat = QAudioFormat::SampleFormat;
+    using SinkType = QWindowsAudioSink;
 
-private:
-    AudioClient(const ComPtr<IMMDevice> &device, const QAudioFormat &format);
-    bool create(qsizetype& bufferSize);
-    std::optional<quint32> availableFrameCount() const;
+    enum class StreamType : uint8_t {
+        Ringbuffer,
+        Callback,
+    };
 
-    ComPtr<IMMDevice> m_device;
-    ComPtr<IAudioClient> m_audioClient;
-    ComPtr<IAudioRenderClient> m_renderClient;
-    QWindowsResampler m_resampler;
-    QAudioFormat m_inputFormat;
-    QAudioFormat m_outputFormat;
-};
-
-class QWindowsAudioSink : public QPlatformAudioSink
-{
-    Q_OBJECT
-public:
-    QWindowsAudioSink(ComPtr<IMMDevice> device, const QAudioFormat &fmt, QObject *parent);
-    ~QWindowsAudioSink();
-
-    QAudioFormat format() const override;
-    QIODevice* start() override;
-    void start(QIODevice* device) override;
-    void stop() override;
-    void reset() override;
-    void suspend() override;
-    void resume() override;
-    qsizetype bytesFree() const override;
-    void setBufferSize(qsizetype value) override;
-    qsizetype bufferSize() const override { return m_bufferSize; }
-    qint64 processedUSecs() const override;
-    QAudio::Error error() const override { return errorState; }
-    QAudio::State state() const override { return deviceState; }
-    void setVolume(qreal) override;
-    qreal volume() const override { return m_volume; }
-
-private:
-    friend class OutputPrivate;
-    qint64 push(const char *data, qint64 len);
+    QWASAPIAudioSinkStream(QAudioDevice, const QAudioFormat &,
+                           std::optional<qsizetype> ringbufferSize, QWindowsAudioSink *parent,
+                           float volume, std::optional<int32_t> hardwareBufferSize,
+                           AudioEndpointRole);
+    Q_DISABLE_COPY_MOVE(QWASAPIAudioSinkStream)
+    ~QWASAPIAudioSinkStream() = default;
 
     bool open();
-    void close();
-    void deviceStateChange(QAudio::State, QAudio::Error);
 
-    void pullSource();
+    using QPlatformAudioSinkStream::bytesFree;
+    using QPlatformAudioSinkStream::processedDuration;
+    using QPlatformAudioSinkStream::ringbufferSizeInBytes;
+    using QPlatformAudioSinkStream::setVolume;
 
-    const QAudioFormat m_format;
-    QAudio::Error errorState = QAudio::NoError;
-    QAudio::State deviceState = QAudio::StoppedState;
-    QAudio::State suspendedInState = QAudio::SuspendedState;
+    bool start(QIODevice *);
+    QIODevice *start();
+    bool start(AudioCallback);
 
-    qsizetype m_bufferSize = 0;
-    qreal m_volume = 1.0;
-    QTimer *m_timer = nullptr;
-    QScopedPointer<QIODevice> m_pushSource;
-    QPointer<QIODevice> m_pullSource;
-    ComPtr<IMMDevice> m_device;
-    bool m_recreateClient = true;
-    std::unique_ptr<AudioClient> m_client;
+    void suspend();
+    void resume();
+    void stop(ShutdownPolicy);
+
+    void updateStreamIdle(bool) override;
+
+private:
+    bool openAudioClient(ComPtr<IMMDevice>, AudioEndpointRole);
+    bool startAudioClient(StreamType);
+
+    template <typename Functor>
+    bool visitAudioClientBuffer(Functor &&f);
+
+    void fillInitialHostBuffer();
+    void runProcessRingbufferLoop();
+    void runProcessCallbackLoop();
+    bool processRingbuffer() noexcept QT_MM_NONBLOCKING;
+    bool processCallback() noexcept QT_MM_NONBLOCKING;
+
+    void handleAudioClientError();
+
+    ComPtr<IAudioClient3> m_audioClient;
+    ComPtr<IAudioRenderClient> m_renderClient;
+
+    QWindowsAudioUtils::reference_time m_periodSize;
+    qsizetype m_audioClientFrames;
+
+    std::atomic_bool m_suspended{};
+    std::atomic<ShutdownPolicy> m_shutdownPolicy{ ShutdownPolicy::DiscardRingbuffer };
+    QAutoResetEvent m_ringbufferDrained;
+
+    const AudioEndpointRole m_role;
+
+    const QUniqueWin32NullHandle m_wasapiHandle;
+    std::unique_ptr<QThread> m_workerThread;
+
+    AudioCallback m_audioCallback;
+
+    QWindowsAudioSink *m_parent;
+
+    QAudioFormat m_hostFormat;
+    std::unique_ptr<char[]> m_preallocatedBuffer;
+    std::unique_ptr<std::pmr::memory_resource> m_pmrBufferResource;
+    std::unique_ptr<std::pmr::memory_resource> m_pmrPoolResource;
+    std::unique_ptr<QWindowsResampler> m_resampler;
 };
+
+///////////////////////////////////////////////////////////////////////////////////////////////////
+
+class QWindowsAudioSink final
+    : public QPlatformAudioSinkImplementation<QWASAPIAudioSinkStream, QWindowsAudioSink>
+{
+    using BaseClass = QPlatformAudioSinkImplementation<QWASAPIAudioSinkStream, QWindowsAudioSink>;
+
+public:
+    QWindowsAudioSink(QAudioDevice, const QAudioFormat &, QObject *parent);
+};
+
+} // namespace QtWASAPI
 
 QT_END_NAMESPACE
 
-
-#endif // QWINDOWSAUDIOOUTPUT_H
+#endif // QWINDOWSAUDIOSINK_H

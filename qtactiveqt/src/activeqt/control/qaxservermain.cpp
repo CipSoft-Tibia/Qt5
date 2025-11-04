@@ -3,6 +3,7 @@
 
 #include <qstringlist.h>
 #include <qlist.h>
+#include <private/qcoreapplication_p.h>
 
 #include "qaxfactory.h"
 
@@ -25,7 +26,6 @@ static const DWORD dwTimeOut = 5000; // time for EXE to be idle before shutting 
 static const DWORD dwPause = 1000; // time to wait for threads to finish up
 #endif
 
-extern HANDLE qAxInstance;
 extern bool qAxIsServer;
 extern bool qAxOutProcServer;
 extern wchar_t qAxModuleFilename[MAX_PATH];
@@ -191,7 +191,7 @@ EXTERN_C int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE /* hPrevInstance */, 
 
     qAxOutProcServer = true;
     GetModuleFileName(nullptr, qAxModuleFilename, MAX_PATH);
-    qAxInstance = hInstance;
+    QCoreApplicationPrivate::mainInstanceHandle = hInstance;
 
     const QStringList cmds = commandLineArguments();
     QStringList unprocessed;

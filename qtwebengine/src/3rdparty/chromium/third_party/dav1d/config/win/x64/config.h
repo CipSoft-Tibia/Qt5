@@ -9,7 +9,19 @@
 
 #define ARCH_ARM 0
 
+#define ARCH_LOONGARCH 0
+
+#define ARCH_LOONGARCH32 0
+
+#define ARCH_LOONGARCH64 0
+
 #define ARCH_PPC64LE 0
+
+#define ARCH_RISCV 0
+
+#define ARCH_RV32 0
+
+#define ARCH_RV64 0
 
 #define ARCH_X86 1
 
@@ -23,6 +35,8 @@
 
 // #define CONFIG_LOG 1 -- Logging is controlled by Chromium
 
+#define CONFIG_MACOS_KPERF 0
+
 #define ENDIANNESS_BIG 0
 
 #define HAVE_ASM 1
@@ -30,6 +44,8 @@
 #define HAVE_C11_GENERIC 1
 
 #define HAVE_IO_H 1
+
+#define HAVE_SYS_TYPES_H 1
 
 #define TRIM_DSP_FUNCTIONS 1
 

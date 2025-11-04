@@ -20,7 +20,7 @@ from typing import Dict, List
 NAME = r'[a-zA-Z_\d\{\}]+'
 ANY_WORDS = r'[^\s].*'
 ANY_NON_QUOTE = r'[^\']*.*'
-TYPE = r'[A-Z]+'
+TYPE = r'[a-zA-Z]+'
 SQL = r'[\s\S]*?'
 WS = r'\s*'
 COMMENT = r' --[^\n]*\n'
@@ -49,8 +49,8 @@ CREATE_TABLE_AS_PATTERN = update_pattern(fr'^CREATE TABLE ({NAME}) AS')
 
 CREATE_VIEW_AS_PATTERN = update_pattern(fr'^CREATE VIEW ({NAME}) AS')
 
-DROP_TABLE_VIEW_PATTERN = update_pattern(fr'^DROP (TABLE|VIEW) IF EXISTS '
-                                         fr'({NAME});$')
+DROP_TABLE_VIEW_PATTERN = update_pattern(
+    fr'^DROP (VIEW|TABLE|INDEX) (?:IF EXISTS)? ({NAME});$')
 
 INCLUDE_ALL_PATTERN = update_pattern(
     fr'^INCLUDE PERFETTO MODULE [a-zA-Z0-9_\.]*\*;')
@@ -70,7 +70,7 @@ CREATE_TABLE_FUNCTION_PATTERN = update_pattern(
     fr" \( ({ARGS}) \) "
     # Type: table definition after RETURNS.
     fr"({COMMENTS})"
-    fr" RETURNS TABLE\( ({ARGS}) \) AS ")
+    fr" RETURNS TABLE \( ({ARGS}) \) AS ")
 
 CREATE_MACRO_PATTERN = update_pattern(
     fr"CREATE (OR REPLACE)? PERFETTO MACRO ({NAME}) "
@@ -78,7 +78,9 @@ CREATE_MACRO_PATTERN = update_pattern(
     fr" \( ({ARGS}) \) "
     # Type: word after RETURNS.
     fr"({COMMENTS})"
-    fr" RETURNS")
+    fr" RETURNS ({TYPE})")
+
+INCLUDE_PATTERN = update_pattern(fr'^INCLUDE PERFETTO MODULE ([A-Za-z_.*]*);$')
 
 COLUMN_ANNOTATION_PATTERN = update_pattern(fr'^ ({NAME}) ({ANY_WORDS})')
 
@@ -97,17 +99,35 @@ class ObjKind(str, Enum):
   table_view = 'table_view'
   function = 'function'
   table_function = 'table_function'
+  macro = 'macro'
+  include = 'include'
 
 
 PATTERN_BY_KIND = {
     ObjKind.table_view: CREATE_TABLE_VIEW_PATTERN,
     ObjKind.function: CREATE_FUNCTION_PATTERN,
     ObjKind.table_function: CREATE_TABLE_FUNCTION_PATTERN,
+    ObjKind.macro: CREATE_MACRO_PATTERN,
+    ObjKind.include: INCLUDE_PATTERN
 }
 
 ALLOWED_PREFIXES = {
-    'chrome/util': 'cr',
+    'android': ['heap_graph', 'memory'],
+    'counters': ['counter'],
+    'chrome/util': ['cr'],
+    'intervals': ['interval'],
+    'graphs': ['graph'],
+    'slices': ['slice'],
+    'linux': ['cpu', 'memory']
 }
+
+# Allows for nonstandard object names.
+OBJECT_NAME_ALLOWLIST = {
+    'graphs/partition.sql': ['tree_structural_partition_by_group'],
+    'slices/with_context.sql': ['process_slice', 'thread_slice'],
+    'slices/cpu_time.sql': ['thread_slice_cpu_time']
+}
+
 
 # Given a regex pattern and a string to match against, returns all the
 # matching positions. Specifically, it returns a dictionary from the line
@@ -140,7 +160,7 @@ def extract_comment(lines: List[str], line_number: int) -> List[str]:
 
 # Given SQL string check whether any of the words is used, and create error
 # string if needed.
-def check_banned_words(sql: str, path: str) -> List[str]:
+def check_banned_words(sql: str) -> List[str]:
   lines = [l.strip() for l in sql.split('\n')]
   errors = []
 
@@ -151,70 +171,62 @@ def check_banned_words(sql: str, path: str) -> List[str]:
 
     if 'like' in line.casefold():
       errors.append(
-          'LIKE is banned in trace processor metrics. Prefer GLOB instead.\n'
-          f'Offending file: {path}\n')
+          'LIKE is banned in trace processor metrics. Prefer GLOB instead.\n')
       continue
 
     if 'create_function' in line.casefold():
       errors.append('CREATE_FUNCTION is deprecated in trace processor. '
-                    'Use CREATE PERFETTO FUNCTION instead.\n'
-                    f'Offending file: {path}')
+                    'Use CREATE PERFETTO FUNCTION instead.')
 
     if 'create_view_function' in line.casefold():
-      errors.append(
-          'CREATE_VIEW_FUNCTION is deprecated in trace processor. '
-          'Use CREATE PERFETTO FUNCTION $name RETURNS TABLE instead.\n'
-          f'Offending file: {path}')
+      errors.append('CREATE_VIEW_FUNCTION is deprecated in trace processor. '
+                    'Use CREATE PERFETTO FUNCTION $name RETURNS TABLE instead.')
 
     if 'import(' in line.casefold():
       errors.append('SELECT IMPORT is deprecated in trace processor. '
-                    'Use INCLUDE PERFETTO MODULE instead.\n'
-                    f'Offending file: {path}')
+                    'Use INCLUDE PERFETTO MODULE instead.')
 
   return errors
 
 
 # Given SQL string check whether there is (not allowlisted) usage of
 # CREATE TABLE {name} AS.
-def check_banned_create_table_as(sql: str, filename: str, stdlib_path: str,
-                                 allowlist: Dict[str, List[str]]) -> List[str]:
+def check_banned_create_table_as(sql: str) -> List[str]:
   errors = []
   for _, matches in match_pattern(CREATE_TABLE_AS_PATTERN, sql).items():
     name = matches[0]
-    # Normalize paths before checking presence in the allowlist so it will
-    # work on Windows for the Chrome stdlib presubmit.
-    allowlist_normpath = dict(
-        (os.path.normpath(path), tables) for path, tables in allowlist.items())
-    allowlist_key = os.path.normpath(filename[len(stdlib_path):])
-    if allowlist_key not in allowlist_normpath:
-      errors.append(f"CREATE TABLE '{name}' is deprecated. "
-                    "Use CREATE PERFETTO TABLE instead.\n"
-                    f"Offending file: {filename}\n")
-      continue
-    if name not in allowlist_normpath[allowlist_key]:
+    if name != "trace_bounds":
       errors.append(
           f"Table '{name}' uses CREATE TABLE which is deprecated "
-          "and this table is not allowlisted. Use CREATE PERFETTO TABLE.\n"
-          f"Offending file: {filename}\n")
+          "and this table is not allowlisted. Use CREATE PERFETTO TABLE.")
   return errors
 
 
 # Given SQL string check whether there is usage of CREATE VIEW {name} AS.
-def check_banned_create_view_as(sql: str, filename: str) -> List[str]:
+def check_banned_create_view_as(sql: str) -> List[str]:
   errors = []
   for _, matches in match_pattern(CREATE_VIEW_AS_PATTERN, sql).items():
     name = matches[0]
     errors.append(f"CREATE VIEW '{name}' is deprecated. "
-                  "Use CREATE PERFETTO VIEW instead.\n"
-                  f"Offending file: {filename}\n")
+                  "Use CREATE PERFETTO VIEW instead.")
+  return errors
+
+
+# Given SQL string check whether there is usage of DROP TABLE/VIEW/MACRO/INDEX.
+def check_banned_drop(sql: str) -> List[str]:
+  errors = []
+  for _, matches in match_pattern(DROP_TABLE_VIEW_PATTERN, sql).items():
+    sql_type = matches[0]
+    name = matches[2]
+    errors.append(f"Dropping object {sql_type} '{name}' is banned.")
   return errors
 
 
 # Given SQL string check whether there is usage of CREATE VIEW {name} AS.
-def check_banned_include_all(sql: str, filename: str) -> List[str]:
+def check_banned_include_all(sql: str) -> List[str]:
   errors = []
   for _, matches in match_pattern(INCLUDE_ALL_PATTERN, sql).items():
     errors.append(
-        f"INCLUDE PERFETTO MODULE with wildcards is not allowed in stdlib. "
-        f"Import specific modules instead. Offending file: {filename}")
+        "INCLUDE PERFETTO MODULE with wildcards is not allowed in stdlib. "
+        "Import specific modules instead.")
   return errors

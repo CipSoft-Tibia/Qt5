@@ -12,9 +12,9 @@
 
 #include <memory>
 #include <utility>
+#include <vector>
 
 #include "base/containers/contains.h"
-#include "base/containers/cxx20_erase.h"
 #include "base/containers/queue.h"
 #include "base/functional/bind.h"
 #include "base/functional/callback_helpers.h"
@@ -125,7 +125,7 @@ blink::mojom::WebBluetoothResult TranslateGATTErrorAndRecord(
                                  UMAGATTOperationOutcome::kNotSupported);
       return blink::mojom::WebBluetoothResult::GATT_NOT_SUPPORTED;
   }
-  NOTREACHED();
+  NOTREACHED_IN_MIGRATION();
   return blink::mojom::WebBluetoothResult::GATT_UNTRANSLATED_ERROR_CODE;
 }
 
@@ -262,11 +262,32 @@ WebBluetoothServiceImpl::TranslateConnectErrorAndRecord(
     case BluetoothDevice::ERROR_INVALID_ARGS:
       RecordConnectGATTOutcome(UMAConnectGATTOutcome::INVALID_ARGS);
       return blink::mojom::WebBluetoothResult::CONNECT_INVALID_ARGS;
+    case BluetoothDevice::ERROR_NON_AUTH_TIMEOUT:
+      RecordConnectGATTOutcome(UMAConnectGATTOutcome::NON_AUTH_TIMEOUT);
+      return blink::mojom::WebBluetoothResult::CONNECT_NON_AUTH_TIMEOUT;
+    case device::BluetoothDevice::ERROR_NO_MEMORY:
+      RecordConnectGATTOutcome(UMAConnectGATTOutcome::NO_MEMORY);
+      return blink::mojom::WebBluetoothResult::CONNECT_NO_MEMORY;
+    case device::BluetoothDevice::ERROR_JNI_ENVIRONMENT:
+      RecordConnectGATTOutcome(UMAConnectGATTOutcome::JNI_ENVIRONMENT);
+      return blink::mojom::WebBluetoothResult::CONNECT_JNI_ENVIRONMENT;
+    case device::BluetoothDevice::ERROR_JNI_THREAD_ATTACH:
+      RecordConnectGATTOutcome(UMAConnectGATTOutcome::JNI_THREAD_ATTACH);
+      return blink::mojom::WebBluetoothResult::CONNECT_JNI_THREAD_ATTACH;
+    case device::BluetoothDevice::ERROR_WAKELOCK:
+      RecordConnectGATTOutcome(UMAConnectGATTOutcome::WAKELOCK);
+      return blink::mojom::WebBluetoothResult::CONNECT_WAKELOCK;
+    case device::BluetoothDevice::ERROR_UNEXPECTED_STATE:
+      RecordConnectGATTOutcome(UMAConnectGATTOutcome::UNEXPECTED_STATE);
+      return blink::mojom::WebBluetoothResult::CONNECT_UNEXPECTED_STATE;
+    case device::BluetoothDevice::ERROR_SOCKET:
+      RecordConnectGATTOutcome(UMAConnectGATTOutcome::SOCKET_ERROR);
+      return blink::mojom::WebBluetoothResult::CONNECT_SOCKET_ERROR;
     case BluetoothDevice::NUM_CONNECT_ERROR_CODES:
-      NOTREACHED();
+      NOTREACHED_IN_MIGRATION();
       return blink::mojom::WebBluetoothResult::CONNECT_UNKNOWN_FAILURE;
   }
-  NOTREACHED();
+  NOTREACHED_IN_MIGRATION();
   return blink::mojom::WebBluetoothResult::CONNECT_UNKNOWN_FAILURE;
 }
 
@@ -297,7 +318,7 @@ struct CacheQueryResult {
     switch (outcome) {
       case CacheQueryOutcome::SUCCESS:
       case CacheQueryOutcome::BAD_RENDERER:
-        NOTREACHED();
+        NOTREACHED_IN_MIGRATION();
         return blink::mojom::WebBluetoothResult::DEVICE_NO_LONGER_IN_RANGE;
       case CacheQueryOutcome::NO_DEVICE:
         return blink::mojom::WebBluetoothResult::DEVICE_NO_LONGER_IN_RANGE;
@@ -309,7 +330,7 @@ struct CacheQueryResult {
       case CacheQueryOutcome::NO_DESCRIPTOR:
         return blink::mojom::WebBluetoothResult::DESCRIPTOR_NO_LONGER_EXISTS;
     }
-    NOTREACHED();
+    NOTREACHED_IN_MIGRATION();
     return blink::mojom::WebBluetoothResult::DEVICE_NO_LONGER_IN_RANGE;
   }
 
@@ -433,6 +454,12 @@ WebBluetoothServiceImpl::GetBluetoothAllowed() {
   // frames are disallowed.
   DCHECK(!render_frame_host().IsNestedWithinFencedFrame());
 
+  BluetoothDelegate* delegate =
+      GetContentClient()->browser()->GetBluetoothDelegate();
+  if (!delegate || !delegate->MayUseBluetooth(&render_frame_host())) {
+    return blink::mojom::WebBluetoothResult::WEB_BLUETOOTH_NOT_SUPPORTED;
+  }
+
   // Check if Web Bluetooth is allowed by Permissions Policy.
   if (!render_frame_host().IsFeatureEnabled(
           blink::mojom::PermissionsPolicyFeature::kBluetooth)) {
@@ -445,7 +472,7 @@ WebBluetoothServiceImpl::GetBluetoothAllowed() {
 
   // Some embedders that don't support Web Bluetooth indicate this by not
   // returning a chooser.
-  // TODO(https://crbug.com/993829): Perform this check once there is a way to
+  // TODO(crbug.com/41476036): Perform this check once there is a way to
   // check if a platform is capable of producing a chooser and return a
   // |blink::mojom::WebBluetoothResult::WEB_BLUETOOTH_NOT_SUPPORTED| error.
   switch (GetContentClient()->browser()->AllowWebBluetooth(
@@ -498,7 +525,7 @@ void WebBluetoothServiceImpl::OnBluetoothScanningPromptEvent(
   } else if (event == BluetoothScanningPrompt::Event::kCanceled) {
     result = blink::mojom::WebBluetoothResult::PROMPT_CANCELED;
   } else {
-    NOTREACHED();
+    NOTREACHED_IN_MIGRATION();
   }
 
   client->RunCallback(std::move(result));
@@ -516,7 +543,7 @@ void WebBluetoothServiceImpl::OnBluetoothScanningPromptEvent(
   } else if (event == BluetoothScanningPrompt::Event::kCanceled) {
     scanning_clients_.pop_back();
   } else {
-    NOTREACHED();
+    NOTREACHED_IN_MIGRATION();
   }
 }
 
@@ -540,7 +567,7 @@ void WebBluetoothServiceImpl::OnPermissionRevoked(const url::Origin& origin) {
 
   connected_devices_->CloseConnectionsToDevicesNotInList(permitted_ids);
 
-  base::EraseIf(watch_advertisements_clients_,
+  std::erase_if(watch_advertisements_clients_,
                 [&](const std::unique_ptr<WatchAdvertisementsClient>& client) {
                   return !base::Contains(permitted_ids, client->device_id());
                 });
@@ -663,13 +690,15 @@ void WebBluetoothServiceImpl::DeviceAdvertisementReceived(
   result->uuids = std::move(uuids);
 
   auto& manufacturer_data = result->manufacturer_data;
-  manufacturer_data.insert(manufacturer_data_map.begin(),
-                           manufacturer_data_map.end());
+  for (const auto& entry : manufacturer_data_map) {
+    manufacturer_data.emplace(
+        blink::mojom::WebBluetoothCompany::New(entry.first), entry.second);
+  }
 
   auto& service_data = result->service_data;
   service_data.insert(service_data_map.begin(), service_data_map.end());
 
-  // TODO(https://crbug.com/1087007): These two classes can potentially be
+  // TODO(crbug.com/40132791): These two classes can potentially be
   // combined into the same container.
   for (const auto& scanning_client : scanning_clients_)
     scanning_client->SendEvent(*result);
@@ -1137,7 +1166,7 @@ void WebBluetoothServiceImpl::RemoteCharacteristicWriteValue(
     return;
   }
 
-  // TODO(crbug.com/730593): Remove SplitOnceCallback() by updating
+  // TODO(crbug.com/40524549): Remove SplitOnceCallback() by updating
   // the callee interface.
   auto split_callback = base::SplitOnceCallback(std::move(callback));
   base::OnceClosure write_callback = base::BindOnce(
@@ -1186,7 +1215,7 @@ void WebBluetoothServiceImpl::RemoteCharacteristicStartNotificationsInternal(
       std::make_unique<GATTNotifySessionAndCharacteristicClient>(
           std::move(client));
 
-  // TODO(crbug.com/730593): Remove SplitOnceCallback() by updating
+  // TODO(crbug.com/40524549): Remove SplitOnceCallback() by updating
   // the callee interface.
   auto split_callback = base::SplitOnceCallback(std::move(callback));
   query_result.characteristic->StartNotifySession(
@@ -1351,7 +1380,7 @@ void WebBluetoothServiceImpl::RemoteDescriptorWriteValue(
     return;
   }
 
-  // TODO(crbug.com/730593): Remove SplitOnceCallback() by updating
+  // TODO(crbug.com/40524549): Remove SplitOnceCallback() by updating
   // the callee interface.
   auto split_callback = base::SplitOnceCallback(std::move(callback));
   query_result.descriptor->WriteRemoteDescriptor(
@@ -1450,13 +1479,13 @@ void WebBluetoothServiceImpl::WatchAdvertisementsForDevice(
 void WebBluetoothServiceImpl::RemoveDisconnectedClients() {
   DCHECK_CURRENTLY_ON(BrowserThread::UI);
 
-  // TODO(https://crbug.com/1087007): These two classes can potentially be
+  // TODO(crbug.com/40132791): These two classes can potentially be
   // combined into the same container.
-  base::EraseIf(scanning_clients_,
+  std::erase_if(scanning_clients_,
                 [](const std::unique_ptr<ScanningClient>& client) {
                   return !client->is_connected();
                 });
-  base::EraseIf(watch_advertisements_clients_,
+  std::erase_if(watch_advertisements_clients_,
                 [](const std::unique_ptr<WatchAdvertisementsClient>& client) {
                   return !client->is_connected();
                 });
@@ -1516,7 +1545,7 @@ void WebBluetoothServiceImpl::RequestScanningStartImpl(
 
   request_scanning_start_callback_ = std::move(callback);
 
-  // TODO(https://crbug.com/969109): Since scanning without a filter wastes
+  // TODO(crbug.com/40630111): Since scanning without a filter wastes
   // resources, we need use StartDiscoverySessionWithFilter() instead of
   // StartDiscoverySession() here.
   adapter->StartDiscoverySession(
@@ -1664,7 +1693,7 @@ void WebBluetoothServiceImpl::WatchAdvertisementsForDeviceImpl(
   }
 
   // Not all platforms support filtering by address.
-  // TODO(https://crbug.com/969109): Use StartDiscoverySessionWithFilter() to
+  // TODO(crbug.com/40630111): Use StartDiscoverySessionWithFilter() to
   // filter out by MAC address when platforms provide this capability.
   adapter->StartDiscoverySession(
       kScanClientNameWatchAdvertisements,
@@ -2494,7 +2523,7 @@ void WebBluetoothServiceImpl::PromptForBluetoothPairing(
                                      std::move(callback), pairing_kind, pin);
       break;
     default:
-      NOTREACHED();
+      NOTREACHED_IN_MIGRATION();
       std::move(callback).Run(BluetoothDelegate::PairPromptResult(
           BluetoothDelegate::PairPromptStatus::kCancelled));
       break;

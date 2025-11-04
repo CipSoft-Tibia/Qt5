@@ -15,14 +15,13 @@
 //
 
 #include <QtFFmpegMediaPluginImpl/private/qffmpeghwaccel_p.h>
-#include <QtCore/private/quniquehandle_p.h>
+#include <QtCore/private/quniquehandle_types_p.h>
 #include <QtCore/private/qcomptr_p.h>
-#include <qt_windows.h>
 
 #include <d3d11.h>
 #include <d3d11_1.h>
 
-#if QT_CONFIG(wmf)
+#ifdef Q_OS_WINDOWS
 
 QT_BEGIN_NAMESPACE
 
@@ -30,14 +29,7 @@ class QRhi;
 
 namespace QFFmpeg {
 
-struct SharedTextureHandleTraits
-{
-    using Type = HANDLE;
-    static Type invalidValue() noexcept { return nullptr; }
-    static bool close(Type handle) noexcept { return CloseHandle(handle) != 0; }
-};
-
-using SharedTextureHandle = QUniqueHandle<SharedTextureHandleTraits>;
+using SharedTextureHandle = QUniqueWin32NullHandle;
 
 /*! \internal Utility class for synchronized transfer of a texture between two D3D devices
  *

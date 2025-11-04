@@ -1,5 +1,6 @@
 // Copyright (C) 2019 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QABSTRACTHTTPSERVER_H
 #define QABSTRACTHTTPSERVER_H
@@ -8,6 +9,7 @@
 
 #include <QtHttpServer/qthttpserverglobal.h>
 #include <QtHttpServer/qhttpserverwebsocketupgraderesponse.h>
+#include <QtHttpServer/qhttpserverconfiguration.h>
 
 #include <QtNetwork/qhostaddress.h>
 
@@ -54,6 +56,9 @@ public:
     void setHttp2Configuration(const QHttp2Configuration &configuration);
 #endif
 
+    void setConfiguration(const QHttpServerConfiguration &config);
+    QHttpServerConfiguration configuration() const;
+
 #if defined(QT_WEBSOCKETS_LIB)
 Q_SIGNALS:
     void newWebSocketConnection();
@@ -73,10 +78,15 @@ public:
     bool hasPendingWebSocketConnections() const;
     std::unique_ptr<QWebSocket> nextPendingWebSocketConnection();
 
+#ifdef Q_QDOC
+    template <typename Handler>
+    void addWebSocketUpgradeVerifier(const QObject *context, Handler &&func)
+#else
     template <typename Handler, if_compatible_callable<Handler> = true>
     void addWebSocketUpgradeVerifier(
             const typename QtPrivate::ContextTypeForFunctor<Handler>::ContextType *context,
             Handler &&func)
+#endif
     {
         addWebSocketUpgradeVerifierImpl(
                 context,

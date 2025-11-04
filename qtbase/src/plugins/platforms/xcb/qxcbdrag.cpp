@@ -17,7 +17,6 @@
 #include <qguiapplication.h>
 #include <qrect.h>
 #include <qpainter.h>
-#include <qtimer.h>
 
 #include <qpa/qwindowsysteminterface.h>
 
@@ -92,7 +91,6 @@ QXcbDrag::QXcbDrag(QXcbConnection *c) : QXcbObject(c)
     m_dropData = new QXcbDropData(this);
 
     init();
-    cleanup_timer = -1;
 }
 
 QXcbDrag::~QXcbDrag()
@@ -509,9 +507,8 @@ void QXcbDrag::drop(const QPoint &globalPos, Qt::MouseButtons b, Qt::KeyboardMod
     transactions.append(t);
 
     // timer is needed only for drops that came from other processes.
-    if (!t.targetWindow && cleanup_timer == -1) {
-        cleanup_timer = startTimer(XdndDropTransactionTimeout);
-    }
+    if (!t.targetWindow && !cleanup_timer.isActive())
+        cleanup_timer.start(XdndDropTransactionTimeout, this);
 
     qCDebug(lcQpaXDnd) << "sending drop to target:" << current_target;
 
@@ -597,6 +594,9 @@ void QXcbDrag::setActionList(Qt::DropAction requestedAction, Qt::DropActions sup
                             XCB_ATOM_ATOM, 32, actions.size(), actions.constData());
         current_actions = actions;
     }
+#else
+    Q_UNUSED(requestedAction)
+    Q_UNUSED(supportedActions)
 #endif
 }
 
@@ -1050,9 +1050,8 @@ void QXcbDrag::handleFinished(const xcb_client_message_event_t *event)
     if (event->window != connection()->qtSelectionOwner())
         return;
 
-    const unsigned long *l = (const unsigned long *)event->data.data32;
-    if (l[0]) {
-        int at = findTransactionByWindow(l[0]);
+    if (xcb_window_t w = event->data.data32[0]) {
+        int at = findTransactionByWindow(w);
         if (at != -1) {
 
             Transaction t = transactions.takeAt(at);
@@ -1090,7 +1089,7 @@ void QXcbDrag::handleFinished(const xcb_client_message_event_t *event)
 
 void QXcbDrag::timerEvent(QTimerEvent* e)
 {
-    if (e->timerId() == cleanup_timer) {
+    if (e->id() == cleanup_timer.id()) {
         bool stopTimer = true;
         for (int i = 0; i < transactions.size(); ++i) {
             const Transaction &t = transactions.at(i);
@@ -1116,10 +1115,8 @@ void QXcbDrag::timerEvent(QTimerEvent* e)
             }
 
         }
-        if (stopTimer && cleanup_timer != -1) {
-            killTimer(cleanup_timer);
-            cleanup_timer = -1;
-        }
+        if (stopTimer)
+            cleanup_timer.stop();
     }
 }
 

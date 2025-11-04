@@ -5,14 +5,14 @@
 #ifndef BSSL_PKI_TRUST_STORE_IN_MEMORY_H_
 #define BSSL_PKI_TRUST_STORE_IN_MEMORY_H_
 
-#include <unordered_map>
 #include <set>
+#include <unordered_map>
 
 #include <openssl/base.h>
 
 #include "trust_store.h"
 
-namespace bssl {
+BSSL_NAMESPACE_BEGIN
 
 // A very simple implementation of a TrustStore, which contains a set of
 // certificates and their trustedness.
@@ -89,13 +89,13 @@ class OPENSSL_EXPORT TrustStoreInMemory : public TrustStore {
   std::unordered_multimap<std::string_view, Entry> entries_;
 
   // Set of distrusted SPKIs.
-  std::set<std::string> distrusted_spkis_;
+  std::set<std::string, std::less<>> distrusted_spkis_;
 
   // Returns the `Entry` matching `cert`, or `nullptr` if not in the trust
   // store.
   const Entry *GetEntry(const ParsedCertificate *cert) const;
 };
 
-}  // namespace bssl
+BSSL_NAMESPACE_END
 
 #endif  // BSSL_PKI_TRUST_STORE_IN_MEMORY_H_

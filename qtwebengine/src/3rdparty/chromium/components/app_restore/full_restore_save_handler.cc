@@ -4,7 +4,6 @@
 
 #include "components/app_restore/full_restore_save_handler.h"
 
-#include "ash/constants/app_types.h"
 #include "base/files/file_path.h"
 #include "base/functional/bind.h"
 #include "base/functional/callback_helpers.h"
@@ -53,6 +52,11 @@ FullRestoreSaveHandler::FullRestoreSaveHandler() {
 }
 
 FullRestoreSaveHandler::~FullRestoreSaveHandler() = default;
+
+void FullRestoreSaveHandler::InsertIgnoreApplicationId(
+    const std::string& app_id) {
+  ignore_applications_ids_.insert(app_id);
+}
 
 void FullRestoreSaveHandler::SetPrimaryProfilePath(
     const base::FilePath& profile_path) {
@@ -113,9 +117,10 @@ void FullRestoreSaveHandler::OnWindowInitialized(aura::Window* window) {
     return;
   }
 
-  int32_t window_id = window->GetProperty(app_restore::kWindowIdKey);
-  if (!SessionID::IsValidValue(window_id))
+  const int32_t window_id = window->GetProperty(app_restore::kWindowIdKey);
+  if (!SessionID::IsValidValue(window_id)) {
     return;
+  }
 
   observed_windows_.AddObservation(window);
 
@@ -139,7 +144,7 @@ void FullRestoreSaveHandler::OnWindowInitialized(aura::Window* window) {
     // true, to call the browser session restore to restore apps for the next
     // system startup.
     if (window->GetProperty(app_restore::kAppTypeBrowser)) {
-      app_launch_info->app_type_browser = true;
+      app_launch_info->browser_extra_info.app_type_browser = true;
 
       std::string* browser_app_name =
           window->GetProperty(app_restore::kBrowserAppNameKey);
@@ -168,6 +173,10 @@ void FullRestoreSaveHandler::OnWindowInitialized(aura::Window* window) {
             });
           }
         }
+      }
+
+      if (base::Contains(ignore_applications_ids_, app_launch_info->app_id)) {
+        return;
       }
     }
   }
@@ -368,7 +377,6 @@ void FullRestoreSaveHandler::Flush(const base::FilePath& profile_path) {
     return;
 
   save_running_.insert(profile_path);
-
   BackendTaskRunner(profile_path)
       ->PostTaskAndReply(
           FROM_HERE,

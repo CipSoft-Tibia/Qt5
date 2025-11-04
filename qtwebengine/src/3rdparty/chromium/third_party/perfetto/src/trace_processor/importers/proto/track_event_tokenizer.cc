@@ -16,32 +16,51 @@
 
 #include "src/trace_processor/importers/proto/track_event_tokenizer.h"
 
+#include <cinttypes>
+#include <cstddef>
+#include <cstdint>
+#include <optional>
+#include <string>
+#include <utility>
+
+#include "perfetto/base/compiler.h"
 #include "perfetto/base/logging.h"
+#include "perfetto/base/status.h"
+#include "perfetto/ext/base/status_or.h"
+#include "perfetto/ext/base/string_view.h"
+#include "perfetto/protozero/proto_decoder.h"
+#include "perfetto/public/compiler.h"
+#include "perfetto/trace_processor/ref_counted.h"
 #include "perfetto/trace_processor/trace_blob_view.h"
+#include "protos/perfetto/trace/interned_data/interned_data.pbzero.h"
+#include "protos/perfetto/trace/track_event/debug_annotation.pbzero.h"
 #include "src/trace_processor/importers/common/clock_tracker.h"
+#include "src/trace_processor/importers/common/legacy_v8_cpu_profile_tracker.h"
 #include "src/trace_processor/importers/common/metadata_tracker.h"
+#include "src/trace_processor/importers/common/parser_types.h"
 #include "src/trace_processor/importers/common/process_tracker.h"
-#include "src/trace_processor/importers/common/track_tracker.h"
-#include "src/trace_processor/importers/proto/packet_sequence_state.h"
+#include "src/trace_processor/importers/json/json_utils.h"
+#include "src/trace_processor/importers/proto/packet_sequence_state_generation.h"
+#include "src/trace_processor/importers/proto/proto_importer_module.h"
 #include "src/trace_processor/importers/proto/proto_trace_reader.h"
 #include "src/trace_processor/importers/proto/track_event_tracker.h"
 #include "src/trace_processor/sorter/trace_sorter.h"
+#include "src/trace_processor/storage/metadata.h"
 #include "src/trace_processor/storage/stats.h"
 #include "src/trace_processor/storage/trace_storage.h"
 
 #include "protos/perfetto/common/builtin_clock.pbzero.h"
 #include "protos/perfetto/trace/trace_packet.pbzero.h"
-#include "protos/perfetto/trace/track_event/chrome_process_descriptor.pbzero.h"
-#include "protos/perfetto/trace/track_event/chrome_thread_descriptor.pbzero.h"
 #include "protos/perfetto/trace/track_event/counter_descriptor.pbzero.h"
 #include "protos/perfetto/trace/track_event/process_descriptor.pbzero.h"
 #include "protos/perfetto/trace/track_event/range_of_interest.pbzero.h"
 #include "protos/perfetto/trace/track_event/thread_descriptor.pbzero.h"
 #include "protos/perfetto/trace/track_event/track_descriptor.pbzero.h"
 #include "protos/perfetto/trace/track_event/track_event.pbzero.h"
+#include "src/trace_processor/types/variadic.h"
+#include "src/trace_processor/util/status_macros.h"
 
-namespace perfetto {
-namespace trace_processor {
+namespace perfetto::trace_processor {
 
 namespace {
 using protos::pbzero::CounterDescriptor;
@@ -57,7 +76,7 @@ TrackEventTokenizer::TrackEventTokenizer(TraceProcessorContext* context,
           context_->storage->InternString("thread_instruction_count")) {}
 
 ModuleResult TrackEventTokenizer::TokenizeRangeOfInterestPacket(
-    PacketSequenceState* /*state*/,
+    RefPtr<PacketSequenceStateGeneration> /*state*/,
     const protos::pbzero::TracePacket::Decoder& packet,
     int64_t /*packet_timestamp*/) {
   protos::pbzero::TrackEventRangeOfInterest::Decoder range_of_interest(
@@ -74,7 +93,7 @@ ModuleResult TrackEventTokenizer::TokenizeRangeOfInterestPacket(
 }
 
 ModuleResult TrackEventTokenizer::TokenizeTrackDescriptorPacket(
-    PacketSequenceState* state,
+    RefPtr<PacketSequenceStateGeneration> state,
     const protos::pbzero::TracePacket::Decoder& packet,
     int64_t packet_timestamp) {
   auto track_descriptor_field = packet.track_descriptor();
@@ -90,6 +109,8 @@ ModuleResult TrackEventTokenizer::TokenizeTrackDescriptorPacket(
   StringId name_id = kNullStringId;
   if (track.has_name())
     name_id = context_->storage->InternString(track.name());
+  else if (track.has_static_name())
+    name_id = context_->storage->InternString(track.static_name());
 
   if (packet.has_trusted_pid()) {
     context_->process_tracker->UpdateTrustedPid(
@@ -108,7 +129,7 @@ ModuleResult TrackEventTokenizer::TokenizeTrackDescriptorPacket(
     }
 
     if (state->IsIncrementalStateValid()) {
-      TokenizeThreadDescriptor(state, thread);
+      TokenizeThreadDescriptor(*state, thread);
     }
 
     track_event_tracker_->ReserveDescriptorThreadTrack(
@@ -180,7 +201,7 @@ ModuleResult TrackEventTokenizer::TokenizeTrackDescriptorPacket(
 }
 
 ModuleResult TrackEventTokenizer::TokenizeThreadDescriptorPacket(
-    PacketSequenceState* state,
+    RefPtr<PacketSequenceStateGeneration> state,
     const protos::pbzero::TracePacket::Decoder& packet) {
   if (PERFETTO_UNLIKELY(!packet.has_trusted_packet_sequence_id())) {
     PERFETTO_ELOG("ThreadDescriptor packet without trusted_packet_sequence_id");
@@ -199,42 +220,37 @@ ModuleResult TrackEventTokenizer::TokenizeThreadDescriptorPacket(
   }
 
   protos::pbzero::ThreadDescriptor::Decoder thread(packet.thread_descriptor());
-  TokenizeThreadDescriptor(state, thread);
+  TokenizeThreadDescriptor(*state, thread);
 
   // Let ProtoTraceReader forward the packet to the parser.
   return ModuleResult::Ignored();
 }
 
 void TrackEventTokenizer::TokenizeThreadDescriptor(
-    PacketSequenceState* state,
+    PacketSequenceStateGeneration& state,
     const protos::pbzero::ThreadDescriptor::Decoder& thread) {
   // TODO(eseckler): Remove support for legacy thread descriptor-based default
   // tracks and delta timestamps.
-  state->SetThreadDescriptor(thread.pid(), thread.tid(),
-                             thread.reference_timestamp_us() * 1000,
-                             thread.reference_thread_time_us() * 1000,
-                             thread.reference_thread_instruction_count());
+  state.SetThreadDescriptor(thread);
 }
 
-void TrackEventTokenizer::TokenizeTrackEventPacket(
-    PacketSequenceState* state,
+ModuleResult TrackEventTokenizer::TokenizeTrackEventPacket(
+    RefPtr<PacketSequenceStateGeneration> state,
     const protos::pbzero::TracePacket::Decoder& packet,
     TraceBlobView* packet_blob,
     int64_t packet_timestamp) {
   if (PERFETTO_UNLIKELY(!packet.has_trusted_packet_sequence_id())) {
     PERFETTO_ELOG("TrackEvent packet without trusted_packet_sequence_id");
     context_->storage->IncrementStats(stats::track_event_tokenizer_errors);
-    return;
+    return ModuleResult::Handled();
   }
 
-  auto field = packet.track_event();
-  protos::pbzero::TrackEvent::Decoder event(field.data, field.size);
-
+  protos::pbzero::TrackEvent::Decoder event(packet.track_event());
   protos::pbzero::TrackEventDefaults::Decoder* defaults =
-      state->current_generation()->GetTrackEventDefaults();
+      state->GetTrackEventDefaults();
 
   int64_t timestamp;
-  TrackEventData data(std::move(*packet_blob), state->current_generation());
+  TrackEventData data(std::move(*packet_blob), state);
 
   // TODO(eseckler): Remove handling of timestamps relative to ThreadDescriptors
   // once all producers have switched to clock-domain timestamps (e.g.
@@ -245,7 +261,7 @@ void TrackEventTokenizer::TokenizeTrackEventPacket(
     // packet loss.
     if (!state->track_event_timestamps_valid()) {
       context_->storage->IncrementStats(stats::tokenizer_skipped_packets);
-      return;
+      return ModuleResult::Handled();
     }
     timestamp = state->IncrementAndGetTrackEventTimeNs(
         event.timestamp_delta_us() * 1000);
@@ -271,7 +287,16 @@ void TrackEventTokenizer::TokenizeTrackEventPacket(
   } else {
     PERFETTO_ELOG("TrackEvent without valid timestamp");
     context_->storage->IncrementStats(stats::track_event_tokenizer_errors);
-    return;
+    return ModuleResult::Handled();
+  }
+
+  // Handle legacy sample events which might have timestamps embedded inside.
+  if (PERFETTO_UNLIKELY(event.has_legacy_event())) {
+    protos::pbzero::TrackEvent::LegacyEvent::Decoder leg(event.legacy_event());
+    if (PERFETTO_UNLIKELY(leg.phase() == 'P')) {
+      RETURN_IF_ERROR(TokenizeLegacySampleEvent(
+          event, leg, *data.trace_packet_data.sequence_state));
+    }
   }
 
   if (event.has_thread_time_delta_us()) {
@@ -279,7 +304,7 @@ void TrackEventTokenizer::TokenizeTrackEventPacket(
     // packet loss.
     if (!state->track_event_timestamps_valid()) {
       context_->storage->IncrementStats(stats::tokenizer_skipped_packets);
-      return;
+      return ModuleResult::Handled();
     }
     data.thread_timestamp = state->IncrementAndGetTrackEventThreadTimeNs(
         event.thread_time_delta_us() * 1000);
@@ -293,7 +318,7 @@ void TrackEventTokenizer::TokenizeTrackEventPacket(
     // packet loss.
     if (!state->track_event_timestamps_valid()) {
       context_->storage->IncrementStats(stats::tokenizer_skipped_packets);
-      return;
+      return ModuleResult::Handled();
     }
     data.thread_instruction_count =
         state->IncrementAndGetTrackEventThreadInstructionCount(
@@ -314,7 +339,7 @@ void TrackEventTokenizer::TokenizeTrackEventPacket(
       PERFETTO_DLOG(
           "Ignoring TrackEvent with counter_value but without track_uuid");
       context_->storage->IncrementStats(stats::track_event_tokenizer_errors);
-      return;
+      return ModuleResult::Handled();
     }
 
     if (!event.has_counter_value() && !event.has_double_counter_value()) {
@@ -324,7 +349,7 @@ void TrackEventTokenizer::TokenizeTrackEventPacket(
           "track_uuid %" PRIu64,
           track_uuid);
       context_->storage->IncrementStats(stats::track_event_tokenizer_errors);
-      return;
+      return ModuleResult::Handled();
     }
 
     std::optional<double> value;
@@ -342,7 +367,7 @@ void TrackEventTokenizer::TokenizeTrackEventPacket(
       PERFETTO_DLOG("Ignoring TrackEvent with invalid track_uuid %" PRIu64,
                     track_uuid);
       context_->storage->IncrementStats(stats::track_event_tokenizer_errors);
-      return;
+      return ModuleResult::Handled();
     }
 
     data.counter_value = *value;
@@ -357,7 +382,7 @@ void TrackEventTokenizer::TokenizeTrackEventPacket(
   if (!result.ok()) {
     PERFETTO_DLOG("%s", result.c_message());
     context_->storage->IncrementStats(stats::track_event_tokenizer_errors);
-    return;
+    return ModuleResult::Handled();
   }
   result = AddExtraCounterValues(
       data, index, packet.trusted_packet_sequence_id(),
@@ -367,10 +392,12 @@ void TrackEventTokenizer::TokenizeTrackEventPacket(
   if (!result.ok()) {
     PERFETTO_DLOG("%s", result.c_message());
     context_->storage->IncrementStats(stats::track_event_tokenizer_errors);
-    return;
+    return ModuleResult::Handled();
   }
 
-  context_->sorter->PushTrackEventPacket(timestamp, std::move(data));
+  context_->sorter->PushTrackEventPacket(timestamp, std::move(data),
+                                         context_->machine_id());
+  return ModuleResult::Handled();
 }
 
 template <typename T>
@@ -392,19 +419,19 @@ base::Status TrackEventTokenizer::AddExtraCounterValues(
   } else if (default_track_uuid_it) {
     track_uuid_it = default_track_uuid_it;
   } else {
-    return base::Status(
+    return base::ErrStatus(
         "Ignoring TrackEvent with extra_{double_,}counter_values but without "
         "extra_{double_,}counter_track_uuids");
   }
 
   for (; value_it; ++value_it, ++track_uuid_it, ++index) {
     if (!*track_uuid_it) {
-      return base::Status(
+      return base::ErrStatus(
           "Ignoring TrackEvent with more extra_{double_,}counter_values than "
           "extra_{double_,}counter_track_uuids");
     }
     if (index >= TrackEventData::kMaxNumExtraCounters) {
-      return base::Status(
+      return base::ErrStatus(
           "Ignoring TrackEvent with more extra_{double_,}counter_values than "
           "TrackEventData::kMaxNumExtraCounters");
     }
@@ -413,7 +440,7 @@ base::Status TrackEventTokenizer::AddExtraCounterValues(
             *track_uuid_it, trusted_packet_sequence_id,
             static_cast<double>(*value_it));
     if (!abs_value) {
-      return base::Status(
+      return base::ErrStatus(
           "Ignoring TrackEvent with invalid extra counter track");
     }
     data.extra_counter_values[index] = *abs_value;
@@ -421,5 +448,76 @@ base::Status TrackEventTokenizer::AddExtraCounterValues(
   return base::OkStatus();
 }
 
-}  // namespace trace_processor
-}  // namespace perfetto
+base::Status TrackEventTokenizer::TokenizeLegacySampleEvent(
+    const protos::pbzero::TrackEvent::Decoder& event,
+    const protos::pbzero::TrackEvent::LegacyEvent::Decoder& legacy,
+    PacketSequenceStateGeneration& state) {
+  // We are just trying to parse out the V8 profiling events into the cpu
+  // sampling tables: if we don't have JSON enabled, just don't do this.
+#if PERFETTO_BUILDFLAG(PERFETTO_TP_JSON)
+  for (auto it = event.debug_annotations(); it; ++it) {
+    protos::pbzero::DebugAnnotation::Decoder da(*it);
+    auto* interned_name = state.LookupInternedMessage<
+        protos::pbzero::InternedData::kDebugAnnotationNamesFieldNumber,
+        protos::pbzero::DebugAnnotationName>(da.name_iid());
+    base::StringView name(interned_name->name());
+    if (name != "data" || !da.has_legacy_json_value()) {
+      continue;
+    }
+    auto opt_val = json::ParseJsonString(da.legacy_json_value());
+    if (!opt_val) {
+      continue;
+    }
+    const auto& val = *opt_val;
+    if (val.isMember("startTime")) {
+      ASSIGN_OR_RETURN(int64_t ts, context_->clock_tracker->ToTraceTime(
+                                       protos::pbzero::BUILTIN_CLOCK_MONOTONIC,
+                                       val["startTime"].asInt64() * 1000));
+      context_->legacy_v8_cpu_profile_tracker->SetStartTsForSessionAndPid(
+          legacy.unscoped_id(), static_cast<uint32_t>(state.pid()), ts);
+      continue;
+    }
+    const auto& profile = val["cpuProfile"];
+    for (const auto& n : profile["nodes"]) {
+      uint32_t node_id = n["id"].asUInt();
+      std::optional<uint32_t> parent_node_id =
+          n.isMember("parent") ? std::make_optional(n["parent"].asUInt())
+                               : std::nullopt;
+      const auto& frame = n["callFrame"];
+      base::StringView url =
+          frame.isMember("url") ? frame["url"].asCString() : base::StringView();
+      base::StringView function_name = frame["functionName"].asCString();
+      base::Status status =
+          context_->legacy_v8_cpu_profile_tracker->AddCallsite(
+              legacy.unscoped_id(), static_cast<uint32_t>(state.pid()), node_id,
+              parent_node_id, url, function_name);
+      if (!status.ok()) {
+        context_->storage->IncrementStats(
+            stats::legacy_v8_cpu_profile_invalid_callsite);
+        continue;
+      }
+    }
+    const auto& samples = profile["samples"];
+    const auto& deltas = val["timeDeltas"];
+    if (samples.size() != deltas.size()) {
+      return base::ErrStatus(
+          "v8 legacy profile: samples and timestamps do not have same size");
+    }
+    for (uint32_t i = 0; i < samples.size(); ++i) {
+      ASSIGN_OR_RETURN(
+          int64_t ts,
+          context_->legacy_v8_cpu_profile_tracker->AddDeltaAndGetTs(
+              legacy.unscoped_id(), static_cast<uint32_t>(state.pid()),
+              deltas[i].asInt64() * 1000));
+      context_->sorter->PushLegacyV8CpuProfileEvent(
+          ts, legacy.unscoped_id(), static_cast<uint32_t>(state.pid()),
+          static_cast<uint32_t>(state.tid()), samples[i].asUInt());
+    }
+  }
+#else
+  base::ignore_result(event, legacy, state);
+#endif
+  return base::OkStatus();
+}
+
+}  // namespace perfetto::trace_processor

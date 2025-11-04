@@ -351,9 +351,15 @@ qFindInlineComponents(QStringView typeName, const QQmlJS::ContextualTypes &conte
         if (current->isInlineComponent() && current->inlineComponentName() == inlineComponentName) {
             return { current, inlineComponentParent.revision };
         }
+
         // check alternatively the inline components at layer 1 in current and basetype, then at
         // layer 2, etc...
-        candidatesForInlineComponents.append(current->childScopes());
+        const auto &childScopes = current->childScopes();
+        for (const auto &child : childScopes) {
+            if (child->scopeType() == QQmlSA::ScopeType::QMLScope)
+                candidatesForInlineComponents.enqueue(child);
+        }
+
         if (const auto base = current->baseType())
             candidatesForInlineComponents.enqueue(base);
     }
@@ -664,6 +670,7 @@ void QQmlJSScope::resolveEnums(
 
         enumScope->m_semantics = AccessSemantics::Value;
         enumScope->m_internalName = self->internalName() + QStringLiteral("::") + it->name();
+        resolveList(enumScope, contextualTypes.arrayType());
         if (QString alias = it->alias(); !alias.isEmpty()
             && self->m_enumerations.constFind(alias) == self->m_enumerations.constEnd()) {
             auto aliasScope = QQmlJSScope::clone(enumScope);

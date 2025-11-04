@@ -70,16 +70,9 @@ LayoutTextFragment* LayoutTextFragment::CreateAnonymous(Document& doc,
   return fragment;
 }
 
-LayoutTextFragment* LayoutTextFragment::CreateAnonymous(PseudoElement& pseudo,
-                                                        const String& text,
-                                                        unsigned start,
-                                                        unsigned length) {
-  return CreateAnonymous(pseudo.GetDocument(), text, start, length);
-}
-
-LayoutTextFragment* LayoutTextFragment::CreateAnonymous(PseudoElement& pseudo,
+LayoutTextFragment* LayoutTextFragment::CreateAnonymous(Document& doc,
                                                         const String& text) {
-  return CreateAnonymous(pseudo, text, 0, text ? text.length() : 0);
+  return CreateAnonymous(doc, text, 0, text ? text.length() : 0);
 }
 
 void LayoutTextFragment::Trace(Visitor* visitor) const {
@@ -255,11 +248,11 @@ Position LayoutTextFragment::PositionForCaretOffset(unsigned offset) const {
   return Position(node, Start() + clamped_offset);
 }
 
-absl::optional<unsigned> LayoutTextFragment::CaretOffsetForPosition(
+std::optional<unsigned> LayoutTextFragment::CaretOffsetForPosition(
     const Position& position) const {
   NOT_DESTROYED();
   if (position.IsNull() || position.AnchorNode() != AssociatedTextNode())
-    return absl::nullopt;
+    return std::nullopt;
   unsigned dom_offset;
   if (position.IsBeforeAnchor()) {
     dom_offset = 0;
@@ -272,7 +265,7 @@ absl::optional<unsigned> LayoutTextFragment::CaretOffsetForPosition(
     dom_offset = position.OffsetInContainerNode();
   }
   if (dom_offset < Start() || dom_offset > Start() + FragmentLength())
-    return absl::nullopt;
+    return std::nullopt;
   return dom_offset - Start();
 }
 

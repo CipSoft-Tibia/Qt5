@@ -29,6 +29,7 @@
 #define SRC_DAWN_COMMON_REF_H_
 
 #include <mutex>
+#include <utility>
 
 #include "dawn/common/RefBase.h"
 #include "dawn/common/RefCounted.h"
@@ -45,7 +46,7 @@ class WeakRefSupportBase;
 template <typename T>
 struct RefCountedTraits {
     static constexpr T* kNullValue = nullptr;
-    static void Reference(T* value) { value->Reference(); }
+    static void AddRef(T* value) { value->AddRef(); }
     static void Release(T* value) { value->Release(); }
 };
 
@@ -81,6 +82,11 @@ template <typename T>
 struct IsRef<Ref<T>> {
     static constexpr bool value = true;
 };
+
+template <typename T, typename H>
+H AbslHashValue(H h, const Ref<T>& v) {
+    return H::combine(std::move(h), v.Get());
+}
 
 }  // namespace dawn
 

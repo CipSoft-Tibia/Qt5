@@ -9,6 +9,7 @@
 #include <string>
 
 #include "ui/aura/window_event_dispatcher.h"
+#include "ui/base/mojom/ui_base_types.mojom-shared.h"
 #include "ui/base/ui_base_types.h"
 #include "ui/views/views_export.h"
 #include "ui/views/widget/widget.h"
@@ -63,6 +64,8 @@ class VIEWS_EXPORT DesktopWindowTreeHost {
   virtual void OnWidgetInitDone() = 0;
 
   // Called from DesktopNativeWidgetAura::OnWindowActivated().
+  // `active`: if `DesktopNativeWidgetAura::content_window()` contains the
+  // `aura::Window` that gains active.
   virtual void OnActiveWindowChanged(bool active) = 0;
 
   // Creates and returns the Tooltip implementation to use. Return value is
@@ -185,7 +188,7 @@ class VIEWS_EXPORT DesktopWindowTreeHost {
   virtual void SetWindowIcons(const gfx::ImageSkia& window_icon,
                               const gfx::ImageSkia& app_icon) = 0;
 
-  virtual void InitModalType(ui::ModalType modal_type) = 0;
+  virtual void InitModalType(ui::mojom::ModalType modal_type) = 0;
 
   virtual void FlashFrame(bool flash_frame) = 0;
 
@@ -211,6 +214,10 @@ class VIEWS_EXPORT DesktopWindowTreeHost {
   // Sets the bounds in screen coordinate DIPs (WindowTreeHost generally
   // operates in pixels). This function is implemented in terms of Screen.
   virtual void SetBoundsInDIP(const gfx::Rect& bounds) = 0;
+
+  // Allow or prevent screenshots of this window tree.
+  virtual void SetAllowScreenshots(bool allow) = 0;
+  virtual bool AreScreenshotsAllowed() = 0;
 
   // Updates window shape by clipping the canvas before paint starts.
   virtual void UpdateWindowShapeIfNeeded(const ui::PaintContext& context);

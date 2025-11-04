@@ -21,6 +21,7 @@ Item {
         property var editIndex
         property int commitCount: 0
         property int comboFocusCount: 0
+        property bool comboBoxEditable: false
 
         selectionModel: ItemSelectionModel {}
 
@@ -39,6 +40,7 @@ Item {
             TableView.editDelegate: FocusScope {
                 id: editRoot
                 anchors.fill: parent
+                property alias comboBox: comboBox
                 required property bool current
                 required property bool selected
                 required property bool editing
@@ -56,7 +58,9 @@ Item {
                 }
 
                 ComboBox {
+                    id: comboBox
                     focus: true
+                    editable: tableView.comboBoxEditable
                     model: 4
                     onActiveFocusChanged: if (activeFocus) tableView.comboFocusCount++;
                 }

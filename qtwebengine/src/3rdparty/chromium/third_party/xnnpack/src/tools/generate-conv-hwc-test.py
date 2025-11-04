@@ -495,11 +495,10 @@ def main(args):
 
 
 #include <gtest/gtest.h>
-
-#include <xnnpack/common.h>
-#include <xnnpack/isa-checks.h>
-
-#include <xnnpack/conv.h>
+#include "xnnpack/common.h"
+#include "xnnpack/conv.h"
+#include "xnnpack/isa-checks.h"
+#include "xnnpack/microparams-init.h"
 #include "conv-hwc-microkernel-tester.h"
 """.format(specification=options.spec, generator=sys.argv[0])
 

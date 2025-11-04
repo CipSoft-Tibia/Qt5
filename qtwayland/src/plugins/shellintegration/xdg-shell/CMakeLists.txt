@@ -18,6 +18,7 @@ qt_internal_add_plugin(QWaylandXdgShellIntegrationPlugin
         qwaylandxdgshellintegration.cpp qwaylandxdgshellintegration_p.h
         qwaylandxdgexporterv2.cpp qwaylandxdgexporterv2_p.h
         qwaylandxdgdialogv1.cpp qwaylandxdgdialogv1_p.h
+        qwaylandxdgtopleveliconv1.cpp qwaylandxdgtopleveliconv1_p.h
     LIBRARIES
         Qt::Core
         Qt::Gui
@@ -34,12 +35,14 @@ qt_internal_add_plugin(QWaylandXdgShellIntegrationPlugin
 )
 
 qt6_generate_wayland_protocol_client_sources(QWaylandXdgShellIntegrationPlugin
+    PRIVATE_CODE
     FILES
         ${CMAKE_CURRENT_SOURCE_DIR}/../../../3rdparty/protocol/xdg-decoration/xdg-decoration-unstable-v1.xml
         ${CMAKE_CURRENT_SOURCE_DIR}/../../../3rdparty/protocol/xdg-shell/xdg-shell.xml
         ${CMAKE_CURRENT_SOURCE_DIR}/../../../3rdparty/protocol/xdg-activation/xdg-activation-v1.xml
         ${CMAKE_CURRENT_SOURCE_DIR}/../../../3rdparty/protocol/xdg-foreign/xdg-foreign-unstable-v2.xml
         ${CMAKE_CURRENT_SOURCE_DIR}/../../../3rdparty/protocol/xdg-dialog/xdg-dialog-v1.xml
+        ${CMAKE_CURRENT_SOURCE_DIR}/../../../3rdparty/protocol/xdg-toplevel-icon/xdg-toplevel-icon-v1.xml
 )
 
 #### Keys ignored in scope 1:.:.:xdg-shell.pro:<TRUE>:

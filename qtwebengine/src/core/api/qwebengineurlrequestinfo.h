@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:network-protocol
 
 #ifndef QWEBENGINEURLREQUESTINFO_H
 #define QWEBENGINEURLREQUESTINFO_H
@@ -15,8 +16,6 @@ namespace QtWebEngineCore {
 class ContentBrowserClientQt;
 class InterceptedRequest;
 } // namespace QtWebEngineCore
-
-class TestPostRequestInterceptor;
 
 QT_BEGIN_NAMESPACE
 
@@ -74,6 +73,7 @@ public:
     QByteArray requestMethod() const;
     QIODevice *requestBody() const;
     bool changed() const;
+    bool isDownload() const;
 
     void block(bool shouldBlock);
     void redirect(const QUrl &url);
@@ -83,7 +83,6 @@ public:
 private:
     friend class QtWebEngineCore::ContentBrowserClientQt;
     friend class QtWebEngineCore::InterceptedRequest;
-    friend class ::TestPostRequestInterceptor;
     Q_DISABLE_COPY(QWebEngineUrlRequestInfo)
     Q_DECLARE_PRIVATE(QWebEngineUrlRequestInfo)
 

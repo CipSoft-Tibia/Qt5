@@ -37,6 +37,7 @@
 #include <private/qquickwebenginesettings_p.h>
 #include <private/qquickwebenginesingleton_p.h>
 #include <private/qquickwebenginetouchselectionmenurequest_p.h>
+#include <private/qquickwebengineprofileprototype_p.h>
 
 class tst_publicapi : public QObject {
     Q_OBJECT
@@ -82,6 +83,7 @@ static const QList<const QMetaObject *> typesToCheck = QList<const QMetaObject *
     << &QWebEngineWebAuthPinRequest::staticMetaObject
     << &QWebEngineFrame::staticMetaObject
     << &QWebEngineClientHints::staticMetaObject
+    << &QQuickWebEngineProfilePrototype::staticMetaObject
     ;
 
 static QList<QMetaEnum> knownEnumNames = QList<QMetaEnum>()
@@ -138,6 +140,7 @@ static const QStringList expectedAPI = QStringList()
     << "QWebEngineCertificateError.CertificateSymantecLegacy --> Type"
     << "QWebEngineCertificateError.SslObsoleteVersion --> Type"
     << "QWebEngineCertificateError.SslPinnedKeyNotInCertificateChain --> Type"
+    << "QWebEngineCertificateError.Ok --> Type"
     << "QWebEngineCertificateError.defer() --> void"
     << "QWebEngineCertificateError.description --> QString"
     << "QWebEngineCertificateError.type --> QWebEngineCertificateError::Type"
@@ -333,6 +336,7 @@ static const QStringList expectedAPI = QStringList()
     << "QWebEngineLoadingInfo.errorString --> QString"
     << "QWebEngineLoadingInfo.status --> QWebEngineLoadingInfo::LoadStatus"
     << "QWebEngineLoadingInfo.url --> QUrl"
+    << "QWebEngineLoadingInfo.isDownload --> bool"
     << "QWebEngineLoadingInfo.isErrorPage --> bool"
     << "QWebEngineLoadingInfo.LoadFailedStatus --> LoadStatus"
     << "QWebEngineLoadingInfo.LoadStartedStatus --> LoadStatus"
@@ -498,8 +502,12 @@ static const QStringList expectedAPI = QStringList()
     << "QQuickWebEngineSettings.playbackRequiresUserGestureChanged() --> void"
     << "QQuickWebEngineSettings.pluginsEnabled --> bool"
     << "QQuickWebEngineSettings.pluginsEnabledChanged() --> void"
+    << "QQuickWebEngineSettings.preferCSSMarginsForPrinting --> bool"
+    << "QQuickWebEngineSettings.preferCSSMarginsForPrintingChanged() --> void"
     << "QQuickWebEngineSettings.printElementBackgrounds --> bool"
     << "QQuickWebEngineSettings.printElementBackgroundsChanged() --> void"
+    << "QQuickWebEngineSettings.printHeaderAndFooter --> bool"
+    << "QQuickWebEngineSettings.printHeaderAndFooterChanged() --> void"
     << "QQuickWebEngineSettings.screenCaptureEnabled --> bool"
     << "QQuickWebEngineSettings.screenCaptureEnabledChanged() --> void"
     << "QQuickWebEngineSettings.showScrollBars --> bool"
@@ -516,6 +524,8 @@ static const QStringList expectedAPI = QStringList()
     << "QQuickWebEngineSettings.webRTCPublicInterfacesOnlyChanged() --> void"
     << "QQuickWebEngineSettings.readingFromCanvasEnabled --> bool"
     << "QQuickWebEngineSettings.readingFromCanvasEnabledChanged() --> void"
+    << "QQuickWebEngineSettings.touchEventsApiEnabled --> bool"
+    << "QQuickWebEngineSettings.touchEventsApiEnabledChanged() --> void"
     << "QQuickWebEngineSingleton.defaultProfile --> QQuickWebEngineProfile*"
     << "QQuickWebEngineSingleton.settings --> QQuickWebEngineSettings*"
     << "QQuickWebEngineSingleton.script() --> QWebEngineScript"
@@ -954,6 +964,14 @@ static const QStringList expectedAPI = QStringList()
     << "QWebEngineFrame.runJavaScript(QString,uint,QJSValue) --> void"
     << "QWebEngineFrame.size --> QSizeF"
     << "QWebEngineFrame.url --> QUrl"
+    << "QQuickWebEngineProfilePrototype.storageName --> QString"
+    << "QQuickWebEngineProfilePrototype.persistentStoragePath --> QString"
+    << "QQuickWebEngineProfilePrototype.cachePath --> QString"
+    << "QQuickWebEngineProfilePrototype.httpCacheType --> QQuickWebEngineProfile::HttpCacheType"
+    << "QQuickWebEngineProfilePrototype.persistentCookiesPolicy --> QQuickWebEngineProfile::PersistentCookiesPolicy"
+    << "QQuickWebEngineProfilePrototype.httpCacheMaximumSize --> int"
+    << "QQuickWebEngineProfilePrototype.persistentPermissionsPolicy --> QQuickWebEngineProfile::PersistentPermissionsPolicy"
+    << "QQuickWebEngineProfilePrototype.instance() --> QQuickWebEngineProfile*"
     ;
 
 static bool isCheckedEnum(QMetaType t)

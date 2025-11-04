@@ -11,7 +11,7 @@ import QtQuick3D.Xr
 
 XrView {
     id: xrView
-    referenceSpace: XrView.ReferenceSpaceStage
+    referenceSpace: XrView.ReferenceSpaceLocalFloor
 
     depthSubmissionEnabled: true
 
@@ -35,13 +35,26 @@ XrView {
         eulerRotation.y: -70
     }
 
+    //! [haptics]
+    XrHapticFeedback {
+        controller: XrHapticFeedback.RightController
+        condition: XrHapticFeedback.RisingEdge
+        trigger: pickRay.hit
+        hapticEffect: XrSimpleHapticEffect {
+            amplitude: 0.5
+            duration: 30
+            frequency: 3000
+        }
+    }
+    //! [haptics]
+
     XrOrigin {
         id: theOrigin
         z: 100
         //! [picking]
         XrController {
             id: rightController
-            controller: XrController.ControllerRight
+            controller: XrController.RightController
             poseSpace: XrController.AimPose
 
             property QtObject hitObject
@@ -52,10 +65,13 @@ XrView {
                     pickRay.hit = true
                     pickRay.length = pickResult.distance
                     hitObject = pickResult.objectHit
+                    cursorSphere.position = pickResult.scenePosition
+                    cursorSphere.visible = true
                 } else {
                     pickRay.hit = false
                     pickRay.length = 50
                     hitObject = null
+                    cursorSphere.visible = false
                 }
             }
 
@@ -64,13 +80,15 @@ XrView {
                 property real length: 50
                 property bool hit: false
 
-                z: -length/2
                 Model {
-                    eulerRotation.x: 90
-                    scale: Qt.vector3d(0.02, pickRay.length/100, 0.02)
-                    source: "#Cylinder"
-                    materials: PrincipledMaterial { baseColor: pickRay.hit ? "green" : "gray" }
-                    opacity: 0.5
+                    eulerRotation.x: -90
+                    scale: Qt.vector3d(0.005, pickRay.length/100, 0.005)
+                    source: "#Cone"
+                    materials: PrincipledMaterial {
+                        baseColor: rightTrigger.pressed ? "#99aaff" : "#cccccc"
+                        lighting: PrincipledMaterial.NoLighting
+                    }
+                    opacity: 0.8
                 }
             }
 
@@ -86,9 +104,20 @@ XrView {
                     }
                 }
             }
-
         }
         //! [picking]
+    }
+
+    Model {
+        id: cursorSphere
+        source: "#Sphere"
+        materials: PrincipledMaterial {
+            baseColor: "#777777"
+            lighting: PrincipledMaterial.NoLighting
+        }
+        opacity: 0.4
+        scale: Qt.vector3d(0.05, 0.05, 0.05)
+        visible: false
     }
 
     //! [trigger input]

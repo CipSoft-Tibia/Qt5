@@ -4,6 +4,7 @@
 #include <QtGraphs/qpieseries.h>
 #include <QtGraphs/qpieslice.h>
 #include <QtQuick/private/qquicktext_p.h>
+#include <QtQuick/private/qquicktaphandler_p.h>
 #include <private/pierenderer_p.h>
 #include <private/qabstractseries_p.h>
 #include <private/qgraphsview_p.h>
@@ -11,6 +12,8 @@
 #include <private/qpieslice_p.h>
 #include <private/qquickshape_p.h>
 #include <private/qquicksvgparser_p.h>
+
+QT_BEGIN_NAMESPACE
 
 PieRenderer::PieRenderer(QGraphsView *graph)
     : QQuickItem(graph)
@@ -23,6 +26,11 @@ PieRenderer::PieRenderer(QGraphsView *graph)
     m_shape = new QQuickShape(this);
     m_shape->setParentItem(this);
     m_shape->setPreferredRendererType(QQuickShape::CurveRenderer);
+
+    m_tapHandler = new QQuickTapHandler(this);
+    connect(m_tapHandler, &QQuickTapHandler::singleTapped, this, &PieRenderer::onSingleTapped);
+    connect(m_tapHandler, &QQuickTapHandler::doubleTapped, this, &PieRenderer::onDoubleTapped);
+    connect(m_tapHandler, &QQuickTapHandler::pressedChanged, this, &PieRenderer::onPressedChanged);
 }
 
 PieRenderer::~PieRenderer() {}
@@ -34,7 +42,8 @@ void PieRenderer::setSize(QSizeF size)
 
 void PieRenderer::handlePolish(QPieSeries *series)
 {
-    for (QPieSlice *slice : series->slices()) {
+    auto slices = series->slices();
+    for (QPieSlice *slice : std::as_const(slices)) {
         QPieSlicePrivate *d = slice->d_func();
         QQuickShapePath *shapePath = d->m_shapePath;
         QQuickShapePath *labelPath = d->m_labelPath;
@@ -94,7 +103,8 @@ void PieRenderer::handlePolish(QPieSeries *series)
     qreal sliceAngle = series->startAngle();
     int sliceIndex = 0;
     QList<QLegendData> legendDataList;
-    for (QPieSlice *slice : series->slices()) {
+    auto slicelist = series->slices();
+    for (QPieSlice *slice : std::as_const(slicelist)) {
         m_painterPath.clear();
 
         QPieSlicePrivate *d = slice->d_func();
@@ -219,7 +229,8 @@ void PieRenderer::afterPolish(QList<QAbstractSeries *> &cleanupSeries)
     for (auto series : cleanupSeries) {
         auto pieSeries = qobject_cast<QPieSeries *>(series);
         if (pieSeries) {
-            for (QPieSlice *slice : pieSeries->slices()) {
+            auto slices = pieSeries->slices();
+            for (QPieSlice *slice : std::as_const(slices)) {
                 QPieSlicePrivate *d = slice->d_func();
                 auto labelElements = d->m_labelPath->pathElements();
                 auto shapeElements = d->m_shapePath->pathElements();
@@ -268,3 +279,129 @@ void PieRenderer::markedDeleted(QList<QPieSlice *> deleted)
         m_activeSlices.remove(slice);
     }
 }
+
+bool PieRenderer::isPointInSlice(QPointF point, QPieSlice *slice, qreal *angle)
+{
+    QPieSeries* series = slice->series();
+    QPointF center = QPointF(size().width() * series->horizontalPosition(),
+                             size().height() * series->verticalPosition());
+    qreal radius = size().width() > size().height() ? size().height() : size().width();
+    radius *= (.5 * series->pieSize());
+
+    qreal explodeDistance = .0;
+    if (slice->isExploded())
+        explodeDistance = slice->explodeDistanceFactor() * radius;
+    qreal radian = qDegreesToRadians(slice->startAngle() + (slice->angleSpan() * .5));
+    qreal xShift = center.x() + (explodeDistance * qSin(radian));
+    qreal yShift = center.y() - (explodeDistance * qCos(radian));
+
+    QPointF adjustedPosition = QPointF(point.x() - xShift,
+                                       point.y() - yShift);
+    qreal distance = qSqrt(qPow(adjustedPosition.x(), 2) +
+                           qPow(adjustedPosition.y(), 2));
+    qreal foundAngle = qRadiansToDegrees(qAtan2(adjustedPosition.y(), adjustedPosition.x())) + 90;
+    if (foundAngle < 0)
+        foundAngle += 360;
+
+    if (angle)
+        *angle = foundAngle;
+
+    if (distance <= radius
+        && foundAngle >= slice->startAngle()
+        && foundAngle <= (slice->startAngle() + slice->angleSpan())) {
+        return true;
+    }
+    return false;
+}
+
+bool PieRenderer::handleHoverMove(QHoverEvent *event)
+{
+    bool handled = false;
+    const QPointF &position = event->position();
+
+    bool hovering = false;
+    QList<QPieSlice *> list = m_activeSlices.keys();
+    for (const auto &slice : std::as_const(list)) {
+        if (!slice->series()->isHoverable())
+            continue;
+
+        qreal angle;
+        if (isPointInSlice(position, slice, &angle)) {
+            const QString &name = slice->series()->name();
+            const QPointF value(slice->startAngle(), angle);
+
+            if (!m_currentHoverSlice) {
+                m_currentHoverSlice = slice;
+                emit slice->series()->hoverEnter(name, position, value);
+            }
+            if (m_currentHoverSlice != slice) {
+                emit m_currentHoverSlice->series()->hoverExit(name, position);
+                emit slice->series()->hoverEnter(name, position, value);
+                m_currentHoverSlice = slice;
+            }
+
+            emit slice->series()->hover(name, position, value);
+            hovering = true;
+            handled = true;
+        }
+    }
+
+    if (!hovering && m_currentHoverSlice) {
+        emit m_currentHoverSlice->series()->
+            hoverExit(m_currentHoverSlice->series()->name(), position);
+        m_currentHoverSlice = nullptr;
+        handled = true;
+    }
+    return handled;
+}
+
+void PieRenderer::onSingleTapped(QEventPoint eventPoint, Qt::MouseButton button)
+{
+    Q_UNUSED(button)
+
+    QList<QPieSlice *> list = m_activeSlices.keys();
+    for (const auto &pieSlice : std::as_const(list)) {
+        if (!pieSlice->series()->isSelectable())
+            continue;
+
+        if (isPointInSlice(eventPoint.position(), pieSlice)) {
+            emit pieSlice->series()->clicked(pieSlice);
+            return;
+        }
+    }
+}
+
+void PieRenderer::onDoubleTapped(QEventPoint eventPoint, Qt::MouseButton button)
+{
+    Q_UNUSED(button)
+
+    QList<QPieSlice *> list = m_activeSlices.keys();
+    for (const auto &pieSlice : std::as_const(list)) {
+        if (!pieSlice->series()->isSelectable())
+            continue;
+
+        if (isPointInSlice(eventPoint.position(), pieSlice)) {
+            emit pieSlice->series()->doubleClicked(pieSlice);
+            return;
+        }
+    }
+}
+
+void PieRenderer::onPressedChanged()
+{
+    QList<QPieSlice *> list = m_activeSlices.keys();
+    for (const auto &pieSlice : std::as_const(list)) {
+        if (!pieSlice->series()->isSelectable())
+            continue;
+
+        if (isPointInSlice(m_tapHandler->point().position(), pieSlice)) {
+            if (m_tapHandler->isPressed())
+                emit pieSlice->series()->pressed(pieSlice);
+            else
+                emit pieSlice->series()->released(pieSlice);
+            return;
+        }
+    }
+}
+
+QT_END_NAMESPACE

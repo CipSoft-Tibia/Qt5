@@ -4,9 +4,10 @@
 
 #include "third_party/blink/renderer/core/streams/readable_stream.h"
 
+#include <optional>
+
 #include "testing/gmock/include/gmock/gmock.h"
 #include "testing/gtest/include/gtest/gtest.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "third_party/blink/renderer/bindings/core/v8/script_function.h"
 #include "third_party/blink/renderer/bindings/core/v8/script_promise.h"
 #include "third_party/blink/renderer/bindings/core/v8/script_promise_resolver.h"
@@ -49,8 +50,7 @@ class ReadableStreamTest : public testing::Test {
  public:
   ReadableStreamTest() = default;
 
-  absl::optional<String> ReadAll(V8TestingScope& scope,
-                                 ReadableStream* stream) {
+  std::optional<String> ReadAll(V8TestingScope& scope, ReadableStream* stream) {
     ScriptState* script_state = scope.GetScriptState();
     v8::Isolate* isolate = script_state->GetIsolate();
     v8::Local<v8::Context> context = script_state->GetContext();
@@ -61,7 +61,7 @@ class ReadableStreamTest : public testing::Test {
     if (!global->Set(context, V8String(isolate, "stream"), v8_stream)
              .To(&set_result)) {
       ADD_FAILURE();
-      return absl::nullopt;
+      return std::nullopt;
     }
 
     const char script[] =
@@ -84,14 +84,14 @@ readAll(stream);
 
     if (EvalWithPrintingError(&scope, script).IsEmpty()) {
       ADD_FAILURE();
-      return absl::nullopt;
+      return std::nullopt;
     }
 
     while (true) {
       v8::Local<v8::Value> result;
       if (!global->Get(context, V8String(isolate, "result")).ToLocal(&result)) {
         ADD_FAILURE();
-        return absl::nullopt;
+        return std::nullopt;
       }
       if (!result->IsUndefined()) {
         DCHECK(result->IsString());
@@ -105,8 +105,8 @@ readAll(stream);
       // Allow Promises to resolve.
       scope.PerformMicrotaskCheckpoint();
     }
-    NOTREACHED();
-    return absl::nullopt;
+    NOTREACHED_IN_MIGRATION();
+    return std::nullopt;
   }
   test::TaskEnvironment task_environment_;
 };
@@ -131,11 +131,12 @@ class TestTransferringOptimizer final
     explicit Source(ScriptState* script_state)
         : UnderlyingSourceBase(script_state) {}
 
-    ScriptPromise Start(ScriptState* script_state, ExceptionState&) override {
+    ScriptPromiseUntyped Start(ScriptState* script_state,
+                               ExceptionState&) override {
       Controller()->Enqueue(V8String(script_state->GetIsolate(), "foo"));
       Controller()->Enqueue(V8String(script_state->GetIsolate(), ", bar"));
       Controller()->Close();
-      return ScriptPromise::CastUndefined(script_state);
+      return ScriptPromiseUntyped::CastUndefined(script_state);
     }
   };
 };
@@ -465,7 +466,7 @@ TEST_F(ReadableStreamTest, Serialize) {
   underlying_source->Close();
 
   EXPECT_EQ(ReadAll(scope, transferred),
-            absl::make_optional<String>("hello, bye"));
+            std::make_optional<String>("hello, bye"));
 }
 
 TEST_F(ReadableStreamTest, DeserializeWithNullOptimizer) {
@@ -496,7 +497,7 @@ TEST_F(ReadableStreamTest, DeserializeWithNullOptimizer) {
   underlying_source->Close();
 
   EXPECT_EQ(ReadAll(scope, transferred),
-            absl::make_optional<String>("hello, bye"));
+            std::make_optional<String>("hello, bye"));
 }
 
 TEST_F(ReadableStreamTest, DeserializeWithTestOptimizer) {
@@ -527,7 +528,7 @@ TEST_F(ReadableStreamTest, DeserializeWithTestOptimizer) {
   underlying_source->Close();
 
   EXPECT_EQ(ReadAll(scope, transferred),
-            absl::make_optional<String>("hello, byefoo, bar"));
+            std::make_optional<String>("hello, byefoo, bar"));
 }
 
 TEST_F(ReadableStreamTest, GarbageCollectJavaScriptUnderlyingSource) {
@@ -621,22 +622,22 @@ class TestUnderlyingByteSource : public UnderlyingByteSourceBase {
 
   virtual void PullVoid(ReadableByteStreamController*, ExceptionState&) {}
 
-  ScriptPromise Pull(ReadableByteStreamController* controller,
-                     ExceptionState& exception_state) override {
+  ScriptPromise<IDLUndefined> Pull(ReadableByteStreamController* controller,
+                                   ExceptionState& exception_state) override {
     PullVoid(controller, exception_state);
-    return ScriptPromise::CastUndefined(script_state_.Get());
+    return ToResolvedUndefinedPromise(script_state_.Get());
   }
 
   virtual void CancelVoid(v8::Local<v8::Value>, ExceptionState&) {}
 
-  ScriptPromise Cancel(ExceptionState& exception_state) override {
+  ScriptPromise<IDLUndefined> Cancel(ExceptionState& exception_state) override {
     return Cancel(v8::Undefined(script_state_->GetIsolate()), exception_state);
   }
 
-  ScriptPromise Cancel(v8::Local<v8::Value> reason,
-                       ExceptionState& exception_state) override {
+  ScriptPromise<IDLUndefined> Cancel(v8::Local<v8::Value> reason,
+                                     ExceptionState& exception_state) override {
     CancelVoid(reason, exception_state);
-    return ScriptPromise::CastUndefined(script_state_.Get());
+    return ToResolvedUndefinedPromise(script_state_.Get());
   }
 
   ScriptState* GetScriptState() override { return script_state_.Get(); }
@@ -656,10 +657,12 @@ class MockUnderlyingByteSource : public UnderlyingByteSourceBase {
       : script_state_(script_state) {}
 
   MOCK_METHOD2(Pull,
-               ScriptPromise(ReadableByteStreamController*, ExceptionState&));
-  MOCK_METHOD1(Cancel, ScriptPromise(ExceptionState&));
+               ScriptPromise<IDLUndefined>(ReadableByteStreamController*,
+                                           ExceptionState&));
+  MOCK_METHOD1(Cancel, ScriptPromise<IDLUndefined>(ExceptionState&));
   MOCK_METHOD2(Cancel,
-               ScriptPromise(v8::Local<v8::Value> reason, ExceptionState&));
+               ScriptPromise<IDLUndefined>(v8::Local<v8::Value> reason,
+                                           ExceptionState&));
 
   ScriptState* GetScriptState() override { return script_state_.Get(); }
 
@@ -690,7 +693,7 @@ TEST_F(ReadableByteStreamTest, PullIsCalled) {
 
   EXPECT_CALL(*mock, Pull(_, _))
       .WillOnce(
-          Return(ByMove(ScriptPromise::CastUndefined(scope.GetScriptState()))));
+          Return(ByMove(ToResolvedUndefinedPromise(scope.GetScriptState()))));
 
   EvalWithPrintingError(
       &scope, "stream.getReader({ mode: 'byob' }).read(new Uint8Array(1));\n");
@@ -710,7 +713,7 @@ TEST_F(ReadableByteStreamTest, CancelIsCalled) {
 
   EXPECT_CALL(*mock, Cancel(_, _))
       .WillOnce(
-          Return(ByMove(ScriptPromise::CastUndefined(scope.GetScriptState()))));
+          Return(ByMove(ToResolvedUndefinedPromise(scope.GetScriptState()))));
 
   EvalWithPrintingError(&scope,
                         "const reader = stream.getReader({ mode: 'byob' });\n"

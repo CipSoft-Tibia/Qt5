@@ -18,6 +18,7 @@
 #include "chrome/browser/ui/tabs/tab_strip_model.h"
 #include "chrome/browser/ui/tabs/tab_strip_model_observer.h"
 #include "chrome/browser/ui/webui/tab_search/tab_search.mojom.h"
+#include "chrome/browser/ui/webui/top_chrome/top_chrome_web_ui_controller.h"
 #include "components/optimization_guide/core/model_execution/settings_enabled_observer.h"
 #include "components/prefs/pref_change_registrar.h"
 #include "components/sessions/core/tab_restore_service.h"
@@ -25,7 +26,6 @@
 #include "mojo/public/cpp/bindings/pending_remote.h"
 #include "mojo/public/cpp/bindings/receiver.h"
 #include "mojo/public/cpp/bindings/remote.h"
-#include "ui/webui/mojo_bubble_web_ui_controller.h"
 #include "url/gurl.h"
 
 class Browser;
@@ -61,7 +61,7 @@ class TabSearchPageHandler
       mojo::PendingReceiver<tab_search::mojom::PageHandler> receiver,
       mojo::PendingRemote<tab_search::mojom::Page> page,
       content::WebUI* web_ui,
-      ui::MojoBubbleWebUIController* webui_controller,
+      TopChromeWebUIController* webui_controller,
       MetricsReporter* metrics_reporter);
   TabSearchPageHandler(const TabSearchPageHandler&) = delete;
   TabSearchPageHandler& operator=(const TabSearchPageHandler&) = delete;
@@ -69,16 +69,23 @@ class TabSearchPageHandler
 
   // tab_search::mojom::PageHandler:
   void CloseTab(int32_t tab_id) override;
+  void DeclutterTabs(const std::vector<int32_t>& tab_ids) override;
   void AcceptTabOrganization(
       int32_t session_id,
       int32_t organization_id,
-      const std::u16string& name,
       std::vector<tab_search::mojom::TabPtr> tabs) override;
   void RejectTabOrganization(int32_t session_id,
                              int32_t organization_id) override;
+  void RenameTabOrganization(int32_t session_id,
+                             int32_t organization_id,
+                             const std::u16string& name) override;
+  void ExcludeFromStaleTabs(int32_t tab_id) override;
   void GetProfileData(GetProfileDataCallback callback) override;
+  void GetStaleTabs(GetStaleTabsCallback callback) override;
   void GetTabOrganizationSession(
       GetTabOrganizationSessionCallback callback) override;
+  void GetTabOrganizationModelStrategy(
+      GetTabOrganizationModelStrategyCallback callback) override;
   void SwitchToTab(
       tab_search::mojom::SwitchToTabInfoPtr switch_to_tab_info) override;
   void OpenRecentlyClosedEntry(int32_t session_id) override;
@@ -86,19 +93,21 @@ class TabSearchPageHandler
   void RemoveTabFromOrganization(int32_t session_id,
                                  int32_t organization_id,
                                  tab_search::mojom::TabPtr tab) override;
+  void RejectSession(int32_t session_id) override;
   void RestartSession() override;
   void SaveRecentlyClosedExpandedPref(bool expanded) override;
   void SetTabIndex(int32_t index) override;
   void StartTabGroupTutorial() override;
   void TriggerFeedback(int32_t session_id) override;
-  void TriggerSync() override;
   void TriggerSignIn() override;
   void OpenHelpPage() override;
-  void OpenSyncSettings() override;
+  void SetTabOrganizationModelStrategy(
+      tab_search::mojom::TabOrganizationModelStrategy strategy) override;
   void SetUserFeedback(int32_t session_id,
                        int32_t organization_id,
                        tab_search::mojom::UserFeedback feedback) override;
-  void ShowUI() override;
+  void NotifyOrganizationUIReadyToShow() override;
+  void NotifySearchUIReadyToShow() override;
 
   // TabStripModelObserver:
   void OnTabStripModelChanged(
@@ -136,6 +145,10 @@ class TabSearchPageHandler
   // SettingsEnabledObserver
   void OnChangeInFeatureCurrentlyEnabledState(bool is_now_enabled) override;
 
+  void disable_last_active_elapsed_text_for_testing() {
+    disable_last_active_time_for_testing_ = true;
+  }
+
  protected:
   void SetTimerForTesting(std::unique_ptr<base::RetainingOneShotTimer> timer);
 
@@ -156,7 +169,12 @@ class TabSearchPageHandler
     int index;
   };
 
+  // Show the UI if all tabs are ready to be shown.
+  void MaybeShowUI();
+
   tab_search::mojom::ProfileDataPtr CreateProfileData();
+  std::vector<tab_search::mojom::TabPtr> FindStaleTabs(
+      int32_t excluded_id = -1);
 
   // Adds recently closed tabs and tab groups.
   void AddRecentlyClosedEntries(
@@ -171,7 +189,7 @@ class TabSearchPageHandler
   // Tries to add a recently closed tab to the profile data.
   // Returns true if a recently closed tab was added to `recently_closed_tabs`
   bool AddRecentlyClosedTab(
-      sessions::TabRestoreService::Tab* tab,
+      sessions::tab_restore::Tab* tab,
       const base::Time& close_time,
       std::vector<tab_search::mojom::RecentlyClosedTabPtr>&
           recently_closed_tabs,
@@ -183,7 +201,7 @@ class TabSearchPageHandler
                                    content::WebContents* contents,
                                    int index) const;
   tab_search::mojom::RecentlyClosedTabPtr GetRecentlyClosedTab(
-      sessions::TabRestoreService::Tab* tab,
+      sessions::tab_restore::Tab* tab,
       const base::Time& close_time);
 
   // Returns tab details required to perform an action on the tab.
@@ -198,11 +216,12 @@ class TabSearchPageHandler
 
   void NotifyTabIndexPrefChanged(const Profile* profile);
 
+  void NotifyShowFREPrefChanged(const Profile* profile);
+
   mojo::Receiver<tab_search::mojom::PageHandler> receiver_;
   mojo::Remote<tab_search::mojom::Page> page_;
   const raw_ptr<content::WebUI> web_ui_;
-  const raw_ptr<ui::MojoBubbleWebUIController, DanglingUntriaged>
-      webui_controller_;
+  const raw_ptr<TopChromeWebUIController, DanglingUntriaged> webui_controller_;
   const raw_ptr<MetricsReporter> metrics_reporter_;
   BrowserTabStripTracker browser_tab_strip_tracker_{this, this};
   std::unique_ptr<base::RetainingOneShotTimer> debounce_timer_;
@@ -225,9 +244,19 @@ class TabSearchPageHandler
   // Tracks whether a session restart is currently in progress.
   bool restarting_ = false;
 
+  // Tracks whether each tab within the UI is ready to be shown. The bubble
+  // will only be shown once all tabs are ready.
+  bool organization_ready_to_show_ = false;
+  bool search_ready_to_show_ = false;
+
+  bool disable_last_active_time_for_testing_ = false;
+
   // Listened TabOrganization sessions.
   std::vector<raw_ptr<TabOrganizationSession, VectorExperimental>>
       listened_sessions_;
+
+  base::ScopedObservation<TabOrganizationService, TabOrganizationObserver>
+      tab_organization_observation_{this};
 };
 
 #endif  // CHROME_BROWSER_UI_WEBUI_TAB_SEARCH_TAB_SEARCH_PAGE_HANDLER_H_

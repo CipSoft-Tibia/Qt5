@@ -34,6 +34,10 @@ Item {
             color: "lightgray"
             border.width: 1
 
+            // Create an attached TableView object, so that we
+            // can check its values from the test.
+            property TableView dummy: TableView.view
+
             property string modelDataBinding: modelData
 
             Text {

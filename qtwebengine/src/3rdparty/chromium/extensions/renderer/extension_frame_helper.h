@@ -14,7 +14,7 @@
 #include "base/values.h"
 #include "content/public/renderer/render_frame_observer.h"
 #include "content/public/renderer/render_frame_observer_tracker.h"
-#include "extensions/buildflags/buildflags.h"
+#include "extensions/common/extension_id.h"
 #include "extensions/common/mojom/automation_registry.mojom.h"
 #include "extensions/common/mojom/event_router.mojom.h"
 #include "extensions/common/mojom/frame.mojom.h"
@@ -26,14 +26,9 @@
 #include "third_party/blink/public/mojom/devtools/console_message.mojom.h"
 #include "v8/include/v8-forward.h"
 
-#if BUILDFLAG(ENABLE_EXTENSIONS_LEGACY_IPC)
-struct ExtensionMsg_OnConnectData;
-#endif
-
 namespace extensions {
 
 class Dispatcher;
-struct Message;
 struct PortId;
 class ScriptContext;
 
@@ -55,7 +50,7 @@ class ExtensionFrameHelper
   // criteria. A |browser_window_id| of extension_misc::kUnknownWindowId
   // specifies "all", as does a |view_type| of mojom::ViewType::kInvalid.
   static std::vector<content::RenderFrame*> GetExtensionFrames(
-      const std::string& extension_id,
+      const ExtensionId& extension_id,
       int browser_window_id,
       int tab_id,
       mojom::ViewType view_type);
@@ -65,7 +60,7 @@ class ExtensionFrameHelper
   // current context.
   // Returns an empty v8::Array if no frames are found.
   static v8::Local<v8::Array> GetV8MainFrames(v8::Local<v8::Context> context,
-                                              const std::string& extension_id,
+                                              const ExtensionId& extension_id,
                                               int browser_window_id,
                                               int tab_id,
                                               mojom::ViewType view_type);
@@ -73,14 +68,14 @@ class ExtensionFrameHelper
   // Returns the main frame of the extension's background page, or null if there
   // isn't one in this process.
   static content::RenderFrame* GetBackgroundPageFrame(
-      const std::string& extension_id);
+      const ExtensionId& extension_id);
   // Same as above, but returns the background page's main frame, or
   // v8::Undefined if there is none. Note: This will assert that the
   // isolate's current context can access the returned object; callers should
   // ensure that the current context is correct.
   static v8::Local<v8::Value> GetV8BackgroundPageMainFrame(
       v8::Isolate* isolate,
-      const std::string& extension_id);
+      const ExtensionId& extension_id);
 
   // Finds a neighboring extension frame with the same extension as the one
   // owning |relative_to_frame| (if |relative_to_frame| is not an extension
@@ -118,14 +113,14 @@ class ExtensionFrameHelper
   void SetTabId(int32_t id) override;
   void AppWindowClosed(bool send_onclosed) override;
   void NotifyRenderViewType(mojom::ViewType view_type) override;
-  void MessageInvoke(const std::string& extension_id,
+  void MessageInvoke(const ExtensionId& extension_id,
                      const std::string& module_name,
                      const std::string& function_name,
                      base::Value::List args) override;
   void ExecuteCode(mojom::ExecuteCodeParamsPtr param,
                    ExecuteCodeCallback callback) override;
   void ExecuteDeclarativeScript(int32_t tab_id,
-                                const std::string& extension_id,
+                                const ExtensionId& extension_id,
                                 const std::string& script_id,
                                 const GURL& url) override;
   void UpdateBrowserWindowId(int32_t window_id) override;
@@ -167,6 +162,16 @@ class ExtensionFrameHelper
   // Schedule a callback, to be run at the next RunScriptsAtDocumentIdle call.
   void ScheduleAtDocumentIdle(base::OnceClosure callback);
 
+  // Returns the set of active user script worlds for the given `extension_id`
+  // on the current document.
+  const std::set<std::optional<std::string>>* GetActiveUserScriptWorlds(
+      const ExtensionId& extension_id);
+
+  // Adds `world_id` to the set of active user script worlds for the given
+  // `extension_id`.
+  void AddActiveUserScriptWorld(const ExtensionId& extension_id,
+                                const std::optional<std::string>& world_id);
+
   mojom::LocalFrameHost* GetLocalFrameHost();
   mojom::RendererHost* GetRendererHost();
   mojom::EventRouter* GetEventRouter();
@@ -186,26 +191,8 @@ class ExtensionFrameHelper
                               int32_t world_id) override;
   void WillReleaseScriptContext(v8::Local<v8::Context>,
                                 int32_t world_id) override;
-#if BUILDFLAG(ENABLE_EXTENSIONS_LEGACY_IPC)
-  bool OnMessageReceived(const IPC::Message& message) override;
-#endif
   void OnDestruct() override;
-  void DraggableRegionsChanged() override;
   void DidClearWindowObject() override;
-
-#if BUILDFLAG(ENABLE_EXTENSIONS_LEGACY_IPC)
-  // IPC handlers.
-  void OnExtensionValidateMessagePort(int worker_thread_id, const PortId& id);
-  void OnExtensionDispatchOnConnect(
-      int worker_thread_id,
-      const ExtensionMsg_OnConnectData& connect_data);
-  void OnExtensionDeliverMessage(int worker_thread_id,
-                                 const PortId& target_port_id,
-                                 const Message& message);
-  void OnExtensionDispatchOnDisconnect(int worker_thread_id,
-                                       const PortId& id,
-                                       const std::string& error_message);
-#endif
 
   // Type of view associated with the RenderFrame.
   mojom::ViewType view_type_ = mojom::ViewType::kInvalid;
@@ -216,7 +203,7 @@ class ExtensionFrameHelper
   // The id of the browser window the render frame is attached to.
   int browser_window_id_ = -1;
 
-  raw_ptr<Dispatcher, ExperimentalRenderer> extension_dispatcher_;
+  raw_ptr<Dispatcher> extension_dispatcher_;
 
   // Whether or not the current document element has been created. This starts
   // true as the initial empty document is already created when this class is
@@ -233,6 +220,12 @@ class ExtensionFrameHelper
 
   // Callbacks to be run at the next RunScriptsAtDocumentIdle notification.
   std::vector<base::OnceClosure> document_idle_callbacks_;
+
+  // The map of user script world IDs that are active on the current document,
+  // keyed by extension ID.
+  // Cleared when a new document is created.
+  using UserScriptWorldIdSet = std::set<std::optional<std::string>>;
+  std::map<ExtensionId, UserScriptWorldIdSet> active_user_script_worlds_;
 
   bool delayed_main_world_script_initialization_ = false;
 

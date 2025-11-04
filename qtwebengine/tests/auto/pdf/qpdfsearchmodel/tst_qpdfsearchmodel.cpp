@@ -1,13 +1,13 @@
 // Copyright (C) 2020 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
-
 #include <QtTest/QtTest>
 
 #include <QPdfDocument>
 #include <QPdfSearchModel>
+#include <QtPdf/private/qtpdfglobal_p.h>
 
-Q_LOGGING_CATEGORY(lcTests, "qt.pdf.tests")
+Q_PDF_LOGGING_CATEGORY(lcTests, "qt.pdf.tests")
 
 class tst_QPdfSearchModel: public QObject
 {

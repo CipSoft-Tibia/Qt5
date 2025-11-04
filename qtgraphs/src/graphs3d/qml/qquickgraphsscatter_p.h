@@ -14,6 +14,7 @@
 
 #include "qquickgraphsitem_p.h"
 #include "qscatter3dseries.h"
+#include "qspline3dseries.h"
 #include "qvalue3daxis.h"
 #include <private/scatterinstancing_p.h>
 
@@ -115,6 +116,7 @@ protected:
     void calculateSceneScalingFactors() override;
     void componentComplete() override;
     bool doPicking(QPointF position) override;
+    bool doRayPicking(QVector3D origin, QVector3D direction) override;
     void updateShadowQuality(QtGraphs3D::ShadowQuality quality) override;
     void updateLightStrength() override;
     void startRecordingRemovesAndInserts() override;
@@ -148,6 +150,12 @@ private:
     QList<InsertRemoveRecord> m_insertRemoveRecords;
     bool m_recordInsertsAndRemoves;
 
+    struct SplineVertex
+    {
+        QVector3D position;
+        QVector2D uv;
+    };
+
     struct ScatterModel
     {
         QList<QQuick3DModel *> dataItems;
@@ -162,6 +170,8 @@ private:
         ScatterInstancing *instancing = nullptr;
         QQuick3DModel *instancingRootItem = nullptr;
         QQuick3DModel *selectionIndicator = nullptr;
+
+        QQuick3DModel *splineModel = nullptr;
     };
 
     float m_maxItemSize = 0.0f;
@@ -234,6 +244,10 @@ private:
     float calculatePointScaleSize();
     void updatePointScaleSize();
     void calculatePolarXZ(const float posX, const float posZ, float &x, float &z) const;
+
+    void updateSpline(ScatterModel *model);
+    void createSplineModel(ScatterModel *model);
+    void handleSplineChanged();
 
     void generatePointsForScatterModel(ScatterModel *series);
     void updateScatterGraphItemPositions(ScatterModel *graphModel);

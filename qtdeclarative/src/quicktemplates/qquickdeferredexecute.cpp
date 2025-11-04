@@ -109,11 +109,14 @@ static bool beginDeferred(QQmlEnginePrivate *enginePriv, const QQmlProperty &pro
 }
 
 void beginDeferred(QObject *object, const QString &property,
-                   QQuickUntypedDeferredPointer *delegate, bool isOwnState)
+                   QQuickUntypedDeferredPointer *delegate, bool isOwnState, QQmlEngine *engine)
 {
     QQmlData *data = QQmlData::get(object);
-    if (data && !data->deferredData.isEmpty() && !data->wasDeleted(object) && data->context) {
-        QQmlEnginePrivate *ep = QQmlEnginePrivate::get(data->context->engine());
+    // If object is an attached object, its QQmlData won't have a context, hence why we provide
+    // the option to pass an engine explicitly.
+    if (data && !data->deferredData.isEmpty() && !data->wasDeleted(object) && (data->context || engine)) {
+        QQmlEnginePrivate *ep = QQmlEnginePrivate::get(
+            data->context && data->context->engine() ? data->context->engine() : engine);
 
         QQmlComponentPrivate::DeferredState state;
         if (beginDeferred(ep, QQmlProperty(object, property), &state)) {
@@ -137,7 +140,8 @@ void cancelDeferred(QObject *object, const QString &property)
         cancelDeferred(data, QQmlProperty(object, property).index());
 }
 
-void completeDeferred(QObject *object, const QString &property, QQuickUntypedDeferredPointer *delegate)
+void completeDeferred(QObject *object, const QString &property, QQuickUntypedDeferredPointer *delegate,
+    QQmlEngine *engine)
 {
     Q_UNUSED(property);
     QQmlComponentPrivate::DeferredState *state = delegate->deferredState();
@@ -157,7 +161,8 @@ void completeDeferred(QObject *object, const QString &property, QQuickUntypedDef
 
         QQmlComponentPrivate::DeferredState localState = std::move(*state);
         delegate->clearDeferredState();
-        QQmlEnginePrivate *ep = QQmlEnginePrivate::get(data->context->engine());
+        QQmlEnginePrivate *ep = QQmlEnginePrivate::get(
+            data->context && data->context->engine() ? data->context->engine() : engine);
         QQmlComponentPrivate::completeDeferred(ep, &localState);
     } else {
         delegate->clearDeferredState();

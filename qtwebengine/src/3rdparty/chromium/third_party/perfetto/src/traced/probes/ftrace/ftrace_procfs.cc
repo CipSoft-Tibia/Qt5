@@ -21,8 +21,6 @@
 #include <sys/types.h>
 #include <unistd.h>
 
-#include <fstream>
-#include <sstream>
 #include <string>
 
 #include "perfetto/base/logging.h"
@@ -53,7 +51,7 @@ constexpr char kRssStatThrottledTrigger[] =
 constexpr char kSuspendResumeMinimalTrigger[] =
     "hist:keys=start:size=128:onmatch(power.suspend_resume)"
     ".trace(suspend_resume_minimal, start) if action == 'syscore_resume'";
-}
+}  // namespace
 
 void KernelLogWrite(const char* s) {
   PERFETTO_DCHECK(*s && s[strlen(s) - 1] == '\n');
@@ -287,7 +285,8 @@ bool FtraceProcfs::MaybeSetUpEventTriggers(const std::string& group,
             CreateEventTrigger("kmem", "rss_stat", kRssStatThrottledTrigger);
     } else if (name == "suspend_resume_minimal") {
       ret = RemoveAllEventTriggers("power", "suspend_resume") &&
-            CreateEventTrigger("power", "suspend_resume", kSuspendResumeMinimalTrigger);
+            CreateEventTrigger("power", "suspend_resume",
+                               kSuspendResumeMinimalTrigger);
     }
   }
 
@@ -307,7 +306,8 @@ bool FtraceProcfs::MaybeTearDownEventTriggers(const std::string& group,
     if (name == "rss_stat_throttled") {
       ret = RemoveAllEventTriggers("kmem", "rss_stat");
     } else if (name == "suspend_resume_minimal") {
-      ret = RemoveEventTrigger("power", "suspend_resume", kSuspendResumeMinimalTrigger);
+      ret = RemoveEventTrigger("power", "suspend_resume",
+                               kSuspendResumeMinimalTrigger);
     }
   }
 
@@ -399,7 +399,7 @@ void FtraceProcfs::ClearTrace() {
   // We cannot use PERFETTO_CHECK as we might get a permission denied error
   // on Android. The permissions to these files are configured in
   // platform/framework/native/cmds/atrace/atrace.rc.
-  for (size_t cpu = 0; cpu < NumberOfCpus(); cpu++) {
+  for (size_t cpu = 0, num_cpus = NumberOfCpus(); cpu < num_cpus; cpu++) {
     ClearPerCpuTrace(cpu);
   }
 }
@@ -415,10 +415,6 @@ bool FtraceProcfs::WriteTraceMarker(const std::string& str) {
 }
 
 bool FtraceProcfs::SetCpuBufferSizeInPages(size_t pages) {
-  if (pages * base::GetSysPageSize() > 1 * 1024 * 1024 * 1024) {
-    PERFETTO_ELOG("Tried to set the per CPU buffer size to more than 1gb.");
-    return false;
-  }
   std::string path = root_ + "buffer_size_kb";
   return WriteNumberToFile(path, pages * (base::GetSysPageSize() / 1024ul));
 }
@@ -513,6 +509,19 @@ std::set<std::string> FtraceProcfs::AvailableClocks() {
   }
 
   return names;
+}
+
+uint32_t FtraceProcfs::ReadBufferPercent() {
+  std::string path = root_ + "buffer_percent";
+  std::string raw = ReadFileIntoString(path);
+  std::optional<uint32_t> percent =
+      base::StringToUInt32(base::StripSuffix(raw, "\n"));
+  return percent.has_value() ? *percent : 0;
+}
+
+bool FtraceProcfs::SetBufferPercent(uint32_t percent) {
+  std::string path = root_ + "buffer_percent";
+  return WriteNumberToFile(path, percent);
 }
 
 bool FtraceProcfs::WriteNumberToFile(const std::string& path, size_t value) {

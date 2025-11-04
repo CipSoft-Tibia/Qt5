@@ -2,7 +2,10 @@
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QtQuickTestUtils/private/qmlutils_p.h>
-#include <QtTest/QtTest>
+#include <QtTest/QTest>
+#include <QtTest/QSignalSpy>
+#include <QtCore/QTimer>
+#include <QtCore/QEventLoop>
 
 #include "qv4datacollector.h"
 #include "qv4debugger.h"

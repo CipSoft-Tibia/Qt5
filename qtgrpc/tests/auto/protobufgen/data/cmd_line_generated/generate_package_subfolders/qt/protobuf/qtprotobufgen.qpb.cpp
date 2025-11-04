@@ -116,6 +116,10 @@ EnumTypes &EnumTypes::operator =(const EnumTypes &other)
 }
 EnumTypes::EnumTypes(EnumTypes &&other) noexcept
     = default;
+EnumTypes::operator QVariant() const
+{
+    return QVariant::fromValue(*this);
+}
 bool comparesEqual(const EnumTypes &lhs, const EnumTypes &rhs) noexcept
 {
     return operator ==(static_cast<const QProtobufMessage&>(lhs),
@@ -395,6 +399,10 @@ ScalarTypes &ScalarTypes::operator =(const ScalarTypes &other)
 }
 ScalarTypes::ScalarTypes(ScalarTypes &&other) noexcept
     = default;
+ScalarTypes::operator QVariant() const
+{
+    return QVariant::fromValue(*this);
+}
 bool comparesEqual(const ScalarTypes &lhs, const ScalarTypes &rhs) noexcept
 {
     return operator ==(static_cast<const QProtobufMessage&>(lhs),
@@ -774,6 +782,10 @@ ScalarRepeatedTypes &ScalarRepeatedTypes::operator =(const ScalarRepeatedTypes &
 }
 ScalarRepeatedTypes::ScalarRepeatedTypes(ScalarRepeatedTypes &&other) noexcept
     = default;
+ScalarRepeatedTypes::operator QVariant() const
+{
+    return QVariant::fromValue(*this);
+}
 bool comparesEqual(const ScalarRepeatedTypes &lhs, const ScalarRepeatedTypes &rhs) noexcept
 {
     return operator ==(static_cast<const QProtobufMessage&>(lhs),
@@ -1112,7 +1124,8 @@ public:
           m_field11(other.m_field11),
           m_field12(other.m_field12),
           m_field13(other.m_field13),
-          m_field14(other.m_field14)
+          m_field14(other.m_field14),
+          m_field15(other.m_field15)
     {
     }
 
@@ -1130,22 +1143,23 @@ public:
     QtProtobuf::doubleList m_field12;
     QStringList m_field13;
     QByteArrayList m_field14;
+    QList<GlobalEnumGadget::GlobalEnum> m_field15;
 };
 
 ScalarRepeatedNoPackedTypes::~ScalarRepeatedNoPackedTypes() = default;
 
 static constexpr struct {
     QtProtobufPrivate::QProtobufPropertyOrdering::Data data;
-    const std::array<uint, 57> qt_protobuf_ScalarRepeatedNoPackedTypes_uint_data;
-    const char qt_protobuf_ScalarRepeatedNoPackedTypes_char_data[144];
+    const std::array<uint, 61> qt_protobuf_ScalarRepeatedNoPackedTypes_uint_data;
+    const char qt_protobuf_ScalarRepeatedNoPackedTypes_char_data[152];
 } qt_protobuf_ScalarRepeatedNoPackedTypes_metadata {
     // data
     {
         0, /* = version */
-        14, /* = num fields */
-        15, /* = field number offset */
-        29, /* = property index offset */
-        43, /* = field flags offset */
+        15, /* = num fields */
+        16, /* = field number offset */
+        31, /* = property index offset */
+        46, /* = field flags offset */
         39, /* = message full name length */
     },
     // uint_data
@@ -1165,7 +1179,8 @@ static constexpr struct {
         119, /* = field12 */
         127, /* = field13 */
         135, /* = field14 */
-        143, /* = end-of-string-marker */
+        143, /* = field15 */
+        151, /* = end-of-string-marker */
         // Field numbers:
         1, /* = field1 */
         2, /* = field2 */
@@ -1181,6 +1196,7 @@ static constexpr struct {
         12, /* = field12 */
         13, /* = field13 */
         14, /* = field14 */
+        15, /* = field15 */
         // Property indices:
         0, /* = field1 */
         1, /* = field2 */
@@ -1196,6 +1212,7 @@ static constexpr struct {
         11, /* = field12 */
         12, /* = field13 */
         13, /* = field14 */
+        14, /* = field15 */
         // Field flags:
         uint(QtProtobufPrivate::FieldFlag::NonPacked | QtProtobufPrivate::FieldFlag::Repeated), /* = field1 */
         uint(QtProtobufPrivate::FieldFlag::NonPacked | QtProtobufPrivate::FieldFlag::Repeated), /* = field2 */
@@ -1211,6 +1228,7 @@ static constexpr struct {
         uint(QtProtobufPrivate::FieldFlag::NonPacked | QtProtobufPrivate::FieldFlag::Repeated), /* = field12 */
         uint(QtProtobufPrivate::FieldFlag::Repeated), /* = field13 */
         uint(QtProtobufPrivate::FieldFlag::Repeated), /* = field14 */
+        uint(QtProtobufPrivate::FieldFlag::NonPacked | QtProtobufPrivate::FieldFlag::Repeated | QtProtobufPrivate::FieldFlag::Enum), /* = field15 */
     },
     // char_data
     /* metadata char_data: */
@@ -1218,7 +1236,7 @@ static constexpr struct {
     /* field char_data: */
     "field1\0field2\0field3\0field4\0field5\0"
     "field6\0field7\0field8\0field9\0field10\0"
-    "field11\0field12\0field13\0field14\0"
+    "field11\0field12\0field13\0field14\0field15\0"
 };
 
 const QtProtobufPrivate::QProtobufPropertyOrdering ScalarRepeatedNoPackedTypes::staticPropertyOrdering = {
@@ -1247,6 +1265,10 @@ ScalarRepeatedNoPackedTypes &ScalarRepeatedNoPackedTypes::operator =(const Scala
 }
 ScalarRepeatedNoPackedTypes::ScalarRepeatedNoPackedTypes(ScalarRepeatedNoPackedTypes &&other) noexcept
     = default;
+ScalarRepeatedNoPackedTypes::operator QVariant() const
+{
+    return QVariant::fromValue(*this);
+}
 bool comparesEqual(const ScalarRepeatedNoPackedTypes &lhs, const ScalarRepeatedNoPackedTypes &rhs) noexcept
 {
     return operator ==(static_cast<const QProtobufMessage&>(lhs),
@@ -1264,7 +1286,8 @@ bool comparesEqual(const ScalarRepeatedNoPackedTypes &lhs, const ScalarRepeatedN
         && lhs.dptr->m_field11 == rhs.dptr->m_field11
         && lhs.dptr->m_field12 == rhs.dptr->m_field12
         && lhs.dptr->m_field13 == rhs.dptr->m_field13
-        && lhs.dptr->m_field14 == rhs.dptr->m_field14;
+        && lhs.dptr->m_field14 == rhs.dptr->m_field14
+        && lhs.dptr->m_field15 == rhs.dptr->m_field15;
 }
 
 const QtProtobuf::int32List &ScalarRepeatedNoPackedTypes::field1() const &
@@ -1335,6 +1358,11 @@ const QStringList &ScalarRepeatedNoPackedTypes::field13() const &
 const QByteArrayList &ScalarRepeatedNoPackedTypes::field14() const &
 {
     return dptr->m_field14;
+}
+
+const QList<GlobalEnumGadget::GlobalEnum> &ScalarRepeatedNoPackedTypes::field15() const &
+{
+    return dptr->m_field15;
 }
 
 void ScalarRepeatedNoPackedTypes::setField1(const QtProtobuf::int32List &field1)
@@ -1561,6 +1589,22 @@ void ScalarRepeatedNoPackedTypes::setField14(QByteArrayList &&field14)
     }
 }
 
+void ScalarRepeatedNoPackedTypes::setField15(const QList<GlobalEnumGadget::GlobalEnum> &field15)
+{
+    if (dptr->m_field15 != field15) {
+        dptr.detach();
+        dptr->m_field15 = field15;
+    }
+}
+
+void ScalarRepeatedNoPackedTypes::setField15(QList<GlobalEnumGadget::GlobalEnum> &&field15)
+{
+    if (dptr->m_field15 != field15) {
+        dptr.detach();
+        dptr->m_field15 = std::move(field15);
+    }
+}
+
 
 class ScalarOneOfTypes_QtProtobufData : public QSharedData
 {
@@ -1694,6 +1738,10 @@ ScalarOneOfTypes &ScalarOneOfTypes::operator =(const ScalarOneOfTypes &other)
 }
 ScalarOneOfTypes::ScalarOneOfTypes(ScalarOneOfTypes &&other) noexcept
     = default;
+ScalarOneOfTypes::operator QVariant() const
+{
+    return QVariant::fromValue(*this);
+}
 bool comparesEqual(const ScalarOneOfTypes &lhs, const ScalarOneOfTypes &rhs) noexcept
 {
     return operator ==(static_cast<const QProtobufMessage&>(lhs),
@@ -2335,6 +2383,10 @@ ScalarOptionalTypes &ScalarOptionalTypes::operator =(const ScalarOptionalTypes &
 }
 ScalarOptionalTypes::ScalarOptionalTypes(ScalarOptionalTypes &&other) noexcept
     = default;
+ScalarOptionalTypes::operator QVariant() const
+{
+    return QVariant::fromValue(*this);
+}
 bool comparesEqual(const ScalarOptionalTypes &lhs, const ScalarOptionalTypes &rhs) noexcept
 {
     return operator ==(static_cast<const QProtobufMessage&>(lhs),
@@ -3080,6 +3132,10 @@ MapScalarTypes &MapScalarTypes::operator =(const MapScalarTypes &other)
 }
 MapScalarTypes::MapScalarTypes(MapScalarTypes &&other) noexcept
     = default;
+MapScalarTypes::operator QVariant() const
+{
+    return QVariant::fromValue(*this);
+}
 bool comparesEqual(const MapScalarTypes &lhs, const MapScalarTypes &rhs) noexcept
 {
     return operator ==(static_cast<const QProtobufMessage&>(lhs),
@@ -3455,6 +3511,10 @@ MessageTypes &MessageTypes::operator =(const MessageTypes &other)
 }
 MessageTypes::MessageTypes(MessageTypes &&other) noexcept
     = default;
+MessageTypes::operator QVariant() const
+{
+    return QVariant::fromValue(*this);
+}
 bool comparesEqual(const MessageTypes &lhs, const MessageTypes &rhs) noexcept
 {
     return operator ==(static_cast<const QProtobufMessage&>(lhs),
@@ -3849,6 +3909,10 @@ NestedMessage &NestedMessage::operator =(const NestedMessage &other)
 }
 NestedMessage::NestedMessage(NestedMessage &&other) noexcept
     = default;
+NestedMessage::operator QVariant() const
+{
+    return QVariant::fromValue(*this);
+}
 bool comparesEqual(const NestedMessage &lhs, const NestedMessage &rhs) noexcept
 {
     return operator ==(static_cast<const QProtobufMessage&>(lhs),
@@ -4003,6 +4067,10 @@ MessageNestedTypes &MessageNestedTypes::operator =(const MessageNestedTypes &oth
 }
 MessageNestedTypes::MessageNestedTypes(MessageNestedTypes &&other) noexcept
     = default;
+MessageNestedTypes::operator QVariant() const
+{
+    return QVariant::fromValue(*this);
+}
 bool comparesEqual(const MessageNestedTypes &lhs, const MessageNestedTypes &rhs) noexcept
 {
     return operator ==(static_cast<const QProtobufMessage&>(lhs),

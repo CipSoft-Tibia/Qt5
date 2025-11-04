@@ -245,7 +245,7 @@ QList<QValue3DAxis *> Q3DScatterWidgetItem::axes() const
 {
     QList<QAbstract3DAxis *> abstractAxes = graphScatter()->axes();
     QList<QValue3DAxis *> retList;
-    for (QAbstract3DAxis *axis : abstractAxes)
+    for (QAbstract3DAxis *axis : std::as_const(abstractAxes))
         retList.append(static_cast<QValue3DAxis *>(axis));
 
     return retList;

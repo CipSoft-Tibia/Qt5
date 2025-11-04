@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:network-protocol
 
 #include "qhttpnetworkconnection_p.h"
 #include <private/qabstractsocket_p.h>
@@ -16,7 +17,6 @@
 #include <private/qsocketabstraction_p.h>
 
 #include <qbuffer.h>
-#include <qpair.h>
 #include <qdebug.h>
 #include <qspan.h>
 #include <qvarlengtharray.h>
@@ -630,7 +630,7 @@ QHttpNetworkReply* QHttpNetworkConnectionPrivate::queueRequest(const QHttpNetwor
     reply->setRequest(request);
     reply->d_func()->connection = q;
     reply->d_func()->connectionChannel = &channels[0]; // will have the correct one set later
-    HttpMessagePair pair = qMakePair(request, reply);
+    HttpMessagePair pair = std::pair(request, reply);
 
     if (request.isPreConnect())
         preConnectRequests++;
@@ -1002,6 +1002,13 @@ void QHttpNetworkConnectionPrivate::removeReply(QHttpNetworkReply *reply)
             seq.erase(it);
             QMetaObject::invokeMethod(q, "_q_startNextRequest", Qt::QueuedConnection);
             return;
+        }
+        // Check if the h2 protocol handler already started processing it
+        if ((connectionType == QHttpNetworkConnection::ConnectionTypeHTTP2Direct
+             || channels[i].switchedToHttp2)
+            && channels[i].protocolHandler) {
+            if (channels[i].protocolHandler->tryRemoveReply(reply))
+                return;
         }
     }
     // remove from the high priority queue

@@ -59,7 +59,7 @@ void SignalHandlerPass::run(const QQmlSA::Element &element)
 
         // Current property is attached property, recursively go through attaching type
         if (propertyBinding.bindingType() == QQmlSA::BindingType::AttachedProperty) {
-            const auto scope = QQmlSA::Element{ propertyBinding.attachingType() };
+            const auto scope = QQmlSA::Element{ propertyBinding.attachedType() };
             run(scope);
         }
     }

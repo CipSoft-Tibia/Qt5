@@ -33,7 +33,7 @@ TransformStreamDefaultController::GetDefaultController(
       stream->readable_->GetController());
 }
 
-absl::optional<double> TransformStreamDefaultController::desiredSize() const {
+std::optional<double> TransformStreamDefaultController::desiredSize() const {
   // https://streams.spec.whatwg.org/#ts-default-controller-desired-size
   // 2. Let readableController be
   //    this.[[controlledTransformStream]].[[readable]].
@@ -110,7 +110,7 @@ class TransformStreamDefaultController::DefaultTransformAlgorithm final
                              v8::Local<v8::Value> argv[]) override {
     DCHECK_EQ(argc, 1);
     ExceptionState exception_state(script_state->GetIsolate(),
-                                   ExceptionContextType::kUnknown, "", "");
+                                   v8::ExceptionContext::kUnknown, "", "");
 
     // https://streams.spec.whatwg.org/#set-up-transform-stream-default-controller-from-transformer
     // 3. Let transformAlgorithm be the following steps, taking a chunk

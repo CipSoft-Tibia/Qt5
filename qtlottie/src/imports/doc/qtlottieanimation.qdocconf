@@ -34,3 +34,6 @@ examplesinstallpath     = lottieanimation
 
 navigation.landingpage  = Qt Lottie Animation
 navigation.qmltypespage = Qt Lottie Animation QML Types
+
+# Allow zero warnings when testing documentation in CI
+warninglimit = 0

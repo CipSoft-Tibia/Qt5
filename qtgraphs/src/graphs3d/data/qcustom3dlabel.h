@@ -30,6 +30,7 @@ class Q_GRAPHS_EXPORT QCustom3DLabel : public QCustom3DItem
                    backgroundVisibleChanged FINAL)
     Q_PROPERTY(bool facingCamera READ isFacingCamera WRITE setFacingCamera NOTIFY
                    facingCameraChanged FINAL)
+    QML_NAMED_ELEMENT(Custom3DLabel)
 
 public:
     explicit QCustom3DLabel(QObject *parent = nullptr);

@@ -6,7 +6,7 @@
 
 #include "xfa/fwl/cfwl_combolist.h"
 
-#include "third_party/base/check.h"
+#include "core/fxcrt/check.h"
 #include "xfa/fwl/cfwl_combobox.h"
 #include "xfa/fwl/cfwl_comboedit.h"
 #include "xfa/fwl/cfwl_listbox.h"
@@ -14,6 +14,8 @@
 #include "xfa/fwl/cfwl_messagekillfocus.h"
 #include "xfa/fwl/cfwl_messagemouse.h"
 #include "xfa/fwl/fwl_widgetdef.h"
+
+namespace pdfium {
 
 CFWL_ComboList::CFWL_ComboList(CFWL_App* app,
                                const Properties& properties,
@@ -227,3 +229,5 @@ void CFWL_ComboList::OnDropListKeyDown(CFWL_MessageKey* pKey) {
       break;
   }
 }
+
+}  // namespace pdfium

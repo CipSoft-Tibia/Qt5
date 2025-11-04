@@ -85,8 +85,8 @@ Window {
             //! [3dcube]
             id: cube
             source: "#Cube"
-            materials: DefaultMaterial {
-                diffuseMap: Texture {
+            materials: PrincipledMaterial {
+                baseColorMap: Texture {
                     sourceItem: qt_logo
                 }
             }

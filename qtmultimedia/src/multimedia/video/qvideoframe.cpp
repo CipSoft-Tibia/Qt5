@@ -13,7 +13,6 @@
 #include <qtextlayout.h>
 
 #include <qimage.h>
-#include <qpair.h>
 #include <qsize.h>
 #include <qvariant.h>
 #include <rhi/qrhi.h>
@@ -807,7 +806,7 @@ QtVideo::Rotation QVideoFrame::rotation() const
 void QVideoFrame::setMirrored(bool mirrored)
 {
     if (d)
-        d->presentationTransformation.mirrorredHorizontallyAfterRotation = mirrored;
+        d->presentationTransformation.mirroredHorizontallyAfterRotation = mirrored;
 }
 
 /*!
@@ -822,7 +821,7 @@ void QVideoFrame::setMirrored(bool mirrored)
 */
 bool QVideoFrame::mirrored() const
 {
-    return d && d->presentationTransformation.mirrorredHorizontallyAfterRotation;
+    return d && d->presentationTransformation.mirroredHorizontallyAfterRotation;
 }
 
 /*!
@@ -845,8 +844,8 @@ qreal QVideoFrame::streamFrameRate() const
 /*!
     Converts current video frame to image.
 
-    The consversion is based on the current pixel data and
-    the \l {surface format}{QVideoFrame::surfaceFormat}.
+    The conversion is based on the current pixel data and
+    the \l {QVideoFrame::surfaceFormat}{surface format}.
     Transformations of the frame don't impact the result
     since they are applied for presentation only.
 

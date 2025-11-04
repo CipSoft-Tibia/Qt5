@@ -7,11 +7,15 @@
     \brief Provides network authorization capabilities (OAuth).
 
     Qt Network Authorization provides a set of APIs that enable Qt
-    applications to obtain limited access to online accounts and
-    HTTP services without exposing users' passwords.
+    applications to implement common authorization and authentication protocols.
+    For example, an application can implement access controls such as providing
+    limited access to online accounts and HTTP services without exposing user
+    passwords.
 
-    Currently, the supported authorization protocol is \l {https://oauth.net}
-    {OAuth}, versions 1 and 2.
+    This module focuses on \l{OAuth 2.0} and provides limited support for
+    \l{OpenID}. Refer to the section below about
+    \l{Supported Authorization and Authentication Protocols}
+      {supported protocols}.
 
     \section1 Using the Module
 
@@ -40,31 +44,29 @@
     QT += networkauth
     \endcode
 
-    \section1 Overview
+    \section1 Supported Authorization and Authentication Protocols
 
-    The goal of this module is to provide a way to handle different
-    authentication methods present on the Internet.
-
-    There are several authentication systems, including:
+    Qt Network Authorization module supports functionalities from:
 
     \list
-      \li \l {https://datatracker.ietf.org/doc/html/rfc5849} {OAuth 1}
-      \li \l {https://datatracker.ietf.org/doc/html/rfc6749} {OAuth 2}
-      \li \l {http://openid.net} {OpenID}
-      \li \l {http://openid.net/connect/} {OpenID Connect}
+      \li \l {OAuth 1}
+      \li \l {OAuth 2.0}
+      \li \l {OpenID}
+      \li \l {OpenID Connect}
     \endlist
 
-    These systems allow the application developers to create applications which
-    use external authentication servers provided by an
-    \e {Authorization Server}.
-    Users of these services need not worry about passing their credentials to
-    suspicious applications. Instead, the credentials are entered in a known
-    and trusted web interface.
+    These systems use a trusted \e {authorization server} for issuing access
+    tokens so that users do not send credentials to resources and resource
+    owners do not directly manage user credentials. For example, a user of a
+    cloud-based photo album website does not have to worry about passing their
+    credentials to the website. Instead, the credentials are
+    managed by a trusted authorization service through a web interface.
 
     \section1 Articles and Guides
 
     \list
-        \li \l {Qt OAuth2 Overview}
+        \li \l {OAuth 2.0 Overview}
+        \li \l {Qt OAuth2 Browser Support}
     \endlist
 
     \section1 Licenses

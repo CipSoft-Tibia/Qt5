@@ -68,7 +68,7 @@ protected:
 
 protected:
     QJsonObject m_definition;
-    int m_type;
+    int m_type = 0;
     bool m_hidden = false;
     QVersionNumber m_version;
     QString m_name;

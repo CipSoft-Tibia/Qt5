@@ -2,6 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#ifdef UNSAFE_BUFFERS_BUILD
+// TODO(crbug.com/351564777): Remove this and convert code to safer constructs.
+#pragma allow_unsafe_buffers
+#endif
+
 #include "ui/events/ozone/evdev/touch_filter/neural_stylus_palm_detection_filter.h"
 
 #include <functional>
@@ -230,7 +235,7 @@ void NeuralStylusPalmDetectionFilter::Filter(
     auto stroke_it = strokes_.find(tracking_id);
 
     if (stroke_it == strokes_.end()) {
-      // TODO(crbug.com/1256926): Work out why this is hit on long presses.
+      // TODO(crbug.com/40796088): Work out why this is hit on long presses.
       DVLOG(1) << "No stroke found, continue.";
       continue;
     }
@@ -580,9 +585,9 @@ bool NeuralStylusPalmDetectionFilter::
 
   // Check the switch string.
 
-  absl::optional<base::Value> value =
+  std::optional<base::Value> value =
       base::JSONReader::Read(ozone_params_switch_string);
-  if (value != absl::nullopt && !ozone_params_switch_string.empty()) {
+  if (value != std::nullopt && !ozone_params_switch_string.empty()) {
     base::Value::Dict* value_dict = value->GetIfDict();
     if (!value_dict) {
       return false;

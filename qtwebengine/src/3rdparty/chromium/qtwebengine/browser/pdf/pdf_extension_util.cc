@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2020 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWebEngine module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2020 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 // based on //chrome/browser/pdf/pdf_extension_util.cc
 // Copyright 2015 The Chromium Authors. All rights reserved.
@@ -80,8 +44,10 @@ static void AddCommonStrings(base::Value::Dict* dict) {
     dict->Set(resource.name, l10n_util::GetStringUTF16(resource.id));
 
   dict->Set("presetZoomFactors", zoom::GetPresetZoomFactorsAsJSON());
-  dict->Set("chromeRefresh2023Attribute",
-            features::IsChromeWebuiRefresh2023() ? "chrome-refresh-2023" : "");
+  dict->Set("pdfCr23Enabled",
+            base::FeatureList::IsEnabled(chrome_pdf::features::kPdfCr23)
+                ? "pdfCr23Enabled"
+                : "");
   dict->Set("pdfOopifEnabled",
             base::FeatureList::IsEnabled(chrome_pdf::features::kPdfOopif) ? "pdfOopifEnabled" : "");
 }
@@ -134,6 +100,59 @@ static void AddPdfViewerStrings(base::Value::Dict* dict) {
     {"tooltipRotateCCW", IDS_PDF_TOOLTIP_ROTATE_CCW},
     {"tooltipThumbnails", IDS_PDF_TOOLTIP_THUMBNAILS},
     {"zoomTextInputAriaLabel", IDS_PDF_ZOOM_TEXT_INPUT_ARIA_LABEL},
+
+    {"tooltipAnnotate", IDS_PDF_ANNOTATION_ANNOTATE},
+    {"annotationDocumentTooLarge", IDS_PDF_ANNOTATION_DOCUMENT_TOO_LARGE},
+    {"annotationDocumentProtected", IDS_PDF_ANNOTATION_DOCUMENT_PROTECTED},
+    {"annotationDocumentRotated", IDS_PDF_ANNOTATION_DOCUMENT_ROTATED},
+    {"annotationEditInDefaultView", IDS_PDF_ANNOTATION_EDIT_IN_DEFAULT_VIEW},
+    {"annotationResetRotate", IDS_PDF_ANNOTATION_RESET_ROTATE},
+    {"annotationResetTwoPageView", IDS_PDF_ANNOTATION_RESET_TWO_PAGE_VIEW},
+    {"annotationResetRotateAndTwoPageView",
+     IDS_PDF_ANNOTATION_RESET_ROTATE_AND_TWO_PAGE_VIEW},
+    {"cancelButton", IDS_CANCEL},
+    {"annotationPen", IDS_PDF_ANNOTATION_PEN},
+    {"annotationHighlighter", IDS_PDF_ANNOTATION_HIGHLIGHTER},
+    {"annotationEraser", IDS_PDF_ANNOTATION_ERASER},
+    {"annotationUndo", IDS_PDF_ANNOTATION_UNDO},
+    {"annotationRedo", IDS_PDF_ANNOTATION_REDO},
+    {"annotationExpand", IDS_PDF_ANNOTATION_EXPAND},
+    {"annotationColorBlack", IDS_PDF_ANNOTATION_COLOR_BLACK},
+    {"annotationColorRed", IDS_PDF_ANNOTATION_COLOR_RED},
+    {"annotationColorYellow", IDS_PDF_ANNOTATION_COLOR_YELLOW},
+    {"annotationColorGreen", IDS_PDF_ANNOTATION_COLOR_GREEN},
+    {"annotationColorCyan", IDS_PDF_ANNOTATION_COLOR_CYAN},
+    {"annotationColorPurple", IDS_PDF_ANNOTATION_COLOR_PURPLE},
+    {"annotationColorBrown", IDS_PDF_ANNOTATION_COLOR_BROWN},
+    {"annotationColorWhite", IDS_PDF_ANNOTATION_COLOR_WHITE},
+    {"annotationColorCrimson", IDS_PDF_ANNOTATION_COLOR_CRIMSON},
+    {"annotationColorAmber", IDS_PDF_ANNOTATION_COLOR_AMBER},
+    {"annotationColorAvocadoGreen", IDS_PDF_ANNOTATION_COLOR_AVOCADO_GREEN},
+    {"annotationColorCobaltBlue", IDS_PDF_ANNOTATION_COLOR_COBALT_BLUE},
+    {"annotationColorDeepPurple", IDS_PDF_ANNOTATION_COLOR_DEEP_PURPLE},
+    {"annotationColorDarkBrown", IDS_PDF_ANNOTATION_COLOR_DARK_BROWN},
+    {"annotationColorDarkGrey", IDS_PDF_ANNOTATION_COLOR_DARK_GREY},
+    {"annotationColorHotPink", IDS_PDF_ANNOTATION_COLOR_HOT_PINK},
+    {"annotationColorOrange", IDS_PDF_ANNOTATION_COLOR_ORANGE},
+    {"annotationColorLime", IDS_PDF_ANNOTATION_COLOR_LIME},
+    {"annotationColorBlue", IDS_PDF_ANNOTATION_COLOR_BLUE},
+    {"annotationColorViolet", IDS_PDF_ANNOTATION_COLOR_VIOLET},
+    {"annotationColorTeal", IDS_PDF_ANNOTATION_COLOR_TEAL},
+    {"annotationColorLightGrey", IDS_PDF_ANNOTATION_COLOR_LIGHT_GREY},
+    {"annotationColorLightPink", IDS_PDF_ANNOTATION_COLOR_LIGHT_PINK},
+    {"annotationColorLightOrange", IDS_PDF_ANNOTATION_COLOR_LIGHT_ORANGE},
+    {"annotationColorLightGreen", IDS_PDF_ANNOTATION_COLOR_LIGHT_GREEN},
+    {"annotationColorLightBlue", IDS_PDF_ANNOTATION_COLOR_LIGHT_BLUE},
+    {"annotationColorLavender", IDS_PDF_ANNOTATION_COLOR_LAVENDER},
+    {"annotationColorLightTeal", IDS_PDF_ANNOTATION_COLOR_LIGHT_TEAL},
+    {"annotationSize1", IDS_PDF_ANNOTATION_SIZE1},
+    {"annotationSize2", IDS_PDF_ANNOTATION_SIZE2},
+    {"annotationSize3", IDS_PDF_ANNOTATION_SIZE3},
+    {"annotationSize4", IDS_PDF_ANNOTATION_SIZE4},
+    {"annotationSize8", IDS_PDF_ANNOTATION_SIZE8},
+    {"annotationSize12", IDS_PDF_ANNOTATION_SIZE12},
+    {"annotationSize16", IDS_PDF_ANNOTATION_SIZE16},
+    {"annotationSize20", IDS_PDF_ANNOTATION_SIZE20},
   };
   for (const auto& resource : kPdfResources)
     dict->Set(resource.name, l10n_util::GetStringUTF16(resource.id));

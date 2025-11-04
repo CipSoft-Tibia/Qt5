@@ -18,15 +18,16 @@ FontDescription FontStyleResolver::ComputeFont(
   FontBuilder builder(nullptr);
 
   FontDescription fontDescription;
-  Font font(fontDescription, font_selector);
-  CSSToLengthConversionData::FontSizes font_sizes(10, 10, &font, 1);
+  Font* font = MakeGarbageCollected<Font>(fontDescription, font_selector);
+  CSSToLengthConversionData::FontSizes font_sizes(10, 10, font, 1);
   CSSToLengthConversionData::LineHeightSize line_height_size;
   CSSToLengthConversionData::ViewportSize viewport_size(0, 0);
   CSSToLengthConversionData::ContainerSizes container_sizes;
+  CSSToLengthConversionData::AnchorData anchor_data;
   CSSToLengthConversionData::Flags ignored_flags = 0;
   CSSToLengthConversionData conversion_data(
       WritingMode::kHorizontalTb, font_sizes, line_height_size, viewport_size,
-      container_sizes, 1, ignored_flags);
+      container_sizes, anchor_data, 1, ignored_flags);
 
   // CSSPropertyID::kFontSize
   if (property_set.HasProperty(CSSPropertyID::kFontSize)) {
@@ -53,12 +54,14 @@ FontDescription FontStyleResolver::ComputeFont(
   // CSSPropertyID::kFontStretch
   if (property_set.HasProperty(CSSPropertyID::kFontStretch)) {
     builder.SetStretch(StyleBuilderConverterBase::ConvertFontStretch(
+        conversion_data,
         *property_set.GetPropertyCSSValue(CSSPropertyID::kFontStretch)));
   }
 
   // CSSPropertyID::kFontStyle
   if (property_set.HasProperty(CSSPropertyID::kFontStyle)) {
     builder.SetStyle(StyleBuilderConverterBase::ConvertFontStyle(
+        conversion_data,
         *property_set.GetPropertyCSSValue(CSSPropertyID::kFontStyle)));
   }
 

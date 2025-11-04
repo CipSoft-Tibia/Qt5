@@ -3,9 +3,11 @@
 # found in the LICENSE file.
 
 import("//common-mk/proto_library.gni")
+import("//system_api/dbus/install_dbus_client_headers.gni")
 
 group("all") {
   deps = [
+    ":install_dbus_headers",
     ":install_headers",
     ":install_pkg_config",
     ":libsystem_api",
@@ -49,6 +51,7 @@ group("all") {
     ":system_api-minios-protos",
     ":system_api-ml-goprotos",
     ":system_api-ml-protos",
+    ":system_api-oobe_config-goprotos",
     ":system_api-oobe_config-protos",
     ":system_api-patchpanel-goprotos",
     ":system_api-patchpanel-protos",
@@ -61,6 +64,7 @@ group("all") {
     ":system_api-privacy_screen-protos",
     ":system_api-private_computing-protos",
     ":system_api-protos",
+    ":system_api-regmon-protos",
     ":system_api-resource_manager-goprotos",
     ":system_api-resource_manager-protos",
     ":system_api-rmad-protos",
@@ -107,6 +111,39 @@ install_config("install_headers") {
   ]
   install_path = "/usr/include/chromeos"
   recursive = true
+}
+
+install_dbus_client_headers("install_dbus_headers") {
+  target_packages = [
+    "anomaly_detector",
+    "attestation",
+    "biod",
+    "chunneld",
+    "crash-reporter",
+    "cros-disks",
+    "cryptohome",
+    "debugd",
+    "dlcservice",
+    "fbpreprocessor",
+    "kerberos",
+    "login_manager",
+    "lorgnette",
+    "oobe_config",
+    "runtime_probe",
+    "pciguard",
+    "permission_broker",
+    "primary_io_manager",
+    "printscanmgr",
+    "power_manager",
+    "rgbkbd",
+    "rmad",
+    "shadercached",
+    "shill",
+    "smbprovider",
+    "tpm_manager",
+    "u2f",
+    "update_engine",
+  ]
 }
 
 install_config("install_pkg_config") {
@@ -319,6 +356,7 @@ proto_library("system_api-chaps-protos") {
   proto_out_dir = "include/chaps/proto_bindings"
   sources = [
     "${proto_in_dir}/attributes.proto",
+    "${proto_in_dir}/chaps_wrapped_key_info.proto",
     "${proto_in_dir}/ck_structs.proto",
     "${proto_in_dir}/key_permissions.proto",
   ]
@@ -552,6 +590,12 @@ proto_library("system_api-oobe_config-protos") {
   install_package = true
 }
 
+goproto_library("system_api-oobe_config-goprotos") {
+  proto_in_dir = "dbus/oobe_config"
+  proto_out_dir = "go/src/"
+  sources = [ "${proto_in_dir}/oobe_config.proto" ]
+}
+
 proto_library("system_api-runtime_probe-protos") {
   proto_in_dir = "dbus/runtime_probe"
   proto_out_dir = "include/runtime_probe/proto_bindings"
@@ -651,7 +695,10 @@ proto_library("system_api-chunneld-protos") {
 proto_library("system_api-patchpanel-protos") {
   proto_in_dir = "dbus/patchpanel"
   proto_out_dir = "include/patchpanel/proto_bindings"
-  sources = [ "${proto_in_dir}/patchpanel_service.proto" ]
+  sources = [
+    "${proto_in_dir}/patchpanel_service.proto",
+    "${proto_in_dir}/traffic_annotation.proto",
+  ]
   standalone = true
   install_package = true
   use_pic = true
@@ -660,7 +707,10 @@ proto_library("system_api-patchpanel-protos") {
 goproto_library("system_api-patchpanel-goprotos") {
   proto_in_dir = "dbus/patchpanel"
   proto_out_dir = "go/src/"
-  sources = [ "${proto_in_dir}/patchpanel_service.proto" ]
+  sources = [
+    "${proto_in_dir}/patchpanel_service.proto",
+    "${proto_in_dir}/traffic_annotation.proto",
+  ]
 }
 
 proto_library("system_api-anomaly_detector-protos") {
@@ -884,6 +934,14 @@ proto_library("system_api-fbpreprocessor-protos") {
   proto_in_dir = "dbus/fbpreprocessor"
   proto_out_dir = "include/fbpreprocessor/proto_bindings"
   sources = [ "${proto_in_dir}/fbpreprocessor.proto" ]
+  standalone = true
+  install_package = true
+}
+
+proto_library("system_api-regmon-protos") {
+  proto_in_dir = "dbus/regmon"
+  proto_out_dir = "include/regmon/proto_bindings"
+  sources = [ "${proto_in_dir}/regmon_service.proto" ]
   standalone = true
   install_package = true
 }

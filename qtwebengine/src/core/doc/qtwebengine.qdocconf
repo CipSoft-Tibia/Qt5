@@ -13,7 +13,7 @@ qhp.QtWebEngine.virtualFolder       = qtwebengine
 qhp.QtWebEngine.indexTitle          = Qt WebEngine
 qhp.QtWebEngine.indexRoot           =
 
-qhp.QtWebEngine.subprojects         = classes qmltypes examples widgetexamples
+qhp.QtWebEngine.subprojects = manual examples widgetexamples classes qmltypes
 
 qhp.QtWebEngine.subprojects.classes.title = C++ Classes and Namespaces
 qhp.QtWebEngine.subprojects.classes.indexTitle = Qt WebEngine C++ Classes and Namespaces
@@ -34,6 +34,10 @@ qhp.QtWebEngine.subprojects.widgetexamples.title = Examples (Widgets)
 qhp.QtWebEngine.subprojects.widgetexamples.indexTitle = Qt WebEngine Widgets Examples
 qhp.QtWebEngine.subprojects.widgetexamples.selectors = group:webengine-widgetexamples
 qhp.QtWebEngine.subprojects.widgetexamples.sortPages = true
+
+qhp.QtWebEngine.subprojects.manual.title = Qt WebEngine
+qhp.QtWebEngine.subprojects.manual.indexTitle = Qt WebEngine module topics
+qhp.QtWebEngine.subprojects.manual.type = manual
 
 manifestmeta.highlighted.names += "QtWebEngine/WebEngine Widgets Simple Browser Example" \
                 "QtWebEngine/WebEngine Quick Nano Browser" \
@@ -70,6 +74,7 @@ headerdirs  += ../../core/api \
 
 sourcedirs  += ../../core/api \
                ../../core/doc \
+               ../../core/tools/webenginedriver \
                ../../webenginequick/api \
                ../../webenginequick/doc \
                ../../webenginewidgets/api \
@@ -93,9 +98,16 @@ imagedirs += \
 navigation.landingpage = "Qt WebEngine"
 navigation.cppclassespage = "Qt WebEngine C++ Classes and Namespaces"
 navigation.qmltypespage = "Qt WebEngine QML Types"
+# Auto-generate navigation linking based on "Qt WebEngine module topics":
+navigation.toctitles = "Qt WebEngine module topics"
+navigation.toctitles.inclusive = false
 
 # \QWE macro expands to 'Qt WebEngine' without auto-linking anywhere.
 macro.QWE    = "Qt \\WebEngine"
+
+# QTBUG-134416: Ignore overwrite warnings, attribution
+# documentation generates many of these
+spurious += "Output file already exists, overwriting .*"
 
 # Enforce zero documentation warnings
 warninglimit = 2

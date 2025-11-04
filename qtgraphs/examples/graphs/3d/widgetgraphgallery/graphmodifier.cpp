@@ -257,7 +257,7 @@ void GraphModifier::changeLabelBackground()
 
 void GraphModifier::changeSelectionMode(int selectionMode)
 {
-    QComboBox *comboBox = qobject_cast<QComboBox *>(sender());
+    const auto *comboBox = qobject_cast<QComboBox *>(sender());
     if (comboBox) {
         int flags = comboBox->itemData(selectionMode).toInt();
         m_graph->setSelectionMode(QtGraphs3D::SelectionFlags(flags));
@@ -266,8 +266,7 @@ void GraphModifier::changeSelectionMode(int selectionMode)
 
 void GraphModifier::changeFont(const QFont &font)
 {
-    QFont newFont = font;
-    m_graph->activeTheme()->setLabelFont(newFont);
+    m_graph->activeTheme()->setLabelFont(font);
 }
 
 void GraphModifier::changeFontSize(int fontsize)
@@ -386,7 +385,7 @@ void GraphModifier::setDataModeToCustom(bool enabled)
 
 void GraphModifier::changeShadowQuality(int quality)
 {
-    QtGraphs3D::ShadowQuality sq = QtGraphs3D::ShadowQuality(quality);
+    const auto sq = QtGraphs3D::ShadowQuality(quality);
     m_graph->setShadowQuality(sq);
     emit shadowQualityChanged(quality);
 }

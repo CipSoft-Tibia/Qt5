@@ -7,12 +7,15 @@
 #ifndef CORE_FXCODEC_JBIG2_JBIG2_IMAGE_H_
 #define CORE_FXCODEC_JBIG2_JBIG2_IMAGE_H_
 
+#include <stdint.h>
+
 #include <memory>
 
 #include "core/fxcodec/jbig2/JBig2_Define.h"
+#include "core/fxcrt/compiler_specific.h"
 #include "core/fxcrt/fx_memory_wrappers.h"
 #include "core/fxcrt/maybe_owned.h"
-#include "third_party/base/containers/span.h"
+#include "core/fxcrt/span.h"
 
 struct FX_RECT;
 
@@ -45,9 +48,15 @@ class CJBig2_Image {
   int GetPixel(int32_t x, int32_t y) const;
   void SetPixel(int32_t x, int32_t y, int v);
 
-  uint8_t* GetLineUnsafe(int32_t y) const { return data() + y * m_nStride; }
+  // SAFETY: propogated to caller via UNSAFE_BUFFER_USAGE.
+  UNSAFE_BUFFER_USAGE uint8_t* GetLineUnsafe(int32_t y) const {
+    return UNSAFE_BUFFERS(data() + y * m_nStride);
+  }
+
   uint8_t* GetLine(int32_t y) const {
-    return (y >= 0 && y < m_nHeight) ? GetLineUnsafe(y) : nullptr;
+    // SAFETY: m_nHeight valid lines in image.
+    return (y >= 0 && y < m_nHeight) ? UNSAFE_BUFFERS(GetLineUnsafe(y))
+                                     : nullptr;
   }
 
   void CopyLine(int32_t hTo, int32_t hFrom);

@@ -31,13 +31,12 @@
 #include "content/public/browser/browser_context.h"
 #include "content/public/browser/browser_task_traits.h"
 #include "content/public/browser/browser_thread.h"
-#include "content/public/browser/notification_service.h"
 #include "content/public/browser/render_process_host.h"
 #include "content/public/browser/url_data_source.h"
 #include "content/public/common/webplugininfo.h"
 #include "extensions/browser/app_sorting.h"
-#include "extensions/browser/content_verifier.h"
-#include "extensions/browser/content_verifier_delegate.h"
+#include "extensions/browser/content_verifier/content_verifier.h"
+#include "extensions/browser/content_verifier/content_verifier_delegate.h"
 #include "extensions/browser/extension_pref_store.h"
 #include "extensions/browser/extension_pref_value_map.h"
 #include "extensions/browser/extension_pref_value_map_factory.h"
@@ -68,25 +67,15 @@ namespace extensions {
 
 namespace {
 
-std::string GenerateId(const base::Value::Dict &manifest, const base::FilePath &path)
-{
-    const std::string *raw_key;
-    std::string id_input;
-    CHECK(raw_key = manifest.FindString(manifest_keys::kPublicKey));
-    CHECK(Extension::ParsePEMKeyBytes(*raw_key, &id_input));
-    std::string id = crx_file::id_util::GenerateId(id_input);
-    return id;
-}
-
 // Implementation based on ComponentLoader::ParseManifest.
-absl::optional<base::Value::Dict> ParseManifest(base::StringPiece manifest_contents)
+std::optional<base::Value::Dict> ParseManifest(std::string_view manifest_contents)
 {
     JSONStringValueDeserializer deserializer(manifest_contents);
     std::unique_ptr<base::Value> manifest = deserializer.Deserialize(nullptr, nullptr);
 
     if (!manifest.get() || !manifest->is_dict()) {
         LOG(ERROR) << "Failed to parse extension manifest.";
-        return absl::nullopt;
+        return std::nullopt;
     }
 
     return std::move(*manifest).TakeDict();
@@ -128,7 +117,7 @@ public:
     void Shutdown() override {}
 };
 
-void ExtensionSystemQt::LoadExtension(std::string extension_id, const base::Value::Dict &manifest, const base::FilePath &directory)
+void ExtensionSystemQt::LoadExtension(const base::Value::Dict &manifest, const base::FilePath &directory)
 {
     int flags = Extension::REQUIRE_KEY;
     std::string error;
@@ -319,21 +308,19 @@ void ExtensionSystemQt::Init(bool extensions_enabled)
             base::FilePath path;
             base::PathService::Get(base::DIR_QT_LIBRARY_DATA, &path);
             path = path.Append(base::FilePath(FILE_PATH_LITERAL("pdf")));
-            std::string id = GenerateId(pdfManifestDict.value(), path);
-            LoadExtension(id, pdfManifestDict.value(), path);
+            LoadExtension(pdfManifestDict.value(), path);
         }
 #endif // BUILDFLAG(ENABLE_PDF)
 
 #if BUILDFLAG(ENABLE_HANGOUT_SERVICES_EXTENSION)
         {
-            std::string hangout_manifest = ui::ResourceBundle::GetSharedInstance().LoadDataResourceString(IDR_HANGOUT_SERVICES_MANIFEST);
+            std::string hangout_manifest = ui::ResourceBundle::GetSharedInstance().LoadDataResourceString(IDR_HANGOUT_SERVICES_MANIFEST_V2);
             auto hangoutManifestDict = ParseManifest(hangout_manifest);
             CHECK(hangoutManifestDict);
             base::FilePath path;
             base::PathService::Get(base::DIR_QT_LIBRARY_DATA, &path);
             path = path.Append(base::FilePath(FILE_PATH_LITERAL("hangout_services")));
-            std::string id = GenerateId(hangoutManifestDict.value(), path);
-            LoadExtension(id, hangoutManifestDict.value(), path);
+            LoadExtension(hangoutManifestDict.value(), path);
         }
 #endif // BUILDFLAG(ENABLE_HANGOUT_SERVICES_EXTENSION)
     }

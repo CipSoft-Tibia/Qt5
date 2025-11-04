@@ -23,7 +23,7 @@ const int kSnappedHeightStep = 90;
 // The minimum amount of decrease in area between consecutive snapped frame
 // sizes.  This matters externally, where the end-to-end system is hunting for a
 // capture size that works within all resource bottlenecks.  If the snapped
-// frame sizes are too-close together, the end-to-end system cannot stablize.
+// frame sizes are too-close together, the end-to-end system cannot stabilize.
 // If they are too-far apart, quality is being sacrificed.
 const int kMinAreaDecreasePercent = 15;
 
@@ -70,10 +70,10 @@ CaptureResolutionChooser::~CaptureResolutionChooser() = default;
 void CaptureResolutionChooser::SetConstraints(const gfx::Size& min_frame_size,
                                               const gfx::Size& max_frame_size,
                                               bool use_fixed_aspect_ratio) {
-//  DCHECK_LT(0, min_frame_size.width());
-//  DCHECK_LT(0, min_frame_size.height());
-//  DCHECK_LE(min_frame_size.width(), max_frame_size.width());
-//  DCHECK_LE(min_frame_size.height(), max_frame_size.height());
+  //  DCHECK_LT(0, min_frame_size.width());
+  //  DCHECK_LT(0, min_frame_size.height());
+  //  DCHECK_LE(min_frame_size.width(), max_frame_size.width());
+  //  DCHECK_LE(min_frame_size.height(), max_frame_size.height());
 
   min_frame_size_ = min_frame_size;
   max_frame_size_ = max_frame_size;

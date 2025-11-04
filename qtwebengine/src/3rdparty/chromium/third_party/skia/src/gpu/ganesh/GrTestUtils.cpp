@@ -4,21 +4,33 @@
  * Use of this source code is governed by a BSD-style license that can be
  * found in the LICENSE file.
  */
-
 #include "src/gpu/ganesh/GrTestUtils.h"
 
+#if defined(GPU_TEST_UTILS)
+
+#include "include/core/SkAlphaType.h"
 #include "include/core/SkColorSpace.h"
 #include "include/core/SkMatrix.h"
+#include "include/core/SkPaint.h"
+#include "include/core/SkPath.h"
 #include "include/core/SkPathBuilder.h"
 #include "include/core/SkRRect.h"
+#include "include/core/SkRect.h"
+#include "include/private/base/SkMacros.h"
+#include "include/private/base/SkOnce.h"
+#include "include/private/gpu/ganesh/GrTypesPriv.h"
+#include "src/base/SkRandom.h"
 #include "src/core/SkRectPriv.h"
 #include "src/gpu/ganesh/GrColorInfo.h"
+#include "src/gpu/ganesh/GrColorSpaceXform.h"
 #include "src/gpu/ganesh/GrFPArgs.h"
 #include "src/gpu/ganesh/GrProcessorUnitTest.h"
 #include "src/gpu/ganesh/GrStyle.h"
 #include "src/utils/SkDashPathPriv.h"
 
-#if defined(GR_TEST_UTILS)
+#include <array>
+#include <cstring>
+#include <utility>
 
 static const SkMatrix& test_matrix(SkRandom* random,
                                    bool includeNonPerspective,
@@ -314,33 +326,34 @@ SkPathEffect::DashType TestDashPathEffect::onAsADash(DashInfo* info) const {
 
 sk_sp<SkColorSpace> TestColorSpace(SkRandom* random) {
     static sk_sp<SkColorSpace> gColorSpaces[3];
-    static bool gOnce;
-    if (!gOnce) {
-        gOnce = true;
+    static SkOnce once;
+    once([] {
         // No color space (legacy mode)
         gColorSpaces[0] = nullptr;
         // sRGB or color-spin sRGB
-        gColorSpaces[1] = SkColorSpace::MakeSRGB();
-        gColorSpaces[2] = SkColorSpace::MakeSRGB()->makeColorSpin();
-    }
-    return gColorSpaces[random->nextULessThan(static_cast<uint32_t>(std::size(gColorSpaces)))];
+        gColorSpaces[1] = SkColorSpace::MakeSRGB().release();
+        gColorSpaces[2] = SkColorSpace::MakeSRGB()->makeColorSpin().release();
+    });
+    return sk_ref_sp(
+            gColorSpaces[random->nextULessThan(static_cast<uint32_t>(std::size(gColorSpaces)))]);
 }
 
 sk_sp<GrColorSpaceXform> TestColorXform(SkRandom* random) {
     // TODO: Add many more kinds of xforms here
     static sk_sp<GrColorSpaceXform> gXforms[3];
-    static bool gOnce;
-    if (!gOnce) {
-        gOnce = true;
+    static SkOnce once;
+    once([] {
         sk_sp<SkColorSpace> srgb = SkColorSpace::MakeSRGB();
         sk_sp<SkColorSpace> spin = SkColorSpace::MakeSRGB()->makeColorSpin();
         // No gamut change
         gXforms[0] = nullptr;
-        gXforms[1] = GrColorSpaceXform::Make(srgb.get(), kPremul_SkAlphaType,
-                                             spin.get(), kPremul_SkAlphaType);
-        gXforms[2] = GrColorSpaceXform::Make(spin.get(), kPremul_SkAlphaType,
-                                             srgb.get(), kPremul_SkAlphaType);
-    }
+        gXforms[1] = GrColorSpaceXform::Make(
+                             srgb.get(), kPremul_SkAlphaType, spin.get(), kPremul_SkAlphaType)
+                             .release();
+        gXforms[2] = GrColorSpaceXform::Make(
+                             spin.get(), kPremul_SkAlphaType, srgb.get(), kPremul_SkAlphaType)
+                             .release();
+    });
     return gXforms[random->nextULessThan(static_cast<uint32_t>(std::size(gXforms)))];
 }
 

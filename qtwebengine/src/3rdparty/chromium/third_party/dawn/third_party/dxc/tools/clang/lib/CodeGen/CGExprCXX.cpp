@@ -245,7 +245,7 @@ RValue CodeGenFunction::EmitCXXMemberOrOperatorMemberCallExpr(
             llvm::Value *Elt = Builder.CreateLoad(EltGEP);
             if (IsBool)
               Elt = Builder.CreateTrunc(
-                 Elt, llvm::Type::getInt1Ty(getLLVMContext()));
+                  Elt, llvm::Type::getInt1Ty(getLLVMContext()));
             Builder.CreateStore(Elt, TmpEltGEP);
           }
           This = TmpThis;

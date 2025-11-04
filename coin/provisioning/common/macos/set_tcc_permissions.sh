@@ -58,9 +58,9 @@ function add_permission_for_client() {
 
     if [[ -d "$client" && "${client%/}" == *.app ]]; then
         info_plist="$client/Contents/Info.plist"
-        executable=$(defaults read $info_plist CFBundleExecutable)
+        executable=$(defaults read "$info_plist" CFBundleExecutable)
         executable="$client/Contents/MacOS/$executable"
-        client=$(defaults read $info_plist CFBundleIdentifier)
+        client=$(defaults read "$info_plist" CFBundleIdentifier)
         client_type="0" # Bundle ID
     elif [[ -x "$client" ]]; then
         executable=$client
@@ -70,7 +70,9 @@ function add_permission_for_client() {
         exit 1
     fi
 
+    # shellcheck disable=SC2155
     local req_str=$(codesign -d -r- "$executable" 2>&1 | awk -F ' => ' '/designated/{print $2}')
+    # shellcheck disable=SC2155
     local req_hex=$(echo "$req_str" | csreq -r- -b >(xxd -p | tr -d '\n'))
 
     sudo sqlite3 -echo "$tcc_database" <<EOF
@@ -107,6 +109,6 @@ EOF
 for client in "${TCC_CLIENTS[@]}"; do
     # shellcheck disable=SC2043
     for service in "${SERVICES[@]}"; do
-        add_permission_for_client $client $service
+        add_permission_for_client "$client" "$service"
     done
 done

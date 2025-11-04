@@ -4,6 +4,8 @@
 
 #include "quiche/quic/core/uber_received_packet_manager.h"
 
+#include <algorithm>
+#include <memory>
 #include <utility>
 
 #include "quiche/quic/core/congestion_control/rtt_stats.h"
@@ -31,7 +33,7 @@ namespace {
 const bool kInstigateAck = true;
 const QuicTime::Delta kMinRttMs = QuicTime::Delta::FromMilliseconds(40);
 const QuicTime::Delta kDelayedAckTime =
-    QuicTime::Delta::FromMilliseconds(kDefaultDelayedAckTimeMs);
+    QuicTime::Delta::FromMilliseconds(GetDefaultDelayedAckTimeMs());
 
 EncryptionLevel GetEncryptionLevel(PacketNumberSpace packet_number_space) {
   switch (packet_number_space) {

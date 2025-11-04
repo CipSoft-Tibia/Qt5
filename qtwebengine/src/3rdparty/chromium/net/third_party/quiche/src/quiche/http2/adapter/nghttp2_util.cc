@@ -1,7 +1,11 @@
 #include "quiche/http2/adapter/nghttp2_util.h"
 
 #include <cstdint>
+#include <cstring>
 #include <memory>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
@@ -87,7 +91,7 @@ std::vector<nghttp2_nv> GetNghttp2Nvs(absl::Span<const Header> headers) {
 }
 
 std::vector<nghttp2_nv> GetResponseNghttp2Nvs(
-    const spdy::Http2HeaderBlock& headers, absl::string_view response_code) {
+    const quiche::HttpHeaderBlock& headers, absl::string_view response_code) {
   // Allocate enough for all headers and also the :status pseudoheader.
   const int num_headers = headers.size();
   std::vector<nghttp2_nv> nghttp2_nvs;
@@ -95,8 +99,8 @@ std::vector<nghttp2_nv> GetResponseNghttp2Nvs(
 
   // Add the :status pseudoheader first.
   nghttp2_nv status;
-  status.name = ToUint8Ptr(kHttp2StatusPseudoHeader);
-  status.namelen = strlen(kHttp2StatusPseudoHeader);
+  status.name = ToUint8Ptr(kHttp2StatusPseudoHeader.data());
+  status.namelen = kHttp2StatusPseudoHeader.size();
   status.value = ToUint8Ptr(response_code.data());
   status.valuelen = response_code.size();
   status.flags = NGHTTP2_FLAG_NONE;

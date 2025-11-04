@@ -293,7 +293,7 @@ QList<QValue3DAxis *> Q3DSurfaceWidgetItem::axes() const
 {
     QList<QAbstract3DAxis *> abstractAxes = graphSurface()->axes();
     QList<QValue3DAxis *> retList;
-    for (QAbstract3DAxis *axis : abstractAxes)
+    for (QAbstract3DAxis *axis : std::as_const(abstractAxes))
         retList.append(static_cast<QValue3DAxis *>(axis));
 
     return retList;

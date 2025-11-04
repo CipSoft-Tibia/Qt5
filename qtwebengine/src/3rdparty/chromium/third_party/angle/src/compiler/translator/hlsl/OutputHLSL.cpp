@@ -883,7 +883,7 @@ void OutputHLSL::header(TInfoSinkBase &out,
                    "\n";
         }
 
-        if (mOutputType == SH_HLSL_4_1_OUTPUT || mOutputType == SH_HLSL_4_0_FL9_3_OUTPUT)
+        if (mOutputType == SH_HLSL_4_1_OUTPUT)
         {
             out << "cbuffer DriverConstants : register(b1)\n"
                    "{\n";
@@ -1063,7 +1063,7 @@ void OutputHLSL::header(TInfoSinkBase &out,
                    "\n";
         }
 
-        if (mOutputType == SH_HLSL_4_1_OUTPUT || mOutputType == SH_HLSL_4_0_FL9_3_OUTPUT)
+        if (mOutputType == SH_HLSL_4_1_OUTPUT)
         {
             out << "cbuffer DriverConstants : register(b1)\n"
                    "{\n";
@@ -1154,22 +1154,19 @@ void OutputHLSL::header(TInfoSinkBase &out,
         std::ostringstream glBuiltinInitialization = sh::InitializeStream<std::ostringstream>();
 
         systemValueDeclaration << "\nstruct CS_INPUT\n{\n";
-        glBuiltinInitialization << "\nvoid initGLBuiltins(CS_INPUT input)\n"
-                                << "{\n";
+        glBuiltinInitialization << "\nvoid initGLBuiltins(CS_INPUT input)\n" << "{\n";
 
         if (mUsesWorkGroupID)
         {
             out << "static uint3 gl_WorkGroupID = uint3(0, 0, 0);\n";
-            systemValueDeclaration << "    uint3 dx_WorkGroupID : "
-                                   << "SV_GroupID;\n";
+            systemValueDeclaration << "    uint3 dx_WorkGroupID : " << "SV_GroupID;\n";
             glBuiltinInitialization << "    gl_WorkGroupID = input.dx_WorkGroupID;\n";
         }
 
         if (mUsesLocalInvocationID)
         {
             out << "static uint3 gl_LocalInvocationID = uint3(0, 0, 0);\n";
-            systemValueDeclaration << "    uint3 dx_LocalInvocationID : "
-                                   << "SV_GroupThreadID;\n";
+            systemValueDeclaration << "    uint3 dx_LocalInvocationID : " << "SV_GroupThreadID;\n";
             glBuiltinInitialization << "    gl_LocalInvocationID = input.dx_LocalInvocationID;\n";
         }
 
@@ -1184,8 +1181,7 @@ void OutputHLSL::header(TInfoSinkBase &out,
         if (mUsesLocalInvocationIndex)
         {
             out << "static uint gl_LocalInvocationIndex = uint(0);\n";
-            systemValueDeclaration << "    uint dx_LocalInvocationIndex : "
-                                   << "SV_GroupIndex;\n";
+            systemValueDeclaration << "    uint dx_LocalInvocationIndex : " << "SV_GroupIndex;\n";
             glBuiltinInitialization
                 << "    gl_LocalInvocationIndex = input.dx_LocalInvocationIndex;\n";
         }
@@ -2482,7 +2478,7 @@ bool OutputHLSL::visitDeclaration(Visit visit, TIntermDeclaration *node)
                     // Temporarily disable shadred memory initialization. It is very slow for D3D11
                     // drivers to compile a compute shader if we add code to initialize a
                     // groupshared array variable with a large array size. And maybe produce
-                    // incorrect result. See http://anglebug.com/3226.
+                    // incorrect result. See http://anglebug.com/40644676.
                     if (declarator->getQualifier() != EvqShared)
                     {
                         out << " = " + zeroInitializer(symbol->getType());
@@ -2625,12 +2621,6 @@ bool OutputHLSL::visitAggregate(Visit visit, TIntermAggregate *node)
             for (TIntermSequence::iterator arg = arguments->begin(); arg != arguments->end(); arg++)
             {
                 TIntermTyped *typedArg = (*arg)->getAsTyped();
-                if (mOutputType == SH_HLSL_4_0_FL9_3_OUTPUT && IsSampler(typedArg->getBasicType()))
-                {
-                    out << "texture_";
-                    (*arg)->traverse(this);
-                    out << ", sampler_";
-                }
 
                 (*arg)->traverse(this);
 
@@ -2645,17 +2635,9 @@ bool OutputHLSL::visitAggregate(Visit visit, TIntermAggregate *node)
                                                  nullptr, mSymbolTable);
                     for (const TVariable *sampler : samplerSymbols)
                     {
-                        if (mOutputType == SH_HLSL_4_0_FL9_3_OUTPUT)
-                        {
-                            out << ", texture_" << sampler->name();
-                            out << ", sampler_" << sampler->name();
-                        }
-                        else
-                        {
-                            // In case of HLSL 4.1+, this symbol is the sampler index, and in case
-                            // of D3D9, it's the sampler variable.
-                            out << ", " << sampler->name();
-                        }
+                        // In case of HLSL 4.1+, this symbol is the sampler index, and in case
+                        // of D3D9, it's the sampler variable.
+                        out << ", " << sampler->name();
                     }
                 }
 
@@ -3105,17 +3087,8 @@ bool OutputHLSL::visitLoop(Visit visit, TIntermLoop *node)
         outputLineDirective(out, node->getLine().first_line);
     }
 
-    if (node->getBody())
-    {
-        // The loop body node will output braces.
-        node->getBody()->traverse(this);
-    }
-    else
-    {
-        // TODO(oetuaho): Check if the semicolon inside is necessary.
-        // It's there as a result of conservative refactoring of the output.
-        out << "{;}\n";
-    }
+    // The loop body node will output braces.
+    node->getBody()->traverse(this);
 
     outputLineDirective(out, node->getLine().first_line);
 
@@ -3389,10 +3362,7 @@ bool OutputHLSL::handleExcessiveLoop(TInfoSinkBase &out, TIntermLoop *node)
                 outputLineDirective(out, node->getLine().first_line);
                 out << "{\n";
 
-                if (node->getBody())
-                {
-                    node->getBody()->traverse(this);
-                }
+                node->getBody()->traverse(this);
 
                 outputLineDirective(out, node->getLine().first_line);
                 out << ";}\n";
@@ -3474,14 +3444,6 @@ void OutputHLSL::writeParameter(const TVariable *param, TInfoSinkBase &out)
             out << "const uint " << nameStr << ArrayString(type);
             return;
         }
-        if (mOutputType == SH_HLSL_4_0_FL9_3_OUTPUT)
-        {
-            out << QualifierString(qualifier) << " " << TextureString(type.getBasicType())
-                << " texture_" << nameStr << ArrayString(type) << ", " << QualifierString(qualifier)
-                << " " << SamplerString(type.getBasicType()) << " sampler_" << nameStr
-                << ArrayString(type);
-            return;
-        }
     }
 
     // If the parameter is an atomic counter, we need to add an extra parameter to keep track of the
@@ -3513,15 +3475,6 @@ void OutputHLSL::writeParameter(const TVariable *param, TInfoSinkBase &out)
             if (mOutputType == SH_HLSL_4_1_OUTPUT)
             {
                 out << ", const uint " << sampler->name() << ArrayString(samplerType);
-            }
-            else if (mOutputType == SH_HLSL_4_0_FL9_3_OUTPUT)
-            {
-                ASSERT(IsSampler(samplerType.getBasicType()));
-                out << ", " << QualifierString(qualifier) << " "
-                    << TextureString(samplerType.getBasicType()) << " texture_" << sampler->name()
-                    << ArrayString(samplerType) << ", " << QualifierString(qualifier) << " "
-                    << SamplerString(samplerType.getBasicType()) << " sampler_" << sampler->name()
-                    << ArrayString(samplerType);
             }
             else
             {
@@ -3726,8 +3679,7 @@ TString OutputHLSL::addStructEqualityFunction(const TStructure &structure)
         fnOut << ")";
     }
 
-    fnOut << ";\n"
-          << "}\n";
+    fnOut << ";\n" << "}\n";
 
     function->functionDefinition = fnOut.c_str();
 
@@ -3908,9 +3860,7 @@ TString OutputHLSL::addFlatEvaluateFunction(const TType &type, const TType &para
     TInfoSinkBase fnOut;
     fnOut << typeName << " " << function.functionName << "(" << typeName << " i, "
           << parameterTypeName << " p)\n";
-    fnOut << "{\n"
-          << "    return i;\n"
-          << "}\n";
+    fnOut << "{\n" << "    return i;\n" << "}\n";
     function.functionDefinition = fnOut.c_str();
 
     mFlatEvaluateFunctions.push_back(function);

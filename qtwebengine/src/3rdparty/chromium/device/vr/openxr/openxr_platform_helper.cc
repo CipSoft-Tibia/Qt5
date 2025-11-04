@@ -4,6 +4,7 @@
 #include "device/vr/openxr/openxr_platform_helper.h"
 
 #include <memory>
+#include <set>
 #include <utility>
 
 #include "base/containers/contains.h"
@@ -13,9 +14,12 @@
 #include "build/build_config.h"
 #include "components/version_info/version_info.h"
 #include "device/vr/openxr/openxr_api_wrapper.h"
+#include "device/vr/openxr/openxr_extension_handler_factories.h"
+#include "device/vr/openxr/openxr_extension_handler_factory.h"
 #include "device/vr/openxr/openxr_extension_helper.h"
 #include "device/vr/openxr/openxr_graphics_binding.h"
 #include "device/vr/openxr/openxr_interaction_profiles.h"
+#include "device/vr/openxr/openxr_util.h"
 
 namespace device {
 
@@ -53,7 +57,7 @@ XrResult OpenXrPlatformHelper::CreateInstance(XrInstance* instance) {
 }
 
 void OpenXrPlatformHelper::CreateInstanceWithCreateInfo(
-    absl::optional<OpenXrCreateInfo> create_info,
+    std::optional<OpenXrCreateInfo> create_info,
     CreateInstanceCallback instance_ready_callback,
     PlatormInitiatedShutdownCallback shutdown_callback) {
   DVLOG(1) << __func__;
@@ -133,27 +137,25 @@ XrResult OpenXrPlatformHelper::CreateInstance(XrInstance* instance,
     }
   };
 
-  // XR_MSFT_UNBOUNDED_REFERENCE_SPACE_EXTENSION_NAME, is required for optional
-  // functionality (unbounded reference spaces) and thus only requested if it is
-  // available.
-  EnableExtensionIfSupported(XR_MSFT_UNBOUNDED_REFERENCE_SPACE_EXTENSION_NAME);
+  std::set<std::string> handled_extensions;
+  for (const auto* factory : GetExtensionHandlerFactories()) {
+    auto factory_extensions = factory->GetRequestedExtensions();
+    handled_extensions.insert(factory_extensions.begin(),
+                              factory_extensions.end());
+  }
 
   // Enable the required extensions for any controllers that both we and the
   // runtime support.
-  // Hold a reference to the vector to ensure that the `.c_str()` data remains
-  // valid until the xrCreateInstance call at the end of this function.
-  const auto& interaction_profiles = GetOpenXrControllerInteractionProfiles();
-  for (const auto& interaction_profile : interaction_profiles) {
+  for (const auto& interaction_profile :
+       GetOpenXrControllerInteractionProfiles()) {
     if (!interaction_profile.required_extension.empty()) {
-      EnableExtensionIfSupported(
-          interaction_profile.required_extension.c_str());
+      handled_extensions.insert(interaction_profile.required_extension);
     }
   }
 
-  EnableExtensionIfSupported(XR_EXT_HAND_TRACKING_EXTENSION_NAME);
-  EnableExtensionIfSupported(XR_FB_HAND_TRACKING_AIM_EXTENSION_NAME);
-  EnableExtensionIfSupported(XR_MSFT_SPATIAL_ANCHOR_EXTENSION_NAME);
-  EnableExtensionIfSupported(XR_MSFT_SCENE_UNDERSTANDING_EXTENSION_NAME);
+  for (const auto& extension : handled_extensions) {
+    EnableExtensionIfSupported(extension.c_str());
+  }
 
   EnableExtensionIfSupported(
       XR_MSFT_SECONDARY_VIEW_CONFIGURATION_EXTENSION_NAME);
@@ -183,9 +185,29 @@ XrResult OpenXrPlatformHelper::CreateInstance(XrInstance* instance,
   XrResult result = xrCreateInstance(&instance_create_info, instance);
   if (XR_SUCCEEDED(result)) {
     xr_instance_ = *instance;
+    UpdateExtensionFactorySupport();
+  } else {
+    DLOG(ERROR) << __func__ << " Failed to create instance: " << result;
+    OnInstanceCreateFailure();
   }
 
   return result;
+}
+
+void OpenXrPlatformHelper::UpdateExtensionFactorySupport() {
+  CHECK(xr_instance_ != XR_NULL_HANDLE);
+  auto* extension_enumeration = GetExtensionEnumeration();
+
+  // If we can't get the System, then the worst case here is that any extensions
+  // that need XrSystemProperties will just stay disabled and that can be
+  // handled later.
+  XrSystemId system;
+  OpenXrApiWrapper::GetSystem(xr_instance_, &system);
+
+  for (auto* extension_factory : GetExtensionHandlerFactories()) {
+    extension_factory->ProcessSystemProperties(extension_enumeration,
+                                               xr_instance_, system);
+  }
 }
 
 XrResult OpenXrPlatformHelper::DestroyInstance(XrInstance& instance) {

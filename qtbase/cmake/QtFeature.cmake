@@ -47,13 +47,56 @@ function(qt_feature feature)
     qt_feature_normalize_name("${feature}" feature)
     set_property(GLOBAL PROPERTY QT_FEATURE_ORIGINAL_NAME_${feature} "${original_name}")
 
+    set(no_value_options
+        PRIVATE
+        PUBLIC
+        SYSTEM_LIBRARY
+    )
+    set(single_value_options
+        LABEL
+        PURPOSE
+        SECTION
+    )
+    set(multi_value_options
+        AUTODETECT
+        CONDITION
+        ENABLE
+        DISABLE
+        EMIT_IF
+    )
     cmake_parse_arguments(PARSE_ARGV 1 arg
-        "PRIVATE;PUBLIC"
-        "LABEL;PURPOSE;SECTION"
-        "AUTODETECT;CONDITION;ENABLE;DISABLE;EMIT_IF")
+        "${no_value_options}" "${single_value_options}" "${multi_value_options}"
+    )
     _qt_internal_validate_all_args_are_parsed(arg)
 
-    set(_QT_FEATURE_DEFINITION_${feature} ${ARGN} PARENT_SCOPE)
+    if(arg_SYSTEM_LIBRARY)
+        # Enable SYSTEM_LIBRARY features if the 'force-system-libs' feature is enabled.
+        if(DEFINED arg_ENABLE)
+            list(PREPEND arg_ENABLE OR)
+        endif()
+        list(PREPEND arg_ENABLE QT_FEATURE_force_system_libs)
+
+        # Disable SYSTEM_LIBRARY features if the 'force-bundled-libs' feature is enabled.
+        if(DEFINED arg_DISABLE)
+            list(PREPEND arg_DISABLE OR)
+        endif()
+        list(PREPEND arg_DISABLE QT_FEATURE_force_bundled_libs)
+
+        qt_remove_args(forward_args
+            ARGS_TO_REMOVE ENABLE DISABLE
+            ALL_ARGS ${no_value_options} ${single_value_options} ${multi_value_options}
+            ARGS ${ARGN}
+        )
+
+        list(APPEND forward_args
+            ENABLE ${arg_ENABLE}
+            DISABLE ${arg_DISABLE}
+        )
+    else()
+        set(forward_args ${ARGN})
+    endif()
+
+    set(_QT_FEATURE_DEFINITION_${feature} ${forward_args} PARENT_SCOPE)
 
     # Register feature for future use:
     if (arg_PUBLIC)
@@ -72,6 +115,263 @@ function(qt_feature feature)
     set(__QtFeature_internal_features ${__QtFeature_internal_features} PARENT_SCOPE)
 endfunction()
 
+# Define an alternative alias for the main feature definition.
+#
+# If the main feature is defined, it takes precedence and all others are ignored. Otherwise
+# only one alias may be defined.
+#
+# Currently, we need this to be a dedicated function because we are gathering all aliases of
+# the main feature and check its real value as part of
+# `qt_feature_check_and_save_user_provided_value`
+#
+# TODO: See how to move this into the main `qt_feature` definition flow.
+# TODO: How to add `CONDITION` and how does it interact with the main feature's `EMIT_IF`
+#
+# Synopsis
+#
+#   qt_feature_alias(<alias_feature>
+#       {ALIAS_OF_FEATURE <real_feature> | ALIAS_OF_CACHE <cache>}
+#       [PRIVATE | PUBLIC]
+#       [LABEL <string>]
+#       [PURPOSE <string>]
+#       [SECTION <string>]
+#       [NEGATE]
+#   )
+#
+# Arguments
+#
+# `<alias_feature>`
+#   The feature alias to be created.
+#
+# `ALIAS_OF_FEATURE`
+#   The true canonical feature to consider.
+#
+# `ALIAS_OF_CACHE`
+#   The true cache variable that this value must synchronize with.
+#
+# `NEGATE`
+#   Populate the main FEATURE variable with the opposite of the alias's value
+#
+# `LABEL`, `PURPOSE`, `SECTION`
+#   Same as in `qt_feature`
+#
+# `PRIVATE`, `PUBLIC`
+#   Same as in `qt_feature`. When `ALIAS_OF_FEATURE` is used, these have no effect, instead the
+#   value of the the true feature is used.
+function(qt_feature_alias alias_feature)
+    set(option_args
+        NEGATE
+        PRIVATE
+        PUBLIC
+    )
+    set(single_args
+        ALIAS_OF_FEATURE
+        ALIAS_OF_CACHE
+        LABEL
+        PURPOSE
+        SECTION
+    )
+    set(multi_args "")
+
+    cmake_parse_arguments(PARSE_ARGV 1 arg "${option_args}" "${single_args}" "${multi_args}")
+    _qt_internal_validate_all_args_are_parsed(arg)
+
+    if(NOT arg_ALIAS_OF_FEATURE AND NOT arg_ALIAS_OF_CACHE)
+        message(FATAL_ERROR "One of ALIAS_OF_FEATURE,ALIAS_OF_CACHE must be passed.")
+    endif()
+    if(arg_ALIAS_OF_FEATURE AND arg_ALIAS_OF_CACHE)
+        message(FATAL_ERROR "ALIAS_OF_FEATURE and ALIAS_OF_CACHE are mutually exclusive.")
+    endif()
+
+    set(original_name "${alias_feature}")
+    qt_feature_normalize_name("${alias_feature}" alias_feature)
+    set_property(GLOBAL PROPERTY QT_FEATURE_ORIGINAL_NAME_${alias_feature} "${original_name}")
+
+    set(forward_args "")
+    if(arg_ALIAS_OF_FEATURE)
+        qt_feature_normalize_name("${arg_ALIAS_OF_FEATURE}" arg_ALIAS_OF_FEATURE)
+        if(NOT DEFINED _QT_FEATURE_DEFINITION_${arg_ALIAS_OF_FEATURE})
+            message(FATAL_ERROR "Primary feature ${arg_ALIAS_OF_FEATURE} was not defined yet.")
+        endif()
+        list(APPEND _QT_FEATURE_ALIASES_${arg_ALIAS_OF_FEATURE} "${alias_feature}")
+        list(APPEND forward_args ALIAS_OF_FEATURE "${arg_ALIAS_OF_FEATURE}")
+    endif()
+    if(arg_ALIAS_OF_CACHE)
+        list(APPEND forward_args ALIAS_OF_CACHE "${arg_ALIAS_OF_CACHE}")
+    endif()
+    if(arg_NEGATE)
+        list(APPEND forward_args ALIAS_NEGATE)
+    endif()
+    if(arg_LABEL)
+        list(APPEND forward_args LABEL "${arg_LABEL}")
+    endif()
+    if(arg_PURPOSE)
+        list(APPEND forward_args PURPOSE "${arg_PURPOSE}")
+    endif()
+    if(arg_SECTION)
+        list(APPEND forward_args SECTION "${arg_SECTION}")
+    endif()
+
+    set(_QT_FEATURE_DEFINITION_${alias_feature} ${forward_args} PARENT_SCOPE)
+
+    if(arg_ALIAS_OF_FEATURE)
+        # Register alias as a feature type similar to the true one
+        foreach(type IN ITEMS public private internal)
+            if(arg_ALIAS_OF_FEATURE IN_LIST __QtFeature_${type}_features)
+                list(APPEND __QtFeature_${type}_features "${alias_feature}")
+                set(__QtFeature_${type}_features ${__QtFeature_${type}_features} PARENT_SCOPE)
+
+            endif()
+        endforeach()
+        set(_QT_FEATURE_ALIASES_${arg_ALIAS_OF_FEATURE}
+            "${_QT_FEATURE_ALIASES_${arg_ALIAS_OF_FEATURE}}" PARENT_SCOPE)
+    else()
+        # Otherwise use the same logic as qt_feature
+        if (arg_PUBLIC)
+            list(APPEND __QtFeature_public_features "${alias_feature}")
+        endif()
+        if (arg_PRIVATE)
+            list(APPEND __QtFeature_private_features "${alias_feature}")
+        endif()
+        if (NOT arg_PUBLIC AND NOT arg_PRIVATE)
+            list(APPEND __QtFeature_internal_features "${alias_feature}")
+        endif()
+
+        set(__QtFeature_public_features ${__QtFeature_public_features} PARENT_SCOPE)
+        set(__QtFeature_private_features ${__QtFeature_private_features} PARENT_SCOPE)
+        set(__QtFeature_internal_features ${__QtFeature_internal_features} PARENT_SCOPE)
+    endif()
+endfunction()
+
+# Create a deprecated feature
+#
+# Synopsis
+#
+#   qt_feature_deprecated(<feature>
+#       REMOVE_BY <version>
+#       [MESSAGE <string>] [VALUE <val>]
+#       [PRIVATE | PUBLIC]
+#       [LABEL <string>] [PURPOSE <string>] [SECTION <string>]
+#   )
+#
+# Arguments
+#
+# `<feature>`
+#   The feature to be created.
+#
+# `REMOVE_BY`
+#   Qt version when this feature is going to be removed
+#
+# `MESSAGE`
+#   Additional deprecation message to be printed.
+#
+# `VALUE`
+#   Value of the `QT_FEATURE_<feature>` that this is forced to. If undefined,
+#   `QT_FEATURE_<feature>` is not populated
+#
+# `LABEL`, `PURPOSE`, `SECTION`, `PRIVATE`, `PUBLIC`
+#   Same as in `qt_feature`
+function(qt_feature_deprecated feature)
+    set(option_args
+        PRIVATE
+        PUBLIC
+    )
+    set(single_args
+        REMOVE_BY
+        MESSAGE
+        VALUE
+        LABEL
+        PURPOSE
+        SECTION
+    )
+    set(multi_args "")
+
+    cmake_parse_arguments(PARSE_ARGV 1 arg "${option_args}" "${single_args}" "${multi_args}")
+    _qt_internal_validate_all_args_are_parsed(arg)
+
+    if(NOT arg_REMOVE_BY)
+        message(FATAL_ERROR "qt_feature_deprecated requires REMOVE_BY keyword")
+    elseif(PROJECT_VERSION VERSION_GREATER_EQUAL arg_REMOVE_BY)
+        message(FATAL_ERROR
+            "Deprecated feature ${feature} must be removed before Qt version ${arg_REMOVE_BY}"
+        )
+    endif()
+
+    set(original_name "${feature}")
+    qt_feature_normalize_name("${feature}" feature)
+
+    # Check if the values were manually passed
+    if(DEFINED FEATURE_${feature})
+        set(deprecation_msg "FEATURE_${feature} is deprecated. ")
+        if(arg_VALUE)
+            string(APPEND deprecation_msg "The value is always: ${arg_VALUE}")
+        else()
+            string(APPEND deprecation_msg "The value is not used.")
+        endif()
+        if(arg_MESSAGE)
+            string(APPEND deprecation_msg "\n${arg_MESSAGE}")
+        endif()
+        qt_configure_add_report_entry(RECORD_ON_FEATURE_EVALUATION TYPE WARNING
+            MESSAGE "${deprecation_msg}")
+        unset(FEATURE_${feature} CACHE)
+    endif()
+
+    # Make sure the `QT_FEATURE_*` value is set/unset accordingly
+    unset(err_msg)
+    if(arg_VALUE)
+        if(DEFINED QT_FEATURE_${feature} AND NOT QT_FEATURE_${feature} STREQUAL arg_VALUE)
+            string(CONCAT err_msg
+                "QT_FEATURE_${feature} was manually set to ${QT_FEATURE_${feature}}, but"
+                "the only supported value is: ${arg_VALUE}\n"
+                "Overwriting QT_FEATURE_${feature} cache to ${arg_VALUE}"
+            )
+        endif()
+        set(QT_FEATURE_${feature} "${arg_VALUE}" CACHE INTERNAL
+            "Deprecated: Always ${arg_VALUE}. ${arg_MESSAGE}"
+        )
+    else()
+        if(DEFINED QT_FEATURE_${feature})
+            string(CONCAT msg
+                "QT_FEATURE_${feature} was manually set to ${QT_FEATURE_${feature}}, but"
+                "the value must **NOT** be set.\n"
+                "Unsetting QT_FEATURE_${feature} cache"
+            )
+            unset(QT_FEATURE_${feature} CACHE)
+        endif()
+    endif()
+
+    # Emit the error message if we have an unexpected `QT_FEATURE_*`
+    if(err_msg)
+        if(arg_MESSAGE)
+            string(APPEND err_msg "\n${arg_MESSAGE}")
+        endif()
+        qt_configure_add_report_error("${err_msg}")
+    endif()
+
+    # Register the feature as a normal feature
+    set(forward_args "")
+    foreach(arg IN ITEMS LABEL PURPOSE SECTION)
+        if(arg_${arg})
+            list(APPEND forward_args ${arg} "${arg_${arg}}")
+        endif()
+    endforeach()
+    set(_QT_FEATURE_DEFINITION_${feature} ${forward_args} PARENT_SCOPE)
+
+    # Do the feature register
+    if (arg_PUBLIC)
+        list(APPEND __QtFeature_public_features "${feature}")
+        set(__QtFeature_public_features ${__QtFeature_public_features} PARENT_SCOPE)
+    endif()
+    if (arg_PRIVATE)
+        list(APPEND __QtFeature_private_features "${feature}")
+        set(__QtFeature_private_features ${__QtFeature_private_features} PARENT_SCOPE)
+    endif()
+    if (NOT arg_PUBLIC AND NOT arg_PRIVATE)
+        list(APPEND __QtFeature_internal_features "${feature}")
+        set(__QtFeature_internal_features ${__QtFeature_internal_features} PARENT_SCOPE)
+    endif()
+endfunction()
+
 function(qt_evaluate_to_boolean expressionVar)
     if(${${expressionVar}})
         set(${expressionVar} ON PARENT_SCOPE)
@@ -84,6 +384,7 @@ function(qt_internal_evaluate_config_expression resultVar outIdx startIdx)
     set(result "")
     set(expression "${ARGN}")
     list(LENGTH expression length)
+    get_property(known_compile_tests GLOBAL PROPERTY _qtfeature_known_compile_tests)
 
     math(EXPR memberIdx "${startIdx} - 1")
     math(EXPR length "${length}-1")
@@ -134,8 +435,13 @@ function(qt_internal_evaluate_config_expression resultVar outIdx startIdx)
             string(COMPARE EQUAL "${lhs}" "${rhs}" stringCompareResult)
             list(APPEND result ${stringCompareResult})
         else()
-            string(FIND "${member}" "QT_FEATURE_" idx)
-            if(idx EQUAL 0)
+            if(member MATCHES "^TEST_")
+                # Remove the TEST_ prefix
+                string(SUBSTRING "${member}" 5 -1 test_name)
+                if(test_name IN_LIST known_compile_tests)
+                    qt_run_config_compile_test("${test_name}")
+                endif()
+            elseif(member MATCHES "^QT_FEATURE_")
                 # Remove the QT_FEATURE_ prefix
                 string(SUBSTRING "${member}" 11 -1 feature)
                 qt_evaluate_feature(${feature})
@@ -243,6 +549,146 @@ function(_qt_internal_dump_expression_values expression_dump expression)
     set(${expression_dump} "${${expression_dump}}" PARENT_SCOPE)
 endfunction()
 
+# Check the actual value of a given feature/alias.
+# The value can come from `FEATURE_<alias>` being set or from another alias.
+# The out_var is sanitized to 0/1 and it is not set if the feature was not defined.
+function(_qt_feature_evaluate_alias out_var alias)
+    # Evaluate the alias against the aliases of the alias
+    _qt_feature_check_feature_alias(${alias})
+    if(NOT DEFINED FEATURE_${alias})
+        # If the alias was not defined, don't set value
+        return()
+    endif()
+    # Check if we need to negate the value to be set or not
+    set(not_kw)
+    _qt_internal_parse_feature_definition("${alias}")
+    if(arg_ALIAS_NEGATE)
+        set(not_kw "NOT")
+    endif()
+    # Evaluate the value and return it
+    qt_set01(${out_var} ${not_kw} FEATURE_${alias})
+    set(${out_var} "${${out_var}}" PARENT_SCOPE)
+    # Also set `not_kw` since it would be reused by the caller
+    set(not_kw "${not_kw}" PARENT_SCOPE)
+endfunction()
+
+# Check that the feature value is consistent with any of its aliases.
+# If the feature was not set via `FEATURE_<feature>`, it may be set by the aliases.
+function(_qt_feature_check_feature_alias feature)
+    if(DEFINED "FEATURE_${feature}")
+        # The main feature was already defined, use the current value.
+        # Just check if the other aliases have agreeing values.
+        qt_set01(expected_value FEATURE_${feature})
+        unset(alias_value)
+        foreach(alias IN LISTS _QT_FEATURE_ALIASES_${feature})
+            _qt_feature_evaluate_alias(alias_value ${alias})
+            if(DEFINED alias_value)
+                if(NOT expected_value EQUAL alias_value)
+                    string(CONCAT msg
+                        "Alias FEATURE_${alias}(${FEATURE_${alias}}) is an alias of ${not_kw} "
+                        "FEATURE_${feature}(${FEATURE_${alias}}), and their values conflict"
+                    )
+                    qt_configure_add_report_error(${msg})
+                endif()
+                unset(alias_value)
+            endif()
+        endforeach()
+        return()
+    endif()
+    # Otherwise try to set the `feature` value from the aliases
+    set(aliases_set "")
+    set(expected_value "")
+    set(alias_not_kws "")
+    unset(value)
+    foreach(alias IN LISTS _QT_FEATURE_ALIASES_${feature})
+        _qt_feature_evaluate_alias(value ${alias})
+        if(DEFINED value)
+            list(APPEND aliases_set "${alias}")
+            list(APPEND expected_value "${value}")
+            list(APPEND alias_not_kws "${not_kw}")
+            unset(value)
+        endif()
+    endforeach()
+    # If there were no aliases set, do not set the feature either
+    if(NOT aliases_set)
+        return()
+    endif()
+    # Check if all values are consistent
+    list(TRANSFORM REMOVE_DUPLICATES expected_value)
+    list(LENGTH expected_value expected_value_length)
+    if(expected_value_length GREATER 1)
+        string(CONCAT msg
+            "Multiple aliases of FEATURE_${feature} were defined, with conflicting values.\n"
+            "Aliases:"
+        )
+        while(aliases_set)
+            list(POP_FRONT aliases_set alias)
+            list(POP_FRONT alias_not_kws not_kw)
+            string(CONCAT msg
+                "${msg}\n"
+                "  - ${not_kw} FEATURE_${alias}(${FEATURE_${alias}})"
+            )
+        endwhile()
+        qt_configure_add_report_error(${msg})
+        return()
+    endif()
+    # All aliased values are agreeing
+    set("FEATURE_${feature}" ${expected_value} PARENT_SCOPE)
+endfunction()
+
+# Check that the alias value is consistent with its cache source
+function(_qt_feature_check_cache_alias feature)
+    _qt_internal_parse_feature_definition("${feature}")
+    if(NOT arg_ALIAS_OF_CACHE)
+        # Not an alias of a cache variable, skip this check
+        return()
+    endif()
+    if(DEFINED "${arg_ALIAS_OF_CACHE}")
+        # Check if the feature is set by another alias
+        unset(expected_value)
+        _qt_feature_evaluate_alias(expected_value "${feature}")
+        qt_set01(cache_sanitized ${arg_ALIAS_OF_CACHE})
+        if(NOT DEFINED expected_value)
+            # If nothing else set the alias value, use the primary cache value
+            set("FEATURE_${feature}" "${${arg_ALIAS_OF_CACHE}}" PARENT_SCOPE)
+            return()
+        endif()
+        # Otherwise, just check for consistency
+        if(NOT cache_sanitized EQUAL expected_value)
+            string(CONCAT msg
+                "FEATURE_${feature}(${FEATURE_${feature}}) is an alias of ${not_kw} "
+                "${arg_ALIAS_OF_CACHE}(${${arg_ALIAS_OF_CACHE}}), and their values conflict."
+            )
+            qt_configure_add_report_error(${msg})
+        endif()
+    endif()
+endfunction()
+
+# Make sure all the direct alias values are set after the final evaluation of the feature value.
+# Must be run after `_qt_feature_check_feature_alias` which checks for user-defined values and
+# any inconsistencies
+function(_qt_feature_save_alias feature)
+    foreach(alias IN LISTS _QT_FEATURE_ALIASES_${feature})
+        # We only need to set the alias values if they were not explicitly set. The consistency
+        # check for those was done prior to this function call.
+        if(NOT DEFINED FEATURE_${alias})
+            # Evaluate the alias value based on the original
+            set(not_kw)
+            _qt_internal_parse_feature_definition("${alias}")
+            if(arg_ALIAS_NEGATE)
+                set(not_kw "NOT")
+            endif()
+            qt_set01(value ${not_kw} FEATURE_${feature})
+            qt_evaluate_to_boolean(value)
+            # Set the values based on the main feature's value
+            set(FEATURE_${alias} ${value} CACHE BOOL
+                # Using a temporary docstring that should be overwritten if everything works well
+                "(temporarily set by _qt_feature_save_alias)"
+            )
+        endif()
+    endforeach()
+endfunction()
+
 # Stores the user provided value to FEATURE_${feature} if provided.
 # If not provided, stores ${computed} instead.
 # ${computed} is also stored when reconfiguring and the condition does not align with the user
@@ -250,6 +696,8 @@ endfunction()
 #
 function(qt_feature_check_and_save_user_provided_value
         resultVar feature condition condition_expression computed label)
+    _qt_feature_check_cache_alias(${feature})
+    _qt_feature_check_feature_alias(${feature})
     if (DEFINED "FEATURE_${feature}")
         # Revisit new user provided value
         set(user_value "${FEATURE_${feature}}")
@@ -302,6 +750,10 @@ function(qt_feature_check_and_save_user_provided_value
         # Initial setup:
         set(result "${computed}")
         set("FEATURE_${feature}" "${result}" CACHE BOOL "${label}")
+        # Update the HELPSTRING if needed
+        set_property(CACHE "FEATURE_${feature}" PROPERTY
+            HELPSTRING "${label}"
+        )
     endif()
 
     # Check for potential typo
@@ -312,6 +764,9 @@ function(qt_feature_check_and_save_user_provided_value
             "FEATURE_${original_name} does not exist. Consider using: FEATURE_${feature}"
         )
     endif()
+
+    # Set the values of each direct alias
+    _qt_feature_save_alias("${feature}")
 
     set("${resultVar}" "${result}" PARENT_SCOPE)
 endfunction()
@@ -344,8 +799,8 @@ endmacro()
 
 macro(_qt_internal_parse_feature_definition feature)
     cmake_parse_arguments(arg
-        "PRIVATE;PUBLIC"
-        "LABEL;PURPOSE;SECTION;"
+        "PRIVATE;PUBLIC;ALIAS_NEGATE"
+        "LABEL;PURPOSE;SECTION;ALIAS_OF_FEATURE;ALIAS_OF_CACHE"
         "AUTODETECT;CONDITION;ENABLE;DISABLE;EMIT_IF"
         ${_QT_FEATURE_DEFINITION_${feature}})
 endmacro()
@@ -387,6 +842,12 @@ function(qt_evaluate_feature feature)
 
     _qt_internal_parse_feature_definition("${feature}")
 
+    if(arg_ALIAS_OF)
+        # If the current feature is an alias of another, we have to check the original source first
+        # in order to be consistent with the original source if set
+        qt_evaluate_feature("${arg_ALIAS_OF}")
+    endif()
+
     if("${arg_ENABLE}" STREQUAL "")
         set(arg_ENABLE OFF)
     endif()
@@ -425,6 +886,17 @@ function(qt_evaluate_feature feature)
         qt_evaluate_config_expression(emit_if ${arg_EMIT_IF})
     endif()
 
+    set(actual_label "${arg_LABEL}")
+    if(arg_ALIAS_OF_FEATURE OR arg_ALIAS_OF_CACHE)
+        set(not_kw)
+        if(arg_ALIAS_NEGATE)
+            set(not_kw "NOT")
+        endif()
+        # Only one of ALIAS_OF_FEATURE/ALIAS_OF_CACHE will be set, so we can just combine them
+        set(alias_source "${not_kw} ${arg_ALIAS_OF_FEATURE}${arg_ALIAS_OF_CACHE}")
+        string(APPEND actual_label " (alias of ${alias_source})")
+    endif()
+
     # Warn about a feature which is not emitted, but the user explicitly provided a value for it.
     if(NOT emit_if AND DEFINED FEATURE_${feature})
         set(msg "")
@@ -442,17 +914,17 @@ function(qt_evaluate_feature feature)
     if(emit_if)
         qt_feature_check_and_save_user_provided_value(
             saved_user_value
-            "${feature}" "${condition}" "${arg_CONDITION}" "${computed}" "${arg_LABEL}")
+            "${feature}" "${condition}" "${arg_CONDITION}" "${computed}" "${actual_label}")
     else()
         # Make sure the feature internal value is OFF if not emitted.
         set(saved_user_value OFF)
     endif()
 
     qt_feature_check_and_save_internal_value(
-        "${feature}" "${saved_user_value}" "${condition}" "${arg_LABEL}" "${arg_CONDITION}")
+        "${feature}" "${saved_user_value}" "${condition}" "${actual_label}" "${arg_CONDITION}")
 
     # Store each feature's label for summary info.
-    set(QT_FEATURE_LABEL_${feature} "${arg_LABEL}" CACHE INTERNAL "")
+    set(QT_FEATURE_LABEL_${feature} "${actual_label}" CACHE INTERNAL "")
 endfunction()
 
 # Collect feature names that ${feature} depends on, by inspecting the given expression.
@@ -761,6 +1233,7 @@ function(qt_feature_module_end)
 
     foreach(feature ${all_features})
         unset(_QT_FEATURE_DEFINITION_${feature} PARENT_SCOPE)
+        unset(_QT_FEATURE_ALIASES_${feature} PARENT_SCOPE)
     endforeach()
 
     if(NOT arg_ONLY_EVALUATE_FEATURES)
@@ -775,12 +1248,36 @@ function(qt_feature_module_end)
 
     if (NOT ("${target}" STREQUAL "NO_MODULE") AND NOT arg_ONLY_EVALUATE_FEATURES)
         get_target_property(targetType "${target}" TYPE)
+
+        set(properties_to_export
+            QT_ENABLED_PUBLIC_FEATURES
+            QT_DISABLED_PUBLIC_FEATURES
+            QT_ENABLED_PRIVATE_FEATURES
+            QT_DISABLED_PRIVATE_FEATURES
+            QT_QMAKE_PUBLIC_CONFIG
+            QT_QMAKE_PRIVATE_CONFIG
+            QT_QMAKE_PUBLIC_QT_CONFIG
+
+        )
         if("${targetType}" STREQUAL "INTERFACE_LIBRARY")
             set(propertyPrefix "INTERFACE_")
+            list(TRANSFORM properties_to_export PREPEND "${propertyPrefix}")
+            # CMake doesn't allow us to export INTERFACE_* properties via EXPORT_PROPERTIES, it
+            # says INTERFACE_* properties are reserved.
+            # Instead, use our own property export infrastructure that places the values in the
+            # module-specific Qt6<Foo>ExtraProperties.cmake file.
+            # qt_internal_add_genex_properties_export was originally intended for properties with
+            # genexes, but we can use it for this use case as well.
+            # Before, we didn't use to export the properties at all for INTERFACE_ libraries,
+            # but we need to, because certain GlobalPrivate modules have features which are used
+            # in configure-time conditions for tests.
+            qt_internal_add_genex_properties_export("${target}" ${properties_to_export})
         else()
             set(propertyPrefix "")
-            set_property(TARGET "${target}" APPEND PROPERTY EXPORT_PROPERTIES "QT_ENABLED_PUBLIC_FEATURES;QT_DISABLED_PUBLIC_FEATURES;QT_ENABLED_PRIVATE_FEATURES;QT_DISABLED_PRIVATE_FEATURES;QT_QMAKE_PUBLIC_CONFIG;QT_QMAKE_PRIVATE_CONFIG;QT_QMAKE_PUBLIC_QT_CONFIG")
+            set_property(TARGET "${target}"
+                APPEND PROPERTY EXPORT_PROPERTIES ${properties_to_export})
         endif()
+
         foreach(visibility public private)
             string(TOUPPER "${visibility}" capitalVisibility)
             foreach(state enabled disabled)
@@ -915,13 +1412,33 @@ endfunction()
 #
 # Sets a TEST_${name}_OUTPUT variable with the build output, to the scope of the calling function.
 # Sets a TEST_${name} cache variable to either TRUE or FALSE if the build is successful or not.
-function(qt_config_compile_test name)
+#
+# The test is only run if a feature condition needs to evaluate the TEST_${name} variable. If you
+# need the test result regardless of any feature conditions, call
+# qt_run_config_compile_test right after qt_config_compile_test.
+macro(qt_config_compile_test name)
+    set_property(GLOBAL APPEND PROPERTY _qtfeature_known_compile_tests ${name})
+    set_property(GLOBAL PROPERTY _qtfeature_compile_test_args_${name} ${ARGN})
+    if(QT_RUN_COMPILE_TESTS_IMMEDIATELY)
+        qt_run_config_compile_test(${name})
+    endif()
+endmacro()
+
+# Runs a compile test that was defined with qt_config_compile_test.
+function(qt_run_config_compile_test name)
     if(DEFINED "TEST_${name}")
         return()
     endif()
 
+    get_property(test_args GLOBAL PROPERTY _qtfeature_compile_test_args_${name})
+    if("${test_args}" STREQUAL "")
+        message(FATAL_ERROR
+            "Can't find definition for compile test '${name}'. "
+            "The test probably wasn't defined with qt_config_compile_test."
+        )
+    endif()
     cmake_parse_arguments(arg "" "LABEL;PROJECT_PATH;C_STANDARD;CXX_STANDARD"
-        "COMPILE_OPTIONS;LIBRARIES;CODE;PACKAGES;CMAKE_FLAGS" ${ARGN})
+        "COMPILE_OPTIONS;LIBRARIES;CODE;PACKAGES;CMAKE_FLAGS" ${test_args})
 
     if(arg_PROJECT_PATH)
         message(STATUS "Performing Test ${arg_LABEL}")
@@ -1077,7 +1594,8 @@ function(qt_config_compile_test name)
             endif()
 
             if(arg_CXX_STANDARD)
-                if(${arg_CXX_STANDARD} LESS 23 OR ${CMAKE_VERSION} VERSION_GREATER_EQUAL "3.20")
+                if((${arg_CXX_STANDARD} LESS 23 OR ${CMAKE_VERSION} VERSION_GREATER_EQUAL "3.20") AND
+                   (${arg_CXX_STANDARD} LESS 26 OR ${CMAKE_VERSION} VERSION_GREATER_EQUAL "3.25"))
                     set(CMAKE_CXX_STANDARD "${arg_CXX_STANDARD}")
                     set(CMAKE_CXX_STANDARD_REQUIRED OFF)
                 endif()
@@ -1108,17 +1626,9 @@ function(qt_config_compile_test name)
             set(_save_CMAKE_REQUIRED_LIBRARIES "${CMAKE_REQUIRED_LIBRARIES}")
             set(CMAKE_REQUIRED_LIBRARIES "${arg_LIBRARIES}")
 
-            # OUTPUT_VARIABLE is an internal undocumented variable of check_cxx_source_compiles
-            # since 3.23. Allow an opt out in case this breaks in the future.
-            set(try_compile_output "")
-            set(output_var "")
-            if(CMAKE_VERSION VERSION_GREATER_EQUAL "3.23"
-                    AND NOT QT_INTERNAL_NO_TRY_COMPILE_OUTPUT_VARIABLE)
-                set(output_var OUTPUT_VARIABLE try_compile_output)
-            endif()
-
+            _qt_internal_get_check_cxx_source_compiles_out_var(try_compile_output extra_args)
             check_cxx_source_compiles(
-                "${arg_UNPARSED_ARGUMENTS} ${arg_CODE}" HAVE_${name} ${output_var}
+                "${arg_UNPARSED_ARGUMENTS} ${arg_CODE}" HAVE_${name} ${extra_args}
             )
             set(CMAKE_REQUIRED_LIBRARIES "${_save_CMAKE_REQUIRED_LIBRARIES}")
 
@@ -1131,7 +1641,14 @@ function(qt_config_compile_test name)
         endif()
     endif()
 
+    # Note this is assigned to the parent scope, and is not a CACHE var, which means the value is
+    # only available on first configuration.
     set(TEST_${name}_OUTPUT "${try_compile_output}" PARENT_SCOPE)
+
+    # Story the compile output for a test in a global property. It will only be available on first
+    # configuration, because we don't cache it across cmake invocations.
+    set_property(GLOBAL PROPERTY _qt_run_config_compile_test_output_${name} "${try_compile_output}")
+
     set(TEST_${name} "${HAVE_${name}}" CACHE INTERNAL "${arg_LABEL}")
 endfunction()
 
@@ -1247,6 +1764,56 @@ function(qt_config_compile_test_x86simd extension label)
     endif()
     message(STATUS "Performing Test ${label} intrinsics - ${status_label}")
     set(TEST_subarch_${extension} "${TEST_X86SIMD_${extension}}" CACHE INTERNAL "${label}")
+endfunction()
+
+function(qt_config_compile_test_armintrin extension label)
+    if (DEFINED TEST_ARMINTRIN_${extension})
+        return()
+    endif()
+
+    set(flags "-DSIMD:string=${extension}")
+
+    qt_get_platform_try_compile_vars(platform_try_compile_vars)
+    list(APPEND flags ${platform_try_compile_vars})
+
+    message(STATUS "Performing Test ${label} intrinsics")
+    try_compile("TEST_ARMINTRIN_${extension}"
+        "${CMAKE_CURRENT_BINARY_DIR}/config.tests/armintrin_${extension}"
+        "${CMAKE_CURRENT_SOURCE_DIR}/config.tests/armintrin"
+        armintrin
+        CMAKE_FLAGS ${flags})
+    if(${TEST_ARMINTRIN_${extension}})
+        set(status_label "Success")
+    else()
+        set(status_label "Failed")
+    endif()
+    message(STATUS "Performing Test ${label} intrinsics - ${status_label}")
+    set(TEST_subarch_${extension} "${TEST_ARMINTRIN_${extension}}" CACHE INTERNAL "${label}")
+endfunction()
+
+function(qt_config_compile_test_loongarchsimd extension label)
+        if (DEFINED TEST_LOONGARCHSIMD_${extension})
+        return()
+    endif()
+
+    set(flags "-DSIMD:string=${extension}")
+
+    qt_get_platform_try_compile_vars(platform_try_compile_vars)
+    list(APPEND flags ${platform_try_compile_vars})
+
+    message(STATUS "Performing Test ${label} intrinsics")
+    try_compile("TEST_LOONGARCHSIMD_${extension}"
+        "${CMAKE_CURRENT_BINARY_DIR}/config.tests/loongarch_simd_${extension}"
+        "${CMAKE_CURRENT_SOURCE_DIR}/config.tests/loongarch_simd"
+        loongarch_simd
+        CMAKE_FLAGS ${flags})
+    if(${TEST_LOONGARCHSIMD_${extension}})
+        set(status_label "Success")
+    else()
+        set(status_label "Failed")
+    endif()
+    message(STATUS "Performing Test ${label} intrinsics - ${status_label}")
+    set(TEST_subarch_${extension} "${TEST_LOONGARCHSIMD_${extension}}" CACHE INTERNAL "${label}")
 endfunction()
 
 function(qt_config_compile_test_machine_tuple label)

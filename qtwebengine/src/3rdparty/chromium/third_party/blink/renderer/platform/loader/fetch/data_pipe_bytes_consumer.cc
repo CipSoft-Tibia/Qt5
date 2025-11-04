@@ -6,6 +6,7 @@
 
 #include <algorithm>
 
+#include "base/containers/span.h"
 #include "base/location.h"
 #include "base/numerics/safe_conversions.h"
 #include "base/task/single_thread_task_runner.h"
@@ -69,15 +70,15 @@ BytesConsumer::Result DataPipeBytesConsumer::BeginRead(const char** buffer,
   if (!data_pipe_.is_valid())
     return Result::kShouldWait;
 
-  uint32_t pipe_available = 0;
-  MojoResult rv =
-      data_pipe_->BeginReadData(reinterpret_cast<const void**>(buffer),
-                                &pipe_available, MOJO_READ_DATA_FLAG_NONE);
+  base::span<const uint8_t> bytes;
+  MojoResult rv = data_pipe_->BeginReadData(MOJO_READ_DATA_FLAG_NONE, bytes);
+  base::span<const char> chars = base::as_chars(bytes);
 
   switch (rv) {
     case MOJO_RESULT_OK:
       is_in_two_phase_read_ = true;
-      *available = pipe_available;
+      *buffer = chars.data();
+      *available = chars.size();
       return Result::kOk;
     case MOJO_RESULT_SHOULD_WAIT:
       watcher_.ArmOrNotify();
@@ -100,7 +101,7 @@ BytesConsumer::Result DataPipeBytesConsumer::BeginRead(const char** buffer,
       return Result::kError;
   }
 
-  NOTREACHED();
+  NOTREACHED_IN_MIGRATION();
 }
 
 BytesConsumer::Result DataPipeBytesConsumer::EndRead(size_t read) {
@@ -217,7 +218,7 @@ void DataPipeBytesConsumer::SignalSize(uint64_t size) {
   if (!IsWaiting() || has_pending_complete_ || has_pending_error_) {
     return;
   }
-  total_size_ = absl::make_optional(size);
+  total_size_ = std::make_optional(size);
   DCHECK_LE(num_read_bytes_, *total_size_);
   if (!data_pipe_.is_valid() && num_read_bytes_ < *total_size_) {
     SignalError(Error());

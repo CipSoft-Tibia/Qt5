@@ -4,11 +4,11 @@
 
 import * as Common from '../../core/common/common.js';
 import * as i18n from '../../core/i18n/i18n.js';
+import type * as Buttons from '../../ui/components/buttons/buttons.js';
 import * as UI from '../../ui/legacy/legacy.js';
 
 import {RuntimeSettings} from './LighthouseController.js';
 import lighthouseDialogStyles from './lighthouseDialog.css.js';
-
 import {type LighthousePanel} from './LighthousePanel.js';
 
 const UIStrings = {
@@ -156,7 +156,7 @@ export class StatusView {
   private progressWrapper: Element|null;
   private progressBar: Element|null;
   private statusText: Element|null;
-  private cancelButton: HTMLButtonElement|null;
+  private cancelButton: Buttons.Button.Button|null;
   private inspectedURL: string;
   private textChangedAt: number;
   private fastFactsQueued: Common.UIString.LocalizedString[];
@@ -188,7 +188,7 @@ export class StatusView {
   }
 
   private render(): void {
-    const dialogRoot = UI.Utils.createShadowRootWithCoreStyles(
+    const dialogRoot = UI.UIUtils.createShadowRootWithCoreStyles(
         this.dialog.contentElement, {cssFile: [lighthouseDialogStyles], delegatesFocus: undefined});
     const lighthouseViewElement = dialogRoot.createChild('div', 'lighthouse-view vbox');
 
@@ -221,7 +221,7 @@ export class StatusView {
     UI.ARIAUtils.markAsStatus(this.statusText);
 
     this.dialog.setDefaultFocusedElement(cancelButton);
-    this.dialog.setSizeBehavior(UI.GlassPane.SizeBehavior.SetExactWidthMaxHeight);
+    this.dialog.setSizeBehavior(UI.GlassPane.SizeBehavior.SET_EXACT_WIDTH_MAX_HEIGHT);
     this.dialog.setMaxContentSize(new UI.Geometry.Size(500, 400));
   }
 
@@ -304,7 +304,7 @@ export class StatusView {
       return phase.message();
     }
 
-    const deviceTypeSetting = RuntimeSettings.find(item => item.setting.name === 'lighthouse.device_type');
+    const deviceTypeSetting = RuntimeSettings.find(item => item.setting.name === 'lighthouse.device-type');
     const throttleSetting = RuntimeSettings.find(item => item.setting.name === 'lighthouse.throttling');
     const deviceType = deviceTypeSetting ? deviceTypeSetting.setting.get() : '';
     const throttling = throttleSetting ? throttleSetting.setting.get() : '';

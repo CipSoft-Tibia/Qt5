@@ -13,20 +13,24 @@
 QT_BEGIN_NAMESPACE
 
 class QAndroidPlatformServices : public QObject,
-                                 public QPlatformServices,
-                                 public QtAndroidPrivate::NewIntentListener
+                                 public QPlatformServices
+#if QT_CONFIG(desktopservices)
+                                 , public QtAndroidPrivate::NewIntentListener
+#endif
 {
 public:
     QAndroidPlatformServices();
 
-    bool openUrl(const QUrl &url) override;
-    bool openDocument(const QUrl &url) override;
     QByteArray desktopEnvironment() const override;
 
+#if QT_CONFIG(desktopservices)
+    bool openUrl(const QUrl &url) override;
+    bool openDocument(const QUrl &url) override;
     bool handleNewIntent(JNIEnv *env, jobject intent) override;
 
 private:
     bool openURL(const QUrl &url) const;
+    bool openURL(const QString &url) const;
     bool openUrlWithFileProvider(const QUrl &url);
     bool openUrlWithAuthority(const QUrl &url, const QString &authority);
 
@@ -37,6 +41,7 @@ private:
 private:
     QUrl m_handlingUrl;
     QString m_actionView;
+#endif
 };
 
 QT_END_NAMESPACE

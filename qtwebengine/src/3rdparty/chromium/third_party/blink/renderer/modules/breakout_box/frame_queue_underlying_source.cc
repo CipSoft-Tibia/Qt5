@@ -6,6 +6,8 @@
 
 #include "base/feature_list.h"
 #include "base/task/bind_post_task.h"
+#include "base/time/time.h"
+#include "base/trace_event/trace_event.h"
 #include "third_party/blink/renderer/bindings/core/v8/v8_throw_dom_exception.h"
 #include "third_party/blink/renderer/core/dom/dom_exception.h"
 #include "third_party/blink/renderer/core/execution_context/execution_context.h"
@@ -20,11 +22,19 @@
 #include "third_party/blink/renderer/platform/wtf/cross_thread_functional.h"
 #include "third_party/webrtc/api/frame_transformer_interface.h"
 
+namespace blink {
+
 BASE_FEATURE(kBreakoutBoxEnqueueInSeparateTask,
              "BreakoutBoxEnqueueInSeparateTask",
              base::FEATURE_ENABLED_BY_DEFAULT);
 
-namespace blink {
+BASE_FEATURE(kBreakoutBoxPreferCaptureTimestampInVideoFrames,
+             "BreakoutBoxPreferCaptureTimestampInVideoFrames",
+             base::FEATURE_ENABLED_BY_DEFAULT);
+
+BASE_FEATURE(kBreakoutBoxInsertVideoCaptureTimestamp,
+             "BreakoutBoxInsertVideoCaptureTimestamp",
+             base::FEATURE_DISABLED_BY_DEFAULT);
 
 namespace {
 
@@ -34,7 +44,7 @@ media::VideoFrame::ID GetFrameId(
 }
 
 media::VideoFrame::ID GetFrameId(const scoped_refptr<media::AudioBuffer>&) {
-  NOTREACHED();
+  NOTREACHED_IN_MIGRATION();
   return media::VideoFrame::ID();
 }
 
@@ -79,7 +89,7 @@ FrameQueueUnderlyingSource<NativeFrameType>::FrameQueueUnderlyingSource(
 }
 
 template <typename NativeFrameType>
-ScriptPromise FrameQueueUnderlyingSource<NativeFrameType>::Pull(
+ScriptPromiseUntyped FrameQueueUnderlyingSource<NativeFrameType>::Pull(
     ScriptState* script_state,
     ExceptionState&) {
   DCHECK(realm_task_runner_->RunsTasksInCurrentSequence());
@@ -89,7 +99,7 @@ ScriptPromise FrameQueueUnderlyingSource<NativeFrameType>::Pull(
   }
   auto frame_queue = frame_queue_handle_.Queue();
   if (!frame_queue)
-    return ScriptPromise::CastUndefined(script_state);
+    return ScriptPromiseUntyped::CastUndefined(script_state);
 
   if (!frame_queue->IsEmpty()) {
     // Enqueuing the frame in the stream controller synchronously can lead to a
@@ -102,11 +112,11 @@ ScriptPromise FrameQueueUnderlyingSource<NativeFrameType>::Pull(
                           NativeFrameType>::MaybeSendFrameFromQueueToStream,
                       WrapPersistent(this)));
   }
-  return ScriptPromise::CastUndefined(script_state);
+  return ScriptPromiseUntyped::CastUndefined(script_state);
 }
 
 template <typename NativeFrameType>
-ScriptPromise FrameQueueUnderlyingSource<NativeFrameType>::Start(
+ScriptPromiseUntyped FrameQueueUnderlyingSource<NativeFrameType>::Start(
     ScriptState* script_state,
     ExceptionState& exception_state) {
   DCHECK(realm_task_runner_->RunsTasksInCurrentSequence());
@@ -119,21 +129,21 @@ ScriptPromise FrameQueueUnderlyingSource<NativeFrameType>::Start(
       // implementations should return their own failure messages.
       exception_state.ThrowDOMException(DOMExceptionCode::kInvalidStateError,
                                         "Invalid track");
-      return ScriptPromise();
+      return ScriptPromiseUntyped();
     }
   }
 
-  return ScriptPromise::CastUndefined(script_state);
+  return ScriptPromiseUntyped::CastUndefined(script_state);
 }
 
 template <typename NativeFrameType>
-ScriptPromise FrameQueueUnderlyingSource<NativeFrameType>::Cancel(
+ScriptPromiseUntyped FrameQueueUnderlyingSource<NativeFrameType>::Cancel(
     ScriptState* script_state,
     ScriptValue reason,
     ExceptionState&) {
   DCHECK(realm_task_runner_->RunsTasksInCurrentSequence());
   Close();
-  return ScriptPromise::CastUndefined(script_state);
+  return ScriptPromiseUntyped::CastUndefined(script_state);
 }
 
 template <typename NativeFrameType>
@@ -178,7 +188,7 @@ void FrameQueueUnderlyingSource<NativeFrameType>::Close() {
   auto frame_queue = frame_queue_handle_.Queue();
   if (frame_queue && should_clear_queue && MustUseMonitor()) {
     while (!frame_queue->IsEmpty()) {
-      absl::optional<NativeFrameType> popped_frame = frame_queue->Pop();
+      std::optional<NativeFrameType> popped_frame = frame_queue->Pop();
       base::AutoLock monitor_locker(GetMonitorLock());
       MonitorPopFrameLocked(popped_frame.value());
     }
@@ -208,12 +218,12 @@ void FrameQueueUnderlyingSource<NativeFrameType>::QueueFrame(
   if (MustUseMonitor()) {
     base::AutoLock queue_locker(frame_queue->GetLock());
     base::AutoLock monitor_locker(GetMonitorLock());
-    absl::optional<NativeFrameType> oldest_frame = frame_queue->PeekLocked();
+    std::optional<NativeFrameType> oldest_frame = frame_queue->PeekLocked();
     NewFrameAction action = AnalyzeNewFrameLocked(media_frame, oldest_frame);
     switch (action) {
       case NewFrameAction::kPush: {
         MonitorPushFrameLocked(media_frame);
-        absl::optional<NativeFrameType> replaced_frame =
+        std::optional<NativeFrameType> replaced_frame =
             frame_queue->PushLocked(std::move(media_frame));
         if (replaced_frame.has_value())
           MonitorPopFrameLocked(replaced_frame.value());
@@ -307,7 +317,7 @@ void FrameQueueUnderlyingSource<
       return;
   }
   while (true) {
-    absl::optional<NativeFrameType> media_frame = frame_queue->Pop();
+    std::optional<NativeFrameType> media_frame = frame_queue->Pop();
     if (!media_frame.has_value())
       return;
 
@@ -391,9 +401,9 @@ template <typename NativeFrameType>
 typename FrameQueueUnderlyingSource<NativeFrameType>::NewFrameAction
 FrameQueueUnderlyingSource<NativeFrameType>::AnalyzeNewFrameLocked(
     const NativeFrameType& new_frame,
-    const absl::optional<NativeFrameType>& oldest_frame) {
+    const std::optional<NativeFrameType>& oldest_frame) {
   DCHECK(MustUseMonitor());
-  absl::optional<media::VideoFrame::ID> oldest_frame_id;
+  std::optional<media::VideoFrame::ID> oldest_frame_id;
   if (oldest_frame.has_value())
     oldest_frame_id = GetFrameId(oldest_frame.value());
 
@@ -432,8 +442,30 @@ ScriptWrappable*
 FrameQueueUnderlyingSource<scoped_refptr<media::VideoFrame>>::MakeBlinkFrame(
     scoped_refptr<media::VideoFrame> media_frame) {
   DCHECK(realm_task_runner_->RunsTasksInCurrentSequence());
-  return MakeGarbageCollected<VideoFrame>(std::move(media_frame),
-                                          GetExecutionContext(), device_id_);
+  if (base::FeatureList::IsEnabled(kBreakoutBoxInsertVideoCaptureTimestamp)) {
+    if (!first_frame_ticks_) {
+      first_frame_ticks_ = base::TimeTicks::Now() - media_frame->timestamp();
+    }
+
+    if (!media_frame->metadata().capture_begin_time &&
+        !media_frame->metadata().reference_time) {
+      media_frame->metadata().capture_begin_time =
+          *first_frame_ticks_ + media_frame->timestamp();
+      media_frame->metadata().reference_time =
+          *first_frame_ticks_ + media_frame->timestamp();
+    }
+  }
+  TRACE_EVENT(
+      "media", "FrameQueueUnderlyingSource::MakeBlinkFrame", "ts",
+      media_frame->timestamp(), "rt",
+      media_frame->metadata().reference_time.value_or(base::TimeTicks()), "cbt",
+      media_frame->metadata().capture_begin_time.value_or(base::TimeTicks()));
+  return MakeGarbageCollected<VideoFrame>(
+      std::move(media_frame), GetExecutionContext(), device_id_,
+      /*sk_image=*/nullptr,
+      /*prefer_capture_timestamp=*/
+      base::FeatureList::IsEnabled(
+          kBreakoutBoxPreferCaptureTimestampInVideoFrames));
 }
 
 template <>

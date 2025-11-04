@@ -1,6 +1,10 @@
 # Copyright (C) 2023 The Qt Company Ltd.
 # SPDX-License-Identifier: BSD-3-Clause
 
+if(NOT TARGET grpc_testserver)
+    return()
+endif()
+
 set(CMAKE_AUTOMOC TRUE)
 
 qt6_add_library(tst_grpc_client_test_common STATIC
@@ -8,11 +12,9 @@ qt6_add_library(tst_grpc_client_test_common STATIC
     ${CMAKE_CURRENT_LIST_DIR}/grpcclienttestbase.cpp
 )
 
-if(TARGET grpc_testserver)
-    target_compile_definitions(tst_grpc_client_test_common PRIVATE
-            TEST_GRPC_SERVER_PATH="$<TARGET_FILE:grpc_testserver>"
-    )
-endif()
+target_compile_definitions(tst_grpc_client_test_common PRIVATE
+        TEST_GRPC_SERVER_PATH="$<TARGET_FILE:grpc_testserver>"
+)
 
 if(qt_internal_grpc_use_golang_test_server)
     target_compile_definitions(tst_grpc_client_test_common PRIVATE

@@ -29,6 +29,7 @@
 #  include <sys/procfs.h>
 #  include <sys/types.h>
 #  include <unistd.h>
+#  include <fcntl.h>
 #elif defined(Q_OS_INTEGRITY)
 #  include <INTEGRITY.h>
 #elif defined(Q_OS_VXWORKS)

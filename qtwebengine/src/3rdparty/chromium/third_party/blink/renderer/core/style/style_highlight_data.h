@@ -5,8 +5,9 @@
 #ifndef THIRD_PARTY_BLINK_RENDERER_CORE_STYLE_STYLE_HIGHLIGHT_DATA_H_
 #define THIRD_PARTY_BLINK_RENDERER_CORE_STYLE_STYLE_HIGHLIGHT_DATA_H_
 
+#include <optional>
+
 #include "base/types/pass_key.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "third_party/blink/renderer/core/core_export.h"
 #include "third_party/blink/renderer/core/style/computed_style_constants.h"
 #include "third_party/blink/renderer/platform/heap/collection_support/heap_hash_map.h"
@@ -32,6 +33,8 @@ class CORE_EXPORT StyleHighlightData final {
       PseudoId,
       const AtomicString& pseudo_argument = g_null_atom) const;
   const ComputedStyle* Selection() const;
+  const ComputedStyle* SearchTextCurrent() const;
+  const ComputedStyle* SearchTextNotCurrent() const;
   const ComputedStyle* TargetText() const;
   const ComputedStyle* SpellingError() const;
   const ComputedStyle* GrammarError() const;
@@ -40,6 +43,8 @@ class CORE_EXPORT StyleHighlightData final {
     return custom_highlights_;
   }
   void SetSelection(const ComputedStyle*);
+  void SetSearchTextCurrent(const ComputedStyle*);
+  void SetSearchTextNotCurrent(const ComputedStyle*);
   void SetTargetText(const ComputedStyle*);
   void SetSpellingError(const ComputedStyle*);
   void SetGrammarError(const ComputedStyle*);
@@ -51,6 +56,8 @@ class CORE_EXPORT StyleHighlightData final {
 
  private:
   Member<const ComputedStyle> selection_;
+  Member<const ComputedStyle> search_text_current_;
+  Member<const ComputedStyle> search_text_not_current_;
   Member<const ComputedStyle> target_text_;
   Member<const ComputedStyle> spelling_error_;
   Member<const ComputedStyle> grammar_error_;

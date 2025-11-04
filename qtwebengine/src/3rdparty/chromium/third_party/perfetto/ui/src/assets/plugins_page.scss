@@ -31,9 +31,14 @@
     font-size: 28px;
   }
 
+  .restart_needed {
+    margin: 16px 0;
+    color: #ef6c00;
+  }
+
   .pf-plugins-grid {
     display: inline-grid;
-    grid-template-columns: auto auto auto;
+    grid-template-columns: repeat(6, auto);
     row-gap: 6px;
     column-gap: 10px;
   }

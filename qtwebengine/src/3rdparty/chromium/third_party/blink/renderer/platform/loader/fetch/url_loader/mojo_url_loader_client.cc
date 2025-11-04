@@ -7,6 +7,7 @@
 #include <iterator>
 
 #include "base/containers/queue.h"
+#include "base/containers/span.h"
 #include "base/feature_list.h"
 #include "base/functional/bind.h"
 #include "base/functional/callback.h"
@@ -54,7 +55,7 @@ class MojoURLLoaderClient::DeferredOnReceiveResponse final
   explicit DeferredOnReceiveResponse(
       network::mojom::URLResponseHeadPtr response_head,
       mojo::ScopedDataPipeConsumerHandle body,
-      absl::optional<mojo_base::BigBuffer> cached_metadata,
+      std::optional<mojo_base::BigBuffer> cached_metadata,
       base::TimeTicks response_ipc_arrival_time)
       : response_head_(std::move(response_head)),
         body_(std::move(body)),
@@ -71,7 +72,7 @@ class MojoURLLoaderClient::DeferredOnReceiveResponse final
  private:
   network::mojom::URLResponseHeadPtr response_head_;
   mojo::ScopedDataPipeConsumerHandle body_;
-  absl::optional<mojo_base::BigBuffer> cached_metadata_;
+  std::optional<mojo_base::BigBuffer> cached_metadata_;
   const base::TimeTicks response_ipc_arrival_time_;
 };
 
@@ -156,24 +157,18 @@ class MojoURLLoaderClient::BodyBuffer final
   bool active() const { return writable_watcher_.IsWatching(); }
 
   // mojo::DataPipeDrainer::Client
-  void OnDataAvailable(const void* data, size_t num_bytes) override {
+  void OnDataAvailable(base::span<const uint8_t> data) override {
+    std::string_view chars = base::as_string_view(data);
     DCHECK(draining_);
-    SCOPED_CRASH_KEY_NUMBER("OnDataAvailable", "buffered_body_size",
-                            buffered_body_.size());
-    SCOPED_CRASH_KEY_NUMBER("OnDataAvailable", "data_bytes", num_bytes);
-    SCOPED_CRASH_KEY_STRING256("OnDataAvailable", "last_loaded_url",
-                               owner_->last_loaded_url().GetString().Utf8());
-
     if (owner_->freeze_mode() == LoaderFreezeMode::kBufferIncoming) {
-      owner_->DidBufferLoadWhileInBackForwardCache(num_bytes);
+      owner_->DidBufferLoadWhileInBackForwardCache(chars.size());
       if (!owner_->CanContinueBufferingWhileInBackForwardCache()) {
         owner_->EvictFromBackForwardCache(
             mojom::blink::RendererEvictionReason::kNetworkExceedsBufferLimit);
         return;
       }
     }
-    buffered_body_.emplace(static_cast<const char*>(data),
-                           static_cast<const char*>(data) + num_bytes);
+    buffered_body_.push(std::vector<char>(chars.begin(), chars.end()));
     WriteBufferedBody(MOJO_RESULT_OK);
   }
 
@@ -189,12 +184,12 @@ class MojoURLLoaderClient::BodyBuffer final
     while (!buffered_body_.empty()) {
       // Write the chunk at the front of |buffered_body_|.
       const std::vector<char>& current_chunk = buffered_body_.front();
-      DCHECK_LE(offset_in_current_chunk_, current_chunk.size());
-      uint32_t bytes_sent = base::saturated_cast<uint32_t>(
-          current_chunk.size() - offset_in_current_chunk_);
-      MojoResult result =
-          writable_->WriteData(current_chunk.data() + offset_in_current_chunk_,
-                               &bytes_sent, MOJO_WRITE_DATA_FLAG_NONE);
+      base::span<const uint8_t> bytes =
+          base::as_byte_span(current_chunk).subspan(offset_in_current_chunk_);
+
+      size_t actually_written_bytes = 0;
+      MojoResult result = writable_->WriteData(bytes, MOJO_WRITE_DATA_FLAG_NONE,
+                                               actually_written_bytes);
       switch (result) {
         case MOJO_RESULT_OK:
           break;
@@ -207,12 +202,12 @@ class MojoURLLoaderClient::BodyBuffer final
           writable_watcher_.ArmOrNotify();
           return;
         default:
-          NOTREACHED();
+          NOTREACHED_IN_MIGRATION();
           return;
       }
       // We've sent |bytes_sent| bytes, update the current offset in the
       // frontmost chunk.
-      offset_in_current_chunk_ += bytes_sent;
+      offset_in_current_chunk_ += actually_written_bytes;
       DCHECK_LE(offset_in_current_chunk_, current_chunk.size());
       if (offset_in_current_chunk_ == current_chunk.size()) {
         // We've finished writing the chunk at the front of the queue, pop it so
@@ -238,14 +233,14 @@ class MojoURLLoaderClient::BodyBuffer final
     owner_->FlushDeferredMessages();
   }
 
-  const raw_ptr<MojoURLLoaderClient, ExperimentalRenderer> owner_;
+  const raw_ptr<MojoURLLoaderClient> owner_;
   mojo::ScopedDataPipeProducerHandle writable_;
   mojo::SimpleWatcher writable_watcher_;
   std::unique_ptr<mojo::DataPipeDrainer> pipe_drainer_;
   // We save the received response body as a queue of chunks so that we can free
   // memory as soon as we finish sending a chunk completely.
   base::queue<std::vector<char>> buffered_body_;
-  uint32_t offset_in_current_chunk_ = 0;
+  size_t offset_in_current_chunk_ = 0;
   bool draining_ = true;
 };
 
@@ -305,7 +300,7 @@ void MojoURLLoaderClient::OnReceiveEarlyHints(
 void MojoURLLoaderClient::OnReceiveResponse(
     network::mojom::URLResponseHeadPtr response_head,
     mojo::ScopedDataPipeConsumerHandle body,
-    absl::optional<mojo_base::BigBuffer> cached_metadata) {
+    std::optional<mojo_base::BigBuffer> cached_metadata) {
   TRACE_EVENT1("loading", "MojoURLLoaderClient::OnReceiveResponse", "url",
                last_loaded_url_.GetString().Utf8());
 
@@ -470,7 +465,7 @@ void MojoURLLoaderClient::StoreAndDispatch(
     deferred_messages_.emplace_back(std::move(message));
     FlushDeferredMessages();
   } else {
-    NOTREACHED();
+    NOTREACHED_IN_MIGRATION();
   }
 }
 

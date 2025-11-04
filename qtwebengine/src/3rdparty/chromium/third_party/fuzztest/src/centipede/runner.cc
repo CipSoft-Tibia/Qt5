@@ -41,12 +41,13 @@
 #include <ctime>
 #include <functional>
 #include <memory>
+#include <string>
 #include <string_view>
 #include <utility>
 #include <vector>
 
+#include "absl/base/nullability.h"
 #include "./centipede/byte_array_mutator.h"
-#include "./centipede/defs.h"
 #include "./centipede/execution_metadata.h"
 #include "./centipede/feature.h"
 #include "./centipede/int_utils.h"
@@ -58,6 +59,7 @@
 #include "./centipede/runner_result.h"
 #include "./centipede/runner_utils.h"
 #include "./centipede/shared_memory_blob_sequence.h"
+#include "./common/defs.h"
 
 __attribute__((
     weak)) extern centipede::feature_t __start___centipede_extra_features;
@@ -143,6 +145,7 @@ void ThreadLocalRunnerState::TraceMemCmp(uintptr_t caller_pc, const uint8_t *s1,
 
 void ThreadLocalRunnerState::OnThreadStart() {
   termination_detector.EnsureAlive();
+  tls.started = true;
   tls.lowest_sp = tls.top_frame_sp =
       reinterpret_cast<uintptr_t>(__builtin_frame_address(0));
   tls.stack_region_low = GetCurrentThreadStackRegionLow();
@@ -271,10 +274,12 @@ static void CheckWatchdogLimits() {
 }
 
 __attribute__((noinline)) void CheckStackLimit(uintptr_t sp) {
+  static std::atomic_flag stack_limit_exceeded = ATOMIC_FLAG_INIT;
   const size_t stack_limit = state.run_time_flags.stack_limit_kb.load() << 10;
   // Check for the stack limit only if sp is inside the stack region.
   if (stack_limit > 0 && tls.stack_region_low &&
       tls.top_frame_sp - sp > stack_limit) {
+    if (stack_limit_exceeded.test_and_set()) return;
     fprintf(stderr,
             "========= Stack limit exceeded: %" PRIuPTR " > %" PRIu64
             " (byte); aborting\n",
@@ -377,6 +382,12 @@ PrepareCoverage(bool full_clear) {
       tls.call_stack.Reset(state.run_time_flags.callstack_level);
       tls.lowest_sp = tls.top_frame_sp;
     });
+  }
+  {
+    centipede::LockGuard lock(state.execution_result_override_mu);
+    if (state.execution_result_override != nullptr) {
+      state.execution_result_override->ClearAndResize(0);
+    }
   }
   if (!full_clear) return;
   state.ForEachTls([](ThreadLocalRunnerState &tls) {
@@ -533,6 +544,8 @@ void RunnerCallbacks::GetSeeds(std::function<void(ByteSpan)> seed_callback) {
   seed_callback({0});
 }
 
+std::string RunnerCallbacks::GetSerializedTargetConfig() { return ""; }
+
 class LegacyRunnerCallbacks : public RunnerCallbacks {
  public:
   LegacyRunnerCallbacks(FuzzerTestOneInputCallback test_one_input_cb,
@@ -664,6 +677,26 @@ static size_t CopyFeatures(uint8_t *data, size_t capacity) {
 // Finishes sending the outputs (coverage, etc.) to `outputs_blobseq`.
 // Returns true on success.
 static bool FinishSendingOutputsToEngine(BlobSequence &outputs_blobseq) {
+  {
+    LockGuard lock(state.execution_result_override_mu);
+    bool has_overridden_execution_result = false;
+    if (state.execution_result_override != nullptr) {
+      RunnerCheck(state.execution_result_override->results().size() <= 1,
+                  "unexpected number of overridden execution results");
+      has_overridden_execution_result =
+          state.execution_result_override->results().size() == 1;
+    }
+    if (has_overridden_execution_result) {
+      const auto &result = state.execution_result_override->results()[0];
+      return BatchResult::WriteOneFeatureVec(result.features().data(),
+                                             result.features().size(),
+                                             outputs_blobseq) &&
+             BatchResult::WriteMetadata(result.metadata(), outputs_blobseq) &&
+             BatchResult::WriteStats(result.stats(), outputs_blobseq) &&
+             BatchResult::WriteInputEnd(outputs_blobseq);
+    }
+  }
+
   // Copy features to shared memory.
   if (!BatchResult::WriteOneFeatureVec(
           state.g_features.data(), state.g_features.size(), outputs_blobseq)) {
@@ -703,7 +736,7 @@ static int ExecuteInputsFromShmem(BlobSequence &inputs_blobseq,
   if (!runner_request::IsNumInputs(inputs_blobseq.Read(), num_inputs))
     return EXIT_FAILURE;
 
-  PrepareCoverage(/*full_clear=*/true);  // Clear the startup coverage.
+  CentipedeBeginExecutionBatch();
 
   for (size_t i = 0; i < num_inputs; i++) {
     auto blob = inputs_blobseq.Read();
@@ -723,12 +756,15 @@ static int ExecuteInputsFromShmem(BlobSequence &inputs_blobseq,
 
     if (!FinishSendingOutputsToEngine(outputs_blobseq)) break;
   }
+
+  CentipedeEndExecutionBatch();
+
   return EXIT_SUCCESS;
 }
 
 // Dumps the pc table to `output_path`.
 // Requires that state.main_object is already computed.
-static void DumpPcTable(const char *output_path) {
+static void DumpPcTable(absl::Nonnull<const char *> output_path) {
   PrintErrorAndExitIf(!state.main_object.IsSet(), "main_object is not set");
   FILE *output_file = fopen(output_path, "w");
   PrintErrorAndExitIf(output_file == nullptr, "can't open output file");
@@ -744,7 +780,7 @@ static void DumpPcTable(const char *output_path) {
 
 // Dumps the control-flow table to `output_path`.
 // Requires that state.main_object is already computed.
-static void DumpCfTable(const char *output_path) {
+static void DumpCfTable(absl::Nonnull<const char *> output_path) {
   PrintErrorAndExitIf(!state.main_object.IsSet(), "main_object is not set");
   FILE *output_file = fopen(output_path, "w");
   PrintErrorAndExitIf(output_file == nullptr, "can't open output file");
@@ -760,7 +796,7 @@ static void DumpCfTable(const char *output_path) {
 
 // Dumps a DsoTable as a text file. Each line contains the file path and the
 // number of instrumented PCs.
-static void DumpDsoTable(const char *output_path) {
+static void DumpDsoTable(absl::Nonnull<const char *> output_path) {
   FILE *output_file = fopen(output_path, "w");
   RunnerCheck(output_file != nullptr, "DumpDsoTable: can't open output file");
   DsoTable dso_table = state.sancov_objects.CreateDsoTable();
@@ -771,7 +807,7 @@ static void DumpDsoTable(const char *output_path) {
   fclose(output_file);
 }
 
-// Dumps seed inputs to `output_dir`. Also see GetSeedsViaExternalBinary().
+// Dumps seed inputs to `output_dir`. Also see `GetSeedsViaExternalBinary()`.
 static void DumpSeedsToDir(RunnerCallbacks &callbacks, const char *output_dir) {
   size_t seed_index = 0;
   callbacks.GetSeeds([&](ByteSpan seed) {
@@ -791,6 +827,20 @@ static void DumpSeedsToDir(RunnerCallbacks &callbacks, const char *output_dir) {
     fclose(output_file);
     ++seed_index;
   });
+}
+
+// Dumps serialized target config to `output_file_path`. Also see
+// `GetSerializedTargetConfigViaExternalBinary()`.
+static void DumpSerializedTargetConfigToFile(RunnerCallbacks &callbacks,
+                                             const char *output_file_path) {
+  const std::string config = callbacks.GetSerializedTargetConfig();
+  FILE *output_file = fopen(output_file_path, "w");
+  const size_t num_bytes_written =
+      fwrite(config.data(), 1, config.size(), output_file);
+  PrintErrorAndExitIf(
+      num_bytes_written != config.size(),
+      "wrong number of bytes written for serialized target configuration");
+  fclose(output_file);
 }
 
 // Returns a random seed. No need for a more sophisticated seed.
@@ -1011,6 +1061,13 @@ GlobalRunnerState::~GlobalRunnerState() {
     StartSendingOutputsToEngine(outputs_blobseq);
     FinishSendingOutputsToEngine(outputs_blobseq);
   }
+  {
+    LockGuard lock(state.execution_result_override_mu);
+    if (state.execution_result_override != nullptr) {
+      delete state.execution_result_override;
+      state.execution_result_override = nullptr;
+    }
+  }
   // Always clean up detached TLSs to avoid leakage.
   CleanUpDetachedTls();
 }
@@ -1027,6 +1084,12 @@ int RunnerMain(int argc, char **argv, RunnerCallbacks &callbacks) {
 
   fprintf(stderr, "Centipede fuzz target runner; argv[0]: %s flags: %s\n",
           argv[0], state.centipede_runner_flags);
+
+  if (state.HasFlag(":dump_configuration:")) {
+    DumpSerializedTargetConfigToFile(callbacks,
+                                     /*output_file_path=*/state.arg1);
+    return EXIT_SUCCESS;
+  }
 
   if (state.HasFlag(":dump_seed_inputs:")) {
     // Seed request.
@@ -1074,7 +1137,8 @@ int RunnerMain(int argc, char **argv, RunnerCallbacks &callbacks) {
 }  // namespace centipede
 
 extern "C" int LLVMFuzzerRunDriver(
-    int *argc, char ***argv, FuzzerTestOneInputCallback test_one_input_cb) {
+    absl::Nonnull<int *> argc, absl::Nonnull<char ***> argv,
+    FuzzerTestOneInputCallback test_one_input_cb) {
   if (LLVMFuzzerInitialize) LLVMFuzzerInitialize(argc, argv);
   return RunnerMain(*argc, *argv,
                     *centipede::CreateLegacyRunnerCallbacks(
@@ -1105,7 +1169,8 @@ extern "C" void CentipedeSetTimeoutPerInput(uint64_t timeout_per_input) {
   centipede::state.run_time_flags.timeout_per_input = timeout_per_input;
 }
 
-extern "C" __attribute__((weak)) const char *CentipedeGetRunnerFlags() {
+extern "C" __attribute__((weak)) absl::Nullable<const char *>
+CentipedeGetRunnerFlags() {
   if (const char *runner_flags_env = getenv("CENTIPEDE_RUNNER_FLAGS"))
     return strdup(runner_flags_env);
   return nullptr;
@@ -1155,4 +1220,19 @@ extern "C" size_t CentipedeGetExecutionResult(uint8_t *data, size_t capacity) {
 
 extern "C" size_t CentipedeGetCoverageData(uint8_t *data, size_t capacity) {
   return centipede::CopyFeatures(data, capacity);
+}
+
+extern "C" void CentipedeSetExecutionResult(const uint8_t *data, size_t size) {
+  using centipede::state;
+  centipede::LockGuard lock(state.execution_result_override_mu);
+  if (!state.execution_result_override)
+    state.execution_result_override = new centipede::BatchResult();
+  state.execution_result_override->ClearAndResize(1);
+  if (data == nullptr) return;
+  // Removing const here should be fine as we don't write to `blobseq`.
+  centipede::BlobSequence blobseq(const_cast<uint8_t *>(data), size);
+  state.execution_result_override->Read(blobseq);
+  centipede::RunnerCheck(
+      state.execution_result_override->num_outputs_read() == 1,
+      "Failed to set execution result from CentipedeSetExecutionResult");
 }

@@ -7,8 +7,8 @@
 #include "avfcamerasession_p.h"
 #include "avfcamera_p.h"
 #include "avfcameraservice_p.h"
-#include "avfcameradebug_p.h"
-#include "avfcamerautility_p.h"
+#include <QtMultimedia/private/qavfcameradebug_p.h>
+#include <QtMultimedia/private/qavfcamerautility_p.h>
 #include "qaudiodevice.h"
 
 #include "qmediadevices.h"
@@ -52,7 +52,7 @@ bool qt_file_exists(NSURL *fileURL)
     return false;
 }
 
-}
+} // namespace
 
 AVFMediaEncoder::AVFMediaEncoder(QMediaRecorder *parent)
     : QObject(parent)
@@ -231,7 +231,9 @@ static NSDictionary *avfAudioSettings(const QMediaEncoderSettings &encoderSettin
     return settings;
 }
 
-NSDictionary *avfVideoSettings(QMediaEncoderSettings &encoderSettings, AVCaptureDevice *device, AVCaptureConnection *connection, QSize nativeSize)
+static NSDictionary *avfVideoSettings(QMediaEncoderSettings &encoderSettings,
+                                      AVCaptureDevice *device, AVCaptureConnection *connection,
+                                      QSize nativeSize)
 {
     if (!device)
         return nil;
@@ -483,6 +485,11 @@ void AVFMediaEncoder::record(QMediaEncoderSettings &settings)
         updateError(QMediaRecorder::ResourceError, tr("No inputs specified"));
         return;
     }
+
+    // This is necessary to explicitly recreate m_audioInput inside AVFCameraSession.
+    // Which in turn is necessary for the case when the microphone was disconnected
+    // after stopping recording and reconnected.
+    m_service->session()->updateAudioInput();
 
     m_service->session()->setActive(true);
     const bool audioOnly = settings.videoCodec() == QMediaFormat::VideoCodec::Unspecified;

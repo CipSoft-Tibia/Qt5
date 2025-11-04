@@ -89,9 +89,47 @@ void initD262(ExecutionEngine *e)
 
 }
 
+Q_STATIC_LOGGING_CATEGORY(lcJsTest, "qt.v4.ecma262.tests", QtWarningMsg);
 
-Q_DECLARE_LOGGING_CATEGORY(lcJsTest);
-Q_LOGGING_CATEGORY(lcJsTest, "qt.v4.ecma262.tests", QtWarningMsg);
+void TestCase::Result::diagnose(const QString &test, const QString &mode, State expectation) const
+{
+    if (matches(expectation)) {
+        switch (state) {
+        case TestCase::Skipped:
+            qCDebug(lcJsTest) << "PASS:" << test << "skipped in" << mode << "mode as requested";
+            break;
+        case TestCase::Fails:
+            qCDebug(lcJsTest) << "PASS:" << test << "failed in" << mode << "mode as expected";
+            break;
+        case TestCase::Passes:
+            qCDebug(lcJsTest) << "PASS:" << test << "passed in" << mode << "mode";
+            break;
+        default:
+            // A result can only be Skipped, Passes, Fails or Crashes, and we cannot expect crashes.
+            Q_UNREACHABLE();
+        }
+        return;
+    }
+
+    switch (state) {
+    case TestCase::Skipped:
+        qDebug() << "FAIL:" << test << "unexpectedly skipped in" << mode << "mode";
+        break;
+    case TestCase::Fails:
+        qDebug() << "FAIL:" << test << "failed in" << mode << "mode with error message:\n"
+                 << errorMessage;
+        break;
+    case TestCase::Passes:
+        qDebug() << "XPASS:" << test << "unexpectedly passed in" << mode << "mode";
+        break;
+    case TestCase::Crashes:
+        qDebug() << "FAIL:" << test << "crashed in" << mode << "mode!";
+        break;
+    default:
+        // A result can only be Skipped, Passes, Fails or Crashes.
+        Q_UNREACHABLE();
+    }
+}
 
 Test262Runner::Test262Runner(const QString &command, const QString &dir, const QString &expectationsFile)
     : command(command), testDir(dir), expectationsFile(expectationsFile)
@@ -441,8 +479,7 @@ bool Test262Runner::report()
     QStringList unexpectedPasses;
     for (auto it = testCases.constBegin(); it != testCases.constEnd(); ++it) {
         const auto c = it.value();
-        if (c.strictResult.state == c.strictExpectation.state
-            && c.sloppyResult.state == c.sloppyExpectation.state)
+        if (c.matchesExpectation())
             continue;
         auto report = [&](const TestCase::Result &expected, const TestCase::Result &result, const char *s) {
             if (result.state == TestCase::Crashes)
@@ -526,7 +563,8 @@ struct TestExpectationLine {
         SloppyFails,
         StrictFails,
         Skip,
-        Passes
+        Passes,
+        Survives,
     } state;
     QString testCase;
 
@@ -559,7 +597,15 @@ TestExpectationLine::TestExpectationLine(const QByteArray &line)
         state = SloppyFails;
     else if (qualifier == "fails")
         state = Fails;
-    else
+    else if (qualifier == "survives")
+        state = Survives;
+    else if (qualifier == "passesWithICU") {
+#if QT_CONFIG(icu)
+        state = Passes;
+#else
+        state = Survives;
+#endif
+    } else
         qWarning() << "illegal format in TestExpectations, line" << line;
 }
 
@@ -577,6 +623,9 @@ QByteArray TestExpectationLine::toLine() const {
         break;
     case Skip:
         res = " skip\n";
+        break;
+    case Survives:
+        res = " survives\n";
         break;
     case Passes:
         // no need for an entry
@@ -615,6 +664,10 @@ void TestExpectationLine::update(const TestCase &testCase)
         break;
     case Passes:
         state = Passes;
+        break;
+    case Survives:
+        state = Survives;
+        break;
     }
 }
 
@@ -683,7 +736,13 @@ void Test262Runner::loadTestExpectations()
             s.skipTestCase = true;
             break;
         case TestExpectationLine::Passes:
-            Q_UNREACHABLE();
+            s.strictExpectation.state = TestCase::Passes;
+            s.sloppyExpectation.state = TestCase::Passes;
+            break;
+        case TestExpectationLine::Survives:
+            s.strictExpectation.state = TestCase::Survives;
+            s.sloppyExpectation.state = TestCase::Survives;
+            break;
         }
     }
 }
@@ -795,7 +854,7 @@ void Test262Runner::runAsExternalTests()
     }
 }
 
-void Test262Runner::addResult(TestCase result)
+void Test262Runner::addResult(const TestData &result)
 {
     {
 #if !QT_CONFIG(process)
@@ -809,40 +868,13 @@ void Test262Runner::addResult(TestCase result)
     if (!(flags & Verbose))
         return;
 
-    QString test = result.test;
-    if (result.strictResult.state == TestCase::Skipped) {
-        ;
-    } else if (result.strictResult.state == TestCase::Crashes) {
-        qDebug() << "FAIL:" << test << "crashed in strict mode!";
-    } else if (result.strictResult.state == TestCase::Fails
-               && result.strictExpectation.state == TestCase::Fails) {
-        qCDebug(lcJsTest) << "PASS:" << test << "failed in strict mode as expected";
-    } else if ((result.strictResult.state == TestCase::Passes)
-               == (result.strictExpectation.state == TestCase::Passes)) {
-        qCDebug(lcJsTest) << "PASS:" << test << "passed in strict mode";
-    } else if (!(result.strictExpectation.state == TestCase::Fails)) {
-        qDebug() << "FAIL:" << test << "failed in strict mode with error message:\n"
-                 << result.strictResult.errorMessage;
-    } else {
-        qDebug() << "XPASS:" << test << "unexpectedly passed in strict mode";
-    }
+    result.strictResult.diagnose(
+            result.test, QLatin1String("strict"),
+            result.runInStrictMode ? result.strictExpectation.state : TestCase::Skipped);
+    result.sloppyResult.diagnose(
+            result.test, QLatin1String("sloppy"),
+            result.runInSloppyMode ? result.sloppyExpectation.state : TestCase::Skipped);
 
-    if (result.sloppyResult.state == TestCase::Skipped) {
-        ;
-    } else if (result.sloppyResult.state == TestCase::Crashes) {
-        qDebug() << "FAIL:" << test << "crashed in sloppy mode!";
-    } else if (result.sloppyResult.state == TestCase::Fails
-               && result.sloppyExpectation.state == TestCase::Fails) {
-        qCDebug(lcJsTest) << "PASS:" << test << "failed in sloppy mode as expected";
-    } else if ((result.sloppyResult.state == TestCase::Passes)
-               == (result.sloppyExpectation.state == TestCase::Passes)) {
-        qCDebug(lcJsTest) << "PASS:" << test << "passed in sloppy mode";
-    } else if (!(result.sloppyExpectation.state == TestCase::Fails)) {
-        qDebug() << "FAIL:" << test << "failed in sloppy mode with error message:\n"
-                 << result.sloppyResult.errorMessage;
-    } else {
-        qDebug() << "XPASS:" << test << "unexpectedly passed in sloppy mode";
-    }
 }
 
 TestData Test262Runner::getTestData(const TestCase &testCase)

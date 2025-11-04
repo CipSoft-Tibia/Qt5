@@ -35,7 +35,10 @@ class Dialog {
     #type;
     #message;
     #defaultValue;
-    #handled = false;
+    /**
+     * @internal
+     */
+    handled = false;
     /**
      * @internal
      */
@@ -71,9 +74,9 @@ class Dialog {
      *
      */
     async accept(promptText) {
-        (0, assert_js_1.assert)(!this.#handled, 'Cannot accept dialog which is already handled!');
-        this.#handled = true;
-        await this.sendCommand({
+        (0, assert_js_1.assert)(!this.handled, 'Cannot accept dialog which is already handled!');
+        this.handled = true;
+        await this.handle({
             accept: true,
             text: promptText,
         });
@@ -82,9 +85,9 @@ class Dialog {
      * A promise which will resolve once the dialog has been dismissed
      */
     async dismiss() {
-        (0, assert_js_1.assert)(!this.#handled, 'Cannot dismiss dialog which is already handled!');
-        this.#handled = true;
-        await this.sendCommand({
+        (0, assert_js_1.assert)(!this.handled, 'Cannot dismiss dialog which is already handled!');
+        this.handled = true;
+        await this.handle({
             accept: false,
         });
     }

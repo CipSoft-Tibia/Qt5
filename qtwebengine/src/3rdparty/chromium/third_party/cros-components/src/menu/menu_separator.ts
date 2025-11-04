@@ -21,7 +21,7 @@ export class MenuSeparator extends LitElement {
 
   override render() {
     return html`
-      <hr role="separator"/>
+      <hr aria-hidden="true" />
     `;
   }
 }

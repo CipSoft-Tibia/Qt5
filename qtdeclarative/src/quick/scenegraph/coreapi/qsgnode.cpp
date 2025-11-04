@@ -7,11 +7,11 @@
 #include "qsgnodeupdater_p.h"
 #include "qsgmaterial.h"
 
+#include <algorithm>
+
 #include "limits.h"
 
 QT_BEGIN_NAMESPACE
-
-Q_DECLARE_LOGGING_CATEGORY(lcQsgLeak)
 
 #ifndef QT_NO_DEBUG
 static int qt_node_count = 0;
@@ -786,7 +786,7 @@ void QSGBasicGeometryNode::setGeometry(QSGGeometry *geometry)
     line using a QSGGeometryNode:
     \code
         QSGGeometry *geometry = new QSGGeometry(QSGGeometry::defaultAttributes_Point2D(), 2);
-        geometry->setDrawingMode(GL_LINES);
+        geometry->setDrawingMode(QSGGeometry::DrawLines);
         geometry->setLineWidth(3);
         geometry->vertexDataAsPoint2D()[0].set(0, 0);
         geometry->vertexDataAsPoint2D()[1].set(width(), height());
@@ -1311,7 +1311,7 @@ const qreal OPACITY_THRESHOLD = 0.001;
 
 void QSGOpacityNode::setOpacity(qreal opacity)
 {
-    opacity = qBound<qreal>(0, opacity, 1);
+    opacity = std::clamp(opacity, qreal(0.0),  qreal(1.0));
     if (m_opacity == opacity)
         return;
     DirtyState dirtyState = DirtyOpacity;

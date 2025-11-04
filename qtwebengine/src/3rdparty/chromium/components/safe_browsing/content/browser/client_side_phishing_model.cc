@@ -5,7 +5,9 @@
 #include "components/safe_browsing/content/browser/client_side_phishing_model.h"
 
 #include <stdint.h>
+
 #include <memory>
+#include <optional>
 
 #include "base/command_line.h"
 #include "base/feature_list.h"
@@ -30,7 +32,6 @@
 #include "content/public/browser/browser_task_traits.h"
 #include "content/public/browser/browser_thread.h"
 #include "services/network/public/cpp/shared_url_loader_factory.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 
 namespace safe_browsing {
 
@@ -84,13 +85,7 @@ base::File LoadImageEmbeddingModelFile(const base::FilePath& model_file_path) {
   base::File image_embedding_model_file(
       model_file_path, base::File::FLAG_OPEN | base::File::FLAG_READ);
 
-  bool image_embedding_model_valid = image_embedding_model_file.IsValid();
-
-  base::UmaHistogramBoolean(
-      "SBClientPhishing.ModelDynamicUpdateSuccess.ImageEmbedding",
-      image_embedding_model_valid);
-
-  if (!image_embedding_model_valid) {
+  if (!image_embedding_model_file.IsValid()) {
     VLOG(2)
         << "Failed to receive image embedding model file. File is not valid";
     return base::File();
@@ -117,7 +112,7 @@ std::pair<std::string, base::File> LoadModelAndVisualTfLiteFile(
     return std::pair<std::string, base::File>();
   }
 
-  absl::optional<base::FilePath> visual_tflite_path = absl::nullopt;
+  std::optional<base::FilePath> visual_tflite_path = std::nullopt;
 
   for (const base::FilePath& path : additional_files) {
     // There should only be one loop after above check
@@ -152,6 +147,11 @@ void CloseModelFile(base::File model_file) {
   model_file.Close();
 }
 
+void RecordImageEmbeddingModelUpdateSuccess(bool success) {
+  base::UmaHistogramBoolean(
+      "SBClientPhishing.ModelDynamicUpdateSuccess.ImageEmbedding", success);
+}
+
 }  // namespace
 
 // --- ClientSidePhishingModel methods ---
@@ -164,7 +164,7 @@ ClientSidePhishingModel::ClientSidePhishingModel(
       beginning_time_(base::TimeTicks::Now()) {
   opt_guide_->AddObserverForOptimizationTargetModel(
       optimization_guide::proto::OPTIMIZATION_TARGET_CLIENT_SIDE_PHISHING,
-      /*model_metadata=*/absl::nullopt, this);
+      /*model_metadata=*/std::nullopt, this);
 }
 
 void ClientSidePhishingModel::OnModelUpdated(
@@ -187,6 +187,7 @@ void ClientSidePhishingModel::OnModelUpdated(
     // bad model on disk and it should be removed. Therefore, we will clear the
     // current model in the class.
     if (!model_info.has_value()) {
+      trigger_model_opt_guide_metadata_image_embedding_version_.reset();
       mapped_region_ = base::MappedReadOnlyRegion();
       if (visual_tflite_model_) {
         background_task_runner_->PostTask(
@@ -218,6 +219,7 @@ void ClientSidePhishingModel::OnModelUpdated(
     // embedding model, and if the trigger models are still valid, then the
     // scorer will be created with the trigger models only.
     if (!model_info.has_value()) {
+      embedding_model_opt_guide_metadata_image_embedding_version_.reset();
       if (image_embedding_model_) {
         background_task_runner_->PostTask(
             FROM_HERE, base::BindOnce(&CloseModelFile,
@@ -246,7 +248,7 @@ void ClientSidePhishingModel::SubscribeToImageEmbedderOptimizationGuide() {
     opt_guide_->AddObserverForOptimizationTargetModel(
         optimization_guide::proto::
             OPTIMIZATION_TARGET_CLIENT_SIDE_PHISHING_IMAGE_EMBEDDER,
-        /*model_metadata=*/absl::nullopt, this);
+        /*model_metadata=*/std::nullopt, this);
   }
 }
 
@@ -255,7 +257,7 @@ bool ClientSidePhishingModel::IsSubscribedToImageEmbeddingModelUpdates() {
 }
 
 void ClientSidePhishingModel::OnModelAndVisualTfLiteFileLoaded(
-    absl::optional<optimization_guide::proto::Any> model_metadata,
+    std::optional<optimization_guide::proto::Any> model_metadata,
     std::pair<std::string, base::File> model_and_tflite) {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
 
@@ -293,6 +295,7 @@ void ClientSidePhishingModel::OnModelAndVisualTfLiteFileLoaded(
         if (!VerifyCSDFlatBufferIndicesAndFields(flatbuffer_model)) {
           VLOG(0) << "Failed to verify CSD Flatbuffer indices and fields";
         } else {
+          trigger_model_version_ = flatbuffer_model->version();
           if (tflite_valid) {
             thresholds_.clear();  // Clear the previous model's thresholds
                                   // before adding on the new ones
@@ -330,8 +333,8 @@ void ClientSidePhishingModel::OnModelAndVisualTfLiteFileLoaded(
         "SBClientPhishing.OptimizationGuide.ModelFetchTime",
         base::TimeTicks::Now() - beginning_time_);
 
-    absl::optional<optimization_guide::proto::ClientSidePhishingModelMetadata>
-        client_side_phishing_model_metadata = absl::nullopt;
+    std::optional<optimization_guide::proto::ClientSidePhishingModelMetadata>
+        client_side_phishing_model_metadata = std::nullopt;
 
     if (model_metadata.has_value()) {
       client_side_phishing_model_metadata =
@@ -341,7 +344,7 @@ void ClientSidePhishingModel::OnModelAndVisualTfLiteFileLoaded(
     }
 
     if (client_side_phishing_model_metadata.has_value()) {
-      trigger_model_version_ =
+      trigger_model_opt_guide_metadata_image_embedding_version_ =
           client_side_phishing_model_metadata->image_embedding_model_version();
     } else {
       VLOG(1) << "Client side phishing model metadata is missing an image "
@@ -355,9 +358,17 @@ void ClientSidePhishingModel::OnModelAndVisualTfLiteFileLoaded(
 }
 
 void ClientSidePhishingModel::OnImageEmbeddingModelLoaded(
-    absl::optional<optimization_guide::proto::Any> model_metadata,
+    std::optional<optimization_guide::proto::Any> model_metadata,
     base::File image_embedding_model) {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+
+  bool image_embedding_model_valid = image_embedding_model.IsValid();
+  RecordImageEmbeddingModelUpdateSuccess(image_embedding_model_valid);
+
+  // Any failure to loading the image embedding model will send an empty file.
+  if (!image_embedding_model_valid) {
+    return;
+  }
 
   if (image_embedding_model_) {
     // If the image embedding model file is already loaded, it should be closed
@@ -369,8 +380,8 @@ void ClientSidePhishingModel::OnImageEmbeddingModelLoaded(
 
   image_embedding_model_ = std::move(image_embedding_model);
 
-  absl::optional<optimization_guide::proto::ClientSidePhishingModelMetadata>
-      image_embedding_model_metadata = absl::nullopt;
+  std::optional<optimization_guide::proto::ClientSidePhishingModelMetadata>
+      image_embedding_model_metadata = std::nullopt;
 
   if (model_metadata.has_value()) {
     image_embedding_model_metadata = optimization_guide::ParsedAnyMetadata<
@@ -379,7 +390,7 @@ void ClientSidePhishingModel::OnImageEmbeddingModelLoaded(
   }
 
   if (image_embedding_model_metadata.has_value()) {
-    embedding_model_version_ =
+    embedding_model_opt_guide_metadata_image_embedding_version_ =
         image_embedding_model_metadata->image_embedding_model_version();
   } else {
     VLOG(1) << "Image embedding model metadata is missing a version value";
@@ -395,9 +406,13 @@ void ClientSidePhishingModel::OnImageEmbeddingModelLoaded(
 }
 
 bool ClientSidePhishingModel::IsModelMetadataImageEmbeddingVersionMatching() {
-  return trigger_model_version_.has_value() &&
-         embedding_model_version_.has_value() &&
-         trigger_model_version_.value() == embedding_model_version_.value();
+  return trigger_model_opt_guide_metadata_image_embedding_version_
+             .has_value() &&
+         embedding_model_opt_guide_metadata_image_embedding_version_
+             .has_value() &&
+         trigger_model_opt_guide_metadata_image_embedding_version_.value() ==
+             embedding_model_opt_guide_metadata_image_embedding_version_
+                 .value();
 }
 
 int ClientSidePhishingModel::GetTriggerModelVersion() {
@@ -526,7 +541,7 @@ const base::File& ClientSidePhishingModel::GetImageEmbeddingModel() const {
 
 bool ClientSidePhishingModel::HasImageEmbeddingModel() {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
-  return !!image_embedding_model_;
+  return image_embedding_model_ && image_embedding_model_->IsValid();
 }
 
 CSDModelType ClientSidePhishingModel::GetModelType() const {
@@ -613,12 +628,6 @@ void* ClientSidePhishingModel::GetFlatBufferMemoryAddressForTesting() {
   return mapped_region_.mapping.memory();
 }
 
-void ClientSidePhishingModel::NotifyCallbacksOfUpdateForTesting() {
-  content::GetUIThreadTaskRunner({})->PostTask(
-      FROM_HERE, base::BindOnce(&ClientSidePhishingModel::NotifyCallbacksOnUI,
-                                base::Unretained(this)));
-}
-
 // This function is used for testing in client_side_phishing_model_unittest
 void ClientSidePhishingModel::MaybeOverrideModel() {
   if (base::CommandLine::ForCurrentProcess()->HasSwitch(
@@ -669,7 +678,7 @@ void ClientSidePhishingModel::OnGetOverridenModelData(
       break;
     }
     case CSDModelType::kNone:
-      VLOG(2) << "Model type should have been a flatbuffer";
+      NOTREACHED_IN_MIGRATION();
       return;
   }
 
@@ -696,7 +705,7 @@ void ClientSidePhishingModel::SetModelAndVisualTfLiteForTesting(
       base::BindOnce(&LoadModelAndVisualTfLiteFile, model_file_path,
                      additional_files),
       base::BindOnce(&ClientSidePhishingModel::OnModelAndVisualTfLiteFileLoaded,
-                     weak_ptr_factory_.GetWeakPtr(), absl::nullopt));
+                     weak_ptr_factory_.GetWeakPtr(), std::nullopt));
 }
 
 }  // namespace safe_browsing

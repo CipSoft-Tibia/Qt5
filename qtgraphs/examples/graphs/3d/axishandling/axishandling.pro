@@ -2,7 +2,9 @@
     error( "Couldn't find the examples.pri file!" )
 }
 
-DEFINES += QMAKE_BUILD
+CONFIG += qmltypes
+QML_IMPORT_NAME = AxisHandlingExample
+QML_IMPORT_MAJOR_VERSION = 1
 
 SOURCES += main.cpp \
     customformatter.cpp

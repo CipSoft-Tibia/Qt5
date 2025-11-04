@@ -10,6 +10,7 @@ QT_BEGIN_NAMESPACE
     \inqmlmodule QtOpcUa
     \brief Provides information about available servers.
     \since QtOpcUa 5.13
+    \deprecated [6.9]
 
     Allows to fetch and access information about servers known to a server or discovery server.
 

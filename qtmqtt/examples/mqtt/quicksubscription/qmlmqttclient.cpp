@@ -9,7 +9,6 @@ QmlMqttSubscription::QmlMqttSubscription(QMqttSubscription *s, QmlMqttClient *c)
     , client(c)
 {
     connect(sub, &QMqttSubscription::messageReceived, this, &QmlMqttSubscription::handleMessage);
-    m_topic = sub->topic();
 }
 
 QmlMqttSubscription::~QmlMqttSubscription()

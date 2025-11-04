@@ -102,13 +102,13 @@ function consumeLinearFunction(text: string): LinearStop[]|null {
 }
 
 const KeywordToValue: Record<string, string> = {
-  'linear': 'linear(0 0%, 1 100%)',
+  linear: 'linear(0 0%, 1 100%)',
 };
 
 export class CSSLinearEasingModel {
   #points: Point[];
 
-  private constructor(points: Point[]) {
+  constructor(points: Point[]) {
     this.#points = points;
   }
 

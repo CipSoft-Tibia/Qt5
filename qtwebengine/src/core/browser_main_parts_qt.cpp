@@ -35,6 +35,7 @@
 #include "ui/display/screen.h"
 
 #if BUILDFLAG(ENABLE_EXTENSIONS)
+#include "extensions/browser/api/messaging/message_service.h"
 #include "extensions/common/constants.h"
 #include "extensions/common/extensions_client.h"
 #include "extensions/extensions_browser_client_qt.h"
@@ -54,14 +55,9 @@
 #include <QtGui/qtgui-config.h>
 #include <QStandardPaths>
 
-#if QT_CONFIG(opengl)
-#include "ui/gl/gl_context.h"
-#include <QOpenGLContext>
-#endif
-
 #if BUILDFLAG(IS_MAC)
 #include "base/message_loop/message_pump_apple.h"
-#include "services/device/public/cpp/geolocation/geolocation_manager.h"
+#include "services/device/public/cpp/geolocation/geolocation_system_permission_manager.h"
 #include "services/device/public/cpp/geolocation/system_geolocation_source.h"
 #include "ui/base/idle/idle.h"
 #endif
@@ -157,8 +153,7 @@ private:
         if (more_work_info.is_immediate())
             return m_scheduler.scheduleImmediateWork();
 
-        if (m_delegate->DoIdleWork())
-            return m_scheduler.scheduleIdleWork();
+        m_delegate->DoIdleWork();
 
         ScheduleDelayedWork(more_work_info.delayed_run_time);
     }
@@ -177,12 +172,14 @@ public:
     // SystemGeolocationSource implementation:
     void StartWatchingPosition(bool) override {}
     void StopWatchingPosition() override {}
-    void RegisterPermissionUpdateCallback(PermissionUpdateCallback callback)
+    void RegisterPermissionUpdateCallback(PermissionUpdateCallback callback) override
     {
-        callback.Run(device::LocationSystemPermissionStatus::kDenied);
+        callback.Run(device::LocationSystemPermissionStatus::kAllowed);
     }
-    void RegisterPositionUpdateCallback(PositionUpdateCallback callback) {}
     void RequestPermission() override {}
+    void AddPositionUpdateObserver(PositionObserver* observer) override {}
+    void RemovePositionUpdateObserver(PositionObserver* observer) override {}
+
 };
 #endif // BUILDFLAG(IS_MAC)
 
@@ -211,7 +208,7 @@ int BrowserMainPartsQt::PreEarlyInitialization()
 void BrowserMainPartsQt::PreCreateMainMessageLoop()
 {
 #if BUILDFLAG(IS_MAC)
-    m_geolocationManager = std::make_unique<device::GeolocationManager>(std::make_unique<FakeGeolocationSource>());
+    m_geolocationSystemPermissionManager = std::make_unique<device::GeolocationSystemPermissionManager>(std::make_unique<FakeGeolocationSource>());
 #endif
 }
 
@@ -234,6 +231,7 @@ int BrowserMainPartsQt::PreMainMessageLoopRun()
     ui::SelectFileDialog::SetFactory(std::make_unique<SelectFileDialogFactoryQt>());
 
 #if BUILDFLAG(ENABLE_EXTENSIONS)
+    extensions::MessageService::GetFactoryInstance(); // required for communicating with hangouts
     extensions::ExtensionsClient::Set(new extensions::ExtensionsClientQt());
     extensions::ExtensionsBrowserClient::Set(new extensions::ExtensionsBrowserClientQt());
     extensions::ExtensionSystemFactoryQt::GetInstance();
@@ -296,9 +294,9 @@ void BrowserMainPartsQt::PostCreateThreads()
 }
 
 #if BUILDFLAG(IS_MAC)
-device::GeolocationManager *BrowserMainPartsQt::GetGeolocationManager()
+device::GeolocationSystemPermissionManager *BrowserMainPartsQt::GetGeolocationSystemPermissionManager()
 {
-    return m_geolocationManager.get();
+    return m_geolocationSystemPermissionManager.get();
 }
 #endif
 

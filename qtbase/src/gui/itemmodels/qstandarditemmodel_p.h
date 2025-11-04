@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QSTANDARDITEMMODEL_P_H
 #define QSTANDARDITEMMODEL_P_H
@@ -21,7 +22,6 @@
 #include "private/qabstractitemmodel_p.h"
 
 #include <QtCore/qlist.h>
-#include <QtCore/qpair.h>
 #include <QtCore/qstack.h>
 #include <QtCore/qvariant.h>
 #include <QtCore/qdebug.h>
@@ -126,7 +126,7 @@ public:
         }
         return childsLastIndexInParent;
     }
-    QPair<int, int> position() const;
+    std::pair<int, int> position() const;
     void setChild(int row, int column, QStandardItem *item,
                   bool emitChanged = false);
     inline int rowCount() const {

@@ -46,6 +46,7 @@ private slots:
     void function_documentations_data();
     void function_documentations();
     void buildDir();
+    void inMemoryEnumCompletion();
     void goToTypeDefinition_data();
     void goToTypeDefinition();
     void goToDefinition_data();
@@ -77,6 +78,9 @@ private slots:
     void semanticHighlightingRange();
     void semanticHighlightingDelta_data();
     void semanticHighlightingDelta();
+
+    void documentSymbols();
+
 private:
     QProcess m_server;
     std::unique_ptr<QLanguageServerProtocol> m_protocol;

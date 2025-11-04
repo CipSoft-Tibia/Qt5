@@ -30,7 +30,7 @@
 
 QT_BEGIN_NAMESPACE
 
-Q_LOGGING_CATEGORY(lcDnd, "qt.gui.dnd")
+Q_STATIC_LOGGING_CATEGORY(lcDnd, "qt.gui.dnd")
 
 static QWindow* topLevelAt(const QPoint &pos)
 {
@@ -195,7 +195,8 @@ void QBasicDrag::startDrag()
     QPoint pos;
 #ifndef QT_NO_CURSOR
     pos = QCursor::pos();
-    if (pos.x() == int(qInf())) {
+    static constexpr QGuiApplicationPrivate::QLastCursorPosition uninitializedCursorPosition;
+    if (pos == uninitializedCursorPosition) {
         // ### fixme: no mouse pos registered. Get pos from touch...
         pos = QPoint();
     }

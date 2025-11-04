@@ -9,7 +9,6 @@
 #include "base/strings/utf_string_conversions.h"
 #include "components/password_manager/core/browser/password_form.h"
 #include "components/password_manager/core/common/password_manager_features.h"
-#include "components/sync/base/features.h"
 #include "components/sync/protocol/password_specifics.pb.h"
 
 using autofill::FormData;
@@ -78,11 +77,8 @@ sync_pb::PasswordIssues PasswordIssuesMapToProto(
         insecure_metadata.create_time.ToDeltaSinceWindowsEpoch()
             .InMicroseconds());
     issue.set_is_muted(insecure_metadata.is_muted.value());
-    if (base::FeatureList::IsEnabled(
-            password_manager::features::kPasswordIssuesInSpecificsMetadata)) {
-      issue.set_trigger_notification_from_backend_on_detection(
-          insecure_metadata.trigger_notification_from_backend.value());
-    }
+    issue.set_trigger_notification_from_backend_on_detection(
+        insecure_metadata.trigger_notification_from_backend.value());
     switch (insecure_type) {
       case InsecureType::kLeaked:
         DCHECK(!password_issues.has_leaked_password_issue());
@@ -107,17 +103,11 @@ sync_pb::PasswordIssues PasswordIssuesMapToProto(
 
 InsecurityMetadata InsecurityMetadataFromProto(
     const sync_pb::PasswordIssues::PasswordIssue& issue) {
-  if (base::FeatureList::IsEnabled(
-          password_manager::features::kPasswordIssuesInSpecificsMetadata)) {
     return InsecurityMetadata(
         ConvertToBaseTime(issue.date_first_detection_windows_epoch_micros()),
         IsMuted(issue.is_muted()),
         TriggerBackendNotification(
             issue.trigger_notification_from_backend_on_detection()));
-  }
-  return InsecurityMetadata(
-      ConvertToBaseTime(issue.date_first_detection_windows_epoch_micros()),
-      IsMuted(issue.is_muted()), TriggerBackendNotification(false));
 }
 
 base::flat_map<InsecureType, InsecurityMetadata> PasswordIssuesMapFromProto(
@@ -276,15 +266,13 @@ sync_pb::PasswordSpecificsData SpecificsDataFromPassword(
   password_data.set_avatar_url(
       password_form.icon_url.is_valid() ? password_form.icon_url.spec() : "");
   password_data.set_federation_url(
-      password_form.federation_origin.opaque()
-          ? std::string()
-          : password_form.federation_origin.Serialize());
+      password_form.federation_origin.IsValid()
+          ? password_form.federation_origin.Serialize()
+          : std::string());
   *password_data.mutable_password_issues() =
       PasswordIssuesMapToProto(password_form.password_issues);
-  if (base::FeatureList::IsEnabled(syncer::kPasswordNotesWithBackup)) {
-    *password_data.mutable_notes() =
-        PasswordNotesToProto(password_form.notes, base_password_data.notes());
-  }
+  *password_data.mutable_notes() =
+      PasswordNotesToProto(password_form.notes, base_password_data.notes());
   password_data.set_sender_email(base::UTF16ToUTF8(password_form.sender_email));
   password_data.set_sender_name(base::UTF16ToUTF8(password_form.sender_name));
   password_data.set_date_received_windows_epoch_micros(
@@ -305,11 +293,8 @@ sync_pb::PasswordSpecificsMetadata SpecificsMetadataFromPassword(
   password_metadata.set_blacklisted(password_form.blocked_by_user);
   password_metadata.set_date_last_used_windows_epoch_micros(
       password_form.date_last_used.ToDeltaSinceWindowsEpoch().InMicroseconds());
-  if (base::FeatureList::IsEnabled(
-          password_manager::features::kPasswordIssuesInSpecificsMetadata)) {
-    *password_metadata.mutable_password_issues() =
-        PasswordIssuesMapToProto(password_form.password_issues);
-  }
+  *password_metadata.mutable_password_issues() =
+      PasswordIssuesMapToProto(password_form.password_issues);
   password_metadata.set_type(static_cast<int>(password_form.type));
   return password_metadata;
 }
@@ -347,11 +332,9 @@ PasswordForm PasswordFromSpecifics(
   password.display_name = base::UTF8ToUTF16(password_data.display_name());
   password.icon_url = GURL(password_data.avatar_url());
   password.federation_origin =
-      url::Origin::Create(GURL(password_data.federation_url()));
+      url::SchemeHostPort(GURL(password_data.federation_url()));
   password.password_issues = PasswordIssuesMapFromProto(password_data);
-  if (base::FeatureList::IsEnabled(syncer::kPasswordNotesWithBackup)) {
-    password.notes = PasswordNotesFromProto(password_data.notes());
-  }
+  password.notes = PasswordNotesFromProto(password_data.notes());
   password.sender_email = base::UTF8ToUTF16(password_data.sender_email());
   password.sender_name = base::UTF8ToUTF16(password_data.sender_name());
   password.date_received =

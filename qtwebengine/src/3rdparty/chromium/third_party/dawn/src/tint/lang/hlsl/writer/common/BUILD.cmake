@@ -39,16 +39,59 @@
 # Kind:      lib
 ################################################################################
 tint_add_target(tint_lang_hlsl_writer_common lib
+  lang/hlsl/writer/common/option_helpers.cc
+  lang/hlsl/writer/common/option_helpers.h
   lang/hlsl/writer/common/options.cc
   lang/hlsl/writer/common/options.h
 )
 
 tint_target_add_dependencies(tint_lang_hlsl_writer_common lib
   tint_api_common
-  tint_api_options
   tint_lang_core
+  tint_lang_core_common
+  tint_utils_containers
+  tint_utils_diagnostic
+  tint_utils_ice
   tint_utils_macros
   tint_utils_math
+  tint_utils_memory
   tint_utils_reflection
+  tint_utils_result
+  tint_utils_rtti
+  tint_utils_text
   tint_utils_traits
+)
+
+tint_target_add_external_dependencies(tint_lang_hlsl_writer_common lib
+  "src_utils"
+)
+
+################################################################################
+# Target:    tint_lang_hlsl_writer_common_test
+# Kind:      test
+################################################################################
+tint_add_target(tint_lang_hlsl_writer_common_test test
+  lang/hlsl/writer/common/options_test.cc
+)
+
+tint_target_add_dependencies(tint_lang_hlsl_writer_common_test test
+  tint_api_common
+  tint_lang_core
+  tint_lang_hlsl_writer_common
+  tint_utils_containers
+  tint_utils_diagnostic
+  tint_utils_ice
+  tint_utils_macros
+  tint_utils_math
+  tint_utils_memory
+  tint_utils_reflection
+  tint_utils_result
+  tint_utils_rtti
+  tint_utils_text
+  tint_utils_traits
+)
+
+tint_target_add_external_dependencies(tint_lang_hlsl_writer_common_test test
+  "gtest"
+  "src_utils"
 )

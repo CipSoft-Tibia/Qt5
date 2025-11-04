@@ -2,6 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#ifdef UNSAFE_BUFFERS_BUILD
+// TODO(crbug.com/351564777): Remove this and convert code to safer constructs.
+#pragma allow_unsafe_buffers
+#endif
+
 #include "extensions/common/features/simple_feature.h"
 
 #include <stddef.h>
@@ -20,6 +25,7 @@
 #include "content/public/test/test_utils.h"
 #include "extensions/common/extension_builder.h"
 #include "extensions/common/extension_features.h"
+#include "extensions/common/extension_id.h"
 #include "extensions/common/features/complex_feature.h"
 #include "extensions/common/features/feature.h"
 #include "extensions/common/features/feature_channel.h"
@@ -41,7 +47,7 @@ namespace extensions {
 namespace {
 
 struct IsAvailableTestData {
-  std::string extension_id;
+  ExtensionId extension_id;
   Manifest::Type extension_type;
   ManifestLocation location;
   Feature::Platform platform;
@@ -1002,6 +1008,9 @@ TEST(SimpleFeatureUnitTest, TestRequiresDelegatedAvailabilityCheck) {
   SimpleFeature feature;
   feature.set_requires_delegated_availability_check(true);
   feature.set_contexts({mojom::ContextType::kWebPage});
+
+  const GURL kTestPage = GURL("https://www.example.com");
+  feature.set_matches({kTestPage.spec().c_str()});
   {
     // Test a feature that requires a delegated availability check but is
     // missing the check handler.
@@ -1009,7 +1018,7 @@ TEST(SimpleFeatureUnitTest, TestRequiresDelegatedAvailabilityCheck) {
               feature
                   .IsAvailableToContext(
                       /*extension=*/nullptr, mojom::ContextType::kWebPage,
-                      kUnspecifiedContextId, TestContextData())
+                      kTestPage, kUnspecifiedContextId, TestContextData())
                   .result());
   }
 
@@ -1022,7 +1031,7 @@ TEST(SimpleFeatureUnitTest, TestRequiresDelegatedAvailabilityCheck) {
               feature
                   .IsAvailableToContext(
                       /*extension=*/nullptr, mojom::ContextType::kWebPage,
-                      kUnspecifiedContextId, TestContextData())
+                      kTestPage, kUnspecifiedContextId, TestContextData())
                   .result());
     EXPECT_EQ(1u, delegated_availability_check_call_count);
   }
@@ -1036,7 +1045,7 @@ TEST(SimpleFeatureUnitTest, TestRequiresDelegatedAvailabilityCheck) {
               feature
                   .IsAvailableToContext(
                       /*extension=*/nullptr, mojom::ContextType::kWebPage,
-                      kUnspecifiedContextId, TestContextData())
+                      kTestPage, kUnspecifiedContextId, TestContextData())
                   .result());
     EXPECT_EQ(2u, delegated_availability_check_call_count);
   }
@@ -1051,7 +1060,7 @@ TEST(SimpleFeatureUnitTest, TestRequiresDelegatedAvailabilityCheck) {
               feature
                   .IsAvailableToContext(
                       /*extension=*/nullptr, mojom::ContextType::kWebPage,
-                      kUnspecifiedContextId, TestContextData())
+                      kTestPage, kUnspecifiedContextId, TestContextData())
                   .result());
     EXPECT_EQ(2u, delegated_availability_check_call_count);
   }
@@ -1065,9 +1074,23 @@ TEST(SimpleFeatureUnitTest, TestRequiresDelegatedAvailabilityCheck) {
               feature
                   .IsAvailableToContext(
                       /*extension=*/nullptr, mojom::ContextType::kWebPage,
-                      kUnspecifiedContextId, TestContextData())
+                      kTestPage, kUnspecifiedContextId, TestContextData())
                   .result());
     EXPECT_EQ(3u, delegated_availability_check_call_count);
+  }
+
+  const GURL kTestPageNotInMatchList = GURL("https://www.not.example.com");
+  {
+    // Test a feature that requires a delegated availability check and the check
+    // would be successful, but the URL is not contained in the matchlist.
+    EXPECT_EQ(Feature::INVALID_URL,
+              feature
+                  .IsAvailableToContext(
+                      /*extension=*/nullptr, mojom::ContextType::kWebPage,
+                      kTestPageNotInMatchList, kUnspecifiedContextId,
+                      TestContextData())
+                  .result());
+    EXPECT_EQ(4u, delegated_availability_check_call_count);
   }
 }
 

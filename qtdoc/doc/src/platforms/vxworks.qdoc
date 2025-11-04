@@ -17,7 +17,7 @@
 
   \section1 Supported Architectures and VxWorks Releases
 
-  Qt 6.8 is verified on VxWorks 24.03.
+  Qt 6.9 is verified on VxWorks 24.03.
 
   Supported architectures:
   \list
@@ -54,52 +54,40 @@
   \table 80%
   \header
       \li Qt Module
-      \li Supported Features
       \li Notes
   \row
       \li \l {Qt Core}
-      \li
       \li No support for \l{QProcess}. \l{QLocalSocket} and \l{QLocalServer} support only SOCK_SEQPACKET.
   \row
       \li \l {Qt GUI}
-      \li
-      \li
+      \li Not applicable
   \row
       \li \l {Qt Network}
-      \li
-      \li
+      \li  Not applicable
   \row
       \li \l {Qt Qml}
-      \li
-      \li
+      \li Not applicable
   \row
       \li \l {Qt Quick}
-      \li
-      \li
+      \li Not applicable
   \row
       \li \l {Qt Quick Controls}
-      \li
-      \li
+      \li Not applicable
   \row
       \li \l {Qt Quick Dialogs}
-      \li
-      \li
+      \li Not applicable
   \row
       \li \l {Qt Quick Layouts}
-      \li
-      \li
+      \li Not applicable
   \row
       \li \l {Qt Quick Test}
-      \li
-      \li
+      \li Not applicable
   \row
       \li \l {Qt Test}
-      \li
-      \li
+      \li Not applicable
   \row
       \li \l {Qt Widgets}
-      \li
-      \li
+      \li Not applicable
   \endtable
 
   \section2 Supported Add-Ons
@@ -107,46 +95,32 @@
   \table 80%
   \header
       \li Qt Add-Ons
-      \li Notes
   \row
       \li \l {Qt Concurrent}
-      \li
   \row
       \li \l {Qt GRPC}{Qt GRPC/Protobuf}
-      \li
   \row
       \li \l {Qt Graphs}
-      \li
   \row
       \li \l {Qt Image Formats}
-      \li
   \row
       \li \l {Qt Multimedia}
-      \li
   \row
       \li \l {Native Interfaces}{Qt Native Interfaces}
-      \li
   \row
       \li \l {Qt OpenGL}
-      \li
   \row
       \li \l {Qt Quick 3D}
-      \li
   \row
       \li \l {Qt Quick Compiler}
-      \li
   \row
       \li \l {Qt Quick Effects}
-      \li
   \row
       \li \l {Qt SQL}
-      \li
   \row
       \li \l {Qt SVG}
-      \li
   \row
       \li \l {Qt Virtual Keyboard}
-      \li
   \endtable
 
   \note You can explicitly exclude unsupported or unused modules from the
@@ -171,8 +145,9 @@
   {https://gallery.windriver.com/portal/products}.
 
   Building Qt for a given device requires a Qt 6 installation for compilation
-  host, a toolchain and a sysroot. Additionally, some devices require vendor
-  specific adaptation code for EGL and OpenGL 2.0 support.
+  host, a toolchain and a sysroot. See \l{Cross-compiling Qt} for details.
+  Additionally, some devices require vendor specific adaptation code for EGL and
+  OpenGL 2.0 support.
 
   \section2 VxWorks Image Requirements
 
@@ -195,79 +170,79 @@
 
     \row
         \li \c DSI_DSI_KERNEL
-        \li
+        \li Not applicable
 
     \row
         \li \c IPNET_COREIP
-        \li
+        \li Not applicable
 
     \row
         \li \c IPNET_DHCPC
-        \li
+        \li Not applicable
 
     \row
         \li \c SDMMC_DEVICE
-        \li
+        \li Not applicable
 
     \row
         \li \c SDMMC_HOST
-        \li
+        \li Not applicable
 
     \row
         \li \c SDMMC_SDHC
-        \li
+        \li Not applicable
 
     \row
         \li \c SDMMC_STORAGE
-        \li
+        \li Not applicable
 
     \row
         \li \c SERVICE_UN
-        \li
+        \li Not applicable
 
     \row
         \li \c SOCKET
-        \li
+        \li Not applicable
 
     \row
         \li \c USB_EHCI
-        \li
+        \li Not applicable
 
     \row
         \li \c USB_KEYBOARD
-        \li
+        \li Not applicable
 
     \row
         \li \c USB_MOUSE
-        \li
+        \li Not applicable
 
     \row
         \li \c USB_STORAGE
-        \li
+        \li Not applicable
 
     \row
         \li \c USB_TOUCHSCREEN
-        \li
+        \li Not applicable
 
     \row
         \li \c EVDEV
-        \li
+        \li Not applicable
 
     \row
         \li \c EVDEV_LIB
-        \li
+        \li Not applicable
 
     \row
         \li \c EVDEV_TI_TSC2004_TS
-        \li
+        \li Not applicable
 
     \row
         \li \c EVDEV_EETI_EXC7200_TS
-        \li
+        \li Not applicable
 
     \row
         \li \c AUDIO
-        \li
+        \li Not applicable
 
     \row
         \li \c GPUDEV_FSLVIVGPU
@@ -275,27 +250,27 @@
 
     \row
         \li \c HASH
-        \li
+        \li Not applicable
 
     \row
         \li \c OPENSSL
-        \li
+        \li Not applicable
 
     \row
         \li \c RANDOM_ENTROPY_INJECT
-        \li
+        \li Not applicable
 
     \row
         \li \c IPNET_SSH
-        \li
+        \li Not applicable
 
     \row
         \li \c USER_MANAGEMENT
-        \li
+        \li Not applicable
 
     \row
         \li \c ICU
-        \li
+        \li Not applicable
 
     \row
         \li \c DRM
@@ -324,11 +299,11 @@
 
     \row
         \li \c _WRS_CONFIG_EVDEV_OPTIMIZED_MODE
-        \li
+        \li Not applicable
 
     \row
         \li \c _WRS_CONFIG_EVDEV_DISPLAY_POINT_TRANSLATE
-        \li
+        \li Not applicable
 
     \row
         \li \c _WRS_CONFIG_MESA_MANGLE
@@ -347,12 +322,12 @@
     \row
         \li \c _WRS_CONFIG_RTP_SSP
         \li \c y
-        \li
+        \li Not applicable
 
     \row
         \li \c _WRS_CONFIG_RTP_STACK_PROTECTOR
         \li \c y
-        \li
+        \li Not applicable
 
     \row
         \li \c _WRS_CONFIG_MESA_GPUDEV_INTEL_GEN90
@@ -379,13 +354,13 @@
         functionalities which Qt requires.
     \row
         \li \c BUNDLE_RTP_DEPLOY
-        \li
+        \li Not applicable
     \row
         \li \c BUNDLE_RTP_DEVELOP
-        \li
+        \li Not applicable
     \row
         \li \c BUNDLE_STANDALONE_SHELL
-        \li
+        \li Not applicable
   \endtable
 
   \table 80%
@@ -402,127 +377,127 @@
 
     \row
         \li \c DRV_AUDIO_FSL_SSI
-        \li
+        \li Not applicable
 
     \row
         \li \c DRV_AUDIO_FSL_SGTL5000
-        \li
+        \li Not applicable
 
     \row
         \li \c DRV_FSL_SDHC_CTRL
-        \li
+        \li Not applicable
 
     \row
         \li \c DRV_IMX_SDHC_CTRL
-        \li
+        \li Not applicable
 
     \row
         \li \c INCLUDE_EHCI_INIT
-        \li
+        \li Not applicable
 
     \row
         \li \c INCLUDE_FSL_IMX6Q_SABRELITE
-        \li
+        \li Not applicable
 
     \row
         \li \c DRV_MMCSTORAGE_CARD
-        \li
+        \li Not applicable
 
     \row
         \li \c DRV_SDSTORAGE_CARD
-        \li
+        \li Not applicable
 
     \row
         \li \c INCLUDE_AUDIO_LIB_CORE
-        \li
+        \li Not applicable
 
     \row
         \li \c INCLUDE_AUDIO_LIB_WAV
-        \li
+        \li Not applicable
 
     \row
         \li \c INCLUDE_CUSTOM_ENTROPY_ADD
-        \li
+        \li Not applicable
 
     \row
         \li \c INCLUDE_DEBUG_AGENT_START
-        \li
+        \li Not applicable
 
     \row
         \li \c INCLUDE_DEFAULT_TIMEZONE
-        \li
+        \li Not applicable
 
     \row
         \li \c INCLUDE_DISK_UTIL
-        \li
+        \li Not applicable
 
     \row
         \li \c INCLUDE_DOSFS
-        \li
+        \li Not applicable
 
     \row
         \li \c INCLUDE_DSAPARAM_CMD
-        \li
+        \li Not applicable
 
     \row
         \li \c INCLUDE_END
-        \li
+        \li Not applicable
 
     \row
         \li \c INCLUDE_EVDEV_LIB_CORE
-        \li
+        \li Not applicable
 
     \row
         \li \c INCLUDE_EVDEV_LIB_KBD
-        \li
+        \li Not applicable
 
     \row
         \li \c INCLUDE_EVDEV_LIB_KBD_MAP_US
-        \li
+        \li Not applicable
 
     \row
         \li \c INCLUDE_EVDEV_LIB_PTR
-        \li
+        \li Not applicable
 
     \row
         \li \c INCLUDE_EVDEV_LIB_TS
-        \li
+        \li Not applicable
 
     \row
         \li \c INCLUDE_GENDSA_CMD
-        \li
+        \li Not applicable
 
     \row
         \li \c INCLUDE_GENRSA_CMD
-        \li
+        \li Not applicable
 
     \row
         \li \c INCLUDE_GETADDRINFO
-        \li
+        \li Not applicable
 
     \row
         \li \c INCLUDE_GETNAMEINFO
-        \li
+        \li Not applicable
 
     \row
         \li \c INCLUDE_HRFS
-        \li
+        \li Not applicable
 
     \row
         \li \c INCLUDE_HRFS_ACCESS_TIMESTAMP
-        \li
+        \li Not applicable
 
     \row
         \li \c INCLUDE_HRFS_FORMAT
-        \li
+        \li Not applicable
 
     \row
         \li \c INCLUDE_HRFS_HISPEED_WRITE_MODE
-        \li
+        \li Not applicable
 
     \row
         \li \c INCLUDE_IFCONFIG
-        \li
+        \li Not applicable
 
     \row
         \li \c INCLUDE_IO_REALPATH
@@ -530,223 +505,223 @@
 
     \row
         \li \c INCLUDE_IPATTACH
-        \li
+        \li Not applicable
 
     \row
         \li \c INCLUDE_IPCOM_SYSLOGD_CMD
-        \li
+        \li Not applicable
 
     \row
         \li \c INCLUDE_IPCOM_SYSVAR_CMD
-        \li
+        \li Not applicable
 
     \row
         \li \c INCLUDE_IPCOM_USE_RAM_DISK
-        \li
+        \li Not applicable
 
     \row
         \li \c INCLUDE_IPCOM_USE_TIME_CMD
-        \li
+        \li Not applicable
 
     \row
         \li \c INCLUDE_IPDHCPC
-        \li
+        \li Not applicable
 
     \row
         \li \c INCLUDE_IPDNSC
-        \li
+        \li Not applicable
 
     \row
         \li \c INCLUDE_IPD_CMD
-        \li
+        \li Not applicable
 
     \row
         \li \c INCLUDE_IPFTPC
-        \li
+        \li Not applicable
 
     \row
         \li \c INCLUDE_IPFTP_CMD
-        \li
+        \li Not applicable
 
     \row
         \li \c INCLUDE_IPIFCONFIG_CMD
-        \li
+        \li Not applicable
 
     \row
         \li \c INCLUDE_IPNETSTAT_CMD
-        \li
+        \li Not applicable
 
     \row
         \li \c INCLUDE_IPNSLOOKUP_CMD
-        \li
+        \li Not applicable
 
     \row
         \li \c INCLUDE_IPPING_CMD
-        \li
+        \li Not applicable
 
     \row
         \li \c INCLUDE_IPROUTE_CMD
-        \li
+        \li Not applicable
 
     \row
         \li \c INCLUDE_IPTRACE_ROUTE_CMD
-        \li
+        \li Not applicable
 
     \row
         \li \c INCLUDE_IPWRAP_GETHOSTBYADDR
-        \li
+        \li Not applicable
 
     \row
         \li \c INCLUDE_IPWRAP_GETHOSTBYNAME
-        \li
+        \li Not applicable
 
     \row
         \li \c INCLUDE_IPWRAP_GETNAMEINFO
-        \li
+        \li Not applicable
 
     \row
         \li \c INCLUDE_IPWRAP_IFNAME
-        \li
+        \li Not applicable
 
     \row
         \li \c INCLUDE_IPWRAP_ROUTECMD
-        \li
+        \li Not applicable
 
     \row
         \li \c INCLUDE_MMAP
-        \li
+        \li Not applicable
 
     \row
         \li \c INCLUDE_PING
-        \li
+        \li Not applicable
 
     \row
         \li \c INCLUDE_PIPES
-        \li
+        \li Not applicable
 
     \row
         \li \c INCLUDE_POSIX_MAPPED_FILES
-        \li
+        \li Not applicable
 
     \row
         \li \c INCLUDE_POSIX_PIPES
-        \li
+        \li Not applicable
 
     \row
         \li \c INCLUDE_POSIX_PTHREAD_SCHEDULER
-        \li
+        \li Not applicable
 
     \row
         \li \c INCLUDE_POSIX_SHM
-        \li
+        \li Not applicable
 
     \row
         \li \c INCLUDE_RAM_DISK
-        \li
+        \li Not applicable
 
     \row
         \li \c INCLUDE_RAM_DISK_FORMAT_HRFS
-        \li
+        \li Not applicable
 
     \row
         \li \c INCLUDE_RANDOM_NUM_GEN
-        \li
+        \li Not applicable
 
     \row
         \li \c INCLUDE_ROMFS
-        \li
+        \li Not applicable
 
     \row
         \li \c INCLUDE_ROUTECMD
-        \li
+        \li Not applicable
 
     \row
         \li \c INCLUDE_SC_PIPE
-        \li
+        \li Not applicable
 
     \row
         \li \c INCLUDE_SC_POSIX_PIPE
-        \li
+        \li Not applicable
 
     \row
         \li \c INCLUDE_SD_BUS
-        \li
+        \li Not applicable
 
     \row
         \li \c INCLUDE_SECURITY
-        \li
+        \li Not applicable
 
     \row
         \li \c INCLUDE_SEC_KEY_STORE_CMD
-        \li
+        \li Not applicable
 
     \row
         \li \c INCLUDE_SHELL
-        \li
+        \li Not applicable
 
     \row
         \li \c INCLUDE_SSH
-        \li
+        \li Not applicable
 
     \row
         \li \c INCLUDE_STANDALONE_SYM_TBL
-        \li
+        \li Not applicable
 
     \row
         \li \c INCLUDE_STARTUP_SCRIPT
-        \li
+        \li Not applicable
 
     \row
         \li \c INCLUDE_TMP_DIR
-        \li
+        \li Not applicable
 
     \row
         \li \c INCLUDE_UN_COMP
-        \li
+        \li Not applicable
 
     \row
         \li \c INCLUDE_USB_GEN2_KEYBOARD
-        \li
+        \li Not applicable
 
     \row
         \li \c INCLUDE_USB_GEN2_MOUSE
-        \li
+        \li Not applicable
 
     \row
         \li \c INCLUDE_USB_GEN2_STORAGE_INIT
-        \li
+        \li Not applicable
 
     \row
         \li \c INCLUDE_USB_TOUCH_SCREEN
-        \li
+        \li Not applicable
 
     \row
         \li \c INCLUDE_USB_TOUCH_SCREEN_INIT
-        \li
+        \li Not applicable
 
     \row
         \li \c INCLUDE_USER_DATABASE
-        \li
+        \li Not applicable
 
     \row
         \li \c INCLUDE_USER_IDENTIFICATION
-        \li
+        \li Not applicable
 
     \row
         \li \c INCLUDE_VRFS
-        \li
+        \li Not applicable
 
     \row
         \li \c INCLUDE_VXBUS_SHOW
-        \li
+        \li Not applicable
 
     \row
         \li \c DRV_TOUCH_SCREEN_TI_TSC2004
-        \li
+        \li Not applicable
 
     \row
         \li \c DRV_TOUCH_SCREEN_EETI_EXC7200
-        \li
+        \li Not applicable
 
     \row
         \li \c INCLUDE_FBDEV_FSLIPU_0
@@ -754,7 +729,7 @@
 
     \row
         \li \c INCLUDE_FBDEV_SPLASH
-        \li
+        \li Not applicable
 
     \row
         \li \c INCLUDE_GPUDEV_FSLVIV_API
@@ -790,11 +765,11 @@
 
     \row
         \li \c INCLUDE_FTP
-        \li
+        \li Not applicable
 
     \row
         \li \c INCLUDE_SHELL_SECURITY
-        \li
+        \li Not applicable
 
   \endtable
 
@@ -811,17 +786,17 @@
     \row
         \li \c SEC_VAULT_KEY_ENCRYPTING_PW
         \li \c '"vxTarget"'
-        \li Example value
+        \li Not applicable
 
     \row
         \li \c UDB_STORAGE_PATH
         \li \c '"/ram/vxUserDB.txt"'
-        \li Example value
+        \li Not applicable
 
     \row
         \li \c UDB_HASH_KEY
         \li \c '"123456789"'
-        \li Example value
+        \li Not applicable
 
     \row
         \li \c UDB_HASH_KEY_LEN
@@ -836,7 +811,7 @@
     \row
         \li \c SYS_CLK_RATE
         \li \c 100
-        \li
+        \li Not applicable
 
     \row
         \li \c RTP_PTHREAD_STACK_SIZE_DEFAULT
@@ -851,26 +826,31 @@
     \row
         \li \c NUM_FILES
         \li \c 300
-        \li
+        \li Not applicable
 
     \row
         \li \c RTP_FD_NUM_MAX
         \li \c 300
-        \li
+        \li Not applicable
 
     \row
         \li \c HRFS_DEFAULT_MAX_FILES
         \li \c 300
-        \li
+        \li Not applicable
 
     \row
         \li \c ITLGMC_FBDEV_RESOLUTION_2
         \li \c '"1024x768-32"'
         \li Example value for the Xenarc 706TSA touchscreen connected over HDMI.
 
+    \row
+        \li \c RTP_MEM_FILL
+        \li \c True
+        \li By default the value is \c True and it needs to remain \c True for Qt to work properly.
 
   \endtable
 
+  \target Building Qt for VxWorks
   \section1 Building Qt 6 for VxWorks
 
   \section2 Host build
@@ -963,6 +943,8 @@
 
   set(VxWorksPlatformGraphics_DEFINES "-D_FSLVIV")
   set(VxWorksPlatformGraphics_LIBRARIES_PACK
+      "${_common_lib_path}/libgfxFslVivEGL.so"
+      "${_common_lib_path}/libgfxFslVivGLESv2.so"
       "${_common_lib_path}/libgfxFslVivGAL.so"
       "${_common_lib_path}/libgfxFslVivGLSLC.so"
       "${_common_lib_path}/libgfxFslVivVDK.so"
@@ -1008,10 +990,61 @@
 
   set(VxWorksPlatformGraphics_DEFINES "-D__vxworks -D__VXWORKS")
   set(VxWorksPlatformGraphics_LIBRARIES_PACK
+      "${_common_lib_path}/libgfxMesaEGL.so"
+      "${_common_lib_path}/libgfxMesaGL.so"
       "${_common_lib_path}/libgfxMesaSw.so"
       "${_common_lib_path}/libgfxMesa.so"
       "${_common_lib_path}/libgfxMesaDriI965.so"
       "${_common_lib_path}/libgfxLibDRM.so"
+      "${_common_lib_path}/libxml.so"
+  )
+
+  set(VxWorksPlatformGraphics_REQUIRED_LIBRARIES
+      ${VxWorksPlatformGraphics_LIBRARIES_PACK}
+      ${EGL_LIBRARY}
+      ${GLESv2_LIBRARY}
+  )
+  unset(_common_lib_path)
+
+  \endcode
+
+  An example for I.MX8:
+
+  \badcode
+  # Copyright (C) 2024 The Qt Company Ltd.
+  # SPDX-License-Identifier: BSD-3-Clause
+
+  if(QT_VXWORKS_TOOLCHAIN_FILE)
+      set(_original_toolchain_file "${QT_VXWORKS_TOOLCHAIN_FILE}")
+  elseif(DEFINED ENV{QT_VXWORKS_TOOLCHAIN_FILE})
+      set(_original_toolchain_file "$ENV{QT_VXWORKS_TOOLCHAIN_FILE}")
+  else()
+      message(FATAL_ERROR "QT_VXWORKS_TOOLCHAIN_FILE is not set.")
+  endif()
+
+  if(NOT EXISTS "${_original_toolchain_file}")
+      message(FATAL_ERORR "${_original_toolchain_file} doesn't exists.")
+  endif()
+
+  include("${_original_toolchain_file}")
+  unset(_original_toolchain_file)
+
+  list(APPEND CMAKE_TRY_COMPILE_PLATFORM_VARIABLES QT_VXWORKS_TOOLCHAIN_FILE)
+
+  set(_common_lib_path "${CMAKE_SYSROOT}/usr/lib/common")
+  set(EGL_INCLUDE_DIR ${CMAKE_SYSROOT}/usr/h/public CACHE PATH "Path to EGL include directory" FORCE)
+  set(EGL_LIBRARY ${_common_lib_path}/libgfxNxpVivEGL.so CACHE PATH "Path to EGL lib" FORCE)
+  set(GLESv2_INCLUDE_DIR ${CMAKE_SYSROOT}/usr/h/public CACHE PATH "Path to GLES include directory" FORCE)
+  set(GLESv2_LIBRARY ${_common_lib_path}/libgfxNxpVivGLESv2.so CACHE PATH "Path to GLES lib" FORCE)
+
+  set(VxWorksPlatformGraphics_DEFINES "-D_NXPVIV -D__vxworks -D__VXWORKS__")
+  set(VxWorksPlatformGraphics_LIBRARIES_PACK
+      "${_common_lib_path}/libgfxNxpVivGAL.so"
+      "${_common_lib_path}/libgfxNxpVivEGL.so"
+      "${_common_lib_path}/libgfxNxpVivGLSLC.so"
+      "${_common_lib_path}/libgfxNxpVivGLESv2.so"
+      "${_common_lib_path}/libgfxNxpVivGLESv1_CM.so"
+      "${_common_lib_path}/libgfxNxpVivVSC.so"
       "${_common_lib_path}/libxml.so"
   )
 
@@ -1042,7 +1075,7 @@
         -submodules "qtbase,qtdeclarative,qtmultimedia,qtquick3d,qtgraphs,qtimageformats,qtsvg,qtshadertools,qtvirtualkeyboard" \
         -- \
         -B <target/build/directory> \
-        -DQT_VXWORKS_TOOLCHAIN_FILE=<path/to/BDP/toolchain.cmake> \
+        -DQT_VXWORKS_TOOLCHAIN_FILE=<path/to/VSB/mk/toolchain.cmake> \
         -DFEATURE_vulkan=OFF \
         -DQT_QMAKE_TARGET_MKSPEC=vxworks-clang \
         -DQT_HOST_PATH=<path/to/Qt6/host/installation/dir> \
@@ -1078,7 +1111,7 @@
   \badcode
   export WIND_CC_SYSROOT=<path/to/VxWorks/VSB/directory>
   export QT_VXWORKS_TOOLCHAIN_FILE=<path/to/the/BSP/toolchain.cmake>
-  <path/to/Qt6/target/installation/dir>/bin/qt-cmake -G Ninja -S ~/Qt/Examples/Qt-6.8.0/demos/clocks -B <path/to/build/directory>
+  <path/to/Qt6/target/installation/dir>/bin/qt-cmake -G Ninja -S ~/Qt/Examples/Qt-6.9.2/demos/clocks -B <path/to/build/directory>
   cd <path/to/build/directory>
   cmake --build . --parallel
   \endcode
@@ -1094,8 +1127,111 @@
   \badcode
   putenv "LD_LIBRARY_PATH=/sd0:1/lib"
   cd "/sd0:1"
-  rtpSp("<Qt 6_app>", 200, 0x100000, 0, 0x01000000)
+  rtpSp("<Qt 6 VxWorks application>", 200, 0x100000, 0, 0x01000000)
   \endcode
+
+  \section1 Debugging Qt Applications
+
+  To debug Qt Applications, you must add the following to your VxWorks VSB:
+  \badcode
+  vxprj vsb config -s -add "_WRS_CONFIG_TCF_GDB_RSP=y"
+  \endcode
+  To your VxWorks VIP configuration add:
+  \badcode
+  "INCLUDE_DEBUG_AGENT"
+  "INCLUDE_DEBUG_AGENT_START"
+  "INCLUDE_STANDALONE_SYM_TBL"
+  \endcode
+
+  \section2 From the Command Line
+
+  \list 1
+    \li Start the application to debug on the device through SSH or the USB serial connection:
+    \badcode
+    rtpSp("<Qt 6 VxWorks application>", 200, 0x100000, 0, 0x01000000)
+    \endcode
+    \li Start the VxWorks debugger on the PC:
+    \badcode
+    vxgdb <binary to debug>
+    \endcode
+    \li List the running processes in the debugger:
+    \badcode
+    monitor ps
+    \endcode
+    \li Attach the debugger to the already running application:
+    \badcode
+    "attach <id from monitor>"
+    \endcode
+    \li Use GDB commands for debugging.
+  \endlist
+
+  \section2 From Workbench
+
+  \list 1
+    \li Create a CMake Real Time Process project.
+    \image vxwb-cmake-rtp-project.png "Select cmake RTP project"
+    \li Set the VSB which has debugging configured.
+    \li Remove set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -static") from CMakeLists.txt.
+    \li Add Qt CMake related code to the CMakeLists.txt following
+        \l{cmake-widgets-application-walkthrough}{Getting started with CMake}.
+    \li Before \c {project()} add \c {unset(CMAKE_TOOLCHAIN_FILE CACHE)} and add \c {CMAKE_TOOLCHAIN_FILE} pointing to the Qt6 toolchain file and \c {QT_CHAINLOAD_TOOLCHAIN_FILE} to the VSB toolchain file.
+    For example:
+    \badcode
+    unset(CMAKE_TOOLCHAIN_FILE CACHE)
+    set(CMAKE_TOOLCHAIN_FILE "/home/qtuser/VxWorks/qt/target_gdb/lib/cmake/Qt6/qt.toolchain.cmake")
+    set(QT_CHAINLOAD_TOOLCHAIN_FILE "/home/qtuser/VxWorks/fsl_imx6_2_0_6_2_VSB_gdb/mk/toolchain.cmake")
+    \endcode
+    \li Build the application Project.
+    \li Create a New Connection.
+    \image vxwb-connection.png "Connection to the device"
+    \li Start RTP process to debug.
+    \image vxwb-rundebug.png "Select Run/Debug Real Time Process"
+    \li Click on Advanced options.
+    \image vxwb-rundebug-settings.png "Run settings"
+    \li Set the stack size to 0x100000.
+    \image vxwb-advanced-settings.png "Advanced settings"
+  \endlist
+
+  \section1 Qt for VxWorks input plugins
+
+  VxWorks uses its own implementation of \c libevdev, which has an API that is very similar to
+  that of Linux, but differs in capabilities. Because of this Qt implements separate input plugins
+  for VxWorks to handle mouse, keyboard and touchscreen, which are based on
+  {inputs-linux-device.html}{Linux evdev}, with differences that are explained below.
+
+  \section2 VxMouse
+
+  \c VxMouse uses the same configuration scheme as EvdevMouse, except for different environment
+  variable: \c QT_QPA_VXEVDEV_MOUSE_PARAMETERS. Additionally, \c VxMouse ignores \c nocompress,
+  \c dejitter and \c grab parameters.
+
+  \section2 VxKeyboard
+
+  \c VxKeyboard uses the same configuration scheme as EvdevKeyboard, except for different
+  environment variable: \c QT_QPA_VXEVDEV_KEYBOARD_PARAMETERS.
+
+  \section2 VxTouch
+
+  \c VxTouch uses the same configuration scheme as EvdevTouch, except for different environment
+  variables:
+  \list
+    \li \c QT_QPA_EVDEV_TOUCHSCREEN_PARAMETERS
+    \li \c QT_QPA_VXEVDEV_DEBUG
+  \endlist
+
+  Additionally, VxTouch adds two new parameters:
+
+  \table 80%
+  \header
+    \li Parameter
+    \li Description
+  \row
+    \li \c rangex=MIN_X,MAX_X
+    \li Overrides touch point min and max for X axis
+  \row
+    \li \c rangey=MIN_Y,MAX_Y
+    \li Overrides touch point min and max for Y axis
+  \endtable
 
   \section1 Limitations
 

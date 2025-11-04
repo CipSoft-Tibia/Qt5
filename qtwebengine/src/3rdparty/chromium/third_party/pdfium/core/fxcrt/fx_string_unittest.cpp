@@ -6,21 +6,9 @@
 
 #include "build/build_config.h"
 #include "core/fxcrt/fx_string.h"
+#include "core/fxcrt/span.h"
 #include "core/fxcrt/utf16.h"
 #include "testing/gtest/include/gtest/gtest.h"
-#include "third_party/base/containers/span.h"
-
-char* TerminatedFloatToString(float value, pdfium::span<char> buf) {
-  size_t buflen = FloatToString(value, buf);
-  buf[buflen] = '\0';
-  return buf.data();
-}
-
-char* TerminatedDoubleToString(double value, pdfium::span<char> buf) {
-  size_t buflen = DoubleToString(value, buf);
-  buf[buflen] = '\0';
-  return buf.data();
-}
 
 TEST(fxstring, FXUTF8Encode) {
   EXPECT_EQ("", FX_UTF8Encode(WideStringView()));
@@ -110,44 +98,6 @@ TEST(fxstring, WideStringToFloat) {
   EXPECT_FLOAT_EQ(1.999999881f, StringToFloat(L"1.999999881"));
 }
 
-TEST(fxstring, FloatToString) {
-  char buf[32];
-
-  EXPECT_STREQ("0", TerminatedFloatToString(0.0f, buf));
-  EXPECT_STREQ("0", TerminatedFloatToString(-0.0f, buf));
-  EXPECT_STREQ("0",
-               TerminatedFloatToString(std::numeric_limits<float>::min(), buf));
-  EXPECT_STREQ(
-      "0", TerminatedFloatToString(-std::numeric_limits<float>::min(), buf));
-
-  EXPECT_STREQ("0.25", TerminatedFloatToString(0.25f, buf));
-  EXPECT_STREQ("-0.25", TerminatedFloatToString(-0.25f, buf));
-
-  EXPECT_STREQ("100", TerminatedFloatToString(100.0f, buf));
-  EXPECT_STREQ("-100", TerminatedFloatToString(-100.0f, buf));
-
-  // FloatToString won't convert beyond the maximum integer, and values
-  // larger than that get converted to a string representing that.
-  EXPECT_STREQ("2147483647", TerminatedFloatToString(2147483647.0f, buf));
-  EXPECT_STREQ("2147483647", TerminatedFloatToString(2147483647.5f, buf));
-  EXPECT_STREQ("2147483647",
-               TerminatedFloatToString(std::numeric_limits<float>::max(), buf));
-
-  // FloatToString won't convert beyond the minimum integer, and values
-  // smaller than that get converted to a string representing that.
-  EXPECT_STREQ("-2147483647", TerminatedFloatToString(-2147483647.0f, buf));
-  EXPECT_STREQ("-2147483647", TerminatedFloatToString(-2147483647.5f, buf));
-  EXPECT_STREQ("-2147483647", TerminatedFloatToString(
-                                  -std::numeric_limits<float>::max(), buf));
-
-  // Conversion only acknowledges precision to 5 digit past decimal, and
-  // rounds beyond that.
-  EXPECT_STREQ("1", TerminatedFloatToString(1.000001119f, buf));
-  EXPECT_STREQ("1.00001", TerminatedFloatToString(1.000011119f, buf));
-  EXPECT_STREQ("1.99999", TerminatedFloatToString(1.999988881f, buf));
-  EXPECT_STREQ("2", TerminatedFloatToString(1.999999881f, buf));
-}
-
 TEST(fxstring, ByteStringToDouble) {
   EXPECT_FLOAT_EQ(0.0, StringToDouble(""));
   EXPECT_FLOAT_EQ(0.0, StringToDouble("0"));
@@ -192,44 +142,6 @@ TEST(fxstring, WideStringToDouble) {
 
   EXPECT_FLOAT_EQ(1.000000119, StringToDouble(L"1.000000119"));
   EXPECT_FLOAT_EQ(1.999999881, StringToDouble(L"1.999999881"));
-}
-
-TEST(fxstring, DoubleToString) {
-  char buf[32];
-
-  EXPECT_STREQ("0", TerminatedDoubleToString(0.0f, buf));
-  EXPECT_STREQ("0", TerminatedDoubleToString(-0.0f, buf));
-  EXPECT_STREQ(
-      "0", TerminatedDoubleToString(std::numeric_limits<double>::min(), buf));
-  EXPECT_STREQ(
-      "0", TerminatedDoubleToString(-std::numeric_limits<double>::min(), buf));
-
-  EXPECT_STREQ("0.25", TerminatedDoubleToString(0.25f, buf));
-  EXPECT_STREQ("-0.25", TerminatedDoubleToString(-0.25f, buf));
-
-  EXPECT_STREQ("100", TerminatedDoubleToString(100.0f, buf));
-  EXPECT_STREQ("-100", TerminatedDoubleToString(-100.0f, buf));
-
-  // DoubleToString won't convert beyond the maximum integer, and values
-  // larger than that get converted to a string representing that.
-  EXPECT_STREQ("2147483647", TerminatedDoubleToString(2147483647.0f, buf));
-  EXPECT_STREQ("2147483647", TerminatedDoubleToString(2147483647.5f, buf));
-  EXPECT_STREQ("2147483647", TerminatedDoubleToString(
-                                 std::numeric_limits<double>::max(), buf));
-
-  // DoubleToString won't convert beyond the minimum integer, and values
-  // smaller than that get converted to a string representing that.
-  EXPECT_STREQ("-2147483647", TerminatedDoubleToString(-2147483647.0f, buf));
-  EXPECT_STREQ("-2147483647", TerminatedDoubleToString(-2147483647.5f, buf));
-  EXPECT_STREQ("-2147483647", TerminatedDoubleToString(
-                                  -std::numeric_limits<double>::max(), buf));
-
-  // Conversion only acknowledges precision to 5 digit past decimal, and
-  // rounds beyond that.
-  EXPECT_STREQ("1", TerminatedDoubleToString(1.000001119f, buf));
-  EXPECT_STREQ("1.00001", TerminatedDoubleToString(1.000011119f, buf));
-  EXPECT_STREQ("1.99999", TerminatedDoubleToString(1.999988881f, buf));
-  EXPECT_STREQ("2", TerminatedDoubleToString(1.999999881f, buf));
 }
 
 TEST(fxstring, SplitByteString) {
@@ -430,7 +342,7 @@ TEST(fxstring, SplitWideStringView) {
 
 TEST(fxstring, ByteStringSplitEfficiency) {
   std::vector<char> commas(50000, ',');
-  ByteString input(commas.data(), commas.size());
+  auto input = ByteString(ByteStringView(commas));
   std::vector<ByteString> result;
   result = fxcrt::Split(input, ',');
   ASSERT_EQ(commas.size() + 1, result.size());
@@ -440,7 +352,7 @@ TEST(fxstring, ByteStringSplitEfficiency) {
 
 TEST(fxstring, ByteStringViewSplitEfficiency) {
   std::vector<char> commas(50000, ',');
-  ByteStringView input(commas.data(), commas.size());
+  ByteStringView input(commas);
   std::vector<ByteStringView> result;
   result = fxcrt::Split(input, ',');
   ASSERT_EQ(commas.size() + 1, result.size());
@@ -450,7 +362,7 @@ TEST(fxstring, ByteStringViewSplitEfficiency) {
 
 TEST(fxstring, WideStringSplitEfficiency) {
   std::vector<wchar_t> commas(50000, L',');
-  WideString input(commas.data(), commas.size());
+  auto input = WideString(WideStringView(commas));
   std::vector<WideString> result;
   result = fxcrt::Split(input, ',');
   ASSERT_EQ(commas.size() + 1, result.size());
@@ -460,7 +372,7 @@ TEST(fxstring, WideStringSplitEfficiency) {
 
 TEST(fxstring, WideStringViewSplitEfficiency) {
   std::vector<wchar_t> commas(50000, L',');
-  WideStringView input(commas.data(), commas.size());
+  WideStringView input(commas);
   std::vector<WideStringView> result;
   result = fxcrt::Split(input, ',');
   ASSERT_EQ(commas.size() + 1, result.size());

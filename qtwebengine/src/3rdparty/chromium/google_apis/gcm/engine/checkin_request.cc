@@ -72,7 +72,7 @@ std::string GetCheckinRequestStatusString(CheckinRequestStatus status) {
       return "Failed: No headers";
   }
 
-  NOTREACHED();
+  NOTREACHED_IN_MIGRATION();
   return "Failed: Unknown reason";
 }
 
@@ -243,8 +243,6 @@ void CheckinRequest::OnURLLoadComplete(const network::SimpleURLLoader* source,
     LOG(ERROR) << "Check-in request got net error: " << source->NetError();
     RecordCheckinStatusAndReportUMA(CheckinRequestStatus::kFailedNetError,
                                     recorder_, /* will_retry= */ true);
-    base::UmaHistogramSparse("GCM.CheckinRequestStatusNetError",
-                             std::abs(source->NetError()));
 
     RetryWithBackoff();
     return;

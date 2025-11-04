@@ -17,6 +17,7 @@
 #include "components/viz/common/gpu/context_lost_observer.h"
 #include "components/viz/common/quads/compositor_frame.h"
 #include "components/viz/common/surfaces/frame_sink_id.h"
+#include "ui/display/manager/display_manager.h"
 #include "ui/display/manager/display_manager_observer.h"
 #include "ui/display/types/display_constants.h"
 #include "ui/gfx/geometry/rect_f.h"
@@ -32,6 +33,13 @@ class RasterContextProvider;
 
 namespace exo {
 class LayerTreeFrameSinkHolder;
+
+// Notifies viz that exo doesn't want to throttle sending
+// `DidReceiveCompositorFrameAck` and `ReclaimResources`. We don't want exo to
+// merge those into OnBeginFrame as that makes clients of exo to throttle as
+// well given frame callbacks as well as buffers are sent/released in a late
+// manner.
+BASE_DECLARE_FEATURE(kExoDisableBeginFrameAcks);
 
 // This class provides functionality for hosting a surface tree. The surface
 // tree is hosted in the |host_window_|.
@@ -147,6 +155,8 @@ class SurfaceTreeHost : public SurfaceDelegate,
   // viz::ContextLostObserver:
   void OnContextLost() override;
 
+  void OnFrameSinkLost();
+
   void set_client_submits_surfaces_in_pixel_coordinates(bool enabled) {
     client_submits_surfaces_in_pixel_coordinates_ = enabled;
   }
@@ -172,9 +182,13 @@ class SurfaceTreeHost : public SurfaceDelegate,
 
   // Applies rounded_corner_bounds (bounds + radii_in_dps) to the surface tree.
   // `rounded_corner_bounds` should be in the coordinate space of the
+  // `root_surface`.
   void ApplyRoundedCornersToSurfaceTree(
       const gfx::RectF& bounds,
       const gfx::RoundedCornersF& radii_in_dps);
+
+  scoped_refptr<viz::RasterContextProvider> SetRasterContextProviderForTesting(
+      scoped_refptr<viz::RasterContextProvider> context_provider_test);
 
  protected:
   void UpdateDisplayOnTree();
@@ -199,6 +213,8 @@ class SurfaceTreeHost : public SurfaceDelegate,
   // Updates the host layer's opacity. This has to be called after root
   // surface's resource is updated.
   void UpdateHostLayerOpacity();
+
+  void UpdateHostWindowOpaqueRegion();
 
   bool client_submits_surfaces_in_pixel_coordinates() const {
     return client_submits_surfaces_in_pixel_coordinates_;
@@ -257,15 +273,19 @@ class SurfaceTreeHost : public SurfaceDelegate,
   viz::FrameSinkId frame_sink_id_;
 
  private:
+  // Returns true if contents of `host_window_` fills the bounds opaquely.
+  bool ContentsFillsHostWindowOpaquely() const;
+
   void InitHostWindow(const std::string& window_name);
 
   viz::CompositorFrame PrepareToSubmitCompositorFrame();
 
   void HandleContextLost();
+  void HandleFrameSinkLost();
 
   void CleanUpCallbacks();
 
-  float CalculateScaleFactor(const absl::optional<float>& scale_factor) const;
+  float CalculateScaleFactor(const std::optional<float>& scale_factor) const;
 
   // Applies `rounded_corner_bounds` to the `surface` and propagates the bounds
   // to its subsurfaces. `rounded_corner_bounds` should be in the local
@@ -308,11 +328,11 @@ class SurfaceTreeHost : public SurfaceDelegate,
 
   // When a client calls set_scale_factor they're actually setting the scale
   // factor for all future commits.
-  absl::optional<float> pending_scale_factor_;
+  std::optional<float> pending_scale_factor_;
 
   // This is the client-set scale factor that is being used for the current
   // buffer.
-  absl::optional<float> scale_factor_;
+  std::optional<float> scale_factor_;
 
   viz::FrameTokenGenerator next_token_;
 

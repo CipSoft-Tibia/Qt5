@@ -2,6 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#ifdef UNSAFE_BUFFERS_BUILD
+// TODO(crbug.com/342213636): Remove this and spanify to fix the errors.
+#pragma allow_unsafe_buffers
+#endif
+
 #include "content/zygote/zygote_linux.h"
 
 #include <errno.h>
@@ -24,7 +29,9 @@
 #include "base/files/platform_file.h"
 #include "base/linux_util.h"
 #include "base/logging.h"
+#include "base/metrics/histogram_shared_memory.h"
 #include "base/notreached.h"
+#include "base/numerics/safe_conversions.h"
 #include "base/pickle.h"
 #include "base/posix/eintr_wrapper.h"
 #include "base/posix/global_descriptors.h"
@@ -33,11 +40,11 @@
 #include "base/process/launch.h"
 #include "base/process/process.h"
 #include "base/process/process_handle.h"
+#include "base/process/set_process_title.h"
 #include "base/time/time.h"
 #include "base/trace_event/trace_event.h"
 #include "build/build_config.h"
 #include "build/chromeos_buildflags.h"
-#include "content/common/set_process_title.h"
 #include "content/common/zygote/zygote_commands_linux.h"
 #include "content/public/common/content_descriptors.h"
 #include "content/public/common/content_switches.h"
@@ -166,7 +173,7 @@ bool Zygote::ProcessRequests() {
     }
   }
   // The loop should not be exited unless a request was successfully processed.
-  NOTREACHED();
+  NOTREACHED_IN_MIGRATION();
   return false;
 }
 
@@ -228,7 +235,7 @@ bool Zygote::UsingNSSandbox() const {
 
 bool Zygote::HandleRequestFromBrowser(int fd) {
   std::vector<base::ScopedFD> fds;
-  char buf[kZygoteMaxMessageLength];
+  uint8_t buf[kZygoteMaxMessageLength];
   const ssize_t len =
       base::UnixDomainSocket::RecvMsg(fd, buf, sizeof(buf), &fds);
 
@@ -245,7 +252,8 @@ bool Zygote::HandleRequestFromBrowser(int fd) {
     return false;
   }
 
-  base::Pickle pickle(buf, len);
+  base::Pickle pickle = base::Pickle::WithUnownedBuffer(
+      base::span(buf, base::checked_cast<size_t>(len)));
   base::PickleIterator iter(pickle);
 
   int kind;
@@ -273,13 +281,13 @@ bool Zygote::HandleRequestFromBrowser(int fd) {
         // HandleForkRequest (e.g., if ReadArgsAndFork fails during depickling)
         // could leave this command pending on the socket.
         LOG(ERROR) << "Unexpected real PID message from browser";
-        NOTREACHED();
+        NOTREACHED_IN_MIGRATION();
         return false;
       case kZygoteCommandReinitializeLogging:
         HandleReinitializeLoggingRequest(iter, std::move(fds));
         return false;
       default:
-        NOTREACHED();
+        NOTREACHED_IN_MIGRATION();
         break;
     }
   }
@@ -299,7 +307,7 @@ void Zygote::HandleReapRequest(int fd, base::PickleIterator iter) {
   ZygoteProcessInfo child_info;
   if (!GetProcessInfo(child, &child_info)) {
     LOG(ERROR) << "Child not found!";
-    NOTREACHED();
+    NOTREACHED_IN_MIGRATION();
     return;
   }
   child_info.time_of_reap_request = base::TimeTicks::Now();
@@ -327,7 +335,7 @@ bool Zygote::GetTerminationStatus(base::ProcessHandle real_pid,
   ZygoteProcessInfo child_info;
   if (!GetProcessInfo(real_pid, &child_info)) {
     LOG(ERROR) << "Zygote::GetTerminationStatus for unknown PID " << real_pid;
-    NOTREACHED();
+    NOTREACHED_IN_MIGRATION();
     return false;
   }
   // We know about |real_pid|.
@@ -382,7 +390,7 @@ void Zygote::HandleGetTerminationStatus(int fd, base::PickleIterator iter) {
   if (!got_termination_status) {
     // Assume that if we can't find the child in the sandbox, then
     // it terminated normally.
-    NOTREACHED();
+    NOTREACHED_IN_MIGRATION();
     status = base::TERMINATION_STATUS_NORMAL_TERMINATION;
     exit_code = RESULT_CODE_NORMAL_EXIT;
   }
@@ -420,10 +428,17 @@ int Zygote::ForkWithRealPid(const std::string& process_type,
       return -1;
     }
     int field_trial_fd = LookUpFd(fd_mapping, kFieldTrialDescriptor);
+    int histograms_fd = LookUpFd(fd_mapping, kHistogramSharedMemoryDescriptor);
     std::vector<int> fds;
+    fds.reserve(ZygoteForkDelegate::kNumPassedFDs);
     fds.push_back(mojo_channel_fd);   // kBrowserFDIndex
     fds.push_back(pid_oracle.get());  // kPIDOracleFDIndex
-    fds.push_back(field_trial_fd);
+    fds.push_back(field_trial_fd);    // kFieldTrialFDIndex
+    if (histograms_fd != -1) {
+      // TODO(crbug.com/40109064): pass unconditionally once the metrics shared
+      // memory region is always passed on startup.
+      fds.push_back(histograms_fd);  // kHistogramFDIndex
+    }
     pid = helper->Fork(process_type, args, fds, /*channel_id=*/std::string());
 
     // Helpers should never return in the child process.
@@ -462,7 +477,7 @@ int Zygote::ForkWithRealPid(const std::string& process_type,
     base::ProcessId real_pid;
     if (!base::ReadFromFD(
             read_pipe.get(),
-            base::as_writable_chars(base::make_span(&real_pid, 1u)))) {
+            base::as_writable_chars(base::span_from_ref(real_pid)))) {
       LOG(FATAL) << "Failed to synchronise with parent zygote process";
     }
     if (real_pid <= 0) {
@@ -474,10 +489,8 @@ int Zygote::ForkWithRealPid(const std::string& process_type,
     // Force the real PID so chrome event data have a PID that corresponds
     // to system trace event data.
     base::trace_event::TraceLog::GetInstance()->SetProcessID(real_pid);
-#if BUILDFLAG(USE_PERFETTO_CLIENT_LIBRARY)
     // Tell Perfetto SDK about the real PID too.
     perfetto::Platform::SetCurrentProcessId(real_pid);
-#endif
     base::InitUniqueIdForProcessInPidNamespace(real_pid);
     return 0;
   }
@@ -496,14 +509,15 @@ int Zygote::ForkWithRealPid(const std::string& process_type,
   base::ProcessId real_pid = -1;
   {
     std::vector<base::ScopedFD> recv_fds;
-    char buf[kZygoteMaxMessageLength];
+    uint8_t buf[kZygoteMaxMessageLength];
     const ssize_t len = base::UnixDomainSocket::RecvMsg(
         kZygoteSocketPairFd, buf, sizeof(buf), &recv_fds);
 
     if (len > 0) {
       CHECK(recv_fds.empty());
 
-      base::Pickle pickle(buf, len);
+      base::Pickle pickle = base::Pickle::WithUnownedBuffer(
+          base::span(buf, base::checked_cast<size_t>(len)));
       base::PickleIterator iter(pickle);
 
       int kind;
@@ -533,7 +547,7 @@ int Zygote::ForkWithRealPid(const std::string& process_type,
   // Now set-up this process to be tracked by the Zygote.
   if (base::Contains(process_info_map_, real_pid)) {
     LOG(ERROR) << "Already tracking PID " << real_pid;
-    NOTREACHED();
+    NOTREACHED_IN_MIGRATION();
   }
   process_info_map_[real_pid].internal_pid = pid;
   process_info_map_[real_pid].started_from_helper = helper;
@@ -620,7 +634,7 @@ base::ProcessId Zygote::ReadArgsAndFork(base::PickleIterator iter,
     // Update the process title. The argv was already cached by the call to
     // SetProcessTitleFromCommandLine in ChromeMain, so we can pass NULL here
     // (we don't have the original argv at this point).
-    SetProcessTitleFromCommandLine(nullptr);
+    base::SetProcessTitleFromCommandLine(nullptr);
   } else if (child_pid < 0) {
     LOG(ERROR) << "Zygote could not fork: process_type " << process_type
                << " numfds " << numfds << " child_pid " << child_pid;
@@ -704,7 +718,7 @@ void Zygote::HandleReinitializeLoggingRequest(base::PickleIterator iter,
   }
 #else
   // This method should only be used in ChromeOS.
-  NOTREACHED();
+  NOTREACHED_IN_MIGRATION();
 #endif  // BUILDFLAG(IS_CHROMEOS)
 }
 

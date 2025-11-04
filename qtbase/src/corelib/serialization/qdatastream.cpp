@@ -1,8 +1,8 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:data-parser
 
 #include "qdatastream.h"
-#include "qdatastream_p.h"
 
 #if !defined(QT_NO_DATASTREAM) || defined(QT_BOOTSTRAPPED)
 #include "qbuffer.h"
@@ -549,6 +549,7 @@ void QDataStream::setByteOrder(ByteOrder bo)
     \value Qt_6_6 Version 21 (Qt 6.6)
     \value Qt_6_7 Version 22 (Qt 6.7)
     \value Qt_6_8 Same as Qt_6_7
+    \value Qt_6_9 Same as Qt_6_7
     \omitvalue Qt_DefaultCompiledVersion
 
     \sa setVersion(), version()

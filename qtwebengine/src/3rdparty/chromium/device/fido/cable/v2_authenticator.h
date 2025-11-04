@@ -5,17 +5,17 @@
 #ifndef DEVICE_FIDO_CABLE_V2_AUTHENTICATOR_H_
 #define DEVICE_FIDO_CABLE_V2_AUTHENTICATOR_H_
 
+#include <stdint.h>
+
+#include <optional>
 #include <string>
 #include <vector>
-
-#include <stdint.h>
 
 #include "base/containers/span.h"
 #include "base/functional/callback.h"
 #include "device/fido/cable/v2_constants.h"
 #include "device/fido/fido_constants.h"
 #include "device/fido/network_context_factory.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "third_party/abseil-cpp/absl/types/variant.h"
 #include "third_party/blink/public/mojom/webauthn/authenticator.mojom-forward.h"
 
@@ -65,12 +65,13 @@ class Platform {
     EOF_WHILE_PROCESSING = 113,
     AUTHENTICATOR_SELECTION_RECEIVED = 114,
     DISCOVERABLE_CREDENTIALS_REQUEST = 115,
+    INVALID_JSON = 116,
   };
 
-  using MakeCredentialCallback = base::OnceCallback<void(
-      uint32_t status,
-      base::span<const uint8_t> attestation_obj,
-      bool prf_enabled)>;
+  using MakeCredentialCallback =
+      base::OnceCallback<void(uint32_t status,
+                              base::span<const uint8_t> attestation_obj,
+                              bool prf_enabled)>;
 
   virtual void MakeCredential(
       blink::mojom::PublicKeyCredentialCreationOptionsPtr params,
@@ -90,7 +91,7 @@ class Platform {
   // OnCompleted is called when the transaction has completed. Note that calling
   // this may result in the |Transaction| that owns this |Platform| being
   // deleted.
-  virtual void OnCompleted(absl::optional<Error>) = 0;
+  virtual void OnCompleted(std::optional<Error>) = 0;
 
   virtual std::unique_ptr<BLEAdvert> SendBLEAdvert(
       base::span<const uint8_t, kAdvertSize> payload) = 0;
@@ -107,7 +108,7 @@ class Transport {
   // report. The first element is a message from the peer. |Disconnected| is
   // handled separately because it's context dependent whether that is an error
   // or not.
-  using Update = absl::variant<std::vector<uint8_t>,
+  using Update = absl::variant<std::pair<PayloadType, std::vector<uint8_t>>,
                                Platform::Error,
                                Platform::Status,
                                Disconnected>;
@@ -117,7 +118,7 @@ class Transport {
   // arrives from the peer, an error occurs, or the status of the link changes.
   virtual void StartReading(
       base::RepeatingCallback<void(Update)> update_callback) = 0;
-  virtual void Write(std::vector<uint8_t> data) = 0;
+  virtual void Write(PayloadType payload_type, std::vector<uint8_t> data) = 0;
 };
 
 // A Transaction is a handle to an ongoing caBLEv2 transaction with a peer.
@@ -142,7 +143,18 @@ std::unique_ptr<Transaction> TransactFromQRCode(
     // TODO: name this constant.
     base::span<const uint8_t, 16> qr_secret,
     base::span<const uint8_t, kP256X962Length> peer_identity,
-    absl::optional<std::vector<uint8_t>> contact_id);
+    std::optional<std::vector<uint8_t>> contact_id);
+
+// TransactDigitalIdentityFromQRCodeForTesting starts a network-based
+// transaction that expects a JSON request, ignores it, and replies with the
+// given response.
+std::unique_ptr<Transaction> TransactDigitalIdentityFromQRCodeForTesting(
+    std::unique_ptr<Platform> platform,
+    NetworkContextFactory network_context_factory,
+    base::span<const uint8_t, 16> qr_secret,
+    base::span<const uint8_t, kP256X962Length> peer_identity,
+    PayloadType response_payload_type,
+    std::vector<uint8_t> response);
 
 // Deprecated, kept around while Android cable code is cleaned up. Use
 // TransactFromQRCode instead.
@@ -177,7 +189,7 @@ std::unique_ptr<Transaction> TransactFromFCMDeprecated(
     base::span<const uint8_t, kTunnelIdSize> tunnel_id,
     base::span<const uint8_t, kPairingIDSize> pairing_id,
     base::span<const uint8_t, kClientNonceSize> client_nonce,
-    absl::optional<base::span<const uint8_t>> contact_id);
+    std::optional<base::span<const uint8_t>> contact_id);
 
 }  // namespace device::cablev2::authenticator
 

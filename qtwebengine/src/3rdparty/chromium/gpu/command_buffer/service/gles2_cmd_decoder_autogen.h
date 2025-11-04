@@ -8,6 +8,11 @@
 //    clang-format -i -style=chromium filename
 // DO NOT EDIT!
 
+#ifdef UNSAFE_BUFFERS_BUILD
+// TODO(crbug.com/40285824): Remove this and convert code to safer constructs.
+#pragma allow_unsafe_buffers
+#endif
+
 // It is included by gles2_cmd_decoder.cc
 #ifndef GPU_COMMAND_BUFFER_SERVICE_GLES2_CMD_DECODER_AUTOGEN_H_
 #define GPU_COMMAND_BUFFER_SERVICE_GLES2_CMD_DECODER_AUTOGEN_H_
@@ -348,10 +353,6 @@ error::Error GLES2DecoderImpl::HandleClear(uint32_t immediate_data_size,
                                            const volatile void* cmd_data) {
   const volatile gles2::cmds::Clear& c =
       *static_cast<const volatile gles2::cmds::Clear*>(cmd_data);
-  error::Error error;
-  error = WillAccessBoundFramebufferForDraw();
-  if (error != error::kNoError)
-    return error;
   GLbitfield mask = static_cast<GLbitfield>(c.mask);
   DoClear(mask);
   return error::kNoError;
@@ -575,10 +576,6 @@ error::Error GLES2DecoderImpl::HandleCopyTexImage2D(
     const volatile void* cmd_data) {
   const volatile gles2::cmds::CopyTexImage2D& c =
       *static_cast<const volatile gles2::cmds::CopyTexImage2D*>(cmd_data);
-  error::Error error;
-  error = WillAccessBoundFramebufferForRead();
-  if (error != error::kNoError)
-    return error;
   GLenum target = static_cast<GLenum>(c.target);
   GLint level = static_cast<GLint>(c.level);
   GLenum internalformat = static_cast<GLenum>(c.internalformat);
@@ -613,10 +610,6 @@ error::Error GLES2DecoderImpl::HandleCopyTexSubImage2D(
     const volatile void* cmd_data) {
   const volatile gles2::cmds::CopyTexSubImage2D& c =
       *static_cast<const volatile gles2::cmds::CopyTexSubImage2D*>(cmd_data);
-  error::Error error;
-  error = WillAccessBoundFramebufferForRead();
-  if (error != error::kNoError)
-    return error;
   GLenum target = static_cast<GLenum>(c.target);
   GLint level = static_cast<GLint>(c.level);
   GLint xoffset = static_cast<GLint>(c.xoffset);
@@ -648,10 +641,6 @@ error::Error GLES2DecoderImpl::HandleCopyTexSubImage3D(
     return error::kUnknownCommand;
   const volatile gles2::cmds::CopyTexSubImage3D& c =
       *static_cast<const volatile gles2::cmds::CopyTexSubImage3D*>(cmd_data);
-  error::Error error;
-  error = WillAccessBoundFramebufferForRead();
-  if (error != error::kNoError)
-    return error;
   GLenum target = static_cast<GLenum>(c.target);
   GLint level = static_cast<GLint>(c.level);
   GLint xoffset = static_cast<GLint>(c.xoffset);
@@ -989,10 +978,6 @@ error::Error GLES2DecoderImpl::HandleFenceSync(uint32_t immediate_data_size,
 
 error::Error GLES2DecoderImpl::HandleFinish(uint32_t immediate_data_size,
                                             const volatile void* cmd_data) {
-  error::Error error;
-  error = WillAccessBoundFramebufferForRead();
-  if (error != error::kNoError)
-    return error;
   DoFinish();
   return error::kNoError;
 }
@@ -2220,9 +2205,7 @@ error::Error GLES2DecoderImpl::HandleHint(uint32_t immediate_data_size,
     case GL_GENERATE_MIPMAP_HINT:
       if (state_.hint_generate_mipmap != mode) {
         state_.hint_generate_mipmap = mode;
-        if (!feature_info_->gl_version_info().is_desktop_core_profile) {
-          api()->glHintFn(target, mode);
-        }
+        api()->glHintFn(target, mode);
       }
       break;
     case GL_FRAGMENT_SHADER_DERIVATIVE_HINT_OES:
@@ -2234,7 +2217,7 @@ error::Error GLES2DecoderImpl::HandleHint(uint32_t immediate_data_size,
       }
       break;
     default:
-      NOTREACHED();
+      NOTREACHED_IN_MIGRATION();
   }
   return error::kNoError;
 }
@@ -4267,13 +4250,6 @@ error::Error GLES2DecoderImpl::HandleBlitFramebufferCHROMIUM(
     return error::kUnknownCommand;
   }
 
-  error::Error error;
-  error = WillAccessBoundFramebufferForDraw();
-  if (error != error::kNoError)
-    return error;
-  error = WillAccessBoundFramebufferForRead();
-  if (error != error::kNoError)
-    return error;
   GLint srcX0 = static_cast<GLint>(c.srcX0);
   GLint srcY0 = static_cast<GLint>(c.srcY0);
   GLint srcX1 = static_cast<GLint>(c.srcX1);
@@ -4968,53 +4944,6 @@ error::Error GLES2DecoderImpl::HandleCopySubTextureCHROMIUM(
                            dest_level, xoffset, yoffset, x, y, width, height,
                            unpack_flip_y, unpack_premultiply_alpha,
                            unpack_unmultiply_alpha);
-  return error::kNoError;
-}
-
-error::Error GLES2DecoderImpl::HandleProduceTextureDirectCHROMIUMImmediate(
-    uint32_t immediate_data_size,
-    const volatile void* cmd_data) {
-  const volatile gles2::cmds::ProduceTextureDirectCHROMIUMImmediate& c =
-      *static_cast<
-          const volatile gles2::cmds::ProduceTextureDirectCHROMIUMImmediate*>(
-          cmd_data);
-  GLuint texture = c.texture;
-  uint32_t mailbox_size;
-  if (!GLES2Util::ComputeDataSize<GLbyte, 16>(1, &mailbox_size)) {
-    return error::kOutOfBounds;
-  }
-  if (mailbox_size > immediate_data_size) {
-    return error::kOutOfBounds;
-  }
-  volatile GLbyte* mailbox = GetImmediateDataAs<volatile GLbyte*>(
-      c, mailbox_size, immediate_data_size);
-  if (mailbox == nullptr) {
-    return error::kOutOfBounds;
-  }
-  DoProduceTextureDirectCHROMIUM(texture, mailbox);
-  return error::kNoError;
-}
-
-error::Error GLES2DecoderImpl::HandleCreateAndConsumeTextureINTERNALImmediate(
-    uint32_t immediate_data_size,
-    const volatile void* cmd_data) {
-  const volatile gles2::cmds::CreateAndConsumeTextureINTERNALImmediate& c =
-      *static_cast<const volatile gles2::cmds::
-                       CreateAndConsumeTextureINTERNALImmediate*>(cmd_data);
-  GLuint texture = static_cast<GLuint>(c.texture);
-  uint32_t mailbox_size;
-  if (!GLES2Util::ComputeDataSize<GLbyte, 16>(1, &mailbox_size)) {
-    return error::kOutOfBounds;
-  }
-  if (mailbox_size > immediate_data_size) {
-    return error::kOutOfBounds;
-  }
-  volatile const GLbyte* mailbox = GetImmediateDataAs<volatile const GLbyte*>(
-      c, mailbox_size, immediate_data_size);
-  if (mailbox == nullptr) {
-    return error::kOutOfBounds;
-  }
-  DoCreateAndConsumeTextureINTERNAL(texture, mailbox);
   return error::kNoError;
 }
 
@@ -6135,7 +6064,7 @@ bool GLES2DecoderImpl::SetCapabilityState(GLenum cap, bool enabled) {
       }
       return false;
     default:
-      NOTREACHED();
+      NOTREACHED_IN_MIGRATION();
       return false;
   }
 }

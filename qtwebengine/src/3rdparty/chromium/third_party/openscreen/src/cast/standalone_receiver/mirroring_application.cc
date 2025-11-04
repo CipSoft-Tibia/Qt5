@@ -6,13 +6,14 @@
 
 #include <utility>
 
+#include "build/build_config.h"
 #include "cast/common/public/cast_streaming_app_ids.h"
 #include "cast/common/public/message_port.h"
-#include "cast/streaming/constants.h"
-#include "cast/streaming/environment.h"
 #include "cast/streaming/message_fields.h"
-#include "cast/streaming/receiver_constraints.h"
-#include "cast/streaming/receiver_session.h"
+#include "cast/streaming/public/constants.h"
+#include "cast/streaming/public/environment.h"
+#include "cast/streaming/public/receiver_constraints.h"
+#include "cast/streaming/public/receiver_session.h"
 #include "platform/api/task_runner.h"
 #include "util/osp_logging.h"
 
@@ -23,18 +24,17 @@ const char kRemotingRpcNamespace[] = "urn:x-cast:com.google.cast.remoting";
 
 MirroringApplication::MirroringApplication(TaskRunner& task_runner,
                                            const IPAddress& interface_address,
-                                           ApplicationAgent* agent)
+                                           ApplicationAgent& agent)
     : task_runner_(task_runner),
       interface_address_(interface_address),
       app_ids_(GetCastStreamingAppIds()),
       agent_(agent) {
-  OSP_DCHECK(agent_);
-  agent_->RegisterApplication(this);
+  agent_.RegisterApplication(this);
 }
 
 MirroringApplication::~MirroringApplication() {
-  agent_->UnregisterApplication(this);  // ApplicationAgent may call Stop().
-  OSP_DCHECK(!current_session_);
+  agent_.UnregisterApplication(this);  // ApplicationAgent may call Stop().
+  OSP_CHECK(!current_session_);
 }
 
 const std::vector<std::string>& MirroringApplication::GetAppIds() const {
@@ -48,9 +48,9 @@ bool MirroringApplication::Launch(const std::string& app_id,
     return false;
   }
 
-#if defined(MAC_OSX)
+#if BUILDFLAG(IS_APPLE)
   wake_lock_ = ScopedWakeLock::Create(task_runner_);
-#endif  // defined(MAC_OSX)
+#endif  // BUILDFLAG(IS_APPLE)
   environment_ = std::make_unique<Environment>(
       &Clock::now, task_runner_,
       IPEndpoint{interface_address_, kDefaultCastStreamingPort});
@@ -64,9 +64,8 @@ bool MirroringApplication::Launch(const std::string& app_id,
   constraints.video_codecs.insert(constraints.video_codecs.begin(),
                                   {VideoCodec::kAv1, VideoCodec::kVp9});
   constraints.remoting = std::make_unique<RemotingConstraints>();
-  current_session_ =
-      std::make_unique<ReceiverSession>(controller_.get(), environment_.get(),
-                                        message_port, std::move(constraints));
+  current_session_ = std::make_unique<ReceiverSession>(
+      *controller_, *environment_, *message_port, std::move(constraints));
   return true;
 }
 
@@ -90,9 +89,9 @@ void MirroringApplication::Stop() {
 }
 
 void MirroringApplication::OnPlaybackError(StreamingPlaybackController*,
-                                           Error error) {
+                                           const Error& error) {
   OSP_LOG_ERROR << "[MirroringApplication] " << error;
-  agent_->StopApplicationIfRunning(this);  // ApplicationAgent calls Stop().
+  agent_.StopApplicationIfRunning(this);  // ApplicationAgent calls Stop().
 }
 
 }  // namespace openscreen::cast

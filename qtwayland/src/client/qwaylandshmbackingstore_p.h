@@ -35,7 +35,7 @@ class QWaylandWindow;
 class Q_WAYLANDCLIENT_EXPORT QWaylandShmBuffer : public QWaylandBuffer {
 public:
     QWaylandShmBuffer(QWaylandDisplay *display,
-           const QSize &size, QImage::Format format, qreal scale = 1);
+                      const QSize &size, QImage::Format format, qreal scale = 1, wl_event_queue *customEventQueue = nullptr);
     ~QWaylandShmBuffer() override;
     QSize size() const override { return mImage.size(); }
     int scale() const override { return int(mImage.devicePixelRatio()); }
@@ -94,6 +94,7 @@ private:
 
     QSize mRequestedSize;
     Qt::WindowFlags mCurrentWindowFlags;
+    struct wl_event_queue *mEventQueue = nullptr;
 };
 
 }

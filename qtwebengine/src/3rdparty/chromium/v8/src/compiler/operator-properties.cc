@@ -84,6 +84,7 @@ bool OperatorProperties::NeedsExactContext(const Operator* op) {
     case IrOpcode::kJSLoadNamedFromSuper:
     case IrOpcode::kJSLoadProperty:
     case IrOpcode::kJSStoreContext:
+    case IrOpcode::kJSStoreScriptContext:
     case IrOpcode::kJSDefineKeyedOwnPropertyInLiteral:
     case IrOpcode::kJSStoreGlobal:
     case IrOpcode::kJSStoreInArrayLiteral:
@@ -105,6 +106,7 @@ bool OperatorProperties::NeedsExactContext(const Operator* op) {
     case IrOpcode::kJSCreateStringIterator:
     case IrOpcode::kJSCreateKeyValueArray:
     case IrOpcode::kJSCreateObject:
+    case IrOpcode::kJSCreateStringWrapper:
     case IrOpcode::kJSCreatePromise:
     case IrOpcode::kJSCreateTypedArray:
     case IrOpcode::kJSCreateArray:

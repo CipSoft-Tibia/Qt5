@@ -25,7 +25,10 @@ ApplicationWindow {
     }
 
     function addTextItem() {
-        container.addItem(textComponent.createObject(container, { text: "      4  " }))
+        container.addItem(textComponent.createObject(container, {
+            x: text3.x + text3.width,
+            text: "      4  "
+        }))
     }
 
     Item {
@@ -35,10 +38,8 @@ ApplicationWindow {
         Container {
             id: container
             anchors.fill: parent
-            contentItem: Row {
-                Repeater {
-                    model: container.contentModel
-                }
+            contentItem: Repeater {
+                model: container.contentModel
             }
 
             TextItem {
@@ -47,10 +48,12 @@ ApplicationWindow {
             }
             TextItem {
                 id: text2
+                x: text1.width
                 text: "  2      "
             }
             TextItem {
                 id: text3
+                x: text2.x + text2.width
                 text: "    3    "
             }
         }

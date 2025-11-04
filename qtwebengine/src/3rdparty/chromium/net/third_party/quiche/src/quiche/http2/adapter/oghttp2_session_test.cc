@@ -1,6 +1,8 @@
 #include "quiche/http2/adapter/oghttp2_session.h"
 
 #include <memory>
+#include <string>
+#include <utility>
 
 #include "quiche/http2/adapter/mock_http2_visitor.h"
 #include "quiche/http2/adapter/test_frame_sequence.h"
@@ -52,7 +54,7 @@ TEST(OgHttp2SessionTest, ClientConstructionWithMaxStreams) {
 }
 
 TEST(OgHttp2SessionTest, ClientHandlesFrames) {
-  testing::StrictMock<MockHttp2Visitor> visitor;
+  TestVisitor visitor;
   OgHttp2Session::Options options;
   options.perspective = Perspective::kClient;
   OgHttp2Session session(visitor, options);
@@ -88,16 +90,16 @@ TEST(OgHttp2SessionTest, ClientHandlesFrames) {
 
   // Submit a request to ensure the first stream is created.
   const char* kSentinel1 = "arbitrary pointer 1";
-  auto body1 = std::make_unique<TestDataFrameSource>(visitor, true);
-  body1->AppendPayload("This is an example request body.");
-  body1->EndData();
-  int stream_id =
-      session.SubmitRequest(ToHeaders({{":method", "POST"},
-                                       {":scheme", "http"},
-                                       {":authority", "example.com"},
-                                       {":path", "/this/is/request/one"}}),
-                            std::move(body1), const_cast<char*>(kSentinel1));
-  EXPECT_EQ(stream_id, 1);
+  visitor.AppendPayloadForStream(1, "This is an example request body.");
+  visitor.SetEndData(1, true);
+  auto body1 = std::make_unique<VisitorDataSource>(visitor, 1);
+  int stream_id = session.SubmitRequest(
+      ToHeaders({{":method", "POST"},
+                 {":scheme", "http"},
+                 {":authority", "example.com"},
+                 {":path", "/this/is/request/one"}}),
+      std::move(body1), false, const_cast<char*>(kSentinel1));
+  ASSERT_EQ(stream_id, 1);
 
   // Submit another request to ensure the next stream is created.
   int stream_id2 =
@@ -105,7 +107,7 @@ TEST(OgHttp2SessionTest, ClientHandlesFrames) {
                                        {":scheme", "http"},
                                        {":authority", "example.com"},
                                        {":path", "/this/is/request/two"}}),
-                            nullptr, nullptr);
+                            nullptr, true, nullptr);
   EXPECT_EQ(stream_id2, 3);
 
   const std::string stream_frames =
@@ -158,7 +160,7 @@ TEST(OgHttp2SessionTest, ClientHandlesFrames) {
 // Verifies that a client session enqueues initial SETTINGS if Send() is called
 // before any frames are explicitly queued.
 TEST(OgHttp2SessionTest, ClientEnqueuesSettingsOnSend) {
-  DataSavingVisitor visitor;
+  TestVisitor visitor;
   OgHttp2Session::Options options;
   options.perspective = Perspective::kClient;
   OgHttp2Session session(visitor, options);
@@ -179,7 +181,7 @@ TEST(OgHttp2SessionTest, ClientEnqueuesSettingsOnSend) {
 // Verifies that a client session enqueues initial SETTINGS before whatever
 // frame type is passed to the first invocation of EnqueueFrame().
 TEST(OgHttp2SessionTest, ClientEnqueuesSettingsBeforeOtherFrame) {
-  DataSavingVisitor visitor;
+  TestVisitor visitor;
   OgHttp2Session::Options options;
   options.perspective = Perspective::kClient;
   OgHttp2Session session(visitor, options);
@@ -205,7 +207,7 @@ TEST(OgHttp2SessionTest, ClientEnqueuesSettingsBeforeOtherFrame) {
 // Verifies that if the first call to EnqueueFrame() passes a SETTINGS frame,
 // the client session will not enqueue an additional SETTINGS frame.
 TEST(OgHttp2SessionTest, ClientEnqueuesSettingsOnce) {
-  DataSavingVisitor visitor;
+  TestVisitor visitor;
   OgHttp2Session::Options options;
   options.perspective = Perspective::kClient;
   OgHttp2Session session(visitor, options);
@@ -226,7 +228,7 @@ TEST(OgHttp2SessionTest, ClientEnqueuesSettingsOnce) {
 }
 
 TEST(OgHttp2SessionTest, ClientSubmitRequest) {
-  DataSavingVisitor visitor;
+  TestVisitor visitor;
   OgHttp2Session::Options options;
   options.perspective = Perspective::kClient;
   OgHttp2Session session(visitor, options);
@@ -274,16 +276,16 @@ TEST(OgHttp2SessionTest, ClientSubmitRequest) {
   EXPECT_EQ(0, session.GetHpackEncoderDynamicTableSize());
 
   const char* kSentinel1 = "arbitrary pointer 1";
-  auto body1 = std::make_unique<TestDataFrameSource>(visitor, true);
-  body1->AppendPayload("This is an example request body.");
-  body1->EndData();
-  int stream_id =
-      session.SubmitRequest(ToHeaders({{":method", "POST"},
-                                       {":scheme", "http"},
-                                       {":authority", "example.com"},
-                                       {":path", "/this/is/request/one"}}),
-                            std::move(body1), const_cast<char*>(kSentinel1));
-  EXPECT_GT(stream_id, 0);
+  visitor.AppendPayloadForStream(1, "This is an example request body.");
+  visitor.SetEndData(1, true);
+  auto body1 = std::make_unique<VisitorDataSource>(visitor, 1);
+  int stream_id = session.SubmitRequest(
+      ToHeaders({{":method", "POST"},
+                 {":scheme", "http"},
+                 {":authority", "example.com"},
+                 {":path", "/this/is/request/one"}}),
+      std::move(body1), false, const_cast<char*>(kSentinel1));
+  ASSERT_EQ(stream_id, 1);
   EXPECT_TRUE(session.want_write());
   EXPECT_EQ(kSentinel1, session.GetStreamUserData(stream_id));
 
@@ -313,7 +315,7 @@ TEST(OgHttp2SessionTest, ClientSubmitRequest) {
                                        {":scheme", "http"},
                                        {":authority", "example.com"},
                                        {":path", "/this/is/request/two"}}),
-                            nullptr, nullptr);
+                            nullptr, true, nullptr);
   EXPECT_GT(stream_id, 0);
   EXPECT_TRUE(session.want_write());
   const char* kSentinel2 = "arbitrary pointer 2";
@@ -335,7 +337,7 @@ TEST(OgHttp2SessionTest, ClientSubmitRequest) {
 }
 
 TEST(OgHttp2SessionTest, ClientSubmitRequestWithLargePayload) {
-  DataSavingVisitor visitor;
+  TestVisitor visitor;
   OgHttp2Session::Options options;
   options.perspective = Perspective::kClient;
   OgHttp2Session session(visitor, options);
@@ -385,16 +387,16 @@ TEST(OgHttp2SessionTest, ClientSubmitRequestWithLargePayload) {
   EXPECT_THAT(visitor.data(), EqualsFrames({SpdyFrameType::SETTINGS}));
   visitor.Clear();
 
-  auto body1 = std::make_unique<TestDataFrameSource>(visitor, true);
-  body1->AppendPayload(std::string(20000, 'a'));
-  body1->EndData();
+  visitor.AppendPayloadForStream(1, std::string(20000, 'a'));
+  visitor.SetEndData(1, true);
+  auto body1 = std::make_unique<VisitorDataSource>(visitor, 1);
   int stream_id =
       session.SubmitRequest(ToHeaders({{":method", "POST"},
                                        {":scheme", "http"},
                                        {":authority", "example.com"},
                                        {":path", "/this/is/request/one"}}),
-                            std::move(body1), nullptr);
-  EXPECT_GT(stream_id, 0);
+                            std::move(body1), false, nullptr);
+  ASSERT_EQ(stream_id, 1);
   EXPECT_TRUE(session.want_write());
 
   EXPECT_CALL(visitor, OnBeforeFrameSent(HEADERS, stream_id, _, 0x4));
@@ -413,21 +415,20 @@ TEST(OgHttp2SessionTest, ClientSubmitRequestWithLargePayload) {
 // This test exercises the case where the client request body source is read
 // blocked.
 TEST(OgHttp2SessionTest, ClientSubmitRequestWithReadBlock) {
-  DataSavingVisitor visitor;
+  TestVisitor visitor;
   OgHttp2Session::Options options;
   options.perspective = Perspective::kClient;
   OgHttp2Session session(visitor, options);
   EXPECT_FALSE(session.want_write());
 
   const char* kSentinel1 = "arbitrary pointer 1";
-  auto body1 = std::make_unique<TestDataFrameSource>(visitor, true);
-  TestDataFrameSource* body_ref = body1.get();
-  int stream_id =
-      session.SubmitRequest(ToHeaders({{":method", "POST"},
-                                       {":scheme", "http"},
-                                       {":authority", "example.com"},
-                                       {":path", "/this/is/request/one"}}),
-                            std::move(body1), const_cast<char*>(kSentinel1));
+  auto body1 = std::make_unique<VisitorDataSource>(visitor, 1);
+  int stream_id = session.SubmitRequest(
+      ToHeaders({{":method", "POST"},
+                 {":scheme", "http"},
+                 {":authority", "example.com"},
+                 {":path", "/this/is/request/one"}}),
+      std::move(body1), false, const_cast<char*>(kSentinel1));
   EXPECT_GT(stream_id, 0);
   EXPECT_TRUE(session.want_write());
   EXPECT_EQ(kSentinel1, session.GetStreamUserData(stream_id));
@@ -449,8 +450,8 @@ TEST(OgHttp2SessionTest, ClientSubmitRequestWithReadBlock) {
   visitor.Clear();
   EXPECT_FALSE(session.want_write());
 
-  body_ref->AppendPayload("This is an example request body.");
-  body_ref->EndData();
+  visitor.AppendPayloadForStream(1, "This is an example request body.");
+  visitor.SetEndData(1, true);
   EXPECT_TRUE(session.ResumeStream(stream_id));
   EXPECT_TRUE(session.want_write());
 
@@ -469,21 +470,20 @@ TEST(OgHttp2SessionTest, ClientSubmitRequestWithReadBlock) {
 // This test exercises the case where the client request body source is read
 // blocked, then ends with an empty DATA frame.
 TEST(OgHttp2SessionTest, ClientSubmitRequestEmptyDataWithFin) {
-  DataSavingVisitor visitor;
+  TestVisitor visitor;
   OgHttp2Session::Options options;
   options.perspective = Perspective::kClient;
   OgHttp2Session session(visitor, options);
   EXPECT_FALSE(session.want_write());
 
   const char* kSentinel1 = "arbitrary pointer 1";
-  auto body1 = std::make_unique<TestDataFrameSource>(visitor, true);
-  TestDataFrameSource* body_ref = body1.get();
-  int stream_id =
-      session.SubmitRequest(ToHeaders({{":method", "POST"},
-                                       {":scheme", "http"},
-                                       {":authority", "example.com"},
-                                       {":path", "/this/is/request/one"}}),
-                            std::move(body1), const_cast<char*>(kSentinel1));
+  auto body1 = std::make_unique<VisitorDataSource>(visitor, 1);
+  int stream_id = session.SubmitRequest(
+      ToHeaders({{":method", "POST"},
+                 {":scheme", "http"},
+                 {":authority", "example.com"},
+                 {":path", "/this/is/request/one"}}),
+      std::move(body1), false, const_cast<char*>(kSentinel1));
   EXPECT_GT(stream_id, 0);
   EXPECT_TRUE(session.want_write());
   EXPECT_EQ(kSentinel1, session.GetStreamUserData(stream_id));
@@ -505,7 +505,7 @@ TEST(OgHttp2SessionTest, ClientSubmitRequestEmptyDataWithFin) {
   visitor.Clear();
   EXPECT_FALSE(session.want_write());
 
-  body_ref->EndData();
+  visitor.SetEndData(1, true);
   EXPECT_TRUE(session.ResumeStream(stream_id));
   EXPECT_TRUE(session.want_write());
 
@@ -524,22 +524,22 @@ TEST(OgHttp2SessionTest, ClientSubmitRequestEmptyDataWithFin) {
 // This test exercises the case where the connection to the peer is write
 // blocked.
 TEST(OgHttp2SessionTest, ClientSubmitRequestWithWriteBlock) {
-  DataSavingVisitor visitor;
+  TestVisitor visitor;
   OgHttp2Session::Options options;
   options.perspective = Perspective::kClient;
   OgHttp2Session session(visitor, options);
   EXPECT_FALSE(session.want_write());
 
   const char* kSentinel1 = "arbitrary pointer 1";
-  auto body1 = std::make_unique<TestDataFrameSource>(visitor, true);
-  body1->AppendPayload("This is an example request body.");
-  body1->EndData();
-  int stream_id =
-      session.SubmitRequest(ToHeaders({{":method", "POST"},
-                                       {":scheme", "http"},
-                                       {":authority", "example.com"},
-                                       {":path", "/this/is/request/one"}}),
-                            std::move(body1), const_cast<char*>(kSentinel1));
+  visitor.AppendPayloadForStream(1, "This is an example request body.");
+  visitor.SetEndData(1, true);
+  auto body1 = std::make_unique<VisitorDataSource>(visitor, 1);
+  int stream_id = session.SubmitRequest(
+      ToHeaders({{":method", "POST"},
+                 {":scheme", "http"},
+                 {":authority", "example.com"},
+                 {":path", "/this/is/request/one"}}),
+      std::move(body1), false, const_cast<char*>(kSentinel1));
   EXPECT_GT(stream_id, 0);
   EXPECT_TRUE(session.want_write());
   EXPECT_EQ(kSentinel1, session.GetStreamUserData(stream_id));
@@ -583,7 +583,7 @@ TEST(OgHttp2SessionTest, ServerConstruction) {
 }
 
 TEST(OgHttp2SessionTest, ServerHandlesFrames) {
-  DataSavingVisitor visitor;
+  TestVisitor visitor;
   OgHttp2Session::Options options;
   options.perspective = Perspective::kServer;
   OgHttp2Session session(visitor, options);
@@ -704,7 +704,7 @@ TEST(OgHttp2SessionTest, ServerHandlesFrames) {
 // Verifies that a server session enqueues initial SETTINGS before whatever
 // frame type is passed to the first invocation of EnqueueFrame().
 TEST(OgHttp2SessionTest, ServerEnqueuesSettingsBeforeOtherFrame) {
-  DataSavingVisitor visitor;
+  TestVisitor visitor;
   OgHttp2Session::Options options;
   options.perspective = Perspective::kServer;
   OgHttp2Session session(visitor, options);
@@ -726,7 +726,7 @@ TEST(OgHttp2SessionTest, ServerEnqueuesSettingsBeforeOtherFrame) {
 // Verifies that if the first call to EnqueueFrame() passes a SETTINGS frame,
 // the server session will not enqueue an additional SETTINGS frame.
 TEST(OgHttp2SessionTest, ServerEnqueuesSettingsOnce) {
-  DataSavingVisitor visitor;
+  TestVisitor visitor;
   OgHttp2Session::Options options;
   options.perspective = Perspective::kServer;
   OgHttp2Session session(visitor, options);
@@ -743,7 +743,7 @@ TEST(OgHttp2SessionTest, ServerEnqueuesSettingsOnce) {
 }
 
 TEST(OgHttp2SessionTest, ServerSubmitResponse) {
-  DataSavingVisitor visitor;
+  TestVisitor visitor;
   OgHttp2Session::Options options;
   options.perspective = Perspective::kServer;
   OgHttp2Session session(visitor, options);
@@ -805,13 +805,13 @@ TEST(OgHttp2SessionTest, ServerSubmitResponse) {
   EXPECT_FALSE(session.want_write());
   // A data fin is not sent so that the stream remains open, and the flow
   // control state can be verified.
-  auto body1 = std::make_unique<TestDataFrameSource>(visitor, false);
-  body1->AppendPayload("This is an example response body.");
+  visitor.AppendPayloadForStream(1, "This is an example response body.");
+  auto body1 = std::make_unique<VisitorDataSource>(visitor, 1);
   int submit_result = session.SubmitResponse(
       1,
       ToHeaders({{":status", "404"},
                  {"x-comment", "I have no idea what you're talking about."}}),
-      std::move(body1));
+      std::move(body1), false);
   EXPECT_EQ(submit_result, 0);
   EXPECT_TRUE(session.want_write());
 
@@ -843,7 +843,7 @@ TEST(OgHttp2SessionTest, ServerSubmitResponse) {
 // Tests the case where the server queues trailers after the data stream is
 // exhausted.
 TEST(OgHttp2SessionTest, ServerSendsTrailers) {
-  DataSavingVisitor visitor;
+  TestVisitor visitor;
   OgHttp2Session::Options options;
   options.perspective = Perspective::kServer;
   OgHttp2Session session(visitor, options);
@@ -896,12 +896,12 @@ TEST(OgHttp2SessionTest, ServerSendsTrailers) {
 
   // The body source must indicate that the end of the body is not the end of
   // the stream.
-  auto body1 = std::make_unique<TestDataFrameSource>(visitor, false);
-  body1->AppendPayload("This is an example response body.");
-  body1->EndData();
+  visitor.AppendPayloadForStream(1, "This is an example response body.");
+  visitor.SetEndData(1, false);
+  auto body1 = std::make_unique<VisitorDataSource>(visitor, 1);
   int submit_result = session.SubmitResponse(
       1, ToHeaders({{":status", "200"}, {"x-comment", "Sure, sounds good."}}),
-      std::move(body1));
+      std::move(body1), false);
   EXPECT_EQ(submit_result, 0);
   EXPECT_TRUE(session.want_write());
 
@@ -935,7 +935,7 @@ TEST(OgHttp2SessionTest, ServerSendsTrailers) {
 // Tests the case where the server queues trailers immediately after headers and
 // data, and before any writes have taken place.
 TEST(OgHttp2SessionTest, ServerQueuesTrailersWithResponse) {
-  DataSavingVisitor visitor;
+  TestVisitor visitor;
   OgHttp2Session::Options options;
   options.perspective = Perspective::kServer;
   OgHttp2Session session(visitor, options);
@@ -988,12 +988,12 @@ TEST(OgHttp2SessionTest, ServerQueuesTrailersWithResponse) {
 
   // The body source must indicate that the end of the body is not the end of
   // the stream.
-  auto body1 = std::make_unique<TestDataFrameSource>(visitor, false);
-  body1->AppendPayload("This is an example response body.");
-  body1->EndData();
+  visitor.AppendPayloadForStream(1, "This is an example response body.");
+  visitor.SetEndData(1, false);
+  auto body1 = std::make_unique<VisitorDataSource>(visitor, 1);
   int submit_result = session.SubmitResponse(
       1, ToHeaders({{":status", "200"}, {"x-comment", "Sure, sounds good."}}),
-      std::move(body1));
+      std::move(body1), false);
   EXPECT_EQ(submit_result, 0);
   EXPECT_TRUE(session.want_write());
   // There has not been a call to Send() yet, so neither headers nor body have
@@ -1020,7 +1020,7 @@ TEST(OgHttp2SessionTest, ServerQueuesTrailersWithResponse) {
 }
 
 TEST(OgHttp2SessionTest, ServerSeesErrorOnEndStream) {
-  DataSavingVisitor visitor;
+  TestVisitor visitor;
   OgHttp2Session::Options options;
   options.perspective = Perspective::kServer;
   OgHttp2Session session(visitor, options);

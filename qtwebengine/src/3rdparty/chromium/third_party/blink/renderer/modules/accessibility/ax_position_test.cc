@@ -867,7 +867,7 @@ TEST_F(AccessibilityTest, PositionInHTMLLabel) {
 
   const AXObject* ax_label = GetAXObjectByElementId("label");
   ASSERT_NE(nullptr, ax_label);
-  ASSERT_FALSE(ax_label->AccessibilityIsIgnored());
+  ASSERT_FALSE(ax_label->IsIgnored());
   const AXObject* ax_label_text = ax_label->FirstChildIncludingIgnored();
   ASSERT_NE(nullptr, ax_label_text);
   ASSERT_EQ(ax::mojom::Role::kStaticText, ax_label_text->RoleValue());
@@ -942,10 +942,10 @@ TEST_F(AccessibilityTest, PositionInHTMLLabelIgnored) {
   // The HTML label element should be ignored.
   const AXObject* ax_label = GetAXObjectByElementId("label");
   ASSERT_NE(nullptr, ax_label);
-  ASSERT_TRUE(ax_label->AccessibilityIsIgnored());
+  ASSERT_TRUE(ax_label->IsIgnored());
   const AXObject* ax_label_text = ax_label->FirstChildIncludingIgnored();
   ASSERT_NE(nullptr, ax_label_text);
-  ASSERT_TRUE(ax_label_text->AccessibilityIsIgnored());
+  ASSERT_TRUE(ax_label_text->IsIgnored());
   ASSERT_EQ(ax::mojom::Role::kStaticText, ax_label_text->RoleValue());
   const AXObject* ax_paragraph = GetAXObjectByElementId("paragraph");
   ASSERT_NE(nullptr, ax_paragraph);
@@ -1015,8 +1015,10 @@ TEST_F(AccessibilityTest, PositionInHTMLLabelIgnored) {
 //
 
 TEST_F(AccessibilityTest, PositionInIgnoredObject) {
+  // Note: aria-describedby adds hidden target subtrees to the a11y tree as
+  // "ignored but included in tree".
   SetBodyInnerHTML(R"HTML(
-      <div id="hidden" hidden>Hidden.</div><p id="visible">Visible.</p>
+      <div id="hidden" hidden aria-describedby="hidden">Hidden.</div><p id="visible">Visible.</p>
       )HTML");
 
   const Node* hidden = GetElementById("hidden");
@@ -1042,7 +1044,7 @@ TEST_F(AccessibilityTest, PositionInIgnoredObject) {
   const AXObject* ax_hidden = GetAXObjectByElementId("hidden");
   ASSERT_NE(nullptr, ax_hidden);
   ASSERT_EQ(ax::mojom::Role::kGenericContainer, ax_hidden->RoleValue());
-  ASSERT_TRUE(ax_hidden->AccessibilityIsIgnoredButIncludedInTree());
+  ASSERT_TRUE(ax_hidden->IsIgnoredButIncludedInTree());
 
   const AXObject* ax_visible = GetAXObjectByElementId("visible");
   ASSERT_NE(nullptr, ax_visible);
@@ -1106,8 +1108,10 @@ TEST_F(AccessibilityTest, PositionInIgnoredObject) {
 //
 
 TEST_F(AccessibilityTest, BeforePositionInARIAHiddenShouldNotSkipARIAHidden) {
+  // Note: aria-describedby adds hidden target subtrees to the a11y tree as
+  // "ignored but included in tree".
   SetBodyInnerHTML(R"HTML(
-      <div role="main" id="container">
+      <div role="main" id="container" aria-describedby="ariaHidden">
         <p id="before">Before aria-hidden.</p>
         <p id="ariaHidden" aria-hidden="true">Aria-hidden.</p>
         <p id="after">After aria-hidden.</p>
@@ -1129,7 +1133,7 @@ TEST_F(AccessibilityTest, BeforePositionInARIAHiddenShouldNotSkipARIAHidden) {
   ASSERT_EQ(ax::mojom::Role::kParagraph, ax_after->RoleValue());
   const AXObject* ax_hidden = GetAXObjectByElementId("ariaHidden");
   ASSERT_NE(nullptr, ax_hidden);
-  ASSERT_TRUE(ax_hidden->AccessibilityIsIgnored());
+  ASSERT_TRUE(ax_hidden->IsIgnored());
 
   const auto ax_position = AXPosition::CreatePositionAfterObject(*ax_before);
   const auto position = ax_position.ToPositionWithAffinity();
@@ -1144,9 +1148,11 @@ TEST_F(AccessibilityTest, BeforePositionInARIAHiddenShouldNotSkipARIAHidden) {
 
 TEST_F(AccessibilityTest,
        PreviousPositionAfterARIAHiddenShouldNotSkipARIAHidden) {
+  // Note: aria-describedby adds hidden target subtrees to the a11y tree as
+  // "ignored but included in tree".
   SetBodyInnerHTML(R"HTML(
       <p id="before">Before aria-hidden.</p>
-      <p id="ariaHidden" aria-hidden="true">Aria-hidden.</p>
+      <p id="ariaHidden" aria-describedby="ariaHidden" aria-hidden="true">Aria-hidden.</p>
       <p id="after">After aria-hidden.</p>
       )HTML");
 
@@ -1160,7 +1166,7 @@ TEST_F(AccessibilityTest,
   ASSERT_NE(nullptr, ax_after);
   ASSERT_EQ(ax::mojom::Role::kParagraph, ax_after->RoleValue());
   ASSERT_NE(nullptr, GetAXObjectByElementId("ariaHidden"));
-  ASSERT_TRUE(GetAXObjectByElementId("ariaHidden")->AccessibilityIsIgnored());
+  ASSERT_TRUE(GetAXObjectByElementId("ariaHidden")->IsIgnored());
 
   const auto ax_position = AXPosition::CreatePositionBeforeObject(*ax_after);
   const auto position = ax_position.ToPositionWithAffinity();
@@ -1186,10 +1192,12 @@ TEST_F(AccessibilityTest,
 }
 
 TEST_F(AccessibilityTest, FromPositionInARIAHidden) {
+  // Note: aria-describedby adds hidden target subtrees to the a11y tree as
+  // "ignored but included in tree".
   SetBodyInnerHTML(R"HTML(
       <div role="main" id="container">
         <p id="before">Before aria-hidden.</p>
-        <p id="ariaHidden" aria-hidden="true">Aria-hidden.</p>
+        <p id="ariaHidden" aria-describedby="ariaHidden" aria-hidden="true">Aria-hidden.</p>
         <p id="after">After aria-hidden.</p>
       </div>
       )HTML");
@@ -1209,7 +1217,7 @@ TEST_F(AccessibilityTest, FromPositionInARIAHidden) {
   ASSERT_EQ(ax::mojom::Role::kParagraph, ax_after->RoleValue());
   const AXObject* ax_hidden = GetAXObjectByElementId("ariaHidden");
   ASSERT_NE(nullptr, ax_hidden);
-  ASSERT_TRUE(ax_hidden->AccessibilityIsIgnored());
+  ASSERT_TRUE(ax_hidden->IsIgnored());
 
   const auto position_first = Position::FirstPositionInNode(*hidden);
   // Since "ax_hidden" has a static text child, the AXPosition should move to an
@@ -1512,7 +1520,7 @@ TEST_F(AccessibilityTest, DISABLED_PositionInCSSContent) {
 
   const AXObject* ax_quote = GetAXObjectByElementId("quote");
   ASSERT_NE(nullptr, ax_quote);
-  ASSERT_TRUE(ax_quote->AccessibilityIsIgnored());
+  ASSERT_TRUE(ax_quote->IsIgnored());
   const AXObject* ax_quote_parent = ax_quote->ParentObjectUnignored();
   ASSERT_NE(nullptr, ax_quote_parent);
   ASSERT_EQ(4, ax_quote_parent->UnignoredChildCount());

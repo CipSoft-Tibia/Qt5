@@ -13,7 +13,7 @@
 #include "media/base/audio_renderer_sink.h"
 #include "mojo/public/cpp/bindings/pending_remote.h"
 #include "mojo/public/cpp/bindings/remote.h"
-#include "third_party/blink/public/common/browser_interface_broker_proxy.h"
+#include "third_party/blink/public/platform/browser_interface_broker_proxy.h"
 #include "third_party/blink/public/web/web_local_frame.h"
 
 namespace {
@@ -40,8 +40,8 @@ WebEngineAudioDeviceFactory::NewAudioRendererSink(
   bool allow_audio_consumer = true;
   switch (source_type) {
     case blink::WebAudioDeviceSourceType::kMediaElement:
-      // MediaElement uses NewSwitchableAudioRendererSink().
-      NOTREACHED();
+      // MediaElement uses NewMixableSink().
+      NOTREACHED_IN_MIGRATION();
       return nullptr;
 
     case blink::WebAudioDeviceSourceType::kWebRtc:
@@ -74,7 +74,7 @@ WebEngineAudioDeviceFactory::NewAudioRendererSink(
     CHECK(render_frame);
 
     // Connect WebEngineMediaResourceProvider.
-    render_frame->GetBrowserInterfaceBroker()->GetInterface(
+    render_frame->GetBrowserInterfaceBroker().GetInterface(
         media_resource_provider.BindNewPipeAndPassReceiver());
 
     bool result =

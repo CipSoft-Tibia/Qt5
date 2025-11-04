@@ -10,7 +10,6 @@
 #include "third_party/blink/renderer/core/layout/length_utils.h"
 #include "third_party/blink/renderer/core/layout/logical_box_fragment.h"
 #include "third_party/blink/renderer/core/layout/mathml/math_layout_utils.h"
-#include "third_party/blink/renderer/core/layout/out_of_flow_layout_part.h"
 #include "third_party/blink/renderer/core/layout/physical_box_fragment.h"
 #include "third_party/blink/renderer/core/mathml/mathml_element.h"
 #include "third_party/blink/renderer/core/mathml/mathml_operator_element.h"
@@ -94,7 +93,8 @@ void MathRowLayoutAlgorithm::LayoutRowItems(ChildrenVector* children,
       should_layout_remaining_items_with_zero_block_stretch_size = false;
     }
 
-    if (UNLIKELY(should_layout_remaining_items_with_zero_block_stretch_size)) {
+    if (should_layout_remaining_items_with_zero_block_stretch_size)
+        [[unlikely]] {
       // "If LNotToStretch is empty, perform layout with stretch size constraint
       // 0 on all the items of LToStretch."
       for (LayoutInputNode child = Node().FirstChild(); child;
@@ -125,29 +125,26 @@ void MathRowLayoutAlgorithm::LayoutRowItems(ChildrenVector* children,
           To<BlockNode>(child), BorderScrollbarPadding().StartOffset());
       continue;
     }
-    ConstraintSpace child_constraint_space;
+
+    std::optional<ConstraintSpace::MathTargetStretchBlockSizes>
+        target_stretch_block_sizes;
+    std::optional<LayoutUnit> target_stretch_inline_size;
     if (inherits_block_stretch_size_constraint &&
         IsBlockAxisStretchyOperator(To<BlockNode>(child))) {
-      child_constraint_space = CreateConstraintSpaceForMathChild(
-          Node(), ChildAvailableSize(), constraint_space, child,
-          LayoutResultCacheSlot::kLayout,
-          *constraint_space.TargetStretchBlockSizes());
+      target_stretch_block_sizes = *constraint_space.TargetStretchBlockSizes();
     } else if (inherits_inline_stretch_size_constraint &&
                IsInlineAxisStretchyOperator(To<BlockNode>(child))) {
-      child_constraint_space = CreateConstraintSpaceForMathChild(
-          Node(), ChildAvailableSize(), constraint_space, child,
-          LayoutResultCacheSlot::kLayout, absl::nullopt,
-          constraint_space.TargetStretchInlineSize());
+      target_stretch_inline_size = constraint_space.TargetStretchInlineSize();
     } else if (!inherits_block_stretch_size_constraint &&
                !inherits_inline_stretch_size_constraint &&
                IsBlockAxisStretchyOperator(To<BlockNode>(child))) {
-      child_constraint_space = CreateConstraintSpaceForMathChild(
-          Node(), ChildAvailableSize(), constraint_space, child,
-          LayoutResultCacheSlot::kLayout, stretch_sizes);
-    } else {
-      child_constraint_space = CreateConstraintSpaceForMathChild(
-          Node(), ChildAvailableSize(), constraint_space, child);
+      target_stretch_block_sizes = stretch_sizes;
     }
+    ConstraintSpace child_constraint_space = CreateConstraintSpaceForMathChild(
+        Node(), ChildAvailableSize(), constraint_space, child,
+        LayoutResultCacheSlot::kLayout, target_stretch_block_sizes,
+        target_stretch_inline_size);
+
     const auto* child_layout_result = To<BlockNode>(child).Layout(
         child_constraint_space, nullptr /* break_token */);
     LayoutUnit lspace, rspace;
@@ -222,12 +219,12 @@ const LayoutResult* MathRowLayoutAlgorithm::Layout() {
   auto intrinsic_block_size =
       max_row_size.block_size + BorderScrollbarPadding().BlockSum();
   auto block_size = ComputeBlockSizeForFragment(
-      GetConstraintSpace(), Style(), BorderPadding(), intrinsic_block_size,
+      GetConstraintSpace(), Node(), BorderPadding(), intrinsic_block_size,
       border_box_size.inline_size);
   container_builder_.SetIntrinsicBlockSize(intrinsic_block_size);
   container_builder_.SetFragmentsTotalBlockSize(block_size);
 
-  OutOfFlowLayoutPart(Node(), GetConstraintSpace(), &container_builder_).Run();
+  container_builder_.HandleOofsAndSpecialDescendants();
 
   return container_builder_.ToBoxFragment();
 }

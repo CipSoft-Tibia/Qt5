@@ -78,7 +78,9 @@
 #  if _MSC_VER < 1938 // stdext is deprecated since VS 2022 17.8
 #    define QT_MAKE_CHECKED_ARRAY_ITERATOR(x, N) stdext::make_checked_array_iterator(x, size_t(N)) // Since _MSC_VER >= 1500
 #  endif
-#  define Q_COMPILER_COMPLAINS_ABOUT_RETURN_AFTER_UNREACHABLE
+#  ifdef Q_CC_MSVC_ONLY
+#    define Q_COMPILER_COMPLAINS_ABOUT_RETURN_AFTER_UNREACHABLE
+#  endif
 
 #elif defined(__BORLANDC__) || defined(__TURBOC__)
 #  define Q_CC_BOR
@@ -122,7 +124,13 @@
       // define to verify the Clang version we hard-code the versions
       // based on the best available info we have about the actual
       // version: http://en.wikipedia.org/wiki/Xcode#Toolchain_Versions
-#      if __apple_build_version__   >= 14030022 // Xcode 14.3
+#      if __apple_build_version__   >= 17000013 // Xcode 16.3
+#        define Q_CC_CLANG 1914
+#      elif __apple_build_version__ >= 16000026 // Xcode 16.0
+#        define Q_CC_CLANG 1706
+#      elif __apple_build_version__ >= 15000040 // Xcode 15.0
+#        define Q_CC_CLANG 1600
+#      elif __apple_build_version__ >= 14030022 // Xcode 14.3
 #        define Q_CC_CLANG 1500
 #      elif __apple_build_version__ >= 14000029 // Xcode 14.0
 #        define Q_CC_CLANG 1400
@@ -201,11 +209,9 @@
 #  define Q_DECL_PURE_FUNCTION __attribute__((pure))
 #  define Q_DECL_CONST_FUNCTION __attribute__((const))
 #  define Q_DECL_COLD_FUNCTION __attribute__((cold))
-#  if !defined(QT_MOC_CPP)
-#    define Q_PACKED __attribute__ ((__packed__))
-#    ifndef __ARM_EABI__
-#      define QT_NO_ARM_EABI
-#    endif
+#  define Q_PACKED __attribute__ ((__packed__))
+#  ifndef __ARM_EABI__
+#    define QT_NO_ARM_EABI
 #  endif
 #  if Q_CC_GNU >= 403 && !defined(Q_CC_CLANG)
 #      define Q_ALLOC_SIZE(x) __attribute__((alloc_size(x)))
@@ -440,6 +446,9 @@
 #ifndef __has_attribute
 #  define __has_attribute(x)           0
 #endif
+#ifndef __has_c_attribute
+#  define __has_c_attribute(x)         0
+#endif
 #ifndef __has_cpp_attribute
 #  define __has_cpp_attribute(x)       0
 #endif
@@ -508,6 +517,10 @@
  *
  * For a full listing of feature test macros, see
  *  https://en.cppreference.com/w/cpp/feature_test
+ * Exceptions:
+ *  Q_DECL_CONSTEXPR_DTOR           constexpr in C++20 for explicit destructors __cpp_constexpr >= 201907L
+ *  Q_CONSTEXPR_DTOR                constexpr in C++20 for variables __cpp_constexpr >= 201907L otherwise const
+ *  Q_DECL_EQ_DELETE_X(message)     = delete("reason"), __cpp_deleted_function >= 202403L
  *
  * C++ extensions:
  *  Q_COMPILER_RESTRICTED_VLA       variable-length arrays, prior to __cpp_runtime_arrays
@@ -953,18 +966,19 @@
 # endif
 #endif
 
-#if __has_cpp_attribute(nodiscard) && (!defined(Q_CC_CLANG) || __cplusplus > 201402L) // P0188R1
-// Can't use [[nodiscard]] with Clang and C++11/14, see https://bugs.llvm.org/show_bug.cgi?id=33518
+#if (defined(__cplusplus) && __has_cpp_attribute(nodiscard) /* P0188R1 */) || \
+    (!defined(__cplusplus) && __has_c_attribute(nodiscard) /* N2267 */)
 #  undef Q_REQUIRED_RESULT
 #  define Q_REQUIRED_RESULT [[nodiscard]]
 #endif
 
-#if __has_cpp_attribute(nodiscard) >= 201907L /* used for both P1771 and P1301... */
+#if (defined(__cplusplus) && __has_cpp_attribute(nodiscard) >= 201907L /* used for both P1771 and P1301... */) \
+    || (!defined(__cplusplus) && __has_c_attribute(nodiscard) /* N2448 */)
 // [[nodiscard]] constructor (P1771)
 #  ifndef Q_NODISCARD_CTOR
 #    define Q_NODISCARD_CTOR [[nodiscard]]
 #  endif
-// [[nodiscard("reason")]] (P1301)
+// [[nodiscard("reason")]] (P1301, N2448 for C)
 #  ifndef Q_NODISCARD_X
 #    define Q_NODISCARD_X(message) [[nodiscard(message)]]
 #  endif
@@ -973,17 +987,20 @@
 #  endif
 #endif
 
-#if __has_cpp_attribute(maybe_unused)
+#if (defined(__cplusplus) && __has_cpp_attribute(maybe_unused)) || \
+    (!defined(__cplusplus) && __has_c_attribute(maybe_unused))
 #  undef Q_DECL_UNUSED
 #  define Q_DECL_UNUSED [[maybe_unused]]
 #endif
 
-#if __has_cpp_attribute(noreturn)
+#if (defined(__cplusplus) && __has_cpp_attribute(noreturn)) || \
+    (!defined(__cplusplus) && __has_c_attribute(noreturn))
 #  undef Q_NORETURN
 #  define Q_NORETURN [[noreturn]]
 #endif
 
-#if __has_cpp_attribute(deprecated)
+#if (defined(__cplusplus) && __has_cpp_attribute(deprecated)) || \
+    (!defined(__cplusplus) && __has_c_attribute(deprecated))
 #  ifdef Q_DECL_DEPRECATED
 #    undef Q_DECL_DEPRECATED
 #  endif
@@ -996,6 +1013,44 @@
 
 #define Q_DECL_ENUMERATOR_DEPRECATED Q_DECL_DEPRECATED
 #define Q_DECL_ENUMERATOR_DEPRECATED_X(x) Q_DECL_DEPRECATED_X(x)
+
+#ifndef Q_DECL_CONSTEXPR_DTOR
+#  if __cpp_constexpr >= 201907L
+#    define Q_DECL_CONSTEXPR_DTOR constexpr
+#  else
+#    define Q_DECL_CONSTEXPR_DTOR inline
+#  endif
+#endif
+
+#ifndef Q_CONSTEXPR_DTOR
+#  if __cpp_constexpr >= 201907L
+#    define Q_CONSTEXPR_DTOR constexpr
+#  else
+#    define Q_CONSTEXPR_DTOR const
+#  endif
+#endif
+
+#ifndef Q_DECL_EQ_DELETE_X
+// Clang < 20 advertises the feature-testing macro but issues a warning
+// if one isn't also using C++26,
+// https://github.com/llvm/llvm-project/issues/109311
+#  if defined(__cpp_deleted_function) && __cpp_deleted_function >= 202403L \
+    && (!defined(Q_CC_CLANG_ONLY) || Q_CC_CLANG_ONLY >= 2010 || __cplusplus > 202302L) // C++26
+#    define Q_DECL_EQ_DELETE_X(reason) = delete(reason)
+#  else
+#    define Q_DECL_EQ_DELETE_X(reason) = delete
+#  endif
+#endif
+
+#ifndef Q_LIKELY_BRANCH
+#  if __has_cpp_attribute(likely)
+#    define Q_LIKELY_BRANCH [[likely]]
+#    define Q_UNLIKELY_BRANCH [[unlikely]]
+#  else
+#    define Q_LIKELY_BRANCH
+#    define Q_UNLIKELY_BRANCH
+#  endif
+#endif
 
 /*
  * Fallback macros to certain compiler features
@@ -1215,7 +1270,11 @@
 #elif __has_cpp_attribute(fallthrough)
 #  define Q_FALLTHROUGH() [[fallthrough]]
 #endif
-#endif
+#else // !defined(__cplusplus)
+#  if __has_c_attribute(fallthrough)
+#    define Q_FALLTHROUGH() [[fallthrough]]
+#  endif
+#endif // !defined(__cplusplus)
 #ifndef Q_FALLTHROUGH
 #  ifdef Q_CC_GNU
 #    define Q_FALLTHROUGH() __attribute__((fallthrough))

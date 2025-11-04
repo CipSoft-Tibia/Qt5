@@ -10,7 +10,7 @@ from typing import Set, TypeVar
 from crossbench.runner.groups import BrowserSessionRunGroup
 from crossbench.runner.run import Run
 
-from .. import base
+from crossbench.decor import base
 
 SessionDecoratorT = TypeVar("SessionDecoratorT", bound="SessionDecorator")
 

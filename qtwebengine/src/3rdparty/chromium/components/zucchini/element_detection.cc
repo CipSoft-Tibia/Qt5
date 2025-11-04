@@ -2,6 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#ifdef UNSAFE_BUFFERS_BUILD
+// TODO(crbug.com/40285824): Remove this and convert code to safer constructs.
+#pragma allow_unsafe_buffers
+#endif
+
 #include "components/zucchini/element_detection.h"
 
 #include <utility>
@@ -169,11 +174,11 @@ uint16_t DisassemblerVersionOfType(ExecutableType exe_type) {
   }
 }
 
-absl::optional<Element> DetectElementFromDisassembler(ConstBufferView image) {
+std::optional<Element> DetectElementFromDisassembler(ConstBufferView image) {
   std::unique_ptr<Disassembler> disasm = MakeDisassemblerWithoutFallback(image);
   if (disasm)
     return Element({0, disasm->size()}, disasm->GetExeType());
-  return absl::nullopt;
+  return std::nullopt;
 }
 
 /******** ProgramScanner ********/
@@ -183,18 +188,18 @@ ElementFinder::ElementFinder(ConstBufferView image, ElementDetector&& detector)
 
 ElementFinder::~ElementFinder() = default;
 
-absl::optional<Element> ElementFinder::GetNext() {
+std::optional<Element> ElementFinder::GetNext() {
   for (; pos_ < image_.size(); ++pos_) {
     ConstBufferView test_image =
         ConstBufferView::FromRange(image_.begin() + pos_, image_.end());
-    absl::optional<Element> element = detector_.Run(test_image);
+    std::optional<Element> element = detector_.Run(test_image);
     if (element) {
       element->offset += pos_;
       pos_ = element->EndOffset();
       return element;
     }
   }
-  return absl::nullopt;
+  return std::nullopt;
 }
 
 }  // namespace zucchini

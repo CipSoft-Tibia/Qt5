@@ -39,8 +39,13 @@ class PermissionPromptAndroid : public PermissionPrompt {
   // PermissionPrompt:
   bool UpdateAnchor() override;
   TabSwitchingBehavior GetTabSwitchingBehavior() override;
-  absl::optional<gfx::Rect> GetViewBoundsInScreen() const override;
+  std::optional<gfx::Rect> GetViewBoundsInScreen() const override;
   bool ShouldFinalizeRequestAfterDecided() const override;
+  std::vector<permissions::ElementAnchoredBubbleVariant> GetPromptVariants()
+      const override;
+  bool IsAskPrompt() const override;
+  std::optional<permissions::feature_params::PermissionElementPromptPosition>
+  GetPromptPosition() const override;
 
   void Closing();
   void Accept();
@@ -49,7 +54,7 @@ class PermissionPromptAndroid : public PermissionPrompt {
   void SetManageClicked();
   void SetLearnMoreClicked();
   bool ShouldCurrentRequestUseQuietUI();
-  absl::optional<PermissionUiSelector::QuietUiReason> ReasonForUsingQuietUi()
+  std::optional<PermissionUiSelector::QuietUiReason> ReasonForUsingQuietUi()
       const;
 
   // We show one permission at a time except for grouped mic+camera, for which

@@ -18,7 +18,6 @@
 #define SRC_TRACE_PROCESSOR_IMPORTERS_PROTO_SYSTEM_PROBES_PARSER_H_
 
 #include <array>
-#include <set>
 #include <vector>
 
 #include "perfetto/protozero/field.h"
@@ -47,24 +46,22 @@ class SystemProbesParser {
   void ParseThreadStats(int64_t timestamp, uint32_t pid, ConstBytes);
   void ParseDiskStats(int64_t ts, ConstBytes blob);
   void ParseProcessFds(int64_t ts, uint32_t pid, ConstBytes);
+  void ParseCpuIdleStats(int64_t ts, ConstBytes);
 
   TraceProcessorContext* const context_;
 
   const StringId utid_name_id_;
+  const StringId ns_unit_id_;
+  const StringId bytes_unit_id_;
+  const StringId available_chunks_unit_id_;
+
   const StringId num_forks_name_id_;
   const StringId num_irq_total_name_id_;
   const StringId num_softirq_total_name_id_;
-  const StringId num_irq_name_id_;
-  const StringId num_softirq_name_id_;
-  const StringId cpu_times_user_ns_id_;
-  const StringId cpu_times_user_nice_ns_id_;
-  const StringId cpu_times_system_mode_ns_id_;
-  const StringId cpu_times_idle_ns_id_;
-  const StringId cpu_times_io_wait_ns_id_;
-  const StringId cpu_times_irq_ns_id_;
-  const StringId cpu_times_softirq_ns_id_;
   const StringId oom_score_adj_id_;
-  const StringId cpu_freq_id_;
+  const StringId thermal_unit_id_;
+  const StringId gpufreq_id;
+  const StringId gpufreq_unit_id;
   std::vector<StringId> meminfo_strs_id_;
   std::vector<StringId> vmstat_strs_id_;
 
@@ -72,14 +69,13 @@ class SystemProbesParser {
   // their StringId. Keep kProcStatsProcessSize equal to 1 + max proto field
   // id of ProcessStats::Process. Also update the value in
   // ChromeSystemProbesParser.
-  static constexpr size_t kProcStatsProcessSize = 21;
+  static constexpr size_t kProcStatsProcessSize = 24;
   std::array<StringId, kProcStatsProcessSize> proc_stats_process_names_{};
 
   // Maps a SysStats::PsiSample::PsiResource type to its StringId.
   std::array<StringId, protos::pbzero::SysStats_PsiSample_PsiResource_MAX + 1>
       sys_stats_psi_resource_names_{};
 
-  uint64_t ms_per_tick_ = 0;
   uint32_t page_size_ = 0;
 
   int64_t prev_read_amount = -1;

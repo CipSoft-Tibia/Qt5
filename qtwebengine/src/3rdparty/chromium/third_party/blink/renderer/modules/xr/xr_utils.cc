@@ -19,7 +19,7 @@ DOMFloat32Array* transformationMatrixToDOMFloat32Array(
     const gfx::Transform& matrix) {
   float array[16];
   matrix.GetColMajorF(array);
-  return DOMFloat32Array::Create(array, 16);
+  return DOMFloat32Array::Create(array);
 }
 
 gfx::Transform DOMFloat32ArrayToTransform(DOMFloat32Array* m) {
@@ -55,11 +55,11 @@ WebGLRenderingContextBase* webglRenderingContextBaseFromUnion(
     case V8XRWebGLRenderingContext::ContentType::kWebGLRenderingContext:
       return context->GetAsWebGLRenderingContext();
   }
-  NOTREACHED();
+  NOTREACHED_IN_MIGRATION();
   return nullptr;
 }
 
-absl::optional<device::Pose> CreatePose(const gfx::Transform& matrix) {
+std::optional<device::Pose> CreatePose(const gfx::Transform& matrix) {
   return device::Pose::Create(matrix);
 }
 
@@ -117,7 +117,7 @@ device::mojom::blink::XRHandJoint StringToMojomHandJoint(
     return device::mojom::blink::XRHandJoint::kPinkyFingerTip;
   }
 
-  NOTREACHED();
+  NOTREACHED_IN_MIGRATION();
   return device::mojom::blink::XRHandJoint::kMaxValue;
 }
 
@@ -174,12 +174,12 @@ String MojomHandJointToString(device::mojom::blink::XRHandJoint hand_joint) {
     case device::mojom::blink::XRHandJoint::kPinkyFingerTip:
       return "pinky-finger-tip";
     default:
-      NOTREACHED();
+      NOTREACHED_IN_MIGRATION();
       return "";
   }
 }
 
-absl::optional<device::mojom::XRSessionFeature> StringToXRSessionFeature(
+std::optional<device::mojom::XRSessionFeature> StringToXRSessionFeature(
     const String& feature_string) {
   if (feature_string == "viewer") {
     return device::mojom::XRSessionFeature::REF_SPACE_VIEWER;
@@ -217,7 +217,7 @@ absl::optional<device::mojom::XRSessionFeature> StringToXRSessionFeature(
     return device::mojom::XRSessionFeature::FRONT_FACING;
   }
 
-  return absl::nullopt;
+  return std::nullopt;
 }
 
 String XRSessionFeatureToString(device::mojom::XRSessionFeature feature) {

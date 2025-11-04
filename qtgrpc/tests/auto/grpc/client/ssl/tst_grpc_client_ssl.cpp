@@ -35,6 +35,8 @@ void QtGrpcSslClientTest::incorrectSecureCredentialsTest()
     auto reply = client()->testMethod(req);
     QSignalSpy finishedSpy(reply.get(), &QGrpcCallReply::finished);
     QTRY_COMPARE_EQ_WITH_TIMEOUT(finishedSpy.count(), 1, MessageLatencyWithThreshold);
+    auto status = finishedSpy.first().first().value<QGrpcStatus>();
+    QVERIFY(!status.isOk());
 }
 
 QTEST_MAIN(QtGrpcSslClientTest)

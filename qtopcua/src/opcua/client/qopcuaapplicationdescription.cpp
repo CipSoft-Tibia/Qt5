@@ -19,6 +19,7 @@ QT_BEGIN_NAMESPACE
     \inqmlmodule QtOpcUa
     \brief The OPC UA ApplicationDescription.
     \since QtOpcUa 5.13
+    \deprecated [6.9]
 
     The application description contains information about an OPC UA application.
 */

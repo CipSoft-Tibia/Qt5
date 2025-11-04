@@ -5,6 +5,7 @@
 
 #include "qpipewire_instance_p.h"
 #include "qpipewire_symbolloader_p.h"
+#include "qpipewire_symbolloader_p.h"
 
 #include <QtCore/qdebug.h>
 #include <QtCore/qfileinfo.h>
@@ -26,7 +27,7 @@
 #include <QtGui/qpa/qplatformintegration.h>
 #include <QtGui/qscreen.h>
 #include <QtGui/qwindow.h>
-#include <QtGui/private/qgenericunixservices_p.h>
+#include <QtGui/private/qdesktopunixservices_p.h>
 #include <QtGui/private/qguiapplication_p.h>
 #include <QtMultimedia/qabstractvideobuffer.h>
 #include <QtMultimedia/private/qvideoframe_p.h>
@@ -36,12 +37,16 @@
 
 #include <fcntl.h>
 
+// pipewire's macros tend to emit unused value warnings
+QT_WARNING_PUSH
+QT_WARNING_DISABLE_CLANG("-Wunused-value")
+
 QT_BEGIN_NAMESPACE
 
 using namespace Qt::StringLiterals;
 
-static Q_LOGGING_CATEGORY(qLcPipeWireCapture, "qt.multimedia.pipewirecapture");
-static Q_LOGGING_CATEGORY(qLcPipeWireCaptureMore, "qt.multimedia.pipewirecapture.more");
+Q_STATIC_LOGGING_CATEGORY(qLcPipeWireCapture, "qt.multimedia.pipewire.capture");
+Q_STATIC_LOGGING_CATEGORY(qLcPipeWireCaptureMore, "qt.multimedia.pipewire.capture.more");
 
 namespace QtPipeWire {
 
@@ -189,7 +194,7 @@ void QPipeWireCaptureHelper::createInterface()
                 u"org.freedesktop.portal.ScreenCast"_s, QDBusConnection::sessionBus());
         bool ok = m_screenCastInterface->connection().connect(
                 u"org.freedesktop.portal.Desktop"_s, u""_s, u"org.freedesktop.portal.Request"_s,
-                u"Response"_s, this, SLOT(gotRequestResponse(uint, QVariantMap)));
+                u"Response"_s, this, SLOT(gotRequestResponse(uint,QVariantMap)));
 
         if (!ok) {
             updateError(
@@ -255,7 +260,7 @@ void QPipeWireCaptureHelper::startStream()
         { u"handle_token"_s, getRequestToken() },
     };
 
-    const auto unixServices = dynamic_cast<QGenericUnixServices *>(QGuiApplicationPrivate::platformIntegration()->services());
+    const auto unixServices = dynamic_cast<QDesktopUnixServices *>(QGuiApplicationPrivate::platformIntegration()->services());
     const QString parentWindow = QGuiApplication::focusWindow() && unixServices
             ? unixServices->portalWindowIdentifier(QGuiApplication::focusWindow())
             : QString();
@@ -932,3 +937,5 @@ spa_video_format QPipeWireCaptureHelper::toSpaVideoFormat(QVideoFrameFormat::Pix
 } // namespace QtPipeWire
 
 QT_END_NAMESPACE
+
+QT_WARNING_POP

@@ -2,12 +2,13 @@
 
 load("//javascript/polymer/build_defs:html_template.bzl", "ts_html_template")
 
-def gen_gm3_illustrations(name, srcs):
+def gen_gm3_illustrations(name, srcs, visibility = None):
     """Processes a list of svg illustrations specified by srcs and outputs HTMLTemplateElements.
 
     Args:
         name: Name of this macro.
         srcs: A list of svg files to generate HTMLTemplateElements.
+        visibility: Visibility of the generated targets.
     """
     for file in srcs:
         ts_html_template(
@@ -15,4 +16,5 @@ def gen_gm3_illustrations(name, srcs):
             src = file,
             out = file + ".ts",
             no_immediate_template_creation = False,
+            visibility = visibility,
         )

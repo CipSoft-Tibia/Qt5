@@ -33,6 +33,7 @@ public Q_SLOTS:
     void adjustRangeX(int value);
     void adjustRangeY(int value);
     void adjustRangeZ(int value);
+    void reverseAxes();
     void testBoundsSetting();
 
 private:

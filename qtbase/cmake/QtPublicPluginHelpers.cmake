@@ -248,10 +248,7 @@ function(__qt_internal_add_static_plugin_init_object_library
         CONTENT "${import_content}"
     )
 
-    # CMake versions earlier than 3.18.0 can't find the generated file for some reason,
-    # failing at generation phase.
-    # Explicitly marking the file as GENERATED fixes the issue.
-    set_source_files_properties("${generated_qt_plugin_file_name}" PROPERTIES GENERATED TRUE)
+    _qt_internal_set_source_file_generated(SOURCES "${generated_qt_plugin_file_name}")
 
     __qt_internal_get_static_plugin_init_target_name("${plugin_target}" plugin_init_target)
 
@@ -488,6 +485,50 @@ function(__qt_internal_apply_plugin_imports_finalizer_mode target)
     set_target_properties(${target} PROPERTIES _qt_plugin_finalizer_imports_processed TRUE)
 endfunction()
 
+# Adds the specific plugin target to the INTERFACE_QT_PLUGIN_TARGETS transitive compile property.
+# The property is then propagated to all targets that link the plugin_module_target and
+# can be accessed using $<TARGET_PROPERTY:tgt_name,QT_PLUGIN_TARGETS> genex.
+#
+# Note: this is only supported in CMake versions 3.30 and higher.
+function(__qt_internal_add_interface_plugin_target plugin_module_target plugin_target)
+    if(CMAKE_VERSION VERSION_LESS 3.30)
+        return()
+    endif()
+
+    cmake_parse_arguments(arg "BUILD_ONLY" "" "" ${ARGN})
+    if(arg_UNPARSED_ARGUMENTS)
+        message(FATAL_ERROR "Unexpected arguments: ${arg_UNPARSED_ARGUMENTS}")
+    endif()
+
+    __qt_internal_get_static_plugin_condition_genex(${plugin_target} plugin_target_condition)
+    string(JOIN "" plugin_target_name_wrapped
+        "$<${plugin_target_condition}:"
+            "$<TARGET_NAME:${QT_CMAKE_EXPORT_NAMESPACE}::${plugin_target}>"
+        ">"
+    )
+
+    if(arg_BUILD_ONLY)
+        set(plugin_target_name_wrapped "$<BUILD_LOCAL_INTERFACE:${plugin_target_name_wrapped}>")
+    endif()
+
+    set_property(TARGET ${plugin_module_target}
+        APPEND PROPERTY INTERFACE_QT_PLUGIN_TARGETS ${plugin_target_name_wrapped})
+endfunction()
+
+# TODO: Figure out how to do this more reliably, instead of parsing the file name to get
+# the target name.
+function(__qt_internal_get_target_name_from_plugin_config_file_name
+        config_file_path
+        package_prefix_regex
+        out_var)
+    string(REGEX REPLACE
+        "^.*/${QT_CMAKE_EXPORT_NAMESPACE}(${package_prefix_regex})Config.cmake$"
+        "\\1"
+        target "${config_file_path}")
+
+    set(${out_var} "${target}" PARENT_SCOPE)
+endfunction()
+
 # Include CMake plugin packages that belong to the Qt module ${target} and initialize automatic
 # linkage of the plugins in static builds.
 # The variables inside the macro have to be named unique to the module because an included Plugin
@@ -499,10 +540,12 @@ macro(__qt_internal_include_plugin_packages target)
 
     # Properties can't be set on aliased targets, so make sure to unalias the target. This is needed
     # when Qt examples are built as part of the Qt build itself.
-    get_target_property(_aliased_target ${__qt_${target}_plugin_module_target} ALIASED_TARGET)
-    if(_aliased_target)
-        set(__qt_${target}_plugin_module_target ${_aliased_target})
-    endif()
+    _qt_internal_dealias_target(__qt_${target}_plugin_module_target)
+
+    # Ensure that QT_PLUGIN_TARGETS is a known transitive compile property. Works with CMake
+    # versions >= 3.30.
+    _qt_internal_add_transitive_property(${__qt_${target}_plugin_module_target}
+        COMPILE QT_PLUGIN_TARGETS)
 
     # Include all PluginConfig.cmake files and update the _qt_plugins and QT_PLUGINS property of
     # the module. The underscored version is the one we will use going forward to have compatibility
@@ -511,13 +554,18 @@ macro(__qt_internal_include_plugin_packages target)
     file(GLOB __qt_${target}_plugin_config_files
         "${CMAKE_CURRENT_LIST_DIR}/${QT_CMAKE_EXPORT_NAMESPACE}*PluginConfig.cmake")
     foreach(__qt_${target}_plugin_config_file ${__qt_${target}_plugin_config_files})
-        string(REGEX REPLACE
-            "^.*/${QT_CMAKE_EXPORT_NAMESPACE}(.*Plugin)Config.cmake$"
-            "\\1"
-            __qt_${target}_qt_plugin "${__qt_${target}_plugin_config_file}")
         include("${__qt_${target}_plugin_config_file}")
+
+        __qt_internal_get_target_name_from_plugin_config_file_name(
+            "${__qt_${target}_plugin_config_file}"
+            "(.*Plugin)"
+            __qt_${target}_qt_plugin
+        )
+
         if(TARGET "${QT_CMAKE_EXPORT_NAMESPACE}::${__qt_${target}_qt_plugin}")
             list(APPEND __qt_${target}_plugins ${__qt_${target}_qt_plugin})
+            __qt_internal_add_interface_plugin_target(${__qt_${target}_plugin_module_target}
+                ${__qt_${target}_qt_plugin})
         endif()
     endforeach()
     set_property(TARGET ${__qt_${target}_plugin_module_target}
@@ -639,6 +687,24 @@ macro(__qt_internal_include_qml_plugin_packages)
         # For the second round of inclusions, check and bail out early if there are errors.
         foreach(__qt_qml_plugin_config_file ${__qt_qml_plugins_config_file_list})
             include(${__qt_qml_plugin_config_file})
+
+            __qt_internal_get_target_name_from_plugin_config_file_name(
+                "${__qt_qml_plugin_config_file}"
+                "(.*)"
+                __qt_qml_plugin_target
+            )
+            set(__qt_qml_plugin_target_versioned
+                "${QT_CMAKE_EXPORT_NAMESPACE}::${__qt_qml_plugin_target}")
+
+            if(TARGET "${__qt_qml_plugin_target_versioned}"
+                AND NOT "${__qt_qml_plugin_target}"
+                    IN_LIST QT_ALL_QML_PLUGINS_FOUND_VIA_FIND_PACKAGE)
+                list(APPEND QT_ALL_QML_PLUGINS_FOUND_VIA_FIND_PACKAGE "${__qt_qml_plugin_target}")
+                list(APPEND QT_ALL_QML_PLUGINS_VERSIONED_FOUND_VIA_FIND_PACKAGE
+                    "${__qt_qml_plugin_target_versioned}")
+            endif()
+            unset(__qt_qml_plugin_target)
+            unset(__qt_qml_plugin_target_versioned)
 
             if(${CMAKE_FIND_PACKAGE_NAME}_NOT_FOUND_MESSAGE)
                 string(APPEND ${CMAKE_FIND_PACKAGE_NAME}_NOT_FOUND_MESSAGE

@@ -33,6 +33,7 @@ class QCustom3DVolume;
 class QCustom3DLabel;
 class QGraphsInputHandler;
 class QGraphsTheme;
+class QQuaternion;
 class QQuick3DCustomMaterial;
 class QQuick3DDirectionalLight;
 class QQuick3DPrincipledMaterial;
@@ -77,6 +78,12 @@ struct Abstract3DChangeBitField
     bool axisXLabelAutoRotationChanged : 1;
     bool axisYLabelAutoRotationChanged : 1;
     bool axisZLabelAutoRotationChanged : 1;
+    bool axisXScaleLabelsByCountChanged : 1;
+    bool axisYScaleLabelsByCountChanged : 1;
+    bool axisZScaleLabelsByCountChanged : 1;
+    bool axisXLabelSizeChanged : 1;
+    bool axisYLabelSizeChanged : 1;
+    bool axisZLabelSizeChanged : 1;
     bool aspectRatioChanged : 1;
     bool horizontalAspectRatioChanged : 1;
     bool axisXTitleVisibilityChanged : 1;
@@ -95,6 +102,7 @@ struct Abstract3DChangeBitField
     bool labelMarginChanged : 1;
     bool radialLabelOffsetChanged : 1;
     bool marginChanged : 1;
+    bool cameraChanged : 1;
 
     Abstract3DChangeBitField()
         : themeChanged(true)
@@ -150,12 +158,14 @@ struct Abstract3DChangeBitField
         , labelMarginChanged(true)
         , radialLabelOffsetChanged(true)
         , marginChanged(true)
+        , cameraChanged(true)
     {}
 };
 
 class Q_GRAPHS_EXPORT QQuickGraphsItem : public QQuick3DViewport
 {
     Q_OBJECT
+    Q_PROPERTY(QQuick3DNode *rootNode READ rootNode CONSTANT REVISION(6, 9))
     Q_PROPERTY(QtGraphs3D::SelectionFlags selectionMode READ selectionMode WRITE setSelectionMode
                    NOTIFY selectionModeChanged)
     Q_PROPERTY(QtGraphs3D::ShadowQuality shadowQuality READ shadowQuality WRITE setShadowQuality
@@ -165,6 +175,8 @@ class Q_GRAPHS_EXPORT QQuickGraphsItem : public QQuick3DViewport
     Q_PROPERTY(QGraphsTheme *theme READ theme WRITE setTheme NOTIFY themeChanged)
     Q_PROPERTY(QtGraphs3D::RenderingMode renderingMode READ renderingMode WRITE setRenderingMode
                    NOTIFY renderingModeChanged)
+    Q_PROPERTY(QtGraphs3D::TransparencyTechnique transparencyTechnique READ transparencyTechnique
+                   WRITE setTransparencyTechnique NOTIFY transparencyTechniqueChanged REVISION(6, 9))
     Q_PROPERTY(bool measureFps READ measureFps WRITE setMeasureFps NOTIFY measureFpsChanged)
     Q_PROPERTY(int currentFps READ currentFps NOTIFY currentFpsChanged)
     Q_PROPERTY(QQmlListProperty<QCustom3DItem> customItemList READ customItemList CONSTANT)
@@ -189,6 +201,14 @@ class Q_GRAPHS_EXPORT QQuickGraphsItem : public QQuick3DViewport
                    cameraXRotationChanged)
     Q_PROPERTY(float cameraYRotation READ cameraYRotation WRITE setCameraYRotation NOTIFY
                    cameraYRotationChanged)
+    Q_PROPERTY(float minCameraXRotation READ minCameraXRotation WRITE setMinCameraXRotation NOTIFY
+                   minCameraXRotationChanged REVISION(6, 9))
+    Q_PROPERTY(float maxCameraXRotation READ maxCameraXRotation WRITE setMaxCameraXRotation NOTIFY
+                   maxCameraXRotationChanged REVISION(6, 9))
+    Q_PROPERTY(float minCameraYRotation READ minCameraYRotation WRITE setMinCameraYRotation NOTIFY
+                   minCameraYRotationChanged REVISION(6, 9))
+    Q_PROPERTY(float maxCameraYRotation READ maxCameraYRotation WRITE setMaxCameraYRotation NOTIFY
+                   maxCameraYRotationChanged REVISION(6, 9))
     Q_PROPERTY(float cameraZoomLevel READ cameraZoomLevel WRITE setCameraZoomLevel NOTIFY
                    cameraZoomLevelChanged)
     Q_PROPERTY(QtGraphs3D::CameraPreset cameraPreset READ cameraPreset WRITE setCameraPreset NOTIFY
@@ -247,6 +267,8 @@ public:
     virtual void handleAxisReversedChangedBySender(QObject *sender);
     virtual void handleAxisFormatterDirtyBySender(QObject *sender);
     virtual void handleAxisLabelAutoRotationChangedBySender(QObject *sender);
+    virtual void handleAxisScaleLabelsByCountChangedBySender(QObject *sender);
+    virtual void handleAxisLabelSizeChangedBySender(QObject *sender);
     virtual void handleAxisTitleVisibilityChangedBySender(QObject *sender);
     virtual void handleAxisLabelVisibilityChangedBySender(QObject *sender);
     virtual void handleAxisTitleFixedChangedBySender(QObject *sender);
@@ -284,6 +306,9 @@ public:
 
     virtual void setRenderingMode(QtGraphs3D::RenderingMode mode);
     virtual QtGraphs3D::RenderingMode renderingMode() const;
+
+    virtual void setTransparencyTechnique(QtGraphs3D::TransparencyTechnique technique);
+    virtual QtGraphs3D::TransparencyTechnique transparencyTechnique() const;
 
     virtual void setSelectionMode(QtGraphs3D::SelectionFlags mode);
     virtual QtGraphs3D::SelectionFlags selectionMode() const;
@@ -379,8 +404,6 @@ public:
 
     void setMargin(qreal margin);
     qreal margin() const;
-
-    QMutex *mutex() { return &m_mutex; }
 
     bool isReady() { return isComponentComplete(); }
     QQuick3DNode *rootNode() const;
@@ -502,6 +525,9 @@ public:
 
     Q_INVOKABLE virtual bool doPicking(QPointF point);
 
+    Q_REVISION(6, 9) Q_INVOKABLE virtual bool doRayPicking(QVector3D origin,
+                                          QVector3D direction);
+
     void minimizeMainGraph();
 
     int horizontalFlipFactor() const;
@@ -531,6 +557,8 @@ public Q_SLOTS:
     void handleAxisSegmentCountChanged(qsizetype count);
     void handleAxisSubSegmentCountChanged(qsizetype count);
     void handleAxisAutoAdjustRangeChanged(bool autoAdjust);
+    void handleAxisScaleLabelsByCountChanged(bool adjust);
+    void handleAxisLabelSizeChanged(qreal size);
     void handleAxisLabelFormatChanged(const QString &format);
     void handleAxisReversedChanged(bool enable);
     void handleAxisFormatterDirty();
@@ -562,6 +590,7 @@ Q_SIGNALS:
     void msaaSamplesChanged(int samples);
     void themeChanged(QGraphsTheme *theme);
     void renderingModeChanged(QtGraphs3D::RenderingMode mode);
+    Q_REVISION(6, 9) void transparencyTechniqueChanged(QtGraphs3D::TransparencyTechnique technique);
     void measureFpsChanged(bool enabled);
     void currentFpsChanged(int fps);
     void selectedElementChanged(QtGraphs3D::ElementType type);
@@ -582,10 +611,10 @@ Q_SIGNALS:
     void cameraTargetPositionChanged(QVector3D target);
     void minCameraZoomLevelChanged(float zoomLevel);
     void maxCameraZoomLevelChanged(float zoomLevel);
-    void minCameraXRotationChanged(float rotation);
-    void minCameraYRotationChanged(float rotation);
-    void maxCameraXRotationChanged(float rotation);
-    void maxCameraYRotationChanged(float rotation);
+    Q_REVISION(6, 9) void minCameraXRotationChanged(float rotation);
+    Q_REVISION(6, 9) void minCameraYRotationChanged(float rotation);
+    Q_REVISION(6, 9) void maxCameraXRotationChanged(float rotation);
+    Q_REVISION(6, 9) void maxCameraYRotationChanged(float rotation);
     void wrapCameraXRotationChanged(bool wrap);
     void wrapCameraYRotationChanged(bool wrap);
     void needRender();
@@ -630,6 +659,11 @@ protected:
     virtual void handleParentHeightChange();
     void componentComplete() override;
     void checkSliceEnabled();
+    bool isUserCameraRotationRange() { return m_userRotationRange; };
+    void setUserCameraRotationRange(bool userRotationRange)
+    {
+        m_userRotationRange = userRotationRange;
+    };
 
     virtual void createSliceView();
 
@@ -739,8 +773,6 @@ protected:
                        QAbstract3DAxis **axisPtr);
     virtual void startRecordingRemovesAndInserts();
 
-    QSharedPointer<QMutex> m_nodeMutex;
-
     QMap<QCustom3DVolume *, Volume> m_customVolumes;
 
     Q3DScene *m_scene = nullptr;
@@ -758,6 +790,7 @@ protected:
     bool m_isPolar = false;
     float m_radialLabelOffset = 1.0f;
     float m_polarRadius = 2.0f;
+    bool m_userRotationRange = false;
 
     QList<QAbstract3DSeries *> m_seriesList;
 
@@ -770,7 +803,6 @@ protected:
     qsizetype m_selectedCustomItemIndex = -1;
     qreal m_margin = -1.0;
 
-    QMutex m_renderMutex;
     QQuickGraphsItem *m_qml = nullptr;
 
 private:
@@ -827,11 +859,12 @@ private:
     QQuick3DOrthographicCamera *m_oCamera = nullptr;
     QRectF m_cachedGeometry;
     QtGraphs3D::RenderingMode m_renderMode = QtGraphs3D::RenderingMode::DirectToBackground;
+    QtGraphs3D::TransparencyTechnique m_transparencyTechnique
+        = QtGraphs3D::TransparencyTechnique::Default;
     int m_samples = 0;
     int m_windowSamples = 0;
     QSize m_initialisedSize = QSize(0, 0);
     bool m_runningInDesigner;
-    QMutex m_mutex;
 
     bool m_xFlipped = false;
     bool m_yFlipped = false;

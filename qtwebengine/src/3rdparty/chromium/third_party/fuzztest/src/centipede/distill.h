@@ -16,22 +16,35 @@
 #define THIRD_PARTY_CENTIPEDE_DISTILL_H_
 
 #include <cstddef>
+#include <cstdint>
 #include <vector>
 
 #include "./centipede/environment.h"
 
 namespace centipede {
 
-// Runs one independent distillation task. Reads shards in the order specified
-// by `shard_indices`, distills inputs from them and writes the result to
-// `WorkDir{env}.DistilledPath()`. Every task gets its own `env.my_shard_index`,
-// and so every task creates its own independent distilled corpus file.
-void DistillTask(const Environment &env,
-                 const std::vector<size_t> &shard_indices);
+// Options for `Distill()`.
+struct DistillOptions {
+  // From each feature-equivalent set of inputs, select up to this many winners.
+  uint8_t feature_frequency_threshold = 1;
+};
 
-// Runs `env.num_threads` independent distill tasks in separate threads.
+// Reads `env.total_shards` input shards from `WorkDir{env}.CorpusFiles()` and
+// `WorkDir{env}.FeaturesFiles()`, distills them, and writes out the winning
+// inputs to `env.num_threads` output shards.
+//
+// All reads and writes are parallelized for higher throughput. A side effect of
+// that is that the results are generally non-deterministic (for a given
+// feature-equivalent set of inputs, any one can win and make it to the output).
+//
 // Returns EXIT_SUCCESS.
-int Distill(const Environment &env);
+int Distill(const Environment &env, const DistillOptions &opts = {});
+
+// Same as `Distill()`, but runs distillation without I/O parallelization and
+// reads shards in the order specified by `shard_indices` for deterministic
+// results.
+void DistillForTests(const Environment &env,
+                     const std::vector<size_t> &shard_indices);
 
 }  // namespace centipede
 

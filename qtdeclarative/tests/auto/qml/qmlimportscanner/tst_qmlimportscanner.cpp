@@ -1,9 +1,15 @@
 // Copyright (C) 2020 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
-#include <QtTest/QtTest>
+#include <QtTest/QTest>
+#include <QDir>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QLibraryInfo>
 #include <QProcess>
 #include <QString>
+#include <QTemporaryFile>
 #include <QtQuickTestUtils/private/qmlutils_p.h>
 
 using namespace Qt::StringLiterals;

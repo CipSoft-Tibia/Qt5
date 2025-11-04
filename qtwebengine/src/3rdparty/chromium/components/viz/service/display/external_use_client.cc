@@ -13,7 +13,7 @@ ExternalUseClient::ImageContext::ImageContext(
     const gpu::MailboxHolder& mailbox_holder,
     const gfx::Size& size,
     SharedImageFormat format,
-    const absl::optional<gpu::VulkanYCbCrInfo>& ycbcr_info,
+    const std::optional<gpu::VulkanYCbCrInfo>& ycbcr_info,
     sk_sp<SkColorSpace> color_space)
     : mailbox_holder_(mailbox_holder),
       size_(size),
@@ -28,7 +28,7 @@ sk_sp<SkColorSpace> ExternalUseClient::ImageContext::color_space() const {
 }
 
 void ExternalUseClient::ImageContext::OnContextLost() {
-  NOTREACHED();
+  NOTREACHED_IN_MIGRATION();
 }
 
 void ExternalUseClient::ImageContext::SetImage(

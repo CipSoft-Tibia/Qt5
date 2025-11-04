@@ -31,7 +31,7 @@ StreamingPlaybackController::StreamingPlaybackController(
                                  Error{Error::Code::kOperationCancelled,
                                        std::string("SDL event loop closed.")});
       }) {
-  OSP_DCHECK(client_ != nullptr);
+  OSP_CHECK(client_);
   constexpr int kDefaultWindowWidth = 1280;
   constexpr int kDefaultWindowHeight = 720;
   window_ = MakeUniqueSDLWindow(
@@ -52,7 +52,7 @@ StreamingPlaybackController::StreamingPlaybackController(
 StreamingPlaybackController::StreamingPlaybackController(
     StreamingPlaybackController::Client* client)
     : client_(client) {
-  OSP_DCHECK(client_ != nullptr);
+  OSP_CHECK(client_);
 }
 #endif  // defined(CAST_STANDALONE_RECEIVER_HAVE_EXTERNAL_LIBS)
 
@@ -91,7 +91,7 @@ void StreamingPlaybackController::OnReceiversDestroying(
 }
 
 void StreamingPlaybackController::OnError(const ReceiverSession* session,
-                                          Error error) {
+                                          const Error& error) {
   client_->OnPlaybackError(this, error);
 }
 
@@ -101,25 +101,25 @@ void StreamingPlaybackController::Initialize(
   OSP_LOG_INFO << "Successfully negotiated a session, creating SDL players.";
   if (receivers.audio_receiver) {
     audio_player_ = std::make_unique<SDLAudioPlayer>(
-        &Clock::now, task_runner_, receivers.audio_receiver,
+        &Clock::now, task_runner_, *receivers.audio_receiver,
         receivers.audio_config.codec, [this] {
           client_->OnPlaybackError(this, audio_player_->error_status());
         });
   }
   if (receivers.video_receiver) {
     video_player_ = std::make_unique<SDLVideoPlayer>(
-        &Clock::now, task_runner_, receivers.video_receiver,
-        receivers.video_config.codec, renderer_.get(), [this] {
+        &Clock::now, task_runner_, *receivers.video_receiver,
+        receivers.video_config.codec, *renderer_, [this] {
           client_->OnPlaybackError(this, video_player_->error_status());
         });
   }
 #else
   if (receivers.audio_receiver) {
-    audio_player_ = std::make_unique<DummyPlayer>(receivers.audio_receiver);
+    audio_player_ = std::make_unique<DummyPlayer>(*receivers.audio_receiver);
   }
 
   if (receivers.video_receiver) {
-    video_player_ = std::make_unique<DummyPlayer>(receivers.video_receiver);
+    video_player_ = std::make_unique<DummyPlayer>(*receivers.video_receiver);
   }
 #endif  // defined(CAST_STANDALONE_RECEIVER_HAVE_EXTERNAL_LIBS)
 }

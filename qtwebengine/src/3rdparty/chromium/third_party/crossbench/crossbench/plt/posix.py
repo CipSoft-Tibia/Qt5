@@ -5,43 +5,50 @@
 from __future__ import annotations
 
 import abc
-import pathlib
+import functools
+import logging
 import re
-from typing import Any, Dict, Iterator, List, Optional, Union
+from typing import TYPE_CHECKING, Any, Dict, Iterator, Optional
 
-from crossbench.types import JsonDict
+from crossbench import path as pth
+from crossbench.plt.base import Environ, ListCmdArgs, Platform, SubprocessError
+from crossbench.plt.remote import RemotePlatformMixin
 
-from .base import Environ, Platform, SubprocessError
+if TYPE_CHECKING:
+  from crossbench.types import JsonDict
 
 
 class PosixPlatform(Platform, metaclass=abc.ABCMeta):
   # pylint: disable=locally-disabled, redefined-builtin
 
   def __init__(self) -> None:
-    self._version = ""
-    self._device = ""
-    self._cpu = ""
-    self._default_tmp_dir = pathlib.Path("")
+    super().__init__()
+    self._default_tmp_dir = pth.RemotePath("")
 
-  def app_version(self, app_or_bin: pathlib.Path) -> str:
-    assert app_or_bin.exists(), f"Binary {app_or_bin} does not exist."
-    return self.sh_stdout(app_or_bin, "--version")
-
-  @property
-  def version(self) -> str:
-    if not self._version:
-      self._version = self.sh_stdout("uname", "-r").strip()
-    return self._version
+  @functools.cached_property
+  def version(self) -> str:  #pylint: disable=invalid-overridden-method
+    return self.sh_stdout("uname", "-r").strip()
 
   def _raw_machine_arch(self):
-    if not self.is_remote:
+    if self.is_local:
       return super()._raw_machine_arch()
     return self.sh_stdout("uname", "-m").strip()
 
-  _GET_CPONF_PROC_RE = re.compile(r".*PROCESSORS_CONF[^0-9]+(?P<cores>[0-9]+)")
+  def _get_cpu_cores_info(self) -> str:
+    try:
+      max_cores_file = self.path("/sys/devices/system/cpu/possible")
+      _, max_core = self.cat(max_cores_file).strip().split("-", maxsplit=1)
+      cores = int(max_core) + 1
+      return f"{cores} cores"
+    except Exception as e:  # pylint: disable=broad-except
+      logging.debug("Failed to get detailed CPU stats: %s", e)
+      return ""
+
+  _GET_CPONF_PROC_RE: re.Pattern = re.compile(
+      r".*PROCESSORS_CONF[^0-9]+(?P<cores>[0-9]+)")
 
   def cpu_details(self) -> Dict[str, Any]:
-    if not self.is_remote:
+    if self.is_local:
       return super().cpu_details()
     cores = -1
     if self.which("nproc"):
@@ -56,7 +63,7 @@ class PosixPlatform(Platform, metaclass=abc.ABCMeta):
     }
 
   def os_details(self) -> JsonDict:
-    if not self.is_remote:
+    if self.is_local:
       return super().os_details()
     return {
         "system": self.sh_stdout("uname").strip(),
@@ -65,10 +72,10 @@ class PosixPlatform(Platform, metaclass=abc.ABCMeta):
         "platform": self.sh_stdout("uname", "-a").strip(),
     }
 
-  _PY_VERSION = "import sys; print(64 if sys.maxsize > 2**32 else 32)"
+  _PY_VERSION: str = "import sys; print(64 if sys.maxsize > 2**32 else 32)"
 
   def python_details(self) -> JsonDict:
-    if not self.is_remote:
+    if self.is_local:
       return super().python_details()
     if not self.which("python3"):
       return {"version": "unknown", "bits": 64}
@@ -77,111 +84,148 @@ class PosixPlatform(Platform, metaclass=abc.ABCMeta):
         "bits": int(self.sh_stdout("python3", "-c", self._PY_VERSION).strip())
     }
 
+  def app_version(self, app_or_bin: pth.RemotePathLike) -> str:
+    app_or_bin = self.path(app_or_bin)
+    assert self.exists(app_or_bin), f"Binary {app_or_bin} does not exist."
+    return self.sh_stdout(app_or_bin, "--version")
+
   @property
-  def default_tmp_dir(self) -> pathlib.Path:
+  def default_tmp_dir(self) -> pth.RemotePath:
     if self._default_tmp_dir.parts:
       return self._default_tmp_dir
-    if not self.is_remote:
-      self._default_tmp_dir = super().default_tmp_dir
+    if self.is_local:
+      self._default_tmp_dir = self.path(super().default_tmp_dir)
       return self._default_tmp_dir
     env = self.environ
 
     for tmp_var in ("TMPDIR", "TEMP", "TMP"):
       if tmp_var not in env:
         continue
-      tmp_path = pathlib.Path(env[tmp_var])
+      tmp_path = self.path(env[tmp_var])
       if self.is_dir(tmp_path):
         self._default_tmp_dir = tmp_path
         return tmp_path
-    self._default_tmp_dir = pathlib.Path("/tmp")
-    assert self._default_tmp_dir.is_dir(), (
+    self._default_tmp_dir = self.path("/tmp")
+    assert self.is_dir(self._default_tmp_dir), (
         f"Fallback tmp dir does not exist: {self._default_tmp_dir}")
     return self._default_tmp_dir
 
-  def which(self, binary_name: str) -> Optional[pathlib.Path]:
-    if not self.is_remote:
+  def path(self, path: pth.RemotePathLike) -> pth.RemotePath:
+    if self.is_local:
+      return pth.LocalPosixPath(path)
+    return pth.RemotePosixPath(path)
+
+  def which(self, binary_name: pth.RemotePathLike) -> Optional[pth.RemotePath]:
+    if self.is_local:
       return super().which(binary_name)
     if not binary_name:
       raise ValueError("Got empty path")
+    if override := self.lookup_binary_override(str(binary_name)):
+      return override
     try:
-      maybe_bin = pathlib.Path(self.sh_stdout("which", binary_name).strip())
-      if maybe_bin.exists():
-        return maybe_bin
+      if maybe_path := self.sh_stdout("which", self.path(binary_name)).strip():
+        maybe_bin = self.path(maybe_path)
+        if self.exists(maybe_bin):
+          return maybe_bin
     except SubprocessError:
       pass
     return None
 
-  def cat(self, file: Union[str, pathlib.Path], encoding: str = "utf-8") -> str:
-    if not self.is_remote:
+  def cat(self, file: pth.RemotePathLike, encoding: str = "utf-8") -> str:
+    if self.is_local:
       return super().cat(file, encoding)
-    return self.sh_stdout("cat", file, encoding=encoding)
+    return self.sh_stdout("cat", self.path(file), encoding=encoding)
 
-  def rm(self, path: Union[str, pathlib.Path], dir: bool = False) -> None:
-    if not self.is_remote:
-      super().rm(path, dir)
-    elif dir:
-      self.sh("rm", "-rf", path)
+  def rm(self,
+         path: pth.RemotePathLike,
+         dir: bool = False,
+         missing_ok: bool = False) -> None:
+    if self.is_local:
+      super().rm(path, dir, missing_ok)
+      return
+    if missing_ok and not self.exists(path):
+      return
+    if dir:
+      self.sh("rm", "-rf", self.path(path))
     else:
-      self.sh("rm", path)
+      self.sh("rm", self.path(path))
 
-  def touch(self, path: Union[str, pathlib.Path]) -> None:
-    if not self.is_remote:
+  def rename(self, src_path: pth.RemotePathLike,
+             dst_path: pth.RemotePathLike) -> pth.RemotePath:
+    if self.is_local:
+      return super().rename(src_path, dst_path)
+    dst_path = self.path(dst_path)
+    self.sh("mv", self.path(src_path), dst_path)
+    return dst_path
+
+  def home(self) -> pth.RemotePath:
+    if self.is_local:
+      return super().home()
+    return self.path(self.sh_stdout("printenv", "HOME").strip())
+
+  def touch(self, path: pth.RemotePathLike) -> None:
+    if self.is_local:
       super().touch(path)
     else:
-      self.sh("touch", path)
+      self.sh("touch", self.path(path))
 
-  def mkdir(self, path: Union[str, pathlib.Path]) -> None:
-    if not self.is_remote:
-      super().mkdir(path)
+  def mkdir(self,
+            path: pth.RemotePathLike,
+            parents: bool = True,
+            exist_ok: bool = True) -> None:
+    if self.is_local:
+      super().mkdir(path, parents, exist_ok)
+    elif parents or exist_ok:
+      self.sh("mkdir", "-p", self.path(path))
     else:
-      self.sh("mkdir", "-p", path)
+      self.sh("mkdir", "-p", self.path(path))
 
   def mkdtemp(self,
               prefix: Optional[str] = None,
-              dir: Optional[Union[str, pathlib.Path]] = None) -> pathlib.Path:
-    if not self.is_remote:
+              dir: Optional[pth.RemotePathLike] = None) -> pth.RemotePath:
+    if self.is_local:
       return super().mkdtemp(prefix, dir)
     return self._mktemp_sh(is_dir=True, prefix=prefix, dir=dir)
 
   def mktemp(self,
              prefix: Optional[str] = None,
-             dir: Optional[Union[str, pathlib.Path]] = None) -> pathlib.Path:
-    if not self.is_remote:
+             dir: Optional[pth.RemotePathLike] = None) -> pth.RemotePath:
+    if self.is_local:
       return super().mktemp(prefix, dir)
     return self._mktemp_sh(is_dir=False, prefix=prefix, dir=dir)
 
   def _mktemp_sh(self, is_dir: bool, prefix: Optional[str],
-                 dir: Optional[Union[str, pathlib.Path]]) -> pathlib.Path:
+                 dir: Optional[pth.RemotePathLike]) -> pth.RemotePath:
     if not dir:
       dir = self.default_tmp_dir
-    template = pathlib.Path(dir) / f"{prefix}.XXXXXXXXXXX"
-    args: List[str] = ["mktemp"]
+    template = self.path(dir) / f"{prefix}.XXXXXXXXXXX"
+    args: ListCmdArgs = ["mktemp"]
     if is_dir:
       args.append("-d")
     args.append(str(template))
     result = self.sh_stdout(*args)
-    return pathlib.Path(result.strip())
+    return self.path(result.strip())
 
-  def exists(self, path: pathlib.Path) -> bool:
-    if not self.is_remote:
+  def exists(self, path: pth.RemotePathLike) -> bool:
+    if self.is_local:
       return super().exists(path)
-    return self.sh("[", "-e", path, "]", check=False).returncode == 0
+    return self.sh("[", "-e", self.path(path), "]", check=False).returncode == 0
 
-  def is_file(self, path: pathlib.Path) -> bool:
-    if not self.is_remote:
+  def is_file(self, path: pth.RemotePathLike) -> bool:
+    if self.is_local:
       return super().is_file(path)
-    return self.sh("[", "-f", path, "]", check=False).returncode == 0
+    return self.sh("[", "-f", self.path(path), "]", check=False).returncode == 0
 
-  def is_dir(self, path: pathlib.Path) -> bool:
-    if not self.is_remote:
+  def is_dir(self, path: pth.RemotePathLike) -> bool:
+    if self.is_local:
       return super().is_dir(path)
-    return self.sh("[", "-d", path, "]", check=False).returncode == 0
+    return self.sh("[", "-d", self.path(path), "]", check=False).returncode == 0
 
   def terminate(self, proc_pid: int) -> None:
     self.sh("kill", "-s", "TERM", str(proc_pid))
 
   def process_info(self, pid: int) -> Optional[Dict[str, Any]]:
-    if not self.is_remote:
+    if self.is_local:
       return super().process_info(pid)
     try:
       lines = self.sh_stdout("ps", "-o", "comm", "-p", str(pid)).splitlines()
@@ -196,7 +240,7 @@ class PosixPlatform(Platform, metaclass=abc.ABCMeta):
 
   @property
   def environ(self) -> Environ:
-    if not self.is_remote:
+    if self.is_local:
       return super().environ
     return RemotePosixEnviron(self)
 
@@ -230,3 +274,7 @@ class RemotePosixEnviron(Environ):
 
   def __len__(self) -> int:
     return self._environ.__len__()
+
+
+class RemotePosixPlatform(RemotePlatformMixin, PosixPlatform):
+  pass

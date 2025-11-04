@@ -560,9 +560,10 @@ int main(int argc, char **argv)
     cmdLineParser.addVersionOption();
     cmdLineParser.addPositionalArgument(QLatin1String("file"),
                                         QObject::tr("Vulkan GLSL source file to compile. The file extension determines the shader stage, and can be one of "
-                                                    ".vert, .tesc, .tese, .frag, .comp. "
+                                                    ".vert, .tesc, .tese, .geom, .frag, .comp. "
                                                     "Note: Tessellation control/evaluation is not supported with HLSL, instead use -r to inject handcrafted hull/domain shaders. "
-                                                    "Some targets may need special arguments to be set, e.g. MSL tessellation will likely need --msltess, --tess-vertex-count, --tess-mode, depending on the stage."
+                                                    "Some targets may need special arguments to be set, e.g. MSL tessellation will likely need --msltess, --tess-vertex-count, --tess-mode, depending on the stage. "
+                                                    "Geometry shaders are not supported with HLSL and MSL."
                                                     ),
                                         QObject::tr("file"));
     QCommandLineOption batchableOption({ "b", "batchable" }, QObject::tr("Also generates rewritten vertex shader for Qt Quick scene graph batching."));
@@ -663,6 +664,11 @@ int main(int argc, char **argv)
                                      QObject::tr("Enables generating the depfile for the input "
                                                  "shaders, using the #include statements."),
                                      QObject::tr("depfile"));
+
+    QCommandLineOption mediumpOption("mediump", QObject::tr("Default to medium precision for floats in fragment shaders instead of high. "
+                                                            "GLSL ES only; ignored for everything else, including GLSL."));
+    cmdLineParser.addOption(mediumpOption);
+
     cmdLineParser.addOption(depfileOption);
 
     cmdLineParser.process(app);
@@ -753,6 +759,12 @@ int main(int argc, char **argv)
             spirvOptions |= QShaderBaker::SpirvOption::StripDebugAndVarInfo;
 
         baker.setSpirvOptions(spirvOptions);
+
+        QShaderBaker::GlslOptions glslOptions;
+        if (cmdLineParser.isSet(mediumpOption))
+            glslOptions |= QShaderBaker::GlslOption::GlslEsFragDefaultFloatPrecisionMedium;
+
+        baker.setGlslOptions(glslOptions);
 
         QList<QShader::Variant> variants;
         variants << QShader::StandardShader;

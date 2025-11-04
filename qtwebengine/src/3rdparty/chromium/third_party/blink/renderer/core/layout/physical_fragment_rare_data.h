@@ -38,8 +38,9 @@ class PhysicalFragmentRareData
   explicit PhysicalFragmentRareData(wtf_size_t num_fields);
   PhysicalFragmentRareData(const PhysicalRect* scrollable_overflow,
                            const PhysicalBoxStrut* borders,
+                           const PhysicalBoxStrut* scrollbar,
                            const PhysicalBoxStrut* padding,
-                           absl::optional<PhysicalRect> inflow_bounds,
+                           std::optional<PhysicalRect> inflow_bounds,
                            BoxFragmentBuilder& builder,
                            wtf_size_t num_fields);
   PhysicalFragmentRareData(const PhysicalFragmentRareData& other);
@@ -49,6 +50,7 @@ class PhysicalFragmentRareData
     visitor->Trace(table_collapsed_borders_);
     visitor->Trace(table_column_geometries_);
     visitor->Trace(mathml_paint_info_);
+    visitor->Trace(reading_flow_elements_);
   }
 
  private:
@@ -61,6 +63,7 @@ class PhysicalFragmentRareData
   enum class FieldId : RareBitFieldType {
     kScrollableOverflow = 0,
     kBorders,
+    kScrollbar,
     kPadding,
     kInflowBounds,
     kFrameSetLayoutData,
@@ -82,6 +85,7 @@ class PhysicalFragmentRareData
     union {
       PhysicalRect scrollable_overflow;
       PhysicalBoxStrut borders;
+      PhysicalBoxStrut scrollbar;
       PhysicalBoxStrut padding;
       PhysicalRect inflow_bounds;
       std::unique_ptr<const FrameSetLayoutData> frame_set_layout_data;
@@ -160,6 +164,7 @@ class PhysicalFragmentRareData
   Member<const TableBorders> table_collapsed_borders_;
   Member<const TableFragmentData::ColumnGeometries> table_column_geometries_;
   Member<const MathMLPaintInfo> mathml_paint_info_;
+  Member<const HeapVector<Member<Element>>> reading_flow_elements_;
 };
 
 }  // namespace blink

@@ -1,21 +1,21 @@
-# Copyright (C) 2022 The Qt Company Ltd.
+# Copyright (C) 2024 The Qt Company Ltd.
 # SPDX-License-Identifier: BSD-3-Clause
 
-# Generated from listview.pro.
-
-#####################################################################
-## listview Binary:
-#####################################################################
+if (NOT QT_BUILD_STANDALONE_TESTS AND NOT QT_BUILDING_QT)
+    cmake_minimum_required(VERSION 3.16)
+    project(listview LANGUAGES C CXX ASM)
+    find_package(Qt6BuildInternals COMPONENTS STANDALONE_TEST)
+endif()
 
 qt_internal_add_manual_test(listview
     GUI
     SOURCES
         main.cpp
-    DEFINES
-        QT_DEPRECATED_WARNINGS
     LIBRARIES
         Qt::Gui
+        Qt::Qml
         Qt::Quick
+        Qt::QuickControls2
 )
 
 # Resources:
@@ -29,20 +29,3 @@ qt_internal_add_resource(listview "qml"
     FILES
         ${qml_resource_files}
 )
-
-
-#### Keys ignored in scope 1:.:.:listview.pro:<TRUE>:
-# QML_DESIGNER_IMPORT_PATH = <EMPTY>
-# QML_IMPORT_PATH = <EMPTY>
-
-## Scopes:
-#####################################################################
-
-#### Keys ignored in scope 2:.:.:listview.pro:QNX:
-# target.path = "/tmp/$${TARGET}/bin"
-
-#### Keys ignored in scope 4:.:.:listview.pro:UNIX AND NOT ANDROID:
-# target.path = "/opt/$${TARGET}/bin"
-
-#### Keys ignored in scope 5:.:.:listview.pro:NOT target.path_ISEMPTY:
-# INSTALLS = "target"

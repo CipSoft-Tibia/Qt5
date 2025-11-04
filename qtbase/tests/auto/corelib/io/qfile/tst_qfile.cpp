@@ -29,6 +29,10 @@
 #include <QtCore/private/qfunctions_win_p.h>
 #endif
 
+#ifdef Q_OS_ANDROID
+#include <QtCore/private/qjnihelpers_p.h>
+#endif
+
 #include <QtTest/private/qemulationdetector_p.h>
 
 #ifdef Q_OS_WIN
@@ -224,6 +228,7 @@ private slots:
     void getCharFF();
     void remove_and_exists();
     void removeOpenFile();
+    void removedFileDoesntExist();
     void fullDisk();
     void writeLargeDataBlock_data();
     void writeLargeDataBlock();
@@ -287,6 +292,7 @@ private slots:
 
     void reuseQFile();
 
+    void supportsMoveToTrash();
     void moveToTrash_data();
     void moveToTrash();
     void moveToTrashDuplicateName();
@@ -295,6 +301,7 @@ private slots:
     void moveToTrashSymlinkToFile();
     void moveToTrashSymlinkToDirectory_data();
     void moveToTrashSymlinkToDirectory();
+    void moveToTrashXdgHomeTrashIsSymlink();
     void moveToTrashXdgSafety();
 
     void stdfilesystem();
@@ -995,7 +1002,7 @@ private:
 void tst_QFile::readAllStdin()
 {
 #if !QT_CONFIG(process)
-    QSKIP("No qprocess support", SkipAll);
+    QSKIP("No qprocess support");
 #else
 #if defined(Q_OS_ANDROID)
     QSKIP("This test crashes when doing nanosleep. See QTBUG-69034.");
@@ -1020,7 +1027,7 @@ void tst_QFile::readAllStdin()
 void tst_QFile::readLineStdin()
 {
 #if !QT_CONFIG(process)
-    QSKIP("No qprocess support", SkipAll);
+    QSKIP("No qprocess support");
 #else
 #if defined(Q_OS_ANDROID)
     QSKIP("This test crashes when doing nanosleep. See QTBUG-69034.");
@@ -1063,7 +1070,7 @@ void tst_QFile::readLineStdin()
 void tst_QFile::readLineStdin_lineByLine()
 {
 #if !QT_CONFIG(process)
-    QSKIP("No qprocess support", SkipAll);
+    QSKIP("No qprocess support");
 #else
 #if defined(Q_OS_ANDROID)
     QSKIP("This test crashes when calling ::poll. See QTBUG-69034.");
@@ -1386,6 +1393,10 @@ void tst_QFile::permissions_data()
 
 #ifndef Q_OS_WASM
     // Application path is empty on wasm
+#ifdef Q_OS_ANDROID
+    // Android in-APK application path doesn't report exec permission
+    if (!QtAndroidPrivate::isUncompressedNativeLibs())
+#endif
     QTest::newRow("data0") << QCoreApplication::instance()->applicationFilePath() << uint(QFile::ExeUser) << true << false;
 #endif
     QTest::newRow("data1") << m_testSourceFile << uint(QFile::ReadUser) << true << false;
@@ -1395,9 +1406,9 @@ void tst_QFile::permissions_data()
                                                     "longFileNamelongFileNamelongFileNamelongFileName"
                                                     "longFileNamelongFileNamelongFileNamelongFileName"
                                                     "longFileNamelongFileNamelongFileNamelongFileName.txt") << uint(QFile::ReadUser) << true << true;
-    QTest::newRow("resource1") << ":/tst_qfileinfo/resources/file1.ext1" << uint(QFile::ReadUser) << true << false;
-    QTest::newRow("resource2") << ":/tst_qfileinfo/resources/file1.ext1" << uint(QFile::WriteUser) << false << false;
-    QTest::newRow("resource3") << ":/tst_qfileinfo/resources/file1.ext1" << uint(QFile::ExeUser) << false << false;
+    QTest::newRow("resource1") << ":/tst_qfile/resources/file1.ext1" << uint(QFile::ReadUser) << true << false;
+    QTest::newRow("resource2") << ":/tst_qfile/resources/file1.ext1" << uint(QFile::WriteUser) << false << false;
+    QTest::newRow("resource3") << ":/tst_qfile/resources/file1.ext1" << uint(QFile::ExeUser) << false << false;
 }
 
 void tst_QFile::permissions()
@@ -2502,6 +2513,37 @@ void tst_QFile::removeOpenFile()
     }
 }
 
+void tst_QFile::removedFileDoesntExist()
+{
+#ifdef Q_OS_WIN
+    QSKIP("Not relevant for Windows - can't remove still-open files");
+#endif
+    QFile::remove("remove_unclosed.txt");
+    QFile f("remove_unclosed.txt");
+    QVERIFY(!f.exists());
+    bool opened = f.open(QIODevice::ReadWrite | QIODevice::Unbuffered);
+    QVERIFY(opened);
+    f.write("blah blah blah");
+
+    QVERIFY(f.exists());
+
+    // delete by path, not using f.remove() (that's tested above)
+    QVERIFY(QFile::remove(f.fileName()));
+    QVERIFY(!QFile::exists(f.fileName()));
+    QVERIFY(!f.exists());
+
+#ifdef Q_OS_LINUX
+    QString procPath = u"/proc/self/fd/"_s;
+    if (QFile::exists(procPath)) {
+        // reopen the deleted file
+        procPath += QString::number(f.handle());
+        QFile f2(procPath);
+        QVERIFY(f2.open(QIODevice::ReadOnly));
+        QVERIFY(!f2.exists());
+    }
+#endif
+}
+
 void tst_QFile::fullDisk()
 {
     QFile file("/dev/full");
@@ -2714,7 +2756,12 @@ void tst_QFile::virtualFile()
         lines += std::move(data);
     }
 
-    if (!QT_CONFIG(static) && !QTestPrivate::isRunningArmOnX86()) {
+    if (!QT_CONFIG(static) && !QTestPrivate::isRunningArmOnX86()
+#ifdef Q_OS_ANDROID
+            // With uncompressed libs, only the app's APK path is shown and no library names.
+            && !QtAndroidPrivate::isUncompressedNativeLibs()
+#endif
+            ) {
         // we must be able to find QtCore and QtTest somewhere
         static const char corelib[] = "libQt" QT_STRINGIFY(QT_VERSION_MAJOR) "Core";
         static const char testlib[] = "libQt" QT_STRINGIFY(QT_VERSION_MAJOR) "Test";
@@ -3465,8 +3512,8 @@ void tst_QFile::mapResource_data()
     QTest::addColumn<QFile::FileError>("error");
     QTest::addColumn<QString>("fileName");
 
-    QString validFile = ":/tst_qfileinfo/resources/file1.ext1";
-    QString invalidFile = ":/tst_qfileinfo/resources/filefoo.ext1";
+    QString validFile = ":/tst_qfile/resources/file1.ext1";
+    QString invalidFile = ":/tst_qfile/resources/filefoo.ext1";
     const char modes[] = "invalid";
 
     for (int i = 0; i < 2; ++i) {
@@ -3602,6 +3649,9 @@ void tst_QFile::openDirectory()
     f1.close();
     QVERIFY(!f1.open(QIODevice::ReadOnly|QIODevice::Unbuffered));
     f1.close();
+#if defined(Q_OS_VXWORKS)
+    QEXPECT_FAIL("", "QTBUG-130074: On VxWorks directories are always openable in a write mode", Abort);
+#endif
     QVERIFY(!f1.open(QIODevice::ReadWrite));
     f1.close();
     QVERIFY(!f1.open(QIODevice::WriteOnly));
@@ -3969,6 +4019,27 @@ void tst_QFile::reuseQFile()
     }
 }
 
+void tst_QFile::supportsMoveToTrash()
+{
+    // enforce the result according to our current implementation details
+#if defined(Q_OS_WIN) || defined(Q_OS_MACOS)
+    // Windows and macOS: definitely supported
+    QVERIFY(QFile::supportsMoveToTrash());
+#elif defined(Q_OS_DARWIN)
+    // Other Darwin platforms: not supported
+    // (though Apple docs say trashItemAtURL is supported)
+    QVERIFY(!QFile::supportsMoveToTrash());
+#elif defined(Q_OS_ANDROID)
+    // Android: not supported (we get EACCES even for $HOME files)
+    QVERIFY(!QFile::supportsMoveToTrash());
+#elif !defined(AT_FDCWD)
+    // Unix platforms without the POSIX atfile support: not supported
+    QVERIFY(!QFile::supportsMoveToTrash());
+#else
+    QVERIFY(QFile::supportsMoveToTrash());
+#endif
+}
+
 void tst_QFile::moveToTrash_data()
 {
     QTest::addColumn<QString>("source");
@@ -4025,9 +4096,9 @@ void tst_QFile::moveToTrash_data()
 
 void tst_QFile::moveToTrash()
 {
-#if defined(Q_OS_ANDROID) or defined(Q_OS_WEBOS) or defined(Q_OS_VXWORKS)
-    QSKIP("This platform doesn't implement a trash bin");
-#endif
+    if (!QFile::supportsMoveToTrash())
+        QSKIP("This platform doesn't implement a trash bin");
+
     QFETCH(QString, source);
     QFETCH(bool, create);
     QFETCH(bool, result);
@@ -4127,9 +4198,9 @@ void tst_QFile::moveToTrash()
 
 void tst_QFile::moveToTrashDuplicateName()
 {
-#if defined(Q_OS_ANDROID) || defined(Q_OS_WEBOS) || defined(Q_OS_VXWORKS)
-    QSKIP("This platform doesn't implement a trash bin");
-#endif
+    if (!QFile::supportsMoveToTrash())
+        QSKIP("This platform doesn't implement a trash bin");
+
     QString origFileName = []() {
         QTemporaryFile temp(QDir::homePath() + "/tst_qfile.moveToTrashOpenFile.XXXXXX");
         temp.setAutoRemove(false);
@@ -4182,9 +4253,9 @@ void tst_QFile::moveToTrashOpenFile_data()
 
 void tst_QFile::moveToTrashOpenFile()
 {
-#if defined(Q_OS_ANDROID) || defined(Q_OS_WEBOS) || defined(Q_OS_VXWORKS)
-    QSKIP("This platform doesn't implement a trash bin");
-#endif
+    if (!QFile::supportsMoveToTrash())
+        QSKIP("This platform doesn't implement a trash bin");
+
     QFETCH(bool, useStatic);
     QFETCH(bool, success);
     const QByteArrayView contents = "Hello, World\n";
@@ -4242,9 +4313,9 @@ void tst_QFile::moveToTrashOpenFile()
 
 void tst_QFile::moveToTrashSymlinkToFile()
 {
-#if defined(Q_OS_ANDROID) || defined(Q_OS_WEBOS) || defined(Q_OS_VXWORKS)
-    QSKIP("This platform doesn't implement a trash bin");
-#endif
+    if (!QFile::supportsMoveToTrash())
+        QSKIP("This platform doesn't implement a trash bin");
+
     QTemporaryFile temp(QDir::homePath() + "/tst_qfile.moveToTrashSymlinkFile.XXXXXX");
     QVERIFY2(temp.open(), "Failed to create temporary file: " + temp.errorString().toLocal8Bit());
 
@@ -4281,9 +4352,9 @@ void tst_QFile::moveToTrashSymlinkToDirectory_data()
 
 void tst_QFile::moveToTrashSymlinkToDirectory()
 {
-#if defined(Q_OS_ANDROID) || defined(Q_OS_WEBOS) || defined(Q_OS_VXWORKS)
-    QSKIP("This platform doesn't implement a trash bin");
-#endif
+    if (!QFile::supportsMoveToTrash())
+        QSKIP("This platform doesn't implement a trash bin");
+
     QFETCH(bool, appendSlash);
     QTemporaryDir temp(QDir::homePath() + "/tst_qfile.moveToTrashSymlinkDir.XXXXXX");
     QVERIFY2(temp.isValid(), "Failed to create temporary dir: " + temp.errorString().toLocal8Bit());
@@ -4313,11 +4384,58 @@ void tst_QFile::moveToTrashSymlinkToDirectory()
     cleanLink.dismiss();
 }
 
+void tst_QFile::moveToTrashXdgHomeTrashIsSymlink()
+{
+    if (!QFile::supportsMoveToTrash())
+        QSKIP("This platform doesn't implement a trash bin");
+
+#if defined(Q_OS_WIN) || defined(Q_OS_DARWIN) || defined(Q_OS_ANDROID) || defined(Q_OS_WEBOS)
+    QSKIP("This test is specific to XDG Unix systems");
+#else
+    if (!QStandardPaths::isTestModeEnabled())
+        QFAIL("Constructor should have enabled test mode");
+
+    QString xdgDataHome = QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation);
+    Q_ASSERT(xdgDataHome.contains("qttest/"));
+    QString xdgHomeTrash = xdgDataHome + "/Trash"_L1;
+    QString tempPattern = xdgDataHome + "/tst_qfile_moveToTrashXdgHomeTrashIsSymlink.XXXXXX";
+    auto removeTrashAsSymlink = [&xdgHomeTrash] {
+        QFile::remove(xdgHomeTrash);
+    };
+
+    // create a file for us to trash
+    QTemporaryFile fileToTrash(tempPattern);
+    QVERIFY2(fileToTrash.open(), qPrintable(fileToTrash.errorString()));
+
+    // obliterate the test-mode home trash and create a symlink in its place
+    if (QFileInfo fi(xdgHomeTrash); fi.isSymLink() || !fi.isDir())
+        removeTrashAsSymlink();
+    else
+        QDir(xdgHomeTrash).removeRecursively();
+
+    QTemporaryDir otherTrash(tempPattern);
+    QVERIFY2(otherTrash.isValid(), qPrintable(otherTrash.errorString()));
+    if (QFile src(otherTrash.path()); true)
+        QVERIFY2(src.link(xdgHomeTrash), qPrintable(src.errorString()));
+    auto deleteSymlink = qScopeGuard(removeTrashAsSymlink);
+
+    // we should be able to trash an open file in XDG platforms (test above)
+
+    QFile f(fileToTrash.fileName());
+    QVERIFY2(f.moveToTrash(), qPrintable(f.errorString()));
+    QVERIFY(f.exists());
+
+    QVERIFY(!QFileInfo(fileToTrash.fileName()).exists());
+    QVERIFY(QFile(otherTrash.filePath("files")).exists());
+    QVERIFY(QFile(otherTrash.filePath("info")).exists());
+#endif
+}
+
 void tst_QFile::moveToTrashXdgSafety()
 {
-#if defined(Q_OS_VXWORKS)
-    QSKIP("This platform doesn't implement a trash bin");
-#endif
+    if (!QFile::supportsMoveToTrash())
+        QSKIP("This platform doesn't implement a trash bin");
+
 #if defined(Q_OS_WIN) || defined(Q_OS_DARWIN) || defined(Q_OS_ANDROID) || defined(Q_OS_WEBOS)
     QSKIP("This test is specific to XDG Unix systems");
 #else

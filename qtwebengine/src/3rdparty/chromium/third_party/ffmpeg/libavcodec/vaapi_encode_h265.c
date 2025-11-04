@@ -23,6 +23,7 @@
 
 #include "libavutil/avassert.h"
 #include "libavutil/common.h"
+#include "libavutil/mem.h"
 #include "libavutil/pixdesc.h"
 #include "libavutil/opt.h"
 #include "libavutil/mastering_display_metadata.h"
@@ -35,8 +36,6 @@
 #include "h2645data.h"
 #include "h265_profile_level.h"
 #include "hevc.h"
-#include "hevc_sei.h"
-#include "put_bits.h"
 #include "vaapi_encode.h"
 
 enum {
@@ -945,26 +944,23 @@ static int vaapi_encode_h265_init_picture_params(AVCodecContext *avctx,
 
     vpic->nal_unit_type = hpic->slice_nal_unit;
 
+    vpic->pic_fields.bits.reference_pic_flag = pic->is_reference;
     switch (pic->type) {
     case PICTURE_TYPE_IDR:
         vpic->pic_fields.bits.idr_pic_flag       = 1;
         vpic->pic_fields.bits.coding_type        = 1;
-        vpic->pic_fields.bits.reference_pic_flag = 1;
         break;
     case PICTURE_TYPE_I:
         vpic->pic_fields.bits.idr_pic_flag       = 0;
         vpic->pic_fields.bits.coding_type        = 1;
-        vpic->pic_fields.bits.reference_pic_flag = 1;
         break;
     case PICTURE_TYPE_P:
         vpic->pic_fields.bits.idr_pic_flag       = 0;
         vpic->pic_fields.bits.coding_type        = 2;
-        vpic->pic_fields.bits.reference_pic_flag = 1;
         break;
     case PICTURE_TYPE_B:
         vpic->pic_fields.bits.idr_pic_flag       = 0;
         vpic->pic_fields.bits.coding_type        = 3;
-        vpic->pic_fields.bits.reference_pic_flag = 0;
         break;
     default:
         av_assert0(0 && "invalid picture type");
@@ -1409,10 +1405,10 @@ static const AVOption vaapi_encode_h265_options[] = {
 
     { "profile", "Set profile (general_profile_idc)",
       OFFSET(profile), AV_OPT_TYPE_INT,
-      { .i64 = AV_PROFILE_UNKNOWN }, AV_PROFILE_UNKNOWN, 0xff, FLAGS, "profile" },
+      { .i64 = AV_PROFILE_UNKNOWN }, AV_PROFILE_UNKNOWN, 0xff, FLAGS, .unit = "profile" },
 
 #define PROFILE(name, value)  name, NULL, 0, AV_OPT_TYPE_CONST, \
-      { .i64 = value }, 0, 0, FLAGS, "profile"
+      { .i64 = value }, 0, 0, FLAGS, .unit = "profile"
     { PROFILE("main",               AV_PROFILE_HEVC_MAIN) },
     { PROFILE("main10",             AV_PROFILE_HEVC_MAIN_10) },
     { PROFILE("rext",               AV_PROFILE_HEVC_REXT) },
@@ -1420,18 +1416,18 @@ static const AVOption vaapi_encode_h265_options[] = {
 
     { "tier", "Set tier (general_tier_flag)",
       OFFSET(tier), AV_OPT_TYPE_INT,
-      { .i64 = 0 }, 0, 1, FLAGS, "tier" },
+      { .i64 = 0 }, 0, 1, FLAGS, .unit = "tier" },
     { "main", NULL, 0, AV_OPT_TYPE_CONST,
-      { .i64 = 0 }, 0, 0, FLAGS, "tier" },
+      { .i64 = 0 }, 0, 0, FLAGS, .unit = "tier" },
     { "high", NULL, 0, AV_OPT_TYPE_CONST,
-      { .i64 = 1 }, 0, 0, FLAGS, "tier" },
+      { .i64 = 1 }, 0, 0, FLAGS, .unit = "tier" },
 
     { "level", "Set level (general_level_idc)",
       OFFSET(level), AV_OPT_TYPE_INT,
-      { .i64 = AV_LEVEL_UNKNOWN }, AV_LEVEL_UNKNOWN, 0xff, FLAGS, "level" },
+      { .i64 = AV_LEVEL_UNKNOWN }, AV_LEVEL_UNKNOWN, 0xff, FLAGS, .unit = "level" },
 
 #define LEVEL(name, value) name, NULL, 0, AV_OPT_TYPE_CONST, \
-      { .i64 = value }, 0, 0, FLAGS, "level"
+      { .i64 = value }, 0, 0, FLAGS, .unit = "level"
     { LEVEL("1",    30) },
     { LEVEL("2",    60) },
     { LEVEL("2.1",  63) },
@@ -1450,18 +1446,18 @@ static const AVOption vaapi_encode_h265_options[] = {
     { "sei", "Set SEI to include",
       OFFSET(sei), AV_OPT_TYPE_FLAGS,
       { .i64 = SEI_MASTERING_DISPLAY | SEI_CONTENT_LIGHT_LEVEL | SEI_A53_CC },
-      0, INT_MAX, FLAGS, "sei" },
+      0, INT_MAX, FLAGS, .unit = "sei" },
     { "hdr",
       "Include HDR metadata for mastering display colour volume "
       "and content light level information",
       0, AV_OPT_TYPE_CONST,
       { .i64 = SEI_MASTERING_DISPLAY | SEI_CONTENT_LIGHT_LEVEL },
-      INT_MIN, INT_MAX, FLAGS, "sei" },
+      INT_MIN, INT_MAX, FLAGS, .unit = "sei" },
     { "a53_cc",
       "Include A/53 caption data",
       0, AV_OPT_TYPE_CONST,
       { .i64 = SEI_A53_CC },
-      INT_MIN, INT_MAX, FLAGS, "sei" },
+      INT_MIN, INT_MAX, FLAGS, .unit = "sei" },
 
     { "tiles", "Tile columns x rows",
       OFFSET(common.tile_cols), AV_OPT_TYPE_IMAGE_SIZE,

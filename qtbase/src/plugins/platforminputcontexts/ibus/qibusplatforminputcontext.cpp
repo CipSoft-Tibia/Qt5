@@ -720,11 +720,9 @@ QString QIBusPlatformInputContextPrivate::getSocketPath()
     QByteArray displayNumber = "0";
     bool isWayland = false;
 
-    if (qEnvironmentVariableIsSet("IBUS_ADDRESS_FILE")) {
-        QByteArray path = qgetenv("IBUS_ADDRESS_FILE");
-        return QString::fromLocal8Bit(path);
-    } else  if (qEnvironmentVariableIsSet("WAYLAND_DISPLAY")) {
-        display = qgetenv("WAYLAND_DISPLAY");
+    if (QString path = qEnvironmentVariable("IBUS_ADDRESS_FILE"); !path.isNull()) {
+        return path;
+    } else if (display = qgetenv("WAYLAND_DISPLAY"); !display.isEmpty()) {
         isWayland = true;
     } else {
         display = qgetenv("DISPLAY");
@@ -766,14 +764,15 @@ void QIBusPlatformInputContextPrivate::createConnection()
 
     QByteArray address;
     int pid = -1;
+    QByteArray lineArray;
 
-    while (!file.atEnd()) {
-        QByteArray line = file.readLine().trimmed();
+    while (file.readLineInto(&lineArray)) {
+        QByteArrayView line = QByteArrayView(lineArray).trimmed();
         if (line.startsWith('#'))
             continue;
 
         if (line.startsWith("IBUS_ADDRESS="))
-            address = line.mid(sizeof("IBUS_ADDRESS=") - 1);
+            address = line.mid(sizeof("IBUS_ADDRESS=") - 1).toByteArray();
         if (line.startsWith("IBUS_DAEMON_PID="))
             pid = line.mid(sizeof("IBUS_DAEMON_PID=") - 1).toInt();
     }

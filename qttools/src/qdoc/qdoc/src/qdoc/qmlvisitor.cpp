@@ -11,6 +11,7 @@
 #include "qdocdatabase.h"
 #include "qmlpropertyarguments.h"
 #include "qmlpropertynode.h"
+#include "sharedcommentnode.h"
 #include "tokenizer.h"
 #include "utilities.h"
 
@@ -142,8 +143,7 @@ Node *QmlDocVisitor::applyDocumentation(QQmlJS::SourceLocation location, Node *n
     }
 
     auto *parent{node->parent()};
-    node->setDoc(doc);
-    nodes.append(node);
+    nodes << node;
     if (!topicsUsed.empty()) {
         for (int i = 0; i < topicsUsed.size(); ++i) {
             QString topic = topicsUsed.at(i).m_topic;
@@ -160,28 +160,76 @@ Node *QmlDocVisitor::applyDocumentation(QQmlJS::SourceLocation location, Node *n
                         if (n == nullptr)
                             n = new QmlPropertyNode(parent, qpa->m_name, qpa->m_type, isAttached);
                         n->setIsList(qpa->m_isList);
-                        n->setLocation(doc.location());
-                        n->setDoc(doc);
                         // Use the const-overload of QmlPropertyNode::isReadOnly() as there's
                         // no associated C++ property to resolve the read-only status from
                         n->markReadOnly(const_cast<const QmlPropertyNode *>(qmlProperty)->isReadOnly()
                                         && !isAttached);
                         if (qmlProperty->isDefault())
                             n->markDefault();
-                        nodes.append(n);
+                        nodes << n;
                     }
                 } else
                     qCDebug(lcQdoc) << "Failed to parse QML property:" << topic << args;
-            } else if (topic.endsWith(QLatin1String("method")) || topic == COMMAND_QMLSIGNAL) {
+            } else if (topic == COMMAND_QMLSIGNAL || topic == COMMAND_QMLMETHOD ||
+                       topic == COMMAND_QMLATTACHEDSIGNAL || topic == COMMAND_QMLATTACHEDMETHOD) {
                 if (node->isFunction()) {
-                    auto *fn = static_cast<FunctionNode *>(node);
-                    QmlSignatureParser qsp(fn, args, doc.location());
+                    QmlSignatureParser qsp(static_cast<FunctionNode *>(node), args, doc.location());
+                    if (nodes.size() > 1) {
+                        doc.location().warning("\\%1 cannot be mixed with other topic commands"_L1.arg(topic));
+                        nodes = {node};
+                    }
+                    break;
+                }
+            } else if (topic == COMMAND_QMLTYPE || topic == COMMAND_QMLVALUETYPE ||
+                       topic == COMMAND_QMLBASICTYPE) {
+                if (node->isQmlType()) {
+                    if (nodes.size() > 1) {
+                        doc.location().warning("\\%1 cannot be mixed with other topic commands"_L1.arg(topic));
+                        nodes = {node};
+                    }
+                    break;
                 }
             }
         }
     }
-    for (const auto &node : nodes)
-        applyMetacommands(loc, node, doc);
+
+    for (auto *n : nodes) {
+        applyMetacommands(loc, n, doc);
+    }
+
+    // Test if we're documenting a property group; We need three nodes at minimum:
+    // The property that acts as the `root` in the group, and two more to make a
+    // group. Each property must be prefixed with the root name + '.'.
+    bool isPropertyGroup{false};
+    if (nodes.size() > 2 && parent->isQmlType()) {
+        isPropertyGroup =
+            std::all_of(std::next(nodes.cbegin()), nodes.cend(), [node](const Node *p) {
+                return p->name().startsWith("%1."_L1.arg(node->name()));
+            });
+    }
+    // Construct a SharedCommentNode (SCN) representing a QML property group.
+    //
+    // Note that it's important to do this *after* constructing
+    // the topic nodes - which need to be written to index before the related
+    // SCN.
+    if (isPropertyGroup) {
+        // The first node in `nodes` is the group property;
+        // create SCN with the same name
+        QString group{nodes.takeFirst()->name()};
+        auto *scn = new SharedCommentNode(static_cast<QmlTypeNode*>(parent),
+                                          nodes.size(), group);
+        scn->setDoc(doc);
+        scn->setLocation(doc.startLocation());
+        applyMetacommands(loc, scn, doc);
+        for (const auto n : std::as_const(nodes))
+            scn->append(n);
+        scn->sort();
+    } else {
+        for (auto *n : nodes) {
+            n->setDoc(doc);
+            n->setLocation(doc.location());
+        }
+    }
 
     m_usedComments.insert(loc.offset);
     return node;

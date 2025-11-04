@@ -17,7 +17,7 @@
 namespace media {
 
 // static
-absl::optional<Fourcc> Fourcc::FromUint32(uint32_t fourcc) {
+std::optional<Fourcc> Fourcc::FromUint32(uint32_t fourcc) {
   switch (fourcc) {
     case YU12:
     case YV12:
@@ -40,11 +40,11 @@ absl::optional<Fourcc> Fourcc::FromUint32(uint32_t fourcc) {
       return Fourcc(static_cast<Value>(fourcc));
   }
   DVLOGF(4) << "Unmapped fourcc: " << FourccToString(fourcc);
-  return absl::nullopt;
+  return std::nullopt;
 }
 
 // static
-absl::optional<Fourcc> Fourcc::FromVideoPixelFormat(
+std::optional<Fourcc> Fourcc::FromVideoPixelFormat(
     VideoPixelFormat pixel_format,
     bool single_planar) {
   if (single_planar) {
@@ -61,12 +61,12 @@ absl::optional<Fourcc> Fourcc::FromVideoPixelFormat(
         return Fourcc(NV21);
       case PIXEL_FORMAT_I422:
         return Fourcc(YU16);
-      case PIXEL_FORMAT_P016LE:
+      case PIXEL_FORMAT_P010LE:
         return Fourcc(P010);
       case PIXEL_FORMAT_ARGB:
         return Fourcc(AR24);
       case PIXEL_FORMAT_UYVY:
-        NOTREACHED();
+        NOTREACHED_IN_MIGRATION();
         [[fallthrough]];
       case PIXEL_FORMAT_ABGR:
       case PIXEL_FORMAT_XRGB:
@@ -77,6 +77,10 @@ absl::optional<Fourcc> Fourcc::FromVideoPixelFormat(
       case PIXEL_FORMAT_RGB24:
       case PIXEL_FORMAT_MJPEG:
       case PIXEL_FORMAT_NV12A:
+      case PIXEL_FORMAT_NV16:
+      case PIXEL_FORMAT_NV24:
+      case PIXEL_FORMAT_P210LE:
+      case PIXEL_FORMAT_P410LE:
       case PIXEL_FORMAT_YUV420P9:
       case PIXEL_FORMAT_YUV420P10:
       case PIXEL_FORMAT_YUV422P9:
@@ -111,7 +115,7 @@ absl::optional<Fourcc> Fourcc::FromVideoPixelFormat(
       case PIXEL_FORMAT_NV21:
         return Fourcc(NM21);
       case PIXEL_FORMAT_UYVY:
-        NOTREACHED();
+        NOTREACHED_IN_MIGRATION();
         [[fallthrough]];
       case PIXEL_FORMAT_I420A:
       case PIXEL_FORMAT_I444:
@@ -121,6 +125,10 @@ absl::optional<Fourcc> Fourcc::FromVideoPixelFormat(
       case PIXEL_FORMAT_RGB24:
       case PIXEL_FORMAT_MJPEG:
       case PIXEL_FORMAT_NV12A:
+      case PIXEL_FORMAT_NV16:
+      case PIXEL_FORMAT_NV24:
+      case PIXEL_FORMAT_P210LE:
+      case PIXEL_FORMAT_P410LE:
       case PIXEL_FORMAT_YUV420P9:
       case PIXEL_FORMAT_YUV420P10:
       case PIXEL_FORMAT_YUV422P9:
@@ -133,7 +141,7 @@ absl::optional<Fourcc> Fourcc::FromVideoPixelFormat(
       case PIXEL_FORMAT_Y16:
       case PIXEL_FORMAT_ABGR:
       case PIXEL_FORMAT_XBGR:
-      case PIXEL_FORMAT_P016LE:
+      case PIXEL_FORMAT_P010LE:
       case PIXEL_FORMAT_XR30:
       case PIXEL_FORMAT_XB30:
       case PIXEL_FORMAT_BGRA:
@@ -149,7 +157,7 @@ absl::optional<Fourcc> Fourcc::FromVideoPixelFormat(
   }
   DVLOGF(3) << "Unmapped " << VideoPixelFormatToString(pixel_format) << " for "
             << (single_planar ? "single-planar" : "multi-planar");
-  return absl::nullopt;
+  return std::nullopt;
 }
 
 VideoPixelFormat Fourcc::ToVideoPixelFormat() const {
@@ -185,9 +193,9 @@ VideoPixelFormat Fourcc::ToVideoPixelFormat() const {
     case MM21:
       return PIXEL_FORMAT_NV12;
     case P010:
-      return PIXEL_FORMAT_P016LE;
+      return PIXEL_FORMAT_P010LE;
     case MT2T:
-      return PIXEL_FORMAT_P016LE;
+      return PIXEL_FORMAT_P010LE;
     case AR24:
       return PIXEL_FORMAT_ARGB;
     // V4L2_PIX_FMT_QC08C is a proprietary Qualcomm compressed format that can
@@ -199,17 +207,17 @@ VideoPixelFormat Fourcc::ToVideoPixelFormat() const {
     // V4L2_PIX_FMT_QC10C is similar to V4L2_PIX_FMT_QC08C, but has the same
     // bitdepth and internal layout as P010.
     case Q10C:
-      return PIXEL_FORMAT_P016LE;
+      return PIXEL_FORMAT_P010LE;
     case UNDEFINED:
       break;
   }
-  NOTREACHED() << "Unmapped Fourcc: " << ToString();
+  NOTREACHED_IN_MIGRATION() << "Unmapped Fourcc: " << ToString();
   return PIXEL_FORMAT_UNKNOWN;
 }
 
 #if BUILDFLAG(USE_V4L2_CODEC)
 // static
-absl::optional<Fourcc> Fourcc::FromV4L2PixFmt(uint32_t v4l2_pix_fmt) {
+std::optional<Fourcc> Fourcc::FromV4L2PixFmt(uint32_t v4l2_pix_fmt) {
   // We can do that because we adopt the same internal definition of Fourcc as
   // V4L2.
   return FromUint32(v4l2_pix_fmt);
@@ -222,7 +230,7 @@ uint32_t Fourcc::ToV4L2PixFmt() const {
 }
 #elif BUILDFLAG(USE_VAAPI)
 // static
-absl::optional<Fourcc> Fourcc::FromVAFourCC(uint32_t va_fourcc) {
+std::optional<Fourcc> Fourcc::FromVAFourCC(uint32_t va_fourcc) {
   switch (va_fourcc) {
     case VA_FOURCC_I420:
       return Fourcc(YU12);
@@ -240,10 +248,10 @@ absl::optional<Fourcc> Fourcc::FromVAFourCC(uint32_t va_fourcc) {
       return Fourcc(AR24);
   }
   DVLOGF(3) << "Unmapped VAFourCC: " << FourccToString(va_fourcc);
-  return absl::nullopt;
+  return std::nullopt;
 }
 
-absl::optional<uint32_t> Fourcc::ToVAFourCC() const {
+std::optional<uint32_t> Fourcc::ToVAFourCC() const {
   switch (value_) {
     case YU12:
       return VA_FOURCC_I420;
@@ -274,15 +282,15 @@ absl::optional<uint32_t> Fourcc::ToVAFourCC() const {
       // VAAPI does not know about these formats, so signal this by returning
       // nullopt.
       DVLOGF(3) << "Fourcc not convertible to VaFourCC: " << ToString();
-      return absl::nullopt;
+      return std::nullopt;
   }
-  NOTREACHED() << "Unmapped Fourcc: " << ToString();
-  return absl::nullopt;
+  NOTREACHED_IN_MIGRATION() << "Unmapped Fourcc: " << ToString();
+  return std::nullopt;
 }
 
 #endif  // BUILDFLAG(USE_VAAPI)
 
-absl::optional<Fourcc> Fourcc::ToSinglePlanar() const {
+std::optional<Fourcc> Fourcc::ToSinglePlanar() const {
   switch (value_) {
     case YU12:
     case YV12:
@@ -309,7 +317,7 @@ absl::optional<Fourcc> Fourcc::ToSinglePlanar() const {
     case Q08C:
     case Q10C:
     case UNDEFINED:
-      return absl::nullopt;
+      return std::nullopt;
   }
 }
 

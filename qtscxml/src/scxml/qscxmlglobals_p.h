@@ -18,6 +18,8 @@
 #include "qscxmlglobals.h"
 #include <QtCore/qloggingcategory.h>
 
+#include <private/qtscxmlglobal-config_p.h>
+
 QT_BEGIN_NAMESPACE
 
 Q_DECLARE_LOGGING_CATEGORY(qscxmlLog)

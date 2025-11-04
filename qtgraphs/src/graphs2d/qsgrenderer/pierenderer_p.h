@@ -24,6 +24,7 @@ class QPieSeries;
 class QPieSlice;
 class QQuickShape;
 class QAbstractSeries;
+class QQuickTapHandler;
 
 class PieRenderer : public QQuickItem
 {
@@ -40,15 +41,26 @@ public:
 
     void setSize(QSizeF size);
 
+    bool handleHoverMove(QHoverEvent *event);
+
 private:
     struct SliceData
     {
         bool initialized;
     };
 
-    QGraphsView *m_graph;
-    QQuickShape *m_shape;
+    void onSingleTapped(QEventPoint eventPoint, Qt::MouseButton button);
+    void onDoubleTapped(QEventPoint eventPoint, Qt::MouseButton button);
+    void onPressedChanged();
+
+    bool isPointInSlice(QPointF point, QPieSlice *slice, qreal *angle = nullptr);
+
+    QGraphsView *m_graph = nullptr;
+    QQuickShape *m_shape = nullptr;
     QHash<QPieSlice *, SliceData> m_activeSlices;
+
+    QQuickTapHandler *m_tapHandler = nullptr;
+    QPieSlice *m_currentHoverSlice = nullptr;
 
     QPainterPath m_painterPath;
     qsizetype m_colorIndex = -1;

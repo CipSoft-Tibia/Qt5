@@ -10,7 +10,6 @@
 #include <vector>
 
 #include "extensions/common/extension_id.h"
-#include "url/gurl.h"
 
 namespace base {
 class FilePath;
@@ -52,17 +51,16 @@ class Warning {
   Warning& operator=(const Warning& other);
 
   // Factory methods for various warning types.
-  static Warning CreateNetworkDelayWarning(
-      const std::string& extension_id);
+  static Warning CreateNetworkDelayWarning(const ExtensionId& extension_id);
   static Warning CreateRepeatedCacheFlushesWarning(
-      const std::string& extension_id);
+      const ExtensionId& extension_id);
   static Warning CreateDownloadFilenameConflictWarning(
       const std::string& losing_extension_id,
       const std::string& winning_extension_id,
       const base::FilePath& losing_filename,
       const base::FilePath& winning_filename);
   static Warning CreateReloadTooFrequentWarning(
-      const std::string& extension_id);
+      const ExtensionId& extension_id);
   static Warning CreateRulesetFailedToLoadWarning(
       const ExtensionId& extension_id);
   static Warning CreateEnabledRuleCountExceededWarning(

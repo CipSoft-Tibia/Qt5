@@ -11,6 +11,7 @@
 
 #include <deque>
 #include <functional>
+#include <optional>
 #include <vector>
 
 #include "core/fpdfapi/page/cpdf_pageobjectholder.h"
@@ -20,7 +21,6 @@
 #include "core/fxcrt/unowned_ptr.h"
 #include "core/fxcrt/widestring.h"
 #include "core/fxcrt/widetext_buffer.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 
 class CPDF_FormObject;
 class CPDF_Page;
@@ -55,7 +55,7 @@ class CPDF_TextPage {
     CharType m_CharType = CharType::kNormal;
     CFX_PointF m_Origin;
     CFX_FloatRect m_CharBox;
-    UnownedPtr<const CPDF_TextObject> m_pTextObj;
+    UnownedPtr<CPDF_TextObject> m_pTextObj;
     CFX_Matrix m_Matrix;
   };
 
@@ -69,6 +69,7 @@ class CPDF_TextPage {
 
   // These methods CHECK() to make sure |index| is within bounds.
   const CharInfo& GetCharInfo(size_t index) const;
+  CharInfo& GetCharInfo(size_t index);
   float GetCharFontSize(size_t index) const;
   CFX_FloatRect GetCharLooseBounds(size_t index) const;
 
@@ -107,7 +108,7 @@ class CPDF_TextPage {
     TransformedTextObject(const TransformedTextObject& that);
     ~TransformedTextObject();
 
-    UnownedPtr<const CPDF_TextObject> m_pTextObj;
+    UnownedPtr<CPDF_TextObject> m_pTextObj;
     CFX_Matrix m_formMatrix;
   };
 
@@ -124,7 +125,7 @@ class CPDF_TextPage {
   GenerateCharacter ProcessInsertObject(const CPDF_TextObject* pObj,
                                         const CFX_Matrix& formMatrix);
   const CharInfo* GetPrevCharInfo() const;
-  absl::optional<CharInfo> GenerateCharInfo(wchar_t unicode);
+  std::optional<CharInfo> GenerateCharInfo(wchar_t unicode);
   bool IsSameAsPreTextObject(CPDF_TextObject* pTextObj,
                              const CPDF_PageObjectHolder* pObjList,
                              CPDF_PageObjectHolder::const_iterator iter) const;

@@ -202,6 +202,7 @@ def angle_builder(name, cpu):
     is_debug = "-dbg" in name
     is_exp = "-exp" in name
     is_perf = name.endswith("-perf")
+    is_s22 = "s22" in name
     is_trace = name.endswith("-trace")
     is_uwp = "winuwp" in name
     is_msvc = is_uwp or "-msvc" in name
@@ -259,6 +260,9 @@ def angle_builder(name, cpu):
         short_name = "dbg"
     elif is_exp:
         short_name = "exp"
+        if is_s22:
+            # This is a little clunky, but we'd like this to be cleanly "s22" rather than "s22-exp"
+            short_name = "s22"
     else:
         short_name = "rel"
 
@@ -286,6 +290,8 @@ def angle_builder(name, cpu):
         "test_mode": test_mode,
     }
 
+    # TODO(343503161): Remove sheriff_rotations after SoM is updated.
+    ci_properties["gardener_rotations"] = ["angle"]
     ci_properties["sheriff_rotations"] = ["angle"]
 
     if is_perf:
@@ -300,6 +306,7 @@ def angle_builder(name, cpu):
         executable = "recipe:angle",
         experiments = build_experiments,
         service_account = "angle-ci-builder@chops-service-accounts.iam.gserviceaccount.com",
+        shadow_service_account = "angle-try-builder@chops-service-accounts.iam.gserviceaccount.com",
         properties = ci_properties,
         dimensions = dimensions,
         build_numbers = True,
@@ -317,6 +324,10 @@ def angle_builder(name, cpu):
 
     active_experimental_builders = [
         "android-arm64-exp-test",
+        "android-arm64-exp-s22-test",
+        "linux-exp-test",
+        "mac-exp-test",
+        "win-exp-test",
     ]
 
     if (not is_exp) or (name in active_experimental_builders):
@@ -388,6 +399,81 @@ luci.bucket(
     ],
 )
 
+# Shadow buckets for LED jobs.
+luci.bucket(
+    name = "ci.shadow",
+    shadows = "ci",
+    constraints = luci.bucket_constraints(
+        pools = ["luci.angle.ci"],
+    ),
+    bindings = [
+        luci.binding(
+            roles = "role/buildbucket.creator",
+            groups = [
+                "mdb/chrome-build-access-sphinx",
+                "mdb/chrome-troopers",
+                "chromium-led-users",
+            ],
+            users = [
+                "angle-try-builder@chops-service-accounts.iam.gserviceaccount.com",
+            ],
+        ),
+        luci.binding(
+            roles = "role/buildbucket.triggerer",
+            users = [
+                "angle-try-builder@chops-service-accounts.iam.gserviceaccount.com",
+            ],
+        ),
+        # Allow ci builders to create invocations in their own builds.
+        luci.binding(
+            roles = "role/resultdb.invocationCreator",
+            users = [
+                "angle-try-builder@chops-service-accounts.iam.gserviceaccount.com",
+            ],
+        ),
+    ],
+    dynamic = True,
+)
+
+luci.bucket(
+    name = "try.shadow",
+    shadows = "try",
+    constraints = luci.bucket_constraints(
+        pools = ["luci.angle.try"],
+        service_accounts = [
+            "angle-try-builder@chops-service-accounts.iam.gserviceaccount.com",
+        ],
+    ),
+    bindings = [
+        luci.binding(
+            roles = "role/buildbucket.creator",
+            groups = [
+                "mdb/chrome-build-access-sphinx",
+                "mdb/chrome-troopers",
+                "chromium-led-users",
+            ],
+            users = [
+                "angle-try-builder@chops-service-accounts.iam.gserviceaccount.com",
+            ],
+        ),
+        luci.binding(
+            roles = "role/buildbucket.triggerer",
+            users = [
+                "angle-try-builder@chops-service-accounts.iam.gserviceaccount.com",
+            ],
+        ),
+        # Allow try builders to create invocations in their own builds.
+        luci.binding(
+            roles = "role/resultdb.invocationCreator",
+            groups = [
+                "project-angle-try-task-accounts",
+                "project-angle-tryjob-access",
+            ],
+        ),
+    ],
+    dynamic = True,
+)
+
 luci.builder(
     name = "presubmit",
     bucket = "try",
@@ -423,6 +509,7 @@ luci.gitiles_poller(
 angle_builder("android-arm-compile", cpu = "arm")
 angle_builder("android-arm-dbg-compile", cpu = "arm")
 angle_builder("android-arm64-dbg-compile", cpu = "arm64")
+angle_builder("android-arm64-exp-s22-test", cpu = "arm64")
 angle_builder("android-arm64-exp-test", cpu = "arm64")
 angle_builder("android-arm64-test", cpu = "arm64")
 angle_builder("linux-asan-test", cpu = "x64")

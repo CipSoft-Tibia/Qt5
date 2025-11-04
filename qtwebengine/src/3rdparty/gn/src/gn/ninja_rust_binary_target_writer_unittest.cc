@@ -5,6 +5,7 @@
 #include "gn/ninja_rust_binary_target_writer.h"
 
 #include "gn/config.h"
+#include "gn/label_ptr.h"
 #include "gn/pool.h"
 #include "gn/rust_values.h"
 #include "gn/scheduler.h"
@@ -584,7 +585,7 @@ TEST_F(NinjaRustBinaryTargetWriterTest, RlibDepsAcrossGroups) {
         "\n"
         "build obj/bar/libmylib.rlib: rust_rlib ../../bar/lib.rs | "
         "../../bar/mylib.rs ../../bar/lib.rs obj/bar/libmymacro.so || "
-        "obj/baz/group.stamp\n"
+        "phony/baz/group\n"
         "  source_file_part = lib.rs\n"
         "  source_name_part = lib\n"
         "  externs = --extern mymacro=obj/bar/libmymacro.so\n"
@@ -824,13 +825,12 @@ TEST_F(NinjaRustBinaryTargetWriterTest, NonRustDeps) {
         "../../foo/main.rs obj/baz/sourceset.csourceset.o "
         "obj/bar/libmylib.rlib "
         "obj/foo/libstatic.a ./libshared.so ./libshared_with_toc.so.TOC "
-        "|| obj/baz/sourceset.stamp\n"
+        "|| phony/baz/sourceset\n"
         "  source_file_part = main.rs\n"
         "  source_name_part = main\n"
         "  externs = --extern mylib=obj/bar/libmylib.rlib\n"
-        "  rustdeps = -Ldependency=obj/bar "
-        "-Lnative=obj/baz -Lnative=obj/foo -Lnative=. "
-        "-Clink-arg=-Bdynamic -Clink-arg=obj/baz/sourceset.csourceset.o "
+        "  rustdeps = -Ldependency=obj/bar -Clink-arg=-Bdynamic "
+        "-Clink-arg=obj/baz/sourceset.csourceset.o "
         "-Clink-arg=obj/foo/libstatic.a -Clink-arg=./libshared.so "
         "-Clink-arg=./libshared_with_toc.so\n"
         "  ldflags =\n"
@@ -873,8 +873,7 @@ TEST_F(NinjaRustBinaryTargetWriterTest, NonRustDeps) {
         "  source_file_part = main.rs\n"
         "  source_name_part = main\n"
         "  externs =\n"
-        "  rustdeps = -Lnative=obj/foo -Clink-arg=-Bdynamic "
-        "-Clink-arg=obj/foo/libstatic.a\n"
+        "  rustdeps = -Clink-arg=-Bdynamic -Clink-arg=obj/foo/libstatic.a\n"
         "  ldflags =\n"
         "  sources = ../../foo/source.rs ../../foo/main.rs\n";
     std::string out_str = out.str();
@@ -916,7 +915,7 @@ TEST_F(NinjaRustBinaryTargetWriterTest, NonRustDeps) {
         "  source_file_part = lib.rs\n"
         "  source_name_part = lib\n"
         "  externs =\n"
-        "  rustdeps = -Lnative=obj/foo -Clink-arg=-Balternative-dynamic "
+        "  rustdeps = -Clink-arg=-Balternative-dynamic "
         "-Clink-arg=obj/foo/libstatic.a\n"
         "  ldflags =\n"
         "  sources = ../../baz/lib.rs\n";
@@ -1091,8 +1090,8 @@ TEST_F(NinjaRustBinaryTargetWriterTest, RlibInLibrary) {
       "obj/pub_in_staticlib/libpub_in_staticlib.rlib "
       "obj/priv_in_staticlib/libpriv_in_staticlib.rlib "
       "obj/pub_in_dylib/libpub_in_dylib.rlib || "
-      "obj/pub_sset_in_staticlib/pub_sset_in_staticlib.stamp "
-      "obj/priv_sset_in_staticlib/priv_sset_in_staticlib.stamp\n"
+      "phony/pub_sset_in_staticlib/pub_sset_in_staticlib "
+      "phony/priv_sset_in_staticlib/priv_sset_in_staticlib\n"
       "  source_file_part = main.rs\n"
       "  source_name_part = main\n"
       "  externs = "
@@ -1102,9 +1101,7 @@ TEST_F(NinjaRustBinaryTargetWriterTest, RlibInLibrary) {
       "  rustdeps = -Ldependency=obj/pub_in_staticlib "
       "-Ldependency=obj/priv_in_staticlib -Ldependency=obj/dylib "
       "-Ldependency=obj/pub_in_dylib -Ldependency=obj/priv_in_dylib "
-      "-Lnative=obj/pub_sset_in_staticlib "
-      "-Lnative=obj/priv_sset_in_staticlib "
-      "-Lnative=obj/staticlib -Clink-arg=-Bdynamic "
+      "-Clink-arg=-Bdynamic "
       "-Clink-arg=obj/pub_sset_in_staticlib/pub_sset_in_staticlib.lib.o "
       "-Clink-arg=obj/priv_sset_in_staticlib/priv_sset_in_staticlib.lib.o "
       "-Clink-arg=obj/staticlib/libstaticlib.a\n"
@@ -1322,8 +1319,8 @@ TEST_F(NinjaRustBinaryTargetWriterTest, RlibWithLibDeps) {
         "  source_file_part = input.rs\n"
         "  source_name_part = input\n"
         "  externs = --extern publiccrate=obj/bar/libpubliclib.rlib\n"
-        "  rustdeps = -Ldependency=obj/bar -Lnative=obj/clib "
-        "-Clink-arg=-Bdynamic -Clink-arg=obj/clib/libstatic.a "
+        "  rustdeps = -Ldependency=obj/bar -Clink-arg=-Bdynamic "
+        "-Clink-arg=obj/clib/libstatic.a "
         "-Lnative=../../baz -Lframework=../../fwdir -Clink-arg=../../dir1/ar.a "
         "-lquux\n"
         "  ldflags =\n"
@@ -1545,7 +1542,7 @@ TEST_F(NinjaRustBinaryTargetWriterTest, GroupDeps) {
         "\n"
         "build ./foo_bar: rust_bin ../../foo/main.rs | "
         "../../foo/source.rs ../../foo/main.rs obj/bar/libmylib.rlib || "
-        "obj/baz/group.stamp\n"
+        "phony/baz/group\n"
         "  source_file_part = main.rs\n"
         "  source_name_part = main\n"
         "  externs = --extern mylib=obj/bar/libmylib.rlib\n"
@@ -1636,7 +1633,7 @@ TEST_F(NinjaRustBinaryTargetWriterTest, Inputs) {
     writer.Run();
 
     const char expected[] =
-        "build obj/foo/bar.inputs.stamp: stamp ../../foo/config.json "
+        "build phony/foo/bar.inputs: phony ../../foo/config.json "
         "../../foo/template.h\n"
         "crate_name = foo_bar\n"
         "crate_type = bin\n"
@@ -1651,7 +1648,7 @@ TEST_F(NinjaRustBinaryTargetWriterTest, Inputs) {
         "\n"
         "build ./foo_bar: rust_bin ../../foo/main.rs | ../../foo/source.rs "
         "../../foo/main.rs ../../foo/config.json ../../foo/template.h "
-        "|| obj/foo/bar.inputs.stamp\n"
+        "|| phony/foo/bar.inputs\n"
         "  source_file_part = main.rs\n"
         "  source_name_part = main\n"
         "  externs =\n"
@@ -1740,8 +1737,7 @@ TEST_F(NinjaRustBinaryTargetWriterTest, CdylibDeps) {
         "  source_file_part = main.rs\n"
         "  source_name_part = main\n"
         "  externs =\n"
-        "  rustdeps = -Lnative=obj/bar -Clink-arg=-Bdynamic "
-        "-Clink-arg=obj/bar/libmylib.so\n"
+        "  rustdeps = -Clink-arg=-Bdynamic -Clink-arg=obj/bar/libmylib.so\n"
         "  ldflags =\n"
         "  sources = ../../foo/source.rs ../../foo/main.rs\n";
     std::string out_str = out.str();
@@ -1818,7 +1814,7 @@ TEST_F(NinjaRustBinaryTargetWriterTest, TransitivePublicNonRustDeps) {
         "  source_file_part = main.rs\n"
         "  source_name_part = main\n"
         "  externs = --extern mylib=obj/bar/libmylib.rlib\n"
-        "  rustdeps = -Ldependency=obj/bar -Lnative=. -Clink-arg=-Bdynamic "
+        "  rustdeps = -Ldependency=obj/bar -Clink-arg=-Bdynamic "
         "-Clink-arg=./libshared.so -Clink-arg=./libimplicit.so\n"
         "  ldflags =\n"
         "  sources = ../../foo/main.rs\n";
@@ -1900,13 +1896,13 @@ TEST_F(NinjaRustBinaryTargetWriterTest, TransitiveRustDepsThroughSourceSet) {
         "\n"
         "build ./exe: rust_bin ../../linked/exe.rs | ../../linked/exe.rs "
         "obj/sset/bar.input1.o obj/public/libbehind_sourceset_public.rlib "
-        "obj/private/libbehind_sourceset_private.rlib || obj/sset/bar.stamp\n"
+        "obj/private/libbehind_sourceset_private.rlib || phony/sset/bar\n"
         "  source_file_part = exe.rs\n"
         "  source_name_part = exe\n"
         "  externs = --extern "
         "behind_sourceset_public=obj/public/libbehind_sourceset_public.rlib\n"
         "  rustdeps = -Ldependency=obj/public -Ldependency=obj/private "
-        "-Lnative=obj/sset -Clink-arg=-Bdynamic "
+        "-Clink-arg=-Bdynamic "
         "-Clink-arg=obj/sset/bar.input1.o\n"
         "  ldflags =\n"
         "  sources = ../../linked/exe.rs\n";
@@ -1961,5 +1957,140 @@ TEST_F(NinjaRustBinaryTargetWriterTest, Pool) {
       "  sources = ../../foo/source.rs\n"
       "  pool = foo_pool\n";
   std::string out_str = out.str();
+  EXPECT_EQ(expected, out_str) << expected << "\n" << out_str;
+}
+
+// Tests frameworks are applied.
+TEST_F(NinjaRustBinaryTargetWriterTest, FrameworksAndFrameworkDirs) {
+  Err err;
+  TestWithScope setup;
+
+  // An action for our library to depend on.
+  Target action(setup.settings(), Label(SourceDir("//bar"), "action"));
+  action.set_output_type(Target::ACTION_FOREACH);
+  action.visibility().SetPublic();
+  action.SetToolchain(setup.toolchain());
+  ASSERT_TRUE(action.OnResolved(&err));
+
+  // A config that force linking with the framework.
+  Config framework_config(setup.settings(),
+                          Label(SourceDir("//bar"), "framework_config"));
+  framework_config.visibility().SetPublic();
+  framework_config.own_values().frameworks().push_back("Bar.framework");
+  framework_config.own_values().framework_dirs().push_back(
+      SourceDir("//out/Debug/"));
+  ASSERT_TRUE(framework_config.OnResolved(&err));
+
+  // A target creating a framework bundle.
+  Target framework(setup.settings(), Label(SourceDir("//bar"), "framework"));
+  framework.set_output_type(Target::CREATE_BUNDLE);
+  framework.bundle_data().product_type() = "com.apple.product-type.framework";
+  framework.public_configs().push_back(LabelConfigPair(&framework_config));
+  framework.private_deps().push_back(LabelTargetPair(&action));
+  framework.SetToolchain(setup.toolchain());
+  framework.visibility().SetPublic();
+  ASSERT_TRUE(framework.OnResolved(&err));
+
+  Target target(setup.settings(), Label(SourceDir("//linked/"), "exe"));
+  target.set_output_type(Target::EXECUTABLE);
+  target.visibility().SetPublic();
+  SourceFile main("//linked/exe.rs");
+  target.sources().push_back(main);
+  target.source_types_used().Set(SourceFile::SOURCE_RS);
+  target.rust_values().set_crate_root(main);
+  target.rust_values().crate_name() = "exe";
+  target.private_deps().push_back(LabelTargetPair(&framework));
+  target.config_values().frameworks().push_back("System.framework");
+  target.config_values().weak_frameworks().push_back("Whizbang.framework");
+  target.SetToolchain(setup.toolchain());
+  ASSERT_TRUE(target.OnResolved(&err));
+
+  std::ostringstream out;
+  NinjaRustBinaryTargetWriter writer(&target, out);
+  writer.Run();
+
+  const char expected[] =
+      "crate_name = exe\n"
+      "crate_type = bin\n"
+      "output_extension = \n"
+      "output_dir = \n"
+      "rustflags =\n"
+      "rustenv =\n"
+      "root_out_dir = .\n"
+      "target_gen_dir = gen/linked\n"
+      "target_out_dir = obj/linked\n"
+      "target_output_name = exe\n"
+      "\n"
+      "build ./exe: rust_bin ../../linked/exe.rs | ../../linked/exe.rs || "
+      "phony/bar/framework\n"
+      "  source_file_part = exe.rs\n"
+      "  source_name_part = exe\n"
+      "  externs =\n"
+      "  rustdeps = -Lframework=. -lframework=System -lframework=Bar "
+      "-lframework=Whizbang\n"
+      "  ldflags =\n"
+      "  sources = ../../linked/exe.rs\n";
+  const std::string out_str = out.str();
+  EXPECT_EQ(expected, out_str) << expected << "\n" << out_str;
+}
+
+// Test linking of targets containing Swift modules.
+TEST_F(NinjaRustBinaryTargetWriterTest, SwiftModule) {
+  Err err;
+  TestWithScope setup;
+
+  // A single Swift module.
+  Target foo_target(setup.settings(), Label(SourceDir("//foo/"), "foo"));
+  foo_target.set_output_type(Target::SOURCE_SET);
+  foo_target.visibility().SetPublic();
+  foo_target.sources().push_back(SourceFile("//foo/file1.swift"));
+  foo_target.sources().push_back(SourceFile("//foo/file2.swift"));
+  foo_target.source_types_used().Set(SourceFile::SOURCE_SWIFT);
+  foo_target.swift_values().module_name() = "Foo";
+  foo_target.SetToolchain(setup.toolchain());
+  ASSERT_TRUE(foo_target.OnResolved(&err));
+
+  // Rust target links with module.
+  Target target(setup.settings(), Label(SourceDir("//linked/"), "exe"));
+  target.set_output_type(Target::EXECUTABLE);
+  target.visibility().SetPublic();
+  SourceFile main("//linked/exe.rs");
+  target.sources().push_back(main);
+  target.source_types_used().Set(SourceFile::SOURCE_RS);
+  target.rust_values().set_crate_root(main);
+  target.rust_values().crate_name() = "exe";
+  target.private_deps().push_back(LabelTargetPair(&foo_target));
+  target.SetToolchain(setup.toolchain());
+  ASSERT_TRUE(target.OnResolved(&err));
+
+  std::ostringstream out;
+  NinjaRustBinaryTargetWriter writer(&target, out);
+  writer.Run();
+
+  const char expected[] =
+      "crate_name = exe\n"
+      "crate_type = bin\n"
+      "output_extension = \n"
+      "output_dir = \n"
+      "rustflags =\n"
+      "rustenv =\n"
+      "root_out_dir = .\n"
+      "target_gen_dir = gen/linked\n"
+      "target_out_dir = obj/linked\n"
+      "target_output_name = exe\n"
+      "\n"
+      "build ./exe: rust_bin ../../linked/exe.rs | ../../linked/exe.rs "
+      "obj/foo/file1.o obj/foo/file2.o || "
+      "phony/foo/foo obj/foo/Foo.swiftmodule phony/foo/foo\n"
+      "  source_file_part = exe.rs\n"
+      "  source_name_part = exe\n"
+      "  externs =\n"
+      "  rustdeps = -Clink-arg=-Bdynamic "
+      "-Clink-arg=obj/foo/file1.o -Clink-arg=obj/foo/file2.o "
+      "-Clink-arg=-swiftmodule=obj/foo/Foo.swiftmodule\n"
+      "  ldflags =\n"
+      "  sources = ../../linked/exe.rs\n";
+
+  const std::string out_str = out.str();
   EXPECT_EQ(expected, out_str) << expected << "\n" << out_str;
 }

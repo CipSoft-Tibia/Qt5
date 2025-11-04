@@ -42,13 +42,13 @@
 
 namespace tint::core::constant::test {
 
-// TODO(bclayton): Don't depend on resolver
+// TODO(crbug.com/tint/2221): Don't depend on resolver
 namespace builder = tint::resolver::builder;
 
-// TODO(bclayton): Don't depend on resolver
+// TODO(crbug.com/tint/2221): Don't depend on resolver
 using ConstEvalTest = resolver::ResolverTest;
 
-// TODO(bclayton): Don't depend on resolver
+// TODO(crbug.com/tint/2221): Don't depend on resolver
 template <typename T>
 using ConstEvalTestWithParam = resolver::ResolverTestWithParam<T>;
 
@@ -253,8 +253,7 @@ inline std::string OverflowErrorMessage(NumberT lhs, const char* op, NumberT rhs
 template <typename VALUE_TY>
 std::string OverflowErrorMessage(VALUE_TY value, std::string_view target_ty) {
     StringStream ss;
-    ss << "value " << value << " cannot be represented as "
-       << "'" << target_ty << "'";
+    ss << "value " << value << " cannot be represented as " << "'" << target_ty << "'";
     return ss.str();
 }
 
@@ -262,8 +261,8 @@ std::string OverflowErrorMessage(VALUE_TY value, std::string_view target_ty) {
 template <typename NumberT>
 std::string OverflowExpErrorMessage(std::string_view base, NumberT exp) {
     StringStream ss;
-    ss << base << "^" << exp << " cannot be represented as "
-       << "'" << FriendlyName<NumberT>() << "'";
+    ss << base << "^" << exp << " cannot be represented as " << "'" << FriendlyName<NumberT>()
+       << "'";
     return ss.str();
 }
 

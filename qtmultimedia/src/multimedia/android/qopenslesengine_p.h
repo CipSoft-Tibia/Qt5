@@ -17,6 +17,7 @@
 
 #include <qglobal.h>
 #include <qaudio.h>
+#include <qcachedvalue_p.h>
 #include <qlist.h>
 #include <qaudioformat.h>
 #include <qaudiodevice.h>
@@ -40,8 +41,9 @@ public:
 
     static QList<QAudioDevice> availableDevices(QAudioDevice::Mode mode);
     static bool setAudioOutput(const QByteArray &deviceId);
-    QList<int> supportedChannelCounts(QAudioDevice::Mode mode) const;
-    QList<int> supportedSampleRates(QAudioDevice::Mode mode) const;
+    QList<int> supportedChannelCounts(QAudioDevice::Mode mode);
+    QList<int> supportedSampleRates(QAudioDevice::Mode mode);
+    QList<QAudioFormat::SampleFormat> supportedSampleFormats(QAudioDevice::Mode mode);
 
     static int getOutputValue(OutputValue type, int defaultValue = 0);
     static int getDefaultBufferSize(const QAudioFormat &format);
@@ -50,14 +52,27 @@ public:
     static bool printDebugInfo();
 
 private:
-    void checkSupportedInputFormats();
+    struct AudioConfig {
+        QList<int> m_channelCounts;
+        QList<int> m_sampleRates;
+        QList<QAudioFormat::SampleFormat> m_sampleFormats;
+    };
+
+    AudioConfig getSupportedInputConfigs();
+    AudioConfig getSupportedOutputConfigs();
+
+    QList<QAudioFormat::SampleFormat> getSupportedSampleFormats(SLAndroidDataFormat_PCM_EX format,
+                                                                QAudioDevice::Mode mode);
+    QList<QAudioFormat::SampleFormat> getSupportedSampleFormats(QAudioDevice::Mode mode);
+    QList<int> getSupportedOutputChannelCounts();
     bool inputFormatIsSupported(SLAndroidDataFormat_PCM_EX format);
+    bool outputFormatIsSupported(const SLAndroidDataFormat_PCM_EX& format) const;
     SLObjectItf m_engineObject;
     SLEngineItf m_engine;
 
-    QList<int> m_supportedInputChannelCounts;
-    QList<int> m_supportedInputSampleRates;
-    bool m_checkedInputFormats;
+    QCachedValue<AudioConfig> m_supportedInput;
+    QCachedValue<AudioConfig> m_supportedOutput;
+
 };
 
 QT_END_NAMESPACE

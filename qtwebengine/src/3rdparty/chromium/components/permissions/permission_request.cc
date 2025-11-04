@@ -96,7 +96,10 @@ PermissionRequest::GetDialogAnnotatedMessageText(
       break;
     case RequestType::kDiskQuota:
       // Handled by an override in `QuotaPermissionRequest`.
-      NOTREACHED();
+      NOTREACHED_IN_MIGRATION();
+      break;
+    case RequestType::kHandTracking:
+      message_id = IDS_HAND_TRACKING_INFOBAR_TEXT;
       break;
     case RequestType::kGeolocation:
       message_id = IDS_GEOLOCATION_INFOBAR_TEXT;
@@ -106,9 +109,6 @@ PermissionRequest::GetDialogAnnotatedMessageText(
       break;
     case RequestType::kMicStream:
       message_id = IDS_MEDIA_CAPTURE_AUDIO_ONLY_INFOBAR_TEXT;
-      break;
-    case RequestType::kMidi:
-      message_id = IDS_MIDI_INFOBAR_TEXT;
       break;
     case RequestType::kMidiSysex:
       message_id = IDS_MIDI_SYSEX_INFOBAR_TEXT;
@@ -128,30 +128,25 @@ PermissionRequest::GetDialogAnnotatedMessageText(
       break;
     case RequestType::kStorageAccess:
       // The SA prompt does not currently bold any part of its message.
-      if (base::FeatureList::IsEnabled(
-              permissions::features::kPermissionStorageAccessAPI)) {
-        return AnnotatedMessageText(
-            l10n_util::GetStringFUTF16(
-                IDS_CONCAT_TWO_STRINGS_WITH_PERIODS,
-                l10n_util::GetStringFUTF16(
-                    IDS_STORAGE_ACCESS_PERMISSION_TWO_ORIGIN_PROMPT_TITLE,
-                    requesting_origin_string_formatted),
-                l10n_util::GetStringFUTF16(
-                    IDS_STORAGE_ACCESS_PERMISSION_TWO_ORIGIN_EXPLANATION,
-                    requesting_origin_string_formatted,
-                    embedding_origin_string_formatted)),
-            /*bolded_ranges=*/{});
-      }
       return AnnotatedMessageText(
-          l10n_util::GetStringFUTF16(IDS_STORAGE_ACCESS_INFOBAR_TEXT,
-                                     requesting_origin_string_formatted,
-                                     embedding_origin_string_formatted),
+          l10n_util::GetStringFUTF16(
+              IDS_CONCAT_TWO_STRINGS_WITH_PERIODS,
+              l10n_util::GetStringFUTF16(
+                  IDS_STORAGE_ACCESS_PERMISSION_TWO_ORIGIN_PROMPT_TITLE,
+                  requesting_origin_string_formatted),
+              l10n_util::GetStringFUTF16(
+                  IDS_STORAGE_ACCESS_PERMISSION_TWO_ORIGIN_EXPLANATION,
+                  requesting_origin_string_formatted,
+                  embedding_origin_string_formatted)),
           /*bolded_ranges=*/{});
     case RequestType::kTopLevelStorageAccess:
-      NOTREACHED();
+      NOTREACHED_IN_MIGRATION();
       break;
     case RequestType::kVrSession:
       message_id = IDS_VR_INFOBAR_TEXT;
+      break;
+    case RequestType::kIdentityProvider:
+      message_id = IDS_IDENTITY_PROVIDER_INFOBAR_TEXT;
       break;
   }
   DCHECK_NE(0, message_id);
@@ -160,7 +155,7 @@ PermissionRequest::GetDialogAnnotatedMessageText(
   // prompt design on Clank)
   return GetDialogAnnotatedMessageText(
       requesting_origin_string_formatted, message_id, /*format_origin_bold=*/
-      permissions::PermissionUtil::CanPermissionBeAllowedOnce(
+      permissions::PermissionUtil::DoesSupportTemporaryGrants(
           GetContentSettingsType()));
 }
 
@@ -190,6 +185,10 @@ bool PermissionRequest::IsEmbeddedPermissionElementInitiated() const {
   return data_.embedded_permission_element_initiated;
 }
 
+std::optional<gfx::Rect> PermissionRequest::GetAnchorElementPosition() const {
+  return data_.anchor_element_position;
+}
+
 #if !BUILDFLAG(IS_ANDROID)
 
 bool PermissionRequest::IsConfirmationChipSupported() {
@@ -204,7 +203,7 @@ IconId PermissionRequest::GetBlockedIconForChip() {
   return permissions::GetBlockedIconId(request_type());
 }
 
-absl::optional<std::u16string> PermissionRequest::GetRequestChipText(
+std::optional<std::u16string> PermissionRequest::GetRequestChipText(
     ChipTextType type) const {
   static base::NoDestructor<std::map<RequestType, std::vector<int>>> kMessageIds(
       {{RequestType::kArSession,
@@ -217,6 +216,15 @@ absl::optional<std::u16string> PermissionRequest::GetRequestChipText(
          IDS_PERMISSIONS_CAMERA_ALLOWED_CONFIRMATION_SCREENREADER_ANNOUNCEMENT,
          IDS_PERMISSIONS_CAMERA_ALLOWED_ONCE_CONFIRMATION_SCREENREADER_ANNOUNCEMENT,
          IDS_PERMISSIONS_CAMERA_NOT_ALLOWED_CONFIRMATION_SCREENREADER_ANNOUNCEMENT}},
+       {RequestType::kCapturedSurfaceControl,
+        {IDS_CAPTURED_SURFACE_CONTROL_PERMISSION_CHIP,
+         IDS_CAPTURED_SURFACE_CONTROL_PERMISSION_BLOCKED_CHIP,
+         IDS_PERMISSIONS_PERMISSION_ALLOWED_CONFIRMATION,
+         IDS_PERMISSIONS_PERMISSION_ALLOWED_ONCE_CONFIRMATION,
+         IDS_PERMISSIONS_PERMISSION_NOT_ALLOWED_CONFIRMATION,
+         IDS_PERMISSIONS_CAPTURED_SURFACE_CONTROL_ALLOWED_CONFIRMATION_SCREENREADER_ANNOUNCEMENT,
+         IDS_PERMISSIONS_PERMISSION_ALLOWED_ONCE_CONFIRMATION,
+         IDS_PERMISSIONS_CAPTURED_SURFACE_CONTROL_NOT_ALLOWED_CONFIRMATION_SCREENREADER_ANNOUNCEMENT}},
        {RequestType::kClipboard,
         {IDS_CLIPBOARD_PERMISSION_CHIP, -1, -1, -1, -1, -1, -1, -1}},
        {RequestType::kGeolocation,
@@ -228,8 +236,25 @@ absl::optional<std::u16string> PermissionRequest::GetRequestChipText(
          IDS_PERMISSIONS_GEOLOCATION_ALLOWED_CONFIRMATION_SCREENREADER_ANNOUNCEMENT,
          IDS_PERMISSIONS_PERMISSION_ALLOWED_ONCE_CONFIRMATION,
          IDS_PERMISSIONS_GEOLOCATION_NOT_ALLOWED_CONFIRMATION_SCREENREADER_ANNOUNCEMENT}},
+       {RequestType::kHandTracking,
+        {IDS_HAND_TRACKING_PERMISSION_CHIP,
+         IDS_HAND_TRACKING_PERMISSION_BLOCKED_CHIP,
+         IDS_PERMISSIONS_PERMISSION_ALLOWED_CONFIRMATION,
+         IDS_PERMISSIONS_PERMISSION_ALLOWED_ONCE_CONFIRMATION,
+         IDS_PERMISSIONS_PERMISSION_NOT_ALLOWED_CONFIRMATION,
+         IDS_PERMISSIONS_HAND_TRACKING_ALLOWED_CONFIRMATION_SCREENREADER_ANNOUNCEMENT,
+         IDS_PERMISSIONS_HAND_TRACKING_ALLOWED_ONCE_CONFIRMATION_SCREENREADER_ANNOUNCEMENT,
+         IDS_PERMISSIONS_HAND_TRACKING_NOT_ALLOWED_CONFIRMATION_SCREENREADER_ANNOUNCEMENT}},
        {RequestType::kIdleDetection,
         {IDS_IDLE_DETECTION_PERMISSION_CHIP, -1, -1, -1, -1, -1, -1, -1}},
+       {RequestType::kKeyboardLock,
+        {IDS_KEYBOARD_LOCK_PERMISSION_CHIP, -1,
+         IDS_PERMISSIONS_PERMISSION_ALLOWED_CONFIRMATION,
+         IDS_PERMISSIONS_PERMISSION_ALLOWED_ONCE_CONFIRMATION,
+         IDS_PERMISSIONS_PERMISSION_NOT_ALLOWED_CONFIRMATION,
+         IDS_PERMISSIONS_KEYBOARD_LOCK_ALLOWED_CONFIRMATION_SCREENREADER_ANNOUNCEMENT,
+         IDS_PERMISSIONS_PERMISSION_ALLOWED_ONCE_CONFIRMATION,
+         IDS_PERMISSIONS_KEYBOARD_LOCK_NOT_ALLOWED_CONFIRMATION_SCREENREADER_ANNOUNCEMENT}},
        {RequestType::kMicStream,
         {IDS_MEDIA_CAPTURE_AUDIO_ONLY_PERMISSION_CHIP, -1,
          IDS_PERMISSIONS_PERMISSION_ALLOWED_CONFIRMATION,
@@ -238,8 +263,6 @@ absl::optional<std::u16string> PermissionRequest::GetRequestChipText(
          IDS_PERMISSIONS_MICROPHONE_ALLOWED_CONFIRMATION_SCREENREADER_ANNOUNCEMENT,
          IDS_PERMISSIONS_MICROPHONE_ALLOWED_ONCE_CONFIRMATION_SCREENREADER_ANNOUNCEMENT,
          IDS_PERMISSIONS_MICROPHONE_NOT_ALLOWED_CONFIRMATION_SCREENREADER_ANNOUNCEMENT}},
-       {RequestType::kMidi,
-        {IDS_MIDI_PERMISSION_CHIP, -1, -1, -1, -1, -1, -1, -1}},
        {RequestType::kMidiSysex,
         {IDS_MIDI_SYSEX_PERMISSION_CHIP, -1, -1, -1, -1, -1, -1, -1}},
        {RequestType::kNotifications,
@@ -250,6 +273,14 @@ absl::optional<std::u16string> PermissionRequest::GetRequestChipText(
          IDS_PERMISSIONS_NOTIFICATION_ALLOWED_CONFIRMATION_SCREENREADER_ANNOUNCEMENT,
          -1,
          IDS_PERMISSIONS_NOTIFICATION_NOT_ALLOWED_CONFIRMATION_SCREENREADER_ANNOUNCEMENT}},
+       {RequestType::kPointerLock,
+        {IDS_POINTER_LOCK_PERMISSION_CHIP, -1,
+         IDS_PERMISSIONS_PERMISSION_ALLOWED_CONFIRMATION,
+         IDS_PERMISSIONS_PERMISSION_ALLOWED_ONCE_CONFIRMATION,
+         IDS_PERMISSIONS_PERMISSION_NOT_ALLOWED_CONFIRMATION,
+         IDS_PERMISSIONS_POINTER_LOCK_ALLOWED_CONFIRMATION_SCREENREADER_ANNOUNCEMENT,
+         IDS_PERMISSIONS_PERMISSION_ALLOWED_ONCE_CONFIRMATION,
+         IDS_PERMISSIONS_POINTER_LOCK_NOT_ALLOWED_CONFIRMATION_SCREENREADER_ANNOUNCEMENT}},
        {RequestType::kStorageAccess,
         {IDS_SAA_PERMISSION_CHIP, -1,
          IDS_PERMISSIONS_PERMISSION_ALLOWED_CONFIRMATION, -1,
@@ -257,13 +288,21 @@ absl::optional<std::u16string> PermissionRequest::GetRequestChipText(
          IDS_PERMISSIONS_SAA_ALLOWED_CONFIRMATION_SCREENREADER_ANNOUNCEMENT, -1,
          IDS_PERMISSIONS_SAA_NOT_ALLOWED_CONFIRMATION_SCREENREADER_ANNOUNCEMENT}},
        {RequestType::kVrSession,
-        {IDS_VR_PERMISSION_CHIP, -1, -1, -1, -1, -1, -1, -1}}});
+        {IDS_VR_PERMISSION_CHIP, -1, -1, -1, -1, -1, -1, -1}},
+       {RequestType::kWebAppInstallation,
+        {IDS_WEB_APP_INSTALLATION_PERMISSION_CHIP, -1,
+         IDS_PERMISSIONS_PERMISSION_ALLOWED_CONFIRMATION,
+         IDS_PERMISSIONS_PERMISSION_ALLOWED_ONCE_CONFIRMATION,
+         IDS_PERMISSIONS_PERMISSION_NOT_ALLOWED_CONFIRMATION,
+         IDS_PERMISSIONS_WEB_INSTALL_ALLOWED_CONFIRMATION_SCREENREADER_ANNOUNCEMENT,
+         IDS_PERMISSIONS_PERMISSION_ALLOWED_ONCE_CONFIRMATION,
+         IDS_PERMISSIONS_WEB_INSTALL_NOT_ALLOWED_CONFIRMATION_SCREENREADER_ANNOUNCEMENT}}});
 
   auto messages = kMessageIds->find(request_type());
   if (messages != kMessageIds->end() && messages->second[type] != -1)
     return l10n_util::GetStringUTF16(messages->second[type]);
 
-  return absl::nullopt;
+  return std::nullopt;
 }
 
 std::u16string PermissionRequest::GetMessageTextFragment() const {
@@ -296,17 +335,20 @@ std::u16string PermissionRequest::GetMessageTextFragment() const {
     case RequestType::kGeolocation:
       message_id = IDS_GEOLOCATION_INFOBAR_PERMISSION_FRAGMENT;
       break;
+    case RequestType::kHandTracking:
+      message_id = IDS_HAND_TRACKING_PERMISSION_FRAGMENT;
+      break;
     case RequestType::kIdleDetection:
       message_id = IDS_IDLE_DETECTION_PERMISSION_FRAGMENT;
+      break;
+    case RequestType::kKeyboardLock:
+      message_id = IDS_KEYBOARD_LOCK_PERMISSIONS_FRAGMENT;
       break;
     case RequestType::kLocalFonts:
       message_id = IDS_FONT_ACCESS_PERMISSION_FRAGMENT;
       break;
     case RequestType::kMicStream:
       message_id = IDS_MEDIA_CAPTURE_AUDIO_ONLY_PERMISSION_FRAGMENT;
-      break;
-    case RequestType::kMidi:
-      message_id = IDS_MIDI_PERMISSION_FRAGMENT;
       break;
     case RequestType::kMidiSysex:
       message_id = IDS_MIDI_SYSEX_PERMISSION_FRAGMENT;
@@ -317,6 +359,9 @@ std::u16string PermissionRequest::GetMessageTextFragment() const {
     case RequestType::kNotifications:
       message_id = IDS_NOTIFICATION_PERMISSIONS_FRAGMENT;
       break;
+    case RequestType::kPointerLock:
+      message_id = IDS_POINTER_LOCK_PERMISSIONS_FRAGMENT;
+      break;
 #if BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_WIN)
     case RequestType::kProtectedMediaIdentifier:
       message_id = IDS_PROTECTED_MEDIA_IDENTIFIER_PERMISSION_FRAGMENT;
@@ -324,12 +369,12 @@ std::u16string PermissionRequest::GetMessageTextFragment() const {
 #endif
     case RequestType::kRegisterProtocolHandler:
       // Handled by an override in `RegisterProtocolHandlerPermissionRequest`.
-      NOTREACHED();
+      NOTREACHED_IN_MIGRATION();
       return std::u16string();
 #if BUILDFLAG(IS_CHROMEOS)
     case RequestType::kSmartCard:
       // Handled by an override in `SmartCardPermissionRequest`.
-      NOTREACHED();
+      NOTREACHED_IN_MIGRATION();
       return std::u16string();
 #endif
     case RequestType::kStorageAccess:
@@ -339,6 +384,9 @@ std::u16string PermissionRequest::GetMessageTextFragment() const {
     case RequestType::kVrSession:
       message_id = IDS_VR_PERMISSION_FRAGMENT;
       break;
+    case RequestType::kWebAppInstallation:
+      message_id = IDS_WEB_APP_INSTALLATION_PERMISSION_FRAGMENT;
+      break;
 #if BUILDFLAG(IS_CHROMEOS) && BUILDFLAG(USE_CUPS)
     case RequestType::kWebPrinting:
       message_id = IDS_WEB_PRINTING_PERMISSION_FRAGMENT;
@@ -346,6 +394,9 @@ std::u16string PermissionRequest::GetMessageTextFragment() const {
 #endif
     case RequestType::kWindowManagement:
       message_id = IDS_WINDOW_MANAGEMENT_PERMISSION_FRAGMENT;
+      break;
+    case RequestType::kIdentityProvider:
+      message_id = IDS_IDENTITY_PROVIDER_PERMISSION_FRAGMENT;
       break;
   }
   DCHECK_NE(0, message_id);
@@ -358,9 +409,7 @@ std::optional<std::u16string> PermissionRequest::GetAllowAlwaysText() const {
 }
 
 bool PermissionRequest::ShouldUseTwoOriginPrompt() const {
-  return request_type() == RequestType::kStorageAccess &&
-         base::FeatureList::IsEnabled(
-             permissions::features::kPermissionStorageAccessAPI);
+  return request_type() == RequestType::kStorageAccess;
 }
 
 void PermissionRequest::PermissionGranted(bool is_one_time) {
@@ -413,11 +462,14 @@ std::u16string PermissionRequest::GetPermissionNameTextFragment() const {
     case RequestType::kCameraStream:
       message_id = IDS_CAMERA_PERMISSION_NAME_FRAGMENT;
       break;
+    case RequestType::kGeolocation:
+      message_id = IDS_GEOLOCATION_NAME_FRAGMENT;
+      break;
     case RequestType::kMicStream:
       message_id = IDS_MICROPHONE_PERMISSION_NAME_FRAGMENT;
       break;
     default:
-      NOTREACHED();
+      NOTREACHED_IN_MIGRATION();
       return std::u16string();
   }
   DCHECK_NE(0, message_id);

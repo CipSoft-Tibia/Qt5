@@ -20,6 +20,10 @@
         <translation>Übergebene Adresse gehört zu keinem lokalen Gerät.</translation>
     </message>
     <message>
+        <source>Location permission not granted. Search is not possible.</source>
+        <translation>Es wurde keine Berechtigung zur Standortbestimmung erteilt. Es ist keine Suche möglich.</translation>
+    </message>
+    <message>
         <source>Location service turned off. Search is not possible.</source>
         <translation>Standortbestimmung abgeschaltet. Suche ist nicht möglich.</translation>
     </message>

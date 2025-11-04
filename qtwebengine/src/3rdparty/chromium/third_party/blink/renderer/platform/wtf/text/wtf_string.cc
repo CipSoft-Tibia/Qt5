@@ -20,12 +20,18 @@
  * Boston, MA 02110-1301, USA.
  */
 
+#ifdef UNSAFE_BUFFERS_BUILD
+// TODO(crbug.com/351564777): Remove this and convert code to safer constructs.
+#pragma allow_unsafe_buffers
+#endif
+
 #include "third_party/blink/renderer/platform/wtf/text/wtf_string.h"
 
 #include <locale.h>
 #include <stdarg.h>
 
 #include <algorithm>
+#include <string_view>
 
 #include "base/functional/callback.h"
 #include "base/logging.h"
@@ -52,6 +58,9 @@ namespace WTF {
 ASSERT_SIZE(String, void*);
 
 // Construct a string with UTF-16 data.
+String::String(base::span<const UChar> utf16_data)
+    : impl_(utf16_data.data() ? StringImpl::Create(utf16_data) : nullptr) {}
+
 String::String(const UChar* characters, unsigned length)
     : impl_(characters ? StringImpl::Create(characters, length) : nullptr) {}
 
@@ -63,6 +72,9 @@ String::String(const UChar* str) {
 }
 
 // Construct a string with latin1 data.
+String::String(base::span<const LChar> latin1_data)
+    : impl_(latin1_data.data() ? StringImpl::Create(latin1_data) : nullptr) {}
+
 String::String(const LChar* characters, unsigned length)
     : impl_(characters ? StringImpl::Create(characters, length) : nullptr) {}
 
@@ -245,42 +257,7 @@ String String::Format(const char* format, ...) {
 }
 
 String String::EncodeForDebugging() const {
-  if (IsNull())
-    return "<null>";
-
-  StringBuilder builder;
-  builder.Append('"');
-  for (unsigned index = 0; index < length(); ++index) {
-    // Print shorthands for select cases.
-    UChar character = (*impl_)[index];
-    switch (character) {
-      case '\t':
-        builder.Append("\\t");
-        break;
-      case '\n':
-        builder.Append("\\n");
-        break;
-      case '\r':
-        builder.Append("\\r");
-        break;
-      case '"':
-        builder.Append("\\\"");
-        break;
-      case '\\':
-        builder.Append("\\\\");
-        break;
-      default:
-        if (IsASCIIPrintable(character)) {
-          builder.Append(static_cast<char>(character));
-        } else {
-          // Print "\uXXXX" for control or non-ASCII characters.
-          builder.AppendFormat("\\u%04X", character);
-        }
-        break;
-    }
-  }
-  builder.Append('"');
-  return builder.ToString();
+  return StringView(*this).EncodeForDebugging();
 }
 
 String String::Number(float number) {
@@ -535,7 +512,7 @@ String String::FromUTF8(const LChar* string) {
   return FromUTF8(string, strlen(reinterpret_cast<const char*>(string)));
 }
 
-String String::FromUTF8(base::StringPiece s) {
+String String::FromUTF8(std::string_view s) {
   return FromUTF8(reinterpret_cast<const LChar*>(s.data()), s.size());
 }
 

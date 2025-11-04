@@ -14,6 +14,7 @@
 #include "core/fpdfapi/font/cpdf_type3char.h"
 #include "core/fpdfapi/font/cpdf_type3font.h"
 #include "core/fpdfapi/render/cpdf_type3glyphmap.h"
+#include "core/fxcrt/compiler_specific.h"
 #include "core/fxcrt/fx_coordinates.h"
 #include "core/fxcrt/fx_safe_types.h"
 #include "core/fxge/cfx_glyphbitmap.h"
@@ -25,16 +26,19 @@ namespace {
 bool IsScanLine1bpp(const uint8_t* pBuf, int width) {
   int size = width / 8;
   for (int i = 0; i < size; i++) {
-    if (pBuf[i])
+    if (UNSAFE_TODO(pBuf[i])) {
       return true;
+    }
   }
-  return (width % 8) && (pBuf[width / 8] & (0xff << (8 - width % 8)));
+  return (width % 8) &&
+         (UNSAFE_TODO(pBuf[width / 8]) & (0xff << (8 - width % 8)));
 }
 
 bool IsScanLine8bpp(const uint8_t* pBuf, int width) {
   for (int i = 0; i < width; i++) {
-    if (pBuf[i] > 0x40)
+    if (UNSAFE_TODO(pBuf[i]) > 0x40) {
       return true;
+    }
   }
   return false;
 }

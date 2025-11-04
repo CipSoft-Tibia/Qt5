@@ -9,7 +9,6 @@
 #include <qstyle.h>
 #include <qstyleoption.h>
 #include <qstylepainter.h>
-#include <qtimer.h>
 #if QT_CONFIG(effects)
 #include <private/qeffects_p.h>
 #endif
@@ -17,12 +16,16 @@
 #include <qdebug.h>
 #include <qpa/qplatformscreen.h>
 #include <qpa/qplatformcursor.h>
+#if QT_CONFIG(style_stylesheet)
 #include <private/qstylesheetstyle_p.h>
+#endif
 
 #include <qlabel.h>
 #include <QtWidgets/private/qlabel_p.h>
 #include <QtGui/private/qhighdpiscaling_p.h>
 #include <qtooltip.h>
+
+#include <QtCore/qbasictimer.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -119,7 +122,7 @@ protected:
     void mouseMoveEvent(QMouseEvent *e) override;
     void resizeEvent(QResizeEvent *e) override;
 
-#ifndef QT_NO_STYLE_STYLESHEET
+#if QT_CONFIG(style_stylesheet)
 public slots:
     /** \internal
       Cleanup the _q_stylesheet_parent property.
@@ -142,7 +145,7 @@ QTipLabel *QTipLabel::instance = nullptr;
 
 QTipLabel::QTipLabel(const QString &text, const QPoint &pos, QWidget *w, int msecDisplayTime)
     : QLabel(w, Qt::ToolTip | Qt::BypassGraphicsProxyWidget)
-#ifndef QT_NO_STYLE_STYLESHEET
+#if QT_CONFIG(style_stylesheet)
     , styleSheetParent(nullptr)
 #endif
     , widget(nullptr)
@@ -177,7 +180,7 @@ void QTipLabel::restartExpireTimer(int msecDisplayTime)
 
 void QTipLabel::reuseTip(const QString &text, int msecDisplayTime, const QPoint &pos)
 {
-#ifndef QT_NO_STYLE_STYLESHEET
+#if QT_CONFIG(style_stylesheet)
     if (styleSheetParent){
         disconnect(styleSheetParent, &QWidget::destroyed,
                    this, &QTipLabel::styleSheetParentDestroyed);
@@ -345,7 +348,7 @@ QScreen *QTipLabel::getTipScreen(const QPoint &pos, QWidget *w)
 
 void QTipLabel::placeTip(const QPoint &pos, QWidget *w)
 {
-#ifndef QT_NO_STYLE_STYLESHEET
+#if QT_CONFIG(style_stylesheet)
     if (testAttribute(Qt::WA_StyleSheet) || (w && qt_styleSheet(w->style()))) {
         //the stylesheet need to know the real parent
         QTipLabel::instance->setProperty("_q_stylesheet_parent", QVariant::fromValue(w));
@@ -364,7 +367,7 @@ void QTipLabel::placeTip(const QPoint &pos, QWidget *w)
         // correct content margin.
         QTipLabel::instance->updateSize(pos);
     }
-#endif //QT_NO_STYLE_STYLESHEET
+#endif //QT_CONFIG(style_stylesheet)
 
     QPoint p = pos;
     const QScreen *screen = getTipScreen(pos, w);

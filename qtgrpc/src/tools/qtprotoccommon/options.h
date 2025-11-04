@@ -20,6 +20,10 @@ class Options
 
     static Options &mutableInstance();
 public:
+    enum class HeaderGuardType {
+        Pragma,
+        ProtoFilename,
+    };
     enum GeneratorType {
         QtProtobufGen = 0,
         QtGrpcGen
@@ -31,7 +35,7 @@ public:
     Options &operator=(Options &&) = delete;
 
     static const Options &instance();
-    static void setFromString(const std::string &options, GeneratorType type = QtProtobufGen);
+    static void setFromString(const std::string &options, GeneratorType type, std::string *error);
 
     bool hasQml() const { return m_qml; }
     bool generateComments() const { return m_generateComments; }
@@ -41,6 +45,7 @@ public:
     const std::string &exportMacro() const { return m_exportMacro; }
     const std::string &exportMacroFilename() const { return m_exportMacroFilename; }
     bool generateMacroExportFile() const { return m_generateMacroExportFile; }
+    HeaderGuardType headerGuard() const { return m_headerGuard; }
 
 private:
     bool m_generateComments;
@@ -51,6 +56,7 @@ private:
     std::string m_exportMacroFilename;
     bool m_generateMacroExportFile;
     bool m_qml;
+    HeaderGuardType m_headerGuard = Options::HeaderGuardType::ProtoFilename;
 };
 
 }

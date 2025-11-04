@@ -5,11 +5,13 @@
 #include "services/network/url_loader_factory.h"
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 
 #include "base/check_op.h"
 #include "base/functional/bind.h"
+#include "base/metrics/histogram_functions.h"
 #include "base/metrics/histogram_macros.h"
 #include "base/notreached.h"
 #include "components/content_settings/core/common/content_settings.h"
@@ -35,7 +37,6 @@
 #include "services/network/trust_tokens/trust_token_request_helper_factory.h"
 #include "services/network/url_loader.h"
 #include "services/network/web_bundle/web_bundle_url_loader_factory.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "url/gurl.h"
 #include "url/origin.h"
 
@@ -129,7 +130,7 @@ void URLLoaderFactory::CreateLoaderAndStart(
 
 void URLLoaderFactory::Clone(
     mojo::PendingReceiver<mojom::URLLoaderFactory> receiver) {
-  NOTREACHED();
+  NOTREACHED_IN_MIGRATION();
 }
 
 net::URLRequestContext* URLLoaderFactory::GetUrlRequestContext() const {
@@ -168,8 +169,8 @@ const cors::OriginAccessList& URLLoaderFactory::GetOriginAccessList() const {
   return context_->cors_origin_access_list();
 }
 
-corb::PerFactoryState& URLLoaderFactory::GetMutableCorbState() {
-  return corb_state_;
+orb::PerFactoryState& URLLoaderFactory::GetMutableOrbState() {
+  return orb_state_;
 }
 
 bool URLLoaderFactory::DataUseUpdatesEnabled() {
@@ -188,20 +189,6 @@ void URLLoaderFactory::CreateLoaderAndStartWithSyncClient(
   // Requests with |trusted_params| when params_->is_trusted is not set should
   // have been rejected at the CorsURLLoader layer.
   DCHECK(!resource_request.trusted_params || params_->is_trusted);
-
-  std::string origin_string;
-  bool has_origin =
-      resource_request.headers.GetHeader("Origin", &origin_string) &&
-      origin_string != "null";
-  absl::optional<url::Origin> request_initiator =
-      resource_request.request_initiator;
-  if (has_origin && request_initiator.has_value()) {
-    bool origin_head_same_as_request_origin =
-        request_initiator.value().IsSameOriginWith(GURL(origin_string));
-    UMA_HISTOGRAM_BOOLEAN(
-        "NetworkService.URLLoaderFactory.OriginHeaderSameAsRequestOrigin",
-        origin_head_same_as_request_origin);
-  }
 
   if (resource_request.web_bundle_token_params.has_value() &&
       resource_request.destination !=
@@ -234,6 +221,11 @@ void URLLoaderFactory::CreateLoaderAndStartWithSyncClient(
   }
 
   int keepalive_request_size = 0;
+  if (resource_request.keepalive) {
+    base::UmaHistogramEnumeration(
+        "FetchKeepAlive.Requests2.Network",
+        internal::FetchKeepAliveRequestNetworkMetricType::kOnCreate);
+  }
   if (resource_request.keepalive && keepalive_statistics_recorder) {
     const size_t url_size = resource_request.url.spec().size();
     size_t headers_size = 0;
@@ -369,12 +361,9 @@ void URLLoaderFactory::CreateLoaderAndStartWithSyncClient(
             resource_request.trusted_params->accept_ch_frame_observer));
   }
 
-  std::unique_ptr<AttributionRequestHelper> attribution_request_helper;
-  if (context_->network_service()) {
-    attribution_request_helper = AttributionRequestHelper::CreateIfNeeded(
-        resource_request.attribution_reporting_eligibility,
-        context_->network_service()->trust_token_key_commitments());
-  }
+  std::unique_ptr<AttributionRequestHelper> attribution_request_helper =
+      AttributionRequestHelper::CreateIfNeeded(
+          resource_request.attribution_reporting_eligibility);
 
   auto loader = std::make_unique<URLLoader>(
       *this,
@@ -385,27 +374,32 @@ void URLLoaderFactory::CreateLoaderAndStartWithSyncClient(
       static_cast<net::NetworkTrafficAnnotationTag>(traffic_annotation),
       request_id, keepalive_request_size,
       std::move(keepalive_statistics_recorder), std::move(trust_token_factory),
+      context_->GetSharedDictionaryManager(),
       std::move(shared_dictionary_checker), std::move(cookie_observer),
       std::move(trust_token_observer), std::move(url_loader_network_observer),
       std::move(devtools_observer), std::move(accept_ch_frame_observer),
       params_->cookie_setting_overrides, std::move(attribution_request_helper),
       resource_request.shared_storage_writable_eligible);
 
-  if (context_->GetMemoryCache())
-    loader->SetMemoryCache(context_->GetMemoryCache()->GetWeakPtr());
-
   cors_url_loader_factory_->OnURLLoaderCreated(std::move(loader));
 }
 
+net::handles::NetworkHandle URLLoaderFactory::GetBoundNetworkForTesting()
+    const {
+  return context_->url_request_context()->bound_network();
+}
+
 mojom::DevToolsObserver* URLLoaderFactory::GetDevToolsObserver() const {
-  if (devtools_observer_)
+  if (devtools_observer_) {
     return devtools_observer_.get();
+  }
   return nullptr;
 }
 
 mojom::CookieAccessObserver* URLLoaderFactory::GetCookieAccessObserver() const {
-  if (cookie_observer_)
+  if (cookie_observer_) {
     return cookie_observer_.get();
+  }
   return nullptr;
 }
 
@@ -422,8 +416,9 @@ URLLoaderFactory::GetURLLoaderNetworkServiceObserver() const {
   if (cors_url_loader_factory_->url_loader_network_service_observer()) {
     return cors_url_loader_factory_->url_loader_network_service_observer();
   }
-  if (!context_->network_service())
+  if (!context_->network_service()) {
     return nullptr;
+  }
   return context_->network_service()
       ->GetDefaultURLLoaderNetworkServiceObserver();
 }

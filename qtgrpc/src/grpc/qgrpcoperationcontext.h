@@ -44,6 +44,9 @@ public:
     void setServerMetadata(const QHash<QByteArray, QByteArray> &metadata);
     void setServerMetadata(QHash<QByteArray, QByteArray> &&metadata);
 
+    [[nodiscard]] QMetaType responseMetaType() const;
+    void setResponseMetaType(QMetaType metaType);
+
     [[nodiscard]] std::shared_ptr<const QAbstractProtobufSerializer> serializer() const;
 
 Q_SIGNALS:

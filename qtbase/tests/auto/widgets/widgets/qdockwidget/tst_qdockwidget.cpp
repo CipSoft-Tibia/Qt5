@@ -42,9 +42,12 @@ private slots:
     void widget();
     void features();
     void setFloating();
+    void setFloatingReparenting();
     void allowedAreas();
     void toggleViewAction();
     void visibilityChanged();
+    void visibilityChangedOnDestruction_data();
+    void visibilityChangedOnDestruction();
     void updateTabBarOnVisibilityChanged();
     void dockLocationChanged();
     void setTitleBarWidget();
@@ -463,8 +466,14 @@ void tst_QDockWidget::setFloating()
     dw.setFloating(dw.isFloating());
     QCOMPARE(spy.size(), 0);
     spy.clear();
+}
 
-#if defined(QT_BUILD_INTERNAL) && !defined(Q_OS_WIN)
+void tst_QDockWidget::setFloatingReparenting()
+{
+#ifdef Q_OS_WIN
+    QSKIP("Test skipped on Windows platforms");
+#endif // Q_OS_WIN
+#ifdef QT_BUILD_INTERNAL
     // Check that setFloating() reparents the dock widget to the main window,
     // in case it has a QDockWidgetGroupWindow parent
     QPointer<QDockWidget> d1;
@@ -479,7 +488,9 @@ void tst_QDockWidget::setFloating()
     d1->setFloating(true);
     QTRY_COMPARE(mainWindow, d1->parentWidget());
     QTRY_COMPARE(mainWindow, d2->parentWidget());
-#endif // defined(QT_BUILD_INTERNAL) && !defined(Q_OS_WIN)
+#else
+    QSKIP("test requires -developer-build option");
+#endif // defined(QT_BUILD_INTERNAL)
 }
 
 void tst_QDockWidget::allowedAreas()
@@ -708,6 +719,45 @@ void tst_QDockWidget::visibilityChanged()
     QCOMPARE(spy.at(0).at(0).toBool(), true);
 }
 
+// QTBUG-136485 - QDockWidget didn't emit visibilityChanged when getting
+// destroyed until 6.9.0; it did in 6.9.0, causing regressions in applications.
+// So make sure we don't emit that signal when a QDockWidget gets destroyed.
+// When implicitly destroyed as a child of a QMainWindow, it gets hidden first,
+// so it emits the signal.
+void tst_QDockWidget::visibilityChangedOnDestruction_data()
+{
+    QTest::addColumn<bool>("explicitDestroy");
+    QTest::addColumn<bool>("floating");
+    QTest::addColumn<int>("signalCount");
+
+    QTest::addRow("Explicit, docked") << true << false << 0;
+    QTest::addRow("Explicit, floating") << true << true << 0;
+    QTest::addRow("Implicit, docked") << false << false << 1;
+    QTest::addRow("Implicit, floating") << false << true << 0;
+}
+
+void tst_QDockWidget::visibilityChangedOnDestruction()
+{
+    QFETCH(const bool, explicitDestroy);
+    QFETCH(const bool, floating);
+    QFETCH(const int, signalCount);
+
+    std::unique_ptr<QMainWindow> mw(new QMainWindow);
+    QDockWidget *dw = new QDockWidget;
+    mw->addDockWidget(Qt::LeftDockWidgetArea, dw);
+    if (floating)
+        dw->setFloating(true);
+    mw->show();
+    QVERIFY(QTest::qWaitForWindowExposed(mw.get()));
+
+    QSignalSpy spy(dw, &QDockWidget::visibilityChanged);
+    if (explicitDestroy)
+        delete dw;
+    else
+        mw.reset();
+    QCOMPARE(spy.count(), signalCount);
+}
+
 void tst_QDockWidget::updateTabBarOnVisibilityChanged()
 {
     // QTBUG49045: Populate tabified dock area with 4 widgets, set the tab
@@ -756,6 +806,12 @@ void tst_QDockWidget::updateTabBarOnVisibilityChanged()
 
 Q_DECLARE_METATYPE(Qt::DockWidgetArea)
 
+Qt::DockWidgetArea dockLocation(const QSignalSpy *spy)
+{
+    Q_ASSERT(spy);
+    return qvariant_cast<Qt::DockWidgetArea>(spy->at(0).at(0));
+}
+
 void tst_QDockWidget::dockLocationChanged()
 {
     qRegisterMetaType<Qt::DockWidgetArea>("Qt::DockWidgetArea");
@@ -763,61 +819,66 @@ void tst_QDockWidget::dockLocationChanged()
     QMainWindow mw;
     QDockWidget dw;
     dw.setObjectName("dock1");
-    QSignalSpy spy(&dw, SIGNAL(dockLocationChanged(Qt::DockWidgetArea)));
+    QSignalSpy spy(&dw, &QDockWidget::dockLocationChanged);
 
     mw.addDockWidget(Qt::LeftDockWidgetArea, &dw);
     QCOMPARE(spy.size(), 1);
-    QCOMPARE(qvariant_cast<Qt::DockWidgetArea>(spy.at(0).at(0)),
-                Qt::LeftDockWidgetArea);
+    QCOMPARE(dockLocation(&spy), Qt::LeftDockWidgetArea);
+
+    constexpr std::array<Qt::DockWidgetArea, 5> areas{Qt::LeftDockWidgetArea,
+                                                      Qt::TopDockWidgetArea,
+                                                      Qt::RightDockWidgetArea,
+                                                      Qt::BottomDockWidgetArea,
+                                                      Qt::NoDockWidgetArea};
+
+    for (const auto area : areas) {
+        spy.clear();
+        const int expectedCount = dw.dockLocation() == area ? 0 : 1;
+        dw.setDockLocation(area);
+
+        // Ensure signal is only fired on changes
+        QCOMPARE(spy.count(), expectedCount);
+        if (expectedCount)
+            QCOMPARE(dockLocation(&spy), area);
+
+        // Ensure getter reports correctly
+        QTRY_COMPARE(dw.dockLocation(), area);
+
+        // Ensure setting NoDockWidgetArea floats the dock widget
+        if (area == Qt::NoDockWidgetArea) {
+            QCOMPARE(dw.isFloating(), true);
+            dw.setFloating(false);
+        }
+    }
+
     spy.clear();
-
-    mw.addDockWidget(Qt::LeftDockWidgetArea, &dw);
-    QCOMPARE(spy.size(), 1);
-    QCOMPARE(qvariant_cast<Qt::DockWidgetArea>(spy.at(0).at(0)),
-                Qt::LeftDockWidgetArea);
-    spy.clear();
-
-    mw.addDockWidget(Qt::RightDockWidgetArea, &dw);
-    QCOMPARE(spy.size(), 1);
-    QCOMPARE(qvariant_cast<Qt::DockWidgetArea>(spy.at(0).at(0)),
-                Qt::RightDockWidgetArea);
-    spy.clear();
-
-    mw.removeDockWidget(&dw);
-    QCOMPARE(spy.size(), 0);
-
     QDockWidget dw2;
     dw2.setObjectName("dock2");
     mw.addDockWidget(Qt::TopDockWidgetArea, &dw2);
     mw.tabifyDockWidget(&dw2, &dw);
     QCOMPARE(spy.size(), 1);
-    QCOMPARE(qvariant_cast<Qt::DockWidgetArea>(spy.at(0).at(0)),
-                Qt::TopDockWidgetArea);
+    QCOMPARE(dockLocation(&spy), Qt::TopDockWidgetArea);
     spy.clear();
 
     mw.splitDockWidget(&dw2, &dw, Qt::Horizontal);
     QCOMPARE(spy.size(), 1);
-    QCOMPARE(qvariant_cast<Qt::DockWidgetArea>(spy.at(0).at(0)),
-                Qt::TopDockWidgetArea);
+    QCOMPARE(dockLocation(&spy), Qt::TopDockWidgetArea);
     spy.clear();
 
     dw.setFloating(true);
     QTRY_COMPARE(spy.size(), 1);
-    QCOMPARE(qvariant_cast<Qt::DockWidgetArea>(spy.at(0).at(0)),
-             Qt::NoDockWidgetArea);
+    QCOMPARE(dockLocation(&spy), Qt::NoDockWidgetArea);
     spy.clear();
 
     dw.setFloating(false);
     QTRY_COMPARE(spy.size(), 1);
-    QCOMPARE(qvariant_cast<Qt::DockWidgetArea>(spy.at(0).at(0)),
-             Qt::TopDockWidgetArea);
+    QCOMPARE(dockLocation(&spy), Qt::TopDockWidgetArea);
     spy.clear();
 
     QByteArray ba = mw.saveState();
     mw.restoreState(ba);
     QCOMPARE(spy.size(), 1);
-    QCOMPARE(qvariant_cast<Qt::DockWidgetArea>(spy.at(0).at(0)),
-             Qt::TopDockWidgetArea);
+    QCOMPARE(dockLocation(&spy), Qt::TopDockWidgetArea);
 }
 
 void tst_QDockWidget::setTitleBarWidget()
@@ -2001,8 +2062,8 @@ void tst_QDockWidget::saveAndRestore()
     // Compare positions, sizes and floating status
     // If the test fails in the following 12 lines,
     // the de-serialization format/sequence have changed
-    QCOMPARE(topLeft1, d1->pos());
-    QCOMPARE(topLeft2, d2->pos());
+    QTRY_COMPARE(topLeft1, d1->pos());
+    QTRY_COMPARE(topLeft2, d2->pos());
     QCOMPARE(widgetSize1, d1->size());
     QCOMPARE(widgetSize2, d2->size());
     QVERIFY(d1->isFloating());

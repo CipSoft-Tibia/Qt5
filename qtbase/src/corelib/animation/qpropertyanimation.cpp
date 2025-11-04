@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 /*!
     \class QPropertyAnimation
@@ -230,7 +231,7 @@ bool QPropertyAnimation::event(QEvent *event)
 /*!
     This virtual function is called by QVariantAnimation whenever the current value
     changes. \a value is the new, updated value. It updates the current value
-    of the property on the target object.
+    of the property on the target object, unless the animation is stopped.
 
     \sa currentValue, currentTime
  */
@@ -243,7 +244,7 @@ void QPropertyAnimation::updateCurrentValue(const QVariant &value)
 /*!
     \reimp
 
-    If the startValue is not defined when the state of the animation changes from Stopped to Running,
+    If the \l{QVariantAnimation::}{startValue} is not defined when the state of the animation changes from Stopped to Running,
     the current property value is used as the initial value for the animation.
 */
 void QPropertyAnimation::updateState(QAbstractAnimation::State newState,

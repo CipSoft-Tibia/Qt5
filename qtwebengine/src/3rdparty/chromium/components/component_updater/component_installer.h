@@ -8,6 +8,7 @@
 #include <stdint.h>
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -21,7 +22,6 @@
 #include "base/version.h"
 #include "components/update_client/persisted_data.h"
 #include "components/update_client/update_client.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 
 namespace base {
 class SequencedTaskRunner;
@@ -128,6 +128,10 @@ class ComponentInstallerPolicy {
   // network type changes from unmetered to metered during a download, there is
   // no guarantee that the transfer will be suspended or cancelled.
   virtual bool AllowUpdatesOnMeteredConnections() const;
+
+  // Returns true if the component is allowed to update.
+  // Defaults to |true|.
+  virtual bool AllowUpdates() const;
 };
 
 // Defines the installer for Chrome components. The behavior of this class is
@@ -156,7 +160,9 @@ class ComponentInstaller final : public update_client::CrxInstaller {
   void Register(
       RegisterCallback register_callback,
       base::OnceClosure callback,
-      const base::Version& registered_version = base::Version(kNullVersion));
+      const base::Version& registered_version = base::Version(kNullVersion),
+      const base::Version& max_previous_product_version =
+          base::Version(kNullVersion));
 
   // Overrides from update_client::CrxInstaller.
   void OnUpdateError(int error) override;
@@ -167,8 +173,8 @@ class ComponentInstaller final : public update_client::CrxInstaller {
                ProgressCallback progress_callback,
                Callback callback) override;
 
-  bool GetInstalledFile(const std::string& file,
-                        base::FilePath* installed_file) override;
+  std::optional<base::FilePath> GetInstalledFile(
+      const std::string& file) override;
   // Components bundled with installations of Chrome cannot be uninstalled.
   bool Uninstall() override;
 
@@ -182,7 +188,7 @@ class ComponentInstaller final : public update_client::CrxInstaller {
     base::FilePath install_dir;
     base::Version version;
     std::string fingerprint;
-    absl::optional<base::Value::Dict> manifest;
+    std::optional<base::Value::Dict> manifest;
 
    private:
     friend class base::RefCountedThreadSafe<RegistrationInfo>;
@@ -204,21 +210,23 @@ class ComponentInstaller final : public update_client::CrxInstaller {
       base::Version* version,
       base::FilePath* install_path);
   void StartRegistration(const base::Version& registered_version,
+                         const base::Version& max_previous_product_version,
                          scoped_refptr<RegistrationInfo> registration_info);
   void FinishRegistration(scoped_refptr<RegistrationInfo> registration_info,
                           RegisterCallback register_callback,
                           base::OnceClosure callback);
-  absl::optional<base::Value::Dict> GetValidInstallationManifest(
+  std::optional<base::Value::Dict> GetValidInstallationManifest(
       const base::FilePath& path);
-  absl::optional<base::Version> SelectComponentVersion(
+  std::optional<base::Version> SelectComponentVersion(
       const base::Version& registered_version,
+      const base::Version& max_previous_product_version,
       const base::FilePath& base_dir,
       scoped_refptr<RegistrationInfo> registration_info);
 
   void DeleteUnselectedComponentVersions(
       const base::FilePath& base_dir,
-      const absl::optional<base::Version>& selected_version);
-  absl::optional<base::FilePath> GetComponentDirectory();
+      const std::optional<base::Version>& selected_version);
+  std::optional<base::FilePath> GetComponentDirectory();
   void ComponentReady(base::Value::Dict manifest);
   void UninstallOnTaskRunner();
 

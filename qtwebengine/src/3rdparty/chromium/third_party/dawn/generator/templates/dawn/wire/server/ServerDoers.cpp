@@ -52,6 +52,17 @@ namespace dawn::wire::server {
                         {%- if not loop.last -%}, {% endif %}
                     {%- endfor -%}
                 ) {
+                    //* Some arguments need to be sanitized so do that now.
+                    {% for member in command.members %}
+                        {% set MemberName = as_varName(member.name) %}
+                        {% if member.type.name.get() == "string view" %}
+                            // String views must not be nullable.
+                            if ({{MemberName}}.data == nullptr && {{MemberName}}.length == SIZE_MAX) {
+                                return WireResult::FatalError;
+                            }
+                        {% endif %}
+                    {% endfor %}
+
                     {% set ret = command.members|selectattr("is_return_value")|list %}
                     //* If there is a return value, assign it.
                     {% if ret|length == 1 %}
@@ -77,26 +88,24 @@ namespace dawn::wire::server {
         {% endif %}
     {% endfor %}
 
-    WireResult Server::DoDestroyObject(ObjectType objectType, ObjectId objectId) {
+    WireResult Server::DoUnregisterObject(ObjectType objectType, ObjectId objectId) {
         switch(objectType) {
             {% for type in by_category["object"] %}
+                {% set cType = as_cType(type.name) %}
                 case ObjectType::{{type.name.CamelCase()}}: {
-                    Known<WGPU{{type.name.CamelCase()}}> obj;
-                    WIRE_TRY({{type.name.CamelCase()}}Objects().Get(objectId, &obj));
+                    Reserved<{{cType}}> obj;
+                    WIRE_TRY(Objects<{{cType}}>().Get(objectId, &obj));
 
                     if (obj->state == AllocationState::Allocated) {
                         DAWN_ASSERT(obj->handle != nullptr);
                         {% if type.name.get() == "device" %}
-                            if (obj->handle != nullptr) {
-                                //* Deregisters uncaptured error and device lost callbacks since
-                                //* they should not be forwarded if the device no longer exists on the wire.
-                                ClearDeviceCallbacks(obj->handle);
-                            }
+                            //* Deregisters uncaptured error and device lost callbacks since
+                            //* they should not be forwarded if the device no longer exists on the wire.
+                            ClearDeviceCallbacks(obj->handle);
                         {% endif %}
-
-                        mProcs.{{as_varName(type.name, Name("release"))}}(obj->handle);
+                        Release(mProcs, obj->handle);
                     }
-                    {{type.name.CamelCase()}}Objects().Free(objectId);
+                    Objects<{{cType}}>().Free(objectId);
                     return WireResult::Success;
                 }
             {% endfor %}

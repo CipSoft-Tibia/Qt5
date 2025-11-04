@@ -12,6 +12,7 @@ QT_BEGIN_NAMESPACE
     \inqmlmodule QtOpcUa
     \brief Specifies a relative node by a start node and a path.
     \since QtOpcUa 5.12
+    \deprecated [6.9]
 
     Proceeding from the given start node, the server tries to match the content
     of the path property to any existing nodes on the server. Only if the path fully

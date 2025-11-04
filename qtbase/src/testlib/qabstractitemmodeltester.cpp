@@ -15,7 +15,7 @@
 
 QT_BEGIN_NAMESPACE
 
-Q_LOGGING_CATEGORY(lcModelTest, "qt.modeltest")
+Q_STATIC_LOGGING_CATEGORY(lcModelTest, "qt.modeltest")
 
 #define MODELTESTER_VERIFY(statement) \
 do { \
@@ -196,6 +196,8 @@ private:
 /*!
     Creates a model tester instance, with the given \a parent, that will test
     the model \a model.
+
+    The failure reporting mode is set to FailureReportingMode::QtTest.
 */
 QAbstractItemModelTester::QAbstractItemModelTester(QAbstractItemModel *model, QObject *parent)
     : QAbstractItemModelTester(model, FailureReportingMode::QtTest, parent)

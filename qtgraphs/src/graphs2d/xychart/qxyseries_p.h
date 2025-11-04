@@ -27,7 +27,7 @@ public:
     static QXYSeriesPrivate *get(QXYSeries *item) { return item->d_func(); }
     static const QXYSeriesPrivate *get(const QXYSeries *item) { return item->d_func(); }
 
-    QXYSeriesPrivate();
+    QXYSeriesPrivate(QAbstractSeries::SeriesType type);
 
     void setPointSelected(qsizetype index, bool selected, bool &callSignal);
     bool isPointSelected(qsizetype index) const;

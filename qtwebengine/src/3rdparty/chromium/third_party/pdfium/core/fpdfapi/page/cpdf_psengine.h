@@ -7,14 +7,14 @@
 #ifndef CORE_FPDFAPI_PAGE_CPDF_PSENGINE_H_
 #define CORE_FPDFAPI_PAGE_CPDF_PSENGINE_H_
 
-#include <stddef.h>
 #include <stdint.h>
 
+#include <array>
 #include <memory>
 #include <vector>
 
 #include "core/fxcrt/bytestring.h"
-#include "third_party/base/containers/span.h"
+#include "core/fxcrt/span.h"
 
 class CPDF_PSEngine;
 class CPDF_PSProc;
@@ -95,7 +95,6 @@ class CPDF_PSProc {
 
   // These methods are exposed for testing.
   void AddOperatorForTesting(ByteStringView word);
-  size_t num_operators() const { return m_Operators.size(); }
   const std::unique_ptr<CPDF_PSOP>& last_operator() {
     return m_Operators.back();
   }
@@ -127,7 +126,7 @@ class CPDF_PSEngine {
 
   uint32_t m_StackCount = 0;
   CPDF_PSProc m_MainProc;
-  float m_Stack[kPSEngineStackSize] = {};
+  std::array<float, kPSEngineStackSize> m_Stack = {};
 };
 
 #endif  // CORE_FPDFAPI_PAGE_CPDF_PSENGINE_H_

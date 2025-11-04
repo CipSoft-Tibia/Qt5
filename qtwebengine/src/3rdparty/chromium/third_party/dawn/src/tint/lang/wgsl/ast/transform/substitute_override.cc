@@ -71,7 +71,7 @@ Transform::ApplyResult SubstituteOverride::Apply(const Program& src,
 
     const auto* data = config.Get<Config>();
     if (!data) {
-        b.Diagnostics().add_error(diag::System::Transform, "Missing override substitution data");
+        b.Diagnostics().AddError(Source{}) << "Missing override substitution data";
         return resolver::Resolve(b);
     }
 
@@ -90,9 +90,8 @@ Transform::ApplyResult SubstituteOverride::Apply(const Program& src,
         auto iter = data->map.find(sem->Attributes().override_id.value());
         if (iter == data->map.end()) {
             if (!w->initializer) {
-                b.Diagnostics().add_error(
-                    diag::System::Transform,
-                    "Initializer not provided for override, and override not overridden.");
+                b.Diagnostics().AddError(Source{})
+                    << "Initializer not provided for override, and override not overridden.";
                 return nullptr;
             }
             return b.Const(source, sym, ty, ctx.Clone(w->initializer));
@@ -108,8 +107,7 @@ Transform::ApplyResult SubstituteOverride::Apply(const Program& src,
             [&](const core::type::F16*) { return b.Expr(f16(value)); });
 
         if (!ctor) {
-            b.Diagnostics().add_error(diag::System::Transform,
-                                      "Failed to create override-expression");
+            b.Diagnostics().AddError(Source{}) << "Failed to create override-expression";
             return nullptr;
         }
 
@@ -122,7 +120,7 @@ Transform::ApplyResult SubstituteOverride::Apply(const Program& src,
     ctx.ReplaceAll([&](const IndexAccessorExpression* expr) -> const IndexAccessorExpression* {
         if (auto* sem = src.Sem().Get(expr)) {
             if (auto* access = sem->UnwrapMaterialize()->As<sem::IndexAccessorExpression>()) {
-                if (access->Object()->UnwrapMaterialize()->Type()->HoldsAbstract() &&
+                if (access->Object()->UnwrapMaterialize()->Type()->IsAbstract() &&
                     access->Index()->Stage() == core::EvaluationStage::kOverride) {
                     auto* obj = b.Call(wgsl::str(wgsl::BuiltinFn::kTintMaterialize),
                                        ctx.Clone(expr->object));

@@ -31,8 +31,8 @@ namespace blink {
 namespace {
 
 struct TestParam {
-  absl::optional<media::VideoCodecProfile> profile;
-  absl::optional<uint8_t> level;
+  std::optional<media::VideoCodecProfile> profile;
+  std::optional<uint8_t> level;
   uint32_t bitrate;
 };
 
@@ -47,7 +47,7 @@ const TestParam kH264EncoderParameterTestParam[] = {
     {media::VideoCodecProfile::H264PROFILE_HIGH, 52,
      kFrameWidth* kFrameHeight * 8},
     // Test optional input.
-    {absl::nullopt, absl::nullopt, kFrameWidth* kFrameHeight * 8},
+    {std::nullopt, std::nullopt, kFrameWidth* kFrameHeight * 8},
 };
 
 }  // namespace
@@ -55,10 +55,10 @@ const TestParam kH264EncoderParameterTestParam[] = {
 class H264EncoderFixture : public ::testing::Test {
  public:
   H264EncoderFixture()
-      : H264EncoderFixture(absl::nullopt, absl::nullopt, 1280 * 720 * 3) {}
+      : H264EncoderFixture(std::nullopt, std::nullopt, 1280 * 720 * 3) {}
 
-  H264EncoderFixture(absl::optional<media::VideoCodecProfile> profile,
-                     absl::optional<uint8_t> level,
+  H264EncoderFixture(std::optional<media::VideoCodecProfile> profile,
+                     std::optional<uint8_t> level,
                      uint32_t bitrate)
       : profile_(profile),
         level_(level),
@@ -92,7 +92,6 @@ class H264EncoderFixture : public ::testing::Test {
 
   void EncodeFrame() {
     encoder_.StartFrameEncode(
-        CrossThreadBindRepeating(base::TimeTicks::Now),
         media::VideoFrame::CreateBlackFrame({kFrameWidth, kFrameHeight}),
         base::TimeTicks::Now());
   }
@@ -130,12 +129,14 @@ class H264EncoderFixture : public ::testing::Test {
 
     const auto eProfileIdc = params.sSpatialLayers[0].uiProfileIdc;
     if (!kEProfileIdcToProfile.Contains(eProfileIdc)) {
-      NOTREACHED() << "Failed to convert unknown EProfileIdc: " << eProfileIdc;
+      NOTREACHED_IN_MIGRATION()
+          << "Failed to convert unknown EProfileIdc: " << eProfileIdc;
     }
 
     const auto eLevelIdc = params.sSpatialLayers[0].uiLevelIdc;
     if (!kELevelIdcToLevel.Contains(eLevelIdc)) {
-      NOTREACHED() << "Failed to convert unknown ELevelIdc: " << eLevelIdc;
+      NOTREACHED_IN_MIGRATION()
+          << "Failed to convert unknown ELevelIdc: " << eLevelIdc;
     }
     return {kEProfileIdcToProfile.find(eProfileIdc)->value,
             kELevelIdcToLevel.find(eLevelIdc)->value};
@@ -145,15 +146,15 @@ class H264EncoderFixture : public ::testing::Test {
       const media::Muxer::VideoParameters& params,
       std::string encoded_data,
       std::string encoded_alpha,
-      absl::optional<media::VideoEncoder::CodecDescription> codec_description,
+      std::optional<media::VideoEncoder::CodecDescription> codec_description,
       base::TimeTicks capture_timestamp,
       bool is_key_frame) {}
 
   test::TaskEnvironment task_environment_;
-  const absl::optional<media::VideoCodecProfile> profile_;
-  const absl::optional<uint8_t> level_;
+  const std::optional<media::VideoCodecProfile> profile_;
+  const std::optional<uint8_t> level_;
   const uint32_t bitrate_;
-  raw_ptr<media::MockVideoEncoderMetricsProvider, ExperimentalRenderer>
+  raw_ptr<media::MockVideoEncoderMetricsProvider, DanglingUntriaged>
       mock_metrics_provider_;
   H264Encoder encoder_;
   bool on_error_called_ = false;
@@ -177,8 +178,7 @@ TEST_F(H264EncoderFixture, ErrorCallOnTooLargeFrame) {
                              /*hardware_video_encoder=*/false,
                              media::SVCScalabilityMode::kL1T1));
   EXPECT_CALL(*mock_metrics_provider_, MockSetError);
-  encoder_.StartFrameEncode(CrossThreadBindRepeating(base::TimeTicks::Now),
-                            frame, base::TimeTicks::Now());
+  encoder_.StartFrameEncode(frame, base::TimeTicks::Now());
   EXPECT_TRUE(on_error_called_);
 }
 

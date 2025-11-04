@@ -3,7 +3,7 @@
 
 #include <QFont>
 #include <QString>
-#include <QtTest>
+#include <QTest>
 #include <QCoreApplication>
 #include <QQmlComponent>
 #include <QQmlEngine>

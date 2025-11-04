@@ -13,7 +13,7 @@
 #include <memory>
 
 #include "core/fxcrt/fx_stream.h"
-#include "third_party/base/numerics/safe_conversions.h"
+#include "core/fxcrt/numerics/safe_conversions.h"
 
 #ifndef O_BINARY
 #define O_BINARY 0
@@ -51,41 +51,45 @@ void CFX_FileAccess_Posix::Close() {
   close(m_nFD);
   m_nFD = -1;
 }
+
 FX_FILESIZE CFX_FileAccess_Posix::GetSize() const {
   if (m_nFD < 0) {
     return 0;
   }
-  struct stat s;
-  memset(&s, 0, sizeof(s));
+  struct stat s = {};
   fstat(m_nFD, &s);
-  return pdfium::base::checked_cast<FX_FILESIZE>(s.st_size);
+  return pdfium::checked_cast<FX_FILESIZE>(s.st_size);
 }
+
 FX_FILESIZE CFX_FileAccess_Posix::GetPosition() const {
   if (m_nFD < 0) {
     return (FX_FILESIZE)-1;
   }
   return lseek(m_nFD, 0, SEEK_CUR);
 }
+
 FX_FILESIZE CFX_FileAccess_Posix::SetPosition(FX_FILESIZE pos) {
   if (m_nFD < 0) {
     return (FX_FILESIZE)-1;
   }
   return lseek(m_nFD, pos, SEEK_SET);
 }
-size_t CFX_FileAccess_Posix::Read(void* pBuffer, size_t szBuffer) {
+
+size_t CFX_FileAccess_Posix::Read(pdfium::span<uint8_t> buffer) {
   if (m_nFD < 0) {
     return 0;
   }
-  return read(m_nFD, pBuffer, szBuffer);
+  return read(m_nFD, buffer.data(), buffer.size());
 }
-size_t CFX_FileAccess_Posix::Write(const void* pBuffer, size_t szBuffer) {
+
+size_t CFX_FileAccess_Posix::Write(pdfium::span<const uint8_t> buffer) {
   if (m_nFD < 0) {
     return 0;
   }
-  return write(m_nFD, pBuffer, szBuffer);
+  return write(m_nFD, buffer.data(), buffer.size());
 }
-size_t CFX_FileAccess_Posix::ReadPos(void* pBuffer,
-                                     size_t szBuffer,
+
+size_t CFX_FileAccess_Posix::ReadPos(pdfium::span<uint8_t> buffer,
                                      FX_FILESIZE pos) {
   if (m_nFD < 0) {
     return 0;
@@ -96,18 +100,7 @@ size_t CFX_FileAccess_Posix::ReadPos(void* pBuffer,
   if (SetPosition(pos) == (FX_FILESIZE)-1) {
     return 0;
   }
-  return Read(pBuffer, szBuffer);
-}
-size_t CFX_FileAccess_Posix::WritePos(const void* pBuffer,
-                                      size_t szBuffer,
-                                      FX_FILESIZE pos) {
-  if (m_nFD < 0) {
-    return 0;
-  }
-  if (SetPosition(pos) == (FX_FILESIZE)-1) {
-    return 0;
-  }
-  return Write(pBuffer, szBuffer);
+  return Read(buffer);
 }
 
 bool CFX_FileAccess_Posix::Flush() {

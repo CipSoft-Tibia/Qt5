@@ -28,7 +28,6 @@
 #include "src/tint/lang/core/ir/continue.h"
 
 #include "gmock/gmock.h"
-#include "gtest/gtest-spi.h"
 #include "src/tint/lang/core/ir/ir_helper_test.h"
 
 namespace tint::core::ir {
@@ -36,6 +35,7 @@ namespace {
 
 using namespace tint::core::number_suffixes;  // NOLINT
 using IR_ContinueTest = IRTestHelper;
+using IR_ContinueDeathTest = IR_ContinueTest;
 
 TEST_F(IR_ContinueTest, Usage) {
     auto* loop = b.Loop();
@@ -44,8 +44,8 @@ TEST_F(IR_ContinueTest, Usage) {
 
     auto* brk = b.Continue(loop, arg1, arg2);
 
-    EXPECT_THAT(arg1->Usages(), testing::UnorderedElementsAre(Usage{brk, 0u}));
-    EXPECT_THAT(arg2->Usages(), testing::UnorderedElementsAre(Usage{brk, 1u}));
+    EXPECT_THAT(arg1->UsagesUnsorted(), testing::UnorderedElementsAre(Usage{brk, 0u}));
+    EXPECT_THAT(arg2->UsagesUnsorted(), testing::UnorderedElementsAre(Usage{brk, 1u}));
 }
 
 TEST_F(IR_ContinueTest, Results) {
@@ -58,14 +58,14 @@ TEST_F(IR_ContinueTest, Results) {
     EXPECT_TRUE(brk->Results().IsEmpty());
 }
 
-TEST_F(IR_ContinueTest, Fail_NullLoop) {
-    EXPECT_FATAL_FAILURE(
+TEST_F(IR_ContinueDeathTest, Fail_NullLoop) {
+    EXPECT_DEATH_IF_SUPPORTED(
         {
             Module mod;
             Builder b{mod};
             b.Continue(nullptr);
         },
-        "");
+        "internal compiler error");
 }
 
 TEST_F(IR_ContinueTest, Clone) {

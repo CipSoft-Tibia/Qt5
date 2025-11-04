@@ -2,6 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#ifdef UNSAFE_BUFFERS_BUILD
+// TODO(crbug.com/40285824): Remove this and convert code to safer constructs.
+#pragma allow_unsafe_buffers
+#endif
+
 #include "gpu/command_buffer/service/gr_shader_cache.h"
 
 #include <inttypes.h>
@@ -15,7 +20,7 @@
 #include "base/trace_event/memory_dump_manager.h"
 #include "base/trace_event/trace_event.h"
 #include "gpu/config/gpu_finch_features.h"
-#include "third_party/skia/include/gpu/GrDirectContext.h"
+#include "third_party/skia/include/gpu/ganesh/GrDirectContext.h"
 
 namespace gpu {
 namespace raster {
@@ -217,8 +222,7 @@ void GrShaderCache::WriteToDisk(const CacheKey& key, CacheData* data) {
 
   data->pending_disk_write = false;
 
-  std::string encoded_key;
-  base::Base64Encode(MakeString(key.data.get()), &encoded_key);
+  std::string encoded_key = base::Base64Encode(MakeString(key.data.get()));
   client_->StoreShader(encoded_key, MakeString(data->data.get()));
 }
 

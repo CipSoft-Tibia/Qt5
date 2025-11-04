@@ -1,21 +1,38 @@
 // Copyright (C) 2023 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
+#include "graphs2d/qabstractseries.h"
+#include "graphs2d/qabstractseries_p.h"
+#ifdef USE_AREAGRAPH
 #include <QtGraphs/qareaseries.h>
-#include <QtGraphs/qbarseries.h>
-#include <QtGraphs/qlineseries.h>
-#include <QtGraphs/qpieseries.h>
-#include <QtGraphs/qscatterseries.h>
-#include <QtGraphs/qsplineseries.h>
-#include <private/qgraphsview_p.h>
 #include <private/arearenderer_p.h>
-#include <private/axisrenderer_p.h>
+#endif
+#ifdef USE_BARGRAPH
+#include <QtGraphs/qbarseries.h>
 #include <private/barsrenderer_p.h>
+#endif
+#ifdef USE_PIEGRAPH
+#include <QtGraphs/qpieseries.h>
 #include <private/pierenderer_p.h>
+#endif
+#ifdef USE_LINEGRAPH
+#include <QtGraphs/qlineseries.h>
+#endif
+#ifdef USE_SCATTERGRAPH
+#include <QtGraphs/qscatterseries.h>
+#endif
+#ifdef USE_SPLINEGRAPH
+#include <QtGraphs/qsplineseries.h>
+#endif
+#ifdef USE_POINTS
 #include <private/pointrenderer_p.h>
-#include <private/qabstractaxis_p.h>
-#include <QtQuick/private/qquickrectangle_p.h>
+#endif
 #include <QTimer>
+#include <QtQuick/private/qquickrectangle_p.h>
+#include <QtQuick/private/qquickpinchhandler_p.h>
+#include <private/axisrenderer_p.h>
+#include <private/qabstractaxis_p.h>
+#include <private/qgraphsview_p.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -47,6 +64,17 @@ QGraphsView::QGraphsView(QQuickItem *parent) :
     setAcceptedMouseButtons(Qt::LeftButton);
     setAcceptHoverEvents(true);
     m_defaultTheme = new QGraphsTheme(this);
+    m_pinchHandler = new QQuickPinchHandler(this);
+    m_pinchHandler->setTarget(nullptr);
+
+    QObject::connect(m_pinchHandler,
+                     &QQuickPinchHandler::scaleChanged,
+                     this,
+                     &QGraphsView::onPinchScaleChanged);
+    QObject::connect(m_pinchHandler,
+                     &QQuickPinchHandler::grabChanged,
+                     this,
+                     &QGraphsView::onPinchGrabChanged);
 }
 
 QGraphsView::~QGraphsView()
@@ -58,6 +86,18 @@ QGraphsView::~QGraphsView()
         m_axisX->d_func()->setGraph(nullptr);
     if (m_axisY)
         m_axisY->d_func()->setGraph(nullptr);
+}
+
+void QGraphsView::onPinchScaleChanged(qreal delta)
+{
+    if (m_axisRenderer)
+        m_axisRenderer->handlePinchScale(delta);
+}
+
+void QGraphsView::onPinchGrabChanged(QPointingDevice::GrabTransition transition, QEventPoint point)
+{
+    if (m_axisRenderer)
+        m_axisRenderer->handlePinchGrab(transition, point);
 }
 
 /*!
@@ -111,8 +151,10 @@ void QGraphsView::insertSeries(qsizetype index, QObject *object)
             QObject::connect(series, &QAbstractSeries::hover,
                              this, &QGraphsView::handleHover);
 
+#ifdef USE_PIEGRAPH
             if (auto pie = qobject_cast<QPieSeries *>(series))
                 connect(pie, &QPieSeries::removed, m_pieRenderer, &PieRenderer::markedDeleted);
+#endif
         }
         polishAndUpdate();
     }
@@ -127,13 +169,15 @@ void QGraphsView::insertSeries(qsizetype index, QObject *object)
 */
 void QGraphsView::removeSeries(QObject *object)
 {
-    if (auto series = reinterpret_cast<QAbstractSeries *>(object)) {
+    if (auto series = qobject_cast<QAbstractSeries *>(object)) {
         series->setGraph(nullptr);
         m_seriesList.removeAll(series);
         auto &cleanupSeriesList = m_cleanupSeriesList[getSeriesRendererIndex(series)];
 
+#ifdef USE_PIEGRAPH
         if (auto pie = qobject_cast<QPieSeries *>(series))
             disconnect(pie, &QPieSeries::removed, m_pieRenderer, &PieRenderer::markedDeleted);
+#endif
 
         cleanupSeriesList.append(series);
         polishAndUpdate();
@@ -199,6 +243,7 @@ void QGraphsView::setGraphSeriesCount(qsizetype count)
         m_graphSeriesCount = count;
 }
 
+#ifdef USE_BARGRAPH
 void QGraphsView::createBarsRenderer()
 {
     if (!m_barsRenderer) {
@@ -206,6 +251,7 @@ void QGraphsView::createBarsRenderer()
         updateComponentSizes();
     }
 }
+#endif
 
 void QGraphsView::createAxisRenderer()
 {
@@ -216,6 +262,7 @@ void QGraphsView::createAxisRenderer()
     }
 }
 
+#ifdef USE_POINTS
 void QGraphsView::createPointRenderer()
 {
     if (!m_pointRenderer) {
@@ -223,7 +270,9 @@ void QGraphsView::createPointRenderer()
         updateComponentSizes();
     }
 }
+#endif
 
+#ifdef USE_PIEGRAPH
 void QGraphsView::createPieRenderer()
 {
     if (!m_pieRenderer) {
@@ -231,7 +280,9 @@ void QGraphsView::createPieRenderer()
         updateComponentSizes();
     }
 }
+#endif
 
+#ifdef USE_AREAGRAPH
 void QGraphsView::createAreaRenderer()
 {
     if (!m_areaRenderer) {
@@ -239,6 +290,7 @@ void QGraphsView::createAreaRenderer()
         updateComponentSizes();
     }
 }
+#endif
 
 /*!
     \property QGraphsView::axisXSmoothing
@@ -483,36 +535,58 @@ void QGraphsView::updateComponentSizes()
     if (m_axisRenderer)
         m_axisRenderer->setSize(size());
 
+#ifdef USE_BARGRAPH
     if (m_barsRenderer) {
         m_barsRenderer->setX(m_plotArea.x());
         m_barsRenderer->setY(m_plotArea.y());
         m_barsRenderer->setSize(m_plotArea.size());
     }
+#endif
+#ifdef USE_POINTS
     if (m_pointRenderer) {
         m_pointRenderer->setX(m_plotArea.x());
         m_pointRenderer->setY(m_plotArea.y());
         m_pointRenderer->setSize(m_plotArea.size());
     }
+#endif
+#ifdef USE_PIEGRAPH
     if (m_pieRenderer) {
         m_pieRenderer->setX(m_plotArea.x());
         m_pieRenderer->setY(m_plotArea.y());
-
-        // Remove axis widths and heights as there aren't any in Pie
-        auto s = m_plotArea.size();
-        s.setHeight(s.height() + m_axisHeight);
-        s.setWidth(s.width() - m_axisWidth);
-
-        m_pieRenderer->setSize(s);
+        m_pieRenderer->setSize(m_plotArea.size());
     }
+#endif
+#ifdef USE_AREAGRAPH
     if (m_areaRenderer) {
         m_areaRenderer->setX(m_plotArea.x());
         m_areaRenderer->setY(m_plotArea.y());
         m_areaRenderer->setSize(m_plotArea.size());
     }
+#endif
 }
 
 void QGraphsView::componentComplete()
 {
+    if (!m_zoomAreaDelegate && !m_zoomAreaItem) {
+        const QString qmlData = QLatin1StringView(R"QML(
+            import QtQuick;
+            Rectangle {
+                color: "#8888aaff"
+                border.width: 1
+                border.color: "#4466aa"
+            }
+        )QML");
+
+        QQmlComponent *tempZoomAreaDelegate = new QQmlComponent(qmlEngine(this), this);
+        tempZoomAreaDelegate->setData(qmlData.toUtf8(), QUrl());
+
+        m_zoomAreaItem = qobject_cast<QQuickItem *>(
+            tempZoomAreaDelegate->create(tempZoomAreaDelegate->creationContext()));
+        m_zoomAreaItem->setParent(this);
+        m_zoomAreaItem->setParentItem(this);
+        m_zoomAreaItem->setVisible(false);
+    }
+
     if (!m_theme) {
         m_theme = m_defaultTheme;
         QObject::connect(m_theme, &QGraphsTheme::update, this, &QQuickItem::update);
@@ -532,72 +606,6 @@ void QGraphsView::geometryChange(const QRectF &newGeometry, const QRectF &oldGeo
     ensurePolished();
 }
 
-void QGraphsView::mouseMoveEvent(QMouseEvent *event)
-{
-    bool handled = false;
-
-    // Adjust event position to renderers position
-    QPointF localPos = event->position() - m_plotArea.topLeft();
-    QMouseEvent mappedEvent(event->type(), localPos, event->scenePosition(),
-                            event->globalPosition(), event->button(),
-                            event->buttons(), event->modifiers());
-    mappedEvent.setAccepted(false);
-
-    if (m_pointRenderer)
-        handled |= m_pointRenderer->handleMouseMove(&mappedEvent);
-
-    if (!handled)
-        event->ignore();
-    else
-        polishAndUpdate();
-}
-
-void QGraphsView::mousePressEvent(QMouseEvent *event)
-{
-    bool handled = false;
-
-    // Adjust event position to renderers position
-    QPointF localPos = event->position() - m_plotArea.topLeft();
-    QMouseEvent mappedEvent(event->type(), localPos, event->scenePosition(),
-                            event->globalPosition(), event->button(),
-                            event->buttons(), event->modifiers());
-    mappedEvent.setAccepted(false);
-
-    if (m_barsRenderer)
-        handled |= m_barsRenderer->handleMousePress(&mappedEvent);
-
-    if (m_pointRenderer)
-        handled |= m_pointRenderer->handleMousePress(&mappedEvent);
-
-    if (m_areaRenderer)
-        handled |= m_areaRenderer->handleMousePress(&mappedEvent);
-
-    if (!handled)
-        event->ignore();
-    else
-        polishAndUpdate();
-}
-
-void QGraphsView::mouseReleaseEvent(QMouseEvent *event)
-{
-    bool handled = false;
-
-    // Adjust event position to renderers position
-    QPointF localPos = event->position() - m_plotArea.topLeft();
-    QMouseEvent mappedEvent(event->type(), localPos, event->scenePosition(),
-                            event->globalPosition(), event->button(),
-                            event->buttons(), event->modifiers());
-    mappedEvent.setAccepted(false);
-
-    if (m_pointRenderer)
-        handled |= m_pointRenderer->handleMouseRelease(&mappedEvent);
-
-    if (!handled)
-        event->ignore();
-    else
-        polishAndUpdate();
-}
-
 void QGraphsView::hoverMoveEvent(QHoverEvent *event)
 {
     bool handled = false;
@@ -608,17 +616,54 @@ void QGraphsView::hoverMoveEvent(QHoverEvent *event)
                             event->oldPosF(), event->modifiers());
     mappedEvent.setAccepted(false);
 
+#ifdef USE_BARGRAPH
     if (m_barsRenderer)
         handled |= m_barsRenderer->handleHoverMove(&mappedEvent);
+#endif
 
+#ifdef USE_POINTS
     if (m_pointRenderer)
         handled |= m_pointRenderer->handleHoverMove(&mappedEvent);
+#endif
 
+#ifdef USE_PIEGRAPH
+    if (m_pieRenderer)
+        handled |= m_pieRenderer->handleHoverMove(&mappedEvent);
+#endif
+
+#ifdef USE_AREAGRAPH
     if (m_areaRenderer)
         handled |= m_areaRenderer->handleHoverMove(&mappedEvent);
+#endif
 
     if (!handled)
         event->ignore();
+}
+
+void QGraphsView::wheelEvent(QWheelEvent *event)
+{
+    bool handled = false;
+
+    // Adjust event position to renderers position
+    QPointF localPos = event->position() - m_plotArea.topLeft();
+    QWheelEvent mappedEvent(localPos,
+                            event->globalPosition(),
+                            event->pixelDelta(),
+                            event->angleDelta(),
+                            event->buttons(),
+                            event->modifiers(),
+                            event->phase(),
+                            event->inverted(),
+                            event->source());
+    mappedEvent.setAccepted(false);
+
+    if (m_axisRenderer)
+        handled |= m_axisRenderer->handleWheel(&mappedEvent);
+
+    if (!handled)
+        event->ignore();
+    else
+        polishAndUpdate();
 }
 
 QSGNode *QGraphsView::updatePaintNode(QSGNode *oldNode, QQuickItem::UpdatePaintNodeData *updatePaintNodeData)
@@ -626,52 +671,75 @@ QSGNode *QGraphsView::updatePaintNode(QSGNode *oldNode, QQuickItem::UpdatePaintN
     Q_UNUSED(updatePaintNodeData);
 
     for (auto series : std::as_const(m_seriesList)) {
+#ifdef USE_BARGRAPH
         if (m_barsRenderer) {
             if (auto barSeries = qobject_cast<QBarSeries *>(series))
                 m_barsRenderer->updateSeries(barSeries);
         }
+#endif
 
+#ifdef USE_POINTS
         if (m_pointRenderer) {
+#ifdef USE_LINEGRAPH
             if (auto lineSeries = qobject_cast<QLineSeries *>(series))
                 m_pointRenderer->updateSeries(lineSeries);
-
+#endif
+#ifdef USE_SCATTERGRAPH
             if (auto scatterSeries = qobject_cast<QScatterSeries *>(series))
                 m_pointRenderer->updateSeries(scatterSeries);
-
+#endif
+#ifdef USE_SPLINEGRAPH
             if (auto splineSeries = qobject_cast<QSplineSeries *>(series))
                 m_pointRenderer->updateSeries(splineSeries);
+#endif
         }
+#endif
 
+#ifdef USE_PIEGRAPH
         if (m_pieRenderer) {
             if (auto pieSeries = qobject_cast<QPieSeries *>(series))
                 m_pieRenderer->updateSeries(pieSeries);
         }
+#endif
 
+#ifdef USE_AREAGRAPH
         if (m_areaRenderer) {
             if (auto areaSeries = qobject_cast<QAreaSeries *>(series))
                 m_areaRenderer->updateSeries(areaSeries);
         }
+#endif
     }
 
+#ifdef USE_BARGRAPH
     if (m_barsRenderer) {
         auto &cleanupSeriesList = m_cleanupSeriesList[0];
         m_barsRenderer->afterUpdate(cleanupSeriesList);
         cleanupSeriesList.clear();
     }
+#endif
+
+#ifdef USE_POINTS
     if (m_pointRenderer) {
         auto &cleanupSeriesList = m_cleanupSeriesList[1];
         m_pointRenderer->afterUpdate(cleanupSeriesList);
         cleanupSeriesList.clear();
     }
+#endif
+
+#ifdef USE_AREAGRAPH
     if (m_areaRenderer) {
         auto &cleanupSeriesList = m_cleanupSeriesList[2];
         m_areaRenderer->afterUpdate(cleanupSeriesList);
     }
+#endif
+
+#ifdef USE_PIEGRAPH
     if (m_pieRenderer) {
         auto &cleanupSeriesList = m_cleanupSeriesList[3];
         m_pieRenderer->afterUpdate(cleanupSeriesList);
         cleanupSeriesList.clear();
     }
+#endif
 
     // Now possibly dirty theme has been taken into use
     m_theme->resetThemeDirty();
@@ -705,50 +773,71 @@ void QGraphsView::updatePolish()
 
     // Polish for all series
     for (auto series : std::as_const(m_seriesList)) {
+#ifdef USE_BARGRAPH
         if (m_barsRenderer) {
             if (auto barSeries = qobject_cast<QBarSeries*>(series))
                 m_barsRenderer->handlePolish(barSeries);
         }
+#endif
 
+#ifdef USE_POINTS
         if (m_pointRenderer) {
+#ifdef USE_LINEGRAPH
             if (auto lineSeries = qobject_cast<QLineSeries *>(series))
                 m_pointRenderer->handlePolish(lineSeries);
+#endif
 
+#ifdef USE_SCATTERGRAPH
             if (auto scatterSeries = qobject_cast<QScatterSeries *>(series))
                 m_pointRenderer->handlePolish(scatterSeries);
+#endif
 
-            if (auto splineSeries = qobject_cast<QSplineSeries *>(series)) {
+#ifdef USE_SPLINEGRAPH
+            if (auto splineSeries = qobject_cast<QSplineSeries *>(series))
                 m_pointRenderer->handlePolish(splineSeries);
-            }
+#endif
         }
+#endif
 
+#ifdef USE_PIEGRAPH
         if (m_pieRenderer) {
             if (auto pieSeries = qobject_cast<QPieSeries *>(series))
                 m_pieRenderer->handlePolish(pieSeries);
         }
+#endif
 
+#ifdef USE_AREAGRAPH
         if (m_areaRenderer) {
             if (auto areaSeries = qobject_cast<QAreaSeries *>(series))
                 m_areaRenderer->handlePolish(areaSeries);
         }
+#endif
     }
 
+#ifdef USE_BARGRAPH
     if (m_barsRenderer) {
         auto &cleanupSeriesList = m_cleanupSeriesList[0];
         m_barsRenderer->afterPolish(cleanupSeriesList);
     }
+#endif
+#ifdef USE_POINTS
     if (m_pointRenderer) {
         auto &cleanupSeriesList = m_cleanupSeriesList[1];
         m_pointRenderer->afterPolish(cleanupSeriesList);
     }
+#endif
+#ifdef USE_AREAGRAPH
     if (m_areaRenderer) {
         auto &cleanupSeriesList = m_cleanupSeriesList[2];
         m_areaRenderer->afterPolish(cleanupSeriesList);
     }
+#endif
+#ifdef USE_PIEGRAPH
     if (m_pieRenderer) {
         auto &cleanupSeriesList = m_cleanupSeriesList[3];
         m_pieRenderer->afterPolish(cleanupSeriesList);
     }
+#endif
 }
 
 void QGraphsView::polishAndUpdate()
@@ -913,6 +1002,21 @@ void QGraphsView::setMarginRight(qreal newMarginRight)
     emit marginRightChanged();
 }
 
+/*!
+    \property QGraphsView::plotArea
+    \since 6.9
+    \brief The rectangle within which the graph is drawn.
+
+    This is the QGraphsView area minus axis areas and margins.
+    \sa marginTop, marginBottom, marginLeft, marginRight
+*/
+/*!
+    \qmlproperty rect GraphsView::plotArea
+    \since 6.9
+    The rectangle within which the graph is drawn.
+    This is the GraphsView area minus axis areas and margins.
+    \sa marginTop, marginBottom, marginLeft, marginRight
+*/
 QRectF QGraphsView::plotArea() const
 {
     return m_plotArea;
@@ -946,27 +1050,52 @@ void QGraphsView::updateAxisAreas()
                  height() - m_marginTop - m_marginBottom };
     m_axisHeight = m_axisLabelsHeight + m_axisXLabelsMargin + m_axisTickersHeight;
     m_axisWidth = m_axisLabelsWidth + m_axisYLabelsMargin + m_axisTickersWidth;
-    float leftPadding = m_axisWidth;
-    float topPadding = 0;
-    m_xAxisArea = { r.x() + leftPadding, r.y() + r.height() - m_axisHeight,
-                    r.width() - m_axisWidth, m_axisHeight };
-    m_xAxisLabelsArea = { m_xAxisArea.x(),
-                          m_xAxisArea.y() + m_axisTickersHeight + m_axisXLabelsMargin,
-                          m_xAxisArea.width(),
-                          m_axisTickersHeight };
-    m_xAxisTickersArea = { m_xAxisArea.x(),
-                           m_xAxisArea.y(),
-                           m_xAxisArea.width(),
-                           m_axisTickersHeight };
-    m_yAxisArea = { r.x(), r.y() + topPadding, m_axisWidth, r.height() - m_axisHeight };
-    m_yAxisLabelsArea = { m_yAxisArea.x(),
-                          m_yAxisArea.y(),
-                          m_axisLabelsWidth,
-                          m_yAxisArea.height() };
-    m_yAxisTickersArea = { m_yAxisArea.x() + m_axisLabelsWidth + m_axisYLabelsMargin,
-                           m_yAxisArea.y(),
-                           m_axisTickersWidth,
-                           m_yAxisArea.height() };
+    float leftPadding = (m_axisY && m_axisY->alignment() == Qt::AlignLeft) ? m_axisWidth : 0;
+    float topPadding = (m_axisX && m_axisX->alignment() == Qt::AlignTop) ? m_axisHeight : 0;
+    if (m_axisX && m_axisX->alignment() == Qt::AlignTop) {
+        m_xAxisArea = { r.x() + leftPadding, r.y(), r.width() - m_axisWidth, m_axisHeight};
+        m_xAxisLabelsArea = { m_xAxisArea.x(),
+                              m_xAxisArea.y(),
+                              m_xAxisArea.width(),
+                              m_axisLabelsHeight };
+        m_xAxisTickersArea = { m_xAxisArea.x(),
+                               m_xAxisArea.y() + m_axisLabelsHeight + m_axisXLabelsMargin,
+                               m_xAxisArea.width(),
+                               m_axisTickersHeight };
+    } else {
+        m_xAxisArea = { r.x() + leftPadding, r.y() + r.height() - m_axisHeight,
+                        r.width() - m_axisWidth, m_axisHeight };
+        m_xAxisLabelsArea = { m_xAxisArea.x(),
+                              m_xAxisArea.y() + m_axisTickersHeight + m_axisXLabelsMargin,
+                              m_xAxisArea.width(),
+                              m_axisTickersHeight };
+        m_xAxisTickersArea = { m_xAxisArea.x(),
+                               m_xAxisArea.y(),
+                               m_xAxisArea.width(),
+                               m_axisTickersHeight };
+    }
+    if (m_axisY && m_axisY->alignment() == Qt::AlignLeft) {
+        m_yAxisArea = { r.x(), r.y() + topPadding, m_axisWidth, r.height() - m_axisHeight };
+        m_yAxisLabelsArea = { m_yAxisArea.x(),
+                              m_yAxisArea.y(),
+                              m_axisLabelsWidth,
+                              m_yAxisArea.height() };
+        m_yAxisTickersArea = { m_yAxisArea.x() + m_axisLabelsWidth + m_axisYLabelsMargin,
+                               m_yAxisArea.y(),
+                               m_axisTickersWidth,
+                               m_yAxisArea.height() };
+    } else {
+        m_yAxisArea = { r.x() + r.width() - m_axisWidth, r.y() + topPadding,
+                        m_axisWidth, r.height() - m_axisHeight };
+        m_yAxisLabelsArea = { m_yAxisArea.x() + m_axisTickersWidth + m_axisYLabelsMargin,
+                              m_yAxisArea.y(),
+                              m_axisLabelsWidth,
+                              m_yAxisArea.height() };
+        m_yAxisTickersArea = { m_yAxisArea.x(),
+                               m_yAxisArea.y(),
+                               m_axisTickersWidth,
+                               m_yAxisArea.height() };
+    }
 }
 
 void QGraphsView::updatePlotArea()
@@ -976,14 +1105,21 @@ void QGraphsView::updatePlotArea()
     qreal y = m_marginTop;
     qreal w = width() - x - m_marginRight;
     qreal h = height() - y - m_marginBottom;
-    x += m_axisWidth;
-    h -= m_axisHeight;
-    w -= m_axisWidth;
+    if (m_axisX && m_axisX->alignment() == Qt::AlignTop)
+        y += m_axisHeight;
+    if (m_axisY && m_axisY->alignment() != Qt::AlignRight)
+        x += m_axisWidth;
+    if (m_axisX)
+        h -= m_axisHeight;
+    if (m_axisY)
+        w -= m_axisWidth;
     w = qMax(w, 0.0);
     h = qMax(h, 0.0);
     QRectF plotArea = QRectF(x, y, w, h);
-    if (plotArea != m_plotArea)
+    if (plotArea != m_plotArea) {
         m_plotArea = plotArea;
+        emit plotAreaChanged();
+    }
 }
 
 /*!
@@ -991,11 +1127,15 @@ void QGraphsView::updatePlotArea()
     \brief X-axis of this view.
 
     The x-axis used for the series inside this view.
+
+    \note Setting the same axis to multiple QGraphsViews is not supported.
 */
 /*!
     \qmlproperty AbstractAxis GraphsView::axisX
     The x-axis used for the series inside this view.
     \sa axisY
+
+    \note Setting the same axis to multiple GraphsViews is not supported.
 */
 
 QAbstractAxis *QGraphsView::axisX() const
@@ -1009,8 +1149,11 @@ void QGraphsView::setAxisX(QAbstractAxis *axis)
         return;
     removeAxis(m_axisX);
     m_axisX = axis;
-    if (axis)
+    if (axis) {
+        if (axis->alignment() != Qt::AlignBottom && axis->alignment() != Qt::AlignTop)
+            axis->setAlignment(Qt::AlignBottom);
         addAxis(axis);
+    }
     emit axisXChanged();
     emit update();
 }
@@ -1020,11 +1163,15 @@ void QGraphsView::setAxisX(QAbstractAxis *axis)
     \brief Y-axis of this view.
 
     The y-axis used for the series inside this view.
+
+    \note Setting the same axis to multiple QGraphsViews is not supported.
 */
 /*!
     \qmlproperty AbstractAxis GraphsView::axisY
     The y-axis used for the series inside this view.
     \sa axisX
+
+    \note Setting the same axis to multiple GraphsViews is not supported.
 */
 
 QAbstractAxis *QGraphsView::axisY() const
@@ -1038,8 +1185,11 @@ void QGraphsView::setAxisY(QAbstractAxis *axis)
         return;
     removeAxis(m_axisY);
     m_axisY = axis;
-    if (axis)
+    if (axis) {
+        if (axis->alignment() != Qt::AlignLeft && axis->alignment() != Qt::AlignRight)
+            axis->setAlignment(Qt::AlignLeft);
         addAxis(axis);
+    }
     emit axisYChanged();
     emit update();
 }
@@ -1076,11 +1226,184 @@ void QGraphsView::setOrientation(Qt::Orientation newOrientation)
     emit update();
 }
 
+/*!
+    \enum QGraphsView::ZoomStyle
+    This enum value describes the zoom style of the graph:
+
+    \value None
+        Zooming is disabled.
+    \value Center
+        Pinch zoom and mouse wheel zoom towards the center of the graph view.
+*/
+
+/*!
+    \property QGraphsView::zoomStyle
+    \brief Zoom style of the GraphsView.
+
+    Determines the zoom style of the QGraphsView. Zooming works by
+    manipulating the QValueAxis zoom property. The default value
+    is \c {QGraphsView::ZoomStyle::None}.
+*/
+/*!
+    \qmlproperty enumeration GraphsView::zoomStyle
+    Determines the zoom style of the GraphsView. Zooming works by
+    manipulating the ValueAxis zoom property. The default value
+    is \c {GraphsView.ZoomStyle.None}.
+
+    \value GraphsView.ZoomStyle.None
+        Zooming is disabled.
+    \value GraphsView.ZoomStyle.Center
+        Pinch zoom and mouse wheel zoom towards the center of the graph view.
+
+*/
+QGraphsView::ZoomStyle QGraphsView::zoomStyle() const
+{
+    return m_zoomStyle;
+}
+
+void QGraphsView::setZoomStyle(ZoomStyle newZoomStyle)
+{
+    if (m_zoomStyle == newZoomStyle)
+        return;
+    m_zoomStyle = newZoomStyle;
+    emit zoomStyleChanged();
+}
+
+/*!
+    \enum QGraphsView::PanStyle
+    This enum value describes the pan style of the graph:
+
+    \value None
+        Panning is disabled.
+    \value Drag
+        Mouse and touch drag pan the view around.
+*/
+
+/*!
+    \property QGraphsView::panStyle
+    \brief Pan style of the GraphsView.
+
+    Determines the pan style of the QGraphsView. Panning works by
+    manipulating the pan property of a QValueAxis.
+    The default value is \c {QGraphsView::PanStyle::None}.
+*/
+/*!
+    \qmlproperty enumeration GraphsView::panStyle
+    Determines the pan style of the GraphsView. Panning works by
+    manipulating the pan property of a ValueAxis.
+    The default value is \c {GraphsView.PanStyle.None}.
+
+    \value GraphsView.PanStyle.None
+        Panning is disabled.
+    \value GraphsView.PanStyle.Drag
+        Mouse and touch drag pan the view around.
+*/
+QGraphsView::PanStyle QGraphsView::panStyle() const
+{
+    return m_panStyle;
+}
+
+void QGraphsView::setPanStyle(PanStyle newPanStyle)
+{
+    if (m_panStyle == newPanStyle)
+        return;
+    m_panStyle = newPanStyle;
+    emit panStyleChanged();
+}
+
+/*!
+    \property QGraphsView::zoomAreaEnabled
+    \brief Enables zoom area
+
+    Zoom area changes mouse and touch dragging to draw a box determined
+    by \c zoomAreaDelegate. Upon release the graph QValueAxis zoom and pan
+    properties are changed so that the view covers only the area intersected
+    by the drawn box.
+    \sa zoomAreaDelegate
+*/
+/*!
+    \qmlproperty bool GraphsView::zoomAreaEnabled
+    Zoom area changes mouse and touch dragging to draw a box determined
+    by \c zoomAreaDelegate. Upon release the graph ValueAxis zoom and pan
+    properties are changed so that the view covers only the area intersected
+    by the drawn box.
+    \sa zoomAreaDelegate
+*/
+bool QGraphsView::zoomAreaEnabled() const
+{
+    return m_zoomAreaEnabled;
+}
+
+void QGraphsView::setZoomAreaEnabled(bool newZoomAreaEnabled)
+{
+    if (m_zoomAreaEnabled == newZoomAreaEnabled)
+        return;
+    m_zoomAreaEnabled = newZoomAreaEnabled;
+    emit zoomAreaEnabledChanged();
+}
+
+/*!
+    \property QGraphsView::zoomAreaDelegate
+    \brief Zoom area visual delegate
+
+    Determines the QML element that is drawn when the user performs a drag
+    motion to zoom in to an area.
+*/
+/*!
+    \qmlproperty Component GraphsView::zoomAreaDelegate
+    Determines the QML element that is drawn when the user performs a drag
+    motion to zoom in to an area.
+*/
+QQmlComponent *QGraphsView::zoomAreaDelegate() const
+{
+    return m_zoomAreaDelegate;
+}
+
+void QGraphsView::setZoomAreaDelegate(QQmlComponent *newZoomAreaDelegate)
+{
+    if (m_zoomAreaDelegate == newZoomAreaDelegate)
+        return;
+    m_zoomAreaDelegate = newZoomAreaDelegate;
+
+    if (m_zoomAreaDelegate) {
+        m_zoomAreaItem = qobject_cast<QQuickItem *>(
+            m_zoomAreaDelegate->create(m_zoomAreaDelegate->creationContext()));
+        m_zoomAreaItem->setParent(this);
+        m_zoomAreaItem->setParentItem(this);
+        m_zoomAreaItem->setVisible(false);
+    }
+
+    emit zoomAreaDelegateChanged();
+}
+
+/*!
+    \property QGraphsView::zoomSensitivity
+    \brief Zoom value change sensitivity
+
+    Determines how fast zoom value changes while zooming.
+*/
+/*!
+    \qmlproperty real GraphsView::zoomSensitivity
+    Determines how fast zoom value changes while zooming.
+*/
+qreal QGraphsView::zoomSensitivity() const
+{
+    return m_zoomSensitivity;
+}
+
+void QGraphsView::setZoomSensitivity(qreal newZoomSensitivity)
+{
+    if (qFuzzyCompare(m_zoomSensitivity, newZoomSensitivity))
+        return;
+    m_zoomSensitivity = newZoomSensitivity;
+    emit zoomSensitivityChanged();
+}
+
 int QGraphsView::getSeriesRendererIndex(QAbstractSeries *series)
 {
     int index = 0;
     if (series) {
-        switch (series->type()) {
+        switch (QAbstractSeriesPrivate::get(series)->type()) {
         case QAbstractSeries::SeriesType::Bar:
             index = 0;
             break;

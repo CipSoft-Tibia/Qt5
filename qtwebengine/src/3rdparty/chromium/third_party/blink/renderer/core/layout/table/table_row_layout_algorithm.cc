@@ -10,7 +10,6 @@
 #include "third_party/blink/renderer/core/layout/constraint_space_builder.h"
 #include "third_party/blink/renderer/core/layout/fragmentation_utils.h"
 #include "third_party/blink/renderer/core/layout/logical_box_fragment.h"
-#include "third_party/blink/renderer/core/layout/out_of_flow_layout_part.h"
 #include "third_party/blink/renderer/core/layout/physical_box_fragment.h"
 #include "third_party/blink/renderer/core/layout/table/layout_table_cell.h"
 #include "third_party/blink/renderer/core/layout/table/table_layout_utils.h"
@@ -44,7 +43,7 @@ const LayoutResult* TableRowLayoutAlgorithm::Layout() {
       [this, &table_data](
           BlockNode cell, const BlockBreakToken* cell_break_token,
           const TableConstraintSpaceData::Cell& cell_data,
-          LayoutUnit row_block_size, absl::optional<LayoutUnit> row_baseline,
+          LayoutUnit row_block_size, std::optional<LayoutUnit> row_baseline,
           bool min_block_size_should_encompass_intrinsic_size) {
         bool has_rowspan = cell_data.rowspan_block_size != kIndefiniteSize;
         LayoutUnit cell_block_size =
@@ -79,10 +78,8 @@ const LayoutResult* TableRowLayoutAlgorithm::Layout() {
 
         if (GetConstraintSpace().HasBlockFragmentation()) {
           SetupSpaceBuilderForFragmentation(
-              GetConstraintSpace(), cell,
-              /* fragmentainer_offset_delta */ LayoutUnit(), &builder,
-              /* is_new_fc */ true,
-              container_builder_.RequiresContentBeforeBreaking());
+              container_builder_, cell,
+              /*fragmentainer_offset_delta=*/LayoutUnit(), &builder);
 
           if (min_block_size_should_encompass_intrinsic_size)
             builder.SetMinBlockSizeShouldEncompassIntrinsicSize();
@@ -130,7 +127,7 @@ const LayoutResult* TableRowLayoutAlgorithm::Layout() {
   HeapVector<ResultWithOffset> results;
   bool has_inflow_break_inside = false;
   auto PlaceCells = [&](LayoutUnit row_block_size,
-                        absl::optional<LayoutUnit> row_baseline) {
+                        std::optional<LayoutUnit> row_baseline) {
     // Reset our state.
     max_cell_block_size = LayoutUnit();
     row_break_before = EBreakBetween::kAuto;
@@ -207,11 +204,11 @@ const LayoutResult* TableRowLayoutAlgorithm::Layout() {
   //
   // We also don't perform baseline alignment if block-fragmentation is
   // present, as the alignment baseline may end up in another fragmentainer.
-  absl::optional<LayoutUnit> row_baseline;
+  std::optional<LayoutUnit> row_baseline;
   if (!has_block_fragmentation) {
     row_baseline = row.baseline;
     if (!row_baseline) {
-      PlaceCells(row.block_size, absl::nullopt);
+      PlaceCells(row.block_size, std::nullopt);
       row_baseline = row_baseline_tabulator.ComputeBaseline(row.block_size);
     }
   }
@@ -236,7 +233,7 @@ const LayoutResult* TableRowLayoutAlgorithm::Layout() {
   if (has_block_fragmentation) {
     // If we've expanded due to fragmentation, relayout with the new block-size.
     if (row.block_size != row_block_size) {
-      PlaceCells(row_block_size, absl::nullopt);
+      PlaceCells(row_block_size, std::nullopt);
     }
 
     for (auto& result : results)
@@ -260,11 +257,8 @@ const LayoutResult* TableRowLayoutAlgorithm::Layout() {
     container_builder_.SetPreviousBreakAfter(row_break_after);
   }
 
-  if (UNLIKELY(InvolvedInBlockFragmentation(container_builder_))) {
-    BreakStatus status = FinishFragmentation(
-        Node(), GetConstraintSpace(),
-        /* trailing_border_padding */ LayoutUnit(),
-        FragmentainerSpaceLeft(GetConstraintSpace()), &container_builder_);
+  if (InvolvedInBlockFragmentation(container_builder_)) [[unlikely]] {
+    BreakStatus status = FinishFragmentation(&container_builder_);
 
     // TODO(mstensho): Deal with early-breaks.
     DCHECK_EQ(status, BreakStatus::kContinue);
@@ -281,7 +275,7 @@ const LayoutResult* TableRowLayoutAlgorithm::Layout() {
   container_builder_.SetBaselines(row_baseline_tabulator.ComputeBaseline(
       container_builder_.FragmentBlockSize()));
 
-  OutOfFlowLayoutPart(Node(), GetConstraintSpace(), &container_builder_).Run();
+  container_builder_.HandleOofsAndSpecialDescendants();
   return container_builder_.ToBoxFragment();
 }
 

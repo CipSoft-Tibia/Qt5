@@ -72,7 +72,7 @@ struct SandboxConfig {
 // Prevent incorrect indentation due to the preprocessor lines within `({...})`:
 // clang-format off
 constexpr auto kMinimalServices = base::make_span((const char* const[]){
-    // TODO(crbug.com/1286960): Remove this and/or intl below if an alternative
+    // TODO(crbug.com/40815933): Remove this and/or intl below if an alternative
     // solution does not require access to the service in all processes. For now
     // these services are made available everywhere because they are required by
     // base::SysInfo.
@@ -98,10 +98,11 @@ constexpr SandboxConfig kMinimalConfig = {
 
 constexpr SandboxConfig kGpuConfig = {
     base::make_span((const char* const[]){
-        // TODO(crbug.com/1224707): Use the fuchsia.scheduler API instead.
+        // TODO(crbug.com/42050308): Use the fuchsia.scheduler API instead.
         fuchsia::media::ProfileProvider::Name_,
         fuchsia::mediacodec::CodecFactory::Name_,
         fuchsia::sysmem::Allocator::Name_,
+        fuchsia::sysmem2::Allocator::Name_,
         "fuchsia.vulkan.loader.Loader",
         fuchsia::tracing::provider::Registry::Name_,
         fuchsia::ui::composition::Allocator::Name_,
@@ -124,10 +125,11 @@ constexpr SandboxConfig kRendererConfig = {
     base::make_span((const char* const[]){
         fuchsia::fonts::Provider::Name_,
         fuchsia::kernel::VmexResource::Name_,
-        // TODO(crbug.com/1224707): Use the fuchsia.scheduler API instead.
+        // TODO(crbug.com/42050308): Use the fuchsia.scheduler API instead.
         fuchsia::media::ProfileProvider::Name_,
         fuchsia::memorypressure::Provider::Name_,
         fuchsia::sysmem::Allocator::Name_,
+        fuchsia::sysmem2::Allocator::Name_,
         fuchsia::ui::composition::Allocator::Name_,
     }),
     0,
@@ -137,6 +139,7 @@ constexpr SandboxConfig kVideoCaptureConfig = {
     base::make_span((const char* const[]){
         fuchsia::camera3::DeviceWatcher::Name_,
         fuchsia::sysmem::Allocator::Name_,
+        fuchsia::sysmem2::Allocator::Name_,
     }),
     0,
 };
@@ -172,6 +175,7 @@ const SandboxConfig* GetConfigForSandboxType(sandbox::mojom::Sandbox type) {
     case sandbox::mojom::Sandbox::kService:
     case sandbox::mojom::Sandbox::kSpeechRecognition:
     case sandbox::mojom::Sandbox::kUtility:
+    case sandbox::mojom::Sandbox::kVideoEffects:
       return &kMinimalConfig;
   }
 }
@@ -257,9 +261,11 @@ void SandboxPolicyFuchsia::UpdateLaunchOptionsForSandbox(
   options->paths_to_clone.push_back(
       base::FilePath(base::kPackageRootDirectoryPath));
 
-  // If /config/data/tzdata/icu/ exists then it contains up-to-date timezone
+  // If /config/tzdata/icu/ exists then it contains up-to-date timezone
   // data which should be provided to all sub-processes, for consistency.
-  const auto kIcuTimezoneDataPath = base::FilePath("/config/data/tzdata/icu");
+  // LINT.IfChange(icu_time_zone_data_path)
+  const auto kIcuTimezoneDataPath = base::FilePath("/config/tzdata/icu");
+  // LINT.ThenChange(//base/i18n/icu_util.cc:icu_time_zone_data_path)
   static bool icu_timezone_data_exists = base::PathExists(kIcuTimezoneDataPath);
   if (icu_timezone_data_exists) {
     options->paths_to_clone.push_back(kIcuTimezoneDataPath);

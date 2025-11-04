@@ -2,6 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#ifdef UNSAFE_BUFFERS_BUILD
+// TODO(crbug.com/40285824): Remove this and convert code to safer constructs.
+#pragma allow_unsafe_buffers
+#endif
+
 #include "components/exo/wayland/wayland_display_observer.h"
 
 #include <aura-shell-server-protocol.h>
@@ -56,7 +61,7 @@ class WaylandDisplayObserverTest : public test::ExoTestBase {
         wl_resource_create(client_, &wl_output_interface, 2, 0);
     xdg_output_resource_ =
         wl_resource_create(client_, &zxdg_output_v1_interface, 2, 0);
-    output_ = std::make_unique<WaylandDisplayOutput>(GetPrimaryDisplay().id());
+    output_ = std::make_unique<WaylandDisplayOutput>(GetPrimaryDisplay());
     handler_ = std::make_unique<::testing::NiceMock<MockWaylandDisplayHandler>>(
         output_.get(), wl_output_resource_);
     handler_->OnXdgOutputCreated(xdg_output_resource_);
@@ -114,7 +119,7 @@ TEST_F(WaylandDisplayObserverTest, SendLogicalPositionAndSize) {
   EXPECT_CALL(*handler_, XdgOutputSendLogicalPosition(kExpectedOrigin))
       .Times(1);
   EXPECT_CALL(*handler_, XdgOutputSendLogicalSize(kExpectedSize)).Times(1);
-  handler_->OnDisplayMetricsChanged(display, kAllChanges);
+  handler_->SendDisplayMetricsChanges(display, kAllChanges);
 }
 
 }  // namespace

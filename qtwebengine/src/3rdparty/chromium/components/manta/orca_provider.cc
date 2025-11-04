@@ -5,7 +5,9 @@
 #include "components/manta/orca_provider.h"
 
 #include <memory>
+#include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "base/check.h"
@@ -14,32 +16,27 @@
 #include "base/time/time.h"
 #include "base/values.h"
 #include "components/endpoint_fetcher/endpoint_fetcher.h"
+#include "components/manta/base_provider.h"
 #include "components/manta/features.h"
+#include "components/manta/manta_service_callbacks.h"
 #include "components/manta/manta_status.h"
 #include "components/manta/proto/manta.pb.h"
 #include "components/signin/public/base/consent_level.h"
 #include "components/signin/public/identity_manager/identity_manager.h"
 #include "net/traffic_annotation/network_traffic_annotation.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 
 namespace manta {
 
 namespace {
 
 constexpr char kOauthConsumerName[] = "manta_orca";
-constexpr char kHttpMethod[] = "POST";
-constexpr char kHttpContentType[] = "application/x-protobuf";
-constexpr char kAutopushEndpointUrl[] =
-    "https://autopush-aratea-pa.sandbox.googleapis.com/generate";
-constexpr char kProdEndpointUrl[] = "https://aratea-pa.googleapis.com/generate";
-constexpr char kOAuthScope[] = "https://www.googleapis.com/auth/mdi.aratea";
-constexpr base::TimeDelta kTimeoutMs = base::Seconds(30);
+constexpr base::TimeDelta kTimeout = base::Seconds(30);
 
 using Tone = proto::RequestConfig::Tone;
 
-absl::optional<Tone> GetTone(const std::string& tone) {
+std::optional<Tone> GetTone(const std::string& tone) {
   static constexpr auto tone_map =
-      base::MakeFixedFlatMap<base::StringPiece, Tone>({
+      base::MakeFixedFlatMap<std::string_view, Tone>({
           {"UNSPECIFIED", proto::RequestConfig::UNSPECIFIED},
           {"SHORTEN", proto::RequestConfig::SHORTEN},
           {"ELABORATE", proto::RequestConfig::ELABORATE},
@@ -48,31 +45,27 @@ absl::optional<Tone> GetTone(const std::string& tone) {
           {"EMOJIFY", proto::RequestConfig::EMOJIFY},
           {"FREEFORM_REWRITE", proto::RequestConfig::FREEFORM_REWRITE},
           {"FREEFORM_WRITE", proto::RequestConfig::FREEFORM_WRITE},
+          {"PROOFREAD", proto::RequestConfig::PROOFREAD},
 
       });
-  const auto* iter = tone_map.find(tone);
+  const auto iter = tone_map.find(tone);
 
-  return iter != tone_map.end() ? absl::optional<Tone>(iter->second)
-                                : absl::nullopt;
+  return iter != tone_map.end() ? std::optional<Tone>(iter->second)
+                                : std::nullopt;
 }
 
-std::string GetEndpointUrl() {
-  return features::IsOrcaUseProdServerEnabled() ? kProdEndpointUrl
-                                                : kAutopushEndpointUrl;
-}
-
-absl::optional<proto::Request> ComposeRequest(
+std::optional<proto::Request> ComposeRequest(
     const std::map<std::string, std::string>& input) {
   const auto& tone_iter = input.find("tone");
   if (tone_iter == input.end()) {
     DVLOG(1) << "Tone not found in the parameters";
-    return absl::nullopt;
+    return std::nullopt;
   }
 
   auto tone = GetTone(tone_iter->second);
-  if (tone == absl::nullopt) {
+  if (tone == std::nullopt) {
     DVLOG(1) << "Invalid tone";
-    return absl::nullopt;
+    return std::nullopt;
   }
 
   proto::Request request;
@@ -110,8 +103,9 @@ void OnServerResponseOrErrorReceived(
   }
 
   if (output_data_list.size() == 0) {
-    std::move(callback).Run(base::Value::Dict(),
-                            {MantaStatusCode::kBlockedOutputs, std::string()});
+    std::move(callback).Run(
+        base::Value::Dict(),
+        {MantaStatusCode::kBlockedOutputs, /*message=*/std::string()});
     return;
   }
 
@@ -124,70 +118,68 @@ void OnServerResponseOrErrorReceived(
 
 OrcaProvider::OrcaProvider(
     scoped_refptr<network::SharedURLLoaderFactory> url_loader_factory,
-    signin::IdentityManager* identity_manager)
-    : url_loader_factory_(url_loader_factory) {
-  CHECK(identity_manager);
-  identity_manager_observation_.Observe(identity_manager);
-}
+    signin::IdentityManager* identity_manager,
+    const ProviderParams& provider_params)
+    : BaseProvider(url_loader_factory, identity_manager, provider_params) {}
 
 OrcaProvider::~OrcaProvider() = default;
 
 void OrcaProvider::Call(const std::map<std::string, std::string>& input,
                         MantaGenericCallback done_callback) {
-  if (!identity_manager_observation_.IsObserving()) {
-    std::move(done_callback)
-        .Run(base::Value::Dict(), {MantaStatusCode::kNoIdentityManager});
-    return;
-  }
-
-  absl::optional<proto::Request> request = ComposeRequest(input);
-  if (request == absl::nullopt) {
+  std::optional<proto::Request> request = ComposeRequest(input);
+  if (request == std::nullopt) {
     std::move(done_callback)
         .Run(base::Value::Dict(),
-             {MantaStatusCode::kInvalidInput, std::string()});
+             {MantaStatusCode::kInvalidInput, /*message=*/std::string()});
     return;
   }
 
-  std::string serialized_request;
-  request.value().SerializeToString(&serialized_request);
+  const net::NetworkTrafficAnnotationTag traffic_annotation =
+      net::DefineNetworkTrafficAnnotation("help_me_write_request", R"(
+        semantics {
+          sender: "Help Me Write"
+          description:
+            "ChromeOS can help you write and rewrite text by sending a "
+            "freeform text query, along with any selected text, to Google's "
+            "servers. Google returns suggested text which you may choose to "
+            "insert into the selected text field."
+          trigger: "User right clicks within an editable text field and "
+                   "chooses 'Help me write' and then chooses a preset query or "
+                   "enters a free-form text query."
+          internal {
+            contacts {
+                email: "cros-manta-team@google.com"
+            }
+          }
+          user_data {
+            type: ACCESS_TOKEN
+            type: USER_CONTENT
+          }
+          data: "A preset or free-form user query, along with any text a user "
+                "has selected in the editable text field. Query metadata is "
+                "also sent including the user's preferred input language."
+          destination: GOOGLE_OWNED_SERVICE
+          last_reviewed: "2024-03-15"
+        }
+        policy {
+          cookies_allowed: NO
+          setting:
+            "You can enable or disable this feature via 'Help me write' in "
+            "ChromeOS's settings under 'Inputs > Suggestions'."
+          chrome_policy {
+            OrcaEnabled {
+                OrcaEnabled: false
+            }
+          }
+        })");
 
-  std::unique_ptr<EndpointFetcher> fetcher = CreateEndpointFetcher(
-      GURL{GetEndpointUrl()}, {kOAuthScope}, serialized_request);
-
-  EndpointFetcher* const fetcher_ptr = fetcher.get();
-  MantaProtoResponseCallback internal_callback = base::BindOnce(
-      &OnServerResponseOrErrorReceived, std::move(done_callback));
-  fetcher_ptr->Fetch(base::BindOnce(&OnEndpointFetcherComplete,
-                                    std::move(internal_callback),
-                                    std::move(fetcher)));
-}
-
-void OrcaProvider::OnIdentityManagerShutdown(
-    signin::IdentityManager* identity_manager) {
-  if (identity_manager_observation_.IsObservingSource(identity_manager)) {
-    identity_manager_observation_.Reset();
-  }
-}
-
-std::unique_ptr<EndpointFetcher> OrcaProvider::CreateEndpointFetcher(
-    const GURL& url,
-    const std::vector<std::string>& scopes,
-    const std::string& post_data) {
-  CHECK(identity_manager_observation_.IsObserving());
-  // TODO(b:288019728): MISSING_TRAFFIC_ANNOTATION should be resolved before
-  // launch.
-  return std::make_unique<EndpointFetcher>(
-      /*url_loader_factory=*/url_loader_factory_,
-      /*oauth_consumer_name=*/kOauthConsumerName,
-      /*url=*/url,
-      /*http_method=*/kHttpMethod,
-      /*content_type=*/kHttpContentType,
-      /*scopes=*/scopes,
-      /*timeout_ms=*/kTimeoutMs.InMilliseconds(),
-      /*post_data=*/post_data,
-      /*annotation_tag=*/MISSING_TRAFFIC_ANNOTATION,
-      /*identity_manager=*/identity_manager_observation_.GetSource(),
-      /*consent_level=*/signin::ConsentLevel::kSignin);
+  RequestInternal(
+      GURL{GetProviderEndpoint(features::IsOrcaUseProdServerEnabled())},
+      kOauthConsumerName, traffic_annotation, request.value(),
+      MantaMetricType::kOrca,
+      base::BindOnce(&OnServerResponseOrErrorReceived,
+                     std::move(done_callback)),
+      kTimeout);
 }
 
 }  // namespace manta

@@ -56,7 +56,7 @@ public:
 
     const QMetaObject *metaObject() const override;
     int qt_metacall(QMetaObject::Call call, int id, void **v) override;
-    Q_DECL_HIDDEN_STATIC_METACALL static void qt_static_metacall(QObject *_o, QMetaObject::Call _c, int _id, void **_a);
+    Q_DECL_HIDDEN static void qt_static_metacall(QObject *_o, QMetaObject::Call _c, int _id, void **_a);
     void *qt_metacast(const char *) override;
 
 protected:
@@ -74,6 +74,11 @@ private:
     Q_DECLARE_PRIVATE(QAxWidget)
 
     friend class QAxClientSite;
+
+#ifndef QT_NO_DATASTREAM
+    friend QDataStream &operator>>(QDataStream &s, QAxWidget &w);
+    friend QDataStream &operator<<(QDataStream &s, const QAxWidget &w);
+#endif
 };
 
 template <> inline QAxWidget *qobject_cast<QAxWidget*>(const QObject *o)

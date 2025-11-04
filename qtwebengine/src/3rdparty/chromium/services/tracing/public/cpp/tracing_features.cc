@@ -34,8 +34,8 @@ BASE_FEATURE(kTracingServiceInProcess,
 #if BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_FUCHSIA)
 BASE_FEATURE(kEnablePerfettoSystemTracing,
              "EnablePerfettoSystemTracing",
-             // TODO(crbug.com/1364196): Read from structured config on Fuchsia.
-             base::FEATURE_ENABLED_BY_DEFAULT);
+             // TODO(crbug.com/42050521): Read from structured config on Fuchsia.
+             base::FEATURE_ENABLED_BY_DEFAULT
 #else
 BASE_FEATURE(kEnablePerfettoSystemTracing,
              "EnablePerfettoSystemTracing",

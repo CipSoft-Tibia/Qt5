@@ -5,7 +5,7 @@
 import {assert} from 'chrome://resources/js/assert.js';
 import {CustomElement} from 'chrome://resources/js/custom_element.js';
 
-import {AngleFeature, BrowserBridge, ClientInfo, FeatureStatus, Problem} from './browser_bridge.js';
+import type {AngleFeature, BrowserBridge, ClientInfo, FeatureStatus, Problem} from './browser_bridge.js';
 import {getTemplate} from './info_view.html.js';
 import {VulkanInfo} from './vulkan_info.js';
 
@@ -309,12 +309,12 @@ function safeString(value: any) {
 
 const kSections = {
   featureStatus: ['Graphics Feature Status', 'ul'],
+  clientInfo: ['Version Information', 'div'],
+  basicInfo: ['Driver Information', 'div'],
   workarounds: ['Driver Bug Workarounds', 'ul'],
   problems: ['Problems Detected', 'ul'],
   angleFeatures: ['ANGLE Features', 'ul'],
   dawnInfo: ['Dawn Info', 'ul'],
-  clientInfo: ['Version Information', 'div'],
-  basicInfo: ['Driver Information', 'div'],
   compositorInfo: ['Compositor Information', 'div'],
   gpuMemoryBufferInfo: ['GpuMemoryBuffers Status', 'div'],
   displayInfo: ['Display(s) Information', 'div'],
@@ -681,6 +681,7 @@ export class InfoViewElement extends CustomElement {
           'Direct Rendering Display Compositor',
       'webgpu': 'WebGPU',
       'skia_graphite': 'Skia Graphite',
+      'webnn': 'WebNN',
     };
 
     const statusMap: Record<string, {label: string, class: string}> = {

@@ -35,7 +35,7 @@ class QQmlTypeLoaderNetworkReplyProxy : public QObject
 {
     Q_OBJECT
 public:
-    QQmlTypeLoaderNetworkReplyProxy(QQmlTypeLoader *l);
+    QQmlTypeLoaderNetworkReplyProxy(QQmlTypeLoader *l, QObject *parent);
 
 public Q_SLOTS:
     void finished();

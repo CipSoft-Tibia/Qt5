@@ -51,7 +51,7 @@ class GL_EXPORT GLShareGroup : public base::RefCounted<GLShareGroup> {
 
   // References to GLContext are by raw pointer to avoid a reference count
   // cycle.
-  typedef std::set<GLContext*> ContextSet;
+  typedef std::set<raw_ptr<GLContext, SetExperimental>> ContextSet;
   ContextSet contexts_;
 
   raw_ptr<GLContext> shared_context_ = nullptr;

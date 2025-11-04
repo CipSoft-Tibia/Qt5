@@ -249,7 +249,6 @@ QSSGRenderImageTexture QSSGBufferManager::loadRenderImage(const QSSGRenderImage 
         if (it != renderExtensionTexture.end()) {
             it->usageCounts[currentLayer]++;
             result = it->renderImageTexture;
-            increaseMemoryStat(result.m_texture);
         }
     }
     return result;
@@ -378,6 +377,10 @@ QRhiTexture::Format QSSGBufferManager::toRhiFormat(const QSSGRenderTextureFormat
         return QRhiTexture::R32F;
     case QSSGRenderTextureFormat::RGBE8:
         return QRhiTexture::RGBA8;
+    case QSSGRenderTextureFormat::R32UI:
+        return QRhiTexture::R32UI;
+    case QSSGRenderTextureFormat::RGBA32UI:
+        return QRhiTexture::RGBA32UI;
     case QSSGRenderTextureFormat::RGB_DXT1:
         return QRhiTexture::BC1;
     case QSSGRenderTextureFormat::RGBA_DXT3:
@@ -387,32 +390,46 @@ QRhiTexture::Format QSSGBufferManager::toRhiFormat(const QSSGRenderTextureFormat
     case QSSGRenderTextureFormat::RGBA8_ETC2_EAC:
         return QRhiTexture::ETC2_RGBA8;
     case QSSGRenderTextureFormat::RGBA_ASTC_4x4:
+    case QSSGRenderTextureFormat::SRGB8_Alpha8_ASTC_4x4:
         return QRhiTexture::ASTC_4x4;
     case QSSGRenderTextureFormat::RGBA_ASTC_5x4:
+    case QSSGRenderTextureFormat::SRGB8_Alpha8_ASTC_5x4:
         return QRhiTexture::ASTC_5x4;
     case QSSGRenderTextureFormat::RGBA_ASTC_5x5:
+    case QSSGRenderTextureFormat::SRGB8_Alpha8_ASTC_5x5:
         return QRhiTexture::ASTC_5x5;
     case QSSGRenderTextureFormat::RGBA_ASTC_6x5:
+    case QSSGRenderTextureFormat::SRGB8_Alpha8_ASTC_6x5:
         return QRhiTexture::ASTC_6x5;
     case QSSGRenderTextureFormat::RGBA_ASTC_6x6:
+    case QSSGRenderTextureFormat::SRGB8_Alpha8_ASTC_6x6:
         return QRhiTexture::ASTC_6x6;
     case QSSGRenderTextureFormat::RGBA_ASTC_8x5:
+    case QSSGRenderTextureFormat::SRGB8_Alpha8_ASTC_8x5:
         return QRhiTexture::ASTC_8x5;
     case QSSGRenderTextureFormat::RGBA_ASTC_8x6:
+    case QSSGRenderTextureFormat::SRGB8_Alpha8_ASTC_8x6:
         return QRhiTexture::ASTC_8x6;
     case QSSGRenderTextureFormat::RGBA_ASTC_8x8:
+    case QSSGRenderTextureFormat::SRGB8_Alpha8_ASTC_8x8:
         return QRhiTexture::ASTC_8x8;
     case QSSGRenderTextureFormat::RGBA_ASTC_10x5:
+    case QSSGRenderTextureFormat::SRGB8_Alpha8_ASTC_10x5:
         return QRhiTexture::ASTC_10x5;
     case QSSGRenderTextureFormat::RGBA_ASTC_10x6:
+    case QSSGRenderTextureFormat::SRGB8_Alpha8_ASTC_10x6:
         return QRhiTexture::ASTC_10x6;
     case QSSGRenderTextureFormat::RGBA_ASTC_10x8:
+    case QSSGRenderTextureFormat::SRGB8_Alpha8_ASTC_10x8:
         return QRhiTexture::ASTC_10x8;
     case QSSGRenderTextureFormat::RGBA_ASTC_10x10:
+    case QSSGRenderTextureFormat::SRGB8_Alpha8_ASTC_10x10:
         return QRhiTexture::ASTC_10x10;
     case QSSGRenderTextureFormat::RGBA_ASTC_12x10:
+    case QSSGRenderTextureFormat::SRGB8_Alpha8_ASTC_12x10:
         return QRhiTexture::ASTC_12x10;
     case QSSGRenderTextureFormat::RGBA_ASTC_12x12:
+    case QSSGRenderTextureFormat::SRGB8_Alpha8_ASTC_12x12:
         return QRhiTexture::ASTC_12x12;
 
 
@@ -1565,18 +1582,14 @@ void QSSGBufferManager::cleanupUnreferencedBuffers(quint32 frameId, QSSGRenderLa
     // Textures from render extensions
     auto renderExtensionTextureKeyIterator = renderExtensionTexture.cbegin();
     while (renderExtensionTextureKeyIterator != renderExtensionTexture.cend()) {
-        if (isUnused(renderExtensionTextureKeyIterator.value().usageCounts)) {
-            auto rhiTexture = renderExtensionTextureKeyIterator.value().renderImageTexture.m_texture;
-            if (rhiTexture) {
-                if (QSSGBufferManagerStat::enabled(QSSGBufferManagerStat::Level::Debug))
-                   qDebug() << "- releaseTexture: " << (*renderExtensionTextureKeyIterator).renderImageTexture.m_texture << currentLayer;
-                decreaseMemoryStat(rhiTexture);
-                // NOTE: We don't own the texture, it's own by the user, so don't release.
-            }
+        // We do not own the textures, so we just keep track of usage, but
+        // if the texture is no longer valid it means that the extension
+        // has unregistered it, so we can remove it from the map.
+        auto rhiTexture = renderExtensionTextureKeyIterator.value().renderImageTexture.m_texture;
+        if (!rhiTexture)
             renderExtensionTextureKeyIterator = renderExtensionTexture.erase(renderExtensionTextureKeyIterator);
-        } else {
+        else
             ++renderExtensionTextureKeyIterator;
-        }
     }
 
     // Resource Tracking Debug Code
@@ -1884,8 +1897,7 @@ void QSSGBufferManager::registerExtensionResult(const QSSGRenderExtension &exten
         flags.setLinear(!isSRGB);
         const bool isRGBA8 = (texture->format() == QRhiTexture::Format::RGBA8);
         flags.setRgbe8(isRGBA8);
-        const quint32 usageCount = 1 /* At least '1' as long as a texture is registered */;
-        renderExtensionTexture.insert(&extensions, ImageData { QSSGRenderImageTexture{ texture, mipLevels, flags }, {}, usageCount });
+        renderExtensionTexture.insert(&extensions, ImageData { QSSGRenderImageTexture{ texture, mipLevels, flags }, {}, 0 /* version */ });
     } else {
         renderExtensionTexture.insert(&extensions, {});
     }
@@ -2005,11 +2017,16 @@ static inline quint64 textureMemorySize(QRhiTexture *texture)
         R16F,
         R32F,
         RGB10A2,
+        R8UI,
+        R32UI,
+        RG32UI,
+        RGBA32UI,
         D16,
         D24,
         D24S8,
-        D32F,*/
-    static const quint64 pixelSizes[] = {0, 4, 4, 1, 2, 2, 4, 1, 2, 4, 2, 4, 4, 2, 4, 4, 4};
+        D32F,
+        D32FS8*/
+    static const quint64 pixelSizes[] = {0, 4, 4, 1, 2, 2, 4, 1, 2, 4, 2, 4, 4, 1, 4, 8, 16, 2, 4, 4, 4, 8};
     /*
         BC1,
         BC2,
@@ -2022,7 +2039,7 @@ static inline quint64 textureMemorySize(QRhiTexture *texture)
         ETC2_RGB8A1,
         ETC2_RGBA8,*/
     static const quint64 blockSizes[] = {8, 16, 16, 8, 16, 16, 16, 8, 8, 16};
-    Q_STATIC_ASSERT_X(QRhiTexture::BC1 == 17 && QRhiTexture::ETC2_RGBA8 == 26,
+    Q_STATIC_ASSERT_X(QRhiTexture::BC1 == 22 && QRhiTexture::ETC2_RGBA8 == 31,
                       "QRhiTexture format constant value missmatch.");
     if (format < QRhiTexture::BC1)
         s *= pixelSizes[format];

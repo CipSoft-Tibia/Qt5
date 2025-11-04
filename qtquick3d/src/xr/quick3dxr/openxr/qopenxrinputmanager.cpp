@@ -13,6 +13,8 @@
 
 #include <private/qquick3djoint_p.h>
 
+#include <QtGui/qquaternion.h>
+
 QT_BEGIN_NAMESPACE
 
 Q_DECLARE_LOGGING_CATEGORY(lcQuick3DXr);
@@ -514,13 +516,30 @@ void QQuick3DXrInputManagerPrivate::pollActions()
         else
             qWarning("Failed to get action state pose");
 
-        // TODO handle any output as well here (haptics)
     //    XrAction gripPoseAction{XR_NULL_HANDLE};
     //    XrAction aimPoseAction{XR_NULL_HANDLE};
     //    XrAction hapticAction{XR_NULL_HANDLE};
 
-    }
+        const QList<QPointer<QQuick3DXrHapticFeedback>> hapticOutputData = QQuick3DXrActionMapper::getHapticEffects(static_cast<QQuick3DXrInputAction::Hand>(hand));
 
+        for (auto &hapticFeedback : hapticOutputData) {
+            const bool triggered = hapticFeedback->testAndClear();
+            if (triggered) {
+                if (auto *hapticEffect = qobject_cast<QQuick3DXrSimpleHapticEffect*>(hapticFeedback->hapticEffect())) {
+                    XrHapticVibration vibration {XR_TYPE_HAPTIC_VIBRATION, nullptr, 0, 0, 0};
+                    vibration.amplitude = hapticEffect->amplitude();
+                    vibration.duration = hapticEffect->duration() * 1000000; // Change from milliseconds to nanoseconds
+                    vibration.frequency = hapticEffect->frequency();
+
+                    XrHapticActionInfo hapticActionInfo {XR_TYPE_HAPTIC_ACTION_INFO, nullptr, m_handActions.hapticAction, m_handSubactionPath[hand]};
+
+                    if (!checkXrResult(xrApplyHapticFeedback(m_session, &hapticActionInfo, (const XrHapticBaseHeader*)&vibration))) {
+                        qWarning("Failed to trigger haptic feedback");
+                    }
+                }
+            }
+        }
+    }
 }
 
 void QQuick3DXrInputManagerPrivate::updatePoses(XrTime predictedDisplayTime, XrSpace appSpace)

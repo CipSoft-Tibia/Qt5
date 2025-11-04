@@ -2,15 +2,16 @@ Version: 2
 Configurations:
 -
     Id: 'webassembly-linux-thread-asyncify'
-    Template: 'qtci-linux-openSUSE-15.5-x86_64-52'
+    Template: 'qtci-linux-openSUSE-15.6-x86_64-51'
     Target os: 'WebAssembly'
     Compiler: 'GCC'
-    Platform dependency: 'opensuse-15.5-developer-build'
-    Features: ['Sccache', 'DoNotRunTests', 'UseConfigure']
+    Platform dependency: 'opensuse-15.6-developer-build'
+    Features: ['DoNotRunTests', 'UseConfigure']
     Environment variables: [
         'EM_CONFIG={{.Env.EMSDK}}/.emscripten',
         "TARGET_CONFIGURE_ARGS=-release -platform wasm-emscripten -nomake examples -feature-thread \
-        -DQT_QMAKE_DEVICE_OPTIONS=\"QT_EMSCRIPTEN_ASYNCIFY=1\""
+         -feature-exceptions -DQT_QMAKE_DEVICE_OPTIONS=\"QT_EMSCRIPTEN_ASYNCIFY=1\"",
+        'HEADLESS_CHROME_FOR_TESTING=true'
     ]
 -
     Id: 'webassembly-windows'
@@ -19,7 +20,7 @@ Configurations:
     Compiler: 'Mingw'
     Target compiler: 'Clang'
     Platform dependency: 'windows-10_22h2-mingw13'
-    Features: ['Packaging', 'Sccache', 'DisableTests', 'UseConfigure', 'GenerateSBOM', 'VerifySBOM']
+    Features: ['Packaging','DisableTests', 'UseConfigure', 'GenerateSBOM', 'VerifySBOM']
     Environment variables: [
         'Path={{.Env.EMSDK_PATH}};{{.Env.MINGW_PATH}}\bin;{{.Env.Path}}',
         'EM_CONFIG={{.Env.EMSDK}}/.emscripten',
@@ -29,14 +30,27 @@ Configurations:
     ]
 -
     Id: 'webassembly-linux-thread'
-    Template: 'qtci-linux-openSUSE-15.5-x86_64-52'
+    Template: 'qtci-linux-openSUSE-15.6-x86_64-51'
     Target os: 'WebAssembly'
     Compiler: 'GCC'
-    Platform dependency: 'opensuse-15.5-developer-build'
-    Features: ['Packaging', 'Sccache', 'DisableTests', 'UseConfigure', 'GenerateSBOM', 'VerifySBOM']
+    Platform dependency: 'opensuse-15.6-developer-build'
+    Features: ['Packaging', 'DisableTests', 'UseConfigure', 'GenerateSBOM', 'VerifySBOM']
     Environment variables: [
         'EM_CONFIG={{.Env.EMSDK}}/.emscripten',
         'TARGET_CONFIGURE_ARGS=-release -platform wasm-emscripten -nomake examples -feature-thread',
+        'NON_QTBASE_TARGET_CMAKE_ARGS=-DQT_ADDITIONAL_HOST_PACKAGES_PREFIX_PATH=/usr/local -DQT_PROTOBUF_WELL_KNOWN_TYPES_PROTO_DIR=/usr/local/include',
+        'TARGET_CMAKE_ARGS=-DQT_GENERATE_WRAPPER_SCRIPTS_FOR_ALL_HOSTS=ON'
+    ]
+-
+    Id: 'webassembly-linux-shared'
+    Template: 'qtci-linux-openSUSE-15.6-x86_64-51'
+    Target os: 'WebAssembly'
+    Compiler: 'GCC'
+    Platform dependency: 'opensuse-15.6-developer-build'
+    Features: ['DisableTests', 'UseConfigure', 'GenerateSBOM', 'VerifySBOM']
+    Environment variables: [
+        'EM_CONFIG={{.Env.EMSDK}}/.emscripten',
+        'TARGET_CONFIGURE_ARGS=-release -platform wasm-emscripten -no-feature-thread -nomake tests -nomake examples -shared',
         'NON_QTBASE_TARGET_CMAKE_ARGS=-DQT_ADDITIONAL_HOST_PACKAGES_PREFIX_PATH=/usr/local -DQT_PROTOBUF_WELL_KNOWN_TYPES_PROTO_DIR=/usr/local/include',
         'TARGET_CMAKE_ARGS=-DQT_GENERATE_WRAPPER_SCRIPTS_FOR_ALL_HOSTS=ON'
     ]

@@ -23,8 +23,10 @@
 #include "QtCore/qhash.h"
 #include "QtCore/qdatetime.h"
 #include "QtCore/qxmlstream.h"
+#include "QtCore/qsharedpointer.h"
 #include "qsvgstyle_p.h"
 #include "qsvgfont_p.h"
+#include "private/qsvganimator_p.h"
 
 QT_BEGIN_NAMESPACE
 
@@ -36,12 +38,15 @@ class QTransform;
 class Q_SVG_EXPORT QSvgTinyDocument : public QSvgStructureNode
 {
 public:
-    static QSvgTinyDocument *load(const QString &file, QtSvg::Options options = {});
-    static QSvgTinyDocument *load(const QByteArray &contents, QtSvg::Options options = {});
-    static QSvgTinyDocument *load(QXmlStreamReader *contents, QtSvg::Options options = {});
+    static QSvgTinyDocument *load(const QString &file, QtSvg::Options options = {},
+                                  QtSvg::AnimatorType type = QtSvg::AnimatorType::Automatic);
+    static QSvgTinyDocument *load(const QByteArray &contents, QtSvg::Options options = {},
+                                  QtSvg::AnimatorType type = QtSvg::AnimatorType::Automatic);
+    static QSvgTinyDocument *load(QXmlStreamReader *contents, QtSvg::Options options = {},
+                                  QtSvg::AnimatorType type = QtSvg::AnimatorType::Automatic);
     static bool isLikelySvg(QIODevice *device, bool *isCompressed = nullptr);
 public:
-    QSvgTinyDocument(QtSvg::Options options);
+    QSvgTinyDocument(QtSvg::Options options, QtSvg::AnimatorType type);
     ~QSvgTinyDocument();
     Type type() const override;
 
@@ -88,6 +93,8 @@ public:
     void setCurrentFrame(int);
     void setFramesPerSecond(int num);
 
+    QSharedPointer<QSvgAbstractAnimator> animator() const;
+
 private:
     void mapSourceToTarget(QPainter *p, const QRectF &targetRect, const QRectF &sourceRect = QRectF());
 private:
@@ -103,14 +110,13 @@ private:
     QHash<QString, QSvgNode *> m_namedNodes;
     QHash<QString, QSvgRefCounter<QSvgPaintStyleProperty> > m_namedStyles;
 
-    qint64 m_time;
     bool  m_animated;
-    int   m_animationDuration;
     int   m_fps;
 
     QSvgExtraStates m_states;
 
     const QtSvg::Options m_options;
+    QSharedPointer<QSvgAbstractAnimator> m_animator;
 };
 
 Q_SVG_EXPORT QDebug operator<<(QDebug debug, const QSvgTinyDocument &doc);
@@ -164,12 +170,12 @@ inline bool QSvgTinyDocument::preserveAspectRatio() const
 
 inline int QSvgTinyDocument::currentElapsed() const
 {
-    return QDateTime::currentMSecsSinceEpoch() - m_time;
+    return m_animator->currentElapsed();
 }
 
 inline int QSvgTinyDocument::animationDuration() const
 {
-    return m_animationDuration;
+    return m_animator->animationDuration();
 }
 
 QT_END_NAMESPACE

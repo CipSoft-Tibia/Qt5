@@ -7,7 +7,6 @@
 #include "base/ranges/algorithm.h"
 #include "base/run_loop.h"
 #include "content/public/test/mock_render_thread.h"
-#include "extensions/common/extension_messages.h"
 #include "extensions/common/manifest.h"
 #include "extensions/common/mojom/context_type.mojom.h"
 #include "extensions/common/mojom/frame.mojom.h"
@@ -53,6 +52,8 @@ void NativeExtensionBindingsSystemUnittest::SetUp() {
   ipc_message_sender_ = message_sender.get();
   bindings_system_ = std::make_unique<NativeExtensionBindingsSystem>(
       this, std::move(message_sender));
+  api_provider_.AddBindingsSystemHooks(/*dispatcher=*/nullptr,
+                                       bindings_system_.get());
   APIBindingTest::SetUp();
 }
 
@@ -79,7 +80,8 @@ ScriptContext* NativeExtensionBindingsSystemUnittest::CreateScriptContext(
     mojom::ContextType context_type) {
   auto script_context = std::make_unique<ScriptContext>(
       v8_context, nullptr, GenerateHostIdFromExtension(extension), extension,
-      context_type, extension, context_type);
+      /*blink_isolated_world_id=*/std::nullopt, context_type, extension,
+      context_type);
   script_context->SetModuleSystem(
       std::make_unique<ModuleSystem>(script_context.get(), source_map()));
   ScriptContext* raw_script_context = script_context.get();

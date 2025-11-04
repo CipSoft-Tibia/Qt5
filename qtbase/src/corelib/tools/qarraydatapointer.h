@@ -107,7 +107,7 @@ public:
     {
         if (!deref()) {
             (*this)->destroyAll();
-            free(d);
+            Data::deallocate(d);
         }
     }
 
@@ -432,12 +432,25 @@ public:
         return std::move(*this);
     }
 
+    void appendInitialize(qsizetype newSize)
+    {
+        Q_ASSERT(this->isMutable());
+        Q_ASSERT(!this->isShared());
+        Q_ASSERT(newSize > this->size);
+        Q_ASSERT(newSize - this->size <= this->freeSpaceAtEnd());
+
+        T *const b = this->begin() + this->size;
+        T *const e = this->begin() + newSize;
+        q17::uninitialized_value_construct(b, e);
+        this->size = newSize;
+    }
+
     // forwards from QArrayData
     qsizetype allocatedCapacity() noexcept { return d ? d->allocatedCapacity() : 0; }
     qsizetype constAllocatedCapacity() const noexcept { return d ? d->constAllocatedCapacity() : 0; }
     void ref() noexcept { if (d) d->ref(); }
     bool deref() noexcept { return !d || d->deref(); }
-    bool isMutable() const noexcept { return d; }
+    bool isMutable() const noexcept { return d; } // Returns false if this object is fromRawData()
     bool isShared() const noexcept { return !d || d->isShared(); }
     bool isSharedWith(const QArrayDataPointer &other) const noexcept { return d && d == other.d; }
     bool needsDetach() const noexcept { return !d || d->needsDetach(); }

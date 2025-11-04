@@ -7,10 +7,12 @@
 #ifndef CORE_FPDFAPI_PAGE_CPDF_PATTERNCS_H_
 #define CORE_FPDFAPI_PAGE_CPDF_PATTERNCS_H_
 
+#include <optional>
 #include <set>
 
 #include "core/fpdfapi/page/cpdf_basedcs.h"
 #include "core/fxcrt/retain_ptr.h"
+#include "core/fxge/dib/fx_dib.h"
 
 class CPDF_Document;
 
@@ -24,19 +26,15 @@ class CPDF_PatternCS final : public CPDF_BasedCS {
   void InitializeStockPattern();
 
   // CPDF_ColorSpace:
-  bool GetRGB(pdfium::span<const float> pBuf,
-              float* R,
-              float* G,
-              float* B) const override;
+  std::optional<FX_RGB_STRUCT<float>> GetRGB(
+      pdfium::span<const float> pBuf) const override;
   const CPDF_PatternCS* AsPatternCS() const override;
   uint32_t v_Load(CPDF_Document* pDoc,
                   const CPDF_Array* pArray,
                   std::set<const CPDF_Object*>* pVisited) override;
 
-  bool GetPatternRGB(const PatternValue& value,
-                     float* R,
-                     float* G,
-                     float* B) const;
+  std::optional<FX_RGB_STRUCT<float>> GetPatternRGB(
+      const PatternValue& value) const;
 
  private:
   CPDF_PatternCS();

@@ -104,7 +104,7 @@ export class NetworkNavigatorView extends NavigatorView {
   private constructor() {
     super('navigator-network', true);
     SDK.TargetManager.TargetManager.instance().addEventListener(
-        SDK.TargetManager.Events.InspectedURLChanged, this.inspectedURLChanged, this);
+        SDK.TargetManager.Events.INSPECTED_URL_CHANGED, this.inspectedURLChanged, this);
 
     // Record the sources tool load time after the file navigator has loaded.
     Host.userMetrics.panelLoaded('sources', 'DevTools.Launch.Sources');
@@ -229,7 +229,7 @@ export class OverridesNavigatorView extends NavigatorView {
     this.contentElement.insertBefore(this.toolbar.element, this.contentElement.firstChild);
 
     Persistence.NetworkPersistenceManager.NetworkPersistenceManager.instance().addEventListener(
-        Persistence.NetworkPersistenceManager.Events.ProjectChanged, this.updateProjectAndUI, this);
+        Persistence.NetworkPersistenceManager.Events.PROJECT_CHANGED, this.updateProjectAndUI, this);
     this.workspace().addEventListener(Workspace.Workspace.Events.ProjectAdded, this.onProjectAddOrRemoved, this);
     this.workspace().addEventListener(Workspace.Workspace.Events.ProjectRemoved, this.onProjectAddOrRemoved, this);
     this.updateProjectAndUI();
@@ -269,13 +269,13 @@ export class OverridesNavigatorView extends NavigatorView {
     const project = Persistence.NetworkPersistenceManager.NetworkPersistenceManager.instance().project();
     if (project) {
       const enableCheckbox = new UI.Toolbar.ToolbarSettingCheckbox(
-          Common.Settings.Settings.instance().moduleSetting('persistenceNetworkOverridesEnabled'));
+          Common.Settings.Settings.instance().moduleSetting('persistence-network-overrides-enabled'));
       this.toolbar.appendToolbarItem(enableCheckbox);
 
       this.toolbar.appendToolbarItem(new UI.Toolbar.ToolbarSeparator(true));
       const clearButton = new UI.Toolbar.ToolbarButton(i18nString(UIStrings.clearConfiguration), 'clear');
-      clearButton.addEventListener(UI.Toolbar.ToolbarButton.Events.Click, () => {
-        Common.Settings.Settings.instance().moduleSetting('persistenceNetworkOverridesEnabled').set(false);
+      clearButton.addEventListener(UI.Toolbar.ToolbarButton.Events.CLICK, () => {
+        Common.Settings.Settings.instance().moduleSetting('persistence-network-overrides-enabled').set(false);
         project.remove();
       });
       this.toolbar.appendToolbarItem(clearButton);
@@ -283,7 +283,7 @@ export class OverridesNavigatorView extends NavigatorView {
     }
     const title = i18nString(UIStrings.selectFolderForOverrides);
     const setupButton = new UI.Toolbar.ToolbarButton(title, 'plus', title);
-    setupButton.addEventListener(UI.Toolbar.ToolbarButton.Events.Click, _event => {
+    setupButton.addEventListener(UI.Toolbar.ToolbarButton.Events.CLICK, _event => {
       void this.setupNewWorkspace();
     }, this);
     this.toolbar.appendToolbarItem(setupButton);
@@ -295,7 +295,7 @@ export class OverridesNavigatorView extends NavigatorView {
     if (!fileSystem) {
       return;
     }
-    Common.Settings.Settings.instance().moduleSetting('persistenceNetworkOverridesEnabled').set(true);
+    Common.Settings.Settings.instance().moduleSetting('persistence-network-overrides-enabled').set(true);
   }
 
   override sourceSelected(uiSourceCode: Workspace.UISourceCode.UISourceCode, focusSource: boolean): void {
@@ -340,9 +340,9 @@ export class SnippetsNavigatorView extends NavigatorView {
   `);
 
     const toolbar = new UI.Toolbar.Toolbar('navigator-toolbar');
-    const newButton =
-        new UI.Toolbar.ToolbarButton(i18nString(UIStrings.newSnippet), 'plus', i18nString(UIStrings.newSnippet));
-    newButton.addEventListener(UI.Toolbar.ToolbarButton.Events.Click, _event => {
+    const newButton = new UI.Toolbar.ToolbarButton(
+        i18nString(UIStrings.newSnippet), 'plus', i18nString(UIStrings.newSnippet), 'sources.new-snippet');
+    newButton.addEventListener(UI.Toolbar.ToolbarButton.Events.CLICK, _event => {
       void this.create(
           Snippets.ScriptSnippetFileSystem.findSnippetsProject(), '' as Platform.DevToolsPath.EncodedPathString);
     });
@@ -359,7 +359,8 @@ export class SnippetsNavigatorView extends NavigatorView {
     contextMenu.headerSection().appendItem(
         i18nString(UIStrings.createNewSnippet),
         () => this.create(
-            Snippets.ScriptSnippetFileSystem.findSnippetsProject(), '' as Platform.DevToolsPath.EncodedPathString));
+            Snippets.ScriptSnippetFileSystem.findSnippetsProject(), '' as Platform.DevToolsPath.EncodedPathString),
+        {jslogContext: 'create-new-snippet'});
     void contextMenu.show();
   }
 
@@ -367,11 +368,14 @@ export class SnippetsNavigatorView extends NavigatorView {
     const uiSourceCode = node.uiSourceCode();
     const contextMenu = new UI.ContextMenu.ContextMenu(event);
     contextMenu.headerSection().appendItem(
-        i18nString(UIStrings.run), () => Snippets.ScriptSnippetFileSystem.evaluateScriptSnippet(uiSourceCode));
-    contextMenu.editSection().appendItem(i18nString(UIStrings.rename), () => this.rename(node, false));
+        i18nString(UIStrings.run), () => Snippets.ScriptSnippetFileSystem.evaluateScriptSnippet(uiSourceCode),
+        {jslogContext: 'run'});
     contextMenu.editSection().appendItem(
-        i18nString(UIStrings.remove), () => uiSourceCode.project().deleteFile(uiSourceCode));
-    contextMenu.saveSection().appendItem(i18nString(UIStrings.saveAs), this.handleSaveAs.bind(this, uiSourceCode));
+        i18nString(UIStrings.rename), () => this.rename(node, false), {jslogContext: 'rename'});
+    contextMenu.editSection().appendItem(
+        i18nString(UIStrings.remove), () => uiSourceCode.project().deleteFile(uiSourceCode), {jslogContext: 'remove'});
+    contextMenu.saveSection().appendItem(
+        i18nString(UIStrings.saveAs), this.handleSaveAs.bind(this, uiSourceCode), {jslogContext: 'save-as'});
     void contextMenu.show();
   }
 
@@ -379,7 +383,7 @@ export class SnippetsNavigatorView extends NavigatorView {
     uiSourceCode.commitWorkingCopy();
     const {content} = await uiSourceCode.requestContent();
     await Workspace.FileManager.FileManager.instance().save(
-        this.addJSExtension(uiSourceCode.url()), content || '', true);
+        this.addJSExtension(uiSourceCode.url()), content || '', true, false /* isBase64 */);
     Workspace.FileManager.FileManager.instance().close(uiSourceCode.url());
   }
 

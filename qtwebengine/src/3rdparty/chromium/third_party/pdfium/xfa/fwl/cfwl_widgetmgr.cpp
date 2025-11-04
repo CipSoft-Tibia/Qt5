@@ -7,12 +7,14 @@
 #include "xfa/fwl/cfwl_widgetmgr.h"
 
 #include "build/build_config.h"
+#include "core/fxcrt/check.h"
 #include "fxjs/gc/container_trace.h"
-#include "third_party/base/check.h"
 #include "xfa/fwl/cfwl_app.h"
 #include "xfa/fwl/cfwl_message.h"
 #include "xfa/fwl/cfwl_notedriver.h"
 #include "xfa/fwl/cfwl_pushbutton.h"
+
+namespace pdfium {
 
 CFWL_WidgetMgr::CFWL_WidgetMgr(AdapterIface* pAdapter, CFWL_App* pApp)
     : m_pAdapter(pAdapter), m_pApp(pApp) {
@@ -241,3 +243,5 @@ void CFWL_WidgetMgr::Item::Trace(cppgc::Visitor* visitor) const {
   GCedTreeNode<Item>::Trace(visitor);
   visitor->Trace(pWidget);
 }
+
+}  // namespace pdfium

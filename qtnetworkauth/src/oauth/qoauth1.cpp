@@ -1,5 +1,6 @@
 // Copyright (C) 2017 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
+// Qt-Security score:critical reason:authorization-protocol
 
 #include "qoauth1.h"
 #include "qoauth1_p.h"
@@ -150,8 +151,8 @@ QNetworkReply *QOAuth1Private::requestToken(QNetworkAccessManager::Operation ope
     QMultiMap<QString, QVariant> remainingParameters;
     appendCommonHeaders(&headers);
     for (auto it = parameters.begin(), end = parameters.end(); it != end; ++it) {
-        const auto key = it.key();
-        const auto value = it.value();
+        const auto &key = it.key();
+        const auto &value = it.value();
         if (key.startsWith(QStringLiteral("oauth_")))
             headers.insert(key, value);
         else

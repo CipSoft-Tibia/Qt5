@@ -83,10 +83,7 @@ QQmlJSUtils::ResolvedAlias QQmlJSUtils::resolveAlias(const QQmlJSTypeResolver *t
 {
     return ::resolveAlias(
             [&](const QString &id, const QQmlJSScope::ConstPtr &referrer) {
-                const QQmlJSRegisterContent content = typeResolver->scopedType(referrer, id);
-                if (content.variant() == QQmlJSRegisterContent::ObjectById)
-                    return content.type();
-                return QQmlJSScope::ConstPtr();
+                return typeResolver->typeForId(referrer, id);
             },
             property, owner, visitor);
 }
@@ -217,8 +214,8 @@ bool canStrictlyCompareWithVar(
     Q_ASSERT(typeResolver);
 
     const QQmlJSScope::ConstPtr varType = typeResolver->varType();
-    const bool leftIsVar = typeResolver->equals(lhsType, varType);
-    const bool righttIsVar = typeResolver->equals(rhsType, varType);
+    const bool leftIsVar = (lhsType == varType);
+    const bool righttIsVar = (rhsType == varType);
     return leftIsVar != righttIsVar;
 }
 
@@ -233,11 +230,9 @@ bool canCompareWithQObject(
 {
     Q_ASSERT(typeResolver);
     return (lhsType->isReferenceType()
-            && (rhsType->isReferenceType()
-                || typeResolver->equals(rhsType, typeResolver->nullType())))
+            && (rhsType->isReferenceType() || rhsType == typeResolver->nullType()))
             || (rhsType->isReferenceType()
-                && (lhsType->isReferenceType()
-                    || typeResolver->equals(lhsType, typeResolver->nullType())));
+                && (lhsType->isReferenceType() || lhsType == typeResolver->nullType()));
 }
 
 /*! \internal
@@ -250,8 +245,7 @@ bool canCompareWithQUrl(
         const QQmlJSScope::ConstPtr &rhsType)
 {
     Q_ASSERT(typeResolver);
-    return typeResolver->equals(lhsType, typeResolver->urlType())
-            && typeResolver->equals(rhsType, typeResolver->urlType());
+    return lhsType == typeResolver->urlType() && rhsType == typeResolver->urlType();
 }
 
 QStringList QQmlJSUtils::resourceFilesFromBuildFolders(const QStringList &buildFolders)

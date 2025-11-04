@@ -129,7 +129,7 @@ class MEDIA_EXPORT FFmpegDemuxerStream : public DemuxerStream {
   // Returns true if this stream has capacity for additional data.
   bool HasAvailableCapacity();
 
-  // Returns the total buffer size FFMpegDemuxerStream is holding onto.
+  // Returns the total memory usage of FFMpegDemuxerStream.
   size_t MemoryUsage() const;
 
   // Returns the value associated with |key| in the metadata for the avstream.
@@ -229,11 +229,10 @@ class MEDIA_EXPORT FFmpegDemuxer : public Demuxer {
   void Seek(base::TimeDelta time, PipelineStatusCallback cb) override;
   bool IsSeekable() const override;
   base::Time GetTimelineOffset() const override;
-  std::vector<raw_ptr<DemuxerStream, VectorExperimental>> GetAllStreams()
-      override;
+  std::vector<DemuxerStream*> GetAllStreams() override;
   base::TimeDelta GetStartTime() const override;
   int64_t GetMemoryUsage() const override;
-  absl::optional<container_names::MediaContainerName> GetContainerForMetrics()
+  std::optional<container_names::MediaContainerName> GetContainerForMetrics()
       const override;
 
   // Calls |encrypted_media_init_data_cb_| with the initialization data
@@ -277,7 +276,9 @@ class MEDIA_EXPORT FFmpegDemuxer : public Demuxer {
   // To allow tests access to privates.
   friend class FFmpegDemuxerTest;
 
-  // Helper for vide and audio track changing.
+  // Helper for video and audio track changing. For the `track_type`, enables
+  // tracks associated with `track_ids` and disables the rest. Fires
+  // `change_completed_cb` when the operation is completed.
   void FindAndEnableProperTracks(const std::vector<MediaTrack::Id>& track_ids,
                                  base::TimeDelta curr_time,
                                  DemuxerStream::Type track_type,
@@ -334,7 +335,6 @@ class MEDIA_EXPORT FFmpegDemuxer : public Demuxer {
                                    int result);
   void SeekOnVideoTrackChange(base::TimeDelta seek_to_time,
                               TrackChangeCB seek_completed_cb,
-                              DemuxerStream::Type stream_type,
                               const std::vector<DemuxerStream*>& streams);
 
   // Executes |init_cb_| with |status| and closes out the async trace.

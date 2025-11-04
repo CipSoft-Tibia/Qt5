@@ -4,18 +4,19 @@
 
 #include "gin/thread_isolation.h"
 
-#if BUILDFLAG(ENABLE_THREAD_ISOLATION)
+#if PA_BUILDFLAG(ENABLE_THREAD_ISOLATION)
 
 #include <sys/mman.h>
 #include <sys/utsname.h>
+
 #include <cstddef>
 
-#include "base/allocator/partition_allocator/src/partition_alloc/thread_isolation/alignment.h"
 #include "base/check.h"
 #include "base/check_op.h"
 #include "base/memory/page_size.h"
 #include "base/metrics/histogram_functions.h"
 #include "base/no_destructor.h"
+#include "partition_alloc/thread_isolation/alignment.h"
 #include "third_party/abseil-cpp/absl/base/attributes.h"
 
 extern int pkey_alloc(unsigned int flags,
@@ -112,4 +113,4 @@ ThreadIsolationData& GetThreadIsolationData() {
 
 }  // namespace gin
 
-#endif  // BUILDFLAG(ENABLE_THREAD_ISOLATION)
+#endif  // PA_BUILDFLAG(ENABLE_THREAD_ISOLATION)

@@ -16,6 +16,7 @@
 //
 
 #include "qquickgenerator_p.h"
+#include "qquicknodeinfo_p.h"
 
 #include <QtCore/qtextstream.h>
 #include <QtCore/qbuffer.h>
@@ -27,6 +28,8 @@ class Q_QUICKVECTORIMAGEGENERATOR_EXPORT QQuickQmlGenerator : public QQuickGener
 public:
     QQuickQmlGenerator(const QString fileName, QQuickVectorImageGenerator::GeneratorFlags flags, const QString &outFileName);
     ~QQuickQmlGenerator();
+
+    bool save();
 
     void setShapeTypeName(const QString &name);
     QString shapeTypeName() const;
@@ -80,6 +83,8 @@ private:
     void generateGradient(const QGradient *grad);
     void generateTransform(const QTransform &xf);
     void generatePathContainer(const StructureNodeInfo &info);
+    void generateAnimateColor(const QString &targetName, const QString &propertyName, const NodeInfo::AnimateColor &animateColor, const QColor &resetColor);
+    void generateAnimateTransform(const QString &targetName, const NodeInfo &info);
 
     QStringView indent();
     enum StreamFlags { NoFlags = 0x0, SameLine = 0x1 };

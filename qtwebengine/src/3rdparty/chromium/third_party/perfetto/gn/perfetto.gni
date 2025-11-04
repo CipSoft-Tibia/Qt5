@@ -70,6 +70,10 @@ if (!defined(is_nacl)) {
   is_nacl = false
 }
 
+if (!defined(is_gcc)) {
+  is_gcc = !is_clang && !is_win
+}
+
 declare_args() {
   # The Android blueprint file generator set this to true (as well as
   # is_perfetto_build_generator). This is just about being built in the
@@ -208,7 +212,7 @@ declare_args() {
   # are monolithic and don't use a common shared library. This is mainly to
   # avoid LD_LIBRARY_PATH dances when testing locally.
   # On Windows we default to monolithic executables, because pairing
-  # dllexport/import adds extra complexity for little benefit. The only reason
+  # dllexport/import adds extra complexity for little benefit. Te only reason
   # for monolithic_binaries=false is saving binary size, which matters mainly on
   # Android. See also comments on PERFETTO_EXPORT_ENTRYPOINT in compiler.h.
   monolithic_binaries = !perfetto_build_with_android && (is_win || is_mac)
@@ -294,6 +298,14 @@ declare_args() {
   enable_perfetto_trace_processor_json =
       enable_perfetto_trace_processor && !perfetto_build_with_android
 
+  # Enables the support for importing profiles from the MacOS Instruments app.
+  # Requires a dependency on libexpat for XML parsing.
+  # Disabled in chromium due to some fuzzer related build failure (b/363347029).
+  enable_perfetto_trace_processor_mac_instruments =
+      enable_perfetto_trace_processor &&
+      (perfetto_build_standalone || perfetto_build_with_android ||
+       is_perfetto_build_generator)
+
   # Enables httpd RPC support in the trace processor.
   # Further per-OS conditionals are applied in gn/BUILD.gn.
   # Chromium+Win: httpd support depends on enable_perfetto_ipc, which is not
@@ -312,8 +324,10 @@ declare_args() {
   # Enables function name demangling using sources from llvm. Otherwise
   # trace_processor falls back onto using the c++ runtime demangler, which
   # typically handles only itanium mangling.
+  # llvm-demangle is incompatible with GCC and can be used only when building
+  # with clang.
   enable_perfetto_llvm_demangle =
-      enable_perfetto_trace_processor && perfetto_build_standalone
+      is_clang && enable_perfetto_trace_processor && perfetto_build_standalone
 
   # Enables gRPC in the Perfetto codebase. gRPC significantly increases build
   # times and the general footprint of Perfetto. As it only required for
@@ -337,6 +351,11 @@ declare_args() {
   # time. Incremental builds that add/remove files will not be supported without
   # rerunning gn.
   enable_perfetto_site = false
+
+  # Check that the merged perfetto_trace.proto can be translated to a C++ lite
+  # proto and compiled. This is disabled by default because it's expensive (it
+  # can take a couple of minutes).
+  enable_perfetto_merged_protos_check = false
 
   # Skip buildtools dependency checks (needed for ChromeOS).
   skip_buildtools_check = false

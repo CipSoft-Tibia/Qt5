@@ -26,18 +26,11 @@ inline constexpr int kUserDataAuthServiceTimeoutInMs = 5 * 60 * 1000;
 
 // Methods of the |kUserDataAuthInterface| interface:
 inline constexpr char kIsMounted[] = "IsMounted";
-inline constexpr char kEvictDeviceKey[] = "EvictDeviceKey";
-inline constexpr char kRestoreDeviceKey[] = "RestoreDeviceKey";
+inline constexpr char kGetVaultProperties[] = "GetVaultProperties";
 inline constexpr char kUnmount[] = "Unmount";
 inline constexpr char kRemove[] = "Remove";
-inline constexpr char kStartFingerprintAuthSession[] =
-    "StartFingerprintAuthSession";
-inline constexpr char kEndFingerprintAuthSession[] =
-    "EndFingerprintAuthSession";
 inline constexpr char kGetWebAuthnSecret[] = "GetWebAuthnSecret";
 inline constexpr char kGetRecoverableKeyStores[] = "GetRecoverableKeyStores";
-inline constexpr char kGetHibernateSecret[] = "GetHibernateSecret";
-inline constexpr char kGetEncryptionInfo[] = "GetEncryptionInfo";
 inline constexpr char kStartMigrateToDircrypto[] = "StartMigrateToDircrypto";
 inline constexpr char kNeedsDircryptoMigration[] = "NeedsDircryptoMigration";
 inline constexpr char kGetSupportedKeyPolicies[] = "GetSupportedKeyPolicies";
@@ -63,10 +56,14 @@ inline constexpr char kListAuthFactors[] = "ListAuthFactors";
 inline constexpr char kGetAuthFactorExtendedInfo[] =
     "GetAuthFactorExtendedInfo";
 inline constexpr char kGetAuthSessionStatus[] = "GetAuthSessionStatus";
-inline constexpr char kGetRecoveryRequest[] = "GetRecoveryRequest";
+inline constexpr char kLockFactorUntilReboot[] = "LockFactorUntilReboot";
 inline constexpr char kModifyAuthFactorIntents[] = "ModifyAuthFactorIntents";
 inline constexpr char kCreateVaultkeyset[] = "CreateVaultKeyset";
 inline constexpr char kGetArcDiskFeatures[] = "GetArcDiskFeatures";
+inline constexpr char kMigrateLegacyFingerprints[] =
+    "MigrateLegacyFingerprints";
+inline constexpr char kSetUserDataStorageWriteEnabled[] =
+    "SetUserDataStorageWriteEnabled";
 
 // Methods of the |kCryptohomePkcs11Interface| interface:
 inline constexpr char kPkcs11IsTpmTokenReady[] = "Pkcs11IsTpmTokenReady";
@@ -97,24 +94,28 @@ inline constexpr char kGetLoginStatus[] = "GetLoginStatus";
 inline constexpr char kLockToSingleUserMountUntilReboot[] =
     "LockToSingleUserMountUntilReboot";
 inline constexpr char kGetRsuDeviceId[] = "GetRsuDeviceId";
+inline constexpr char kGetPinWeaverInfo[] = "GetPinWeaverInfo";
 
 // Signals of the |kUserDataAuthInterface| interface:
 inline constexpr char kDircryptoMigrationProgress[] =
     "DircryptoMigrationProgress";
 inline constexpr char kAuthFactorStatusUpdate[] = "AuthFactorStatusUpdate";
 inline constexpr char kLowDiskSpace[] = "LowDiskSpace";
-inline constexpr char kAuthScanResultSignal[] = "AuthScanResult";
 inline constexpr char kAuthEnrollmentProgressSignal[] =
     "AuthEnrollmentProgress";
 inline constexpr char kPrepareAuthFactorProgressSignal[] =
     "PrepareAuthFactorProgress";
+inline constexpr char kAuthenticateStartedSignal[] = "AuthenticateStarted";
 inline constexpr char kAuthenticateAuthFactorCompletedSignal[] =
     "AuthenticateAuthFactorCompleted";
+inline constexpr char kMountStartedSignal[] = "MountStarted";
+inline constexpr char kMountCompletedSignal[] = "MountCompleted";
 inline constexpr char kEvictedKeyRestoredSignal[] = "EvictedKeyRestored";
 inline constexpr char kAuthFactorAddedl[] = "AuthFactorAdded";
 inline constexpr char kAuthFactorRemoved[] = "AuthFactorRemoved";
 inline constexpr char kAuthFactorUpdted[] = "AuthFactorUpdated";
 inline constexpr char kAuthSessionExpiring[] = "AuthSessionExpiring";
+inline constexpr char kRemoveCompleted[] = "RemoveCompleted";
 
 }  // namespace user_data_auth
 
@@ -176,14 +177,6 @@ enum DircryptoMigrationStatus {
   // TODO(kinaba,dspaid): Add state codes as needed.
   DIRCRYPTO_MIGRATION_INITIALIZING = 1,
   DIRCRYPTO_MIGRATION_IN_PROGRESS = 2,
-};
-
-// Type of paths that are allowed for SetProjectId().
-enum SetProjectIdAllowedPathType {
-  // /home/user/<obfuscated_username>/MyFiles/Downloads/
-  PATH_DOWNLOADS = 0,
-  // /home/root/<obfuscated_username>/android-data/
-  PATH_ANDROID_DATA = 1,
 };
 
 // Interface for key delegate service to be used by the cryptohome daemon.

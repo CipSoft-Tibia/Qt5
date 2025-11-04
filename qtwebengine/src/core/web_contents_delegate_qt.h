@@ -79,13 +79,17 @@ public:
     QString title() const { return m_title; }
 
     // WebContentsDelegate overrides
-    content::WebContents *OpenURLFromTab(content::WebContents *source, const content::OpenURLParams &params) override;
+    content::WebContents *OpenURLFromTab(content::WebContents *source, const content::OpenURLParams &params,
+                                         base::OnceCallback<void(content::NavigationHandle&)> navigation_handle_callback) override;
     void NavigationStateChanged(content::WebContents* source, content::InvalidateTypes changed_flags) override;
-    void AddNewContents(content::WebContents *source, std::unique_ptr<content::WebContents> new_contents, const GURL &target_url,
-                        WindowOpenDisposition disposition, const blink::mojom::WindowFeatures &window_features, bool user_gesture, bool *was_blocked) override;
+    content::WebContents *AddNewContents(content::WebContents *source,
+                                         std::unique_ptr<content::WebContents> new_contents,
+                                         const GURL &target_url, WindowOpenDisposition disposition,
+                                         const blink::mojom::WindowFeatures &window_features,
+                                         bool user_gesture, bool *was_blocked) override;
     void CloseContents(content::WebContents *source) override;
     void LoadProgressChanged(double progress) override;
-    bool HandleKeyboardEvent(content::WebContents *source, const content::NativeWebKeyboardEvent &event) override;
+    bool HandleKeyboardEvent(content::WebContents *source, const input::NativeWebKeyboardEvent &event) override;
     std::unique_ptr<content::ColorChooser> OpenColorChooser(content::WebContents *source, SkColor color, const std::vector<blink::mojom::ColorSuggestionPtr> &suggestions) override;
     void WebContentsCreated(content::WebContents *source_contents, int opener_render_process_id, int opener_render_frame_id,
                             const std::string &frame_name, const GURL &target_url, content::WebContents *new_contents) override;
@@ -104,7 +108,7 @@ public:
                                       content::MediaResponseCallback callback) override;
     void SetContentsBounds(content::WebContents *source, const gfx::Rect &bounds) override;
     void UpdateTargetURL(content::WebContents* source, const GURL& url) override;
-    void RequestToLockMouse(content::WebContents *web_contents, bool user_gesture, bool last_unlocked_by_target) override;
+    void RequestPointerLock(content::WebContents *web_contents, bool user_gesture, bool last_unlocked_by_target) override;
     void BeforeUnloadFired(content::WebContents* tab, bool proceed, bool* proceed_to_fire_unload) override;
     bool CheckMediaAccessPermission(content::RenderFrameHost *render_frame_host,
                                     const url::Origin &security_origin,
@@ -131,8 +135,8 @@ public:
                               const content::GlobalRequestID& request_id,
                               const blink::mojom::ResourceLoadInfo& resource_load_info) override;
     void InnerWebContentsAttached(content::WebContents *inner_web_contents,
-                                  content::RenderFrameHost *render_frame_host,
-                                  bool is_full_page) override;
+                                  content::RenderFrameHost *render_frame_host) override;
+    using content::WebContentsObserver::BeforeUnloadFired;
 
     void emitLoadSucceeded(const QUrl &url);
     void didFailLoad(const QUrl &url, int errorCode, const QString &errorDescription);
@@ -206,6 +210,7 @@ private:
         QString errorDescription;
         bool triggersErrorPage = false;
         QMultiMap<QByteArray, QByteArray> responseHeaders;
+        bool isDownload = false;
         void clear() { *this = LoadingInfo(); }
     } m_loadingInfo;
 

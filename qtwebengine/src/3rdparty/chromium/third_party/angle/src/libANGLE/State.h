@@ -179,6 +179,7 @@ enum ExtendedDirtyBitType
     EXTENDED_DIRTY_BIT_SHADING_RATE,                  // QCOM_shading_rate
     EXTENDED_DIRTY_BIT_LOGIC_OP_ENABLED,              // ANGLE_logic_op
     EXTENDED_DIRTY_BIT_LOGIC_OP,                      // ANGLE_logic_op
+    EXTENDED_DIRTY_BIT_BLEND_ADVANCED_COHERENT,       // KHR_blend_operation_advanced_coherent
 
     EXTENDED_DIRTY_BIT_INVALID,
     EXTENDED_DIRTY_BIT_MAX = EXTENDED_DIRTY_BIT_INVALID,
@@ -200,7 +201,6 @@ enum DirtyObjectType
     DIRTY_OBJECT_TEXTURES,  // Top-level dirty bit. Also see mDirtyTextures.
     DIRTY_OBJECT_IMAGES,    // Top-level dirty bit. Also see mDirtyImages.
     DIRTY_OBJECT_SAMPLERS,  // Top-level dirty bit. Also see mDirtySamplers.
-    DIRTY_OBJECT_PROGRAM,
     DIRTY_OBJECT_PROGRAM_PIPELINE_OBJECT,
 
     DIRTY_OBJECT_INVALID,
@@ -227,7 +227,8 @@ class PrivateState : angle::NonCopyable
                  bool bindGeneratesResourceCHROMIUM,
                  bool clientArraysEnabled,
                  bool robustResourceInit,
-                 bool programBinaryCacheEnabled);
+                 bool programBinaryCacheEnabled,
+                 bool isExternal);
     ~PrivateState();
 
     void initialize(Context *context);
@@ -249,6 +250,8 @@ class PrivateState : angle::NonCopyable
     const TextureCapsMap &getTextureCaps() const { return mTextureCaps; }
     const Extensions &getExtensions() const { return mExtensions; }
     const Limitations &getLimitations() const { return mLimitations; }
+
+    bool isExternal() const { return mIsExternal; }
 
     Caps *getMutableCaps() { return &mCaps; }
     TextureCapsMap *getMutableTextureCaps() { return &mTextureCaps; }
@@ -405,6 +408,10 @@ class PrivateState : angle::NonCopyable
     bool isDitherEnabled() const { return mRasterizer.dither; }
     void setDither(bool enabled);
 
+    // GL_KHR_blend_equation_advanced_coherent
+    void setBlendAdvancedCoherent(bool enabled);
+    bool isBlendAdvancedCoherentEnabled() const { return mBlendAdvancedCoherent; }
+
     // GL_CHROMIUM_bind_generates_resource
     bool isBindGeneratesResourceEnabled() const { return mBindGeneratesResource; }
 
@@ -553,6 +560,10 @@ class PrivateState : angle::NonCopyable
     void setVertexAttribu(GLuint index, const GLuint values[4]);
     void setVertexAttribi(GLuint index, const GLint values[4]);
 
+    // QCOM_tiled_rendering
+    void setTiledRendering(bool tiledRendering) { mTiledRendering = tiledRendering; }
+    bool isTiledRendering() const { return mTiledRendering; }
+
     // Debug state
     const Debug &getDebug() const { return mDebug; }
     Debug &getDebug() { return mDebug; }
@@ -593,6 +604,9 @@ class PrivateState : angle::NonCopyable
     const state::DirtyObjects &getDirtyObjects() const { return mDirtyObjects; }
     void clearDirtyObjects() { mDirtyObjects.reset(); }
 
+    void setPerfMonitorActive(bool active) { mIsPerfMonitorActive = active; }
+    bool isPerfMonitorActive() const { return mIsPerfMonitorActive; }
+
   private:
     bool hasConstantColor(GLenum sourceRGB, GLenum destRGB) const;
     bool hasConstantAlpha(GLenum sourceRGB, GLenum destRGB) const;
@@ -606,6 +620,7 @@ class PrivateState : angle::NonCopyable
     TextureCapsMap mTextureCaps;
     Extensions mExtensions;
     Limitations mLimitations;
+    const bool mIsExternal;
 
     ColorF mColorClearValue;
     GLfloat mDepthClearValue;
@@ -667,6 +682,9 @@ class PrivateState : angle::NonCopyable
     bool mMultiSampling;
     bool mSampleAlphaToOne;
 
+    // GL_KHR_blend_equation_advanced_coherent
+    bool mBlendAdvancedCoherent;
+
     GLenum mCoverageModulation;
 
     // GL_EXT_sRGB_write_control
@@ -718,6 +736,12 @@ class PrivateState : angle::NonCopyable
     // GL_ARM_shader_framebuffer_fetch
     bool mFetchPerSample;
 
+    // Whether perf monitoring is enabled through GL_AMD_performance_monitor.
+    bool mIsPerfMonitorActive;
+
+    // QCOM_tiled_rendering
+    bool mTiledRendering;
+
     const bool mBindGeneratesResource;
     const bool mClientArraysEnabled;
     const bool mRobustResourceInit;
@@ -751,7 +775,8 @@ class State : angle::NonCopyable
           bool programBinaryCacheEnabled,
           EGLenum contextPriority,
           bool hasRobustAccess,
-          bool hasProtectedContent);
+          bool hasProtectedContent,
+          bool isExternal);
     ~State();
 
     void initialize(Context *context);
@@ -778,6 +803,8 @@ class State : angle::NonCopyable
     const TextureCapsMap &getTextureCaps() const { return mPrivateState.getTextureCaps(); }
     const Extensions &getExtensions() const { return mPrivateState.getExtensions(); }
     const Limitations &getLimitations() const { return mPrivateState.getLimitations(); }
+
+    bool isExternal() const { return mPrivateState.isExternal(); }
 
     Caps *getMutableCaps() { return mPrivateState.getMutableCaps(); }
     TextureCapsMap *getMutableTextureCaps() { return mPrivateState.getMutableTextureCaps(); }
@@ -1274,6 +1301,10 @@ class State : angle::NonCopyable
     }
     const ColorF &getBlendColor() const { return mPrivateState.getBlendColor(); }
     bool isStencilTestEnabled() const { return mPrivateState.isStencilTestEnabled(); }
+    bool isBlendAdvancedCoherentEnabled() const
+    {
+        return mPrivateState.isBlendAdvancedCoherentEnabled();
+    }
     bool isStencilWriteEnabled() const { return mPrivateState.isStencilWriteEnabled(); }
     GLint getStencilRef() const { return mPrivateState.getStencilRef(); }
     GLint getStencilBackRef() const { return mPrivateState.getStencilBackRef(); }
@@ -1395,12 +1426,19 @@ class State : angle::NonCopyable
     }
     bool isLogicOpEnabled() const { return mPrivateState.isLogicOpEnabled(); }
     LogicalOperation getLogicOp() const { return mPrivateState.getLogicOp(); }
+    bool isPerfMonitorActive() const { return mPrivateState.isPerfMonitorActive(); }
     const Debug &getDebug() const { return mPrivateState.getDebug(); }
     Debug &getDebug() { return mPrivateState.getDebug(); }
     bool getEnableFeature(GLenum feature) const { return mPrivateState.getEnableFeature(feature); }
     bool getEnableFeatureIndexed(GLenum feature, GLuint index) const
     {
         return mPrivateState.getEnableFeatureIndexed(feature, index);
+    }
+    ProgramUniformBlockMask getAndResetDirtyUniformBlocks() const
+    {
+        ProgramUniformBlockMask dirtyBits = mDirtyUniformBlocks;
+        mDirtyUniformBlocks.reset();
+        return dirtyBits;
     }
     const PrivateState &privateState() const { return mPrivateState; }
     const GLES1State &gles1() const { return mPrivateState.gles1(); }
@@ -1439,25 +1477,49 @@ class State : angle::NonCopyable
     angle::Result syncTextures(const Context *context, Command command);
     angle::Result syncImages(const Context *context, Command command);
     angle::Result syncSamplers(const Context *context, Command command);
-    angle::Result syncProgram(const Context *context, Command command);
     angle::Result syncProgramPipelineObject(const Context *context, Command command);
 
     using DirtyObjectHandler = angle::Result (State::*)(const Context *context, Command command);
+    using DirtyObjectHandlerArray = std::array<DirtyObjectHandler, state::DIRTY_OBJECT_MAX>;
 
-    static constexpr DirtyObjectHandler kDirtyObjectHandlers[state::DIRTY_OBJECT_MAX] = {
-        &State::syncActiveTextures,
-        &State::syncTexturesInit,
-        &State::syncImagesInit,
-        &State::syncReadAttachments,
-        &State::syncDrawAttachments,
-        &State::syncReadFramebuffer,
-        &State::syncDrawFramebuffer,
-        &State::syncVertexArray,
-        &State::syncTextures,
-        &State::syncImages,
-        &State::syncSamplers,
-        &State::syncProgram,
-        &State::syncProgramPipelineObject};
+    static DirtyObjectHandlerArray MakeDirtyObjectHandlers()
+    {
+        // Work around C++'s lack of array element support in designated initializers
+        // This function cannot be a lambda due to MSVC C++17 limitations b/330910097#comment5
+        DirtyObjectHandlerArray handlers{};
+
+        handlers[state::DIRTY_OBJECT_ACTIVE_TEXTURES]         = &State::syncActiveTextures;
+        handlers[state::DIRTY_OBJECT_TEXTURES_INIT]           = &State::syncTexturesInit;
+        handlers[state::DIRTY_OBJECT_IMAGES_INIT]             = &State::syncImagesInit;
+        handlers[state::DIRTY_OBJECT_READ_ATTACHMENTS]        = &State::syncReadAttachments;
+        handlers[state::DIRTY_OBJECT_DRAW_ATTACHMENTS]        = &State::syncDrawAttachments;
+        handlers[state::DIRTY_OBJECT_READ_FRAMEBUFFER]        = &State::syncReadFramebuffer;
+        handlers[state::DIRTY_OBJECT_DRAW_FRAMEBUFFER]        = &State::syncDrawFramebuffer;
+        handlers[state::DIRTY_OBJECT_VERTEX_ARRAY]            = &State::syncVertexArray;
+        handlers[state::DIRTY_OBJECT_TEXTURES]                = &State::syncTextures;
+        handlers[state::DIRTY_OBJECT_IMAGES]                  = &State::syncImages;
+        handlers[state::DIRTY_OBJECT_SAMPLERS]                = &State::syncSamplers;
+        handlers[state::DIRTY_OBJECT_PROGRAM_PIPELINE_OBJECT] = &State::syncProgramPipelineObject;
+
+        // If a handler is missing, reset everything for ease of static_assert
+        for (auto handler : handlers)
+        {
+            if (handler == nullptr)
+            {
+                return DirtyObjectHandlerArray();
+            }
+        }
+
+        return handlers;
+    }
+
+    angle::Result dirtyObjectHandler(size_t dirtyObject, const Context *context, Command command)
+    {
+        static DirtyObjectHandlerArray handlers = MakeDirtyObjectHandlers();
+        // static_assert(handlers[0] != nullptr, "MakeDirtyObjectHandlers missing a handler");
+
+        return (this->*handlers[dirtyObject])(context, command);
+    }
 
     // Robust init must happen before Framebuffer init for the Vulkan back-end.
     static_assert(state::DIRTY_OBJECT_ACTIVE_TEXTURES < state::DIRTY_OBJECT_TEXTURES_INIT,
@@ -1470,26 +1532,6 @@ class State : angle::NonCopyable
                   "init order");
     static_assert(state::DIRTY_OBJECT_READ_ATTACHMENTS < state::DIRTY_OBJECT_READ_FRAMEBUFFER,
                   "init order");
-
-    static_assert(state::DIRTY_OBJECT_ACTIVE_TEXTURES == 0,
-                  "check DIRTY_OBJECT_ACTIVE_TEXTURES index");
-    static_assert(state::DIRTY_OBJECT_TEXTURES_INIT == 1, "check DIRTY_OBJECT_TEXTURES_INIT index");
-    static_assert(state::DIRTY_OBJECT_IMAGES_INIT == 2, "check DIRTY_OBJECT_IMAGES_INIT index");
-    static_assert(state::DIRTY_OBJECT_READ_ATTACHMENTS == 3,
-                  "check DIRTY_OBJECT_READ_ATTACHMENTS index");
-    static_assert(state::DIRTY_OBJECT_DRAW_ATTACHMENTS == 4,
-                  "check DIRTY_OBJECT_DRAW_ATTACHMENTS index");
-    static_assert(state::DIRTY_OBJECT_READ_FRAMEBUFFER == 5,
-                  "check DIRTY_OBJECT_READ_FRAMEBUFFER index");
-    static_assert(state::DIRTY_OBJECT_DRAW_FRAMEBUFFER == 6,
-                  "check DIRTY_OBJECT_DRAW_FRAMEBUFFER index");
-    static_assert(state::DIRTY_OBJECT_VERTEX_ARRAY == 7, "check DIRTY_OBJECT_VERTEX_ARRAY index");
-    static_assert(state::DIRTY_OBJECT_TEXTURES == 8, "check DIRTY_OBJECT_TEXTURES index");
-    static_assert(state::DIRTY_OBJECT_IMAGES == 9, "check DIRTY_OBJECT_IMAGES index");
-    static_assert(state::DIRTY_OBJECT_SAMPLERS == 10, "check DIRTY_OBJECT_SAMPLERS index");
-    static_assert(state::DIRTY_OBJECT_PROGRAM == 11, "check DIRTY_OBJECT_PROGRAM index");
-    static_assert(state::DIRTY_OBJECT_PROGRAM_PIPELINE_OBJECT == 12,
-                  "check DIRTY_OBJECT_PROGRAM_PIPELINE_OBJECT index");
 
     // Dispatch table for buffer update functions.
     static const angle::PackedEnumMap<BufferBinding, BufferBindingSetter> kBufferSetters;
@@ -1582,6 +1624,10 @@ class State : angle::NonCopyable
     ActiveTextureMask mDirtyTextures;
     ActiveTextureMask mDirtySamplers;
     ImageUnitMask mDirtyImages;
+    // Tracks uniform blocks that need reprocessing, for example because their mapped bindings have
+    // changed, or buffers in their mapped bindings have changed.  This is in State because every
+    // context needs to react to such changes.
+    mutable ProgramUniformBlockMask mDirtyUniformBlocks;
 
     PrivateState mPrivateState;
 };
@@ -1598,7 +1644,7 @@ ANGLE_INLINE angle::Result State::syncDirtyObjects(const Context *context,
 
     for (size_t dirtyObject : dirtyObjects)
     {
-        ANGLE_TRY((this->*kDirtyObjectHandlers[dirtyObject])(context, command));
+        ANGLE_TRY(dirtyObjectHandler(dirtyObject, context, command));
     }
 
     mDirtyObjects &= ~dirtyObjects;

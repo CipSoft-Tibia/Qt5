@@ -28,15 +28,15 @@
 
 #include "third_party/blink/renderer/core/loader/mixed_content_checker.h"
 
+#include <optional>
+
 #include "base/containers/contains.h"
 #include "base/feature_list.h"
-#include "base/features.h"
 #include "base/metrics/field_trial_params.h"
 #include "build/build_config.h"
 #include "build/chromecast_buildflags.h"
 #include "services/network/public/cpp/features.h"
 #include "services/network/public/cpp/is_potentially_trustworthy.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "third_party/blink/public/common/features.h"
 #include "third_party/blink/public/common/security_context/insecure_request_policy.h"
 #include "third_party/blink/public/mojom/devtools/inspector_issue.mojom-blink.h"
@@ -166,7 +166,7 @@ const char* RequestContextName(mojom::blink::RequestContextType context) {
     case mojom::blink::RequestContextType::XSLT:
       return "XSLT";
   }
-  NOTREACHED();
+  NOTREACHED_IN_MIGRATION();
   return "resource";
 }
 
@@ -228,8 +228,7 @@ bool IsUrlPotentiallyTrustworthy(const KURL& url) {
   // This saves a copy of the url, which can be expensive for large data URLs.
   // TODO(crbug.com/1322100): Remove this logic once
   // network::IsUrlPotentiallyTrustworthy() doesn't copy the URL.
-  if (base::FeatureList::IsEnabled(base::features::kOptimizeDataUrls) &&
-      url.ProtocolIsData()) {
+  if (url.ProtocolIsData()) {
     DCHECK(network::IsUrlPotentiallyTrustworthy(GURL(url)));
     return true;
   }
@@ -300,6 +299,31 @@ bool MixedContentChecker::IsMixedContent(
     case HttpsState::kModern:
       return IsInsecureUrl(url);
   }
+}
+
+// static
+bool MixedContentChecker::IsMixedContentRestrictedInFrameContext(
+    LocalFrame* frame) {
+  if (!frame) {
+    return false;
+  }
+  // Check the top frame first.
+  Frame& top = frame->Tree().Top();
+  if (SchemeRegistry::ShouldTreatURLSchemeAsRestrictingMixedContent(
+          top.GetSecurityContext()
+              ->GetSecurityOrigin()
+              ->GetOriginOrPrecursorOriginIfOpaque()
+              ->Protocol())) {
+    return true;
+  }
+  if (SchemeRegistry::ShouldTreatURLSchemeAsRestrictingMixedContent(
+          frame->GetSecurityContext()
+              ->GetSecurityOrigin()
+              ->GetOriginOrPrecursorOriginIfOpaque()
+              ->Protocol())) {
+    return true;
+  }
+  return false;
 }
 
 // static
@@ -397,7 +421,7 @@ void MixedContentChecker::Count(
       break;
 
     default:
-      NOTREACHED();
+      NOTREACHED_IN_MIGRATION();
       return;
   }
   UseCounter::Count(source->GetDocument(), feature);
@@ -535,7 +559,7 @@ bool MixedContentChecker::ShouldBlockFetch(
         local_frame_host.DidDisplayInsecureContent();
       break;
     case mojom::blink::MixedContentContextType::kNotMixedContent:
-      NOTREACHED();
+      NOTREACHED_IN_MIGRATION();
       break;
   };
 
@@ -795,14 +819,22 @@ bool MixedContentChecker::ShouldAutoupgrade(
     mojom::blink::RequestContextType type,
     WebContentSettingsClient* settings_client,
     const ResourceRequest& resource_request,
-    ExecutionContext* execution_context_for_logging) {
-  const HttpsState https_state = fetch_client_settings_object->GetHttpsState();
+    ExecutionContext* execution_context_for_logging,
+    LocalFrame* frame) {
   const KURL& request_url = resource_request.Url();
   // We are currently not autoupgrading plugin loaded content, which is why
   // check_mode_for_plugin is hardcoded to kStrict.
+  bool settings_restricts_mixed_content;
+  if (frame) {
+    settings_restricts_mixed_content =
+        IsMixedContentRestrictedInFrameContext(frame);
+  } else {
+    settings_restricts_mixed_content =
+        fetch_client_settings_object->GetHttpsState() == HttpsState::kModern;
+  }
   if (!base::FeatureList::IsEnabled(
           blink::features::kMixedContentAutoupgrade) ||
-      https_state == HttpsState::kNone ||
+      !settings_restricts_mixed_content ||
       MixedContent::ContextTypeFromRequestContext(
           type, MixedContent::CheckModeForPlugin::kStrict) !=
           mojom::blink::MixedContentContextType::kOptionallyBlockable) {
@@ -937,7 +969,8 @@ void MixedContentChecker::UpgradeInsecureRequest(
     const FetchClientSettingsObject* fetch_client_settings_object,
     ExecutionContext* execution_context_for_logging,
     mojom::RequestContextFrameType frame_type,
-    WebContentSettingsClient* settings_client) {
+    WebContentSettingsClient* settings_client,
+    LocalFrame* frame) {
   // We always upgrade requests that meet any of the following criteria:
   //  1. Are for subresources.
   //  2. Are for nested frames.
@@ -962,7 +995,7 @@ void MixedContentChecker::UpgradeInsecureRequest(
     if (context == mojom::blink::RequestContextType::UNSPECIFIED ||
         !MixedContentChecker::ShouldAutoupgrade(
             fetch_client_settings_object, context, settings_client,
-            resource_request, execution_context_for_logging)) {
+            resource_request, execution_context_for_logging, frame)) {
       return;
     }
     // We set the upgrade if insecure flag regardless of whether we autoupgrade
@@ -1035,7 +1068,7 @@ void MixedContentChecker::UpgradeInsecureRequest(
                 WebFeature::kUpgradeInsecureRequestsUpgradedRequestBlockable);
             break;
           case mojom::blink::MixedContentContextType::kNotMixedContent:
-            NOTREACHED();
+            NOTREACHED_IN_MIGRATION();
         }
       }
     }

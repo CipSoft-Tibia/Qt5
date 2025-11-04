@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "type_conversion.h"
-#include "ozone/gl_context_qt.h"
 #include "qtwebenginecoreglobal_p.h"
 #include "web_contents_view_qt.h"
 #include "web_engine_library_info.h"
@@ -27,21 +26,25 @@
 #include "chrome/browser/extensions/api/webrtc_logging_private/webrtc_logging_private_api.h"
 #endif
 
+#if BUILDFLAG(IS_OZONE_X11)
+#include "ozone/ozone_util_qt.h"
+#endif
+
 #if BUILDFLAG(ENABLE_VULKAN)
 #include "compositor/vulkan_implementation_qt.h"
 
 #include "gpu/vulkan/init/vulkan_factory.h"
 
-#if defined(USE_OZONE)
+#if BUILDFLAG(IS_OZONE)
 #include "ui/ozone/public/ozone_platform.h"
 #include "ui/ozone/public/surface_factory_ozone.h"
-#endif // defined(USE_OZONE)
-#endif // defined(ENABLE_VULKAN)
+#endif // BUILDFLAG(IS_OZONE)
+#endif // BUILDFLAG(ENABLE_VULKAN)
 
 #if BUILDFLAG(IS_OZONE_X11)
 void *GetQtXDisplay()
 {
-    return GLContextHelper::getXDisplay();
+    return OzoneUtilQt::getXDisplay();
 }
 #endif
 
@@ -74,7 +77,7 @@ base::FilePath getSandboxPath()
 #endif
 } // namespace content
 
-#if defined(USE_AURA) || defined(USE_OZONE)
+#if defined(USE_AURA) || BUILDFLAG(IS_OZONE)
 namespace content {
 
 // content/common/font_list.h
@@ -93,7 +96,7 @@ base::Value::List GetFontList_SlowBlocking()
 }
 
 } // namespace content
-#endif // defined(USE_AURA) || defined(USE_OZONE)
+#endif // defined(USE_AURA) || BUILDFLAG(IS_OZONE)
 
 #if BUILDFLAG(ENABLE_VULKAN)
 namespace gpu {
@@ -106,7 +109,7 @@ std::unique_ptr<VulkanImplementation> CreateVulkanImplementation(bool use_swifts
     NOTIMPLEMENTED();
     return nullptr;
 #else
-#if defined(USE_OZONE)
+#if BUILDFLAG(IS_OZONE)
     return ui::OzonePlatform::GetInstance()->GetSurfaceFactoryOzone()->CreateVulkanImplementation(
             use_swiftshader, allow_protected_memory);
 #endif

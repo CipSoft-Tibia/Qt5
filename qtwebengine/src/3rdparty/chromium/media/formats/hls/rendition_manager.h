@@ -6,8 +6,10 @@
 #define MEDIA_FORMATS_HLS_RENDITION_MANAGER_H_
 
 #include <deque>
+#include <optional>
 #include <set>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "base/containers/flat_set.h"
@@ -15,14 +17,12 @@
 #include "base/functional/callback.h"
 #include "base/memory/raw_ptr.h"
 #include "base/memory/scoped_refptr.h"
-#include "base/strings/string_piece.h"
 #include "base/time/time.h"
 #include "base/types/id_type.h"
 #include "media/base/demuxer.h"
 #include "media/base/limits.h"
 #include "media/base/media_export.h"
 #include "media/formats/hls/types.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "ui/gfx/geometry/size.h"
 #include "url/gurl.h"
 
@@ -32,6 +32,17 @@ class MultivariantPlaylist;
 class VariantStream;
 class AudioRendition;
 class AudioRenditionGroup;
+
+// These values are persisted to logs. Entries should not be renumbered and
+// numeric values should never be reused.
+enum class AdaptationReason {
+  kUserSelection = 0,
+  kResolutionChange = 1,
+  kNetworkUpgrade = 2,
+  kNetworkDowngrade = 3,
+
+  kMaxValue = kNetworkDowngrade,
+};
 
 // Class responsible for tracking playability state of all variants and
 // renditions in a multivariant playlist. It will always select a preferred
@@ -72,8 +83,8 @@ class MEDIA_EXPORT RenditionManager {
   // in the URI of the primary variant when this callback is run.
   // The AudioRendition ptr can be null if there is no audio override rendition
   // selected.
-  using SelectedCB = base::RepeatingCallback<void(const VariantStream*,
-                                                  const AudioRendition*)>;
+  using SelectedCB = base::RepeatingCallback<
+      void(AdaptationReason, const VariantStream*, const AudioRendition*)>;
   using SelectedCallonce =
       base::OnceCallback<void(const VariantStream*, const AudioRendition*)>;
 
@@ -188,4 +199,4 @@ class MEDIA_EXPORT RenditionManager {
 
 }  // namespace media::hls
 
-#endif  // define MEDIA_FORMATS_HLS_RENDITION_MANAGER_H_
+#endif  // MEDIA_FORMATS_HLS_RENDITION_MANAGER_H_

@@ -5,9 +5,10 @@
 #ifndef UI_GL_DC_LAYER_OVERLAY_PARAMS_H_
 #define UI_GL_DC_LAYER_OVERLAY_PARAMS_H_
 
+#include <optional>
+
 #include "base/functional/callback.h"
 #include "base/memory/scoped_refptr.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "third_party/skia/include/core/SkColor.h"
 #include "ui/gfx/color_space.h"
 #include "ui/gfx/geometry/point.h"
@@ -30,7 +31,7 @@ struct GL_EXPORT DCLayerOverlayParams {
   // swap chain, or dcomp surface. If null and |background_color| is present,
   // then this overlay will represents a solid color quad. If both this and
   // |background_color| are null, this overlay will not have any visible output.
-  absl::optional<DCLayerOverlayImage> overlay_image;
+  std::optional<DCLayerOverlayImage> overlay_image;
 
   // Stacking order relative to backbuffer which has z-order 0.
   int z_order = 1;
@@ -48,7 +49,7 @@ struct GL_EXPORT DCLayerOverlayParams {
   gfx::Transform transform;
 
   // If present, then clip to |clip_rect| in root target space.
-  absl::optional<gfx::Rect> clip_rect;
+  std::optional<gfx::Rect> clip_rect;
 
   // When false, this overlay will be scaled with linear sampling.
   bool nearest_neighbor_filter = false;
@@ -60,24 +61,31 @@ struct GL_EXPORT DCLayerOverlayParams {
 
   // If present, the overlay will contain this color as a background fill,
   // blended behind |overlay_image|.
-  absl::optional<SkColor4f> background_color;
+  std::optional<SkColor4f> background_color;
 
-  //
-  // Below are parameters only used for |SwapChainPresenter|.
-  //
+  // Used to detect when multiple overlays are part of the same tile layer.
+  uint64_t aggregated_layer_id = 0;
 
-  gfx::ProtectedVideoType protected_video_type =
-      gfx::ProtectedVideoType::kClear;
+  // Parameters for video overlays, only used by |SwapChainPresenter|.
+  struct VideoParams {
+    VideoParams();
+    ~VideoParams();
 
-  gfx::ColorSpace color_space;
+    gfx::ProtectedVideoType protected_video_type =
+        gfx::ProtectedVideoType::kClear;
 
-  gfx::HDRMetadata hdr_metadata;
+    gfx::ColorSpace color_space;
 
-  // Indication of the overlay to be detected as possible full screen
-  // letterboxing.
-  // Go to viz::OverlayCandidate::possible_video_fullscreen_letterboxing for the
-  // details.
-  bool possible_video_fullscreen_letterboxing = false;
+    gfx::HDRMetadata hdr_metadata;
+
+    // Indication of the overlay to be detected as possible full screen
+    // letterboxing.
+    // Go to viz::OverlayCandidate::possible_video_fullscreen_letterboxing for
+    // the details.
+    bool possible_video_fullscreen_letterboxing = false;
+  };
+
+  VideoParams video_params;
 };
 
 }  // namespace gl

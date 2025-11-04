@@ -26,7 +26,6 @@
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "src/tint/lang/core/ir/convert.h"
-#include "gtest/gtest-spi.h"
 #include "src/tint/lang/core/ir/ir_helper_test.h"
 
 namespace tint::core::ir {
@@ -34,15 +33,16 @@ namespace {
 
 using namespace tint::core::number_suffixes;  // NOLINT
 using IR_ConvertTest = IRTestHelper;
+using IR_ConvertDeathTest = IR_ConvertTest;
 
-TEST_F(IR_ConvertTest, Fail_NullToType) {
-    EXPECT_FATAL_FAILURE(
+TEST_F(IR_ConvertDeathTest, Fail_NullToType) {
+    EXPECT_DEATH_IF_SUPPORTED(
         {
             Module mod;
             Builder b{mod};
             b.Convert(nullptr, 1_u);
         },
-        "");
+        "internal compiler error");
 }
 
 TEST_F(IR_ConvertTest, Results) {

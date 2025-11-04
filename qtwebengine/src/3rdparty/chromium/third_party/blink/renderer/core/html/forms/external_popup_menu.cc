@@ -32,9 +32,9 @@
 
 #include "base/numerics/safe_conversions.h"
 #include "build/build_config.h"
-#include "third_party/blink/public/common/browser_interface_broker_proxy.h"
 #include "third_party/blink/public/common/input/web_coalesced_input_event.h"
 #include "third_party/blink/public/common/input/web_mouse_event.h"
+#include "third_party/blink/public/platform/browser_interface_broker_proxy.h"
 #include "third_party/blink/public/platform/platform.h"
 #include "third_party/blink/public/platform/task_type.h"
 #include "third_party/blink/renderer/core/dom/node_computed_style.h"
@@ -45,8 +45,10 @@
 #include "third_party/blink/renderer/core/frame/local_frame_view.h"
 #include "third_party/blink/renderer/core/frame/web_frame_widget_impl.h"
 #include "third_party/blink/renderer/core/frame/web_local_frame_impl.h"
+#include "third_party/blink/renderer/core/html/forms/html_opt_group_element.h"
 #include "third_party/blink/renderer/core/html/forms/html_option_element.h"
 #include "third_party/blink/renderer/core/html/forms/html_select_element.h"
+#include "third_party/blink/renderer/core/html/html_hr_element.h"
 #include "third_party/blink/renderer/core/layout/layout_box.h"
 #include "third_party/blink/renderer/core/page/chrome_client.h"
 #include "third_party/blink/renderer/core/page/page.h"
@@ -306,13 +308,13 @@ void ExternalPopupMenu::GetPopupMenuInfo(
   const ComputedStyle& menu_style = owner_element.GetComputedStyle()
                                         ? *owner_element.GetComputedStyle()
                                         : *owner_element.EnsureComputedStyle();
-  const SimpleFontData* font_data = menu_style.GetFont().PrimaryFont();
+  const SimpleFontData* font_data = menu_style.GetFont()->PrimaryFont();
   DCHECK(font_data);
   // These coordinates need to be in CSS pixels.
   float dpr = GetDprForSizeAdjustment(owner_element);
   *item_height = font_data ? font_data->GetFontMetrics().Height() / dpr : 0;
   *font_size = static_cast<int>(
-      menu_style.GetFont().GetFontDescription().ComputedSize() / dpr);
+      menu_style.GetFont()->GetFontDescription().ComputedSize() / dpr);
   *selected_item = ToExternalPopupMenuItemIndex(
       owner_element.SelectedListIndex(), owner_element);
 

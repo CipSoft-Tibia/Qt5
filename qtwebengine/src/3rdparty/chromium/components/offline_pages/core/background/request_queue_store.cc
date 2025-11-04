@@ -71,7 +71,7 @@ bool CreateRequestQueueTable(sql::Database* db) {
 //
 // |upgrade_sql| is the SQL statement that copies data from the temporary
 // table back into the primary table.
-bool UpgradeWithQuery(sql::Database* db, const char* upgrade_sql) {
+bool UpgradeWithQuery(sql::Database* db, const base::cstring_view upgrade_sql) {
   if (!db->Execute("ALTER TABLE " REQUEST_QUEUE_TABLE_NAME
                    " RENAME TO temp_" REQUEST_QUEUE_TABLE_NAME)) {
     return false;
@@ -223,10 +223,9 @@ std::unique_ptr<SavePageRequest> MakeSavePageRequest(
   const SavePageRequest::RequestState state =
       ToRequestState(statement.ColumnInt64(6));
   const GURL url(statement.ColumnString(7));
-  const ClientId client_id(statement.ColumnString(8),
-                           statement.ColumnString(9));
-  const GURL original_url(statement.ColumnString(10));
-  const std::string request_origin(statement.ColumnString(11));
+  ClientId client_id(statement.ColumnString(8), statement.ColumnString(9));
+  GURL original_url(statement.ColumnString(10));
+  std::string request_origin(statement.ColumnString(11));
 
   DVLOG(2) << "making save page request - id " << id << " url " << url
            << " client_id " << client_id.name_space << "-" << client_id.id
@@ -382,8 +381,8 @@ bool InitDatabaseSync(sql::Database* db, const base::FilePath& path) {
   return CreateSchemaSync(db);
 }
 
-absl::optional<std::vector<std::unique_ptr<SavePageRequest>>>
-GetAllRequestsSync(sql::Database* db) {
+std::optional<std::vector<std::unique_ptr<SavePageRequest>>> GetAllRequestsSync(
+    sql::Database* db) {
   static const char kSql[] =
       "SELECT " REQUEST_QUEUE_FIELDS " FROM " REQUEST_QUEUE_TABLE_NAME;
   sql::Statement statement(db->GetCachedStatement(SQL_FROM_HERE, kSql));
@@ -391,14 +390,14 @@ GetAllRequestsSync(sql::Database* db) {
   while (statement.Step())
     requests.push_back(MakeSavePageRequest(statement));
   if (!statement.Succeeded())
-    return absl::nullopt;
+    return std::nullopt;
   return requests;
 }
 
 // Calls |callback| with the result of |requests|.
 void InvokeGetRequestsCallback(
     RequestQueueStore::GetRequestsCallback callback,
-    absl::optional<std::vector<std::unique_ptr<SavePageRequest>>> requests) {
+    std::optional<std::vector<std::unique_ptr<SavePageRequest>>> requests) {
   if (requests) {
     std::move(callback).Run(true, std::move(requests).value());
   } else {
@@ -445,7 +444,7 @@ AddRequestResult AddRequestSync(sql::Database* db,
   // check preconditions.
   if (options.maximum_in_flight_requests_for_namespace > 0 ||
       options.disallow_duplicate_requests) {
-    absl::optional<std::vector<std::unique_ptr<SavePageRequest>>> requests =
+    std::optional<std::vector<std::unique_ptr<SavePageRequest>>> requests =
         GetAllRequestsSync(db);
     if (!requests)
       return AddRequestResult::STORE_FAILURE;
@@ -552,7 +551,7 @@ UpdateRequestsResult RemoveRequestsIfSync(
     sql::Database* db,
     const base::RepeatingCallback<bool(const SavePageRequest&)>&
         remove_predicate) {
-  absl::optional<std::vector<std::unique_ptr<SavePageRequest>>> requests =
+  std::optional<std::vector<std::unique_ptr<SavePageRequest>>> requests =
       GetAllRequestsSync(db);
   if (!requests)
     return UpdateRequestsResult(StoreState::LOADED);
@@ -587,8 +586,8 @@ RequestQueueStore::~RequestQueueStore() {
 
 void RequestQueueStore::Initialize(InitializeCallback callback) {
   DCHECK(!db_);
-  db_ = std::make_unique<sql::Database>(sql::DatabaseOptions{
-      .exclusive_locking = true, .page_size = 4096, .cache_size = 500});
+  db_ = std::make_unique<sql::Database>(
+      sql::DatabaseOptions{.page_size = 4096, .cache_size = 500});
 
   background_task_runner_->PostTaskAndReplyWithResult(
       FROM_HERE, base::BindOnce(&InitDatabaseSync, db_.get(), db_file_path_),

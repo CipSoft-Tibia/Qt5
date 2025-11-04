@@ -33,9 +33,11 @@
 #include "third_party/blink/renderer/core/animation/keyframe_effect.h"
 #include "third_party/blink/renderer/core/animation/svg_interpolation_environment.h"
 #include "third_party/blink/renderer/core/animation/svg_interpolation_types_map.h"
+#include "third_party/blink/renderer/core/css/parser/css_parser_context.h"
 #include "third_party/blink/renderer/core/css/post_style_update_scope.h"
 #include "third_party/blink/renderer/core/css/resolver/style_resolver.h"
 #include "third_party/blink/renderer/core/css/style_engine.h"
+#include "third_party/blink/renderer/core/css/style_sheet_contents.h"
 #include "third_party/blink/renderer/core/dom/document.h"
 #include "third_party/blink/renderer/core/dom/element_traversal.h"
 #include "third_party/blink/renderer/core/dom/events/add_event_listener_options_resolved.h"
@@ -58,9 +60,12 @@
 #include "third_party/blink/renderer/core/svg/svg_animated_string.h"
 #include "third_party/blink/renderer/core/svg/svg_document_extensions.h"
 #include "third_party/blink/renderer/core/svg/svg_element_rare_data.h"
+#include "third_party/blink/renderer/core/svg/svg_foreign_object_element.h"
 #include "third_party/blink/renderer/core/svg/svg_graphics_element.h"
+#include "third_party/blink/renderer/core/svg/svg_image_element.h"
 #include "third_party/blink/renderer/core/svg/svg_resource.h"
 #include "third_party/blink/renderer/core/svg/svg_svg_element.h"
+#include "third_party/blink/renderer/core/svg/svg_symbol_element.h"
 #include "third_party/blink/renderer/core/svg/svg_title_element.h"
 #include "third_party/blink/renderer/core/svg/svg_tree_scope_resources.h"
 #include "third_party/blink/renderer/core/svg/svg_use_element.h"
@@ -404,7 +409,7 @@ CSSPropertyID SVGElement::CssPropertyIdForSVGAttributeName(
     property_name_to_id_map = new HashMap<StringImpl*, CSSPropertyID>;
     // This is a list of all base CSS and SVG CSS properties which are exposed
     // as SVG XML attributes
-    const QualifiedName* const attr_names[] = {
+    const auto attr_names = std::to_array<const QualifiedName*>({
         &svg_names::kAlignmentBaselineAttr,
         &svg_names::kBaselineShiftAttr,
         &svg_names::kBufferedRenderingAttr,
@@ -463,13 +468,12 @@ CSSPropertyID SVGElement::CssPropertyIdForSVGAttributeName(
         &svg_names::kVisibilityAttr,
         &svg_names::kWordSpacingAttr,
         &svg_names::kWritingModeAttr,
-    };
-    for (size_t i = 0; i < std::size(attr_names); i++) {
+    });
+    for (const auto* qname : attr_names) {
       CSSPropertyID property_id =
-          CssPropertyID(execution_context, attr_names[i]->LocalName());
+          CssPropertyID(execution_context, qname->LocalName());
       DCHECK_GT(property_id, CSSPropertyID::kInvalid);
-      property_name_to_id_map->Set(attr_names[i]->LocalName().Impl(),
-                                   property_id);
+      property_name_to_id_map->Set(qname->LocalName().Impl(), property_id);
     }
   }
 
@@ -641,6 +645,14 @@ SVGUseElement* SVGElement::GeneratingUseElement() const {
   return nullptr;
 }
 
+SVGResourceTarget& SVGElement::EnsureResourceTarget() {
+  return EnsureSVGRareData()->EnsureResourceTarget(*this);
+}
+
+bool SVGElement::IsResourceTarget() const {
+  return HasSVGRareData() && SvgRareData()->HasResourceTarget();
+}
+
 void SVGElement::SetCorrespondingElement(SVGElement* corresponding_element) {
   EnsureSVGRareData()->SetCorrespondingElement(corresponding_element);
 }
@@ -691,10 +703,10 @@ AnimatedPropertyType SVGElement::AnimatedPropertyTypeForCSSAttribute(
   if (css_property_map.empty()) {
     // Fill the map for the first use.
     struct AttrToTypeEntry {
-      const QualifiedName& attr;
+      const QualifiedName& attr = g_null_name;
       const AnimatedPropertyType prop_type;
     };
-    const AttrToTypeEntry attr_to_types[] = {
+    const auto attr_to_types = std::to_array<const AttrToTypeEntry>({
         {svg_names::kAlignmentBaselineAttr, kAnimatedString},
         {svg_names::kBaselineShiftAttr, kAnimatedString},
         {svg_names::kBufferedRenderingAttr, kAnimatedString},
@@ -748,9 +760,10 @@ AnimatedPropertyType SVGElement::AnimatedPropertyTypeForCSSAttribute(
         {svg_names::kVectorEffectAttr, kAnimatedString},
         {svg_names::kVisibilityAttr, kAnimatedString},
         {svg_names::kWordSpacingAttr, kAnimatedLength},
-    };
-    for (size_t i = 0; i < std::size(attr_to_types); i++)
-      css_property_map.Set(attr_to_types[i].attr, attr_to_types[i].prop_type);
+    });
+    for (const auto& item : attr_to_types) {
+      css_property_map.Set(item.attr, item.prop_type);
+    }
   }
   auto it = css_property_map.find(attribute_name);
   if (it == css_property_map.end())
@@ -1053,6 +1066,17 @@ void SVGElement::CollectExtraStyleForPresentationAttribute(
 
 const ComputedStyle* SVGElement::CustomStyleForLayoutObject(
     const StyleRecalcContext& style_recalc_context) {
+  // If ResolveStyle() needs to create presentation attribute style for the
+  // SVG object, those values need to be parsed, and we want that to happen in
+  // SVG mode using the element sheet (which is a fake stylesheet used for
+  // things like inline style). We don't need to switch the parser mode here
+  // for correctness, but if we don't, CSSParser::ParseValue() will create a
+  // new parser context due to mismatch. So override it temporarily here
+  // to gain a tiny bit of performance.
+  CSSParserContext::ParserModeOverridingScope scope(
+      *GetDocument().ElementSheet().Contents()->ParserContext(),
+      kSVGAttributeMode);
+
   SVGElement* corresponding_element = CorrespondingElement();
   if (!corresponding_element) {
     return GetDocument().GetStyleResolver().ResolveStyle(this,

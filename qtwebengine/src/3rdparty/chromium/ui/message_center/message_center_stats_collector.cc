@@ -2,6 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#ifdef UNSAFE_BUFFERS_BUILD
+// TODO(crbug.com/351564777): Remove this and convert code to safer constructs.
+#pragma allow_unsafe_buffers
+#endif
+
 #include "ui/message_center/message_center_stats_collector.h"
 
 #include <stddef.h>
@@ -10,6 +15,7 @@
 
 #include "base/metrics/histogram_macros.h"
 #include "base/metrics/user_metrics.h"
+#include "base/not_fatal_until.h"
 #include "ui/message_center/message_center.h"
 
 namespace message_center {
@@ -66,7 +72,7 @@ void MessageCenterStatsCollector::OnNotificationAdded(
   stats_[notification_id] = NotificationStats(notification_id);
 
   auto iter = stats_.find(notification_id);
-  DCHECK(iter != stats_.end());
+  CHECK(iter != stats_.end(), base::NotFatalUntil::M130);
 
   stats_[notification_id].CollectAction(NOTIFICATION_ACTION_ADD);
 
@@ -102,8 +108,8 @@ void MessageCenterStatsCollector::OnNotificationUpdated(
 
 void MessageCenterStatsCollector::OnNotificationClicked(
     const std::string& notification_id,
-    const absl::optional<int>& button_index,
-    const absl::optional<std::u16string>& reply) {
+    const std::optional<int>& button_index,
+    const std::optional<std::u16string>& reply) {
   auto iter = stats_.find(notification_id);
   if (iter == stats_.end())
     return;

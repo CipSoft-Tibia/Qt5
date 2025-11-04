@@ -5,7 +5,9 @@
 #                      \___/_/\_\ .__/ \__,_|\__|
 #                               |_| XML parser
 #
-# Copyright (c) 2020-2022 Sebastian Pipping <sebastian@pipping.org>
+# Copyright (c) 2020-2024 Sebastian Pipping <sebastian@pipping.org>
+# Copyright (c) 2023      Joyce Brum <joycebrum@google.com>
+# Copyright (c) 2024      Dag-Erling Smørgrav <des@des.dev>
 # Licensed under the MIT license:
 #
 # Permission is  hereby granted,  free of charge,  to any  person obtaining
@@ -27,30 +29,32 @@
 # OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
 # USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-name: Run macOS Travis CI tasks
+name: Run macOS CI tasks
 
 on:
   pull_request:
   push:
   schedule:
     - cron: '0 2 * * 5'  # Every Friday at 2am
+  workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
   checks:
     name: Perform checks
     strategy:
       matrix:
+        os: [macos-12, macos-14]
         include:
-          # NOTE: This is a quick port from .travis.yml in reaction to
-          #       Homebrew issues at Travis CI.  While we have the matrix
-          #       in two places, please keep the two files in sync.  Thank you!
           - MODE: cmake-oos
           - MODE: distcheck
           - MODE: qa-sh
             FLAT_ENV: CC=clang CXX=clang++ LD=clang++ QA_SANITIZER=address
-    runs-on: macos-11
+    runs-on: ${{ matrix.os }}
     steps:
-    - uses: actions/checkout@v3.1.0
+    - uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332  # v4.1.7
     - name: Install build dependencies
       run: |
         sudo rm /usr/local/bin/2to3  # so that "brew link" will work
@@ -58,6 +62,5 @@ jobs:
     - name: Perform check "${{ matrix.MODE }}"
       env:
         MODE: ${{ matrix.MODE }}
-        TRAVIS_OS_NAME: osx
       run: |
-        env ${{ matrix.FLAT_ENV }} ./.travis.sh
+        env ${{ matrix.FLAT_ENV }} ./.ci.sh

@@ -65,7 +65,7 @@ protected:
     void handleWheelEvent(QWheelEvent *);
 #endif
 #if QT_CONFIG(draganddrop)
-    void handleDragEnterEvent(QDragEnterEvent *, QWidget *widget = nullptr);
+    void handleDragEnterEvent(QDragMoveEvent *, QWidget *widget = nullptr);
     void handleDragMoveEvent(QDragMoveEvent *);
     void handleDragLeaveEvent(QDragLeaveEvent *);
     void handleDropEvent(QDropEvent *);
@@ -89,7 +89,7 @@ private slots:
 private:
     void handleScreenChange();
     void handleDevicePixelRatioChange();
-    void repaintWindow();
+    void scheduleRepaint();
     bool updateSize();
     void updateMargins();
     void updateNormalGeometry();

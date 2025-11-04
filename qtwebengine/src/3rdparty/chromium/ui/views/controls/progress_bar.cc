@@ -23,6 +23,7 @@
 #include "ui/gfx/canvas.h"
 #include "ui/gfx/color_utils.h"
 #include "ui/gfx/geometry/skia_conversions.h"
+#include "ui/views/accessibility/view_accessibility.h"
 #include "ui/views/widget/widget.h"
 
 namespace views {
@@ -60,21 +61,13 @@ int RoundToPercent(double fractional_value) {
 
 ProgressBar::ProgressBar() {
   SetFlipCanvasOnPaintForRTLUI(true);
-  SetAccessibilityProperties(ax::mojom::Role::kProgressIndicator);
+  GetViewAccessibility().SetRole(ax::mojom::Role::kProgressIndicator);
 }
 
 ProgressBar::~ProgressBar() = default;
 
-void ProgressBar::GetAccessibleNodeData(ui::AXNodeData* node_data) {
-  View::GetAccessibleNodeData(node_data);
-  if (IsIndeterminate()) {
-    node_data->RemoveStringAttribute(ax::mojom::StringAttribute::kValue);
-  } else {
-    node_data->SetValue(base::FormatPercent(RoundToPercent(current_value_)));
-  }
-}
-
-gfx::Size ProgressBar::CalculatePreferredSize() const {
+gfx::Size ProgressBar::CalculatePreferredSize(
+    const SizeBounds& /*available_size*/) const {
   // The width will typically be ignored.
   gfx::Size pref_size(1, preferred_height_);
   gfx::Insets insets = GetInsets();
@@ -174,21 +167,21 @@ void ProgressBar::SetForegroundColor(SkColor color) {
   }
 
   foreground_color_ = color;
-  foreground_color_id_ = absl::nullopt;
+  foreground_color_id_ = std::nullopt;
   OnPropertyChanged(&foreground_color_, kPropertyEffectsPaint);
 }
 
-absl::optional<ui::ColorId> ProgressBar::GetForegroundColorId() const {
+std::optional<ui::ColorId> ProgressBar::GetForegroundColorId() const {
   return foreground_color_id_;
 }
 
-void ProgressBar::SetForegroundColorId(absl::optional<ui::ColorId> color_id) {
+void ProgressBar::SetForegroundColorId(std::optional<ui::ColorId> color_id) {
   if (foreground_color_id_ == color_id) {
     return;
   }
 
   foreground_color_id_ = color_id;
-  foreground_color_ = absl::nullopt;
+  foreground_color_ = std::nullopt;
   OnPropertyChanged(&foreground_color_id_, kPropertyEffectsPaint);
 }
 
@@ -207,21 +200,21 @@ void ProgressBar::SetBackgroundColor(SkColor color) {
   }
 
   background_color_ = color;
-  background_color_id_ = absl::nullopt;
+  background_color_id_ = std::nullopt;
   OnPropertyChanged(&background_color_, kPropertyEffectsPaint);
 }
 
-absl::optional<ui::ColorId> ProgressBar::GetBackgroundColorId() const {
+std::optional<ui::ColorId> ProgressBar::GetBackgroundColorId() const {
   return background_color_id_;
 }
 
-void ProgressBar::SetBackgroundColorId(absl::optional<ui::ColorId> color_id) {
+void ProgressBar::SetBackgroundColorId(std::optional<ui::ColorId> color_id) {
   if (background_color_id_ == color_id) {
     return;
   }
 
   background_color_id_ = color_id;
-  background_color_ = absl::nullopt;
+  background_color_ = std::nullopt;
   OnPropertyChanged(&background_color_id_, kPropertyEffectsPaint);
 }
 
@@ -229,7 +222,7 @@ int ProgressBar::GetPreferredHeight() const {
   return preferred_height_;
 }
 
-void ProgressBar::SetPreferredHeight(const int preferred_height) {
+void ProgressBar::SetPreferredHeight(int preferred_height) {
   if (preferred_height_ == preferred_height) {
     return;
   }
@@ -252,7 +245,7 @@ gfx::RoundedCornersF ProgressBar::GetPreferredCornerRadii() const {
 }
 
 void ProgressBar::SetPreferredCornerRadii(
-    const absl::optional<gfx::RoundedCornersF> preferred_corner_radii) {
+    std::optional<gfx::RoundedCornersF> preferred_corner_radii) {
   if (preferred_corner_radii_ == preferred_corner_radii) {
     return;
   }
@@ -341,22 +334,27 @@ void ProgressBar::OnPaintIndeterminate(gfx::Canvas* canvas) {
 }
 
 void ProgressBar::MaybeNotifyAccessibilityValueChanged() {
+  // Exit early if ProgressBar is Indeterminate or not visible.
+  if (IsIndeterminate()) {
+    GetViewAccessibility().RemoveValue();
+    return;
+  }
   if (!GetWidget() || !GetWidget()->IsVisible() ||
       RoundToPercent(current_value_) == last_announced_percentage_) {
     return;
   }
   last_announced_percentage_ = RoundToPercent(current_value_);
-  NotifyAccessibilityEvent(ax::mojom::Event::kValueChanged, true);
+  GetViewAccessibility().SetValue(
+      base::FormatPercent(last_announced_percentage_));
 }
 
 BEGIN_METADATA(ProgressBar)
 ADD_PROPERTY_METADATA(int, PreferredHeight)
-ADD_PROPERTY_METADATA(absl::optional<gfx::RoundedCornersF>,
-                      PreferredCornerRadii)
+ADD_PROPERTY_METADATA(std::optional<gfx::RoundedCornersF>, PreferredCornerRadii)
 ADD_PROPERTY_METADATA(SkColor, ForegroundColor, ui::metadata::SkColorConverter)
 ADD_PROPERTY_METADATA(SkColor, BackgroundColor, ui::metadata::SkColorConverter)
-ADD_PROPERTY_METADATA(absl::optional<ui::ColorId>, ForegroundColorId);
-ADD_PROPERTY_METADATA(absl::optional<ui::ColorId>, BackgroundColorId);
+ADD_PROPERTY_METADATA(std::optional<ui::ColorId>, ForegroundColorId);
+ADD_PROPERTY_METADATA(std::optional<ui::ColorId>, BackgroundColorId);
 ADD_PROPERTY_METADATA(bool, Paused)
 END_METADATA
 

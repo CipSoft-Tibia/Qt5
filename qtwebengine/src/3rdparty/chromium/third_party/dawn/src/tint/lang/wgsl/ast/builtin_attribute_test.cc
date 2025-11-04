@@ -25,8 +25,6 @@
 // OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-#include "gtest/gtest-spi.h"
-
 #include "src/tint/lang/core/builtin_value.h"
 #include "src/tint/lang/wgsl/ast/helper_test.h"
 
@@ -34,29 +32,11 @@ namespace tint::ast {
 namespace {
 
 using BuiltinAttributeTest = TestHelper;
+using BuiltinAttributeDeathTest = BuiltinAttributeTest;
 
 TEST_F(BuiltinAttributeTest, Creation) {
     auto* d = Builtin(core::BuiltinValue::kFragDepth);
-    CheckIdentifier(d->builtin, "frag_depth");
-}
-
-TEST_F(BuiltinAttributeTest, Assert_Null_Builtin) {
-    EXPECT_FATAL_FAILURE(
-        {
-            ProgramBuilder b;
-            b.Builtin(nullptr);
-        },
-        "internal compiler error");
-}
-
-TEST_F(BuiltinAttributeTest, Assert_DifferentGenerationID_Builtin) {
-    EXPECT_FATAL_FAILURE(
-        {
-            ProgramBuilder b1;
-            ProgramBuilder b2;
-            b1.Builtin(b2.Expr("bang"));
-        },
-        "internal compiler error");
+    EXPECT_EQ(d->builtin, core::BuiltinValue::kFragDepth);
 }
 
 }  // namespace

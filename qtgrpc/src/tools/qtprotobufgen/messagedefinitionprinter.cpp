@@ -127,6 +127,7 @@ void MessageDefinitionPrinter::printClassDefinitionPrivate()
     printConstructors();
     printCopyFunctionality();
     printMoveSemantic();
+    printQVariantOperator();
     printComparisonOperators();
     printGetters();
     printPublicExtras();
@@ -252,11 +253,11 @@ void MessageDefinitionPrinter::printUintData(const char *templateString)
     for (int i = 0, propertyIndex = 0; i < numFields; ++i, ++propertyIndex) {
         const FieldDescriptor *field = m_descriptor->field(i);
         const std::map<std::string, std::string> variables = {
-            { "json_name_offset", std::to_string(jsonOffset) },
-            { "field_number", std::to_string(field->number()) },
-            { "property_index", std::to_string(propertyIndex) },
-            { "field_flags", common::collectFieldFlags(field) },
-            { "json_name", field->json_name() },
+            { "json_name_offset", std::to_string(jsonOffset)        },
+            { "field_number",     std::to_string(field->number())   },
+            { "property_index",   std::to_string(propertyIndex)     },
+            { "field_flags",      common::collectFieldFlags(field)  },
+            { "json_name",        std::string{ field->json_name() } },
         };
 
         // Oneof and optional properties generate additional has<FieldName> property next to the
@@ -277,7 +278,7 @@ void MessageDefinitionPrinter::printCharData()
     m_printer->Print("// char_data\n");
 
     m_printer->Print("/* metadata char_data: */\n\"");
-    m_printer->Print(m_descriptor->full_name().c_str());
+    m_printer->Print(std::string{m_descriptor->full_name()}.c_str());
     m_printer->Print("\\0\" /* = full message name */\n");
 
     m_printer->Print("/* field char_data: */\n\"");
@@ -343,6 +344,12 @@ void MessageDefinitionPrinter::printMoveSemantic()
 {
     assert(m_descriptor != nullptr);
     m_printer->Print(m_typeMap, CommonTemplates::MoveConstructorDefinitionTemplate());
+}
+
+void MessageDefinitionPrinter::printQVariantOperator()
+{
+    assert(m_descriptor != nullptr);
+    m_printer->Print(m_typeMap, CommonTemplates::QVariantOperatorDefinitionTemplate());
 }
 
 void MessageDefinitionPrinter::printComparisonOperators()

@@ -521,7 +521,7 @@ QColor QSurface3DSeries::wireframeColor() const
 void QSurface3DSeries::setDataArray(const QSurfaceDataArray &newDataArray)
 {
     Q_D(QSurface3DSeries);
-    if (d->m_dataArray.data() != newDataArray.data()) {
+    if (!d->m_dataArray.isSharedWith(newDataArray)) {
         d->setDataArray(newDataArray);
         emit dataArrayChanged(newDataArray);
     }
@@ -642,7 +642,7 @@ void QSurface3DSeriesPrivate::createItemLabel()
     static const QString seriesNameTag(QStringLiteral("@seriesName"));
 
     if (m_selectedPoint == QSurface3DSeries::invalidSelectionPosition()) {
-        m_itemLabel = hiddenLabelTag;
+        m_itemLabel = QString(hiddenLabelTag);
         return;
     }
 

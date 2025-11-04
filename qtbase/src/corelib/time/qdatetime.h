@@ -12,7 +12,7 @@
 #include <QtCore/qshareddata.h>
 #include <QtCore/qstring.h>
 
-#include <limits>
+#include <climits>
 #include <chrono>
 
 #if defined(Q_OS_DARWIN) || defined(Q_QDOC)
@@ -32,7 +32,8 @@ public:
     constexpr QDate() : jd(nullJd()) {}
     QDate(int y, int m, int d);
     QDate(int y, int m, int d, QCalendar cal);
-#if __cpp_lib_chrono >= 201907L || defined(Q_QDOC)
+// INTEGRITY incident-85878 (timezone and clock_cast are not supported)
+#if (__cpp_lib_chrono >= 201907L && !defined(Q_OS_INTEGRITY)) || defined(Q_QDOC)
     QT_POST_CXX17_API_IN_EXPORTED_CLASS
     Q_IMPLICIT constexpr QDate(std::chrono::year_month_day date) noexcept
         : jd(date.ok() ? stdSysDaysToJulianDay(date) : nullJd())
@@ -114,7 +115,8 @@ public:
     void getDate(int *year, int *month, int *day) const;
 
     [[nodiscard]] QDate addDays(qint64 days) const;
-#if __cpp_lib_chrono >= 201907L || defined(Q_QDOC)
+// INTEGRITY incident-85878 (timezone and clock_cast are not supported)
+#if (__cpp_lib_chrono >= 201907L && !defined(Q_OS_INTEGRITY)) || defined(Q_QDOC)
     QT_POST_CXX17_API_IN_EXPORTED_CLASS
     [[nodiscard]] QDate addDuration(std::chrono::days days) const
     {
@@ -176,7 +178,8 @@ private:
     static constexpr inline qint64 maxJd() { return Q_INT64_C( 784354017364); }
     static constexpr inline qint64 unixEpochJd() { return Q_INT64_C(2440588); }
 
-#if __cpp_lib_chrono >= 201907L
+// INTEGRITY incident-85878 (timezone and clock_cast are not supported)
+#if __cpp_lib_chrono >= 201907L && !defined(Q_OS_INTEGRITY)
 #if !QT_CORE_REMOVED_SINCE(6, 7)
     QT_POST_CXX17_API_IN_EXPORTED_CLASS
 #endif
@@ -510,7 +513,8 @@ public:
         > time
     );
 
-#if __cpp_lib_chrono >= 201907L || defined(Q_QDOC)
+// INTEGRITY incident-85878 (timezone and clock_cast are not supported)
+#if (__cpp_lib_chrono >= 201907L && !defined(Q_OS_INTEGRITY)) || defined(Q_QDOC)
 #if __cpp_concepts >= 201907L || defined(Q_QDOC)
 private:
     // The duration type of the result of a clock_cast<system_clock>.
@@ -580,7 +584,7 @@ public:
         const std::chrono::seconds duration(toSecsSinceEpoch());
         return std::chrono::sys_seconds(duration);
     }
-#endif // __cpp_lib_chrono >= 201907L
+#endif // __cpp_lib_chrono >= 201907L && !Q_OS_INTEGRITY
 
     friend std::chrono::milliseconds operator-(const QDateTime &lhs, const QDateTime &rhs)
     {

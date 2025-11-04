@@ -13,6 +13,7 @@ qt_internal_add_plugin(IIOSensorProxySensorPlugin
         iiosensorproxylightsensor.cpp iiosensorproxylightsensor.h
         iiosensorproxyorientationsensor.cpp iiosensorproxyorientationsensor.h
         iiosensorproxysensorbase.cpp iiosensorproxysensorbase.h
+        iiosensorproxyproximitysensor.cpp iiosensorproxyproximitysensor.h
         main.cpp
     NO_UNITY_BUILD_SOURCES
         # Duplicate symbol definition between, iiosensorproxycompass.cpp, and
@@ -20,6 +21,7 @@ qt_internal_add_plugin(IIOSensorProxySensorPlugin
         # TODO: dbusPath() can probably be implemented as a static data member
         iiosensorproxylightsensor.cpp
         iiosensorproxyorientationsensor.cpp
+        iiosensorproxyproximitysensor.cpp
     DBUS_INTERFACE_SOURCES
         org.freedesktop.DBus.Properties.xml
         net.hadess.SensorProxy.xml

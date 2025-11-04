@@ -12,7 +12,7 @@
 #include "components/supervised_user/core/browser/supervised_user_service.h"
 #include "components/supervised_user/core/browser/supervised_user_service_observer.h"
 #include "components/supervised_user/core/browser/supervised_user_url_filter.h"
-#include "components/supervised_user/core/common/supervised_user_utils.h"
+#include "components/supervised_user/core/browser/supervised_user_utils.h"
 #include "content/public/browser/web_ui_message_handler.h"
 
 // The implementation for the chrome://family-link-user-internals page.
@@ -52,12 +52,9 @@ class FamilyLinkUserInternalsMessageHandler
                       supervised_user::FilteringBehaviorReason reason,
                       bool uncertain);
 
-  // SupervisedUserURLFilter::Observer:
-  void OnSiteListUpdated() override;
   void OnURLChecked(const GURL& url,
                     supervised_user::FilteringBehavior behavior,
-                    supervised_user::FilteringBehaviorReason reason,
-                    bool uncertain) override;
+                    supervised_user::FilteringBehaviorDetails details) override;
 
   base::CallbackListSubscription user_settings_subscription_;
 

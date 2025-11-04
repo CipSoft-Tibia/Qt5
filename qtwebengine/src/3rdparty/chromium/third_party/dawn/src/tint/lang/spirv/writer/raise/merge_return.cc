@@ -71,9 +71,15 @@ struct State {
     /// Process the function.
     /// @param fn the function to process
     void Process(core::ir::Function* fn) {
+        if (fn->Stage() != core::ir::Function::PipelineStage::kUndefined) {
+            // Entry points are not called and do not require this transformation to ensure
+            // convergence.
+            return;
+        }
+
         // Find all of the nested return instructions in the function.
-        for (const auto& usage : fn->Usages()) {
-            if (auto* ret = usage.instruction->As<core::ir::Return>()) {
+        for (const auto& usage : fn->UsagesUnsorted()) {
+            if (auto* ret = usage->instruction->As<core::ir::Return>()) {
                 TransitivelyMarkAsReturning(ret->Block()->Parent());
             }
         }
@@ -129,6 +135,7 @@ struct State {
     /// @param block the block to process
     void ProcessBlock(core::ir::Block* block) {
         core::ir::If* inner_if = nullptr;
+        Vector<core::ir::If*, 4> inner_if_stack;
         for (auto* inst = *block->begin(); inst;) {  // For each instruction in 'block'
             // As we're modifying the block that we're iterating over, grab the pointer to the next
             // instruction before (potentially) moving 'inst' to another block.
@@ -167,6 +174,7 @@ struct State {
                     if (next && (next != fn_return || fn_return->Value()) &&
                         !tint::IsAnyOf<core::ir::Exit, core::ir::Unreachable>(next)) {
                         inner_if = CreateIfContinueExecution(ctrl);
+                        inner_if_stack.Push(inner_if);
                     }
                 }
             }
@@ -195,9 +203,10 @@ struct State {
                 inner_if->True()->Append(b.ExitIf(inner_if));
             }
 
-            // Loop over the 'if' instructions, starting with the inner-most, and add any missing
-            // terminating instructions to the blocks holding the 'if'.
-            for (auto* i = inner_if; i; i = tint::As<core::ir::If>(i->Block()->Parent())) {
+            // Walk back down the stack of 'if' instructions that were created, and add any missing
+            // terminating instructions to the blocks holding them.
+            while (!inner_if_stack.IsEmpty()) {
+                auto* i = inner_if_stack.Pop();
                 if (!i->Block()->Terminator() && i->Block()->Parent()) {
                     // Append the exit instruction to the block holding the 'if'.
                     Vector<core::ir::InstructionResult*, 8> exit_args = i->Results();
@@ -208,6 +217,12 @@ struct State {
                     i->Block()->Append(exit);
                 }
             }
+        }
+
+        // If this is a non-empty block that still has no terminator, we need to insert an exit
+        // instruction (unless it is the function's top-level block).
+        if (!block->IsEmpty() && !block->Terminator() && block->Parent()) {
+            ExitFromBlock(block);
         }
     }
 
@@ -262,6 +277,14 @@ struct State {
             block->Append(b.Store(return_val, ret->Args()[0]));
         }
 
+        // Replace the return instruction with an exit instruction.
+        ExitFromBlock(block);
+        ret->Destroy();
+    }
+
+    /// Append an instruction to @p block that will exit from its containing control instruction.
+    /// @param block the instruction to exit from
+    void ExitFromBlock(core::ir::Block* block) {
         // If the outermost control instruction is expecting exit values, then return them as
         // 'undef' values.
         auto* ctrl = block->Parent();
@@ -270,7 +293,6 @@ struct State {
 
         // Replace the return instruction with an exit instruction.
         block->Append(b.Exit(ctrl, std::move(exit_args)));
-        ret->Destroy();
     }
 
     /// Builds instructions to create a 'if(continue_execution)' conditional.

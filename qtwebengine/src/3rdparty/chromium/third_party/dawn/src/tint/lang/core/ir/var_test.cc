@@ -28,7 +28,6 @@
 #include "src/tint/lang/core/ir/var.h"
 
 #include "gmock/gmock.h"
-#include "gtest/gtest-spi.h"
 #include "src/tint/lang/core/ir/builder.h"
 #include "src/tint/lang/core/ir/instruction.h"
 #include "src/tint/lang/core/ir/ir_helper_test.h"
@@ -40,15 +39,16 @@ using namespace tint::core::fluent_types;     // NOLINT
 using namespace tint::core::number_suffixes;  // NOLINT
 
 using IR_VarTest = IRTestHelper;
+using IR_VarDeathTest = IR_VarTest;
 
-TEST_F(IR_VarTest, Fail_NullType) {
-    EXPECT_FATAL_FAILURE(
+TEST_F(IR_VarDeathTest, Fail_NullType) {
+    EXPECT_DEATH_IF_SUPPORTED(
         {
             Module mod;
             Builder b{mod};
             b.Var(nullptr);
         },
-        "");
+        "internal compiler error");
 }
 
 TEST_F(IR_VarTest, Results) {
@@ -65,9 +65,9 @@ TEST_F(IR_VarTest, Initializer_Usage) {
     auto* init = b.Constant(1_f);
     var->SetInitializer(init);
 
-    EXPECT_THAT(init->Usages(), testing::UnorderedElementsAre(Usage{var, 0u}));
+    EXPECT_THAT(init->UsagesUnsorted(), testing::UnorderedElementsAre(Usage{var, 0u}));
     var->SetInitializer(nullptr);
-    EXPECT_TRUE(init->Usages().IsEmpty());
+    EXPECT_FALSE(init->IsUsed());
 }
 
 TEST_F(IR_VarTest, Clone) {
@@ -75,7 +75,7 @@ TEST_F(IR_VarTest, Clone) {
     v->SetInitializer(b.Constant(4_f));
     v->SetBindingPoint(1, 2);
     v->SetAttributes(IOAttributes{
-        3, 4, core::BuiltinValue::kFragDepth,
+        3, 4, 5, core::BuiltinValue::kFragDepth,
         Interpolation{core::InterpolationType::kFlat, core::InterpolationSampling::kCentroid},
         true});
 
@@ -100,8 +100,11 @@ TEST_F(IR_VarTest, Clone) {
     EXPECT_TRUE(attrs.location.has_value());
     EXPECT_EQ(3u, attrs.location.value());
 
-    EXPECT_TRUE(attrs.index.has_value());
-    EXPECT_EQ(4u, attrs.index.value());
+    EXPECT_TRUE(attrs.blend_src.has_value());
+    EXPECT_EQ(4u, attrs.blend_src.value());
+
+    EXPECT_TRUE(attrs.color.has_value());
+    EXPECT_EQ(5u, attrs.color.value());
 
     EXPECT_TRUE(attrs.builtin.has_value());
     EXPECT_EQ(core::BuiltinValue::kFragDepth, attrs.builtin.value());

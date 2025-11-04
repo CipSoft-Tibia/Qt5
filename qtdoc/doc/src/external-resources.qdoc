@@ -435,52 +435,6 @@
 */
 
 /*!
-    \externalpage http://doc.qt.io/qtcreator/creator-configuring.html
-    \title Qt Creator
-*/
-
-/*!
-    \externalpage http://doc.qt.io/qtcreator/creator-configuring.html
-    \title Configuring Qt Creator
-*/
-/*!
-    \externalpage http://doc.qt.io/qtcreator/creator-deploying-android.html#signing-android-packages
-    \title Qt Creator: Signing Android Packages
-*/
-/*!
-    \externalpage http://doc.qt.io/qtcreator/creator-deploying-android.html#specifying-settings-for-packages
-    \title Qt Creator: Specifying Settings for Packages
-*/
-/*!
-    \externalpage http://doc.qt.io/qtcreator/creator-developing-android.html#specifying-android-device-settings
-    \title Qt Creator: Specifying Android Device Settings
-*/
-/*!
-    \externalpage http://doc.qt.io/qtcreator/creator-deploying-android.html#managing-android-skd-packages
-    \title Qt Creator: Managing Android SDK Packages
-*/
-/*!
-    \externalpage http://doc.qt.io/qtcreator/creator-deploying-android.html#editing-manifest-files
-    \title Qt Creator: Editing Manifest Files
-*/
-/*!
-    \externalpage https://doc.qt.io/qtcreator/creator-qml-performance-monitor.html
-    \title Qt Creator: Profiling QML Applications
-*/
-
-/*!
-    \externalpage https://doc.qt.io/qtcreator/creator-build-example-application.html
-    \title Qt Creator: Building and Running an Example
-*/
-/*!
-    \externalpage https://doc.qt.io/qtcreator/qtcreator-accelbubble-example.html
-    \title Qt Creator: Creating a Mobile Application
-*/
-/*!
-    \externalpage https://doc.qt.io/qtcreator/creator-deploying-android.html
-    \title Qt Creator: Deploying to Android
-*/
-/*!
     \externalpage http://wiki.openssl.org/index.php/Compilation_and_Installation#Configure_Options
     \title OpenSSL Configure Options
 */
@@ -533,6 +487,10 @@
 /*!
     \externalpage http://doc.qt.io/qtvstools/index.html
     \title Qt VS Tools
+*/
+/*!
+    \externalpage https://doc.qt.io/vscodeext/
+    \title Qt Extension for VS Code
 */
 /*!
     \externalpage http://doc.qt.io/emulator/index.html
@@ -984,26 +942,92 @@
 */
 
 /*!
-    \externalpage https://code.qt.io/cgit/qt/qtbase.git/tree/src/android/jar/src/org/qtproject/qt/android/QtAbstractItemModel.java
-    \title QtAbstractItemModel Android Class
-*/
-
-/*!
-    \externalpage https://code.qt.io/cgit/qt/qtbase.git/tree/src/android/jar/src/org/qtproject/qt/android/QtAbstractListModel.java
-    \title QtAbstractListModel Android Class
-*/
-
-/*!
-    \externalpage https://code.qt.io/cgit/qt/qtbase.git/tree/src/android/jar/src/org/qtproject/qt/android/QtModelIndex.java
-    \title QtModelIndex Android Class
-*/
-
-/*!
-    \externalpage https://code.qt.io/cgit/qt/qtdeclarative.git/tree/src/quick/platform/android/jar/src/org/qtproject/qt/android/QtQmlStatusChangeListener.java
-    \title interface QtQmlStatusChangeListener
-*/
-
-/*!
     \externalpage https://kotlinlang.org/api/latest/jvm/stdlib/kotlin.jvm/-synchronized/
     \title Kotlin: Synchronized
+*/
+
+/*!
+    \externalpage https://doc.qt.io/QtForMCUs/qtul-supported-platforms.html
+    \title Supported Qt for MCUs platforms
+*/
+
+/*!
+    \externalpage https://reuse.software/
+    \title REUSE
+*/
+
+/*!
+    \externalpage https://github.com/fsfe/reuse-tool
+    \title reuse-tool
+*/
+
+/*!
+    \externalpage https://wiki.qt.io/Licensing_in_Qt%27s_modules
+    \title Licensing in Qt sources
+*/
+
+/*!
+    \externalpage https://contribute.qt-project.org/quips/18
+    \title QUIP 18: License specification in Qt's modules
+*/
+
+/*!
+    \externalpage https://doc.qt.io/Boot2Qt/b2qt-meta-qt6.html
+    \title Boot to Qt: Using meta-qt6
+*/
+
+/*!
+    \externalpage https://code.qt.io/cgit/yocto/meta-qt6.git/
+    \title meta-qt6 repository
+*/
+
+/*!
+    \externalpage https://doc.qt.io/qtlicenseserver/qls-reference-troubleshooting-service.html#copying-a-qt-or-qa-installation-to-another-computer
+    \title Copying a Qt or QA installation to another computer
+*/
+
+/*!
+    \externalpage https://download.qt.io/official_releases/online_installers/
+    \title \QOI official releases
+*/
+
+/*!
+    \externalpage https://developer.android.com/develop/background-work/background-tasks/awake/wakelock
+    \title Android: wake lock
+*/
+
+/*!
+    \externalpage https://developer.android.com/training/articles/perf-jni
+    \title Android: JNI
+*/
+
+/*!
+    \externalpage https://developer.android.com/develop/ui/views/notifications
+    \title Android: Notifications
+*/
+
+/*!
+    \externalpage https://central.sonatype.com/search?q=qtjenny
+    \title Maven Central: QtJenny
+*/
+
+/*
+    \externalpage https://github.com/LanderlYoung/Jenny
+    \title Jenny
+*/
+
+/*!
+    \externalpage https://kotlinlang.org/docs/kapt.html
+    \title Android: Kapt compiler plugin
+*/
+
+
+/*!
+    \externalpage https://www.qt.io/qt-professional-services
+    \title Qt Professional Services
+*/
+
+/*!
+    \externalpage https://developer.android.com/about/versions/15/behavior-changes-15#fgs-boot-completed
+    \title Android: Restrictions on BOOT_COMPLETED
 */

@@ -9,6 +9,7 @@
 #include <deque>
 #include <memory>
 #include <string>
+#include <string_view>
 
 #include "base/functional/bind.h"
 #include "base/hash/sha1.h"
@@ -28,7 +29,7 @@ namespace {
 
 // Represent a flushed log and its metadata to be used for testing.
 struct TestLog {
-  explicit TestLog(const std::string& log) : log(log), user_id(absl::nullopt) {}
+  explicit TestLog(const std::string& log) : log(log), user_id(std::nullopt) {}
   TestLog(const std::string& log, uint64_t user_id)
       : log(log), user_id(user_id) {}
   TestLog(const std::string& log, uint64_t user_id, LogMetadata log_metadata)
@@ -37,7 +38,7 @@ struct TestLog {
   ~TestLog() = default;
 
   const std::string log;
-  const absl::optional<uint64_t> user_id;
+  const std::optional<uint64_t> user_id;
   const LogMetadata log_metadata;
 };
 
@@ -58,7 +59,7 @@ class TestLogStore : public LogStore {
   const std::string& staged_log_hash() const override {
     return staged_log_hash_;
   }
-  absl::optional<uint64_t> staged_log_user_id() const override {
+  std::optional<uint64_t> staged_log_user_id() const override {
     return logs_.front().user_id;
   }
   const LogMetadata staged_log_metadata() const override {
@@ -72,7 +73,7 @@ class TestLogStore : public LogStore {
       staged_log_hash_ = base::SHA1HashString(logs_.front().log);
     }
   }
-  void DiscardStagedLog(base::StringPiece reason) override {
+  void DiscardStagedLog(std::string_view reason) override {
     if (!has_staged_log())
       return;
     logs_.pop_front();
@@ -110,7 +111,7 @@ class TestReportingService : public ReportingService {
   LogStore* log_store() override { return &log_store_; }
   GURL GetUploadUrl() const override { return GURL(kTestUploadUrl); }
   GURL GetInsecureUploadUrl() const override { return GURL(kTestUploadUrl); }
-  base::StringPiece upload_mime_type() const override { return kTestMimeType; }
+  std::string_view upload_mime_type() const override { return kTestMimeType; }
   MetricsLogUploader::MetricServiceType service_type() const override {
     return MetricsLogUploader::MetricServiceType::UMA;
   }

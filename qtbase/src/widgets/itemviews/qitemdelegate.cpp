@@ -23,6 +23,7 @@
 #include <qtextlayout.h>
 #include <private/qabstractitemdelegate_p.h>
 #include <private/qabstractitemmodel_p.h>
+#include <private/qstylehelper_p.h>
 #include <private/qtextengine_p.h>
 #include <qdebug.h>
 #include <qlocale.h>
@@ -231,7 +232,7 @@ QSizeF QItemDelegatePrivate::doTextLayout(int lineWidth) const
     \row    \li \l Qt::AccessibleDescriptionRole \li QString
     \row    \li \l Qt::AccessibleTextRole \li QString
     \endomit
-    \row    \li \l Qt::BackgroundRole \li QBrush (\since 4.2)
+    \row    \li \l Qt::BackgroundRole \li QBrush
     \row    \li \l Qt::CheckStateRole \li Qt::CheckState
     \row    \li \l Qt::DecorationRole \li QIcon, QPixmap and QColor
     \row    \li \l Qt::DisplayRole \li QString and types with a string representation
@@ -242,7 +243,7 @@ QSizeF QItemDelegatePrivate::doTextLayout(int lineWidth) const
     \row    \li \l Qt::StatusTipRole \li
     \endomit
     \row    \li \l Qt::TextAlignmentRole \li Qt::Alignment
-    \row    \li \l Qt::ForegroundRole \li QBrush (\since 4.2)
+    \row    \li \l Qt::ForegroundRole \li QBrush
     \omit
     \row    \li \l Qt::ToolTipRole
     \row    \li \l Qt::WhatsThisRole
@@ -315,7 +316,6 @@ QItemDelegate::~QItemDelegate()
 /*!
   \property QItemDelegate::clipping
   \brief if the delegate should clip the paint events
-  \since 4.2
 
   This property will set the paint clip to the size of the item.
   The default value is on. It is useful for cases such
@@ -757,8 +757,6 @@ void QItemDelegate::drawCheck(QPainter *painter,
 }
 
 /*!
-    \since 4.2
-
     Renders the item background for the given \a index,
     using the given \a painter and style \a option.
 */
@@ -937,7 +935,8 @@ QPixmap QItemDelegate::decoration(const QStyleOptionViewItem &option, const QVar
     case QMetaType::QIcon: {
         QIcon::Mode mode = d->iconMode(option.state);
         QIcon::State state = d->iconState(option.state);
-        return qvariant_cast<QIcon>(variant).pixmap(option.decorationSize, mode, state); }
+        const auto dpr = QStyleHelper::getDpr(option.widget);
+        return qvariant_cast<QIcon>(variant).pixmap(option.decorationSize, dpr, mode, state); }
     case QMetaType::QColor: {
         static QPixmap pixmap(option.decorationSize);
         pixmap.fill(qvariant_cast<QColor>(variant));

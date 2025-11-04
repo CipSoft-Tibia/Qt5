@@ -20,11 +20,18 @@
     Boston, MA 02110-1301, USA.
 */
 
+#ifdef UNSAFE_BUFFERS_BUILD
+// TODO(crbug.com/351564777): Remove this and convert code to safer constructs.
+#pragma allow_unsafe_buffers
+#endif
+
 #include "third_party/blink/renderer/core/html/parser/text_resource_decoder.h"
 
 #include "base/numerics/safe_conversions.h"
+#include "base/trace_event/trace_event.h"
 #include "third_party/blink/renderer/core/dom/dom_implementation.h"
 #include "third_party/blink/renderer/core/html/parser/html_meta_charset_parser.h"
+#include "third_party/blink/renderer/platform/runtime_enabled_features.h"
 #include "third_party/blink/renderer/platform/text/text_encoding_detector.h"
 #include "third_party/blink/renderer/platform/wtf/text/string_view.h"
 #include "third_party/blink/renderer/platform/wtf/text/text_codec.h"
@@ -135,18 +142,16 @@ TextResourceDecoder::TextResourceDecoder(
 
 TextResourceDecoder::~TextResourceDecoder() = default;
 
-void TextResourceDecoder::AddToBuffer(const char* data,
-                                      wtf_size_t data_length) {
+void TextResourceDecoder::AddToBuffer(base::span<const char> data) {
   // Explicitly reserve capacity in the Vector to avoid triggering the growth
   // heuristic (== no excess capacity).
-  buffer_.reserve(buffer_.size() + data_length);
-  buffer_.Append(data, data_length);
+  buffer_.reserve(base::checked_cast<wtf_size_t>(buffer_.size() + data.size()));
+  buffer_.AppendSpan(data);
 }
 
-void TextResourceDecoder::AddToBufferIfEmpty(const char* data,
-                                             wtf_size_t data_length) {
+void TextResourceDecoder::AddToBufferIfEmpty(base::span<const char> data) {
   if (buffer_.empty())
-    buffer_.Append(data, data_length);
+    buffer_.AppendSpan(data);
 }
 
 void TextResourceDecoder::SetEncoding(const WTF::TextEncoding& encoding,
@@ -343,8 +348,7 @@ bool TextResourceDecoder::CheckForXMLCharset(const char* data, wtf_size_t len) {
   return true;
 }
 
-void TextResourceDecoder::CheckForMetaCharset(const char* data,
-                                              wtf_size_t length) {
+void TextResourceDecoder::CheckForMetaCharset(base::span<const char> data) {
   if (source_ == kEncodingFromHTTPHeader || source_ == kAutoDetectedEncoding) {
     checked_for_meta_charset_ = true;
     return;
@@ -353,8 +357,10 @@ void TextResourceDecoder::CheckForMetaCharset(const char* data,
   if (!charset_parser_)
     charset_parser_ = std::make_unique<HTMLMetaCharsetParser>();
 
-  if (!charset_parser_->CheckForMetaCharset(data, length))
+  if (!charset_parser_->CheckForMetaCharset(
+          data.data(), base::checked_cast<wtf_size_t>(data.size()))) {
     return;
+  }
 
   SetEncoding(charset_parser_->Encoding(), kEncodingFromMetaTag);
   charset_parser_.reset();
@@ -371,8 +377,8 @@ void TextResourceDecoder::CheckForMetaCharset(const char* data,
 //   relationship is compliant to the same-origin policy. If they're from
 //   different domains, |source_| would not be set to EncodingFromParentFrame
 //   in the first place.
-void TextResourceDecoder::AutoDetectEncodingIfAllowed(const char* data,
-                                                      wtf_size_t len) {
+void TextResourceDecoder::AutoDetectEncodingIfAllowed(
+    base::span<const char> data) {
   if (options_.GetEncodingDetectionOption() !=
           TextResourceDecoderOptions::kUseAllAutoDetection ||
       detection_completed_)
@@ -385,42 +391,50 @@ void TextResourceDecoder::AutoDetectEncodingIfAllowed(const char* data,
     return;
 
   WTF::TextEncoding detected_encoding;
-  if (DetectTextEncoding(data, len, options_.HintEncoding(), options_.HintURL(),
-                         options_.HintLanguage(), &detected_encoding))
+  if (DetectTextEncoding(data.data(), base::checked_cast<uint32_t>(data.size()),
+                         options_.HintEncoding(), options_.HintURL(),
+                         options_.HintLanguage(), &detected_encoding)) {
+    if (base::EqualsCaseInsensitiveASCII(detected_encoding.GetName(), "ISO-2022-JP") &&
+          RuntimeEnabledFeatures::
+              RemoveCharsetAutoDetectionForISO2022JPEnabled()) {
+      return;
+    }
     SetEncoding(detected_encoding, kEncodingFromContentSniffing);
+  }
   if (detected_encoding != WTF::UnknownEncoding())
     detection_completed_ = true;
 }
 
-String TextResourceDecoder::Decode(const char* data, size_t data_len) {
-  wtf_size_t len = base::checked_cast<wtf_size_t>(data_len);
+String TextResourceDecoder::Decode(base::span<const char> data) {
+  TRACE_EVENT1("blink", "TextResourceDecoder::Decode", "data_len", data.size());
   // If we have previously buffered data, then add the new data to the buffer
   // and use the buffered content. Any case that depends on buffering (== return
   // the empty string) should call AddToBufferIfEmpty() if it needs more data to
   // make sure that the first data segment is buffered.
   if (!buffer_.empty()) {
-    AddToBuffer(data, len);
-    data = buffer_.data();
-    len = buffer_.size();
+    AddToBuffer(data);
+    data = base::span(buffer_);
   }
 
   wtf_size_t length_of_bom = 0;
   if (!checked_for_bom_) {
-    length_of_bom = CheckForBOM(data, len);
+    length_of_bom =
+        CheckForBOM(data.data(), base::checked_cast<wtf_size_t>(data.size()));
 
     // BOM check can fail when the available data is not enough.
     if (!checked_for_bom_) {
       DCHECK_EQ(0u, length_of_bom);
-      AddToBufferIfEmpty(data, len);
+      AddToBufferIfEmpty(data);
       return g_empty_string;
     }
   }
-  DCHECK_LE(length_of_bom, len);
+  DCHECK_LE(length_of_bom, data.size());
 
   if (options_.GetContentType() == TextResourceDecoderOptions::kCSSContent &&
       !checked_for_css_charset_) {
-    if (!CheckForCSSCharset(data, len)) {
-      AddToBufferIfEmpty(data, len);
+    if (!CheckForCSSCharset(data.data(),
+                            base::checked_cast<wtf_size_t>(data.size()))) {
+      AddToBufferIfEmpty(data);
       return g_empty_string;
     }
   }
@@ -428,20 +442,20 @@ String TextResourceDecoder::Decode(const char* data, size_t data_len) {
   if ((options_.GetContentType() == TextResourceDecoderOptions::kHTMLContent ||
        options_.GetContentType() == TextResourceDecoderOptions::kXMLContent) &&
       !checked_for_xml_charset_) {
-    if (!CheckForXMLCharset(data, len)) {
-      AddToBufferIfEmpty(data, len);
+    if (!CheckForXMLCharset(data.data(),
+                            base::checked_cast<wtf_size_t>(data.size()))) {
+      AddToBufferIfEmpty(data);
       return g_empty_string;
     }
   }
 
-  const char* data_for_decode = data + length_of_bom;
-  wtf_size_t length_for_decode = len - length_of_bom;
+  auto data_for_decode = data.subspan(length_of_bom);
 
   if (options_.GetContentType() == TextResourceDecoderOptions::kHTMLContent &&
       !checked_for_meta_charset_)
-    CheckForMetaCharset(data_for_decode, length_for_decode);
+    CheckForMetaCharset(data_for_decode);
 
-  AutoDetectEncodingIfAllowed(data, len);
+  AutoDetectEncodingIfAllowed(data);
 
   DCHECK(encoding_.IsValid());
 
@@ -449,7 +463,9 @@ String TextResourceDecoder::Decode(const char* data, size_t data_len) {
     codec_ = NewTextCodec(encoding_);
 
   String result = codec_->Decode(
-      data_for_decode, length_for_decode, WTF::FlushBehavior::kDoNotFlush,
+      data_for_decode.data(),
+      base::checked_cast<wtf_size_t>(data_for_decode.size()),
+      WTF::FlushBehavior::kDoNotFlush,
       options_.GetContentType() == TextResourceDecoderOptions::kXMLContent &&
           !options_.GetUseLenientXMLDecoding(),
       saw_error_);
@@ -470,7 +486,7 @@ String TextResourceDecoder::Flush() {
                          (!checked_for_css_charset_ &&
                           (options_.GetContentType() ==
                            TextResourceDecoderOptions::kCSSContent)))) {
-    AutoDetectEncodingIfAllowed(buffer_.data(), buffer_.size());
+    AutoDetectEncodingIfAllowed(buffer_);
   }
 
   if (!codec_)

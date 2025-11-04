@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:data-parser
 
 #ifndef QFILESYSTEMENGINE_P_H
 #define QFILESYSTEMENGINE_P_H
@@ -91,8 +92,7 @@ public:
     static QByteArray id(int fd);
     static bool setFileTime(int fd, const QDateTime &newDate,
                             QFile::FileTime whatTime, QSystemError &error);
-    static bool setPermissions(int fd, QFile::Permissions permissions, QSystemError &error,
-                               QFileSystemMetaData *data = nullptr);
+    static bool setPermissions(int fd, QFile::Permissions permissions, QSystemError &error);
 #endif
 #if defined(Q_OS_WIN)
     static QFileSystemEntry junctionTarget(const QFileSystemEntry &link, QFileSystemMetaData &data);
@@ -116,19 +116,39 @@ public:
     static QString tempPath();
 
     static bool createDirectory(const QFileSystemEntry &entry, bool createParents,
-                                std::optional<QFile::Permissions> permissions = std::nullopt);
-    static bool removeDirectory(const QFileSystemEntry &entry, bool removeEmptyParents);
+                                std::optional<QFile::Permissions> permissions = std::nullopt)
+    {
+        if (createParents)
+            return mkpath(entry, permissions);
+        return mkdir(entry, permissions);
+    }
+
+    static bool mkdir(const QFileSystemEntry &entry,
+                      std::optional<QFile::Permissions> permissions = std::nullopt);
+    static bool mkpath(const QFileSystemEntry &entry,
+                       std::optional<QFile::Permissions> permissions = std::nullopt);
+
+    static bool removeDirectory(const QFileSystemEntry &entry, bool removeEmptyParents)
+    {
+        if (removeEmptyParents)
+            return rmpath(entry);
+        return rmdir(entry);
+    }
+
+    static bool rmdir(const QFileSystemEntry &entry);
+    static bool rmpath(const QFileSystemEntry &entry);
 
     static bool createLink(const QFileSystemEntry &source, const QFileSystemEntry &target, QSystemError &error);
 
     static bool copyFile(const QFileSystemEntry &source, const QFileSystemEntry &target, QSystemError &error);
+    static bool supportsMoveFileToTrash();
     static bool moveFileToTrash(const QFileSystemEntry &source, QFileSystemEntry &newLocation, QSystemError &error);
     static bool renameFile(const QFileSystemEntry &source, const QFileSystemEntry &target, QSystemError &error);
     static bool renameOverwriteFile(const QFileSystemEntry &source, const QFileSystemEntry &target, QSystemError &error);
     static bool removeFile(const QFileSystemEntry &entry, QSystemError &error);
 
-    static bool setPermissions(const QFileSystemEntry &entry, QFile::Permissions permissions, QSystemError &error,
-                               QFileSystemMetaData *data = nullptr);
+    static bool setPermissions(const QFileSystemEntry &entry, QFile::Permissions permissions,
+                               QSystemError &error);
 
     // unused, therefore not implemented
     static bool setFileTime(const QFileSystemEntry &entry, const QDateTime &newDate,

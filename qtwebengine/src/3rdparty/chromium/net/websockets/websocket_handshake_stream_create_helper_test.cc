@@ -4,6 +4,7 @@
 
 #include "net/websockets/websocket_handshake_stream_create_helper.h"
 
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -12,12 +13,12 @@
 #include "base/functional/callback.h"
 #include "base/memory/scoped_refptr.h"
 #include "base/notreached.h"
-#include "base/strings/string_piece.h"
 #include "base/task/single_thread_task_runner.h"
 #include "base/time/default_tick_clock.h"
 #include "base/time/time.h"
 #include "net/base/auth.h"
 #include "net/base/completion_once_callback.h"
+#include "net/base/connection_endpoint_metadata.h"
 #include "net/base/host_port_pair.h"
 #include "net/base/ip_address.h"
 #include "net/base/ip_endpoint.h"
@@ -26,8 +27,10 @@
 #include "net/base/network_anonymization_key.h"
 #include "net/base/network_handle.h"
 #include "net/base/privacy_mode.h"
+#include "net/base/proxy_chain.h"
 #include "net/base/proxy_server.h"
 #include "net/base/request_priority.h"
+#include "net/base/session_usage.h"
 #include "net/base/test_completion_callback.h"
 #include "net/cert/cert_verify_result.h"
 #include "net/dns/public/host_resolver_results.h"
@@ -49,6 +52,7 @@
 #include "net/quic/quic_context.h"
 #include "net/quic/quic_http_utils.h"
 #include "net/quic/quic_server_info.h"
+#include "net/quic/quic_session_alias_key.h"
 #include "net/quic/quic_session_key.h"
 #include "net/quic/quic_test_packet_maker.h"
 #include "net/quic/test_quic_crypto_client_config_handle.h"
@@ -67,6 +71,7 @@
 #include "net/test/gtest_util.h"
 #include "net/test/test_data_directory.h"
 #include "net/test/test_with_task_environment.h"
+#include "net/third_party/quiche/src/quiche/common/http/http_header_block.h"
 #include "net/third_party/quiche/src/quiche/common/platform/api/quiche_flags.h"
 #include "net/third_party/quiche/src/quiche/quic/core/crypto/quic_crypto_client_config.h"
 #include "net/third_party/quiche/src/quiche/quic/core/qpack/qpack_decoder.h"
@@ -85,7 +90,6 @@
 #include "net/third_party/quiche/src/quiche/quic/test_tools/mock_random.h"
 #include "net/third_party/quiche/src/quiche/quic/test_tools/qpack/qpack_test_utils.h"
 #include "net/third_party/quiche/src/quiche/quic/test_tools/quic_test_utils.h"
-#include "net/third_party/quiche/src/quiche/spdy/core/http2_header_block.h"
 #include "net/third_party/quiche/src/quiche/spdy/core/spdy_protocol.h"
 #include "net/traffic_annotation/network_traffic_annotation.h"
 #include "net/traffic_annotation/network_traffic_annotation_test_helper.h"
@@ -95,7 +99,6 @@
 #include "net/websockets/websocket_test_util.h"
 #include "testing/gmock/include/gmock/gmock.h"
 #include "testing/gtest/include/gtest/gtest.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "url/gurl.h"
 #include "url/origin.h"
 #include "url/scheme_host_port.h"
@@ -171,7 +174,7 @@ class MockClientSocketHandleFactory {
             PrivacyMode::PRIVACY_MODE_DISABLED, NetworkAnonymizationKey(),
             SecureDnsPolicy::kAllow, /*disable_cert_network_fetches=*/false),
         scoped_refptr<ClientSocketPool::SocketParams>(),
-        absl::nullopt /* proxy_annotation_tag */, MEDIUM, SocketTag(),
+        std::nullopt /* proxy_annotation_tag */, MEDIUM, SocketTag(),
         ClientSocketPool::RespectLimits::ENABLED, CompletionOnceCallback(),
         ClientSocketPool::ProxyAuthCallback(), &pool_, NetLogWithSource());
     return socket_handle;
@@ -188,12 +191,14 @@ class TestConnectDelegate : public WebSocketStream::ConnectDelegate {
   ~TestConnectDelegate() override = default;
 
   void OnCreateRequest(URLRequest* request) override {}
+  void OnURLRequestConnected(URLRequest* request,
+                             const TransportInfo& info) override {}
   void OnSuccess(
       std::unique_ptr<WebSocketStream> stream,
       std::unique_ptr<WebSocketHandshakeResponseInfo> response) override {}
   void OnFailure(const std::string& failure_message,
                  int net_error,
-                 absl::optional<int> response_code) override {}
+                 std::optional<int> response_code) override {}
   void OnStartOpeningHandshake(
       std::unique_ptr<WebSocketHandshakeRequestInfo> request) override {}
   void OnSSLCertificateError(
@@ -206,8 +211,8 @@ class TestConnectDelegate : public WebSocketStream::ConnectDelegate {
                      scoped_refptr<HttpResponseHeaders> response_headers,
                      const IPEndPoint& host_port_pair,
                      base::OnceCallback<void(const AuthCredentials*)> callback,
-                     absl::optional<AuthCredentials>* credentials) override {
-    *credentials = absl::nullopt;
+                     std::optional<AuthCredentials>* credentials) override {
+    *credentials = std::nullopt;
     return OK;
   }
 };
@@ -225,7 +230,7 @@ class MockWebSocketStreamRequestAPI : public WebSocketStreamRequestAPI {
   MOCK_METHOD3(OnFailure,
                void(const std::string& message,
                     int net_error,
-                    absl::optional<int> response_code));
+                    std::optional<int> response_code));
 };
 
 class WebSocketHandshakeStreamCreateHelperTest
@@ -240,8 +245,8 @@ class WebSocketHandshakeStreamCreateHelperTest
       const std::vector<std::string>& sub_protocols,
       const WebSocketExtraHeaders& extra_request_headers,
       const WebSocketExtraHeaders& extra_response_headers) {
-    const char kPath[] = "/";
-    const char kOrigin[] = "http://origin.example.org";
+    constexpr char kPath[] = "/";
+    constexpr char kOrigin[] = "http://origin.example.org";
     const GURL url("wss://www.example.org/");
     NetLogWithSource net_log;
 
@@ -262,7 +267,7 @@ class WebSocketHandshakeStreamCreateHelperTest
         break;
 
       default:
-        NOTREACHED();
+        NOTREACHED_IN_MIGRATION();
     }
 
     EXPECT_CALL(stream_request_, OnFailure(_, _, _)).Times(0);
@@ -318,14 +323,14 @@ class WebSocketHandshakeStreamCreateHelperTest
       }
       case HTTP2_HANDSHAKE_STREAM: {
         SpdyTestUtil spdy_util;
-        spdy::Http2HeaderBlock request_header_block = WebSocketHttp2Request(
+        quiche::HttpHeaderBlock request_header_block = WebSocketHttp2Request(
             kPath, "www.example.org", kOrigin, extra_request_headers);
         spdy::SpdySerializedFrame request_headers(
             spdy_util.ConstructSpdyHeaders(1, std::move(request_header_block),
                                            DEFAULT_PRIORITY, false));
         MockWrite writes[] = {CreateMockWrite(request_headers, 0)};
 
-        spdy::Http2HeaderBlock response_header_block =
+        quiche::HttpHeaderBlock response_header_block =
             WebSocketHttp2Response(extra_response_headers);
         spdy::SpdySerializedFrame response_headers(
             spdy_util.ConstructSpdyResponseHeaders(
@@ -346,9 +351,10 @@ class WebSocketHandshakeStreamCreateHelperTest
         std::unique_ptr<HttpNetworkSession> http_network_session =
             SpdySessionDependencies::SpdyCreateSession(&session_deps);
         const SpdySessionKey key(
-            HostPortPair::FromURL(url), ProxyChain::Direct(),
-            PRIVACY_MODE_DISABLED, SpdySessionKey::IsProxySession::kFalse,
-            SocketTag(), NetworkAnonymizationKey(), SecureDnsPolicy::kAllow);
+            HostPortPair::FromURL(url), PRIVACY_MODE_DISABLED,
+            ProxyChain::Direct(), SessionUsage::kDestination, SocketTag(),
+            NetworkAnonymizationKey(), SecureDnsPolicy::kAllow,
+            /*disable_cert_verification_network_fetches=*/false);
         base::WeakPtr<SpdySession> spdy_session =
             CreateSpdySession(http_network_session.get(), key, net_log);
         std::unique_ptr<WebSocketHandshakeStreamBase> handshake =
@@ -408,7 +414,7 @@ class WebSocketHandshakeStreamCreateHelperTest
         quic::QuicEnableVersion(quic_version_);
         quic::test::MockRandom random_generator{0};
 
-        spdy::Http2HeaderBlock request_header_block = WebSocketHttp2Request(
+        quiche::HttpHeaderBlock request_header_block = WebSocketHttp2Request(
             kPath, "www.example.org", kOrigin, extra_request_headers);
 
         int packet_number = 1;
@@ -423,7 +429,7 @@ class WebSocketHandshakeStreamCreateHelperTest
                 /*fin=*/false, ConvertRequestPriorityToQuicPriority(LOWEST),
                 std::move(request_header_block), nullptr));
 
-        spdy::Http2HeaderBlock response_header_block =
+        quiche::HttpHeaderBlock response_header_block =
             WebSocketHttp2Response(extra_response_headers);
 
         mock_quic_data_.AddRead(
@@ -434,11 +440,16 @@ class WebSocketHandshakeStreamCreateHelperTest
 
         mock_quic_data_.AddRead(SYNCHRONOUS, ERR_IO_PENDING);
 
-        mock_quic_data_.AddWrite(SYNCHRONOUS,
-                                 client_maker.MakeAckAndRstPacket(
-                                     packet_number++, client_data_stream_id,
-                                     quic::QUIC_STREAM_CANCELLED, 1, 0,
-                                     /*include_stop_sending_if_v99=*/true));
+        mock_quic_data_.AddWrite(
+            SYNCHRONOUS,
+            client_maker.Packet(packet_number++)
+                .AddAckFrame(/*first_received=*/1, /*largest_received=*/1,
+                             /*smallest_received=*/0)
+                .AddStopSendingFrame(client_data_stream_id,
+                                     quic::QUIC_STREAM_CANCELLED)
+                .AddRstStreamFrame(client_data_stream_id,
+                                   quic::QUIC_STREAM_CANCELLED)
+                .Build());
         auto socket = std::make_unique<MockUDPClientSocket>(
             mock_quic_data_.InitializeAndGetSequencedSocketData(),
             NetLog::Get());
@@ -480,10 +491,13 @@ class WebSocketHandshakeStreamCreateHelperTest
             /*stream_factory=*/nullptr, &crypto_client_stream_factory, &clock_,
             &transport_security_state, &ssl_config_service,
             /*server_info=*/nullptr,
-            QuicSessionKey("mail.example.org", 80, PRIVACY_MODE_DISABLED,
-                           SocketTag(), NetworkAnonymizationKey(),
-                           SecureDnsPolicy::kAllow,
-                           /*require_dns_https_alpn=*/false),
+            QuicSessionAliasKey(
+                url::SchemeHostPort(),
+                QuicSessionKey("mail.example.org", 80, PRIVACY_MODE_DISABLED,
+                               ProxyChain::Direct(), SessionUsage::kDestination,
+                               SocketTag(), NetworkAnonymizationKey(),
+                               SecureDnsPolicy::kAllow,
+                               /*require_dns_https_alpn=*/false)),
             /*require_confirmation=*/false,
             /*migrate_session_early_v2=*/false,
             /*migrate_session_on_network_change_v2=*/false,
@@ -500,10 +514,13 @@ class WebSocketHandshakeStreamCreateHelperTest
                 kQuicYieldAfterDurationMilliseconds),
             /*cert_verify_flags=*/0, quic::test::DefaultQuicConfig(),
             std::make_unique<TestQuicCryptoClientConfigHandle>(&crypto_config),
-            dns_start, dns_end, base::DefaultTickClock::GetInstance(),
+            "CONNECTION_UNKNOWN", dns_start, dns_end,
+            base::DefaultTickClock::GetInstance(),
             base::SingleThreadTaskRunner::GetCurrentDefault().get(),
             /*socket_performance_watcher=*/nullptr,
-            HostResolverEndpointResult(), NetLog::Get());
+            ConnectionEndpointMetadata(), /*report_ecn=*/true,
+            /*enable_origin_frame=*/true,
+            NetLogWithSource::Make(NetLogSourceType::NONE));
 
         session_->Initialize();
 
@@ -545,7 +562,7 @@ class WebSocketHandshakeStreamCreateHelperTest
         return handshake->Upgrade();
       }
       default:
-        NOTREACHED();
+        NOTREACHED_IN_MIGRATION();
         return nullptr;
     }
   }

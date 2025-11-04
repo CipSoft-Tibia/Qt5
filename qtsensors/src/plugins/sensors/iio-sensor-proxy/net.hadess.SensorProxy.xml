@@ -10,6 +10,10 @@
     </method>
     <method name="ReleaseLight">
     </method>
+    <method name="ClaimProximity">
+    </method>
+    <method name="ReleaseProximity">
+    </method>
     <property type="b" name="HasAccelerometer" access="read">
     </property>
     <property type="s" name="AccelerometerOrientation" access="read">
@@ -19,6 +23,10 @@
     <property type="s" name="LightLevelUnit" access="read">
     </property>
     <property type="d" name="LightLevel" access="read">
+    </property>
+    <property type="b" name="HasProximity" access="read">
+    </property>
+    <property type="b" name="ProximityNear" access="read">
     </property>
   </interface>
 </node>

@@ -71,7 +71,6 @@ qt_internal_add_qml_module(qtquickcontrols2fluentwinui3styleplugin
     SOURCES
         qtquickcontrols2fluentwinui3styleplugin.cpp
         qquickfluentwinui3theme_p.h qquickfluentwinui3theme.cpp
-        qquickfluentwinui3focusframe_p.h qquickfluentwinui3focusframe.cpp
     QML_FILES
         ${qml_files}
     RESOURCES
@@ -86,6 +85,7 @@ qt_internal_add_qml_module(qtquickcontrols2fluentwinui3styleplugin
         Qt::GuiPrivate
         Qt::QmlPrivate
         Qt::QuickControls2FluentWinUI3StyleImpl
+        Qt::QuickControls2FluentWinUI3StyleImplPrivate
         Qt::QuickControls2ImplPrivate
         Qt::QuickControls2Private
         Qt::QuickPrivate

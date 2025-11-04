@@ -33,6 +33,11 @@ qt_internal_extend_target(tst_qopcuaclient CONDITION QT_FEATURE_open62541_securi
         SERVER_SUPPORTS_SECURITY
 )
 
+qt_internal_extend_target(tst_qopcuaclient CONDITION NOT QT_FEATURE_ns0idnames
+    DEFINES
+        QT_OPCUA_NO_NS0IDNAMES
+)
+
 if (WIN32)
     target_compile_definitions(tst_qopcuaclient PRIVATE TESTS_CMAKE_SPECIFIC_PATH)
 endif()

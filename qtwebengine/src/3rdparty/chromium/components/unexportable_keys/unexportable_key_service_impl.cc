@@ -14,7 +14,6 @@
 #include "components/unexportable_keys/unexportable_key_id.h"
 #include "components/unexportable_keys/unexportable_key_task_manager.h"
 #include "crypto/unexportable_key.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "third_party/abseil-cpp/absl/types/variant.h"
 
 namespace unexportable_keys {
@@ -114,8 +113,10 @@ UnexportableKeyServiceImpl::UnexportableKeyServiceImpl(
 UnexportableKeyServiceImpl::~UnexportableKeyServiceImpl() = default;
 
 // static
-bool UnexportableKeyServiceImpl::IsUnexportableKeyProviderSupported() {
-  return UnexportableKeyTaskManager::GetUnexportableKeyProvider() != nullptr;
+bool UnexportableKeyServiceImpl::IsUnexportableKeyProviderSupported(
+    crypto::UnexportableKeyProvider::Config config) {
+  return UnexportableKeyTaskManager::GetUnexportableKeyProvider(
+             std::move(config)) != nullptr;
 }
 
 void UnexportableKeyServiceImpl::GenerateSigningKeySlowlyAsync(
@@ -231,8 +232,8 @@ void UnexportableKeyServiceImpl::OnKeyCreatedFromWrappedKey(
     ServiceErrorOr<scoped_refptr<RefCountedUnexportableSigningKey>>
         key_or_error) {
   if (!key_or_error.has_value()) {
-    pending_entry_it->second.RunCallbacksWithFailure(key_or_error.error());
-    key_id_by_wrapped_key_.erase(pending_entry_it);
+    auto node = key_id_by_wrapped_key_.extract(pending_entry_it);
+    node.mapped().RunCallbacksWithFailure(key_or_error.error());
     return;
   }
   scoped_refptr<RefCountedUnexportableSigningKey>& key = key_or_error.value();

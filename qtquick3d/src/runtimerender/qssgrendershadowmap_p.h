@@ -45,7 +45,7 @@ struct QSSGShadowMapEntry
     static QSSGShadowMapEntry withRhiDepthMap(quint32 lightIdx, ShadowMapModes mode, QRhiTexture *textureArray);
 
     static QSSGShadowMapEntry withRhiDepthCubeMap(quint32 lightIdx, ShadowMapModes mode, QRhiTexture *depthCube, QRhiRenderBuffer *depthStencil);
-    bool isCompatible(QSize mapSize, quint32 layerIndex, quint32 csmNumSplits, ShadowMapModes mapMode);
+    bool isCompatible(QSize mapSize, quint32 layerIndex, quint32 csmNumSplits, ShadowMapModes mapMode, QRhiTexture::Format textureFormat);
     void destroyRhiResources();
 
     quint32 m_lightIndex; ///< the light index it belongs to
@@ -85,11 +85,16 @@ public:
     qsizetype shadowMapEntryCount() { return m_shadowMapList.size(); }
 
 private:
-    QSSGShadowMapEntry *addDirectionalShadowMap(qint32 lightIdx, QSize size, quint32 layerStartIndex, quint32 csmNumSplits, const QString &renderNodeObjName);
-    QSSGShadowMapEntry *addCubeShadowMap(qint32 lightIdx, QSize size, const QString &renderNodeObjName);
+    QSSGShadowMapEntry *addDirectionalShadowMap(qint32 lightIdx,
+                                                QSize size,
+                                                bool use32bit,
+                                                quint32 layerStartIndex,
+                                                quint32 csmNumSplits,
+                                                const QString &renderNodeObjName);
+    QSSGShadowMapEntry *addCubeShadowMap(qint32 lightIdx, QSize size, bool use32bit, const QString &renderNodeObjName);
 
     QVector<QSSGShadowMapEntry> m_shadowMapList;
-    QHash<QSize, QRhiTexture *> m_depthTextureArrays;
+    std::array<QHash<QSize, QRhiTexture *>, 2> m_depthTextureArrays; // 0: 16 bit, 1: 32 bit
 };
 
 using QSSGRenderShadowMapPtr = std::shared_ptr<QSSGRenderShadowMap>;

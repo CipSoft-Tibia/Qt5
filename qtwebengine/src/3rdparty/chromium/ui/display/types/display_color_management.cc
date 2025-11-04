@@ -2,6 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#ifdef UNSAFE_BUFFERS_BUILD
+// TODO(crbug.com/351564777): Remove this and convert code to safer constructs.
+#pragma allow_unsafe_buffers
+#endif
+
 #include "ui/display/types/display_color_management.h"
 
 #include "base/check.h"
@@ -53,7 +58,7 @@ float EvaluateLut(float x,
       lut_j1 = lut[j1].b;
       break;
     default:
-      NOTREACHED();
+      NOTREACHED_IN_MIGRATION();
       break;
   }
 
@@ -93,6 +98,36 @@ GammaCurve GammaCurve::MakeConcat(const GammaCurve& f, const GammaCurve& g) {
   return result;
 }
 
+// static
+GammaCurve GammaCurve::MakeGamma(float gamma) {
+  GammaCurve result;
+  const size_t kSize = 1024;
+  result.lut_.resize(kSize);
+  for (size_t i = 0; i < kSize; ++i) {
+    float x = i / 1023.f;
+    float y = std::pow(x, gamma);
+    uint16_t y_fixed = static_cast<uint16_t>(std::round(65535.f * y));
+    result.lut_[i].r = y_fixed;
+    result.lut_[i].g = y_fixed;
+    result.lut_[i].b = y_fixed;
+  }
+  return result;
+}
+
+// static
+GammaCurve GammaCurve::MakeScale(float red, float green, float blue) {
+  GammaCurve result;
+  const size_t kSize = 1024;
+  result.lut_.resize(kSize);
+  for (size_t i = 0; i < kSize; ++i) {
+    float x = i / 1023.f;
+    result.lut_[i].r = static_cast<uint16_t>(std::round(65535.f * red * x));
+    result.lut_[i].g = static_cast<uint16_t>(std::round(65535.f * green * x));
+    result.lut_[i].b = static_cast<uint16_t>(std::round(65535.f * blue * x));
+  }
+  return result;
+}
+
 float GammaCurve::Evaluate(float x, size_t channel) const {
   if (pre_curve_) {
     x = pre_curve_->Evaluate(x, channel);
@@ -111,6 +146,12 @@ void GammaCurve::Evaluate(float x,
   out_r = static_cast<uint16_t>(std::round(65535.f * r));
   out_g = static_cast<uint16_t>(std::round(65535.f * g));
   out_b = static_cast<uint16_t>(std::round(65535.f * b));
+}
+
+void GammaCurve::Evaluate(float rgb[3]) const {
+  for (size_t c = 0; c < 3; ++c) {
+    rgb[c] = Evaluate(rgb[c], c);
+  }
 }
 
 std::string GammaCurve::ToString() const {

@@ -1,5 +1,6 @@
 // Copyright (C) 2019 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QABSTRACTHTTPSERVER_P_H
 #define QABSTRACTHTTPSERVER_P_H
@@ -16,6 +17,8 @@
 
 #include <QtHttpServer/qabstracthttpserver.h>
 #include <QtHttpServer/qthttpserverglobal.h>
+#include <QtHttpServer/qhttpserverconfiguration.h>
+#include <QtHttpServer/private/qhttpserverrequestfilter_p.h>
 
 #include <private/qobject_p.h>
 
@@ -68,6 +71,8 @@ public:
 #if QT_CONFIG(ssl)
     QHttp2Configuration h2Configuration;
 #endif
+    QHttpServerConfiguration configuration;
+    QHttpServerRequestFilter requestFilter;
 };
 
 QT_END_NAMESPACE

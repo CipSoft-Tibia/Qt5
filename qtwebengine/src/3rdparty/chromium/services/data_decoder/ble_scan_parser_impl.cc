@@ -142,7 +142,7 @@ std::string BleScanParserImpl::ParseUuid(base::span<const uint8_t> bytes,
   }
 
   std::vector<uint8_t> reversed(bytes.rbegin(), bytes.rend());
-  std::string uuid = base::HexEncode(reversed.data(), reversed.size());
+  std::string uuid = base::HexEncode(reversed);
 
   switch (format) {
     case UuidFormat::kFormat16Bit:
@@ -156,10 +156,10 @@ std::string BleScanParserImpl::ParseUuid(base::span<const uint8_t> bytes,
       uuid.insert(23, 1, '-');
       return uuid;
     case UuidFormat::kFormatInvalid:
-      NOTREACHED();
+      NOTREACHED_IN_MIGRATION();
   }
 
-  NOTREACHED();
+  NOTREACHED_IN_MIGRATION();
   return std::string();
 }
 
@@ -179,7 +179,7 @@ bool BleScanParserImpl::ParseServiceUuids(
       uuid_length = 16;
       break;
     case UuidFormat::kFormatInvalid:
-      NOTREACHED();
+      NOTREACHED_IN_MIGRATION();
       return false;
   }
 

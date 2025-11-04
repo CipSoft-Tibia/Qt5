@@ -27,6 +27,8 @@ Item {
         titleVisible: true
         labelsVisible: false
         titleOffset: 1
+        scaleLabelsByCount: true
+        labelSize: 2
     }
 
     Category3DAxis {
@@ -53,6 +55,8 @@ Item {
             compare(initial.titleVisible, false)
             compare(initial.labelsVisible, true)
             compare(initial.titleOffset, 0)
+            compare(initial.scaleLabelsByCount, false)
+            compare(initial.labelSize, 1)
             compare(initial.type, Abstract3DAxis.AxisType.Category)
         }
     }
@@ -74,6 +78,8 @@ Item {
             compare(initialized.titleVisible, true)
             compare(change.labelsVisible, false)
             compare(initialized.titleOffset, 1)
+            compare(initialized.scaleLabelsByCount, true)
+            compare(initialized.labelSize, 2)
         }
     }
 
@@ -100,6 +106,8 @@ Item {
             change.titleVisible = true
             change.labelsVisible = false
             change.titleOffset = -1
+            change.scaleLabelsByCount = true
+            change.labelSize = 2
 
             compare(change.autoAdjustRange, false)
             compare(change.labelAutoAngle, 10.0)
@@ -110,6 +118,8 @@ Item {
             compare(change.titleVisible, true)
             compare(change.labelsVisible, false)
             compare(change.titleOffset, -1)
+            compare(change.scaleLabelsByCount, true)
+            compare(change.labelSize, 2)
         }
     }
 

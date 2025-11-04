@@ -208,6 +208,32 @@ fn tint_symbol() -> @builtin(position) vec4<f32> {
     EXPECT_THAT(data->remappings, ContainerEq(expected_remappings));
 }
 
+TEST_F(RenamerTest, PreserveSwizzles_ThroughMaterialize) {
+    auto* src = R"(
+const v = vec4();
+const x = v.x * 2u;
+)";
+
+    auto* expect = R"(
+const tint_symbol = vec4();
+
+const tint_symbol_1 = (tint_symbol.x * 2u);
+)";
+
+    auto got = Run<Renamer>(src);
+
+    EXPECT_EQ(expect, str(got));
+
+    auto* data = got.data.Get<Renamer::Data>();
+
+    ASSERT_NE(data, nullptr);
+    Renamer::Remappings expected_remappings = {
+        {"v", "tint_symbol"},
+        {"x", "tint_symbol_1"},
+    };
+    EXPECT_THAT(data->remappings, ContainerEq(expected_remappings));
+}
+
 TEST_F(RenamerTest, PreserveBuiltins) {
     auto* src = R"(
 @vertex
@@ -1840,7 +1866,8 @@ std::vector<std::string_view> ConstructableTypes() {
     std::vector<std::string_view> out;
     for (auto type : core::kBuiltinTypeStrings) {
         if (type != "ptr" && type != "atomic" && !tint::HasPrefix(type, "sampler") &&
-            !tint::HasPrefix(type, "texture") && !tint::HasPrefix(type, "__")) {
+            !tint::HasPrefix(type, "texture") && !tint::HasPrefix(type, "__") &&
+            !tint::HasPrefix(type, "input_attachment")) {
             out.push_back(type);
         }
     }

@@ -7,6 +7,9 @@
 #include "qquickstyleitem.h"
 #include <QtQuickTemplates2/private/qquickscrollbar_p.h>
 
+QT_BEGIN_NAMESPACE
+
+class QPainter;
 class QQuickStyleItemScrollViewCorner : public QQuickStyleItem
 {
     Q_OBJECT
@@ -19,5 +22,7 @@ protected:
 private:
     void initStyleOption(QStyleOptionSlider &styleOption) const;
 };
+
+QT_END_NAMESPACE
 
 #endif // QQUICKSTYLEITEMSCROLLVIEWCORNER_H

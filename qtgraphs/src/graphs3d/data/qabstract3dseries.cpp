@@ -178,7 +178,7 @@ QT_BEGIN_NAMESPACE
  *
  * Sets the base gradient of the series.
  *
- * \sa colorStyle, {GraphsTheme::seriesGradients}{GraphsTheme.seriesGradients}
+ * \sa colorStyle
  */
 
 /*!

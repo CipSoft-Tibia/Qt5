@@ -2,6 +2,7 @@
 // Copyright (C) 2020 Klarälvdalens Datakonsult AB, a KDAB Group company, info@kdab.com, author Giuseppe D'Angelo <giuseppe.dangelo@kdab.com>
 // Copyright (C) 2021 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:data-parser
 
 #include "qregularexpression.h"
 
@@ -799,13 +800,14 @@ struct QRegularExpressionMatchIteratorPrivate : QSharedData
     (pass it to qUtf16Printable, etc.), so we need to check for that.
 */
 Q_DECL_COLD_FUNCTION
-void qtWarnAboutInvalidRegularExpression(const QString &pattern, const char *where)
+void qtWarnAboutInvalidRegularExpression(const QString &pattern, const char *cls, const char *method)
 {
     if (pattern.isValidUtf16()) {
-        qWarning("%s(): called on an invalid QRegularExpression object "
-                 "(pattern is '%ls')", where, qUtf16Printable(pattern));
+        qWarning("%s::%s(): called on an invalid QRegularExpression object "
+                 "(pattern is '%ls')", cls, method, qUtf16Printable(pattern));
     } else {
-        qWarning("%s(): called on an invalid QRegularExpression object", where);
+        qWarning("%s::%s(): called on an invalid QRegularExpression object",
+                 cls, method);
     }
 }
 
@@ -1117,7 +1119,7 @@ void QRegularExpressionPrivate::doMatch(QRegularExpressionMatchPrivate *priv,
         return;
 
     if (Q_UNLIKELY(!compiledPattern)) {
-        qtWarnAboutInvalidRegularExpression(pattern, "QRegularExpressionPrivate::doMatch");
+        qtWarnAboutInvalidRegularExpression(pattern, "QRegularExpressionPrivate", "doMatch");
         return;
     }
 
@@ -1943,9 +1945,7 @@ QString QRegularExpression::wildcardToRegularExpression(QStringView pattern, Wil
 
     const GlobSettings settings = [options]() {
         if (options.testFlag(NonPathWildcardConversion)) {
-            // using [\d\D] to mean "match everything";
-            // dot doesn't match newlines, unless in /s mode
-            return GlobSettings{ u'\0', u"[\\d\\D]*", u"[\\d\\D]" };
+            return GlobSettings{ u'\0', u".*", u"." };
         } else {
 #ifdef Q_OS_WIN
             return GlobSettings{ u'\\', u"[^/\\\\]*", u"[^/\\\\]" };
@@ -1954,6 +1954,10 @@ QString QRegularExpression::wildcardToRegularExpression(QStringView pattern, Wil
 #endif
         }
     }();
+
+    // We want a dot to match everything (incl. newlines), so enable /s mode,
+    // limited to the pattern string we're producing.
+    rx += u"(?s:";
 
     while (i < wclen) {
         const QChar c = wc[i++];
@@ -2028,6 +2032,9 @@ QString QRegularExpression::wildcardToRegularExpression(QStringView pattern, Wil
             break;
         }
     }
+
+    // Closes the (?s: group opened above
+    rx += u")";
 
     if (!(options & UnanchoredWildcardConversion))
         rx = anchoredPattern(rx);

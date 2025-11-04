@@ -12,7 +12,7 @@ qt_internal_add_module(Mqtt
         qmqttconnection.cpp qmqttconnection_p.h
         qmqttconnectionproperties.cpp qmqttconnectionproperties.h qmqttconnectionproperties_p.h
         qmqttcontrolpacket.cpp qmqttcontrolpacket_p.h
-        qmqttglobal.h
+        qmqttglobal.h qmqttglobal_p.h
         qmqttmessage.cpp qmqttmessage.h qmqttmessage_p.h
         qmqttpublishproperties.cpp qmqttpublishproperties.h qmqttpublishproperties_p.h
         qmqttsubscription.cpp qmqttsubscription.h qmqttsubscription_p.h

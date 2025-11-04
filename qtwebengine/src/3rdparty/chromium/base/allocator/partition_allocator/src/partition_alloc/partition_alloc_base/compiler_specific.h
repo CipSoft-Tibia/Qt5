@@ -2,10 +2,10 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifndef BASE_ALLOCATOR_PARTITION_ALLOCATOR_SRC_PARTITION_ALLOC_PARTITION_ALLOC_BASE_COMPILER_SPECIFIC_H_
-#define BASE_ALLOCATOR_PARTITION_ALLOCATOR_SRC_PARTITION_ALLOC_PARTITION_ALLOC_BASE_COMPILER_SPECIFIC_H_
+#ifndef PARTITION_ALLOC_PARTITION_ALLOC_BASE_COMPILER_SPECIFIC_H_
+#define PARTITION_ALLOC_PARTITION_ALLOC_BASE_COMPILER_SPECIFIC_H_
 
-#include "build/build_config.h"
+#include "partition_alloc/build_config.h"
 
 // A wrapper around `__has_cpp_attribute`.
 #if defined(__has_cpp_attribute)
@@ -33,9 +33,9 @@
 //   NOINLINE void DoStuff() { ... }
 #if defined(__clang__) && PA_HAS_ATTRIBUTE(noinline)
 #define PA_NOINLINE [[clang::noinline]]
-#elif defined(COMPILER_GCC) && PA_HAS_ATTRIBUTE(noinline)
+#elif PA_BUILDFLAG(PA_COMPILER_GCC) && PA_HAS_ATTRIBUTE(noinline)
 #define PA_NOINLINE __attribute__((noinline))
-#elif defined(COMPILER_MSVC)
+#elif PA_BUILDFLAG(PA_COMPILER_MSVC)
 #define PA_NOINLINE __declspec(noinline)
 #else
 #define PA_NOINLINE
@@ -43,10 +43,10 @@
 
 #if defined(__clang__) && defined(NDEBUG) && PA_HAS_ATTRIBUTE(always_inline)
 #define PA_ALWAYS_INLINE [[clang::always_inline]] inline
-#elif defined(COMPILER_GCC) && defined(NDEBUG) && \
+#elif PA_BUILDFLAG(PA_COMPILER_GCC) && defined(NDEBUG) && \
     PA_HAS_ATTRIBUTE(always_inline)
 #define PA_ALWAYS_INLINE inline __attribute__((__always_inline__))
-#elif defined(COMPILER_MSVC) && defined(NDEBUG)
+#elif PA_BUILDFLAG(PA_COMPILER_MSVC) && defined(NDEBUG)
 #define PA_ALWAYS_INLINE __forceinline
 #else
 #define PA_ALWAYS_INLINE inline
@@ -66,22 +66,14 @@
 #define PA_NOT_TAIL_CALLED
 #endif
 
-// Specify memory alignment for structs, classes, etc.
-// Use like:
-//   class PA_ALIGNAS(16) MyClass { ... }
-//   PA_ALIGNAS(16) int array[4];
-//
-// In most places you can use the C++11 keyword "alignas", which is preferred.
-//
-// Historically, compilers had trouble mixing __attribute__((...)) syntax with
-// alignas(...) syntax. However, at least Clang is very accepting nowadays. It
-// may be that this macro can be removed entirely.
-#if defined(__clang__)
-#define PA_ALIGNAS(byte_alignment) alignas(byte_alignment)
-#elif defined(COMPILER_MSVC)
-#define PA_ALIGNAS(byte_alignment) __declspec(align(byte_alignment))
-#elif defined(COMPILER_GCC) && PA_HAS_ATTRIBUTE(aligned)
-#define PA_ALIGNAS(byte_alignment) __attribute__((aligned(byte_alignment)))
+// Annotate a function indicating it must be tail called.
+// Can be used only on return statements, even for functions returning void.
+// Caller and callee must have the same number of arguments and its types must
+// be "similar".
+#if defined(__clang__) && PA_HAS_ATTRIBUTE(musttail)
+#define PA_MUSTTAIL [[clang::musttail]]
+#else
+#define PA_MUSTTAIL
 #endif
 
 // In case the compiler supports it PA_NO_UNIQUE_ADDRESS evaluates to the C++20
@@ -92,7 +84,8 @@
 // References:
 // * https://en.cppreference.com/w/cpp/language/attributes/no_unique_address
 // * https://wg21.link/dcl.attr.nouniqueaddr
-#if defined(COMPILER_MSVC) && PA_HAS_CPP_ATTRIBUTE(msvc::no_unique_address)
+#if PA_BUILDFLAG(PA_COMPILER_MSVC) && \
+    PA_HAS_CPP_ATTRIBUTE(msvc::no_unique_address)
 // Unfortunately MSVC ignores [[no_unique_address]] (see
 // https://devblogs.microsoft.com/cppblog/msvc-cpp20-and-the-std-cpp20-switch/#msvc-extensions-and-abi),
 // and clang-cl matches it for ABI compatibility reasons. We need to prefer
@@ -110,7 +103,8 @@
 // For v*printf functions (which take a va_list), pass 0 for dots_param.
 // (This is undocumented but matches what the system C headers do.)
 // For member functions, the implicit this parameter counts as index 1.
-#if (defined(COMPILER_GCC) || defined(__clang__)) && PA_HAS_ATTRIBUTE(format)
+#if (PA_BUILDFLAG(PA_COMPILER_GCC) || defined(__clang__)) && \
+    PA_HAS_ATTRIBUTE(format)
 #define PA_PRINTF_FORMAT(format_param, dots_param) \
   __attribute__((format(printf, format_param, dots_param)))
 #else
@@ -137,47 +131,12 @@
 #define PA_MSAN_UNPOISON(p, size)
 #endif  // MEMORY_SANITIZER
 
-// Macro for hinting that an expression is likely to be false.
-#if !defined(PA_UNLIKELY)
-#if defined(COMPILER_GCC) || defined(__clang__)
-#define PA_UNLIKELY(x) __builtin_expect(!!(x), 0)
-#else
-#define PA_UNLIKELY(x) (x)
-#endif  // defined(COMPILER_GCC)
-#endif  // !defined(PA_UNLIKELY)
-
-#if !defined(PA_LIKELY)
-#if defined(COMPILER_GCC) || defined(__clang__)
-#define PA_LIKELY(x) __builtin_expect(!!(x), 1)
-#else
-#define PA_LIKELY(x) (x)
-#endif  // defined(COMPILER_GCC)
-#endif  // !defined(PA_LIKELY)
-
 // Compiler feature-detection.
 // clang.llvm.org/docs/LanguageExtensions.html#has-feature-and-has-extension
 #if defined(__has_feature)
 #define PA_HAS_FEATURE(FEATURE) __has_feature(FEATURE)
 #else
 #define PA_HAS_FEATURE(FEATURE) 0
-#endif
-
-#if !defined(PA_CPU_ARM_NEON)
-#if defined(__arm__)
-#if !defined(__ARMEB__) && !defined(__ARM_EABI__) && !defined(__EABI__) && \
-    !defined(__VFP_FP__) && !defined(_WIN32_WCE) && !defined(ANDROID)
-#error Chromium does not support middle endian architecture
-#endif
-#if defined(__ARM_NEON__)
-#define PA_CPU_ARM_NEON 1
-#endif
-#endif  // defined(__arm__)
-#endif  // !defined(CPU_ARM_NEON)
-
-#if !defined(PA_HAVE_MIPS_MSA_INTRINSICS)
-#if defined(__mips_msa) && defined(__mips_isa_rev) && (__mips_isa_rev >= 5)
-#define PA_HAVE_MIPS_MSA_INTRINSICS 1
-#endif
 #endif
 
 // The ANALYZER_ASSUME_TRUE(bool arg) macro adds compiler-specific hints
@@ -302,4 +261,16 @@ inline constexpr bool AnalyzerAssumeTrue(bool arg) {
 #define PA_LIFETIME_BOUND
 #endif
 
-#endif  // BASE_ALLOCATOR_PARTITION_ALLOCATOR_SRC_PARTITION_ALLOC_PARTITION_ALLOC_BASE_COMPILER_SPECIFIC_H_
+// Clang instrumentation may allocate, leading to reentrancy in the allocator,
+// and crashes when generating a PGO profile. This attribute disables profiling
+// for a function.
+//
+// See
+// https://clang.llvm.org/docs/AttributeReference.html#no-profile-instrument-function
+#if PA_HAS_CPP_ATTRIBUTE(gnu::no_profile_instrument_function)
+#define PA_NOPROFILE [[gnu::no_profile_instrument_function]]
+#else
+#define PA_NOPROFILE
+#endif
+
+#endif  // PARTITION_ALLOC_PARTITION_ALLOC_BASE_COMPILER_SPECIFIC_H_

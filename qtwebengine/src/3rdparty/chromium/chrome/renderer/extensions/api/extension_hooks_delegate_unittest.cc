@@ -4,13 +4,14 @@
 
 #include "chrome/renderer/extensions/api/extension_hooks_delegate.h"
 
+#include <string_view>
+
 #include "base/memory/raw_ptr.h"
 #include "base/strings/stringprintf.h"
 #include "base/test/bind.h"
 #include "content/public/common/content_constants.h"
 #include "extensions/common/api/messaging/messaging_endpoint.h"
 #include "extensions/common/extension_builder.h"
-#include "extensions/common/extension_messages.h"
 #include "extensions/common/mojom/context_type.mojom.h"
 #include "extensions/common/mojom/message_port.mojom-shared.h"
 #include "extensions/renderer/api/messaging/message_target.h"
@@ -72,7 +73,9 @@ class ExtensionHooksDelegateTest
   bool UseStrictIPCMessageSender() override { return true; }
 
   virtual scoped_refptr<const Extension> BuildExtension() {
-    return ExtensionBuilder("foo").Build();
+    // TODO(https://crbug.com/40804030): Update this to use MV3.
+    // Some extension module methods only exist in MV2.
+    return ExtensionBuilder("foo").SetManifestVersion(2).Build();
   }
 
   NativeRendererMessagingService* messaging_service() {
@@ -84,7 +87,7 @@ class ExtensionHooksDelegateTest
  private:
   std::unique_ptr<NativeRendererMessagingService> messaging_service_;
 
-  raw_ptr<ScriptContext, ExperimentalRenderer> script_context_ = nullptr;
+  raw_ptr<ScriptContext> script_context_ = nullptr;
   scoped_refptr<const Extension> extension_;
 };
 
@@ -122,6 +125,7 @@ TEST_F(ExtensionHooksDelegateTest, SendRequestDisabled) {
   // extension with an event page).
   scoped_refptr<const Extension> extension =
       ExtensionBuilder("foo")
+          .SetManifestVersion(2)
           .SetBackgroundContext(ExtensionBuilder::BackgroundContext::EVENT_PAGE)
           .SetLocation(mojom::ManifestLocation::kUnpacked)
           .Build();
@@ -200,16 +204,6 @@ TEST_F(ExtensionHooksDelegateTest, SendRequestChannelLeftOpenToReplyAsync) {
       content::kInvalidChildProcessUniqueId;
   external_connection_info.guest_render_frame_routing_id = 0;
 
-#if BUILDFLAG(ENABLE_EXTENSIONS_LEGACY_IPC)
-  // Open a receiver for the message.
-  EXPECT_CALL(*ipc_message_sender(),
-              SendOpenMessagePort(MSG_ROUTING_NONE, port_id));
-  messaging_service()->DispatchOnConnect(
-      script_context_set(), port_id, mojom::ChannelType::kSendRequest, kChannel,
-      tab_connection_info, external_connection_info, {}, {}, nullptr,
-      base::DoNothing());
-  ::testing::Mock::VerifyAndClearExpectations(ipc_message_sender());
-#else
   // Open a receiver for the message.
   mojo::PendingAssociatedRemote<mojom::MessagePortHost> port_host_remote;
   auto port_host_receiver =
@@ -228,7 +222,6 @@ TEST_F(ExtensionHooksDelegateTest, SendRequestChannelLeftOpenToReplyAsync) {
   port_host_receiver.EnableUnassociatedUsage();
   port_remote.EnableUnassociatedUsage();
   EXPECT_TRUE(port_opened);
-#endif
   EXPECT_TRUE(
       messaging_service()->HasPortForTesting(script_context(), port_id));
 
@@ -308,12 +301,13 @@ TEST_F(ExtensionHooksDelegateMV3Test, AliasesArentAvailableInMV3) {
   v8::HandleScope handle_scope(isolate());
   v8::Local<v8::Context> context = MainContext();
 
-  auto script_to_value = [context](base::StringPiece source) {
+  auto script_to_value = [context](std::string_view source) {
     return V8ToString(V8ValueFromScriptSource(context, source), context);
   };
 
   EXPECT_EQ("undefined", script_to_value("chrome.extension.connect"));
   EXPECT_EQ("undefined", script_to_value("chrome.extension.connectNative"));
+  EXPECT_EQ("undefined", script_to_value("chrome.extension.getURL"));
   EXPECT_EQ("undefined", script_to_value("chrome.extension.onConnect"));
   EXPECT_EQ("undefined", script_to_value("chrome.extension.onConnectExternal"));
   EXPECT_EQ("undefined", script_to_value("chrome.extension.onMessage"));

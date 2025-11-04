@@ -82,7 +82,7 @@ is paused or in the background.
 
 \section1 Qt Classes
 
-These next sections go through the various Qt Android classes and their functionality
+These next sections go through the various Qt for Android classes and their functionality
 and role in Qt applications.
 
 \section2 The Public Java Bindings
@@ -93,9 +93,15 @@ and \l {Android: Application}{Application}. These classes are used by default fo
 Android apps and referred to in the Android manifest file. The build system and
 deployment tools take care of including them in the build.
 
-Users can use these classes to change or extend the default behavior. For example,
-to add custom user-defined logic under \l {Android: Activity onCreate()}{onCreate()},
-use the following:
+Users can use these classes to change or extend the default behavior. For example, QtActivity
+extends \c Activity and implements the logic needed to load the Qt libraries or handle events
+and native calls between Android and Qt.
+
+Extending \c QtActivity is generally needed if you need to have Qt's implementation for
+various events and calls between Qt and Android. Otherwise, extending \c Activity should work.
+
+To add custom user-defined logic under \l {Android: Activity onCreate()}{onCreate()},
+you can use the following:
 
 \code
 public class MyActivity extends QtActivity
@@ -110,7 +116,7 @@ public class MyActivity extends QtActivity
 }
 \endcode
 
-\note You must edit the \l {Qt Android Manifest File Configuration}{AndroidManifest.xml}
+\note You must edit the \l {Qt for Android Manifest File Configuration}{AndroidManifest.xml}
 file to use your custom \l {Android: Activity}{Activity} or binding class,
 otherwise, the default one will still be used.
 
@@ -155,7 +161,7 @@ list of parameters passed to the application are parsed using \l {QProcess::spli
 
 \section2 Loading Qt Libraries with QtLoader
 
-Every Qt Android app needs to ensure every native Qt or 3rd party library is first
+Every Qt for Android app needs to ensure every native Qt or 3rd party library is first
 loaded before invoking any functionality from those modules. The build system keeps
 a list of various Qt library dependencies, the QPA plugin, the main app library, and any
 third-party library under the application's \l {Java/Kotlin Code}{libs.xml}

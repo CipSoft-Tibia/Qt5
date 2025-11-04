@@ -42,6 +42,7 @@ Window {
             pcfFactor: sliderPCFFactor.value
             softShadowQuality: softshadowquality_combobox.currentIndex
             shadowMapFar: sliderShadowMapFar.value
+            lockShadowmapTexels: checkBoxLockShadowmapTexels.checked
         }
 
         SpotLight {
@@ -306,6 +307,11 @@ Window {
                     ListElement { text: "Light.PCF64" }
                 }
                 currentIndex: 3
+            }
+            CheckBox {
+                id: checkBoxLockShadowmapTexels
+                text: "Lock Shadowmap Texels"
+                checked: false
             }
             Label {
                 // spacer

@@ -22,9 +22,11 @@
 #include "qsvgstyle_p.h"
 #if QT_CONFIG(cssparser)
 #include "private/qcssparser_p.h"
+#include <QtSvg/private/qsvgcsshandler_p.h>
 #endif
 #include "qsvggraphics_p.h"
 #include "qtsvgglobal_p.h"
+#include "qsvgutils_p.h"
 
 QT_BEGIN_NAMESPACE
 
@@ -47,21 +49,12 @@ struct QSvgCssAttribute
 class Q_SVG_EXPORT QSvgHandler
 {
 public:
-    enum LengthType {
-        LT_PERCENT,
-        LT_PX,
-        LT_PC,
-        LT_PT,
-        LT_MM,
-        LT_CM,
-        LT_IN,
-        LT_OTHER
-    };
-
-public:
-    QSvgHandler(QIODevice *device, QtSvg::Options options = {});
-    QSvgHandler(const QByteArray &data, QtSvg::Options options = {});
-    QSvgHandler(QXmlStreamReader *const data, QtSvg::Options options = {});
+    QSvgHandler(QIODevice *device, QtSvg::Options options = {},
+                QtSvg::AnimatorType type = QtSvg::AnimatorType::Automatic);
+    QSvgHandler(const QByteArray &data, QtSvg::Options options = {},
+                QtSvg::AnimatorType type = QtSvg::AnimatorType::Automatic);
+    QSvgHandler(QXmlStreamReader *const data, QtSvg::Options options = {},
+                QtSvg::AnimatorType type = QtSvg::AnimatorType::Automatic);
     ~QSvgHandler();
 
     QIODevice *device() const;
@@ -74,8 +67,8 @@ public:
     inline QString errorString() const { return xml->errorString(); }
     inline int lineNumber() const { return xml->lineNumber(); }
 
-    void setDefaultCoordinateSystem(LengthType type);
-    LengthType defaultCoordinateSystem() const;
+    void setDefaultCoordinateSystem(QSvgUtils::LengthType type);
+    QSvgUtils::LengthType defaultCoordinateSystem() const;
 
     void pushColor(const QColor &color);
     void pushColorCopy();
@@ -87,6 +80,7 @@ public:
     bool inStyle() const;
 
     QSvgStyleSelector *selector() const;
+    QSvgCssHandler &cssHandler();
 #endif
 
     void setAnimPeriod(int start, int end);
@@ -100,6 +94,7 @@ public:
     { return m_defaultPen; }
 
     QtSvg::Options options() const;
+    QtSvg::AnimatorType animatorType() const;
     bool trustedSourceMode() const;
 
 public:
@@ -136,7 +131,7 @@ private:
 
     QSvgRefCounter<QSvgStyleProperty> m_style;
 
-    LengthType m_defaultCoords;
+    QSvgUtils::LengthType m_defaultCoords;
 
     QStack<QColor> m_colorStack;
     QStack<int>    m_colorTagCount;
@@ -148,6 +143,7 @@ private:
     bool m_inStyle;
     QSvgStyleSelector *m_selector;
     QCss::Parser m_cssParser;
+    QSvgCssHandler m_cssHandler;
 #endif
     void parse();
     void resolvePaintServers(QSvgNode *node, int nestedDepth = 0);
@@ -161,6 +157,7 @@ private:
     const bool m_ownsReader;
 
     const QtSvg::Options m_options;
+    const QtSvg::AnimatorType m_animatorType;
 };
 
 Q_DECLARE_LOGGING_CATEGORY(lcSvgHandler)

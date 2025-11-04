@@ -12,6 +12,7 @@
 #include <vector>
 
 #include "base/containers/span.h"
+#include "base/memory/raw_ptr.h"
 #include "base/memory/scoped_refptr.h"
 #include "media/base/decrypt_config.h"
 #include "media/base/subsample_entry.h"
@@ -19,7 +20,7 @@
 #include "media/gpu/accelerated_video_decoder.h"
 #include "media/gpu/h265_dpb.h"
 #include "media/gpu/media_gpu_export.h"
-#include "media/video/h265_parser.h"
+#include "media/parsers/h265_parser.h"
 #include "ui/gfx/geometry/rect.h"
 #include "ui/gfx/geometry/size.h"
 
@@ -210,7 +211,7 @@ class MEDIA_GPU_EXPORT H265Decoder final : public AcceleratedVideoDecoder {
   uint8_t GetBitDepth() const override;
   VideoChromaSampling GetChromaSampling() const override;
   VideoColorSpace GetVideoColorSpace() const override;
-  absl::optional<gfx::HDRMetadata> GetHDRMetadata() const override;
+  std::optional<gfx::HDRMetadata> GetHDRMetadata() const override;
   size_t GetRequiredNumOfPictures() const override;
   size_t GetNumReferenceFrames() const override;
 
@@ -305,7 +306,7 @@ class MEDIA_GPU_EXPORT H265Decoder final : public AcceleratedVideoDecoder {
   H265Parser parser_;
 
   // Most recent call to SetStream().
-  const uint8_t* current_stream_ = nullptr;
+  raw_ptr<const uint8_t, DanglingUntriaged> current_stream_ = nullptr;
   size_t current_stream_size_ = 0;
 
   // Decrypting config for the most recent data passed to SetStream().
@@ -388,7 +389,7 @@ class MEDIA_GPU_EXPORT H265Decoder final : public AcceleratedVideoDecoder {
   // Video color space of input bitstream.
   VideoColorSpace picture_color_space_;
   // HDR metadata in the bitstream.
-  absl::optional<gfx::HDRMetadata> hdr_metadata_;
+  std::optional<gfx::HDRMetadata> hdr_metadata_;
 
   const std::unique_ptr<H265Accelerator> accelerator_;
 };

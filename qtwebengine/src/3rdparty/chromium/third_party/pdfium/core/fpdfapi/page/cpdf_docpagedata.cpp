@@ -7,6 +7,7 @@
 #include "core/fpdfapi/page/cpdf_docpagedata.h"
 
 #include <algorithm>
+#include <array>
 #include <memory>
 #include <set>
 #include <utility>
@@ -31,17 +32,19 @@
 #include "core/fpdfapi/parser/cpdf_stream_acc.h"
 #include "core/fpdfapi/parser/cpdf_string.h"
 #include "core/fxcodec/icc/icc_transform.h"
+#include "core/fxcrt/check.h"
+#include "core/fxcrt/containers/contains.h"
+#include "core/fxcrt/fixed_size_data_vector.h"
 #include "core/fxcrt/fx_codepage.h"
 #include "core/fxcrt/fx_memory.h"
 #include "core/fxcrt/fx_safe_types.h"
 #include "core/fxcrt/scoped_set_insertion.h"
+#include "core/fxcrt/span.h"
 #include "core/fxge/cfx_font.h"
 #include "core/fxge/cfx_fontmapper.h"
 #include "core/fxge/cfx_substfont.h"
 #include "core/fxge/cfx_unicodeencoding.h"
 #include "core/fxge/fx_font.h"
-#include "third_party/base/check.h"
-#include "third_party/base/containers/contains.h"
 
 namespace {
 
@@ -74,10 +77,9 @@ ByteString GetPSNameFromTT(HDC hDC) {
   ByteString result;
   DWORD size = ::GetFontData(hDC, 'eman', 0, nullptr, 0);
   if (size != GDI_ERROR) {
-    LPBYTE buffer = FX_Alloc(BYTE, size);
-    ::GetFontData(hDC, 'eman', 0, buffer, size);
-    result = GetNameFromTT({buffer, size}, 6);
-    FX_Free(buffer);
+    auto buffer = FixedSizeDataVector<BYTE>::Uninit(size);
+    ::GetFontData(hDC, 'eman', 0, buffer.span().data(), buffer.size());
+    result = GetNameFromTT(buffer, 6);
   }
   return result;
 }
@@ -168,15 +170,21 @@ CPDF_DocPageData* CPDF_DocPageData::FromDocument(const CPDF_Document* pDoc) {
 CPDF_DocPageData::CPDF_DocPageData() = default;
 
 CPDF_DocPageData::~CPDF_DocPageData() {
+  for (auto& it : m_ImageMap) {
+    it.second->WillBeDestroyed();
+  }
   for (auto& it : m_FontMap) {
-    if (it.second)
-      it.second->WillBeDestroyed();
+    it.second->WillBeDestroyed();
   }
 }
 
-CPDF_DocPageData::HashIccProfileKey::HashIccProfileKey(ByteString digest,
-                                                       uint32_t components)
+CPDF_DocPageData::HashIccProfileKey::HashIccProfileKey(
+    DataVector<uint8_t> digest,
+    uint32_t components)
     : digest(std::move(digest)), components(components) {}
+
+CPDF_DocPageData::HashIccProfileKey::HashIccProfileKey(
+    const HashIccProfileKey& that) = default;
 
 CPDF_DocPageData::HashIccProfileKey::~HashIccProfileKey() = default;
 
@@ -347,37 +355,33 @@ RetainPtr<CPDF_ColorSpace> CPDF_DocPageData::GetColorSpaceInternal(
 RetainPtr<CPDF_Pattern> CPDF_DocPageData::GetPattern(
     RetainPtr<CPDF_Object> pPatternObj,
     const CFX_Matrix& matrix) {
-  if (!pPatternObj)
-    return nullptr;
+  CHECK(pPatternObj->IsDictionary() || pPatternObj->IsStream());
 
   auto it = m_PatternMap.find(pPatternObj);
   if (it != m_PatternMap.end() && it->second)
     return pdfium::WrapRetain(it->second.Get());
 
-  RetainPtr<const CPDF_Dictionary> pDict = pPatternObj->GetDict();
-  if (!pDict)
-    return nullptr;
-
-  RetainPtr<CPDF_Pattern> pPattern;
-  int type = pDict->GetIntegerFor("PatternType");
-  if (type == CPDF_Pattern::kTiling) {
-    pPattern = pdfium::MakeRetain<CPDF_TilingPattern>(GetDocument(),
-                                                      pPatternObj, matrix);
-  } else if (type == CPDF_Pattern::kShading) {
-    pPattern = pdfium::MakeRetain<CPDF_ShadingPattern>(
-        GetDocument(), pPatternObj, false, matrix);
-  } else {
-    return nullptr;
+  RetainPtr<CPDF_Pattern> pattern;
+  switch (pPatternObj->GetDict()->GetIntegerFor("PatternType")) {
+    case CPDF_Pattern::kTiling:
+      pattern = pdfium::MakeRetain<CPDF_TilingPattern>(GetDocument(),
+                                                       pPatternObj, matrix);
+      break;
+    case CPDF_Pattern::kShading:
+      pattern = pdfium::MakeRetain<CPDF_ShadingPattern>(
+          GetDocument(), pPatternObj, false, matrix);
+      break;
+    default:
+      return nullptr;
   }
-  m_PatternMap[pPatternObj].Reset(pPattern.Get());
-  return pPattern;
+  m_PatternMap[pPatternObj].Reset(pattern.Get());
+  return pattern;
 }
 
 RetainPtr<CPDF_ShadingPattern> CPDF_DocPageData::GetShading(
     RetainPtr<CPDF_Object> pPatternObj,
     const CFX_Matrix& matrix) {
-  if (!pPatternObj)
-    return nullptr;
+  CHECK(pPatternObj->IsDictionary() || pPatternObj->IsStream());
 
   auto it = m_PatternMap.find(pPatternObj);
   if (it != m_PatternMap.end() && it->second)
@@ -412,8 +416,9 @@ RetainPtr<CPDF_IccProfile> CPDF_DocPageData::GetIccProfile(
   CHECK(pProfileStream);
 
   auto it = m_IccProfileMap.find(pProfileStream);
-  if (it != m_IccProfileMap.end() && it->second)
-    return pdfium::WrapRetain(it->second.Get());
+  if (it != m_IccProfileMap.end()) {
+    return it->second;
+  }
 
   auto pAccessor = pdfium::MakeRetain<CPDF_StreamAcc>(pProfileStream);
   pAccessor->LoadAllDataFiltered();
@@ -430,12 +435,13 @@ RetainPtr<CPDF_IccProfile> CPDF_DocPageData::GetIccProfile(
   auto hash_it = m_HashIccProfileMap.find(hash_profile_key);
   if (hash_it != m_HashIccProfileMap.end()) {
     auto it_copied_stream = m_IccProfileMap.find(hash_it->second);
-    if (it_copied_stream != m_IccProfileMap.end() && it_copied_stream->second)
-      return pdfium::WrapRetain(it_copied_stream->second.Get());
+    if (it_copied_stream != m_IccProfileMap.end()) {
+      return it_copied_stream->second;
+    }
   }
-  auto pProfile = pdfium::MakeRetain<CPDF_IccProfile>(
-      pProfileStream, pAccessor->GetSpan(), expected_components);
-  m_IccProfileMap[pProfileStream].Reset(pProfile.Get());
+  auto pProfile =
+      pdfium::MakeRetain<CPDF_IccProfile>(pAccessor, expected_components);
+  m_IccProfileMap[pProfileStream] = pProfile;
   m_HashIccProfileMap[hash_profile_key] = std::move(pProfileStream);
   return pProfile;
 }
@@ -475,7 +481,7 @@ void CPDF_DocPageData::MaybePurgeFontFileStreamAcc(
     return;
 
   pStreamAcc.Reset();  // Drop moved caller's reference.
-  auto it = m_FontFileMap.find(std::move(pFontStream));
+  auto it = m_FontFileMap.find(pFontStream);
   if (it != m_FontFileMap.end() && it->second->HasOneRef())
     m_FontFileMap.erase(it);
 }
@@ -492,7 +498,7 @@ RetainPtr<CPDF_Font> CPDF_DocPageData::AddStandardFont(
     const ByteString& fontName,
     const CPDF_FontEncoding* pEncoding) {
   ByteString mutable_name(fontName);
-  absl::optional<CFX_FontMapper::StandardFont> font_id =
+  std::optional<CFX_FontMapper::StandardFont> font_id =
       CFX_FontMapper::GetStandardFontName(&mutable_name);
   if (!font_id.has_value())
     return nullptr;
@@ -535,7 +541,8 @@ RetainPtr<CPDF_Font> CPDF_DocPageData::AddFont(std::unique_ptr<CFX_Font> pFont,
     } else {
       size_t i = CalculateEncodingDict(charset, pBaseDict.Get());
       if (i < std::size(kFX_CharsetUnicodes)) {
-        const uint16_t* pUnicodes = kFX_CharsetUnicodes[i].m_pUnicodes;
+        pdfium::span<const uint16_t> pUnicodes =
+            kFX_CharsetUnicodes[i].m_pUnicodes;
         for (int j = 0; j < 128; j++) {
           int glyph_index = pEncoding->GlyphFromCharCode(pUnicodes[j]);
           int char_width = pFont->GetGlyphWidth(glyph_index);
@@ -563,12 +570,13 @@ RetainPtr<CPDF_Font> CPDF_DocPageData::AddFont(std::unique_ptr<CFX_Font> pFont,
   if (pFont->GetSubstFont()) {
     nStemV = pFont->GetSubstFont()->m_Weight / 5;
   } else {
-    static const char stem_chars[] = {'i', 'I', '!', '1'};
-    const size_t count = std::size(stem_chars);
-    uint32_t glyph = pEncoding->GlyphFromCharCode(stem_chars[0]);
+    static constexpr char kStemChars[] = {'i', 'I', '!', '1'};
+    static constexpr pdfium::span<const char> kStemSpan{kStemChars};
+    uint32_t glyph = pEncoding->GlyphFromCharCode(kStemSpan.front());
+    const auto remaining = kStemSpan.subspan<1>();
     nStemV = pFont->GetGlyphWidth(glyph);
-    for (size_t i = 1; i < count; i++) {
-      glyph = pEncoding->GlyphFromCharCode(stem_chars[i]);
+    for (auto ch : remaining) {
+      glyph = pEncoding->GlyphFromCharCode(ch);
       int width = pFont->GetGlyphWidth(glyph);
       if (width > 0 && width < nStemV)
         nStemV = width;
@@ -621,8 +629,8 @@ RetainPtr<CPDF_Font> CPDF_DocPageData::AddWindowsFont(LOGFONTA* pLogFont) {
   int ascend = ptm->otmrcFontBox.top;
   int descend = ptm->otmrcFontBox.bottom;
   int capheight = ptm->otmsCapEmHeight;
-  int bbox[4] = {ptm->otmrcFontBox.left, ptm->otmrcFontBox.bottom,
-                 ptm->otmrcFontBox.right, ptm->otmrcFontBox.top};
+  std::array<int, 4> bbox = {{ptm->otmrcFontBox.left, ptm->otmrcFontBox.bottom,
+                              ptm->otmrcFontBox.right, ptm->otmrcFontBox.top}};
   FX_Free(tm_buf);
   basefont.Replace(" ", "");
   auto pBaseDict = GetDocument()->NewIndirect<CPDF_Dictionary>();
@@ -636,11 +644,12 @@ RetainPtr<CPDF_Font> CPDF_DocPageData::AddWindowsFont(LOGFONTA* pLogFont) {
     } else {
       CalculateEncodingDict(eCharset, pBaseDict.Get());
     }
-    int char_widths[224];
-    GetCharWidth(hDC, 32, 255, char_widths);
+    std::array<int, 224> char_widths;
+    GetCharWidth(hDC, 32, 255, char_widths.data());
     auto pWidths = pdfium::MakeRetain<CPDF_Array>();
-    for (size_t i = 0; i < 224; i++)
-      pWidths->AppendNew<CPDF_Number>(char_widths[i]);
+    for (const auto char_width : char_widths) {
+      pWidths->AppendNew<CPDF_Number>(char_width);
+    }
     ProcessNonbCJK(pBaseDict, pLogFont->lfWeight > FW_MEDIUM,
                    pLogFont->lfItalic != 0, basefont, std::move(pWidths));
   } else {
@@ -651,8 +660,9 @@ RetainPtr<CPDF_Font> CPDF_DocPageData::AddWindowsFont(LOGFONTA* pLogFont) {
                     });
   }
   auto pBBox = pdfium::MakeRetain<CPDF_Array>();
-  for (int i = 0; i < 4; i++)
-    pBBox->AppendNew<CPDF_Number>(bbox[i]);
+  for (const auto bound : bbox) {
+    pBBox->AppendNew<CPDF_Number>(bound);
+  }
   RetainPtr<CPDF_Dictionary> pFontDesc =
       CalculateFontDesc(GetDocument(), basefont, flags, italicangle, ascend,
                         descend, std::move(pBBox), pLogFont->lfWeight / 5);
@@ -683,7 +693,7 @@ size_t CPDF_DocPageData::CalculateEncodingDict(FX_Charset charset,
   auto pArray = pEncodingDict->SetNewFor<CPDF_Array>("Differences");
   pArray->AppendNew<CPDF_Number>(128);
 
-  const uint16_t* pUnicodes = kFX_CharsetUnicodes[i].m_pUnicodes;
+  pdfium::span<const uint16_t> pUnicodes = kFX_CharsetUnicodes[i].m_pUnicodes;
   for (int j = 0; j < 128; j++) {
     ByteString name = AdobeNameFromUnicode(pUnicodes[j]);
     pArray->AppendNew<CPDF_Name>(name.IsEmpty() ? ".notdef" : name);
@@ -751,8 +761,8 @@ RetainPtr<CPDF_Dictionary> CPDF_DocPageData::ProcessbCJK(
   pFontDict->SetNewFor<CPDF_Name>("BaseFont", basefont);
 
   auto pCIDSysInfo = pFontDict->SetNewFor<CPDF_Dictionary>("CIDSystemInfo");
-  pCIDSysInfo->SetNewFor<CPDF_String>("Registry", "Adobe", false);
-  pCIDSysInfo->SetNewFor<CPDF_String>("Ordering", ordering, false);
+  pCIDSysInfo->SetNewFor<CPDF_String>("Registry", "Adobe");
+  pCIDSysInfo->SetNewFor<CPDF_String>("Ordering", ordering);
   pCIDSysInfo->SetNewFor<CPDF_Number>("Supplement", supplement);
 
   auto pArray = pBaseDict->SetNewFor<CPDF_Array>("DescendantFonts");

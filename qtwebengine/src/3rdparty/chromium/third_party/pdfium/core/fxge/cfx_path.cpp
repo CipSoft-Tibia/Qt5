@@ -9,10 +9,11 @@
 #include <math.h>
 
 #include <algorithm>
+#include <array>
 #include <iterator>
 
+#include "core/fxcrt/check_op.h"
 #include "core/fxcrt/fx_system.h"
-#include "third_party/base/check_op.h"
 
 namespace {
 
@@ -135,7 +136,7 @@ void UpdateLineEndPoints(CFX_FloatRect* rect,
   }
 
   CFX_PointF diff = end_pos - start_pos;
-  float ll = FXSYS_sqrt2(diff.x, diff.y);
+  float ll = hypotf(diff.x, diff.y);
   float mx = end_pos.x + hw * diff.x / ll;
   float my = end_pos.y + hw * diff.y / ll;
   float dx1 = hw * diff.y / ll;
@@ -174,14 +175,14 @@ void UpdateLineJoinPoints(CFX_FloatRect* rect,
     CFX_PointF start_to_mid = start_pos - mid_pos;
     start_k = (mid_pos.y - start_pos.y) / (mid_pos.x - start_pos.x);
     start_c = mid_pos.y - (start_k * mid_pos.x);
-    start_len = FXSYS_sqrt2(start_to_mid.x, start_to_mid.y);
+    start_len = hypotf(start_to_mid.x, start_to_mid.y);
     start_dc = fabsf(half_width * start_len / start_to_mid.x);
   }
   if (!bEndVert) {
     CFX_PointF end_to_mid = end_pos - mid_pos;
     end_k = end_to_mid.y / end_to_mid.x;
     end_c = mid_pos.y - (end_k * mid_pos.x);
-    end_len = FXSYS_sqrt2(end_to_mid.x, end_to_mid.y);
+    end_len = hypotf(end_to_mid.x, end_to_mid.y);
     end_dc = fabs(half_width * end_len / end_to_mid.x);
   }
   if (bStartVert) {
@@ -400,8 +401,7 @@ bool CFX_Path::IsRect() const {
   return IsRectImpl(m_Points);
 }
 
-absl::optional<CFX_FloatRect> CFX_Path::GetRect(
-    const CFX_Matrix* matrix) const {
+std::optional<CFX_FloatRect> CFX_Path::GetRect(const CFX_Matrix* matrix) const {
   bool do_normalize = PathPointsNeedNormalization(m_Points);
   std::vector<Point> normalized;
   if (do_normalize)
@@ -410,26 +410,26 @@ absl::optional<CFX_FloatRect> CFX_Path::GetRect(
 
   if (!matrix) {
     if (!IsRectImpl(path_points))
-      return absl::nullopt;
+      return std::nullopt;
 
     return CreateRectFromPoints(path_points[0].m_Point, path_points[2].m_Point);
   }
 
   if (!IsRectPreTransform(path_points))
-    return absl::nullopt;
+    return std::nullopt;
 
-  CFX_PointF points[5];
+  std::array<CFX_PointF, 5> points;
   for (size_t i = 0; i < path_points.size(); ++i) {
     points[i] = matrix->Transform(path_points[i].m_Point);
 
     if (i == 0)
       continue;
     if (XYBothNotEqual(points[i], points[i - 1]))
-      return absl::nullopt;
+      return std::nullopt;
   }
 
   if (XYBothNotEqual(points[0], points[3]))
-    return absl::nullopt;
+    return std::nullopt;
 
   return CreateRectFromPoints(points[0], points[2]);
 }

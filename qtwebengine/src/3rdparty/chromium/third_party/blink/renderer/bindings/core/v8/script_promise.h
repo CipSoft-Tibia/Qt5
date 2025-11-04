@@ -32,8 +32,13 @@
 #define THIRD_PARTY_BLINK_RENDERER_BINDINGS_CORE_V8_SCRIPT_PROMISE_H_
 
 #include "base/memory/scoped_refptr.h"
+#include "base/memory/stack_allocated.h"
+#include "third_party/blink/renderer/bindings/core/v8/idl_types.h"
 #include "third_party/blink/renderer/bindings/core/v8/script_value.h"
+#include "third_party/blink/renderer/bindings/core/v8/v8_binding_for_core.h"
 #include "third_party/blink/renderer/core/core_export.h"
+#include "third_party/blink/renderer/core/dom/dom_exception.h"
+#include "third_party/blink/renderer/platform/bindings/exception_state.h"
 #include "third_party/blink/renderer/platform/heap/collection_support/heap_vector.h"
 #include "third_party/blink/renderer/platform/heap/garbage_collected.h"
 #include "third_party/blink/renderer/platform/wtf/allocator/allocator.h"
@@ -43,46 +48,38 @@
 namespace blink {
 
 class DOMException;
-class ExceptionState;
 class ScriptFunction;
 
-// ScriptPromise is the class for representing Promise values in C++ world.
-// ScriptPromise holds a Promise.
-// So holding a ScriptPromise as a member variable in DOM object causes
-// memory leaks since it has a reference from C++ to V8.
+template <typename IDLResolvedType>
+class ScriptPromise;
+
+// ScriptPromise is the class for representing Promise values in C++
+// world. ScriptPromise holds a Promise. Holding a `ScriptPromise`
+// is rarely needed — typically you hold a `ScriptPromiseResolver` when creating
+// a Promise and passing it *to* JavaScript — but is necessary when
+// holding a promise received *from* JavaScript. If a promise is exposed as an
+// attribute in IDL and you need to return the same promise on multiple
+// invocations, use ScriptPromiseProperty.
 //
 // There are cases where promises cannot work (e.g., where the thread is being
 // terminated). In such cases operations will silently fail, so you should not
 // use promises for critical use such as releasing a resource.
-class CORE_EXPORT ScriptPromise final {
+class CORE_EXPORT ScriptPromiseUntyped {
   DISALLOW_NEW();
 
  public:
   // Constructs an empty promise.
-  ScriptPromise() = default;
+  ScriptPromiseUntyped() = default;
 
-  // Constructs a ScriptPromise from |promise|.
-  // If |promise| is not a Promise object, throws a v8 TypeError.
-  ScriptPromise(ScriptState*, v8::Local<v8::Value> promise);
+  // Constructs a ScriptPromiseUntyped from |promise|.
+  ScriptPromiseUntyped(v8::Isolate*, v8::Local<v8::Promise> promise);
 
-  ScriptPromise(const ScriptPromise&);
+  ScriptPromiseUntyped(const ScriptPromiseUntyped&);
 
-  ~ScriptPromise() = default;
+  ~ScriptPromiseUntyped() = default;
 
-  ScriptPromise Then(v8::Local<v8::Function> on_fulfilled,
-                     v8::Local<v8::Function> on_rejected = {});
-  ScriptPromise Then(ScriptFunction* on_fulfilled,
-                     ScriptFunction* on_rejected = nullptr);
-
-  bool IsObject() const { return promise_.IsObject(); }
-
-  bool IsNull() const { return promise_.IsNull(); }
-
-  bool IsUndefinedOrNull() const {
-    return promise_.IsUndefined() || promise_.IsNull();
-  }
-
-  ScriptValue AsScriptValue() const { return promise_; }
+  ScriptPromise<IDLAny> Then(ScriptFunction* on_fulfilled,
+                             ScriptFunction* on_rejected = nullptr);
 
   v8::Local<v8::Value> V8Value() const { return promise_.V8Value(); }
   v8::Local<v8::Promise> V8Promise() const {
@@ -91,8 +88,6 @@ class CORE_EXPORT ScriptPromise final {
     return V8Value().As<v8::Promise>();
   }
 
-  v8::Isolate* GetIsolate() const { return script_state_->GetIsolate(); }
-
   bool IsEmpty() const { return promise_.IsEmpty(); }
 
   void Clear() { promise_.Clear(); }
@@ -100,74 +95,137 @@ class CORE_EXPORT ScriptPromise final {
   // Marks this promise as handled to avoid reporting unhandled rejections.
   void MarkAsHandled();
 
-  bool operator==(const ScriptPromise& value) const {
+  bool operator==(const ScriptPromiseUntyped& value) const {
     return promise_ == value.promise_;
   }
 
-  bool operator!=(const ScriptPromise& value) const {
+  bool operator!=(const ScriptPromiseUntyped& value) const {
     return !operator==(value);
   }
 
-  // Constructs and returns a ScriptPromise from |value|.
-  // if |value| is not a Promise object, returns a Promise object
-  // resolved with |value|.
-  // Returns |value| itself if it is a Promise.
-  static ScriptPromise Cast(ScriptState*, const ScriptValue& /*value*/);
-  static ScriptPromise Cast(ScriptState*, v8::Local<v8::Value> /*value*/);
+  // Constructs and returns a ScriptPromiseUntyped from |value|.
+  // if `value` is not a Promise object, returns a Promise object
+  // resolved with `value`.
+  // Returns `value` itself if it is a Promise.
+  // This is intended only for cases where we are receiving an arbitrary
+  // `value` of unknown type from script. If constructing a ScriptPromise
+  // of known type, use ToResolvedPromise<>.
+  static ScriptPromiseUntyped FromUntypedValueForBindings(ScriptState*,
+                                                          v8::Local<v8::Value>);
 
-  // Constructs and returns a ScriptPromise resolved with undefined.
-  static ScriptPromise CastUndefined(ScriptState*);
+  // Constructs and returns a ScriptPromiseUntyped resolved with undefined.
+  static ScriptPromiseUntyped CastUndefined(ScriptState*);
 
-  static ScriptPromise Reject(ScriptState*, const ScriptValue&);
-  static ScriptPromise Reject(ScriptState*, v8::Local<v8::Value>);
+  static ScriptPromiseUntyped Reject(ScriptState*, const ScriptValue&);
+  static ScriptPromiseUntyped Reject(ScriptState*, v8::Local<v8::Value>);
   // Rejects with a given exception. The ExceptionState gets cleared.
-  static ScriptPromise Reject(ScriptState*, ExceptionState&);
+  static ScriptPromiseUntyped Reject(ScriptState*, ExceptionState&);
 
-  static ScriptPromise RejectWithDOMException(ScriptState*, DOMException*);
+  // Constructs and returns a ScriptPromiseUntyped to be resolved when all
+  // |promises| are resolved. If one of |promises| is rejected, the returned
+  // ScriptPromiseUntyped is rejected.
+  static ScriptPromiseUntyped All(
+      ScriptState*,
+      const HeapVector<ScriptPromiseUntyped>& promises);
 
+  void Trace(Visitor* visitor) const { visitor->Trace(promise_); }
+
+ protected:
+  template <typename IDLType, typename BlinkType>
+  friend ScriptPromise<IDLType> ToResolvedPromise(ScriptState*, BlinkType);
+
+  static v8::Local<v8::Promise> ResolveRaw(ScriptState*, v8::Local<v8::Value>);
   static v8::Local<v8::Promise> RejectRaw(ScriptState*, v8::Local<v8::Value>);
 
-  // Constructs and returns a ScriptPromise to be resolved when all |promises|
-  // are resolved. If one of |promises| is rejected, the returned
-  // ScriptPromise is rejected.
-  static ScriptPromise All(ScriptState*,
-                           const HeapVector<ScriptPromise>& promises);
+ private:
+  ScriptValue promise_;
+};
 
-  void Trace(Visitor* visitor) const {
-    visitor->Trace(promise_);
-    visitor->Trace(script_state_);
+template <typename IDLResolvedType>
+class ScriptPromise : public ScriptPromiseUntyped {
+ public:
+  ScriptPromise() = default;
+
+  template <typename T = IDLResolvedType>
+  static ScriptPromise<T> FromV8Promise(
+      v8::Isolate* isolate,
+      v8::Local<v8::Promise> promise,
+      typename std::enable_if<std::is_same_v<T, IDLAny>>::type* = 0) {
+    return ScriptPromise<T>(isolate, promise);
   }
 
-  // This is a utility class intended to be used internally.
-  // ScriptPromiseResolver is for general purpose.
-  class CORE_EXPORT InternalResolver final {
-    DISALLOW_NEW();
+  static ScriptPromise<IDLResolvedType> RejectWithDOMException(
+      ScriptState* script_state,
+      DOMException* exception) {
+    return Reject(script_state, exception->ToV8(script_state));
+  }
 
-   public:
-    explicit InternalResolver(ScriptState*);
-    v8::Local<v8::Promise> V8Promise() const;
-    ScriptPromise Promise() const;
-    void Resolve(v8::Local<v8::Value>);
-    void Reject(v8::Local<v8::Value>);
-    void Clear() { resolver_.Clear(); }
-    ScriptState* GetScriptState() const { return script_state_.Get(); }
-    void Trace(Visitor* visitor) const {
-      visitor->Trace(script_state_);
-      visitor->Trace(resolver_);
+  static ScriptPromise<IDLResolvedType> Reject(ScriptState* script_state,
+                                               const ScriptValue& value) {
+    return Reject(script_state, value.V8Value());
+  }
+
+  static ScriptPromise<IDLResolvedType> Reject(ScriptState* script_state,
+                                               v8::Local<v8::Value> value) {
+    if (value.IsEmpty()) {
+      return ScriptPromise<IDLResolvedType>();
     }
+    return ScriptPromise<IDLResolvedType>(
+        script_state->GetIsolate(),
+        ScriptPromiseUntyped::RejectRaw(script_state, value));
+  }
 
-   private:
-    Member<ScriptState> script_state_;
-    ScriptValue resolver_;
-  };
-
-  bool IsAssociatedWith(ScriptState* script_state) const {
-    return script_state == script_state_;
+  void MarkAsSilent() {
+    if (!IsEmpty()) {
+      V8Promise()->MarkAsSilent();
+    }
   }
 
  private:
-  Member<ScriptState> script_state_;
-  ScriptValue promise_;
+  template <typename IDLType>
+  friend class ScriptPromiseResolver;
+
+  template <typename IDLType, typename BlinkType>
+  friend ScriptPromise<IDLType> ToResolvedPromise(ScriptState*, BlinkType);
+
+  ScriptPromise(v8::Isolate* isolate, v8::Local<v8::Promise> promise)
+      : ScriptPromiseUntyped(isolate, promise) {}
+};
+
+// Defined in to_v8_traits.h due to circular dependency.
+template <typename IDLType, typename BlinkType>
+ScriptPromise<IDLType> ToResolvedPromise(ScriptState*, BlinkType value);
+
+CORE_EXPORT ScriptPromise<IDLUndefined> ToResolvedUndefinedPromise(
+    ScriptState*);
+
+// EmptyPromise() is a value similar to std::nullopt that can be used to return
+// an empty ScriptPromise of any type. It is intended to be used when throwing
+// an exception using an ExceptionState object, since in that case the bindings
+// ignore the contents of the returned promise.
+//
+// The usual patterns for usage are:
+//
+//   if (bad thing) {
+//     exception_state.ThrowRangeError("bad thing");
+//     return EmptyPromise();
+//   }
+//
+// or
+//
+//   FunctionThatMightThrow(script_state, exception_state);
+//   if (exception_state.HadException()) {
+//     return EmptyPromise();
+//   }
+class EmptyPromise {
+  STACK_ALLOCATED();
+
+ public:
+  template <typename IDLType>
+  // Intentionally permit implicit conversion. NOLINTNEXTLINE.
+  operator ScriptPromise<IDLType>() {
+    return ScriptPromise<IDLType>();
+  }
 };
 
 }  // namespace blink
@@ -175,8 +233,15 @@ class CORE_EXPORT ScriptPromise final {
 namespace WTF {
 
 template <>
-struct VectorTraits<blink::ScriptPromise>
-    : VectorTraitsBase<blink::ScriptPromise> {
+struct VectorTraits<blink::ScriptPromiseUntyped>
+    : VectorTraitsBase<blink::ScriptPromiseUntyped> {
+  STATIC_ONLY(VectorTraits);
+  static constexpr bool kCanClearUnusedSlotsWithMemset = true;
+};
+
+template <typename T>
+struct VectorTraits<blink::ScriptPromise<T>>
+    : VectorTraitsBase<blink::ScriptPromise<T>> {
   STATIC_ONLY(VectorTraits);
   static constexpr bool kCanClearUnusedSlotsWithMemset = true;
 };

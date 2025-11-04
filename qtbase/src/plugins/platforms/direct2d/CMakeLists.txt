@@ -64,6 +64,7 @@ qt_internal_add_plugin(QWindowsDirect2DIntegrationPlugin
         dxgi
         dxguid
         gdi32
+        uxtheme
         imm32
         ole32
         oleaut32

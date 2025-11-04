@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <qtest.h>
-#include <QtTest/QtTest>
+#include <QtTest/QTest>
 #include <QtQml/qqmlengine.h>
 #include <QtQuick/qquickimageprovider.h>
 #include <private/qquickimage_p.h>

@@ -17,6 +17,7 @@
 #include "src/trace_processor/perfetto_sql/engine/perfetto_sql_engine.h"
 
 #include "src/trace_processor/sqlite/sql_source.h"
+#include "src/trace_processor/tables/slice_tables_py.h"
 #include "test/gtest_and_gmock.h"
 
 namespace perfetto {
@@ -26,7 +27,7 @@ namespace {
 class PerfettoSqlEngineTest : public ::testing::Test {
  protected:
   StringPool pool_;
-  PerfettoSqlEngine engine_{&pool_};
+  PerfettoSqlEngine engine_{&pool_, true};
 };
 
 sql_modules::RegisteredModule CreateTestModule(
@@ -53,7 +54,7 @@ TEST_F(PerfettoSqlEngineTest, Function_Create) {
 
   res = engine_.Execute(
       SqlSource::FromExecuteQuery("creatE PeRfEttO FUNCTION foo(x INT, y LONG) "
-                                  "RETURNS INT AS select :x + :y"));
+                                  "RETURNS INT AS select $x + $y"));
   ASSERT_TRUE(res.ok()) << res.status().c_message();
 }
 
@@ -136,7 +137,24 @@ TEST_F(PerfettoSqlEngineTest, Table_Schema) {
   ASSERT_TRUE(res.ok()) << res.status().c_message();
 }
 
-TEST_F(PerfettoSqlEngineTest, Table_IncorrectSchema) {
+TEST_F(PerfettoSqlEngineTest, Table_Schema_EmptyTable) {
+  // This test checks that the type checks correctly work on empty tables (and
+  // that columns with no data do not default to "int").
+  auto res = engine_.Execute(
+      SqlSource::FromExecuteQuery("CREATE PERFETTO TABLE foo(bar STRING) AS "
+                                  "SELECT 'bar' as bar WHERE bar = 'foo'"));
+  ASSERT_TRUE(res.ok()) << res.status().c_message();
+}
+
+TEST_F(PerfettoSqlEngineTest, Table_Schema_NullColumn) {
+  // This test checks that the type checks correctly work on columns without
+  // data (and that columns with no non-NULL data do not default to "int").
+  auto res = engine_.Execute(SqlSource::FromExecuteQuery(
+      "CREATE PERFETTO TABLE foo(bar STRING) AS SELECT NULL as bar"));
+  ASSERT_TRUE(res.ok()) << res.status().c_message();
+}
+
+TEST_F(PerfettoSqlEngineTest, Table_IncorrectSchema_MissingColumn) {
   auto res = engine_.Execute(SqlSource::FromExecuteQuery(
       "CREATE PERFETTO TABLE foo(x INT) AS SELECT 1 as y"));
   ASSERT_FALSE(res.ok());
@@ -145,6 +163,16 @@ TEST_F(PerfettoSqlEngineTest, Table_IncorrectSchema) {
       testing::EndsWith("CREATE PERFETTO TABLE: the following columns are "
                         "declared in the schema, but do not exist: x; and the "
                         "folowing columns exist, but are not declared: y"));
+}
+
+TEST_F(PerfettoSqlEngineTest, Table_IncorrectSchema_IncorrectType) {
+  auto res = engine_.Execute(SqlSource::FromExecuteQuery(
+      "CREATE PERFETTO TABLE foo(x INT) AS SELECT '1' as x"));
+  ASSERT_FALSE(res.ok());
+  EXPECT_THAT(
+      res.status().c_message(),
+      testing::EndsWith("CREATE PERFETTO TABLE(foo): column 'x' declared as "
+                        "INT (LONG) in the schema, but STRING found"));
 }
 
 TEST_F(PerfettoSqlEngineTest, Table_Drop) {
@@ -292,6 +320,29 @@ TEST_F(PerfettoSqlEngineTest, Include_Module) {
       engine_.FindModule("foo")->include_key_to_file["foo.foo2"].included);
   ASSERT_FALSE(
       engine_.FindModule("bar")->include_key_to_file["bar.bar"].included);
+}
+
+TEST_F(PerfettoSqlEngineTest, MismatchedRange) {
+  tables::SliceTable parent(&pool_);
+  tables::ExpectedFrameTimelineSliceTable child(&pool_, &parent);
+
+  engine_.RegisterStaticTable(&parent, "parent",
+                              tables::SliceTable::ComputeStaticSchema());
+  engine_.RegisterStaticTable(
+      &child, "child",
+      tables::ExpectedFrameTimelineSliceTable::ComputeStaticSchema());
+
+  for (uint32_t i = 0; i < 5; i++) {
+    child.Insert({});
+  }
+
+  for (uint32_t i = 0; i < 10; i++) {
+    parent.Insert({});
+  }
+
+  auto res = engine_.Execute(
+      SqlSource::FromExecuteQuery("SELECT * FROM child WHERE ts > 3"));
+  ASSERT_TRUE(res.ok()) << res.status().c_message();
 }
 
 }  // namespace

@@ -3,10 +3,11 @@
 
 #include "qquickpdfsearchmodel_p.h"
 #include <QtCore/qloggingcategory.h>
+#include <QtPdf/private/qtpdfglobal_p.h>
 
 QT_BEGIN_NAMESPACE
 
-Q_LOGGING_CATEGORY(qLcSearch, "qt.pdf.search")
+Q_PDF_LOGGING_CATEGORY(qLcSearch, "qt.pdf.search")
 
 /*!
     \qmltype PdfSearchModel

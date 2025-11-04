@@ -21,7 +21,7 @@ QT_BEGIN_NAMESPACE
 
 using namespace Qt::StringLiterals;
 
-Q_LOGGING_CATEGORY(lcMDW, "qt.text.markdown.writer")
+Q_STATIC_LOGGING_CATEGORY(lcMDW, "qt.text.markdown.writer")
 
 static const QChar qtmw_Space = u' ';
 static const QChar qtmw_Tab = u'\t';
@@ -298,7 +298,7 @@ static int adjacentBackticksCount(const QString &s)
 static void maybeEscapeFirstChar(QString &s)
 {
     static const QRegularExpression numericListRe(uR"(\d+([\.)])\s)"_s);
-    static const QLatin1StringView specialFirstCharacters("#*+-");
+    constexpr auto specialFirstCharacters = "#*+-"_L1;
 
     QString sTrimmed = s.trimmed();
     if (sTrimmed.isEmpty())

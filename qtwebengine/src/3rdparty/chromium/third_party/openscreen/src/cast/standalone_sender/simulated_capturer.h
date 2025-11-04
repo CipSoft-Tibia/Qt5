@@ -33,7 +33,8 @@ class SimulatedCapturer {
     virtual void OnEndOfFile(SimulatedCapturer* capturer) = 0;
 
     // Called if a non-recoverable error occurs and the `capturer` has halted.
-    virtual void OnError(SimulatedCapturer* capturer, std::string message) = 0;
+    virtual void OnError(SimulatedCapturer* capturer,
+                         const std::string& message) = 0;
 
    protected:
     virtual ~Observer();
@@ -42,11 +43,11 @@ class SimulatedCapturer {
   void SetPlaybackRate(double rate);
 
  protected:
-  SimulatedCapturer(Environment* environment,
+  SimulatedCapturer(Environment& environment,
                     const char* path,
                     AVMediaType media_type,
                     Clock::time_point start_time,
-                    Observer* observer);
+                    Observer& observer);
 
   virtual ~SimulatedCapturer();
 
@@ -94,7 +95,7 @@ class SimulatedCapturer {
   ClockNowFunctionPtr now_;
   const AVMediaType media_type_;  // Audio or Video.
   const Clock::time_point start_time_;
-  Observer* const observer_;
+  Observer& observer_;
   const AVPacketUniquePtr packet_;        // Decoder input buffer.
   const AVFrameUniquePtr decoded_frame_;  // Decoder output frame.
   int stream_index_ = -1;                 // Selected stream from the file.
@@ -139,12 +140,12 @@ class SimulatedAudioCapturer final : public SimulatedCapturer {
   // Constructor: `num_channels` and `sample_rate` specify the required audio
   // format. If necessary, audio from the file will be resampled to match the
   // required format.
-  SimulatedAudioCapturer(Environment* environment,
+  SimulatedAudioCapturer(Environment& environment,
                          const char* path,
                          int num_channels,
                          int sample_rate,
                          Clock::time_point start_time,
-                         Client* client);
+                         Client& client);
 
   ~SimulatedAudioCapturer() final;
 
@@ -168,7 +169,7 @@ class SimulatedAudioCapturer final : public SimulatedCapturer {
 
   const int num_channels_;  // Output number of channels.
   const int sample_rate_;   // Output sample rate.
-  Client* const client_;
+  Client& client_;
 
   const SwrContextUniquePtr resampler_;
 
@@ -202,15 +203,15 @@ class SimulatedVideoCapturer final : public SimulatedCapturer {
     ~Client() override;
   };
 
-  SimulatedVideoCapturer(Environment* environment,
+  SimulatedVideoCapturer(Environment& environment,
                          const char* path,
                          Clock::time_point start_time,
-                         Client* client);
+                         Client& client);
 
   ~SimulatedVideoCapturer() final;
 
  private:
-  Client* const client_;
+  Client& client_;
 
   // Sets up the decoder to produce I420 format output.
   void SetAdditionalDecoderParameters(AVCodecContext* decoder_context) final;

@@ -165,8 +165,12 @@ absl::Status EvaluateSeedsHwy(
   // Check if inputs and outputs are aligned.
   constexpr size_t kHwyAlignment = alignof(Aligned128);
 
-  #if defined(__GNUC__) && defined(__GNUC_MINOR__) && ((__GNUC__ << 16) + __GNUC_MINOR__ <= (11 << 16) + 4)
-  // Gcc Bug 109505
+  #if defined(__GNUC__) && defined(__GNUC_MINOR__) && \
+    (((__GNUC__ << 16) + __GNUC_MINOR__ <= (11 << 16) + 4) || \
+     (__GNUC__ == 12 && __GNUC_MINOR__ <= 3) || \
+     (__GNUC__ == 13 && __GNUC_MINOR__ <= 2) || \
+     (__GNUC__ == 14 && __GNUC_MINOR__ <= 1))
+  // Gcc Bug 109505 (https://gcc.gnu.org/bugzilla/show_bug.cgi?id=109505#c22)
   // Try to avoid triggering endless loop in gcc and OOM
   // and try to avoid optimize conditional booleans in
   // ABSL_PREDICT_FALSE(!is_aligned || hn::Lanes(d8) < 16 || hn::Lanes(d8) % 16 != 0))

@@ -36,7 +36,7 @@ qhp.QtGrpc.subprojects.manual.title = Qt GRPC
 qhp.QtGrpc.subprojects.manual.indexTitle = Qt GRPC module topics
 qhp.QtGrpc.subprojects.manual.type = manual
 
-depends += qtdoc qtcore qtnetwork qtwidgets qtprotobuf qtcmake qtqml qtquick qtquickcontrols
+depends += qtdoc qtcore qtnetwork qtwidgets qtprotobuf qtcmake qtqml qtquick qtquickcontrols qtnetworkauth
 
 {headerdirs,sourcedirs}  += .. \
                             ../../grpcquick
@@ -54,7 +54,9 @@ navigation.qmltypespage = "Qt GRPC QML Types"
 navigation.toctitles = "Qt GRPC module topics"
 navigation.toctitles.inclusive = false
 
-manifestmeta.highlighted.names = "QtGrpc/Magic 8 Ball"
+manifestmeta.highlighted.names = \
+               "QtGrpc/Magic 8 Ball" \
+               "QtGrpc/QtGrpc Chat"
 
 tagfile                 = qtgrpc.tags
 

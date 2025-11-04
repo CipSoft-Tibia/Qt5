@@ -101,6 +101,7 @@ public:
 
 public Q_SLOTS:
     void changeShadowQuality(int quality);
+    void changeTransparencyTechnique(int technique);
     void changeColorScheme(int colorScheme);
     void changeTheme(int theme);
     void flipViews();

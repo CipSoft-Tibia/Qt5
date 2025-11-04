@@ -38,7 +38,7 @@ void tst_Parser::error()
     QFETCH(QString, errorFileName);
 
     QFile errorFile(errorFileName);
-    errorFile.open(QIODevice::ReadOnly | QIODevice::Text);
+    QVERIFY(errorFile.open(QIODevice::ReadOnly | QIODevice::Text));
     const QStringList expectedErrors =
             QString::fromUtf8(errorFile.readAll()).split('\n', Qt::SkipEmptyParts);
 

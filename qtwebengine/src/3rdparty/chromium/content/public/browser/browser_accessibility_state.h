@@ -7,7 +7,6 @@
 
 #include "base/callback_list.h"
 #include "base/functional/callback_forward.h"
-#include "build/build_config.h"
 #include "content/common/content_export.h"
 #include "ui/accessibility/ax_mode.h"
 
@@ -115,9 +114,6 @@ class CONTENT_EXPORT BrowserAccessibilityState {
 
   virtual void UpdateHistogramsForTesting() = 0;
 
-  // Update BrowserAccessibilityState with the current status of caret browsing.
-  virtual void SetCaretBrowsingState(bool enabled) = 0;
-
   // Update BrowserAccessibilityState with the current status of performance
   // filtering.
   virtual void SetPerformanceFilteringAllowed(bool allowed) = 0;
@@ -125,12 +121,10 @@ class CONTENT_EXPORT BrowserAccessibilityState {
   // Returns whether performance filtering is allowed.
   virtual bool IsPerformanceFilteringAllowed() = 0;
 
-#if BUILDFLAG(IS_ANDROID)
-  // Update BrowserAccessibilityState with the current state of accessibility
-  // image labels. Used exclusively on Android.
-  virtual void SetImageLabelsModeForProfile(bool enabled,
-                                            BrowserContext* profile) = 0;
-#endif
+  // Allows or disallows changes to the AXMode. This is useful for tests that
+  // want to ensure that the AXMode is not changed after a certain point.
+  virtual void SetAXModeChangeAllowed(bool allow) = 0;
+  virtual bool IsAXModeChangeAllowed() const = 0;
 
   using FocusChangedCallback =
       base::RepeatingCallback<void(const FocusedNodeDetails&)>;

@@ -16,19 +16,57 @@
 
 #include "src/trace_processor/db/column/null_overlay.h"
 
+#include <algorithm>
 #include <cstdint>
+#include <limits>
+#include <memory>
+#include <optional>
+#include <utility>
+#include <vector>
 
-#include "protos/perfetto/trace_processor/serialization.pbzero.h"
+#include "perfetto/base/logging.h"
+#include "perfetto/public/compiler.h"
+#include "perfetto/trace_processor/basic_types.h"
 #include "src/trace_processor/containers/bit_vector.h"
-#include "src/trace_processor/containers/row_map.h"
-#include "src/trace_processor/db/column/column.h"
+#include "src/trace_processor/db/column/data_layer.h"
 #include "src/trace_processor/db/column/types.h"
 #include "src/trace_processor/tp_metatrace.h"
 
-namespace perfetto {
-namespace trace_processor {
-namespace column {
+#include "protos/perfetto/trace_processor/metatrace_categories.pbzero.h"
+
+namespace perfetto::trace_processor::column {
 namespace {
+
+namespace {
+using Indices = DataLayerChain::Indices;
+
+std::optional<Token> UpdateIndicesForInner(Indices& indices,
+                                           const BitVector& non_null) {
+  // Find first NULL.
+  auto first_null_it = std::find_if(
+      indices.tokens.begin(), indices.tokens.end(),
+      [&non_null](const Token& t) { return !non_null.IsSet(t.index); });
+
+  // Save first NULL.
+  std::optional<Token> null_tok;
+  if (first_null_it != indices.tokens.end()) {
+    null_tok = *first_null_it;
+  }
+
+  // Erase all NULLs.
+  indices.tokens.erase(std::remove_if(first_null_it, indices.tokens.end(),
+                                      [&non_null](const Token& idx) {
+                                        return !non_null.IsSet(idx.index);
+                                      }),
+                       indices.tokens.end());
+
+  // Update index of each token so they all point to inner.
+  for (auto& token : indices.tokens) {
+    token.index = non_null.CountSetBits(token.index);
+  }
+  return null_tok;
+}
+}  // namespace
 
 BitVector ReconcileStorageResult(FilterOp op,
                                  const BitVector& non_null,
@@ -41,7 +79,7 @@ BitVector ReconcileStorageResult(FilterOp op,
   BitVector res;
   if (storage_result.IsRange()) {
     Range range = std::move(storage_result).TakeIfRange();
-    if (range.size() > 0) {
+    if (!range.empty()) {
       res = non_null.IntersectRange(non_null.IndexOfNthSet(range.start),
                                     non_null.IndexOfNthSet(range.end - 1) + 1);
 
@@ -71,39 +109,88 @@ BitVector ReconcileStorageResult(FilterOp op,
 
 }  // namespace
 
-SearchValidationResult NullOverlay::ValidateSearchConstraints(
-    SqlValue sql_val,
-    FilterOp op) const {
-  if (op == FilterOp::kIsNull) {
+void NullOverlay::Flatten(uint32_t* start,
+                          const uint32_t* end,
+                          uint32_t stride) {
+  for (uint32_t* it = start; it < end; it += stride) {
+    if (non_null_->IsSet(*it)) {
+      *it = non_null_->CountSetBits(*it);
+    } else {
+      *it = std::numeric_limits<uint32_t>::max();
+    }
+  }
+}
+
+SingleSearchResult NullOverlay::ChainImpl::SingleSearch(FilterOp op,
+                                                        SqlValue sql_val,
+                                                        uint32_t index) const {
+  switch (op) {
+    case FilterOp::kIsNull:
+      return non_null_->IsSet(index)
+                 ? inner_->SingleSearch(op, sql_val,
+                                        non_null_->CountSetBits(index))
+                 : SingleSearchResult::kMatch;
+    case FilterOp::kIsNotNull:
+    case FilterOp::kEq:
+    case FilterOp::kGe:
+    case FilterOp::kGt:
+    case FilterOp::kLt:
+    case FilterOp::kLe:
+    case FilterOp::kNe:
+    case FilterOp::kGlob:
+    case FilterOp::kRegex:
+      return non_null_->IsSet(index)
+                 ? inner_->SingleSearch(op, sql_val,
+                                        non_null_->CountSetBits(index))
+                 : SingleSearchResult::kNoMatch;
+  }
+  PERFETTO_FATAL("For GCC");
+}
+
+NullOverlay::ChainImpl::ChainImpl(std::unique_ptr<DataLayerChain> inner,
+                                  const BitVector* non_null)
+    : inner_(std::move(inner)), non_null_(non_null) {
+  PERFETTO_DCHECK(non_null_->CountSetBits() <= inner_->size());
+}
+
+SearchValidationResult NullOverlay::ChainImpl::ValidateSearchConstraints(
+    FilterOp op,
+    SqlValue sql_val) const {
+  if (op == FilterOp::kIsNull || op == FilterOp::kIsNotNull) {
     return SearchValidationResult::kOk;
   }
-
-  return storage_->ValidateSearchConstraints(sql_val, op);
+  if (sql_val.is_null()) {
+    return SearchValidationResult::kNoData;
+  }
+  return inner_->ValidateSearchConstraints(op, sql_val);
 }
 
-NullOverlay::NullOverlay(std::unique_ptr<Column> storage,
-                         const BitVector* non_null)
-    : storage_(std::move(storage)), non_null_(non_null) {
-  PERFETTO_DCHECK(non_null_->CountSetBits() <= storage_->size());
-}
-
-RangeOrBitVector NullOverlay::Search(FilterOp op,
-                                     SqlValue sql_val,
-                                     Range in) const {
-  PERFETTO_TP_TRACE(metatrace::Category::DB, "NullOverlay::Search");
+RangeOrBitVector NullOverlay::ChainImpl::SearchValidated(FilterOp op,
+                                                         SqlValue sql_val,
+                                                         Range in) const {
+  PERFETTO_TP_TRACE(metatrace::Category::DB, "NullOverlay::ChainImpl::Search");
 
   if (op == FilterOp::kIsNull) {
-    switch (storage_->ValidateSearchConstraints(sql_val, op)) {
+    switch (inner_->ValidateSearchConstraints(op, sql_val)) {
       case SearchValidationResult::kNoData: {
         // There is no need to search in underlying storage. It's enough to
         // intersect the |non_null_|.
-        BitVector res = non_null_->IntersectRange(in.start, in.end);
-        res.Not();
+        BitVector res = non_null_->Copy();
         res.Resize(in.end, false);
-        return RangeOrBitVector(std::move(res));
+        res.Not();
+        return RangeOrBitVector(res.IntersectRange(in.start, in.end));
       }
       case SearchValidationResult::kAllData:
         return RangeOrBitVector(in);
+      case SearchValidationResult::kOk:
+        break;
+    }
+  } else if (op == FilterOp::kIsNotNull) {
+    switch (inner_->ValidateSearchConstraints(op, sql_val)) {
+      case SearchValidationResult::kNoData:
+        return RangeOrBitVector(Range());
+      case SearchValidationResult::kAllData:
+        return RangeOrBitVector(non_null_->IntersectRange(in.start, in.end));
       case SearchValidationResult::kOk:
         break;
     }
@@ -114,74 +201,143 @@ RangeOrBitVector NullOverlay::Search(FilterOp op,
   uint32_t start = non_null_->CountSetBits(in.start);
   uint32_t end = non_null_->CountSetBits(in.end);
   BitVector res = ReconcileStorageResult(
-      op, *non_null_, storage_->Search(op, sql_val, Range(start, end)), in);
+      op, *non_null_, inner_->SearchValidated(op, sql_val, Range(start, end)),
+      in);
 
   PERFETTO_DCHECK(res.size() == in.end);
   return RangeOrBitVector(std::move(res));
 }
 
-RangeOrBitVector NullOverlay::IndexSearch(FilterOp op,
-                                          SqlValue sql_val,
-                                          uint32_t* indices,
-                                          uint32_t indices_size,
-                                          bool sorted) const {
-  PERFETTO_TP_TRACE(metatrace::Category::DB, "NullOverlay::IndexSearch");
+void NullOverlay::ChainImpl::IndexSearchValidated(FilterOp op,
+                                                  SqlValue sql_val,
+                                                  Indices& indices) const {
+  PERFETTO_TP_TRACE(metatrace::Category::DB,
+                    "NullOverlay::ChainImpl::IndexSearch");
 
   if (op == FilterOp::kIsNull) {
-    switch (storage_->ValidateSearchConstraints(sql_val, op)) {
-      case SearchValidationResult::kNoData: {
-        BitVector::Builder null_indices(indices_size);
-        for (uint32_t* it = indices; it != indices + indices_size; it++) {
-          null_indices.Append(!non_null_->IsSet(*it));
-        }
-        // There is no need to search in underlying storage. We should just
-        // check if the index is set in |non_null_|.
-        return RangeOrBitVector(std::move(null_indices).Build());
-      }
+    // Partition the vector into all the null indices followed by all the
+    // non-null indices.
+    auto non_null_it = std::stable_partition(
+        indices.tokens.begin(), indices.tokens.end(),
+        [this](const Token& t) { return !non_null_->IsSet(t.index); });
+
+    // IndexSearch |inner_| with a vector containing a copy of the (translated)
+    // non-null indices.
+    Indices non_null{{non_null_it, indices.tokens.end()}, indices.state};
+    for (auto& token : non_null.tokens) {
+      token.index = non_null_->CountSetBits(token.index);
+    }
+    inner_->IndexSearch(op, sql_val, non_null);
+
+    // Replace all the original non-null positions with the result from calling
+    // IndexSearch.
+    auto new_non_null_it =
+        indices.tokens.erase(non_null_it, indices.tokens.end());
+    indices.tokens.insert(new_non_null_it, non_null.tokens.begin(),
+                          non_null.tokens.end());
+
+    // Merge the two sorted index ranges together using the payload as the
+    // comparator. This is a required post-condition of IndexSearch.
+    std::inplace_merge(indices.tokens.begin(), new_non_null_it,
+                       indices.tokens.end(), Token::PayloadComparator());
+    return;
+  }
+
+  auto keep_only_non_null = [this, &indices]() {
+    indices.tokens.erase(
+        std::remove_if(
+            indices.tokens.begin(), indices.tokens.end(),
+            [this](const Token& idx) { return !non_null_->IsSet(idx.index); }),
+        indices.tokens.end());
+    return;
+  };
+  if (op == FilterOp::kIsNotNull) {
+    switch (inner_->ValidateSearchConstraints(op, sql_val)) {
+      case SearchValidationResult::kNoData:
+        indices.tokens.clear();
+        return;
       case SearchValidationResult::kAllData:
-        return RangeOrBitVector(Range(0, indices_size));
+        keep_only_non_null();
+        return;
       case SearchValidationResult::kOk:
         break;
     }
   }
-
-  BitVector::Builder storage_non_null(indices_size);
-  std::vector<uint32_t> storage_iv;
-  storage_iv.reserve(indices_size);
-  for (uint32_t* it = indices; it != indices + indices_size; it++) {
-    bool is_non_null = non_null_->IsSet(*it);
-    if (is_non_null) {
-      storage_iv.push_back(non_null_->CountSetBits(*it));
-    }
-    storage_non_null.Append(is_non_null);
+  keep_only_non_null();
+  for (auto& token : indices.tokens) {
+    token.index = non_null_->CountSetBits(token.index);
   }
-  RangeOrBitVector range_or_bv =
-      storage_->IndexSearch(op, sql_val, storage_iv.data(),
-                            static_cast<uint32_t>(storage_iv.size()), sorted);
-  BitVector res =
-      ReconcileStorageResult(op, std::move(storage_non_null).Build(),
-                             std::move(range_or_bv), Range(0, indices_size));
-
-  PERFETTO_DCHECK(res.size() == indices_size);
-  return RangeOrBitVector(std::move(res));
+  inner_->IndexSearchValidated(op, sql_val, indices);
 }
 
-void NullOverlay::StableSort(uint32_t*, uint32_t) const {
-  // TODO(b/307482437): Implement.
-  PERFETTO_FATAL("Not implemented");
+void NullOverlay::ChainImpl::StableSort(Token* start,
+                                        Token* end,
+                                        SortDirection direction) const {
+  PERFETTO_TP_TRACE(metatrace::Category::DB,
+                    "NullOverlay::ChainImpl::StableSort");
+  Token* middle = std::stable_partition(start, end, [this](const Token& idx) {
+    return !non_null_->IsSet(idx.index);
+  });
+  for (Token* it = middle; it != end; ++it) {
+    it->index = non_null_->CountSetBits(it->index);
+  }
+  inner_->StableSort(middle, end, direction);
+  if (direction == SortDirection::kDescending) {
+    std::rotate(start, middle, end);
+  }
 }
 
-void NullOverlay::Sort(uint32_t*, uint32_t) const {
-  // TODO(b/307482437): Implement.
-  PERFETTO_FATAL("Not implemented");
+void NullOverlay::ChainImpl::Distinct(Indices& indices) const {
+  PERFETTO_TP_TRACE(metatrace::Category::DB,
+                    "NullOverlay::ChainImpl::Distinct");
+  auto null_tok = UpdateIndicesForInner(indices, *non_null_);
+
+  inner_->Distinct(indices);
+
+  // Add the only null as it is distinct value.
+  if (null_tok.has_value()) {
+    indices.tokens.push_back(*null_tok);
+  }
 }
 
-void NullOverlay::Serialize(StorageProto* storage) const {
-  auto* null_overlay = storage->set_null_overlay();
-  non_null_->Serialize(null_overlay->set_bit_vector());
-  storage_->Serialize(null_overlay->set_storage());
+std::optional<Token> NullOverlay::ChainImpl::MaxElement(
+    Indices& indices) const {
+  PERFETTO_TP_TRACE(metatrace::Category::DB,
+                    "NullOverlay::ChainImpl::MaxElement");
+  auto null_tok = UpdateIndicesForInner(indices, *non_null_);
+
+  std::optional<Token> max_tok = inner_->MaxElement(indices);
+
+  return max_tok ? max_tok : null_tok;
 }
 
-}  // namespace column
-}  // namespace trace_processor
-}  // namespace perfetto
+std::optional<Token> NullOverlay::ChainImpl::MinElement(
+    Indices& indices) const {
+  PERFETTO_TP_TRACE(metatrace::Category::DB,
+                    "NullOverlay::ChainImpl::MinDistinct");
+  // The smallest value would be a NULL, so we should just return NULL here.
+  auto first_null_it = std::find_if(
+      indices.tokens.begin(), indices.tokens.end(),
+      [this](const Token& t) { return !non_null_->IsSet(t.index); });
+
+  if (first_null_it != indices.tokens.end()) {
+    return *first_null_it;
+  }
+
+  // If we didn't find a null in indices we need to update index of each token
+  // so they all point to inner and look for the smallest value in the storage.
+  for (auto& token : indices.tokens) {
+    token.index = non_null_->CountSetBits(token.index);
+  }
+
+  return inner_->MinElement(indices);
+}
+
+SqlValue NullOverlay::ChainImpl::Get_AvoidUsingBecauseSlow(
+    uint32_t index) const {
+  return non_null_->IsSet(index)
+             ? inner_->Get_AvoidUsingBecauseSlow(non_null_->CountSetBits(index))
+             : SqlValue();
+}
+
+}  // namespace perfetto::trace_processor::column

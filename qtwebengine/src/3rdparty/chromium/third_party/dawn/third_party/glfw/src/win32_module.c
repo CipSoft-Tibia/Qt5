@@ -1,5 +1,5 @@
 //========================================================================
-// GLFW 3.4 Win32 - www.glfw.org
+// GLFW 3.5 Win32 - www.glfw.org
 //------------------------------------------------------------------------
 // Copyright (c) 2021 Camilla Löwy <elmindreda@glfw.org>
 //
@@ -23,10 +23,10 @@
 //    distribution.
 //
 //========================================================================
-// Please use C89 style variable declarations in this file because VS 2010
-//========================================================================
 
 #include "internal.h"
+
+#if defined(GLFW_BUILD_WIN32_MODULE)
 
 //////////////////////////////////////////////////////////////////////////
 //////                       GLFW platform API                      //////
@@ -46,4 +46,6 @@ GLFWproc _glfwPlatformGetModuleSymbol(void* module, const char* name)
 {
     return (GLFWproc) GetProcAddress((HMODULE) module, name);
 }
+
+#endif // GLFW_BUILD_WIN32_MODULE
 

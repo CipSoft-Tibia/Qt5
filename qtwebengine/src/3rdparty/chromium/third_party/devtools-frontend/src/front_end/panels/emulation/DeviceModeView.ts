@@ -103,13 +103,13 @@ export class DeviceModeView extends UI.Widget.VBox {
     this.registerRequiredCSS(deviceModeViewStyles);
 
     this.model = EmulationModel.DeviceModeModel.DeviceModeModel.instance();
-    this.model.addEventListener(EmulationModel.DeviceModeModel.Events.Updated, this.updateUI, this);
+    this.model.addEventListener(EmulationModel.DeviceModeModel.Events.UPDATED, this.updateUI, this);
     this.mediaInspector = new MediaQueryInspector(
         () => this.model.appliedDeviceSize().width, this.model.setWidth.bind(this.model),
         new Common.Throttler.Throttler(0));
-    this.showMediaInspectorSetting = Common.Settings.Settings.instance().moduleSetting('showMediaQueryInspector');
+    this.showMediaInspectorSetting = Common.Settings.Settings.instance().moduleSetting('show-media-query-inspector');
     this.showMediaInspectorSetting.addChangeListener(this.updateUI, this);
-    this.showRulersSetting = Common.Settings.Settings.instance().moduleSetting('emulation.showRulers');
+    this.showRulersSetting = Common.Settings.Settings.instance().moduleSetting('emulation.show-rulers');
     this.showRulersSetting.addChangeListener(this.updateUI, this);
 
     this.topRuler = new Ruler(true, this.model.setWidthAndScaleToFit.bind(this.model));
@@ -117,7 +117,7 @@ export class DeviceModeView extends UI.Widget.VBox {
     this.leftRuler = new Ruler(false, this.model.setHeightAndScaleToFit.bind(this.model));
     this.leftRuler.element.classList.add('device-mode-ruler-left');
     this.createUI();
-    UI.ZoomManager.ZoomManager.instance().addEventListener(UI.ZoomManager.Events.ZoomChanged, this.zoomChanged, this);
+    UI.ZoomManager.ZoomManager.instance().addEventListener(UI.ZoomManager.Events.ZOOM_CHANGED, this.zoomChanged, this);
   }
 
   private createUI(): void {
@@ -196,7 +196,7 @@ export class DeviceModeView extends UI.Widget.VBox {
 
   private createResizer(element: Element, widthFactor: number, heightFactor: number): UI.ResizerWidget.ResizerWidget {
     const resizer = new UI.ResizerWidget.ResizerWidget();
-    element.setAttribute('jslog', `${VisualLogging.slider().context('device-mode-resizer').track({drag: true})}`);
+    element.setAttribute('jslog', `${VisualLogging.slider('device-mode-resizer').track({drag: true})}`);
     resizer.addElement((element as HTMLElement));
     let cursor: 'nwse-resize'|'nesw-resize'|('ew-resize' | 'ns-resize') = widthFactor ? 'ew-resize' : 'ns-resize';
     if (widthFactor * heightFactor > 0) {
@@ -206,10 +206,10 @@ export class DeviceModeView extends UI.Widget.VBox {
       cursor = 'nesw-resize';
     }
     resizer.setCursor(cursor);
-    resizer.addEventListener(UI.ResizerWidget.Events.ResizeStart, this.onResizeStart, this);
+    resizer.addEventListener(UI.ResizerWidget.Events.RESIZE_START, this.onResizeStart, this);
     resizer.addEventListener(
-        UI.ResizerWidget.Events.ResizeUpdateXY, this.onResizeUpdate.bind(this, widthFactor, heightFactor));
-    resizer.addEventListener(UI.ResizerWidget.Events.ResizeEnd, this.onResizeEnd, this);
+        UI.ResizerWidget.Events.RESIZE_UPDATE_XY, this.onResizeUpdate.bind(this, widthFactor, heightFactor));
+    resizer.addEventListener(UI.ResizerWidget.Events.RESIZE_END, this.onResizeEnd, this);
     return resizer;
   }
 
@@ -459,7 +459,7 @@ export class DeviceModeView extends UI.Widget.VBox {
 
     const pageImage = new Image();
     pageImage.src = 'data:image/png;base64,' + screenshot;
-    pageImage.onload = async(): Promise<void> => {
+    pageImage.onload = async () => {
       const scale = pageImage.naturalWidth / this.model.screenRect().width;
       const outlineRectFromModel = this.model.outlineRect();
       if (!outlineRectFromModel) {
@@ -512,7 +512,7 @@ export class DeviceModeView extends UI.Widget.VBox {
   private saveScreenshotBase64(screenshot: string): void {
     const pageImage = new Image();
     pageImage.src = 'data:image/png;base64,' + screenshot;
-    pageImage.onload = (): void => {
+    pageImage.onload = () => {
       const canvas = document.createElement('canvas');
       canvas.width = pageImage.naturalWidth;
       // Cap the height to not hit the GPU limit.
@@ -534,8 +534,8 @@ export class DeviceModeView extends UI.Widget.VBox {
       const image = new Image();
       image.crossOrigin = 'Anonymous';
       image.srcset = src;
-      image.onerror = (): void => resolve();
-      image.onload = (): void => {
+      image.onerror = () => resolve();
+      image.onload = () => {
         ctx.drawImage(image, rect.left, rect.top, rect.width, rect.height);
         resolve();
       };

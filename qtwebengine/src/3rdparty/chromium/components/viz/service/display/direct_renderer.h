@@ -5,7 +5,9 @@
 #ifndef COMPONENTS_VIZ_SERVICE_DISPLAY_DIRECT_RENDERER_H_
 #define COMPONENTS_VIZ_SERVICE_DISPLAY_DIRECT_RENDERER_H_
 
+#include <cstdint>
 #include <memory>
+#include <optional>
 #include <utility>
 #include <vector>
 
@@ -13,7 +15,6 @@
 #include "base/containers/flat_map.h"
 #include "base/functional/callback.h"
 #include "base/memory/raw_ptr.h"
-#include "base/memory/raw_ptr_exclusion.h"
 #include "base/time/time.h"
 #include "build/build_config.h"
 #include "components/viz/common/quads/aggregated_render_pass.h"
@@ -25,7 +26,6 @@
 #include "components/viz/service/display/overlay_processor_interface.h"
 #include "components/viz/service/display/render_pass_alpha_type.h"
 #include "components/viz/service/viz_service_export.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "ui/gfx/ca_layer_result.h"
 #include "ui/gfx/delegated_ink_metadata.h"
 #include "ui/gfx/display_color_spaces.h"
@@ -97,7 +97,7 @@ class VIZ_SERVICE_EXPORT DirectRenderer {
   gfx::Rect GetTargetDamageBoundingRect() const;
 
   // Public interface implemented by subclasses.
-  struct SwapFrameData {
+  struct VIZ_SERVICE_EXPORT SwapFrameData {
     SwapFrameData();
     ~SwapFrameData();
 
@@ -109,11 +109,18 @@ class VIZ_SERVICE_EXPORT DirectRenderer {
 
     std::vector<ui::LatencyInfo> latency_info;
     int64_t seq = -1;
-    bool top_controls_visible_height_changed = false;
+
+    // The HDR headroom of the display that this frame is being swapped to.
+    // Propagated to the gl::Presenter via gfx::FrameData.
+    float display_hdr_headroom = 1.f;
+
 #if BUILDFLAG(IS_APPLE)
+    // The result of CoreAnimation delegated compositing from the overlay
+    // processor. Propagated to the gl::Presenter via gfx::FrameData for
+    // integration testing.
     gfx::CALayerResult ca_layer_error_code = gfx::kCALayerSuccess;
 #endif
-    absl::optional<int64_t> choreographer_vsync_id;
+    std::optional<int64_t> choreographer_vsync_id;
     int64_t swap_trace_id = -1;
   };
   virtual void SwapBuffers(SwapFrameData swap_frame_data) = 0;
@@ -132,9 +139,7 @@ class VIZ_SERVICE_EXPORT DirectRenderer {
     raw_ptr<const AggregatedRenderPassList> render_passes_in_draw_order =
         nullptr;
     raw_ptr<const AggregatedRenderPass> root_render_pass = nullptr;
-    // This field is not a raw_ptr<> because of a reference to raw_ptr in
-    // not-rewritten platform specific code and #addr-of.
-    RAW_PTR_EXCLUSION const AggregatedRenderPass* current_render_pass = nullptr;
+    raw_ptr<const AggregatedRenderPass> current_render_pass = nullptr;
 
     gfx::Rect root_damage_rect;
     std::vector<gfx::Rect> root_content_bounds;
@@ -147,7 +152,7 @@ class VIZ_SERVICE_EXPORT DirectRenderer {
     // When we have a buffer queue, the output surface could be treated as an
     // overlay plane, and the struct to store that information is in
     // |output_surface_plane|.
-    absl::optional<OverlayProcessorInterface::OutputSurfaceOverlayPlane>
+    std::optional<OverlayProcessorInterface::OutputSurfaceOverlayPlane>
         output_surface_plane;
   };
 
@@ -222,12 +227,11 @@ class VIZ_SERVICE_EXPORT DirectRenderer {
   static void QuadRectTransform(gfx::Transform* quad_rect_transform,
                                 const gfx::Transform& quad_transform,
                                 const gfx::RectF& quad_rect);
-  // This function takes DrawingFrame as an argument because RenderPass drawing
-  // code uses its computations for buffer sizing.
-  void InitializeViewport(DrawingFrame* frame,
-                          const gfx::Rect& draw_rect,
-                          const gfx::Rect& viewport_rect,
-                          const gfx::Size& surface_size);
+  // Returns a transform that maps the the draw rect (i.e. the render pass
+  // output rect) to the device space (i.e. buffer space).
+  gfx::AxisTransform2d CalculateTargetToDeviceTransform(
+      const gfx::Rect& draw_rect,
+      const gfx::Size& viewport_size);
   gfx::Rect MoveFromDrawToWindowSpace(const gfx::Rect& draw_rect) const;
 
   gfx::Rect DeviceViewportRectInDrawSpace() const;
@@ -256,7 +260,7 @@ class VIZ_SERVICE_EXPORT DirectRenderer {
   // This may be because the RenderPass is already cached, or because it is
   // entirely clipped out, for instance.
   bool CanSkipRenderPass(const AggregatedRenderPass* render_pass) const;
-  void UseRenderPass(const AggregatedRenderPass* render_pass);
+  void EnsureRenderPassAllocated(const AggregatedRenderPass* render_pass);
   gfx::Rect ComputeScissorRectForRenderPass(
       const AggregatedRenderPass* render_pass) const;
 
@@ -268,8 +272,15 @@ class VIZ_SERVICE_EXPORT DirectRenderer {
       AggregatedRenderPassId render_pass_id) const;
   const cc::FilterOperations* BackdropFiltersForPass(
       AggregatedRenderPassId render_pass_id) const;
-  const absl::optional<gfx::RRectF> BackdropFilterBoundsForPass(
+  const std::optional<gfx::RRectF> BackdropFilterBoundsForPass(
       AggregatedRenderPassId render_pass_id) const;
+
+  virtual void SetRenderPassBackingDrawnRect(
+      const AggregatedRenderPassId& render_pass_id,
+      const gfx::Rect& drawn_rect) = 0;
+
+  virtual gfx::Rect GetRenderPassBackingDrawnRect(
+      const AggregatedRenderPassId& render_pass_id) const = 0;
 
   // Private interface implemented by subclasses for use by DirectRenderer.
   virtual bool CanPartialSwap() = 0;
@@ -284,14 +295,13 @@ class VIZ_SERVICE_EXPORT DirectRenderer {
       const AggregatedRenderPassId& render_pass_id) const = 0;
   virtual gfx::Size GetRenderPassBackingPixelSize(
       const AggregatedRenderPassId& render_pass_id) = 0;
-  virtual void BindFramebufferToOutputSurface() = 0;
-  virtual void BindFramebufferToTexture(
-      const AggregatedRenderPassId render_pass_id) = 0;
+
   virtual void SetScissorTestRect(const gfx::Rect& scissor_rect) = 0;
   // |render_pass_update_rect| is in render pass backing buffer space.
-  virtual void BeginDrawingRenderPass(
-      bool needs_clear,
-      const gfx::Rect& render_pass_update_rect) = 0;
+  virtual void BeginDrawingRenderPass(const AggregatedRenderPass* render_pass,
+                                      bool needs_clear,
+                                      const gfx::Rect& render_pass_update_rect,
+                                      const gfx::Size& viewport_size) = 0;
   // |clip_region| is a (possibly null) pointer to a quad in the same
   // space as the quad. When non-null only the area of the quad that overlaps
   // with clip_region will be drawn.
@@ -304,14 +314,13 @@ class VIZ_SERVICE_EXPORT DirectRenderer {
   // a render pass (e.g. applying a filter directly to the tile quad)
   // return that quad, otherwise return null.
   virtual const DrawQuad* CanPassBeDrawnDirectly(
-      const AggregatedRenderPass* pass);
-  virtual bool FlippedFramebuffer() const = 0;
+      const AggregatedRenderPass* pass,
+      const RenderPassRequirements& requirements);
   virtual void EnsureScissorTestDisabled() = 0;
   virtual void DidChangeVisibility() = 0;
   virtual void CopyDrawnRenderPass(
       const copy_output::RenderPassGeometry& geometry,
       std::unique_ptr<CopyOutputRequest> request) = 0;
-  virtual void GenerateMipmap() = 0;
   virtual bool SupportsBGRA() const;
 
   gfx::Size surface_size_for_swap_buffers() const {
@@ -325,19 +334,18 @@ class VIZ_SERVICE_EXPORT DirectRenderer {
   bool ShouldApplyGradientMask(const DrawQuad* quad) const;
 
   float CurrentFrameSDRWhiteLevel() const;
-  gfx::ColorSpace RootRenderPassColorSpace() const;
-  gfx::ColorSpace CurrentRenderPassColorSpace() const;
-  gfx::ColorSpace RenderPassColorSpace(
-      const AggregatedRenderPass* render_pass) const;
   SharedImageFormat GetColorSpaceSharedImageFormat(
       gfx::ColorSpace color_space) const;
   // Return the SkColorSpace for rendering to the current render pass. Unlike
   // CurrentRenderPassColorSpace, this color space has the value of
   // CurrentFrameSDRWhiteLevel incorporated into it.
   sk_sp<SkColorSpace> CurrentRenderPassSkColorSpace() const {
-    return CurrentRenderPassColorSpace().ToSkColorSpace(
-        CurrentFrameSDRWhiteLevel());
+    return RenderPassColorSpace(current_frame()->current_render_pass)
+        .ToSkColorSpace(CurrentFrameSDRWhiteLevel());
   }
+
+  gfx::ColorSpace RenderPassColorSpace(
+      const AggregatedRenderPass* render_pass) const;
 
   const raw_ptr<const RendererSettings> settings_;
   // Points to the viz-global singleton.
@@ -356,6 +364,11 @@ class VIZ_SERVICE_EXPORT DirectRenderer {
   // Whether partial swap can be used.
   bool use_partial_swap_ = false;
 
+  // Whether render pass drawn rect functionality can be used. This means we
+  // will be tracking the drawn area of a render pass to determine what needs to
+  // be redrawn every frame.
+  bool use_render_pass_drawn_rect_ = false;
+
   // A map from RenderPass id to the single quad present in and replacing the
   // RenderPass. The DrawQuads are owned by their RenderPasses, which outlive
   // the drawn frame, so it is safe to store these pointers until the end of
@@ -368,7 +381,7 @@ class VIZ_SERVICE_EXPORT DirectRenderer {
       render_pass_filters_;
   base::flat_map<AggregatedRenderPassId, cc::FilterOperations*>
       render_pass_backdrop_filters_;
-  base::flat_map<AggregatedRenderPassId, absl::optional<gfx::RRectF>>
+  base::flat_map<AggregatedRenderPassId, std::optional<gfx::RRectF>>
       render_pass_backdrop_filter_bounds_;
   base::flat_map<AggregatedRenderPassId, gfx::Rect>
       backdrop_filter_output_rects_;
@@ -383,16 +396,6 @@ class VIZ_SERVICE_EXPORT DirectRenderer {
   bool visible_ = false;
   bool disable_color_checks_for_testing_ = false;
 
-  // For use in coordinate conversion, this stores the output rect, viewport
-  // rect (= unflipped version of glViewport rect), the size of target
-  // framebuffer, and the current window space viewport. During a draw, this
-  // stores the values for the current render pass; in between draws, they
-  // retain the values for the root render pass of the last draw.
-  gfx::Rect current_draw_rect_;
-  gfx::Rect current_viewport_rect_;
-  gfx::Size current_surface_size_;
-  gfx::Rect current_window_space_viewport_;
-
   DrawingFrame* current_frame() {
     DCHECK(current_frame_valid_);
     return &current_frame_;
@@ -401,7 +404,7 @@ class VIZ_SERVICE_EXPORT DirectRenderer {
     DCHECK(current_frame_valid_);
     return &current_frame_;
   }
-  gfx::BufferFormat reshape_buffer_format() const {
+  SharedImageFormat reshape_si_format() const {
     DCHECK(reshape_params_);
     return reshape_params_->format;
   }
@@ -442,14 +445,15 @@ class VIZ_SERVICE_EXPORT DirectRenderer {
   // Cached values given to Reshape(). The `reshape_params_` is optional
   // to prevent use of uninitialized values. The size in these parameters
   // may be larger than the `device_viewport_size_` that users see.
-  absl::optional<OutputSurface::ReshapeParams> reshape_params_;
+  std::optional<OutputSurface::ReshapeParams> reshape_params_;
 
   // If present additionally restricts drawing to the OutputSurface. WebView
   // gets this rect from the HWUI.
-  absl::optional<gfx::Rect> output_surface_clip_rect_;
+  std::optional<gfx::Rect> output_surface_clip_rect_;
   gfx::Size device_viewport_size_;
   gfx::OverlayTransform reshape_display_transform_ =
       gfx::OVERLAY_TRANSFORM_INVALID;
+  uint64_t total_pixels_rendered_this_frame_ = 0;
 };
 
 }  // namespace viz

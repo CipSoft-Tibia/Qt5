@@ -26,7 +26,7 @@ bool MuxerTimestampAdapter::OnEncodedVideo(
     const Muxer::VideoParameters& params,
     std::string encoded_data,
     std::string encoded_alpha,
-    absl::optional<media::VideoEncoder::CodecDescription> codec_description,
+    std::optional<media::VideoEncoder::CodecDescription> codec_description,
     base::TimeTicks timestamp,
     bool is_key_frame) {
   TRACE_EVENT2("media", __func__, "timestamp", timestamp - base::TimeTicks(),
@@ -62,7 +62,7 @@ bool MuxerTimestampAdapter::OnEncodedVideo(
 bool MuxerTimestampAdapter::OnEncodedAudio(
     const AudioParameters& params,
     std::string encoded_data,
-    absl::optional<media::AudioEncoder::CodecDescription> codec_description,
+    std::optional<media::AudioEncoder::CodecDescription> codec_description,
     base::TimeTicks timestamp) {
   TRACE_EVENT1("media", __func__, "timestamp", timestamp - base::TimeTicks());
   DVLOG(2) << __func__ << " - " << encoded_data.size() << "B ts " << timestamp;
@@ -156,7 +156,7 @@ bool MuxerTimestampAdapter::FlushNextFrame() {
   // data before live-and-enabled transitions to true. This can lead to us
   // emitting non-monotonic timestamps to the muxer, which results in an error
   // return. Fix this by enforcing monotonicity by rewriting timestamps.
-  // TODO(crbug.com/1145203): consider auto-marking a track live-and-enabled
+  // TODO(crbug.com/40155764): consider auto-marking a track live-and-enabled
   // when media appears and remove this catch-all.
   base::TimeDelta relative_timestamp =
       frame.timestamp_minus_paused - first_timestamp_;
@@ -173,7 +173,7 @@ bool MuxerTimestampAdapter::FlushNextFrame() {
 }
 
 base::TimeTicks MuxerTimestampAdapter::UpdateLastTimestampAndGetNext(
-    absl::optional<base::TimeTicks>& last_timestamp,
+    std::optional<base::TimeTicks>& last_timestamp,
     base::TimeTicks timestamp) {
   if (!last_timestamp.has_value()) {
     last_timestamp = timestamp;
@@ -182,7 +182,7 @@ base::TimeTicks MuxerTimestampAdapter::UpdateLastTimestampAndGetNext(
   DVLOG(3) << __func__ << " ts " << timestamp << " last " << *last_timestamp;
   // In theory, time increases monotonically. In practice, it does not.
   // See http://crbug/618407.
-  // TODO(crbug.com/1494273): consider not re-using the last timestamp for
+  // TODO(crbug.com/40286147): consider not re-using the last timestamp for
   // MP4.
   DLOG_IF(WARNING, timestamp < last_timestamp)
       << "Encountered a non-monotonically increasing timestamp. Was: "

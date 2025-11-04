@@ -40,6 +40,7 @@ public:
     {
         if (AddLinkDialog->objectName().isEmpty())
             AddLinkDialog->setObjectName("AddLinkDialog");
+        AddLinkDialog->resize(400, 137);
         AddLinkDialog->setSizeGripEnabled(false);
         AddLinkDialog->setModal(true);
         verticalLayout = new QVBoxLayout(AddLinkDialog);
@@ -49,23 +50,23 @@ public:
         label = new QLabel(AddLinkDialog);
         label->setObjectName("label");
 
-        formLayout->setWidget(0, QFormLayout::LabelRole, label);
+        formLayout->setWidget(0, QFormLayout::ItemRole::LabelRole, label);
 
         titleInput = new QLineEdit(AddLinkDialog);
         titleInput->setObjectName("titleInput");
         titleInput->setMinimumSize(QSize(337, 0));
 
-        formLayout->setWidget(0, QFormLayout::FieldRole, titleInput);
+        formLayout->setWidget(0, QFormLayout::ItemRole::FieldRole, titleInput);
 
         label_2 = new QLabel(AddLinkDialog);
         label_2->setObjectName("label_2");
 
-        formLayout->setWidget(1, QFormLayout::LabelRole, label_2);
+        formLayout->setWidget(1, QFormLayout::ItemRole::LabelRole, label_2);
 
         urlInput = new QLineEdit(AddLinkDialog);
         urlInput->setObjectName("urlInput");
 
-        formLayout->setWidget(1, QFormLayout::FieldRole, urlInput);
+        formLayout->setWidget(1, QFormLayout::ItemRole::FieldRole, urlInput);
 
 
         verticalLayout->addLayout(formLayout);
@@ -83,8 +84,8 @@ public:
 
         buttonBox = new QDialogButtonBox(AddLinkDialog);
         buttonBox->setObjectName("buttonBox");
-        buttonBox->setOrientation(Qt::Horizontal);
-        buttonBox->setStandardButtons(QDialogButtonBox::Cancel|QDialogButtonBox::Ok);
+        buttonBox->setOrientation(Qt::Orientation::Horizontal);
+        buttonBox->setStandardButtons(QDialogButtonBox::StandardButton::Cancel|QDialogButtonBox::StandardButton::Ok);
 
         verticalLayout->addWidget(buttonBox);
 

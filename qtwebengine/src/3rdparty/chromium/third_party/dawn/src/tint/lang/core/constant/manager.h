@@ -30,6 +30,7 @@
 
 #include <utility>
 
+#include "src/tint/lang/core/constant/invalid.h"
 #include "src/tint/lang/core/constant/value.h"
 #include "src/tint/lang/core/number.h"
 #include "src/tint/lang/core/type/manager.h"
@@ -69,8 +70,8 @@ class Manager final {
     /// The Manager returned by Wrap is intended to temporarily extend the constants and types of an
     /// existing immutable Manager. As the copied constants and types are owned by `inner`, `inner`
     /// must not be destructed or assigned while using the returned Manager.
-    /// TODO(bclayton) - Evaluate whether there are safer alternatives to this
-    /// function. See crbug.com/tint/460.
+    /// TODO(crbug.com/tint/460) - Evaluate whether there are safer alternatives to this
+    /// function.
     /// @param inner the immutable Manager to extend
     /// @return the Manager that wraps `inner`
     static Manager Wrap(const Manager& inner) {
@@ -108,11 +109,8 @@ class Manager final {
     /// Constructs a splat constant.
     /// @param type the splat type
     /// @param element the splat element
-    /// @param n the number of elements
     /// @returns the value pointer
-    const constant::Splat* Splat(const core::type::Type* type,
-                                 const constant::Value* element,
-                                 size_t n);
+    const constant::Splat* Splat(const core::type::Type* type, const constant::Value* element);
 
     /// @param value the constant value
     /// @return a Scalar holding the i32 value @p value
@@ -121,6 +119,14 @@ class Manager final {
     /// @param value the constant value
     /// @return a Scalar holding the u32 value @p value
     const Scalar<u32>* Get(u32 value);
+
+    /// @param value the constant value
+    /// @return a Scalar holding the i8 value @p value
+    const Scalar<i8>* Get(i8 value);
+
+    /// @param value the constant value
+    /// @return a Scalar holding the u8 value @p value
+    const Scalar<u8>* Get(u8 value);
 
     /// @param value the constant value
     /// @return a Scalar holding the f32 value @p value
@@ -147,6 +153,10 @@ class Manager final {
     /// @returns a constant zero-value for the type
     const Value* Zero(const core::type::Type* type);
 
+    /// Constructs an invalid constant
+    /// @returns an invalid constant
+    const constant::Invalid* Invalid();
+
     /// The type manager
     core::type::Manager types;
 
@@ -155,7 +165,7 @@ class Manager final {
     struct Hasher {
         /// @param value the value to hash
         /// @returns a hash of the value
-        size_t operator()(const constant::Value& value) const { return value.Hash(); }
+        HashCode operator()(const constant::Value& value) const { return value.Hash(); }
     };
 
     /// An equality helper for constant::Value

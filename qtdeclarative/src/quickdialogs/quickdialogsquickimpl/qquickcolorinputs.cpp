@@ -3,19 +3,55 @@
 
 #include "qquickcolorinputs_p.h"
 
+#include <functional>
+
+#include <QtCore/qloggingcategory.h>
 #include <QtCore/QRegularExpression>
+#include <QtGui/QValidator>
+#include <QtQuickTemplates2/private/qquickcontainer_p_p.h>
 
 QT_BEGIN_NAMESPACE
 
-QQuickColorInputs::QQuickColorInputs() = default;
+Q_STATIC_LOGGING_CATEGORY(lcColorInputs, "qt.quick.dialogs.colorinputs")
+
+class QQuickColorInputsPrivate : public QQuickContainerPrivate
+{
+public:
+    Q_DECLARE_PUBLIC(QQuickColorInputs)
+
+    void repopulate();
+    QQuickTextInput *createDelegateTextInputItem(QQmlComponent *component, const QVariantMap &initialProperties);
+    void handleHexInput();
+    void handleRedInput();
+    void handleGreenInput();
+    void handleBlueInput();
+    void handleHueInput();
+    void handleHsvSaturationInput();
+    void handleValueInput();
+    void handleHslSaturationInput();
+    void handleLightnessInput();
+    void handleAlphaInput();
+
+    QQmlComponent *m_delegate = nullptr;
+    QQuickColorInputs::Mode m_currentMode = QQuickColorInputs::Hex;
+    HSVA m_hsva;
+    bool m_showAlpha = false;
+    bool m_repopulating = false;
+};
+
+QQuickColorInputs::QQuickColorInputs(QQuickItem *parent)
+    : QQuickContainer(*(new QQuickColorInputsPrivate), parent)
+{ }
 
 QColor QQuickColorInputs::color() const
 {
-    return QColor::fromHsvF(m_hsva.h, m_hsva.s, m_hsva.v, m_hsva.a);
+    Q_D(const QQuickColorInputs);
+    return QColor::fromHsvF(d->m_hsva.h, d->m_hsva.s, d->m_hsva.v, d->m_hsva.a);
 }
 
 void QQuickColorInputs::setColor(const QColor &c)
 {
+    Q_D(QQuickColorInputs);
     if (color().rgba() == c.rgba())
         return;
 
@@ -24,16 +60,16 @@ void QQuickColorInputs::setColor(const QColor &c)
     // and possible deleting relevant information for achromatic cases.
     if (c.spec() == QColor::Spec::Hsl) {
         const auto sv = getSaturationAndValue(c.hslSaturationF(), c.lightnessF());
-        m_hsva.h = qBound(.0, c.hslHueF(), 1.0);
-        m_hsva.s = qBound(.0, sv.first, 1.0);
-        m_hsva.v = qBound(.0, sv.second, 1.0);
+        d->m_hsva.h = qBound(.0, c.hslHueF(), 1.0);
+        d->m_hsva.s = qBound(.0, sv.first, 1.0);
+        d->m_hsva.v = qBound(.0, sv.second, 1.0);
     } else {
-        m_hsva.h = qBound(.0, c.hsvHueF(), 1.0);
-        m_hsva.s = qBound(.0, c.hsvSaturationF(), 1.0);
-        m_hsva.v = qBound(.0, c.valueF(), 1.0);
+        d->m_hsva.h = qBound(.0, c.hsvHueF(), 1.0);
+        d->m_hsva.s = qBound(.0, c.hsvSaturationF(), 1.0);
+        d->m_hsva.v = qBound(.0, c.valueF(), 1.0);
     }
 
-    m_hsva.a = c.alphaF();
+    d->m_hsva.a = c.alphaF();
 
     emit colorChanged(color());
 }
@@ -55,457 +91,342 @@ int QQuickColorInputs::blue() const
 
 qreal QQuickColorInputs::alpha() const
 {
-    return m_hsva.a;
+    Q_D(const QQuickColorInputs);
+    return d->m_hsva.a;
 }
 
 qreal QQuickColorInputs::hue() const
 {
-    return m_hsva.h;
+    Q_D(const QQuickColorInputs);
+    return d->m_hsva.h;
 }
 
 qreal QQuickColorInputs::hslSaturation() const
 {
-    return getSaturationAndLightness(m_hsva.s, m_hsva.v).first;
+    Q_D(const QQuickColorInputs);
+    return getSaturationAndLightness(d->m_hsva.s, d->m_hsva.v).first;
 }
 
 qreal QQuickColorInputs::hsvSaturation() const
 {
-    return m_hsva.s;
+    Q_D(const QQuickColorInputs);
+    return d->m_hsva.s;
 }
 
 qreal QQuickColorInputs::value() const
 {
-    return m_hsva.v;
+    Q_D(const QQuickColorInputs);
+    return d->m_hsva.v;
 }
 
 qreal QQuickColorInputs::lightness() const
 {
-    return getSaturationAndLightness(m_hsva.s, m_hsva.v).second;
+    Q_D(const QQuickColorInputs);
+    return getSaturationAndLightness(d->m_hsva.s, d->m_hsva.v).second;
 }
 
 bool QQuickColorInputs::showAlpha() const
 {
-    return m_showAlpha;
+    Q_D(const QQuickColorInputs);
+    return d->m_showAlpha;
 }
 
 void QQuickColorInputs::setShowAlpha(bool showAlpha)
 {
-    if (m_showAlpha == showAlpha)
+    Q_D(QQuickColorInputs);
+    if (d->m_showAlpha == showAlpha)
         return;
 
-    m_showAlpha = showAlpha;
-    emit showAlphaChanged(m_showAlpha);
+    d->m_showAlpha = showAlpha;
+    d->repopulate();
+
+    emit showAlphaChanged(d->m_showAlpha);
 }
 
-QQuickTextInput *QQuickColorInputs::hexInput() const
+QQuickColorInputs::Mode QQuickColorInputs::currentMode() const
 {
-    return m_hexInput;
+    Q_D(const QQuickColorInputs);
+    return d->m_currentMode;
 }
 
-void QQuickColorInputs::setHexInput(QQuickTextInput *hexInput)
+void QQuickColorInputs::setCurrentMode(Mode mode)
 {
-    if (m_hexInput == hexInput)
+    Q_D(QQuickColorInputs);
+    if (d->m_currentMode == mode)
         return;
 
-    if (m_hexInput)
-        disconnect(m_hexInput, &QQuickTextInput::editingFinished, this, &QQuickColorInputs::handleHexChanged);
+    d->m_currentMode = mode;
+    d->repopulate();
 
-    m_hexInput = hexInput;
-
-    if (m_hexInput)
-        connect(m_hexInput, &QQuickTextInput::editingFinished, this, &QQuickColorInputs::handleHexChanged);
-
-    emit hexInputChanged();
+    emit currentModeChanged();
 }
 
-QQuickTextInput *QQuickColorInputs::redInput() const
+QQmlComponent *QQuickColorInputs::delegate() const
 {
-    return m_redInput;
+    Q_D(const QQuickColorInputs);
+    return d->m_delegate;
 }
 
-void QQuickColorInputs::setRedInput(QQuickTextInput *redInput)
+void QQuickColorInputs::setDelegate(QQmlComponent *delegate)
 {
-    if (m_redInput == redInput)
+    Q_D(QQuickColorInputs);
+    if (d->m_delegate == delegate)
         return;
-
-    if (m_redInput)
-        disconnect(m_redInput, &QQuickTextInput::editingFinished, this, &QQuickColorInputs::handleRedChanged);
-
-    m_redInput = redInput;
-
-    if (m_redInput)
-        connect(m_redInput, &QQuickTextInput::editingFinished, this, &QQuickColorInputs::handleRedChanged);
-
-    emit redInputChanged();
+    if (d->m_delegate)
+        delete d->m_delegate;
+    d->m_delegate = delegate;
+    emit delegateChanged();
 }
 
-QQuickTextInput *QQuickColorInputs::greenInput() const
+
+void QQuickColorInputs::componentComplete()
 {
-    return m_greenInput;
+    Q_D(QQuickColorInputs);
+    QQuickContainer::componentComplete();
+    d->repopulate();
 }
 
-void QQuickColorInputs::setGreenInput(QQuickTextInput *greenInput)
+QQuickTextInput *QQuickColorInputsPrivate::createDelegateTextInputItem(QQmlComponent *component, const QVariantMap &initialProperties)
 {
-    if (m_greenInput == greenInput)
-        return;
+    Q_Q(QQuickColorInputs);
+    QQmlContext *context = component->creationContext();
+    if (!context)
+        context = qmlContext(q);
 
-    if (m_greenInput)
-        disconnect(m_greenInput, &QQuickTextInput::editingFinished, this, &QQuickColorInputs::handleGreenChanged);
-
-    m_greenInput = greenInput;
-
-    if (m_greenInput)
-        connect(m_greenInput, &QQuickTextInput::editingFinished, this, &QQuickColorInputs::handleGreenChanged);
-
-    emit greenInputChanged();
-}
-
-QQuickTextInput *QQuickColorInputs::blueInput() const
-{
-    return m_blueInput;
-}
-
-void QQuickColorInputs::setBlueInput(QQuickTextInput *blueInput)
-{
-    if (m_blueInput == blueInput)
-        return;
-
-    if (m_blueInput)
-        disconnect(m_blueInput, &QQuickTextInput::editingFinished, this, &QQuickColorInputs::handleBlueChanged);
-
-    m_blueInput = blueInput;
-
-    if (m_blueInput)
-        connect(m_blueInput, &QQuickTextInput::editingFinished, this, &QQuickColorInputs::handleBlueChanged);
-
-    emit blueInputChanged();
-}
-
-QQuickTextInput *QQuickColorInputs::hsvHueInput() const
-{
-    return m_hsvHueInput;
-}
-
-void QQuickColorInputs::setHsvHueInput(QQuickTextInput *hsvHueInput)
-{
-    if (m_hsvHueInput == hsvHueInput)
-        return;
-
-    if (m_hsvHueInput)
-        disconnect(m_hsvHueInput, &QQuickTextInput::editingFinished, this, &QQuickColorInputs::handleHsvHueChanged);
-
-    m_hsvHueInput = hsvHueInput;
-
-    if (m_hsvHueInput)
-        connect(m_hsvHueInput, &QQuickTextInput::editingFinished, this, &QQuickColorInputs::handleHsvHueChanged);
-
-    emit hsvHueInputChanged();
-}
-
-QQuickTextInput *QQuickColorInputs::hslHueInput() const
-{
-    return m_hslHueInput;
-}
-
-void QQuickColorInputs::setHslHueInput(QQuickTextInput *hslHueInput)
-{
-    if (m_hslHueInput == hslHueInput)
-        return;
-
-    if (m_hslHueInput)
-        disconnect(m_hslHueInput, &QQuickTextInput::editingFinished, this, &QQuickColorInputs::handleHslHueChanged);
-
-    m_hslHueInput = hslHueInput;
-
-    if (m_hslHueInput)
-        connect(m_hslHueInput, &QQuickTextInput::editingFinished, this, &QQuickColorInputs::handleHslHueChanged);
-
-    emit hslHueInputChanged();
-}
-
-QQuickTextInput *QQuickColorInputs::hsvSaturationInput() const
-{
-    return m_hsvSaturationInput;
-}
-
-void QQuickColorInputs::setHsvSaturationInput(QQuickTextInput *hsvSaturationInput)
-{
-    if (m_hsvSaturationInput == hsvSaturationInput)
-        return;
-
-    if (m_hsvSaturationInput)
-        disconnect(m_hsvSaturationInput, &QQuickTextInput::editingFinished, this, &QQuickColorInputs::handleHsvSaturationChanged);
-
-    m_hsvSaturationInput = hsvSaturationInput;
-
-    if (m_hsvSaturationInput)
-        connect(m_hsvSaturationInput, &QQuickTextInput::editingFinished, this, &QQuickColorInputs::handleHsvSaturationChanged);
-
-    emit hsvSaturationInputChanged();
-}
-
-QQuickTextInput *QQuickColorInputs::hslSaturationInput() const
-{
-    return m_hslSaturationInput;
-}
-
-void QQuickColorInputs::setHslSaturationInput(QQuickTextInput *hslSaturationInput)
-{
-    if (m_hslSaturationInput == hslSaturationInput)
-        return;
-
-    if (m_hslSaturationInput)
-        disconnect(m_hslSaturationInput, &QQuickTextInput::editingFinished, this, &QQuickColorInputs::handleHslSaturationChanged);
-
-    m_hslSaturationInput = hslSaturationInput;
-
-    if (m_hslSaturationInput)
-        connect(m_hslSaturationInput, &QQuickTextInput::editingFinished, this, &QQuickColorInputs::handleHslSaturationChanged);
-
-    emit hslSaturationInputChanged();
-}
-
-QQuickTextInput *QQuickColorInputs::valueInput() const
-{
-    return m_valueInput;
-}
-
-void QQuickColorInputs::setValueInput(QQuickTextInput *valueInput)
-{
-    if (m_valueInput == valueInput)
-        return;
-
-    if (m_valueInput)
-        disconnect(m_valueInput, &QQuickTextInput::editingFinished, this, &QQuickColorInputs::handleValueChanged);
-
-    m_valueInput = valueInput;
-
-    if (m_valueInput)
-        connect(m_valueInput, &QQuickTextInput::editingFinished, this, &QQuickColorInputs::handleValueChanged);
-
-    emit valueInputChanged();
-}
-
-QQuickTextInput *QQuickColorInputs::lightnessInput() const
-{
-    return m_lightnessInput;
-}
-
-void QQuickColorInputs::setLightnessInput(QQuickTextInput *lightnessInput)
-{
-    if (m_lightnessInput == lightnessInput)
-        return;
-
-    if (m_lightnessInput)
-        disconnect(m_lightnessInput, &QQuickTextInput::editingFinished, this, &QQuickColorInputs::handleLightnessChanged);
-
-    m_lightnessInput = lightnessInput;
-
-    if (m_lightnessInput)
-        connect(m_lightnessInput, &QQuickTextInput::editingFinished, this, &QQuickColorInputs::handleLightnessChanged);
-
-    emit lightnessInputChanged();
-}
-
-QQuickTextInput *QQuickColorInputs::rgbAlphaInput() const
-{
-    return m_rgbAlphaInput;
-}
-
-void QQuickColorInputs::setRgbAlphaInput(QQuickTextInput *alphaInput)
-{
-    if (alphaInput == m_rgbAlphaInput)
-        return;
-
-    if (m_rgbAlphaInput) {
-        disconnect(m_rgbAlphaInput, &QQuickTextInput::editingFinished, this, &QQuickColorInputs::handleRgbAlphaChanged);
-        disconnect(this, &QQuickColorInputs::showAlphaChanged, m_rgbAlphaInput, &QQuickTextInput::setVisible);
+    if (!component->isBound() && initialProperties.isEmpty()) {
+        context = new QQmlContext(context, q);
+        context->setContextObject(q);
     }
 
-    m_rgbAlphaInput = alphaInput;
-
-    if (m_rgbAlphaInput) {
-        connect(m_rgbAlphaInput, &QQuickTextInput::editingFinished, this, &QQuickColorInputs::handleRgbAlphaChanged);
-        connect(this, &QQuickColorInputs::showAlphaChanged, m_rgbAlphaInput, &QQuickTextInput::setVisible);
-        m_rgbAlphaInput->setVisible(showAlpha());
-    }
-
-    emit rgbAlphaInputChanged();
+    QQuickTextInput *textInput = qobject_cast<QQuickTextInput*>(component->createWithInitialProperties(initialProperties, context));
+    if (textInput)
+        QQml_setParent_noEvent(textInput, q);
+    return textInput;
 }
 
-QQuickTextInput *QQuickColorInputs::hsvAlphaInput() const
-{
-    return m_hsvAlphaInput;
-}
+static const QString s_percentage_pattern = QString::fromUtf8("^(\\d+)%?$");
+static const QString s_degree_pattern = QString::fromUtf8("(\\d+)°?$");
+static const QString s_rgba_pattern = QString::fromUtf8("^#[0-9A-f]{6}(?:[0-9A-f]{2})?$");
+static const QString s_rgb_pattern = QString::fromUtf8("^#[0-9A-f]{6}$");
 
-void QQuickColorInputs::setHsvAlphaInput(QQuickTextInput *alphaInput)
+void QQuickColorInputsPrivate::repopulate()
 {
-    if (alphaInput == m_hsvAlphaInput)
+    Q_Q(QQuickColorInputs);
+
+    if (m_repopulating)
         return;
 
-    if (m_hsvAlphaInput) {
-        disconnect(m_hsvAlphaInput, &QQuickTextInput::editingFinished, this, &QQuickColorInputs::handleHsvAlphaChanged);
-        disconnect(this, &QQuickColorInputs::showAlphaChanged, m_hsvAlphaInput, &QQuickTextInput::setVisible);
-    }
-
-    m_hsvAlphaInput = alphaInput;
-
-    if (m_hsvAlphaInput) {
-        connect(m_hsvAlphaInput, &QQuickTextInput::editingFinished, this, &QQuickColorInputs::handleHsvAlphaChanged);
-        connect(this, &QQuickColorInputs::showAlphaChanged, m_hsvAlphaInput, &QQuickTextInput::setVisible);
-        m_hsvAlphaInput->setVisible(showAlpha());
-    }
-
-    emit hsvAlphaInputChanged();
-}
-
-QQuickTextInput *QQuickColorInputs::hslAlphaInput() const
-{
-    return m_hslAlphaInput;
-}
-
-void QQuickColorInputs::setHslAlphaInput(QQuickTextInput *alphaInput)
-{
-    if (alphaInput == m_hslAlphaInput)
+    if (!q->delegate() || !q->contentItem()) {
+        qmlWarning(q) << "Both delegate and contentItem must be set before repopulating";
         return;
-
-    if (m_hslAlphaInput) {
-        disconnect(m_hslAlphaInput, &QQuickTextInput::editingFinished, this, &QQuickColorInputs::handleHslAlphaChanged);
-        disconnect(this, &QQuickColorInputs::showAlphaChanged, m_hslAlphaInput, &QQuickTextInput::setVisible);
     }
 
-    m_hslAlphaInput = alphaInput;
+    QScopedValueRollback<bool> repopulateGuard(m_repopulating, true);
 
-    if (m_hslAlphaInput) {
-        connect(m_hslAlphaInput, &QQuickTextInput::editingFinished, this, &QQuickColorInputs::handleHslAlphaChanged);
-        connect(this, &QQuickColorInputs::showAlphaChanged, m_hslAlphaInput, &QQuickTextInput::setVisible);
-        m_hslAlphaInput->setVisible(showAlpha());
+    auto removeAllItems = [q](){
+        while (q->count() > 0)
+            q->removeItem(q->itemAt(0));
+    };
+
+    removeAllItems();
+
+    static const QRegularExpressionValidator rgba_validator = QRegularExpressionValidator(QRegularExpression(s_rgba_pattern));
+    static const QRegularExpressionValidator rgb_validator = QRegularExpressionValidator(QRegularExpression(s_rgb_pattern));
+    static const QRegularExpressionValidator percentage_validator = QRegularExpressionValidator(QRegularExpression(s_percentage_pattern));
+    static const QRegularExpressionValidator degree_validator = QRegularExpressionValidator(QRegularExpression(s_degree_pattern));
+    static const QIntValidator intValdator = QIntValidator(0, 255);
+
+    auto addInputField = [this, q, removeAllItems](const QString &name, const QValidator *validator,
+                                                   void (QQuickColorInputsPrivate::*handler)(),
+                                                   std::function<QString()> textConverter) {
+        const int maxLen = m_currentMode == QQuickColorInputs::Hex ? 9 : 4;
+        const QVariantMap properties = {
+            { QStringLiteral("objectName"), QVariant::fromValue(name) },
+            { QStringLiteral("validator"), QVariant::fromValue(validator) },
+            { QStringLiteral("horizontalAlignment"), QVariant::fromValue(
+                                                             m_currentMode == QQuickColorInputs::Hex ? Qt::AlignLeft : Qt::AlignHCenter) },
+            { QStringLiteral("maximumLength"), QVariant::fromValue(maxLen) },
+            { QStringLiteral("text"), QVariant::fromValue(textConverter()) }
+        };
+        if (QQuickTextInput *item = createDelegateTextInputItem(q->delegate(), properties)) {
+            connect(item, &QQuickTextInput::editingFinished, this, handler);
+            QObject::connect(q, &QQuickColorInputs::colorChanged, item, [item, textConverter](const QColor &){ item->setText(textConverter()); });
+
+            insertItem(q->count(), item);
+        } else {
+            qCWarning(lcColorInputs) << "Failed to create delegate for " << name;
+            removeAllItems();
+        }
+    };
+
+    switch (m_currentMode) {
+    case QQuickColorInputs::Hex:
+        addInputField(QStringLiteral("hex"), m_showAlpha ? &rgba_validator : &rgb_validator, &QQuickColorInputsPrivate::handleHexInput,
+                      [q](){ return q->color().name(); });
+        break;
+    case QQuickColorInputs::Rgb:
+        addInputField(QStringLiteral("red"), &intValdator, &QQuickColorInputsPrivate::handleRedInput, [q](){ return QString::number(q->red()); });
+        addInputField(QStringLiteral("green"), &intValdator, &QQuickColorInputsPrivate::handleGreenInput, [q](){ return QString::number(q->green()); });
+        addInputField(QStringLiteral("blue"), &intValdator, &QQuickColorInputsPrivate::handleBlueInput, [q](){ return QString::number(q->blue()); });
+        if (m_showAlpha)
+            addInputField(QStringLiteral("alpha"), &percentage_validator, &QQuickColorInputsPrivate::handleAlphaInput,
+                          [q](){ return QString::number(qRound(q->alpha() * 100)).append(QStringLiteral("%")); });
+        break;
+    case QQuickColorInputs::Hsv:
+        addInputField(QStringLiteral("hsvHue"), &degree_validator, &QQuickColorInputsPrivate::handleHueInput,
+                      [q](){ return QString::number(qRound(q->hue() * 360)).append(QStringLiteral("°")); });
+        addInputField(QStringLiteral("hsvSaturation"), &percentage_validator, &QQuickColorInputsPrivate::handleHsvSaturationInput,
+                      [q](){ return QString::number(qRound(q->hsvSaturation() * 100)).append(QStringLiteral("%")); });
+        addInputField(QStringLiteral("value"), &percentage_validator, &QQuickColorInputsPrivate::handleValueInput,
+                      [q](){ return QString::number(qRound(q->value() * 100)).append(QStringLiteral("%")); });
+        if (m_showAlpha)
+            addInputField(QStringLiteral("alpha"), &percentage_validator, &QQuickColorInputsPrivate::handleAlphaInput,
+                          [q](){ return QString::number(qRound(q->alpha() * 100)).append(QStringLiteral("%")); });
+        break;
+    case QQuickColorInputs::Hsl:
+        addInputField(QStringLiteral("hslHue"), &degree_validator, &QQuickColorInputsPrivate::handleHueInput,
+                      [q](){ return QString::number(qRound(q->hue() * 360)).append(QStringLiteral("°")); });
+        addInputField(QStringLiteral("hslSaturation"), &percentage_validator, &QQuickColorInputsPrivate::handleHslSaturationInput,
+                      [q](){ return QString::number(qRound(q->hslSaturation() * 100)).append(QStringLiteral("%")); });
+        addInputField(QStringLiteral("lightness"), &percentage_validator, &QQuickColorInputsPrivate::handleLightnessInput,
+                      [q](){ return QString::number(qRound(q->lightness() * 100)).append(QStringLiteral("%")); });
+        if (m_showAlpha)
+            addInputField(QStringLiteral("alpha"), &percentage_validator, &QQuickColorInputsPrivate::handleAlphaInput,
+                          [q](){ return QString::number(qRound(q->alpha() * 100)).append(QStringLiteral("%")); });
+        break;
+    default:
+        qCDebug(lcColorInputs) << "Unrecognised mode " << m_currentMode;
+        break;
     }
 
-    emit hslAlphaInputChanged();
+    updateImplicitContentSize();
 }
 
-void QQuickColorInputs::handleHexChanged()
+void QQuickColorInputsPrivate::handleHexInput()
 {
-    emit colorModified(QColor::fromString(m_hexInput->text()));
+    Q_Q(QQuickColorInputs);
+    if (const auto textInput = qobject_cast<QQuickTextInput *>(q->QObject::sender()))
+        emit q->colorModified(QColor::fromString(textInput->text()));
 }
 
-void QQuickColorInputs::handleRedChanged()
+void QQuickColorInputsPrivate::handleRedInput()
 {
-    QColor c = color();
-    c.setRed(qBound(0, m_redInput->text().toInt(), 255));
-    emit colorModified(c);
-}
-
-void QQuickColorInputs::handleGreenChanged()
-{
-    QColor c = color();
-    c.setGreen(qBound(0, m_greenInput->text().toInt(), 255));
-    emit colorModified(c);
-}
-
-void QQuickColorInputs::handleBlueChanged()
-{
-    QColor c = color();
-    c.setBlue(qBound(0, m_blueInput->text().toInt(), 255));
-    emit colorModified(c);
-}
-
-static QString s_percentage_pattern = QString::fromUtf8("^(\\d+)%?$");
-static QString s_degree_pattern = QString::fromUtf8("(\\d+)°?$");
-
-void QQuickColorInputs::handleHsvHueChanged()
-{
-    const QRegularExpression pattern(s_degree_pattern);
-    const auto match = pattern.match(m_hsvHueInput->text());
-    if (match.hasMatch()) {
-        const auto substr = match.captured(1);
-        const qreal input = static_cast<qreal>(qBound(0, substr.toInt(), 360)) / static_cast<qreal>(360);
-        emit colorModified(QColor::fromHsvF(input, hsvSaturation(), value(), alpha()));
+    Q_Q(QQuickColorInputs);
+    if (const auto textInput = qobject_cast<QQuickTextInput *>(q->QObject::sender())) {
+        QColor c = q->color();
+        c.setRed(textInput->text().toInt());
+        emit q->colorModified(c);
     }
 }
 
-void QQuickColorInputs::handleHslHueChanged()
+void QQuickColorInputsPrivate::handleGreenInput()
 {
-    const QRegularExpression pattern(s_degree_pattern);
-    const auto match = pattern.match(m_hslHueInput->text());
-    if (match.hasMatch()) {
-        const auto substr = match.captured(1);
-        const qreal input = static_cast<qreal>(qBound(0, substr.toInt(), 360)) / static_cast<qreal>(360);
-        emit colorModified(QColor::fromHslF(input, hslSaturation(), lightness(), alpha()));
+    Q_Q(QQuickColorInputs);
+    if (const auto textInput = qobject_cast<QQuickTextInput *>(q->QObject::sender())) {
+        QColor c = q->color();
+        c.setGreen(textInput->text().toInt());
+        emit q->colorModified(c);
     }
 }
 
-void QQuickColorInputs::handleHsvSaturationChanged()
+void QQuickColorInputsPrivate::handleBlueInput()
 {
-    const QRegularExpression pattern(s_percentage_pattern);
-    const auto match = pattern.match(m_hsvSaturationInput->text());
-    if (match.hasMatch()) {
-        const auto substr = match.captured(1);
-        const qreal input = static_cast<qreal>(qBound(0, substr.toInt(), 100)) / static_cast<qreal>(100);
-        emit colorModified(QColor::fromHsvF(hue(), input, value(), alpha()));
+    Q_Q(QQuickColorInputs);
+    if (const auto textInput = qobject_cast<QQuickTextInput *>(q->QObject::sender())) {
+        QColor c = q->color();
+        c.setBlue(textInput->text().toInt());
+        emit q->colorModified(c);
     }
 }
 
-void QQuickColorInputs::handleHslSaturationChanged()
+void QQuickColorInputsPrivate::handleHueInput()
 {
-    const QRegularExpression pattern(s_percentage_pattern);
-    const auto match = pattern.match(m_hslSaturationInput->text());
-    if (match.hasMatch()) {
-        const auto substr = match.captured(1);
-        const qreal input = static_cast<qreal>(qBound(0, substr.toInt(), 100)) / static_cast<qreal>(100);
-        emit colorModified(QColor::fromHslF(hue(), input, lightness(), alpha()));
+    Q_Q(QQuickColorInputs);
+    if (const auto textInput = qobject_cast<QQuickTextInput *>(q->QObject::sender())) {
+        static const QRegularExpression pattern(s_degree_pattern);
+        const auto match = pattern.match(textInput->text());
+        if (match.hasMatch()) {
+            const auto substr = match.captured(1);
+            const qreal input = static_cast<qreal>(qBound(0, substr.toInt(), 360)) / static_cast<qreal>(360);
+            const QColor c = m_currentMode == QQuickColorInputs::Hsl ? QColor::fromHslF(input, q->hslSaturation(), q->lightness(), q->alpha())
+                                                               : QColor::fromHsvF(input, q->hsvSaturation(), q->value(), q->alpha());
+            emit q->colorModified(c);
+        }
     }
 }
 
-void QQuickColorInputs::handleValueChanged()
+void QQuickColorInputsPrivate::handleHsvSaturationInput()
 {
-    const QRegularExpression pattern(s_percentage_pattern);
-    const auto match = pattern.match(m_valueInput->text());
-    if (match.hasMatch()) {
-        const auto substr = match.captured(1);
-        const qreal input = static_cast<qreal>(qBound(0, substr.toInt(), 100)) / static_cast<qreal>(100);
-        emit colorModified(QColor::fromHsvF(hue(), hsvSaturation(), input, alpha()));
+    Q_Q(QQuickColorInputs);
+    if (const auto textInput = qobject_cast<QQuickTextInput *>(q->QObject::sender())) {
+        static const QRegularExpression pattern(s_percentage_pattern);
+        const auto match = pattern.match(textInput->text());
+        if (match.hasMatch()) {
+            const auto substr = match.captured(1);
+            const qreal input = static_cast<qreal>(qBound(0, substr.toInt(), 100)) / static_cast<qreal>(100);
+            emit q->colorModified(QColor::fromHsvF(q->hue(), input, q->value(), q->alpha()));
+        }
     }
 }
 
-void QQuickColorInputs::handleLightnessChanged()
+void QQuickColorInputsPrivate::handleValueInput()
 {
-    const QRegularExpression pattern(s_percentage_pattern);
-    const auto match = pattern.match(m_lightnessInput->text());
-    if (match.hasMatch()) {
-        const auto substr = match.captured(1);
-        const qreal input = static_cast<qreal>(qBound(0, substr.toInt(), 100)) / static_cast<qreal>(100);
-        emit colorModified(QColor::fromHslF(hue(), hslSaturation(), input, alpha()));
+    Q_Q(QQuickColorInputs);
+    if (const auto textInput = qobject_cast<QQuickTextInput *>(q->QObject::sender())) {
+        static const QRegularExpression pattern(s_percentage_pattern);
+        const auto match = pattern.match(textInput->text());
+        if (match.hasMatch()) {
+            const auto substr = match.captured(1);
+            const qreal input = static_cast<qreal>(qBound(0, substr.toInt(), 100)) / static_cast<qreal>(100);
+            emit q->colorModified(QColor::fromHsvF(q->hue(), q->hsvSaturation(), input, q->alpha()));
+        }
     }
 }
 
-void QQuickColorInputs::handleRgbAlphaChanged()
+void QQuickColorInputsPrivate::handleHslSaturationInput()
 {
-    handleAlphaChanged(m_rgbAlphaInput->text());
+    Q_Q(QQuickColorInputs);
+    if (const auto textInput = qobject_cast<QQuickTextInput *>(q->QObject::sender())) {
+        static const QRegularExpression pattern(s_percentage_pattern);
+        const auto match = pattern.match(textInput->text());
+        if (match.hasMatch()) {
+            const auto substr = match.captured(1);
+            const qreal input = static_cast<qreal>(qBound(0, substr.toInt(), 100)) / static_cast<qreal>(100);
+            emit q->colorModified(QColor::fromHslF(q->hue(), input, q->lightness(), q->alpha()));
+        }
+    }
 }
 
-void QQuickColorInputs::handleHsvAlphaChanged()
+void QQuickColorInputsPrivate::handleLightnessInput()
 {
-    handleAlphaChanged(m_hsvAlphaInput->text());
+    Q_Q(QQuickColorInputs);
+    if (const auto textInput = qobject_cast<QQuickTextInput *>(q->QObject::sender())) {
+        static const QRegularExpression pattern(s_percentage_pattern);
+        const auto match = pattern.match(textInput->text());
+        if (match.hasMatch()) {
+            const auto substr = match.captured(1);
+            const qreal input = static_cast<qreal>(qBound(0, substr.toInt(), 100)) / static_cast<qreal>(100);
+            emit q->colorModified(QColor::fromHslF(q->hue(), q->hslSaturation(), input, q->alpha()));
+        }
+    }
 }
 
-void QQuickColorInputs::handleHslAlphaChanged()
+void QQuickColorInputsPrivate::handleAlphaInput()
 {
-    handleAlphaChanged(m_hslAlphaInput->text());
-}
-
-void QQuickColorInputs::handleAlphaChanged(const QString &input)
-{
-    const QRegularExpression pattern(s_percentage_pattern);
-    const auto match = pattern.match(input);
-    if (match.hasMatch()) {
-        QColor c = color();
-        const auto substr = match.captured(1);
-        const qreal input = static_cast<qreal>(qBound(0, substr.toInt(), 100)) / static_cast<qreal>(100);
-        c.setAlphaF(input);
-        emit colorModified(c);
+    Q_Q(QQuickColorInputs);
+    if (const auto textInput = qobject_cast<QQuickTextInput *>(q->QObject::sender())) {
+        static const QRegularExpression pattern(s_percentage_pattern);
+        const auto match = pattern.match(textInput->text());
+        if (match.hasMatch()) {
+            QColor c = q->color();
+            const auto substr = match.captured(1);
+            const qreal input = static_cast<qreal>(qBound(0, substr.toInt(), 100)) / static_cast<qreal>(100);
+            c.setAlphaF(input);
+            emit q->colorModified(c);
+        }
     }
 }
 
 QT_END_NAMESPACE
+
+#include "moc_qquickcolorinputs_p.cpp"

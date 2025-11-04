@@ -1,6 +1,6 @@
-qt_add_library(Quick3DAssets_InteriorShadow STATIC)
+qt_add_library(Ast_InteriorShadow STATIC)
 
-qt_add_qml_module(Quick3DAssets_InteriorShadow
+qt6_add_qml_module(Ast_InteriorShadow
     URI "Quick3DAssets.InteriorShadow"
     CLASS_NAME "InteriorShadowPlugin"
     VERSION 1.0

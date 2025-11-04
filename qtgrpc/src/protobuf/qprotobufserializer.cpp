@@ -270,21 +270,24 @@ void QProtobufSerializerImpl::serializeMessageFieldEnd(const QProtobufMessage *m
     m_result = last;
 }
 
-QByteArray QProtobufSerializerImpl::encodeHeader(int fieldIndex, QtProtobuf::WireTypes wireType)
+QByteArray QProtobufSerializerImpl::encodeHeader(int fieldNumber, QtProtobuf::WireTypes wireType)
 {
-    // Encodes a property field index and its type into output bytes.
+    // Encodes a property field number and its type into output bytes.
 
     // Header byte
-    // Meaning    |  Field index  |  Type
+    // Meaning    |  Field number |  Type
     // ---------- | ------------- | --------
     // bit number | 7  6  5  4  3 | 2  1  0
 
-    // fieldIndex: The index of a property in parent object
-    // wireType:   Serialization type used for the property with fieldIndex
+    // fieldNumber: The index of a property in parent object
+    // wireType:    Serialization type used for the property with fieldNumber
 
     // Returns a varint-encoded fieldIndex and wireType
-
-    uint32_t header = (fieldIndex << 3) | int(wireType);
+    [[maybe_unused]] static constexpr int32_t MaxFieldNumber =
+        std::numeric_limits<uint32_t>::max() >> 3u;
+    Q_ASSERT(fieldNumber >= 1 && fieldNumber <= MaxFieldNumber
+             && (fieldNumber < 19000 || fieldNumber > 19999));
+    uint32_t header = (uint(fieldNumber) << 3u) | uint32_t(wireType);
     return serializeVarintCommon<uint32_t>(header);
 }
 

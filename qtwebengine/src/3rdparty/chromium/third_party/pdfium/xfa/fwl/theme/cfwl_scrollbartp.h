@@ -7,10 +7,13 @@
 #ifndef XFA_FWL_THEME_CFWL_SCROLLBARTP_H_
 #define XFA_FWL_THEME_CFWL_SCROLLBARTP_H_
 
+#include <array>
 #include <memory>
 
 #include "fxjs/gc/heap.h"
 #include "xfa/fwl/theme/cfwl_widgettp.h"
+
+namespace pdfium {
 
 class CFWL_ScrollBarTP final : public CFWL_WidgetTP {
  public:
@@ -24,8 +27,8 @@ class CFWL_ScrollBarTP final : public CFWL_WidgetTP {
   struct SBThemeData {
     FX_ARGB clrTrackBKStart;
     FX_ARGB clrTrackBKEnd;
-    FX_ARGB clrBtnBK[4][2];
-    FX_ARGB clrBtnBorder[4];
+    std::array<FX_ARGB, 4> clrBtnBK;
+    std::array<FX_ARGB, 4> clrBtnBorder;
   };
 
   CFWL_ScrollBarTP();
@@ -48,7 +51,12 @@ class CFWL_ScrollBarTP final : public CFWL_WidgetTP {
                      const CFX_Matrix& matrix);
   void SetThemeData();
 
-  std::unique_ptr<SBThemeData> m_pThemeData;
+  std::unique_ptr<SBThemeData> const m_pThemeData;
 };
+
+}  // namespace pdfium
+
+// TODO(crbug.com/42271761): Remove.
+using pdfium::CFWL_ScrollBarTP;
 
 #endif  // XFA_FWL_THEME_CFWL_SCROLLBARTP_H_

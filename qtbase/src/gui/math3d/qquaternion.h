@@ -109,7 +109,7 @@ QT_WARNING_POP
 
 #ifndef QT_NO_VECTOR3D
     inline QVector3D toEulerAngles() const;
-    QT7_ONLY(Q_GUI_EXPORT) static inline QQuaternion fromEulerAngles(const QVector3D &eulerAngles);
+    static inline QQuaternion fromEulerAngles(const QVector3D &angles);
 #endif
     QT7_ONLY(Q_GUI_EXPORT) void getEulerAngles(float *pitch, float *yaw, float *roll) const;
     QT7_ONLY(Q_GUI_EXPORT) static QQuaternion fromEulerAngles(float pitch, float yaw, float roll);
@@ -128,7 +128,7 @@ QT_WARNING_POP
 
     QT7_ONLY(Q_GUI_EXPORT) static QQuaternion rotationTo(const QVector3D &from,
                                                          const QVector3D &to);
-#endif
+#endif // QT_NO_VECTOR3D
 
     QT7_ONLY(Q_GUI_EXPORT) static QQuaternion slerp(const QQuaternion &q1, const QQuaternion &q2,
                                                     float t);
@@ -311,26 +311,26 @@ inline QVector3D operator*(const QQuaternion &quaternion, const QVector3D &vec)
     return quaternion.rotatedVector(vec);
 }
 
-inline void QQuaternion::getAxisAndAngle(QVector3D *axis, float *angle) const
+void QQuaternion::getAxisAndAngle(QVector3D *axis, float *angle) const
 {
     float aX, aY, aZ;
     getAxisAndAngle(&aX, &aY, &aZ, angle);
     *axis = QVector3D(aX, aY, aZ);
 }
 
-inline QVector3D QQuaternion::toEulerAngles() const
+QVector3D QQuaternion::toEulerAngles() const
 {
     float pitch, yaw, roll;
     getEulerAngles(&pitch, &yaw, &roll);
     return QVector3D(pitch, yaw, roll);
 }
 
-inline QQuaternion QQuaternion::fromEulerAngles(const QVector3D &eulerAngles)
+QQuaternion QQuaternion::fromEulerAngles(const QVector3D &angles)
 {
-    return QQuaternion::fromEulerAngles(eulerAngles.x(), eulerAngles.y(), eulerAngles.z());
+    return QQuaternion::fromEulerAngles(angles.x(), angles.y(), angles.z());
 }
 
-#endif
+#endif // QT_NO_VECTOR3D
 
 constexpr void QQuaternion::setVector(float aX, float aY, float aZ) noexcept
 {
@@ -349,7 +349,7 @@ constexpr QVector4D QQuaternion::toVector4D() const noexcept
     return QVector4D(xp, yp, zp, wp);
 }
 
-#endif
+#endif // QT_NO_VECTOR4D
 
 #ifndef QT_NO_DEBUG_STREAM
 Q_GUI_EXPORT QDebug operator<<(QDebug dbg, const QQuaternion &q);
@@ -360,8 +360,8 @@ Q_GUI_EXPORT QDataStream &operator<<(QDataStream &, const QQuaternion &);
 Q_GUI_EXPORT QDataStream &operator>>(QDataStream &, QQuaternion &);
 #endif
 
-#endif
+#endif // QT_NO_QUATERNION
 
 QT_END_NAMESPACE
 
-#endif
+#endif // QQUATERNION_H

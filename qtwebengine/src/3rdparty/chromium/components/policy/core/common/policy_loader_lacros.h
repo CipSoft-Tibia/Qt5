@@ -7,6 +7,7 @@
 
 #include <stdint.h>
 
+#include <optional>
 #include <vector>
 
 #include "base/memory/scoped_refptr.h"
@@ -18,7 +19,6 @@
 #include "components/policy/core/common/policy_proto_decoders.h"
 #include "components/policy/core/common/values_util.h"
 #include "components/policy/proto/device_management_backend.pb.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 
 namespace policy {
 
@@ -74,7 +74,8 @@ class POLICY_EXPORT PolicyLoaderLacros
   static bool IsDeviceLocalAccountUser();
 
   // Returns if the main user is managed or not.
-  // TODO(crbug/1245077): Remove once Lacros handles all profiles the same way.
+  // TODO(crbug.com/40788404): Remove once Lacros handles all profiles the same
+  // way.
   static bool IsMainUserManaged();
 
   // Return if the main user is affiliated or not.
@@ -82,7 +83,8 @@ class POLICY_EXPORT PolicyLoaderLacros
 
   // Returns the policy data corresponding to the main user to be used by
   // Enterprise Connector policies.
-  // TODO(crbug/1245077): Remove once Lacros handles all profiles the same way.
+  // TODO(crbug.com/40788404): Remove once Lacros handles all profiles the same
+  // way.
   static const enterprise_management::PolicyData* main_user_policy_data();
   static void set_main_user_policy_data_for_testing(
       const enterprise_management::PolicyData& policy_data);
@@ -99,7 +101,7 @@ class POLICY_EXPORT PolicyLoaderLacros
   const PolicyPerProfileFilter per_profile_;
 
   // Serialized blob of PolicyFetchResponse object received from the server.
-  absl::optional<std::vector<uint8_t>> policy_fetch_response_;
+  std::optional<std::vector<uint8_t>> policy_fetch_response_;
 
   // The component policy of the device account.
   std::unique_ptr<PolicyBundle> component_policy_;

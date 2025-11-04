@@ -11,7 +11,9 @@ option optimize_for = LITE_RUNTIME;
 // provides additional functionalities and abstracts the details of the wire
 // format. Access control for clients is defined in platform2/patchpanel/dbus.
 package patchpanel;
-option go_package = "chromiumos/system_api/patchpanel_proto";
+option go_package = "go.chromium.org/chromiumos/system_api/patchpanel_proto";
+
+import "traffic_annotation.proto";
 
 // Notification that the ARC++ container is starting up.
 // This is informational. The ARC boot and setup sequences do not require
@@ -49,11 +51,10 @@ message ArcVmStartupRequest {
 
 // Represents an IPv4 subnet given a base address and prefix length.
 message IPv4Subnet {
+  reserved 1;
+
   // The base address of the subnet, represented as 4 bytes in network order.
   bytes addr = 3;
-
-  // Deprecated, use addr instead. The base address in network order.
-  uint32 base_addr = 1 [deprecated = true];
 
   // The prefix length of the subnet.
   uint32 prefix_len = 2;
@@ -320,35 +321,6 @@ message BorealisVmShutdownRequest {
 // Intentionally empty response.
 message BorealisVmShutdownResponse {}
 
-// Request to set the VPN routing policy for a socket. The socket file
-// descriptor must be immediately appended to the DBUS message after the
-// serialized SetVpnIntentRequest message. The request must be sent before
-// the socket is connected.
-message SetVpnIntentRequest {
-  // Possible policies for VPN routing available to system processes.
-  // The enum values defined here are not meaningful with respect to the actual
-  // bits used inside the socket fwmark for encoding the VPN routing intent.
-  enum VpnRoutingPolicy {
-    // Let the routing layer apply the default policy for that process uid.
-    // This is the default policy for newly created sockets. It is in general
-    // incorrect to use this policy for the purpose of clearing any other VPN
-    // policy after the socket became connected. Instead a new socket should
-    // be made.
-    DEFAULT_ROUTING = 0;
-    // The socket traffic is always routed through the VPN if there is one.
-    ROUTE_ON_VPN = 1;
-    // The socket traffic is always routed through the physical network.
-    BYPASS_VPN = 2;
-  }
-
-  VpnRoutingPolicy policy = 1;
-}
-
-// Response to a SetVpnIntentRequest.
-message SetVpnIntentResponse {
-  bool success = 1;
-}
-
 // Request for connecting and routing a network namespace. The client must
 // append a valid file descriptor immediately after the serialized
 // ConnectNamespaceRequest proto. This file descriptor must remain valid for as
@@ -569,7 +541,7 @@ message SetVpnLockdownRequest {
   bool enable_vpn_lockdown = 1;
 }
 
-// Intentionally empty response to a SetVpnIntentRequest.
+// Intentionally empty response to a SetVpnLockdownRequest.
 message SetVpnLockdownResponse {}
 
 // Signal that is emitted when a device managed by patchpanel is added or
@@ -754,6 +726,8 @@ enum DownstreamNetworkResult {
   INVALID_REQUEST = 7;
 }
 
+// Describes a network created by Patchpanel for a CreateTetheredNetwork or
+// CreateLocalOnlyNetwork request.
 message DownstreamNetwork {
   // Name of the network interface on which the downstream L3 network was
   // created.
@@ -768,6 +742,10 @@ message DownstreamNetwork {
   // network and the next hop address for remote clients connected to the
   // network. Empty if the upstream network does not have IPv4 connectivity.
   bytes ipv4_gateway_addr = 3;
+
+  // The unique network id assigned by patchpanel to the downstream network.
+  // TODO(b/322083502): Add a link/description to explain network_id.
+  int32 network_id = 4;
 }
 
 // Request to create a L3 logical network on a network interface and share
@@ -839,6 +817,10 @@ message TetheredNetworkRequest {
 message TetheredNetworkResponse {
   // Status of the request.
   DownstreamNetworkResult response_code = 1;
+
+  // Describes the network created by patchpanel for the CreateTetheredNetwork
+  // request.
+  DownstreamNetwork downstream_network = 2;
 }
 
 // Request to create an isolated L3 logical network on a network interface like
@@ -870,6 +852,10 @@ message LocalOnlyNetworkRequest {
 message LocalOnlyNetworkResponse {
   // Status of the request.
   DownstreamNetworkResult response_code = 1;
+
+  // Describes the network created by patchpanel for the CreateTetheredNetwork
+  // request.
+  DownstreamNetwork downstream_network = 2;
 }
 
 // GetDownstreamNetworkInfo request object to obtain the IP configuration of a
@@ -976,6 +962,7 @@ message NetworkConfig {
 
   repeated IPAddrCIDR ipv6_addresses = 4;
   optional bytes ipv6_gateway = 5;
+  repeated IPAddrCIDR ipv6_delegated_prefixes = 15;
 
   bool ipv4_default_route = 6;
   bool ipv6_blackhole_route = 7;
@@ -1089,9 +1076,68 @@ message SetFeatureFlagResponse {
 
 // Notification for a socket connection event of an ARC VPN app.
 // Currently used for ARC VPN traffic counting.
-message NotifyVPNSocketConnectionEventRequest {
+message NotifyARCVPNSocketConnectionEventRequest {
   SocketConnectionEvent msg = 1;
 }
 
-// Response to a NotifyVPNSocketConnectionEvent call.
-message NotifyVPNSocketConnectionEventResponse {}
+// Response to a NotifyARCVPNSocketConnectionEvent call.
+message NotifyARCVPNSocketConnectionEventResponse {}
+
+// Request to tag a socket. The socket file descriptor must be immediately
+// appended to the D-Bus message after the serialized TagSocketRequest message.
+// The request must be sent before the socket is connected or used with listen()
+// and only once for each socket.
+//
+// The network_id and vpn_policy can be used to change the routing behavior of a
+// socket.
+// Example usages:
+// 1. The user traffic should be routed via a non-default network, but still be
+//    blocked when the device is in VPN lockdown mode and the VPN is not
+//    connected.
+//    - {network_id=non_default_network_id, vpn_policy=DEFAULT_ROUTING};
+// 2. The user traffic should be routed via a non-default network, and it still
+//    works when it's in VPN lockdown mode and the VPN is not connected.
+//    - {network_id=non_default_network_id, vpn_policy=BYPASS_VPN};
+// 3. There is a VPN connected, and the system traffic should be routed via VPN.
+//    - {network_id=NONE, vpn_policy=ROUTE_ON_VPN};
+message TagSocketRequest {
+  // The network which this socket should be bound to. If not set, the network
+  // will be selected automatically (depending on the traffic source and
+  // destination, VPN setup, etc.). Notes:
+  // - This won't bypass VPN lockdown mode -- user traffic will still be blocked
+  //   if the lockdown mode is enabled and VPN is not connected.
+  // - The socket behavior will become undefined after the network bound by this
+  //   API after the network has disconnected.
+  //
+  // TODO(b/322083502): Add a link/description to explain network_id.
+  optional int32 network_id = 1;
+
+  // Possible policies for VPN routing.
+  enum VpnRoutingPolicy {
+    // Let the routing layer apply the default policy for the socket owner's
+    // uid. This is the default policy for newly created sockets.
+    DEFAULT_ROUTING = 0;
+    // The socket traffic is always routed through the VPN if there is one. Note
+    // that the traffic will still be routed through the physical network if the
+    // destination is not included in VPN routes. This should not be used
+    // together with network_id, and the API will return failure in this case.
+    ROUTE_ON_VPN = 1;
+    // The socket traffic is always routed through the physical network.
+    // Different from network_id, this will bypass VPN lockdown mode, so this
+    // can be set together with network_id if the caller wants the traffic to go
+    // to a specific non-VPN network no matter if the VPN lockdown is on or not.
+    BYPASS_VPN = 2;
+  }
+
+  VpnRoutingPolicy vpn_policy = 2;
+
+  // Semantic description of the traffic that will go through the socket.
+  optional traffic_annotation.TrafficAnnotation traffic_annotation = 3;
+}
+
+// Response to a TagSocketRequest. Note that on failure, patchpanel may leave
+// the socket in a partially setup state (i.e., won't do the cleanup). The
+// caller should not rely on this socket for any further operation.
+message TagSocketResponse {
+  bool success = 1;
+}

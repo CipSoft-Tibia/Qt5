@@ -4,12 +4,15 @@
 
 from __future__ import annotations
 import argparse
-import pathlib
+from typing import TYPE_CHECKING
 
 import hjson
 from crossbench import cli_helper
 
 from crossbench.env import HostEnvironment, HostEnvironmentConfig
+
+if TYPE_CHECKING:
+  from crossbench.path import LocalPath
 
 
 def parse_inline_env_config(value: str) -> HostEnvironmentConfig:
@@ -32,7 +35,7 @@ def parse_inline_env_config(value: str) -> HostEnvironmentConfig:
 
 
 def parse_env_config_file(value: str) -> HostEnvironmentConfig:
-  config_path: pathlib.Path = cli_helper.parse_file_path(value)
+  config_path: LocalPath = cli_helper.parse_file_path(value)
   try:
     with config_path.open(encoding="utf-8") as f:
       data = hjson.load(f)

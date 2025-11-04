@@ -3,6 +3,8 @@
 
 #include "qquicklabsplatformcolordialog_p.h"
 
+#if QT_DEPRECATED_SINCE(6, 9)
+
 QT_BEGIN_NAMESPACE
 
 /*!
@@ -11,11 +13,12 @@ QT_BEGIN_NAMESPACE
 //! \nativetype QQuickLabsPlatformColorDialog
     \inqmlmodule Qt.labs.platform
     \since 5.8
+    \deprecated [6.9] Use QtQuick.Dialogs::ColorDialog instead.
     \brief A native color dialog.
 
     The ColorDialog type provides a QML API for native platform color dialogs.
 
-    \image qtlabsplatform-colordialog-gtk.png
+    \image {qtlabsplatform-colordialog-gtk.png} {A native color dialog}
 
     To show a color dialog, construct an instance of ColorDialog, set the
     desired properties, and call \l {Dialog::}{open()}. The \l currentColor
@@ -53,6 +56,8 @@ QT_BEGIN_NAMESPACE
     \input includes/widgets.qdocinc 1
 
     \labs
+
+    \sa QtQuick.Dialogs::ColorDialog
 */
 
 QQuickLabsPlatformColorDialog::QQuickLabsPlatformColorDialog(QObject *parent)
@@ -174,3 +179,5 @@ void QQuickLabsPlatformColorDialog::accept()
 QT_END_NAMESPACE
 
 #include "moc_qquicklabsplatformcolordialog_p.cpp"
+
+#endif // QT_DEPRECATED_SINCE(6, 9)

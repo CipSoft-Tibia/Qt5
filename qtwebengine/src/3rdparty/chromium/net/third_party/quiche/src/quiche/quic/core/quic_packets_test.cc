@@ -5,6 +5,7 @@
 #include "quiche/quic/core/quic_packets.h"
 
 #include <memory>
+#include <string>
 
 #include "absl/memory/memory.h"
 #include "quiche/quic/core/quic_time.h"
@@ -121,7 +122,6 @@ TEST_F(QuicPacketsTest, CopySerializedPacket) {
 }
 
 TEST_F(QuicPacketsTest, CloneReceivedPacket) {
-  SetQuicReloadableFlag(quic_clone_ecn, true);
   char header[4] = "bar";
   QuicReceivedPacket packet("foo", 3, QuicTime::Zero(), false, 0, true, header,
                             sizeof(header) - 1, false,

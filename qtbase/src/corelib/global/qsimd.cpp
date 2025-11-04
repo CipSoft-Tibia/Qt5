@@ -33,7 +33,7 @@
 #  endif
 #elif defined(Q_OS_LINUX) && defined(Q_PROCESSOR_MIPS_32)
 #  include "private/qcore_unix_p.h"
-#elif QT_CONFIG(getauxval) && defined(Q_PROCESSOR_ARM)
+#elif QT_CONFIG(getauxval) && (defined(Q_PROCESSOR_ARM) || defined(Q_PROCESSOR_LOONGARCH))
 #  include <sys/auxv.h>
 
 // the kernel header definitions for HWCAP_*
@@ -49,6 +49,7 @@
 // copied from <asm/hwcap.h> (Aarch64)
 #define HWCAP_AES               (1 << 3)
 #define HWCAP_CRC32             (1 << 7)
+#define HWCAP_SVE               (1 << 22)
 
 // copied from <linux/auxvec.h>
 #define AT_HWCAP  16    /* arch dependent hints at CPU capabilities */
@@ -75,13 +76,15 @@ uint arraysize(T (&)[N])
  neon
  crc32
  aes
+ sve
  */
 static const char features_string[] =
         "\0"
         " neon\0"
         " crc32\0"
-        " aes\0";
-static const int features_indices[] = { 0, 1, 7, 14 };
+        " aes\0"
+        " sve\0";
+static const int features_indices[] = { 0, 1, 7, 14, 19 };
 #elif defined(Q_PROCESSOR_MIPS)
 /* Data:
  dsp
@@ -91,6 +94,19 @@ static const char features_string[] =
     "\0"
     " dsp\0"
     " dspr2\0";
+
+static const int features_indices[] = {
+       0, 1, 6
+};
+#elif defined(Q_PROCESSOR_LOONGARCH)
+/* Data:
+ lsx
+ lasx
+*/
+static const char features_string[] =
+    "\0"
+    " lsx\0"
+    " lasx\0";
 
 static const int features_indices[] = {
        0, 1, 6
@@ -118,6 +134,8 @@ static inline quint64 detectProcessorFeatures()
             features |= CpuFeatureCRC32;
         if (auxvHwCap & HWCAP_AES)
             features |= CpuFeatureAES;
+        if (auxvHwCap & HWCAP_SVE)
+            features |= CpuFeatureSVE;
 #  else
         // For ARM32:
         if (auxvHwCap & HWCAP_NEON)
@@ -134,14 +152,33 @@ static inline quint64 detectProcessorFeatures()
 #elif defined(Q_OS_DARWIN) && defined(Q_PROCESSOR_ARM)
     unsigned feature;
     size_t len = sizeof(feature);
-    if (sysctlbyname("hw.optional.neon", &feature, &len, nullptr, 0) == 0)
-        features |= feature ? CpuFeatureNEON : 0;
+    Q_UNUSED(len);
+#if defined(__ARM_NEON)
+    features |= CpuFeatureNEON;
+#else
+    #error "Misconfiguration, NEON should always be enabled on Apple hardware"
+#endif
+#if defined(__ARM_FEATURE_CRC32)
+    features |= CpuFeatureCRC32;
+#elif defined(Q_OS_MACOS)
+    #error "Misconfiguration, CRC32 should always be enabled on Apple desktop hardware"
+#else
     if (sysctlbyname("hw.optional.armv8_crc32", &feature, &len, nullptr, 0) == 0)
         features |= feature ? CpuFeatureCRC32 : 0;
-    if (sysctlbyname("hw.optional.arm.FEAT_AES", &feature, &len, nullptr, 0) == 0)
-        features |= feature ? CpuFeatureAES : 0;
+#endif
 #if defined(__ARM_FEATURE_CRYPTO)
     features |= CpuFeatureAES;
+#elif defined(Q_OS_MACOS)
+    #error "Misconfiguration, CRYPTO/AES should always be enabled on Apple desktop hardware"
+#else
+    if (sysctlbyname("hw.optional.arm.FEAT_AES", &feature, &len, nullptr, 0) == 0)
+        features |= feature ? CpuFeatureAES : 0;
+#endif
+#if defined(__ARM_FEATURE_SVE)
+    features |= CpuFeatureSVE;
+#else
+    if (sysctlbyname("hw.optional.arm.FEAT_SVE", &feature, &len, nullptr, 0) == 0)
+        features |= feature ? CpuFeatureSVE : 0;
 #endif
     return features;
 #elif defined(Q_OS_WIN) && defined(Q_PROCESSOR_ARM_64)
@@ -161,7 +198,44 @@ static inline quint64 detectProcessorFeatures()
 #if defined(__ARM_FEATURE_CRYPTO)
     features |= CpuFeatureAES;
 #endif
+#if defined(__ARM_FEATURE_SVE)
+    features |= CpuFeatureSVE;
+#endif
 
+    return features;
+}
+
+#elif defined(Q_PROCESSOR_LOONGARCH)
+static inline quint64 detectProcessorFeatures()
+{
+    quint64 features = 0;
+#  if QT_CONFIG(getauxval)
+    quint64 hwcap = getauxval(AT_HWCAP);
+
+    if (hwcap & HWCAP_LOONGARCH_LSX)
+        features |= CpuFeatureLSX;
+    if (hwcap & HWCAP_LOONGARCH_LASX)
+        features |= CpuFeatureLASX;
+#  else
+    enum LoongArchFeatures {
+        LOONGARCH_CFG2 = 0x2,
+        LOONGARCH_CFG2_LSX = (1 << 6),
+        LOONGARCH_CFG2_LASX = (1 << 7)
+    };
+
+    quint64 reg = 0;
+
+    __asm__ volatile(
+        "cpucfg %0, %1 \n\t"
+        : "+&r"(reg)
+        : "r"(LOONGARCH_CFG2)
+    );
+
+    if (reg & LOONGARCH_CFG2_LSX)
+        features |= CpuFeatureLSX;
+    if (reg & LOONGARCH_CFG2_LASX)
+        features |= CpuFeatureLASX;
+#  endif
     return features;
 }
 
@@ -178,7 +252,7 @@ static inline quint64 detectProcessorFeatures()
 # define X86_BASELINE   "no-sse"
 #endif
 
-#if defined(Q_CC_GNU)
+#if defined(Q_CC_GNU) || defined(Q_CC_CLANG)
 // lower the target for functions in this file
 #  undef QT_FUNCTION_TARGET_BASELINE
 #  define QT_FUNCTION_TARGET_BASELINE               __attribute__((target(X86_BASELINE)))
@@ -186,7 +260,7 @@ static inline quint64 detectProcessorFeatures()
     X86_BASELINE "," QT_FUNCTION_TARGET_STRING_RDRND
 #endif
 
-static bool checkRdrndWorks() noexcept;
+static bool checkRdrndWorks(quint64) noexcept;
 
 QT_FUNCTION_TARGET_BASELINE
 static int maxBasicCpuidSupported()
@@ -392,7 +466,7 @@ static quint64 detectProcessorFeatures()
             features &= ~req.cpu_features;
     }
 
-    if (features & CpuFeatureRDRND && !checkRdrndWorks())
+    if (features & CpuFeatureRDRND && !checkRdrndWorks(features))
         features &= ~(CpuFeatureRDRND | CpuFeatureRDSEED);
 
     return features;
@@ -704,7 +778,7 @@ out:
 }
 
 QT_FUNCTION_TARGET(BASELINE_RDRND) Q_DECL_COLD_FUNCTION
-static bool checkRdrndWorks() noexcept
+static bool checkRdrndWorks(quint64 features) noexcept
 {
     /*
      * Some AMD CPUs (e.g. AMD A4-6250J and AMD Ryzen 3000-series) have a
@@ -726,7 +800,12 @@ static bool checkRdrndWorks() noexcept
     if (_compilerCpuFeatures & CpuFeatureRDRND)
         return true;
 
-    unsigned *end = qt_random_rdrnd(testBuffer, testBuffer + TestBufferSize);
+    unsigned *end;
+    if (features & CpuFeatureRDSEED)
+        end = qt_random_rdseed(testBuffer, testBuffer + TestBufferSize);
+    else
+        end = qt_random_rdrnd(testBuffer, testBuffer + TestBufferSize);
+
     if (end < testBuffer + 3) {
         // Random generation didn't produce enough data for us to make a
         // determination whether it's working or not. Assume it isn't, but
@@ -764,7 +843,7 @@ QT_FUNCTION_TARGET(RDRND) qsizetype qRandomCpu(void *buffer, qsizetype count) no
     return ptr - reinterpret_cast<unsigned *>(buffer);
 }
 #elif defined(Q_PROCESSOR_X86) && !defined(Q_PROCESSOR_ARM)
-static bool checkRdrndWorks() noexcept { return false; }
+static bool checkRdrndWorks(quint64) noexcept { return false; }
 #endif // Q_PROCESSOR_X86 && RDRND
 
 #if QT_SUPPORTS_INIT_PRIORITY

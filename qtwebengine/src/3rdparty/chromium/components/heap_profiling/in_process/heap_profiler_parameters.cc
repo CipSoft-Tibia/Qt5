@@ -5,19 +5,19 @@
 #include "components/heap_profiling/in_process/heap_profiler_parameters.h"
 
 #include <string>
+#include <string_view>
 
+#include "base/check.h"
 #include "base/command_line.h"
 #include "base/feature_list.h"
 #include "base/json/json_reader.h"
 #include "base/json/json_value_converter.h"
 #include "base/metrics/field_trial_params.h"
-#include "base/strings/string_piece.h"
+#include "base/profiler/process_type.h"
 #include "base/time/time.h"
 #include "base/values.h"
 #include "build/build_config.h"
-#include "components/metrics/call_stacks/call_stack_profile_params.h"
 #include "components/variations/variations_switches.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 
 namespace heap_profiling {
 
@@ -121,6 +121,29 @@ BASE_FEATURE(kHeapProfilerReporting,
              "HeapProfilerReporting",
              base::FEATURE_ENABLED_BY_DEFAULT);
 
+BASE_FEATURE(kHeapProfilerCentralControl,
+             "HeapProfilerCentralControl",
+             base::FEATURE_ENABLED_BY_DEFAULT);
+
+const base::FeatureParam<int> kGpuSnapshotProbability{
+    &kHeapProfilerCentralControl, "gpu-prob-pct", 100};
+
+const base::FeatureParam<int> kNetworkSnapshotProbability{
+    &kHeapProfilerCentralControl, "network-prob-pct", 100};
+
+// Sample 10% of renderer processes by default, because last time this was
+// evaluated (2024-08) the 50th %ile of renderer process count
+// (Memory.RenderProcessHost.Count.All) ranged from 8 on Windows to 18 on Mac.
+// 10% is an easy default between 1/18 and 1/8.
+const base::FeatureParam<int> kRendererSnapshotProbability{
+    &kHeapProfilerCentralControl, "renderer-prob-pct", 10};
+
+// Sample 50% of utility processes by default, because last time this was
+// evaluated (2024-08) the profiler collected 1.8x as many snapshots on Mac and
+// 2.4x as many snapshots on Windows for each browser process snapshot.
+const base::FeatureParam<int> kUtilitySnapshotProbability{
+    &kHeapProfilerCentralControl, "utility-prob-pct", 50};
+
 // static
 void HeapProfilerParameters::RegisterJSONConverter(
     base::JSONValueConverter<HeapProfilerParameters>* converter) {
@@ -137,12 +160,12 @@ void HeapProfilerParameters::RegisterJSONConverter(
       &HeapProfilerParameters::collection_interval, &ConvertCollectionInterval);
 }
 
-bool HeapProfilerParameters::UpdateFromJSON(base::StringPiece json_string) {
+bool HeapProfilerParameters::UpdateFromJSON(std::string_view json_string) {
   if (json_string.empty())
     return true;
 
   base::JSONValueConverter<HeapProfilerParameters> converter;
-  absl::optional<base::Value> value =
+  std::optional<base::Value> value =
       base::JSONReader::Read(json_string, base::JSON_ALLOW_TRAILING_COMMAS |
                                               base::JSON_ALLOW_COMMENTS);
   if (value && converter.Convert(*value, this))
@@ -161,10 +184,58 @@ HeapProfilerParameters GetDefaultHeapProfilerParameters() {
 }
 
 HeapProfilerParameters GetHeapProfilerParametersForProcess(
-    metrics::CallStackProfileParams::Process process_type) {
-  using Process = metrics::CallStackProfileParams::Process;
+    base::ProfilerProcessType process_type) {
+  using Process = base::ProfilerProcessType;
 
   HeapProfilerParameters params = kDefaultHeapProfilerParameters;
+
+  // Apply per-process defaults.
+  switch (process_type) {
+    case Process::kBrowser:
+      params.is_supported = true;
+      break;
+    case Process::kNetworkService:
+      if (base::FeatureList::IsEnabled(kHeapProfilerCentralControl)) {
+        params.is_supported = true;
+      }
+      break;
+    case Process::kGpu:
+      if (base::FeatureList::IsEnabled(kHeapProfilerCentralControl)) {
+        params.is_supported = true;
+        // Use half the threshold used in the browser process, because last time
+        // it was validated the GPU process allocated a bit over half as much
+        // memory at the median.
+        params.sampling_rate_bytes = params.sampling_rate_bytes / 2;
+      }
+      break;
+    case Process::kRenderer:
+      if (base::FeatureList::IsEnabled(kHeapProfilerCentralControl)) {
+        params.is_supported = true;
+      }
+      break;
+    case Process::kUtility:
+      if (base::FeatureList::IsEnabled(kHeapProfilerCentralControl)) {
+        params.is_supported = true;
+        // Use 1/10th the threshold used in the browser process, because last
+        // time it was validated with the default sampling rate (2024-08) the
+        // sampler collected 6% to 11% as many samples per snapshot in the
+        // utility process, depending on platform.
+        params.sampling_rate_bytes = params.sampling_rate_bytes / 10;
+      }
+      break;
+    case Process::kUnknown:
+    default:
+      // Do nothing. Profiler hasn't been tested in these process types.
+      break;
+  }
+
+#if BUILDFLAG(IS_MAC)
+  // On Mac, child processes may not set the channel correctly
+  // (https://crbug.com/329286893) so the profiler must only be enabled in the
+  // browser process unless kHeapProfilerCentralControl is set.
+  CHECK(process_type == Process::kBrowser || !params.is_supported ||
+        base::FeatureList::IsEnabled(kHeapProfilerCentralControl));
+#endif
 
   if (base::CommandLine::ForCurrentProcess()->HasSwitch(
           variations::switches::kEnableBenchmarking) ||
@@ -172,9 +243,6 @@ HeapProfilerParameters GetHeapProfilerParametersForProcess(
     params.is_supported = false;
     return params;
   }
-
-  // By default only the browser process is supported.
-  params.is_supported = (process_type == Process::kBrowser);
 
   // Override with field trial parameters if any are set.
   if (!params.UpdateFromJSON(kDefaultParameters.Get())) {

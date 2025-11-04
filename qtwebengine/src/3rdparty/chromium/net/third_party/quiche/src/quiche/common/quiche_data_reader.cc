@@ -5,6 +5,7 @@
 #include "quiche/common/quiche_data_reader.h"
 
 #include <cstring>
+#include <string>
 
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
@@ -229,6 +230,13 @@ bool QuicheDataReader::ReadStringPieceVarInt62(absl::string_view* result) {
     return false;
   }
   return ReadStringPiece(result, result_length);
+}
+
+bool QuicheDataReader::ReadStringVarInt62(std::string& result) {
+  absl::string_view result_view;
+  bool success = ReadStringPieceVarInt62(&result_view);
+  result = std::string(result_view);
+  return success;
 }
 
 absl::string_view QuicheDataReader::ReadRemainingPayload() {

@@ -71,7 +71,7 @@
      * Key event with given key identifier.
      */
     static createKeyEvent(key) {
-      return new KeyboardEvent('keydown', {bubbles: true, cancelable: true, key: key});
+      return new KeyboardEvent('keydown', {bubbles: true, cancelable: true, key});
     }
   };
 
@@ -316,7 +316,7 @@
    * Tests that Recorder tab can be open.
    */
   TestSuite.prototype.testShowRecorderTab = function() {
-    this.showPanel('chrome_recorder')
+    this.showPanel('chrome-recorder')
         .then(() => {
           this.releaseControl();
         })
@@ -802,7 +802,7 @@
       this.releaseControl();
     });
 
-    Common.Settings.moduleSetting('activeKeybindSet').set('vsCode');
+    Common.Settings.moduleSetting('active-keybind-set').set('vsCode');
   };
 
   TestSuite.prototype.testDispatchKeyEventDoesNotCrash = function() {
@@ -942,7 +942,7 @@
 
     function step1() {
       testPreset(
-          MobileThrottling.networkPresets[2],
+          MobileThrottling.networkPresets[3],
           [
             'offline event: online = false', 'connection change event: type = none; downlinkMax = 0; effectiveType = 4g'
           ],
@@ -951,7 +951,7 @@
 
     function step2() {
       testPreset(
-          MobileThrottling.networkPresets[1],
+          MobileThrottling.networkPresets[2],
           [
             'online event: online = true',
             'connection change event: type = cellular; downlinkMax = 0.3814697265625; effectiveType = 2g'
@@ -961,8 +961,14 @@
 
     function step3() {
       testPreset(
+          MobileThrottling.networkPresets[1],
+          ['connection change event: type = cellular; downlinkMax = 1.373291015625; effectiveType = 3g'], step4);
+    }
+
+    function step4() {
+      testPreset(
           MobileThrottling.networkPresets[0],
-          ['connection change event: type = cellular; downlinkMax = 1.373291015625; effectiveType = 3g'],
+          ['connection change event: type = cellular; downlinkMax = 7.724761962890625; effectiveType = 4g'],
           test.releaseControl.bind(test));
     }
   };
@@ -989,7 +995,7 @@
     }
 
     const captureFilmStripSetting =
-        Common.Settings.Settings.instance().createSetting('timelineCaptureFilmStrip', false);
+        Common.Settings.Settings.instance().createSetting('timeline-capture-film-strip', false);
     captureFilmStripSetting.set(true);
     test.evaluateInConsole_(performActionsInPage.toString(), function() {});
     test.invokeAsyncWithTimeline_('performActionsInPage', onTimelineDone);

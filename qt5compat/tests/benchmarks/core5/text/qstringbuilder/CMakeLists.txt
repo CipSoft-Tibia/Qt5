@@ -13,10 +13,7 @@ qt_internal_add_benchmark(tst_bench_qstringbuilder
     LIBRARIES
         Qt::Core5Compat
         Qt::Test
-    COMPILE_OPTIONS
-        -g
 )
 
 #### Keys ignored in scope 1:.:.:qstringbuilder.pro:<TRUE>:
-# QMAKE_CFLAGS = "-g"
 # TEMPLATE = "app"

@@ -11,7 +11,7 @@
 #include "common_cert_errors.h"
 #include "test_helpers.h"
 
-namespace bssl {
+BSSL_NAMESPACE_BEGIN
 namespace {
 
 ::testing::AssertionResult LoadTestData(const char *token,
@@ -58,8 +58,7 @@ namespace {
 }
 
 ::testing::AssertionResult IsPermittedCert(
-    const NameConstraints *name_constraints,
-    const der::Input &subject_rdn_sequence,
+    const NameConstraints *name_constraints, der::Input subject_rdn_sequence,
     const GeneralNames *subject_alt_names) {
   CertErrors errors;
   name_constraints->IsPermittedCert(subject_rdn_sequence, subject_alt_names,
@@ -1902,4 +1901,4 @@ TEST_P(ParseNameConstraints, IsPermittedCertSubjectIpAddresses) {
                               nullptr /* subject_alt_names */));
 }
 
-}  // namespace bssl
+BSSL_NAMESPACE_END

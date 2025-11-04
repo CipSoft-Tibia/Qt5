@@ -7,6 +7,7 @@
 #include <iterator>
 #include <map>
 #include <memory>
+#include <optional>
 #include <vector>
 
 #include "include/v8-callbacks.h"
@@ -631,9 +632,6 @@ class ELF {
     V8_TARGET_ARCH_PPC64 && V8_TARGET_LITTLE_ENDIAN
     const uint8_t ident[16] = {0x7F, 'E', 'L', 'F', 2, 1, 1, 0,
                                0,    0,   0,   0,   0, 0, 0, 0};
-#elif V8_TARGET_ARCH_PPC64 && V8_TARGET_BIG_ENDIAN && V8_OS_LINUX
-    const uint8_t ident[16] = {0x7F, 'E', 'L', 'F', 2, 2, 1, 0,
-                               0,    0,   0,   0,   0, 0, 0, 0};
 #elif V8_TARGET_ARCH_S390X
     const uint8_t ident[16] = {0x7F, 'E', 'L', 'F', 2, 2, 1, 3,
                                0,    0,   0,   0,   0, 0, 0, 0};
@@ -940,7 +938,7 @@ class CodeDescription {
     return !shared_info_.is_null() && IsScript(shared_info_->script());
   }
 
-  Tagged<Script> script() { return Script::cast(shared_info_->script()); }
+  Tagged<Script> script() { return Cast<Script>(shared_info_->script()); }
 
   bool IsLineInfoAvailable() { return lineinfo_ != nullptr; }
 
@@ -960,7 +958,7 @@ class CodeDescription {
 
   std::unique_ptr<char[]> GetFilename() {
     if (!shared_info_.is_null() && IsString(script()->name())) {
-      return String::cast(script()->name())->ToCString();
+      return Cast<String>(script()->name())->ToCString();
     } else {
       std::unique_ptr<char[]> result(new char[1]);
       result[0] = 0;
@@ -1916,7 +1914,7 @@ static void AddUnwindInfo(CodeDescription* desc) {
 
 static base::LazyMutex mutex = LAZY_MUTEX_INITIALIZER;
 
-static base::Optional<std::pair<CodeMap::iterator, CodeMap::iterator>>
+static std::optional<std::pair<CodeMap::iterator, CodeMap::iterator>>
 GetOverlappingRegions(CodeMap* map, const base::AddressRegion region) {
   DCHECK_LT(region.begin(), region.end());
 
@@ -2053,7 +2051,7 @@ void EventHandler(const v8::JitCodeEvent* event) {
       // It's called UnboundScript in the API but it's a SharedFunctionInfo.
       Tagged<SharedFunctionInfo> shared =
           event->script.IsEmpty() ? Tagged<SharedFunctionInfo>()
-                                  : *Utils::OpenHandle(*event->script);
+                                  : *Utils::OpenDirectHandle(*event->script);
       Isolate* isolate = reinterpret_cast<Isolate*>(event->isolate);
       bool is_function = false;
       // TODO(zhin): See if we can use event->code_type to determine

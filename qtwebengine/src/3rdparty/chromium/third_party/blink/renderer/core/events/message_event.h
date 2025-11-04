@@ -42,6 +42,7 @@
 #include "third_party/blink/renderer/core/fileapi/blob.h"
 #include "third_party/blink/renderer/core/messaging/message_port.h"
 #include "third_party/blink/renderer/core/typed_arrays/dom_array_buffer.h"
+#include "third_party/blink/renderer/platform/bindings/v8_external_memory_accounter.h"
 #include "third_party/blink/renderer/platform/bindings/v8_private_property.h"
 #include "third_party/blink/renderer/platform/wtf/allocator/allocator.h"
 
@@ -54,6 +55,11 @@ class CORE_EXPORT MessageEvent final : public Event {
   DEFINE_WRAPPERTYPEINFO();
 
  public:
+  enum MessageOriginKind {
+    kMessageIsSameOrigin,
+    kMessageIsCrossOrigin,
+  };
+
   static MessageEvent* Create() { return MakeGarbageCollected<MessageEvent>(); }
   static MessageEvent* Create(MessagePortArray* ports,
                               const String& origin = String(),
@@ -65,29 +71,31 @@ class CORE_EXPORT MessageEvent final : public Event {
   static MessageEvent* Create(MessagePortArray* ports,
                               scoped_refptr<SerializedScriptValue> data,
                               const String& origin = String(),
+                              MessageOriginKind message_origin_kind = kMessageIsSameOrigin,
                               const String& last_event_id = String(),
                               EventTarget* source = nullptr) {
     return MakeGarbageCollected<MessageEvent>(
-        std::move(data), origin, last_event_id, source, ports, nullptr);
+        std::move(data), origin, message_origin_kind, last_event_id, source, ports, nullptr);
   }
   static MessageEvent* Create(MessagePortArray* ports,
                               scoped_refptr<SerializedScriptValue> data,
                               UserActivation* user_activation) {
     return MakeGarbageCollected<MessageEvent>(
-        std::move(data), String(), String(), nullptr, ports, user_activation);
+        std::move(data), String(), kMessageIsSameOrigin, String(), nullptr, ports, user_activation);
   }
   static MessageEvent* Create(
       Vector<MessagePortChannel> channels,
       scoped_refptr<SerializedScriptValue> data,
       const String& origin = String(),
+      MessageOriginKind message_origin_kind = kMessageIsSameOrigin,
       const String& last_event_id = String(),
       EventTarget* source = nullptr,
       UserActivation* user_activation = nullptr,
       mojom::blink::DelegatedCapability delegated_capability =
           mojom::blink::DelegatedCapability::kNone) {
     return MakeGarbageCollected<MessageEvent>(
-        std::move(data), origin, last_event_id, source, std::move(channels),
-        user_activation, delegated_capability);
+        std::move(data), origin, message_origin_kind, last_event_id, source,
+        std::move(channels), user_activation, delegated_capability);
   }
   static MessageEvent* CreateError(const String& origin = String(),
                                    EventTarget* source = nullptr) {
@@ -116,12 +124,14 @@ class CORE_EXPORT MessageEvent final : public Event {
                MessagePortArray*);
   MessageEvent(scoped_refptr<SerializedScriptValue> data,
                const String& origin,
+               MessageOriginKind message_origin_kind,
                const String& last_event_id,
                EventTarget* source,
                MessagePortArray*,
                UserActivation* user_activation);
   MessageEvent(scoped_refptr<SerializedScriptValue> data,
                const String& origin,
+               MessageOriginKind message_origin_kind,
                const String& last_event_id,
                EventTarget* source,
                Vector<MessagePortChannel>,
@@ -147,6 +157,7 @@ class CORE_EXPORT MessageEvent final : public Event {
                         bool cancelable,
                         scoped_refptr<SerializedScriptValue> data,
                         const String& origin,
+                        MessageOriginKind message_origin_kind,
                         const String& last_event_id,
                         EventTarget* source,
                         MessagePortArray*,
@@ -164,6 +175,7 @@ class CORE_EXPORT MessageEvent final : public Event {
   ScriptValue data(ScriptState*);
   bool IsDataDirty() const { return is_data_dirty_; }
   const String& origin() const { return origin_; }
+  const String& originForBindings();
   const String& lastEventId() const { return last_event_id_; }
   EventTarget* source() const { return source_.Get(); }
   MessagePortArray ports();
@@ -172,6 +184,8 @@ class CORE_EXPORT MessageEvent final : public Event {
   mojom::blink::DelegatedCapability delegatedCapability() const {
     return delegated_capability_;
   }
+  uint64_t GetTraceId() const { return trace_id_; }
+  void SetTraceId(uint64_t trace_id) { trace_id_ = trace_id; }
 
   Vector<MessagePortChannel> ReleaseChannels() { return std::move(channels_); }
 
@@ -220,13 +234,14 @@ class CORE_EXPORT MessageEvent final : public Event {
 
   size_t SizeOfExternalMemoryInBytes();
 
-  void RegisterAmountOfExternallyAllocatedMemory();
-
-  void UnregisterAmountOfExternallyAllocatedMemory();
-
   DataType data_type_;
   WorldSafeV8Reference<v8::Value> data_as_v8_value_;
   Member<UnpackedSerializedScriptValue> data_as_serialized_script_value_;
+  // Most data are, but in this particular case this refers to data coming
+  // from a cross-origin source being accessed without caller having previously
+  // accessed the origin property.
+  bool data_is_from_untrusted_source_ = true;
+  V8ExternalMemoryAccounter serialized_data_memory_accounter_;
   String data_as_string_;
   Member<Blob> data_as_blob_;
   Member<DOMArrayBuffer> data_as_array_buffer_;
@@ -242,11 +257,11 @@ class CORE_EXPORT MessageEvent final : public Event {
   Vector<MessagePortChannel> channels_;
   Member<UserActivation> user_activation_;
   mojom::blink::DelegatedCapability delegated_capability_;
-  size_t amount_of_external_memory_ = 0;
   // For serialized messages across process this attribute contains the
   // information of whether the actual original SerializedScriptValue was locked
   // to the agent cluster.
   bool locked_to_agent_cluster_ = false;
+  uint64_t trace_id_;
 };
 
 }  // namespace blink

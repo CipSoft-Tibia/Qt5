@@ -42,7 +42,7 @@
 
             Model {
                 source: "#Sphere"
-                materials: [ DefaultMaterial { } ]
+                materials: [ PrincipledMaterial { } ]
             }
 
             AxisHelper {
@@ -56,22 +56,28 @@
 */
 
 /*! \qmlproperty color AxisHelper::gridColor
-    Specifies the color of the grid. The default value is \c{Qt.rgba(0.8, 0.8, 0.8, 1)}.
+    \default Qt.rgba(0.8, 0.8, 0.8, 1)
+    Specifies the color of the grid.
 */
 /*! \qmlproperty real AxisHelper::gridOpacity
-    Specifies the opacity of the grid. The default value is 0.5.
+    \default 0.5
+    Specifies the opacity of the grid.
 */
 /*! \qmlproperty bool AxisHelper::enableXZGrid
-    Enables the grid on XZ plane. The default value is true.
+    /default true
+    Enables the grid on XZ plane.
 */
 /*! \qmlproperty bool AxisHelper::enableXYGrid
-    Enables the grid on XY plane. The default value is false.
+    \default false
+    Enables the grid on XY plane.
 */
 /*! \qmlproperty bool AxisHelper::enableYZGrid
-    Enables the grid on YZ plane. The default value is false.
+    \default false
+    Enables the grid on YZ plane.
 */
 /*! \qmlproperty bool AxisHelper::enableAxisLines
-    Enables showing the axis lines. The default value is true.
+    \default true
+    Enables showing the axis lines.
 */
 
 /*!
@@ -126,52 +132,67 @@
     Specifies the node to control. This is typically a Camera object.
 */
 /*! \qmlproperty real WasdController::speed
+    \default 1
     Specifies the speed of navigation.
 */
 /*! \qmlproperty real WasdController::shiftSpeed
+    \default 3
     Specifies the speed multiplier that is active when the shift key is pressed.
 */
 /*! \qmlproperty real WasdController::forwardSpeed
+    \default 5
     Specifies the speed of navigation when the forward key is pressed.
 */
 /*! \qmlproperty real WasdController::backSpeed
+    \default 5
     Specifies the speed of navigation when the back key is pressed.
 */
 /*! \qmlproperty real WasdController::rightSpeed
+    \default 5
     Specifies the speed of navigation when the right key is pressed.
 */
 /*! \qmlproperty real WasdController::leftSpeed
+    \default 5
     Specifies the speed of navigation when the left key is pressed.
 */
 /*! \qmlproperty real WasdController::upSpeed
+    \default 5
     Specifies the speed of navigation when the up key is pressed.
 */
 /*! \qmlproperty real WasdController::downSpeed
+    \default 5
     Specifies the speed of navigation when the down key is pressed.
 */
 /*! \qmlproperty real WasdController::xSpeed
+    \default 0.1
     Specifies the speed of navigation when the mouse is moved along the X axis.
 */
 /*! \qmlproperty real WasdController::ySpeed
+    \default 0.1
     Specifies the speed of navigation when the mouse is moved along the Y axis.
 */
 /*! \qmlproperty bool WasdController::xInvert
-    Inverts the x-axis controls. The default value is false.
+    \default false
+    Inverts the x-axis controls.
 */
 /*! \qmlproperty bool WasdController::yInvert
-    Inverts the y-axis controls. The default value is true.
+    \default true
+    Inverts the y-axis controls.
 */
 /*! \qmlproperty bool WasdController::mouseEnabled
-    Enables mouse controls. The default value is true.
+    \default true
+    Enables mouse controls.
 */
 /*! \qmlproperty bool WasdController::keysEnabled
-    Enables key controls. The default value is true.
+    \default true
+    Enables key controls.
 */
 /*! \qmlproperty bool WasdController::inputsNeedProcessing
     This property is true when there are inputs needing processing.
     \readonly
 */
 /*! \qmlproperty enumeration WasdController::acceptedButtons
+    \default Qt.LeftButton
     Specifies the buttons accepted by the controller.
     \sa DragHandler, MultiPointHandler
 */
@@ -218,6 +239,7 @@
 */
 
 /*! \qmlproperty bool DebugView::resourceDetailsVisible
+    \default false
 
     Indicates whether the additional fields with detailed render pass, mesh,
     texture, and other resource statistics should be shown by default.
@@ -279,23 +301,43 @@
     be a child of the \l origin node.
 */
 /*! \qmlproperty real OrbitCameraController::xSpeed
+    \default 0.1
     Specifies the speed of navigation when the mouse is moved along the X axis.
 */
 /*! \qmlproperty real OrbitCameraController::ySpeed
+    \default 0.1
     Specifies the speed of navigation when the mouse is moved along the Y axis.
 */
 /*! \qmlproperty bool OrbitCameraController::xInvert
-    Inverts the x-axis controls. The default value is false.
+    \default false
+    Inverts the x-axis controls.
 */
 /*! \qmlproperty bool OrbitCameraController::yInvert
-    Inverts the y-axis controls. The default value is true.
+    \default true
+    Inverts the y-axis controls.
 */
 /*! \qmlproperty bool OrbitCameraController::mouseEnabled
-    Enables mouse controls. The default value is true.
+    \default true
+    Enables mouse controls.
 */
 /*! \qmlproperty bool OrbitCameraController::panEnabled
-    Enables panning controls. The default value is true.
+    \default true
+    Enables panning controls.
 */
+/*! \qmlproperty bool OrbitCameraController::automaticClipping
+    \since 6.9
+    \default true
+
+    Enables automatic updating of the \l{Camera}{camera}'s
+    \l{PerspectiveCamera::}{clipNear} and l\{PerspectiveCamera::}{clipFar}
+    properties based on the camera's z position.
+*/
+/*! \qmlproperty Qt::MouseButtons OrbitCameraController::acceptedButtons
+    \since 6.9
+    \default Qt.LeftButton
+    Specifies the mouse button that controls the camera.
+*/
+
 
 /*!
     \qmltype LodManager
@@ -552,9 +594,10 @@
 
     \default 100
 */
-/*! \qmlproperty real ExtendedSceneEnvironment::depthOfFieldBlurAmount Sets the
-    amount of blur applied to objects outside the focus range. Sensible values are
-    in the range \b 0 to \b 10. A value of 0 applies no additional blur.
+/*! \qmlproperty real ExtendedSceneEnvironment::depthOfFieldBlurAmount
+    Sets the amount of blur applied to objects outside the focus range.
+    Sensible values are in the range \b 0 to \b 10. A value of 0 applies
+    no additional blur.
 
     \default 4.0
 
@@ -570,6 +613,7 @@
 // Tonemapper
 /*!
     \qmlproperty enumeration ExtendedSceneEnvironment::tonemapMode
+    \default SceneEnvironment.TonemapModeLinear
 
     This property defines how colors are tonemapped before rendering. All
     rendering in Qt Quick 3D is performed in linear color space and can in

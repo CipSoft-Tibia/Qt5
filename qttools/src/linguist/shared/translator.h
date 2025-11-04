@@ -149,8 +149,10 @@ public:
     const TranslatorMessage &constMessage(int i) const { return m_messages.at(i); }
     void dump() const;
 
+    void appendDependencies(const QStringList &dependencies);
     void setDependencies(const QStringList &dependencies) { m_dependencies = dependencies; }
     QStringList dependencies() const { return m_dependencies; }
+    void satisfyDependency(const QString &file, const QString &format);
 
     // additional file format specific data
     // note: use '<fileformat>:' as prefix for file format specific members,
@@ -179,10 +181,8 @@ public:
     static void registerFileFormat(const FileFormat &format);
     static QList<FileFormat> &registeredFileFormats();
 
-    enum {
-        TextVariantSeparator = 0x2762, // some weird character nobody ever heard of :-D
-        BinaryVariantSeparator = 0x9c // unicode "STRING TERMINATOR"
-    };
+    static constexpr QChar TextVariantSeparator{0x2762}; // some weird character nobody ever heard of :-D
+    static constexpr QChar BinaryVariantSeparator{0x9c}; // unicode "STRING TERMINATOR"
 
 private:
     void insert(int idx, const TranslatorMessage &msg);
@@ -210,7 +210,6 @@ private:
     ExtraData m_extra;
 
     mutable bool m_indexOk;
-    mutable QHash<QString, int> m_ctxCmtIdx;
     mutable QHash<QString, int> m_idMsgIdx;
     mutable QHash<TMMKey, int> m_msgIdx;
 };

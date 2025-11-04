@@ -54,7 +54,8 @@ class MockWebMediaPlayer : public WebMediaPlayer {
   void SetVolume(double) override {}
   void SetLatencyHint(double) override {}
   void SetPreservesPitch(bool) override {}
-  void SetWasPlayedWithUserActivation(bool) override {}
+  void SetWasPlayedWithUserActivationAndHighMediaEngagement(bool) override {}
+  void SetShouldPauseWhenFrameIsHidden(bool) override {}
   void OnRequestPictureInPicture() override {}
   WebTimeRanges Buffered() const override { return WebTimeRanges(); }
   WebTimeRanges Seekable() const override { return WebTimeRanges(); }
@@ -104,8 +105,8 @@ class MockWebMediaPlayer : public WebMediaPlayer {
                             : media::VideoFrame::CreateTransparentFrame(size_);
   }
 
-  absl::optional<media::VideoFrame::ID> CurrentFrameId() const override {
-    return absl::nullopt;
+  std::optional<media::VideoFrame::ID> CurrentFrameId() const override {
+    return std::nullopt;
   }
 
   bool IsOpaque() const override { return is_video_opaque_; }

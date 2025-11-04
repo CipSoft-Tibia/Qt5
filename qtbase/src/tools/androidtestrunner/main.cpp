@@ -4,6 +4,7 @@
 
 #include <QtCore/QCoreApplication>
 #include <QtCore/QDeadlineTimer>
+#include <QtCore/qdebug.h>
 #include <QtCore/QDir>
 #include <QtCore/QHash>
 #include <QtCore/QProcess>
@@ -241,7 +242,7 @@ static void printHelp()
                     "\n"
                     "    --show-logcat: Print Logcat output to stdout. If an ANR occurs during\n"
                     "       the test run, logs from the system_server process are included.\n"
-                    "       This argument is implied if a test fails.\n"
+                    "       This argument is implied if a test crashes.\n"
                     "\n"
                     "    --ndk-stack: Path to ndk-stack tool that symbolizes crash stacktraces.\n"
                     "       By default, ANDROID_NDK_ROOT env var is used to deduce the tool path.\n"
@@ -729,16 +730,17 @@ void analyseLogcat(const QString &timeStamp, int *exitCode)
         }
     }
 
-    // If we have a failure, attempt to print both logcat and the crash buffer which
+    // If we have a crash, attempt to print both logcat and the crash buffer which
     // includes the crash stacktrace that is not included in the default logcat.
-    if (g_options.showLogcatOutput || *exitCode != 0) {
+    const bool testCrashed = *exitCode == EXIT_ERROR && !g_testInfo.isTestRunnerInterrupted.load();
+    if (g_options.showLogcatOutput || testCrashed) {
         qDebug() << "********** logcat dump **********";
         qDebug().noquote() << testLogcat.join(u'\n').trimmed();
         qDebug() << "********** End logcat dump **********";
-    }
 
-    if (!crashLogcat.isEmpty() && *exitCode != 0)
-        printLogcatCrash(crashLogcat);
+        if (!crashLogcat.isEmpty())
+            printLogcatCrash(crashLogcat);
+    }
 }
 
 static QString getCurrentTimeString()
@@ -830,8 +832,10 @@ int main(int argc, char *argv[])
         return EXIT_ERROR;
     }
 
-    if (!execCommand(g_options.makeCommand, nullptr, true)) {
-        qCritical("The build command \"%s\" failed", qPrintable(g_options.makeCommand));
+    QByteArray buildOutput;
+    if (!execCommand(g_options.makeCommand, &buildOutput, true)) {
+        qCritical("The APK build command \"%s\" failed\n\n%s",
+            qPrintable(g_options.makeCommand), buildOutput.constData());
         return EXIT_ERROR;
     }
 
@@ -857,6 +861,10 @@ int main(int argc, char *argv[])
     g_testInfo.userId = userId();
 
     QString manifest = g_options.buildPath + "/AndroidManifest.xml"_L1;
+    if (!QFile::exists(manifest)) {
+        qCritical("Unable to find '%s'.", qPrintable(manifest));
+        return EXIT_ERROR;
+    }
     g_options.package = packageNameFromAndroidManifest(manifest);
     if (g_options.activity.isEmpty())
         g_options.activity = activityFromAndroidManifest(manifest);

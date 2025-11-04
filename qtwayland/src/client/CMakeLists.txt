@@ -26,11 +26,12 @@ qt_internal_add_module(WaylandClient
         inputdeviceintegration/qwaylandinputdeviceintegrationplugin.cpp inputdeviceintegration/qwaylandinputdeviceintegrationplugin_p.h
         qtwaylandclientglobal.h qtwaylandclientglobal_p.h
         qwaylandabstractdecoration.cpp qwaylandabstractdecoration_p.h
+        qwaylandappmenu.cpp qwaylandappmenu_p.h
         qwaylandbuffer.cpp qwaylandbuffer_p.h
+        qwaylanddatacontrolv1.cpp qwaylanddatacontrolv1_p.h
         qwaylanddecorationfactory.cpp qwaylanddecorationfactory_p.h
         qwaylanddecorationplugin.cpp qwaylanddecorationplugin_p.h
         qwaylanddisplay.cpp qwaylanddisplay_p.h
-        qwaylandextendedsurface.cpp qwaylandextendedsurface_p.h
         qwaylandfractionalscale.cpp qwaylandfractionalscale_p.h
         qwaylandinputcontext.cpp qwaylandinputcontext_p.h
         qwaylandtextinputv1.cpp qwaylandtextinputv1_p.h
@@ -92,10 +93,13 @@ qt_internal_add_module(WaylandClient
         ../3rdparty/protocol/fractional-scale
         ../3rdparty/protocol/viewporter
         ../3rdparty/protocol/xdg-shell
+        ../3rdparty/protocol/wlr-data-control
 )
 
 qt6_generate_wayland_protocol_client_sources(WaylandClient
+    PRIVATE_CODE
     FILES
+        ${CMAKE_CURRENT_SOURCE_DIR}/../3rdparty/protocol/appmenu/appmenu.xml
         ${CMAKE_CURRENT_SOURCE_DIR}/../3rdparty/protocol/cursor-shape/cursor-shape-v1.xml
         ${CMAKE_CURRENT_SOURCE_DIR}/../3rdparty/protocol/pointer-gestures/pointer-gestures-unstable-v1.xml
         ${CMAKE_CURRENT_SOURCE_DIR}/../3rdparty/protocol/tablet/tablet-unstable-v2.xml
@@ -107,12 +111,13 @@ qt6_generate_wayland_protocol_client_sources(WaylandClient
         ${CMAKE_CURRENT_SOURCE_DIR}/../3rdparty/protocol/xdg-output/xdg-output-unstable-v1.xml
         ${CMAKE_CURRENT_SOURCE_DIR}/../3rdparty/protocol/fractional-scale/fractional-scale-v1.xml
         ${CMAKE_CURRENT_SOURCE_DIR}/../3rdparty/protocol/viewporter/viewporter.xml
+        ${CMAKE_CURRENT_SOURCE_DIR}/../3rdparty/protocol/wlr-data-control/wlr-data-control-unstable-v1.xml
         ${CMAKE_CURRENT_SOURCE_DIR}/../3rdparty/protocol/xdg-shell/xdg-shell.xml
+        ${CMAKE_CURRENT_SOURCE_DIR}/../3rdparty/protocol/xdg-system-bell/xdg-system-bell-v1.xml
         ${CMAKE_CURRENT_SOURCE_DIR}/../3rdparty/protocol/xdg-toplevel-drag/xdg-toplevel-drag-v1.xml
         ${CMAKE_CURRENT_SOURCE_DIR}/../extensions/qt-key-unstable-v1.xml
         ${CMAKE_CURRENT_SOURCE_DIR}/../extensions/qt-text-input-method-unstable-v1.xml
         ${CMAKE_CURRENT_SOURCE_DIR}/../extensions/qt-windowmanager.xml
-        ${CMAKE_CURRENT_SOURCE_DIR}/../extensions/surface-extension.xml
         ${CMAKE_CURRENT_SOURCE_DIR}/../extensions/touch-extension.xml
         ${CMAKE_CURRENT_SOURCE_DIR}/hardwareintegration/../../extensions/hardware-integration.xml
         ${CMAKE_CURRENT_SOURCE_DIR}/hardwareintegration/../../extensions/server-buffer-extension.xml
@@ -181,4 +186,4 @@ qt_internal_add_docs(WaylandClient
 )
 
 qt_record_extra_qt_main_tools_package_dependency(WaylandClient WaylandScannerTools "${PROJECT_VERSION}")
-qt_record_extra_qt_package_dependency(WaylandClient WaylandGlobalPrivate "${PROJECT_VERSION}")
+qt_internal_register_target_dependencies(WaylandClient PUBLIC Qt6::WaylandGlobalPrivate)

@@ -30,11 +30,6 @@ using namespace Qt::StringLiterals;
 
 namespace QtWebEngineCore {
 
-// Extra permission types that don't exist on the Chromium side.
-enum class ExtraPermissionType {
-    POINTER_LOCK = 39, // TODO this exists in Chromium 126, remove after we merge
-};
-
 static QWebEnginePermission::PermissionType toQt(blink::PermissionType type)
 {
     switch (type) {
@@ -55,18 +50,18 @@ static QWebEnginePermission::PermissionType toQt(blink::PermissionType type)
         return QWebEnginePermission::PermissionType::Notifications;
     case blink::PermissionType::LOCAL_FONTS:
         return QWebEnginePermission::PermissionType::LocalFontsAccess;
-    case (blink::PermissionType)ExtraPermissionType::POINTER_LOCK:
+    case blink::PermissionType::POINTER_LOCK:
         return QWebEnginePermission::PermissionType::MouseLock;
     case blink::PermissionType::ACCESSIBILITY_EVENTS:
     case blink::PermissionType::CAMERA_PAN_TILT_ZOOM:
     case blink::PermissionType::WINDOW_MANAGEMENT:
+    case blink::PermissionType::BACKGROUND_SYNC:
     case blink::PermissionType::NUM:
         return QWebEnginePermission::PermissionType::Unsupported;
     case blink::PermissionType::MIDI_SYSEX:
     case blink::PermissionType::PROTECTED_MEDIA_IDENTIFIER:
     case blink::PermissionType::MIDI:
     case blink::PermissionType::DURABLE_STORAGE:
-    case blink::PermissionType::BACKGROUND_SYNC:
     case blink::PermissionType::SENSORS:
     case blink::PermissionType::PAYMENT_HANDLER:
     case blink::PermissionType::BACKGROUND_FETCH:
@@ -82,6 +77,11 @@ static QWebEnginePermission::PermissionType toQt(blink::PermissionType type)
     case blink::PermissionType::CAPTURED_SURFACE_CONTROL:
     case blink::PermissionType::SMART_CARD:
     case blink::PermissionType::WEB_PRINTING:
+    case blink::PermissionType::SPEAKER_SELECTION:
+    case blink::PermissionType::KEYBOARD_LOCK:
+    case blink::PermissionType::AUTOMATIC_FULLSCREEN:
+    case blink::PermissionType::HAND_TRACKING:
+    case blink::PermissionType::WEB_APP_INSTALLATION:
         LOG(INFO) << "Unexpected unsupported Blink permission type: " << static_cast<int>(type);
         break;
     }
@@ -107,7 +107,7 @@ static blink::PermissionType toBlink(QWebEnginePermission::PermissionType permis
     case QWebEnginePermission::PermissionType::LocalFontsAccess:
         return blink::PermissionType::LOCAL_FONTS;
     case QWebEnginePermission::PermissionType::MouseLock:
-        return (blink::PermissionType)ExtraPermissionType::POINTER_LOCK;
+        return blink::PermissionType::POINTER_LOCK;
     case QWebEnginePermission::PermissionType::MediaAudioVideoCapture:
         LOG(INFO) << "Unexpected unsupported WebEngine permission type: " << static_cast<int>(permissionType);
         Q_FALLTHROUGH();
@@ -115,8 +115,7 @@ static blink::PermissionType toBlink(QWebEnginePermission::PermissionType permis
         return blink::PermissionType::NUM;
     }
 
-    Q_UNREACHABLE();
-    return blink::PermissionType::NUM;
+    Q_UNREACHABLE_RETURN(blink::PermissionType::NUM);
 }
 
 static QWebEnginePermission::State toQt(blink::mojom::PermissionStatus state)
@@ -167,8 +166,7 @@ std::string permissionTypeString(QWebEnginePermission::PermissionType permission
     case QWebEnginePermission::PermissionType::LocalFontsAccess:
         return "LocalFontsAccess";
     default:
-        Q_UNREACHABLE();
-        return nullptr;
+        Q_UNREACHABLE_RETURN(nullptr);
     }
 }
 
@@ -281,9 +279,38 @@ void PermissionManagerQt::setPermission(
         }
     }
 
-    for (const auto &it : m_subscribers) {
-        if (it.second.origin == origin && it.second.type == permissionType)
-            it.second.callback.Run(blinkStatus);
+    // Notify subscribers
+    if (subscriptions()) {
+        std::vector<base::OnceClosure> callbacks;
+        callbacks.reserve(subscriptions()->size());
+        for (content::PermissionController::SubscriptionsMap::iterator iter(subscriptions());
+             !iter.IsAtEnd(); iter.Advance()) {
+            content::PermissionStatusSubscription *subscription = iter.GetCurrentValue();
+            if (!subscription)
+                continue;
+            content::RenderFrameHost *targetRfh = content::RenderFrameHost::FromID(
+                    subscription->render_process_id, subscription->render_frame_id);
+
+            if (subscription->embedding_origin != gorigin)
+                continue;
+            if (subscription->permission != toBlink(permissionType))
+                continue;
+            if ((!QWebEnginePermission::isPersistent(permissionType) || !m_persistence)
+                    && targetRfh && targetRfh != rfh)
+                continue;
+
+            // Behavior in callbacks may differ depending on the denial reason. Until we have
+            // a good reason to not do so, we just pass UNSPECIFIED to get the default behavior everywhere.
+            content::PermissionResult new_value(blinkStatus, content::PermissionStatusSource::UNSPECIFIED);
+            if (subscription->permission_result && subscription->permission_result->status == new_value.status)
+                continue;
+            subscription->permission_result = new_value;
+
+            callbacks.push_back(base::BindOnce(subscription->callback, blinkStatus,
+                                               /*ignore_status_override=*/false));
+        }
+        for (auto &callback : callbacks)
+            std::move(callback).Run();
     }
 
     if (state == QWebEnginePermission::State::Ask)
@@ -334,7 +361,7 @@ QWebEnginePermission::State PermissionManagerQt::getPermissionState(const QUrl &
 {
     if (rfh) {
         // Ignore the origin parameter
-        return toQt(GetPermissionStatusForCurrentDocument(toBlink(permissionType), rfh));
+        return toQt(GetPermissionStatusForCurrentDocument(toBlink(permissionType), rfh, false));
     }
 
     return toQt(GetPermissionStatus(toBlink(permissionType), toGurl(origin), GURL()));
@@ -369,7 +396,7 @@ QList<QWebEnginePermission> PermissionManagerQt::listPermissions(const QUrl &ori
         auto *prefDict = pref->GetValue()->GetIfDict();
         Q_ASSERT(prefDict);
 
-        for (const auto &entry : *prefDict) {
+        for (auto &&entry : *prefDict) {
             if (!originSpec.empty() && entry.first != originSpec)
                 continue;
 
@@ -510,7 +537,7 @@ blink::mojom::PermissionStatus PermissionManagerQt::GetPermissionStatus(
 
 blink::mojom::PermissionStatus PermissionManagerQt::GetPermissionStatusForCurrentDocument(
         blink::PermissionType permission,
-        content::RenderFrameHost *render_frame_host)
+        content::RenderFrameHost *render_frame_host, bool)
 {
     Q_ASSERT(render_frame_host);
 
@@ -594,25 +621,6 @@ void PermissionManagerQt::ResetPermission(
 
     ScopedDictPrefUpdate updater(m_prefService.get(), permissionTypeString(permissionType));
     updater.Get().Remove(requesting_origin.spec());
-}
-
-content::PermissionControllerDelegate::SubscriptionId
-PermissionManagerQt::SubscribeToPermissionStatusChange(
-        blink::PermissionType permission, content::RenderProcessHost * /*render_process_host*/,
-        content::RenderFrameHost * /* render_frame_host */, const GURL &requesting_origin,
-        base::RepeatingCallback<void(blink::mojom::PermissionStatus)> callback)
-{
-    auto subscriber_id = subscription_id_generator_.GenerateNextId();
-    m_subscribers.insert( { subscriber_id,
-                            Subscription { toQt(permission), toQt(requesting_origin), std::move(callback) } });
-    return subscriber_id;
-}
-
-void PermissionManagerQt::UnsubscribeFromPermissionStatusChange(
-        content::PermissionControllerDelegate::SubscriptionId subscription_id)
-{
-    if (!m_subscribers.erase(subscription_id))
-        LOG(WARNING) << "PermissionManagerQt::UnsubscribePermissionStatusChange called on unknown subscription id" << subscription_id;
 }
 
 blink::mojom::PermissionStatus PermissionManagerQt::getTransientPermissionStatus(blink::PermissionType permission,

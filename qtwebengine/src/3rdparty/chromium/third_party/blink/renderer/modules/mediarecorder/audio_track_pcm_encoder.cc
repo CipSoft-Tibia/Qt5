@@ -4,15 +4,19 @@
 
 #include "third_party/blink/renderer/modules/mediarecorder/audio_track_pcm_encoder.h"
 
+#include <optional>
+
 #include "base/logging.h"
 #include "media/base/audio_sample_types.h"
 #include "media/base/audio_timestamp_helper.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 
 namespace blink {
 
-AudioTrackPcmEncoder::AudioTrackPcmEncoder(OnEncodedAudioCB on_encoded_audio_cb)
-    : AudioTrackEncoder(std::move(on_encoded_audio_cb)) {}
+AudioTrackPcmEncoder::AudioTrackPcmEncoder(
+    OnEncodedAudioCB on_encoded_audio_cb,
+    OnEncodedAudioErrorCB on_encoded_audio_error_cb)
+    : AudioTrackEncoder(std::move(on_encoded_audio_cb),
+                        std::move(on_encoded_audio_error_cb)) {}
 
 void AudioTrackPcmEncoder::OnSetFormat(
     const media::AudioParameters& input_params) {
@@ -21,8 +25,13 @@ void AudioTrackPcmEncoder::OnSetFormat(
 
   if (!input_params.IsValid()) {
     DLOG(ERROR) << "Invalid params: " << input_params.AsHumanReadableString();
+    if (!on_encoded_audio_error_cb_.is_null()) {
+      std::move(on_encoded_audio_error_cb_)
+          .Run(media::EncoderStatus::Codes::kEncoderUnsupportedConfig);
+    }
     return;
   }
+
   input_params_ = input_params;
 }
 
@@ -47,7 +56,7 @@ void AudioTrackPcmEncoder::EncodeAudio(
       capture_time - media::AudioTimestampHelper::FramesToTime(
                          input_bus->frames(), input_params_.sample_rate());
   on_encoded_audio_cb_.Run(input_params_, std::move(encoded_data_string),
-                           absl::nullopt, capture_time_of_first_sample);
+                           std::nullopt, capture_time_of_first_sample);
 }
 
 }  // namespace blink

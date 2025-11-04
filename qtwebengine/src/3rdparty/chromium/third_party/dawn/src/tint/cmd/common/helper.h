@@ -57,7 +57,7 @@ struct ProgramInfo {
 };
 
 /// Reporter callback for internal tint errors
-[[noreturn]] void TintInternalCompilerErrorReporter(const InternalCompilerError& err);
+void TintInternalCompilerErrorReporter(const InternalCompilerError& err);
 
 /// PrintWGSL writes the WGSL of the program to the provided ostream, if the
 /// WGSL writer is enabled, otherwise it does nothing.
@@ -82,6 +82,8 @@ struct LoadProgramOptions {
     bool use_ir = false;
     tint::spirv::reader::Options spirv_reader_options;
 #endif
+    /// The text printer to use for output
+    StyledTextPrinter* printer = nullptr;
 };
 
 /// Loads the source and program information for the given file.
@@ -130,6 +132,49 @@ std::string InterpolationTypeToString(tint::inspector::InterpolationType type);
 /// @return the text name
 std::string OverrideTypeToString(tint::inspector::Override::Type type);
 
+/// Writes the given `buffer` into the file named as `output_file` using the
+/// given `mode`.  If `output_file` is empty or "-", writes to standard
+/// output. If any error occurs, returns false and outputs error message to
+/// standard error. The ContainerT type must have data() and size() methods,
+/// like `std::string` and `std::vector` do.
+/// @returns true on success
+template <typename ContainerT>
+bool WriteFile(const std::string& output_file, const std::string mode, const ContainerT& buffer) {
+    const bool use_stdout = output_file.empty() || output_file == "-";
+    FILE* file = stdout;
+
+    if (!use_stdout) {
+#if defined(_MSC_VER)
+        fopen_s(&file, output_file.c_str(), mode.c_str());
+#else
+        file = fopen(output_file.c_str(), mode.c_str());
+#endif
+        if (!file) {
+            std::cerr << "Could not open file " << output_file << " for writing\n";
+            return false;
+        }
+    }
+
+    size_t written =
+        fwrite(buffer.data(), sizeof(typename ContainerT::value_type), buffer.size(), file);
+    if (buffer.size() != written) {
+        if (use_stdout) {
+            std::cerr << "Could not write all output to standard output\n";
+        } else {
+            std::cerr << "Could not write to file " << output_file << "\n";
+            fclose(file);
+        }
+        return false;
+    }
+    if (use_stdout) {
+        fflush(file);
+    } else {
+        fclose(file);
+    }
+
+    return true;
+}
+
 /// Copies the content from the file named `input_file` to `buffer`,
 /// assuming each element in the file is of type `T`.  If any error occurs,
 /// writes error messages to the standard error stream and returns false.
@@ -138,7 +183,7 @@ std::string OverrideTypeToString(tint::inspector::Override::Type type);
 template <typename T>
 bool ReadFile(const std::string& input_file, std::vector<T>* buffer) {
     if (!buffer) {
-        std::cerr << "The buffer pointer was null" << std::endl;
+        std::cerr << "The buffer pointer was null\n";
         return false;
     }
 
@@ -149,7 +194,7 @@ bool ReadFile(const std::string& input_file, std::vector<T>* buffer) {
     file = fopen(input_file.c_str(), "rb");
 #endif
     if (!file) {
-        std::cerr << "Failed to open " << input_file << std::endl;
+        std::cerr << "Failed to open " << input_file << "\n";
         return false;
     }
 
@@ -158,8 +203,7 @@ bool ReadFile(const std::string& input_file, std::vector<T>* buffer) {
     if (0 != (file_size % sizeof(T))) {
         std::cerr << "File " << input_file
                   << " does not contain an integral number of objects: " << file_size
-                  << " bytes in the file, require " << sizeof(T) << " bytes per object"
-                  << std::endl;
+                  << " bytes in the file, require " << sizeof(T) << " bytes per object\n";
         fclose(file);
         return false;
     }
@@ -171,7 +215,7 @@ bool ReadFile(const std::string& input_file, std::vector<T>* buffer) {
     size_t bytes_read = fread(buffer->data(), 1, file_size, file);
     fclose(file);
     if (bytes_read != file_size) {
-        std::cerr << "Failed to read " << input_file << std::endl;
+        std::cerr << "Failed to read " << input_file << "\n";
         return false;
     }
 

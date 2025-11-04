@@ -16,7 +16,7 @@
 #include "perfetto/tracing/track_event_legacy.h"
 
 // Trace category prefixes used in tests.
-PERFETTO_DEFINE_TEST_CATEGORY_PREFIXES("v8-cat", "cat", "v8.Test2");
+PERFETTO_DEFINE_TEST_CATEGORY_PREFIXES("v8-cat", "cat", "v8.Test2", "test");
 
 // List of categories used by built-in V8 trace events.
 // clang-format off
@@ -33,6 +33,8 @@ PERFETTO_DEFINE_CATEGORIES_IN_NAMESPACE_WITH_ATTRS(
                               TRACE_DISABLED_BY_DEFAULT("v8.gc")),
     perfetto::Category(TRACE_DISABLED_BY_DEFAULT("cppgc")),
     perfetto::Category(TRACE_DISABLED_BY_DEFAULT("devtools.timeline")),
+    perfetto::Category(TRACE_DISABLED_BY_DEFAULT("devtools.v8-source-rundown")),
+    perfetto::Category(TRACE_DISABLED_BY_DEFAULT("devtools.v8-source-rundown-sources")),
     perfetto::Category(TRACE_DISABLED_BY_DEFAULT("v8")),
     perfetto::Category(TRACE_DISABLED_BY_DEFAULT("v8.compile")),
     perfetto::Category(TRACE_DISABLED_BY_DEFAULT("v8.cpu_profiler")),

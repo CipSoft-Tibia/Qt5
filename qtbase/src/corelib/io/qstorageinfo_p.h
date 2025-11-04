@@ -1,5 +1,6 @@
 // Copyright (C) 2014 Ivan Komissarov <ABBAPOH@gmail.com>
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QSTORAGEINFO_P_H
 #define QSTORAGEINFO_P_H
@@ -27,7 +28,7 @@
 
 QT_BEGIN_NAMESPACE
 
-inline Q_LOGGING_CATEGORY(lcStorageInfo, "qt.core.qstorageinfo", QtWarningMsg)
+Q_DECLARE_LOGGING_CATEGORY(lcStorageInfo)
 
 class QStorageInfoPrivate : public QSharedData
 {

@@ -7,10 +7,10 @@
 
 #include <cstdint>
 #include <memory>
+#include <string_view>
 #include <vector>
 
 #include "base/functional/callback.h"
-#include "base/strings/string_piece.h"
 #include "base/time/time.h"
 #include "components/segmentation_platform/internal/database/ukm_types.h"
 #include "services/metrics/public/cpp/ukm_source_id.h"
@@ -65,11 +65,15 @@ class UkmDatabase {
   // to clear all the URLs quickly.
   virtual void RemoveUrls(const std::vector<GURL>& urls, bool all_urls) = 0;
 
+  // Called once when a new UMA metric is to be recorded in the database.
+  virtual void AddUmaMetric(const std::string& profile_id,
+                            const UmaMetricEntry& row) = 0;
+
   // Struct responsible for storing a sql query and its bind values.
   struct CustomSqlQuery {
     CustomSqlQuery();
     CustomSqlQuery(CustomSqlQuery&&);
-    CustomSqlQuery(const base::StringPiece& query,
+    CustomSqlQuery(std::string_view query,
                    const std::vector<processing::ProcessedValue>& bind_values);
     ~CustomSqlQuery();
 
@@ -88,7 +92,7 @@ class UkmDatabase {
 
   // Called to query data from the ukm database. The result is returned in the
   // |callback| as a mapping of indexed vectors of processing::ProcessedValue.
-  virtual void RunReadonlyQueries(QueryList&& queries,
+  virtual void RunReadOnlyQueries(QueryList&& queries,
                                   QueryCallback callback) = 0;
 
   // Removes metrics older than or equal to the given `time` from the database.

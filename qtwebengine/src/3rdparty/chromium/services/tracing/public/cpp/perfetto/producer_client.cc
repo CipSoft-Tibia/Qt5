@@ -198,7 +198,8 @@ void ProducerClient::StartDataSource(
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
 
   // TODO(oysteine): Support concurrent tracing sessions.
-  for (auto* data_source : PerfettoTracedProcess::Get()->data_sources()) {
+  for (PerfettoTracedProcess::DataSourceBase* data_source :
+       PerfettoTracedProcess::Get()->data_sources()) {
     if (data_source->name() == data_source_config.name()) {
       {
         base::AutoLock lock(lock_);
@@ -241,7 +242,8 @@ void ProducerClient::StopDataSource(uint64_t id,
                                     StopDataSourceCallback callback) {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
 
-  for (auto* data_source : PerfettoTracedProcess::Get()->data_sources()) {
+  for (PerfettoTracedProcess::DataSourceBase* data_source :
+       PerfettoTracedProcess::Get()->data_sources()) {
     if (data_source->data_source_id() == id &&
         data_source->producer() == this) {
       data_source->StopTracing(base::BindOnce(
@@ -274,7 +276,8 @@ void ProducerClient::Flush(uint64_t flush_request_id,
                                        data_source_ids.size()};
 
   // N^2, optimize once there's more than a couple of possible data sources.
-  for (auto* data_source : PerfettoTracedProcess::Get()->data_sources()) {
+  for (PerfettoTracedProcess::DataSourceBase* data_source :
+       PerfettoTracedProcess::Get()->data_sources()) {
     if (base::Contains(data_source_ids, data_source->data_source_id())) {
       data_source->Flush(base::BindRepeating(
           [](base::WeakPtr<ProducerClient> weak_ptr, uint64_t id) {
@@ -288,7 +291,8 @@ void ProducerClient::Flush(uint64_t flush_request_id,
 }
 
 void ProducerClient::ClearIncrementalState() {
-  for (auto* data_source : PerfettoTracedProcess::Get()->data_sources()) {
+  for (PerfettoTracedProcess::DataSourceBase* data_source :
+       PerfettoTracedProcess::Get()->data_sources()) {
     data_source->ClearIncrementalState();
   }
 }
@@ -332,52 +336,52 @@ void ProducerClient::UnregisterTraceWriter(uint32_t writer_id) {
 }
 
 perfetto::SharedMemory* ProducerClient::shared_memory() const {
-  NOTREACHED();
+  NOTREACHED_IN_MIGRATION();
   return nullptr;
 }
 
 void ProducerClient::NotifyFlushComplete(perfetto::FlushRequestID id) {
-  NOTREACHED();
+  NOTREACHED_IN_MIGRATION();
 }
 
 void ProducerClient::RegisterDataSource(const perfetto::DataSourceDescriptor&) {
-  NOTREACHED();
+  NOTREACHED_IN_MIGRATION();
 }
 
 void ProducerClient::UpdateDataSource(const perfetto::DataSourceDescriptor&) {
-  NOTREACHED();
+  NOTREACHED_IN_MIGRATION();
 }
 
 void ProducerClient::UnregisterDataSource(const std::string& name) {
-  NOTREACHED();
+  NOTREACHED_IN_MIGRATION();
 }
 
 void ProducerClient::NotifyDataSourceStopped(
     perfetto::DataSourceInstanceID id) {
-  NOTREACHED();
+  NOTREACHED_IN_MIGRATION();
 }
 
 void ProducerClient::NotifyDataSourceStarted(
     perfetto::DataSourceInstanceID id) {
-  NOTREACHED();
+  NOTREACHED_IN_MIGRATION();
 }
 
 void ProducerClient::ActivateTriggers(const std::vector<std::string>&) {
-  NOTREACHED();
+  NOTREACHED_IN_MIGRATION();
 }
 
 size_t ProducerClient::shared_buffer_page_size_kb() const {
-  NOTREACHED();
+  NOTREACHED_IN_MIGRATION();
   return 0;
 }
 
 bool ProducerClient::IsShmemProvidedByProducer() const {
-  NOTREACHED();
+  NOTREACHED_IN_MIGRATION();
   return false;
 }
 
 void ProducerClient::Sync(std::function<void()>) {
-  NOTREACHED();
+  NOTREACHED_IN_MIGRATION();
 }
 
 void ProducerClient::BindClientAndHostPipesForTesting(
@@ -409,8 +413,8 @@ bool ProducerClient::InitSharedMemoryIfNeeded() {
   shared_memory_ =
       std::make_unique<ChromeBaseSharedMemory>(GetPreferredSmbSizeBytes());
 
-  // TODO(crbug/1057614): We see shared memory region creation fail on windows
-  // in the field. Investigate why this can happen. Gather statistics on
+  // TODO(crbug.com/40677516): We see shared memory region creation fail on
+  // windows in the field. Investigate why this can happen. Gather statistics on
   // failure rates.
   bool valid = shared_memory_->region().IsValid();
   base::UmaHistogramBoolean(kSharedBufferIsValidMetricName, valid);
@@ -460,7 +464,8 @@ void ProducerClient::BindClientAndHostPipesOnSequence(
   // the MetadataSource first to ensure that it's also ready. Once the
   // Perfetto Observer interface is ready, we can remove this.
   const auto& data_sources = PerfettoTracedProcess::Get()->data_sources();
-  for (const auto* data_source : base::Reversed(data_sources)) {
+  for (const PerfettoTracedProcess::DataSourceBase* data_source :
+       base::Reversed(data_sources)) {
     NewDataSourceAdded(data_source);
   }
 }

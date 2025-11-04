@@ -5,7 +5,6 @@
 #include "extensions/renderer/service_worker_data.h"
 
 #include "extensions/common/extension.h"
-#include "extensions/common/extension_messages.h"
 #include "extensions/common/permissions/permissions_data.h"
 #include "extensions/renderer/dispatcher.h"
 #include "extensions/renderer/extension_interaction_provider.h"
@@ -15,6 +14,7 @@
 #include "extensions/renderer/worker_thread_dispatcher.h"
 #include "extensions/renderer/worker_thread_util.h"
 #include "third_party/blink/public/common/associated_interfaces/associated_interface_registry.h"
+#include "third_party/blink/public/common/tokens/tokens.h"
 
 namespace extensions {
 
@@ -22,31 +22,24 @@ ServiceWorkerData::ServiceWorkerData(
     blink::WebServiceWorkerContextProxy* proxy,
     int64_t service_worker_version_id,
     const std::optional<base::UnguessableToken>& activation_sequence,
+    const blink::ServiceWorkerToken& service_worker_token,
     ScriptContext* context,
     std::unique_ptr<NativeExtensionBindingsSystem> bindings_system)
     : proxy_(proxy),
       service_worker_version_id_(service_worker_version_id),
       activation_sequence_(std::move(activation_sequence)),
+      service_worker_token_(service_worker_token),
       context_(context),
       v8_schema_registry_(new V8SchemaRegistry),
       bindings_system_(std::move(bindings_system)) {
-#if !BUILDFLAG(ENABLE_EXTENSIONS_LEGACY_IPC)
-  // `bindings_system_` is null if `ExtensionAPIEnabledForServiceWorkerScript`
-  // returns false. That means we aren't exposing any bindings to the service
-  // worker, but we will have ServiceWorkerData for it so that the
-  // WakeEventPage and logging can communicate back to the browser via the
-  // `mojom::RendererHost`.
-  if (bindings_system_) {
-    proxy_->GetAssociatedInterfaceRegistry().AddInterface<mojom::ServiceWorker>(
-        base::BindRepeating(&ServiceWorkerData::OnServiceWorkerRequest,
-                            weak_ptr_factory_.GetWeakPtr()));
-  }
-#endif
+  CHECK(bindings_system_);
+  proxy_->GetAssociatedInterfaceRegistry().AddInterface<mojom::ServiceWorker>(
+      base::BindRepeating(&ServiceWorkerData::OnServiceWorkerRequest,
+                          weak_ptr_factory_.GetWeakPtr()));
 }
 
 ServiceWorkerData::~ServiceWorkerData() = default;
 
-#if !BUILDFLAG(ENABLE_EXTENSIONS_LEGACY_IPC)
 void ServiceWorkerData::OnServiceWorkerRequest(
     mojo::PendingAssociatedReceiver<mojom::ServiceWorker> receiver) {
   CHECK(bindings_system_);
@@ -99,7 +92,6 @@ mojom::RendererAutomationRegistry* ServiceWorkerData::GetAutomationRegistry() {
   }
   return renderer_automation_registry_remote_.get();
 }
-#endif
 
 mojom::RendererHost* ServiceWorkerData::GetRendererHost() {
   // We allow access to mojom::RendererHost without a `bindings_system_`.
@@ -115,18 +107,13 @@ void ServiceWorkerData::Init() {
   if (!bindings_system_) {
     return;
   }
-#if BUILDFLAG(ENABLE_EXTENSIONS_LEGACY_IPC)
-  WorkerThreadDispatcher::Get()->DidInitializeContext(
-      service_worker_version_id_);
-#else
   const int thread_id = content::WorkerThread::GetCurrentId();
   GetServiceWorkerHost()->DidInitializeServiceWorkerContext(
       context_->GetExtensionID(), service_worker_version_id_, thread_id,
+      service_worker_token_,
       event_dispatcher_receiver_.BindNewEndpointAndPassRemote());
-#endif
 }
 
-#if !BUILDFLAG(ENABLE_EXTENSIONS_LEGACY_IPC)
 void ServiceWorkerData::DispatchEvent(mojom::DispatchEventParamsPtr params,
                                       base::Value::List event_args,
                                       DispatchEventCallback callback) {
@@ -168,7 +155,5 @@ void ServiceWorkerData::DispatchOnConnect(
                           // Render frames do not matter.
                           nullptr, std::move(callback));
 }
-
-#endif
 
 }  // namespace extensions

@@ -39,9 +39,9 @@
 #include "quiche/quic/test_tools/quic_stream_peer.h"
 #include "quiche/quic/test_tools/quic_test_utils.h"
 #include "quiche/quic/test_tools/simple_session_cache.h"
-#include "quiche/spdy/core/http2_header_block.h"
+#include "quiche/common/http/http_header_block.h"
 
-using spdy::Http2HeaderBlock;
+using quiche::HttpHeaderBlock;
 using ::testing::_;
 using ::testing::AnyNumber;
 using ::testing::AtLeast;
@@ -211,6 +211,11 @@ INSTANTIATE_TEST_SUITE_P(Tests, QuicSpdyClientSessionTest,
                          ::testing::ValuesIn(AllSupportedVersions()),
                          ParamNameFormatter);
 
+TEST_P(QuicSpdyClientSessionTest, GetSSLConfig) {
+  EXPECT_EQ(session_->QuicSpdyClientSessionBase::GetSSLConfig(),
+            QuicSSLConfig());
+}
+
 TEST_P(QuicSpdyClientSessionTest, CryptoConnect) { CompleteCryptoHandshake(); }
 
 TEST_P(QuicSpdyClientSessionTest, NoEncryptionAfterInitialEncryption) {
@@ -351,7 +356,6 @@ TEST_P(QuicSpdyClientSessionTest, ResetAndTrailers) {
   // ways that a peer can signal the end of a stream (the others being RST,
   // stream data + FIN).
   QuicHeaderList trailers;
-  trailers.OnHeaderBlockStart();
   trailers.OnHeader(kFinalOffsetHeaderKey, "0");
   trailers.OnHeaderBlockEnd(0, 0);
   session_->OnStreamHeaderList(stream_id, /*fin=*/false, 0, trailers);
@@ -396,7 +400,6 @@ TEST_P(QuicSpdyClientSessionTest, ReceivedMalformedTrailersAfterSendingRst) {
   // The stream receives trailers with final byte offset, but the header value
   // is non-numeric and should be treated as malformed.
   QuicHeaderList trailers;
-  trailers.OnHeaderBlockStart();
   trailers.OnHeader(kFinalOffsetHeaderKey, "invalid non-numeric value");
   trailers.OnHeaderBlockEnd(0, 0);
 
@@ -409,7 +412,6 @@ TEST_P(QuicSpdyClientSessionTest, OnStreamHeaderListWithStaticStream) {
   CompleteCryptoHandshake();
 
   QuicHeaderList trailers;
-  trailers.OnHeaderBlockStart();
   trailers.OnHeader(kFinalOffsetHeaderKey, "0");
   trailers.OnHeaderBlockEnd(0, 0);
 

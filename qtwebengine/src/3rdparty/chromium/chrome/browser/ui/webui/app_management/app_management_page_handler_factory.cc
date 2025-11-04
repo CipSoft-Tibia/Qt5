@@ -9,7 +9,7 @@
 
 #include "base/feature_list.h"
 #include "base/functional/bind.h"
-#include "chrome/browser/apps/app_service/app_icon/app_icon_source.h"
+#include "chrome/browser/apps/app_service/app_icon_source.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/grit/branded_strings.h"
 #include "chrome/grit/browser_resources.h"
@@ -23,6 +23,12 @@
 #include "mojo/public/cpp/bindings/receiver.h"
 #include "ui/base/resource/resource_bundle.h"
 #include "ui/webui/resources/cr_components/app_management/app_management.mojom.h"
+
+#if BUILDFLAG(IS_CHROMEOS_ASH)
+#include "chrome/browser/ui/webui/app_management/app_management_page_handler_chromeos.h"
+#else
+#include "chrome/browser/ui/webui/app_management/web_app_settings_page_handler.h"
+#endif
 
 AppManagementPageHandlerFactory::AppManagementPageHandlerFactory(
     Profile* profile,
@@ -43,6 +49,11 @@ void AppManagementPageHandlerFactory::CreatePageHandler(
     mojo::PendingReceiver<app_management::mojom::PageHandler> receiver) {
   DCHECK(page);
 
-  page_handler_ = std::make_unique<AppManagementPageHandlerBase>(
+#if BUILDFLAG(IS_CHROMEOS_ASH)
+  page_handler_ = std::make_unique<AppManagementPageHandlerChromeOs>(
       std::move(receiver), std::move(page), profile_, *delegate_);
+#else
+  page_handler_ = std::make_unique<WebAppSettingsPageHandler>(
+      std::move(receiver), std::move(page), profile_, *delegate_);
+#endif
 }

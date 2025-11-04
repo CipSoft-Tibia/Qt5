@@ -1,16 +1,17 @@
 // Copyright (C) 2022 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-3.0-only
+
 #include "qaudiolistener.h"
-#include "qaudioengine_p.h"
-#include "resonance_audio.h"
-#include <qaudiosink.h>
-#include <qurl.h>
-#include <qdebug.h>
-#include <qaudiodecoder.h>
+
+#include <QtSpatialAudio/private/qaudioengine_p.h>
+#include <QtMultimedia/qaudiosink.h>
+#include <QtCore/private/qobject_p.h>
+
+#include <resonance_audio.h>
 
 QT_BEGIN_NAMESPACE
 
-class QAudioListenerPrivate
+class QAudioListenerPrivate : public QObjectPrivate
 {
 public:
     QAudioEngine *engine = nullptr;
@@ -34,8 +35,7 @@ public:
 /*!
     Creates a listener for the spatial audio engine for \a engine.
  */
-QAudioListener::QAudioListener(QAudioEngine *engine)
-    : d(new QAudioListenerPrivate)
+QAudioListener::QAudioListener(QAudioEngine *engine) : QObject(*new QAudioListenerPrivate)
 {
     setEngine(engine);
 }
@@ -47,7 +47,6 @@ QAudioListener::~QAudioListener()
 {
     // Unregister this listener from the engine
     setEngine(nullptr);
-    delete d;
 }
 
 /*!
@@ -58,6 +57,8 @@ QAudioListener::~QAudioListener()
  */
 void QAudioListener::setPosition(QVector3D pos)
 {
+    Q_D(QAudioListener);
+
     auto *ep = QAudioEnginePrivate::get(d->engine);
     if (!ep)
         return;
@@ -77,10 +78,12 @@ void QAudioListener::setPosition(QVector3D pos)
  */
 QVector3D QAudioListener::position() const
 {
+    Q_D(const QAudioListener);
     auto *ep = QAudioEnginePrivate::get(d->engine);
     if (!ep)
         return QVector3D();
-    return d->pos/ep->distanceScale;
+
+    return d->pos / ep->distanceScale;
 }
 
 /*!
@@ -88,6 +91,7 @@ QVector3D QAudioListener::position() const
  */
 void QAudioListener::setRotation(const QQuaternion &q)
 {
+    Q_D(QAudioListener);
     d->rotation = q;
     auto *ep = QAudioEnginePrivate::get(d->engine);
     if (ep && ep->resonanceAudio->api)
@@ -99,6 +103,7 @@ void QAudioListener::setRotation(const QQuaternion &q)
  */
 QQuaternion QAudioListener::rotation() const
 {
+    Q_D(const QAudioListener);
     return d->rotation;
 }
 
@@ -107,6 +112,7 @@ QQuaternion QAudioListener::rotation() const
  */
 void QAudioListener::setEngine(QAudioEngine *engine)
 {
+    Q_D(QAudioListener);
     if (d->engine) {
         auto *ed = QAudioEnginePrivate::get(d->engine);
         ed->listener = nullptr;
@@ -128,6 +134,7 @@ void QAudioListener::setEngine(QAudioEngine *engine)
  */
 QAudioEngine *QAudioListener::engine() const
 {
+    Q_D(const QAudioListener);
     return d->engine;
 }
 

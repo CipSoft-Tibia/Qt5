@@ -116,13 +116,19 @@ export class Slider extends LitElement {
   ];
 
   /** @nocollapse */
+  static override shadowRootOptions = {
+    ...LitElement.shadowRootOptions,
+    delegatesFocus: true
+  };
+
+  /** @nocollapse */
   static override properties = {
     ariaLabel: {type: String, reflect: true, attribute: 'aria-label'},
+    ariaValueText: {type: String, reflect: true, attribute: 'aria-valuetext'},
     value: {type: Number, reflect: true},
     disabled: {type: Boolean},
     withTickMarks: {type: Boolean},
     withLabel: {type: Boolean},
-    valueLabel: {type: String, state: true},
     min: {type: Number},
     max: {type: Number},
     step: {type: Number},
@@ -137,8 +143,6 @@ export class Slider extends LitElement {
   /** @export */
   withLabel: boolean;
   /** @export */
-  valueLabel?: string;
-  /** @export */
   min: number;
   /** @export */
   max: number;
@@ -149,6 +153,7 @@ export class Slider extends LitElement {
   constructor() {
     super();
     this.ariaLabel = '';
+    this.ariaValueText = '';
     this.value = 0;
     this.disabled = false;
     this.withTickMarks = false;
@@ -162,7 +167,7 @@ export class Slider extends LitElement {
     // Using unicode non-breaking space U-00A0, charCode 160. This is to add
     // padding on either side of the label text.
     const space = `  `;
-    const valueLabel = `${space}${this.valueLabel ?? this.value}${space}`;
+    const valueLabel = `${space}${this.ariaValueText || this.value}${space}`;
     const disabledTemplate = this.disabled ? html`
       <div slot="track">
         <div class="lower"></div>
@@ -205,7 +210,6 @@ export class Slider extends LitElement {
     if (sliderValue !== undefined) {
       this.value = sliderValue;
     }
-    this.valueLabel = String(sliderValue);
   }
 }
 

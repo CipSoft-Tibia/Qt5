@@ -21,7 +21,7 @@ class CGdiPrinterDriver final : public CGdiDeviceDriver {
  private:
   // CGdiPrinterDriver:
   int GetDeviceCaps(int caps_id) const override;
-  bool SetDIBits(const RetainPtr<const CFX_DIBBase>& pBitmap,
+  bool SetDIBits(RetainPtr<const CFX_DIBBase> bitmap,
                  uint32_t color,
                  const FX_RECT& src_rect,
                  int left,
@@ -36,13 +36,12 @@ class CGdiPrinterDriver final : public CGdiDeviceDriver {
                      const FX_RECT* pClipRect,
                      const FXDIB_ResampleOptions& options,
                      BlendMode blend_type) override;
-  bool StartDIBits(RetainPtr<const CFX_DIBBase> bitmap,
-                   float alpha,
-                   uint32_t color,
-                   const CFX_Matrix& matrix,
-                   const FXDIB_ResampleOptions& options,
-                   std::unique_ptr<CFX_ImageRenderer>* handle,
-                   BlendMode blend_type) override;
+  StartResult StartDIBits(RetainPtr<const CFX_DIBBase> bitmap,
+                          float alpha,
+                          uint32_t color,
+                          const CFX_Matrix& matrix,
+                          const FXDIB_ResampleOptions& options,
+                          BlendMode blend_type) override;
   bool DrawDeviceText(pdfium::span<const TextCharPos> pCharPos,
                       CFX_Font* pFont,
                       const CFX_Matrix& mtObject2Device,

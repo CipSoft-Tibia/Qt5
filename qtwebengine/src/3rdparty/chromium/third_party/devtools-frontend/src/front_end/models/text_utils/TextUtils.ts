@@ -30,33 +30,18 @@
 
 import * as Platform from '../../core/platform/platform.js';
 
+import {ContentData, type ContentDataOrError} from './ContentData.js';
 import {SearchMatch} from './ContentProvider.js';
-import {Text} from './Text.js';
+import {type Text} from './Text.js';
+
+const KEY_VALUE_FILTER_REGEXP = /(?:^|\s)(\-)?([\w\-]+):([^\s]+)/;
+const REGEXP_FILTER_REGEXP = /(?:^|\s)(\-)?\/([^\/\\]+(\\.[^\/]*)*)\//;
+const TEXT_FILTER_REGEXP = /(?:^|\s)(\-)?([^\s]+)/;
+const SPACE_CHAR_REGEXP = /\s/;
 
 export const Utils = {
-  // TODO(crbug.com/1172300) Ignored during the jsdoc to ts migration
-  // eslint-disable-next-line @typescript-eslint/naming-convention
-  get _keyValueFilterRegex(): RegExp {
-    return /(?:^|\s)(\-)?([\w\-]+):([^\s]+)/;
-  },
-  // TODO(crbug.com/1172300) Ignored during the jsdoc to ts migration
-  // eslint-disable-next-line @typescript-eslint/naming-convention
-  get _regexFilterRegex(): RegExp {
-    return /(?:^|\s)(\-)?\/([^\/\\]+(\\.[^\/]*)*)\//;
-  },
-  // TODO(crbug.com/1172300) Ignored during the jsdoc to ts migration
-  // eslint-disable-next-line @typescript-eslint/naming-convention
-  get _textFilterRegex(): RegExp {
-    return /(?:^|\s)(\-)?([^\s]+)/;
-  },
-  // TODO(crbug.com/1172300) Ignored during the jsdoc to ts migration
-  // eslint-disable-next-line @typescript-eslint/naming-convention
-  get _SpaceCharRegex(): RegExp {
-    return /\s/;
-  },
-
   isSpaceChar: function(char: string): boolean {
-    return Utils._SpaceCharRegex.test(char);
+    return SPACE_CHAR_REGEXP.test(char);
   },
 
   lineIndent: function(line: string): string {
@@ -110,7 +95,7 @@ export const Utils = {
         matches.push({
           value: match,
           position: startIndex + result.index,
-          regexIndex: regexIndex,
+          regexIndex,
           captureGroups: result.slice(1),
         });
         currentIndex = result.index + match.length;
@@ -134,8 +119,8 @@ export class FilterParser {
   }
 
   parse(query: string): ParsedFilter[] {
-    const splitFilters = Utils.splitStringByRegexes(
-        query, [Utils._keyValueFilterRegex, Utils._regexFilterRegex, Utils._textFilterRegex]);
+    const splitFilters =
+        Utils.splitStringByRegexes(query, [KEY_VALUE_FILTER_REGEXP, REGEXP_FILTER_REGEXP, TEXT_FILTER_REGEXP]);
     const parsedFilters: ParsedFilter[] = [];
     for (const {regexIndex, captureGroups} of splitFilters) {
       if (regexIndex === -1) {
@@ -356,14 +341,27 @@ export const isMinified = function(text: string): boolean {
 };
 
 /**
+ * Small wrapper around {@link performSearchInContent} to reduce boilerplate when searching
+ * in {@link ContentDataOrError}.
+ *
+ * @returns empty search matches if `contentData` is an error or not text content.
+ */
+export const performSearchInContentData = function(
+    contentData: ContentDataOrError, query: string, caseSensitive: boolean, isRegex: boolean): SearchMatch[] {
+  if (ContentData.isError(contentData) || !contentData.isTextContent) {
+    return [];
+  }
+  return performSearchInContent(contentData.textObj, query, caseSensitive, isRegex);
+};
+
+/**
  * @returns One {@link SearchMatch} per match. Multiple matches on the same line each
  * result in their own `SearchMatchExact` instance.
  */
 export const performSearchInContent = function(
-    content: string, query: string, caseSensitive: boolean, isRegex: boolean): SearchMatch[] {
+    text: Text, query: string, caseSensitive: boolean, isRegex: boolean): SearchMatch[] {
   const regex = Platform.StringUtilities.createSearchRegex(query, caseSensitive, isRegex);
 
-  const text = new Text(content);
   const result = [];
   for (let i = 0; i < text.lineCount(); ++i) {
     const lineContent = text.lineAt(i);

@@ -40,7 +40,15 @@ class CORE_EXPORT InlineItem {
     kOutOfFlowPositioned,
     kInitialLetterBox,
     kListMarker,
-    kBidiControl
+    kBidiControl,
+    // k*RubyColumn is produced only if RubyLineBreakable flag is enabled.
+    // They help to pair ruby-base items and ruby-text items in LineBreaker.
+    kOpenRubyColumn,
+    kCloseRubyColumn,
+    // kRubyLinePlaceholder items are added to the beginning and the end of
+    // ruby-base and ruby-text sub-lines. They are helpful to avoid no-item
+    // lines and to add spaces around a sub-line.
+    kRubyLinePlaceholder
   };
 
   enum CollapseType {
@@ -66,7 +74,8 @@ class CORE_EXPORT InlineItem {
   InlineItem(const InlineItem&,
              unsigned adjusted_start,
              unsigned adjusted_end,
-             scoped_refptr<const ShapeResult>);
+             const ShapeResult*);
+  InlineItem(const InlineItem&);
 
   InlineItemType Type() const { return type_; }
   const char* InlineItemTypeToString(InlineItemType val) const;
@@ -89,12 +98,14 @@ class CORE_EXPORT InlineItem {
     SetTextType(TextItemType::kSymbolMarker);
   }
 
-  const ShapeResult* TextShapeResult() const { return shape_result_.get(); }
+  const ShapeResult* TextShapeResult() const { return shape_result_.Get(); }
   ShapeResult* CloneTextShapeResult() {
-    scoped_refptr<ShapeResult> clone = ShapeResult::Create(*shape_result_);
+    DCHECK(shape_result_);
+    ShapeResult* clone = MakeGarbageCollected<ShapeResult>(*shape_result_);
     shape_result_ = clone;
-    return clone.get();
+    return clone;
   }
+
   bool IsUnsafeToReuseShapeResult() const {
     return is_unsafe_to_reuse_shape_result_;
   }
@@ -269,21 +280,22 @@ class CORE_EXPORT InlineItem {
 
   unsigned start_offset_;
   unsigned end_offset_;
-  scoped_refptr<const ShapeResult> shape_result_;
+  Member<const ShapeResult> shape_result_{
+      nullptr, Member<const ShapeResult>::AtomicInitializerTag{}};
   Member<LayoutObject> layout_object_;
 
   InlineItemType type_;
-  unsigned text_type_ : 3;          // TextItemType
-  unsigned style_variant_ : 2;      // StyleVariant
-  unsigned end_collapse_type_ : 2;  // CollapseType
-  unsigned bidi_level_ : 8;         // UBiDiLevel is defined as uint8_t.
+  unsigned text_type_ : 3 = static_cast<unsigned>(TextItemType::kNormal);
+  unsigned style_variant_ : 2 = static_cast<unsigned>(StyleVariant::kStandard);
+  unsigned end_collapse_type_ : 2 = CollapseType::kNotCollapsible;
+  unsigned bidi_level_ : 8 = UBIDI_LTR;  // UBiDiLevel is defined as uint8_t.
   // |segment_data_| is valid only for |type_ == InlineItem::kText|.
-  unsigned segment_data_ : InlineItemSegment::kSegmentDataBits;
-  unsigned is_empty_item_ : 1;
-  unsigned is_block_level_ : 1;
-  unsigned is_end_collapsible_newline_ : 1;
-  unsigned is_generated_for_line_break_ : 1;
-  unsigned is_unsafe_to_reuse_shape_result_ : 1;
+  unsigned segment_data_ : InlineItemSegment::kSegmentDataBits = 0;
+  unsigned is_empty_item_ : 1 = false;
+  unsigned is_block_level_ : 1 = false;
+  unsigned is_end_collapsible_newline_ : 1 = false;
+  unsigned is_generated_for_line_break_ : 1 = false;
+  unsigned is_unsafe_to_reuse_shape_result_ : 1 = false;
   friend class InlineNode;
   friend class InlineNodeDataEditor;
 };

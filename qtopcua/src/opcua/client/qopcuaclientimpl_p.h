@@ -16,6 +16,7 @@
 //
 
 #include <QtOpcUa/qopcuaclient.h>
+#include <QtOpcUa/qopcuaconnectionsettings.h>
 #include <QtOpcUa/qopcuaglobal.h>
 #include <QtOpcUa/qopcuaendpointdescription.h>
 #include <private/qopcuanodeimpl_p.h>
@@ -104,6 +105,8 @@ signals:
     void passwordForPrivateKeyRequired(const QString keyFilePath, QString *password, bool previousTryWasInvalid);
     void registerNodesFinished(QStringList nodesToRegister, QStringList registeredNodeIds, QOpcUa::UaStatusCode statusCode);
     void unregisterNodesFinished(QStringList nodesToUnregister, QOpcUa::UaStatusCode statusCode);
+
+    void connectionSettingsChanged(QOpcUaConnectionSettings settings);
 
 private:
     Q_DISABLE_COPY(QOpcUaClientImpl)

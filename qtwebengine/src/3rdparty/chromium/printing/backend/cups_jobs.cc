@@ -10,18 +10,20 @@
 #include <cstring>
 #include <memory>
 #include <string>
+#include <string_view>
 
 #include "base/containers/contains.h"
 #include "base/containers/fixed_flat_map.h"
 #include "base/logging.h"
 #include "base/notreached.h"
 #include "base/strings/string_number_conversions.h"
-#include "base/strings/string_piece.h"
 #include "base/strings/stringprintf.h"
 #include "base/threading/scoped_blocking_call.h"
 #include "base/version.h"
 #include "printing/backend/cups_deleters.h"
+#include "printing/backend/cups_helper.h"
 #include "printing/backend/cups_ipp_helper.h"
+#include "printing/backend/cups_weak_functions.h"
 #include "printing/printer_status.h"
 
 namespace printing {
@@ -36,14 +38,14 @@ constexpr char kPrinterState[] = "printer-state";
 constexpr char kPrinterStateReasons[] = "printer-state-reasons";
 constexpr char kPrinterStateMessage[] = "printer-state-message";
 
-constexpr base::StringPiece kPrinterMakeAndModel = "printer-make-and-model";
-constexpr base::StringPiece kIppVersionsSupported = "ipp-versions-supported";
-constexpr base::StringPiece kIppFeaturesSupported = "ipp-features-supported";
-constexpr base::StringPiece kDocumentFormatSupported =
+constexpr std::string_view kPrinterMakeAndModel = "printer-make-and-model";
+constexpr std::string_view kIppVersionsSupported = "ipp-versions-supported";
+constexpr std::string_view kIppFeaturesSupported = "ipp-features-supported";
+constexpr std::string_view kDocumentFormatSupported =
     "document-format-supported";
-constexpr base::StringPiece kOauthAuthorizationServerUri =
+constexpr std::string_view kOauthAuthorizationServerUri =
     "oauth-authorization-server-uri";
-constexpr base::StringPiece kOauthAuthorizationScope =
+constexpr std::string_view kOauthAuthorizationScope =
     "oauth-authorization-scope";
 
 // job attributes
@@ -149,7 +151,7 @@ CupsJob::JobState ToJobState(ipp_attribute_t* attr) {
     case IPP_JOB_STOPPED:
       return CupsJob::STOPPED;
     default:
-      NOTREACHED() << "Unidentifed state " << state;
+      NOTREACHED_IN_MIGRATION() << "Unidentifed state " << state;
       break;
   }
 
@@ -158,10 +160,10 @@ CupsJob::JobState ToJobState(ipp_attribute_t* attr) {
 
 // Returns the Reason corresponding to the string `reason`.  Returns
 // `PReason::kUnknownReason` if the string is not recognized.
-PrinterStatus::PrinterReason::Reason ToReason(base::StringPiece reason) {
+PrinterStatus::PrinterReason::Reason ToReason(std::string_view reason) {
   // Returns a lookup map from strings to PrinterReason::Reason.
   static constexpr auto kLabelToReasonMap =
-      base::MakeFixedFlatMap<base::StringPiece, PReason>({
+      base::MakeFixedFlatMap<std::string_view, PReason>({
           {kNone, PReason::kNone},
           {kMediaNeeded, PReason::kMediaNeeded},
           {kMediaJam, PReason::kMediaJam},
@@ -199,14 +201,14 @@ PrinterStatus::PrinterReason::Reason ToReason(base::StringPiece reason) {
           {kCupsPkiExpired, PReason::kCupsPkiExpired},
       });
 
-  const auto* entry = kLabelToReasonMap.find(reason);
+  const auto entry = kLabelToReasonMap.find(reason);
   return entry != kLabelToReasonMap.end() ? entry->second
                                           : PReason::kUnknownReason;
 }
 
 // Returns the Severity corresponding to `severity`.  Returns UNKNOWN_SEVERITY
 // if the strin gis not recognized.
-PSeverity ToSeverity(base::StringPiece severity) {
+PSeverity ToSeverity(std::string_view severity) {
   if (severity == kSeverityError)
     return PSeverity::kError;
 
@@ -222,7 +224,7 @@ PSeverity ToSeverity(base::StringPiece severity) {
 // Parses the `reason` string into a PrinterReason.  Splits the string based on
 // the last '-' to determine severity.  If a recognized severity is not
 // included, severity is assumed to be ERROR per RFC2911.
-PrinterStatus::PrinterReason ToPrinterReason(base::StringPiece reason) {
+PrinterStatus::PrinterReason ToPrinterReason(std::string_view reason) {
   PrinterStatus::PrinterReason parsed;
 
   if (reason == kNone) {
@@ -233,7 +235,7 @@ PrinterStatus::PrinterReason ToPrinterReason(base::StringPiece reason) {
 
   size_t last_dash = reason.rfind('-');
   auto severity = PSeverity::kUnknownSeverity;
-  if (last_dash != base::StringPiece::npos) {
+  if (last_dash != std::string_view::npos) {
     // try to parse the last part of the string as the severity.
     severity = ToSeverity(reason.substr(last_dash + 1));
   }
@@ -266,7 +268,7 @@ void ParseCollection(ipp_attribute_t* attr,
 
 // Parse a field for the CupsJob `job` from IPP attribute `attr` using the
 // attribute name `name`.
-void ParseField(ipp_attribute_t* attr, base::StringPiece name, CupsJob* job) {
+void ParseField(ipp_attribute_t* attr, std::string_view name, CupsJob* job) {
   DCHECK(!name.empty());
   if (name == kJobId) {
     job->id = ippGetInteger(attr, 0);
@@ -328,7 +330,7 @@ bool ParsePrinterInfo(ipp_t* response, PrinterInfo* printer_info) {
     if (!value) {
       continue;
     }
-    base::StringPiece name(value);
+    std::string_view name(value);
     if (name == kPrinterMakeAndModel) {
       int tag = ippGetValueTag(attr);
       if (tag != IPP_TAG_TEXT && tag != IPP_TAG_TEXTLANG) {
@@ -422,7 +424,7 @@ PrinterInfo::PrinterInfo() = default;
 
 PrinterInfo::~PrinterInfo() = default;
 
-const base::StringPiece ToJobStateReasonString(
+const std::string_view ToJobStateReasonString(
     CupsJob::JobStateReason state_reason) {
   switch (state_reason) {
     case CupsJob::JobStateReason::kJobCompletedWithErrors:
@@ -499,7 +501,7 @@ void ParsePrinterStatus(ipp_t* response, PrinterStatus* printer_status) {
     if (!value) {
       continue;
     }
-    base::StringPiece name(value);
+    std::string_view name(value);
 
     if (name == kPrinterState) {
       DCHECK_EQ(IPP_TAG_ENUM, ippGetValueTag(attr));
@@ -536,10 +538,10 @@ PrinterQueryResult GetPrinterInfo(const std::string& address,
     return PrinterQueryResult::kHostnameResolution;
   }
 
-  ScopedHttpPtr http = ScopedHttpPtr(httpConnect2(
+  ScopedHttpPtr http = HttpConnect2(
       address.c_str(), port, addr_list, AF_UNSPEC,
       encrypted ? HTTP_ENCRYPTION_ALWAYS : HTTP_ENCRYPTION_IF_REQUESTED, 0,
-      kHttpConnectTimeoutMs, nullptr));
+      kHttpConnectTimeoutMs, nullptr);
   if (!http) {
     LOG(WARNING) << "Could not connect to host";
     return PrinterQueryResult::kUnreachable;

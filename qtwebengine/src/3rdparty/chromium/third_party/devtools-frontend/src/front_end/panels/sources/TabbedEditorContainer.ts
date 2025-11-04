@@ -29,7 +29,6 @@
  */
 
 import * as Common from '../../core/common/common.js';
-import * as Host from '../../core/host/host.js';
 import * as i18n from '../../core/i18n/i18n.js';
 import * as Platform from '../../core/platform/platform.js';
 import * as Extensions from '../../models/extensions/extensions.js';
@@ -37,11 +36,11 @@ import * as Persistence from '../../models/persistence/persistence.js';
 import * as TextUtils from '../../models/text_utils/text_utils.js';
 import * as Workspace from '../../models/workspace/workspace.js';
 import type * as CodeMirror from '../../third_party/codemirror.next/codemirror.next.js';
+import * as IconButton from '../../ui/components/icon_button/icon_button.js';
 import * as SourceFrame from '../../ui/legacy/components/source_frame/source_frame.js';
 import * as UI from '../../ui/legacy/legacy.js';
-import * as IconButton from '../../ui/components/icon_button/icon_button.js';
+import * as VisualLogging from '../../ui/visual_logging/visual_logging.js';
 import * as Snippets from '../snippets/snippets.js';
-import * as Bindings from '../../models/bindings/bindings.js';
 
 import {SourcesView} from './SourcesView.js';
 import {UISourceCodeFrame} from './UISourceCodeFrame.js';
@@ -100,12 +99,16 @@ export class TabbedEditorContainer extends Common.ObjectWrapper.ObjectWrapper<Ev
     this.tabbedPane.addEventListener(UI.TabbedPane.Events.TabClosed, this.tabClosed, this);
     this.tabbedPane.addEventListener(UI.TabbedPane.Events.TabSelected, this.tabSelected, this);
 
+    this.tabbedPane.headerElement().setAttribute(
+        'jslog',
+        `${VisualLogging.toolbar('top').track({keydown: 'ArrowUp|ArrowLeft|ArrowDown|ArrowRight|Enter|Space'})}`);
+
     Persistence.Persistence.PersistenceImpl.instance().addEventListener(
         Persistence.Persistence.Events.BindingCreated, this.onBindingCreated, this);
     Persistence.Persistence.PersistenceImpl.instance().addEventListener(
         Persistence.Persistence.Events.BindingRemoved, this.onBindingRemoved, this);
     Persistence.NetworkPersistenceManager.NetworkPersistenceManager.instance().addEventListener(
-        Persistence.NetworkPersistenceManager.Events.RequestsForHeaderOverridesFileChanged,
+        Persistence.NetworkPersistenceManager.Events.REQUEST_FOR_HEADER_OVERRIDES_FILE_CHANGED,
         this.#onRequestsForHeaderOverridesFileChanged, this);
 
     this.tabIds = new Map();
@@ -204,17 +207,6 @@ export class TabbedEditorContainer extends Common.ObjectWrapper.ObjectWrapper<Ev
         frame?.currentUISourceCode() === uiSourceCode) {
       Common.EventTarget.fireEvent('source-file-loaded', uiSourceCode.displayName(true));
     } else {
-      if (uiSourceCode.project().type() === Workspace.Workspace.projectTypes.Debugger) {
-        const script = Bindings.DefaultScriptMapping.DefaultScriptMapping.scriptForUISourceCode(uiSourceCode);
-        if (script && script.isInlineScript() && !script.hasSourceURL) {
-          if (script.isModule) {
-            Host.userMetrics.vmInlineScriptContentShown(Host.UserMetrics.VMInlineScriptType.MODULE_SCRIPT);
-          } else {
-            Host.userMetrics.vmInlineScriptContentShown(Host.UserMetrics.VMInlineScriptType.CLASSIC_SCRIPT);
-          }
-        }
-      }
-
       this.innerShowFile(uiSourceCode, true);
     }
   }
@@ -254,16 +246,16 @@ export class TabbedEditorContainer extends Common.ObjectWrapper.ObjectWrapper<Ev
     if (!this.currentView || !(this.currentView instanceof SourceFrame.SourceFrame.SourceFrameImpl)) {
       return;
     }
-    this.currentView.addEventListener(SourceFrame.SourceFrame.Events.EditorUpdate, this.onEditorUpdate, this);
-    this.currentView.addEventListener(SourceFrame.SourceFrame.Events.EditorScroll, this.onScrollChanged, this);
+    this.currentView.addEventListener(SourceFrame.SourceFrame.Events.EDITOR_UPDATE, this.onEditorUpdate, this);
+    this.currentView.addEventListener(SourceFrame.SourceFrame.Events.EDITOR_SCROLL, this.onScrollChanged, this);
   }
 
   private removeViewListeners(): void {
     if (!this.currentView || !(this.currentView instanceof SourceFrame.SourceFrame.SourceFrameImpl)) {
       return;
     }
-    this.currentView.removeEventListener(SourceFrame.SourceFrame.Events.EditorUpdate, this.onEditorUpdate, this);
-    this.currentView.removeEventListener(SourceFrame.SourceFrame.Events.EditorScroll, this.onScrollChanged, this);
+    this.currentView.removeEventListener(SourceFrame.SourceFrame.Events.EDITOR_UPDATE, this.onEditorUpdate, this);
+    this.currentView.removeEventListener(SourceFrame.SourceFrame.Events.EDITOR_SCROLL, this.onScrollChanged, this);
   }
 
   private onScrollChanged(): void {
@@ -346,10 +338,10 @@ export class TabbedEditorContainer extends Common.ObjectWrapper.ObjectWrapper<Ev
     const eventData = {
       currentFile: this.currentFileInternal,
       currentView: this.currentView,
-      previousView: previousView,
-      userGesture: userGesture,
+      previousView,
+      userGesture,
     };
-    this.dispatchEventToListeners(Events.EditorSelected, eventData);
+    this.dispatchEventToListeners(Events.EDITOR_SELECTED, eventData);
   }
 
   private titleForFile(uiSourceCode: Workspace.UISourceCode.UISourceCode): string {
@@ -588,7 +580,7 @@ export class TabbedEditorContainer extends Common.ObjectWrapper.ObjectWrapper<Ev
     if (uiSourceCode) {
       this.removeUISourceCodeListeners(uiSourceCode);
 
-      this.dispatchEventToListeners(Events.EditorClosed, uiSourceCode);
+      this.dispatchEventToListeners(Events.EDITOR_CLOSED, uiSourceCode);
 
       if (isUserGesture) {
         this.editorClosedByUserAction(uiSourceCode);
@@ -677,8 +669,8 @@ export class TabbedEditorContainer extends Common.ObjectWrapper.ObjectWrapper<Ev
     this.updateFileTitle(uiSourceCode);
   }
 
-  private generateTabId(): string {
-    return 'tab_' + (tabId++);
+  private generateTabId(): Lowercase<string> {
+    return 'tab-' + (tabId++) as Lowercase<string>;
   }
 
   currentFile(): Workspace.UISourceCode.UISourceCode|null {
@@ -687,8 +679,8 @@ export class TabbedEditorContainer extends Common.ObjectWrapper.ObjectWrapper<Ev
 }
 
 export const enum Events {
-  EditorSelected = 'EditorSelected',
-  EditorClosed = 'EditorClosed',
+  EDITOR_SELECTED = 'EditorSelected',
+  EDITOR_CLOSED = 'EditorClosed',
 }
 
 export interface EditorSelectedEvent {
@@ -699,8 +691,8 @@ export interface EditorSelectedEvent {
 }
 
 export type EventTypes = {
-  [Events.EditorSelected]: EditorSelectedEvent,
-  [Events.EditorClosed]: Workspace.UISourceCode.UISourceCode,
+  [Events.EDITOR_SELECTED]: EditorSelectedEvent,
+  [Events.EDITOR_CLOSED]: Workspace.UISourceCode.UISourceCode,
 };
 
 const MAX_PREVIOUSLY_VIEWED_FILES_COUNT = 30;

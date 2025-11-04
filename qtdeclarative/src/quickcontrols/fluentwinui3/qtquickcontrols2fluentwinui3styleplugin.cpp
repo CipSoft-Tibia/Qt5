@@ -7,7 +7,7 @@
 #include <QtQuickControls2/private/qquickstyleplugin_p.h>
 #include <QtQuickTemplates2/private/qquicktheme_p.h>
 
-#include "qquickfluentwinui3focusframe_p.h"
+#include <QtQuickControls2FluentWinUI3StyleImpl/private/qquickfluentwinui3focusframe_p.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -55,10 +55,10 @@ void QtQuickControls2FluentWinUI3StylePlugin::initializeTheme(QQuickTheme *theme
 
 void QtQuickControls2FluentWinUI3StylePlugin::updateTheme()
 {
-    QQuickTheme *theme = QQuickTheme::instance();
-    QPalette palette;
-    this->theme.updatePalette(palette);
-    theme->setPalette(QQuickTheme::System, palette);
+    auto *theme = QQuickTheme::instance();
+    if (theme)
+        theme->setPalette(QQuickTheme::System, this->theme.initializeDefaultPalette());
+    // TODO: Update the font too if needed
 }
 
 QT_END_NAMESPACE

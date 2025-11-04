@@ -37,7 +37,7 @@
     </message>
     <message>
         <source>Invalid Bluetooth adapter address</source>
-        <translation>Geçersiz Bluetooth adaptörü adresi</translation>
+        <translation>Geçersiz Bluetooth bağdaştırıcısı adresi</translation>
     </message>
     <message>
         <source>One or more device discovery methods are not supported on this platform</source>
@@ -100,7 +100,7 @@
     </message>
     <message>
         <source>Android API below v15 does not support SDP discovery</source>
-        <translation>V15&apos;in altındaki Android API, SDP bulmayı desteklemiyor</translation>
+        <translation>V15’in altındaki Android API’si, SDP bulmayı desteklemiyor</translation>
     </message>
     <message>
         <source>Cannot create Android BluetoothDevice</source>
@@ -108,7 +108,7 @@
     </message>
     <message>
         <source>Cannot obtain service uuids</source>
-        <translation>Hizmet uuid&apos;leri alınamıyor</translation>
+        <translation>Hizmet UUID’leri alınamıyor</translation>
     </message>
     <message>
         <source>Serial Port Profile</source>
@@ -517,11 +517,11 @@
     </message>
     <message>
         <source>Telephony Control Specification - Binary</source>
-        <translation>Telefon Denetimi Özellikleri - İkili</translation>
+        <translation>Telefon Denetimi Özellikleri — İkili</translation>
     </message>
     <message>
         <source>Telephony Control Specification - AT</source>
-        <translation>Telefon Denetimi Özellikleri - AT</translation>
+        <translation>Telefon Denetimi Özellikleri — AT</translation>
     </message>
     <message>
         <source>Attribute Protocol</source>
@@ -589,11 +589,11 @@
     </message>
     <message>
         <source>Multi-Channel Adaptation Protocol - Control</source>
-        <translation>Çok Kanallı Uyum Protokolü - Denetim</translation>
+        <translation>Çok Kanallı Uyum Protokolü — Denetim</translation>
     </message>
     <message>
         <source>Multi-Channel Adaptation Protocol - Data</source>
-        <translation>Çok Kanallı Uyum Protokolü - Veri</translation>
+        <translation>Çok Kanallı Uyum Protokolü — Veri</translation>
     </message>
     <message>
         <source>Layer 2 Control Protocol</source>
@@ -1052,7 +1052,7 @@
     </message>
     <message>
         <source>Email Address</source>
-        <translation>E-Posta Adresi</translation>
+        <translation>E-posta Adresi</translation>
     </message>
     <message>
         <source>Fat Burn Heart Rate Lower Limit</source>
@@ -1246,7 +1246,7 @@
     <message>
         <source>Cannot connect to %1</source>
         <comment>%1 = uuid</comment>
-        <translation>%1&apos;ye bağlanılamıyor</translation>
+        <translation>%1 bağlantısı yapılamıyor</translation>
     </message>
     <message>
         <source>Device does not support Bluetooth</source>
@@ -1264,7 +1264,7 @@
     <message>
         <source>Cannot connect to %1 on %2</source>
         <comment>%1 = uuid, %2 = Bt address</comment>
-        <translation>%2 üzerinde %1&apos;ye bağlanılamıyor</translation>
+        <translation>%2 üzerinde %1 bağlantısı yapılamıyor</translation>
     </message>
     <message>
         <source>Socket type not supported</source>
@@ -1304,11 +1304,11 @@
     </message>
     <message>
         <source>Cannot export profile on DBus</source>
-        <translation>DBus&apos;ta profil dışa aktarılamıyor</translation>
+        <translation>D-Bus’ta profil dışa aktarılamıyor</translation>
     </message>
     <message>
         <source>Cannot register profile on DBus</source>
-        <translation>Profil DBus&apos;a kaydedilemiyor</translation>
+        <translation>Profil D-Bus’a kaydedilemiyor</translation>
     </message>
     <message>
         <source>Cannot find remote device</source>
@@ -1320,7 +1320,7 @@
     </message>
     <message>
         <source>Missing serviceUuid or Serial Port service class uuid</source>
-        <translation>ServiceUuid veya Ser Bağlantı Noktası hizmet sınıfı uuid&apos;si eksik</translation>
+        <translation>ServiceUuid veya Ser Bağlantı Noktası hizmet sınıfı UUID’si eksik</translation>
     </message>
     <message>
         <source>Invalid Bluetooth address passed to connectToService()</source>
@@ -1340,7 +1340,7 @@
     </message>
     <message>
         <source>Logic error: more bytes sent than passed to ::send</source>
-        <translation>Mantık hatası: ::send &apos;e iletilenden daha fazla bayt gönderildi</translation>
+        <translation>Mantık hatası: ::send’e iletilenden daha fazla bayt gönderildi</translation>
     </message>
     <message>
         <source>Network error</source>

@@ -12,11 +12,13 @@ class HighlightSeries : public QSurface3DSeries
 {
     Q_OBJECT
 public:
+    Q_DISABLE_COPY_MOVE(HighlightSeries)
+
     explicit HighlightSeries();
     ~HighlightSeries() override;
 
     void setTopographicSeries(TopographicSeries *series);
-    inline void setMinHeight(float height) { m_minHeight = height; }
+    void setMinHeight(float height) { m_minHeight = height; }
     void handleZoomChange(float zoom);
 
 public Q_SLOTS:
@@ -28,7 +30,7 @@ private:
     int m_height = 100;
     int m_srcWidth = 0;
     int m_srcHeight = 0;
-    QPoint m_position = {};
+    QPoint m_position;
     TopographicSeries *m_topographicSeries = nullptr;
     float m_minHeight = 0.f;
     float m_heightAdjustment = 5.f;

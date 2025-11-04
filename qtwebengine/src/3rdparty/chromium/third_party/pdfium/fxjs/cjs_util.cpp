@@ -14,7 +14,10 @@
 #include <vector>
 
 #include "build/build_config.h"
+#include "core/fxcrt/check_op.h"
+#include "core/fxcrt/compiler_specific.h"
 #include "core/fxcrt/fx_extension.h"
+#include "core/fxcrt/span.h"
 #include "fxjs/cjs_event_context.h"
 #include "fxjs/cjs_object.h"
 #include "fxjs/cjs_publicmethods.h"
@@ -23,8 +26,6 @@
 #include "fxjs/fxv8.h"
 #include "fxjs/js_define.h"
 #include "fxjs/js_resources.h"
-#include "third_party/base/check_op.h"
-#include "third_party/base/containers/span.h"
 #include "v8/include/v8-date.h"
 
 #if BUILDFLAG(IS_ANDROID)
@@ -47,7 +48,7 @@ struct TbConvertAdditional {
   int value;
 };
 
-const TbConvert TbConvertTable[] = {
+const TbConvert kTbConvertTable[] = {
     {L"mmmm", L"%B"}, {L"mmm", L"%b"}, {L"mm", L"%m"},   {L"dddd", L"%A"},
     {L"ddd", L"%a"},  {L"dd", L"%d"},  {L"yyyy", L"%Y"}, {L"yy", L"%y"},
     {L"HH", L"%H"},   {L"hh", L"%I"},  {L"MM", L"%M"},   {L"ss", L"%S"},
@@ -112,7 +113,7 @@ CJS_Result CJS_Util::printf(CJS_Runtime* pRuntime,
   {
     size_t offset = 0;
     while (true) {
-      absl::optional<size_t> offset_end =
+      std::optional<size_t> offset_end =
           unsafe_fmt_string.Find(L"%", offset + 1);
       if (!offset_end.has_value()) {
         unsafe_conversion_specifiers.push_back(
@@ -217,40 +218,40 @@ CJS_Result CJS_Util::printd(CJS_Runtime* pRuntime,
   cFormat.erase(std::remove(cFormat.begin(), cFormat.end(), '%'),
                 cFormat.end());
 
-  for (size_t i = 0; i < std::size(TbConvertTable); ++i) {
+  for (const auto& conversion : kTbConvertTable) {
     size_t nFound = 0;
     while (true) {
-      nFound = cFormat.find(TbConvertTable[i].lpszJSMark, nFound);
-      if (nFound == std::wstring::npos)
+      nFound = cFormat.find(conversion.lpszJSMark, nFound);
+      if (nFound == std::wstring::npos) {
         break;
-
-      cFormat.replace(nFound, wcslen(TbConvertTable[i].lpszJSMark),
-                      TbConvertTable[i].lpszCppMark);
+      }
+      cFormat.replace(nFound, wcslen(conversion.lpszJSMark),
+                      conversion.lpszCppMark);
     }
   }
 
   if (year < 0)
     return CJS_Result::Failure(JSMessage::kValueError);
 
-  const TbConvertAdditional cTableAd[] = {
+  const TbConvertAdditional table_additional[] = {
       {L'm', month}, {L'd', day},
       {L'H', hour},  {L'h', hour > 12 ? hour - 12 : hour},
       {L'M', min},   {L's', sec},
   };
 
-  for (size_t i = 0; i < std::size(cTableAd); ++i) {
+  for (const auto& conversion : table_additional) {
     size_t nFound = 0;
     while (true) {
-      nFound = cFormat.find(cTableAd[i].js_mark, nFound);
-      if (nFound == std::wstring::npos)
+      nFound = cFormat.find(conversion.js_mark, nFound);
+      if (nFound == std::wstring::npos) {
         break;
-
+      }
       if (nFound != 0 && cFormat[nFound - 1] == L'%') {
         ++nFound;
         continue;
       }
       cFormat.replace(nFound, 1,
-                      WideString::FormatInteger(cTableAd[i].value).c_str());
+                      WideString::FormatInteger(conversion.value).c_str());
     }
   }
 
@@ -263,7 +264,7 @@ CJS_Result CJS_Util::printd(CJS_Runtime* pRuntime,
   time.tm_sec = sec;
 
   wchar_t buf[64] = {};
-  FXSYS_wcsftime(buf, 64, cFormat.c_str(), &time);
+  UNSAFE_TODO(FXSYS_wcsftime(buf, 64, cFormat.c_str(), &time));
   cFormat = buf;
   return CJS_Result::Success(pRuntime->NewString(cFormat.c_str()));
 }

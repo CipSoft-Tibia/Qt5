@@ -18,6 +18,7 @@
 #include <QtBodymovin/private/bmshapetransform_p.h>
 #include <QtBodymovin/private/bmrect_p.h>
 #include <QtBodymovin/private/bmellipse_p.h>
+#include <QtBodymovin/private/bmpolystar_p.h>
 #include <QtBodymovin/private/bmround_p.h>
 #include <QtBodymovin/private/bmfreeformshape_p.h>
 #include <QtBodymovin/private/bmtrimpath_p.h>
@@ -124,6 +125,33 @@ void LottieRasterRenderer::render(const BMEllipse &ellipse)
             m_clipPath = tp;
         } else
             m_painter->drawPath(ellipse.path());
+    }
+
+    m_painter->restore();
+}
+
+void LottieRasterRenderer::render(const BMPolyStar &star)
+{
+    m_painter->save();
+
+    for (int i = 0; i < m_repeatCount; i++) {
+        qCDebug(lcLottieQtBodymovinRender) << "PolyStar:" << star.name()
+        << star.position()
+        << star.pointCount() << star.outerRadius() << star.innerRadius();
+
+        applyRepeaterTransform(i);
+        if (trimmingState() == LottieRenderer::Individual) {
+            QTransform t = m_painter->transform();
+            QPainterPath tp = t.map(star.path());
+            tp.addPath(m_unitedPath);
+            m_unitedPath = tp;
+        } else if (m_buildingClipRegion) {
+            QTransform t = m_painter->transform();
+            QPainterPath tp = t.map(star.path());
+            tp.addPath(m_clipPath);
+            m_clipPath = tp;
+        } else
+            m_painter->drawPath(star.path());
     }
 
     m_painter->restore();

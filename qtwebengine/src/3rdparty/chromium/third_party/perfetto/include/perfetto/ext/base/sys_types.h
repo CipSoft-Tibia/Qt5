@@ -20,7 +20,7 @@
 // This headers deals with sys types commonly used in the codebase that are
 // missing on Windows.
 
-#include <sys/types.h>
+#include <sys/types.h>  // IWYU pragma: export
 #include <cstdint>
 
 #include "perfetto/base/build_config.h"
@@ -29,7 +29,7 @@
 
 #if !PERFETTO_BUILDFLAG(PERFETTO_COMPILER_GCC)
 // MinGW has these. clang-cl and MSVC, which use just the Windows SDK, don't.
-using uid_t = unsigned int;
+using uid_t = int;
 using pid_t = int;
 #else
 using uid_t = unsigned int;
@@ -42,6 +42,11 @@ using ssize_t = long;
 #endif  // _WIN64
 
 #endif  // OS_WIN
+
+#if PERFETTO_BUILDFLAG(PERFETTO_OS_ANDROID) && !defined(AID_SHELL)
+// From libcutils' android_filesystem_config.h .
+#define AID_SHELL 2000
+#endif
 
 namespace perfetto {
 namespace base {

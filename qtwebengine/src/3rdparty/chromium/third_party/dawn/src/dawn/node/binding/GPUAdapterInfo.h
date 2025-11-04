@@ -28,11 +28,11 @@
 #ifndef SRC_DAWN_NODE_BINDING_GPUADAPTERINFO_H_
 #define SRC_DAWN_NODE_BINDING_GPUADAPTERINFO_H_
 
+#include <webgpu/webgpu_cpp.h>
+
 #include <string>
 
 #include "dawn/native/DawnNative.h"
-#include "dawn/webgpu_cpp.h"
-
 #include "src/dawn/node/interop/NodeAPI.h"
 #include "src/dawn/node/interop/WebGPU.h"
 
@@ -41,7 +41,7 @@ namespace wgpu::binding {
 // GPUAdapterInfo is an implementation of interop::GPUAdapterInfo.
 class GPUAdapterInfo final : public interop::GPUAdapterInfo {
   public:
-    explicit GPUAdapterInfo(WGPUAdapterProperties);
+    explicit GPUAdapterInfo(WGPUAdapterInfo);
 
     // interop::GPUAdapterInfo interface compliance
     std::string getVendor(Napi::Env) override;

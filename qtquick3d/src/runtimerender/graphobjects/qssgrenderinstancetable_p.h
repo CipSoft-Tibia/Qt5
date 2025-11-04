@@ -48,6 +48,10 @@ struct Q_QUICK3DRUNTIMERENDER_EXPORT QSSGRenderInstanceTable : public QSSGRender
     void setDepthSorting(bool enable) { depthSorting = enable; }
     bool isDepthSortingEnabled() { return depthSorting; }
     QMatrix4x4 getTransform(int index) const;
+    void setShadowBoundsMinimum(const QVector3D &value) { shadowBoundsMinimum = value; }
+    void setShadowBoundsMaximum(const QVector3D &value) { shadowBoundsMaximum = value; }
+    QVector3D getShadowBoundsMinimum() const { return shadowBoundsMinimum; }
+    QVector3D getShadowBoundsMaximum() const { return shadowBoundsMaximum; }
 
 private:
     int instanceCount = 0;
@@ -55,6 +59,8 @@ private:
     int instanceStride = 0;
     bool transparency = false;
     bool depthSorting = false;
+    QVector3D shadowBoundsMinimum = QVector3D(1, 1, 1);
+    QVector3D shadowBoundsMaximum = QVector3D(-1, -1, -1);
     QByteArray table;
 };
 

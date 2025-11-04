@@ -5,6 +5,7 @@
 #ifndef COMPONENTS_ATTRIBUTION_REPORTING_FILTERS_H_
 #define COMPONENTS_ATTRIBUTION_REPORTING_FILTERS_H_
 
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -16,12 +17,15 @@
 #include "components/attribution_reporting/source_registration_error.mojom-forward.h"
 #include "components/attribution_reporting/source_type.mojom-forward.h"
 #include "components/attribution_reporting/trigger_registration_error.mojom-forward.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 
 namespace attribution_reporting {
 
 struct FilterPair;
 
+// TODO(apaseltiner): Consider making the value type a `base::flat_set` because
+// there is no semantic benefit to duplicate values, making it wasteful to pass
+// them around. Unfortunately, this is difficult to do because there is no
+// `mojo::ArrayTraits` deserialization for `base::flat_set`.
 using FilterValues = base::flat_map<std::string, std::vector<std::string>>;
 
 class FilterConfig;
@@ -34,7 +38,19 @@ class COMPONENT_EXPORT(ATTRIBUTION_REPORTING) FilterData {
   static constexpr char kSourceTypeFilterKey[] = "source_type";
 
   // Filter data is not allowed to contain a `source_type` filter.
-  static absl::optional<FilterData> Create(FilterValues);
+  //
+  // Note: This method is called with data deserialized from Mojo and proto. In
+  // both cases, the values will already be deduplicated if they were produced
+  // by the corresponding Mojo/proto serialization code, but if the serialized
+  // data is corrupted or deliberately modified, it could contain duplicate
+  // values; those duplicates will be retained by this method and count toward
+  // the value-cardinality limit. This is OK, as the `Matches()` logic still
+  // works correctly even in the presence of duplicates, excessive values, and
+  // unordered values, but we may wish to be stricter here (e.g. by performing
+  // deduplication as part of this method's operation) in order to match the
+  // equivalent behavior in `FromJSON()`. This will be easier to accomplish once
+  // the value type of `FilterValues` is changed to `base::flat_set`.
+  static std::optional<FilterData> Create(FilterValues);
 
   static base::expected<FilterData, mojom::SourceRegistrationError> FromJSON(
       base::Value*);
@@ -108,9 +124,9 @@ class COMPONENT_EXPORT(ATTRIBUTION_REPORTING) FilterConfig {
   static constexpr char kReservedKeyPrefix[] = "_";
 
   // If set, FilterConfig's `lookback_window` must be positive.
-  static absl::optional<FilterConfig> Create(
+  static std::optional<FilterConfig> Create(
       FilterValues,
-      absl::optional<base::TimeDelta> lookback_window = absl::nullopt);
+      std::optional<base::TimeDelta> lookback_window = std::nullopt);
 
   FilterConfig();
   ~FilterConfig();
@@ -121,7 +137,7 @@ class COMPONENT_EXPORT(ATTRIBUTION_REPORTING) FilterConfig {
   FilterConfig& operator=(const FilterConfig&);
   FilterConfig& operator=(FilterConfig&&);
 
-  const absl::optional<base::TimeDelta>& lookback_window() const {
+  const std::optional<base::TimeDelta>& lookback_window() const {
     return lookback_window_;
   }
 
@@ -131,8 +147,8 @@ class COMPONENT_EXPORT(ATTRIBUTION_REPORTING) FilterConfig {
 
  private:
   explicit FilterConfig(FilterValues,
-                        absl::optional<base::TimeDelta> lookback_window);
-  absl::optional<base::TimeDelta> lookback_window_;
+                        std::optional<base::TimeDelta> lookback_window);
+  std::optional<base::TimeDelta> lookback_window_;
   FilterValues filter_values_;
 };
 

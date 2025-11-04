@@ -9,7 +9,7 @@
 
 QT_BEGIN_NAMESPACE
 
-Q_LOGGING_CATEGORY(lcTableModel, "qt.qml.tablemodel")
+Q_STATIC_LOGGING_CATEGORY(lcTableModel, "qt.qml.tablemodel")
 
 /*!
     \qmltype TableModel
@@ -53,7 +53,7 @@ Q_LOGGING_CATEGORY(lcTableModel, "qt.qml.tablemodel")
     \section1 Supported Row Data Structures
 
     TableModel is designed to work with JavaScript/JSON data, where each row
-    is a simple key-pair object:
+    is a list of simple key-value pairs:
 
     \code
     {
@@ -383,7 +383,7 @@ QVariant QQmlTableModel::getRow(int rowIndex)
 /*!
     \qmlmethod TableModel::insertRow(int rowIndex, object row)
 
-    Adds a new row to the list model at position \a rowIndex, with the
+    Adds a new row to the model at position \a rowIndex, with the
     values (cells) in \a row.
 
     \code
@@ -396,8 +396,8 @@ QVariant QQmlTableModel::getRow(int rowIndex)
         })
     \endcode
 
-    The \a rowIndex must be to an existing item in the list, or one past
-    the end of the list (equivalent to \l appendRow()).
+    The \a rowIndex must point to an existing item in the table, or one past
+    the end of the table (equivalent to \l appendRow()).
 
     \sa appendRow(), setRow(), removeRow(), rowCount
 */
@@ -429,6 +429,7 @@ void QQmlTableModel::doInsert(int rowIndex, const QVariant &row)
 
     endInsertRows();
     emit rowCountChanged();
+    emit rowsChanged();
 }
 
 void QQmlTableModel::classBegin()
@@ -523,6 +524,7 @@ void QQmlTableModel::moveRow(int fromRowIndex, int toRowIndex, int rows)
     qCDebug(lcTableModel).nospace() << "after moving, rows are:\n" << mRows;
 
     endMoveRows();
+    emit rowsChanged();
 }
 
 /*!
@@ -559,6 +561,7 @@ void QQmlTableModel::removeRow(int rowIndex, int rows)
 
     endRemoveRows();
     emit rowCountChanged();
+    emit rowsChanged();
 
     qCDebug(lcTableModel).nospace() << "removed " << rows
         << " items from the model, starting at index " << rowIndex;
@@ -599,6 +602,7 @@ void QQmlTableModel::setRow(int rowIndex, const QVariant &row)
         const QModelIndex topLeftModelIndex(createIndex(rowIndex, 0));
         const QModelIndex bottomRightModelIndex(createIndex(rowIndex, mColumnCount - 1));
         emit dataChanged(topLeftModelIndex, bottomRightModelIndex);
+        emit rowsChanged();
     } else {
         // Appending a row.
         doInsert(rowIndex, row);
@@ -758,10 +762,10 @@ QVariant QQmlTableModel::data(const QModelIndex &index, int role) const
     if (column < 0 || column >= columnCount())
         return QVariant();
 
-    const ColumnMetadata columnMetadata = mColumnMetadata.at(index.column());
+    const ColumnMetadata columnMetadata = mColumnMetadata.at(column);
     const QString roleName = QString::fromUtf8(mRoleNames.value(role));
     if (!columnMetadata.roles.contains(roleName)) {
-        qmlWarning(this) << "setData(): no role named " << roleName
+        qmlWarning(this) << "data(): no role named " << roleName
             << " at column index " << column << ". The available roles for that column are: "
             << columnMetadata.roles.keys();
         return QVariant();
@@ -901,6 +905,7 @@ bool QQmlTableModel::setData(const QModelIndex &index, const QVariant &value, in
     QVector<int> rolesChanged;
     rolesChanged.append(role);
     emit dataChanged(index, index, rolesChanged);
+    emit rowsChanged();
 
     return true;
 }

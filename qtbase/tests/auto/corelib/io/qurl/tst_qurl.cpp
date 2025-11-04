@@ -440,6 +440,33 @@ void tst_QUrl::comparison2_data()
     QTest::newRow("fragment-scheme") << QUrl("#foo") << QUrl("x:") << -1;
 
     QTest::newRow("noport-zeroport") << QUrl("http://example.com") << QUrl("http://example.com:0") << -1;
+
+    // check that nothing is remembered
+    auto addEmptiedUrl = [](const char *label, const QUrl &url) {
+        QUrl copy = url;
+        copy.setUrl(QString());
+        QTest::addRow("null-latent-%s", label) << QUrl() << copy << 0;
+
+        QString nonempty = u"https://www.qt-project.org"_s;
+        copy = url;
+        copy.setUrl(nonempty);
+        QTest::addRow("nonnull-latent-%s", label) << QUrl(nonempty) << copy << 0;
+    };
+    addEmptiedUrl("scheme", QUrl("x:"));
+    addEmptiedUrl("username", QUrl("//user@"));
+    addEmptiedUrl("password", QUrl("//:pass@"));
+    addEmptiedUrl("userinfo", QUrl("//user:pass@"));
+    addEmptiedUrl("host", QUrl("//foo"));
+    addEmptiedUrl("username-host", QUrl("//user@bar"));
+    addEmptiedUrl("password-host", QUrl("//:pass@bar"));
+    addEmptiedUrl("userinfo-host", QUrl("//user:pass@bar"));
+    addEmptiedUrl("host-port", QUrl("//bar:1"));
+    addEmptiedUrl("abpath", QUrl("/"));
+    addEmptiedUrl("relpath", QUrl("hello"));
+    addEmptiedUrl("abpath-local", QUrl("file:/"));
+    addEmptiedUrl("relpath-local", QUrl("file:hello"));
+    addEmptiedUrl("query", QUrl("?boop"));
+    addEmptiedUrl("fragment", QUrl("#meep"));
 }
 
 void tst_QUrl::comparison2()
@@ -456,10 +483,20 @@ void tst_QUrl::comparison2()
         return Qt::weak_ordering::equivalent;
     }();
 
-    QCOMPARE(url1.toString() == url2.toString(), ordering == 0);
-    QT_TEST_ALL_COMPARISON_OPS(url1, url2, expectedOrdering);
-    if (ordering == 0)
+    if (ordering == 0) {
+        QCOMPARE(url1.toString(), url2.toString());
+        QCOMPARE(url1, url2);
         QCOMPARE(qHash(url1), qHash(url2));
+    } else if (ordering < 0) {
+        QCOMPARE_LT(url1.toString(), url2.toString());
+        QCOMPARE_NE(url1, url2);
+        QCOMPARE_LT(url1, url2);
+    } else {
+        QCOMPARE_GT(url1.toString(), url2.toString());
+        QCOMPARE_NE(url1, url2);
+        QCOMPARE_GT(url1, url2);
+    }
+    QT_TEST_ALL_COMPARISON_OPS(url1, url2, expectedOrdering);
 
     // redundant checks (the above should catch these)
     QCOMPARE(url1 < url2 || url2 < url1, ordering != 0);
@@ -1319,6 +1356,17 @@ void tst_QUrl::toString_constructed()
     QCOMPARE(url.toString(formattingOptions), asString);
     QCOMPARE(QString::fromLatin1(url.toEncoded(formattingOptions)), QString::fromLatin1(asEncoded)); // readable in case of differences
     QCOMPARE(url.toEncoded(formattingOptions), asEncoded);
+
+    if (options == QUrl::UrlFormattingOption::None) {
+        QUrl parsed(asString);
+        QCOMPARE(url, parsed);
+        QCOMPARE(qHash(url), qHash(parsed));
+    }
+
+    // clear it and ensure no memory of the previous state remains
+    url.setUrl(QString());
+    QCOMPARE(url, QUrl());
+    QCOMPARE(qHash(url), qHash(QUrl()));
 }
 
 void tst_QUrl::toDisplayString_PreferLocalFile_data()
@@ -1422,6 +1470,11 @@ void tst_QUrl::toLocalFile()
     url.setPath(url.path(QUrl::PrettyDecoded), QUrl::TolerantMode);
     QCOMPARE(url.toLocalFile(), theFile);
     QCOMPARE(url.isLocalFile(), !theFile.isEmpty());
+
+    // local file paths can be fully decoded without loss
+    url.setPath(url.path());
+    QCOMPARE(url.toLocalFile(), theFile);
+    QCOMPARE(url.isLocalFile(), !theFile.isEmpty());
 }
 
 void tst_QUrl::fromLocalFile_data()
@@ -1506,6 +1559,11 @@ void tst_QUrl::fromLocalFile()
 
     // QUrl::PrettyDecoded is still URL-encoded and lossless
     url.setPath(url.path(QUrl::PrettyDecoded), QUrl::TolerantMode);
+    QCOMPARE(url.toString(QUrl::DecodeReserved), theUrl);
+    QCOMPARE(url.path(), thePath);
+
+    // local file paths can be fully decoded without loss
+    url.setPath(url.path());
     QCOMPARE(url.toString(QUrl::DecodeReserved), theUrl);
     QCOMPARE(url.path(), thePath);
 }
@@ -4150,24 +4208,25 @@ void tst_QUrl::setComponents_data()
                                            << int(Scheme) << "http%61" << Decoded << false
                                            << PrettyDecoded << "" << "";
     QTest::newRow("username-encode") << QUrl("http://example.com")
-                                     << int(UserName) << "h%61llo:world" << Decoded << true
-                                     << PrettyDecoded << "h%2561llo:world" << "http://h%2561llo%3Aworld@example.com";
+                                     << int(UserName) << "h%61llo[:]world" << Decoded << true
+                                     << PrettyDecoded << "h%2561llo[:]world" << "http://h%2561llo%5B%3A%5Dworld@example.com";
     QTest::newRow("password-encode") << QUrl("http://example.com")
-                                     << int(Password) << "h%61llo:world@" << Decoded << true
-                                     << PrettyDecoded << "h%2561llo:world@" << "http://:h%2561llo:world%40@example.com";
+                                     << int(Password) << "h%61llo[:]world@" << Decoded << true
+                                     << PrettyDecoded << "h%2561llo[:]world@" << "http://:h%2561llo%5B:%5Dworld%40@example.com";
     // '%' characters are not permitted in the hostname, these test that it fails to set anything
     QTest::newRow("invalid-host-encode") << QUrl("http://example.com")
                                          << int(Host) << "ex%61mple.com" << Decoded << false
                                          << PrettyDecoded << QString() << QString();
+    // square brackets are force-encoded from decoded forms in the path, query, and fragment
     QTest::newRow("path-encode") << QUrl("http://example.com/foo")
-                                 << int(Path) << "/bar%23" << Decoded << true
-                                 << PrettyDecoded << "/bar%2523" << "http://example.com/bar%2523";
+                                 << int(Path) << "/ba[r]%23" << Decoded << true
+                                 << PrettyDecoded << "/ba%5Br%5D%2523" << "http://example.com/ba%5Br%5D%2523";
     QTest::newRow("query-encode") << QUrl("http://example.com/foo?q")
-                                  << int(Query) << "bar%23" << Decoded << true
-                                  << PrettyDecoded << "bar%2523" << "http://example.com/foo?bar%2523";
+                                  << int(Query) << "ba[r]%23" << Decoded << true
+                                  << PrettyDecoded << "ba%5Br%5D%2523" << "http://example.com/foo?ba%5Br%5D%2523";
     QTest::newRow("fragment-encode") << QUrl("http://example.com/foo#z")
-                                     << int(Fragment) << "bar%23" << Decoded << true
-                                     << PrettyDecoded << "bar%2523" << "http://example.com/foo#bar%2523";
+                                     << int(Fragment) << "ba[r]%23" << Decoded << true
+                                     << PrettyDecoded << "ba%5Br%5D%2523" << "http://example.com/foo#ba%5Br%5D%2523";
     // force decoding
     QTest::newRow("username-decode") << QUrl("http://example.com")
                                      << int(UserName) << "hello%3Aworld%25" << Tolerant << true
@@ -4176,8 +4235,8 @@ void tst_QUrl::setComponents_data()
                                      << int(Password) << "}}>b9o%25kR(" << Tolerant << true
                                      << FullyDecoded << "}}>b9o%kR(" << "http://:%7D%7D%3Eb9o%25kR(@example.com";
     QTest::newRow("path-decode") << QUrl("http://example.com/")
-                                 << int(Path) << "/bar%25foo" << Tolerant << true
-                                 << FullyDecoded << "/bar%foo" << "http://example.com/bar%25foo";
+                                 << int(Path) << "/bar%25[foo]" << Tolerant << true
+                                 << FullyDecoded << "/bar%[foo]" << "http://example.com/bar%25[foo]";
     QTest::newRow("query-decode") << QUrl("http://example.com/foo?qq")
                                   << int(Query) << "bar%25foo" << Tolerant << true
                                   << FullyDecoded << "bar%foo" << "http://example.com/foo?bar%25foo";
@@ -4259,6 +4318,11 @@ void tst_QUrl::setComponents()
         QCOMPARE(copy.toString(), toString);
         // Check round-tripping
         QCOMPARE(QUrl(copy.toString()).toString(), toString);
+
+        // check comparisons
+        QUrl recreated(toString);
+        QCOMPARE(copy, recreated);
+        QCOMPARE(qHash(copy), qHash(recreated));
     } else {
         QVERIFY(copy.toString().isEmpty());
     }

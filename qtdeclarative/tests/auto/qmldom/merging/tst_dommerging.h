@@ -7,7 +7,7 @@
 #include <QtQmlDom/private/qqmldomtop_p.h>
 #include <QtQmlDom/private/qqmldomastdumper_p.h>
 
-#include <QtTest/QtTest>
+#include <QtTest/QTest>
 #include <QCborValue>
 #include <QDebug>
 #include <QLibraryInfo>

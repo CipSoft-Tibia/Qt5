@@ -325,8 +325,7 @@ void tst_qquickimage::smooth()
 
 void tst_qquickimage::mirror()
 {
-    if (QGuiApplication::platformName() == QLatin1String("minimal"))
-        QSKIP("Skipping due to grabWindow not functional on minimal platforms");
+    SKIP_IF_NO_WINDOW_GRAB;
 
     QMap<QQuickImage::FillMode, QImage> screenshots;
     const QList<QQuickImage::FillMode> fillModes{QQuickImage::Stretch,
@@ -542,8 +541,7 @@ void tst_qquickimage::big()
 
 void tst_qquickimage::tiling_QTBUG_6716()
 {
-    if (QGuiApplication::platformName() == QLatin1String("minimal"))
-        QSKIP("Skipping due to grabWindow not functional on minimal platforms");
+    SKIP_IF_NO_WINDOW_GRAB;
 
     QFETCH(QString, source);
 
@@ -782,19 +780,25 @@ void tst_qquickimage::sourceSize_data()
 {
     QTest::addColumn<int>("sourceWidth");
     QTest::addColumn<int>("sourceHeight");
+    QTest::addColumn<qreal>("expectedSourceWidth");
+    QTest::addColumn<qreal>("expectedSourceHeight");
     QTest::addColumn<qreal>("implicitWidth");
     QTest::addColumn<qreal>("implicitHeight");
 
-    QTest::newRow("unscaled") << 0 << 0 << 300.0 << 300.0;
-    QTest::newRow("scale width") << 100 << 0 << 100.0 << 100.0;
-    QTest::newRow("scale height") << 0 << 150 << 150.0 << 150.0;
-    QTest::newRow("larger sourceSize") << 400 << 400 << 300.0 << 300.0;
+    QTest::newRow("unscaled")           << 0 << 0 << 0.0 << 0.0 << 300.0 << 300.0;
+    QTest::newRow("scale width")        << 100 << 0 << 100.0 << 0.0 << 100.0 << 100.0;
+    QTest::newRow("negative height")    << 100 << -1 << 100.0 << 300.0 << 300.0 << 300.0;
+    QTest::newRow("scale height")       << 0 << 150 << 0.0 << 150.0 << 150.0 << 150.0;
+    QTest::newRow("negative width")     << -1 << 150 << 0.0 << 150.0 << 150.0 << 150.0;
+    QTest::newRow("larger sourceSize")  << 400 << 400 << 400.0 << 400.0 << 300.0 << 300.0;
 }
 
 void tst_qquickimage::sourceSize()
 {
     QFETCH(int, sourceWidth);
     QFETCH(int, sourceHeight);
+    QFETCH(qreal, expectedSourceWidth);
+    QFETCH(qreal, expectedSourceHeight);
     QFETCH(qreal, implicitWidth);
     QFETCH(qreal, implicitHeight);
 
@@ -810,8 +814,8 @@ void tst_qquickimage::sourceSize()
     QQuickImage *image = qobject_cast<QQuickImage*>(window->rootObject());
     QVERIFY(image);
 
-    QCOMPARE(image->sourceSize().width(), sourceWidth);
-    QCOMPARE(image->sourceSize().height(), sourceHeight);
+    QCOMPARE(image->sourceSize().width(), expectedSourceWidth);
+    QCOMPARE(image->sourceSize().height(), expectedSourceHeight);
     QCOMPARE(image->implicitWidth(), implicitWidth);
     QCOMPARE(image->implicitHeight(), implicitHeight);
 }
@@ -937,8 +941,7 @@ void tst_qquickimage::sourceClipRect()
     QCOMPARE(image->implicitWidth(), sourceClipRect.isNull() ? 300 : sourceClipRect.width());
     QCOMPARE(image->implicitHeight(), sourceClipRect.isNull() ? 300 : sourceClipRect.height());
 
-    if (QGuiApplication::platformName() == QLatin1String("minimal"))
-        QSKIP("Skipping due to grabWindow not functional on offscreen/minimal platforms");
+    SKIP_IF_NO_WINDOW_GRAB;
     QImage contents = toUnscaledImage(window->grabWindow());
     if (contents.width() < sourceClipRect.width())
         QSKIP("Skipping due to grabWindow not functional");
@@ -1191,8 +1194,7 @@ void tst_qquickimage::highDpiFillModesAndSizes()
 
 void tst_qquickimage::hugeImages()
 {
-    if (QGuiApplication::platformName() == QLatin1String("minimal"))
-        QSKIP("Skipping due to grabWindow not functional on minimal platforms");
+    SKIP_IF_NO_WINDOW_GRAB;
 
     QQuickView view;
     view.setSource(testFileUrl("hugeImages.qml"));
@@ -1250,8 +1252,7 @@ void tst_qquickimage::multiFrame_data()
 
 void tst_qquickimage::multiFrame()
 {
-    if (QGuiApplication::platformName() == QLatin1String("minimal"))
-        QSKIP("Skipping due to grabWindow not functional on minimal platforms");
+    SKIP_IF_NO_WINDOW_GRAB;
 
     QFETCH(QString, qmlfile);
     QFETCH(bool, asynchronous);

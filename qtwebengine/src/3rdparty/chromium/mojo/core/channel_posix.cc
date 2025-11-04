@@ -2,6 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#ifdef UNSAFE_BUFFERS_BUILD
+// TODO(crbug.com/351564777): Remove this and convert code to safer constructs.
+#pragma allow_unsafe_buffers
+#endif
+
 #include "mojo/core/channel_posix.h"
 
 #include <errno.h>
@@ -12,6 +17,8 @@
 #include <memory>
 #include <tuple>
 
+#include "base/check.h"
+#include "base/cpu_reduction_experiment.h"
 #include "base/functional/bind.h"
 #include "base/location.h"
 #include "base/logging.h"
@@ -22,6 +29,7 @@
 #include "base/task/single_thread_task_runner.h"
 #include "base/task/task_runner.h"
 #include "base/time/time.h"
+#include "base/types/fixed_array.h"
 #include "build/build_config.h"
 #include "mojo/public/cpp/platform/socket_utils_posix.h"
 
@@ -35,8 +43,11 @@
 
 #endif  // !BUILDFLAG(IS_NACL)
 
-namespace mojo {
-namespace core {
+#if BUILDFLAG(IS_ANDROID)
+#include "mojo/core/channel_binder.h"
+#endif
+
+namespace mojo::core {
 
 namespace {
 #if !BUILDFLAG(IS_NACL)
@@ -67,8 +78,10 @@ class MessageView {
 
   ~MessageView() {
     if (message_) {
-      UMA_HISTOGRAM_TIMES("Mojo.Channel.WriteMessageLatency",
-                          base::TimeTicks::Now() - start_time_);
+      if (base::ShouldLogHistogramForCpuReductionExperiment()) {
+        UMA_HISTOGRAM_TIMES("Mojo.Channel.WriteMessageLatency",
+                            base::TimeTicks::Now() - start_time_);
+      }
     }
   }
 
@@ -208,17 +221,17 @@ bool ChannelPosix::GetReadPlatformHandlesForIpcz(
 }
 
 void ChannelPosix::StartOnIOThread() {
-  DCHECK(!read_watcher_);
-  DCHECK(!write_watcher_);
-  read_watcher_ =
-      std::make_unique<base::MessagePumpForIO::FdWatchController>(FROM_HERE);
   base::CurrentThread::Get()->AddDestructionObserver(this);
-  write_watcher_ =
+  base::AutoLock lock(write_lock_);
+  DCHECK(!read_watcher_);
+  read_watcher_ =
       std::make_unique<base::MessagePumpForIO::FdWatchController>(FROM_HERE);
   base::CurrentIOThread::Get()->WatchFileDescriptor(
       socket_.get(), true /* persistent */, base::MessagePumpForIO::WATCH_READ,
       read_watcher_.get(), this);
-  base::AutoLock lock(write_lock_);
+  DCHECK(!write_watcher_);
+  write_watcher_ =
+      std::make_unique<base::MessagePumpForIO::FdWatchController>(FROM_HERE);
   FlushOutgoingMessagesNoLock();
 }
 
@@ -232,7 +245,12 @@ void ChannelPosix::WaitForWriteOnIOThreadNoLock() {
     return;
   if (!write_watcher_)
     return;
-  if (io_task_runner_->RunsTasksInCurrentSequence()) {
+  // This may be called from a `RunOrPostTask()` callback running in sequence
+  // with the IO thread, but on a different thread. In that case,
+  // `RunsTaskInCurrentSequence()` would return true, so use
+  // `BelongsToCurrentThread()` to detect that we aren't on the IO thread
+  // (otherwise, `base::CurrentIOThread::Get()` would fail).
+  if (io_task_runner_->BelongsToCurrentThread()) {
     pending_write_ = true;
     base::CurrentIOThread::Get()->WatchFileDescriptor(
         socket_.get(), false /* persistent */,
@@ -313,7 +331,10 @@ void ChannelPosix::OnFileCanReadWithoutBlocking(int fd) {
            total_bytes_read < kMaxBatchReadCapacity && next_read_size > 0);
   if (read_error) {
     // Stop receiving read notifications.
-    read_watcher_.reset();
+    {
+      base::AutoLock lock(write_lock_);
+      read_watcher_.reset();
+    }
     if (validation_error)
       OnError(Error::kReceivedMalformedData);
     else
@@ -350,6 +371,9 @@ bool ChannelPosix::WriteNoLock(MessageView message_view) {
                    message_view.data_num_bytes()};
       size_t num_handles_to_send =
           std::min(num_handles - handles_written, kMaxSendmsgHandles);
+      // TODO(crbug.com/439305148): Sending a large number of handles without
+      // a payload causes the message to be dropped.
+      CHECK(num_handles_to_send && (message_view.data_num_bytes() > 0));
       std::vector<base::ScopedFD> fds(num_handles_to_send);
       for (size_t i = 0; i < num_handles_to_send; ++i)
         fds[i] = handles[i + handles_written].TakeHandle().TakeFD();
@@ -475,9 +499,13 @@ void ChannelPosix::AcceptUpgradeOffer() {
 
 void ChannelPosix::OnWriteError(Error error) {
   DCHECK(io_task_runner_->RunsTasksInCurrentSequence());
-  DCHECK(reject_writes_);
+  DCHECK([&]() {
+    base::AutoLock lock(write_lock_);
+    return reject_writes_;
+  }());
 
   if (error == Error::kDisconnected) {
+    base::AutoLock lock(write_lock_);
     // If we can't write because the pipe is disconnected then continue
     // reading to fetch any in-flight messages, relying on end-of-stream to
     // signal the actual disconnection.
@@ -499,8 +527,7 @@ bool ChannelPosix::WriteOutgoingMessagesWithWritev() {
   // outgoing_messages_.size() but never more than the kernel allows.
   size_t num_messages_to_send =
       std::min<size_t>(IOV_MAX, outgoing_messages_.size());
-  iovec iov[num_messages_to_send];
-  memset(&iov[0], 0, sizeof(iov));
+  base::FixedArray<iovec> iov(num_messages_to_send);
 
   // Populate the iov.
   size_t num_iovs_set = 0;
@@ -680,6 +707,13 @@ scoped_refptr<Channel> Channel::Create(
     ConnectionParams connection_params,
     HandlePolicy handle_policy,
     scoped_refptr<base::SingleThreadTaskRunner> io_task_runner) {
+#if BUILDFLAG(IS_ANDROID)
+  if (connection_params.endpoint().platform_handle().is_valid_binder()) {
+    return base::MakeRefCounted<ChannelBinder>(
+        delegate, std::move(connection_params), handle_policy,
+        std::move(io_task_runner));
+  }
+#endif
 #if !BUILDFLAG(IS_NACL) && \
     (BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_ANDROID))
   return new ChannelLinux(delegate, std::move(connection_params), handle_policy,
@@ -708,5 +742,4 @@ void Channel::OfferChannelUpgrade() {
         // BUILDFLAG(IS_ANDROID)
 #endif  // !BUILDFLAG(IS_NACL)
 
-}  // namespace core
-}  // namespace mojo
+}  // namespace mojo::core

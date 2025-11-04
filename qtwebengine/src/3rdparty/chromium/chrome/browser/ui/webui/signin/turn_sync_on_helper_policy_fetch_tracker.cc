@@ -69,7 +69,7 @@ class PolicyFetchTracker
     if (provider != profile_->GetUserCloudPolicyManager())
       return;
     VLOG(2) << "Policies after sign in:";
-    VLOG(2) << policy::DictionaryPolicyConversions(
+    VLOG(2) << policy::PolicyConversions(
                    std::make_unique<policy::ChromePolicyConversionsClient>(
                        profile_))
                    .ToJSON();
@@ -159,7 +159,7 @@ class LacrosPrimaryProfilePolicyFetchTracker
   void SwitchToProfile(Profile* new_profile) override {
     // Sign in intercept and syncing with a different account are not supported
     // use cases for the Lacros primary profile.
-    NOTREACHED();
+    NOTREACHED_IN_MIGRATION();
   }
 
   void RegisterForPolicy(

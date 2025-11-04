@@ -6,10 +6,10 @@
 #define THIRD_PARTY_BLINK_RENDERER_MODULES_XR_XR_INPUT_SOURCE_H_
 
 #include <memory>
+#include <optional>
 
 #include "base/time/time.h"
 #include "device/vr/public/mojom/vr_service.mojom-blink.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "third_party/blink/renderer/bindings/core/v8/idl_types.h"
 #include "third_party/blink/renderer/modules/gamepad/gamepad.h"
 #include "third_party/blink/renderer/platform/bindings/script_wrappable.h"
@@ -19,7 +19,9 @@
 #include "ui/gfx/geometry/transform.h"
 
 namespace device {
-class Gamepad;
+template <class T>
+class GamepadImpl;
+using Gamepad = GamepadImpl<void>;
 }
 
 namespace blink {
@@ -87,9 +89,9 @@ class XRInputSource : public ScriptWrappable, public Gamepad::Client {
     return state_.target_ray_mode;
   }
 
-  absl::optional<gfx::Transform> MojoFromInput() const;
+  std::optional<gfx::Transform> MojoFromInput() const;
 
-  absl::optional<gfx::Transform> InputFromPointer() const;
+  std::optional<gfx::Transform> InputFromPointer() const;
 
   void OnSelectStart();
   void OnSelectEnd();
@@ -157,7 +159,7 @@ class XRInputSource : public ScriptWrappable, public Gamepad::Client {
 
   // Note that UpdateGamepad should only be called after a check/recreation
   // from InvalidatesSameObject
-  void UpdateGamepad(const absl::optional<device::Gamepad>& gamepad);
+  void UpdateGamepad(const std::optional<device::Gamepad>& gamepad);
 
   void UpdateHand(
       const device::mojom::blink::XRHandTrackingData* hand_joint_data);

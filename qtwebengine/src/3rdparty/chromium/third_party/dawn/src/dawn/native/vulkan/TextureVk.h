@@ -47,8 +47,13 @@ class Device;
 class Texture;
 
 VkFormat VulkanImageFormat(const Device* device, wgpu::TextureFormat format);
+// This version does not support depth stencil formats which can depend on
+// properties of the Device.
+VkFormat ColorVulkanImageFormat(wgpu::TextureFormat format);
 ResultOrError<wgpu::TextureFormat> FormatFromVkFormat(const Device* device, VkFormat vkFormat);
-VkImageUsageFlags VulkanImageUsage(wgpu::TextureUsage usage, const Format& format);
+VkImageUsageFlags VulkanImageUsage(const DeviceBase* device,
+                                   wgpu::TextureUsage usage,
+                                   const Format& format);
 VkImageLayout VulkanImageLayout(const Format& format, wgpu::TextureUsage usage);
 VkImageLayout VulkanImageLayoutForDepthStencilAttachment(const Format& format,
                                                          bool depthReadOnly,
@@ -103,6 +108,13 @@ class Texture final : public TextureBase {
                                 std::vector<VkImageMemoryBarrier>* imageBarriers,
                                 VkPipelineStageFlags* srcStages,
                                 VkPipelineStageFlags* dstStages);
+    // Change the texture to be used as `usage`. Note: this function assumes the barriers are
+    // already invoked before calling it. Typical use case is an input attachment, at the beginning
+    // of render pass, its usage is transitioned to TextureBinding. Then subpass' dependency
+    // automatically transitions the texture to RenderAttachment without any explicit barrier call.
+    void UpdateUsage(wgpu::TextureUsage usage,
+                     wgpu::ShaderStage shaderStages,
+                     const SubresourceRange& range);
 
     // Eagerly transition the texture for export.
     void TransitionEagerlyForExport(CommandRecordingContext* recordingContext);
@@ -231,8 +243,9 @@ class Texture final : public TextureBase {
 
 class TextureView final : public TextureViewBase {
   public:
-    static ResultOrError<Ref<TextureView>> Create(TextureBase* texture,
-                                                  const TextureViewDescriptor* descriptor);
+    static ResultOrError<Ref<TextureView>> Create(
+        TextureBase* texture,
+        const UnpackedPtr<TextureViewDescriptor>& descriptor);
     VkImageView GetHandle() const;
     VkImageView GetHandleForBGRA8UnormStorage() const;
 
@@ -242,7 +255,7 @@ class TextureView final : public TextureViewBase {
     ~TextureView() override;
     void DestroyImpl() override;
     using TextureViewBase::TextureViewBase;
-    MaybeError Initialize(const TextureViewDescriptor* descriptor);
+    MaybeError Initialize(const UnpackedPtr<TextureViewDescriptor>& descriptor);
 
     VkImageViewCreateInfo GetCreateInfo(wgpu::TextureFormat format,
                                         wgpu::TextureViewDimension dimension,
@@ -253,6 +266,8 @@ class TextureView final : public TextureViewBase {
 
     VkImageView mHandle = VK_NULL_HANDLE;
     VkImageView mHandleForBGRA8UnormStorage = VK_NULL_HANDLE;
+    VkSamplerYcbcrConversion mSamplerYCbCrConversion = VK_NULL_HANDLE;
+    YCbCrVkDescriptor mYCbCrVkDescriptor;
     std::vector<VkImageView> mHandlesFor2DViewOn3D;
 };
 

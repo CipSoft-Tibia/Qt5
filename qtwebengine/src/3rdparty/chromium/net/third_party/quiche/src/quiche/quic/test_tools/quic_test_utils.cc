@@ -7,7 +7,10 @@
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <memory>
+#include <optional>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -444,6 +447,11 @@ bool NoOpFramerVisitor::OnHandshakeDoneFrame(
 
 bool NoOpFramerVisitor::OnAckFrequencyFrame(
     const QuicAckFrequencyFrame& /*frame*/) {
+  return true;
+}
+
+bool NoOpFramerVisitor::OnResetStreamAtFrame(
+    const QuicResetStreamAtFrame& /*frame*/) {
   return true;
 }
 

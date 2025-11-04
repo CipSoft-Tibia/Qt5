@@ -312,7 +312,7 @@ float QScatter3DSeries::itemSize() const
 void QScatter3DSeries::setDataArray(const QScatterDataArray &newDataArray)
 {
     Q_D(QScatter3DSeries);
-    if (d->m_dataArray.data() != newDataArray.data()) {
+    if (!d->m_dataArray.isSharedWith(newDataArray)) {
         d->setDataArray(newDataArray);
         emit dataArrayChanged(newDataArray);
     }
@@ -428,7 +428,7 @@ void QScatter3DSeriesPrivate::createItemLabel()
     static const QString seriesNameTag(QStringLiteral("@seriesName"));
 
     if (m_selectedItem == QScatter3DSeries::invalidSelectionIndex()) {
-        m_itemLabel = hiddenLabelTag;
+        m_itemLabel = QString(hiddenLabelTag);
         return;
     }
 

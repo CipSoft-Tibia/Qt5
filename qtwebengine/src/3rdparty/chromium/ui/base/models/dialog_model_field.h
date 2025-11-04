@@ -5,6 +5,7 @@
 #ifndef UI_BASE_MODELS_DIALOG_MODEL_FIELD_H_
 #define UI_BASE_MODELS_DIALOG_MODEL_FIELD_H_
 
+#include <optional>
 #include <string>
 
 #include "base/callback_list.h"
@@ -14,7 +15,6 @@
 #include "base/gtest_prod_util.h"
 #include "base/memory/raw_ptr.h"
 #include "base/types/pass_key.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "ui/base/accelerators/accelerator.h"
 #include "ui/base/interaction/element_identifier.h"
 #include "ui/base/models/combobox_model.h"
@@ -28,6 +28,7 @@ class DialogModelCheckbox;
 class DialogModelCombobox;
 class DialogModelCustomField;
 class DialogModelMenuItem;
+class DialogModelTitleItem;
 class DialogModelSection;
 class DialogModelTextfield;
 class Event;
@@ -59,8 +60,8 @@ class COMPONENT_EXPORT(UI_BASE) DialogModelLabel {
 
     const std::u16string& text() const { return text_; }
     bool is_emphasized() const { return is_emphasized_; }
-    const absl::optional<Callback>& callback() const { return callback_; }
-    const absl::optional<std::u16string>& accessible_name() const {
+    const std::optional<Callback>& callback() const { return callback_; }
+    const std::optional<std::u16string>& accessible_name() const {
       return accessible_name_;
     }
 
@@ -76,8 +77,8 @@ class COMPONENT_EXPORT(UI_BASE) DialogModelLabel {
 
     const std::u16string text_;
     const bool is_emphasized_;
-    const absl::optional<Callback> callback_;
-    const absl::optional<std::u16string> accessible_name_;
+    const std::optional<Callback> callback_;
+    const std::optional<std::u16string> accessible_name_;
   };
 
   explicit DialogModelLabel(int message_id);
@@ -164,7 +165,9 @@ class COMPONENT_EXPORT(UI_BASE) DialogModelField {
                  // having multiple subsequent kSections (3 sections imply 2
                  // separators).
     kSection,
-    kTextfield
+    kTextfield,
+    kTitleItem  // TODO(pengchaocai): Remove kTitleItem once DialogModel
+                // supports multiple sections.
   };
 
   class COMPONENT_EXPORT(UI_BASE) Params {
@@ -196,7 +199,7 @@ class COMPONENT_EXPORT(UI_BASE) DialogModelField {
   Type type() const { return type_; }
 
   void SetVisible(bool visible);
-  bool is_visible() { return is_visible_; }
+  bool is_visible() const { return is_visible_; }
 
   const base::flat_set<Accelerator>& accelerators() const {
     return accelerators_;
@@ -208,6 +211,7 @@ class COMPONENT_EXPORT(UI_BASE) DialogModelField {
   DialogModelCombobox* AsCombobox();
   DialogModelMenuItem* AsMenuItem();
   const DialogModelMenuItem* AsMenuItem() const;
+  const DialogModelTitleItem* AsTitleItem() const;
   DialogModelTextfield* AsTextfield();
   DialogModelSection* AsSection();
   DialogModelCustomField* AsCustomField();
@@ -420,6 +424,22 @@ class COMPONENT_EXPORT(UI_BASE) DialogModelSeparator : public DialogModelField {
   ~DialogModelSeparator() override;
 };
 
+// Field class representing a title.
+// TODO(pengchaocai): Remove DialogModelTitleItem once DialogModel supports
+// multiple sections and titles live in sections as optional strings.
+class COMPONENT_EXPORT(UI_BASE) DialogModelTitleItem : public DialogModelField {
+ public:
+  explicit DialogModelTitleItem(std::u16string label,
+                                ElementIdentifier id = ElementIdentifier());
+  DialogModelTitleItem(const DialogModelSeparator&) = delete;
+  DialogModelTitleItem& operator=(const DialogModelSeparator&) = delete;
+  ~DialogModelTitleItem() override;
+  const std::u16string& label() const { return label_; }
+
+ private:
+  const std::u16string label_;
+};
+
 // Field class representing a textfield and corresponding label to describe the
 // textfield:
 //
@@ -507,7 +527,7 @@ class COMPONENT_EXPORT(UI_BASE) DialogModelCustomField
 class COMPONENT_EXPORT(UI_BASE) DialogModelSection final
     : public DialogModelField {
  public:
-  class Builder final {
+  class COMPONENT_EXPORT(UI_BASE) Builder final {
    public:
     Builder();
     Builder(const Builder&) = delete;
@@ -624,6 +644,13 @@ class COMPONENT_EXPORT(UI_BASE) DialogModelSection final
                    base::RepeatingCallback<void(int)> callback,
                    const DialogModelMenuItem::Params& params =
                        DialogModelMenuItem::Params());
+
+  // Adds a menu item at the end of the section.
+  // TODO(pengchaocai): Refactor this method once dialog_model supports multiple
+  // DialogModelSection, when the title would be an optional member of `this`
+  // and explicitly adding it might not be needed.
+  void AddTitleItem(std::u16string label,
+                    ElementIdentifier id = ElementIdentifier());
 
   // Adds a separator at the end of the section.
   void AddSeparator();

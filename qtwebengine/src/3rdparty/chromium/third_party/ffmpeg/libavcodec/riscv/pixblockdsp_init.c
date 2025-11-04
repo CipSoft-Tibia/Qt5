@@ -45,6 +45,7 @@ av_cold void ff_pixblockdsp_init_riscv(PixblockDSPContext *c,
                                        AVCodecContext *avctx,
                                        unsigned high_bit_depth)
 {
+#if HAVE_RV
     int cpu_flags = av_get_cpu_flags();
 
     if (cpu_flags & AV_CPU_FLAG_RVI) {
@@ -55,7 +56,7 @@ av_cold void ff_pixblockdsp_init_riscv(PixblockDSPContext *c,
     }
 
 #if HAVE_RVV
-    if ((cpu_flags & AV_CPU_FLAG_RVV_I32) && ff_get_rv_vlenb() >= 16) {
+    if ((cpu_flags & AV_CPU_FLAG_RVV_I32) && ff_rv_vlen_least(128)) {
         c->diff_pixels = ff_diff_pixels_unaligned_rvv;
         c->diff_pixels_unaligned = ff_diff_pixels_unaligned_rvv;
     }
@@ -68,5 +69,6 @@ av_cold void ff_pixblockdsp_init_riscv(PixblockDSPContext *c,
 
         c->diff_pixels = ff_diff_pixels_rvv;
     }
+#endif
 #endif
 }

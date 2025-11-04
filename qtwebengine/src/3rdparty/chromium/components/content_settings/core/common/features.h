@@ -26,6 +26,12 @@ namespace features {
 COMPONENT_EXPORT(CONTENT_SETTINGS_FEATURES)
 BASE_DECLARE_FEATURE(kSafetyCheckUnusedSitePermissions);
 
+// When enabled, allowlisted website settings are considered for Safety Check,
+// in addition to content settings that are included by default.
+COMPONENT_EXPORT(CONTENT_SETTINGS_FEATURES)
+BASE_DECLARE_FEATURE(
+    kSafetyCheckUnusedSitePermissionsForSupportedChooserPermissions);
+
 // Lets the HostContentSettingsMap actively monitor when content settings expire
 // and delete them instantly. This also notifies observers that will, in turn,
 // terminate access to capabilities gated on those settings right away.
@@ -101,6 +107,12 @@ BASE_DECLARE_FEATURE(kImprovedSemanticsActivityIndicators);
 COMPONENT_EXPORT(CONTENT_SETTINGS_FEATURES)
 BASE_DECLARE_FEATURE(kLeftHandSideActivityIndicators);
 
+#if BUILDFLAG(IS_CHROMEOS)
+// Shows warnings if camera, microphone or geolocation is blocked in the OS.
+COMPONENT_EXPORT(CONTENT_SETTINGS_FEATURES)
+BASE_DECLARE_FEATURE(kCrosSystemLevelPermissionBlockedWarnings);
+#endif
+
 // Feature to enable redesigned tracking protection UX + prefs for 3PCD.
 COMPONENT_EXPORT(CONTENT_SETTINGS_FEATURES)
 BASE_DECLARE_FEATURE(kTrackingProtection3pcd);
@@ -125,27 +137,6 @@ BASE_DECLARE_FEATURE(kContentSettingsPartitioning);
 
 COMPONENT_EXPORT(CONTENT_SETTINGS_FEATURES)
 extern const char kUseTestMetadataName[];
-
-// Enables writing and reading metadata grants as a host-indexed data structure.
-// This is meant to optimize lookups when the list is large.
-COMPONENT_EXPORT(CONTENT_SETTINGS_FEATURES)
-BASE_DECLARE_FEATURE(kHostIndexedMetadataGrants);
-
-// The threshold for the amount of metadata grants needed to trigger usage of
-// the optimized data structure.
-COMPONENT_EXPORT(CONTENT_SETTINGS_FEATURES)
-extern const base::FeatureParam<int> kMetadataGrantsThreshold;
-
-// Enables generating and using test metadata. Used to test performance at
-// large list sizes. Set to a value greater than 0 to use that many generated
-// entries for testing.
-COMPONENT_EXPORT(CONTENT_SETTINGS_FEATURES)
-extern const base::FeatureParam<int> kUseTestMetadata;
-
-// Enable indexing HostContentSettings to allow for faster lookups of content
-// setting rules.
-COMPONENT_EXPORT(CONTENT_SETTINGS_FEATURES)
-BASE_DECLARE_FEATURE(kIndexedHostContentSettingsMap);
 
 }  // namespace features
 }  // namespace content_settings

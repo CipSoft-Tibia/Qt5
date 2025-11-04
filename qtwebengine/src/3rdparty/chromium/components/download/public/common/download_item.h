@@ -20,6 +20,7 @@
 #include <stdint.h>
 
 #include <map>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -34,7 +35,6 @@
 #include "components/download/public/common/download_source.h"
 #include "net/base/isolation_info.h"
 #include "services/network/public/mojom/fetch_api.mojom-shared.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "ui/base/page_transition_types.h"
 #include "url/origin.h"
 
@@ -52,6 +52,7 @@ class HttpResponseHeaders;
 
 namespace download {
 class DownloadFile;
+class DownloadItemRenameHandler;
 
 // One DownloadItem per download. This is the model class that stores all the
 // state for a download.
@@ -179,15 +180,12 @@ class COMPONENTS_DOWNLOAD_EXPORT DownloadItem : public base::SupportsUserData {
   // Called when the user has validated the download of an insecure file.
   virtual void ValidateInsecureDownload() = 0;
 
-  // Called to acquire a dangerous download. If |delete_file_afterward| is true,
-  // invokes |callback| on the UI thread with the path to the downloaded file,
-  // and removes the DownloadItem from views and history if appropriate.
-  // Otherwise, makes a temp copy of the download file, and invokes |callback|
-  // with the path to the temp copy. The caller is responsible for cleanup.
-  // Note: It is important for |callback| to be valid since the downloaded file
-  // will not be cleaned up if the callback fails.
-  virtual void StealDangerousDownload(bool delete_file_afterward,
-                                      AcquireFileCallback callback) = 0;
+  // Called to acquire a dangerous download. Mmakes a temp copy of the
+  // download file, and invokes |callback| with the path to the temp
+  // copy. The caller is responsible for cleanup.  Note: It is important
+  // for |callback| to be valid since the downloaded file will not be
+  // cleaned up if the callback fails.
+  virtual void CopyDownload(AcquireFileCallback callback) = 0;
 
   // Pause a download.  Will have no effect if the download is already
   // paused.
@@ -307,7 +305,7 @@ class COMPONENTS_DOWNLOAD_EXPORT DownloadItem : public base::SupportsUserData {
   virtual const GURL& GetTabReferrerUrl() const = 0;
 
   // Origin of the original originator of this download, before redirects, etc.
-  virtual const absl::optional<url::Origin>& GetRequestInitiator() const = 0;
+  virtual const std::optional<url::Origin>& GetRequestInitiator() const = 0;
 
   // For downloads initiated via <a download>, this is the suggested download
   // filename from the download attribute.
@@ -356,8 +354,7 @@ class COMPONENTS_DOWNLOAD_EXPORT DownloadItem : public base::SupportsUserData {
   virtual ::network::mojom::CredentialsMode GetCredentialsMode() const = 0;
 
   // The isolation mode of the request.
-  virtual const absl::optional<net::IsolationInfo>& GetIsolationInfo()
-      const = 0;
+  virtual const std::optional<net::IsolationInfo>& GetIsolationInfo() const = 0;
 
   //    Destination State accessors --------------------------------------------
 
@@ -440,9 +437,18 @@ class COMPONENTS_DOWNLOAD_EXPORT DownloadItem : public base::SupportsUserData {
   // Gets the pointer to the DownloadFile owned by this object.
   virtual DownloadFile* GetDownloadFile() = 0;
 
+  // Gets a handler to perform the rename for a download item. Returns nullptr
+  // if no special rename handling is required.
+  virtual DownloadItemRenameHandler* GetRenameHandler() = 0;
+
 #if BUILDFLAG(IS_ANDROID)
   // Gets whether the download is triggered from external app.
   virtual bool IsFromExternalApp() = 0;
+
+  // Whether the original URL must be downloded, e.g. triggered by context
+  // menu or from the download service, or has "content-disposition: attachment"
+  // in header.
+  virtual bool IsMustDownload() = 0;
 #endif  // BUILDFLAG(IS_ANDROID)
 
   //    Progress State accessors -----------------------------------------------
@@ -467,7 +473,7 @@ class COMPONENTS_DOWNLOAD_EXPORT DownloadItem : public base::SupportsUserData {
   // final name.
   virtual bool AllDataSaved() const = 0;
 
-  // Total number of expected bytes. Returns -1 if the total size is unknown.
+  // Total number of expected bytes. Returns 0 if the total size is unknown.
   virtual int64_t GetTotalBytes() const = 0;
 
   // Total number of bytes that have been received and written to the download
@@ -477,6 +483,9 @@ class COMPONENTS_DOWNLOAD_EXPORT DownloadItem : public base::SupportsUserData {
   // Return the slices that have been received so far, ordered by their offset.
   // This is only used when parallel downloading is enabled.
   virtual const std::vector<ReceivedSlice>& GetReceivedSlices() const = 0;
+
+  // Total number of bytes that have been uploaded to the cloud.
+  virtual int64_t GetUploadedBytes() const = 0;
 
   // Time the download was first started. This timestamp is always valid and
   // doesn't change.
@@ -539,8 +548,8 @@ class COMPONENTS_DOWNLOAD_EXPORT DownloadItem : public base::SupportsUserData {
   // the test are available. This should only be called after AllDataSaved() is
   // true. If |reason| is not DOWNLOAD_INTERRUPT_REASON_NONE, then the download
   // file should be blocked.
-  // TODO(crbug.com/733291): Move DownloadInterruptReason out of here and add a
-  // new  Interrupt method instead. Same for other methods supporting
+  // TODO(crbug.com/40525770): Move DownloadInterruptReason out of here and add
+  // a new  Interrupt method instead. Same for other methods supporting
   // interruptions.
   virtual void OnContentCheckCompleted(DownloadDangerType danger_type,
                                        DownloadInterruptReason reason) = 0;

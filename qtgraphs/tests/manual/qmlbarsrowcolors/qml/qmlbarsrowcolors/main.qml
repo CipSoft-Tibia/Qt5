@@ -303,6 +303,36 @@ Item {
 
         Column {
             Label {
+                text: "ValueAxis Segments"
+            }
+        }
+
+        Slider {
+            id: valueAxisSegmentSliders
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+            clip: true
+            from: graphAxes.minAxisSegmentCount
+            to: graphAxes.maxAxisSegmentCount
+            value: 5
+
+            onValueChanged: barGraph.valueAxis.segmentCount = value
+        }
+
+        Slider {
+            id: valueAxisSubSegmentSliders
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+            clip: true
+            from: graphAxes.minAxisSegmentCount
+            to: graphAxes.maxAxisSegmentCount
+            value: 5
+
+            onValueChanged: barGraph.valueAxis.subSegmentCount = value
+        }
+
+        Column {
+            Label {
                 text: "Rotate bars"
             }
         }

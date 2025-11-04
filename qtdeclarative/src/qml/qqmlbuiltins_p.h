@@ -215,6 +215,14 @@ struct QQmlQVariantMapForeign
     QML_EXTENDED_JAVASCRIPT(Object)
 };
 
+struct QQmlQVariantHashForeign
+{
+    Q_GADGET
+    QML_ANONYMOUS
+    QML_FOREIGN(QVariantHash)
+    QML_EXTENDED_JAVASCRIPT(Object)
+};
+
 struct QQmlQint8Foreign
 {
     Q_GADGET

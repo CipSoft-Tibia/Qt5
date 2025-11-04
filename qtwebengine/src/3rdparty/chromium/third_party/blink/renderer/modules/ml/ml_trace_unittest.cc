@@ -53,7 +53,7 @@ class ScopedMLTraceTest : public testing::Test {
     base::trace_event::TraceResultBuffer trace_buffer;
     trace_buffer.SetOutputCallback(json_output->GetCallback());
     trace_buffer.Start();
-    trace_buffer.AddFragment(json_events_str->data());
+    trace_buffer.AddFragment(json_events_str->as_string());
     trace_buffer.Finish();
     if (!has_more_events) {
       std::move(quit_closure).Run();
@@ -86,7 +86,10 @@ class ScopedMLTraceTest : public testing::Test {
       const std::string* trace_type = dict.FindString("ph");
       CHECK(trace_type);
       // Count both the "BEGIN" and "END" traces.
-      if (*trace_type != "E" && *trace_type != "e") {
+      if (*trace_type == "n") {
+        ((event_counts)[*name].first)++;
+        ((event_counts)[*name].second)++;
+      } else if (*trace_type != "E" && *trace_type != "e") {
         ((event_counts)[*name].first)++;
       } else {
         ((event_counts)[*name].second)++;

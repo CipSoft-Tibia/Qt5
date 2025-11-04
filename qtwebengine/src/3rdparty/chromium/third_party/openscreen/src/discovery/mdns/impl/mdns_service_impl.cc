@@ -8,6 +8,7 @@
 #include <utility>
 #include <vector>
 
+#include "discovery/common/config.h"
 #include "discovery/common/reporting_client.h"
 #include "discovery/mdns/public/mdns_constants.h"
 #include "discovery/mdns/public/mdns_records.h"
@@ -17,7 +18,7 @@ namespace openscreen::discovery {
 // static
 std::unique_ptr<MdnsService> MdnsService::Create(
     TaskRunner& task_runner,
-    ReportingClient* reporting_client,
+    ReportingClient& reporting_client,
     const Config& config,
     const InterfaceInfo& network_info) {
   return std::make_unique<MdnsServiceImpl>(
@@ -26,7 +27,7 @@ std::unique_ptr<MdnsService> MdnsService::Create(
 
 MdnsServiceImpl::MdnsServiceImpl(TaskRunner& task_runner,
                                  ClockNowFunctionPtr now_function,
-                                 ReportingClient* reporting_client,
+                                 ReportingClient& reporting_client,
                                  const Config& config,
                                  const InterfaceInfo& network_info)
     : task_runner_(task_runner),
@@ -34,8 +35,6 @@ MdnsServiceImpl::MdnsServiceImpl(TaskRunner& task_runner,
       reporting_client_(reporting_client),
       receiver_(config),
       interface_(network_info.index) {
-  OSP_DCHECK(reporting_client_);
-
   // Create all UDP sockets needed for this object. They should not yet be bound
   // so that they do not send or receive data until the objects on which their
   // callback depends is initialized.
@@ -45,9 +44,9 @@ MdnsServiceImpl::MdnsServiceImpl(TaskRunner& task_runner,
     ErrorOr<std::unique_ptr<UdpSocket>> socket = UdpSocket::Create(
         task_runner, this,
         IPEndpoint{IPAddress::kAnyV4(), kDefaultMulticastPort});
-    OSP_DCHECK(!socket.is_error());
-    OSP_DCHECK(socket.value().get());
-    OSP_DCHECK(socket.value()->IsIPv4());
+    OSP_CHECK(!socket.is_error());
+    OSP_CHECK(socket.value());
+    OSP_CHECK(socket.value()->IsIPv4());
 
     socket_v4_ = std::move(socket.value());
   }
@@ -56,9 +55,9 @@ MdnsServiceImpl::MdnsServiceImpl(TaskRunner& task_runner,
     ErrorOr<std::unique_ptr<UdpSocket>> socket = UdpSocket::Create(
         task_runner, this,
         IPEndpoint{IPAddress::kAnyV6(), kDefaultMulticastPort});
-    OSP_DCHECK(!socket.is_error());
-    OSP_DCHECK(socket.value().get());
-    OSP_DCHECK(socket.value()->IsIPv6());
+    OSP_CHECK(!socket.is_error());
+    OSP_CHECK(socket.value());
+    OSP_CHECK(socket.value()->IsIPv6());
 
     socket_v6_ = std::move(socket.value());
   }
@@ -66,22 +65,21 @@ MdnsServiceImpl::MdnsServiceImpl(TaskRunner& task_runner,
   // Initialize objects which depend on the above sockets.
   UdpSocket* socket_ptr =
       socket_v4_.get() ? socket_v4_.get() : socket_v6_.get();
-  OSP_DCHECK(socket_ptr);
-  sender_ = std::make_unique<MdnsSender>(socket_ptr);
+  OSP_CHECK(socket_ptr);
+  sender_ = std::make_unique<MdnsSender>(*socket_ptr);
   if (config.enable_querying) {
-    querier_ = std::make_unique<MdnsQuerier>(
-        sender_.get(), &receiver_, task_runner_, now_function_, &random_delay_,
-        reporting_client_, config);
+    querier_ = std::make_unique<MdnsQuerier>(*sender_, receiver_, task_runner_,
+                                             now_function_, random_delay_,
+                                             reporting_client_, config);
   }
   if (config.enable_publication) {
     probe_manager_ = std::make_unique<MdnsProbeManagerImpl>(
-        sender_.get(), &receiver_, &random_delay_, task_runner_, now_function_);
-    publisher_ =
-        std::make_unique<MdnsPublisher>(sender_.get(), probe_manager_.get(),
-                                        task_runner_, now_function_, config);
+        *sender_, receiver_, random_delay_, task_runner_, now_function_);
+    publisher_ = std::make_unique<MdnsPublisher>(
+        *sender_, *probe_manager_, task_runner_, now_function_, config);
     responder_ = std::make_unique<MdnsResponder>(
-        publisher_.get(), probe_manager_.get(), sender_.get(), &receiver_,
-        task_runner_, now_function_, &random_delay_, config);
+        *publisher_, *probe_manager_, *sender_, receiver_, task_runner_,
+        now_function_, random_delay_, config);
   }
 
   receiver_.Start();
@@ -138,11 +136,11 @@ Error MdnsServiceImpl::UnregisterRecord(const MdnsRecord& record) {
   return publisher_->UnregisterRecord(record);
 }
 
-void MdnsServiceImpl::OnError(UdpSocket* socket, Error error) {
-  reporting_client_->OnFatalError(error);
+void MdnsServiceImpl::OnError(UdpSocket* socket, const Error& error) {
+  reporting_client_.OnFatalError(error);
 }
 
-void MdnsServiceImpl::OnSendError(UdpSocket* socket, Error error) {
+void MdnsServiceImpl::OnSendError(UdpSocket* socket, const Error& error) {
   sender_->OnSendError(socket, error);
 }
 

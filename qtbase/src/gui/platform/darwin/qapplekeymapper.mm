@@ -18,7 +18,9 @@
 
 QT_BEGIN_NAMESPACE
 
-Q_LOGGING_CATEGORY(lcQpaKeyMapperKeys, "qt.qpa.keymapper.keys");
+#ifdef Q_OS_MACOS
+Q_STATIC_LOGGING_CATEGORY(lcQpaKeyMapperKeys, "qt.qpa.keymapper.keys");
+#endif
 
 static Qt::KeyboardModifiers swapModifiersIfNeeded(const Qt::KeyboardModifiers modifiers)
 {
@@ -209,7 +211,7 @@ static int toKeyCode(const QChar &key, int virtualKey, int modifiers)
     qCDebug(lcQpaKeyMapperKeys, "Mapping key: %d (0x%04x) / vk %d (0x%04x)",
         key.unicode(), key.unicode(), virtualKey, virtualKey);
 
-    if (key == QChar(kClearCharCode) && virtualKey == 0x47)
+    if (key == char16_t(kClearCharCode) && virtualKey == 0x47)
         return Qt::Key_Clear;
 
     if (key.isDigit()) {
@@ -244,11 +246,11 @@ static int toKeyCode(const QChar &key, int virtualKey, int modifiers)
     }
 
     // Check if they belong to key codes in private unicode range
-    if (key >= QChar(NSUpArrowFunctionKey) && key <= QChar(NSModeSwitchFunctionKey)) {
+    if (key >= char16_t(NSUpArrowFunctionKey) && key <= char16_t(NSModeSwitchFunctionKey)) {
         if (auto qtKey = functionKeys.value(key.unicode())) {
             qCDebug(lcQpaKeyMapperKeys) << "Got" << qtKey;
             return qtKey;
-        } else if (key >= QChar(NSF1FunctionKey) && key <= QChar(NSF35FunctionKey)) {
+        } else if (key >= char16_t(NSF1FunctionKey) && key <= char16_t(NSF35FunctionKey)) {
             auto functionKey = Qt::Key_F1 + (key.unicode() - NSF1FunctionKey) ;
             qCDebug(lcQpaKeyMapperKeys) << "Got" << functionKey;
             return functionKey;
@@ -329,9 +331,9 @@ QChar QAppleKeyMapper::toCocoaKey(Qt::Key key)
 {
     // Prioritize overloaded keys
     if (key == Qt::Key_Return)
-        return QChar(NSCarriageReturnCharacter);
+        return char16_t(NSCarriageReturnCharacter);
     if (key == Qt::Key_Backspace)
-        return QChar(NSBackspaceCharacter);
+        return char16_t(NSBackspaceCharacter);
 
     Q_CONSTINIT static QHash<Qt::Key, char16_t> reverseCocoaKeys;
     if (reverseCocoaKeys.isEmpty()) {
@@ -533,9 +535,14 @@ QList<QKeyCombination> QAppleKeyMapper::possibleKeyCombinations(const QKeyEvent 
         // modifier layer in all/most keyboard layouts contains a Latin
         // layer. We then combine that with the modifiers of the event
         // to produce the resulting "Latin" key combination.
-        static constexpr int kCommandLayer = 2;
-        ret << QKeyCombination::fromCombined(
-            int(eventModifiers) + int(keyMap[kCommandLayer]));
+
+        // Depending on whether Qt::AA_MacDontSwapCtrlAndMeta is set or not
+        // the index of the Command layer in modifierCombinations will differ.
+        const int commandLayer = qApp->testAttribute(Qt::AA_MacDontSwapCtrlAndMeta) ? 8 : 2;
+        // FIXME: We don't clear the key map when Qt::AA_MacDontSwapCtrlAndMeta
+        // is set, so changing Qt::AA_MacDontSwapCtrlAndMeta at runtime will
+        // fail once we've built the key map.
+        ret << QKeyCombination::fromCombined(int(eventModifiers) + int(keyMap[commandLayer]));
 
         // If the unmodified key is outside of Latin1, we also treat
         // that as a valid key combination, even if AppKit natively

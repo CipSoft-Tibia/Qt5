@@ -45,7 +45,6 @@
 #include "third_party/blink/renderer/core/inspector/inspector_highlight.h"
 #include "third_party/blink/renderer/core/inspector/inspector_overlay_host.h"
 #include "third_party/blink/renderer/core/inspector/protocol/overlay.h"
-#include "third_party/blink/renderer/platform/geometry/layout_rect.h"
 #include "third_party/blink/renderer/platform/graphics/color.h"
 #include "third_party/blink/renderer/platform/heap/collection_support/heap_hash_map.h"
 #include "third_party/blink/renderer/platform/heap/garbage_collected.h"
@@ -166,8 +165,8 @@ class CORE_EXPORT InspectorOverlayAgent final
   ToIsolationModeHighlightConfig(
       protocol::Overlay::IsolationModeHighlightConfig*,
       int highlight_index);
-  static absl::optional<LineStyle> ToLineStyle(protocol::Overlay::LineStyle*);
-  static absl::optional<BoxStyle> ToBoxStyle(protocol::Overlay::BoxStyle*);
+  static std::optional<LineStyle> ToLineStyle(protocol::Overlay::LineStyle*);
+  static std::optional<BoxStyle> ToBoxStyle(protocol::Overlay::BoxStyle*);
   static std::unique_ptr<InspectorHighlightConfig> ToHighlightConfig(
       protocol::Overlay::HighlightConfig*);
   InspectorOverlayAgent(WebLocalFrameImpl*,

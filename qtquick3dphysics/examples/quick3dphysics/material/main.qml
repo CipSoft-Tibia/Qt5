@@ -60,8 +60,8 @@ Window {
             collisionShapes: PlaneShape {}
             Model {
                 source: "#Rectangle"
-                materials: DefaultMaterial {
-                    diffuseColor: "green"
+                materials: PrincipledMaterial {
+                    baseColor: "green"
                 }
                 castsShadows: false
                 receivesShadows: true

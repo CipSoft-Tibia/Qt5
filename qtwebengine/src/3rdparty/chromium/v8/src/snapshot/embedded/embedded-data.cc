@@ -92,7 +92,7 @@ Builtin OffHeapInstructionStream::TryLookupCode(Isolate* isolate,
     // isolate uses it or knows about it or not (see
     // InstructionStream::OffHeapInstructionStart()).
     // So, this blob has to be checked too.
-    CodeRange* code_range = CodeRange::GetProcessWideCodeRange();
+    CodeRange* code_range = IsolateGroup::current()->GetCodeRange();
     if (code_range && code_range->embedded_blob_code_copy() != nullptr) {
       builtin = EmbeddedData::FromBlob(code_range).TryLookupCode(address);
     }
@@ -237,8 +237,8 @@ EmbeddedData EmbeddedData::NewFromIsolate(Isolate* isolate) {
   Builtins* builtins = isolate->builtins();
 
   // Store instruction stream lengths and offsets.
-  std::vector<struct LayoutDescription> layout_descriptions(kTableSize);
-  std::vector<struct BuiltinLookupEntry> offset_descriptions(kTableSize);
+  std::vector<struct EmbeddedData::LayoutDescription> layout_descriptions(kTableSize);
+  std::vector<struct EmbeddedData::BuiltinLookupEntry> offset_descriptions(kTableSize);
 
   bool saw_unsafe_builtin = false;
   uint32_t raw_code_size = 0;

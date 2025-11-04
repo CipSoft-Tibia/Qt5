@@ -24,7 +24,7 @@ QT_BEGIN_NAMESPACE
     with the user. Similarly to \l ApplicationWindow and \l Page, Dialog is organized
     into three sections: \l header, \l {Popup::}{contentItem}, and \l footer.
 
-    \image qtquickcontrols-page-wireframe.png
+    \image qtquickcontrols-page-wireframe.webp
 
     The \l {Popup::}{padding} properties only affect the contentItem. Use the
     \l {Popup::}{spacing} property to affect the space between header,
@@ -222,15 +222,15 @@ QQuickDialog::~QQuickDialog()
 QString QQuickDialog::title() const
 {
     Q_D(const QQuickDialog);
-    return d->m_title;
+    return d->title;
 }
 
 void QQuickDialog::setTitle(const QString &title)
 {
     Q_D(QQuickDialog);
-    if (d->m_title == title)
+    if (d->title == title)
         return;
-    d->m_title = title;
+    d->title = title;
 
     if (d->popupWindow)
         d->popupWindow->setTitle(title);

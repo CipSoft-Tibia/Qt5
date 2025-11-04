@@ -16,6 +16,7 @@
 #include "base/strings/string_util.h"
 #include "base/strings/stringprintf.h"
 #include "extensions/browser/disable_reason.h"
+#include "extensions/common/extension_id.h"
 
 using extensions::mojom::ManifestLocation;
 
@@ -90,7 +91,7 @@ std::string ManifestFetchData::GetSimpleLocationString(ManifestLocation loc) {
       result = kPolicyLocation;
       break;
     case ManifestLocation::kInvalidLocation:
-      NOTREACHED();
+      NOTREACHED_IN_MIGRATION();
       break;
   }
 
@@ -146,7 +147,7 @@ bool ManifestFetchData::AddExtension(const std::string& id,
   DCHECK(!is_all_external_policy_download_ ||
          extension_location == ManifestLocation::kExternalPolicyDownload);
   if (base::Contains(extensions_data_, id)) {
-    NOTREACHED() << "Duplicate extension id " << id;
+    NOTREACHED_IN_MIGRATION() << "Duplicate extension id " << id;
     return false;
   }
 
@@ -264,11 +265,11 @@ ExtensionIdSet ManifestFetchData::GetExtensionIds() const {
   return extension_ids;
 }
 
-bool ManifestFetchData::Includes(const std::string& extension_id) const {
+bool ManifestFetchData::Includes(const ExtensionId& extension_id) const {
   return base::Contains(extensions_data_, extension_id);
 }
 
-bool ManifestFetchData::DidPing(const std::string& extension_id,
+bool ManifestFetchData::DidPing(const ExtensionId& extension_id,
                                 PingType type) const {
   auto i = pings_.find(extension_id);
   if (i == pings_.end())
@@ -279,7 +280,7 @@ bool ManifestFetchData::DidPing(const std::string& extension_id,
   else if (type == ACTIVE)
     value = i->second.active_days;
   else
-    NOTREACHED();
+    NOTREACHED_IN_MIGRATION();
   return value == kNeverPinged || value > 0;
 }
 

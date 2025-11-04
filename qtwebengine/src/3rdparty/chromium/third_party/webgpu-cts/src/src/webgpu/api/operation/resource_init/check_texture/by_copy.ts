@@ -1,7 +1,8 @@
 import { assert } from '../../../../../common/util/util.js';
 import { kTextureFormatInfo, EncodableTextureFormat } from '../../../../format_info.js';
 import { virtualMipSize } from '../../../../util/texture/base.js';
-import { CheckContents } from '../texture_zero.spec.js';
+
+import { CheckContents } from './texture_zero_init_test.js';
 
 export const checkContentsByBufferCopy: CheckContents = (
   t,
@@ -41,13 +42,12 @@ export const checkContentsByTextureCopy: CheckContents = (
       level
     );
 
-    const dst = t.device.createTexture({
+    const dst = t.createTextureTracked({
       dimension: params.dimension,
       size: [width, height, depth],
       format: params.format,
       usage: GPUTextureUsage.COPY_DST | GPUTextureUsage.COPY_SRC,
     });
-    t.trackForCleanup(dst);
 
     const commandEncoder = t.device.createCommandEncoder();
     commandEncoder.copyTextureToTexture(

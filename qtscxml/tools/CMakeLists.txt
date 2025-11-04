@@ -2,6 +2,6 @@
 # SPDX-License-Identifier: BSD-3-Clause
 
 
-if(QT_FEATURE_commandlineparser)
+if(QT_FEATURE_scxml AND QT_FEATURE_commandlineparser)
     add_subdirectory(qscxmlc)
 endif()

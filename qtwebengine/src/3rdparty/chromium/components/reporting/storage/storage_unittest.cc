@@ -2,10 +2,16 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#ifdef UNSAFE_BUFFERS_BUILD
+// TODO(crbug.com/40285824): Remove this and convert code to safer constructs.
+#pragma allow_unsafe_buffers
+#endif
+
 #include "components/reporting/storage/storage.h"
 
 #include <atomic>
 #include <cstdint>
+#include <optional>
 #include <tuple>
 #include <utility>
 
@@ -42,7 +48,6 @@
 #include "crypto/sha2.h"
 #include "testing/gmock/include/gmock/gmock.h"
 #include "testing/gtest/include/gtest/gtest.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 
 using ::testing::_;
 using ::testing::AtLeast;
@@ -403,7 +408,7 @@ class StorageTest
         base::flat_map<std::tuple<Priority,
                                   int64_t /*generation id*/,
                                   int64_t /*sequencing id*/>,
-                       absl::optional<std::string /*digest*/>>;
+                       std::optional<std::string /*digest*/>>;
 
     // Helper class for setting up mock uploader expectations of a successful
     // completion.
@@ -628,7 +633,7 @@ class StorageTest
           std::make_tuple(sequence_information.priority(),
                           sequence_information.sequencing_id(),
                           sequence_information.generation_id()),
-          absl::nullopt);
+          std::nullopt);
 
       sequence_bound_upload_.AsyncCall(&SequenceBoundUpload::DoUploadGap)
           .WithArgs(uploader_id_, sequence_information.priority(),
@@ -758,7 +763,7 @@ class StorageTest
     // match the expected uploader.
     const int64_t uploader_id_;
 
-    absl::optional<int64_t> generation_id_;
+    std::optional<int64_t> generation_id_;
     const raw_ptr<base::flat_map<Priority, int64_t>> last_upload_generation_id_;
     const raw_ptr<LastRecordDigestMap> last_record_digest_map_;
 
@@ -1086,7 +1091,7 @@ class StorageTest
 constexpr std::array<const char*, 3> kData = {"Rec1111", "Rec222", "Rec33"};
 constexpr std::array<const char*, 3> kMoreData = {"More1111", "More222",
                                                   "More33"};
-constexpr std::array<char, (1024 * 1024 / 3)* 2> kBigData = {'A'};
+constexpr std::array<char, (1024 * 1024 / 3) * 2> kBigData = {'A'};
 constexpr std::string_view xBigData(&kBigData.front(), kBigData.size());
 
 TEST_P(StorageTest, WriteIntoNewStorageAndReopen) {

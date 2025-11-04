@@ -15,8 +15,10 @@ class GraphModifier : public QObject
 {
     Q_OBJECT
 public:
+    Q_DISABLE_COPY_MOVE(GraphModifier)
+
     explicit GraphModifier(Q3DBarsWidgetItem *bargraph, QObject *parent);
-    ~GraphModifier();
+    ~GraphModifier() override;
 
     void resetTemperatureData();
     void changePresetCamera();

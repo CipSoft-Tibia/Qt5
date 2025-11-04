@@ -5,18 +5,18 @@ plugins {
 
 QtBuild {
     // Relative for Qt (Installer or MaintenanceTool) installations.
-    qtPath = file('../../../../../../../6.8.3')
+    qtPath = file('../../../../../../../6.9.2')
     projectPath = file('../../qtabstractitemmodel')
 }
 
 android {
     namespace 'com.example.qtabstractitemmodel_java'
-    compileSdk 34
+    compileSdk 35
 
     defaultConfig {
         applicationId "com.example.qtabstractitemmodel_java"
         minSdk 28
-        targetSdk 34
+        targetSdk 35
         versionCode 1
         versionName "1.0"
 
@@ -29,14 +29,10 @@ android {
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
     }
+
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17
         targetCompatibility JavaVersion.VERSION_17
-    }
-    packagingOptions {
-        jniLibs {
-            useLegacyPackaging true
-        }
     }
 }
 

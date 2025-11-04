@@ -44,5 +44,16 @@ rm ./docker-compose*
 # Install Avahi to discover Docker containers in the test network
 sudo apt-get install avahi-daemon -y
 
+# Add registry mirror for Docker images
+sudo tee -a /etc/docker/daemon.json <<"EOF"
+{
+  "registry-mirrors": ["http://repo-clones.ci.qt.io:5000"]
+}
+EOF
+
+echo "Restart Docker"
+sudo systemctl daemon-reload
+sudo systemctl restart docker
+
 # Start testserver provisioning
 sudo "$(readlink -f "$(dirname "${BASH_SOURCE[0]}")")/../shared/testserver/docker_testserver.sh"

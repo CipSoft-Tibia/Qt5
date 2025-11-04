@@ -151,8 +151,8 @@ QGrpcBidiStream::QGrpcBidiStream(std::shared_ptr<QGrpcOperationContext> operatio
                                  QObject *parent)
     : QGrpcOperation(std::move(operationContext), parent)
 {
-    QObject::connect(&QGrpcOperation::context(), &QGrpcOperationContext::messageReceived, this,
-                     &QGrpcBidiStream::messageReceived);
+    QObject::connect(&QGrpcOperation::context(), &QGrpcOperationContext::messageReceived,
+                     this, &QGrpcBidiStream::messageReceived);
 }
 
 /*!

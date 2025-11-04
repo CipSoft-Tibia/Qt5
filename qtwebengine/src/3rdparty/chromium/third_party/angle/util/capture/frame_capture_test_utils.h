@@ -43,7 +43,9 @@ using SetupEntryPoints = void (*)(angle::TraceCallbacks *, angle::TraceFunctions
 class TraceLibrary : angle::NonCopyable, angle::TraceCallbacks
 {
   public:
-    TraceLibrary(const std::string &traceName, const TraceInfo &traceInfo);
+    TraceLibrary(const std::string &traceName,
+                 const TraceInfo &traceInfo,
+                 const std::string &baseDir);
 
     bool valid() const
     {
@@ -61,6 +63,8 @@ class TraceLibrary : angle::NonCopyable, angle::TraceCallbacks
         mBinaryDataDir = dataDir;
         mTraceFunctions->SetBinaryDataDir(dataDir);
     }
+
+    void setDebugOutputDir(const char *dataDir) { mDebugOutputDir = dataDir; }
 
     void replayFrame(uint32_t frameIndex) { mTraceFunctions->ReplayFrame(frameIndex); }
 
@@ -109,6 +113,7 @@ class TraceLibrary : angle::NonCopyable, angle::TraceCallbacks
     std::unique_ptr<Library> mTraceLibrary;
     std::vector<uint8_t> mBinaryData;
     std::string mBinaryDataDir;
+    std::string mDebugOutputDir;
     angle::TraceInfo mTraceInfo;
     angle::TraceFunctions *mTraceFunctions = nullptr;
 };

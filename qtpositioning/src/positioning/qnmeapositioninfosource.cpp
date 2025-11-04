@@ -75,7 +75,7 @@ static bool propagateDate(QGeoPositionInfo &dst, const QGeoPositionInfo &src)
 static bool propagateAttributes(QGeoPositionInfo &dst, const QGeoPositionInfo &src, bool force = true)
 {
     bool updated = false;
-    static Q_DECL_CONSTEXPR std::array<QGeoPositionInfo::Attribute, 6> attrs {
+    static constexpr std::array<QGeoPositionInfo::Attribute, 6> attrs {
                                                 { QGeoPositionInfo::GroundSpeed
                                                  ,QGeoPositionInfo::HorizontalAccuracy
                                                  ,QGeoPositionInfo::VerticalAccuracy

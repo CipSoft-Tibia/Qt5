@@ -50,9 +50,14 @@
   --sys-motion-easing-emphasized: cubic-bezier(0.2, 0, 0, 1);
   --sys-motion-easing-emphasized-decelerate: cubic-bezier(0.05, 0.7, 0.1, 1);
   --sys-motion-easing-emphasized-accelerate: cubic-bezier(0.2, 0, 0, 1);
+
+  /* This will be overridden by the platform-X classes that get
+   * added to the html tag on load, but is here as a safe
+   * fallback */
+  --default-font-family: ".SFNSDisplay-Regular", "Helvetica Neue", "Lucida Grande", sans-serif;
 }
 
-.-theme-with-dark-background {
+.theme-with-dark-background {
   /**
    * Inherit the native form control colors when using a dark theme.
    * Override them using CSS variables if needed.
@@ -81,8 +86,6 @@
 }
 
 body {
-  --default-font-family: ".SFNSDisplay-Regular", "Helvetica Neue", "Lucida Grande", sans-serif;
-
   height: 100%;
   width: 100%;
   position: relative;
@@ -99,15 +102,15 @@ body {
 
 /* Default fonts */
 .platform-linux {
-  --default-font-family: roboto, ubuntu, arial, sans-serif;
+  --default-font-family: "Google Sans Text", "Google Sans", system-ui, sans-serif;
 }
 
 .platform-mac {
-  --default-font-family: ".SFNSDisplay-Regular", "Helvetica Neue", "Lucida Grande", sans-serif;
+  --default-font-family: system-ui, sans-serif;
 }
 
 .platform-windows {
-  --default-font-family: "Segoe UI", tahoma, sans-serif;
+  --default-font-family: system-ui, sans-serif;
 }
 
 :focus {
@@ -118,25 +121,25 @@ body {
 .platform-mac,
 :host-context(.platform-mac) {
   --monospace-font-size: 11px;
-  --monospace-font-family: menlo, monospace;
+  --monospace-font-family: monospace;
   --source-code-font-size: 11px;
-  --source-code-font-family: menlo, monospace;
+  --source-code-font-family: monospace;
 }
 
 .platform-windows,
 :host-context(.platform-windows) {
   --monospace-font-size: 12px;
-  --monospace-font-family: consolas, lucida console, courier new, monospace;
+  --monospace-font-family: monospace;
   --source-code-font-size: 12px;
-  --source-code-font-family: consolas, lucida console, courier new, monospace;
+  --source-code-font-family: monospace;
 }
 
 .platform-linux,
 :host-context(.platform-linux) {
   --monospace-font-size: 11px;
-  --monospace-font-family: dejavu sans mono, monospace;
+  --monospace-font-family: "Noto Sans Mono", "DejaVu Sans Mono", monospace;
   --source-code-font-size: 11px;
-  --source-code-font-family: dejavu sans mono, monospace;
+  --source-code-font-family: "Noto Sans Mono", "DejaVu Sans Mono", monospace;
 }
 
 .monospace {
@@ -148,6 +151,12 @@ body {
   font-family: var(--source-code-font-family);
   font-size: var(--source-code-font-size) !important; /* stylelint-disable-line declaration-no-important */
   white-space: pre-wrap;
+}
+
+.source-code .devtools-link.text-button {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 img {
@@ -256,6 +265,52 @@ input {
 
 input {
   color: inherit;
+
+  &[type="checkbox"] {
+    position: relative;
+    outline: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    &:hover::after,
+    &:active::before {
+      content: "";
+      height: 24px;
+      width: 24px;
+      border-radius: var(--sys-shape-corner-full);
+      position: absolute;
+    }
+
+    &:not(.-theme-preserve) {
+      accent-color: var(--sys-color-primary-bright);
+      color: var(--sys-color-on-primary);
+    }
+
+    &:not(:disabled):hover::after {
+      background-color: var(--sys-color-state-hover-on-subtle);
+    }
+
+    &:not(:disabled):active::before {
+      background-color: var(--sys-color-state-ripple-neutral-on-subtle);
+    }
+
+    &:not(:disabled):focus-visible::before {
+      content: "";
+      height: 15px;
+      width: 15px;
+      border-radius: 5px;
+      position: absolute;
+      border: 2px solid var(--sys-color-state-focus-ring);
+    }
+
+    &.small:hover::after,
+    &.small:active::before {
+      height: 12px;
+      width: 12px;
+      border-radius: 2px;
+    }
+  }
 }
 
 input::placeholder {
@@ -264,14 +319,9 @@ input::placeholder {
   color: var(--override-input-placeholder-color);
 }
 
-.-theme-with-dark-background input::placeholder,
-:host-context(.-theme-with-dark-background) input::placeholder {
+.theme-with-dark-background input::placeholder,
+:host-context(.theme-with-dark-background) input::placeholder {
   --override-input-placeholder-color: rgb(230 230 230 / 54%);
-}
-
-input[type="checkbox"]:not(.-theme-preserve) {
-  accent-color: var(--sys-color-primary-bright);
-  color: var(--sys-color-on-primary);
 }
 
 .harmony-input:not([type]),
@@ -352,8 +402,8 @@ input[type="checkbox"]:not(.-theme-preserve) {
   opacity: 38%;
 }
 
-.-theme-with-dark-background .chrome-select,
-:host-context(.-theme-with-dark-background) .chrome-select {
+.theme-with-dark-background .chrome-select,
+:host-context(.theme-with-dark-background) .chrome-select {
   background-image: var(--image-file-arrow-drop-down-dark);
 }
 
@@ -378,8 +428,8 @@ input[type="checkbox"]:not(.-theme-preserve) {
     background-image: var(--image-file-arrow-drop-down-light);
   }
 
-  .-theme-with-dark-background .chrome-select,
-  :host-context(.-theme-with-dark-background) .chrome-select {
+  .theme-with-dark-background .chrome-select,
+  :host-context(.theme-with-dark-background) .chrome-select {
     background-image: var(--image-file-arrow-drop-down-light);
   }
 }
@@ -389,20 +439,24 @@ input[type="checkbox"]:not(.-theme-preserve) {
     background-image: var(--image-file-arrow-drop-down-dark);
   }
 
-  .-theme-with-dark-background .chrome-select,
-  :host-context(.-theme-with-dark-background) .chrome-select {
+  .theme-with-dark-background .chrome-select,
+  :host-context(.theme-with-dark-background) .chrome-select {
     background-image: var(--image-file-arrow-drop-down-dark);
   }
 }
 
 .chrome-select-label {
-  margin: 0 22px;
+  margin: 0 var(--sys-size-10);
   flex: none;
-}
 
-.chrome-select-label p p {
-  margin-top: 0;
-  color: var(--sys-color-token-subtle);
+  p p {
+    margin-top: 0;
+    color: var(--sys-color-token-subtle);
+  }
+
+  .reload-warning {
+    margin-left: var(--sys-size-5);
+  }
 }
 
 /* This class is used outside of the settings screen in the "Renderer" and
@@ -480,6 +534,7 @@ span[is="dt-icon-label"] {
 
 .undisplayable-text,
 .expandable-inline-button {
+  border: none;
   padding: 1px 3px;
   margin: 0 2px;
   font-size: 11px;
@@ -511,11 +566,6 @@ span[is="dt-icon-label"] {
   background-color: var(--sys-color-tonal-container);
 }
 
-.reload-warning {
-  align-self: center;
-  margin-left: 10px;
-}
-
 button.link {
   border: none;
   background: none;
@@ -523,14 +573,13 @@ button.link {
 }
 
 button.link:focus-visible {
-  --override-link-focus-background-color: rgb(0 0 0 / 8%);
-
-  background-color: var(--override-link-focus-background-color);
-  border-radius: 2px;
+  outline: 2px solid var(--sys-color-state-focus-ring);
+  outline-offset: 2px;
+  border-radius: var(--sys-shape-corner-full);
 }
 
-.-theme-with-dark-background button.link:focus-visible,
-:host-context(.-theme-with-dark-background) button.link:focus-visible {
+.theme-with-dark-background button.link:focus-visible,
+:host-context(.theme-with-dark-background) button.link:focus-visible {
   --override-link-focus-background-color: rgb(230 230 230 / 8%);
 }
 
@@ -601,7 +650,7 @@ input.custom-search-input::-webkit-search-cancel-button:hover {
   margin-left: 3px;
 }
 
-:host-context(.-theme-with-dark-background) devtools-adorner {
+:host-context(.theme-with-dark-background) devtools-adorner {
   --override-adorner-border-color: var(--sys-color-tonal-outline);
   --override-adorner-focus-border-color: var(--sys-color-state-focus-ring);
   --override-adorner-active-background-color: var(--sys-color-state-riple-neutral-on-subtle);

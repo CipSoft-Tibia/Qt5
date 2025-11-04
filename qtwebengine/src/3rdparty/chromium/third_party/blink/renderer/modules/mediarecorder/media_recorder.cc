@@ -40,9 +40,9 @@ namespace blink {
 namespace {
 
 struct MediaRecorderBitrates {
-  const absl::optional<uint32_t> audio_bps;
-  const absl::optional<uint32_t> video_bps;
-  const absl::optional<uint32_t> overall_bps;
+  const std::optional<uint32_t> audio_bps;
+  const std::optional<uint32_t> video_bps;
+  const std::optional<uint32_t> overall_bps;
 };
 
 // Boundaries of Opus SILK bitrate from https://www.opus-codec.org/.
@@ -69,7 +69,7 @@ String StateToString(MediaRecorder::State state) {
       return "paused";
   }
 
-  NOTREACHED();
+  NOTREACHED_IN_MIGRATION();
   return String();
 }
 
@@ -81,7 +81,7 @@ String BitrateModeToString(AudioTrackRecorder::BitrateMode bitrateMode) {
       return "variable";
   }
 
-  NOTREACHED();
+  NOTREACHED_IN_MIGRATION();
   return String();
 }
 
@@ -150,15 +150,15 @@ MediaRecorderBitrates GetBitratesFromOptions(
   // or double, see https://github.com/w3c/mediacapture-record/issues/48.
   constexpr uint32_t kMaxIntAsUnsigned = std::numeric_limits<int>::max();
 
-  absl::optional<uint32_t> audio_bps;
+  std::optional<uint32_t> audio_bps;
   if (options->hasAudioBitsPerSecond()) {
     audio_bps = std::min(options->audioBitsPerSecond(), kMaxIntAsUnsigned);
   }
-  absl::optional<uint32_t> video_bps;
+  std::optional<uint32_t> video_bps;
   if (options->hasVideoBitsPerSecond()) {
     video_bps = std::min(options->videoBitsPerSecond(), kMaxIntAsUnsigned);
   }
-  absl::optional<uint32_t> overall_bps;
+  std::optional<uint32_t> overall_bps;
   if (options->hasBitsPerSecond()) {
     overall_bps = std::min(options->bitsPerSecond(), kMaxIntAsUnsigned);
     audio_bps = ClampAudioBitRate(context, overall_bps.value() / 10);
@@ -380,7 +380,7 @@ void MediaRecorder::requestData(ExceptionState& exception_state) {
         "The MediaRecorder's state is '" + StateToString(state_) + "'.");
     return;
   }
-  WriteData(/*data=*/nullptr, /*length=*/0, /*last_in_slice=*/true,
+  WriteData({}, /*last_in_slice=*/true,
             base::Time::Now().InMillisecondsFSinceUnixEpoch(),
             /*error_event=*/nullptr);
 }
@@ -440,8 +440,7 @@ void MediaRecorder::ContextDestroyed() {
   }
 }
 
-void MediaRecorder::WriteData(const void* data,
-                              size_t length,
+void MediaRecorder::WriteData(base::span<const uint8_t> data,
                               bool last_in_slice,
                               double timecode,
                               ErrorEvent* error_event) {
@@ -459,9 +458,9 @@ void MediaRecorder::WriteData(const void* data,
     blob_data_ = std::make_unique<BlobData>();
     blob_data_->SetContentType(mime_type_);
   }
-  if (data)
-    blob_data_->AppendBytes(data, length);
-
+  if (!data.empty()) {
+    blob_data_->AppendBytes(data);
+  }
   if (!last_in_slice)
     return;
 
@@ -520,7 +519,7 @@ void MediaRecorder::StopRecording(ErrorEvent* error_event) {
   state_ = State::kInactive;
 
   recorder_handler_->Stop();
-  WriteData(/*data=*/nullptr, /*length=*/0, /*last_in_slice=*/true,
+  WriteData({}, /*last_in_slice=*/true,
             base::Time::Now().InMillisecondsFSinceUnixEpoch(), error_event);
   ScheduleDispatchEvent(Event::Create(event_type_names::kStop));
   first_write_received_ = false;
@@ -555,6 +554,10 @@ void MediaRecorder::Trace(Visitor* visitor) const {
   visitor->Trace(scheduled_events_);
   EventTarget::Trace(visitor);
   ExecutionContextLifecycleObserver::Trace(visitor);
+}
+
+void MediaRecorder::UpdateAudioBitrate(uint32_t bits_per_second) {
+  audio_bits_per_second_ = bits_per_second;
 }
 
 }  // namespace blink

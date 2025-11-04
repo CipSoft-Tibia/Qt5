@@ -9,10 +9,6 @@
 
 QT_BEGIN_NAMESPACE
 class QModelIndex;
-QT_END_NAMESPACE
-
-QT_BEGIN_NAMESPACE
-
 class QXYSeriesPrivate;
 class QXYModelMapper;
 
@@ -88,6 +84,7 @@ Q_SIGNALS:
     void pointReplaced(qsizetype index);
     void pointRemoved(qsizetype index);
     void pointAdded(qsizetype index);
+    Q_REVISION(6, 9) void pointsAdded(qsizetype start, qsizetype end);
     void colorChanged(QColor color);
     void selectedColorChanged(QColor color);
     void pointsReplaced();
@@ -97,6 +94,11 @@ Q_SIGNALS:
     void draggableChanged();
     void seriesUpdated();
     void countChanged();
+
+    Q_REVISION(6, 9) void clicked(QPoint point);
+    Q_REVISION(6, 9) void doubleClicked(QPoint point);
+    Q_REVISION(6, 9) void pressed(QPoint point);
+    Q_REVISION(6, 9) void released(QPoint point);
 
 private:
     friend class PointRenderer;

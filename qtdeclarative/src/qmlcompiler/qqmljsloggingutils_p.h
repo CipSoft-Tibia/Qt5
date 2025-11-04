@@ -110,6 +110,7 @@ Q_QMLCOMPILER_EXPORT void updateLogLevels(QList<LoggerCategory> &categories,
                                           QCommandLineParser *parser);
 
 Q_QMLCOMPILER_EXPORT QString levelToString(const QQmlJS::LoggerCategory &category);
+Q_QMLCOMPILER_EXPORT bool applyLevelToCategory(const QStringView level, LoggerCategory &category);
 } // namespace LoggingUtils
 
 } // namespace QQmlJS

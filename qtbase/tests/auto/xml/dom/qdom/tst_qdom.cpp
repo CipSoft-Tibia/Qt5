@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QtTest/qtest.h>
+#include <QtTest/private/qcomparisontesthelper_p.h>
 
 #include <QtXml/qdom.h>
 
@@ -67,6 +68,11 @@ private slots:
     void ownerElementTask45192_data();
     void ownerElementTask45192();
     void domNodeMapAndList();
+    void domNodeListIterator();
+    void domNodeListReverseIterator();
+    void domNodeListIteratorListFilteredByTag();
+    void domNodeListReverseIteratorListFilteredByTag();
+    void domNodeListIteratorEmptyList();
 
     void nullDocument();
     void invalidName_data();
@@ -83,6 +89,7 @@ private slots:
     void normalizeAttributes() const;
     void serializeWeirdEOL() const;
     void reparentAttribute() const;
+    void replaceAttribute() const;
     void serializeNamespaces() const;
     void flagInvalidNamespaces() const;
     void flagUndeclaredNamespace() const;
@@ -114,6 +121,10 @@ private slots:
     void QTBUG49113_dontCrashWithNegativeIndex() const;
     void standalone();
     void splitTextLeakMemory() const;
+
+    void testDomListComparisonCompiles();
+    void testDomListComparison_data();
+    void testDomListComparison();
     void noCrashOnDeepNesting() const;
 
     void cleanupTestCase() const;
@@ -512,7 +523,9 @@ void tst_QDom::setGetAttributes()
     QDomElement rootNode = doc.createElement("Root");
     doc.appendChild(rootNode);
 
-    const QLocale oldLocale = QLocale();
+    const auto restoreDefault = qScopeGuard([prior = QLocale()]() {
+        QLocale::setDefault(prior);
+    });
     QLocale::setDefault(QLocale::German); // decimal separator != '.'
 
     const QString qstringVal("QString");
@@ -578,8 +591,6 @@ void tst_QDom::setGetAttributes()
     QVERIFY(nsNode.attributeNS("namespace", "doubleVal1").toDouble(&bOk) == doubleVal1 && bOk);
     QVERIFY(nsNode.attributeNS("namespace", "doubleVal2").toDouble(&bOk) == doubleVal2 && bOk);
     QVERIFY(nsNode.attributeNS("namespace", "doubleVal3").toDouble(&bOk) == doubleVal3 && bOk);
-
-    QLocale::setDefault(oldLocale);
 }
 
 
@@ -1308,6 +1319,287 @@ void tst_QDom::domNodeMapAndList()
     QCOMPARE(list.item(1).nodeName(), QString()); // Make sure we don't assert
 }
 
+void tst_QDom::domNodeListIterator()
+{
+    const auto xml = "<foo>"
+                       "<bar idx='0'></bar>"
+                       "<bar idx='1'></bar>"
+                       "<bar idx='2'>"
+                        "<bar idx='3'></bar>"
+                        "<bar idx='4'>"
+                          "<bar idx='5'></bar>"
+                        "</bar>"
+                        "<bar idx='6'></bar>"
+                        "<foo idx='-1'></foo>"
+                        "<bar idx='7'></bar>"
+                        "<foo idx='-1'></foo>"
+                       "</bar>"
+                     "</foo>"_L1;
+    QDomDocument doc;
+    QVERIFY(doc.setContent(xml));
+    QDomNodeList list = doc.childNodes().at(0).childNodes();
+
+    {
+        const QList<QDomNode> items(list.begin(), list.end());
+        QVERIFY(list.impl->list.isEmpty()); // we evaded maybeCreateList()
+
+        QCOMPARE(items.size(), list.size());
+        int i = 0;
+        for (const auto &item : items)
+            QCOMPARE(item, list.item(i++));
+    }
+
+    auto listSize = list.size();
+    QCOMPARE(listSize, 3);
+
+    QCOMPARE_EQ(list.begin(), list.begin());
+    QCOMPARE_EQ(list.end(), list.end());
+    QCOMPARE_NE(list.begin(), list.end());
+
+    auto it = list.begin();
+    for (int i = 0; i < listSize; i++, it++)
+        QVERIFY(*it == list.item(i));
+    QVERIFY(it == list.end());
+
+    it = list.begin();
+    for (int i = 0; i < listSize; i++, ++it)
+        QVERIFY(*it == list.item(i));
+    QVERIFY(it == list.end());
+
+    it = list.end();
+    for (int i = 0; i < listSize; i++) {
+        it--;
+        QVERIFY(*it == list.item(listSize - 1 - i));
+    }
+
+    it = list.end();
+    for (int i = 0; i < listSize; i++) {
+        --it;
+        QVERIFY(*it == list.item(listSize - 1 - i));
+    }
+
+    int i = 0;
+    for (const auto &node : list)
+        QVERIFY(node == list.item(i++));
+    QVERIFY(i == listSize);
+}
+
+void tst_QDom::domNodeListReverseIterator()
+{
+    const auto xml = "<foo>"
+                       "<bar idx='0'></bar>"
+                       "<bar idx='1'></bar>"
+                       "<bar idx='2'>"
+                        "<bar idx='3'></bar>"
+                        "<bar idx='4'>"
+                          "<bar idx='5'></bar>"
+                        "</bar>"
+                        "<bar idx='6'></bar>"
+                        "<foo idx='-1'></foo>"
+                        "<bar idx='7'></bar>"
+                        "<foo idx='-1'></foo>"
+                       "</bar>"
+                     "</foo>"_L1;
+    QDomDocument doc;
+    QVERIFY(doc.setContent(xml));
+    QDomNodeList list = doc.childNodes().at(0).childNodes();
+
+    {
+        const QList<QDomNode> items(list.begin(), list.end());
+        QVERIFY(list.impl->list.isEmpty()); // we evaded maybeCreateList()
+
+        QCOMPARE(items.size(), list.size());
+        int i = 0;
+        for (const auto &item : items)
+            QCOMPARE(item, list.item(i++));
+    }
+
+    auto listSize = list.size();
+    QCOMPARE(listSize, 3);
+
+    QCOMPARE_EQ(list.rbegin(), list.rbegin());
+    QCOMPARE_EQ(list.rend(), list.rend());
+    QCOMPARE_NE(list.rbegin(), list.rend());
+
+    auto it = list.rbegin();
+    for (int i = 0; i < listSize; i++, it++)
+        QVERIFY(*it == list.item(listSize - 1 - i));
+    QVERIFY(it == list.rend());
+
+    it = list.rbegin();
+    for (int i = 0; i < listSize; i++, ++it)
+        QVERIFY(*it == list.item(listSize - 1 - i));
+    QVERIFY(it == list.rend());
+
+    it = list.rend();
+    for (int i = 0; i < listSize; i++) {
+        it--;
+        QVERIFY(*it == list.item(i));
+    }
+
+    it = list.rend();
+    for (int i = 0; i < listSize; i++) {
+        --it;
+        QVERIFY(*it == list.item(i));
+    }
+}
+
+void tst_QDom::domNodeListIteratorListFilteredByTag()
+{
+    const auto xml = "<foo>"
+                       "<bar idx='0'></bar>"
+                       "<bar idx='1'></bar>"
+                       "<bar idx='2'>"
+                        "<bar idx='3'></bar>"
+                        "<bar idx='4'>"
+                          "<bar idx='5'></bar>"
+                        "</bar>"
+                        "<bar idx='6'></bar>"
+                        "<foo idx='-1'></foo>"
+                        "<bar idx='7'></bar>"
+                        "<foo idx='-1'></foo>"
+                       "</bar>"
+                     "</foo>"_L1;
+    QDomDocument doc;
+    QVERIFY(doc.setContent(xml));
+    QDomNodeList list = doc.elementsByTagName("bar");
+
+    {
+        const QList<QDomNode> items(list.begin(), list.end());
+        QVERIFY(list.impl->list.isEmpty()); // we evaded maybeCreateList()
+
+        QCOMPARE(items.size(), list.size());
+        int i = 0;
+        for (const auto &item : items)
+            QCOMPARE(item, list.item(i++));
+    }
+
+    auto listSize = list.size();
+    QCOMPARE(listSize, 8);
+
+    QCOMPARE_EQ(list.begin(), list.begin());
+    QCOMPARE_EQ(list.end(), list.end());
+    QCOMPARE_NE(list.begin(), list.end());
+
+    auto it = list.begin();
+    for (int i = 0; i < listSize; i++, it++)
+        QVERIFY(*it == list.item(i));
+    QVERIFY(it == list.end());
+
+    it = list.begin();
+    for (int i = 0; i < listSize; i++, ++it)
+        QVERIFY(*it == list.item(i));
+    QVERIFY(it == list.end());
+
+    for (int i = 0; i < listSize; i++) {
+        it--;
+        QVERIFY(*it == list.item(listSize - 1 - i));
+    }
+    QVERIFY(it == list.begin());
+
+    it = list.end();
+    for (int i = 0; i < listSize; i++) {
+        --it;
+        QVERIFY(*it == list.item(listSize - 1 - i));
+    }
+    QVERIFY(it == list.begin());
+
+    for (int i = 0; i < listSize; ++i)
+        QCOMPARE(list.item(i).attributes().item(0).nodeValue().toInt(), i);
+
+    int i = 0;
+    for (auto iter = list.begin(); iter != list.end(); ++iter)
+        QCOMPARE(iter->attributes().item(0).nodeValue().toInt(), i++);
+    QVERIFY(i == listSize);
+
+    int j = 0;
+    for (const auto &item : list)
+        QCOMPARE(item.attributes().item(0).nodeValue().toInt(), j++);
+    QVERIFY(j == listSize);
+}
+
+void tst_QDom::domNodeListReverseIteratorListFilteredByTag()
+{
+    const auto xml = "<foo>"
+                       "<bar idx='0'></bar>"
+                       "<bar idx='1'></bar>"
+                       "<bar idx='2'>"
+                        "<bar idx='3'></bar>"
+                        "<bar idx='4'>"
+                          "<bar idx='5'></bar>"
+                        "</bar>"
+                        "<bar idx='6'></bar>"
+                        "<foo idx='8'></foo>"
+                        "<bar idx='7'></bar>"
+                       "</bar>"
+                     "</foo>"_L1;
+    QDomDocument doc;
+    QVERIFY(doc.setContent(xml));
+    QDomNodeList list = doc.elementsByTagName("bar");
+
+    {
+        const QList<QDomNode> items(list.begin(), list.end());
+        QVERIFY(list.impl->list.isEmpty()); // we evaded maybeCreateList()
+
+        QCOMPARE(items.size(), list.size());
+        int i = 0;
+        for (const auto &item : items)
+            QCOMPARE(item, list.item(i++));
+    }
+
+    auto listSize = list.size();
+    QCOMPARE(listSize, 8);
+
+    QCOMPARE_EQ(list.rbegin(), list.rbegin());
+    QCOMPARE_EQ(list.rend(), list.rend());
+    QCOMPARE_NE(list.rbegin(), list.rend());
+
+    auto it = list.rbegin();
+    for (int i = 0; i < listSize; i++, it++)
+        QVERIFY(*it == list.item(listSize - 1 - i));
+    QVERIFY(it == list.rend());
+
+    it = list.rbegin();
+    for (int i = 0; i < listSize; i++, ++it)
+        QVERIFY(*it == list.item(listSize - 1 - i));
+    QVERIFY(it == list.rend());
+
+    for (int i = 0; i < listSize; i++) {
+        it--;
+        QVERIFY(*it == list.item(i));
+    }
+    QVERIFY(it == list.rbegin());
+
+    it = list.rend();
+    for (int i = 0; i < listSize; i++) {
+        --it;
+        QVERIFY(*it == list.item(i));
+    }
+    QVERIFY(it == list.rbegin());
+
+#if __cplusplus >= 202002L // QTBUG-131933
+    int i = 0;
+    for (auto iter = list.rbegin(); iter != list.rend(); ++iter) {
+        QCOMPARE(iter->attributes().item(0).nodeValue().toInt(), listSize - ++i);
+    }
+    QVERIFY(i == listSize);
+
+    i = listSize - 1;
+    for (auto iter = list.rbegin(); iter != list.rend(); ++iter)
+        QCOMPARE(iter->attributes().item(0).nodeValue().toInt(), i--);
+#endif
+}
+
+void tst_QDom::domNodeListIteratorEmptyList()
+{
+    QDomNodeList list;
+    QCOMPARE(list.begin(), list.end());
+
+    QDomDocument doc;
+    list = doc.elementsByTagName("bar");
+    QCOMPARE(list.begin(), list.end());
+}
+
 // Verifies that a default-constructed QDomDocument is null, and that calling
 // any of the factory functions causes it to be non-null.
 #define TEST_NULL_DOCUMENT(func) \
@@ -1706,6 +1998,33 @@ void tst_QDom::reparentAttribute() const
 
     QVERIFY(attr.ownerElement() == ele);
     QVERIFY(attr.parentNode() == ele);
+}
+
+void tst_QDom::replaceAttribute() const
+{
+    QDomImplementation impl;
+    QDomDocument doc(impl.createDocument("", "docName", QDomDocumentType()));
+
+    QDomElement root = doc.createElement("root");
+    doc.appendChild(root);
+
+    QDomAttr attr1 = doc.createAttribute("firstAttribute");
+    attr1.setValue("true");
+    auto nullAttr = root.setAttributeNode(attr1);
+    QVERIFY(nullAttr.isNull());
+    QVERIFY(root.hasAttribute("firstAttribute"));
+    QCOMPARE(root.attributeNode("firstAttribute").value(), "true");
+
+    QDomAttr attr2 = doc.createAttribute("firstAttribute");
+    attr2.setValue("false");
+    root.setAttributeNode(attr2);
+    QCOMPARE(root.attributeNode("firstAttribute").value(), "false");
+
+    QDomAttr attr3 = doc.createAttribute("secondAttribute");
+    attr3.setValue("123");
+    root.setAttributeNode(attr3);
+    QVERIFY(root.hasAttribute("secondAttribute"));
+    QCOMPARE(root.attributeNode("secondAttribute").value(), "123");
 }
 
 void tst_QDom::serializeNamespaces() const
@@ -2336,6 +2655,65 @@ void tst_QDom::splitTextLeakMemory() const
     // only the parent node and the document have a reference on the nodes
     QCOMPARE(text.impl->ref.loadRelaxed(), 2);
     QCOMPARE(end.impl->ref.loadRelaxed(), 2);
+}
+
+void tst_QDom::testDomListComparisonCompiles()
+{
+    QTestPrivate::testEqualityOperatorsCompile<QDomNodeList>();
+}
+
+static QDomElement findElementByName(const QDomDocument &doc, QLatin1StringView tag)
+{
+    const auto list = doc.elementsByTagName(tag);
+#ifdef QTEST_THROW_ON_FAIL
+    QCOMPARE(list.size(), 1);
+    QCOMPARE(list.at(0).nodeType(), QDomNode::NodeType::ElementNode);
+#endif
+    return list.at(0).toElement();
+}
+
+void tst_QDom::testDomListComparison_data()
+{
+    QTest::addColumn<QDomDocument>("doc");
+    QTest::addColumn<QDomNodeList>("lhs");
+    QTest::addColumn<QDomNodeList>("rhs");
+    QTest::addColumn<bool>("result");
+
+    const auto xml = "<top><child1/><child2/><child3><cchild1/><cchild2/></child3></top>"_L1;
+
+    QDomDocument doc;
+    const auto result = doc.setContent(xml);
+    QVERIFY2(result, result.errorMessage.toLocal8Bit().constData());
+
+    const QDomNodeList null;
+    const QDomNodeList empty = findElementByName(doc, "child1"_L1).childNodes();
+    const QDomNodeList child3Children = findElementByName(doc, "child3"_L1).childNodes();
+    const QDomNodeList topChildren = findElementByName(doc, "top"_L1).childNodes();
+
+#define ROW(lhs, rhs, res) \
+    QTest::addRow("%s <> %s", #lhs, #rhs) << doc << lhs << rhs << bool(res)
+
+    ROW(null, null, true);
+    ROW(empty, empty, true);
+    ROW(child3Children, child3Children, true);
+    ROW(topChildren, topChildren, true);
+
+    ROW(null, empty, false);
+    ROW(empty, child3Children, false);
+    ROW(child3Children, topChildren, false);
+    ROW(topChildren, null, false);
+#undef ROW
+}
+
+void tst_QDom::testDomListComparison()
+{
+    [[maybe_unused]]
+    QFETCH(const QDomDocument, doc);
+    QFETCH(const QDomNodeList, lhs);
+    QFETCH(const QDomNodeList, rhs);
+    QFETCH(const bool, result);
+
+    QT_TEST_EQUALITY_OPS(lhs, rhs, result);
 }
 
 // The fix of QTBUG-131151 crash

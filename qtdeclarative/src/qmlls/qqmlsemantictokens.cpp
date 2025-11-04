@@ -31,8 +31,9 @@ static int mapToProtocolForQtCreator(QmlHighlightKind highlightKind)
     case QmlHighlightKind::QmlNamespace:
         return int(SemanticTokenProtocolTypes::Namespace);
     case QmlHighlightKind::QmlLocalId:
-    case QmlHighlightKind::QmlExternalId:
         return int(SemanticTokenProtocolTypes::QmlLocalId);
+    case QmlHighlightKind::QmlExternalId:
+        return int(SemanticTokenProtocolTypes::QmlExternalId);
     case QmlHighlightKind::QmlProperty:
         return int(SemanticTokenProtocolTypes::Property);
     case QmlHighlightKind::QmlScopeObjectProperty:
@@ -74,9 +75,11 @@ static int mapToProtocolForQtCreator(QmlHighlightKind highlightKind)
         return int(SemanticTokenProtocolTypes::Operator);
     case QmlHighlightKind::QmlTypeModifier:
         return int(SemanticTokenProtocolTypes::Decorator);
+    case QmlHighlightKind::Field:
+        return int(SemanticTokenProtocolTypes::Field);
     case QmlHighlightKind::Unknown:
     default:
-        return int(SemanticTokenProtocolTypes::JsScopeVar);
+        return int(SemanticTokenProtocolTypes::Unknown);
     }
 }
 
@@ -133,9 +136,11 @@ static int mapToProtocolDefault(QmlHighlightKind highlightKind)
         return int(SemanticTokenProtocolTypes::Operator);
     case QmlHighlightKind::QmlTypeModifier:
         return int(SemanticTokenProtocolTypes::Decorator);
+    case QmlHighlightKind::Field:
+        return int(SemanticTokenProtocolTypes::Property);
     case QmlHighlightKind::Unknown:
     default:
-        return int(SemanticTokenProtocolTypes::Variable);
+        return int(SemanticTokenProtocolTypes::Unknown);
     }
 }
 
@@ -215,13 +220,17 @@ static FieldFilter highlightingFilter()
     return FieldFilter{ fieldFilterAdd, fieldFilterRemove };
 }
 
-HighlightingVisitor::HighlightingVisitor(Highlights &highlights,
-                                         const std::optional<HighlightsRange> &range)
-    : m_highlights(highlights), m_range(range)
+HighlightingVisitor::HighlightingVisitor(const QQmlJS::Dom::DomItem &item,
+                                         const std::optional<HighlightsRange> &range,
+                                         HighlightingMode mode)
+    : m_highlights(mode), m_range(range)
 {
+    item.visitTree(Path(),
+                   [this](Path path, const DomItem &item, bool b) { return this->visitor(path, item, b); },
+                   VisitOption::Default, emptyChildrenVisitor, emptyChildrenVisitor, highlightingFilter());
 }
 
-bool HighlightingVisitor::operator()(Path, const DomItem &item, bool)
+bool HighlightingVisitor::visitor(Path, const DomItem &item, bool)
 {
     if (m_range.has_value()) {
         const auto fLocs = FileLocations::treeOf(item);
@@ -275,6 +284,10 @@ bool HighlightingVisitor::operator()(Path, const DomItem &item, bool)
     }
     case DomType::ScriptLiteral: {
         highlightScriptLiteral(item);
+        return true;
+    }
+    case DomType::ScriptCallExpression: {
+        highlightCallExpression(item);
         return true;
     }
     case DomType::ScriptIdentifierExpression: {
@@ -407,7 +420,10 @@ void HighlightingVisitor::highlightComponent(const DomItem &item)
     if (!fLocs)
         return;
     const auto regions = fLocs->info().regions;
-    m_highlights.addHighlight(regions[ComponentKeywordRegion], QmlHighlightKind::QmlKeyword);
+    const auto componentKeywordIt = regions.constFind(ComponentKeywordRegion);
+    if (componentKeywordIt == regions.constEnd())
+        return; // not an inline component, no need for highlighting
+    m_highlights.addHighlight(*componentKeywordIt, QmlHighlightKind::QmlKeyword);
     m_highlights.addHighlight(regions[IdentifierRegion], QmlHighlightKind::QmlType);
 }
 
@@ -516,10 +532,72 @@ void HighlightingVisitor::highlightIdentifier(const DomItem &item)
     // Many of the scriptIdentifiers expressions are already handled by
     // other cases. In those cases, if the location offset is already in the list
     // we don't need to perform expensive resolveExpressionType operation.
-    if (m_highlights.highlights().contains(loc.offset))
+    if (m_highlights.tokens().contains(loc.offset))
         return;
 
-    highlightBySemanticAnalysis(item, loc);
+    // If the item is a field member base, we need to resolve the expression type
+    // If the item is a field member access, we don't need to resolve the expression type
+    // because it is already resolved in the first element.
+    if (QQmlLSUtils::isFieldMemberAccess(item))
+        highlightFieldMemberAccess(item, loc);
+    else
+        highlightBySemanticAnalysis(item, loc);
+}
+
+void HighlightingVisitor::highlightCallExpression(const DomItem &item)
+{
+    const auto highlight = [this](const DomItem &item) {
+        if (item.internalKind() == DomType::ScriptIdentifierExpression) {
+            const auto id = item.as<ScriptElements::IdentifierExpression>();
+            Q_ASSERT(id);
+            const auto loc = id->mainRegionLocation();
+            m_highlights.addHighlight(loc, QmlHighlightKind::QmlMethod);
+        }
+    };
+
+    if (item.internalKind() == DomType::ScriptCallExpression) {
+        // If the item is a call expression, we need to highlight the callee.
+        const auto callee = item.field(Fields::callee);
+        if (callee.internalKind() == DomType::ScriptIdentifierExpression) {
+            highlight(callee);
+            return;
+        } else if (callee.internalKind() == DomType::ScriptBinaryExpression) {
+            // If the callee is a binary expression, we need to highlight the right part.
+            const auto right = callee.field(Fields::right);
+            if (right.internalKind() == DomType::ScriptIdentifierExpression)
+                highlight(right);
+            return;
+        }
+    }
+}
+
+void HighlightingVisitor::highlightFieldMemberAccess(const DomItem &item,
+                                                     QQmlJS::SourceLocation loc)
+{
+    // enum fields and qualified module identifiers are not just fields. Do semantic analysis if
+    // the identifier name is an uppercase string.
+    const auto name = item.field(Fields::identifier).value().toString();
+    if (!name.isEmpty() && name.at(0).category() == QChar::Letter_Uppercase) {
+        // maybe the identifier is an attached type or enum members, use semantic analysis to figure
+        // out.
+        return highlightBySemanticAnalysis(item, loc);
+    }
+    // Check if the name is a method
+    const auto expression =
+            QQmlLSUtils::resolveExpressionType(item, QQmlLSUtils::ResolveOptions::ResolveOwnerType);
+
+    if (!expression) {
+        m_highlights.addHighlight(loc, QmlHighlightKind::Field);
+        return;
+    }
+
+    if (expression->type == QQmlLSUtils::MethodIdentifier
+        || expression->type == QQmlLSUtils::LambdaMethodIdentifier) {
+        m_highlights.addHighlight(loc, QmlHighlightKind::QmlMethod);
+        return;
+    } else {
+        return m_highlights.addHighlight(loc, QmlHighlightKind::Field);
+    }
 }
 
 void HighlightingVisitor::highlightBySemanticAnalysis(const DomItem &item, QQmlJS::SourceLocation loc)
@@ -588,9 +666,35 @@ void HighlightingVisitor::highlightBySemanticAnalysis(const DomItem &item, QQmlJ
     case QQmlLSUtils::MethodIdentifier:
         m_highlights.addHighlight(loc, QmlHighlightKind::QmlMethod);
         return;
-    case QQmlLSUtils::QmlObjectIdIdentifier:
-        m_highlights.addHighlight(loc, QmlHighlightKind::QmlLocalId);
-        return;
+    case QQmlLSUtils::QmlObjectIdIdentifier: {
+        const auto qmlfile = item.fileObject().as<QmlFile>();
+        if (!qmlfile) {
+            m_highlights.addHighlight(loc, QmlHighlightKind::Unknown);
+            return;
+        }
+        const auto resolver = qmlfile->typeResolver();
+        if (!resolver) {
+            m_highlights.addHighlight(loc, QmlHighlightKind::Unknown);
+            return;
+        }
+        const auto objects = resolver->objectsById();
+        if (expression->name.has_value()) {
+            const auto &name = expression->name.value();
+            const auto boundName =
+                    objects.id(expression->semanticScope, item.qmlObject().semanticScope());
+            if (!boundName.isEmpty() && name == boundName) {
+                // If the name is the same as the bound name, then it is a local id.
+                m_highlights.addHighlight(loc, QmlHighlightKind::QmlLocalId);
+                return;
+            } else {
+                m_highlights.addHighlight(loc, QmlHighlightKind::QmlExternalId);
+                return;
+            }
+        } else {
+            m_highlights.addHighlight(loc, QmlHighlightKind::QmlExternalId);
+            return;
+        }
+    }
     case QQmlLSUtils::SingletonIdentifier:
         m_highlights.addHighlight(loc, QmlHighlightKind::QmlType);
         return;
@@ -714,7 +818,7 @@ void HighlightingVisitor::highlightScriptExpressions(const DomItem &item)
         return;
     case DomType::ScriptTemplateExpressionPart:
         m_highlights.addHighlight(regions[DollarLeftBraceTokenRegion], QmlHighlightKind::Operator);
-        operator()(Path(), item.field(Fields::expression), false);
+        visitor(Path(), item.field(Fields::expression), false);
         m_highlights.addHighlight(regions[RightBraceRegion], QmlHighlightKind::Operator);
         return;
     case DomType::ScriptTemplateLiteral:
@@ -797,7 +901,7 @@ HighlightingUtils::sourceLocationsFromMultiLineToken(QStringView stringLiteral,
 QList<int> HighlightingUtils::encodeSemanticTokens(Highlights &highlights)
 {
     QList<int> result;
-    const auto highlightingTokens = highlights.highlights();
+    const auto highlightingTokens = highlights.tokens();
     constexpr auto tokenEncodingLength = 5;
     result.reserve(tokenEncodingLength * highlightingTokens.size());
 
@@ -928,19 +1032,20 @@ void Highlights::addHighlightImpl(const QQmlJS::SourceLocation &loc, int tokenTy
         m_highlights.insert(loc.offset, QT_PREPEND_NAMESPACE(Token)(loc, tokenType, tokenModifier));
 }
 
-QList<int> HighlightingUtils::collectTokens(const QQmlJS::Dom::DomItem &item,
+Highlights HighlightingUtils::visitTokens(const QQmlJS::Dom::DomItem &item,
                                      const std::optional<HighlightsRange> &range,
                                      HighlightingMode mode)
 {
     using namespace QQmlJS::Dom;
-    Highlights highlights(mode);
-    HighlightingVisitor highlightDomElements(highlights, range);
-    // In QmlFile level, visitTree visits even FileLocations tree which takes quite a time to
-    // finish. HighlightingFilter is added to prevent unnecessary visits.
-    item.visitTree(Path(), highlightDomElements, VisitOption::Default, emptyChildrenVisitor,
-                   emptyChildrenVisitor, highlightingFilter());
-
-    return HighlightingUtils::encodeSemanticTokens(highlights);
+    HighlightingVisitor highlightDomElements(item, range, mode);
+    return highlightDomElements.highlights();
 }
 
+QList<int> HighlightingUtils::collectTokens(const QQmlJS::Dom::DomItem &item,
+                                     const std::optional<HighlightsRange> &range,
+                                     HighlightingMode mode)
+{
+    Highlights highlights = visitTokens(item, range, mode);
+    return HighlightingUtils::encodeSemanticTokens(highlights);
+}
 QT_END_NAMESPACE

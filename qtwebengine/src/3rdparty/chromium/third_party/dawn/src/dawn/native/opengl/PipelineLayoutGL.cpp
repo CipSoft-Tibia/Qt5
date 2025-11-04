@@ -28,6 +28,7 @@
 #include "dawn/native/opengl/PipelineLayoutGL.h"
 
 #include "dawn/common/BitSetIterator.h"
+#include "dawn/common/MatchVariant.h"
 #include "dawn/native/BindGroupLayoutInternal.h"
 #include "dawn/native/opengl/DeviceGL.h"
 
@@ -48,9 +49,10 @@ PipelineLayout::PipelineLayout(Device* device,
 
         for (BindingIndex bindingIndex{0}; bindingIndex < bgl->GetBindingCount(); ++bindingIndex) {
             const BindingInfo& bindingInfo = bgl->GetBindingInfo(bindingIndex);
-            switch (bindingInfo.bindingType) {
-                case BindingInfoType::Buffer:
-                    switch (bindingInfo.buffer.type) {
+            MatchVariant(
+                bindingInfo.bindingLayout,
+                [&](const BufferBindingInfo& layout) {
+                    switch (layout.type) {
                         case wgpu::BufferBindingType::Uniform:
                             mIndexInfo[group][bindingIndex] = uboIndex;
                             uboIndex++;
@@ -64,24 +66,24 @@ PipelineLayout::PipelineLayout(Device* device,
                         case wgpu::BufferBindingType::Undefined:
                             DAWN_UNREACHABLE();
                     }
-                    break;
-
-                case BindingInfoType::Sampler:
+                },
+                [&](const StaticSamplerBindingInfo&) {
                     mIndexInfo[group][bindingIndex] = samplerIndex;
                     samplerIndex++;
-                    break;
-
-                case BindingInfoType::Texture:
-                case BindingInfoType::ExternalTexture:
+                },
+                [&](const SamplerBindingInfo&) {
+                    mIndexInfo[group][bindingIndex] = samplerIndex;
+                    samplerIndex++;
+                },
+                [&](const TextureBindingInfo&) {
                     mIndexInfo[group][bindingIndex] = sampledTextureIndex;
                     sampledTextureIndex++;
-                    break;
-
-                case BindingInfoType::StorageTexture:
+                },
+                [&](const StorageTextureBindingInfo&) {
                     mIndexInfo[group][bindingIndex] = storageTextureIndex;
                     storageTextureIndex++;
-                    break;
-            }
+                },
+                [](const InputAttachmentBindingInfo&) { DAWN_UNREACHABLE(); });
         }
     }
 

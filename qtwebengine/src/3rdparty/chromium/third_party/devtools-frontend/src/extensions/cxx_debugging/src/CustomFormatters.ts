@@ -3,8 +3,9 @@
 // found in the LICENSE file.
 
 import {type Chrome} from '../../../extension-api/ExtensionAPI.js';
-import {type HostInterface} from './WorkerRPC.js';
+
 import {type WasmValue} from './WasmTypes.js';
+import {type HostInterface} from './WorkerRPC.js';
 
 export interface FieldInfo {
   typeId: string;
@@ -341,7 +342,7 @@ export class CXXValue implements Value, LazyObject {
     return properties;
   }
 
-  async asRemoteObject(): Promise<Chrome.DevTools.RemoteObject> {
+  async asRemoteObject(): Promise<Chrome.DevTools.RemoteObject|Chrome.DevTools.ForeignObject> {
     if (this.type.hasValue && this.type.arraySize === 0) {
       const formatter = CustomFormatters.get(this.type);
       if (!formatter) {
@@ -461,7 +462,7 @@ export class CXXValue implements Value, LazyObject {
 
 export interface LazyObject {
   getProperties(): Promise<{name: string, property: LazyObject}[]>;
-  asRemoteObject(): Promise<Chrome.DevTools.RemoteObject>;
+  asRemoteObject(): Promise<Chrome.DevTools.RemoteObject|Chrome.DevTools.ForeignObject>;
 }
 
 export function primitiveObject<T>(
@@ -568,10 +569,10 @@ export class LocalLazyObject implements LazyObject {
   }
 
   async getProperties(): Promise<{name: string, property: LazyObject}[]> {
-    return Object
-        .keys(this.value)
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        .map(name => ({name, property: lazyObjectFromAny((this.value as any)[name], this.objectStore)}));
+    return Object.entries(this.value).map(([name, value]) => {
+      const property = lazyObjectFromAny(value, this.objectStore);
+      return {name, property};
+    });
   }
 
   async asRemoteObject(): Promise<Chrome.DevTools.RemoteObject> {
@@ -599,6 +600,7 @@ export interface Formatter {
 export class HostWasmInterface {
   private readonly hostInterface: HostInterface;
   private readonly stopId: unknown;
+  private readonly cache: Chrome.DevTools.ForeignObject[] = [];
   readonly view: WasmMemoryView;
   constructor(hostInterface: HostInterface, stopId: unknown) {
     this.hostInterface = hostInterface;

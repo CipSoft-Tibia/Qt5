@@ -1,8 +1,9 @@
 Name: MediaPipe
 Short Name: mediapipe
 URL: https://github.com/google/mediapipe
-Version: 7fa30ad347d5829e8135a046190613b2fb470928
-Date: 2024-01-18
+Version: 6d6e93c7b550b3bbb5bf35369ca592be2d7eed3d
+Revision: 905eade19971467bca916bbb80da6936a994095f
+Date: 2024-09-12
 License: Apache 2.0
 License File: LICENSE
 Security Critical: Yes

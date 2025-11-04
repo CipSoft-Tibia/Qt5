@@ -7,6 +7,9 @@
 #ifndef CORE_FXCODEC_JBIG2_JBIG2_CONTEXT_H_
 #define CORE_FXCODEC_JBIG2_JBIG2_CONTEXT_H_
 
+#include <stddef.h>
+#include <stdint.h>
+
 #include <list>
 #include <memory>
 #include <utility>
@@ -16,8 +19,8 @@
 #include "core/fxcodec/jbig2/JBig2_DocumentContext.h"
 #include "core/fxcodec/jbig2/JBig2_Page.h"
 #include "core/fxcodec/jbig2/JBig2_Segment.h"
+#include "core/fxcrt/span.h"
 #include "core/fxcrt/unowned_ptr.h"
-#include "third_party/base/containers/span.h"
 
 class CJBig2_ArithDecoder;
 class CJBig2_GRDProc;
@@ -38,7 +41,7 @@ class CJBig2_Context {
 
   ~CJBig2_Context();
 
-  static bool HuffmanAssignCode(JBig2HuffmanCode* SBSYMCODES, uint32_t NTEMP);
+  static bool HuffmanAssignCode(pdfium::span<JBig2HuffmanCode> symcodes);
 
   bool GetFirstPage(pdfium::span<uint8_t> pBuf,
                     int32_t width,
@@ -92,7 +95,7 @@ class CJBig2_Context {
   bool m_bBufSpecified = false;
   int32_t m_PauseStep = 10;
   FXCODEC_STATUS m_ProcessingStatus = FXCODEC_STATUS::kFrameReady;
-  std::vector<JBig2ArithCtx> m_gbContext;
+  std::vector<JBig2ArithCtx> m_gbContexts;
   std::unique_ptr<CJBig2_ArithDecoder> m_pArithDecoder;
   std::unique_ptr<CJBig2_GRDProc> m_pGRD;
   std::unique_ptr<CJBig2_Segment> m_pSegment;

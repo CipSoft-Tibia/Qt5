@@ -32,7 +32,8 @@ QT_BEGIN_NAMESPACE
 
 class QQuickItemViewTransitioner;
 
-class QQuickBasePositionerPrivate : public QQuickImplicitSizeItemPrivate, public QQuickItemChangeListener
+class QQuickBasePositionerPrivate : public QQuickImplicitSizeItemPrivate,
+                                    public QSafeQuickItemChangeListener<QQuickBasePositionerPrivate>
 {
     Q_DECLARE_PUBLIC(QQuickBasePositioner)
 

@@ -14,9 +14,9 @@
 #include "base/task/sequenced_task_runner.h"
 #include "components/safe_browsing/core/browser/db/database_manager.h"
 #include "components/safe_browsing/core/browser/hashprefix_realtime/hash_realtime_service.h"
-#include "components/safe_browsing/core/browser/hashprefix_realtime/hash_realtime_utils.h"
 #include "components/safe_browsing/core/browser/safe_browsing_lookup_mechanism_runner.h"
 #include "components/safe_browsing/core/browser/url_realtime_mechanism.h"
+#include "components/safe_browsing/core/common/hashprefix_realtime/hash_realtime_utils.h"
 #include "components/safe_browsing/core/common/proto/realtimeapi.pb.h"
 #include "components/safe_browsing/core/common/safe_browsing_url_checker.mojom.h"
 #include "components/security_interstitials/core/unsafe_resource.h"
@@ -57,7 +57,6 @@ class SafeBrowsingUrlCheckerImpl : public mojom::SafeBrowsingUrlChecker {
     kUnknown = 0,
     // A skipped check occurs in the following scenarios:
     //  - The URL is allowlisted (not the high-confidence allowlist).
-    //  - The request destination can't be checked.
     //  - It's a debugging URL like chrome://safe-browsing/match?type=malware.
     //  - The URL real-time check is unable to run, but |can_check_db_| is false
     //  so no other checks can run either.
@@ -72,19 +71,8 @@ class SafeBrowsingUrlCheckerImpl : public mojom::SafeBrowsingUrlChecker {
     kHashRealTimeCheck = 4,
   };
 
-  using NativeUrlCheckNotifier =
-      base::OnceCallback<void(bool /* proceed */,
-                              bool /* showed_interstitial */,
-                              bool /* has_post_commit_interstitial_skipped */,
-                              PerformedCheck /* performed_check */)>;
-
-  // If |slow_check_notifier| is not null, the callback is supposed to update
-  // this output parameter with a callback to receive complete notification. In
-  // that case, |proceed|, |showed_interstitial| and
-  // |has_post_commit_interstitial_skipped| should be ignored.
   using NativeCheckUrlCallback =
-      base::OnceCallback<void(NativeUrlCheckNotifier* /* slow_check_notifier */,
-                              bool /* proceed */,
+      base::OnceCallback<void(bool /* proceed */,
                               bool /* showed_interstitial */,
                               bool /* has_post_commit_interstitial_skipped */,
                               PerformedCheck /* performed_check */)>;
@@ -95,22 +83,15 @@ class SafeBrowsingUrlCheckerImpl : public mojom::SafeBrowsingUrlChecker {
   // which type of hash-prefix real-time lookup the profile is eligible for, if
   // any. These two must be computed in advance, since this class only exists
   // on the IO thread.
-  // |can_urt_check_subresource_url| indicates whether or not the profile has
-  // enabled real time URL lookups for subresource URLs. If this value is true,
-  // then |url_real_time_lookup_enabled| must also be true.
-  // |last_committed_url| is used for obtaining the page load token when the
-  // URL being checked is not a mainframe URL. Only used when URL real time
-  // lookup is performed.
   // |webui_delegate_| is allowed to be null. If non-null, it must outlive this
   // object.
-  // TODO(crbug.com/1103222): Add an iOS-specific WebUIDelegate implementation
+  // TODO(crbug.com/40704516): Add an iOS-specific WebUIDelegate implementation
   // and pass it here to log URT requests/responses on open
   // chrome://safe-browsing pages once chrome://safe-browsing works on iOS, or
   // else to log those requests/responses to stderr.
   SafeBrowsingUrlCheckerImpl(
       const net::HttpRequestHeaders& headers,
       int load_flags,
-      network::mojom::RequestDestination request_destination,
       bool has_user_gesture,
       scoped_refptr<UrlCheckerDelegate> url_checker_delegate,
       const base::RepeatingCallback<content::WebContents*()>&
@@ -121,17 +102,18 @@ class SafeBrowsingUrlCheckerImpl : public mojom::SafeBrowsingUrlChecker {
           render_frame_token,
       security_interstitials::UnsafeResource::FrameTreeNodeId
           frame_tree_node_id,
-      absl::optional<int64_t> navigation_id,
+      std::optional<int64_t> navigation_id,
       bool url_real_time_lookup_enabled,
-      bool can_urt_check_subresource_url,
       bool can_check_db,
       bool can_check_high_confidence_allowlist,
       std::string url_lookup_service_metric_suffix,
-      GURL last_committed_url,
       scoped_refptr<base::SequencedTaskRunner> ui_task_runner,
       base::WeakPtr<RealTimeUrlLookupServiceBase> url_lookup_service_on_ui,
       base::WeakPtr<HashRealTimeService> hash_realtime_service_on_ui,
-      hash_realtime_utils::HashRealTimeSelection hash_realtime_selection);
+      hash_realtime_utils::HashRealTimeSelection hash_realtime_selection,
+      bool is_async_check,
+      bool check_allowlist_before_hash_database,
+      SessionID tab_id);
 
   SafeBrowsingUrlCheckerImpl(const SafeBrowsingUrlCheckerImpl&) = delete;
   SafeBrowsingUrlCheckerImpl& operator=(const SafeBrowsingUrlCheckerImpl&) =
@@ -175,11 +157,9 @@ class SafeBrowsingUrlCheckerImpl : public mojom::SafeBrowsingUrlChecker {
    private:
     // Used in the mojo interface case.
     CheckUrlCallback callback_;
-    mojo::Remote<mojom::UrlCheckNotifier> slow_check_notifier_;
 
     // Used in the native call case.
     NativeCheckUrlCallback native_callback_;
-    NativeUrlCheckNotifier native_slow_check_notifier_;
   };
 
   struct KickOffLookupMechanismResult {
@@ -199,14 +179,14 @@ class SafeBrowsingUrlCheckerImpl : public mojom::SafeBrowsingUrlChecker {
   void OnUrlResultAndMaybeDeleteSelf(
       PerformedCheck performed_check,
       bool timed_out,
-      absl::optional<std::unique_ptr<CompleteCheckResult>> result);
+      std::optional<std::unique_ptr<CompleteCheckResult>> result);
 
   // Helper function to handle deciding whether or not to show a blocking page.
   void OnUrlResultInternalAndMaybeDeleteSelf(
       const GURL& url,
       SBThreatType threat_type,
       const ThreatMetadata& metadata,
-      absl::optional<ThreatSource> threat_source,
+      std::optional<ThreatSource> threat_source,
       std::unique_ptr<RTLookupResponse> rt_lookup_response,
       bool timed_out,
       PerformedCheck performed_check);
@@ -231,6 +211,12 @@ class SafeBrowsingUrlCheckerImpl : public mojom::SafeBrowsingUrlChecker {
   // Helper method that checks whether |url|'s reputation can be checked using
   // real time lookups.
   bool CanPerformFullURLLookup(const GURL& url);
+
+  // Helper method to get the correct type of hash look up mechanism.
+  std::unique_ptr<SafeBrowsingLookupMechanism> GetHashRealTimeLookupMechanism(
+      const GURL& url,
+      bool can_use_hash_real_time_service,
+      bool can_use_hash_real_time_db_manager);
 
   // This will decide which mechanism to use for a lookup and then perform it.
   KickOffLookupMechanismResult KickOffLookupMechanism(const GURL& url);
@@ -281,13 +267,13 @@ class SafeBrowsingUrlCheckerImpl : public mojom::SafeBrowsingUrlChecker {
   SEQUENCE_CHECKER(sequence_checker_);
   const net::HttpRequestHeaders headers_;
   const int load_flags_;
-  const network::mojom::RequestDestination request_destination_;
   const bool has_user_gesture_;
-  // TODO(crbug.com/1069047): |weak_web_state_| is only used on iOS, and
-  // |web_contents_getter_|, |render_process_id_|, |render_frame_token_|, and
-  // |frame_tree_node_id_| are used on all other platforms.  This class should
-  // be refactored to use only the common functionality can be shared across
-  // platforms.
+  // TODO(https://crbug.com/40683815): |weak_web_state_| is only used on iOS,
+  // and |web_contents_getter_|, |render_process_id_|, |render_frame_token_|,
+  // and |frame_tree_node_id_| are used on all other platforms.  This class
+  // should be refactored to use only the common functionality can be shared
+  // across platforms. Note that this blocks the refactoring of
+  // components/security_interstitials, https://crbug.com/40686246.
   base::RepeatingCallback<content::WebContents*()> web_contents_getter_;
   const security_interstitials::UnsafeResource::RenderProcessId
       render_process_id_ =
@@ -297,7 +283,7 @@ class SafeBrowsingUrlCheckerImpl : public mojom::SafeBrowsingUrlChecker {
   const security_interstitials::UnsafeResource::FrameTreeNodeId
       frame_tree_node_id_ =
           security_interstitials::UnsafeResource::kNoFrameTreeNodeId;
-  const absl::optional<int64_t> navigation_id_;
+  const std::optional<int64_t> navigation_id_;
   base::WeakPtr<web::WebState> weak_web_state_;
   scoped_refptr<UrlCheckerDelegate> url_checker_delegate_;
   scoped_refptr<SafeBrowsingDatabaseManager> database_manager_;
@@ -314,9 +300,6 @@ class SafeBrowsingUrlCheckerImpl : public mojom::SafeBrowsingUrlChecker {
   // Whether real time URL lookup is enabled for this request.
   bool url_real_time_lookup_enabled_;
 
-  // Whether non mainframe url can be checked for this profile.
-  bool can_urt_check_subresource_url_;
-
   // Whether safe browsing database can be checked. It is set to false when
   // enterprise real time URL lookup is enabled and safe browsing is disabled
   // for this profile.
@@ -328,11 +311,6 @@ class SafeBrowsingUrlCheckerImpl : public mojom::SafeBrowsingUrlChecker {
 
   // URL Lookup service suffix for logging metrics.
   std::string url_lookup_service_metric_suffix_;
-
-  // The last committed URL when the checker is constructed. It is used to
-  // obtain page load token when the URL being checked is not a mainframe URL.
-  // Only used when real time lookup is performed.
-  GURL last_committed_url_;
 
   // The task runner for the UI thread.
   scoped_refptr<base::SequencedTaskRunner> ui_task_runner_;
@@ -354,6 +332,20 @@ class SafeBrowsingUrlCheckerImpl : public mojom::SafeBrowsingUrlChecker {
   // any.
   hash_realtime_utils::HashRealTimeSelection hash_realtime_selection_ =
       hash_realtime_utils::HashRealTimeSelection::kNone;
+
+  // If this check allows navigation to commit before it completes.
+  const bool is_async_check_;
+
+  // If the allowlist should be checked before the hash database check. This
+  // is useful to speed up the check if the allowlist check is faster than the
+  // hash database check. Callers should only set this value to true if they
+  // fully trust the correctness of the allowlist or there are other mitigations
+  // in place when blocklisted URLs are mistakenly added in the allowlist.
+  bool check_allowlist_before_hash_database_ = false;
+
+  // The current tab ID. Used sometimes for identifying the referrer chain for
+  // URL real-time lookups. Can be |SessionID::InvalidValue()|.
+  SessionID tab_id_;
 
   base::WeakPtrFactory<SafeBrowsingUrlCheckerImpl> weak_factory_{this};
 };

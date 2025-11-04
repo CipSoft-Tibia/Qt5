@@ -1,7 +1,8 @@
 vec4 color;
+VARYING vec3 pos;
 void MAIN()
 {
-    if (abs(VAR_WORLD_POSITION.y) > graphHeight)
+    if (abs(pos.y) > graphHeight)
         discard;
     color = gridColor;
 }

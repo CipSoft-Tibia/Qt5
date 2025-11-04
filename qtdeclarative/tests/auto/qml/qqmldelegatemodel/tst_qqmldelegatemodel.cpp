@@ -10,11 +10,13 @@
 #include <QtQml/qqmlcomponent.h>
 #include <QtQml/qqmlapplicationengine.h>
 #include <QtQmlModels/private/qqmldelegatemodel_p.h>
+#include <QtQmlModels/private/qqmldelegatemodel_p_p.h>
 #include <QtQmlModels/private/qqmllistmodel_p.h>
 #include <QtQuick/qquickview.h>
 #include <QtQuick/qquickitem.h>
 #include <QtQuick/private/qquickitemview_p_p.h>
 #include <QtQuick/private/qquicklistview_p.h>
+#include <QtQuick/private/qquickrectangle_p.h>
 #include <QtQuickTest/quicktest.h>
 #include <QtQuickTestUtils/private/qmlutils_p.h>
 #include <QtQuickTestUtils/private/visualtestutils_p.h>
@@ -54,6 +56,7 @@ private slots:
     void clearCacheDuringInsertion();
     void viewUpdatedOnDelegateChoiceAffectingRoleChange();
     void proxyModelWithDelayedSourceModelInListView();
+    void delegateChooser();
 };
 
 class BaseAbstractItemModel : public QAbstractItemModel
@@ -854,6 +857,33 @@ void tst_QQmlDelegateModel::proxyModelWithDelayedSourceModelInListView()
     QVERIFY(listView);
     const auto delegateModel = QQuickItemViewPrivate::get(listView)->model;
     QTRY_COMPARE(listView->count(), 1);
+}
+
+void tst_QQmlDelegateModel::delegateChooser()
+{
+    QQuickApplicationHelper helper(this, "delegatechooser.qml");
+    QVERIFY2(helper.ready, helper.failureMessage());
+
+    QQuickWindow *window = helper.window;
+    window->show();
+    QVERIFY(QTest::qWaitForWindowExposed(window));
+
+    QQuickListView *lv = window->findChild<QQuickListView *>();
+    QVERIFY(lv);
+
+    QQmlDelegateModel *model = qobject_cast<QQmlDelegateModel *>(QQuickItemViewPrivate::get(lv)->model);
+    QVERIFY(model);
+    QQmlAdaptorModel *adaptorModel = &QQmlDelegateModelPrivate::get(model)->m_adaptorModel;
+    QVERIFY(adaptorModel);
+
+    const int lvCount = lv->count();
+    QCOMPARE(lvCount, model->count());
+
+    for (int i = 0; i < lvCount; ++i) {
+        QQuickRectangle *rectangle = qobject_cast<QQuickRectangle *>(QQuickVisualTestUtils::findViewDelegateItem(lv, i));
+        QVERIFY(rectangle);
+        QCOMPARE(rectangle->color(), QColor::fromString(adaptorModel->value(adaptorModel->indexAt(i, 0), "modelData").toString()));
+    }
 }
 
 QTEST_MAIN(tst_QQmlDelegateModel)

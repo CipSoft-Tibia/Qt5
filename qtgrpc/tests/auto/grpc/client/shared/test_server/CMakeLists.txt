@@ -1,11 +1,21 @@
 # Copyright (C) 2022 The Qt Company Ltd.
 # SPDX-License-Identifier: BSD-3-Clause
 
-find_package(WrapgRPCPlugin)
-find_package(WrapProtobuf)
-find_package(WrapgRPC)
+set(CMAKE_FIND_PACKAGE_PREFER_CONFIG TRUE)
 
-if(NOT WrapgRPCPlugin_FOUND OR NOT WrapProtobuf_FOUND OR NOT WrapgRPC_FOUND)
+find_package(Protobuf)
+find_package(gRPC)
+
+if(CMAKE_CROSSCOMPILING)
+    find_program(grpc_cpp_plugin grpc_cpp_plugin NO_CACHE)
+elseif(TARGET gRPC::grpc_cpp_plugin)
+    set(grpc_cpp_plugin $<TARGET_FILE:gRPC::grpc_cpp_plugin>)
+else()
+    set(grpc_cpp_plugin "")
+endif()
+
+if(NOT grpc_cpp_plugin OR NOT TARGET WrapProtoc::WrapProtoc
+    OR NOT TARGET gRPC::grpc++)
     message(WARNING "Dependencies of Qt GRPC test server not found. Skipping.")
     return()
 endif()
@@ -32,7 +42,7 @@ add_custom_command(
         --grpc_out "${out_dir}"
         --cpp_out "${out_dir}"
         -I "${CMAKE_CURRENT_LIST_DIR}/../../../shared/proto/"
-        --plugin=protoc-gen-grpc=$<TARGET_FILE:WrapgRPC::WrapgRPCPlugin>
+        --plugin=protoc-gen-grpc=${grpc_cpp_plugin}
         "${proto_files}"
     WORKING_DIRECTORY ${out_dir}
     DEPENDS "${proto_files}" $<TARGET_FILE:WrapProtoc::WrapProtoc>
@@ -51,8 +61,8 @@ target_include_directories(grpc_testserverrunner_gen
 
 target_link_libraries(grpc_testserverrunner_gen
     PRIVATE
-        WrapProtobuf::WrapLibProtobuf
-        WrapgRPC::WrapLibgRPC
+        protobuf::libprotobuf
+        gRPC::grpc++
 )
 
 add_library(grpc_testserverrunner
@@ -70,7 +80,7 @@ target_include_directories(grpc_testserverrunner
 target_link_libraries(grpc_testserverrunner
     PRIVATE
         grpc_testserverrunner_gen
-        WrapgRPC::WrapLibgRPC
+        gRPC::grpc++
         Qt6::Core
 )
 

@@ -1,5 +1,6 @@
 // Copyright (C) 2024 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
+pragma ComponentBehavior: Bound
 
 import QtQuick
 import QtQuick.Controls
@@ -85,6 +86,8 @@ ApplicationWindow {
             property int count: grid.columns
             model: grid.columns * count
             Item {
+                id: repeaterDelegate
+                required property int index
                 property int margin: 10
                 Layout.preferredHeight: ((grid.height - label.height - margin) / repeater.count)
                 Layout.preferredWidth: ((grid.height - label.height - margin) / repeater.count)
@@ -99,12 +102,12 @@ ApplicationWindow {
                 }
 
                 Item {
-                    property int row: index / grid.columns
+                    property int row: repeaterDelegate.index / grid.columns
                     transformOrigin: Item.Center
                     anchors.fill: parent
                     Loader {
                         id: loader
-                        property int column: index % grid.columns
+                        property int column: repeaterDelegate.index % grid.columns
 
                         anchors.centerIn: parent
                         sourceComponent: {

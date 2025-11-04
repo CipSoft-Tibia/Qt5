@@ -42,7 +42,7 @@ std::unique_ptr<DesktopMediaList> createMediaList(DesktopMediaType type)
         std::unique_ptr<webrtc::DesktopCapturer> screenCapturer =
                 webrtc::DesktopCapturer::CreateScreenCapturer(options);
         if (!screenCapturer) {
-            qWarning() << "Screen capturing is not available. Media list will be empty.";
+            qWarning("Screen capturing is not available. Media list will be empty.");
             return nullptr;
         }
         auto capturer = std::make_unique<DesktopCapturerWrapper>(std::move(screenCapturer));
@@ -52,13 +52,13 @@ std::unique_ptr<DesktopMediaList> createMediaList(DesktopMediaType type)
         std::unique_ptr<webrtc::DesktopCapturer> windowCapturer =
                 webrtc::DesktopCapturer::CreateWindowCapturer(options);
         if (!windowCapturer) {
-            qWarning() << "Window capturing is not available. Media list will be empty.";
+            qWarning("Window capturing is not available. Media list will be empty.");
             return nullptr;
         }
         auto capturer = std::make_unique<DesktopCapturerWrapper>(std::move(windowCapturer));
         return std::make_unique<NativeDesktopMediaList>(
                 listType, std::move(capturer),
-                !content::desktop_capture::ShouldEnumerateCurrentProcessWindows());
+                !content::desktop_capture::ShouldEnumerateCurrentProcessWindows(), /*auto_show_delegated_source_list:*/ false);
     }
     default: {
         Q_UNREACHABLE();

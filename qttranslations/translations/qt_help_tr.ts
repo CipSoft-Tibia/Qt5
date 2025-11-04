@@ -12,7 +12,7 @@
     <name>QHelpCollectionHandler</name>
     <message>
         <source>The collection file &quot;%1&quot; is not set up yet.</source>
-        <translation>&quot;%1&quot; koleksiyon dosyası henüz oluşturulmadı.</translation>
+        <translation>“%1” koleksiyon dosyası henüz oluşturulmadı.</translation>
     </message>
     <message>
         <source>Cannot load sqlite database driver.</source>
@@ -40,7 +40,7 @@
     </message>
     <message>
         <source>The collection file &quot;%1&quot; already exists.</source>
-        <translation>&quot;%1&quot; koleksiyon dosyası halihazırda var.</translation>
+        <translation>“%1” koleksiyon dosyası halihazırda var.</translation>
     </message>
     <message>
         <source>Cannot create directory: %1</source>
@@ -52,7 +52,7 @@
     </message>
     <message>
         <source>Unknown filter &quot;%1&quot;.</source>
-        <translation>Bilinmeyen süzgeç &quot;%1&quot;.</translation>
+        <translation>Bilinmeyen süzgeç “%1”.</translation>
     </message>
     <message>
         <source>Cannot register filter %1.</source>
@@ -64,7 +64,7 @@
     </message>
     <message>
         <source>Invalid documentation file &quot;%1&quot;.</source>
-        <translation>Geçersiz belgelendirme dosyası &quot;%1&quot;.</translation>
+        <translation>Geçersiz belgelendirme dosyası “%1”.</translation>
     </message>
     <message>
         <source>The namespace %1 was not registered.</source>
@@ -76,11 +76,11 @@
     </message>
     <message>
         <source>Cannot register namespace &quot;%1&quot;.</source>
-        <translation>&quot;%1&quot; ad alanı kayıt edilemiyor.</translation>
+        <translation>“%1” ad alanı kayıt edilemiyor.</translation>
     </message>
     <message>
         <source>Cannot register virtual folder &apos;%1&apos;.</source>
-        <translation>&apos;%1&apos; sanal klasörü kayıt edilemiyor.</translation>
+        <translation>“%1” sanal klasörü kayıt edilemiyor.</translation>
     </message>
     <message>
         <source>Version %1</source>
@@ -92,7 +92,7 @@
     <message>
         <source>Cannot open database &quot;%1&quot; &quot;%2&quot;: %3</source>
         <extracomment>The placeholders are: %1 - The name of the database which cannot be opened %2 - The unique id for the connection %3 - The actual error string</extracomment>
-        <translation>&quot;%1&quot; &quot;%2&quot; veritabanı açılamıyor: %3</translation>
+        <translation>“%1” “%2” veritabanı açılamıyor: %3</translation>
     </message>
 </context>
 <context>
@@ -119,12 +119,12 @@
     <message numerus="yes">
         <source>%1 - %2 of %n Hits</source>
         <translation>
-            <numerusform>%1 - %2/%n sonuç</numerusform>
+            <numerusform>%1 — %2/%n sonuç</numerusform>
         </translation>
     </message>
     <message>
         <source>0 - 0 of 0 Hits</source>
-        <translation>0 - 0/0 sonuç</translation>
+        <translation>0 — 0/0 sonuç</translation>
     </message>
 </context>
 <context>
@@ -154,7 +154,7 @@
     <name>fulltextsearch::qt::QHelpSearchIndexWriter</name>
     <message>
         <source>Cannot open database &quot;%1&quot; using connection &quot;%2&quot;: %3</source>
-        <translation>&quot;%2&quot; bağlantısı kullanılarak &quot;%1&quot; veritabanı açılamıyor: %3</translation>
+        <translation type="vanished">“%2” bağlantısı kullanılarak “%1” veritabanı açılamıyor: %3</translation>
     </message>
 </context>
 <context>
@@ -188,11 +188,11 @@
     </message>
     <message>
         <source>Add...</source>
-        <translation>Ekle...</translation>
+        <translation>Ekle…</translation>
     </message>
     <message>
         <source>Rename...</source>
-        <translation>Yeniden Adlandır...</translation>
+        <translation>Yeniden Adlandır…</translation>
     </message>
     <message>
         <source>Remove</source>
@@ -216,7 +216,7 @@
     </message>
     <message>
         <source>Are you sure you want to remove the &quot;%1&quot; filter?</source>
-        <translation>&quot;%1&quot; süzgecini kaldırmak istediğinizden emin misiniz?</translation>
+        <translation>“%1” süzgecini kaldırmak istediğinizden emin misiniz?</translation>
     </message>
     <message>
         <source>Filter Exists</source>
@@ -224,7 +224,7 @@
     </message>
     <message>
         <source>The filter &quot;%1&quot; already exists.</source>
-        <translation>&quot;%1&quot; süzgeci halihazırda var.</translation>
+        <translation>“%1” süzgeci halihazırda var.</translation>
     </message>
     <message>
         <source>No Component</source>
@@ -252,6 +252,13 @@
     <message>
         <source>Invalid Option</source>
         <translation>Geçersiz Seçenek</translation>
+    </message>
+</context>
+<context>
+    <name>fulltextsearch::QHelpSearchIndexWriter</name>
+    <message>
+        <source>Cannot open database &quot;%1&quot; using connection &quot;%2&quot;: %3</source>
+        <translation>“%2” bağlantısı kullanılarak “%1” veritabanı açılamıyor: %3</translation>
     </message>
 </context>
 </TS>

@@ -12,9 +12,12 @@
 #include <string_view>
 
 #include <gtest/gtest.h>
+
 #include <openssl/bytestring.h>
 #include <openssl/mem.h>
 #include <openssl/pool.h>
+
+#include "../crypto/test/test_data.h"
 #include "cert_error_params.h"
 #include "cert_errors.h"
 #include "parser.h"
@@ -23,7 +26,7 @@
 #include "string_util.h"
 #include "trust_store.h"
 
-namespace bssl {
+BSSL_NAMESPACE_BEGIN
 
 namespace {
 
@@ -47,11 +50,10 @@ bool GetValue(std::string_view prefix, std::string_view line,
 // hex-encoded string on error.
 std::string OidToString(der::Input oid) {
   CBS cbs;
-  CBS_init(&cbs, oid.UnsafeData(), oid.Length());
+  CBS_init(&cbs, oid.data(), oid.size());
   bssl::UniquePtr<char> text(CBS_asn1_oid_to_text(&cbs));
   if (!text) {
-    return "invalid:" +
-           bssl::string_util::HexEncode(oid.UnsafeData(), oid.Length());
+    return "invalid:" + bssl::string_util::HexEncode(oid);
   }
   return text.get();
 }
@@ -91,53 +93,18 @@ std::vector<std::string> SplitString(std::string_view str) {
   return out;
 }
 
-bool ReadFileToString(const std::string &path, std::string *out) {
-  std::ifstream file(path, std::ios::binary);
-  file.unsetf(std::ios::skipws);
-
-  file.seekg(0, std::ios::end);
-  if (file.tellg() == -1) {
-    return false;
-  }
-  out->reserve(file.tellg());
-  file.seekg(0, std::ios::beg);
-
-  out->assign(std::istreambuf_iterator<char>(file),
-              std::istreambuf_iterator<char>());
-
-  return true;
-}
-
-std::string AppendComponent(const std::string &path,
-                            const std::string &component) {
-  // Append a path component to a path. Use the \ separator if this appears to
-  // be a Windows path, otherwise the Unix one.
-  if (path.find(":\\") != std::string::npos) {
-    return path + "\\" + component;
-  }
-  return path + "/" + component;
-}
-
-std::string GetTestRoot(void) {
-  // We expect our test data to live in "pki" underneath a
-  // test root directory, or in the current directry.
-  char *root_from_env = getenv("BORINGSSL_TEST_DATA_ROOT");
-  std::string root = root_from_env ? root_from_env : ".";
-  return AppendComponent(root, "pki");
-}
-
 }  // namespace
 
 namespace der {
 
-void PrintTo(const Input &data, ::std::ostream *os) {
+void PrintTo(Input data, ::std::ostream *os) {
   size_t len;
-  if (!EVP_EncodedLength(&len, data.Length())) {
+  if (!EVP_EncodedLength(&len, data.size())) {
     *os << "[]";
     return;
   }
   std::vector<uint8_t> encoded(len);
-  len = EVP_EncodeBlock(encoded.data(), data.UnsafeData(), data.Length());
+  len = EVP_EncodeBlock(encoded.data(), data.data(), data.size());
   // Skip the trailing \0.
   std::string b64_encoded(encoded.begin(), encoded.begin() + len);
   *os << "[" << b64_encoded << "]";
@@ -148,7 +115,7 @@ void PrintTo(const Input &data, ::std::ostream *os) {
 der::Input SequenceValueFromString(std::string_view s) {
   der::Parser parser((der::Input(s)));
   der::Input data;
-  if (!parser.ReadTag(der::kSequence, &data)) {
+  if (!parser.ReadTag(CBS_ASN1_SEQUENCE, &data)) {
     ADD_FAILURE();
     return der::Input();
   }
@@ -338,6 +305,10 @@ bool ReadVerifyCertChainTestFromFile(const std::string &file_path_ascii,
         test->key_purpose = KeyPurpose::SERVER_AUTH_STRICT;
       } else if (value == "CLIENT_AUTH_STRICT") {
         test->key_purpose = KeyPurpose::CLIENT_AUTH_STRICT;
+      } else if (value == "SERVER_AUTH_STRICT_LEAF") {
+        test->key_purpose = KeyPurpose::SERVER_AUTH_STRICT_LEAF;
+      } else if (value == "CLIENT_AUTH_STRICT_LEAF") {
+        test->key_purpose = KeyPurpose::CLIENT_AUTH_STRICT_LEAF;
       } else {
         ADD_FAILURE() << "Unrecognized key_purpose: " << value;
         return false;
@@ -451,18 +422,7 @@ bool ReadVerifyCertChainTestFromFile(const std::string &file_path_ascii,
 }
 
 std::string ReadTestFileToString(const std::string &file_path_ascii) {
-  // Compute the full path, relative to the src/ directory.
-  std::string src_root = GetTestRoot();
-  std::string filepath = AppendComponent(src_root, file_path_ascii);
-
-  // Read the full contents of the file.
-  std::string file_data;
-  if (!ReadFileToString(filepath, &file_data)) {
-    ADD_FAILURE() << "Couldn't read file: " << filepath;
-    return std::string();
-  }
-
-  return file_data;
+  return GetTestData(("pki/" + file_path_ascii).c_str());
 }
 
 void VerifyCertPathErrors(const std::string &expected_errors_str,
@@ -507,7 +467,7 @@ void VerifyUserConstrainedPolicySet(
     const std::set<der::Input> &actual_user_constrained_policy_set,
     const std::string &errors_file_path) {
   std::set<std::string> actual_user_constrained_policy_str_set;
-  for (const der::Input &der_oid : actual_user_constrained_policy_set) {
+  for (der::Input der_oid : actual_user_constrained_policy_set) {
     actual_user_constrained_policy_str_set.insert(OidToString(der_oid));
   }
   if (expected_user_constrained_policy_str_set !=
@@ -523,4 +483,4 @@ void VerifyUserConstrainedPolicySet(
   }
 }
 
-}  // namespace bssl
+BSSL_NAMESPACE_END

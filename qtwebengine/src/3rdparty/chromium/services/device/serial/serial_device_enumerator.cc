@@ -6,6 +6,7 @@
 
 #include <utility>
 
+#include "base/not_fatal_until.h"
 #include "base/observer_list.h"
 #include "base/task/single_thread_task_runner.h"
 #include "base/unguessable_token.h"
@@ -60,14 +61,14 @@ void SerialDeviceEnumerator::RemoveObserver(Observer* observer) {
   observer_list_.RemoveObserver(observer);
 }
 
-absl::optional<base::FilePath> SerialDeviceEnumerator::GetPathFromToken(
+std::optional<base::FilePath> SerialDeviceEnumerator::GetPathFromToken(
     const base::UnguessableToken& token,
     bool use_alternate_path) {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
 
   auto it = ports_.find(token);
   if (it == ports_.end())
-    return absl::nullopt;
+    return std::nullopt;
 
 #if BUILDFLAG(IS_MAC)
   if (use_alternate_path)
@@ -92,15 +93,37 @@ void SerialDeviceEnumerator::RemovePort(base::UnguessableToken token) {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
 
   auto it = ports_.find(token);
-  DCHECK(it != ports_.end());
+  CHECK(it != ports_.end(), base::NotFatalUntil::M130);
   mojom::SerialPortInfoPtr port = std::move(it->second);
 
   SERIAL_LOG(EVENT) << "Serial device removed: path=" << port->path;
 
   ports_.erase(it);
 
+  port->connected = false;
   for (auto& observer : observer_list_)
     observer.OnPortRemoved(*port);
+}
+
+void SerialDeviceEnumerator::UpdatePortConnectedState(
+    base::UnguessableToken token,
+    bool is_connected) {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+
+  auto it = ports_.find(token);
+  CHECK(it != ports_.end(), base::NotFatalUntil::M130);
+  auto& port = it->second;
+  if (port->connected == is_connected) {
+    return;
+  }
+
+  SERIAL_LOG(EVENT) << "Serial device connected state changed: path="
+                    << port->path << " is_connected=" << is_connected;
+
+  port->connected = is_connected;
+  for (auto& observer : observer_list_) {
+    observer.OnPortConnectedStateChanged(*port);
+  }
 }
 
 }  // namespace device

@@ -2,12 +2,18 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#ifdef UNSAFE_BUFFERS_BUILD
+// TODO(crbug.com/40285824): Remove this and convert code to safer constructs.
+#pragma allow_unsafe_buffers
+#endif
+
 #include "components/viz/service/display/display_resource_provider_skia.h"
 
 #include <stddef.h>
 #include <stdint.h>
 
 #include <memory>
+#include <optional>
 #include <set>
 #include <unordered_map>
 #include <utility>
@@ -26,7 +32,6 @@
 #include "components/viz/test/test_context_provider.h"
 #include "testing/gmock/include/gmock/gmock.h"
 #include "testing/gtest/include/gtest/gtest.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "third_party/khronos/GLES2/gl2.h"
 #include "third_party/khronos/GLES2/gl2ext.h"
 #include "third_party/skia/include/core/SkColorSpace.h"
@@ -69,7 +74,7 @@ class MockExternalUseClient : public ExternalUseClient {
                                     const gfx::Size&,
                                     SharedImageFormat,
                                     bool,
-                                    const absl::optional<gpu::VulkanYCbCrInfo>&,
+                                    const std::optional<gpu::VulkanYCbCrInfo>&,
                                     sk_sp<SkColorSpace>,
                                     bool));
 };
@@ -103,7 +108,7 @@ class DisplayResourceProviderSkiaTest : public testing::Test {
 
   TransferableResource CreateResource() {
     constexpr gfx::Size size(64, 64);
-    gpu::Mailbox gpu_mailbox = gpu::Mailbox::GenerateForSharedImage();
+    gpu::Mailbox gpu_mailbox = gpu::Mailbox::Generate();
     gpu::SyncToken sync_token = GenSyncToken();
     EXPECT_TRUE(sync_token.HasData());
 
@@ -127,14 +132,14 @@ class DisplayResourceProviderSkiaTest : public testing::Test {
   std::unique_ptr<DisplayResourceProviderSkia> resource_provider_;
   std::unique_ptr<ClientResourceProvider> child_resource_provider_;
   testing::NiceMock<MockExternalUseClient> client_;
-  absl::optional<DisplayResourceProviderSkia::LockSetForExternalUse> lock_set_;
+  std::optional<DisplayResourceProviderSkia::LockSetForExternalUse> lock_set_;
 };
 
 TEST_F(DisplayResourceProviderSkiaTest, LockForExternalUse) {
   gpu::SyncToken sync_token1(gpu::CommandBufferNamespace::GPU_IO,
                              gpu::CommandBufferId::FromUnsafeValue(0x123),
                              0x42);
-  auto mailbox = gpu::Mailbox::GenerateForSharedImage();
+  auto mailbox = gpu::Mailbox::Generate();
   constexpr gfx::Size size(64, 64);
   TransferableResource gl_resource = TransferableResource::MakeGpu(
       mailbox, GL_TEXTURE_2D, sync_token1, size, SinglePlaneFormat::kRGBA_8888,
@@ -164,7 +169,7 @@ TEST_F(DisplayResourceProviderSkiaTest, LockForExternalUse) {
   auto format = SinglePlaneFormat::kRGBA_8888;
   auto owned_image_context = std::make_unique<ExternalUseClient::ImageContext>(
       gpu::MailboxHolder(mailbox, sync_token1, GL_TEXTURE_2D), size, format,
-      /*ycbcr_info=*/absl::nullopt, /*color_space=*/nullptr);
+      /*ycbcr_info=*/std::nullopt, /*color_space=*/nullptr);
   auto* image_context = owned_image_context.get();
 
   gpu::MailboxHolder holder;
@@ -215,7 +220,7 @@ TEST_F(DisplayResourceProviderSkiaTest, LockForExternalUseWebView) {
   gpu::SyncToken sync_token1(gpu::CommandBufferNamespace::GPU_IO,
                              gpu::CommandBufferId::FromUnsafeValue(0x123),
                              0x42);
-  auto mailbox = gpu::Mailbox::GenerateForSharedImage();
+  auto mailbox = gpu::Mailbox::Generate();
   constexpr gfx::Size size(64, 64);
   TransferableResource gl_resource = TransferableResource::MakeGpu(
       mailbox, GL_TEXTURE_2D, sync_token1, size, SinglePlaneFormat::kRGBA_8888,
@@ -245,7 +250,7 @@ TEST_F(DisplayResourceProviderSkiaTest, LockForExternalUseWebView) {
   auto format = SinglePlaneFormat::kRGBA_8888;
   auto owned_image_context = std::make_unique<ExternalUseClient::ImageContext>(
       gpu::MailboxHolder(mailbox, sync_token1, GL_TEXTURE_2D), size, format,
-      /*ycbcr_info=*/absl::nullopt, /*color_space=*/nullptr);
+      /*ycbcr_info=*/std::nullopt, /*color_space=*/nullptr);
   auto* image_context = owned_image_context.get();
 
   gpu::MailboxHolder holder;
@@ -314,7 +319,7 @@ class TestGpuCommandsCompletedFence : public ResourceFence {
   // ResourceFence implementation.
   bool HasPassed() override { return passed_; }
   gfx::GpuFenceHandle GetGpuFenceHandle() override {
-    NOTREACHED();
+    NOTREACHED_IN_MIGRATION();
     return gfx::GpuFenceHandle();
   }
 
@@ -349,7 +354,7 @@ class TestReleaseFence : public ResourceFence {
  private:
   ~TestReleaseFence() override = default;
 
-  absl::optional<gfx::GpuFenceHandle> release_fence_;
+  std::optional<gfx::GpuFenceHandle> release_fence_;
   base::WeakPtr<DisplayResourceProvider> resource_provider_;
 };
 

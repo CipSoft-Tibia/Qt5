@@ -24,6 +24,11 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+#ifdef UNSAFE_BUFFERS_BUILD
+// TODO(crbug.com/351564777): Remove this and convert code to safer constructs.
+#pragma allow_unsafe_buffers
+#endif
+
 #include "third_party/blink/renderer/platform/wtf/text/text_codec_icu.h"
 
 #include <memory>
@@ -83,8 +88,6 @@ void TextCodecICU::RegisterEncodingNames(EncodingNameRegistrar registrar) {
   // apart; ICU treats these names as synonyms.
   registrar("ISO-8859-8-I", "ISO-8859-8-I");
 
-  const bool is_text_codec_cjk_enabled =
-      base::FeatureList::IsEnabled(blink::features::kTextCodecCJKEnabled);
   int32_t num_encodings = ucnv_countAvailable();
   for (int32_t i = 0; i < num_encodings; ++i) {
     const char* name = ucnv_getAvailableName(i);
@@ -117,7 +120,7 @@ void TextCodecICU::RegisterEncodingNames(EncodingNameRegistrar registrar) {
     }
 #endif
     // Avoid codecs supported by `TextCodecCJK`.
-    if (is_text_codec_cjk_enabled && TextCodecCJK::IsSupported(standard_name)) {
+    if (TextCodecCJK::IsSupported(standard_name)) {
       continue;
     }
 
@@ -150,8 +153,7 @@ void TextCodecICU::RegisterEncodingNames(EncodingNameRegistrar registrar) {
 
     // Avoid registering codecs registered by
     // `TextCodecCJK::RegisterEncodingNames`.
-    if (!is_text_codec_cjk_enabled ||
-        !TextCodecCJK::IsSupported(standard_name)) {
+    if (!TextCodecCJK::IsSupported(standard_name)) {
       registrar(standard_name, standard_name);
     }
 
@@ -272,8 +274,6 @@ void TextCodecICU::RegisterCodecs(TextCodecRegistrar registrar) {
   // See comment above in registerEncodingNames.
   registrar("ISO-8859-8-I", Create, nullptr);
 
-  const bool is_text_codec_cjk_enabled =
-      base::FeatureList::IsEnabled(blink::features::kTextCodecCJKEnabled);
   int32_t num_encodings = ucnv_countAvailable();
   for (int32_t i = 0; i < num_encodings; ++i) {
     const char* name = ucnv_getAvailableName(i);
@@ -295,7 +295,7 @@ void TextCodecICU::RegisterCodecs(TextCodecRegistrar registrar) {
     }
 #endif
     // Avoid codecs supported by `TextCodecCJK`.
-    if (is_text_codec_cjk_enabled && TextCodecCJK::IsSupported(standard_name)) {
+    if (TextCodecCJK::IsSupported(standard_name)) {
       continue;
     }
     registrar(standard_name, Create, nullptr);
@@ -641,7 +641,7 @@ static void NotReachedEntityCallback(const void* context,
                                      UChar32 code_point,
                                      UConverterCallbackReason reason,
                                      UErrorCode* err) {
-  NOTREACHED();
+  NOTREACHED_IN_MIGRATION();
 }
 
 class TextCodecInput final {

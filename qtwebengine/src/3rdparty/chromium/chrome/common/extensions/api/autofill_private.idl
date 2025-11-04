@@ -10,6 +10,17 @@ namespace autofillPrivate {
     DOMString email;
     boolean isSyncEnabledForAutofillProfiles;
     boolean isEligibleForAddressAccountStorage;
+
+    // Controls whether the Autofill Sync toggle should be available (duplicated
+    // from the Sync Settings page) on the Autofill Settings page.
+    // TODO(crbug.com/40943238): Remove when toggle becomes available on the Sync
+    // page for non-syncing users.
+    boolean isAutofillSyncToggleAvailable;
+
+    // Represents the UserSelectableType::kAutofill state (enabled or not).
+    // TODO(crbug.com/40943238): Remove when toggle becomes available on the Sync
+    // page for non-syncing users.
+    boolean isAutofillSyncToggleEnabled;
   };
 
   // A copy of FieldType from
@@ -84,10 +95,6 @@ namespace autofillPrivate {
     ADDRESS_HOME_ADDRESS,
     ADDRESS_HOME_ADDRESS_WITH_NAME,
     ADDRESS_HOME_FLOOR,
-    NAME_FULL_WITH_HONORIFIC_PREFIX,
-    BIRTHDATE_DAY,
-    BIRTHDATE_MONTH,
-    BIRTHDATE_4_DIGIT_YEAR,
     PHONE_HOME_CITY_CODE_WITH_TRUNK_PREFIX,
     PHONE_HOME_CITY_AND_NUMBER_WITHOUT_TRUNK_PREFIX,
     PHONE_HOME_NUMBER_PREFIX,
@@ -104,17 +111,22 @@ namespace autofillPrivate {
     ADDRESS_HOME_STREET_LOCATION,
     ADDRESS_HOME_BETWEEN_STREETS,
     ADDRESS_HOME_BETWEEN_STREETS_OR_LANDMARK,
+    ADDRESS_HOME_STREET_LOCATION_AND_LOCALITY,
+    ADDRESS_HOME_STREET_LOCATION_AND_LANDMARK,
+    ADDRESS_HOME_DEPENDENT_LOCALITY_AND_LANDMARK,
     ADDRESS_HOME_BETWEEN_STREETS_1,
     ADDRESS_HOME_BETWEEN_STREETS_2,
     SINGLE_USERNAME_FORGOT_PASSWORD,
     ADDRESS_HOME_APT,
     ADDRESS_HOME_APT_TYPE,
+    ADDRESS_HOME_HOUSE_NUMBER_AND_APT,
     SINGLE_USERNAME_WITH_INTERMEDIATE_VALUES,
+    IMPROVED_PREDICTION,
     MAX_VALID_FIELD_TYPE
   };
 
-  // The address source origin. Describes where the address is stored.
-  enum AddressSource {
+  // The address record type. Describes where the address is stored.
+  enum AddressRecordType {
     // The address is stored in the Chrome infrastructure (locally and
     // possibly synced between devices).
     LOCAL_OR_SYNCABLE,
@@ -137,14 +149,11 @@ namespace autofillPrivate {
     DOMString? summarySublabel;
 
     // For addresses. Describes where the address is stored.
-    AddressSource? source;
+    AddressRecordType? recordType;
 
     // For credit cards, whether the entry is locally owned by Chrome (as opposed to
     // being synced down from the server). Non-local entries may not be editable.
     boolean? isLocal;
-
-    // For credit cards, whether this is a full copy of the card
-    boolean? isCached;
 
     // For credit cards, whether this is migratable (both the card number and
     // expiration date valid and does not have the duplicated server card).
@@ -263,6 +272,9 @@ namespace autofillPrivate {
     // Credit card's masked cvc.
     DOMString? cvc;
 
+    // Credit card's product terms URL.
+    DOMString? productTermsUrl;
+
     AutofillMetadata? metadata;
   };
 
@@ -281,6 +293,14 @@ namespace autofillPrivate {
     AutofillMetadata? metadata;
   };
 
+  // User annotations entry data. Corresponds to the eponymous message from
+  // components/optimization_guide/proto/features/common_quality_data.proto.
+  dictionary UserAnnotationsEntry {
+    long entryId;
+    DOMString key;
+    DOMString value;
+  };
+
   callback GetAccountInfoCallback = void(optional AccountInfo accountInfo);
   callback GetCountryListCallback = void(CountryEntry[] countries);
   callback GetAddressComponentsCallback = void(AddressComponents components);
@@ -290,12 +310,13 @@ namespace autofillPrivate {
   callback IsValidIbanCallback = void(boolean isValid);
   callback GetCreditCardCallback = void(optional CreditCardEntry card);
   callback CheckForDeviceAuthCallback = void(boolean isDeviceAuthAvailable);
+  callback GetUserAnnotationsEntriesCallback = void(UserAnnotationsEntry[] items);
 
   interface Functions {
     // Gets currently signed-in user profile info, no value is returned if
     // the user is not signed-in.
     // |callback|: Callback which will be called with the info.
-    [supportsPromises] static void getAccountInfo(
+    static void getAccountInfo(
         GetAccountInfoCallback callback);
 
     // Saves the given address. If |address| has an empty string as its ID, it
@@ -304,8 +325,11 @@ namespace autofillPrivate {
     static void saveAddress(AddressEntry address);
 
     // Gets the list of all countries.
+    // |forAccountAddressProfile|: whether the address profile opened in the
+    // editor originates in the user's profile.
     // |callback|: Callback which will be called with the countries.
-    [supportsPromises] static void getCountryList(
+    static void getCountryList(
+        boolean forAccountAddressProfile,
         GetCountryListCallback callback);
 
     // Gets the address components for a given country code.
@@ -313,13 +337,13 @@ namespace autofillPrivate {
     //     whose components should be returned. See autofill_country.cc for a
     //     list of valid codes.
     // |callback|: Callback which will be called with components.
-    [supportsPromises] static void getAddressComponents(
+    static void getAddressComponents(
         DOMString countryCode,
         GetAddressComponentsCallback callback);
 
     // Gets the list of addresses.
     // |callback|: Callback which will be called with the list of addresses.
-    [supportsPromises] static void getAddressList(
+    static void getAddressList(
         GetAddressListCallback callback);
 
     // Saves the given credit card. If |card| has an empty string as its
@@ -338,34 +362,25 @@ namespace autofillPrivate {
 
     // Gets the list of credit cards.
     // |callback|: Callback which will be called with the list of credit cards.
-    [supportsPromises] static void getCreditCardList(
+    static void getCreditCardList(
         GetCreditCardListCallback callback);
 
     // Gets the list of IBANs.
     // `callback`: Callback which will be called with the list of IBANs.
-    [supportsPromises] static void getIbanList(
+    static void getIbanList(
         GetIbanListCallback callback);
 
     // Returns true if the given `ibanValue` is a valid IBAN.
     // `callback`: Callback which will be called with the result of IBAN
     // validation.
-    [supportsPromises] static void isValidIban(
+    static void isValidIban(
         DOMString ibanValue, IsValidIbanCallback callback);
-
-    // Clears the data associated with a wallet card which was saved
-    // locally so that the saved copy is masked (e.g., "Card ending
-    // in 1234").
-    // |guid|: GUID of the credit card to mask.
-    static void maskCreditCard(DOMString guid);
 
     // Triggers local credit cards migration.
     static void migrateCreditCards();
 
     // Logs that the server cards edit link was clicked.
     static void logServerCardLinkClicked();
-
-    // Enables or disables FIDO Authentication for credit card unmasking.
-    static void setCreditCardFIDOAuthEnabledState(boolean enabled);
 
     // Enrolls a credit card into virtual cards.
     // |cardId|: The server side id of the credit card to be enrolled. Note it
@@ -385,18 +400,32 @@ namespace autofillPrivate {
     // Returns the local card based on the `guid` provided. The user could
     // also be challenged with a reauth if that is enabled. For a successful
     // auth, the local card is returned otherwise return a null object.
-    [supportsPromises] static void getLocalCard(
+    static void getLocalCard(
         DOMString guid, GetCreditCardCallback callback);
 
     // Returns true if there is authentication available on this device
     // (biometric or screen lock), false otherwise.
-    [supportsPromises] static void checkIfDeviceAuthAvailable(
+    static void checkIfDeviceAuthAvailable(
         CheckForDeviceAuthCallback callback);
 
     // Bulk delete all the CVCs (server and local) from the local webdata
     // database. For server CVCs, this will also clear them from the Chrome
     // sync server and thus other devices.
     static void bulkDeleteAllCvcs();
+
+    // Sets the Sync Autofill toggle value, which corresponds to
+    // `syncer::UserSelectableType::kAutofill` in `SyncUserSettings`.
+    static void setAutofillSyncToggleEnabled(boolean enabled);
+
+    // Returns the list of user annotations entries.
+    static void getUserAnnotationsEntries(
+        GetUserAnnotationsEntriesCallback callback);
+
+    // Deletes the user annotations entry by its id.
+    static void deleteUserAnnotationsEntry(long entryId);
+
+    // Deletes all user annotations entries.
+    static void deleteAllUserAnnotationsEntries();
   };
 
   interface Events {

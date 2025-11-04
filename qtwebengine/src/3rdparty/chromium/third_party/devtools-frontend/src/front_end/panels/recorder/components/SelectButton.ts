@@ -2,11 +2,14 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+import * as Platform from '../../../core/platform/platform.js';
+import {type LocalizedString} from '../../../core/platform/UIString.js';
 import * as Buttons from '../../../ui/components/buttons/buttons.js';
 import * as Dialogs from '../../../ui/components/dialogs/dialogs.js';
 import * as ComponentHelpers from '../../../ui/components/helpers/helpers.js';
 import * as Menus from '../../../ui/components/menus/menus.js';
 import * as LitHtml from '../../../ui/lit-html/lit-html.js';
+import * as VisualLogging from '../../../ui/visual_logging/visual_logging.js';
 import * as Models from '../models/models.js';
 import type * as Actions from '../recorder-actions/recorder-actions.js';
 
@@ -14,7 +17,7 @@ import selectButtonStyles from './selectButton.css.js';
 
 export const enum Variant {
   PRIMARY = 'primary',
-  SECONDARY = 'secondary',
+  OUTLINED = 'outlined',
 }
 
 type SelectMenuGroup = {
@@ -38,6 +41,10 @@ interface SelectButtonProps {
    * Selected item is shown in the button itself
    */
   items: SelectButtonItem[];
+  /**
+   * Groups for the select menu of the button.
+   */
+  buttonLabel: LocalizedString;
   /**
    * Groups for the select menu of the button.
    */
@@ -74,8 +81,16 @@ export interface SelectButtonItem {
 export class SelectButtonClickEvent extends Event {
   static readonly eventName = 'selectbuttonclick';
 
-  constructor(public value: string) {
+  constructor(public value?: string) {
     super(SelectButtonClickEvent.eventName, {bubbles: true, composed: true});
+  }
+}
+
+export class SelectMenuSelectedEvent extends Event {
+  static readonly eventName = 'selectmenuselected';
+
+  constructor(public value: string) {
+    super(SelectMenuSelectedEvent.eventName, {bubbles: true, composed: true});
   }
 }
 
@@ -86,6 +101,7 @@ export class SelectButton extends HTMLElement {
     disabled: false,
     value: '',
     items: [],
+    buttonLabel: '' as LocalizedString,
     groups: [],
     variant: Variant.PRIMARY,
   };
@@ -111,6 +127,10 @@ export class SelectButton extends HTMLElement {
   set items(items: SelectButtonItem[]) {
     this.#props.items = items;
     void ComponentHelpers.ScheduledRender.scheduleRender(this, this.#render);
+  }
+
+  set buttonLabel(buttonLabel: LocalizedString) {
+    this.#props.buttonLabel = buttonLabel;
   }
 
   set groups(groups: Array<SelectMenuGroup>) {
@@ -149,7 +169,7 @@ export class SelectButton extends HTMLElement {
   #handleSelectMenuSelect(
       evt: Menus.SelectMenu.SelectMenuItemSelectedEvent,
       ): void {
-    this.dispatchEvent(new SelectButtonClickEvent(evt.itemValue as string));
+    this.dispatchEvent(new SelectMenuSelectedEvent(evt.itemValue as string));
     void ComponentHelpers.ScheduledRender.scheduleRender(this, this.#render);
   }
 
@@ -161,7 +181,7 @@ export class SelectButton extends HTMLElement {
     return LitHtml.html`
       <${Menus.Menu.MenuItem.litTagName} .value=${item.value} .selected=${
       item.value === selectedItem.value
-    }>
+    } jslog=${VisualLogging.item(Platform.StringUtilities.toKebabCase(item.value)).track({click: true})}>
         ${item.label()}
       </${Menus.Menu.MenuItem.litTagName}>
     `;
@@ -195,32 +215,20 @@ export class SelectButton extends HTMLElement {
 
     const classes = {
       primary: this.#props.variant === Variant.PRIMARY,
-      secondary: this.#props.variant === Variant.SECONDARY,
+      secondary: this.#props.variant === Variant.OUTLINED,
     };
 
     const buttonVariant =
-        this.#props.variant === Variant.SECONDARY ? Buttons.Button.Variant.SECONDARY : Buttons.Button.Variant.PRIMARY;
-    const label = selectedItem.buttonLabel ? selectedItem.buttonLabel() : selectedItem.label();
+        this.#props.variant === Variant.OUTLINED ? Buttons.Button.Variant.OUTLINED : Buttons.Button.Variant.PRIMARY;
+    const menuLabel = selectedItem.buttonLabel ? selectedItem.buttonLabel() : selectedItem.label();
 
     // clang-format off
     LitHtml.render(
       LitHtml.html`
       <div class="select-button" title=${
-        this.#getTitle(label) || LitHtml.nothing
+        this.#getTitle(menuLabel) || LitHtml.nothing
       }>
-        ${
-          selectedItem
-            ? LitHtml.html`
-        <${Buttons.Button.Button.litTagName}
-            .disabled=${this.#props.disabled}
-            .variant=${buttonVariant}
-            .iconName=${selectedItem.buttonIconName}
-            @click=${this.#handleClick}>
-            ${label}
-        </${Buttons.Button.Button.litTagName}>`
-            : ''
-        }
-        <${Menus.SelectMenu.SelectMenu.litTagName}
+      <${Menus.SelectMenu.SelectMenu.litTagName}
           class=${LitHtml.Directives.classMap(classes)}
           @selectmenuselected=${this.#handleSelectMenuSelect}
           ?disabled=${this.#props.disabled}
@@ -228,7 +236,7 @@ export class SelectButton extends HTMLElement {
           .sideButton=${false}
           .showSelectedItem=${true}
           .disabled=${this.#props.disabled}
-          .buttonTitle=${LitHtml.html``}
+          .buttonTitle=${LitHtml.html`${menuLabel}`}
           .position=${Dialogs.Dialog.DialogVerticalPosition.BOTTOM}
           .horizontalAlignment=${
             Dialogs.Dialog.DialogHorizontalAlignment.RIGHT
@@ -244,6 +252,18 @@ export class SelectButton extends HTMLElement {
                 )
           }
         </${Menus.SelectMenu.SelectMenu.litTagName}>
+        ${
+          selectedItem
+            ? LitHtml.html`
+        <${Buttons.Button.Button.litTagName}
+            .disabled=${this.#props.disabled}
+            .variant=${buttonVariant}
+            .iconName=${selectedItem.buttonIconName}
+            @click=${this.#handleClick}>
+            ${this.#props.buttonLabel}
+        </${Buttons.Button.Button.litTagName}>`
+            : ''
+        }
       </div>`,
       this.#shadow,
       { host: this },
@@ -252,7 +272,7 @@ export class SelectButton extends HTMLElement {
   };
 }
 
-ComponentHelpers.CustomElements.defineComponent(
+customElements.define(
     'devtools-select-button',
     SelectButton,
 );

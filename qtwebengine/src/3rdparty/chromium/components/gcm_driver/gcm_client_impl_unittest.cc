@@ -496,7 +496,7 @@ void GCMClientImplTest::SetFeatureParams(const base::Feature& feature,
 void GCMClientImplTest::InitializeInvalidationFieldTrial() {
   std::map<std::string, std::string> params;
   params[features::kParamNameTokenInvalidationPeriodDays] =
-      std::to_string(kTestTokenInvalidationPeriod);
+      base::NumberToString(kTestTokenInvalidationPeriod);
   ASSERT_NO_FATAL_FAILURE(
       SetFeatureParams(features::kInvalidateTokenFeature, std::move(params)));
 }
@@ -764,8 +764,6 @@ TEST_F(GCMClientImplTest, LoadingWithEmptyDirectory) {
   InitializeGCMClient();
   gcm_client()->Start(GCMClient::DELAYED_START);
   PumpLoopUntilIdle();
-  histogram_tester.ExpectUniqueSample("GCM.LoadStatus",
-                                      13 /* STORE_DOES_NOT_EXIST */, 1);
   // Since the store does not exist, the database should not have been opened.
   histogram_tester.ExpectTotalCount("GCM.Database.Open", 0);
   // Without a store, DELAYED_START loading should only reach INITIALIZED state.

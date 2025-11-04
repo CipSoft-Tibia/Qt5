@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:network-protocol
 
 #ifndef QWEBENGINEURLREQUESTINFO_P_H
 #define QWEBENGINEURLREQUESTINFO_P_H
@@ -42,7 +43,8 @@ public:
                                     const QUrl &u, const QUrl &fpu, const QUrl &i,
                                     const QByteArray &m,
                                     QtWebEngineCore::ResourceRequestBody *const rb = nullptr,
-                                    const QHash<QByteArray, QByteArray> &h = {});
+                                    const QHash<QByteArray, QByteArray> &h = {},
+                                    bool isDownload = false);
 
     QWebEngineUrlRequestInfo::ResourceType resourceType;
     QWebEngineUrlRequestInfo::NavigationType navigationType;
@@ -55,10 +57,9 @@ public:
     bool changed;
     QHash<QByteArray, QByteArray> extraHeaders;
     QtWebEngineCore::ResourceRequestBody *const resourceRequestBody;
+    bool isDownload;
 
     QWebEngineUrlRequestInfo *q_ptr;
-
-    void appendFileToResourceRequestBodyForTest(const QString &path);
 };
 
 QT_END_NAMESPACE

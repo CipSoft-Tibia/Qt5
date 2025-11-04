@@ -4,7 +4,6 @@
 
 import * as Host from '../../core/host/host.js';
 import * as Platform from '../../core/platform/platform.js';
-import * as ComponentHelpers from '../components/helpers/helpers.js';
 import * as LitHtml from '../lit-html/lit-html.js';
 import * as VisualLogging from '../visual_logging/visual_logging.js';
 
@@ -25,8 +24,9 @@ export class XLink extends XElement {
   private clickable: boolean;
   private readonly onClick: (arg0: Event) => void;
   private readonly onKeyDown: (arg0: KeyboardEvent) => void;
-  static create(url: string, linkText?: string, className?: string, preventClick?: boolean, jsLogContext?: string):
-      HTMLElement {
+  static create(
+      url: string, linkText?: string, className?: string, preventClick?: boolean, jsLogContext?: string,
+      tabindex = '0'): HTMLElement {
     if (!linkText) {
       linkText = url;
     }
@@ -34,8 +34,8 @@ export class XLink extends XElement {
     // clang-format off
     // TODO(dgozman): migrate css from 'devtools-link' to 'x-link'.
     const element = html `
-  <x-link href='${url}' tabindex="0" class='${className} devtools-link' ${preventClick ? 'no-click' : ''}
-  jslog=${VisualLogging.link().track({click: true}).context(jsLogContext)}>${Platform.StringUtilities.trimMiddle(linkText, MaxLengthForDisplayedURLs)}</x-link>`;
+  <x-link href='${url}' tabindex='${tabindex}' class='${className} devtools-link' ${preventClick ? 'no-click' : ''}
+  jslog=${VisualLogging.link().track({click: true, keydown:'Enter|Space'}).context(jsLogContext)}>${Platform.StringUtilities.trimMiddle(linkText, MaxLengthForDisplayedURLs)}</x-link>`;
     // clang-format on
     return element as HTMLElement;
   }
@@ -52,14 +52,14 @@ export class XLink extends XElement {
     this.hrefInternal = null;
     this.clickable = true;
 
-    this.onClick = (event: Event): void => {
+    this.onClick = (event: Event) => {
       event.consume(true);
       if (this.hrefInternal) {
         Host.InspectorFrontendHost.InspectorFrontendHostInstance.openInNewTab(this.hrefInternal);
       }
       this.dispatchEvent(new Event('x-link-invoke'));
     };
-    this.onKeyDown = (event: KeyboardEvent): void => {
+    this.onKeyDown = (event: KeyboardEvent) => {
       if (Platform.KeyboardUtilities.isEnterOrSpaceKey(event)) {
         event.consume(true);
         if (this.hrefInternal) {
@@ -72,7 +72,7 @@ export class XLink extends XElement {
 
   static override get observedAttributes(): string[] {
     // TODO(dgozman): should be super.observedAttributes, but it does not compile.
-    return XElement.observedAttributes.concat(['href', 'no-click', 'title']);
+    return XElement.observedAttributes.concat(['href', 'no-click', 'title', 'tabindex']);
   }
 
   get href(): Platform.DevToolsPath.UrlString|null {
@@ -110,6 +110,13 @@ export class XLink extends XElement {
       return;
     }
 
+    if (attr === 'tabindex') {
+      if (oldValue !== newValue) {
+        this.setAttribute('tabindex', newValue || '0');
+      }
+      return;
+    }
+
     super.attributeChangedCallback(attr, oldValue, newValue);
   }
 
@@ -140,15 +147,15 @@ export class ContextMenuProvider implements Provider<Node> {
       if (node.href) {
         Host.InspectorFrontendHost.InspectorFrontendHostInstance.openInNewTab(node.href);
       }
-    });
+    }, {jslogContext: 'open-in-new-tab'});
     contextMenu.revealSection().appendItem(copyLinkAddressLabel(), () => {
       if (node.href) {
         Host.InspectorFrontendHost.InspectorFrontendHostInstance.copyText(node.href);
       }
-    });
+    }, {jslogContext: 'copy-link-address'});
   }
 }
 
-ComponentHelpers.CustomElements.defineComponent('x-link', XLink);
+customElements.define('x-link', XLink);
 
 export const sample = LitHtml.html`<p>Hello, <x-link>world!</x-link></p>`;

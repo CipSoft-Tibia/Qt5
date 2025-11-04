@@ -2,6 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#ifdef UNSAFE_BUFFERS_BUILD
+// TODO(crbug.com/350788890): Remove this and spanify to fix the errors.
+#pragma allow_unsafe_buffers
+#endif
+
 #include "url/url_canon.h"
 
 #include <errno.h>
@@ -338,11 +343,11 @@ TEST_P(URLCanonHostTest, Host) {
       // Basic canonicalization, uppercase should be converted to lowercase.
       {"GoOgLe.CoM", L"GoOgLe.CoM", "google.com", Component(0, 10),
        CanonHostInfo::NEUTRAL, -1, ""},
-      // TODO(https://crbug.com/1416013): Update the test after SPACE is
+      // TODO(crbug.com/40256677): Update the test after SPACE is
       // correctly handled.
       {"Goo%20 goo.com", L"Goo%20 goo.com", "goo%20%20goo.com",
        Component(0, 16), CanonHostInfo::NEUTRAL, -1, ""},
-      // TODO(https://crbug.com/1416013): Update the test after ASTERISK is
+      // TODO(crbug.com/40256677): Update the test after ASTERISK is
       // correctly handled.
       {"Goo%2a*goo.com", L"Goo%2a*goo.com", "goo%2A%2Agoo.com",
        Component(0, 16), CanonHostInfo::NEUTRAL, -1, ""},
@@ -1254,9 +1259,7 @@ TEST(URLCanonTest, UserInfo) {
   };
 
   for (const auto& user_info_case : user_info_cases) {
-    int url_len = static_cast<int>(strlen(user_info_case.input));
-    Parsed parsed;
-    ParseStandardURL(user_info_case.input, url_len, &parsed);
+    Parsed parsed = ParseStandardURL(user_info_case.input);
     Component out_user, out_pass;
     std::string out_str;
     StdStringCanonOutput output1(&out_str);
@@ -1761,9 +1764,7 @@ TEST(URLCanonTest, CanonicalizeStandardURL) {
   // clang-format on
 
   for (const auto& i : cases) {
-    int url_len = static_cast<int>(strlen(i.input));
-    Parsed parsed;
-    ParseStandardURL(i.input, url_len, &parsed);
+    Parsed parsed = ParseStandardURL(i.input);
 
     Parsed out_parsed;
     std::string out_str;
@@ -1811,6 +1812,7 @@ TEST(URLCanonTest, CanonicalizeNonSpecialURL) {
       {"git:/..", "git:/", true},
       {"git:/../", "git:/", true},
       {"git:/../..", "git:/", true},
+      {"git:/.//a", "git:/.//a", true},
 
       // Users.
       {"git://@host", "git://host", true},
@@ -1861,8 +1863,7 @@ TEST(URLCanonTest, CanonicalizeNonSpecialURL) {
 
   for (const auto& i : cases) {
     SCOPED_TRACE(i.input);
-    Parsed parsed;
-    ParseNonSpecialURL(i.input.data(), i.input.size(), &parsed);
+    Parsed parsed = ParseNonSpecialURL(i.input);
     Parsed out_parsed;
     std::string out_str;
     StdStringCanonOutput output(&out_str);
@@ -1872,6 +1873,38 @@ TEST(URLCanonTest, CanonicalizeNonSpecialURL) {
     output.Complete();
     EXPECT_EQ(success, i.expected_success);
     EXPECT_EQ(out_str, i.expected);
+  }
+}
+
+TEST(URLCanonTest, CanonicalizeNonSpecialURLOutputParsed) {
+  // Test that out_parsed is correctly set.
+  struct URLCase {
+    const std::string_view input;
+    // Currently, test only host and length.
+    Component expected_output_parsed_host;
+    int expected_output_parsed_length;
+  } cases[] = {
+      {"git:", Component(), 4},
+      {"git:opaque", Component(), 10},
+      {"git:/", Component(), 5},
+      {"git://", Component(6, 0), 6},
+      {"git:///", Component(6, 0), 7},
+      // The length of "[1:2:0:0:5::]" is 13.
+      {"git://[1:2:0:0:5:0:0:0]/", Component(6, 13), 20},
+  };
+
+  for (const auto& i : cases) {
+    SCOPED_TRACE(i.input);
+    Parsed parsed = ParseNonSpecialURL(i.input);
+    Parsed out_parsed;
+    std::string unused_out_str;
+    StdStringCanonOutput unused_output(&unused_out_str);
+    bool success = CanonicalizeNonSpecialURL(
+        i.input.data(), i.input.size(), parsed,
+        /*query_converter=*/nullptr, unused_output, out_parsed);
+    ASSERT_TRUE(success);
+    EXPECT_EQ(out_parsed.host, i.expected_output_parsed_host);
+    EXPECT_EQ(out_parsed.Length(), i.expected_output_parsed_length);
   }
 }
 
@@ -1900,9 +1933,7 @@ TEST(URLCanonTest, ReplaceStandardURL) {
 
   for (const auto& replace_case : replace_cases) {
     const ReplaceCase& cur = replace_case;
-    int base_len = static_cast<int>(strlen(cur.base));
-    Parsed parsed;
-    ParseStandardURL(cur.base, base_len, &parsed);
+    Parsed parsed = ParseStandardURL(cur.base);
 
     Replacements<char> r;
     typedef Replacements<char> R;  // Clean up syntax.
@@ -1932,10 +1963,7 @@ TEST(URLCanonTest, ReplaceStandardURL) {
   // The path pointer should be ignored if the address is invalid.
   {
     const char src[] = "http://www.google.com/here_is_the_path";
-    int src_len = static_cast<int>(strlen(src));
-
-    Parsed parsed;
-    ParseStandardURL(src, src_len, &parsed);
+    Parsed parsed = ParseStandardURL(src);
 
     // Replace the path to 0 length string. By using 1 as the string address,
     // the test should get an access violation if it tries to dereference it.
@@ -2001,9 +2029,7 @@ TEST(URLCanonTest, ReplaceFileURL) {
   for (const auto& replace_case : replace_cases) {
     const ReplaceCase& cur = replace_case;
     SCOPED_TRACE(cur.base);
-    int base_len = static_cast<int>(strlen(cur.base));
-    Parsed parsed;
-    ParseFileURL(cur.base, base_len, &parsed);
+    Parsed parsed = ParseFileURL(cur.base);
 
     Replacements<char> r;
     typedef Replacements<char> R;  // Clean up syntax.
@@ -2069,9 +2095,7 @@ TEST(URLCanonTest, ReplaceFileSystemURL) {
 
   for (const auto& replace_case : replace_cases) {
     const ReplaceCase& cur = replace_case;
-    int base_len = static_cast<int>(strlen(cur.base));
-    Parsed parsed;
-    ParseFileSystemURL(cur.base, base_len, &parsed);
+    Parsed parsed = ParseFileSystemURL(cur.base);
 
     Replacements<char> r;
     typedef Replacements<char> R;  // Clean up syntax.
@@ -2113,9 +2137,6 @@ TEST(URLCanonTest, ReplacePathURL) {
 
   for (const auto& replace_case : replace_cases) {
     const ReplaceCase& cur = replace_case;
-    int base_len = static_cast<int>(strlen(cur.base));
-    Parsed parsed;
-    ParsePathURL(cur.base, base_len, false, &parsed);
 
     Replacements<char> r;
     typedef Replacements<char> R;  // Clean up syntax.
@@ -2131,7 +2152,8 @@ TEST(URLCanonTest, ReplacePathURL) {
     std::string out_str;
     StdStringCanonOutput output(&out_str);
     Parsed out_parsed;
-    ReplacePathURL(cur.base, parsed, r, &output, &out_parsed);
+    ReplacePathURL(cur.base, ParsePathURL(cur.base, false), r, &output,
+                   &out_parsed);
     output.Complete();
 
     EXPECT_EQ(replace_case.expected, out_str);
@@ -2174,9 +2196,7 @@ TEST(URLCanonTest, ReplaceMailtoURL) {
 
   for (const auto& replace_case : replace_cases) {
     const ReplaceCase& cur = replace_case;
-    int base_len = static_cast<int>(strlen(cur.base));
-    Parsed parsed;
-    ParseMailtoURL(cur.base, base_len, &parsed);
+    Parsed parsed = ParseMailtoURL(cur.base);
 
     Replacements<char> r;
     typedef Replacements<char> R;
@@ -2286,15 +2306,14 @@ TEST(URLCanonTest, CanonicalizeFileURL) {
   };
 
   for (const auto& i : cases) {
-    int url_len = static_cast<int>(strlen(i.input));
-    Parsed parsed;
-    ParseFileURL(i.input, url_len, &parsed);
+    Parsed parsed = ParseFileURL(i.input);
 
     Parsed out_parsed;
     std::string out_str;
     StdStringCanonOutput output(&out_str);
-    bool success = CanonicalizeFileURL(i.input, url_len, parsed, nullptr,
-                                       &output, &out_parsed);
+    bool success =
+        CanonicalizeFileURL(i.input, static_cast<int>(strlen(i.input)), parsed,
+                            nullptr, &output, &out_parsed);
     output.Complete();
 
     EXPECT_EQ(i.expected_success, success);
@@ -2335,9 +2354,7 @@ TEST(URLCanonTest, CanonicalizeFileSystemURL) {
   };
 
   for (const auto& i : cases) {
-    int url_len = static_cast<int>(strlen(i.input));
-    Parsed parsed;
-    ParseFileSystemURL(i.input, url_len, &parsed);
+    Parsed parsed = ParseFileSystemURL(i.input);
 
     Parsed out_parsed;
     std::string out_str;
@@ -2375,13 +2392,12 @@ TEST(URLCanonTest, CanonicalizePathURL) {
 
   for (const auto& path_case : path_cases) {
     int url_len = static_cast<int>(strlen(path_case.input));
-    Parsed parsed;
-    ParsePathURL(path_case.input, url_len, true, &parsed);
 
     Parsed out_parsed;
     std::string out_str;
     StdStringCanonOutput output(&out_str);
-    bool success = CanonicalizePathURL(path_case.input, url_len, parsed,
+    bool success = CanonicalizePathURL(path_case.input, url_len,
+                                       ParsePathURL(path_case.input, true),
                                        &output, &out_parsed);
     output.Complete();
 
@@ -2502,7 +2518,6 @@ TEST(URLCanonTest, CanonicalizeMailtoURL) {
   };
 
   // Define outside of loop to catch bugs where components aren't reset
-  Parsed parsed;
   Parsed out_parsed;
 
   for (size_t i = 0; i < std::size(cases); i++) {
@@ -2512,12 +2527,13 @@ TEST(URLCanonTest, CanonicalizeMailtoURL) {
       // as the string terminator.
       url_len = 22;
     }
-    ParseMailtoURL(cases[i].input, url_len, &parsed);
 
     std::string out_str;
     StdStringCanonOutput output(&out_str);
-    bool success = CanonicalizeMailtoURL(cases[i].input, url_len, parsed,
-                                         &output, &out_parsed);
+    bool success = CanonicalizeMailtoURL(
+        cases[i].input, url_len,
+        ParseMailtoURL(std::string_view(cases[i].input, url_len)), &output,
+        &out_parsed);
     output.Complete();
 
     EXPECT_EQ(cases[i].expected_success, success);
@@ -2840,13 +2856,12 @@ TEST(URLCanonTest, ResolveRelativeURL) {
 
   for (const auto& cur_case : rel_cases) {
     Parsed parsed;
-    int base_len = static_cast<int>(strlen(cur_case.base));
     if (cur_case.is_base_file)
-      ParseFileURL(cur_case.base, base_len, &parsed);
+      parsed = ParseFileURL(cur_case.base);
     else if (cur_case.is_base_hier)
-      ParseStandardURL(cur_case.base, base_len, &parsed);
+      parsed = ParseStandardURL(cur_case.base);
     else
-      ParsePathURL(cur_case.base, base_len, false, &parsed);
+      parsed = ParsePathURL(cur_case.base, false);
 
     // First see if it is relative.
     int test_len = static_cast<int>(strlen(cur_case.test));
@@ -2877,18 +2892,108 @@ TEST(URLCanonTest, ResolveRelativeURL) {
       // Verify that the output parsed structure is the same as parsing a
       // the URL freshly.
       Parsed ref_parsed;
-      int resolved_len = static_cast<int>(resolved.size());
       if (cur_case.is_base_file) {
-        ParseFileURL(resolved.c_str(), resolved_len, &ref_parsed);
+        ref_parsed = ParseFileURL(resolved);
       } else if (cur_case.is_base_hier) {
-        ParseStandardURL(resolved.c_str(), resolved_len, &ref_parsed);
+        ref_parsed = ParseStandardURL(resolved);
       } else {
-        ParsePathURL(resolved.c_str(), resolved_len, false, &ref_parsed);
+        ref_parsed = ParsePathURL(resolved, false);
       }
       EXPECT_TRUE(ParsedIsEqual(ref_parsed, resolved_parsed));
     }
   }
 }
+
+class URLCanonTypedTest : public ::testing::TestWithParam<bool> {
+ public:
+  URLCanonTypedTest()
+      : use_standard_compliant_non_special_scheme_url_parsing_(GetParam()) {
+    if (use_standard_compliant_non_special_scheme_url_parsing_) {
+      scoped_feature_list_.InitAndEnableFeature(
+          kStandardCompliantNonSpecialSchemeURLParsing);
+    } else {
+      scoped_feature_list_.InitAndDisableFeature(
+          kStandardCompliantNonSpecialSchemeURLParsing);
+    }
+  }
+
+ protected:
+  struct URLCase {
+    const std::string_view input;
+    const std::string_view expected;
+    bool expected_success;
+  };
+
+  struct ResolveRelativeURLCase {
+    const std::string_view base;
+    const std::string_view rel;
+    const bool is_base_hier;
+    const bool expected_base_is_valid;
+    const bool expected_is_relative;
+    const bool expected_succeed_resolve;
+    const std::string_view expected_resolved_url;
+  };
+
+  void TestNonSpecialResolveRelativeURL(
+      const ResolveRelativeURLCase& relative_case) {
+    // The following test is similar to URLCanonTest::ResolveRelativeURL, but
+    // simplified.
+    Parsed parsed = use_standard_compliant_non_special_scheme_url_parsing_
+                        ? ParseNonSpecialURL(relative_case.base)
+                        : ParsePathURL(relative_case.base,
+                                       /*trim_path_end=*/true);
+
+    // First see if it is relative.
+    bool is_relative;
+    Component relative_component;
+    bool succeed_is_rel = IsRelativeURL(
+        relative_case.base.data(), parsed, relative_case.rel.data(),
+        relative_case.rel.size(), relative_case.is_base_hier, &is_relative,
+        &relative_component);
+
+    EXPECT_EQ(is_relative, relative_case.expected_is_relative);
+    if (succeed_is_rel && is_relative) {
+      std::string resolved_url;
+      StdStringCanonOutput output(&resolved_url);
+      Parsed resolved_parsed;
+
+      bool succeed_resolve = ResolveRelativeURL(
+          relative_case.base.data(), parsed, relative_case.is_base_hier,
+          relative_case.rel.data(), relative_component, nullptr, &output,
+          &resolved_parsed);
+      output.Complete();
+
+      EXPECT_EQ(succeed_resolve, relative_case.expected_succeed_resolve);
+      EXPECT_EQ(resolved_url, relative_case.expected_resolved_url);
+    }
+  }
+
+  bool use_standard_compliant_non_special_scheme_url_parsing_;
+
+ private:
+  base::test::ScopedFeatureList scoped_feature_list_;
+};
+
+TEST_P(URLCanonTypedTest, NonSpecialResolveRelativeURL) {
+  // Test flag-dependent behaviors of non-special URLs.
+  if (use_standard_compliant_non_special_scheme_url_parsing_) {
+    ResolveRelativeURLCase cases[] = {
+        {"git://host", "path", true, true, true, true, "git://host/path"},
+    };
+    for (const auto& i : cases) {
+      TestNonSpecialResolveRelativeURL(i);
+    }
+  } else {
+    ResolveRelativeURLCase cases[] = {
+        {"git://host", "path", true, true, true, true, "git://path"},
+    };
+    for (const auto& i : cases) {
+      TestNonSpecialResolveRelativeURL(i);
+    }
+  }
+}
+
+INSTANTIATE_TEST_SUITE_P(All, URLCanonTypedTest, ::testing::Bool());
 
 // It used to be the case that when we did a replacement with a long buffer of
 // UTF-16 characters, we would get invalid data in the URL. This is because the
@@ -2896,9 +3001,7 @@ TEST(URLCanonTest, ResolveRelativeURL) {
 // were still kept to the old buffer that was removed.
 TEST(URLCanonTest, ReplacementOverflow) {
   const char src[] = "file:///C:/foo/bar";
-  int src_len = static_cast<int>(strlen(src));
-  Parsed parsed;
-  ParseFileURL(src, src_len, &parsed);
+  Parsed parsed = ParseFileURL(src);
 
   // Override two components, the path with something short, and the query with
   // something long enough to trigger the bug.
@@ -2949,7 +3052,8 @@ TEST(URLCanonTest, DefaultPortForScheme) {
   for (const auto& test_case : cases) {
     SCOPED_TRACE(test_case.scheme);
     EXPECT_EQ(test_case.expected_port,
-              DefaultPortForScheme(test_case.scheme, strlen(test_case.scheme)));
+              DefaultPortForScheme(std::string_view(test_case.scheme,
+                                                    strlen(test_case.scheme))));
   }
 }
 

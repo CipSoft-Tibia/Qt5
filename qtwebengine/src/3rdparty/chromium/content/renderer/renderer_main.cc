@@ -43,14 +43,13 @@
 #include "content/renderer/render_thread_impl.h"
 #include "content/renderer/renderer_main_platform_delegate.h"
 #include "media/media_buildflags.h"
+#include "mojo/public/cpp/bindings/interface_endpoint_client.h"
 #include "mojo/public/cpp/bindings/mojo_buildflags.h"
 #include "ppapi/buildflags/buildflags.h"
 #include "sandbox/policy/switches.h"
 #include "services/tracing/public/cpp/trace_startup.h"
 #include "third_party/blink/public/platform/platform.h"
 #include "third_party/blink/public/platform/scheduler/web_thread_scheduler.h"
-#include "third_party/icu/source/common/unicode/unistr.h"
-#include "third_party/icu/source/i18n/unicode/timezone.h"
 #include "ui/base/ui_base_switches.h"
 
 #if BUILDFLAG(IS_WIN)
@@ -201,13 +200,6 @@ int RendererMain(MainFunctionParams parameters) {
 #endif  // defined(ARCH_CPU_X86_64)
 #endif  // BUILDFLAG(IS_CHROMEOS_ASH)
 
-  if (command_line.HasSwitch(switches::kTimeZoneForTesting)) {
-    std::string time_zone =
-        command_line.GetSwitchValueASCII(switches::kTimeZoneForTesting);
-    icu::TimeZone::adoptDefault(
-        icu::TimeZone::createTimeZone(icu::UnicodeString(time_zone.c_str())));
-  }
-
   InitializeSkia();
 
   // This function allows pausing execution using the --renderer-startup-dialog
@@ -219,6 +211,7 @@ int RendererMain(MainFunctionParams parameters) {
   RendererMainPlatformDelegate platform(parameters);
 
   base::PlatformThread::SetName("CrRendererMain");
+  mojo::InterfaceEndpointClient::SetThreadNameSuffixForMetrics("RendererMain");
 
   // Force main thread initialization. When the implementation is based on a
   // better means of determining which is the main thread, remove.
@@ -240,7 +233,7 @@ int RendererMain(MainFunctionParams parameters) {
   // NOTE: On linux, this call could already have been made from
   // zygote_main_linux.cc.  However, calling multiple times from the same thread
   // is OK.
-  InitializeWebRtcModule();
+  InitializeWebRtcModuleBeforeSandbox();
 #endif
 
   {
@@ -275,7 +268,8 @@ int RendererMain(MainFunctionParams parameters) {
     // It also needs to be registered before the process has multiple threads,
     // which may race with application of the sandbox.
     if (base::FeatureList::IsEnabled(
-            features::kHandleChildThreadTypeChangesInBrowser)) {
+            features::kHandleChildThreadTypeChangesInBrowser) ||
+        base::FeatureList::IsEnabled(features::kSchedQoSOnResourcedForChrome)) {
       SandboxedProcessThreadTypeHandler::Create();
 
       // Change the main thread type. On Linux and ChromeOS this needs to be
@@ -284,14 +278,14 @@ int RendererMain(MainFunctionParams parameters) {
       if (base::FeatureList::IsEnabled(
               features::kMainThreadCompositingPriority)) {
         base::PlatformThread::SetCurrentThreadType(
-            base::ThreadType::kCompositing);
+            base::ThreadType::kDisplayCritical);
       }
     }
 #else
     if (base::FeatureList::IsEnabled(
             features::kMainThreadCompositingPriority)) {
       base::PlatformThread::SetCurrentThreadType(
-          base::ThreadType::kCompositing);
+          base::ThreadType::kDisplayCritical);
     } else {
       base::PlatformThread::SetCurrentThreadType(base::ThreadType::kDefault);
     }

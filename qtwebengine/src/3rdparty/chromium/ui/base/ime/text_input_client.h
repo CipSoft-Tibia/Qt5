@@ -8,7 +8,9 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "base/component_export.h"
@@ -17,7 +19,6 @@
 #include "build/build_config.h"
 #include "build/chromeos_buildflags.h"
 #include "services/metrics/public/cpp/ukm_source_id.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "ui/base/ime/composition_text.h"
 #include "ui/base/ime/grammar_fragment.h"
 #include "ui/base/ime/ime_key_event_dispatcher.h"
@@ -39,8 +40,7 @@ enum class TextEditCommand;
 // An interface implemented by a View that needs text input support.
 // All strings related to IME operations should be UTF-16 encoded and all
 // indices/ranges relative to those strings should be UTF-16 code units.
-class COMPONENT_EXPORT(UI_BASE_IME) TextInputClient
-    : public base::SupportsWeakPtr<TextInputClient> {
+class COMPONENT_EXPORT(UI_BASE_IME) TextInputClient {
  public:
   // The reason the control was focused, used by the virtual keyboard to detect
   // pen input.
@@ -67,6 +67,9 @@ class COMPONENT_EXPORT(UI_BASE_IME) TextInputClient
 #endif
 
   virtual ~TextInputClient();
+
+  // This should be implemented by the most concrete class.
+  virtual base::WeakPtr<TextInputClient> AsWeakPtr() = 0;
 
   // Input method result -------------------------------------------------------
 
@@ -238,7 +241,7 @@ class COMPONENT_EXPORT(UI_BASE_IME) TextInputClient
   virtual void ExtendSelectionAndReplace(
       size_t length_before_selection,
       size_t length_after_selection,
-      base::StringPiece16 replacement_string);
+      std::u16string_view replacement_string);
 #endif
 
   // Ensure the caret is not in |rect|.  |rect| is in screen coordinates in
@@ -295,7 +298,7 @@ class COMPONENT_EXPORT(UI_BASE_IME) TextInputClient
 
   // Returns the grammar fragment which contains the current cursor. If
   // non-existent, returns nullopt.
-  virtual absl::optional<GrammarFragment> GetGrammarFragmentAtCursor() const;
+  virtual std::optional<GrammarFragment> GetGrammarFragmentAtCursor() const;
 
   // Clears all the grammar fragments in |range|, returns whether the operation
   // is successful. Should return true if the there is no fragment in the range.
@@ -323,8 +326,8 @@ class COMPONENT_EXPORT(UI_BASE_IME) TextInputClient
   // input control to TSF on Windows and to the Virtual Keyboard extension on
   // ChromeOS.
   virtual void GetActiveTextInputControlLayoutBounds(
-      absl::optional<gfx::Rect>* control_bounds,
-      absl::optional<gfx::Rect>* selection_bounds) = 0;
+      std::optional<gfx::Rect>* control_bounds,
+      std::optional<gfx::Rect>* selection_bounds) = 0;
 #endif
 
 #if BUILDFLAG(IS_WIN)

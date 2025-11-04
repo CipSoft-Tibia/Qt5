@@ -4,11 +4,15 @@
 
 #include "qandroidplatformintegration.h"
 
+#if QT_CONFIG(accessibility)
 #include "androidjniaccessibility.h"
+#endif
 #include "androidjnimain.h"
 #include "qabstracteventdispatcher.h"
 #include "qandroideventdispatcher.h"
+#if QT_CONFIG(accessibility)
 #include "qandroidplatformaccessibility.h"
+#endif
 #include "qandroidplatformclipboard.h"
 #include "qandroidplatformfontdatabase.h"
 #include "qandroidplatformforeignwindow.h"
@@ -55,7 +59,6 @@ Qt::ScreenOrientation QAndroidPlatformIntegration::m_nativeOrientation = Qt::Pri
 
 bool QAndroidPlatformIntegration::m_showPasswordEnabled = false;
 
-Q_DECLARE_JNI_CLASS(QtNative, "org/qtproject/qt/android/QtNative")
 Q_DECLARE_JNI_CLASS(QtDisplayManager, "org/qtproject/qt/android/QtDisplayManager")
 Q_DECLARE_JNI_CLASS(Display, "android/view/Display")
 
@@ -217,6 +220,7 @@ QAndroidPlatformIntegration::QAndroidPlatformIntegration(const QStringList &para
     m_mainThread = QThread::currentThread();
 
     m_androidFDB = new QAndroidPlatformFontDatabase();
+    m_androidPlatformServices.reset(new QAndroidPlatformServices);
 
 #ifndef QT_NO_CLIPBOARD
     m_androidPlatformClipboard = new QAndroidPlatformClipboard();
@@ -453,9 +457,6 @@ QPlatformNativeInterface *QAndroidPlatformIntegration::nativeInterface() const
 
 QPlatformServices *QAndroidPlatformIntegration::services() const
 {
-    if (m_androidPlatformServices.isNull())
-        m_androidPlatformServices.reset(new QAndroidPlatformServices);
-
     return m_androidPlatformServices.data();
 }
 

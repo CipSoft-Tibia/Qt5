@@ -6,14 +6,10 @@
 // are typed as string, and hence provide for weaker type-checking.
 
 export enum FrontendMessageType {
+  /* eslint-disable @typescript-eslint/naming-convention -- Used by web_tests. */
   Result = 'result',
   Command = 'command',
   System = 'system',
   QueryObjectResult = 'queryObjectResult',
-}
-
-export enum FrontendMessageSource {
-  CSS = 'css',
-  ConsoleAPI = 'console-api',
-  IssuePanel = 'issue-panel',
+  /* eslint-enable @typescript-eslint/naming-convention */
 }

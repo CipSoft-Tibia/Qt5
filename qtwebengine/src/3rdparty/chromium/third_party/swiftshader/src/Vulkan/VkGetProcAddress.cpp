@@ -528,6 +528,13 @@ static const std::vector<std::pair<const char *, std::unordered_map<std::string,
 	        MAKE_VULKAN_DEVICE_ENTRY(vkCmdBeginRenderingKHR),
 	        MAKE_VULKAN_DEVICE_ENTRY(vkCmdEndRenderingKHR),
 	    } },
+	// VK_KHR_dynamic_rendering_local_read
+	{
+	    VK_KHR_DYNAMIC_RENDERING_LOCAL_READ_EXTENSION_NAME,
+	    {
+	        MAKE_VULKAN_DEVICE_ENTRY(vkCmdSetRenderingAttachmentLocationsKHR),
+	        MAKE_VULKAN_DEVICE_ENTRY(vkCmdSetRenderingInputAttachmentIndicesKHR),
+	    } },
 	// VK_EXT_extended_dynamic_state
 	{
 	    VK_EXT_EXTENDED_DYNAMIC_STATE_EXTENSION_NAME,
@@ -544,6 +551,12 @@ static const std::vector<std::pair<const char *, std::unordered_map<std::string,
 	        MAKE_VULKAN_DEVICE_ENTRY(vkCmdSetStencilOpEXT),
 	        MAKE_VULKAN_DEVICE_ENTRY(vkCmdSetStencilTestEnableEXT),
 	        MAKE_VULKAN_DEVICE_ENTRY(vkCmdSetViewportWithCountEXT),
+	    } },
+	// VK_EXT_vertex_input_dynamic_state
+	{
+	    VK_EXT_VERTEX_INPUT_DYNAMIC_STATE_EXTENSION_NAME,
+	    {
+	        MAKE_VULKAN_DEVICE_ENTRY(vkCmdSetVertexInputEXT),
 	    } },
 	// VK_EXT_line_rasterization
 	{

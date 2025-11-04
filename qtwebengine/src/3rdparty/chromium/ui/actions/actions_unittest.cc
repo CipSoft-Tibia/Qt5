@@ -4,6 +4,8 @@
 
 #include "ui/actions/actions.h"
 
+#include <optional>
+
 #include "base/callback_list.h"
 #include "base/functional/bind.h"
 #include "base/functional/callback_helpers.h"
@@ -11,7 +13,6 @@
 #include "base/test/metrics/histogram_tester.h"
 #include "testing/gmock/include/gmock/gmock.h"
 #include "testing/gtest/include/gtest/gtest.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "ui/base/class_property.h"
 
 namespace actions {
@@ -153,7 +154,7 @@ TEST_F(ActionManagerTest, ActionRegisterAndInvoke) {
   EXPECT_TRUE(action->GetEnabled());
   EXPECT_TRUE(action->GetVisible());
   EXPECT_EQ(action->GetInvokeCount(), 0);
-  EXPECT_EQ(action->GetLastInvokeTime(), absl::nullopt);
+  EXPECT_EQ(action->GetLastInvokeTime(), std::nullopt);
   auto action_id = action->GetActionId();
   ASSERT_TRUE(action_id);
   EXPECT_EQ(*action_id, kActionCut);
@@ -319,6 +320,7 @@ TEST_F(ActionItemTest, ActionBuilderChildrenTest) {
               .CopyAddressTo(&child_action2)
               .SetActionId(kActionTest3)
               .SetChecked(true)
+              .SetIsShowingBubble(true)
               .SetText(kChild2Text));
   // clang-format on
   auto& manager = ActionManager::GetForTesting();
@@ -334,12 +336,14 @@ TEST_F(ActionItemTest, ActionBuilderChildrenTest) {
   ASSERT_TRUE(child_action_id1);
   EXPECT_EQ(child_action_id1.value(), kActionTest2);
   EXPECT_FALSE(child_action1->GetChecked());
+  EXPECT_FALSE(child_action1->GetIsShowingBubble());
 
   EXPECT_EQ(child_action2->GetText(), kChild2Text);
   auto child_action_id2 = child_action2->GetActionId();
   ASSERT_TRUE(child_action_id2);
   EXPECT_EQ(child_action_id2.value(), kActionTest3);
   EXPECT_TRUE(child_action2->GetChecked());
+  EXPECT_TRUE(child_action2->GetIsShowingBubble());
 
   EXPECT_FALSE(root_action->GetEnabled());
   EXPECT_EQ(action_invoked_count, 0);

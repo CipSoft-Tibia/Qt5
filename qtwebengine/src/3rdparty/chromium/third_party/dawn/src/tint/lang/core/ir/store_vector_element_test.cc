@@ -26,7 +26,6 @@
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "gmock/gmock.h"
-#include "gtest/gtest-spi.h"
 #include "src/tint/lang/core/ir/builder.h"
 #include "src/tint/lang/core/ir/instruction.h"
 #include "src/tint/lang/core/ir/ir_helper_test.h"
@@ -62,13 +61,13 @@ TEST_F(IR_StoreVectorElementTest, Usage) {
     auto* inst = b.StoreVectorElement(to, 2_i, 4_i);
 
     ASSERT_NE(inst->To(), nullptr);
-    EXPECT_THAT(inst->To()->Usages(), testing::UnorderedElementsAre(Usage{inst, 0u}));
+    EXPECT_THAT(inst->To()->UsagesUnsorted(), testing::UnorderedElementsAre(Usage{inst, 0u}));
 
     ASSERT_NE(inst->Index(), nullptr);
-    EXPECT_THAT(inst->Index()->Usages(), testing::UnorderedElementsAre(Usage{inst, 1u}));
+    EXPECT_THAT(inst->Index()->UsagesUnsorted(), testing::UnorderedElementsAre(Usage{inst, 1u}));
 
     ASSERT_NE(inst->Value(), nullptr);
-    EXPECT_THAT(inst->Value()->Usages(), testing::UnorderedElementsAre(Usage{inst, 2u}));
+    EXPECT_THAT(inst->Value()->UsagesUnsorted(), testing::UnorderedElementsAre(Usage{inst, 2u}));
 }
 
 TEST_F(IR_StoreVectorElementTest, Result) {

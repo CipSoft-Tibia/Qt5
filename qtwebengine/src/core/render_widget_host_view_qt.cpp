@@ -12,6 +12,8 @@
 #include "web_contents_adapter_client.h"
 #include "web_event_factory.h"
 
+#include "components/input/cursor_manager.h"
+#include "components/input/render_widget_host_input_event_router.h"
 #include "components/viz/common/features.h"
 #include "components/viz/common/frame_sinks/begin_frame_source.h"
 #include "components/viz/common/surfaces/frame_sink_id_allocator.h"
@@ -20,14 +22,12 @@
 #include "content/browser/renderer_host/render_frame_host_impl.h"
 #include "content/browser/renderer_host/frame_tree.h"
 #include "content/browser/renderer_host/frame_tree_node.h"
-#include "content/browser/renderer_host/cursor_manager.h"
 #include "content/browser/renderer_host/render_frame_host_impl.h"
 #include "content/browser/renderer_host/render_view_host_delegate.h"
 #include "content/browser/renderer_host/render_view_host_impl.h"
-#include "content/browser/renderer_host/render_widget_host_input_event_router.h"
-#include "content/browser/renderer_host/ui_events_helper.h"
 #include "content/common/content_switches_internal.h"
 #include "content/common/cursors/webcursor.h"
+#include "content/common/input/events_helper.h"
 #include "content/common/input/synthetic_gesture_target.h"
 #include "content/public/browser/web_contents.h"
 #include "third_party/skia/include/core/SkColor.h"
@@ -41,7 +41,7 @@
 #include "ui/events/keycodes/dom/dom_keyboard_layout_map.h"
 #include "ui/gfx/image/image_skia.h"
 
-#if defined(USE_OZONE)
+#if BUILDFLAG(IS_OZONE)
 #include "ui/base/clipboard/scoped_clipboard_writer.h"
 #endif
 
@@ -96,7 +96,7 @@ static display::ScreenInfos screenInfosFromQtForUpdate(QScreen *currentScreen)
 {
     display::ScreenInfo screenInfo;
     const auto &screens = qApp->screens();
-    if (screens.isEmpty()) {
+    if (!currentScreen || screens.isEmpty()) {
         screenInfo.device_scale_factor = qGuiApp->devicePixelRatio();
         return display::ScreenInfos(screenInfo);
     }
@@ -136,7 +136,7 @@ public:
 
     void BeginMainFrame(const viz::BeginFrameArgs &args) override
     {
-        if (args.type != viz::BeginFrameArgs::MISSED && !m_rwhv->is_currently_scrolling_viewport())
+        if (args.type != viz::BeginFrameArgs::MISSED && !m_rwhv->GetViewRenderInputRouter()->is_currently_scrolling_viewport())
             m_rwhv->host()->ProgressFlingIfNeeded(args.frame_time);
         ui::Compositor::BeginMainFrame(args);
     }
@@ -176,7 +176,7 @@ RenderWidgetHostViewQt::RenderWidgetHostViewQt(content::RenderWidgetHost *widget
     if (host()->delegate() && host()->delegate()->GetInputEventRouter())
         host()->delegate()->GetInputEventRouter()->AddFrameSinkIdOwner(GetFrameSinkId(), this);
 
-    m_cursorManager.reset(new content::CursorManager(this));
+    m_cursorManager.reset(new input::CursorManager(this));
 
     m_touchSelectionControllerClient.reset(new TouchSelectionControllerClientQt(this));
     resetTouchSelectionController();
@@ -308,7 +308,9 @@ void RenderWidgetHostViewQt::OnRendererWidgetCreated()
 
 QObject *WebContentsAccessibilityQt::accessibilityParentObject() const
 {
-    return m_rwhv->m_adapterClient->accessibilityParentObject();
+    if (m_rwhv && m_rwhv->m_adapterClient)
+        return m_rwhv->m_adapterClient->accessibilityParentObject();
+    return nullptr;
 }
 
 // Set focus to the associated View component.
@@ -324,7 +326,7 @@ bool RenderWidgetHostViewQt::HasFocus()
     return m_delegate->hasKeyboardFocus();
 }
 
-bool RenderWidgetHostViewQt::IsMouseLocked()
+bool RenderWidgetHostViewQt::IsPointerLocked()
 {
     return m_isMouseLocked;
 }
@@ -393,7 +395,7 @@ void RenderWidgetHostViewQt::UpdateBackgroundColor()
 }
 
 // Return value indicates whether the mouse is locked successfully or not.
-blink::mojom::PointerLockResult RenderWidgetHostViewQt::LockMouse(bool request_unadjusted_movement)
+blink::mojom::PointerLockResult RenderWidgetHostViewQt::LockPointer(bool request_unadjusted_movement)
 {
     if (request_unadjusted_movement)
         return blink::mojom::PointerLockResult::kUnsupportedOptions;
@@ -405,19 +407,19 @@ blink::mojom::PointerLockResult RenderWidgetHostViewQt::LockMouse(bool request_u
     return blink::mojom::PointerLockResult::kSuccess;
 }
 
-blink::mojom::PointerLockResult RenderWidgetHostViewQt::ChangeMouseLock(bool request_unadjusted_movement)
+blink::mojom::PointerLockResult RenderWidgetHostViewQt::ChangePointerLock(bool request_unadjusted_movement)
 {
     if (request_unadjusted_movement)
         return blink::mojom::PointerLockResult::kUnsupportedOptions;
     return blink::mojom::PointerLockResult::kSuccess;
 }
 
-void RenderWidgetHostViewQt::UnlockMouse()
+void RenderWidgetHostViewQt::UnlockPointer()
 {
     m_delegate->unlockMouse();
     qApp->restoreOverrideCursor();
     m_isMouseLocked = false;
-    host()->LostMouseLock();
+    host()->LostPointerLock();
 }
 
 bool RenderWidgetHostViewQt::updateCursorFromResource(ui::mojom::CursorType type)
@@ -430,7 +432,8 @@ bool RenderWidgetHostViewQt::updateCursorFromResource(ui::mojom::CursorType type
 
 #if defined(USE_AURA)
     gfx::Point hotspot;
-    if (!wm::GetCursorDataFor(ui::CursorSize::kNormal, type, hotspotDpr, &resourceId, &hotspot))
+    bool isAnimated;
+    if (!wm::GetCursorDataFor(ui::CursorSize::kNormal, type, hotspotDpr, &resourceId, &hotspot, &isAnimated))
         return false;
     hotX = hotspot.x();
     hotY = hotspot.y();
@@ -459,12 +462,10 @@ bool RenderWidgetHostViewQt::updateCursorFromResource(ui::mojom::CursorType type
         hotY = 7;
         break;
     default:
-        Q_UNREACHABLE();
-        return false;
+        Q_UNREACHABLE_RETURN(false);
     }
 #else
-    Q_UNREACHABLE();
-    return false;
+    Q_UNREACHABLE_RETURN(false);
 #endif
 
     const gfx::ImageSkia *imageSkia = ui::ResourceBundle::GetSharedInstance().GetImageSkiaNamed(resourceId);
@@ -608,7 +609,7 @@ void RenderWidgetHostViewQt::DisplayCursor(const ui::Cursor &cursorInfo)
     m_delegate->updateCursor(QCursor(shape));
 }
 
-content::CursorManager *RenderWidgetHostViewQt::GetCursorManager()
+input::CursorManager *RenderWidgetHostViewQt::GetCursorManager()
 {
     return m_cursorManager.get();
 }
@@ -624,8 +625,8 @@ void RenderWidgetHostViewQt::ImeCancelComposition()
 }
 
 void RenderWidgetHostViewQt::ImeCompositionRangeChanged(const gfx::Range &,
-                                                        const absl::optional<std::vector<gfx::Rect>> &,
-                                                        const absl::optional<std::vector<gfx::Rect>> &)
+                                                        const std::optional<std::vector<gfx::Rect>> &,
+                                                        const std::optional<std::vector<gfx::Rect>> &)
 {
     // FIXME: not implemented?
     QT_NOT_YET_IMPLEMENTED
@@ -637,7 +638,7 @@ void RenderWidgetHostViewQt::RenderProcessGone()
 }
 
 bool RenderWidgetHostViewQt::TransformPointToCoordSpaceForView(const gfx::PointF &point,
-                                                               content::RenderWidgetHostViewBase *target_view,
+                                                               input::RenderWidgetHostViewInput *target_view,
                                                                gfx::PointF *transformed_point)
 {
     if (target_view == this) {
@@ -742,7 +743,7 @@ void RenderWidgetHostViewQt::OnTextSelectionChanged(content::TextInputManager *t
     if (!focused_view)
       return;
 
-#if defined(USE_OZONE)
+#if BUILDFLAG(IS_OZONE)
     if (ui::Clipboard::IsSupportedClipboardBuffer(ui::ClipboardBuffer::kSelection)) {
         const content::TextInputManager::TextSelection *selection = GetTextInputManager()->GetTextSelection(focused_view);
         if (selection->selected_text().length() && selection->user_initiated()) {
@@ -751,7 +752,7 @@ void RenderWidgetHostViewQt::OnTextSelectionChanged(content::TextInputManager *t
             clipboard_writer.WriteText(selection->selected_text());
         }
     }
-#endif // defined(USE_OZONE)
+#endif // BUILDFLAG(IS_OZONE)
 
     m_imState |= ImStateFlags::TextSelectionUpdated;
     if (m_imState == ImStateFlags::AllFlags
@@ -762,9 +763,9 @@ void RenderWidgetHostViewQt::OnTextSelectionChanged(content::TextInputManager *t
 
 void RenderWidgetHostViewQt::OnGestureEvent(const ui::GestureEventData& gesture)
 {
-    if ((gesture.type() == ui::ET_GESTURE_PINCH_BEGIN
-         || gesture.type() == ui::ET_GESTURE_PINCH_UPDATE
-         || gesture.type() == ui::ET_GESTURE_PINCH_END)
+    if ((gesture.type() == ui::EventType::kGesturePinchBegin
+         || gesture.type() == ui::EventType::kGesturePinchUpdate
+         || gesture.type() == ui::EventType::kGesturePinchEnd)
         && !content::IsPinchToZoomEnabled()) {
         return;
     }
@@ -844,7 +845,7 @@ void RenderWidgetHostViewQt::notifyHidden()
     m_delegatedFrameHost->DetachFromCompositor();
 }
 
-void RenderWidgetHostViewQt::ProcessAckedTouchEvent(const content::TouchEventWithLatencyInfo &touch, blink::mojom::InputEventResultState ack_result)
+void RenderWidgetHostViewQt::ProcessAckedTouchEvent(const input::TouchEventWithLatencyInfo &touch, blink::mojom::InputEventResultState ack_result)
 {
     const bool eventConsumed = (ack_result == blink::mojom::InputEventResultState::kConsumed);
     const bool isSetBlocking = content::InputEventResultStateIsSetBlocking(ack_result);
@@ -924,6 +925,7 @@ void RenderWidgetHostViewQt::WheelEventAck(const blink::WebMouseWheelEvent &even
 }
 
 void RenderWidgetHostViewQt::GestureEventAck(const blink::WebGestureEvent &event,
+                                             blink::mojom::InputEventResultSource ack_source,
                                              blink::mojom::InputEventResultState ack_result)
 {
     ForwardTouchpadZoomEventIfNecessary(event, ack_result);
@@ -1040,7 +1042,7 @@ void RenderWidgetHostViewQt::OnRenderFrameMetadataChangedAfterActivation(base::T
         m_adapterClient->updateContentsSize(toQt(m_lastContentsSize));
 }
 
-void RenderWidgetHostViewQt::synchronizeVisualProperties(const absl::optional<viz::LocalSurfaceId> &childSurfaceId)
+void RenderWidgetHostViewQt::synchronizeVisualProperties(const std::optional<viz::LocalSurfaceId> &childSurfaceId)
 {
     if (childSurfaceId)
         m_dfhLocalSurfaceIdAllocator.UpdateFromChild(*childSurfaceId);
@@ -1084,9 +1086,9 @@ ui::Compositor *RenderWidgetHostViewQt::GetCompositor()
     return m_uiCompositor.get();
 }
 
-absl::optional<content::DisplayFeature> RenderWidgetHostViewQt::GetDisplayFeature()
+std::optional<content::DisplayFeature> RenderWidgetHostViewQt::GetDisplayFeature()
 {
-    return absl::nullopt;
+    return std::nullopt;
 }
 
 void RenderWidgetHostViewQt::SetDisplayFeatureForTesting(const content::DisplayFeature *)

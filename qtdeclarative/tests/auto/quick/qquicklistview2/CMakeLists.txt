@@ -16,12 +16,14 @@ list(APPEND test_data ${test_data_glob})
 qt_internal_add_test(tst_qquicklistview2
     SOURCES
         typerolemodel.h typerolemodel.cpp
+        gadgetmodel.h gadgetmodel.cpp
         tst_qquicklistview2.cpp
     LIBRARIES
         Qt::CorePrivate
         Qt::Gui
         Qt::GuiPrivate
         Qt::QmlModelsPrivate
+        Qt::Qml
         Qt::QmlPrivate
         Qt::QuickPrivate
         Qt::QuickTest

@@ -16,15 +16,13 @@ QT_BEGIN_NAMESPACE
 
 using namespace Qt::StringLiterals;
 
-Q_DECLARE_LOGGING_CATEGORY(qLcEvdevKey)
-
 QEvdevKeyboardManager::QEvdevKeyboardManager(const QString &key, const QString &specification, QObject *parent)
     : QObject(parent)
 {
     Q_UNUSED(key);
 
 
-    QString spec = QString::fromLocal8Bit(qgetenv("QT_QPA_EVDEV_KEYBOARD_PARAMETERS"));
+    QString spec = qEnvironmentVariable("QT_QPA_EVDEV_KEYBOARD_PARAMETERS");
 
     if (spec.isEmpty())
         spec = specification;

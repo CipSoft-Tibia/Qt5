@@ -16,21 +16,22 @@
 
 #include "modules/video_coding/codecs/h264/h264_decoder_impl.h"
 
+extern "C" {
+#include <libavcodec/avcodec.h>
+#include <libavformat/avformat.h>
+#include <libavutil/imgutils.h>
+}  // extern "C"
+
 #include <algorithm>
 #include <limits>
 #include <memory>
-
-extern "C" {
-#include "third_party/ffmpeg/libavcodec/avcodec.h"
-#include "third_party/ffmpeg/libavformat/avformat.h"
-#include "third_party/ffmpeg/libavutil/imgutils.h"
-}  // extern "C"
 
 #include "api/video/color_space.h"
 #include "api/video/i010_buffer.h"
 #include "api/video/i420_buffer.h"
 #include "common_video/include/video_frame_buffer.h"
 #include "modules/video_coding/codecs/h264/h264_color_space.h"
+#include "modules/video_coding/include/video_error_codes.h"
 #include "rtc_base/checks.h"
 #include "rtc_base/logging.h"
 #include "system_wrappers/include/metrics.h"
@@ -327,7 +328,7 @@ bool H264DecoderImpl::Configure(const Settings& settings) {
 
   av_frame_.reset(av_frame_alloc());
 
-  if (absl::optional<int> buffer_pool_size = settings.buffer_pool_size()) {
+  if (std::optional<int> buffer_pool_size = settings.buffer_pool_size()) {
     if (!ffmpeg_buffer_pool_.Resize(*buffer_pool_size)) {
       return false;
     }
@@ -398,7 +399,7 @@ int32_t H264DecoderImpl::Decode(const EncodedImage& input_image,
 
   // TODO(sakal): Maybe it is possible to get QP directly from FFmpeg.
   h264_bitstream_parser_.ParseBitstream(input_image);
-  absl::optional<int> qp = h264_bitstream_parser_.GetLastSliceQp();
+  std::optional<int> qp = h264_bitstream_parser_.GetLastSliceQp();
 
   // Obtain the `video_frame` containing the decoded image.
   VideoFrame* input_frame =
@@ -609,14 +610,14 @@ int32_t H264DecoderImpl::Decode(const EncodedImage& input_image,
 
   VideoFrame decoded_frame = VideoFrame::Builder()
                                  .set_video_frame_buffer(cropped_buffer)
-                                 .set_timestamp_rtp(input_image.RtpTimestamp())
+                                 .set_rtp_timestamp(input_image.RtpTimestamp())
                                  .set_color_space(color_space)
                                  .build();
 
   // Return decoded frame.
   // TODO(nisse): Timestamp and rotation are all zero here. Change decoder
   // interface to pass a VideoFrameBuffer instead of a VideoFrame?
-  decoded_image_callback_->Decoded(decoded_frame, absl::nullopt, qp);
+  decoded_image_callback_->Decoded(decoded_frame, std::nullopt, qp);
 
   // Stop referencing it, possibly freeing `input_frame`.
   av_frame_unref(av_frame_.get());

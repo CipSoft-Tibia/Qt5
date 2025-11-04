@@ -19,7 +19,6 @@
 
 #include "p2p/base/ice_controller_factory_interface.h"
 #include "p2p/base/ice_controller_interface.h"
-#include "p2p/base/p2p_transport_channel.h"
 
 namespace cricket {
 
@@ -113,7 +112,7 @@ class BasicIceController : public IceControllerInterface {
   int CompareCandidatePairNetworks(
       const Connection* a,
       const Connection* b,
-      absl::optional<rtc::AdapterType> network_preference) const;
+      std::optional<rtc::AdapterType> network_preference) const;
 
   // The methods below return a positive value if `a` is preferable to `b`,
   // a negative value if `b` is preferable, and 0 if they're equally preferable.
@@ -125,7 +124,7 @@ class BasicIceController : public IceControllerInterface {
   int CompareConnectionStates(
       const Connection* a,
       const Connection* b,
-      absl::optional<int64_t> receiving_unchanged_threshold,
+      std::optional<int64_t> receiving_unchanged_threshold,
       bool* missed_receiving_unchanged_threshold) const;
   int CompareConnectionCandidates(const Connection* a,
                                   const Connection* b) const;
@@ -136,7 +135,7 @@ class BasicIceController : public IceControllerInterface {
   // Returns a positive value if `a` is better than `b`.
   int CompareConnections(const Connection* a,
                          const Connection* b,
-                         absl::optional<int64_t> receiving_unchanged_threshold,
+                         std::optional<int64_t> receiving_unchanged_threshold,
                          bool* missed_receiving_unchanged_threshold) const;
 
   SwitchResult HandleInitialSelectDampening(IceSwitchReason reason,

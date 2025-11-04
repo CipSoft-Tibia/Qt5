@@ -4,6 +4,7 @@
 #include "qquicktumblerview_p.h"
 
 #include <QtCore/qloggingcategory.h>
+#include <QtQml/qqmlcomponent.h>
 #include <QtQuick/private/qquickitem_p.h>
 #include <QtQuick/private/qquicklistview_p.h>
 #include <QtQuick/private/qquickpathview_p.h>
@@ -13,7 +14,7 @@
 
 QT_BEGIN_NAMESPACE
 
-Q_LOGGING_CATEGORY(lcTumblerView, "qt.quick.controls.tumblerview")
+Q_STATIC_LOGGING_CATEGORY(lcTumblerView, "qt.quick.controls.tumblerview")
 
 QQuickTumblerView::QQuickTumblerView(QQuickItem *parent) :
     QQuickItem(parent)
@@ -121,6 +122,7 @@ void QQuickTumblerView::createView()
             m_pathView->setPreferredHighlightEnd(0.5);
             m_pathView->setHighlightMoveDuration(1000);
             m_pathView->setClip(true);
+            m_pathView->setFlickDeceleration(m_tumbler->flickDeceleration());
 
             // Give the view a size.
             updateView();
@@ -148,6 +150,7 @@ void QQuickTumblerView::createView()
             m_listView->setParentItem(this);
             m_listView->setSnapMode(QQuickListView::SnapToItem);
             m_listView->setClip(true);
+            m_listView->setFlickDeceleration(m_tumbler->flickDeceleration());
 
             // Give the view a size.
             updateView();
@@ -182,6 +185,14 @@ void QQuickTumblerView::createView()
             qCDebug(lcTumblerView) << "finished creating ListView";
         }
     }
+}
+
+void QQuickTumblerView::updateFlickDeceleration()
+{
+    if (m_pathView)
+        m_pathView->setFlickDeceleration(m_tumbler->flickDeceleration());
+    else if (m_listView)
+        m_listView->setFlickDeceleration(m_tumbler->flickDeceleration());
 }
 
 // Called whenever the size or visibleItemCount changes.
@@ -282,6 +293,7 @@ void QQuickTumblerView::itemChange(QQuickItem::ItemChange change, const QQuickIt
         if (m_tumbler) {
             // We assume that the parentChanged() signal of the tumbler will be emitted before its wrap property is set...
             connect(m_tumbler, &QQuickTumbler::wrapChanged, this, &QQuickTumblerView::createView);
+            connect(m_tumbler, &QQuickTumbler::flickDecelerationChanged, this, &QQuickTumblerView::updateFlickDeceleration);
             connect(m_tumbler, &QQuickTumbler::visibleItemCountChanged, this, &QQuickTumblerView::updateView);
         }
     }

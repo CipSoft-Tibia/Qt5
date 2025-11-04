@@ -29,7 +29,7 @@ class NoNetworkURLLoader : public URLLoader {
                          base::TimeDelta timeout_interval,
                          URLLoaderClient* client,
                          WebURLResponse& response,
-                         absl::optional<WebURLError>&,
+                         std::optional<WebURLError>&,
                          scoped_refptr<SharedBuffer>&,
                          int64_t& encoded_data_length,
                          uint64_t& encoded_body_length,
@@ -37,7 +37,7 @@ class NoNetworkURLLoader : public URLLoader {
                          std::unique_ptr<blink::ResourceLoadInfoNotifierWrapper>
                              resource_load_info_notifier_wrapper) override {
     // Nothing should call this in our test.
-    NOTREACHED();
+    NOTREACHED_IN_MIGRATION();
   }
   void LoadAsynchronously(
       std::unique_ptr<network::ResourceRequest> request,

@@ -49,8 +49,30 @@ QWaylandTextInputv2::~QWaylandTextInputv2()
     destroy();
 }
 
+void QWaylandTextInputv2::showInputPanel()
+{
+    qCDebug(qLcQpaInputMethods()) << Q_FUNC_INFO;
+    show_input_panel();
+}
+void QWaylandTextInputv2::hideInputPanel()
+{
+    qCDebug(qLcQpaInputMethods()) << Q_FUNC_INFO;
+    hide_input_panel();
+}
+void QWaylandTextInputv2::enableSurface(::wl_surface *surface)
+{
+    qCDebug(qLcQpaInputMethods()) << Q_FUNC_INFO << surface;
+    enable(surface);
+}
+void QWaylandTextInputv2::disableSurface(::wl_surface *surface)
+{
+    qCDebug(qLcQpaInputMethods()) << Q_FUNC_INFO << surface;
+    disable(surface);
+}
+
 void QWaylandTextInputv2::reset()
 {
+    qCDebug(qLcQpaInputMethods()) << Q_FUNC_INFO;
     m_builder.reset();
     m_preeditCommit = QString();
     updateState(Qt::ImQueryAll, QtWayland::zwp_text_input_v2::update_state_reset);
@@ -58,6 +80,7 @@ void QWaylandTextInputv2::reset()
 
 void QWaylandTextInputv2::commit()
 {
+    qCDebug(qLcQpaInputMethods()) << Q_FUNC_INFO;
     if (QObject *o = QGuiApplication::focusObject()) {
         if (!m_preeditCommit.isEmpty()) {
 
@@ -88,6 +111,7 @@ void QWaylandTextInputv2::resetCallback(void *data, wl_callback *, uint32_t)
 
 void QWaylandTextInputv2::updateState(Qt::InputMethodQueries queries, uint32_t flags)
 {
+    qCDebug(qLcQpaInputMethods()) << Q_FUNC_INFO << queries << flags;
     if (!QGuiApplication::focusObject())
         return;
 
@@ -181,6 +205,7 @@ Qt::LayoutDirection QWaylandTextInputv2::inputDirection() const
 
 void QWaylandTextInputv2::zwp_text_input_v2_enter(uint32_t serial, ::wl_surface *surface)
 {
+    qCDebug(qLcQpaInputMethods()) << Q_FUNC_INFO << serial << surface;
     m_serial = serial;
     m_surface = surface;
 
@@ -189,6 +214,7 @@ void QWaylandTextInputv2::zwp_text_input_v2_enter(uint32_t serial, ::wl_surface 
 
 void QWaylandTextInputv2::zwp_text_input_v2_leave(uint32_t serial, ::wl_surface *surface)
 {
+    qCDebug(qLcQpaInputMethods()) << Q_FUNC_INFO << serial << surface;
     m_serial = serial;
 
     if (m_surface != surface) {

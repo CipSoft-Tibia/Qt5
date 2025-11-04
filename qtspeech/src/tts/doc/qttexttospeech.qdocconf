@@ -32,8 +32,7 @@ qhp.QtTextToSpeech.virtualFolder       = qttexttospeech
 qhp.QtTextToSpeech.indexTitle          = Qt TextToSpeech
 qhp.QtTextToSpeech.indexRoot           =
 
-# For listing child nodes in Qt Creator or Assistant.
-qhp.QtTextToSpeech.subprojects         = classes qmltypes examples
+qhp.QtTextToSpeech.subprojects = manual examples classes qmltypes
 
 qhp.QtTextToSpeech.subprojects.classes.title = C++ Classes
 qhp.QtTextToSpeech.subprojects.classes.indexTitle = Qt TextToSpeech C++ Classes
@@ -47,12 +46,19 @@ qhp.QtTextToSpeech.subprojects.qmltypes.sortPages = true
 
 qhp.QtTextToSpeech.subprojects.examples.title = Examples
 qhp.QtTextToSpeech.subprojects.examples.indexTitle = Qt TextToSpeech Examples
-qhp.QtTextToSpeech.subprojects.examples.selectors = doc:example
+qhp.QtTextToSpeech.subprojects.examples.selectors = example
 qhp.QtTextToSpeech.subprojects.examples.sortPages = true
+
+qhp.QtTextToSpeech.subprojects.manual.title = Qt TextToSpeech
+qhp.QtTextToSpeech.subprojects.manual.indexTitle = Qt TextToSpeech module topics
+qhp.QtTextToSpeech.subprojects.manual.type = manual
 
 navigation.landingpage = "Qt TextToSpeech"
 navigation.cppclassespage = "Qt TextToSpeech C++ Classes"
 navigation.qmltypespage = "Qt TextToSpeech QML Types"
+# Auto-generate navigation linking based on "Qt TextToSpeech module topics":
+navigation.toctitles = "Qt TextToSpeech module topics"
+navigation.toctitles.inclusive = false
 
 # Highlighted examples in Data Processing & IO category
 manifestmeta.highlighted.names = "QtTextToSpeech/Quick Speech Example"

@@ -17,12 +17,14 @@
 
 #include <QQuickItem>
 #include <QtQuickControls2Impl/private/qtquickcontrols2implglobal_p.h>
+#include <QtCore/qvariant.h>
 
 QT_BEGIN_NAMESPACE
 
 class QQuickListView;
 class QQuickPath;
 class QQuickPathView;
+class QQmlComponent;
 
 class QQuickTumbler;
 
@@ -60,6 +62,7 @@ protected:
 private:
     QQuickItem *view();
     void createView();
+    void updateFlickDeceleration();
     void updateView();
     void updateModel();
 

@@ -127,11 +127,6 @@ int QQmlProxyMetaObject::metaCall(QObject *o, QMetaObject::Call c, int id, void 
         return object->qt_metacall(c, id, a);
 }
 
-QMetaObject *QQmlProxyMetaObject::toDynamicMetaObject(QObject *)
-{
-    return metaObject;
-}
-
 void QQmlProxyMetaObject::objectDestroyed(QObject *object)
 {
     if (parent)

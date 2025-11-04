@@ -1,12 +1,21 @@
 # Copyright (C) 2022 The Qt Company Ltd.
 # SPDX-License-Identifier: BSD-3-Clause
 
-qt_find_package(WrapProtobuf
-    PROVIDED_TARGETS
-        WrapProtobuf::WrapLibProtoc
-        WrapProtobuf::WrapLibProtobuf
+set(CMAKE_FIND_PACKAGE_PREFER_CONFIG_save "${CMAKE_FIND_PACKAGE_PREFER_CONFIG}")
+set(CMAKE_FIND_PACKAGE_PREFER_CONFIG TRUE)
+
+qt_find_package(protobuf
     MODULE_NAME global
+    NAMES protobuf Protobuf
 )
+if(NOT protobuf_FOUND)
+    # Attempt looking in MODULE mode
+    qt_find_package(Protobuf
+        MODULE_NAME global
+    )
+endif()
+
+set(CMAKE_FIND_PACKAGE_PREFER_CONFIG "${CMAKE_FIND_PACKAGE_PREFER_CONFIG_save}")
 
 # WrapProtoc::WrapProtoc could come from top-level CMakeLists.txt so avoid promoting it to GLOBAL
 # here in this case.
@@ -20,7 +29,7 @@ qt_find_package(WrapProtoc
 
 qt_config_compile_test(libprotobuf
     LIBRARIES
-        WrapProtobuf::WrapLibProtobuf
+        protobuf::libprotobuf
     CODE
 "#include <google/protobuf/descriptor.h>
 
@@ -34,7 +43,7 @@ int main(void)
 
 qt_config_compile_test(libprotoc
     LIBRARIES
-        WrapProtobuf::WrapLibProtoc
+        protobuf::libprotoc
     CODE
 "#include <google/protobuf/compiler/plugin.h>
 
@@ -48,7 +57,7 @@ qt_feature("qtprotobufgen" PRIVATE
     SECTION "Utilities"
     LABEL "Qt Protobuf generator"
     PURPOSE "Provides support for generating Qt-based classes for use with Protocol Buffers."
-    CONDITION TARGET WrapProtobuf::WrapLibProtoc AND TARGET WrapProtobuf::WrapLibProtobuf AND
+    CONDITION TARGET protobuf::libprotoc AND TARGET protobuf::libprotobuf AND
         TARGET WrapProtoc::WrapProtoc AND TEST_libprotobuf AND TEST_libprotoc
 )
 
@@ -75,7 +84,7 @@ qt_feature("protobuf-wellknowntypes" PUBLIC
     LABEL "Well-known types support"
     AUTODETECT TRUE
     CONDITION TARGET WrapProtoc::WrapProtoc AND
-        (TARGET WrapProtobuf::WrapLibProtobuf OR QT_PROTOBUF_WELL_KNOWN_TYPES_PROTO_DIR) AND
+        (TARGET protobuf::libprotobuf OR QT_PROTOBUF_WELL_KNOWN_TYPES_PROTO_DIR) AND
         ( TARGET Qt6::qtprotobufgen OR Qt6::qtprotobufgen IN_LIST Qt6ProtobufTools_TARGETS OR
             ( QT_FEATURE_qtprotobufgen AND NOT CMAKE_CROSSCOMPILING ) )
 )

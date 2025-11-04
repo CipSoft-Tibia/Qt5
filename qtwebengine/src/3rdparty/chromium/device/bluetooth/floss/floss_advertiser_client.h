@@ -30,8 +30,25 @@ enum class OwnAddressType {
   kRandom = 2,
 };
 
-// Represents parameters of an advertising set.
+// Represents the parameters of an advertising set. Supports Floss API version
+// 0.4.0 or earlier.
+struct AdvertisingSetParametersOld {
+  bool connectable;
+  bool scannable;
+  bool is_legacy;
+  bool is_anonymous;
+  bool include_tx_power;
+  LePhy primary_phy;
+  LePhy secondary_phy;
+  int32_t interval;        // Advertising interval in 0.625 ms unit.
+  int32_t tx_power_level;  // Transmission power of advertising in dBm.
+  OwnAddressType own_address_type;
+};
+
+// Represents the parameters of an advertising set. Supports Floss API versions
+// greater than 0.4.0.
 struct AdvertisingSetParameters {
+  LeDiscoverableMode discoverable;
   bool connectable;
   bool scannable;
   bool is_legacy;
@@ -181,9 +198,9 @@ class DEVICE_BLUETOOTH_EXPORT FlossAdvertiserClient
   virtual void StartAdvertisingSet(
       const AdvertisingSetParameters& params,
       const AdvertiseData& adv_data,
-      const absl::optional<AdvertiseData> scan_rsp,
-      const absl::optional<PeriodicAdvertisingParameters> periodic_params,
-      const absl::optional<AdvertiseData> periodic_data,
+      const std::optional<AdvertiseData> scan_rsp,
+      const std::optional<PeriodicAdvertisingParameters> periodic_params,
+      const std::optional<AdvertiseData> periodic_data,
       const int32_t duration,
       const int32_t max_ext_adv_events,
       StartSuccessCallback success_callback,

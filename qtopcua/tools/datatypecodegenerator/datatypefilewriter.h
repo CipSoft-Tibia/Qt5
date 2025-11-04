@@ -31,6 +31,8 @@ public:
     QList<XmlElement *> generateMapping() const;
     void setGenerateMapping(const QList<XmlElement *> &generateMapping);
 
+    bool writeBundleFiles();
+
 private:
     QString m_path;
     QString m_prefix;
@@ -39,6 +41,9 @@ private:
     QList<QString> m_generatedStructuredTypeFilenames;
     QList<XmlElement *> m_generateMapping;
     QList<EnumeratedType *> m_enumeratedTypes;
+
+    QStringList m_generatedSourceFileNames;
+    QStringList m_generatedHeaderFileNames;
 
     void writeLicenseHeader(QTextStream &output);
 

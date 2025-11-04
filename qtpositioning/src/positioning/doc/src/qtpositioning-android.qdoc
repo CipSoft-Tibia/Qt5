@@ -50,7 +50,7 @@ for the application. To do it, one should navigate to \uicontrol Settings ->
 specify the \uicontrol {Allow all the time} permission for Location
 (see the screenshot below).
 
-\image permissions.png
+\image qtpositioning_android_permissions.png {Android location permission settings screen}
 
 Check \l {Access Location in the Background} Android documentation for more
 details.

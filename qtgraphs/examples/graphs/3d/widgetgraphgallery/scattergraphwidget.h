@@ -10,6 +10,8 @@ class ScatterGraphWidget : public QQuickWidget
 {
     Q_OBJECT
 public:
+    Q_DISABLE_COPY_MOVE(ScatterGraphWidget)
+
     ScatterGraphWidget();
     ~ScatterGraphWidget();
     void initialize();

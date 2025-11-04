@@ -41,7 +41,7 @@ class ByteStreamTeeEngine::PullAlgorithm final : public StreamAlgorithm {
     // 17. Let pull1Algorithm be the following steps:
     //   a. If reading is true,
     ExceptionState exception_state(script_state->GetIsolate(),
-                                   ExceptionContextType::kUnknown, "", "");
+                                   v8::ExceptionContext::kUnknown, "", "");
     if (engine_->reading_) {
       //     i. Set readAgainForBranch1 to true.
       engine_->read_again_for_branch_[branch_] = true;
@@ -114,7 +114,8 @@ class ByteStreamTeeEngine::CancelAlgorithm final : public StreamAlgorithm {
       auto cancel_result = ReadableStream::Cancel(
           script_state, engine_->stream_, composite_reason);
       //     iii. Resolve cancelPromise with cancelResult.
-      engine_->cancel_promise_->Resolve(script_state, cancel_result);
+      engine_->cancel_promise_->Resolve(script_state,
+                                        cancel_result.V8Promise());
     }
     //   d. Return cancelPromise.
     return engine_->cancel_promise_->V8Promise(isolate);
@@ -150,7 +151,7 @@ class ByteStreamTeeEngine::ByteTeeReadRequest final : public ReadRequest {
     // 1. Set reading to false.
     engine_->reading_ = false;
     ExceptionState exception_state(script_state->GetIsolate(),
-                                   ExceptionContextType::kUnknown, "", "");
+                                   v8::ExceptionContext::kUnknown, "", "");
     // 2. If canceled1 is false, perform !
     // ReadableByteStreamControllerClose(branch1.[[controller]]).
     // 3. If canceled2 is false, perform !
@@ -223,13 +224,11 @@ class ByteStreamTeeEngine::ByteTeeReadRequest final : public ReadRequest {
                                    exception_context);
 
     // 3. Let chunk1 and chunk2 be chunk.
-    NotShared<DOMUint8Array> chunk[2];
     NotShared<DOMUint8Array> buffer_view =
         NativeValueTraits<NotShared<DOMUint8Array>>::NativeValue(
             script_state->GetIsolate(), value.Get(script_state->GetIsolate()),
             exception_state);
-    chunk[0] = buffer_view;
-    chunk[1] = buffer_view;
+    std::array<NotShared<DOMUint8Array>, 2> chunk = {buffer_view, buffer_view};
 
     // 4. If canceled1 is false and canceled2 is false,
     if (!engine_->canceled_[0] && !engine_->canceled_[1]) {
@@ -330,7 +329,7 @@ class ByteStreamTeeEngine::ByteTeeReadIntoRequest final
     // 4. If byobCanceled is false, perform !
     //    ReadableByteStreamControllerClose(byobBranch.[[controller]]).
     ExceptionState exception_state(script_state->GetIsolate(),
-                                   ExceptionContextType::kUnknown, "", "");
+                                   v8::ExceptionContext::kUnknown, "", "");
     if (!byob_canceled) {
       ReadableStreamController* controller =
           byob_branch_->readable_stream_controller_;
@@ -536,13 +535,11 @@ void ByteStreamTeeEngine::ForwardReaderError(
     Member<ReadableStreamGenericReader> reader_;
   };
 
-  StreamThenPromise(
-      script_state->GetContext(),
-      this_reader->ClosedPromise()->V8Promise(script_state->GetIsolate()),
-      nullptr,
-      MakeGarbageCollected<ScriptFunction>(
-          script_state,
-          MakeGarbageCollected<RejectFunction>(this, this_reader)));
+  StreamThenPromise(script_state->GetContext(),
+                    this_reader->closed(script_state).V8Promise(), nullptr,
+                    MakeGarbageCollected<ScriptFunction>(
+                        script_state, MakeGarbageCollected<RejectFunction>(
+                                          this, this_reader)));
 }
 
 void ByteStreamTeeEngine::PullWithDefaultReader(
@@ -616,10 +613,8 @@ void ByteStreamTeeEngine::PullWithBYOBReader(ScriptState* script_state,
 
 DOMUint8Array* ByteStreamTeeEngine::CloneAsUint8Array(
     DOMArrayBufferView* chunk) {
-  auto* cloned_buffer =
-      DOMArrayBuffer::Create(chunk->buffer()->Data(), chunk->byteLength());
-  return DOMUint8Array::Create(cloned_buffer, chunk->byteOffset(),
-                               chunk->byteLength());
+  auto* cloned_buffer = DOMArrayBuffer::Create(chunk->ByteSpan());
+  return DOMUint8Array::Create(cloned_buffer, 0, chunk->byteLength());
 }
 
 void ByteStreamTeeEngine::Start(ScriptState* script_state,

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Copyright (C) 2022 The Qt Company Ltd.
+# Copyright (C) 2025 The Qt Company Ltd.
 # SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 # Install required packages with APT
@@ -20,15 +20,14 @@ function set_internal_repo {
     sudo mv /etc/apt/apt.conf.d/50appstream{,.disabled}
 
     sudo tee "/etc/apt/sources.list.d/ubuntu.list" > /dev/null <<-EOC
-    deb [arch=aarch64] http://repo-clones.ci.qt.io/apt-mirror/mirror/ubuntu/ noble main restricted universe multiverse
-    deb [arch=aarch64] http://repo-clones.ci.qt.io/apt-mirror/mirror/ubuntu/ noble-updates main restricted universe multiverse
-    deb [arch=aarch64] http://repo-clones.ci.qt.io/apt-mirror/mirror/ubuntu/ noble-backports main restricted universe
-    deb [arch=aarch64] http://repo-clones.ci.qt.io/apt-mirror/mirror/ubuntu/ noble-security main restricted universe multiverse
+    deb [trusted=yes] http://repo-clones-apt.ci.qt.io:8080 noble-arm64 main restricted universe multiverse
+    deb [trusted=yes] http://repo-clones-apt.ci.qt.io:8080 noble-updates-arm64 main restricted universe multiverse
+    deb [trusted=yes] http://repo-clones-apt.ci.qt.io:8080 noble-backports-arm64 main restricted universe
+    deb [trusted=yes] http://repo-clones-apt.ci.qt.io:8080 noble-security-arm64 main restricted universe multiverse
 EOC
 }
 
-#(ping -c 3 repo-clones.ci.qt.io && set_internal_repo) || echo "Internal package repository not found. Using public repositories."
-echo "Internal package repository not loading Translation en package (QTQAINFRA-6297). Using public repositories."
+(ping -c 3 repo-clones-apt.ci.qt.io && set_internal_repo) || echo "Internal package repository not found. Using public repositories."
 
 # Make sure needed ca-certificates are available
 sudo apt-get install --reinstall ca-certificates
@@ -117,6 +116,8 @@ installPackages+=(locales-all)
 # Support for cross-building to x86 (needed by WebEngine boot2qt builds)
 #installPackages+=(g++-multilib)
 installPackages+=(g++-multilib-powerpc-linux-gnu)
+installPackages+=(gcc-14)
+installPackages+=(g++-14)
 
 # python3 development package
 installPackages+=(python3-dev)
@@ -177,6 +178,7 @@ installPackages+=(libopenal-dev)
 installPackages+=(libbluetooth-dev)
 # Needed for qtspeech
 installPackages+=(libspeechd-dev)
+installPackages+=(flite1-dev)
 #Pypdf for PDF reading in RTA tests
 installPackages+=(python3-pypdf2)
 # Needed for b2qt
@@ -257,6 +259,12 @@ source "${BASH_SOURCE%/*}/../common/unix/SetEnvVar.sh"
 # 'The script sbom2doc is installed in '/home/qt/.local/bin' which is not on PATH.'
 # hence the explicit assignment to SBOM_PYTHON_APPS_PATH.
 SetEnvVar "SBOM_PYTHON_APPS_PATH" "/home/qt/.local/bin"
+
+gccVersion="$(gcc --version |grep -Eo '[0-9]+\.[0-9]+(\.[0-9]+)?' |head -n 1)"
+echo "GCC = $gccVersion" >> versions.txt
+
+glibcVersion="$(ldd --version |grep -Eo '[0-9]+\.[0-9]+(\.[0-9]+)?' |head -n 1)"
+echo "glibc = $glibcVersion" >> versions.txt
 
 OpenSSLVersion="$(openssl version |cut -b 9-14)"
 echo "System's OpenSSL = $OpenSSLVersion" >> ~/versions.txt

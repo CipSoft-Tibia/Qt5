@@ -536,20 +536,28 @@ static Iterator partitionBindings(Iterator first, Iterator last)
 // and otherwise falls back to a the more generic
 // `QObject::setProperty` for properties where a WRITE method is not
 // available or in scope.
-static void compilePropertyInitializer(QmltcType &current, const QQmlJSScope::ConstPtr &type) {
-    static auto isFromExtension = [](const QQmlJSMetaProperty &property, const QQmlJSScope::ConstPtr &scope) {
-        return scope->ownerOfProperty(scope, property.propertyName()).extensionSpecifier != QQmlJSScope::NotExtension;
+void QmltcCompiler::compilePropertyInitializer(
+        QmltcType &current, const QQmlJSScope::ConstPtr &type) {
+    static auto isFromExtension
+            = [](const QQmlJSMetaProperty &property, const QQmlJSScope::ConstPtr &scope) {
+        return scope->ownerOfProperty(scope, property.propertyName()).extensionSpecifier
+                != QQmlJSScope::NotExtension;
     };
 
     current.propertyInitializer.constructor.initializerList << u"component{component}"_s;
 
-    auto properties = type->properties().values();
-    for (auto& property: properties) {
+    const auto properties = type->properties().values();
+    for (const auto &property: properties) {
         if (property.index() == -1) continue;
         if (property.isPrivate()) continue;
         if (!property.isWritable() && !qIsReferenceTypeList(property)) continue;
 
         const QString name = property.propertyName();
+        const auto propertyType = property.type();
+        if (propertyType.isNull()) {
+            recordError(type->sourceLocation(), u"Type of property '%1' is unknown"_s.arg(name));
+            continue;
+        }
 
         current.propertyInitializer.propertySetters.emplace_back();
         auto& compiledSetter = current.propertyInitializer.propertySetters.back();
@@ -560,7 +568,8 @@ static void compilePropertyInitializer(QmltcType &current, const QQmlJSScope::Co
 
         if (qIsReferenceTypeList(property)) {
             compiledSetter.parameterList.emplaceBack(
-                QQmlJSUtils::constRefify(u"QList<%1*>"_s.arg(property.type()->valueType()->internalName())),
+                QQmlJSUtils::constRefify(
+                            u"QList<%1*>"_s.arg(propertyType->valueType()->internalName())),
                 name + u"_", QString()
             );
         } else {
@@ -707,24 +716,10 @@ compileMethodParameters(const QList<QQmlJSMetaParameter> &parameterInfos, bool a
     return parameters;
 }
 
-static QString figureReturnType(const QQmlJSMetaMethod &m)
-{
-    const bool isVoidMethod =
-            m.returnTypeName() == u"void" || m.methodType() == QQmlJSMetaMethodType::Signal;
-    Q_ASSERT(isVoidMethod || m.returnType());
-    QString type;
-    if (isVoidMethod) {
-        type = u"void"_s;
-    } else {
-        type = m.returnType()->augmentedInternalName();
-    }
-    return type;
-}
-
 void QmltcCompiler::compileMethod(QmltcType &current, const QQmlJSMetaMethod &m,
                                   const QQmlJSScope::ConstPtr &owner)
 {
-    const auto returnType = figureReturnType(m);
+    const QString returnType = m.returnType()->augmentedInternalName();
 
     const QList<QmltcVariable> compiledParams = compileMethodParameters(m.parameters());
     const auto methodType = m.methodType();
@@ -1479,7 +1474,7 @@ void QmltcCompiler::compileAttachedPropertyBinding(QmltcType &current,
     QQmlJSScope::ConstPtr propertyType = property.type();
 
     Q_ASSERT(accessor.name == u"this"_s); // doesn't have to hold, in fact
-    const auto attachedType = binding.attachingType();
+    const auto attachedType = binding.attachedType();
     Q_ASSERT(attachedType);
 
     const QString attachingTypeName = propertyName; // acts as an identifier
@@ -1927,7 +1922,7 @@ void QmltcCompiler::compileScriptBinding(QmltcType &current,
         const QString signalName = signal.methodName();
         const QString slotName = newSymbol(signalName + u"_slot");
 
-        const QString signalReturnType = figureReturnType(signal);
+        const QString signalReturnType = signal.returnType()->augmentedInternalName();
         const QList<QmltcVariable> slotParameters =
                 compileMethodParameters(signal.parameters(), /* allow unnamed = */ true);
 

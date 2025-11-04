@@ -42,6 +42,7 @@
 #include "third_party/blink/renderer/core/origin_trials/origin_trial_context.h"
 #include "third_party/blink/renderer/core/workers/worker_global_scope.h"
 #include "third_party/blink/renderer/core/workers/worker_or_worklet_global_scope.h"
+#include "third_party/blink/renderer/platform/bindings/dom_wrapper_world.h"
 #include "third_party/blink/renderer/platform/bindings/extensions_registry.h"
 #include "third_party/blink/renderer/platform/bindings/origin_trial_features.h"
 #include "third_party/blink/renderer/platform/bindings/v8_dom_wrapper.h"
@@ -56,14 +57,15 @@ namespace blink {
 
 WorkerOrWorkletScriptController::WorkerOrWorkletScriptController(
     WorkerOrWorkletGlobalScope* global_scope,
-    v8::Isolate* isolate)
+    v8::Isolate* isolate,
+    bool is_default_world_of_isolate)
     : global_scope_(global_scope),
       isolate_(isolate),
-      rejected_promises_(RejectedPromises::Create()) {
-  DCHECK(isolate);
-  world_ =
-      DOMWrapperWorld::Create(isolate, DOMWrapperWorld::WorldType::kWorker);
-}
+      world_(
+          DOMWrapperWorld::Create(isolate,
+                                  DOMWrapperWorld::WorldType::kWorkerOrWorklet,
+                                  is_default_world_of_isolate)),
+      rejected_promises_(RejectedPromises::Create()) {}
 
 WorkerOrWorkletScriptController::~WorkerOrWorkletScriptController() {
   DCHECK(!rejected_promises_);
@@ -101,8 +103,10 @@ void WorkerOrWorkletScriptController::DisposeContextIfNeeded() {
     v8::Local<v8::Object> global_object =
         global_proxy_object->GetPrototype().As<v8::Object>();
     DCHECK(!global_object.IsEmpty());
-    V8DOMWrapper::ClearNativeInfo(isolate_, global_object);
-    V8DOMWrapper::ClearNativeInfo(isolate_, global_proxy_object);
+    V8DOMWrapper::ClearNativeInfo(isolate_, global_object,
+                                  global_scope_->GetWrapperTypeInfo());
+    V8DOMWrapper::ClearNativeInfo(isolate_, global_proxy_object,
+                                  global_scope_->GetWrapperTypeInfo());
 
     // This detaches v8::MicrotaskQueue pointer from v8::Context, so that we can
     // destroy EventLoop safely.
@@ -218,8 +222,7 @@ void WorkerOrWorkletScriptController::Initialize(const KURL& url_for_debugger) {
   // The global object, aka worker/worklet wrapper object.
   v8::Local<v8::Object> global_object =
       global_proxy->GetPrototype().As<v8::Object>();
-  V8DOMWrapper::SetNativeInfo(isolate_, global_object, wrapper_type_info,
-                              script_wrappable);
+  V8DOMWrapper::SetNativeInfo(isolate_, global_object, script_wrappable);
 
   if (global_scope_->IsMainThreadWorkletGlobalScope()) {
     // Set the human readable name for the world.
@@ -382,6 +385,7 @@ void WorkerOrWorkletScriptController::SetWasmEvalErrorMessage(
 void WorkerOrWorkletScriptController::Trace(Visitor* visitor) const {
   visitor->Trace(global_scope_);
   visitor->Trace(script_state_);
+  visitor->Trace(world_);
 }
 
 }  // namespace blink

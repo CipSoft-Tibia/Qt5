@@ -19,7 +19,7 @@
 #include "components/services/storage/indexed_db/scopes/leveldb_scope_deletion_mode.h"
 #include "third_party/leveldatabase/src/include/leveldb/status.h"
 
-namespace content {
+namespace content::indexed_db {
 class TransactionalLevelDBDatabase;
 class TransactionalLevelDBIterator;
 class LevelDBScope;
@@ -131,8 +131,10 @@ class TransactionalLevelDBTransaction
   // TransactionalLevelDBDatabase ensures a maximum number of
   // TransactionalLevelDBDatabase::kDefaultMaxOpenIteratorsPerDatabase loaded
   // iterators.
-  base::flat_set<TransactionalLevelDBIterator*> loaded_iterators_;
-  std::set<TransactionalLevelDBIterator*> evicted_iterators_;
+  base::flat_set<raw_ptr<TransactionalLevelDBIterator, CtnExperimental>>
+      loaded_iterators_;
+  std::set<raw_ptr<TransactionalLevelDBIterator, SetExperimental>>
+      evicted_iterators_;
   bool is_evicting_all_loaded_iterators_ = false;
 
   base::WeakPtrFactory<TransactionalLevelDBTransaction> weak_factory_{this};
@@ -170,6 +172,6 @@ class LevelDBDirectTransaction {
   std::unique_ptr<LevelDBWriteBatch> write_batch_;
 };
 
-}  // namespace content
+}  // namespace content::indexed_db
 
 #endif  // COMPONENTS_SERVICES_STORAGE_INDEXED_DB_TRANSACTIONAL_LEVELDB_TRANSACTIONAL_LEVELDB_TRANSACTION_H_

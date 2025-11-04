@@ -13,9 +13,9 @@
 #include <vector>
 
 #include "core/fxcrt/cfx_datetime.h"
+#include "core/fxcrt/check.h"
 #include "core/fxcrt/fx_extension.h"
-#include "third_party/base/check.h"
-#include "third_party/base/containers/span.h"
+#include "core/fxcrt/span.h"
 #include "xfa/fgas/crt/cfgas_stringformatter.h"
 #include "xfa/fxfa/parser/cxfa_document.h"
 #include "xfa/fxfa/parser/cxfa_localemgr.h"
@@ -386,8 +386,8 @@ bool CXFA_LocaleValue::ValidateCanonicalValue(const WideString& wsValue,
 
 bool CXFA_LocaleValue::ValidateCanonicalDate(const WideString& wsDate,
                                              CFX_DateTime* unDate) {
-  static const uint8_t LastDay[12] = {31, 28, 31, 30, 31, 30,
-                                      31, 31, 30, 31, 30, 31};
+  static const std::array<const uint8_t, 12> LastDay = {
+      {31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31}};
   static const uint16_t wCountY = 4;
   static const uint16_t wCountM = 2;
   static const uint16_t wCountD = 2;

@@ -1,4 +1,5 @@
 // Copyright (C) 2016 The Qt Company Ltd.
+// Copyright (C) 2024 Jie Liu <liujie01@kylinos.cn>
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QWAYLANDINPUTDEVICE_H
@@ -51,6 +52,9 @@ namespace QtWaylandClient {
 
 class QWaylandDataDevice;
 class QWaylandDisplay;
+#if QT_CONFIG(clipboard)
+class QWaylandDataControlDeviceV1;
+#endif
 #if QT_CONFIG(wayland_client_primary_selection)
 class QWaylandPrimarySelectionDeviceV1;
 #endif
@@ -102,6 +106,11 @@ public:
     QWaylandDataDevice *dataDevice() const;
 #endif
 
+#if QT_CONFIG(clipboard)
+    void setDataControlDevice(QWaylandDataControlDeviceV1 *dataControlDevice);
+    QWaylandDataControlDeviceV1 *dataControlDevice() const;
+#endif
+
 #if QT_CONFIG(wayland_client_primary_selection)
     void setPrimarySelectionDevice(QWaylandPrimarySelectionDeviceV1 *primarySelectionDevice);
     QWaylandPrimarySelectionDeviceV1 *primarySelectionDevice() const;
@@ -149,6 +158,7 @@ protected:
     uint32_t mId = -1;
     uint32_t mCaps = 0;
     QString mSeatName;
+    bool mSeatNameKnown = false;
 
 #if QT_CONFIG(cursor)
     struct CursorState {
@@ -163,6 +173,10 @@ protected:
 
 #if QT_CONFIG(wayland_datadevice)
     QWaylandDataDevice *mDataDevice = nullptr;
+#endif
+
+#if QT_CONFIG(clipboard)
+    QScopedPointer<QWaylandDataControlDeviceV1> mDataControlDevice;
 #endif
 
 #if QT_CONFIG(wayland_client_primary_selection)
@@ -186,6 +200,7 @@ protected:
 
     void seat_capabilities(uint32_t caps) override;
     void seat_name(const QString &name) override;
+    void maybeRegisterInputDevices();
     void handleTouchPoint(int id, QEventPoint::State state, const QPointF &surfacePosition = QPoint());
 
     QPointingDevice *mTouchDevice = nullptr;

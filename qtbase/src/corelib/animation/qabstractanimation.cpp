@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 /*!
     \class QAbstractAnimation
@@ -158,7 +159,7 @@ typedef QList<QAbstractAnimation*>::ConstIterator AnimationListConstIt;
 */
 
 /*!
-    \fn virtual int QAbstractAnimationTimer::runningAnimationCount() = 0;
+    \fn virtual qsizetype QAbstractAnimationTimer::runningAnimationCount() = 0;
     \internal
 
     This pure virtual function returns the number of animations the timer is running.
@@ -291,11 +292,11 @@ void QUnifiedTimer::updateAnimationTimers()
     }
 }
 
-int QUnifiedTimer::runningAnimationCount()
+qsizetype QUnifiedTimer::runningAnimationCount() const
 {
-    int count = 0;
-    for (int i = 0; i < animationTimers.size(); ++i)
-        count += animationTimers.at(i)->runningAnimationCount();
+    qsizetype count = 0;
+    for (const QAbstractAnimationTimer *timer : animationTimers)
+        count += timer->runningAnimationCount();
     return count;
 }
 
@@ -385,7 +386,7 @@ void QUnifiedTimer::timerEvent(QTimerEvent *event)
             startTimers();
     }
 
-    if (event->timerId() == pauseTimer.timerId()) {
+    if (event->id() == pauseTimer.id()) {
         // update current time on all timers
         updateAnimationTimers();
         restart();
@@ -868,7 +869,7 @@ QDefaultAnimationDriver::~QDefaultAnimationDriver()
 
 void QDefaultAnimationDriver::timerEvent(QTimerEvent *e)
 {
-    Q_ASSERT(e->timerId() == m_timer.timerId());
+    Q_ASSERT(e->id() == m_timer.id());
     Q_UNUSED(e); // if the assertions are disabled
     advance();
 }
@@ -1276,7 +1277,7 @@ int QAbstractAnimation::currentLoopTime() const
     \brief the current time and progress of the animation
 
     This property describes the animation's current time. You can change the
-    current time by calling setCurrentTime, or you can call start() and let
+    current time by calling setCurrentTime(), or you can call start() and let
     the animation run, setting the current time automatically as the animation
     progresses.
 
@@ -1428,8 +1429,7 @@ void QAbstractAnimation::pause()
 
 /*!
     Resumes the animation after it was paused. When the animation is resumed,
-    it emits the resumed() and stateChanged() signals. The currenttime is not
-    changed.
+    it emits the stateChanged() signal. The currentTime property is not changed.
 
     \sa start(), pause(), state()
  */

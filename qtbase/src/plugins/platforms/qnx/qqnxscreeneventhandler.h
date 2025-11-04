@@ -5,6 +5,7 @@
 #define QQNXSCREENEVENTHANDLER_H
 
 #include <qpa/qwindowsysteminterface.h>
+#include <QtCore/QBasicTimer>
 #include <QtCore/QLoggingCategory>
 
 #include <screen/screen.h>
@@ -70,7 +71,7 @@ private:
     QWindowSystemInterface::TouchPoint m_touchPoints[MaximumTouchPoints];
     QList<QQnxScreenEventFilter*> m_eventFilters;
     QQnxScreenEventThread *m_eventThread;
-    int m_focusLostTimer;
+    QBasicTimer m_focusLostTimer;
 };
 
 QT_END_NAMESPACE

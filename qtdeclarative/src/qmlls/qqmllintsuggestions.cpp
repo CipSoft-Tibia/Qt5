@@ -17,13 +17,14 @@
 #include <QtCore/qxpfunctional.h>
 #include <chrono>
 
+QT_BEGIN_NAMESPACE
+
+Q_STATIC_LOGGING_CATEGORY(lintLog, "qt.languageserver.lint")
+
 using namespace QLspSpecification;
 using namespace QQmlJS::Dom;
 using namespace Qt::StringLiterals;
 
-Q_LOGGING_CATEGORY(lintLog, "qt.languageserver.lint")
-
-QT_BEGIN_NAMESPACE
 namespace QmlLsp {
 
 static DiagnosticSeverity severityFromMsgType(QtMsgType t)
@@ -368,20 +369,18 @@ void QmlLintSuggestions::diagnoseHelper(const QByteArray &url,
 
     if (const QQmlJSLogger *logger = linter.logger()) {
         qsizetype nDiagnostics = diagnostics.size();
-        for (const auto &messages : { logger->infos(), logger->warnings(), logger->errors() }) {
-            for (const Message &message : messages) {
-                if (!message.message.contains(u"Failed to import")) {
-                    diagnostics.append(messageToDiagnostic(message));
-                    continue;
-                }
-
-                Message modified {message};
-                modified.message.append(
-                        u" Did you build your project? If yes, did you set the "
-                        u"\"QT_QML_GENERATE_QMLLS_INI\" CMake variable on your project to \"ON\"?");
-
-                diagnostics.append(messageToDiagnostic(modified));
+        for (const Message &message : logger->messages()) {
+            if (!message.message.contains(u"Failed to import")) {
+                diagnostics.append(messageToDiagnostic(message));
+                continue;
             }
+
+            Message modified {message};
+            modified.message.append(
+                    u" Did you build your project? If yes, did you set the "
+                    u"\"QT_QML_GENERATE_QMLLS_INI\" CMake variable on your project to \"ON\"?");
+
+            diagnostics.append(messageToDiagnostic(modified));
         }
         if (diagnostics.size() != nDiagnostics && imports.size() == 1)
             diagnostics.append(createMissingBuildDirDiagnostic());

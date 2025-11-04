@@ -33,7 +33,8 @@ enum class MediaStreamRequestResult2 {
   kKillSwitchOn = 14,
   kSystemPermissionDenied = 15,
   kDeviceInUse = 16,
-  kMaxValue = kDeviceInUse
+  kRequestCancelled = 17,
+  kMaxValue = kRequestCancelled
 };
 
 MediaStreamRequestResult2 MapResultToResult2(
@@ -74,10 +75,12 @@ MediaStreamRequestResult2 MapResultToResult2(
       return MediaStreamRequestResult2::kSystemPermissionDenied;
     case MediaStreamRequestResult::DEVICE_IN_USE:
       return MediaStreamRequestResult2::kDeviceInUse;
+    case MediaStreamRequestResult::REQUEST_CANCELLED:
+      return MediaStreamRequestResult2::kRequestCancelled;
     case MediaStreamRequestResult::NUM_MEDIA_REQUEST_RESULTS:
       break;
   }
-  NOTREACHED_NORETURN();
+  NOTREACHED();
 }
 
 void RecordMediaDeviceUpdateResponseMetric(

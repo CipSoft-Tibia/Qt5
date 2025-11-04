@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QtCore/qregularexpression.h>
-#include <QtTest/QtTest>
+#include <QtTest/QTest>
 #include <QtQml/qqmlapplicationengine.h>
 #include <QtQuick/qquickwindow.h>
 #include <QtQuickTemplates2/private/qquickbutton_p.h>

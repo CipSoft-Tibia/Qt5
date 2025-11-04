@@ -25,13 +25,13 @@
 // OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-#include "gtest/gtest-spi.h"
 #include "src/tint/lang/wgsl/ast/helper_test.h"
 
 namespace tint::ast {
 namespace {
 
 using BinaryExpressionTest = TestHelper;
+using BinaryExpressionDeathTest = BinaryExpressionTest;
 
 TEST_F(BinaryExpressionTest, Creation) {
     auto* lhs = Expr("lhs");
@@ -62,8 +62,8 @@ TEST_F(BinaryExpressionTest, IsBinary) {
     EXPECT_TRUE(r->Is<BinaryExpression>());
 }
 
-TEST_F(BinaryExpressionTest, Assert_Null_LHS) {
-    EXPECT_FATAL_FAILURE(
+TEST_F(BinaryExpressionDeathTest, Assert_Null_LHS) {
+    EXPECT_DEATH_IF_SUPPORTED(
         {
             ProgramBuilder b;
             b.create<BinaryExpression>(core::BinaryOp::kEqual, nullptr, b.Expr("rhs"));
@@ -71,8 +71,8 @@ TEST_F(BinaryExpressionTest, Assert_Null_LHS) {
         "internal compiler error");
 }
 
-TEST_F(BinaryExpressionTest, Assert_Null_RHS) {
-    EXPECT_FATAL_FAILURE(
+TEST_F(BinaryExpressionDeathTest, Assert_Null_RHS) {
+    EXPECT_DEATH_IF_SUPPORTED(
         {
             ProgramBuilder b;
             b.create<BinaryExpression>(core::BinaryOp::kEqual, b.Expr("lhs"), nullptr);
@@ -80,8 +80,8 @@ TEST_F(BinaryExpressionTest, Assert_Null_RHS) {
         "internal compiler error");
 }
 
-TEST_F(BinaryExpressionTest, Assert_DifferentGenerationID_LHS) {
-    EXPECT_FATAL_FAILURE(
+TEST_F(BinaryExpressionDeathTest, Assert_DifferentGenerationID_LHS) {
+    EXPECT_DEATH_IF_SUPPORTED(
         {
             ProgramBuilder b1;
             ProgramBuilder b2;
@@ -90,8 +90,8 @@ TEST_F(BinaryExpressionTest, Assert_DifferentGenerationID_LHS) {
         "internal compiler error");
 }
 
-TEST_F(BinaryExpressionTest, Assert_DifferentGenerationID_RHS) {
-    EXPECT_FATAL_FAILURE(
+TEST_F(BinaryExpressionDeathTest, Assert_DifferentGenerationID_RHS) {
+    EXPECT_DEATH_IF_SUPPORTED(
         {
             ProgramBuilder b1;
             ProgramBuilder b2;

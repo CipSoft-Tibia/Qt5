@@ -97,5 +97,85 @@
             "mac",
             "win"
         ]
+    },
+    "122": {
+        "name": "m122",
+        "chromium_project": "chromium-m122",
+        "ref": "refs/heads/chromium/6261",
+        "platforms": [
+            "linux",
+            "mac",
+            "win"
+        ]
+    },
+    "123": {
+        "name": "m123",
+        "chromium_project": "chromium-m123",
+        "ref": "refs/heads/chromium/6312",
+        "platforms": [
+            "linux",
+            "mac",
+            "win"
+        ]
+    },
+    "124": {
+        "name": "m124",
+        "chromium_project": "chromium-m124",
+        "ref": "refs/heads/chromium/6367",
+        "platforms": [
+            "linux",
+            "mac",
+            "win"
+        ]
+    },
+    "125": {
+        "name": "m125",
+        "chromium_project": "chromium-m125",
+        "ref": "refs/heads/chromium/6422",
+        "platforms": [
+            "linux",
+            "mac",
+            "win"
+        ]
+    },
+    "126": {
+        "name": "m126",
+        "chromium_project": "chromium-m126",
+        "ref": "refs/heads/chromium/6478",
+        "platforms": [
+            "linux",
+            "mac",
+            "win"
+        ]
+    },
+    "127": {
+        "name": "m127",
+        "chromium_project": "chromium-m127",
+        "ref": "refs/heads/chromium/6533",
+        "platforms": [
+            "linux",
+            "mac",
+            "win"
+        ]
+    },
+    "128": {
+        "name": "m128",
+        "chromium_project": "chromium-m128",
+        "ref": "refs/heads/chromium/6613",
+        "platforms": [
+            "linux",
+            "mac",
+            "win"
+        ]
+    },
+    "129": {
+        "name": "m129",
+        "chromium_project": "chromium-m129",
+        "ref": "refs/heads/chromium/6668",
+        "platforms": [
+            "linux",
+            "mac",
+            "win"
+        ]
     }
 }

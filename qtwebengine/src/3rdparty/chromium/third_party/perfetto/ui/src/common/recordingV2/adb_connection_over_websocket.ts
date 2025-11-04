@@ -12,10 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import {_TextDecoder} from 'custom_utils';
-
 import {defer, Deferred} from '../../base/deferred';
-
+import {utf8Decode} from '../../base/string_utils';
 import {AdbConnectionImpl} from './adb_connection_impl';
 import {RecordingError} from './recording_error_handling';
 import {
@@ -30,15 +28,15 @@ import {
   WEBSOCKET_UNABLE_TO_CONNECT,
 } from './recording_utils';
 
-const textDecoder = new _TextDecoder();
-
 export class AdbConnectionOverWebsocket extends AdbConnectionImpl {
   private streams = new Set<AdbOverWebsocketStream>();
 
   onDisconnect: OnDisconnectCallback = (_) => {};
 
   constructor(
-      private deviceSerialNumber: string, private websocketUrl: string) {
+    private deviceSerialNumber: string,
+    private websocketUrl: string,
+  ) {
     super();
   }
 
@@ -50,13 +48,15 @@ export class AdbConnectionOverWebsocket extends AdbConnectionImpl {
     return this.openStream(path);
   }
 
-  protected async openStream(destination: string):
-      Promise<AdbOverWebsocketStream> {
+  protected async openStream(
+    destination: string,
+  ): Promise<AdbOverWebsocketStream> {
     return AdbOverWebsocketStream.create(
-        this.websocketUrl,
-        destination,
-        this.deviceSerialNumber,
-        this.closeStream.bind(this));
+      this.websocketUrl,
+      destination,
+      this.deviceSerialNumber,
+      this.closeStream.bind(this),
+    );
   }
 
   // The disconnection for AdbConnectionOverWebsocket is synchronous, but this
@@ -87,10 +87,12 @@ export class AdbConnectionOverWebsocket extends AdbConnectionImpl {
 // It exposes an API to write commands to this websocket and read its output.
 export class AdbOverWebsocketStream implements ByteStream {
   private websocket: WebSocket;
+
   // commandSentSignal gets resolved if we successfully connect to the device
   // and send the command this socket wraps. commandSentSignal gets rejected if
   // we fail to connect to the device.
   private commandSentSignal = defer<AdbOverWebsocketStream>();
+
   // We store a promise for each messge while the message is processed.
   // This way, if the websocket server closes the connection, we first process
   // all previously received messages and only afterwards disconnect.
@@ -103,8 +105,11 @@ export class AdbOverWebsocketStream implements ByteStream {
   private onStreamCloseCallbacks: OnStreamCloseCallback[] = [];
 
   private constructor(
-      websocketUrl: string, destination: string, deviceSerialNumber: string,
-      private removeFromConnection: (stream: AdbOverWebsocketStream) => void) {
+    websocketUrl: string,
+    destination: string,
+    deviceSerialNumber: string,
+    private removeFromConnection: (stream: AdbOverWebsocketStream) => void,
+  ) {
     this.websocket = new WebSocket(websocketUrl);
 
     this.websocket.onopen = this.onOpen.bind(this, deviceSerialNumber);
@@ -160,7 +165,7 @@ export class AdbOverWebsocketStream implements ByteStream {
     this.close();
   }
 
-  write(msg: string|Uint8Array): void {
+  write(msg: string | Uint8Array): void {
     this.websocket.send(msg);
   }
 
@@ -170,35 +175,40 @@ export class AdbOverWebsocketStream implements ByteStream {
 
   private async onOpen(deviceSerialNumber: string): Promise<void> {
     this.websocket.send(
-        buildAbdWebsocketCommand(`host:transport:${deviceSerialNumber}`));
+      buildAbdWebsocketCommand(`host:transport:${deviceSerialNumber}`),
+    );
   }
 
-  private async onMessage(destination: string, evt: MessageEvent):
-      Promise<void> {
+  private async onMessage(
+    destination: string,
+    evt: MessageEvent,
+  ): Promise<void> {
     const messageProcessed = defer<void>();
     this.messageProcessedSignals.add(messageProcessed);
     try {
       if (!this._isConnected) {
-        const txt = await evt.data.text();
-        const prefix = txt.substr(0, 4);
+        const txt = (await evt.data.text()) as string;
+        const prefix = txt.substring(0, 4);
         if (prefix === 'OKAY') {
           this._isConnected = true;
           this.websocket.send(buildAbdWebsocketCommand(destination));
           this.commandSentSignal.resolve(this);
         } else if (prefix === 'FAIL' && txt.includes('device unauthorized')) {
           this.commandSentSignal.reject(
-              new RecordingError(ALLOW_USB_DEBUGGING));
+            new RecordingError(ALLOW_USB_DEBUGGING),
+          );
           this.close();
         } else {
           this.commandSentSignal.reject(
-              new RecordingError(WEBSOCKET_UNABLE_TO_CONNECT));
+            new RecordingError(WEBSOCKET_UNABLE_TO_CONNECT),
+          );
           this.close();
         }
       } else {
         // Upon a successful connection we first receive an 'OKAY' message.
         // After that, we receive messages with traced binary payloads.
         const arrayBufferResponse = await evt.data.arrayBuffer();
-        if (textDecoder.decode(arrayBufferResponse) !== 'OKAY') {
+        if (utf8Decode(arrayBufferResponse) !== 'OKAY') {
           this.signalStreamData(new Uint8Array(arrayBufferResponse));
         }
       }
@@ -215,14 +225,16 @@ export class AdbOverWebsocketStream implements ByteStream {
   }
 
   static create(
-      websocketUrl: string, destination: string, deviceSerialNumber: string,
-      removeFromConnection: (stream: AdbOverWebsocketStream) => void):
-      Promise<AdbOverWebsocketStream> {
-    return (new AdbOverWebsocketStream(
-                websocketUrl,
-                destination,
-                deviceSerialNumber,
-                removeFromConnection))
-        .commandSentSignal;
+    websocketUrl: string,
+    destination: string,
+    deviceSerialNumber: string,
+    removeFromConnection: (stream: AdbOverWebsocketStream) => void,
+  ): Promise<AdbOverWebsocketStream> {
+    return new AdbOverWebsocketStream(
+      websocketUrl,
+      destination,
+      deviceSerialNumber,
+      removeFromConnection,
+    ).commandSentSignal;
   }
 }

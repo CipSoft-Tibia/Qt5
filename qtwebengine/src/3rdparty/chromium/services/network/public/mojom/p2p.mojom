@@ -4,6 +4,7 @@
 
 module network.mojom;
 
+import "mojo/public/mojom/base/unguessable_token.mojom";
 import "mojo/public/mojom/base/time.mojom";
 import "mojo/public/mojom/base/read_only_buffer.mojom";
 import "services/network/public/mojom/network_interface.mojom";
@@ -29,11 +30,20 @@ struct P2PSendPacketMetrics;
 [Native]
 enum P2PSocketOption;
 
+// This enums corresponds to rtc::EcnMarking.
+enum EcnMarking {
+  kNotEct = 0,  // Not ECN-Capable Transport
+  kEct1 = 1,    // ECN-Capable Transport
+  kEct0 = 2,    // Not used by L4s (or webrtc.)
+  kCe = 3,      // Congestion experienced
+};
+
 // Represents the packet received on the socket.
 struct P2PReceivedPacket {
   mojo_base.mojom.ReadOnlyBuffer data;
   IPEndPoint socket_address;
   mojo_base.mojom.TimeTicks timestamp;
+  EcnMarking ecn;
 };
 
 // Represents a packet sent through a socket.
@@ -62,11 +72,13 @@ interface P2PSocketManager {
                            int32 address_family,
                            bool enable_mdns) => (array<IPAddress> addresses);
 
+  // Creates a P2PSocket
   CreateSocket(P2PSocketType type,
                IPEndPoint local_address,
                P2PPortRange port_range,
                P2PHostAndIPEndPoint remote_address,
                MutableNetworkTrafficAnnotationTag traffic_annotation,
+               mojo_base.mojom.UnguessableToken? devtools_token,
                pending_remote<P2PSocketClient> client,
                pending_receiver<P2PSocket> socket);
 };

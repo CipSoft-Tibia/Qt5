@@ -25,7 +25,7 @@ QNetworkAccessManager *QQmlTypeLoaderThread::networkAccessManager() const
     if (!m_networkAccessManager) {
         m_networkAccessManager = QQmlEnginePrivate::get(m_loader->engine())->createNetworkAccessManager(nullptr);
         QObject::connect(thread(), &QThread::finished, m_networkAccessManager, &QObject::deleteLater);
-        m_networkReplyProxy = new QQmlTypeLoaderNetworkReplyProxy(m_loader);
+        m_networkReplyProxy = new QQmlTypeLoaderNetworkReplyProxy(m_loader, threadObject());
         QObject::connect(thread(), &QThread::finished, m_networkReplyProxy, &QObject::deleteLater);
     }
 

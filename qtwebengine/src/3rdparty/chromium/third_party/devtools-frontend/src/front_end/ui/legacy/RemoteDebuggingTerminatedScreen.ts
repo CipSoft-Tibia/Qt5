@@ -44,13 +44,14 @@ export class RemoteDebuggingTerminatedScreen extends VBox {
     const reasonElement = span.createChild('span', 'reason');
     reasonElement.textContent = reason;
     this.contentElement.createChild('div', 'message').textContent = i18nString(UIStrings.reconnectWhenReadyByReopening);
-    const button = createTextButton(i18nString(UIStrings.reconnectDevtools), () => window.location.reload());
+    const button = createTextButton(
+        i18nString(UIStrings.reconnectDevtools), () => window.location.reload(), {jslogContext: 'reconnect'});
     this.contentElement.createChild('div', 'button').appendChild(button);
   }
 
   static show(reason: string): void {
-    const dialog = new Dialog();
-    dialog.setSizeBehavior(SizeBehavior.MeasureContent);
+    const dialog = new Dialog('remote-debnugging-terminated');
+    dialog.setSizeBehavior(SizeBehavior.MEASURE_CONTENT);
     dialog.addCloseButton();
     dialog.setDimmed(true);
     new RemoteDebuggingTerminatedScreen(reason).show(dialog.contentElement);

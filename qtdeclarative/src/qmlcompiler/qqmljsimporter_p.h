@@ -139,6 +139,7 @@ public:
     ImportedTypes importHardCodedBuiltins();
     QList<QQmlJS::DiagnosticMessage> importQmldirs(const QStringList &qmltypesFiles);
 
+    bool registerScope(const QQmlJSScope::Ptr &scope);
     QQmlJSScope::Ptr importFile(const QString &file);
     ImportedTypes importDirectory(const QString &directory, const QString &prefix = QString());
 

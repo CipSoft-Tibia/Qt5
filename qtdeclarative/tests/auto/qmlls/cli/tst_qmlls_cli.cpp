@@ -72,9 +72,11 @@ void tst_qmlls_cli::warnings_data()
 
     const QString fileImportingDir1 = testFile(u"sourceFolder/ImportFromImportPath1.qml"_s);
     const QString fileImportingBothDirs = testFile(u"sourceFolder/ImportFromBothPaths.qml"_s);
+    const QString fileImportingQtQuick = testFile(u"sourceFolder/ImportQtQuick.qml"_s);
 
     const QString importWarningDir1 = u"Warnings occurred while importing module \"SomeModule\""_s;
     const QString importWarningDir2 = u"Warnings occurred while importing module \"AnotherModule\""_s;
+    const QString importWarningQtQuick = u"Warnings occurred while importing module \"QtQuick\""_s;
 
     const UnexpectedMessages noUnexpectedMessages;
     const QString warnAboutQmllsIniFiles{
@@ -170,6 +172,20 @@ void tst_qmlls_cli::warnings_data()
                                          .arg(dir2) }
             << UnexpectedMessages{} << ExpectedDiagnostics{}
             << UnexpectedDiagnostics{ importWarningDir1, importWarningDir2 };
+
+    QTest::addRow("bare")
+            << QStringList{ u"--bare"_s, } << Environment{ { u"QML_IMPORT_PATH"_s, dir2 } }
+            << fileImportingQtQuick
+            << ExpectedMessages{}
+            << UnexpectedMessages{ u"Using import directories passed from environment variable \"QML_IMPORT_PATH\": \"%1\"."_s.arg(dir2)}
+            << ExpectedDiagnostics{ importWarningQtQuick } << UnexpectedDiagnostics {} ;
+
+    QTest::addRow("unbare")
+            << QStringList{} << Environment{ { u"QML_IMPORT_PATH"_s, dir2 } }
+            << fileImportingQtQuick << ExpectedMessages{}
+            << UnexpectedMessages{ u"Using import directories passed from environment variable \"QML_IMPORT_PATH\": \"%1\"."_s
+                                           .arg(dir2) }
+            << ExpectedDiagnostics{} << UnexpectedDiagnostics{ importWarningQtQuick };
 }
 
 auto tst_qmlls_cli::startServerRAII()

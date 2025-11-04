@@ -112,6 +112,7 @@ tint_target_add_dependencies(tint_lang_wgsl_sem lib
   tint_api_common
   tint_lang_core
   tint_lang_core_constant
+  tint_lang_core_intrinsic
   tint_lang_core_type
   tint_lang_wgsl
   tint_lang_wgsl_ast
@@ -131,6 +132,10 @@ tint_target_add_dependencies(tint_lang_wgsl_sem lib
   tint_utils_traits
 )
 
+tint_target_add_external_dependencies(tint_lang_wgsl_sem lib
+  "src_utils"
+)
+
 ################################################################################
 # Target:    tint_lang_wgsl_sem_test
 # Kind:      test
@@ -139,6 +144,7 @@ tint_add_target(tint_lang_wgsl_sem_test test
   lang/wgsl/sem/builtin_fn_test.cc
   lang/wgsl/sem/diagnostic_severity_test.cc
   lang/wgsl/sem/helper_test.h
+  lang/wgsl/sem/sampler_texture_pair_test.cc
   lang/wgsl/sem/struct_test.cc
   lang/wgsl/sem/value_expression_test.cc
 )
@@ -172,4 +178,5 @@ tint_target_add_dependencies(tint_lang_wgsl_sem_test test
 
 tint_target_add_external_dependencies(tint_lang_wgsl_sem_test test
   "gtest"
+  "src_utils"
 )

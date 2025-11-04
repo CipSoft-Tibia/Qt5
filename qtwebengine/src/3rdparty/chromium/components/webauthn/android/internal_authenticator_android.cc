@@ -10,11 +10,14 @@
 
 #include "base/android/jni_android.h"
 #include "base/android/jni_array.h"
+#include "base/android/jni_bytebuffer.h"
 #include "base/android/jni_string.h"
-#include "components/webauthn/android/jni_headers/InternalAuthenticator_jni.h"
 #include "content/public/browser/render_frame_host.h"
 #include "content/public/browser/web_contents.h"
 #include "url/origin.h"
+
+// Must come after all headers that specialize FromJniType() / ToJniType().
+#include "components/webauthn/android/jni_headers/InternalAuthenticator_jni.h"
 
 using base::android::AttachCurrentThread;
 using base::android::ConvertUTF8ToJavaString;
@@ -160,11 +163,9 @@ void InternalAuthenticatorAndroid::InvokeMakeCredentialResponse(
 
   // |byte_buffer| may be null if authentication failed.
   if (byte_buffer) {
-    jbyte* buf_in =
-        static_cast<jbyte*>(env->GetDirectBufferAddress(byte_buffer.obj()));
-    jlong buf_size = env->GetDirectBufferCapacity(byte_buffer.obj());
+    auto span = base::android::JavaByteBufferToSpan(env, byte_buffer.obj());
     blink::mojom::MakeCredentialAuthenticatorResponse::Deserialize(
-        buf_in, buf_size, &response);
+        span.data(), span.size(), &response);
   }
 
   DCHECK_NE(
@@ -184,11 +185,9 @@ void InternalAuthenticatorAndroid::InvokeGetAssertionResponse(
 
   // |byte_buffer| may be null if authentication failed.
   if (byte_buffer) {
-    jbyte* buf_in =
-        static_cast<jbyte*>(env->GetDirectBufferAddress(byte_buffer.obj()));
-    jlong buf_size = env->GetDirectBufferCapacity(byte_buffer.obj());
+    auto span = base::android::JavaByteBufferToSpan(env, byte_buffer.obj());
     blink::mojom::GetAssertionAuthenticatorResponse::Deserialize(
-        buf_in, buf_size, &response);
+        span.data(), span.size(), &response);
   }
 
   DCHECK_NE(

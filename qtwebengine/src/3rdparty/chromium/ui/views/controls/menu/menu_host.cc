@@ -19,6 +19,8 @@
 #include "ui/base/ui_base_types.h"
 #include "ui/compositor/compositor.h"
 #include "ui/events/gestures/gesture_recognizer.h"
+#include "ui/gfx/geometry/insets.h"
+#include "ui/gfx/geometry/rect.h"
 #include "ui/native_theme/native_theme.h"
 #include "ui/views/controls/menu/menu_controller.h"
 #include "ui/views/controls/menu/menu_host_root_view.h"
@@ -53,11 +55,10 @@ namespace internal {
 class PreMenuEventDispatchHandler : public ui::EventHandler,
                                     aura::WindowObserver {
  public:
-  PreMenuEventDispatchHandler(const MenuController* controller,
+  PreMenuEventDispatchHandler(MenuController* controller,
                               SubmenuView* submenu,
                               aura::Window* window)
-      : menu_controller_(const_cast<MenuController*>(controller)),
-        submenu_(submenu) {
+      : menu_controller_(controller->AsWeakPtr()), submenu_(submenu) {
     window_observation_.Observe(window);
     window->AddPreTargetHandler(this);
   }
@@ -91,7 +92,8 @@ class PreMenuEventDispatchHandler : public ui::EventHandler,
 
   base::ScopedObservation<aura::Window, aura::WindowObserver>
       window_observation_{this};
-  const raw_ptr<MenuController, DanglingUntriaged> menu_controller_;
+  // Non-null unless the menu is closing.
+  const base::WeakPtr<MenuController> menu_controller_;
   const raw_ptr<SubmenuView> submenu_;
 };
 #endif  // USE_AURA
@@ -124,11 +126,13 @@ MenuHost::~MenuHost() = default;
 
 void MenuHost::InitMenuHost(const InitParams& init_params) {
   TRACE_EVENT0("views", "MenuHost::InitMenuHost");
-  Widget::InitParams params(Widget::InitParams::TYPE_MENU);
+  Widget::InitParams params(Widget::InitParams::NATIVE_WIDGET_OWNS_WIDGET,
+                            Widget::InitParams::TYPE_MENU);
   MenuController* menu_controller =
       submenu_->GetMenuItem()->GetMenuController();
   bool bubble_border = submenu_->GetScrollViewContainer() &&
                        submenu_->GetScrollViewContainer()->HasBubbleBorder();
+  params.name = "MenuHost";
   params.shadow_type = bubble_border ? Widget::InitParams::ShadowType::kNone
                                      : Widget::InitParams::ShadowType::kDrop;
   params.opacity = (bubble_border ||
@@ -142,10 +146,6 @@ void MenuHost::InitMenuHost(const InitParams& init_params) {
   params.bounds = init_params.bounds;
 
 #if defined(USE_AURA)
-  // TODO(msisov): remove kMenutype once positioning of anchored windows
-  // finally migrates to a new path.
-  params.init_properties_container.SetProperty(aura::client::kMenuType,
-                                               init_params.menu_type);
   params.init_properties_container.SetProperty(aura::client::kOwnedWindowAnchor,
                                                init_params.owned_window_anchor);
 #endif
@@ -162,7 +162,7 @@ void MenuHost::InitMenuHost(const InitParams& init_params) {
   params.force_software_compositing = true;
 #endif
   Init(std::move(params));
-  absl::optional<std::string> show_menu_host_duration_histogram =
+  std::optional<std::string> show_menu_host_duration_histogram =
       menu_controller->TakeShowMenuHostDurationHistogram();
   CHECK(!menu_controller->TakeShowMenuHostDurationHistogram().has_value());
   if (show_menu_host_duration_histogram.has_value()) {
@@ -172,7 +172,9 @@ void MenuHost::InitMenuHost(const InitParams& init_params) {
     GetCompositor()->RequestSuccessfulPresentationTimeForNextFrame(
         base::BindOnce(
             [](std::string histogram, base::TimeTicks menu_host_init_time,
-               base::TimeTicks presentation_time) {
+               const viz::FrameTimingDetails& frame_timing_details) {
+              base::TimeTicks presentation_time =
+                  frame_timing_details.presentation_feedback.timestamp;
               UMA_HISTOGRAM_TIMES(histogram,
                                   presentation_time - menu_host_init_time);
             },
@@ -352,6 +354,15 @@ void MenuHost::OnDragComplete() {
 Widget* MenuHost::GetPrimaryWindowWidget() {
   return GetOwner() ? GetOwner()->GetPrimaryWindowWidget()
                     : Widget::GetPrimaryWindowWidget();
+}
+
+gfx::Insets MenuHost::GetCustomInsetsInDIP() const {
+#if BUILDFLAG(IS_OZONE)
+  if (submenu_) {
+    return submenu_->GetScrollViewContainer()->outside_border_insets();
+  }
+#endif  // BUILDFLAG(IS_OZONE)
+  return gfx::Insets();
 }
 
 void MenuHost::OnWidgetDestroying(Widget* widget) {

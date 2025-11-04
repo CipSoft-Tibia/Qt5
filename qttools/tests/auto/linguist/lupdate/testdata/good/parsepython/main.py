@@ -87,7 +87,10 @@ class Window(QMainWindow):
         msg = self.tr("msg3")
         #: Extra comment 4
         msg = self.tr("msg4")
-
+        msg = self.tr("")
+        msg = self.tr("prefix\u00A0\u00A0postfix")
+        msg = self.tr("before\U000000A0middle\U000000A0after")
+        msg = self.tr("before\u00A0\U000000A0middle\x1F\U000000A0\u00A0after")
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)

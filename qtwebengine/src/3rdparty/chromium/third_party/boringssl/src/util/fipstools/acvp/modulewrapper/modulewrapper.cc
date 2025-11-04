@@ -357,6 +357,21 @@ static bool GetConfig(const Span<const uint8_t> args[], ReplyCallback write_repl
         "ivGenMode": "8.2.2"
       },
       {
+        "algorithm": "ACVP-AES-GCM",
+        "revision": "1.0",
+        "direction": ["encrypt", "decrypt"],
+        "keyLen": [128, 192, 256],
+        "payloadLen": [{
+          "min": 0, "max": 65536, "increment": 8
+        }],
+        "aadLen": [{
+          "min": 0, "max": 65536, "increment": 8
+        }],
+        "tagLen": [32, 64, 96, 104, 112, 120, 128],
+        "ivLen": [96],
+        "ivGen": "external"
+      },
+      {
         "algorithm": "ACVP-AES-GMAC",
         "revision": "1.0",
         "direction": ["encrypt", "decrypt"],
@@ -496,7 +511,7 @@ static bool GetConfig(const Span<const uint8_t> args[], ReplyCallback write_repl
       {
         "algorithm": "ECDSA",
         "mode": "keyGen",
-        "revision": "1.0",
+        "revision": "FIPS186-5",
         "curve": [
           "P-224",
           "P-256",
@@ -510,7 +525,7 @@ static bool GetConfig(const Span<const uint8_t> args[], ReplyCallback write_repl
       {
         "algorithm": "ECDSA",
         "mode": "keyVer",
-        "revision": "1.0",
+        "revision": "FIPS186-5",
         "curve": [
           "P-224",
           "P-256",
@@ -521,7 +536,7 @@ static bool GetConfig(const Span<const uint8_t> args[], ReplyCallback write_repl
       {
         "algorithm": "ECDSA",
         "mode": "sigGen",
-        "revision": "1.0",
+        "revision": "FIPS186-5",
         "capabilities": [{
           "curve": [
             "P-224",
@@ -541,7 +556,7 @@ static bool GetConfig(const Span<const uint8_t> args[], ReplyCallback write_repl
       {
         "algorithm": "ECDSA",
         "mode": "sigVer",
-        "revision": "1.0",
+        "revision": "FIPS186-5",
         "capabilities": [{
           "curve": [
             "P-224",
@@ -550,7 +565,6 @@ static bool GetConfig(const Span<const uint8_t> args[], ReplyCallback write_repl
             "P-521"
           ],
           "hashAlg": [
-            "SHA-1",
             "SHA2-224",
             "SHA2-256",
             "SHA2-384",
@@ -562,27 +576,27 @@ static bool GetConfig(const Span<const uint8_t> args[], ReplyCallback write_repl
       {
         "algorithm": "RSA",
         "mode": "keyGen",
-        "revision": "FIPS186-4",
+        "revision": "FIPS186-5",
         "infoGeneratedByServer": true,
         "pubExpMode": "fixed",
         "fixedPubExp": "010001",
         "keyFormat": "standard",
         "capabilities": [{
-          "randPQ": "B.3.3",
+          "randPQ": "probable",
           "properties": [{
             "modulo": 2048,
             "primeTest": [
-              "tblC2"
+              "2powSecStr"
             ]
           },{
             "modulo": 3072,
             "primeTest": [
-              "tblC2"
+              "2powSecStr"
             ]
           },{
             "modulo": 4096,
             "primeTest": [
-              "tblC2"
+              "2powSecStr"
             ]
           }]
         }]
@@ -590,7 +604,7 @@ static bool GetConfig(const Span<const uint8_t> args[], ReplyCallback write_repl
       {
         "algorithm": "RSA",
         "mode": "sigGen",
-        "revision": "FIPS186-4",
+        "revision": "FIPS186-5",
         "capabilities": [{
           "sigType": "pkcs1v1.5",
           "properties": [{
@@ -636,6 +650,7 @@ static bool GetConfig(const Span<const uint8_t> args[], ReplyCallback write_repl
         },{
           "sigType": "pss",
           "properties": [{
+            "maskFunction": ["mgf1"],
             "modulo": 2048,
             "hashPair": [{
               "hashAlg": "SHA2-224",
@@ -657,6 +672,7 @@ static bool GetConfig(const Span<const uint8_t> args[], ReplyCallback write_repl
         },{
           "sigType": "pss",
           "properties": [{
+            "maskFunction": ["mgf1"],
             "modulo": 3072,
             "hashPair": [{
               "hashAlg": "SHA2-224",
@@ -678,6 +694,7 @@ static bool GetConfig(const Span<const uint8_t> args[], ReplyCallback write_repl
         },{
           "sigType": "pss",
           "properties": [{
+            "maskFunction": ["mgf1"],
             "modulo": 4096,
             "hashPair": [{
               "hashAlg": "SHA2-224",
@@ -701,28 +718,12 @@ static bool GetConfig(const Span<const uint8_t> args[], ReplyCallback write_repl
       {
         "algorithm": "RSA",
         "mode": "sigVer",
-        "revision": "FIPS186-4",
+        "revision": "FIPS186-5",
         "pubExpMode": "fixed",
         "fixedPubExp": "010001",
         "capabilities": [{
           "sigType": "pkcs1v1.5",
           "properties": [{
-            "modulo": 1024,
-            "hashPair": [{
-              "hashAlg": "SHA2-224"
-            }, {
-              "hashAlg": "SHA2-256"
-            }, {
-              "hashAlg": "SHA2-384"
-            }, {
-              "hashAlg": "SHA2-512"
-            }, {
-              "hashAlg": "SHA-1"
-            }]
-          }]
-        },{
-          "sigType": "pkcs1v1.5",
-          "properties": [{
             "modulo": 2048,
             "hashPair": [{
               "hashAlg": "SHA2-224"
@@ -732,8 +733,6 @@ static bool GetConfig(const Span<const uint8_t> args[], ReplyCallback write_repl
               "hashAlg": "SHA2-384"
             }, {
               "hashAlg": "SHA2-512"
-            }, {
-              "hashAlg": "SHA-1"
             }]
           }]
         },{
@@ -748,8 +747,6 @@ static bool GetConfig(const Span<const uint8_t> args[], ReplyCallback write_repl
               "hashAlg": "SHA2-384"
             }, {
               "hashAlg": "SHA2-512"
-            }, {
-              "hashAlg": "SHA-1"
             }]
           }]
         },{
@@ -764,34 +761,12 @@ static bool GetConfig(const Span<const uint8_t> args[], ReplyCallback write_repl
               "hashAlg": "SHA2-384"
             }, {
               "hashAlg": "SHA2-512"
-            }, {
-              "hashAlg": "SHA-1"
             }]
           }]
         },{
           "sigType": "pss",
           "properties": [{
-            "modulo": 1024,
-            "hashPair": [{
-              "hashAlg": "SHA2-224",
-              "saltLen": 28
-            }, {
-              "hashAlg": "SHA2-256",
-              "saltLen": 32
-            }, {
-              "hashAlg": "SHA2-384",
-              "saltLen": 48
-            }, {
-              "hashAlg": "SHA2-512/256",
-              "saltLen": 32
-            }, {
-              "hashAlg": "SHA-1",
-              "saltLen": 20
-            }]
-          }]
-        },{
-          "sigType": "pss",
-          "properties": [{
+            "maskFunction": ["mgf1"],
             "modulo": 2048,
             "hashPair": [{
               "hashAlg": "SHA2-224",
@@ -808,14 +783,12 @@ static bool GetConfig(const Span<const uint8_t> args[], ReplyCallback write_repl
             }, {
               "hashAlg": "SHA2-512/256",
               "saltLen": 32
-            }, {
-              "hashAlg": "SHA-1",
-              "saltLen": 20
             }]
           }]
         },{
           "sigType": "pss",
           "properties": [{
+            "maskFunction": ["mgf1"],
             "modulo": 3072,
             "hashPair": [{
               "hashAlg": "SHA2-224",
@@ -832,14 +805,12 @@ static bool GetConfig(const Span<const uint8_t> args[], ReplyCallback write_repl
             }, {
               "hashAlg": "SHA2-512/256",
               "saltLen": 32
-            }, {
-              "hashAlg": "SHA-1",
-              "saltLen": 20
             }]
           }]
         },{
           "sigType": "pss",
           "properties": [{
+            "maskFunction": ["mgf1"],
             "modulo": 4096,
             "hashPair": [{
               "hashAlg": "SHA2-224",
@@ -856,9 +827,6 @@ static bool GetConfig(const Span<const uint8_t> args[], ReplyCallback write_repl
             }, {
               "hashAlg": "SHA2-512/256",
               "saltLen": 32
-            }, {
-              "hashAlg": "SHA-1",
-              "saltLen": 20
             }]
           }]
         }]

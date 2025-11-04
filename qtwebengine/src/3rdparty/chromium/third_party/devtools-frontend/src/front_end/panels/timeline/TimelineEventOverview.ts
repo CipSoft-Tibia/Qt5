@@ -30,13 +30,14 @@
 
 import * as i18n from '../../core/i18n/i18n.js';
 import * as Platform from '../../core/platform/platform.js';
+import * as Protocol from '../../generated/protocol.js';
 import * as TraceEngine from '../../models/trace/trace.js';
 import * as TraceBounds from '../../services/trace_bounds/trace_bounds.js';
 import * as PerfUI from '../../ui/legacy/components/perf_ui/perf_ui.js';
 import * as UI from '../../ui/legacy/legacy.js';
+import * as VisualLogging from '../../ui/visual_logging/visual_logging.js';
 
-import {getCategoryStyles, getEventStyle, type TimelineCategory} from './EventUICategory.js';
-import {TimelineUIUtils} from './TimelineUIUtils.js';
+import * as Components from './components/components.js';
 
 const UIStrings = {
   /**
@@ -79,10 +80,10 @@ export abstract class TimelineEventOverview extends PerfUI.TimelineOverviewPane.
   }
 }
 
-const HIGH_NETWORK_PRIORITIES = new Set<TraceEngine.Types.TraceEvents.Priority>([
-  'VeryHigh',
-  'High',
-  'Medium',
+const HIGH_NETWORK_PRIORITIES = new Set<Protocol.Network.ResourcePriority>([
+  Protocol.Network.ResourcePriority.VeryHigh,
+  Protocol.Network.ResourcePriority.High,
+  Protocol.Network.ResourcePriority.Medium,
 ]);
 
 export class TimelineEventOverviewNetwork extends TimelineEventOverview {
@@ -147,7 +148,7 @@ export class TimelineEventOverviewNetwork extends TimelineEventOverview {
   }
 }
 
-const categoryToIndex = new WeakMap<TimelineCategory, number>();
+const categoryToIndex = new WeakMap<Components.EntryStyles.TimelineCategory, number>();
 
 export class TimelineEventOverviewCPUActivity extends TimelineEventOverview {
   private backgroundCanvas: HTMLCanvasElement;
@@ -168,16 +169,17 @@ export class TimelineEventOverviewCPUActivity extends TimelineEventOverview {
     this.#end = TraceEngine.Helpers.Timing.traceWindowMilliSeconds(traceParsedData.Meta.traceBounds).max;
   }
 
-  #entryCategory(entry: TraceEngine.Types.TraceEvents.TraceEventData): string|undefined {
+  #entryCategory(entry: TraceEngine.Types.TraceEvents.TraceEventData): Components.EntryStyles.EventCategory|undefined {
     // Special case: in CPU Profiles we get a lot of ProfileCalls that
     // represent Idle time. We typically represent ProfileCalls in the
     // Scripting Category, but if they represent idle time, we do not want
     // that.
     if (TraceEngine.Types.TraceEvents.isProfileCall(entry) && entry.callFrame.functionName === '(idle)') {
-      return 'idle';
+      return Components.EntryStyles.EventCategory.IDLE;
     }
-    const eventStyle = getEventStyle(entry.name as TraceEngine.Types.TraceEvents.KnownEventName)?.category ||
-        getCategoryStyles().Other;
+    const eventStyle =
+        Components.EntryStyles.getEventStyle(entry.name as TraceEngine.Types.TraceEvents.KnownEventName)?.category ||
+        Components.EntryStyles.getCategoryStyles().other;
     const categoryName = eventStyle.name;
     return categoryName;
   }
@@ -197,11 +199,11 @@ export class TimelineEventOverviewCPUActivity extends TimelineEventOverview {
     const timeRange = this.#end - this.#start;
     const scale = width / timeRange;
     const quantTime = quantSizePx / scale;
-    const categories = TimelineUIUtils.categories();
-    const categoryOrder = TimelineUIUtils.getTimelineMainEventCategories();
-    const otherIndex = categoryOrder.indexOf('other');
+    const categories = Components.EntryStyles.getCategoryStyles();
+    const categoryOrder = Components.EntryStyles.getTimelineMainEventCategories();
+    const otherIndex = categoryOrder.indexOf(Components.EntryStyles.EventCategory.OTHER);
     const idleIndex = 0;
-    console.assert(idleIndex === categoryOrder.indexOf('idle'));
+    console.assert(idleIndex === categoryOrder.indexOf(Components.EntryStyles.EventCategory.IDLE));
     for (let i = 0; i < categoryOrder.length; ++i) {
       categoryToIndex.set(categories[categoryOrder[i]], i);
     }
@@ -230,7 +232,7 @@ export class TimelineEventOverviewCPUActivity extends TimelineEventOverview {
             x += quantSizePx;
           }
 
-          const onEntryStart = (entry: TraceEngine.Types.TraceEvents.SyntheticTraceEntry): void => {
+          const onEntryStart = (entry: TraceEngine.Types.TraceEvents.TraceEventData): void => {
             const category = this.#entryCategory(entry);
             if (!category || category === 'idle') {
               // Idle event won't show in CPU activity, so just skip them.
@@ -243,7 +245,7 @@ export class TimelineEventOverviewCPUActivity extends TimelineEventOverview {
             categoryIndexStack.push(categoryIndex || otherIndex);
           };
 
-          function onEntryEnd(entry: TraceEngine.Types.TraceEvents.SyntheticTraceEntry): void {
+          function onEntryEnd(entry: TraceEngine.Types.TraceEvents.TraceEventData): void {
             const endTimeMilli = TraceEngine.Helpers.Timing.microSecondsToMilliseconds(entry.ts) +
                 TraceEngine.Helpers.Timing.microSecondsToMilliseconds(
                     TraceEngine.Types.Timing.MicroSeconds(entry.dur || 0));
@@ -415,6 +417,7 @@ export class TimelineFilmStripOverview extends TimelineEventOverview {
 
   constructor(filmStrip: TraceEngine.Extras.FilmStrip.Data) {
     super('filmstrip', null);
+    this.element.setAttribute('jslog', `${VisualLogging.section('film-strip')}`);
     this.frameToImagePromise = new Map();
     this.#filmStrip = filmStrip;
     this.lastFrame = null;

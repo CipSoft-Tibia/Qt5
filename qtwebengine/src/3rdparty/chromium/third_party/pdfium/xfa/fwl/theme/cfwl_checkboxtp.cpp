@@ -8,6 +8,7 @@
 
 #include <math.h>
 
+#include <array>
 #include <iterator>
 
 #include "core/fxge/cfx_path.h"
@@ -19,6 +20,8 @@
 #include "xfa/fwl/cfwl_themebackground.h"
 #include "xfa/fwl/cfwl_themetext.h"
 #include "xfa/fwl/cfwl_widget.h"
+
+namespace pdfium {
 
 namespace {
 
@@ -132,7 +135,7 @@ void CFWL_CheckBoxTP::DrawSignStar(CFGAS_GEGraphics* pGraphics,
   CFX_PointF ptCenter((rtSign.left + rtSign.right()) / 2.0f,
                       (rtSign.top + fBottom) / 2.0f);
 
-  CFX_PointF points[5];
+  std::array<CFX_PointF, 5> points;
   float fAngle = FXSYS_PI / 10.0f;
   for (auto& point : points) {
     point =
@@ -250,3 +253,5 @@ void CFWL_CheckBoxTP::DrawCheckSign(CFWL_Widget* pWidget,
       break;
   }
 }
+
+}  // namespace pdfium

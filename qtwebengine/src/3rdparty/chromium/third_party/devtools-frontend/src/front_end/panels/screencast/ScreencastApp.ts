@@ -28,11 +28,11 @@ export class ScreencastApp implements Common.App.App,
   private screencastView?: ScreencastView;
   rootView?: UI.RootView.RootView;
   constructor() {
-    this.enabledSetting = Common.Settings.Settings.instance().createSetting('screencastEnabled', true);
+    this.enabledSetting = Common.Settings.Settings.instance().createSetting('screencast-enabled', true);
     this.toggleButton = new UI.Toolbar.ToolbarToggle(i18nString(UIStrings.toggleScreencast), 'devices');
     this.toggleButton.setToggled(this.enabledSetting.get());
     this.toggleButton.setEnabled(false);
-    this.toggleButton.addEventListener(UI.Toolbar.ToolbarButton.Events.Click, this.toggleButtonClicked, this);
+    this.toggleButton.addEventListener(UI.Toolbar.ToolbarButton.Events.CLICK, this.toggleButtonClicked, this);
     SDK.TargetManager.TargetManager.instance().observeModels(SDK.ScreenCaptureModel.ScreenCaptureModel, this);
   }
 
@@ -47,7 +47,7 @@ export class ScreencastApp implements Common.App.App,
     this.rootView = new UI.RootView.RootView();
 
     this.rootSplitWidget =
-        new UI.SplitWidget.SplitWidget(false, true, 'InspectorView.screencastSplitViewState', 300, 300);
+        new UI.SplitWidget.SplitWidget(false, true, 'inspector-view.screencast-split-view-state', 300, 300);
     this.rootSplitWidget.setVertical(true);
     this.rootSplitWidget.setSecondIsSidebar(true);
     this.rootSplitWidget.show(this.rootView.element);
@@ -87,7 +87,7 @@ export class ScreencastApp implements Common.App.App,
   }
 
   private toggleButtonClicked(): void {
-    const enabled = !this.toggleButton.toggled();
+    const enabled = this.toggleButton.isToggled();
     this.enabledSetting.set(enabled);
     this.onScreencastEnabledChanged();
   }

@@ -24,12 +24,18 @@
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+#ifdef UNSAFE_BUFFERS_BUILD
+// TODO(crbug.com/351564777): Remove this and convert code to safer constructs.
+#pragma allow_unsafe_buffers
+#endif
+
 #include "third_party/blink/renderer/core/css/selector_query.h"
 
 #include <memory>
 #include <utility>
 
 #include "base/memory/ptr_util.h"
+#include "third_party/blink/public/mojom/use_counter/metrics/web_feature.mojom-blink.h"
 #include "third_party/blink/renderer/core/css/check_pseudo_has_cache_scope.h"
 #include "third_party/blink/renderer/core/css/parser/css_parser.h"
 #include "third_party/blink/renderer/core/css/parser/css_selector_parser.h"
@@ -109,15 +115,15 @@ inline bool SelectorMatches(const CSSSelector& selector,
 bool SelectorQuery::Matches(Element& target_element) const {
   QUERY_STATS_RESET();
   CheckPseudoHasCacheScope check_pseudo_has_cache_scope(
-      &target_element.GetDocument());
+      &target_element.GetDocument(), /*within_selector_checking=*/false);
   return SelectorListMatches(target_element, target_element);
 }
 
 Element* SelectorQuery::Closest(Element& target_element) const {
   QUERY_STATS_RESET();
   CheckPseudoHasCacheScope check_pseudo_has_cache_scope(
-      &target_element.GetDocument());
-  if (selectors_.empty()) {
+      &target_element.GetDocument(), /*within_selector_checking=*/false);
+  if (selector_start_offsets_.empty()) {
     return nullptr;
   }
 
@@ -133,7 +139,7 @@ Element* SelectorQuery::Closest(Element& target_element) const {
 StaticElementList* SelectorQuery::QueryAll(ContainerNode& root_node) const {
   QUERY_STATS_RESET();
   CheckPseudoHasCacheScope check_pseudo_has_cache_scope(
-      &root_node.GetDocument());
+      &root_node.GetDocument(), /*within_selector_checking=*/false);
   NthIndexCache nth_index_cache(root_node.GetDocument());
   HeapVector<Member<Element>> result;
   Execute<AllElementsSelectorQueryTrait>(root_node, result);
@@ -143,7 +149,7 @@ StaticElementList* SelectorQuery::QueryAll(ContainerNode& root_node) const {
 Element* SelectorQuery::QueryFirst(ContainerNode& root_node) const {
   QUERY_STATS_RESET();
   CheckPseudoHasCacheScope check_pseudo_has_cache_scope(
-      &root_node.GetDocument());
+      &root_node.GetDocument(), /*within_selector_checking=*/false);
   NthIndexCache nth_index_cache(root_node.GetDocument());
   Element* matched_element = nullptr;
   Execute<SingleElementSelectorQueryTrait>(root_node, matched_element);
@@ -207,6 +213,132 @@ static void CollectElementsByTagName(
   }
 }
 
+static bool AttributeValueMatchesExact(const Attribute& attribute_item,
+                                       const AtomicString& selector_value,
+                                       TextCaseSensitivity case_sensitivity) {
+  const AtomicString& value = attribute_item.Value();
+  if (value.IsNull()) {
+    return false;
+  }
+  if (case_sensitivity == kTextCaseSensitive) {
+    return selector_value == value;
+  }
+  return EqualIgnoringASCIICase(selector_value, value);
+}
+
+// SynchronizeAttribute() is rather expensive to call. We can determine ahead of
+// time if it's needed. The exact set needed for svg is rather large, so this
+// errors on the side of caution.
+static bool NeedsSynchronizeAttribute(const QualifiedName& qname,
+                                      bool is_html_doc) {
+  // Assume any known name needs synchronization.
+  if (qname.IsDefinedName()) {
+    return true;
+  }
+  const QualifiedName local_qname(qname.LocalName());
+  if (local_qname.IsDefinedName()) {
+    return true;
+  }
+  // HTML elements in an html doc use the lower case name.
+  if (!is_html_doc || qname.LocalName().IsLowerASCII()) {
+    return false;
+  }
+  const QualifiedName lower_local_qname(qname.LocalName().LowerASCII());
+  return lower_local_qname.IsDefinedName();
+}
+
+template <typename SelectorQueryTrait>
+static void CollectElementsByAttributeExact(
+    ContainerNode& root_node,
+    const CSSSelector& selector,
+    typename SelectorQueryTrait::OutputType& output) {
+  const QualifiedName& selector_attr = selector.Attribute();
+  const AtomicString& selector_value = selector.Value();
+  const TextCaseSensitivity case_sensitivity =
+      (selector.AttributeMatch() ==
+       CSSSelector::AttributeMatchType::kCaseInsensitive)
+          ? kTextCaseASCIIInsensitive
+          : kTextCaseSensitive;
+  const bool is_html_doc = IsA<HTMLDocument>(root_node.GetDocument());
+  // Legacy dictates that values of some attributes should be compared in
+  // a case-insensitive manner regardless of whether the case insensitive
+  // flag is set or not.
+  const bool legacy_case_insensitive =
+      is_html_doc && !selector.IsCaseSensitiveAttribute();
+  const bool needs_synchronize_attribute =
+      NeedsSynchronizeAttribute(selector_attr, is_html_doc);
+
+  for (Element& element : ElementTraversal::DescendantsOf(root_node)) {
+    QUERY_STATS_INCREMENT(fast_scan);
+    if (needs_synchronize_attribute) {
+      // Synchronize the attribute in case it is lazy-computed.
+      // Currently all lazy properties have a null namespace, so only pass
+      // localName().
+      element.SynchronizeAttribute(selector_attr.LocalName());
+    }
+    AttributeCollection attributes = element.AttributesWithoutUpdate();
+    for (const auto& attribute_item : attributes) {
+      if (!attribute_item.Matches(selector_attr)) {
+        if (element.IsHTMLElement() || !is_html_doc) {
+          continue;
+        }
+        // Non-html attributes in html documents are normalized to their camel-
+        // cased version during parsing if applicable. Yet, attribute selectors
+        // are lower-cased for selectors in html documents. Compare the selector
+        // and the attribute local name insensitively to e.g. allow matching SVG
+        // attributes like viewBox.
+        //
+        // NOTE: If changing this behavior, be sure to also update the bucketing
+        // in ElementRuleCollector::CollectMatchingRules() accordingly.
+        if (!attribute_item.MatchesCaseInsensitive(selector_attr)) {
+          continue;
+        }
+      }
+
+      if (AttributeValueMatchesExact(attribute_item, selector_value,
+                                     case_sensitivity)) {
+        SelectorQueryTrait::AppendElement(output, element);
+        if (SelectorQueryTrait::kShouldOnlyMatchFirstElement) {
+          return;
+        }
+        break;
+      }
+
+      if (case_sensitivity == kTextCaseASCIIInsensitive) {
+        if (selector_attr.NamespaceURI() != g_star_atom) {
+          break;
+        }
+        continue;
+      }
+
+      // If case-insensitive, re-check, and count if result differs.
+      // See http://code.google.com/p/chromium/issues/detail?id=327060
+      if (legacy_case_insensitive &&
+          AttributeValueMatchesExact(attribute_item, selector_value,
+                                     kTextCaseASCIIInsensitive)) {
+        // If the `s` modifier is in the attribute selector, return false
+        // despite of legacy_case_insensitive.
+        if (selector.AttributeMatch() ==
+            CSSSelector::AttributeMatchType::kCaseSensitiveAlways) {
+          DCHECK(RuntimeEnabledFeatures::CSSCaseSensitiveSelectorEnabled());
+          break;
+        }
+
+        UseCounter::Count(element.GetDocument(),
+                          WebFeature::kCaseInsensitiveAttrSelectorMatch);
+        SelectorQueryTrait::AppendElement(output, element);
+        if (SelectorQueryTrait::kShouldOnlyMatchFirstElement) {
+          return;
+        }
+        break;
+      }
+      if (selector_attr.NamespaceURI() != g_star_atom) {
+        break;
+      }
+    }
+  }
+}
+
 inline bool AncestorHasClassName(ContainerNode& root_node,
                                  const AtomicString& class_name) {
   auto* root_node_element = DynamicTo<Element>(root_node);
@@ -230,18 +362,18 @@ void SelectorQuery::FindTraverseRootsAndExecute(
   // We need to return the matches in document order. To use id lookup while
   // there is possiblity of multiple matches we would need to sort the
   // results. For now, just traverse the document in that case.
-  DCHECK_EQ(selectors_.size(), 1u);
+  DCHECK_EQ(selector_start_offsets_.size(), 1u);
 
   bool is_rightmost_selector = true;
   bool is_affected_by_sibling_combinator = false;
 
-  for (const CSSSelector* selector = selectors_[0]; selector;
+  for (const CSSSelector* selector = StartOfComplexSelector(0); selector;
        selector = selector->NextSimpleSelector()) {
     if (!is_affected_by_sibling_combinator &&
         selector->Match() == CSSSelector::kClass) {
       if (is_rightmost_selector) {
         CollectElementsByClassName<SelectorQueryTrait>(
-            root_node, selector->Value(), selectors_[0], output);
+            root_node, selector->Value(), StartOfComplexSelector(0), output);
         return;
       }
       // Since there exists some ancestor element which has the class name, we
@@ -287,9 +419,9 @@ void SelectorQuery::ExecuteForTraverseRoot(
     ContainerNode& traverse_root,
     ContainerNode& root_node,
     typename SelectorQueryTrait::OutputType& output) const {
-  DCHECK_EQ(selectors_.size(), 1u);
+  DCHECK_EQ(selector_start_offsets_.size(), 1u);
 
-  const CSSSelector& selector = *selectors_[0];
+  const CSSSelector& selector = *StartOfComplexSelector(0);
   SelectorChecker checker(SelectorChecker::kQueryingRules);
 
   for (Element& element : ElementTraversal::DescendantsOf(traverse_root)) {
@@ -306,8 +438,9 @@ void SelectorQuery::ExecuteForTraverseRoot(
 bool SelectorQuery::SelectorListMatches(ContainerNode& root_node,
                                         Element& element) const {
   SelectorChecker checker(SelectorChecker::kQueryingRules);
-  for (auto* const selector : selectors_) {
-    if (SelectorMatches(*selector, element, root_node, checker)) {
+  for (unsigned offset : selector_start_offsets_) {
+    if (SelectorMatches(*(selector_list_->First() + offset), element, root_node,
+                        checker)) {
       return true;
     }
   }
@@ -334,11 +467,12 @@ template <typename SelectorQueryTrait>
 void SelectorQuery::ExecuteWithId(
     ContainerNode& root_node,
     typename SelectorQueryTrait::OutputType& output) const {
-  DCHECK_EQ(selectors_.size(), 1u);
+  DCHECK_EQ(selector_start_offsets_.size(), 1u);
   DCHECK(!root_node.GetDocument().InQuirksMode());
 
-  const CSSSelector& first_selector = *selectors_[0];
-  const TreeScope& scope = root_node.ContainingTreeScope();
+  const CSSSelector& first_selector = *StartOfComplexSelector(0);
+  DCHECK(root_node.IsInTreeScope());
+  const TreeScope& scope = root_node.GetTreeScope();
   SelectorChecker checker(SelectorChecker::kQueryingRules);
 
   if (scope.ContainsMultipleElementsWithId(selector_id_)) {
@@ -396,7 +530,7 @@ template <typename SelectorQueryTrait>
 void SelectorQuery::Execute(
     ContainerNode& root_node,
     typename SelectorQueryTrait::OutputType& output) const {
-  if (selectors_.empty()) {
+  if (selector_start_offsets_.empty()) {
     return;
   }
 
@@ -405,7 +539,7 @@ void SelectorQuery::Execute(
     return;
   }
 
-  DCHECK_EQ(selectors_.size(), 1u);
+  DCHECK_EQ(selector_start_offsets_.size(), 1u);
 
   // In quirks mode getElementById("a") is case sensitive and should only
   // match elements with lowercase id "a", but querySelector is case-insensitive
@@ -417,7 +551,7 @@ void SelectorQuery::Execute(
     return;
   }
 
-  const CSSSelector& first_selector = *selectors_[0];
+  const CSSSelector& first_selector = *StartOfComplexSelector(0);
   if (!first_selector.NextSimpleSelector()) {
     // Fast path for querySelector*('.foo'), and querySelector*('div').
     switch (first_selector.Match()) {
@@ -435,6 +569,13 @@ void SelectorQuery::Execute(
         // throws before we get here, but we still may have selectors for
         // elements without a namespace.
         DCHECK_EQ(first_selector.TagQName().NamespaceURI(), g_null_atom);
+        break;
+      case CSSSelector::kAttributeExact:
+        if (RuntimeEnabledFeatures::FastPathSingleSelectorExactMatchEnabled()) {
+          CollectElementsByAttributeExact<SelectorQueryTrait>(
+              root_node, first_selector, output);
+          return;
+        }
         break;
       default:
         break;  // If we need another fast path, add here.
@@ -454,18 +595,18 @@ SelectorQuery::SelectorQuery(CSSSelectorList* selector_list)
       selector_id_is_rightmost_(true),
       selector_id_affected_by_sibling_combinator_(false),
       use_slow_scan_(true) {
-  selectors_.ReserveInitialCapacity(selector_list_->ComputeLength());
-  for (const CSSSelector* selector = selector_list_->First(); selector;
+  const CSSSelector* base = selector_list_->First();
+  for (const CSSSelector* selector = base; selector;
        selector = CSSSelectorList::Next(*selector)) {
     if (selector->MatchesPseudoElement()) {
       continue;
     }
-    selectors_.UncheckedAppend(selector);
+    selector_start_offsets_.push_back(selector - base);
   }
 
-  if (selectors_.size() == 1) {
+  if (selector_start_offsets_.size() == 1) {
     use_slow_scan_ = false;
-    for (const CSSSelector* current = selectors_[0]; current;
+    for (const CSSSelector* current = StartOfComplexSelector(0); current;
          current = current->NextSimpleSelector()) {
       if (current->Match() == CSSSelector::kId) {
         selector_id_ = current->Value();

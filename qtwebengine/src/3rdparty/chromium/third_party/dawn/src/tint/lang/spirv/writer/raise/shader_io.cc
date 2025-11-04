@@ -92,36 +92,37 @@ struct StateImpl : core::ir::transform::ShaderIOBackendState {
 
             if (io.attributes.builtin) {
                 // SampleMask must be an array for Vulkan.
-                if (io.attributes.builtin.value() == core::BuiltinValue::kSampleMask) {
+                if (io.attributes.builtin == core::BuiltinValue::kSampleMask) {
                     io.type = ty.array<u32, 1>();
                 }
                 name << "_" << io.attributes.builtin.value();
 
                 // Vulkan requires that fragment integer builtin inputs be Flat decorated.
                 if (func->Stage() == core::ir::Function::PipelineStage::kFragment &&
-                    addrspace == core::AddressSpace::kIn &&
-                    io.type->is_integer_scalar_or_vector()) {
+                    addrspace == core::AddressSpace::kIn && io.type->IsIntegerScalarOrVector()) {
                     io.attributes.interpolation = {core::InterpolationType::kFlat};
                 }
             }
             if (io.attributes.location) {
                 name << "_loc" << io.attributes.location.value();
-                if (io.attributes.index.has_value()) {
-                    name << "_idx" << io.attributes.index.value();
+                if (io.attributes.blend_src.has_value()) {
+                    name << "_idx" << io.attributes.blend_src.value();
                 }
             }
             name << name_suffix;
 
+            // Replace f16 types with f32 types if necessary.
+            auto* store_type = io.type;
+            if (config.polyfill_f16_io) {
+                if (store_type->DeepestElement()->Is<core::type::F16>()) {
+                    store_type = ty.match_width(ty.f32(), io.type);
+                }
+            }
+
             // Create an IO variable and add it to the root block.
-            auto* ptr = ty.ptr(addrspace, io.type, access);
+            auto* ptr = ty.ptr(addrspace, store_type, access);
             auto* var = b.Var(name.str(), ptr);
-            var->SetAttributes(core::ir::IOAttributes{
-                io.attributes.location,
-                io.attributes.index,
-                io.attributes.builtin,
-                io.attributes.interpolation,
-                io.attributes.invariant,
-            });
+            var->SetAttributes(io.attributes);
             ir.root_block->Append(var);
             vars.Push(var);
         }
@@ -134,9 +135,9 @@ struct StateImpl : core::ir::transform::ShaderIOBackendState {
     }
 
     /// @copydoc ShaderIO::BackendState::FinalizeOutputs
-    core::ir::Value* FinalizeOutputs() override {
+    const core::type::Type* FinalizeOutputs() override {
         MakeVars(output_vars, outputs, core::AddressSpace::kOut, core::Access::kWrite, "_Output");
-        return nullptr;
+        return ty.void_();
     }
 
     /// @copydoc ShaderIO::BackendState::GetInput
@@ -144,13 +145,20 @@ struct StateImpl : core::ir::transform::ShaderIOBackendState {
         // Load the input from the global variable declared earlier.
         auto* ptr = ty.ptr(core::AddressSpace::kIn, inputs[idx].type, core::Access::kRead);
         auto* from = input_vars[idx]->Result(0);
-        if (inputs[idx].attributes.builtin) {
-            if (inputs[idx].attributes.builtin.value() == core::BuiltinValue::kSampleMask) {
-                // SampleMask becomes an array for SPIR-V, so load from the first element.
-                from = builder.Access(ptr, input_vars[idx], 0_u)->Result(0);
-            }
+
+        // SampleMask becomes an array for SPIR-V, so load from the first element.
+        if (inputs[idx].attributes.builtin == core::BuiltinValue::kSampleMask) {
+            from = builder.Access(ptr, input_vars[idx], 0_u)->Result(0);
         }
-        return builder.Load(from)->Result(0);
+
+        auto* value = builder.Load(from)->Result(0);
+
+        // Convert f32 values to f16 values if needed.
+        if (config.polyfill_f16_io && inputs[idx].type->DeepestElement()->Is<core::type::F16>()) {
+            value = builder.Convert(inputs[idx].type, value)->Result(0);
+        }
+
+        return value;
     }
 
     /// @copydoc ShaderIO::BackendState::SetOutput
@@ -158,17 +166,22 @@ struct StateImpl : core::ir::transform::ShaderIOBackendState {
         // Store the output to the global variable declared earlier.
         auto* ptr = ty.ptr(core::AddressSpace::kOut, outputs[idx].type, core::Access::kWrite);
         auto* to = output_vars[idx]->Result(0);
-        if (outputs[idx].attributes.builtin) {
-            if (outputs[idx].attributes.builtin.value() == core::BuiltinValue::kSampleMask) {
-                // SampleMask becomes an array for SPIR-V, so store to the first element.
-                to = builder.Access(ptr, to, 0_u)->Result(0);
-            }
 
-            // Clamp frag_depth values if necessary.
-            if (outputs[idx].attributes.builtin.value() == core::BuiltinValue::kFragDepth) {
-                value = ClampFragDepth(builder, value);
-            }
+        // SampleMask becomes an array for SPIR-V, so store to the first element.
+        if (outputs[idx].attributes.builtin == core::BuiltinValue::kSampleMask) {
+            to = builder.Access(ptr, to, 0_u)->Result(0);
         }
+
+        // Clamp frag_depth values if necessary.
+        if (outputs[idx].attributes.builtin == core::BuiltinValue::kFragDepth) {
+            value = ClampFragDepth(builder, value);
+        }
+
+        // Convert f16 values to f32 values if needed.
+        if (config.polyfill_f16_io && value->Type()->DeepestElement()->Is<core::type::F16>()) {
+            value = builder.Convert(to->Type()->UnwrapPtr(), value)->Result(0);
+        }
+
         builder.Store(to, value);
     }
 

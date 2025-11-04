@@ -1,5 +1,5 @@
---- .upstream/generator.h	2023-06-22 08:29:43.218633538 +0200
-+++ generator.h	2024-08-05 16:00:04.719392449 +0200
+--- .upstream/generator.h	2024-11-26 09:17:44.310374771 +0100
++++ generator.h	2024-11-29 14:24:29.342501933 +0100
 @@ -6,23 +6,34 @@
  
  #include "moc.h"
@@ -39,7 +39,7 @@
  private:
      bool registerableMetaType(const QByteArray &propertyType);
      void registerClassInfoStrings();
-@@ -41,7 +52,9 @@
+@@ -39,7 +50,9 @@
      void generateMetacall();
      void generateStaticMetacall();
      void generateSignal(const FunctionDef *def, int index);

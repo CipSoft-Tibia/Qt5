@@ -21,9 +21,9 @@ done
 
 echo "Using public repositories for now. Repo-clones isn't set yet for Debian use"
 # (ping -c 3 repo-clones.ci.qt.io && set_internal_repo) || echo "Internal package repository not found. Using public repositories."
-echo "deb http://deb.debian.org/debian bullseye-backports main" | sudo tee -a /etc/apt/sources.list
-echo "deb-src http://deb.debian.org/debian bullseye-backports main" | sudo tee -a /etc/apt/sources.list
 
+echo "deb https://archive.debian.org/debian bullseye-backports main" | sudo tee -a /etc/apt/sources.list
+echo "deb-src https://archive.debian.org/debian bullseye-backports main" | sudo tee -a /etc/apt/sources.list
 # Make sure needed ca-certificates are available
 installPackages+=(ca-certificates)
 # Git is not needed by builds themselves, but is nice to have
@@ -145,6 +145,7 @@ installPackages+=(libbluetooth-dev)
 installPackages+=(dkms)
 # Needed for qtspeech
 installPackages+=(libspeechd-dev)
+installPackages+=(flite1-dev)
 #Pypdf for PDF reading in RTA tests
 installPackages+=(python3-pypdf2)
 # Needed for b2qt
@@ -248,6 +249,8 @@ installPackages+=(zlib1g-dev)
 installPackages+=(libusb-1.0-0-dev)
 # password management support for Qt Creator
 installPackages+=(libsecret-1-dev)
+installPackages+=(debian-archive-keyring)
+
 
 echo "Running update for apt"
 waitLoop

@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QFSFILEENGINE_ITERATOR_P_H
 #define QFSFILEENGINE_ITERATOR_P_H
@@ -19,6 +20,8 @@
 #include "qfilesystemiterator_p.h"
 #include "qdir.h"
 
+#include <memory>
+
 #ifndef QT_NO_FILESYSTEMITERATOR
 
 QT_BEGIN_NAMESPACE
@@ -37,7 +40,7 @@ public:
     QFileInfo currentFileInfo() const override;
 
 private:
-    mutable QScopedPointer<QFileSystemIterator> nativeIterator;
+    mutable std::unique_ptr<QFileSystemIterator> nativeIterator;
 };
 
 QT_END_NAMESPACE

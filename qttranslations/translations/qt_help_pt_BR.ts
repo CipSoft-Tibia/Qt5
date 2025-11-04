@@ -13,6 +13,81 @@
     </message>
 </context>
 <context>
+    <name>QHelpFilterSettingsWidget</name>
+    <message>
+        <source>Form</source>
+        <translation>Formulário</translation>
+    </message>
+    <message>
+        <source>Filter</source>
+        <translation>Filtro</translation>
+    </message>
+    <message>
+        <source>Components</source>
+        <translation>Componentes</translation>
+    </message>
+    <message>
+        <source>Versions</source>
+        <translation>Versões</translation>
+    </message>
+    <message>
+        <source>Add...</source>
+        <translation>Adicionar...</translation>
+    </message>
+    <message>
+        <source>Rename...</source>
+        <translation>Renomear...</translation>
+    </message>
+    <message>
+        <source>Remove</source>
+        <translation>Excluir</translation>
+    </message>
+    <message>
+        <source>Add Filter</source>
+        <translation>Adicionar filtro</translation>
+    </message>
+    <message>
+        <source>New Filter</source>
+        <translation>Novo filtro</translation>
+    </message>
+    <message>
+        <source>Rename Filter</source>
+        <translation>Renomear filtro</translation>
+    </message>
+    <message>
+        <source>Remove Filter</source>
+        <translation>Excluir filtro</translation>
+    </message>
+    <message>
+        <source>Are you sure you want to remove the &quot;%1&quot; filter?</source>
+        <translation>Tem certeza de que deseja excluir o filtro &quot;%1&quot;?</translation>
+    </message>
+    <message>
+        <source>Filter Exists</source>
+        <translation>Filtro existe</translation>
+    </message>
+    <message>
+        <source>The filter &quot;%1&quot; already exists.</source>
+        <translation>O filtro %1&quot; já existe.</translation>
+    </message>
+    <message>
+        <source>No Component</source>
+        <translation>Sem componente</translation>
+    </message>
+    <message>
+        <source>Invalid Component</source>
+        <translation>Componente inválido</translation>
+    </message>
+    <message>
+        <source>No Version</source>
+        <translation>Sem versão</translation>
+    </message>
+    <message>
+        <source>Invalid Version</source>
+        <translation>Versão inválida</translation>
+    </message>
+</context>
+<context>
     <name>QHelp</name>
     <message>
         <source>Untitled</source>
@@ -136,78 +211,10 @@
     </message>
 </context>
 <context>
-    <name>QHelpFilterSettingsWidget</name>
+    <name>fulltextsearch::QHelpSearchIndexWriter</name>
     <message>
-        <source>Form</source>
-        <translation>Formulário</translation>
-    </message>
-    <message>
-        <source>Filter</source>
-        <translation>Filtro</translation>
-    </message>
-    <message>
-        <source>Components</source>
-        <translation>Componentes</translation>
-    </message>
-    <message>
-        <source>Versions</source>
-        <translation>Versões</translation>
-    </message>
-    <message>
-        <source>Add...</source>
-        <translation>Adicionar...</translation>
-    </message>
-    <message>
-        <source>Rename...</source>
-        <translation>Renomear...</translation>
-    </message>
-    <message>
-        <source>Remove</source>
-        <translation>Excluir</translation>
-    </message>
-    <message>
-        <source>Add Filter</source>
-        <translation>Adicionar filtro</translation>
-    </message>
-    <message>
-        <source>New Filter</source>
-        <translation>Novo filtro</translation>
-    </message>
-    <message>
-        <source>Rename Filter</source>
-        <translation>Renomear filtro</translation>
-    </message>
-    <message>
-        <source>Remove Filter</source>
-        <translation>Excluir filtro</translation>
-    </message>
-    <message>
-        <source>Are you sure you want to remove the &quot;%1&quot; filter?</source>
-        <translation>Tem certeza de que deseja excluir o filtro &quot;%1&quot;?</translation>
-    </message>
-    <message>
-        <source>Filter Exists</source>
-        <translation>Filtro existe</translation>
-    </message>
-    <message>
-        <source>The filter &quot;%1&quot; already exists.</source>
-        <translation>O filtro %1&quot; já existe.</translation>
-    </message>
-    <message>
-        <source>No Component</source>
-        <translation>Sem componente</translation>
-    </message>
-    <message>
-        <source>Invalid Component</source>
-        <translation>Componente inválido</translation>
-    </message>
-    <message>
-        <source>No Version</source>
-        <translation>Sem versão</translation>
-    </message>
-    <message>
-        <source>Invalid Version</source>
-        <translation>Versão inválida</translation>
+        <source>Cannot open database &quot;%1&quot; using connection &quot;%2&quot;: %3</source>
+        <translation>Não foi possível abrir o banco de dados &quot;%1&quot; usando conexão &quot;%2&quot;: %3</translation>
     </message>
 </context>
 <context>
@@ -254,6 +261,29 @@
     </message>
 </context>
 <context>
+    <name>QResultWidget</name>
+    <message>
+        <source>Search Results</source>
+        <translation>Resultados da pesquisa</translation>
+    </message>
+    <message>
+        <source>Note:</source>
+        <translation>Nota:</translation>
+    </message>
+    <message>
+        <source>The search results may not be complete since the documentation is still being indexed.</source>
+        <translation>Os resultados da pesquisa podem não estar completos pois a documentação ainda está sendo indexada.</translation>
+    </message>
+    <message>
+        <source>Your search did not match any documents.</source>
+        <translation>Sua pesquisa não corresponde a nenhum documento.</translation>
+    </message>
+    <message>
+        <source>(The reason for this might be that the documentation is still being indexed.)</source>
+        <translation>(O motivo para isto pode ser que a documentação ainda esteja sendo indexada.)</translation>
+    </message>
+</context>
+<context>
     <name>QHelpSearchResultWidget</name>
     <message numerus="yes">
         <source>%1 - %2 of %n Hits</source>
@@ -276,29 +306,6 @@
     <message>
         <source>Invalid Option</source>
         <translation>Opção inválida</translation>
-    </message>
-</context>
-<context>
-    <name>QResultWidget</name>
-    <message>
-        <source>Search Results</source>
-        <translation>Resultados da pesquisa</translation>
-    </message>
-    <message>
-        <source>Note:</source>
-        <translation>Nota:</translation>
-    </message>
-    <message>
-        <source>The search results may not be complete since the documentation is still being indexed.</source>
-        <translation>Os resultados da pesquisa podem não estar completos pois a documentação ainda está sendo indexada.</translation>
-    </message>
-    <message>
-        <source>Your search did not match any documents.</source>
-        <translation>Sua pesquisa não corresponde a nenhum documento.</translation>
-    </message>
-    <message>
-        <source>(The reason for this might be that the documentation is still being indexed.)</source>
-        <translation>(O motivo para isto pode ser que a documentação ainda esteja sendo indexada.)</translation>
     </message>
 </context>
 <context>

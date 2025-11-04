@@ -63,7 +63,7 @@ _BANNED_CPP_FUNCTIONS = (
         [_THIRD_PARTY],
     ),
     (
-        r'/v8::Isolate::(?:|Try)GetCurrent()',
+        r'/v8::Isolate::(?:|Try)GetCurrent\(\)',
         (
             'v8::Isolate::GetCurrent() and v8::Isolate::TryGetCurrent() are',
             'banned. Hold a pointer to the v8::Isolate that was entered. Use',
@@ -72,6 +72,30 @@ _BANNED_CPP_FUNCTIONS = (
         ),
         True,
         (),
+    ),
+    (
+        r'/\bmemcpy\(',
+        ('Use FXSYS_memcpy() in place of memcpy().',),
+        True,
+        [_THIRD_PARTY],
+    ),
+    (
+        r'/\bmemmove\(',
+        ('Use FXSYS_memmove() in place of memmove().',),
+        True,
+        [_THIRD_PARTY],
+    ),
+    (
+        r'/\bmemset\(',
+        ('Use FXSYS_memset() in place of memset().',),
+        True,
+        [_THIRD_PARTY],
+    ),
+    (
+        r'/\bmemclr\(',
+        ('Use FXSYS_memclr() in place of memclr().',),
+        True,
+        [_THIRD_PARTY],
     ),
 )
 
@@ -499,6 +523,7 @@ def ChecksCommon(input_api, output_api):
   results.extend(
       input_api.canned_checks.PanProjectChecks(
           input_api, output_api, project_name='PDFium'))
+  results.extend(_CheckUnwantedDependencies(input_api, output_api))
 
   # PanProjectChecks() doesn't consider .gn/.gni files, so check those, too.
   files_to_check = (
@@ -519,7 +544,6 @@ def ChecksCommon(input_api, output_api):
 def CheckChangeOnUpload(input_api, output_api):
   results = []
   results.extend(_CheckNoBannedFunctions(input_api, output_api))
-  results.extend(_CheckUnwantedDependencies(input_api, output_api))
   results.extend(
       input_api.canned_checks.CheckPatchFormatted(input_api, output_api))
   results.extend(

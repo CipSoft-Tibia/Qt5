@@ -6,7 +6,7 @@ import {assert} from 'chrome://resources/js/assert.js';
 import {CustomElement} from 'chrome://resources/js/custom_element.js';
 
 import {getTemplate} from './private_aggregation_internals_table.html.js';
-import {TableModel} from './table_model.js';
+import type {TableModel} from './table_model.js';
 
 /**
  * Helper function for setting sort attributes on |th|.
@@ -46,8 +46,7 @@ export class PrivateAggregationInternalsTableElement<T> extends CustomElement {
     this.model_ = model;
     this.sortDesc_ = false;
 
-    const tr = this.$<HTMLElement>('tr');
-    assert(tr);
+    const tr = this.getRequiredElement('tr');
     model.cols.forEach((col, idx) => {
       const th = document.createElement('th');
       th.scope = 'col';
@@ -73,8 +72,7 @@ export class PrivateAggregationInternalsTableElement<T> extends CustomElement {
     td.colSpan = this.model_.cols.length;
     const tr = document.createElement('tr');
     tr.appendChild(td);
-    const tbody = this.$<HTMLElement>('tbody');
-    assert(tbody);
+    const tbody = this.getRequiredElement('tbody');
     tbody.appendChild(tr);
   }
 
@@ -109,8 +107,7 @@ export class PrivateAggregationInternalsTableElement<T> extends CustomElement {
   }
 
   updateTbody() {
-    const tbody = this.$<HTMLElement>('tbody');
-    assert(tbody);
+    const tbody = this.getRequiredElement('tbody');
     tbody.innerText = '';
 
     assert(this.model_);

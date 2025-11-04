@@ -22,7 +22,7 @@
 
 QT_BEGIN_NAMESPACE
 
-namespace QtPrivate {
+namespace QtMultimediaPrivate {
 
 inline constexpr std::array allSupportedSampleRates{
     8'000,  11'025, 12'000, 16'000, 22'050,  24'000,  32'000,  44'100,
@@ -36,7 +36,27 @@ inline constexpr std::array allSupportedSampleFormats{
     QAudioFormat::Float,
 };
 
-} // namespace QtPrivate
+template <typename T>
+int findClosestSamplingRate(int rate, QSpan<const T> supportedRates)
+{
+    Q_ASSERT(!supportedRates.empty());
+
+    auto exactMatchIt = std::find(supportedRates.begin(), supportedRates.end(), T(rate));
+    if (exactMatchIt != supportedRates.end())
+        return int(*exactMatchIt);
+
+    // find supported rate, which is closest to the default pipewire sampling rate (using a
+    // logarithmic scaling)
+    auto ratioToRate = [&](int arg) {
+        return arg > rate ? float(arg) / rate : rate / float(arg);
+    };
+
+    return *std::min_element(supportedRates.begin(), supportedRates.end(), [&](auto lhs, auto rhs) {
+        return ratioToRate(lhs) < ratioToRate(rhs);
+    });
+}
+
+} // namespace QtMultimediaPrivate
 
 QT_END_NAMESPACE
 

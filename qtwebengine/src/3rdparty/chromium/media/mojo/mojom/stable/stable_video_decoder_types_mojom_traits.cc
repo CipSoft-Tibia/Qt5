@@ -295,11 +295,11 @@ uint32_t StructTraits<media::stable::mojom::DecoderBufferDataView,
                       scoped_refptr<media::DecoderBuffer>>::
     data_size(const scoped_refptr<media::DecoderBuffer>& input) {
   static_assert(
-      std::is_same<decltype(input->data_size()), size_t>::value,
-      "Unexpected type for media::DecoderBuffer::data_size(). If you need to "
+      std::is_same<decltype(input->size()), size_t>::value,
+      "Unexpected type for media::DecoderBuffer::size(). If you need to "
       "change this assertion, please contact chromeos-gfx-video@google.com.");
   if (!input->end_of_stream())
-    return base::checked_cast<uint32_t>(input->data_size());
+    return base::checked_cast<uint32_t>(input->size());
   return 0u;
 }
 
@@ -372,7 +372,7 @@ base::TimeDelta StructTraits<media::stable::mojom::DecoderBufferDataView,
     front_discard(const scoped_refptr<media::DecoderBuffer>& input) {
   static_assert(
       std::is_same<decltype(input->discard_padding()),
-                   const std::pair<base::TimeDelta, base::TimeDelta>&>::value,
+                   std::pair<base::TimeDelta, base::TimeDelta>>::value,
       "Unexpected type for input->discard_padding(). If you need to change "
       "this assertion, please contact chromeos-gfx-video@google.com.");
   static_assert(
@@ -392,7 +392,7 @@ base::TimeDelta StructTraits<media::stable::mojom::DecoderBufferDataView,
     back_discard(const scoped_refptr<media::DecoderBuffer>& input) {
   static_assert(
       std::is_same<decltype(input->discard_padding()),
-                   const std::pair<base::TimeDelta, base::TimeDelta>&>::value,
+                   std::pair<base::TimeDelta, base::TimeDelta>>::value,
       "Unexpected type for input->discard_padding(). If you need to change "
       "this assertion, please contact chromeos-gfx-video@google.com.");
   static_assert(
@@ -407,17 +407,17 @@ base::TimeDelta StructTraits<media::stable::mojom::DecoderBufferDataView,
 }
 
 // static
-absl::optional<media::DecoderBufferSideData>
+std::optional<media::DecoderBufferSideData>
 StructTraits<media::stable::mojom::DecoderBufferDataView,
              scoped_refptr<media::DecoderBuffer>>::
     side_data(const scoped_refptr<media::DecoderBuffer>& input) {
   static_assert(
       std::is_same<decltype(input->side_data()),
-                   const absl::optional<media::DecoderBufferSideData>&>::value,
+                   std::optional<media::DecoderBufferSideData>>::value,
       "Unexpected type for input->side_data(). If you need to change this "
       "assertion, please contact chromeos-gfx-video@google.com.");
   if (input->end_of_stream()) {
-    return absl::nullopt;
+    return std::nullopt;
   }
   return input->side_data();
 }
@@ -462,6 +462,14 @@ bool StructTraits<media::stable::mojom::DecoderBufferDataView,
   if (decrypt_config)
     decoder_buffer->set_decrypt_config(std::move(decrypt_config));
 
+  std::optional<media::DecoderBufferSideData> side_data;
+  if (!input.ReadSideData(&side_data)) {
+    return false;
+  }
+  decoder_buffer->set_side_data(side_data);
+
+  // Note: DiscardPadding must be set after side data since the non-stable
+  // interface has moved the discard padding into side data.
   base::TimeDelta front_discard;
   if (!input.ReadFrontDiscard(&front_discard))
     return false;
@@ -476,13 +484,9 @@ bool StructTraits<media::stable::mojom::DecoderBufferDataView,
       "chromeos-gfx-video@google.com.");
   media::DecoderBuffer::DiscardPadding discard_padding(front_discard,
                                                        back_discard);
-  decoder_buffer->set_discard_padding(discard_padding);
-
-  absl::optional<media::DecoderBufferSideData> side_data;
-  if (!input.ReadSideData(&side_data)) {
-    return false;
+  if (discard_padding != media::DecoderBuffer::DiscardPadding()) {
+    decoder_buffer->set_discard_padding(discard_padding);
   }
-  decoder_buffer->set_side_data(side_data);
 
   // TODO(b/269383891): Remove this in M120.
   // If the input is an older version than us, then it may have |raw_side_data|
@@ -622,7 +626,7 @@ StructTraits<media::stable::mojom::DecryptConfigDataView,
 }
 
 // static
-const absl::optional<media::EncryptionPattern>&
+const std::optional<media::EncryptionPattern>&
 StructTraits<media::stable::mojom::DecryptConfigDataView,
              std::unique_ptr<media::DecryptConfig>>::
     encryption_pattern(const std::unique_ptr<media::DecryptConfig>& input) {
@@ -671,7 +675,7 @@ bool StructTraits<media::stable::mojom::DecryptConfigDataView,
   if (!input.ReadSubsamples(&subsamples))
     return false;
 
-  absl::optional<media::EncryptionPattern> encryption_pattern;
+  std::optional<media::EncryptionPattern> encryption_pattern;
   if (!input.ReadEncryptionPattern(&encryption_pattern))
     return false;
   if (encryption_scheme != media::EncryptionScheme::kCbcs &&
@@ -950,7 +954,7 @@ const base::Value::List& StructTraits<media::stable::mojom::StatusDataDataView,
 }
 
 // static
-absl::optional<media::internal::StatusData> StructTraits<
+std::optional<media::internal::StatusData> StructTraits<
     media::stable::mojom::StatusDataDataView,
     media::internal::StatusData>::cause(const media::internal::StatusData&
                                             input) {
@@ -1037,7 +1041,7 @@ absl::optional<media::internal::StatusData> StructTraits<
     output_cause.group = std::string(media::DecoderStatusTraits::Group());
     return output_cause;
   }
-  return absl::nullopt;
+  return std::nullopt;
 }
 
 // static
@@ -1117,7 +1121,7 @@ bool StructTraits<media::stable::mojom::StatusDataDataView,
     if (!file) {
       return false;
     }
-    const absl::optional<int> line =
+    const std::optional<int> line =
         dict.FindInt(media::StatusConstants::kLineKey);
     if (!line) {
       return false;
@@ -1127,7 +1131,7 @@ bool StructTraits<media::stable::mojom::StatusDataDataView,
   if (!data.ReadData(&output->data))
     return false;
 
-  absl::optional<media::internal::StatusData> cause;
+  std::optional<media::internal::StatusData> cause;
   if (!data.ReadCause(&cause))
     return false;
 
@@ -1167,7 +1171,7 @@ mojo::OptionalAsPointer<const media::internal::StatusData> StructTraits<
 bool StructTraits<media::stable::mojom::StatusDataView, media::DecoderStatus>::
     Read(media::stable::mojom::StatusDataView data,
          media::DecoderStatus* output) {
-  absl::optional<media::internal::StatusData> internal;
+  std::optional<media::internal::StatusData> internal;
   if (!data.ReadInternal(&internal))
     return false;
   if (internal) {
@@ -1403,7 +1407,7 @@ bool StructTraits<media::stable::mojom::VideoDecoderConfigDataView,
       return false;
   }
 
-  NOTREACHED_NORETURN();
+  NOTREACHED();
 }
 
 // static
@@ -1505,7 +1509,7 @@ StructTraits<media::stable::mojom::VideoDecoderConfigDataView,
 }
 
 // static
-const absl::optional<gfx::HDRMetadata>& StructTraits<
+const std::optional<gfx::HDRMetadata>& StructTraits<
     media::stable::mojom::VideoDecoderConfigDataView,
     media::VideoDecoderConfig>::hdr_metadata(const media::VideoDecoderConfig&
                                                  input) {
@@ -1573,7 +1577,7 @@ bool StructTraits<media::stable::mojom::VideoDecoderConfigDataView,
   if (!input.ReadColorSpaceInfo(&color_space))
     return false;
 
-  absl::optional<gfx::HDRMetadata> hdr_metadata;
+  std::optional<gfx::HDRMetadata> hdr_metadata;
   if (!input.ReadHdrMetadata(&hdr_metadata))
     return false;
 
@@ -1652,6 +1656,7 @@ bool StructTraits<media::stable::mojom::VideoFrameMetadataDataView,
   output->read_lock_fences_enabled = true;
   output->protected_video = input.protected_video();
   output->hw_protected = input.hw_protected();
+  output->needs_detiling = input.needs_detiling();
   output->power_efficient = true;
 
   if (output->hw_protected && !output->protected_video) {

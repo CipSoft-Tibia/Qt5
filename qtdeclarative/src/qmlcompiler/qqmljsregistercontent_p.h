@@ -18,273 +18,234 @@
 #include <QtCore/qhash.h>
 #include <QtCore/qstring.h>
 
-#include <variant>
-
 QT_BEGIN_NAMESPACE
 
+struct QQmlJSRegisterContentPrivate;
 class Q_QMLCOMPILER_EXPORT QQmlJSRegisterContent
 {
 public:
+    // ContentVariant determines the relation between this register content and its scope().
+    // For example, a property is always a property of a type. That type is given as scope.
+    // Most content variants can carry either a specific kind of content, as commented below,
+    // or a conversion. If two or more register contents of the same content variant are merged,
+    // they retain their content variant but become a conversion with the original register
+    // contents linked as conversion origins.
+
     enum ContentVariant {
-        ObjectById,
-        Singleton,
-        Script,
-        MetaType,
+        ObjectById,   // type (scope is QML scope of binding/function)
+        TypeByName,   // type (TODO: scope is not guaranteed to be useful)
+        Singleton,    // type (scope is either import namespace or QML scope)
+        Script,       // type (scope is either import namespace or QML scope)
+        MetaType,     // type (always QMetaObject, scope is the type reprented by the metaobject)
+        Extension,    // type (scope is the type being extended)
+        ScopeObject,  // type (either QML scope of binding/function or JS global object)
+        ParentScope,  // type (scope is the child scope)
 
-        JavaScriptGlobal,
-        JavaScriptObject,
-        JavaScriptScopeProperty,
-        GenericObjectProperty, // Can be JSObject property or QVariantMap
+        Property,     // property (scope is the owner (hasOwnProperty) of the property)
+        Method,       // method (retrieved as property, including overloads), like property
+        Enum,         // enumeration (scope is the type the enumeration belongs to)
 
-        ScopeProperty,
-        ScopeMethod,
-        ScopeAttached,
-        ScopeModulePrefix,
-        ExtensionScopeProperty,
-        ExtensionScopeMethod,
+        Attachment,   // type (scope is attacher; use attacher() and attachee() for clarity)
+        ModulePrefix, // import namespace (scope is either QML scope or type the prefix is used on)
 
-        ObjectProperty,
-        ObjectMethod,
-        ObjectEnum,
-        ObjectAttached,
-        ObjectModulePrefix,
-        ExtensionObjectProperty,
-        ExtensionObjectMethod,
-        ExtensionObjectEnum,
+        MethodCall,   // method call (resolved to specific overload), like property
 
-        MethodReturnValue,
-        JavaScriptReturnValue,
+        ListValue,    // property (scope is list retrieved from)
+        ListIterator, // property (scope is list being iterated)
 
-        ListValue,
-        ListIterator,
-        Builtin,
+        Literal,      // type (scope does not exist)
+        Operation,    // type (scope does not exist)
+
+        BaseType,     // type (scope is derived type)
+        Cast,         // type (scope is type casted from)
+
+        Storage,      // type (scope does not exist)
+
+        // Either a synthetic type or a merger of multiple different variants.
+        // In the latter case, look at conversion origins to find out more.
+        // Synthetic types should be short lived.
         Unknown,
     };
 
     enum { InvalidLookupIndex = -1 };
 
     QQmlJSRegisterContent() = default;
-    bool isValid() const { return !m_storedType.isNull(); }
+
+
+    // General properties of the register content, (mostly) independent of kind or variant
+
+    bool isNull() const { return !d; }
+    bool isValid() const;
+
+    bool isList() const;
+    bool isWritable() const;
+
+    ContentVariant variant() const;
 
     QString descriptiveName() const;
+    QString containedTypeName() const;
 
-    friend bool operator==(const QQmlJSRegisterContent &a, const QQmlJSRegisterContent &b)
+    int resultLookupIndex() const;
+
+    QQmlJSScope::ConstPtr storedType() const;
+    QQmlJSScope::ConstPtr containedType() const;
+    QQmlJSScope::ConstPtr scopeType() const;
+
+    bool contains(const QQmlJSScope::ConstPtr &type) const { return type == containedType(); }
+    bool isStoredIn(const QQmlJSScope::ConstPtr &type) const { return type == storedType(); }
+
+
+    // Properties of specific kinds of register contents
+
+    bool isType() const;
+    QQmlJSScope::ConstPtr type() const;
+
+    bool isProperty() const;
+    QQmlJSMetaProperty property() const;
+    int baseLookupIndex() const;
+
+    bool isEnumeration() const;
+    QQmlJSMetaEnum enumeration() const;
+    QString enumMember() const;
+
+    bool isMethod() const;
+    QList<QQmlJSMetaMethod> method() const;
+    QQmlJSScope::ConstPtr methodType() const;
+
+    bool isImportNamespace() const;
+    uint importNamespace() const;
+    QQmlJSScope::ConstPtr importNamespaceType() const;
+
+    bool isConversion() const;
+    QQmlJSScope::ConstPtr conversionResultType() const;
+    QQmlJSRegisterContent conversionResultScope() const;
+    QList<QQmlJSRegisterContent> conversionOrigins() const;
+
+    bool isMethodCall() const;
+    QQmlJSMetaMethod methodCall() const;
+    bool isJavaScriptReturnValue() const;
+
+
+    // Linked register contents
+
+    QQmlJSRegisterContent attacher() const;
+    QQmlJSRegisterContent attachee() const;
+
+    QQmlJSRegisterContent scope() const;
+    QQmlJSRegisterContent storage() const;
+    QQmlJSRegisterContent original() const;
+    QQmlJSRegisterContent shadowed() const;
+
+    quintptr id() const { return quintptr(d); }
+
+private:
+    friend class QQmlJSRegisterContentPool;
+    // TODO: Constant string/number/bool/enumval
+
+    QQmlJSRegisterContent(QQmlJSRegisterContentPrivate *dd) : d(dd) {};
+
+    friend bool operator==(QQmlJSRegisterContent a, QQmlJSRegisterContent b)
     {
-        return a.m_storedType == b.m_storedType && a.m_variant == b.m_variant
-                && a.m_scope == b.m_scope && a.m_content == b.m_content;
+        return a.d == b.d;
     }
 
-    friend bool operator!=(const QQmlJSRegisterContent &a, const QQmlJSRegisterContent &b)
+    friend bool operator!=(QQmlJSRegisterContent a, QQmlJSRegisterContent b)
     {
         return !(a == b);
     }
 
-    bool isType() const { return m_content.index() == Type; }
-    bool isProperty() const { return m_content.index() == Property; }
-    bool isEnumeration() const { return m_content.index() == Enum; }
-    bool isMethod() const { return m_content.index() == Method; }
-    bool isImportNamespace() const { return m_content.index() == ImportNamespace; }
-    bool isConversion() const { return m_content.index() == Conversion; }
-    bool isList() const;
-
-    bool isWritable() const;
-
-    QQmlJSScope::ConstPtr storedType() const { return m_storedType; }
-    QQmlJSScope::ConstPtr scopeType() const { return m_scope; }
-
-    QQmlJSScope::ConstPtr type() const
+    friend size_t qHash(QQmlJSRegisterContent registerContent, size_t seed = 0)
     {
-        return std::get<std::pair<QQmlJSScope::ConstPtr, int>>(m_content).first;
-    }
-    QQmlJSMetaProperty property() const
-    {
-        return std::get<PropertyLookup>(m_content).property;
-    }
-    int baseLookupIndex() const
-    {
-        return std::get<PropertyLookup>(m_content).baseLookupIndex;
-    }
-    int resultLookupIndex() const
-    {
-        switch (m_content.index()) {
-        case Type:
-            return std::get<std::pair<QQmlJSScope::ConstPtr, int>>(m_content).second;
-        case Property:
-            return std::get<PropertyLookup>(m_content).resultLookupIndex;
-        default:
-            return InvalidLookupIndex;
-        }
-    }
-    QQmlJSMetaEnum enumeration() const
-    {
-        return std::get<std::pair<QQmlJSMetaEnum, QString>>(m_content).first;
-    }
-    QString enumMember() const
-    {
-        return std::get<std::pair<QQmlJSMetaEnum, QString>>(m_content).second;
-    }
-    QList<QQmlJSMetaMethod> method() const { return std::get<QList<QQmlJSMetaMethod>>(m_content); }
-    uint importNamespace() const { return std::get<uint>(m_content); }
-
-    QQmlJSScope::ConstPtr conversionResult() const
-    {
-        return std::get<ConvertedTypes>(m_content).result;
+        return qHash(registerContent.d, seed);
     }
 
-    QQmlJSScope::ConstPtr conversionResultScope() const
-    {
-        return std::get<ConvertedTypes>(m_content).resultScope;
-    }
+    QQmlJSRegisterContentPrivate *d = nullptr;
+};
 
-    QList<QQmlJSScope::ConstPtr> conversionOrigins() const
-    {
-        return std::get<ConvertedTypes>(m_content).origins;
-    }
+class Q_QMLCOMPILER_EXPORT QQmlJSRegisterContentPool
+{
+    Q_DISABLE_COPY_MOVE(QQmlJSRegisterContentPool)
+public:
+    using ContentVariant = QQmlJSRegisterContent::ContentVariant;
 
-    ContentVariant variant() const { return m_variant; }
+    QQmlJSRegisterContentPool();
+    ~QQmlJSRegisterContentPool();
 
-    friend size_t qHash(const QQmlJSRegisterContent &registerContent, size_t seed = 0)
-    {
-        seed = qHashMulti(seed, registerContent.m_storedType, registerContent.m_content.index(),
-                          registerContent.m_scope, registerContent.m_variant);
-        switch (registerContent.m_content.index()) {
-        case Type:
-            return qHash(std::get<std::pair<QQmlJSScope::ConstPtr, int>>(registerContent.m_content),
-                         seed);
-        case Property:
-            return qHash(std::get<PropertyLookup>(registerContent.m_content), seed);
-        case Enum:
-            return qHash(std::get<std::pair<QQmlJSMetaEnum, QString>>(registerContent.m_content),
-                         seed);
-        case Method:
-            return qHash(std::get<QList<QQmlJSMetaMethod>>(registerContent.m_content), seed);
-        case ImportNamespace:
-            return qHash(std::get<uint>(registerContent.m_content), seed);
-        case Conversion:
-            return qHash(std::get<ConvertedTypes>(registerContent.m_content), seed);
-        }
 
-        Q_UNREACHABLE_RETURN(seed);
-    }
+    // Create new register contents of specific kinds
 
-    static QQmlJSRegisterContent create(const QQmlJSScope::ConstPtr &storedType,
-                                        const QQmlJSScope::ConstPtr &type,
-                                        int resultLookupIndex, ContentVariant variant,
-                                        const QQmlJSScope::ConstPtr &scope = {});
+    QQmlJSRegisterContent createType(
+            const QQmlJSScope::ConstPtr &type, int resultLookupIndex, ContentVariant variant,
+            QQmlJSRegisterContent scope = {});
 
-    static QQmlJSRegisterContent create(const QQmlJSScope::ConstPtr &storedType,
-                                        const QQmlJSMetaProperty &property,
-                                        int baseLookupIndex, int resultLookupIndex,
-                                        ContentVariant variant,
-                                        const QQmlJSScope::ConstPtr &scope);
+    QQmlJSRegisterContent createProperty(
+            const QQmlJSMetaProperty &property, int baseLookupIndex, int resultLookupIndex,
+            ContentVariant variant, QQmlJSRegisterContent scope);
 
-    static QQmlJSRegisterContent create(const QQmlJSScope::ConstPtr &storedType,
-                                        const QQmlJSMetaEnum &enumeration,
-                                        const QString &enumMember, ContentVariant variant,
-                                        const QQmlJSScope::ConstPtr &scope);
+    QQmlJSRegisterContent createEnumeration(
+            const QQmlJSMetaEnum &enumeration, const QString &enumMember, ContentVariant variant,
+            QQmlJSRegisterContent scope);
 
-    static QQmlJSRegisterContent create(const QQmlJSScope::ConstPtr &storedType,
-                                        const QList<QQmlJSMetaMethod> &methods,
-                                        ContentVariant variant,
-                                        const QQmlJSScope::ConstPtr &scope);
+    QQmlJSRegisterContent createMethod(
+            const QList<QQmlJSMetaMethod> &methods, const QQmlJSScope::ConstPtr &methodType,
+            ContentVariant variant, QQmlJSRegisterContent scope);
 
-    static QQmlJSRegisterContent create(const QQmlJSScope::ConstPtr &storedType,
-                                        uint importNamespaceStringId, ContentVariant variant,
-                                        const QQmlJSScope::ConstPtr &scope = {});
+    QQmlJSRegisterContent createMethodCall(
+            const QQmlJSMetaMethod &method, const QQmlJSScope::ConstPtr &returnType,
+            QQmlJSRegisterContent scope);
 
-    static QQmlJSRegisterContent create(const QQmlJSScope::ConstPtr &storedType,
-                                        const QList<QQmlJSScope::ConstPtr> &origins,
-                                        const QQmlJSScope::ConstPtr &conversion,
-                                        const QQmlJSScope::ConstPtr &conversionScope,
-                                        ContentVariant variant,
-                                        const QQmlJSScope::ConstPtr &scope = {});
+    QQmlJSRegisterContent createImportNamespace(
+            uint importNamespaceStringId, const QQmlJSScope::ConstPtr &importNamespaceType,
+            ContentVariant variant, QQmlJSRegisterContent scope);
 
-    QQmlJSRegisterContent storedIn(const QQmlJSScope::ConstPtr &newStoredType) const
-    {
-        QQmlJSRegisterContent result = *this;
-        result.m_storedType = newStoredType;
-        return result;
-    }
+    QQmlJSRegisterContent createConversion(
+            const QList<QQmlJSRegisterContent> &origins, const QQmlJSScope::ConstPtr &conversion,
+            QQmlJSRegisterContent conversionScope, ContentVariant variant,
+            QQmlJSRegisterContent scope);
 
-    QQmlJSRegisterContent castTo(const QQmlJSScope::ConstPtr &newContainedType) const
-    {
-        // This is not a conversion but a run time cast. It may result in null or undefined.
-        QQmlJSRegisterContent result = *this;
-        result.m_content = std::make_pair(newContainedType, result.resultLookupIndex());
-        return result;
-    }
+
+    // Clone and possibly adapt register contents. This leaves the original intact.
+
+    QQmlJSRegisterContent storedIn(
+            QQmlJSRegisterContent content, const QQmlJSScope::ConstPtr &newStoredType);
+
+    QQmlJSRegisterContent castTo(
+            QQmlJSRegisterContent content, const QQmlJSScope::ConstPtr &newContainedType);
+
+    QQmlJSRegisterContent clone(QQmlJSRegisterContent from) { return clone(from.d); }
+
+
+    // Change the internals of the given register content. Adjusting and generalizing store a
+    // copy of the previous content as original() and shadowed(), respectively. Storing creates
+    // a new register content for storage(). All of those assume you only do this once per
+    // register content (although you can adjust and generalize the storage, for example).
+
+    void storeType(
+            QQmlJSRegisterContent content, const QQmlJSScope::ConstPtr &stored);
+    void adjustType(
+            QQmlJSRegisterContent content, const QQmlJSScope::ConstPtr &adjusted);
+    void generalizeType(
+            QQmlJSRegisterContent content, const QQmlJSScope::ConstPtr &generalized);
+
+    enum AllocationMode { Permanent, Temporary };
+    void setAllocationMode(AllocationMode mode);
+    void clearTemporaries();
 
 private:
-    enum ContentKind { Type, Property, Enum, Method, ImportNamespace, Conversion };
-
-    struct ConvertedTypes
-    {
-        QList<QQmlJSScope::ConstPtr> origins;
-        QQmlJSScope::ConstPtr result;
-        QQmlJSScope::ConstPtr resultScope;
-
-        friend size_t qHash(const ConvertedTypes &types, size_t seed = 0)
-        {
-            return qHashMulti(seed, types.origins, types.result, types.resultScope);
-        }
-
-        friend bool operator==(const ConvertedTypes &a, const ConvertedTypes &b)
-        {
-            return a.origins == b.origins && a.result == b.result && a.resultScope == b.resultScope;
-        }
-
-        friend bool operator!=(const ConvertedTypes &a, const ConvertedTypes &b)
-        {
-            return !(a == b);
-        }
+    struct Deleter {
+        // It's a template so that we only need the QQmlJSRegisterContentPrivate dtor on usage.
+        template<typename Private>
+        constexpr void operator()(Private *d) const { delete d; }
     };
 
-    struct PropertyLookup
-    {
-        QQmlJSMetaProperty property;
-        int baseLookupIndex = InvalidLookupIndex;
-        int resultLookupIndex = InvalidLookupIndex;
+    using Pool = std::vector<std::unique_ptr<QQmlJSRegisterContentPrivate, Deleter>>;
 
-        friend size_t qHash(const PropertyLookup &property, size_t seed = 0)
-        {
-            return qHashMulti(
-                    seed, property.property, property.baseLookupIndex, property.resultLookupIndex);
-        }
+    QQmlJSRegisterContentPrivate *clone(const QQmlJSRegisterContentPrivate *from);
+    QQmlJSRegisterContentPrivate *create() { return clone(nullptr); }
+    QQmlJSRegisterContentPrivate *create(QQmlJSRegisterContent scope, ContentVariant variant);
 
-        friend bool operator==(const PropertyLookup &a, const PropertyLookup &b)
-        {
-            return a.baseLookupIndex == b.baseLookupIndex
-                    && a.resultLookupIndex == b.resultLookupIndex
-                    && a.property == b.property;
-        }
-
-        friend bool operator!=(const PropertyLookup &a, const PropertyLookup &b)
-        {
-            return !(a == b);
-        }
-    };
-
-    using Content = std::variant<
-        std::pair<QQmlJSScope::ConstPtr, int>,
-        PropertyLookup,
-        std::pair<QQmlJSMetaEnum, QString>,
-        QList<QQmlJSMetaMethod>,
-        uint,
-        ConvertedTypes
-    >;
-
-    QQmlJSRegisterContent(const QQmlJSScope::ConstPtr &storedType,
-                          const QQmlJSScope::ConstPtr &scope, ContentVariant variant)
-        : m_storedType(storedType), m_scope(scope), m_variant(variant)
-    {
-    }
-
-    QQmlJSScope::ConstPtr m_storedType;
-    QQmlJSScope::ConstPtr m_scope;
-    Content m_content;
-    ContentVariant m_variant = Unknown;
-
-    // TODO: Constant string/number/bool/enumval
+    Pool m_pool;
+    qsizetype m_checkpoint = -1;
 };
 
 QT_END_NAMESPACE

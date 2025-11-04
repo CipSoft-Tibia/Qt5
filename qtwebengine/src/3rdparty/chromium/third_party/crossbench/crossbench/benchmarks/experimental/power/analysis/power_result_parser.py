@@ -7,8 +7,8 @@ from __future__ import annotations
 import argparse
 import json
 import statistics
-from typing import List, Dict
-
+import sys
+from typing import Dict, List
 
 SAMPLE_TIME = "sample_time"
 EXTERNAL_CONNECTED = "battery_external_connected"
@@ -67,13 +67,13 @@ if __name__ == "__main__":
       print(
           "At least two power samples are needed to calculate power consumption."
       )
-      exit(1)
+      sys.exit(1)
 
     if any(sample[EXTERNAL_CONNECTED] for sample in power_samples):
       print(
           "External power was connected during the benchmark,",
           "please only use battery during benchmarking to get valid results.")
-      exit(1)
+      sys.exit(1)
 
     print("Average power consumption (W): {:.3f}".format(
         avg_power(power_samples)))

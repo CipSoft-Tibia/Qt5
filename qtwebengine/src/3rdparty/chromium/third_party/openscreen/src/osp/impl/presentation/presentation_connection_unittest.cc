@@ -8,10 +8,12 @@
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
+#include "osp/impl/presentation/presentation_utils.h"
 #include "osp/impl/presentation/testing/mock_connection_delegate.h"
 #include "osp/impl/quic/testing/fake_quic_connection.h"
 #include "osp/impl/quic/testing/fake_quic_connection_factory.h"
 #include "osp/impl/quic/testing/quic_test_support.h"
+#include "osp/public/connect_request.h"
 #include "osp/public/network_service_manager.h"
 #include "osp/public/presentation/presentation_controller.h"
 #include "platform/test/fake_clock.h"
@@ -25,30 +27,24 @@ using ::testing::NiceMock;
 
 namespace {
 
-class MockParentDelegate : public Connection::ParentDelegate {
+class MockController : public Connection::Controller {
  public:
-  MockParentDelegate() = default;
-  ~MockParentDelegate() override = default;
+  MockController() = default;
+  ~MockController() override = default;
 
   MOCK_METHOD2(CloseConnection, Error(Connection*, Connection::CloseReason));
-  MOCK_METHOD2(OnPresentationTerminated,
-               Error(const std::string&, TerminationReason));
+  MOCK_METHOD3(OnPresentationTerminated,
+               Error(const std::string&, TerminationSource, TerminationReason));
   MOCK_METHOD1(OnConnectionDestroyed, void(Connection*));
 };
 
-class MockConnectRequest final
-    : public ProtocolConnectionClient::ConnectionRequestCallback {
+class MockConnectRequestCallback final : public ConnectRequestCallback {
  public:
-  ~MockConnectRequest() override = default;
+  ~MockConnectRequestCallback() override = default;
 
-  void OnConnectionOpened(
-      uint64_t request_id,
-      std::unique_ptr<ProtocolConnection> connection) override {
-    OnConnectionOpenedMock(request_id, connection.release());
-  }
-  MOCK_METHOD2(OnConnectionOpenedMock,
-               void(uint64_t request_id, ProtocolConnection* connection));
-  MOCK_METHOD1(OnConnectionFailed, void(uint64_t request_id));
+  MOCK_METHOD2(OnConnectSucceed,
+               void(uint64_t request_id, uint64_t instance_id));
+  MOCK_METHOD1(OnConnectFailed, void(uint64_t request_id));
 };
 
 }  // namespace
@@ -57,19 +53,15 @@ class ConnectionTest : public ::testing::Test {
  public:
   ConnectionTest()
       : fake_clock_(Clock::time_point(std::chrono::milliseconds(1298424))),
-        task_runner_(&fake_clock_),
+        task_runner_(fake_clock_),
         quic_bridge_(task_runner_, FakeClock::now),
-        controller_connection_manager_(quic_bridge_.controller_demuxer.get()),
-        receiver_connection_manager_(quic_bridge_.receiver_demuxer.get()) {}
+        controller_connection_manager_(quic_bridge_.GetControllerDemuxer()),
+        receiver_connection_manager_(quic_bridge_.GetReceiverDemuxer()) {}
 
  protected:
   void SetUp() override {
-    NetworkServiceManager::Create(nullptr, nullptr,
-                                  std::move(quic_bridge_.quic_client),
-                                  std::move(quic_bridge_.quic_server));
+    quic_bridge_.CreateNetworkServiceManager(nullptr, nullptr);
   }
-
-  void TearDown() override { NetworkServiceManager::Dispose(); }
 
   std::string MakeEchoResponse(const std::string& message) {
     return std::string("echo: ") + message;
@@ -86,8 +78,8 @@ class ConnectionTest : public ::testing::Test {
   FakeQuicBridge quic_bridge_;
   ConnectionManager controller_connection_manager_;
   ConnectionManager receiver_connection_manager_;
-  NiceMock<MockParentDelegate> mock_controller_;
-  NiceMock<MockParentDelegate> mock_receiver_;
+  NiceMock<MockController> mock_controller_;
+  NiceMock<MockController> mock_receiver_;
 };
 
 TEST_F(ConnectionTest, ConnectAndSend) {
@@ -100,8 +92,9 @@ TEST_F(ConnectionTest, ConnectAndSend) {
                         &mock_controller_delegate, &mock_controller_);
   Connection receiver(Connection::PresentationInfo{id, url},
                       &mock_receiver_delegate, &mock_receiver_);
-  ON_CALL(mock_controller_, OnPresentationTerminated(_, _))
+  ON_CALL(mock_controller_, OnPresentationTerminated(_, _, _))
       .WillByDefault(Invoke([&receiver](const std::string& presentation_id,
+                                        TerminationSource source,
                                         TerminationReason reason) {
         receiver.OnTerminated();
         return Error::None();
@@ -112,8 +105,9 @@ TEST_F(ConnectionTest, ConnectAndSend) {
             receiver.OnClosedByRemote();
             return Error::None();
           }));
-  ON_CALL(mock_receiver_, OnPresentationTerminated(_, _))
+  ON_CALL(mock_receiver_, OnPresentationTerminated(_, _, _))
       .WillByDefault(Invoke([&controller](const std::string& presentation_id,
+                                          TerminationSource source,
                                           TerminationReason reason) {
         controller.OnTerminated();
         return Error::None();
@@ -133,18 +127,20 @@ TEST_F(ConnectionTest, ConnectAndSend) {
   EXPECT_EQ(Connection::State::kConnecting, controller.state());
   EXPECT_EQ(Connection::State::kConnecting, receiver.state());
 
-  MockConnectRequest mock_connect_request;
+  MockConnectRequestCallback mock_connect_request_callback;
+  ConnectRequest request;
   std::unique_ptr<ProtocolConnection> controller_stream;
   std::unique_ptr<ProtocolConnection> receiver_stream;
-  NetworkServiceManager::Get()->GetProtocolConnectionClient()->Connect(
-      quic_bridge_.kReceiverEndpoint, &mock_connect_request);
-  EXPECT_CALL(mock_connect_request, OnConnectionOpenedMock(_, _))
-      .WillOnce(Invoke([&controller_stream](uint64_t request_id,
-                                            ProtocolConnection* stream) {
-        controller_stream.reset(stream);
-      }));
+  quic_bridge_.GetQuicClient()->Connect(quic_bridge_.kInstanceName, request,
+                                        &mock_connect_request_callback);
+  EXPECT_TRUE(request);
+  EXPECT_CALL(mock_connect_request_callback, OnConnectSucceed(_, _))
+      .WillOnce(Invoke(
+          [&controller_stream](uint64_t request_id, uint64_t instance_id) {
+            controller_stream = CreateClientProtocolConnection(instance_id);
+          }));
 
-  EXPECT_CALL(quic_bridge_.mock_server_observer, OnIncomingConnectionMock(_))
+  EXPECT_CALL(quic_bridge_.mock_server_observer(), OnIncomingConnectionMock(_))
       .WillOnce(testing::WithArgs<0>(testing::Invoke(
           [&receiver_stream](std::unique_ptr<ProtocolConnection>& connection) {
             receiver_stream = std::move(connection);
@@ -156,11 +152,11 @@ TEST_F(ConnectionTest, ConnectAndSend) {
 
   EXPECT_CALL(mock_controller_delegate, OnConnected());
   EXPECT_CALL(mock_receiver_delegate, OnConnected());
-  uint64_t controller_endpoint_id = receiver_stream->endpoint_id();
-  uint64_t receiver_endpoint_id = controller_stream->endpoint_id();
-  controller.OnConnected(connection_id, receiver_endpoint_id,
+  uint64_t controller_instance_id = receiver_stream->GetInstanceID();
+  uint64_t receiver_instance_id = controller_stream->GetInstanceID();
+  controller.OnConnected(connection_id, receiver_instance_id,
                          std::move(controller_stream));
-  receiver.OnConnected(connection_id, controller_endpoint_id,
+  receiver.OnConnected(connection_id, controller_instance_id,
                        std::move(receiver_stream));
   controller_connection_manager_.AddConnection(&controller);
   receiver_connection_manager_.AddConnection(&receiver);

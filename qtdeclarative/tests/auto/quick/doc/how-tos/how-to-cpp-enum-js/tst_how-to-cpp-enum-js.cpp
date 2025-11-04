@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QtCore/qregularexpression.h>
-#include <QtTest/QtTest>
+#include <QtTest/QTest>
 #include <QtQml/qjsengine.h>
 
 #include "backend.h"

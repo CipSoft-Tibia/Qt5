@@ -42,18 +42,14 @@ QPlatformAudioSource *QPulseAudioDevices::createAudioSource(const QAudioDevice &
                                                             const QAudioFormat &fmt,
                                                             QObject *parent)
 {
-    auto ret = new QPulseAudioSource(deviceInfo.id(), parent);
-    ret->setFormat(fmt);
-    return ret;
+    return new QPulseAudioInternal::QPulseAudioSource(deviceInfo, fmt, parent);
 }
 
 QPlatformAudioSink *QPulseAudioDevices::createAudioSink(const QAudioDevice &deviceInfo,
                                                         const QAudioFormat &fmt,
                                                         QObject *parent)
 {
-    auto ret = new QPulseAudioSink(deviceInfo.id(), parent);
-    ret->setFormat(fmt);
-    return ret;
+    return new QPulseAudioInternal::QPulseAudioSink(deviceInfo, fmt, parent);
 }
 
 QT_END_NAMESPACE

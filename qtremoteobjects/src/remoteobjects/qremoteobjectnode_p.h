@@ -1,5 +1,6 @@
 // Copyright (C) 2017 Ford Motor Company
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:declarations-only
 
 #ifndef QREMOTEOBJECTNODE_P_H
 #define QREMOTEOBJECTNODE_P_H
@@ -17,6 +18,7 @@
 
 #include <QtCore/private/qobject_p.h>
 #include "qremoteobjectsourceio_p.h"
+#include "qremoteobjectstructs_p.h"
 #include "qremoteobjectreplica.h"
 #include "qremoteobjectnode.h"
 
@@ -37,6 +39,10 @@ QT_BEGIN_NAMESPACE
 class QRemoteObjectRegistry;
 class QRegistrySource;
 class QConnectedReplicaImplementation;
+
+QMetaObject *registerGadget(QObject *reference, const QRemoteObjectInternalTypes::GadgetData &gadget, QByteArray typeName);
+QMetaObject *registerAndTrackDefinition(const QRemoteObjectInternalTypes::ClassData &data, QObject *reference);
+bool trackAdditionalReference(QObject *reference, const QByteArray &typeName);
 
 class QRemoteObjectAbstractPersistedStorePrivate : public QObjectPrivate
 {
@@ -60,7 +66,6 @@ public:
 private:
     QHash<QString, QMetaObject*> dynamicTypes;
     QHash<QString, const QMetaObject*> staticTypes;
-    QHash<QtPrivate::QMetaTypeInterface *, QMetaType> enumsToBeAssignedMetaObject;
     QHash<QMetaObject *, QList<QMetaType>> enumTypes;
 };
 

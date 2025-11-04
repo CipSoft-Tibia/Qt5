@@ -2,6 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#ifdef UNSAFE_BUFFERS_BUILD
+// TODO(crbug.com/351564777): Remove this and convert code to safer constructs.
+#pragma allow_unsafe_buffers
+#endif
+
 #include "extensions/browser/computed_hashes.h"
 
 #include <memory>
@@ -196,12 +201,14 @@ std::optional<ComputedHashes::Data> ComputedHashes::Compute(
   // First discover all the file paths and put them in a sorted set.
   SortedFilePathSet paths;
   while (true) {
-    if (is_cancelled && is_cancelled.Run())
+    if (is_cancelled && is_cancelled.Run()) {
       return std::nullopt;
+    }
 
     base::FilePath full_path = enumerator.Next();
-    if (full_path.empty())
+    if (full_path.empty()) {
       break;
+    }
     paths.insert(full_path);
   }
 

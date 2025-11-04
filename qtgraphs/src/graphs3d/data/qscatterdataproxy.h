@@ -22,6 +22,8 @@ class Q_GRAPHS_EXPORT QScatterDataProxy : public QAbstractDataProxy
     Q_DECLARE_PRIVATE(QScatterDataProxy)
     Q_PROPERTY(qsizetype itemCount READ itemCount NOTIFY itemCountChanged FINAL)
     Q_PROPERTY(QScatter3DSeries *series READ series NOTIFY seriesChanged FINAL)
+    QML_NAMED_ELEMENT(ScatterDataProxy)
+    QML_UNCREATABLE("")
 
 public:
     explicit QScatterDataProxy(QObject *parent = nullptr);

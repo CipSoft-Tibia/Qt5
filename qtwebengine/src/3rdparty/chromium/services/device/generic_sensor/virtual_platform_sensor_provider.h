@@ -6,6 +6,7 @@
 #define SERVICES_DEVICE_GENERIC_SENSOR_VIRTUAL_PLATFORM_SENSOR_PROVIDER_H_
 
 #include "base/containers/flat_map.h"
+#include "base/memory/weak_ptr.h"
 #include "services/device/generic_sensor/platform_sensor_provider.h"
 #include "services/device/public/mojom/sensor_provider.mojom-forward.h"
 
@@ -19,6 +20,8 @@ class VirtualPlatformSensorProvider : public PlatformSensorProvider {
  public:
   VirtualPlatformSensorProvider();
   ~VirtualPlatformSensorProvider() override;
+
+  base::WeakPtr<PlatformSensorProvider> AsWeakPtr() override;
 
   // Starts causing GetSensor() calls with |type| to return
   // VirtualPlatformSensor instances with the properties specified in
@@ -39,14 +42,29 @@ class VirtualPlatformSensorProvider : public PlatformSensorProvider {
 
   bool IsOverridingSensor(mojom::SensorType type) const;
 
-  // PlatformSensorProvider overrides.
-  void CreateSensorInternal(mojom::SensorType type,
-                            SensorReadingSharedBuffer* reading_buffer,
-                            CreateSensorCallback callback) override;
+  // Adds a new reading to the VirtualPlatformSensor instance associated with
+  // |type|.
+  //
+  // If a VirtualPlatformSensor for |type| has not been created yet, the
+  // reading is stashed and passed on to the VirtualPlatformSensor instance
+  // once it is created. Multiple calls will override the stashed value.
+  //
+  // Note: The new reading still goes through
+  // PlatformSensor::UpdateSharedBufferAndNotifyClients(), so it may end up not
+  // being stored (for example, if a threshold check fails).
+  void AddReading(mojom::SensorType type, const SensorReading&);
 
  private:
-  base::flat_map<mojom::SensorType, mojom::VirtualSensorMetadataPtr>
+  struct TypeMetadata;
+
+  // PlatformSensorProvider overrides.
+  void CreateSensorInternal(mojom::SensorType type,
+                            CreateSensorCallback callback) override;
+
+  base::flat_map<mojom::SensorType, std::unique_ptr<TypeMetadata>>
       type_metadata_;
+
+  base::WeakPtrFactory<VirtualPlatformSensorProvider> weak_factory_{this};
 };
 
 }  // namespace device

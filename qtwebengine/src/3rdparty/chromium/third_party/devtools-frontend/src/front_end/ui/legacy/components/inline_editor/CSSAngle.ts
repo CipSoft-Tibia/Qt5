@@ -2,7 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-import * as ComponentHelpers from '../../../components/helpers/helpers.js';
 import * as LitHtml from '../../../lit-html/lit-html.js';
 
 import cssAngleStyles from './cssAngle.css.js';
@@ -21,8 +20,6 @@ import {ValueChangedEvent} from './InlineEditorUtils.js';
 
 const {render, html} = LitHtml;
 const styleMap = LitHtml.Directives.styleMap;
-
-const ContextAwareProperties = new Set(['color', 'background', 'background-color']);
 
 export class PopoverToggledEvent extends Event {
   static readonly eventName = 'popovertoggled';
@@ -51,15 +48,13 @@ interface EventTypes {
 }
 
 export interface CSSAngleData {
-  propertyName: string;
-  propertyValue: string;
   angleText: string;
   containingPane: HTMLElement;
 }
 
 const DefaultAngle = {
   value: 0,
-  unit: AngleUnit.Rad,
+  unit: AngleUnit.RAD,
 };
 
 export class CSSAngle extends HTMLElement {
@@ -67,7 +62,6 @@ export class CSSAngle extends HTMLElement {
   private readonly shadow = this.attachShadow({mode: 'open'});
   private angle: Angle = DefaultAngle;
   private displayedAngle: Angle = DefaultAngle;
-  private propertyName = '';
   private propertyValue = '';
   private containingPane?: HTMLElement;
   private angleElement: HTMLElement|null = null;
@@ -88,8 +82,6 @@ export class CSSAngle extends HTMLElement {
     }
     this.angle = parsedResult;
     this.displayedAngle = {...parsedResult};
-    this.propertyName = data.propertyName;
-    this.propertyValue = data.propertyValue;
     this.containingPane = data.containingPane;
     this.render();
   }
@@ -161,13 +153,12 @@ export class CSSAngle extends HTMLElement {
     this.render();
   }
 
-  updateProperty(name: string, value: string): void {
-    this.propertyName = name;
+  updateProperty(value: string): void {
     this.propertyValue = value;
     this.render();
   }
 
-  private updateAngle(angle: Angle): void {
+  updateAngle(angle: Angle): void {
     this.displayedAngle = roundAngleByUnit(convertAngleUnit(angle, this.displayedAngle.unit));
     this.angle = this.displayedAngle;
     this.dispatchEvent(new ValueChangedEvent(`${this.angle.value}${this.angle.unit}`));
@@ -234,7 +225,7 @@ export class CSSAngle extends HTMLElement {
     // Disabled until https://crbug.com/1079231 is fixed.
     // clang-format off
     render(html`
-      <div class="css-angle" @keydown=${this.onKeydown} tabindex="-1">
+      <div class="css-angle" @focusout=${this.minify} @keydown=${this.onKeydown} tabindex="-1">
         <div class="preview">
           <${CSSAngleSwatch.litTagName}
             @click=${this.onMiniIconClick}
@@ -254,9 +245,7 @@ export class CSSAngle extends HTMLElement {
 
   private renderPopover(): LitHtml.TemplateResult {
     let contextualBackground = '';
-    // TODO(crbug.com/1143010): for now we ignore values with "url"; when we refactor
-    // CSS value parsing we should properly apply atomic contextual background.
-    if (ContextAwareProperties.has(this.propertyName) && !this.propertyValue.match(/url\(.*\)/i)) {
+    if (this.propertyValue && !this.propertyValue.match(/url\(.*\)/i)) {
       contextualBackground = this.propertyValue;
     }
 
@@ -279,10 +268,9 @@ export class CSSAngle extends HTMLElement {
   }
 }
 
-ComponentHelpers.CustomElements.defineComponent('devtools-css-angle', CSSAngle);
+customElements.define('devtools-css-angle', CSSAngle);
 
 declare global {
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   interface HTMLElementTagNameMap {
     'devtools-css-angle': CSSAngle;
   }

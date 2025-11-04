@@ -27,6 +27,7 @@
 #include "third_party/blink/public/mojom/favicon/favicon_url.mojom.h"
 
 namespace content {
+class BrowserContext;
 class WebContents;
 }
 
@@ -55,6 +56,10 @@ public:
     static void CreateForWebContents(content::WebContents *webContents,
                                      favicon::CoreFaviconService *faviconService,
                                      WebContentsAdapterClient *viewClient);
+
+    static FaviconDriverQt *GetForBrowserContext(content::BrowserContext *context);
+
+    void setFaviconService(favicon::CoreFaviconService *service);
 
     // FaviconDriver implementation.
     void FetchFavicon(const GURL &page_url, bool is_same_document) override;
@@ -91,7 +96,9 @@ private:
     };
 
     // Callback when a manifest is downloaded.
-    void OnDidDownloadManifest(ManifestDownloadCallback callback, const GURL &manifest_url,
+    void OnDidDownloadManifest(ManifestDownloadCallback callback,
+                               blink::mojom::ManifestRequestResult result,
+                               const GURL &manifest_url,
                                blink::mojom::ManifestPtr manifest);
 
     // FaviconHandler::Delegate implementation.
@@ -125,6 +132,7 @@ private:
                             const GURL &manifest_url);
 
     void emitIconChangedIfNeeded();
+    void initFaviconHandlers();
 
     // KeyedService used by FaviconDriverImpl. It may be null during testing,
     // but if it is defined, it must outlive the FaviconDriverImpl.

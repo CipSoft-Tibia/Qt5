@@ -22,7 +22,7 @@
 
 constexpr int64_t kOneYear = 60 * 60 * 24 * 365;
 
-namespace bssl {
+BSSL_NAMESPACE_BEGIN
 
 namespace {
 
@@ -238,8 +238,7 @@ class PathBuilderPkitsTestDelegate {
         const bssl::CertPathBuilderResultPath *result_path =
             result.paths[i].get();
         msg << "path " << i << " errors:\n"
-            << result_path->errors.ToDebugString(result_path->certs)
-            << "\n";
+            << result_path->errors.ToDebugString(result_path->certs) << "\n";
       }
       ASSERT_EQ(info.should_validate, result.HasValidPath()) << msg;
     }
@@ -290,4 +289,4 @@ INSTANTIATE_TYPED_TEST_SUITE_P(PathBuilder,
                                PkitsTest16PrivateCertificateExtensions,
                                PathBuilderPkitsTestDelegate);
 
-}  // namespace bssl
+BSSL_NAMESPACE_END

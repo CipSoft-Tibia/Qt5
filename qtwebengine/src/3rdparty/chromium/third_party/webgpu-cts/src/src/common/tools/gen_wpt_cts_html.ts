@@ -23,6 +23,7 @@ gen_wpt_cts_html.ts. Example:
   {
     "suite": "webgpu",
     "out": "path/to/output/cts.https.html",
+    "outJSON": "path/to/output/webgpu_variant_list.json",
     "template": "path/to/template/cts.https.html",
     "maxChunkTimeMS": 2000
   }
@@ -35,15 +36,15 @@ where arguments.txt is a file containing a list of arguments prefixes to both ge
 in the expectations. The entire variant list generation runs *once per prefix*, so this
 multiplies the size of the variant list.
 
-  ?worker=0&q=
-  ?worker=1&q=
+  ?debug=0&q=
+  ?debug=1&q=
 
 and myexpectations.txt is a file containing a list of WPT paths to suppress, e.g.:
 
-  path/to/cts.https.html?worker=0&q=webgpu:a/foo:bar={"x":1}
-  path/to/cts.https.html?worker=1&q=webgpu:a/foo:bar={"x":1}
+  path/to/cts.https.html?debug=0&q=webgpu:a/foo:bar={"x":1}
+  path/to/cts.https.html?debug=1&q=webgpu:a/foo:bar={"x":1}
 
-  path/to/cts.https.html?worker=1&q=webgpu:a/foo:bar={"x":3}
+  path/to/cts.https.html?debug=1&q=webgpu:a/foo:bar={"x":3}
 `);
   process.exit(rc);
 }
@@ -51,9 +52,11 @@ and myexpectations.txt is a file containing a list of WPT paths to suppress, e.g
 interface ConfigJSON {
   /** Test suite to generate from. */
   suite: string;
-  /** Output filename, relative to JSON file. */
+  /** Output path for HTML file, relative to config file. */
   out: string;
-  /** Input template filename, relative to JSON file. */
+  /** Output path for JSON file containing the "variant" list, relative to config file. */
+  outVariantList?: string;
+  /** Input template filename, relative to config file. */
   template: string;
   /**
    * Maximum time for a single WPT "variant" chunk, in milliseconds. Defaults to infinity.
@@ -83,6 +86,7 @@ interface ConfigJSON {
 interface Config {
   suite: string;
   out: string;
+  outVariantList?: string;
   template: string;
   maxChunkTimeMS: number;
   argumentsPrefixes: string[];
@@ -115,6 +119,9 @@ let config: Config;
         argumentsPrefixes: configJSON.argumentsPrefixes ?? ['?q='],
         noLongPathAssert: configJSON.noLongPathAssert ?? false,
       };
+      if (configJSON.outVariantList) {
+        config.outVariantList = path.resolve(jsonFileDir, configJSON.outVariantList);
+      }
       if (configJSON.expectations) {
         config.expectations = {
           file: path.resolve(jsonFileDir, configJSON.expectations.file),
@@ -224,7 +231,7 @@ ${queryString}`
       }
 
       lines.push({
-        urlQueryString: prefix + query.toString(), // "?worker=0&q=..."
+        urlQueryString: prefix + query.toString(), // "?debug=0&q=..."
         comment: useChunking ? `estimated: ${subtreeCounts?.totalTimeMS.toFixed(3)} ms` : undefined,
       });
 
@@ -283,13 +290,20 @@ async function generateFile(
 
   result += await fs.readFile(config.template, 'utf8');
 
+  const variantList = [];
   for (const line of lines) {
     if (line !== undefined) {
-      if (line.urlQueryString) result += `<meta name=variant content='${line.urlQueryString}'>`;
+      if (line.urlQueryString) {
+        result += `<meta name=variant content='${line.urlQueryString}'>`;
+        variantList.push(line.urlQueryString);
+      }
       if (line.comment) result += `<!-- ${line.comment} -->`;
     }
     result += '\n';
   }
 
   await fs.writeFile(config.out, result);
+  if (config.outVariantList) {
+    await fs.writeFile(config.outVariantList, JSON.stringify(variantList, undefined, 2));
+  }
 }

@@ -2,6 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#ifdef UNSAFE_BUFFERS_BUILD
+// TODO(crbug.com/40285824): Remove this and convert code to safer constructs.
+#pragma allow_unsafe_buffers
+#endif
+
 #include "ui/base/cocoa/defaults_utils.h"
 
 #include <AppKit/AppKit.h>
@@ -90,7 +95,7 @@ class DefaultsUtilsTest : public CocoaTest {
   }
 
  private:
-  absl::optional<bool> refresh_flag_initial_value_;
+  std::optional<bool> refresh_flag_initial_value_;
   NSInteger orig_blink_period_values_[2];
 };
 

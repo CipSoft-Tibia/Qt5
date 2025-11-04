@@ -2,7 +2,8 @@
 // Copyright (C) 2021 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
-#include <QtTest/QtTest>
+#include <QtTest/QTest>
+#include <QtTest/QSignalSpy>
 #include <QtQml/qqmlcomponent.h>
 #include <QtQml/qqmlengine.h>
 #include <QtQml/qqmlexpression.h>
@@ -10,7 +11,10 @@
 #include <QtCore/qfileinfo.h>
 #include <QtCore/qdebug.h>
 #include <QtCore/qdir.h>
+#include <QtCore/qlibraryinfo.h>
 #include <QtCore/qnumeric.h>
+#include <QtCore/qprocess.h>
+#include <QtCore/qtemporaryfile.h>
 #include <private/qqmlengine_p.h>
 #include <private/qqmlvmemetaobject_p.h>
 #include <private/qv4qmlcontext_p.h>
@@ -27,6 +31,7 @@
 #include <private/qv4objectiterator_p.h>
 #include <private/qqmlabstractbinding_p.h>
 #include <private/qqmlvaluetypeproxybinding_p.h>
+#include <private/qqmltimer_p.h>
 #include <QtCore/private/qproperty_p.h>
 #include <QtQuick/qquickwindow.h>
 #include <QtQuick/private/qquickitem_p.h>
@@ -127,6 +132,7 @@ private slots:
     void exceptionClearsOnReeval();
     void exceptionSlotProducesWarning();
     void exceptionBindingProducesWarning();
+    void bindingNoEvaluationIfObjectGone();
     void compileInvalidBinding();
     void transientErrors();
     void shutdownErrors();
@@ -431,6 +437,8 @@ private slots:
     void methodCallOnDerivedSingleton();
 
     void proxyMetaObject();
+
+    void jittedJavaScriptExpressionDoesNotCrashOnExceptionBeingThrown();
 
 private:
 //    static void propertyVarWeakRefCallback(v8::Persistent<v8::Value> object, void* parameter);
@@ -1478,6 +1486,21 @@ void tst_qqmlecmascript::attachedProperties()
 
         QCOMPARE(attached->value2(), 9);
     }
+    {
+        qmlRegisterAnonymousType<MyQmlAttachedObject>("Qt.test", 1);
+        QQmlComponent component(&engine, testFileUrl("attachedLifeCycleMethods.qml"));
+        QScopedPointer<QObject> object(component.create());
+        QVERIFY2(object, qPrintable(component.errorString()));
+
+        MyQmlAttachedObject *attached = qobject_cast<MyQmlAttachedObject *>(
+            qmlAttachedPropertiesObject<MyQmlObject>(object.data()));
+        QVERIFY(attached != nullptr);
+
+        QCOMPARE(attached->value2(), 42);
+        QVERIFY(attached->classBeginCalled);
+        QVERIFY(attached->componentCompleteCalled);
+        QVERIFY(attached->orderCorrect);
+    }
 }
 
 void tst_qqmlecmascript::enums()
@@ -1511,7 +1534,7 @@ void tst_qqmlecmascript::enums()
     // Non-existent enums
     {
     QUrl file = testFileUrl("enums.2.qml");
-    QString w2 = QLatin1String("QQmlExpression: Expression ") + testFileUrl("enums.2.qml").toString() + QLatin1String(":9:5 depends on non-NOTIFYable properties:");
+    QString w2 = QLatin1String("QQmlExpression: Expression ") + testFileUrl("enums.2.qml").toString() + QLatin1String(":9:5 depends on non-bindable properties:");
     QString w3 = QLatin1String("    MyUnregisteredEnumTypeObject::enumProperty");
     QString w4 = file.toString() + ":7:5: Unable to assign [undefined] to int";
     QString w5 = file.toString() + ":8:5: Unable to assign [undefined] to int";
@@ -2511,6 +2534,27 @@ void tst_qqmlecmascript::exceptionBindingProducesWarning()
     QVERIFY2(obj, qPrintable(component.errorString()));
     MyQmlObject *object = qobject_cast<MyQmlObject *>(obj.data());
     QVERIFY(object != nullptr);
+}
+
+void tst_qqmlecmascript::bindingNoEvaluationIfObjectGone()
+{
+    QQmlEngine engine;
+    QQmlComponent component(&engine, testFileUrl("bindingNoEvaluationIfObjectGone.qml"));
+    std::unique_ptr<QObject> root(component.create());
+    QVERIFY(root);
+    QObject *targetObject = root->property("obj").value<QObject *>();
+    QVERIFY(targetObject);
+    QQmlProperty yProp(targetObject, u"y"_s, &engine);
+    // hold a reference to the binding to keep it alive
+    auto binding = QQmlAnyBinding::ofProperty(yProp);
+    QVERIFY(binding.asAbstractBinding());
+    QCOMPARE(binding.asAbstractBinding()->targetObject(), targetObject);
+    delete targetObject;
+    // the target object pointer of the binding hasn't been reset; we might
+    // want to change this in the future; that line can be then adapted
+    QVERIFY(binding.asAbstractBinding()->targetObject());
+    // trigger a binding reevaluation
+    root->setProperty("x", 10); // no ASAN warning/crash
 }
 
 void tst_qqmlecmascript::compileInvalidBinding()
@@ -6057,7 +6101,6 @@ void tst_qqmlecmascript::readonlyDeclaration()
 Q_DECLARE_METATYPE(QList<int>)
 Q_DECLARE_METATYPE(QList<qreal>)
 Q_DECLARE_METATYPE(QList<bool>)
-Q_DECLARE_METATYPE(QList<QString>)
 Q_DECLARE_METATYPE(QList<QUrl>)
 void tst_qqmlecmascript::sequenceConversionRead()
 {
@@ -7558,7 +7601,7 @@ void tst_qqmlecmascript::nonNotifyable()
 
     QString expected1 = QLatin1String("QQmlExpression: Expression ") +
                         component.url().toString() +
-                        QLatin1String(":5:5 depends on non-NOTIFYable properties:");
+                        QLatin1String(":5:5 depends on non-bindable properties:");
     QString expected2 = QLatin1String("    ") +
                         QLatin1String(object->metaObject()->className()) +
                         QLatin1String("::value");
@@ -7574,7 +7617,7 @@ void tst_qqmlecmascript::nonNotifyableConstant()
     QQmlComponent component(&engine, testFileUrl("nonNotifyableConstant.qml"));
     QQmlTestMessageHandler messageHandler;
 
-    // Shouldn't produce an error message about non-NOTIFYable properties,
+    // Shouldn't produce an error message about non-bindable properties,
     // as the property has the CONSTANT attribute.
     QScopedPointer<QObject> object(component.create());
     QVERIFY2(object, qPrintable(component.errorString()));
@@ -8065,7 +8108,7 @@ public:
 
     void init(QV4::ExecutionEngine *v4, QV4::WeakValue *weakRef, bool *resultPtr)
     {
-        QV4::QObjectWrapper::wrap(v4, this);
+        (void) QV4::QObjectWrapper::wrap(v4, this); // Intentionally drop the wrapper
         QQmlEngine::setObjectOwnership(this, QQmlEngine::JavaScriptOwnership);
 
         this->resultPtr = resultPtr;
@@ -10690,6 +10733,25 @@ void tst_qqmlecmascript::proxyMetaObject()
     QVERIFY(!MetaCallInterceptor::didGetObjectDestroyedCallback);
     o.reset(nullptr);
     QVERIFY(MetaCallInterceptor::didGetObjectDestroyedCallback);
+}
+
+void tst_qqmlecmascript::jittedJavaScriptExpressionDoesNotCrashOnExceptionBeingThrown()
+{
+    QQmlEngine engine;
+
+    engine.handle()->memoryManager->aggressiveGC = true;
+    engine.handle()->memoryManager->setGCTimeLimit(0);
+
+    QQmlComponent c(&engine, testFileUrl("jittedJavaScriptExpressionDoesNotCrashOnExceptionBeingThrown.qml"));
+    QVERIFY2(c.isReady(), qPrintable(c.errorString()));
+    QScopedPointer<QObject> o(c.create());
+    QVERIFY2(o, qPrintable(c.errorString()));
+
+    QQmlContext *context = qmlContext(o.data());
+    auto timer = qobject_cast<QQmlTimer*>(context->objectForName("timer"));
+    QVERIFY(timer);
+
+    QTRY_VERIFY(!timer->isRunning());
 }
 
 QTEST_MAIN(tst_qqmlecmascript)

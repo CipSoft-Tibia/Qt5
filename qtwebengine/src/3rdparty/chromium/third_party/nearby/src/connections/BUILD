@@ -25,7 +25,6 @@ cc_library(
     visibility = [
         "//chrome/chromeos/assistant/data_migration/lib:__pkg__",
         "//connections:__subpackages__",
-        "//location/nearby/cpp/sharing:__subpackages__",
         "//location/nearby/testing:__subpackages__",
         "//sharing:__subpackages__",
     ],
@@ -72,16 +71,17 @@ cc_library(
     visibility = [
         "//chrome/chromeos/assistant/data_migration/lib:__pkg__",
         "//connections:__subpackages__",
-        "//location/nearby/cpp/sharing:__subpackages__",
         "//location/nearby/testing:__subpackages__",
         "//sharing:__subpackages__",
     ],
     deps = [
+        "//internal/interop:authentication_status",
         "//internal/platform:base",
         "//internal/platform:types",
         "//internal/platform:util",
         "//proto:connections_enums_cc_proto",
         "@com_google_absl//absl/functional:any_invocable",
+        "@com_google_absl//absl/random",
         "@com_google_absl//absl/types:variant",
     ],
 )

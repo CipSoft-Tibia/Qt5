@@ -35,15 +35,22 @@
 #include "../Include/Common.h"
 #include "../Include/PoolAlloc.h"
 
+// Mostly here for target that do not support threads such as WASI.
+#ifdef DISABLE_THREAD_SUPPORT
+#define THREAD_LOCAL 
+#else
+#define THREAD_LOCAL thread_local
+#endif
+
 namespace QtShaderTools {
 namespace glslang {
 
 namespace {
-thread_local TPoolAllocator* threadPoolAllocator = nullptr;
+THREAD_LOCAL TPoolAllocator* threadPoolAllocator = nullptr;
 
 TPoolAllocator* GetDefaultThreadPoolAllocator()
 {
-    thread_local TPoolAllocator defaultAllocator;
+    THREAD_LOCAL TPoolAllocator defaultAllocator;
     return &defaultAllocator;
 }
 } // anonymous namespace

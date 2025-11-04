@@ -5,6 +5,7 @@
 #include <QtQml/private/qqmlglobal_p.h>
 #include <QtQml/private/qqmlmetatype_p.h>
 #include <QtQml/private/qv4qobjectwrapper_p.h>
+#include <QtQml/private/qv4alloca_p.h>
 #include <QtQml/qqmlengine.h>
 
 #include <QtCore/private/qvariant_p.h>
@@ -178,20 +179,29 @@ static void *createVariantData(QMetaType type, QVariant *variant)
 }
 
 static void callConstructor(
+        const QMetaObject *targetMetaObject, int i, void **args, int argc, void *target)
+{
+    Q_ALLOCA_VAR(void *, p, (argc + 1) * sizeof(void *));
+    p[0] = target;
+    memcpy(p + 1, args, argc * sizeof(void *));
+    targetMetaObject->static_metacall(QMetaObject::ConstructInPlace, i, p);
+}
+
+static void callConstructor(
         const QMetaObject *targetMetaObject, int i, void *source, void *target)
 {
     void *p[] = { target, source };
     targetMetaObject->static_metacall(QMetaObject::ConstructInPlace, i, p);
 }
 
+
 template<typename Allocate>
 static void fromVerifiedType(
-        const QMetaObject *targetMetaObject, int ctorIndex, void *source, Allocate &&allocate)
+        const QMetaObject *targetMetaObject, int ctorIndex, void **args,
+        Allocate &&allocate)
 {
     const QMetaMethod ctor = targetMetaObject->constructor(ctorIndex);
-    Q_ASSERT_X(ctor.parameterCount() == 1, "fromVerifiedType",
-               "Value type constructor must take exactly one argument");
-    callConstructor(targetMetaObject, ctorIndex, source, allocate());
+    callConstructor(targetMetaObject, ctorIndex, args, ctor.parameterCount(), allocate());
 }
 
 
@@ -548,6 +558,9 @@ static QVariant byProperties(
 
     if (source.metaType() == QMetaType::fromType<QJSValue>()) {
         QJSValue val = source.value<QJSValue>();
+        // Generally, the GC might collect a Value at any point so that
+        // a `ScopedValue` should be used.
+        // In this case, the Value is tied to a `QJSValue` which is
         // persistent to the GC and thus fromReturnedValue is safe.
         return byProperties(
                 targetMetaObject, targetMetaType,
@@ -774,10 +787,10 @@ void *QQmlValueTypeProvider::heapCreateValueType(
 
 QVariant QQmlValueTypeProvider::constructValueType(
         QMetaType targetMetaType, const QMetaObject *targetMetaObject,
-        int ctorIndex, void *ctorArg)
+        int ctorIndex, void **args)
 {
     QVariant result;
-    fromVerifiedType(targetMetaObject, ctorIndex, ctorArg,
+    fromVerifiedType(targetMetaObject, ctorIndex, args,
                      [&]() { return createVariantData(targetMetaType, &result); });
     return result;
 }

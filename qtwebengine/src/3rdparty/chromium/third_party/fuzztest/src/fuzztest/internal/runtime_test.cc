@@ -14,13 +14,13 @@
 
 #include "./fuzztest/internal/runtime.h"
 
-#include <memory>
 #include <string>
 #include <tuple>
 
 #include "gtest/gtest.h"
+#include "absl/strings/match.h"
 #include "absl/time/time.h"
-#include "./fuzztest/domain.h"
+#include "./fuzztest/domain_core.h"
 #include "./fuzztest/internal/test_protobuf.pb.h"
 
 namespace fuzztest::internal {
@@ -41,13 +41,15 @@ TEST(OnFailureTest, Output) {
   const RuntimeStats stats = {absl::FromUnixNanos(0), 1, 2, 3, 4, 5};
   runtime.EnableReporter(&stats, [] { return absl::FromUnixNanos(1979); });
   runtime.SetRunMode(RunMode::kFuzz);
-  auto domain = TupleOf(Arbitrary<int>(), Arbitrary<std::string>());
+  UntypedDomain domain = TupleOf(Arbitrary<int>(), Arbitrary<std::string>());
   GenericDomainCorpusType generic_args(
       std::in_place_type<std::tuple<int, std::string>>, args);
   Runtime::Args debug_args{generic_args, domain};
-  runtime.SetCurrentTest(&test);
+  runtime.SetCurrentTest(&test, nullptr);
   runtime.SetCurrentArgs(&debug_args);
-  EXPECT_EQ(get_failure(), R"(
+  const std::string report = get_failure();
+
+  EXPECT_TRUE(absl::StartsWith(report, R"(
 =================================================================
 === Fuzzing stats
 
@@ -65,9 +67,11 @@ FILE:123: Counterexample found for SUITE_NAME.TEST_NAME.
 The test fails with input:
 argument 0: 17
 argument 1: "ABC"
+)"));
 
+  EXPECT_TRUE(absl::EndsWith(report, R"(
 =================================================================
-=== Reproducer test
+=== Regression test draft
 
 TEST(SUITE_NAME, TEST_NAMERegression) {
   TEST_NAME(
@@ -76,8 +80,12 @@ TEST(SUITE_NAME, TEST_NAMERegression) {
   );
 }
 
+Please note that the code generated above is best effort and is intended
+to use be used as a draft regression test.
+For reproducing findings please rely on file based reproduction.
+
 =================================================================
-)");
+)"));
 
   runtime.DisableReporter();
   EXPECT_EQ(get_failure(), "");

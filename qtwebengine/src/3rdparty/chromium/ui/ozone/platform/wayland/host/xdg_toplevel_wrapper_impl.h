@@ -81,12 +81,14 @@ class XDGToplevelWrapperImpl : public ShellToplevelWrapper {
   void SetPersistable(bool persistable) const override;
   void SetShape(std::unique_ptr<ShapeRects> shape_rects) override;
   void AckRotateFocus(uint32_t serial, uint32_t handled) override;
+  void SetIcon(const gfx::ImageSkia& icon) override;
 
   XDGToplevelWrapperImpl* AsXDGToplevelWrapper() override;
 
   XDGSurfaceWrapperImpl* xdg_surface_wrapper() const;
 
  private:
+  friend class WaylandWindowDragController;
   // xdg_toplevel_listener callbacks:
   static void OnToplevelConfigure(void* data,
                                   xdg_toplevel* toplevel,
@@ -119,9 +121,14 @@ class XDGToplevelWrapperImpl : public ShellToplevelWrapper {
                              zaura_toplevel* aura_toplevel,
                              int32_t x,
                              int32_t y);
+
   static void OnConfigureRasterScale(void* data,
-                                     zaura_toplevel* aura_toplevel,
+                                     struct zaura_toplevel* zaura_toplevel,
                                      uint32_t scale_as_uint);
+
+  static void OnConfigureOcclusionState(void* data,
+                                        struct zaura_toplevel* zaura_toplevel,
+                                        uint32_t mode);
   static void OnRotateFocus(void* data,
                             zaura_toplevel* aura_toplevel,
                             uint32_t serial,
@@ -136,9 +143,6 @@ class XDGToplevelWrapperImpl : public ShellToplevelWrapper {
 
   // Initializes the xdg-decoration protocol extension, if available.
   void InitializeXdgDecoration();
-
-  // Called when raster scale is changed.
-  void OnConfigureRasterScale(double scale);
 
   // Creates a wl_region from `shape_rects`.
   wl::Object<wl_region> CreateAndAddRegion(const ShapeRects& shape_rects);

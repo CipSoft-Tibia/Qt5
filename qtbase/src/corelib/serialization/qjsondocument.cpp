@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:data-parser
 
 #include <qjsondocument.h>
 #include <qjsonobject.h>
@@ -12,8 +13,6 @@
 #include <qdebug.h>
 #include <qcbormap.h>
 #include <qcborarray.h>
-#include "qcborvalue_p.h"
-#include "qjsonwriter_p.h"
 #include "qjsonparser_p.h"
 #include "qjson_p.h"
 #include "qdatastream.h"
@@ -56,24 +55,8 @@ class QJsonDocumentPrivate
 public:
     QJsonDocumentPrivate() = default;
     QJsonDocumentPrivate(QCborValue data) : value(std::move(data)) {}
-    ~QJsonDocumentPrivate()
-    {
-        if (rawData)
-            free(rawData);
-    }
 
     QCborValue value;
-    char *rawData = nullptr;
-    uint rawDataSize = 0;
-
-    void clearRawData()
-    {
-        if (rawData) {
-            free(rawData);
-            rawData = nullptr;
-            rawDataSize = 0;
-        }
-    }
 };
 
 /*!
@@ -152,8 +135,6 @@ QJsonDocument &QJsonDocument::operator =(const QJsonDocument &other)
         if (other.d) {
             if (!d)
                 d = std::make_unique<QJsonDocumentPrivate>();
-            else
-                d->clearRawData();
             d->value = other.d->value;
         } else {
             d.reset();
@@ -236,6 +217,7 @@ QVariant QJsonDocument::toVariant() const
 #endif // !QT_NO_VARIANT
 
 /*!
+\if !defined(qt7)
     \enum QJsonDocument::JsonFormat
     \since 5.1
 
@@ -247,6 +229,12 @@ QVariant QJsonDocument::toVariant() const
 
     \value Compact Defines a compact output as follows:
         \snippet code/src_corelib_serialization_qjsondocument.cpp 1
+\else
+    \typealias QJsonDocument::JsonFormat
+    \since 5.1
+
+    Same as \l QJsonValue::JsonFormat.
+\endif
   */
 
 /*!
@@ -255,22 +243,16 @@ QVariant QJsonDocument::toVariant() const
 
     \sa fromJson(), JsonFormat
  */
-#if !defined(QT_JSON_READONLY) || defined(Q_QDOC)
 QByteArray QJsonDocument::toJson(JsonFormat format) const
 {
     QByteArray json;
     if (!d)
         return json;
 
-    const QCborContainerPrivate *container = QJsonPrivate::Value::container(d->value);
-    if (d->value.isArray())
-        QJsonPrivate::Writer::arrayToJson(container, json, 0, (format == Compact));
-    else
-        QJsonPrivate::Writer::objectToJson(container, json, 0, (format == Compact));
-
-    return json;
+    return QJsonPrivate::Value::fromTrustedCbor(d->value).toJson(
+            format == JsonFormat::Compact ? QJsonValue::JsonFormat::Compact
+                                          : QJsonValue::JsonFormat::Indented);
 }
-#endif
 
 /*!
  Parses \a json as a UTF-8 encoded JSON document, and creates a QJsonDocument
@@ -284,12 +266,17 @@ QByteArray QJsonDocument::toJson(JsonFormat format) const
  */
 QJsonDocument QJsonDocument::fromJson(const QByteArray &json, QJsonParseError *error)
 {
-    QJsonPrivate::Parser parser(json.constData(), json.size());
+    QJsonPrivate::Parser parser(json);
     QJsonDocument result;
     const QCborValue val = parser.parse(error);
     if (val.isArray() || val.isMap()) {
         result.d = std::make_unique<QJsonDocumentPrivate>();
         result.d->value = val;
+    } else if (!val.isUndefined() && error) {
+        // parsed a valid string/number/bool/null,
+        // but QJsonDocument only stores objects and arrays.
+        error->error = QJsonParseError::IllegalValue;
+        error->offset = 0;
     }
     return result;
 }
@@ -374,8 +361,6 @@ void QJsonDocument::setObject(const QJsonObject &object)
 {
     if (!d)
         d = std::make_unique<QJsonDocumentPrivate>();
-    else
-        d->clearRawData();
 
     d->value = QCborValue::fromJsonValue(object);
 }
@@ -389,8 +374,6 @@ void QJsonDocument::setArray(const QJsonArray &array)
 {
     if (!d)
         d = std::make_unique<QJsonDocumentPrivate>();
-    else
-        d->clearRawData();
 
     d->value = QCborValue::fromJsonValue(array);
 }
@@ -488,7 +471,7 @@ bool QJsonDocument::isNull() const
     return (d == nullptr);
 }
 
-#if !defined(QT_NO_DEBUG_STREAM) && !defined(QT_JSON_READONLY)
+#if !defined(QT_NO_DEBUG_STREAM)
 QDebug operator<<(QDebug dbg, const QJsonDocument &o)
 {
     QDebugStateSaver saver(dbg);
@@ -496,12 +479,8 @@ QDebug operator<<(QDebug dbg, const QJsonDocument &o)
         dbg << "QJsonDocument()";
         return dbg;
     }
-    QByteArray json;
-    const QCborContainerPrivate *container = QJsonPrivate::Value::container(o.d->value);
-    if (o.d->value.isArray())
-        QJsonPrivate::Writer::arrayToJson(container, json, 0, true);
-    else
-        QJsonPrivate::Writer::objectToJson(container, json, 0, true);
+    QByteArray json =
+        QJsonPrivate::Value::fromTrustedCbor(o.d->value).toJson(QJsonValue::JsonFormat::Compact);
     dbg.nospace() << "QJsonDocument("
                   << json.constData() // print as utf-8 string without extra quotation marks
                   << ')';

@@ -15,9 +15,6 @@
 #include <QtCore/qscopedpointer.h>
 #endif
 #include <QtCore/qnativeinterface.h>
-#ifndef QT_NO_DEBUGSTREAM
-#include <QtCore/qdebug.h>
-#endif
 
 #ifndef QT_NO_QOBJECT
 #if defined(Q_OS_WIN) && !defined(tagMSG)
@@ -29,6 +26,7 @@ QT_BEGIN_NAMESPACE
 
 
 class QCoreApplicationPrivate;
+class QDebug;
 class QTranslator;
 class QPostEventList;
 class QAbstractEventDispatcher;
@@ -94,7 +92,11 @@ public:
     static void setSetuidAllowed(bool allow);
     static bool isSetuidAllowed();
 
+#if QT_VERSION >= QT_VERSION_CHECK(7, 0, 0)
+    static QCoreApplication *instance() noexcept { return self.loadRelaxed(); }
+#else
     static QCoreApplication *instance() noexcept { return self; }
+#endif
 
 #ifndef QT_NO_QOBJECT
     static int exec();
@@ -214,7 +216,7 @@ protected:
     QCoreApplication(QCoreApplicationPrivate &p);
 
 #ifdef QT_NO_QOBJECT
-    QScopedPointer<QCoreApplicationPrivate> d_ptr;
+    std::unique_ptr<QCoreApplicationPrivate> d_ptr;
 #endif
 
 private:
@@ -227,7 +229,11 @@ private:
     static QStringList libraryPathsLocked();
 #endif
 
+#if QT_VERSION >= QT_VERSION_CHECK(7, 0, 0)
+    static QBasicAtomicPointer<QCoreApplication> self;
+#else
     static QCoreApplication *self;
+#endif
 
     Q_DISABLE_COPY(QCoreApplication)
 

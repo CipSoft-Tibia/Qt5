@@ -61,7 +61,7 @@
 
     You can use a Qt Creator wizard to create a project that contains Qt tests
     and build and run them directly from Qt Creator. For more information, see
-    \l {Qt Creator: Build and Run Tests}.
+    \l {Qt Creator: Build and run tests}.
 
     \section1 Creating a Test
 
@@ -373,9 +373,11 @@
 
     \list
     \li \c -callgrind \br
-    Uses Callgrind to time benchmarks (Linux only).
+    Uses Callgrind to time benchmarks (Linux and \macos).
+    \li \c -perf \br
+    Uses Linux perf events to time benchmarks
     \li \c -tickcounter \br
-    Uses CPU tick counters to time benchmarks.
+    Uses CPU tick counters to time benchmarks. Requires hardware support.
     \li \c -eventcounter \br
     Counts events received during benchmarks.
     \li \c -minimumvalue \e n \br
@@ -415,12 +417,6 @@
     to e.g. debug an unstable or intermittent failure in a test, by
     launching the test in a debugger. Support for this variable was
     added in Qt 6.1.
-    \li \c QTEST_THROW_ON_FAIL (since 6.8) \br
-    Setting this variable to a non-zero value will cause QCOMPARE()/QVERIFY()
-    etc to throw on failure (as opposed to just returning from the
-    immediately-surrounding function scope).
-    \li \c QTEST_THROW_ON_SKIP (since 6.8) \br
-    Same as \c QTEST_THROW_ON_FAIL, except affecting QSKIP().
     \endlist
 
     \section1 Creating a Benchmark
@@ -458,7 +454,7 @@
     The code inside the QBENCHMARK macro will be measured, and possibly also repeated
     several times in order to get an accurate measurement. This depends on the selected
     measurement back-end. Several back-ends are available. They can be selected on the
-    command line:
+    command line (see \l{Benchmarking Options}):
 
     \target testlib-benchmarking-measurement
 

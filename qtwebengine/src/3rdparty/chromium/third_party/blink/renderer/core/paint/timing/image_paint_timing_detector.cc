@@ -58,22 +58,15 @@ uint64_t DownScaleIfIntrinsicSizeIsSmaller(
   return visual_size;
 }
 
-bool ShouldReportAnimatedImages() {
-  return (
-      RuntimeEnabledFeatures::LCPAnimatedImagesWebExposedEnabled() &&
-      (base::FeatureList::IsEnabled(features::kLCPAnimatedImagesReporting) ||
-       base::FeatureList::IsEnabled(features::kLCPVideoFirstFrame)));
-}
-
 void RecordPotentialSoftNavigationPaint(LocalFrameView* frame_view,
                                         gfx::RectF rect,
                                         Node* node) {
   LocalFrame& frame = frame_view->GetFrame();
   if (LocalDOMWindow* window = frame.DomWindow()) {
-    if (SoftNavigationHeuristics* soft_navigation =
+    if (SoftNavigationHeuristics* heuristics =
             SoftNavigationHeuristics::From(*window)) {
-      soft_navigation->RecordPaint(&frame, rect.size().GetArea(),
-                                   node->IsModifiedBySoftNavigation());
+      heuristics->RecordPaint(&frame, rect.size().GetArea(),
+                              node->IsModifiedBySoftNavigation());
     }
   }
 }
@@ -86,9 +79,9 @@ double ImageRecord::EntropyForLCP() const {
   return media_timing->ContentSizeForEntropy() * 8.0 / recorded_size;
 }
 
-absl::optional<WebURLRequest::Priority> ImageRecord::RequestPriority() const {
+std::optional<WebURLRequest::Priority> ImageRecord::RequestPriority() const {
   if (!media_timing)
-    return absl::nullopt;
+    return std::nullopt;
   return media_timing->RequestPriority();
 }
 
@@ -171,25 +164,11 @@ ImagePaintTimingDetector::UpdateMetricsCandidate() {
   ImageRecord* largest_image_record = records_manager_.LargestImage();
   base::TimeTicks time = largest_image_record ? largest_image_record->paint_time
                                               : base::TimeTicks();
-  // This doesn't use ShouldReportAnimatedImages(), as it should only update the
-  // record when the appropriate base::Feature (either
-  // kLCPAnimatedImagesReporting or kLCPVideoFirstFrame) is enabled, regardless
-  // of the state of the LCPAnimatedImagesWebExposed runtime-enabled flag.
   bool animated_first_frame_ready =
       largest_image_record &&
       !largest_image_record->first_animated_frame_time.is_null();
   if (animated_first_frame_ready) {
-    // If there is no media_timing or no first video frame, use the
-    // kLCPAnimatedImagesReporting flag. Otherwise, use the kLCPVideoFirstFrame
-    // flag.
-    bool is_video =
-        largest_image_record->media_timing &&
-        !largest_image_record->media_timing->GetFirstVideoFrameTime().is_null();
-    if (is_video ? base::FeatureList::IsEnabled(features::kLCPVideoFirstFrame)
-                 : base::FeatureList::IsEnabled(
-                       features::kLCPAnimatedImagesReporting)) {
-      time = largest_image_record->first_animated_frame_time;
-    }
+    time = largest_image_record->first_animated_frame_time;
   }
 
   const uint64_t size =
@@ -198,9 +177,9 @@ ImagePaintTimingDetector::UpdateMetricsCandidate() {
   double bpp =
       largest_image_record ? largest_image_record->EntropyForLCP() : 0.0;
 
-  absl::optional<WebURLRequest::Priority> priority =
+  std::optional<WebURLRequest::Priority> priority =
       largest_image_record ? largest_image_record->RequestPriority()
-                           : absl::nullopt;
+                           : std::nullopt;
 
   PaintTimingDetector& detector = frame_view_->GetPaintTimingDetector();
   // Calling NotifyMetricsIfLargestImagePaintChanged only has an impact on
@@ -223,7 +202,7 @@ ImagePaintTimingDetector::UpdateMetricsCandidate() {
 }
 
 void ImagePaintTimingDetector::OnPaintFinished() {
-  viewport_size_ = absl::nullopt;
+  viewport_size_ = std::nullopt;
   if (!added_entry_in_latest_frame_)
     return;
 
@@ -254,9 +233,9 @@ void ImagePaintTimingDetector::StopRecordEntries() {
 }
 
 void ImagePaintTimingDetector::RegisterNotifyPresentationTime() {
-  auto callback = WTF::BindOnce(
-      &ImagePaintTimingDetector::ReportPresentationTime,
-      WrapCrossThreadWeakPersistent(this), last_registered_frame_index_);
+  auto callback =
+      WTF::BindOnce(&ImagePaintTimingDetector::ReportPresentationTime,
+                    WrapWeakPersistent(this), last_registered_frame_index_);
   callback_manager_->RegisterCallback(std::move(callback));
 }
 
@@ -307,9 +286,8 @@ bool ImagePaintTimingDetector::RecordImage(
     const gfx::Size& intrinsic_size,
     const MediaTiming& media_timing,
     const PropertyTreeStateOrAlias& current_paint_chunk_properties,
-    const StyleFetchedImage* style_image,
-    const gfx::Rect& image_border,
-    const bool is_loaded_after_mouseover) {
+    const StyleImage* style_image,
+    const gfx::Rect& image_border) {
   Node* node = object.GetNode();
 
   if (!node)
@@ -320,11 +298,8 @@ bool ImagePaintTimingDetector::RecordImage(
   if (image_border.IsEmpty())
     return false;
 
-  if (RuntimeEnabledFeatures::
-          ExcludeBrokenImageIconFromBeingLcpEligibleEnabled()) {
-    if (media_timing.IsBroken()) {
-      return false;
-    }
+  if (media_timing.IsBroken()) {
+    return false;
   }
 
   MediaRecordId record_id(&object, &media_timing);
@@ -343,8 +318,7 @@ bool ImagePaintTimingDetector::RecordImage(
           image_border, mapped_visual_rect, intrinsic_size,
           current_paint_chunk_properties, object, media_timing);
       records_manager_.MaybeUpdateLargestIgnoredImage(
-          record_id, rect_size, image_border, mapped_visual_rect,
-          is_loaded_after_mouseover);
+          record_id, rect_size, image_border, mapped_visual_rect);
     }
     return false;
   }
@@ -353,7 +327,8 @@ bool ImagePaintTimingDetector::RecordImage(
     ImageRecord* record = records_manager_.GetPendingImage(record_id_hash);
     if (!record)
       return false;
-    if (ShouldReportAnimatedImages() && media_timing.IsPaintedFirstFrame()) {
+    if (media_timing.IsPaintedFirstFrame() &&
+        RuntimeEnabledFeatures::LCPAnimatedImagesWebExposedEnabled()) {
       added_entry_in_latest_frame_ |=
           records_manager_.OnFirstAnimatedFramePainted(record_id_hash,
                                                        frame_index_);
@@ -361,7 +336,7 @@ bool ImagePaintTimingDetector::RecordImage(
     if (!record->loaded && media_timing.IsSufficientContentLoadedForPaint()) {
       records_manager_.OnImageLoaded(record_id_hash, frame_index_, style_image);
       added_entry_in_latest_frame_ = true;
-      if (absl::optional<PaintTimingVisualizer>& visualizer =
+      if (std::optional<PaintTimingVisualizer>& visualizer =
               frame_view_->GetPaintTimingDetector().Visualizer()) {
         gfx::RectF mapped_visual_rect =
             frame_view_->GetPaintTimingDetector().CalculateVisualRect(
@@ -390,12 +365,12 @@ bool ImagePaintTimingDetector::RecordImage(
                    : 0.0;
 
   bool added_pending = records_manager_.RecordFirstPaintAndReturnIsPending(
-      record_id, rect_size, image_border, mapped_visual_rect, bpp,
-      is_loaded_after_mouseover);
+      record_id, rect_size, image_border, mapped_visual_rect, bpp);
   if (!added_pending)
     return false;
 
-  if (ShouldReportAnimatedImages() && media_timing.IsPaintedFirstFrame()) {
+  if (media_timing.IsPaintedFirstFrame() &&
+      RuntimeEnabledFeatures::LCPAnimatedImagesWebExposedEnabled()) {
     added_entry_in_latest_frame_ |=
         records_manager_.OnFirstAnimatedFramePainted(record_id_hash,
                                                      frame_index_);
@@ -415,7 +390,7 @@ uint64_t ImagePaintTimingDetector::ComputeImageRectSize(
     const PropertyTreeStateOrAlias& current_paint_chunk_properties,
     const LayoutObject& object,
     const MediaTiming& media_timing) {
-  if (absl::optional<PaintTimingVisualizer>& visualizer =
+  if (std::optional<PaintTimingVisualizer>& visualizer =
           frame_view_->GetPaintTimingDetector().Visualizer()) {
     visualizer->DumpImageDebuggingRect(
         object, mapped_visual_rect,
@@ -493,7 +468,7 @@ bool ImageRecordsManager::OnFirstAnimatedFramePainted(
 
 void ImageRecordsManager::OnImageLoaded(MediaRecordIdHash record_id_hash,
                                         unsigned current_frame_index,
-                                        const StyleFetchedImage* style_image) {
+                                        const StyleImage* style_image) {
   ImageRecord* record = GetPendingImage(record_id_hash);
   DCHECK(record);
   if (!style_image) {
@@ -547,14 +522,12 @@ void ImageRecordsManager::MaybeUpdateLargestIgnoredImage(
     const MediaRecordId& record_id,
     const uint64_t& visual_size,
     const gfx::Rect& frame_visual_rect,
-    const gfx::RectF& root_visual_rect,
-    bool is_loaded_after_mouseover) {
+    const gfx::RectF& root_visual_rect) {
   if (visual_size && (!largest_ignored_image_ ||
                       visual_size > largest_ignored_image_->recorded_size)) {
     largest_ignored_image_ = CreateImageRecord(
         *record_id.GetLayoutObject(), record_id.GetMediaTiming(), visual_size,
-        frame_visual_rect, root_visual_rect, is_loaded_after_mouseover,
-        record_id.GetHash());
+        frame_visual_rect, root_visual_rect, record_id.GetHash());
     largest_ignored_image_->load_time = base::TimeTicks::Now();
   }
 }
@@ -564,8 +537,7 @@ bool ImageRecordsManager::RecordFirstPaintAndReturnIsPending(
     const uint64_t& visual_size,
     const gfx::Rect& frame_visual_rect,
     const gfx::RectF& root_visual_rect,
-    double bpp,
-    bool is_loaded_after_mouseover) {
+    double bpp) {
   // Don't process the image yet if it is invisible, as it may later become
   // visible, and potentially eligible to be an LCP candidate.
   if (visual_size == 0u) {
@@ -582,24 +554,10 @@ bool ImageRecordsManager::RecordFirstPaintAndReturnIsPending(
       bpp < features::kMinimumEntropyForLCP.Get()) {
     return false;
   }
-  if (RuntimeEnabledFeatures::LCPMouseoverHeuristicsEnabled() &&
-      is_loaded_after_mouseover) {
-    // TODO(https://crbug.com/1288027): Remove this debugging info once we have
-    // a clearer picture on heuristic failures.
-    if (Document* document = frame_view_->GetFrame().GetDocument()) {
-      document->AddConsoleMessage(MakeGarbageCollected<ConsoleMessage>(
-          mojom::blink::ConsoleMessageSource::kOther,
-          mojom::blink::ConsoleMessageLevel::kVerbose,
-          "Not emitting an LCP image entry, because it was loaded due to a "
-          "mouseover."));
-    }
-    return false;
-  }
 
   ImageRecord* record = CreateImageRecord(
       *record_id.GetLayoutObject(), record_id.GetMediaTiming(), visual_size,
-      frame_visual_rect, root_visual_rect, is_loaded_after_mouseover,
-      record_id.GetHash());
+      frame_visual_rect, root_visual_rect, record_id.GetHash());
   AddPendingImage(record);
   return true;
 }
@@ -617,14 +575,13 @@ ImageRecord* ImageRecordsManager::CreateImageRecord(
     const uint64_t& visual_size,
     const gfx::Rect& frame_visual_rect,
     const gfx::RectF& root_visual_rect,
-    bool is_loaded_after_mouseover,
     MediaRecordIdHash hash) {
   DCHECK_GT(visual_size, 0u);
   Node* node = object.GetNode();
   DOMNodeId node_id = node->GetDomNodeId();
   return MakeGarbageCollected<ImageRecord>(node_id, media_timing, visual_size,
                                            frame_visual_rect, root_visual_rect,
-                                           is_loaded_after_mouseover, hash);
+                                           hash);
 }
 
 void ImageRecordsManager::ClearImagesQueuedForPaintTime() {

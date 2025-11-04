@@ -34,27 +34,20 @@
 class PrefService;
 
 namespace syncer {
-class ProxyModelTypeControllerDelegate;
+class DataTypeControllerDelegate;
 }  // namespace syncer
 
 namespace password_manager {
 
 struct PasswordForm;
 
-using IsAccountStore = base::StrongAlias<class IsAccountStoreTag, bool>;
-
 using metrics_util::GaiaPasswordHashChange;
 
 class PasswordStoreConsumer;
 
 // Used to notify that unsynced credentials are about to be deleted.
-class UnsyncedCredentialsDeletionNotifier {
- public:
-  // Should be called from the UI thread.
-  virtual void Notify(std::vector<PasswordForm>) = 0;
-  virtual ~UnsyncedCredentialsDeletionNotifier() = default;
-  virtual base::WeakPtr<UnsyncedCredentialsDeletionNotifier> GetWeakPtr() = 0;
-};
+using UnsyncedCredentialsDeletionNotifier =
+    base::RepeatingCallback<void(std::vector<PasswordForm>)>;
 
 // Partial, cross-platform implementation for storing form passwords.
 // The login request/manipulation API is not threadsafe and must be used
@@ -69,7 +62,7 @@ class PasswordStore : public PasswordStoreInterface {
   PasswordStore& operator=(const PasswordStore&) = delete;
 
   // Always call this too on the UI thread.
-  // TODO(crbug.com/1218413): Move initialization into the core interface, too.
+  // TODO(crbug.com/40185648): Move initialization into the core interface, too.
   void Init(PrefService* prefs,
             std::unique_ptr<AffiliatedMatchHelper> affiliated_match_helper);
 
@@ -90,15 +83,18 @@ class PasswordStore : public PasswordStoreInterface {
       const PasswordForm& new_form,
       const PasswordForm& old_primary_key,
       base::OnceClosure completion = base::DoNothing()) override;
-  void RemoveLogin(const PasswordForm& form) override;
+  void RemoveLogin(const base::Location& location,
+                   const PasswordForm& form) override;
   void RemoveLoginsByURLAndTime(
+      const base::Location& location,
       const base::RepeatingCallback<bool(const GURL&)>& url_filter,
       base::Time delete_begin,
       base::Time delete_end,
       base::OnceClosure completion = base::NullCallback(),
       base::OnceCallback<void(bool)> sync_completion =
           base::NullCallback()) override;
-  void RemoveLoginsCreatedBetween(base::Time delete_begin,
+  void RemoveLoginsCreatedBetween(const base::Location& location,
+                                  base::Time delete_begin,
                                   base::Time delete_end,
                                   base::OnceCallback<void(bool)> completion =
                                       base::NullCallback()) override;
@@ -118,7 +114,7 @@ class PasswordStore : public PasswordStoreInterface {
   void AddObserver(Observer* observer) override;
   void RemoveObserver(Observer* observer) override;
   SmartBubbleStatsStore* GetSmartBubbleStatsStore() override;
-  std::unique_ptr<syncer::ProxyModelTypeControllerDelegate>
+  std::unique_ptr<syncer::DataTypeControllerDelegate>
   CreateSyncControllerDelegate() override;
   void OnSyncServiceInitialized(syncer::SyncService* sync_service) override;
   base::CallbackListSubscription AddSyncEnabledOrDisabledCallback(
@@ -131,19 +127,6 @@ class PasswordStore : public PasswordStoreInterface {
   ~PasswordStore() override;
 
  private:
-  // Status of PasswordStore::Init().
-  enum class InitStatus {
-    // Initialization status is still not determined (init hasn't started or
-    // finished yet).
-    kUnknown,
-    // Initialization is successfully finished.
-    kSuccess,
-    // There was an error during initialization and PasswordStore is not ready
-    // to save or get passwords.
-    // Removing passwords may still work.
-    kFailure,
-  };
-
   // Represents different triggers that may require requesting all logins from
   // the password store. Entries should not be renumbered and numeric values
   // should never be reused. Always keep this enum in sync with the
@@ -160,8 +143,8 @@ class PasswordStore : public PasswordStoreInterface {
   };
 
   // Called on the main thread after initialization is completed.
-  // |success| is true if initialization was successful. Sets the
-  // |init_status_|.
+  // |success| is true if initialization was successful. Invokes
+  // |post_init_callback_|.
   void OnInitCompleted(bool success);
 
   // Notifies observers that password store data may have been changed. If
@@ -189,7 +172,7 @@ class PasswordStore : public PasswordStoreInterface {
   std::unique_ptr<PasswordStoreBackend> backend_;
 
   // TaskRunner for tasks that run on the main sequence (usually the UI thread).
-  // TODO(crbug.com/1217071): Move into backend_.
+  // TODO(crbug.com/40185050): Move into backend_.
   scoped_refptr<base::SequencedTaskRunner> main_task_runner_;
 
   // See PasswordStoreInterface::AddSyncEnabledOrDisabledCallback(). Wrapped in
@@ -205,9 +188,12 @@ class PasswordStore : public PasswordStoreInterface {
 
   raw_ptr<PrefService> prefs_ = nullptr;
 
-  InitStatus init_status_ = InitStatus::kUnknown;
-
   base::Time construction_time_;
+
+  // Any call to |this| before backend initialization is complete is preserved
+  // here to be executed afterwards by chaining in FIFO order. Callback is
+  // invoked inside OnInitCompleted().
+  base::OnceClosure post_init_callback_ = base::DoNothing();
 };
 
 }  // namespace password_manager

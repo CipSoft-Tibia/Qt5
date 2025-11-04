@@ -48,3 +48,6 @@ qhp.QtDataVis3D.subprojects.types.sortPages             = true
 navigation.landingpage = Qt Data Visualization
 navigation.cppclassespage = Qt Data Visualization C++ Classes
 navigation.qmltypespage = Qt Data Visualization QML Types
+
+# Allow zero warnings when testing documentation in CI
+warninglimit = 0

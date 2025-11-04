@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QtGrpc/private/qabstractgrpcchannel_p.h>
+#include <QtGrpc/private/qgrpcoperation_p.h>
 #include <QtGrpc/private/qtgrpclogging_p.h>
 #include <QtGrpc/qgrpcclientbase.h>
 #include <QtGrpc/qgrpcoperation.h>
@@ -40,7 +41,7 @@ QT_BEGIN_NAMESPACE
     \fn void QGrpcClientBase::channelChanged()
     \since 6.7
 
-    Indicates that a new channel is attached to the client.
+    Indicates that a new channel got attached to the client.
 */
 
 namespace {
@@ -124,13 +125,13 @@ void QGrpcClientBasePrivate::addStream(QGrpcOperation *grpcStream)
         activeStreams.remove(grpcStream);
     });
 
-    auto finishedConnection = std::make_shared<QMetaObject::Connection>();
-    *finishedConnection = QObject::connect(grpcStream, &QGrpcOperation::finished, q,
-                                           [this, grpcStream, finishedConnection] {
-                                               Q_ASSERT(activeStreams.contains(grpcStream));
-                                               activeStreams.remove(grpcStream);
-                                               QObject::disconnect(*finishedConnection);
-                                           });
+    QObject::connect(
+        grpcStream, &QGrpcOperation::finished, q,
+        [this, grpcStream] {
+            Q_ASSERT(activeStreams.contains(grpcStream));
+            activeStreams.remove(grpcStream);
+        },
+        Qt::SingleShotConnection);
     const auto it = activeStreams.insert(grpcStream);
     Q_ASSERT(it.second);
 }
@@ -265,6 +266,13 @@ std::unique_ptr<QGrpcBidiStream> QGrpcClientBase::bidiStream(QLatin1StringView m
 {
     Q_D(QGrpcClientBase);
     return d->initOperation<QGrpcBidiStream>(method, arg, options);
+}
+
+void QGrpcClientBase::setOperationResponseMetaType(QGrpcOperation *operation,
+                                                       QMetaType responseMetaType)
+{
+    Q_ASSERT(operation);
+    QGrpcOperationPrivate::get(operation)->operationContext->setResponseMetaType(responseMetaType);
 }
 
 bool QGrpcClientBase::event(QEvent *event)

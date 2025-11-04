@@ -1,5 +1,6 @@
 // Copyright (C) 2020 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QITEMSELECTIONMODEL_H
 #define QITEMSELECTIONMODEL_H
@@ -42,16 +43,14 @@ public:
 
     inline bool contains(const QModelIndex &index) const
     {
-        return (parent() == index.parent()
-                && tl.row() <= index.row() && tl.column() <= index.column()
-                && br.row() >= index.row() && br.column() >= index.column());
+        return contains(index.row(), index.column(), index.parent());
     }
 
     inline bool contains(int row, int column, const QModelIndex &parentIndex) const
     {
-        return (parent() == parentIndex
-                && tl.row() <= row && tl.column() <= column
-                && br.row() >= row && br.column() >= column);
+        return (br.row() >= row && br.column() >= column &&
+                tl.row() <= row && tl.column() <= column &&
+                parent() == parentIndex);
     }
 
     bool intersects(const QItemSelectionRange &other) const;

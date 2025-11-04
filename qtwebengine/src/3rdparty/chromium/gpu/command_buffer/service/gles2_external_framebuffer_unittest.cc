@@ -132,7 +132,7 @@ class GLES2ExternalFrameBufferTest
   // Creates a SharedImage that can be used for reading and writing via the
   // GLES2 interface (these tests do both).
   Mailbox CreateSharedImage(const viz::SharedImageFormat& format) {
-    auto mailbox = Mailbox::GenerateForSharedImage();
+    auto mailbox = Mailbox::Generate();
     backing_factory_->CreateSharedImage(
         mailbox, format, gfx::Size(64, 64), gfx::ColorSpace::CreateSRGB(),
         kTopLeft_GrSurfaceOrigin, kPremul_SkAlphaType, SurfaceHandle(),
@@ -264,23 +264,9 @@ TEST_P(GLES2ExternalFrameBufferTest, Test) {
   GLint stencil_bits = 0;
   GLint alpha_bits = 0;
 
-  if (context_state_->feature_info()
-          ->gl_version_info()
-          .is_desktop_core_profile) {
-    api->glGetFramebufferAttachmentParameterivEXTFn(
-        GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
-        GL_FRAMEBUFFER_ATTACHMENT_ALPHA_SIZE, &alpha_bits);
-    api->glGetFramebufferAttachmentParameterivEXTFn(
-        GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT,
-        GL_FRAMEBUFFER_ATTACHMENT_DEPTH_SIZE, &depth_bits);
-    api->glGetFramebufferAttachmentParameterivEXTFn(
-        GL_FRAMEBUFFER, GL_STENCIL_ATTACHMENT,
-        GL_FRAMEBUFFER_ATTACHMENT_STENCIL_SIZE, &stencil_bits);
-  } else {
-    api->glGetIntegervFn(GL_ALPHA_BITS, &alpha_bits);
-    api->glGetIntegervFn(GL_DEPTH_BITS, &depth_bits);
-    api->glGetIntegervFn(GL_STENCIL_BITS, &stencil_bits);
-  }
+  api->glGetIntegervFn(GL_ALPHA_BITS, &alpha_bits);
+  api->glGetIntegervFn(GL_DEPTH_BITS, &depth_bits);
+  api->glGetIntegervFn(GL_STENCIL_BITS, &stencil_bits);
 
   // If we requested depth, expect it to be there.
   if (params.need_depth)

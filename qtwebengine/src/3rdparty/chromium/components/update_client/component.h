@@ -5,8 +5,10 @@
 #ifndef COMPONENTS_UPDATE_CLIENT_COMPONENT_H_
 #define COMPONENTS_UPDATE_CLIENT_COMPONENT_H_
 
+#include <cstdint>
 #include <map>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -18,17 +20,17 @@
 #include "base/memory/ref_counted.h"
 #include "base/sequence_checker.h"
 #include "base/time/time.h"
+#include "base/types/expected.h"
 #include "base/values.h"
 #include "base/version.h"
+#include "components/update_client/crx_cache.h"
 #include "components/update_client/crx_downloader.h"
 #include "components/update_client/protocol_parser.h"
 #include "components/update_client/update_client.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "url/gurl.h"
 
 namespace update_client {
 
-class ActionRunner;
 class Configurator;
 struct CrxUpdateItem;
 struct UpdateContext;
@@ -54,16 +56,12 @@ class Component {
 
   // Sets the ping-only state for this component.
   void PingOnly(const CrxComponent& crx_component,
-                int event_type,
-                int result,
-                int error_code,
-                int extra_code1);
+                UpdateClient::PingParams ping_params);
 
   // Called by the UpdateEngine when an update check for this component is done.
-  void SetUpdateCheckResult(
-      const absl::optional<ProtocolParser::Result>& result,
-      ErrorCategory error_category,
-      int error);
+  void SetUpdateCheckResult(const std::optional<ProtocolParser::Result>& result,
+                            ErrorCategory error_category,
+                            int error);
 
   // Called by the UpdateEngine when a component enters a wait for throttling
   // purposes.
@@ -85,7 +83,7 @@ class Component {
 
   std::string id() const { return id_; }
 
-  const absl::optional<CrxComponent>& crx_component() const {
+  const std::optional<CrxComponent>& crx_component() const {
     return crx_component_;
   }
   void set_crx_component(const CrxComponent& crx_component) {
@@ -114,11 +112,7 @@ class Component {
   bool diff_update_failed() const { return diff_error_code_; }
 
   ErrorCategory error_category() const { return error_category_; }
-  int error_code() const {
-    return installer_result_ && installer_result_->original_error
-               ? installer_result_->original_error
-               : error_code_;
-  }
+  int error_code() const { return error_code_; }
   int extra_code1() const { return extra_code1_; }
   ErrorCategory diff_error_category() const { return diff_error_category_; }
   int diff_error_code() const { return diff_error_code_; }
@@ -243,7 +237,8 @@ class Component {
     // State overrides.
     void DoHandle() override;
     bool CanTryDiffUpdate() const;
-    void CheckIfCacheContainsCrxComplete(bool crx_is_in_cache);
+    void GetNextCrxFromCacheComplete(const CrxCache::Result& result);
+    void CheckIfCacheContainsPreviousCrxComplete(bool crx_is_in_cache);
   };
 
   class StateUpToDate : public State {
@@ -258,31 +253,9 @@ class Component {
     void DoHandle() override;
   };
 
-  class StateDownloadingDiff : public State {
-   public:
-    explicit StateDownloadingDiff(Component* component);
-    StateDownloadingDiff(const StateDownloadingDiff&) = delete;
-    StateDownloadingDiff& operator=(const StateDownloadingDiff&) = delete;
-    ~StateDownloadingDiff() override;
-
-   private:
-    // State overrides.
-    void DoHandle() override;
-
-    // Called when progress is being made downloading a CRX. Can be called
-    // multiple times due to how the CRX downloader switches between
-    // different downloaders and fallback urls.
-    void DownloadProgress(int64_t downloaded_bytes, int64_t total_bytes);
-
-    void DownloadComplete(const CrxDownloader::Result& download_result);
-
-    // Downloads updates for one CRX id only.
-    scoped_refptr<CrxDownloader> crx_downloader_;
-  };
-
   class StateDownloading : public State {
    public:
-    explicit StateDownloading(Component* component);
+    StateDownloading(Component* component, bool diff);
     StateDownloading(const StateDownloading&) = delete;
     StateDownloading& operator=(const StateDownloading&) = delete;
     ~StateDownloading() override;
@@ -291,15 +264,11 @@ class Component {
     // State overrides.
     void DoHandle() override;
 
-    // Called when progress is being made downloading a CRX. Can be called
-    // multiple times due to how the CRX downloader switches between
-    // different downloaders and fallback urls.
-    void DownloadProgress(int64_t downloaded_bytes, int64_t total_bytes);
+    void DownloadComplete(
+        const base::expected<base::FilePath, CategorizedError>&
+            download_result);
 
-    void DownloadComplete(const CrxDownloader::Result& download_result);
-
-    // Downloads updates for one CRX id only.
-    scoped_refptr<CrxDownloader> crx_downloader_;
+    bool diff_;
   };
 
   class StateUpdatingDiff : public State {
@@ -313,11 +282,10 @@ class Component {
     // State overrides.
     void DoHandle() override;
 
+    void PatchingComplete(
+        const base::expected<base::FilePath, CategorizedError>&);
     void InstallProgress(int install_progress);
-    void InstallComplete(ErrorCategory error_category,
-                         int error_code,
-                         int extra_code1,
-                         absl::optional<CrxInstaller::Result> installer_result);
+    void InstallComplete(const CrxInstaller::Result& installer_result);
   };
 
   class StateUpdating : public State {
@@ -332,10 +300,7 @@ class Component {
     void DoHandle() override;
 
     void InstallProgress(int install_progress);
-    void InstallComplete(ErrorCategory error_category,
-                         int error_code,
-                         int extra_code1,
-                         absl::optional<CrxInstaller::Result> installer_result);
+    void InstallComplete(const CrxInstaller::Result& installer_result);
   };
 
   class StateUpdated : public State {
@@ -374,15 +339,15 @@ class Component {
     void DoHandle() override;
 
     void ActionRunComplete(bool succeeded, int error_code, int extra_code1);
-
-    // Runs the action referred by the |action_run_| member of the Component
-    // class.
-    std::unique_ptr<ActionRunner> action_runner_;
   };
 
   // Returns true is the update payload for this component can be downloaded
   // by a downloader which can do bandwidth throttling on the client side.
-  bool CanDoBackgroundDownload() const;
+  // The decision may be predicated on the expected size of the download.
+  bool CanDoBackgroundDownload(int64_t size) const;
+
+  // Returns true if the component has a differential update.
+  bool HasDiffUpdate() const;
 
   void AppendEvent(base::Value::Dict event);
 
@@ -412,7 +377,7 @@ class Component {
   SEQUENCE_CHECKER(sequence_checker_);
 
   const std::string id_;
-  absl::optional<CrxComponent> crx_component_;
+  std::optional<CrxComponent> crx_component_;
 
   // The status of the updatecheck response.
   std::string status_;
@@ -430,6 +395,10 @@ class Component {
   // The cryptographic hash values for the component payload.
   std::string hash_sha256_;
   std::string hashdiff_sha256_;
+
+  // The expected size of the download as reported by the update server.
+  int64_t size_ = -1;
+  int64_t sizediff_ = -1;
 
   // The from/to version and fingerprint values.
   base::Version previous_version_;
@@ -471,7 +440,7 @@ class Component {
   ErrorCategory error_category_ = ErrorCategory::kNone;
   int error_code_ = 0;
   int extra_code1_ = 0;
-  absl::optional<CrxInstaller::Result> installer_result_;
+  std::optional<CrxInstaller::Result> installer_result_;
   ErrorCategory diff_error_category_ = ErrorCategory::kNone;
   int diff_error_code_ = 0;
   int diff_extra_code1_ = 0;
@@ -481,7 +450,7 @@ class Component {
   std::map<std::string, std::string> custom_attrs_;
 
   // Contains the optional install parameters from the update response.
-  absl::optional<CrxInstaller::InstallParams> install_params_;
+  std::optional<CrxInstaller::InstallParams> install_params_;
 
   // Contains the events which are therefore serialized in the requests.
   std::vector<base::Value::Dict> events_;

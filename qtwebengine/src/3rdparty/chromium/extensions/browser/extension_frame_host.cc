@@ -8,17 +8,23 @@
 
 #include "base/trace_event/typed_macros.h"
 #include "content/public/browser/render_process_host.h"
-#include "extensions/browser/app_window/app_window.h"
-#include "extensions/browser/app_window/app_window_registry.h"
 #include "extensions/browser/bad_message.h"
 #include "extensions/browser/extension_function_dispatcher.h"
 #include "extensions/browser/extension_host.h"
 #include "extensions/browser/extension_web_contents_observer.h"
 #include "extensions/browser/message_service_api.h"
 #include "extensions/browser/process_manager.h"
+#include "extensions/buildflags/buildflags.h"
 #include "extensions/common/api/messaging/port_context.h"
+#include "extensions/common/extension_id.h"
 #include "extensions/common/mojom/message_port.mojom.h"
 #include "extensions/common/trace_util.h"
+#include "third_party/blink/public/mojom/page/draggable_region.mojom.h"
+
+#if BUILDFLAG(ENABLE_PLATFORM_APPS)
+#include "extensions/browser/app_window/app_window.h"
+#include "extensions/browser/app_window/app_window_registry.h"
+#endif
 
 using perfetto::protos::pbzero::ChromeTrackEvent;
 
@@ -36,7 +42,7 @@ void ExtensionFrameHost::BindLocalFrameHost(
 }
 
 void ExtensionFrameHost::RequestScriptInjectionPermission(
-    const std::string& extension_id,
+    const ExtensionId& extension_id,
     mojom::InjectionType script_type,
     mojom::RunLocation run_location,
     RequestScriptInjectionPermissionCallback callback) {
@@ -121,34 +127,8 @@ const Extension* ExtensionFrameHost::GetExtension(
   return extension_host->extension();
 }
 
-void ExtensionFrameHost::UpdateDraggableRegions(
-    std::vector<mojom::DraggableRegionPtr> regions) {
-  content::RenderFrameHost* render_frame_host =
-      receivers_.GetCurrentTargetFrame();
-
-  // TODO(dtapuska): We should restrict sending the draggable region
-  // only to AppWindows.
-  AppWindowRegistry* registry =
-      AppWindowRegistry::Get(render_frame_host->GetBrowserContext());
-  if (!registry) {
-    return;
-  }
-  AppWindow* app_window = registry->GetAppWindowForWebContents(web_contents_);
-  if (!app_window) {
-    return;
-  }
-
-  // This message should come from a primary main frame.
-  if (!render_frame_host->IsInPrimaryMainFrame()) {
-    bad_message::ReceivedBadMessage(
-        render_frame_host->GetProcess(),
-        bad_message::AWCI_INVALID_CALL_FROM_NOT_PRIMARY_MAIN_FRAME);
-    return;
-  }
-  app_window->UpdateDraggableRegions(std::move(regions));
-}
-
 void ExtensionFrameHost::AppWindowReady() {
+#if BUILDFLAG(ENABLE_PLATFORM_APPS)
   AppWindowRegistry* registry =
       AppWindowRegistry::Get(web_contents_->GetBrowserContext());
   if (!registry) {
@@ -159,6 +139,7 @@ void ExtensionFrameHost::AppWindowReady() {
     return;
   }
   app_window->AppWindowReady();
+#endif
 }
 
 void ExtensionFrameHost::OpenChannelToExtension(
@@ -175,13 +156,9 @@ void ExtensionFrameHost::OpenChannelToExtension(
   TRACE_EVENT("extensions", "ExtensionFrameHost::OpenChannelToExtension",
               ChromeTrackEvent::kRenderProcessHost, *process);
 
-#if BUILDFLAG(ENABLE_EXTENSIONS_LEGACY_IPC)
-  bad_message::ReceivedBadMessage(process, bad_message::LEGACY_IPC_MISMATCH);
-#else
   MessageServiceApi::GetMessageService()->OpenChannelToExtension(
       render_frame_host->GetBrowserContext(), render_frame_host, port_id, *info,
       channel_type, channel_name, std::move(port), std::move(port_host));
-#endif
 }
 
 void ExtensionFrameHost::OpenChannelToNativeApp(
@@ -196,13 +173,9 @@ void ExtensionFrameHost::OpenChannelToNativeApp(
   TRACE_EVENT("extensions", "ExtensionFrameHost::OnOpenChannelToNativeApp",
               ChromeTrackEvent::kRenderProcessHost, *process);
 
-#if BUILDFLAG(ENABLE_EXTENSIONS_LEGACY_IPC)
-  bad_message::ReceivedBadMessage(process, bad_message::LEGACY_IPC_MISMATCH);
-#else
   MessageServiceApi::GetMessageService()->OpenChannelToNativeApp(
       render_frame_host->GetBrowserContext(), render_frame_host, port_id,
       native_app_name, std::move(port), std::move(port_host));
-#endif
 }
 
 void ExtensionFrameHost::OpenChannelToTab(
@@ -221,14 +194,10 @@ void ExtensionFrameHost::OpenChannelToTab(
   TRACE_EVENT("extensions", "ExtensionFrameHost::OpenChannelToTab",
               ChromeTrackEvent::kRenderProcessHost, *process);
 
-#if BUILDFLAG(ENABLE_EXTENSIONS_LEGACY_IPC)
-  bad_message::ReceivedBadMessage(process, bad_message::LEGACY_IPC_MISMATCH);
-#else
   MessageServiceApi::GetMessageService()->OpenChannelToTab(
       render_frame_host->GetBrowserContext(), render_frame_host, port_id,
       tab_id, frame_id, document_id ? *document_id : std::string(),
       channel_type, channel_name, std::move(port), std::move(port_host));
-#endif
 }
 
 }  // namespace extensions

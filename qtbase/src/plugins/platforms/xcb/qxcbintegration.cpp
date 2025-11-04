@@ -25,7 +25,7 @@
 #include <xcb/xcb.h>
 
 #include <QtGui/private/qgenericunixfontdatabase_p.h>
-#include <QtGui/private/qgenericunixservices_p.h>
+#include <QtGui/private/qdesktopunixservices_p.h>
 
 #include <stdio.h>
 
@@ -71,7 +71,7 @@ using namespace Qt::StringLiterals;
 // or, for older Linuxes, read out 'cmdline'.
 static bool runningUnderDebugger()
 {
-#if defined(QT_DEBUG) && defined(Q_OS_LINUX)
+#if defined(Q_OS_LINUX)
     const QString parentProc = "/proc/"_L1 + QString::number(getppid());
     const QFileInfo parentProcExe(parentProc + "/exe"_L1);
     if (parentProcExe.isSymLink())
@@ -93,10 +93,12 @@ static bool runningUnderDebugger()
 #endif
 }
 
-class QXcbUnixServices : public QGenericUnixServices
+class QXcbUnixServices : public QDesktopUnixServices, public QXcbObject
 {
 public:
     QString portalWindowIdentifier(QWindow *window) override;
+    void registerDBusMenuForWindow(QWindow *window, const QString &service, const QString &path) override;
+    void unregisterDBusMenuForWindow(QWindow *window) override;
 };
 
 
@@ -155,12 +157,10 @@ QXcbIntegration::QXcbIntegration(const QStringList &parameters, int &argc, char 
         doGrabArg = false;
     }
 
-#if defined(QT_DEBUG)
     if (!noGrabArg && !doGrabArg && underDebugger) {
         qCDebug(lcQpaXcb, "Qt: gdb: -nograb added to command-line options.\n"
                 "\t Use the -dograb option to enforce grabbing.");
     }
-#endif
     m_canGrab = (!underDebugger && !noGrabArg) || (underDebugger && doGrabArg);
 
     static bool canNotGrabEnv = qEnvironmentVariableIsSet("QT_XCB_NO_GRAB_SERVER");
@@ -173,6 +173,7 @@ QXcbIntegration::QXcbIntegration(const QStringList &parameters, int &argc, char 
         m_connection = nullptr;
         return;
     }
+    m_services->setConnection(m_connection);
 
     m_fontDatabase.reset(new QGenericUnixFontDatabase());
 
@@ -528,7 +529,7 @@ QByteArray QXcbIntegration::wmClass() const
         if (m_instanceName)
             name = QString::fromLocal8Bit(m_instanceName);
         if (name.isEmpty() && qEnvironmentVariableIsSet(resourceNameVar))
-            name = QString::fromLocal8Bit(qgetenv(resourceNameVar));
+            name = qEnvironmentVariable(resourceNameVar);
         if (name.isEmpty())
             name = argv0BaseName();
 
@@ -592,13 +593,39 @@ QPlatformVulkanInstance *QXcbIntegration::createPlatformVulkanInstance(QVulkanIn
 
 void QXcbIntegration::setApplicationBadge(qint64 number)
 {
-    auto unixServices = dynamic_cast<QGenericUnixServices *>(services());
+    auto unixServices = dynamic_cast<QDesktopUnixServices *>(services());
     unixServices->setApplicationBadge(number);
 }
 
 QString QXcbUnixServices::portalWindowIdentifier(QWindow *window)
 {
     return "x11:"_L1 + QString::number(window->winId(), 16);
+}
+
+void QXcbUnixServices::registerDBusMenuForWindow(QWindow *window, const QString &service, const QString &path)
+{
+    const QByteArray serviceValue = service.toLatin1();
+    const QByteArray pathValue = path.toLatin1();
+
+    xcb_change_property(xcb_connection(),
+                        XCB_PROP_MODE_REPLACE, window->winId(),
+                        atom(QXcbAtom::Atom_KDE_NET_WM_APPMENU_SERVICE_NAME),
+                        XCB_ATOM_STRING, 8,
+                        serviceValue.length(),
+                        serviceValue.constData());
+
+    xcb_change_property(xcb_connection(),
+                        XCB_PROP_MODE_REPLACE, window->winId(),
+                        atom(QXcbAtom::Atom_KDE_NET_WM_APPMENU_OBJECT_PATH),
+                        XCB_ATOM_STRING, 8,
+                        pathValue.length(),
+                        pathValue.constData());
+}
+
+void QXcbUnixServices::unregisterDBusMenuForWindow(QWindow *window)
+{
+    xcb_delete_property(xcb_connection(), window->winId(), atom(QXcbAtom::Atom_KDE_NET_WM_APPMENU_SERVICE_NAME));
+    xcb_delete_property(xcb_connection(), window->winId(), atom(QXcbAtom::Atom_KDE_NET_WM_APPMENU_OBJECT_PATH));
 }
 
 QT_END_NAMESPACE

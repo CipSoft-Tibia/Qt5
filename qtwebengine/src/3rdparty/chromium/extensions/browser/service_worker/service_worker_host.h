@@ -15,13 +15,13 @@
 #include "content/public/browser/render_process_host_observer.h"
 #include "extensions/browser/permissions_manager.h"
 #include "extensions/browser/service_worker/worker_id.h"
-#include "extensions/buildflags/buildflags.h"
 #include "extensions/common/extension_id.h"
 #include "extensions/common/mojom/message_port.mojom.h"
 #include "extensions/common/mojom/service_worker.mojom.h"
 #include "extensions/common/mojom/service_worker_host.mojom.h"
 #include "mojo/public/cpp/bindings/associated_receiver.h"
 #include "mojo/public/cpp/bindings/associated_remote.h"
+#include "third_party/blink/public/common/tokens/tokens.h"
 #include "third_party/blink/public/mojom/service_worker/service_worker_database.mojom.h"
 
 class GURL;
@@ -42,9 +42,7 @@ class ExtensionFunctionDispatcher;
 // This class is the host of service worker execution context for extension
 // in the renderer process. Lives on the UI thread.
 class ServiceWorkerHost :
-#if !BUILDFLAG(ENABLE_EXTENSIONS_LEGACY_IPC)
     public PermissionsManager::Observer,
-#endif
     public mojom::ServiceWorkerHost,
     public content::RenderProcessHostObserver {
  public:
@@ -55,9 +53,7 @@ class ServiceWorkerHost :
   ServiceWorkerHost& operator=(const ServiceWorkerHost&) = delete;
   ~ServiceWorkerHost() override;
 
-#if !BUILDFLAG(ENABLE_EXTENSIONS_LEGACY_IPC)
   static ServiceWorkerHost* GetWorkerFor(const WorkerId& worker);
-#endif
   static void BindReceiver(
       int render_process_id,
       mojo::PendingAssociatedReceiver<mojom::ServiceWorkerHost> receiver);
@@ -67,6 +63,7 @@ class ServiceWorkerHost :
       const ExtensionId& extension_id,
       int64_t service_worker_version_id,
       int worker_thread_id,
+      const blink::ServiceWorkerToken& service_worker_token,
       mojo::PendingAssociatedRemote<mojom::EventDispatcher> event_dispatcher)
       override;
   void DidStartServiceWorkerContext(
@@ -109,7 +106,6 @@ class ServiceWorkerHost :
       mojo::PendingAssociatedReceiver<extensions::mojom::MessagePortHost>
           port_host) override;
 
-#if !BUILDFLAG(ENABLE_EXTENSIONS_LEGACY_IPC)
   // PermissionManager::Observer overrides.
   void OnExtensionPermissionsUpdated(
       const Extension& extension,
@@ -124,7 +120,6 @@ class ServiceWorkerHost :
   mojo::AssociatedReceiver<mojom::ServiceWorkerHost>& receiver_for_testing() {
     return receiver_;
   }
-#endif
 
   // content::RenderProcessHostObserver implementation.
   void RenderProcessExited(
@@ -148,13 +143,11 @@ class ServiceWorkerHost :
   std::unique_ptr<ExtensionFunctionDispatcher> dispatcher_;
 
   mojo::AssociatedReceiver<mojom::ServiceWorkerHost> receiver_{this};
-#if !BUILDFLAG(ENABLE_EXTENSIONS_LEGACY_IPC)
   mojo::AssociatedRemote<mojom::ServiceWorker> remote_;
   WorkerId worker_id_;
 
   base::ScopedObservation<PermissionsManager, PermissionsManager::Observer>
       permissions_observer_{this};
-#endif
 };
 
 }  // namespace extensions

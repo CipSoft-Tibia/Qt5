@@ -37,8 +37,7 @@ class TestMessageView : public MessageView {
   }
 
  private:
-  raw_ptr<NotificationControlButtonsView, DanglingUntriaged> buttons_view_ =
-      nullptr;
+  raw_ptr<NotificationControlButtonsView> buttons_view_ = nullptr;
 };
 
 }  // namespace
@@ -57,7 +56,8 @@ class NotificationControlButtonsTest : public views::ViewsTestBase {
   // views::ViewsTestBase:
   void SetUp() override {
     views::ViewsTestBase::SetUp();
-    widget_ = CreateTestWidget();
+    widget_ =
+        CreateTestWidget(views::Widget::InitParams::WIDGET_OWNS_NATIVE_WIDGET);
     Notification notification(
         NOTIFICATION_TYPE_SIMPLE, "id", u"title", u"id", ui::ImageModel(),
         std::u16string(), GURL(),
@@ -69,6 +69,7 @@ class NotificationControlButtonsTest : public views::ViewsTestBase {
   }
 
   void TearDown() override {
+    message_view_->set_control_buttons_view(nullptr);
     widget_.reset();
     views::ViewsTestBase::TearDown();
   }

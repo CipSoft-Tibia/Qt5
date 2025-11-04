@@ -21,10 +21,6 @@
 
 QT_BEGIN_NAMESPACE
 
-#ifndef QT_NO_DEBUG
-Q_QUICK_EXPORT bool qsg_test_and_clear_material_failure();
-#endif
-
 int qt_sg_envInt(const char *name, int defaultValue);
 
 namespace QSGBatchRenderer
@@ -178,7 +174,7 @@ QRhiCommandBuffer::IndexFormat qsg_indexFormat(const QSGGeometry *geometry)
     }
 }
 
-QRhiGraphicsPipeline::Topology qsg_topology(int geomDrawMode)
+QRhiGraphicsPipeline::Topology qsg_topology(int geomDrawMode, QRhi *rhi)
 {
     QRhiGraphicsPipeline::Topology topology = QRhiGraphicsPipeline::Triangles;
     switch (geomDrawMode) {
@@ -197,6 +193,20 @@ QRhiGraphicsPipeline::Topology qsg_topology(int geomDrawMode)
     case QSGGeometry::DrawTriangleStrip:
         topology = QRhiGraphicsPipeline::TriangleStrip;
         break;
+    case QSGGeometry::DrawTriangleFan:
+    {
+        static bool triangleFanSupported = false;
+        static bool triangleFanSupportChecked = false;
+        if (!triangleFanSupportChecked) {
+            triangleFanSupportChecked = true;
+            triangleFanSupported = rhi->isFeatureSupported(QRhi::TriangleFanTopology);
+        }
+        if (triangleFanSupported) {
+            topology = QRhiGraphicsPipeline::TriangleFan;
+            break;
+        }
+        Q_FALLTHROUGH();
+    }
     default:
         qWarning("Primitive topology 0x%x not supported", geomDrawMode);
         break;
@@ -1770,7 +1780,9 @@ void Renderer::prepareOpaqueBatches()
             const QSGMaterial *gnjMaterial = gnj->activeMaterial();
             if (gni->clipList() == gnj->clipList()
                     && gniGeometry->drawingMode() == gnjGeometry->drawingMode()
-                    && (gniGeometry->drawingMode() != QSGGeometry::DrawLines || gniGeometry->lineWidth() == gnjGeometry->lineWidth())
+                    && (gniGeometry->lineWidth() == gnjGeometry->lineWidth()
+                        || (gniGeometry->drawingMode() != QSGGeometry::DrawLines
+                            && gniGeometry->drawingMode() != QSGGeometry::DrawLineStrip))
                     && gniGeometry->attributes() == gnjGeometry->attributes()
                     && gniGeometry->indexType() == gnjGeometry->indexType()
                     && gni->inheritedOpacity() == gnj->inheritedOpacity()
@@ -2546,11 +2558,11 @@ void Renderer::updateClipState(const QSGClipNode *clipList, Batch *batch)
             if (firstStencilClipInBatch) {
                 m_stencilClipCommon.inputLayout.setBindings({ QRhiVertexInputBinding(g->sizeOfVertex()) });
                 m_stencilClipCommon.inputLayout.setAttributes({ QRhiVertexInputAttribute(0, 0, qsg_vertexInputFormat(*a), 0) });
-                m_stencilClipCommon.topology = qsg_topology(g->drawingMode());
+                m_stencilClipCommon.topology = qsg_topology(g->drawingMode(), m_rhi);
             }
 #ifndef QT_NO_DEBUG
             else {
-                if (qsg_topology(g->drawingMode()) != m_stencilClipCommon.topology)
+                if (qsg_topology(g->drawingMode(), m_rhi) != m_stencilClipCommon.topology)
                     qWarning("updateClipState: Clip list entries have different primitive topologies, this is not currently supported.");
                 if (qsg_vertexInputFormat(*a) != m_stencilClipCommon.inputLayout.cbeginAttributes()->format())
                     qWarning("updateClipState: Clip list entries have different vertex input layouts, this is must not happen.");
@@ -2742,8 +2754,9 @@ bool Renderer::ensurePipelineState(Element *e, const ShaderManager::Shader *sms,
         flags |= QRhiGraphicsPipeline::UsesStencilRef;
 
     ps->setFlags(flags);
-    ps->setTopology(qsg_topology(m_gstate.drawMode));
+    ps->setTopology(qsg_topology(m_gstate.drawMode, m_rhi));
     ps->setCullMode(m_gstate.cullMode);
+    ps->setFrontFace(invertFrontFace() ? QRhiGraphicsPipeline::CW : QRhiGraphicsPipeline::CCW);
     ps->setPolygonMode(m_gstate.polygonMode);
     ps->setMultiViewCount(m_gstate.multiViewCount);
 
@@ -3271,19 +3284,6 @@ bool Renderer::prepareRenderMergedBatch(Batch *batch, PreparedRenderBatch *rende
     if (directUpdatePtr)
         batch->ubuf->endFullDynamicBufferUpdateForCurrentFrame();
 
-#ifndef QT_NO_DEBUG
-    if (qsg_test_and_clear_material_failure()) {
-        qDebug("QSGMaterial::updateState triggered an error (merged), batch will be skipped:");
-        Element *ee = e;
-        while (ee) {
-            qDebug() << "   -" << ee->node;
-            ee = ee->nextInBatch;
-        }
-        QSGNodeDumper::dump(rootNode());
-        qFatal("Aborting: scene graph is invalid...");
-    }
-#endif
-
     m_gstate.drawMode = QSGGeometry::DrawingMode(g->drawingMode());
     m_gstate.lineWidth = g->lineWidth();
 
@@ -3493,16 +3493,6 @@ bool Renderer::prepareRenderUnmergedBatch(Batch *batch, PreparedRenderBatch *ren
         QSGMaterialShader::RenderState renderState = state(QSGMaterialShader::RenderState::DirtyStates(int(dirty)));
         updateMaterialDynamicData(sms, renderState, material, batch, e, ubufOffset, ubufSize, directUpdatePtr);
 
-#ifndef QT_NO_DEBUG
-        if (qsg_test_and_clear_material_failure()) {
-            qDebug("QSGMaterial::updateState() triggered an error (unmerged), batch will be skipped:");
-            qDebug() << "   - offending node is" << e->node;
-            QSGNodeDumper::dump(rootNode());
-            qFatal("Aborting: scene graph is invalid...");
-            return false;
-        }
-#endif
-
         ubufOffset += aligned(ubufSize, m_ubufAlignment);
 
         const QSGGeometry::DrawingMode prevDrawMode = m_gstate.drawMode;
@@ -3600,20 +3590,16 @@ void Renderer::renderUnmergedBatch(PreparedRenderBatch *renderBatch, bool depthP
     }
 }
 
-void Renderer::setGraphicsPipeline(QRhiCommandBuffer *cb, const Batch *batch, Element *e, bool depthPostPass)
+void Renderer::setViewportAndScissors(QRhiCommandBuffer *cb, const Batch *batch)
 {
-    cb->setGraphicsPipeline(depthPostPass ? e->depthPostPassPs : e->ps);
-
     if (!m_pstate.viewportSet) {
         m_pstate.viewportSet = true;
         cb->setViewport(m_pstate.viewport);
     }
     if (batch->clipState.type & ClipState::ScissorClip) {
-        Q_ASSERT(e->ps->flags().testFlag(QRhiGraphicsPipeline::UsesScissor));
         m_pstate.scissorSet = true;
         cb->setScissor(batch->clipState.scissor);
     } else {
-        Q_ASSERT(!e->ps->flags().testFlag(QRhiGraphicsPipeline::UsesScissor));
         // Regardless of the ps not using scissor, the scissor may need to be
         // reset, depending on the backend. So set the viewport again, which in
         // turn also sets the scissor on backends where a scissor rect is
@@ -3623,6 +3609,15 @@ void Renderer::setGraphicsPipeline(QRhiCommandBuffer *cb, const Batch *batch, El
             cb->setViewport(m_pstate.viewport);
         }
     }
+}
+
+
+void Renderer::setGraphicsPipeline(QRhiCommandBuffer *cb, const Batch *batch, Element *e, bool depthPostPass)
+{
+    cb->setGraphicsPipeline(depthPostPass ? e->depthPostPassPs : e->ps);
+
+    setViewportAndScissors(cb, batch);
+
     if (batch->clipState.type & ClipState::StencilClip) {
         Q_ASSERT(e->ps->flags().testFlag(QRhiGraphicsPipeline::UsesStencilRef));
         cb->setStencilRef(batch->clipState.stencilRef);
@@ -4074,6 +4069,14 @@ bool Renderer::prepareRhiRenderNode(Batch *batch, PreparedRenderBatch *renderBat
     if (Q_UNLIKELY(debug_render()))
         qDebug() << " -" << batch << "rendernode";
 
+    const int viewCount = projectionMatrixCount();
+    m_current_projection_matrix.resize(viewCount);
+    for (int viewIndex = 0; viewIndex < viewCount; ++viewIndex)
+        m_current_projection_matrix[viewIndex] = projectionMatrix(viewIndex);
+    m_current_projection_matrix_native_ndc.resize(projectionMatrixWithNativeNDCCount());
+    for (int viewIndex = 0; viewIndex < projectionMatrixWithNativeNDCCount(); ++viewIndex)
+        m_current_projection_matrix_native_ndc[viewIndex] = projectionMatrixWithNativeNDC(viewIndex);
+
     Q_ASSERT(batch->first->isRenderNode);
     RenderNodeElement *e = static_cast<RenderNodeElement *>(batch->first);
 
@@ -4122,7 +4125,6 @@ bool Renderer::prepareRhiRenderNode(Batch *batch, PreparedRenderBatch *renderBat
 
     rd->m_rt = renderTarget();
 
-    const int viewCount = projectionMatrixCount();
     rd->m_projectionMatrix.resize(viewCount);
     for (int viewIndex = 0; viewIndex < viewCount; ++viewIndex)
         rd->m_projectionMatrix[viewIndex] = projectionMatrix(viewIndex);
@@ -4162,6 +4164,7 @@ void Renderer::renderRhiRenderNode(const Batch *batch)
     const QSGRenderNode::StateFlags changes = e->renderNode->changedStates();
 
     QRhiCommandBuffer *cb = renderTarget().cb;
+    setViewportAndScissors(cb, batch);
     const bool needsExternal = !e->renderNode->flags().testFlag(QSGRenderNode::NoExternalRendering);
     if (needsExternal)
         cb->beginExternal();

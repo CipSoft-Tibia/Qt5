@@ -6,6 +6,7 @@
 #include "qquickflickablebehavior_p.h" //Contains flicking behavior defines
 #include "qquicktext_p.h"
 
+#include <QtQml/qqmlcomponent.h>
 #include <QtQuick/private/qquickstate_p.h>
 #include <private/qqmlglobal_p.h>
 #include <private/qqmlopenmetaobject_p.h>
@@ -23,13 +24,16 @@
 
 #include <cmath>
 
+#if QT_CONFIG(quick_itemview)
+#include <private/qquickitemview_p.h>
+#endif
+
 QT_BEGIN_NAMESPACE
 
-Q_DECLARE_LOGGING_CATEGORY(lcItemViewDelegateLifecycle)
 #if !QT_CONFIG(quick_itemview)
-Q_LOGGING_CATEGORY(lcItemViewDelegateLifecycle, "qt.quick.itemview.lifecycle")
+Q_STATIC_LOGGING_CATEGORY(lcItemViewDelegateLifecycle, "qt.quick.itemview.lifecycle")
 #endif
-Q_LOGGING_CATEGORY(lcPathView, "qt.quick.pathview")
+Q_STATIC_LOGGING_CATEGORY(lcPathView, "qt.quick.pathview")
 
 static QQmlOpenMetaObjectType *qPathViewAttachedType = nullptr;
 

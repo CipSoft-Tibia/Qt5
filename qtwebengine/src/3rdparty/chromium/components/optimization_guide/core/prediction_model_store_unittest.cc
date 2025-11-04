@@ -48,25 +48,32 @@ struct ModelDetail {
 
 }  // namespace
 
+class TestPredictionModelStore : public PredictionModelStore {
+ public:
+  explicit TestPredictionModelStore(PrefService* local_state)
+      : local_state_(local_state) {}
+
+  // PredictionModelStore:
+  PrefService* GetLocalState() const override { return local_state_; }
+
+ private:
+  raw_ptr<PrefService> local_state_;
+};
+
 class PredictionModelStoreTest : public testing::Test {
  public:
   PredictionModelStoreTest() {
     feature_list_.InitWithFeatures(
         {features::kRemoteOptimizationGuideFetching,
-         features::kOptimizationGuideModelDownloading,
-         features::kOptimizationGuideInstallWideModelStore},
+         features::kOptimizationGuideModelDownloading},
         {});
-    base::CommandLine::ForCurrentProcess()->AppendSwitch(
-        switches::kDebugLoggingEnabled);
   }
 
   void SetUp() override {
     ASSERT_TRUE(temp_models_dir_.CreateUniqueTempDir());
     local_state_prefs_ = std::make_unique<TestingPrefServiceSimple>();
     prefs::RegisterLocalStatePrefs(local_state_prefs_->registry());
-    prediction_model_store_ =
-        PredictionModelStore::CreatePredictionModelStoreForTesting(
-            local_state_prefs_.get(), temp_models_dir_.GetPath());
+    CreateAndInitializePredictionModelStore();
     RunUntilIdle();
   }
 
@@ -100,7 +107,7 @@ class PredictionModelStoreTest : public testing::Test {
     for (const auto* additional_file_name : additional_file_names) {
       base::WriteFile(base_model_dir.Append(additional_file_name), "");
       model_info.add_additional_files()->set_file_path(
-          FilePathToString(base_model_dir.Append(additional_file_name)));
+          FilePathToString(base::FilePath(additional_file_name)));
     }
     *model_info.mutable_model_cache_key() = model_cache_key;
     std::string model_info_pb;
@@ -108,6 +115,12 @@ class PredictionModelStoreTest : public testing::Test {
     base::WriteFile(base_model_dir.Append(GetBaseFileNameForModelInfo()),
                     model_info_pb);
     return {model_info, base_model_dir};
+  }
+
+  void CreateAndInitializePredictionModelStore() {
+    prediction_model_store_ =
+        std::make_unique<TestPredictionModelStore>(local_state_prefs_.get());
+    prediction_model_store_->Initialize(temp_models_dir_.GetPath());
   }
 
   void WaitForModeLoad(proto::OptimizationTarget optimization_target,
@@ -127,7 +140,7 @@ class PredictionModelStoreTest : public testing::Test {
   base::ScopedTempDir temp_models_dir_;
   std::unique_ptr<TestingPrefServiceSimple> local_state_prefs_;
   std::unique_ptr<proto::PredictionModel> last_loaded_prediction_model_;
-  std::unique_ptr<PredictionModelStore> prediction_model_store_;
+  std::unique_ptr<TestPredictionModelStore> prediction_model_store_;
 };
 
 TEST_F(PredictionModelStoreTest, BaseModelDirs) {
@@ -194,7 +207,15 @@ TEST_F(PredictionModelStoreTest, ModelWithAdditionalFile) {
                                                 model_cache_key));
 
   WaitForModeLoad(kTestOptimizationTargetFoo, model_cache_key);
-  EXPECT_TRUE(last_loaded_prediction_model());
+  auto* loaded_model = last_loaded_prediction_model();
+  EXPECT_TRUE(loaded_model);
+  EXPECT_EQ(1, loaded_model->model_info().additional_files_size());
+  auto additional_file = *StringToFilePath(
+      loaded_model->model_info().additional_files(0).file_path());
+  EXPECT_EQ(FILE_PATH_LITERAL("valid_additional_file.txt"),
+            additional_file.BaseName().value());
+  EXPECT_TRUE(additional_file.IsAbsolute());
+  EXPECT_TRUE(base::PathExists(additional_file));
 }
 
 // Tests model with invalid additional file.
@@ -313,9 +334,7 @@ TEST_F(PredictionModelStoreTest, ModelStorageMetrics) {
   RunUntilIdle();
 
   // Recreate the model store, and that should record model storage metrics.
-  prediction_model_store_ =
-      PredictionModelStore::CreatePredictionModelStoreForTesting(
-          local_state_prefs_.get(), temp_models_dir_.GetPath());
+  CreateAndInitializePredictionModelStore();
   RunUntilIdle();
   histogram_tester.ExpectUniqueSample(
       "OptimizationGuide.PredictionModelStore.ModelCount.PainfulPageLoad", 1,
@@ -361,9 +380,7 @@ TEST_F(PredictionModelStoreTest, ExpiredModelRemoved) {
                                   base::Seconds(1));
 
   // Recreate the store and it will remove the expired model.
-  prediction_model_store_ =
-      PredictionModelStore::CreatePredictionModelStoreForTesting(
-          local_state_prefs_.get(), temp_models_dir_.GetPath());
+  CreateAndInitializePredictionModelStore();
   RunUntilIdle();
   EXPECT_FALSE(prediction_model_store_->HasModel(kTestOptimizationTargetFoo,
                                                  model_cache_key));
@@ -415,9 +432,7 @@ TEST_F(PredictionModelStoreTest, ExpiredModelRemovedOnLoadModel) {
 
   // Recreate the store and it will remove the model slated for deletion
   // earlier.
-  prediction_model_store_ =
-      PredictionModelStore::CreatePredictionModelStoreForTesting(
-          local_state_prefs_.get(), temp_models_dir_.GetPath());
+  CreateAndInitializePredictionModelStore();
   RunUntilIdle();
   EXPECT_FALSE(base::DirectoryExists(model_detail.base_model_dir));
   EXPECT_FALSE(base::PathExists(
@@ -466,9 +481,7 @@ TEST_F(PredictionModelStoreTest, OldModelRemovedOnNewModelUpdate) {
               temp_models_dir_.GetPath(), model_detail.base_model_dir))));
 
   // Recreate the store and it will remove the old model slated for deletion.
-  prediction_model_store_ =
-      PredictionModelStore::CreatePredictionModelStoreForTesting(
-          local_state_prefs_.get(), temp_models_dir_.GetPath());
+  CreateAndInitializePredictionModelStore();
   RunUntilIdle();
   EXPECT_TRUE(prediction_model_store_->HasModel(kTestOptimizationTargetFoo,
                                                 model_cache_key));
@@ -551,9 +564,7 @@ TEST_F(PredictionModelStoreTest, InconsistentModelDirsRemoved) {
       base::DirectoryExists(model_detail_inconsistent_bar.base_model_dir));
 
   // Recreate the store and it will remove the inconsistent model dirs.
-  prediction_model_store_ =
-      PredictionModelStore::CreatePredictionModelStoreForTesting(
-          local_state_prefs_.get(), temp_models_dir_.GetPath());
+  CreateAndInitializePredictionModelStore();
   RunUntilIdle();
   EXPECT_TRUE(prediction_model_store_->HasModel(kTestOptimizationTargetFoo,
                                                 model_cache_key));
@@ -601,9 +612,7 @@ TEST_F(PredictionModelStoreTest, InconsistentOptTargetDirsRemoved) {
   EXPECT_TRUE(base::DirectoryExists(invalid_dir));
 
   // Recreate the store and it will remove the inconsistent model dirs.
-  prediction_model_store_ =
-      PredictionModelStore::CreatePredictionModelStoreForTesting(
-          local_state_prefs_.get(), temp_models_dir_.GetPath());
+  CreateAndInitializePredictionModelStore();
   RunUntilIdle();
   EXPECT_TRUE(prediction_model_store_->HasModel(kTestOptimizationTargetFoo,
                                                 model_cache_key));

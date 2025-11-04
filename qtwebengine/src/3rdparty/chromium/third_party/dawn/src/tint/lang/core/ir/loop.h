@@ -73,13 +73,15 @@ namespace tint::core::ir {
 class Loop final : public Castable<Loop, ControlInstruction> {
   public:
     /// Constructor (no results, no operands, no blocks)
-    Loop();
+    /// @param id the instruction id
+    explicit Loop(Id id);
 
     /// Constructor
+    /// @param id the instruction id
     /// @param i the initializer block
     /// @param b the body block
     /// @param c the continuing block
-    Loop(ir::Block* i, ir::MultiInBlock* b, ir::MultiInBlock* c);
+    Loop(Id id, ir::Block* i, ir::MultiInBlock* b, ir::MultiInBlock* c);
     ~Loop() override;
 
     /// @copydoc Instruction::Clone()
@@ -87,6 +89,9 @@ class Loop final : public Castable<Loop, ControlInstruction> {
 
     /// @copydoc ControlInstruction::ForeachBlock
     void ForeachBlock(const std::function<void(ir::Block*)>& cb) override;
+
+    /// @copydoc ControlInstruction::ForeachBlock
+    void ForeachBlock(const std::function<void(const ir::Block*)>& cb) const override;
 
     /// @returns the switch initializer block
     ir::Block* Initializer() { return initializer_; }

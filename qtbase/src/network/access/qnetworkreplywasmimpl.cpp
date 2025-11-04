@@ -1,10 +1,10 @@
 // Copyright (C) 2018 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:data-parser
 
 #include "qnetworkreplywasmimpl_p.h"
 #include "qnetworkrequest.h"
 
-#include <QtCore/qtimer.h>
 #include <QtCore/qdatetime.h>
 #include <QtCore/qcoreapplication.h>
 #include <QtCore/qfileinfo.h>
@@ -127,13 +127,13 @@ void QNetworkReplyWasmImpl::close()
 {
     Q_D(QNetworkReplyWasmImpl);
 
+    emscripten_fetch_close(d->m_fetch);
     if (d->state != QNetworkReplyPrivate::Aborted &&
         d->state != QNetworkReplyPrivate::Finished &&
         d->state != QNetworkReplyPrivate::Idle) {
             d->state = QNetworkReplyPrivate::Finished;
             d->setCanceled();
     }
-    emscripten_fetch_close(d->m_fetch);
     QNetworkReply::close();
 }
 
@@ -426,20 +426,22 @@ void QNetworkReplyWasmImplPrivate::headersReceived(const QByteArray &buffer)
     if (!buffer.isEmpty()) {
         QList<QByteArray> headers = buffer.split('\n');
 
-        for (int i = 0; i < headers.size(); i++) {
-            if (headers.at(i).contains(':')) { // headers include final \x00, so skip
-                QByteArray headerName = headers.at(i).split(':').at(0).trimmed();
-                QByteArray headersValue = headers.at(i).split(':').at(1).trimmed();
+        for (auto &&header : headers) {
+            if (auto splitPos = header.indexOf(':');
+                splitPos != -1) { // headers include final \x00, so skip
+                auto headerName = header.first(splitPos).trimmed();
+                auto headerValue = header.sliced(splitPos + 1).trimmed();
 
-                if (headerName.isEmpty() || headersValue.isEmpty())
+                if (headerName.isEmpty() || headerValue.isEmpty())
                     continue;
 
                 int headerIndex = parseHeaderName(headerName);
 
                 if (headerIndex == -1)
-                    q->setRawHeader(headerName, headersValue);
+                    q->setRawHeader(headerName, headerValue);
                 else
-                    q->setHeader(static_cast<QNetworkRequest::KnownHeaders>(headerIndex), (QVariant)headersValue);
+                    q->setHeader(static_cast<QNetworkRequest::KnownHeaders>(headerIndex),
+                                 (QVariant)headerValue);
             }
         }
     }

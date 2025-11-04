@@ -9,15 +9,15 @@
 
 #include <memory>
 
+#include "core/fxcrt/check_op.h"
 #include "core/fxcrt/data_vector.h"
 #include "core/fxcrt/fx_memory_wrappers.h"
 #include "core/fxcrt/retain_ptr.h"
+#include "core/fxcrt/span.h"
 #include "core/fxcrt/unowned_ptr.h"
 #include "core/fxge/cfx_fillrenderoptions.h"
 #include "core/fxge/cfx_path.h"
 #include "core/fxge/renderdevicedriver_iface.h"
-#include "third_party/base/check_op.h"
-#include "third_party/base/containers/span.h"
 #include "third_party/skia/include/core/SkPoint.h"
 #include "third_party/skia/include/core/SkRSXform.h"
 #include "third_party/skia/include/core/SkRefCnt.h"
@@ -25,6 +25,8 @@
 class CFX_Font;
 class CFX_Matrix;
 class SkCanvas;
+class SkPaint;
+class SkPath;
 class SkSurface;
 class TextCharPos;
 struct CFX_TextRenderOptions;
@@ -40,62 +42,34 @@ class CFX_SkiaDeviceDriver final : public RenderDeviceDriverIface {
       bool bRgbByteOrder,
       RetainPtr<CFX_DIBitmap> pBackdropBitmap,
       bool bGroupKnockout);
-  static std::unique_ptr<CFX_SkiaDeviceDriver> Create(SkCanvas* canvas);
+  static std::unique_ptr<CFX_SkiaDeviceDriver> Create(SkCanvas& canvas);
 
   ~CFX_SkiaDeviceDriver() override;
 
-  /** Options */
+  // RenderDeviceDriverIface:
   DeviceType GetDeviceType() const override;
   int GetDeviceCaps(int caps_id) const override;
-
-  /** Save and restore all graphic states */
   void SaveState() override;
   void RestoreState(bool bKeepSaved) override;
-
-  /** Set clipping path using filled region */
-  bool SetClip_PathFill(
-      const CFX_Path& path,                       // path info
-      const CFX_Matrix* pObject2Device,           // optional transformation
-      const CFX_FillRenderOptions& fill_options)  // fill options
-      override;
-
-  /** Set clipping path using stroked region */
-  bool SetClip_PathStroke(
-      const CFX_Path& path,              // path info
-      const CFX_Matrix* pObject2Device,  // required transformation
-      const CFX_GraphStateData*
-          pGraphState)  // graphic state, for pen attributes
-      override;
-
-  /** Draw a path */
+  bool SetClip_PathFill(const CFX_Path& path,
+                        const CFX_Matrix* pObject2Device,
+                        const CFX_FillRenderOptions& fill_options) override;
+  bool SetClip_PathStroke(const CFX_Path& path,
+                          const CFX_Matrix* pObject2Device,
+                          const CFX_GraphStateData* pGraphState) override;
   bool DrawPath(const CFX_Path& path,
                 const CFX_Matrix* pObject2Device,
                 const CFX_GraphStateData* pGraphState,
                 uint32_t fill_color,
                 uint32_t stroke_color,
-                const CFX_FillRenderOptions& fill_options,
-                BlendMode blend_type) override;
-
-  bool FillRectWithBlend(const FX_RECT& rect,
-                         uint32_t fill_color,
-                         BlendMode blend_type) override;
-
-  /** Draw a single pixel (device dependant) line */
-  bool DrawCosmeticLine(const CFX_PointF& ptMoveTo,
-                        const CFX_PointF& ptLineTo,
-                        uint32_t color,
-                        BlendMode blend_type) override;
-
-  bool GetClipBox(FX_RECT* pRect) override;
-
-  /** Load device buffer into a DIB */
-  bool GetDIBits(const RetainPtr<CFX_DIBitmap>& pBitmap,
+                const CFX_FillRenderOptions& fill_options) override;
+  bool FillRect(const FX_RECT& rect, uint32_t fill_color) override;
+  FX_RECT GetClipBox() const override;
+  bool GetDIBits(RetainPtr<CFX_DIBitmap> bitmap,
                  int left,
-                 int top) override;
-
-  RetainPtr<CFX_DIBitmap> GetBackDrop() override;
-
-  bool SetDIBits(const RetainPtr<const CFX_DIBBase>& pBitmap,
+                 int top) const override;
+  RetainPtr<const CFX_DIBitmap> GetBackDrop() const override;
+  bool SetDIBits(RetainPtr<const CFX_DIBBase> bitmap,
                  uint32_t color,
                  const FX_RECT& src_rect,
                  int dest_left,
@@ -108,8 +82,7 @@ class CFX_SkiaDeviceDriver final : public RenderDeviceDriverIface {
                        float alpha,
                        BlendMode blend_type) override;
   void SetGroupKnockout(bool group_knockout) override;
-  bool SyncInternalBitmaps() override;
-
+  void SyncInternalBitmaps() override;
   bool StretchDIBits(RetainPtr<const CFX_DIBBase> bitmap,
                      uint32_t color,
                      int dest_left,
@@ -119,41 +92,31 @@ class CFX_SkiaDeviceDriver final : public RenderDeviceDriverIface {
                      const FX_RECT* pClipRect,
                      const FXDIB_ResampleOptions& options,
                      BlendMode blend_type) override;
-
-  bool StartDIBits(RetainPtr<const CFX_DIBBase> bitmap,
-                   float alpha,
-                   uint32_t color,
-                   const CFX_Matrix& matrix,
-                   const FXDIB_ResampleOptions& options,
-                   std::unique_ptr<CFX_ImageRenderer>* handle,
-                   BlendMode blend_type) override;
-
-  bool ContinueDIBits(CFX_ImageRenderer* handle,
-                      PauseIndicatorIface* pPause) override;
-
+  StartResult StartDIBits(RetainPtr<const CFX_DIBBase> bitmap,
+                          float alpha,
+                          uint32_t color,
+                          const CFX_Matrix& matrix,
+                          const FXDIB_ResampleOptions& options,
+                          BlendMode blend_type) override;
   bool DrawBitsWithMask(RetainPtr<const CFX_DIBBase> bitmap,
                         RetainPtr<const CFX_DIBBase> mask,
                         float alpha,
                         const CFX_Matrix& matrix,
                         BlendMode blend_type);
-
   bool DrawDeviceText(pdfium::span<const TextCharPos> pCharPos,
                       CFX_Font* pFont,
                       const CFX_Matrix& mtObject2Device,
                       float font_size,
                       uint32_t color,
                       const CFX_TextRenderOptions& options) override;
-
   int GetDriverType() const override;
-
-  bool DrawShading(const CPDF_ShadingPattern* pPattern,
-                   const CFX_Matrix* pMatrix,
+  bool DrawShading(const CPDF_ShadingPattern& pattern,
+                   const CFX_Matrix& matrix,
                    const FX_RECT& clip_rect,
-                   int alpha,
-                   bool bAlphaMode) override;
+                   int alpha) override;
 
   bool MultiplyAlpha(float alpha) override;
-  bool MultiplyAlphaMask(const RetainPtr<const CFX_DIBBase>& mask) override;
+  bool MultiplyAlphaMask(RetainPtr<const CFX_DIBitmap> mask) override;
 
   void Clear(uint32_t color);
   void Dump() const;
@@ -198,7 +161,7 @@ class CFX_SkiaDeviceDriver final : public RenderDeviceDriverIface {
                        bool bRgbByteOrder,
                        RetainPtr<CFX_DIBitmap> pBackdropBitmap,
                        bool bGroupKnockout);
-  explicit CFX_SkiaDeviceDriver(SkCanvas* canvas);
+  explicit CFX_SkiaDeviceDriver(SkCanvas& canvas);
 
   bool TryDrawText(pdfium::span<const TextCharPos> char_pos,
                    const CFX_Font* pFont,
@@ -214,6 +177,9 @@ class CFX_SkiaDeviceDriver final : public RenderDeviceDriverIface {
                        const CFX_Matrix& matrix,
                        const FXDIB_ResampleOptions& options,
                        BlendMode blend_type);
+
+  // A wrapper around SkCanvas::drawPath() that optionally can show debug data.
+  void DrawPathImpl(const SkPath& path, const SkPaint& paint);
 
   RetainPtr<CFX_DIBitmap> m_pBitmap;
   RetainPtr<CFX_DIBitmap> m_pBackdropBitmap;

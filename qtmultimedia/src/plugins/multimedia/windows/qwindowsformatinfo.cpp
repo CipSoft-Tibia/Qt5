@@ -19,33 +19,22 @@ QT_BEGIN_NAMESPACE
 namespace {
 
 template<typename T>
-using CheckedCodecs = QHash<QPair<T, QMediaFormat::ConversionMode>, bool>;
+using CheckedCodecs = QHash<std::pair<T, QMediaFormat::ConversionMode>, bool>;
 
 bool isSupportedMFT(const GUID &category, const MFT_REGISTER_TYPE_INFO &type, QMediaFormat::ConversionMode mode)
 {
     UINT32 count = 0;
-    IMFActivate **activateArrayRaw = nullptr;
+    QComTaskResource<IMFActivate *> activate;
     HRESULT hr = MFTEnumEx(
             category,
             MFT_ENUM_FLAG_ALL,
             (mode == QMediaFormat::Encode) ? nullptr : &type,  // Input type
             (mode == QMediaFormat::Encode) ? &type : nullptr,  // Output type
-            &activateArrayRaw,
+            activate.address(),
             &count
             );
 
-    if (FAILED(hr))
-        return false;
-
-    QComTaskResource<IMFActivate *[], QComDeleter> activateArray(activateArrayRaw, count);
-    for (UINT32 i = 0; i < count; ++i) {
-        ComPtr<IMFTransform> transform;
-        hr = activateArray[i]->ActivateObject(IID_PPV_ARGS(transform.GetAddressOf()));
-        if (SUCCEEDED(hr))
-            return true;
-    }
-
-    return false;
+    return SUCCEEDED(hr) && count > 0;
 }
 
 bool isSupportedCodec(QMediaFormat::AudioCodec codec, QMediaFormat::ConversionMode mode)
@@ -65,12 +54,12 @@ bool isSupportedCodec(QMediaFormat::VideoCodec codec, QMediaFormat::ConversionMo
 template <typename T>
 bool isSupportedCodec(T codec, QMediaFormat::ConversionMode m, CheckedCodecs<T> &checkedCodecs)
 {
-    if (auto it = checkedCodecs.constFind(qMakePair(codec, m)); it != checkedCodecs.constEnd())
+    if (auto it = checkedCodecs.constFind(std::pair{codec, m}); it != checkedCodecs.constEnd())
         return it.value();
 
     const bool supported = isSupportedCodec(codec, m);
 
-    checkedCodecs.insert(qMakePair(codec, m), supported);
+    checkedCodecs.insert(std::pair{codec, m}, supported);
     return supported;
 }
 

@@ -17,7 +17,7 @@
 
 QT_BEGIN_NAMESPACE
 
-static Q_LOGGING_CATEGORY(qLcVideo, "qt.multimedia.video")
+Q_STATIC_LOGGING_CATEGORY(qLcVideo, "qt.multimedia.video")
 
 namespace {
 
@@ -103,9 +103,10 @@ QQuickVideoOutput::QQuickVideoOutput(QQuickItem *parent) :
 
     // TODO: investigate if we have any benefit of setting frame in the source thread
     connect(m_sink, &QVideoSink::videoFrameChanged, this,
-            [this](const QVideoFrame &frame) {
-                setFrame(frame);
-            },
+            makeGuardedCall([this](const QVideoFrame &frame) {
+        if (frame.isValid() || m_endOfStreamPolicy == ClearOutput)
+            setFrame(frame);
+    }),
             Qt::DirectConnection);
 
     initRhiForSink();
@@ -113,6 +114,13 @@ QQuickVideoOutput::QQuickVideoOutput(QQuickItem *parent) :
 
 QQuickVideoOutput::~QQuickVideoOutput()
 {
+    {
+        QMutexLocker lock(&m_destructorGuard->m_mutex);
+        m_destructorGuard->m_isAlive = false;
+    }
+
+    delete m_sink;
+    disconnectWindowConnections();
 }
 
 /*!
@@ -220,6 +228,7 @@ void QQuickVideoOutput::_q_updateGeometry()
     This property determines the angle in, degrees, at which the displayed video
     is rotated clockwise in video coordinates, where the Y-axis points
     downwards on the display.
+    The orientation transformation is applied before \l mirrored.
 
     The orientation change affects the mapping of coordinates from the source to the viewport.
 
@@ -289,6 +298,34 @@ void QQuickVideoOutput::setOrientation(int orientation)
 }
 
 /*!
+    \qmlproperty bool QtMultimedia::VideoOutput::mirrored
+    \since 6.9
+
+    Determines whether the displayed video is mirrored around its vertical axis.
+    We recommend using this property if the transformation of the source video stream,
+    such as from a front camera, does not align with the application's business logic.
+    The mirroring is applied after \l orientation.
+
+    The property change affects the mapping of coordinates from the source to the viewport.
+
+    The default value is \c false.
+*/
+bool QQuickVideoOutput::mirrored() const
+{
+    return m_mirrored;
+}
+
+void QQuickVideoOutput::setMirrored(bool mirrored)
+{
+    if (m_mirrored == mirrored)
+        return;
+    m_mirrored = mirrored;
+
+    update();
+    emit mirroredChanged();
+}
+
+/*!
     \qmlproperty rectangle QtMultimedia::VideoOutput::contentRect
 
     This property holds the item coordinates of the area that
@@ -305,6 +342,50 @@ void QQuickVideoOutput::setOrientation(int orientation)
 QRectF QQuickVideoOutput::contentRect() const
 {
     return m_contentRect;
+}
+
+/*!
+    \qmlproperty enumeration QtMultimedia::VideoOutput::endOfStreamPolicy
+    \since 6.9
+
+    This property specifies the policy to apply when the video stream ends. This
+    occurs at the end of media playback or upon deactivation of the camera, screen,
+    or window capture.
+
+    The \c endOfStreamPolicy can be one of:
+
+    \value ClearOutput The video output is cleared.
+    \value KeepLastFrame The video output continues displaying the 
+           last frame. Use the method \l clearOutput() to clear the output manually.
+
+    The default value is \c ClearOutput.
+*/
+QQuickVideoOutput::EndOfStreamPolicy QQuickVideoOutput::endOfStreamPolicy() const
+{
+    return m_endOfStreamPolicy;
+}
+
+void QQuickVideoOutput::setEndOfStreamPolicy(EndOfStreamPolicy policy)
+{
+    if (m_endOfStreamPolicy == policy)
+        return;
+
+    m_endOfStreamPolicy = policy;
+    emit endOfStreamPolicyChanged(policy);
+}
+
+/*!
+    \qmlmethod void QtMultimedia::VideoOutput::clearOutput
+    \since 6.9
+
+    Clears the video output by removing the currently displayed video frame.
+    This method is recommended when you need to remove the last video frame after
+    detaching the video output from the source or after the source stream ends
+    with the video output's \l endOfStreamPolicy property set to \c KeepLastFrame.
+*/
+void QQuickVideoOutput::clearOutput()
+{
+    setFrame({});
 }
 
 /*!
@@ -357,26 +438,6 @@ void QQuickVideoOutput::geometryChange(const QRectF &newGeometry, const QRectF &
     _q_updateGeometry();
 }
 
-void QQuickVideoOutput::_q_invalidateSceneGraph()
-{
-    // Invoked in the renderer thread
-
-    if (auto texturePool = m_texturePool.lock())
-        texturePool->clearTextures();
-    m_sink->setRhi(nullptr);
-}
-
-void QQuickVideoOutput::_q_sceneGraphInitialized()
-{
-    initRhiForSink();
-}
-
-void QQuickVideoOutput::_q_afterFrameEnd()
-{
-    if (auto texturePool = m_texturePool.lock())
-        texturePool->onFrameEndInvoked();
-}
-
 void QQuickVideoOutput::releaseResources()
 {
     // Called on the gui thread when the window is closed or changed.
@@ -398,18 +459,31 @@ void QQuickVideoOutput::itemChange(QQuickItem::ItemChange change,
 
     if (changeData.window == m_window)
         return;
-    if (m_window)
-        disconnect(m_window);
+
+    disconnectWindowConnections();
     m_window = changeData.window;
 
     if (m_window) {
+        auto connectToWindow = [&](auto signal, auto function) {
+            connect(m_window, signal, this, makeGuardedCall(std::move(function)),
+                    Qt::DirectConnection);
+        };
+
         // We want to receive the signals in the render thread
-        connect(m_window, &QQuickWindow::sceneGraphInitialized, this,
-                &QQuickVideoOutput::_q_sceneGraphInitialized, Qt::DirectConnection);
-        connect(m_window, &QQuickWindow::sceneGraphInvalidated, this,
-                &QQuickVideoOutput::_q_invalidateSceneGraph, Qt::DirectConnection);
-        connect(m_window, &QQuickWindow::afterFrameEnd, this, &QQuickVideoOutput::_q_afterFrameEnd,
-                Qt::DirectConnection);
+        connectToWindow(&QQuickWindow::sceneGraphInitialized, [this] {
+            initRhiForSink();
+        });
+
+        connectToWindow(&QQuickWindow::sceneGraphInvalidated, [this] {
+            if (auto texturePool = m_texturePool.lock())
+                texturePool->clearTextures();
+            m_sink->setRhi(nullptr);
+        });
+
+        connectToWindow(&QQuickWindow::afterFrameEnd, [this] {
+            if (auto texturePool = m_texturePool.lock())
+                texturePool->onFrameEndInvoked();
+        });
     }
     initRhiForSink();
 }
@@ -549,6 +623,14 @@ void QQuickVideoOutput::updateHdr(QSGVideoNode *videoNode)
     videoNode->setHdrInfo(swapChain->hdrInfo());
 }
 
+void QQuickVideoOutput::disconnectWindowConnections()
+{
+    if (!m_window)
+        return;
+
+    m_window->disconnect(this);
+}
+
 QRectF QQuickVideoOutput::adjustedViewport() const
 {
     return m_videoFormat.viewport();
@@ -566,6 +648,12 @@ void QQuickVideoOutput::setFrame(const QVideoFrame &frame)
     }
 
     QMetaObject::invokeMethod(this, &QQuickVideoOutput::_q_newFrame, frame.size());
+}
+
+std::optional<std::chrono::nanoseconds> QQuickVideoOutput::g_signalBackoff;
+void QQuickVideoOutput::setSignalBackoff(std::optional<std::chrono::nanoseconds> ns)
+{
+    g_signalBackoff = ns;
 }
 
 QT_END_NAMESPACE

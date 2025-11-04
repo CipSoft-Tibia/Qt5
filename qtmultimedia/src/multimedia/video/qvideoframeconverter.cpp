@@ -1,5 +1,6 @@
 // Copyright (C) 2022 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:data-parser
 
 #include "qvideoframeconverter_p.h"
 #include "qvideoframeconversionhelper_p.h"
@@ -16,7 +17,8 @@
 #include <QtGui/qimage.h>
 #include <QtCore/qloggingcategory.h>
 
-#include <private/qvideotexturehelper_p.h>
+#include <QtMultimedia/private/qmultimedia_ranges_p.h>
+#include <QtMultimedia/private/qvideotexturehelper_p.h>
 
 #include <rhi/qrhi.h>
 
@@ -26,10 +28,10 @@
 
 QT_BEGIN_NAMESPACE
 
-static Q_LOGGING_CATEGORY(qLcVideoFrameConverter, "qt.multimedia.video.frameconverter")
+Q_STATIC_LOGGING_CATEGORY(qLcVideoFrameConverter, "qt.multimedia.video.frameconverter")
 
-// TODO: investigate if we should use thread_local instead, QTBUG-133565
-static const float g_quad[] = {
+// clang-format off
+static constexpr float g_quad[] = {
     // Rotation 0 CW
     1.f, -1.f,   1.f, 1.f,
     1.f,  1.f,   1.f, 0.f,
@@ -51,6 +53,7 @@ static const float g_quad[] = {
    -1.f, -1.f,  0.f, 0.f,
    -1.f,  1.f,  1.f, 0.f,
 };
+// clang-format on
 
 static bool pixelFormatHasAlpha(QVideoFrameFormat::PixelFormat format)
 {
@@ -84,7 +87,7 @@ static void rasterTransform(QImage &image, VideoTransformation transformation)
     QTransform t;
     if (transformation.rotation != QtVideo::Rotation::None)
         t.rotate(qreal(transformation.rotation));
-    if (transformation.mirrorredHorizontallyAfterRotation)
+    if (transformation.mirroredHorizontallyAfterRotation)
         t.scale(-1., 1);
     if (!t.isIdentity())
         image = image.transformed(t);
@@ -160,9 +163,45 @@ static QImage convertJPEG(const QVideoFrame &frame, const VideoTransformation &t
         qCDebug(qLcVideoFrameConverter) << Q_FUNC_INFO << ": frame mapping failed";
         return {};
     }
-    QImage image;
-    image.loadFromData(varFrame.bits(0), varFrame.mappedBytes(0), "JPG");
-    varFrame.unmap();
+
+    auto unmap = std::optional(QScopeGuard([&] {
+        varFrame.unmap();
+    }));
+
+    QSpan<uchar> jpegData{
+        varFrame.bits(0),
+        varFrame.mappedBytes(0),
+    };
+
+    constexpr std::array<uchar, 2> soiMarker{ uchar(0xff), uchar(0xd8) };
+    if (!QtMultimediaPrivate::ranges::equal(jpegData.first(2), soiMarker, std::equal_to<void>{})) {
+        qCDebug(qLcVideoFrameConverter)
+                << Q_FUNC_INFO << ": JPEG data does not start with SOI marker";
+        return QImage{};
+    }
+
+    constexpr std::array<uchar, 2> eoiMarker{ uchar(0xff), uchar(0xd9) };
+
+    // some JPEG cameras contain extra data after the JPEG marker. If so, we drop it to make
+    // libjpeg happy.
+    if (!QtMultimediaPrivate::ranges::equal(jpegData.last(2), eoiMarker, std::equal_to<void>{})) {
+        qCDebug(qLcVideoFrameConverter)
+                << Q_FUNC_INFO << ": JPEG data does not end with EOI marker";
+
+        auto eoi_it = std::find_end(jpegData.begin(), jpegData.end(), std::begin(eoiMarker),
+                                    std::end(eoiMarker));
+        if (eoi_it == jpegData.end()) {
+            qCWarning(qLcVideoFrameConverter)
+                    << Q_FUNC_INFO << ": JPEG data does not contain EOI marker";
+            return QImage{};
+        };
+
+        const size_t newSize = std::distance(jpegData.begin(), eoi_it) + std::size(eoiMarker);
+        jpegData = jpegData.first(newSize);
+    }
+
+    QImage image = QImage::fromData(jpegData, "JPG");
+    unmap = std::nullopt; // Release unmap guard
     rasterTransform(image, transform);
     return image;
 }
@@ -226,7 +265,7 @@ QImage qImageFromVideoFrame(const QVideoFrame &frame, const VideoTransformation 
         rhi = buffer->rhi();
 
     if (!rhi || !rhi->thread()->isCurrentThread())
-        rhi = ensureThreadLocalRhi(rhi);
+        rhi = qEnsureThreadLocalRhi(rhi);
 
     if (!rhi || rhi->isRecordingFrame())
         return convertCPU(frame, transformation);
@@ -271,7 +310,8 @@ QImage qImageFromVideoFrame(const QVideoFrame &frame, const VideoTransformation 
     rub->uploadStaticBuffer(vertexBuffer.get(), g_quad);
 
     QVideoFrame frameTmp = frame;
-    auto videoFrameTextures = QVideoTextureHelper::createTextures(frameTmp, *rhi, *rub, {});
+    QVideoFrameTexturesUPtr texturesTmp;
+    auto videoFrameTextures = QVideoTextureHelper::createTextures(frameTmp, *rhi, *rub, texturesTmp);
     if (!videoFrameTextures) {
         qCDebug(qLcVideoFrameConverter) << "Failed obtain textures. Using CPU conversion.";
         return convertCPU(frame, transformation);
@@ -283,7 +323,7 @@ QImage qImageFromVideoFrame(const QVideoFrame &frame, const VideoTransformation 
         return convertCPU(frame, transformation);
     }
 
-    float xScale = transformation.mirrorredHorizontallyAfterRotation ? -1.0 : 1.0;
+    float xScale = transformation.mirroredHorizontallyAfterRotation ? -1.0 : 1.0;
     float yScale = 1.f;
 
     if (rhi->isYUpInFramebuffer())

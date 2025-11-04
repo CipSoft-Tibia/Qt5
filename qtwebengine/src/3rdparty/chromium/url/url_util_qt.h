@@ -7,7 +7,7 @@
 
 namespace base {
 class CommandLine;
-} // namespace base
+}  // namespace base
 
 namespace url {
 
@@ -62,6 +62,6 @@ struct COMPONENT_EXPORT(URL) CustomScheme {
 // Thread-safe.
 bool IsHandledProtocol(std::string_view scheme);
 
-} // namespace url
+}  // namespace url
 
-#endif // URL_URL_UTIL_QT_H_
+#endif  // URL_URL_UTIL_QT_H_

@@ -8,6 +8,11 @@
 //    clang-format -i -style=chromium filename
 // DO NOT EDIT!
 
+#ifdef UNSAFE_BUFFERS_BUILD
+// TODO(crbug.com/40285824): Remove this and convert code to safer constructs.
+#pragma allow_unsafe_buffers
+#endif
+
 // It is included by raster_cmd_decoder.cc
 #ifndef GPU_COMMAND_BUFFER_SERVICE_RASTER_DECODER_AUTOGEN_H_
 #define GPU_COMMAND_BUFFER_SERVICE_RASTER_DECODER_AUTOGEN_H_
@@ -137,22 +142,6 @@ error::Error RasterDecoderImpl::HandleBeginRasterCHROMIUMImmediate(
   }
   DoBeginRasterCHROMIUM(r, g, b, a, needs_clear, msaa_sample_count, msaa_mode,
                         can_use_lcd_text, visible, hdr_headroom, mailbox);
-  return error::kNoError;
-}
-
-error::Error RasterDecoderImpl::HandleRasterCHROMIUM(
-    uint32_t immediate_data_size,
-    const volatile void* cmd_data) {
-  const volatile raster::cmds::RasterCHROMIUM& c =
-      *static_cast<const volatile raster::cmds::RasterCHROMIUM*>(cmd_data);
-  GLuint raster_shm_id = static_cast<GLuint>(c.raster_shm_id);
-  GLuint raster_shm_offset = static_cast<GLuint>(c.raster_shm_offset);
-  GLuint raster_shm_size = static_cast<GLuint>(c.raster_shm_size);
-  GLuint font_shm_id = static_cast<GLuint>(c.font_shm_id);
-  GLuint font_shm_offset = static_cast<GLuint>(c.font_shm_offset);
-  GLuint font_shm_size = static_cast<GLuint>(c.font_shm_size);
-  DoRasterCHROMIUM(raster_shm_id, raster_shm_offset, raster_shm_size,
-                   font_shm_id, font_shm_offset, font_shm_size);
   return error::kNoError;
 }
 
@@ -308,7 +297,6 @@ error::Error RasterDecoderImpl::HandleWritePixelsINTERNALImmediate(
           cmd_data);
   GLint x_offset = static_cast<GLint>(c.x_offset);
   GLint y_offset = static_cast<GLint>(c.y_offset);
-  GLint plane_index = static_cast<GLint>(c.plane_index);
   GLuint src_width = static_cast<GLuint>(c.src_width);
   GLuint src_height = static_cast<GLuint>(c.src_height);
   GLuint src_row_bytes = static_cast<GLuint>(c.src_row_bytes);
@@ -330,7 +318,7 @@ error::Error RasterDecoderImpl::HandleWritePixelsINTERNALImmediate(
   if (mailbox == nullptr) {
     return error::kOutOfBounds;
   }
-  DoWritePixelsINTERNAL(x_offset, y_offset, plane_index, src_width, src_height,
+  DoWritePixelsINTERNAL(x_offset, y_offset, src_width, src_height,
                         src_row_bytes, src_sk_color_type, src_sk_alpha_type,
                         shm_id, shm_offset, pixels_offset, mailbox);
   return error::kNoError;

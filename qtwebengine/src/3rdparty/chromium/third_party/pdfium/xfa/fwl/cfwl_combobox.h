@@ -13,6 +13,8 @@
 #include "xfa/fwl/cfwl_listbox.h"
 #include "xfa/fwl/cfwl_widget.h"
 
+namespace pdfium {
+
 #define FWL_STYLEEXT_CMB_DropDown (1L << 0)
 #define FWL_STYLEEXT_CMB_Sort (1L << 1)
 #define FWL_STYLEEXT_CMB_OwnerDraw (1L << 3)
@@ -72,8 +74,8 @@ class CFWL_ComboBox final : public CFWL_Widget {
     return EditCanCopy();
   }
   bool EditCanSelectAll() const { return m_pEdit->GetTextLength() > 0; }
-  absl::optional<WideString> EditCopy() const { return m_pEdit->Copy(); }
-  absl::optional<WideString> EditCut() { return m_pEdit->Cut(); }
+  std::optional<WideString> EditCopy() const { return m_pEdit->Copy(); }
+  std::optional<WideString> EditCut() { return m_pEdit->Cut(); }
   bool EditPaste(const WideString& wsPaste) { return m_pEdit->Paste(wsPaste); }
   void EditSelectAll() { m_pEdit->SelectAll(); }
   void EditDelete() { m_pEdit->ClearText(); }
@@ -121,5 +123,10 @@ class CFWL_ComboBox final : public CFWL_Widget {
   int32_t m_iCurSel = -1;
   Mask<CFWL_PartState> m_iBtnState = CFWL_PartState::kNormal;
 };
+
+}  // namespace pdfium
+
+// TODO(crbug.com/42271761): Remove.
+using pdfium::CFWL_ComboBox;
 
 #endif  // XFA_FWL_CFWL_COMBOBOX_H_

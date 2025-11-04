@@ -14,19 +14,18 @@
 
 #include "core/fxcodec/bmp/cfx_bmpcontext.h"
 #include "core/fxcodec/cfx_codec_memory.h"
+#include "core/fxcrt/byteorder.h"
+#include "core/fxcrt/compiler_specific.h"
 #include "core/fxcrt/data_vector.h"
 #include "core/fxcrt/fx_safe_types.h"
-#include "core/fxcrt/fx_system.h"
+#include "core/fxcrt/numerics/safe_math.h"
 #include "core/fxcrt/span_util.h"
+#include "core/fxcrt/stl_util.h"
 #include "core/fxge/calculate_pitch.h"
-#include "third_party/base/numerics/safe_math.h"
 
 namespace fxcodec {
 
 namespace {
-
-#define BMP_PAL_ENCODE(a, r, g, b) \
-  (((uint32_t)(a) << 24) | ((r) << 16) | ((g) << 8) | (b))
 
 constexpr size_t kBmpCoreHeaderSize = 12;
 constexpr size_t kBmpInfoHeaderSize = 40;
@@ -94,12 +93,9 @@ BmpDecoder::Status CFX_BmpDecompressor::ReadBmpHeader() {
     return BmpDecoder::Status::kContinue;
   }
 
-  bmp_header.bfType =
-      FXSYS_UINT16_GET_LSBFIRST(reinterpret_cast<uint8_t*>(&bmp_header.bfType));
-  data_offset_ = FXSYS_UINT32_GET_LSBFIRST(
-      reinterpret_cast<uint8_t*>(&bmp_header.bfOffBits));
-  data_size_ =
-      FXSYS_UINT32_GET_LSBFIRST(reinterpret_cast<uint8_t*>(&bmp_header.bfSize));
+  bmp_header.bfType = fxcrt::FromLE16(bmp_header.bfType);
+  data_offset_ = fxcrt::FromLE32(bmp_header.bfOffBits);
+  data_size_ = fxcrt::FromLE32(bmp_header.bfSize);
   if (bmp_header.bfType != kBmpSignature)
     return BmpDecoder::Status::kFail;
 
@@ -111,8 +107,7 @@ BmpDecoder::Status CFX_BmpDecompressor::ReadBmpHeader() {
   if (!input_buffer_->Seek(pos))
     return BmpDecoder::Status::kFail;
 
-  img_ifh_size_ =
-      FXSYS_UINT32_GET_LSBFIRST(reinterpret_cast<uint8_t*>(&img_ifh_size_));
+  img_ifh_size_ = fxcrt::FromLE32(img_ifh_size_);
   pal_type_ = PalType::kNew;
   BmpDecoder::Status status = ReadBmpHeaderIfh();
   if (status != BmpDecoder::Status::kSuccess)
@@ -130,12 +125,9 @@ BmpDecoder::Status CFX_BmpDecompressor::ReadBmpHeaderIfh() {
       return BmpDecoder::Status::kContinue;
     }
 
-    width_ = FXSYS_UINT16_GET_LSBFIRST(
-        reinterpret_cast<uint8_t*>(&bmp_core_header.bcWidth));
-    height_ = FXSYS_UINT16_GET_LSBFIRST(
-        reinterpret_cast<uint8_t*>(&bmp_core_header.bcHeight));
-    bit_counts_ = FXSYS_UINT16_GET_LSBFIRST(
-        reinterpret_cast<uint8_t*>(&bmp_core_header.bcBitCount));
+    width_ = fxcrt::FromLE16(bmp_core_header.bcWidth);
+    height_ = fxcrt::FromLE16(bmp_core_header.bcHeight);
+    bit_counts_ = fxcrt::FromLE16(bmp_core_header.bcBitCount);
     compress_flag_ = kBmpRgb;
     img_tb_flag_ = false;
     return BmpDecoder::Status::kSuccess;
@@ -148,22 +140,19 @@ BmpDecoder::Status CFX_BmpDecompressor::ReadBmpHeaderIfh() {
       return BmpDecoder::Status::kContinue;
     }
 
-    width_ = FXSYS_UINT32_GET_LSBFIRST(
-        reinterpret_cast<uint8_t*>(&bmp_info_header.biWidth));
-    int32_t signed_height = FXSYS_UINT32_GET_LSBFIRST(
-        reinterpret_cast<uint8_t*>(&bmp_info_header.biHeight));
-    bit_counts_ = FXSYS_UINT16_GET_LSBFIRST(
-        reinterpret_cast<uint8_t*>(&bmp_info_header.biBitCount));
-    compress_flag_ = FXSYS_UINT32_GET_LSBFIRST(
-        reinterpret_cast<uint8_t*>(&bmp_info_header.biCompression));
-    color_used_ = FXSYS_UINT32_GET_LSBFIRST(
-        reinterpret_cast<uint8_t*>(&bmp_info_header.biClrUsed));
-    dpi_x_ = static_cast<int32_t>(FXSYS_UINT32_GET_LSBFIRST(
-        reinterpret_cast<uint8_t*>(&bmp_info_header.biXPelsPerMeter)));
-    dpi_y_ = static_cast<int32_t>(FXSYS_UINT32_GET_LSBFIRST(
-        reinterpret_cast<uint8_t*>(&bmp_info_header.biYPelsPerMeter)));
-    if (!SetHeight(signed_height))
+    width_ = fxcrt::FromLE32(bmp_info_header.biWidth);
+    bit_counts_ = fxcrt::FromLE16(bmp_info_header.biBitCount);
+    compress_flag_ = fxcrt::FromLE32(bmp_info_header.biCompression);
+    color_used_ = fxcrt::FromLE32(bmp_info_header.biClrUsed);
+    dpi_x_ =
+        static_cast<int32_t>(fxcrt::FromLE32(bmp_info_header.biXPelsPerMeter));
+    dpi_y_ =
+        static_cast<int32_t>(fxcrt::FromLE32(bmp_info_header.biYPelsPerMeter));
+
+    int32_t signed_height = fxcrt::FromLE32(bmp_info_header.biHeight);
+    if (!SetHeight(signed_height)) {
       return BmpDecoder::Status::kFail;
+    }
     return BmpDecoder::Status::kSuccess;
   }
 
@@ -184,27 +173,21 @@ BmpDecoder::Status CFX_BmpDecompressor::ReadBmpHeaderIfh() {
   if (!input_buffer_->Seek(new_pos.ValueOrDie()))
     return BmpDecoder::Status::kContinue;
 
-  uint16_t bi_planes;
-  width_ = FXSYS_UINT32_GET_LSBFIRST(
-      reinterpret_cast<uint8_t*>(&bmp_info_header.biWidth));
-  int32_t signed_height = FXSYS_UINT32_GET_LSBFIRST(
-      reinterpret_cast<uint8_t*>(&bmp_info_header.biHeight));
-  bit_counts_ = FXSYS_UINT16_GET_LSBFIRST(
-      reinterpret_cast<uint8_t*>(&bmp_info_header.biBitCount));
-  compress_flag_ = FXSYS_UINT32_GET_LSBFIRST(
-      reinterpret_cast<uint8_t*>(&bmp_info_header.biCompression));
-  color_used_ = FXSYS_UINT32_GET_LSBFIRST(
-      reinterpret_cast<uint8_t*>(&bmp_info_header.biClrUsed));
-  bi_planes = FXSYS_UINT16_GET_LSBFIRST(
-      reinterpret_cast<uint8_t*>(&bmp_info_header.biPlanes));
-  dpi_x_ = FXSYS_UINT32_GET_LSBFIRST(
-      reinterpret_cast<uint8_t*>(&bmp_info_header.biXPelsPerMeter));
-  dpi_y_ = FXSYS_UINT32_GET_LSBFIRST(
-      reinterpret_cast<uint8_t*>(&bmp_info_header.biYPelsPerMeter));
-  if (!SetHeight(signed_height))
+  width_ = fxcrt::FromLE32(bmp_info_header.biWidth);
+  bit_counts_ = fxcrt::FromLE16(bmp_info_header.biBitCount);
+  compress_flag_ = fxcrt::FromLE32(bmp_info_header.biCompression);
+  color_used_ = fxcrt::FromLE32(bmp_info_header.biClrUsed);
+  dpi_x_ = fxcrt::FromLE32(bmp_info_header.biXPelsPerMeter);
+  dpi_y_ = fxcrt::FromLE32(bmp_info_header.biYPelsPerMeter);
+
+  int32_t signed_height = fxcrt::FromLE32(bmp_info_header.biHeight);
+  if (!SetHeight(signed_height)) {
     return BmpDecoder::Status::kFail;
-  if (compress_flag_ != kBmpRgb || bi_planes != 1 || color_used_ != 0)
+  }
+  uint16_t bi_planes = fxcrt::FromLE16(bmp_info_header.biPlanes);
+  if (compress_flag_ != kBmpRgb || bi_planes != 1 || color_used_ != 0) {
     return BmpDecoder::Status::kFail;
+  }
   return BmpDecoder::Status::kSuccess;
 }
 
@@ -229,7 +212,7 @@ BmpDecoder::Status CFX_BmpDecompressor::ReadBmpHeaderDimensions() {
     default:
       return BmpDecoder::Status::kFail;
   }
-  absl::optional<uint32_t> stride = fxge::CalculatePitch32(bit_counts_, width_);
+  std::optional<uint32_t> stride = fxge::CalculatePitch32(bit_counts_, width_);
   if (!stride.has_value())
     return BmpDecoder::Status::kFail;
 
@@ -272,13 +255,13 @@ BmpDecoder::Status CFX_BmpDecompressor::ReadBmpBitfields() {
     return BmpDecoder::Status::kFail;
 
   uint32_t masks[3];
-  if (!ReadAllOrNone(pdfium::as_writable_bytes(pdfium::make_span(masks))))
+  if (!ReadAllOrNone(pdfium::as_writable_byte_span(masks))) {
     return BmpDecoder::Status::kContinue;
+  }
 
-  mask_red_ = FXSYS_UINT32_GET_LSBFIRST(reinterpret_cast<uint8_t*>(&masks[0]));
-  mask_green_ =
-      FXSYS_UINT32_GET_LSBFIRST(reinterpret_cast<uint8_t*>(&masks[1]));
-  mask_blue_ = FXSYS_UINT32_GET_LSBFIRST(reinterpret_cast<uint8_t*>(&masks[2]));
+  mask_red_ = fxcrt::FromLE32(masks[0]);
+  mask_green_ = fxcrt::FromLE32(masks[1]);
+  mask_blue_ = fxcrt::FromLE32(masks[2]);
   if (mask_red_ & mask_green_ || mask_red_ & mask_blue_ ||
       mask_green_ & mask_blue_) {
     return BmpDecoder::Status::kFail;
@@ -294,35 +277,39 @@ BmpDecoder::Status CFX_BmpDecompressor::ReadBmpPalette() {
     mask_green_ = 0x03E0;
     mask_blue_ = 0x001F;
   }
-  pal_num_ = 0;
+  uint32_t palette_entries = 0;
   if (bit_counts_ < 16) {
-    pal_num_ = 1 << bit_counts_;
-    if (color_used_ != 0)
-      pal_num_ = color_used_;
-    size_t src_pal_size = pal_num_ * PaletteChannelCount();
-    DataVector<uint8_t> src_pal(src_pal_size);
-    uint8_t* src_pal_data = src_pal.data();
+    palette_entries = 1 << bit_counts_;
+    if (color_used_ != 0) {
+      palette_entries = color_used_;
+    }
+    size_t pal_bytes = palette_entries * PaletteChannelCount();
+    DataVector<uint8_t> src_pal(pal_bytes);
     if (!ReadAllOrNone(src_pal))
       return BmpDecoder::Status::kContinue;
 
-    palette_.resize(pal_num_);
-    int32_t src_pal_index = 0;
+    palette_.resize(palette_entries);
     if (pal_type_ == PalType::kOld) {
-      while (src_pal_index < pal_num_) {
-        palette_[src_pal_index++] = BMP_PAL_ENCODE(
-            0x00, src_pal_data[2], src_pal_data[1], src_pal_data[0]);
-        src_pal_data += 3;
+      auto src_pal_data =
+          fxcrt::reinterpret_span<FX_BGR_STRUCT<uint8_t>, uint8_t>(src_pal);
+      for (auto& dest : palette_) {
+        const auto& entry = src_pal_data.front();
+        dest = ArgbEncode(0x00, entry.red, entry.green, entry.blue);
+        src_pal_data = src_pal_data.subspan(1);
       }
     } else {
-      while (src_pal_index < pal_num_) {
-        palette_[src_pal_index++] = BMP_PAL_ENCODE(
-            src_pal_data[3], src_pal_data[2], src_pal_data[1], src_pal_data[0]);
-        src_pal_data += 4;
+      auto src_pal_data =
+          fxcrt::reinterpret_span<FX_BGRA_STRUCT<uint8_t>, uint8_t>(src_pal);
+      for (auto& dest : palette_) {
+        const auto& entry = src_pal_data.front();
+        dest = ArgbEncode(entry.alpha, entry.red, entry.green, entry.blue);
+        src_pal_data = src_pal_data.subspan(1);
       }
     }
   }
-  header_offset_ = std::max(
-      header_offset_, 14 + img_ifh_size_ + pal_num_ * PaletteChannelCount());
+  header_offset_ =
+      std::max(header_offset_,
+               14 + img_ifh_size_ + palette_entries * PaletteChannelCount());
   SaveDecodingStatus(DecodeStatus::kDataPre);
   return BmpDecoder::Status::kSuccess;
 }
@@ -371,7 +358,7 @@ BmpDecoder::Status CFX_BmpDecompressor::DecodeImage() {
 }
 
 bool CFX_BmpDecompressor::ValidateColorIndex(uint8_t val) const {
-  return val < pal_num_;
+  return val < palette_.size();
 }
 
 BmpDecoder::Status CFX_BmpDecompressor::DecodeRGB() {
@@ -413,7 +400,8 @@ BmpDecoder::Status CFX_BmpDecompressor::DecodeRGB() {
         break;
       }
       case 16: {
-        uint16_t* buf = reinterpret_cast<uint16_t*>(dest_buf.data());
+        auto buf =
+            fxcrt::reinterpret_span<uint16_t>(pdfium::make_span(dest_buf));
         uint8_t blue_bits = 0;
         uint8_t green_bits = 0;
         uint8_t red_bits = 0;
@@ -433,21 +421,22 @@ BmpDecoder::Status CFX_BmpDecompressor::DecodeRGB() {
         green_bits -= 8;
         red_bits -= 8;
         for (uint32_t col = 0; col < width_; ++col) {
-          *buf = FXSYS_UINT16_GET_LSBFIRST(reinterpret_cast<uint8_t*>(buf));
+          buf.front() = fxcrt::FromLE16(buf.front());
           out_row_buffer_[idx++] =
-              static_cast<uint8_t>((*buf & mask_blue_) << blue_bits);
+              static_cast<uint8_t>((buf.front() & mask_blue_) << blue_bits);
           out_row_buffer_[idx++] =
-              static_cast<uint8_t>((*buf & mask_green_) >> green_bits);
+              static_cast<uint8_t>((buf.front() & mask_green_) >> green_bits);
           out_row_buffer_[idx++] =
-              static_cast<uint8_t>((*buf++ & mask_red_) >> red_bits);
+              static_cast<uint8_t>((buf.front() & mask_red_) >> red_bits);
+          buf = buf.subspan(1);
         }
         break;
       }
       case 24:
       case 32:
         // TODO(crbug.com/pdfium/1901): Apply bitfields.
-        fxcrt::spancpy(pdfium::make_span(out_row_buffer_),
-                       pdfium::make_span(dest_buf).first(src_row_bytes_));
+        fxcrt::Copy(pdfium::make_span(dest_buf).first(src_row_bytes_),
+                    out_row_buffer_);
         idx += src_row_bytes_;
         break;
     }
@@ -480,7 +469,7 @@ BmpDecoder::Status CFX_BmpDecompressor::DecodeRLE8() {
 
             ReadNextScanline();
             col_num_ = 0;
-            fxcrt::spanset(pdfium::make_span(out_row_buffer_), 0);
+            fxcrt::Fill(out_row_buffer_, 0);
             SaveDecodingStatus(DecodeStatus::kData);
             continue;
           }
@@ -501,14 +490,14 @@ BmpDecoder::Status CFX_BmpDecompressor::DecodeRLE8() {
               return BmpDecoder::Status::kFail;
 
             while (row_num_ < bmp_row_num__next) {
-              fxcrt::spanset(pdfium::make_span(out_row_buffer_), 0);
+              fxcrt::Fill(out_row_buffer_, 0);
               ReadNextScanline();
             }
             break;
           }
           default: {
             int32_t avail_size =
-                pdfium::base::checked_cast<int32_t>(out_row_bytes_ - col_num_);
+                pdfium::checked_cast<int32_t>(out_row_bytes_ - col_num_);
             if (!avail_size || static_cast<int32_t>(first_part) > avail_size)
               return BmpDecoder::Status::kFail;
 
@@ -518,8 +507,8 @@ BmpDecoder::Status CFX_BmpDecompressor::DecodeRLE8() {
             if (!ReadAllOrNone(second_part))
               return BmpDecoder::Status::kContinue;
 
-            fxcrt::spancpy(pdfium::make_span(out_row_buffer_).subspan(col_num_),
-                           pdfium::make_span(second_part).first(first_part));
+            fxcrt::Copy(pdfium::make_span(second_part).first(first_part),
+                        pdfium::make_span(out_row_buffer_).subspan(col_num_));
 
             for (size_t i = col_num_; i < col_num_ + first_part; ++i) {
               if (!ValidateColorIndex(out_row_buffer_[i]))
@@ -532,7 +521,7 @@ BmpDecoder::Status CFX_BmpDecompressor::DecodeRLE8() {
       }
       default: {
         int32_t avail_size =
-            pdfium::base::checked_cast<int32_t>(out_row_bytes_ - col_num_);
+            pdfium::checked_cast<int32_t>(out_row_bytes_ - col_num_);
         if (!avail_size || static_cast<int32_t>(first_part) > avail_size)
           return BmpDecoder::Status::kFail;
 
@@ -541,7 +530,7 @@ BmpDecoder::Status CFX_BmpDecompressor::DecodeRLE8() {
           return BmpDecoder::Status::kContinue;
         }
 
-        fxcrt::spanset(
+        fxcrt::Fill(
             pdfium::make_span(out_row_buffer_).subspan(col_num_, first_part),
             second_part);
 
@@ -576,7 +565,7 @@ BmpDecoder::Status CFX_BmpDecompressor::DecodeRLE4() {
 
             ReadNextScanline();
             col_num_ = 0;
-            fxcrt::spanset(pdfium::make_span(out_row_buffer_), 0);
+            fxcrt::Fill(out_row_buffer_, 0);
             SaveDecodingStatus(DecodeStatus::kData);
             continue;
           }
@@ -597,14 +586,14 @@ BmpDecoder::Status CFX_BmpDecompressor::DecodeRLE4() {
               return BmpDecoder::Status::kFail;
 
             while (row_num_ < bmp_row_num__next) {
-              fxcrt::spanset(pdfium::make_span(out_row_buffer_), 0);
+              fxcrt::Fill(out_row_buffer_, 0);
               ReadNextScanline();
             }
             break;
           }
           default: {
             int32_t avail_size =
-                pdfium::base::checked_cast<int32_t>(out_row_bytes_ - col_num_);
+                pdfium::checked_cast<int32_t>(out_row_bytes_ - col_num_);
             if (!avail_size)
               return BmpDecoder::Status::kFail;
             uint8_t size = HalfRoundUp(first_part);
@@ -621,11 +610,12 @@ BmpDecoder::Status CFX_BmpDecompressor::DecodeRLE4() {
               return BmpDecoder::Status::kContinue;
 
             for (uint8_t i = 0; i < first_part; i++) {
-              uint8_t color = (i & 0x01) ? (*second_part_data++ & 0x0F)
-                                         : (*second_part_data & 0xF0) >> 4;
-              if (!ValidateColorIndex(color))
+              uint8_t color = (i & 0x01)
+                                  ? UNSAFE_TODO((*second_part_data++ & 0x0F))
+                                  : (*second_part_data & 0xF0) >> 4;
+              if (!ValidateColorIndex(color)) {
                 return BmpDecoder::Status::kFail;
-
+              }
               out_row_buffer_[col_num_++] = color;
             }
           }
@@ -634,7 +624,7 @@ BmpDecoder::Status CFX_BmpDecompressor::DecodeRLE4() {
       }
       default: {
         int32_t avail_size =
-            pdfium::base::checked_cast<int32_t>(out_row_bytes_ - col_num_);
+            pdfium::checked_cast<int32_t>(out_row_bytes_ - col_num_);
         if (!avail_size)
           return BmpDecoder::Status::kFail;
 

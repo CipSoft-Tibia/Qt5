@@ -230,7 +230,7 @@ QVariant QDialogPrivate::styleHint(QPlatformDialogHelper::StyleHint hint) const
     the user to continue to use other windows in an application.
 
     The most common way to display a modal dialog is to call its
-    \l open() function. Alternatively, you can call \l setModal(true) or
+    \l open() function. Alternatively, you can call \l{setModal()}{setModal(true)} or
     \l setWindowModality(), and then \l show(). In both cases, once the dialog is
     displayed, the control is immediately returned to the caller. You must connect
     to the \l finished() signal to know when the dialog is closed and what its
@@ -749,12 +749,7 @@ void QDialog::closeEvent(QCloseEvent *e)
 
 void QDialog::setVisible(bool visible)
 {
-    Q_D(QDialog);
-
-    if (testAttribute(Qt::WA_WState_ExplicitShowHide) && testAttribute(Qt::WA_WState_Hidden) != visible)
-        return;
-
-    d->setVisible(visible);
+    QWidget::setVisible(visible);
 }
 
 void QDialogPrivate::setVisible(bool visible)

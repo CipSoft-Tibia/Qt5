@@ -58,7 +58,7 @@ private:
     void serializeMessageFieldEnd(const QProtobufMessage *message,
                                   const QtProtobufPrivate::QProtobufFieldInfo &fieldInfo) override;
 
-    static QByteArray encodeHeader(int fieldIndex, QtProtobuf::WireTypes wireType);
+    static QByteArray encodeHeader(int fieldNumber, QtProtobuf::WireTypes wireType);
 
     QByteArray m_result;
     QList<QByteArray> m_state;
@@ -74,7 +74,7 @@ public:
 
     void reset(QByteArrayView data);
 
-    QProtobufSelfcheckIterator m_it;
+    QProtobufSelfcheckIterator m_it = {};
 
 private:
     void setError(QAbstractProtobufSerializer::Error error, QAnyStringView errorString) override;

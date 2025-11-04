@@ -23,3 +23,9 @@ AutofillInternalsUI::AutofillInternalsUI(content::WebUI* web_ui)
 }
 
 AutofillInternalsUI::~AutofillInternalsUI() = default;
+
+AutofillInternalsUIConfig::AutofillInternalsUIConfig()
+    : DefaultWebUIConfig(content::kChromeUIScheme,
+                         chrome::kChromeUIAutofillInternalsHost) {}
+
+AutofillInternalsUIConfig::~AutofillInternalsUIConfig() = default;

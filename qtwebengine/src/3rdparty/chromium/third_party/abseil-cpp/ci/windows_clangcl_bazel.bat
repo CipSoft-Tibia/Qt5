@@ -43,13 +43,13 @@ IF NOT "%ALTERNATE_OPTIONS%"=="" copy %ALTERNATE_OPTIONS% absl\base\options.h
   test ... ^
   --compilation_mode=%COMPILATION_MODE% ^
   --compiler=clang-cl ^
-  --copt=/std:%STD% ^
   --copt=/WX ^
   --copt=-Wno-microsoft-cast ^
+  --cxxopt=/std:%STD% ^
   --define=absl=1 ^
   --distdir=%KOKORO_GFILE_DIR%\distdir ^
   --enable_bzlmod=true ^
-  --extra_execution_platforms=//absl:x64_windows-clang-cl ^
+  --extra_execution_platforms=//:x64_windows-clang-cl ^
   --extra_toolchains=@local_config_cc//:cc-toolchain-x64_windows-clang-cl ^
   --keep_going ^
   --test_env="GTEST_INSTALL_FAILURE_SIGNAL_HANDLER=1" ^

@@ -3,7 +3,7 @@
 
 //! [imports]
 import QtQuick
-import com.nokia.qml.mymodule 1.0
+import com.mycompany.qml.mymodule 1.0
 //! [imports]
 
 Item {

@@ -8,6 +8,7 @@
 #include <stdint.h>
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -19,12 +20,11 @@
 #include "base/values.h"
 #include "components/no_state_prefetch/browser/no_state_prefetch_contents_delegate.h"
 #include "components/no_state_prefetch/common/no_state_prefetch_final_status.h"
+#include "components/no_state_prefetch/common/no_state_prefetch_origin.h"
 #include "components/no_state_prefetch/common/prerender_canceler.mojom.h"
-#include "components/no_state_prefetch/common/prerender_origin.h"
 #include "content/public/browser/web_contents_observer.h"
 #include "content/public/common/referrer.h"
 #include "mojo/public/cpp/bindings/receiver_set.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "ui/gfx/geometry/rect.h"
 #include "url/origin.h"
 
@@ -71,7 +71,7 @@ class NoStatePrefetchContents : public content::WebContentsObserver,
         content::BrowserContext* browser_context,
         const GURL& url,
         const content::Referrer& referrer,
-        const absl::optional<url::Origin>& initiator_origin,
+        const std::optional<url::Origin>& initiator_origin,
         Origin origin) = 0;
   };
 
@@ -87,11 +87,6 @@ class NoStatePrefetchContents : public content::WebContentsObserver,
     // A NoStatePrefetchContents with an unset final status will always call
     // OnPrefetchStop before being destroyed.
     virtual void OnPrefetchStop(NoStatePrefetchContents* contents) {}
-
-    // Signals that a resource finished loading and altered the running byte
-    // count.
-    virtual void OnPrefetchNetworkBytesChanged(
-        NoStatePrefetchContents* contents) {}
 
    protected:
     Observer() {}
@@ -182,22 +177,16 @@ class NoStatePrefetchContents : public content::WebContentsObserver,
   // NoStatePrefetchManager's pending deletes list.
   void Destroy(FinalStatus reason);
 
-  absl::optional<base::Value::Dict> GetAsDict() const;
+  std::optional<base::Value::Dict> GetAsDict() const;
 
   // This function is not currently called in production since prerendered
   // contents are never used (only prefetch is supported), but it may be used in
   // the future: https://crbug.com/1126305
   void MarkAsUsedForTesting();
 
-  // Increments the number of bytes fetched over the network for this prerender.
-  void AddNetworkBytes(int64_t bytes);
-
   bool prefetching_has_been_cancelled() const {
     return prefetching_has_been_cancelled_;
   }
-
-  // Running byte count. Increased when each resource completes loading.
-  int64_t network_bytes() { return network_bytes_; }
 
   void AddPrerenderCancelerReceiver(
       mojo::PendingReceiver<prerender::mojom::PrerenderCanceler> receiver);
@@ -209,7 +198,7 @@ class NoStatePrefetchContents : public content::WebContentsObserver,
       content::BrowserContext* browser_context,
       const GURL& url,
       const content::Referrer& referrer,
-      const absl::optional<url::Origin>& initiator_origin,
+      const std::optional<url::Origin>& initiator_origin,
       Origin origin);
 
   // Set the final status for how the NoStatePrefetchContents was used. This
@@ -263,7 +252,7 @@ class NoStatePrefetchContents : public content::WebContentsObserver,
   mojo::ReceiverSet<prerender::mojom::PrerenderCanceler>
       prerender_canceler_receiver_set_;
 
-  base::ObserverList<Observer>::Unchecked observer_list_;
+  base::ObserverList<Observer>::UncheckedAndDanglingUntriaged observer_list_;
 
   // The prefetch manager owning this object.
   raw_ptr<NoStatePrefetchManager> no_state_prefetch_manager_;
@@ -284,7 +273,7 @@ class NoStatePrefetchContents : public content::WebContentsObserver,
 
   // The origin of the page requesting the prerender. Empty when the prerender
   // is browser initiated.
-  const absl::optional<url::Origin> initiator_origin_;
+  const std::optional<url::Origin> initiator_origin_;
 
   // The browser context being used
   raw_ptr<content::BrowserContext> browser_context_;
@@ -314,10 +303,6 @@ class NoStatePrefetchContents : public content::WebContentsObserver,
 
   // The bounds of the WebView from the launching page.
   gfx::Rect bounds_;
-
-  // A running tally of the number of bytes this prerender has caused to be
-  // transferred over the network for resources.  Updated with AddNetworkBytes.
-  int64_t network_bytes_;
 
   base::WeakPtrFactory<NoStatePrefetchContents> weak_factory_{this};
 };

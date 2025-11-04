@@ -11,10 +11,10 @@
 #include <utility>
 
 #include "core/fxcrt/cfx_datetime.h"
+#include "core/fxcrt/check.h"
+#include "core/fxcrt/containers/contains.h"
+#include "core/fxcrt/notreached.h"
 #include "core/fxcrt/stl_util.h"
-#include "third_party/base/check.h"
-#include "third_party/base/containers/contains.h"
-#include "third_party/base/notreached.h"
 #include "xfa/fde/cfde_textout.h"
 #include "xfa/fwl/cfwl_datetimepicker.h"
 #include "xfa/fwl/cfwl_messagemouse.h"
@@ -22,6 +22,8 @@
 #include "xfa/fwl/cfwl_themebackground.h"
 #include "xfa/fwl/cfwl_themetext.h"
 #include "xfa/fwl/ifwl_themeprovider.h"
+
+namespace pdfium {
 
 namespace {
 
@@ -36,19 +38,19 @@ constexpr float kMonthCalHeaderBtnHMargin = 5.0f;
 WideString GetAbbreviatedDayOfWeek(int day) {
   switch (day) {
     case 0:
-      return L"Sun";
+      return WideString::FromASCII("Sun");
     case 1:
-      return L"Mon";
+      return WideString::FromASCII("Mon");
     case 2:
-      return L"Tue";
+      return WideString::FromASCII("Tue");
     case 3:
-      return L"Wed";
+      return WideString::FromASCII("Wed");
     case 4:
-      return L"Thu";
+      return WideString::FromASCII("Thu");
     case 5:
-      return L"Fri";
+      return WideString::FromASCII("Fri");
     case 6:
-      return L"Sat";
+      return WideString::FromASCII("Sat");
     default:
       NOTREACHED_NORETURN();
   }
@@ -57,29 +59,29 @@ WideString GetAbbreviatedDayOfWeek(int day) {
 WideString GetMonth(int month) {
   switch (month) {
     case 0:
-      return L"January";
+      return WideString::FromASCII("January");
     case 1:
-      return L"February";
+      return WideString::FromASCII("February");
     case 2:
-      return L"March";
+      return WideString::FromASCII("March");
     case 3:
-      return L"April";
+      return WideString::FromASCII("April");
     case 4:
-      return L"May";
+      return WideString::FromASCII("May");
     case 5:
-      return L"June";
+      return WideString::FromASCII("June");
     case 6:
-      return L"July";
+      return WideString::FromASCII("July");
     case 7:
-      return L"August";
+      return WideString::FromASCII("August");
     case 8:
-      return L"September";
+      return WideString::FromASCII("September");
     case 9:
-      return L"October";
+      return WideString::FromASCII("October");
     case 10:
-      return L"November";
+      return WideString::FromASCII("November");
     case 11:
-      return L"December";
+      return WideString::FromASCII("December");
     default:
       NOTREACHED_NORETURN();
   }
@@ -464,7 +466,7 @@ void CFWL_MonthCalendar::ResetDateItem() {
 
     const bool bFlagged =
         m_iYear == m_iCurYear && m_iMonth == m_iCurMonth && m_iDay == i + 1;
-    const bool bSelected = pdfium::Contains(m_SelDayArray, i + 1);
+    const bool bSelected = Contains(m_SelDayArray, i + 1);
     m_DateArray.push_back(
         std::make_unique<DATEINFO>(i + 1, iDayOfWeek, bFlagged, bSelected,
                                    WideString::FormatInteger(i + 1)));
@@ -528,8 +530,9 @@ void CFWL_MonthCalendar::RemoveSelDay() {
 
 void CFWL_MonthCalendar::AddSelDay(int32_t iDay) {
   DCHECK(iDay > 0);
-  if (!pdfium::Contains(m_SelDayArray, iDay))
+  if (!Contains(m_SelDayArray, iDay)) {
     return;
+  }
 
   RemoveSelDay();
   if (iDay <= fxcrt::CollectionSize<int32_t>(m_DateArray))
@@ -547,18 +550,15 @@ void CFWL_MonthCalendar::JumpToToday() {
     return;
   }
 
-  if (!pdfium::Contains(m_SelDayArray, m_iDay))
+  if (!Contains(m_SelDayArray, m_iDay)) {
     AddSelDay(m_iDay);
+  }
 }
 
 WideString CFWL_MonthCalendar::GetHeadText(int32_t iYear, int32_t iMonth) {
-  DCHECK(iMonth > 0);
-  DCHECK(iMonth < 13);
-
-  static const wchar_t* const pMonth[] = {L"January", L"February", L"March",
-                                          L"April",   L"May",      L"June",
-                                          L"July",    L"August",   L"September",
-                                          L"October", L"November", L"December"};
+  static const std::array<const wchar_t*, 12> pMonth = {
+      {L"January", L"February", L"March", L"April", L"May", L"June", L"July",
+       L"August", L"September", L"October", L"November", L"December"}};
   return WideString::Format(L"%ls, %d", pMonth[iMonth - 1], iYear);
 }
 
@@ -736,3 +736,5 @@ Mask<CFWL_PartState> CFWL_MonthCalendar::DATEINFO::AsPartStateMask() const {
     dwStates |= CFWL_PartState::kSelected;
   return dwStates;
 }
+
+}  // namespace pdfium

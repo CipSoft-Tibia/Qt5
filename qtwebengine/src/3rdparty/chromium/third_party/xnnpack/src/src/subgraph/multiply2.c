@@ -4,19 +4,22 @@
 // LICENSE file in the root directory of this source tree.
 
 #include <assert.h>
-#include <math.h>
+#include <inttypes.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <string.h>
 
-#include <xnnpack.h>
-#include <xnnpack/log.h>
-#include <xnnpack/operator.h>
-#include <xnnpack/params.h>
-#include <xnnpack/requantization.h>
-#include <xnnpack/subgraph.h>
-#include <xnnpack/subgraph-validation.h>
-
+#include "xnnpack.h"
+#include "xnnpack/common.h"
+#include "xnnpack/log.h"
+#include "xnnpack/node-type.h"
+#include "xnnpack/operator-type.h"
+#include "xnnpack/operator.h"
+#include "xnnpack/requantization.h"
+#include "xnnpack/reshape-helpers.h"
+#include "xnnpack/subgraph-validation.h"
+#include "xnnpack/subgraph.h"
+#include "pthreadpool.h"
 
 static enum xnn_status create_multiply_operator(
   const struct xnn_node* node,
@@ -24,7 +27,7 @@ static enum xnn_status create_multiply_operator(
   size_t num_values,
   struct xnn_operator_data* opdata,
   struct xnn_code_cache* code_cache,
-  struct xnn_weights_cache* weights_cache)
+  xnn_weights_cache_t weights_cache)
 {
   assert(node->num_inputs == 2);
   const uint32_t input1_id = node->inputs[0];
@@ -54,6 +57,9 @@ static enum xnn_status create_multiply_operator(
         node->activation.output_max,
         node->flags,
         &opdata->operator_objects[0]);
+      break;
+    case xnn_compute_type_s32:
+      status = xnn_create_multiply_nd_s32(node->flags, &opdata->operator_objects[0]);
       break;
     case xnn_compute_type_qs8:
     {
@@ -129,9 +135,21 @@ static enum xnn_status reshape_multiply_operator(
     memcpy(opdata->shape2.dim, values[input2_id].shape.dim, values[input2_id].shape.num_dims * sizeof(size_t));
   }
 
+  // Handle scalars. Although the output shape is dimensionless, the reshape
+  // function must be passed a valid shape to prevent skipping the op.
+  if (opdata->shape1.num_dims == 0) {
+    opdata->shape1.num_dims = 1;
+    opdata->shape1.dim[0] = 1;
+  }
+  if (opdata->shape2.num_dims == 0) {
+    opdata->shape2.num_dims = 1;
+    opdata->shape2.dim[0] = 1;
+  }
+  const size_t old_workspace_size = opdata->workspace_size;
+  enum xnn_status status = xnn_status_invalid_state;
   switch (opdata->operator_objects[0]->type) {
     case xnn_operator_type_multiply_nd_f16:
-      return xnn_reshape_multiply_nd_f16(
+      status = xnn_reshape_multiply_nd_f16(
         opdata->operator_objects[0],
         opdata->shape1.num_dims,
         opdata->shape1.dim,
@@ -140,7 +158,7 @@ static enum xnn_status reshape_multiply_operator(
         threadpool);
       break;
     case xnn_operator_type_multiply_nd_f32:
-      return xnn_reshape_multiply_nd_f32(
+      status = xnn_reshape_multiply_nd_f32(
         opdata->operator_objects[0],
         opdata->shape1.num_dims,
         opdata->shape1.dim,
@@ -148,8 +166,13 @@ static enum xnn_status reshape_multiply_operator(
         opdata->shape2.dim,
         threadpool);
       break;
+    case xnn_operator_type_multiply_nd_s32:
+      status = xnn_reshape_multiply_nd_s32(
+        opdata->operator_objects[0], opdata->shape1.num_dims, opdata->shape1.dim, opdata->shape2.num_dims,
+        opdata->shape2.dim, threadpool);
+      break;
     case xnn_operator_type_multiply_nd_qs8:
-      return xnn_reshape_multiply_nd_qs8(
+      status = xnn_reshape_multiply_nd_qs8(
         opdata->operator_objects[0],
         opdata->shape1.num_dims,
         opdata->shape1.dim,
@@ -158,7 +181,7 @@ static enum xnn_status reshape_multiply_operator(
         threadpool);
       break;
     case xnn_operator_type_multiply_nd_qu8:
-      return xnn_reshape_multiply_nd_qu8(
+      status = xnn_reshape_multiply_nd_qu8(
         opdata->operator_objects[0],
         opdata->shape1.num_dims,
         opdata->shape1.dim,
@@ -169,6 +192,10 @@ static enum xnn_status reshape_multiply_operator(
     default:
       XNN_UNREACHABLE;
   }
+  if (status != xnn_status_success) {
+    return status;
+  }
+  return resize_binary_elementwise_output_tensor(opdata, values, num_values, old_workspace_size, threadpool);
 }
 
 static enum xnn_status setup_multiply_operator(
@@ -212,6 +239,9 @@ static enum xnn_status setup_multiply_operator(
         opdata->operator_objects[0],
         input1_data, input2_data, output_data);
       break;
+    case xnn_operator_type_multiply_nd_s32:
+      return xnn_setup_multiply_nd_s32(opdata->operator_objects[0], input1_data, input2_data, output_data);
+      break;
     case xnn_operator_type_multiply_nd_qs8:
       return xnn_setup_multiply_nd_qs8(
         opdata->operator_objects[0],
@@ -227,7 +257,7 @@ static enum xnn_status setup_multiply_operator(
   }
 }
 
-enum xnn_status xnn_define_multiply2(
+enum xnn_status define_multiply2(
   xnn_subgraph_t subgraph,
   float output_min,
   float output_max,
@@ -238,11 +268,6 @@ enum xnn_status xnn_define_multiply2(
 {
   enum xnn_status status;
   if ((status = xnn_subgraph_check_xnnpack_initialized(xnn_node_type_multiply2)) != xnn_status_success) {
-    return status;
-  }
-
-  status = xnn_subgraph_check_output_min_max(xnn_node_type_multiply2, output_min, output_max);
-  if (status != xnn_status_success) {
     return status;
   }
 
@@ -257,19 +282,6 @@ enum xnn_status xnn_define_multiply2(
     return status;
   }
 
-  switch (input1_value->datatype) {
-    case xnn_datatype_fp32:
-    case xnn_datatype_qint8:
-    case xnn_datatype_quint8:
-      break;
-    default:
-      xnn_log_error(
-        "failed to define %s operator with the first input ID #%" PRIu32 ": unsupported Value datatype %s (%d)",
-        xnn_node_type_to_string(xnn_node_type_multiply2), input1_id,
-        xnn_datatype_to_string(input1_value->datatype), input1_value->datatype);
-      return xnn_status_invalid_parameter;
-  }
-
   if ((status = xnn_subgraph_check_nth_input_node_id(
         xnn_node_type_multiply2, input2_id, subgraph->num_values, 2)) != xnn_status_success) {
     return status;
@@ -279,19 +291,6 @@ enum xnn_status xnn_define_multiply2(
   status = xnn_subgraph_check_nth_input_type_dense(xnn_node_type_multiply2, input2_id, input2_value, 2);
   if (status != xnn_status_success) {
     return status;
-  }
-
-  switch (input2_value->datatype) {
-    case xnn_datatype_fp32:
-    case xnn_datatype_qint8:
-    case xnn_datatype_quint8:
-      break;
-    default:
-      xnn_log_error(
-        "failed to define %s operator with the second input ID #%" PRIu32 ": unsupported Value datatype %s (%d)",
-        xnn_node_type_to_string(xnn_node_type_multiply2), input2_id,
-        xnn_datatype_to_string(input2_value->datatype), input2_value->datatype);
-      return xnn_status_invalid_parameter;
   }
 
   status = xnn_subgraph_check_output_node_id(xnn_node_type_multiply2, output_id, subgraph->num_values);
@@ -307,8 +306,14 @@ enum xnn_status xnn_define_multiply2(
 
   enum xnn_compute_type compute_type = xnn_compute_type_invalid;
   switch (output_value->datatype) {
+    case xnn_datatype_fp16:
+      compute_type = xnn_compute_type_fp16;
+      break;
     case xnn_datatype_fp32:
       compute_type = xnn_compute_type_fp32;
+      break;
+    case xnn_datatype_int32:
+      compute_type = xnn_compute_type_s32;
       break;
     case xnn_datatype_qint8:
       compute_type = xnn_compute_type_qs8;
@@ -351,4 +356,86 @@ enum xnn_status xnn_define_multiply2(
   node->setup = setup_multiply_operator;
 
   return xnn_status_success;
+}
+
+enum xnn_status xnn_define_multiply2(
+  xnn_subgraph_t subgraph,
+  float output_min,
+  float output_max,
+  uint32_t input1_id,
+  uint32_t input2_id,
+  uint32_t output_id,
+  uint32_t flags) {
+  enum xnn_status status = xnn_subgraph_check_output_min_max(xnn_node_type_multiply2, output_min, output_max);
+  if (status != xnn_status_success) {
+    return status;
+  }
+  const struct xnn_value* input1_value = &subgraph->values[input1_id];
+  switch (input1_value->datatype) {
+    case xnn_datatype_fp16:
+    case xnn_datatype_fp32:
+    case xnn_datatype_qint8:
+    case xnn_datatype_quint8:
+      break;
+    default:
+      xnn_log_error(
+        "failed to define %s operator with the first input ID #%" PRIu32 ": unsupported Value datatype %s (%d)",
+        xnn_node_type_to_string(xnn_node_type_multiply2), input1_id,
+        xnn_datatype_to_string(input1_value->datatype), input1_value->datatype);
+      return xnn_status_invalid_parameter;
+  }
+  const struct xnn_value* input2_value = &subgraph->values[input2_id];
+  switch (input2_value->datatype) {
+    case xnn_datatype_fp16:
+    case xnn_datatype_fp32:
+    case xnn_datatype_qint8:
+    case xnn_datatype_quint8:
+      break;
+    default:
+      xnn_log_error(
+        "failed to define %s operator with the second input ID #%" PRIu32 ": unsupported Value datatype %s (%d)",
+        xnn_node_type_to_string(xnn_node_type_multiply2), input2_id,
+        xnn_datatype_to_string(input2_value->datatype), input2_value->datatype);
+      return xnn_status_invalid_parameter;
+  }
+  return define_multiply2(subgraph, output_min, output_max, input1_id, input2_id, output_id, flags);
+}
+
+enum xnn_status xnn_define_multiply2_v2(
+  xnn_subgraph_t subgraph,
+  uint32_t input1_id,
+  uint32_t input2_id,
+  uint32_t output_id,
+  uint32_t flags) {
+  const struct xnn_value* input1_value = &subgraph->values[input1_id];
+  switch (input1_value->datatype) {
+    case xnn_datatype_fp16:
+    case xnn_datatype_fp32:
+    case xnn_datatype_int32:
+    case xnn_datatype_qint8:
+    case xnn_datatype_quint8:
+      break;
+    default:
+      xnn_log_error(
+        "failed to define %s operator with the first input ID #%" PRIu32 ": unsupported Value datatype %s (%d)",
+        xnn_node_type_to_string(xnn_node_type_multiply2), input1_id,
+        xnn_datatype_to_string(input1_value->datatype), input1_value->datatype);
+      return xnn_status_invalid_parameter;
+  }
+  const struct xnn_value* input2_value = &subgraph->values[input2_id];
+  switch (input2_value->datatype) {
+    case xnn_datatype_fp16:
+    case xnn_datatype_fp32:
+    case xnn_datatype_int32:
+    case xnn_datatype_qint8:
+    case xnn_datatype_quint8:
+      break;
+    default:
+      xnn_log_error(
+        "failed to define %s operator with the second input ID #%" PRIu32 ": unsupported Value datatype %s (%d)",
+        xnn_node_type_to_string(xnn_node_type_multiply2), input2_id,
+        xnn_datatype_to_string(input2_value->datatype), input2_value->datatype);
+      return xnn_status_invalid_parameter;
+  }
+  return define_multiply2(subgraph, -INFINITY, INFINITY, input1_id, input2_id, output_id, flags);
 }

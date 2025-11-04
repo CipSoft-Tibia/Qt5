@@ -8,6 +8,7 @@
     \inqmlmodule QtOpcUa
     \brief Arguments for OpcUa method calls.
     \since QtOpcUa 5.13
+    \deprecated [6.9]
 
     When calling methods which require arguments, this type is used.
 

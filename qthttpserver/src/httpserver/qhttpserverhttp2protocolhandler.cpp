@@ -1,10 +1,12 @@
 // Copyright (C) 2024 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qhttpserverhttp2protocolhandler_p.h"
 
 #include <QtCore/qloggingcategory.h>
 #include <QtHttpServer/qabstracthttpserver.h>
+#include <QtHttpServer/qhttpserverresponse.h>
 #include <QtNetwork/private/qhttp2connection_p.h>
 #include <QtNetwork/qtcpsocket.h>
 
@@ -14,7 +16,7 @@
 
 QT_BEGIN_NAMESPACE
 
-Q_LOGGING_CATEGORY(lcHttpServerHttp2Handler, "qt.httpserver.http2handler")
+Q_STATIC_LOGGING_CATEGORY(lcHttpServerHttp2Handler, "qt.httpserver.http2handler")
 
 namespace {
 
@@ -30,11 +32,13 @@ void toHeaderPairs(HPack::HttpHeader &fields, const QHttpHeaders &headers)
 } // anonymous namespace
 
 QHttpServerHttp2ProtocolHandler::QHttpServerHttp2ProtocolHandler(QAbstractHttpServer *server,
-                                                                 QIODevice *socket)
+                                                                 QIODevice *socket,
+                                                                 QHttpServerRequestFilter *filter)
     : QHttpServerStream(server),
       m_server(server),
       m_socket(socket),
       m_tcpSocket(qobject_cast<QTcpSocket *>(socket)),
+      m_filter(filter),
       m_request(QHttpServerStream::initRequestFromSocket(m_tcpSocket))
 {
     socket->setParent(this);
@@ -120,11 +124,11 @@ void QHttpServerHttp2ProtocolHandler::write(QHttpServerResponder::StatusCode sta
 void QHttpServerHttp2ProtocolHandler::write(QIODevice *data, const QHttpHeaders &headers,
                                   QHttpServerResponder::StatusCode status, quint32 streamId)
 {
+    std::unique_ptr<QIODevice, QScopedPointerDeleteLater> input(data);
+
     QHttp2Stream *stream = getStream(streamId);
     if (!stream)
         return;
-
-    std::unique_ptr<QIODevice, QScopedPointerDeleteLater> input(data);
 
     if (!input->isOpen()) {
         if (!input->open(QIODevice::ReadOnly)) {
@@ -149,11 +153,6 @@ void QHttpServerHttp2ProtocolHandler::write(QIODevice *data, const QHttpHeaders 
     }
 
     writeHeadersAndStatus(headers, status, false, streamId);
-
-    if (input->atEnd()) {
-        qCDebug(lcHttpServerHttp2Handler, "No more data available.");
-        return;
-    }
 
     input->setParent(stream);
     connect(stream, &QHttp2Stream::uploadFinished, input.get(), &QObject::deleteLater);
@@ -269,8 +268,12 @@ void QHttpServerHttp2ProtocolHandler::onStreamHalfClosed(quint32 streamId)
     QHttpServerResponder responder(this);
     responder.d_ptr->m_streamId = streamId;
 
-    if (!m_server->handleRequest(m_request, responder))
+    if (!m_filter->isRequestWithinRate(m_tcpSocket->peerAddress())) {
+        responder.sendResponse(
+                QHttpServerResponse(QHttpServerResponder::StatusCode::TooManyRequests));
+    } else if (!m_server->handleRequest(m_request, responder)) {
         m_server->missingHandler(m_request, responder);
+    }
 }
 
 void QHttpServerHttp2ProtocolHandler::onStreamClosed(quint32 streamId)

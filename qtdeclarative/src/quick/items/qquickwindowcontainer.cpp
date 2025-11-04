@@ -12,7 +12,7 @@
 
 QT_BEGIN_NAMESPACE
 
-Q_LOGGING_CATEGORY(lcWindowContainer, "qt.quick.window.container")
+Q_STATIC_LOGGING_CATEGORY(lcWindowContainer, "qt.quick.window.container")
 
 using namespace Qt::StringLiterals;
 
@@ -117,6 +117,7 @@ QQuickWindowContainer::QQuickWindowContainer(QQuickItem *parent, ContainerMode c
     d->containerMode = containerMode;
 
     setFlag(QQuickItem::ItemObservesViewport); // For clipping
+    setFocusPolicy(Qt::TabFocus);
 
     connect(this, &QQuickItem::windowChanged,
             this, &QQuickWindowContainer::parentWindowChanged);
@@ -482,6 +483,21 @@ bool QQuickWindowContainer::eventFilter(QObject *object, QEvent *event)
     return QQuickImplicitSizeItem::eventFilter(object, event);
 }
 
+void QQuickWindowContainer::focusInEvent(QFocusEvent *event)
+{
+    Q_D(QQuickWindowContainer);
+    if (d->window) {
+        const auto reason = event->reason();
+        QWindowPrivate::FocusTarget target = QWindowPrivate::FocusTarget::Current;
+        if (reason == Qt::TabFocusReason)
+            target = QWindowPrivate::FocusTarget::First;
+        else if (reason == Qt::BacktabFocusReason)
+            target = QWindowPrivate::FocusTarget::Last;
+        QWindowPrivate::get(d->window)->setFocusToTarget(target, reason);
+        d->window->requestActivate();
+    }
+}
+
 void QQuickWindowContainer::windowDestroyed()
 {
     Q_D(QQuickWindowContainer);
@@ -588,3 +604,5 @@ bool QQuickWindowContainerPrivate::transformChanged(QQuickItem *transformedItem)
 }
 
 QT_END_NAMESPACE
+
+#include "moc_qquickwindowcontainer_p.cpp"

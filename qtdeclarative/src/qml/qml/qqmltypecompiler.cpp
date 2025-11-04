@@ -294,7 +294,8 @@ bool SignalHandlerResolver::resolveSignalHandlerExpressions()
 
 bool SignalHandlerResolver::resolveSignalHandlerExpressions(
         const QmlIR::Object *obj, const QString &typeName,
-        const QQmlPropertyCache::ConstPtr &propertyCache)
+        const QQmlPropertyCache::ConstPtr &propertyCache,
+        QQmlPropertyResolver::RevisionCheck checkRevision)
 {
     // map from signal name defined in qml itself to list of parameters
     QHash<QString, QStringList> customSignals;
@@ -317,8 +318,14 @@ bool SignalHandlerResolver::resolveSignalHandlerExpressions(
             if (!attachedType)
                 COMPILE_EXCEPTION(binding, tr("Non-existent attached object"));
             QQmlPropertyCache::ConstPtr cache = QQmlMetaType::propertyCache(attachedType);
-            if (!resolveSignalHandlerExpressions(attachedObj, bindingPropertyName, cache))
+
+            // Ignore revisions of signals on attached objects. They are not unqualified.
+            if (!resolveSignalHandlerExpressions(
+                        attachedObj, bindingPropertyName, cache,
+                        QQmlPropertyResolver::IgnoreRevision)) {
                 return false;
+            }
+
             continue;
         }
 
@@ -338,14 +345,19 @@ bool SignalHandlerResolver::resolveSignalHandlerExpressions(
         QQmlPropertyResolver resolver(propertyCache);
 
         bool notInRevision = false;
-        const QQmlPropertyData * const signal = resolver.signal(signalName, &notInRevision);
-        const QQmlPropertyData * const signalPropertyData = resolver.property(signalName, /*notInRevision ptr*/nullptr);
-        const QQmlPropertyData * const qPropertyData = !qPropertyName.isEmpty() ? resolver.property(qPropertyName) : nullptr;
+        const QQmlPropertyData *const signal
+                = resolver.signal(signalName, &notInRevision, checkRevision);
+        const QQmlPropertyData *const signalPropertyData
+                = resolver.property(signalName, /*notInRevision ptr*/nullptr, checkRevision);
+        const QQmlPropertyData *const qPropertyData = !qPropertyName.isEmpty()
+                ? resolver.property(qPropertyName, nullptr, checkRevision)
+                : nullptr;
         QString finalSignalHandlerPropertyName = signalName;
         QV4::CompiledData::Binding::Flag flag
                 = QV4::CompiledData::Binding::IsSignalHandlerExpression;
 
-        const bool isPropertyObserver = !signalPropertyData && qPropertyData && qPropertyData->isBindable();
+        const bool isPropertyObserver
+                = !signalPropertyData && qPropertyData && qPropertyData->notifiesViaBindable();
         if (signal && !(qPropertyData && qPropertyData->isAlias() && isPropertyObserver)) {
             int sigIndex = propertyCache->methodIndexToSignalIndex(signal->coreIndex());
             sigIndex = propertyCache->originalClone(sigIndex);
@@ -881,7 +893,8 @@ QQmlComponentAndAliasResolver<QQmlTypeCompiler>::resolveAliasesInObject(
 
             QQmlPropertyResolver resolver(targetCache);
 
-            const QQmlPropertyData *targetProperty = resolver.property(property.toString());
+            const QQmlPropertyData *targetProperty = resolver.property(
+                    property.toString(), nullptr, QQmlPropertyResolver::IgnoreRevision);
 
             // If it's an alias that we haven't resolved yet, try again later.
             if (!targetProperty) {

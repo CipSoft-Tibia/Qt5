@@ -18,7 +18,7 @@
 
 QT_BEGIN_NAMESPACE
 
-static Q_LOGGING_CATEGORY(lcSqlDb, "qt.sql.qsqldatabase")
+Q_STATIC_LOGGING_CATEGORY(lcSqlDb, "qt.sql.qsqldatabase")
 
 using namespace Qt::StringLiterals;
 
@@ -110,8 +110,11 @@ QSqlDatabasePrivate::QSqlDatabasePrivate(const QSqlDatabasePrivate &other) : ref
     connOptions = other.connOptions;
     driver = other.driver;
     precisionPolicy = other.precisionPolicy;
-    if (driver)
+    if (driver) {
         driver->setNumericalPrecisionPolicy(other.driver->numericalPrecisionPolicy());
+        auto drvPriv = static_cast<QSqlDriverPrivate *>(QObjectPrivate::get(driver));
+        drvPriv->connectionName = connName;
+    }
 }
 
 QSqlDatabasePrivate::~QSqlDatabasePrivate()
@@ -169,6 +172,8 @@ void QSqlDatabasePrivate::addDatabase(const QSqlDatabase &db, const QString &nam
     }
     sqlGlobals->connections.insert(name, db);
     db.d->connName = name;
+    auto drvPriv = static_cast<QSqlDriverPrivate *>(QObjectPrivate::get(db.d->driver));
+    drvPriv->connectionName = name;
 }
 
 /*! \internal
@@ -655,9 +660,9 @@ void QSqlDatabasePrivate::init(const QString &type)
         driver = qLoadPlugin<QSqlDriver, QSqlDriverPlugin>(loader(), type);
 
     if (!driver) {
-        qCWarning(lcSqlDb, "QSqlDatabase: %ls driver not loaded", qUtf16Printable(type));
-        qCWarning(lcSqlDb, "QSqlDatabase: available drivers: %ls",
-                  qUtf16Printable(QSqlDatabase::drivers().join(u' ')));
+        qCWarning(lcSqlDb,
+                  "QSqlDatabase: can not load requested driver '%ls', available drivers: %ls",
+                  qUtf16Printable(type), qUtf16Printable(QSqlDatabase::drivers().join(u' ')));
         if (QCoreApplication::instance() == nullptr)
             qCWarning(lcSqlDb, "QSqlDatabase: an instance of QCoreApplication is required for loading driver plugins");
         driver = shared_null()->driver;

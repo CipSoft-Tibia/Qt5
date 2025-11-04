@@ -10,9 +10,14 @@
 #include "components/password_manager/core/browser/features/password_manager_features_util.h"
 #include "components/password_manager/core/browser/password_manager_client.h"
 #include "components/password_manager/core/browser/password_sync_util.h"
+#include "components/password_manager/core/browser/split_stores_and_local_upm.h"
 #include "components/password_manager/core/common/password_manager_pref_names.h"
 #include "components/prefs/pref_service.h"
 #include "components/sync/service/sync_service.h"
+
+#if BUILDFLAG(IS_ANDROID)
+#include "base/android/build_info.h"
+#endif
 
 namespace password_manager {
 
@@ -26,19 +31,17 @@ PasswordFeatureManagerImpl::PasswordFeatureManagerImpl(
 
 bool PasswordFeatureManagerImpl::IsGenerationEnabled() const {
   switch (password_manager::sync_util::GetPasswordSyncState(sync_service_)) {
-    case SyncState::kNotSyncing:
+    case sync_util::SyncState::kNotActive:
       return ShouldShowAccountStorageOptIn();
-    case SyncState::kSyncingWithCustomPassphrase:
-    case SyncState::kSyncingNormalEncryption:
-    case SyncState::kAccountPasswordsActiveNormalEncryption:
-    case SyncState::kAccountPasswordsActiveWithCustomPassphrase:
+    case sync_util::SyncState::kActiveWithNormalEncryption:
+    case sync_util::SyncState::kActiveWithCustomPassphrase:
       return true;
   }
 }
 
 bool PasswordFeatureManagerImpl::IsBiometricAuthenticationBeforeFillingEnabled()
     const {
-#if BUILDFLAG(IS_MAC) || BUILDFLAG(IS_WIN)
+#if BUILDFLAG(IS_MAC) || BUILDFLAG(IS_WIN) || BUILDFLAG(IS_CHROMEOS)
   // This checking order is important to ensure balanced experiment groups.
   // First check for `kHadBiometricsAvailable` ensures that user have biometric
   // scanner on their devices, shrinking down the amount of affected users.
@@ -58,17 +61,19 @@ bool PasswordFeatureManagerImpl::IsBiometricAuthenticationBeforeFillingEnabled()
 }
 
 bool PasswordFeatureManagerImpl::IsOptedInForAccountStorage() const {
-  return features_util::IsOptedInForAccountStorage(sync_service_);
+  return features_util::IsOptedInForAccountStorage(pref_service_,
+                                                   sync_service_);
 }
 
 bool PasswordFeatureManagerImpl::ShouldShowAccountStorageOptIn() const {
-  return features_util::ShouldShowAccountStorageOptIn(sync_service_);
+  return features_util::ShouldShowAccountStorageOptIn(pref_service_,
+                                                      sync_service_);
 }
 
 bool PasswordFeatureManagerImpl::ShouldShowAccountStorageReSignin(
     const GURL& current_page_url) const {
-  return features_util::ShouldShowAccountStorageReSignin(sync_service_,
-                                                         current_page_url);
+  return features_util::ShouldShowAccountStorageReSignin(
+      pref_service_, sync_service_, current_page_url);
 }
 
 bool PasswordFeatureManagerImpl::ShouldShowAccountStorageBubbleUi() const {
@@ -97,6 +102,10 @@ void PasswordFeatureManagerImpl::OptInToAccountStorage() {
   features_util::OptInToAccountStorage(pref_service_, sync_service_);
 }
 
+void PasswordFeatureManagerImpl::OptOutOfAccountStorage() {
+  features_util::OptOutOfAccountStorage(pref_service_, sync_service_);
+}
+
 void PasswordFeatureManagerImpl::OptOutOfAccountStorageAndClearSettings() {
   features_util::OptOutOfAccountStorageAndClearSettings(pref_service_,
                                                         sync_service_);
@@ -112,6 +121,16 @@ bool PasswordFeatureManagerImpl::
   return ShouldShowAccountStorageOptIn() && !IsDefaultPasswordStoreSet();
 }
 
+bool PasswordFeatureManagerImpl::ShouldChangeDefaultPasswordStore() const {
+  return IsOptedInForAccountStorage() && IsDefaultPasswordStoreSet() &&
+         GetDefaultPasswordStore() == PasswordForm::Store::kProfileStore;
+}
 #endif  // !BUILDFLAG(IS_IOS) && !BUILDFLAG(IS_ANDROID)
+
+#if BUILDFLAG(IS_ANDROID)
+bool PasswordFeatureManagerImpl::ShouldUpdateGmsCore() {
+  return IsGmsCoreUpdateRequired(pref_service_, sync_service_);
+}
+#endif  // BUILDFLAG(IS_ANDROID)
 
 }  // namespace password_manager

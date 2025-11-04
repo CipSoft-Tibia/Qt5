@@ -31,8 +31,9 @@
 #ifndef THIRD_PARTY_BLINK_PUBLIC_PLATFORM_WEB_CONTENT_SECURITY_POLICY_STRUCT_H_
 #define THIRD_PARTY_BLINK_PUBLIC_PLATFORM_WEB_CONTENT_SECURITY_POLICY_STRUCT_H_
 
+#include <optional>
+
 #include "services/network/public/mojom/content_security_policy.mojom-shared.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "third_party/blink/public/platform/web_string.h"
 #include "third_party/blink/public/platform/web_vector.h"
 
@@ -58,7 +59,6 @@ struct WebCSPSourceList {
   WebVector<WebCSPHashSource> hashes;
   bool allow_self;
   bool allow_star;
-  bool allow_response_redirects;
   bool allow_inline;
   bool allow_inline_speculation_rules;
   bool allow_eval;
@@ -106,7 +106,7 @@ struct WebContentSecurityPolicy {
   bool use_reporting_api;
   WebVector<WebString> report_endpoints;
   network::mojom::CSPRequireTrustedTypesFor require_trusted_types_for;
-  absl::optional<WebCSPTrustedTypes> trusted_types;
+  std::optional<WebCSPTrustedTypes> trusted_types;
   WebVector<WebString> parsing_errors;
 };
 

@@ -15,8 +15,7 @@
 #include "media/base/win/mf_helpers.h"
 #include "media/gpu/h265_decoder.h"
 #include "media/gpu/h265_dpb.h"
-#include "media/gpu/windows/d3d_accelerator.h"
-#include "media/video/picture.h"
+#include "media/gpu/windows/d3d11_video_decoder_client.h"
 #include "third_party/angle/include/EGL/egl.h"
 #include "third_party/angle/include/EGL/eglext.h"
 
@@ -98,8 +97,7 @@ typedef struct {
 } DXVA_PicParams_HEVC_SCC;
 #pragma pack(pop)
 
-class D3D11H265Accelerator : public D3DAccelerator,
-                             public H265Decoder::H265Accelerator {
+class D3D11H265Accelerator : public H265Decoder::H265Accelerator {
  public:
   D3D11H265Accelerator(D3D11VideoDecoderClient* client, MediaLog* media_log);
 
@@ -134,6 +132,8 @@ class D3D11H265Accelerator : public D3DAccelerator,
   Status SubmitDecode(scoped_refptr<H265Picture> pic) override;
   void Reset() override;
   bool OutputPicture(scoped_refptr<H265Picture> pic) override;
+  Status SetStream(base::span<const uint8_t> stream,
+                   const DecryptConfig* decrypt_config) override;
   bool IsChromaSamplingSupported(VideoChromaSampling chroma_sampling) override;
 
  private:
@@ -165,6 +165,9 @@ class D3D11H265Accelerator : public D3DAccelerator,
       const H265Picture::Vector& ref_pic_set_st_curr_after,
       const H265Picture::Vector& ref_pic_set_st_curr_before);
 
+  std::unique_ptr<MediaLog> media_log_;
+  raw_ptr<D3D11VideoDecoderClient> client_;
+
   // This information set at the beginning of a frame and saved for processing
   // all the slices.
   DXVA_PicEntry_HEVC ref_frame_list_[kMaxRefPicListSize];
@@ -177,6 +180,8 @@ class D3D11H265Accelerator : public D3DAccelerator,
   // For HEVC this number needs to be larger than 1 and different
   // in each call to Execute().
   int current_status_report_feedback_num_ = 1;
+
+  uint32_t current_frame_size_ = 0;
 };
 
 }  // namespace media

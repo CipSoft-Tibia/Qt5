@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QNETWORKREQUEST_P_H
 #define QNETWORKREQUEST_P_H
@@ -25,6 +26,8 @@
 #include "QtCore/qsharedpointer.h"
 #include "QtCore/qpointer.h"
 
+#include <utility>
+
 QT_BEGIN_NAMESPACE
 
 class QNetworkCookie;
@@ -33,7 +36,7 @@ class QNetworkCookie;
 class QNetworkHeadersPrivate
 {
 public:
-    typedef QPair<QByteArray, QByteArray> RawHeaderPair;
+    typedef std::pair<QByteArray, QByteArray> RawHeaderPair;
     typedef QList<RawHeaderPair> RawHeadersList;
     typedef QHash<QNetworkRequest::KnownHeaders, QVariant> CookedHeadersMap;
     typedef QHash<QNetworkRequest::Attribute, QVariant> AttributesMap;

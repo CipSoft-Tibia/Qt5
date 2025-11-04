@@ -8,6 +8,8 @@
 #include <stdint.h>
 
 #include <memory>
+#include <optional>
+#include <vector>
 
 #include "base/files/file.h"
 #include "base/memory/raw_ptr.h"
@@ -17,7 +19,6 @@
 #include "mojo/public/cpp/bindings/pending_associated_receiver.h"
 #include "mojo/public/cpp/bindings/pending_receiver.h"
 #include "mojo/public/cpp/bindings/receiver_set.h"
-#include "ui/display/types/display_configuration_params.h"
 #include "ui/gfx/native_pixmap_handle.h"
 #include "ui/gfx/native_widget_types.h"
 #include "ui/ozone/platform/drm/common/display_types.h"
@@ -34,9 +35,9 @@ class FilePath;
 }  // namespace base
 
 namespace display {
-class GammaCurve;
 struct ColorCalibration;
 struct ColorTemperatureAdjustment;
+struct DisplayConfigurationParams;
 struct GammaAdjustment;
 }  // namespace display
 
@@ -115,9 +116,6 @@ class DrmThread : public base::Thread,
   void AddDrmDeviceReceiver(
       mojo::PendingReceiver<ozone::mojom::DrmDevice> receiver);
 
-  void SetColorSpace(gfx::AcceleratedWidget widget,
-                     const gfx::ColorSpace& color_space);
-
   // Verifies if the display controller can successfully scanout the given set
   // of OverlaySurfaceCandidates and return the status associated with each
   // candidate.
@@ -168,7 +166,7 @@ class DrmThread : public base::Thread,
   void RemoveGraphicsDevice(const base::FilePath& path) override;
   void ConfigureNativeDisplays(
       const std::vector<display::DisplayConfigurationParams>& config_requests,
-      uint32_t modeset_flag,
+      display::ModesetFlags modeset_flags,
       ConfigureNativeDisplaysCallback callback) override;
   void SetHdcpKeyProp(int64_t display_id,
                       const std::string& key,
@@ -191,14 +189,13 @@ class DrmThread : public base::Thread,
       const display::ColorCalibration& calibration) override;
   void SetGammaAdjustment(int64_t display_id,
                           const display::GammaAdjustment& adjustment) override;
-  void SetColorMatrix(int64_t display_id,
-                      const std::vector<float>& color_matrix) override;
-  void SetGammaCorrection(int64_t display_id,
-                          const display::GammaCurve& degamma,
-                          const display::GammaCurve& gamma) override;
   void SetPrivacyScreen(int64_t display_id,
                         bool enabled,
                         base::OnceCallback<void(bool)> callback) override;
+  void GetSeamlessRefreshRates(
+      int64_t display_id,
+      GetSeamlessRefreshRatesCallback callback) override;
+
   void GetDeviceCursor(
       mojo::PendingAssociatedReceiver<ozone::mojom::DeviceCursor> receiver)
       override;
@@ -206,7 +203,7 @@ class DrmThread : public base::Thread,
   // ozone::mojom::DeviceCursor
   void SetCursor(gfx::AcceleratedWidget widget,
                  const std::vector<SkBitmap>& bitmaps,
-                 const absl::optional<gfx::Point>& location,
+                 const std::optional<gfx::Point>& location,
                  base::TimeDelta frame_delay) override;
   void MoveCursor(gfx::AcceleratedWidget widget,
                   const gfx::Point& location) override;

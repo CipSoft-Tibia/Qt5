@@ -27,6 +27,7 @@
 #include "third_party/blink/renderer/core/css/css_value.h"
 
 #include "third_party/blink/renderer/core/css/css_alternate_value.h"
+#include "third_party/blink/renderer/core/css/css_appearance_auto_base_select_value_pair.h"
 #include "third_party/blink/renderer/core/css/css_axis_value.h"
 #include "third_party/blink/renderer/core/css/css_basic_shape_values.h"
 #include "third_party/blink/renderer/core/css/css_border_image_slice_value.h"
@@ -38,9 +39,9 @@
 #include "third_party/blink/renderer/core/css/css_crossfade_value.h"
 #include "third_party/blink/renderer/core/css/css_cursor_image_value.h"
 #include "third_party/blink/renderer/core/css/css_custom_ident_value.h"
-#include "third_party/blink/renderer/core/css/css_custom_property_declaration.h"
 #include "third_party/blink/renderer/core/css/css_cyclic_variable_value.h"
 #include "third_party/blink/renderer/core/css/css_dynamic_range_limit_mix_value.h"
+#include "third_party/blink/renderer/core/css/css_flip_revert_value.h"
 #include "third_party/blink/renderer/core/css/css_font_face_src_value.h"
 #include "third_party/blink/renderer/core/css/css_font_family_value.h"
 #include "third_party/blink/renderer/core/css/css_font_feature_value.h"
@@ -75,6 +76,7 @@
 #include "third_party/blink/renderer/core/css/css_ratio_value.h"
 #include "third_party/blink/renderer/core/css/css_ray_value.h"
 #include "third_party/blink/renderer/core/css/css_reflect_value.h"
+#include "third_party/blink/renderer/core/css/css_relative_color_value.h"
 #include "third_party/blink/renderer/core/css/css_repeat_style_value.h"
 #include "third_party/blink/renderer/core/css/css_revert_layer_value.h"
 #include "third_party/blink/renderer/core/css/css_revert_value.h"
@@ -83,11 +85,11 @@
 #include "third_party/blink/renderer/core/css/css_string_value.h"
 #include "third_party/blink/renderer/core/css/css_timing_function_value.h"
 #include "third_party/blink/renderer/core/css/css_unicode_range_value.h"
+#include "third_party/blink/renderer/core/css/css_unparsed_declaration_value.h"
 #include "third_party/blink/renderer/core/css/css_unset_value.h"
 #include "third_party/blink/renderer/core/css/css_uri_value.h"
 #include "third_party/blink/renderer/core/css/css_value_list.h"
 #include "third_party/blink/renderer/core/css/css_value_pair.h"
-#include "third_party/blink/renderer/core/css/css_variable_reference_value.h"
 #include "third_party/blink/renderer/core/css/css_view_value.h"
 #include "third_party/blink/renderer/platform/geometry/length.h"
 #include "third_party/blink/renderer/platform/wtf/size_assertions.h"
@@ -118,7 +120,7 @@ CSSValue* CSSValue::Create(const Length& value, float zoom) {
     case Length::kDeviceHeight:
     case Length::kMinIntrinsic:
     case Length::kNone:
-      NOTREACHED();
+      NOTREACHED_IN_MIGRATION();
       break;
   }
   return nullptr;
@@ -311,10 +313,8 @@ bool CSSValue::operator==(const CSSValue& other) const {
       case kCSSContentDistributionClass:
         return CompareCSSValues<cssvalue::CSSContentDistributionValue>(*this,
                                                                        other);
-      case kCustomPropertyDeclarationClass:
-        return CompareCSSValues<CSSCustomPropertyDeclaration>(*this, other);
-      case kVariableReferenceClass:
-        return CompareCSSValues<CSSVariableReferenceValue>(*this, other);
+      case kUnparsedDeclarationClass:
+        return CompareCSSValues<CSSUnparsedDeclarationValue>(*this, other);
       case kPendingSubstitutionValueClass:
         return CompareCSSValues<cssvalue::CSSPendingSubstitutionValue>(*this,
                                                                        other);
@@ -325,8 +325,13 @@ bool CSSValue::operator==(const CSSValue& other) const {
         return CompareCSSValues<CSSInvalidVariableValue>(*this, other);
       case kCyclicVariableValueClass:
         return CompareCSSValues<CSSCyclicVariableValue>(*this, other);
+      case kFlipRevertClass:
+        return CompareCSSValues<cssvalue::CSSFlipRevertValue>(*this, other);
       case kLightDarkValuePairClass:
         return CompareCSSValues<CSSLightDarkValuePair>(*this, other);
+      case kAppearanceAutoBaseSelectValuePairClass:
+        return CompareCSSValues<CSSAppearanceAutoBaseSelectValuePair>(*this,
+                                                                      other);
       case kScrollClass:
         return CompareCSSValues<cssvalue::CSSScrollValue>(*this, other);
       case kViewClass:
@@ -337,8 +342,10 @@ bool CSSValue::operator==(const CSSValue& other) const {
         return CompareCSSValues<cssvalue::CSSPaletteMixValue>(*this, other);
       case kRepeatStyleClass:
         return CompareCSSValues<CSSRepeatStyleValue>(*this, other);
+      case kRelativeColorClass:
+        return CompareCSSValues<cssvalue::CSSRelativeColorValue>(*this, other);
     }
-    NOTREACHED();
+    NOTREACHED_IN_MIGRATION();
     return false;
   }
   return false;
@@ -467,10 +474,8 @@ String CSSValue::CssText() const {
       return To<CSSImageSetValue>(this)->CustomCSSText();
     case kCSSContentDistributionClass:
       return To<cssvalue::CSSContentDistributionValue>(this)->CustomCSSText();
-    case kVariableReferenceClass:
-      return To<CSSVariableReferenceValue>(this)->CustomCSSText();
-    case kCustomPropertyDeclarationClass:
-      return To<CSSCustomPropertyDeclaration>(this)->CustomCSSText();
+    case kUnparsedDeclarationClass:
+      return To<CSSUnparsedDeclarationValue>(this)->CustomCSSText();
     case kPendingSubstitutionValueClass:
       return To<cssvalue::CSSPendingSubstitutionValue>(this)->CustomCSSText();
     case kPendingSystemFontValueClass:
@@ -479,8 +484,12 @@ String CSSValue::CssText() const {
       return To<CSSInvalidVariableValue>(this)->CustomCSSText();
     case kCyclicVariableValueClass:
       return To<CSSCyclicVariableValue>(this)->CustomCSSText();
+    case kFlipRevertClass:
+      return To<cssvalue::CSSFlipRevertValue>(this)->CustomCSSText();
     case kLightDarkValuePairClass:
       return To<CSSLightDarkValuePair>(this)->CustomCSSText();
+    case kAppearanceAutoBaseSelectValuePairClass:
+      return To<CSSAppearanceAutoBaseSelectValuePair>(this)->CustomCSSText();
     case kScrollClass:
       return To<cssvalue::CSSScrollValue>(this)->CustomCSSText();
     case kViewClass:
@@ -491,8 +500,10 @@ String CSSValue::CssText() const {
       return To<cssvalue::CSSPaletteMixValue>(this)->CustomCSSText();
     case kRepeatStyleClass:
       return To<CSSRepeatStyleValue>(this)->CustomCSSText();
+    case kRelativeColorClass:
+      return To<cssvalue::CSSRelativeColorValue>(this)->CustomCSSText();
   }
-  NOTREACHED();
+  NOTREACHED_IN_MIGRATION();
   return String();
 }
 
@@ -509,7 +520,7 @@ const CSSValue& CSSValue::PopulateWithTreeScope(
     case kValueListClass:
       return To<CSSValueList>(this)->PopulateWithTreeScope(tree_scope);
     default:
-      NOTREACHED();
+      NOTREACHED_IN_MIGRATION();
       return *this;
   }
 }
@@ -705,11 +716,8 @@ void CSSValue::Trace(Visitor* visitor) const {
       To<cssvalue::CSSContentDistributionValue>(this)->TraceAfterDispatch(
           visitor);
       return;
-    case kVariableReferenceClass:
-      To<CSSVariableReferenceValue>(this)->TraceAfterDispatch(visitor);
-      return;
-    case kCustomPropertyDeclarationClass:
-      To<CSSCustomPropertyDeclaration>(this)->TraceAfterDispatch(visitor);
+    case kUnparsedDeclarationClass:
+      To<CSSUnparsedDeclarationValue>(this)->TraceAfterDispatch(visitor);
       return;
     case kPendingSubstitutionValueClass:
       To<cssvalue::CSSPendingSubstitutionValue>(this)->TraceAfterDispatch(
@@ -725,8 +733,15 @@ void CSSValue::Trace(Visitor* visitor) const {
     case kCyclicVariableValueClass:
       To<CSSCyclicVariableValue>(this)->TraceAfterDispatch(visitor);
       return;
+    case kFlipRevertClass:
+      To<cssvalue::CSSFlipRevertValue>(this)->TraceAfterDispatch(visitor);
+      return;
     case kLightDarkValuePairClass:
       To<CSSLightDarkValuePair>(this)->TraceAfterDispatch(visitor);
+      return;
+    case kAppearanceAutoBaseSelectValuePairClass:
+      To<CSSAppearanceAutoBaseSelectValuePair>(this)->TraceAfterDispatch(
+          visitor);
       return;
     case kScrollClass:
       To<cssvalue::CSSScrollValue>(this)->TraceAfterDispatch(visitor);
@@ -743,8 +758,11 @@ void CSSValue::Trace(Visitor* visitor) const {
     case kRepeatStyleClass:
       To<CSSRepeatStyleValue>(this)->TraceAfterDispatch(visitor);
       return;
+    case kRelativeColorClass:
+      To<cssvalue::CSSRelativeColorValue>(this)->TraceAfterDispatch(visitor);
+      return;
   }
-  NOTREACHED();
+  NOTREACHED_IN_MIGRATION();
 }
 
 #if DCHECK_IS_ON()
@@ -774,6 +792,8 @@ String CSSValue::ClassTypeToString() const {
       return "ValuePairClass";
     case kLightDarkValuePairClass:
       return "LightDarkValuePairClass";
+    case kAppearanceAutoBaseSelectValuePairClass:
+      return "AppearanceAutoBaseSelectValuePairClass";
     case kScrollClass:
       return "ScrollClass";
     case kViewClass:
@@ -850,10 +870,8 @@ String CSSValue::ClassTypeToString() const {
       return "PathClass";
     case kRayClass:
       return "RayClass";
-    case kVariableReferenceClass:
-      return "VariableReferenceClass";
-    case kCustomPropertyDeclarationClass:
-      return "CustomPropertyDeclarationClass";
+    case kUnparsedDeclarationClass:
+      return "UnparsedDeclarationClass";
     case kPendingSubstitutionValueClass:
       return "PendingSubstitutionValueClass";
     case kPendingSystemFontValueClass:
@@ -862,6 +880,8 @@ String CSSValue::ClassTypeToString() const {
       return "InvalidVariableValueClass";
     case kCyclicVariableValueClass:
       return "CyclicVariableValueClass";
+    case kFlipRevertClass:
+      return "FlipRevertClass";
     case kLayoutFunctionClass:
       return "LayoutFunctionClass";
     case kCSSContentDistributionClass:
@@ -889,7 +909,7 @@ String CSSValue::ClassTypeToString() const {
     case kAxisClass:
       return "AxisClass";
     default:
-      NOTREACHED();
+      NOTREACHED_IN_MIGRATION();
       return "Unknown ClassType";
   }
 }

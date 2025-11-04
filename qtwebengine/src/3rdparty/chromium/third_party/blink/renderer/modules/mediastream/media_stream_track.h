@@ -8,6 +8,7 @@
 #include <memory>
 
 #include "base/memory/raw_ptr.h"
+#include "base/time/time.h"
 #include "build/build_config.h"
 #include "third_party/blink/renderer/bindings/core/v8/active_script_wrappable.h"
 #include "third_party/blink/renderer/bindings/core/v8/script_promise.h"
@@ -37,9 +38,9 @@ class MediaConstraints;
 class MediaTrackCapabilities;
 class MediaTrackConstraints;
 class MediaStream;
-class MediaStreamTrackVideoStats;
 class MediaTrackSettings;
 class ScriptState;
+class V8UnionMediaStreamTrackAudioStatsOrMediaStreamTrackVideoStats;
 
 String ContentHintToString(
     const WebMediaStreamTrack::ContentHintType& content_hint);
@@ -60,7 +61,7 @@ class MODULES_EXPORT MediaStreamTrack
 
   // For carrying data to the FromTransferredState method.
   struct TransferredValues {
-    raw_ptr<const WrapperTypeInfo, ExperimentalRenderer> track_impl_subtype;
+    raw_ptr<const WrapperTypeInfo> track_impl_subtype;
     base::UnguessableToken session_id;
     base::UnguessableToken transfer_id;
     String kind;
@@ -72,7 +73,7 @@ class MODULES_EXPORT MediaStreamTrack
     MediaStreamSource::ReadyState ready_state;
     // Set only if
     // track_impl_subtype->IsSubclass(BrowserCaptureMediaStreamTrack::GetStaticWrapperTypeInfo())
-    absl::optional<uint32_t> sub_capture_target_version;
+    std::optional<uint32_t> sub_capture_target_version;
   };
 
   // See SetFromTransferredStateImplForTesting in ./test/transfer_test_utils.h.
@@ -103,12 +104,14 @@ class MODULES_EXPORT MediaStreamTrack
   virtual MediaTrackCapabilities* getCapabilities() const = 0;
   virtual MediaTrackConstraints* getConstraints() const = 0;
   virtual MediaTrackSettings* getSettings() const = 0;
-  virtual MediaStreamTrackVideoStats* stats() = 0;
+  virtual V8UnionMediaStreamTrackAudioStatsOrMediaStreamTrackVideoStats*
+  stats() = 0;
   virtual CaptureHandle* getCaptureHandle() const = 0;
-  virtual ScriptPromise applyConstraints(ScriptState*,
-                                         const MediaTrackConstraints*) = 0;
+  virtual ScriptPromise<IDLUndefined> applyConstraints(
+      ScriptState*,
+      const MediaTrackConstraints*) = 0;
 
-  virtual void applyConstraints(ScriptPromiseResolver*,
+  virtual void applyConstraints(ScriptPromiseResolver<IDLUndefined>*,
                                 const MediaTrackConstraints*) = 0;
   virtual void SetInitialConstraints(const MediaConstraints& constraints) = 0;
   virtual void SetConstraints(const MediaConstraints& constraints) = 0;
@@ -136,55 +139,12 @@ class MODULES_EXPORT MediaStreamTrack
   // ScriptWrappable
   bool HasPendingActivity() const override = 0;
 
-#if !BUILDFLAG(IS_ANDROID)
-  // When called on a "live" video track associated with tab-capture,
-  // asks to deliver a wheel event on the captured tab's viewport.
-  // This is subject to a permission policy on the capturing origin.
-  //
-  // `relative_x` is a value from [0, 1). It denotes the relative position
-  // in the coordinate space of the captured surface, which is unknown to the
-  // capturer. A value of 0 denotes the leftmost pixel; increasing values denote
-  // values further to the right. The sender of the message scales from its own
-  // coordinate space down to the relative values, and the receiver scales back
-  // up to its own coordinates.
-  //
-  // `relative_y` is defined analogously to `relative_x`.
-  //
-  // `wheel_delta_x` and `wheel_delta_y` represent the scroll deltas.
-  virtual void SendWheel(
-      double relative_x,
-      double relative_y,
-      int wheel_delta_x,
-      int wheel_delta_y,
-      base::OnceCallback<void(bool, const String&)> callback) = 0;
-
-  // When called on a "live" video track associated with tab-capture,
-  // returns the zoom level of the capture tab's viewport.
-  // This is subject to a permission policy on the capturing origin.
-  //
-  // If successful, |callback| is invoked with the zoom level in percentage
-  // points and an empty string.
-  // If unsuccessful, it is invoked with `absl::nullopt` and an error message.
-  virtual void GetZoomLevel(
-      base::OnceCallback<void(absl::optional<int>, const String&)>
-          callback) = 0;
-
-  // When called on a "live" video track associated with tab-capture, asks to
-  // set the zoom level on the captured tab's viewport.  This is subject to a
-  // permission policy on the capturing origin.
-  //
-  // If successful, |callback| is invoked with `true` and an empty string.
-  // If unsuccessful, it is invoked with `false` and an error message.
-  virtual void SetZoomLevel(
-      int zoom_level,
-      base::OnceCallback<void(bool, const String&)> callback) = 0;
-#endif
-
   virtual std::unique_ptr<AudioSourceProvider> CreateWebAudioSource(
-      int context_sample_rate) = 0;
+      int context_sample_rate,
+      base::TimeDelta platform_buffer_duration) = 0;
 
   virtual ImageCapture* GetImageCapture() = 0;
-  virtual absl::optional<const MediaStreamDevice> device() const = 0;
+  virtual std::optional<const MediaStreamDevice> device() const = 0;
   // This function is called on the track by the serializer once it has been
   // serialized for transfer to another context.
   // Prepares the track for a potentially cross-renderer transfer. After this

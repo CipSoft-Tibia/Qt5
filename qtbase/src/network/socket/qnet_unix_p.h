@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QNET_UNIX_P_H
 #define QNET_UNIX_P_H
@@ -73,7 +74,7 @@ static inline int qt_safe_accept(int s, struct sockaddr *addr, QT_SOCKLEN_T *add
     Q_ASSERT((flags & ~O_NONBLOCK) == 0);
 
     int fd;
-#ifdef QT_THREADSAFE_CLOEXEC
+#if QT_CONFIG(accept4)
     // use accept4
     int sockflags = SOCK_CLOEXEC;
     if (flags & O_NONBLOCK)
@@ -109,6 +110,11 @@ static inline int qt_safe_connect(int sockfd, const struct sockaddr *addr, QT_SO
     int ret;
     // Solaris e.g. expects a non-const 2nd parameter
     QT_EINTR_LOOP(ret, QT_SOCKET_CONNECT(sockfd, const_cast<struct sockaddr *>(addr), addrlen));
+#ifdef Q_OS_WASM
+// ::connect on wasm returns 0 when it shouldn't so use errno instead
+   if (errno != 0)
+       ret = -1;
+#endif
     return ret;
 }
 #undef QT_SOCKET_CONNECT

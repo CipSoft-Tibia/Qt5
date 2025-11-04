@@ -175,55 +175,55 @@ bool IntrinsicDataTypeFor(const core::type::Type* ty,
     if (auto* vec = ty->As<core::type::Vector>()) {
         switch (vec->Width()) {
             case 2:
-                if (vec->type()->Is<core::type::I32>()) {
+                if (vec->Type()->Is<core::type::I32>()) {
                     out = DecomposeMemoryAccess::Intrinsic::DataType::kVec2I32;
                     return true;
                 }
-                if (vec->type()->Is<core::type::U32>()) {
+                if (vec->Type()->Is<core::type::U32>()) {
                     out = DecomposeMemoryAccess::Intrinsic::DataType::kVec2U32;
                     return true;
                 }
-                if (vec->type()->Is<core::type::F32>()) {
+                if (vec->Type()->Is<core::type::F32>()) {
                     out = DecomposeMemoryAccess::Intrinsic::DataType::kVec2F32;
                     return true;
                 }
-                if (vec->type()->Is<core::type::F16>()) {
+                if (vec->Type()->Is<core::type::F16>()) {
                     out = DecomposeMemoryAccess::Intrinsic::DataType::kVec2F16;
                     return true;
                 }
                 break;
             case 3:
-                if (vec->type()->Is<core::type::I32>()) {
+                if (vec->Type()->Is<core::type::I32>()) {
                     out = DecomposeMemoryAccess::Intrinsic::DataType::kVec3I32;
                     return true;
                 }
-                if (vec->type()->Is<core::type::U32>()) {
+                if (vec->Type()->Is<core::type::U32>()) {
                     out = DecomposeMemoryAccess::Intrinsic::DataType::kVec3U32;
                     return true;
                 }
-                if (vec->type()->Is<core::type::F32>()) {
+                if (vec->Type()->Is<core::type::F32>()) {
                     out = DecomposeMemoryAccess::Intrinsic::DataType::kVec3F32;
                     return true;
                 }
-                if (vec->type()->Is<core::type::F16>()) {
+                if (vec->Type()->Is<core::type::F16>()) {
                     out = DecomposeMemoryAccess::Intrinsic::DataType::kVec3F16;
                     return true;
                 }
                 break;
             case 4:
-                if (vec->type()->Is<core::type::I32>()) {
+                if (vec->Type()->Is<core::type::I32>()) {
                     out = DecomposeMemoryAccess::Intrinsic::DataType::kVec4I32;
                     return true;
                 }
-                if (vec->type()->Is<core::type::U32>()) {
+                if (vec->Type()->Is<core::type::U32>()) {
                     out = DecomposeMemoryAccess::Intrinsic::DataType::kVec4U32;
                     return true;
                 }
-                if (vec->type()->Is<core::type::F32>()) {
+                if (vec->Type()->Is<core::type::F32>()) {
                     out = DecomposeMemoryAccess::Intrinsic::DataType::kVec4F32;
                     return true;
                 }
-                if (vec->type()->Is<core::type::F16>()) {
+                if (vec->Type()->Is<core::type::F16>()) {
                     out = DecomposeMemoryAccess::Intrinsic::DataType::kVec4F16;
                     return true;
                 }
@@ -308,7 +308,6 @@ DecomposeMemoryAccess::Intrinsic* IntrinsicAtomicFor(ast::Builder* builder,
         default:
             TINT_ICE() << "invalid IntrinsicType for DecomposeMemoryAccess::Intrinsic: "
                        << ty->TypeInfo().name;
-            break;
     }
 
     DecomposeMemoryAccess::Intrinsic::DataType type;
@@ -322,10 +321,10 @@ DecomposeMemoryAccess::Intrinsic* IntrinsicAtomicFor(ast::Builder* builder,
 
 /// BufferAccess describes a single storage or uniform buffer access
 struct BufferAccess {
-    sem::GlobalVariable const* var = nullptr;  // Storage or uniform buffer variable
-    Offset const* offset = nullptr;            // The byte offset on var
-    core::type::Type const* type = nullptr;    // The type of the access
-    operator bool() const { return var; }      // Returns true if valid
+    sem::GlobalVariable const* var = nullptr;       // Storage or uniform buffer variable
+    Offset const* offset = nullptr;                 // The byte offset on var
+    core::type::Type const* type = nullptr;         // The type of the access
+    explicit operator bool() const { return var; }  // Returns true if valid
 };
 
 /// Store describes a single storage or uniform buffer write
@@ -482,7 +481,7 @@ struct DecomposeMemoryAccess::State {
     Symbol LoadFunc(const core::type::Type* el_ty,
                     core::AddressSpace address_space,
                     const Symbol& buffer) {
-        return tint::GetOrCreate(load_funcs, LoadStoreKey{el_ty, buffer}, [&] {
+        return tint::GetOrAdd(load_funcs, LoadStoreKey{el_ty, buffer}, [&] {
             Vector params{b.Param("offset", b.ty.u32())};
 
             auto name = b.Symbols().New(buffer.Name() + "_load");
@@ -507,13 +506,12 @@ struct DecomposeMemoryAccess::State {
                 auto* i = b.Var(b.Symbols().New("i"), b.Expr(0_u));
                 auto* for_init = b.Decl(i);
                 auto arr_cnt = arr_ty->ConstantCount();
-                if (TINT_UNLIKELY(!arr_cnt)) {
+                if (DAWN_UNLIKELY(!arr_cnt)) {
                     // Non-constant counts should not be possible:
                     // * Override-expression counts can only be applied to workgroup arrays, and
                     //   this method only handles storage and uniform.
                     // * Runtime-sized arrays are not loadable.
                     TINT_ICE() << "unexpected non-constant array count";
-                    arr_cnt = 1;
                 }
                 auto* for_cond = b.create<ast::BinaryExpression>(
                     core::BinaryOp::kLessThan, b.Expr(i), b.Expr(u32(arr_cnt.value())));
@@ -535,7 +533,7 @@ struct DecomposeMemoryAccess::State {
                 if (auto* mat_ty = el_ty->As<core::type::Matrix>()) {
                     auto* vec_ty = mat_ty->ColumnType();
                     Symbol load = LoadFunc(vec_ty, address_space, buffer);
-                    for (uint32_t i = 0; i < mat_ty->columns(); i++) {
+                    for (uint32_t i = 0; i < mat_ty->Columns(); i++) {
                         auto* offset = b.Add("offset", u32(i * mat_ty->ColumnStride()));
                         values.Push(b.Call(load, offset));
                     }
@@ -562,7 +560,7 @@ struct DecomposeMemoryAccess::State {
     /// @param buffer the symbol of the storage buffer variable, owned by the target ProgramBuilder.
     /// @return the name of the function that performs the store
     Symbol StoreFunc(const core::type::Type* el_ty, const Symbol& buffer) {
-        return tint::GetOrCreate(store_funcs, LoadStoreKey{el_ty, buffer}, [&] {
+        return tint::GetOrAdd(store_funcs, LoadStoreKey{el_ty, buffer}, [&] {
             Vector params{
                 b.Param("offset", b.ty.u32()),
                 b.Param("value", CreateASTTypeFor(ctx, el_ty)),
@@ -593,13 +591,12 @@ struct DecomposeMemoryAccess::State {
                         auto* i = b.Var(b.Symbols().New("i"), b.Expr(0_u));
                         auto* for_init = b.Decl(i);
                         auto arr_cnt = arr_ty->ConstantCount();
-                        if (TINT_UNLIKELY(!arr_cnt)) {
+                        if (DAWN_UNLIKELY(!arr_cnt)) {
                             // Non-constant counts should not be possible:
                             // * Override-expression counts can only be applied to workgroup
                             //   arrays, and this method only handles storage and uniform.
                             // * Runtime-sized arrays are not storable.
                             TINT_ICE() << "unexpected non-constant array count";
-                            arr_cnt = 1;
                         }
                         auto* for_cond = b.create<ast::BinaryExpression>(
                             core::BinaryOp::kLessThan, b.Expr(i), b.Expr(u32(arr_cnt.value())));
@@ -615,7 +612,7 @@ struct DecomposeMemoryAccess::State {
                         auto* vec_ty = mat_ty->ColumnType();
                         Symbol store = StoreFunc(vec_ty, buffer);
                         Vector<const ast::Statement*, 4> stmts;
-                        for (uint32_t i = 0; i < mat_ty->columns(); i++) {
+                        for (uint32_t i = 0; i < mat_ty->Columns(); i++) {
                             auto* offset = b.Add("offset", u32(i * mat_ty->ColumnStride()));
                             auto* element = b.IndexAccessor("value", u32(i));
                             auto* call = b.Call(store, offset, element);
@@ -653,7 +650,7 @@ struct DecomposeMemoryAccess::State {
                       const sem::BuiltinFn* builtin,
                       const Symbol& buffer) {
         auto fn = builtin->Fn();
-        return tint::GetOrCreate(atomic_funcs, AtomicKey{el_ty, fn, buffer}, [&] {
+        return tint::GetOrAdd(atomic_funcs, AtomicKey{el_ty, fn, buffer}, [&] {
             // The first parameter to all WGSL atomics is the expression to the
             // atomic. This is replaced with two parameters: the buffer and offset.
             Vector params{b.Param("offset", b.ty.u32())};
@@ -666,7 +663,7 @@ struct DecomposeMemoryAccess::State {
             }
 
             auto* atomic = IntrinsicAtomicFor(ctx.dst, fn, el_ty, buffer);
-            if (TINT_UNLIKELY(!atomic)) {
+            if (DAWN_UNLIKELY(!atomic)) {
                 TINT_ICE() << "IntrinsicAtomicFor() returned nullptr for fn " << fn << " and type "
                            << el_ty->TypeInfo().name;
             }
@@ -856,11 +853,11 @@ ast::transform::Transform::ApplyResult DecomposeMemoryAccess::Apply(
                 if (swizzle->Indices().Length() == 1) {
                     if (auto access = state.TakeAccess(accessor->object)) {
                         auto* vec_ty = access.type->As<core::type::Vector>();
-                        auto* offset = state.Mul(vec_ty->type()->Size(), swizzle->Indices()[0u]);
+                        auto* offset = state.Mul(vec_ty->Type()->Size(), swizzle->Indices()[0u]);
                         state.AddAccess(accessor, {
                                                       access.var,
                                                       state.Add(access.offset, offset),
-                                                      vec_ty->type(),
+                                                      vec_ty->Type(),
                                                   });
                     }
                 }
@@ -892,11 +889,11 @@ ast::transform::Transform::ApplyResult DecomposeMemoryAccess::Apply(
                     continue;
                 }
                 if (auto* vec_ty = access.type->As<core::type::Vector>()) {
-                    auto* offset = state.Mul(vec_ty->type()->Size(), accessor->index);
+                    auto* offset = state.Mul(vec_ty->Type()->Size(), accessor->index);
                     state.AddAccess(accessor, {
                                                   access.var,
                                                   state.Add(access.offset, offset),
-                                                  vec_ty->type(),
+                                                  vec_ty->Type(),
                                               });
                     continue;
                 }

@@ -7,8 +7,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Iterable, List, Optional, Tuple
 
 from crossbench import helper
-
-from .base import RunGroup
+from crossbench.runner.groups.base import RunGroup
 
 if TYPE_CHECKING:
   from crossbench import exception
@@ -17,8 +16,8 @@ if TYPE_CHECKING:
   from crossbench.probes.results import ProbeResult
   from crossbench.runner.run import Run
   from crossbench.runner.runner import Runner
-  from crossbench.types import JsonDict
   from crossbench.stories.story import Story
+  from crossbench.types import JsonDict
 
 
 class CacheTemperatureRunGroup(RunGroup):
@@ -77,9 +76,12 @@ class CacheTemperatureRunGroup(RunGroup):
 
   @property
   def info_stack(self) -> exception.TInfoStack:
-    return ("Merging results from multiple cache temperatures",
-            f"browser={self.browser.unique_name}", f"story={self.story}",
-            f"repetition={self.repetition}")
+    return (
+        "Merging results from multiple cache temperatures",
+        f"browser={self.browser.unique_name}",
+        f"story={self.story}",
+        f"repetition={self.repetition}",
+    )
 
   @property
   def info(self) -> JsonDict:
@@ -91,4 +93,4 @@ class CacheTemperatureRunGroup(RunGroup):
     return info
 
   def _merge_probe_results(self, probe: Probe) -> ProbeResult:
-    return probe.merge_cache_temperatures(self)  # pytype: disable=wrong-arg-types
+    return probe.merge_cache_temperatures(self)

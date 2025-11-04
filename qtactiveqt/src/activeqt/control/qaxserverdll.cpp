@@ -21,7 +21,6 @@ extern ITypeLib *qAxTypeLibrary;
 extern unsigned long qAxLockCount();
 extern QString qAxInit();
 extern void qAxCleanup();
-extern HANDLE qAxInstance;
 static uint qAxThreadId = 0;
 
 extern HRESULT UpdateRegistry(bool bRegister, bool perUser);
@@ -101,11 +100,9 @@ STDAPI DllCanUnloadNow()
 EXTERN_C BOOL WINAPI DllMain(HINSTANCE hInstance, DWORD dwReason, LPVOID /* lpvReserved */)
 {
     GetModuleFileName(hInstance, qAxModuleFilename, MAX_PATH);
-    // Point QApplication here such that the directory is added to the patch, and qt.conf and
-    // deployed plugins are found.
-    QCoreApplicationPrivate::setApplicationFilePath(QDir::cleanPath(QString::fromWCharArray(qAxModuleFilename)));
 
-    qAxInstance = hInstance;
+    // Let QCoreApplication know the main component is a DLL
+    QCoreApplicationPrivate::mainInstanceHandle = hInstance;
     qAxIsServer = true;
 
     if (dwReason == DLL_PROCESS_ATTACH) {

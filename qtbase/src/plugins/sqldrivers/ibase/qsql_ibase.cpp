@@ -28,7 +28,7 @@
 
 QT_BEGIN_NAMESPACE
 
-static Q_LOGGING_CATEGORY(lcIbase, "qt.sql.ibase")
+Q_STATIC_LOGGING_CATEGORY(lcIbase, "qt.sql.ibase")
 
 using namespace Qt::StringLiterals;
 
@@ -45,6 +45,11 @@ using namespace Qt::StringLiterals;
 
 #if (defined(QT_SUPPORTS_INT128) || defined(QT_USE_MSVC_INT128)) && (FB_API_VER >= 40)
 #define IBASE_INT128_SUPPORTED
+#endif
+
+// needed for Firebird 2.x
+#ifndef SQL_BOOLEAN
+#define SQL_BOOLEAN 32764
 #endif
 
 constexpr qsizetype QIBaseChunkSize = SHRT_MAX / 2;

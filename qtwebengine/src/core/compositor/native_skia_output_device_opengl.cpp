@@ -1,46 +1,32 @@
 // Copyright (C) 2024 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
-
-// Copyright 2022 The Chromium Authors
-// Use of this source code is governed by a BSD-style license that can be
-// found in the LICENSE.Chromium file.
+// Qt-Security score:significant reason:default
 
 #include "native_skia_output_device_opengl.h"
 
 #include <QtGui/qopenglcontext.h>
-#include <QtGui/qopenglextrafunctions.h>
+#include <QtGui/qopenglfunctions.h>
 #include <QtQuick/qquickwindow.h>
 #include <QtQuick/qsgtexture.h>
 
 #include "ui/base/ozone_buildflags.h"
-#include "ui/gl/gl_implementation.h"
 
-#if defined(USE_OZONE)
-#include "ui/gl/gl_bindings.h"
-#undef glBindTexture
-#undef glCreateMemoryObjectsEXT
-#undef glDeleteMemoryObjectsEXT
-#undef glDeleteTextures
-#undef glGenTextures
-#undef glGetError
-#undef glImportMemoryFdEXT
-#undef glIsMemoryObjectEXT
-#undef glMemoryObjectParameterivEXT
-#undef glTexParameteri
-#undef glTexStorageMem2DEXT
+#if BUILDFLAG(IS_OZONE)
+#include "ozone/gl_helper.h"
+#include "ozone/ozone_util_qt.h"
 
 #include "base/posix/eintr_wrapper.h"
 #include "third_party/skia/include/gpu/ganesh/gl/GrGLBackendSurface.h"
 #include "ui/gfx/linux/drm_util_linux.h"
 #include "ui/gfx/linux/native_pixmap_dmabuf.h"
 
-#if BUILDFLAG(IS_OZONE_X11)
-#include "ui/gfx/x/connection.h"
-#include "ui/gfx/x/dri3.h"
-#include "ui/gfx/x/future.h"
-#include "ui/gfx/x/glx.h"
-#include "ui/gfx/x/xproto.h"
-#endif // BUILDFLAG(IS_OZONE_X11)
+#if BUILDFLAG(IS_OZONE_X11) && QT_CONFIG(xcb_glx_plugin)
+#include "ozone/glx_helper.h"
+#endif
+
+#if QT_CONFIG(egl)
+#include "ozone/egl_helper.h"
+#endif
 
 #if BUILDFLAG(ENABLE_VULKAN)
 #if BUILDFLAG(IS_OZONE_X11)
@@ -49,91 +35,70 @@
 // This is originally defined in chromium/gpu/vulkan/BUILD.gn.
 #define USE_VULKAN_XCB
 #endif // BUILDFLAG(IS_OZONE_X11)
+#include "gpu/vulkan/vulkan_function_pointers.h"
+
 #include "components/viz/common/gpu/vulkan_context_provider.h"
 #include "gpu/vulkan/vulkan_device_queue.h"
-#include "gpu/vulkan/vulkan_function_pointers.h"
 #include "third_party/skia/include/gpu/vk/GrVkTypes.h"
 #include "third_party/skia/include/gpu/ganesh/vk/GrVkBackendSurface.h"
 #endif // BUILDFLAG(ENABLE_VULKAN)
+#endif // BUILDFLAG(IS_OZONE)
 
-// Keep it at the end.
-#include "ozone/gl_context_qt.h"
-#endif // defined(USE_OZONE)
+#if defined(Q_OS_WIN)
+#include "compositor/wgl_helper.h"
+#endif
 
 namespace QtWebEngineCore {
 
-#if BUILDFLAG(IS_OZONE_X11)
-namespace {
-
-// Based on //ui/ozone/platform/x11/native_pixmap_egl_x11_binding.cc
-x11::Pixmap XPixmapFromNativePixmap(const gfx::NativePixmap &nativePixmap)
+class ScopedGLContextForCleanup
 {
-    // Hard coded values for gfx::BufferFormat::BGRA_8888:
-    const uint8_t depth = 32;
-    const uint8_t bpp = 32;
+public:
+    ScopedGLContextForCleanup(QOpenGLContext *createContext, QSurface *createSurface)
+        : m_createContext(createContext), m_currentContext(QOpenGLContext::currentContext())
+    {
+        if (m_createContext == m_currentContext)
+            return;
 
-    const int dmaBufFd = HANDLE_EINTR(dup(nativePixmap.GetDmaBufFd(0)));
-    if (dmaBufFd < 0) {
-        qWarning("Could not import the dma-buf as an XPixmap because the FD couldn't be dup()ed.");
-        return x11::Pixmap::None;
-    }
-    x11::RefCountedFD refCountedFD(dmaBufFd);
+        if (!m_createContext->isValid()) {
+            skipCleanup = true;
+            return;
+        }
 
-    uint32_t size = base::checked_cast<uint32_t>(nativePixmap.GetDmaBufPlaneSize(0));
-    uint16_t width = base::checked_cast<uint16_t>(nativePixmap.GetBufferSize().width());
-    uint16_t height = base::checked_cast<uint16_t>(nativePixmap.GetBufferSize().height());
-    uint16_t stride = base::checked_cast<uint16_t>(nativePixmap.GetDmaBufPitch(0));
+        if (m_currentContext)
+            m_currentSurface = m_currentContext->surface();
 
-    auto *connection = x11::Connection::Get();
-    const x11::Pixmap pixmapId = connection->GenerateId<x11::Pixmap>();
-    if (pixmapId == x11::Pixmap::None) {
-        qWarning("Could not import the dma-buf as an XPixmap because an ID couldn't be generated.");
-        return x11::Pixmap::None;
-    }
-
-    auto response = connection->dri3()
-                            .PixmapFromBuffer(pixmapId, connection->default_root(), size, width,
-                                              height, stride, depth, bpp, refCountedFD)
-                            .Sync();
-
-    if (response.error) {
-        qWarning() << "Could not import the dma-buf as an XPixmap because "
-                      "PixmapFromBuffer() failed; error: "
-                   << response.error->ToString();
-        return x11::Pixmap::None;
+        if (!createContext->makeCurrent(createSurface)) {
+            skipCleanup = true;
+            qWarning("Failed to make OpenGL context current for clean-up, OpenGL resources will "
+                     "not be destroyed.");
+        }
     }
 
-    return pixmapId;
-}
+    ~ScopedGLContextForCleanup()
+    {
+        if (!m_currentContext || m_createContext == m_currentContext || skipCleanup)
+            return;
 
-GLXFBConfig GetFBConfig(Display *display)
-{
-    // clang-format off
-    static const int configAttribs[] = {
-        GLX_RED_SIZE, 8,
-        GLX_GREEN_SIZE, 8,
-        GLX_BLUE_SIZE, 8,
-        GLX_ALPHA_SIZE, 8,
-        GLX_BUFFER_SIZE, 32,
-        GLX_BIND_TO_TEXTURE_RGBA_EXT, 1,
-        GLX_DRAWABLE_TYPE, GLX_PIXMAP_BIT,
-        GLX_BIND_TO_TEXTURE_TARGETS_EXT, GLX_TEXTURE_2D_BIT_EXT,
-        GLX_DOUBLEBUFFER, 0,
-        GLX_Y_INVERTED_EXT, static_cast<int>(GLX_DONT_CARE),
-        0
-    };
-    // clang-format on
+        if (!m_currentContext->makeCurrent(m_currentSurface))
+            qFatal("Failed to restore OpenGL context after clean-up.");
+    }
 
-    int numConfigs = 0;
-    GLXFBConfig *configs = glXChooseFBConfig(display, /* screen */ 0, configAttribs, &numConfigs);
-    if (!configs || numConfigs < 1)
-        qFatal("GLX: Failed to find frame buffer configuration for pixmap.");
+    void deleteTexture(GLuint glTexture)
+    {
+        if (skipCleanup)
+            return;
 
-    return configs[0];
-}
+        auto *glFun = m_createContext->functions();
+        Q_ASSERT(glFun->glGetError() == GL_NO_ERROR);
+        glFun->glDeleteTextures(1, &glTexture);
+    }
 
-} // namespace
-#endif // BUILDFLAG(IS_OZONE_X11)
+private:
+    QOpenGLContext *m_createContext;
+    QOpenGLContext *m_currentContext;
+    QSurface *m_currentSurface = nullptr;
+    bool skipCleanup = false;
+};
 
 NativeSkiaOutputDeviceOpenGL::NativeSkiaOutputDeviceOpenGL(
         scoped_refptr<gpu::SharedContextState> contextState, bool requiresAlpha,
@@ -148,17 +113,15 @@ NativeSkiaOutputDeviceOpenGL::NativeSkiaOutputDeviceOpenGL(
     qCDebug(lcWebEngineCompositor, "Native Skia Output Device: OpenGL");
 
     SkColorType skColorType = kRGBA_8888_SkColorType;
-#if BUILDFLAG(IS_OZONE_X11)
-    if (GLContextHelper::getGlxPlatformInterface()
-        && m_contextState->gr_context_type() == gpu::GrContextType::kGL) {
+#if BUILDFLAG(IS_OZONE_X11) && QT_CONFIG(xcb_glx_plugin)
+    if (OzoneUtilQt::usingGLX() && m_contextState->gr_context_type() == gpu::GrContextType::kGL)
         skColorType = kBGRA_8888_SkColorType;
-    }
-#endif // BUILDFLAG(IS_OZONE_X11)
+#endif
 
-    capabilities_.sk_color_types[static_cast<int>(gfx::BufferFormat::RGBA_8888)] = skColorType;
-    capabilities_.sk_color_types[static_cast<int>(gfx::BufferFormat::RGBX_8888)] = skColorType;
-    capabilities_.sk_color_types[static_cast<int>(gfx::BufferFormat::BGRA_8888)] = skColorType;
-    capabilities_.sk_color_types[static_cast<int>(gfx::BufferFormat::BGRX_8888)] = skColorType;
+    capabilities_.sk_color_type_map[viz::SinglePlaneFormat::kRGBA_8888] = skColorType;
+    capabilities_.sk_color_type_map[viz::SinglePlaneFormat::kRGBX_8888] = skColorType;
+    capabilities_.sk_color_type_map[viz::SinglePlaneFormat::kBGRA_8888] = skColorType;
+    capabilities_.sk_color_type_map[viz::SinglePlaneFormat::kBGRX_8888] = skColorType;
 }
 
 NativeSkiaOutputDeviceOpenGL::~NativeSkiaOutputDeviceOpenGL() { }
@@ -172,7 +135,7 @@ QSGTexture *NativeSkiaOutputDeviceOpenGL::texture(QQuickWindow *win, uint32_t te
     if (!m_frontBuffer || !m_readyWithTexture)
         return nullptr;
 
-#if defined(USE_OZONE)
+#if BUILDFLAG(IS_OZONE)
     scoped_refptr<gfx::NativePixmap> nativePixmap = m_frontBuffer->nativePixmap();
 #if BUILDFLAG(ENABLE_VULKAN)
     GrVkImageInfo vkImageInfo;
@@ -229,28 +192,60 @@ QSGTexture *NativeSkiaOutputDeviceOpenGL::texture(QQuickWindow *win, uint32_t te
         qWarning("No IOSurface.");
         return nullptr;
     }
-#endif
+#endif // BUILDFLAG(IS_OZONE)
 
     QQuickWindow::CreateTextureOptions texOpts(textureOptions);
     QSGTexture *texture = nullptr;
 
-#if defined(USE_OZONE)
+#if BUILDFLAG(IS_OZONE)
     QOpenGLContext *glContext = QOpenGLContext::currentContext();
     Q_ASSERT(glContext);
     auto glFun = glContext->functions();
     GLuint glTexture = 0;
 
+#if !defined(QT_NO_DEBUG) || defined(QT_FORCE_ASSERTS)
+    // Log and clear error flags for assert at end of function
+    while (true) {
+        auto glError = glFun->glGetError();
+        if (glError == GL_NO_ERROR || glError == GL_CONTEXT_LOST)
+            break;
+        qWarning("GL error flag set on entry: %s", getGLErrorString(glError));
+    }
+#endif // !defined(QT_NO_DEBUG) || defined(QT_FORCE_ASSERTS)
+
     if (nativePixmap) {
         Q_ASSERT(m_contextState->gr_context_type() == gpu::GrContextType::kGL);
 
-#if BUILDFLAG(IS_OZONE_X11)
-        if (GLContextHelper::getGlxPlatformInterface()) {
+#if BUILDFLAG(IS_OZONE_X11) && QT_CONFIG(xcb_glx_plugin)
+        if (OzoneUtilQt::usingGLX()) {
             qCDebug(lcWebEngineCompositor, "GLX: Importing NativePixmap into GL Texture.");
 
-            x11::Pixmap pixmapId =
-                    XPixmapFromNativePixmap(*(gfx::NativePixmapDmaBuf *)nativePixmap.get());
-            if (pixmapId == x11::Pixmap::None)
-                qFatal("GLX: Failed to import XPixmap.");
+            GLXHelper *glxHelper = GLXHelper::instance();
+            auto *glxFun = glxHelper->functions();
+
+            const auto dmaBufFd = HANDLE_EINTR(dup(nativePixmap->GetDmaBufFd(0)));
+            if (dmaBufFd < 0) {
+                qFatal("GLX: Could not import the dma-buf as an XPixmap because the FD couldn't be "
+                       "dup()ed.");
+            }
+            base::ScopedFD scopedFd(dmaBufFd);
+
+            DCHECK(base::IsValueInRangeForNumericType<uint32_t>(
+                    nativePixmap->GetDmaBufPlaneSize(0)));
+            uint32_t size = base::checked_cast<uint32_t>(nativePixmap->GetDmaBufPlaneSize(0));
+            DCHECK(base::IsValueInRangeForNumericType<uint16_t>(
+                    nativePixmap->GetBufferSize().width()));
+            uint16_t width = base::checked_cast<uint16_t>(nativePixmap->GetBufferSize().width());
+            DCHECK(base::IsValueInRangeForNumericType<uint16_t>(
+                    nativePixmap->GetBufferSize().height()));
+            uint16_t height = base::checked_cast<uint16_t>(nativePixmap->GetBufferSize().height());
+            DCHECK(base::IsValueInRangeForNumericType<uint16_t>(nativePixmap->GetDmaBufPitch(0)));
+            uint16_t stride = base::checked_cast<uint16_t>(nativePixmap->GetDmaBufPitch(0));
+
+            uint32_t pixmapId = glxHelper->importBufferAsPixmap(scopedFd.release(), size, width,
+                                                                height, stride);
+            if (!pixmapId)
+                qFatal("GLX: Could not import the dma-buf as an XPixmap.");
 
             // clang-format off
             static const int pixmapAttribs[] = {
@@ -260,32 +255,39 @@ QSGTexture *NativeSkiaOutputDeviceOpenGL::texture(QQuickWindow *win, uint32_t te
             };
             // clang-format on
 
-            Display *display = static_cast<Display *>(GLContextHelper::getXDisplay());
-            GLXPixmap glxPixmap = glXCreatePixmap(display, GetFBConfig(display),
+            Display *display = glxHelper->getXDisplay();
+            GLXPixmap glxPixmap = glXCreatePixmap(display, glxHelper->getFBConfig(),
                                                   static_cast<::Pixmap>(pixmapId), pixmapAttribs);
 
             glFun->glGenTextures(1, &glTexture);
             glFun->glBindTexture(GL_TEXTURE_2D, glTexture);
-            glXBindTexImageEXT(display, glxPixmap, GLX_FRONT_LEFT_EXT, nullptr);
+            glxFun->glXBindTexImageEXT(display, glxPixmap, GLX_FRONT_LEFT_EXT, nullptr);
             glFun->glBindTexture(GL_TEXTURE_2D, 0);
 
-            m_frontBuffer->textureCleanupCallback = [glFun, glTexture, display, glxPixmap]() {
-                glFun->glDeleteTextures(1, &glTexture);
+            QSurface *createSurface = glContext->surface();
+            m_frontBuffer->textureCleanupCallback = [glContext, createSurface, glxFun, display,
+                                                     glxPixmap, glTexture, glxHelper, pixmapId]() {
+                ScopedGLContextForCleanup cleanupContext(glContext, createSurface);
+                glxFun->glXReleaseTexImageEXT(display, glxPixmap, GLX_FRONT_LEFT_EXT);
+                cleanupContext.deleteTexture(glTexture);
                 glXDestroyGLXPixmap(display, glxPixmap);
+                glxHelper->freePixmap(pixmapId);
             };
         }
-#endif // BUILDFLAG(IS_OZONE_X11)
+#endif // BUILDFLAG(IS_OZONE_X11) && QT_CONFIG(xcb_glx_plugin)
 
-        if (GLContextHelper::getEglPlatformInterface()) {
+#if QT_CONFIG(egl)
+        if (OzoneUtilQt::usingEGL()) {
             qCDebug(lcWebEngineCompositor, "EGL: Importing NativePixmap into GL Texture.");
 
             EGLHelper *eglHelper = EGLHelper::instance();
             auto *eglFun = eglHelper->functions();
+            auto *glExtFun = GLHelper::instance()->functions();
 
-            const int dmaBufFd = HANDLE_EINTR(dup(nativePixmap->GetDmaBufFd(0)));
+            const auto dmaBufFd = HANDLE_EINTR(dup(nativePixmap->GetDmaBufFd(0)));
             if (dmaBufFd < 0) {
-                qFatal("Could not import the dma-buf as an EGLImage because the FD couldn't be "
-                       "dup()ed.");
+                qFatal("EGL: Could not import the dma-buf as an EGLImage because the FD couldn't "
+                       "be dup()ed.");
             }
             base::ScopedFD scopedFd(dmaBufFd);
 
@@ -299,31 +301,32 @@ QSGTexture *NativeSkiaOutputDeviceOpenGL::texture(QQuickWindow *win, uint32_t te
                 EGL_LINUX_DRM_FOURCC_EXT, drmFormat,
                 EGL_DMA_BUF_PLANE0_FD_EXT, scopedFd.get(),
                 EGL_DMA_BUF_PLANE0_OFFSET_EXT, static_cast<EGLAttrib>(nativePixmap->GetDmaBufOffset(0)),
-                EGL_DMA_BUF_PLANE0_PITCH_EXT, nativePixmap->GetDmaBufPitch(0),
+                EGL_DMA_BUF_PLANE0_PITCH_EXT, static_cast<EGLAttrib>(nativePixmap->GetDmaBufPitch(0)),
                 EGL_DMA_BUF_PLANE0_MODIFIER_LO_EXT, static_cast<EGLAttrib>(modifier & 0xffffffff),
                 EGL_DMA_BUF_PLANE0_MODIFIER_HI_EXT, static_cast<EGLAttrib>(modifier >> 32),
                 EGL_NONE
             };
             // clang-format on
-            EGLImage eglImage = eglFun->eglCreateImage(GLContextHelper::getEGLDisplay(),
-                                                       EGL_NO_CONTEXT, EGL_LINUX_DMA_BUF_EXT,
-                                                       (EGLClientBuffer)NULL, attributeList);
+            EGLDisplay eglDisplay = eglHelper->getEGLDisplay();
+            EGLImage eglImage =
+                    eglFun->eglCreateImage(eglDisplay, EGL_NO_CONTEXT, EGL_LINUX_DMA_BUF_EXT,
+                                           (EGLClientBuffer)NULL, attributeList);
             Q_ASSERT(eglImage != EGL_NO_IMAGE_KHR);
-
-            static PFNGLEGLIMAGETARGETTEXTURE2DOESPROC imageTargetTexture =
-                    (PFNGLEGLIMAGETARGETTEXTURE2DOESPROC)glContext->getProcAddress(
-                            "glEGLImageTargetTexture2DOES");
 
             glFun->glGenTextures(1, &glTexture);
             glFun->glBindTexture(GL_TEXTURE_2D, glTexture);
-            imageTargetTexture(GL_TEXTURE_2D, eglImage);
+            glExtFun->glEGLImageTargetTexture2DOES(GL_TEXTURE_2D, eglImage);
             glFun->glBindTexture(GL_TEXTURE_2D, 0);
 
-            m_frontBuffer->textureCleanupCallback = [glFun, eglFun, glTexture, eglImage]() {
-                glFun->glDeleteTextures(1, &glTexture);
-                eglFun->eglDestroyImage(GLContextHelper::getEGLDisplay(), eglImage);
+            QSurface *createSurface = glContext->surface();
+            m_frontBuffer->textureCleanupCallback = [glContext, createSurface, eglFun, glTexture,
+                                                     eglDisplay, eglImage]() {
+                ScopedGLContextForCleanup cleanupContext(glContext, createSurface);
+                cleanupContext.deleteTexture(glTexture);
+                eglFun->eglDestroyImage(eglDisplay, eglImage);
             };
         }
+#endif // QT_CONFIG(egl)
     } else {
 #if BUILDFLAG(ENABLE_VULKAN)
         qCDebug(lcWebEngineCompositor, "VULKAN: Importing VkImage into GL Texture.");
@@ -348,26 +351,17 @@ QSGTexture *NativeSkiaOutputDeviceOpenGL::texture(QQuickWindow *win, uint32_t te
         if (vfp->vkGetMemoryFdKHR(vulkanDevice, &exportInfo, &fd) != VK_SUCCESS)
             qFatal("VULKAN: Unable to extract file descriptor out of external VkImage.");
 
-        static PFNGLCREATEMEMORYOBJECTSEXTPROC glCreateMemoryObjectsEXT =
-                (PFNGLCREATEMEMORYOBJECTSEXTPROC)glContext->getProcAddress(
-                        "glCreateMemoryObjectsEXT");
-        static PFNGLIMPORTMEMORYFDEXTPROC glImportMemoryFdEXT =
-                (PFNGLIMPORTMEMORYFDEXTPROC)glContext->getProcAddress("glImportMemoryFdEXT");
-        static PFNGLISMEMORYOBJECTEXTPROC glIsMemoryObjectEXT =
-                (PFNGLISMEMORYOBJECTEXTPROC)glContext->getProcAddress("glIsMemoryObjectEXT");
-        static PFNGLMEMORYOBJECTPARAMETERIVEXTPROC glMemoryObjectParameterivEXT =
-                (PFNGLMEMORYOBJECTPARAMETERIVEXTPROC)glContext->getProcAddress(
-                        "glMemoryObjectParameterivEXT");
-        static PFNGLTEXSTORAGEMEM2DEXTPROC glTexStorageMem2DEXT =
-                (PFNGLTEXSTORAGEMEM2DEXTPROC)glContext->getProcAddress("glTexStorageMem2DEXT");
+        auto *glExtFun = GLHelper::instance()->functions();
 
         // Import memory object
         GLuint glMemoryObject;
-        glCreateMemoryObjectsEXT(1, &glMemoryObject);
+        glExtFun->glCreateMemoryObjectsEXT(1, &glMemoryObject);
         GLint dedicated = GL_TRUE;
-        glMemoryObjectParameterivEXT(glMemoryObject, GL_DEDICATED_MEMORY_OBJECT_EXT, &dedicated);
-        glImportMemoryFdEXT(glMemoryObject, importedImageSize, GL_HANDLE_TYPE_OPAQUE_FD_EXT, fd);
-        if (!glIsMemoryObjectEXT(glMemoryObject))
+        glExtFun->glMemoryObjectParameterivEXT(glMemoryObject, GL_DEDICATED_MEMORY_OBJECT_EXT,
+                                               &dedicated);
+        glExtFun->glImportMemoryFdEXT(glMemoryObject, importedImageSize,
+                                      GL_HANDLE_TYPE_OPAQUE_FD_EXT, fd);
+        if (!glExtFun->glIsMemoryObjectEXT(glMemoryObject))
             qFatal("VULKAN: Failed to import memory object.");
 
         // Bind memory object to texture
@@ -377,23 +371,16 @@ QSGTexture *NativeSkiaOutputDeviceOpenGL::texture(QQuickWindow *win, uint32_t te
                                vkImageInfo.fImageTiling == VK_IMAGE_TILING_OPTIMAL
                                        ? GL_OPTIMAL_TILING_EXT
                                        : GL_LINEAR_TILING_EXT);
-        glTexStorageMem2DEXT(GL_TEXTURE_2D, 1, GL_RGBA8, size().width(), size().height(),
-                             glMemoryObject, 0);
+        glExtFun->glTexStorageMem2DEXT(GL_TEXTURE_2D, 1, GL_RGBA8, size().width(), size().height(),
+                                       glMemoryObject, 0);
         glFun->glBindTexture(GL_TEXTURE_2D, 0);
 
-        m_frontBuffer->textureCleanupCallback = [glTexture, glMemoryObject]() {
-            QOpenGLContext *glContext = QOpenGLContext::currentContext();
-            if (!glContext)
-                return;
-            auto glFun = glContext->functions();
-            Q_ASSERT(glFun->glGetError() == GL_NO_ERROR);
-
-            static PFNGLDELETEMEMORYOBJECTSEXTPROC glDeleteMemoryObjectsEXT =
-                    (PFNGLDELETEMEMORYOBJECTSEXTPROC)glContext->getProcAddress(
-                            "glDeleteMemoryObjectsEXT");
-
-            glDeleteMemoryObjectsEXT(1, &glMemoryObject);
-            glFun->glDeleteTextures(1, &glTexture);
+        QSurface *createSurface = glContext->surface();
+        m_frontBuffer->textureCleanupCallback = [glContext, createSurface, glExtFun, glTexture,
+                                                 glMemoryObject]() {
+            ScopedGLContextForCleanup cleanupContext(glContext, createSurface);
+            glExtFun->glDeleteMemoryObjectsEXT(1, &glMemoryObject);
+            cleanupContext.deleteTexture(glTexture);
         };
 #else
         Q_UNREACHABLE();
@@ -404,21 +391,54 @@ QSGTexture *NativeSkiaOutputDeviceOpenGL::texture(QQuickWindow *win, uint32_t te
     Q_ASSERT(glFun->glGetError() == GL_NO_ERROR);
 #elif defined(Q_OS_WIN)
     qCDebug(lcWebEngineCompositor, "WGL: Importing DXGI Resource into GL Texture.");
-    // TODO: Add WGL support over ANGLE.
-    QT_NOT_YET_IMPLEMENTED
+    Q_ASSERT(m_contextState->gr_context_type() == gpu::GrContextType::kGL);
+
+    Q_ASSERT(overlayImage->type() == gl::DCLayerOverlayType::kNV12Texture);
+    Microsoft::WRL::ComPtr<ID3D11Texture2D> chromeTexture = overlayImage->nv12_texture();
+    if (!chromeTexture) {
+        qWarning("WGL: No D3D texture.");
+        return nullptr;
+    }
+
+    HRESULT hr;
+
+    Microsoft::WRL::ComPtr<IDXGIResource1> dxgiResource;
+    hr = chromeTexture->QueryInterface(IID_PPV_ARGS(&dxgiResource));
+    Q_ASSERT(SUCCEEDED(hr));
+
+    HANDLE sharedHandle = INVALID_HANDLE_VALUE;
+    hr = dxgiResource->CreateSharedHandle(nullptr, DXGI_SHARED_RESOURCE_READ, nullptr,
+                                          &sharedHandle);
+    Q_ASSERT(SUCCEEDED(hr));
+    Q_ASSERT(sharedHandle != INVALID_HANDLE_VALUE);
+
+    WGLHelper *wglHelper = WGLHelper::instance();
+    D3DSharedTexture *d3dSharedTexture =
+            new D3DSharedTexture(wglHelper->functions(), wglHelper->device(),
+                                 wglHelper->immediateContext(),
+                                 wglHelper->interopDevice(), sharedHandle);
+    d3dSharedTexture->lockObject();
+    ::CloseHandle(sharedHandle);
+
+    texture = QNativeInterface::QSGOpenGLTexture::fromNative(d3dSharedTexture->glTexture(), win,
+                                                             size(), texOpts);
+
+    m_frontBuffer->textureCleanupCallback = [d3dSharedTexture]() {
+        d3dSharedTexture->unlockObject();
+        delete d3dSharedTexture;
+    };
 #elif defined(Q_OS_MACOS)
     qCDebug(lcWebEngineCompositor, "CGL: Importing IOSurface into GL Texture.");
     uint32_t glTexture = makeCGLTexture(win, ioSurface.get(), size());
     texture = QNativeInterface::QSGOpenGLTexture::fromNative(glTexture, win, size(), texOpts);
 
-    m_frontBuffer->textureCleanupCallback = [glTexture]() {
-        auto *glContext = QOpenGLContext::currentContext();
-        if (!glContext)
-            return;
-        auto glFun = glContext->functions();
-        glFun->glDeleteTextures(1, &glTexture);
+    QOpenGLContext *glContext = QOpenGLContext::currentContext();
+    QSurface *createSurface = glContext->surface();
+    m_frontBuffer->textureCleanupCallback = [glContext, createSurface, glTexture]() {
+        ScopedGLContextForCleanup cleanupContext(glContext, createSurface);
+        cleanupContext.deleteTexture(glTexture);
     };
-#endif // defined(USE_OZONE)
+#endif // BUILDFLAG(IS_OZONE)
 
     return texture;
 }

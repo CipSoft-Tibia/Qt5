@@ -60,9 +60,9 @@ class FakeServiceClient : public mojom::AccessibilityServiceClient,
 
   // ax::mojom::AutomationClient:
   void Enable(EnableCallback callback) override;
-  void Disable();
-  void EnableTree(const ui::AXTreeID& tree_id);
-  void PerformAction(const ui::AXActionData& data);
+  void Disable() override;
+  void EnableChildTree(const ui::AXTreeID& tree_id) override;
+  void PerformAction(const ui::AXActionData& data) override;
 
 #if BUILDFLAG(SUPPORTS_OS_ACCESSIBILITY_SERVICE)
   void BindAccessibilityFileLoader(
@@ -103,13 +103,15 @@ class FakeServiceClient : public mojom::AccessibilityServiceClient,
   // ax::mojom::UserInput:
   void SendSyntheticKeyEventForShortcutOrNavigation(
       ax::mojom::SyntheticKeyEventPtr key_event) override;
+  void SendSyntheticMouseEvent(
+      ax::mojom::SyntheticMouseEventPtr mouse_event) override;
 
   // ax::mojom::UserInterface:
   void DarkenScreen(bool darken) override;
   void OpenSettingsSubpage(const std::string& subpage) override;
   void ShowConfirmationDialog(const std::string& title,
                               const std::string& description,
-                              const absl::optional<std::string>& cancel_name,
+                              const std::optional<std::string>& cancel_name,
                               ShowConfirmationDialogCallback callback) override;
   void SetFocusRings(std::vector<ax::mojom::FocusRingInfoPtr> focus_rings,
                      ax::mojom::AssistiveTechnologyType at_type) override;
@@ -123,6 +125,11 @@ class FakeServiceClient : public mojom::AccessibilityServiceClient,
   bool AccessibilityServiceClientIsBound() const;
   void SetAutomationBoundClosure(base::OnceClosure closure);
   bool AutomationIsBound() const;
+
+  // Runs only once per PerformAction call. This is necessary because we want to
+  // check the parameters for each AXActionData.
+  void SetPerformActionCalledCallback(
+      base::OnceCallback<void(const ui::AXActionData&)> callback);
 
 #if BUILDFLAG(SUPPORTS_OS_ACCESSIBILITY_SERVICE)
   void RequestScrollableBoundsForPoint(const gfx::Point& point);
@@ -143,7 +150,9 @@ class FakeServiceClient : public mojom::AccessibilityServiceClient,
   void SendTtsUtteranceEvent(mojom::TtsEventPtr tts_event);
 
   void SetSyntheticKeyEventCallback(base::RepeatingCallback<void()> callback);
-  const std::vector<ax::mojom::SyntheticKeyEventPtr>& GetKeyEvents() const;
+  void SetSyntheticMouseEventCallback(base::RepeatingCallback<void()> callback);
+  const std::vector<mojom::SyntheticKeyEventPtr>& GetKeyEvents() const;
+  const std::vector<mojom::SyntheticMouseEventPtr>& GetMouseEvents() const;
 
   bool UserInterfaceIsBound() const;
   void SetDarkenScreenCallback(
@@ -164,15 +173,22 @@ class FakeServiceClient : public mojom::AccessibilityServiceClient,
                                const std::vector<ui::AXTreeUpdate>& updates,
                                const gfx::Point& mouse_location,
                                const std::vector<ui::AXEvent>& events);
+  void SendTreeDestroyedEvent(const ui::AXTreeID& tree_id);
+  void SendActionResult(const ui::AXActionData& data, bool result);
 
 #endif  // BUILDFLAG(SUPPORTS_OS_ACCESSIBILITY_SERVICE)
   base::WeakPtr<FakeServiceClient> GetWeakPtr() {
     return weak_ptr_factory_.GetWeakPtr();
   }
 
+  uint32_t num_disable_called() const { return num_disable_called_; }
+
  private:
   raw_ptr<mojom::AccessibilityService, DanglingUntriaged> service_;
   base::OnceClosure automation_bound_closure_;
+  base::OnceCallback<void(const ui::AXActionData&)>
+      perform_action_called_callback_;
+  uint32_t num_disable_called_ = 0;
 
   mojo::AssociatedRemoteSet<mojom::Automation> automation_remotes_;
   mojo::ReceiverSet<mojom::AutomationClient> automation_client_receivers_;
@@ -187,17 +203,19 @@ class FakeServiceClient : public mojom::AccessibilityServiceClient,
   mojo::ReceiverSet<mojom::SpeechRecognition> sr_receivers_;
   mojo::Remote<ax::mojom::SpeechRecognitionEventObserver> sr_event_observer_;
   base::RepeatingCallback<void()> speech_recognition_start_callback_;
-  absl::optional<std::string> speech_recognition_start_error_;
-  absl::optional<std::string> speech_recognition_stop_error_;
+  std::optional<std::string> speech_recognition_start_error_;
+  std::optional<std::string> speech_recognition_stop_error_;
 
   base::RepeatingCallback<void(const std::string&, mojom::TtsOptionsPtr)>
       tts_speak_callback_;
   mojo::ReceiverSet<mojom::Tts> tts_receivers_;
   mojo::Remote<ax::mojom::TtsUtteranceClient> tts_utterance_client_;
 
-  base::RepeatingCallback<void()> synthetic_key_event_callback_;
   mojo::ReceiverSet<mojom::UserInput> ui_receivers_;
-  std::vector<ax::mojom::SyntheticKeyEventPtr> key_events_;
+  base::RepeatingCallback<void()> synthetic_key_event_callback_;
+  base::RepeatingCallback<void()> synthetic_mouse_event_callback_;
+  std::vector<mojom::SyntheticKeyEventPtr> key_events_;
+  std::vector<mojom::SyntheticMouseEventPtr> mouse_events_;
 
   base::RepeatingCallback<void(bool darken)> darken_screen_callback_;
   base::RepeatingCallback<void(const std::string& subpage)>

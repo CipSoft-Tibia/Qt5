@@ -127,18 +127,6 @@ bool CanAccessWindowInternal(
         accessing_window->document(),
         can_access ? WebFeature::kDocumentDomainEnabledCrossOriginAccess
                    : WebFeature::kDocumentDomainBlockedCrossOriginAccess);
-    // Handle deprecation warnings for OriginAgentCluster default:
-    // If the new default is not (yet) enabled, but warnings are, and
-    // access gets allowed for domain-setting reasons (reasons checked in
-    // the if clause above).
-    if (accessing_window->GetAgent()->IsOriginOrSiteKeyedBasedOnDefault() &&
-        base::FeatureList::IsEnabled(
-            blink::features::kOriginAgentClusterDefaultWarning) &&
-        can_access) {
-      UseCounter::CountDeprecation(
-          accessing_window->document(),
-          WebFeature::kCrossOriginAccessBasedOnDocumentDomain);
-    }
   }
   if (!can_access) {
     // Ensure that if we got a cluster mismatch that it was due to a permissions
@@ -201,13 +189,13 @@ DOMWindow* FindWindow(v8::Isolate* isolate,
                       const WrapperTypeInfo* type,
                       v8::Local<v8::Object> holder) {
   if (V8Window::GetWrapperTypeInfo()->Equals(type))
-    return V8Window::ToWrappableUnsafe(holder);
+    return V8Window::ToWrappableUnsafe(isolate, holder);
 
   if (V8Location::GetWrapperTypeInfo()->Equals(type))
-    return V8Location::ToWrappableUnsafe(holder)->DomWindow();
+    return V8Location::ToWrappableUnsafe(isolate, holder)->DomWindow();
 
   // This function can handle only those types listed above.
-  NOTREACHED();
+  NOTREACHED_IN_MIGRATION();
   return nullptr;
 }
 
@@ -259,14 +247,26 @@ bool BindingSecurity::ShouldAllowAccessTo(
                          nullptr);
 }
 
-namespace {
-
-bool ShouldAllowAccessToV8ContextInternal(
-    v8::Local<v8::Context> accessing_context,
-    v8::MaybeLocal<v8::Context> maybe_target_context,
+bool BindingSecurity::ShouldAllowAccessToV8ContextInternal(
+    ScriptState* accessing_script_state,
+    ScriptState* target_script_state,
     ExceptionState* exception_state) {
   // Workers and worklets do not support multiple contexts, so both of
   // |accessing_context| and |target_context| must be windows at this point.
+
+  const DOMWrapperWorld& accessing_world = accessing_script_state->World();
+  const DOMWrapperWorld& target_world = target_script_state->World();
+  CHECK_EQ(accessing_world.GetWorldId(), target_world.GetWorldId());
+  return !accessing_world.IsMainWorld() ||
+         CanAccessWindow(ToLocalDOMWindow(accessing_script_state),
+                         ToLocalDOMWindow(target_script_state),
+                         exception_state);
+}
+
+bool BindingSecurity::ShouldAllowAccessToV8Context(
+    v8::Local<v8::Context> accessing_context,
+    v8::MaybeLocal<v8::Context> maybe_target_context) {
+  ExceptionState* exception_state = nullptr;
 
   // remote_object->GetCreationContext() returns the empty handle. Remote
   // contexts are unconditionally treated as cross origin.
@@ -277,26 +277,16 @@ bool ShouldAllowAccessToV8ContextInternal(
                        exception_state);
     return false;
   }
+
   // Fast path for the most likely case.
-  if (accessing_context == target_context)
+  if (accessing_context == target_context) [[likely]] {
     return true;
+  }
 
-  const DOMWrapperWorld& accessing_world =
-      DOMWrapperWorld::World(accessing_context);
-  const DOMWrapperWorld& target_world = DOMWrapperWorld::World(target_context);
-  CHECK_EQ(accessing_world.GetWorldId(), target_world.GetWorldId());
-  return !accessing_world.IsMainWorld() ||
-         CanAccessWindow(ToLocalDOMWindow(accessing_context),
-                         ToLocalDOMWindow(target_context), exception_state);
-}
-
-}  // namespace
-
-bool BindingSecurity::ShouldAllowAccessToV8Context(
-    v8::Local<v8::Context> accessing_context,
-    v8::MaybeLocal<v8::Context> target_context) {
-  return ShouldAllowAccessToV8ContextInternal(accessing_context, target_context,
-                                              nullptr);
+  v8::Isolate* isolate = accessing_context->GetIsolate();
+  return ShouldAllowAccessToV8ContextInternal(
+      ScriptState::From(isolate, accessing_context),
+      ScriptState::From(isolate, target_context), exception_state);
 }
 
 void BindingSecurity::FailedAccessCheckFor(v8::Isolate* isolate,

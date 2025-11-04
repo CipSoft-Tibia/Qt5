@@ -18,10 +18,9 @@
 #include <private/qrawfont_p.h>
 #include <private/qglyphrun_p.h>
 #include <private/qquickitem_p.h>
+#include <private/qsgdistancefieldglyphnode_p.h>
 
 QT_BEGIN_NAMESPACE
-
-Q_DECLARE_LOGGING_CATEGORY(lcSgText)
 
 QQuickTextNodeEngine::BinaryTreeNodeKey::BinaryTreeNodeKey(BinaryTreeNode *node)
     : fontEngine(QRawFontPrivate::get(node->glyphRun.rawFont())->fontEngine)
@@ -435,11 +434,12 @@ void QQuickTextNodeEngine::addTextObject(const QTextBlock &block, const QPointF 
         }
 
         if (image.isNull()) {
-            image = QImage(size.toSize(), QImage::Format_ARGB32_Premultiplied);
+            image = QImage((size * m_devicePixelRatio).toSize(), QImage::Format_ARGB32_Premultiplied);
+            image.setDevicePixelRatio(m_devicePixelRatio);
             image.fill(Qt::transparent);
             {
                 QPainter painter(&image);
-                handler->drawObject(&painter, image.rect(), textDocument, pos, format);
+                handler->drawObject(&painter, QRectF({}, size), textDocument, pos, format);
             }
         }
 

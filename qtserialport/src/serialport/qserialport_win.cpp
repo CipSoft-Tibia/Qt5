@@ -637,6 +637,18 @@ inline bool QSerialPortPrivate::initialize(QIODevice::OpenMode mode)
 
     restoredDcb = dcb;
 
+    if (!::GetCommTimeouts(handle, &restoredCommTimeouts)) {
+        setError(getSystemError());
+        return false;
+    }
+
+    auto restoreParametersOnError = qScopeGuard([this] {
+        if (settingsRestoredOnClose) {
+            ::SetCommState(handle, &restoredDcb);
+            ::SetCommTimeouts(handle, &restoredCommTimeouts);
+        }
+    });
+
     qt_set_common_props(&dcb);
     qt_set_baudrate(&dcb, inputBaudRate);
     qt_set_databits(&dcb, dataBits);
@@ -646,11 +658,6 @@ inline bool QSerialPortPrivate::initialize(QIODevice::OpenMode mode)
 
     if (!setDcb(&dcb))
         return false;
-
-    if (!::GetCommTimeouts(handle, &restoredCommTimeouts)) {
-        setError(getSystemError());
-        return false;
-    }
 
     ::ZeroMemory(&currentCommTimeouts, sizeof(currentCommTimeouts));
     currentCommTimeouts.ReadIntervalTimeout = MAXDWORD;
@@ -678,6 +685,7 @@ inline bool QSerialPortPrivate::initialize(QIODevice::OpenMode mode)
         return false;
     }
 
+    restoreParametersOnError.dismiss();
     return true;
 }
 

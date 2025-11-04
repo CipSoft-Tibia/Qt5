@@ -2,6 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#ifdef UNSAFE_BUFFERS_BUILD
+// TODO(crbug.com/40285824): Remove this and convert code to safer constructs.
+#pragma allow_unsafe_buffers
+#endif
+
 #include "components/zucchini/zucchini_apply.h"
 
 #include <algorithm>
@@ -33,7 +38,7 @@ bool ApplyEquivalenceAndExtraData(ConstBufferView old_image,
     CHECK(next_dst_it >= dst_it);
 
     offset_t gap = static_cast<offset_t>(next_dst_it - dst_it);
-    absl::optional<ConstBufferView> extra_data = extra_data_source.GetNext(gap);
+    std::optional<ConstBufferView> extra_data = extra_data_source.GetNext(gap);
     if (!extra_data) {
       LOG(ERROR) << "Error reading extra_data";
       return false;
@@ -47,7 +52,7 @@ bool ApplyEquivalenceAndExtraData(ConstBufferView old_image,
     CHECK_EQ(dst_it, next_dst_it + equivalence->length);
   }
   offset_t gap = static_cast<offset_t>(new_image.end() - dst_it);
-  absl::optional<ConstBufferView> extra_data = extra_data_source.GetNext(gap);
+  std::optional<ConstBufferView> extra_data = extra_data_source.GetNext(gap);
   if (!extra_data) {
     LOG(ERROR) << "Error reading extra_data";
     return false;

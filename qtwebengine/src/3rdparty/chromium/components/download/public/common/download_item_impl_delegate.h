@@ -19,7 +19,6 @@
 #include "components/services/quarantine/public/mojom/quarantine.mojom.h"
 #include "mojo/public/cpp/bindings/pending_receiver.h"
 #include "services/device/public/mojom/wake_lock_provider.mojom.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 
 namespace download {
 class DownloadItemImpl;
@@ -120,6 +119,12 @@ class COMPONENTS_DOWNLOAD_EXPORT DownloadItemImplDelegate {
 
   // Gets a callback that can connect to the Quarantine Service if available.
   virtual QuarantineConnectionCallback GetQuarantineConnectionCallback();
+
+  // Gets a handler to perform the rename for a download item.  If no special
+  // rename handling is required, this function returns null and the default
+  // rename handling is performed.
+  virtual std::unique_ptr<DownloadItemRenameHandler>
+  GetRenameHandlerForDownload(DownloadItemImpl* download_item);
 
  private:
   // For "Outlives attached DownloadItemImpl" invariant assertion.

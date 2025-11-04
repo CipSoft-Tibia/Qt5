@@ -4,11 +4,14 @@
 #ifndef QCOREEVENT_H
 #define QCOREEVENT_H
 
+#include <QtCore/qbasictimer.h>
 #include <QtCore/qnamespace.h>
 #include <QtCore/qbytearray.h>
 #include <QtCore/qobjectdefs.h>
 
 QT_BEGIN_NAMESPACE
+
+template <typename Event> class QEventStorage;
 
 #define Q_EVENT_DISABLE_COPY(Class) \
 protected: \
@@ -18,6 +21,7 @@ protected: \
     Class &operator=(Class &&) = delete
 
 #define Q_DECL_EVENT_COMMON(Class) \
+        friend class QEventStorage<Class>; \
     protected: \
         Class(const Class &); \
         Class(Class &&) = delete; \
@@ -291,6 +295,8 @@ public:
         ParentWindowAboutToChange = 225,
         ParentWindowChange = 226,
 
+        SafeAreaMarginsChange = 227,
+
         // 512 reserved for Qt Jambi's MetaCall event
         // 513 reserved for Qt Jambi's DeleteOnMainThread event
 
@@ -371,6 +377,8 @@ public:
 
     int timerId() const { return qToUnderlying(id()); }
     Qt::TimerId id() const { return m_id; }
+    bool matches(const QBasicTimer &timer) const noexcept
+    { return m_id == timer.id(); }
 
 protected:
     Qt::TimerId m_id;

@@ -48,7 +48,8 @@ public:
                                         bool is_incognito,
                                         const Extension *extension,
                                         const ExtensionSet &extensions,
-                                        const ProcessMap &process_map) override;
+                                        const ProcessMap &process_map,
+                                        const GURL& upstream_url) override;
 
     PrefService *GetPrefServiceForContext(content::BrowserContext *context) override;
     void GetEarlyExtensionPrefsObservers(content::BrowserContext *context,
@@ -109,8 +110,11 @@ public:
     media_device_salt::MediaDeviceSaltService *GetMediaDeviceSaltService(content::BrowserContext *context) override;
 
     mojo::PendingRemote<network::mojom::URLLoaderFactory>
-    GetControlledFrameEmbedderURLLoader(int frame_tree_node_id,
+    GetControlledFrameEmbedderURLLoader(const url::Origin &,
+                                        content::FrameTreeNodeId frame_tree_node_id,
                                         content::BrowserContext *browser_context) override;
+
+    void CreateExtensionWebContentsObserver(content::WebContents *) override;
 
 private:
     // Support for extension APIs.

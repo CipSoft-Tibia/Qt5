@@ -34,12 +34,16 @@ ExtensionThrottleManager::~ExtensionThrottleManager() {
   base::AutoLock auto_lock(lock_);
   // Delete all entries.
   url_entries_.clear();
+
+  for (auto& observer : observers_) {
+    observer.OnExtensionThrottleManagerDestruct(this);
+  }
 }
 
 std::unique_ptr<blink::URLLoaderThrottle>
 ExtensionThrottleManager::MaybeCreateURLLoaderThrottle(
     const network::ResourceRequest& request) {
-  // TODO(https://crbug.com/1039700): This relies on the extension scheme
+  // TODO(crbug.com/40113701): This relies on the extension scheme
   // getting special handling via ShouldTreatURLSchemeAsFirstPartyWhenTopLevel,
   // which has problems. Once that's removed this should probably look at top
   // level directly instead.

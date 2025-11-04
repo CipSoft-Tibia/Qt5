@@ -10,6 +10,7 @@
 #include "base/containers/contains.h"
 #include "base/functional/bind.h"
 #include "base/lazy_instance.h"
+#include "base/not_fatal_until.h"
 #include "base/strings/utf_string_conversions.h"
 #include "chrome/browser/extensions/api/messaging/incognito_connectability_infobar_delegate.h"
 #include "chrome/browser/profiles/profile.h"
@@ -18,6 +19,7 @@
 #include "components/infobars/core/infobar.h"
 #include "content/public/browser/web_contents.h"
 #include "extensions/common/extension.h"
+#include "extensions/common/extension_id.h"
 #include "ui/base/l10n/l10n_util.h"
 
 namespace extensions {
@@ -129,7 +131,7 @@ IncognitoConnectability::TabContext::TabContext() : infobar(nullptr) {
 IncognitoConnectability::TabContext::~TabContext() = default;
 
 void IncognitoConnectability::OnInteractiveResponse(
-    const std::string& extension_id,
+    const ExtensionId& extension_id,
     const GURL& origin,
     infobars::ContentInfoBarManager* infobar_manager,
     ScopedAlertTracker::Mode response) {
@@ -148,7 +150,7 @@ void IncognitoConnectability::OnInteractiveResponse(
 
   PendingOriginMap::iterator origin_it =
       pending_origins_.find(make_pair(extension_id, origin));
-  DCHECK(origin_it != pending_origins_.end());
+  CHECK(origin_it != pending_origins_.end(), base::NotFatalUntil::M130);
   PendingOrigin& pending_origin = origin_it->second;
   DCHECK(base::Contains(pending_origin, infobar_manager));
 

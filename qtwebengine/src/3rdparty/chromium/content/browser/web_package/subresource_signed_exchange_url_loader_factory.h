@@ -13,7 +13,7 @@
 #include "content/common/content_export.h"
 #include "mojo/public/cpp/bindings/pending_receiver.h"
 #include "mojo/public/cpp/bindings/receiver_set.h"
-#include "services/network/public/cpp/corb/corb_api.h"
+#include "services/network/public/cpp/orb/orb_api.h"
 #include "services/network/public/mojom/url_loader_factory.mojom.h"
 #include "services/network/public/mojom/url_response_head.mojom.h"
 #include "url/origin.h"
@@ -55,9 +55,9 @@ class CONTENT_EXPORT SubresourceSignedExchangeURLLoaderFactory
   std::unique_ptr<const PrefetchedSignedExchangeCacheEntry> entry_;
   const url::Origin request_initiator_origin_lock_;
   mojo::ReceiverSet<network::mojom::URLLoaderFactory> receivers_;
-  scoped_refptr<base::RefCountedData<network::corb::PerFactoryState>>
-      corb_state_ = base::MakeRefCounted<
-          base::RefCountedData<network::corb::PerFactoryState>>();
+  scoped_refptr<base::RefCountedData<network::orb::PerFactoryState>>
+      orb_state_ = base::MakeRefCounted<
+          base::RefCountedData<network::orb::PerFactoryState>>();
 };
 
 }  // namespace content

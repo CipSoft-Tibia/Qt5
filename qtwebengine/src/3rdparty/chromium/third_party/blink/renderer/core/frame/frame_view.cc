@@ -23,8 +23,7 @@
 namespace blink {
 
 FrameView::FrameView(const gfx::Rect& frame_rect)
-    : EmbeddedContentView(frame_rect),
-      frame_visibility_(blink::mojom::FrameVisibility::kRenderedInViewport) {}
+    : EmbeddedContentView(frame_rect) {}
 
 Frame& FrameView::GetFrame() const {
   if (const LocalFrameView* lfv = DynamicTo<LocalFrameView>(this))
@@ -78,15 +77,20 @@ void FrameView::UpdateViewportIntersection(unsigned flags,
   gfx::Transform main_frame_transform_matrix;
   DocumentLifecycle::LifecycleState parent_lifecycle_state =
       owner_document.Lifecycle().GetState();
+
+  bool should_compute_occlusion = false;
   mojom::blink::FrameOcclusionState occlusion_state =
       owner_document.GetFrame()->GetOcclusionState();
-  bool should_compute_occlusion =
-      needs_occlusion_tracking &&
-      occlusion_state ==
-          mojom::blink::FrameOcclusionState::kGuaranteedNotOccluded &&
-      parent_lifecycle_state >= DocumentLifecycle::kPrePaintClean;
-  if (!should_compute_occlusion) {
+  if (occlusion_state ==
+      mojom::blink::FrameOcclusionState::kGuaranteedNotOccluded) {
+    // We can't propagate kGuaranteedNotOccluded from the parent without testing
+    // occlusion of this frame. If we don't ultimately do an occlusion test on
+    // this frame, then we should propagate "unknown".
     occlusion_state = mojom::blink::FrameOcclusionState::kUnknown;
+    if (needs_occlusion_tracking &&
+        parent_lifecycle_state >= DocumentLifecycle::kPrePaintClean) {
+      should_compute_occlusion = true;
+    }
   }
 
   LayoutEmbeddedContent* owner_layout_object =
@@ -107,7 +111,7 @@ void FrameView::UpdateViewportIntersection(unsigned flags,
     if (should_compute_occlusion)
       geometry_flags |= IntersectionGeometry::kShouldComputeVisibility;
 
-    absl::optional<IntersectionGeometry::RootGeometry> root_geometry;
+    std::optional<IntersectionGeometry::RootGeometry> root_geometry;
     IntersectionGeometry geometry(
         /* root */ nullptr,
         /* target */ *owner_element,
@@ -124,11 +128,22 @@ void FrameView::UpdateViewportIntersection(unsigned flags,
         frame.GetChromeClient().GetScreenInfo(*owner_document.GetFrame());
     new_rect_in_parent.Scale(1. / screen_info.device_scale_factor);
 
+    // Movement as a proportion of frame size
+    double horizontal_movement =
+        new_rect_in_parent.Width()
+            ? (new_rect_in_parent.X() - rect_in_parent_.X()).Abs() /
+                  new_rect_in_parent.Width()
+            : 0.0;
+    double vertical_movement =
+        new_rect_in_parent.Height()
+            ? (new_rect_in_parent.Y() - rect_in_parent_.Y()).Abs() /
+                  new_rect_in_parent.Height()
+            : 0.0;
     if (new_rect_in_parent.size != rect_in_parent_.size ||
-        ((new_rect_in_parent.X() - rect_in_parent_.X()).Abs() +
-             (new_rect_in_parent.Y() - rect_in_parent_.Y()).Abs() >
-         LayoutUnit(
-             FrameVisualProperties::MaxChildFrameScreenRectMovement()))) {
+        horizontal_movement >
+            FrameVisualProperties::MaxChildFrameScreenRectMovement() ||
+        vertical_movement >
+            FrameVisualProperties::MaxChildFrameScreenRectMovement()) {
       rect_in_parent_ = new_rect_in_parent;
       if (Page* page = GetFrame().GetPage()) {
         rect_in_parent_stable_since_ = page->Animator().Clock().CurrentTime();
@@ -149,8 +164,12 @@ void FrameView::UpdateViewportIntersection(unsigned flags,
         rect_in_parent_stable_since_for_iov2_ = base::TimeTicks::Now();
       }
     }
-    if (should_compute_occlusion && !geometry.IsVisible())
-      occlusion_state = mojom::blink::FrameOcclusionState::kPossiblyOccluded;
+    if (should_compute_occlusion) {
+      occlusion_state =
+          geometry.IsVisible()
+              ? mojom::blink::FrameOcclusionState::kGuaranteedNotOccluded
+              : mojom::blink::FrameOcclusionState::kPossiblyOccluded;
+    }
 
     // Generate matrix to transform from the space of the containing document
     // to the space of the iframe's contents.
@@ -238,11 +257,6 @@ void FrameView::UpdateViewportIntersection(unsigned flags,
     }
     main_frame_transform_matrix =
         child_frame_to_root_frame.AccumulatedTransform();
-  } else if (occlusion_state ==
-             mojom::blink::FrameOcclusionState::kGuaranteedNotOccluded) {
-    // If the parent LocalFrameView is throttled and out-of-date, then we can't
-    // get any useful information.
-    occlusion_state = mojom::blink::FrameOcclusionState::kUnknown;
   }
 
   // An iframe's content is always pixel-snapped, even if the iframe element has
@@ -275,13 +289,8 @@ void FrameView::UpdateViewportIntersection(unsigned flags,
   bool zero_viewport_intersection = viewport_intersection.IsEmpty();
   bool is_display_none = !owner_layout_object;
   bool has_zero_area = FrameRect().IsEmpty();
-  bool has_flag = features::
-      IsThrottleDisplayNoneAndVisibilityHiddenCrossOriginIframesEnabled();
-
   bool should_throttle =
-      has_flag
-          ? (is_display_none || (zero_viewport_intersection && !has_zero_area))
-          : (!is_display_none && zero_viewport_intersection && !has_zero_area);
+      (is_display_none || (zero_viewport_intersection && !has_zero_area));
 
   bool subtree_throttled = false;
   Frame* parent_frame = GetFrame().Tree().Parent();
@@ -294,16 +303,16 @@ void FrameView::UpdateViewportIntersection(unsigned flags,
 }
 
 void FrameView::UpdateFrameVisibility(bool intersects_viewport) {
-  blink::mojom::FrameVisibility frame_visibility;
+  mojom::blink::FrameVisibility frame_visibility;
   if (LifecycleUpdatesThrottled())
     return;
   if (IsVisible()) {
     frame_visibility =
         intersects_viewport
-            ? blink::mojom::FrameVisibility::kRenderedInViewport
-            : blink::mojom::FrameVisibility::kRenderedOutOfViewport;
+            ? mojom::blink::FrameVisibility::kRenderedInViewport
+            : mojom::blink::FrameVisibility::kRenderedOutOfViewport;
   } else {
-    frame_visibility = blink::mojom::FrameVisibility::kNotRendered;
+    frame_visibility = mojom::blink::FrameVisibility::kNotRendered;
   }
   if (frame_visibility != frame_visibility_) {
     frame_visibility_ = frame_visibility;

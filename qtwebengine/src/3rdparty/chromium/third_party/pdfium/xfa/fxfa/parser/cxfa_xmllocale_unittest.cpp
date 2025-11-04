@@ -88,9 +88,7 @@ const char kXMLData[] =
     "</locale>";
 
 CXFA_XMLLocale* CreateLocaleHelper(cppgc::Heap* heap) {
-  return CXFA_XMLLocale::Create(
-      heap, pdfium::as_writable_bytes(pdfium::make_span(
-                const_cast<char*>(kXMLData), strlen(kXMLData))));
+  return CXFA_XMLLocale::Create(heap, ByteStringView(kXMLData).unsigned_span());
 }
 
 }  // namespace

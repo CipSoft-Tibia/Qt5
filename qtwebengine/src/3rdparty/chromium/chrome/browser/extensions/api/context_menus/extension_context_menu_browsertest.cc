@@ -6,6 +6,7 @@
 
 #include <memory>
 #include <set>
+#include <string_view>
 
 #include "base/functional/bind.h"
 #include "base/memory/raw_ptr.h"
@@ -172,7 +173,7 @@ class ExtensionContextMenuBrowserTest
     if (!FindCommandId(menu, id, &command_id))
       return false;
 
-    MenuModel* model = nullptr;
+    raw_ptr<MenuModel> model = nullptr;
     size_t index = 0;
     if (!menu->GetMenuModelAndItemIndex(command_id, &model, &index)) {
       return false;
@@ -244,7 +245,7 @@ class ExtensionContextMenuLazyTest
 
  protected:
   const extensions::Extension* LoadContextMenuExtension(
-      base::StringPiece subdirectory) {
+      std::string_view subdirectory) {
     base::FilePath extension_dir = GetRootDir().AppendASCII(subdirectory);
     return LoadExtension(extension_dir);
   }
@@ -252,14 +253,14 @@ class ExtensionContextMenuLazyTest
   // Helper to load an extension from context_menus/top_level/|subdirectory| in
   // the extensions test data dir.
   const extensions::Extension* LoadTopLevelContextMenuExtension(
-      base::StringPiece subdirectory) {
+      std::string_view subdirectory) {
     base::FilePath extension_dir =
         GetRootDir().AppendASCII("top_level").AppendASCII(subdirectory);
     return LoadExtension(extension_dir, {});
   }
 
   const extensions::Extension* LoadContextMenuExtensionWithIncognitoFlags(
-      base::StringPiece subdirectory) {
+      std::string_view subdirectory) {
     base::FilePath extension_dir = GetRootDir().AppendASCII(subdirectory);
     return LoadExtension(extension_dir, {.allow_in_incognito = true});
   }
@@ -305,7 +306,7 @@ class ExtensionContextMenuPersistentTest
   // Helper to load an extension from context_menus/|subdirectory| in the
   // extensions test data dir.
   const extensions::Extension* LoadContextMenuExtension(
-      base::StringPiece subdirectory) {
+      std::string_view subdirectory) {
     base::FilePath extension_dir = GetRootDir().AppendASCII(subdirectory);
     return LoadExtension(extension_dir);
   }
@@ -608,7 +609,7 @@ IN_PROC_BROWSER_TEST_P(ExtensionContextMenuLazyTest, TopLevel) {
       TestRenderViewContextMenu::Create(GetWebContents(), url));
 
   size_t index = 0;
-  MenuModel* model = nullptr;
+  raw_ptr<MenuModel> model = nullptr;
 
   ASSERT_TRUE(menu->GetMenuModelAndItemIndex(
       ContextMenuMatcher::ConvertToExtensionsCustomCommandId(0), &model,
@@ -697,7 +698,7 @@ IN_PROC_BROWSER_TEST_F(ExtensionContextMenuPersistentTest, Separators) {
 
   // The top-level item should be an "automagic parent" with the extension's
   // name.
-  MenuModel* model = nullptr;
+  raw_ptr<MenuModel> model = nullptr;
   size_t index = 0;
   std::u16string label;
   ASSERT_TRUE(menu->GetMenuModelAndItemIndex(
@@ -711,6 +712,8 @@ IN_PROC_BROWSER_TEST_F(ExtensionContextMenuPersistentTest, Separators) {
   MenuModel* submenu = model->GetSubmenuModelAt(index);
   ASSERT_TRUE(submenu);
   VerifyMenuForSeparatorsTest(*submenu);
+  // Depends on `menu` so must be cleared before it is destroyed below.
+  model = nullptr;
 
   // Now run our second test - navigate to test2.html which creates an explicit
   // parent node and populates that with the same items as in test1.
@@ -914,7 +917,7 @@ IN_PROC_BROWSER_TEST_P(ExtensionContextMenuLazyTest, EventPage) {
 #endif
 IN_PROC_BROWSER_TEST_P(ExtensionContextMenuLazyTest,
                        MAYBE_IncognitoSplitContextMenuCount) {
-  // TODO(crbug.com/939664): Not yet implemented.
+  // TODO(crbug.com/40617251): Not yet implemented.
   if (GetParam() == ContextType::kServiceWorker)
     return;
   ExtensionTestMessageListener created("created item regular");

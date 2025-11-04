@@ -5,7 +5,7 @@
 #define TST_QMLDOMSTRINGDUMPER_H
 #include <QtQmlDom/private/qqmldomstringdumper_p.h>
 
-#include <QtTest/QtTest>
+#include <QtTest/QTest>
 #include <QTextStream>
 #include <QDebug>
 

@@ -560,24 +560,6 @@ class QtAndroidWebViewController
         });
     }
 
-    String getUrl()
-    {
-        final String[] url = {""};
-        final Semaphore sem = new Semaphore(0);
-        m_activity.runOnUiThread(new Runnable() {
-            @Override
-            public void run() { url[0] = m_webView.getUrl(); sem.release(); }
-        });
-
-        try {
-            sem.tryAcquire(BLOCKING_TIMEOUT, TimeUnit.MILLISECONDS);
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-
-        return url[0];
-    }
-
     WebView getWebView()
     {
        return m_webView;

@@ -28,9 +28,9 @@ Q_LOGGING_CATEGORY(lcSvgDraw, "qt.svg.draw")
 #define QT_SVG_MAX_LAYOUT_SIZE (qint64(QFIXED_MAX / 2))
 #endif
 
-void QSvgAnimation::drawCommand(QPainter *, QSvgExtraStates &)
+void QSvgDummyNode::drawCommand(QPainter *, QSvgExtraStates &)
 {
-    qWarning("<animation> not implemented");
+    qWarning("Dummy node not meant to be drawn");
 }
 
 QSvgEllipse::QSvgEllipse(QSvgNode *parent, const QRectF &rect)
@@ -353,7 +353,7 @@ bool QSvgText::shouldDrawNode(QPainter *p, QSvgExtraStates &) const
     }
 
     QFont font = p->font();
-    font.setPixelSize((100.0 / originalFontSize) * maxFontSize);
+    font.setPixelSize(maxFontSize);
     QFontMetricsF fm(font);
     if (m_tspans.size() * fm.height() >= QT_SVG_MAX_LAYOUT_SIZE) {
         qCWarning(lcSvgDraw) << "Text element too high to lay out, ignoring";
@@ -375,31 +375,24 @@ void QSvgText::draw_helper(QPainter *p, QSvgExtraStates &states, QRectF *boundin
         qreal oldOpacity = p->opacity();
         p->setOpacity(oldOpacity * states.fillOpacity);
 
-        // Force the font to have a size of 100 pixels to avoid truncation problems
-        // when the font is very small.
         QFont font = p->font();
-        qreal scale = 100.0 / font.pointSizeF();
         Qt::Alignment alignment = states.textAnchor;
-
-        QTransform oldTransform = p->worldTransform();
-        p->scale(1 / scale, 1 / scale);
 
         qreal y = 0;
         bool initial = true;
-        qreal px = m_coord.x() * scale;
-        qreal py = m_coord.y() * scale;
-        QSizeF scaledSize = m_size * scale;
+        qreal px = m_coord.x();
+        qreal py = m_coord.y();
 
         if (m_type == Textarea) {
             if (alignment == Qt::AlignHCenter)
-                px += scaledSize.width() / 2;
+                px += m_size.width() / 2;
             else if (alignment == Qt::AlignRight)
-                px += scaledSize.width();
+                px += m_size.width();
         }
 
         QRectF bounds;
         if (m_size.height() != 0)
-            bounds = QRectF(0, py, 1, scaledSize.height()); // x and width are not used.
+            bounds = QRectF(0, py, 1, m_size.height()); // x and width are not used.
 
         bool appendSpace = false;
         QList<QString> paragraphs;
@@ -410,7 +403,8 @@ void QSvgText::draw_helper(QPainter *p, QSvgExtraStates &states, QRectF *boundin
             if (m_tspans[i] == LINEBREAK) {
                 if (m_type == Textarea) {
                     if (paragraphs.back().isEmpty()) {
-                        font.setPixelSize(font.pointSizeF() * scale);
+                        font.setPixelSize(font.pointSizeF());
+                        font.setHintingPreference(QFont::PreferNoHinting);
 
                         QTextLayout::FormatRange range;
                         range.start = 0;
@@ -429,7 +423,8 @@ void QSvgText::draw_helper(QPainter *p, QSvgExtraStates &states, QRectF *boundin
                 m_tspans[i]->applyStyle(p, states);
 
                 font = p->font();
-                font.setPixelSize(font.pointSizeF() * scale);
+                font.setPixelSize(font.pointSizeF());
+                font.setHintingPreference(QFont::PreferNoHinting);
 
                 QString newText(m_tspans[i]->text());
                 newText.replace(QLatin1Char('\t'), QLatin1Char(' '));
@@ -451,7 +446,8 @@ void QSvgText::draw_helper(QPainter *p, QSvgExtraStates &states, QRectF *boundin
                 range.start = paragraphs.back().size();
                 range.length = newText.size();
                 range.format.setFont(font);
-                range.format.setTextOutline(p->pen());
+                if (p->pen().style() != Qt::NoPen && p->pen().brush() != Qt::NoBrush)
+                    range.format.setTextOutline(p->pen());
                 range.format.setForeground(p->brush());
 
                 if (appendSpace) {
@@ -479,11 +475,11 @@ void QSvgText::draw_helper(QPainter *p, QSvgExtraStates &states, QRectF *boundin
             }
             if (isPainting) {
                 states.svgFont->draw(
-                        p, m_coord * scale, text, p->font().pointSizeF() * scale, states.textAnchor);
+                        p, m_coord, text, p->font().pointSizeF(), states.textAnchor);
             }
             if (boundingRect) {
                 *boundingRect = states.svgFont->boundingRect(
-                        p, m_coord * scale, text, p->font().pointSizeF() * scale, states.textAnchor);
+                        p, m_coord, text, p->font().pointSizeF(), states.textAnchor);
             }
         } else {
             QRectF brect;
@@ -500,7 +496,7 @@ void QSvgText::draw_helper(QPainter *p, QSvgExtraStates &states, QRectF *boundin
                     if (!line.isValid())
                         break;
                     if (m_size.width() != 0)
-                        line.setLineWidth(scaledSize.width());
+                        line.setLineWidth(m_size.width());
                 }
                 tl.endLayout();
 
@@ -522,8 +518,8 @@ void QSvgText::draw_helper(QPainter *p, QSvgExtraStates &states, QRectF *boundin
                     brect |= line.naturalTextRect();
 
                     // Check if the current line fits into the bounding rectangle.
-                    if ((m_size.width() != 0 && line.naturalTextWidth() > scaledSize.width())
-                        || (m_size.height() != 0 && y + line.height() > scaledSize.height())) {
+                    if ((m_size.width() != 0 && line.naturalTextWidth() > m_size.width())
+                        || (m_size.height() != 0 && y + line.height() > m_size.height())) {
                         // I need to set the bounds height to 'y-epsilon' to avoid drawing the current
                         // line. Since the font is scaled to 100 units, 1 should be a safe epsilon.
                         bounds.setHeight(y - 1);
@@ -540,14 +536,13 @@ void QSvgText::draw_helper(QPainter *p, QSvgExtraStates &states, QRectF *boundin
                     break;
             }
             if (boundingRect) {
-                brect.translate(m_coord * scale);
+                brect.translate(m_coord);
                 if (bounds.height() > 0)
                     brect.setBottom(qMin(brect.bottom(), bounds.bottom()));
-                *boundingRect = QTransform::fromScale(1 / scale, 1 / scale).mapRect(brect);
+                *boundingRect = brect;
             }
         }
 
-        p->setWorldTransform(oldTransform, false);
         p->setOpacity(oldOpacity);
     }
 }
@@ -596,9 +591,9 @@ void QSvgUse::drawCommand(QPainter *p, QSvgExtraStates &states)
     }
 }
 
-QSvgNode::Type QSvgAnimation::type() const
+QSvgNode::Type QSvgDummyNode::type() const
 {
-    return Animation;
+    return FeUnsupported;
 }
 
 QSvgNode::Type QSvgCircle::type() const

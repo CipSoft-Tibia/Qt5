@@ -1,5 +1,6 @@
 // Copyright (C) 2022 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:data-parser
 
 #include "qhttpheaderparser_p.h"
 
@@ -25,8 +26,8 @@ void QHttpHeaderParser::clear()
 
 static bool fieldNameCheck(QByteArrayView name)
 {
-    static constexpr QByteArrayView otherCharacters("!#$%&'*+-.^_`|~");
-    static const auto fieldNameChar = [](char c) {
+    const auto fieldNameChar = [](char c) {
+        constexpr QByteArrayView otherCharacters("!#$%&'*+-.^_`|~");
         return ('a' <= c && c <= 'z') || ('A' <= c && c <= 'Z') || ('0' <= c && c <= '9')
                 || otherCharacters.contains(c);
     };

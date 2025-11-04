@@ -88,6 +88,7 @@ public:
     QPointer<QQuickLabel> fileNameLabel;
     QPointer<QQuickTextField> fileNameTextField;
     QPointer<QQuickDialog> overwriteConfirmationDialog;
+    QPointer<QQuickSideBar> sideBar;
 };
 
 QT_END_NAMESPACE

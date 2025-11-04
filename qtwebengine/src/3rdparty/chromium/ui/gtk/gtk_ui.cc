@@ -2,6 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#ifdef UNSAFE_BUFFERS_BUILD
+// TODO(crbug.com/351564777): Remove this and convert code to safer constructs.
+#pragma allow_unsafe_buffers
+#endif
+
 #include "ui/gtk/gtk_ui.h"
 
 #include <cairo.h>
@@ -9,6 +14,7 @@
 
 #include <cmath>
 #include <memory>
+#include <optional>
 #include <set>
 #include <unordered_set>
 #include <utility>
@@ -22,10 +28,10 @@
 #include "base/logging.h"
 #include "base/nix/mime_util_xdg.h"
 #include "base/nix/xdg_util.h"
+#include "base/numerics/safe_conversions.h"
 #include "base/observer_list.h"
 #include "base/strings/string_split.h"
 #include "chrome/browser/themes/theme_properties.h"  // nogncheck
-#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "third_party/skia/include/core/SkBitmap.h"
 #include "third_party/skia/include/core/SkColor.h"
 #include "third_party/skia/include/core/SkShader.h"
@@ -35,6 +41,7 @@
 #include "ui/base/ime/linux/linux_input_method_context.h"
 #include "ui/base/ime/text_input_flags.h"
 #include "ui/base/ozone_buildflags.h"
+#include "ui/base/ui_base_switches.h"
 #include "ui/color/color_id.h"
 #include "ui/color/color_provider.h"
 #include "ui/color/color_provider_key.h"
@@ -52,6 +59,7 @@
 #include "ui/gfx/image/image_skia_rep.h"
 #include "ui/gfx/image/image_skia_source.h"
 #include "ui/gfx/skbitmap_operations.h"
+#include "ui/gtk/gtk_color_mixers.h"
 #include "ui/gtk/gtk_compat.h"
 #include "ui/gtk/gtk_key_bindings_handler.h"
 #include "ui/gtk/gtk_ui_platform.h"
@@ -162,7 +170,7 @@ std::unique_ptr<GtkUiPlatform> CreateGtkUiPlatform(ui::LinuxUiBackend backend) {
       return std::make_unique<GtkUiPlatformWayland>();
 #endif  // BUILDFLAG(IS_OZONE_WAYLAND)
     default:
-      NOTREACHED();
+      NOTREACHED_IN_MIGRATION();
       return nullptr;
   }
 }
@@ -220,6 +228,10 @@ bool GtkUi::Initialize() {
   if (!GtkInitFromCommandLine(&cmd_line.argc, cmd_line.argv.data())) {
     return false;
   }
+
+  ui::ColorProviderManager::Get().AppendColorProviderInitializer(
+      base::BindRepeating(&GtkUi::AddGtkNativeColorMixer,
+                          base::Unretained(this)));
   native_theme_ = NativeThemeGtk::instance();
 
   using Action = ui::LinuxUi::WindowFrameAction;
@@ -282,6 +294,58 @@ bool GtkUi::Initialize() {
   platform_->OnInitialized(GetDummyWindow());
 
   return true;
+}
+
+void GtkUi::InitializeFontSettings() {
+  gfx::SetFontRenderParamsDeviceScaleFactor(display_config().primary_scale);
+
+  auto fake_label = TakeGObject(gtk_label_new(nullptr));
+  PangoContext* pc = gtk_widget_get_pango_context(fake_label);
+  const PangoFontDescription* desc = pango_context_get_font_description(pc);
+
+  // Use gfx::FontRenderParams to select a family and determine the rendering
+  // settings.
+  gfx::FontRenderParamsQuery query;
+  query.families =
+      base::SplitString(pango_font_description_get_family(desc), ",",
+                        base::TRIM_WHITESPACE, base::SPLIT_WANT_ALL);
+
+  constexpr double kPangoScale = PANGO_SCALE;
+  double size_pixels;
+  if (pango_font_description_get_size_is_absolute(desc)) {
+    // If the size is absolute, it's specified in Pango units. There are
+    // PANGO_SCALE Pango units in a device unit (pixel).
+    size_pixels = pango_font_description_get_size(desc) / kPangoScale;
+    query.pixel_size = std::round(size_pixels);
+  } else {
+    // Non-absolute sizes are in points (again scaled by PANGO_SIZE).
+    // Round the value when converting to pixels to match GTK's logic.
+    const double size_points =
+        pango_font_description_get_size(desc) / kPangoScale;
+    size_pixels = size_points * kDefaultDPI / 72.0;
+    query.point_size = std::round(size_points);
+  }
+  if (!platform_->IncludeFontScaleInDeviceScale()) {
+    size_pixels *= FontScale();
+  }
+
+  query.style = gfx::Font::NORMAL;
+  query.weight =
+      static_cast<gfx::Font::Weight>(pango_font_description_get_weight(desc));
+  // TODO(davemoore): What about PANGO_STYLE_OBLIQUE?
+  if (pango_font_description_get_style(desc) == PANGO_STYLE_ITALIC) {
+    query.style |= gfx::Font::ITALIC;
+  }
+
+  std::string default_font_family;
+  default_font_render_params_ =
+      gfx::GetFontRenderParams(query, &default_font_family);
+  set_default_font_settings(FontSettings{
+      .family = std::move(default_font_family),
+      .size_pixels = base::ClampRound<int>(size_pixels),
+      .style = query.style,
+      .weight = static_cast<int>(query.weight),
+  });
 }
 
 ui::NativeTheme* GtkUi::GetNativeTheme() const {
@@ -451,24 +515,16 @@ void GtkUi::SetWindowFrameAction(WindowFrameActionSource source,
 
 std::unique_ptr<ui::LinuxInputMethodContext> GtkUi::CreateInputMethodContext(
     ui::LinuxInputMethodContextDelegate* delegate) const {
+  if (base::CommandLine::ForCurrentProcess()->HasSwitch(
+          switches::kDisableGtkIme)) {
+    return nullptr;
+  }
   return GetPlatform()->CreateInputMethodContext(delegate);
 }
 
-gfx::FontRenderParams GtkUi::GetDefaultFontRenderParams() const {
+gfx::FontRenderParams GtkUi::GetDefaultFontRenderParams() {
   static gfx::FontRenderParams params = GetGtkFontRenderParams();
   return params;
-}
-
-void GtkUi::GetDefaultFontDescription(std::string* family_out,
-                                      int* size_pixels_out,
-                                      int* style_out,
-                                      int* weight_out,
-                                      gfx::FontRenderParams* params_out) const {
-  *family_out = default_font_family_;
-  *size_pixels_out = default_font_size_pixels_;
-  *style_out = default_font_style_;
-  *weight_out = static_cast<int>(default_font_weight_);
-  *params_out = default_font_render_params_;
 }
 
 ui::SelectFileDialog* GtkUi::CreateSelectFileDialog(
@@ -497,6 +553,11 @@ void GtkUi::SetDarkTheme(bool dark) {
   // OnThemeChanged() will be called via the
   // notify::gtk-application-prefer-dark-theme handler to update the native
   // theme.
+}
+
+void GtkUi::SetAccentColor(std::optional<SkColor> accent_color) {
+  accent_color_ = accent_color;
+  native_theme_->NotifyOnNativeThemeUpdated();
 }
 
 bool GtkUi::AnimationsEnabled() const {
@@ -622,7 +683,7 @@ bool GtkUi::GetTextEditCommandsForEvent(
     return false;
   }
 
-  // TODO(crbug.com/963419): Use delegate's |GetGdkKeymap| here to
+  // TODO(crbug.com/40627552): Use delegate's |GetGdkKeymap| here to
   // determine if GtkUi's key binding handling implementation is used or not.
   // Ozone/Wayland was unintentionally using GtkUi for keybinding handling, so
   // early out here, for now, until a proper solution for ozone is implemented.
@@ -905,53 +966,6 @@ void GtkUi::UpdateColors() {
   }
 }
 
-void GtkUi::UpdateDefaultFont() {
-  gfx::SetFontRenderParamsDeviceScaleFactor(display_config().primary_scale);
-
-  auto fake_label = TakeGObject(gtk_label_new(nullptr));
-  PangoContext* pc = gtk_widget_get_pango_context(fake_label);
-  const PangoFontDescription* desc = pango_context_get_font_description(pc);
-
-  // Use gfx::FontRenderParams to select a family and determine the rendering
-  // settings.
-  gfx::FontRenderParamsQuery query;
-  query.families =
-      base::SplitString(pango_font_description_get_family(desc), ",",
-                        base::TRIM_WHITESPACE, base::SPLIT_WANT_ALL);
-
-  constexpr double kPangoScale = PANGO_SCALE;
-  double size_pixels;
-  if (pango_font_description_get_size_is_absolute(desc)) {
-    // If the size is absolute, it's specified in Pango units. There are
-    // PANGO_SCALE Pango units in a device unit (pixel).
-    size_pixels = pango_font_description_get_size(desc) / kPangoScale;
-    query.pixel_size = std::round(size_pixels);
-  } else {
-    // Non-absolute sizes are in points (again scaled by PANGO_SIZE).
-    // Round the value when converting to pixels to match GTK's logic.
-    const double size_points =
-        pango_font_description_get_size(desc) / kPangoScale;
-    size_pixels = kDefaultDPI / 72.0 * size_points;
-    query.point_size = std::round(size_points);
-  }
-  if (!platform_->IncludeFontScaleInDeviceScale()) {
-    size_pixels *= FontScale();
-  }
-  default_font_size_pixels_ = std::round(size_pixels);
-
-  query.style = gfx::Font::NORMAL;
-  query.weight =
-      static_cast<gfx::Font::Weight>(pango_font_description_get_weight(desc));
-  // TODO(davemoore): What about PANGO_STYLE_OBLIQUE?
-  if (pango_font_description_get_style(desc) == PANGO_STYLE_ITALIC) {
-    query.style |= gfx::Font::ITALIC;
-  }
-
-  default_font_render_params_ =
-      gfx::GetFontRenderParams(query, &default_font_family_);
-  default_font_style_ = query.style;
-}
-
 void GtkUi::TrackMonitor(GdkMonitor* monitor) {
   auto connect = [&](const char* detailed_signal) {
     // Unretained() is safe since GtkUi will own the ScopedGSignal.
@@ -964,8 +978,8 @@ void GtkUi::TrackMonitor(GdkMonitor* monitor) {
                                connect("notify::scale-factor")};
 }
 
-ui::DisplayConfig GtkUi::GetDisplayConfig() const {
-  ui::DisplayConfig config;
+display::DisplayConfig GtkUi::GetDisplayConfig() const {
+  display::DisplayConfig config;
   if (display::Display::HasForceDeviceScaleFactor()) {
     config.primary_scale = display::Display::GetForcedDeviceScaleFactor();
     return config;
@@ -990,11 +1004,16 @@ ui::DisplayConfig GtkUi::GetDisplayConfig() const {
           static_cast<GdkMonitor*>(g_list_model_get_item(list, i)));
     }
   } else {
-    primary = gdk_display_get_primary_monitor(display);
     const int n_monitors = gdk_display_get_n_monitors(display);
     monitors.reserve(n_monitors);
     for (int i = 0; i < n_monitors; i++) {
       monitors.push_back(gdk_display_get_monitor(display, i));
+    }
+    // In GDK3 Wayland this is always NULL; Fallback to the first monitor then.
+    // https://gitlab.gnome.org/GNOME/gtk/-/issues/1028
+    primary = gdk_display_get_primary_monitor(display);
+    if (!primary && !monitors.empty()) {
+      primary = monitors.front();
     }
   }
   if (!primary) {
@@ -1002,6 +1021,7 @@ ui::DisplayConfig GtkUi::GetDisplayConfig() const {
   }
   config.primary_scale =
       std::max(1, gdk_monitor_get_scale_factor(primary)) * font_scale;
+  config.font_scale = font_scale;
   config.display_geometries.reserve(monitors.size());
   for (GdkMonitor* monitor : monitors) {
     GdkRectangle geometry;
@@ -1016,6 +1036,11 @@ ui::DisplayConfig GtkUi::GetDisplayConfig() const {
   return config;
 }
 
+void GtkUi::AddGtkNativeColorMixer(ui::ColorProvider* provider,
+                                   const ui::ColorProviderKey& key) {
+  gtk::AddGtkNativeColorMixer(provider, key, accent_color_);
+}
+
 void GtkUi::UpdateDeviceScaleFactor() {
   auto new_config = GetDisplayConfig();
   if (display_config() != new_config) {
@@ -1025,7 +1050,8 @@ void GtkUi::UpdateDeviceScaleFactor() {
       observer.OnDeviceScaleFactorChanged();
     }
   }
-  UpdateDefaultFont();
+  set_default_font_settings(std::nullopt);
+  default_font_render_params_.reset();
 }
 
 }  // namespace gtk

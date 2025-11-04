@@ -2,11 +2,13 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-import {assert, assertNotReached} from 'chrome://resources/js/assert.js';
-import {InsetsF, RectF} from 'chrome://resources/mojo/ui/gfx/geometry/mojom/geometry.mojom-webui.js';
+import {assert, assertNotReached} from '//resources/js/assert.js';
+import type {InsetsF, RectF} from '//resources/mojo/ui/gfx/geometry/mojom/geometry.mojom-webui.js';
 
-import {HELP_BUBBLE_SCROLL_ANCHOR_OPTIONS, HelpBubbleElement} from './help_bubble.js';
-import {HelpBubbleArrowPosition, HelpBubbleParams} from './help_bubble.mojom-webui.js';
+import type {HelpBubbleElement} from './help_bubble.js';
+import {HELP_BUBBLE_SCROLL_ANCHOR_OPTIONS} from './help_bubble.js';
+import type {HelpBubbleParams} from './help_bubble.mojom-webui.js';
+import {HelpBubbleArrowPosition} from './help_bubble.mojom-webui.js';
 
 type Root = HTMLElement|ShadowRoot&{shadowRoot?: ShadowRoot};
 
@@ -253,6 +255,7 @@ export class HelpBubbleController {
     this.bubble_.progress = params.progress || null;
     this.bubble_.buttons = params.buttons;
     this.bubble_.padding = this.options_.padding;
+    this.bubble_.focusAnchor = params.focusOnShowHint === false;
 
     if (params.timeout) {
       this.bubble_.timeoutMs = Number(params.timeout!.microseconds / 1000n);
@@ -289,19 +292,5 @@ export class HelpBubbleController {
       (this.bubble_ || this.anchor_).focus();
       this.anchor_.scrollIntoView(HELP_BUBBLE_SCROLL_ANCHOR_OPTIONS);
     }
-  }
-
-  /**
-   * Gets the immediate ancestor element of `element` in the DOM, or null if
-   * none. This steps out of shadow DOMs as it finds them.
-   */
-  private static getImmediateAncestor(element: Element): Element|null {
-    if (element.parentElement) {
-      return element.parentElement;
-    }
-    if (element.parentNode instanceof ShadowRoot) {
-      return (element.parentNode as ShadowRoot).host;
-    }
-    return null;
   }
 }

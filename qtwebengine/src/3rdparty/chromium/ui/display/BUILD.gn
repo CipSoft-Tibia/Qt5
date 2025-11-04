@@ -5,6 +5,7 @@
 import("//build/config/chromeos/ui_mode.gni")
 import("//build/config/jumbo.gni")
 import("//build/config/ui.gni")
+import("//remoting/remoting_enable.gni")
 import("//testing/test.gni")
 
 component("display_features") {
@@ -66,8 +67,12 @@ jumbo_component("display") {
 
   if (is_mac) {
     sources += [
-      "mac/display_link_mac.cc",
+      "mac/ca_display_link_mac.h",
+      "mac/ca_display_link_mac.mm",
+      "mac/cv_display_link_mac.h",
+      "mac/cv_display_link_mac.mm",
       "mac/display_link_mac.h",
+      "mac/display_link_mac.mm",
       "mac/screen_mac.mm",
     ]
   }
@@ -126,6 +131,10 @@ jumbo_component("display") {
     "//ui/gfx/geometry",
   ]
 
+  if (is_ios) {
+    deps += [ "//build:ios_buildflags" ]
+  }
+
   if (is_win) {
     # Don't conflict with Windows' "display.dll".
     output_name = "ui_display"
@@ -148,6 +157,36 @@ jumbo_component("display") {
   }
 }
 
+if (is_chromeos_lacros) {
+  component("managed_display_info") {
+    testonly = true
+    sources = [
+      "manager/managed_display_info.cc",
+      "manager/managed_display_info.h",
+      "manager/util/display_manager_test_util.cc",
+      "manager/util/display_manager_test_util.h",
+      "manager/util/display_manager_util.cc",
+      "manager/util/display_manager_util.h",
+    ]
+
+    configs += [ "//build/config/compiler:wexit_time_destructors" ]
+
+    public_deps = [ "//ui/display" ]
+
+    deps = [
+      "//base",
+      "//build:chromeos_buildflags",
+      "//ui/base:base",
+      "//ui/display",
+      "//ui/display/types",
+      "//ui/display/util",
+      "//ui/display/util",
+    ]
+
+    defines = [ "DISPLAY_MANAGER_IMPLEMENTATION" ]
+  }
+}
+
 if (is_chromeos_ash) {
   component("display_manager_test_api") {
     testonly = true
@@ -164,6 +203,7 @@ if (is_chromeos_ash) {
       "//base",
       "//build:chromeos_buildflags",
       "//ui/display",
+      "//ui/display:test_support",
       "//ui/display/types",
       "//ui/display/util",
     ]
@@ -178,6 +218,7 @@ jumbo_static_library("test_support") {
     "test/display_test_util.h",
     "test/test_screen.cc",
     "test/test_screen.h",
+    "test/virtual_display_util.h",
   ]
   public_deps = [ ":display" ]
   deps = [
@@ -200,8 +241,8 @@ jumbo_static_library("test_support") {
       "win/test/scoped_screen_win.h",
       "win/test/screen_util_win.cc",
       "win/test/screen_util_win.h",
-      "win/test/virtual_display_win_util.cc",
-      "win/test/virtual_display_win_util.h",
+      "win/test/virtual_display_util_win.cc",
+      "win/test/virtual_display_util_win.h",
     ]
     deps += [
       "//third_party/win_virtual_display/controller",
@@ -213,9 +254,25 @@ jumbo_static_library("test_support") {
     sources += [
       "mac/test/test_screen_mac.h",
       "mac/test/test_screen_mac.mm",
-      "mac/test/virtual_display_mac_util.h",
-      "mac/test/virtual_display_mac_util.mm",
+      "mac/test/virtual_display_util_mac.h",
+      "mac/test/virtual_display_util_mac.mm",
     ]
+  }
+
+  if (is_linux && ozone_platform_x11 && enable_remoting) {
+    sources += [
+      "linux/test/virtual_display_util_linux.cc",
+      "linux/test/virtual_display_util_linux.h",
+    ]
+    deps += [
+      "//remoting/host:display_layout",
+      "//remoting/host:x11_display_utils",
+      "//ui/gfx/x:x",
+    ]
+  }
+
+  if (is_chromeos) {
+    sources += [ "test/display_test_util.cc" ]
   }
 
   if (is_chromeos_ash) {
@@ -239,6 +296,18 @@ jumbo_static_library("test_support") {
     ]
     configs += [ "//build/config/compiler:wexit_time_destructors" ]
     public_deps += [ "//ui/display/manager" ]
+  }
+
+  if (is_chromeos_lacros) {
+    public_deps += [ "//ui/display:managed_display_info" ]
+  }
+
+  if (!is_mac && !is_win && !is_chromeos_ash &&
+      !(is_linux && ozone_platform_x11 && enable_remoting)) {
+    sources += [
+      # Virtual display util stub for unimplemented platforms.
+      "test/virtual_display_util_stub.cc",
+    ]
   }
 }
 
@@ -324,31 +393,5 @@ test("display_unittests") {
     ]
   } else {
     deps += [ "//mojo/core/test:run_all_unittests" ]
-  }
-}
-
-# This target is added as a dependency of browser interactive_ui_tests.It must
-# be source_set, otherwise the linker will drop the tests as dead code.
-source_set("display_interactive_ui_tests") {
-  testonly = true
-  if (is_mac) {
-    sources = [ "mac/test/virtual_display_mac_util_interactive_uitest.mm" ]
-
-    deps = [
-      ":display",
-      ":test_support",
-      "//base/test:test_support",
-      "//testing/gtest",
-    ]
-  }
-  if (is_win) {
-    sources = [ "win/test/virtual_display_win_util_interactive_uitest.cc" ]
-
-    deps = [
-      ":display",
-      ":test_support",
-      "//base/test:test_support",
-      "//testing/gtest",
-    ]
   }
 }

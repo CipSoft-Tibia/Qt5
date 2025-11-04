@@ -73,7 +73,7 @@ Core::~Core() {
   CountDownLatch latch(1);
   router_->StopAllEndpoints(&client_, [&latch](Status) { latch.CountDown(); });
   if (!latch.Await(kWaitForDisconnect).result()) {
-    NEARBY_LOG(FATAL, "Unable to shutdown");
+    NEARBY_LOGS(FATAL) << "Unable to shutdown";
   }
 }
 
@@ -121,7 +121,10 @@ void Core::RequestConnection(absl::string_view endpoint_id,
                              ConnectionRequestInfo info,
                              ConnectionOptions connection_options,
                              ResultCallback callback) {
-  CHECK(!endpoint_id.empty());
+  if (endpoint_id.empty()) {
+    callback(Status{.value = Status::kEndpointUnknown});
+    return;
+  }
 
   // Assign the default from feature flags for the keep-alive frame interval and
   // timeout values if client don't mind them or has the unexpected ones.
@@ -129,14 +132,13 @@ void Core::RequestConnection(absl::string_view endpoint_id,
       connection_options.keep_alive_timeout_millis == 0 ||
       connection_options.keep_alive_interval_millis >=
           connection_options.keep_alive_timeout_millis) {
-    NEARBY_LOG(
-        WARNING,
-        "Client request connection with keep-alive frame as interval=%d, "
-        "timeout=%d, which is un-expected. Change to default.",
-        connection_options.keep_alive_interval_millis,
-        connection_options.keep_alive_timeout_millis);
-    connection_options.keep_alive_interval_millis =
-        FeatureFlags::GetInstance().GetFlags().keep_alive_interval_millis;
+    NEARBY_LOGS(WARNING)
+        << "Client request connection with keep-alive frame as interval="
+        << connection_options.keep_alive_interval_millis
+        << ", timeout=" << connection_options.keep_alive_timeout_millis
+        << ", which is un-expected. Change to default.",
+        connection_options.keep_alive_interval_millis =
+            FeatureFlags::GetInstance().GetFlags().keep_alive_interval_millis;
     connection_options.keep_alive_timeout_millis =
         FeatureFlags::GetInstance().GetFlags().keep_alive_timeout_millis;
   }
@@ -147,7 +149,10 @@ void Core::RequestConnection(absl::string_view endpoint_id,
 
 void Core::AcceptConnection(absl::string_view endpoint_id,
                             PayloadListener listener, ResultCallback callback) {
-  CHECK(!endpoint_id.empty());
+  if (endpoint_id.empty()) {
+    callback(Status{.value = Status::kEndpointUnknown});
+    return;
+  }
 
   router_->AcceptConnection(&client_, endpoint_id, std::move(listener),
                             std::move(callback));
@@ -155,7 +160,10 @@ void Core::AcceptConnection(absl::string_view endpoint_id,
 
 void Core::RejectConnection(absl::string_view endpoint_id,
                             ResultCallback callback) {
-  CHECK(!endpoint_id.empty());
+  if (endpoint_id.empty()) {
+    callback(Status{.value = Status::kEndpointUnknown});
+    return;
+  }
 
   router_->RejectConnection(&client_, endpoint_id, std::move(callback));
 }
@@ -182,7 +190,10 @@ void Core::CancelPayload(std::int64_t payload_id, ResultCallback callback) {
 
 void Core::DisconnectFromEndpoint(absl::string_view endpoint_id,
                                   ResultCallback callback) {
-  CHECK(!endpoint_id.empty());
+  if (endpoint_id.empty()) {
+    callback(Status{.value = Status::kEndpointUnknown});
+    return;
+  }
 
   router_->DisconnectFromEndpoint(&client_, endpoint_id, std::move(callback));
 }
@@ -258,21 +269,26 @@ void Core::StartAdvertisingV3(absl::string_view service_id,
 
   CheckServiceId(service_id);
   CHECK(advertising_options.strategy.IsValid());
-  AdvertisingOptions old_advertising_options = {
-      {
-          advertising_options.strategy,
-          advertising_options.advertising_mediums,
-      },
-      advertising_options.auto_upgrade_bandwidth,
-      advertising_options.enforce_topology_constraints,
-      advertising_options.power_level == PowerLevel::kLowPower,  // low_power
-      advertising_options.enable_bluetooth_listening,
-      advertising_options.advertising_mediums.web_rtc,
-      false,  // is_out_of_band_connection
-      advertising_options.fast_advertisement_service_uuid,
-      ""  // device_info
-  };
   // TODO(b/291295755): Refactor deeper to use v3 options throughout.
+  AdvertisingOptions old_advertising_options = {
+      /*OptionsBase=*/
+      {
+          /*strategy=*/advertising_options.strategy,
+          /*allowed=*/advertising_options.advertising_mediums,
+      },
+      /*auto_upgrade_bandwidth=*/advertising_options.auto_upgrade_bandwidth,
+      /*enforce_topology_constraints=*/
+      advertising_options.enforce_topology_constraints,
+      /*low_power=*/advertising_options.power_level == PowerLevel::kLowPower,
+      /*enable_bluetooth_listening=*/
+      advertising_options.enable_bluetooth_listening,
+      /*enable_webrtc_listening=*/
+      advertising_options.advertising_mediums.web_rtc,
+      /*use_stable_endpoint_id=*/advertising_options.use_stable_endpoint_id,
+      /*is_out_of_band_connection=*/false,
+      /*fast_advertisement_service_uuid=*/
+      advertising_options.fast_advertisement_service_uuid,
+      /*device_info=*/""};
   router_->StartAdvertising(&client_, service_id, old_advertising_options,
                             old_info, std::move(callback));
 }
@@ -376,12 +392,11 @@ void Core::RequestConnectionV3(const NearbyDevice& local_device,
       connection_options.keep_alive_timeout_millis == 0 ||
       connection_options.keep_alive_interval_millis >=
           connection_options.keep_alive_timeout_millis) {
-    NEARBY_LOG(
-        WARNING,
-        "Client request connection with keep-alive frame as interval=%d, "
-        "timeout=%d, which is un-expected. Change to default.",
-        connection_options.keep_alive_interval_millis,
-        connection_options.keep_alive_timeout_millis);
+    NEARBY_LOGS(WARNING)
+        << "Client request connection with keep-alive frame as interval="
+        << connection_options.keep_alive_interval_millis
+        << ", timeout=" << connection_options.keep_alive_timeout_millis
+        << ", which is un-expected. Change to default.";
     connection_options.keep_alive_interval_millis =
         FeatureFlags::GetInstance().GetFlags().keep_alive_interval_millis;
     connection_options.keep_alive_timeout_millis =
@@ -399,7 +414,10 @@ void Core::RequestConnectionV3(const NearbyDevice& remote_device,
       .local_device = const_cast<NearbyDevice&>(*(client_.GetLocalDevice())),
       .listener = std::move(connection_cb),
   };
-  CHECK(!remote_device.GetEndpointId().empty());
+  if (remote_device.GetEndpointId().empty()) {
+    result_cb(Status{.value = Status::kEndpointUnknown});
+    return;
+  }
 
   // Assign the default from feature flags for the keep-alive frame interval and
   // timeout values if client don't mind them or has the unexpected ones.
@@ -407,12 +425,11 @@ void Core::RequestConnectionV3(const NearbyDevice& remote_device,
       connection_options.keep_alive_timeout_millis == 0 ||
       connection_options.keep_alive_interval_millis >=
           connection_options.keep_alive_timeout_millis) {
-    NEARBY_LOG(
-        WARNING,
-        "Client request connection with keep-alive frame as interval=%d, "
-        "timeout=%d, which is un-expected. Change to default.",
-        connection_options.keep_alive_interval_millis,
-        connection_options.keep_alive_timeout_millis);
+    NEARBY_LOGS(WARNING)
+        << "Client request connection with keep-alive frame as interval="
+        << connection_options.keep_alive_interval_millis
+        << ", timeout=" << connection_options.keep_alive_timeout_millis
+        << ", which is un-expected. Change to default.";
     connection_options.keep_alive_interval_millis =
         FeatureFlags::GetInstance().GetFlags().keep_alive_interval_millis;
     connection_options.keep_alive_timeout_millis =
@@ -425,7 +442,10 @@ void Core::RequestConnectionV3(const NearbyDevice& remote_device,
 void Core::AcceptConnectionV3(const NearbyDevice& remote_device,
                               v3::PayloadListener listener_cb,
                               ResultCallback result_cb) {
-  CHECK(!remote_device.GetEndpointId().empty());
+  if (remote_device.GetEndpointId().empty()) {
+    result_cb(Status{.value = Status::kEndpointUnknown});
+    return;
+  }
 
   router_->AcceptConnectionV3(&client_, remote_device, std::move(listener_cb),
                               std::move(result_cb));
@@ -433,7 +453,10 @@ void Core::AcceptConnectionV3(const NearbyDevice& remote_device,
 
 void Core::RejectConnectionV3(const NearbyDevice& remote_device,
                               ResultCallback result_cb) {
-  CHECK(!remote_device.GetEndpointId().empty());
+  if (remote_device.GetEndpointId().empty()) {
+    result_cb(Status{.value = Status::kEndpointUnknown});
+    return;
+  }
 
   router_->RejectConnectionV3(&client_, remote_device, std::move(result_cb));
 }
@@ -441,7 +464,10 @@ void Core::RejectConnectionV3(const NearbyDevice& remote_device,
 void Core::SendPayloadV3(const NearbyDevice& remote_device, Payload payload,
                          ResultCallback result_cb) {
   CHECK(payload.GetType() != PayloadType::kUnknown);
-  CHECK(!remote_device.GetEndpointId().empty());
+  if (remote_device.GetEndpointId().empty()) {
+    result_cb(Status{.value = Status::kEndpointUnknown});
+    return;
+  }
 
   router_->SendPayloadV3(&client_, remote_device, std::move(payload),
                          std::move(result_cb));
@@ -457,7 +483,10 @@ void Core::CancelPayloadV3(const NearbyDevice& remote_device,
 
 void Core::DisconnectFromDeviceV3(const NearbyDevice& remote_device,
                                   ResultCallback result_cb) {
-  CHECK(!remote_device.GetEndpointId().empty());
+  if (remote_device.GetEndpointId().empty()) {
+    result_cb(Status{.value = Status::kEndpointUnknown});
+    return;
+  }
 
   router_->DisconnectFromDeviceV3(&client_, remote_device,
                                   std::move(result_cb));
@@ -478,19 +507,24 @@ void Core::UpdateAdvertisingOptionsV3(
     ResultCallback result_cb) {
   // TODO(b/291295755): Deeper refactor to use new advertising options.
   AdvertisingOptions old_advertising_options = {
+      /*OptionsBase=*/
       {
-          advertising_options.strategy,
-          advertising_options.advertising_mediums,
+          /*strategy=*/advertising_options.strategy,
+          /*allowed=*/advertising_options.advertising_mediums,
       },
-      advertising_options.auto_upgrade_bandwidth,
+      /*auto_upgrade_bandwidth=*/advertising_options.auto_upgrade_bandwidth,
+      /*enforce_topology_constraints=*/
       advertising_options.enforce_topology_constraints,
-      advertising_options.power_level == PowerLevel::kLowPower,  // low_power
+      /*low_power=*/advertising_options.power_level == PowerLevel::kLowPower,
+      /*enable_bluetooth_listening=*/
       advertising_options.enable_bluetooth_listening,
+      /*enable_webrtc_listening=*/
       advertising_options.advertising_mediums.web_rtc,
-      false,  // is_out_of_band_connection
+      /*use_stable_endpoint_id=*/advertising_options.use_stable_endpoint_id,
+      /*is_out_of_band_connection=*/false,
+      /*fast_advertisement_service_uuid=*/
       advertising_options.fast_advertisement_service_uuid,
-      ""  // device_info
-  };
+      /*device_info=*/""};
   router_->UpdateAdvertisingOptionsV3(
       &client_, service_id, old_advertising_options, std::move(result_cb));
 }

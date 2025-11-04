@@ -1,0 +1,8 @@
+version = 1
+
+[[annotations]]
+path = ["*"]
+precedence = "closest"
+comment = "test, from github.com/lottie/lottie-spec"
+SPDX-FileCopyrightText = "Copyright (C) 2024 Lottie Animation Community Working Group"
+SPDX-License-Identifier = "MIT"

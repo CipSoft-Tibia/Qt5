@@ -152,7 +152,9 @@ public:
         ItemRotationHasChanged,    // value.realValue
         ItemAntialiasingHasChanged, // value.boolValue
         ItemDevicePixelRatioHasChanged, // value.realValue
-        ItemEnabledHasChanged      // value.boolValue
+        ItemEnabledHasChanged,     // value.boolValue
+        ItemScaleHasChanged,       // value.realValue
+        ItemTransformHasChanged,   // value.item
     };
     Q_ENUM(ItemChange)
 
@@ -461,6 +463,9 @@ protected:
     virtual void dropEvent(QDropEvent *);
 #endif
     virtual bool childMouseEventFilter(QQuickItem *, QEvent *);
+#if QT_VERSION >= QT_VERSION_CHECK(7, 0, 0)
+    virtual bool contextMenuEvent(QContextMenuEvent *event);
+#endif
 
     virtual QSGNode *updatePaintNode(QSGNode *, UpdatePaintNodeData *);
     virtual void releaseResources();
